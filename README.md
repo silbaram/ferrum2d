@@ -4,14 +4,16 @@ Ferrum2D는 **Rust + WebAssembly + TypeScript + WebGL2** 기반의 2D 웹 게임
 
 ## 현재 상태
 
-현재 저장소는 **AABB Collision 시스템 연결 단계**까지 포함한다.
+현재 저장소는 **AABB + Render Command 기술 데모를 완료했고, Top-down Shooter MVP를 진행 중**이다.
 
 포함된 구성:
-- Rust `World`가 transforms/sprites/velocities/colliders Vec store 관리
+
+- Rust `World`가 transform/sprite/velocity/collider 기반 Vec store를 관리
 - `AabbCollider`, `CollisionPair`, `CollisionSystem` 구현
-- O(n^2) broad phase로 trigger collision pair 생성
-- bullet vs enemy 충돌 시 trigger event로 제거 처리
-- World의 transform+sprite로 render command 생성
+- O(n²) broad phase 기반 trigger collision pair 생성
+- bullet vs enemy 충돌 시 trigger event 기반 제거 처리
+- Rust에서 render command 생성, TypeScript에서 typed array로 소비
+- 키보드/마우스 입력 수집 및 게임 루프 반영
 
 ## Command Buffer ABI 주의사항
 
@@ -19,27 +21,38 @@ Ferrum2D는 **Rust + WebAssembly + TypeScript + WebGL2** 기반의 2D 웹 게임
 현재 포맷은 `f32` 12개(총 48 bytes, align 4)이며, TypeScript는 동일 순서로 `Float32Array`를 해석한다.
 필드 순서/타입/정렬이 바뀌면 JS 해석 코드도 함께 수정해야 한다.
 
-## 빌드 순서
+## 빌드
 
 ```bash
 pnpm install
 pnpm build
 ```
 
-수동 단계로 나눠 실행하려면:
+세부 단계로 실행하려면:
 
 ```bash
 pnpm build:wasm
 pnpm build:web
 ```
 
-## 예제 실행
+## 실행
+
+예제 개발 서버 실행:
 
 ```bash
 pnpm --filter @ferrum2d/topdown-shooter dev
 ```
 
-브라우저에서 다음을 확인한다.
+통합 체크(빌드 + Rust 테스트):
+
+```bash
+pnpm check
+```
+
+## 예제에서 확인할 항목
+
 - W/A/S/D로 player sprite 이동
-- mouse 좌표 overlay 표시
-- 100개 sprite 렌더링
+- 마우스 입력 반영 및 디버그 오버레이 정보 확인
+- 초기 프레임 기준 **61개 sprite(플레이어 1 + 적 60)** 렌더링
+
+> 참고: 기존 문서의 "100개 sprite" 표현은 현재 코드(`Engine::new()`) 기준과 불일치하며, 필요 시 별도 작업으로 스폰 수를 조정한다.
