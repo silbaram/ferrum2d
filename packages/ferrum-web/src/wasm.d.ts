@@ -1,6 +1,11 @@
 declare module "../pkg/ferrum_core" {
-  export const memory: WebAssembly.Memory;
-  export default function init(): Promise<void>;
+  export interface InitOutput {
+    readonly memory: WebAssembly.Memory;
+  }
+
+  export default function init(
+    module_or_path?: RequestInfo | URL | Response | BufferSource | WebAssembly.Module,
+  ): Promise<InitOutput>;
 
   export class Engine {
     constructor();
@@ -13,4 +18,5 @@ declare module "../pkg/ferrum_core" {
   }
 
   export function version(): string;
+  export function wasm_memory(): WebAssembly.Memory;
 }

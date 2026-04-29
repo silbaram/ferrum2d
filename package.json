@@ -4,7 +4,11 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.8.0",
   "scripts": {
-    "build": "pnpm -r --filter './packages/*' --filter './examples/*' build",
+    "build:wasm": "wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg",
+    "build:web": "pnpm -r --filter './packages/*' --filter './examples/*' build",
+    "build": "pnpm build:wasm && pnpm build:web",
+    "test:rust": "cargo test --manifest-path crates/ferrum-core/Cargo.toml",
+    "check": "pnpm build && pnpm test:rust",
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm -r --if-present test",
     "format": "pnpm -r --if-present format"

@@ -361,6 +361,11 @@ pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+#[wasm_bindgen]
+pub fn wasm_memory() -> JsValue {
+    wasm_bindgen::memory()
+}
+
 impl Engine {
     fn apply_player_input(&mut self) {
         if let Some(player) = self.world.player {

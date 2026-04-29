@@ -1,4 +1,4 @@
-import init, { Engine, memory, version } from "../pkg/ferrum_core";
+import init, { Engine, version, wasm_memory } from "../pkg/ferrum_core";
 
 export interface RenderCommandView {
   x: number;
@@ -10,14 +10,17 @@ export interface RenderCommandView {
 }
 
 const FLOATS_PER_COMMAND = 12;
-const BYTES_PER_COMMAND = FLOATS_PER_COMMAND * 4;
 
 export class WasmBridge {
-  private constructor(private readonly engineInstance: Engine) {}
+  private constructor(
+    private readonly engineInstance: Engine,
+    private readonly memory: WebAssembly.Memory,
+  ) {}
 
   static async init(): Promise<WasmBridge> {
     await init();
-    return new WasmBridge(new Engine());
+    const memory = wasm_memory();
+    return new WasmBridge(new Engine(), memory);
   }
 
   engine(): Engine {
@@ -31,8 +34,7 @@ export class WasmBridge {
   readRenderCommands(): RenderCommandView[] {
     const ptr = this.engineInstance.render_command_ptr();
     const len = this.engineInstance.render_command_len();
-    const start = ptr / 4;
-    const floats = new Float32Array(memory.buffer, start * 4, len * FLOATS_PER_COMMAND);
+    const floats = new Float32Array(this.memory.buffer, ptr, len * FLOATS_PER_COMMAND);
 
     const commands: RenderCommandView[] = [];
     for (let i = 0; i < len; i += 1) {
@@ -51,7 +53,6 @@ export class WasmBridge {
         ],
       });
     }
-    void BYTES_PER_COMMAND;
     return commands;
   }
 }

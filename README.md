@@ -22,9 +22,15 @@ Ferrum2D는 **Rust + WebAssembly + TypeScript + WebGL2** 기반의 2D 웹 게임
 ## 빌드 순서
 
 ```bash
-wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg
 pnpm install
 pnpm build
+```
+
+수동 단계로 나눠 실행하려면:
+
+```bash
+pnpm build:wasm
+pnpm build:web
 ```
 
 ## 예제 실행
