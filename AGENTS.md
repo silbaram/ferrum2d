@@ -13,6 +13,44 @@ Ferrum2D는 Rust + WebAssembly 기반의 2D 웹 게임 엔진이다.
 - 첫 렌더러는 WebGL2로 한정
 - WebGPU는 차기 단계에서 검토하되 MVP에서 구현 금지
 
+## Repository Layout
+
+현재 저장소의 기준 디렉터리 구조는 다음을 따른다.
+- `crates/ferrum-core`
+- `packages/ferrum-web`
+- `examples/topdown-shooter`
+- `docs`
+- `scripts`
+
+위 경로를 기준으로 문서/코드/예제를 배치하며, 구조 변경이 필요할 경우 먼저 문서 합의를 수행한다.
+
+## Wasm Boundary Rules
+
+Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
+- 프레임 루프 hot path에서 entity별 JS/Wasm 왕복 호출을 금지한다.
+- 데이터 교환은 개별 호출보다 bulk buffer(배열/버퍼) 기반 방식을 우선한다.
+- Rust/TypeScript가 공유하는 struct는 ABI 안정성을 위해 `#[repr(C)]`를 사용한다.
+- hot path에서 string/object 전달은 지양하고, 숫자형/버퍼 중심 포맷을 사용한다.
+- Rust는 렌더러 API를 직접 호출하지 않고 render command 생성까지만 담당한다.
+- TypeScript는 typed array view를 통해 command buffer를 소비하고 플랫폼 API를 호출한다.
+
+## Current Milestone
+
+현재 다음 개발 단계는 **monorepo bootstrap** 이다.
+
+허용 범위:
+- pnpm workspace 구성
+- Rust crate 초기 구성
+- TypeScript package 초기 구성
+- Vite example 초기 구성
+
+금지 범위:
+- WebGL2 renderer 구현
+- input 시스템 구현
+- collision 시스템 구현
+- audio 시스템 구현
+- 실제 game logic 구현
+
 ## MVP Scope
 
 MVP에서 지원해야 하는 항목:
