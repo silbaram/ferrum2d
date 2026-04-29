@@ -1,4 +1,5 @@
-import type { RenderCommandBufferView, RenderCommandView } from "./wasmBridge";
+import type { TextureManager } from "./textureManager";
+import type { RenderCommandBufferView } from "./wasmBridge";
 
 export interface SpriteDrawOptions {
   position: [number, number];
@@ -43,11 +44,44 @@ export class SpriteBatch {
     this.textureLocation = textureLocation;
   }
 
-  drawBatch(texture: WebGLTexture, commands: RenderCommandBufferView, resolution: [number, number]): number {
+  drawBatches(textureManager: TextureManager, commands: RenderCommandBufferView, resolution: [number, number]): number {
     if (commands.commandCount === 0) return 0;
-    const vertices = new Float32Array(commands.commandCount * 6 * 8);
+    let drawCalls = 0;
+    let batchStart = 0;
+    let currentTextureId = this.textureIdAt(commands, 0);
 
-    for (let i = 0; i < commands.commandCount; i += 1) {
+    for (let i = 1; i <= commands.commandCount; i += 1) {
+      const nextTextureId = i < commands.commandCount ? this.textureIdAt(commands, i) : currentTextureId;
+      if (i < commands.commandCount && nextTextureId === currentTextureId) {
+        continue;
+      }
+
+      const texture = textureManager.texture(currentTextureId);
+      drawCalls += this.drawRange(texture, commands, resolution, batchStart, i);
+      batchStart = i;
+      currentTextureId = nextTextureId;
+    }
+
+    return drawCalls;
+  }
+
+  drawBatch(texture: WebGLTexture, commands: RenderCommandBufferView, resolution: [number, number]): number {
+    return this.drawRange(texture, commands, resolution, 0, commands.commandCount);
+  }
+
+  private drawRange(
+    texture: WebGLTexture,
+    commands: RenderCommandBufferView,
+    resolution: [number, number],
+    startCommand: number,
+    endCommand: number,
+  ): number {
+    const commandCount = endCommand - startCommand;
+    if (commandCount === 0) return 0;
+
+    const vertices = new Float32Array(commandCount * 6 * 8);
+
+    for (let i = startCommand; i < endCommand; i += 1) {
       const offset = i * commands.floatsPerCommand;
       const x = commands.buffer[offset];
       const y = commands.buffer[offset + 1];
@@ -61,7 +95,8 @@ export class SpriteBatch {
       const g = commands.buffer[offset + 9];
       const b = commands.buffer[offset + 10];
       const a = commands.buffer[offset + 11];
-      const base = i * 48;
+      const batchIndex = i - startCommand;
+      const base = batchIndex * 48;
 
       const quad = [
         x, y, u0, v0, r, g, b, a,
@@ -83,9 +118,14 @@ export class SpriteBatch {
     this.gl.activeTexture(this.gl.TEXTURE0);
     this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
     this.gl.uniform1i(this.textureLocation, 0);
-    this.gl.drawArrays(this.gl.TRIANGLES, 0, commands.commandCount * 6);
+    this.gl.drawArrays(this.gl.TRIANGLES, 0, commandCount * 6);
     this.gl.bindVertexArray(null);
     return 1;
+  }
+
+  private textureIdAt(commands: RenderCommandBufferView, commandIndex: number): number {
+    const offset = commandIndex * commands.floatsPerCommand;
+    return Math.trunc(commands.buffer[offset + 12]);
   }
 
   destroy(): void { this.gl.deleteBuffer(this.vbo); this.gl.deleteVertexArray(this.vao); this.gl.deleteProgram(this.program); }

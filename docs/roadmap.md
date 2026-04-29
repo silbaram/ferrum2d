@@ -1,84 +1,97 @@
-# Ferrum2D 로드맵 (Codex 작업 단위)
+# Ferrum2D 로드맵
 
-아래 로드맵은 기능 덩어리 중심이 아니라, Codex가 한 번의 작업 요청으로 안정적으로 처리 가능한 단위 기준으로 세분화했다.
+이 로드맵은 Codex가 한 번의 작업 요청으로 안정적으로 처리할 수 있는 단위를 기준으로 관리한다. 구현되지 않은 항목은 계획으로만 기록하며, 완료된 것처럼 표현하지 않는다.
 
-## Phase 0: 저장소/문서 초기화 (완료)
+## v0.1.0 MVP
 
-- 프로젝트 목적 및 MVP 범위 합의
-- 아키텍처 문서 초안 확정
-- 초기 문서 세트 정비
+상태: 릴리스 준비
 
-## Phase 1: Monorepo Bootstrap (완료)
+목표:
 
-- `pnpm-workspace.yaml` 기준 구조 확정
-- `crates/ferrum-core` Rust crate 초기화
-- `packages/ferrum-web` TypeScript 패키지 초기화
-- `examples/topdown-shooter` Vite 예제 초기화
-- 공통 스크립트 실행 기준 및 기본 개발 명령 문서화
+- Rust/Wasm/TypeScript/WebGL2 기반 수직 슬라이스 완성
+- Top-down Shooter 예제로 입력, 게임 로직, 렌더링, 에셋, 오디오, 디버그, 테스트 검증
+- GitHub에서 새 사용자가 README만 보고 실행할 수 있는 문서 상태 확보
 
-## Phase 2: Rust/Wasm Bridge (완료)
+완료된 작업:
 
-- Rust core와 Wasm export 최소 인터페이스 정의
-- JS ↔ Wasm 메모리 경계 규칙(버퍼/포인터/길이) 확정
-- command buffer 전달 포맷의 초기 타입 정의
+- Phase 0: 저장소/문서 초기화
+- Phase 1: Monorepo bootstrap
+- Phase 2: Rust/Wasm bridge
+- Phase 3: TypeScript GameLoop
+- Phase 4: WebGL2 basic renderer
+- Phase 5: Sprite renderer
+- Phase 6: Render command buffer
+- Phase 7: Input
+- Phase 8: World/Entity
+- Phase 9: AABB collision
+- Phase 10: Top-down Shooter stabilization
+- Phase 11: Asset loading
+- Phase 12: Audio
+- Phase 13: Scene state, DebugOverlay, tests
+- Phase 14: Code review guide
+- Phase 15: Release docs
 
-## Phase 3: TypeScript GameLoop (완료)
+릴리스 전 체크:
 
-- 브라우저 진입점과 엔진 부트스트랩 연결
-- requestAnimationFrame 기반 게임 루프 골격 구성
-- 프레임 타임(step/delta) 전달 및 lifecycle 정리
+- `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
+- `pnpm test`
+- `pnpm build`
+- Top-down Shooter manual smoke check
+- README, architecture, MVP, CHANGELOG 동기화
 
-## Phase 4: WebGL2 Basic Renderer (완료)
+## v0.2 계획
 
-- WebGL2 context 초기화 및 상태 관리 최소 구현
-- clear/draw 기본 파이프라인 골격 구성
-- 디버그용 최소 렌더 확인 경로 확보
+목표: MVP API와 예제 품질을 안정화한다.
 
-## Phase 5: Sprite Renderer (완료)
+후보 작업:
 
-- 스프라이트 전용 셰이더/버텍스 포맷 정의
-- 텍스처 로딩 결과와 드로우 경로 연결
-- MVP용 기본 스프라이트 렌더링 검증
+- `FerrumEngine` public API 정리와 deprecated API 축소
+- render command compatibility path의 hot path allocation 제거
+- renderer/audio/debug lifecycle cleanup 재점검
+- 예제의 manual smoke checklist와 screenshot/GIF 갱신 절차 정리
+- CI에서 TypeScript test와 lint 실행 여부 정리
+- DebugOverlay 표시 항목과 renderer stats naming 안정화
+- error message 표준화
+- asset loading 실패 케이스 테스트 보강
+- WebGL2 renderer manual smoke guide 보강
+- npm package 공개 전 파일 구성 점검
 
-## Phase 6: Render Command Buffer (완료)
+v0.2에서 하지 않을 것:
 
-- Rust에서 render command 생성
-- TypeScript에서 typed array view로 command 해석
-- draw call 배치 및 최소 검증 케이스 추가
+- WebGPU 구현
+- Worker architecture
+- 복잡한 ECS 재설계
+- 복잡한 physics engine
+- editor
+- multiplayer
 
-## Phase 7: Input (완료)
+## v0.3 계획
 
-- 키보드/마우스 입력 수집 계층 구현
-- 입력 상태 스냅샷을 엔진 업데이트 루프에 전달
-- 예제에서 이동/발사 입력 연결
+목표: MVP 구조를 유지하면서 렌더링과 에셋 파이프라인의 실사용성을 늘린다.
 
-## Phase 8: World/Entity (완료)
+후보 작업:
 
-- 월드/엔티티 저장 구조 도입
-- 기본 컴포넌트(Transform 등) 배치
-- 프레임 업데이트 순서 정책 정리
+- sprite batching 통계와 texture_id 정렬 정책 개선
+- texture atlas 설계 문서 작성 및 작은 수동 atlas 예제 검토
+- camera/viewport API 초안
+- 더 큰 예제 scene을 위한 data-driven 설정 검토
+- audio volume/pitch 정책과 unlock UX 개선
+- WebGL2 renderer smoke test 자동화 가능성 검토
+- docs site 또는 GitHub Pages 데모 배포 검토
+- release packaging 절차 정리
 
-## Phase 9: AABB Collision (완료)
+v0.3에서도 신중히 볼 것:
 
-- AABB 자료구조 및 충돌 판정 루틴 구현
-- 충돌 이벤트 반영 규칙 정의
-- 예제 게임 오브젝트 충돌 검증
+- WebGPU는 별도 설계 문서와 성능 근거가 생기기 전까지 구현하지 않는다.
+- Worker/멀티스레딩은 Wasm memory boundary와 asset pipeline이 안정화된 뒤 검토한다.
+- scene graph와 editor는 MVP 계열 안정화 이후 별도 마일스톤으로 분리한다.
 
-## Phase 10: Top-down Shooter Stabilization (완료)
+## 장기 후보
 
-- 플레이어/적/투사체 최소 루프 안정화
-- score/game over/restart 상태 흐름 완성
-- bullet cooldown/lifetime, enemy spawn/movement 튜닝
-- 디버그 overlay 가독성 및 검증 정보 정리
-
-## Phase 11: Audio/Assets (미완료)
-
-- 기본 오디오 재생 인터페이스 연결
-- 이미지/오디오 에셋 로더 경로 정리
-- 에셋 수명주기(로딩/실패/재시도) 최소 정책 확정
-
-## Phase 12: Debug/Test/Docs (진행 중)
-
-- Rust/TS 테스트 및 린트 루틴 정리
-- 성능/디버그 로그 최소 도구 정비
-- 아키텍처/README/로드맵 동기화 및 릴리스 체크리스트 정리
+- WebGPU renderer
+- editor
+- scene file format
+- animation system
+- richer asset pipeline
+- profiling tooling
+- browser demo hosting

@@ -13,4 +13,5 @@ pub struct SpriteRenderCommand {
     pub g: f32,
     pub b: f32,
     pub a: f32,
+    pub texture_id: f32,
 }

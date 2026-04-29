@@ -4,6 +4,7 @@ export interface InputSnapshot {
   s: boolean;
   d: boolean;
   space: boolean;
+  enter: boolean;
   mouseLeft: boolean;
   mouseX: number;
   mouseY: number;
@@ -12,6 +13,7 @@ export interface InputSnapshot {
 export class InputManager {
   private state: InputSnapshot = {
     w: false, a: false, s: false, d: false, space: false,
+    enter: false,
     mouseLeft: false, mouseX: 0, mouseY: 0,
   };
 
@@ -49,6 +51,7 @@ export class InputManager {
     else if (event.code === "KeyS") this.state.s = pressed;
     else if (event.code === "KeyD") this.state.d = pressed;
     else if (event.code === "Space") this.state.space = pressed;
+    else if (event.code === "Enter") this.state.enter = pressed;
     else return;
 
     event.preventDefault();

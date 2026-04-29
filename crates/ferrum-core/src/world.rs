@@ -41,11 +41,12 @@ impl World {
         }
     }
 
-    pub fn spawn_player(&mut self, x: f32, y: f32) -> Entity {
+    pub fn spawn_player(&mut self, x: f32, y: f32, texture_id: u32) -> Entity {
         let e = self.spawn_entity();
         let i = e.id as usize;
         self.transforms[i] = Some(Transform2D { x, y });
         self.sprites[i] = Some(Sprite {
+            texture_id,
             width: 36.0,
             height: 36.0,
             u0: 0.0,
@@ -68,11 +69,12 @@ impl World {
         e
     }
 
-    pub fn spawn_enemy(&mut self, x: f32, y: f32) -> Entity {
+    pub fn spawn_enemy(&mut self, x: f32, y: f32, texture_id: u32) -> Entity {
         let e = self.spawn_entity();
         let i = e.id as usize;
         self.transforms[i] = Some(Transform2D { x, y });
         self.sprites[i] = Some(Sprite {
+            texture_id,
             width: 24.0,
             height: 24.0,
             u0: 0.0,
@@ -93,11 +95,12 @@ impl World {
         e
     }
 
-    pub fn spawn_bullet(&mut self, x: f32, y: f32, vx: f32, vy: f32) -> Entity {
+    pub fn spawn_bullet(&mut self, x: f32, y: f32, vx: f32, vy: f32, texture_id: u32) -> Entity {
         let e = self.spawn_entity();
         let i = e.id as usize;
         self.transforms[i] = Some(Transform2D { x, y });
         self.sprites[i] = Some(Sprite {
+            texture_id,
             width: 8.0,
             height: 8.0,
             u0: 0.0,
@@ -134,5 +137,43 @@ impl World {
 
     pub fn alive_count(&self) -> usize {
         self.alive.iter().filter(|a| **a).count()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entity_ids_increment_and_generation_changes_on_despawn() {
+        let mut world = World::default();
+        let first = world.spawn_entity();
+        let second = world.spawn_entity();
+
+        assert_eq!(first.id, 0);
+        assert_eq!(first.generation, 0);
+        assert_eq!(second.id, 1);
+        assert_eq!(second.generation, 0);
+
+        world.despawn(first);
+
+        assert!(!world.alive[first.id as usize]);
+        assert_eq!(world.generations[first.id as usize], 1);
+    }
+
+    #[test]
+    fn transform_update_applies_velocity() {
+        let mut world = World::default();
+        let entity = world.spawn_entity();
+        let index = entity.id as usize;
+        world.transforms[index] = Some(Transform2D { x: 2.0, y: 4.0 });
+        world.velocities[index] = Some(Velocity { vx: 10.0, vy: -6.0 });
+
+        world.update(0.5);
+
+        assert_eq!(
+            world.transforms[index],
+            Some(Transform2D { x: 7.0, y: 1.0 })
+        );
     }
 }

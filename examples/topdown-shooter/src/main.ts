@@ -1,4 +1,4 @@
-import { InputManager, WebGL2Renderer, createEngine } from "@ferrum2d/ferrum-web";
+import { DebugOverlay, InputManager, WebGL2Renderer, createEngine } from "@ferrum2d/ferrum-web";
 
 function gameStateText(code: number): string {
   if (code === 0) return "Title";
@@ -11,45 +11,74 @@ async function bootstrap(): Promise<void> {
   if (!app) return;
 
   const title = document.createElement("h1");
-  const stateEl = document.createElement("p");
-  const scoreEl = document.createElement("p");
   const hudEl = document.createElement("p");
-  const statsEl = document.createElement("p");
   title.textContent = "Ferrum2D Top-down Shooter MVP";
 
   const canvas = document.createElement("canvas");
   canvas.style.width = "800px";
   canvas.style.height = "480px";
   canvas.style.display = "block";
-  app.replaceChildren(title, stateEl, scoreEl, hudEl, statsEl, canvas);
+  app.replaceChildren(title, hudEl, canvas);
 
   const renderer = new WebGL2Renderer(canvas, { clearColor: [0.05, 0.08, 0.12, 1] });
   const input = new InputManager(canvas);
-  const texture = await renderer.loadTexture("/player.png");
+  const debugEnabled = new URLSearchParams(window.location.search).get("debug") !== "false";
+  const debugOverlay = new DebugOverlay(app, { enabled: debugEnabled });
+  let assetProgressText = "assets: 0/0";
 
-  const engine = await createEngine(({ score, gameState, entityCount, spriteCount, renderCommandBuffer }) => {
+  const engine = await createEngine((frame) => {
+    const renderStartMs = performance.now();
     renderer.resize();
     renderer.render();
-    const renderStats = renderer.renderCommands(texture, renderCommandBuffer);
+    renderer.renderCommands(frame.renderCommandBuffer);
+    const renderStats = renderer.stats();
+    const renderTimeMs = performance.now() - renderStartMs;
 
-    stateEl.textContent = `state: ${gameStateText(gameState)}`;
-    scoreEl.textContent = `score: ${score}`;
-    hudEl.textContent = "controls: W/A/S/D move, Mouse Left or Space fire/start, Space restart on game over";
-    statsEl.textContent =
-      `entities: ${entityCount} sprites: ${spriteCount} ` +
-      `drawCalls: ${renderStats.drawCalls} batches: ${renderStats.batchCount}`;
+    hudEl.textContent = `${assetProgressText} controls: Enter or Space start, W/A/S/D move, Mouse Left or Space fire, Space restart`;
 
-    if (gameState === 0) {
-      hudEl.textContent = "Press Space or Mouse Left to start";
-    } else if (gameState === 2) {
-      hudEl.textContent = `Game Over - final score ${score}. Press Space to restart.`;
+    if (frame.gameState === 0) {
+      hudEl.textContent = "Press Enter or Space to start";
+    } else if (frame.gameState === 2) {
+      hudEl.textContent = `Game Over - final score ${frame.score}. Press Space to restart.`;
     }
-  }, () => input.snapshot());
+
+    debugOverlay.update({
+      fps: frame.frameTimeMs > 0 ? 1000 / frame.frameTimeMs : 0,
+      frameTimeMs: frame.frameTimeMs,
+      entityCount: frame.entityCount,
+      spriteCount: frame.spriteCount,
+      drawCalls: renderStats.drawCalls,
+      batchCount: renderStats.batchCount,
+      rustUpdateTimeMs: frame.rustUpdateTimeMs,
+      renderTimeMs,
+      mouseX: frame.mouseX,
+      mouseY: frame.mouseY,
+      gameState: gameStateText(frame.gameState),
+      score: frame.score,
+    });
+  }, () => input.snapshot(), renderer);
+
+  const assets = await engine.loadAssets({
+    textures: {
+      player: "/assets/player.png",
+      enemy: "/assets/enemy.png",
+      bullet: "/assets/bullet.png",
+    },
+    sounds: {
+      shoot: "/assets/shoot.wav",
+      hit: "/assets/hit.wav",
+      gameOver: "/assets/game-over.wav",
+    },
+  }, ({ loaded, total, name }) => {
+    assetProgressText = `assets: ${loaded}/${total}${name ? ` ${name}` : ""}`;
+  });
+  assetProgressText = `assets: ${assets.progress.loaded}/${assets.progress.total}`;
 
   engine.start();
   (window as Window & { ferrumEngine?: typeof engine }).ferrumEngine = engine;
   window.addEventListener("beforeunload", () => {
     input.destroy();
+    debugOverlay.destroy();
     engine.destroy();
   });
 }

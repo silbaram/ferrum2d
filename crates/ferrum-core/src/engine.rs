@@ -1,5 +1,6 @@
 use wasm_bindgen::prelude::*;
 
+use crate::audio_event::AudioEvent;
 use crate::collision::CollisionSystem;
 use crate::components::{CollisionLayer, Velocity};
 use crate::entity::Entity;
@@ -8,6 +9,8 @@ use crate::input::InputState;
 use crate::render_command::SpriteRenderCommand;
 use crate::world::World;
 
+const DEFAULT_TEXTURE_ID: u32 = 0;
+const DEFAULT_SOUND_ID: u32 = 0;
 const PLAYER_BASE_SPEED: f32 = 180.0;
 const BULLET_SPEED: f32 = 360.0;
 const FIRE_COOLDOWN: f32 = 0.12;
@@ -15,6 +18,43 @@ const ENEMY_SPEED: f32 = 72.0;
 const ENEMY_SPAWN_INTERVAL: f32 = 1.0;
 const WORLD_WIDTH: f32 = 800.0;
 const WORLD_HEIGHT: f32 = 480.0;
+const SHOOT_VOLUME: f32 = 0.35;
+const HIT_VOLUME: f32 = 0.45;
+const GAME_OVER_VOLUME: f32 = 0.65;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TextureIds {
+    player: u32,
+    enemy: u32,
+    bullet: u32,
+}
+
+impl Default for TextureIds {
+    fn default() -> Self {
+        Self {
+            player: DEFAULT_TEXTURE_ID,
+            enemy: DEFAULT_TEXTURE_ID,
+            bullet: DEFAULT_TEXTURE_ID,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SoundIds {
+    shoot: u32,
+    hit: u32,
+    game_over: u32,
+}
+
+impl Default for SoundIds {
+    fn default() -> Self {
+        Self {
+            shoot: DEFAULT_SOUND_ID,
+            hit: DEFAULT_SOUND_ID,
+            game_over: DEFAULT_SOUND_ID,
+        }
+    }
+}
 
 #[wasm_bindgen]
 pub struct Engine {
@@ -24,11 +64,14 @@ pub struct Engine {
     enemy_spawn_timer: f32,
     input: InputState,
     previous_space: u8,
-    previous_mouse_left: u8,
+    previous_enter: u8,
     game_state: GameState,
     spawn_index: u32,
+    texture_ids: TextureIds,
+    sound_ids: SoundIds,
     world: World,
     render_commands: Vec<SpriteRenderCommand>,
+    audio_events: Vec<AudioEvent>,
 }
 
 #[wasm_bindgen]
@@ -42,11 +85,14 @@ impl Engine {
             enemy_spawn_timer: ENEMY_SPAWN_INTERVAL,
             input: InputState::default(),
             previous_space: 0,
-            previous_mouse_left: 0,
+            previous_enter: 0,
             game_state: GameState::Title,
             spawn_index: 0,
+            texture_ids: TextureIds::default(),
+            sound_ids: SoundIds::default(),
             world: World::default(),
             render_commands: Vec::with_capacity(256),
+            audio_events: Vec::with_capacity(16),
         };
         engine.reset_game();
         engine.game_state = GameState::Title;
@@ -60,6 +106,7 @@ impl Engine {
         s: bool,
         d: bool,
         space: bool,
+        enter: bool,
         mouse_left: bool,
         mouse_x: f32,
         mouse_y: f32,
@@ -70,19 +117,38 @@ impl Engine {
             s: u8::from(s),
             d: u8::from(d),
             space: u8::from(space),
+            enter: u8::from(enter),
             mouse_left: u8::from(mouse_left),
             mouse_x,
             mouse_y,
         };
     }
+
+    pub fn set_texture_ids(&mut self, player: u32, enemy: u32, bullet: u32) {
+        self.texture_ids = TextureIds {
+            player,
+            enemy,
+            bullet,
+        };
+        self.apply_texture_ids_to_existing_sprites();
+    }
+
+    pub fn set_sound_ids(&mut self, shoot: u32, hit: u32, game_over: u32) {
+        self.sound_ids = SoundIds {
+            shoot,
+            hit,
+            game_over,
+        };
+    }
+
     pub fn update(&mut self, delta: f64) {
         let dt = delta as f32;
         self.elapsed_seconds += delta;
         let space_pressed = self.input.space == 1 && self.previous_space == 0;
-        let mouse_left_pressed = self.input.mouse_left == 1 && self.previous_mouse_left == 0;
+        let enter_pressed = self.input.enter == 1 && self.previous_enter == 0;
         match self.game_state {
             GameState::Title => {
-                if space_pressed || mouse_left_pressed {
+                if space_pressed || enter_pressed {
                     self.game_state = GameState::Playing;
                 }
             }
@@ -104,7 +170,7 @@ impl Engine {
             }
         }
         self.previous_space = self.input.space;
-        self.previous_mouse_left = self.input.mouse_left;
+        self.previous_enter = self.input.enter;
         self.build_render_commands();
     }
     pub fn time(&self) -> f64 {
@@ -116,11 +182,23 @@ impl Engine {
     pub fn render_command_len(&self) -> usize {
         self.render_commands.len()
     }
+    pub fn audio_event_ptr(&self) -> *const AudioEvent {
+        self.audio_events.as_ptr()
+    }
+    pub fn audio_event_len(&self) -> usize {
+        self.audio_events.len()
+    }
+    pub fn clear_events(&mut self) {
+        self.audio_events.clear();
+    }
     pub fn score(&self) -> u32 {
         self.score
     }
     pub fn entity_count(&self) -> usize {
         self.world.alive_count()
+    }
+    pub fn game_state(&self) -> u32 {
+        self.game_state_code()
     }
     pub fn game_state_code(&self) -> u32 {
         match self.game_state {
@@ -137,11 +215,15 @@ impl Engine {
         self.fire_cooldown_seconds = 0.0;
         self.enemy_spawn_timer = ENEMY_SPAWN_INTERVAL;
         self.previous_space = 0;
-        self.previous_mouse_left = 0;
+        self.previous_enter = 0;
         self.spawn_index = 0;
+        self.audio_events.clear();
         self.world = World::default();
-        self.world
-            .spawn_player(WORLD_WIDTH * 0.5, WORLD_HEIGHT * 0.5);
+        self.world.spawn_player(
+            WORLD_WIDTH * 0.5,
+            WORLD_HEIGHT * 0.5,
+            self.texture_ids.player,
+        );
     }
 }
 
@@ -218,7 +300,9 @@ impl Engine {
             player_t.y + ny * 20.0,
             nx * BULLET_SPEED,
             ny * BULLET_SPEED,
+            self.texture_ids.bullet,
         );
+        self.push_audio_event(self.sound_ids.shoot, SHOOT_VOLUME, 1.0);
     }
 
     fn clamp_player_to_world(&mut self) {
@@ -324,7 +408,35 @@ impl Engine {
             2 => (lane * (WORLD_WIDTH / 5.0), WORLD_HEIGHT),
             _ => (0.0, lane * (WORLD_HEIGHT / 5.0)),
         };
-        self.world.spawn_enemy(x, y);
+        self.world.spawn_enemy(x, y, self.texture_ids.enemy);
+    }
+
+    fn apply_texture_ids_to_existing_sprites(&mut self) {
+        for i in 0..self.world.sprites.len() {
+            let Some(collider) = self.world.colliders[i] else {
+                continue;
+            };
+            let Some(sprite) = self.world.sprites[i].as_mut() else {
+                continue;
+            };
+            sprite.texture_id = match collider.layer {
+                CollisionLayer::Player => self.texture_ids.player,
+                CollisionLayer::Enemy => self.texture_ids.enemy,
+                CollisionLayer::Bullet => self.texture_ids.bullet,
+            };
+        }
+    }
+
+    fn push_audio_event(&mut self, sound_id: u32, volume: f32, pitch: f32) {
+        if sound_id == DEFAULT_SOUND_ID {
+            return;
+        }
+
+        self.audio_events.push(AudioEvent {
+            sound_id: sound_id as f32,
+            volume,
+            pitch,
+        });
     }
 
     fn handle_collisions(&mut self) {
@@ -355,6 +467,7 @@ impl Engine {
                     despawn.push(p.a);
                     despawn.push(p.b);
                     self.score = self.score.saturating_add(1);
+                    self.push_audio_event(self.sound_ids.hit, HIT_VOLUME, 1.0);
                 }
                 _ => {}
             }
@@ -379,7 +492,10 @@ impl Engine {
             match (ac.layer, bc.layer) {
                 (CollisionLayer::Player, CollisionLayer::Enemy)
                 | (CollisionLayer::Enemy, CollisionLayer::Player) => {
-                    self.game_state = GameState::GameOver;
+                    if self.game_state != GameState::GameOver {
+                        self.game_state = GameState::GameOver;
+                        self.push_audio_event(self.sound_ids.game_over, GAME_OVER_VOLUME, 0.9);
+                    }
                     break;
                 }
                 _ => {}
@@ -410,6 +526,7 @@ impl Engine {
                     g: s.g,
                     b: s.b,
                     a: s.a,
+                    texture_id: s.texture_id as f32,
                 });
             }
         }
@@ -437,18 +554,60 @@ mod tests {
     fn diagonal_movement_is_normalized() {
         let mut engine = Engine::new();
         engine.game_state = GameState::Playing;
-        engine.set_input(true, false, false, true, false, false, 0.0, 0.0);
+        engine.set_input(true, false, false, true, false, false, false, 0.0, 0.0);
         engine.apply_player_input();
         let player = engine.world.player.unwrap();
         let v = engine.world.velocities[player.id as usize].unwrap();
         let speed = (v.vx * v.vx + v.vy * v.vy).sqrt();
         assert!((speed - PLAYER_BASE_SPEED).abs() < 0.01);
     }
+
+    #[test]
+    fn title_enters_playing_with_enter_or_space() {
+        let mut engine = Engine::new();
+        assert_eq!(engine.game_state, GameState::Title);
+
+        engine.set_input(false, false, false, false, false, true, false, 0.0, 0.0);
+        engine.update(0.016);
+        assert_eq!(engine.game_state, GameState::Playing);
+
+        let mut engine = Engine::new();
+        engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
+        engine.update(0.016);
+        assert_eq!(engine.game_state, GameState::Playing);
+    }
+
+    #[test]
+    fn title_does_not_start_from_mouse_left() {
+        let mut engine = Engine::new();
+
+        engine.set_input(false, false, false, false, false, false, true, 0.0, 0.0);
+        engine.update(0.016);
+
+        assert_eq!(engine.game_state, GameState::Title);
+    }
+
+    #[test]
+    fn game_over_restarts_with_space() {
+        let mut engine = Engine::new();
+        engine.game_state = GameState::GameOver;
+        engine.score = 7;
+
+        engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
+        engine.update(0.016);
+
+        assert_eq!(engine.game_state, GameState::Playing);
+        assert_eq!(engine.score, 0);
+        assert!(engine.world.player.is_some());
+    }
+
     #[test]
     fn bullet_lifetime_despawns() {
         let mut engine = Engine::new();
         engine.game_state = GameState::Playing;
-        let b = engine.world.spawn_bullet(30.0, 30.0, 10.0, 0.0);
+        let b = engine
+            .world
+            .spawn_bullet(30.0, 30.0, 10.0, 0.0, DEFAULT_TEXTURE_ID);
         engine.update_bullets(crate::world::BULLET_LIFETIME + 0.1);
         assert!(!engine.world.alive[b.id as usize]);
     }
@@ -456,8 +615,10 @@ mod tests {
     fn bullet_enemy_collision_increments_score() {
         let mut engine = Engine::new();
         engine.game_state = GameState::Playing;
-        let b = engine.world.spawn_bullet(50.0, 50.0, 0.0, 0.0);
-        let e = engine.world.spawn_enemy(52.0, 50.0);
+        let b = engine
+            .world
+            .spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+        let e = engine.world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
         engine.handle_collisions();
         assert!(!engine.world.alive[b.id as usize]);
         assert!(!engine.world.alive[e.id as usize]);
@@ -468,9 +629,11 @@ mod tests {
     fn one_bullet_scores_once_when_overlapping_multiple_enemies() {
         let mut engine = Engine::new();
         engine.game_state = GameState::Playing;
-        let bullet = engine.world.spawn_bullet(50.0, 50.0, 0.0, 0.0);
-        let first_enemy = engine.world.spawn_enemy(52.0, 50.0);
-        let second_enemy = engine.world.spawn_enemy(54.0, 50.0);
+        let bullet = engine
+            .world
+            .spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+        let first_enemy = engine.world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
+        let second_enemy = engine.world.spawn_enemy(54.0, 50.0, DEFAULT_TEXTURE_ID);
 
         engine.handle_collisions();
 
@@ -486,7 +649,7 @@ mod tests {
         engine.game_state = GameState::Playing;
         let player = engine.world.player.unwrap();
         let pt = engine.world.transforms[player.id as usize].unwrap();
-        engine.world.spawn_enemy(pt.x, pt.y);
+        engine.world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
         engine.handle_collisions();
         assert_eq!(engine.game_state, GameState::GameOver);
     }
@@ -525,5 +688,80 @@ mod tests {
         let command = engine.render_commands[0];
         assert!((command.x - 382.0).abs() < 0.01);
         assert!((command.y - 222.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn configured_texture_ids_are_written_to_render_commands() {
+        let mut engine = Engine::new();
+        engine.set_texture_ids(1, 2, 3);
+        engine.game_state = GameState::Playing;
+        engine
+            .world
+            .spawn_enemy(100.0, 100.0, engine.texture_ids.enemy);
+        engine
+            .world
+            .spawn_bullet(120.0, 100.0, 0.0, 0.0, engine.texture_ids.bullet);
+        engine.build_render_commands();
+
+        let texture_ids: Vec<u32> = engine
+            .render_commands
+            .iter()
+            .map(|command| command.texture_id as u32)
+            .collect();
+        assert!(texture_ids.contains(&1));
+        assert!(texture_ids.contains(&2));
+        assert!(texture_ids.contains(&3));
+    }
+
+    #[test]
+    fn firing_bullet_pushes_shoot_audio_event() {
+        let mut engine = Engine::new();
+        engine.set_sound_ids(10, 20, 30);
+        engine.game_state = GameState::Playing;
+        let player = engine.world.player.unwrap();
+
+        engine.fire_bullet_toward_mouse(player);
+
+        assert_eq!(engine.audio_events.len(), 1);
+        assert_eq!(engine.audio_events[0].sound_id as u32, 10);
+        assert_eq!(engine.audio_events[0].volume, SHOOT_VOLUME);
+    }
+
+    #[test]
+    fn bullet_enemy_collision_pushes_hit_audio_event() {
+        let mut engine = Engine::new();
+        engine.set_sound_ids(10, 20, 30);
+        engine.game_state = GameState::Playing;
+        let b = engine
+            .world
+            .spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+        let e = engine.world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
+
+        engine.handle_collisions();
+
+        assert!(!engine.world.alive[b.id as usize]);
+        assert!(!engine.world.alive[e.id as usize]);
+        assert_eq!(engine.audio_events.len(), 1);
+        assert_eq!(engine.audio_events[0].sound_id as u32, 20);
+    }
+
+    #[test]
+    fn game_over_pushes_event_once_and_clear_events_removes_it() {
+        let mut engine = Engine::new();
+        engine.set_sound_ids(10, 20, 30);
+        engine.game_state = GameState::Playing;
+        let player = engine.world.player.unwrap();
+        let pt = engine.world.transforms[player.id as usize].unwrap();
+        engine.world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
+
+        engine.handle_collisions();
+        engine.handle_collisions();
+
+        assert_eq!(engine.game_state, GameState::GameOver);
+        assert_eq!(engine.audio_events.len(), 1);
+        assert_eq!(engine.audio_events[0].sound_id as u32, 30);
+
+        engine.clear_events();
+        assert!(engine.audio_events.is_empty());
     }
 }

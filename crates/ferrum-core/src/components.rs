@@ -6,6 +6,7 @@ pub struct Transform2D {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Sprite {
+    pub texture_id: u32,
     pub width: f32,
     pub height: f32,
     pub u0: f32,

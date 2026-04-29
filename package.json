@@ -8,9 +8,10 @@
     "build:web": "pnpm -r --filter './packages/*' --filter './examples/*' build",
     "build": "pnpm build:wasm && pnpm build:web",
     "test:rust": "cargo test --manifest-path crates/ferrum-core/Cargo.toml",
-    "check": "pnpm build && pnpm test:rust",
+    "test:web": "pnpm --filter @ferrum2d/ferrum-web test",
+    "check": "pnpm build && pnpm test",
     "lint": "pnpm -r --if-present lint",
-    "test": "pnpm -r --if-present test",
+    "test": "pnpm test:web && pnpm test:rust",
     "format": "pnpm -r --if-present format"
   }
 }

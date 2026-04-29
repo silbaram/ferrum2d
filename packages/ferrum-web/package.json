@@ -9,7 +9,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "pnpm run build && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
