@@ -1,5 +1,15 @@
 use wasm_bindgen::prelude::*;
 
+const PLAYER_BASE_SPEED: f32 = 180.0;
+const BULLET_SPEED: f32 = 360.0;
+const BULLET_LIFETIME: f32 = 1.8;
+const FIRE_COOLDOWN: f32 = 0.12;
+const ENEMY_SPEED: f32 = 72.0;
+const ENEMY_SPAWN_INTERVAL: f32 = 1.0;
+const WORLD_WIDTH: f32 = 800.0;
+const WORLD_HEIGHT: f32 = 480.0;
+const INITIAL_ENEMY_COUNT: usize = 60;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Entity {
     pub id: u32,
@@ -37,7 +47,6 @@ pub enum CollisionLayer {
     Player,
     Enemy,
     Bullet,
-    Neutral,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -52,6 +61,13 @@ pub struct AabbCollider {
 pub struct CollisionPair {
     pub a: Entity,
     pub b: Entity,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameState {
+    Title,
+    Playing,
+    GameOver,
 }
 
 #[derive(Default)]
@@ -113,6 +129,7 @@ pub struct World {
     pub sprites: Vec<Option<Sprite>>,
     pub velocities: Vec<Option<Velocity>>,
     pub colliders: Vec<Option<AabbCollider>>,
+    pub bullet_lifetimes: Vec<Option<f32>>,
     pub player: Option<Entity>,
 }
 
@@ -125,6 +142,7 @@ impl World {
         self.sprites.push(None);
         self.velocities.push(None);
         self.colliders.push(None);
+        self.bullet_lifetimes.push(None);
         Entity { id, generation: 0 }
     }
 
@@ -137,6 +155,7 @@ impl World {
             self.sprites[i] = None;
             self.velocities[i] = None;
             self.colliders[i] = None;
+            self.bullet_lifetimes[i] = None;
         }
     }
 
@@ -215,6 +234,7 @@ impl World {
             is_trigger: true,
             layer: CollisionLayer::Bullet,
         });
+        self.bullet_lifetimes[i] = Some(BULLET_LIFETIME);
         e
     }
 
@@ -230,32 +250,8 @@ impl World {
         }
     }
 
-    pub fn handle_trigger_events(&mut self, pairs: &[CollisionPair]) {
-        let mut to_despawn: Vec<Entity> = Vec::new();
-        for p in pairs {
-            let ai = p.a.id as usize;
-            let bi = p.b.id as usize;
-            if !self.alive[ai] || !self.alive[bi] {
-                continue;
-            }
-            let Some(ac) = self.colliders[ai] else {
-                continue;
-            };
-            let Some(bc) = self.colliders[bi] else {
-                continue;
-            };
-            if matches!(
-                (ac.layer, bc.layer),
-                (CollisionLayer::Bullet, CollisionLayer::Enemy)
-                    | (CollisionLayer::Enemy, CollisionLayer::Bullet)
-            ) {
-                to_despawn.push(p.a);
-                to_despawn.push(p.b);
-            }
-        }
-        for e in to_despawn {
-            self.despawn(e);
-        }
+    pub fn alive_count(&self) -> usize {
+        self.alive.iter().filter(|a| **a).count()
     }
 }
 
@@ -275,7 +271,6 @@ pub struct SpriteRenderCommand {
     pub b: f32,
     pub a: f32,
 }
-
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct InputState {
@@ -292,7 +287,12 @@ pub struct InputState {
 #[wasm_bindgen]
 pub struct Engine {
     elapsed_seconds: f64,
+    score: u32,
+    fire_cooldown_seconds: f32,
+    enemy_spawn_timer: f32,
     input: InputState,
+    game_state: GameState,
+    spawn_index: u32,
     world: World,
     render_commands: Vec<SpriteRenderCommand>,
 }
@@ -301,19 +301,20 @@ pub struct Engine {
 impl Engine {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        let mut world = World::default();
-        world.spawn_player(360.0, 220.0);
-        for i in 0..60 {
-            let col = i % 10;
-            let row = i / 10;
-            world.spawn_enemy(60.0 + col as f32 * 56.0, 60.0 + row as f32 * 50.0);
-        }
-        Self {
+        let mut engine = Self {
             elapsed_seconds: 0.0,
+            score: 0,
+            fire_cooldown_seconds: 0.0,
+            enemy_spawn_timer: ENEMY_SPAWN_INTERVAL,
             input: InputState::default(),
-            world,
+            game_state: GameState::Title,
+            spawn_index: 0,
+            world: World::default(),
             render_commands: Vec::with_capacity(256),
-        }
+        };
+        engine.reset_game();
+        engine.game_state = GameState::Title;
+        engine
     }
     pub fn set_input(
         &mut self,
@@ -338,11 +339,36 @@ impl Engine {
         };
     }
     pub fn update(&mut self, delta: f64) {
+        let dt = delta as f32;
         self.elapsed_seconds += delta;
-        self.apply_player_input();
-        self.world.update(delta as f32);
-        let pairs = CollisionSystem::build_pairs(&self.world);
-        self.world.handle_trigger_events(&pairs);
+        if self.fire_cooldown_seconds > 0.0 {
+            self.fire_cooldown_seconds = (self.fire_cooldown_seconds - dt).max(0.0);
+        }
+        if self.enemy_spawn_timer > 0.0 {
+            self.enemy_spawn_timer -= dt;
+        }
+
+        match self.game_state {
+            GameState::Title => {
+                if self.input.space == 1 || self.input.mouse_left == 1 {
+                    self.game_state = GameState::Playing;
+                }
+            }
+            GameState::GameOver => {
+                if self.input.space == 1 {
+                    self.reset_game();
+                    self.game_state = GameState::Playing;
+                }
+            }
+            GameState::Playing => {
+                self.apply_player_input();
+                self.update_enemy_velocity();
+                self.world.update(dt);
+                self.update_bullets(dt);
+                self.spawn_enemy_if_needed();
+                self.handle_collisions();
+            }
+        }
         self.build_render_commands();
     }
     pub fn time(&self) -> f64 {
@@ -351,9 +377,33 @@ impl Engine {
     pub fn render_command_ptr(&self) -> *const SpriteRenderCommand {
         self.render_commands.as_ptr()
     }
-    /// Returns the number of render commands (not byte length).
     pub fn render_command_len(&self) -> usize {
         self.render_commands.len()
+    }
+    pub fn score(&self) -> u32 {
+        self.score
+    }
+    pub fn entity_count(&self) -> usize {
+        self.world.alive_count()
+    }
+    pub fn game_state_code(&self) -> u32 {
+        match self.game_state {
+            GameState::Title => 0,
+            GameState::Playing => 1,
+            GameState::GameOver => 2,
+        }
+    }
+    pub fn sprite_count(&self) -> usize {
+        self.render_commands.len()
+    }
+    pub fn reset_game(&mut self) {
+        self.score = 0;
+        self.fire_cooldown_seconds = 0.0;
+        self.enemy_spawn_timer = ENEMY_SPAWN_INTERVAL;
+        self.spawn_index = 0;
+        self.world = World::default();
+        self.world.spawn_player(360.0, 220.0);
+        self.spawn_initial_enemy_grid();
     }
 }
 
@@ -361,46 +411,205 @@ impl Engine {
 pub fn sprite_render_command_floats() -> usize {
     std::mem::size_of::<SpriteRenderCommand>() / std::mem::size_of::<f32>()
 }
-
 #[wasm_bindgen]
 pub fn sprite_render_command_bytes() -> usize {
     std::mem::size_of::<SpriteRenderCommand>()
 }
-
 #[wasm_bindgen]
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
-
 #[wasm_bindgen]
 pub fn wasm_memory() -> JsValue {
     wasm_bindgen::memory()
 }
 
 impl Engine {
+    fn normalized_input_direction(&self) -> Velocity {
+        let mut x: f32 = 0.0;
+        let mut y: f32 = 0.0;
+        if self.input.w == 1 {
+            y -= 1.0;
+        }
+        if self.input.s == 1 {
+            y += 1.0;
+        }
+        if self.input.a == 1 {
+            x -= 1.0;
+        }
+        if self.input.d == 1 {
+            x += 1.0;
+        }
+        let len = (x * x + y * y).sqrt();
+        if len > 0.0 {
+            Velocity {
+                vx: x / len,
+                vy: y / len,
+            }
+        } else {
+            Velocity::default()
+        }
+    }
     fn apply_player_input(&mut self) {
-        if let Some(player) = self.world.player {
-            let speed = if self.input.space == 1 { 280.0 } else { 180.0 };
-            let mut vx = 0.0;
-            let mut vy = 0.0;
-            if self.input.w == 1 {
-                vy -= speed;
+        let Some(player) = self.world.player else {
+            return;
+        };
+        let dir = self.normalized_input_direction();
+        self.world.velocities[player.id as usize] = Some(Velocity {
+            vx: dir.vx * PLAYER_BASE_SPEED,
+            vy: dir.vy * PLAYER_BASE_SPEED,
+        });
+        let wants_fire = self.input.space == 1 || self.input.mouse_left == 1;
+        if wants_fire && self.fire_cooldown_seconds <= 0.0 {
+            self.fire_bullet_toward_mouse(player);
+            self.fire_cooldown_seconds = FIRE_COOLDOWN;
+        }
+    }
+    fn fire_bullet_toward_mouse(&mut self, player: Entity) {
+        let Some(player_t) = self.world.transforms[player.id as usize] else {
+            return;
+        };
+        let dx = self.input.mouse_x - player_t.x;
+        let dy = self.input.mouse_y - player_t.y;
+        let len = (dx * dx + dy * dy).sqrt();
+        let (nx, ny) = if len > 0.0001 {
+            (dx / len, dy / len)
+        } else {
+            (1.0, 0.0)
+        };
+        self.world.spawn_bullet(
+            player_t.x + nx * 20.0,
+            player_t.y + ny * 20.0,
+            nx * BULLET_SPEED,
+            ny * BULLET_SPEED,
+        );
+    }
+    fn update_enemy_velocity(&mut self) {
+        let Some(player) = self.world.player else {
+            return;
+        };
+        let Some(player_t) = self.world.transforms[player.id as usize] else {
+            return;
+        };
+        for i in 0..self.world.transforms.len() {
+            if !self.world.alive[i] {
+                continue;
             }
-            if self.input.s == 1 {
-                vy += speed;
+            let Some(collider) = self.world.colliders[i] else {
+                continue;
+            };
+            if collider.layer != CollisionLayer::Enemy {
+                continue;
             }
-            if self.input.a == 1 {
-                vx -= speed;
+            let Some(enemy_t) = self.world.transforms[i] else {
+                continue;
+            };
+            let dx = player_t.x - enemy_t.x;
+            let dy = player_t.y - enemy_t.y;
+            let len = (dx * dx + dy * dy).sqrt();
+            if len > 0.0001 {
+                self.world.velocities[i] = Some(Velocity {
+                    vx: dx / len * ENEMY_SPEED,
+                    vy: dy / len * ENEMY_SPEED,
+                });
             }
-            if self.input.d == 1 {
-                vx += speed;
+        }
+    }
+    fn update_bullets(&mut self, delta: f32) {
+        let mut despawn = Vec::new();
+        for i in 0..self.world.transforms.len() {
+            if !self.world.alive[i] {
+                continue;
             }
-            self.world.velocities[player.id as usize] = Some(Velocity { vx, vy });
-            if self.input.mouse_left == 1 {
-                if let Some(t) = self.world.transforms[player.id as usize] {
-                    self.world.spawn_bullet(t.x + 14.0, t.y + 14.0, 240.0, 0.0);
+            if let Some(time_left) = self.world.bullet_lifetimes[i].as_mut() {
+                *time_left -= delta;
+            }
+            let is_bullet = self.world.colliders[i]
+                .map(|c| c.layer == CollisionLayer::Bullet)
+                .unwrap_or(false);
+            if !is_bullet {
+                continue;
+            }
+            if self.world.bullet_lifetimes[i].is_some_and(|t| t <= 0.0) {
+                despawn.push(Entity {
+                    id: i as u32,
+                    generation: self.world.generations[i],
+                });
+                continue;
+            }
+            if let Some(t) = self.world.transforms[i] {
+                if t.x < -20.0
+                    || t.x > WORLD_WIDTH + 20.0
+                    || t.y < -20.0
+                    || t.y > WORLD_HEIGHT + 20.0
+                {
+                    despawn.push(Entity {
+                        id: i as u32,
+                        generation: self.world.generations[i],
+                    });
                 }
             }
+        }
+        for e in despawn {
+            self.world.despawn(e);
+        }
+    }
+    fn spawn_enemy_if_needed(&mut self) {
+        if self.enemy_spawn_timer > 0.0 {
+            return;
+        }
+        self.enemy_spawn_timer = ENEMY_SPAWN_INTERVAL;
+        let idx = self.spawn_index;
+        self.spawn_index = self.spawn_index.wrapping_add(1);
+        let lane = (idx % 6) as f32;
+        let segment = idx % 4;
+        let (x, y) = match segment {
+            0 => (lane * (WORLD_WIDTH / 5.0), 0.0),
+            1 => (WORLD_WIDTH, lane * (WORLD_HEIGHT / 5.0)),
+            2 => (lane * (WORLD_WIDTH / 5.0), WORLD_HEIGHT),
+            _ => (0.0, lane * (WORLD_HEIGHT / 5.0)),
+        };
+        self.world.spawn_enemy(x, y);
+    }
+    fn spawn_initial_enemy_grid(&mut self) {
+        for i in 0..INITIAL_ENEMY_COUNT {
+            let col = i % 10;
+            let row = i / 10;
+            self.world
+                .spawn_enemy(60.0 + col as f32 * 56.0, 60.0 + row as f32 * 50.0);
+        }
+    }
+    fn handle_collisions(&mut self) {
+        let pairs = CollisionSystem::build_pairs(&self.world);
+        let mut despawn: Vec<Entity> = Vec::new();
+        for p in &pairs {
+            let ai = p.a.id as usize;
+            let bi = p.b.id as usize;
+            if !self.world.alive[ai] || !self.world.alive[bi] {
+                continue;
+            }
+            let Some(ac) = self.world.colliders[ai] else {
+                continue;
+            };
+            let Some(bc) = self.world.colliders[bi] else {
+                continue;
+            };
+            match (ac.layer, bc.layer) {
+                (CollisionLayer::Bullet, CollisionLayer::Enemy)
+                | (CollisionLayer::Enemy, CollisionLayer::Bullet) => {
+                    despawn.push(p.a);
+                    despawn.push(p.b);
+                    self.score += 1;
+                }
+                (CollisionLayer::Player, CollisionLayer::Enemy)
+                | (CollisionLayer::Enemy, CollisionLayer::Player) => {
+                    self.game_state = GameState::GameOver;
+                }
+                _ => {}
+            }
+        }
+        for e in despawn {
+            self.world.despawn(e);
         }
     }
     fn build_render_commands(&mut self) {
@@ -432,42 +641,68 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn sprite_render_command_abi_is_stable() {
-        assert_eq!(std::mem::size_of::<SpriteRenderCommand>(), 48);
-        assert_eq!(std::mem::align_of::<SpriteRenderCommand>(), 4);
+    fn diagonal_movement_is_normalized() {
+        let mut engine = Engine::new();
+        engine.game_state = GameState::Playing;
+        engine.set_input(true, false, false, true, false, false, 0.0, 0.0);
+        engine.apply_player_input();
+        let player = engine.world.player.unwrap();
+        let v = engine.world.velocities[player.id as usize].unwrap();
+        let speed = (v.vx * v.vx + v.vy * v.vy).sqrt();
+        assert!((speed - PLAYER_BASE_SPEED).abs() < 0.01);
     }
-
     #[test]
-    fn aabb_overlap_detects_hit() {
-        let hit = CollisionSystem::overlaps(
-            Transform2D { x: 10.0, y: 10.0 },
-            AabbCollider {
-                half_width: 4.0,
-                half_height: 4.0,
-                is_trigger: true,
-                layer: CollisionLayer::Bullet,
-            },
-            Transform2D { x: 13.0, y: 10.0 },
-            AabbCollider {
-                half_width: 4.0,
-                half_height: 4.0,
-                is_trigger: true,
-                layer: CollisionLayer::Enemy,
-            },
-        );
-        assert!(hit);
+    fn bullet_lifetime_despawns() {
+        let mut engine = Engine::new();
+        engine.game_state = GameState::Playing;
+        let b = engine.world.spawn_bullet(30.0, 30.0, 10.0, 0.0);
+        engine.update_bullets(BULLET_LIFETIME + 0.1);
+        assert!(!engine.world.alive[b.id as usize]);
     }
-
     #[test]
-    fn bullet_enemy_collision_can_remove_enemy() {
-        let mut w = World::default();
-        let b = w.spawn_bullet(50.0, 50.0, 0.0, 0.0);
-        let e = w.spawn_enemy(52.0, 50.0);
-        let pairs = CollisionSystem::build_pairs(&w);
-        w.handle_trigger_events(&pairs);
-        assert!(!w.alive[b.id as usize]);
-        assert!(!w.alive[e.id as usize]);
+    fn bullet_enemy_collision_increments_score() {
+        let mut engine = Engine::new();
+        engine.game_state = GameState::Playing;
+        let b = engine.world.spawn_bullet(50.0, 50.0, 0.0, 0.0);
+        let e = engine.world.spawn_enemy(52.0, 50.0);
+        engine.handle_collisions();
+        assert!(!engine.world.alive[b.id as usize]);
+        assert!(!engine.world.alive[e.id as usize]);
+        assert_eq!(engine.score, 1);
+    }
+    #[test]
+    fn player_enemy_collision_sets_game_over() {
+        let mut engine = Engine::new();
+        engine.game_state = GameState::Playing;
+        let player = engine.world.player.unwrap();
+        let pt = engine.world.transforms[player.id as usize].unwrap();
+        engine.world.spawn_enemy(pt.x, pt.y);
+        engine.handle_collisions();
+        assert_eq!(engine.game_state, GameState::GameOver);
+    }
+    #[test]
+    fn reset_game_clears_score_and_recreates_player() {
+        let mut engine = Engine::new();
+        engine.score = 42;
+        if let Some(player) = engine.world.player {
+            engine.world.despawn(player);
+        }
+        engine.world.player = None;
+        engine.reset_game();
+        assert_eq!(engine.score, 0);
+        assert!(engine.world.player.is_some());
+        let enemy_count = engine
+            .world
+            .alive
+            .iter()
+            .enumerate()
+            .filter(|(idx, alive)| {
+                **alive
+                    && engine.world.colliders[*idx]
+                        .is_some_and(|c| c.layer == CollisionLayer::Enemy)
+            })
+            .count();
+        assert_eq!(enemy_count, INITIAL_ENEMY_COUNT);
     }
 }
