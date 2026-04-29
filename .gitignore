@@ -1,2 +1,4 @@
 crates/ferrum-core/target/
 node_modules/
+packages/*/dist/
+examples/*/dist/

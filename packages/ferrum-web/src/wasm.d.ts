@@ -14,6 +14,11 @@ declare module "../pkg/ferrum_core" {
     time(): number;
     render_command_ptr(): number;
     render_command_len(): number;
+    score(): number;
+    entity_count(): number;
+    game_state_code(): number;
+    sprite_count(): number;
+    reset_game(): void;
     free(): void;
   }
 

@@ -64,7 +64,7 @@
 - 충돌 이벤트 반영 규칙 정의
 - 예제 게임 오브젝트 충돌 검증
 
-## Phase 10: Top-down Shooter Stabilization (진행 중)
+## Phase 10: Top-down Shooter Stabilization (완료)
 
 - 플레이어/적/투사체 최소 루프 안정화
 - score/game over/restart 상태 흐름 완성

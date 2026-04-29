@@ -9,7 +9,7 @@ Ferrum2D MVP는 다음 4개 레이어로 구성한다.
 3. TypeScript 플랫폼 레이어
 4. WebGL2 렌더러
 
-현재 상태는 **AABB + Render Command 기반 기술 데모를 통과했고, Top-down Shooter MVP를 안정화하는 단계**다.
+현재 상태는 **AABB + Render Command 기반 위에서 Top-down Shooter MVP 핵심 게임 루프를 구현한 단계**다.
 
 ## 레이어별 역할 분리
 
@@ -45,13 +45,14 @@ Ferrum2D MVP는 다음 4개 레이어로 구성한다.
 4. Rust core가 `SpriteRenderCommand` 배열을 생성한다.
 5. TypeScript/WebGL2가 command buffer를 소비해 draw를 수행한다.
 
-## 안정화 대상(Phase 10)
+## 구현된 Top-down Shooter 루프
 
-- shooter game state의 일관성(플레이 상태 ↔ game over ↔ restart)
-- score 반영 타이밍과 표시 정책
-- bullet cooldown/lifetime 튜닝
-- enemy spawn/movement 튜닝
-- debug overlay의 검증 정보 정리
+- 플레이어 이동과 마우스 방향 발사
+- bullet cooldown/lifetime 및 화면 밖 제거
+- enemy 주기적 spawn과 player chase
+- bullet/enemy 충돌 시 제거 및 score 증가
+- player/enemy 충돌 시 game over, Space restart
+- TypeScript debug overlay의 score/game state/entity count 표시
 
 ## 설계 원칙
 

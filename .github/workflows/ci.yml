@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   validate:
@@ -41,7 +41,8 @@ jobs:
         run: cargo test --manifest-path crates/ferrum-core/Cargo.toml
 
       - name: Build wasm package
-        run: wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg
+        run: wasm-pack build crates/ferrum-core --target web --out-dir
+          ../../packages/ferrum-web/pkg
 
       - name: Build TypeScript packages
         run: pnpm build

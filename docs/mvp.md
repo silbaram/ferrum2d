@@ -37,14 +37,14 @@
 | Input (keyboard/mouse)          | 완료    | 이동/입력 반영 및 디버그 표시                   |
 | World/Entity                    | 완료    | world vec-store 및 엔티티 라이프사이클 구성     |
 | AABB collision                  | 완료    | bullet/enemy trigger 처리 포함                  |
-| Shooter game state 완성도       | 진행 중 | score/game over/restart 안정화 필요             |
-| Bullet cooldown/lifetime 정교화 | 진행 중 | 튜닝 및 정책 고도화 필요                        |
-| Enemy spawn/movement 고도화     | 진행 중 | 난이도/패턴/스폰 규칙 정리 필요                 |
+| Shooter game state 완성도       | 완료    | score/game over/restart 기본 흐름 구현          |
+| Bullet cooldown/lifetime 정교화 | 완료    | cooldown/lifetime 및 화면 밖 제거 정책 구현     |
+| Enemy spawn/movement 고도화     | 완료    | 주기적 edge spawn 및 player chase 구현          |
 | Audio/Assets 완성               | 미완료  | MVP Phase 11 대상                               |
 
 ## MVP 완료 기준 (업데이트)
 
-- 탑다운 슈터 예제에서 플레이어 이동/발사/적 스폰/충돌/제거 루프가 안정적으로 동작한다.
+- 탑다운 슈터 예제에서 플레이어 이동/발사/적 스폰/충돌/제거 루프가 동작한다.
 - score, game over, restart 흐름이 사용자 관점에서 일관되게 동작한다.
 - Rust가 render command를 생성하고 TypeScript/WebGL2가 이를 소비해 매 프레임 렌더링한다.
 - 입력 지연/충돌 누락/엔티티 라이프사이클 오류 등 치명적 데모 결함이 없다.

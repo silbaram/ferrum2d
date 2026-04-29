@@ -30,12 +30,14 @@ async function bootstrap(): Promise<void> {
   const engine = await createEngine(({ score, gameState, entityCount, spriteCount, renderCommandBuffer }) => {
     renderer.resize();
     renderer.render();
-    renderer.renderCommands(texture, renderCommandBuffer);
+    const renderStats = renderer.renderCommands(texture, renderCommandBuffer);
 
     stateEl.textContent = `state: ${gameStateText(gameState)}`;
     scoreEl.textContent = `score: ${score}`;
     hudEl.textContent = "controls: W/A/S/D move, Mouse Left or Space fire/start, Space restart on game over";
-    statsEl.textContent = `entities: ${entityCount} sprites: ${spriteCount}`;
+    statsEl.textContent =
+      `entities: ${entityCount} sprites: ${spriteCount} ` +
+      `drawCalls: ${renderStats.drawCalls} batches: ${renderStats.batchCount}`;
 
     if (gameState === 0) {
       hudEl.textContent = "Press Space or Mouse Left to start";

@@ -4,7 +4,7 @@ Ferrum2D는 **Rust + WebAssembly + TypeScript + WebGL2** 기반의 2D 웹 게임
 
 ## 현재 상태
 
-현재 저장소는 **AABB + Render Command 기술 데모를 완료했고, Top-down Shooter MVP를 진행 중**이다.
+현재 저장소는 **Top-down Shooter MVP의 핵심 게임 로직을 완료했고, 예제 안정화를 진행 중**이다.
 
 포함된 구성:
 
@@ -12,6 +12,8 @@ Ferrum2D는 **Rust + WebAssembly + TypeScript + WebGL2** 기반의 2D 웹 게임
 - `AabbCollider`, `CollisionPair`, `CollisionSystem` 구현
 - O(n²) broad phase 기반 trigger collision pair 생성
 - bullet vs enemy 충돌 시 trigger event 기반 제거 처리
+- W/A/S/D 플레이어 이동, 마우스 방향 발사, 주기적 enemy spawn/chase 구현
+- score, game over, restart 상태를 TypeScript debug overlay에 표시
 - Rust에서 render command 생성, TypeScript에서 typed array로 소비
 - 키보드/마우스 입력 수집 및 게임 루프 반영
 
@@ -58,11 +60,11 @@ pnpm check
 ## 예제에서 확인할 항목
 
 - W/A/S/D로 player sprite 이동
-- 마우스 입력 반영 및 디버그 오버레이 정보 확인
-- 초기 프레임 기준 **61개 sprite(플레이어 1 + 적 60)** 렌더링
-
-> 참고: 기존 문서의 "100개 sprite" 표현은 현재 코드(`Engine::new()`) 기준과 불일치하며, 필요 시 별도 작업으로 스폰 수를 조정한다.
-
+- 마우스 방향으로 Mouse Left 또는 Space 발사
+- enemy가 주기적으로 spawn되고 player 방향으로 이동
+- bullet/enemy 충돌 시 score 증가 및 엔티티 제거
+- enemy/player 충돌 시 game over 표시, Space로 restart
+- debug overlay의 state/score/entity count/sprite count/drawCalls/batchCount가 프레임별 상태와 일치
 
 ## CI 검증 (GitHub Actions)
 

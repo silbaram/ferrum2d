@@ -15,7 +15,6 @@ const ENEMY_SPEED: f32 = 72.0;
 const ENEMY_SPAWN_INTERVAL: f32 = 1.0;
 const WORLD_WIDTH: f32 = 800.0;
 const WORLD_HEIGHT: f32 = 480.0;
-const INITIAL_ENEMY_COUNT: usize = 60;
 
 #[wasm_bindgen]
 pub struct Engine {
@@ -24,6 +23,8 @@ pub struct Engine {
     fire_cooldown_seconds: f32,
     enemy_spawn_timer: f32,
     input: InputState,
+    previous_space: u8,
+    previous_mouse_left: u8,
     game_state: GameState,
     spawn_index: u32,
     world: World,
@@ -40,6 +41,8 @@ impl Engine {
             fire_cooldown_seconds: 0.0,
             enemy_spawn_timer: ENEMY_SPAWN_INTERVAL,
             input: InputState::default(),
+            previous_space: 0,
+            previous_mouse_left: 0,
             game_state: GameState::Title,
             spawn_index: 0,
             world: World::default(),
@@ -49,6 +52,7 @@ impl Engine {
         engine.game_state = GameState::Title;
         engine
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn set_input(
         &mut self,
         w: bool,
@@ -74,33 +78,33 @@ impl Engine {
     pub fn update(&mut self, delta: f64) {
         let dt = delta as f32;
         self.elapsed_seconds += delta;
-        if self.fire_cooldown_seconds > 0.0 {
-            self.fire_cooldown_seconds = (self.fire_cooldown_seconds - dt).max(0.0);
-        }
-        if self.enemy_spawn_timer > 0.0 {
-            self.enemy_spawn_timer -= dt;
-        }
+        let space_pressed = self.input.space == 1 && self.previous_space == 0;
+        let mouse_left_pressed = self.input.mouse_left == 1 && self.previous_mouse_left == 0;
         match self.game_state {
             GameState::Title => {
-                if self.input.space == 1 || self.input.mouse_left == 1 {
+                if space_pressed || mouse_left_pressed {
                     self.game_state = GameState::Playing;
                 }
             }
             GameState::GameOver => {
-                if self.input.space == 1 {
+                if space_pressed {
                     self.reset_game();
                     self.game_state = GameState::Playing;
                 }
             }
             GameState::Playing => {
+                self.tick_playing_timers(dt);
                 self.apply_player_input();
                 self.update_enemy_velocity();
                 self.world.update(dt);
+                self.clamp_player_to_world();
                 self.update_bullets(dt);
                 self.spawn_enemy_if_needed();
                 self.handle_collisions();
             }
         }
+        self.previous_space = self.input.space;
+        self.previous_mouse_left = self.input.mouse_left;
         self.build_render_commands();
     }
     pub fn time(&self) -> f64 {
@@ -132,14 +136,31 @@ impl Engine {
         self.score = 0;
         self.fire_cooldown_seconds = 0.0;
         self.enemy_spawn_timer = ENEMY_SPAWN_INTERVAL;
+        self.previous_space = 0;
+        self.previous_mouse_left = 0;
         self.spawn_index = 0;
         self.world = World::default();
-        self.world.spawn_player(360.0, 220.0);
-        self.spawn_initial_enemy_grid();
+        self.world
+            .spawn_player(WORLD_WIDTH * 0.5, WORLD_HEIGHT * 0.5);
+    }
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl Engine {
+    fn tick_playing_timers(&mut self, delta: f32) {
+        if self.fire_cooldown_seconds > 0.0 {
+            self.fire_cooldown_seconds = (self.fire_cooldown_seconds - delta).max(0.0);
+        }
+        if self.enemy_spawn_timer > 0.0 {
+            self.enemy_spawn_timer -= delta;
+        }
+    }
+
     fn normalized_input_direction(&self) -> Velocity {
         let mut x: f32 = 0.0;
         let mut y: f32 = 0.0;
@@ -199,6 +220,25 @@ impl Engine {
             ny * BULLET_SPEED,
         );
     }
+
+    fn clamp_player_to_world(&mut self) {
+        let Some(player) = self.world.player else {
+            return;
+        };
+        let i = player.id as usize;
+        let Some(collider) = self.world.colliders[i] else {
+            return;
+        };
+        if let Some(transform) = self.world.transforms[i].as_mut() {
+            transform.x = transform
+                .x
+                .clamp(collider.half_width, WORLD_WIDTH - collider.half_width);
+            transform.y = transform
+                .y
+                .clamp(collider.half_height, WORLD_HEIGHT - collider.half_height);
+        }
+    }
+
     fn update_enemy_velocity(&mut self) {
         let Some(player) = self.world.player else {
             return;
@@ -286,17 +326,12 @@ impl Engine {
         };
         self.world.spawn_enemy(x, y);
     }
-    fn spawn_initial_enemy_grid(&mut self) {
-        for i in 0..INITIAL_ENEMY_COUNT {
-            let col = i % 10;
-            let row = i / 10;
-            self.world
-                .spawn_enemy(60.0 + col as f32 * 56.0, 60.0 + row as f32 * 50.0);
-        }
-    }
+
     fn handle_collisions(&mut self) {
         let pairs = CollisionSystem::build_pairs(&self.world);
         let mut despawn: Vec<Entity> = Vec::new();
+        let mut marked_for_despawn = vec![false; self.world.alive.len()];
+
         for p in &pairs {
             let ai = p.a.id as usize;
             let bi = p.b.id as usize;
@@ -312,17 +347,45 @@ impl Engine {
             match (ac.layer, bc.layer) {
                 (CollisionLayer::Bullet, CollisionLayer::Enemy)
                 | (CollisionLayer::Enemy, CollisionLayer::Bullet) => {
+                    if marked_for_despawn[ai] || marked_for_despawn[bi] {
+                        continue;
+                    }
+                    marked_for_despawn[ai] = true;
+                    marked_for_despawn[bi] = true;
                     despawn.push(p.a);
                     despawn.push(p.b);
-                    self.score += 1;
-                }
-                (CollisionLayer::Player, CollisionLayer::Enemy)
-                | (CollisionLayer::Enemy, CollisionLayer::Player) => {
-                    self.game_state = GameState::GameOver;
+                    self.score = self.score.saturating_add(1);
                 }
                 _ => {}
             }
         }
+
+        for p in &pairs {
+            let ai = p.a.id as usize;
+            let bi = p.b.id as usize;
+            if marked_for_despawn[ai]
+                || marked_for_despawn[bi]
+                || !self.world.alive[ai]
+                || !self.world.alive[bi]
+            {
+                continue;
+            }
+            let Some(ac) = self.world.colliders[ai] else {
+                continue;
+            };
+            let Some(bc) = self.world.colliders[bi] else {
+                continue;
+            };
+            match (ac.layer, bc.layer) {
+                (CollisionLayer::Player, CollisionLayer::Enemy)
+                | (CollisionLayer::Enemy, CollisionLayer::Player) => {
+                    self.game_state = GameState::GameOver;
+                    break;
+                }
+                _ => {}
+            }
+        }
+
         for e in despawn {
             self.world.despawn(e);
         }
@@ -335,8 +398,8 @@ impl Engine {
             }
             if let (Some(t), Some(s)) = (self.world.transforms[i], self.world.sprites[i]) {
                 self.render_commands.push(SpriteRenderCommand {
-                    x: t.x,
-                    y: t.y,
+                    x: t.x - s.width * 0.5,
+                    y: t.y - s.height * 0.5,
                     width: s.width,
                     height: s.height,
                     u0: s.u0,
@@ -357,6 +420,19 @@ impl Engine {
 mod tests {
     use super::*;
     use crate::game_state::GameState;
+
+    fn count_layer(engine: &Engine, layer: CollisionLayer) -> usize {
+        engine
+            .world
+            .alive
+            .iter()
+            .enumerate()
+            .filter(|(idx, alive)| {
+                **alive && engine.world.colliders[*idx].is_some_and(|c| c.layer == layer)
+            })
+            .count()
+    }
+
     #[test]
     fn diagonal_movement_is_normalized() {
         let mut engine = Engine::new();
@@ -387,6 +463,23 @@ mod tests {
         assert!(!engine.world.alive[e.id as usize]);
         assert_eq!(engine.score, 1);
     }
+
+    #[test]
+    fn one_bullet_scores_once_when_overlapping_multiple_enemies() {
+        let mut engine = Engine::new();
+        engine.game_state = GameState::Playing;
+        let bullet = engine.world.spawn_bullet(50.0, 50.0, 0.0, 0.0);
+        let first_enemy = engine.world.spawn_enemy(52.0, 50.0);
+        let second_enemy = engine.world.spawn_enemy(54.0, 50.0);
+
+        engine.handle_collisions();
+
+        assert!(!engine.world.alive[bullet.id as usize]);
+        assert!(!engine.world.alive[first_enemy.id as usize]);
+        assert!(engine.world.alive[second_enemy.id as usize]);
+        assert_eq!(engine.score, 1);
+    }
+
     #[test]
     fn player_enemy_collision_sets_game_over() {
         let mut engine = Engine::new();
@@ -408,17 +501,29 @@ mod tests {
         engine.reset_game();
         assert_eq!(engine.score, 0);
         assert!(engine.world.player.is_some());
-        let enemy_count = engine
-            .world
-            .alive
-            .iter()
-            .enumerate()
-            .filter(|(idx, alive)| {
-                **alive
-                    && engine.world.colliders[*idx]
-                        .is_some_and(|c| c.layer == CollisionLayer::Enemy)
-            })
-            .count();
-        assert_eq!(enemy_count, INITIAL_ENEMY_COUNT);
+        assert_eq!(count_layer(&engine, CollisionLayer::Player), 1);
+        assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 0);
+    }
+
+    #[test]
+    fn enemy_spawns_after_playing_interval() {
+        let mut engine = Engine::new();
+        engine.game_state = GameState::Playing;
+
+        engine.update((ENEMY_SPAWN_INTERVAL - 0.01) as f64);
+        assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 0);
+
+        engine.update(0.02);
+        assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 1);
+    }
+
+    #[test]
+    fn player_render_command_uses_centered_transform() {
+        let mut engine = Engine::new();
+        engine.build_render_commands();
+
+        let command = engine.render_commands[0];
+        assert!((command.x - 382.0).abs() < 0.01);
+        assert!((command.y - 222.0).abs() < 0.01);
     }
 }
