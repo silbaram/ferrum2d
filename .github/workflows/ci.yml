@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm 10.8.0
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.0
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Rust tests
+        run: cargo test --manifest-path crates/ferrum-core/Cargo.toml
+
+      - name: Build wasm package
+        run: wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg
+
+      - name: Build TypeScript packages
+        run: pnpm build

@@ -63,6 +63,33 @@ pnpm check
 
 > 참고: 기존 문서의 "100개 sprite" 표현은 현재 코드(`Engine::new()`) 기준과 불일치하며, 필요 시 별도 작업으로 스폰 수를 조정한다.
 
+
+## CI 검증 (GitHub Actions)
+
+`main` 브랜치 push와 `main` 대상 PR에서 아래 항목을 자동 검증한다.
+
+- Ubuntu latest(`ubuntu-latest`)
+- Rust stable + `wasm32-unknown-unknown` target
+- `wasm-pack` 설치 및 Wasm 빌드
+- Node.js 22 + pnpm 10.8.0
+- `pnpm install`
+- `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
+- `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
+- `pnpm build`
+
+로컬에서 CI와 동일한 순서로 실행하려면:
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack
+corepack enable
+corepack prepare pnpm@10.8.0 --activate
+pnpm install
+cargo test --manifest-path crates/ferrum-core/Cargo.toml
+wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg
+pnpm build
+```
+
 ## DPR 수동 검증 방법
 
 1. 예제 실행: `pnpm --filter @ferrum2d/topdown-shooter dev`

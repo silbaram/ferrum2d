@@ -109,22 +109,26 @@ MVP에서 구현하지 않는 항목:
 
 ## Required Checks
 
-Rust 변경 후:
+로컬 기본 검증(권장):
 
 - `cargo fmt`
 - `cargo clippy`
-- `cargo test`
-
-TypeScript 변경 후:
-
+- `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
 - `pnpm format` (사용 가능한 경우)
 - `pnpm lint` (사용 가능한 경우)
 - `pnpm test` (사용 가능한 경우)
 - `pnpm build`
 
-Wasm 브리지 변경 후:
+CI 정합 검증(GitHub Actions `main` push/PR):
 
-- `wasm-pack build`
+- `pnpm install`
+- `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
+- `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
+- `pnpm build`
+
+Wasm 브리지 변경 후 추가:
+
+- `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
 - `pnpm build`
 - 가능하면 예제 실행 검증
 
