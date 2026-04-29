@@ -16,11 +16,11 @@ async function bootstrap(): Promise<void> {
   const input = new InputManager(canvas);
   const texture = await renderer.loadTexture("/player.png");
 
-  const engine = await createEngine(({ timeSeconds, renderCommands }) => {
+  const engine = await createEngine(({ timeSeconds, renderCommandBuffer }) => {
     const snapshot = input.snapshot();
     renderer.resize(); renderer.render();
-    const stats = renderer.renderCommands(texture, renderCommands);
-    timeEl.textContent = `time: ${timeSeconds.toFixed(3)} sprites: ${renderCommands.length}`;
+    const stats = renderer.renderCommands(texture, renderCommandBuffer);
+    timeEl.textContent = `time: ${timeSeconds.toFixed(3)} sprites: ${renderCommandBuffer.commandCount}`;
     debugEl.textContent = `drawCalls: ${stats.drawCalls} batchCount: ${stats.batchCount} spriteCount: ${stats.spriteCount}`;
     mouseEl.textContent = `mouse: (${snapshot.mouseX.toFixed(1)}, ${snapshot.mouseY.toFixed(1)}) left=${snapshot.mouseLeft}`;
   }, () => input.snapshot());

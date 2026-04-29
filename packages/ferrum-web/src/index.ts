@@ -7,4 +7,4 @@ export { SpriteBatch } from "./spriteBatch";
 export { InputManager } from "./inputManager";
 export type { InputSnapshot } from "./inputManager";
 export type { SpriteDrawOptions } from "./spriteBatch";
-export type { RenderCommandView } from "./wasmBridge";
+export type { RenderCommandBufferView, RenderCommandView } from "./wasmBridge";

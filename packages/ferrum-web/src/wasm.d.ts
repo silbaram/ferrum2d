@@ -17,6 +17,8 @@ declare module "../pkg/ferrum_core" {
     free(): void;
   }
 
+  export function sprite_render_command_floats(): number;
+  export function sprite_render_command_bytes(): number;
   export function version(): string;
   export function wasm_memory(): WebAssembly.Memory;
 }

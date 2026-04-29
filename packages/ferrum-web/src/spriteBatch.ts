@@ -1,4 +1,4 @@
-import type { RenderCommandView } from "./wasmBridge";
+import type { RenderCommandBufferView, RenderCommandView } from "./wasmBridge";
 
 export interface SpriteDrawOptions {
   position: [number, number];
@@ -43,18 +43,24 @@ export class SpriteBatch {
     this.textureLocation = textureLocation;
   }
 
-  drawBatch(texture: WebGLTexture, commands: ReadonlyArray<RenderCommandView>, resolution: [number, number]): number {
-    if (commands.length === 0) return 0;
-    const vertices = new Float32Array(commands.length * 6 * 8);
+  drawBatch(texture: WebGLTexture, commands: RenderCommandBufferView, resolution: [number, number]): number {
+    if (commands.commandCount === 0) return 0;
+    const vertices = new Float32Array(commands.commandCount * 6 * 8);
 
-    for (let i = 0; i < commands.length; i += 1) {
-      const c = commands[i];
-      const x = c.x;
-      const y = c.y;
-      const w = c.width;
-      const h = c.height;
-      const [u0, v0, u1, v1] = c.uv;
-      const [r, g, b, a] = c.color;
+    for (let i = 0; i < commands.commandCount; i += 1) {
+      const offset = i * commands.floatsPerCommand;
+      const x = commands.buffer[offset];
+      const y = commands.buffer[offset + 1];
+      const w = commands.buffer[offset + 2];
+      const h = commands.buffer[offset + 3];
+      const u0 = commands.buffer[offset + 4];
+      const v0 = commands.buffer[offset + 5];
+      const u1 = commands.buffer[offset + 6];
+      const v1 = commands.buffer[offset + 7];
+      const r = commands.buffer[offset + 8];
+      const g = commands.buffer[offset + 9];
+      const b = commands.buffer[offset + 10];
+      const a = commands.buffer[offset + 11];
       const base = i * 48;
 
       const quad = [
@@ -77,7 +83,7 @@ export class SpriteBatch {
     this.gl.activeTexture(this.gl.TEXTURE0);
     this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
     this.gl.uniform1i(this.textureLocation, 0);
-    this.gl.drawArrays(this.gl.TRIANGLES, 0, commands.length * 6);
+    this.gl.drawArrays(this.gl.TRIANGLES, 0, commands.commandCount * 6);
     this.gl.bindVertexArray(null);
     return 1;
   }

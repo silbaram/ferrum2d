@@ -1,4 +1,10 @@
-import init, { Engine, version, wasm_memory } from "../pkg/ferrum_core";
+import init, {
+  Engine,
+  sprite_render_command_bytes,
+  sprite_render_command_floats,
+  version,
+  wasm_memory,
+} from "../pkg/ferrum_core";
 
 export interface RenderCommandView {
   x: number;
@@ -9,13 +15,39 @@ export interface RenderCommandView {
   color: [number, number, number, number];
 }
 
+export interface RenderCommandBufferView {
+  buffer: Float32Array;
+  commandCount: number;
+  floatsPerCommand: number;
+}
+
 const FLOATS_PER_COMMAND = 12;
+const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
+const BYTES_PER_COMMAND = FLOATS_PER_COMMAND * BYTES_PER_F32;
 
 export class WasmBridge {
+  private readonly floatsPerCommand: number;
+
   private constructor(
     private readonly engineInstance: Engine,
     private readonly memory: WebAssembly.Memory,
-  ) {}
+  ) {
+    const rustFloatsPerCommand = sprite_render_command_floats();
+    const rustBytesPerCommand = sprite_render_command_bytes();
+    if (rustFloatsPerCommand !== FLOATS_PER_COMMAND) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust sprite_render_command_floats=${rustFloatsPerCommand}, TS FLOATS_PER_COMMAND=${FLOATS_PER_COMMAND}. ` +
+          "SpriteRenderCommand ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    if (rustBytesPerCommand !== BYTES_PER_COMMAND) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust sprite_render_command_bytes=${rustBytesPerCommand}, TS BYTES_PER_COMMAND=${BYTES_PER_COMMAND}. ` +
+          "SpriteRenderCommand ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    this.floatsPerCommand = rustFloatsPerCommand;
+  }
 
   static async init(): Promise<WasmBridge> {
     await init();
@@ -31,26 +63,28 @@ export class WasmBridge {
     return version();
   }
 
-  readRenderCommands(): RenderCommandView[] {
+  readRenderCommandBuffer(): RenderCommandBufferView {
     const ptr = this.engineInstance.render_command_ptr();
-    const len = this.engineInstance.render_command_len();
-    const floats = new Float32Array(this.memory.buffer, ptr, len * FLOATS_PER_COMMAND);
+    const commandCount = this.engineInstance.render_command_len();
+    return {
+      buffer: new Float32Array(this.memory.buffer, ptr, commandCount * this.floatsPerCommand),
+      commandCount,
+      floatsPerCommand: this.floatsPerCommand,
+    };
+  }
 
+  readRenderCommands(): RenderCommandView[] {
+    const view = this.readRenderCommandBuffer();
     const commands: RenderCommandView[] = [];
-    for (let i = 0; i < len; i += 1) {
-      const offset = i * FLOATS_PER_COMMAND;
+    for (let i = 0; i < view.commandCount; i += 1) {
+      const offset = i * view.floatsPerCommand;
       commands.push({
-        x: floats[offset],
-        y: floats[offset + 1],
-        width: floats[offset + 2],
-        height: floats[offset + 3],
-        uv: [floats[offset + 4], floats[offset + 5], floats[offset + 6], floats[offset + 7]],
-        color: [
-          floats[offset + 8],
-          floats[offset + 9],
-          floats[offset + 10],
-          floats[offset + 11],
-        ],
+        x: view.buffer[offset],
+        y: view.buffer[offset + 1],
+        width: view.buffer[offset + 2],
+        height: view.buffer[offset + 3],
+        uv: [view.buffer[offset + 4], view.buffer[offset + 5], view.buffer[offset + 6], view.buffer[offset + 7]],
+        color: [view.buffer[offset + 8], view.buffer[offset + 9], view.buffer[offset + 10], view.buffer[offset + 11]],
       });
     }
     return commands;

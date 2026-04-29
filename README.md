@@ -19,7 +19,8 @@ Ferrum2D는 **Rust + WebAssembly + TypeScript + WebGL2** 기반의 2D 웹 게임
 
 `SpriteRenderCommand`는 Rust에서 `#[repr(C)]`로 선언되어 C ABI 레이아웃을 강제한다.
 현재 포맷은 `f32` 12개(총 48 bytes, align 4)이며, TypeScript는 동일 순서로 `Float32Array`를 해석한다.
-필드 순서/타입/정렬이 바뀌면 JS 해석 코드도 함께 수정해야 한다.
+필드 순서/타입/정렬이 바뀌면 Rust export(`sprite_render_command_floats/bytes`)와 TypeScript 해석 코드(상수/검증/뷰)를 반드시 함께 수정해야 한다.
+`FrameState`는 호환성을 위해 객체 배열(`renderCommands`)도 제공하지만, hot path에서는 typed view(`renderCommandBuffer`) 사용을 권장한다.
 
 ## 좌표계 기준 (DPR 포함)
 
