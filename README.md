@@ -1,31 +1,39 @@
 # Ferrum2D
 
-Ferrum2D는 **Rust + WebAssembly + TypeScript + WebGL2** 조합으로 구성하는 2D 웹 게임 엔진 프로젝트다.
+Ferrum2D는 **Rust + WebAssembly + TypeScript + WebGL2** 기반의 2D 웹 게임 엔진 프로젝트다.
 
-## 프로젝트 목적
-- 웹 환경에서 실행 가능한 2D 게임 엔진의 최소 실행 가능 제품(MVP) 기반을 구축한다.
-- 엔진 핵심 로직은 Rust로 작성하고, 브라우저 연동은 TypeScript 레이어에서 담당한다.
-- MVP 단계에서 2D 탑다운 슈터 예제를 통해 아키텍처 타당성을 검증한다.
+## 현재 상태
 
-## 현재 단계
-- **현재 단계:** 저장소/문서 초기화 완료
-- **다음 단계:** Monorepo Bootstrap
-  - pnpm workspace 구성
-  - Rust crate 초기 구성
-  - TypeScript package 초기 구성
-  - Vite 기반 예제 초기 구성
+현재 저장소는 **AABB Collision 시스템 연결 단계**까지 포함한다.
 
-> 현재 저장소에는 실제 엔진 코드, pnpm workspace, Rust crate, TypeScript package가 아직 포함되어 있지 않다.
+포함된 구성:
+- Rust `World`가 transforms/sprites/velocities/colliders Vec store 관리
+- `AabbCollider`, `CollisionPair`, `CollisionSystem` 구현
+- O(n^2) broad phase로 trigger collision pair 생성
+- bullet vs enemy 충돌 시 trigger event로 제거 처리
+- World의 transform+sprite로 render command 생성
 
-## 저장소 구조(목표)
-- `crates/ferrum-core`: Rust 코어 crate 위치
-- `packages/ferrum-web`: TypeScript 웹 플랫폼 패키지 위치
-- `examples/topdown-shooter`: MVP 예제 프로젝트 위치
-- `docs/`: 아키텍처, MVP 범위, 로드맵, 코드리뷰 기준 문서
-- `scripts/`: 개발/빌드 보조 스크립트 위치
+## Command Buffer ABI 주의사항
 
-## MVP 제외 범위
-- WebGPU
-- Worker/멀티스레딩
-- 3D
-- 에디터
+`SpriteRenderCommand`는 Rust에서 `#[repr(C)]`로 선언되어 C ABI 레이아웃을 강제한다.
+현재 포맷은 `f32` 12개(총 48 bytes, align 4)이며, TypeScript는 동일 순서로 `Float32Array`를 해석한다.
+필드 순서/타입/정렬이 바뀌면 JS 해석 코드도 함께 수정해야 한다.
+
+## 빌드 순서
+
+```bash
+wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg
+pnpm install
+pnpm build
+```
+
+## 예제 실행
+
+```bash
+pnpm --filter @ferrum2d/topdown-shooter dev
+```
+
+브라우저에서 다음을 확인한다.
+- W/A/S/D로 player sprite 이동
+- mouse 좌표 overlay 표시
+- 100개 sprite 렌더링
