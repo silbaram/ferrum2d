@@ -21,6 +21,11 @@ Ferrum2D는 **Rust + WebAssembly + TypeScript + WebGL2** 기반의 2D 웹 게임
 현재 포맷은 `f32` 12개(총 48 bytes, align 4)이며, TypeScript는 동일 순서로 `Float32Array`를 해석한다.
 필드 순서/타입/정렬이 바뀌면 JS 해석 코드도 함께 수정해야 한다.
 
+## 좌표계 기준 (DPR 포함)
+
+- 현재 게임 월드 좌표, Rust render command, InputManager mouse 좌표는 **CSS logical pixel 기준**이다.
+- WebGL2 렌더러는 내부 drawing buffer(`canvas.width/height`)에만 DPR을 반영하고, shader `u_resolution`은 CSS logical pixel을 사용한다.
+
 ## 빌드
 
 ```bash
@@ -56,3 +61,11 @@ pnpm check
 - 초기 프레임 기준 **61개 sprite(플레이어 1 + 적 60)** 렌더링
 
 > 참고: 기존 문서의 "100개 sprite" 표현은 현재 코드(`Engine::new()`) 기준과 불일치하며, 필요 시 별도 작업으로 스폰 수를 조정한다.
+
+## DPR 수동 검증 방법
+
+1. 예제 실행: `pnpm --filter @ferrum2d/topdown-shooter dev`
+2. 브라우저에서 `http://localhost:5173` 접속 후 플레이어 sprite와 마우스 위치 오버레이를 확인한다.
+3. DPR 1 환경(일반 디스플레이 또는 브라우저 zoom 100%)에서 이동/조준 시 sprite 위치/크기가 자연스러운지 확인한다.
+4. DPR 2 환경(레티나 디스플레이 또는 DevTools device emulation)에서 동일하게 이동/조준 시 sprite 위치/크기가 동일 체감으로 유지되는지 확인한다.
+5. debug overlay의 drawCalls/batchCount/spriteCount가 프레임별 렌더 상태와 일치하는지 확인한다.

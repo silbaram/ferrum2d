@@ -11,6 +11,8 @@ export class SpriteBatch {
   private readonly program: WebGLProgram;
   private readonly vao: WebGLVertexArrayObject;
   private readonly vbo: WebGLBuffer;
+  private readonly resolutionLocation: WebGLUniformLocation;
+  private readonly textureLocation: WebGLUniformLocation;
 
   constructor(private readonly gl: WebGL2RenderingContext) {
     this.program = this.createProgram();
@@ -30,6 +32,15 @@ export class SpriteBatch {
     this.gl.enableVertexAttribArray(2);
     this.gl.vertexAttribPointer(2, 4, this.gl.FLOAT, false, stride, 4 * 4);
     this.gl.bindVertexArray(null);
+
+    this.gl.enable(this.gl.BLEND);
+    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+
+    const resolutionLocation = this.gl.getUniformLocation(this.program, "u_resolution");
+    const textureLocation = this.gl.getUniformLocation(this.program, "u_texture");
+    if (!resolutionLocation || !textureLocation) throw new Error("Sprite shader uniform location 조회 실패");
+    this.resolutionLocation = resolutionLocation;
+    this.textureLocation = textureLocation;
   }
 
   drawBatch(texture: WebGLTexture, commands: ReadonlyArray<RenderCommandView>, resolution: [number, number]): number {
@@ -62,10 +73,10 @@ export class SpriteBatch {
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vbo);
     this.gl.bufferData(this.gl.ARRAY_BUFFER, vertices, this.gl.DYNAMIC_DRAW);
 
-    this.gl.uniform2f(this.gl.getUniformLocation(this.program, "u_resolution"), resolution[0], resolution[1]);
+    this.gl.uniform2f(this.resolutionLocation, resolution[0], resolution[1]);
     this.gl.activeTexture(this.gl.TEXTURE0);
     this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
-    this.gl.uniform1i(this.gl.getUniformLocation(this.program, "u_texture"), 0);
+    this.gl.uniform1i(this.textureLocation, 0);
     this.gl.drawArrays(this.gl.TRIANGLES, 0, commands.length * 6);
     this.gl.bindVertexArray(null);
     return 1;
