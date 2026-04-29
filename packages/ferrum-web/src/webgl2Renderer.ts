@@ -5,10 +5,18 @@ import type { RenderCommandView } from "./wasmBridge";
 
 export interface WebGL2RendererOptions { clearColor?: [number, number, number, number]; }
 
+export interface RendererStats {
+  drawCalls: number;
+  batchCount: number;
+  spriteCount: number;
+}
+
 export class WebGL2Renderer implements Renderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly textureManager: TextureManager;
   private readonly spriteBatch: SpriteBatch;
+  private logicalWidth = 0;
+  private logicalHeight = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly options: WebGL2RendererOptions = {}) {
     const gl = canvas.getContext("webgl2");
@@ -25,9 +33,17 @@ export class WebGL2Renderer implements Renderer {
 
   resize(): void {
     const dpr = window.devicePixelRatio || 1;
-    const width = Math.floor(this.canvas.clientWidth * dpr);
-    const height = Math.floor(this.canvas.clientHeight * dpr);
-    if (this.canvas.width !== width || this.canvas.height !== height) { this.canvas.width = width; this.canvas.height = height; }
+    this.logicalWidth = this.canvas.clientWidth;
+    this.logicalHeight = this.canvas.clientHeight;
+
+    const drawingBufferWidth = Math.floor(this.logicalWidth * dpr);
+    const drawingBufferHeight = Math.floor(this.logicalHeight * dpr);
+
+    if (this.canvas.width !== drawingBufferWidth || this.canvas.height !== drawingBufferHeight) {
+      this.canvas.width = drawingBufferWidth;
+      this.canvas.height = drawingBufferHeight;
+    }
+
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
   }
 
@@ -37,10 +53,17 @@ export class WebGL2Renderer implements Renderer {
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
   }
 
-  renderCommands(texture: WebGLTexture, commands: ReadonlyArray<RenderCommandView>): { drawCalls: number; batchCount: number } {
-    const drawCalls = this.spriteBatch.drawBatch(texture, commands, [this.canvas.width, this.canvas.height]);
-    return { drawCalls, batchCount: commands.length > 0 ? 1 : 0 };
+  renderCommands(texture: WebGLTexture, commands: ReadonlyArray<RenderCommandView>): RendererStats {
+    const drawCalls = this.spriteBatch.drawBatch(texture, commands, [this.logicalWidth, this.logicalHeight]);
+    return {
+      drawCalls,
+      batchCount: commands.length > 0 ? 1 : 0,
+      spriteCount: commands.length,
+    };
   }
 
-  destroy(): void { this.spriteBatch.destroy(); }
+  destroy(): void {
+    this.spriteBatch.destroy();
+    this.textureManager.destroy();
+  }
 }

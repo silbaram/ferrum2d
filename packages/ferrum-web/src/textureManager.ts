@@ -1,4 +1,6 @@
 export class TextureManager {
+  private readonly textures = new Set<WebGLTexture>();
+
   constructor(private readonly gl: WebGL2RenderingContext) {}
 
   async load(url: string): Promise<WebGLTexture> {
@@ -26,6 +28,7 @@ export class TextureManager {
     );
 
     this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+    this.textures.add(texture);
     return texture;
   }
 
@@ -43,6 +46,11 @@ export class TextureManager {
     ctx.fillRect(size / 2, size / 2, size / 2, size / 2);
 
     return this.createTextureFromSource(canvas);
+  }
+
+  destroy(): void {
+    for (const texture of this.textures) this.gl.deleteTexture(texture);
+    this.textures.clear();
   }
 
   private async loadImage(url: string): Promise<HTMLImageElement> {

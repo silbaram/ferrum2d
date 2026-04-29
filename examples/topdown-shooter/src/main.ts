@@ -21,7 +21,7 @@ async function bootstrap(): Promise<void> {
     renderer.resize(); renderer.render();
     const stats = renderer.renderCommands(texture, renderCommands);
     timeEl.textContent = `time: ${timeSeconds.toFixed(3)} sprites: ${renderCommands.length}`;
-    debugEl.textContent = `drawCalls: ${stats.drawCalls} batchCount: ${stats.batchCount}`;
+    debugEl.textContent = `drawCalls: ${stats.drawCalls} batchCount: ${stats.batchCount} spriteCount: ${stats.spriteCount}`;
     mouseEl.textContent = `mouse: (${snapshot.mouseX.toFixed(1)}, ${snapshot.mouseY.toFixed(1)}) left=${snapshot.mouseLeft}`;
   }, () => input.snapshot());
 
