@@ -351,9 +351,20 @@ impl Engine {
     pub fn render_command_ptr(&self) -> *const SpriteRenderCommand {
         self.render_commands.as_ptr()
     }
+    /// Returns the number of render commands (not byte length).
     pub fn render_command_len(&self) -> usize {
         self.render_commands.len()
     }
+}
+
+#[wasm_bindgen]
+pub fn sprite_render_command_floats() -> usize {
+    std::mem::size_of::<SpriteRenderCommand>() / std::mem::size_of::<f32>()
+}
+
+#[wasm_bindgen]
+pub fn sprite_render_command_bytes() -> usize {
+    std::mem::size_of::<SpriteRenderCommand>()
 }
 
 #[wasm_bindgen]
@@ -421,6 +432,12 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sprite_render_command_abi_is_stable() {
+        assert_eq!(std::mem::size_of::<SpriteRenderCommand>(), 48);
+        assert_eq!(std::mem::align_of::<SpriteRenderCommand>(), 4);
+    }
 
     #[test]
     fn aabb_overlap_detects_hit() {

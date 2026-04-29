@@ -1,7 +1,7 @@
 import type { Renderer } from "./renderer";
 import { SpriteBatch } from "./spriteBatch";
 import { TextureManager } from "./textureManager";
-import type { RenderCommandView } from "./wasmBridge";
+import type { RenderCommandBufferView } from "./wasmBridge";
 
 export interface WebGL2RendererOptions { clearColor?: [number, number, number, number]; }
 
@@ -53,12 +53,12 @@ export class WebGL2Renderer implements Renderer {
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
   }
 
-  renderCommands(texture: WebGLTexture, commands: ReadonlyArray<RenderCommandView>): RendererStats {
+  renderCommands(texture: WebGLTexture, commands: RenderCommandBufferView): RendererStats {
     const drawCalls = this.spriteBatch.drawBatch(texture, commands, [this.logicalWidth, this.logicalHeight]);
     return {
       drawCalls,
-      batchCount: commands.length > 0 ? 1 : 0,
-      spriteCount: commands.length,
+      batchCount: commands.commandCount > 0 ? 1 : 0,
+      spriteCount: commands.commandCount,
     };
   }
 

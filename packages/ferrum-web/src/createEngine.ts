@@ -1,10 +1,15 @@
 import type { Engine } from "../pkg/ferrum_core";
 import { GameLoop } from "./gameLoop";
 import type { InputSnapshot } from "./inputManager";
-import type { RenderCommandView } from "./wasmBridge";
+import type { RenderCommandBufferView, RenderCommandView } from "./wasmBridge";
 import { WasmBridge } from "./wasmBridge";
 
-export interface FrameState { timeSeconds: number; renderCommands: RenderCommandView[]; }
+export interface FrameState {
+  timeSeconds: number;
+  /** @deprecated 호환성 유지용. hot path에서는 renderCommandBuffer를 사용하세요. */
+  renderCommands: RenderCommandView[];
+  renderCommandBuffer: RenderCommandBufferView;
+}
 export interface FerrumEngine { start():void; pause():void; resume():void; stop():void; destroy():void; time():number; version():string; }
 
 export async function createEngine(
@@ -20,7 +25,12 @@ export async function createEngine(
       rustEngine.set_input(input.w, input.a, input.s, input.d, input.space, input.mouseLeft, input.mouseX, input.mouseY);
     }
     rustEngine.update(deltaSeconds);
-    onFrame?.({ timeSeconds: rustEngine.time(), renderCommands: bridge.readRenderCommands() });
+    const renderCommandBuffer = bridge.readRenderCommandBuffer();
+    onFrame?.({
+      timeSeconds: rustEngine.time(),
+      renderCommandBuffer,
+      renderCommands: bridge.readRenderCommands(),
+    });
   });
 
   return {
