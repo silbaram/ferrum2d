@@ -27,9 +27,13 @@ Input DOM events
 
 - 게임 시간, scene state, score, player/enemy/bullet 상태 관리
 - entity id, transform, velocity, sprite, collider 저장
+- player-follow 2D camera와 viewport 상태 관리
+- MVP 2D physics 처리: velocity integration, collider 기반 world bounds clamp
 - AABB 충돌 판정과 entity despawn 처리
 - enemy spawn, chase, bullet lifetime, game over, restart 처리
 - render command와 audio event 생성
+
+`Engine`은 Wasm API, 입력 snapshot, world/camera 소유권, render/audio buffer 생성을 조정한다. Top-down Shooter 전용 규칙은 `ShooterScene`이 소유하며 scene state, score, 발사/스폰/충돌 결과, texture/sound id 적용을 처리한다.
 
 Rust core는 DOM, Canvas, WebGL, Web Audio, fetch 같은 브라우저 API를 직접 호출하지 않는다.
 
@@ -38,10 +42,14 @@ Rust core는 DOM, Canvas, WebGL, Web Audio, fetch 같은 브라우저 API를 직
 Rust는 wasm-bindgen으로 브라우저에서 호출 가능한 `Engine`을 노출한다. 프레임 hot path에서는 entity별 JS/Wasm 왕복 호출을 만들지 않고 다음 형태를 사용한다.
 
 - 입력: TypeScript가 프레임마다 snapshot 값을 `set_input(...)`으로 한 번 전달한다.
+- viewport: TypeScript가 canvas logical size를 `set_viewport_size(...)`로 전달한다.
+- scene config: TypeScript가 Game Spec JSON을 검증한 뒤 `set_shooter_resolved_config(...)`로 숫자형 설정을 한 번에 전달한다.
 - 업데이트: `update(delta_seconds)` 한 번으로 Rust 내부 루프를 실행한다.
 - 렌더링: `render_command_ptr()`와 `render_command_len()`으로 bulk buffer를 노출한다.
 - 오디오: `audio_event_ptr()`와 `audio_event_len()`으로 bulk buffer를 노출한다.
 - 이벤트 정리: TypeScript가 오디오 이벤트를 읽고 재생한 뒤 `clear_events()`를 호출한다.
+
+TypeScript 프레임 상태는 `renderCommandBuffer`를 기본 렌더링 경로로 사용한다. object 배열 형태의 `renderCommands`는 deprecated 호환 API이며, 매 프레임 allocation을 만들지 않도록 명시 옵션을 켠 경우에만 decode한다.
 
 ### TypeScript 플랫폼 레이어
 
@@ -101,6 +109,8 @@ pub struct SpriteRenderCommand {
 
 현재 크기는 `f32` 13개, 총 52 bytes다. TypeScript는 Rust가 export하는 `sprite_render_command_floats()`와 `sprite_render_command_bytes()`로 ABI를 검증한다.
 
+MVP의 `SpriteRenderCommand` 좌표는 camera가 적용된 screen-space 좌표다. Rust core에서 HUD나 overlay용 screen-space command를 추가하려면 world-space sprite command와 구분되는 별도 command type 또는 layer 정책을 먼저 정의한다.
+
 ### AudioEvent
 
 Rust shared struct:
@@ -120,12 +130,13 @@ pub struct AudioEvent {
 
 1. `InputManager`가 현재 keyboard/mouse snapshot을 반환한다.
 2. `createEngine`이 Rust `Engine.set_input(...)`을 호출한다.
-3. Rust `Engine.update(delta)`가 scene/game/world/collision/audio/render 상태를 갱신한다.
-4. TypeScript가 audio event buffer를 읽고 `AudioManager`로 재생한다.
-5. TypeScript가 `clear_events()`를 호출해 중복 재생을 방지한다.
-6. TypeScript가 render command buffer를 읽는다.
-7. `WebGL2Renderer`가 화면을 clear하고 command buffer를 draw한다.
-8. 예제가 DebugOverlay와 HUD를 갱신한다.
+3. `createEngine`이 canvas logical viewport를 Rust `Engine.set_viewport_size(...)`로 전달한다.
+4. Rust `Engine.update(delta)`가 scene/game/camera/physics/collision/audio/render 상태를 갱신한다.
+5. TypeScript가 audio event buffer를 읽고 `AudioManager`로 재생한다.
+6. TypeScript가 `clear_events()`를 호출해 중복 재생을 방지한다.
+7. TypeScript가 render command buffer를 읽는다.
+8. `WebGL2Renderer`가 화면을 clear하고 command buffer를 draw한다.
+9. 예제가 DebugOverlay와 HUD를 갱신한다.
 
 ## 에셋 로딩
 
@@ -133,9 +144,13 @@ pub struct AudioEvent {
 
 - texture: `TextureRegistry`가 이름별 numeric `texture_id`를 발급한다.
 - sound: `SoundRegistry`가 이름별 numeric `sound_id`를 발급한다.
-- JSON: MVP에서는 명시 로드와 조회만 제공한다.
+- JSON: platform layer는 JSON을 로드하고 보관한다. Top-down Shooter 예제가 `json.game`을 Game Spec으로 검증한 뒤 Rust scene config, prefab template, enemy behavior preset에 적용한다.
 
 Rust에는 URL, ImageBitmap, WebGLTexture, AudioBuffer를 전달하지 않는다. Rust는 `set_texture_ids(...)`, `set_sound_ids(...)`로 받은 numeric id만 command/event에 기록한다.
+
+Game Spec도 Rust에 원본 JSON이나 문자열 object를 넘기지 않는다. TypeScript가 `world.width`, `player.speed`, `enemies.spawnInterval`, `enemies.behavior`, `enemies.spawnPattern`, `enemies.health`, `enemies.scoreReward`, `weapons.damage`, `weapons.cooldown`, `prefabs.enemy.width` 같은 필드를 검증하고 기본값을 채운 뒤 `set_shooter_resolved_config(...)`로 숫자만 전달한다. 이 경로는 게임 시작 전 설정용이며 프레임 hot path가 아니다.
+
+CLI 검증은 `pnpm validate:game-spec`로 실행한다. 이 명령은 `@ferrum2d/ferrum-web`을 빌드한 뒤 같은 `resolveShooterGameSpec(...)` 검증 함수를 사용해 예제 `game.json`을 확인한다.
 
 ## DebugOverlay와 stats
 
@@ -152,6 +167,7 @@ DebugOverlay는 DOM 기반이며 `debug: false` 또는 예제 URL의 `?debug=fal
 - Rust update time
 - render time
 - mouse position
+- camera position
 - game state
 - score
 
@@ -160,7 +176,8 @@ DebugOverlay는 DOM 기반이며 `debug: false` 또는 예제 URL의 `?debug=fal
 Rust 테스트:
 
 - entity id generation
-- transform update
+- physics velocity integration과 bounds clamp
+- camera follow와 render command offset
 - AABB collision
 - bullet lifetime
 - game state transition
@@ -172,6 +189,7 @@ TypeScript 테스트:
 - GameLoop start/stop
 - InputManager snapshot
 - Asset manifest parsing
+- Shooter Game Spec validation/apply
 - render command parsing
 
 WebGL2 실제 렌더링은 Node 테스트에서 다루지 않고 예제 실행 기반 smoke/manual check로 확인한다.

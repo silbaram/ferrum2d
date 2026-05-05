@@ -1,9 +1,37 @@
-import { DebugOverlay, InputManager, WebGL2Renderer, createEngine } from "@ferrum2d/ferrum-web";
+import {
+  DebugOverlay,
+  InputManager,
+  WebGL2Renderer,
+  createEngine,
+  type FerrumEngine,
+  type LoadedAssets,
+  type ShooterGameSpec,
+} from "@ferrum2d/ferrum-web";
 
 function gameStateText(code: number): string {
   if (code === 0) return "Title";
   if (code === 1) return "Playing";
   return "GameOver";
+}
+
+function applyTopdownShooterAssets(engine: FerrumEngine, assets: LoadedAssets): void {
+  const player = assets.textures.tryTextureId("player");
+  const enemy = assets.textures.tryTextureId("enemy");
+  const bullet = assets.textures.tryTextureId("bullet");
+  if (player !== undefined && enemy !== undefined && bullet !== undefined) {
+    engine.setTextureIds({ player, enemy, bullet });
+  }
+
+  const shoot = assets.sounds.trySoundId("shoot");
+  const hit = assets.sounds.trySoundId("hit");
+  const gameOver = assets.sounds.trySoundId("gameOver") ?? assets.sounds.trySoundId("game_over");
+  if (shoot !== undefined && hit !== undefined && gameOver !== undefined) {
+    engine.setSoundIds({ shoot, hit, gameOver });
+  }
+
+  if (assets.json.game !== undefined) {
+    engine.setGameSpec(assets.json.game as ShooterGameSpec);
+  }
 }
 
 async function bootstrap(): Promise<void> {
@@ -28,7 +56,6 @@ async function bootstrap(): Promise<void> {
 
   const engine = await createEngine((frame) => {
     const renderStartMs = performance.now();
-    renderer.resize();
     renderer.render();
     renderer.renderCommands(frame.renderCommandBuffer);
     const renderStats = renderer.stats();
@@ -53,10 +80,15 @@ async function bootstrap(): Promise<void> {
       renderTimeMs,
       mouseX: frame.mouseX,
       mouseY: frame.mouseY,
+      cameraX: frame.cameraX,
+      cameraY: frame.cameraY,
       gameState: gameStateText(frame.gameState),
       score: frame.score,
     });
-  }, () => input.snapshot(), renderer);
+  }, () => input.snapshot(), renderer, () => {
+    renderer.resize();
+    return renderer.viewportSize();
+  });
 
   const assets = await engine.loadAssets({
     textures: {
@@ -69,9 +101,13 @@ async function bootstrap(): Promise<void> {
       hit: "/assets/hit.wav",
       gameOver: "/assets/game-over.wav",
     },
+    json: {
+      game: "/game.json",
+    },
   }, ({ loaded, total, name }) => {
     assetProgressText = `assets: ${loaded}/${total}${name ? ` ${name}` : ""}`;
   });
+  applyTopdownShooterAssets(engine, assets);
   assetProgressText = `assets: ${assets.progress.loaded}/${assets.progress.total}`;
 
   engine.start();

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ferrum2d.local/schemas/shooter-game-spec.schema.json",
+  "title": "Ferrum2D Shooter Game Spec",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "world": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "player": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "speed": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "enemies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "speed": { "type": "number", "exclusiveMinimum": 0 },
+        "spawnInterval": { "type": "number", "exclusiveMinimum": 0 },
+        "behavior": { "enum": ["chase", "drift", "static"] },
+        "spawnPattern": { "enum": ["edge", "corners", "center"] },
+        "health": { "type": "number", "exclusiveMinimum": 0 },
+        "scoreReward": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "weapons": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bulletSpeed": { "type": "number", "exclusiveMinimum": 0 },
+        "cooldown": { "type": "number", "exclusiveMinimum": 0 },
+        "lifetime": { "type": "number", "exclusiveMinimum": 0 },
+        "damage": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "prefabs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "player": { "$ref": "#/$defs/prefab" },
+        "enemy": { "$ref": "#/$defs/prefab" },
+        "bullet": { "$ref": "#/$defs/prefab" }
+      }
+    }
+  },
+  "$defs": {
+    "prefab": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    }
+  }
+}

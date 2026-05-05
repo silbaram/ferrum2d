@@ -9,6 +9,8 @@ export interface DebugOverlayMetrics {
   renderTimeMs: number;
   mouseX: number;
   mouseY: number;
+  cameraX: number;
+  cameraY: number;
   gameState: string;
   score: number;
 }
@@ -66,6 +68,7 @@ export class DebugOverlay {
       `draw calls: ${metrics.drawCalls}`,
       `batches: ${metrics.batchCount}`,
       `mouse: ${metrics.mouseX.toFixed(1)}, ${metrics.mouseY.toFixed(1)}`,
+      `camera: ${metrics.cameraX.toFixed(1)}, ${metrics.cameraY.toFixed(1)}`,
       `state: ${metrics.gameState}`,
       `score: ${metrics.score}`,
     ].join("\n");

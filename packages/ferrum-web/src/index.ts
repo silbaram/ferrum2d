@@ -1,5 +1,21 @@
 export { createEngine } from "./createEngine";
-export type { AssetHost, FerrumEngine, FrameState, ShooterSoundIds, ShooterTextureIds } from "./createEngine";
+export type {
+  AssetHost,
+  CreateEngineOptions,
+  FerrumEngine,
+  FrameState,
+  ShooterSoundIds,
+  ShooterTextureIds,
+  ViewportSnapshot,
+} from "./createEngine";
+export { applyShooterGameSpec, resolveShooterGameSpec } from "./gameSpec";
+export type {
+  ResolvedShooterGameSpec,
+  ShooterEnemyBehaviorPreset,
+  ShooterGameSpec,
+  ShooterGameSpecTarget,
+  ShooterPrefabSpec,
+} from "./gameSpec";
 export type { Renderer, RendererStats } from "./renderer";
 export { WebGL2Renderer } from "./webgl2Renderer";
 export { TextureManager } from "./textureManager";

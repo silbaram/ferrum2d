@@ -14,6 +14,8 @@ export class SpriteBatch {
   private readonly vbo: WebGLBuffer;
   private readonly resolutionLocation: WebGLUniformLocation;
   private readonly textureLocation: WebGLUniformLocation;
+  private vertexData = new Float32Array(0);
+  private vertexCapacityFloats = 0;
 
   constructor(private readonly gl: WebGL2RenderingContext) {
     this.program = this.createProgram();
@@ -79,7 +81,8 @@ export class SpriteBatch {
     const commandCount = endCommand - startCommand;
     if (commandCount === 0) return 0;
 
-    const vertices = new Float32Array(commandCount * 6 * 8);
+    const floatCount = commandCount * 6 * 8;
+    const vertices = this.ensureVertexCapacity(floatCount);
 
     for (let i = startCommand; i < endCommand; i += 1) {
       const offset = i * commands.floatsPerCommand;
@@ -98,21 +101,64 @@ export class SpriteBatch {
       const batchIndex = i - startCommand;
       const base = batchIndex * 48;
 
-      const quad = [
-        x, y, u0, v0, r, g, b, a,
-        x + w, y, u1, v0, r, g, b, a,
-        x, y + h, u0, v1, r, g, b, a,
-        x, y + h, u0, v1, r, g, b, a,
-        x + w, y, u1, v0, r, g, b, a,
-        x + w, y + h, u1, v1, r, g, b, a,
-      ];
-      vertices.set(quad, base);
+      vertices[base] = x;
+      vertices[base + 1] = y;
+      vertices[base + 2] = u0;
+      vertices[base + 3] = v0;
+      vertices[base + 4] = r;
+      vertices[base + 5] = g;
+      vertices[base + 6] = b;
+      vertices[base + 7] = a;
+      vertices[base + 8] = x + w;
+      vertices[base + 9] = y;
+      vertices[base + 10] = u1;
+      vertices[base + 11] = v0;
+      vertices[base + 12] = r;
+      vertices[base + 13] = g;
+      vertices[base + 14] = b;
+      vertices[base + 15] = a;
+      vertices[base + 16] = x;
+      vertices[base + 17] = y + h;
+      vertices[base + 18] = u0;
+      vertices[base + 19] = v1;
+      vertices[base + 20] = r;
+      vertices[base + 21] = g;
+      vertices[base + 22] = b;
+      vertices[base + 23] = a;
+      vertices[base + 24] = x;
+      vertices[base + 25] = y + h;
+      vertices[base + 26] = u0;
+      vertices[base + 27] = v1;
+      vertices[base + 28] = r;
+      vertices[base + 29] = g;
+      vertices[base + 30] = b;
+      vertices[base + 31] = a;
+      vertices[base + 32] = x + w;
+      vertices[base + 33] = y;
+      vertices[base + 34] = u1;
+      vertices[base + 35] = v0;
+      vertices[base + 36] = r;
+      vertices[base + 37] = g;
+      vertices[base + 38] = b;
+      vertices[base + 39] = a;
+      vertices[base + 40] = x + w;
+      vertices[base + 41] = y + h;
+      vertices[base + 42] = u1;
+      vertices[base + 43] = v1;
+      vertices[base + 44] = r;
+      vertices[base + 45] = g;
+      vertices[base + 46] = b;
+      vertices[base + 47] = a;
     }
 
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vbo);
-    this.gl.bufferData(this.gl.ARRAY_BUFFER, vertices, this.gl.DYNAMIC_DRAW);
+    if (this.vertexCapacityFloats < floatCount) {
+      this.vertexCapacityFloats = this.nextPowerOfTwo(floatCount);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, this.vertexCapacityFloats * Float32Array.BYTES_PER_ELEMENT, this.gl.DYNAMIC_DRAW);
+    }
+    this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, vertices, 0, floatCount);
 
     this.gl.uniform2f(this.resolutionLocation, resolution[0], resolution[1]);
     this.gl.activeTexture(this.gl.TEXTURE0);
@@ -126,6 +172,17 @@ export class SpriteBatch {
   private textureIdAt(commands: RenderCommandBufferView, commandIndex: number): number {
     const offset = commandIndex * commands.floatsPerCommand;
     return Math.trunc(commands.buffer[offset + 12]);
+  }
+
+  private ensureVertexCapacity(floatCount: number): Float32Array {
+    if (this.vertexData.length < floatCount) {
+      this.vertexData = new Float32Array(this.nextPowerOfTwo(floatCount));
+    }
+    return this.vertexData;
+  }
+
+  private nextPowerOfTwo(value: number): number {
+    return 2 ** Math.ceil(Math.log2(Math.max(value, 1)));
   }
 
   destroy(): void { this.gl.deleteBuffer(this.vbo); this.gl.deleteVertexArray(this.vao); this.gl.deleteProgram(this.program); }

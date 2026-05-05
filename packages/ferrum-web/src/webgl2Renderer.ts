@@ -71,6 +71,13 @@ export class WebGL2Renderer implements Renderer {
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
   }
 
+  viewportSize(): { width: number; height: number } {
+    return {
+      width: this.logicalWidth,
+      height: this.logicalHeight,
+    };
+  }
+
   render(): void {
     const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1.0];
     this.gl.clearColor(clear[0], clear[1], clear[2], clear[3]);

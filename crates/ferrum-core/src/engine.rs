@@ -1,74 +1,22 @@
 use wasm_bindgen::prelude::*;
 
 use crate::audio_event::AudioEvent;
-use crate::collision::CollisionSystem;
-use crate::components::{CollisionLayer, Velocity};
-use crate::entity::Entity;
+use crate::camera::Camera2D;
 use crate::game_state::GameState;
 use crate::input::InputState;
 use crate::render_command::SpriteRenderCommand;
+use crate::shooter_scene::{EnemyBehavior, EnemySpawnPattern, ShooterConfig, ShooterScene};
 use crate::world::World;
 
-const DEFAULT_TEXTURE_ID: u32 = 0;
-const DEFAULT_SOUND_ID: u32 = 0;
-const PLAYER_BASE_SPEED: f32 = 180.0;
-const BULLET_SPEED: f32 = 360.0;
-const FIRE_COOLDOWN: f32 = 0.12;
-const ENEMY_SPEED: f32 = 72.0;
-const ENEMY_SPAWN_INTERVAL: f32 = 1.0;
-const WORLD_WIDTH: f32 = 800.0;
-const WORLD_HEIGHT: f32 = 480.0;
-const SHOOT_VOLUME: f32 = 0.35;
-const HIT_VOLUME: f32 = 0.45;
-const GAME_OVER_VOLUME: f32 = 0.65;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct TextureIds {
-    player: u32,
-    enemy: u32,
-    bullet: u32,
-}
-
-impl Default for TextureIds {
-    fn default() -> Self {
-        Self {
-            player: DEFAULT_TEXTURE_ID,
-            enemy: DEFAULT_TEXTURE_ID,
-            bullet: DEFAULT_TEXTURE_ID,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct SoundIds {
-    shoot: u32,
-    hit: u32,
-    game_over: u32,
-}
-
-impl Default for SoundIds {
-    fn default() -> Self {
-        Self {
-            shoot: DEFAULT_SOUND_ID,
-            hit: DEFAULT_SOUND_ID,
-            game_over: DEFAULT_SOUND_ID,
-        }
-    }
-}
+const DEFAULT_VIEWPORT_WIDTH: f32 = 800.0;
+const DEFAULT_VIEWPORT_HEIGHT: f32 = 480.0;
 
 #[wasm_bindgen]
 pub struct Engine {
     elapsed_seconds: f64,
-    score: u32,
-    fire_cooldown_seconds: f32,
-    enemy_spawn_timer: f32,
     input: InputState,
-    previous_space: u8,
-    previous_enter: u8,
-    game_state: GameState,
-    spawn_index: u32,
-    texture_ids: TextureIds,
-    sound_ids: SoundIds,
+    scene: ShooterScene,
+    camera: Camera2D,
     world: World,
     render_commands: Vec<SpriteRenderCommand>,
     audio_events: Vec<AudioEvent>,
@@ -80,24 +28,17 @@ impl Engine {
     pub fn new() -> Self {
         let mut engine = Self {
             elapsed_seconds: 0.0,
-            score: 0,
-            fire_cooldown_seconds: 0.0,
-            enemy_spawn_timer: ENEMY_SPAWN_INTERVAL,
             input: InputState::default(),
-            previous_space: 0,
-            previous_enter: 0,
-            game_state: GameState::Title,
-            spawn_index: 0,
-            texture_ids: TextureIds::default(),
-            sound_ids: SoundIds::default(),
+            scene: ShooterScene::new(),
+            camera: Camera2D::new(DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT),
             world: World::default(),
             render_commands: Vec::with_capacity(256),
             audio_events: Vec::with_capacity(16),
         };
-        engine.reset_game();
-        engine.game_state = GameState::Title;
+        engine.reset_to_title();
         engine
     }
+
     #[allow(clippy::too_many_arguments)]
     pub fn set_input(
         &mut self,
@@ -125,105 +66,225 @@ impl Engine {
     }
 
     pub fn set_texture_ids(&mut self, player: u32, enemy: u32, bullet: u32) {
-        self.texture_ids = TextureIds {
-            player,
-            enemy,
-            bullet,
-        };
-        self.apply_texture_ids_to_existing_sprites();
+        self.scene
+            .set_texture_ids(&mut self.world, player, enemy, bullet);
     }
 
     pub fn set_sound_ids(&mut self, shoot: u32, hit: u32, game_over: u32) {
-        self.sound_ids = SoundIds {
-            shoot,
-            hit,
-            game_over,
-        };
+        self.scene.set_sound_ids(shoot, hit, game_over);
+    }
+
+    pub fn set_viewport_size(&mut self, width: f32, height: f32) {
+        self.camera.set_viewport_size(width, height);
+        self.scene
+            .update_camera_follow(&self.world, &mut self.camera);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_shooter_config(
+        &mut self,
+        world_width: f32,
+        world_height: f32,
+        player_speed: f32,
+        enemy_speed: f32,
+        enemy_spawn_interval: f32,
+        bullet_speed: f32,
+        fire_cooldown: f32,
+        bullet_lifetime: f32,
+    ) {
+        self.scene.set_config(
+            &mut self.world,
+            &mut self.camera,
+            &mut self.audio_events,
+            ShooterConfig::from_values(
+                world_width,
+                world_height,
+                player_speed,
+                enemy_speed,
+                enemy_spawn_interval,
+                bullet_speed,
+                fire_cooldown,
+                bullet_lifetime,
+            ),
+        );
+    }
+
+    pub fn set_shooter_prefabs(
+        &mut self,
+        player_width: f32,
+        player_height: f32,
+        enemy_width: f32,
+        enemy_height: f32,
+        bullet_width: f32,
+        bullet_height: f32,
+    ) {
+        self.scene.set_prefabs(
+            &mut self.world,
+            &mut self.camera,
+            &mut self.audio_events,
+            player_width,
+            player_height,
+            enemy_width,
+            enemy_height,
+            bullet_width,
+            bullet_height,
+        );
+    }
+
+    pub fn set_shooter_behavior(&mut self, enemy_behavior: u32) {
+        self.scene.set_enemy_behavior(
+            &mut self.world,
+            &mut self.camera,
+            &mut self.audio_events,
+            EnemyBehavior::from_code(enemy_behavior),
+        );
+    }
+
+    pub fn set_shooter_spawn_pattern(&mut self, enemy_spawn_pattern: u32) {
+        self.scene.set_enemy_spawn_pattern(
+            &mut self.world,
+            &mut self.camera,
+            &mut self.audio_events,
+            EnemySpawnPattern::from_code(enemy_spawn_pattern),
+        );
+    }
+
+    pub fn set_shooter_combat(&mut self, enemy_health: f32, bullet_damage: f32, score_reward: u32) {
+        self.scene.set_combat(
+            &mut self.world,
+            &mut self.camera,
+            &mut self.audio_events,
+            enemy_health,
+            bullet_damage,
+            score_reward,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_shooter_resolved_config(
+        &mut self,
+        world_width: f32,
+        world_height: f32,
+        player_speed: f32,
+        enemy_speed: f32,
+        enemy_spawn_interval: f32,
+        bullet_speed: f32,
+        fire_cooldown: f32,
+        bullet_lifetime: f32,
+        player_width: f32,
+        player_height: f32,
+        enemy_width: f32,
+        enemy_height: f32,
+        bullet_width: f32,
+        bullet_height: f32,
+        enemy_behavior: u32,
+        enemy_spawn_pattern: u32,
+        enemy_health: f32,
+        bullet_damage: f32,
+        score_reward: u32,
+    ) {
+        let config = ShooterConfig::from_values(
+            world_width,
+            world_height,
+            player_speed,
+            enemy_speed,
+            enemy_spawn_interval,
+            bullet_speed,
+            fire_cooldown,
+            bullet_lifetime,
+        )
+        .with_prefabs(
+            player_width,
+            player_height,
+            enemy_width,
+            enemy_height,
+            bullet_width,
+            bullet_height,
+        )
+        .with_enemy_behavior(EnemyBehavior::from_code(enemy_behavior))
+        .with_enemy_spawn_pattern(EnemySpawnPattern::from_code(enemy_spawn_pattern))
+        .with_combat(enemy_health, bullet_damage, score_reward);
+
+        self.scene.set_config(
+            &mut self.world,
+            &mut self.camera,
+            &mut self.audio_events,
+            config,
+        );
     }
 
     pub fn update(&mut self, delta: f64) {
         let dt = delta as f32;
         self.elapsed_seconds += delta;
-        let space_pressed = self.input.space == 1 && self.previous_space == 0;
-        let enter_pressed = self.input.enter == 1 && self.previous_enter == 0;
-        match self.game_state {
-            GameState::Title => {
-                if space_pressed || enter_pressed {
-                    self.game_state = GameState::Playing;
-                }
-            }
-            GameState::GameOver => {
-                if space_pressed {
-                    self.reset_game();
-                    self.game_state = GameState::Playing;
-                }
-            }
-            GameState::Playing => {
-                self.tick_playing_timers(dt);
-                self.apply_player_input();
-                self.update_enemy_velocity();
-                self.world.update(dt);
-                self.clamp_player_to_world();
-                self.update_bullets(dt);
-                self.spawn_enemy_if_needed();
-                self.handle_collisions();
-            }
-        }
-        self.previous_space = self.input.space;
-        self.previous_enter = self.input.enter;
+        self.scene.update(
+            &mut self.world,
+            &mut self.camera,
+            self.input,
+            &mut self.audio_events,
+            dt,
+        );
         self.build_render_commands();
     }
+
     pub fn time(&self) -> f64 {
         self.elapsed_seconds
     }
+
     pub fn render_command_ptr(&self) -> *const SpriteRenderCommand {
         self.render_commands.as_ptr()
     }
+
     pub fn render_command_len(&self) -> usize {
         self.render_commands.len()
     }
+
     pub fn audio_event_ptr(&self) -> *const AudioEvent {
         self.audio_events.as_ptr()
     }
+
     pub fn audio_event_len(&self) -> usize {
         self.audio_events.len()
     }
+
     pub fn clear_events(&mut self) {
         self.audio_events.clear();
     }
+
     pub fn score(&self) -> u32 {
-        self.score
+        self.scene.score()
     }
+
     pub fn entity_count(&self) -> usize {
         self.world.alive_count()
     }
+
     pub fn game_state(&self) -> u32 {
         self.game_state_code()
     }
+
     pub fn game_state_code(&self) -> u32 {
-        match self.game_state {
+        match self.scene.game_state() {
             GameState::Title => 0,
             GameState::Playing => 1,
             GameState::GameOver => 2,
         }
     }
+
     pub fn sprite_count(&self) -> usize {
         self.render_commands.len()
     }
+
+    pub fn camera_x(&self) -> f32 {
+        self.camera.x
+    }
+
+    pub fn camera_y(&self) -> f32 {
+        self.camera.y
+    }
+
     pub fn reset_game(&mut self) {
-        self.score = 0;
-        self.fire_cooldown_seconds = 0.0;
-        self.enemy_spawn_timer = ENEMY_SPAWN_INTERVAL;
-        self.previous_space = 0;
-        self.previous_enter = 0;
-        self.spawn_index = 0;
-        self.audio_events.clear();
-        self.world = World::default();
-        self.world.spawn_player(
-            WORLD_WIDTH * 0.5,
-            WORLD_HEIGHT * 0.5,
-            self.texture_ids.player,
-        );
+        self.scene
+            .reset_playing(&mut self.world, &mut self.camera, &mut self.audio_events);
     }
 }
 
@@ -234,278 +295,11 @@ impl Default for Engine {
 }
 
 impl Engine {
-    fn tick_playing_timers(&mut self, delta: f32) {
-        if self.fire_cooldown_seconds > 0.0 {
-            self.fire_cooldown_seconds = (self.fire_cooldown_seconds - delta).max(0.0);
-        }
-        if self.enemy_spawn_timer > 0.0 {
-            self.enemy_spawn_timer -= delta;
-        }
+    fn reset_to_title(&mut self) {
+        self.scene
+            .reset_to_title(&mut self.world, &mut self.camera, &mut self.audio_events);
     }
 
-    fn normalized_input_direction(&self) -> Velocity {
-        let mut x: f32 = 0.0;
-        let mut y: f32 = 0.0;
-        if self.input.w == 1 {
-            y -= 1.0;
-        }
-        if self.input.s == 1 {
-            y += 1.0;
-        }
-        if self.input.a == 1 {
-            x -= 1.0;
-        }
-        if self.input.d == 1 {
-            x += 1.0;
-        }
-        let len = (x * x + y * y).sqrt();
-        if len > 0.0 {
-            Velocity {
-                vx: x / len,
-                vy: y / len,
-            }
-        } else {
-            Velocity::default()
-        }
-    }
-    fn apply_player_input(&mut self) {
-        let Some(player) = self.world.player else {
-            return;
-        };
-        let dir = self.normalized_input_direction();
-        self.world.velocities[player.id as usize] = Some(Velocity {
-            vx: dir.vx * PLAYER_BASE_SPEED,
-            vy: dir.vy * PLAYER_BASE_SPEED,
-        });
-        let wants_fire = self.input.space == 1 || self.input.mouse_left == 1;
-        if wants_fire && self.fire_cooldown_seconds <= 0.0 {
-            self.fire_bullet_toward_mouse(player);
-            self.fire_cooldown_seconds = FIRE_COOLDOWN;
-        }
-    }
-    fn fire_bullet_toward_mouse(&mut self, player: Entity) {
-        let Some(player_t) = self.world.transforms[player.id as usize] else {
-            return;
-        };
-        let dx = self.input.mouse_x - player_t.x;
-        let dy = self.input.mouse_y - player_t.y;
-        let len = (dx * dx + dy * dy).sqrt();
-        let (nx, ny) = if len > 0.0001 {
-            (dx / len, dy / len)
-        } else {
-            (1.0, 0.0)
-        };
-        self.world.spawn_bullet(
-            player_t.x + nx * 20.0,
-            player_t.y + ny * 20.0,
-            nx * BULLET_SPEED,
-            ny * BULLET_SPEED,
-            self.texture_ids.bullet,
-        );
-        self.push_audio_event(self.sound_ids.shoot, SHOOT_VOLUME, 1.0);
-    }
-
-    fn clamp_player_to_world(&mut self) {
-        let Some(player) = self.world.player else {
-            return;
-        };
-        let i = player.id as usize;
-        let Some(collider) = self.world.colliders[i] else {
-            return;
-        };
-        if let Some(transform) = self.world.transforms[i].as_mut() {
-            transform.x = transform
-                .x
-                .clamp(collider.half_width, WORLD_WIDTH - collider.half_width);
-            transform.y = transform
-                .y
-                .clamp(collider.half_height, WORLD_HEIGHT - collider.half_height);
-        }
-    }
-
-    fn update_enemy_velocity(&mut self) {
-        let Some(player) = self.world.player else {
-            return;
-        };
-        let Some(player_t) = self.world.transforms[player.id as usize] else {
-            return;
-        };
-        for i in 0..self.world.transforms.len() {
-            if !self.world.alive[i] {
-                continue;
-            }
-            let Some(collider) = self.world.colliders[i] else {
-                continue;
-            };
-            if collider.layer != CollisionLayer::Enemy {
-                continue;
-            }
-            let Some(enemy_t) = self.world.transforms[i] else {
-                continue;
-            };
-            let dx = player_t.x - enemy_t.x;
-            let dy = player_t.y - enemy_t.y;
-            let len = (dx * dx + dy * dy).sqrt();
-            if len > 0.0001 {
-                self.world.velocities[i] = Some(Velocity {
-                    vx: dx / len * ENEMY_SPEED,
-                    vy: dy / len * ENEMY_SPEED,
-                });
-            }
-        }
-    }
-    fn update_bullets(&mut self, delta: f32) {
-        let mut despawn = Vec::new();
-        for i in 0..self.world.transforms.len() {
-            if !self.world.alive[i] {
-                continue;
-            }
-            if let Some(time_left) = self.world.bullet_lifetimes[i].as_mut() {
-                *time_left -= delta;
-            }
-            let is_bullet = self.world.colliders[i]
-                .map(|c| c.layer == CollisionLayer::Bullet)
-                .unwrap_or(false);
-            if !is_bullet {
-                continue;
-            }
-            if self.world.bullet_lifetimes[i].is_some_and(|t| t <= 0.0) {
-                despawn.push(Entity {
-                    id: i as u32,
-                    generation: self.world.generations[i],
-                });
-                continue;
-            }
-            if let Some(t) = self.world.transforms[i] {
-                if t.x < -20.0
-                    || t.x > WORLD_WIDTH + 20.0
-                    || t.y < -20.0
-                    || t.y > WORLD_HEIGHT + 20.0
-                {
-                    despawn.push(Entity {
-                        id: i as u32,
-                        generation: self.world.generations[i],
-                    });
-                }
-            }
-        }
-        for e in despawn {
-            self.world.despawn(e);
-        }
-    }
-    fn spawn_enemy_if_needed(&mut self) {
-        if self.enemy_spawn_timer > 0.0 {
-            return;
-        }
-        self.enemy_spawn_timer = ENEMY_SPAWN_INTERVAL;
-        let idx = self.spawn_index;
-        self.spawn_index = self.spawn_index.wrapping_add(1);
-        let lane = (idx % 6) as f32;
-        let segment = idx % 4;
-        let (x, y) = match segment {
-            0 => (lane * (WORLD_WIDTH / 5.0), 0.0),
-            1 => (WORLD_WIDTH, lane * (WORLD_HEIGHT / 5.0)),
-            2 => (lane * (WORLD_WIDTH / 5.0), WORLD_HEIGHT),
-            _ => (0.0, lane * (WORLD_HEIGHT / 5.0)),
-        };
-        self.world.spawn_enemy(x, y, self.texture_ids.enemy);
-    }
-
-    fn apply_texture_ids_to_existing_sprites(&mut self) {
-        for i in 0..self.world.sprites.len() {
-            let Some(collider) = self.world.colliders[i] else {
-                continue;
-            };
-            let Some(sprite) = self.world.sprites[i].as_mut() else {
-                continue;
-            };
-            sprite.texture_id = match collider.layer {
-                CollisionLayer::Player => self.texture_ids.player,
-                CollisionLayer::Enemy => self.texture_ids.enemy,
-                CollisionLayer::Bullet => self.texture_ids.bullet,
-            };
-        }
-    }
-
-    fn push_audio_event(&mut self, sound_id: u32, volume: f32, pitch: f32) {
-        if sound_id == DEFAULT_SOUND_ID {
-            return;
-        }
-
-        self.audio_events.push(AudioEvent {
-            sound_id: sound_id as f32,
-            volume,
-            pitch,
-        });
-    }
-
-    fn handle_collisions(&mut self) {
-        let pairs = CollisionSystem::build_pairs(&self.world);
-        let mut despawn: Vec<Entity> = Vec::new();
-        let mut marked_for_despawn = vec![false; self.world.alive.len()];
-
-        for p in &pairs {
-            let ai = p.a.id as usize;
-            let bi = p.b.id as usize;
-            if !self.world.alive[ai] || !self.world.alive[bi] {
-                continue;
-            }
-            let Some(ac) = self.world.colliders[ai] else {
-                continue;
-            };
-            let Some(bc) = self.world.colliders[bi] else {
-                continue;
-            };
-            match (ac.layer, bc.layer) {
-                (CollisionLayer::Bullet, CollisionLayer::Enemy)
-                | (CollisionLayer::Enemy, CollisionLayer::Bullet) => {
-                    if marked_for_despawn[ai] || marked_for_despawn[bi] {
-                        continue;
-                    }
-                    marked_for_despawn[ai] = true;
-                    marked_for_despawn[bi] = true;
-                    despawn.push(p.a);
-                    despawn.push(p.b);
-                    self.score = self.score.saturating_add(1);
-                    self.push_audio_event(self.sound_ids.hit, HIT_VOLUME, 1.0);
-                }
-                _ => {}
-            }
-        }
-
-        for p in &pairs {
-            let ai = p.a.id as usize;
-            let bi = p.b.id as usize;
-            if marked_for_despawn[ai]
-                || marked_for_despawn[bi]
-                || !self.world.alive[ai]
-                || !self.world.alive[bi]
-            {
-                continue;
-            }
-            let Some(ac) = self.world.colliders[ai] else {
-                continue;
-            };
-            let Some(bc) = self.world.colliders[bi] else {
-                continue;
-            };
-            match (ac.layer, bc.layer) {
-                (CollisionLayer::Player, CollisionLayer::Enemy)
-                | (CollisionLayer::Enemy, CollisionLayer::Player) => {
-                    if self.game_state != GameState::GameOver {
-                        self.game_state = GameState::GameOver;
-                        self.push_audio_event(self.sound_ids.game_over, GAME_OVER_VOLUME, 0.9);
-                    }
-                    break;
-                }
-                _ => {}
-            }
-        }
-
-        for e in despawn {
-            self.world.despawn(e);
-        }
-    }
     fn build_render_commands(&mut self) {
         self.render_commands.clear();
         for i in 0..self.world.transforms.len() {
@@ -513,9 +307,10 @@ impl Engine {
                 continue;
             }
             if let (Some(t), Some(s)) = (self.world.transforms[i], self.world.sprites[i]) {
+                let screen = self.camera.world_to_screen(t);
                 self.render_commands.push(SpriteRenderCommand {
-                    x: t.x - s.width * 0.5,
-                    y: t.y - s.height * 0.5,
+                    x: screen.x - s.width * 0.5,
+                    y: screen.y - s.height * 0.5,
                     width: s.width,
                     height: s.height,
                     u0: s.u0,
@@ -536,7 +331,8 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game_state::GameState;
+    use crate::components::{CollisionLayer, Transform2D};
+    use crate::shooter_scene::DEFAULT_TEXTURE_ID;
 
     fn count_layer(engine: &Engine, layer: CollisionLayer) -> usize {
         engine
@@ -551,133 +347,26 @@ mod tests {
     }
 
     #[test]
-    fn diagonal_movement_is_normalized() {
-        let mut engine = Engine::new();
-        engine.game_state = GameState::Playing;
-        engine.set_input(true, false, false, true, false, false, false, 0.0, 0.0);
-        engine.apply_player_input();
-        let player = engine.world.player.unwrap();
-        let v = engine.world.velocities[player.id as usize].unwrap();
-        let speed = (v.vx * v.vx + v.vy * v.vy).sqrt();
-        assert!((speed - PLAYER_BASE_SPEED).abs() < 0.01);
-    }
-
-    #[test]
-    fn title_enters_playing_with_enter_or_space() {
-        let mut engine = Engine::new();
-        assert_eq!(engine.game_state, GameState::Title);
-
-        engine.set_input(false, false, false, false, false, true, false, 0.0, 0.0);
-        engine.update(0.016);
-        assert_eq!(engine.game_state, GameState::Playing);
-
-        let mut engine = Engine::new();
-        engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
-        engine.update(0.016);
-        assert_eq!(engine.game_state, GameState::Playing);
-    }
-
-    #[test]
-    fn title_does_not_start_from_mouse_left() {
-        let mut engine = Engine::new();
-
-        engine.set_input(false, false, false, false, false, false, true, 0.0, 0.0);
-        engine.update(0.016);
-
-        assert_eq!(engine.game_state, GameState::Title);
-    }
-
-    #[test]
-    fn game_over_restarts_with_space() {
-        let mut engine = Engine::new();
-        engine.game_state = GameState::GameOver;
-        engine.score = 7;
-
-        engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
-        engine.update(0.016);
-
-        assert_eq!(engine.game_state, GameState::Playing);
-        assert_eq!(engine.score, 0);
-        assert!(engine.world.player.is_some());
-    }
-
-    #[test]
-    fn bullet_lifetime_despawns() {
-        let mut engine = Engine::new();
-        engine.game_state = GameState::Playing;
-        let b = engine
-            .world
-            .spawn_bullet(30.0, 30.0, 10.0, 0.0, DEFAULT_TEXTURE_ID);
-        engine.update_bullets(crate::world::BULLET_LIFETIME + 0.1);
-        assert!(!engine.world.alive[b.id as usize]);
-    }
-    #[test]
-    fn bullet_enemy_collision_increments_score() {
-        let mut engine = Engine::new();
-        engine.game_state = GameState::Playing;
-        let b = engine
-            .world
-            .spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-        let e = engine.world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
-        engine.handle_collisions();
-        assert!(!engine.world.alive[b.id as usize]);
-        assert!(!engine.world.alive[e.id as usize]);
-        assert_eq!(engine.score, 1);
-    }
-
-    #[test]
-    fn one_bullet_scores_once_when_overlapping_multiple_enemies() {
-        let mut engine = Engine::new();
-        engine.game_state = GameState::Playing;
-        let bullet = engine
-            .world
-            .spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-        let first_enemy = engine.world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
-        let second_enemy = engine.world.spawn_enemy(54.0, 50.0, DEFAULT_TEXTURE_ID);
-
-        engine.handle_collisions();
-
-        assert!(!engine.world.alive[bullet.id as usize]);
-        assert!(!engine.world.alive[first_enemy.id as usize]);
-        assert!(engine.world.alive[second_enemy.id as usize]);
-        assert_eq!(engine.score, 1);
-    }
-
-    #[test]
-    fn player_enemy_collision_sets_game_over() {
-        let mut engine = Engine::new();
-        engine.game_state = GameState::Playing;
-        let player = engine.world.player.unwrap();
-        let pt = engine.world.transforms[player.id as usize].unwrap();
-        engine.world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
-        engine.handle_collisions();
-        assert_eq!(engine.game_state, GameState::GameOver);
-    }
-    #[test]
     fn reset_game_clears_score_and_recreates_player() {
         let mut engine = Engine::new();
-        engine.score = 42;
-        if let Some(player) = engine.world.player {
-            engine.world.despawn(player);
-        }
-        engine.world.player = None;
+        engine.scene.update(
+            &mut engine.world,
+            &mut engine.camera,
+            InputState {
+                space: 1,
+                ..InputState::default()
+            },
+            &mut engine.audio_events,
+            0.016,
+        );
+        engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+
         engine.reset_game();
-        assert_eq!(engine.score, 0);
+
+        assert_eq!(engine.score(), 0);
         assert!(engine.world.player.is_some());
         assert_eq!(count_layer(&engine, CollisionLayer::Player), 1);
         assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 0);
-    }
-
-    #[test]
-    fn enemy_spawns_after_playing_interval() {
-        let mut engine = Engine::new();
-        engine.game_state = GameState::Playing;
-
-        engine.update((ENEMY_SPAWN_INTERVAL - 0.01) as f64);
-        assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 0);
-
-        engine.update(0.02);
-        assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 1);
     }
 
     #[test]
@@ -691,16 +380,33 @@ mod tests {
     }
 
     #[test]
+    fn camera_follows_player_and_offsets_render_commands() {
+        let mut engine = Engine::new();
+        engine.set_viewport_size(400.0, 240.0);
+        let player = engine.world.player.unwrap();
+        engine.world.transforms[player.id as usize] = Some(Transform2D {
+            x: 1000.0,
+            y: 600.0,
+        });
+
+        engine
+            .scene
+            .update_camera_follow(&engine.world, &mut engine.camera);
+        engine.build_render_commands();
+
+        assert_eq!(engine.camera_x(), 1000.0);
+        assert_eq!(engine.camera_y(), 600.0);
+        let command = engine.render_commands[0];
+        assert!((command.x - 182.0).abs() < 0.01);
+        assert!((command.y - 102.0).abs() < 0.01);
+    }
+
+    #[test]
     fn configured_texture_ids_are_written_to_render_commands() {
         let mut engine = Engine::new();
         engine.set_texture_ids(1, 2, 3);
-        engine.game_state = GameState::Playing;
-        engine
-            .world
-            .spawn_enemy(100.0, 100.0, engine.texture_ids.enemy);
-        engine
-            .world
-            .spawn_bullet(120.0, 100.0, 0.0, 0.0, engine.texture_ids.bullet);
+        engine.world.spawn_enemy(100.0, 100.0, 2);
+        engine.world.spawn_bullet(120.0, 100.0, 0.0, 0.0, 3);
         engine.build_render_commands();
 
         let texture_ids: Vec<u32> = engine
@@ -714,54 +420,33 @@ mod tests {
     }
 
     #[test]
-    fn firing_bullet_pushes_shoot_audio_event() {
+    fn resolved_shooter_config_applies_all_values_with_one_call() {
         let mut engine = Engine::new();
-        engine.set_sound_ids(10, 20, 30);
-        engine.game_state = GameState::Playing;
-        let player = engine.world.player.unwrap();
 
-        engine.fire_bullet_toward_mouse(player);
+        engine.set_shooter_resolved_config(
+            3200.0, 1800.0, 240.0, 120.0, 0.75, 640.0, 0.08, 2.4, 40.0, 44.0, 30.0, 34.0, 10.0,
+            12.0, 2, 2, 4.0, 2.0, 9,
+        );
 
-        assert_eq!(engine.audio_events.len(), 1);
-        assert_eq!(engine.audio_events[0].sound_id as u32, 10);
-        assert_eq!(engine.audio_events[0].volume, SHOOT_VOLUME);
-    }
-
-    #[test]
-    fn bullet_enemy_collision_pushes_hit_audio_event() {
-        let mut engine = Engine::new();
-        engine.set_sound_ids(10, 20, 30);
-        engine.game_state = GameState::Playing;
-        let b = engine
-            .world
-            .spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-        let e = engine.world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
-
-        engine.handle_collisions();
-
-        assert!(!engine.world.alive[b.id as usize]);
-        assert!(!engine.world.alive[e.id as usize]);
-        assert_eq!(engine.audio_events.len(), 1);
-        assert_eq!(engine.audio_events[0].sound_id as u32, 20);
-    }
-
-    #[test]
-    fn game_over_pushes_event_once_and_clear_events_removes_it() {
-        let mut engine = Engine::new();
-        engine.set_sound_ids(10, 20, 30);
-        engine.game_state = GameState::Playing;
-        let player = engine.world.player.unwrap();
-        let pt = engine.world.transforms[player.id as usize].unwrap();
-        engine.world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
-
-        engine.handle_collisions();
-        engine.handle_collisions();
-
-        assert_eq!(engine.game_state, GameState::GameOver);
-        assert_eq!(engine.audio_events.len(), 1);
-        assert_eq!(engine.audio_events[0].sound_id as u32, 30);
-
-        engine.clear_events();
-        assert!(engine.audio_events.is_empty());
+        let config = engine.scene.config();
+        assert_eq!(config.world_width, 3200.0);
+        assert_eq!(config.world_height, 1800.0);
+        assert_eq!(config.player_speed, 240.0);
+        assert_eq!(config.enemy_speed, 120.0);
+        assert_eq!(config.enemy_spawn_interval, 0.75);
+        assert_eq!(config.bullet_speed, 640.0);
+        assert_eq!(config.fire_cooldown, 0.08);
+        assert_eq!(config.bullet_lifetime, 2.4);
+        assert_eq!(config.player_template.sprite_width, 40.0);
+        assert_eq!(config.player_template.sprite_height, 44.0);
+        assert_eq!(config.enemy_template.sprite_width, 30.0);
+        assert_eq!(config.enemy_template.sprite_height, 34.0);
+        assert_eq!(config.bullet_template.sprite_width, 10.0);
+        assert_eq!(config.bullet_template.sprite_height, 12.0);
+        assert_eq!(config.enemy_behavior, EnemyBehavior::Static);
+        assert_eq!(config.enemy_spawn_pattern, EnemySpawnPattern::Center);
+        assert_eq!(config.enemy_health, 4.0);
+        assert_eq!(config.bullet_damage, 2.0);
+        assert_eq!(config.score_reward, 9);
     }
 }
