@@ -16,7 +16,10 @@ pub mod world;
 pub use audio_event::AudioEvent;
 pub use camera::Camera2D;
 pub use collision::{CollisionPair, CollisionSystem};
-pub use components::{AabbCollider, CollisionLayer, Sprite, Transform2D, Velocity};
+pub use components::{
+    AabbCollider, CollisionLayer, Sprite, SpriteAnimation, SpriteAnimationKind,
+    SpriteAnimationState, Transform2D, Velocity,
+};
 pub use engine::Engine;
 pub use entity::Entity;
 pub use game_state::GameState;

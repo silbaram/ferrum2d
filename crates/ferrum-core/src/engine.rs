@@ -161,6 +161,65 @@ impl Engine {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn set_shooter_animations(
+        &mut self,
+        player_columns: u32,
+        player_rows: u32,
+        player_idle_row: u32,
+        player_idle_frames: u32,
+        player_idle_fps: f32,
+        player_move_row: u32,
+        player_move_frames: u32,
+        player_move_fps: f32,
+        enemy_columns: u32,
+        enemy_rows: u32,
+        enemy_idle_row: u32,
+        enemy_idle_frames: u32,
+        enemy_idle_fps: f32,
+        enemy_move_row: u32,
+        enemy_move_frames: u32,
+        enemy_move_fps: f32,
+        bullet_columns: u32,
+        bullet_rows: u32,
+        bullet_idle_row: u32,
+        bullet_idle_frames: u32,
+        bullet_idle_fps: f32,
+        bullet_move_row: u32,
+        bullet_move_frames: u32,
+        bullet_move_fps: f32,
+    ) {
+        self.scene.set_animation_states(
+            &mut self.world,
+            &mut self.camera,
+            &mut self.audio_events,
+            player_columns,
+            player_rows,
+            player_idle_row,
+            player_idle_frames,
+            player_idle_fps,
+            player_move_row,
+            player_move_frames,
+            player_move_fps,
+            enemy_columns,
+            enemy_rows,
+            enemy_idle_row,
+            enemy_idle_frames,
+            enemy_idle_fps,
+            enemy_move_row,
+            enemy_move_frames,
+            enemy_move_fps,
+            bullet_columns,
+            bullet_rows,
+            bullet_idle_row,
+            bullet_idle_frames,
+            bullet_idle_fps,
+            bullet_move_row,
+            bullet_move_frames,
+            bullet_move_fps,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn set_shooter_resolved_config(
         &mut self,
         world_width: f32,
@@ -177,6 +236,12 @@ impl Engine {
         enemy_height: f32,
         bullet_width: f32,
         bullet_height: f32,
+        player_animation_frame_count: u32,
+        player_animation_fps: f32,
+        enemy_animation_frame_count: u32,
+        enemy_animation_fps: f32,
+        bullet_animation_frame_count: u32,
+        bullet_animation_fps: f32,
         enemy_behavior: u32,
         enemy_spawn_pattern: u32,
         enemy_health: f32,
@@ -200,6 +265,14 @@ impl Engine {
             enemy_height,
             bullet_width,
             bullet_height,
+        )
+        .with_animations(
+            player_animation_frame_count,
+            player_animation_fps,
+            enemy_animation_frame_count,
+            enemy_animation_fps,
+            bullet_animation_frame_count,
+            bullet_animation_fps,
         )
         .with_enemy_behavior(EnemyBehavior::from_code(enemy_behavior))
         .with_enemy_spawn_pattern(EnemySpawnPattern::from_code(enemy_spawn_pattern))
@@ -425,7 +498,7 @@ mod tests {
 
         engine.set_shooter_resolved_config(
             3200.0, 1800.0, 240.0, 120.0, 0.75, 640.0, 0.08, 2.4, 40.0, 44.0, 30.0, 34.0, 10.0,
-            12.0, 2, 2, 4.0, 2.0, 9,
+            12.0, 4, 12.0, 3, 9.0, 2, 18.0, 2, 2, 4.0, 2.0, 9,
         );
 
         let config = engine.scene.config();
@@ -443,6 +516,42 @@ mod tests {
         assert_eq!(config.enemy_template.sprite_height, 34.0);
         assert_eq!(config.bullet_template.sprite_width, 10.0);
         assert_eq!(config.bullet_template.sprite_height, 12.0);
+        assert_eq!(
+            config.player_template.animation.unwrap().idle.frame_count,
+            4
+        );
+        assert_eq!(
+            config
+                .player_template
+                .animation
+                .unwrap()
+                .idle
+                .frames_per_second,
+            12.0
+        );
+        assert_eq!(config.enemy_template.animation.unwrap().idle.frame_count, 3);
+        assert_eq!(
+            config
+                .enemy_template
+                .animation
+                .unwrap()
+                .idle
+                .frames_per_second,
+            9.0
+        );
+        assert_eq!(
+            config.bullet_template.animation.unwrap().idle.frame_count,
+            2
+        );
+        assert_eq!(
+            config
+                .bullet_template
+                .animation
+                .unwrap()
+                .idle
+                .frames_per_second,
+            18.0
+        );
         assert_eq!(config.enemy_behavior, EnemyBehavior::Static);
         assert_eq!(config.enemy_spawn_pattern, EnemySpawnPattern::Center);
         assert_eq!(config.enemy_health, 4.0);

@@ -148,7 +148,7 @@ pub struct AudioEvent {
 
 Rust에는 URL, ImageBitmap, WebGLTexture, AudioBuffer를 전달하지 않는다. Rust는 `set_texture_ids(...)`, `set_sound_ids(...)`로 받은 numeric id만 command/event에 기록한다.
 
-Game Spec도 Rust에 원본 JSON이나 문자열 object를 넘기지 않는다. TypeScript가 `world.width`, `player.speed`, `enemies.spawnInterval`, `enemies.behavior`, `enemies.spawnPattern`, `enemies.health`, `enemies.scoreReward`, `weapons.damage`, `weapons.cooldown`, `prefabs.enemy.width` 같은 필드를 검증하고 기본값을 채운 뒤 `set_shooter_resolved_config(...)`로 숫자만 전달한다. 이 경로는 게임 시작 전 설정용이며 프레임 hot path가 아니다.
+Game Spec도 Rust에 원본 JSON이나 문자열 object를 넘기지 않는다. TypeScript가 `world.width`, `player.speed`, `enemies.spawnInterval`, `enemies.behavior`, `enemies.spawnPattern`, `enemies.health`, `enemies.scoreReward`, `weapons.damage`, `weapons.cooldown`, `prefabs.enemy.width`, `prefabs.enemy.animation.states.move.row` 같은 필드를 검증하고 기본값을 채운 뒤 `set_shooter_resolved_config(...)`와 `set_shooter_animations(...)`로 숫자만 전달한다. 이 경로는 게임 시작 전 설정용이며 프레임 hot path가 아니다.
 
 CLI 검증은 `pnpm validate:game-spec`로 실행한다. 이 명령은 `@ferrum2d/ferrum-web`을 빌드한 뒤 같은 `resolveShooterGameSpec(...)` 검증 함수를 사용해 예제 `game.json`을 확인한다.
 

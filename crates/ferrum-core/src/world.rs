@@ -1,4 +1,6 @@
-use crate::components::{AabbCollider, CollisionLayer, Sprite, Transform2D, Velocity};
+use crate::components::{
+    AabbCollider, CollisionLayer, Sprite, SpriteAnimation, Transform2D, Velocity,
+};
 use crate::entity::Entity;
 use crate::physics::PhysicsSystem;
 
@@ -10,6 +12,7 @@ pub struct EntityTemplate {
     pub sprite_height: f32,
     pub collider_half_width: f32,
     pub collider_half_height: f32,
+    pub animation: Option<SpriteAnimation>,
 }
 
 impl EntityTemplate {
@@ -19,7 +22,18 @@ impl EntityTemplate {
             sprite_height,
             collider_half_width: sprite_width * 0.5,
             collider_half_height: sprite_height * 0.5,
+            animation: None,
         }
+    }
+
+    pub fn with_animation(mut self, frame_count: u32, fps: f32) -> Self {
+        self.animation = SpriteAnimation::horizontal(frame_count, fps);
+        self
+    }
+
+    pub fn with_sprite_animation(mut self, animation: Option<SpriteAnimation>) -> Self {
+        self.animation = animation;
+        self
     }
 }
 
@@ -34,6 +48,7 @@ pub struct World {
     pub(crate) alive: Vec<bool>,
     pub(crate) transforms: Vec<Option<Transform2D>>,
     pub(crate) sprites: Vec<Option<Sprite>>,
+    pub(crate) sprite_animations: Vec<Option<SpriteAnimation>>,
     pub(crate) velocities: Vec<Option<Velocity>>,
     pub(crate) colliders: Vec<Option<AabbCollider>>,
     pub(crate) bullet_lifetimes: Vec<Option<f32>>,
@@ -59,6 +74,7 @@ impl World {
         self.alive.push(true);
         self.transforms.push(None);
         self.sprites.push(None);
+        self.sprite_animations.push(None);
         self.velocities.push(None);
         self.colliders.push(None);
         self.bullet_lifetimes.push(None);
@@ -75,6 +91,7 @@ impl World {
             self.generations[i] += 1;
             self.transforms[i] = None;
             self.sprites[i] = None;
+            self.sprite_animations[i] = None;
             self.velocities[i] = None;
             self.colliders[i] = None;
             self.bullet_lifetimes[i] = None;
@@ -108,13 +125,14 @@ impl World {
             height: template.sprite_height,
             u0: 0.0,
             v0: 0.0,
-            u1: 1.0,
-            v1: 1.0,
+            u1: initial_uv(template).2,
+            v1: initial_uv(template).3,
             r: 1.0,
             g: 1.0,
             b: 1.0,
             a: 1.0,
         });
+        self.sprite_animations[i] = template.animation;
         self.velocities[i] = Some(Velocity::default());
         self.colliders[i] = Some(AabbCollider {
             half_width: template.collider_half_width,
@@ -148,13 +166,14 @@ impl World {
             height: template.sprite_height,
             u0: 0.0,
             v0: 0.0,
-            u1: 1.0,
-            v1: 1.0,
+            u1: initial_uv(template).2,
+            v1: initial_uv(template).3,
             r: 0.9,
             g: 0.3,
             b: 0.3,
             a: 0.9,
         });
+        self.sprite_animations[i] = template.animation;
         self.colliders[i] = Some(AabbCollider {
             half_width: template.collider_half_width,
             half_height: template.collider_half_height,
@@ -207,13 +226,14 @@ impl World {
             height: template.sprite_height,
             u0: 0.0,
             v0: 0.0,
-            u1: 1.0,
-            v1: 1.0,
+            u1: initial_uv(template).2,
+            v1: initial_uv(template).3,
             r: 1.0,
             g: 1.0,
             b: 0.2,
             a: 1.0,
         });
+        self.sprite_animations[i] = template.animation;
         self.velocities[i] = Some(velocity);
         self.colliders[i] = Some(AabbCollider {
             half_width: template.collider_half_width,
@@ -228,16 +248,50 @@ impl World {
 
     pub fn update(&mut self, delta: f32) {
         PhysicsSystem::integrate(self, delta);
+        self.update_sprite_animations(delta);
     }
 
     pub fn alive_count(&self) -> usize {
         self.alive.iter().filter(|a| **a).count()
     }
+
+    fn update_sprite_animations(&mut self, delta: f32) {
+        for i in 0..self.alive.len() {
+            if !self.alive[i] {
+                continue;
+            }
+
+            let Some(animation) = self.sprite_animations[i].as_mut() else {
+                continue;
+            };
+            let Some(sprite) = self.sprites[i].as_mut() else {
+                continue;
+            };
+
+            let is_moving = self.velocities[i].is_some_and(|velocity| {
+                velocity.vx * velocity.vx + velocity.vy * velocity.vy > 0.01
+            });
+            animation.advance(delta, is_moving);
+            let (u0, v0, u1, v1) = animation.uv();
+            sprite.u0 = u0;
+            sprite.v0 = v0;
+            sprite.u1 = u1;
+            sprite.v1 = v1;
+        }
+    }
+}
+
+fn initial_uv(template: EntityTemplate) -> (f32, f32, f32, f32) {
+    template
+        .animation
+        .map(|animation| animation.uv())
+        .unwrap_or((0.0, 0.0, 1.0, 1.0))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::{SpriteAnimation, SpriteAnimationState};
 
     #[test]
     fn entity_ids_increment_and_generation_changes_on_despawn() {
@@ -301,5 +355,56 @@ mod tests {
         );
         assert_eq!(world.healths[enemy.id as usize], Some(3.0));
         assert_eq!(world.score_rewards[enemy.id as usize], Some(2));
+    }
+
+    #[test]
+    fn sprite_animation_advances_horizontal_uv_frames() {
+        let mut world = World::default();
+        let template = EntityTemplate::new(32.0, 32.0).with_animation(4, 8.0);
+        let entity = world.spawn_enemy_from_template(10.0, 20.0, 7, template, 1.0, 1);
+
+        assert_eq!(world.sprites[entity.id as usize].unwrap().u0, 0.0);
+        assert_eq!(world.sprites[entity.id as usize].unwrap().u1, 0.25);
+
+        world.update(0.125);
+
+        assert_eq!(world.sprites[entity.id as usize].unwrap().u0, 0.25);
+        assert_eq!(world.sprites[entity.id as usize].unwrap().u1, 0.5);
+    }
+
+    #[test]
+    fn sprite_animation_switches_rows_for_moving_state() {
+        let mut world = World::default();
+        let animation = SpriteAnimation::new(
+            4,
+            2,
+            SpriteAnimationState {
+                row: 0,
+                frame_count: 1,
+                frames_per_second: 1.0,
+            },
+            SpriteAnimationState {
+                row: 1,
+                frame_count: 4,
+                frames_per_second: 8.0,
+            },
+        );
+        let template = EntityTemplate::new(32.0, 32.0).with_sprite_animation(animation);
+        let entity = world.spawn_bullet_from_template(
+            Transform2D { x: 10.0, y: 20.0 },
+            Velocity { vx: 5.0, vy: 0.0 },
+            7,
+            1.0,
+            template,
+            1.0,
+        );
+
+        world.update(0.125);
+
+        let sprite = world.sprites[entity.id as usize].unwrap();
+        assert_eq!(sprite.u0, 0.25);
+        assert_eq!(sprite.u1, 0.5);
+        assert_eq!(sprite.v0, 0.5);
+        assert_eq!(sprite.v1, 1.0);
     }
 }

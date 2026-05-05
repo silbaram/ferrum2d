@@ -17,6 +17,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 - Keyboard/mouse input
 - Manifest 기반 texture, sound, JSON loading
 - JSON Game Spec 기반 Top-down Shooter 수치, prefab 크기, combat, enemy behavior/spawn preset 설정
+- Horizontal sprite sheet와 idle/move state 기반 sprite animation
 - TextureRegistry와 SoundRegistry
 - Rust AudioEvent buffer와 TypeScript Web Audio 재생
 - Title, Playing, GameOver scene state
@@ -54,7 +55,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 - GameOver에서 Space로 재시작한다.
 - player/enemy/bullet texture가 manifest로 로드되고 texture_id와 일치한다.
 - shoot/hit/gameOver sound가 manifest로 로드되고 audio event로 재생된다.
-- `json.game` Game Spec으로 world 크기, 이동 속도, enemy spawn interval/pattern, enemy behavior preset, health/damage/score reward, bullet 설정, player/enemy/bullet prefab 크기를 조정할 수 있다.
+- `json.game` Game Spec으로 world 크기, 이동 속도, enemy spawn interval/pattern, enemy behavior preset, health/damage/score reward, bullet 설정, player/enemy/bullet prefab 크기와 sprite animation frames/fps/state row를 조정할 수 있다.
 - DebugOverlay에서 FPS, frame time, entity count, sprite count, draw calls, batches, Rust update time, render time, mouse position, game state, score를 확인할 수 있다.
 - DebugOverlay에서 camera position을 확인할 수 있다.
 
@@ -74,6 +75,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 | Scene state | 완료 | Title, Playing, GameOver, restart |
 | AssetLoader | 완료 | textures, sounds, JSON manifest |
 | Game Spec | 완료 | `json.game` 검증 후 shooter config, prefab template, combat, enemy behavior/spawn preset 적용 |
+| Sprite Animation | 완료 | prefab별 horizontal sprite sheet frames/fps 및 idle/move state row 설정, Rust UV 갱신 |
 | Game Spec CLI | 완료 | `pnpm validate:game-spec`로 예제 JSON 검증 |
 | Agent workflow | 완료 | game designer skill, agent workflow, review checklist, variant CLI |
 | AudioManager | 완료 | Web Audio 기반 효과음 재생 |

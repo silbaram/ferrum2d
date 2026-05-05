@@ -58,7 +58,57 @@
       "additionalProperties": false,
       "properties": {
         "width": { "type": "number", "exclusiveMinimum": 0 },
-        "height": { "type": "number", "exclusiveMinimum": 0 }
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "animation": { "$ref": "#/$defs/spriteAnimation" }
+      }
+    },
+    "spriteAnimation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "columns": { "type": "integer", "minimum": 1 },
+        "rows": { "type": "integer", "minimum": 1 },
+        "frames": { "type": "integer", "minimum": 1 },
+        "fps": { "type": "number", "exclusiveMinimum": 0 },
+        "states": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "idle": { "$ref": "#/$defs/spriteAnimationState" },
+            "move": { "$ref": "#/$defs/spriteAnimationState" }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "frames": { "type": "integer", "minimum": 2 }
+            },
+            "required": ["frames"]
+          },
+          "then": {
+            "required": ["fps"]
+          }
+        },
+        {
+          "if": {
+            "required": ["states"]
+          },
+          "then": {
+            "required": ["columns", "rows"]
+          }
+        }
+      ]
+    },
+    "spriteAnimationState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frames", "fps"],
+      "properties": {
+        "row": { "type": "integer", "minimum": 0 },
+        "frames": { "type": "integer", "minimum": 1 },
+        "fps": { "type": "number", "exclusiveMinimum": 0 }
       }
     }
   }

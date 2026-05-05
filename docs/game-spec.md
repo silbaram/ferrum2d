@@ -28,7 +28,18 @@ Ferrum2D Top-down Shooter는 `examples/topdown-shooter/public/game.json`을 데�
     "damage": 1
   },
   "prefabs": {
-    "player": { "width": 36, "height": 36 },
+    "player": {
+      "width": 36,
+      "height": 36,
+      "animation": {
+        "columns": 4,
+        "rows": 2,
+        "states": {
+          "idle": { "row": 0, "frames": 1, "fps": 1 },
+          "move": { "row": 1, "frames": 4, "fps": 8 }
+        }
+      }
+    },
     "enemy": { "width": 24, "height": 24 },
     "bullet": { "width": 8, "height": 8 }
   }
@@ -56,10 +67,32 @@ Ferrum2D Top-down Shooter는 `examples/topdown-shooter/public/game.json`을 데�
 | `weapons.damage` | positive number | `1` | damage dealt by one bullet |
 | `prefabs.player.width` | positive number | `36` | player sprite width and collider base |
 | `prefabs.player.height` | positive number | `36` | player sprite height and collider base |
+| `prefabs.player.animation.frames` | positive integer | `1` | horizontal sprite sheet frame count |
+| `prefabs.player.animation.fps` | positive number | `0` | animation playback speed; ignored when frames is `1` |
+| `prefabs.player.animation.columns` | positive integer | `1` | sprite sheet column count for state animation |
+| `prefabs.player.animation.rows` | positive integer | `1` | sprite sheet row count for state animation |
+| `prefabs.player.animation.states.idle.row` | non-negative integer | `0` | idle animation row |
+| `prefabs.player.animation.states.idle.frames` | positive integer | `1` | idle animation frame count |
+| `prefabs.player.animation.states.idle.fps` | positive number | `1` | idle animation playback speed |
+| `prefabs.player.animation.states.move.row` | non-negative integer | idle row | moving animation row |
+| `prefabs.player.animation.states.move.frames` | positive integer | idle frames | moving animation frame count |
+| `prefabs.player.animation.states.move.fps` | positive number | idle fps | moving animation playback speed |
 | `prefabs.enemy.width` | positive number | `24` | enemy sprite width and collider base |
 | `prefabs.enemy.height` | positive number | `24` | enemy sprite height and collider base |
+| `prefabs.enemy.animation.frames` | positive integer | `1` | horizontal sprite sheet frame count |
+| `prefabs.enemy.animation.fps` | positive number | `0` | animation playback speed; ignored when frames is `1` |
 | `prefabs.bullet.width` | positive number | `8` | bullet sprite width and collider base |
 | `prefabs.bullet.height` | positive number | `8` | bullet sprite height and collider base |
+| `prefabs.bullet.animation.frames` | positive integer | `1` | horizontal sprite sheet frame count |
+| `prefabs.bullet.animation.fps` | positive number | `0` | animation playback speed; ignored when frames is `1` |
+
+## Sprite Animation
+
+Prefab animation supports two forms. The short form uses a single horizontal sprite sheet: `frames` is the number of equal-width frames across the texture, and `fps` is the playback speed. When `frames` is greater than `1`, `fps` must also be provided.
+
+The state form uses `columns`, `rows`, and `states`. Currently supported states are `idle` and `move`. Rust selects `move` when the entity has velocity and otherwise selects `idle`; it then updates `Sprite.u0/u1/v0/v1` over time and TypeScript renders the resulting UV range from the existing render command buffer.
+
+Single-image textures should omit `animation` or keep `frames` as `1`. If `frames` or `columns` is greater than `1`, the source image must contain matching equal-sized frames.
 
 ## Enemy Behavior
 

@@ -1,7 +1,9 @@
 use crate::audio_event::AudioEvent;
 use crate::camera::Camera2D;
 use crate::collision::CollisionSystem;
-use crate::components::{CollisionLayer, Transform2D, Velocity};
+use crate::components::{
+    CollisionLayer, SpriteAnimation, SpriteAnimationState, Transform2D, Velocity,
+};
 use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::input::InputState;
@@ -152,6 +154,92 @@ impl ShooterConfig {
         self
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_animations(
+        mut self,
+        player_frame_count: u32,
+        player_fps: f32,
+        enemy_frame_count: u32,
+        enemy_fps: f32,
+        bullet_frame_count: u32,
+        bullet_fps: f32,
+    ) -> Self {
+        self.player_template =
+            apply_animation_or_default(self.player_template, player_frame_count, player_fps);
+        self.enemy_template =
+            apply_animation_or_default(self.enemy_template, enemy_frame_count, enemy_fps);
+        self.bullet_template =
+            apply_animation_or_default(self.bullet_template, bullet_frame_count, bullet_fps);
+        self
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_animation_states(
+        mut self,
+        player_columns: u32,
+        player_rows: u32,
+        player_idle_row: u32,
+        player_idle_frames: u32,
+        player_idle_fps: f32,
+        player_move_row: u32,
+        player_move_frames: u32,
+        player_move_fps: f32,
+        enemy_columns: u32,
+        enemy_rows: u32,
+        enemy_idle_row: u32,
+        enemy_idle_frames: u32,
+        enemy_idle_fps: f32,
+        enemy_move_row: u32,
+        enemy_move_frames: u32,
+        enemy_move_fps: f32,
+        bullet_columns: u32,
+        bullet_rows: u32,
+        bullet_idle_row: u32,
+        bullet_idle_frames: u32,
+        bullet_idle_fps: f32,
+        bullet_move_row: u32,
+        bullet_move_frames: u32,
+        bullet_move_fps: f32,
+    ) -> Self {
+        self.player_template =
+            self.player_template
+                .with_sprite_animation(sprite_animation_or_none(
+                    player_columns,
+                    player_rows,
+                    player_idle_row,
+                    player_idle_frames,
+                    player_idle_fps,
+                    player_move_row,
+                    player_move_frames,
+                    player_move_fps,
+                ));
+        self.enemy_template = self
+            .enemy_template
+            .with_sprite_animation(sprite_animation_or_none(
+                enemy_columns,
+                enemy_rows,
+                enemy_idle_row,
+                enemy_idle_frames,
+                enemy_idle_fps,
+                enemy_move_row,
+                enemy_move_frames,
+                enemy_move_fps,
+            ));
+        self.bullet_template =
+            self.bullet_template
+                .with_sprite_animation(sprite_animation_or_none(
+                    bullet_columns,
+                    bullet_rows,
+                    bullet_idle_row,
+                    bullet_idle_frames,
+                    bullet_idle_fps,
+                    bullet_move_row,
+                    bullet_move_frames,
+                    bullet_move_fps,
+                ));
+        self
+    }
+
     pub fn with_enemy_behavior(mut self, behavior: EnemyBehavior) -> Self {
         self.enemy_behavior = behavior;
         self
@@ -186,6 +274,45 @@ fn template_or_default(width: f32, height: f32, default: EntityTemplate) -> Enti
     EntityTemplate::new(
         positive_or_default(width, default.sprite_width),
         positive_or_default(height, default.sprite_height),
+    )
+}
+
+fn apply_animation_or_default(
+    template: EntityTemplate,
+    frame_count: u32,
+    fps: f32,
+) -> EntityTemplate {
+    if frame_count <= 1 || !fps.is_finite() || fps <= 0.0 {
+        return template;
+    }
+
+    template.with_animation(frame_count, fps)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn sprite_animation_or_none(
+    columns: u32,
+    rows: u32,
+    idle_row: u32,
+    idle_frames: u32,
+    idle_fps: f32,
+    move_row: u32,
+    move_frames: u32,
+    move_fps: f32,
+) -> Option<SpriteAnimation> {
+    SpriteAnimation::new(
+        columns,
+        rows,
+        SpriteAnimationState {
+            row: idle_row,
+            frame_count: idle_frames,
+            frames_per_second: idle_fps,
+        },
+        SpriteAnimationState {
+            row: move_row,
+            frame_count: move_frames,
+            frames_per_second: move_fps,
+        },
     )
 }
 
@@ -423,6 +550,66 @@ impl ShooterScene {
             enemy_height,
             bullet_width,
             bullet_height,
+        );
+        self.set_config(world, camera, audio_events, next);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_animation_states(
+        &mut self,
+        world: &mut World,
+        camera: &mut Camera2D,
+        audio_events: &mut Vec<AudioEvent>,
+        player_columns: u32,
+        player_rows: u32,
+        player_idle_row: u32,
+        player_idle_frames: u32,
+        player_idle_fps: f32,
+        player_move_row: u32,
+        player_move_frames: u32,
+        player_move_fps: f32,
+        enemy_columns: u32,
+        enemy_rows: u32,
+        enemy_idle_row: u32,
+        enemy_idle_frames: u32,
+        enemy_idle_fps: f32,
+        enemy_move_row: u32,
+        enemy_move_frames: u32,
+        enemy_move_fps: f32,
+        bullet_columns: u32,
+        bullet_rows: u32,
+        bullet_idle_row: u32,
+        bullet_idle_frames: u32,
+        bullet_idle_fps: f32,
+        bullet_move_row: u32,
+        bullet_move_frames: u32,
+        bullet_move_fps: f32,
+    ) {
+        let next = self.config.with_animation_states(
+            player_columns,
+            player_rows,
+            player_idle_row,
+            player_idle_frames,
+            player_idle_fps,
+            player_move_row,
+            player_move_frames,
+            player_move_fps,
+            enemy_columns,
+            enemy_rows,
+            enemy_idle_row,
+            enemy_idle_frames,
+            enemy_idle_fps,
+            enemy_move_row,
+            enemy_move_frames,
+            enemy_move_fps,
+            bullet_columns,
+            bullet_rows,
+            bullet_idle_row,
+            bullet_idle_frames,
+            bullet_idle_fps,
+            bullet_move_row,
+            bullet_move_frames,
+            bullet_move_fps,
         );
         self.set_config(world, camera, audio_events, next);
     }
