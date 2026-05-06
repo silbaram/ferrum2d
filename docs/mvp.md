@@ -56,7 +56,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 - player/enemy/bullet texture가 manifest로 로드되고 texture_id와 일치한다.
 - shoot/hit/gameOver sound가 manifest로 로드되고 audio event로 재생된다.
 - `json.game` Game Spec으로 world 크기, 이동 속도, enemy spawn interval/pattern, enemy behavior preset, health/damage/score reward, bullet 설정, player/enemy/bullet prefab 크기와 sprite animation frames/fps/state row를 조정할 수 있다.
-- DebugOverlay에서 FPS, frame time, entity count, sprite count, draw calls, batches, Rust update time, render time, mouse position, game state, score를 확인할 수 있다.
+- DebugOverlay에서 FPS, frame time, entity count, sprite count, render command count, draw calls, batches, texture bind/switch count, audio events/sec, Rust update time, render time, mouse position, game state, score를 확인할 수 있다.
 - DebugOverlay에서 camera position을 확인할 수 있다.
 
 ## 현재 구현 상태 (2026-04-29)

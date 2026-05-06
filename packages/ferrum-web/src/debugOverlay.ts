@@ -5,6 +5,10 @@ export interface DebugOverlayMetrics {
   spriteCount: number;
   drawCalls: number;
   batchCount: number;
+  renderCommandCount?: number;
+  textureBindCount?: number;
+  textureSwitchCount?: number;
+  audioEventsPerSecond?: number;
   rustUpdateTimeMs: number;
   renderTimeMs: number;
   mouseX: number;
@@ -58,7 +62,7 @@ export class DebugOverlay {
     }
     this.lastUpdateMs = now;
 
-    this.root.textContent = [
+    const lines = [
       `fps: ${metrics.fps.toFixed(1)}`,
       `frame: ${metrics.frameTimeMs.toFixed(2)}ms`,
       `rust update: ${metrics.rustUpdateTimeMs.toFixed(2)}ms`,
@@ -67,11 +71,26 @@ export class DebugOverlay {
       `sprites: ${metrics.spriteCount}`,
       `draw calls: ${metrics.drawCalls}`,
       `batches: ${metrics.batchCount}`,
+    ];
+    if (metrics.renderCommandCount !== undefined) {
+      lines.push(`render commands: ${metrics.renderCommandCount}`);
+    }
+    if (metrics.textureBindCount !== undefined) {
+      lines.push(`texture binds: ${metrics.textureBindCount}`);
+    }
+    if (metrics.textureSwitchCount !== undefined) {
+      lines.push(`texture switches: ${metrics.textureSwitchCount}`);
+    }
+    if (metrics.audioEventsPerSecond !== undefined) {
+      lines.push(`audio events/s: ${metrics.audioEventsPerSecond.toFixed(1)}`);
+    }
+    lines.push(
       `mouse: ${metrics.mouseX.toFixed(1)}, ${metrics.mouseY.toFixed(1)}`,
       `camera: ${metrics.cameraX.toFixed(1)}, ${metrics.cameraY.toFixed(1)}`,
       `state: ${metrics.gameState}`,
       `score: ${metrics.score}`,
-    ].join("\n");
+    );
+    this.root.textContent = lines.join("\n");
   }
 
   destroy(): void {

@@ -53,6 +53,9 @@ async function bootstrap(): Promise<void> {
   const debugEnabled = new URLSearchParams(window.location.search).get("debug") !== "false";
   const debugOverlay = new DebugOverlay(app, { enabled: debugEnabled });
   let assetProgressText = "assets: 0/0";
+  let audioEventRateWindowStartMs = performance.now();
+  let audioEventRateCount = 0;
+  let audioEventsPerSecond = 0;
 
   const engine = await createEngine((frame) => {
     const renderStartMs = performance.now();
@@ -60,6 +63,13 @@ async function bootstrap(): Promise<void> {
     renderer.renderCommands(frame.renderCommandBuffer);
     const renderStats = renderer.stats();
     const renderTimeMs = performance.now() - renderStartMs;
+    audioEventRateCount += frame.audioEvents.length;
+    const audioEventRateElapsedMs = performance.now() - audioEventRateWindowStartMs;
+    if (audioEventRateElapsedMs >= 1000) {
+      audioEventsPerSecond = audioEventRateCount / (audioEventRateElapsedMs / 1000);
+      audioEventRateWindowStartMs = performance.now();
+      audioEventRateCount = 0;
+    }
 
     hudEl.textContent = `${assetProgressText} controls: Enter or Space start, W/A/S/D move, Mouse Left or Space fire, Space restart`;
 
@@ -76,6 +86,10 @@ async function bootstrap(): Promise<void> {
       spriteCount: frame.spriteCount,
       drawCalls: renderStats.drawCalls,
       batchCount: renderStats.batchCount,
+      renderCommandCount: renderStats.renderCommandCount,
+      textureBindCount: renderStats.textureBindCount,
+      textureSwitchCount: renderStats.textureSwitchCount,
+      audioEventsPerSecond,
       rustUpdateTimeMs: frame.rustUpdateTimeMs,
       renderTimeMs,
       mouseX: frame.mouseX,

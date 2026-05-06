@@ -164,6 +164,10 @@ DebugOverlay는 DOM 기반이며 `debug: false` 또는 예제 URL의 `?debug=fal
 - sprite count
 - draw call count
 - batch count
+- render command count
+- texture bind count
+- texture switch count
+- audio events per second
 - Rust update time
 - render time
 - mouse position
@@ -191,6 +195,7 @@ TypeScript 테스트:
 - Asset manifest parsing
 - Shooter Game Spec validation/apply
 - render command parsing
+- renderer stats derivation
 
 WebGL2 실제 렌더링은 Node 테스트에서 다루지 않고 예제 실행 기반 smoke/manual check로 확인한다.
 

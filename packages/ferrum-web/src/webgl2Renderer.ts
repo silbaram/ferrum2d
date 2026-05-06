@@ -1,5 +1,6 @@
 import { AudioManager } from "./audioManager";
 import { AssetLoader } from "./assetLoader";
+import { emptyRendererStats, rendererStatsForCommands } from "./renderer";
 import type { Renderer } from "./renderer";
 import type { RendererStats } from "./renderer";
 import { SpriteBatch } from "./spriteBatch";
@@ -15,7 +16,7 @@ export class WebGL2Renderer implements Renderer {
   private readonly audioManager: AudioManager;
   private readonly assetLoader: AssetLoader;
   private readonly spriteBatch: SpriteBatch;
-  private currentStats: RendererStats = { drawCalls: 0, batchCount: 0, spriteCount: 0 };
+  private currentStats: RendererStats = emptyRendererStats();
   private logicalWidth = 0;
   private logicalHeight = 0;
 
@@ -94,11 +95,7 @@ export class WebGL2Renderer implements Renderer {
     const drawCalls = second
       ? this.spriteBatch.drawBatch(first as WebGLTexture, second, [this.logicalWidth, this.logicalHeight])
       : this.spriteBatch.drawBatches(this.textureManager, commands, [this.logicalWidth, this.logicalHeight]);
-    this.currentStats = {
-      drawCalls,
-      batchCount: drawCalls,
-      spriteCount: commands.commandCount,
-    };
+    this.currentStats = rendererStatsForCommands(commands, drawCalls, second ? 0 : undefined);
     return this.stats();
   }
 
