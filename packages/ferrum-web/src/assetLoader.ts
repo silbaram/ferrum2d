@@ -32,6 +32,18 @@ export interface LoadedAssets {
   progress: AssetLoadProgress;
 }
 
+type AssetErrorKind = "texture" | "sound" | "json";
+
+function formatAssetLoadError(
+  code: string,
+  kind: AssetErrorKind,
+  name: string,
+  url: string,
+  detail: string,
+): Error {
+  return new Error(`[Ferrum2D AssetError:${code}] kind=${kind} name='${name}' url='${url}' detail='${detail}'`);
+}
+
 export class AssetLoader {
   constructor(
     private readonly textureManager: TextureAssetManager,
@@ -103,27 +115,39 @@ export class AssetLoader {
 
   private async loadSound(name: string, soundId: number, url: string): Promise<void> {
     if (!this.audioManager) {
-      throw new Error(`Sound asset '${name}' requires an AudioManager. Pass one to AssetLoader before loading sounds.`);
+      throw formatAssetLoadError(
+        "FERRUM_AUDIO_MANAGER_REQUIRED",
+        "sound",
+        name,
+        url,
+        "Sound asset requires an AudioManager. Pass one to AssetLoader before loading sounds.",
+      );
     }
 
     try {
       await this.audioManager.loadSound(soundId, url);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`Sound asset '${name}' failed to load from '${url}': ${detail}`);
+      throw formatAssetLoadError("FERRUM_SOUND_LOAD_FAILED", "sound", name, url, detail);
     }
   }
 
   private async loadJson(name: string, url: string): Promise<unknown> {
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`JSON asset '${name}' failed to load from '${url}' (${response.status} ${response.statusText}).`);
+      throw formatAssetLoadError(
+        "FERRUM_JSON_HTTP_FAILED",
+        "json",
+        name,
+        url,
+        `${response.status} ${response.statusText}`,
+      );
     }
 
     try {
       return await response.json();
     } catch {
-      throw new Error(`JSON asset '${name}' failed to parse from '${url}'.`);
+      throw formatAssetLoadError("FERRUM_JSON_PARSE_FAILED", "json", name, url, "response.json() parse failed");
     }
   }
 }

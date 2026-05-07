@@ -184,6 +184,8 @@ pnpm build
 
 현재 TypeScript 테스트는 Node 내장 test runner를 사용하며 `GameLoop`, `InputManager`, asset manifest parsing, render command parsing, renderer stats 계산을 검증한다. WebGL2 실제 렌더링은 자동 e2e 범위에서 제외하고 예제 실행 후 manual smoke check로 확인한다.
 
+Top-down Shooter 수동 점검 기준은 `docs/topdown-shooter-smoke-checklist.md`를 따른다.
+
 ## 프로젝트 구조
 
 ```text

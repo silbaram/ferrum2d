@@ -71,3 +71,51 @@ test("AssetLoader parses texture, sound, and JSON manifests with progress", asyn
     (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
   }
 });
+
+test("AssetLoader reports standardized sound load failures", async () => {
+  class FailingAudioManager implements SoundAssetManager {
+    async loadSound(): Promise<AudioBuffer> {
+      throw new Error("network down");
+    }
+  }
+
+  const loader = new AssetLoader(new FakeTextureManager(), new FailingAudioManager());
+
+  await (async () => {
+    try {
+      await loader.loadAssets({ sounds: { shoot: "/assets/shoot.wav" } });
+      throw new Error("Expected sound load to fail.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      equal(
+        message,
+        "[Ferrum2D AssetError:FERRUM_SOUND_LOAD_FAILED] kind=sound name='shoot' url='/assets/shoot.wav' detail='network down'",
+      );
+    }
+  })();
+});
+
+test("AssetLoader reports standardized JSON HTTP failures", async () => {
+  const previousFetch = globalThis.fetch;
+  (globalThis as unknown as { fetch: typeof fetch }).fetch = async () => ({
+    ok: false,
+    status: 404,
+    statusText: "Not Found",
+  } as Response);
+
+  try {
+    const loader = new AssetLoader(new FakeTextureManager(), new FakeAudioManager());
+    try {
+      await loader.loadAssets({ json: { config: "/assets/missing.json" } });
+      throw new Error("Expected JSON load to fail.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      equal(
+        message,
+        "[Ferrum2D AssetError:FERRUM_JSON_HTTP_FAILED] kind=json name='config' url='/assets/missing.json' detail='404 Not Found'",
+      );
+    }
+  } finally {
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
+  }
+});
