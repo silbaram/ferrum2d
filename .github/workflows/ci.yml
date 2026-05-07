@@ -44,5 +44,11 @@ jobs:
         run: wasm-pack build crates/ferrum-core --target web --out-dir
           ../../packages/ferrum-web/pkg
 
+      - name: Lint TypeScript packages
+        run: pnpm lint
+
+      - name: Test packages
+        run: pnpm test
+
       - name: Build TypeScript packages
         run: pnpm build
