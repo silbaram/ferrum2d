@@ -4,6 +4,7 @@ export interface InputSnapshot {
   s: boolean;
   d: boolean;
   space: boolean;
+  enter: boolean;
   mouseLeft: boolean;
   mouseX: number;
   mouseY: number;
@@ -12,11 +13,12 @@ export interface InputSnapshot {
 export class InputManager {
   private state: InputSnapshot = {
     w: false, a: false, s: false, d: false, space: false,
+    enter: false,
     mouseLeft: false, mouseX: 0, mouseY: 0,
   };
 
-  private readonly onKeyDown = (e: KeyboardEvent): void => this.setKey(e.code, true);
-  private readonly onKeyUp = (e: KeyboardEvent): void => this.setKey(e.code, false);
+  private readonly onKeyDown = (e: KeyboardEvent): void => this.setKey(e, true);
+  private readonly onKeyUp = (e: KeyboardEvent): void => this.setKey(e, false);
   private readonly onMouseMove = (e: MouseEvent): void => {
     const rect = this.canvas.getBoundingClientRect();
     this.state.mouseX = e.clientX - rect.left;
@@ -43,11 +45,15 @@ export class InputManager {
     window.removeEventListener("mouseup", this.onMouseUp);
   }
 
-  private setKey(code: string, pressed: boolean): void {
-    if (code === "KeyW") this.state.w = pressed;
-    else if (code === "KeyA") this.state.a = pressed;
-    else if (code === "KeyS") this.state.s = pressed;
-    else if (code === "KeyD") this.state.d = pressed;
-    else if (code === "Space") this.state.space = pressed;
+  private setKey(event: KeyboardEvent, pressed: boolean): void {
+    if (event.code === "KeyW") this.state.w = pressed;
+    else if (event.code === "KeyA") this.state.a = pressed;
+    else if (event.code === "KeyS") this.state.s = pressed;
+    else if (event.code === "KeyD") this.state.d = pressed;
+    else if (event.code === "Space") this.state.space = pressed;
+    else if (event.code === "Enter") this.state.enter = pressed;
+    else return;
+
+    event.preventDefault();
   }
 }

@@ -1,0 +1,37 @@
+{
+  "world": {
+    "width": 1600,
+    "height": 960
+  },
+  "player": {
+    "speed": 180
+  },
+  "enemies": {
+    "speed": 72,
+    "spawnInterval": 1.0,
+    "behavior": "chase",
+    "spawnPattern": "edge",
+    "health": 1,
+    "scoreReward": 1
+  },
+  "weapons": {
+    "bulletSpeed": 360,
+    "cooldown": 0.12,
+    "lifetime": 1.8,
+    "damage": 1
+  },
+  "prefabs": {
+    "player": {
+      "width": 36,
+      "height": 36
+    },
+    "enemy": {
+      "width": 24,
+      "height": 24
+    },
+    "bullet": {
+      "width": 8,
+      "height": 8
+    }
+  }
+}

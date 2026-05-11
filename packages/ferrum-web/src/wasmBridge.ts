@@ -1,32 +1,36 @@
 import init, {
   Engine,
+  audio_event_bytes,
+  audio_event_floats,
   sprite_render_command_bytes,
   sprite_render_command_floats,
   version,
   wasm_memory,
 } from "../pkg/ferrum_core";
+import { decodeRenderCommands } from "./renderCommandDecoder";
+import type { RenderCommandBufferView, RenderCommandView } from "./renderCommandDecoder";
 
-export interface RenderCommandView {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  uv: [number, number, number, number];
-  color: [number, number, number, number];
+export interface AudioEventView {
+  soundId: number;
+  volume: number;
+  pitch: number;
 }
 
-export interface RenderCommandBufferView {
+export interface AudioEventBufferView {
   buffer: Float32Array;
-  commandCount: number;
-  floatsPerCommand: number;
+  eventCount: number;
+  floatsPerEvent: number;
 }
 
-const FLOATS_PER_COMMAND = 12;
+const FLOATS_PER_COMMAND = 13;
+const FLOATS_PER_AUDIO_EVENT = 3;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
 const BYTES_PER_COMMAND = FLOATS_PER_COMMAND * BYTES_PER_F32;
+const BYTES_PER_AUDIO_EVENT = FLOATS_PER_AUDIO_EVENT * BYTES_PER_F32;
 
 export class WasmBridge {
   private readonly floatsPerCommand: number;
+  private readonly floatsPerAudioEvent: number;
 
   private constructor(
     private readonly engineInstance: Engine,
@@ -46,7 +50,22 @@ export class WasmBridge {
           "SpriteRenderCommand ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
       );
     }
+    const rustFloatsPerAudioEvent = audio_event_floats();
+    const rustBytesPerAudioEvent = audio_event_bytes();
+    if (rustFloatsPerAudioEvent !== FLOATS_PER_AUDIO_EVENT) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust audio_event_floats=${rustFloatsPerAudioEvent}, TS FLOATS_PER_AUDIO_EVENT=${FLOATS_PER_AUDIO_EVENT}. ` +
+          "AudioEvent ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    if (rustBytesPerAudioEvent !== BYTES_PER_AUDIO_EVENT) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust audio_event_bytes=${rustBytesPerAudioEvent}, TS BYTES_PER_AUDIO_EVENT=${BYTES_PER_AUDIO_EVENT}. ` +
+          "AudioEvent ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
     this.floatsPerCommand = rustFloatsPerCommand;
+    this.floatsPerAudioEvent = rustFloatsPerAudioEvent;
   }
 
   static async init(): Promise<WasmBridge> {
@@ -74,19 +93,33 @@ export class WasmBridge {
   }
 
   readRenderCommands(): RenderCommandView[] {
-    const view = this.readRenderCommandBuffer();
-    const commands: RenderCommandView[] = [];
-    for (let i = 0; i < view.commandCount; i += 1) {
-      const offset = i * view.floatsPerCommand;
-      commands.push({
-        x: view.buffer[offset],
-        y: view.buffer[offset + 1],
-        width: view.buffer[offset + 2],
-        height: view.buffer[offset + 3],
-        uv: [view.buffer[offset + 4], view.buffer[offset + 5], view.buffer[offset + 6], view.buffer[offset + 7]],
-        color: [view.buffer[offset + 8], view.buffer[offset + 9], view.buffer[offset + 10], view.buffer[offset + 11]],
+    return decodeRenderCommands(this.readRenderCommandBuffer());
+  }
+
+  readAudioEventBuffer(): AudioEventBufferView {
+    const ptr = this.engineInstance.audio_event_ptr();
+    const eventCount = this.engineInstance.audio_event_len();
+    return {
+      buffer: new Float32Array(this.memory.buffer, ptr, eventCount * this.floatsPerAudioEvent),
+      eventCount,
+      floatsPerEvent: this.floatsPerAudioEvent,
+    };
+  }
+
+  readAudioEvents(): AudioEventView[] {
+    const view = this.readAudioEventBuffer();
+    const events: AudioEventView[] = [];
+    for (let i = 0; i < view.eventCount; i += 1) {
+      const offset = i * view.floatsPerEvent;
+      events.push({
+        soundId: Math.trunc(view.buffer[offset]),
+        volume: view.buffer[offset + 1],
+        pitch: view.buffer[offset + 2],
       });
     }
-    return commands;
+    return events;
   }
 }
+
+export { decodeRenderCommands };
+export type { RenderCommandBufferView, RenderCommandView };

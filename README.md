@@ -1,99 +1,283 @@
 # Ferrum2D
 
-Ferrum2D는 **Rust + WebAssembly + TypeScript + WebGL2** 기반의 2D 웹 게임 엔진 프로젝트다.
+Ferrum2D는 Rust core, WebAssembly, TypeScript 플랫폼 레이어, WebGL2 렌더러로 구성한 2D 웹 게임 엔진 MVP다.
 
-## 현재 상태
+현재 저장소는 `v0.1.0` MVP 릴리스 준비 상태이며, 포함된 예제는 `examples/topdown-shooter` 하나다. 이 예제는 플레이어 이동, 마우스 조준 발사, 적 스폰, 충돌, 점수, 게임 오버, 재시작, 에셋 로딩, 효과음, 디버그 오버레이를 검증한다.
 
-현재 저장소는 **AABB + Render Command 기술 데모를 완료했고, Top-down Shooter MVP를 진행 중**이다.
+![Top-down Shooter MVP preview](docs/screenshots/topdown-shooter-title.png)
 
-포함된 구성:
+위 이미지는 MVP 화면 구성을 보여주는 릴리스 preview다. 실제 브라우저 캡처를 갱신할 때는 [docs/screenshots/README.md](docs/screenshots/README.md)를 따른다.
 
-- Rust `World`가 transform/sprite/velocity/collider 기반 Vec store를 관리
-- `AabbCollider`, `CollisionPair`, `CollisionSystem` 구현
-- O(n²) broad phase 기반 trigger collision pair 생성
-- bullet vs enemy 충돌 시 trigger event 기반 제거 처리
-- Rust에서 render command 생성, TypeScript에서 typed array로 소비
-- 키보드/마우스 입력 수집 및 게임 루프 반영
+## 현재 구현된 것
 
-## Command Buffer ABI 주의사항
+- Rust `World` 기반 entity, transform, velocity, sprite, collider 저장
+- AABB 충돌 판정과 bullet/enemy, player/enemy 충돌 처리
+- Title, Playing, GameOver scene state
+- Top-down Shooter 전용 `ShooterScene`과 Engine orchestration 분리
+- W/A/S/D 이동, 마우스 위치 기준 발사 방향 계산
+- Mouse Left 또는 Space 발사, Space 재시작
+- player-follow 2D camera와 viewport size 전달
+- 주기적 enemy spawn과 player chase
+- JSON Game Spec 기반 world/player/enemy/weapon/prefab/behavior 조정
+- Horizontal sprite sheet와 idle/move state 기반 player/enemy/bullet sprite animation
+- Rust render command buffer 생성, TypeScript typed array 소비
+- WebGL2 sprite renderer와 texture_id 기반 draw
+- `loadAssets()` 기반 texture, sound, JSON manifest 로딩
+- Rust `AudioEvent` buffer와 TypeScript Web Audio 효과음 재생
+- DOM 기반 DebugOverlay와 FPS/frame/update/render/mouse/camera/score/entity/render command/texture/audio event stats 표시
+- Rust unit test와 TypeScript Node test runner 기반 최소 회귀 테스트
 
-`SpriteRenderCommand`는 Rust에서 `#[repr(C)]`로 선언되어 C ABI 레이아웃을 강제한다.
-현재 포맷은 `f32` 12개(총 48 bytes, align 4)이며, TypeScript는 동일 순서로 `Float32Array`를 해석한다.
-필드 순서/타입/정렬이 바뀌면 Rust export(`sprite_render_command_floats/bytes`)와 TypeScript 해석 코드(상수/검증/뷰)를 반드시 함께 수정해야 한다.
-`FrameState`는 호환성을 위해 객체 배열(`renderCommands`)도 제공하지만, hot path에서는 typed view(`renderCommandBuffer`) 사용을 권장한다.
+## MVP에서 하지 않는 것
 
-## 좌표계 기준 (DPR 포함)
+- WebGPU 렌더러
+- Web Worker 또는 Wasm threads
+- 3D 렌더링
+- 에디터
+- 멀티플레이어
+- 복잡한 물리 엔진
+- IndexedDB asset cache
+- texture atlas 자동 생성
+- spatial audio, BGM, 복잡한 mixer
 
-- 현재 게임 월드 좌표, Rust render command, InputManager mouse 좌표는 **CSS logical pixel 기준**이다.
-- WebGL2 렌더러는 내부 drawing buffer(`canvas.width/height`)에만 DPR을 반영하고, shader `u_resolution`은 CSS logical pixel을 사용한다.
+## 개발환경 설정
 
-## 빌드
+Ferrum2D는 Rust/Wasm core와 TypeScript web package를 함께 빌드한다. 따라서 Rust toolchain, Wasm target, wasm-pack, Node.js, pnpm이 모두 필요하다.
+
+### 1. Rust stable과 rustup 준비
+
+Rust는 `rustup`으로 설치한 toolchain을 사용하는 것을 권장한다. Homebrew로 설치한 `rustc`가 PATH에서 먼저 잡히면 `wasm32-unknown-unknown` target을 찾지 못해 `pnpm build`가 실패할 수 있다.
+
+설치 또는 확인:
+
+```bash
+rustup --version
+rustup default stable
+rustup target add wasm32-unknown-unknown
+```
+
+현재 셸에서 어떤 Rust가 잡히는지 확인한다.
+
+```bash
+which rustc
+rustup which rustc
+rustup target list --installed
+```
+
+`which rustc`가 `/opt/homebrew/bin/rustc`처럼 Homebrew 경로를 가리키면 rustup proxy가 먼저 잡히도록 PATH를 조정한다. zsh를 사용한다면 다음 설정을 `~/.zshrc` 앞쪽에 둔다.
+
+```bash
+source "$HOME/.cargo/env"
+```
+
+현재 터미널에도 바로 반영한다.
+
+```bash
+source "$HOME/.cargo/env"
+```
+
+다시 확인했을 때 `which rustc`가 `$HOME/.cargo/bin/rustc` 또는 rustup 관리 경로를 가리키면 된다.
+
+### 2. wasm-pack 설치
+
+Wasm package 생성에는 `wasm-pack`이 필요하다.
+
+```bash
+cargo install wasm-pack
+wasm-pack --version
+```
+
+이미 설치되어 있다면 `wasm-pack --version`만 확인하면 된다.
+
+### 3. Node.js와 pnpm 준비
+
+Node.js는 22 버전을 권장한다. Node.js 설치 후 Corepack으로 pnpm 10.8.0을 활성화한다.
+
+```bash
+node --version
+corepack enable
+corepack prepare pnpm@10.8.0 --activate
+pnpm --version
+```
+
+`node --version`은 `v22.x.x`, `pnpm --version`은 `10.8.0`이면 된다.
+
+### 4. 프로젝트 의존성 설치
+
+저장소 루트에서 Node workspace 의존성을 설치한다.
 
 ```bash
 pnpm install
+```
+
+### 5. 설정 검증
+
+개발환경 설정이 끝나면 전체 테스트와 빌드를 실행한다.
+
+```bash
+pnpm test
 pnpm build
 ```
 
-세부 단계로 실행하려면:
+`pnpm build`가 `wasm32-unknown-unknown target not found`로 실패하면 Rust code 문제가 아니라 PATH에서 rustup Rust가 아닌 다른 Rust가 먼저 잡힌 상태일 가능성이 높다. 이 경우 `which rustc`와 `rustup which rustc`를 다시 확인한다.
+
+## 예제 실행
+
+처음 실행하거나 Rust core를 수정한 뒤에는 Wasm package를 먼저 만든다.
 
 ```bash
 pnpm build:wasm
-pnpm build:web
-```
-
-## 실행
-
-예제 개발 서버 실행:
-
-```bash
 pnpm --filter @ferrum2d/topdown-shooter dev
 ```
 
-통합 체크(빌드 + Rust 테스트):
+Vite가 출력하는 로컬 URL을 브라우저에서 연다. 기본 포트라면 다음 주소다.
 
-```bash
-pnpm check
+```text
+http://localhost:5173
 ```
 
-## 예제에서 확인할 항목
+DebugOverlay를 숨기려면 URL에 `?debug=false`를 붙인다.
 
-- W/A/S/D로 player sprite 이동
-- 마우스 입력 반영 및 디버그 오버레이 정보 확인
-- 초기 프레임 기준 **61개 sprite(플레이어 1 + 적 60)** 렌더링
+```text
+http://localhost:5173?debug=false
+```
 
-> 참고: 기존 문서의 "100개 sprite" 표현은 현재 코드(`Engine::new()`) 기준과 불일치하며, 필요 시 별도 작업으로 스폰 수를 조정한다.
+## 조작법
 
+- `Enter` 또는 `Space`: Title에서 게임 시작
+- `W/A/S/D`: 플레이어 이동
+- `Mouse Left` 또는 `Space`: 마우스 방향으로 발사
+- `Space`: GameOver에서 재시작
 
-## CI 검증 (GitHub Actions)
+## 빌드와 검증
 
-`main` 브랜치 push와 `main` 대상 PR에서 아래 항목을 자동 검증한다.
+전체 빌드:
 
-- Ubuntu latest(`ubuntu-latest`)
-- Rust stable + `wasm32-unknown-unknown` target
-- `wasm-pack` 설치 및 Wasm 빌드
-- Node.js 22 + pnpm 10.8.0
+```bash
+pnpm build
+```
+
+Rust 테스트:
+
+```bash
+cargo test --manifest-path crates/ferrum-core/Cargo.toml
+```
+
+TypeScript 테스트:
+
+```bash
+pnpm test:web
+```
+
+전체 테스트:
+
+```bash
+pnpm test
+```
+
+권장 릴리스 전 검증:
+
+```bash
+cargo test --manifest-path crates/ferrum-core/Cargo.toml
+pnpm test
+pnpm build
+```
+
+현재 TypeScript 테스트는 Node 내장 test runner를 사용하며 `GameLoop`, `InputManager`, asset manifest parsing, render command parsing, renderer stats 계산을 검증한다. WebGL2 실제 렌더링은 자동 e2e 범위에서 제외하고 예제 실행 후 manual smoke check로 확인한다.
+
+Top-down Shooter 수동 점검 기준은 `docs/topdown-shooter-smoke-checklist.md`를 따른다.
+
+## 프로젝트 구조
+
+```text
+crates/ferrum-core/          Rust core, shooter scene, game state, collision, render/audio command
+packages/ferrum-web/        TypeScript platform layer, WasmBridge, WebGL2 renderer
+examples/topdown-shooter/   MVP 샘플 게임
+docs/                       아키텍처, MVP 범위, 로드맵, 리뷰 기준
+scripts/                    저장소 보조 스크립트
+```
+
+## Asset manifest 예시
+
+```ts
+await engine.loadAssets({
+  textures: {
+    player: "/assets/player.png",
+    enemy: "/assets/enemy.png",
+    bullet: "/assets/bullet.png",
+  },
+  sounds: {
+    shoot: "/assets/shoot.wav",
+    hit: "/assets/hit.wav",
+    gameOver: "/assets/game-over.wav",
+  },
+  json: {
+    game: "/game.json",
+  },
+});
+```
+
+Rust는 texture URL이나 WebGL 객체를 알지 않고 numeric `texture_id`만 render command에 기록한다. TypeScript `TextureManager`는 `texture_id`와 `WebGLTexture`를 매핑한다. 사운드도 같은 방식으로 Rust가 `sound_id` 기반 `AudioEvent`만 만들고 TypeScript `AudioManager`가 Web Audio로 재생한다.
+
+Top-down Shooter 예제는 `json.game`을 Game Spec으로 해석한다. TypeScript가 JSON을 검증하고 기본값을 채운 뒤 Rust `Engine.set_shooter_resolved_config(...)`와 `Engine.set_shooter_animations(...)`에 숫자형 설정을 전달한다. `prefabs.*.animation`은 horizontal sprite sheet의 frame count/fps 또는 `idle`/`move` state row를 설정하며, Rust가 매 프레임 UV를 갱신한다. `ferrum-web`의 `loadAssets()`는 asset을 로드만 하며, 예제가 texture/sound id와 Game Spec 적용을 명시적으로 수행한다.
+
+프레임 렌더링에서는 `FrameState.renderCommandBuffer`를 사용한다. `FrameState.renderCommands`는 호환성 유지용 deprecated API이며 기본값으로는 빈 배열을 반환한다. command object 배열이 꼭 필요한 기존 코드는 `createEngine(..., { includeDeprecatedRenderCommands: true })`로 명시적으로 켤 수 있다.
+
+`WebGL2Renderer.stats()`는 draw call, batch, sprite, render command, texture bind, texture switch 수를 반환한다. Top-down Shooter 예제는 이 값과 초당 audio event 수를 DebugOverlay에 표시한다.
+
+예제 Game Spec 검증:
+
+```bash
+pnpm validate:game-spec
+```
+
+```json
+{
+  "world": { "width": 1600, "height": 960 },
+  "player": { "speed": 180 },
+  "enemies": {
+    "speed": 72,
+    "spawnInterval": 1.0,
+    "behavior": "chase",
+    "spawnPattern": "edge",
+    "health": 1,
+    "scoreReward": 1
+  },
+  "weapons": { "bulletSpeed": 360, "cooldown": 0.12, "lifetime": 1.8, "damage": 1 },
+  "prefabs": {
+    "player": { "width": 36, "height": 36 },
+    "enemy": { "width": 24, "height": 24 },
+    "bullet": { "width": 8, "height": 8 }
+  }
+}
+```
+
+## Buffer ABI
+
+`SpriteRenderCommand`는 Rust에서 `#[repr(C)]`로 선언되어 C ABI 레이아웃을 강제한다. 현재 포맷은 `f32` 13개, 총 52 bytes이며 TypeScript는 동일 순서의 `Float32Array`로 해석한다.
+
+`AudioEvent`도 `#[repr(C)]`이며 현재 포맷은 `f32` 3개, 총 12 bytes다. 필드 순서는 `sound_id`, `volume`, `pitch`다.
+
+필드 순서, 타입, 정렬이 바뀌면 Rust export와 TypeScript ABI 검증 및 decoder를 함께 수정해야 한다.
+
+## 문서
+
+- [사용자 설명서](docs/user-guide.md)
+- [아키텍처](docs/architecture.md)
+- [MVP 범위](docs/mvp.md)
+- [Game Spec](docs/game-spec.md)
+- [Agent workflow](docs/agent-workflow.md)
+- [Agent review checklist](docs/agent-review-checklist.md)
+- [로드맵](docs/roadmap.md)
+- [코드 리뷰 기준](docs/code_review.md)
+- [변경 기록](CHANGELOG.md)
+
+## GitHub Actions
+
+현재 CI는 `main` push와 `main` 대상 pull request에서 Rust stable, wasm target, wasm-pack, Node.js 22, pnpm 10.8.0을 준비한 뒤 다음을 실행한다.
+
 - `pnpm install`
 - `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
 - `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
 - `pnpm build`
 
-로컬에서 CI와 동일한 순서로 실행하려면:
-
-```bash
-rustup target add wasm32-unknown-unknown
-cargo install wasm-pack
-corepack enable
-corepack prepare pnpm@10.8.0 --activate
-pnpm install
-cargo test --manifest-path crates/ferrum-core/Cargo.toml
-wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg
-pnpm build
-```
-
-## DPR 수동 검증 방법
-
-1. 예제 실행: `pnpm --filter @ferrum2d/topdown-shooter dev`
-2. 브라우저에서 `http://localhost:5173` 접속 후 플레이어 sprite와 마우스 위치 오버레이를 확인한다.
-3. DPR 1 환경(일반 디스플레이 또는 브라우저 zoom 100%)에서 이동/조준 시 sprite 위치/크기가 자연스러운지 확인한다.
-4. DPR 2 환경(레티나 디스플레이 또는 DevTools device emulation)에서 동일하게 이동/조준 시 sprite 위치/크기가 동일 체감으로 유지되는지 확인한다.
-5. debug overlay의 drawCalls/batchCount/spriteCount가 프레임별 렌더 상태와 일치하는지 확인한다.
+로컬에서는 CI 명령에 더해 `pnpm test`와 `pnpm lint`를 함께 실행하는 것을 권장한다.

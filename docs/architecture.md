@@ -2,60 +2,211 @@
 
 ## 개요
 
-Ferrum2D MVP는 다음 4개 레이어로 구성한다.
+Ferrum2D MVP는 Rust core가 시뮬레이션을 소유하고, TypeScript 플랫폼 레이어가 브라우저 API를 다루며, WebGL2 렌더러가 Rust의 render command buffer를 소비하는 구조다.
 
-1. Rust core
-2. WebAssembly 바인딩
-3. TypeScript 플랫폼 레이어
-4. WebGL2 렌더러
+현재 구현은 Top-down Shooter MVP를 기준으로 검증한다.
 
-현재 상태는 **AABB + Render Command 기반 기술 데모를 통과했고, Top-down Shooter MVP를 안정화하는 단계**다.
+```text
+Input DOM events
+  -> TypeScript InputManager snapshot
+  -> Wasm Engine.set_input(...)
+  -> Rust Engine.update(delta)
+  -> RenderCommand buffer + AudioEvent buffer
+  -> TypeScript WasmBridge typed array view
+  -> WebGL2Renderer + AudioManager
+  -> DebugOverlay
+```
 
-## 레이어별 역할 분리
+## 레이어
 
-### 1) Rust core
+### Rust core
 
-- 게임 루프, 월드/엔티티 상태, 이동/충돌의 핵심 로직 담당
-- 플랫폼 독립적인 순수 엔진 도메인 로직 유지
-- 렌더링 API를 직접 호출하지 않고, 렌더링 명령 버퍼를 중립 포맷으로 생성
+위치: `crates/ferrum-core`
 
-### 2) WebAssembly 바인딩
+역할:
 
-- Rust core를 브라우저에서 호출할 수 있도록 인터페이스 노출
-- 메모리 경계와 데이터 전달 정책 담당
-- hot path에서 entity 단위 왕복 대신 bulk buffer 교환을 우선
+- 게임 시간, scene state, score, player/enemy/bullet 상태 관리
+- entity id, transform, velocity, sprite, collider 저장
+- player-follow 2D camera와 viewport 상태 관리
+- MVP 2D physics 처리: velocity integration, collider 기반 world bounds clamp
+- AABB 충돌 판정과 entity despawn 처리
+- enemy spawn, chase, bullet lifetime, game over, restart 처리
+- render command와 audio event 생성
 
-### 3) TypeScript 플랫폼 레이어
+`Engine`은 Wasm API, 입력 snapshot, world/camera 소유권, render/audio buffer 생성을 조정한다. Top-down Shooter 전용 규칙은 `ShooterScene`이 소유하며 scene state, score, 발사/스폰/충돌 결과, texture/sound id 적용을 처리한다.
 
-- 브라우저 이벤트(입력, 시간, 리사이즈 등) 수집
-- WASM 모듈 로딩 및 Rust core 호출 순서 관리
-- Rust core가 생성한 render command buffer를 typed array로 해석
-- 예제 루프에서 score/game-over/restart 등 UI/상태 표시 계층과 연결
+Rust core는 DOM, Canvas, WebGL, Web Audio, fetch 같은 브라우저 API를 직접 호출하지 않는다.
 
-### 4) WebGL2 렌더러
+### WebAssembly 경계
 
-- TypeScript 레이어가 전달한 렌더링 데이터를 실제 GPU draw call로 변환
-- MVP에서는 2D 스프라이트 렌더링과 디버그 표현에 필요한 최소 기능만 유지
+Rust는 wasm-bindgen으로 브라우저에서 호출 가능한 `Engine`을 노출한다. 프레임 hot path에서는 entity별 JS/Wasm 왕복 호출을 만들지 않고 다음 형태를 사용한다.
 
-## 구현된 핵심 데이터 경로
+- 입력: TypeScript가 프레임마다 snapshot 값을 `set_input(...)`으로 한 번 전달한다.
+- viewport: TypeScript가 canvas logical size를 `set_viewport_size(...)`로 전달한다.
+- scene config: TypeScript가 Game Spec JSON을 검증한 뒤 `set_shooter_resolved_config(...)`로 숫자형 설정을 한 번에 전달한다.
+- 업데이트: `update(delta_seconds)` 한 번으로 Rust 내부 루프를 실행한다.
+- 렌더링: `render_command_ptr()`와 `render_command_len()`으로 bulk buffer를 노출한다.
+- 오디오: `audio_event_ptr()`와 `audio_event_len()`으로 bulk buffer를 노출한다.
+- 이벤트 정리: TypeScript가 오디오 이벤트를 읽고 재생한 뒤 `clear_events()`를 호출한다.
 
-1. 입력 계층이 키보드/마우스 상태를 수집한다.
-2. TypeScript가 프레임마다 `set_input` + `update(delta)`를 호출한다.
-3. Rust core가 월드 업데이트, 충돌 판정, 엔티티 생명주기 반영을 수행한다.
-4. Rust core가 `SpriteRenderCommand` 배열을 생성한다.
-5. TypeScript/WebGL2가 command buffer를 소비해 draw를 수행한다.
+TypeScript 프레임 상태는 `renderCommandBuffer`를 기본 렌더링 경로로 사용한다. object 배열 형태의 `renderCommands`는 deprecated 호환 API이며, 매 프레임 allocation을 만들지 않도록 명시 옵션을 켠 경우에만 decode한다.
 
-## 안정화 대상(Phase 10)
+### TypeScript 플랫폼 레이어
 
-- shooter game state의 일관성(플레이 상태 ↔ game over ↔ restart)
-- score 반영 타이밍과 표시 정책
-- bullet cooldown/lifetime 튜닝
-- enemy spawn/movement 튜닝
-- debug overlay의 검증 정보 정리
+위치: `packages/ferrum-web`
 
-## 설계 원칙
+역할:
 
-- Rust core와 TypeScript 레이어의 책임을 명확히 분리한다.
-- Rust core는 웹 API에 직접 의존하지 않는다.
-- TypeScript 레이어는 플랫폼 의존 처리 전담 계층으로 유지한다.
-- MVP 범위 밖 기능(WebGPU/Worker/3D/Editor/멀티플레이어)은 구현 대상에서 제외한다.
+- Wasm module 초기화와 Rust `Engine` lifecycle 조정
+- `requestAnimationFrame` 기반 `GameLoop`
+- keyboard/mouse/pointer 입력 수집
+- texture, sound, JSON manifest 로딩
+- `texture_id`와 `WebGLTexture` 매핑
+- `sound_id`와 `AudioBuffer` 매핑
+- render/audio buffer를 typed array view로 읽기
+- DebugOverlay DOM 갱신
+
+TypeScript는 플랫폼 상태를 다루지만 게임 규칙의 single source of truth를 소유하지 않는다. 플레이어 이동 규칙, 충돌, 점수, game over는 Rust core에 둔다.
+
+### WebGL2 렌더러
+
+위치: `packages/ferrum-web/src/webgl2Renderer.ts`, `spriteBatch.ts`, `textureManager.ts`
+
+역할:
+
+- WebGL2 context와 GPU resource 관리
+- `SpriteRenderCommand` buffer를 sprite draw call로 변환
+- texture_id별 batch 처리와 renderer stats 집계
+- placeholder texture 제공
+- `destroy()`에서 WebGL resource 정리
+
+MVP 구현체는 WebGL2 하나다. WebGPU는 MVP 범위가 아니며 현재 구현하지 않는다.
+
+## 데이터 포맷
+
+### SpriteRenderCommand
+
+Rust shared struct:
+
+```rust
+#[repr(C)]
+pub struct SpriteRenderCommand {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub u0: f32,
+    pub v0: f32,
+    pub u1: f32,
+    pub v1: f32,
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub a: f32,
+    pub texture_id: f32,
+}
+```
+
+현재 크기는 `f32` 13개, 총 52 bytes다. TypeScript는 Rust가 export하는 `sprite_render_command_floats()`와 `sprite_render_command_bytes()`로 ABI를 검증한다.
+
+MVP의 `SpriteRenderCommand` 좌표는 camera가 적용된 screen-space 좌표다. Rust core에서 HUD나 overlay용 screen-space command를 추가하려면 world-space sprite command와 구분되는 별도 command type 또는 layer 정책을 먼저 정의한다.
+
+### AudioEvent
+
+Rust shared struct:
+
+```rust
+#[repr(C)]
+pub struct AudioEvent {
+    pub sound_id: f32,
+    pub volume: f32,
+    pub pitch: f32,
+}
+```
+
+현재 크기는 `f32` 3개, 총 12 bytes다. TypeScript는 Rust가 export하는 `audio_event_floats()`와 `audio_event_bytes()`로 ABI를 검증한다.
+
+## 프레임 순서
+
+1. `InputManager`가 현재 keyboard/mouse snapshot을 반환한다.
+2. `createEngine`이 Rust `Engine.set_input(...)`을 호출한다.
+3. `createEngine`이 canvas logical viewport를 Rust `Engine.set_viewport_size(...)`로 전달한다.
+4. Rust `Engine.update(delta)`가 scene/game/camera/physics/collision/audio/render 상태를 갱신한다.
+5. TypeScript가 audio event buffer를 읽고 `AudioManager`로 재생한다.
+6. TypeScript가 `clear_events()`를 호출해 중복 재생을 방지한다.
+7. TypeScript가 render command buffer를 읽는다.
+8. `WebGL2Renderer`가 화면을 clear하고 command buffer를 draw한다.
+9. 예제가 DebugOverlay와 HUD를 갱신한다.
+
+## 에셋 로딩
+
+`FerrumEngine.loadAssets(manifest)`는 texture, sound, JSON manifest를 명시적으로 로드한다.
+
+- texture: `TextureRegistry`가 이름별 numeric `texture_id`를 발급한다.
+- sound: `SoundRegistry`가 이름별 numeric `sound_id`를 발급한다.
+- JSON: platform layer는 JSON을 로드하고 보관한다. Top-down Shooter 예제가 `json.game`을 Game Spec으로 검증한 뒤 Rust scene config, prefab template, enemy behavior preset에 적용한다.
+
+Rust에는 URL, ImageBitmap, WebGLTexture, AudioBuffer를 전달하지 않는다. Rust는 `set_texture_ids(...)`, `set_sound_ids(...)`로 받은 numeric id만 command/event에 기록한다.
+
+Game Spec도 Rust에 원본 JSON이나 문자열 object를 넘기지 않는다. TypeScript가 `world.width`, `player.speed`, `enemies.spawnInterval`, `enemies.behavior`, `enemies.spawnPattern`, `enemies.health`, `enemies.scoreReward`, `weapons.damage`, `weapons.cooldown`, `prefabs.enemy.width`, `prefabs.enemy.animation.states.move.row` 같은 필드를 검증하고 기본값을 채운 뒤 `set_shooter_resolved_config(...)`와 `set_shooter_animations(...)`로 숫자만 전달한다. 이 경로는 게임 시작 전 설정용이며 프레임 hot path가 아니다.
+
+CLI 검증은 `pnpm validate:game-spec`로 실행한다. 이 명령은 `@ferrum2d/ferrum-web`을 빌드한 뒤 같은 `resolveShooterGameSpec(...)` 검증 함수를 사용해 예제 `game.json`을 확인한다.
+
+## DebugOverlay와 stats
+
+DebugOverlay는 DOM 기반이며 `debug: false` 또는 예제 URL의 `?debug=false`에서 표시하지 않는다.
+
+현재 표시 항목:
+
+- FPS
+- frame time
+- entity count
+- sprite count
+- draw call count
+- batch count
+- render command count
+- texture bind count
+- texture switch count
+- audio events per second
+- Rust update time
+- render time
+- mouse position
+- camera position
+- game state
+- score
+
+## 테스트 경계
+
+Rust 테스트:
+
+- entity id generation
+- physics velocity integration과 bounds clamp
+- camera follow와 render command offset
+- AABB collision
+- bullet lifetime
+- game state transition
+- render command generation
+- audio event generation
+
+TypeScript 테스트:
+
+- GameLoop start/stop
+- InputManager snapshot
+- Asset manifest parsing
+- Shooter Game Spec validation/apply
+- render command parsing
+- renderer stats derivation
+
+WebGL2 실제 렌더링은 Node 테스트에서 다루지 않고 예제 실행 기반 smoke/manual check로 확인한다.
+
+## MVP 제외 범위
+
+- WebGPU
+- Worker/멀티스레딩
+- 3D 렌더링
+- 에디터
+- 멀티플레이어
+- 복잡한 physics engine
+- IndexedDB cache
+- 자동 texture atlas pipeline
+- spatial audio와 복잡한 mixer
