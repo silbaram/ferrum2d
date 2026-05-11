@@ -26,8 +26,10 @@ export { TextureRegistry } from "./textureRegistry";
 export { SoundRegistry } from "./soundRegistry";
 export { SpriteBatch } from "./spriteBatch";
 export { InputManager } from "./inputManager";
+export { generateTextureAtlasLayout } from "./textureAtlas";
 export type { InputSnapshot } from "./inputManager";
 export type { SpriteDrawOptions } from "./spriteBatch";
+export type { AtlasSpriteInput, AtlasSpritePlacement, TextureAtlasLayout, TextureAtlasOptions } from "./textureAtlas";
 export type {
   AssetLoadProgress,
   AssetLoadProgressCallback,

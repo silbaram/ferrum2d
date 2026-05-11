@@ -1,5 +1,6 @@
 import { SoundRegistry } from "./soundRegistry.js";
 import { TextureRegistry } from "./textureRegistry.js";
+import { IndexedDbAssetCache, type JsonAssetCache } from "./indexedDbAssetCache.js";
 
 export interface TextureAssetManager {
   loadTexture(textureId: number, url: string): Promise<WebGLTexture>;
@@ -50,6 +51,9 @@ export class AssetLoader {
     private readonly audioManager?: SoundAssetManager,
     private readonly textureRegistry = new TextureRegistry(),
     private readonly soundRegistry = new SoundRegistry(),
+    private readonly cache: JsonAssetCache = new IndexedDbAssetCache(),
+    private readonly cacheVersion = "v1",
+    private readonly cacheTtlMs = 24 * 60 * 60 * 1000,
   ) {}
 
   async loadAssets(
@@ -113,6 +117,10 @@ export class AssetLoader {
     return this.soundRegistry;
   }
 
+  invalidateJsonCache(url: string): Promise<void> {
+    return this.cache.invalidateJson(url, { version: this.cacheVersion });
+  }
+
   private async loadSound(name: string, soundId: number, url: string): Promise<void> {
     if (!this.audioManager) {
       throw formatAssetLoadError(
@@ -133,6 +141,11 @@ export class AssetLoader {
   }
 
   private async loadJson(name: string, url: string): Promise<unknown> {
+    const cached = await this.cache.getJson(url, { version: this.cacheVersion });
+    if (cached !== null) {
+      return cached;
+    }
+
     const response = await fetch(url);
     if (!response.ok) {
       throw formatAssetLoadError(
@@ -145,7 +158,14 @@ export class AssetLoader {
     }
 
     try {
-      return await response.json();
+      const parsed = await response.json();
+      await this.cache.setJson(url, parsed, {
+        version: this.cacheVersion,
+        ttlMs: this.cacheTtlMs,
+        etag: response.headers.get("etag") ?? undefined,
+        lastModified: response.headers.get("last-modified") ?? undefined,
+      });
+      return parsed;
     } catch {
       throw formatAssetLoadError("FERRUM_JSON_PARSE_FAILED", "json", name, url, "response.json() parse failed");
     }
