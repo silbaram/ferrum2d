@@ -1,4 +1,5 @@
 export { createEngine } from "./createEngine";
+export { createRenderer } from "./createRenderer";
 export type {
   AssetHost,
   CreateEngineOptions,
@@ -17,7 +18,9 @@ export type {
   ShooterPrefabSpec,
 } from "./gameSpec";
 export type { Renderer, RendererStats } from "./renderer";
+export type { CreateRendererOptions, RendererFallbackInfo } from "./createRenderer";
 export { WebGL2Renderer } from "./webgl2Renderer";
+export { WebGPURenderer } from "./webgpuRenderer";
 export { TextureManager } from "./textureManager";
 export { AudioManager } from "./audioManager";
 export { AssetLoader } from "./assetLoader";
