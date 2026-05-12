@@ -1,6 +1,7 @@
 import { equal, ok } from "node:assert/strict";
 import { test } from "node:test";
 import { GameLoop } from "../src/gameLoop.js";
+import type { FrameClock } from "../src/workerFrameClock.js";
 
 type RafCallback = (timestamp: number) => void;
 
@@ -84,6 +85,49 @@ test("GameLoop clamps large frame deltas", () => {
     equal(deltas[0], 0.05);
   } finally {
     loop.stop();
+    raf.restore();
+  }
+});
+
+test("GameLoop falls back to RAF when worker clock reports error", () => {
+  const raf = installAnimationFrameMock();
+  const deltas: number[] = [];
+
+  let capturedOnTick: ((timestampMs: number) => void) | null = null;
+  let capturedOnError: (() => void) | null = null;
+  let stopCount = 0;
+
+  const fakeClock: FrameClock = {
+    start(onTick, onError) {
+      capturedOnTick = onTick;
+      capturedOnError = onError ?? null;
+    },
+    stop() {
+      stopCount += 1;
+    },
+  };
+
+  const loop = new GameLoop((deltaSeconds) => deltas.push(deltaSeconds), 0.05, {
+    useWorkerClock: true,
+    frameClockFactory: () => fakeClock,
+  });
+
+  try {
+    loop.start();
+    ok(capturedOnTick !== null);
+    equal(raf.pendingCount(), 0);
+
+    capturedOnError?.();
+    equal(raf.pendingCount(), 1);
+
+    raf.fire(10);
+    raf.fire(26);
+    equal(deltas.length, 1);
+    equal(deltas[0], 0.016);
+
+    loop.stop();
+    equal(stopCount, 0);
+  } finally {
     raf.restore();
   }
 });
