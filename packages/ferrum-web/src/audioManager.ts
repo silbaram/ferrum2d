@@ -1,4 +1,6 @@
 import type { AudioEventView } from "./wasmBridge";
+import { AudioAssetLoader } from "./audioAssetLoader.js";
+import { audioPlaybackError, diagnosticError } from "./diagnostics.js";
 
 type AudioContextConstructor = new () => AudioContext;
 
@@ -8,32 +10,31 @@ interface WindowWithWebkitAudioContext extends Window {
 
 export class AudioManager {
   private readonly buffersById = new Map<number, AudioBuffer>();
+  private readonly assetLoader = new AudioAssetLoader(() => this.audioContext());
   private context?: AudioContext;
+  private destroyed = false;
 
   async loadSound(soundId: number, url: string): Promise<AudioBuffer> {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Sound asset id ${soundId} failed to load from '${url}' (${response.status} ${response.statusText}).`);
-    }
-
-    const bytes = await response.arrayBuffer();
-    try {
-      const buffer = await this.audioContext().decodeAudioData(bytes);
-      this.buffersById.set(soundId, buffer);
-      return buffer;
-    } catch {
-      throw new Error(`Sound asset id ${soundId} failed to decode from '${url}'.`);
-    }
+    this.assertAlive();
+    const buffer = await this.assetLoader.load(soundId, url);
+    this.assertAlive();
+    this.buffersById.set(soundId, buffer);
+    return buffer;
   }
 
   play(soundId: number, volume = 1.0, pitch = 1.0): void {
+    this.assertAlive();
     if (soundId <= 0) {
       return;
     }
 
     const buffer = this.buffersById.get(soundId);
     if (!buffer) {
-      throw new Error(`Sound id ${soundId} is not loaded. Check the sounds manifest passed to loadAssets().`);
+      throw audioPlaybackError({
+        kind: "sound",
+        id: soundId,
+        detail: "Sound is not loaded. Check the sounds manifest passed to loadAssets().",
+      });
     }
 
     const context = this.audioContext();
@@ -52,12 +53,17 @@ export class AudioManager {
   }
 
   playEvents(events: readonly AudioEventView[]): void {
+    this.assertAlive();
     for (const event of events) {
       this.play(event.soundId, event.volume, event.pitch);
     }
   }
 
   destroy(): void {
+    if (this.destroyed) {
+      return;
+    }
+    this.destroyed = true;
     const context = this.context;
     this.context = undefined;
     this.buffersById.clear();
@@ -67,16 +73,26 @@ export class AudioManager {
   }
 
   private audioContext(): AudioContext {
+    this.assertAlive();
     if (this.context) {
       return this.context;
     }
 
     const constructor = window.AudioContext ?? (window as WindowWithWebkitAudioContext).webkitAudioContext;
     if (!constructor) {
-      throw new Error("Web Audio API is not available in this browser.");
+      throw diagnosticError("Audio context error", {
+        kind: "sound",
+        detail: "Web Audio API is not available in this browser",
+      });
     }
 
     this.context = new constructor();
     return this.context;
+  }
+
+  private assertAlive(): void {
+    if (this.destroyed) {
+      throw new Error("AudioManager has been destroyed.");
+    }
   }
 }

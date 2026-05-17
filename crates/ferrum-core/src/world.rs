@@ -1,5 +1,5 @@
 use crate::components::{
-    AabbCollider, CollisionLayer, Sprite, SpriteAnimation, Transform2D, Velocity,
+    AabbCollider, CollisionLayer, Sprite, SpriteAnimation, SpriteFrame, Transform2D, Velocity,
 };
 use crate::entity::Entity;
 use crate::physics::PhysicsSystem;
@@ -12,6 +12,7 @@ pub struct EntityTemplate {
     pub sprite_height: f32,
     pub collider_half_width: f32,
     pub collider_half_height: f32,
+    pub frame: SpriteFrame,
     pub animation: Option<SpriteAnimation>,
 }
 
@@ -22,6 +23,7 @@ impl EntityTemplate {
             sprite_height,
             collider_half_width: sprite_width * 0.5,
             collider_half_height: sprite_height * 0.5,
+            frame: SpriteFrame::FULL,
             animation: None,
         }
     }
@@ -33,6 +35,16 @@ impl EntityTemplate {
 
     pub fn with_sprite_animation(mut self, animation: Option<SpriteAnimation>) -> Self {
         self.animation = animation;
+        self
+    }
+
+    pub fn with_frame(mut self, sprite_width: f32, sprite_height: f32, frame: SpriteFrame) -> Self {
+        self.sprite_width = sprite_width;
+        self.sprite_height = sprite_height;
+        self.collider_half_width = sprite_width * 0.5;
+        self.collider_half_height = sprite_height * 0.5;
+        self.frame = frame;
+        self.animation = None;
         self
     }
 }
@@ -118,15 +130,16 @@ impl World {
     ) -> Entity {
         let e = self.spawn_entity();
         let i = e.id as usize;
+        let (u0, v0, u1, v1) = initial_uv(template);
         self.transforms[i] = Some(Transform2D { x, y });
         self.sprites[i] = Some(Sprite {
             texture_id,
             width: template.sprite_width,
             height: template.sprite_height,
-            u0: 0.0,
-            v0: 0.0,
-            u1: initial_uv(template).2,
-            v1: initial_uv(template).3,
+            u0,
+            v0,
+            u1,
+            v1,
             r: 1.0,
             g: 1.0,
             b: 1.0,
@@ -159,15 +172,16 @@ impl World {
     ) -> Entity {
         let e = self.spawn_entity();
         let i = e.id as usize;
+        let (u0, v0, u1, v1) = initial_uv(template);
         self.transforms[i] = Some(Transform2D { x, y });
         self.sprites[i] = Some(Sprite {
             texture_id,
             width: template.sprite_width,
             height: template.sprite_height,
-            u0: 0.0,
-            v0: 0.0,
-            u1: initial_uv(template).2,
-            v1: initial_uv(template).3,
+            u0,
+            v0,
+            u1,
+            v1,
             r: 0.9,
             g: 0.3,
             b: 0.3,
@@ -219,15 +233,16 @@ impl World {
     ) -> Entity {
         let e = self.spawn_entity();
         let i = e.id as usize;
+        let (u0, v0, u1, v1) = initial_uv(template);
         self.transforms[i] = Some(transform);
         self.sprites[i] = Some(Sprite {
             texture_id,
             width: template.sprite_width,
             height: template.sprite_height,
-            u0: 0.0,
-            v0: 0.0,
-            u1: initial_uv(template).2,
-            v1: initial_uv(template).3,
+            u0,
+            v0,
+            u1,
+            v1,
             r: 1.0,
             g: 1.0,
             b: 0.2,
@@ -253,6 +268,34 @@ impl World {
 
     pub fn alive_count(&self) -> usize {
         self.alive.iter().filter(|a| **a).count()
+    }
+
+    pub(crate) fn apply_template_to_entity(
+        &mut self,
+        entity: Entity,
+        texture_id: u32,
+        template: EntityTemplate,
+    ) {
+        let i = entity.id as usize;
+        if i >= self.alive.len() || !self.alive[i] || self.generations[i] != entity.generation {
+            return;
+        }
+
+        let (u0, v0, u1, v1) = initial_uv(template);
+        if let Some(sprite) = self.sprites[i].as_mut() {
+            sprite.texture_id = texture_id;
+            sprite.width = template.sprite_width;
+            sprite.height = template.sprite_height;
+            sprite.u0 = u0;
+            sprite.v0 = v0;
+            sprite.u1 = u1;
+            sprite.v1 = v1;
+        }
+        if let Some(collider) = self.colliders[i].as_mut() {
+            collider.half_width = template.collider_half_width;
+            collider.half_height = template.collider_half_height;
+        }
+        self.sprite_animations[i] = template.animation;
     }
 
     fn update_sprite_animations(&mut self, delta: f32) {
@@ -285,7 +328,7 @@ fn initial_uv(template: EntityTemplate) -> (f32, f32, f32, f32) {
     template
         .animation
         .map(|animation| animation.uv())
-        .unwrap_or((0.0, 0.0, 1.0, 1.0))
+        .unwrap_or_else(|| template.frame.uv())
 }
 
 #[cfg(test)]

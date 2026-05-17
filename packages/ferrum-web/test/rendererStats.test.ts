@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   emptyRendererStats,
   estimateTextureSwitchCount,
+  RENDERER_STATS_FIELD_CONTRACT,
   rendererStatsForCommands,
 } from "../src/renderer.js";
 import type { RenderCommandBufferView } from "../src/renderCommandDecoder.js";
@@ -29,6 +30,21 @@ test("emptyRendererStats returns zeroed counters", () => {
     textureBindCount: 0,
     textureSwitchCount: 0,
   });
+});
+
+test("RendererStats field contract fixes labels and units", () => {
+  deepEqual(RENDERER_STATS_FIELD_CONTRACT.map(({ field, label, unit }) => ({
+    field,
+    label,
+    unit,
+  })), [
+    { field: "drawCalls", label: "draw calls", unit: "count" },
+    { field: "batchCount", label: "batches", unit: "count" },
+    { field: "spriteCount", label: "sprites", unit: "count" },
+    { field: "renderCommandCount", label: "render commands", unit: "count" },
+    { field: "textureBindCount", label: "texture binds", unit: "count" },
+    { field: "textureSwitchCount", label: "texture switches", unit: "count" },
+  ]);
 });
 
 test("estimateTextureSwitchCount counts adjacent texture id changes", () => {

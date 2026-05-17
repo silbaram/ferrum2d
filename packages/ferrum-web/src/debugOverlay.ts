@@ -19,13 +19,42 @@ export interface DebugOverlayMetrics {
   score: number;
 }
 
+export type DebugOverlayMetricUnit = "fps" | "ms" | "count" | "events/s" | "px" | "world" | "state" | "score";
+
+export interface DebugOverlayRowContract {
+  id: string;
+  label: string;
+  unit: DebugOverlayMetricUnit;
+  optional?: boolean;
+}
+
+export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
+  { id: "fps", label: "fps", unit: "fps" },
+  { id: "frameTimeMs", label: "frame time", unit: "ms" },
+  { id: "rustUpdateTimeMs", label: "rust update", unit: "ms" },
+  { id: "renderTimeMs", label: "render", unit: "ms" },
+  { id: "entityCount", label: "entities", unit: "count" },
+  { id: "spriteCount", label: "sprites", unit: "count" },
+  { id: "drawCalls", label: "draw calls", unit: "count" },
+  { id: "batchCount", label: "batches", unit: "count" },
+  { id: "renderCommandCount", label: "render commands", unit: "count", optional: true },
+  { id: "textureBindCount", label: "texture binds", unit: "count", optional: true },
+  { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
+  { id: "audioEventsPerSecond", label: "audio events", unit: "events/s", optional: true },
+  { id: "mousePosition", label: "mouse", unit: "px" },
+  { id: "cameraPosition", label: "camera", unit: "world" },
+  { id: "gameState", label: "state", unit: "state" },
+  { id: "score", label: "score", unit: "score" },
+];
+
 export interface DebugOverlayOptions {
   enabled?: boolean;
 }
 
 export class DebugOverlay {
-  private readonly root?: HTMLDivElement;
-  private lastUpdateMs = 0;
+  private root?: HTMLDivElement;
+  private lastUpdateMs = Number.NEGATIVE_INFINITY;
+  private destroyed = false;
 
   constructor(parent: HTMLElement = document.body, options: DebugOverlayOptions = {}) {
     if (options.enabled === false) {
@@ -52,7 +81,7 @@ export class DebugOverlay {
   }
 
   update(metrics: DebugOverlayMetrics): void {
-    if (!this.root) {
+    if (this.destroyed || !this.root) {
       return;
     }
 
@@ -62,38 +91,56 @@ export class DebugOverlay {
     }
     this.lastUpdateMs = now;
 
-    const lines = [
-      `fps: ${metrics.fps.toFixed(1)}`,
-      `frame: ${metrics.frameTimeMs.toFixed(2)}ms`,
-      `rust update: ${metrics.rustUpdateTimeMs.toFixed(2)}ms`,
-      `render: ${metrics.renderTimeMs.toFixed(2)}ms`,
-      `entities: ${metrics.entityCount}`,
-      `sprites: ${metrics.spriteCount}`,
-      `draw calls: ${metrics.drawCalls}`,
-      `batches: ${metrics.batchCount}`,
-    ];
-    if (metrics.renderCommandCount !== undefined) {
-      lines.push(`render commands: ${metrics.renderCommandCount}`);
-    }
-    if (metrics.textureBindCount !== undefined) {
-      lines.push(`texture binds: ${metrics.textureBindCount}`);
-    }
-    if (metrics.textureSwitchCount !== undefined) {
-      lines.push(`texture switches: ${metrics.textureSwitchCount}`);
-    }
-    if (metrics.audioEventsPerSecond !== undefined) {
-      lines.push(`audio events/s: ${metrics.audioEventsPerSecond.toFixed(1)}`);
-    }
-    lines.push(
-      `mouse: ${metrics.mouseX.toFixed(1)}, ${metrics.mouseY.toFixed(1)}`,
-      `camera: ${metrics.cameraX.toFixed(1)}, ${metrics.cameraY.toFixed(1)}`,
-      `state: ${metrics.gameState}`,
-      `score: ${metrics.score}`,
-    );
-    this.root.textContent = lines.join("\n");
+    this.root.textContent = formatDebugOverlayMetrics(metrics).join("\n");
   }
 
   destroy(): void {
+    if (this.destroyed) {
+      return;
+    }
+    this.destroyed = true;
     this.root?.remove();
+    this.root = undefined;
   }
+}
+
+export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[] {
+  const lines = [
+    row("fps", `${metrics.fps.toFixed(1)} fps`),
+    row("frameTimeMs", `${metrics.frameTimeMs.toFixed(2)} ms`),
+    row("rustUpdateTimeMs", `${metrics.rustUpdateTimeMs.toFixed(2)} ms`),
+    row("renderTimeMs", `${metrics.renderTimeMs.toFixed(2)} ms`),
+    row("entityCount", metrics.entityCount),
+    row("spriteCount", metrics.spriteCount),
+    row("drawCalls", metrics.drawCalls),
+    row("batchCount", metrics.batchCount),
+  ];
+
+  if (metrics.renderCommandCount !== undefined) {
+    lines.push(row("renderCommandCount", metrics.renderCommandCount));
+  }
+  if (metrics.textureBindCount !== undefined) {
+    lines.push(row("textureBindCount", metrics.textureBindCount));
+  }
+  if (metrics.textureSwitchCount !== undefined) {
+    lines.push(row("textureSwitchCount", metrics.textureSwitchCount));
+  }
+  if (metrics.audioEventsPerSecond !== undefined) {
+    lines.push(row("audioEventsPerSecond", `${metrics.audioEventsPerSecond.toFixed(1)} events/s`));
+  }
+  lines.push(
+    row("mousePosition", `${metrics.mouseX.toFixed(1)}, ${metrics.mouseY.toFixed(1)} px`),
+    row("cameraPosition", `${metrics.cameraX.toFixed(1)}, ${metrics.cameraY.toFixed(1)} world`),
+    row("gameState", metrics.gameState),
+    row("score", metrics.score),
+  );
+  return lines;
+}
+
+function row(id: string, value: string | number): string {
+  const contract = DEBUG_OVERLAY_ROW_CONTRACT.find((entry) => entry.id === id);
+  if (!contract) {
+    throw new Error(`Unknown debug overlay row '${id}'.`);
+  }
+  return `${contract.label}: ${value}`;
 }

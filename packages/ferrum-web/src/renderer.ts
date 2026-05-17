@@ -1,13 +1,67 @@
 import type { RenderCommandBufferView } from "./renderCommandDecoder";
 
 export interface RendererStats {
+  /** WebGL draw calls submitted by the renderer for the current frame. */
   drawCalls: number;
+  /** Texture-contiguous sprite batches rendered for the current frame. */
   batchCount: number;
+  /** Sprite commands consumed by the renderer for the current frame. */
   spriteCount: number;
+  /** Raw render commands read from the Wasm command buffer for the current frame. */
   renderCommandCount: number;
+  /** WebGL texture bind operations implied by rendered batches for the current frame. */
   textureBindCount: number;
+  /** Adjacent texture_id changes used by texture-id batching; explicit single-texture rendering reports 0. */
   textureSwitchCount: number;
 }
+
+export type RendererStatsUnit = "count";
+
+export interface RendererStatsFieldContract {
+  field: keyof RendererStats;
+  label: string;
+  unit: RendererStatsUnit;
+  description: string;
+}
+
+export const RENDERER_STATS_FIELD_CONTRACT: readonly RendererStatsFieldContract[] = [
+  {
+    field: "drawCalls",
+    label: "draw calls",
+    unit: "count",
+    description: "WebGL draw calls submitted by the renderer for the current frame.",
+  },
+  {
+    field: "batchCount",
+    label: "batches",
+    unit: "count",
+    description: "Texture-contiguous sprite batches rendered for the current frame.",
+  },
+  {
+    field: "spriteCount",
+    label: "sprites",
+    unit: "count",
+    description: "Sprite commands consumed by the renderer for the current frame.",
+  },
+  {
+    field: "renderCommandCount",
+    label: "render commands",
+    unit: "count",
+    description: "Raw render commands read from the Wasm command buffer for the current frame.",
+  },
+  {
+    field: "textureBindCount",
+    label: "texture binds",
+    unit: "count",
+    description: "WebGL texture bind operations implied by rendered batches for the current frame.",
+  },
+  {
+    field: "textureSwitchCount",
+    label: "texture switches",
+    unit: "count",
+    description: "Adjacent texture_id changes used by texture-id batching; explicit single-texture rendering reports 0.",
+  },
+];
 
 export interface Renderer {
   render(): void;

@@ -3,14 +3,23 @@ export type {
   AssetHost,
   CreateEngineOptions,
   FerrumEngine,
+  FrameHandler,
   FrameState,
+  InputProvider,
   ShooterSoundIds,
   ShooterTextureIds,
   ViewportSnapshot,
+  ViewportProvider,
 } from "./createEngine";
 export { applyShooterGameSpec, resolveShooterGameSpec } from "./gameSpec";
 export type {
+  ApplyShooterGameSpecOptions,
+  ResolvedShooterAtlasFrame,
   ResolvedShooterGameSpec,
+  ShooterAtlasFrameSpec,
+  ShooterAtlasSpec,
+  ShooterCameraPreset,
+  ShooterCameraSpec,
   ShooterEnemyBehaviorPreset,
   ShooterGameSpec,
   ShooterGameSpecTarget,
@@ -18,8 +27,10 @@ export type {
 } from "./gameSpec";
 export type { Renderer, RendererStats } from "./renderer";
 export { WebGL2Renderer } from "./webgl2Renderer";
+export { BrowserPlatformHost } from "./browserPlatformHost";
 export { TextureManager } from "./textureManager";
 export { AudioManager } from "./audioManager";
+export { AudioAssetLoader } from "./audioAssetLoader";
 export { AssetLoader } from "./assetLoader";
 export { DebugOverlay } from "./debugOverlay";
 export { TextureRegistry } from "./textureRegistry";

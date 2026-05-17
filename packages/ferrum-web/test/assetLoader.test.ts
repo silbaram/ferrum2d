@@ -20,6 +20,28 @@ class FakeAudioManager implements SoundAssetManager {
   }
 }
 
+class FailingTextureManager implements TextureAssetManager {
+  async loadTexture(): Promise<WebGLTexture> {
+    throw new Error("decode failed");
+  }
+}
+
+class FailingAudioManager implements SoundAssetManager {
+  async loadSound(): Promise<AudioBuffer> {
+    throw new Error("decode failed");
+  }
+}
+
+async function rejectsWithMessage(promise: Promise<unknown>, expected: string): Promise<void> {
+  try {
+    await promise;
+  } catch (error) {
+    equal(error instanceof Error ? error.message : String(error), expected);
+    return;
+  }
+  throw new Error("Expected promise to reject.");
+}
+
 test("AssetLoader parses texture, sound, and JSON manifests with progress", async () => {
   const previousFetch = globalThis.fetch;
   const textureManager = new FakeTextureManager();
@@ -30,7 +52,7 @@ test("AssetLoader parses texture, sound, and JSON manifests with progress", asyn
     status: 200,
     statusText: "OK",
     json: async () => ({ source: String(input) }),
-  } as Response);
+  } as unknown as Response);
 
   try {
     const loader = new AssetLoader(textureManager, audioManager);
@@ -67,6 +89,74 @@ test("AssetLoader parses texture, sound, and JSON manifests with progress", asyn
       "3/4:sound:shoot",
       "4/4:json:config",
     ]);
+  } finally {
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
+  }
+});
+
+test("AssetLoader reports texture load failures with diagnostic context", async () => {
+  const loader = new AssetLoader(new FailingTextureManager());
+
+  await rejectsWithMessage(
+    loader.loadAssets({ textures: { player: "/assets/missing-player.png" } }),
+    "Asset load error: kind=texture name='player' url='/assets/missing-player.png' detail='decode failed'.",
+  );
+});
+
+test("AssetLoader reports sound load failures with diagnostic context", async () => {
+  const loader = new AssetLoader(new FakeTextureManager(), new FailingAudioManager());
+
+  await rejectsWithMessage(
+    loader.loadAssets({ sounds: { shoot: "/assets/missing-shoot.wav" } }),
+    "Asset load error: kind=sound name='shoot' url='/assets/missing-shoot.wav' detail='decode failed'.",
+  );
+});
+
+test("AssetLoader reports missing audio manager with diagnostic context", async () => {
+  const loader = new AssetLoader(new FakeTextureManager());
+
+  await rejectsWithMessage(
+    loader.loadAssets({ sounds: { shoot: "/assets/shoot.wav" } }),
+    "Asset load error: kind=sound name='shoot' url='/assets/shoot.wav' detail='AudioManager is required before loading sound assets'.",
+  );
+});
+
+test("AssetLoader reports JSON HTTP failures with diagnostic context", async () => {
+  const previousFetch = globalThis.fetch;
+  (globalThis as unknown as { fetch: typeof fetch }).fetch = async () => ({
+    ok: false,
+    status: 404,
+    statusText: "Not Found",
+  } as unknown as Response);
+
+  try {
+    const loader = new AssetLoader(new FakeTextureManager());
+    await rejectsWithMessage(
+      loader.loadAssets({ json: { game: "/missing-game.json" } }),
+      "Asset load error: kind=json name='game' url='/missing-game.json' detail='HTTP 404 Not Found'.",
+    );
+  } finally {
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
+  }
+});
+
+test("AssetLoader reports JSON parse failures with diagnostic context", async () => {
+  const previousFetch = globalThis.fetch;
+  (globalThis as unknown as { fetch: typeof fetch }).fetch = async () => ({
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    json: async () => {
+      throw new Error("Unexpected token");
+    },
+  } as unknown as Response);
+
+  try {
+    const loader = new AssetLoader(new FakeTextureManager());
+    await rejectsWithMessage(
+      loader.loadAssets({ json: { game: "/bad-game.json" } }),
+      "Asset load error: kind=json name='game' url='/bad-game.json' detail='Invalid JSON: Unexpected token'.",
+    );
   } finally {
     (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
   }

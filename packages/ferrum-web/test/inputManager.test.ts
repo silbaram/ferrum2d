@@ -22,6 +22,10 @@ class FakeEventTarget {
       listener(event);
     }
   }
+
+  listenerCount(type: string): number {
+    return this.listeners.get(type)?.size ?? 0;
+  }
 }
 
 class FakeCanvas extends FakeEventTarget {
@@ -70,6 +74,18 @@ test("InputManager snapshot reflects keyboard and mouse state", () => {
     equal(snapshot.enter, false);
     equal(snapshot.mouseLeft, false);
     input.destroy();
+    input.destroy();
+    equal(fakeWindow.listenerCount("keydown"), 0);
+    equal(fakeWindow.listenerCount("keyup"), 0);
+    equal(fakeWindow.listenerCount("mouseup"), 0);
+    equal(canvas.listenerCount("mousemove"), 0);
+    equal(canvas.listenerCount("mousedown"), 0);
+
+    fakeWindow.dispatch("keydown", keyEvent("KeyW"));
+    canvas.dispatch("mousedown", { button: 0 });
+    snapshot = input.snapshot();
+    equal(snapshot.w, false);
+    equal(snapshot.mouseLeft, false);
   } finally {
     (globalThis as unknown as { window?: unknown }).window = previousWindow;
   }

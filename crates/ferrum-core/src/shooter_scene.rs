@@ -1,8 +1,8 @@
 use crate::audio_event::AudioEvent;
-use crate::camera::Camera2D;
+use crate::camera::{Camera2D, CameraPresetConfig};
 use crate::collision::CollisionSystem;
 use crate::components::{
-    CollisionLayer, SpriteAnimation, SpriteAnimationState, Transform2D, Velocity,
+    CollisionLayer, SpriteAnimation, SpriteAnimationState, SpriteFrame, Transform2D, Velocity,
 };
 use crate::entity::Entity;
 use crate::game_state::GameState;
@@ -65,6 +65,24 @@ impl EnemySpawnPattern {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShooterPrefabKind {
+    Player,
+    Enemy,
+    Bullet,
+}
+
+impl ShooterPrefabKind {
+    pub fn from_code(code: u32) -> Option<Self> {
+        match code {
+            0 => Some(Self::Player),
+            1 => Some(Self::Enemy),
+            2 => Some(Self::Bullet),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ShooterConfig {
     pub world_width: f32,
@@ -83,6 +101,7 @@ pub(crate) struct ShooterConfig {
     pub enemy_health: f32,
     pub bullet_damage: f32,
     pub score_reward: u32,
+    pub camera: CameraPresetConfig,
 }
 
 impl Default for ShooterConfig {
@@ -104,6 +123,7 @@ impl Default for ShooterConfig {
             enemy_health: DEFAULT_ENEMY_HEALTH,
             bullet_damage: DEFAULT_BULLET_DAMAGE,
             score_reward: DEFAULT_SCORE_REWARD,
+            camera: CameraPresetConfig::default(),
         }
     }
 }
@@ -260,6 +280,11 @@ impl ShooterConfig {
         };
         self
     }
+
+    pub fn with_camera(mut self, camera: CameraPresetConfig) -> Self {
+        self.camera = camera;
+        self
+    }
 }
 
 fn positive_or_default(value: f32, default: f32) -> f32 {
@@ -362,6 +387,7 @@ pub struct ShooterScene {
     texture_ids: TextureIds,
     sound_ids: SoundIds,
     config: ShooterConfig,
+    camera_elapsed_seconds: f32,
     pending_despawn: Vec<Entity>,
     marked_for_despawn: Vec<bool>,
 }
@@ -379,6 +405,7 @@ impl Default for ShooterScene {
             texture_ids: TextureIds::default(),
             sound_ids: SoundIds::default(),
             config: ShooterConfig::default(),
+            camera_elapsed_seconds: 0.0,
             pending_despawn: Vec::with_capacity(128),
             marked_for_despawn: Vec::with_capacity(256),
         }
@@ -415,6 +442,7 @@ impl ShooterScene {
             }
             GameState::Playing => {
                 self.tick_playing_timers(delta);
+                self.camera_elapsed_seconds += delta.max(0.0);
                 self.apply_player_input(world, camera, input, audio_events);
                 self.update_enemy_velocity(world);
                 world.update(delta);
@@ -452,6 +480,7 @@ impl ShooterScene {
         self.previous_space = 0;
         self.previous_enter = 0;
         self.spawn_index = 0;
+        self.camera_elapsed_seconds = 0.0;
         audio_events.clear();
         *world = World::default();
         world.spawn_player_from_template(
@@ -528,6 +557,74 @@ impl ShooterScene {
             .config
             .with_combat(enemy_health, bullet_damage, score_reward);
         self.set_config(world, camera, audio_events, next);
+    }
+
+    pub fn set_camera_preset(
+        &mut self,
+        world: &World,
+        camera: &mut Camera2D,
+        camera_preset: CameraPresetConfig,
+    ) {
+        self.config = self.config.with_camera(camera_preset);
+        self.update_camera_follow(world, camera);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_atlas_frame(
+        &mut self,
+        world: &mut World,
+        prefab_code: u32,
+        texture_id: u32,
+        width: f32,
+        height: f32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+    ) {
+        let Some(prefab) = ShooterPrefabKind::from_code(prefab_code) else {
+            return;
+        };
+        if !width.is_finite() || width <= 0.0 || !height.is_finite() || height <= 0.0 {
+            return;
+        }
+        let Some(frame) = SpriteFrame::from_values(u0, v0, u1, v1) else {
+            return;
+        };
+        let template = EntityTemplate::new(width, height).with_frame(width, height, frame);
+
+        match prefab {
+            ShooterPrefabKind::Player => {
+                self.texture_ids.player = texture_id;
+                self.config.player_template = template;
+                self.apply_template_to_existing_layer(
+                    world,
+                    CollisionLayer::Player,
+                    texture_id,
+                    template,
+                );
+            }
+            ShooterPrefabKind::Enemy => {
+                self.texture_ids.enemy = texture_id;
+                self.config.enemy_template = template;
+                self.apply_template_to_existing_layer(
+                    world,
+                    CollisionLayer::Enemy,
+                    texture_id,
+                    template,
+                );
+            }
+            ShooterPrefabKind::Bullet => {
+                self.texture_ids.bullet = texture_id;
+                self.config.bullet_template = template;
+                self.apply_template_to_existing_layer(
+                    world,
+                    CollisionLayer::Bullet,
+                    texture_id,
+                    template,
+                );
+            }
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -634,7 +731,15 @@ impl ShooterScene {
         let Some(player_t) = world.transforms[player.id as usize] else {
             return;
         };
-        camera.follow(player_t, self.config.world_width, self.config.world_height);
+        let player_velocity = world.velocities[player.id as usize].unwrap_or_default();
+        camera.apply_preset(
+            player_t,
+            player_velocity,
+            self.config.world_width,
+            self.config.world_height,
+            self.config.camera,
+            self.camera_elapsed_seconds,
+        );
     }
 
     fn tick_playing_timers(&mut self, delta: f32) {
@@ -923,6 +1028,31 @@ impl ShooterScene {
                 CollisionLayer::Enemy => self.texture_ids.enemy,
                 CollisionLayer::Bullet => self.texture_ids.bullet,
             };
+        }
+    }
+
+    fn apply_template_to_existing_layer(
+        &self,
+        world: &mut World,
+        layer: CollisionLayer,
+        texture_id: u32,
+        template: EntityTemplate,
+    ) {
+        for i in 0..world.colliders.len() {
+            let Some(collider) = world.colliders[i] else {
+                continue;
+            };
+            if collider.layer != layer {
+                continue;
+            }
+            world.apply_template_to_entity(
+                Entity {
+                    id: i as u32,
+                    generation: world.generations[i],
+                },
+                texture_id,
+                template,
+            );
         }
     }
 

@@ -1,0 +1,51 @@
+import { equal } from "node:assert/strict";
+import { test } from "node:test";
+import { AudioManager } from "../src/audioManager.js";
+
+async function rejectsWithMessage(promise: Promise<unknown>, expected: string): Promise<void> {
+  try {
+    await promise;
+  } catch (error) {
+    equal(error instanceof Error ? error.message : String(error), expected);
+    return;
+  }
+  throw new Error("Expected promise to reject.");
+}
+
+test("AudioManager reports HTTP load failures with diagnostic context", async () => {
+  const previousFetch = globalThis.fetch;
+  (globalThis as unknown as { fetch: typeof fetch }).fetch = async () => ({
+    ok: false,
+    status: 404,
+    statusText: "Not Found",
+  } as unknown as Response);
+
+  try {
+    const manager = new AudioManager();
+    await rejectsWithMessage(
+      manager.loadSound(7, "/assets/missing.wav"),
+      "Audio load error: kind=sound id=7 url='/assets/missing.wav' detail='HTTP 404 Not Found'.",
+    );
+    manager.destroy();
+    manager.destroy();
+  } finally {
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
+  }
+});
+
+test("AudioManager reports missing playback buffers with diagnostic context", () => {
+  const manager = new AudioManager();
+
+  try {
+    manager.play(7);
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Audio playback error: kind=sound id=7 detail='Sound is not loaded. Check the sounds manifest passed to loadAssets().'.",
+    );
+    manager.destroy();
+    manager.destroy();
+    return;
+  }
+  throw new Error("Expected play() to throw.");
+});

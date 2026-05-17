@@ -1,3 +1,5 @@
+import { assetLookupError } from "./diagnostics.js";
+
 export interface TextureRegistryEntry {
   name: string;
   textureId: number;
@@ -26,7 +28,11 @@ export class TextureRegistry {
   textureId(name: string): number {
     const textureId = this.tryTextureId(name);
     if (textureId === undefined) {
-      throw new Error(`Texture '${name}' is not registered. Check the textures manifest passed to loadAssets().`);
+      throw assetLookupError({
+        kind: "texture",
+        name,
+        detail: "Texture is not registered. Check the textures manifest passed to loadAssets().",
+      });
     }
     return textureId;
   }

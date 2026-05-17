@@ -1,3 +1,5 @@
+import { assetLookupError } from "./diagnostics.js";
+
 export interface SoundRegistryEntry {
   name: string;
   soundId: number;
@@ -26,7 +28,11 @@ export class SoundRegistry {
   soundId(name: string): number {
     const soundId = this.trySoundId(name);
     if (soundId === undefined) {
-      throw new Error(`Sound '${name}' is not registered. Check the sounds manifest passed to loadAssets().`);
+      throw assetLookupError({
+        kind: "sound",
+        name,
+        detail: "Sound is not registered. Check the sounds manifest passed to loadAssets().",
+      });
     }
     return soundId;
   }

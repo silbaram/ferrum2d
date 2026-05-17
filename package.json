@@ -12,6 +12,7 @@
     "validate:game-spec": "pnpm --filter @ferrum2d/ferrum-web build && node scripts/validate-game-spec.mjs examples/topdown-shooter/public/game.json",
     "create:game-variant": "pnpm --filter @ferrum2d/ferrum-web build && node scripts/create-game-variant.mjs",
     "check": "pnpm build && pnpm test",
+    "smoke:check": "pnpm lint && pnpm test && pnpm validate:game-spec && pnpm build",
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm test:web && pnpm test:rust",
     "format": "pnpm -r --if-present format"

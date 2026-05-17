@@ -1,5 +1,6 @@
 import { SoundRegistry } from "./soundRegistry.js";
 import { TextureRegistry } from "./textureRegistry.js";
+import { assetLoadError, describeError } from "./diagnostics.js";
 
 export interface TextureAssetManager {
   loadTexture(textureId: number, url: string): Promise<WebGLTexture>;
@@ -59,7 +60,16 @@ export class AssetLoader {
 
     for (const [name, url] of textureEntries) {
       const textureId = this.textureRegistry.reserve(name, url);
-      await this.textureManager.loadTexture(textureId, url);
+      try {
+        await this.textureManager.loadTexture(textureId, url);
+      } catch (error) {
+        throw assetLoadError({
+          kind: "texture",
+          name,
+          url,
+          detail: describeError(error),
+        });
+      }
       loaded += 1;
       emitProgress({ kind: "texture", name, url });
     }
@@ -103,27 +113,56 @@ export class AssetLoader {
 
   private async loadSound(name: string, soundId: number, url: string): Promise<void> {
     if (!this.audioManager) {
-      throw new Error(`Sound asset '${name}' requires an AudioManager. Pass one to AssetLoader before loading sounds.`);
+      throw assetLoadError({
+        kind: "sound",
+        name,
+        url,
+        detail: "AudioManager is required before loading sound assets",
+      });
     }
 
     try {
       await this.audioManager.loadSound(soundId, url);
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`Sound asset '${name}' failed to load from '${url}': ${detail}`);
+      throw assetLoadError({
+        kind: "sound",
+        name,
+        url,
+        detail: describeError(error),
+      });
     }
   }
 
   private async loadJson(name: string, url: string): Promise<unknown> {
-    const response = await fetch(url);
+    let response: Response;
+    try {
+      response = await fetch(url);
+    } catch (error) {
+      throw assetLoadError({
+        kind: "json",
+        name,
+        url,
+        detail: describeError(error),
+      });
+    }
     if (!response.ok) {
-      throw new Error(`JSON asset '${name}' failed to load from '${url}' (${response.status} ${response.statusText}).`);
+      throw assetLoadError({
+        kind: "json",
+        name,
+        url,
+        detail: `HTTP ${response.status} ${response.statusText}`.trim(),
+      });
     }
 
     try {
       return await response.json();
-    } catch {
-      throw new Error(`JSON asset '${name}' failed to parse from '${url}'.`);
+    } catch (error) {
+      throw assetLoadError({
+        kind: "json",
+        name,
+        url,
+        detail: `Invalid JSON: ${describeError(error)}`,
+      });
     }
   }
 }

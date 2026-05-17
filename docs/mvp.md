@@ -9,14 +9,14 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 - Rust core 업데이트 루프
 - World/entity 저장과 간단한 component store
 - Transform, velocity, sprite, collider
-- Player-follow 2D camera와 viewport size 전달
+- Camera preset 기반 2D camera와 viewport size 전달
 - MVP 2D physics: velocity integration, collider 기반 world bounds clamp
 - AABB collision
 - Render command buffer 기반 Rust -> TypeScript bulk 전달
 - WebGL2 sprite rendering
 - Keyboard/mouse input
 - Manifest 기반 texture, sound, JSON loading
-- JSON Game Spec 기반 Top-down Shooter 수치, prefab 크기, combat, enemy behavior/spawn preset 설정
+- JSON Game Spec 기반 Top-down Shooter 수치, prefab 크기, combat, enemy behavior/spawn preset, camera preset, atlas frame 설정
 - Horizontal sprite sheet와 idle/move state 기반 sprite animation
 - TextureRegistry와 SoundRegistry
 - Rust AudioEvent buffer와 TypeScript Web Audio 재생
@@ -55,11 +55,11 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 - GameOver에서 Space로 재시작한다.
 - player/enemy/bullet texture가 manifest로 로드되고 texture_id와 일치한다.
 - shoot/hit/gameOver sound가 manifest로 로드되고 audio event로 재생된다.
-- `json.game` Game Spec으로 world 크기, 이동 속도, enemy spawn interval/pattern, enemy behavior preset, health/damage/score reward, bullet 설정, player/enemy/bullet prefab 크기와 sprite animation frames/fps/state row를 조정할 수 있다.
-- DebugOverlay에서 FPS, frame time, entity count, sprite count, render command count, draw calls, batches, texture bind/switch count, audio events/sec, Rust update time, render time, mouse position, game state, score를 확인할 수 있다.
+- `json.game` Game Spec으로 world 크기, 이동 속도, enemy spawn interval/pattern, enemy behavior preset, health/damage/score reward, bullet 설정, player/enemy/bullet prefab 크기, sprite animation frames/fps/state row, camera preset, atlas frame을 조정할 수 있다.
+- DebugOverlay에서 `fps`, `frame time`, `rust update`, `render`, `entities`, `sprites`, `draw calls`, `batches`, `render commands`, `texture binds`, `texture switches`, `audio events`, `mouse`, `state`, `score`를 고정된 표시명과 단위로 확인할 수 있다.
 - DebugOverlay에서 camera position을 확인할 수 있다.
 
-## 현재 구현 상태 (2026-04-29)
+## 현재 구현 상태 (2026-05-17)
 
 | 항목 | 상태 | 비고 |
 | --- | --- | --- |
@@ -74,12 +74,14 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 | Shooter game logic | 완료 | movement, fire, spawn, chase, score, game over |
 | Scene state | 완료 | Title, Playing, GameOver, restart |
 | AssetLoader | 완료 | textures, sounds, JSON manifest |
-| Game Spec | 완료 | `json.game` 검증 후 shooter config, prefab template, combat, enemy behavior/spawn preset 적용 |
-| Sprite Animation | 완료 | prefab별 horizontal sprite sheet frames/fps 및 idle/move state row 설정, Rust UV 갱신 |
+| Game Spec | 완료 | `json.game` 검증 후 shooter config, prefab template, combat, enemy behavior/spawn preset, animation, camera preset, atlas frame 설정 적용 |
+| Camera Preset | 완료 | follow, dead-zone, look-ahead, time-based shake |
+| Sprite Animation | 완료 | player/enemy/bullet prefab별 horizontal sprite sheet frames/fps 및 idle/move state row 설정, Rust UV 갱신 |
+| Texture Atlas Metadata | 완료 | `atlas.frames`와 `prefabs.*.frame` 기반 static frame UV/size/texture 설정, render command ABI 유지 |
 | Game Spec CLI | 완료 | `pnpm validate:game-spec`로 예제 JSON 검증 |
 | Agent workflow | 완료 | game designer skill, agent workflow, review checklist, variant CLI |
 | AudioManager | 완료 | Web Audio 기반 효과음 재생 |
-| DebugOverlay | 완료 | DOM overlay, debug=false 지원 |
+| DebugOverlay | 완료 | DOM overlay, `DebugOverlayOptions.enabled=false`와 예제 URL `?debug=false` 지원 |
 | Tests | 완료 | Rust unit test, TS Node test |
 | Release docs | 완료 | README, docs, CHANGELOG 정리 |
 
@@ -94,7 +96,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 7. `?debug=false`에서 overlay가 숨겨지는지 확인
 8. 발사, 피격, 게임오버 효과음이 중복 없이 재생되는지 확인
 
-## 릴리스 전 필수 검증
+## 최종 MVP 검증
 
 ```bash
 cargo test --manifest-path crates/ferrum-core/Cargo.toml
@@ -102,5 +104,7 @@ pnpm test
 pnpm build
 pnpm validate:game-spec
 ```
+
+2026-05-17 기준 위 자동 검증과 Top-down Shooter manual smoke check를 완료 조건으로 MVP 개발 완료를 판정한다.
 
 WebGL2 실제 화면 렌더링은 headless unit test 범위가 아니므로 예제 manual smoke check를 함께 수행한다.

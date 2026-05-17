@@ -8,8 +8,17 @@ AI agent 또는 subagent가 Ferrum2D 변경을 마친 뒤 확인할 항목이다
 - 모든 숫자 필드가 positive finite number인가?
 - `enemies.behavior`가 `chase`, `drift`, `static` 중 하나인가?
 - `enemies.spawnPattern`이 `edge`, `corners`, `center` 중 하나인가?
+- `camera.preset`이 `follow`, `dead-zone`, `look-ahead`, `shake` 중 하나인가?
 - `enemies.health`, `weapons.damage`가 positive number인가?
 - `enemies.scoreReward`가 positive integer인가?
+- `camera.deadZone.*`, `camera.lookAhead.distance`, `camera.shake.amplitude`가 non-negative number이고 `camera.shake.frequency`가 positive number인가?
+- `prefabs.*.frame`이 존재하면 `atlas.frames`의 frame name을 참조하는가?
+- `atlas.frames.*.texture`가 non-empty texture name 또는 non-negative integer texture id인가?
+- `atlas.frames.*.uv`가 `0..1` 범위이고 `u1 > u0`, `v1 > v0`인가?
+- `atlas.frames.*.size.width/height`가 positive number인가?
+- 같은 prefab에 `frame`과 `animation`을 동시에 지정하지 않았는가?
+- `prefabs.*.animation.frames`가 1보다 크면 `fps`가 함께 제공되는가?
+- `prefabs.*.animation.states`를 쓰면 `columns`, `rows`, `states.idle`이 제공되고 state frame 수가 column 수를 넘지 않는가?
 - `pnpm validate:game-spec`를 실행했는가?
 - 의도한 난이도 변화가 문서나 응답에 설명되었는가?
 
