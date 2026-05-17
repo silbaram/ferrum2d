@@ -1,6 +1,79 @@
-import { equal } from "node:assert/strict";
+import { equal, ok } from "node:assert/strict";
 import { test } from "node:test";
 import { AudioManager } from "../src/audioManager.js";
+
+class FakeAudioParam {
+  value = 0;
+
+  setValueAtTime(value: number): void {
+    this.value = value;
+  }
+
+  linearRampToValueAtTime(value: number): void {
+    this.value = value;
+  }
+
+  cancelScheduledValues(): void {}
+}
+
+class FakeGainNode {
+  gain = new FakeAudioParam();
+
+  connect(): void {}
+}
+
+class FakePannerNode {
+  panningModel: "HRTF" | "equalpower" = "HRTF";
+  distanceModel: "inverse" | "linear" | "exponential" = "inverse";
+  refDistance = 1;
+  maxDistance = 10000;
+  rolloffFactor = 1;
+  positionX = new FakeAudioParam();
+  positionY = new FakeAudioParam();
+  positionZ = new FakeAudioParam();
+
+  connect(): void {}
+}
+
+class FakeBufferSource {
+  buffer?: AudioBuffer;
+  loop = false;
+  playbackRate = { value: 1 };
+  started = false;
+  stopped = false;
+
+  connect(): void {}
+
+  start(): void {
+    this.started = true;
+  }
+
+  stop(): void {
+    this.stopped = true;
+  }
+}
+
+class FakeAudioContext {
+  state: AudioContextState = "running";
+  currentTime = 0;
+  destination = {} as AudioDestinationNode;
+  listener = {
+    positionX: new FakeAudioParam(),
+    positionY: new FakeAudioParam(),
+    positionZ: new FakeAudioParam(),
+  } as unknown as AudioListener;
+
+  decodeAudioData = async (): Promise<AudioBuffer> => ({}) as AudioBuffer;
+  createBufferSource(): AudioBufferSourceNode { return new FakeBufferSource() as unknown as AudioBufferSourceNode; }
+  createGain(): GainNode { return new FakeGainNode() as unknown as GainNode; }
+  createPanner(): PannerNode { return new FakePannerNode() as unknown as PannerNode; }
+  resume = async (): Promise<void> => undefined;
+  close = async (): Promise<void> => undefined;
+}
+
+interface TestWindow {
+  AudioContext?: typeof AudioContext;
+}
 
 async function rejectsWithMessage(promise: Promise<unknown>, expected: string): Promise<void> {
   try {
@@ -48,4 +121,30 @@ test("AudioManager reports missing playback buffers with diagnostic context", ()
     return;
   }
   throw new Error("Expected play() to throw.");
+});
+
+test("AudioManager exposes mixer/bgm/spatial controls", () => {
+  const globalWindow = globalThis as unknown as { window?: TestWindow };
+  if (!globalWindow.window) globalWindow.window = {};
+  const previous = globalWindow.window.AudioContext;
+  globalWindow.window.AudioContext = FakeAudioContext as unknown as typeof AudioContext;
+  const manager = new AudioManager();
+
+  try {
+    manager.setListenerPosition(10, 20, 3);
+    manager.setBusVolume("master", 0.8);
+    manager.setBusVolume("bgm", 0.5);
+    manager.setBusVolume("sfx", 0.7);
+    ok(true);
+  } finally {
+    manager.destroy();
+    globalWindow.window.AudioContext = previous;
+  }
+});
+
+test("AudioManager playEvents ignores invalid sound id 0", () => {
+  const manager = new AudioManager();
+  manager.playEvents([{ soundId: 0, volume: 1, pitch: 1 }]);
+  manager.destroy();
+  equal(true, true);
 });

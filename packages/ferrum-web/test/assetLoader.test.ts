@@ -32,6 +32,18 @@ class FailingAudioManager implements SoundAssetManager {
   }
 }
 
+function jsonResponse(value: unknown): Response {
+  return {
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    headers: {
+      get: () => null,
+    },
+    json: async () => value,
+  } as unknown as Response;
+}
+
 async function rejectsWithMessage(promise: Promise<unknown>, expected: string): Promise<void> {
   try {
     await promise;
@@ -47,12 +59,7 @@ test("AssetLoader parses texture, sound, and JSON manifests with progress", asyn
   const textureManager = new FakeTextureManager();
   const audioManager = new FakeAudioManager();
   const progress: string[] = [];
-  (globalThis as unknown as { fetch: typeof fetch }).fetch = async (input) => ({
-    ok: true,
-    status: 200,
-    statusText: "OK",
-    json: async () => ({ source: String(input) }),
-  } as unknown as Response);
+  (globalThis as unknown as { fetch: typeof fetch }).fetch = async (input) => jsonResponse({ source: String(input) });
 
   try {
     const loader = new AssetLoader(textureManager, audioManager);
@@ -146,6 +153,9 @@ test("AssetLoader reports JSON parse failures with diagnostic context", async ()
     ok: true,
     status: 200,
     statusText: "OK",
+    headers: {
+      get: () => null,
+    },
     json: async () => {
       throw new Error("Unexpected token");
     },
@@ -160,4 +170,55 @@ test("AssetLoader reports JSON parse failures with diagnostic context", async ()
   } finally {
     (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
   }
+});
+
+test("AssetLoader caches JSON manifest values to avoid duplicate fetches", async () => {
+  const previousFetch = globalThis.fetch;
+  const textureManager = new FakeTextureManager();
+  const audioManager = new FakeAudioManager();
+  const fetchCalls: string[] = [];
+  const cacheStore = new Map<string, unknown>();
+
+  (globalThis as unknown as { fetch: typeof fetch }).fetch = async (input) => {
+    fetchCalls.push(String(input));
+    return jsonResponse({ version: 1, source: String(input) });
+  };
+
+  const fakeCache = {
+    async getJson(url: string): Promise<unknown | null> {
+      return cacheStore.has(url) ? cacheStore.get(url)! : null;
+    },
+    async setJson(url: string, value: unknown): Promise<void> {
+      cacheStore.set(url, value);
+    },
+    async invalidateJson(): Promise<void> {},
+  };
+
+  try {
+    const loader = new AssetLoader(textureManager, audioManager, undefined, undefined, fakeCache);
+    const first = await loader.loadAssets({ json: { game: "/game.json" } });
+    const second = await loader.loadAssets({ json: { game: "/game.json" } });
+
+    deepEqual(first.json.game, { version: 1, source: "/game.json" });
+    deepEqual(second.json.game, { version: 1, source: "/game.json" });
+    deepEqual(fetchCalls, ["/game.json"]);
+  } finally {
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
+  }
+});
+
+test("AssetLoader invalidateJsonCache delegates with configured cache version", async () => {
+  const calls: Array<{ url: string; version?: string }> = [];
+  const fakeCache = {
+    async getJson(): Promise<unknown | null> { return null; },
+    async setJson(): Promise<void> {},
+    async invalidateJson(url: string, options?: { version?: string }): Promise<void> {
+      calls.push({ url, version: options?.version });
+    },
+  };
+
+  const loader = new AssetLoader(new FakeTextureManager(), new FakeAudioManager(), undefined, undefined, fakeCache, "spec-v2");
+  await loader.invalidateJsonCache("/game.json");
+
+  deepEqual(calls, [{ url: "/game.json", version: "spec-v2" }]);
 });

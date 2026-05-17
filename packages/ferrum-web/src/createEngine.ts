@@ -49,6 +49,8 @@ export type FrameHandler = (state: FrameState) => void;
 export interface CreateEngineOptions {
   /** @deprecated 호환 API 사용자만 켜세요. 매 프레임 command object 배열을 생성합니다. */
   includeDeprecatedRenderCommands?: boolean;
+  /** Web Worker 기반 frame clock를 사용합니다. 지원하지 않는 환경에서는 RAF로 fallback합니다. */
+  useWorkerClock?: boolean;
 }
 export interface FerrumEngine {
   start(): void; pause(): void; resume(): void; stop(): void; destroy(): void; time(): number; version(): string;
@@ -103,7 +105,11 @@ export async function createEngine(
     options,
   };
 
-  const loop = new GameLoop((deltaSeconds) => runFrame(framePipeline, deltaSeconds));
+  const loop = new GameLoop(
+    (deltaSeconds) => runFrame(framePipeline, deltaSeconds),
+    0.05,
+    { useWorkerClock: options.useWorkerClock },
+  );
 
   const requireAssetHost = (): AssetHost => {
     if (!assetHost) {

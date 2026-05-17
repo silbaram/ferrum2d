@@ -1,4 +1,5 @@
 export { createEngine } from "./createEngine";
+export { createRenderer } from "./createRenderer";
 export type {
   AssetHost,
   CreateEngineOptions,
@@ -26,8 +27,10 @@ export type {
   ShooterPrefabSpec,
 } from "./gameSpec";
 export type { Renderer, RendererStats } from "./renderer";
+export type { CreateRendererOptions, RendererFallbackInfo } from "./createRenderer";
 export { WebGL2Renderer } from "./webgl2Renderer";
 export { BrowserPlatformHost } from "./browserPlatformHost";
+export { WebGPURenderer } from "./webgpuRenderer";
 export { TextureManager } from "./textureManager";
 export { AudioManager } from "./audioManager";
 export { AudioAssetLoader } from "./audioAssetLoader";
@@ -37,8 +40,10 @@ export { TextureRegistry } from "./textureRegistry";
 export { SoundRegistry } from "./soundRegistry";
 export { SpriteBatch } from "./spriteBatch";
 export { InputManager } from "./inputManager";
+export { generateTextureAtlasLayout } from "./textureAtlas";
 export type { InputSnapshot } from "./inputManager";
 export type { SpriteDrawOptions } from "./spriteBatch";
+export type { AtlasSpriteInput, AtlasSpritePlacement, TextureAtlasLayout, TextureAtlasOptions } from "./textureAtlas";
 export type {
   AssetLoadProgress,
   AssetLoadProgressCallback,
