@@ -5,6 +5,8 @@ import { applyShooterGameSpec, resolveShooterGameSpec } from "../src/gameSpec.js
 class FakeEngine {
   resolvedConfig?: number[];
   animationConfig?: number[];
+  cameraConfig?: number[];
+  atlasFrames: number[][] = [];
 
   set_shooter_resolved_config(
     worldWidth: number,
@@ -115,6 +117,37 @@ class FakeEngine {
       bulletMoveFps,
     ];
   }
+
+  set_shooter_camera_preset(
+    preset: number,
+    deadZoneWidth: number,
+    deadZoneHeight: number,
+    lookAheadDistance: number,
+    shakeAmplitude: number,
+    shakeFrequency: number,
+  ): void {
+    this.cameraConfig = [
+      preset,
+      deadZoneWidth,
+      deadZoneHeight,
+      lookAheadDistance,
+      shakeAmplitude,
+      shakeFrequency,
+    ];
+  }
+
+  set_shooter_atlas_frame(
+    prefab: number,
+    textureId: number,
+    width: number,
+    height: number,
+    u0: number,
+    v0: number,
+    u1: number,
+    v1: number,
+  ): void {
+    this.atlasFrames.push([prefab, textureId, width, height, u0, v0, u1, v1]);
+  }
 }
 
 test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
@@ -123,7 +156,25 @@ test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
     player: { speed: 220 },
     enemies: { spawnInterval: 0.5, behavior: "drift", spawnPattern: "corners", health: 3, scoreReward: 5 },
     weapons: { bulletSpeed: 500, lifetime: 1.1, damage: 2 },
-    prefabs: { enemy: { width: 32, height: 28 } },
+    camera: {
+      preset: "look-ahead",
+      lookAhead: { distance: 120 },
+      deadZone: { width: 200, height: 120 },
+      shake: { amplitude: 4, frequency: 6 },
+    },
+    atlas: {
+      frames: {
+        "bullet.core": {
+          texture: "bullet",
+          uv: { u0: 0.25, v0: 0.5, u1: 0.5, v1: 0.75 },
+          size: { width: 12, height: 10 },
+        },
+      },
+    },
+    prefabs: {
+      enemy: { width: 32, height: 28 },
+      bullet: { frame: "bullet.core" },
+    },
   }), {
     worldWidth: 2400,
     worldHeight: 960,
@@ -137,8 +188,8 @@ test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
     playerHeight: 36,
     enemyWidth: 32,
     enemyHeight: 28,
-    bulletWidth: 8,
-    bulletHeight: 8,
+    bulletWidth: 12,
+    bulletHeight: 10,
     playerAnimationFrames: 1,
     playerAnimationFps: 0,
     playerAnimationColumns: 1,
@@ -176,6 +227,35 @@ test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
     enemyHealth: 3,
     bulletDamage: 2,
     scoreReward: 5,
+    cameraPreset: "look-ahead",
+    cameraPresetCode: 2,
+    cameraDeadZoneWidth: 200,
+    cameraDeadZoneHeight: 120,
+    cameraLookAheadDistance: 120,
+    cameraShakeAmplitude: 4,
+    cameraShakeFrequency: 6,
+    atlasFrames: {
+      "bullet.core": {
+        name: "bullet.core",
+        texture: "bullet",
+        width: 12,
+        height: 10,
+        u0: 0.25,
+        v0: 0.5,
+        u1: 0.5,
+        v1: 0.75,
+      },
+    },
+    bulletAtlasFrame: {
+      name: "bullet.core",
+      texture: "bullet",
+      width: 12,
+      height: 10,
+      u0: 0.25,
+      v0: 0.5,
+      u1: 0.5,
+      v1: 0.75,
+    },
   });
 });
 
@@ -185,7 +265,7 @@ test("resolveShooterGameSpec rejects invalid numbers with path context", () => {
   } catch (error) {
     equal(
       error instanceof Error ? error.message : String(error),
-      "Invalid shooter game spec: 'weapons.cooldown' must be a positive finite number.",
+      "Invalid shooter game spec: kind=game-spec path='weapons.cooldown' detail='must be a positive finite number'.",
     );
     return;
   }
@@ -198,7 +278,7 @@ test("resolveShooterGameSpec rejects invalid score reward with path context", ()
   } catch (error) {
     equal(
       error instanceof Error ? error.message : String(error),
-      "Invalid shooter game spec: 'enemies.scoreReward' must be a positive integer.",
+      "Invalid shooter game spec: kind=game-spec path='enemies.scoreReward' detail='must be a positive integer'.",
     );
     return;
   }
@@ -211,7 +291,7 @@ test("resolveShooterGameSpec rejects invalid prefab dimensions with path context
   } catch (error) {
     equal(
       error instanceof Error ? error.message : String(error),
-      "Invalid shooter game spec: 'prefabs.enemy.width' must be a positive finite number.",
+      "Invalid shooter game spec: kind=game-spec path='prefabs.enemy.width' detail='must be a positive finite number'.",
     );
     return;
   }
@@ -224,7 +304,7 @@ test("resolveShooterGameSpec rejects invalid sprite animation with path context"
   } catch (error) {
     equal(
       error instanceof Error ? error.message : String(error),
-      "Invalid shooter game spec: 'prefabs.enemy.animation.frames' must be a positive integer.",
+      "Invalid shooter game spec: kind=game-spec path='prefabs.enemy.animation.frames' detail='must be a positive integer'.",
     );
     return;
   }
@@ -237,7 +317,7 @@ test("resolveShooterGameSpec rejects unknown enemy behavior with path context", 
   } catch (error) {
     equal(
       error instanceof Error ? error.message : String(error),
-      "Invalid shooter game spec: 'enemies.behavior' must be one of chase, drift, static.",
+      "Invalid shooter game spec: kind=game-spec path='enemies.behavior' detail='must be one of chase, drift, static'.",
     );
     return;
   }
@@ -250,11 +330,128 @@ test("resolveShooterGameSpec rejects unknown spawn pattern with path context", (
   } catch (error) {
     equal(
       error instanceof Error ? error.message : String(error),
-      "Invalid shooter game spec: 'enemies.spawnPattern' must be one of edge, corners, center.",
+      "Invalid shooter game spec: kind=game-spec path='enemies.spawnPattern' detail='must be one of edge, corners, center'.",
     );
     return;
   }
   throw new Error("Expected invalid spawn pattern spec to throw.");
+});
+
+test("resolveShooterGameSpec rejects unknown camera preset with path context", () => {
+  try {
+    resolveShooterGameSpec({ camera: { preset: "orbit" } });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='camera.preset' detail='must be one of follow, dead-zone, look-ahead, shake'.",
+    );
+    return;
+  }
+  throw new Error("Expected invalid camera preset spec to throw.");
+});
+
+test("resolveShooterGameSpec rejects invalid camera numbers with path context", () => {
+  try {
+    resolveShooterGameSpec({ camera: { deadZone: { width: -1 } } });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='camera.deadZone.width' detail='must be a non-negative finite number'.",
+    );
+    return;
+  }
+  throw new Error("Expected invalid camera number spec to throw.");
+});
+
+test("resolveShooterGameSpec rejects invalid atlas uv with path context", () => {
+  try {
+    resolveShooterGameSpec({
+      atlas: {
+        frames: {
+          bad: {
+            texture: "bullet",
+            uv: { u0: 0.8, v0: 0, u1: 0.2, v1: 1 },
+            size: { width: 8, height: 8 },
+          },
+        },
+      },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='atlas.frames.bad.uv.u1' detail='must be greater than uv.u0'.",
+    );
+    return;
+  }
+  throw new Error("Expected invalid atlas uv spec to throw.");
+});
+
+test("resolveShooterGameSpec rejects unknown atlas frame references with path context", () => {
+  try {
+    resolveShooterGameSpec({ prefabs: { bullet: { frame: "missing" } } });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='prefabs.bullet.frame' detail='must reference a frame in atlas.frames'.",
+    );
+    return;
+  }
+  throw new Error("Expected unknown atlas frame spec to throw.");
+});
+
+test("resolveShooterGameSpec rejects prefab frame and animation conflicts", () => {
+  try {
+    resolveShooterGameSpec({
+      atlas: {
+        frames: {
+          bullet: {
+            texture: 1,
+            uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+            size: { width: 8, height: 8 },
+          },
+        },
+      },
+      prefabs: {
+        bullet: {
+          frame: "bullet",
+          animation: { frames: 2, fps: 8 },
+        },
+      },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='prefabs.bullet.frame' detail='cannot be combined with animation'.",
+    );
+    return;
+  }
+  throw new Error("Expected atlas frame conflict spec to throw.");
+});
+
+test("applyShooterGameSpec requires texture resolver for named atlas textures", () => {
+  const engine = new FakeEngine();
+  try {
+    applyShooterGameSpec(engine, {
+      atlas: {
+        frames: {
+          bullet: {
+            texture: "bullet",
+            uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+            size: { width: 8, height: 8 },
+          },
+        },
+      },
+      prefabs: { bullet: { frame: "bullet" } },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='prefabs.bullet.frame' detail='requires a textureId resolver when atlas frame texture is a name'.",
+    );
+    equal(engine.resolvedConfig, undefined);
+    return;
+  }
+  throw new Error("Expected named atlas texture without resolver to throw.");
 });
 
 test("applyShooterGameSpec forwards resolved config to engine", () => {
@@ -286,9 +483,24 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
           },
         },
       },
-      bullet: { width: 10, height: 12 },
+      bullet: { frame: "bullet.core" },
     },
-  });
+    atlas: {
+      frames: {
+        "bullet.core": {
+          texture: "bullet",
+          uv: { u0: 0.125, v0: 0.25, u1: 0.25, v1: 0.5 },
+          size: { width: 14, height: 16 },
+        },
+      },
+    },
+    camera: {
+      preset: "dead-zone",
+      deadZone: { width: 180, height: 120 },
+      lookAhead: { distance: 72 },
+      shake: { amplitude: 3, frequency: 5 },
+    },
+  }, { textureId: (name) => (name === "bullet" ? 7 : 0) });
 
   deepEqual(spec, {
     worldWidth: 3200,
@@ -303,8 +515,8 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
     playerHeight: 44,
     enemyWidth: 30,
     enemyHeight: 34,
-    bulletWidth: 10,
-    bulletHeight: 12,
+    bulletWidth: 14,
+    bulletHeight: 16,
     playerAnimationFrames: 1,
     playerAnimationFps: 0,
     playerAnimationColumns: 1,
@@ -342,6 +554,35 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
     enemyHealth: 4,
     bulletDamage: 2,
     scoreReward: 9,
+    cameraPreset: "dead-zone",
+    cameraPresetCode: 1,
+    cameraDeadZoneWidth: 180,
+    cameraDeadZoneHeight: 120,
+    cameraLookAheadDistance: 72,
+    cameraShakeAmplitude: 3,
+    cameraShakeFrequency: 5,
+    atlasFrames: {
+      "bullet.core": {
+        name: "bullet.core",
+        texture: "bullet",
+        width: 14,
+        height: 16,
+        u0: 0.125,
+        v0: 0.25,
+        u1: 0.25,
+        v1: 0.5,
+      },
+    },
+    bulletAtlasFrame: {
+      name: "bullet.core",
+      texture: "bullet",
+      width: 14,
+      height: 16,
+      u0: 0.125,
+      v0: 0.25,
+      u1: 0.25,
+      v1: 0.5,
+    },
   });
   deepEqual(engine.resolvedConfig, [
     3200,
@@ -356,8 +597,8 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
     44,
     30,
     34,
-    10,
-    12,
+    14,
+    16,
     1,
     0,
     1,
@@ -395,5 +636,16 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
     0,
     1,
     1,
+  ]);
+  deepEqual(engine.cameraConfig, [
+    1,
+    180,
+    120,
+    72,
+    3,
+    5,
+  ]);
+  deepEqual(engine.atlasFrames, [
+    [2, 7, 14, 16, 0.125, 0.25, 0.25, 0.5],
   ]);
 });

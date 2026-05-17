@@ -20,6 +20,45 @@ pub struct Sprite {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpriteFrame {
+    pub u0: f32,
+    pub v0: f32,
+    pub u1: f32,
+    pub v1: f32,
+}
+
+impl SpriteFrame {
+    pub const FULL: Self = Self {
+        u0: 0.0,
+        v0: 0.0,
+        u1: 1.0,
+        v1: 1.0,
+    };
+
+    pub fn from_values(u0: f32, v0: f32, u1: f32, v1: f32) -> Option<Self> {
+        if u0.is_finite()
+            && v0.is_finite()
+            && u1.is_finite()
+            && v1.is_finite()
+            && (0.0..=1.0).contains(&u0)
+            && (0.0..=1.0).contains(&v0)
+            && (0.0..=1.0).contains(&u1)
+            && (0.0..=1.0).contains(&v1)
+            && u1 > u0
+            && v1 > v0
+        {
+            Some(Self { u0, v0, u1, v1 })
+        } else {
+            None
+        }
+    }
+
+    pub fn uv(self) -> (f32, f32, f32, f32) {
+        (self.u0, self.v0, self.u1, self.v1)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SpriteAnimation {
     pub columns: u32,
     pub rows: u32,

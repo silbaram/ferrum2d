@@ -50,6 +50,47 @@
         "enemy": { "$ref": "#/$defs/prefab" },
         "bullet": { "$ref": "#/$defs/prefab" }
       }
+    },
+    "atlas": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "frames": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/atlasFrame" },
+          "propertyNames": { "minLength": 1 }
+        }
+      }
+    },
+    "camera": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preset": { "enum": ["follow", "dead-zone", "look-ahead", "shake"] },
+        "deadZone": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "width": { "type": "number", "minimum": 0 },
+            "height": { "type": "number", "minimum": 0 }
+          }
+        },
+        "lookAhead": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "distance": { "type": "number", "minimum": 0 }
+          }
+        },
+        "shake": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "amplitude": { "type": "number", "minimum": 0 },
+            "frequency": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -59,7 +100,44 @@
       "properties": {
         "width": { "type": "number", "exclusiveMinimum": 0 },
         "height": { "type": "number", "exclusiveMinimum": 0 },
+        "frame": { "type": "string", "minLength": 1 },
         "animation": { "$ref": "#/$defs/spriteAnimation" }
+      },
+      "not": {
+        "required": ["frame", "animation"]
+      }
+    },
+    "atlasFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["texture", "uv", "size"],
+      "properties": {
+        "texture": {
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "integer", "minimum": 0 }
+          ]
+        },
+        "uv": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["u0", "v0", "u1", "v1"],
+          "properties": {
+            "u0": { "type": "number", "minimum": 0, "maximum": 1 },
+            "v0": { "type": "number", "minimum": 0, "maximum": 1 },
+            "u1": { "type": "number", "minimum": 0, "maximum": 1 },
+            "v1": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "size": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "number", "exclusiveMinimum": 0 },
+            "height": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        }
       }
     },
     "spriteAnimation": {

@@ -1,24 +1,20 @@
-import { AudioManager } from "./audioManager";
-import { AssetLoader } from "./assetLoader";
 import { emptyRendererStats, rendererStatsForCommands } from "./renderer";
 import type { Renderer } from "./renderer";
 import type { RendererStats } from "./renderer";
 import { SpriteBatch } from "./spriteBatch";
 import { TextureManager } from "./textureManager";
-import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets } from "./assetLoader";
-import type { AudioEventView, RenderCommandBufferView } from "./wasmBridge";
+import type { RenderCommandBufferView } from "./wasmBridge";
 
 export interface WebGL2RendererOptions { clearColor?: [number, number, number, number]; }
 
 export class WebGL2Renderer implements Renderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly textureManager: TextureManager;
-  private readonly audioManager: AudioManager;
-  private readonly assetLoader: AssetLoader;
   private readonly spriteBatch: SpriteBatch;
   private currentStats: RendererStats = emptyRendererStats();
   private logicalWidth = 0;
   private logicalHeight = 0;
+  private destroyed = false;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly options: WebGL2RendererOptions = {}) {
     const gl = canvas.getContext("webgl2");
@@ -26,30 +22,26 @@ export class WebGL2Renderer implements Renderer {
     this.gl = gl;
     this.textureManager = new TextureManager(gl);
     this.textureManager.createPlaceholderTextureForId(0);
-    this.audioManager = new AudioManager();
-    this.assetLoader = new AssetLoader(this.textureManager, this.audioManager);
     this.spriteBatch = new SpriteBatch(gl);
     this.resize();
   }
 
-  async loadTexture(url: string): Promise<WebGLTexture> {
-    try { return await this.textureManager.load(url); } catch { return this.textureManager.createPlaceholderTexture(); }
-  }
+  async loadTexture(textureId: number, url: string): Promise<WebGLTexture>;
+  async loadTexture(url: string): Promise<WebGLTexture>;
+  async loadTexture(first: number | string, second?: string): Promise<WebGLTexture> {
+    this.assertAlive();
+    if (typeof first === "number") {
+      if (second === undefined) {
+        throw new Error("loadTexture(textureId, url) requires a texture URL.");
+      }
+      return await this.textureManager.loadTexture(first, second);
+    }
 
-  async loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback): Promise<LoadedAssets> {
-    return await this.assetLoader.loadAssets(manifest, onProgress);
-  }
-
-  textureId(name: string): number {
-    return this.assetLoader.textureId(name);
-  }
-
-  soundId(name: string): number {
-    return this.assetLoader.soundId(name);
-  }
-
-  playAudioEvents(events: readonly AudioEventView[]): void {
-    this.audioManager.playEvents(events);
+    try {
+      return await this.textureManager.load(first);
+    } catch {
+      return this.textureManager.createPlaceholderTexture();
+    }
   }
 
   stats(): RendererStats {
@@ -57,6 +49,7 @@ export class WebGL2Renderer implements Renderer {
   }
 
   resize(): void {
+    this.assertAlive();
     const dpr = window.devicePixelRatio || 1;
     this.logicalWidth = this.canvas.clientWidth;
     this.logicalHeight = this.canvas.clientHeight;
@@ -80,6 +73,7 @@ export class WebGL2Renderer implements Renderer {
   }
 
   render(): void {
+    this.assertAlive();
     const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1.0];
     this.gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
@@ -91,6 +85,7 @@ export class WebGL2Renderer implements Renderer {
     first: RenderCommandBufferView | WebGLTexture,
     second?: RenderCommandBufferView,
   ): RendererStats {
+    this.assertAlive();
     const commands = second ?? (first as RenderCommandBufferView);
     const drawCalls = second
       ? this.spriteBatch.drawBatch(first as WebGLTexture, second, [this.logicalWidth, this.logicalHeight])
@@ -100,8 +95,17 @@ export class WebGL2Renderer implements Renderer {
   }
 
   destroy(): void {
+    if (this.destroyed) {
+      return;
+    }
+    this.destroyed = true;
     this.spriteBatch.destroy();
     this.textureManager.destroy();
-    this.audioManager.destroy();
+  }
+
+  private assertAlive(): void {
+    if (this.destroyed) {
+      throw new Error("WebGL2Renderer has been destroyed.");
+    }
   }
 }

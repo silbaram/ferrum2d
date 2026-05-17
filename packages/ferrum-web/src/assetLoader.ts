@@ -1,6 +1,7 @@
+import { assetLoadError, describeError } from "./diagnostics.js";
+import { IndexedDbAssetCache, type JsonAssetCache } from "./indexedDbAssetCache.js";
 import { SoundRegistry } from "./soundRegistry.js";
 import { TextureRegistry } from "./textureRegistry.js";
-import { IndexedDbAssetCache, type JsonAssetCache } from "./indexedDbAssetCache.js";
 
 export interface TextureAssetManager {
   loadTexture(textureId: number, url: string): Promise<WebGLTexture>;
@@ -33,18 +34,6 @@ export interface LoadedAssets {
   progress: AssetLoadProgress;
 }
 
-type AssetErrorKind = "texture" | "sound" | "json";
-
-function formatAssetLoadError(
-  code: string,
-  kind: AssetErrorKind,
-  name: string,
-  url: string,
-  detail: string,
-): Error {
-  return new Error(`[Ferrum2D AssetError:${code}] kind=${kind} name='${name}' url='${url}' detail='${detail}'`);
-}
-
 export class AssetLoader {
   constructor(
     private readonly textureManager: TextureAssetManager,
@@ -75,7 +64,16 @@ export class AssetLoader {
 
     for (const [name, url] of textureEntries) {
       const textureId = this.textureRegistry.reserve(name, url);
-      await this.textureManager.loadTexture(textureId, url);
+      try {
+        await this.textureManager.loadTexture(textureId, url);
+      } catch (error) {
+        throw assetLoadError({
+          kind: "texture",
+          name,
+          url,
+          detail: describeError(error),
+        });
+      }
       loaded += 1;
       emitProgress({ kind: "texture", name, url });
     }
@@ -123,20 +121,23 @@ export class AssetLoader {
 
   private async loadSound(name: string, soundId: number, url: string): Promise<void> {
     if (!this.audioManager) {
-      throw formatAssetLoadError(
-        "FERRUM_AUDIO_MANAGER_REQUIRED",
-        "sound",
+      throw assetLoadError({
+        kind: "sound",
         name,
         url,
-        "Sound asset requires an AudioManager. Pass one to AssetLoader before loading sounds.",
-      );
+        detail: "AudioManager is required before loading sound assets",
+      });
     }
 
     try {
       await this.audioManager.loadSound(soundId, url);
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      throw formatAssetLoadError("FERRUM_SOUND_LOAD_FAILED", "sound", name, url, detail);
+      throw assetLoadError({
+        kind: "sound",
+        name,
+        url,
+        detail: describeError(error),
+      });
     }
   }
 
@@ -146,15 +147,24 @@ export class AssetLoader {
       return cached;
     }
 
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw formatAssetLoadError(
-        "FERRUM_JSON_HTTP_FAILED",
-        "json",
+    let response: Response;
+    try {
+      response = await fetch(url);
+    } catch (error) {
+      throw assetLoadError({
+        kind: "json",
         name,
         url,
-        `${response.status} ${response.statusText}`,
-      );
+        detail: describeError(error),
+      });
+    }
+    if (!response.ok) {
+      throw assetLoadError({
+        kind: "json",
+        name,
+        url,
+        detail: `HTTP ${response.status} ${response.statusText}`.trim(),
+      });
     }
 
     try {
@@ -162,12 +172,17 @@ export class AssetLoader {
       await this.cache.setJson(url, parsed, {
         version: this.cacheVersion,
         ttlMs: this.cacheTtlMs,
-        etag: response.headers.get("etag") ?? undefined,
-        lastModified: response.headers.get("last-modified") ?? undefined,
+        etag: response.headers?.get("etag") ?? undefined,
+        lastModified: response.headers?.get("last-modified") ?? undefined,
       });
       return parsed;
-    } catch {
-      throw formatAssetLoadError("FERRUM_JSON_PARSE_FAILED", "json", name, url, "response.json() parse failed");
+    } catch (error) {
+      throw assetLoadError({
+        kind: "json",
+        name,
+        url,
+        detail: `Invalid JSON: ${describeError(error)}`,
+      });
     }
   }
 }

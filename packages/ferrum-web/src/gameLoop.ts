@@ -1,4 +1,4 @@
-import { createWorkerFrameClock, type FrameClock } from "./workerFrameClock";
+import { createWorkerFrameClock, type FrameClock } from "./workerFrameClock.js";
 
 export type FrameCallback = (deltaSeconds: number) => void;
 

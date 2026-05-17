@@ -20,17 +20,46 @@ class FakeAudioManager implements SoundAssetManager {
   }
 }
 
+class FailingTextureManager implements TextureAssetManager {
+  async loadTexture(): Promise<WebGLTexture> {
+    throw new Error("decode failed");
+  }
+}
+
+class FailingAudioManager implements SoundAssetManager {
+  async loadSound(): Promise<AudioBuffer> {
+    throw new Error("decode failed");
+  }
+}
+
+function jsonResponse(value: unknown): Response {
+  return {
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    headers: {
+      get: () => null,
+    },
+    json: async () => value,
+  } as unknown as Response;
+}
+
+async function rejectsWithMessage(promise: Promise<unknown>, expected: string): Promise<void> {
+  try {
+    await promise;
+  } catch (error) {
+    equal(error instanceof Error ? error.message : String(error), expected);
+    return;
+  }
+  throw new Error("Expected promise to reject.");
+}
+
 test("AssetLoader parses texture, sound, and JSON manifests with progress", async () => {
   const previousFetch = globalThis.fetch;
   const textureManager = new FakeTextureManager();
   const audioManager = new FakeAudioManager();
   const progress: string[] = [];
-  (globalThis as unknown as { fetch: typeof fetch }).fetch = async (input) => ({
-    ok: true,
-    status: 200,
-    statusText: "OK",
-    json: async () => ({ source: String(input) }),
-  } as Response);
+  (globalThis as unknown as { fetch: typeof fetch }).fetch = async (input) => jsonResponse({ source: String(input) });
 
   try {
     const loader = new AssetLoader(textureManager, audioManager);
@@ -72,54 +101,76 @@ test("AssetLoader parses texture, sound, and JSON manifests with progress", asyn
   }
 });
 
-test("AssetLoader reports standardized sound load failures", async () => {
-  class FailingAudioManager implements SoundAssetManager {
-    async loadSound(): Promise<AudioBuffer> {
-      throw new Error("network down");
-    }
-  }
+test("AssetLoader reports texture load failures with diagnostic context", async () => {
+  const loader = new AssetLoader(new FailingTextureManager());
 
-  const loader = new AssetLoader(new FakeTextureManager(), new FailingAudioManager());
-
-  await (async () => {
-    try {
-      await loader.loadAssets({ sounds: { shoot: "/assets/shoot.wav" } });
-      throw new Error("Expected sound load to fail.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      equal(
-        message,
-        "[Ferrum2D AssetError:FERRUM_SOUND_LOAD_FAILED] kind=sound name='shoot' url='/assets/shoot.wav' detail='network down'",
-      );
-    }
-  })();
+  await rejectsWithMessage(
+    loader.loadAssets({ textures: { player: "/assets/missing-player.png" } }),
+    "Asset load error: kind=texture name='player' url='/assets/missing-player.png' detail='decode failed'.",
+  );
 });
 
-test("AssetLoader reports standardized JSON HTTP failures", async () => {
+test("AssetLoader reports sound load failures with diagnostic context", async () => {
+  const loader = new AssetLoader(new FakeTextureManager(), new FailingAudioManager());
+
+  await rejectsWithMessage(
+    loader.loadAssets({ sounds: { shoot: "/assets/missing-shoot.wav" } }),
+    "Asset load error: kind=sound name='shoot' url='/assets/missing-shoot.wav' detail='decode failed'.",
+  );
+});
+
+test("AssetLoader reports missing audio manager with diagnostic context", async () => {
+  const loader = new AssetLoader(new FakeTextureManager());
+
+  await rejectsWithMessage(
+    loader.loadAssets({ sounds: { shoot: "/assets/shoot.wav" } }),
+    "Asset load error: kind=sound name='shoot' url='/assets/shoot.wav' detail='AudioManager is required before loading sound assets'.",
+  );
+});
+
+test("AssetLoader reports JSON HTTP failures with diagnostic context", async () => {
   const previousFetch = globalThis.fetch;
   (globalThis as unknown as { fetch: typeof fetch }).fetch = async () => ({
     ok: false,
     status: 404,
     statusText: "Not Found",
-  } as Response);
+  } as unknown as Response);
 
   try {
-    const loader = new AssetLoader(new FakeTextureManager(), new FakeAudioManager());
-    try {
-      await loader.loadAssets({ json: { config: "/assets/missing.json" } });
-      throw new Error("Expected JSON load to fail.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      equal(
-        message,
-        "[Ferrum2D AssetError:FERRUM_JSON_HTTP_FAILED] kind=json name='config' url='/assets/missing.json' detail='404 Not Found'",
-      );
-    }
+    const loader = new AssetLoader(new FakeTextureManager());
+    await rejectsWithMessage(
+      loader.loadAssets({ json: { game: "/missing-game.json" } }),
+      "Asset load error: kind=json name='game' url='/missing-game.json' detail='HTTP 404 Not Found'.",
+    );
   } finally {
     (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
   }
 });
 
+test("AssetLoader reports JSON parse failures with diagnostic context", async () => {
+  const previousFetch = globalThis.fetch;
+  (globalThis as unknown as { fetch: typeof fetch }).fetch = async () => ({
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    headers: {
+      get: () => null,
+    },
+    json: async () => {
+      throw new Error("Unexpected token");
+    },
+  } as unknown as Response);
+
+  try {
+    const loader = new AssetLoader(new FakeTextureManager());
+    await rejectsWithMessage(
+      loader.loadAssets({ json: { game: "/bad-game.json" } }),
+      "Asset load error: kind=json name='game' url='/bad-game.json' detail='Invalid JSON: Unexpected token'.",
+    );
+  } finally {
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
+  }
+});
 
 test("AssetLoader caches JSON manifest values to avoid duplicate fetches", async () => {
   const previousFetch = globalThis.fetch;
@@ -130,12 +181,7 @@ test("AssetLoader caches JSON manifest values to avoid duplicate fetches", async
 
   (globalThis as unknown as { fetch: typeof fetch }).fetch = async (input) => {
     fetchCalls.push(String(input));
-    return {
-      ok: true,
-      status: 200,
-      statusText: "OK",
-      json: async () => ({ version: 1, source: String(input) }),
-    } as Response;
+    return jsonResponse({ version: 1, source: String(input) });
   };
 
   const fakeCache = {
@@ -160,7 +206,6 @@ test("AssetLoader caches JSON manifest values to avoid duplicate fetches", async
     (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
   }
 });
-
 
 test("AssetLoader invalidateJsonCache delegates with configured cache version", async () => {
   const calls: Array<{ url: string; version?: string }> = [];

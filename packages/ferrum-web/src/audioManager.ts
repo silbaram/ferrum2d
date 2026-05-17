@@ -1,8 +1,11 @@
+import { AudioAssetLoader } from "./audioAssetLoader.js";
+import { audioPlaybackError, diagnosticError } from "./diagnostics.js";
 import type { AudioEventView } from "./wasmBridge";
 
 type AudioContextConstructor = new () => AudioContext;
 
 interface WindowWithWebkitAudioContext extends Window {
+  AudioContext?: AudioContextConstructor;
   webkitAudioContext?: AudioContextConstructor;
 }
 
@@ -19,6 +22,7 @@ export type AudioBus = "master" | "bgm" | "sfx";
 
 export class AudioManager {
   private readonly buffersById = new Map<number, AudioBuffer>();
+  private readonly assetLoader = new AudioAssetLoader(() => this.audioContext());
   private context?: AudioContext;
   private masterGain?: GainNode;
   private bgmGain?: GainNode;
@@ -27,24 +31,18 @@ export class AudioManager {
   private listenerY = 0;
   private listenerZ = 0;
   private bgmSource?: AudioBufferSourceNode;
+  private destroyed = false;
 
   async loadSound(soundId: number, url: string): Promise<AudioBuffer> {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Sound asset id ${soundId} failed to load from '${url}' (${response.status} ${response.statusText}).`);
-    }
-
-    const bytes = await response.arrayBuffer();
-    try {
-      const buffer = await this.audioContext().decodeAudioData(bytes);
-      this.buffersById.set(soundId, buffer);
-      return buffer;
-    } catch {
-      throw new Error(`Sound asset id ${soundId} failed to decode from '${url}'.`);
-    }
+    this.assertAlive();
+    const buffer = await this.assetLoader.load(soundId, url);
+    this.assertAlive();
+    this.buffersById.set(soundId, buffer);
+    return buffer;
   }
 
   setBusVolume(bus: AudioBus, volume: number): void {
+    this.assertAlive();
     const gain = Math.max(0, volume);
     const context = this.audioContext();
     const mixer = this.ensureMixer(context);
@@ -60,7 +58,10 @@ export class AudioManager {
   }
 
   playSfx(soundId: number, volume = 1.0, pitch = 1.0): void {
-    if (soundId <= 0) return;
+    this.assertAlive();
+    if (soundId <= 0) {
+      return;
+    }
 
     const buffer = this.requireBuffer(soundId);
     const context = this.audioContext();
@@ -78,7 +79,10 @@ export class AudioManager {
   }
 
   playSpatial(soundId: number, spatial: SpatialAudioOptions, volume = 1.0, pitch = 1.0): void {
-    if (soundId <= 0) return;
+    this.assertAlive();
+    if (soundId <= 0) {
+      return;
+    }
 
     const buffer = this.requireBuffer(soundId);
     const context = this.audioContext();
@@ -109,12 +113,16 @@ export class AudioManager {
   }
 
   playBgm(soundId: number, options: { volume?: number; loop?: boolean; fadeInSeconds?: number } = {}): void {
-    if (soundId <= 0) return;
+    this.assertAlive();
+    if (soundId <= 0) {
+      return;
+    }
+
     const buffer = this.requireBuffer(soundId);
     const context = this.audioContext();
     const mixer = this.ensureMixer(context);
 
-    this.stopBgm({ fadeOutSeconds: 0 });
+    this.stopBgmInternal(0);
 
     const source = context.createBufferSource();
     source.buffer = buffer;
@@ -139,25 +147,12 @@ export class AudioManager {
   }
 
   stopBgm(options: { fadeOutSeconds?: number } = {}): void {
-    if (!this.bgmSource || !this.context || !this.bgmGain) return;
-
-    const fade = Math.max(0, options.fadeOutSeconds ?? 0);
-    const now = this.context.currentTime;
-
-    if (fade > 0) {
-      this.bgmGain.gain.cancelScheduledValues(now);
-      this.bgmGain.gain.setValueAtTime(this.bgmGain.gain.value, now);
-      this.bgmGain.gain.linearRampToValueAtTime(0, now + fade);
-      this.bgmSource.stop(now + fade);
-    } else {
-      this.bgmSource.stop();
-      this.bgmGain.gain.setValueAtTime(0, now);
-    }
-
-    this.bgmSource = undefined;
+    this.assertAlive();
+    this.stopBgmInternal(options.fadeOutSeconds ?? 0);
   }
 
   setListenerPosition(x: number, y: number, z = 0): void {
+    this.assertAlive();
     this.listenerX = x;
     this.listenerY = y;
     this.listenerZ = z;
@@ -169,13 +164,18 @@ export class AudioManager {
   }
 
   playEvents(events: readonly AudioEventView[]): void {
+    this.assertAlive();
     for (const event of events) {
       this.playSfx(event.soundId, event.volume, event.pitch);
     }
   }
 
   destroy(): void {
-    this.stopBgm({ fadeOutSeconds: 0 });
+    if (this.destroyed) {
+      return;
+    }
+    this.stopBgmInternal(0);
+    this.destroyed = true;
     const context = this.context;
     this.context = undefined;
     this.masterGain = undefined;
@@ -187,20 +187,55 @@ export class AudioManager {
     }
   }
 
+  private stopBgmInternal(fadeOutSeconds: number): void {
+    if (!this.bgmSource || !this.context || !this.bgmGain) {
+      return;
+    }
+
+    const fade = Math.max(0, fadeOutSeconds);
+    const now = this.context.currentTime;
+    const source = this.bgmSource;
+
+    try {
+      if (fade > 0) {
+        this.bgmGain.gain.cancelScheduledValues(now);
+        this.bgmGain.gain.setValueAtTime(this.bgmGain.gain.value, now);
+        this.bgmGain.gain.linearRampToValueAtTime(0, now + fade);
+        source.stop(now + fade);
+      } else {
+        source.stop();
+        this.bgmGain.gain.setValueAtTime(0, now);
+      }
+    } finally {
+      this.bgmSource = undefined;
+    }
+  }
+
   private requireBuffer(soundId: number): AudioBuffer {
     const buffer = this.buffersById.get(soundId);
     if (!buffer) {
-      throw new Error(`Sound id ${soundId} is not loaded. Check the sounds manifest passed to loadAssets().`);
+      throw audioPlaybackError({
+        kind: "sound",
+        id: soundId,
+        detail: "Sound is not loaded. Check the sounds manifest passed to loadAssets().",
+      });
     }
     return buffer;
   }
 
   private audioContext(): AudioContext {
-    if (this.context) return this.context;
+    this.assertAlive();
+    if (this.context) {
+      return this.context;
+    }
 
-    const constructor = window.AudioContext ?? (window as WindowWithWebkitAudioContext).webkitAudioContext;
+    const browserWindow = (globalThis as typeof globalThis & { window?: WindowWithWebkitAudioContext }).window;
+    const constructor = browserWindow?.AudioContext ?? browserWindow?.webkitAudioContext;
     if (!constructor) {
-      throw new Error("Web Audio API is not available in this browser.");
+      throw diagnosticError("Audio context error", {
+        kind: "sound",
+        detail: "Web Audio API is not available in this browser",
+      });
     }
 
     this.context = new constructor();
@@ -231,6 +266,12 @@ export class AudioManager {
   private resumeIfSuspended(context: AudioContext): void {
     if (context.state === "suspended") {
       void context.resume().catch(() => undefined);
+    }
+  }
+
+  private assertAlive(): void {
+    if (this.destroyed) {
+      throw new Error("AudioManager has been destroyed.");
     }
   }
 }

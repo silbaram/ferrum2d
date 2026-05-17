@@ -30,8 +30,38 @@
       "height": 24
     },
     "bullet": {
-      "width": 8,
-      "height": 8
+      "frame": "bullet.default"
+    }
+  },
+  "atlas": {
+    "frames": {
+      "bullet.default": {
+        "texture": "bullet",
+        "uv": {
+          "u0": 0,
+          "v0": 0,
+          "u1": 1,
+          "v1": 1
+        },
+        "size": {
+          "width": 8,
+          "height": 8
+        }
+      }
+    }
+  },
+  "camera": {
+    "preset": "look-ahead",
+    "lookAhead": {
+      "distance": 96
+    },
+    "deadZone": {
+      "width": 160,
+      "height": 96
+    },
+    "shake": {
+      "amplitude": 6,
+      "frequency": 8
     }
   }
 }

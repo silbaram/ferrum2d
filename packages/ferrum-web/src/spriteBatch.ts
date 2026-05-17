@@ -16,6 +16,7 @@ export class SpriteBatch {
   private readonly textureLocation: WebGLUniformLocation;
   private vertexData = new Float32Array(0);
   private vertexCapacityFloats = 0;
+  private destroyed = false;
 
   constructor(private readonly gl: WebGL2RenderingContext) {
     this.program = this.createProgram();
@@ -47,6 +48,7 @@ export class SpriteBatch {
   }
 
   drawBatches(textureManager: TextureManager, commands: RenderCommandBufferView, resolution: [number, number]): number {
+    this.assertAlive();
     if (commands.commandCount === 0) return 0;
     let drawCalls = 0;
     let batchStart = 0;
@@ -68,6 +70,7 @@ export class SpriteBatch {
   }
 
   drawBatch(texture: WebGLTexture, commands: RenderCommandBufferView, resolution: [number, number]): number {
+    this.assertAlive();
     return this.drawRange(texture, commands, resolution, 0, commands.commandCount);
   }
 
@@ -185,7 +188,23 @@ export class SpriteBatch {
     return 2 ** Math.ceil(Math.log2(Math.max(value, 1)));
   }
 
-  destroy(): void { this.gl.deleteBuffer(this.vbo); this.gl.deleteVertexArray(this.vao); this.gl.deleteProgram(this.program); }
+  destroy(): void {
+    if (this.destroyed) {
+      return;
+    }
+    this.destroyed = true;
+    this.gl.deleteBuffer(this.vbo);
+    this.gl.deleteVertexArray(this.vao);
+    this.gl.deleteProgram(this.program);
+    this.vertexData = new Float32Array(0);
+    this.vertexCapacityFloats = 0;
+  }
+
+  private assertAlive(): void {
+    if (this.destroyed) {
+      throw new Error("SpriteBatch has been destroyed.");
+    }
+  }
 
   private createProgram(): WebGLProgram { /* unchanged */
     const vert = this.compile(this.gl.VERTEX_SHADER, `#version 300 es

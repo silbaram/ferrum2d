@@ -16,16 +16,26 @@ export class InputManager {
     enter: false,
     mouseLeft: false, mouseX: 0, mouseY: 0,
   };
+  private destroyed = false;
 
-  private readonly onKeyDown = (e: KeyboardEvent): void => this.setKey(e, true);
-  private readonly onKeyUp = (e: KeyboardEvent): void => this.setKey(e, false);
+  private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (!this.destroyed) this.setKey(e, true);
+  };
+  private readonly onKeyUp = (e: KeyboardEvent): void => {
+    if (!this.destroyed) this.setKey(e, false);
+  };
   private readonly onMouseMove = (e: MouseEvent): void => {
+    if (this.destroyed) return;
     const rect = this.canvas.getBoundingClientRect();
     this.state.mouseX = e.clientX - rect.left;
     this.state.mouseY = e.clientY - rect.top;
   };
-  private readonly onMouseDown = (e: MouseEvent): void => { if (e.button === 0) this.state.mouseLeft = true; };
-  private readonly onMouseUp = (e: MouseEvent): void => { if (e.button === 0) this.state.mouseLeft = false; };
+  private readonly onMouseDown = (e: MouseEvent): void => {
+    if (!this.destroyed && e.button === 0) this.state.mouseLeft = true;
+  };
+  private readonly onMouseUp = (e: MouseEvent): void => {
+    if (!this.destroyed && e.button === 0) this.state.mouseLeft = false;
+  };
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener("keydown", this.onKeyDown);
@@ -38,6 +48,10 @@ export class InputManager {
   snapshot(): InputSnapshot { return { ...this.state }; }
 
   destroy(): void {
+    if (this.destroyed) {
+      return;
+    }
+    this.destroyed = true;
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     this.canvas.removeEventListener("mousemove", this.onMouseMove);

@@ -2,9 +2,11 @@
 
 이 로드맵은 Codex가 한 번의 작업 요청으로 안정적으로 처리할 수 있는 단위를 기준으로 관리한다. 구현되지 않은 항목은 계획으로만 기록하며, 완료된 것처럼 표현하지 않는다.
 
+상세 실행 순서와 각 작업 완료 기준은 [고도화 개발 계획](advanced-development-plan.md)을 따른다.
+
 ## v0.1.0 MVP
 
-상태: 릴리스 준비
+상태: MVP 개발 완료
 
 목표:
 
@@ -31,7 +33,7 @@
 - Phase 14: Code review guide
 - Phase 15: Release docs
 
-릴리스 전 체크:
+최종 검증 완료 기준:
 
 - `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
 - `pnpm test`
@@ -46,20 +48,28 @@
 진행된 작업:
 
 - DebugOverlay와 WebGL2Renderer stats에 render command 수, texture bind/switch 추정치, audio events/sec 지표 추가
+- Public API 계약 문서화, `FrameHandler`/`InputProvider`/`ViewportProvider` export, deprecated `FrameState.renderCommands` 정책 정리
+- AssetLoader, AudioManager, Game Spec validator의 오류 메시지 context를 `kind/name/url/id/path/detail` 형식으로 표준화
+- Top-down Shooter 예제의 asset 적용 실패를 console과 HUD에서 확인할 수 있도록 보강
+- `BrowserPlatformHost`로 asset/audio host 책임을 분리하고 `createEngine()` frame pipeline을 내부 함수로 정리
+- renderer/audio/debug/input/engine lifecycle cleanup을 정리하고 `destroy()` 중복 호출을 no-op으로 고정
+- DebugOverlay 표시명/단위/순서와 `RendererStats` 필드 계약을 테스트와 문서로 고정
+- `pnpm smoke:check`와 `docs/smoke-check.md`로 로컬 smoke check와 브라우저 수동 확인 절차를 고정
 
 후보 작업:
 
-- `FerrumEngine` public API 정리와 deprecated API 축소
-- render command compatibility path의 hot path allocation 제거
-- renderer/audio/debug lifecycle cleanup 재점검
-- 예제의 manual smoke checklist와 screenshot/GIF 갱신 절차 정리
 - CI에서 TypeScript test와 lint 실행 여부 정리
-- DebugOverlay 표시 항목과 renderer stats naming 안정화
-- FPS, frame time, Rust update time, render time, entity/sprite count 같은 기존 지표의 표시명과 단위를 고정
 - error message와 asset/audio loading 실패 리포트 형식 표준화
 - asset loading 실패 케이스 테스트 보강
-- WebGL2 renderer manual smoke guide 보강
 - npm package 공개 전 파일 구성 점검
+
+진행 순서:
+
+1. public API 정리 (완료)
+2. asset/error 진단 표준화 (완료)
+3. renderer/audio/debug lifecycle cleanup (완료)
+4. DebugOverlay/RendererStats naming 고정 (완료)
+5. smoke check 자동화 기반 정리 (완료)
 
 v0.2에서 하지 않을 것:
 
@@ -79,11 +89,11 @@ v0.2에서 하지 않을 것:
 
 후보 작업:
 
-- camera preset API 초안과 Top-down Shooter 적용
-- 카메라 preset 범위: 기존 player-follow 일반화, dead-zone, look-ahead, 시간 기반 shake
-- 카메라 계산은 Rust core가 담당하고 TypeScript는 viewport 전달과 renderer 적용만 담당
-- texture atlas metadata 포맷 설계와 작은 수동 atlas 예제 검토
-- atlas metadata 범위: frame name, texture id/name, UV/rect, frame size 검증
+- camera preset API 초안과 Top-down Shooter 적용 (완료)
+- 카메라 preset 범위: 기존 player-follow 일반화, dead-zone, look-ahead, 시간 기반 shake (완료)
+- 카메라 계산은 Rust core가 담당하고 TypeScript는 viewport 전달과 renderer 적용만 담당 (완료)
+- texture atlas metadata 포맷 설계와 작은 수동 atlas 예제 검토 (완료)
+- atlas metadata 범위: frame name, texture id/name, UV/rect, frame size 검증 (완료)
 - data-driven scene spec 확장 검토
 - scene spec 후보: spawn table, wave/event timeline, animation binding
 - tilemap runtime 최소 기능 설계
@@ -95,6 +105,13 @@ v0.2에서 하지 않을 것:
 - WebGL2 renderer smoke test 자동화 가능성 검토
 - docs site 또는 GitHub Pages 데모 배포 검토
 - release packaging 절차 정리
+
+진행 순서:
+
+1. Camera Preset (완료)
+2. Texture Atlas Metadata (완료)
+3. Spawn/Wave Spec
+4. Audio UX 개선
 
 v0.3에서 하지 않을 것:
 

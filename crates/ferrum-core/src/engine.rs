@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 use crate::audio_event::AudioEvent;
-use crate::camera::Camera2D;
+use crate::camera::{Camera2D, CameraPresetConfig};
 use crate::game_state::GameState;
 use crate::input::InputState;
 use crate::render_command::SpriteRenderCommand;
@@ -157,6 +157,54 @@ impl Engine {
             enemy_health,
             bullet_damage,
             score_reward,
+        );
+    }
+
+    pub fn set_shooter_camera_preset(
+        &mut self,
+        preset: u32,
+        dead_zone_width: f32,
+        dead_zone_height: f32,
+        look_ahead_distance: f32,
+        shake_amplitude: f32,
+        shake_frequency: f32,
+    ) {
+        self.scene.set_camera_preset(
+            &self.world,
+            &mut self.camera,
+            CameraPresetConfig::from_values(
+                preset,
+                dead_zone_width,
+                dead_zone_height,
+                look_ahead_distance,
+                shake_amplitude,
+                shake_frequency,
+            ),
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_shooter_atlas_frame(
+        &mut self,
+        prefab: u32,
+        texture_id: u32,
+        width: f32,
+        height: f32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+    ) {
+        self.scene.set_atlas_frame(
+            &mut self.world,
+            prefab,
+            texture_id,
+            width,
+            height,
+            u0,
+            v0,
+            u1,
+            v1,
         );
     }
 
@@ -557,5 +605,61 @@ mod tests {
         assert_eq!(config.enemy_health, 4.0);
         assert_eq!(config.bullet_damage, 2.0);
         assert_eq!(config.score_reward, 9);
+    }
+
+    #[test]
+    fn camera_preset_applies_without_resetting_world() {
+        let mut engine = Engine::new();
+        engine.set_viewport_size(400.0, 240.0);
+        let player = engine.world.player.unwrap();
+        engine.world.transforms[player.id as usize] = Some(Transform2D {
+            x: 1000.0,
+            y: 600.0,
+        });
+        engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+
+        engine.set_shooter_camera_preset(2, 160.0, 96.0, 80.0, 6.0, 8.0);
+
+        assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 1);
+        assert_eq!(engine.camera_x(), 1000.0);
+        assert_eq!(engine.camera_y(), 600.0);
+
+        engine.world.velocities[player.id as usize] =
+            Some(crate::components::Velocity { vx: 1.0, vy: 0.0 });
+        engine
+            .scene
+            .update_camera_follow(&engine.world, &mut engine.camera);
+
+        assert_eq!(engine.camera_x(), 1080.0);
+        assert_eq!(engine.camera_y(), 600.0);
+    }
+
+    #[test]
+    fn atlas_frame_updates_prefab_without_render_abi_change() {
+        let mut engine = Engine::new();
+
+        engine.set_shooter_atlas_frame(2, 9, 12.0, 10.0, 0.25, 0.5, 0.5, 0.75);
+        engine.world.spawn_bullet_from_template(
+            Transform2D { x: 120.0, y: 100.0 },
+            crate::components::Velocity { vx: 0.0, vy: 0.0 },
+            9,
+            1.0,
+            engine.scene.config().bullet_template,
+            1.0,
+        );
+        engine.build_render_commands();
+
+        let command = engine
+            .render_commands
+            .iter()
+            .find(|command| command.texture_id == 9.0)
+            .expect("bullet render command should use configured atlas texture");
+        assert_eq!(command.width, 12.0);
+        assert_eq!(command.height, 10.0);
+        assert_eq!(command.u0, 0.25);
+        assert_eq!(command.v0, 0.5);
+        assert_eq!(command.u1, 0.5);
+        assert_eq!(command.v1, 0.75);
+        assert_eq!(crate::sprite_render_command_floats(), 13);
     }
 }

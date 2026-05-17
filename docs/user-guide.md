@@ -9,6 +9,8 @@ Ferrum2D는 브라우저에서 실행되는 2D 게임을 만들기 위한 Rust +
 - 브라우저에서 Top-down Shooter 예제를 실행한다.
 - `game.json`을 수정해서 게임 난이도와 규칙을 바꾼다.
 - 적 이동 방식, 적 스폰 위치, 체력, 점수 보상, 총알 성능을 조정한다.
+- 플레이어, 적, 총알의 sprite sheet animation을 설정한다.
+- atlas frame metadata로 texture/UV/크기를 지정한다.
 - 설정 파일이 올바른지 검증한다.
 - 미리 준비된 preset으로 게임 변형 파일을 만든다.
 - AI 에이전트가 Game Spec을 수정하고 검증하도록 작업을 맡긴다.
@@ -83,7 +85,20 @@ examples/topdown-shooter/public/game.json
   "prefabs": {
     "player": { "width": 36, "height": 36 },
     "enemy": { "width": 24, "height": 24 },
-    "bullet": { "width": 8, "height": 8 }
+    "bullet": { "frame": "bullet.default" }
+  },
+  "atlas": {
+    "frames": {
+      "bullet.default": {
+        "texture": "bullet",
+        "uv": { "u0": 0, "v0": 0, "u1": 1, "v1": 1 },
+        "size": { "width": 8, "height": 8 }
+      }
+    }
+  },
+  "camera": {
+    "preset": "look-ahead",
+    "lookAhead": { "distance": 96 }
   }
 }
 ```
@@ -105,6 +120,73 @@ examples/topdown-shooter/public/game.json
 | `weapons.lifetime` | 총알이 사라지기 전까지 유지되는 시간이다. |
 | `weapons.damage` | 총알 한 발의 피해량이다. |
 | `prefabs.*.width`, `prefabs.*.height` | 플레이어, 적, 총알의 표시 크기와 충돌 기준 크기다. |
+| `prefabs.*.animation` | 플레이어, 적, 총알의 horizontal sprite sheet 또는 `idle`/`move` state animation 설정이다. |
+| `prefabs.*.frame` | `atlas.frames`에 정의한 frame 이름을 참조한다. |
+| `atlas.frames.*.texture` | asset manifest의 texture 이름 또는 numeric texture id다. |
+| `atlas.frames.*.uv` | texture 안에서 사용할 normalized UV 영역이다. |
+| `atlas.frames.*.size` | 해당 frame의 표시 크기와 충돌 기준 크기다. |
+| `camera.preset` | 카메라 움직임 preset이다. |
+| `camera.deadZone.width`, `camera.deadZone.height` | dead-zone preset에서 카메라가 바로 움직이지 않는 중심 영역 크기다. |
+| `camera.lookAhead.distance` | look-ahead preset에서 플레이어 이동 방향으로 앞을 보는 거리다. |
+| `camera.shake.amplitude`, `camera.shake.frequency` | shake preset의 시간 기반 흔들림 크기와 빈도다. |
+
+## 스프라이트 애니메이션
+
+`prefabs.player`, `prefabs.enemy`, `prefabs.bullet`은 모두 같은 animation 구조를 사용할 수 있다. 단일 이미지라면 `animation`을 생략한다.
+
+가로로 같은 크기의 프레임이 나열된 단순 sprite sheet는 `frames`와 `fps`를 사용한다.
+
+```json
+{
+  "prefabs": {
+    "enemy": {
+      "animation": { "frames": 4, "fps": 8 }
+    }
+  }
+}
+```
+
+정지/이동 상태를 다른 행으로 나눈 sprite sheet는 `columns`, `rows`, `states.idle`, `states.move`를 사용한다. `states`를 쓰면 `columns`, `rows`, `states.idle`은 필수이고, `states.move`를 생략하면 idle 설정을 같이 쓴다.
+
+```json
+{
+  "prefabs": {
+    "player": {
+      "animation": {
+        "columns": 4,
+        "rows": 2,
+        "states": {
+          "idle": { "row": 0, "frames": 1, "fps": 1 },
+          "move": { "row": 1, "frames": 4, "fps": 8 }
+        }
+      }
+    }
+  }
+}
+```
+
+## Atlas Frame Metadata
+
+단일 texture 안의 특정 영역만 prefab에 연결하고 싶으면 `atlas.frames`와 `prefabs.*.frame`을 사용한다. 현재 기본 예제는 bullet이 `bullet.default` frame을 사용한다.
+
+```json
+{
+  "atlas": {
+    "frames": {
+      "bullet.default": {
+        "texture": "bullet",
+        "uv": { "u0": 0, "v0": 0, "u1": 1, "v1": 1 },
+        "size": { "width": 8, "height": 8 }
+      }
+    }
+  },
+  "prefabs": {
+    "bullet": { "frame": "bullet.default" }
+  }
+}
+```
+
+`texture`에는 보통 `loadAssets()` texture manifest에 등록한 이름을 쓴다. 검증기는 frame 이름, UV 범위, 크기, texture 이름/id 형식을 확인한다. 같은 prefab에 `frame`과 `animation`을 동시에 넣으면 충돌하므로 실패한다.
 
 ## 적 행동 preset
 
@@ -121,6 +203,24 @@ examples/topdown-shooter/public/game.json
 | `"edge"` | 적이 월드 가장자리에서 등장한다. 기본값이다. |
 | `"corners"` | 적이 네 모서리에서 등장한다. 방향 예측이 쉬운 패턴이다. |
 | `"center"` | 적이 월드 중앙에서 등장한다. 실험이나 타겟 모드에 적합하다. |
+
+## 카메라 preset
+
+| 값 | 설명 |
+| --- | --- |
+| `"follow"` | 카메라가 플레이어 위치를 바로 따라간다. |
+| `"dead-zone"` | 플레이어가 중심 영역을 벗어날 때만 카메라가 움직인다. |
+| `"look-ahead"` | 플레이어 이동 방향으로 조금 앞을 보여준다. |
+| `"shake"` | 시간 기반 흔들림을 적용한다. 연출 확인용으로 사용한다. |
+
+```json
+{
+  "camera": {
+    "preset": "dead-zone",
+    "deadZone": { "width": 180, "height": 120 }
+  }
+}
+```
 
 ## 난이도 조정 예시
 
@@ -190,8 +290,11 @@ node scripts/validate-game-spec.mjs path/to/game.json
 | --- | --- |
 | positive number | `0`보다 큰 숫자가 필요하다. |
 | positive integer | `1`, `2`, `3`처럼 양의 정수가 필요하다. |
+| non-negative integer | `0`, `1`, `2`처럼 0 이상의 정수가 필요하다. |
 | invalid behavior | `chase`, `drift`, `static` 중 하나만 사용할 수 있다. |
 | invalid spawnPattern | `edge`, `corners`, `center` 중 하나만 사용할 수 있다. |
+| animation states | `states`를 쓰면 `columns`, `rows`, `states.idle`이 필요하고, state의 `frames`는 `columns`보다 클 수 없다. |
+| atlas frame | `prefabs.*.frame`은 `atlas.frames`에 존재해야 하고, UV는 `0..1` 범위에서 `u1 > u0`, `v1 > v0`이어야 한다. |
 
 ## 게임 변형 만들기
 

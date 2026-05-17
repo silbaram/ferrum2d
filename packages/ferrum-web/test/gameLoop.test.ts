@@ -117,7 +117,11 @@ test("GameLoop falls back to RAF when worker clock reports error", () => {
     ok(capturedOnTick !== null);
     equal(raf.pendingCount(), 0);
 
-    capturedOnError?.();
+    const onError = capturedOnError as (() => void) | null;
+    if (!onError) {
+      throw new Error("Expected worker clock error callback to be captured.");
+    }
+    onError();
     equal(raf.pendingCount(), 1);
 
     raf.fire(10);
