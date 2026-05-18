@@ -67,7 +67,9 @@ class FakeAudioContext {
   createBufferSource(): AudioBufferSourceNode { return new FakeBufferSource() as unknown as AudioBufferSourceNode; }
   createGain(): GainNode { return new FakeGainNode() as unknown as GainNode; }
   createPanner(): PannerNode { return new FakePannerNode() as unknown as PannerNode; }
-  resume = async (): Promise<void> => undefined;
+  resume = async (): Promise<void> => {
+    this.state = "running";
+  };
   close = async (): Promise<void> => undefined;
 }
 
@@ -136,6 +138,26 @@ test("AudioManager exposes mixer/bgm/spatial controls", () => {
     manager.setBusVolume("bgm", 0.5);
     manager.setBusVolume("sfx", 0.7);
     ok(true);
+  } finally {
+    manager.destroy();
+    globalWindow.window.AudioContext = previous;
+  }
+});
+
+test("AudioManager configures bus volume and unlocks suspended audio context", async () => {
+  class SuspendedAudioContext extends FakeAudioContext {
+    override state: AudioContextState = "suspended";
+  }
+
+  const globalWindow = globalThis as unknown as { window?: TestWindow };
+  if (!globalWindow.window) globalWindow.window = {};
+  const previous = globalWindow.window.AudioContext;
+  globalWindow.window.AudioContext = SuspendedAudioContext as unknown as typeof AudioContext;
+  const manager = new AudioManager();
+
+  try {
+    manager.configure({ masterVolume: 0.75, sfxVolume: 0.5 });
+    equal(await manager.unlock(), true);
   } finally {
     manager.destroy();
     globalWindow.window.AudioContext = previous;

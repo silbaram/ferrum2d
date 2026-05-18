@@ -12,6 +12,12 @@ declare module "../pkg/ferrum_core" {
     set_input(w:boolean,a:boolean,s:boolean,d:boolean,space:boolean,enter:boolean,mouse_left:boolean,mouse_x:number,mouse_y:number): void;
     set_texture_ids(player:number,enemy:number,bullet:number): void;
     set_sound_ids(shoot:number,hit:number,game_over:number): void;
+    clear_shooter_tilemap(): void;
+    set_shooter_tile(tile_id:number,texture_id:number,u0:number,v0:number,u1:number,v1:number,r:number,g:number,b:number,a:number): void;
+    set_shooter_tilemap_layer(index:number,columns:number,rows:number,tile_width:number,tile_height:number,origin_x:number,origin_y:number,collision:boolean,tiles:Uint32Array): void;
+    clear_shooter_waves(): void;
+    set_shooter_wave(index:number,duration:number,spawn_interval:number,enemy_count:number,enemy_speed:number,enemy_behavior:number,enemy_spawn_pattern:number,enemy_health:number,score_reward:number): void;
+    set_shooter_audio_policy(shoot_volume:number,shoot_pitch:number,hit_volume:number,hit_pitch:number,game_over_volume:number,game_over_pitch:number): void;
     set_viewport_size(width:number,height:number): void;
     set_shooter_config(world_width:number,world_height:number,player_speed:number,enemy_speed:number,enemy_spawn_interval:number,bullet_speed:number,fire_cooldown:number,bullet_lifetime:number): void;
     set_shooter_prefabs(player_width:number,player_height:number,enemy_width:number,enemy_height:number,bullet_width:number,bullet_height:number): void;

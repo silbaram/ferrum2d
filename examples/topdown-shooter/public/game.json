@@ -12,7 +12,39 @@
     "behavior": "chase",
     "spawnPattern": "edge",
     "health": 1,
-    "scoreReward": 1
+    "scoreReward": 1,
+    "presets": {
+      "runner": {
+        "speed": 96,
+        "behavior": "chase",
+        "spawnPattern": "edge",
+        "health": 1,
+        "scoreReward": 1
+      },
+      "bruiser": {
+        "speed": 54,
+        "behavior": "drift",
+        "spawnPattern": "corners",
+        "health": 3,
+        "scoreReward": 4
+      }
+    },
+    "waves": [
+      {
+        "enemy": "runner",
+        "duration": 18,
+        "spawnInterval": 0.85,
+        "enemyCount": 18,
+        "spawnPattern": "edge"
+      },
+      {
+        "enemy": "bruiser",
+        "duration": 16,
+        "spawnInterval": 1.25,
+        "enemyCount": 10,
+        "spawnPattern": "corners"
+      }
+    ]
   },
   "weapons": {
     "bulletSpeed": 360,
@@ -47,8 +79,111 @@
           "width": 8,
           "height": 8
         }
+      },
+      "tiles.floor": {
+        "texture": 0,
+        "uv": {
+          "u0": 0,
+          "v0": 0,
+          "u1": 1,
+          "v1": 1
+        },
+        "size": {
+          "width": 160,
+          "height": 160
+        }
+      },
+      "tiles.panel": {
+        "texture": 0,
+        "uv": {
+          "u0": 0,
+          "v0": 0,
+          "u1": 1,
+          "v1": 1
+        },
+        "size": {
+          "width": 160,
+          "height": 160
+        }
+      },
+      "tiles.accent": {
+        "texture": 0,
+        "uv": {
+          "u0": 0,
+          "v0": 0,
+          "u1": 1,
+          "v1": 1
+        },
+        "size": {
+          "width": 160,
+          "height": 160
+        }
+      },
+      "tiles.block": {
+        "texture": 0,
+        "uv": {
+          "u0": 0,
+          "v0": 0,
+          "u1": 1,
+          "v1": 1
+        },
+        "size": {
+          "width": 160,
+          "height": 160
+        }
       }
     }
+  },
+  "tilemap": {
+    "tileWidth": 160,
+    "tileHeight": 160,
+    "tiles": {
+      "1": {
+        "frame": "tiles.floor",
+        "color": [0.16, 0.22, 0.2, 0.42]
+      },
+      "2": {
+        "frame": "tiles.panel",
+        "color": [0.18, 0.2, 0.3, 0.52]
+      },
+      "3": {
+        "frame": "tiles.accent",
+        "color": [0.34, 0.29, 0.18, 0.5]
+      },
+      "4": {
+        "frame": "tiles.block",
+        "color": [0.42, 0.46, 0.5, 0.72]
+      }
+    },
+    "layers": [
+      {
+        "name": "arena-floor",
+        "columns": 10,
+        "rows": 6,
+        "data": [
+          1, 1, 2, 1, 1, 1, 1, 2, 1, 1,
+          1, 3, 1, 1, 2, 2, 1, 1, 3, 1,
+          2, 1, 1, 3, 1, 1, 3, 1, 1, 2,
+          1, 1, 2, 1, 1, 1, 1, 2, 1, 1,
+          1, 3, 1, 1, 2, 2, 1, 1, 3, 1,
+          1, 1, 2, 1, 1, 1, 1, 2, 1, 1
+        ]
+      },
+      {
+        "name": "arena-obstacles",
+        "columns": 10,
+        "rows": 6,
+        "collision": true,
+        "data": [
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 4, 0, 0, 0, 0, 4, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 4, 0, 0, 4, 0, 0, 0,
+          0, 4, 0, 0, 0, 0, 0, 0, 4, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ]
+      }
+    ]
   },
   "camera": {
     "preset": "look-ahead",
@@ -62,6 +197,24 @@
     "shake": {
       "amplitude": 6,
       "frequency": 8
+    }
+  },
+  "audio": {
+    "masterVolume": 1,
+    "sfxVolume": 0.85,
+    "events": {
+      "shoot": {
+        "volume": 0.28,
+        "pitch": 1.05
+      },
+      "hit": {
+        "volume": 0.48,
+        "pitch": 0.95
+      },
+      "gameOver": {
+        "volume": 0.7,
+        "pitch": 0.8
+      }
     }
   }
 }

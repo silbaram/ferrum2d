@@ -107,6 +107,13 @@ async function bootstrap(): Promise<void> {
     cleanups.push(() => renderer.destroy());
     const platformHost = new BrowserPlatformHost(renderer);
     cleanups.push(() => platformHost.destroy());
+    const unlockAudio = (): void => {
+      void platformHost.unlockAudio();
+    };
+    window.addEventListener("keydown", unlockAudio, { once: true });
+    canvas.addEventListener("pointerdown", unlockAudio, { once: true });
+    cleanups.push(() => window.removeEventListener("keydown", unlockAudio));
+    cleanups.push(() => canvas.removeEventListener("pointerdown", unlockAudio));
     const input = new InputManager(canvas);
     cleanups.push(() => input.destroy());
     const debugEnabled = new URLSearchParams(window.location.search).get("debug") !== "false";

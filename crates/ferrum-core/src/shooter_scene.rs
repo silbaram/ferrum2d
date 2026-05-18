@@ -8,6 +8,7 @@ use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::input::InputState;
 use crate::physics::{PhysicsBounds, PhysicsSystem};
+use crate::tilemap::Tilemap;
 use crate::world::{
     EntityTemplate, World, DEFAULT_BULLET_TEMPLATE, DEFAULT_ENEMY_TEMPLATE, DEFAULT_PLAYER_TEMPLATE,
 };
@@ -25,9 +26,10 @@ const DEFAULT_BULLET_DAMAGE: f32 = 1.0;
 const DEFAULT_SCORE_REWARD: u32 = 1;
 const DEFAULT_WORLD_WIDTH: f32 = 1600.0;
 const DEFAULT_WORLD_HEIGHT: f32 = 960.0;
-const SHOOT_VOLUME: f32 = 0.35;
-const HIT_VOLUME: f32 = 0.45;
-const GAME_OVER_VOLUME: f32 = 0.65;
+const DEFAULT_SHOOT_VOLUME: f32 = 0.35;
+const DEFAULT_HIT_VOLUME: f32 = 0.45;
+const DEFAULT_GAME_OVER_VOLUME: f32 = 0.65;
+const DEFAULT_SOUND_PITCH: f32 = 1.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum EnemyBehavior {
@@ -61,6 +63,91 @@ impl EnemySpawnPattern {
             1 => Self::Corners,
             2 => Self::Center,
             _ => Self::Edge,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ShooterAudioPolicy {
+    pub shoot_volume: f32,
+    pub shoot_pitch: f32,
+    pub hit_volume: f32,
+    pub hit_pitch: f32,
+    pub game_over_volume: f32,
+    pub game_over_pitch: f32,
+}
+
+impl Default for ShooterAudioPolicy {
+    fn default() -> Self {
+        Self {
+            shoot_volume: DEFAULT_SHOOT_VOLUME,
+            shoot_pitch: DEFAULT_SOUND_PITCH,
+            hit_volume: DEFAULT_HIT_VOLUME,
+            hit_pitch: DEFAULT_SOUND_PITCH,
+            game_over_volume: DEFAULT_GAME_OVER_VOLUME,
+            game_over_pitch: DEFAULT_SOUND_PITCH,
+        }
+    }
+}
+
+impl ShooterAudioPolicy {
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_values(
+        shoot_volume: f32,
+        shoot_pitch: f32,
+        hit_volume: f32,
+        hit_pitch: f32,
+        game_over_volume: f32,
+        game_over_pitch: f32,
+    ) -> Self {
+        Self {
+            shoot_volume: non_negative_or_default(shoot_volume, DEFAULT_SHOOT_VOLUME),
+            shoot_pitch: positive_or_default(shoot_pitch, DEFAULT_SOUND_PITCH),
+            hit_volume: non_negative_or_default(hit_volume, DEFAULT_HIT_VOLUME),
+            hit_pitch: positive_or_default(hit_pitch, DEFAULT_SOUND_PITCH),
+            game_over_volume: non_negative_or_default(game_over_volume, DEFAULT_GAME_OVER_VOLUME),
+            game_over_pitch: positive_or_default(game_over_pitch, DEFAULT_SOUND_PITCH),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ShooterWaveConfig {
+    pub duration: f32,
+    pub spawn_interval: f32,
+    pub enemy_count: u32,
+    pub enemy_speed: f32,
+    pub enemy_behavior: EnemyBehavior,
+    pub enemy_spawn_pattern: EnemySpawnPattern,
+    pub enemy_health: f32,
+    pub score_reward: u32,
+}
+
+impl ShooterWaveConfig {
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_values(
+        duration: f32,
+        spawn_interval: f32,
+        enemy_count: u32,
+        enemy_speed: f32,
+        enemy_behavior: EnemyBehavior,
+        enemy_spawn_pattern: EnemySpawnPattern,
+        enemy_health: f32,
+        score_reward: u32,
+    ) -> Self {
+        Self {
+            duration: positive_or_default(duration, DEFAULT_ENEMY_SPAWN_INTERVAL),
+            spawn_interval: positive_or_default(spawn_interval, DEFAULT_ENEMY_SPAWN_INTERVAL),
+            enemy_count: if enemy_count > 0 { enemy_count } else { 1 },
+            enemy_speed: positive_or_default(enemy_speed, DEFAULT_ENEMY_SPEED),
+            enemy_behavior,
+            enemy_spawn_pattern,
+            enemy_health: positive_or_default(enemy_health, DEFAULT_ENEMY_HEALTH),
+            score_reward: if score_reward > 0 {
+                score_reward
+            } else {
+                DEFAULT_SCORE_REWARD
+            },
         }
     }
 }
@@ -102,6 +189,7 @@ pub(crate) struct ShooterConfig {
     pub bullet_damage: f32,
     pub score_reward: u32,
     pub camera: CameraPresetConfig,
+    pub audio_policy: ShooterAudioPolicy,
 }
 
 impl Default for ShooterConfig {
@@ -124,6 +212,7 @@ impl Default for ShooterConfig {
             bullet_damage: DEFAULT_BULLET_DAMAGE,
             score_reward: DEFAULT_SCORE_REWARD,
             camera: CameraPresetConfig::default(),
+            audio_policy: ShooterAudioPolicy::default(),
         }
     }
 }
@@ -285,10 +374,23 @@ impl ShooterConfig {
         self.camera = camera;
         self
     }
+
+    pub fn with_audio_policy(mut self, audio_policy: ShooterAudioPolicy) -> Self {
+        self.audio_policy = audio_policy;
+        self
+    }
 }
 
 fn positive_or_default(value: f32, default: f32) -> f32 {
     if value.is_finite() && value > 0.0 {
+        value
+    } else {
+        default
+    }
+}
+
+fn non_negative_or_default(value: f32, default: f32) -> f32 {
+    if value.is_finite() && value >= 0.0 {
         value
     } else {
         default
@@ -387,6 +489,10 @@ pub struct ShooterScene {
     texture_ids: TextureIds,
     sound_ids: SoundIds,
     config: ShooterConfig,
+    waves: Vec<ShooterWaveConfig>,
+    active_wave_index: usize,
+    wave_elapsed_seconds: f32,
+    wave_spawned_count: u32,
     camera_elapsed_seconds: f32,
     pending_despawn: Vec<Entity>,
     marked_for_despawn: Vec<bool>,
@@ -405,6 +511,10 @@ impl Default for ShooterScene {
             texture_ids: TextureIds::default(),
             sound_ids: SoundIds::default(),
             config: ShooterConfig::default(),
+            waves: Vec::new(),
+            active_wave_index: 0,
+            wave_elapsed_seconds: 0.0,
+            wave_spawned_count: 0,
             camera_elapsed_seconds: 0.0,
             pending_despawn: Vec::with_capacity(128),
             marked_for_despawn: Vec::with_capacity(256),
@@ -423,6 +533,7 @@ impl ShooterScene {
         camera: &mut Camera2D,
         input: InputState,
         audio_events: &mut Vec<AudioEvent>,
+        tilemap: &Tilemap,
         delta: f32,
     ) {
         let space_pressed = input.space == 1 && self.previous_space == 0;
@@ -442,10 +553,12 @@ impl ShooterScene {
             }
             GameState::Playing => {
                 self.tick_playing_timers(delta);
+                self.advance_wave_if_needed();
                 self.camera_elapsed_seconds += delta.max(0.0);
                 self.apply_player_input(world, camera, input, audio_events);
                 self.update_enemy_velocity(world);
                 world.update(delta);
+                tilemap.resolve_dynamic_collisions(world);
                 self.clamp_player_to_world(world);
                 self.update_camera_follow(world, camera);
                 self.update_bullets(world, delta);
@@ -480,6 +593,7 @@ impl ShooterScene {
         self.previous_space = 0;
         self.previous_enter = 0;
         self.spawn_index = 0;
+        self.reset_wave_state();
         self.camera_elapsed_seconds = 0.0;
         audio_events.clear();
         *world = World::default();
@@ -520,6 +634,24 @@ impl ShooterScene {
         self.config = config;
         self.reset_playing(world, camera, audio_events);
         self.game_state = game_state;
+    }
+
+    pub fn clear_wave_configs(&mut self) {
+        self.waves.clear();
+        self.reset_wave_state();
+    }
+
+    pub fn set_wave_config(&mut self, index: u32, wave: ShooterWaveConfig) {
+        let index = index as usize;
+        if index >= self.waves.len() {
+            self.waves.resize(index + 1, wave);
+        }
+        self.waves[index] = wave;
+        self.reset_wave_state();
+    }
+
+    pub fn set_audio_policy(&mut self, audio_policy: ShooterAudioPolicy) {
+        self.config = self.config.with_audio_policy(audio_policy);
     }
 
     pub fn set_enemy_behavior(
@@ -749,6 +881,76 @@ impl ShooterScene {
         if self.enemy_spawn_timer > 0.0 {
             self.enemy_spawn_timer -= delta;
         }
+        if !self.waves.is_empty() {
+            self.wave_elapsed_seconds += delta.max(0.0);
+        }
+    }
+
+    fn reset_wave_state(&mut self) {
+        self.active_wave_index = 0;
+        self.wave_elapsed_seconds = 0.0;
+        self.wave_spawned_count = 0;
+        self.enemy_spawn_timer = self.active_spawn_interval();
+    }
+
+    fn advance_wave_if_needed(&mut self) {
+        let Some(wave) = self.active_wave() else {
+            return;
+        };
+        if self.wave_elapsed_seconds < wave.duration && self.wave_spawned_count < wave.enemy_count {
+            return;
+        }
+
+        self.active_wave_index = (self.active_wave_index + 1) % self.waves.len();
+        self.wave_elapsed_seconds = 0.0;
+        self.wave_spawned_count = 0;
+        self.enemy_spawn_timer = self.active_spawn_interval();
+    }
+
+    fn active_wave(&self) -> Option<ShooterWaveConfig> {
+        self.waves.get(self.active_wave_index).copied()
+    }
+
+    fn active_spawn_interval(&self) -> f32 {
+        self.active_wave()
+            .map(|wave| wave.spawn_interval)
+            .unwrap_or(self.config.enemy_spawn_interval)
+    }
+
+    fn active_enemy_speed(&self) -> f32 {
+        self.active_wave()
+            .map(|wave| wave.enemy_speed)
+            .unwrap_or(self.config.enemy_speed)
+    }
+
+    fn active_enemy_behavior(&self) -> EnemyBehavior {
+        self.active_wave()
+            .map(|wave| wave.enemy_behavior)
+            .unwrap_or(self.config.enemy_behavior)
+    }
+
+    fn active_enemy_spawn_pattern(&self) -> EnemySpawnPattern {
+        self.active_wave()
+            .map(|wave| wave.enemy_spawn_pattern)
+            .unwrap_or(self.config.enemy_spawn_pattern)
+    }
+
+    fn active_enemy_health(&self) -> f32 {
+        self.active_wave()
+            .map(|wave| wave.enemy_health)
+            .unwrap_or(self.config.enemy_health)
+    }
+
+    fn active_score_reward(&self) -> u32 {
+        self.active_wave()
+            .map(|wave| wave.score_reward)
+            .unwrap_or(self.config.score_reward)
+    }
+
+    fn active_wave_has_spawned_all_enemies(&self) -> bool {
+        self.active_wave()
+            .map(|wave| self.wave_spawned_count >= wave.enemy_count)
+            .unwrap_or(false)
     }
 
     fn normalized_input_direction(input: InputState) -> Velocity {
@@ -848,7 +1050,12 @@ impl ShooterScene {
             self.config.bullet_template,
             self.config.bullet_damage,
         );
-        self.push_audio_event(audio_events, self.sound_ids.shoot, SHOOT_VOLUME, 1.0);
+        self.push_audio_event(
+            audio_events,
+            self.sound_ids.shoot,
+            self.config.audio_policy.shoot_volume,
+            self.config.audio_policy.shoot_pitch,
+        );
     }
 
     fn clamp_player_to_world(&self, world: &mut World) {
@@ -889,12 +1096,13 @@ impl ShooterScene {
     }
 
     fn enemy_velocity(&self, enemy_t: Transform2D, player_t: Option<Transform2D>) -> Velocity {
-        match self.config.enemy_behavior {
+        let speed = self.active_enemy_speed();
+        match self.active_enemy_behavior() {
             EnemyBehavior::Chase => {
                 let Some(player_t) = player_t else {
                     return Velocity::default();
                 };
-                self.velocity_toward(enemy_t, player_t)
+                self.velocity_toward(enemy_t, player_t, speed)
             }
             EnemyBehavior::Drift => self.velocity_toward(
                 enemy_t,
@@ -902,19 +1110,20 @@ impl ShooterScene {
                     x: self.config.world_width * 0.5,
                     y: self.config.world_height * 0.5,
                 },
+                speed,
             ),
             EnemyBehavior::Static => Velocity::default(),
         }
     }
 
-    fn velocity_toward(&self, from: Transform2D, to: Transform2D) -> Velocity {
+    fn velocity_toward(&self, from: Transform2D, to: Transform2D, speed: f32) -> Velocity {
         let dx = to.x - from.x;
         let dy = to.y - from.y;
         let len = (dx * dx + dy * dy).sqrt();
         if len > 0.0001 {
             Velocity {
-                vx: dx / len * self.config.enemy_speed,
-                vy: dy / len * self.config.enemy_speed,
+                vx: dx / len * speed,
+                vy: dy / len * speed,
             }
         } else {
             Velocity::default()
@@ -965,7 +1174,10 @@ impl ShooterScene {
         if self.enemy_spawn_timer > 0.0 {
             return;
         }
-        self.enemy_spawn_timer = self.config.enemy_spawn_interval;
+        if self.active_wave_has_spawned_all_enemies() {
+            return;
+        }
+        self.enemy_spawn_timer = self.active_spawn_interval();
         let idx = self.spawn_index;
         self.spawn_index = self.spawn_index.wrapping_add(1);
         let (x, y) = self.enemy_spawn_position(idx);
@@ -974,13 +1186,16 @@ impl ShooterScene {
             y,
             self.texture_ids.enemy,
             self.config.enemy_template,
-            self.config.enemy_health,
-            self.config.score_reward,
+            self.active_enemy_health(),
+            self.active_score_reward(),
         );
+        if !self.waves.is_empty() {
+            self.wave_spawned_count = self.wave_spawned_count.saturating_add(1);
+        }
     }
 
     fn enemy_spawn_position(&self, idx: u32) -> (f32, f32) {
-        match self.config.enemy_spawn_pattern {
+        match self.active_enemy_spawn_pattern() {
             EnemySpawnPattern::Edge => self.edge_spawn_position(idx),
             EnemySpawnPattern::Corners => self.corner_spawn_position(idx),
             EnemySpawnPattern::Center => (
@@ -1146,7 +1361,12 @@ impl ShooterScene {
                     let reward = world.score_rewards[enemy_index].unwrap_or(DEFAULT_SCORE_REWARD);
                     self.score = self.score.saturating_add(reward);
                 }
-                self.push_audio_event(audio_events, self.sound_ids.hit, HIT_VOLUME, 1.0);
+                self.push_audio_event(
+                    audio_events,
+                    self.sound_ids.hit,
+                    self.config.audio_policy.hit_volume,
+                    self.config.audio_policy.hit_pitch,
+                );
                 break;
             }
         }
@@ -1196,8 +1416,8 @@ impl ShooterScene {
                     self.push_audio_event(
                         audio_events,
                         self.sound_ids.game_over,
-                        GAME_OVER_VOLUME,
-                        0.9,
+                        self.config.audio_policy.game_over_volume,
+                        self.config.audio_policy.game_over_pitch,
                     );
                 }
                 break;
@@ -1269,6 +1489,7 @@ mod tests {
                 ..InputState::default()
             },
             &mut audio_events,
+            &Tilemap::default(),
             0.016,
         );
         assert_eq!(scene.game_state(), GameState::Playing);
@@ -1283,6 +1504,7 @@ mod tests {
                 ..InputState::default()
             },
             &mut audio_events,
+            &Tilemap::default(),
             0.016,
         );
         assert_eq!(scene.game_state(), GameState::Playing);
@@ -1304,6 +1526,7 @@ mod tests {
                 ..InputState::default()
             },
             &mut audio_events,
+            &Tilemap::default(),
             0.016,
         );
 
@@ -1324,6 +1547,7 @@ mod tests {
                 ..InputState::default()
             },
             &mut audio_events,
+            &Tilemap::default(),
             0.016,
         );
 
@@ -1509,6 +1733,7 @@ mod tests {
             &mut camera,
             InputState::default(),
             &mut audio_events,
+            &Tilemap::default(),
             DEFAULT_ENEMY_SPAWN_INTERVAL - 0.01,
         );
         assert_eq!(count_layer(&world, CollisionLayer::Enemy), 0);
@@ -1518,6 +1743,7 @@ mod tests {
             &mut camera,
             InputState::default(),
             &mut audio_events,
+            &Tilemap::default(),
             0.02,
         );
         assert_eq!(count_layer(&world, CollisionLayer::Enemy), 1);
@@ -1716,6 +1942,114 @@ mod tests {
     }
 
     #[test]
+    fn wave_config_applies_spawn_preset_values() {
+        let (mut scene, mut world, _, _) = playing_scene();
+        scene.set_wave_config(
+            0,
+            ShooterWaveConfig::from_values(
+                10.0,
+                0.5,
+                2,
+                42.0,
+                EnemyBehavior::Static,
+                EnemySpawnPattern::Center,
+                5.0,
+                11,
+            ),
+        );
+        scene.enemy_spawn_timer = 0.0;
+
+        scene.spawn_enemy_if_needed(&mut world);
+
+        let enemy = world
+            .colliders
+            .iter()
+            .enumerate()
+            .find(|(_, collider)| collider.is_some_and(|c| c.layer == CollisionLayer::Enemy))
+            .map(|(index, _)| index)
+            .unwrap();
+        assert_eq!(world.transforms[enemy].unwrap().x, 800.0);
+        assert_eq!(world.transforms[enemy].unwrap().y, 480.0);
+        assert_eq!(world.healths[enemy], Some(5.0));
+        assert_eq!(world.score_rewards[enemy], Some(11));
+
+        scene.update_enemy_velocity(&mut world);
+
+        assert_eq!(world.velocities[enemy], Some(Velocity::default()));
+    }
+
+    #[test]
+    fn wave_config_limits_spawn_count_and_cycles() {
+        let (mut scene, mut world, _, _) = playing_scene();
+        scene.set_wave_config(
+            0,
+            ShooterWaveConfig::from_values(
+                10.0,
+                0.25,
+                1,
+                72.0,
+                EnemyBehavior::Chase,
+                EnemySpawnPattern::Center,
+                1.0,
+                1,
+            ),
+        );
+        scene.set_wave_config(
+            1,
+            ShooterWaveConfig::from_values(
+                10.0,
+                0.25,
+                1,
+                72.0,
+                EnemyBehavior::Chase,
+                EnemySpawnPattern::Corners,
+                1.0,
+                1,
+            ),
+        );
+        scene.enemy_spawn_timer = 0.0;
+
+        scene.spawn_enemy_if_needed(&mut world);
+        assert_eq!(count_layer(&world, CollisionLayer::Enemy), 1);
+
+        scene.spawn_enemy_if_needed(&mut world);
+        assert_eq!(count_layer(&world, CollisionLayer::Enemy), 1);
+
+        scene.advance_wave_if_needed();
+        scene.enemy_spawn_timer = 0.0;
+        scene.spawn_enemy_if_needed(&mut world);
+
+        assert_eq!(count_layer(&world, CollisionLayer::Enemy), 2);
+        assert_eq!(scene.active_wave_index, 1);
+    }
+
+    #[test]
+    fn audio_policy_controls_event_volume_and_pitch() {
+        let (mut scene, mut world, camera, mut audio_events) = playing_scene();
+        scene.set_audio_policy(ShooterAudioPolicy::from_values(
+            0.2, 1.2, 0.5, 0.9, 0.8, 0.7,
+        ));
+        scene.set_sound_ids(10, 20, 30);
+        let player = world.player.unwrap();
+
+        scene.fire_bullet_toward_mouse(
+            &mut world,
+            &camera,
+            InputState {
+                mouse_x: 800.0,
+                mouse_y: 240.0,
+                ..InputState::default()
+            },
+            player,
+            &mut audio_events,
+        );
+
+        assert_eq!(audio_events[0].sound_id as u32, 10);
+        assert_eq!(audio_events[0].volume, 0.2);
+        assert_eq!(audio_events[0].pitch, 1.2);
+    }
+
+    #[test]
     fn configured_texture_ids_are_written_to_existing_sprites() {
         let (mut scene, mut world, _, _) = playing_scene();
         world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
@@ -1750,7 +2084,7 @@ mod tests {
 
         assert_eq!(audio_events.len(), 1);
         assert_eq!(audio_events[0].sound_id as u32, 10);
-        assert_eq!(audio_events[0].volume, SHOOT_VOLUME);
+        assert_eq!(audio_events[0].volume, DEFAULT_SHOOT_VOLUME);
     }
 
     #[test]

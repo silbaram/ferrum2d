@@ -8,6 +8,9 @@ AI agent 또는 subagent가 Ferrum2D 변경을 마친 뒤 확인할 항목이다
 - 모든 숫자 필드가 positive finite number인가?
 - `enemies.behavior`가 `chase`, `drift`, `static` 중 하나인가?
 - `enemies.spawnPattern`이 `edge`, `corners`, `center` 중 하나인가?
+- `enemies.presets.*`와 `enemies.waves.*.enemy` 참조가 일치하는가?
+- `enemies.waves.*.duration`, `spawnInterval`, `enemyCount`가 positive 값인가?
+- `audio.masterVolume`, `audio.sfxVolume`, `audio.events.*.volume`이 non-negative number이고 `audio.events.*.pitch`가 positive number인가?
 - `camera.preset`이 `follow`, `dead-zone`, `look-ahead`, `shake` 중 하나인가?
 - `enemies.health`, `weapons.damage`가 positive number인가?
 - `enemies.scoreReward`가 positive integer인가?
@@ -16,6 +19,11 @@ AI agent 또는 subagent가 Ferrum2D 변경을 마친 뒤 확인할 항목이다
 - `atlas.frames.*.texture`가 non-empty texture name 또는 non-negative integer texture id인가?
 - `atlas.frames.*.uv`가 `0..1` 범위이고 `u1 > u0`, `v1 > v0`인가?
 - `atlas.frames.*.size.width/height`가 positive number인가?
+- `tilemap.tiles`의 key가 positive integer string이고 `frame`이 `atlas.frames`를 참조하는가?
+- `tilemap.tiles.*.color`가 `[r,g,b,a]` 형태의 `0..1` 숫자 네 개인가?
+- `tilemap.layers.*.columns/rows`와 `data` 길이(`columns * rows`)가 일치하는가?
+- `tilemap.layers.*.collision`이 boolean이고, 충돌을 의도한 layer에만 `true`인가?
+- `tilemap.layers.*.data`의 양수 tile id가 `tilemap.tiles`에 존재하는가?
 - 같은 prefab에 `frame`과 `animation`을 동시에 지정하지 않았는가?
 - `prefabs.*.animation.frames`가 1보다 크면 `fps`가 함께 제공되는가?
 - `prefabs.*.animation.states`를 쓰면 `columns`, `rows`, `states.idle`이 제공되고 state frame 수가 column 수를 넘지 않는가?

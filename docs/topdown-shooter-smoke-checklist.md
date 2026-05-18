@@ -50,7 +50,7 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 ### C. 전투/점수
 
 - [ ] 마우스 좌클릭(또는 엔진 기본 발사 입력) 시 총알이 발사된다.
-- [ ] 적이 주기적으로 스폰되고 이동한다.
+- [ ] 적이 `game.json`의 wave 순서에 따라 스폰되고 이동한다.
 - [ ] 총알-적 충돌 시 적이 제거되고 score가 증가한다.
 
 ### D. 게임오버/재시작
@@ -61,8 +61,10 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 
 ### E. 오디오/에셋
 
-- [ ] 발사/피격/game over 효과음이 정상 재생된다.
+- [ ] 첫 key/pointer 입력 이후 발사/피격/game over 효과음이 정상 재생된다.
 - [ ] 텍스처 누락(핑크/검은 사각형 등) 없이 스프라이트가 표시된다.
+- [ ] `game.json`의 정적 tilemap 배경이 표시된다.
+- [ ] `game.json`의 `collision: true` tile을 player/enemy가 통과하지 못한다.
 
 ### F. DebugOverlay/렌더러 지표
 

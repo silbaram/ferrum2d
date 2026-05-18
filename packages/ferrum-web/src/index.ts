@@ -2,6 +2,7 @@ export { createEngine } from "./createEngine";
 export { createRenderer } from "./createRenderer";
 export type {
   AssetHost,
+  AudioBusConfig,
   CreateEngineOptions,
   FerrumEngine,
   FrameHandler,
@@ -17,14 +18,25 @@ export type {
   ApplyShooterGameSpecOptions,
   ResolvedShooterAtlasFrame,
   ResolvedShooterGameSpec,
+  ResolvedShooterWave,
+  ShooterAudioEventPolicySpec,
+  ShooterAudioSpec,
   ShooterAtlasFrameSpec,
   ShooterAtlasSpec,
   ShooterCameraPreset,
   ShooterCameraSpec,
   ShooterEnemyBehaviorPreset,
+  ShooterEnemyPresetSpec,
   ShooterGameSpec,
   ShooterGameSpecTarget,
   ShooterPrefabSpec,
+  ShooterTileLayerSpec,
+  ShooterTilemapSpec,
+  ShooterTileSpec,
+  ResolvedShooterTileDefinition,
+  ResolvedShooterTileLayer,
+  ResolvedShooterTilemap,
+  ShooterWaveSpec,
 } from "./gameSpec";
 export type { Renderer, RendererStats } from "./renderer";
 export type { CreateRendererOptions, RendererFallbackInfo } from "./createRenderer";
@@ -33,6 +45,7 @@ export { BrowserPlatformHost } from "./browserPlatformHost";
 export { WebGPURenderer } from "./webgpuRenderer";
 export { TextureManager } from "./textureManager";
 export { AudioManager } from "./audioManager";
+export type { AudioManagerConfig } from "./audioManager";
 export { AudioAssetLoader } from "./audioAssetLoader";
 export { AssetLoader } from "./assetLoader";
 export { DebugOverlay } from "./debugOverlay";
