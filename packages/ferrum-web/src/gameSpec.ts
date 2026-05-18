@@ -15,6 +15,8 @@ export interface ShooterGameSpec {
     spawnPattern?: ShooterEnemySpawnPatternPreset;
     health?: number;
     scoreReward?: number;
+    presets?: Record<string, ShooterEnemyPresetSpec>;
+    waves?: ShooterWaveSpec[];
   };
   weapons?: {
     bulletSpeed?: number;
@@ -28,7 +30,40 @@ export interface ShooterGameSpec {
     bullet?: ShooterPrefabSpec;
   };
   atlas?: ShooterAtlasSpec;
+  tilemap?: ShooterTilemapSpec;
   camera?: ShooterCameraSpec;
+  audio?: ShooterAudioSpec;
+}
+
+export interface ShooterEnemyPresetSpec {
+  speed?: number;
+  behavior?: ShooterEnemyBehaviorPreset;
+  spawnPattern?: ShooterEnemySpawnPatternPreset;
+  health?: number;
+  scoreReward?: number;
+}
+
+export interface ShooterWaveSpec {
+  enemy?: string;
+  duration?: number;
+  spawnInterval?: number;
+  enemyCount?: number;
+  spawnPattern?: ShooterEnemySpawnPatternPreset;
+}
+
+export interface ShooterAudioSpec {
+  masterVolume?: number;
+  sfxVolume?: number;
+  events?: {
+    shoot?: ShooterAudioEventPolicySpec;
+    hit?: ShooterAudioEventPolicySpec;
+    gameOver?: ShooterAudioEventPolicySpec;
+  };
+}
+
+export interface ShooterAudioEventPolicySpec {
+  volume?: number;
+  pitch?: number;
 }
 
 export interface ShooterCameraSpec {
@@ -57,6 +92,36 @@ export interface ShooterAtlasSpec {
   frames?: Record<string, ShooterAtlasFrameSpec>;
 }
 
+export interface ShooterTilemapSpec {
+  tileWidth?: number;
+  tileHeight?: number;
+  origin?: {
+    x?: number;
+    y?: number;
+  };
+  tiles?: Record<string, ShooterTileSpec>;
+  layers?: ShooterTileLayerSpec[];
+}
+
+export interface ShooterTileSpec {
+  frame?: string;
+  color?: [number, number, number, number];
+}
+
+export interface ShooterTileLayerSpec {
+  name?: string;
+  columns?: number;
+  rows?: number;
+  tileWidth?: number;
+  tileHeight?: number;
+  origin?: {
+    x?: number;
+    y?: number;
+  };
+  collision?: boolean;
+  data?: number[];
+}
+
 export interface ShooterAtlasFrameSpec {
   texture?: string | number;
   uv?: {
@@ -80,6 +145,45 @@ export interface ResolvedShooterAtlasFrame {
   v0: number;
   u1: number;
   v1: number;
+}
+
+export interface ResolvedShooterTileDefinition {
+  id: number;
+  frame: ResolvedShooterAtlasFrame;
+  color: [number, number, number, number];
+}
+
+export interface ResolvedShooterTileLayer {
+  index: number;
+  name: string;
+  columns: number;
+  rows: number;
+  tileWidth: number;
+  tileHeight: number;
+  originX: number;
+  originY: number;
+  collision: boolean;
+  data: number[];
+}
+
+export interface ResolvedShooterTilemap {
+  tiles: ResolvedShooterTileDefinition[];
+  layers: ResolvedShooterTileLayer[];
+}
+
+export interface ResolvedShooterWave {
+  index: number;
+  enemy: string;
+  duration: number;
+  spawnInterval: number;
+  enemyCount: number;
+  enemySpeed: number;
+  enemyBehavior: ShooterEnemyBehaviorPreset;
+  enemyBehaviorCode: number;
+  enemySpawnPattern: ShooterEnemySpawnPatternPreset;
+  enemySpawnPatternCode: number;
+  enemyHealth: number;
+  scoreReward: number;
 }
 
 export interface ShooterSpriteAnimationSpec {
@@ -166,6 +270,16 @@ export interface ResolvedShooterGameSpec {
   playerAtlasFrame?: ResolvedShooterAtlasFrame;
   enemyAtlasFrame?: ResolvedShooterAtlasFrame;
   bulletAtlasFrame?: ResolvedShooterAtlasFrame;
+  tilemap?: ResolvedShooterTilemap;
+  waves: ResolvedShooterWave[];
+  audioMasterVolume: number;
+  audioSfxVolume: number;
+  shootVolume: number;
+  shootPitch: number;
+  hitVolume: number;
+  hitPitch: number;
+  gameOverVolume: number;
+  gameOverPitch: number;
 }
 
 export interface ShooterGameSpecTarget {
@@ -240,6 +354,50 @@ export interface ShooterGameSpecTarget {
     u1: number,
     v1: number,
   ): void;
+  clear_shooter_tilemap?(): void;
+  set_shooter_tile?(
+    tileId: number,
+    textureId: number,
+    u0: number,
+    v0: number,
+    u1: number,
+    v1: number,
+    r: number,
+    g: number,
+    b: number,
+    a: number,
+  ): void;
+  set_shooter_tilemap_layer?(
+    index: number,
+    columns: number,
+    rows: number,
+    tileWidth: number,
+    tileHeight: number,
+    originX: number,
+    originY: number,
+    collision: boolean,
+    tiles: Uint32Array,
+  ): void;
+  clear_shooter_waves?(): void;
+  set_shooter_wave?(
+    index: number,
+    duration: number,
+    spawnInterval: number,
+    enemyCount: number,
+    enemySpeed: number,
+    enemyBehavior: number,
+    enemySpawnPattern: number,
+    enemyHealth: number,
+    scoreReward: number,
+  ): void;
+  set_shooter_audio_policy?(
+    shootVolume: number,
+    shootPitch: number,
+    hitVolume: number,
+    hitPitch: number,
+    gameOverVolume: number,
+    gameOverPitch: number,
+  ): void;
 }
 
 export interface ApplyShooterGameSpecOptions {
@@ -306,6 +464,15 @@ const DEFAULT_SHOOTER_GAME_SPEC: ResolvedShooterGameSpec = {
   cameraShakeAmplitude: 6,
   cameraShakeFrequency: 8,
   atlasFrames: {},
+  waves: [],
+  audioMasterVolume: 1,
+  audioSfxVolume: 1,
+  shootVolume: 0.35,
+  shootPitch: 1,
+  hitVolume: 0.45,
+  hitPitch: 1,
+  gameOverVolume: 0.65,
+  gameOverPitch: 0.9,
 };
 
 export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec {
@@ -316,7 +483,10 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
   const weapons = optionalObject(spec.weapons, "weapons");
   const prefabs = optionalObject(spec.prefabs, "prefabs");
   const atlasFrames = atlasFrameMap(spec.atlas, "atlas");
+  const tilemap = shooterTilemap(spec.tilemap, "tilemap", atlasFrames);
   const camera = optionalObject(spec.camera, "camera");
+  const audio = optionalObject(spec.audio, "audio");
+  const audioEvents = optionalObject(audio.events, "audio.events");
   const cameraDeadZone = optionalObject(camera.deadZone, "camera.deadZone");
   const cameraLookAhead = optionalObject(camera.lookAhead, "camera.lookAhead");
   const cameraShake = optionalObject(camera.shake, "camera.shake");
@@ -345,17 +515,45 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
   const playerAnimation = spriteAnimation(playerPrefab.animation, "prefabs.player.animation");
   const enemyAnimation = spriteAnimation(enemyPrefab.animation, "prefabs.enemy.animation");
   const bulletAnimation = spriteAnimation(bulletPrefab.animation, "prefabs.bullet.animation");
+  const shootAudio = audioEventPolicy(audioEvents.shoot, "audio.events.shoot", {
+    volume: DEFAULT_SHOOTER_GAME_SPEC.shootVolume,
+    pitch: DEFAULT_SHOOTER_GAME_SPEC.shootPitch,
+  });
+  const hitAudio = audioEventPolicy(audioEvents.hit, "audio.events.hit", {
+    volume: DEFAULT_SHOOTER_GAME_SPEC.hitVolume,
+    pitch: DEFAULT_SHOOTER_GAME_SPEC.hitPitch,
+  });
+  const gameOverAudio = audioEventPolicy(audioEvents.gameOver, "audio.events.gameOver", {
+    volume: DEFAULT_SHOOTER_GAME_SPEC.gameOverVolume,
+    pitch: DEFAULT_SHOOTER_GAME_SPEC.gameOverPitch,
+  });
+  const resolvedEnemyBehavior = enemyBehavior(enemies.behavior, "enemies.behavior");
+  const resolvedEnemySpawnPattern = enemySpawnPattern(enemies.spawnPattern, "enemies.spawnPattern");
+  const enemySpeed = positiveNumber(enemies.speed, "enemies.speed", DEFAULT_SHOOTER_GAME_SPEC.enemySpeed);
+  const enemySpawnInterval = positiveNumber(
+    enemies.spawnInterval,
+    "enemies.spawnInterval",
+    DEFAULT_SHOOTER_GAME_SPEC.enemySpawnInterval,
+  );
+  const enemyHealth = positiveNumber(enemies.health, "enemies.health", DEFAULT_SHOOTER_GAME_SPEC.enemyHealth);
+  const scoreReward = positiveInteger(enemies.scoreReward, "enemies.scoreReward", DEFAULT_SHOOTER_GAME_SPEC.scoreReward);
+  const waves = shooterWaves(enemies, {
+    speed: enemySpeed,
+    spawnInterval: enemySpawnInterval,
+    behavior: resolvedEnemyBehavior.enemyBehavior,
+    behaviorCode: resolvedEnemyBehavior.enemyBehaviorCode,
+    spawnPattern: resolvedEnemySpawnPattern.enemySpawnPattern,
+    spawnPatternCode: resolvedEnemySpawnPattern.enemySpawnPatternCode,
+    health: enemyHealth,
+    scoreReward,
+  });
 
   return {
     worldWidth: positiveNumber(world.width, "world.width", DEFAULT_SHOOTER_GAME_SPEC.worldWidth),
     worldHeight: positiveNumber(world.height, "world.height", DEFAULT_SHOOTER_GAME_SPEC.worldHeight),
     playerSpeed: positiveNumber(player.speed, "player.speed", DEFAULT_SHOOTER_GAME_SPEC.playerSpeed),
-    enemySpeed: positiveNumber(enemies.speed, "enemies.speed", DEFAULT_SHOOTER_GAME_SPEC.enemySpeed),
-    enemySpawnInterval: positiveNumber(
-      enemies.spawnInterval,
-      "enemies.spawnInterval",
-      DEFAULT_SHOOTER_GAME_SPEC.enemySpawnInterval,
-    ),
+    enemySpeed,
+    enemySpawnInterval,
     bulletSpeed: positiveNumber(
       weapons.bulletSpeed,
       "weapons.bulletSpeed",
@@ -423,11 +621,11 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
     bulletAnimationMoveRow: bulletAnimation.moveRow,
     bulletAnimationMoveFrames: bulletAnimation.moveFrames,
     bulletAnimationMoveFps: bulletAnimation.moveFps,
-    ...enemyBehavior(enemies.behavior, "enemies.behavior"),
-    ...enemySpawnPattern(enemies.spawnPattern, "enemies.spawnPattern"),
-    enemyHealth: positiveNumber(enemies.health, "enemies.health", DEFAULT_SHOOTER_GAME_SPEC.enemyHealth),
+    ...resolvedEnemyBehavior,
+    ...resolvedEnemySpawnPattern,
+    enemyHealth,
     bulletDamage: positiveNumber(weapons.damage, "weapons.damage", DEFAULT_SHOOTER_GAME_SPEC.bulletDamage),
-    scoreReward: positiveInteger(enemies.scoreReward, "enemies.scoreReward", DEFAULT_SHOOTER_GAME_SPEC.scoreReward),
+    scoreReward,
     ...cameraPreset(camera.preset, "camera.preset"),
     cameraDeadZoneWidth: nonNegativeNumber(
       cameraDeadZone.width,
@@ -458,6 +656,20 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
     ...(playerAtlasFrame ? { playerAtlasFrame } : {}),
     ...(enemyAtlasFrame ? { enemyAtlasFrame } : {}),
     ...(bulletAtlasFrame ? { bulletAtlasFrame } : {}),
+    ...(tilemap ? { tilemap } : {}),
+    waves,
+    audioMasterVolume: nonNegativeNumber(
+      audio.masterVolume,
+      "audio.masterVolume",
+      DEFAULT_SHOOTER_GAME_SPEC.audioMasterVolume,
+    ),
+    audioSfxVolume: nonNegativeNumber(audio.sfxVolume, "audio.sfxVolume", DEFAULT_SHOOTER_GAME_SPEC.audioSfxVolume),
+    shootVolume: shootAudio.volume,
+    shootPitch: shootAudio.pitch,
+    hitVolume: hitAudio.volume,
+    hitPitch: hitAudio.pitch,
+    gameOverVolume: gameOverAudio.volume,
+    gameOverPitch: gameOverAudio.pitch,
   };
 }
 
@@ -472,6 +684,7 @@ export function applyShooterGameSpec(
     atlasFrameApplication(1, spec.enemyAtlasFrame, options, "prefabs.enemy.frame"),
     atlasFrameApplication(2, spec.bulletAtlasFrame, options, "prefabs.bullet.frame"),
   ].filter((frame): frame is ResolvedAtlasFrameApplication => frame !== undefined);
+  const tilemap = tilemapApplication(spec.tilemap, options);
   engine.set_shooter_resolved_config(
     spec.worldWidth,
     spec.worldHeight,
@@ -533,6 +746,45 @@ export function applyShooterGameSpec(
     spec.cameraShakeAmplitude,
     spec.cameraShakeFrequency,
   );
+  engine.set_shooter_audio_policy?.(
+    spec.shootVolume,
+    spec.shootPitch,
+    spec.hitVolume,
+    spec.hitPitch,
+    spec.gameOverVolume,
+    spec.gameOverPitch,
+  );
+  engine.clear_shooter_tilemap?.();
+  for (const tile of tilemap.tiles) {
+    applyTileDefinition(engine, tile);
+  }
+  for (const layer of tilemap.layers) {
+    engine.set_shooter_tilemap_layer?.(
+      layer.index,
+      layer.columns,
+      layer.rows,
+      layer.tileWidth,
+      layer.tileHeight,
+      layer.originX,
+      layer.originY,
+      layer.collision,
+      Uint32Array.from(layer.data),
+    );
+  }
+  engine.clear_shooter_waves?.();
+  for (const wave of spec.waves) {
+    engine.set_shooter_wave?.(
+      wave.index,
+      wave.duration,
+      wave.spawnInterval,
+      wave.enemyCount,
+      wave.enemySpeed,
+      wave.enemyBehaviorCode,
+      wave.enemySpawnPatternCode,
+      wave.enemyHealth,
+      wave.scoreReward,
+    );
+  }
   for (const frame of atlasFrames) {
     applyAtlasFrame(engine, frame);
   }
@@ -576,6 +828,13 @@ function positiveInteger(value: unknown, path: string, fallback: number): number
   throw gameSpecError(path, "must be a positive integer");
 }
 
+function requiredPositiveInteger(value: unknown, path: string): number {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  throw gameSpecError(path, "must be a positive integer");
+}
+
 function nonNegativeNumber(value: unknown, path: string, fallback: number): number {
   if (value === undefined) {
     return fallback;
@@ -594,6 +853,16 @@ function nonNegativeInteger(value: unknown, path: string, fallback: number): num
     return value;
   }
   throw gameSpecError(path, "must be a non-negative integer");
+}
+
+function finiteNumber(value: unknown, path: string, fallback: number): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  throw gameSpecError(path, "must be a finite number");
 }
 
 function atlasFrameMap(value: unknown, path: string): Record<string, ResolvedShooterAtlasFrame> {
@@ -733,6 +1002,220 @@ function atlasTextureId(
   throw gameSpecError(path, "textureId resolver must return a non-negative integer");
 }
 
+function shooterTilemap(
+  value: unknown,
+  path: string,
+  atlasFrames: Record<string, ResolvedShooterAtlasFrame>,
+): ResolvedShooterTilemap | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const tilemap = optionalObject(value, path);
+  const origin = optionalObject(tilemap.origin, `${path}.origin`);
+  const tileWidth = positiveNumber(tilemap.tileWidth, `${path}.tileWidth`, 32);
+  const tileHeight = positiveNumber(tilemap.tileHeight, `${path}.tileHeight`, 32);
+  const originX = finiteNumber(origin.x, `${path}.origin.x`, 0);
+  const originY = finiteNumber(origin.y, `${path}.origin.y`, 0);
+  const tiles = tileDefinitions(tilemap.tiles, `${path}.tiles`, atlasFrames);
+  const tileIds = new Set(tiles.map((tile) => tile.id));
+  const layers = tilemapLayers(tilemap.layers, `${path}.layers`, {
+    tileWidth,
+    tileHeight,
+    originX,
+    originY,
+    tileIds,
+  });
+
+  return { tiles, layers };
+}
+
+function tileDefinitions(
+  value: unknown,
+  path: string,
+  atlasFrames: Record<string, ResolvedShooterAtlasFrame>,
+): ResolvedShooterTileDefinition[] {
+  const tiles = optionalObject(value, path);
+  const resolved: ResolvedShooterTileDefinition[] = [];
+
+  for (const [idText, tileValue] of Object.entries(tiles)) {
+    const tilePath = `${path}.${idText}`;
+    const id = tileId(idText, tilePath);
+    const tile = optionalObject(tileValue, tilePath);
+    resolved.push({
+      id,
+      frame: atlasFrameReference(tile.frame, `${tilePath}.frame`, atlasFrames),
+      color: tileColor(tile.color, `${tilePath}.color`),
+    });
+  }
+
+  return resolved.sort((a, b) => a.id - b.id);
+}
+
+function tileId(value: string, path: string): number {
+  if (/^[1-9]\d*$/.test(value)) {
+    const id = Number(value);
+    if (Number.isSafeInteger(id)) {
+      return id;
+    }
+  }
+  throw gameSpecError(path, "tile id must be a positive integer string");
+}
+
+function atlasFrameReference(
+  value: unknown,
+  path: string,
+  atlasFrames: Record<string, ResolvedShooterAtlasFrame>,
+): ResolvedShooterAtlasFrame {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw gameSpecError(path, "must be a non-empty atlas frame name");
+  }
+  const frameName = value.trim();
+  const frame = atlasFrames[frameName];
+  if (!frame) {
+    throw gameSpecError(path, "must reference a frame in atlas.frames");
+  }
+  return frame;
+}
+
+function tileColor(value: unknown, path: string): [number, number, number, number] {
+  if (value === undefined) {
+    return [1, 1, 1, 1];
+  }
+  if (!Array.isArray(value) || value.length !== 4) {
+    throw gameSpecError(path, "must be an array of four normalized numbers");
+  }
+  return [
+    normalizedNumber(value[0], `${path}.0`),
+    normalizedNumber(value[1], `${path}.1`),
+    normalizedNumber(value[2], `${path}.2`),
+    normalizedNumber(value[3], `${path}.3`),
+  ];
+}
+
+interface TilemapLayerDefaults {
+  tileWidth: number;
+  tileHeight: number;
+  originX: number;
+  originY: number;
+  tileIds: Set<number>;
+}
+
+function tilemapLayers(
+  value: unknown,
+  path: string,
+  defaults: TilemapLayerDefaults,
+): ResolvedShooterTileLayer[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw gameSpecError(path, "must be an array");
+  }
+
+  return value.map((layerValue, index) => {
+    const layerPath = `${path}.${index}`;
+    const layer = optionalObject(layerValue, layerPath);
+    const origin = optionalObject(layer.origin, `${layerPath}.origin`);
+    const columns = requiredPositiveInteger(layer.columns, `${layerPath}.columns`);
+    const rows = requiredPositiveInteger(layer.rows, `${layerPath}.rows`);
+    return {
+      index,
+      name: layerName(layer.name, `${layerPath}.name`, `layer-${index}`),
+      columns,
+      rows,
+      tileWidth: positiveNumber(layer.tileWidth, `${layerPath}.tileWidth`, defaults.tileWidth),
+      tileHeight: positiveNumber(layer.tileHeight, `${layerPath}.tileHeight`, defaults.tileHeight),
+      originX: finiteNumber(origin.x, `${layerPath}.origin.x`, defaults.originX),
+      originY: finiteNumber(origin.y, `${layerPath}.origin.y`, defaults.originY),
+      collision: booleanValue(layer.collision, `${layerPath}.collision`, false),
+      data: tilemapLayerData(layer.data, `${layerPath}.data`, columns * rows, defaults.tileIds),
+    };
+  });
+}
+
+function booleanValue(value: unknown, path: string, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  throw gameSpecError(path, "must be a boolean");
+}
+
+function layerName(value: unknown, path: string, fallback: string): string {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  throw gameSpecError(path, "must be a non-empty string");
+}
+
+function tilemapLayerData(value: unknown, path: string, expectedLength: number, tileIds: Set<number>): number[] {
+  if (!Array.isArray(value)) {
+    throw gameSpecError(path, "must be an array");
+  }
+  if (value.length !== expectedLength) {
+    throw gameSpecError(path, `must contain exactly ${expectedLength} tile ids`);
+  }
+  return value.map((tileValue, index) => {
+    const tile = nonNegativeInteger(tileValue, `${path}.${index}`, 0);
+    if (tile !== 0 && !tileIds.has(tile)) {
+      throw gameSpecError(`${path}.${index}`, "must reference a tile id in tilemap.tiles or be 0");
+    }
+    return tile;
+  });
+}
+
+interface ResolvedTileDefinitionApplication {
+  id: number;
+  textureId: number;
+  frame: ResolvedShooterAtlasFrame;
+  color: [number, number, number, number];
+}
+
+interface ResolvedTilemapApplication {
+  tiles: ResolvedTileDefinitionApplication[];
+  layers: ResolvedShooterTileLayer[];
+}
+
+function tilemapApplication(
+  tilemap: ResolvedShooterTilemap | undefined,
+  options: ApplyShooterGameSpecOptions,
+): ResolvedTilemapApplication {
+  if (!tilemap) {
+    return { tiles: [], layers: [] };
+  }
+  return {
+    tiles: tilemap.tiles.map((tile) => ({
+      id: tile.id,
+      textureId: atlasTextureId(tile.frame.texture, options, `tilemap.tiles.${tile.id}.frame`),
+      frame: tile.frame,
+      color: tile.color,
+    })),
+    layers: tilemap.layers,
+  };
+}
+
+function applyTileDefinition(engine: ShooterGameSpecTarget, application: ResolvedTileDefinitionApplication): void {
+  const { frame, color } = application;
+  engine.set_shooter_tile?.(
+    application.id,
+    application.textureId,
+    frame.u0,
+    frame.v0,
+    frame.u1,
+    frame.v1,
+    color[0],
+    color[1],
+    color[2],
+    color[3],
+  );
+}
+
 interface ResolvedSpriteAnimation {
   frames: number;
   fps: number;
@@ -840,6 +1323,101 @@ function spriteAnimationState(
   return { row, frames, fps };
 }
 
+interface ResolvedEnemyPreset {
+  speed: number;
+  spawnInterval: number;
+  behavior: ShooterEnemyBehaviorPreset;
+  behaviorCode: number;
+  spawnPattern: ShooterEnemySpawnPatternPreset;
+  spawnPatternCode: number;
+  health: number;
+  scoreReward: number;
+}
+
+function shooterWaves(enemies: Record<string, unknown>, basePreset: ResolvedEnemyPreset): ResolvedShooterWave[] {
+  if (enemies.waves === undefined) {
+    return [];
+  }
+  if (!Array.isArray(enemies.waves)) {
+    throw gameSpecError("enemies.waves", "must be an array");
+  }
+
+  const presets = enemyPresetMap(enemies.presets, basePreset);
+  return enemies.waves.map((value, index) => {
+    const path = `enemies.waves.${index}`;
+    const wave = optionalObject(value, path);
+    const enemy = waveEnemyName(wave.enemy, `${path}.enemy`);
+    const preset = presets[enemy];
+    if (!preset) {
+      throw gameSpecError(`${path}.enemy`, "must reference an enemy preset");
+    }
+    const spawnPattern =
+      wave.spawnPattern === undefined
+        ? { enemySpawnPattern: preset.spawnPattern, enemySpawnPatternCode: preset.spawnPatternCode }
+        : enemySpawnPattern(wave.spawnPattern, `${path}.spawnPattern`);
+
+    return {
+      index,
+      enemy,
+      duration: positiveNumber(wave.duration, `${path}.duration`, 20),
+      spawnInterval: positiveNumber(wave.spawnInterval, `${path}.spawnInterval`, preset.spawnInterval),
+      enemyCount: positiveInteger(wave.enemyCount, `${path}.enemyCount`, 12),
+      enemySpeed: preset.speed,
+      enemyBehavior: preset.behavior,
+      enemyBehaviorCode: preset.behaviorCode,
+      enemySpawnPattern: spawnPattern.enemySpawnPattern,
+      enemySpawnPatternCode: spawnPattern.enemySpawnPatternCode,
+      enemyHealth: preset.health,
+      scoreReward: preset.scoreReward,
+    };
+  });
+}
+
+function enemyPresetMap(value: unknown, basePreset: ResolvedEnemyPreset): Record<string, ResolvedEnemyPreset> {
+  const presets = optionalObject(value, "enemies.presets");
+  const resolved: Record<string, ResolvedEnemyPreset> = { default: basePreset };
+
+  for (const [name, presetValue] of Object.entries(presets)) {
+    const trimmedName = name.trim();
+    const path = `enemies.presets.${name}`;
+    if (trimmedName.length === 0) {
+      throw gameSpecError(path, "preset name must be a non-empty string");
+    }
+    const preset = optionalObject(presetValue, path);
+    const behavior =
+      preset.behavior === undefined
+        ? { enemyBehavior: basePreset.behavior, enemyBehaviorCode: basePreset.behaviorCode }
+        : enemyBehavior(preset.behavior, `${path}.behavior`);
+    const spawnPattern =
+      preset.spawnPattern === undefined
+        ? { enemySpawnPattern: basePreset.spawnPattern, enemySpawnPatternCode: basePreset.spawnPatternCode }
+        : enemySpawnPattern(preset.spawnPattern, `${path}.spawnPattern`);
+
+    resolved[trimmedName] = {
+      speed: positiveNumber(preset.speed, `${path}.speed`, basePreset.speed),
+      spawnInterval: basePreset.spawnInterval,
+      behavior: behavior.enemyBehavior,
+      behaviorCode: behavior.enemyBehaviorCode,
+      spawnPattern: spawnPattern.enemySpawnPattern,
+      spawnPatternCode: spawnPattern.enemySpawnPatternCode,
+      health: positiveNumber(preset.health, `${path}.health`, basePreset.health),
+      scoreReward: positiveInteger(preset.scoreReward, `${path}.scoreReward`, basePreset.scoreReward),
+    };
+  }
+
+  return resolved;
+}
+
+function waveEnemyName(value: unknown, path: string): string {
+  if (value === undefined) {
+    return "default";
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  throw gameSpecError(path, "must be a non-empty enemy preset name");
+}
+
 function enemyBehavior(
   value: unknown,
   path: string,
@@ -907,6 +1485,18 @@ function cameraPreset(
     return { cameraPreset: value, cameraPresetCode: 3 };
   }
   throw gameSpecError(path, "must be one of follow, dead-zone, look-ahead, shake");
+}
+
+function audioEventPolicy(
+  value: unknown,
+  path: string,
+  fallback: { volume: number; pitch: number },
+): { volume: number; pitch: number } {
+  const policy = optionalObject(value, path);
+  return {
+    volume: nonNegativeNumber(policy.volume, `${path}.volume`, fallback.volume),
+    pitch: positiveNumber(policy.pitch, `${path}.pitch`, fallback.pitch),
+  };
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

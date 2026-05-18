@@ -70,13 +70,15 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 4. Enter 또는 Space로 Title에서 Playing으로 진입한다.
 5. W/A/S/D 입력으로 player가 움직이고 camera 좌표가 `look-ahead` preset에 따라 이동 방향 앞쪽으로 변한다.
 6. `game.json`의 `atlas.frames["bullet.default"]` 설정이 적용되어 bullet이 atlas frame size/UV로 렌더링된다.
-7. Mouse Left 또는 Space로 bullet이 발사된다.
-8. enemy가 주기적으로 spawn되고 player를 향해 이동한다.
-9. bullet이 enemy와 충돌하면 enemy가 제거되고 score가 증가한다.
-10. enemy와 player가 충돌하면 GameOver 상태가 된다.
-11. GameOver에서 Space로 새 게임이 시작되고 score가 초기화된다.
-12. shoot, hit, gameOver 효과음이 사용자 gesture 이후 재생된다.
-13. 새로고침 후 console에 bootstrap, asset, WebGL, audio, cleanup 관련 오류가 없다.
+7. `game.json`의 `tilemap.layers` 설정이 적용되어 canvas 배경에 정적 tile layer가 보인다.
+8. `collision: true` tile에 player와 enemy가 겹치면 통과하지 않고 가장 가까운 축으로 밀려난다.
+9. Mouse Left 또는 Space로 bullet이 발사된다.
+10. enemy가 `game.json`의 wave 설정에 따라 runner/bruiser 순서로 spawn되고 player 또는 world center 방향으로 이동한다.
+11. bullet이 enemy와 충돌하면 enemy가 제거되고 score가 증가한다.
+12. enemy와 player가 충돌하면 GameOver 상태가 된다.
+13. GameOver에서 Space로 새 게임이 시작되고 score가 초기화된다.
+13. shoot, hit, gameOver 효과음이 사용자 gesture 이후 재생되고 `audio.events.*`의 volume/pitch 설정이 과도하게 크거나 낮게 들리지 않는다.
+14. 새로고침 후 console에 bootstrap, asset, WebGL, audio, cleanup 관련 오류가 없다.
 
 ## Screenshot 갱신
 

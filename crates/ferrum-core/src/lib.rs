@@ -11,6 +11,7 @@ pub mod input;
 pub mod physics;
 pub mod render_command;
 pub(crate) mod shooter_scene;
+pub mod tilemap;
 pub mod world;
 
 pub use audio_event::AudioEvent;
@@ -26,6 +27,7 @@ pub use game_state::GameState;
 pub use input::InputState;
 pub use physics::{PhysicsBounds, PhysicsSystem};
 pub use render_command::SpriteRenderCommand;
+pub use tilemap::{TileDefinition, Tilemap, TilemapLayer};
 pub use world::{EntityTemplate, World};
 
 #[wasm_bindgen]

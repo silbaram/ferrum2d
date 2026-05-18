@@ -5,7 +5,11 @@ use crate::camera::{Camera2D, CameraPresetConfig};
 use crate::game_state::GameState;
 use crate::input::InputState;
 use crate::render_command::SpriteRenderCommand;
-use crate::shooter_scene::{EnemyBehavior, EnemySpawnPattern, ShooterConfig, ShooterScene};
+use crate::shooter_scene::{
+    EnemyBehavior, EnemySpawnPattern, ShooterAudioPolicy, ShooterConfig, ShooterScene,
+    ShooterWaveConfig,
+};
+use crate::tilemap::Tilemap;
 use crate::world::World;
 
 const DEFAULT_VIEWPORT_WIDTH: f32 = 800.0;
@@ -18,6 +22,7 @@ pub struct Engine {
     scene: ShooterScene,
     camera: Camera2D,
     world: World,
+    tilemap: Tilemap,
     render_commands: Vec<SpriteRenderCommand>,
     audio_events: Vec<AudioEvent>,
 }
@@ -32,6 +37,7 @@ impl Engine {
             scene: ShooterScene::new(),
             camera: Camera2D::new(DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT),
             world: World::default(),
+            tilemap: Tilemap::default(),
             render_commands: Vec::with_capacity(256),
             audio_events: Vec::with_capacity(16),
         };
@@ -72,6 +78,106 @@ impl Engine {
 
     pub fn set_sound_ids(&mut self, shoot: u32, hit: u32, game_over: u32) {
         self.scene.set_sound_ids(shoot, hit, game_over);
+    }
+
+    pub fn clear_shooter_tilemap(&mut self) {
+        self.tilemap.clear();
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_shooter_tile(
+        &mut self,
+        tile_id: u32,
+        texture_id: u32,
+        u0: f32,
+        v0: f32,
+        u1: f32,
+        v1: f32,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    ) {
+        self.tilemap
+            .set_tile_definition(tile_id, texture_id, u0, v0, u1, v1, r, g, b, a);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_shooter_tilemap_layer(
+        &mut self,
+        index: u32,
+        columns: u32,
+        rows: u32,
+        tile_width: f32,
+        tile_height: f32,
+        origin_x: f32,
+        origin_y: f32,
+        collision: bool,
+        tiles: Vec<u32>,
+    ) {
+        self.tilemap.set_layer(
+            index,
+            columns,
+            rows,
+            tile_width,
+            tile_height,
+            origin_x,
+            origin_y,
+            collision,
+            tiles,
+        );
+    }
+
+    pub fn clear_shooter_waves(&mut self) {
+        self.scene.clear_wave_configs();
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_shooter_wave(
+        &mut self,
+        index: u32,
+        duration: f32,
+        spawn_interval: f32,
+        enemy_count: u32,
+        enemy_speed: f32,
+        enemy_behavior: u32,
+        enemy_spawn_pattern: u32,
+        enemy_health: f32,
+        score_reward: u32,
+    ) {
+        self.scene.set_wave_config(
+            index,
+            ShooterWaveConfig::from_values(
+                duration,
+                spawn_interval,
+                enemy_count,
+                enemy_speed,
+                EnemyBehavior::from_code(enemy_behavior),
+                EnemySpawnPattern::from_code(enemy_spawn_pattern),
+                enemy_health,
+                score_reward,
+            ),
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_shooter_audio_policy(
+        &mut self,
+        shoot_volume: f32,
+        shoot_pitch: f32,
+        hit_volume: f32,
+        hit_pitch: f32,
+        game_over_volume: f32,
+        game_over_pitch: f32,
+    ) {
+        self.scene.set_audio_policy(ShooterAudioPolicy::from_values(
+            shoot_volume,
+            shoot_pitch,
+            hit_volume,
+            hit_pitch,
+            game_over_volume,
+            game_over_pitch,
+        ));
     }
 
     pub fn set_viewport_size(&mut self, width: f32, height: f32) {
@@ -342,6 +448,7 @@ impl Engine {
             &mut self.camera,
             self.input,
             &mut self.audio_events,
+            &self.tilemap,
             dt,
         );
         self.build_render_commands();
@@ -423,6 +530,8 @@ impl Engine {
 
     fn build_render_commands(&mut self) {
         self.render_commands.clear();
+        self.tilemap
+            .append_render_commands(&self.camera, &mut self.render_commands);
         for i in 0..self.world.transforms.len() {
             if !self.world.alive[i] {
                 continue;
@@ -478,6 +587,7 @@ mod tests {
                 ..InputState::default()
             },
             &mut engine.audio_events,
+            &Tilemap::default(),
             0.016,
         );
         engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
@@ -661,5 +771,45 @@ mod tests {
         assert_eq!(command.u1, 0.5);
         assert_eq!(command.v1, 0.75);
         assert_eq!(crate::sprite_render_command_floats(), 13);
+    }
+
+    #[test]
+    fn tilemap_render_commands_are_emitted_before_entities() {
+        let mut engine = Engine::new();
+        engine.set_viewport_size(1600.0, 960.0);
+        engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 0.4, 0.5, 0.6, 0.7);
+        engine.set_shooter_tilemap_layer(0, 2, 1, 32.0, 32.0, 0.0, 0.0, false, vec![1, 0]);
+
+        engine.build_render_commands();
+
+        assert_eq!(engine.render_commands.len(), 2);
+        let tile = engine.render_commands[0];
+        assert_eq!(tile.texture_id, 9.0);
+        assert_eq!(tile.width, 32.0);
+        assert_eq!(tile.height, 32.0);
+        assert_eq!(tile.r, 0.4);
+        assert_eq!(tile.a, 0.7);
+        assert!((tile.x - 0.0).abs() < 0.01);
+        assert!((tile.y - 0.0).abs() < 0.01);
+
+        let player = engine.render_commands[1];
+        assert_eq!(player.texture_id, DEFAULT_TEXTURE_ID as f32);
+    }
+
+    #[test]
+    fn clear_tilemap_removes_static_tile_render_commands() {
+        let mut engine = Engine::new();
+        engine.set_viewport_size(1600.0, 960.0);
+        engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+        engine.set_shooter_tilemap_layer(0, 1, 1, 32.0, 32.0, 0.0, 0.0, false, vec![1]);
+
+        engine.clear_shooter_tilemap();
+        engine.build_render_commands();
+
+        assert_eq!(engine.render_commands.len(), 1);
+        assert_eq!(
+            engine.render_commands[0].texture_id,
+            DEFAULT_TEXTURE_ID as f32
+        );
     }
 }

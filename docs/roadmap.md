@@ -94,14 +94,14 @@ v0.2에서 하지 않을 것:
 - 카메라 계산은 Rust core가 담당하고 TypeScript는 viewport 전달과 renderer 적용만 담당 (완료)
 - texture atlas metadata 포맷 설계와 작은 수동 atlas 예제 검토 (완료)
 - atlas metadata 범위: frame name, texture id/name, UV/rect, frame size 검증 (완료)
-- data-driven scene spec 확장 검토
-- scene spec 후보: spawn table, wave/event timeline, animation binding
-- tilemap runtime 최소 기능 설계
-- tilemap v1 범위: 정적 tile layer 렌더링, tile id -> UV 매핑, collision layer의 AABB 변환
+- data-driven scene spec 확장 검토 (부분 완료: enemy preset + wave timeline + static tilemap)
+- scene spec 후보: spawn table, wave/event timeline, animation binding (부분 완료: spawn/wave/static tilemap)
+- tilemap runtime 최소 기능 설계 (완료)
+- tilemap v1 범위: 정적 tile layer 렌더링, tile id -> UV 매핑, collision layer의 AABB 변환은 완료. navigation 연동은 후속
 - atlas/tilemap/scene spec 경계: TypeScript는 JSON/name/asset 검증과 id 해석을 담당하고, Rust는 숫자형 또는 buffer 설정을 받아 collision/render command를 생성한다.
 - atlas/tilemap/scene spec hot path에서는 tile/entity별 JS/Wasm 왕복 호출을 만들지 않는다.
 - tilemap v1 비범위: 내장 editor, 자동 타일링, isometric/hex tilemap, 복잡한 per-tile script
-- audio volume/pitch 정책과 unlock UX 개선
+- audio volume/pitch 정책과 unlock UX 개선 (완료)
 - WebGL2 renderer smoke test 자동화 가능성 검토
 - docs site 또는 GitHub Pages 데모 배포 검토
 - release packaging 절차 정리
@@ -110,8 +110,8 @@ v0.2에서 하지 않을 것:
 
 1. Camera Preset (완료)
 2. Texture Atlas Metadata (완료)
-3. Spawn/Wave Spec
-4. Audio UX 개선
+3. Spawn/Wave Spec (완료)
+4. Audio UX 개선 (완료)
 
 v0.3에서 하지 않을 것:
 
@@ -127,6 +127,7 @@ v0.3에서 하지 않을 것:
 
 후보 작업:
 
+- tilemap static render command path + collision AABB obstacle path (완료)
 - lightweight navigation grid
 - navigation v1 범위: 2D grid A*, obstacle layer 연동, 적이 장애물을 우회해 player를 추적하는 예제
 - navigation v1 비범위: 연속 공간 회피, crowd simulation, navmesh, 복잡한 steering

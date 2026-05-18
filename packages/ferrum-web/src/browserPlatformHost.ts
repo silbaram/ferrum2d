@@ -1,6 +1,7 @@
 import { AssetLoader } from "./assetLoader.js";
 import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets, TextureAssetManager } from "./assetLoader.js";
 import { AudioManager } from "./audioManager.js";
+import type { AudioManagerConfig } from "./audioManager.js";
 import type { AssetHost } from "./createEngine.js";
 import type { AudioEventView } from "./wasmBridge.js";
 
@@ -34,6 +35,16 @@ export class BrowserPlatformHost implements AssetHost {
   playAudioEvents(events: readonly AudioEventView[]): void {
     this.assertAlive();
     this.audioManager.playEvents(events);
+  }
+
+  configureAudio(config: AudioManagerConfig): void {
+    this.assertAlive();
+    this.audioManager.configure(config);
+  }
+
+  async unlockAudio(): Promise<boolean> {
+    this.assertAlive();
+    return await this.audioManager.unlock();
   }
 
   destroy(): void {

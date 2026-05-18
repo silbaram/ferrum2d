@@ -3,6 +3,8 @@ import { test } from "node:test";
 import type {
   AssetManifest,
   AudioAssetLoader,
+  AudioBusConfig,
+  AudioManagerConfig,
   BrowserPlatformHost,
   CreateEngineOptions,
   AssetHost,
@@ -16,7 +18,13 @@ import type {
   ShooterAtlasSpec,
   ShooterCameraPreset,
   ShooterCameraSpec,
+  ShooterEnemyPresetSpec,
   ShooterGameSpec,
+  ShooterTileLayerSpec,
+  ShooterTilemapSpec,
+  ShooterTileSpec,
+  ShooterWaveSpec,
+  ResolvedShooterTilemap,
   ViewportProvider,
 } from "../src/index.js";
 
@@ -40,12 +48,31 @@ test("public API types are importable from entrypoint source", () => {
       },
     },
     prefabs: { bullet: { frame: "bullet" } },
+    tilemap: {
+      tileWidth: 32,
+      tileHeight: 32,
+      tiles: { "1": { frame: "bullet", color: [1, 1, 1, 1] } },
+      layers: [{ columns: 1, rows: 1, collision: true, data: [1] }],
+    },
     camera: { preset: "look-ahead", lookAhead: { distance: 96 } },
+    enemies: {
+      presets: { bruiser: { health: 4, scoreReward: 8 } },
+      waves: [{ enemy: "bruiser", duration: 12, spawnInterval: 1, enemyCount: 6 }],
+    },
+    audio: { masterVolume: 0.9, sfxVolume: 0.7, events: { shoot: { volume: 0.3, pitch: 1.1 } } },
   };
   const cameraPreset: ShooterCameraPreset = "look-ahead";
   const cameraSpec: ShooterCameraSpec = { preset: cameraPreset };
   const atlasSpec: ShooterAtlasSpec = gameSpec.atlas ?? {};
   const atlasFrameSpec: ShooterAtlasFrameSpec = atlasSpec.frames?.bullet ?? {};
+  const enemyPresetSpec: ShooterEnemyPresetSpec = gameSpec.enemies?.presets?.bruiser ?? {};
+  const waveSpec: ShooterWaveSpec = gameSpec.enemies?.waves?.[0] ?? {};
+  const tilemapSpec: ShooterTilemapSpec = gameSpec.tilemap ?? {};
+  const tileSpec: ShooterTileSpec = tilemapSpec.tiles?.["1"] ?? {};
+  const tileLayerSpec: ShooterTileLayerSpec = tilemapSpec.layers?.[0] ?? {};
+  const audioBusConfig: AudioBusConfig = { masterVolume: 0.9, sfxVolume: 0.7 };
+  const audioManagerConfig: AudioManagerConfig = { masterVolume: 0.9 };
+  const resolvedTilemap: ResolvedShooterTilemap = { tiles: [], layers: [] };
 
   const onFrame: FrameHandler = (frame: FrameState) => {
     const commandCount = frame.renderCommandBuffer.commandCount;
@@ -141,6 +168,16 @@ test("public API types are importable from entrypoint source", () => {
       cameraShakeAmplitude: 6,
       cameraShakeFrequency: 8,
       atlasFrames: {},
+      tilemap: resolvedTilemap,
+      waves: [],
+      audioMasterVolume: 0.9,
+      audioSfxVolume: 0.7,
+      shootVolume: 0.3,
+      shootPitch: 1.1,
+      hitVolume: 0.45,
+      hitPitch: 1,
+      gameOverVolume: 0.65,
+      gameOverPitch: 0.9,
     }),
   };
 
@@ -149,6 +186,14 @@ test("public API types are importable from entrypoint source", () => {
   equal(gameSpec.world?.width, 1600);
   equal(cameraSpec.preset, "look-ahead");
   equal(atlasFrameSpec.texture, "bullet");
+  equal(enemyPresetSpec.health, 4);
+  equal(waveSpec.enemyCount, 6);
+  equal(tileSpec.frame, "bullet");
+  equal(tileLayerSpec.columns, 1);
+  equal(tileLayerSpec.collision, true);
+  equal(resolvedTilemap.layers.length, 0);
+  equal(audioBusConfig.sfxVolume, 0.7);
+  equal(audioManagerConfig.masterVolume, 0.9);
   equal(inputProvider().mouseX, 0);
   equal(viewportProvider().height, 480);
   equal(renderer.stats().drawCalls, 0);

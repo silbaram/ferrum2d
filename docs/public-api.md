@@ -43,6 +43,8 @@ import {
 | `WebGL2Renderer` | class | MVP의 기본 WebGL2 renderer다. texture id 기반 sprite command를 그린다. |
 | `Renderer` | interface | renderer lifecycle의 최소 interface다. MVP 구현체는 `WebGL2Renderer` 하나다. |
 | `RendererStats` | interface | draw call, batch, sprite, render command, texture bind/switch 수를 나타낸다. |
+| `AudioManager` | class | Web Audio context, bus volume, unlock, SFX/BGM playback을 관리한다. |
+| `AudioBusConfig` | interface | `AssetHost.configureAudio(...)`에 전달되는 master/sfx bus volume 계약이다. |
 | `AudioAssetLoader` | class | sound fetch/decode 책임을 담당한다. 일반 앱은 보통 `BrowserPlatformHost`를 통해 간접 사용한다. |
 | `InputManager` | class | keyboard/mouse 입력을 browser event에서 수집해 `InputSnapshot`으로 제공한다. |
 | `DebugOverlay` | class | DOM 기반 debug metrics 표시용 helper다. |
@@ -50,6 +52,10 @@ import {
 | `LoadedAssets` | interface | 로드된 texture/sound registry와 JSON asset 결과다. |
 | `ShooterGameSpec` | interface | Top-down Shooter 설정 입력 타입이다. |
 | `ResolvedShooterGameSpec` | interface | 기본값과 preset code가 적용된 Game Spec 결과 타입이다. |
+| `ResolvedShooterWave` | interface | Game Spec wave 항목이 enemy preset과 함께 해석된 결과 타입이다. |
+| `ResolvedShooterTilemap` | interface | Game Spec tilemap 항목이 atlas frame과 함께 해석된 결과 타입이다. |
+| `ResolvedShooterTileDefinition` | interface | positive tile id, atlas frame, tint color를 포함하는 resolved tile definition이다. |
+| `ResolvedShooterTileLayer` | interface | tile layer dimension, origin, row-major tile data를 포함하는 resolved layer다. |
 | `resolveShooterGameSpec(...)` | function | unknown JSON을 검증하고 resolved spec으로 변환한다. CLI와 runtime이 같은 경로를 사용한다. |
 | `applyShooterGameSpec(...)` | function | resolved Game Spec 값을 Rust `Engine` compatible target에 적용한다. |
 | `ApplyShooterGameSpecOptions` | interface | atlas frame texture name을 numeric texture id로 해석하는 resolver 옵션이다. |
@@ -102,6 +108,41 @@ Runtime 적용 범위:
 - `applyShooterGameSpec(...)`를 직접 호출하면서 named texture atlas frame을 쓰는 경우 `ApplyShooterGameSpecOptions.textureId`를 제공해야 한다.
 - Rust에는 `set_shooter_atlas_frame(...)`을 통해 prefab code, texture id, width, height, `u0/v0/u1/v1` 숫자만 전달한다.
 - `SpriteRenderCommand` ABI는 바뀌지 않는다. 기존 `texture_id`와 `u0/v0/u1/v1` 필드를 그대로 사용한다.
+
+## Game Spec Tilemap 계약
+
+`ShooterGameSpec.tilemap`은 정적 tile layer 렌더링과 단순 collision layer 설정이다. `tilemap.tiles`는 positive integer string tile id를 atlas frame과 tint color에 연결하고, `tilemap.layers`는 row-major `data`로 tile id를 배치한다. `0`은 빈 타일로 예약되어 layer data에서만 사용할 수 있다.
+
+TypeScript 검증 범위:
+
+- `tilemap.tiles.*.frame`은 `atlas.frames`에 존재해야 한다.
+- `tilemap.tiles.*.color`는 `[r,g,b,a]` 형태의 `0..1` 숫자 네 개여야 한다.
+- `tilemap.layers.*.columns/rows`는 positive integer여야 한다.
+- `tilemap.layers.*.collision`은 boolean이어야 하며 생략하면 `false`다.
+- `tilemap.layers.*.data` 길이는 `columns * rows`와 같아야 한다.
+- `tilemap.layers.*.data`의 positive tile id는 `tilemap.tiles`에 존재해야 한다.
+
+Runtime 적용 범위:
+
+- `applyShooterGameSpec(...)`는 먼저 `clear_shooter_tilemap()`을 호출한 뒤 `set_shooter_tile(...)`로 tile definition을, `set_shooter_tilemap_layer(...)`로 collision flag와 layer data `Uint32Array`를 전달한다.
+- Rust `Tilemap`은 entity를 만들지 않고 기존 `SpriteRenderCommand` buffer 앞쪽에 static tile command를 추가한다.
+- `collision: true` layer의 양수 tile은 Rust에서 player/enemy 이동을 막는 정적 AABB 장애물로 사용한다. pathfinding과 bullet-wall 충돌은 이 계약에 포함하지 않는다.
+
+## Game Spec Wave 계약
+
+`ShooterGameSpec.enemies.presets`와 `ShooterGameSpec.enemies.waves`는 TypeScript가 이름과 수치를 검증한다. `ResolvedShooterWave`는 `enemy`, `duration`, `spawnInterval`, `enemyCount`, `enemySpeed`, `enemyBehaviorCode`, `enemySpawnPatternCode`, `enemyHealth`, `scoreReward`를 포함한다.
+
+Runtime 적용 범위:
+
+- `applyShooterGameSpec(...)`는 먼저 `clear_shooter_waves()`를 호출한 뒤 resolved wave마다 `set_shooter_wave(...)`를 호출한다.
+- Rust에는 enemy preset name이나 raw JSON을 전달하지 않는다.
+- Rust `ShooterScene`이 active wave, elapsed time, spawn count, spawn timer를 소유한다.
+
+## Audio 계약
+
+`ShooterGameSpec.audio.masterVolume`과 `audio.sfxVolume`은 `AssetHost.configureAudio(...)`를 통해 platform audio bus에 적용된다. `audio.events.shoot/hit/gameOver`의 volume과 pitch는 `set_shooter_audio_policy(...)`로 Rust에 전달되어 `AudioEvent` buffer에 기록된다.
+
+`AudioManager.unlock()`은 user gesture 이후 `AudioContext.resume()`을 명시적으로 시도하고 성공 여부를 boolean으로 반환한다. Top-down Shooter 예제는 첫 key/pointer 입력에서 `BrowserPlatformHost.unlockAudio()`를 호출한다.
 
 ## FrameState 정책
 

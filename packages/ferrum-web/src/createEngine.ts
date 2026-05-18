@@ -12,6 +12,12 @@ export interface AssetHost {
   textureId(name: string): number;
   soundId?(name: string): number;
   playAudioEvents?(events: readonly AudioEventView[]): void;
+  configureAudio?(config: AudioBusConfig): void;
+}
+
+export interface AudioBusConfig {
+  masterVolume: number;
+  sfxVolume: number;
 }
 
 export interface ShooterTextureIds {
@@ -147,9 +153,14 @@ export async function createEngine(
 
   const setGameSpec = (spec: ShooterGameSpec): ResolvedShooterGameSpec => {
     requireAlive();
-    return applyShooterGameSpec(rustEngine, spec, {
+    const resolved = applyShooterGameSpec(rustEngine, spec, {
       textureId: (name) => requireAssetHost().textureId(name),
     });
+    assetHost?.configureAudio?.({
+      masterVolume: resolved.audioMasterVolume,
+      sfxVolume: resolved.audioSfxVolume,
+    });
+    return resolved;
   };
 
   return {

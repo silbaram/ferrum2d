@@ -20,6 +20,12 @@ export interface SpatialAudioOptions {
 
 export type AudioBus = "master" | "bgm" | "sfx";
 
+export interface AudioManagerConfig {
+  masterVolume?: number;
+  bgmVolume?: number;
+  sfxVolume?: number;
+}
+
 export class AudioManager {
   private readonly buffersById = new Map<number, AudioBuffer>();
   private readonly assetLoader = new AudioAssetLoader(() => this.audioContext());
@@ -51,6 +57,27 @@ export class AudioManager {
     if (bus === "master") mixer.master.gain.setValueAtTime(gain, now);
     if (bus === "bgm") mixer.bgm.gain.setValueAtTime(gain, now);
     if (bus === "sfx") mixer.sfx.gain.setValueAtTime(gain, now);
+  }
+
+  configure(config: AudioManagerConfig): void {
+    this.assertAlive();
+    if (config.masterVolume !== undefined) this.setBusVolume("master", config.masterVolume);
+    if (config.bgmVolume !== undefined) this.setBusVolume("bgm", config.bgmVolume);
+    if (config.sfxVolume !== undefined) this.setBusVolume("sfx", config.sfxVolume);
+  }
+
+  async unlock(): Promise<boolean> {
+    this.assertAlive();
+    const context = this.audioContext();
+    this.ensureMixer(context);
+    if (context.state === "suspended") {
+      try {
+        await context.resume();
+      } catch {
+        return false;
+      }
+    }
+    return context.state === "running";
   }
 
   play(soundId: number, volume = 1.0, pitch = 1.0): void {

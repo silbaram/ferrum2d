@@ -93,8 +93,23 @@ examples/topdown-shooter/public/game.json
         "texture": "bullet",
         "uv": { "u0": 0, "v0": 0, "u1": 1, "v1": 1 },
         "size": { "width": 8, "height": 8 }
+      },
+      "tiles.floor": {
+        "texture": 0,
+        "uv": { "u0": 0, "v0": 0, "u1": 1, "v1": 1 },
+        "size": { "width": 160, "height": 160 }
       }
     }
+  },
+  "tilemap": {
+    "tileWidth": 160,
+    "tileHeight": 160,
+    "tiles": {
+      "1": { "frame": "tiles.floor", "color": [0.16, 0.22, 0.2, 0.42] }
+    },
+    "layers": [
+      { "name": "arena-floor", "columns": 2, "rows": 2, "data": [1, 1, 1, 1] }
+    ]
   },
   "camera": {
     "preset": "look-ahead",
@@ -115,6 +130,8 @@ examples/topdown-shooter/public/game.json
 | `enemies.spawnPattern` | 적이 어디에서 등장할지 정하는 preset이다. |
 | `enemies.health` | 적 체력이다. 값이 크면 여러 번 맞아야 죽는다. |
 | `enemies.scoreReward` | 적을 죽였을 때 얻는 점수다. |
+| `enemies.presets` | wave에서 참조할 적 설정 묶음이다. |
+| `enemies.waves` | 시간/등장 수/적 preset을 묶은 wave timeline이다. |
 | `weapons.bulletSpeed` | 총알 속도다. 값이 클수록 빠르게 날아간다. |
 | `weapons.cooldown` | 발사 간격이다. 값이 작을수록 빠르게 연사한다. |
 | `weapons.lifetime` | 총알이 사라지기 전까지 유지되는 시간이다. |
@@ -125,10 +142,14 @@ examples/topdown-shooter/public/game.json
 | `atlas.frames.*.texture` | asset manifest의 texture 이름 또는 numeric texture id다. |
 | `atlas.frames.*.uv` | texture 안에서 사용할 normalized UV 영역이다. |
 | `atlas.frames.*.size` | 해당 frame의 표시 크기와 충돌 기준 크기다. |
+| `tilemap.tiles` | positive tile id와 atlas frame/color를 연결한다. |
+| `tilemap.layers` | row-major tile id 배열로 정적 tile layer를 배치한다. |
 | `camera.preset` | 카메라 움직임 preset이다. |
 | `camera.deadZone.width`, `camera.deadZone.height` | dead-zone preset에서 카메라가 바로 움직이지 않는 중심 영역 크기다. |
 | `camera.lookAhead.distance` | look-ahead preset에서 플레이어 이동 방향으로 앞을 보는 거리다. |
 | `camera.shake.amplitude`, `camera.shake.frequency` | shake preset의 시간 기반 흔들림 크기와 빈도다. |
+| `audio.masterVolume`, `audio.sfxVolume` | 브라우저 audio bus 볼륨이다. |
+| `audio.events.*.volume`, `audio.events.*.pitch` | shoot/hit/gameOver 효과음의 event volume/pitch다. |
 
 ## 스프라이트 애니메이션
 
@@ -188,6 +209,37 @@ examples/topdown-shooter/public/game.json
 
 `texture`에는 보통 `loadAssets()` texture manifest에 등록한 이름을 쓴다. 검증기는 frame 이름, UV 범위, 크기, texture 이름/id 형식을 확인한다. 같은 prefab에 `frame`과 `animation`을 동시에 넣으면 충돌하므로 실패한다.
 
+## Tilemap 설정
+
+정적 배경 타일을 깔고 싶으면 `atlas.frames`에 tile frame을 정의하고 `tilemap.tiles`와 `tilemap.layers`에서 배치한다. `0`은 빈 타일이고, 양수 tile id는 `tilemap.tiles`에 정의되어 있어야 한다. `collision: true`인 layer의 양수 tile은 player/enemy가 통과할 수 없는 정적 AABB 장애물이 된다.
+
+```json
+{
+  "atlas": {
+    "frames": {
+      "tiles.floor": {
+        "texture": 0,
+        "uv": { "u0": 0, "v0": 0, "u1": 1, "v1": 1 },
+        "size": { "width": 32, "height": 32 }
+      }
+    }
+  },
+  "tilemap": {
+    "tileWidth": 32,
+    "tileHeight": 32,
+    "tiles": {
+      "1": { "frame": "tiles.floor", "color": [0.2, 0.3, 0.25, 1] }
+    },
+    "layers": [
+      { "name": "floor", "columns": 4, "rows": 2, "data": [1, 1, 0, 1, 1, 0, 1, 1] },
+      { "name": "walls", "columns": 4, "rows": 2, "collision": true, "data": [0, 0, 1, 0, 0, 1, 0, 0] }
+    ]
+  }
+}
+```
+
+현재 tilemap collision은 player/enemy 이동을 막는 단순 AABB push-out만 지원한다. bullet과 wall 충돌, 적 pathfinding은 후속 기능으로 분리한다.
+
 ## 적 행동 preset
 
 | 값 | 설명 |
@@ -203,6 +255,41 @@ examples/topdown-shooter/public/game.json
 | `"edge"` | 적이 월드 가장자리에서 등장한다. 기본값이다. |
 | `"corners"` | 적이 네 모서리에서 등장한다. 방향 예측이 쉬운 패턴이다. |
 | `"center"` | 적이 월드 중앙에서 등장한다. 실험이나 타겟 모드에 적합하다. |
+
+## Wave 설정
+
+`enemies.presets`에 이름이 붙은 적 설정을 만들고 `enemies.waves`에서 참조한다. wave는 duration 또는 enemyCount 조건을 만족하면 다음 wave로 넘어가며, 마지막 wave 이후 첫 wave부터 반복된다.
+
+```json
+{
+  "enemies": {
+    "presets": {
+      "runner": { "speed": 96, "behavior": "chase", "health": 1, "scoreReward": 1 },
+      "bruiser": { "speed": 54, "behavior": "drift", "spawnPattern": "corners", "health": 3, "scoreReward": 4 }
+    },
+    "waves": [
+      { "enemy": "runner", "duration": 18, "spawnInterval": 0.85, "enemyCount": 18 },
+      { "enemy": "bruiser", "duration": 16, "spawnInterval": 1.25, "enemyCount": 10 }
+    ]
+  }
+}
+```
+
+## 오디오 설정
+
+```json
+{
+  "audio": {
+    "masterVolume": 1,
+    "sfxVolume": 0.85,
+    "events": {
+      "shoot": { "volume": 0.28, "pitch": 1.05 },
+      "hit": { "volume": 0.48, "pitch": 0.95 },
+      "gameOver": { "volume": 0.7, "pitch": 0.8 }
+    }
+  }
+}
+```
 
 ## 카메라 preset
 

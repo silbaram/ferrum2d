@@ -29,7 +29,16 @@
         "behavior": { "enum": ["chase", "drift", "static"] },
         "spawnPattern": { "enum": ["edge", "corners", "center"] },
         "health": { "type": "number", "exclusiveMinimum": 0 },
-        "scoreReward": { "type": "integer", "minimum": 1 }
+        "scoreReward": { "type": "integer", "minimum": 1 },
+        "presets": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/enemyPreset" },
+          "propertyNames": { "minLength": 1 }
+        },
+        "waves": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/wave" }
+        }
       }
     },
     "weapons": {
@@ -62,6 +71,7 @@
         }
       }
     },
+    "tilemap": { "$ref": "#/$defs/tilemap" },
     "camera": {
       "type": "object",
       "additionalProperties": false,
@@ -91,9 +101,114 @@
           }
         }
       }
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "masterVolume": { "type": "number", "minimum": 0 },
+        "sfxVolume": { "type": "number", "minimum": 0 },
+        "events": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "shoot": { "$ref": "#/$defs/audioEventPolicy" },
+            "hit": { "$ref": "#/$defs/audioEventPolicy" },
+            "gameOver": { "$ref": "#/$defs/audioEventPolicy" }
+          }
+        }
+      }
     }
   },
   "$defs": {
+    "enemyPreset": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "speed": { "type": "number", "exclusiveMinimum": 0 },
+        "behavior": { "enum": ["chase", "drift", "static"] },
+        "spawnPattern": { "enum": ["edge", "corners", "center"] },
+        "health": { "type": "number", "exclusiveMinimum": 0 },
+        "scoreReward": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "wave": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enemy": { "type": "string", "minLength": 1 },
+        "duration": { "type": "number", "exclusiveMinimum": 0 },
+        "spawnInterval": { "type": "number", "exclusiveMinimum": 0 },
+        "enemyCount": { "type": "integer", "minimum": 1 },
+        "spawnPattern": { "enum": ["edge", "corners", "center"] }
+      }
+    },
+    "audioEventPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "volume": { "type": "number", "minimum": 0 },
+        "pitch": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "tilemap": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tileWidth": { "type": "number", "exclusiveMinimum": 0 },
+        "tileHeight": { "type": "number", "exclusiveMinimum": 0 },
+        "origin": { "$ref": "#/$defs/point" },
+        "tiles": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/tileDefinition" },
+          "propertyNames": { "pattern": "^[1-9][0-9]*$" }
+        },
+        "layers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tilemapLayer" }
+        }
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "tileDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frame"],
+      "properties": {
+        "frame": { "type": "string", "minLength": 1 },
+        "color": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "tilemapLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["columns", "rows", "data"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "columns": { "type": "integer", "minimum": 1 },
+        "rows": { "type": "integer", "minimum": 1 },
+        "tileWidth": { "type": "number", "exclusiveMinimum": 0 },
+        "tileHeight": { "type": "number", "exclusiveMinimum": 0 },
+        "origin": { "$ref": "#/$defs/point" },
+        "collision": { "type": "boolean" },
+        "data": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
     "prefab": {
       "type": "object",
       "additionalProperties": false,
