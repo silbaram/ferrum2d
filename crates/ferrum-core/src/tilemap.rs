@@ -1,7 +1,13 @@
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
+
 use crate::camera::Camera2D;
 use crate::components::{AabbCollider, CollisionLayer, SpriteFrame, Transform2D};
 use crate::render_command::SpriteRenderCommand;
 use crate::world::World;
+
+const MAX_NAVIGATION_CELLS: usize = 4096;
+const UNVISITED_CELL: usize = usize::MAX;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TileDefinition {
@@ -134,6 +140,31 @@ impl Tilemap {
         }
     }
 
+    pub fn navigation_waypoint(&self, from: Transform2D, to: Transform2D) -> Option<Transform2D> {
+        for layer in self.layers.iter().flatten().filter(|layer| layer.collision) {
+            let Some(cell_count) = layer.cell_count() else {
+                continue;
+            };
+            if cell_count > MAX_NAVIGATION_CELLS {
+                continue;
+            }
+            let Some(start) = layer.walkable_cell_at(from) else {
+                continue;
+            };
+            let Some(goal) = layer.walkable_cell_at(to) else {
+                continue;
+            };
+            if start == goal {
+                return Some(to);
+            }
+            let Some(next_cell) = layer.next_path_cell(start, goal) else {
+                continue;
+            };
+            return Some(layer.tile_center(next_cell));
+        }
+        None
+    }
+
     fn resolve_transform_against_solid_tiles(
         &self,
         transform: &mut Transform2D,
@@ -236,6 +267,139 @@ impl TilemapLayer {
             y: self.origin_y + row * self.tile_height + self.tile_height * 0.5,
         }
     }
+
+    fn cell_count(&self) -> Option<usize> {
+        (self.columns as usize).checked_mul(self.rows as usize)
+    }
+
+    fn cell_at(&self, transform: Transform2D) -> Option<usize> {
+        let max_x = self.origin_x + self.columns as f32 * self.tile_width;
+        let max_y = self.origin_y + self.rows as f32 * self.tile_height;
+        if transform.x < self.origin_x
+            || transform.x > max_x
+            || transform.y < self.origin_y
+            || transform.y > max_y
+        {
+            return None;
+        }
+
+        let column = ((transform.x - self.origin_x) / self.tile_width)
+            .floor()
+            .clamp(0.0, (self.columns - 1) as f32) as u32;
+        let row = ((transform.y - self.origin_y) / self.tile_height)
+            .floor()
+            .clamp(0.0, (self.rows - 1) as f32) as u32;
+        Some((row * self.columns + column) as usize)
+    }
+
+    fn walkable_cell_at(&self, transform: Transform2D) -> Option<usize> {
+        let cell = self.cell_at(transform)?;
+        self.is_walkable(cell).then_some(cell)
+    }
+
+    fn is_walkable(&self, cell: usize) -> bool {
+        self.tiles.get(cell).copied().unwrap_or(0) == 0
+    }
+
+    fn next_path_cell(&self, start: usize, goal: usize) -> Option<usize> {
+        let cell_count = self.cell_count()?;
+        let mut came_from = vec![UNVISITED_CELL; cell_count];
+        let mut g_scores = vec![u32::MAX; cell_count];
+        let mut open = BinaryHeap::new();
+        g_scores[start] = 0;
+        open.push(PathNode {
+            cell: start,
+            g_score: 0,
+            f_score: self.manhattan_distance(start, goal),
+        });
+
+        while let Some(node) = open.pop() {
+            if node.cell == goal {
+                return reconstruct_next_cell(start, goal, &came_from);
+            }
+            if node.g_score != g_scores[node.cell] {
+                continue;
+            }
+            for neighbor in self.neighbor_indices(node.cell).into_iter().flatten() {
+                if !self.is_walkable(neighbor) {
+                    continue;
+                }
+                let next_g_score = node.g_score.saturating_add(1);
+                if next_g_score >= g_scores[neighbor] {
+                    continue;
+                }
+                came_from[neighbor] = node.cell;
+                g_scores[neighbor] = next_g_score;
+                open.push(PathNode {
+                    cell: neighbor,
+                    g_score: next_g_score,
+                    f_score: next_g_score + self.manhattan_distance(neighbor, goal),
+                });
+            }
+        }
+
+        None
+    }
+
+    fn neighbor_indices(&self, cell: usize) -> [Option<usize>; 4] {
+        let column = cell as u32 % self.columns;
+        let row = cell as u32 / self.columns;
+        [
+            (column > 0).then(|| cell - 1),
+            (column + 1 < self.columns).then(|| cell + 1),
+            (row > 0).then(|| cell - self.columns as usize),
+            (row + 1 < self.rows).then(|| cell + self.columns as usize),
+        ]
+    }
+
+    fn manhattan_distance(&self, from: usize, to: usize) -> u32 {
+        let from_column = from as u32 % self.columns;
+        let from_row = from as u32 / self.columns;
+        let to_column = to as u32 % self.columns;
+        let to_row = to as u32 / self.columns;
+        from_column.abs_diff(to_column) + from_row.abs_diff(to_row)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PathNode {
+    cell: usize,
+    g_score: u32,
+    f_score: u32,
+}
+
+impl Ord for PathNode {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .f_score
+            .cmp(&self.f_score)
+            .then_with(|| other.g_score.cmp(&self.g_score))
+            .then_with(|| self.cell.cmp(&other.cell))
+    }
+}
+
+impl PartialOrd for PathNode {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+fn reconstruct_next_cell(start: usize, goal: usize, came_from: &[usize]) -> Option<usize> {
+    let mut current = goal;
+    let mut previous = came_from.get(current).copied()?;
+    if previous == UNVISITED_CELL {
+        return None;
+    }
+
+    while previous != start {
+        current = previous;
+        previous = came_from.get(current).copied()?;
+        if previous == UNVISITED_CELL {
+            return None;
+        }
+    }
+
+    Some(current)
 }
 
 fn is_tilemap_blocked_layer(layer: CollisionLayer) -> bool {
@@ -352,6 +516,45 @@ mod tests {
         assert_eq!(
             world.transforms[player.id as usize],
             Some(Transform2D { x: 20.0, y: 16.0 })
+        );
+    }
+
+    #[test]
+    fn navigation_waypoint_uses_collision_layer_path() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(
+            0,
+            3,
+            3,
+            10.0,
+            10.0,
+            0.0,
+            0.0,
+            true,
+            vec![0, 1, 0, 0, 1, 0, 0, 0, 0],
+        );
+
+        let waypoint = tilemap
+            .navigation_waypoint(
+                Transform2D { x: 5.0, y: 5.0 },
+                Transform2D { x: 25.0, y: 5.0 },
+            )
+            .unwrap();
+
+        assert_eq!(waypoint, Transform2D { x: 5.0, y: 15.0 });
+    }
+
+    #[test]
+    fn navigation_waypoint_is_none_without_collision_layer() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(0, 2, 1, 10.0, 10.0, 0.0, 0.0, false, vec![0, 0]);
+
+        assert_eq!(
+            tilemap.navigation_waypoint(
+                Transform2D { x: 5.0, y: 5.0 },
+                Transform2D { x: 15.0, y: 5.0 },
+            ),
+            None
         );
     }
 }

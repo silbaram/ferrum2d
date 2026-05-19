@@ -24,6 +24,7 @@ AI agent 또는 subagent가 Ferrum2D 변경을 마친 뒤 확인할 항목이다
 - `tilemap.layers.*.columns/rows`와 `data` 길이(`columns * rows`)가 일치하는가?
 - `tilemap.layers.*.collision`이 boolean이고, 충돌을 의도한 layer에만 `true`인가?
 - `tilemap.layers.*.data`의 양수 tile id가 `tilemap.tiles`에 존재하는가?
+- chase enemy 우회를 기대한다면 `collision: true` layer가 player/enemy 위치를 포함하는 grid 범위와 빈 통로를 제공하는가?
 - 같은 prefab에 `frame`과 `animation`을 동시에 지정하지 않았는가?
 - `prefabs.*.animation.frames`가 1보다 크면 `fps`가 함께 제공되는가?
 - `prefabs.*.animation.states`를 쓰면 `columns`, `rows`, `states.idle`이 제공되고 state frame 수가 column 수를 넘지 않는가?

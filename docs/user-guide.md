@@ -108,7 +108,7 @@ examples/topdown-shooter/public/game.json
 | `prefabs.*.width`, `prefabs.*.height` | 표시 크기와 충돌 기준 크기다. |
 | `prefabs.*.animation` | horizontal sprite sheet 또는 `idle`/`move` state animation 설정이다. |
 | `prefabs.*.frame`, `atlas.frames` | static atlas frame의 texture, UV, size metadata다. |
-| `tilemap.tiles`, `tilemap.layers` | 정적 tile layer와 선택적 collision layer다. |
+| `tilemap.tiles`, `tilemap.layers` | 정적 tile layer, 선택적 collision layer, chase enemy navigation 장애물이다. |
 | `camera.*` | follow, dead-zone, look-ahead, shake preset 설정이다. |
 | `audio.*` | Web Audio master/sfx bus와 shoot/hit/gameOver event volume/pitch 설정이다. |
 

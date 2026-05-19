@@ -30,6 +30,8 @@ const DEFAULT_SHOOT_VOLUME: f32 = 0.35;
 const DEFAULT_HIT_VOLUME: f32 = 0.45;
 const DEFAULT_GAME_OVER_VOLUME: f32 = 0.65;
 const DEFAULT_SOUND_PITCH: f32 = 1.0;
+const NAVIGATION_REPATH_INTERVAL: f32 = 0.25;
+const NAVIGATION_TARGET_REACHED_DISTANCE_SQUARED: f32 = 4.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum EnemyBehavior {
@@ -397,6 +399,12 @@ fn non_negative_or_default(value: f32, default: f32) -> f32 {
     }
 }
 
+fn has_reached_navigation_target(from: Transform2D, to: Transform2D) -> bool {
+    let dx = to.x - from.x;
+    let dy = to.y - from.y;
+    dx * dx + dy * dy <= NAVIGATION_TARGET_REACHED_DISTANCE_SQUARED
+}
+
 fn template_or_default(width: f32, height: f32, default: EntityTemplate) -> EntityTemplate {
     EntityTemplate::new(
         positive_or_default(width, default.sprite_width),
@@ -494,8 +502,23 @@ pub struct ShooterScene {
     wave_elapsed_seconds: f32,
     wave_spawned_count: u32,
     camera_elapsed_seconds: f32,
+    navigation_targets: Vec<Option<NavigationTargetCache>>,
     pending_despawn: Vec<Entity>,
     marked_for_despawn: Vec<bool>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct NavigationTargetCache {
+    generation: u32,
+    target: Transform2D,
+    remaining_seconds: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct EnemyNavigationSource {
+    index: usize,
+    generation: u32,
+    transform: Transform2D,
 }
 
 impl Default for ShooterScene {
@@ -516,6 +539,7 @@ impl Default for ShooterScene {
             wave_elapsed_seconds: 0.0,
             wave_spawned_count: 0,
             camera_elapsed_seconds: 0.0,
+            navigation_targets: Vec::with_capacity(256),
             pending_despawn: Vec::with_capacity(128),
             marked_for_despawn: Vec::with_capacity(256),
         }
@@ -556,7 +580,7 @@ impl ShooterScene {
                 self.advance_wave_if_needed();
                 self.camera_elapsed_seconds += delta.max(0.0);
                 self.apply_player_input(world, camera, input, audio_events);
-                self.update_enemy_velocity(world);
+                self.update_enemy_velocity(world, tilemap, delta);
                 world.update(delta);
                 tilemap.resolve_dynamic_collisions(world);
                 self.clamp_player_to_world(world);
@@ -595,6 +619,7 @@ impl ShooterScene {
         self.spawn_index = 0;
         self.reset_wave_state();
         self.camera_elapsed_seconds = 0.0;
+        self.navigation_targets.clear();
         audio_events.clear();
         *world = World::default();
         world.spawn_player_from_template(
@@ -1074,10 +1099,13 @@ impl ShooterScene {
         );
     }
 
-    fn update_enemy_velocity(&self, world: &mut World) {
+    fn update_enemy_velocity(&mut self, world: &mut World, tilemap: &Tilemap, delta: f32) {
+        self.tick_navigation_targets(delta);
         let player_t = world
             .player
             .and_then(|player| world.transforms[player.id as usize]);
+        let speed = self.active_enemy_speed();
+        let behavior = self.active_enemy_behavior();
         for i in 0..world.transforms.len() {
             if !world.alive[i] {
                 continue;
@@ -1091,21 +1119,38 @@ impl ShooterScene {
             let Some(enemy_t) = world.transforms[i] else {
                 continue;
             };
-            world.velocities[i] = Some(self.enemy_velocity(enemy_t, player_t));
+            world.velocities[i] = Some(self.enemy_velocity(
+                EnemyNavigationSource {
+                    index: i,
+                    generation: world.generations[i],
+                    transform: enemy_t,
+                },
+                player_t,
+                tilemap,
+                speed,
+                behavior,
+            ));
         }
     }
 
-    fn enemy_velocity(&self, enemy_t: Transform2D, player_t: Option<Transform2D>) -> Velocity {
-        let speed = self.active_enemy_speed();
-        match self.active_enemy_behavior() {
+    fn enemy_velocity(
+        &mut self,
+        enemy: EnemyNavigationSource,
+        player_t: Option<Transform2D>,
+        tilemap: &Tilemap,
+        speed: f32,
+        behavior: EnemyBehavior,
+    ) -> Velocity {
+        match behavior {
             EnemyBehavior::Chase => {
                 let Some(player_t) = player_t else {
                     return Velocity::default();
                 };
-                self.velocity_toward(enemy_t, player_t, speed)
+                let target = self.navigation_target(enemy, player_t, tilemap);
+                self.velocity_toward(enemy.transform, target, speed)
             }
             EnemyBehavior::Drift => self.velocity_toward(
-                enemy_t,
+                enemy.transform,
                 Transform2D {
                     x: self.config.world_width * 0.5,
                     y: self.config.world_height * 0.5,
@@ -1114,6 +1159,48 @@ impl ShooterScene {
             ),
             EnemyBehavior::Static => Velocity::default(),
         }
+    }
+
+    fn tick_navigation_targets(&mut self, delta: f32) {
+        let elapsed = delta.max(0.0);
+        if elapsed <= 0.0 {
+            return;
+        }
+        for cache in self.navigation_targets.iter_mut().flatten() {
+            cache.remaining_seconds = (cache.remaining_seconds - elapsed).max(0.0);
+        }
+    }
+
+    fn navigation_target(
+        &mut self,
+        enemy: EnemyNavigationSource,
+        player_t: Transform2D,
+        tilemap: &Tilemap,
+    ) -> Transform2D {
+        if enemy.index >= self.navigation_targets.len() {
+            self.navigation_targets.resize(enemy.index + 1, None);
+        }
+
+        let cached_target = self.navigation_targets[enemy.index]
+            .filter(|cache| {
+                cache.generation == enemy.generation
+                    && cache.remaining_seconds > 0.0
+                    && !has_reached_navigation_target(enemy.transform, cache.target)
+            })
+            .map(|cache| cache.target);
+        if let Some(target) = cached_target {
+            return target;
+        }
+
+        let target = tilemap
+            .navigation_waypoint(enemy.transform, player_t)
+            .unwrap_or(player_t);
+        self.navigation_targets[enemy.index] = Some(NavigationTargetCache {
+            generation: enemy.generation,
+            target,
+            remaining_seconds: NAVIGATION_REPATH_INTERVAL,
+        });
+        target
     }
 
     fn velocity_toward(&self, from: Transform2D, to: Transform2D, speed: f32) -> Velocity {
@@ -1886,7 +1973,7 @@ mod tests {
         );
         let enemy = world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
 
-        scene.update_enemy_velocity(&mut world);
+        scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
         assert_eq!(
             world.velocities[enemy.id as usize],
@@ -1905,11 +1992,74 @@ mod tests {
         );
         let enemy = world.spawn_enemy(0.0, 480.0, DEFAULT_TEXTURE_ID);
 
-        scene.update_enemy_velocity(&mut world);
+        scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
         let velocity = world.velocities[enemy.id as usize].unwrap();
         assert!(velocity.vx > 0.0);
         assert!(velocity.vy.abs() < 0.01);
+    }
+
+    #[test]
+    fn enemy_behavior_chase_uses_tilemap_navigation_waypoint() {
+        let (mut scene, mut world, _, _) = playing_scene();
+        let player = world.player.unwrap();
+        world.transforms[player.id as usize] = Some(Transform2D { x: 25.0, y: 5.0 });
+        let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(
+            0,
+            3,
+            3,
+            10.0,
+            10.0,
+            0.0,
+            0.0,
+            true,
+            vec![0, 1, 0, 0, 1, 0, 0, 0, 0],
+        );
+
+        scene.update_enemy_velocity(&mut world, &tilemap, 0.0);
+
+        let velocity = world.velocities[enemy.id as usize].unwrap();
+        assert!(velocity.vx.abs() < 0.01);
+        assert!(velocity.vy > 0.0);
+    }
+
+    #[test]
+    fn enemy_behavior_chase_reuses_navigation_waypoint_until_repath_interval() {
+        let (mut scene, mut world, _, _) = playing_scene();
+        let player = world.player.unwrap();
+        world.transforms[player.id as usize] = Some(Transform2D { x: 25.0, y: 5.0 });
+        let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(
+            0,
+            3,
+            3,
+            10.0,
+            10.0,
+            0.0,
+            0.0,
+            true,
+            vec![0, 1, 0, 0, 1, 0, 0, 0, 0],
+        );
+
+        scene.update_enemy_velocity(&mut world, &tilemap, 0.0);
+        scene.update_enemy_velocity(
+            &mut world,
+            &Tilemap::default(),
+            NAVIGATION_REPATH_INTERVAL * 0.5,
+        );
+
+        let cached_velocity = world.velocities[enemy.id as usize].unwrap();
+        assert!(cached_velocity.vx.abs() < 0.01);
+        assert!(cached_velocity.vy > 0.0);
+
+        scene.update_enemy_velocity(&mut world, &Tilemap::default(), NAVIGATION_REPATH_INTERVAL);
+
+        let repathed_velocity = world.velocities[enemy.id as usize].unwrap();
+        assert!(repathed_velocity.vx > 0.0);
+        assert!(repathed_velocity.vy.abs() < 0.01);
     }
 
     #[test]
@@ -1973,7 +2123,7 @@ mod tests {
         assert_eq!(world.healths[enemy], Some(5.0));
         assert_eq!(world.score_rewards[enemy], Some(11));
 
-        scene.update_enemy_velocity(&mut world);
+        scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
         assert_eq!(world.velocities[enemy], Some(Velocity::default()));
     }
