@@ -86,7 +86,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 | AudioManager | 완료 | Web Audio 기반 효과음 재생, bus volume, user gesture unlock |
 | DebugOverlay | 완료 | DOM overlay, `DebugOverlayOptions.enabled=false`와 예제 URL `?debug=false` 지원 |
 | Tests | 완료 | Rust unit test, TS Node test |
-| Release docs | 완료 | README, docs, CHANGELOG 정리 |
+| Release docs | 완료 | README와 docs 정리 |
 
 ## 수동 검증
 
@@ -106,6 +106,8 @@ cargo test --manifest-path crates/ferrum-core/Cargo.toml
 pnpm lint
 pnpm test
 pnpm validate:game-spec
+pnpm smoke:headless
+pnpm package:check
 pnpm build
 ```
 

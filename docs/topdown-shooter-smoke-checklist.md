@@ -52,9 +52,9 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 
 ### C. 전투/점수
 
-- [ ] 마우스 좌클릭(또는 엔진 기본 발사 입력) 시 총알이 발사된다.
+- [ ] 마우스 좌클릭 또는 `Space` 시 총알이 발사된다.
 - [ ] `game.json`의 `atlas.frames["bullet.default"]` 설정이 적용되어 bullet이 atlas frame size/UV로 렌더링된다.
-- [ ] 적이 `game.json`의 wave 설정에 따라 runner/bruiser 순서로 spawn되고 player 또는 world center 방향으로 이동한다.
+- [ ] 적이 `game.json`의 wave 설정에 따라 runner/bruiser/orbiter 순서로 spawn되고 각 behavior에 맞게 이동한다.
 - [ ] 총알-적 충돌 시 적이 제거되고 score가 증가한다.
 
 ### D. 게임오버/재시작

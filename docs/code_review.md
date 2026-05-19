@@ -31,12 +31,14 @@
 - MVP 단계에 필요한 최소 복잡도로 작성되었는가?
 - public API가 작고 명확한가?
 - destroy/cleanup에서 event listener, WebGL resource, AudioContext 등 platform resource를 해제하는가?
+- package entrypoint export, `exports`, `files` allowlist가 public API 문서와 일치하는가?
 
 ### 5) 테스트와 검증
 - collision, game state, render command generation/parsing 테스트가 있는가?
 - TypeScript platform 기능은 Node test runner 또는 적절한 smoke test로 검증되는가?
 - WebGL2 실제 렌더링은 MVP에서 manual/smoke check로 문서화되어 있는가?
-- 변경 후 `cargo fmt`, `cargo clippy`, `cargo test`, `pnpm lint`, `pnpm test`, `pnpm build`를 실행했는가?
+- Game Spec, tilemap, wave, atlas, audio policy 변경은 `pnpm validate:game-spec`와 `pnpm smoke:headless`로 확인했는가?
+- 변경 후 성격에 맞게 `cargo fmt`, `cargo clippy`, `cargo test`, `pnpm lint`, `pnpm test`, `pnpm package:check`, `pnpm build`를 실행했는가?
 
 ### 6) 문서 동기화
 - 구조/정책 변경 시 README 및 docs가 함께 갱신되었는가?

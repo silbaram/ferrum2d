@@ -1,6 +1,6 @@
 # Ferrum2D 고도화 개발 계획
 
-이 문서는 `v0.1.0` MVP 개발 완료 이후의 고도화 작업을 실제 진행 순서대로 정리한다. 기준일은 2026-05-17이며, 새 기능보다 안정화와 확장 기반을 먼저 고정한다.
+이 문서는 `v0.1.0` MVP 개발 완료 이후의 고도화 작업을 실제 진행 순서대로 정리한다. 기준일은 2026-05-19이며, 새 기능보다 안정화와 확장 기반을 먼저 고정한다.
 
 ## 목표
 
@@ -114,7 +114,7 @@ v0.2는 다음 기능 개발을 위한 기반 안정화 단계다. 기능 욕심
 
 완료 내용:
 
-- `pnpm smoke:check`를 추가해 lint, test, Game Spec validation, production build sanity check를 한 번에 실행할 수 있게 했다.
+- `pnpm smoke:check`를 추가해 lint, test, Game Spec validation, headless smoke, production build sanity check를 한 번에 실행할 수 있게 했다.
 - `pnpm smoke:headless`와 `scripts/headless-smoke.mjs`를 추가해 Game Spec 적용 경로, collision/navigation 전제, representative render command buffer sanity를 브라우저 없이 확인한다.
 - `docs/smoke-check.md`에 CI/로컬 검증 차이, Top-down Shooter 수동 smoke checklist, 실패 기록 형식을 정리했다.
 - `docs/screenshots/README.md`를 smoke checklist와 연결했다.
@@ -325,9 +325,9 @@ v0.4 이후는 콘텐츠 제작 기반 위에 런타임 기능을 보강한다. 
 - orbit 회전 방향 선택
 - pathfinding과 결합한 orbit steering
 
-## 당장 시작할 작업 큐
+## 완료된 작업 큐와 다음 후보
 
-다음 순서로 진행한다.
+아래 작업 큐는 현재 완료 상태다.
 
 1. `v0.2-1-public-api`: public API 표와 deprecated API 정책 정리 (완료)
 2. `v0.2-2-error-diagnostics`: asset/audio/Game Spec 오류 메시지 표준화 (완료)
@@ -345,7 +345,7 @@ v0.4 이후는 콘텐츠 제작 기반 위에 런타임 기능을 보강한다. 
 14. `v0.4-5-package-file-check`: package entrypoint, files allowlist, generated Wasm artifact 점검 (완료)
 15. `v0.4-6-enemy-orbit-behavior`: enemy orbit movement preset과 예제 wave 추가 (완료)
 
-각 작업을 시작하기 전에 해당 항목의 목표와 완료 기준을 먼저 확인하고, 범위를 넘는 기능은 다음 작업으로 분리한다.
+다음 후보는 WebGL2 실제 렌더링 smoke automation, docs site 또는 GitHub Pages 데모 배포, package publish 여부와 release tagging 절차 정리다. 각 작업을 시작하기 전에 별도 목표와 완료 기준을 먼저 작성하고, 범위를 넘는 기능은 다음 작업으로 분리한다.
 
 ## 공통 검증 명령
 
@@ -381,5 +381,7 @@ cargo test --manifest-path crates/ferrum-core/Cargo.toml
 pnpm lint
 pnpm test
 pnpm validate:game-spec
+pnpm smoke:headless
+pnpm package:check
 pnpm build
 ```

@@ -58,6 +58,7 @@ import {
 | `DiagnosticReport` | interface | host 앱이나 예제가 오류를 표시/수집할 때 쓰는 `{ code, message, context }` 형태의 report다. |
 | `diagnosticReport(...)` | function | unknown error를 `DiagnosticReport`로 정규화한다. |
 | `formatDiagnosticReport(...)` | function | bootstrap HUD나 console에 표시하기 좋은 `code: message` 문자열을 만든다. |
+| `isFerrumDiagnosticError(...)` | function | unknown error가 `FerrumDiagnosticError`인지 확인하는 type guard다. |
 | `WebGL2Renderer` | class | MVP의 기본 WebGL2 renderer다. texture id 기반 sprite command를 그린다. |
 | `Renderer` | interface | renderer lifecycle의 최소 interface다. MVP 구현체는 `WebGL2Renderer` 하나다. |
 | `RendererStats` | interface | draw call, batch, sprite, render command, texture bind/switch 수를 나타낸다. |
@@ -85,6 +86,20 @@ import {
 | `RenderCommandBufferView` | interface | Wasm render command buffer를 매 프레임 새 `Float32Array` view로 읽은 결과다. |
 | `AudioEventView` | interface | Rust audio event buffer를 TypeScript에서 해석한 결과다. |
 | `decodeRenderCommands(...)` | function | buffer 기반 render command를 deprecated object 배열 형태로 decode한다. hot path 기본 경로로 쓰지 않는다. |
+
+## 부가 타입 export
+
+다음 타입은 entrypoint에서 public으로 export되지만, 대부분 앱 코드에서 직접 구현하기보다 위 권장 API를 사용할 때 타입 보조로 참조한다.
+
+| 묶음 | Export |
+| --- | --- |
+| Engine 보조 타입 | `ShooterTextureIds`, `ShooterSoundIds`, `ViewportSnapshot`, `InputSnapshot` |
+| Asset 보조 타입 | `AssetLoadProgress`, `AssetLoadProgressCallback`, `TextureAssetManager`, `SoundAssetManager`, `TextureRegistryEntry`, `SoundRegistryEntry` |
+| Diagnostic 보조 타입 | `DiagnosticCode`, `DiagnosticContext`, `DiagnosticKind` |
+| Game Spec 입력 타입 | `ShooterAudioEventPolicySpec`, `ShooterAudioSpec`, `ShooterAtlasFrameSpec`, `ShooterAtlasSpec`, `ShooterCameraPreset`, `ShooterCameraSpec`, `ShooterEnemyBehaviorPreset`, `ShooterEnemyOrbitSpec`, `ShooterEnemyPresetSpec`, `ShooterPrefabSpec`, `ShooterTileLayerSpec`, `ShooterTilemapSpec`, `ShooterTileSpec`, `ShooterWaveSpec` |
+| Game Spec resolved/application 타입 | `ResolvedShooterAtlasFrame`, `ResolvedShooterTileDefinition`, `ResolvedShooterTileLayer`, `ResolvedShooterTilemap`, `ShooterGameSpecTarget` |
+| Texture atlas authoring 타입 | `AtlasSpriteInput`, `AtlasSpritePlacement`, `TextureAtlasLayout`, `TextureAtlasOptions` |
+| Debug/renderer 보조 타입 | `DebugOverlayMetrics`, `DebugOverlayOptions`, `SpriteDrawOptions` |
 
 ## 호환/저수준 export
 
@@ -226,7 +241,7 @@ Runtime 적용 범위:
 - object 배열이 필요한 기존 코드만 `createEngine(..., { includeDeprecatedRenderCommands: true })`로 명시적으로 켠다.
 - 이 옵션을 켜면 매 프레임 command object 배열 decode가 발생하므로 hot path에서 권장하지 않는다.
 - 신규 코드는 반드시 `FrameState.renderCommandBuffer`를 사용한다.
-- 제거 시점은 별도 migration 문서와 changelog가 준비된 뒤 결정한다. `v0.2`에서는 기본 비활성 정책을 유지한다.
+- 제거 시점은 별도 migration 문서와 changelog가 준비된 뒤 결정한다. 현재 정책은 기본 비활성 상태를 유지한다.
 
 ## 오류 진단 정책
 
@@ -359,4 +374,5 @@ engine.start();
 - public type이나 method를 제거하려면 먼저 deprecated 기간과 migration 경로를 문서화한다.
 - `SpriteRenderCommand`, `AudioEvent`, `RenderCommandBufferView`, `AudioEventView`의 ABI나 필드 의미가 바뀌면 Rust export, TypeScript decoder, 문서, 테스트를 함께 수정한다.
 - public API 변경 후에는 `pnpm lint`와 `pnpm test:web`을 실행한다.
+- package entrypoint, `exports`, `files`, generated Wasm artifact 정책이 바뀌면 `pnpm package:check`도 실행한다.
 - Wasm boundary 변경이 포함되면 `pnpm build`와 Rust 테스트도 실행한다.

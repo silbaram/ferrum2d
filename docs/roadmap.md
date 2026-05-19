@@ -4,6 +4,8 @@
 
 상세 실행 순서와 각 작업 완료 기준은 [고도화 개발 계획](advanced-development-plan.md)을 따른다.
 
+`package.json`의 현재 version은 `0.1.0`이다. 아래 `v0.2`, `v0.3`, `v0.4+` 표기는 공개 배포 버전이 아니라 기능 안정화 묶음을 추적하기 위한 로드맵 라벨이다.
+
 ## v0.1.0 MVP
 
 상태: MVP 개발 완료
@@ -39,9 +41,11 @@
 - `pnpm test`
 - `pnpm build`
 - Top-down Shooter manual smoke check
-- README, architecture, MVP, CHANGELOG 동기화
+- README, architecture, MVP, docs 동기화
 
 ## v0.2 계획
+
+상태: 완료
 
 목표: MVP API, 예제 품질, 관측 가능성을 안정화한다.
 
@@ -83,6 +87,8 @@ v0.2에서 하지 않을 것:
 
 ## v0.3 계획
 
+상태: 완료
+
 목표: MVP 구조를 유지하면서 카메라 연출과 콘텐츠 제작 기반을 늘린다.
 
 후보 작업:
@@ -92,8 +98,8 @@ v0.2에서 하지 않을 것:
 - 카메라 계산은 Rust core가 담당하고 TypeScript는 viewport 전달과 renderer 적용만 담당 (완료)
 - texture atlas metadata 포맷 설계와 작은 수동 atlas 예제 검토 (완료)
 - atlas metadata 범위: frame name, texture id/name, UV/rect, frame size 검증 (완료)
-- data-driven scene spec 확장 검토 (부분 완료: enemy preset + wave timeline + static tilemap + navigation grid)
-- scene spec 후보: spawn table, wave/event timeline, animation binding (부분 완료: spawn/wave/static tilemap/navigation)
+- data-driven scene spec 확장 검토 (완료된 범위: enemy preset, wave timeline, static tilemap, navigation grid)
+- scene spec 후보: spawn table, wave/event timeline, animation binding (완료된 범위: spawn/wave/static tilemap/navigation)
 - tilemap runtime 최소 기능 설계 (완료)
 - tilemap v1 범위: 정적 tile layer 렌더링, tile id -> UV 매핑, collision layer의 AABB 변환은 완료
 - navigation grid v1 범위: `collision: true` layer를 chase enemy 4방향 grid navigation 장애물로 재사용하고, 경로가 없으면 direct chase로 fallback (완료)
@@ -122,13 +128,15 @@ v0.3에서 하지 않을 것:
 
 ## v0.4+ 계획
 
+상태: 구현 대상으로 좁힌 항목은 완료. Rust-side hook, bulk-buffer render-prep extension, 배포/데모 자동화는 별도 설계가 필요한 후보로 유지한다.
+
 목표: 콘텐츠 제작 기반 위에 AI 이동, 확장성, 운영성을 보강한다.
 
 후보 작업:
 
 - tilemap static render command path + collision AABB obstacle path (완료)
-- lightweight navigation grid
-- navigation v1 범위: 2D grid A*, obstacle layer 연동, 적이 장애물을 우회해 player를 추적하는 예제
+- lightweight navigation grid (완료)
+- navigation v1 범위: 2D grid A*, obstacle layer 연동, 적이 장애물을 우회해 player를 추적하는 예제 (완료)
 - navigation v1 비범위: 연속 공간 회피, crowd simulation, navmesh, 복잡한 steering
 - engine extension point 문서화 (부분 완료: TypeScript platform lifecycle hook)
 - extension point 후보: Rust-side init/update hook, TypeScript platform lifecycle hook (완료), bulk-buffer render-prep extension
@@ -138,6 +146,12 @@ v0.3에서 하지 않을 것:
 - 회귀 방지용 smoke automation 정리 (부분 완료: headless smoke)
 - smoke 범위: wasm build, example build, game spec validation, headless-friendly render command sanity check. `pnpm smoke:headless`는 Game Spec 적용 경로, collision/navigation 전제, representative render command buffer를 검증한다.
 - enemy behavior preset 확장 (완료: `orbit`, Game Spec 기반 orbit radius/radialBand tuning)
+
+다음 후보:
+
+- WebGL2 실제 렌더링 smoke automation 가능성 검토
+- docs site 또는 GitHub Pages 데모 배포 검토
+- package publish 여부와 release tagging 절차 정리
 
 ## 장기 후보
 

@@ -30,6 +30,7 @@ AI agent 또는 subagent가 Ferrum2D 변경을 마친 뒤 확인할 항목이다
 - `prefabs.*.animation.frames`가 1보다 크면 `fps`가 함께 제공되는가?
 - `prefabs.*.animation.states`를 쓰면 `columns`, `rows`, `states.idle`이 제공되고 state frame 수가 column 수를 넘지 않는가?
 - `pnpm validate:game-spec`를 실행했는가?
+- tilemap, wave, atlas, audio policy를 건드렸다면 `pnpm smoke:headless`를 실행했는가?
 - 의도한 난이도 변화가 문서나 응답에 설명되었는가?
 
 ## Schema/Validator 변경
@@ -37,6 +38,7 @@ AI agent 또는 subagent가 Ferrum2D 변경을 마친 뒤 확인할 항목이다
 - `docs/game-spec.md`가 새 필드를 설명하는가?
 - `schemas/shooter-game-spec.schema.json`가 새 필드를 반영하는가?
 - `packages/ferrum-web/src/gameSpec.ts`가 기본값, 검증, 에러 메시지를 제공하는가?
+- JSON Schema는 구조 보조용이고 최종 기본값/교차 필드 검증 기준은 `resolveShooterGameSpec(...)`임을 문서가 설명하는가?
 - `packages/ferrum-web/test/gameSpec.test.ts`에 성공/실패 케이스가 있는가?
 - `pnpm lint`와 `pnpm test:web`이 통과했는가?
 
@@ -53,6 +55,7 @@ AI agent 또는 subagent가 Ferrum2D 변경을 마친 뒤 확인할 항목이다
 - README에 사용자-facing 사용법이 있는가?
 - `docs/architecture.md`가 Rust/TS 경계를 설명하는가?
 - `docs/mvp.md`가 구현 상태와 검증 명령을 반영하는가?
+- package entrypoint, `exports`, `files` 정책을 바꿨다면 `docs/public-api.md`와 `pnpm package:check`가 함께 갱신되었는가?
 - MVP 금지 범위(WebGPU, Worker, editor, multiplayer 등)를 위반하지 않았는가?
 
 ## 최종 보고

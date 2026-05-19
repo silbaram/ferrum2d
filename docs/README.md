@@ -27,10 +27,12 @@
 | package entrypoint export | `packages/ferrum-web/src/index.ts` |
 | renderer/debug stats 필드 | `packages/ferrum-web/src/renderer.ts`, `packages/ferrum-web/src/debugOverlay.ts` |
 | Game Spec 타입과 기본값 | `packages/ferrum-web/src/gameSpec.ts` |
-| Game Spec JSON Schema | `schemas/shooter-game-spec.schema.json` |
+| Game Spec 구조 보조 JSON Schema | `schemas/shooter-game-spec.schema.json` |
 | 실제 Top-down Shooter 설정 | `examples/topdown-shooter/public/game.json` |
 | Rust/Wasm ABI | `crates/ferrum-core/src/render_command.rs`, `crates/ferrum-core/src/audio_event.rs`, `packages/ferrum-web/src/wasmBridge.ts` |
 | 검증 스크립트 | 루트 `package.json`, `.github/workflows/ci.yml` |
+
+`schemas/shooter-game-spec.schema.json`은 편집기 자동완성과 구조 검토를 돕는 보조 기준이다. 런타임과 CLI에서 실제로 적용되는 기본값, preset 해석, 교차 필드 검증의 최종 기준은 `packages/ferrum-web/src/gameSpec.ts`의 `resolveShooterGameSpec(...)`이다.
 
 ## 중복 방지 규칙
 
