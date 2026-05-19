@@ -17,6 +17,7 @@ import {
   createRenderer,
   type AssetManifest,
   type CreateRendererOptions,
+  type EngineLifecycleHooks,
   type FerrumEngine,
   type FrameHandler,
   type RendererStats,
@@ -41,7 +42,9 @@ import {
 | `FrameState` | interface | 렌더링, 디버그, HUD 갱신에 필요한 per-frame snapshot이다. 게임 규칙의 source of truth는 아니다. |
 | `InputProvider` | type | `InputSnapshot`을 제공하는 callback 타입이다. 보통 `InputManager.snapshot()`을 연결한다. |
 | `ViewportProvider` | type | canvas logical viewport size를 제공하는 callback 타입이다. 보통 renderer resize 결과를 연결한다. |
-| `CreateEngineOptions` | interface | compatibility 옵션을 담는다. 신규 코드는 기본값을 사용한다. |
+| `CreateEngineOptions` | interface | compatibility 옵션과 platform lifecycle hook을 담는다. 신규 코드는 deprecated 옵션 대신 기본값을 사용한다. |
+| `EngineLifecycleHooks` | interface | `FerrumEngine` start/pause/resume/stop/destroy 시점의 platform callback 계약이다. snapshot만 받으며 simulation state를 소유하지 않는다. |
+| `EngineLifecycleSnapshot` | interface | lifecycle hook에 전달되는 score/state/entity/sprite/time snapshot이다. |
 | `AssetHost` | interface | `createEngine`이 asset loading과 audio playback을 위임하는 host 계약이다. |
 | `BrowserPlatformHost` | class | texture/sound/JSON asset loading과 audio playback을 묶는 browser platform host다. |
 | `createRenderer(...)` | function | renderer factory다. MVP에서는 항상 `WebGL2Renderer`를 반환하고, `preferred: "webgpu"`는 deprecated fallback 진단만 제공한다. |
@@ -153,7 +156,8 @@ Runtime 적용 범위:
 
 - `applyShooterGameSpec(...)`는 먼저 `clear_shooter_tilemap()`을 호출한 뒤 `set_shooter_tile(...)`로 tile definition을, `set_shooter_tilemap_layer(...)`로 collision flag와 layer data `Uint32Array`를 전달한다.
 - Rust `Tilemap`은 entity를 만들지 않고 기존 `SpriteRenderCommand` buffer 앞쪽에 static tile command를 추가한다.
-- `collision: true` layer의 양수 tile은 Rust에서 player/enemy 이동을 막는 정적 AABB 장애물로 사용한다. pathfinding과 bullet-wall 충돌은 이 계약에 포함하지 않는다.
+- `collision: true` layer의 양수 tile은 Rust에서 player/enemy 이동을 막는 정적 AABB 장애물이자 chase enemy navigation grid 장애물로 사용한다. 별도 Game Spec 필드는 추가하지 않는다.
+- bullet-wall 충돌, navmesh, crowd simulation은 이 계약에 포함하지 않는다.
 
 ## Game Spec Wave 계약
 
@@ -185,6 +189,12 @@ Runtime 적용 범위:
 
 - `FrameState` 값을 다음 프레임의 게임 로직 입력으로 사용하지 않는다.
 - `renderCommandBuffer.buffer` view를 장기 보관하지 않는다. Wasm memory가 grow되면 기존 view가 무효가 될 수 있다.
+
+## Engine Lifecycle Hooks
+
+`CreateEngineOptions.lifecycle`은 platform layer 확장 지점이다. `onStart`, `onPause`, `onResume`, `onStop`, `onDestroy`는 `FerrumEngine` lifecycle method가 실제 상태를 바꿀 때만 호출된다. callback에는 `timeSeconds`, `score`, `entityCount`, `gameState`, `spriteCount` snapshot만 전달한다.
+
+이 hook은 브라우저 platform side effect, analytics, host app lifecycle 동기화처럼 simulation 외부 작업에 사용한다. TypeScript simulation update hook이나 entity별 JS/Wasm 호출 지점으로 사용하지 않는다.
 
 ## Deprecated API 정책
 

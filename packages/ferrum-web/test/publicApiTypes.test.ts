@@ -5,8 +5,14 @@ import type {
   AudioAssetLoader,
   AudioBusConfig,
   AudioManagerConfig,
+  AtlasSpriteInput,
+  AtlasSpritePlacement,
+  CreateRendererOptions,
+  RendererFallbackInfo,
   BrowserPlatformHost,
   CreateEngineOptions,
+  EngineLifecycleHooks,
+  EngineLifecycleSnapshot,
   AssetHost,
   FerrumEngine,
   FrameHandler,
@@ -26,6 +32,8 @@ import type {
   ShooterWaveSpec,
   ResolvedShooterTilemap,
   ViewportProvider,
+  WebGPURenderer,
+  generateTextureAtlasLayout,
 } from "../src/index.js";
 
 test("public API types are importable from entrypoint source", () => {
@@ -34,7 +42,26 @@ test("public API types are importable from entrypoint source", () => {
     sounds: { shoot: "/assets/shoot.wav" },
     json: { game: "/game.json" },
   };
-  const options: CreateEngineOptions = { includeDeprecatedRenderCommands: false };
+  const lifecycleHooks: EngineLifecycleHooks = {
+    onStart: (snapshot: EngineLifecycleSnapshot) => {
+      equal(snapshot.gameState >= 0, true);
+    },
+    onDestroy: (snapshot) => {
+      equal(snapshot.entityCount >= 0, true);
+    },
+  };
+  const options: CreateEngineOptions = {
+    includeDeprecatedRenderCommands: false,
+    useWorkerClock: true,
+    lifecycle: lifecycleHooks,
+  };
+  const rendererOptions: CreateRendererOptions = {
+    preferred: "webgpu",
+    fallbackBehavior: "silent",
+    onFallback: (info: RendererFallbackInfo) => {
+      equal(info.fallback, "webgl2");
+    },
+  };
   const gameSpec: ShooterGameSpec = {
     world: { width: 1600, height: 960 },
     player: { speed: 180 },
@@ -71,8 +98,28 @@ test("public API types are importable from entrypoint source", () => {
   const tileSpec: ShooterTileSpec = tilemapSpec.tiles?.["1"] ?? {};
   const tileLayerSpec: ShooterTileLayerSpec = tilemapSpec.layers?.[0] ?? {};
   const audioBusConfig: AudioBusConfig = { masterVolume: 0.9, sfxVolume: 0.7 };
-  const audioManagerConfig: AudioManagerConfig = { masterVolume: 0.9 };
+  const audioManagerConfig: AudioManagerConfig = { masterVolume: 0.9, bgmVolume: 0.2 };
   const resolvedTilemap: ResolvedShooterTilemap = { tiles: [], layers: [] };
+  const atlasSprite: AtlasSpriteInput = { name: "compat", width: 8, height: 8 };
+  const atlasPlacement: AtlasSpritePlacement = {
+    name: atlasSprite.name,
+    x: 0,
+    y: 0,
+    width: atlasSprite.width,
+    height: atlasSprite.height,
+    u0: 0,
+    v0: 0,
+    u1: 1,
+    v1: 1,
+  };
+  const atlasLayoutFn: typeof generateTextureAtlasLayout = (() => ({
+    width: 8,
+    height: 8,
+    sprites: [atlasPlacement],
+  })) as typeof generateTextureAtlasLayout;
+  const webGpuCreate: typeof WebGPURenderer.create = async () => {
+    throw new Error("WebGPU compatibility shim");
+  };
 
   const onFrame: FrameHandler = (frame: FrameState) => {
     const commandCount = frame.renderCommandBuffer.commandCount;
@@ -183,6 +230,15 @@ test("public API types are importable from entrypoint source", () => {
 
   equal(manifest.textures?.player, "/assets/player.png");
   equal(options.includeDeprecatedRenderCommands, false);
+  equal(options.useWorkerClock, true);
+  options.lifecycle?.onStart?.({
+    timeSeconds: 0,
+    score: 0,
+    entityCount: 1,
+    gameState: 0,
+    spriteCount: 1,
+  });
+  equal(rendererOptions.preferred, "webgpu");
   equal(gameSpec.world?.width, 1600);
   equal(cameraSpec.preset, "look-ahead");
   equal(atlasFrameSpec.texture, "bullet");
@@ -193,7 +249,10 @@ test("public API types are importable from entrypoint source", () => {
   equal(tileLayerSpec.collision, true);
   equal(resolvedTilemap.layers.length, 0);
   equal(audioBusConfig.sfxVolume, 0.7);
-  equal(audioManagerConfig.masterVolume, 0.9);
+  equal(audioManagerConfig.bgmVolume, 0.2);
+  equal(atlasPlacement.name, "compat");
+  equal(atlasLayoutFn([atlasSprite]).sprites[0].name, "compat");
+  equal(typeof webGpuCreate, "function");
   equal(inputProvider().mouseX, 0);
   equal(viewportProvider().height, 480);
   equal(renderer.stats().drawCalls, 0);

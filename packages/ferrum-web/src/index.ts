@@ -4,6 +4,8 @@ export type {
   AssetHost,
   AudioBusConfig,
   CreateEngineOptions,
+  EngineLifecycleHooks,
+  EngineLifecycleSnapshot,
   FerrumEngine,
   FrameHandler,
   FrameState,

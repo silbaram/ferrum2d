@@ -52,11 +52,29 @@ export interface FrameState {
 
 export type FrameHandler = (state: FrameState) => void;
 
+export interface EngineLifecycleSnapshot {
+  timeSeconds: number;
+  score: number;
+  entityCount: number;
+  gameState: number;
+  spriteCount: number;
+}
+
+export interface EngineLifecycleHooks {
+  onStart?(snapshot: EngineLifecycleSnapshot): void;
+  onPause?(snapshot: EngineLifecycleSnapshot): void;
+  onResume?(snapshot: EngineLifecycleSnapshot): void;
+  onStop?(snapshot: EngineLifecycleSnapshot): void;
+  onDestroy?(snapshot: EngineLifecycleSnapshot): void;
+}
+
 export interface CreateEngineOptions {
   /** @deprecated 호환 API 사용자만 켜세요. 매 프레임 command object 배열을 생성합니다. */
   includeDeprecatedRenderCommands?: boolean;
-  /** Web Worker 기반 frame clock를 사용합니다. 지원하지 않는 환경에서는 RAF로 fallback합니다. */
+  /** @deprecated Worker clock는 현재 MVP 범위 밖이며 이 옵션은 무시됩니다. */
   useWorkerClock?: boolean;
+  /** Platform lifecycle callbacks. These receive snapshots only and must not own simulation state. */
+  lifecycle?: EngineLifecycleHooks;
 }
 export interface FerrumEngine {
   start(): void; pause(): void; resume(): void; stop(): void; destroy(): void; time(): number; version(): string;
@@ -114,7 +132,6 @@ export async function createEngine(
   const loop = new GameLoop(
     (deltaSeconds) => runFrame(framePipeline, deltaSeconds),
     0.05,
-    { useWorkerClock: options.useWorkerClock },
   );
 
   const requireAssetHost = (): AssetHost => {
@@ -125,6 +142,8 @@ export async function createEngine(
   };
 
   let destroyed = false;
+  let running = false;
+  let paused = false;
 
   const requireAlive = (): void => {
     if (destroyed) {
@@ -132,13 +151,28 @@ export async function createEngine(
     }
   };
 
+  const lifecycleSnapshot = (): EngineLifecycleSnapshot => ({
+    timeSeconds: rustEngine.time(),
+    score: rustEngine.score(),
+    entityCount: rustEngine.entity_count(),
+    gameState: rustEngine.game_state(),
+    spriteCount: rustEngine.sprite_count(),
+  });
+
   const destroy = (): void => {
     if (destroyed) {
       return;
     }
+    const snapshot = lifecycleSnapshot();
     destroyed = true;
+    running = false;
+    paused = false;
     loop.stop();
-    rustEngine.free();
+    try {
+      options.lifecycle?.onDestroy?.(snapshot);
+    } finally {
+      rustEngine.free();
+    }
   };
 
   const setTextureIds = (textureIds: ShooterTextureIds): void => {
@@ -164,10 +198,44 @@ export async function createEngine(
   };
 
   return {
-    start: () => { requireAlive(); loop.start(); },
-    pause: () => { requireAlive(); loop.pause(); },
-    resume: () => { requireAlive(); loop.resume(); },
-    stop: () => { if (!destroyed) loop.stop(); },
+    start: () => {
+      requireAlive();
+      if (running) {
+        return;
+      }
+      loop.start();
+      running = true;
+      paused = false;
+      options.lifecycle?.onStart?.(lifecycleSnapshot());
+    },
+    pause: () => {
+      requireAlive();
+      if (!running || paused) {
+        return;
+      }
+      loop.pause();
+      paused = true;
+      options.lifecycle?.onPause?.(lifecycleSnapshot());
+    },
+    resume: () => {
+      requireAlive();
+      if (!running || !paused) {
+        return;
+      }
+      loop.resume();
+      paused = false;
+      options.lifecycle?.onResume?.(lifecycleSnapshot());
+    },
+    stop: () => {
+      if (destroyed || !running) {
+        return;
+      }
+      const snapshot = lifecycleSnapshot();
+      loop.stop();
+      running = false;
+      paused = false;
+      options.lifecycle?.onStop?.(snapshot);
+    },
     destroy,
     time: () => { requireAlive(); return rustEngine.time(); },
     version: () => { requireAlive(); return bridge.version(); },
