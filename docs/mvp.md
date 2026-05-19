@@ -59,7 +59,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 - DebugOverlay에서 `fps`, `frame time`, `rust update`, `render`, `entities`, `sprites`, `draw calls`, `batches`, `render commands`, `texture binds`, `texture switches`, `audio events`, `mouse`, `state`, `score`를 고정된 표시명과 단위로 확인할 수 있다.
 - DebugOverlay에서 camera position을 확인할 수 있다.
 
-## 현재 구현 상태 (2026-05-17)
+## 현재 구현 상태
 
 | 항목 | 상태 | 비고 |
 | --- | --- | --- |
@@ -101,11 +101,12 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 
 ```bash
 cargo test --manifest-path crates/ferrum-core/Cargo.toml
+pnpm lint
 pnpm test
-pnpm build
 pnpm validate:game-spec
+pnpm build
 ```
 
-2026-05-17 기준 위 자동 검증과 Top-down Shooter manual smoke check를 완료 조건으로 MVP 개발 완료를 판정한다.
+위 자동 검증과 Top-down Shooter manual smoke check를 완료 조건으로 MVP 개발 완료를 판정한다. 자동/CI/수동 검증의 상세 관계는 [Smoke Check](smoke-check.md)를 따른다.
 
 WebGL2 실제 화면 렌더링은 headless unit test 범위가 아니므로 예제 manual smoke check를 함께 수행한다.

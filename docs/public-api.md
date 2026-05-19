@@ -1,6 +1,8 @@
 # Ferrum2D Public API
 
-이 문서는 `@ferrum2d/ferrum-web` 패키지에서 사용자가 직접 import해도 되는 API와 권장 사용 경로를 고정한다. MVP 이후 고도화에서도 Rust core와 TypeScript platform layer의 책임 경계를 유지하는 것을 우선한다.
+이 문서는 `@ferrum2d/ferrum-web` 패키지 entrypoint에서 사용자가 직접 import해도 되는 API와 권장 사용 경로를 고정한다. MVP 이후 고도화에서도 Rust core와 TypeScript platform layer의 책임 경계를 유지하는 것을 우선한다.
+
+현재 entrypoint export의 코드 기준은 `packages/ferrum-web/src/index.ts`다.
 
 ## Import 원칙
 
@@ -12,7 +14,9 @@ import {
   InputManager,
   WebGL2Renderer,
   createEngine,
+  createRenderer,
   type AssetManifest,
+  type CreateRendererOptions,
   type FerrumEngine,
   type FrameHandler,
   type RendererStats,
@@ -40,16 +44,23 @@ import {
 | `CreateEngineOptions` | interface | compatibility 옵션을 담는다. 신규 코드는 기본값을 사용한다. |
 | `AssetHost` | interface | `createEngine`이 asset loading과 audio playback을 위임하는 host 계약이다. |
 | `BrowserPlatformHost` | class | texture/sound/JSON asset loading과 audio playback을 묶는 browser platform host다. |
+| `createRenderer(...)` | function | renderer factory다. MVP에서는 항상 `WebGL2Renderer`를 반환하고, `preferred: "webgpu"`는 deprecated fallback 진단만 제공한다. |
+| `CreateRendererOptions` | interface | WebGL2 renderer 옵션과 deprecated WebGPU fallback 진단 옵션을 담는다. |
+| `RendererFallbackInfo` | interface | deprecated WebGPU 요청이 WebGL2로 fallback될 때 전달되는 진단 정보다. |
 | `WebGL2Renderer` | class | MVP의 기본 WebGL2 renderer다. texture id 기반 sprite command를 그린다. |
 | `Renderer` | interface | renderer lifecycle의 최소 interface다. MVP 구현체는 `WebGL2Renderer` 하나다. |
 | `RendererStats` | interface | draw call, batch, sprite, render command, texture bind/switch 수를 나타낸다. |
-| `AudioManager` | class | Web Audio context, bus volume, unlock, SFX/BGM playback을 관리한다. |
+| `AudioManager` | class | Web Audio context, master/sfx bus volume, unlock, SFX playback을 관리한다. |
+| `AudioManagerConfig` | interface | `AudioManager.configure(...)`에 전달되는 master/sfx volume 설정이다. `bgmVolume`은 deprecated no-op이다. |
 | `AudioBusConfig` | interface | `AssetHost.configureAudio(...)`에 전달되는 master/sfx bus volume 계약이다. |
 | `AudioAssetLoader` | class | sound fetch/decode 책임을 담당한다. 일반 앱은 보통 `BrowserPlatformHost`를 통해 간접 사용한다. |
+| `AssetLoader` | class | texture/sound/JSON manifest loading을 조정하는 낮은 수준 loader다. 일반 앱은 `BrowserPlatformHost`를 우선 사용한다. |
 | `InputManager` | class | keyboard/mouse 입력을 browser event에서 수집해 `InputSnapshot`으로 제공한다. |
 | `DebugOverlay` | class | DOM 기반 debug metrics 표시용 helper다. |
 | `AssetManifest` | interface | texture, sound, JSON asset URL manifest다. |
 | `LoadedAssets` | interface | 로드된 texture/sound registry와 JSON asset 결과다. |
+| `TextureRegistry` | class | texture manifest name과 numeric texture id 매핑을 관리한다. |
+| `SoundRegistry` | class | sound manifest name과 numeric sound id 매핑을 관리한다. |
 | `ShooterGameSpec` | interface | Top-down Shooter 설정 입력 타입이다. |
 | `ResolvedShooterGameSpec` | interface | 기본값과 preset code가 적용된 Game Spec 결과 타입이다. |
 | `ResolvedShooterWave` | interface | Game Spec wave 항목이 enemy preset과 함께 해석된 결과 타입이다. |
@@ -61,6 +72,22 @@ import {
 | `ApplyShooterGameSpecOptions` | interface | atlas frame texture name을 numeric texture id로 해석하는 resolver 옵션이다. |
 | `RenderCommandBufferView` | interface | Wasm render command buffer를 매 프레임 새 `Float32Array` view로 읽은 결과다. |
 | `AudioEventView` | interface | Rust audio event buffer를 TypeScript에서 해석한 결과다. |
+| `decodeRenderCommands(...)` | function | buffer 기반 render command를 deprecated object 배열 형태로 decode한다. hot path 기본 경로로 쓰지 않는다. |
+
+## 호환/저수준 export
+
+다음 API는 entrypoint에서 export되지만 일반 앱의 기본 경로는 아니다.
+
+| API | 정책 |
+| --- | --- |
+| `WebGPURenderer` | deprecated compatibility shim이다. `create()`와 render/resize는 지원하지 않는 기능임을 알리는 error를 반환한다. |
+| `generateTextureAtlasLayout(...)` | deprecated authoring helper다. 런타임 자동 texture atlas pipeline을 뜻하지 않는다. |
+| `TextureManager` | WebGL texture resource를 직접 다루는 저수준 class다. 보통 `WebGL2Renderer`를 통해 간접 사용한다. |
+| `SpriteBatch` | WebGL2 sprite batching 내부 구현 class다. 일반 게임 코드는 직접 사용할 필요가 없다. |
+| `RenderCommandView` | deprecated object command 형태다. 신규 렌더링 경로는 `RenderCommandBufferView`를 사용한다. |
+| `AudioEventBufferView` | Rust audio event buffer의 raw `Float32Array` view다. 일반 앱은 `FrameState.audioEvents` 또는 `AssetHost.playAudioEvents(...)`를 사용한다. |
+
+`packages/ferrum-web/src/workerFrameClock.ts`와 `packages/ferrum-web/src/indexedDbAssetCache.ts`에는 MVP 제외 기능의 source-level shim이 남아 있지만, 현재 package entrypoint public API로 export하지 않는다.
 
 ## RendererStats 계약
 
@@ -200,6 +227,19 @@ Invalid shooter game spec: kind=game-spec path='weapons.cooldown' detail='must b
 
 `destroy()` 이후 객체는 active runtime에 재사용하지 않는다. 새 게임 세션이나 reload 흐름에서는 `WebGL2Renderer`, `BrowserPlatformHost`, `InputManager`, `DebugOverlay`, `FerrumEngine`을 새로 만든다.
 
+## Deprecated compatibility shim
+
+MVP 제외 범위에 해당하는 일부 이전 API 이름은 기존 import와 타입 체크가 즉시 깨지는 리스크를 줄이기 위해 deprecated shim으로만 유지한다.
+
+- `createRenderer(..., { preferred: "webgpu" })`는 WebGPU를 초기화하지 않고 WebGL2로 fallback한다.
+- `WebGPURenderer.create()`는 지원하지 않는 기능임을 명확히 알리는 error를 반환한다.
+- `CreateEngineOptions.useWorkerClock`은 deprecated compatibility 옵션이며 Worker를 시작하지 않는다.
+- source-level `createWorkerFrameClock()`과 `IndexedDbAssetCache` shim은 현재 entrypoint public API가 아니다.
+- `AudioManager`의 `bgm` bus, `playBgm()`, `stopBgm()`, `setListenerPosition()`은 no-op이고, `playSpatial()`은 일반 SFX 재생으로 fallback한다.
+- `generateTextureAtlasLayout()`은 런타임 자동 atlas pipeline이 아니라 기존 authoring helper 호환용이다.
+
+새 코드는 위 API에 의존하지 않는다.
+
 ## 기본 사용 예시
 
 ```ts
@@ -273,5 +313,5 @@ engine.start();
 
 - public type이나 method를 제거하려면 먼저 deprecated 기간과 migration 경로를 문서화한다.
 - `SpriteRenderCommand`, `AudioEvent`, `RenderCommandBufferView`, `AudioEventView`의 ABI나 필드 의미가 바뀌면 Rust export, TypeScript decoder, 문서, 테스트를 함께 수정한다.
-- public API 변경 후에는 `pnpm test:web`을 실행한다.
+- public API 변경 후에는 `pnpm lint`와 `pnpm test:web`을 실행한다.
 - Wasm boundary 변경이 포함되면 `pnpm build`와 Rust 테스트도 실행한다.

@@ -273,6 +273,7 @@ Public API 테스트:
 - package entrypoint type export
 - `FrameHandler`, `InputProvider`, `ViewportProvider` callback type
 - `FerrumEngine`, `FrameState`, `Renderer`, `RendererStats`, `AssetManifest`, `ShooterGameSpec` import 경로
+- deprecated compatibility export인 `createRenderer`, `WebGPURenderer`, `generateTextureAtlasLayout` import 경로
 
 ## MVP 제외 범위
 

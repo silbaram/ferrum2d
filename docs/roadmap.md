@@ -55,12 +55,10 @@
 - renderer/audio/debug/input/engine lifecycle cleanup을 정리하고 `destroy()` 중복 호출을 no-op으로 고정
 - DebugOverlay 표시명/단위/순서와 `RendererStats` 필드 계약을 테스트와 문서로 고정
 - `pnpm smoke:check`와 `docs/smoke-check.md`로 로컬 smoke check와 브라우저 수동 확인 절차를 고정
+- CI에서 Rust test, Wasm build, TypeScript lint/test/build를 실행하도록 검증 범위를 정리
 
 후보 작업:
 
-- CI에서 TypeScript test와 lint 실행 여부 정리
-- error message와 asset/audio loading 실패 리포트 형식 표준화
-- asset loading 실패 케이스 테스트 보강
 - npm package 공개 전 파일 구성 점검
 
 진행 순서:

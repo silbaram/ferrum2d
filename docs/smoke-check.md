@@ -35,9 +35,11 @@ GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다.
 1. `pnpm install`
 2. `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
 3. `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
-4. `pnpm build`
+4. `pnpm lint`
+5. `pnpm test`
+6. `pnpm build`
 
-로컬 릴리스 후보 검증은 CI보다 넓다.
+로컬 릴리스 후보 검증은 CI 명령에 더해 Game Spec 검증과 브라우저 수동 확인을 포함한다.
 
 - `pnpm lint`로 TypeScript source/test type check를 확인한다.
 - `pnpm test`로 TypeScript Node tests와 Rust tests를 모두 실행한다.
@@ -62,23 +64,7 @@ pnpm build:wasm
 pnpm --filter @ferrum2d/topdown-shooter dev
 ```
 
-브라우저에서 Vite URL에 접속한 뒤 다음을 확인한다.
-
-1. Title 화면이 표시되고 canvas가 비어 있지 않다.
-2. DebugOverlay가 기본으로 표시되고 `fps`, `frame time`, `rust update`, `render`, `entities`, `sprites`, `draw calls`, `batches`, `render commands`, `texture binds`, `texture switches`, `audio events`, `mouse`, `camera`, `state`, `score` label을 표시한다.
-3. `?debug=false`로 다시 접속하면 DebugOverlay가 숨겨진다.
-4. Enter 또는 Space로 Title에서 Playing으로 진입한다.
-5. W/A/S/D 입력으로 player가 움직이고 camera 좌표가 `look-ahead` preset에 따라 이동 방향 앞쪽으로 변한다.
-6. `game.json`의 `atlas.frames["bullet.default"]` 설정이 적용되어 bullet이 atlas frame size/UV로 렌더링된다.
-7. `game.json`의 `tilemap.layers` 설정이 적용되어 canvas 배경에 정적 tile layer가 보인다.
-8. `collision: true` tile에 player와 enemy가 겹치면 통과하지 않고 가장 가까운 축으로 밀려난다.
-9. Mouse Left 또는 Space로 bullet이 발사된다.
-10. enemy가 `game.json`의 wave 설정에 따라 runner/bruiser 순서로 spawn되고 player 또는 world center 방향으로 이동한다.
-11. bullet이 enemy와 충돌하면 enemy가 제거되고 score가 증가한다.
-12. enemy와 player가 충돌하면 GameOver 상태가 된다.
-13. GameOver에서 Space로 새 게임이 시작되고 score가 초기화된다.
-13. shoot, hit, gameOver 효과음이 사용자 gesture 이후 재생되고 `audio.events.*`의 volume/pitch 설정이 과도하게 크거나 낮게 들리지 않는다.
-14. 새로고침 후 console에 bootstrap, asset, WebGL, audio, cleanup 관련 오류가 없다.
+브라우저에서 Vite URL에 접속한 뒤 [Top-down Shooter 수동 체크리스트](topdown-shooter-smoke-checklist.md)를 따른다. 이 문서는 자동/CI/수동 검증의 관계만 유지하고, 실제 브라우저 확인 항목은 체크리스트 문서를 기준으로 한다.
 
 ## Screenshot 갱신
 

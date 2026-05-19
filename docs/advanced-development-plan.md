@@ -316,7 +316,8 @@ pnpm build
 
 ```bash
 cargo test --manifest-path crates/ferrum-core/Cargo.toml
+pnpm lint
 pnpm test
-pnpm build
 pnpm validate:game-spec
+pnpm build
 ```

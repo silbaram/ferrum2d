@@ -1,6 +1,6 @@
 # Top-down Shooter Manual Smoke Checklist
 
-이 문서는 Ferrum2D MVP 예제(`examples/topdown-shooter`)를 수동으로 점검할 때 사용하는 최소 체크리스트다.
+이 문서는 Ferrum2D MVP 예제(`examples/topdown-shooter`)를 브라우저에서 수동 점검할 때 사용하는 기준 체크리스트다. 자동/CI 검증과의 관계는 [Smoke Check](smoke-check.md)를 따른다.
 
 ## 목적
 
@@ -9,16 +9,16 @@
 
 ## 사전 준비
 
-1. 의존성 설치
+1. 의존성 설치 또는 확인
 
 ```bash
 pnpm install
 ```
 
-2. Rust core 테스트
+2. 자동 sanity check
 
 ```bash
-cargo test --manifest-path crates/ferrum-core/Cargo.toml
+pnpm smoke:check
 ```
 
 3. Wasm 빌드
@@ -38,19 +38,23 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 ### A. 부팅/화면 진입
 
 - [ ] 브라우저에서 Vite URL 진입 시 캔버스가 깨지지 않고 표시된다.
-- [ ] Title 화면 텍스트가 보인다.
-- [ ] DebugOverlay가 표시되고 값이 갱신된다.
+- [ ] Title 화면이 표시되고 canvas가 비어 있지 않다.
+- [ ] DebugOverlay가 기본으로 표시되고 값이 갱신된다.
+- [ ] DebugOverlay에 `fps`, `frame time`, `rust update`, `render`, `entities`, `sprites`, `draw calls`, `batches`, `render commands`, `texture binds`, `texture switches`, `audio events`, `mouse`, `camera`, `state`, `score` label이 표시된다.
+- [ ] `?debug=false`로 다시 접속하면 DebugOverlay가 숨겨진다.
 
 ### B. 입력/플레이 전환
 
 - [ ] `Enter` 또는 `Space`로 Title → Playing 전환이 된다.
 - [ ] `W/A/S/D`로 플레이어 이동이 된다.
+- [ ] camera 좌표가 `look-ahead` preset에 따라 이동 방향 앞쪽으로 변한다.
 - [ ] 마우스 위치를 기준으로 발사 방향이 바뀐다.
 
 ### C. 전투/점수
 
 - [ ] 마우스 좌클릭(또는 엔진 기본 발사 입력) 시 총알이 발사된다.
-- [ ] 적이 `game.json`의 wave 순서에 따라 스폰되고 이동한다.
+- [ ] `game.json`의 `atlas.frames["bullet.default"]` 설정이 적용되어 bullet이 atlas frame size/UV로 렌더링된다.
+- [ ] 적이 `game.json`의 wave 설정에 따라 runner/bruiser 순서로 spawn되고 player 또는 world center 방향으로 이동한다.
 - [ ] 총알-적 충돌 시 적이 제거되고 score가 증가한다.
 
 ### D. 게임오버/재시작
@@ -62,6 +66,7 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 ### E. 오디오/에셋
 
 - [ ] 첫 key/pointer 입력 이후 발사/피격/game over 효과음이 정상 재생된다.
+- [ ] `audio.events.*`의 volume/pitch 설정이 과도하게 크거나 낮게 들리지 않는다.
 - [ ] 텍스처 누락(핑크/검은 사각형 등) 없이 스프라이트가 표시된다.
 - [ ] `game.json`의 정적 tilemap 배경이 표시된다.
 - [ ] `game.json`의 `collision: true` tile을 player/enemy가 통과하지 못한다.
@@ -71,6 +76,7 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 - [ ] FPS, frame time, Rust update time, render time이 숫자로 갱신된다.
 - [ ] entity/sprite count가 플레이 상태 변화(스폰/제거)에 맞게 변한다.
 - [ ] render command 수, texture bind/switch 추정치, audio events/sec가 비정상적으로 고정되지 않는다.
+- [ ] 새로고침 후 console에 bootstrap, asset, WebGL, audio, cleanup 관련 오류가 없다.
 
 ## 캡처/증적 저장
 
