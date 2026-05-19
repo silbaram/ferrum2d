@@ -601,7 +601,7 @@ impl ShooterScene {
                 self.update_camera_follow(world, camera);
                 self.update_bullets(world, delta);
                 self.spawn_enemy_if_needed(world);
-                self.handle_collisions(world, audio_events);
+                self.handle_collisions(world, audio_events, delta);
             }
         }
 
@@ -1427,9 +1427,14 @@ impl ShooterScene {
         });
     }
 
-    fn handle_collisions(&mut self, world: &mut World, audio_events: &mut Vec<AudioEvent>) {
+    fn handle_collisions(
+        &mut self,
+        world: &mut World,
+        audio_events: &mut Vec<AudioEvent>,
+        delta: f32,
+    ) {
         self.prepare_collision_scratch(world.alive.len());
-        self.handle_bullet_enemy_collisions(world, audio_events);
+        self.handle_bullet_enemy_collisions(world, audio_events, delta);
         self.handle_player_enemy_collisions(world, audio_events);
 
         for e in self.pending_despawn.drain(..) {
@@ -1447,66 +1452,51 @@ impl ShooterScene {
         &mut self,
         world: &mut World,
         audio_events: &mut Vec<AudioEvent>,
+        delta: f32,
     ) {
-        for bullet_index in 0..world.alive.len() {
+        let pairs = CollisionSystem::build_swept_layer_pairs(
+            world,
+            CollisionLayer::Bullet,
+            CollisionLayer::Enemy,
+            delta,
+        );
+        for pair in pairs {
+            let bullet_index = pair.a.id as usize;
+            let enemy_index = pair.b.id as usize;
             if !self.is_alive_layer(world, bullet_index, CollisionLayer::Bullet)
                 || self.marked_for_despawn[bullet_index]
             {
                 continue;
             }
-            let Some(bullet_transform) = world.transforms[bullet_index] else {
+            if !self.is_alive_layer(world, enemy_index, CollisionLayer::Enemy)
+                || self.marked_for_despawn[enemy_index]
+            {
                 continue;
-            };
-            let Some(bullet_collider) = world.colliders[bullet_index] else {
-                continue;
-            };
-
-            for enemy_index in 0..world.alive.len() {
-                if !self.is_alive_layer(world, enemy_index, CollisionLayer::Enemy)
-                    || self.marked_for_despawn[enemy_index]
-                {
-                    continue;
-                }
-                let Some(enemy_transform) = world.transforms[enemy_index] else {
-                    continue;
-                };
-                let Some(enemy_collider) = world.colliders[enemy_index] else {
-                    continue;
-                };
-                if !CollisionSystem::overlaps(
-                    bullet_transform,
-                    bullet_collider,
-                    enemy_transform,
-                    enemy_collider,
-                ) {
-                    continue;
-                }
-
-                self.marked_for_despawn[bullet_index] = true;
-                self.pending_despawn.push(Entity {
-                    id: bullet_index as u32,
-                    generation: world.generations[bullet_index],
-                });
-                let damage = world.damages[bullet_index].unwrap_or(DEFAULT_BULLET_DAMAGE);
-                let health = world.healths[enemy_index].get_or_insert(DEFAULT_ENEMY_HEALTH);
-                *health -= damage;
-                if *health <= 0.0 {
-                    self.marked_for_despawn[enemy_index] = true;
-                    self.pending_despawn.push(Entity {
-                        id: enemy_index as u32,
-                        generation: world.generations[enemy_index],
-                    });
-                    let reward = world.score_rewards[enemy_index].unwrap_or(DEFAULT_SCORE_REWARD);
-                    self.score = self.score.saturating_add(reward);
-                }
-                self.push_audio_event(
-                    audio_events,
-                    self.sound_ids.hit,
-                    self.config.audio_policy.hit_volume,
-                    self.config.audio_policy.hit_pitch,
-                );
-                break;
             }
+
+            self.marked_for_despawn[bullet_index] = true;
+            self.pending_despawn.push(Entity {
+                id: bullet_index as u32,
+                generation: world.generations[bullet_index],
+            });
+            let damage = world.damages[bullet_index].unwrap_or(DEFAULT_BULLET_DAMAGE);
+            let health = world.healths[enemy_index].get_or_insert(DEFAULT_ENEMY_HEALTH);
+            *health -= damage;
+            if *health <= 0.0 {
+                self.marked_for_despawn[enemy_index] = true;
+                self.pending_despawn.push(Entity {
+                    id: enemy_index as u32,
+                    generation: world.generations[enemy_index],
+                });
+                let reward = world.score_rewards[enemy_index].unwrap_or(DEFAULT_SCORE_REWARD);
+                self.score = self.score.saturating_add(reward);
+            }
+            self.push_audio_event(
+                audio_events,
+                self.sound_ids.hit,
+                self.config.audio_policy.hit_volume,
+                self.config.audio_policy.hit_pitch,
+            );
         }
     }
 
@@ -1524,42 +1514,29 @@ impl ShooterScene {
         {
             return;
         }
-        let Some(player_transform) = world.transforms[player_index] else {
-            return;
-        };
-        let Some(player_collider) = world.colliders[player_index] else {
-            return;
-        };
-
-        for enemy_index in 0..world.alive.len() {
-            if !self.is_alive_layer(world, enemy_index, CollisionLayer::Enemy)
+        let pairs = CollisionSystem::build_layer_pairs(
+            world,
+            CollisionLayer::Player,
+            CollisionLayer::Enemy,
+        );
+        for pair in pairs {
+            let enemy_index = pair.b.id as usize;
+            if pair.a != player
+                || !self.is_alive_layer(world, enemy_index, CollisionLayer::Enemy)
                 || self.marked_for_despawn[enemy_index]
             {
                 continue;
             }
-            let Some(enemy_transform) = world.transforms[enemy_index] else {
-                continue;
-            };
-            let Some(enemy_collider) = world.colliders[enemy_index] else {
-                continue;
-            };
-            if CollisionSystem::overlaps(
-                player_transform,
-                player_collider,
-                enemy_transform,
-                enemy_collider,
-            ) {
-                if self.game_state != GameState::GameOver {
-                    self.game_state = GameState::GameOver;
-                    self.push_audio_event(
-                        audio_events,
-                        self.sound_ids.game_over,
-                        self.config.audio_policy.game_over_volume,
-                        self.config.audio_policy.game_over_pitch,
-                    );
-                }
-                break;
+            if self.game_state != GameState::GameOver {
+                self.game_state = GameState::GameOver;
+                self.push_audio_event(
+                    audio_events,
+                    self.sound_ids.game_over,
+                    self.config.audio_policy.game_over_volume,
+                    self.config.audio_policy.game_over_pitch,
+                );
             }
+            break;
         }
     }
 
@@ -1710,7 +1687,28 @@ mod tests {
         let b = world.spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
         let e = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
+
+        assert!(!world.alive[b.id as usize]);
+        assert!(!world.alive[e.id as usize]);
+        assert_eq!(scene.score(), 1);
+    }
+
+    #[test]
+    fn fast_bullet_enemy_collision_uses_swept_physics() {
+        let (mut scene, mut world, _, mut audio_events) = playing_scene();
+        let b = world.spawn_bullet(0.0, 50.0, 1000.0, 0.0, DEFAULT_TEXTURE_ID);
+        let e = world.spawn_enemy(50.0, 50.0, DEFAULT_TEXTURE_ID);
+
+        world.update(0.1);
+        assert!(!CollisionSystem::overlaps(
+            world.transforms[b.id as usize].unwrap(),
+            world.colliders[b.id as usize].unwrap(),
+            world.transforms[e.id as usize].unwrap(),
+            world.colliders[e.id as usize].unwrap(),
+        ));
+
+        scene.handle_collisions(&mut world, &mut audio_events, 0.1);
 
         assert!(!world.alive[b.id as usize]);
         assert!(!world.alive[e.id as usize]);
@@ -1731,7 +1729,7 @@ mod tests {
             scene.config.score_reward,
         );
 
-        scene.handle_collisions(&mut world, &mut audio_events);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
 
         assert!(!world.alive[b.id as usize]);
         assert!(world.alive[e.id as usize]);
@@ -1760,7 +1758,7 @@ mod tests {
             scene.config.score_reward,
         );
 
-        scene.handle_collisions(&mut world, &mut audio_events);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
 
         assert!(!world.alive[b.id as usize]);
         assert!(!world.alive[e.id as usize]);
@@ -1774,7 +1772,7 @@ mod tests {
         let first_enemy = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
         let second_enemy = world.spawn_enemy(54.0, 50.0, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
 
         assert!(!world.alive[bullet.id as usize]);
         assert!(!world.alive[first_enemy.id as usize]);
@@ -1789,7 +1787,7 @@ mod tests {
         let pt = world.transforms[player.id as usize].unwrap();
         world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
 
         assert_eq!(scene.game_state(), GameState::GameOver);
     }
@@ -2337,7 +2335,7 @@ mod tests {
         let b = world.spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
         let e = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
 
         assert!(!world.alive[b.id as usize]);
         assert!(!world.alive[e.id as usize]);
@@ -2353,8 +2351,8 @@ mod tests {
         let pt = world.transforms[player.id as usize].unwrap();
         world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events);
-        scene.handle_collisions(&mut world, &mut audio_events);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
 
         assert_eq!(scene.game_state(), GameState::GameOver);
         assert_eq!(audio_events.len(), 1);

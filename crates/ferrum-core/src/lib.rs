@@ -16,7 +16,7 @@ pub mod world;
 
 pub use audio_event::AudioEvent;
 pub use camera::{Camera2D, CameraPreset, CameraPresetConfig};
-pub use collision::{CollisionPair, CollisionSystem};
+pub use collision::{AabbBounds, CollisionPair, CollisionSystem, SweptAabbHit};
 pub use components::{
     AabbCollider, CollisionLayer, Sprite, SpriteAnimation, SpriteAnimationKind,
     SpriteAnimationState, SpriteFrame, Transform2D, Velocity,

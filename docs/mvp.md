@@ -12,6 +12,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 - Camera preset 기반 2D camera와 viewport size 전달
 - MVP 2D physics: velocity integration, collider 기반 world bounds clamp
 - AABB collision
+- Scoped Physics v2: broadphase layer pair, swept AABB, 빠른 bullet/enemy 터널링 방지
 - Render command buffer 기반 Rust -> TypeScript bulk 전달
 - WebGL2 sprite rendering
 - Keyboard/mouse input
@@ -71,6 +72,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 | Input | 완료 | keyboard/mouse snapshot |
 | World/Entity | 완료 | entity id, generation, despawn |
 | AABB collision | 완료 | overlap pair와 shooter collision 처리 |
+| Scoped Physics v2 | 완료 | sweep-and-prune broadphase, layer pair query, swept AABB, 빠른 bullet/enemy 터널링 방지 |
 | Shooter game logic | 완료 | movement, fire, spawn, chase, score, game over |
 | Scene state | 완료 | Title, Playing, GameOver, restart |
 | AssetLoader | 완료 | textures, sounds, JSON manifest |

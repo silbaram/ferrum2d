@@ -138,6 +138,7 @@ v0.3에서 하지 않을 것:
 - lightweight navigation grid (완료)
 - navigation v1 범위: 2D grid A*, obstacle layer 연동, 적이 장애물을 우회해 player를 추적하는 예제 (완료)
 - navigation v1 비범위: 연속 공간 회피, crowd simulation, navmesh, 복잡한 steering
+- scoped Physics v2 (완료): sweep-and-prune broadphase, layer pair query, swept AABB, 빠른 bullet/enemy 터널링 방지
 - engine extension point 문서화 (부분 완료: TypeScript platform lifecycle hook)
 - extension point 후보: Rust-side init/update hook, TypeScript platform lifecycle hook (완료), bulk-buffer render-prep extension
 - extension point 원칙: Rust/TypeScript 책임 경계 유지, hot path에서 entity별 JS/Wasm 호출과 TypeScript simulation update hook 금지
@@ -152,6 +153,7 @@ v0.3에서 하지 않을 것:
 - WebGL2 실제 렌더링 smoke automation 가능성 검토
 - docs site 또는 GitHub Pages 데모 배포 검토
 - package publish 여부와 release tagging 절차 정리
+- Physics v3 설계 검토: rigid body solver 또는 외부 physics crate 도입 여부 판단
 
 ## 장기 후보
 

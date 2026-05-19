@@ -10,6 +10,7 @@
 | [아키텍처](architecture.md) | Rust core, Wasm 경계, TypeScript platform layer, WebGL2 renderer 책임을 고정한다. |
 | [Public API](public-api.md) | `@ferrum2d/ferrum-web` entrypoint에서 import 가능한 계약과 deprecated 호환 정책을 정리한다. |
 | [Game Spec](game-spec.md) | `examples/topdown-shooter/public/game.json` 구조, 필드, 기본값, 검증 규칙의 상세 기준이다. |
+| [Physics v2 범위](physics-v2.md) | post-MVP 물리 고도화의 포함/제외 범위, 실행 예제, 검증 기준이다. |
 | [MVP 범위](mvp.md) | 현재 MVP 포함/제외 범위와 완료 기준을 정리한다. |
 | [Smoke Check](smoke-check.md) | 자동 검증, CI 검증, 브라우저 수동 검증의 관계를 설명한다. |
 | [Top-down Shooter 수동 체크리스트](topdown-shooter-smoke-checklist.md) | 브라우저에서 실제 예제를 점검할 때 쓰는 상세 체크리스트다. |
