@@ -22,19 +22,6 @@ class FakeGainNode {
   connect(): void {}
 }
 
-class FakePannerNode {
-  panningModel: "HRTF" | "equalpower" = "HRTF";
-  distanceModel: "inverse" | "linear" | "exponential" = "inverse";
-  refDistance = 1;
-  maxDistance = 10000;
-  rolloffFactor = 1;
-  positionX = new FakeAudioParam();
-  positionY = new FakeAudioParam();
-  positionZ = new FakeAudioParam();
-
-  connect(): void {}
-}
-
 class FakeBufferSource {
   buffer?: AudioBuffer;
   loop = false;
@@ -66,7 +53,6 @@ class FakeAudioContext {
   decodeAudioData = async (): Promise<AudioBuffer> => ({}) as AudioBuffer;
   createBufferSource(): AudioBufferSourceNode { return new FakeBufferSource() as unknown as AudioBufferSourceNode; }
   createGain(): GainNode { return new FakeGainNode() as unknown as GainNode; }
-  createPanner(): PannerNode { return new FakePannerNode() as unknown as PannerNode; }
   resume = async (): Promise<void> => {
     this.state = "running";
   };
@@ -125,7 +111,7 @@ test("AudioManager reports missing playback buffers with diagnostic context", ()
   throw new Error("Expected play() to throw.");
 });
 
-test("AudioManager exposes mixer/bgm/spatial controls", () => {
+test("AudioManager exposes MVP master and sfx bus controls", () => {
   const globalWindow = globalThis as unknown as { window?: TestWindow };
   if (!globalWindow.window) globalWindow.window = {};
   const previous = globalWindow.window.AudioContext;
@@ -133,10 +119,12 @@ test("AudioManager exposes mixer/bgm/spatial controls", () => {
   const manager = new AudioManager();
 
   try {
-    manager.setListenerPosition(10, 20, 3);
     manager.setBusVolume("master", 0.8);
     manager.setBusVolume("bgm", 0.5);
     manager.setBusVolume("sfx", 0.7);
+    manager.setListenerPosition(10, 20, 3);
+    manager.playBgm(1);
+    manager.stopBgm();
     ok(true);
   } finally {
     manager.destroy();

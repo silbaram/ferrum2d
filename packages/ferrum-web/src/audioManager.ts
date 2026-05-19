@@ -9,6 +9,17 @@ interface WindowWithWebkitAudioContext extends Window {
   webkitAudioContext?: AudioContextConstructor;
 }
 
+/** @deprecated "bgm" bus는 현재 MVP 범위 밖이며 호환 no-op입니다. */
+export type AudioBus = "master" | "bgm" | "sfx";
+
+export interface AudioManagerConfig {
+  masterVolume?: number;
+  /** @deprecated BGM은 현재 MVP 범위 밖이며 호환 no-op입니다. */
+  bgmVolume?: number;
+  sfxVolume?: number;
+}
+
+/** @deprecated spatial audio는 현재 MVP 범위 밖이며 playSpatial은 SFX 재생으로 fallback합니다. */
 export interface SpatialAudioOptions {
   x: number;
   y: number;
@@ -18,25 +29,12 @@ export interface SpatialAudioOptions {
   rolloffFactor?: number;
 }
 
-export type AudioBus = "master" | "bgm" | "sfx";
-
-export interface AudioManagerConfig {
-  masterVolume?: number;
-  bgmVolume?: number;
-  sfxVolume?: number;
-}
-
 export class AudioManager {
   private readonly buffersById = new Map<number, AudioBuffer>();
   private readonly assetLoader = new AudioAssetLoader(() => this.audioContext());
   private context?: AudioContext;
   private masterGain?: GainNode;
-  private bgmGain?: GainNode;
   private sfxGain?: GainNode;
-  private listenerX = 0;
-  private listenerY = 0;
-  private listenerZ = 0;
-  private bgmSource?: AudioBufferSourceNode;
   private destroyed = false;
 
   async loadSound(soundId: number, url: string): Promise<AudioBuffer> {
@@ -49,13 +47,16 @@ export class AudioManager {
 
   setBusVolume(bus: AudioBus, volume: number): void {
     this.assertAlive();
+    if (bus === "bgm") {
+      return;
+    }
+
     const gain = Math.max(0, volume);
     const context = this.audioContext();
     const mixer = this.ensureMixer(context);
     const now = context.currentTime;
 
     if (bus === "master") mixer.master.gain.setValueAtTime(gain, now);
-    if (bus === "bgm") mixer.bgm.gain.setValueAtTime(gain, now);
     if (bus === "sfx") mixer.sfx.gain.setValueAtTime(gain, now);
   }
 
@@ -105,89 +106,24 @@ export class AudioManager {
     source.start();
   }
 
-  playSpatial(soundId: number, spatial: SpatialAudioOptions, volume = 1.0, pitch = 1.0): void {
-    this.assertAlive();
-    if (soundId <= 0) {
-      return;
-    }
-
-    const buffer = this.requireBuffer(soundId);
-    const context = this.audioContext();
-    const mixer = this.ensureMixer(context);
-    const source = context.createBufferSource();
-    const gain = context.createGain();
-    const panner = context.createPanner();
-
-    source.buffer = buffer;
-    source.playbackRate.value = Math.max(0.01, pitch);
-    gain.gain.value = Math.max(0.0, volume);
-
-    panner.panningModel = "HRTF";
-    panner.distanceModel = "inverse";
-    panner.refDistance = spatial.refDistance ?? 96;
-    panner.maxDistance = spatial.maxDistance ?? 2400;
-    panner.rolloffFactor = spatial.rolloffFactor ?? 1.2;
-    panner.positionX.value = spatial.x;
-    panner.positionY.value = spatial.y;
-    panner.positionZ.value = spatial.z ?? 0;
-
-    source.connect(gain);
-    gain.connect(panner);
-    panner.connect(mixer.sfx);
-
-    this.resumeIfSuspended(context);
-    source.start();
+  /** @deprecated spatial audio는 현재 MVP 범위 밖이며 일반 SFX로 재생합니다. */
+  playSpatial(soundId: number, _spatial: SpatialAudioOptions, volume = 1.0, pitch = 1.0): void {
+    this.playSfx(soundId, volume, pitch);
   }
 
-  playBgm(soundId: number, options: { volume?: number; loop?: boolean; fadeInSeconds?: number } = {}): void {
+  /** @deprecated BGM은 현재 MVP 범위 밖이며 호환 no-op입니다. */
+  playBgm(_soundId: number, _options: { volume?: number; loop?: boolean; fadeInSeconds?: number } = {}): void {
     this.assertAlive();
-    if (soundId <= 0) {
-      return;
-    }
-
-    const buffer = this.requireBuffer(soundId);
-    const context = this.audioContext();
-    const mixer = this.ensureMixer(context);
-
-    this.stopBgmInternal(0);
-
-    const source = context.createBufferSource();
-    source.buffer = buffer;
-    source.loop = options.loop ?? true;
-
-    const fade = Math.max(0, options.fadeInSeconds ?? 0);
-    const volume = Math.max(0, options.volume ?? 1);
-    const now = context.currentTime;
-
-    mixer.bgm.gain.cancelScheduledValues(now);
-    if (fade > 0) {
-      mixer.bgm.gain.setValueAtTime(0, now);
-      mixer.bgm.gain.linearRampToValueAtTime(volume, now + fade);
-    } else {
-      mixer.bgm.gain.setValueAtTime(volume, now);
-    }
-
-    source.connect(mixer.bgm);
-    this.resumeIfSuspended(context);
-    source.start();
-    this.bgmSource = source;
   }
 
-  stopBgm(options: { fadeOutSeconds?: number } = {}): void {
+  /** @deprecated BGM은 현재 MVP 범위 밖이며 호환 no-op입니다. */
+  stopBgm(_options: { fadeOutSeconds?: number } = {}): void {
     this.assertAlive();
-    this.stopBgmInternal(options.fadeOutSeconds ?? 0);
   }
 
-  setListenerPosition(x: number, y: number, z = 0): void {
+  /** @deprecated spatial audio는 현재 MVP 범위 밖이며 호환 no-op입니다. */
+  setListenerPosition(_x: number, _y: number, _z = 0): void {
     this.assertAlive();
-    this.listenerX = x;
-    this.listenerY = y;
-    this.listenerZ = z;
-
-    const context = this.audioContext();
-    context.listener.positionX.value = x;
-    context.listener.positionY.value = y;
-    context.listener.positionZ.value = z;
   }
 
   playEvents(events: readonly AudioEventView[]): void {
@@ -201,40 +137,14 @@ export class AudioManager {
     if (this.destroyed) {
       return;
     }
-    this.stopBgmInternal(0);
     this.destroyed = true;
     const context = this.context;
     this.context = undefined;
     this.masterGain = undefined;
-    this.bgmGain = undefined;
     this.sfxGain = undefined;
     this.buffersById.clear();
     if (context && context.state !== "closed") {
       void context.close().catch(() => undefined);
-    }
-  }
-
-  private stopBgmInternal(fadeOutSeconds: number): void {
-    if (!this.bgmSource || !this.context || !this.bgmGain) {
-      return;
-    }
-
-    const fade = Math.max(0, fadeOutSeconds);
-    const now = this.context.currentTime;
-    const source = this.bgmSource;
-
-    try {
-      if (fade > 0) {
-        this.bgmGain.gain.cancelScheduledValues(now);
-        this.bgmGain.gain.setValueAtTime(this.bgmGain.gain.value, now);
-        this.bgmGain.gain.linearRampToValueAtTime(0, now + fade);
-        source.stop(now + fade);
-      } else {
-        source.stop();
-        this.bgmGain.gain.setValueAtTime(0, now);
-      }
-    } finally {
-      this.bgmSource = undefined;
     }
   }
 
@@ -266,28 +176,24 @@ export class AudioManager {
     }
 
     this.context = new constructor();
-    this.setListenerPosition(this.listenerX, this.listenerY, this.listenerZ);
     return this.context;
   }
 
-  private ensureMixer(context: AudioContext): { master: GainNode; bgm: GainNode; sfx: GainNode } {
-    if (this.masterGain && this.bgmGain && this.sfxGain) {
-      return { master: this.masterGain, bgm: this.bgmGain, sfx: this.sfxGain };
+  private ensureMixer(context: AudioContext): { master: GainNode; sfx: GainNode } {
+    if (this.masterGain && this.sfxGain) {
+      return { master: this.masterGain, sfx: this.sfxGain };
     }
 
     this.masterGain = context.createGain();
-    this.bgmGain = context.createGain();
     this.sfxGain = context.createGain();
 
     this.masterGain.gain.value = 1;
-    this.bgmGain.gain.value = 1;
     this.sfxGain.gain.value = 1;
 
-    this.bgmGain.connect(this.masterGain);
     this.sfxGain.connect(this.masterGain);
     this.masterGain.connect(context.destination);
 
-    return { master: this.masterGain, bgm: this.bgmGain, sfx: this.sfxGain };
+    return { master: this.masterGain, sfx: this.sfxGain };
   }
 
   private resumeIfSuspended(context: AudioContext): void {

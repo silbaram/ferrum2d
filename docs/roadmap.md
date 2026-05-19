@@ -92,10 +92,11 @@ v0.2에서 하지 않을 것:
 - 카메라 계산은 Rust core가 담당하고 TypeScript는 viewport 전달과 renderer 적용만 담당 (완료)
 - texture atlas metadata 포맷 설계와 작은 수동 atlas 예제 검토 (완료)
 - atlas metadata 범위: frame name, texture id/name, UV/rect, frame size 검증 (완료)
-- data-driven scene spec 확장 검토 (부분 완료: enemy preset + wave timeline + static tilemap)
-- scene spec 후보: spawn table, wave/event timeline, animation binding (부분 완료: spawn/wave/static tilemap)
+- data-driven scene spec 확장 검토 (부분 완료: enemy preset + wave timeline + static tilemap + navigation grid)
+- scene spec 후보: spawn table, wave/event timeline, animation binding (부분 완료: spawn/wave/static tilemap/navigation)
 - tilemap runtime 최소 기능 설계 (완료)
-- tilemap v1 범위: 정적 tile layer 렌더링, tile id -> UV 매핑, collision layer의 AABB 변환은 완료. navigation 연동은 후속
+- tilemap v1 범위: 정적 tile layer 렌더링, tile id -> UV 매핑, collision layer의 AABB 변환은 완료
+- navigation grid v1 범위: `collision: true` layer를 chase enemy 4방향 grid navigation 장애물로 재사용하고, 경로가 없으면 direct chase로 fallback (완료)
 - atlas/tilemap/scene spec 경계: TypeScript는 JSON/name/asset 검증과 id 해석을 담당하고, Rust는 숫자형 또는 buffer 설정을 받아 collision/render command를 생성한다.
 - atlas/tilemap/scene spec hot path에서는 tile/entity별 JS/Wasm 왕복 호출을 만들지 않는다.
 - tilemap v1 비범위: 내장 editor, 자동 타일링, isometric/hex tilemap, 복잡한 per-tile script
@@ -129,8 +130,8 @@ v0.3에서 하지 않을 것:
 - lightweight navigation grid
 - navigation v1 범위: 2D grid A*, obstacle layer 연동, 적이 장애물을 우회해 player를 추적하는 예제
 - navigation v1 비범위: 연속 공간 회피, crowd simulation, navmesh, 복잡한 steering
-- engine extension point 문서화
-- extension point 후보: Rust-side init/update hook, TypeScript platform lifecycle hook, bulk-buffer render-prep extension
+- engine extension point 문서화 (부분 완료: TypeScript platform lifecycle hook)
+- extension point 후보: Rust-side init/update hook, TypeScript platform lifecycle hook (완료), bulk-buffer render-prep extension
 - extension point 원칙: Rust/TypeScript 책임 경계 유지, hot path에서 entity별 JS/Wasm 호출과 TypeScript simulation update hook 금지
 - asset/audio 오류 진단 강화
 - 오류 진단 범위: v0.2 표준 에러 메시지 위에 에러 코드, 실패 리포트 수집, 예제 표시 방식을 추가

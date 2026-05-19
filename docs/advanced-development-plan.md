@@ -244,9 +244,16 @@ v0.4 이후는 콘텐츠 제작 기반 위에 런타임 기능을 보강한다. 
 
 범위:
 
-- 2D grid A*
-- obstacle layer 연동
-- 적이 장애물을 우회해 player를 추적하는 예제
+- 2D grid A* (완료)
+- obstacle layer 연동 (완료)
+- 적이 장애물을 우회해 player를 추적하는 예제 (Rust 단위 테스트로 완료)
+
+완료 내용:
+
+- Rust `Tilemap`이 `collision: true` layer를 4방향 navigation grid로 해석한다.
+- `EnemyBehavior::Chase`는 navigation waypoint가 있으면 해당 waypoint를 향해 이동하고, 경로가 없으면 기존 direct chase를 유지한다.
+- `ShooterScene`은 enemy id/generation별 navigation target cache와 짧은 repath interval을 사용해 매 프레임 A* 재계산을 피한다.
+- Game Spec에는 새 필드를 추가하지 않고 기존 tilemap collision 계약을 확장했다.
 
 비범위:
 
@@ -260,8 +267,14 @@ v0.4 이후는 콘텐츠 제작 기반 위에 런타임 기능을 보강한다. 
 범위:
 
 - Rust-side init/update hook 후보 정리
-- TypeScript platform lifecycle hook 후보 정리
+- TypeScript platform lifecycle hook 후보 정리 (완료)
 - bulk-buffer render-prep extension 후보 정리
+
+완료 내용:
+
+- `CreateEngineOptions.lifecycle`과 `EngineLifecycleHooks`를 추가했다.
+- `FerrumEngine.start/pause/resume/stop/destroy`가 실제 상태 전환을 수행할 때 platform lifecycle callback을 호출한다.
+- hook에는 읽기 전용 snapshot만 전달하고 Rust engine handle, raw buffer, simulation mutation API는 노출하지 않는다.
 
 제약:
 

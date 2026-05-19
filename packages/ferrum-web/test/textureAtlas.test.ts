@@ -6,7 +6,7 @@ function overlaps(a: { x: number; y: number; width: number; height: number }, b:
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
-test("generateTextureAtlasLayout packs sprites without overlap and creates UVs", () => {
+test("generateTextureAtlasLayout remains available as deprecated compatibility helper", () => {
   const layout = generateTextureAtlasLayout([
     { name: "player", width: 64, height: 64 },
     { name: "enemy", width: 32, height: 32 },

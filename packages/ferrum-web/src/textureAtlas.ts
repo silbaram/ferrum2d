@@ -1,9 +1,11 @@
+/** @deprecated 자동 texture atlas pipeline은 현재 MVP 범위 밖입니다. 호환용 authoring helper입니다. */
 export interface AtlasSpriteInput {
   name: string;
   width: number;
   height: number;
 }
 
+/** @deprecated 자동 texture atlas pipeline은 현재 MVP 범위 밖입니다. 호환용 authoring helper입니다. */
 export interface AtlasSpritePlacement {
   name: string;
   x: number;
@@ -16,12 +18,14 @@ export interface AtlasSpritePlacement {
   v1: number;
 }
 
+/** @deprecated 자동 texture atlas pipeline은 현재 MVP 범위 밖입니다. 호환용 authoring helper입니다. */
 export interface TextureAtlasLayout {
   width: number;
   height: number;
   sprites: AtlasSpritePlacement[];
 }
 
+/** @deprecated 자동 texture atlas pipeline은 현재 MVP 범위 밖입니다. 호환용 authoring helper입니다. */
 export interface TextureAtlasOptions {
   padding?: number;
   maxSize?: number;
@@ -45,6 +49,7 @@ function overlaps(a: AtlasSpritePlacement, b: AtlasSpritePlacement): boolean {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
+/** @deprecated 자동 texture atlas pipeline은 현재 MVP 범위 밖입니다. 호환용 authoring helper입니다. */
 export function generateTextureAtlasLayout(inputs: readonly AtlasSpriteInput[], options: TextureAtlasOptions = {}): TextureAtlasLayout {
   if (inputs.length === 0) {
     return { width: 1, height: 1, sprites: [] };

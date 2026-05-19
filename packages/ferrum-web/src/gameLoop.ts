@@ -1,23 +1,14 @@
-import { createWorkerFrameClock, type FrameClock } from "./workerFrameClock.js";
-
 export type FrameCallback = (deltaSeconds: number) => void;
-
-export interface GameLoopOptions {
-  useWorkerClock?: boolean;
-  frameClockFactory?: () => FrameClock | null;
-}
 
 export class GameLoop {
   private rafId: number | null = null;
   private running = false;
   private paused = false;
   private lastTimestampMs: number | null = null;
-  private frameClock: FrameClock | null = null;
 
   constructor(
     private readonly onFrame: FrameCallback,
     private readonly maxDeltaSeconds = 0.05,
-    private readonly options: GameLoopOptions = {},
   ) {}
 
   start(): void {
@@ -26,7 +17,6 @@ export class GameLoop {
     this.paused = false;
     this.lastTimestampMs = null;
 
-    if (this.tryStartWorkerClock()) return;
     this.scheduleNextFrame();
   }
 
@@ -34,7 +24,6 @@ export class GameLoop {
     if (!this.running || this.paused) return;
     this.paused = true;
     this.clearRaf();
-    this.stopWorkerClock();
   }
 
   resume(): void {
@@ -42,7 +31,6 @@ export class GameLoop {
     this.paused = false;
     this.lastTimestampMs = null;
 
-    if (this.tryStartWorkerClock()) return;
     this.scheduleNextFrame();
   }
 
@@ -51,36 +39,10 @@ export class GameLoop {
     this.paused = false;
     this.lastTimestampMs = null;
     this.clearRaf();
-    this.stopWorkerClock();
   }
 
   isRunning(): boolean {
     return this.running && !this.paused;
-  }
-
-  private tryStartWorkerClock(): boolean {
-    if (!this.options.useWorkerClock) return false;
-
-    const workerClock = this.options.frameClockFactory?.() ?? createWorkerFrameClock();
-    if (!workerClock) {
-      console.warn("[Ferrum2D] Worker clock를 사용할 수 없어 requestAnimationFrame으로 fallback합니다.");
-      return false;
-    }
-    this.frameClock = workerClock;
-    workerClock.start((timestampMs) => this.tick(timestampMs), () => this.handleWorkerClockError());
-    return true;
-  }
-
-  private stopWorkerClock(): void {
-    this.frameClock?.stop();
-    this.frameClock = null;
-  }
-
-  private handleWorkerClockError(): void {
-    this.frameClock = null;
-    if (!this.running || this.paused) return;
-    this.lastTimestampMs = null;
-    this.scheduleNextFrame();
   }
 
   private clearRaf(): void {
@@ -102,14 +64,14 @@ export class GameLoop {
 
     if (this.lastTimestampMs === null) {
       this.lastTimestampMs = timestampMs;
-      if (!this.frameClock) this.scheduleNextFrame();
+      this.scheduleNextFrame();
       return;
     }
 
     const rawDeltaSeconds = (timestampMs - this.lastTimestampMs) / 1000;
     if (!Number.isFinite(rawDeltaSeconds) || rawDeltaSeconds < 0) {
       this.lastTimestampMs = timestampMs;
-      if (!this.frameClock) this.scheduleNextFrame();
+      this.scheduleNextFrame();
       return;
     }
 
@@ -117,6 +79,6 @@ export class GameLoop {
 
     this.lastTimestampMs = timestampMs;
     this.onFrame(deltaSeconds);
-    if (!this.frameClock) this.scheduleNextFrame();
+    this.scheduleNextFrame();
   }
 }

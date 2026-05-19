@@ -78,7 +78,9 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 | Camera Preset | 완료 | follow, dead-zone, look-ahead, time-based shake |
 | Sprite Animation | 완료 | player/enemy/bullet prefab별 horizontal sprite sheet frames/fps 및 idle/move state row 설정, Rust UV 갱신 |
 | Texture Atlas Metadata | 완료 | `atlas.frames`와 `prefabs.*.frame` 기반 static frame UV/size/texture 설정, render command ABI 유지 |
-| Tilemap Runtime v1 | 완료 | `tilemap` 기반 정적 tile layer 렌더링과 player/enemy용 collision layer AABB 장애물 지원. navigation 연동은 후속 |
+| Tilemap Runtime v1 | 완료 | `tilemap` 기반 정적 tile layer 렌더링과 player/enemy용 collision layer AABB 장애물 지원 |
+| Navigation Grid v1 | 완료 | `collision: true` layer를 chase enemy 4방향 grid navigation 장애물로 사용. target cache와 repath interval로 A* 재계산을 제한하고, 경로가 없으면 direct chase 유지 |
+| Engine Lifecycle Hooks | 완료 | `CreateEngineOptions.lifecycle`로 start/pause/resume/stop/destroy platform callback 제공. simulation mutation hook은 제공하지 않음 |
 | Game Spec CLI | 완료 | `pnpm validate:game-spec`로 예제 JSON 검증 |
 | Agent workflow | 완료 | game designer skill, agent workflow, review checklist, variant CLI |
 | AudioManager | 완료 | Web Audio 기반 효과음 재생, bus volume, user gesture unlock |

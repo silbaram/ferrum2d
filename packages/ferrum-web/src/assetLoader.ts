@@ -1,5 +1,5 @@
 import { assetLoadError, describeError } from "./diagnostics.js";
-import { IndexedDbAssetCache, type JsonAssetCache } from "./indexedDbAssetCache.js";
+import type { JsonAssetCache } from "./indexedDbAssetCache.js";
 import { SoundRegistry } from "./soundRegistry.js";
 import { TextureRegistry } from "./textureRegistry.js";
 
@@ -40,7 +40,7 @@ export class AssetLoader {
     private readonly audioManager?: SoundAssetManager,
     private readonly textureRegistry = new TextureRegistry(),
     private readonly soundRegistry = new SoundRegistry(),
-    private readonly cache: JsonAssetCache = new IndexedDbAssetCache(),
+    private readonly cache?: JsonAssetCache,
     private readonly cacheVersion = "v1",
     private readonly cacheTtlMs = 24 * 60 * 60 * 1000,
   ) {}
@@ -115,8 +115,9 @@ export class AssetLoader {
     return this.soundRegistry;
   }
 
-  invalidateJsonCache(url: string): Promise<void> {
-    return this.cache.invalidateJson(url, { version: this.cacheVersion });
+  /** @deprecated IndexedDB asset cache는 현재 MVP 범위 밖입니다. 주입된 cache가 있을 때만 위임합니다. */
+  async invalidateJsonCache(url: string): Promise<void> {
+    await this.cache?.invalidateJson(url, { version: this.cacheVersion });
   }
 
   private async loadSound(name: string, soundId: number, url: string): Promise<void> {
@@ -142,8 +143,8 @@ export class AssetLoader {
   }
 
   private async loadJson(name: string, url: string): Promise<unknown> {
-    const cached = await this.cache.getJson(url, { version: this.cacheVersion });
-    if (cached !== null) {
+    const cached = await this.cache?.getJson(url, { version: this.cacheVersion });
+    if (cached !== undefined && cached !== null) {
       return cached;
     }
 
@@ -169,7 +170,7 @@ export class AssetLoader {
 
     try {
       const parsed = await response.json();
-      await this.cache.setJson(url, parsed, {
+      await this.cache?.setJson(url, parsed, {
         version: this.cacheVersion,
         ttlMs: this.cacheTtlMs,
         etag: response.headers?.get("etag") ?? undefined,
