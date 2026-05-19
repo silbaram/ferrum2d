@@ -15,6 +15,7 @@ export interface ShooterGameSpec {
     spawnPattern?: ShooterEnemySpawnPatternPreset;
     health?: number;
     scoreReward?: number;
+    orbit?: ShooterEnemyOrbitSpec;
     presets?: Record<string, ShooterEnemyPresetSpec>;
     waves?: ShooterWaveSpec[];
   };
@@ -41,6 +42,11 @@ export interface ShooterEnemyPresetSpec {
   spawnPattern?: ShooterEnemySpawnPatternPreset;
   health?: number;
   scoreReward?: number;
+}
+
+export interface ShooterEnemyOrbitSpec {
+  radius?: number;
+  radialBand?: number;
 }
 
 export interface ShooterWaveSpec {
@@ -203,7 +209,7 @@ export interface ShooterSpriteAnimationStateSpec {
   fps?: number;
 }
 
-export type ShooterEnemyBehaviorPreset = "chase" | "drift" | "static";
+export type ShooterEnemyBehaviorPreset = "chase" | "drift" | "static" | "orbit";
 export type ShooterEnemySpawnPatternPreset = "edge" | "corners" | "center";
 export type ShooterCameraPreset = "follow" | "dead-zone" | "look-ahead" | "shake";
 
@@ -259,6 +265,8 @@ export interface ResolvedShooterGameSpec {
   enemyHealth: number;
   bulletDamage: number;
   scoreReward: number;
+  orbitRadius: number;
+  orbitRadialBand: number;
   cameraPreset: ShooterCameraPreset;
   cameraPresetCode: number;
   cameraDeadZoneWidth: number;
@@ -309,6 +317,8 @@ export interface ShooterGameSpecTarget {
     enemyHealth: number,
     bulletDamage: number,
     scoreReward: number,
+    orbitRadius: number,
+    orbitRadialBand: number,
   ): void;
   set_shooter_animations?(
     playerColumns: number,
@@ -456,6 +466,8 @@ const DEFAULT_SHOOTER_GAME_SPEC: ResolvedShooterGameSpec = {
   enemyHealth: 1,
   bulletDamage: 1,
   scoreReward: 1,
+  orbitRadius: 180,
+  orbitRadialBand: 24,
   cameraPreset: "follow",
   cameraPresetCode: 0,
   cameraDeadZoneWidth: 160,
@@ -480,6 +492,7 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
   const world = optionalObject(spec.world, "world");
   const player = optionalObject(spec.player, "player");
   const enemies = optionalObject(spec.enemies, "enemies");
+  const enemyOrbit = optionalObject(enemies.orbit, "enemies.orbit");
   const weapons = optionalObject(spec.weapons, "weapons");
   const prefabs = optionalObject(spec.prefabs, "prefabs");
   const atlasFrames = atlasFrameMap(spec.atlas, "atlas");
@@ -537,6 +550,16 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
   );
   const enemyHealth = positiveNumber(enemies.health, "enemies.health", DEFAULT_SHOOTER_GAME_SPEC.enemyHealth);
   const scoreReward = positiveInteger(enemies.scoreReward, "enemies.scoreReward", DEFAULT_SHOOTER_GAME_SPEC.scoreReward);
+  const orbitRadius = positiveNumber(
+    enemyOrbit.radius,
+    "enemies.orbit.radius",
+    DEFAULT_SHOOTER_GAME_SPEC.orbitRadius,
+  );
+  const orbitRadialBand = nonNegativeNumber(
+    enemyOrbit.radialBand,
+    "enemies.orbit.radialBand",
+    DEFAULT_SHOOTER_GAME_SPEC.orbitRadialBand,
+  );
   const waves = shooterWaves(enemies, {
     speed: enemySpeed,
     spawnInterval: enemySpawnInterval,
@@ -626,6 +649,8 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
     enemyHealth,
     bulletDamage: positiveNumber(weapons.damage, "weapons.damage", DEFAULT_SHOOTER_GAME_SPEC.bulletDamage),
     scoreReward,
+    orbitRadius,
+    orbitRadialBand,
     ...cameraPreset(camera.preset, "camera.preset"),
     cameraDeadZoneWidth: nonNegativeNumber(
       cameraDeadZone.width,
@@ -711,6 +736,8 @@ export function applyShooterGameSpec(
     spec.enemyHealth,
     spec.bulletDamage,
     spec.scoreReward,
+    spec.orbitRadius,
+    spec.orbitRadialBand,
   );
   engine.set_shooter_animations?.(
     spec.playerAnimationColumns,
@@ -1437,7 +1464,10 @@ function enemyBehavior(
   if (value === "static") {
     return { enemyBehavior: value, enemyBehaviorCode: 2 };
   }
-  throw gameSpecError(path, "must be one of chase, drift, static");
+  if (value === "orbit") {
+    return { enemyBehavior: value, enemyBehaviorCode: 3 };
+  }
+  throw gameSpecError(path, "must be one of chase, drift, static, orbit");
 }
 
 function enemySpawnPattern(

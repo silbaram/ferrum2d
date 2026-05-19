@@ -65,13 +65,16 @@ examples/topdown-shooter/public/game.json
     "spawnPattern": "edge",
     "health": 1,
     "scoreReward": 1,
+    "orbit": { "radius": 180, "radialBand": 24 },
     "presets": {
       "runner": { "speed": 96, "behavior": "chase", "health": 1 },
-      "bruiser": { "speed": 54, "behavior": "drift", "health": 3, "scoreReward": 4 }
+      "bruiser": { "speed": 54, "behavior": "drift", "health": 3, "scoreReward": 4 },
+      "orbiter": { "speed": 84, "behavior": "orbit", "health": 2, "scoreReward": 3 }
     },
     "waves": [
       { "enemy": "runner", "duration": 18, "spawnInterval": 0.85, "enemyCount": 18 },
-      { "enemy": "bruiser", "duration": 16, "spawnInterval": 1.25, "enemyCount": 10 }
+      { "enemy": "bruiser", "duration": 16, "spawnInterval": 1.25, "enemyCount": 10 },
+      { "enemy": "orbiter", "duration": 18, "spawnInterval": 1.1, "enemyCount": 12 }
     ]
   },
   "weapons": { "bulletSpeed": 360, "cooldown": 0.12, "lifetime": 1.8, "damage": 1 },
@@ -101,8 +104,9 @@ examples/topdown-shooter/public/game.json
 | `world.width`, `world.height` | 게임 월드의 크기다. |
 | `player.speed` | 플레이어 이동 속도다. |
 | `enemies.speed`, `enemies.spawnInterval` | 적 이동 속도와 등장 간격이다. |
-| `enemies.behavior` | `"chase"`, `"drift"`, `"static"` 중 하나다. |
+| `enemies.behavior` | `"chase"`, `"drift"`, `"static"`, `"orbit"` 중 하나다. |
 | `enemies.spawnPattern` | `"edge"`, `"corners"`, `"center"` 중 하나다. |
+| `enemies.orbit` | orbit behavior의 목표 반경과 접근/이탈 보정 폭이다. |
 | `enemies.presets`, `enemies.waves` | 적 설정 묶음과 wave timeline이다. |
 | `weapons.*` | 총알 속도, 발사 간격, lifetime, 피해량이다. |
 | `prefabs.*.width`, `prefabs.*.height` | 표시 크기와 충돌 기준 크기다. |
@@ -172,6 +176,7 @@ node scripts/validate-game-spec.mjs path/to/game.json
 pnpm create:game-variant fast-enemies
 pnpm create:game-variant drift-swarm
 pnpm create:game-variant static-targets
+pnpm create:game-variant orbit-ring
 ```
 
 출력 경로를 직접 지정할 수도 있다.

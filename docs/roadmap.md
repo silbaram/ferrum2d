@@ -59,7 +59,7 @@
 
 후보 작업:
 
-- npm package 공개 전 파일 구성 점검
+- npm package 공개 전 파일 구성 점검 (완료: `exports`, `files`, `pnpm package:check` 추가. publish 여부는 `private: true` 유지 상태에서 별도 결정)
 
 진행 순서:
 
@@ -133,10 +133,11 @@ v0.3에서 하지 않을 것:
 - engine extension point 문서화 (부분 완료: TypeScript platform lifecycle hook)
 - extension point 후보: Rust-side init/update hook, TypeScript platform lifecycle hook (완료), bulk-buffer render-prep extension
 - extension point 원칙: Rust/TypeScript 책임 경계 유지, hot path에서 entity별 JS/Wasm 호출과 TypeScript simulation update hook 금지
-- asset/audio 오류 진단 강화
-- 오류 진단 범위: v0.2 표준 에러 메시지 위에 에러 코드, 실패 리포트 수집, 예제 표시 방식을 추가
-- 회귀 방지용 smoke automation 정리
-- smoke 후보: wasm build, example build, game spec validation, headless-friendly render command sanity check
+- asset/audio 오류 진단 강화 (완료)
+- 오류 진단 범위: v0.2 표준 에러 메시지 위에 diagnostic code, `DiagnosticReport`, 예제 bootstrap 실패 표시 방식을 추가 (완료)
+- 회귀 방지용 smoke automation 정리 (부분 완료: headless smoke)
+- smoke 범위: wasm build, example build, game spec validation, headless-friendly render command sanity check. `pnpm smoke:headless`는 Game Spec 적용 경로, collision/navigation 전제, representative render command buffer를 검증한다.
+- enemy behavior preset 확장 (완료: `orbit`, Game Spec 기반 orbit radius/radialBand tuning)
 
 ## 장기 후보
 

@@ -16,6 +16,8 @@ export type {
   ViewportProvider,
 } from "./createEngine";
 export { applyShooterGameSpec, resolveShooterGameSpec } from "./gameSpec";
+export { FerrumDiagnosticError, diagnosticReport, formatDiagnosticReport, isFerrumDiagnosticError } from "./diagnostics";
+export type { DiagnosticCode, DiagnosticContext, DiagnosticKind, DiagnosticReport } from "./diagnostics";
 export type {
   ApplyShooterGameSpecOptions,
   ResolvedShooterAtlasFrame,
@@ -28,6 +30,7 @@ export type {
   ShooterCameraPreset,
   ShooterCameraSpec,
   ShooterEnemyBehaviorPreset,
+  ShooterEnemyOrbitSpec,
   ShooterEnemyPresetSpec,
   ShooterGameSpec,
   ShooterGameSpecTarget,

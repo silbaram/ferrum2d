@@ -55,7 +55,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 - GameOver에서 Space로 재시작한다.
 - player/enemy/bullet texture가 manifest로 로드되고 texture_id와 일치한다.
 - shoot/hit/gameOver sound가 manifest로 로드되고 audio event로 재생된다.
-- `json.game` Game Spec으로 world 크기, 이동 속도, enemy spawn interval/pattern, enemy behavior preset, wave timeline, health/damage/score reward, bullet 설정, player/enemy/bullet prefab 크기, sprite animation frames/fps/state row, camera preset, atlas frame, static tilemap, audio volume/pitch를 조정할 수 있다.
+- `json.game` Game Spec으로 world 크기, 이동 속도, enemy spawn interval/pattern, enemy behavior preset, orbit tuning, wave timeline, health/damage/score reward, bullet 설정, player/enemy/bullet prefab 크기, sprite animation frames/fps/state row, camera preset, atlas frame, static tilemap, audio volume/pitch를 조정할 수 있다.
 - DebugOverlay에서 `fps`, `frame time`, `rust update`, `render`, `entities`, `sprites`, `draw calls`, `batches`, `render commands`, `texture binds`, `texture switches`, `audio events`, `mouse`, `state`, `score`를 고정된 표시명과 단위로 확인할 수 있다.
 - DebugOverlay에서 camera position을 확인할 수 있다.
 
@@ -74,7 +74,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 | Shooter game logic | 완료 | movement, fire, spawn, chase, score, game over |
 | Scene state | 완료 | Title, Playing, GameOver, restart |
 | AssetLoader | 완료 | textures, sounds, JSON manifest |
-| Game Spec | 완료 | `json.game` 검증 후 shooter config, prefab template, combat, enemy behavior/spawn preset, wave timeline, animation, camera preset, atlas frame, static tilemap, audio policy 설정 적용 |
+| Game Spec | 완료 | `json.game` 검증 후 shooter config, prefab template, combat, enemy behavior/spawn preset, orbit tuning, wave timeline, animation, camera preset, atlas frame, static tilemap, audio policy 설정 적용 |
 | Camera Preset | 완료 | follow, dead-zone, look-ahead, time-based shake |
 | Sprite Animation | 완료 | player/enemy/bullet prefab별 horizontal sprite sheet frames/fps 및 idle/move state row 설정, Rust UV 갱신 |
 | Texture Atlas Metadata | 완료 | `atlas.frames`와 `prefabs.*.frame` 기반 static frame UV/size/texture 설정, render command ABI 유지 |

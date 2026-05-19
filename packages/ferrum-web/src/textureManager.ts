@@ -33,7 +33,7 @@ export class TextureManager {
       throw diagnosticError("Texture create error", {
         kind: "texture",
         detail: "WebGL texture creation returned null",
-      });
+      }, "FERRUM_TEXTURE_CREATE");
     }
 
     this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
@@ -73,7 +73,7 @@ export class TextureManager {
       throw diagnosticError("Texture create error", {
         kind: "texture",
         detail: "Placeholder canvas context is not available",
-      });
+      }, "FERRUM_TEXTURE_CREATE");
     }
 
     ctx.fillStyle = "#101820";
@@ -92,7 +92,7 @@ export class TextureManager {
         kind: "texture",
         id: textureId,
         detail: "texture_id must be a non-negative integer",
-      });
+      }, "FERRUM_TEXTURE_REGISTRY");
     }
 
     const previousTexture = this.texturesById.get(textureId);
@@ -113,7 +113,7 @@ export class TextureManager {
         kind: "texture",
         id: textureId,
         detail: "Texture is not loaded. Check loadAssets() and Rust texture_id setup.",
-      });
+      }, "FERRUM_TEXTURE_LOOKUP");
     }
     return texture;
   }
@@ -148,14 +148,14 @@ export class TextureManager {
         kind: "texture",
         url,
         detail: describeError(error),
-      });
+      }, "FERRUM_TEXTURE_LOAD");
     }
     if (!response.ok) {
       throw diagnosticError("Texture load error", {
         kind: "texture",
         url,
         detail: `HTTP ${response.status} ${response.statusText}`.trim(),
-      });
+      }, "FERRUM_TEXTURE_LOAD");
     }
 
     let blob: Blob;
@@ -166,7 +166,7 @@ export class TextureManager {
         kind: "texture",
         url,
         detail: describeError(error),
-      });
+      }, "FERRUM_TEXTURE_LOAD");
     }
     try {
       return await createImageBitmap(blob);
@@ -175,7 +175,7 @@ export class TextureManager {
         kind: "texture",
         url,
         detail: describeError(error),
-      });
+      }, "FERRUM_TEXTURE_DECODE");
     }
   }
 }

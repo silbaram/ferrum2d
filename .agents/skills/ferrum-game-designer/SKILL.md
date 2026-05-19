@@ -20,7 +20,7 @@ Use this skill to make data-only gameplay changes for Ferrum2D. Prefer editing G
 1. Read `docs/game-spec.md` before changing gameplay data.
 2. Modify only Game Spec JSON for balance/preset changes.
 3. Keep values positive finite numbers.
-4. Use `enemies.behavior` only as `"chase"`, `"drift"`, or `"static"`.
+4. Use `enemies.behavior` only as `"chase"`, `"drift"`, `"static"`, or `"orbit"`.
 5. Use `enemies.spawnPattern` only as `"edge"`, `"corners"`, or `"center"`.
 6. Run `pnpm validate:game-spec` after editing the main spec.
 7. Run `pnpm test:web` if changing TypeScript validation behavior.
@@ -33,6 +33,8 @@ Use this skill to make data-only gameplay changes for Ferrum2D. Prefer editing G
 - `player.speed`: 120-320
 - `enemies.speed`: 0-180
 - `enemies.spawnInterval`: 0.25-3.0
+- `enemies.orbit.radius`: 96-320
+- `enemies.orbit.radialBand`: 0-64
 - `weapons.bulletSpeed`: 240-900
 - `weapons.cooldown`: 0.05-0.5
 - `weapons.lifetime`: 0.5-4.0

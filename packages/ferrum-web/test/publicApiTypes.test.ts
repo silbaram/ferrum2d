@@ -8,6 +8,9 @@ import type {
   AtlasSpriteInput,
   AtlasSpritePlacement,
   CreateRendererOptions,
+  DiagnosticCode,
+  DiagnosticContext,
+  DiagnosticReport,
   RendererFallbackInfo,
   BrowserPlatformHost,
   CreateEngineOptions,
@@ -24,6 +27,7 @@ import type {
   ShooterAtlasSpec,
   ShooterCameraPreset,
   ShooterCameraSpec,
+  ShooterEnemyOrbitSpec,
   ShooterEnemyPresetSpec,
   ShooterGameSpec,
   ShooterTileLayerSpec,
@@ -83,6 +87,7 @@ test("public API types are importable from entrypoint source", () => {
     },
     camera: { preset: "look-ahead", lookAhead: { distance: 96 } },
     enemies: {
+      orbit: { radius: 180, radialBand: 24 },
       presets: { bruiser: { health: 4, scoreReward: 8 } },
       waves: [{ enemy: "bruiser", duration: 12, spawnInterval: 1, enemyCount: 6 }],
     },
@@ -93,12 +98,26 @@ test("public API types are importable from entrypoint source", () => {
   const atlasSpec: ShooterAtlasSpec = gameSpec.atlas ?? {};
   const atlasFrameSpec: ShooterAtlasFrameSpec = atlasSpec.frames?.bullet ?? {};
   const enemyPresetSpec: ShooterEnemyPresetSpec = gameSpec.enemies?.presets?.bruiser ?? {};
+  const enemyOrbitSpec: ShooterEnemyOrbitSpec = gameSpec.enemies?.orbit ?? {};
+  const orbitEnemyPresetSpec: ShooterEnemyPresetSpec = { behavior: "orbit", speed: 84 };
   const waveSpec: ShooterWaveSpec = gameSpec.enemies?.waves?.[0] ?? {};
   const tilemapSpec: ShooterTilemapSpec = gameSpec.tilemap ?? {};
   const tileSpec: ShooterTileSpec = tilemapSpec.tiles?.["1"] ?? {};
   const tileLayerSpec: ShooterTileLayerSpec = tilemapSpec.layers?.[0] ?? {};
   const audioBusConfig: AudioBusConfig = { masterVolume: 0.9, sfxVolume: 0.7 };
   const audioManagerConfig: AudioManagerConfig = { masterVolume: 0.9, bgmVolume: 0.2 };
+  const diagnosticCode: DiagnosticCode = "FERRUM_ASSET_LOAD";
+  const diagnosticContext: DiagnosticContext = {
+    kind: "texture",
+    name: "player",
+    url: "/assets/player.png",
+    detail: "HTTP 404 Not Found",
+  };
+  const diagnosticReport: DiagnosticReport = {
+    code: diagnosticCode,
+    message: "Asset load error",
+    context: diagnosticContext,
+  };
   const resolvedTilemap: ResolvedShooterTilemap = { tiles: [], layers: [] };
   const atlasSprite: AtlasSpriteInput = { name: "compat", width: 8, height: 8 };
   const atlasPlacement: AtlasSpritePlacement = {
@@ -207,6 +226,8 @@ test("public API types are importable from entrypoint source", () => {
       enemyHealth: 1,
       bulletDamage: 1,
       scoreReward: 1,
+      orbitRadius: 180,
+      orbitRadialBand: 24,
       cameraPreset: "look-ahead",
       cameraPresetCode: 2,
       cameraDeadZoneWidth: 160,
@@ -243,6 +264,8 @@ test("public API types are importable from entrypoint source", () => {
   equal(cameraSpec.preset, "look-ahead");
   equal(atlasFrameSpec.texture, "bullet");
   equal(enemyPresetSpec.health, 4);
+  equal(enemyOrbitSpec.radius, 180);
+  equal(orbitEnemyPresetSpec.behavior, "orbit");
   equal(waveSpec.enemyCount, 6);
   equal(tileSpec.frame, "bullet");
   equal(tileLayerSpec.columns, 1);
@@ -250,6 +273,7 @@ test("public API types are importable from entrypoint source", () => {
   equal(resolvedTilemap.layers.length, 0);
   equal(audioBusConfig.sfxVolume, 0.7);
   equal(audioManagerConfig.bgmVolume, 0.2);
+  equal(diagnosticReport.context?.kind, "texture");
   equal(atlasPlacement.name, "compat");
   equal(atlasLayoutFn([atlasSprite]).sprites[0].name, "compat");
   equal(typeof webGpuCreate, "function");

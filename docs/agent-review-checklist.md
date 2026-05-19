@@ -6,8 +6,9 @@ AI agent 또는 subagent가 Ferrum2D 변경을 마친 뒤 확인할 항목이다
 
 - `examples/topdown-shooter/public/game.json` 또는 variant JSON이 유효한 JSON인가?
 - 모든 숫자 필드가 positive finite number인가?
-- `enemies.behavior`가 `chase`, `drift`, `static` 중 하나인가?
+- `enemies.behavior`가 `chase`, `drift`, `static`, `orbit` 중 하나인가?
 - `enemies.spawnPattern`이 `edge`, `corners`, `center` 중 하나인가?
+- `enemies.orbit.radius`가 positive number이고 `enemies.orbit.radialBand`가 non-negative number인가?
 - `enemies.presets.*`와 `enemies.waves.*.enemy` 참조가 일치하는가?
 - `enemies.waves.*.duration`, `spawnInterval`, `enemyCount`가 positive 값인가?
 - `audio.masterVolume`, `audio.sfxVolume`, `audio.events.*.volume`이 non-negative number이고 `audio.events.*.pitch`가 positive number인가?

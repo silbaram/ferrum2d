@@ -5,13 +5,21 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "files": [
-    "dist"
+    "dist",
+    "pkg"
   ],
   "scripts": {
     "clean:dist": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "clean:dist-test": "node -e \"require('node:fs').rmSync('dist-test', { recursive: true, force: true })\"",
     "build": "pnpm run clean:dist && tsc -p tsconfig.json",
+    "check:package": "node ../../scripts/check-package-files.mjs",
     "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "pnpm run build && pnpm run clean:dist-test && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js"
   },

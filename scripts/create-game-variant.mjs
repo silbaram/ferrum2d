@@ -51,6 +51,17 @@ const VARIANTS = {
       damage: 2,
     },
   },
+  "orbit-ring": {
+    enemies: {
+      speed: 84,
+      spawnInterval: 0.7,
+      behavior: "orbit",
+      spawnPattern: "edge",
+      health: 2,
+      scoreReward: 3,
+      orbit: { radius: 160, radialBand: 32 },
+    },
+  },
 };
 
 const [variantName, outputPath = `examples/topdown-shooter/public/game.${variantName}.json`] =

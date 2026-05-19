@@ -15,9 +15,27 @@ pnpm smoke:check
 1. `pnpm lint`
 2. `pnpm test`
 3. `pnpm validate:game-spec`
-4. `pnpm build`
+4. `pnpm smoke:headless`
+5. `pnpm build`
 
 `pnpm smoke:check`는 WebGL2 실제 화면, 키보드/마우스 입력, 브라우저 오디오 unlock 상태를 확인하지 않는다. 이 항목은 아래 수동 smoke check에서 확인한다.
+
+## Headless smoke check
+
+브라우저를 열지 않고 Top-down Shooter 설정과 platform 적용 경로만 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:headless
+```
+
+이 명령은 `@ferrum2d/ferrum-web`을 빌드한 뒤 `scripts/headless-smoke.mjs`를 실행한다. 검증 범위는 다음과 같다.
+
+- 예제 `game.json`이 `resolveShooterGameSpec(...)`를 통과한다.
+- `applyShooterGameSpec(...)`가 resolved config, orbit tuning, camera, audio policy, tilemap, wave, atlas frame을 fake engine target에 빠짐없이 전달한다.
+- `collision: true` layer에 navigation obstacle로 쓸 양수 tile과 walkable `0` tile이 함께 존재한다.
+- tilemap 기반 representative render command buffer가 비어 있지 않고 `decodeRenderCommands(...)`, `rendererStatsForCommands(...)` 계약을 통과한다.
+
+이 검증은 Rust/Wasm runtime을 로드하거나 WebGL2 draw를 실행하지 않는다. 실제 Rust render command 생성은 Rust test와 Wasm build, 실제 화면은 수동 smoke check로 보완한다.
 
 Rust 코드나 Rust/Wasm 경계를 바꾼 경우에는 `pnpm smoke:check`와 별도로 다음을 실행한다.
 
@@ -44,6 +62,8 @@ GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다.
 - `pnpm lint`로 TypeScript source/test type check를 확인한다.
 - `pnpm test`로 TypeScript Node tests와 Rust tests를 모두 실행한다.
 - `pnpm validate:game-spec`로 예제 `game.json`이 runtime validator와 같은 경로를 통과하는지 확인한다.
+- `pnpm smoke:headless`로 Game Spec 적용 경로, collision/navigation 전제, representative render command buffer를 확인한다.
+- `pnpm package:check`로 package entrypoint, files allowlist, generated Wasm artifact 구성을 확인한다.
 - `pnpm build`로 Wasm package와 Top-down Shooter production build를 확인한다.
 - 브라우저 수동 smoke check로 WebGL2, 입력, 오디오, DebugOverlay 표시를 확인한다.
 

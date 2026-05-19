@@ -15,8 +15,10 @@ import {
   WebGL2Renderer,
   createEngine,
   createRenderer,
+  formatDiagnosticReport,
   type AssetManifest,
   type CreateRendererOptions,
+  type DiagnosticReport,
   type EngineLifecycleHooks,
   type FerrumEngine,
   type FrameHandler,
@@ -31,6 +33,8 @@ import {
 - `@ferrum2d/ferrum-web/pkg/*`
 - `packages/ferrum-web/src/*`
 - generated wasm-bindgen API인 `../pkg/ferrum_core`
+
+패키지 공개 후보 점검은 `pnpm package:check`로 실행한다. 이 명령은 TypeScript dist entrypoint와 generated Wasm `pkg` artifact가 package allowlist에 포함될 수 있는지 확인한다. 현재 패키지는 accidental publish를 막기 위해 `private: true`를 유지한다.
 
 ## 권장 API 표
 
@@ -50,6 +54,10 @@ import {
 | `createRenderer(...)` | function | renderer factory다. MVP에서는 항상 `WebGL2Renderer`를 반환하고, `preferred: "webgpu"`는 deprecated fallback 진단만 제공한다. |
 | `CreateRendererOptions` | interface | WebGL2 renderer 옵션과 deprecated WebGPU fallback 진단 옵션을 담는다. |
 | `RendererFallbackInfo` | interface | deprecated WebGPU 요청이 WebGL2로 fallback될 때 전달되는 진단 정보다. |
+| `FerrumDiagnosticError` | class | asset/audio/Game Spec 등 플랫폼 오류에 stable message, `code`, `context`를 함께 담는 오류 타입이다. |
+| `DiagnosticReport` | interface | host 앱이나 예제가 오류를 표시/수집할 때 쓰는 `{ code, message, context }` 형태의 report다. |
+| `diagnosticReport(...)` | function | unknown error를 `DiagnosticReport`로 정규화한다. |
+| `formatDiagnosticReport(...)` | function | bootstrap HUD나 console에 표시하기 좋은 `code: message` 문자열을 만든다. |
 | `WebGL2Renderer` | class | MVP의 기본 WebGL2 renderer다. texture id 기반 sprite command를 그린다. |
 | `Renderer` | interface | renderer lifecycle의 최소 interface다. MVP 구현체는 `WebGL2Renderer` 하나다. |
 | `RendererStats` | interface | draw call, batch, sprite, render command, texture bind/switch 수를 나타낸다. |
@@ -65,6 +73,7 @@ import {
 | `TextureRegistry` | class | texture manifest name과 numeric texture id 매핑을 관리한다. |
 | `SoundRegistry` | class | sound manifest name과 numeric sound id 매핑을 관리한다. |
 | `ShooterGameSpec` | interface | Top-down Shooter 설정 입력 타입이다. |
+| `ShooterEnemyOrbitSpec` | interface | `enemies.orbit.radius`와 `radialBand` 입력 타입이다. |
 | `ResolvedShooterGameSpec` | interface | 기본값과 preset code가 적용된 Game Spec 결과 타입이다. |
 | `ResolvedShooterWave` | interface | Game Spec wave 항목이 enemy preset과 함께 해석된 결과 타입이다. |
 | `ResolvedShooterTilemap` | interface | Game Spec tilemap 항목이 atlas frame과 함께 해석된 결과 타입이다. |
@@ -169,6 +178,17 @@ Runtime 적용 범위:
 - Rust에는 enemy preset name이나 raw JSON을 전달하지 않는다.
 - Rust `ShooterScene`이 active wave, elapsed time, spawn count, spawn timer를 소유한다.
 
+## Game Spec Orbit 계약
+
+`ShooterGameSpec.enemies.behavior`와 preset behavior는 `chase`, `drift`, `static`, `orbit`만 허용한다. `orbit`은 player 주변 접선 이동에 전역 `enemies.orbit.radius` 목표 거리와 `enemies.orbit.radialBand` 보정 폭을 적용한다.
+
+Runtime 적용 범위:
+
+- `resolveShooterGameSpec(...)`는 `enemies.orbit.radius`를 positive number, `enemies.orbit.radialBand`를 non-negative number로 검증한다.
+- 관련 resolved 필드는 `orbitRadius`, `orbitRadialBand`이다.
+- `applyShooterGameSpec(...)`는 behavior code, spawn pattern code, combat 값과 함께 orbit 수치를 `set_shooter_resolved_config(...)`의 숫자 인자로 전달한다.
+- Rust `ShooterScene`이 orbit steering을 계산하며, TypeScript는 enemy별 위치나 steering 상태를 소유하지 않는다.
+
 ## Audio 계약
 
 `ShooterGameSpec.audio.masterVolume`과 `audio.sfxVolume`은 `AssetHost.configureAudio(...)`를 통해 platform audio bus에 적용된다. `audio.events.shoot/hit/gameOver`의 volume과 pitch는 `set_shooter_audio_policy(...)`로 Rust에 전달되어 `AudioEvent` buffer에 기록된다.
@@ -210,12 +230,25 @@ Runtime 적용 범위:
 
 ## 오류 진단 정책
 
-Asset, audio, Game Spec 오류 메시지는 사람이 바로 원인을 추적할 수 있도록 공통 context를 포함한다.
+Asset, audio, Game Spec 오류 메시지는 사람이 바로 원인을 추적할 수 있도록 공통 context를 포함한다. `FerrumDiagnosticError`는 메시지 형식을 유지하면서 `code`와 `context`를 구조화해 host 앱이 오류를 수집하거나 UI에 표시할 수 있게 한다.
 
 공통 형식:
 
 - asset/audio: `kind`, `name` 또는 `id`, `url`, `detail`
 - Game Spec: `kind=game-spec`, `path`, `detail`
+
+대표 code:
+
+- `FERRUM_ASSET_LOAD`
+- `FERRUM_ASSET_LOOKUP`
+- `FERRUM_AUDIO_LOAD`
+- `FERRUM_AUDIO_DECODE`
+- `FERRUM_AUDIO_PLAYBACK`
+- `FERRUM_AUDIO_CONTEXT`
+- `FERRUM_GAME_SPEC_INVALID`
+- `FERRUM_TEXTURE_LOAD`
+- `FERRUM_TEXTURE_DECODE`
+- `FERRUM_TEXTURE_LOOKUP`
 
 예:
 
@@ -223,6 +256,8 @@ Asset, audio, Game Spec 오류 메시지는 사람이 바로 원인을 추적할
 Asset load error: kind=texture name='player' url='/assets/player.png' detail='HTTP 404 Not Found'.
 Invalid shooter game spec: kind=game-spec path='weapons.cooldown' detail='must be a positive finite number'.
 ```
+
+예제나 host 앱은 unknown error를 직접 문자열화하지 말고 `diagnosticReport(error)` 또는 `formatDiagnosticReport(error)`를 사용한다. Top-down Shooter 예제의 bootstrap 실패 화면은 `diagnosticReport(error)`로 diagnostic code, message, context 항목을 분리해 표시한다.
 
 ## Lifecycle 정책
 

@@ -401,6 +401,8 @@ impl Engine {
         enemy_health: f32,
         bullet_damage: f32,
         score_reward: u32,
+        orbit_radius: f32,
+        orbit_radial_band: f32,
     ) {
         let config = ShooterConfig::from_values(
             world_width,
@@ -430,7 +432,8 @@ impl Engine {
         )
         .with_enemy_behavior(EnemyBehavior::from_code(enemy_behavior))
         .with_enemy_spawn_pattern(EnemySpawnPattern::from_code(enemy_spawn_pattern))
-        .with_combat(enemy_health, bullet_damage, score_reward);
+        .with_combat(enemy_health, bullet_damage, score_reward)
+        .with_orbit(orbit_radius, orbit_radial_band);
 
         self.scene.set_config(
             &mut self.world,
@@ -656,7 +659,7 @@ mod tests {
 
         engine.set_shooter_resolved_config(
             3200.0, 1800.0, 240.0, 120.0, 0.75, 640.0, 0.08, 2.4, 40.0, 44.0, 30.0, 34.0, 10.0,
-            12.0, 4, 12.0, 3, 9.0, 2, 18.0, 2, 2, 4.0, 2.0, 9,
+            12.0, 4, 12.0, 3, 9.0, 2, 18.0, 2, 2, 4.0, 2.0, 9, 220.0, 18.0,
         );
 
         let config = engine.scene.config();
@@ -715,6 +718,8 @@ mod tests {
         assert_eq!(config.enemy_health, 4.0);
         assert_eq!(config.bullet_damage, 2.0);
         assert_eq!(config.score_reward, 9);
+        assert_eq!(config.orbit_radius, 220.0);
+        assert_eq!(config.orbit_radial_band, 18.0);
     }
 
     #[test]

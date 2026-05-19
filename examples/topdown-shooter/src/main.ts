@@ -4,6 +4,9 @@ import {
   InputManager,
   WebGL2Renderer,
   createEngine,
+  diagnosticReport,
+  type DiagnosticContext,
+  type DiagnosticReport,
   type FerrumEngine,
   type LoadedAssets,
   type ShooterGameSpec,
@@ -15,18 +18,39 @@ function gameStateText(code: number): string {
   return "GameOver";
 }
 
-function errorDetail(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-  if (typeof error === "string" && error.trim().length > 0) {
-    return error;
-  }
-  return String(error);
-}
-
 function assetApplyError(kind: "texture" | "sound" | "json", name: string, detail: string): Error {
   return new Error(`Asset apply error: kind=${kind} name='${name}' detail='${detail}'.`);
+}
+
+function diagnosticRows(report: DiagnosticReport): Array<[string, string]> {
+  const rows: Array<[string, string]> = [["code", report.code], ["message", report.message]];
+  const context = report.context;
+  if (!context) {
+    return rows;
+  }
+
+  appendDiagnosticContext(rows, context);
+  return rows;
+}
+
+function appendDiagnosticContext(rows: Array<[string, string]>, context: DiagnosticContext): void {
+  rows.push(["kind", context.kind]);
+  if (context.name !== undefined) rows.push(["name", context.name]);
+  if (context.id !== undefined) rows.push(["id", String(context.id)]);
+  if (context.url !== undefined) rows.push(["url", context.url]);
+  if (context.path !== undefined) rows.push(["path", context.path]);
+  rows.push(["detail", context.detail]);
+}
+
+function applyBootstrapErrorStyles(container: HTMLElement, list: HTMLElement): void {
+  container.style.fontFamily = "system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+  container.style.maxWidth = "760px";
+  container.style.margin = "48px auto";
+  container.style.padding = "0 24px";
+  container.style.color = "#17202a";
+  list.style.display = "grid";
+  list.style.gridTemplateColumns = "max-content minmax(0, 1fr)";
+  list.style.gap = "8px 16px";
 }
 
 function requireTextureId(assets: LoadedAssets, name: "player" | "enemy" | "bullet"): number {
@@ -70,11 +94,27 @@ function reportBootstrapError(error: unknown): void {
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) return;
 
+  const report = diagnosticReport(error);
+  const container = document.createElement("section");
   const title = document.createElement("h1");
-  const message = document.createElement("p");
+  const summary = document.createElement("p");
+  const list = document.createElement("dl");
   title.textContent = "Ferrum2D Top-down Shooter MVP";
-  message.textContent = `Failed to start: ${errorDetail(error)}`;
-  app.replaceChildren(title, message);
+  summary.textContent = "Startup failed. Diagnostic details are shown below.";
+
+  for (const [label, value] of diagnosticRows(report)) {
+    const term = document.createElement("dt");
+    const description = document.createElement("dd");
+    term.textContent = label;
+    description.textContent = value;
+    description.style.margin = "0";
+    description.style.wordBreak = "break-word";
+    list.append(term, description);
+  }
+
+  applyBootstrapErrorStyles(container, list);
+  container.append(title, summary, list);
+  app.replaceChildren(container);
 }
 
 function cleanupResources(cleanups: Array<() => void>): void {

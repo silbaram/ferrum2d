@@ -71,6 +71,7 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 - [ ] `game.json`의 정적 tilemap 배경이 표시된다.
 - [ ] `game.json`의 `collision: true` tile을 player/enemy가 통과하지 못한다.
 - [ ] chase enemy가 `collision: true` tile 장애물 주변으로 우회해 player를 추적한다.
+- [ ] orbit enemy wave에서 적이 `enemies.orbit.radius` 근처로 player 주변을 접선 방향으로 돌며 접근/이탈 보정을 한다.
 
 ### F. DebugOverlay/렌더러 지표
 

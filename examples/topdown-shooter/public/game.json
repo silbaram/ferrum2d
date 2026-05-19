@@ -13,6 +13,10 @@
     "spawnPattern": "edge",
     "health": 1,
     "scoreReward": 1,
+    "orbit": {
+      "radius": 180,
+      "radialBand": 24
+    },
     "presets": {
       "runner": {
         "speed": 96,
@@ -27,6 +31,13 @@
         "spawnPattern": "corners",
         "health": 3,
         "scoreReward": 4
+      },
+      "orbiter": {
+        "speed": 84,
+        "behavior": "orbit",
+        "spawnPattern": "edge",
+        "health": 2,
+        "scoreReward": 3
       }
     },
     "waves": [
@@ -43,6 +54,13 @@
         "spawnInterval": 1.25,
         "enemyCount": 10,
         "spawnPattern": "corners"
+      },
+      {
+        "enemy": "orbiter",
+        "duration": 18,
+        "spawnInterval": 1.1,
+        "enemyCount": 12,
+        "spawnPattern": "edge"
       }
     ]
   },

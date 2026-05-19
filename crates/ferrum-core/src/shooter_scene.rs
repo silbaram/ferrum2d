@@ -32,6 +32,8 @@ const DEFAULT_GAME_OVER_VOLUME: f32 = 0.65;
 const DEFAULT_SOUND_PITCH: f32 = 1.0;
 const NAVIGATION_REPATH_INTERVAL: f32 = 0.25;
 const NAVIGATION_TARGET_REACHED_DISTANCE_SQUARED: f32 = 4.0;
+const DEFAULT_ORBIT_RADIUS: f32 = 180.0;
+const DEFAULT_ORBIT_RADIAL_BAND: f32 = 24.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum EnemyBehavior {
@@ -39,6 +41,7 @@ pub(crate) enum EnemyBehavior {
     Chase,
     Drift,
     Static,
+    Orbit,
 }
 
 impl EnemyBehavior {
@@ -46,6 +49,7 @@ impl EnemyBehavior {
         match code {
             1 => Self::Drift,
             2 => Self::Static,
+            3 => Self::Orbit,
             _ => Self::Chase,
         }
     }
@@ -190,6 +194,8 @@ pub(crate) struct ShooterConfig {
     pub enemy_health: f32,
     pub bullet_damage: f32,
     pub score_reward: u32,
+    pub orbit_radius: f32,
+    pub orbit_radial_band: f32,
     pub camera: CameraPresetConfig,
     pub audio_policy: ShooterAudioPolicy,
 }
@@ -213,6 +219,8 @@ impl Default for ShooterConfig {
             enemy_health: DEFAULT_ENEMY_HEALTH,
             bullet_damage: DEFAULT_BULLET_DAMAGE,
             score_reward: DEFAULT_SCORE_REWARD,
+            orbit_radius: DEFAULT_ORBIT_RADIUS,
+            orbit_radial_band: DEFAULT_ORBIT_RADIAL_BAND,
             camera: CameraPresetConfig::default(),
             audio_policy: ShooterAudioPolicy::default(),
         }
@@ -369,6 +377,12 @@ impl ShooterConfig {
         } else {
             DEFAULT_SCORE_REWARD
         };
+        self
+    }
+
+    pub fn with_orbit(mut self, radius: f32, radial_band: f32) -> Self {
+        self.orbit_radius = positive_or_default(radius, DEFAULT_ORBIT_RADIUS);
+        self.orbit_radial_band = non_negative_or_default(radial_band, DEFAULT_ORBIT_RADIAL_BAND);
         self
     }
 
@@ -1158,6 +1172,43 @@ impl ShooterScene {
                 speed,
             ),
             EnemyBehavior::Static => Velocity::default(),
+            EnemyBehavior::Orbit => {
+                let Some(player_t) = player_t else {
+                    return Velocity::default();
+                };
+                self.orbit_velocity(enemy.transform, player_t, speed)
+            }
+        }
+    }
+
+    fn orbit_velocity(&self, enemy_t: Transform2D, player_t: Transform2D, speed: f32) -> Velocity {
+        let dx = enemy_t.x - player_t.x;
+        let dy = enemy_t.y - player_t.y;
+        let distance = (dx * dx + dy * dy).sqrt();
+        if distance <= 0.0001 {
+            return Velocity { vx: speed, vy: 0.0 };
+        }
+
+        let radial_x = dx / distance;
+        let radial_y = dy / distance;
+        let mut vx = -radial_y;
+        let mut vy = radial_x;
+
+        if distance < self.config.orbit_radius - self.config.orbit_radial_band {
+            vx += radial_x;
+            vy += radial_y;
+        } else if distance > self.config.orbit_radius + self.config.orbit_radial_band {
+            vx -= radial_x;
+            vy -= radial_y;
+        }
+
+        let len = (vx * vx + vy * vy).sqrt();
+        if len <= 0.0001 {
+            return Velocity::default();
+        }
+        Velocity {
+            vx: vx / len * speed,
+            vy: vy / len * speed,
         }
     }
 
@@ -1997,6 +2048,48 @@ mod tests {
         let velocity = world.velocities[enemy.id as usize].unwrap();
         assert!(velocity.vx > 0.0);
         assert!(velocity.vy.abs() < 0.01);
+    }
+
+    #[test]
+    fn enemy_behavior_orbit_moves_enemy_around_player() {
+        let (mut scene, mut world, mut camera, mut audio_events) = playing_scene();
+        scene.set_enemy_behavior(
+            &mut world,
+            &mut camera,
+            &mut audio_events,
+            EnemyBehavior::Orbit,
+        );
+        let player = world.player.unwrap();
+        world.transforms[player.id as usize] = Some(Transform2D { x: 100.0, y: 100.0 });
+        let enemy = world.spawn_enemy(280.0, 100.0, DEFAULT_TEXTURE_ID);
+
+        scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
+
+        let velocity = world.velocities[enemy.id as usize].unwrap();
+        assert!(velocity.vx.abs() < 0.01);
+        assert!(velocity.vy > 0.0);
+    }
+
+    #[test]
+    fn enemy_behavior_orbit_uses_configured_radius() {
+        let (mut scene, mut world, mut camera, mut audio_events) = playing_scene();
+        scene.set_config(
+            &mut world,
+            &mut camera,
+            &mut audio_events,
+            ShooterConfig::default()
+                .with_enemy_behavior(EnemyBehavior::Orbit)
+                .with_orbit(220.0, 0.0),
+        );
+        let player = world.player.unwrap();
+        world.transforms[player.id as usize] = Some(Transform2D { x: 100.0, y: 100.0 });
+        let enemy = world.spawn_enemy(280.0, 100.0, DEFAULT_TEXTURE_ID);
+
+        scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
+
+        let velocity = world.velocities[enemy.id as usize].unwrap();
+        assert!(velocity.vx > 0.0);
+        assert!(velocity.vy > 0.0);
     }
 
     #[test]

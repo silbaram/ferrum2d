@@ -172,7 +172,7 @@ export class AudioManager {
       throw diagnosticError("Audio context error", {
         kind: "sound",
         detail: "Web Audio API is not available in this browser",
-      });
+      }, "FERRUM_AUDIO_CONTEXT");
     }
 
     this.context = new constructor();

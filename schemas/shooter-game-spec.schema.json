@@ -26,10 +26,11 @@
       "properties": {
         "speed": { "type": "number", "exclusiveMinimum": 0 },
         "spawnInterval": { "type": "number", "exclusiveMinimum": 0 },
-        "behavior": { "enum": ["chase", "drift", "static"] },
+        "behavior": { "enum": ["chase", "drift", "static", "orbit"] },
         "spawnPattern": { "enum": ["edge", "corners", "center"] },
         "health": { "type": "number", "exclusiveMinimum": 0 },
         "scoreReward": { "type": "integer", "minimum": 1 },
+        "orbit": { "$ref": "#/$defs/enemyOrbit" },
         "presets": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/enemyPreset" },
@@ -126,10 +127,18 @@
       "additionalProperties": false,
       "properties": {
         "speed": { "type": "number", "exclusiveMinimum": 0 },
-        "behavior": { "enum": ["chase", "drift", "static"] },
+        "behavior": { "enum": ["chase", "drift", "static", "orbit"] },
         "spawnPattern": { "enum": ["edge", "corners", "center"] },
         "health": { "type": "number", "exclusiveMinimum": 0 },
         "scoreReward": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "enemyOrbit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "radius": { "type": "number", "exclusiveMinimum": 0 },
+        "radialBand": { "type": "number", "minimum": 0 }
       }
     },
     "wave": {

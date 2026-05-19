@@ -40,6 +40,8 @@ class FakeEngine {
     enemyHealth: number,
     bulletDamage: number,
     scoreReward: number,
+    orbitRadius: number,
+    orbitRadialBand: number,
   ): void {
     this.resolvedConfig = [
       worldWidth,
@@ -67,6 +69,8 @@ class FakeEngine {
       enemyHealth,
       bulletDamage,
       scoreReward,
+      orbitRadius,
+      orbitRadialBand,
     ];
   }
 
@@ -235,7 +239,14 @@ test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
   deepEqual(resolveShooterGameSpec({
     world: { width: 2400 },
     player: { speed: 220 },
-    enemies: { spawnInterval: 0.5, behavior: "drift", spawnPattern: "corners", health: 3, scoreReward: 5 },
+    enemies: {
+      spawnInterval: 0.5,
+      behavior: "drift",
+      spawnPattern: "corners",
+      health: 3,
+      scoreReward: 5,
+      orbit: { radius: 220, radialBand: 18 },
+    },
     weapons: { bulletSpeed: 500, lifetime: 1.1, damage: 2 },
     camera: {
       preset: "look-ahead",
@@ -308,6 +319,8 @@ test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
     enemyHealth: 3,
     bulletDamage: 2,
     scoreReward: 5,
+    orbitRadius: 220,
+    orbitRadialBand: 18,
     cameraPreset: "look-ahead",
     cameraPresetCode: 2,
     cameraDeadZoneWidth: 200,
@@ -375,6 +388,19 @@ test("resolveShooterGameSpec rejects invalid score reward with path context", ()
   throw new Error("Expected invalid score reward to throw.");
 });
 
+test("resolveShooterGameSpec rejects invalid orbit config with path context", () => {
+  try {
+    resolveShooterGameSpec({ enemies: { orbit: { radius: 0 } } });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='enemies.orbit.radius' detail='must be a positive finite number'.",
+    );
+    return;
+  }
+  throw new Error("Expected invalid orbit spec to throw.");
+});
+
 test("resolveShooterGameSpec rejects invalid prefab dimensions with path context", () => {
   try {
     resolveShooterGameSpec({ prefabs: { enemy: { width: 0 } } });
@@ -407,11 +433,42 @@ test("resolveShooterGameSpec rejects unknown enemy behavior with path context", 
   } catch (error) {
     equal(
       error instanceof Error ? error.message : String(error),
-      "Invalid shooter game spec: kind=game-spec path='enemies.behavior' detail='must be one of chase, drift, static'.",
+      "Invalid shooter game spec: kind=game-spec path='enemies.behavior' detail='must be one of chase, drift, static, orbit'.",
     );
     return;
   }
   throw new Error("Expected invalid behavior spec to throw.");
+});
+
+test("resolveShooterGameSpec accepts orbit enemy behavior", () => {
+  const spec = resolveShooterGameSpec({
+    enemies: {
+      behavior: "orbit",
+      presets: {
+        orbiter: { behavior: "orbit", speed: 84, health: 2, scoreReward: 3 },
+      },
+      waves: [{ enemy: "orbiter", duration: 12, spawnInterval: 1, enemyCount: 4 }],
+    },
+  });
+
+  equal(spec.enemyBehavior, "orbit");
+  equal(spec.enemyBehaviorCode, 3);
+  equal(spec.orbitRadius, 180);
+  equal(spec.orbitRadialBand, 24);
+  deepEqual(spec.waves[0], {
+    index: 0,
+    enemy: "orbiter",
+    duration: 12,
+    spawnInterval: 1,
+    enemyCount: 4,
+    enemySpeed: 84,
+    enemyBehavior: "orbit",
+    enemyBehaviorCode: 3,
+    enemySpawnPattern: "edge",
+    enemySpawnPatternCode: 0,
+    enemyHealth: 2,
+    scoreReward: 3,
+  });
 });
 
 test("resolveShooterGameSpec rejects unknown spawn pattern with path context", () => {
@@ -852,6 +909,7 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
       spawnPattern: "center",
       health: 4,
       scoreReward: 9,
+      orbit: { radius: 200, radialBand: 12 },
       presets: {
         elite: { speed: 96, behavior: "drift", spawnPattern: "corners", health: 6, scoreReward: 12 },
       },
@@ -954,6 +1012,8 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
     enemyHealth: 4,
     bulletDamage: 2,
     scoreReward: 9,
+    orbitRadius: 200,
+    orbitRadialBand: 12,
     cameraPreset: "dead-zone",
     cameraPresetCode: 1,
     cameraDeadZoneWidth: 180,
@@ -1034,6 +1094,8 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
     4,
     2,
     9,
+    200,
+    12,
   ]);
   deepEqual(engine.animationConfig, [
     1,

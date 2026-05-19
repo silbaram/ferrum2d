@@ -115,6 +115,7 @@ v0.2는 다음 기능 개발을 위한 기반 안정화 단계다. 기능 욕심
 완료 내용:
 
 - `pnpm smoke:check`를 추가해 lint, test, Game Spec validation, production build sanity check를 한 번에 실행할 수 있게 했다.
+- `pnpm smoke:headless`와 `scripts/headless-smoke.mjs`를 추가해 Game Spec 적용 경로, collision/navigation 전제, representative render command buffer sanity를 브라우저 없이 확인한다.
 - `docs/smoke-check.md`에 CI/로컬 검증 차이, Top-down Shooter 수동 smoke checklist, 실패 기록 형식을 정리했다.
 - `docs/screenshots/README.md`를 smoke checklist와 연결했다.
 
@@ -281,6 +282,49 @@ v0.4 이후는 콘텐츠 제작 기반 위에 런타임 기능을 보강한다. 
 - TypeScript simulation update hook은 금지한다.
 - hot path에서 entity별 JS/Wasm 호출을 만들지 않는다.
 
+### 4. Asset/Audio 오류 진단 강화
+
+범위:
+
+- asset/audio/Game Spec diagnostic code 추가 (완료)
+- unknown error를 UI/로그용 report로 정규화하는 API 추가 (완료)
+- 예제 bootstrap 실패 화면에서 diagnostic code와 message 표시 (완료)
+
+완료 내용:
+
+- `FerrumDiagnosticError`가 기존 message 형식은 유지하면서 `code`, `context`, `prefix`를 제공한다.
+- `diagnosticReport(error)`와 `formatDiagnosticReport(error)`로 host 앱이 unknown error를 동일한 형태로 수집하거나 표시할 수 있게 했다.
+- AssetLoader, AudioManager, AudioAssetLoader, TextureManager, Game Spec validator의 주요 진단 경로에 stable diagnostic code를 부여했다.
+- Top-down Shooter 예제의 bootstrap 실패 표시가 `diagnosticReport(error)`를 사용해 `code`, `message`, `kind`, `name/id`, `url/path`, `detail`을 분리해 보여준다.
+
+비범위:
+
+- 원격 telemetry 전송
+- 브라우저 storage에 실패 이력 저장
+- runtime overlay에서 에러 히스토리 패널 제공
+
+### 5. Enemy Orbit Behavior
+
+범위:
+
+- Game Spec enemy behavior enum에 `orbit` 추가 (완료)
+- Rust `EnemyBehavior::Orbit` movement preset 추가 (완료)
+- Top-down Shooter 예제에 `orbiter` preset과 wave 추가 (완료)
+
+완료 내용:
+
+- TypeScript validator가 `"orbit"`을 numeric behavior code `3`으로 변환해 기존 Wasm API 경로로 전달한다.
+- Game Spec `enemies.orbit.radius`와 `enemies.orbit.radialBand`를 추가해 orbit 목표 반경과 접근/이탈 보정 폭을 조정할 수 있게 했다.
+- Rust `ShooterScene`은 player 주변 접선 방향 이동과 Game Spec 기반 반경 보정을 조합해 orbit velocity를 계산한다.
+- `orbit`은 navigation grid를 사용하지 않는다.
+
+비범위:
+
+- enemy 전용 발사체
+- per-preset/per-wave orbit 반경
+- orbit 회전 방향 선택
+- pathfinding과 결합한 orbit steering
+
 ## 당장 시작할 작업 큐
 
 다음 순서로 진행한다.
@@ -295,6 +339,11 @@ v0.4 이후는 콘텐츠 제작 기반 위에 런타임 기능을 보강한다. 
 8. `v0.3-3-wave-spec`: spawn/wave spec 확장 (완료)
 9. `v0.3-4-audio-ux`: audio unlock/volume 정책 정리 (완료)
 10. `v0.4-1-tilemap-static-render`: 정적 tile layer 렌더링 (완료)
+11. `v0.4-2-navigation-grid`: collision layer 기반 chase navigation grid (완료)
+12. `v0.4-3-platform-lifecycle-hook`: TypeScript platform lifecycle hook (완료)
+13. `v0.4-4-diagnostic-report`: asset/audio/Game Spec diagnostic code와 report API (완료)
+14. `v0.4-5-package-file-check`: package entrypoint, files allowlist, generated Wasm artifact 점검 (완료)
+15. `v0.4-6-enemy-orbit-behavior`: enemy orbit movement preset과 예제 wave 추가 (완료)
 
 각 작업을 시작하기 전에 해당 항목의 목표와 완료 기준을 먼저 확인하고, 범위를 넘는 기능은 다음 작업으로 분리한다.
 
