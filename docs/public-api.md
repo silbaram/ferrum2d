@@ -1,6 +1,6 @@
 # Ferrum2D Public API
 
-이 문서는 `@ferrum2d/ferrum-web` 패키지 entrypoint에서 사용자가 직접 import해도 되는 API와 권장 사용 경로를 고정한다. MVP 이후 고도화에서도 Rust core와 TypeScript platform layer의 책임 경계를 유지하는 것을 우선한다.
+이 문서는 `@ferrum2d/ferrum-web` 패키지 entrypoint에서 사용자가 직접 import해도 되는 API와 권장 사용 경로를 고정한다. 현재 단계는 **MVP 개발 완료, 상용제품 기능 개발** 이며, Rust core와 TypeScript platform layer의 책임 경계를 유지하는 것을 우선한다.
 
 현재 entrypoint export의 코드 기준은 `packages/ferrum-web/src/index.ts`다.
 
@@ -56,7 +56,7 @@ import {
 | `EngineLifecycleSnapshot` | interface | lifecycle hook에 전달되는 score/state/entity/sprite/time snapshot이다. |
 | `AssetHost` | interface | `createEngine`이 asset loading과 audio playback을 위임하는 host 계약이다. |
 | `BrowserPlatformHost` | class | texture/sound/JSON asset loading과 audio playback을 묶는 browser platform host다. |
-| `createRenderer(...)` | function | renderer factory다. MVP에서는 항상 `WebGL2Renderer`를 반환하고, `preferred: "webgpu"`는 deprecated fallback 진단만 제공한다. |
+| `createRenderer(...)` | function | renderer factory다. 현재 제품 런타임은 `WebGL2Renderer`를 반환하고, `preferred: "webgpu"`는 deprecated fallback 진단만 제공한다. |
 | `CreateRendererOptions` | interface | WebGL2 renderer 옵션과 deprecated WebGPU fallback 진단 옵션을 담는다. |
 | `RendererFallbackInfo` | interface | deprecated WebGPU 요청이 WebGL2로 fallback될 때 전달되는 진단 정보다. |
 | `FerrumDiagnosticError` | class | asset/audio/Game Spec 등 플랫폼 오류에 stable message, `code`, `context`를 함께 담는 오류 타입이다. |
@@ -64,9 +64,9 @@ import {
 | `diagnosticReport(...)` | function | unknown error를 `DiagnosticReport`로 정규화한다. |
 | `formatDiagnosticReport(...)` | function | bootstrap HUD나 console에 표시하기 좋은 `code: message` 문자열을 만든다. |
 | `isFerrumDiagnosticError(...)` | function | unknown error가 `FerrumDiagnosticError`인지 확인하는 type guard다. |
-| `WebGL2Renderer` | class | MVP의 기본 WebGL2 renderer다. texture id 기반 sprite command를 그린다. |
+| `WebGL2Renderer` | class | 현재 제품 런타임의 기본 WebGL2 renderer다. texture id 기반 sprite command를 그린다. |
 | `WebGL2RendererOptions` | interface | clear color와 smoke/debug용 `preserveDrawingBuffer` 같은 WebGL2 생성 옵션을 담는다. |
-| `Renderer` | interface | renderer lifecycle의 최소 interface다. MVP 구현체는 `WebGL2Renderer` 하나다. |
+| `Renderer` | interface | renderer lifecycle의 최소 interface다. 현재 구현체는 `WebGL2Renderer` 하나다. |
 | `RendererStats` | interface | draw call, batch, sprite, render command, texture bind/switch 수를 나타낸다. |
 | `AudioManager` | class | Web Audio context, master/sfx bus volume, unlock, SFX playback을 관리한다. |
 | `AudioManagerConfig` | interface | `AudioManager.configure(...)`에 전달되는 master/sfx volume 설정이다. `bgmVolume`은 deprecated no-op이다. |
@@ -120,7 +120,7 @@ import {
 | `RenderCommandView` | deprecated object command 형태다. 신규 렌더링 경로는 `RenderCommandBufferView`를 사용한다. |
 | `AudioEventBufferView` | Rust audio event buffer의 raw `Float32Array` view다. 일반 앱은 `FrameState.audioEvents` 또는 `AssetHost.playAudioEvents(...)`를 사용한다. |
 
-`packages/ferrum-web/src/workerFrameClock.ts`와 `packages/ferrum-web/src/indexedDbAssetCache.ts`에는 MVP 제외 기능의 source-level shim이 남아 있지만, 현재 package entrypoint public API로 export하지 않는다.
+`packages/ferrum-web/src/workerFrameClock.ts`와 `packages/ferrum-web/src/indexedDbAssetCache.ts`에는 현재 제품 범위 제외 기능의 source-level shim이 남아 있지만, 현재 package entrypoint public API로 export하지 않는다.
 
 ## RendererStats 계약
 
@@ -295,7 +295,7 @@ Invalid shooter game spec: kind=game-spec path='weapons.cooldown' detail='must b
 
 ## Deprecated compatibility shim
 
-MVP 제외 범위에 해당하는 일부 이전 API 이름은 기존 import와 타입 체크가 즉시 깨지는 리스크를 줄이기 위해 deprecated shim으로만 유지한다.
+현재 제품 범위 제외 항목에 해당하는 일부 이전 API 이름은 기존 import와 타입 체크가 즉시 깨지는 리스크를 줄이기 위해 deprecated shim으로만 유지한다.
 
 - `createRenderer(..., { preferred: "webgpu" })`는 WebGPU를 초기화하지 않고 WebGL2로 fallback한다.
 - `WebGPURenderer.create()`는 지원하지 않는 기능임을 명확히 알리는 error를 반환한다.

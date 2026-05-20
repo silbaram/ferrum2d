@@ -37,6 +37,46 @@ pub struct Tilemap {
     layers: Vec<Option<TilemapLayer>>,
 }
 
+#[derive(Debug, Default)]
+pub(crate) struct TilemapNavigationScratch {
+    came_from: Vec<usize>,
+    g_scores: Vec<u32>,
+    visited: Vec<usize>,
+    open: BinaryHeap<PathNode>,
+}
+
+impl TilemapNavigationScratch {
+    fn prepare(&mut self, cell_count: usize) {
+        self.clear_dirty();
+        if self.came_from.len() < cell_count {
+            self.came_from.resize(cell_count, UNVISITED_CELL);
+        }
+        if self.g_scores.len() < cell_count {
+            self.g_scores.resize(cell_count, u32::MAX);
+        }
+    }
+
+    fn set_score(&mut self, cell: usize, previous: usize, g_score: u32) {
+        if self.g_scores[cell] == u32::MAX {
+            self.visited.push(cell);
+        }
+        self.came_from[cell] = previous;
+        self.g_scores[cell] = g_score;
+    }
+
+    fn clear_dirty(&mut self) {
+        for cell in self.visited.drain(..) {
+            if cell < self.came_from.len() {
+                self.came_from[cell] = UNVISITED_CELL;
+            }
+            if cell < self.g_scores.len() {
+                self.g_scores[cell] = u32::MAX;
+            }
+        }
+        self.open.clear();
+    }
+}
+
 impl Tilemap {
     pub fn clear(&mut self) {
         self.definitions.clear();
@@ -141,6 +181,16 @@ impl Tilemap {
     }
 
     pub fn navigation_waypoint(&self, from: Transform2D, to: Transform2D) -> Option<Transform2D> {
+        let mut scratch = TilemapNavigationScratch::default();
+        self.navigation_waypoint_with_scratch(from, to, &mut scratch)
+    }
+
+    pub(crate) fn navigation_waypoint_with_scratch(
+        &self,
+        from: Transform2D,
+        to: Transform2D,
+        scratch: &mut TilemapNavigationScratch,
+    ) -> Option<Transform2D> {
         for layer in self.layers.iter().flatten().filter(|layer| layer.collision) {
             let Some(cell_count) = layer.cell_count() else {
                 continue;
@@ -157,7 +207,7 @@ impl Tilemap {
             if start == goal {
                 return Some(to);
             }
-            let Some(next_cell) = layer.next_path_cell(start, goal) else {
+            let Some(next_cell) = layer.next_path_cell_with_scratch(start, goal, scratch) else {
                 continue;
             };
             return Some(layer.tile_center(next_cell));
@@ -301,23 +351,29 @@ impl TilemapLayer {
         self.tiles.get(cell).copied().unwrap_or(0) == 0
     }
 
-    fn next_path_cell(&self, start: usize, goal: usize) -> Option<usize> {
+    fn next_path_cell_with_scratch(
+        &self,
+        start: usize,
+        goal: usize,
+        scratch: &mut TilemapNavigationScratch,
+    ) -> Option<usize> {
         let cell_count = self.cell_count()?;
-        let mut came_from = vec![UNVISITED_CELL; cell_count];
-        let mut g_scores = vec![u32::MAX; cell_count];
-        let mut open = BinaryHeap::new();
-        g_scores[start] = 0;
-        open.push(PathNode {
+        scratch.prepare(cell_count);
+        scratch.g_scores[start] = 0;
+        scratch.visited.push(start);
+        scratch.open.push(PathNode {
             cell: start,
             g_score: 0,
             f_score: self.manhattan_distance(start, goal),
         });
 
-        while let Some(node) = open.pop() {
+        let mut result = None;
+        while let Some(node) = scratch.open.pop() {
             if node.cell == goal {
-                return reconstruct_next_cell(start, goal, &came_from);
+                result = reconstruct_next_cell(start, goal, &scratch.came_from);
+                break;
             }
-            if node.g_score != g_scores[node.cell] {
+            if node.g_score != scratch.g_scores[node.cell] {
                 continue;
             }
             for neighbor in self.neighbor_indices(node.cell).into_iter().flatten() {
@@ -325,12 +381,11 @@ impl TilemapLayer {
                     continue;
                 }
                 let next_g_score = node.g_score.saturating_add(1);
-                if next_g_score >= g_scores[neighbor] {
+                if next_g_score >= scratch.g_scores[neighbor] {
                     continue;
                 }
-                came_from[neighbor] = node.cell;
-                g_scores[neighbor] = next_g_score;
-                open.push(PathNode {
+                scratch.set_score(neighbor, node.cell, next_g_score);
+                scratch.open.push(PathNode {
                     cell: neighbor,
                     g_score: next_g_score,
                     f_score: next_g_score + self.manhattan_distance(neighbor, goal),
@@ -338,7 +393,8 @@ impl TilemapLayer {
             }
         }
 
-        None
+        scratch.clear_dirty();
+        result
     }
 
     fn neighbor_indices(&self, cell: usize) -> [Option<usize>; 4] {
@@ -542,6 +598,52 @@ mod tests {
             .unwrap();
 
         assert_eq!(waypoint, Transform2D { x: 5.0, y: 15.0 });
+    }
+
+    #[test]
+    fn navigation_waypoint_with_scratch_reuses_buffers_and_resets_dirty_cells() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(
+            0,
+            3,
+            3,
+            10.0,
+            10.0,
+            0.0,
+            0.0,
+            true,
+            vec![0, 1, 0, 0, 1, 0, 0, 0, 0],
+        );
+        let mut scratch = TilemapNavigationScratch::default();
+
+        let waypoint = tilemap
+            .navigation_waypoint_with_scratch(
+                Transform2D { x: 5.0, y: 5.0 },
+                Transform2D { x: 25.0, y: 5.0 },
+                &mut scratch,
+            )
+            .unwrap();
+        let came_from_capacity = scratch.came_from.capacity();
+        let g_scores_capacity = scratch.g_scores.capacity();
+        let open_capacity = scratch.open.capacity();
+
+        assert_eq!(waypoint, Transform2D { x: 5.0, y: 15.0 });
+        assert!(scratch.visited.is_empty());
+        assert!(scratch.came_from.iter().all(|cell| *cell == UNVISITED_CELL));
+        assert!(scratch.g_scores.iter().all(|score| *score == u32::MAX));
+
+        let waypoint = tilemap
+            .navigation_waypoint_with_scratch(
+                Transform2D { x: 5.0, y: 5.0 },
+                Transform2D { x: 25.0, y: 5.0 },
+                &mut scratch,
+            )
+            .unwrap();
+
+        assert_eq!(waypoint, Transform2D { x: 5.0, y: 15.0 });
+        assert_eq!(scratch.came_from.capacity(), came_from_capacity);
+        assert_eq!(scratch.g_scores.capacity(), g_scores_capacity);
+        assert_eq!(scratch.open.capacity(), open_capacity);
     }
 
     #[test]

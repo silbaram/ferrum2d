@@ -3,3 +3,4 @@ node_modules/
 packages/*/dist/
 packages/*/dist-test/
 examples/*/dist/
+.antigravitycli/

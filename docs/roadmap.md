@@ -4,13 +4,13 @@
 
 상세 실행 순서와 각 작업 완료 기준은 [고도화 개발 계획](advanced-development-plan.md)을 따른다.
 
-MVP 완료 이후 제품화 우선순위는 [제품화 개발 순서](product-roadmap.md)를 따른다.
+현재 단계는 **MVP 개발 완료, 상용제품 기능 개발** 이다. 제품 기능 우선순위는 [제품화 개발 순서](product-roadmap.md)를 따른다.
 
 `package.json`의 현재 version은 `0.1.0`이다. 아래 `v0.2`, `v0.3`, `v0.4+` 표기는 공개 배포 버전이 아니라 기능 안정화 묶음을 추적하기 위한 로드맵 라벨이다.
 
-## v0.1.0 MVP
+## v0.1.0 MVP Baseline
 
-상태: MVP 개발 완료
+상태: MVP 개발 완료, 상용제품 기능 개발 단계의 회귀 기준으로 유지
 
 목표:
 
@@ -43,13 +43,13 @@ MVP 완료 이후 제품화 우선순위는 [제품화 개발 순서](product-ro
 - `pnpm test`
 - `pnpm build`
 - Top-down Shooter manual smoke check
-- README, architecture, MVP, docs 동기화
+- README, architecture, 완료된 MVP 기준, docs 동기화
 
 ## v0.2 계획
 
 상태: 완료
 
-목표: MVP API, 예제 품질, 관측 가능성을 안정화한다.
+목표: 완료된 MVP API, 예제 품질, 관측 가능성을 제품 기능 개발 기반으로 안정화한다.
 
 진행된 작업:
 
@@ -91,7 +91,7 @@ v0.2에서 하지 않을 것:
 
 상태: 완료
 
-목표: MVP 구조를 유지하면서 카메라 연출과 콘텐츠 제작 기반을 늘린다.
+목표: 완료된 MVP 구조를 유지하면서 카메라 연출과 콘텐츠 제작 기반을 늘린다.
 
 후보 작업:
 
@@ -124,8 +124,8 @@ v0.3에서 하지 않을 것:
 
 - WebGPU는 별도 설계 문서와 성능 근거가 생기기 전까지 구현하지 않는다.
 - Worker/멀티스레딩은 Wasm memory boundary와 asset pipeline이 안정화된 뒤 검토한다.
-- scene graph와 editor는 MVP 계열 안정화 이후 별도 마일스톤으로 분리한다.
-- skeletal animation과 본격 animation blend tree는 MVP 이후 별도 설계로 분리한다.
+- scene graph와 editor는 상용제품 기능 로드맵에서 별도 마일스톤으로 분리한다.
+- skeletal animation과 본격 animation blend tree는 상용제품 기능 로드맵에서 별도 설계로 분리한다.
 - 2D lighting은 WebGL2 sprite/atlas/tilemap 경로가 안정화된 뒤 다시 판단한다.
 
 ## v0.4+ 계획
@@ -172,10 +172,10 @@ v0.3에서 하지 않을 것:
 
 ## 비교 기반 선별 기준
 
-2026-05-06 기준 post-MVP 기능 선별은 Godot 4.x, Unity 2D, Phaser, Bevy 공식 문서의 공통 강점을 참고하되 Ferrum2D의 MVP 경계를 우선한다.
+2026-05-06 기준 상용제품 기능 선별은 Godot 4.x, Unity 2D, Phaser, Bevy 공식 문서의 공통 강점을 참고하되 Ferrum2D의 현재 제품 경계를 우선한다.
 
 - Godot/Unity/Phaser 모두 tilemap 기반 레벨 제작 흐름이 강하므로 Ferrum2D도 editor가 아니라 runtime 최소 계층부터 보강한다.
-- Godot AnimationTree와 Unity 2D Animation은 강력하지만 Ferrum2D MVP에는 이미 idle/move sprite sheet animation이 있으므로, 다음 단계는 generic graph가 아니라 atlas/scene binding 정리부터 진행한다.
+- Godot AnimationTree와 Unity 2D Animation은 강력하지만 Ferrum2D에는 이미 idle/move sprite sheet animation이 있으므로, 다음 단계는 generic graph가 아니라 atlas/scene binding 정리부터 진행한다.
 - Godot 2D Navigation과 Bevy의 확장성 모델은 참고하되, Ferrum2D v0.4+에서는 grid A*와 hook 문서화 정도로 제한한다.
 - Unity URP 2D lighting 같은 렌더링 고급 기능은 WebGL2 sprite batching, atlas, tilemap 경로가 안정화되기 전까지 장기 후보로 둔다.
-- Phaser의 WebGL/Canvas fallback 모델은 Ferrum2D MVP의 WebGL2 한정 원칙과 맞지 않으므로 현 단계에서는 Canvas renderer를 추가하지 않는다.
+- Phaser의 WebGL/Canvas fallback 모델은 Ferrum2D의 WebGL2 한정 원칙과 맞지 않으므로 현 단계에서는 Canvas renderer를 추가하지 않는다.

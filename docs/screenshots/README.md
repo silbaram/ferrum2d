@@ -4,7 +4,7 @@
 
 ## 현재 대상
 
-- `topdown-shooter-title.png`: README에 표시하는 Top-down Shooter MVP 릴리스 preview
+- `topdown-shooter-title.png`: README에 표시하는 Top-down Shooter 릴리스 preview
 
 현재 파일은 headless WebGL2 캡처가 안정적이지 않은 환경에서도 GitHub README가 깨지지 않도록 만든 정적 preview 이미지다. 실제 브라우저 실행 화면을 캡처할 수 있으면 같은 파일명으로 교체한다.
 

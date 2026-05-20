@@ -58,6 +58,13 @@ struct CollisionProxy {
     bounds: AabbBounds,
 }
 
+#[derive(Default, Debug)]
+pub(crate) struct CollisionScratch {
+    current_proxies: Vec<CollisionProxy>,
+    moving_proxies: Vec<CollisionProxy>,
+    target_proxies: Vec<CollisionProxy>,
+}
+
 #[derive(Default)]
 pub struct CollisionSystem;
 
@@ -109,19 +116,9 @@ impl CollisionSystem {
     }
 
     pub fn build_pairs(world: &World) -> Vec<CollisionPair> {
-        let proxies = sorted_current_proxies(world);
         let mut pairs = Vec::new();
-        for i in 0..proxies.len() {
-            let a = proxies[i];
-            for b in proxies.iter().copied().skip(i + 1) {
-                if b.bounds.min_x > a.bounds.max_x {
-                    break;
-                }
-                if a.bounds.overlaps(b.bounds) {
-                    pairs.push(pair_from_indices(world, a.index, b.index));
-                }
-            }
-        }
+        let mut scratch = CollisionScratch::default();
+        Self::build_pairs_into(&mut scratch, world, &mut pairs);
         pairs
     }
 
@@ -130,10 +127,10 @@ impl CollisionSystem {
         layer_a: CollisionLayer,
         layer_b: CollisionLayer,
     ) -> Vec<CollisionPair> {
-        Self::build_pairs(world)
-            .into_iter()
-            .filter_map(|pair| orient_pair(world, pair, layer_a, layer_b))
-            .collect()
+        let mut pairs = Vec::new();
+        let mut scratch = CollisionScratch::default();
+        Self::build_layer_pairs_into(&mut scratch, world, layer_a, layer_b, &mut pairs);
+        pairs
     }
 
     pub fn build_swept_layer_pairs(
@@ -142,12 +139,60 @@ impl CollisionSystem {
         target_layer: CollisionLayer,
         delta: f32,
     ) -> Vec<CollisionPair> {
-        let moving = sorted_swept_layer_proxies(world, moving_layer, delta);
-        let targets = sorted_swept_layer_proxies(world, target_layer, delta);
         let mut pairs = Vec::new();
+        let mut scratch = CollisionScratch::default();
+        Self::build_swept_layer_pairs_into(
+            &mut scratch,
+            world,
+            moving_layer,
+            target_layer,
+            delta,
+            &mut pairs,
+        );
+        pairs
+    }
 
-        for moving_proxy in moving {
-            for target_proxy in targets.iter().copied() {
+    pub(crate) fn build_pairs_into(
+        scratch: &mut CollisionScratch,
+        world: &World,
+        pairs: &mut Vec<CollisionPair>,
+    ) {
+        fill_current_proxies(world, &mut scratch.current_proxies);
+        pairs.clear();
+        collect_current_pairs(world, &scratch.current_proxies, pairs, None);
+    }
+
+    pub(crate) fn build_layer_pairs_into(
+        scratch: &mut CollisionScratch,
+        world: &World,
+        layer_a: CollisionLayer,
+        layer_b: CollisionLayer,
+        pairs: &mut Vec<CollisionPair>,
+    ) {
+        fill_current_proxies(world, &mut scratch.current_proxies);
+        pairs.clear();
+        collect_current_pairs(
+            world,
+            &scratch.current_proxies,
+            pairs,
+            Some((layer_a, layer_b)),
+        );
+    }
+
+    pub(crate) fn build_swept_layer_pairs_into(
+        scratch: &mut CollisionScratch,
+        world: &World,
+        moving_layer: CollisionLayer,
+        target_layer: CollisionLayer,
+        delta: f32,
+        pairs: &mut Vec<CollisionPair>,
+    ) {
+        fill_swept_layer_proxies(world, moving_layer, delta, &mut scratch.moving_proxies);
+        fill_swept_layer_proxies(world, target_layer, delta, &mut scratch.target_proxies);
+        pairs.clear();
+
+        for moving_proxy in scratch.moving_proxies.iter().copied() {
+            for target_proxy in scratch.target_proxies.iter().copied() {
                 if target_proxy.bounds.max_x < moving_proxy.bounds.min_x {
                     continue;
                 }
@@ -166,28 +211,53 @@ impl CollisionSystem {
                 }
             }
         }
-
-        pairs
     }
 }
 
-fn sorted_current_proxies(world: &World) -> Vec<CollisionProxy> {
-    let mut proxies = Vec::new();
+fn fill_current_proxies(world: &World, proxies: &mut Vec<CollisionProxy>) {
+    proxies.clear();
     for index in 0..world.transforms.len() {
         if let Some(proxy) = current_proxy(world, index) {
             proxies.push(proxy);
         }
     }
     proxies.sort_by(proxy_order);
-    proxies
 }
 
-fn sorted_swept_layer_proxies(
+fn collect_current_pairs(
+    world: &World,
+    proxies: &[CollisionProxy],
+    pairs: &mut Vec<CollisionPair>,
+    layer_filter: Option<(CollisionLayer, CollisionLayer)>,
+) {
+    for i in 0..proxies.len() {
+        let a = proxies[i];
+        for b in proxies.iter().copied().skip(i + 1) {
+            if b.bounds.min_x > a.bounds.max_x {
+                break;
+            }
+            if !a.bounds.overlaps(b.bounds) {
+                continue;
+            }
+            let pair = pair_from_indices(world, a.index, b.index);
+            if let Some((layer_a, layer_b)) = layer_filter {
+                if let Some(pair) = orient_pair(world, pair, layer_a, layer_b) {
+                    pairs.push(pair);
+                }
+            } else {
+                pairs.push(pair);
+            }
+        }
+    }
+}
+
+fn fill_swept_layer_proxies(
     world: &World,
     layer: CollisionLayer,
     delta: f32,
-) -> Vec<CollisionProxy> {
-    let mut proxies = Vec::new();
+    proxies: &mut Vec<CollisionProxy>,
+) {
+    proxies.clear();
     for index in 0..world.transforms.len() {
         if !world.alive.get(index).copied().unwrap_or(false) {
             continue;
@@ -211,7 +281,6 @@ fn sorted_swept_layer_proxies(
         proxies.push(CollisionProxy { index, bounds });
     }
     proxies.sort_by(proxy_order);
-    proxies
 }
 
 fn current_proxy(world: &World, index: usize) -> Option<CollisionProxy> {
@@ -410,6 +479,37 @@ mod tests {
                 b: enemy
             }]
         );
+    }
+
+    #[test]
+    fn build_pairs_into_reuses_scratch_and_pair_buffers() {
+        let mut world = World::default();
+        world.spawn_player(10.0, 10.0, 0);
+        world.spawn_enemy(12.0, 10.0, 0);
+        let mut scratch = CollisionScratch::default();
+        let mut pairs = Vec::with_capacity(4);
+
+        CollisionSystem::build_layer_pairs_into(
+            &mut scratch,
+            &world,
+            CollisionLayer::Player,
+            CollisionLayer::Enemy,
+            &mut pairs,
+        );
+        let proxy_capacity = scratch.current_proxies.capacity();
+        let pair_capacity = pairs.capacity();
+
+        CollisionSystem::build_layer_pairs_into(
+            &mut scratch,
+            &World::default(),
+            CollisionLayer::Player,
+            CollisionLayer::Enemy,
+            &mut pairs,
+        );
+
+        assert!(pairs.is_empty());
+        assert_eq!(scratch.current_proxies.capacity(), proxy_capacity);
+        assert_eq!(pairs.capacity(), pair_capacity);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Top-down Shooter Manual Smoke Checklist
 
-이 문서는 Ferrum2D MVP 예제(`examples/topdown-shooter`)를 브라우저에서 수동 점검할 때 사용하는 기준 체크리스트다. 자동/CI 검증과의 관계는 [Smoke Check](smoke-check.md)를 따른다.
+이 문서는 Ferrum2D Top-down Shooter 예제(`examples/topdown-shooter`)를 브라우저에서 수동 점검할 때 사용하는 기준 체크리스트다. 자동/CI 검증과의 관계는 [Smoke Check](smoke-check.md)를 따른다.
 
 ## 목적
 
@@ -33,7 +33,7 @@ pnpm build:wasm
 pnpm --filter @ferrum2d/topdown-shooter dev
 ```
 
-## 체크리스트 (MVP 범위)
+## 체크리스트 (제품 회귀 범위)
 
 ### A. 부팅/화면 진입
 

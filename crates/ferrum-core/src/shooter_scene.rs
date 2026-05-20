@@ -1,6 +1,6 @@
 use crate::audio_event::AudioEvent;
 use crate::camera::{Camera2D, CameraPresetConfig};
-use crate::collision::CollisionSystem;
+use crate::collision::{CollisionPair, CollisionScratch, CollisionSystem};
 use crate::components::{
     CollisionLayer, SpriteAnimation, SpriteAnimationState, SpriteFrame, Transform2D, Velocity,
 };
@@ -8,7 +8,7 @@ use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::input::InputState;
 use crate::physics::{PhysicsBounds, PhysicsSystem};
-use crate::tilemap::Tilemap;
+use crate::tilemap::{Tilemap, TilemapNavigationScratch};
 use crate::world::{
     EntityTemplate, World, DEFAULT_BULLET_TEMPLATE, DEFAULT_ENEMY_TEMPLATE, DEFAULT_PLAYER_TEMPLATE,
 };
@@ -517,6 +517,9 @@ pub struct ShooterScene {
     wave_spawned_count: u32,
     camera_elapsed_seconds: f32,
     navigation_targets: Vec<Option<NavigationTargetCache>>,
+    navigation_scratch: TilemapNavigationScratch,
+    collision_scratch: CollisionScratch,
+    collision_pairs: Vec<CollisionPair>,
     pending_despawn: Vec<Entity>,
     marked_for_despawn: Vec<bool>,
 }
@@ -554,6 +557,9 @@ impl Default for ShooterScene {
             wave_spawned_count: 0,
             camera_elapsed_seconds: 0.0,
             navigation_targets: Vec::with_capacity(256),
+            navigation_scratch: TilemapNavigationScratch::default(),
+            collision_scratch: CollisionScratch::default(),
+            collision_pairs: Vec::with_capacity(256),
             pending_despawn: Vec::with_capacity(128),
             marked_for_despawn: Vec::with_capacity(256),
         }
@@ -1089,7 +1095,7 @@ impl ShooterScene {
             self.config.bullet_template,
             self.config.bullet_damage,
         );
-        self.push_audio_event(
+        Self::push_audio_event(
             audio_events,
             self.sound_ids.shoot,
             self.config.audio_policy.shoot_volume,
@@ -1244,7 +1250,11 @@ impl ShooterScene {
         }
 
         let target = tilemap
-            .navigation_waypoint(enemy.transform, player_t)
+            .navigation_waypoint_with_scratch(
+                enemy.transform,
+                player_t,
+                &mut self.navigation_scratch,
+            )
             .unwrap_or(player_t);
         self.navigation_targets[enemy.index] = Some(NavigationTargetCache {
             generation: enemy.generation,
@@ -1410,7 +1420,6 @@ impl ShooterScene {
     }
 
     fn push_audio_event(
-        &self,
         audio_events: &mut Vec<AudioEvent>,
         sound_id: u32,
         volume: f32,
@@ -1446,6 +1455,7 @@ impl ShooterScene {
         self.pending_despawn.clear();
         self.marked_for_despawn.clear();
         self.marked_for_despawn.resize(alive_len, false);
+        self.collision_pairs.clear();
     }
 
     fn handle_bullet_enemy_collisions(
@@ -1454,21 +1464,27 @@ impl ShooterScene {
         audio_events: &mut Vec<AudioEvent>,
         delta: f32,
     ) {
-        let pairs = CollisionSystem::build_swept_layer_pairs(
+        CollisionSystem::build_swept_layer_pairs_into(
+            &mut self.collision_scratch,
             world,
             CollisionLayer::Bullet,
             CollisionLayer::Enemy,
             delta,
+            &mut self.collision_pairs,
         );
-        for pair in pairs {
+        let hit_sound_id = self.sound_ids.hit;
+        let hit_volume = self.config.audio_policy.hit_volume;
+        let hit_pitch = self.config.audio_policy.hit_pitch;
+        for pair_index in 0..self.collision_pairs.len() {
+            let pair = self.collision_pairs[pair_index];
             let bullet_index = pair.a.id as usize;
             let enemy_index = pair.b.id as usize;
-            if !self.is_alive_layer(world, bullet_index, CollisionLayer::Bullet)
+            if !Self::is_alive_layer(world, bullet_index, CollisionLayer::Bullet)
                 || self.marked_for_despawn[bullet_index]
             {
                 continue;
             }
-            if !self.is_alive_layer(world, enemy_index, CollisionLayer::Enemy)
+            if !Self::is_alive_layer(world, enemy_index, CollisionLayer::Enemy)
                 || self.marked_for_despawn[enemy_index]
             {
                 continue;
@@ -1491,12 +1507,7 @@ impl ShooterScene {
                 let reward = world.score_rewards[enemy_index].unwrap_or(DEFAULT_SCORE_REWARD);
                 self.score = self.score.saturating_add(reward);
             }
-            self.push_audio_event(
-                audio_events,
-                self.sound_ids.hit,
-                self.config.audio_policy.hit_volume,
-                self.config.audio_policy.hit_pitch,
-            );
+            Self::push_audio_event(audio_events, hit_sound_id, hit_volume, hit_pitch);
         }
     }
 
@@ -1509,38 +1520,44 @@ impl ShooterScene {
             return;
         };
         let player_index = player.id as usize;
-        if !self.is_alive_layer(world, player_index, CollisionLayer::Player)
+        if !Self::is_alive_layer(world, player_index, CollisionLayer::Player)
             || self.marked_for_despawn[player_index]
         {
             return;
         }
-        let pairs = CollisionSystem::build_layer_pairs(
+        CollisionSystem::build_layer_pairs_into(
+            &mut self.collision_scratch,
             world,
             CollisionLayer::Player,
             CollisionLayer::Enemy,
+            &mut self.collision_pairs,
         );
-        for pair in pairs {
+        let game_over_sound_id = self.sound_ids.game_over;
+        let game_over_volume = self.config.audio_policy.game_over_volume;
+        let game_over_pitch = self.config.audio_policy.game_over_pitch;
+        for pair_index in 0..self.collision_pairs.len() {
+            let pair = self.collision_pairs[pair_index];
             let enemy_index = pair.b.id as usize;
             if pair.a != player
-                || !self.is_alive_layer(world, enemy_index, CollisionLayer::Enemy)
+                || !Self::is_alive_layer(world, enemy_index, CollisionLayer::Enemy)
                 || self.marked_for_despawn[enemy_index]
             {
                 continue;
             }
             if self.game_state != GameState::GameOver {
                 self.game_state = GameState::GameOver;
-                self.push_audio_event(
+                Self::push_audio_event(
                     audio_events,
-                    self.sound_ids.game_over,
-                    self.config.audio_policy.game_over_volume,
-                    self.config.audio_policy.game_over_pitch,
+                    game_over_sound_id,
+                    game_over_volume,
+                    game_over_pitch,
                 );
             }
             break;
         }
     }
 
-    fn is_alive_layer(&self, world: &World, index: usize, layer: CollisionLayer) -> bool {
+    fn is_alive_layer(world: &World, index: usize, layer: CollisionLayer) -> bool {
         world.alive.get(index).copied().unwrap_or(false)
             && world.colliders[index].is_some_and(|collider| collider.layer == layer)
     }

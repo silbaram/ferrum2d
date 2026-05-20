@@ -1,7 +1,7 @@
 # Ferrum2D Agent Instructions
 
 이 문서는 Ferrum2D 저장소에서 Codex(에이전트)가 따라야 할 작업 기준이다.
-목표는 반복 실수를 줄이고, MVP 범위 내에서 일관된 산출물을 만드는 것이다.
+목표는 반복 실수를 줄이고, MVP 개발 완료 이후 상용제품 기능 개발 단계에서 일관된 산출물을 만드는 것이다.
 
 ## Project Summary
 
@@ -12,7 +12,7 @@ Ferrum2D는 Rust + WebAssembly 기반의 2D 웹 게임 엔진이다.
 - Rust core: 게임 상태, 엔티티 저장, 수학/충돌, 씬 로직, 렌더 커맨드 생성 담당
 - TypeScript platform layer: 브라우저 API, canvas, WebGL2, 입력 이벤트, 오디오, 에셋 로딩, Wasm 로딩 담당
 - 첫 렌더러는 WebGL2로 한정
-- WebGPU는 차기 단계에서 검토하되 MVP에서 구현 금지
+- WebGPU는 차기 제품 단계에서 검토하되 별도 설계/승인 전 구현 금지
 
 ## Repository Layout
 
@@ -39,7 +39,7 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 
 ## Current Milestone
 
-현재 개발 단계는 **MVP 개발 완료 및 post-MVP 안정화** 이다.
+현재 개발 단계는 **MVP 개발 완료, 상용제품 기능 개발** 이다.
 
 완료된 항목:
 
@@ -52,28 +52,31 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 - ✅ input
 - ✅ world/entity
 - ✅ AABB collision
-- ✅ Top-down Shooter MVP
+- ✅ Top-down Shooter baseline example
+- ✅ Product Alpha starter/runtime/API 기반
 
 현재 허용 범위:
 
-- MVP 회귀 수정
+- 완료된 baseline 회귀 수정
+- 상용제품 기능 개발
 - Top-down Shooter 안정화
 - Game Spec 기반 밸런스/variant 조정
 - debug overlay와 smoke 검증 보강
+- Product runtime/API/package 품질 개선
 - 문서 동기화
-- roadmap에 명시된 post-MVP scoped feature
+- roadmap에 명시된 제품 기능
 
 다음 금지 범위:
 
-- WebGPU
-- Worker/멀티스레딩
-- editor
-- multiplayer
-- complex physics
+- 별도 설계/승인 없는 WebGPU
+- 별도 설계/승인 없는 Worker/멀티스레딩
+- 별도 설계/승인 없는 editor
+- 별도 설계/승인 없는 multiplayer
+- 별도 설계/승인 없는 complex physics
 
-## MVP Scope
+## Completed MVP Baseline
 
-MVP에서 지원해야 하는 항목:
+완료된 MVP 기준 기능:
 
 - Rust/Wasm 엔진 업데이트 루프
 - TypeScript 게임 루프
@@ -86,7 +89,7 @@ MVP에서 지원해야 하는 항목:
 - 씬 전환
 - 2D 탑다운 슈터 예제
 
-MVP에서 구현하지 않는 항목:
+현재 제품 범위에서 별도 설계/승인 전 구현하지 않는 항목:
 
 - 3D 렌더링
 - WebGPU 렌더러
@@ -103,7 +106,7 @@ MVP에서 구현하지 않는 항목:
 - 현재 마일스톤에 필요하지 않은 대규모 추상화는 도입하지 않는다.
 - 새 프로덕션 의존성은 필요성과 대안을 설명하기 전에는 추가하지 않는다.
 - Rust와 TypeScript 책임 경계를 엄격히 유지한다.
-- MVP에서 Rust가 WebGL API를 직접 호출하면 안 된다.
+- Rust가 WebGL API를 직접 호출하면 안 된다.
 - TypeScript는 브라우저/플랫폼 상태를 제외한 게임 시뮬레이션 상태를 소유하지 않는다.
 - "영리한 설계"보다 단순하고 테스트 가능한 구현을 우선한다.
 
@@ -142,7 +145,7 @@ Wasm 브리지 변경 후 추가:
 아키텍처 또는 public API가 바뀌면 반드시 동기화한다:
 
 - `docs/architecture.md`
-- `docs/mvp.md` (MVP 범위 변경 시)
+- `docs/mvp.md` (완료된 MVP 기준 변경 시)
 - `README.md` (설치/사용/구조 변경 시)
 
 문서 작성 원칙:

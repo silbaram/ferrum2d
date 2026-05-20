@@ -11,17 +11,17 @@
 | [Public API](public-api.md) | `@ferrum2d/ferrum-web` entrypoint에서 import 가능한 계약과 deprecated 호환 정책을 정리한다. |
 | [npm 베타 패키징](npm-release.md) | `@ferrum2d/ferrum-web` beta package artifact, semver, publish 절차를 정리한다. |
 | [Game Spec](game-spec.md) | `examples/topdown-shooter/public/game.json` 구조, 필드, 기본값, 검증 규칙의 상세 기준이다. |
-| [제품화 개발 순서](product-roadmap.md) | MVP 완료 이후 Product Alpha/Beta/1.0 후보 작업 순서를 정리한다. |
+| [제품화 개발 순서](product-roadmap.md) | MVP 개발 완료, 상용제품 기능 개발 단계의 Product Alpha/Beta/1.0 후보 작업 순서를 정리한다. |
 | [2D 물리엔진 기능 맵](physics-engine.md) | 일반적인 2D 물리엔진 기능 전체와 Ferrum2D 단계별 후보를 정리한다. |
-| [Physics v2 범위](physics-v2.md) | post-MVP 물리 고도화의 포함/제외 범위, 실행 예제, 검증 기준이다. |
-| [MVP 범위](mvp.md) | 완료된 MVP 포함/제외 범위와 회귀 검증 기준을 정리한다. |
+| [Physics v2 범위](physics-v2.md) | 상용제품 기능 개발 단계에서 완료된 물리 기능의 포함/제외 범위, 실행 예제, 검증 기준이다. |
+| [완료된 MVP 기준](mvp.md) | 완료된 MVP 포함/제외 범위와 회귀 검증 기준을 정리하는 baseline 문서다. |
 | [Smoke Check](smoke-check.md) | 자동 검증, CI 검증, 브라우저 수동 검증의 관계를 설명한다. |
 | [Top-down Shooter 수동 체크리스트](topdown-shooter-smoke-checklist.md) | 브라우저에서 실제 예제를 점검할 때 쓰는 상세 체크리스트다. |
 | [로드맵](roadmap.md) | 완료된 마일스톤과 다음 후보 작업을 추적한다. |
 | [고도화 개발 계획](advanced-development-plan.md) | 로드맵 항목의 실행 순서와 완료 기준을 자세히 기록한다. |
 | [Agent Workflow](agent-workflow.md) | AI agent와 subagent 작업 순서, 역할, 검증 기준을 정리한다. |
 | [Agent Review Checklist](agent-review-checklist.md) | agent 변경 후 확인할 항목을 체크리스트로 제공한다. |
-| [코드 리뷰 기준](code_review.md) | MVP 범위에서 리뷰할 아키텍처, 테스트, 문서 기준이다. |
+| [코드 리뷰 기준](code_review.md) | 상용제품 기능 개발 단계에서 리뷰할 아키텍처, 테스트, 문서 기준이다. |
 | [스크린샷 README](screenshots/README.md) | README preview 스크린샷 갱신 절차다. |
 
 ## 기준 소스
@@ -45,4 +45,4 @@
 - 자동/CI 검증 정책은 [Smoke Check](smoke-check.md)에 둔다. 브라우저 수동 점검 항목은 [Top-down Shooter 수동 체크리스트](topdown-shooter-smoke-checklist.md)에 둔다.
 - public import 계약은 [Public API](public-api.md)에 둔다. 아키텍처 문서는 책임 경계와 데이터 흐름만 설명한다.
 - npm beta package 절차는 [npm 베타 패키징](npm-release.md)에 둔다. 다른 문서는 `pnpm package:check`와 링크만 유지한다.
-- 완료 상태와 계획은 [MVP 범위](mvp.md), [로드맵](roadmap.md), [고도화 개발 계획](advanced-development-plan.md) 중 하나에만 상세하게 기록하고, 다른 문서는 링크로 연결한다.
+- 완료 상태와 계획은 [완료된 MVP 기준](mvp.md), [로드맵](roadmap.md), [고도화 개발 계획](advanced-development-plan.md), [제품화 개발 순서](product-roadmap.md) 중 하나에만 상세하게 기록하고, 다른 문서는 링크로 연결한다.

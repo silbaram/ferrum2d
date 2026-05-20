@@ -1,10 +1,10 @@
-# Ferrum2D MVP 범위
+# Ferrum2D 완료된 MVP 기준
 
 ## 목표
 
 Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직 슬라이스를 완성하는 것이다. 단일 예제인 Top-down Shooter로 입력, 업데이트, 충돌, 렌더링, 에셋, 오디오, 디버그, 테스트 흐름을 검증한다.
 
-현재 상태: **MVP 개발 완료**. 이 문서는 완료된 MVP 범위와 완료 기준을 기록한다.
+현재 상태: **MVP 개발 완료, 상용제품 기능 개발**. 이 문서는 완료된 MVP baseline과 상용제품 기능 개발 단계에서 유지해야 할 회귀 기준을 기록한다.
 
 ## MVP에 포함
 
@@ -12,7 +12,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 - World/entity 저장과 간단한 component store
 - Transform, velocity, sprite, collider
 - Camera preset 기반 2D camera와 viewport size 전달
-- MVP 2D physics: velocity integration, collider 기반 world bounds clamp
+- Baseline 2D physics: velocity integration, collider 기반 world bounds clamp
 - AABB collision
 - Scoped Physics v2: broadphase layer pair, swept AABB, 빠른 bullet/enemy 터널링 방지
 - Render command buffer 기반 Rust -> TypeScript bulk 전달
@@ -31,7 +31,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 - TypeScript Node test runner 기반 platform test
 - GitHub Actions 기반 기본 검증
 
-## MVP에서 제외
+## 완료된 MVP 기준에서 제외
 
 - WebGPU
 - Worker/멀티스레딩
@@ -103,7 +103,7 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 7. `?debug=false`에서 overlay가 숨겨지는지 확인
 8. 발사, 피격, 게임오버 효과음이 중복 없이 재생되는지 확인
 
-## 최종 MVP 검증
+## 완료된 MVP 기준 회귀 검증
 
 ```bash
 cargo test --manifest-path crates/ferrum-core/Cargo.toml
@@ -115,6 +115,6 @@ pnpm package:check
 pnpm build
 ```
 
-위 자동 검증과 Top-down Shooter manual smoke check는 MVP 개발 완료 상태를 유지하기 위한 회귀 검증 기준이다. 자동/CI/수동 검증의 상세 관계는 [Smoke Check](smoke-check.md)를 따른다.
+위 자동 검증과 Top-down Shooter manual smoke check는 MVP 개발 완료 이후 상용제품 기능 개발 단계에서 유지해야 할 회귀 검증 기준이다. 자동/CI/수동 검증의 상세 관계는 [Smoke Check](smoke-check.md)를 따른다.
 
 WebGL2 실제 화면 렌더링은 headless unit test 범위가 아니므로 예제 manual smoke check를 함께 수행한다.

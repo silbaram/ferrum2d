@@ -54,9 +54,9 @@ AI agent 또는 subagent가 Ferrum2D 변경을 마친 뒤 확인할 항목이다
 
 - README에 사용자-facing 사용법이 있는가?
 - `docs/architecture.md`가 Rust/TS 경계를 설명하는가?
-- `docs/mvp.md`가 구현 상태와 검증 명령을 반영하는가?
+- 현재 단계 문서가 **MVP 개발 완료, 상용제품 기능 개발** 상태와 검증 명령을 반영하는가?
 - package entrypoint, `exports`, `files` 정책을 바꿨다면 `docs/public-api.md`와 `pnpm package:check`가 함께 갱신되었는가?
-- MVP 금지 범위(WebGPU, Worker, editor, multiplayer 등)를 위반하지 않았는가?
+- 별도 설계/승인 없는 제품 제외 범위(WebGPU, Worker, editor, multiplayer 등)를 위반하지 않았는가?
 
 ## 최종 보고
 
