@@ -15,12 +15,17 @@ class FakeTextureManager implements TextureAssetManager {
 
 class FakeAudioManager {
   destroyCount = 0;
+  eventBufferCount = 0;
 
   async loadSound(_soundId: number, _url: string): Promise<AudioBuffer> {
     return {} as AudioBuffer;
   }
 
   playEvents(): void {}
+
+  playEventBuffer(): void {
+    this.eventBufferCount += 1;
+  }
 
   destroy(): void {
     this.destroyCount += 1;
@@ -49,8 +54,10 @@ test("BrowserPlatformHost loads assets through composed texture manager", async 
     equal(assets.textures.textureId("player"), 1);
     deepEqual(textureManager.loaded, [{ textureId: 1, url: "/assets/player.png" }]);
     deepEqual(assets.json.game, { source: "/game.json" });
+    host.playAudioEventBuffer({ buffer: new Float32Array(), eventCount: 0, floatsPerEvent: 3 });
     host.destroy();
     host.destroy();
+    equal(audioManager.eventBufferCount, 1);
     equal(audioManager.destroyCount, 1);
   } finally {
     (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;

@@ -4,6 +4,8 @@
 
 Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직 슬라이스를 완성하는 것이다. 단일 예제인 Top-down Shooter로 입력, 업데이트, 충돌, 렌더링, 에셋, 오디오, 디버그, 테스트 흐름을 검증한다.
 
+현재 상태: **MVP 개발 완료**. 이 문서는 완료된 MVP 범위와 완료 기준을 기록한다.
+
 ## MVP에 포함
 
 - Rust core 업데이트 루프
@@ -113,6 +115,6 @@ pnpm package:check
 pnpm build
 ```
 
-위 자동 검증과 Top-down Shooter manual smoke check를 완료 조건으로 MVP 개발 완료를 판정한다. 자동/CI/수동 검증의 상세 관계는 [Smoke Check](smoke-check.md)를 따른다.
+위 자동 검증과 Top-down Shooter manual smoke check는 MVP 개발 완료 상태를 유지하기 위한 회귀 검증 기준이다. 자동/CI/수동 검증의 상세 관계는 [Smoke Check](smoke-check.md)를 따른다.
 
 WebGL2 실제 화면 렌더링은 headless unit test 범위가 아니므로 예제 manual smoke check를 함께 수행한다.

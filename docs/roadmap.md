@@ -4,6 +4,8 @@
 
 상세 실행 순서와 각 작업 완료 기준은 [고도화 개발 계획](advanced-development-plan.md)을 따른다.
 
+MVP 완료 이후 제품화 우선순위는 [제품화 개발 순서](product-roadmap.md)를 따른다.
+
 `package.json`의 현재 version은 `0.1.0`이다. 아래 `v0.2`, `v0.3`, `v0.4+` 표기는 공개 배포 버전이 아니라 기능 안정화 묶음을 추적하기 위한 로드맵 라벨이다.
 
 ## v0.1.0 MVP
@@ -63,7 +65,7 @@
 
 후보 작업:
 
-- npm package 공개 전 파일 구성 점검 (완료: `exports`, `files`, `pnpm package:check` 추가. publish 여부는 `private: true` 유지 상태에서 별도 결정)
+- npm package 공개 전 파일 구성 점검 (완료: `exports`, explicit `files`, `pnpm package:check`의 pack tarball 검증, [npm 베타 패키징](npm-release.md) 절차 추가. publish 여부는 `private: true` 유지 상태에서 별도 결정)
 
 진행 순서:
 
@@ -150,9 +152,9 @@ v0.3에서 하지 않을 것:
 
 다음 후보:
 
-- WebGL2 실제 렌더링 smoke automation 가능성 검토
+- WebGL2 실제 렌더링 smoke automation 가능성 검토 (완료: `pnpm smoke:browser`)
 - docs site 또는 GitHub Pages 데모 배포 검토
-- package publish 여부와 release tagging 절차 정리
+- package publish 여부와 release tagging 절차 정리 (완료: [npm 베타 패키징](npm-release.md))
 - Physics v3 설계 검토: rigid body solver 또는 외부 physics crate 도입 여부 판단
 
 ## 장기 후보

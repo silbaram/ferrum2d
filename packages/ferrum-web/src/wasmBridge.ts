@@ -6,7 +6,7 @@ import init, {
   sprite_render_command_floats,
   version,
   wasm_memory,
-} from "../pkg/ferrum_core";
+} from "../pkg/ferrum_core.js";
 import { decodeRenderCommands } from "./renderCommandDecoder";
 import type { RenderCommandBufferView, RenderCommandView } from "./renderCommandDecoder";
 
@@ -27,6 +27,7 @@ const FLOATS_PER_AUDIO_EVENT = 3;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
 const BYTES_PER_COMMAND = FLOATS_PER_COMMAND * BYTES_PER_F32;
 const BYTES_PER_AUDIO_EVENT = FLOATS_PER_AUDIO_EVENT * BYTES_PER_F32;
+export const EMPTY_AUDIO_EVENTS: readonly AudioEventView[] = Object.freeze([]);
 
 export class WasmBridge {
   private readonly floatsPerCommand: number;
@@ -106,8 +107,15 @@ export class WasmBridge {
     };
   }
 
-  readAudioEvents(): AudioEventView[] {
-    const view = this.readAudioEventBuffer();
+  readAudioEvents(): readonly AudioEventView[] {
+    return this.decodeAudioEvents(this.readAudioEventBuffer());
+  }
+
+  decodeAudioEvents(view: AudioEventBufferView): readonly AudioEventView[] {
+    if (view.eventCount === 0) {
+      return EMPTY_AUDIO_EVENTS;
+    }
+
     const events: AudioEventView[] = [];
     for (let i = 0; i < view.eventCount; i += 1) {
       const offset = i * view.floatsPerEvent;

@@ -1,6 +1,6 @@
 import { AudioAssetLoader } from "./audioAssetLoader.js";
 import { audioPlaybackError, diagnosticError } from "./diagnostics.js";
-import type { AudioEventView } from "./wasmBridge";
+import type { AudioEventBufferView, AudioEventView } from "./wasmBridge";
 
 type AudioContextConstructor = new () => AudioContext;
 
@@ -130,6 +130,18 @@ export class AudioManager {
     this.assertAlive();
     for (const event of events) {
       this.playSfx(event.soundId, event.volume, event.pitch);
+    }
+  }
+
+  playEventBuffer(events: AudioEventBufferView): void {
+    this.assertAlive();
+    for (let i = 0; i < events.eventCount; i += 1) {
+      const offset = i * events.floatsPerEvent;
+      this.playSfx(
+        Math.trunc(events.buffer[offset]),
+        events.buffer[offset + 1],
+        events.buffer[offset + 2],
+      );
     }
   }
 

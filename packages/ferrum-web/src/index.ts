@@ -1,5 +1,7 @@
 export { createEngine } from "./createEngine";
+export { createFerrumRuntime } from "./createFerrumRuntime";
 export { createRenderer } from "./createRenderer";
+export type { FerrumRuntime, FerrumRuntimeEnvironment, FerrumRuntimeFrame, FerrumRuntimeOptions } from "./createFerrumRuntime";
 export type {
   AssetHost,
   AudioBusConfig,
@@ -46,6 +48,7 @@ export type {
 export type { Renderer, RendererStats } from "./renderer";
 export type { CreateRendererOptions, RendererFallbackInfo } from "./createRenderer";
 export { WebGL2Renderer } from "./webgl2Renderer";
+export type { WebGL2RendererOptions } from "./webgl2Renderer";
 export { BrowserPlatformHost } from "./browserPlatformHost";
 export { WebGPURenderer } from "./webgpuRenderer";
 export { TextureManager } from "./textureManager";

@@ -34,13 +34,18 @@ import {
 - `packages/ferrum-web/src/*`
 - generated wasm-bindgen API인 `../pkg/ferrum_core`
 
-패키지 공개 후보 점검은 `pnpm package:check`로 실행한다. 이 명령은 TypeScript dist entrypoint와 generated Wasm `pkg` artifact가 package allowlist에 포함될 수 있는지 확인한다. 현재 패키지는 accidental publish를 막기 위해 `private: true`를 유지한다.
+패키지 공개 후보 점검은 `pnpm package:check`로 실행한다. 이 명령은 TypeScript dist entrypoint, generated Wasm `pkg` artifact, 실제 `pnpm pack` tarball contents를 확인한다. 현재 패키지는 accidental publish를 막기 위해 `private: true`를 유지한다.
 
 ## 권장 API 표
 
 | API | 종류 | 권장 용도 |
 | --- | --- | --- |
 | `createEngine(...)` | function | Wasm `Engine`, frame loop, input, asset host, viewport provider를 묶어 `FerrumEngine`을 만든다. |
+| `createFerrumRuntime(...)` | function | WebGL2 renderer, input, browser asset/audio host, debug overlay, `FerrumEngine` frame pipeline을 묶는 제품용 browser runtime entrypoint다. |
+| `FerrumRuntime` | interface | runtime이 소유하는 `engine`, `renderer`, `input`, `assetHost`, optional debug overlay와 lifecycle method를 제공한다. |
+| `FerrumRuntimeOptions` | interface | canvas, WebGL2 옵션, debug 옵션, environment, input transform, per-frame callback, engine 옵션을 담는다. |
+| `FerrumRuntimeEnvironment` | type | `development`이면 debug overlay를 기본 활성화하고, `production` 또는 생략이면 기본 비활성화한다. `debug`를 명시하면 이 기본값보다 우선한다. |
+| `FerrumRuntimeFrame` | interface | `FrameState`, renderer stats, debug metrics, fps, render time을 함께 담은 runtime frame snapshot이다. |
 | `FerrumEngine` | interface | start/pause/resume/stop/destroy, asset loading, texture/sound id 적용, Game Spec 적용, score/state 조회를 제공한다. |
 | `FrameHandler` | type | `createEngine`의 frame callback 타입이다. 매 프레임 `FrameState`를 받는다. |
 | `FrameState` | interface | 렌더링, 디버그, HUD 갱신에 필요한 per-frame snapshot이다. 게임 규칙의 source of truth는 아니다. |
@@ -60,6 +65,7 @@ import {
 | `formatDiagnosticReport(...)` | function | bootstrap HUD나 console에 표시하기 좋은 `code: message` 문자열을 만든다. |
 | `isFerrumDiagnosticError(...)` | function | unknown error가 `FerrumDiagnosticError`인지 확인하는 type guard다. |
 | `WebGL2Renderer` | class | MVP의 기본 WebGL2 renderer다. texture id 기반 sprite command를 그린다. |
+| `WebGL2RendererOptions` | interface | clear color와 smoke/debug용 `preserveDrawingBuffer` 같은 WebGL2 생성 옵션을 담는다. |
 | `Renderer` | interface | renderer lifecycle의 최소 interface다. MVP 구현체는 `WebGL2Renderer` 하나다. |
 | `RendererStats` | interface | draw call, batch, sprite, render command, texture bind/switch 수를 나타낸다. |
 | `AudioManager` | class | Web Audio context, master/sfx bus volume, unlock, SFX playback을 관리한다. |
@@ -99,7 +105,7 @@ import {
 | Game Spec 입력 타입 | `ShooterAudioEventPolicySpec`, `ShooterAudioSpec`, `ShooterAtlasFrameSpec`, `ShooterAtlasSpec`, `ShooterCameraPreset`, `ShooterCameraSpec`, `ShooterEnemyBehaviorPreset`, `ShooterEnemyOrbitSpec`, `ShooterEnemyPresetSpec`, `ShooterPrefabSpec`, `ShooterTileLayerSpec`, `ShooterTilemapSpec`, `ShooterTileSpec`, `ShooterWaveSpec` |
 | Game Spec resolved/application 타입 | `ResolvedShooterAtlasFrame`, `ResolvedShooterTileDefinition`, `ResolvedShooterTileLayer`, `ResolvedShooterTilemap`, `ShooterGameSpecTarget` |
 | Texture atlas authoring 타입 | `AtlasSpriteInput`, `AtlasSpritePlacement`, `TextureAtlasLayout`, `TextureAtlasOptions` |
-| Debug/renderer 보조 타입 | `DebugOverlayMetrics`, `DebugOverlayOptions`, `SpriteDrawOptions` |
+| Debug/renderer/runtime 보조 타입 | `DebugOverlayMetrics`, `DebugOverlayOptions`, `FerrumRuntimeEnvironment`, `SpriteDrawOptions` |
 
 ## 호환/저수준 export
 

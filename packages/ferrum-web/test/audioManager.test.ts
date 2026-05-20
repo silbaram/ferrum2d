@@ -158,3 +158,14 @@ test("AudioManager playEvents ignores invalid sound id 0", () => {
   manager.destroy();
   equal(true, true);
 });
+
+test("AudioManager playEventBuffer reads raw audio event buffers", () => {
+  const manager = new AudioManager();
+  manager.playEventBuffer({
+    buffer: new Float32Array([0, 0.5, 1.25]),
+    eventCount: 1,
+    floatsPerEvent: 3,
+  });
+  manager.destroy();
+  equal(true, true);
+});

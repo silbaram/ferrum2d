@@ -1,18 +1,25 @@
 # Ferrum2D 사용자 설명서
 
-Ferrum2D는 브라우저에서 실행되는 2D 게임을 만들기 위한 Rust + WebAssembly 기반 게임 엔진 MVP다. 현재는 `examples/topdown-shooter` 예제를 기준으로 입력, 충돌, 렌더링, 에셋, 효과음, 디버그 표시를 검증한다.
+Ferrum2D는 브라우저에서 실행되는 2D 게임을 만들기 위한 Rust + WebAssembly 기반 게임 엔진이다. MVP 개발은 완료되었으며, 현재는 `examples/topdown-shooter` 예제를 기준으로 입력, 충돌, 렌더링, 에셋, 효과음, 디버그 표시를 검증한다.
 
 이 문서는 실행과 간단한 게임 수정 흐름을 안내한다. Game Spec의 전체 필드, 기본값, 검증 규칙은 [Game Spec](game-spec.md)을 기준으로 삼는다.
 
 ## 현재 할 수 있는 일
 
 - 브라우저에서 Top-down Shooter 예제를 실행한다.
+- `examples/minimal-game`에서 `createFerrumRuntime()` 기반 starter 흐름을 확인한다.
 - `examples/topdown-shooter/public/game.json`을 수정해 난이도, 적 등장 방식, 무기 성능, prefab 크기, camera, tilemap, audio policy를 조정한다.
 - `pnpm validate:game-spec`로 설정 파일을 검증한다.
 - `pnpm create:game-variant`로 준비된 preset 기반 변형 파일을 만든다.
 - AI agent에게 Game Spec 수정과 검증을 맡긴다.
 
 ## 예제 실행하기
+
+가장 작은 starter 예제는 별도 asset 없이 실행된다.
+
+```bash
+pnpm dev:minimal
+```
 
 처음 실행하거나 Rust core를 수정한 뒤에는 Wasm package를 먼저 빌드한다.
 
@@ -200,7 +207,7 @@ AI 에이전트에게 게임 밸런스 작업을 맡길 때는 가능하면 Rust
 
 ## 현재 지원하지 않는 것
 
-Ferrum2D는 아직 MVP 단계이므로 다음 기능은 사용자 기능으로 제공하지 않는다.
+Ferrum2D MVP 개발은 완료되었지만 다음 기능은 사용자 기능으로 제공하지 않는다.
 
 - WebGPU 렌더러
 - 3D 게임

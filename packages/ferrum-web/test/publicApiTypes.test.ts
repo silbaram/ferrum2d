@@ -14,6 +14,10 @@ import type {
   RendererFallbackInfo,
   BrowserPlatformHost,
   CreateEngineOptions,
+  FerrumRuntime,
+  FerrumRuntimeEnvironment,
+  FerrumRuntimeFrame,
+  FerrumRuntimeOptions,
   EngineLifecycleHooks,
   EngineLifecycleSnapshot,
   AssetHost,
@@ -37,6 +41,8 @@ import type {
   ResolvedShooterTilemap,
   ViewportProvider,
   WebGPURenderer,
+  WebGL2RendererOptions,
+  createFerrumRuntime,
   generateTextureAtlasLayout,
 } from "../src/index.js";
 
@@ -57,6 +63,7 @@ test("public API types are importable from entrypoint source", () => {
   const options: CreateEngineOptions = {
     includeDeprecatedRenderCommands: false,
     useWorkerClock: true,
+    includeAudioEvents: true,
     lifecycle: lifecycleHooks,
   };
   const rendererOptions: CreateRendererOptions = {
@@ -64,6 +71,17 @@ test("public API types are importable from entrypoint source", () => {
     fallbackBehavior: "silent",
     onFallback: (info: RendererFallbackInfo) => {
       equal(info.fallback, "webgl2");
+    },
+  };
+  const webgl2Options: WebGL2RendererOptions = { clearColor: [0, 0, 0, 1], preserveDrawingBuffer: true };
+  const runtimeEnvironment: FerrumRuntimeEnvironment = "production";
+  const runtimeOptions: FerrumRuntimeOptions = {
+    canvas: {} as HTMLCanvasElement,
+    webgl2: webgl2Options,
+    environment: runtimeEnvironment,
+    debug: false,
+    onFrame: (runtimeFrame: FerrumRuntimeFrame) => {
+      equal(runtimeFrame.rendererStats.drawCalls >= 0, true);
     },
   };
   const gameSpec: ShooterGameSpec = {
@@ -139,6 +157,17 @@ test("public API types are importable from entrypoint source", () => {
   const webGpuCreate: typeof WebGPURenderer.create = async () => {
     throw new Error("WebGPU compatibility shim");
   };
+  const runtimeCreate: typeof createFerrumRuntime = async () => ({
+    engine: {} as FerrumEngine,
+    renderer: {} as FerrumRuntime["renderer"],
+    input: {} as FerrumRuntime["input"],
+    assetHost: {} as AssetHost,
+    start: () => undefined,
+    pause: () => undefined,
+    resume: () => undefined,
+    stop: () => undefined,
+    destroy: () => undefined,
+  });
 
   const onFrame: FrameHandler = (frame: FrameState) => {
     const commandCount = frame.renderCommandBuffer.commandCount;
@@ -260,6 +289,7 @@ test("public API types are importable from entrypoint source", () => {
     spriteCount: 1,
   });
   equal(rendererOptions.preferred, "webgpu");
+  equal(runtimeOptions.debug, false);
   equal(gameSpec.world?.width, 1600);
   equal(cameraSpec.preset, "look-ahead");
   equal(atlasFrameSpec.texture, "bullet");
@@ -277,6 +307,7 @@ test("public API types are importable from entrypoint source", () => {
   equal(atlasPlacement.name, "compat");
   equal(atlasLayoutFn([atlasSprite]).sprites[0].name, "compat");
   equal(typeof webGpuCreate, "function");
+  equal(typeof runtimeCreate, "function");
   equal(inputProvider().mouseX, 0);
   equal(viewportProvider().height, 480);
   equal(renderer.stats().drawCalls, 0);
@@ -296,6 +327,7 @@ test("public API types are importable from entrypoint source", () => {
     mouseY: 0,
     cameraX: 0,
     cameraY: 0,
+    audioEventCount: 0,
     audioEvents: [],
     renderCommands: [],
     renderCommandBuffer: {

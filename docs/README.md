@@ -9,9 +9,12 @@
 | [사용자 설명서](user-guide.md) | 예제 실행, 조작, Game Spec 수정 흐름을 빠르게 안내한다. |
 | [아키텍처](architecture.md) | Rust core, Wasm 경계, TypeScript platform layer, WebGL2 renderer 책임을 고정한다. |
 | [Public API](public-api.md) | `@ferrum2d/ferrum-web` entrypoint에서 import 가능한 계약과 deprecated 호환 정책을 정리한다. |
+| [npm 베타 패키징](npm-release.md) | `@ferrum2d/ferrum-web` beta package artifact, semver, publish 절차를 정리한다. |
 | [Game Spec](game-spec.md) | `examples/topdown-shooter/public/game.json` 구조, 필드, 기본값, 검증 규칙의 상세 기준이다. |
+| [제품화 개발 순서](product-roadmap.md) | MVP 완료 이후 Product Alpha/Beta/1.0 후보 작업 순서를 정리한다. |
+| [2D 물리엔진 기능 맵](physics-engine.md) | 일반적인 2D 물리엔진 기능 전체와 Ferrum2D 단계별 후보를 정리한다. |
 | [Physics v2 범위](physics-v2.md) | post-MVP 물리 고도화의 포함/제외 범위, 실행 예제, 검증 기준이다. |
-| [MVP 범위](mvp.md) | 현재 MVP 포함/제외 범위와 완료 기준을 정리한다. |
+| [MVP 범위](mvp.md) | 완료된 MVP 포함/제외 범위와 회귀 검증 기준을 정리한다. |
 | [Smoke Check](smoke-check.md) | 자동 검증, CI 검증, 브라우저 수동 검증의 관계를 설명한다. |
 | [Top-down Shooter 수동 체크리스트](topdown-shooter-smoke-checklist.md) | 브라우저에서 실제 예제를 점검할 때 쓰는 상세 체크리스트다. |
 | [로드맵](roadmap.md) | 완료된 마일스톤과 다음 후보 작업을 추적한다. |
@@ -31,6 +34,7 @@
 | Game Spec 구조 보조 JSON Schema | `schemas/shooter-game-spec.schema.json` |
 | 실제 Top-down Shooter 설정 | `examples/topdown-shooter/public/game.json` |
 | Rust/Wasm ABI | `crates/ferrum-core/src/render_command.rs`, `crates/ferrum-core/src/audio_event.rs`, `packages/ferrum-web/src/wasmBridge.ts` |
+| package artifact 검증 | `scripts/check-package-files.mjs`, `packages/ferrum-web/package.json` |
 | 검증 스크립트 | 루트 `package.json`, `.github/workflows/ci.yml` |
 
 `schemas/shooter-game-spec.schema.json`은 편집기 자동완성과 구조 검토를 돕는 보조 기준이다. 런타임과 CLI에서 실제로 적용되는 기본값, preset 해석, 교차 필드 검증의 최종 기준은 `packages/ferrum-web/src/gameSpec.ts`의 `resolveShooterGameSpec(...)`이다.
@@ -40,4 +44,5 @@
 - Game Spec의 필드별 상세 설명은 [Game Spec](game-spec.md)에 둔다. 다른 문서는 예시와 링크만 유지한다.
 - 자동/CI 검증 정책은 [Smoke Check](smoke-check.md)에 둔다. 브라우저 수동 점검 항목은 [Top-down Shooter 수동 체크리스트](topdown-shooter-smoke-checklist.md)에 둔다.
 - public import 계약은 [Public API](public-api.md)에 둔다. 아키텍처 문서는 책임 경계와 데이터 흐름만 설명한다.
+- npm beta package 절차는 [npm 베타 패키징](npm-release.md)에 둔다. 다른 문서는 `pnpm package:check`와 링크만 유지한다.
 - 완료 상태와 계획은 [MVP 범위](mvp.md), [로드맵](roadmap.md), [고도화 개발 계획](advanced-development-plan.md) 중 하나에만 상세하게 기록하고, 다른 문서는 링크로 연결한다.

@@ -39,7 +39,7 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 
 ## Current Milestone
 
-현재 개발 단계는 **Phase 10 stabilization (Top-down Shooter MVP 완성 준비)** 이다.
+현재 개발 단계는 **MVP 개발 완료 및 post-MVP 안정화** 이다.
 
 완료된 항목:
 
@@ -52,16 +52,16 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 - ✅ input
 - ✅ world/entity
 - ✅ AABB collision
+- ✅ Top-down Shooter MVP
 
-다음 허용 범위:
+현재 허용 범위:
 
-- shooter game state
-- score
-- game over
-- restart
-- bullet cooldown/lifetime
-- enemy spawn/movement
-- debug overlay refinement
+- MVP 회귀 수정
+- Top-down Shooter 안정화
+- Game Spec 기반 밸런스/variant 조정
+- debug overlay와 smoke 검증 보강
+- 문서 동기화
+- roadmap에 명시된 post-MVP scoped feature
 
 다음 금지 범위:
 

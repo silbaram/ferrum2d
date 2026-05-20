@@ -3,7 +3,7 @@ import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets, TextureAss
 import { AudioManager } from "./audioManager.js";
 import type { AudioManagerConfig } from "./audioManager.js";
 import type { AssetHost } from "./createEngine.js";
-import type { AudioEventView } from "./wasmBridge.js";
+import type { AudioEventBufferView, AudioEventView } from "./wasmBridge.js";
 
 export class BrowserPlatformHost implements AssetHost {
   private readonly audioManager: AudioManager;
@@ -35,6 +35,11 @@ export class BrowserPlatformHost implements AssetHost {
   playAudioEvents(events: readonly AudioEventView[]): void {
     this.assertAlive();
     this.audioManager.playEvents(events);
+  }
+
+  playAudioEventBuffer(events: AudioEventBufferView): void {
+    this.assertAlive();
+    this.audioManager.playEventBuffer(events);
   }
 
   configureAudio(config: AudioManagerConfig): void {

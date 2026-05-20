@@ -5,7 +5,10 @@ import { SpriteBatch } from "./spriteBatch";
 import { TextureManager } from "./textureManager";
 import type { RenderCommandBufferView } from "./wasmBridge";
 
-export interface WebGL2RendererOptions { clearColor?: [number, number, number, number]; }
+export interface WebGL2RendererOptions {
+  clearColor?: [number, number, number, number];
+  preserveDrawingBuffer?: boolean;
+}
 
 export class WebGL2Renderer implements Renderer {
   private readonly gl: WebGL2RenderingContext;
@@ -17,7 +20,9 @@ export class WebGL2Renderer implements Renderer {
   private destroyed = false;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly options: WebGL2RendererOptions = {}) {
-    const gl = canvas.getContext("webgl2");
+    const gl = canvas.getContext("webgl2", {
+      preserveDrawingBuffer: options.preserveDrawingBuffer ?? false,
+    });
     if (!gl) throw new Error("WebGL2 context를 생성할 수 없습니다.");
     this.gl = gl;
     this.textureManager = new TextureManager(gl);
@@ -87,10 +92,10 @@ export class WebGL2Renderer implements Renderer {
   ): RendererStats {
     this.assertAlive();
     const commands = second ?? (first as RenderCommandBufferView);
-    const drawCalls = second
+    const batchStats = second
       ? this.spriteBatch.drawBatch(first as WebGLTexture, second, [this.logicalWidth, this.logicalHeight])
       : this.spriteBatch.drawBatches(this.textureManager, commands, [this.logicalWidth, this.logicalHeight]);
-    this.currentStats = rendererStatsForCommands(commands, drawCalls, second ? 0 : undefined);
+    this.currentStats = rendererStatsForCommands(commands, batchStats.drawCalls, batchStats.textureSwitchCount);
     return this.stats();
   }
 

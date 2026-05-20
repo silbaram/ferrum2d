@@ -1,4 +1,4 @@
-declare module "../pkg/ferrum_core" {
+declare module "../pkg/ferrum_core.js" {
   export interface InitOutput {
     readonly memory: WebAssembly.Memory;
   }

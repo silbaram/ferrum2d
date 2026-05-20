@@ -2,6 +2,8 @@
 
 이 문서는 post-MVP 물리 고도화의 완료 범위를 고정한다. 목표는 범용 rigid body 엔진이 아니라 Top-down Shooter와 Ferrum2D Rust core에 맞는 2D AABB 물리 계층을 안정화하는 것이다.
 
+2D 물리엔진에서 일반적으로 다루는 전체 기능 목록과 Ferrum2D 단계별 후보는 [2D 물리엔진 기능 맵](physics-engine.md)을 기준으로 한다.
+
 ## 완료 범위
 
 - `AabbBounds`: `Transform2D`와 `AabbCollider`에서 world-space AABB를 계산한다.

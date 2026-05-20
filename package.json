@@ -2,21 +2,29 @@
   "name": "ferrum2d",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
   "packageManager": "pnpm@10.8.0",
   "scripts": {
     "build:wasm": "wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg",
     "build:web": "pnpm -r --filter './packages/*' --filter './examples/*' build",
     "build": "pnpm build:wasm && pnpm build:web",
+    "dev:minimal": "pnpm build:wasm && pnpm --filter @ferrum2d/minimal-game dev",
+    "dev:topdown": "pnpm build:wasm && pnpm --filter @ferrum2d/topdown-shooter dev",
     "test:rust": "cargo test --manifest-path crates/ferrum-core/Cargo.toml",
     "test:web": "pnpm --filter @ferrum2d/ferrum-web test",
     "validate:game-spec": "pnpm --filter @ferrum2d/ferrum-web build && node scripts/validate-game-spec.mjs examples/topdown-shooter/public/game.json",
     "smoke:headless": "pnpm --filter @ferrum2d/ferrum-web build && node scripts/headless-smoke.mjs examples/topdown-shooter/public/game.json",
-    "package:check": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node scripts/check-package-files.mjs --require-wasm-pkg",
+    "smoke:browser": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/minimal-game build && node scripts/browser-render-smoke.mjs examples/minimal-game/dist",
+    "package:check": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node scripts/check-package-files.mjs --require-wasm-pkg --verify-pack",
+    "package:publish-check": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node scripts/check-package-files.mjs --require-wasm-pkg --verify-pack --expect-publishable",
     "create:game-variant": "pnpm --filter @ferrum2d/ferrum-web build && node scripts/create-game-variant.mjs",
     "check": "pnpm build && pnpm test",
     "smoke:check": "pnpm lint && pnpm test && pnpm validate:game-spec && pnpm smoke:headless && pnpm build",
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm test:web && pnpm test:rust",
     "format": "pnpm -r --if-present format"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.60.0"
   }
 }

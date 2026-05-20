@@ -4,13 +4,15 @@ import { applyShooterGameSpec } from "./gameSpec";
 import type { ResolvedShooterGameSpec, ShooterGameSpec } from "./gameSpec";
 import { GameLoop } from "./gameLoop";
 import type { InputSnapshot } from "./inputManager";
-import type { AudioEventView, RenderCommandBufferView, RenderCommandView } from "./wasmBridge";
+import { EMPTY_AUDIO_EVENTS } from "./wasmBridge";
+import type { AudioEventBufferView, AudioEventView, RenderCommandBufferView, RenderCommandView } from "./wasmBridge";
 import { WasmBridge } from "./wasmBridge";
 
 export interface AssetHost {
   loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback): Promise<LoadedAssets>;
   textureId(name: string): number;
   soundId?(name: string): number;
+  playAudioEventBuffer?(events: AudioEventBufferView): void;
   playAudioEvents?(events: readonly AudioEventView[]): void;
   configureAudio?(config: AudioBusConfig): void;
 }
@@ -44,7 +46,8 @@ export interface FrameState {
   mouseY: number;
   cameraX: number;
   cameraY: number;
-  audioEvents: AudioEventView[];
+  audioEventCount: number;
+  audioEvents: readonly AudioEventView[];
   /** @deprecated 호환성 유지용. hot path에서는 renderCommandBuffer를 사용하세요. */
   renderCommands: RenderCommandView[];
   renderCommandBuffer: RenderCommandBufferView;
@@ -73,6 +76,8 @@ export interface CreateEngineOptions {
   includeDeprecatedRenderCommands?: boolean;
   /** @deprecated Worker clock는 현재 MVP 범위 밖이며 이 옵션은 무시됩니다. */
   useWorkerClock?: boolean;
+  /** FrameState에 decoded audio event object 배열을 포함할지 여부입니다. 기본값은 true입니다. */
+  includeAudioEvents?: boolean;
   /** Platform lifecycle callbacks. These receive snapshots only and must not own simulation state. */
   lifecycle?: EngineLifecycleHooks;
 }
@@ -108,6 +113,11 @@ interface FramePipelineContext {
   assetHost?: AssetHost;
   viewportProvider?: ViewportProvider;
   options: CreateEngineOptions;
+}
+
+interface AudioDrainResult {
+  audioEventCount: number;
+  audioEvents: readonly AudioEventView[];
 }
 
 export async function createEngine(
@@ -276,7 +286,7 @@ function runFrame(context: FramePipelineContext, deltaSeconds: number): void {
   const input = pushInput(context.rustEngine, context.inputProvider);
   pushViewport(context.rustEngine, context.viewportProvider);
   const rustUpdateTimeMs = updateRust(context.rustEngine, deltaSeconds);
-  const audioEvents = drainAudioEvents(context.bridge, context.rustEngine, context.assetHost);
+  const audioEvents = drainAudioEvents(context.bridge, context.rustEngine, context.assetHost, context.options.includeAudioEvents ?? true);
   const renderCommandBuffer = context.bridge.readRenderCommandBuffer();
   context.onFrame?.(buildFrameState(
     context.bridge,
@@ -322,16 +332,34 @@ function updateRust(rustEngine: Engine, deltaSeconds: number): number {
   return performance.now() - updateStartMs;
 }
 
-function drainAudioEvents(bridge: WasmBridge, rustEngine: Engine, assetHost?: AssetHost): AudioEventView[] {
-  const audioEvents = bridge.readAudioEvents();
+function drainAudioEvents(
+  bridge: WasmBridge,
+  rustEngine: Engine,
+  assetHost: AssetHost | undefined,
+  includeAudioEvents: boolean,
+): AudioDrainResult {
+  const audioEventBuffer = bridge.readAudioEventBuffer();
+  let decodedAudioEvents: readonly AudioEventView[] | undefined;
+  const decodeAudioEvents = (): readonly AudioEventView[] => {
+    decodedAudioEvents ??= bridge.decodeAudioEvents(audioEventBuffer);
+    return decodedAudioEvents;
+  };
+
   try {
-    if (audioEvents.length > 0) {
-      assetHost?.playAudioEvents?.(audioEvents);
+    if (audioEventBuffer.eventCount > 0) {
+      if (assetHost?.playAudioEventBuffer) {
+        assetHost.playAudioEventBuffer(audioEventBuffer);
+      } else {
+        assetHost?.playAudioEvents?.(decodeAudioEvents());
+      }
     }
   } finally {
     rustEngine.clear_events();
   }
-  return audioEvents;
+  return {
+    audioEventCount: audioEventBuffer.eventCount,
+    audioEvents: includeAudioEvents ? decodeAudioEvents() : EMPTY_AUDIO_EVENTS,
+  };
 }
 
 function buildFrameState(
@@ -340,7 +368,7 @@ function buildFrameState(
   deltaSeconds: number,
   rustUpdateTimeMs: number,
   input: InputSnapshot | undefined,
-  audioEvents: AudioEventView[],
+  audioEvents: AudioDrainResult,
   renderCommandBuffer: RenderCommandBufferView,
   options: CreateEngineOptions,
 ): FrameState {
@@ -356,7 +384,8 @@ function buildFrameState(
     mouseY: input?.mouseY ?? 0,
     cameraX: rustEngine.camera_x(),
     cameraY: rustEngine.camera_y(),
-    audioEvents,
+    audioEventCount: audioEvents.audioEventCount,
+    audioEvents: audioEvents.audioEvents,
     renderCommandBuffer,
     renderCommands: options.includeDeprecatedRenderCommands ? bridge.readRenderCommands() : EMPTY_RENDER_COMMANDS,
   };
