@@ -9,9 +9,11 @@ export type {
   EngineLifecycleHooks,
   EngineLifecycleSnapshot,
   FerrumEngine,
+  FixedTimestepOptions,
   FrameHandler,
   FrameState,
   InputProvider,
+  PhysicsFrameStats,
   ShooterSoundIds,
   ShooterTextureIds,
   ViewportSnapshot,
@@ -76,5 +78,13 @@ export type {
 export type { TextureRegistryEntry } from "./textureRegistry";
 export type { SoundRegistryEntry } from "./soundRegistry";
 export type { DebugOverlayMetrics, DebugOverlayOptions } from "./debugOverlay";
-export type { AudioEventBufferView, AudioEventView, RenderCommandBufferView, RenderCommandView } from "./wasmBridge";
-export { decodeRenderCommands } from "./wasmBridge";
+export type {
+  AudioEventBufferView,
+  AudioEventView,
+  CollisionEventBufferView,
+  CollisionEventKind,
+  CollisionEventView,
+  RenderCommandBufferView,
+  RenderCommandView,
+} from "./wasmBridge";
+export { decodeCollisionEvents, decodeRenderCommands } from "./wasmBridge";

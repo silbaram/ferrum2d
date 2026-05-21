@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::*;
 pub mod audio_event;
 pub mod camera;
 pub mod collision;
+pub mod collision_event;
 pub mod components;
 pub mod engine;
 pub mod entity;
@@ -16,16 +17,26 @@ pub mod world;
 
 pub use audio_event::AudioEvent;
 pub use camera::{Camera2D, CameraPreset, CameraPresetConfig};
-pub use collision::{AabbBounds, CollisionPair, CollisionSystem, SweptAabbHit};
+pub use collision::{
+    AabbBounds, AabbContact, AabbQueryHit, CollisionContact, CollisionPair, CollisionSystem,
+    PointQueryHit, RaycastHit, SweptAabbContactHit, SweptAabbHit,
+};
+pub use collision_event::{
+    CollisionEvent, CollisionEventCounts, CollisionEventTracker, COLLISION_EVENT_ENTER,
+    COLLISION_EVENT_EXIT, COLLISION_EVENT_HIT, COLLISION_EVENT_STAY,
+};
 pub use components::{
-    AabbCollider, CollisionLayer, Sprite, SpriteAnimation, SpriteAnimationKind,
-    SpriteAnimationState, SpriteFrame, Transform2D, Velocity,
+    AabbCollider, CollisionFilter, CollisionLayer, CollisionMask, Sprite, SpriteAnimation,
+    SpriteAnimationKind, SpriteAnimationState, SpriteFrame, Transform2D, Velocity,
 };
 pub use engine::Engine;
 pub use entity::Entity;
 pub use game_state::GameState;
 pub use input::InputState;
-pub use physics::{PhysicsBounds, PhysicsSystem};
+pub use physics::{
+    FixedTimestep, FixedTimestepConfig, FixedTimestepUpdate, KinematicMoveResult, PhysicsBounds,
+    PhysicsCounters, PhysicsSystem,
+};
 pub use render_command::SpriteRenderCommand;
 pub use tilemap::{TileDefinition, Tilemap, TilemapLayer};
 pub use world::{EntityTemplate, World};
@@ -48,6 +59,16 @@ pub fn audio_event_floats() -> usize {
 #[wasm_bindgen]
 pub fn audio_event_bytes() -> usize {
     std::mem::size_of::<AudioEvent>()
+}
+
+#[wasm_bindgen]
+pub fn collision_event_u32s() -> usize {
+    std::mem::size_of::<CollisionEvent>() / std::mem::size_of::<u32>()
+}
+
+#[wasm_bindgen]
+pub fn collision_event_bytes() -> usize {
+    std::mem::size_of::<CollisionEvent>()
 }
 
 #[wasm_bindgen]

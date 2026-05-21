@@ -79,6 +79,8 @@ await requireFile("LICENSE");
 await requireFile("src/index.ts");
 await requireFile("dist/index.js");
 await requireFile("dist/index.d.ts");
+await requireFile("dist/collisionEventDecoder.js");
+await requireFile("dist/collisionEventDecoder.d.ts");
 await checkDistModuleSpecifiers();
 await checkWasmPkgArtifacts();
 if (verifyPack) {
@@ -109,6 +111,7 @@ async function checkWasmPkgArtifacts() {
   }
 
   if (missing.length === 0) {
+    await checkWasmExportDeclarations();
     return;
   }
 
@@ -121,6 +124,23 @@ async function checkWasmPkgArtifacts() {
     detail: "Generated wasm artifacts are not present. Run pnpm build:wasm before release packaging.",
     missing,
   });
+}
+
+async function checkWasmExportDeclarations() {
+  const wasmPath = path.join(packageRoot, "pkg/ferrum_core_bg.wasm");
+  const wasmTypesPath = path.join(packageRoot, "pkg/ferrum_core_bg.wasm.d.ts");
+  const wasmTypes = await readFile(wasmTypesPath, "utf8");
+  const declaredExports = [...wasmTypes.matchAll(/^export const ([A-Za-z0-9_$]+):/gm)]
+    .map((match) => match[1])
+    .sort();
+  const wasmModule = new WebAssembly.Module(await readFile(wasmPath));
+  const actualExports = new Set(WebAssembly.Module.exports(wasmModule).map((entry) => entry.name));
+  const missingExports = declaredExports.filter((name) => !actualExports.has(name));
+
+  assert(
+    missingExports.length === 0,
+    `[package check] wasm artifact is stale; missing exports from packages/ferrum-web/pkg/ferrum_core_bg.wasm: ${missingExports.join(", ")}`,
+  );
 }
 
 async function checkDistModuleSpecifiers() {

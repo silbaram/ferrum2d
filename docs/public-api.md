@@ -49,6 +49,8 @@ import {
 | `FerrumEngine` | interface | start/pause/resume/stop/destroy, asset loading, texture/sound id 적용, Game Spec 적용, score/state 조회를 제공한다. |
 | `FrameHandler` | type | `createEngine`의 frame callback 타입이다. 매 프레임 `FrameState`를 받는다. |
 | `FrameState` | interface | 렌더링, 디버그, HUD 갱신에 필요한 per-frame snapshot이다. 게임 규칙의 source of truth는 아니다. |
+| `PhysicsFrameStats` | interface | fixed timestep, kinematic movement, collision event 수를 담는 per-frame physics snapshot이다. |
+| `FixedTimestepOptions` | interface | fixed timestep opt-in 설정이다. step, frame clamp, update당 최대 step 수를 지정한다. |
 | `InputProvider` | type | `InputSnapshot`을 제공하는 callback 타입이다. 보통 `InputManager.snapshot()`을 연결한다. |
 | `ViewportProvider` | type | canvas logical viewport size를 제공하는 callback 타입이다. 보통 renderer resize 결과를 연결한다. |
 | `CreateEngineOptions` | interface | compatibility 옵션과 platform lifecycle hook을 담는다. 신규 코드는 deprecated 옵션 대신 기본값을 사용한다. |
@@ -91,6 +93,9 @@ import {
 | `ApplyShooterGameSpecOptions` | interface | atlas frame texture name을 numeric texture id로 해석하는 resolver 옵션이다. |
 | `RenderCommandBufferView` | interface | Wasm render command buffer를 매 프레임 새 `Float32Array` view로 읽은 결과다. |
 | `AudioEventView` | interface | Rust audio event buffer를 TypeScript에서 해석한 결과다. |
+| `CollisionEventBufferView` | interface | Rust collision event buffer를 매 프레임 새 `Uint32Array` view로 읽은 결과다. |
+| `CollisionEventView` | interface | decoded collision enter/stay/exit/hit event object다. |
+| `decodeCollisionEvents(...)` | function | buffer 기반 collision event를 object 배열 형태로 decode한다. 기본 hot path는 raw buffer를 사용한다. |
 | `decodeRenderCommands(...)` | function | buffer 기반 render command를 deprecated object 배열 형태로 decode한다. hot path 기본 경로로 쓰지 않는다. |
 
 ## 부가 타입 export
@@ -106,6 +111,7 @@ import {
 | Game Spec resolved/application 타입 | `ResolvedShooterAtlasFrame`, `ResolvedShooterTileDefinition`, `ResolvedShooterTileLayer`, `ResolvedShooterTilemap`, `ShooterGameSpecTarget` |
 | Texture atlas authoring 타입 | `AtlasSpriteInput`, `AtlasSpritePlacement`, `TextureAtlasLayout`, `TextureAtlasOptions` |
 | Debug/renderer/runtime 보조 타입 | `DebugOverlayMetrics`, `DebugOverlayOptions`, `FerrumRuntimeEnvironment`, `SpriteDrawOptions` |
+| Physics/event 보조 타입 | `CollisionEventKind`, `FixedTimestepOptions`, `PhysicsFrameStats` |
 
 ## 호환/저수준 export
 
@@ -119,6 +125,7 @@ import {
 | `SpriteBatch` | WebGL2 sprite batching 내부 구현 class다. 일반 게임 코드는 직접 사용할 필요가 없다. |
 | `RenderCommandView` | deprecated object command 형태다. 신규 렌더링 경로는 `RenderCommandBufferView`를 사용한다. |
 | `AudioEventBufferView` | Rust audio event buffer의 raw `Float32Array` view다. 일반 앱은 `FrameState.audioEvents` 또는 `AssetHost.playAudioEvents(...)`를 사용한다. |
+| `CollisionEventBufferView` | Rust collision event buffer의 raw `Uint32Array` view다. 일반 앱은 `FrameState.physics.collisionEventCount`를 먼저 보고, 상세 event가 필요할 때 `decodeCollisionEvents(...)`를 사용한다. |
 
 `packages/ferrum-web/src/workerFrameClock.ts`와 `packages/ferrum-web/src/indexedDbAssetCache.ts`에는 현재 제품 범위 제외 기능의 source-level shim이 남아 있지만, 현재 package entrypoint public API로 export하지 않는다.
 
@@ -135,7 +142,7 @@ import {
 | `textureBindCount` | `texture binds` | batch 렌더링에 따른 texture bind 수 |
 | `textureSwitchCount` | `texture switches` | texture-id batching 경로에서 인접 `texture_id`가 바뀐 횟수. 명시적 단일 texture 렌더 경로는 0 |
 
-DebugOverlay는 이 계약을 `fps`, `frame time`, `rust update`, `render`, `mouse`, `camera`, `state`, `score`, `audio events`와 함께 표시한다. 표시 문자열은 `fps: 60.0 fps`, `frame time: 16.67 ms`, `audio events: 4.3 events/s`처럼 label과 unit을 포함한다.
+DebugOverlay는 이 계약을 `fps`, `frame time`, `rust update`, `render`, `mouse`, `camera`, `state`, `score`, `audio events`, `fixed steps`, `kinematic hits`, `tile checks`, `collision events`와 함께 표시한다. 표시 문자열은 `fps: 60.0 fps`, `frame time: 16.67 ms`, `audio events: 4.3 events/s`처럼 label과 unit을 포함한다.
 
 ## Game Spec Camera 계약
 
@@ -224,12 +231,16 @@ Runtime 적용 범위:
 
 - `renderCommandBuffer`: 기본 렌더링 경로다. 매 프레임 Wasm memory에서 새 `Float32Array` view로 만든다.
 - `audioEvents`: `createEngine` 내부에서 asset host로 전달해 재생한 뒤 같은 frame에 관측할 수 있는 이벤트 배열이다.
+- `physics`: fixed timestep step 수, kinematic hit/candidate 수, collision event 수를 담은 per-frame snapshot이다.
+- `collisionEventBuffer`: 기본 collision event 경로다. 매 프레임 Wasm memory에서 새 `Uint32Array` view로 만든다.
+- `collisionEvents`: `includeCollisionEvents`를 켰을 때만 decoded object 배열을 담는다. 기본값은 빈 배열이다.
 - `score`, `entityCount`, `gameState`, `spriteCount`, `cameraX`, `cameraY`: HUD와 debug 표시용 snapshot이다.
 
 주의:
 
 - `FrameState` 값을 다음 프레임의 게임 로직 입력으로 사용하지 않는다.
 - `renderCommandBuffer.buffer` view를 장기 보관하지 않는다. Wasm memory가 grow되면 기존 view가 무효가 될 수 있다.
+- `collisionEventBuffer.buffer` view도 장기 보관하지 않는다. event payload가 필요한 경우 같은 frame에서 decode하거나 필요한 값만 복사한다.
 
 ## Engine Lifecycle Hooks
 

@@ -26,7 +26,7 @@
 | --- | --- | --- |
 | 1 | Particles/Tweens | hit effect, transition, UI animation polish |
 | 2 | Audio v2 | BGM, mixer bus, fade, random pitch pool |
-| 3 | Physics query v3 | raycast, point query, circle collider, debug counters |
+| 3 | Physics query v3 | 완료된 query/kinematic/counter/API/event 기반 위에 circle collider, shape query, damage payload 확장 |
 | 4 | Release automation | changelog, package publish dry-run, docs/demo deploy |
 
 ## 당장 미루는 것

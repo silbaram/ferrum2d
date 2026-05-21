@@ -1,5 +1,6 @@
 import { equal } from "node:assert/strict";
 import { test } from "node:test";
+import { decodeCollisionEvents } from "../src/index.js";
 import type {
   AssetManifest,
   AudioAssetLoader,
@@ -22,9 +23,11 @@ import type {
   EngineLifecycleSnapshot,
   AssetHost,
   FerrumEngine,
+  FixedTimestepOptions,
   FrameHandler,
   FrameState,
   InputProvider,
+  PhysicsFrameStats,
   Renderer,
   RendererStats,
   ShooterAtlasFrameSpec,
@@ -42,6 +45,8 @@ import type {
   ViewportProvider,
   WebGPURenderer,
   WebGL2RendererOptions,
+  CollisionEventBufferView,
+  CollisionEventView,
   createFerrumRuntime,
   generateTextureAtlasLayout,
 } from "../src/index.js";
@@ -64,8 +69,11 @@ test("public API types are importable from entrypoint source", () => {
     includeDeprecatedRenderCommands: false,
     useWorkerClock: true,
     includeAudioEvents: true,
+    includeCollisionEvents: true,
+    fixedTimestep: { stepSeconds: 1 / 60, maxFrameSeconds: 0.25, maxStepsPerUpdate: 8 },
     lifecycle: lifecycleHooks,
   };
+  const fixedTimestepOptions: FixedTimestepOptions = { enabled: true, stepSeconds: 1 / 120 };
   const rendererOptions: CreateRendererOptions = {
     preferred: "webgpu",
     fallbackBehavior: "silent",
@@ -172,7 +180,33 @@ test("public API types are importable from entrypoint source", () => {
   const onFrame: FrameHandler = (frame: FrameState) => {
     const commandCount = frame.renderCommandBuffer.commandCount;
     equal(commandCount >= 0, true);
+    equal(frame.physics.fixedSteps >= 0, true);
+    equal(frame.collisionEventBuffer.eventCount >= 0, true);
   };
+  const physicsStats: PhysicsFrameStats = {
+    fixedTimestepEnabled: true,
+    fixedSteps: 1,
+    fixedAlpha: 0.25,
+    fixedConsumedSeconds: 1 / 60,
+    fixedDroppedSeconds: 0,
+    kinematicMoves: 0,
+    kinematicHits: 0,
+    kinematicEntityHits: 0,
+    kinematicTileHits: 0,
+    solidCandidateChecks: 0,
+    tileCandidateChecks: 0,
+    collisionEnterEvents: 1,
+    collisionStayEvents: 0,
+    collisionExitEvents: 0,
+    collisionHitEvents: 0,
+    collisionEventCount: 1,
+  };
+  const collisionEventBuffer: CollisionEventBufferView = {
+    buffer: new Uint32Array([1, 0, 0, 1, 0]),
+    eventCount: 1,
+    u32sPerEvent: 5,
+  };
+  const collisionEvent: CollisionEventView = decodeCollisionEvents(collisionEventBuffer)[0];
   const inputProvider: InputProvider = () => ({
     w: false,
     a: false,
@@ -202,7 +236,7 @@ test("public API types are importable from entrypoint source", () => {
   const audioAssetLoader: Pick<AudioAssetLoader, "load"> = {
     load: async () => ({}) as AudioBuffer,
   };
-  const engine: Pick<FerrumEngine, "setGameSpec"> = {
+  const engine: Pick<FerrumEngine, "setGameSpec" | "configureFixedTimestep"> = {
     setGameSpec: () => ({
       worldWidth: 1600,
       worldHeight: 960,
@@ -276,11 +310,13 @@ test("public API types are importable from entrypoint source", () => {
       gameOverVolume: 0.65,
       gameOverPitch: 0.9,
     }),
+    configureFixedTimestep: () => undefined,
   };
 
   equal(manifest.textures?.player, "/assets/player.png");
   equal(options.includeDeprecatedRenderCommands, false);
   equal(options.useWorkerClock, true);
+  equal(fixedTimestepOptions.enabled, true);
   options.lifecycle?.onStart?.({
     timeSeconds: 0,
     score: 0,
@@ -308,6 +344,8 @@ test("public API types are importable from entrypoint source", () => {
   equal(atlasLayoutFn([atlasSprite]).sprites[0].name, "compat");
   equal(typeof webGpuCreate, "function");
   equal(typeof runtimeCreate, "function");
+  equal(physicsStats.collisionEventCount, 1);
+  equal(collisionEvent.kind, "enter");
   equal(inputProvider().mouseX, 0);
   equal(viewportProvider().height, 480);
   equal(renderer.stats().drawCalls, 0);
@@ -329,6 +367,9 @@ test("public API types are importable from entrypoint source", () => {
     cameraY: 0,
     audioEventCount: 0,
     audioEvents: [],
+    physics: physicsStats,
+    collisionEventBuffer,
+    collisionEvents: [collisionEvent],
     renderCommands: [],
     renderCommandBuffer: {
       buffer: new Float32Array(0),

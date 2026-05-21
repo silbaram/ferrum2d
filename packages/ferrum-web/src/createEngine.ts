@@ -5,7 +5,15 @@ import type { ResolvedShooterGameSpec, ShooterGameSpec } from "./gameSpec";
 import { GameLoop } from "./gameLoop";
 import type { InputSnapshot } from "./inputManager";
 import { EMPTY_AUDIO_EVENTS } from "./wasmBridge";
-import type { AudioEventBufferView, AudioEventView, RenderCommandBufferView, RenderCommandView } from "./wasmBridge";
+import { EMPTY_COLLISION_EVENTS } from "./collisionEventDecoder";
+import type {
+  AudioEventBufferView,
+  AudioEventView,
+  CollisionEventBufferView,
+  CollisionEventView,
+  RenderCommandBufferView,
+  RenderCommandView,
+} from "./wasmBridge";
 import { WasmBridge } from "./wasmBridge";
 
 export interface AssetHost {
@@ -48,12 +56,41 @@ export interface FrameState {
   cameraY: number;
   audioEventCount: number;
   audioEvents: readonly AudioEventView[];
+  physics: PhysicsFrameStats;
+  collisionEventBuffer: CollisionEventBufferView;
+  collisionEvents: readonly CollisionEventView[];
   /** @deprecated 호환성 유지용. hot path에서는 renderCommandBuffer를 사용하세요. */
   renderCommands: RenderCommandView[];
   renderCommandBuffer: RenderCommandBufferView;
 }
 
 export type FrameHandler = (state: FrameState) => void;
+
+export interface FixedTimestepOptions {
+  enabled?: boolean;
+  stepSeconds?: number;
+  maxFrameSeconds?: number;
+  maxStepsPerUpdate?: number;
+}
+
+export interface PhysicsFrameStats {
+  fixedTimestepEnabled: boolean;
+  fixedSteps: number;
+  fixedAlpha: number;
+  fixedConsumedSeconds: number;
+  fixedDroppedSeconds: number;
+  kinematicMoves: number;
+  kinematicHits: number;
+  kinematicEntityHits: number;
+  kinematicTileHits: number;
+  solidCandidateChecks: number;
+  tileCandidateChecks: number;
+  collisionEnterEvents: number;
+  collisionStayEvents: number;
+  collisionExitEvents: number;
+  collisionHitEvents: number;
+  collisionEventCount: number;
+}
 
 export interface EngineLifecycleSnapshot {
   timeSeconds: number;
@@ -78,6 +115,10 @@ export interface CreateEngineOptions {
   useWorkerClock?: boolean;
   /** FrameState에 decoded audio event object 배열을 포함할지 여부입니다. 기본값은 true입니다. */
   includeAudioEvents?: boolean;
+  /** FrameState에 decoded collision event object 배열을 포함할지 여부입니다. 기본값은 false입니다. */
+  includeCollisionEvents?: boolean;
+  /** Optional fixed timestep simulation mode. 기본값은 disabled variable-delta update입니다. */
+  fixedTimestep?: boolean | FixedTimestepOptions;
   /** Platform lifecycle callbacks. These receive snapshots only and must not own simulation state. */
   lifecycle?: EngineLifecycleHooks;
 }
@@ -91,6 +132,7 @@ export interface FerrumEngine {
   setSoundIds(soundIds: ShooterSoundIds): void;
   setViewportSize(width: number, height: number): void;
   setGameSpec(spec: ShooterGameSpec): ResolvedShooterGameSpec;
+  configureFixedTimestep(options: boolean | FixedTimestepOptions): void;
   cameraX(): number;
   cameraY(): number;
 }
@@ -129,6 +171,7 @@ export async function createEngine(
 ): Promise<FerrumEngine> {
   const bridge = await WasmBridge.init();
   const rustEngine: Engine = bridge.engine();
+  applyFixedTimestepOptions(rustEngine, options.fixedTimestep);
   const framePipeline: FramePipelineContext = {
     bridge,
     rustEngine,
@@ -207,6 +250,11 @@ export async function createEngine(
     return resolved;
   };
 
+  const configureFixedTimestep = (fixedTimestep: boolean | FixedTimestepOptions): void => {
+    requireAlive();
+    applyFixedTimestepOptions(rustEngine, fixedTimestep);
+  };
+
   return {
     start: () => {
       requireAlive();
@@ -273,6 +321,7 @@ export async function createEngine(
     setTextureIds,
     setSoundIds,
     setGameSpec,
+    configureFixedTimestep,
     setViewportSize: (width, height) => {
       requireAlive();
       rustEngine.set_viewport_size(width, height);
@@ -288,6 +337,7 @@ function runFrame(context: FramePipelineContext, deltaSeconds: number): void {
   const rustUpdateTimeMs = updateRust(context.rustEngine, deltaSeconds);
   const audioEvents = drainAudioEvents(context.bridge, context.rustEngine, context.assetHost, context.options.includeAudioEvents ?? true);
   const renderCommandBuffer = context.bridge.readRenderCommandBuffer();
+  const collisionEventBuffer = context.bridge.readCollisionEventBuffer();
   context.onFrame?.(buildFrameState(
     context.bridge,
     context.rustEngine,
@@ -296,6 +346,7 @@ function runFrame(context: FramePipelineContext, deltaSeconds: number): void {
     input,
     audioEvents,
     renderCommandBuffer,
+    collisionEventBuffer,
     context.options,
   ));
 }
@@ -354,7 +405,7 @@ function drainAudioEvents(
       }
     }
   } finally {
-    rustEngine.clear_events();
+    rustEngine.clear_audio_events();
   }
   return {
     audioEventCount: audioEventBuffer.eventCount,
@@ -370,8 +421,10 @@ function buildFrameState(
   input: InputSnapshot | undefined,
   audioEvents: AudioDrainResult,
   renderCommandBuffer: RenderCommandBufferView,
+  collisionEventBuffer: CollisionEventBufferView,
   options: CreateEngineOptions,
 ): FrameState {
+  const physics = buildPhysicsFrameStats(rustEngine);
   return {
     timeSeconds: rustEngine.time(),
     frameTimeMs: deltaSeconds * 1000,
@@ -386,7 +439,57 @@ function buildFrameState(
     cameraY: rustEngine.camera_y(),
     audioEventCount: audioEvents.audioEventCount,
     audioEvents: audioEvents.audioEvents,
+    physics,
+    collisionEventBuffer,
+    collisionEvents: options.includeCollisionEvents
+      ? bridge.decodeCollisionEvents(collisionEventBuffer)
+      : EMPTY_COLLISION_EVENTS,
     renderCommandBuffer,
     renderCommands: options.includeDeprecatedRenderCommands ? bridge.readRenderCommands() : EMPTY_RENDER_COMMANDS,
   };
+}
+
+function buildPhysicsFrameStats(rustEngine: Engine): PhysicsFrameStats {
+  const collisionEnterEvents = rustEngine.collision_enter_count();
+  const collisionStayEvents = rustEngine.collision_stay_count();
+  const collisionExitEvents = rustEngine.collision_exit_count();
+  const collisionHitEvents = rustEngine.collision_hit_count();
+  return {
+    fixedTimestepEnabled: rustEngine.fixed_timestep_enabled(),
+    fixedSteps: rustEngine.physics_fixed_steps(),
+    fixedAlpha: rustEngine.fixed_timestep_alpha(),
+    fixedConsumedSeconds: rustEngine.fixed_timestep_consumed_seconds(),
+    fixedDroppedSeconds: rustEngine.fixed_timestep_dropped_seconds(),
+    kinematicMoves: rustEngine.physics_kinematic_moves(),
+    kinematicHits: rustEngine.physics_kinematic_hits(),
+    kinematicEntityHits: rustEngine.physics_kinematic_entity_hits(),
+    kinematicTileHits: rustEngine.physics_kinematic_tile_hits(),
+    solidCandidateChecks: rustEngine.physics_solid_candidate_checks(),
+    tileCandidateChecks: rustEngine.physics_tile_candidate_checks(),
+    collisionEnterEvents,
+    collisionStayEvents,
+    collisionExitEvents,
+    collisionHitEvents,
+    collisionEventCount:
+      collisionEnterEvents + collisionStayEvents + collisionExitEvents + collisionHitEvents,
+  };
+}
+
+function applyFixedTimestepOptions(
+  rustEngine: Engine,
+  fixedTimestep: boolean | FixedTimestepOptions | undefined,
+): void {
+  if (fixedTimestep === undefined) {
+    return;
+  }
+  if (typeof fixedTimestep === "boolean") {
+    rustEngine.configure_fixed_timestep(fixedTimestep, 1 / 60, 0.25, 8);
+    return;
+  }
+  rustEngine.configure_fixed_timestep(
+    fixedTimestep.enabled ?? true,
+    fixedTimestep.stepSeconds ?? 1 / 60,
+    fixedTimestep.maxFrameSeconds ?? 0.25,
+    fixedTimestep.maxStepsPerUpdate ?? 8,
+  );
 }

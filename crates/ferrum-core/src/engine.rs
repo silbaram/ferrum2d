@@ -2,8 +2,10 @@ use wasm_bindgen::prelude::*;
 
 use crate::audio_event::AudioEvent;
 use crate::camera::{Camera2D, CameraPresetConfig};
+use crate::collision_event::{CollisionEvent, CollisionEventCounts, CollisionEventTracker};
 use crate::game_state::GameState;
 use crate::input::InputState;
+use crate::physics::{FixedTimestep, FixedTimestepConfig, FixedTimestepUpdate, PhysicsCounters};
 use crate::render_command::SpriteRenderCommand;
 use crate::shooter_scene::{
     EnemyBehavior, EnemySpawnPattern, ShooterAudioPolicy, ShooterConfig, ShooterScene,
@@ -15,16 +17,51 @@ use crate::world::World;
 const DEFAULT_VIEWPORT_WIDTH: f32 = 800.0;
 const DEFAULT_VIEWPORT_HEIGHT: f32 = 480.0;
 
+#[derive(Clone, Copy, Debug, Default)]
+struct FixedTimestepInputLatch {
+    space: bool,
+    enter: bool,
+    mouse_left: bool,
+}
+
+impl FixedTimestepInputLatch {
+    fn observe(&mut self, previous: InputState, current: InputState) {
+        self.space |= current.space == 1 && previous.space == 0;
+        self.enter |= current.enter == 1 && previous.enter == 0;
+        self.mouse_left |= current.mouse_left == 1 && previous.mouse_left == 0;
+    }
+
+    fn apply_to(self, mut input: InputState) -> InputState {
+        input.space = input.space.max(u8::from(self.space));
+        input.enter = input.enter.max(u8::from(self.enter));
+        input.mouse_left = input.mouse_left.max(u8::from(self.mouse_left));
+        input
+    }
+
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
+}
+
 #[wasm_bindgen]
 pub struct Engine {
     elapsed_seconds: f64,
     input: InputState,
+    previous_input_sample: InputState,
+    fixed_timestep_input_latch: FixedTimestepInputLatch,
     scene: ShooterScene,
     camera: Camera2D,
     world: World,
     tilemap: Tilemap,
     render_commands: Vec<SpriteRenderCommand>,
     audio_events: Vec<AudioEvent>,
+    collision_events: Vec<CollisionEvent>,
+    collision_event_tracker: CollisionEventTracker,
+    collision_event_counts: CollisionEventCounts,
+    physics_counters: PhysicsCounters,
+    fixed_timestep: FixedTimestep,
+    fixed_timestep_enabled: bool,
+    last_fixed_update: FixedTimestepUpdate,
 }
 
 #[wasm_bindgen]
@@ -34,12 +71,21 @@ impl Engine {
         let mut engine = Self {
             elapsed_seconds: 0.0,
             input: InputState::default(),
+            previous_input_sample: InputState::default(),
+            fixed_timestep_input_latch: FixedTimestepInputLatch::default(),
             scene: ShooterScene::new(),
             camera: Camera2D::new(DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT),
             world: World::default(),
             tilemap: Tilemap::default(),
             render_commands: Vec::with_capacity(256),
             audio_events: Vec::with_capacity(16),
+            collision_events: Vec::with_capacity(128),
+            collision_event_tracker: CollisionEventTracker::default(),
+            collision_event_counts: CollisionEventCounts::default(),
+            physics_counters: PhysicsCounters::default(),
+            fixed_timestep: FixedTimestep::default(),
+            fixed_timestep_enabled: false,
+            last_fixed_update: FixedTimestepUpdate::default(),
         };
         engine.reset_to_title();
         engine
@@ -58,7 +104,7 @@ impl Engine {
         mouse_x: f32,
         mouse_y: f32,
     ) {
-        self.input = InputState {
+        let input = InputState {
             w: u8::from(w),
             a: u8::from(a),
             s: u8::from(s),
@@ -69,6 +115,8 @@ impl Engine {
             mouse_x,
             mouse_y,
         };
+        self.observe_input_sample(input);
+        self.input = input;
     }
 
     pub fn set_texture_ids(&mut self, player: u32, enemy: u32, bullet: u32) {
@@ -213,6 +261,7 @@ impl Engine {
                 bullet_lifetime,
             ),
         );
+        self.clear_physics_history();
     }
 
     pub fn set_shooter_prefabs(
@@ -235,6 +284,7 @@ impl Engine {
             bullet_width,
             bullet_height,
         );
+        self.clear_physics_history();
     }
 
     pub fn set_shooter_behavior(&mut self, enemy_behavior: u32) {
@@ -244,6 +294,7 @@ impl Engine {
             &mut self.audio_events,
             EnemyBehavior::from_code(enemy_behavior),
         );
+        self.clear_physics_history();
     }
 
     pub fn set_shooter_spawn_pattern(&mut self, enemy_spawn_pattern: u32) {
@@ -253,6 +304,7 @@ impl Engine {
             &mut self.audio_events,
             EnemySpawnPattern::from_code(enemy_spawn_pattern),
         );
+        self.clear_physics_history();
     }
 
     pub fn set_shooter_combat(&mut self, enemy_health: f32, bullet_damage: f32, score_reward: u32) {
@@ -264,6 +316,7 @@ impl Engine {
             bullet_damage,
             score_reward,
         );
+        self.clear_physics_history();
     }
 
     pub fn set_shooter_camera_preset(
@@ -371,6 +424,7 @@ impl Engine {
             bullet_move_frames,
             bullet_move_fps,
         );
+        self.clear_physics_history();
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -441,20 +495,120 @@ impl Engine {
             &mut self.audio_events,
             config,
         );
+        self.clear_physics_history();
     }
 
     pub fn update(&mut self, delta: f64) {
-        let dt = delta as f32;
         self.elapsed_seconds += delta;
-        self.scene.update(
-            &mut self.world,
-            &mut self.camera,
-            self.input,
-            &mut self.audio_events,
-            &self.tilemap,
-            dt,
-        );
+        self.clear_physics_frame();
+        if self.fixed_timestep_enabled {
+            let update = self.fixed_timestep.advance(delta as f32);
+            self.last_fixed_update = update;
+            self.physics_counters.record_fixed_update(update);
+            let step_seconds = self.fixed_timestep.config().step_seconds;
+            for step_index in 0..update.steps {
+                let input = self.fixed_step_input(step_index == 0);
+                self.update_scene(step_seconds, input);
+                if step_index == 0 {
+                    self.fixed_timestep_input_latch.clear();
+                }
+                self.record_collision_events();
+            }
+        } else {
+            self.last_fixed_update = FixedTimestepUpdate::default();
+            self.update_scene(delta as f32, self.input);
+            self.record_collision_events();
+        }
         self.build_render_commands();
+    }
+
+    pub fn configure_fixed_timestep(
+        &mut self,
+        enabled: bool,
+        step_seconds: f32,
+        max_frame_seconds: f32,
+        max_steps_per_update: u32,
+    ) {
+        let was_enabled = self.fixed_timestep_enabled;
+        self.fixed_timestep_enabled = enabled;
+        self.fixed_timestep = FixedTimestep::new(FixedTimestepConfig {
+            step_seconds,
+            max_frame_seconds,
+            max_steps_per_update,
+        });
+        self.last_fixed_update = FixedTimestepUpdate::default();
+        if !enabled || !was_enabled {
+            self.fixed_timestep_input_latch.clear();
+            self.previous_input_sample = self.input;
+        }
+    }
+
+    pub fn fixed_timestep_enabled(&self) -> bool {
+        self.fixed_timestep_enabled
+    }
+
+    pub fn fixed_timestep_alpha(&self) -> f32 {
+        self.last_fixed_update.alpha
+    }
+
+    pub fn fixed_timestep_consumed_seconds(&self) -> f32 {
+        self.last_fixed_update.consumed_seconds
+    }
+
+    pub fn fixed_timestep_dropped_seconds(&self) -> f32 {
+        self.last_fixed_update.dropped_seconds
+    }
+
+    pub fn physics_fixed_steps(&self) -> u32 {
+        self.physics_counters.fixed_steps
+    }
+
+    pub fn physics_kinematic_moves(&self) -> u32 {
+        self.physics_counters.kinematic_moves
+    }
+
+    pub fn physics_kinematic_hits(&self) -> u32 {
+        self.physics_counters.kinematic_hits
+    }
+
+    pub fn physics_kinematic_entity_hits(&self) -> u32 {
+        self.physics_counters.kinematic_entity_hits
+    }
+
+    pub fn physics_kinematic_tile_hits(&self) -> u32 {
+        self.physics_counters.kinematic_tile_hits
+    }
+
+    pub fn physics_solid_candidate_checks(&self) -> u32 {
+        self.physics_counters.solid_candidate_checks
+    }
+
+    pub fn physics_tile_candidate_checks(&self) -> u32 {
+        self.physics_counters.tile_candidate_checks
+    }
+
+    pub fn collision_event_ptr(&self) -> *const CollisionEvent {
+        self.collision_events.as_ptr()
+    }
+
+    pub fn collision_event_len(&self) -> usize {
+        self.collision_events.len()
+    }
+
+    pub fn collision_enter_count(&self) -> u32 {
+        self.collision_event_counts.enter
+    }
+
+    pub fn collision_stay_count(&self) -> u32 {
+        self.collision_event_counts.stay
+    }
+
+    pub fn collision_exit_count(&self) -> u32 {
+        self.collision_event_counts.exit
+    }
+
+    pub fn collision_hit_count(&self) -> u32 {
+        self.collision_event_counts.hit
     }
 
     pub fn time(&self) -> f64 {
@@ -478,6 +632,10 @@ impl Engine {
     }
 
     pub fn clear_events(&mut self) {
+        self.clear_audio_events();
+    }
+
+    pub fn clear_audio_events(&mut self) {
         self.audio_events.clear();
     }
 
@@ -516,6 +674,7 @@ impl Engine {
     pub fn reset_game(&mut self) {
         self.scene
             .reset_playing(&mut self.world, &mut self.camera, &mut self.audio_events);
+        self.clear_physics_history();
     }
 }
 
@@ -529,6 +688,60 @@ impl Engine {
     fn reset_to_title(&mut self) {
         self.scene
             .reset_to_title(&mut self.world, &mut self.camera, &mut self.audio_events);
+        self.clear_physics_history();
+    }
+
+    fn update_scene(&mut self, delta: f32, input: InputState) {
+        self.scene.update_with_counters(
+            &mut self.world,
+            &mut self.camera,
+            input,
+            &mut self.audio_events,
+            &self.tilemap,
+            delta,
+            &mut self.physics_counters,
+            &mut self.collision_events,
+            &mut self.collision_event_counts,
+        );
+    }
+
+    fn clear_physics_frame(&mut self) {
+        self.physics_counters.clear();
+        self.collision_events.clear();
+        self.collision_event_counts.clear();
+    }
+
+    fn clear_physics_history(&mut self) {
+        self.collision_event_tracker.clear();
+        self.collision_events.clear();
+        self.collision_event_counts.clear();
+        self.fixed_timestep.reset();
+        self.last_fixed_update = FixedTimestepUpdate::default();
+        self.fixed_timestep_input_latch.clear();
+        self.previous_input_sample = self.input;
+    }
+
+    fn record_collision_events(&mut self) {
+        let counts = self
+            .collision_event_tracker
+            .update(&self.world, &mut self.collision_events);
+        self.collision_event_counts.add(counts);
+    }
+
+    fn observe_input_sample(&mut self, input: InputState) {
+        if self.fixed_timestep_enabled {
+            self.fixed_timestep_input_latch
+                .observe(self.previous_input_sample, input);
+        }
+        self.previous_input_sample = input;
+    }
+
+    fn fixed_step_input(&self, is_first_step: bool) -> InputState {
+        if is_first_step {
+            self.fixed_timestep_input_latch.apply_to(self.input)
+        } else {
+            self.input
+        }
     }
 
     fn build_render_commands(&mut self) {
@@ -564,7 +777,12 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{CollisionLayer, Transform2D};
+    use crate::collision_event::{
+        COLLISION_EVENT_ENTER, COLLISION_EVENT_EXIT, COLLISION_EVENT_HIT, COLLISION_EVENT_STAY,
+    };
+    use crate::components::{
+        AabbCollider, CollisionFilter, CollisionLayer, CollisionMask, Transform2D,
+    };
     use crate::shooter_scene::DEFAULT_TEXTURE_ID;
 
     fn count_layer(engine: &Engine, layer: CollisionLayer) -> usize {
@@ -636,6 +854,104 @@ mod tests {
     }
 
     #[test]
+    fn fixed_timestep_is_opt_in_and_reports_steps() {
+        let mut engine = Engine::new();
+
+        engine.update(0.25);
+
+        assert!(!engine.fixed_timestep_enabled());
+        assert_eq!(engine.physics_fixed_steps(), 0);
+
+        engine.configure_fixed_timestep(true, 0.1, 1.0, 4);
+        engine.update(0.25);
+
+        assert!(engine.fixed_timestep_enabled());
+        assert_eq!(engine.physics_fixed_steps(), 2);
+        assert!((engine.fixed_timestep_alpha() - 0.5).abs() < 0.01);
+        assert!((engine.fixed_timestep_consumed_seconds() - 0.2).abs() < 0.01);
+    }
+
+    #[test]
+    fn fixed_timestep_waits_until_accumulator_reaches_step() {
+        let mut engine = Engine::new();
+        engine.configure_fixed_timestep(true, 0.1, 1.0, 4);
+
+        engine.update(0.05);
+
+        assert_eq!(engine.physics_fixed_steps(), 0);
+        assert!((engine.fixed_timestep_alpha() - 0.5).abs() < 0.01);
+        assert!(engine.collision_events.is_empty());
+    }
+
+    #[test]
+    fn fixed_timestep_latches_action_input_until_next_step() {
+        let mut engine = Engine::new();
+        engine.configure_fixed_timestep(true, 0.1, 1.0, 4);
+
+        engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
+        engine.update(0.05);
+        assert_eq!(engine.physics_fixed_steps(), 0);
+        assert_eq!(engine.game_state_code(), 0);
+
+        engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
+        engine.update(0.05);
+
+        assert_eq!(engine.physics_fixed_steps(), 1);
+        assert_eq!(engine.game_state_code(), 1);
+    }
+
+    #[test]
+    fn engine_collision_events_report_enter_stay_and_exit() {
+        let mut engine = Engine::new();
+        engine.world = World::default();
+        engine.clear_physics_history();
+        let a = spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
+        let b = spawn_test_body(&mut engine.world, 8.0, 0.0, CollisionLayer::Enemy);
+
+        engine.update(0.016);
+        assert_eq!(engine.collision_enter_count(), 1);
+        assert_eq!(engine.collision_event_len(), 1);
+        assert_eq!(engine.collision_events[0].kind, COLLISION_EVENT_ENTER);
+
+        engine.update(0.016);
+        assert_eq!(engine.collision_stay_count(), 1);
+        assert_eq!(engine.collision_events[0].kind, COLLISION_EVENT_STAY);
+
+        engine
+            .world
+            .set_transform(b, Transform2D { x: 40.0, y: 0.0 });
+        engine.update(0.016);
+        assert_eq!(engine.collision_exit_count(), 1);
+        assert_eq!(engine.collision_events[0].kind, COLLISION_EVENT_EXIT);
+        assert_eq!(engine.collision_events[0].a_id, a.id.min(b.id));
+    }
+
+    #[test]
+    fn engine_collision_events_include_shooter_hit_before_despawn() {
+        let mut engine = Engine::new();
+        engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
+        engine.update(0.016);
+        engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
+        let enemy = engine.world.spawn_enemy(500.0, 240.0, DEFAULT_TEXTURE_ID);
+        let bullet = engine
+            .world
+            .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+
+        engine.update(0.016);
+
+        assert_eq!(engine.collision_hit_count(), 1);
+        let hit = engine
+            .collision_events
+            .iter()
+            .find(|event| event.kind == COLLISION_EVENT_HIT)
+            .expect("shooter hit should be recorded before despawn");
+        assert_eq!(hit.a_id, bullet.id);
+        assert_eq!(hit.a_generation, bullet.generation);
+        assert_eq!(hit.b_id, enemy.id);
+        assert_eq!(hit.b_generation, enemy.generation);
+    }
+
+    #[test]
     fn configured_texture_ids_are_written_to_render_commands() {
         let mut engine = Engine::new();
         engine.set_texture_ids(1, 2, 3);
@@ -651,6 +967,30 @@ mod tests {
         assert!(texture_ids.contains(&1));
         assert!(texture_ids.contains(&2));
         assert!(texture_ids.contains(&3));
+    }
+
+    fn spawn_test_body(
+        world: &mut World,
+        x: f32,
+        y: f32,
+        layer: CollisionLayer,
+    ) -> crate::entity::Entity {
+        let entity = world.spawn_entity();
+        world.set_transform(entity, Transform2D { x, y });
+        world.set_aabb_collider(
+            entity,
+            AabbCollider {
+                half_width: 5.0,
+                half_height: 5.0,
+                is_trigger: true,
+                layer,
+            },
+        );
+        world.set_collision_filter(
+            entity,
+            CollisionFilter::new(layer.mask(), CollisionMask::ALL),
+        );
+        entity
     }
 
     #[test]

@@ -155,7 +155,7 @@ v0.3에서 하지 않을 것:
 - WebGL2 실제 렌더링 smoke automation 가능성 검토 (완료: `pnpm smoke:browser`)
 - docs site 또는 GitHub Pages 데모 배포 검토
 - package publish 여부와 release tagging 절차 정리 (완료: [npm 베타 패키징](npm-release.md))
-- Physics v3 설계 검토: rigid body solver 또는 외부 physics crate 도입 여부 판단
+- Physics v3 기반 정리 (완료: collision mask bitset, AABB contact, point/AABB/raycast query, world/tilemap kinematic move-and-slide, tile collision candidate path, opt-in fixed timestep runtime, physics counters/API, collision event lifecycle, gameplay hit event. 남은 후보: circle collider, shape query, damage payload, contact debug draw)
 
 ## 장기 후보
 

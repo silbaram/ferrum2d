@@ -9,6 +9,10 @@ export interface DebugOverlayMetrics {
   textureBindCount?: number;
   textureSwitchCount?: number;
   audioEventsPerSecond?: number;
+  physicsFixedSteps?: number;
+  physicsKinematicHits?: number;
+  physicsTileCandidateChecks?: number;
+  collisionEventCount?: number;
   rustUpdateTimeMs: number;
   renderTimeMs: number;
   mouseX: number;
@@ -41,6 +45,10 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "textureBindCount", label: "texture binds", unit: "count", optional: true },
   { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
   { id: "audioEventsPerSecond", label: "audio events", unit: "events/s", optional: true },
+  { id: "physicsFixedSteps", label: "fixed steps", unit: "count", optional: true },
+  { id: "physicsKinematicHits", label: "kinematic hits", unit: "count", optional: true },
+  { id: "physicsTileCandidateChecks", label: "tile checks", unit: "count", optional: true },
+  { id: "collisionEventCount", label: "collision events", unit: "count", optional: true },
   { id: "mousePosition", label: "mouse", unit: "px" },
   { id: "cameraPosition", label: "camera", unit: "world" },
   { id: "gameState", label: "state", unit: "state" },
@@ -127,6 +135,18 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   }
   if (metrics.audioEventsPerSecond !== undefined) {
     lines.push(row("audioEventsPerSecond", `${metrics.audioEventsPerSecond.toFixed(1)} events/s`));
+  }
+  if (metrics.physicsFixedSteps !== undefined) {
+    lines.push(row("physicsFixedSteps", metrics.physicsFixedSteps));
+  }
+  if (metrics.physicsKinematicHits !== undefined) {
+    lines.push(row("physicsKinematicHits", metrics.physicsKinematicHits));
+  }
+  if (metrics.physicsTileCandidateChecks !== undefined) {
+    lines.push(row("physicsTileCandidateChecks", metrics.physicsTileCandidateChecks));
+  }
+  if (metrics.collisionEventCount !== undefined) {
+    lines.push(row("collisionEventCount", metrics.collisionEventCount));
   }
   lines.push(
     row("mousePosition", `${metrics.mouseX.toFixed(1)}, ${metrics.mouseY.toFixed(1)} px`),

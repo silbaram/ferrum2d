@@ -1,5 +1,6 @@
 use crate::components::{
-    AabbCollider, CollisionLayer, Sprite, SpriteAnimation, SpriteFrame, Transform2D, Velocity,
+    AabbCollider, CollisionFilter, CollisionLayer, Sprite, SpriteAnimation, SpriteFrame,
+    Transform2D, Velocity,
 };
 use crate::entity::Entity;
 use crate::physics::PhysicsSystem;
@@ -63,6 +64,7 @@ pub struct World {
     pub(crate) sprite_animations: Vec<Option<SpriteAnimation>>,
     pub(crate) velocities: Vec<Option<Velocity>>,
     pub(crate) colliders: Vec<Option<AabbCollider>>,
+    pub(crate) collision_filters: Vec<Option<CollisionFilter>>,
     pub(crate) bullet_lifetimes: Vec<Option<f32>>,
     pub(crate) healths: Vec<Option<f32>>,
     pub(crate) damages: Vec<Option<f32>>,
@@ -89,6 +91,7 @@ impl World {
         self.sprite_animations.push(None);
         self.velocities.push(None);
         self.colliders.push(None);
+        self.collision_filters.push(None);
         self.bullet_lifetimes.push(None);
         self.healths.push(None);
         self.damages.push(None);
@@ -106,6 +109,7 @@ impl World {
             self.sprite_animations[i] = None;
             self.velocities[i] = None;
             self.colliders[i] = None;
+            self.collision_filters[i] = None;
             self.bullet_lifetimes[i] = None;
             self.healths[i] = None;
             self.damages[i] = None;
@@ -147,12 +151,14 @@ impl World {
         });
         self.sprite_animations[i] = template.animation;
         self.velocities[i] = Some(Velocity::default());
+        let layer = CollisionLayer::Player;
         self.colliders[i] = Some(AabbCollider {
             half_width: template.collider_half_width,
             half_height: template.collider_half_height,
             is_trigger: true,
-            layer: CollisionLayer::Player,
+            layer,
         });
+        self.collision_filters[i] = Some(CollisionFilter::from_layer(layer));
         self.player = Some(e);
         e
     }
@@ -188,12 +194,14 @@ impl World {
             a: 0.9,
         });
         self.sprite_animations[i] = template.animation;
+        let layer = CollisionLayer::Enemy;
         self.colliders[i] = Some(AabbCollider {
             half_width: template.collider_half_width,
             half_height: template.collider_half_height,
             is_trigger: true,
-            layer: CollisionLayer::Enemy,
+            layer,
         });
+        self.collision_filters[i] = Some(CollisionFilter::from_layer(layer));
         self.healths[i] = Some(health);
         self.score_rewards[i] = Some(score_reward);
         e
@@ -250,12 +258,14 @@ impl World {
         });
         self.sprite_animations[i] = template.animation;
         self.velocities[i] = Some(velocity);
+        let layer = CollisionLayer::Bullet;
         self.colliders[i] = Some(AabbCollider {
             half_width: template.collider_half_width,
             half_height: template.collider_half_height,
             is_trigger: true,
-            layer: CollisionLayer::Bullet,
+            layer,
         });
+        self.collision_filters[i] = Some(CollisionFilter::from_layer(layer));
         self.bullet_lifetimes[i] = Some(lifetime);
         self.damages[i] = Some(damage);
         e
@@ -268,6 +278,88 @@ impl World {
 
     pub fn alive_count(&self) -> usize {
         self.alive.iter().filter(|a| **a).count()
+    }
+
+    pub fn transform(&self, entity: Entity) -> Option<Transform2D> {
+        let i = self.valid_index(entity)?;
+        self.transforms[i]
+    }
+
+    pub fn set_transform(&mut self, entity: Entity, transform: Transform2D) {
+        let Some(i) = self.valid_index(entity) else {
+            return;
+        };
+        self.transforms[i] = Some(transform);
+    }
+
+    pub fn velocity(&self, entity: Entity) -> Option<Velocity> {
+        let i = self.valid_index(entity)?;
+        self.velocities[i]
+    }
+
+    pub fn set_velocity(&mut self, entity: Entity, velocity: Velocity) {
+        let Some(i) = self.valid_index(entity) else {
+            return;
+        };
+        self.velocities[i] = Some(velocity);
+    }
+
+    pub fn collider(&self, entity: Entity) -> Option<AabbCollider> {
+        let i = self.valid_index(entity)?;
+        self.colliders[i]
+    }
+
+    pub fn set_aabb_collider(&mut self, entity: Entity, collider: AabbCollider) {
+        let Some(i) = self.valid_index(entity) else {
+            return;
+        };
+        self.colliders[i] = Some(collider);
+        if self.collision_filters[i].is_none() {
+            self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
+        }
+    }
+
+    pub fn clear_collider(&mut self, entity: Entity) {
+        let Some(i) = self.valid_index(entity) else {
+            return;
+        };
+        self.colliders[i] = None;
+        self.collision_filters[i] = None;
+    }
+
+    pub fn set_collision_filter(&mut self, entity: Entity, filter: CollisionFilter) {
+        let i = entity.id as usize;
+        if i >= self.alive.len()
+            || !self.alive[i]
+            || self.generations[i] != entity.generation
+            || self.colliders[i].is_none()
+        {
+            return;
+        }
+        self.collision_filters[i] = Some(filter);
+    }
+
+    pub fn collision_filter(&self, entity: Entity) -> Option<CollisionFilter> {
+        let i = entity.id as usize;
+        if i >= self.alive.len() || !self.alive[i] || self.generations[i] != entity.generation {
+            return None;
+        }
+        self.collision_filter_at(i)
+    }
+
+    pub(crate) fn collision_filter_at(&self, index: usize) -> Option<CollisionFilter> {
+        let collider = self.colliders.get(index).copied().flatten()?;
+        self.collision_filters
+            .get(index)
+            .copied()
+            .flatten()
+            .or_else(|| Some(CollisionFilter::from_layer(collider.layer)))
+    }
+
+    fn valid_index(&self, entity: Entity) -> Option<usize> {
+        let i = entity.id as usize;
+        (i < self.alive.len() && self.alive[i] && self.generations[i] == entity.generation)
+            .then_some(i)
     }
 
     pub(crate) fn apply_template_to_entity(
@@ -334,7 +426,9 @@ fn initial_uv(template: EntityTemplate) -> (f32, f32, f32, f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{SpriteAnimation, SpriteAnimationState};
+    use crate::components::{
+        CollisionFilter, CollisionMask, SpriteAnimation, SpriteAnimationState,
+    };
 
     #[test]
     fn entity_ids_increment_and_generation_changes_on_despawn() {
@@ -398,6 +492,48 @@ mod tests {
         );
         assert_eq!(world.healths[enemy.id as usize], Some(3.0));
         assert_eq!(world.score_rewards[enemy.id as usize], Some(2));
+    }
+
+    #[test]
+    fn collision_filter_defaults_to_spawn_layer_and_can_be_overridden() {
+        let mut world = World::default();
+        let enemy = world.spawn_enemy(10.0, 20.0, 7);
+
+        assert_eq!(
+            world.collision_filter(enemy),
+            Some(CollisionFilter::from_layer(CollisionLayer::Enemy))
+        );
+
+        let filter = CollisionFilter::new(CollisionMask::ENEMY, CollisionMask::PLAYER);
+        world.set_collision_filter(enemy, filter);
+
+        assert_eq!(world.collision_filter(enemy), Some(filter));
+    }
+
+    #[test]
+    fn generic_component_setters_update_entity_components() {
+        let mut world = World::default();
+        let entity = world.spawn_entity();
+        let transform = Transform2D { x: 4.0, y: 8.0 };
+        let velocity = Velocity { vx: 2.0, vy: 3.0 };
+        let collider = AabbCollider {
+            half_width: 6.0,
+            half_height: 7.0,
+            is_trigger: false,
+            layer: CollisionLayer::Enemy,
+        };
+
+        world.set_transform(entity, transform);
+        world.set_velocity(entity, velocity);
+        world.set_aabb_collider(entity, collider);
+
+        assert_eq!(world.transform(entity), Some(transform));
+        assert_eq!(world.velocity(entity), Some(velocity));
+        assert_eq!(world.collider(entity), Some(collider));
+        assert_eq!(
+            world.collision_filter(entity),
+            Some(CollisionFilter::from_layer(CollisionLayer::Enemy))
+        );
     }
 
     #[test]

@@ -1,13 +1,14 @@
 use crate::audio_event::AudioEvent;
 use crate::camera::{Camera2D, CameraPresetConfig};
 use crate::collision::{CollisionPair, CollisionScratch, CollisionSystem};
+use crate::collision_event::{CollisionEvent, CollisionEventCounts, COLLISION_EVENT_HIT};
 use crate::components::{
     CollisionLayer, SpriteAnimation, SpriteAnimationState, SpriteFrame, Transform2D, Velocity,
 };
 use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::input::InputState;
-use crate::physics::{PhysicsBounds, PhysicsSystem};
+use crate::physics::{PhysicsBounds, PhysicsCounters, PhysicsSystem};
 use crate::tilemap::{Tilemap, TilemapNavigationScratch};
 use crate::world::{
     EntityTemplate, World, DEFAULT_BULLET_TEMPLATE, DEFAULT_ENEMY_TEMPLATE, DEFAULT_PLAYER_TEMPLATE,
@@ -538,6 +539,19 @@ struct EnemyNavigationSource {
     transform: Transform2D,
 }
 
+struct CollisionEventSink<'a> {
+    events: &'a mut Vec<CollisionEvent>,
+    counts: &'a mut CollisionEventCounts,
+}
+
+impl CollisionEventSink<'_> {
+    fn push_hit(&mut self, a: Entity, b: Entity) {
+        self.events
+            .push(CollisionEvent::from_entities(COLLISION_EVENT_HIT, a, b));
+        self.counts.hit = self.counts.hit.saturating_add(1);
+    }
+}
+
 impl Default for ShooterScene {
     fn default() -> Self {
         Self {
@@ -571,6 +585,7 @@ impl ShooterScene {
         Self::default()
     }
 
+    #[cfg(test)]
     pub fn update(
         &mut self,
         world: &mut World,
@@ -580,6 +595,59 @@ impl ShooterScene {
         tilemap: &Tilemap,
         delta: f32,
     ) {
+        self.update_internal(
+            world,
+            camera,
+            input,
+            audio_events,
+            tilemap,
+            delta,
+            None,
+            None,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn update_with_counters(
+        &mut self,
+        world: &mut World,
+        camera: &mut Camera2D,
+        input: InputState,
+        audio_events: &mut Vec<AudioEvent>,
+        tilemap: &Tilemap,
+        delta: f32,
+        physics_counters: &mut PhysicsCounters,
+        collision_events: &mut Vec<CollisionEvent>,
+        collision_event_counts: &mut CollisionEventCounts,
+    ) {
+        self.update_internal(
+            world,
+            camera,
+            input,
+            audio_events,
+            tilemap,
+            delta,
+            Some(physics_counters),
+            Some(CollisionEventSink {
+                events: collision_events,
+                counts: collision_event_counts,
+            }),
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn update_internal(
+        &mut self,
+        world: &mut World,
+        camera: &mut Camera2D,
+        input: InputState,
+        audio_events: &mut Vec<AudioEvent>,
+        tilemap: &Tilemap,
+        delta: f32,
+        physics_counters: Option<&mut PhysicsCounters>,
+        collision_events: Option<CollisionEventSink<'_>>,
+    ) {
+        let mut collision_events = collision_events;
         let space_pressed = input.space == 1 && self.previous_space == 0;
         let enter_pressed = input.enter == 1 && self.previous_enter == 0;
 
@@ -602,12 +670,16 @@ impl ShooterScene {
                 self.apply_player_input(world, camera, input, audio_events);
                 self.update_enemy_velocity(world, tilemap, delta);
                 world.update(delta);
-                tilemap.resolve_dynamic_collisions(world);
+                if let Some(counters) = physics_counters {
+                    tilemap.resolve_dynamic_collisions_with_counters(world, counters);
+                } else {
+                    tilemap.resolve_dynamic_collisions(world);
+                }
                 self.clamp_player_to_world(world);
                 self.update_camera_follow(world, camera);
                 self.update_bullets(world, delta);
                 self.spawn_enemy_if_needed(world);
-                self.handle_collisions(world, audio_events, delta);
+                self.handle_collisions(world, audio_events, delta, collision_events.as_mut());
             }
         }
 
@@ -1441,10 +1513,16 @@ impl ShooterScene {
         world: &mut World,
         audio_events: &mut Vec<AudioEvent>,
         delta: f32,
+        collision_events: Option<&mut CollisionEventSink<'_>>,
     ) {
         self.prepare_collision_scratch(world.alive.len());
-        self.handle_bullet_enemy_collisions(world, audio_events, delta);
-        self.handle_player_enemy_collisions(world, audio_events);
+        if let Some(events) = collision_events {
+            self.handle_bullet_enemy_collisions(world, audio_events, delta, Some(&mut *events));
+            self.handle_player_enemy_collisions(world, audio_events, Some(&mut *events));
+        } else {
+            self.handle_bullet_enemy_collisions(world, audio_events, delta, None);
+            self.handle_player_enemy_collisions(world, audio_events, None);
+        }
 
         for e in self.pending_despawn.drain(..) {
             world.despawn(e);
@@ -1463,6 +1541,7 @@ impl ShooterScene {
         world: &mut World,
         audio_events: &mut Vec<AudioEvent>,
         delta: f32,
+        mut collision_events: Option<&mut CollisionEventSink<'_>>,
     ) {
         CollisionSystem::build_swept_layer_pairs_into(
             &mut self.collision_scratch,
@@ -1490,6 +1569,9 @@ impl ShooterScene {
                 continue;
             }
 
+            if let Some(events) = collision_events.as_mut() {
+                events.push_hit(pair.a, pair.b);
+            }
             self.marked_for_despawn[bullet_index] = true;
             self.pending_despawn.push(Entity {
                 id: bullet_index as u32,
@@ -1515,6 +1597,7 @@ impl ShooterScene {
         &mut self,
         world: &World,
         audio_events: &mut Vec<AudioEvent>,
+        mut collision_events: Option<&mut CollisionEventSink<'_>>,
     ) {
         let Some(player) = world.player else {
             return;
@@ -1546,6 +1629,9 @@ impl ShooterScene {
             }
             if self.game_state != GameState::GameOver {
                 self.game_state = GameState::GameOver;
+                if let Some(events) = collision_events.as_mut() {
+                    events.push_hit(pair.a, pair.b);
+                }
                 Self::push_audio_event(
                     audio_events,
                     game_over_sound_id,
@@ -1704,7 +1790,7 @@ mod tests {
         let b = world.spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
         let e = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
 
         assert!(!world.alive[b.id as usize]);
         assert!(!world.alive[e.id as usize]);
@@ -1725,7 +1811,7 @@ mod tests {
             world.colliders[e.id as usize].unwrap(),
         ));
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.1);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.1, None);
 
         assert!(!world.alive[b.id as usize]);
         assert!(!world.alive[e.id as usize]);
@@ -1746,7 +1832,7 @@ mod tests {
             scene.config.score_reward,
         );
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
 
         assert!(!world.alive[b.id as usize]);
         assert!(world.alive[e.id as usize]);
@@ -1775,7 +1861,7 @@ mod tests {
             scene.config.score_reward,
         );
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
 
         assert!(!world.alive[b.id as usize]);
         assert!(!world.alive[e.id as usize]);
@@ -1789,7 +1875,7 @@ mod tests {
         let first_enemy = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
         let second_enemy = world.spawn_enemy(54.0, 50.0, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
 
         assert!(!world.alive[bullet.id as usize]);
         assert!(!world.alive[first_enemy.id as usize]);
@@ -1804,7 +1890,7 @@ mod tests {
         let pt = world.transforms[player.id as usize].unwrap();
         world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
 
         assert_eq!(scene.game_state(), GameState::GameOver);
     }
@@ -2352,7 +2438,7 @@ mod tests {
         let b = world.spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
         let e = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
 
         assert!(!world.alive[b.id as usize]);
         assert!(!world.alive[e.id as usize]);
@@ -2368,8 +2454,8 @@ mod tests {
         let pt = world.transforms[player.id as usize].unwrap();
         world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
 
         assert_eq!(scene.game_state(), GameState::GameOver);
         assert_eq!(audio_events.len(), 1);
