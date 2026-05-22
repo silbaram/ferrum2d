@@ -2189,6 +2189,41 @@ mod tests {
     }
 
     #[test]
+    fn platformer_controller_steps_over_low_tilemap_obstacle() {
+        let mut world = World::default();
+        let mut tilemap = Tilemap::default();
+        let mover = spawn_kinematic_body(&mut world, 0.0, 10.0, CollisionLayer::Player, true);
+        let floor = spawn_kinematic_body_with_size(
+            &mut world,
+            0.0,
+            20.0,
+            CollisionLayer::Wall,
+            false,
+            40.0,
+            5.0,
+        );
+        tilemap.set_layer(0, 1, 1, 4.0, 4.0, 7.0, 11.0, true, vec![1]);
+
+        let result = PhysicsSystem::move_platformer_controller_with_tilemap(
+            &mut world,
+            &tilemap,
+            mover,
+            PlatformerControllerInput::new(1.0, false),
+            platformer_test_config(CollisionMask::WALL)
+                .with_gravity(0.0)
+                .with_step_offset(5.0),
+            1.0,
+        );
+
+        assert_eq!(result.ground_before.and_then(|hit| hit.entity), Some(floor));
+        assert_eq!(result.ground_after.and_then(|hit| hit.tile_index), Some(0));
+        assert!(!result.movement.blocked_x);
+        assert!(result.grounded);
+        assert_eq!(result.velocity, Velocity { vx: 8.0, vy: 0.0 });
+        assert_eq!(world.transform(mover), Some(Transform2D { x: 8.0, y: 6.0 }));
+    }
+
+    #[test]
     fn platformer_controller_lands_and_clears_downward_velocity() {
         let mut world = World::default();
         let mover = spawn_kinematic_body(&mut world, 0.0, 0.0, CollisionLayer::Player, true);
