@@ -344,8 +344,18 @@ v0.4 이후는 콘텐츠 제작 기반 위에 런타임 기능을 보강한다. 
 13. `v0.4-4-diagnostic-report`: asset/audio/Game Spec diagnostic code와 report API (완료)
 14. `v0.4-5-package-file-check`: package entrypoint, files allowlist, generated Wasm artifact 점검 (완료)
 15. `v0.4-6-enemy-orbit-behavior`: enemy orbit movement preset과 예제 wave 추가 (완료)
+16. `product-beta-1-breakout-example`: 두 번째 장르 Breakout scene mode와 예제 추가 (완료)
+17. `product-beta-2-input-expansion`: InputManager pointer/touch/gamepad snapshot 합성 (완료)
+18. `product-beta-3-text-ui-rendering`: UiOverlay 기반 HUD/menu/dialog text UI rendering (완료)
+19. `product-beta-4-asset-pipeline-v2`: Aseprite JSON metadata를 Game Spec `atlas.frames`로 변환하는 helper (완료)
+20. `product-beta-5-tiled-tilemap-import`: Tiled orthogonal JSON map을 Game Spec `atlas`/`tilemap` 조각으로 변환하는 helper (완료)
+21. `product-beta-6-ldtk-tilemap-import`: LDtk embedded level을 Game Spec `atlas`/`tilemap` 조각으로 변환하는 helper (완료)
+22. `physics-v5-platformer-controller`: Rust kinematic platformer controller primitive (완료)
+23. `physics-v5-platformer-example`: `FerrumEngine.usePlatformerGame()`과 `examples/platformer` runtime 예제 (완료)
+24. `physics-v5-platformer-jump-assist`: `PlatformerControllerState` 기반 coyote time과 jump buffering, `examples/platformer` 적용 (완료)
+25. `physics-v5-platformer-step-offset`: grounded 수평 충돌 시 step-up/snap-down을 시도하는 `with_step_offset(...)` controller 옵션 (완료)
 
-다음 후보는 WebGL2 실제 렌더링 smoke automation, docs site 또는 GitHub Pages 데모 배포, package publish 여부와 release tagging 절차 정리다. 각 작업을 시작하기 전에 별도 목표와 완료 기준을 먼저 작성하고, 범위를 넘는 기능은 다음 작업으로 분리한다.
+다음 후보는 Wasm/TypeScript 저수준 physics API 노출, slope handling 설계, atlas animation binding, LDtk external level/raw IntGrid collision 지원 여부 검토, docs site 또는 GitHub Pages 데모 배포다. 각 작업을 시작하기 전에 별도 목표와 완료 기준을 먼저 작성하고, 범위를 넘는 기능은 다음 작업으로 분리한다.
 
 ## 공통 검증 명령
 

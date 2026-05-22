@@ -214,6 +214,33 @@ Single-image textures should omit `animation` or keep `frames` as `1`. If `frame
 
 `texture`가 string이면 runtime `createEngine()`이 연결된 `AssetHost.textureId(name)`으로 id를 해석한다. CLI `pnpm validate:game-spec`는 texture name 형식과 frame 참조까지만 검증하고 실제 asset loading은 브라우저 runtime에서 확인한다. `texture`에 numeric id를 직접 넣을 수도 있지만, 예제와 일반 사용 경로에서는 asset manifest name을 권장한다.
 
+### Aseprite Metadata Import
+
+Product Beta Asset pipeline v2의 첫 범위는 Aseprite JSON export를 `atlas.frames`로 변환하는 TypeScript authoring helper다. `importAsepriteAtlasFrames(...)`는 hash/array 형식의 Aseprite `frames`, `meta.size`, 각 frame rect를 읽어 normalized UV와 frame size를 만든다.
+
+```ts
+import { importAsepriteAtlasFrames, type ShooterGameSpec } from "@ferrum2d/ferrum-web";
+
+const loaded = await engine.loadAssets({
+  textures: { sprites: "/assets/sprites.png" },
+  json: { sprites: "/assets/sprites.json" },
+});
+
+const spec: ShooterGameSpec = {
+  atlas: {
+    frames: importAsepriteAtlasFrames(loaded.json.sprites, {
+      texture: "sprites",
+      frameNamePrefix: "player.",
+    }),
+  },
+  prefabs: {
+    player: { frame: "player.idle.0" },
+  },
+};
+```
+
+기본적으로 파일 확장자는 frame name에서 제거된다. rotated frame은 현재 `SpriteRenderCommand`와 prefab 계약에서 표현할 수 없으므로 진단 오류로 거부한다. trimmed frame의 원본 크기를 display/collider 기준으로 쓰려면 `sizeSource: "source"`를 지정한다.
+
 현재 atlas frame binding은 static frame용이다. 같은 prefab에 `frame`과 `animation`을 동시에 지정하면 TypeScript 검증에서 실패한다. 기존 horizontal sprite sheet animation은 그대로 사용할 수 있으며, atlas 기반 animation binding은 별도 단계에서 확장한다.
 
 ## Tilemap Runtime
@@ -245,7 +272,75 @@ Single-image textures should omit `animation` or keep `frames` as `1`. If `frame
 }
 ```
 
-`tilemap.tiles`의 key는 positive integer string이어야 한다. `0`은 빈 타일로 예약되어 layer data에서만 사용할 수 있다. `collision: true` layer의 양수 tile은 player/enemy 이동을 막는 정적 AABB로 해석되며, chase enemy는 같은 collision layer를 4방향 grid navigation 장애물로 사용한다. Navigation v1은 Rust core 내부에서 계산되며 새 Game Spec 필드를 추가하지 않는다. bullet-wall 충돌, 자동 타일링, editor, per-tile script, navmesh, crowd simulation은 포함하지 않는다.
+`tilemap.tiles`의 key는 positive integer string이어야 한다. `0`은 빈 타일로 예약되어 layer data에서만 사용할 수 있다. `collision: true` layer의 양수 tile은 player/enemy 이동을 막는 정적 AABB로 해석되고, Rust는 인접 solid tile run을 merged AABB obstacle로 캐시해 충돌 후보 검사를 줄인다. chase enemy는 같은 collision layer의 원본 tile grid를 4방향 navigation 장애물로 사용한다. Navigation v1은 Rust core 내부에서 계산되며 새 Game Spec 필드를 추가하지 않는다. bullet-wall 충돌, 자동 타일링, editor, per-tile script, navmesh, crowd simulation은 포함하지 않는다.
+
+### Tiled JSON Import
+
+`importTiledGameSpec(...)`는 Tiled finite orthogonal JSON map을 Game Spec `atlas`/`tilemap` 조각으로 변환한다. embedded tileset image metadata를 frame UV로 바꾸고, tile layer `data`의 global tile id를 그대로 Game Spec tile id로 사용한다.
+
+```ts
+import { importTiledGameSpec } from "@ferrum2d/ferrum-web";
+
+const tiled = importTiledGameSpec(loaded.json.map, {
+  collisionLayerNames: ["walls"],
+});
+
+const spec: ShooterGameSpec = {
+  atlas: { frames: { ...tiled.atlas?.frames } },
+  tilemap: tiled.tilemap,
+};
+```
+
+지원 범위:
+
+- `orientation: "orthogonal"`
+- finite map과 finite `tilelayer`
+- embedded tileset image metadata: `firstgid`, `name`, `tilewidth`, `tileheight`, `columns`, `tilecount`, `imagewidth`, `imageheight`
+- `data: number[]` tile layer
+- Tiled custom property `collision: true` 또는 `collisionLayerNames` 옵션을 통한 collision layer 지정
+
+현재 제외 범위:
+
+- external `.tsx` tileset source 자동 로딩
+- infinite/chunked map
+- base64/compressed layer data
+- flipped/rotated tile gid
+- object layer, image layer, per-tile script, Wang/autotile metadata
+
+### LDtk JSON Import
+
+`importLDtkGameSpec(...)`는 LDtk project JSON의 embedded level을 Game Spec `atlas`/`tilemap` 조각으로 변환한다. LDtk tileset definition의 pixel metadata를 frame UV로 바꾸고, `Tiles`/`AutoLayer` layer의 tile instances를 row-major tile layer data로 변환한다.
+
+```ts
+import { importLDtkGameSpec } from "@ferrum2d/ferrum-web";
+
+const ldtk = importLDtkGameSpec(loaded.json.world, {
+  levelIdentifier: "Level_0",
+  collisionLayerNames: ["walls"],
+});
+
+const spec: ShooterGameSpec = {
+  atlas: { frames: { ...ldtk.atlas?.frames } },
+  tilemap: ldtk.tilemap,
+};
+```
+
+지원 범위:
+
+- LDtk project JSON 안에 `layerInstances`가 포함된 embedded level
+- `levelIdentifier`, `levelIid`, `levelIndex` 중 하나를 통한 level 선택
+- LDtk `Tiles`, `AutoLayer`, rendered `IntGrid` auto tiles
+- tileset definition: `uid`, `identifier`, `tileGridSize`, `pxWid`, `pxHei`, `padding`, `spacing`, `relPath`
+- `collisionLayerNames` 옵션을 통한 collision layer 지정
+- `frameNameForTile`과 `texture` callback을 통한 frame/texture name 조정
+
+현재 제외 범위:
+
+- external `.ldtkl` level 자동 로딩
+- raw `IntGrid` 값을 collision-only layer로 직접 변환
+- 한 grid cell에 여러 tile이 쌓인 LDtk tile stack
+- flipped tile
+- entity layer, field instance, rule metadata, per-tile script
 
 ## Enemy Behavior
 

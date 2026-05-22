@@ -1,9 +1,11 @@
-import { emptyRendererStats, rendererStatsForCommands } from "./renderer";
+import { emptyRendererStats, rendererStatsForCommands, rendererStatsWithPhysicsDebugLines } from "./renderer";
+import { PhysicsDebugLineBatch } from "./physicsDebugLineBatch";
+import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch";
 import type { Renderer } from "./renderer";
 import type { RendererStats } from "./renderer";
 import { SpriteBatch } from "./spriteBatch";
 import { TextureManager } from "./textureManager";
-import type { RenderCommandBufferView } from "./wasmBridge";
+import type { PhysicsDebugLineBufferView, RenderCommandBufferView } from "./wasmBridge";
 
 export interface WebGL2RendererOptions {
   clearColor?: [number, number, number, number];
@@ -14,6 +16,7 @@ export class WebGL2Renderer implements Renderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly textureManager: TextureManager;
   private readonly spriteBatch: SpriteBatch;
+  private readonly physicsDebugLineBatch: PhysicsDebugLineBatch;
   private currentStats: RendererStats = emptyRendererStats();
   private logicalWidth = 0;
   private logicalHeight = 0;
@@ -28,6 +31,7 @@ export class WebGL2Renderer implements Renderer {
     this.textureManager = new TextureManager(gl);
     this.textureManager.createPlaceholderTextureForId(0);
     this.spriteBatch = new SpriteBatch(gl);
+    this.physicsDebugLineBatch = new PhysicsDebugLineBatch(gl);
     this.resize();
   }
 
@@ -79,6 +83,7 @@ export class WebGL2Renderer implements Renderer {
 
   render(): void {
     this.assertAlive();
+    this.currentStats = emptyRendererStats();
     const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1.0];
     this.gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
@@ -99,12 +104,31 @@ export class WebGL2Renderer implements Renderer {
     return this.stats();
   }
 
+  renderPhysicsDebugLines(
+    lines: PhysicsDebugLineBufferView,
+    camera: PhysicsDebugLineCamera,
+  ): RendererStats {
+    this.assertAlive();
+    const drawCalls = this.physicsDebugLineBatch.draw(
+      lines,
+      [this.logicalWidth, this.logicalHeight],
+      camera,
+    );
+    this.currentStats = rendererStatsWithPhysicsDebugLines(
+      this.currentStats,
+      lines.lineCount,
+      drawCalls,
+    );
+    return this.stats();
+  }
+
   destroy(): void {
     if (this.destroyed) {
       return;
     }
     this.destroyed = true;
     this.spriteBatch.destroy();
+    this.physicsDebugLineBatch.destroy();
     this.textureManager.destroy();
   }
 

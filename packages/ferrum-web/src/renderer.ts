@@ -13,6 +13,8 @@ export interface RendererStats {
   textureBindCount: number;
   /** Adjacent texture_id changes used by texture-id batching; explicit single-texture rendering reports 0. */
   textureSwitchCount: number;
+  /** Physics debug line primitives rendered by the debug line pass for the current frame. */
+  physicsDebugLineCount: number;
 }
 
 export type RendererStatsUnit = "count";
@@ -61,6 +63,12 @@ export const RENDERER_STATS_FIELD_CONTRACT: readonly RendererStatsFieldContract[
     unit: "count",
     description: "Adjacent texture_id changes used by texture-id batching; explicit single-texture rendering reports 0.",
   },
+  {
+    field: "physicsDebugLineCount",
+    label: "physics debug lines",
+    unit: "count",
+    description: "Physics debug line primitives rendered by the debug line pass for the current frame.",
+  },
 ];
 
 export interface Renderer {
@@ -78,6 +86,7 @@ export function emptyRendererStats(): RendererStats {
     renderCommandCount: 0,
     textureBindCount: 0,
     textureSwitchCount: 0,
+    physicsDebugLineCount: 0,
   };
 }
 
@@ -93,6 +102,19 @@ export function rendererStatsForCommands(
     renderCommandCount: commands.commandCount,
     textureBindCount: drawCalls,
     textureSwitchCount,
+    physicsDebugLineCount: 0,
+  };
+}
+
+export function rendererStatsWithPhysicsDebugLines(
+  stats: RendererStats,
+  lineCount: number,
+  drawCalls: number,
+): RendererStats {
+  return {
+    ...stats,
+    drawCalls: stats.drawCalls + drawCalls,
+    physicsDebugLineCount: lineCount,
   };
 }
 

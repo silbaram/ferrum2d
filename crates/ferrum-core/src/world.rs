@@ -1,6 +1,6 @@
 use crate::components::{
-    AabbCollider, CollisionFilter, CollisionLayer, Sprite, SpriteAnimation, SpriteFrame,
-    Transform2D, Velocity,
+    AabbCollider, CircleCollider, CollisionFilter, CollisionLayer, Sprite, SpriteAnimation,
+    SpriteFrame, Transform2D, Velocity,
 };
 use crate::entity::Entity;
 use crate::physics::PhysicsSystem;
@@ -64,6 +64,7 @@ pub struct World {
     pub(crate) sprite_animations: Vec<Option<SpriteAnimation>>,
     pub(crate) velocities: Vec<Option<Velocity>>,
     pub(crate) colliders: Vec<Option<AabbCollider>>,
+    pub(crate) circle_colliders: Vec<Option<CircleCollider>>,
     pub(crate) collision_filters: Vec<Option<CollisionFilter>>,
     pub(crate) bullet_lifetimes: Vec<Option<f32>>,
     pub(crate) healths: Vec<Option<f32>>,
@@ -91,6 +92,7 @@ impl World {
         self.sprite_animations.push(None);
         self.velocities.push(None);
         self.colliders.push(None);
+        self.circle_colliders.push(None);
         self.collision_filters.push(None);
         self.bullet_lifetimes.push(None);
         self.healths.push(None);
@@ -109,6 +111,7 @@ impl World {
             self.sprite_animations[i] = None;
             self.velocities[i] = None;
             self.colliders[i] = None;
+            self.circle_colliders[i] = None;
             self.collision_filters[i] = None;
             self.bullet_lifetimes[i] = None;
             self.healths[i] = None;
@@ -314,6 +317,23 @@ impl World {
             return;
         };
         self.colliders[i] = Some(collider);
+        self.circle_colliders[i] = None;
+        if self.collision_filters[i].is_none() {
+            self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
+        }
+    }
+
+    pub fn circle_collider(&self, entity: Entity) -> Option<CircleCollider> {
+        let i = self.valid_index(entity)?;
+        self.circle_colliders[i]
+    }
+
+    pub fn set_circle_collider(&mut self, entity: Entity, collider: CircleCollider) {
+        let Some(i) = self.valid_index(entity) else {
+            return;
+        };
+        self.colliders[i] = None;
+        self.circle_colliders[i] = Some(collider);
         if self.collision_filters[i].is_none() {
             self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
         }
@@ -324,6 +344,7 @@ impl World {
             return;
         };
         self.colliders[i] = None;
+        self.circle_colliders[i] = None;
         self.collision_filters[i] = None;
     }
 
@@ -332,7 +353,7 @@ impl World {
         if i >= self.alive.len()
             || !self.alive[i]
             || self.generations[i] != entity.generation
-            || self.colliders[i].is_none()
+            || (self.colliders[i].is_none() && self.circle_colliders[i].is_none())
         {
             return;
         }
@@ -348,12 +369,24 @@ impl World {
     }
 
     pub(crate) fn collision_filter_at(&self, index: usize) -> Option<CollisionFilter> {
-        let collider = self.colliders.get(index).copied().flatten()?;
+        let layer = self
+            .colliders
+            .get(index)
+            .copied()
+            .flatten()
+            .map(|collider| collider.layer)
+            .or_else(|| {
+                self.circle_colliders
+                    .get(index)
+                    .copied()
+                    .flatten()
+                    .map(|collider| collider.layer)
+            })?;
         self.collision_filters
             .get(index)
             .copied()
             .flatten()
-            .or_else(|| Some(CollisionFilter::from_layer(collider.layer)))
+            .or_else(|| Some(CollisionFilter::from_layer(layer)))
     }
 
     fn valid_index(&self, entity: Entity) -> Option<usize> {
@@ -427,7 +460,7 @@ fn initial_uv(template: EntityTemplate) -> (f32, f32, f32, f32) {
 mod tests {
     use super::*;
     use crate::components::{
-        CollisionFilter, CollisionMask, SpriteAnimation, SpriteAnimationState,
+        CircleCollider, CollisionFilter, CollisionMask, SpriteAnimation, SpriteAnimationState,
     };
 
     #[test]
@@ -533,6 +566,34 @@ mod tests {
         assert_eq!(
             world.collision_filter(entity),
             Some(CollisionFilter::from_layer(CollisionLayer::Enemy))
+        );
+    }
+
+    #[test]
+    fn circle_collider_setter_replaces_aabb_and_defaults_filter() {
+        let mut world = World::default();
+        let entity = world.spawn_entity();
+        let aabb = AabbCollider {
+            half_width: 6.0,
+            half_height: 7.0,
+            is_trigger: false,
+            layer: CollisionLayer::Enemy,
+        };
+        let circle = CircleCollider {
+            radius: 5.0,
+            is_trigger: true,
+            layer: CollisionLayer::Player,
+        };
+
+        world.set_aabb_collider(entity, aabb);
+        world.clear_collider(entity);
+        world.set_circle_collider(entity, circle);
+
+        assert_eq!(world.collider(entity), None);
+        assert_eq!(world.circle_collider(entity), Some(circle));
+        assert_eq!(
+            world.collision_filter(entity),
+            Some(CollisionFilter::from_layer(CollisionLayer::Player))
         );
     }
 

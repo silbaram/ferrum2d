@@ -2,6 +2,7 @@ export { createEngine } from "./createEngine";
 export { createFerrumRuntime } from "./createFerrumRuntime";
 export { createRenderer } from "./createRenderer";
 export type { FerrumRuntime, FerrumRuntimeEnvironment, FerrumRuntimeFrame, FerrumRuntimeOptions } from "./createFerrumRuntime";
+export type { UiOverlayStateProvider } from "./createFerrumRuntime";
 export type {
   AssetHost,
   AudioBusConfig,
@@ -51,6 +52,7 @@ export type { Renderer, RendererStats } from "./renderer";
 export type { CreateRendererOptions, RendererFallbackInfo } from "./createRenderer";
 export { WebGL2Renderer } from "./webgl2Renderer";
 export type { WebGL2RendererOptions } from "./webgl2Renderer";
+export type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch";
 export { BrowserPlatformHost } from "./browserPlatformHost";
 export { WebGPURenderer } from "./webgpuRenderer";
 export { TextureManager } from "./textureManager";
@@ -58,13 +60,22 @@ export { AudioManager } from "./audioManager";
 export type { AudioManagerConfig } from "./audioManager";
 export { AudioAssetLoader } from "./audioAssetLoader";
 export { AssetLoader } from "./assetLoader";
+export {
+  importAsepriteAtlas,
+  importAsepriteAtlasFrames,
+  importLDtkGameSpec,
+  importLDtkTilemap,
+  importTiledGameSpec,
+  importTiledTilemap,
+} from "./assetPipeline";
 export { DebugOverlay } from "./debugOverlay";
+export { UiOverlay } from "./uiOverlay";
 export { TextureRegistry } from "./textureRegistry";
 export { SoundRegistry } from "./soundRegistry";
 export { SpriteBatch } from "./spriteBatch";
 export { InputManager } from "./inputManager";
 export { generateTextureAtlasLayout } from "./textureAtlas";
-export type { InputSnapshot } from "./inputManager";
+export type { InputManagerOptions, InputSnapshot } from "./inputManager";
 export type { SpriteDrawOptions } from "./spriteBatch";
 export type { AtlasSpriteInput, AtlasSpritePlacement, TextureAtlasLayout, TextureAtlasOptions } from "./textureAtlas";
 export type {
@@ -75,16 +86,41 @@ export type {
   SoundAssetManager,
   TextureAssetManager,
 } from "./assetLoader";
+export type {
+  AsepriteAtlasFrameSizeSource,
+  AsepriteAtlasImportOptions,
+  AsepriteAtlasImportResult,
+  LDtkTilemapImportOptions,
+  LDtkTilemapImportResult,
+  LDtkTilesetFrameContext,
+  TiledTilemapImportOptions,
+  TiledTilemapImportResult,
+  TiledTilesetFrameContext,
+} from "./assetPipeline";
 export type { TextureRegistryEntry } from "./textureRegistry";
 export type { SoundRegistryEntry } from "./soundRegistry";
 export type { DebugOverlayMetrics, DebugOverlayOptions } from "./debugOverlay";
+export type {
+  UiAction,
+  UiDialog,
+  UiOverlayActionEvent,
+  UiOverlayActionTone,
+  UiOverlayOptions,
+  UiOverlayRegion,
+  UiOverlayState,
+  UiOverlayTone,
+  UiPanel,
+  UiTextLine,
+} from "./uiOverlay";
 export type {
   AudioEventBufferView,
   AudioEventView,
   CollisionEventBufferView,
   CollisionEventKind,
   CollisionEventView,
+  PhysicsDebugLineBufferView,
+  PhysicsDebugLineView,
   RenderCommandBufferView,
   RenderCommandView,
 } from "./wasmBridge";
-export { decodeCollisionEvents, decodeRenderCommands } from "./wasmBridge";
+export { decodeCollisionEvents, decodePhysicsDebugLines, decodeRenderCommands } from "./wasmBridge";

@@ -15,6 +15,7 @@ pub struct CollisionEvent {
     pub a_generation: u32,
     pub b_id: u32,
     pub b_generation: u32,
+    pub damage_bits: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -47,13 +48,22 @@ impl CollisionEventCounts {
 
 impl CollisionEvent {
     pub fn from_entities(kind: u32, a: Entity, b: Entity) -> Self {
+        Self::from_entities_with_damage(kind, a, b, 0.0)
+    }
+
+    pub fn from_entities_with_damage(kind: u32, a: Entity, b: Entity, damage: f32) -> Self {
         Self {
             kind,
             a_id: a.id,
             a_generation: a.generation,
             b_id: b.id,
             b_generation: b.generation,
+            damage_bits: sanitize_damage_payload(damage).to_bits(),
         }
+    }
+
+    pub fn damage(self) -> f32 {
+        f32::from_bits(self.damage_bits)
     }
 }
 
@@ -177,6 +187,14 @@ fn entity_key(entity: Entity) -> (u32, u32) {
     (entity.id, entity.generation)
 }
 
+fn sanitize_damage_payload(damage: f32) -> f32 {
+    if damage.is_finite() && damage > 0.0 {
+        damage
+    } else {
+        0.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,6 +213,7 @@ mod tests {
         let counts = tracker.update(&world, &mut events);
         assert_eq!(counts.enter, 1);
         assert_eq!(events[0].kind, COLLISION_EVENT_ENTER);
+        assert_eq!(events[0].damage(), 0.0);
 
         events.clear();
         let counts = tracker.update(&world, &mut events);
@@ -207,6 +226,43 @@ mod tests {
         assert_eq!(counts.exit, 1);
         assert_eq!(events[0].kind, COLLISION_EVENT_EXIT);
         assert_eq!(events[0].a_id, a.id.min(b.id));
+        assert_eq!(events[0].damage_bits, 0);
+    }
+
+    #[test]
+    fn hit_events_can_carry_damage_payload() {
+        let a = Entity {
+            id: 1,
+            generation: 0,
+        };
+        let b = Entity {
+            id: 2,
+            generation: 0,
+        };
+
+        let event = CollisionEvent::from_entities_with_damage(COLLISION_EVENT_HIT, a, b, 2.5);
+
+        assert_eq!(event.kind, COLLISION_EVENT_HIT);
+        assert_eq!(event.damage(), 2.5);
+    }
+
+    #[test]
+    fn damage_payload_rejects_invalid_values() {
+        let a = Entity {
+            id: 1,
+            generation: 0,
+        };
+        let b = Entity {
+            id: 2,
+            generation: 0,
+        };
+
+        let negative = CollisionEvent::from_entities_with_damage(COLLISION_EVENT_HIT, a, b, -1.0);
+        let infinite =
+            CollisionEvent::from_entities_with_damage(COLLISION_EVENT_HIT, a, b, f32::INFINITY);
+
+        assert_eq!(negative.damage(), 0.0);
+        assert_eq!(infinite.damage(), 0.0);
     }
 
     #[test]

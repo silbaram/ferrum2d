@@ -12,7 +12,33 @@ importers:
         specifier: ^1.60.0
         version: 1.60.0
 
+  examples/breakout:
+    dependencies:
+      '@ferrum2d/ferrum-web':
+        specifier: workspace:*
+        version: link:../../packages/ferrum-web
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.19
+        version: 5.4.21
+
   examples/minimal-game:
+    dependencies:
+      '@ferrum2d/ferrum-web':
+        specifier: workspace:*
+        version: link:../../packages/ferrum-web
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.19
+        version: 5.4.21
+
+  examples/platformer:
     dependencies:
       '@ferrum2d/ferrum-web':
         specifier: workspace:*

@@ -6,6 +6,8 @@ Ferrum2D MVP의 목표는 Rust/Wasm 기반 2D 웹 게임 엔진의 최소 수직
 
 현재 상태: **MVP 개발 완료, 상용제품 기능 개발**. 이 문서는 완료된 MVP baseline과 상용제품 기능 개발 단계에서 유지해야 할 회귀 기준을 기록한다.
 
+상용제품 기능 개발 단계의 physics API와 장르 예제는 MVP baseline 위에 추가된다. 현재 Rust core에는 Physics v3/v4 query와 Physics v5 ground detection/entity one-way platform/moving platform carry/platformer controller/jump assist/step offset 기반 API와 `examples/platformer`가 포함되어 있지만, 이는 MVP 완료 기준을 변경하지 않는 post-MVP 확장으로 관리한다.
+
 ## MVP에 포함
 
 - Rust core 업데이트 루프

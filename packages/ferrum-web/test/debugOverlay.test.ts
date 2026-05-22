@@ -75,6 +75,7 @@ test("DebugOverlay metric contract fixes row order, labels, and units", () => {
     { id: "physicsKinematicHits", label: "kinematic hits", unit: "count", optional: true },
     { id: "physicsTileCandidateChecks", label: "tile checks", unit: "count", optional: true },
     { id: "collisionEventCount", label: "collision events", unit: "count", optional: true },
+    { id: "physicsDebugLineCount", label: "physics debug lines", unit: "count", optional: true },
     { id: "mousePosition", label: "mouse", unit: "px", optional: false },
     { id: "cameraPosition", label: "camera", unit: "world", optional: false },
     { id: "gameState", label: "state", unit: "state", optional: false },
@@ -92,6 +93,7 @@ test("formatDebugOverlayMetrics applies fixed labels, units, and precision", () 
     physicsKinematicHits: 1,
     physicsTileCandidateChecks: 8,
     collisionEventCount: 3,
+    physicsDebugLineCount: 2,
   })), [
     "fps: 60.0 fps",
     "frame time: 16.67 ms",
@@ -109,6 +111,7 @@ test("formatDebugOverlayMetrics applies fixed labels, units, and precision", () 
     "kinematic hits: 1",
     "tile checks: 8",
     "collision events: 3",
+    "physics debug lines: 2",
     "mouse: 10.0, 20.0 px",
     "camera: 0.0, 0.0 world",
     "state: Playing",

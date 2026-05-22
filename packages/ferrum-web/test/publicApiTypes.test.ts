@@ -1,7 +1,18 @@
 import { equal } from "node:assert/strict";
 import { test } from "node:test";
-import { decodeCollisionEvents } from "../src/index.js";
+import {
+  importAsepriteAtlas,
+  importAsepriteAtlasFrames,
+  importLDtkGameSpec,
+  importLDtkTilemap,
+  importTiledGameSpec,
+  importTiledTilemap,
+} from "../src/assetPipeline.js";
+import { decodeCollisionEvents } from "../src/collisionEventDecoder.js";
+import { decodePhysicsDebugLines } from "../src/physicsDebugLineDecoder.js";
 import type {
+  AsepriteAtlasImportOptions,
+  AsepriteAtlasImportResult,
   AssetManifest,
   AudioAssetLoader,
   AudioBusConfig,
@@ -19,6 +30,7 @@ import type {
   FerrumRuntimeEnvironment,
   FerrumRuntimeFrame,
   FerrumRuntimeOptions,
+  UiOverlayStateProvider,
   EngineLifecycleHooks,
   EngineLifecycleSnapshot,
   AssetHost,
@@ -26,10 +38,15 @@ import type {
   FixedTimestepOptions,
   FrameHandler,
   FrameState,
+  InputManagerOptions,
   InputProvider,
+  PhysicsDebugLineCamera,
   PhysicsFrameStats,
   Renderer,
   RendererStats,
+  LDtkTilemapImportOptions,
+  LDtkTilemapImportResult,
+  LDtkTilesetFrameContext,
   ShooterAtlasFrameSpec,
   ShooterAtlasSpec,
   ShooterCameraPreset,
@@ -47,9 +64,20 @@ import type {
   WebGL2RendererOptions,
   CollisionEventBufferView,
   CollisionEventView,
+  PhysicsDebugLineBufferView,
+  PhysicsDebugLineView,
+  TiledTilemapImportOptions,
+  TiledTilemapImportResult,
+  TiledTilesetFrameContext,
+  UiOverlay,
+  UiOverlayActionEvent,
+  UiOverlayOptions,
+  UiOverlayState,
   createFerrumRuntime,
   generateTextureAtlasLayout,
 } from "../src/index.js";
+
+type PublicApi = typeof import("../src/index.js");
 
 test("public API types are importable from entrypoint source", () => {
   const manifest: AssetManifest = {
@@ -57,6 +85,68 @@ test("public API types are importable from entrypoint source", () => {
     sounds: { shoot: "/assets/shoot.wav" },
     json: { game: "/game.json" },
   };
+  const asepriteImportOptions: AsepriteAtlasImportOptions = { texture: "sprites" };
+  const publicImportAsepriteAtlas: PublicApi["importAsepriteAtlas"] = importAsepriteAtlas;
+  const asepriteImportResult: AsepriteAtlasImportResult = publicImportAsepriteAtlas({
+    frames: {
+      "player.png": { frame: { x: 0, y: 0, w: 16, h: 16 } },
+    },
+    meta: { size: { w: 32, h: 32 } },
+  }, asepriteImportOptions);
+  const publicImportAsepriteAtlasFrames: PublicApi["importAsepriteAtlasFrames"] = importAsepriteAtlasFrames;
+  const tiledImportOptions: TiledTilemapImportOptions = {
+    frameNameForGid: (context: TiledTilesetFrameContext) => `${context.tilesetName}.${context.localId}`,
+  };
+  const publicImportTiledTilemap: PublicApi["importTiledTilemap"] = importTiledTilemap;
+  const tiledImportResult: TiledTilemapImportResult = publicImportTiledTilemap({
+    orientation: "orthogonal",
+    width: 1,
+    height: 1,
+    tilewidth: 8,
+    tileheight: 8,
+    tilesets: [{
+      firstgid: 1,
+      name: "terrain",
+      imagewidth: 8,
+      imageheight: 8,
+      tilewidth: 8,
+      tileheight: 8,
+      columns: 1,
+      tilecount: 1,
+    }],
+    layers: [{ type: "tilelayer", width: 1, height: 1, data: [1] }],
+  }, tiledImportOptions);
+  const publicImportTiledGameSpec: PublicApi["importTiledGameSpec"] = importTiledGameSpec;
+  const ldtkImportOptions: LDtkTilemapImportOptions = {
+    frameNameForTile: (context: LDtkTilesetFrameContext) => `${context.tilesetIdentifier}.${context.ldtkTileId}`,
+  };
+  const publicImportLDtkTilemap: PublicApi["importLDtkTilemap"] = importLDtkTilemap;
+  const ldtkImportResult: LDtkTilemapImportResult = publicImportLDtkTilemap({
+    defs: {
+      tilesets: [{
+        uid: 1,
+        identifier: "terrain",
+        pxWid: 8,
+        pxHei: 8,
+        tileGridSize: 8,
+      }],
+    },
+    levels: [{
+      identifier: "Level_0",
+      pxWid: 8,
+      pxHei: 8,
+      layerInstances: [{
+        __identifier: "ground",
+        __type: "Tiles",
+        __cWid: 1,
+        __cHei: 1,
+        __gridSize: 8,
+        __tilesetDefUid: 1,
+        gridTiles: [{ px: [0, 0], src: [0, 0], t: 0, f: 0 }],
+      }],
+    }],
+  }, ldtkImportOptions);
+  const publicImportLDtkGameSpec: PublicApi["importLDtkGameSpec"] = importLDtkGameSpec;
   const lifecycleHooks: EngineLifecycleHooks = {
     onStart: (snapshot: EngineLifecycleSnapshot) => {
       equal(snapshot.gameState >= 0, true);
@@ -70,6 +160,8 @@ test("public API types are importable from entrypoint source", () => {
     useWorkerClock: true,
     includeAudioEvents: true,
     includeCollisionEvents: true,
+    enablePhysicsDebugLines: true,
+    includePhysicsDebugLines: true,
     fixedTimestep: { stepSeconds: 1 / 60, maxFrameSeconds: 0.25, maxStepsPerUpdate: 8 },
     lifecycle: lifecycleHooks,
   };
@@ -82,14 +174,39 @@ test("public API types are importable from entrypoint source", () => {
     },
   };
   const webgl2Options: WebGL2RendererOptions = { clearColor: [0, 0, 0, 1], preserveDrawingBuffer: true };
+  const physicsDebugLineCamera: PhysicsDebugLineCamera = { x: 0, y: 0 };
+  const inputManagerOptions: InputManagerOptions = {
+    gamepad: true,
+    gamepadDeadzone: 0.3,
+    pointerGestures: true,
+    pointerGestureThreshold: 16,
+  };
+  const uiOptions: UiOverlayOptions = {
+    onAction: (event: UiOverlayActionEvent) => {
+      equal(event.id.length > 0, true);
+    },
+  };
+  const uiState: UiOverlayState = {
+    panels: [{
+      id: "hud",
+      title: "HUD",
+      lines: [{ id: "score", label: "Score", value: 0 }],
+    }],
+  };
+  const uiStateProvider: UiOverlayStateProvider = () => uiState;
   const runtimeEnvironment: FerrumRuntimeEnvironment = "production";
   const runtimeOptions: FerrumRuntimeOptions = {
     canvas: {} as HTMLCanvasElement,
     webgl2: webgl2Options,
+    inputOptions: inputManagerOptions,
+    ui: uiOptions,
+    uiState: uiStateProvider,
     environment: runtimeEnvironment,
     debug: false,
+    physicsDebugLines: true,
     onFrame: (runtimeFrame: FerrumRuntimeFrame) => {
       equal(runtimeFrame.rendererStats.drawCalls >= 0, true);
+      equal(runtimeFrame.rendererStats.physicsDebugLineCount >= 0, true);
     },
   };
   const gameSpec: ShooterGameSpec = {
@@ -182,6 +299,7 @@ test("public API types are importable from entrypoint source", () => {
     equal(commandCount >= 0, true);
     equal(frame.physics.fixedSteps >= 0, true);
     equal(frame.collisionEventBuffer.eventCount >= 0, true);
+    equal(frame.physicsDebugLineBuffer.lineCount >= 0, true);
   };
   const physicsStats: PhysicsFrameStats = {
     fixedTimestepEnabled: true,
@@ -202,11 +320,23 @@ test("public API types are importable from entrypoint source", () => {
     collisionEventCount: 1,
   };
   const collisionEventBuffer: CollisionEventBufferView = {
-    buffer: new Uint32Array([1, 0, 0, 1, 0]),
+    buffer: new Uint32Array([4, 0, 0, 1, 0, f32Bits(2)]),
     eventCount: 1,
-    u32sPerEvent: 5,
+    u32sPerEvent: 6,
   };
-  const collisionEvent: CollisionEventView = decodeCollisionEvents(collisionEventBuffer)[0];
+  const publicDecodeCollisionEvents: PublicApi["decodeCollisionEvents"] = decodeCollisionEvents;
+  const collisionEvent: CollisionEventView = publicDecodeCollisionEvents(collisionEventBuffer)[0];
+  const physicsDebugLineBuffer: PhysicsDebugLineBufferView = {
+    buffer: new Float32Array([0, 0, 16, 0, 1, 0.2, 0.1, 1]),
+    lineCount: 1,
+    floatsPerLine: 8,
+  };
+  const publicDecodePhysicsDebugLines: PublicApi["decodePhysicsDebugLines"] = decodePhysicsDebugLines;
+  const physicsDebugLine: PhysicsDebugLineView = publicDecodePhysicsDebugLines(physicsDebugLineBuffer)[0];
+  const uiOverlay: Pick<UiOverlay, "update" | "destroy"> = {
+    update: () => undefined,
+    destroy: () => undefined,
+  };
   const inputProvider: InputProvider = () => ({
     w: false,
     a: false,
@@ -226,6 +356,7 @@ test("public API types are importable from entrypoint source", () => {
     renderCommandCount: 0,
     textureBindCount: 0,
     textureSwitchCount: 0,
+    physicsDebugLineCount: 0,
   };
   const renderer: Pick<Renderer, "stats"> = { stats: () => stats };
   const assetHost: Pick<AssetHost, "textureId"> = { textureId: () => 1 };
@@ -236,7 +367,7 @@ test("public API types are importable from entrypoint source", () => {
   const audioAssetLoader: Pick<AudioAssetLoader, "load"> = {
     load: async () => ({}) as AudioBuffer,
   };
-  const engine: Pick<FerrumEngine, "setGameSpec" | "configureFixedTimestep"> = {
+  const engine: Pick<FerrumEngine, "setGameSpec" | "useBreakoutGame" | "configureFixedTimestep"> = {
     setGameSpec: () => ({
       worldWidth: 1600,
       worldHeight: 960,
@@ -310,10 +441,63 @@ test("public API types are importable from entrypoint source", () => {
       gameOverVolume: 0.65,
       gameOverPitch: 0.9,
     }),
+    useBreakoutGame: () => undefined,
     configureFixedTimestep: () => undefined,
   };
 
   equal(manifest.textures?.player, "/assets/player.png");
+  equal(asepriteImportResult.frameNames[0], "player");
+  equal(publicImportAsepriteAtlasFrames({
+    frames: {
+      "enemy.png": { frame: { x: 0, y: 0, w: 8, h: 8 } },
+    },
+    meta: { size: { w: 16, h: 16 } },
+  }, asepriteImportOptions).enemy.texture, "sprites");
+  equal(tiledImportResult.usedGids[0], 1);
+  equal(publicImportTiledGameSpec({
+    orientation: "orthogonal",
+    width: 1,
+    height: 1,
+    tilewidth: 8,
+    tileheight: 8,
+    tilesets: [{
+      firstgid: 1,
+      name: "terrain",
+      imagewidth: 8,
+      imageheight: 8,
+      tilewidth: 8,
+      tileheight: 8,
+      columns: 1,
+      tilecount: 1,
+    }],
+    layers: [{ type: "tilelayer", width: 1, height: 1, data: [1] }],
+  }, tiledImportOptions).tilemap?.layers?.[0]?.data?.[0], 1);
+  equal(ldtkImportResult.usedTileIds[0], 1);
+  equal(publicImportLDtkGameSpec({
+    defs: {
+      tilesets: [{
+        uid: 1,
+        identifier: "terrain",
+        pxWid: 8,
+        pxHei: 8,
+        tileGridSize: 8,
+      }],
+    },
+    levels: [{
+      identifier: "Level_0",
+      pxWid: 8,
+      pxHei: 8,
+      layerInstances: [{
+        __identifier: "ground",
+        __type: "Tiles",
+        __cWid: 1,
+        __cHei: 1,
+        __gridSize: 8,
+        __tilesetDefUid: 1,
+        gridTiles: [{ px: [0, 0], src: [0, 0], t: 0, f: 0 }],
+      }],
+    }],
+  }, ldtkImportOptions).tilemap?.layers?.[0]?.data?.[0], 1);
   equal(options.includeDeprecatedRenderCommands, false);
   equal(options.useWorkerClock, true);
   equal(fixedTimestepOptions.enabled, true);
@@ -326,6 +510,8 @@ test("public API types are importable from entrypoint source", () => {
   });
   equal(rendererOptions.preferred, "webgpu");
   equal(runtimeOptions.debug, false);
+  equal(runtimeOptions.uiState?.({} as FerrumRuntimeFrame).panels?.[0]?.id, "hud");
+  equal(physicsDebugLineCamera.x, 0);
   equal(gameSpec.world?.width, 1600);
   equal(cameraSpec.preset, "look-ahead");
   equal(atlasFrameSpec.texture, "bullet");
@@ -345,7 +531,12 @@ test("public API types are importable from entrypoint source", () => {
   equal(typeof webGpuCreate, "function");
   equal(typeof runtimeCreate, "function");
   equal(physicsStats.collisionEventCount, 1);
-  equal(collisionEvent.kind, "enter");
+  equal(collisionEvent.kind, "hit");
+  equal(collisionEvent.damage, 2);
+  equal(physicsDebugLine.x1, 16);
+  uiOverlay.update(uiState);
+  uiOverlay.destroy();
+  equal(inputManagerOptions.pointerGestures, true);
   equal(inputProvider().mouseX, 0);
   equal(viewportProvider().height, 480);
   equal(renderer.stats().drawCalls, 0);
@@ -353,6 +544,7 @@ test("public API types are importable from entrypoint source", () => {
   equal(browserPlatformHost.textureId("player"), 1);
   equal(typeof audioAssetLoader.load, "function");
   equal(engine.setGameSpec(gameSpec).enemyBehavior, "chase");
+  engine.useBreakoutGame();
   onFrame({
     timeSeconds: 0,
     frameTimeMs: 16,
@@ -370,6 +562,8 @@ test("public API types are importable from entrypoint source", () => {
     physics: physicsStats,
     collisionEventBuffer,
     collisionEvents: [collisionEvent],
+    physicsDebugLineBuffer,
+    physicsDebugLines: [physicsDebugLine],
     renderCommands: [],
     renderCommandBuffer: {
       buffer: new Float32Array(0),
@@ -378,3 +572,8 @@ test("public API types are importable from entrypoint source", () => {
     },
   });
 });
+
+function f32Bits(value: number): number {
+  const damage = new Float32Array([value]);
+  return new Uint32Array(damage.buffer)[0];
+}

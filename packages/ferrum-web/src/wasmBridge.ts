@@ -4,6 +4,8 @@ import init, {
   audio_event_floats,
   collision_event_bytes,
   collision_event_u32s,
+  physics_debug_line_bytes,
+  physics_debug_line_floats,
   sprite_render_command_bytes,
   sprite_render_command_floats,
   version,
@@ -11,6 +13,14 @@ import init, {
 } from "../pkg/ferrum_core.js";
 import { decodeCollisionEvents, U32S_PER_COLLISION_EVENT } from "./collisionEventDecoder";
 import type { CollisionEventBufferView, CollisionEventView } from "./collisionEventDecoder";
+import {
+  decodePhysicsDebugLines,
+  FLOATS_PER_PHYSICS_DEBUG_LINE,
+} from "./physicsDebugLineDecoder";
+import type {
+  PhysicsDebugLineBufferView,
+  PhysicsDebugLineView,
+} from "./physicsDebugLineDecoder";
 import { decodeRenderCommands } from "./renderCommandDecoder";
 import type { RenderCommandBufferView, RenderCommandView } from "./renderCommandDecoder";
 
@@ -33,12 +43,14 @@ const BYTES_PER_U32 = Uint32Array.BYTES_PER_ELEMENT;
 const BYTES_PER_COMMAND = FLOATS_PER_COMMAND * BYTES_PER_F32;
 const BYTES_PER_AUDIO_EVENT = FLOATS_PER_AUDIO_EVENT * BYTES_PER_F32;
 const BYTES_PER_COLLISION_EVENT = U32S_PER_COLLISION_EVENT * BYTES_PER_U32;
+const BYTES_PER_PHYSICS_DEBUG_LINE = FLOATS_PER_PHYSICS_DEBUG_LINE * BYTES_PER_F32;
 export const EMPTY_AUDIO_EVENTS: readonly AudioEventView[] = Object.freeze([]);
 
 export class WasmBridge {
   private readonly floatsPerCommand: number;
   private readonly floatsPerAudioEvent: number;
   private readonly u32sPerCollisionEvent: number;
+  private readonly floatsPerPhysicsDebugLine: number;
 
   private constructor(
     private readonly engineInstance: Engine,
@@ -86,9 +98,24 @@ export class WasmBridge {
           "CollisionEvent ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
       );
     }
+    const rustFloatsPerPhysicsDebugLine = physics_debug_line_floats();
+    const rustBytesPerPhysicsDebugLine = physics_debug_line_bytes();
+    if (rustFloatsPerPhysicsDebugLine !== FLOATS_PER_PHYSICS_DEBUG_LINE) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_debug_line_floats=${rustFloatsPerPhysicsDebugLine}, TS FLOATS_PER_PHYSICS_DEBUG_LINE=${FLOATS_PER_PHYSICS_DEBUG_LINE}. ` +
+          "PhysicsDebugLine ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    if (rustBytesPerPhysicsDebugLine !== BYTES_PER_PHYSICS_DEBUG_LINE) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_debug_line_bytes=${rustBytesPerPhysicsDebugLine}, TS BYTES_PER_PHYSICS_DEBUG_LINE=${BYTES_PER_PHYSICS_DEBUG_LINE}. ` +
+          "PhysicsDebugLine ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
     this.floatsPerCommand = rustFloatsPerCommand;
     this.floatsPerAudioEvent = rustFloatsPerAudioEvent;
     this.u32sPerCollisionEvent = rustU32sPerCollisionEvent;
+    this.floatsPerPhysicsDebugLine = rustFloatsPerPhysicsDebugLine;
   }
 
   static async init(): Promise<WasmBridge> {
@@ -147,8 +174,30 @@ export class WasmBridge {
     return this.decodeCollisionEvents(this.readCollisionEventBuffer());
   }
 
+  readPhysicsDebugLineBuffer(): PhysicsDebugLineBufferView {
+    const ptr = this.engineInstance.physics_debug_line_ptr();
+    const lineCount = this.engineInstance.physics_debug_line_len();
+    return {
+      buffer: new Float32Array(
+        this.memory.buffer,
+        ptr,
+        lineCount * this.floatsPerPhysicsDebugLine,
+      ),
+      lineCount,
+      floatsPerLine: this.floatsPerPhysicsDebugLine,
+    };
+  }
+
+  readPhysicsDebugLines(): readonly PhysicsDebugLineView[] {
+    return this.decodePhysicsDebugLines(this.readPhysicsDebugLineBuffer());
+  }
+
   decodeCollisionEvents(view: CollisionEventBufferView): readonly CollisionEventView[] {
     return decodeCollisionEvents(view);
+  }
+
+  decodePhysicsDebugLines(view: PhysicsDebugLineBufferView): readonly PhysicsDebugLineView[] {
+    return decodePhysicsDebugLines(view);
   }
 
   decodeAudioEvents(view: AudioEventBufferView): readonly AudioEventView[] {
@@ -171,9 +220,11 @@ export class WasmBridge {
 
 export { decodeRenderCommands };
 export { decodeCollisionEvents };
+export { decodePhysicsDebugLines };
 export type {
   CollisionEventBufferView,
   CollisionEventKind,
   CollisionEventView,
 } from "./collisionEventDecoder";
+export type { PhysicsDebugLineBufferView, PhysicsDebugLineView };
 export type { RenderCommandBufferView, RenderCommandView };

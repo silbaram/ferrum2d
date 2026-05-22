@@ -7,6 +7,7 @@ import {
   type FerrumRuntime,
   type FerrumRuntimeEnvironment,
   type InputSnapshot,
+  type UiOverlayState,
 } from "@ferrum2d/ferrum-web";
 
 import "./styles.css";
@@ -78,6 +79,7 @@ function createButton(label: string, onClick: () => void): HTMLButtonElement {
 
 function createShell(): {
   canvas: HTMLCanvasElement;
+  canvasFrame: HTMLElement;
   debugRoot: HTMLElement;
   stateValue: HTMLElement;
   entityValue: HTMLElement;
@@ -100,6 +102,7 @@ function createShell(): {
   const title = document.createElement("h1");
   const actions = document.createElement("div");
   const stage = document.createElement("section");
+  const canvasFrame = document.createElement("div");
   const canvas = document.createElement("canvas");
   const metrics = document.createElement("dl");
   const debugRoot = document.createElement("div");
@@ -112,6 +115,7 @@ function createShell(): {
   toolbar.className = "toolbar";
   actions.className = "actions";
   stage.className = "stage";
+  canvasFrame.className = "canvas-frame";
   canvas.className = "game-canvas";
   metrics.className = "metrics";
   debugRoot.className = "debug-root";
@@ -142,12 +146,14 @@ function createShell(): {
   appendMetric(metrics, "fps", fpsValue);
 
   toolbar.append(title, actions);
-  stage.append(canvas, metrics);
+  canvasFrame.append(canvas);
+  stage.append(canvasFrame, metrics);
   shell.append(toolbar, stage, debugRoot);
   app.replaceChildren(shell);
 
   return {
     canvas,
+    canvasFrame,
     debugRoot,
     stateValue,
     entityValue,
@@ -180,6 +186,36 @@ function createShell(): {
   }
 }
 
+function runtimeUiState(
+  frame: { gameState: number; score: number; entityCount: number },
+  renderCommandCount: number,
+  fps: number,
+): UiOverlayState {
+  const state = gameStateLabel(frame.gameState);
+  return {
+    panels: [{
+      id: "starter-hud",
+      title: "Runtime HUD",
+      region: "top-left",
+      lines: [
+        { id: "state", label: "State", value: state },
+        { id: "score", label: "Score", value: frame.score },
+        { id: "entities", label: "Entities", value: frame.entityCount },
+        { id: "commands", label: "Commands", value: renderCommandCount },
+        { id: "fps", label: "FPS", value: fps.toFixed(1), tone: "accent" },
+      ],
+    }],
+    dialog: frame.gameState === 0
+      ? {
+        id: "title",
+        title: "Ready",
+        body: "Start the runtime loop.",
+        actions: [{ id: "start", label: "Start", tone: "primary" }],
+      }
+      : undefined,
+  };
+}
+
 async function bootstrap(): Promise<void> {
   const cleanups: Array<() => void> = [];
   const shell = createShell();
@@ -191,12 +227,23 @@ async function bootstrap(): Promise<void> {
       ? "production"
       : "development";
     const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
+    const physicsDebugLines = searchParams.get("physicsDebugLines") === "true";
     const runtime = await createFerrumRuntime({
       canvas: shell.canvas,
       debugParent: shell.debugRoot,
       debug: debugParam === null ? undefined : { enabled: debugParam !== "false" },
+      physicsDebugLines,
       environment,
       webgl2: { clearColor: [0.07, 0.09, 0.11, 1], preserveDrawingBuffer },
+      uiParent: shell.canvasFrame,
+      ui: {
+        onAction: (event) => {
+          if (event.id === "start") {
+            shell.queueStart();
+          }
+        },
+      },
+      uiState: ({ frame, rendererStats, fps }) => runtimeUiState(frame, rendererStats.renderCommandCount, fps),
       inputTransform: (snapshot) => shell.inputSnapshot(snapshot),
       onFrame: ({ frame, rendererStats, fps }) => {
         shell.stateValue.textContent = gameStateLabel(frame.gameState);

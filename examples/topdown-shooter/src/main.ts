@@ -156,7 +156,9 @@ async function bootstrap(): Promise<void> {
     cleanups.push(() => canvas.removeEventListener("pointerdown", unlockAudio));
     const input = new InputManager(canvas);
     cleanups.push(() => input.destroy());
-    const debugEnabled = new URLSearchParams(window.location.search).get("debug") !== "false";
+    const searchParams = new URLSearchParams(window.location.search);
+    const debugEnabled = searchParams.get("debug") !== "false";
+    const physicsDebugLines = searchParams.get("physicsDebugLines") === "true";
     const debugOverlay = new DebugOverlay(app, { enabled: debugEnabled });
     cleanups.push(() => debugOverlay.destroy());
     let assetProgressText = "assets: 0/0";
@@ -168,6 +170,12 @@ async function bootstrap(): Promise<void> {
       const renderStartMs = performance.now();
       renderer.render();
       renderer.renderCommands(frame.renderCommandBuffer);
+      if (physicsDebugLines) {
+        renderer.renderPhysicsDebugLines(frame.physicsDebugLineBuffer, {
+          x: frame.cameraX,
+          y: frame.cameraY,
+        });
+      }
       const renderStats = renderer.stats();
       const renderTimeMs = performance.now() - renderStartMs;
       audioEventRateCount += frame.audioEvents.length;
@@ -196,6 +204,7 @@ async function bootstrap(): Promise<void> {
         renderCommandCount: renderStats.renderCommandCount,
         textureBindCount: renderStats.textureBindCount,
         textureSwitchCount: renderStats.textureSwitchCount,
+        physicsDebugLineCount: renderStats.physicsDebugLineCount,
         audioEventsPerSecond,
         rustUpdateTimeMs: frame.rustUpdateTimeMs,
         renderTimeMs,
@@ -209,7 +218,7 @@ async function bootstrap(): Promise<void> {
     }, () => input.snapshot(), platformHost, () => {
       renderer.resize();
       return renderer.viewportSize();
-    });
+    }, { enablePhysicsDebugLines: physicsDebugLines });
     cleanups.push(() => engine.destroy());
 
     const assets = await engine.loadAssets({

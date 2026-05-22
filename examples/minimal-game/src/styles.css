@@ -70,9 +70,14 @@ button:focus-visible {
   margin: 0 auto;
 }
 
+.canvas-frame {
+  position: relative;
+  width: min(800px, 100%);
+}
+
 .game-canvas {
   display: block;
-  width: min(800px, 100%);
+  width: 100%;
   aspect-ratio: 5 / 3;
   height: auto;
   border: 1px solid #2d3843;

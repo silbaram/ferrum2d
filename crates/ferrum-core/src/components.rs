@@ -180,6 +180,7 @@ pub enum CollisionLayer {
     Player,
     Enemy,
     Bullet,
+    Wall,
 }
 
 impl CollisionLayer {
@@ -188,6 +189,7 @@ impl CollisionLayer {
             Self::Player => CollisionMask::PLAYER,
             Self::Enemy => CollisionMask::ENEMY,
             Self::Bullet => CollisionMask::BULLET,
+            Self::Wall => CollisionMask::WALL,
         }
     }
 }
@@ -202,6 +204,7 @@ impl CollisionMask {
     pub const PLAYER: Self = Self { bits: 1 << 0 };
     pub const ENEMY: Self = Self { bits: 1 << 1 };
     pub const BULLET: Self = Self { bits: 1 << 2 };
+    pub const WALL: Self = Self { bits: 1 << 3 };
     pub const ALL: Self = Self { bits: u32::MAX };
 
     pub const fn from_bits(bits: u32) -> Self {
@@ -262,6 +265,13 @@ impl CollisionFilter {
 pub struct AabbCollider {
     pub half_width: f32,
     pub half_height: f32,
+    pub is_trigger: bool,
+    pub layer: CollisionLayer,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CircleCollider {
+    pub radius: f32,
     pub is_trigger: bool,
     pub layer: CollisionLayer,
 }

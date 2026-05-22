@@ -149,13 +149,28 @@ v0.3에서 하지 않을 것:
 - 회귀 방지용 smoke automation 정리 (부분 완료: headless smoke)
 - smoke 범위: wasm build, example build, game spec validation, headless-friendly render command sanity check. `pnpm smoke:headless`는 Game Spec 적용 경로, collision/navigation 전제, representative render command buffer를 검증한다.
 - enemy behavior preset 확장 (완료: `orbit`, Game Spec 기반 orbit radius/radialBand tuning)
+- Product Beta 두 번째 장르 예제 (완료: `examples/breakout`, `FerrumEngine.useBreakoutGame()`, paddle/ball/brick/wall collision, score/game state/debug overlay)
+- Physics v5 Platformer 예제 (완료: `examples/platformer`, `FerrumEngine.usePlatformerGame()`, kinematic platformer controller, one-way platform, moving platform carry, physics counters/debug overlay)
+- Product Beta Input 확장 (완료: `InputManagerOptions`, non-mouse pointer drag gesture, touch fallback, gamepad stick/button을 기존 `InputSnapshot`으로 합성)
+- Product Beta Text/UI rendering (완료: `UiOverlay`, runtime `uiState`, HUD/menu/dialog DOM overlay, minimal starter 적용)
+- Product Beta Asset pipeline v2 1차 범위 (완료: `importAsepriteAtlas`, `importAsepriteAtlasFrames`, Aseprite JSON metadata를 Game Spec `atlas.frames`로 변환)
+- Product Beta Tiled tilemap import (완료: `importTiledTilemap`, `importTiledGameSpec`, Tiled orthogonal JSON map을 Game Spec `atlas`/`tilemap` 조각으로 변환)
+- Product Beta LDtk tilemap import (완료: `importLDtkTilemap`, `importLDtkGameSpec`, LDtk embedded level을 Game Spec `atlas`/`tilemap` 조각으로 변환)
+- Physics v4 nearest query (완료: `CollisionSystem::nearest_body_query`, `Tilemap::nearest_collision_obstacle`, point 기반으로 가장 가까운 AABB/circle collider 또는 tilemap obstacle surface를 조회)
+- Physics v5 Platformer jump assist (완료: `PlatformerControllerState`, coyote time, jump buffering, `PlatformerScene` 적용)
+- Physics v5 Platformer step offset (완료: `PlatformerControllerConfig.with_step_offset(...)`, grounded 수평 충돌 step-up/snap-down)
 
 다음 후보:
 
 - WebGL2 실제 렌더링 smoke automation 가능성 검토 (완료: `pnpm smoke:browser`)
+- Breakout browser render smoke (완료: `pnpm smoke:breakout`)
+- Platformer browser render smoke (완료: `pnpm smoke:platformer`)
+- atlas animation binding 검토
+- LDtk external level/raw IntGrid collision 지원 여부 검토
 - docs site 또는 GitHub Pages 데모 배포 검토
 - package publish 여부와 release tagging 절차 정리 (완료: [npm 베타 패키징](npm-release.md))
-- Physics v3 기반 정리 (완료: collision mask bitset, AABB contact, point/AABB/raycast query, world/tilemap kinematic move-and-slide, tile collision candidate path, opt-in fixed timestep runtime, physics counters/API, collision event lifecycle, gameplay hit event. 남은 후보: circle collider, shape query, damage payload, contact debug draw)
+- Physics v3 기반 정리 (완료: collision mask bitset, AABB/circle contact, point/AABB/circle/shape/raycast/shape-cast query, contact/broadphase debug line primitive와 Wasm/TypeScript buffer/rendering bridge, world/tilemap kinematic move-and-slide, tile collision candidate/merge path, opt-in fixed timestep runtime, physics counters/API, collision event lifecycle, damage payload)
+- Physics v5 platformer collision 후보 검토 (ground detection 완료: `PhysicsSystem::ground_probe`, `ground_probe_with_tilemap`; entity one-way platform 완료: `OneWayPlatformConfig`, `move_and_slide_with_one_way_platforms`; moving platform carry 완료: `MovingPlatformCarryConfig`, `carry_moving_platform`; kinematic platformer controller 완료: `PlatformerControllerConfig`, `move_platformer_controller`; jump assist 완료: `PlatformerControllerState`, coyote time, jump buffering; step offset 완료: `with_step_offset`; runtime example 완료: `FerrumEngine.usePlatformerGame`, `examples/platformer`; 다음 후보: Wasm/TypeScript 저수준 physics API 노출 또는 slope handling 설계)
 
 ## 장기 후보
 

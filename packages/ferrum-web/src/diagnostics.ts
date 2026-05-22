@@ -1,4 +1,4 @@
-export type DiagnosticKind = "texture" | "sound" | "json" | "game-spec";
+export type DiagnosticKind = "texture" | "sound" | "json" | "game-spec" | "asset-pipeline";
 export type AssetDiagnosticKind = "texture" | "sound" | "json";
 export type DiagnosticCode =
   | "FERRUM_ASSET_LOAD"
@@ -7,6 +7,7 @@ export type DiagnosticCode =
   | "FERRUM_AUDIO_DECODE"
   | "FERRUM_AUDIO_LOAD"
   | "FERRUM_AUDIO_PLAYBACK"
+  | "FERRUM_ASSET_PIPELINE_INVALID"
   | "FERRUM_DIAGNOSTIC"
   | "FERRUM_GAME_SPEC_INVALID"
   | "FERRUM_TEXTURE_CREATE"
@@ -132,6 +133,14 @@ export function gameSpecDiagnosticError(path: string, detail: string): FerrumDia
     path,
     detail,
   }, "FERRUM_GAME_SPEC_INVALID");
+}
+
+export function assetPipelineDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid asset pipeline metadata", {
+    kind: "asset-pipeline",
+    path,
+    detail,
+  }, "FERRUM_ASSET_PIPELINE_INVALID");
 }
 
 function quote(value: string): string {

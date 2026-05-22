@@ -5,6 +5,7 @@ import {
   estimateTextureSwitchCount,
   RENDERER_STATS_FIELD_CONTRACT,
   rendererStatsForCommands,
+  rendererStatsWithPhysicsDebugLines,
 } from "../src/renderer.js";
 import type { RenderCommandBufferView } from "../src/renderCommandDecoder.js";
 
@@ -29,6 +30,7 @@ test("emptyRendererStats returns zeroed counters", () => {
     renderCommandCount: 0,
     textureBindCount: 0,
     textureSwitchCount: 0,
+    physicsDebugLineCount: 0,
   });
 });
 
@@ -44,6 +46,7 @@ test("RendererStats field contract fixes labels and units", () => {
     { field: "renderCommandCount", label: "render commands", unit: "count" },
     { field: "textureBindCount", label: "texture binds", unit: "count" },
     { field: "textureSwitchCount", label: "texture switches", unit: "count" },
+    { field: "physicsDebugLineCount", label: "physics debug lines", unit: "count" },
   ]);
 });
 
@@ -61,5 +64,18 @@ test("rendererStatsForCommands derives command and texture counters", () => {
     renderCommandCount: 5,
     textureBindCount: 3,
     textureSwitchCount: 2,
+    physicsDebugLineCount: 0,
+  });
+});
+
+test("rendererStatsWithPhysicsDebugLines adds debug line draw calls", () => {
+  deepEqual(rendererStatsWithPhysicsDebugLines(rendererStatsForCommands(commandBuffer([1]), 1), 2, 1), {
+    drawCalls: 2,
+    batchCount: 1,
+    spriteCount: 1,
+    renderCommandCount: 1,
+    textureBindCount: 1,
+    textureSwitchCount: 0,
+    physicsDebugLineCount: 2,
   });
 });

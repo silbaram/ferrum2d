@@ -12,6 +12,8 @@ declare module "../pkg/ferrum_core.js" {
     set_input(w:boolean,a:boolean,s:boolean,d:boolean,space:boolean,enter:boolean,mouse_left:boolean,mouse_x:number,mouse_y:number): void;
     set_texture_ids(player:number,enemy:number,bullet:number): void;
     set_sound_ids(shoot:number,hit:number,game_over:number): void;
+    use_breakout_scene(): void;
+    use_platformer_scene(): void;
     clear_shooter_tilemap(): void;
     set_shooter_tile(tile_id:number,texture_id:number,u0:number,v0:number,u1:number,v1:number,r:number,g:number,b:number,a:number): void;
     set_shooter_tilemap_layer(index:number,columns:number,rows:number,tile_width:number,tile_height:number,origin_x:number,origin_y:number,collision:boolean,tiles:Uint32Array): void;
@@ -47,6 +49,9 @@ declare module "../pkg/ferrum_core.js" {
     collision_stay_count(): number;
     collision_exit_count(): number;
     collision_hit_count(): number;
+    physics_debug_line_ptr(): number;
+    physics_debug_line_len(): number;
+    set_physics_debug_lines_enabled(enabled:boolean): void;
     time(): number;
     render_command_ptr(): number;
     render_command_len(): number;
@@ -71,6 +76,8 @@ declare module "../pkg/ferrum_core.js" {
   export function audio_event_bytes(): number;
   export function collision_event_u32s(): number;
   export function collision_event_bytes(): number;
+  export function physics_debug_line_floats(): number;
+  export function physics_debug_line_bytes(): number;
   export function version(): string;
   export function wasm_memory(): WebAssembly.Memory;
 }

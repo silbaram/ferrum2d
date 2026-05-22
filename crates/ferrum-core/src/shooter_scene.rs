@@ -545,9 +545,13 @@ struct CollisionEventSink<'a> {
 }
 
 impl CollisionEventSink<'_> {
-    fn push_hit(&mut self, a: Entity, b: Entity) {
-        self.events
-            .push(CollisionEvent::from_entities(COLLISION_EVENT_HIT, a, b));
+    fn push_hit(&mut self, a: Entity, b: Entity, damage: f32) {
+        self.events.push(CollisionEvent::from_entities_with_damage(
+            COLLISION_EVENT_HIT,
+            a,
+            b,
+            damage,
+        ));
         self.counts.hit = self.counts.hit.saturating_add(1);
     }
 }
@@ -1462,6 +1466,7 @@ impl ShooterScene {
                 CollisionLayer::Player => self.texture_ids.player,
                 CollisionLayer::Enemy => self.texture_ids.enemy,
                 CollisionLayer::Bullet => self.texture_ids.bullet,
+                CollisionLayer::Wall => sprite.texture_id,
             };
         }
     }
@@ -1569,15 +1574,15 @@ impl ShooterScene {
                 continue;
             }
 
+            let damage = world.damages[bullet_index].unwrap_or(DEFAULT_BULLET_DAMAGE);
             if let Some(events) = collision_events.as_mut() {
-                events.push_hit(pair.a, pair.b);
+                events.push_hit(pair.a, pair.b, damage);
             }
             self.marked_for_despawn[bullet_index] = true;
             self.pending_despawn.push(Entity {
                 id: bullet_index as u32,
                 generation: world.generations[bullet_index],
             });
-            let damage = world.damages[bullet_index].unwrap_or(DEFAULT_BULLET_DAMAGE);
             let health = world.healths[enemy_index].get_or_insert(DEFAULT_ENEMY_HEALTH);
             *health -= damage;
             if *health <= 0.0 {
@@ -1630,7 +1635,7 @@ impl ShooterScene {
             if self.game_state != GameState::GameOver {
                 self.game_state = GameState::GameOver;
                 if let Some(events) = collision_events.as_mut() {
-                    events.push_hit(pair.a, pair.b);
+                    events.push_hit(pair.a, pair.b, 0.0);
                 }
                 Self::push_audio_event(
                     audio_events,

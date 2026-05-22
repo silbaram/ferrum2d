@@ -1,11 +1,14 @@
 use wasm_bindgen::prelude::*;
 
 use crate::audio_event::AudioEvent;
+use crate::breakout_scene::BreakoutScene;
 use crate::camera::{Camera2D, CameraPresetConfig};
+use crate::collision::{CollisionSystem, PhysicsDebugLine};
 use crate::collision_event::{CollisionEvent, CollisionEventCounts, CollisionEventTracker};
 use crate::game_state::GameState;
 use crate::input::InputState;
 use crate::physics::{FixedTimestep, FixedTimestepConfig, FixedTimestepUpdate, PhysicsCounters};
+use crate::platformer_scene::PlatformerScene;
 use crate::render_command::SpriteRenderCommand;
 use crate::shooter_scene::{
     EnemyBehavior, EnemySpawnPattern, ShooterAudioPolicy, ShooterConfig, ShooterScene,
@@ -16,6 +19,14 @@ use crate::world::World;
 
 const DEFAULT_VIEWPORT_WIDTH: f32 = 800.0;
 const DEFAULT_VIEWPORT_HEIGHT: f32 = 480.0;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum ActiveScene {
+    #[default]
+    Shooter,
+    Breakout,
+    Platformer,
+}
 
 #[derive(Clone, Copy, Debug, Default)]
 struct FixedTimestepInputLatch {
@@ -50,12 +61,17 @@ pub struct Engine {
     previous_input_sample: InputState,
     fixed_timestep_input_latch: FixedTimestepInputLatch,
     scene: ShooterScene,
+    breakout_scene: BreakoutScene,
+    platformer_scene: PlatformerScene,
+    active_scene: ActiveScene,
     camera: Camera2D,
     world: World,
     tilemap: Tilemap,
     render_commands: Vec<SpriteRenderCommand>,
     audio_events: Vec<AudioEvent>,
     collision_events: Vec<CollisionEvent>,
+    physics_debug_lines: Vec<PhysicsDebugLine>,
+    physics_debug_lines_enabled: bool,
     collision_event_tracker: CollisionEventTracker,
     collision_event_counts: CollisionEventCounts,
     physics_counters: PhysicsCounters,
@@ -74,12 +90,17 @@ impl Engine {
             previous_input_sample: InputState::default(),
             fixed_timestep_input_latch: FixedTimestepInputLatch::default(),
             scene: ShooterScene::new(),
+            breakout_scene: BreakoutScene::new(),
+            platformer_scene: PlatformerScene::new(),
+            active_scene: ActiveScene::Shooter,
             camera: Camera2D::new(DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT),
             world: World::default(),
             tilemap: Tilemap::default(),
             render_commands: Vec::with_capacity(256),
             audio_events: Vec::with_capacity(16),
             collision_events: Vec::with_capacity(128),
+            physics_debug_lines: Vec::with_capacity(64),
+            physics_debug_lines_enabled: false,
             collision_event_tracker: CollisionEventTracker::default(),
             collision_event_counts: CollisionEventCounts::default(),
             physics_counters: PhysicsCounters::default(),
@@ -120,15 +141,34 @@ impl Engine {
     }
 
     pub fn set_texture_ids(&mut self, player: u32, enemy: u32, bullet: u32) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene
             .set_texture_ids(&mut self.world, player, enemy, bullet);
     }
 
     pub fn set_sound_ids(&mut self, shoot: u32, hit: u32, game_over: u32) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene.set_sound_ids(shoot, hit, game_over);
     }
 
+    pub fn use_breakout_scene(&mut self) {
+        self.active_scene = ActiveScene::Breakout;
+        self.tilemap.clear();
+        self.breakout_scene
+            .reset_to_title(&mut self.world, &mut self.camera);
+        self.clear_physics_history();
+    }
+
+    pub fn use_platformer_scene(&mut self) {
+        self.active_scene = ActiveScene::Platformer;
+        self.tilemap.clear();
+        self.platformer_scene
+            .reset_to_title(&mut self.world, &mut self.camera);
+        self.clear_physics_history();
+    }
+
     pub fn clear_shooter_tilemap(&mut self) {
+        self.active_scene = ActiveScene::Shooter;
         self.tilemap.clear();
     }
 
@@ -146,6 +186,7 @@ impl Engine {
         b: f32,
         a: f32,
     ) {
+        self.active_scene = ActiveScene::Shooter;
         self.tilemap
             .set_tile_definition(tile_id, texture_id, u0, v0, u1, v1, r, g, b, a);
     }
@@ -163,6 +204,7 @@ impl Engine {
         collision: bool,
         tiles: Vec<u32>,
     ) {
+        self.active_scene = ActiveScene::Shooter;
         self.tilemap.set_layer(
             index,
             columns,
@@ -177,6 +219,7 @@ impl Engine {
     }
 
     pub fn clear_shooter_waves(&mut self) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene.clear_wave_configs();
     }
 
@@ -193,6 +236,7 @@ impl Engine {
         enemy_health: f32,
         score_reward: u32,
     ) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene.set_wave_config(
             index,
             ShooterWaveConfig::from_values(
@@ -218,6 +262,7 @@ impl Engine {
         game_over_volume: f32,
         game_over_pitch: f32,
     ) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene.set_audio_policy(ShooterAudioPolicy::from_values(
             shoot_volume,
             shoot_pitch,
@@ -230,8 +275,15 @@ impl Engine {
 
     pub fn set_viewport_size(&mut self, width: f32, height: f32) {
         self.camera.set_viewport_size(width, height);
-        self.scene
-            .update_camera_follow(&self.world, &mut self.camera);
+        match self.active_scene {
+            ActiveScene::Shooter => self
+                .scene
+                .update_camera_follow(&self.world, &mut self.camera),
+            ActiveScene::Breakout => self.breakout_scene.update_camera(&mut self.camera),
+            ActiveScene::Platformer => self
+                .platformer_scene
+                .update_camera(&self.world, &mut self.camera),
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -246,6 +298,7 @@ impl Engine {
         fire_cooldown: f32,
         bullet_lifetime: f32,
     ) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene.set_config(
             &mut self.world,
             &mut self.camera,
@@ -273,6 +326,7 @@ impl Engine {
         bullet_width: f32,
         bullet_height: f32,
     ) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene.set_prefabs(
             &mut self.world,
             &mut self.camera,
@@ -288,6 +342,7 @@ impl Engine {
     }
 
     pub fn set_shooter_behavior(&mut self, enemy_behavior: u32) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene.set_enemy_behavior(
             &mut self.world,
             &mut self.camera,
@@ -298,6 +353,7 @@ impl Engine {
     }
 
     pub fn set_shooter_spawn_pattern(&mut self, enemy_spawn_pattern: u32) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene.set_enemy_spawn_pattern(
             &mut self.world,
             &mut self.camera,
@@ -308,6 +364,7 @@ impl Engine {
     }
 
     pub fn set_shooter_combat(&mut self, enemy_health: f32, bullet_damage: f32, score_reward: u32) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene.set_combat(
             &mut self.world,
             &mut self.camera,
@@ -328,6 +385,7 @@ impl Engine {
         shake_amplitude: f32,
         shake_frequency: f32,
     ) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene.set_camera_preset(
             &self.world,
             &mut self.camera,
@@ -354,6 +412,7 @@ impl Engine {
         u1: f32,
         v1: f32,
     ) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene.set_atlas_frame(
             &mut self.world,
             prefab,
@@ -395,6 +454,7 @@ impl Engine {
         bullet_move_frames: u32,
         bullet_move_fps: f32,
     ) {
+        self.active_scene = ActiveScene::Shooter;
         self.scene.set_animation_states(
             &mut self.world,
             &mut self.camera,
@@ -458,6 +518,7 @@ impl Engine {
         orbit_radius: f32,
         orbit_radial_band: f32,
     ) {
+        self.active_scene = ActiveScene::Shooter;
         let config = ShooterConfig::from_values(
             world_width,
             world_height,
@@ -519,7 +580,15 @@ impl Engine {
             self.update_scene(delta as f32, self.input);
             self.record_collision_events();
         }
+        self.build_physics_debug_lines();
         self.build_render_commands();
+    }
+
+    pub fn set_physics_debug_lines_enabled(&mut self, enabled: bool) {
+        self.physics_debug_lines_enabled = enabled;
+        if !enabled {
+            self.physics_debug_lines.clear();
+        }
     }
 
     pub fn configure_fixed_timestep(
@@ -611,6 +680,14 @@ impl Engine {
         self.collision_event_counts.hit
     }
 
+    pub fn physics_debug_line_ptr(&self) -> *const PhysicsDebugLine {
+        self.physics_debug_lines.as_ptr()
+    }
+
+    pub fn physics_debug_line_len(&self) -> usize {
+        self.physics_debug_lines.len()
+    }
+
     pub fn time(&self) -> f64 {
         self.elapsed_seconds
     }
@@ -640,7 +717,11 @@ impl Engine {
     }
 
     pub fn score(&self) -> u32 {
-        self.scene.score()
+        match self.active_scene {
+            ActiveScene::Shooter => self.scene.score(),
+            ActiveScene::Breakout => self.breakout_scene.score(),
+            ActiveScene::Platformer => self.platformer_scene.score(),
+        }
     }
 
     pub fn entity_count(&self) -> usize {
@@ -652,7 +733,12 @@ impl Engine {
     }
 
     pub fn game_state_code(&self) -> u32 {
-        match self.scene.game_state() {
+        let game_state = match self.active_scene {
+            ActiveScene::Shooter => self.scene.game_state(),
+            ActiveScene::Breakout => self.breakout_scene.game_state(),
+            ActiveScene::Platformer => self.platformer_scene.game_state(),
+        };
+        match game_state {
             GameState::Title => 0,
             GameState::Playing => 1,
             GameState::GameOver => 2,
@@ -672,8 +758,18 @@ impl Engine {
     }
 
     pub fn reset_game(&mut self) {
-        self.scene
-            .reset_playing(&mut self.world, &mut self.camera, &mut self.audio_events);
+        match self.active_scene {
+            ActiveScene::Shooter => {
+                self.scene
+                    .reset_playing(&mut self.world, &mut self.camera, &mut self.audio_events);
+            }
+            ActiveScene::Breakout => self
+                .breakout_scene
+                .reset_playing(&mut self.world, &mut self.camera),
+            ActiveScene::Platformer => self
+                .platformer_scene
+                .reset_playing(&mut self.world, &mut self.camera),
+        }
         self.clear_physics_history();
     }
 }
@@ -686,35 +782,69 @@ impl Default for Engine {
 
 impl Engine {
     fn reset_to_title(&mut self) {
-        self.scene
-            .reset_to_title(&mut self.world, &mut self.camera, &mut self.audio_events);
+        match self.active_scene {
+            ActiveScene::Shooter => {
+                self.scene.reset_to_title(
+                    &mut self.world,
+                    &mut self.camera,
+                    &mut self.audio_events,
+                );
+            }
+            ActiveScene::Breakout => self
+                .breakout_scene
+                .reset_to_title(&mut self.world, &mut self.camera),
+            ActiveScene::Platformer => self
+                .platformer_scene
+                .reset_to_title(&mut self.world, &mut self.camera),
+        }
         self.clear_physics_history();
     }
 
     fn update_scene(&mut self, delta: f32, input: InputState) {
-        self.scene.update_with_counters(
-            &mut self.world,
-            &mut self.camera,
-            input,
-            &mut self.audio_events,
-            &self.tilemap,
-            delta,
-            &mut self.physics_counters,
-            &mut self.collision_events,
-            &mut self.collision_event_counts,
-        );
+        match self.active_scene {
+            ActiveScene::Shooter => {
+                self.scene.update_with_counters(
+                    &mut self.world,
+                    &mut self.camera,
+                    input,
+                    &mut self.audio_events,
+                    &self.tilemap,
+                    delta,
+                    &mut self.physics_counters,
+                    &mut self.collision_events,
+                    &mut self.collision_event_counts,
+                );
+            }
+            ActiveScene::Breakout => self.breakout_scene.update(
+                &mut self.world,
+                &mut self.camera,
+                input,
+                delta,
+                &mut self.collision_events,
+                &mut self.collision_event_counts,
+            ),
+            ActiveScene::Platformer => self.platformer_scene.update(
+                &mut self.world,
+                &mut self.camera,
+                input,
+                delta,
+                &mut self.physics_counters,
+            ),
+        }
     }
 
     fn clear_physics_frame(&mut self) {
         self.physics_counters.clear();
         self.collision_events.clear();
         self.collision_event_counts.clear();
+        self.physics_debug_lines.clear();
     }
 
     fn clear_physics_history(&mut self) {
         self.collision_event_tracker.clear();
         self.collision_events.clear();
         self.collision_event_counts.clear();
+        self.physics_debug_lines.clear();
         self.fixed_timestep.reset();
         self.last_fixed_update = FixedTimestepUpdate::default();
         self.fixed_timestep_input_latch.clear();
@@ -726,6 +856,17 @@ impl Engine {
             .collision_event_tracker
             .update(&self.world, &mut self.collision_events);
         self.collision_event_counts.add(counts);
+    }
+
+    fn build_physics_debug_lines(&mut self) {
+        if !self.physics_debug_lines_enabled {
+            return;
+        }
+        CollisionSystem::build_physics_debug_lines_into(
+            &self.world,
+            16.0,
+            &mut self.physics_debug_lines,
+        );
     }
 
     fn observe_input_sample(&mut self, input: InputState) {
@@ -819,6 +960,48 @@ mod tests {
         assert!(engine.world.player.is_some());
         assert_eq!(count_layer(&engine, CollisionLayer::Player), 1);
         assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 0);
+    }
+
+    #[test]
+    fn engine_can_switch_to_breakout_scene() {
+        let mut engine = Engine::new();
+
+        engine.use_breakout_scene();
+        engine.update(0.016);
+
+        assert_eq!(engine.game_state(), 0);
+        assert_eq!(engine.score(), 0);
+        assert_eq!(engine.entity_count(), 55);
+        assert_eq!(engine.sprite_count(), 55);
+
+        engine.set_input(false, false, false, false, false, true, false, 0.0, 0.0);
+        engine.update(0.016);
+
+        assert_eq!(engine.game_state(), 1);
+        assert_eq!(count_layer(&engine, CollisionLayer::Wall), 3);
+    }
+
+    #[test]
+    fn engine_can_switch_to_platformer_scene() {
+        let mut engine = Engine::new();
+
+        engine.use_platformer_scene();
+        engine.update(0.016);
+
+        assert_eq!(engine.game_state(), 0);
+        assert_eq!(engine.score(), 0);
+        assert_eq!(engine.entity_count(), 8);
+        assert_eq!(engine.sprite_count(), 8);
+        assert_eq!(count_layer(&engine, CollisionLayer::Wall), 6);
+        assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 1);
+
+        engine.set_input(false, false, false, false, false, true, false, 0.0, 0.0);
+        engine.update(0.016);
+        engine.set_input(false, false, false, true, false, false, false, 0.0, 0.0);
+        engine.update(0.25);
+
+        assert_eq!(engine.game_state(), 1);
+        assert!(engine.physics_kinematic_moves() > 0);
     }
 
     #[test]
@@ -927,6 +1110,36 @@ mod tests {
     }
 
     #[test]
+    fn physics_debug_lines_are_opt_in_and_report_broadphase_and_contacts() {
+        let mut engine = Engine::new();
+        engine.world = World::default();
+        engine.clear_physics_history();
+        spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
+        spawn_test_body(&mut engine.world, 8.0, 0.0, CollisionLayer::Enemy);
+
+        engine.update(0.016);
+        assert_eq!(engine.physics_debug_line_len(), 0);
+
+        engine.set_physics_debug_lines_enabled(true);
+        engine.update(0.016);
+
+        assert_eq!(engine.physics_debug_line_len(), 9);
+        assert_eq!(engine.physics_debug_lines[0].x0, -5.0);
+        assert_eq!(engine.physics_debug_lines[0].x1, 5.0);
+        assert_eq!(engine.physics_debug_lines[8].x0, 4.0);
+        assert_eq!(engine.physics_debug_lines[8].x1, 20.0);
+
+        engine.set_physics_debug_lines_enabled(false);
+        assert_eq!(engine.physics_debug_line_len(), 0);
+    }
+
+    #[test]
+    fn physics_debug_line_abi_matches_float_buffer() {
+        assert_eq!(crate::physics_debug_line_floats(), 8);
+        assert_eq!(crate::physics_debug_line_bytes(), 32);
+    }
+
+    #[test]
     fn engine_collision_events_include_shooter_hit_before_despawn() {
         let mut engine = Engine::new();
         engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
@@ -936,6 +1149,7 @@ mod tests {
         let bullet = engine
             .world
             .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+        engine.world.damages[bullet.id as usize] = Some(2.5);
 
         engine.update(0.016);
 
@@ -949,6 +1163,13 @@ mod tests {
         assert_eq!(hit.a_generation, bullet.generation);
         assert_eq!(hit.b_id, enemy.id);
         assert_eq!(hit.b_generation, enemy.generation);
+        assert_eq!(hit.damage(), 2.5);
+    }
+
+    #[test]
+    fn collision_event_abi_includes_damage_payload_slot() {
+        assert_eq!(crate::collision_event_u32s(), 6);
+        assert_eq!(crate::collision_event_bytes(), 24);
     }
 
     #[test]

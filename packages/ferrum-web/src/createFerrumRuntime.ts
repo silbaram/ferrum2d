@@ -4,8 +4,10 @@ import type { AssetHost, CreateEngineOptions, FerrumEngine, FrameState, InputPro
 import { DebugOverlay } from "./debugOverlay.js";
 import type { DebugOverlayMetrics, DebugOverlayOptions } from "./debugOverlay.js";
 import { InputManager } from "./inputManager.js";
-import type { InputSnapshot } from "./inputManager.js";
+import type { InputManagerOptions, InputSnapshot } from "./inputManager.js";
 import type { RendererStats } from "./renderer.js";
+import { UiOverlay } from "./uiOverlay.js";
+import type { UiOverlayOptions, UiOverlayState } from "./uiOverlay.js";
 import { WebGL2Renderer } from "./webgl2Renderer.js";
 import type { WebGL2RendererOptions } from "./webgl2Renderer.js";
 
@@ -19,14 +21,22 @@ export interface FerrumRuntimeFrame {
   renderTimeMs: number;
 }
 
+export type UiOverlayStateProvider = (frame: FerrumRuntimeFrame) => UiOverlayState;
+
 export interface FerrumRuntimeOptions {
   canvas: HTMLCanvasElement;
   webgl2?: WebGL2RendererOptions;
   renderer?: WebGL2Renderer;
   input?: InputManager;
+  inputOptions?: InputManagerOptions;
   assetHost?: AssetHost;
   debugParent?: HTMLElement;
   debug?: boolean | DebugOverlayOptions;
+  uiParent?: HTMLElement;
+  ui?: boolean | UiOverlayOptions;
+  uiOverlay?: UiOverlay;
+  uiState?: UiOverlayStateProvider;
+  physicsDebugLines?: boolean;
   environment?: FerrumRuntimeEnvironment;
   engine?: CreateEngineOptions;
   autostart?: boolean;
@@ -40,6 +50,7 @@ export interface FerrumRuntime {
   renderer: WebGL2Renderer;
   input: InputManager;
   assetHost: AssetHost;
+  uiOverlay?: UiOverlay;
   debugOverlay?: DebugOverlay;
   start(): void;
   pause(): void;
@@ -52,9 +63,11 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
   const ownsRenderer = options.renderer === undefined;
   const ownsInput = options.input === undefined;
   const ownsAssetHost = options.assetHost === undefined;
+  const ownsUiOverlay = options.uiOverlay === undefined;
   let renderer: WebGL2Renderer | undefined = options.renderer;
   let input: InputManager | undefined = options.input;
   let assetHost: AssetHost | undefined = options.assetHost;
+  let uiOverlay: UiOverlay | undefined = options.uiOverlay;
   let debugOverlay: DebugOverlay | undefined;
   let detachRendererResize: (() => void) | undefined;
 
@@ -65,13 +78,19 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
 
   try {
     renderer ??= new WebGL2Renderer(options.canvas, options.webgl2);
-    input ??= new InputManager(options.canvas);
+    input ??= new InputManager(options.canvas, options.inputOptions);
     assetHost ??= new BrowserPlatformHost(renderer);
+    uiOverlay ??= createUiOverlay(options);
     debugOverlay = createDebugOverlay(options);
-    const needsRuntimeFrame = debugOverlay !== undefined || options.onFrame !== undefined;
+    const needsRuntimeFrame = debugOverlay !== undefined || uiOverlay !== undefined || options.onFrame !== undefined;
+    const shouldRenderPhysicsDebugLines = options.physicsDebugLines === true;
     const engineOptions: CreateEngineOptions = {
       ...options.engine,
       includeAudioEvents: options.engine?.includeAudioEvents ?? needsRuntimeFrame,
+      enablePhysicsDebugLines:
+        options.engine?.enablePhysicsDebugLines === true ||
+        options.engine?.includePhysicsDebugLines === true ||
+        shouldRenderPhysicsDebugLines,
     };
 
     const runtimeRenderer = renderer;
@@ -88,7 +107,13 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     const engine = await createEngine((frame) => {
       const renderStartMs = needsRuntimeFrame ? performance.now() : 0;
       runtimeRenderer.render();
-      const rendererStats = runtimeRenderer.renderCommands(frame.renderCommandBuffer);
+      let rendererStats = runtimeRenderer.renderCommands(frame.renderCommandBuffer);
+      if (shouldRenderPhysicsDebugLines) {
+        rendererStats = runtimeRenderer.renderPhysicsDebugLines(frame.physicsDebugLineBuffer, {
+          x: frame.cameraX,
+          y: frame.cameraY,
+        });
+      }
       if (!needsRuntimeFrame) {
         return;
       }
@@ -112,13 +137,17 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
         options.gameStateLabel ?? defaultGameStateLabel,
       );
       debugOverlay?.update(debugMetrics);
-      options.onFrame?.({
+      const runtimeFrame: FerrumRuntimeFrame = {
         frame,
         rendererStats,
         debugMetrics,
         fps,
         renderTimeMs,
-      });
+      };
+      if (uiOverlay && options.uiState) {
+        uiOverlay.update(options.uiState(runtimeFrame));
+      }
+      options.onFrame?.(runtimeFrame);
     }, inputProvider, runtimeAssetHost, () => runtimeRenderer.viewportSize(), engineOptions);
 
     const runtime: FerrumRuntime = {
@@ -126,6 +155,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       renderer: runtimeRenderer,
       input: runtimeInput,
       assetHost: runtimeAssetHost,
+      uiOverlay,
       debugOverlay,
       start: () => engine.start(),
       pause: () => engine.pause(),
@@ -139,6 +169,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
         detachRendererResize?.();
         detachRendererResize = undefined;
         engine.destroy();
+        if (ownsUiOverlay) uiOverlay?.destroy();
         debugOverlay?.destroy();
         if (ownsInput) runtimeInput.destroy();
         if (ownsAssetHost) destroyAssetHost(runtimeAssetHost);
@@ -153,12 +184,32 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     return runtime;
   } catch (error) {
     detachRendererResize?.();
+    if (ownsUiOverlay) uiOverlay?.destroy();
     debugOverlay?.destroy();
     if (ownsInput && input) input.destroy();
     if (ownsAssetHost && assetHost) destroyAssetHost(assetHost);
     if (ownsRenderer && renderer) renderer.destroy();
     throw error;
   }
+}
+
+function createUiOverlay(options: FerrumRuntimeOptions): UiOverlay | undefined {
+  if (options.ui === false) {
+    return undefined;
+  }
+  if (options.ui === undefined && options.uiState === undefined) {
+    return undefined;
+  }
+  const uiOptions: UiOverlayOptions = options.ui === true || options.ui === undefined
+    ? { enabled: true }
+    : options.ui;
+  if (uiOptions.enabled === false) {
+    return undefined;
+  }
+  return new UiOverlay(
+    options.uiParent ?? options.canvas.parentElement ?? document.body,
+    uiOptions,
+  );
 }
 
 function createDebugOverlay(options: FerrumRuntimeOptions): DebugOverlay | undefined {
@@ -225,6 +276,7 @@ function buildDebugMetrics(
     renderCommandCount: rendererStats.renderCommandCount,
     textureBindCount: rendererStats.textureBindCount,
     textureSwitchCount: rendererStats.textureSwitchCount,
+    physicsDebugLineCount: rendererStats.physicsDebugLineCount,
     audioEventsPerSecond,
     physicsFixedSteps: frame.physics.fixedSteps,
     physicsKinematicHits: frame.physics.kinematicHits,

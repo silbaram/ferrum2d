@@ -33,7 +33,7 @@
     "build": "pnpm run clean:dist && tsc -p tsconfig.json && node ../../scripts/fix-dist-esm-extensions.mjs dist",
     "check:package": "node ../../scripts/check-package-files.mjs",
     "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
-    "test": "pnpm run build && pnpm run clean:dist-test && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js"
+    "test": "pnpm run build && pnpm run clean:dist-test && tsc -p tsconfig.test.json && node ../../scripts/fix-dist-esm-extensions.mjs dist-test && node --test dist-test/test/*.test.js"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

@@ -4,6 +4,8 @@
 
 현재 entrypoint export의 코드 기준은 `packages/ferrum-web/src/index.ts`다.
 
+Rust crate의 physics helper API는 `@ferrum2d/ferrum-web` entrypoint가 직접 re-export하지 않는다. `PlatformerControllerState`, stateful platformer controller variant, `with_step_offset(...)` controller 옵션은 Rust core에서 사용 가능하고, browser 앱은 현재 `FerrumEngine.usePlatformerGame()`과 `FrameState.physics`를 통해 해당 경로를 간접 검증한다.
+
 ## Import 원칙
 
 애플리케이션과 예제 코드는 패키지 entrypoint만 사용한다.
@@ -16,6 +18,9 @@ import {
   createEngine,
   createRenderer,
   formatDiagnosticReport,
+  importAsepriteAtlasFrames,
+  importLDtkGameSpec,
+  importTiledGameSpec,
   type AssetManifest,
   type CreateRendererOptions,
   type DiagnosticReport,
@@ -41,19 +46,20 @@ import {
 | API | 종류 | 권장 용도 |
 | --- | --- | --- |
 | `createEngine(...)` | function | Wasm `Engine`, frame loop, input, asset host, viewport provider를 묶어 `FerrumEngine`을 만든다. |
-| `createFerrumRuntime(...)` | function | WebGL2 renderer, input, browser asset/audio host, debug overlay, `FerrumEngine` frame pipeline을 묶는 제품용 browser runtime entrypoint다. |
-| `FerrumRuntime` | interface | runtime이 소유하는 `engine`, `renderer`, `input`, `assetHost`, optional debug overlay와 lifecycle method를 제공한다. |
-| `FerrumRuntimeOptions` | interface | canvas, WebGL2 옵션, debug 옵션, environment, input transform, per-frame callback, engine 옵션을 담는다. |
+| `createFerrumRuntime(...)` | function | WebGL2 renderer, input, browser asset/audio host, UI/debug overlay, `FerrumEngine` frame pipeline을 묶는 제품용 browser runtime entrypoint다. |
+| `FerrumRuntime` | interface | runtime이 소유하는 `engine`, `renderer`, `input`, `assetHost`, optional UI/debug overlay와 lifecycle method를 제공한다. |
+| `FerrumRuntimeOptions` | interface | canvas, WebGL2 옵션, input/inputOptions, ui/uiState, debug 옵션, physics debug line rendering, environment, input transform, per-frame callback, engine 옵션을 담는다. |
 | `FerrumRuntimeEnvironment` | type | `development`이면 debug overlay를 기본 활성화하고, `production` 또는 생략이면 기본 비활성화한다. `debug`를 명시하면 이 기본값보다 우선한다. |
 | `FerrumRuntimeFrame` | interface | `FrameState`, renderer stats, debug metrics, fps, render time을 함께 담은 runtime frame snapshot이다. |
-| `FerrumEngine` | interface | start/pause/resume/stop/destroy, asset loading, texture/sound id 적용, Game Spec 적용, score/state 조회를 제공한다. |
+| `UiOverlayStateProvider` | type | runtime frame을 읽어 `UiOverlayState`를 반환하는 HUD/menu/dialog provider다. |
+| `FerrumEngine` | interface | start/pause/resume/stop/destroy, asset loading, texture/sound id 적용, Game Spec 적용, Breakout/Platformer scene mode 선택, score/state 조회를 제공한다. |
 | `FrameHandler` | type | `createEngine`의 frame callback 타입이다. 매 프레임 `FrameState`를 받는다. |
 | `FrameState` | interface | 렌더링, 디버그, HUD 갱신에 필요한 per-frame snapshot이다. 게임 규칙의 source of truth는 아니다. |
 | `PhysicsFrameStats` | interface | fixed timestep, kinematic movement, collision event 수를 담는 per-frame physics snapshot이다. |
 | `FixedTimestepOptions` | interface | fixed timestep opt-in 설정이다. step, frame clamp, update당 최대 step 수를 지정한다. |
 | `InputProvider` | type | `InputSnapshot`을 제공하는 callback 타입이다. 보통 `InputManager.snapshot()`을 연결한다. |
 | `ViewportProvider` | type | canvas logical viewport size를 제공하는 callback 타입이다. 보통 renderer resize 결과를 연결한다. |
-| `CreateEngineOptions` | interface | compatibility 옵션과 platform lifecycle hook을 담는다. 신규 코드는 deprecated 옵션 대신 기본값을 사용한다. |
+| `CreateEngineOptions` | interface | compatibility 옵션, physics debug buffer opt-in, platform lifecycle hook을 담는다. 신규 코드는 deprecated 옵션 대신 기본값을 사용한다. |
 | `EngineLifecycleHooks` | interface | `FerrumEngine` start/pause/resume/stop/destroy 시점의 platform callback 계약이다. snapshot만 받으며 simulation state를 소유하지 않는다. |
 | `EngineLifecycleSnapshot` | interface | lifecycle hook에 전달되는 score/state/entity/sprite/time snapshot이다. |
 | `AssetHost` | interface | `createEngine`이 asset loading과 audio playback을 위임하는 host 계약이다. |
@@ -75,7 +81,15 @@ import {
 | `AudioBusConfig` | interface | `AssetHost.configureAudio(...)`에 전달되는 master/sfx bus volume 계약이다. |
 | `AudioAssetLoader` | class | sound fetch/decode 책임을 담당한다. 일반 앱은 보통 `BrowserPlatformHost`를 통해 간접 사용한다. |
 | `AssetLoader` | class | texture/sound/JSON manifest loading을 조정하는 낮은 수준 loader다. 일반 앱은 `BrowserPlatformHost`를 우선 사용한다. |
-| `InputManager` | class | keyboard/mouse 입력을 browser event에서 수집해 `InputSnapshot`으로 제공한다. |
+| `importAsepriteAtlas(...)` | function | Aseprite JSON metadata를 `ShooterAtlasSpec`과 frame name 목록으로 변환한다. |
+| `importAsepriteAtlasFrames(...)` | function | Aseprite JSON metadata의 frame rect를 Game Spec `atlas.frames` map으로 변환한다. |
+| `importTiledTilemap(...)` | function | Tiled orthogonal JSON map을 Game Spec `atlas`/`tilemap` 조각과 import report로 변환한다. |
+| `importTiledGameSpec(...)` | function | Tiled orthogonal JSON map을 바로 합성 가능한 `{ atlas, tilemap }` Game Spec 조각으로 변환한다. |
+| `importLDtkTilemap(...)` | function | LDtk project JSON embedded level을 Game Spec `atlas`/`tilemap` 조각과 import report로 변환한다. |
+| `importLDtkGameSpec(...)` | function | LDtk project JSON embedded level을 바로 합성 가능한 `{ atlas, tilemap }` Game Spec 조각으로 변환한다. |
+| `InputManager` | class | keyboard/mouse, non-mouse pointer gesture, touch fallback, gamepad 입력을 `InputSnapshot`으로 합성한다. |
+| `InputManagerOptions` | interface | gamepad polling, gamepad deadzone, pointer gesture 사용 여부와 drag threshold를 설정한다. |
+| `UiOverlay` | class | HUD, menu, score, dialog를 canvas 위 DOM text/action overlay로 렌더링한다. |
 | `DebugOverlay` | class | DOM 기반 debug metrics 표시용 helper다. |
 | `AssetManifest` | interface | texture, sound, JSON asset URL manifest다. |
 | `LoadedAssets` | interface | 로드된 texture/sound registry와 JSON asset 결과다. |
@@ -94,8 +108,11 @@ import {
 | `RenderCommandBufferView` | interface | Wasm render command buffer를 매 프레임 새 `Float32Array` view로 읽은 결과다. |
 | `AudioEventView` | interface | Rust audio event buffer를 TypeScript에서 해석한 결과다. |
 | `CollisionEventBufferView` | interface | Rust collision event buffer를 매 프레임 새 `Uint32Array` view로 읽은 결과다. |
-| `CollisionEventView` | interface | decoded collision enter/stay/exit/hit event object다. |
+| `CollisionEventView` | interface | decoded collision enter/stay/exit/hit event object다. `damage`는 bullet/enemy hit payload이고 나머지 event는 `0`이다. |
 | `decodeCollisionEvents(...)` | function | buffer 기반 collision event를 object 배열 형태로 decode한다. 기본 hot path는 raw buffer를 사용한다. |
+| `PhysicsDebugLineBufferView` | interface | Rust broadphase/contact physics debug line buffer를 매 프레임 새 `Float32Array` view로 읽은 결과다. |
+| `PhysicsDebugLineView` | interface | decoded physics debug line object다. |
+| `decodePhysicsDebugLines(...)` | function | buffer 기반 physics debug line을 object 배열 형태로 decode한다. 기본 hot path는 raw buffer를 사용한다. |
 | `decodeRenderCommands(...)` | function | buffer 기반 render command를 deprecated object 배열 형태로 decode한다. hot path 기본 경로로 쓰지 않는다. |
 
 ## 부가 타입 export
@@ -104,13 +121,13 @@ import {
 
 | 묶음 | Export |
 | --- | --- |
-| Engine 보조 타입 | `ShooterTextureIds`, `ShooterSoundIds`, `ViewportSnapshot`, `InputSnapshot` |
-| Asset 보조 타입 | `AssetLoadProgress`, `AssetLoadProgressCallback`, `TextureAssetManager`, `SoundAssetManager`, `TextureRegistryEntry`, `SoundRegistryEntry` |
+| Engine 보조 타입 | `ShooterTextureIds`, `ShooterSoundIds`, `ViewportSnapshot`, `InputSnapshot`, `InputManagerOptions` |
+| Asset 보조 타입 | `AsepriteAtlasFrameSizeSource`, `AsepriteAtlasImportOptions`, `AsepriteAtlasImportResult`, `AssetLoadProgress`, `AssetLoadProgressCallback`, `TextureAssetManager`, `SoundAssetManager`, `TextureRegistryEntry`, `SoundRegistryEntry`, `TiledTilemapImportOptions`, `TiledTilemapImportResult`, `TiledTilesetFrameContext`, `LDtkTilemapImportOptions`, `LDtkTilemapImportResult`, `LDtkTilesetFrameContext` |
 | Diagnostic 보조 타입 | `DiagnosticCode`, `DiagnosticContext`, `DiagnosticKind` |
 | Game Spec 입력 타입 | `ShooterAudioEventPolicySpec`, `ShooterAudioSpec`, `ShooterAtlasFrameSpec`, `ShooterAtlasSpec`, `ShooterCameraPreset`, `ShooterCameraSpec`, `ShooterEnemyBehaviorPreset`, `ShooterEnemyOrbitSpec`, `ShooterEnemyPresetSpec`, `ShooterPrefabSpec`, `ShooterTileLayerSpec`, `ShooterTilemapSpec`, `ShooterTileSpec`, `ShooterWaveSpec` |
 | Game Spec resolved/application 타입 | `ResolvedShooterAtlasFrame`, `ResolvedShooterTileDefinition`, `ResolvedShooterTileLayer`, `ResolvedShooterTilemap`, `ShooterGameSpecTarget` |
 | Texture atlas authoring 타입 | `AtlasSpriteInput`, `AtlasSpritePlacement`, `TextureAtlasLayout`, `TextureAtlasOptions` |
-| Debug/renderer/runtime 보조 타입 | `DebugOverlayMetrics`, `DebugOverlayOptions`, `FerrumRuntimeEnvironment`, `SpriteDrawOptions` |
+| Debug/UI/renderer/runtime 보조 타입 | `DebugOverlayMetrics`, `DebugOverlayOptions`, `FerrumRuntimeEnvironment`, `SpriteDrawOptions`, `UiAction`, `UiDialog`, `UiOverlayActionEvent`, `UiOverlayActionTone`, `UiOverlayOptions`, `UiOverlayRegion`, `UiOverlayState`, `UiOverlayStateProvider`, `UiOverlayTone`, `UiPanel`, `UiTextLine` |
 | Physics/event 보조 타입 | `CollisionEventKind`, `FixedTimestepOptions`, `PhysicsFrameStats` |
 
 ## 호환/저수준 export
@@ -125,13 +142,64 @@ import {
 | `SpriteBatch` | WebGL2 sprite batching 내부 구현 class다. 일반 게임 코드는 직접 사용할 필요가 없다. |
 | `RenderCommandView` | deprecated object command 형태다. 신규 렌더링 경로는 `RenderCommandBufferView`를 사용한다. |
 | `AudioEventBufferView` | Rust audio event buffer의 raw `Float32Array` view다. 일반 앱은 `FrameState.audioEvents` 또는 `AssetHost.playAudioEvents(...)`를 사용한다. |
-| `CollisionEventBufferView` | Rust collision event buffer의 raw `Uint32Array` view다. 일반 앱은 `FrameState.physics.collisionEventCount`를 먼저 보고, 상세 event가 필요할 때 `decodeCollisionEvents(...)`를 사용한다. |
+| `CollisionEventBufferView` | Rust collision event buffer의 raw `Uint32Array` view다. 일반 앱은 `FrameState.physics.collisionEventCount`를 먼저 보고, 상세 event나 damage payload가 필요할 때 `decodeCollisionEvents(...)`를 사용한다. |
+| `PhysicsDebugLineBufferView` | Rust broadphase/contact physics debug line buffer의 raw `Float32Array` view다. 생성 비용이 있으므로 `enablePhysicsDebugLines` 또는 `includePhysicsDebugLines`를 켠 debug/runtime에서만 line count가 채워진다. |
 
 `packages/ferrum-web/src/workerFrameClock.ts`와 `packages/ferrum-web/src/indexedDbAssetCache.ts`에는 현재 제품 범위 제외 기능의 source-level shim이 남아 있지만, 현재 package entrypoint public API로 export하지 않는다.
 
+## Asset Pipeline v2 계약
+
+`importAsepriteAtlas(...)`, `importAsepriteAtlasFrames(...)`, `importTiledTilemap(...)`, `importTiledGameSpec(...)`, `importLDtkTilemap(...)`, `importLDtkGameSpec(...)`는 Product Beta Asset pipeline v2의 public API다. 변환은 TypeScript bootstrap/authoring 단계에서만 수행하고, Rust core에는 기존 Game Spec application 경로로 숫자형 atlas/tilemap 설정만 전달한다.
+
+Aseprite JSON export는 `frames`와 `meta.size`를 읽어 Game Spec `atlas.frames`에 들어갈 normalized UV와 frame size를 만든다.
+
+```ts
+const frames = importAsepriteAtlasFrames(loaded.json.sprites, {
+  texture: "sprites",
+  frameNamePrefix: "player.",
+});
+```
+
+- `texture`: `AssetManifest.textures`의 texture name 또는 non-negative numeric texture id다.
+- `frames`: Aseprite hash format과 array format을 모두 지원한다.
+- `stripFrameExtension`: 기본값은 `true`라 `player.idle.0.png`를 `player.idle.0`으로 변환한다.
+- `sizeSource`: 기본값은 `"frame"`이며, `"source"`를 지정하면 Aseprite `sourceSize`를 display/collider base size로 사용한다.
+- rotated frame은 현재 renderer/prefab 계약에서 표현할 수 없으므로 진단 오류로 거부한다.
+
+이 helper는 authoring-time 변환 경로다. 런타임 hot path에서 JSON을 매 프레임 해석하지 않으며, Rust/Wasm render command ABI도 변경하지 않는다.
+
+Tiled JSON import는 finite orthogonal map의 embedded tileset image metadata와 tile layer `data: number[]`만 지원한다.
+
+```ts
+const tiled = importTiledGameSpec(loaded.json.map, {
+  collisionLayerNames: ["walls"],
+  frameNamePrefix: "tiles.",
+});
+```
+
+- `tilesets`: external `.tsx` reference가 아니라 JSON 안에 tile size, columns, tilecount, image width/height가 포함된 embedded tileset이어야 한다.
+- `layers`: `type: "tilelayer"`만 변환한다. object/image layer는 무시한다.
+- `collisionLayerNames`: 지정된 layer name 또는 Tiled custom property `collision: true`를 Game Spec `collision: true` layer로 변환한다.
+- flipped/rotated Tiled gid, infinite/chunked map, base64/compressed tile data는 현재 Game Spec 계약에서 표현할 수 없으므로 진단 오류로 거부한다.
+
+LDtk JSON import는 project JSON 안에 포함된 embedded level의 `Tiles`/`AutoLayer` tile instances와 tileset definition을 지원한다.
+
+```ts
+const ldtk = importLDtkGameSpec(loaded.json.world, {
+  levelIdentifier: "Level_0",
+  collisionLayerNames: ["walls"],
+});
+```
+
+- `levelIdentifier`, `levelIid`, `levelIndex`: 하나만 지정해 import할 level을 선택한다. 생략하면 첫 level을 사용한다.
+- `texture`: 기본값은 LDtk tileset identifier이며, `AssetManifest.textures`의 texture name, numeric texture id, 또는 callback을 받을 수 있다.
+- `frameNameForTile`: 기본 frame name은 `${tilesetIdentifier}.${ldtkTileId}`이며 callback으로 변경할 수 있다.
+- `collisionLayerNames`: 지정된 LDtk layer identifier를 Game Spec `collision: true` layer로 변환한다.
+- external `.ldtkl` level, raw IntGrid collision-only layer, flipped tile, 한 cell에 여러 tile이 쌓인 tile stack은 현재 Game Spec 계약에서 표현할 수 없으므로 진단 오류로 거부한다.
+
 ## RendererStats 계약
 
-`WebGL2Renderer.stats()`와 `renderCommands(...)`가 반환하는 `RendererStats`는 현재 frame의 renderer 관측값이다. 모든 필드는 count 단위다.
+`WebGL2Renderer.stats()`, `renderCommands(...)`, `renderPhysicsDebugLines(...)`가 반환하는 `RendererStats`는 현재 frame의 renderer 관측값이다. 모든 필드는 count 단위다.
 
 | 필드 | 표시명 | 의미 |
 | --- | --- | --- |
@@ -141,8 +209,19 @@ import {
 | `renderCommandCount` | `render commands` | Wasm render command buffer의 command 수 |
 | `textureBindCount` | `texture binds` | batch 렌더링에 따른 texture bind 수 |
 | `textureSwitchCount` | `texture switches` | texture-id batching 경로에서 인접 `texture_id`가 바뀐 횟수. 명시적 단일 texture 렌더 경로는 0 |
+| `physicsDebugLineCount` | `physics debug lines` | WebGL2 debug line pass가 그린 physics debug line 수 |
 
-DebugOverlay는 이 계약을 `fps`, `frame time`, `rust update`, `render`, `mouse`, `camera`, `state`, `score`, `audio events`, `fixed steps`, `kinematic hits`, `tile checks`, `collision events`와 함께 표시한다. 표시 문자열은 `fps: 60.0 fps`, `frame time: 16.67 ms`, `audio events: 4.3 events/s`처럼 label과 unit을 포함한다.
+DebugOverlay는 이 계약을 `fps`, `frame time`, `rust update`, `render`, `mouse`, `camera`, `state`, `score`, `audio events`, `fixed steps`, `kinematic hits`, `tile checks`, `collision events`, `physics debug lines`와 함께 표시한다. 표시 문자열은 `fps: 60.0 fps`, `frame time: 16.67 ms`, `audio events: 4.3 events/s`처럼 label과 unit을 포함한다.
+
+## UiOverlay 계약
+
+`UiOverlay`는 Product Beta Text/UI rendering의 DOM 기반 public API다. WebGL sprite command와 Rust/Wasm ABI를 바꾸지 않고, platform layer가 canvas 위에 HUD/menu/dialog용 text/action overlay를 그린다.
+
+- `UiOverlayState.panels`: HUD, score, menu 같은 text/action 묶음이다. 각 panel은 `top-left`, `top-right`, `bottom-left`, `bottom-right`, `center` region 중 하나에 배치할 수 있다.
+- `UiOverlayState.dialog`: title, pause, game over 같은 중앙 dialog다.
+- `UiTextLine`: `label/value` 행 또는 단일 `text` 행을 표현한다.
+- `UiAction`: button action이다. 클릭은 `UiOverlayOptions.onAction({ id, panelId?, dialogId? })`로 전달된다.
+- `createFerrumRuntime({ ui, uiParent, uiState })`: overlay 생성, frame별 `uiState` 적용, destroy를 runtime lifecycle에 묶는다. `uiParent`는 canvas를 감싸는 `position: relative` 컨테이너를 권장한다.
 
 ## Game Spec Camera 계약
 
@@ -179,6 +258,8 @@ Runtime 적용 범위:
 ## Game Spec Tilemap 계약
 
 `ShooterGameSpec.tilemap`은 정적 tile layer 렌더링과 단순 collision layer 설정이다. `tilemap.tiles`는 positive integer string tile id를 atlas frame과 tint color에 연결하고, `tilemap.layers`는 row-major `data`로 tile id를 배치한다. `0`은 빈 타일로 예약되어 layer data에서만 사용할 수 있다.
+
+Rust runtime은 `collision: true` layer의 인접 solid tile run을 merged AABB obstacle로 캐시해 player/enemy collision 후보 검사를 줄인다. Navigation v1은 같은 layer의 원본 tile grid를 장애물로 사용한다.
 
 TypeScript 검증 범위:
 
@@ -233,7 +314,11 @@ Runtime 적용 범위:
 - `audioEvents`: `createEngine` 내부에서 asset host로 전달해 재생한 뒤 같은 frame에 관측할 수 있는 이벤트 배열이다.
 - `physics`: fixed timestep step 수, kinematic hit/candidate 수, collision event 수를 담은 per-frame snapshot이다.
 - `collisionEventBuffer`: 기본 collision event 경로다. 매 프레임 Wasm memory에서 새 `Uint32Array` view로 만든다.
-- `collisionEvents`: `includeCollisionEvents`를 켰을 때만 decoded object 배열을 담는다. 기본값은 빈 배열이다.
+- `collisionEvents`: `includeCollisionEvents`를 켰을 때만 decoded object 배열을 담는다. 기본값은 빈 배열이다. Bullet/enemy `hit` event는 `damage`에 적용된 bullet damage를 담고, lifecycle event와 player/enemy game-over hit는 `0`을 담는다.
+- Breakout mode의 paddle/ball/brick/wall 충돌도 같은 `collisionEventBuffer`와 `collisionEvents` 경로에 `hit` event를 남긴다. 이 event의 `damage`는 `0`이다.
+- Platformer mode는 `FerrumEngine.usePlatformerGame()`으로 선택하며 같은 `FrameState.physics` counters와 render command buffer를 사용한다.
+- `physicsDebugLineBuffer`: broadphase bounds와 contact normal debug line 경로다. 매 프레임 Wasm memory에서 새 `Float32Array` view로 만들지만, Rust line 생성은 `enablePhysicsDebugLines` 또는 `includePhysicsDebugLines`를 켰을 때만 수행한다.
+- `physicsDebugLines`: `includePhysicsDebugLines`를 켰을 때만 decoded object 배열을 담는다. 기본값은 빈 배열이다.
 - `score`, `entityCount`, `gameState`, `spriteCount`, `cameraX`, `cameraY`: HUD와 debug 표시용 snapshot이다.
 
 주의:
@@ -241,6 +326,7 @@ Runtime 적용 범위:
 - `FrameState` 값을 다음 프레임의 게임 로직 입력으로 사용하지 않는다.
 - `renderCommandBuffer.buffer` view를 장기 보관하지 않는다. Wasm memory가 grow되면 기존 view가 무효가 될 수 있다.
 - `collisionEventBuffer.buffer` view도 장기 보관하지 않는다. event payload가 필요한 경우 같은 frame에서 decode하거나 필요한 값만 복사한다.
+- `physicsDebugLineBuffer.buffer` view도 장기 보관하지 않는다. visual debug renderer가 필요하면 같은 frame에서 소비한다.
 
 ## Engine Lifecycle Hooks
 
@@ -262,17 +348,19 @@ Runtime 적용 범위:
 
 ## 오류 진단 정책
 
-Asset, audio, Game Spec 오류 메시지는 사람이 바로 원인을 추적할 수 있도록 공통 context를 포함한다. `FerrumDiagnosticError`는 메시지 형식을 유지하면서 `code`와 `context`를 구조화해 host 앱이 오류를 수집하거나 UI에 표시할 수 있게 한다.
+Asset, audio, Game Spec, asset pipeline 오류 메시지는 사람이 바로 원인을 추적할 수 있도록 공통 context를 포함한다. `FerrumDiagnosticError`는 메시지 형식을 유지하면서 `code`와 `context`를 구조화해 host 앱이 오류를 수집하거나 UI에 표시할 수 있게 한다.
 
 공통 형식:
 
 - asset/audio: `kind`, `name` 또는 `id`, `url`, `detail`
 - Game Spec: `kind=game-spec`, `path`, `detail`
+- asset pipeline: `kind=asset-pipeline`, `path`, `detail`
 
 대표 code:
 
 - `FERRUM_ASSET_LOAD`
 - `FERRUM_ASSET_LOOKUP`
+- `FERRUM_ASSET_PIPELINE_INVALID`
 - `FERRUM_AUDIO_LOAD`
 - `FERRUM_AUDIO_DECODE`
 - `FERRUM_AUDIO_PLAYBACK`
@@ -287,6 +375,7 @@ Asset, audio, Game Spec 오류 메시지는 사람이 바로 원인을 추적할
 ```text
 Asset load error: kind=texture name='player' url='/assets/player.png' detail='HTTP 404 Not Found'.
 Invalid shooter game spec: kind=game-spec path='weapons.cooldown' detail='must be a positive finite number'.
+Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.aseprite.frames.hero.rotated' detail='rotated Aseprite frames are not supported'.
 ```
 
 예제나 host 앱은 unknown error를 직접 문자열화하지 말고 `diagnosticReport(error)` 또는 `formatDiagnosticReport(error)`를 사용한다. Top-down Shooter 예제의 bootstrap 실패 화면은 `diagnosticReport(error)`로 diagnostic code, message, context 항목을 분리해 표시한다.
@@ -299,7 +388,8 @@ Invalid shooter game spec: kind=game-spec path='weapons.cooldown' detail='must b
 - `WebGL2Renderer.destroy()`는 `SpriteBatch` buffer/program과 `TextureManager` texture를 한 번만 해제한다. 중복 호출은 no-op이다.
 - `BrowserPlatformHost.destroy()`는 내부 `AudioManager.destroy()`를 한 번만 호출한다.
 - `AudioManager.destroy()`는 loaded buffer registry를 비우고 열린 `AudioContext`를 한 번만 close 요청한다.
-- `InputManager.destroy()`는 window/canvas event listener를 제거한다. 제거 후 들어오는 이벤트는 input state를 바꾸지 않는다.
+- `InputManager.destroy()`는 keyboard/mouse/pointer/touch window/canvas event listener를 제거한다. 제거 후 들어오는 이벤트는 input state를 바꾸지 않는다. Gamepad 입력은 event listener 없이 `snapshot()` 시점에 polling한다.
+- `UiOverlay.destroy()`는 runtime text/UI DOM node를 제거하고 이후 `update(...)` 호출을 무시한다.
 - `DebugOverlay.destroy()`는 DOM node를 제거하고 이후 `update(...)` 호출을 무시한다.
 
 `destroy()` 이후 객체는 active runtime에 재사용하지 않는다. 새 게임 세션이나 reload 흐름에서는 `WebGL2Renderer`, `BrowserPlatformHost`, `InputManager`, `DebugOverlay`, `FerrumEngine`을 새로 만든다.
@@ -337,7 +427,10 @@ if (!canvas) {
 
 const renderer = new WebGL2Renderer(canvas);
 const platformHost = new BrowserPlatformHost(renderer);
-const input = new InputManager(canvas);
+const input = new InputManager(canvas, {
+  gamepad: true,
+  pointerGestures: true,
+});
 
 const onFrame: FrameHandler = (frame) => {
   renderer.render();

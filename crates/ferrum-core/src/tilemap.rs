@@ -11,6 +11,7 @@ use crate::world::World;
 const MAX_NAVIGATION_CELLS: usize = 4096;
 const MAX_TILE_COLLISION_RESOLUTION_STEPS: usize = 4;
 const TILE_SWEEP_EPSILON: f32 = 0.0001;
+const TILE_GROUND_NORMAL_Y_MIN: f32 = 0.5;
 const UNVISITED_CELL: usize = usize::MAX;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -39,6 +40,7 @@ pub struct TilemapLayer {
 pub struct Tilemap {
     definitions: Vec<Option<TileDefinition>>,
     layers: Vec<Option<TilemapLayer>>,
+    collision_rects: Vec<Option<Vec<TileCollisionRect>>>,
 }
 
 #[derive(Debug, Default)]
@@ -57,6 +59,21 @@ struct TileRange {
     max_row: u32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TileCollisionRect {
+    tile_index: usize,
+    min_column: u32,
+    min_row: u32,
+    columns: u32,
+    rows: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TileRun {
+    min_column: u32,
+    columns: u32,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct TilemapSweepStats {
     pub candidate_tiles: u32,
@@ -73,6 +90,15 @@ pub(crate) struct TilemapSweepHit {
     pub layer_index: usize,
     pub tile_index: usize,
     pub contact: SweptAabbContactHit,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TilemapNearestObstacleHit {
+    pub layer_index: usize,
+    pub tile_index: usize,
+    pub distance: f32,
+    pub point_x: f32,
+    pub point_y: f32,
 }
 
 impl TilemapNavigationScratch {
@@ -111,6 +137,7 @@ impl Tilemap {
     pub fn clear(&mut self) {
         self.definitions.clear();
         self.layers.clear();
+        self.collision_rects.clear();
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -178,6 +205,12 @@ impl Tilemap {
         if index >= self.layers.len() {
             self.layers.resize_with(index + 1, || None);
         }
+        if index >= self.collision_rects.len() {
+            self.collision_rects.resize_with(index + 1, || None);
+        }
+        self.collision_rects[index] = layer
+            .collision
+            .then(|| build_collision_rects_for_layer(&layer));
         self.layers[index] = Some(layer);
     }
 
@@ -252,56 +285,140 @@ impl Tilemap {
                 continue;
             };
 
-            for row in range.min_row..=range.max_row {
-                for column in range.min_column..=range.max_column {
-                    stats.candidate_tiles = stats.candidate_tiles.saturating_add(1);
-                    let tile_index = layer.tile_index(column, row);
-                    if layer.tiles.get(tile_index).copied().unwrap_or(0) == 0 {
-                        continue;
-                    }
-
-                    let static_collider = AabbCollider {
-                        half_width: layer.tile_width * 0.5,
-                        half_height: layer.tile_height * 0.5,
-                        is_trigger: false,
-                        layer: collider.layer,
-                    };
-                    let tile_center = layer.tile_center(tile_index);
-                    let Some(contact) = CollisionSystem::swept_aabb_contact(
-                        start,
-                        displacement,
-                        collider,
-                        tile_center,
-                        Velocity::default(),
-                        static_collider,
-                        1.0,
-                    ) else {
-                        continue;
-                    };
-                    if contact.time <= TILE_SWEEP_EPSILON
-                        && CollisionSystem::aabb_contact(
-                            start,
-                            collider,
-                            tile_center,
-                            static_collider,
-                        )
+            let Some(rects) = self
+                .collision_rects
+                .get(layer_index)
+                .and_then(Option::as_ref)
+            else {
+                continue;
+            };
+            for rect in rects
+                .iter()
+                .copied()
+                .filter(|rect| rect.intersects_tile_range(range))
+            {
+                let rect_bounds = rect.bounds(layer);
+                if !rect_bounds.overlaps(swept_bounds) {
+                    continue;
+                }
+                stats.candidate_tiles = stats.candidate_tiles.saturating_add(1);
+                let static_collider = rect.aabb_collider(layer, collider.layer);
+                let rect_center = rect.center(layer);
+                let Some(contact) = CollisionSystem::swept_aabb_contact(
+                    start,
+                    displacement,
+                    collider,
+                    rect_center,
+                    Velocity::default(),
+                    static_collider,
+                    1.0,
+                ) else {
+                    continue;
+                };
+                if contact.time <= TILE_SWEEP_EPSILON
+                    && CollisionSystem::aabb_contact(start, collider, rect_center, static_collider)
                         .is_none()
-                    {
-                        continue;
-                    }
-                    let into_normal =
-                        displacement.vx * contact.normal_x + displacement.vy * contact.normal_y;
-                    if contact.time <= TILE_SWEEP_EPSILON && into_normal <= 0.0 {
-                        continue;
-                    }
+                {
+                    continue;
+                }
+                let into_normal =
+                    displacement.vx * contact.normal_x + displacement.vy * contact.normal_y;
+                if contact.time <= TILE_SWEEP_EPSILON && into_normal <= 0.0 {
+                    continue;
+                }
 
-                    if best_tile_hit_is_better(&best, contact, layer_index, tile_index) {
-                        best = Some(TilemapSweepHit {
-                            layer_index,
-                            tile_index,
-                            contact,
-                        });
-                    }
+                if best_tile_hit_is_better(&best, contact, layer_index, rect.tile_index) {
+                    best = Some(TilemapSweepHit {
+                        layer_index,
+                        tile_index: rect.tile_index,
+                        contact,
+                    });
+                }
+            }
+        }
+
+        best
+    }
+
+    pub(crate) fn ground_probe_contact(
+        &self,
+        start: Transform2D,
+        collider: AabbCollider,
+        probe_distance: f32,
+    ) -> Option<TilemapSweepHit> {
+        if !is_tilemap_blocked_layer(collider.layer)
+            || !probe_distance.is_finite()
+            || probe_distance <= 0.0
+        {
+            return None;
+        }
+
+        let displacement = Velocity {
+            vx: 0.0,
+            vy: probe_distance,
+        };
+        let end = Transform2D {
+            x: start.x,
+            y: start.y + probe_distance,
+        };
+        let swept_bounds = AabbBounds::swept(start, end, collider);
+        let mut best: Option<TilemapSweepHit> = None;
+
+        for (layer_index, layer) in self
+            .layers
+            .iter()
+            .enumerate()
+            .filter_map(|(index, layer)| layer.as_ref().map(|layer| (index, layer)))
+            .filter(|(_, layer)| layer.collision)
+        {
+            let Some(range) = layer.candidate_tile_range_for_bounds(swept_bounds) else {
+                continue;
+            };
+
+            let Some(rects) = self
+                .collision_rects
+                .get(layer_index)
+                .and_then(Option::as_ref)
+            else {
+                continue;
+            };
+            for rect in rects
+                .iter()
+                .copied()
+                .filter(|rect| rect.intersects_tile_range(range))
+            {
+                let rect_bounds = rect.bounds(layer);
+                if !rect_bounds.overlaps(swept_bounds) {
+                    continue;
+                }
+                let static_collider = rect.aabb_collider(layer, collider.layer);
+                let rect_center = rect.center(layer);
+                let Some(contact) = CollisionSystem::swept_aabb_contact(
+                    start,
+                    displacement,
+                    collider,
+                    rect_center,
+                    Velocity::default(),
+                    static_collider,
+                    1.0,
+                ) else {
+                    continue;
+                };
+                if contact.normal_y < TILE_GROUND_NORMAL_Y_MIN {
+                    continue;
+                }
+                let into_normal =
+                    displacement.vx * contact.normal_x + displacement.vy * contact.normal_y;
+                if contact.time <= TILE_SWEEP_EPSILON && into_normal <= 0.0 {
+                    continue;
+                }
+
+                if best_tile_hit_is_better(&best, contact, layer_index, rect.tile_index) {
+                    best = Some(TilemapSweepHit {
+                        layer_index,
+                        tile_index: rect.tile_index,
+                        contact,
+                    });
                 }
             }
         }
@@ -322,6 +439,54 @@ impl Tilemap {
     pub fn navigation_waypoint(&self, from: Transform2D, to: Transform2D) -> Option<Transform2D> {
         let mut scratch = TilemapNavigationScratch::default();
         self.navigation_waypoint_with_scratch(from, to, &mut scratch)
+    }
+
+    pub fn nearest_collision_obstacle(
+        &self,
+        point: Transform2D,
+        max_distance: f32,
+    ) -> Option<TilemapNearestObstacleHit> {
+        if !point.x.is_finite()
+            || !point.y.is_finite()
+            || !max_distance.is_finite()
+            || max_distance < 0.0
+        {
+            return None;
+        }
+        let query_bounds = AabbBounds::from_center(point, max_distance, max_distance)?;
+        let mut best = None;
+
+        for (layer_index, layer) in self
+            .layers
+            .iter()
+            .enumerate()
+            .filter_map(|(index, layer)| layer.as_ref().map(|layer| (index, layer)))
+            .filter(|(_, layer)| layer.collision)
+        {
+            let Some(range) = layer.candidate_tile_range_for_bounds(query_bounds) else {
+                continue;
+            };
+            let Some(rects) = self
+                .collision_rects
+                .get(layer_index)
+                .and_then(Option::as_ref)
+            else {
+                continue;
+            };
+            for rect in rects
+                .iter()
+                .copied()
+                .filter(|rect| rect.intersects_tile_range(range))
+            {
+                let Some(hit) = nearest_obstacle_hit(point, max_distance, layer_index, layer, rect)
+                else {
+                    continue;
+                };
+                update_nearest_obstacle_hit(&mut best, hit);
+            }
+        }
+
+        best
     }
 
     pub(crate) fn navigation_waypoint_with_scratch(
@@ -360,32 +525,47 @@ impl Tilemap {
         collider: AabbCollider,
     ) -> TilemapResolveStats {
         let mut stats = TilemapResolveStats::default();
-        for layer in self.layers.iter().flatten().filter(|layer| layer.collision) {
+        for (layer_index, layer) in self
+            .layers
+            .iter()
+            .enumerate()
+            .filter_map(|(index, layer)| layer.as_ref().map(|layer| (index, layer)))
+            .filter(|(_, layer)| layer.collision)
+        {
+            let Some(rects) = self
+                .collision_rects
+                .get(layer_index)
+                .and_then(Option::as_ref)
+            else {
+                continue;
+            };
             for _ in 0..MAX_TILE_COLLISION_RESOLUTION_STEPS {
-                let Some(range) = layer.candidate_tile_range(*transform, collider) else {
+                let dynamic_bounds = AabbBounds::from_transform(*transform, collider);
+                let Some(range) = layer.candidate_tile_range_for_bounds(dynamic_bounds) else {
                     break;
                 };
                 let mut resolved = false;
 
-                'tiles: for row in range.min_row..=range.max_row {
-                    for column in range.min_column..=range.max_column {
-                        stats.candidate_tiles = stats.candidate_tiles.saturating_add(1);
-                        let tile_index = layer.tile_index(column, row);
-                        if layer.tiles.get(tile_index).copied().unwrap_or(0) == 0 {
-                            continue;
-                        }
-                        let tile_center = layer.tile_center(tile_index);
-                        if resolve_dynamic_aabb_against_static(
-                            transform,
-                            collider,
-                            tile_center,
-                            layer.tile_width * 0.5,
-                            layer.tile_height * 0.5,
-                        ) {
-                            resolved = true;
-                            stats.hit_tiles = stats.hit_tiles.saturating_add(1);
-                            break 'tiles;
-                        }
+                for rect in rects
+                    .iter()
+                    .copied()
+                    .filter(|rect| rect.intersects_tile_range(range))
+                {
+                    let rect_bounds = rect.bounds(layer);
+                    if !rect_bounds.overlaps(dynamic_bounds) {
+                        continue;
+                    }
+                    stats.candidate_tiles = stats.candidate_tiles.saturating_add(1);
+                    if resolve_dynamic_aabb_against_static(
+                        transform,
+                        collider,
+                        rect.center(layer),
+                        rect.half_width(layer),
+                        rect.half_height(layer),
+                    ) {
+                        resolved = true;
+                        stats.hit_tiles = stats.hit_tiles.saturating_add(1);
+                        break;
                     }
                 }
 
@@ -438,6 +618,60 @@ impl Tilemap {
     }
 }
 
+impl TileCollisionRect {
+    fn max_column(self) -> u32 {
+        self.min_column + self.columns - 1
+    }
+
+    fn max_row(self) -> u32 {
+        self.min_row + self.rows - 1
+    }
+
+    fn intersects_tile_range(self, range: TileRange) -> bool {
+        self.min_column <= range.max_column
+            && self.max_column() >= range.min_column
+            && self.min_row <= range.max_row
+            && self.max_row() >= range.min_row
+    }
+
+    fn center(self, layer: &TilemapLayer) -> Transform2D {
+        Transform2D {
+            x: layer.origin_x
+                + self.min_column as f32 * layer.tile_width
+                + self.columns as f32 * layer.tile_width * 0.5,
+            y: layer.origin_y
+                + self.min_row as f32 * layer.tile_height
+                + self.rows as f32 * layer.tile_height * 0.5,
+        }
+    }
+
+    fn half_width(self, layer: &TilemapLayer) -> f32 {
+        self.columns as f32 * layer.tile_width * 0.5
+    }
+
+    fn half_height(self, layer: &TilemapLayer) -> f32 {
+        self.rows as f32 * layer.tile_height * 0.5
+    }
+
+    fn bounds(self, layer: &TilemapLayer) -> AabbBounds {
+        AabbBounds {
+            min_x: layer.origin_x + self.min_column as f32 * layer.tile_width,
+            min_y: layer.origin_y + self.min_row as f32 * layer.tile_height,
+            max_x: layer.origin_x + (self.max_column() + 1) as f32 * layer.tile_width,
+            max_y: layer.origin_y + (self.max_row() + 1) as f32 * layer.tile_height,
+        }
+    }
+
+    fn aabb_collider(self, layer: &TilemapLayer, dynamic_layer: CollisionLayer) -> AabbCollider {
+        AabbCollider {
+            half_width: self.half_width(layer),
+            half_height: self.half_height(layer),
+            is_trigger: false,
+            layer: dynamic_layer,
+        }
+    }
+}
+
 impl TilemapLayer {
     #[allow(clippy::too_many_arguments)]
     fn from_values(
@@ -480,14 +714,6 @@ impl TilemapLayer {
 
     fn tile_index(&self, column: u32, row: u32) -> usize {
         (row * self.columns + column) as usize
-    }
-
-    fn candidate_tile_range(
-        &self,
-        transform: Transform2D,
-        collider: AabbCollider,
-    ) -> Option<TileRange> {
-        self.candidate_tile_range_for_bounds(AabbBounds::from_transform(transform, collider))
     }
 
     fn candidate_tile_range_for_bounds(&self, bounds: AabbBounds) -> Option<TileRange> {
@@ -661,6 +887,72 @@ fn reconstruct_next_cell(start: usize, goal: usize, came_from: &[usize]) -> Opti
     Some(current)
 }
 
+fn build_collision_rects_for_layer(layer: &TilemapLayer) -> Vec<TileCollisionRect> {
+    let mut completed = Vec::new();
+    let mut active = Vec::new();
+    let mut next_active = Vec::new();
+
+    for row in 0..layer.rows {
+        next_active.clear();
+        for run in solid_runs_for_row(layer, row) {
+            if let Some(active_index) = active.iter().position(|rect: &TileCollisionRect| {
+                rect.min_column == run.min_column
+                    && rect.columns == run.columns
+                    && rect.min_row + rect.rows == row
+            }) {
+                let mut rect = active.swap_remove(active_index);
+                rect.rows += 1;
+                next_active.push(rect);
+            } else {
+                next_active.push(TileCollisionRect {
+                    tile_index: layer.tile_index(run.min_column, row),
+                    min_column: run.min_column,
+                    min_row: row,
+                    columns: run.columns,
+                    rows: 1,
+                });
+            }
+        }
+        completed.append(&mut active);
+        std::mem::swap(&mut active, &mut next_active);
+    }
+
+    completed.append(&mut active);
+    completed.sort_by_key(|rect| rect.tile_index);
+    completed
+}
+
+fn solid_runs_for_row(layer: &TilemapLayer, row: u32) -> Vec<TileRun> {
+    let mut runs = Vec::new();
+    let mut column = 0;
+    while column < layer.columns {
+        while column < layer.columns && !is_solid_tile(layer, column, row) {
+            column += 1;
+        }
+        if column >= layer.columns {
+            break;
+        }
+        let min_column = column;
+        while column < layer.columns && is_solid_tile(layer, column, row) {
+            column += 1;
+        }
+        runs.push(TileRun {
+            min_column,
+            columns: column - min_column,
+        });
+    }
+    runs
+}
+
+fn is_solid_tile(layer: &TilemapLayer, column: u32, row: u32) -> bool {
+    layer
+        .tiles
+        .get(layer.tile_index(column, row))
+        .copied()
+        .unwrap_or(0)
+        != 0
+}
+
 fn is_tilemap_blocked_layer(layer: CollisionLayer) -> bool {
     matches!(layer, CollisionLayer::Player | CollisionLayer::Enemy)
 }
@@ -703,6 +995,46 @@ fn best_tile_hit_is_better(
                     && (layer_index, tile_index) < (best_hit.layer_index, best_hit.tile_index))
         }
         None => true,
+    }
+}
+
+fn nearest_obstacle_hit(
+    point: Transform2D,
+    max_distance: f32,
+    layer_index: usize,
+    layer: &TilemapLayer,
+    rect: TileCollisionRect,
+) -> Option<TilemapNearestObstacleHit> {
+    let bounds = rect.bounds(layer);
+    let point_x = point.x.max(bounds.min_x).min(bounds.max_x);
+    let point_y = point.y.max(bounds.min_y).min(bounds.max_y);
+    let dx = point.x - point_x;
+    let dy = point.y - point_y;
+    let distance = (dx * dx + dy * dy).sqrt();
+    if !distance.is_finite() || distance > max_distance {
+        return None;
+    }
+    Some(TilemapNearestObstacleHit {
+        layer_index,
+        tile_index: rect.tile_index,
+        distance,
+        point_x,
+        point_y,
+    })
+}
+
+fn update_nearest_obstacle_hit(
+    best: &mut Option<TilemapNearestObstacleHit>,
+    next: TilemapNearestObstacleHit,
+) {
+    if best.is_none_or(|current| {
+        next.distance
+            .total_cmp(&current.distance)
+            .then_with(|| next.layer_index.cmp(&current.layer_index))
+            .then_with(|| next.tile_index.cmp(&current.tile_index))
+            .is_lt()
+    }) {
+        *best = Some(next);
     }
 }
 
@@ -821,7 +1153,10 @@ mod tests {
             TilemapLayer::from_values(10, 10, 10.0, 10.0, 0.0, 0.0, true, Vec::new()).unwrap();
 
         let range = layer
-            .candidate_tile_range(Transform2D { x: 25.0, y: 15.0 }, test_collider(4.0, 4.0))
+            .candidate_tile_range_for_bounds(AabbBounds::from_transform(
+                Transform2D { x: 25.0, y: 15.0 },
+                test_collider(4.0, 4.0),
+            ))
             .unwrap();
 
         assert_eq!(
@@ -833,6 +1168,131 @@ mod tests {
                 max_row: 1,
             }
         );
+    }
+
+    #[test]
+    fn collision_rects_merge_adjacent_solid_tile_runs() {
+        let layer = TilemapLayer::from_values(
+            3,
+            3,
+            10.0,
+            10.0,
+            0.0,
+            0.0,
+            true,
+            vec![1, 1, 0, 1, 1, 0, 0, 1, 1],
+        )
+        .unwrap();
+
+        let rects = build_collision_rects_for_layer(&layer);
+
+        assert_eq!(
+            rects,
+            vec![
+                TileCollisionRect {
+                    tile_index: 0,
+                    min_column: 0,
+                    min_row: 0,
+                    columns: 2,
+                    rows: 2,
+                },
+                TileCollisionRect {
+                    tile_index: 7,
+                    min_column: 1,
+                    min_row: 2,
+                    columns: 2,
+                    rows: 1,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn nearest_collision_obstacle_returns_nearest_merged_rect() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(0, 4, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 1, 1, 0]);
+
+        let hit = tilemap
+            .nearest_collision_obstacle(Transform2D { x: 0.0, y: 5.0 }, 100.0)
+            .expect("nearest tile obstacle should be found");
+
+        assert_eq!(hit.layer_index, 0);
+        assert_eq!(hit.tile_index, 1);
+        assert!((hit.distance - 10.0).abs() < 0.01);
+        assert_eq!(hit.point_x, 10.0);
+        assert_eq!(hit.point_y, 5.0);
+    }
+
+    #[test]
+    fn nearest_collision_obstacle_returns_zero_inside_obstacle() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(0, 1, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1]);
+
+        let hit = tilemap
+            .nearest_collision_obstacle(Transform2D { x: 5.0, y: 5.0 }, 0.0)
+            .expect("point inside obstacle should hit at distance zero");
+
+        assert_eq!(hit.layer_index, 0);
+        assert_eq!(hit.tile_index, 0);
+        assert_eq!(hit.distance, 0.0);
+        assert_eq!(hit.point_x, 5.0);
+        assert_eq!(hit.point_y, 5.0);
+    }
+
+    #[test]
+    fn nearest_collision_obstacle_uses_layer_and_tile_tie_break() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(2, 1, 1, 10.0, 10.0, 20.0, 0.0, true, vec![1]);
+        tilemap.set_layer(1, 1, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1]);
+
+        let hit = tilemap
+            .nearest_collision_obstacle(Transform2D { x: 15.0, y: 5.0 }, 20.0)
+            .expect("nearest tie should be resolved by layer index");
+
+        assert_eq!(hit.layer_index, 1);
+        assert_eq!(hit.tile_index, 0);
+        assert_eq!(hit.distance, 5.0);
+    }
+
+    #[test]
+    fn nearest_collision_obstacle_ignores_non_collision_and_max_distance_misses() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(0, 1, 1, 10.0, 10.0, 0.0, 0.0, false, vec![1]);
+
+        assert!(tilemap
+            .nearest_collision_obstacle(Transform2D { x: 5.0, y: 5.0 }, 100.0)
+            .is_none());
+
+        tilemap.set_layer(1, 1, 1, 10.0, 10.0, 20.0, 0.0, true, vec![1]);
+
+        assert!(tilemap
+            .nearest_collision_obstacle(Transform2D { x: 0.0, y: 5.0 }, 5.0)
+            .is_none());
+        assert!(tilemap
+            .nearest_collision_obstacle(
+                Transform2D {
+                    x: f32::NAN,
+                    y: 5.0,
+                },
+                100.0,
+            )
+            .is_none());
+    }
+
+    #[test]
+    fn collision_resolution_checks_merged_rect_once() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(0, 2, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 1]);
+        let mut world = World::default();
+        let entity = world.spawn_entity();
+        world.set_transform(entity, Transform2D { x: 9.0, y: 5.0 });
+        world.set_aabb_collider(entity, test_collider(2.0, 2.0));
+        let mut counters = PhysicsCounters::default();
+
+        tilemap.resolve_dynamic_collisions_with_counters(&mut world, &mut counters);
+
+        assert_eq!(counters.tile_candidate_checks, 2);
+        assert_eq!(counters.kinematic_tile_hits, 1);
     }
 
     #[test]
@@ -856,6 +1316,27 @@ mod tests {
         assert_eq!(hit.contact.normal_x, 1.0);
         assert_eq!(hit.contact.normal_y, 0.0);
         assert!(stats.candidate_tiles > 0);
+    }
+
+    #[test]
+    fn swept_aabb_contact_checks_merged_rect_once() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(0, 2, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 1]);
+        let mut stats = TilemapSweepStats::default();
+
+        let hit = tilemap
+            .swept_aabb_contact(
+                Transform2D { x: -5.0, y: 5.0 },
+                test_collider(2.0, 2.0),
+                Velocity { vx: 30.0, vy: 0.0 },
+                &mut stats,
+            )
+            .unwrap();
+
+        assert_eq!(hit.layer_index, 0);
+        assert_eq!(hit.tile_index, 0);
+        assert_eq!(stats.candidate_tiles, 1);
+        assert!((hit.contact.time - 0.1).abs() < 0.01);
     }
 
     #[test]

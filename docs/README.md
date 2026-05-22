@@ -14,7 +14,7 @@
 | [제품화 개발 순서](product-roadmap.md) | MVP 개발 완료, 상용제품 기능 개발 단계의 Product Alpha/Beta/1.0 후보 작업 순서를 정리한다. |
 | [2D 물리엔진 기능 맵](physics-engine.md) | 일반적인 2D 물리엔진 기능 전체와 Ferrum2D 단계별 후보를 정리한다. |
 | [Physics v2 범위](physics-v2.md) | 상용제품 기능 개발 단계에서 완료된 물리 기능의 포함/제외 범위, 실행 예제, 검증 기준이다. |
-| [Physics v3 기반](physics-v3.md) | 범용 collision filter, query, world/tilemap kinematic movement, opt-in fixed timestep, physics counters/API, collision event lifecycle의 포함/제외 범위를 정리한다. |
+| [Physics v3 기반](physics-v3.md) | 범용 collision filter, query, world/tilemap kinematic movement, opt-in fixed timestep, physics counters/API, collision event payload, debug line buffer lifecycle의 포함/제외 범위를 정리한다. |
 | [완료된 MVP 기준](mvp.md) | 완료된 MVP 포함/제외 범위와 회귀 검증 기준을 정리하는 baseline 문서다. |
 | [Smoke Check](smoke-check.md) | 자동 검증, CI 검증, 브라우저 수동 검증의 관계를 설명한다. |
 | [Top-down Shooter 수동 체크리스트](topdown-shooter-smoke-checklist.md) | 브라우저에서 실제 예제를 점검할 때 쓰는 상세 체크리스트다. |
@@ -31,6 +31,7 @@
 | --- | --- |
 | package entrypoint export | `packages/ferrum-web/src/index.ts` |
 | renderer/debug stats 필드 | `packages/ferrum-web/src/renderer.ts`, `packages/ferrum-web/src/debugOverlay.ts` |
+| Asset pipeline helper | `packages/ferrum-web/src/assetPipeline.ts` |
 | Game Spec 타입과 기본값 | `packages/ferrum-web/src/gameSpec.ts` |
 | Game Spec 구조 보조 JSON Schema | `schemas/shooter-game-spec.schema.json` |
 | 실제 Top-down Shooter 설정 | `examples/topdown-shooter/public/game.json` |

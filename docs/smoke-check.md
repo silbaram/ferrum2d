@@ -26,6 +26,18 @@ WebGL2 실제 화면의 black-frame 회귀만 자동 확인하려면 별도 brow
 pnpm smoke:browser
 ```
 
+Breakout 예제의 두 번째 장르 runtime 경로만 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:breakout
+```
+
+Platformer 예제의 controller/runtime 경로만 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:platformer
+```
+
 ## Headless smoke check
 
 브라우저를 열지 않고 Top-down Shooter 설정과 platform 적용 경로만 확인하려면 다음을 실행한다.
@@ -45,7 +57,7 @@ pnpm smoke:headless
 
 ## Browser render smoke check
 
-`pnpm smoke:browser`는 `examples/minimal-game` production build를 정적 서버로 띄운 뒤 Playwright Core로 설치된 Chrome/Chromium을 실행한다. 검증 범위는 다음과 같다.
+`pnpm smoke:browser`는 `examples/minimal-game` production build를, `pnpm smoke:breakout`은 `examples/breakout` production build를, `pnpm smoke:platformer`는 `examples/platformer` production build를 정적 서버로 띄운 뒤 Playwright Core로 설치된 Chrome/Chromium을 실행한다. 검증 범위는 다음과 같다.
 
 - `createFerrumRuntime(...)`이 browser runtime을 초기화한다.
 - WebGL2 canvas가 생성되고 Rust/Wasm render command를 소비한다.

@@ -6,11 +6,14 @@ import { GameLoop } from "./gameLoop";
 import type { InputSnapshot } from "./inputManager";
 import { EMPTY_AUDIO_EVENTS } from "./wasmBridge";
 import { EMPTY_COLLISION_EVENTS } from "./collisionEventDecoder";
+import { EMPTY_PHYSICS_DEBUG_LINES } from "./physicsDebugLineDecoder";
 import type {
   AudioEventBufferView,
   AudioEventView,
   CollisionEventBufferView,
   CollisionEventView,
+  PhysicsDebugLineBufferView,
+  PhysicsDebugLineView,
   RenderCommandBufferView,
   RenderCommandView,
 } from "./wasmBridge";
@@ -59,6 +62,8 @@ export interface FrameState {
   physics: PhysicsFrameStats;
   collisionEventBuffer: CollisionEventBufferView;
   collisionEvents: readonly CollisionEventView[];
+  physicsDebugLineBuffer: PhysicsDebugLineBufferView;
+  physicsDebugLines: readonly PhysicsDebugLineView[];
   /** @deprecated 호환성 유지용. hot path에서는 renderCommandBuffer를 사용하세요. */
   renderCommands: RenderCommandView[];
   renderCommandBuffer: RenderCommandBufferView;
@@ -117,6 +122,10 @@ export interface CreateEngineOptions {
   includeAudioEvents?: boolean;
   /** FrameState에 decoded collision event object 배열을 포함할지 여부입니다. 기본값은 false입니다. */
   includeCollisionEvents?: boolean;
+  /** Rust core에서 broadphase/contact physics debug line buffer를 만들지 여부입니다. 기본값은 false입니다. */
+  enablePhysicsDebugLines?: boolean;
+  /** FrameState에 decoded physics debug line object 배열을 포함할지 여부입니다. 기본값은 false입니다. */
+  includePhysicsDebugLines?: boolean;
   /** Optional fixed timestep simulation mode. 기본값은 disabled variable-delta update입니다. */
   fixedTimestep?: boolean | FixedTimestepOptions;
   /** Platform lifecycle callbacks. These receive snapshots only and must not own simulation state. */
@@ -130,9 +139,12 @@ export interface FerrumEngine {
   soundId(name: string): number;
   setTextureIds(textureIds: ShooterTextureIds): void;
   setSoundIds(soundIds: ShooterSoundIds): void;
+  useBreakoutGame(): void;
+  usePlatformerGame(): void;
   setViewportSize(width: number, height: number): void;
   setGameSpec(spec: ShooterGameSpec): ResolvedShooterGameSpec;
   configureFixedTimestep(options: boolean | FixedTimestepOptions): void;
+  setPhysicsDebugLinesEnabled(enabled: boolean): void;
   cameraX(): number;
   cameraY(): number;
 }
@@ -172,6 +184,7 @@ export async function createEngine(
   const bridge = await WasmBridge.init();
   const rustEngine: Engine = bridge.engine();
   applyFixedTimestepOptions(rustEngine, options.fixedTimestep);
+  applyPhysicsDebugLineOptions(rustEngine, options);
   const framePipeline: FramePipelineContext = {
     bridge,
     rustEngine,
@@ -250,9 +263,24 @@ export async function createEngine(
     return resolved;
   };
 
+  const useBreakoutGame = (): void => {
+    requireAlive();
+    rustEngine.use_breakout_scene();
+  };
+
+  const usePlatformerGame = (): void => {
+    requireAlive();
+    rustEngine.use_platformer_scene();
+  };
+
   const configureFixedTimestep = (fixedTimestep: boolean | FixedTimestepOptions): void => {
     requireAlive();
     applyFixedTimestepOptions(rustEngine, fixedTimestep);
+  };
+
+  const setPhysicsDebugLinesEnabled = (enabled: boolean): void => {
+    requireAlive();
+    rustEngine.set_physics_debug_lines_enabled(enabled);
   };
 
   return {
@@ -320,8 +348,11 @@ export async function createEngine(
     },
     setTextureIds,
     setSoundIds,
+    useBreakoutGame,
+    usePlatformerGame,
     setGameSpec,
     configureFixedTimestep,
+    setPhysicsDebugLinesEnabled,
     setViewportSize: (width, height) => {
       requireAlive();
       rustEngine.set_viewport_size(width, height);
@@ -338,6 +369,7 @@ function runFrame(context: FramePipelineContext, deltaSeconds: number): void {
   const audioEvents = drainAudioEvents(context.bridge, context.rustEngine, context.assetHost, context.options.includeAudioEvents ?? true);
   const renderCommandBuffer = context.bridge.readRenderCommandBuffer();
   const collisionEventBuffer = context.bridge.readCollisionEventBuffer();
+  const physicsDebugLineBuffer = context.bridge.readPhysicsDebugLineBuffer();
   context.onFrame?.(buildFrameState(
     context.bridge,
     context.rustEngine,
@@ -347,6 +379,7 @@ function runFrame(context: FramePipelineContext, deltaSeconds: number): void {
     audioEvents,
     renderCommandBuffer,
     collisionEventBuffer,
+    physicsDebugLineBuffer,
     context.options,
   ));
 }
@@ -422,6 +455,7 @@ function buildFrameState(
   audioEvents: AudioDrainResult,
   renderCommandBuffer: RenderCommandBufferView,
   collisionEventBuffer: CollisionEventBufferView,
+  physicsDebugLineBuffer: PhysicsDebugLineBufferView,
   options: CreateEngineOptions,
 ): FrameState {
   const physics = buildPhysicsFrameStats(rustEngine);
@@ -444,6 +478,10 @@ function buildFrameState(
     collisionEvents: options.includeCollisionEvents
       ? bridge.decodeCollisionEvents(collisionEventBuffer)
       : EMPTY_COLLISION_EVENTS,
+    physicsDebugLineBuffer,
+    physicsDebugLines: options.includePhysicsDebugLines
+      ? bridge.decodePhysicsDebugLines(physicsDebugLineBuffer)
+      : EMPTY_PHYSICS_DEBUG_LINES,
     renderCommandBuffer,
     renderCommands: options.includeDeprecatedRenderCommands ? bridge.readRenderCommands() : EMPTY_RENDER_COMMANDS,
   };
@@ -473,6 +511,15 @@ function buildPhysicsFrameStats(rustEngine: Engine): PhysicsFrameStats {
     collisionEventCount:
       collisionEnterEvents + collisionStayEvents + collisionExitEvents + collisionHitEvents,
   };
+}
+
+function applyPhysicsDebugLineOptions(
+  rustEngine: Engine,
+  options: CreateEngineOptions,
+): void {
+  rustEngine.set_physics_debug_lines_enabled(
+    options.enablePhysicsDebugLines === true || options.includePhysicsDebugLines === true,
+  );
 }
 
 function applyFixedTimestepOptions(

@@ -13,12 +13,12 @@
 
 ## Product Beta
 
-| 순서 | 작업 | 목적 |
-| --- | --- | --- |
-| 1 | 두 번째 장르 예제 | 엔진이 shooter 전용이 아님을 검증 |
-| 2 | Input 확장 | touch, gamepad, pointer gesture 기반 게임 제작 지원 |
-| 3 | Text/UI rendering | HUD, menu, score, dialog를 엔진 기능으로 처리 |
-| 4 | Asset pipeline v2 | Tiled/LDtk 또는 Aseprite metadata import 검토 |
+| 순서 | 작업 | 목적 | 상태 |
+| --- | --- | --- | --- |
+| 1 | 두 번째 장르 예제 | 엔진이 shooter 전용이 아님을 검증 | 완료: `examples/breakout` |
+| 2 | Input 확장 | touch, gamepad, pointer gesture 기반 게임 제작 지원 | 완료: `InputManagerOptions`, pointer/touch/gamepad snapshot 합성 |
+| 3 | Text/UI rendering | HUD, menu, score, dialog를 엔진 기능으로 처리 | 완료: `UiOverlay`, runtime `uiState` |
+| 4 | Asset pipeline v2 | Aseprite/Tiled/LDtk metadata import로 새 사용자 authoring 흐름 지원 | 완료: Aseprite metadata import, Tiled tilemap import v1, LDtk tilemap import v1 |
 
 ## Product 1.0 후보
 
@@ -26,8 +26,9 @@
 | --- | --- | --- |
 | 1 | Particles/Tweens | hit effect, transition, UI animation polish |
 | 2 | Audio v2 | BGM, mixer bus, fade, random pitch pool |
-| 3 | Physics query v3 | 완료된 query/kinematic/counter/API/event 기반 위에 circle collider, shape query, damage payload 확장 |
+| 3 | Physics query v3/v4/v5 기반 | query/kinematic/counter/API/event payload/circle/tile-merge/shape-query/shape-cast/contact-broadphase debug line buffer/rendering bridge, nearest body/tilemap obstacle query, platformer ground probe, entity one-way platform, moving platform carry, kinematic platformer controller, coyote time, jump buffering, step offset, `examples/platformer` 완료 |
 | 4 | Release automation | changelog, package publish dry-run, docs/demo deploy |
+| 5 | Asset pipeline v2 확장 | atlas animation binding과 asset pipeline 제한 해소 검토 |
 
 ## 당장 미루는 것
 
