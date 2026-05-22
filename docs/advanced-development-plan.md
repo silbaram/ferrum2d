@@ -354,8 +354,9 @@ v0.4 이후는 콘텐츠 제작 기반 위에 런타임 기능을 보강한다. 
 23. `physics-v5-platformer-example`: `FerrumEngine.usePlatformerGame()`과 `examples/platformer` runtime 예제 (완료)
 24. `physics-v5-platformer-jump-assist`: `PlatformerControllerState` 기반 coyote time과 jump buffering, `examples/platformer` 적용 (완료)
 25. `physics-v5-platformer-step-offset`: grounded 수평 충돌 시 step-up/snap-down을 시도하는 `with_step_offset(...)` controller 옵션 (완료)
+26. `physics-v5-slope-handling-design`: slope handling 구현 전 범위와 완료 기준 문서화 (완료)
 
-다음 후보는 Wasm/TypeScript 저수준 physics API 노출, slope handling 설계, atlas animation binding, LDtk external level/raw IntGrid collision 지원 여부 검토, docs site 또는 GitHub Pages 데모 배포다. 각 작업을 시작하기 전에 별도 목표와 완료 기준을 먼저 작성하고, 범위를 넘는 기능은 다음 작업으로 분리한다.
+다음 후보는 Wasm/TypeScript 저수준 physics API 노출, slope primitive prototype, atlas animation binding, LDtk external level/raw IntGrid collision 지원 여부 검토, docs site 또는 GitHub Pages 데모 배포다. 각 작업을 시작하기 전에 별도 목표와 완료 기준을 먼저 작성하고, 범위를 넘는 기능은 다음 작업으로 분리한다.
 
 ## 공통 검증 명령
 

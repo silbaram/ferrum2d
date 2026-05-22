@@ -159,6 +159,7 @@ v0.3에서 하지 않을 것:
 - Physics v4 nearest query (완료: `CollisionSystem::nearest_body_query`, `Tilemap::nearest_collision_obstacle`, point 기반으로 가장 가까운 AABB/circle collider 또는 tilemap obstacle surface를 조회)
 - Physics v5 Platformer jump assist (완료: `PlatformerControllerState`, coyote time, jump buffering, `PlatformerScene` 적용)
 - Physics v5 Platformer step offset (완료: `PlatformerControllerConfig.with_step_offset(...)`, grounded 수평 충돌 step-up/snap-down)
+- Physics v5 slope handling 설계 (완료: [Physics v5 Slope Handling Plan](physics-v5-slope-handling-plan.md))
 
 다음 후보:
 
@@ -170,7 +171,7 @@ v0.3에서 하지 않을 것:
 - docs site 또는 GitHub Pages 데모 배포 검토
 - package publish 여부와 release tagging 절차 정리 (완료: [npm 베타 패키징](npm-release.md))
 - Physics v3 기반 정리 (완료: collision mask bitset, AABB/circle contact, point/AABB/circle/shape/raycast/shape-cast query, contact/broadphase debug line primitive와 Wasm/TypeScript buffer/rendering bridge, world/tilemap kinematic move-and-slide, tile collision candidate/merge path, opt-in fixed timestep runtime, physics counters/API, collision event lifecycle, damage payload)
-- Physics v5 platformer collision 후보 검토 (ground detection 완료: `PhysicsSystem::ground_probe`, `ground_probe_with_tilemap`; entity one-way platform 완료: `OneWayPlatformConfig`, `move_and_slide_with_one_way_platforms`; moving platform carry 완료: `MovingPlatformCarryConfig`, `carry_moving_platform`; kinematic platformer controller 완료: `PlatformerControllerConfig`, `move_platformer_controller`; jump assist 완료: `PlatformerControllerState`, coyote time, jump buffering; step offset 완료: `with_step_offset`; runtime example 완료: `FerrumEngine.usePlatformerGame`, `examples/platformer`; 다음 후보: Wasm/TypeScript 저수준 physics API 노출 또는 slope handling 설계)
+- Physics v5 platformer collision 후보 검토 (ground detection 완료: `PhysicsSystem::ground_probe`, `ground_probe_with_tilemap`; entity one-way platform 완료: `OneWayPlatformConfig`, `move_and_slide_with_one_way_platforms`; moving platform carry 완료: `MovingPlatformCarryConfig`, `carry_moving_platform`; kinematic platformer controller 완료: `PlatformerControllerConfig`, `move_platformer_controller`; jump assist 완료: `PlatformerControllerState`, coyote time, jump buffering; step offset 완료: `with_step_offset`; slope handling 설계 완료: [Physics v5 Slope Handling Plan](physics-v5-slope-handling-plan.md); runtime example 완료: `FerrumEngine.usePlatformerGame`, `examples/platformer`; 다음 후보: Wasm/TypeScript 저수준 physics API 노출 또는 slope primitive prototype)
 
 ## 장기 후보
 
