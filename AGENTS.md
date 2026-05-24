@@ -20,6 +20,8 @@ Ferrum2D는 Rust + WebAssembly 기반의 2D 웹 게임 엔진이다.
 
 - `crates/ferrum-core`
 - `packages/ferrum-web`
+- `packages/create-game`
+- `packages/agents`
 - `examples/topdown-shooter`
 - `docs`
 - `scripts`
@@ -38,8 +40,11 @@ AI 에이전트/스킬 설정은 다음 경로를 기준으로 분리한다.
 - Gemini skill wrappers: `.gemini/skills/*/SKILL.md`
 - Claude 진입 지침: `CLAUDE.md`
 - Gemini 진입 지침: `GEMINI.md`
+- 배포용 consumer agent/skill 템플릿: `packages/agents/templates/**`
 
 Claude/Gemini skill wrapper는 workflow를 중복 작성하지 않고 `.agents/skills/*/SKILL.md`를 source of truth로 참조한다. 배포, publish, Git tag, GitHub Release, npm deprecation, 원격 Pages 배포처럼 외부 상태를 바꾸는 작업은 도구와 무관하게 명시적 사용자 승인 전 실행하지 않는다.
+
+`packages/agents/templates/**` 하위의 `consumer-*` agent와 `ferrum-consumer-*` skill은 Ferrum2D 엔진을 사용하는 게임 프로젝트에 설치하기 위한 배포 템플릿이다. Ferrum2D 엔진 자체 개발, release, package QA, Pages 배포 작업에는 이 consumer agent/skill을 사용하지 않는다.
 
 현재 agent 역할은 다음 책임으로 구분한다.
 

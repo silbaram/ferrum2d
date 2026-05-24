@@ -15,7 +15,7 @@
 | --- | --- | --- |
 | `development/architecture/` | Rust core, Wasm boundary, Web platform layer, physics 구현 기준 | [아키텍처](development/architecture/architecture.md), [2D 물리엔진 기능 맵](development/architecture/physics-engine.md) |
 | `development/quality/` | 테스트, smoke check, 리뷰 기준, 스크린샷 갱신 | [Smoke Check](development/quality/smoke-check.md), [Top-down Shooter 수동 체크리스트](development/quality/topdown-shooter-smoke-checklist.md), [코드 리뷰 기준](development/quality/code-review.md), [스크린샷 README](development/quality/screenshots/README.md) |
-| `development/operations/` | 배포, 패키징, 릴리스 운영 절차 | [GitHub Pages 데모/문서 배포](development/operations/demo-deploy.md), [npm 베타 패키징](development/operations/npm-release.md), [릴리스 노트 템플릿](development/operations/release-notes-template.md) |
+| `development/operations/` | 배포, 패키징, 릴리스 운영 절차 | [GitHub Pages 데모/문서 배포](development/operations/demo-deploy.md), [npm 패키지 구성 전략](development/operations/npm-package-strategy.md), [npm 베타 패키징](development/operations/npm-release.md), [릴리스 노트 템플릿](development/operations/release-notes-template.md) |
 
 ## 읽는 순서
 
@@ -35,7 +35,8 @@
 | Game Spec 구조 보조 JSON Schema | `schemas/shooter-game-spec.schema.json` |
 | 실제 Top-down Shooter 설정 | `examples/topdown-shooter/public/game.json` |
 | Rust/Wasm ABI | `crates/ferrum-core/src/render_command.rs`, `crates/ferrum-core/src/audio_event.rs`, `packages/ferrum-web/src/wasmBridge.ts` |
-| package/release artifact 검증 | `scripts/check-package-files.mjs`, `scripts/check-release-readiness.mjs`, `packages/ferrum-web/package.json`, `CHANGELOG.md`, `.github/release.yml` |
+| npm package 역할 분리 | `packages/ferrum-web/package.json`, `packages/create-game/package.json`, `packages/agents/package.json`, `docs/development/operations/npm-package-strategy.md` |
+| package/release artifact 검증 | `scripts/check-package-files.mjs`, `scripts/check-create-game-package.mjs`, `scripts/check-agents-package.mjs`, `scripts/check-release-readiness.mjs`, `packages/*/package.json`, `CHANGELOG.md`, `.github/release.yml` |
 | 검증/배포/문서 사이트 스크립트 | 루트 `package.json`, `scripts/build-pages.mjs`, `.github/workflows/ci.yml`, `.github/workflows/pages.yml` |
 
 `schemas/shooter-game-spec.schema.json`은 편집기 자동완성과 구조 검토를 돕는 보조 기준이다. 런타임과 CLI에서 실제로 적용되는 기본값, preset 해석, 교차 필드 검증의 최종 기준은 `packages/ferrum-web/src/gameSpec.ts`의 `resolveShooterGameSpec(...)`이다.
@@ -45,5 +46,5 @@
 - Top-down Shooter 예제 설정의 필드별 상세 설명은 [Top-down Shooter Game Spec](engine/topdown-shooter-game-spec.md)에 둔다. 다른 문서는 예시와 링크만 유지한다.
 - 자동/CI 검증 정책은 [Smoke Check](development/quality/smoke-check.md)에 둔다. 브라우저 수동 점검 항목은 [Top-down Shooter 수동 체크리스트](development/quality/topdown-shooter-smoke-checklist.md)에 둔다.
 - public import 계약은 [Public API](engine/public-api.md)에 둔다. 아키텍처 문서는 책임 경계와 데이터 흐름만 설명한다.
-- npm beta package와 release tag 검증 절차는 [npm 베타 패키징](development/operations/npm-release.md)에 둔다. GitHub Release 본문 구조는 [릴리스 노트 템플릿](development/operations/release-notes-template.md)에 둔다. 다른 문서는 `pnpm package:check`, `pnpm release:check`와 링크만 유지한다.
+- npm package 역할 분리는 [npm 패키지 구성 전략](development/operations/npm-package-strategy.md)에 둔다. `@ferrum2d/ferrum-web` beta package와 release tag 검증 절차는 [npm 베타 패키징](development/operations/npm-release.md)에 둔다. GitHub Release 본문 구조는 [릴리스 노트 템플릿](development/operations/release-notes-template.md)에 둔다. 다른 문서는 `pnpm package:check`, `pnpm release:check`와 링크만 유지한다.
 - 완료 상태와 현재 기준은 [아키텍처](development/architecture/architecture.md), [Smoke Check](development/quality/smoke-check.md), 기능별 기준 문서 중 하나에만 상세하게 기록하고, 다른 문서는 링크로 연결한다.

@@ -1,0 +1,18 @@
+{
+  "name": "__PROJECT_NAME__",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --base=./",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@ferrum2d/ferrum-web": "__FERRUM_WEB_VERSION__"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^5.4.19"
+  }
+}

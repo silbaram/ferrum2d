@@ -1,0 +1,29 @@
+{
+  "name": "@ferrum2d/create-game",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ferrum2D game project scaffolding CLI",
+  "license": "MIT OR Apache-2.0",
+  "type": "module",
+  "bin": {
+    "create-ferrum2d-game": "./bin/create-game.mjs"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "beta"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "bin",
+    "templates"
+  ],
+  "scripts": {
+    "build": "node --check bin/create-game.mjs",
+    "lint": "node --check bin/create-game.mjs",
+    "test": "node --check bin/create-game.mjs"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}

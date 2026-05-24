@@ -115,7 +115,7 @@ GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `fer
 - `pnpm validate:game-spec`로 예제 `game.json`이 runtime validator와 같은 경로를 통과하는지 확인한다.
 - `pnpm smoke:headless`로 Game Spec 적용 경로, collision/navigation 전제, representative render command buffer를 확인한다.
 - `pnpm smoke:topdown`으로 Top-down Shooter production build에서 particle burst와 non-lethal enemy tint flash가 browser render path에 도달하는지 확인한다.
-- `pnpm package:check`로 package entrypoint, files allowlist, generated Wasm artifact, 실제 `pnpm pack` tarball 구성을 확인한다.
+- `pnpm package:check`로 runtime package entrypoint, create-game scaffold, agents template, files allowlist, generated Wasm artifact, 실제 `pnpm pack` tarball 구성을 확인한다.
 - `pnpm release:check`로 changelog, beta version, release tag metadata 구조를 확인한다.
 - `pnpm build`로 Wasm package와 Top-down Shooter production build를 확인한다.
 - `pnpm build:pages`로 GitHub Pages demo/docs artifact 구성과 문서 HTML 생성을 확인한다.

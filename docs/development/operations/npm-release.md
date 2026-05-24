@@ -1,6 +1,6 @@
 # npm 베타 패키징 절차
 
-이 문서는 `@ferrum2d/ferrum-web`를 npm 베타 패키지로 공개하기 전 확인해야 하는 기준을 고정한다. 현재 저장소는 accidental publish를 막기 위해 `packages/ferrum-web/package.json`의 `private: true`를 유지한다.
+이 문서는 `@ferrum2d/ferrum-web`를 npm 베타 패키지로 공개하기 전 확인해야 하는 기준을 고정한다. 현재 저장소는 accidental publish를 막기 위해 `packages/ferrum-web/package.json`의 `private: true`를 유지한다. npm package 역할 분리는 [npm 패키지 구성 전략](npm-package-strategy.md)을 따른다.
 
 ## 목표
 
@@ -11,6 +11,8 @@
 - 실제 `npm publish`는 별도 승인과 npm 권한 확인 이후에만 수행한다.
 
 ## 패키지 구성 기준
+
+`@ferrum2d/ferrum-web`는 런타임 엔진 package다. `@ferrum2d/create-game` 프로젝트 생성 CLI와 `@ferrum2d/agents` AI agent/skill 설치 CLI는 별도 package로 관리하며, `@ferrum2d/ferrum-web` artifact에 포함하지 않는다.
 
 `@ferrum2d/ferrum-web` package artifact에는 다음 파일만 포함한다.
 
@@ -61,7 +63,7 @@ pnpm lint
 pnpm test
 pnpm validate:game-spec
 pnpm smoke:headless
-pnpm package:check
+pnpm package:check:ferrum-web
 pnpm build:web
 ```
 
@@ -101,7 +103,7 @@ pnpm release:publish-check
 
 ## 로컬 pack 확인
 
-`pnpm package:check`는 내부적으로 `pnpm pack`을 실행해 tarball contents를 검증한다. 사람이 직접 tarball을 남겨 확인해야 할 때만 다음을 실행한다.
+`pnpm package:check:ferrum-web`는 내부적으로 `pnpm pack`을 실행해 tarball contents를 검증한다. 전체 package 역할 분리까지 함께 확인하려면 `pnpm package:check`를 실행한다. 사람이 직접 tarball을 남겨 확인해야 할 때만 다음을 실행한다.
 
 ```bash
 pnpm build:wasm
@@ -136,7 +138,7 @@ import { createFerrumRuntime } from "@ferrum2d/ferrum-web";
 pnpm release:publish-check
 ```
 
-이 명령은 changelog release section, Git tag 규칙, `private: false`, `0.1.0-beta.N` 형식 version, `beta` dist-tag 설정, 실제 pack artifact를 함께 확인한다.
+이 명령은 `@ferrum2d/ferrum-web` 기준 changelog release section, Git tag 규칙, `private: false`, `0.1.0-beta.N` 형식 version, `beta` dist-tag 설정, 실제 pack artifact를 함께 확인한다. `@ferrum2d/create-game`, `@ferrum2d/agents` publish 후보는 각각 `pnpm package:publish-check:create-game`, `pnpm package:publish-check:agents`로 별도 확인한다.
 
 이후 절차:
 
