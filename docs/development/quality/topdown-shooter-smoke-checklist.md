@@ -19,6 +19,7 @@ pnpm install
 
 ```bash
 pnpm smoke:check
+pnpm smoke:topdown
 ```
 
 3. Wasm 빌드
@@ -48,6 +49,7 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 
 - [ ] `Enter` 또는 `Space`로 Title → Playing 전환이 된다.
 - [ ] `W/A/S/D`로 플레이어 이동이 된다.
+- [ ] 이동 중 플레이어가 `game.json`의 `prefabs.player.animation.atlas` frame sequence에 따라 애니메이션된다.
 - [ ] camera 좌표가 `look-ahead` preset에 따라 이동 방향 앞쪽으로 변한다.
 - [ ] 마우스 위치를 기준으로 발사 방향이 바뀐다.
 
@@ -56,6 +58,8 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 - [ ] 마우스 좌클릭 또는 `Space` 시 총알이 발사된다.
 - [ ] `game.json`의 `atlas.frames["bullet.default"]` 설정이 적용되어 bullet이 atlas frame size/UV로 렌더링된다.
 - [ ] 적이 `game.json`의 wave 설정에 따라 runner/bruiser/orbiter 순서로 spawn되고 각 behavior에 맞게 이동한다.
+- [ ] 총알-적 충돌 시 particle hit burst가 보인다.
+- [ ] 체력이 남는 적은 짧게 밝아졌다가 원래 tint로 돌아온다.
 - [ ] 총알-적 충돌 시 적이 제거되고 score가 증가한다.
 
 ### D. 게임오버/재시작
@@ -83,9 +87,9 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 
 ## 캡처/증적 저장
 
-- Title + DebugOverlay 화면을 `docs/screenshots/topdown-shooter-title.png`로 갱신한다.
+- Title + DebugOverlay 화면을 `docs/development/quality/screenshots/topdown-shooter-title.png`로 갱신한다.
 - 필요 시 `topdown-shooter-gameover.png`, `topdown-shooter-score.png`를 추가한다.
-- 캡처 규칙은 `docs/screenshots/README.md`를 따른다.
+- 캡처 규칙은 `docs/development/quality/screenshots/README.md`를 따른다.
 
 ## 실패 기록 템플릿
 

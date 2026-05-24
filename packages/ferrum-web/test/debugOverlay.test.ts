@@ -74,6 +74,7 @@ test("DebugOverlay metric contract fixes row order, labels, and units", () => {
     { id: "physicsFixedSteps", label: "fixed steps", unit: "count", optional: true },
     { id: "physicsKinematicHits", label: "kinematic hits", unit: "count", optional: true },
     { id: "physicsTileCandidateChecks", label: "tile checks", unit: "count", optional: true },
+    { id: "collisionPairCount", label: "collision pairs", unit: "count", optional: true },
     { id: "collisionEventCount", label: "collision events", unit: "count", optional: true },
     { id: "physicsDebugLineCount", label: "physics debug lines", unit: "count", optional: true },
     { id: "mousePosition", label: "mouse", unit: "px", optional: false },
@@ -92,6 +93,7 @@ test("formatDebugOverlayMetrics applies fixed labels, units, and precision", () 
     physicsFixedSteps: 2,
     physicsKinematicHits: 1,
     physicsTileCandidateChecks: 8,
+    collisionPairCount: 2,
     collisionEventCount: 3,
     physicsDebugLineCount: 2,
   })), [
@@ -110,6 +112,7 @@ test("formatDebugOverlayMetrics applies fixed labels, units, and precision", () 
     "fixed steps: 2",
     "kinematic hits: 1",
     "tile checks: 8",
+    "collision pairs: 2",
     "collision events: 3",
     "physics debug lines: 2",
     "mouse: 10.0, 20.0 px",

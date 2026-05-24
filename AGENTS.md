@@ -144,8 +144,8 @@ Wasm 브리지 변경 후 추가:
 
 아키텍처 또는 public API가 바뀌면 반드시 동기화한다:
 
-- `docs/architecture.md`
-- `docs/mvp.md` (완료된 MVP 기준 변경 시)
+- `docs/development/architecture/architecture.md`
+- `docs/development/quality/smoke-check.md` (회귀 검증 기준 변경 시)
 - `README.md` (설치/사용/구조 변경 시)
 
 문서 작성 원칙:

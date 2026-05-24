@@ -84,6 +84,7 @@ function createShell(): {
   scoreValue: HTMLElement;
   entityValue: HTMLElement;
   commandValue: HTMLElement;
+  particleValue: HTMLElement;
   hitValue: HTMLElement;
   fpsValue: HTMLElement;
   setEngine(engine: FerrumEngine): void;
@@ -109,6 +110,7 @@ function createShell(): {
   const scoreValue = document.createElement("dd");
   const entityValue = document.createElement("dd");
   const commandValue = document.createElement("dd");
+  const particleValue = document.createElement("dd");
   const hitValue = document.createElement("dd");
   const fpsValue = document.createElement("dd");
 
@@ -143,6 +145,7 @@ function createShell(): {
   appendMetric(metrics, "score", scoreValue);
   appendMetric(metrics, "entities", entityValue);
   appendMetric(metrics, "commands", commandValue);
+  appendMetric(metrics, "particles", particleValue);
   appendMetric(metrics, "hits", hitValue);
   appendMetric(metrics, "fps", fpsValue);
 
@@ -158,6 +161,7 @@ function createShell(): {
     scoreValue,
     entityValue,
     commandValue,
+    particleValue,
     hitValue,
     fpsValue,
     setEngine(nextEngine) {
@@ -195,6 +199,7 @@ async function bootstrap(): Promise<void> {
       : "development";
     const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
     const physicsDebugLines = searchParams.get("physicsDebugLines") === "true";
+    let runtimeEngine: FerrumEngine | undefined;
     const runtime = await createFerrumRuntime({
       canvas: shell.canvas,
       debugParent: shell.debugRoot,
@@ -209,12 +214,14 @@ async function bootstrap(): Promise<void> {
         shell.scoreValue.textContent = String(frame.score);
         shell.entityValue.textContent = String(frame.entityCount);
         shell.commandValue.textContent = String(rendererStats.renderCommandCount);
+        shell.particleValue.textContent = String(runtimeEngine?.particleCount() ?? 0);
         shell.hitValue.textContent = String(frame.physics.collisionHitEvents);
         shell.fpsValue.textContent = fps.toFixed(1);
       },
     });
 
     runtime.engine.useBreakoutGame();
+    runtimeEngine = runtime.engine;
     shell.setEngine(runtime.engine);
     cleanups.push(() => runtime.destroy());
 

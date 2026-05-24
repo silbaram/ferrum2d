@@ -15,10 +15,13 @@
     "test:rust": "cargo test --manifest-path crates/ferrum-core/Cargo.toml",
     "test:web": "pnpm --filter @ferrum2d/ferrum-web test",
     "validate:game-spec": "pnpm --filter @ferrum2d/ferrum-web build && node scripts/validate-game-spec.mjs examples/topdown-shooter/public/game.json",
-    "smoke:headless": "pnpm --filter @ferrum2d/ferrum-web build && node scripts/headless-smoke.mjs examples/topdown-shooter/public/game.json",
+    "smoke:headless": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node scripts/headless-smoke.mjs examples/topdown-shooter/public/game.json",
     "smoke:browser": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/minimal-game build && node scripts/browser-render-smoke.mjs examples/minimal-game/dist",
+    "smoke:topdown": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/topdown-shooter build && node scripts/browser-render-smoke.mjs --mode=topdown-effects examples/topdown-shooter/dist",
     "smoke:breakout": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/breakout build && node scripts/browser-render-smoke.mjs examples/breakout/dist",
+    "smoke:breakout-effects": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/breakout build && node scripts/browser-render-smoke.mjs --mode=breakout-effects examples/breakout/dist",
     "smoke:platformer": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/platformer build && node scripts/browser-render-smoke.mjs examples/platformer/dist",
+    "smoke:platformer-effects": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/platformer build && node scripts/browser-render-smoke.mjs --mode=platformer-effects examples/platformer/dist",
     "package:check": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node scripts/check-package-files.mjs --require-wasm-pkg --verify-pack",
     "package:publish-check": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node scripts/check-package-files.mjs --require-wasm-pkg --verify-pack --expect-publishable",
     "create:game-variant": "pnpm --filter @ferrum2d/ferrum-web build && node scripts/create-game-variant.mjs",
@@ -26,7 +29,10 @@
     "smoke:check": "pnpm lint && pnpm test && pnpm validate:game-spec && pnpm smoke:headless && pnpm build",
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm test:web && pnpm test:rust",
-    "format": "pnpm -r --if-present format"
+    "format": "pnpm -r --if-present format",
+    "build:pages": "node scripts/build-pages.mjs",
+    "release:check": "node scripts/check-release-readiness.mjs",
+    "release:publish-check": "node scripts/check-release-readiness.mjs --expect-publishable && pnpm package:publish-check"
   },
   "devDependencies": {
     "playwright-core": "^1.60.0"

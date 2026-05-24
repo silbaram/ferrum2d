@@ -1,5 +1,12 @@
 import { assetPipelineDiagnosticError } from "./diagnostics.js";
-import type { ShooterAtlasFrameSpec, ShooterAtlasSpec, ShooterGameSpec, ShooterTilemapSpec } from "./gameSpec.js";
+import type {
+  ShooterAtlasFrameSpec,
+  ShooterAtlasSpec,
+  ShooterGameSpec,
+  ShooterTileSlopeSpec,
+  ShooterTileSpec,
+  ShooterTilemapSpec,
+} from "./gameSpec.js";
 
 export type AsepriteAtlasFrameSizeSource = "frame" | "source";
 
@@ -63,6 +70,7 @@ export interface LDtkTilemapImportOptions {
   levelIdentifier?: string;
   levelIid?: string;
   levelIndex?: number;
+  externalLevels?: Record<string, unknown>;
   texture?: string | number | ((context: LDtkTilesetFrameContext) => string | number);
   frameNamePrefix?: string;
   frameNameForTile?: (context: LDtkTilesetFrameContext) => string;
@@ -104,6 +112,8 @@ interface TiledTileset {
   imageHeight: number;
   columns: number;
   tileCount: number;
+  tileSlopes: Map<number, ShooterTileSlopeSpec>;
+  tileOneWayPlatforms: Set<number>;
   margin: number;
   spacing: number;
   path: string;
@@ -120,6 +130,8 @@ interface LDtkTileset {
   spacing: number;
   columns: number;
   relPath?: string;
+  tileSlopes: Map<number, ShooterTileSlopeSpec>;
+  tileOneWayPlatforms: Set<number>;
   path: string;
 }
 
@@ -138,6 +150,8 @@ interface LDtkTileRef {
   tileset: LDtkTileset;
   srcX: number;
   srcY: number;
+  slope?: ShooterTileSlopeSpec;
+  oneWayPlatform?: boolean;
   path: string;
 }
 
@@ -148,6 +162,7 @@ const TILED_ROOT_PATH = "assetPipeline.tiled";
 const LDTK_ROOT_PATH = "assetPipeline.ldtk";
 const TILED_GID_FLAG_MASK = 0xf0000000;
 const TILED_GID_MASK = 0x0fffffff;
+const LDTK_RAW_INT_GRID_SOLID_TILE_ID = 0xffffffff;
 
 export function importAsepriteAtlas(
   input: unknown,
@@ -223,7 +238,7 @@ export function importTiledTilemap(
   });
   const sortedGids = [...usedGids].sort((a, b) => a - b);
   const atlasFrames: Record<string, ShooterAtlasFrameSpec> = {};
-  const tiles: Record<string, { frame: string }> = {};
+  const tiles: Record<string, ShooterTileSpec> = {};
 
   for (const gid of sortedGids) {
     const tileset = tilesetForGid(tilesets, gid, `${TILED_ROOT_PATH}.tilesets`);
@@ -235,7 +250,19 @@ export function importTiledTilemap(
       tilesetName: tileset.name,
     };
     const frameName = tiledFrameName(context, options);
-    tiles[String(gid)] = { frame: frameName };
+    const slope = tileset.tileSlopes.get(localId);
+    const oneWayPlatform = tileset.tileOneWayPlatforms.has(localId);
+    if (slope && oneWayPlatform) {
+      throw assetPipelineDiagnosticError(
+        `${tileset.path}.tiles`,
+        `tile id ${localId} cannot define both slope and oneWayPlatform`,
+      );
+    }
+    tiles[String(gid)] = {
+      frame: frameName,
+      ...(slope ? { slope } : {}),
+      ...(oneWayPlatform ? { oneWayPlatform } : {}),
+    };
     atlasFrames[frameName] = tiledAtlasFrameSpec(tileset, context, options);
   }
 
@@ -309,7 +336,7 @@ export function importLDtkTilemap(
   }
 
   const atlasFrames: Record<string, ShooterAtlasFrameSpec> = {};
-  const tiles: Record<string, { frame: string }> = {};
+  const tiles: Record<string, ShooterTileSpec> = {};
   const usedFrameNames = new Set<string>();
   const tileRefs = [...importedTiles.values()].sort((a, b) => a.gameTileId - b.gameTileId);
 
@@ -320,7 +347,11 @@ export function importLDtkTilemap(
       throw assetPipelineDiagnosticError(tile.path, `duplicate imported frame name '${frameName}'`);
     }
     usedFrameNames.add(frameName);
-    tiles[String(tile.gameTileId)] = { frame: frameName };
+    tiles[String(tile.gameTileId)] = {
+      frame: frameName,
+      ...(tile.slope ? { slope: tile.slope } : {}),
+      ...(tile.oneWayPlatform ? { oneWayPlatform: true } : {}),
+    };
     atlasFrames[frameName] = ldtkAtlasFrameSpec(tile, context, options);
   }
 
@@ -453,6 +484,14 @@ function tiledTilesets(value: unknown, path: string): TiledTileset[] {
     const imageHeight = positiveNumber(record.imageheight, `${entryPath}.imageheight`);
     const columns = positiveInteger(record.columns, `${entryPath}.columns`);
     const tileCount = positiveInteger(record.tilecount, `${entryPath}.tilecount`);
+    const tileSlopes = tiledTileSlopes(record.tiles, {
+      path: `${entryPath}.tiles`,
+      tileCount,
+    });
+    const tileOneWayPlatforms = tiledTileOneWayPlatforms(record.tiles, {
+      path: `${entryPath}.tiles`,
+      tileCount,
+    });
     return {
       firstGid,
       name,
@@ -462,11 +501,66 @@ function tiledTilesets(value: unknown, path: string): TiledTileset[] {
       imageHeight,
       columns,
       tileCount,
+      tileSlopes,
+      tileOneWayPlatforms,
       margin: nonNegativeNumber(record.margin ?? 0, `${entryPath}.margin`),
       spacing: nonNegativeNumber(record.spacing ?? 0, `${entryPath}.spacing`),
       path: entryPath,
     };
   }).sort((a, b) => a.firstGid - b.firstGid);
+}
+
+function tiledTileSlopes(
+  value: unknown,
+  options: { path: string; tileCount: number },
+): Map<number, ShooterTileSlopeSpec> {
+  const slopes = new Map<number, ShooterTileSlopeSpec>();
+  if (value === undefined) {
+    return slopes;
+  }
+
+  for (const [index, entry] of arrayValue(value, options.path).entries()) {
+    const tilePath = `${options.path}.${index}`;
+    const tile = objectValue(entry, tilePath);
+    const slope = tiledTileSlope(tile.properties, `${tilePath}.properties`);
+    if (!slope) {
+      continue;
+    }
+    const id = nonNegativeInteger(tile.id, `${tilePath}.id`);
+    if (id >= options.tileCount) {
+      throw assetPipelineDiagnosticError(`${tilePath}.id`, "must reference a tile inside the tileset");
+    }
+    if (slopes.has(id)) {
+      throw assetPipelineDiagnosticError(`${tilePath}.id`, `duplicate slope metadata for tile id ${id}`);
+    }
+    slopes.set(id, slope);
+  }
+  return slopes;
+}
+
+function tiledTileOneWayPlatforms(value: unknown, options: { path: string; tileCount: number }): Set<number> {
+  const oneWayPlatforms = new Set<number>();
+  if (value === undefined) {
+    return oneWayPlatforms;
+  }
+
+  for (const [index, entry] of arrayValue(value, options.path).entries()) {
+    const tilePath = `${options.path}.${index}`;
+    const tile = objectValue(entry, tilePath);
+    const oneWayPlatform = tiledBooleanProperty(tile.properties, "oneWayPlatform", `${tilePath}.properties`);
+    if (oneWayPlatform !== true) {
+      continue;
+    }
+    const id = nonNegativeInteger(tile.id, `${tilePath}.id`);
+    if (id >= options.tileCount) {
+      throw assetPipelineDiagnosticError(`${tilePath}.id`, "must reference a tile inside the tileset");
+    }
+    if (oneWayPlatforms.has(id)) {
+      throw assetPipelineDiagnosticError(`${tilePath}.id`, `duplicate oneWayPlatform metadata for tile id ${id}`);
+    }
+    oneWayPlatforms.add(id);
+  }
+  return oneWayPlatforms;
 }
 
 function tiledLayers(
@@ -562,6 +656,36 @@ function tiledBooleanProperty(value: unknown, name: string, path: string): boole
       continue;
     }
     return optionalBoolean(property.value, `${propertyPath}.value`);
+  }
+  return undefined;
+}
+
+function tiledTileSlope(value: unknown, path: string): ShooterTileSlopeSpec | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return tileSlopeFromEndpointProperties(
+    tiledNumberProperty(value, "slopeX0", path),
+    tiledNumberProperty(value, "slopeY0", path),
+    tiledNumberProperty(value, "slopeX1", path),
+    tiledNumberProperty(value, "slopeY1", path),
+    path,
+  );
+}
+
+function tiledNumberProperty(
+  value: unknown,
+  name: string,
+  path: string,
+): { value: unknown; path: string } | undefined {
+  for (const [index, entry] of arrayValue(value, path).entries()) {
+    const propertyPath = `${path}.${index}`;
+    const property = objectValue(entry, propertyPath);
+    const propertyName = optionalString(property.name, `${propertyPath}.name`);
+    if (propertyName !== name) {
+      continue;
+    }
+    return { value: property.value, path: `${propertyPath}.value` };
   }
   return undefined;
 }
@@ -667,6 +791,8 @@ function ldtkTilesets(value: unknown, path: string): Map<number, LDtkTileset> {
       spacing,
       columns,
       relPath: optionalNullableString(record.relPath, `${entryPath}.relPath`),
+      tileSlopes: ldtkTileSlopes(record.customData, `${entryPath}.customData`),
+      tileOneWayPlatforms: ldtkTileOneWayPlatforms(record.customData, `${entryPath}.customData`),
       path: entryPath,
     });
   }
@@ -710,20 +836,51 @@ function ldtkLevel(root: JsonRecord, options: LDtkTilemapImportOptions): LDtkLev
   const index = ldtkLevelIndex(levels, options);
   const levelPath = `${LDTK_ROOT_PATH}.levels.${index}`;
   const record = objectValue(levels[index], levelPath);
-  if (record.layerInstances === null && record.externalRelPath !== undefined) {
-    throw assetPipelineDiagnosticError(
-      `${levelPath}.layerInstances`,
-      "external LDtk levels must be loaded into the project JSON before import",
-    );
-  }
+  const externalRelPath = optionalString(record.externalRelPath, `${levelPath}.externalRelPath`);
+  const layerSource = ldtkLevelLayerSource(record, {
+    levelPath,
+    externalRelPath,
+    externalLevels: options.externalLevels,
+  });
 
   return {
     identifier: optionalString(record.identifier, `${levelPath}.identifier`) ?? `level-${index}`,
     iid: optionalString(record.iid, `${levelPath}.iid`),
     width: positiveNumber(record.pxWid, `${levelPath}.pxWid`),
     height: positiveNumber(record.pxHei, `${levelPath}.pxHei`),
-    layers: arrayValue(record.layerInstances, `${levelPath}.layerInstances`),
-    path: levelPath,
+    layers: layerSource.layers,
+    path: layerSource.path,
+  };
+}
+
+function ldtkLevelLayerSource(
+  level: JsonRecord,
+  options: {
+    levelPath: string;
+    externalRelPath: string | undefined;
+    externalLevels: Record<string, unknown> | undefined;
+  },
+): { layers: unknown[]; path: string } {
+  if (level.layerInstances !== null || options.externalRelPath === undefined) {
+    return {
+      layers: arrayValue(level.layerInstances, `${options.levelPath}.layerInstances`),
+      path: options.levelPath,
+    };
+  }
+
+  const externalLevel = options.externalLevels?.[options.externalRelPath];
+  if (externalLevel === undefined) {
+    throw assetPipelineDiagnosticError(
+      `${options.levelPath}.layerInstances`,
+      `external LDtk level ${options.externalRelPath} must be provided in options.externalLevels`,
+    );
+  }
+
+  const externalPath = `${LDTK_ROOT_PATH}.externalLevels.${options.externalRelPath}`;
+  const externalRecord = objectValue(externalLevel, externalPath);
+  return {
+    layers: arrayValue(externalRecord.layerInstances, `${externalPath}.layerInstances`),
+    path: externalPath,
   };
 }
 
@@ -790,11 +947,16 @@ function ldtkLayer(
 
   const tileEntries = ldtkLayerTileEntries(layer, options.path);
   if (tileEntries.length === 0) {
-    if (type === "IntGrid" && options.collisionLayerNames.has(name)) {
-      throw assetPipelineDiagnosticError(
-        options.path,
-        "raw LDtk IntGrid collision layers are not supported; use rendered tiles or a tile layer collision mask",
-      );
+    if (type === "IntGrid") {
+      if (options.collisionLayerNames.has(name)) {
+        return ldtkRawIntGridLayer(layer, {
+          path: options.path,
+          name,
+          originX: options.originX,
+          originY: options.originY,
+        });
+      }
+      return undefined;
     }
     return undefined;
   }
@@ -839,6 +1001,50 @@ function ldtkLayer(
     collision: options.collisionLayerNames.has(name),
     data,
   };
+}
+
+function ldtkRawIntGridLayer(
+  layer: JsonRecord,
+  options: {
+    path: string;
+    name: string;
+    originX: number;
+    originY: number;
+  },
+): NonNullable<ShooterTilemapSpec["layers"]>[number] {
+  const columns = positiveInteger(layer.__cWid, `${options.path}.__cWid`);
+  const rows = positiveInteger(layer.__cHei, `${options.path}.__cHei`);
+  const tileWidth = positiveNumber(layer.__gridSize, `${options.path}.__gridSize`);
+  const intGridCsv = ldtkIntGridCsv(layer.intGridCsv, {
+    path: `${options.path}.intGridCsv`,
+    expectedLength: columns * rows,
+  });
+
+  return {
+    name: options.name,
+    columns,
+    rows,
+    tileWidth,
+    tileHeight: tileWidth,
+    origin: {
+      x: options.originX + finiteNumber(layer.__pxTotalOffsetX, `${options.path}.__pxTotalOffsetX`, 0),
+      y: options.originY + finiteNumber(layer.__pxTotalOffsetY, `${options.path}.__pxTotalOffsetY`, 0),
+    },
+    collision: true,
+    collisionOnly: true,
+    data: intGridCsv.map((value) => value === 0 ? 0 : LDTK_RAW_INT_GRID_SOLID_TILE_ID),
+  };
+}
+
+function ldtkIntGridCsv(
+  value: unknown,
+  options: { path: string; expectedLength: number },
+): number[] {
+  const values = arrayValue(value, options.path);
+  if (values.length !== options.expectedLength) {
+    throw assetPipelineDiagnosticError(options.path, `must contain exactly ${options.expectedLength} IntGrid values`);
+  }
+  return values.map((entry, index) => nonNegativeInteger(entry, `${options.path}.${index}`));
 }
 
 function ldtkLayerTileEntries(layer: JsonRecord, path: string): Array<{ value: unknown; path: string }> {
@@ -970,16 +1176,114 @@ function ldtkImportedTile(options: {
   if (existing) {
     return existing;
   }
+  const slope = options.tileset.tileSlopes.get(options.ldtkTileId);
+  const oneWayPlatform = options.tileset.tileOneWayPlatforms.has(options.ldtkTileId);
+  if (slope && oneWayPlatform) {
+    throw assetPipelineDiagnosticError(
+      options.path,
+      `tile id ${options.ldtkTileId} cannot define both slope and oneWayPlatform`,
+    );
+  }
   const ref: LDtkTileRef = {
     gameTileId: options.importedTiles.size + 1,
     ldtkTileId: options.ldtkTileId,
     tileset: options.tileset,
     srcX: options.srcX,
     srcY: options.srcY,
+    ...(slope ? { slope } : {}),
+    ...(oneWayPlatform ? { oneWayPlatform } : {}),
     path: options.path,
   };
   options.importedTiles.set(key, ref);
   return ref;
+}
+
+function ldtkTileSlopes(value: unknown, path: string): Map<number, ShooterTileSlopeSpec> {
+  const slopes = new Map<number, ShooterTileSlopeSpec>();
+  if (value === undefined) {
+    return slopes;
+  }
+
+  for (const [index, entry] of arrayValue(value, path).entries()) {
+    const entryPath = `${path}.${index}`;
+    const metadata = objectValue(entry, entryPath);
+    const data = optionalString(metadata.data, `${entryPath}.data`);
+    if (data === undefined) {
+      continue;
+    }
+    const slope = ldtkCustomDataSlope(data, `${entryPath}.data`);
+    if (!slope) {
+      continue;
+    }
+    const tileId = nonNegativeInteger(metadata.tileId, `${entryPath}.tileId`);
+    if (slopes.has(tileId)) {
+      throw assetPipelineDiagnosticError(`${entryPath}.tileId`, `duplicate slope metadata for tile id ${tileId}`);
+    }
+    slopes.set(tileId, slope);
+  }
+  return slopes;
+}
+
+function ldtkTileOneWayPlatforms(value: unknown, path: string): Set<number> {
+  const oneWayPlatforms = new Set<number>();
+  if (value === undefined) {
+    return oneWayPlatforms;
+  }
+
+  for (const [index, entry] of arrayValue(value, path).entries()) {
+    const entryPath = `${path}.${index}`;
+    const metadata = objectValue(entry, entryPath);
+    const data = optionalString(metadata.data, `${entryPath}.data`);
+    if (data === undefined) {
+      continue;
+    }
+    const oneWayPlatform = ldtkCustomDataOneWayPlatform(data, `${entryPath}.data`);
+    if (!oneWayPlatform) {
+      continue;
+    }
+    const tileId = nonNegativeInteger(metadata.tileId, `${entryPath}.tileId`);
+    if (oneWayPlatforms.has(tileId)) {
+      throw assetPipelineDiagnosticError(`${entryPath}.tileId`, `duplicate oneWayPlatform metadata for tile id ${tileId}`);
+    }
+    oneWayPlatforms.add(tileId);
+  }
+  return oneWayPlatforms;
+}
+
+function ldtkCustomDataSlope(value: string, path: string): ShooterTileSlopeSpec | undefined {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{")) {
+    return undefined;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed) || parsed.slope === undefined) {
+    return undefined;
+  }
+  return tileSlopeFromRecord(objectValue(parsed.slope, `${path}.slope`), `${path}.slope`);
+}
+
+function ldtkCustomDataOneWayPlatform(value: string, path: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{")) {
+    return false;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return false;
+  }
+  if (!isRecord(parsed) || parsed.oneWayPlatform === undefined) {
+    return false;
+  }
+  return optionalBoolean(parsed.oneWayPlatform, `${path}.oneWayPlatform`) === true;
 }
 
 function ldtkTilesetFrameContext(tile: LDtkTileRef): LDtkTilesetFrameContext {
@@ -1123,6 +1427,13 @@ function nonNegativeNumber(value: unknown, path: string): number {
   throw assetPipelineDiagnosticError(path, "must be a non-negative finite number");
 }
 
+function normalizedNumber(value: unknown, path: string): number {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1) {
+    return value;
+  }
+  throw assetPipelineDiagnosticError(path, "must be a normalized number from 0 to 1");
+}
+
 function nonNegativeInteger(value: unknown, path: string): number {
   if (Number.isInteger(value) && typeof value === "number" && value >= 0) {
     return value;
@@ -1142,4 +1453,41 @@ function finiteNumber(value: unknown, path: string, fallback: number): number {
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function tileSlopeFromEndpointProperties(
+  x0: { value: unknown; path: string } | undefined,
+  y0: { value: unknown; path: string } | undefined,
+  x1: { value: unknown; path: string } | undefined,
+  y1: { value: unknown; path: string } | undefined,
+  path: string,
+): ShooterTileSlopeSpec | undefined {
+  if (!x0 && !y0 && !x1 && !y1) {
+    return undefined;
+  }
+  const slope = {
+    x0: normalizedNumber(x0?.value, x0?.path ?? `${path}.slopeX0`),
+    y0: normalizedNumber(y0?.value, y0?.path ?? `${path}.slopeY0`),
+    x1: normalizedNumber(x1?.value, x1?.path ?? `${path}.slopeX1`),
+    y1: normalizedNumber(y1?.value, y1?.path ?? `${path}.slopeY1`),
+  };
+  validateTileSlope(slope, `${path}.slopeX1`, "slopeX0");
+  return slope;
+}
+
+function tileSlopeFromRecord(value: JsonRecord, path: string): ShooterTileSlopeSpec {
+  const slope = {
+    x0: normalizedNumber(value.x0, `${path}.x0`),
+    y0: normalizedNumber(value.y0, `${path}.y0`),
+    x1: normalizedNumber(value.x1, `${path}.x1`),
+    y1: normalizedNumber(value.y1, `${path}.y1`),
+  };
+  validateTileSlope(slope, `${path}.x1`, "slope.x0");
+  return slope;
+}
+
+function validateTileSlope(slope: ShooterTileSlopeSpec, path: string, x0Name: string): void {
+  if (Math.abs((slope.x1 ?? 0) - (slope.x0 ?? 0)) <= 0.0001) {
+    throw assetPipelineDiagnosticError(path, `must differ from ${x0Name}`);
+  }
 }

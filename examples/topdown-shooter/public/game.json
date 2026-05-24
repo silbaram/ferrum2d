@@ -73,7 +73,19 @@
   "prefabs": {
     "player": {
       "width": 36,
-      "height": 36
+      "height": 36,
+      "animation": {
+        "atlas": {
+          "idle": {
+            "frames": ["player.idle.0"],
+            "fps": 1
+          },
+          "move": {
+            "frames": ["player.move.0", "player.move.1", "player.move.2", "player.move.3"],
+            "fps": 8
+          }
+        }
+      }
     },
     "enemy": {
       "width": 24,
@@ -85,6 +97,71 @@
   },
   "atlas": {
     "frames": {
+      "player.idle.0": {
+        "texture": "player",
+        "uv": {
+          "u0": 0,
+          "v0": 0,
+          "u1": 0.25,
+          "v1": 0.5
+        },
+        "size": {
+          "width": 36,
+          "height": 36
+        }
+      },
+      "player.move.0": {
+        "texture": "player",
+        "uv": {
+          "u0": 0,
+          "v0": 0.5,
+          "u1": 0.25,
+          "v1": 1
+        },
+        "size": {
+          "width": 36,
+          "height": 36
+        }
+      },
+      "player.move.1": {
+        "texture": "player",
+        "uv": {
+          "u0": 0.25,
+          "v0": 0.5,
+          "u1": 0.5,
+          "v1": 1
+        },
+        "size": {
+          "width": 36,
+          "height": 36
+        }
+      },
+      "player.move.2": {
+        "texture": "player",
+        "uv": {
+          "u0": 0.5,
+          "v0": 0.5,
+          "u1": 0.75,
+          "v1": 1
+        },
+        "size": {
+          "width": 36,
+          "height": 36
+        }
+      },
+      "player.move.3": {
+        "texture": "player",
+        "uv": {
+          "u0": 0.75,
+          "v0": 0.5,
+          "u1": 1,
+          "v1": 1
+        },
+        "size": {
+          "width": 36,
+          "height": 36
+        }
+      },
       "bullet.default": {
         "texture": "bullet",
         "uv": {

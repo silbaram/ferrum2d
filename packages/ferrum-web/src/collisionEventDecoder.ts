@@ -1,4 +1,12 @@
-export type CollisionEventKind = "enter" | "stay" | "exit" | "hit" | "unknown";
+export type CollisionEventKind =
+  | "enter"
+  | "stay"
+  | "exit"
+  | "hit"
+  | "trigger-enter"
+  | "trigger-stay"
+  | "trigger-exit"
+  | "unknown";
 
 export interface CollisionEventView {
   kind: CollisionEventKind;
@@ -49,6 +57,9 @@ export function collisionEventKind(kindCode: number): CollisionEventKind {
   if (kindCode === 2) return "stay";
   if (kindCode === 3) return "exit";
   if (kindCode === 4) return "hit";
+  if (kindCode === 5) return "trigger-enter";
+  if (kindCode === 6) return "trigger-stay";
+  if (kindCode === 7) return "trigger-exit";
   return "unknown";
 }
 

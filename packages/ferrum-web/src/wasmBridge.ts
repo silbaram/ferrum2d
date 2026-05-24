@@ -6,6 +6,15 @@ import init, {
   collision_event_u32s,
   physics_debug_line_bytes,
   physics_debug_line_floats,
+  physics_body_contact_hit_bytes,
+  physics_body_manifold_hit_bytes,
+  physics_query_hit_bytes,
+  physics_query_hit_u32s,
+  physics_raycast_hit_bytes,
+  physics_rigid_contact_impulse_hit_bytes,
+  physics_tile_contact_hit_bytes,
+  physics_tile_manifold_hit_bytes,
+  physics_tile_shape_cast_hit_bytes,
   sprite_render_command_bytes,
   sprite_render_command_floats,
   version,
@@ -21,6 +30,48 @@ import type {
   PhysicsDebugLineBufferView,
   PhysicsDebugLineView,
 } from "./physicsDebugLineDecoder";
+import {
+  BYTES_PER_PHYSICS_BODY_CONTACT_HIT,
+  BYTES_PER_PHYSICS_BODY_MANIFOLD_HIT,
+  BYTES_PER_PHYSICS_RAYCAST_HIT,
+  BYTES_PER_PHYSICS_RIGID_CONTACT_IMPULSE_HIT,
+  BYTES_PER_PHYSICS_TILE_CONTACT_HIT,
+  BYTES_PER_PHYSICS_TILE_MANIFOLD_HIT,
+  BYTES_PER_PHYSICS_TILE_SHAPE_CAST_HIT,
+  decodePhysicsBodyContactHits,
+  decodePhysicsBodyManifoldHits,
+  decodePhysicsQueryHits,
+  decodePhysicsRaycastHits,
+  decodePhysicsRigidContactImpulseHits,
+  decodePhysicsShapeCastHits,
+  decodePhysicsTileContactHits,
+  decodePhysicsTileManifoldHits,
+  decodePhysicsTileRaycastHits,
+  decodePhysicsTileShapeCastHits,
+  U32S_PER_PHYSICS_QUERY_HIT,
+} from "./physicsQueryDecoder";
+import type {
+  PhysicsBodyContactHit,
+  PhysicsBodyContactHitBufferView,
+  PhysicsBodyManifoldHit,
+  PhysicsBodyManifoldHitBufferView,
+  PhysicsBodyQueryHit,
+  PhysicsQueryHitBufferView,
+  PhysicsRaycastBodyHit,
+  PhysicsRaycastHitBufferView,
+  PhysicsRigidContactImpulseHit,
+  PhysicsRigidContactImpulseHitBufferView,
+  PhysicsShapeCastBodyHit,
+  PhysicsShapeCastHitBufferView,
+  PhysicsTileContactHit,
+  PhysicsTileContactHitBufferView,
+  PhysicsTileManifoldHit,
+  PhysicsTileManifoldHitBufferView,
+  PhysicsTileRaycastHit,
+  PhysicsTileRaycastHitBufferView,
+  PhysicsTileShapeCastHit,
+  PhysicsTileShapeCastHitBufferView,
+} from "./physicsQueryDecoder";
 import { decodeRenderCommands } from "./renderCommandDecoder";
 import type { RenderCommandBufferView, RenderCommandView } from "./renderCommandDecoder";
 
@@ -44,6 +95,7 @@ const BYTES_PER_COMMAND = FLOATS_PER_COMMAND * BYTES_PER_F32;
 const BYTES_PER_AUDIO_EVENT = FLOATS_PER_AUDIO_EVENT * BYTES_PER_F32;
 const BYTES_PER_COLLISION_EVENT = U32S_PER_COLLISION_EVENT * BYTES_PER_U32;
 const BYTES_PER_PHYSICS_DEBUG_LINE = FLOATS_PER_PHYSICS_DEBUG_LINE * BYTES_PER_F32;
+const BYTES_PER_PHYSICS_QUERY_HIT = U32S_PER_PHYSICS_QUERY_HIT * BYTES_PER_U32;
 export const EMPTY_AUDIO_EVENTS: readonly AudioEventView[] = Object.freeze([]);
 
 export class WasmBridge {
@@ -51,6 +103,14 @@ export class WasmBridge {
   private readonly floatsPerAudioEvent: number;
   private readonly u32sPerCollisionEvent: number;
   private readonly floatsPerPhysicsDebugLine: number;
+  private readonly u32sPerPhysicsQueryHit: number;
+  private readonly bytesPerPhysicsRaycastHit: number;
+  private readonly bytesPerPhysicsTileShapeCastHit: number;
+  private readonly bytesPerPhysicsTileContactHit: number;
+  private readonly bytesPerPhysicsTileManifoldHit: number;
+  private readonly bytesPerPhysicsBodyContactHit: number;
+  private readonly bytesPerPhysicsBodyManifoldHit: number;
+  private readonly bytesPerPhysicsRigidContactImpulseHit: number;
 
   private constructor(
     private readonly engineInstance: Engine,
@@ -112,10 +172,84 @@ export class WasmBridge {
           "PhysicsDebugLine ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
       );
     }
+    const rustU32sPerPhysicsQueryHit = physics_query_hit_u32s();
+    const rustBytesPerPhysicsQueryHit = physics_query_hit_bytes();
+    if (rustU32sPerPhysicsQueryHit !== U32S_PER_PHYSICS_QUERY_HIT) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_query_hit_u32s=${rustU32sPerPhysicsQueryHit}, TS U32S_PER_PHYSICS_QUERY_HIT=${U32S_PER_PHYSICS_QUERY_HIT}. ` +
+          "Physics query hit ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    if (rustBytesPerPhysicsQueryHit !== BYTES_PER_PHYSICS_QUERY_HIT) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_query_hit_bytes=${rustBytesPerPhysicsQueryHit}, TS BYTES_PER_PHYSICS_QUERY_HIT=${BYTES_PER_PHYSICS_QUERY_HIT}. ` +
+          "Physics query hit ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    const rustBytesPerPhysicsRaycastHit = physics_raycast_hit_bytes();
+    if (rustBytesPerPhysicsRaycastHit !== BYTES_PER_PHYSICS_RAYCAST_HIT) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_raycast_hit_bytes=${rustBytesPerPhysicsRaycastHit}, TS BYTES_PER_PHYSICS_RAYCAST_HIT=${BYTES_PER_PHYSICS_RAYCAST_HIT}. ` +
+          "Physics raycast hit ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    const rustBytesPerPhysicsTileShapeCastHit = physics_tile_shape_cast_hit_bytes();
+    if (rustBytesPerPhysicsTileShapeCastHit !== BYTES_PER_PHYSICS_TILE_SHAPE_CAST_HIT) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_tile_shape_cast_hit_bytes=${rustBytesPerPhysicsTileShapeCastHit}, TS BYTES_PER_PHYSICS_TILE_SHAPE_CAST_HIT=${BYTES_PER_PHYSICS_TILE_SHAPE_CAST_HIT}. ` +
+          "Physics tile shape-cast hit ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    const rustBytesPerPhysicsTileContactHit = physics_tile_contact_hit_bytes();
+    if (rustBytesPerPhysicsTileContactHit !== BYTES_PER_PHYSICS_TILE_CONTACT_HIT) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_tile_contact_hit_bytes=${rustBytesPerPhysicsTileContactHit}, TS BYTES_PER_PHYSICS_TILE_CONTACT_HIT=${BYTES_PER_PHYSICS_TILE_CONTACT_HIT}. ` +
+          "Physics tile contact hit ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    const rustBytesPerPhysicsTileManifoldHit = physics_tile_manifold_hit_bytes();
+    if (rustBytesPerPhysicsTileManifoldHit !== BYTES_PER_PHYSICS_TILE_MANIFOLD_HIT) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_tile_manifold_hit_bytes=${rustBytesPerPhysicsTileManifoldHit}, TS BYTES_PER_PHYSICS_TILE_MANIFOLD_HIT=${BYTES_PER_PHYSICS_TILE_MANIFOLD_HIT}. ` +
+          "Physics tile manifold hit ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    const rustBytesPerPhysicsBodyContactHit = physics_body_contact_hit_bytes();
+    if (rustBytesPerPhysicsBodyContactHit !== BYTES_PER_PHYSICS_BODY_CONTACT_HIT) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_body_contact_hit_bytes=${rustBytesPerPhysicsBodyContactHit}, TS BYTES_PER_PHYSICS_BODY_CONTACT_HIT=${BYTES_PER_PHYSICS_BODY_CONTACT_HIT}. ` +
+          "Physics body contact hit ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    const rustBytesPerPhysicsBodyManifoldHit = physics_body_manifold_hit_bytes();
+    if (rustBytesPerPhysicsBodyManifoldHit !== BYTES_PER_PHYSICS_BODY_MANIFOLD_HIT) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_body_manifold_hit_bytes=${rustBytesPerPhysicsBodyManifoldHit}, TS BYTES_PER_PHYSICS_BODY_MANIFOLD_HIT=${BYTES_PER_PHYSICS_BODY_MANIFOLD_HIT}. ` +
+          "Physics body manifold hit ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    const rustBytesPerPhysicsRigidContactImpulseHit = physics_rigid_contact_impulse_hit_bytes();
+    if (
+      rustBytesPerPhysicsRigidContactImpulseHit !==
+      BYTES_PER_PHYSICS_RIGID_CONTACT_IMPULSE_HIT
+    ) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_rigid_contact_impulse_hit_bytes=${rustBytesPerPhysicsRigidContactImpulseHit}, TS BYTES_PER_PHYSICS_RIGID_CONTACT_IMPULSE_HIT=${BYTES_PER_PHYSICS_RIGID_CONTACT_IMPULSE_HIT}. ` +
+          "Physics rigid contact impulse hit ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
     this.floatsPerCommand = rustFloatsPerCommand;
     this.floatsPerAudioEvent = rustFloatsPerAudioEvent;
     this.u32sPerCollisionEvent = rustU32sPerCollisionEvent;
     this.floatsPerPhysicsDebugLine = rustFloatsPerPhysicsDebugLine;
+    this.u32sPerPhysicsQueryHit = rustU32sPerPhysicsQueryHit;
+    this.bytesPerPhysicsRaycastHit = rustBytesPerPhysicsRaycastHit;
+    this.bytesPerPhysicsTileShapeCastHit = rustBytesPerPhysicsTileShapeCastHit;
+    this.bytesPerPhysicsTileContactHit = rustBytesPerPhysicsTileContactHit;
+    this.bytesPerPhysicsTileManifoldHit = rustBytesPerPhysicsTileManifoldHit;
+    this.bytesPerPhysicsBodyContactHit = rustBytesPerPhysicsBodyContactHit;
+    this.bytesPerPhysicsBodyManifoldHit = rustBytesPerPhysicsBodyManifoldHit;
+    this.bytesPerPhysicsRigidContactImpulseHit = rustBytesPerPhysicsRigidContactImpulseHit;
   }
 
   static async init(): Promise<WasmBridge> {
@@ -192,12 +326,214 @@ export class WasmBridge {
     return this.decodePhysicsDebugLines(this.readPhysicsDebugLineBuffer());
   }
 
+  readPhysicsQueryHitBuffer(): PhysicsQueryHitBufferView {
+    const ptr = this.engineInstance.physics_query_hit_ptr();
+    const hitCount = this.engineInstance.physics_query_hit_len();
+    return {
+      buffer: new Uint32Array(this.memory.buffer, ptr, hitCount * this.u32sPerPhysicsQueryHit),
+      hitCount,
+      u32sPerHit: this.u32sPerPhysicsQueryHit,
+    };
+  }
+
+  readPhysicsQueryHits(): readonly PhysicsBodyQueryHit[] {
+    return this.decodePhysicsQueryHits(this.readPhysicsQueryHitBuffer());
+  }
+
+  readPhysicsRaycastHitBuffer(): PhysicsRaycastHitBufferView {
+    const ptr = this.engineInstance.physics_raycast_hit_ptr();
+    const hitCount = this.engineInstance.physics_raycast_hit_len();
+    return {
+      buffer: new DataView(this.memory.buffer, ptr, hitCount * this.bytesPerPhysicsRaycastHit),
+      hitCount,
+      bytesPerHit: this.bytesPerPhysicsRaycastHit,
+    };
+  }
+
+  readPhysicsRaycastHits(): readonly PhysicsRaycastBodyHit[] {
+    return this.decodePhysicsRaycastHits(this.readPhysicsRaycastHitBuffer());
+  }
+
+  readPhysicsShapeCastHits(): readonly PhysicsShapeCastBodyHit[] {
+    return this.decodePhysicsShapeCastHits(this.readPhysicsRaycastHitBuffer());
+  }
+
+  readPhysicsTileShapeCastHitBuffer(): PhysicsTileShapeCastHitBufferView {
+    const ptr = this.engineInstance.physics_tile_shape_cast_hit_ptr();
+    const hitCount = this.engineInstance.physics_tile_shape_cast_hit_len();
+    return {
+      buffer: new DataView(
+        this.memory.buffer,
+        ptr,
+        hitCount * this.bytesPerPhysicsTileShapeCastHit,
+      ),
+      hitCount,
+      bytesPerHit: this.bytesPerPhysicsTileShapeCastHit,
+    };
+  }
+
+  readPhysicsTileShapeCastHits(): readonly PhysicsTileShapeCastHit[] {
+    return this.decodePhysicsTileShapeCastHits(this.readPhysicsTileShapeCastHitBuffer());
+  }
+
+  readPhysicsTileRaycastHits(): readonly PhysicsTileRaycastHit[] {
+    return this.decodePhysicsTileRaycastHits(this.readPhysicsTileShapeCastHitBuffer());
+  }
+
+  readPhysicsTileContactHitBuffer(): PhysicsTileContactHitBufferView {
+    const ptr = this.engineInstance.physics_tile_contact_hit_ptr();
+    const hitCount = this.engineInstance.physics_tile_contact_hit_len();
+    return {
+      buffer: new DataView(
+        this.memory.buffer,
+        ptr,
+        hitCount * this.bytesPerPhysicsTileContactHit,
+      ),
+      hitCount,
+      bytesPerHit: this.bytesPerPhysicsTileContactHit,
+    };
+  }
+
+  readPhysicsTileContactHits(): readonly PhysicsTileContactHit[] {
+    return this.decodePhysicsTileContactHits(this.readPhysicsTileContactHitBuffer());
+  }
+
+  readPhysicsTileManifoldHitBuffer(): PhysicsTileManifoldHitBufferView {
+    const ptr = this.engineInstance.physics_tile_manifold_hit_ptr();
+    const hitCount = this.engineInstance.physics_tile_manifold_hit_len();
+    return {
+      buffer: new DataView(
+        this.memory.buffer,
+        ptr,
+        hitCount * this.bytesPerPhysicsTileManifoldHit,
+      ),
+      hitCount,
+      bytesPerHit: this.bytesPerPhysicsTileManifoldHit,
+    };
+  }
+
+  readPhysicsTileManifoldHits(): readonly PhysicsTileManifoldHit[] {
+    return this.decodePhysicsTileManifoldHits(this.readPhysicsTileManifoldHitBuffer());
+  }
+
+  readPhysicsBodyContactHitBuffer(): PhysicsBodyContactHitBufferView {
+    const ptr = this.engineInstance.physics_body_contact_hit_ptr();
+    const hitCount = this.engineInstance.physics_body_contact_hit_len();
+    return {
+      buffer: new DataView(
+        this.memory.buffer,
+        ptr,
+        hitCount * this.bytesPerPhysicsBodyContactHit,
+      ),
+      hitCount,
+      bytesPerHit: this.bytesPerPhysicsBodyContactHit,
+    };
+  }
+
+  readPhysicsBodyContactHits(): readonly PhysicsBodyContactHit[] {
+    return this.decodePhysicsBodyContactHits(this.readPhysicsBodyContactHitBuffer());
+  }
+
+  readPhysicsBodyManifoldHitBuffer(): PhysicsBodyManifoldHitBufferView {
+    const ptr = this.engineInstance.physics_body_manifold_hit_ptr();
+    const hitCount = this.engineInstance.physics_body_manifold_hit_len();
+    return {
+      buffer: new DataView(
+        this.memory.buffer,
+        ptr,
+        hitCount * this.bytesPerPhysicsBodyManifoldHit,
+      ),
+      hitCount,
+      bytesPerHit: this.bytesPerPhysicsBodyManifoldHit,
+    };
+  }
+
+  readPhysicsBodyManifoldHits(): readonly PhysicsBodyManifoldHit[] {
+    return this.decodePhysicsBodyManifoldHits(this.readPhysicsBodyManifoldHitBuffer());
+  }
+
+  readPhysicsRigidContactImpulseHitBuffer(): PhysicsRigidContactImpulseHitBufferView {
+    const ptr = this.engineInstance.physics_rigid_contact_impulse_hit_ptr();
+    const hitCount = this.engineInstance.physics_rigid_contact_impulse_hit_len();
+    return {
+      buffer: new DataView(
+        this.memory.buffer,
+        ptr,
+        hitCount * this.bytesPerPhysicsRigidContactImpulseHit,
+      ),
+      hitCount,
+      bytesPerHit: this.bytesPerPhysicsRigidContactImpulseHit,
+    };
+  }
+
+  readPhysicsRigidContactImpulseHits(): readonly PhysicsRigidContactImpulseHit[] {
+    return this.decodePhysicsRigidContactImpulseHits(
+      this.readPhysicsRigidContactImpulseHitBuffer(),
+    );
+  }
+
   decodeCollisionEvents(view: CollisionEventBufferView): readonly CollisionEventView[] {
     return decodeCollisionEvents(view);
   }
 
   decodePhysicsDebugLines(view: PhysicsDebugLineBufferView): readonly PhysicsDebugLineView[] {
     return decodePhysicsDebugLines(view);
+  }
+
+  decodePhysicsQueryHits(view: PhysicsQueryHitBufferView): readonly PhysicsBodyQueryHit[] {
+    return decodePhysicsQueryHits(view);
+  }
+
+  decodePhysicsRaycastHits(view: PhysicsRaycastHitBufferView): readonly PhysicsRaycastBodyHit[] {
+    return decodePhysicsRaycastHits(view);
+  }
+
+  decodePhysicsShapeCastHits(
+    view: PhysicsShapeCastHitBufferView,
+  ): readonly PhysicsShapeCastBodyHit[] {
+    return decodePhysicsShapeCastHits(view);
+  }
+
+  decodePhysicsTileShapeCastHits(
+    view: PhysicsTileShapeCastHitBufferView,
+  ): readonly PhysicsTileShapeCastHit[] {
+    return decodePhysicsTileShapeCastHits(view);
+  }
+
+  decodePhysicsTileRaycastHits(
+    view: PhysicsTileRaycastHitBufferView,
+  ): readonly PhysicsTileRaycastHit[] {
+    return decodePhysicsTileRaycastHits(view);
+  }
+
+  decodePhysicsTileContactHits(
+    view: PhysicsTileContactHitBufferView,
+  ): readonly PhysicsTileContactHit[] {
+    return decodePhysicsTileContactHits(view);
+  }
+
+  decodePhysicsTileManifoldHits(
+    view: PhysicsTileManifoldHitBufferView,
+  ): readonly PhysicsTileManifoldHit[] {
+    return decodePhysicsTileManifoldHits(view);
+  }
+
+  decodePhysicsBodyContactHits(
+    view: PhysicsBodyContactHitBufferView,
+  ): readonly PhysicsBodyContactHit[] {
+    return decodePhysicsBodyContactHits(view);
+  }
+
+  decodePhysicsBodyManifoldHits(
+    view: PhysicsBodyManifoldHitBufferView,
+  ): readonly PhysicsBodyManifoldHit[] {
+    return decodePhysicsBodyManifoldHits(view);
+  }
+
+  decodePhysicsRigidContactImpulseHits(
+    view: PhysicsRigidContactImpulseHitBufferView,
+  ): readonly PhysicsRigidContactImpulseHit[] {
+    return decodePhysicsRigidContactImpulseHits(view);
   }
 
   decodeAudioEvents(view: AudioEventBufferView): readonly AudioEventView[] {
@@ -221,10 +557,42 @@ export class WasmBridge {
 export { decodeRenderCommands };
 export { decodeCollisionEvents };
 export { decodePhysicsDebugLines };
+export { decodePhysicsBodyContactHits };
+export { decodePhysicsBodyManifoldHits };
+export { decodePhysicsRigidContactImpulseHits };
+export { decodePhysicsQueryHits };
+export { decodePhysicsRaycastHits };
+export { decodePhysicsShapeCastHits };
+export { decodePhysicsTileShapeCastHits };
+export { decodePhysicsTileRaycastHits };
+export { decodePhysicsTileContactHits };
+export { decodePhysicsTileManifoldHits };
 export type {
   CollisionEventBufferView,
   CollisionEventKind,
   CollisionEventView,
 } from "./collisionEventDecoder";
 export type { PhysicsDebugLineBufferView, PhysicsDebugLineView };
+export type {
+  PhysicsBodyContactHit,
+  PhysicsBodyContactHitBufferView,
+  PhysicsBodyManifoldHit,
+  PhysicsBodyManifoldHitBufferView,
+  PhysicsBodyQueryHit,
+  PhysicsQueryHitBufferView,
+  PhysicsRaycastBodyHit,
+  PhysicsRaycastHitBufferView,
+  PhysicsRigidContactImpulseHit,
+  PhysicsRigidContactImpulseHitBufferView,
+  PhysicsShapeCastBodyHit,
+  PhysicsShapeCastHitBufferView,
+  PhysicsTileContactHit,
+  PhysicsTileContactHitBufferView,
+  PhysicsTileManifoldHit,
+  PhysicsTileManifoldHitBufferView,
+  PhysicsTileRaycastHit,
+  PhysicsTileRaycastHitBufferView,
+  PhysicsTileShapeCastHit,
+  PhysicsTileShapeCastHitBufferView,
+};
 export type { RenderCommandBufferView, RenderCommandView };

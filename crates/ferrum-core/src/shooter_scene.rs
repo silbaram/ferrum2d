@@ -8,10 +8,13 @@ use crate::components::{
 use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::input::InputState;
+use crate::particles::{ParticlePreset, ParticleSystem};
 use crate::physics::{PhysicsBounds, PhysicsCounters, PhysicsSystem};
 use crate::tilemap::{Tilemap, TilemapNavigationScratch};
+use crate::tweens::{SpriteTint, TweenEasing, TweenSystem};
 use crate::world::{
-    EntityTemplate, World, DEFAULT_BULLET_TEMPLATE, DEFAULT_ENEMY_TEMPLATE, DEFAULT_PLAYER_TEMPLATE,
+    EntityTemplate, EntityTemplateCollider, EntityTemplateColliderShape, World,
+    DEFAULT_BULLET_TEMPLATE, DEFAULT_ENEMY_TEMPLATE, DEFAULT_PLAYER_TEMPLATE,
 };
 
 pub(crate) const DEFAULT_TEXTURE_ID: u32 = 0;
@@ -35,6 +38,8 @@ const NAVIGATION_REPATH_INTERVAL: f32 = 0.25;
 const NAVIGATION_TARGET_REACHED_DISTANCE_SQUARED: f32 = 4.0;
 const DEFAULT_ORBIT_RADIUS: f32 = 180.0;
 const DEFAULT_ORBIT_RADIAL_BAND: f32 = 24.0;
+const ENEMY_HIT_FLASH_TINT: SpriteTint = SpriteTint::new(1.0, 0.88, 0.38, 1.0);
+const ENEMY_HIT_FLASH_SECONDS: f32 = 0.12;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum EnemyBehavior {
@@ -387,6 +392,28 @@ impl ShooterConfig {
         self
     }
 
+    pub fn with_prefab_collider(
+        mut self,
+        prefab: ShooterPrefabKind,
+        collider: EntityTemplateCollider,
+    ) -> Self {
+        match prefab {
+            ShooterPrefabKind::Player => {
+                self.player_template =
+                    template_with_collider_or_default(self.player_template, collider);
+            }
+            ShooterPrefabKind::Enemy => {
+                self.enemy_template =
+                    template_with_collider_or_default(self.enemy_template, collider);
+            }
+            ShooterPrefabKind::Bullet => {
+                self.bullet_template =
+                    template_with_collider_or_default(self.bullet_template, collider);
+            }
+        }
+        self
+    }
+
     pub fn with_camera(mut self, camera: CameraPresetConfig) -> Self {
         self.camera = camera;
         self
@@ -414,6 +441,14 @@ fn non_negative_or_default(value: f32, default: f32) -> f32 {
     }
 }
 
+fn finite_or_default(value: f32, default: f32) -> f32 {
+    if value.is_finite() {
+        value
+    } else {
+        default
+    }
+}
+
 fn has_reached_navigation_target(from: Transform2D, to: Transform2D) -> bool {
     let dx = to.x - from.x;
     let dy = to.y - from.y;
@@ -425,6 +460,168 @@ fn template_or_default(width: f32, height: f32, default: EntityTemplate) -> Enti
         positive_or_default(width, default.sprite_width),
         positive_or_default(height, default.sprite_height),
     )
+}
+
+fn template_with_collider_or_default(
+    template: EntityTemplate,
+    collider: EntityTemplateCollider,
+) -> EntityTemplate {
+    let default = EntityTemplateCollider::from_template(template);
+    template.with_collider(EntityTemplateCollider {
+        shape: collider_shape_or_default(collider.shape, default.shape),
+        half_width: collider.half_width,
+        half_height: collider.half_height,
+        offset_x: finite_or_default(collider.offset_x, default.offset_x),
+        offset_y: finite_or_default(collider.offset_y, default.offset_y),
+        enabled: collider.enabled,
+        is_trigger: collider.is_trigger,
+        material: collider.material,
+    })
+}
+
+fn collider_shape_or_default(
+    shape: EntityTemplateColliderShape,
+    default: EntityTemplateColliderShape,
+) -> EntityTemplateColliderShape {
+    match shape {
+        EntityTemplateColliderShape::Aabb {
+            half_width,
+            half_height,
+        } => EntityTemplateColliderShape::Aabb {
+            half_width: positive_shape_or_default(half_width, default_half_width(default)),
+            half_height: positive_shape_or_default(half_height, default_half_height(default)),
+        },
+        EntityTemplateColliderShape::Circle { radius } => {
+            if radius.is_finite() && radius > 0.0 {
+                shape
+            } else {
+                default
+            }
+        }
+        EntityTemplateColliderShape::OrientedBox {
+            half_width,
+            half_height,
+            rotation_radians,
+        } => {
+            if half_width.is_finite()
+                && half_width > 0.0
+                && half_height.is_finite()
+                && half_height > 0.0
+                && rotation_radians.is_finite()
+            {
+                shape
+            } else {
+                default
+            }
+        }
+        EntityTemplateColliderShape::Capsule {
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            radius,
+        } => {
+            if start_x.is_finite()
+                && start_y.is_finite()
+                && end_x.is_finite()
+                && end_y.is_finite()
+                && radius.is_finite()
+                && radius > 0.0
+            {
+                shape
+            } else {
+                default
+            }
+        }
+        EntityTemplateColliderShape::ConvexPolygon {
+            vertices,
+            vertex_count,
+            rotation_radians,
+        } => {
+            let count = vertex_count as usize;
+            if (3..=crate::components::MAX_CONVEX_POLYGON_VERTICES).contains(&count)
+                && rotation_radians.is_finite()
+                && vertices
+                    .iter()
+                    .take(count)
+                    .all(|vertex| vertex.x.is_finite() && vertex.y.is_finite())
+            {
+                shape
+            } else {
+                default
+            }
+        }
+    }
+}
+
+fn default_half_width(shape: EntityTemplateColliderShape) -> f32 {
+    match shape {
+        EntityTemplateColliderShape::Aabb { half_width, .. }
+        | EntityTemplateColliderShape::OrientedBox { half_width, .. } => half_width,
+        EntityTemplateColliderShape::Circle { radius } => radius,
+        EntityTemplateColliderShape::Capsule {
+            start_x,
+            end_x,
+            radius,
+            ..
+        } => ((start_x - end_x).abs() + radius * 2.0) * 0.5,
+        EntityTemplateColliderShape::ConvexPolygon {
+            vertices,
+            vertex_count,
+            ..
+        } => {
+            let count = (vertex_count as usize).min(crate::components::MAX_CONVEX_POLYGON_VERTICES);
+            if count == 0 {
+                return 0.0;
+            }
+            let mut min_x = vertices[0].x;
+            let mut max_x = vertices[0].x;
+            for vertex in vertices.iter().take(count).skip(1) {
+                min_x = min_x.min(vertex.x);
+                max_x = max_x.max(vertex.x);
+            }
+            (max_x - min_x) * 0.5
+        }
+    }
+}
+
+fn default_half_height(shape: EntityTemplateColliderShape) -> f32 {
+    match shape {
+        EntityTemplateColliderShape::Aabb { half_height, .. }
+        | EntityTemplateColliderShape::OrientedBox { half_height, .. } => half_height,
+        EntityTemplateColliderShape::Circle { radius } => radius,
+        EntityTemplateColliderShape::Capsule {
+            start_y,
+            end_y,
+            radius,
+            ..
+        } => ((start_y - end_y).abs() + radius * 2.0) * 0.5,
+        EntityTemplateColliderShape::ConvexPolygon {
+            vertices,
+            vertex_count,
+            ..
+        } => {
+            let count = (vertex_count as usize).min(crate::components::MAX_CONVEX_POLYGON_VERTICES);
+            if count == 0 {
+                return 0.0;
+            }
+            let mut min_y = vertices[0].y;
+            let mut max_y = vertices[0].y;
+            for vertex in vertices.iter().take(count).skip(1) {
+                min_y = min_y.min(vertex.y);
+                max_y = max_y.max(vertex.y);
+            }
+            (max_y - min_y) * 0.5
+        }
+    }
+}
+
+fn positive_shape_or_default(value: f32, default: f32) -> f32 {
+    if value.is_finite() && value > 0.0 {
+        value
+    } else {
+        default
+    }
 }
 
 fn apply_animation_or_default(
@@ -464,6 +661,18 @@ fn sprite_animation_or_none(
             frames_per_second: move_fps,
         },
     )
+}
+
+fn sprite_frames_from_values(values: &[f32]) -> Option<Vec<SpriteFrame>> {
+    let chunks = values.chunks_exact(4);
+    if !chunks.remainder().is_empty() {
+        return None;
+    }
+
+    let frames: Option<Vec<SpriteFrame>> = chunks
+        .map(|chunk| SpriteFrame::from_values(chunk[0], chunk[1], chunk[2], chunk[3]))
+        .collect();
+    frames.filter(|frames| !frames.is_empty())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -556,6 +765,42 @@ impl CollisionEventSink<'_> {
     }
 }
 
+pub(crate) struct ParticleBurstSink<'a> {
+    particles: &'a mut ParticleSystem,
+    preset: ParticlePreset,
+}
+
+impl<'a> ParticleBurstSink<'a> {
+    pub(crate) fn new(particles: &'a mut ParticleSystem, preset: ParticlePreset) -> Self {
+        Self { particles, preset }
+    }
+
+    fn spawn_at(&mut self, position: Transform2D) -> usize {
+        self.particles
+            .spawn_burst(self.preset, position.x, position.y)
+    }
+}
+
+pub(crate) struct TweenSink<'a> {
+    tweens: &'a mut TweenSystem,
+}
+
+impl<'a> TweenSink<'a> {
+    pub(crate) fn new(tweens: &'a mut TweenSystem) -> Self {
+        Self { tweens }
+    }
+
+    fn flash_enemy_hit(&mut self, world: &mut World, enemy: Entity) -> bool {
+        self.tweens.flash_sprite_tint(
+            world,
+            enemy,
+            ENEMY_HIT_FLASH_TINT,
+            ENEMY_HIT_FLASH_SECONDS,
+            TweenEasing::EaseOut,
+        )
+    }
+}
+
 impl Default for ShooterScene {
     fn default() -> Self {
         Self {
@@ -608,6 +853,8 @@ impl ShooterScene {
             delta,
             None,
             None,
+            None,
+            None,
         );
     }
 
@@ -623,6 +870,8 @@ impl ShooterScene {
         physics_counters: &mut PhysicsCounters,
         collision_events: &mut Vec<CollisionEvent>,
         collision_event_counts: &mut CollisionEventCounts,
+        hit_particles: Option<ParticleBurstSink<'_>>,
+        hit_tweens: Option<TweenSink<'_>>,
     ) {
         self.update_internal(
             world,
@@ -636,6 +885,8 @@ impl ShooterScene {
                 events: collision_events,
                 counts: collision_event_counts,
             }),
+            hit_particles,
+            hit_tweens,
         );
     }
 
@@ -650,8 +901,12 @@ impl ShooterScene {
         delta: f32,
         physics_counters: Option<&mut PhysicsCounters>,
         collision_events: Option<CollisionEventSink<'_>>,
+        hit_particles: Option<ParticleBurstSink<'_>>,
+        hit_tweens: Option<TweenSink<'_>>,
     ) {
         let mut collision_events = collision_events;
+        let mut hit_particles = hit_particles;
+        let mut hit_tweens = hit_tweens;
         let space_pressed = input.space == 1 && self.previous_space == 0;
         let enter_pressed = input.enter == 1 && self.previous_enter == 0;
 
@@ -683,7 +938,14 @@ impl ShooterScene {
                 self.update_camera_follow(world, camera);
                 self.update_bullets(world, delta);
                 self.spawn_enemy_if_needed(world);
-                self.handle_collisions(world, audio_events, delta, collision_events.as_mut());
+                self.handle_collisions(
+                    world,
+                    audio_events,
+                    delta,
+                    collision_events.as_mut(),
+                    hit_particles.as_mut(),
+                    hit_tweens.as_mut(),
+                );
             }
         }
 
@@ -878,6 +1140,102 @@ impl ShooterScene {
                 );
             }
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_atlas_animation(
+        &mut self,
+        world: &mut World,
+        prefab_code: u32,
+        texture_id: u32,
+        width: f32,
+        height: f32,
+        idle_fps: f32,
+        idle_frames: &[f32],
+        move_fps: f32,
+        move_frames: &[f32],
+    ) {
+        let Some(prefab) = ShooterPrefabKind::from_code(prefab_code) else {
+            return;
+        };
+        if !width.is_finite() || width <= 0.0 || !height.is_finite() || height <= 0.0 {
+            return;
+        }
+        let Some(idle) = sprite_frames_from_values(idle_frames) else {
+            return;
+        };
+        let moving = sprite_frames_from_values(move_frames).unwrap_or_else(|| idle.clone());
+        let Some(animation) = SpriteAnimation::atlas(&idle, idle_fps, &moving, move_fps) else {
+            return;
+        };
+        let template = EntityTemplate::new(width, height)
+            .with_frame_animation(width, height, idle[0], animation);
+
+        match prefab {
+            ShooterPrefabKind::Player => {
+                self.texture_ids.player = texture_id;
+                self.config.player_template = template;
+                self.apply_template_to_existing_layer(
+                    world,
+                    CollisionLayer::Player,
+                    texture_id,
+                    template,
+                );
+            }
+            ShooterPrefabKind::Enemy => {
+                self.texture_ids.enemy = texture_id;
+                self.config.enemy_template = template;
+                self.apply_template_to_existing_layer(
+                    world,
+                    CollisionLayer::Enemy,
+                    texture_id,
+                    template,
+                );
+            }
+            ShooterPrefabKind::Bullet => {
+                self.texture_ids.bullet = texture_id;
+                self.config.bullet_template = template;
+                self.apply_template_to_existing_layer(
+                    world,
+                    CollisionLayer::Bullet,
+                    texture_id,
+                    template,
+                );
+            }
+        }
+    }
+
+    pub fn set_prefab_collider(
+        &mut self,
+        world: &mut World,
+        prefab_code: u32,
+        collider: EntityTemplateCollider,
+    ) -> bool {
+        let Some(prefab) = ShooterPrefabKind::from_code(prefab_code) else {
+            return false;
+        };
+        self.config = self.config.with_prefab_collider(prefab, collider);
+        match prefab {
+            ShooterPrefabKind::Player => self.apply_template_to_existing_layer(
+                world,
+                CollisionLayer::Player,
+                self.texture_ids.player,
+                self.config.player_template,
+            ),
+            ShooterPrefabKind::Enemy => self.apply_template_to_existing_layer(
+                world,
+                CollisionLayer::Enemy,
+                self.texture_ids.enemy,
+                self.config.enemy_template,
+            ),
+            ShooterPrefabKind::Bullet => self.apply_template_to_existing_layer(
+                world,
+                CollisionLayer::Bullet,
+                self.texture_ids.bullet,
+                self.config.bullet_template,
+            ),
+        }
+        true
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1206,10 +1564,7 @@ impl ShooterScene {
             if !world.alive[i] {
                 continue;
             }
-            let Some(collider) = world.colliders[i] else {
-                continue;
-            };
-            if collider.layer != CollisionLayer::Enemy {
+            if world.collider_layer_at(i) != Some(CollisionLayer::Enemy) {
                 continue;
             }
             let Some(enemy_t) = world.transforms[i] else {
@@ -1363,10 +1718,7 @@ impl ShooterScene {
             if let Some(time_left) = world.bullet_lifetimes[i].as_mut() {
                 *time_left -= delta;
             }
-            let is_bullet = world.colliders[i]
-                .map(|c| c.layer == CollisionLayer::Bullet)
-                .unwrap_or(false);
-            if !is_bullet {
+            if world.collider_layer_at(i) != Some(CollisionLayer::Bullet) {
                 continue;
             }
             if world.bullet_lifetimes[i].is_some_and(|t| t <= 0.0) {
@@ -1456,13 +1808,13 @@ impl ShooterScene {
 
     fn apply_texture_ids_to_existing_sprites(&self, world: &mut World) {
         for i in 0..world.sprites.len() {
-            let Some(collider) = world.colliders[i] else {
+            let Some(layer) = world.collider_layer_at(i) else {
                 continue;
             };
             let Some(sprite) = world.sprites[i].as_mut() else {
                 continue;
             };
-            sprite.texture_id = match collider.layer {
+            sprite.texture_id = match layer {
                 CollisionLayer::Player => self.texture_ids.player,
                 CollisionLayer::Enemy => self.texture_ids.enemy,
                 CollisionLayer::Bullet => self.texture_ids.bullet,
@@ -1478,11 +1830,8 @@ impl ShooterScene {
         texture_id: u32,
         template: EntityTemplate,
     ) {
-        for i in 0..world.colliders.len() {
-            let Some(collider) = world.colliders[i] else {
-                continue;
-            };
-            if collider.layer != layer {
+        for i in 0..world.alive.len() {
+            if world.collider_layer_at(i) != Some(layer) {
                 continue;
             }
             world.apply_template_to_entity(
@@ -1518,16 +1867,20 @@ impl ShooterScene {
         world: &mut World,
         audio_events: &mut Vec<AudioEvent>,
         delta: f32,
-        collision_events: Option<&mut CollisionEventSink<'_>>,
+        mut collision_events: Option<&mut CollisionEventSink<'_>>,
+        hit_particles: Option<&mut ParticleBurstSink<'_>>,
+        hit_tweens: Option<&mut TweenSink<'_>>,
     ) {
         self.prepare_collision_scratch(world.alive.len());
-        if let Some(events) = collision_events {
-            self.handle_bullet_enemy_collisions(world, audio_events, delta, Some(&mut *events));
-            self.handle_player_enemy_collisions(world, audio_events, Some(&mut *events));
-        } else {
-            self.handle_bullet_enemy_collisions(world, audio_events, delta, None);
-            self.handle_player_enemy_collisions(world, audio_events, None);
-        }
+        self.handle_bullet_enemy_collisions(
+            world,
+            audio_events,
+            delta,
+            collision_events.as_deref_mut(),
+            hit_particles,
+            hit_tweens,
+        );
+        self.handle_player_enemy_collisions(world, audio_events, collision_events);
 
         for e in self.pending_despawn.drain(..) {
             world.despawn(e);
@@ -1547,6 +1900,8 @@ impl ShooterScene {
         audio_events: &mut Vec<AudioEvent>,
         delta: f32,
         mut collision_events: Option<&mut CollisionEventSink<'_>>,
+        mut hit_particles: Option<&mut ParticleBurstSink<'_>>,
+        mut hit_tweens: Option<&mut TweenSink<'_>>,
     ) {
         CollisionSystem::build_swept_layer_pairs_into(
             &mut self.collision_scratch,
@@ -1575,8 +1930,14 @@ impl ShooterScene {
             }
 
             let damage = world.damages[bullet_index].unwrap_or(DEFAULT_BULLET_DAMAGE);
+            let hit_position = world.transforms[enemy_index].or(world.transforms[bullet_index]);
             if let Some(events) = collision_events.as_mut() {
                 events.push_hit(pair.a, pair.b, damage);
+            }
+            if let Some(position) = hit_position {
+                if let Some(particles) = hit_particles.as_deref_mut() {
+                    particles.spawn_at(position);
+                }
             }
             self.marked_for_despawn[bullet_index] = true;
             self.pending_despawn.push(Entity {
@@ -1593,6 +1954,14 @@ impl ShooterScene {
                 });
                 let reward = world.score_rewards[enemy_index].unwrap_or(DEFAULT_SCORE_REWARD);
                 self.score = self.score.saturating_add(reward);
+            } else if let Some(tweens) = hit_tweens.as_deref_mut() {
+                tweens.flash_enemy_hit(
+                    world,
+                    Entity {
+                        id: enemy_index as u32,
+                        generation: world.generations[enemy_index],
+                    },
+                );
             }
             Self::push_audio_event(audio_events, hit_sound_id, hit_volume, hit_pitch);
         }
@@ -1650,13 +2019,14 @@ impl ShooterScene {
 
     fn is_alive_layer(world: &World, index: usize, layer: CollisionLayer) -> bool {
         world.alive.get(index).copied().unwrap_or(false)
-            && world.colliders[index].is_some_and(|collider| collider.layer == layer)
+            && world.collider_layer_at(index) == Some(layer)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::PhysicsMaterial;
 
     fn playing_scene() -> (ShooterScene, World, Camera2D, Vec<AudioEvent>) {
         let mut scene = ShooterScene::new();
@@ -1673,9 +2043,7 @@ mod tests {
             .alive
             .iter()
             .enumerate()
-            .filter(|(idx, alive)| {
-                **alive && world.colliders[*idx].is_some_and(|c| c.layer == layer)
-            })
+            .filter(|(idx, alive)| **alive && world.collider_layer_at(*idx) == Some(layer))
             .count()
     }
 
@@ -1795,7 +2163,7 @@ mod tests {
         let b = world.spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
         let e = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None, None, None);
 
         assert!(!world.alive[b.id as usize]);
         assert!(!world.alive[e.id as usize]);
@@ -1816,7 +2184,7 @@ mod tests {
             world.colliders[e.id as usize].unwrap(),
         ));
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.1, None);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.1, None, None, None);
 
         assert!(!world.alive[b.id as usize]);
         assert!(!world.alive[e.id as usize]);
@@ -1837,7 +2205,7 @@ mod tests {
             scene.config.score_reward,
         );
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None, None, None);
 
         assert!(!world.alive[b.id as usize]);
         assert!(world.alive[e.id as usize]);
@@ -1866,7 +2234,7 @@ mod tests {
             scene.config.score_reward,
         );
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None, None, None);
 
         assert!(!world.alive[b.id as usize]);
         assert!(!world.alive[e.id as usize]);
@@ -1880,7 +2248,7 @@ mod tests {
         let first_enemy = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
         let second_enemy = world.spawn_enemy(54.0, 50.0, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None, None, None);
 
         assert!(!world.alive[bullet.id as usize]);
         assert!(!world.alive[first_enemy.id as usize]);
@@ -1895,7 +2263,7 @@ mod tests {
         let pt = world.transforms[player.id as usize].unwrap();
         world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None, None, None);
 
         assert_eq!(scene.game_state(), GameState::GameOver);
     }
@@ -2117,6 +2485,208 @@ mod tests {
         assert_eq!(world.sprites[bullet].unwrap().height, 10.0);
         assert_eq!(world.colliders[bullet].unwrap().half_width, 6.0);
         assert_eq!(world.colliders[bullet].unwrap().half_height, 5.0);
+    }
+
+    #[test]
+    fn prefab_collider_config_updates_spawned_and_existing_colliders() {
+        let (mut scene, mut world, camera, mut audio_events) = playing_scene();
+        let material =
+            PhysicsMaterial::new(0.2, 0.8).with_surface_velocity(Velocity { vx: 2.0, vy: 0.0 });
+
+        assert!(scene.set_prefab_collider(
+            &mut world,
+            0,
+            EntityTemplateCollider::aabb(12.0, 14.0, 2.0, -3.0, false, false, Some(material)),
+        ));
+
+        let player = world.player.unwrap();
+        let player_collider = world.colliders[player.id as usize].unwrap();
+        assert_eq!(player_collider.half_width, 12.0);
+        assert_eq!(player_collider.half_height, 14.0);
+        assert_eq!(player_collider.offset_x, 2.0);
+        assert_eq!(player_collider.offset_y, -3.0);
+        assert!(!player_collider.enabled);
+        assert!(!player_collider.is_trigger);
+        assert_eq!(world.collider_material(player), Some(material));
+
+        assert!(scene.set_prefab_collider(
+            &mut world,
+            1,
+            EntityTemplateCollider::aabb(9.0, 11.0, 1.0, 0.0, true, true, None),
+        ));
+        scene.game_state = GameState::Playing;
+        scene.enemy_spawn_timer = 0.0;
+        scene.spawn_enemy_if_needed(&mut world);
+        let enemy = world
+            .colliders
+            .iter()
+            .enumerate()
+            .find(|(_, collider)| collider.is_some_and(|c| c.layer == CollisionLayer::Enemy))
+            .map(|(index, _)| index)
+            .unwrap();
+        assert_eq!(world.colliders[enemy].unwrap().half_width, 9.0);
+        assert_eq!(world.colliders[enemy].unwrap().offset_x, 1.0);
+        assert_eq!(
+            world.collider_material(Entity {
+                id: enemy as u32,
+                generation: 0
+            }),
+            None
+        );
+
+        assert!(scene.set_prefab_collider(
+            &mut world,
+            2,
+            EntityTemplateCollider::aabb(3.0, 5.0, -1.0, 1.0, true, true, Some(material)),
+        ));
+        scene.fire_bullet_toward_mouse(
+            &mut world,
+            &camera,
+            InputState {
+                mouse_x: 800.0,
+                mouse_y: 240.0,
+                ..InputState::default()
+            },
+            player,
+            &mut audio_events,
+        );
+        let bullet = world
+            .colliders
+            .iter()
+            .enumerate()
+            .find(|(_, collider)| collider.is_some_and(|c| c.layer == CollisionLayer::Bullet))
+            .map(|(index, _)| index)
+            .unwrap();
+        assert_eq!(world.colliders[bullet].unwrap().half_width, 3.0);
+        assert_eq!(world.colliders[bullet].unwrap().half_height, 5.0);
+        assert_eq!(world.colliders[bullet].unwrap().offset_x, -1.0);
+        assert_eq!(
+            world.collider_material(Entity {
+                id: bullet as u32,
+                generation: 0
+            }),
+            Some(material)
+        );
+    }
+
+    #[test]
+    fn prefab_collider_config_supports_non_aabb_shapes() {
+        let (mut scene, mut world, camera, mut audio_events) = playing_scene();
+        let player = world.player.unwrap();
+        assert!(scene.set_prefab_collider(
+            &mut world,
+            0,
+            EntityTemplateCollider {
+                shape: EntityTemplateColliderShape::Circle { radius: 13.0 },
+                half_width: 0.0,
+                half_height: 0.0,
+                offset_x: 2.0,
+                offset_y: -1.0,
+                enabled: true,
+                is_trigger: true,
+                material: None,
+            },
+        ));
+        let player_collider = world.circle_colliders[player.id as usize].unwrap();
+        assert_eq!(player_collider.radius, 13.0);
+        assert_eq!(player_collider.offset_x, 2.0);
+        assert_eq!(
+            world.collider_layer_at(player.id as usize),
+            Some(CollisionLayer::Player)
+        );
+
+        assert!(scene.set_prefab_collider(
+            &mut world,
+            1,
+            EntityTemplateCollider {
+                shape: EntityTemplateColliderShape::Capsule {
+                    start_x: -4.0,
+                    start_y: 0.0,
+                    end_x: 4.0,
+                    end_y: 0.0,
+                    radius: 3.0,
+                },
+                half_width: 0.0,
+                half_height: 0.0,
+                offset_x: 0.0,
+                offset_y: 1.0,
+                enabled: true,
+                is_trigger: true,
+                material: None,
+            },
+        ));
+        scene.game_state = GameState::Playing;
+        scene.enemy_spawn_timer = 0.0;
+        scene.spawn_enemy_if_needed(&mut world);
+        let enemy = (0..world.alive.len())
+            .find(|index| world.collider_layer_at(*index) == Some(CollisionLayer::Enemy))
+            .unwrap();
+        assert_eq!(world.capsule_colliders[enemy].unwrap().radius, 3.0);
+
+        assert!(scene.set_prefab_collider(
+            &mut world,
+            1,
+            EntityTemplateCollider {
+                shape: EntityTemplateColliderShape::OrientedBox {
+                    half_width: 7.0,
+                    half_height: 5.0,
+                    rotation_radians: 0.25,
+                },
+                half_width: 0.0,
+                half_height: 0.0,
+                offset_x: 1.0,
+                offset_y: 2.0,
+                enabled: true,
+                is_trigger: false,
+                material: None,
+            },
+        ));
+        let enemy_box = world.oriented_box_colliders[enemy].unwrap();
+        assert_eq!(enemy_box.half_width, 7.0);
+        assert_eq!(enemy_box.rotation_radians, 0.25);
+        assert!(!enemy_box.is_trigger);
+
+        let mut vertices =
+            [Transform2D { x: 0.0, y: 0.0 }; crate::components::MAX_CONVEX_POLYGON_VERTICES];
+        vertices[0] = Transform2D { x: -3.0, y: -2.0 };
+        vertices[1] = Transform2D { x: 3.0, y: -2.0 };
+        vertices[2] = Transform2D { x: 0.0, y: 3.0 };
+        assert!(scene.set_prefab_collider(
+            &mut world,
+            2,
+            EntityTemplateCollider {
+                shape: EntityTemplateColliderShape::ConvexPolygon {
+                    vertices,
+                    vertex_count: 3,
+                    rotation_radians: 0.1,
+                },
+                half_width: 0.0,
+                half_height: 0.0,
+                offset_x: -1.0,
+                offset_y: 0.5,
+                enabled: true,
+                is_trigger: true,
+                material: None,
+            },
+        ));
+        scene.fire_bullet_toward_mouse(
+            &mut world,
+            &camera,
+            InputState {
+                mouse_x: 800.0,
+                mouse_y: 240.0,
+                ..InputState::default()
+            },
+            player,
+            &mut audio_events,
+        );
+        let bullet = (0..world.alive.len())
+            .find(|index| world.collider_layer_at(*index) == Some(CollisionLayer::Bullet))
+            .unwrap();
+        let bullet_polygon = world.convex_polygon_colliders[bullet].unwrap();
+        assert_eq!(bullet_polygon.vertex_count, 3);
+        assert_eq!(bullet_polygon.offset_x, -1.0);
+        assert_eq!(bullet_polygon.rotation_radians, 0.1);
     }
 
     #[test]
@@ -2443,7 +3013,7 @@ mod tests {
         let b = world.spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
         let e = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None, None, None);
 
         assert!(!world.alive[b.id as usize]);
         assert!(!world.alive[e.id as usize]);
@@ -2459,8 +3029,8 @@ mod tests {
         let pt = world.transforms[player.id as usize].unwrap();
         world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
 
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
-        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None, None, None);
+        scene.handle_collisions(&mut world, &mut audio_events, 0.0, None, None, None);
 
         assert_eq!(scene.game_state(), GameState::GameOver);
         assert_eq!(audio_events.len(), 1);

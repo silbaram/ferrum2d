@@ -9,8 +9,11 @@ test("decodeCollisionEvents parses packed collision event u32s", () => {
       2, 3, 0, 9, 2, 0,
       3, 3, 0, 9, 2, 0,
       4, 3, 0, 9, 2, f32Bits(2.5),
+      5, 3, 0, 9, 2, 0,
+      6, 3, 0, 9, 2, 0,
+      7, 3, 0, 9, 2, 0,
     ]),
-    eventCount: 4,
+    eventCount: 7,
     u32sPerEvent: 6,
   });
 
@@ -19,6 +22,9 @@ test("decodeCollisionEvents parses packed collision event u32s", () => {
     { kind: "stay", kindCode: 2, aId: 3, aGeneration: 0, bId: 9, bGeneration: 2, damage: 0 },
     { kind: "exit", kindCode: 3, aId: 3, aGeneration: 0, bId: 9, bGeneration: 2, damage: 0 },
     { kind: "hit", kindCode: 4, aId: 3, aGeneration: 0, bId: 9, bGeneration: 2, damage: 2.5 },
+    { kind: "trigger-enter", kindCode: 5, aId: 3, aGeneration: 0, bId: 9, bGeneration: 2, damage: 0 },
+    { kind: "trigger-stay", kindCode: 6, aId: 3, aGeneration: 0, bId: 9, bGeneration: 2, damage: 0 },
+    { kind: "trigger-exit", kindCode: 7, aId: 3, aGeneration: 0, bId: 9, bGeneration: 2, damage: 0 },
   ]);
 });
 

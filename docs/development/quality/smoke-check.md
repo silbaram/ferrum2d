@@ -26,16 +26,24 @@ WebGL2 실제 화면의 black-frame 회귀만 자동 확인하려면 별도 brow
 pnpm smoke:browser
 ```
 
-Breakout 예제의 두 번째 장르 runtime 경로만 확인하려면 다음을 실행한다.
+Top-down Shooter의 particle burst와 non-lethal enemy tint flash가 production build의 browser render path에서 감지되는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:topdown
+```
+
+Breakout 예제의 두 번째 장르 runtime/render path를 확인하려면 다음을 실행한다. Brick hit particle burst까지 자동 관측하려면 effect smoke를 실행한다.
 
 ```bash
 pnpm smoke:breakout
+pnpm smoke:breakout-effects
 ```
 
-Platformer 예제의 controller/runtime 경로만 확인하려면 다음을 실행한다.
+Platformer 예제의 controller/runtime/render path를 확인하려면 다음을 실행한다. Landing dust까지 자동 관측하려면 effect smoke를 실행한다.
 
 ```bash
 pnpm smoke:platformer
+pnpm smoke:platformer-effects
 ```
 
 ## Headless smoke check
@@ -46,22 +54,26 @@ pnpm smoke:platformer
 pnpm smoke:headless
 ```
 
-이 명령은 `@ferrum2d/ferrum-web`을 빌드한 뒤 `scripts/headless-smoke.mjs`를 실행한다. 검증 범위는 다음과 같다.
+이 명령은 Wasm 패키지와 `@ferrum2d/ferrum-web`을 빌드한 뒤 `scripts/headless-smoke.mjs`를 실행한다. 검증 범위는 다음과 같다.
 
 - 예제 `game.json`이 `resolveShooterGameSpec(...)`를 통과한다.
 - `applyShooterGameSpec(...)`가 resolved config, orbit tuning, camera, audio policy, tilemap, wave, atlas frame을 fake engine target에 빠짐없이 전달한다.
 - `collision: true` layer에 navigation obstacle로 쓸 양수 tile과 walkable `0` tile이 함께 존재한다.
 - tilemap 기반 representative render command buffer가 비어 있지 않고 `decodeRenderCommands(...)`, `rendererStatsForCommands(...)` 계약을 통과한다.
+- Rust/Wasm runtime을 headless로 로드해 particle preset 등록, shooter hit preset binding, burst spawn, particle count 증가/만료, render command append를 확인한다.
 
-이 검증은 Rust/Wasm runtime을 로드하거나 WebGL2 draw를 실행하지 않는다. 실제 Rust render command 생성은 Rust test와 Wasm build, 실제 화면은 browser render smoke check와 수동 smoke check로 보완한다.
+이 검증은 WebGL2 draw를 실행하지 않는다. 실제 화면은 browser render smoke check와 수동 smoke check로 보완한다.
 
 ## Browser render smoke check
 
-`pnpm smoke:browser`는 `examples/minimal-game` production build를, `pnpm smoke:breakout`은 `examples/breakout` production build를, `pnpm smoke:platformer`는 `examples/platformer` production build를 정적 서버로 띄운 뒤 Playwright Core로 설치된 Chrome/Chromium을 실행한다. 검증 범위는 다음과 같다.
+`pnpm smoke:browser`는 `examples/minimal-game` production build를, `pnpm smoke:topdown`은 `examples/topdown-shooter` production build를, `pnpm smoke:breakout`/`pnpm smoke:breakout-effects`는 `examples/breakout` production build를, `pnpm smoke:platformer`/`pnpm smoke:platformer-effects`는 `examples/platformer` production build를 정적 서버로 띄운 뒤 Playwright Core로 설치된 Chrome/Chromium을 실행한다. 검증 범위는 다음과 같다.
 
-- `createFerrumRuntime(...)`이 browser runtime을 초기화한다.
+- `createFerrumRuntime(...)` 또는 예제 bootstrap이 browser runtime을 초기화한다.
 - WebGL2 canvas가 생성되고 Rust/Wasm render command를 소비한다.
 - canvas pixel readback에서 placeholder texture의 녹색 픽셀이 일정 수 이상 검출된다.
+- `pnpm smoke:topdown`은 smoke 전용 URL parameter로 deterministic enemy hit를 만들고, particle count와 enemy tint flash render command가 관측되는지 확인한다.
+- `pnpm smoke:breakout-effects`는 `resetGame()` 이후 자연 ball/brick hit에서 scene-internal particle burst와 render command 증가가 관측되는지 확인한다.
+- `pnpm smoke:platformer-effects`는 `resetGame()` 이후 player landing transition에서 scene-internal dust burst와 render command 증가가 관측되는지 확인한다.
 - browser console error와 page error가 발생하지 않는다.
 
 기본 브라우저 채널은 `chrome`이다. 환경에 따라 다음 환경 변수를 사용할 수 있다.
@@ -69,9 +81,12 @@ pnpm smoke:headless
 ```bash
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:browser
 FERRUM_BROWSER_EXECUTABLE=/path/to/browser pnpm smoke:browser
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:topdown
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:breakout-effects
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:platformer-effects
 ```
 
-이 검증은 Web Audio unlock, 키보드/마우스 조작감, Top-down Shooter 게임플레이를 대체하지 않는다. 해당 항목은 여전히 수동 smoke check에서 확인한다.
+이 검증은 Web Audio unlock, 키보드/마우스 조작감, 전체 Top-down Shooter 게임플레이를 대체하지 않는다. 해당 항목은 여전히 수동 smoke check에서 확인한다.
 
 Rust 코드나 Rust/Wasm 경계를 바꾼 경우에는 `pnpm smoke:check`와 별도로 다음을 실행한다.
 
@@ -82,7 +97,7 @@ cargo clippy --manifest-path crates/ferrum-core/Cargo.toml -- -D warnings
 
 ## CI와 로컬 검증 차이
 
-GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다.
+GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `ferrum-web-v*` tag push에서는 release metadata check도 실행한다.
 
 현재 CI 기준:
 
@@ -99,8 +114,11 @@ GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다.
 - `pnpm test`로 TypeScript Node tests와 Rust tests를 모두 실행한다.
 - `pnpm validate:game-spec`로 예제 `game.json`이 runtime validator와 같은 경로를 통과하는지 확인한다.
 - `pnpm smoke:headless`로 Game Spec 적용 경로, collision/navigation 전제, representative render command buffer를 확인한다.
+- `pnpm smoke:topdown`으로 Top-down Shooter production build에서 particle burst와 non-lethal enemy tint flash가 browser render path에 도달하는지 확인한다.
 - `pnpm package:check`로 package entrypoint, files allowlist, generated Wasm artifact, 실제 `pnpm pack` tarball 구성을 확인한다.
+- `pnpm release:check`로 changelog, beta version, release tag metadata 구조를 확인한다.
 - `pnpm build`로 Wasm package와 Top-down Shooter production build를 확인한다.
+- `pnpm build:pages`로 GitHub Pages demo/docs artifact 구성과 문서 HTML 생성을 확인한다.
 - 브라우저 수동 smoke check로 WebGL2, 입력, 오디오, DebugOverlay 표시를 확인한다.
 
 CI는 브라우저 실제 렌더링, 사용자 입력, Web Audio 재생, screenshot 갱신을 검증하지 않는다.
@@ -124,7 +142,7 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 
 ## Screenshot 갱신
 
-README preview용 스크린샷 절차는 [screenshots README](screenshots/README.md)를 따른다. smoke check에서 화면이 바뀐 것을 의도했다면 `docs/screenshots/topdown-shooter-title.png` 갱신 여부를 함께 판단한다.
+README preview용 스크린샷 절차는 [screenshots README](screenshots/README.md)를 따른다. smoke check에서 화면이 바뀐 것을 의도했다면 `docs/development/quality/screenshots/topdown-shooter-title.png` 갱신 여부를 함께 판단한다.
 
 ## 실패 기록 형식
 

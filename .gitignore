@@ -4,3 +4,6 @@ packages/*/dist/
 packages/*/dist-test/
 examples/*/dist/
 .antigravitycli/
+dist-pages/
+
+docs/physics-v*

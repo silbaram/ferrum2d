@@ -61,10 +61,5 @@ fn main() {
 }
 
 fn collider(half_width: f32, half_height: f32, layer: CollisionLayer) -> AabbCollider {
-    AabbCollider {
-        half_width,
-        half_height,
-        is_trigger: true,
-        layer,
-    }
+    AabbCollider::new(half_width, half_height, true, layer)
 }

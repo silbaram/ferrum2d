@@ -138,6 +138,20 @@ test("importTiledTilemap converts orthogonal tile layers and tileset atlas frame
       tileheight: 16,
       columns: 4,
       tilecount: 8,
+      tiles: [{
+        id: 1,
+        properties: [
+          { name: "slopeX0", type: "float", value: 0 },
+          { name: "slopeY0", type: "float", value: 1 },
+          { name: "slopeX1", type: "float", value: 1 },
+          { name: "slopeY1", type: "float", value: 0 },
+        ],
+      }, {
+        id: 2,
+        properties: [
+          { name: "oneWayPlatform", type: "bool", value: true },
+        ],
+      }],
     }],
     layers: [
       { type: "tilelayer", name: "ground", width: 3, height: 2, data: [1, 0, 2, 5, 1, 0] },
@@ -161,8 +175,8 @@ test("importTiledTilemap converts orthogonal tile layers and tileset atlas frame
     origin: { x: -8, y: 4 },
     tiles: {
       "1": { frame: "terrain.0" },
-      "2": { frame: "terrain.1" },
-      "3": { frame: "terrain.2" },
+      "2": { frame: "terrain.1", slope: { x0: 0, y0: 1, x1: 1, y1: 0 } },
+      "3": { frame: "terrain.2", oneWayPlatform: true },
       "4": { frame: "terrain.3" },
       "5": { frame: "terrain.4" },
     },
@@ -181,6 +195,73 @@ test("importTiledTilemap converts orthogonal tile layers and tileset atlas frame
     uv: { u0: 0, v0: 0.5, u1: 0.25, v1: 1 },
     size: { width: 16, height: 16 },
   });
+});
+
+test("importTiledTilemap rejects invalid tile slope metadata", () => {
+  rejectsWithMessage(
+    () => importTiledTilemap({
+      orientation: "orthogonal",
+      width: 1,
+      height: 1,
+      tilewidth: 16,
+      tileheight: 16,
+      tilesets: [{
+        firstgid: 1,
+        name: "terrain",
+        imagewidth: 16,
+        imageheight: 16,
+        tilewidth: 16,
+        tileheight: 16,
+        columns: 1,
+        tilecount: 1,
+        tiles: [{
+          id: 0,
+          properties: [
+            { name: "slopeX0", type: "float", value: 0.5 },
+            { name: "slopeY0", type: "float", value: 1 },
+            { name: "slopeX1", type: "float", value: 0.5 },
+            { name: "slopeY1", type: "float", value: 0 },
+          ],
+        }],
+      }],
+      layers: [{ type: "tilelayer", width: 1, height: 1, data: [1] }],
+    }),
+    "Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.tiled.tilesets.0.tiles.0.properties.slopeX1' detail='must differ from slopeX0'.",
+  );
+});
+
+test("importTiledTilemap rejects tiles that combine slope and one-way platform metadata", () => {
+  rejectsWithMessage(
+    () => importTiledTilemap({
+      orientation: "orthogonal",
+      width: 1,
+      height: 1,
+      tilewidth: 16,
+      tileheight: 16,
+      tilesets: [{
+        firstgid: 1,
+        name: "terrain",
+        imagewidth: 16,
+        imageheight: 16,
+        tilewidth: 16,
+        tileheight: 16,
+        columns: 1,
+        tilecount: 1,
+        tiles: [{
+          id: 0,
+          properties: [
+            { name: "slopeX0", type: "float", value: 0 },
+            { name: "slopeY0", type: "float", value: 1 },
+            { name: "slopeX1", type: "float", value: 1 },
+            { name: "slopeY1", type: "float", value: 0 },
+            { name: "oneWayPlatform", type: "bool", value: true },
+          ],
+        }],
+      }],
+      layers: [{ type: "tilelayer", width: 1, height: 1, data: [1] }],
+    }),
+    "Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.tiled.tilesets.0.tiles' detail='tile id 0 cannot define both slope and oneWayPlatform'.",
+  );
 });
 
 test("importTiledGameSpec supports frame and texture callbacks", () => {
@@ -299,6 +380,13 @@ test("importLDtkTilemap converts embedded level tile layers and atlas frames", (
         tileGridSize: 16,
         spacing: 0,
         padding: 0,
+        customData: [{
+          tileId: 1,
+          data: "{\"oneWayPlatform\":true}",
+        }, {
+          tileId: 2,
+          data: "{\"slope\":{\"x0\":0,\"y0\":1,\"x1\":1,\"y1\":0}}",
+        }],
       }],
     },
     levels: [{
@@ -351,9 +439,9 @@ test("importLDtkTilemap converts embedded level tile layers and atlas frames", (
     origin: { x: -8, y: 4 },
     tiles: {
       "1": { frame: "terrain.0" },
-      "2": { frame: "terrain.1" },
+      "2": { frame: "terrain.1", oneWayPlatform: true },
       "3": { frame: "terrain.4" },
-      "4": { frame: "terrain.2" },
+      "4": { frame: "terrain.2", slope: { x0: 0, y0: 1, x1: 1, y1: 0 } },
     },
     layers: [
       {
@@ -388,6 +476,76 @@ test("importLDtkTilemap converts embedded level tile layers and atlas frames", (
     uv: { u0: 0.5, v0: 0, u1: 0.75, v1: 0.5 },
     size: { width: 16, height: 16 },
   });
+});
+
+test("importLDtkTilemap rejects invalid tile slope metadata", () => {
+  rejectsWithMessage(
+    () => importLDtkTilemap({
+      defs: {
+        tilesets: [{
+          uid: 1,
+          identifier: "terrain",
+          pxWid: 16,
+          pxHei: 16,
+          tileGridSize: 16,
+          customData: [{
+            tileId: 0,
+            data: "{\"slope\":{\"x0\":0,\"y0\":1.2,\"x1\":1,\"y1\":0}}",
+          }],
+        }],
+      },
+      levels: [{
+        identifier: "Level_0",
+        pxWid: 16,
+        pxHei: 16,
+        layerInstances: [{
+          __identifier: "ground",
+          __type: "Tiles",
+          __cWid: 1,
+          __cHei: 1,
+          __gridSize: 16,
+          __tilesetDefUid: 1,
+          gridTiles: [{ px: [0, 0], src: [0, 0], t: 0, f: 0 }],
+        }],
+      }],
+    }),
+    "Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.ldtk.defs.tilesets.0.customData.0.data.slope.y0' detail='must be a normalized number from 0 to 1'.",
+  );
+});
+
+test("importLDtkTilemap rejects invalid one-way tile metadata", () => {
+  rejectsWithMessage(
+    () => importLDtkTilemap({
+      defs: {
+        tilesets: [{
+          uid: 1,
+          identifier: "terrain",
+          pxWid: 16,
+          pxHei: 16,
+          tileGridSize: 16,
+          customData: [{
+            tileId: 0,
+            data: "{\"oneWayPlatform\":\"yes\"}",
+          }],
+        }],
+      },
+      levels: [{
+        identifier: "Level_0",
+        pxWid: 16,
+        pxHei: 16,
+        layerInstances: [{
+          __identifier: "ground",
+          __type: "Tiles",
+          __cWid: 1,
+          __cHei: 1,
+          __gridSize: 16,
+          __tilesetDefUid: 1,
+          gridTiles: [{ px: [0, 0], src: [0, 0], t: 0, f: 0 }],
+        }],
+      }],
+    }),
+    "Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.ldtk.defs.tilesets.0.customData.0.data.oneWayPlatform' detail='must be a boolean'.",
+  );
 });
 
 test("importLDtkGameSpec supports level selection and frame callbacks", () => {
@@ -520,36 +678,109 @@ test("importLDtkTilemap rejects unresolved external levels", () => {
         layerInstances: null,
       }],
     }),
-    "Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.ldtk.levels.0.layerInstances' detail='external LDtk levels must be loaded into the project JSON before import'.",
+    "Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.ldtk.levels.0.layerInstances' detail='external LDtk level Level_0.ldtkl must be provided in options.externalLevels'.",
   );
 });
 
-test("importLDtkTilemap rejects raw IntGrid collision layers", () => {
-  rejectsWithMessage(
-    () => importLDtkTilemap({
-      defs: {
-        tilesets: [{
-          uid: 1,
-          identifier: "terrain",
-          pxWid: 16,
-          pxHei: 16,
-          tileGridSize: 16,
-        }],
-      },
-      levels: [{
-        identifier: "Level_0",
+test("importLDtkTilemap imports preloaded external LDtk levels", () => {
+  const imported = importLDtkTilemap({
+    defs: {
+      tilesets: [{
+        uid: 1,
+        identifier: "terrain",
+        relPath: "terrain.png",
         pxWid: 16,
         pxHei: 16,
+        tileGridSize: 16,
+      }],
+    },
+    levels: [{
+      identifier: "Level_0",
+      iid: "level-iid",
+      pxWid: 16,
+      pxHei: 16,
+      externalRelPath: "levels/Level_0.ldtkl",
+      layerInstances: null,
+    }],
+  }, {
+    externalLevels: {
+      "levels/Level_0.ldtkl": {
         layerInstances: [{
-          __identifier: "walls",
-          __type: "IntGrid",
+          __identifier: "ground",
+          __type: "Tiles",
           __cWid: 1,
           __cHei: 1,
           __gridSize: 16,
-          intGridCsv: [1],
+          __tilesetDefUid: 1,
+          gridTiles: [{ px: [0, 0], src: [0, 0], t: 0, f: 0 }],
         }],
+      },
+    },
+  });
+
+  deepEqual(imported.usedTileIds, [1]);
+  deepEqual(imported.layerNames, ["ground"]);
+  deepEqual(imported.tilesetNames, ["terrain"]);
+  equal(imported.levelIdentifier, "Level_0");
+  equal(imported.levelIid, "level-iid");
+  deepEqual(imported.tilemap.layers?.[0], {
+    name: "ground",
+    columns: 1,
+    rows: 1,
+    tileWidth: 16,
+    tileHeight: 16,
+    origin: { x: 0, y: 0 },
+    collision: false,
+    data: [1],
+  });
+  deepEqual(imported.tilemap.tiles, {
+    "1": { frame: "terrain.0" },
+  });
+  deepEqual(imported.atlas.frames?.["terrain.0"], {
+    texture: "terrain",
+    uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+    size: { width: 16, height: 16 },
+  });
+});
+
+test("importLDtkTilemap converts raw IntGrid collision layers to collision-only tilemap layers", () => {
+  const imported = importLDtkTilemap({
+    defs: {
+      tilesets: [{
+        uid: 1,
+        identifier: "terrain",
+        pxWid: 16,
+        pxHei: 16,
+        tileGridSize: 16,
       }],
-    }, { collisionLayerNames: ["walls"] }),
-    "Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.ldtk.levels.0.layerInstances.0' detail='raw LDtk IntGrid collision layers are not supported; use rendered tiles or a tile layer collision mask'.",
-  );
+    },
+    levels: [{
+      identifier: "Level_0",
+      pxWid: 32,
+      pxHei: 16,
+      layerInstances: [{
+        __identifier: "walls",
+        __type: "IntGrid",
+        __cWid: 2,
+        __cHei: 1,
+        __gridSize: 16,
+        intGridCsv: [0, 2],
+      }],
+    }],
+  }, { collisionLayerNames: ["walls"], origin: { x: 4, y: 8 } });
+
+  deepEqual(imported.usedTileIds, []);
+  deepEqual(imported.atlas.frames, {});
+  deepEqual(imported.tilemap.tiles, {});
+  deepEqual(imported.tilemap.layers?.[0], {
+    name: "walls",
+    columns: 2,
+    rows: 1,
+    tileWidth: 16,
+    tileHeight: 16,
+    origin: { x: 4, y: 8 },
+    collision: true,
+    collisionOnly: true,
+    data: [0, 4294967295],
+  });
 });

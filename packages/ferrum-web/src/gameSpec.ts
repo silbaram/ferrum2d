@@ -92,6 +92,50 @@ export interface ShooterPrefabSpec {
   height?: number;
   frame?: string;
   animation?: ShooterSpriteAnimationSpec;
+  collider?: ShooterPrefabColliderSpec;
+}
+
+export type ShooterPrefabColliderType = "aabb" | "circle" | "capsule" | "orientedBox" | "convexPolygon";
+
+export interface ShooterPrefabColliderSpec {
+  type?: ShooterPrefabColliderType;
+  halfWidth?: number;
+  halfHeight?: number;
+  radius?: number;
+  start?: {
+    x?: number;
+    y?: number;
+  };
+  end?: {
+    x?: number;
+    y?: number;
+  };
+  rotationRadians?: number;
+  vertices?: Array<{
+    x?: number;
+    y?: number;
+  }>;
+  offset?: {
+    x?: number;
+    y?: number;
+  };
+  enabled?: boolean;
+  trigger?: boolean;
+  material?: ShooterPhysicsMaterialSpec;
+}
+
+export interface ShooterPhysicsMaterialSpec {
+  restitution?: number;
+  friction?: number;
+  surfaceVelocity?: {
+    x?: number;
+    y?: number;
+  };
+  density?: number;
+  contactBaumgarteBiasScale?: number;
+  maxContactBaumgarteBiasVelocityScale?: number;
+  contactPositionCorrectionScale?: number;
+  contactPositionCorrectionSlopScale?: number;
 }
 
 export interface ShooterAtlasSpec {
@@ -112,6 +156,15 @@ export interface ShooterTilemapSpec {
 export interface ShooterTileSpec {
   frame?: string;
   color?: [number, number, number, number];
+  slope?: ShooterTileSlopeSpec;
+  oneWayPlatform?: boolean;
+}
+
+export interface ShooterTileSlopeSpec {
+  x0?: number;
+  y0?: number;
+  x1?: number;
+  y1?: number;
 }
 
 export interface ShooterTileLayerSpec {
@@ -125,6 +178,7 @@ export interface ShooterTileLayerSpec {
     y?: number;
   };
   collision?: boolean;
+  collisionOnly?: boolean;
   data?: number[];
 }
 
@@ -157,6 +211,15 @@ export interface ResolvedShooterTileDefinition {
   id: number;
   frame: ResolvedShooterAtlasFrame;
   color: [number, number, number, number];
+  slope?: ResolvedShooterTileSlopeDefinition;
+  oneWayPlatform?: boolean;
+}
+
+export interface ResolvedShooterTileSlopeDefinition {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
 }
 
 export interface ResolvedShooterTileLayer {
@@ -169,12 +232,75 @@ export interface ResolvedShooterTileLayer {
   originX: number;
   originY: number;
   collision: boolean;
+  collisionOnly: boolean;
   data: number[];
 }
 
 export interface ResolvedShooterTilemap {
   tiles: ResolvedShooterTileDefinition[];
   layers: ResolvedShooterTileLayer[];
+}
+
+export interface ResolvedShooterPhysicsMaterial {
+  restitution: number;
+  friction: number;
+  surfaceVelocityX: number;
+  surfaceVelocityY: number;
+  density: number;
+  contactBaumgarteBiasScale: number;
+  maxContactBaumgarteBiasVelocityScale: number;
+  contactPositionCorrectionScale: number;
+  contactPositionCorrectionSlopScale: number;
+}
+
+export interface ResolvedShooterPrefabColliderBase {
+  type: ShooterPrefabColliderType;
+  offsetX: number;
+  offsetY: number;
+  enabled: boolean;
+  trigger: boolean;
+  material?: ResolvedShooterPhysicsMaterial;
+}
+
+export type ResolvedShooterPrefabCollider =
+  | (ResolvedShooterPrefabColliderBase & {
+      type: "aabb";
+      halfWidth: number;
+      halfHeight: number;
+    })
+  | (ResolvedShooterPrefabColliderBase & {
+      type: "circle";
+      radius: number;
+    })
+  | (ResolvedShooterPrefabColliderBase & {
+      type: "capsule";
+      startX: number;
+      startY: number;
+      endX: number;
+      endY: number;
+      radius: number;
+    })
+  | (ResolvedShooterPrefabColliderBase & {
+      type: "orientedBox";
+      halfWidth: number;
+      halfHeight: number;
+      rotationRadians: number;
+    })
+  | (ResolvedShooterPrefabColliderBase & {
+      type: "convexPolygon";
+      vertices: ResolvedShooterPrefabColliderVertex[];
+      rotationRadians: number;
+    });
+
+export interface ResolvedShooterPrefabColliderVertex {
+  x: number;
+  y: number;
+}
+
+export interface ResolvedShooterPrefabAabbCollider extends ResolvedShooterPrefabColliderBase {
+  type: "aabb";
+  halfWidth: number;
+  halfHeight: number;
 }
 
 export interface ResolvedShooterWave {
@@ -197,6 +323,7 @@ export interface ShooterSpriteAnimationSpec {
   rows?: number;
   frames?: number;
   fps?: number;
+  atlas?: ShooterAtlasAnimationSpec;
   states?: {
     idle?: ShooterSpriteAnimationStateSpec;
     move?: ShooterSpriteAnimationStateSpec;
@@ -206,6 +333,16 @@ export interface ShooterSpriteAnimationSpec {
 export interface ShooterSpriteAnimationStateSpec {
   row?: number;
   frames?: number;
+  fps?: number;
+}
+
+export interface ShooterAtlasAnimationSpec {
+  idle?: ShooterAtlasAnimationStateSpec;
+  move?: ShooterAtlasAnimationStateSpec;
+}
+
+export interface ShooterAtlasAnimationStateSpec {
+  frames?: string[];
   fps?: number;
 }
 
@@ -278,6 +415,12 @@ export interface ResolvedShooterGameSpec {
   playerAtlasFrame?: ResolvedShooterAtlasFrame;
   enemyAtlasFrame?: ResolvedShooterAtlasFrame;
   bulletAtlasFrame?: ResolvedShooterAtlasFrame;
+  playerAtlasAnimation?: ResolvedShooterAtlasAnimation;
+  enemyAtlasAnimation?: ResolvedShooterAtlasAnimation;
+  bulletAtlasAnimation?: ResolvedShooterAtlasAnimation;
+  playerCollider: ResolvedShooterPrefabCollider;
+  enemyCollider: ResolvedShooterPrefabCollider;
+  bulletCollider: ResolvedShooterPrefabCollider;
   tilemap?: ResolvedShooterTilemap;
   waves: ResolvedShooterWave[];
   audioMasterVolume: number;
@@ -288,6 +431,19 @@ export interface ResolvedShooterGameSpec {
   hitPitch: number;
   gameOverVolume: number;
   gameOverPitch: number;
+}
+
+export interface ResolvedShooterAtlasAnimation {
+  texture: string | number;
+  width: number;
+  height: number;
+  idle: ResolvedShooterAtlasAnimationState;
+  move: ResolvedShooterAtlasAnimationState;
+}
+
+export interface ResolvedShooterAtlasAnimationState {
+  frames: ResolvedShooterAtlasFrame[];
+  fps: number;
 }
 
 export interface ShooterGameSpecTarget {
@@ -364,6 +520,114 @@ export interface ShooterGameSpecTarget {
     u1: number,
     v1: number,
   ): void;
+  set_shooter_atlas_animation?(
+    prefab: number,
+    textureId: number,
+    width: number,
+    height: number,
+    idleFps: number,
+    idleFrames: Float32Array,
+    moveFps: number,
+    moveFrames: Float32Array,
+  ): void;
+  set_shooter_prefab_collider?(
+    prefab: number,
+    halfWidth: number,
+    halfHeight: number,
+    offsetX: number,
+    offsetY: number,
+    enabled: boolean,
+    trigger: boolean,
+    hasMaterial: boolean,
+    restitution: number,
+    friction: number,
+    surfaceVelocityX: number,
+    surfaceVelocityY: number,
+    density: number,
+    contactBaumgarteBiasScale: number,
+    maxContactBaumgarteBiasVelocityScale: number,
+    contactPositionCorrectionScale: number,
+    contactPositionCorrectionSlopScale: number,
+  ): boolean;
+  set_shooter_prefab_circle_collider?(
+    prefab: number,
+    radius: number,
+    offsetX: number,
+    offsetY: number,
+    enabled: boolean,
+    trigger: boolean,
+    hasMaterial: boolean,
+    restitution: number,
+    friction: number,
+    surfaceVelocityX: number,
+    surfaceVelocityY: number,
+    density: number,
+    contactBaumgarteBiasScale: number,
+    maxContactBaumgarteBiasVelocityScale: number,
+    contactPositionCorrectionScale: number,
+    contactPositionCorrectionSlopScale: number,
+  ): boolean;
+  set_shooter_prefab_capsule_collider?(
+    prefab: number,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    radius: number,
+    offsetX: number,
+    offsetY: number,
+    enabled: boolean,
+    trigger: boolean,
+    hasMaterial: boolean,
+    restitution: number,
+    friction: number,
+    surfaceVelocityX: number,
+    surfaceVelocityY: number,
+    density: number,
+    contactBaumgarteBiasScale: number,
+    maxContactBaumgarteBiasVelocityScale: number,
+    contactPositionCorrectionScale: number,
+    contactPositionCorrectionSlopScale: number,
+  ): boolean;
+  set_shooter_prefab_oriented_box_collider?(
+    prefab: number,
+    halfWidth: number,
+    halfHeight: number,
+    rotationRadians: number,
+    offsetX: number,
+    offsetY: number,
+    enabled: boolean,
+    trigger: boolean,
+    hasMaterial: boolean,
+    restitution: number,
+    friction: number,
+    surfaceVelocityX: number,
+    surfaceVelocityY: number,
+    density: number,
+    contactBaumgarteBiasScale: number,
+    maxContactBaumgarteBiasVelocityScale: number,
+    contactPositionCorrectionScale: number,
+    contactPositionCorrectionSlopScale: number,
+  ): boolean;
+  set_shooter_prefab_convex_polygon_collider?(
+    prefab: number,
+    vertices: Float32Array,
+    rotationRadians: number,
+    offsetX: number,
+    offsetY: number,
+    enabled: boolean,
+    trigger: boolean,
+    hasMaterial: boolean,
+    restitution: number,
+    friction: number,
+    surfaceVelocityX: number,
+    surfaceVelocityY: number,
+    density: number,
+    contactBaumgarteBiasScale: number,
+    maxContactBaumgarteBiasVelocityScale: number,
+    contactPositionCorrectionScale: number,
+    contactPositionCorrectionSlopScale: number,
+  ): boolean;
   clear_shooter_tilemap?(): void;
   set_shooter_tile?(
     tileId: number,
@@ -377,6 +641,14 @@ export interface ShooterGameSpecTarget {
     b: number,
     a: number,
   ): void;
+  set_shooter_tile_slope?(
+    tileId: number,
+    localX0: number,
+    localY0: number,
+    localX1: number,
+    localY1: number,
+  ): void;
+  set_shooter_tile_one_way_platform?(tileId: number): void;
   set_shooter_tilemap_layer?(
     index: number,
     columns: number,
@@ -476,6 +748,33 @@ const DEFAULT_SHOOTER_GAME_SPEC: ResolvedShooterGameSpec = {
   cameraShakeAmplitude: 6,
   cameraShakeFrequency: 8,
   atlasFrames: {},
+  playerCollider: {
+    type: "aabb",
+    halfWidth: 18,
+    halfHeight: 18,
+    offsetX: 0,
+    offsetY: 0,
+    enabled: true,
+    trigger: true,
+  },
+  enemyCollider: {
+    type: "aabb",
+    halfWidth: 12,
+    halfHeight: 12,
+    offsetX: 0,
+    offsetY: 0,
+    enabled: true,
+    trigger: true,
+  },
+  bulletCollider: {
+    type: "aabb",
+    halfWidth: 4,
+    halfHeight: 4,
+    offsetX: 0,
+    offsetY: 0,
+    enabled: true,
+    trigger: true,
+  },
   waves: [],
   audioMasterVolume: 1,
   audioSfxVolume: 1,
@@ -486,6 +785,12 @@ const DEFAULT_SHOOTER_GAME_SPEC: ResolvedShooterGameSpec = {
   gameOverVolume: 0.65,
   gameOverPitch: 0.9,
 };
+const TILE_SLOPE_MIN_HORIZONTAL_SPAN = 0.0001;
+const MAX_ATLAS_ANIMATION_FRAMES = 32;
+const DEFAULT_PHYSICS_MATERIAL_RESTITUTION = 0;
+const DEFAULT_PHYSICS_MATERIAL_FRICTION = 0.4;
+const DEFAULT_PHYSICS_MATERIAL_DENSITY = 1;
+const DEFAULT_PHYSICS_MATERIAL_SCALE = 1;
 
 export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec {
   const spec = optionalObject(input, "game spec");
@@ -522,6 +827,21 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
     bulletPrefab.frame,
     bulletPrefab.animation,
     "prefabs.bullet",
+    atlasFrames,
+  );
+  const playerAtlasAnimation = prefabAtlasAnimation(
+    playerPrefab.animation,
+    "prefabs.player.animation",
+    atlasFrames,
+  );
+  const enemyAtlasAnimation = prefabAtlasAnimation(
+    enemyPrefab.animation,
+    "prefabs.enemy.animation",
+    atlasFrames,
+  );
+  const bulletAtlasAnimation = prefabAtlasAnimation(
+    bulletPrefab.animation,
+    "prefabs.bullet.animation",
     atlasFrames,
   );
 
@@ -570,6 +890,54 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
     health: enemyHealth,
     scoreReward,
   });
+  const playerWidth = positiveNumber(
+    playerPrefab.width,
+    "prefabs.player.width",
+    playerAtlasFrame?.width ?? playerAtlasAnimation?.width ?? DEFAULT_SHOOTER_GAME_SPEC.playerWidth,
+  );
+  const playerHeight = positiveNumber(
+    playerPrefab.height,
+    "prefabs.player.height",
+    playerAtlasFrame?.height ?? playerAtlasAnimation?.height ?? DEFAULT_SHOOTER_GAME_SPEC.playerHeight,
+  );
+  const enemyWidth = positiveNumber(
+    enemyPrefab.width,
+    "prefabs.enemy.width",
+    enemyAtlasFrame?.width ?? enemyAtlasAnimation?.width ?? DEFAULT_SHOOTER_GAME_SPEC.enemyWidth,
+  );
+  const enemyHeight = positiveNumber(
+    enemyPrefab.height,
+    "prefabs.enemy.height",
+    enemyAtlasFrame?.height ?? enemyAtlasAnimation?.height ?? DEFAULT_SHOOTER_GAME_SPEC.enemyHeight,
+  );
+  const bulletWidth = positiveNumber(
+    bulletPrefab.width,
+    "prefabs.bullet.width",
+    bulletAtlasFrame?.width ?? bulletAtlasAnimation?.width ?? DEFAULT_SHOOTER_GAME_SPEC.bulletWidth,
+  );
+  const bulletHeight = positiveNumber(
+    bulletPrefab.height,
+    "prefabs.bullet.height",
+    bulletAtlasFrame?.height ?? bulletAtlasAnimation?.height ?? DEFAULT_SHOOTER_GAME_SPEC.bulletHeight,
+  );
+  const playerCollider = prefabCollider(
+    playerPrefab.collider,
+    "prefabs.player.collider",
+    playerWidth,
+    playerHeight,
+  );
+  const enemyCollider = prefabCollider(
+    enemyPrefab.collider,
+    "prefabs.enemy.collider",
+    enemyWidth,
+    enemyHeight,
+  );
+  const bulletCollider = prefabCollider(
+    bulletPrefab.collider,
+    "prefabs.bullet.collider",
+    bulletWidth,
+    bulletHeight,
+  );
 
   return {
     worldWidth: positiveNumber(world.width, "world.width", DEFAULT_SHOOTER_GAME_SPEC.worldWidth),
@@ -584,36 +952,12 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
     ),
     fireCooldown: positiveNumber(weapons.cooldown, "weapons.cooldown", DEFAULT_SHOOTER_GAME_SPEC.fireCooldown),
     bulletLifetime: positiveNumber(weapons.lifetime, "weapons.lifetime", DEFAULT_SHOOTER_GAME_SPEC.bulletLifetime),
-    playerWidth: positiveNumber(
-      playerPrefab.width,
-      "prefabs.player.width",
-      playerAtlasFrame?.width ?? DEFAULT_SHOOTER_GAME_SPEC.playerWidth,
-    ),
-    playerHeight: positiveNumber(
-      playerPrefab.height,
-      "prefabs.player.height",
-      playerAtlasFrame?.height ?? DEFAULT_SHOOTER_GAME_SPEC.playerHeight,
-    ),
-    enemyWidth: positiveNumber(
-      enemyPrefab.width,
-      "prefabs.enemy.width",
-      enemyAtlasFrame?.width ?? DEFAULT_SHOOTER_GAME_SPEC.enemyWidth,
-    ),
-    enemyHeight: positiveNumber(
-      enemyPrefab.height,
-      "prefabs.enemy.height",
-      enemyAtlasFrame?.height ?? DEFAULT_SHOOTER_GAME_SPEC.enemyHeight,
-    ),
-    bulletWidth: positiveNumber(
-      bulletPrefab.width,
-      "prefabs.bullet.width",
-      bulletAtlasFrame?.width ?? DEFAULT_SHOOTER_GAME_SPEC.bulletWidth,
-    ),
-    bulletHeight: positiveNumber(
-      bulletPrefab.height,
-      "prefabs.bullet.height",
-      bulletAtlasFrame?.height ?? DEFAULT_SHOOTER_GAME_SPEC.bulletHeight,
-    ),
+    playerWidth,
+    playerHeight,
+    enemyWidth,
+    enemyHeight,
+    bulletWidth,
+    bulletHeight,
     playerAnimationFrames: playerAnimation.frames,
     playerAnimationFps: playerAnimation.fps,
     playerAnimationColumns: playerAnimation.columns,
@@ -681,6 +1025,12 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
     ...(playerAtlasFrame ? { playerAtlasFrame } : {}),
     ...(enemyAtlasFrame ? { enemyAtlasFrame } : {}),
     ...(bulletAtlasFrame ? { bulletAtlasFrame } : {}),
+    ...(playerAtlasAnimation ? { playerAtlasAnimation } : {}),
+    ...(enemyAtlasAnimation ? { enemyAtlasAnimation } : {}),
+    ...(bulletAtlasAnimation ? { bulletAtlasAnimation } : {}),
+    playerCollider,
+    enemyCollider,
+    bulletCollider,
     ...(tilemap ? { tilemap } : {}),
     waves,
     audioMasterVolume: nonNegativeNumber(
@@ -709,6 +1059,11 @@ export function applyShooterGameSpec(
     atlasFrameApplication(1, spec.enemyAtlasFrame, options, "prefabs.enemy.frame"),
     atlasFrameApplication(2, spec.bulletAtlasFrame, options, "prefabs.bullet.frame"),
   ].filter((frame): frame is ResolvedAtlasFrameApplication => frame !== undefined);
+  const atlasAnimations = [
+    atlasAnimationApplication(0, spec.playerAtlasAnimation, options, "prefabs.player.animation.atlas"),
+    atlasAnimationApplication(1, spec.enemyAtlasAnimation, options, "prefabs.enemy.animation.atlas"),
+    atlasAnimationApplication(2, spec.bulletAtlasAnimation, options, "prefabs.bullet.animation.atlas"),
+  ].filter((animation): animation is ResolvedAtlasAnimationApplication => animation !== undefined);
   const tilemap = tilemapApplication(spec.tilemap, options);
   engine.set_shooter_resolved_config(
     spec.worldWidth,
@@ -815,6 +1170,12 @@ export function applyShooterGameSpec(
   for (const frame of atlasFrames) {
     applyAtlasFrame(engine, frame);
   }
+  for (const animation of atlasAnimations) {
+    applyAtlasAnimation(engine, animation);
+  }
+  applyPrefabCollider(engine, 0, spec.playerCollider);
+  applyPrefabCollider(engine, 1, spec.enemyCollider);
+  applyPrefabCollider(engine, 2, spec.bulletCollider);
   return spec;
 }
 
@@ -843,6 +1204,13 @@ function requiredPositiveNumber(value: unknown, path: string): number {
     return value;
   }
   throw gameSpecError(path, "must be a positive finite number");
+}
+
+function requiredFiniteNumber(value: unknown, path: string): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  throw gameSpecError(path, "must be a finite number");
 }
 
 function positiveInteger(value: unknown, path: string, fallback: number): number {
@@ -890,6 +1258,151 @@ function finiteNumber(value: unknown, path: string, fallback: number): number {
     return value;
   }
   throw gameSpecError(path, "must be a finite number");
+}
+
+function prefabCollider(
+  value: unknown,
+  path: string,
+  prefabWidth: number,
+  prefabHeight: number,
+): ResolvedShooterPrefabCollider {
+  const collider = optionalObject(value, path);
+  const type = prefabColliderType(collider.type, `${path}.type`);
+  const offset = optionalObject(collider.offset, `${path}.offset`);
+  const material = physicsMaterial(collider.material, `${path}.material`);
+  const base = {
+    type,
+    offsetX: finiteNumber(offset.x, `${path}.offset.x`, 0),
+    offsetY: finiteNumber(offset.y, `${path}.offset.y`, 0),
+    enabled: booleanValue(collider.enabled, `${path}.enabled`, true),
+    trigger: booleanValue(collider.trigger, `${path}.trigger`, true),
+    ...(material ? { material } : {}),
+  };
+  switch (type) {
+    case "aabb":
+      return {
+        ...base,
+        type,
+        halfWidth: positiveNumber(collider.halfWidth, `${path}.halfWidth`, prefabWidth * 0.5),
+        halfHeight: positiveNumber(collider.halfHeight, `${path}.halfHeight`, prefabHeight * 0.5),
+      };
+    case "circle":
+      return {
+        ...base,
+        type,
+        radius: positiveNumber(collider.radius, `${path}.radius`, Math.min(prefabWidth, prefabHeight) * 0.5),
+      };
+    case "capsule": {
+      const start = optionalObject(collider.start, `${path}.start`);
+      const end = optionalObject(collider.end, `${path}.end`);
+      return {
+        ...base,
+        type,
+        startX: requiredFiniteNumber(start.x, `${path}.start.x`),
+        startY: requiredFiniteNumber(start.y, `${path}.start.y`),
+        endX: requiredFiniteNumber(end.x, `${path}.end.x`),
+        endY: requiredFiniteNumber(end.y, `${path}.end.y`),
+        radius: requiredPositiveNumber(collider.radius, `${path}.radius`),
+      };
+    }
+    case "orientedBox":
+      return {
+        ...base,
+        type,
+        halfWidth: positiveNumber(collider.halfWidth, `${path}.halfWidth`, prefabWidth * 0.5),
+        halfHeight: positiveNumber(collider.halfHeight, `${path}.halfHeight`, prefabHeight * 0.5),
+        rotationRadians: finiteNumber(collider.rotationRadians, `${path}.rotationRadians`, 0),
+      };
+    case "convexPolygon":
+      return {
+        ...base,
+        type,
+        vertices: prefabColliderVertices(collider.vertices, `${path}.vertices`),
+        rotationRadians: finiteNumber(collider.rotationRadians, `${path}.rotationRadians`, 0),
+      };
+  }
+}
+
+function prefabColliderType(value: unknown, path: string): ShooterPrefabColliderType {
+  if (value === undefined) {
+    return "aabb";
+  }
+  if (
+    value === "aabb"
+    || value === "circle"
+    || value === "capsule"
+    || value === "orientedBox"
+    || value === "convexPolygon"
+  ) {
+    return value;
+  }
+  throw gameSpecError(path, "must be a supported collider type");
+}
+
+function prefabColliderVertices(value: unknown, path: string): ResolvedShooterPrefabColliderVertex[] {
+  if (!Array.isArray(value)) {
+    throw gameSpecError(path, "must be an array of 3 to 16 vertices");
+  }
+  if (value.length < 3 || value.length > 16) {
+    throw gameSpecError(path, "must contain 3 to 16 vertices");
+  }
+  return value.map((entry, index) => {
+    const vertex = optionalObject(entry, `${path}.${index}`);
+    return {
+      x: requiredFiniteNumber(vertex.x, `${path}.${index}.x`),
+      y: requiredFiniteNumber(vertex.y, `${path}.${index}.y`),
+    };
+  });
+}
+
+function physicsMaterial(
+  value: unknown,
+  path: string,
+): ResolvedShooterPhysicsMaterial | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const material = optionalObject(value, path);
+  const surfaceVelocity = optionalObject(material.surfaceVelocity, `${path}.surfaceVelocity`);
+  return {
+    restitution: nonNegativeNumber(
+      material.restitution,
+      `${path}.restitution`,
+      DEFAULT_PHYSICS_MATERIAL_RESTITUTION,
+    ),
+    friction: nonNegativeNumber(
+      material.friction,
+      `${path}.friction`,
+      DEFAULT_PHYSICS_MATERIAL_FRICTION,
+    ),
+    surfaceVelocityX: finiteNumber(surfaceVelocity.x, `${path}.surfaceVelocity.x`, 0),
+    surfaceVelocityY: finiteNumber(surfaceVelocity.y, `${path}.surfaceVelocity.y`, 0),
+    density: positiveNumber(
+      material.density,
+      `${path}.density`,
+      DEFAULT_PHYSICS_MATERIAL_DENSITY,
+    ),
+    contactBaumgarteBiasScale: nonNegativeNumber(
+      material.contactBaumgarteBiasScale,
+      `${path}.contactBaumgarteBiasScale`,
+      DEFAULT_PHYSICS_MATERIAL_SCALE,
+    ),
+    maxContactBaumgarteBiasVelocityScale: nonNegativeNumber(
+      material.maxContactBaumgarteBiasVelocityScale,
+      `${path}.maxContactBaumgarteBiasVelocityScale`,
+      DEFAULT_PHYSICS_MATERIAL_SCALE,
+    ),
+    contactPositionCorrectionScale: nonNegativeNumber(
+      material.contactPositionCorrectionScale,
+      `${path}.contactPositionCorrectionScale`,
+      DEFAULT_PHYSICS_MATERIAL_SCALE,
+    ),
+    contactPositionCorrectionSlopScale: nonNegativeNumber(
+      material.contactPositionCorrectionSlopScale,
+      `${path}.contactPositionCorrectionSlopScale`,
+      DEFAULT_PHYSICS_MATERIAL_SCALE,
+    ),
+  };
 }
 
 function atlasFrameMap(value: unknown, path: string): Record<string, ResolvedShooterAtlasFrame> {
@@ -955,6 +1468,85 @@ function prefabAtlasFrame(
   return frame;
 }
 
+function prefabAtlasAnimation(
+  value: unknown,
+  path: string,
+  atlasFrames: Record<string, ResolvedShooterAtlasFrame>,
+): ResolvedShooterAtlasAnimation | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const animation = optionalObject(value, path);
+  if (animation.atlas === undefined) {
+    return undefined;
+  }
+  if (
+    animation.frames !== undefined
+    || animation.states !== undefined
+    || animation.columns !== undefined
+    || animation.rows !== undefined
+  ) {
+    throw gameSpecError(`${path}.atlas`, "cannot be combined with sprite sheet animation fields");
+  }
+
+  const atlas = optionalObject(animation.atlas, `${path}.atlas`);
+  const idle = atlasAnimationState(atlas.idle, `${path}.atlas.idle`, atlasFrames);
+  const move = atlasAnimationState(atlas.move, `${path}.atlas.move`, atlasFrames, idle);
+  validateAtlasAnimationFrames([...idle.frames, ...move.frames], `${path}.atlas`);
+  const firstFrame = idle.frames[0];
+  return {
+    texture: firstFrame.texture,
+    width: firstFrame.width,
+    height: firstFrame.height,
+    idle,
+    move,
+  };
+}
+
+function atlasAnimationState(
+  value: unknown,
+  path: string,
+  atlasFrames: Record<string, ResolvedShooterAtlasFrame>,
+  fallback?: ResolvedShooterAtlasAnimationState,
+): ResolvedShooterAtlasAnimationState {
+  if (value === undefined) {
+    if (fallback) {
+      return fallback;
+    }
+    throw gameSpecError(path, "must be provided when atlas animation is used");
+  }
+
+  const state = optionalObject(value, path);
+  if (!Array.isArray(state.frames)) {
+    throw gameSpecError(`${path}.frames`, "must be a non-empty array of atlas frame names");
+  }
+  if (state.frames.length === 0) {
+    throw gameSpecError(`${path}.frames`, "must contain at least one atlas frame name");
+  }
+  if (state.frames.length > MAX_ATLAS_ANIMATION_FRAMES) {
+    throw gameSpecError(`${path}.frames`, `must contain at most ${MAX_ATLAS_ANIMATION_FRAMES} frame names`);
+  }
+
+  return {
+    frames: state.frames.map((frameName, index) =>
+      atlasFrameReference(frameName, `${path}.frames.${index}`, atlasFrames),
+    ),
+    fps: positiveNumber(state.fps, `${path}.fps`, 1),
+  };
+}
+
+function validateAtlasAnimationFrames(frames: ResolvedShooterAtlasFrame[], path: string): void {
+  const first = frames[0];
+  for (const [index, frame] of frames.entries()) {
+    if (frame.texture !== first.texture) {
+      throw gameSpecError(`${path}.frames.${index}`, "all atlas animation frames must use the same texture");
+    }
+    if (frame.width !== first.width || frame.height !== first.height) {
+      throw gameSpecError(`${path}.frames.${index}`, "all atlas animation frames must use the same size");
+    }
+  }
+}
+
 function normalizedNumber(value: unknown, path: string): number {
   if (typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1) {
     return value;
@@ -976,6 +1568,12 @@ interface ResolvedAtlasFrameApplication {
   prefab: number;
   textureId: number;
   frame: ResolvedShooterAtlasFrame;
+}
+
+interface ResolvedAtlasAnimationApplication {
+  prefab: number;
+  textureId: number;
+  animation: ResolvedShooterAtlasAnimation;
 }
 
 function atlasFrameApplication(
@@ -1009,6 +1607,162 @@ function applyAtlasFrame(
     frame.u1,
     frame.v1,
   );
+}
+
+function atlasAnimationApplication(
+  prefab: number,
+  animation: ResolvedShooterAtlasAnimation | undefined,
+  options: ApplyShooterGameSpecOptions,
+  path: string,
+): ResolvedAtlasAnimationApplication | undefined {
+  if (!animation) {
+    return undefined;
+  }
+  return {
+    prefab,
+    textureId: atlasTextureId(animation.texture, options, path),
+    animation,
+  };
+}
+
+function applyAtlasAnimation(
+  engine: ShooterGameSpecTarget,
+  application: ResolvedAtlasAnimationApplication,
+): void {
+  const { animation } = application;
+  engine.set_shooter_atlas_animation?.(
+    application.prefab,
+    application.textureId,
+    animation.width,
+    animation.height,
+    animation.idle.fps,
+    atlasFrameBuffer(animation.idle.frames),
+    animation.move.fps,
+    atlasFrameBuffer(animation.move.frames),
+  );
+}
+
+function applyPrefabCollider(
+  engine: ShooterGameSpecTarget,
+  prefab: number,
+  collider: ResolvedShooterPrefabCollider,
+): void {
+  const material = prefabColliderMaterialArgs(collider.material);
+  switch (collider.type) {
+    case "aabb":
+      engine.set_shooter_prefab_collider?.(
+        prefab,
+        collider.halfWidth,
+        collider.halfHeight,
+        collider.offsetX,
+        collider.offsetY,
+        collider.enabled,
+        collider.trigger,
+        ...material,
+      );
+      break;
+    case "circle":
+      engine.set_shooter_prefab_circle_collider?.(
+        prefab,
+        collider.radius,
+        collider.offsetX,
+        collider.offsetY,
+        collider.enabled,
+        collider.trigger,
+        ...material,
+      );
+      break;
+    case "capsule":
+      engine.set_shooter_prefab_capsule_collider?.(
+        prefab,
+        collider.startX,
+        collider.startY,
+        collider.endX,
+        collider.endY,
+        collider.radius,
+        collider.offsetX,
+        collider.offsetY,
+        collider.enabled,
+        collider.trigger,
+        ...material,
+      );
+      break;
+    case "orientedBox":
+      engine.set_shooter_prefab_oriented_box_collider?.(
+        prefab,
+        collider.halfWidth,
+        collider.halfHeight,
+        collider.rotationRadians,
+        collider.offsetX,
+        collider.offsetY,
+        collider.enabled,
+        collider.trigger,
+        ...material,
+      );
+      break;
+    case "convexPolygon":
+      engine.set_shooter_prefab_convex_polygon_collider?.(
+        prefab,
+        prefabColliderVertexBuffer(collider.vertices),
+        collider.rotationRadians,
+        collider.offsetX,
+        collider.offsetY,
+        collider.enabled,
+        collider.trigger,
+        ...material,
+      );
+      break;
+  }
+}
+
+function prefabColliderMaterialArgs(
+  material: ResolvedShooterPhysicsMaterial | undefined,
+): [
+  boolean,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+] {
+  return [
+    material !== undefined,
+    material?.restitution ?? DEFAULT_PHYSICS_MATERIAL_RESTITUTION,
+    material?.friction ?? DEFAULT_PHYSICS_MATERIAL_FRICTION,
+    material?.surfaceVelocityX ?? 0,
+    material?.surfaceVelocityY ?? 0,
+    material?.density ?? DEFAULT_PHYSICS_MATERIAL_DENSITY,
+    material?.contactBaumgarteBiasScale ?? DEFAULT_PHYSICS_MATERIAL_SCALE,
+    material?.maxContactBaumgarteBiasVelocityScale ?? DEFAULT_PHYSICS_MATERIAL_SCALE,
+    material?.contactPositionCorrectionScale ?? DEFAULT_PHYSICS_MATERIAL_SCALE,
+    material?.contactPositionCorrectionSlopScale ?? DEFAULT_PHYSICS_MATERIAL_SCALE,
+  ];
+}
+
+function prefabColliderVertexBuffer(vertices: readonly ResolvedShooterPrefabColliderVertex[]): Float32Array {
+  const buffer = new Float32Array(vertices.length * 2);
+  vertices.forEach((vertex, index) => {
+    const offset = index * 2;
+    buffer[offset] = vertex.x;
+    buffer[offset + 1] = vertex.y;
+  });
+  return buffer;
+}
+
+function atlasFrameBuffer(frames: readonly ResolvedShooterAtlasFrame[]): Float32Array {
+  const buffer = new Float32Array(frames.length * 4);
+  frames.forEach((frame, index) => {
+    const offset = index * 4;
+    buffer[offset] = frame.u0;
+    buffer[offset + 1] = frame.v0;
+    buffer[offset + 2] = frame.u1;
+    buffer[offset + 3] = frame.v1;
+  });
+  return buffer;
 }
 
 function atlasTextureId(
@@ -1069,10 +1823,17 @@ function tileDefinitions(
     const tilePath = `${path}.${idText}`;
     const id = tileId(idText, tilePath);
     const tile = optionalObject(tileValue, tilePath);
+    const slope = tileSlope(tile.slope, `${tilePath}.slope`);
+    const oneWayPlatform = booleanValue(tile.oneWayPlatform, `${tilePath}.oneWayPlatform`, false);
+    if (slope && oneWayPlatform) {
+      throw gameSpecError(`${tilePath}.oneWayPlatform`, "cannot be combined with slope");
+    }
     resolved.push({
       id,
       frame: atlasFrameReference(tile.frame, `${tilePath}.frame`, atlasFrames),
       color: tileColor(tile.color, `${tilePath}.color`),
+      ...(slope ? { slope } : {}),
+      ...(oneWayPlatform ? { oneWayPlatform } : {}),
     });
   }
 
@@ -1120,6 +1881,21 @@ function tileColor(value: unknown, path: string): [number, number, number, numbe
   ];
 }
 
+function tileSlope(value: unknown, path: string): ResolvedShooterTileSlopeDefinition | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const slope = optionalObject(value, path);
+  const x0 = normalizedNumber(slope.x0, `${path}.x0`);
+  const y0 = normalizedNumber(slope.y0, `${path}.y0`);
+  const x1 = normalizedNumber(slope.x1, `${path}.x1`);
+  const y1 = normalizedNumber(slope.y1, `${path}.y1`);
+  if (Math.abs(x1 - x0) <= TILE_SLOPE_MIN_HORIZONTAL_SPAN) {
+    throw gameSpecError(`${path}.x1`, "must differ from slope.x0");
+  }
+  return { x0, y0, x1, y1 };
+}
+
 interface TilemapLayerDefaults {
   tileWidth: number;
   tileHeight: number;
@@ -1146,6 +1922,11 @@ function tilemapLayers(
     const origin = optionalObject(layer.origin, `${layerPath}.origin`);
     const columns = requiredPositiveInteger(layer.columns, `${layerPath}.columns`);
     const rows = requiredPositiveInteger(layer.rows, `${layerPath}.rows`);
+    const collision = booleanValue(layer.collision, `${layerPath}.collision`, false);
+    const collisionOnly = booleanValue(layer.collisionOnly, `${layerPath}.collisionOnly`, false);
+    if (collisionOnly && !collision) {
+      throw gameSpecError(`${layerPath}.collisionOnly`, "requires collision to be true");
+    }
     return {
       index,
       name: layerName(layer.name, `${layerPath}.name`, `layer-${index}`),
@@ -1155,8 +1936,13 @@ function tilemapLayers(
       tileHeight: positiveNumber(layer.tileHeight, `${layerPath}.tileHeight`, defaults.tileHeight),
       originX: finiteNumber(origin.x, `${layerPath}.origin.x`, defaults.originX),
       originY: finiteNumber(origin.y, `${layerPath}.origin.y`, defaults.originY),
-      collision: booleanValue(layer.collision, `${layerPath}.collision`, false),
-      data: tilemapLayerData(layer.data, `${layerPath}.data`, columns * rows, defaults.tileIds),
+      collision,
+      collisionOnly,
+      data: tilemapLayerData(layer.data, `${layerPath}.data`, {
+        expectedLength: columns * rows,
+        tileIds: defaults.tileIds,
+        allowUndefinedTileIds: collisionOnly,
+      }),
     };
   });
 }
@@ -1181,16 +1967,24 @@ function layerName(value: unknown, path: string, fallback: string): string {
   throw gameSpecError(path, "must be a non-empty string");
 }
 
-function tilemapLayerData(value: unknown, path: string, expectedLength: number, tileIds: Set<number>): number[] {
+function tilemapLayerData(
+  value: unknown,
+  path: string,
+  options: {
+    expectedLength: number;
+    tileIds: Set<number>;
+    allowUndefinedTileIds: boolean;
+  },
+): number[] {
   if (!Array.isArray(value)) {
     throw gameSpecError(path, "must be an array");
   }
-  if (value.length !== expectedLength) {
-    throw gameSpecError(path, `must contain exactly ${expectedLength} tile ids`);
+  if (value.length !== options.expectedLength) {
+    throw gameSpecError(path, `must contain exactly ${options.expectedLength} tile ids`);
   }
   return value.map((tileValue, index) => {
     const tile = nonNegativeInteger(tileValue, `${path}.${index}`, 0);
-    if (tile !== 0 && !tileIds.has(tile)) {
+    if (tile !== 0 && !options.allowUndefinedTileIds && !options.tileIds.has(tile)) {
       throw gameSpecError(`${path}.${index}`, "must reference a tile id in tilemap.tiles or be 0");
     }
     return tile;
@@ -1202,6 +1996,8 @@ interface ResolvedTileDefinitionApplication {
   textureId: number;
   frame: ResolvedShooterAtlasFrame;
   color: [number, number, number, number];
+  slope?: ResolvedShooterTileSlopeDefinition;
+  oneWayPlatform?: boolean;
 }
 
 interface ResolvedTilemapApplication {
@@ -1222,6 +2018,8 @@ function tilemapApplication(
       textureId: atlasTextureId(tile.frame.texture, options, `tilemap.tiles.${tile.id}.frame`),
       frame: tile.frame,
       color: tile.color,
+      ...(tile.slope ? { slope: tile.slope } : {}),
+      ...(tile.oneWayPlatform ? { oneWayPlatform: true } : {}),
     })),
     layers: tilemap.layers,
   };
@@ -1241,6 +2039,18 @@ function applyTileDefinition(engine: ShooterGameSpecTarget, application: Resolve
     color[2],
     color[3],
   );
+  if (application.slope) {
+    engine.set_shooter_tile_slope?.(
+      application.id,
+      application.slope.x0,
+      application.slope.y0,
+      application.slope.x1,
+      application.slope.y1,
+    );
+  }
+  if (application.oneWayPlatform) {
+    engine.set_shooter_tile_one_way_platform?.(application.id);
+  }
 }
 
 interface ResolvedSpriteAnimation {

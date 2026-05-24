@@ -8,6 +8,7 @@ use crate::components::{
 use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::input::InputState;
+use crate::particles::{ParticlePreset, ParticleRange, ParticleSystem};
 use crate::physics::{
     MovingPlatformCarryConfig, OneWayPlatformConfig, PhysicsCounters, PhysicsSystem,
     PlatformerControllerConfig, PlatformerControllerInput, PlatformerControllerState,
@@ -36,6 +37,7 @@ const MOVING_PLATFORM_ORIGIN_X: f32 = 760.0;
 const MOVING_PLATFORM_Y: f32 = 500.0;
 const MOVING_PLATFORM_AMPLITUDE: f32 = 112.0;
 const MOVING_PLATFORM_SPEED: f32 = 1.4;
+const LANDING_DUST_PARTICLE_COUNT: u32 = 12;
 
 #[derive(Debug)]
 pub(crate) struct PlatformerScene {
@@ -47,6 +49,7 @@ pub(crate) struct PlatformerScene {
     controller_state: PlatformerControllerState,
     moving_platform_phase: f32,
     jump_was_down: bool,
+    player_was_grounded: bool,
 }
 
 impl Default for PlatformerScene {
@@ -60,8 +63,39 @@ impl Default for PlatformerScene {
             controller_state: PlatformerControllerState::new(),
             moving_platform_phase: 0.0,
             jump_was_down: false,
+            player_was_grounded: false,
         }
     }
+}
+
+pub(crate) struct PlatformerParticleBurstSink<'a> {
+    particles: &'a mut ParticleSystem,
+    preset: ParticlePreset,
+}
+
+impl<'a> PlatformerParticleBurstSink<'a> {
+    pub(crate) fn new(particles: &'a mut ParticleSystem, preset: ParticlePreset) -> Self {
+        Self { particles, preset }
+    }
+
+    fn spawn_landing_dust(&mut self, position: Transform2D) -> usize {
+        self.particles
+            .spawn_burst(self.preset, position.x, position.y + PLAYER_HEIGHT * 0.5)
+    }
+}
+
+pub(crate) fn platformer_landing_dust_particle_preset() -> ParticlePreset {
+    let mut preset = ParticlePreset::new(DEFAULT_TEXTURE_ID);
+    preset.burst_count = LANDING_DUST_PARTICLE_COUNT;
+    preset.lifetime_seconds = ParticleRange::new(0.18, 0.34);
+    preset.speed = ParticleRange::new(35.0, 120.0);
+    preset.start_size = ParticleRange::new(5.0, 9.0);
+    preset.end_size = ParticleRange::constant(1.0);
+    preset.start_color = [0.78, 0.72, 0.62, 0.8];
+    preset.end_color = [0.58, 0.5, 0.42, 0.0];
+    preset.acceleration_y = 80.0;
+    preset.damping = 2.6;
+    preset
 }
 
 impl PlatformerScene {
@@ -84,6 +118,7 @@ impl PlatformerScene {
         input: InputState,
         delta: f32,
         physics_counters: &mut PhysicsCounters,
+        landing_particles: Option<&mut PlatformerParticleBurstSink<'_>>,
     ) {
         match self.game_state {
             GameState::Title => {
@@ -92,7 +127,7 @@ impl PlatformerScene {
                 }
             }
             GameState::Playing => {
-                self.update_playing(world, input, delta, physics_counters);
+                self.update_playing(world, input, delta, physics_counters, landing_particles);
             }
             GameState::GameOver => {
                 if action_pressed(input) {
@@ -132,6 +167,7 @@ impl PlatformerScene {
         self.controller_state.reset();
         self.moving_platform_phase = 0.0;
         self.jump_was_down = false;
+        self.player_was_grounded = false;
         self.game_state = game_state;
 
         self.spawn_level(world);
@@ -230,6 +266,7 @@ impl PlatformerScene {
         input: InputState,
         delta: f32,
         physics_counters: &mut PhysicsCounters,
+        landing_particles: Option<&mut PlatformerParticleBurstSink<'_>>,
     ) {
         if !delta.is_finite() || delta <= 0.0 {
             return;
@@ -238,7 +275,7 @@ impl PlatformerScene {
         self.score = self.elapsed_play_seconds.floor() as u32;
 
         self.update_moving_platform(world, delta);
-        self.update_player(world, input, delta, physics_counters);
+        self.update_player(world, input, delta, physics_counters, landing_particles);
         if self
             .player
             .and_then(|player| world.transform(player))
@@ -290,13 +327,15 @@ impl PlatformerScene {
         input: InputState,
         delta: f32,
         physics_counters: &mut PhysicsCounters,
+        landing_particles: Option<&mut PlatformerParticleBurstSink<'_>>,
     ) {
         let Some(player) = self.player else {
+            self.player_was_grounded = false;
             return;
         };
         let horizontal_axis = f32::from(input.d) - f32::from(input.a);
         let jump_pressed = input.space == 1 && !self.jump_was_down;
-        let _ = PhysicsSystem::move_platformer_controller_with_state_and_counters(
+        let result = PhysicsSystem::move_platformer_controller_with_state_and_counters(
             world,
             player,
             PlatformerControllerInput::new(horizontal_axis, jump_pressed),
@@ -305,6 +344,12 @@ impl PlatformerScene {
             &mut self.controller_state,
             physics_counters,
         );
+        if !self.player_was_grounded && result.grounded {
+            if let (Some(sink), Some(position)) = (landing_particles, world.transform(player)) {
+                sink.spawn_landing_dust(position);
+            }
+        }
+        self.player_was_grounded = result.grounded;
     }
 }
 
@@ -378,6 +423,9 @@ fn spawn_body(
     world.colliders[index] = Some(AabbCollider {
         half_width: width * 0.5,
         half_height: height * 0.5,
+        offset_x: 0.0,
+        offset_y: 0.0,
+        enabled: true,
         is_trigger: false,
         layer,
     });
@@ -424,6 +472,7 @@ mod tests {
             },
             0.016,
             &mut counters,
+            None,
         );
         let player = scene.player.expect("platformer player should exist");
         let start = world
@@ -439,6 +488,7 @@ mod tests {
             },
             0.25,
             &mut counters,
+            None,
         );
 
         let end = world
@@ -475,6 +525,7 @@ mod tests {
             },
             0.25,
             &mut counters,
+            None,
         );
 
         let velocity = world
@@ -482,5 +533,43 @@ mod tests {
             .expect("player velocity should exist");
         assert!(velocity.vy < 0.0);
         assert!(world.transform(player).unwrap().y < WORLD_HEIGHT - FLOOR_HEIGHT);
+    }
+
+    #[test]
+    fn falling_player_landing_spawns_dust_burst_when_sink_is_bound() {
+        let mut scene = PlatformerScene::new();
+        let mut world = World::default();
+        let mut camera = Camera2D::new(800.0, 480.0);
+        let mut counters = PhysicsCounters::default();
+        let mut particles = ParticleSystem::with_capacity(LANDING_DUST_PARTICLE_COUNT as usize);
+        let mut landing_particles = PlatformerParticleBurstSink::new(
+            &mut particles,
+            platformer_landing_dust_particle_preset(),
+        );
+        scene.reset_playing(&mut world, &mut camera);
+        let player = scene.player.expect("platformer player should exist");
+        world.set_transform(
+            player,
+            Transform2D {
+                x: PLAYER_START_X,
+                y: WORLD_HEIGHT - FLOOR_HEIGHT - PLAYER_HEIGHT * 0.5 - 18.0,
+            },
+        );
+        world.set_velocity(player, Velocity { vx: 0.0, vy: 220.0 });
+
+        scene.update(
+            &mut world,
+            &mut camera,
+            InputState::default(),
+            0.1,
+            &mut counters,
+            Some(&mut landing_particles),
+        );
+
+        assert_eq!(
+            particles.particle_count(),
+            LANDING_DUST_PARTICLE_COUNT as usize
+        );
+        assert!(scene.player_was_grounded);
     }
 }

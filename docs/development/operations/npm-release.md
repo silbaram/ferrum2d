@@ -7,6 +7,7 @@
 - 사용자가 `pnpm add @ferrum2d/ferrum-web@beta`로 browser runtime을 설치할 수 있는 패키지 형태를 만든다.
 - Rust/Wasm generated package와 TypeScript dist가 같은 npm artifact 안에 들어가는지 검증한다.
 - `beta` dist-tag와 prerelease semver를 사용해 안정 버전인 `latest`와 분리한다.
+- GitHub Release 본문은 [릴리스 노트 템플릿](release-notes-template.md)을 기준으로 작성한다.
 - 실제 `npm publish`는 별도 승인과 npm 권한 확인 이후에만 수행한다.
 
 ## 패키지 구성 기준
@@ -77,6 +78,27 @@ cargo fmt --manifest-path crates/ferrum-core/Cargo.toml --check
 cargo clippy --manifest-path crates/ferrum-core/Cargo.toml -- -D warnings
 ```
 
+## 릴리스 메타데이터 자동 검증
+
+릴리스 후보는 changelog, package version, Git tag 이름이 서로 맞아야 한다. 기본 확인은 현재 저장소의 release metadata와 `CHANGELOG.md` 구조를 검증한다.
+
+```bash
+pnpm release:check
+```
+
+`ferrum-web-v*` tag push가 발생하면 CI가 같은 검증을 실행한다. tag 기반 검증에서는 다음 조건을 추가로 요구한다.
+
+- `packages/ferrum-web/package.json` version이 `x.y.z-beta.N` 형식이다.
+- Git tag가 정확히 `ferrum-web-vx.y.z-beta.N` 형식이며 package version과 일치한다.
+- `CHANGELOG.md`에 `## x.y.z-beta.N - YYYY-MM-DD` release section이 있다.
+- publish 후보 metadata로 `private: false`가 설정되어 있다.
+
+실제 publish 직전에는 release metadata check와 package publish guard를 함께 실행한다.
+
+```bash
+pnpm release:publish-check
+```
+
 ## 로컬 pack 확인
 
 `pnpm package:check`는 내부적으로 `pnpm pack`을 실행해 tarball contents를 검증한다. 사람이 직접 tarball을 남겨 확인해야 할 때만 다음을 실행한다.
@@ -108,20 +130,25 @@ import { createFerrumRuntime } from "@ferrum2d/ferrum-web";
 3. `MIT OR Apache-2.0` license metadata와 package `LICENSE` 포함 상태를 확인한다.
 4. publish 승인 후에만 `private: false`로 바꾼다.
 5. 배포 전 필수 검증을 모두 통과시킨다.
-6. publishable package guard를 실행한다.
+6. release metadata와 publishable package guard를 함께 실행한다.
 
 ```bash
-pnpm package:publish-check
+pnpm release:publish-check
 ```
 
-이 명령은 `private: false`, `0.1.0-beta.N` 형식 version, `beta` dist-tag 설정, 실제 pack artifact를 함께 확인한다.
+이 명령은 changelog release section, Git tag 규칙, `private: false`, `0.1.0-beta.N` 형식 version, `beta` dist-tag 설정, 실제 pack artifact를 함께 확인한다.
 
 이후 절차:
 
 7. npm 로그인과 organization 권한을 확인한다.
 8. `npm publish --access public --tag beta`를 `packages/ferrum-web`에서 실행한다.
 9. Git tag는 `ferrum-web-v0.1.0-beta.N` 형식으로 만든다.
-10. README 또는 릴리스 노트에 설치 명령과 known limitations를 기록한다.
+10. tag push 후 CI의 `Release metadata check`가 통과하는지 확인한다.
+11. [릴리스 노트 템플릿](release-notes-template.md)에 맞춰 GitHub Release 본문을 작성한다.
+
+## GitHub generated release notes
+
+`.github/release.yml`은 GitHub가 자동 생성하는 PR 목록을 Breaking Changes, Features, Fixes, Documentation, Maintenance, Other Changes로 분류한다. 이 분류는 초안 생성을 돕는 보조 기준이며, 최종 본문은 [릴리스 노트 템플릿](release-notes-template.md)의 Summary, Install, Highlights, Breaking Changes, Upgrade Notes, Verification, Known Limitations, Links 구조로 편집한다.
 
 ## 실패와 롤백 기준
 

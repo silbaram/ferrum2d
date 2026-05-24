@@ -281,6 +281,7 @@ function buildDebugMetrics(
     physicsFixedSteps: frame.physics.fixedSteps,
     physicsKinematicHits: frame.physics.kinematicHits,
     physicsTileCandidateChecks: frame.physics.tileCandidateChecks,
+    collisionPairCount: frame.physics.collisionPairs,
     collisionEventCount: frame.physics.collisionEventCount,
     rustUpdateTimeMs: frame.rustUpdateTimeMs,
     renderTimeMs,

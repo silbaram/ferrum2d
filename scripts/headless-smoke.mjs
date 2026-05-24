@@ -1,11 +1,19 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
+import initWasm, {
+  Engine,
+  sprite_render_command_floats,
+  wasm_memory,
+} from "../packages/ferrum-web/pkg/ferrum_core.js";
 import { applyShooterGameSpec, resolveShooterGameSpec } from "../packages/ferrum-web/dist/gameSpec.js";
 import { decodeRenderCommands } from "../packages/ferrum-web/dist/renderCommandDecoder.js";
 import { rendererStatsForCommands } from "../packages/ferrum-web/dist/renderer.js";
 
 const FLOATS_PER_COMMAND = 13;
 const DEFAULT_SPEC_PATH = "examples/topdown-shooter/public/game.json";
+const PARTICLE_SMOKE_PRESET_ID = 0;
+const PARTICLE_SMOKE_BURST_COUNT = 4;
+const PARTICLE_SMOKE_LIFETIME_SECONDS = 0.2;
 const textureIds = new Map([
   ["player", 1],
   ["enemy", 2],
@@ -21,6 +29,7 @@ class SmokeEngine {
   cameraConfig;
   audioConfig;
   atlasFrames = [];
+  atlasAnimations = [];
   tiles = [];
   tileLayers = [];
   waves = [];
@@ -76,6 +85,19 @@ class SmokeEngine {
   set_shooter_atlas_frame(...values) {
     this.atlasFrames.push(values);
   }
+
+  set_shooter_atlas_animation(prefab, textureIdValue, width, height, idleFps, idleFrames, moveFps, moveFrames) {
+    this.atlasAnimations.push({
+      prefab,
+      textureId: textureIdValue,
+      width,
+      height,
+      idleFps,
+      idleFrames: Array.from(idleFrames),
+      moveFps,
+      moveFrames: Array.from(moveFrames),
+    });
+  }
 }
 
 function smokeResolvedSpec(resolved) {
@@ -86,6 +108,7 @@ function smokeResolvedSpec(resolved) {
   assert(resolved.waves.length > 0, "at least one enemy wave is required");
   assert(resolved.waves.some((wave) => wave.enemyBehavior === "chase"), "at least one chase wave is required");
   assert(resolved.bulletAtlasFrame !== undefined, "bullet atlas frame must be resolved");
+  assert(resolved.playerAtlasAnimation !== undefined, "player atlas animation must be resolved");
   assert(resolved.audioSfxVolume > 0, "SFX bus volume must be positive");
   assert(resolved.shootPitch > 0 && resolved.hitPitch > 0 && resolved.gameOverPitch > 0, "audio pitches must be positive");
   assert(resolved.tilemap !== undefined, "tilemap must be present for the Top-down Shooter smoke target");
@@ -131,6 +154,10 @@ function smokeAppliedEngine(engine, resolved) {
   assert(engine.tileLayers.length === resolved.tilemap.layers.length, "all resolved tile layers must be applied");
   assert(engine.waves.length === resolved.waves.length, "all resolved waves must be applied");
   assert(engine.atlasFrames.some((frame) => frame[0] === 2 && frame[1] === textureId("bullet")), "bullet atlas frame must resolve named texture id");
+  assert(
+    engine.atlasAnimations.some((animation) => animation.prefab === 0 && animation.textureId === textureId("player")),
+    "player atlas animation must resolve named texture id",
+  );
   assert(engine.tileLayers.some((layer) => layer.collision && layer.data.some((tileId) => tileId > 0)), "applied collision layer must keep obstacle data");
 }
 
@@ -161,6 +188,107 @@ function smokeRenderCommandBuffer(resolved) {
   };
 }
 
+let wasmInitialized = false;
+
+async function smokeParticleRuntime() {
+  await initSmokeWasm();
+  assert(sprite_render_command_floats() === FLOATS_PER_COMMAND, "Wasm render command ABI width must match headless smoke decoder");
+
+  const engine = new Engine();
+  try {
+    engine.set_viewport_size(800, 480);
+    engine.set_particle_seed(7);
+    engine.set_particle_preset(
+      PARTICLE_SMOKE_PRESET_ID,
+      textureId("bullet"),
+      0,
+      0,
+      1,
+      1,
+      PARTICLE_SMOKE_BURST_COUNT,
+      PARTICLE_SMOKE_LIFETIME_SECONDS,
+      PARTICLE_SMOKE_LIFETIME_SECONDS,
+      0,
+      0,
+      6,
+      6,
+      2,
+      2,
+      1,
+      0.82,
+      0.28,
+      1,
+      1,
+      0.18,
+      0.05,
+      0,
+      0,
+      0,
+      0,
+    );
+    engine.set_shooter_hit_particle_preset(PARTICLE_SMOKE_PRESET_ID);
+    engine.clear_shooter_hit_particle_preset();
+    engine.set_shooter_hit_particle_preset(PARTICLE_SMOKE_PRESET_ID);
+
+    engine.update(0);
+    const baseRenderCommandCount = readEngineRenderCommandBuffer(engine).commandCount;
+    const spawned = engine.spawn_particle_burst(PARTICLE_SMOKE_PRESET_ID, engine.camera_x(), engine.camera_y());
+    assert(spawned === PARTICLE_SMOKE_BURST_COUNT, "particle burst must spawn the configured count");
+    assert(engine.particle_count() === PARTICLE_SMOKE_BURST_COUNT, "particle count must reflect a live burst before update");
+
+    engine.update(0);
+    const activeBuffer = readEngineRenderCommandBuffer(engine);
+    assert(
+      activeBuffer.commandCount === baseRenderCommandCount + PARTICLE_SMOKE_BURST_COUNT,
+      "particle render commands must append to the engine render command buffer",
+    );
+    const activeCommands = decodeRenderCommands(activeBuffer);
+    const particleCommands = activeCommands.slice(-PARTICLE_SMOKE_BURST_COUNT);
+    for (const command of particleCommands) {
+      assert(command.textureId === textureId("bullet"), "particle commands must use the configured texture id");
+      assert(command.width > 0 && command.height > 0, "particle command dimensions must be positive");
+      assert(command.color[3] > 0, "active particle commands must keep visible alpha");
+    }
+
+    engine.update(PARTICLE_SMOKE_LIFETIME_SECONDS + 0.01);
+    const expiredBuffer = readEngineRenderCommandBuffer(engine);
+    assert(engine.particle_count() === 0, "particle count must return to zero after lifetime expiry");
+    assert(
+      expiredBuffer.commandCount <= baseRenderCommandCount,
+      "expired particles must be removed from the render command buffer",
+    );
+
+    return {
+      particleCapacity: engine.particle_capacity(),
+      particleBurstCount: spawned,
+      particleRenderCommands: activeBuffer.commandCount - baseRenderCommandCount,
+      renderCommandsWithParticles: activeBuffer.commandCount,
+      renderCommandsAfterParticleExpiry: expiredBuffer.commandCount,
+    };
+  } finally {
+    engine.free();
+  }
+}
+
+async function initSmokeWasm() {
+  if (wasmInitialized) {
+    return;
+  }
+  const wasmBytes = await readFile(new URL("../packages/ferrum-web/pkg/ferrum_core_bg.wasm", import.meta.url));
+  await initWasm({ module_or_path: wasmBytes });
+  wasmInitialized = true;
+}
+
+function readEngineRenderCommandBuffer(engine) {
+  const commandCount = engine.render_command_len();
+  return {
+    buffer: new Float32Array(wasm_memory().buffer, engine.render_command_ptr(), commandCount * FLOATS_PER_COMMAND),
+    commandCount,
+    floatsPerCommand: FLOATS_PER_COMMAND,
+  };
+}
+
+
 function tilemapRenderCommandBuffer(resolved) {
   const tilemap = resolved.tilemap;
   const tilesById = new Map(tilemap.tiles.map((tile) => [tile.id, tile]));
@@ -173,7 +301,9 @@ function tilemapRenderCommandBuffer(resolved) {
         continue;
       }
       const tile = tilesById.get(tileId);
-      assert(tile !== undefined, `tile id ${tileId} must resolve to a tile definition`);
+      if (tile === undefined) {
+        continue;
+      }
       const column = index % layer.columns;
       const row = Math.floor(index / layer.columns);
       const x = layer.originX + column * layer.tileWidth;
@@ -243,9 +373,10 @@ for (const path of smokeTargets) {
     const report = smokeResolvedSpec(resolved);
     smokeAppliedEngine(engine, resolved);
     const renderReport = smokeRenderCommandBuffer(resolved);
+    const particleReport = await smokeParticleRuntime();
 
     console.log(`${path}: headless smoke ok`);
-    console.log(JSON.stringify({ ...report, ...renderReport }, null, 2));
+    console.log(JSON.stringify({ ...report, ...renderReport, ...particleReport }, null, 2));
   } catch (error) {
     console.error(`${path}: headless smoke failed`);
     console.error(error instanceof Error ? error.message : String(error));

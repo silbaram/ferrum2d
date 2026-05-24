@@ -15,6 +15,6 @@
 3. `pnpm --filter @ferrum2d/topdown-shooter dev`
 4. 브라우저에서 Vite URL 접속
 5. Title 화면과 DebugOverlay가 보이는 상태를 캡처
-6. 파일을 `docs/screenshots/topdown-shooter-title.png`로 저장
+6. 파일을 `docs/development/quality/screenshots/topdown-shooter-title.png`로 저장
 
 GameOver나 score 증가 화면을 추가로 캡처하는 경우 파일명은 `topdown-shooter-gameover.png`처럼 상태가 드러나게 지정한다.

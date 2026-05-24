@@ -12,6 +12,7 @@ export interface DebugOverlayMetrics {
   physicsFixedSteps?: number;
   physicsKinematicHits?: number;
   physicsTileCandidateChecks?: number;
+  collisionPairCount?: number;
   collisionEventCount?: number;
   physicsDebugLineCount?: number;
   rustUpdateTimeMs: number;
@@ -49,6 +50,7 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "physicsFixedSteps", label: "fixed steps", unit: "count", optional: true },
   { id: "physicsKinematicHits", label: "kinematic hits", unit: "count", optional: true },
   { id: "physicsTileCandidateChecks", label: "tile checks", unit: "count", optional: true },
+  { id: "collisionPairCount", label: "collision pairs", unit: "count", optional: true },
   { id: "collisionEventCount", label: "collision events", unit: "count", optional: true },
   { id: "physicsDebugLineCount", label: "physics debug lines", unit: "count", optional: true },
   { id: "mousePosition", label: "mouse", unit: "px" },
@@ -146,6 +148,9 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   }
   if (metrics.physicsTileCandidateChecks !== undefined) {
     lines.push(row("physicsTileCandidateChecks", metrics.physicsTileCandidateChecks));
+  }
+  if (metrics.collisionPairCount !== undefined) {
+    lines.push(row("collisionPairCount", metrics.collisionPairCount));
   }
   if (metrics.collisionEventCount !== undefined) {
     lines.push(row("collisionEventCount", metrics.collisionEventCount));

@@ -6,6 +6,7 @@ use crate::components::{
 };
 use crate::entity::Entity;
 use crate::game_state::GameState;
+use crate::particles::{ParticlePreset, ParticleRange, ParticleSystem};
 use crate::world::World;
 
 const DEFAULT_TEXTURE_ID: u32 = 0;
@@ -25,6 +26,7 @@ const BRICK_HEIGHT: f32 = 20.0;
 const BRICK_GAP: f32 = 8.0;
 const BRICK_START_Y: f32 = 68.0;
 const BRICK_SCORE: u32 = 10;
+const BRICK_HIT_PARTICLE_COUNT: u32 = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BreakoutHitKind {
@@ -50,6 +52,35 @@ pub(crate) struct BreakoutScene {
     ball: Option<Entity>,
     bricks: Vec<Entity>,
     walls: Vec<Entity>,
+}
+
+pub(crate) struct BreakoutParticleBurstSink<'a> {
+    particles: &'a mut ParticleSystem,
+    preset: ParticlePreset,
+}
+
+impl<'a> BreakoutParticleBurstSink<'a> {
+    pub(crate) fn new(particles: &'a mut ParticleSystem, preset: ParticlePreset) -> Self {
+        Self { particles, preset }
+    }
+
+    fn spawn_brick_hit(&mut self, position: Transform2D) -> usize {
+        self.particles
+            .spawn_burst(self.preset, position.x, position.y)
+    }
+}
+
+pub(crate) fn breakout_brick_hit_particle_preset() -> ParticlePreset {
+    let mut preset = ParticlePreset::new(DEFAULT_TEXTURE_ID);
+    preset.burst_count = BRICK_HIT_PARTICLE_COUNT;
+    preset.lifetime_seconds = ParticleRange::new(0.14, 0.3);
+    preset.speed = ParticleRange::new(70.0, 190.0);
+    preset.start_size = ParticleRange::new(6.0, 10.0);
+    preset.end_size = ParticleRange::constant(1.5);
+    preset.start_color = [1.0, 0.88, 0.36, 1.0];
+    preset.end_color = [1.0, 0.28, 0.08, 0.0];
+    preset.damping = 1.8;
+    preset
 }
 
 impl Default for BreakoutScene {
@@ -80,6 +111,7 @@ impl BreakoutScene {
         self.rebuild_level(world, camera, GameState::Playing, true);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn update(
         &mut self,
         world: &mut World,
@@ -88,6 +120,7 @@ impl BreakoutScene {
         delta: f32,
         collision_events: &mut Vec<CollisionEvent>,
         collision_event_counts: &mut CollisionEventCounts,
+        hit_particles: Option<&mut BreakoutParticleBurstSink<'_>>,
     ) {
         match self.game_state {
             GameState::Title => {
@@ -102,6 +135,7 @@ impl BreakoutScene {
                     delta,
                     collision_events,
                     collision_event_counts,
+                    hit_particles,
                 );
             }
             GameState::GameOver => {
@@ -251,6 +285,7 @@ impl BreakoutScene {
         delta: f32,
         collision_events: &mut Vec<CollisionEvent>,
         collision_event_counts: &mut CollisionEventCounts,
+        hit_particles: Option<&mut BreakoutParticleBurstSink<'_>>,
     ) {
         if !delta.is_finite() || delta <= 0.0 {
             return;
@@ -272,7 +307,7 @@ impl BreakoutScene {
 
         self.move_ball_to_contact(world, ball, delta, hit.time);
         push_hit_event(collision_events, collision_event_counts, ball, hit.entity);
-        self.apply_ball_response(world, ball, hit);
+        self.apply_ball_response(world, ball, hit, hit_particles);
         self.finish_playing_frame(world);
     }
 
@@ -292,6 +327,9 @@ impl BreakoutScene {
         let Some(collider) = world.colliders[index] else {
             return;
         };
+        if !collider.enabled {
+            return;
+        }
         transform.x = (transform.x + direction * PADDLE_SPEED * delta).clamp(
             WALL_THICKNESS + collider.half_width,
             WORLD_WIDTH - WALL_THICKNESS - collider.half_width,
@@ -303,6 +341,9 @@ impl BreakoutScene {
         let start = world.transforms.get(ball_index).copied().flatten()?;
         let velocity = world.velocities.get(ball_index).copied().flatten()?;
         let collider = world.colliders.get(ball_index).copied().flatten()?;
+        if !collider.enabled {
+            return None;
+        }
         let mut best: Option<(f32, BreakoutHit)> = None;
 
         if let Some(paddle) = self.paddle {
@@ -369,11 +410,21 @@ impl BreakoutScene {
         }
     }
 
-    fn apply_ball_response(&mut self, world: &mut World, ball: Entity, hit: BreakoutHit) {
+    fn apply_ball_response(
+        &mut self,
+        world: &mut World,
+        ball: Entity,
+        hit: BreakoutHit,
+        hit_particles: Option<&mut BreakoutParticleBurstSink<'_>>,
+    ) {
         match hit.kind {
             BreakoutHitKind::Paddle => self.bounce_from_paddle(world, ball, hit.entity),
             BreakoutHitKind::Brick => {
                 self.bounce_from_surface(world, ball, hit.normal_x, hit.normal_y);
+                let hit_position = world.transforms[hit.entity.id as usize];
+                if let (Some(sink), Some(position)) = (hit_particles, hit_position) {
+                    sink.spawn_brick_hit(position);
+                }
                 let reward = world.score_rewards[hit.entity.id as usize].unwrap_or(BRICK_SCORE);
                 self.score = self.score.saturating_add(reward);
                 world.despawn(hit.entity);
@@ -470,6 +521,9 @@ fn spawn_body(
     world.colliders[index] = Some(AabbCollider {
         half_width: width * 0.5,
         half_height: height * 0.5,
+        offset_x: 0.0,
+        offset_y: 0.0,
+        enabled: true,
         is_trigger: true,
         layer,
     });
@@ -499,6 +553,9 @@ fn update_best_hit(
     ) else {
         return;
     };
+    if !target_collider.enabled {
+        return;
+    }
     let Some(contact) = CollisionSystem::swept_aabb_contact(
         start,
         velocity,
@@ -599,6 +656,7 @@ mod tests {
             0.016,
             &mut Vec::new(),
             &mut CollisionEventCounts::default(),
+            None,
         );
 
         let ball = scene.ball.expect("playing level creates ball");
@@ -634,11 +692,53 @@ mod tests {
             0.1,
             &mut events,
             &mut counts,
+            None,
         );
 
         assert_eq!(scene.score(), BRICK_SCORE);
         assert!(!is_alive(&world, brick));
         assert_eq!(counts.hit, 1);
         assert_eq!(events[0].kind, COLLISION_EVENT_HIT);
+    }
+
+    #[test]
+    fn ball_brick_hit_spawns_particle_burst_when_sink_is_bound() {
+        let mut scene = BreakoutScene::new();
+        let mut world = World::default();
+        let mut camera = Camera2D::new(WORLD_WIDTH, WORLD_HEIGHT);
+        let mut events = Vec::new();
+        let mut counts = CollisionEventCounts::default();
+        let mut particles = ParticleSystem::with_capacity(BRICK_HIT_PARTICLE_COUNT as usize);
+        let mut hit_particles =
+            BreakoutParticleBurstSink::new(&mut particles, breakout_brick_hit_particle_preset());
+        scene.reset_playing(&mut world, &mut camera);
+        let ball = scene.ball.expect("playing level creates ball");
+        let brick = *scene.bricks.last().expect("level has bricks");
+        let brick_transform = world.transforms[brick.id as usize].expect("brick has transform");
+        world.transforms[ball.id as usize] = Some(Transform2D {
+            x: brick_transform.x,
+            y: brick_transform.y + BRICK_HEIGHT,
+        });
+        world.velocities[ball.id as usize] = Some(Velocity {
+            vx: 0.0,
+            vy: -BALL_SPEED,
+        });
+
+        scene.update(
+            &mut world,
+            &mut camera,
+            crate::input::InputState::default(),
+            0.1,
+            &mut events,
+            &mut counts,
+            Some(&mut hit_particles),
+        );
+
+        assert_eq!(counts.hit, 1);
+        assert_eq!(
+            particles.particle_count(),
+            BRICK_HIT_PARTICLE_COUNT as usize
+        );
+        assert!(!is_alive(&world, brick));
     }
 }

@@ -10,8 +10,92 @@ class FakeEngine {
   wavesCleared = false;
   waves: number[][] = [];
   atlasFrames: number[][] = [];
+  atlasAnimations: Array<{
+    prefab: number;
+    textureId: number;
+    width: number;
+    height: number;
+    idleFps: number;
+    idleFrames: number[];
+    moveFps: number;
+    moveFrames: number[];
+  }> = [];
+  prefabColliders: Array<[
+    number,
+    number,
+    number,
+    number,
+    number,
+    boolean,
+    boolean,
+    boolean,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ]> = [];
+  circlePrefabColliders: Array<[number, number, number, number, boolean, boolean, boolean, number, number, number, number, number, number, number, number, number]> = [];
+  capsulePrefabColliders: Array<[
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    boolean,
+    boolean,
+    boolean,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ]> = [];
+  orientedBoxPrefabColliders: Array<[
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    boolean,
+    boolean,
+    boolean,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ]> = [];
+  convexPolygonPrefabColliders: Array<{
+    prefab: number;
+    vertices: number[];
+    rotationRadians: number;
+    offsetX: number;
+    offsetY: number;
+    enabled: boolean;
+    trigger: boolean;
+    hasMaterial: boolean;
+  }> = [];
   tilemapCleared = false;
   tiles: number[][] = [];
+  tileSlopes: number[][] = [];
+  tileOneWayPlatforms: number[] = [];
   tileLayers: Array<[number, number, number, number, number, number, number, boolean, number[]]> = [];
 
   set_shooter_resolved_config(
@@ -159,9 +243,226 @@ class FakeEngine {
     this.atlasFrames.push([prefab, textureId, width, height, u0, v0, u1, v1]);
   }
 
+  set_shooter_atlas_animation(
+    prefab: number,
+    textureId: number,
+    width: number,
+    height: number,
+    idleFps: number,
+    idleFrames: Float32Array,
+    moveFps: number,
+    moveFrames: Float32Array,
+  ): void {
+    this.atlasAnimations.push({
+      prefab,
+      textureId,
+      width,
+      height,
+      idleFps,
+      idleFrames: Array.from(idleFrames),
+      moveFps,
+      moveFrames: Array.from(moveFrames),
+    });
+  }
+
+  set_shooter_prefab_collider(
+    prefab: number,
+    halfWidth: number,
+    halfHeight: number,
+    offsetX: number,
+    offsetY: number,
+    enabled: boolean,
+    trigger: boolean,
+    hasMaterial: boolean,
+    restitution: number,
+    friction: number,
+    surfaceVelocityX: number,
+    surfaceVelocityY: number,
+    density: number,
+    contactBaumgarteBiasScale: number,
+    maxContactBaumgarteBiasVelocityScale: number,
+    contactPositionCorrectionScale: number,
+    contactPositionCorrectionSlopScale: number,
+  ): boolean {
+    this.prefabColliders.push([
+      prefab,
+      halfWidth,
+      halfHeight,
+      offsetX,
+      offsetY,
+      enabled,
+      trigger,
+      hasMaterial,
+      restitution,
+      friction,
+      surfaceVelocityX,
+      surfaceVelocityY,
+      density,
+      contactBaumgarteBiasScale,
+      maxContactBaumgarteBiasVelocityScale,
+      contactPositionCorrectionScale,
+      contactPositionCorrectionSlopScale,
+    ]);
+    return true;
+  }
+
+  set_shooter_prefab_circle_collider(
+    prefab: number,
+    radius: number,
+    offsetX: number,
+    offsetY: number,
+    enabled: boolean,
+    trigger: boolean,
+    hasMaterial: boolean,
+    restitution: number,
+    friction: number,
+    surfaceVelocityX: number,
+    surfaceVelocityY: number,
+    density: number,
+    contactBaumgarteBiasScale: number,
+    maxContactBaumgarteBiasVelocityScale: number,
+    contactPositionCorrectionScale: number,
+    contactPositionCorrectionSlopScale: number,
+  ): boolean {
+    this.circlePrefabColliders.push([
+      prefab,
+      radius,
+      offsetX,
+      offsetY,
+      enabled,
+      trigger,
+      hasMaterial,
+      restitution,
+      friction,
+      surfaceVelocityX,
+      surfaceVelocityY,
+      density,
+      contactBaumgarteBiasScale,
+      maxContactBaumgarteBiasVelocityScale,
+      contactPositionCorrectionScale,
+      contactPositionCorrectionSlopScale,
+    ]);
+    return true;
+  }
+
+  set_shooter_prefab_capsule_collider(
+    prefab: number,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    radius: number,
+    offsetX: number,
+    offsetY: number,
+    enabled: boolean,
+    trigger: boolean,
+    hasMaterial: boolean,
+    restitution: number,
+    friction: number,
+    surfaceVelocityX: number,
+    surfaceVelocityY: number,
+    density: number,
+    contactBaumgarteBiasScale: number,
+    maxContactBaumgarteBiasVelocityScale: number,
+    contactPositionCorrectionScale: number,
+    contactPositionCorrectionSlopScale: number,
+  ): boolean {
+    this.capsulePrefabColliders.push([
+      prefab,
+      startX,
+      startY,
+      endX,
+      endY,
+      radius,
+      offsetX,
+      offsetY,
+      enabled,
+      trigger,
+      hasMaterial,
+      restitution,
+      friction,
+      surfaceVelocityX,
+      surfaceVelocityY,
+      density,
+      contactBaumgarteBiasScale,
+      maxContactBaumgarteBiasVelocityScale,
+      contactPositionCorrectionScale,
+      contactPositionCorrectionSlopScale,
+    ]);
+    return true;
+  }
+
+  set_shooter_prefab_oriented_box_collider(
+    prefab: number,
+    halfWidth: number,
+    halfHeight: number,
+    rotationRadians: number,
+    offsetX: number,
+    offsetY: number,
+    enabled: boolean,
+    trigger: boolean,
+    hasMaterial: boolean,
+    restitution: number,
+    friction: number,
+    surfaceVelocityX: number,
+    surfaceVelocityY: number,
+    density: number,
+    contactBaumgarteBiasScale: number,
+    maxContactBaumgarteBiasVelocityScale: number,
+    contactPositionCorrectionScale: number,
+    contactPositionCorrectionSlopScale: number,
+  ): boolean {
+    this.orientedBoxPrefabColliders.push([
+      prefab,
+      halfWidth,
+      halfHeight,
+      rotationRadians,
+      offsetX,
+      offsetY,
+      enabled,
+      trigger,
+      hasMaterial,
+      restitution,
+      friction,
+      surfaceVelocityX,
+      surfaceVelocityY,
+      density,
+      contactBaumgarteBiasScale,
+      maxContactBaumgarteBiasVelocityScale,
+      contactPositionCorrectionScale,
+      contactPositionCorrectionSlopScale,
+    ]);
+    return true;
+  }
+
+  set_shooter_prefab_convex_polygon_collider(
+    prefab: number,
+    vertices: Float32Array,
+    rotationRadians: number,
+    offsetX: number,
+    offsetY: number,
+    enabled: boolean,
+    trigger: boolean,
+    hasMaterial: boolean,
+  ): boolean {
+    this.convexPolygonPrefabColliders.push({
+      prefab,
+      vertices: Array.from(vertices),
+      rotationRadians,
+      offsetX,
+      offsetY,
+      enabled,
+      trigger,
+      hasMaterial,
+    });
+    return true;
+  }
+
   clear_shooter_tilemap(): void {
     this.tilemapCleared = true;
     this.tiles = [];
+    this.tileSlopes = [];
+    this.tileOneWayPlatforms = [];
     this.tileLayers = [];
   }
 
@@ -178,6 +479,20 @@ class FakeEngine {
     a: number,
   ): void {
     this.tiles.push([tileId, textureId, u0, v0, u1, v1, r, g, b, a]);
+  }
+
+  set_shooter_tile_slope(
+    tileId: number,
+    localX0: number,
+    localY0: number,
+    localX1: number,
+    localY1: number,
+  ): void {
+    this.tileSlopes.push([tileId, localX0, localY0, localX1, localY1]);
+  }
+
+  set_shooter_tile_one_way_platform(tileId: number): void {
+    this.tileOneWayPlatforms.push(tileId);
   }
 
   set_shooter_tilemap_layer(
@@ -264,7 +579,21 @@ test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
       },
     },
     prefabs: {
-      enemy: { width: 32, height: 28 },
+      enemy: {
+        width: 32,
+        height: 28,
+        collider: {
+          halfWidth: 10,
+          halfHeight: 12,
+          offset: { x: 2, y: -1 },
+          trigger: false,
+          material: {
+            friction: 0.8,
+            surfaceVelocity: { x: 3 },
+            density: 1.4,
+          },
+        },
+      },
       bullet: { frame: "bullet.core" },
     },
   }), {
@@ -350,6 +679,44 @@ test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
       u1: 0.5,
       v1: 0.75,
     },
+	    playerCollider: {
+	      type: "aabb",
+	      halfWidth: 18,
+      halfHeight: 18,
+      offsetX: 0,
+      offsetY: 0,
+      enabled: true,
+      trigger: true,
+    },
+	    enemyCollider: {
+	      type: "aabb",
+	      halfWidth: 10,
+      halfHeight: 12,
+      offsetX: 2,
+      offsetY: -1,
+      enabled: true,
+      trigger: false,
+      material: {
+        restitution: 0,
+        friction: 0.8,
+        surfaceVelocityX: 3,
+        surfaceVelocityY: 0,
+        density: 1.4,
+        contactBaumgarteBiasScale: 1,
+        maxContactBaumgarteBiasVelocityScale: 1,
+        contactPositionCorrectionScale: 1,
+        contactPositionCorrectionSlopScale: 1,
+      },
+    },
+	    bulletCollider: {
+	      type: "aabb",
+	      halfWidth: 6,
+      halfHeight: 5,
+      offsetX: 0,
+      offsetY: 0,
+      enabled: true,
+      trigger: true,
+    },
     waves: [],
     audioMasterVolume: 1,
     audioSfxVolume: 1,
@@ -359,6 +726,75 @@ test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
     hitPitch: 1,
     gameOverVolume: 0.65,
     gameOverPitch: 0.9,
+  });
+});
+
+test("resolveShooterGameSpec accepts non-AABB prefab colliders", () => {
+  const spec = resolveShooterGameSpec({
+    prefabs: {
+      player: {
+        collider: {
+          type: "circle",
+          radius: 14,
+          offset: { x: 1, y: -2 },
+        },
+      },
+      enemy: {
+        collider: {
+          type: "capsule",
+          start: { x: -5, y: 0 },
+          end: { x: 5, y: 0 },
+          radius: 3,
+          trigger: false,
+        },
+      },
+      bullet: {
+        collider: {
+          type: "convexPolygon",
+          vertices: [
+            { x: -2, y: -1 },
+            { x: 2, y: -1 },
+            { x: 0, y: 2 },
+          ],
+          rotationRadians: 0.2,
+          enabled: false,
+        },
+      },
+    },
+  });
+
+  deepEqual(spec.playerCollider, {
+    type: "circle",
+    radius: 14,
+    offsetX: 1,
+    offsetY: -2,
+    enabled: true,
+    trigger: true,
+  });
+  deepEqual(spec.enemyCollider, {
+    type: "capsule",
+    startX: -5,
+    startY: 0,
+    endX: 5,
+    endY: 0,
+    radius: 3,
+    offsetX: 0,
+    offsetY: 0,
+    enabled: true,
+    trigger: false,
+  });
+  deepEqual(spec.bulletCollider, {
+    type: "convexPolygon",
+    vertices: [
+      { x: -2, y: -1 },
+      { x: 2, y: -1 },
+      { x: 0, y: 2 },
+    ],
+    rotationRadians: 0.2,
+    offsetX: 0,
+    offsetY: 0,
+    enabled: false,
+    trigger: true,
   });
 });
 
@@ -412,6 +848,49 @@ test("resolveShooterGameSpec rejects invalid prefab dimensions with path context
     return;
   }
   throw new Error("Expected invalid prefab spec to throw.");
+});
+
+test("resolveShooterGameSpec rejects invalid prefab collider metadata with path context", () => {
+  try {
+    resolveShooterGameSpec({ prefabs: { enemy: { collider: { halfWidth: 0 } } } });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='prefabs.enemy.collider.halfWidth' detail='must be a positive finite number'.",
+    );
+    return;
+  }
+  throw new Error("Expected invalid prefab collider spec to throw.");
+});
+
+test("resolveShooterGameSpec rejects invalid prefab collider shape metadata with path context", () => {
+  try {
+    resolveShooterGameSpec({
+      prefabs: { bullet: { collider: { type: "convexPolygon", vertices: [{ x: 0, y: 0 }] } } },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='prefabs.bullet.collider.vertices' detail='must contain 3 to 16 vertices'.",
+    );
+    return;
+  }
+  throw new Error("Expected invalid prefab collider shape spec to throw.");
+});
+
+test("resolveShooterGameSpec rejects invalid prefab collider material with path context", () => {
+  try {
+    resolveShooterGameSpec({
+      prefabs: { bullet: { collider: { material: { density: 0 } } } },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='prefabs.bullet.collider.material.density' detail='must be a positive finite number'.",
+    );
+    return;
+  }
+  throw new Error("Expected invalid prefab collider material spec to throw.");
 });
 
 test("resolveShooterGameSpec rejects invalid sprite animation with path context", () => {
@@ -675,6 +1154,95 @@ test("resolveShooterGameSpec rejects prefab frame and animation conflicts", () =
   throw new Error("Expected atlas frame conflict spec to throw.");
 });
 
+test("resolveShooterGameSpec resolves atlas animation bindings", () => {
+  const spec = resolveShooterGameSpec({
+    atlas: {
+      frames: {
+        "player.idle.0": {
+          texture: "sprites",
+          uv: { u0: 0, v0: 0, u1: 0.25, v1: 0.5 },
+          size: { width: 16, height: 24 },
+        },
+        "player.move.0": {
+          texture: "sprites",
+          uv: { u0: 0, v0: 0.5, u1: 0.25, v1: 1 },
+          size: { width: 16, height: 24 },
+        },
+        "player.move.1": {
+          texture: "sprites",
+          uv: { u0: 0.25, v0: 0.5, u1: 0.5, v1: 1 },
+          size: { width: 16, height: 24 },
+        },
+      },
+    },
+    prefabs: {
+      player: {
+        animation: {
+          atlas: {
+            idle: { frames: ["player.idle.0"], fps: 1 },
+            move: { frames: ["player.move.0", "player.move.1"], fps: 8 },
+          },
+        },
+      },
+    },
+  });
+
+  equal(spec.playerWidth, 16);
+  equal(spec.playerHeight, 24);
+  equal(spec.playerAnimationFrames, 1);
+  deepEqual(spec.playerAtlasAnimation, {
+    texture: "sprites",
+    width: 16,
+    height: 24,
+    idle: {
+      fps: 1,
+      frames: [spec.atlasFrames["player.idle.0"]],
+    },
+    move: {
+      fps: 8,
+      frames: [spec.atlasFrames["player.move.0"], spec.atlasFrames["player.move.1"]],
+    },
+  });
+});
+
+test("resolveShooterGameSpec rejects atlas animation frames with mixed texture", () => {
+  try {
+    resolveShooterGameSpec({
+      atlas: {
+        frames: {
+          idle: {
+            texture: "sprites-a",
+            uv: { u0: 0, v0: 0, u1: 0.5, v1: 1 },
+            size: { width: 16, height: 16 },
+          },
+          move: {
+            texture: "sprites-b",
+            uv: { u0: 0.5, v0: 0, u1: 1, v1: 1 },
+            size: { width: 16, height: 16 },
+          },
+        },
+      },
+      prefabs: {
+        player: {
+          animation: {
+            atlas: {
+              idle: { frames: ["idle"], fps: 1 },
+              move: { frames: ["move"], fps: 8 },
+            },
+          },
+        },
+      },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='prefabs.player.animation.atlas.frames.1' detail='all atlas animation frames must use the same texture'.",
+    );
+    return;
+  }
+  throw new Error("Expected mixed atlas animation textures to throw.");
+});
+
 test("resolveShooterGameSpec resolves static tilemap layers", () => {
   const spec = resolveShooterGameSpec({
     atlas: {
@@ -696,8 +1264,12 @@ test("resolveShooterGameSpec resolves static tilemap layers", () => {
       tileHeight: 24,
       origin: { x: -8, y: 4 },
       tiles: {
-        "2": { frame: "terrain.trim", color: [0.8, 0.7, 0.6, 0.5] },
-        "1": { frame: "terrain.floor" },
+        "2": {
+          frame: "terrain.trim",
+          color: [0.8, 0.7, 0.6, 0.5],
+          slope: { x0: 0, y0: 1, x1: 1, y1: 0 },
+        },
+        "1": { frame: "terrain.floor", oneWayPlatform: true },
       },
       layers: [
         {
@@ -726,6 +1298,7 @@ test("resolveShooterGameSpec resolves static tilemap layers", () => {
           v1: 0.5,
         },
         color: [1, 1, 1, 1],
+        oneWayPlatform: true,
       },
       {
         id: 2,
@@ -740,6 +1313,7 @@ test("resolveShooterGameSpec resolves static tilemap layers", () => {
           v1: 0.5,
         },
         color: [0.8, 0.7, 0.6, 0.5],
+        slope: { x0: 0, y0: 1, x1: 1, y1: 0 },
       },
     ],
     layers: [
@@ -753,10 +1327,99 @@ test("resolveShooterGameSpec resolves static tilemap layers", () => {
         originX: -8,
         originY: 4,
         collision: true,
+        collisionOnly: false,
         data: [1, 0, 2, 2, 1, 0],
       },
     ],
   });
+});
+
+test("resolveShooterGameSpec rejects vertical tile slope definitions", () => {
+  try {
+    resolveShooterGameSpec({
+      atlas: {
+        frames: {
+          "terrain.ramp": {
+            texture: 0,
+            uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+            size: { width: 16, height: 16 },
+          },
+        },
+      },
+      tilemap: {
+        tiles: {
+          "1": { frame: "terrain.ramp", slope: { x0: 0.5, y0: 1, x1: 0.5, y1: 0 } },
+        },
+      },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='tilemap.tiles.1.slope.x1' detail='must differ from slope.x0'.",
+    );
+    return;
+  }
+  throw new Error("Expected vertical tile slope spec to throw.");
+});
+
+test("resolveShooterGameSpec rejects non-boolean one-way tile metadata", () => {
+  try {
+    resolveShooterGameSpec({
+      atlas: {
+        frames: {
+          "terrain.platform": {
+            texture: 0,
+            uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+            size: { width: 16, height: 16 },
+          },
+        },
+      },
+      tilemap: {
+        tiles: {
+          "1": { frame: "terrain.platform", oneWayPlatform: "yes" },
+        },
+      },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='tilemap.tiles.1.oneWayPlatform' detail='must be a boolean'.",
+    );
+    return;
+  }
+  throw new Error("Expected non-boolean one-way tile metadata to throw.");
+});
+
+test("resolveShooterGameSpec rejects tiles that combine slope and one-way platform metadata", () => {
+  try {
+    resolveShooterGameSpec({
+      atlas: {
+        frames: {
+          "terrain.ramp": {
+            texture: 0,
+            uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+            size: { width: 16, height: 16 },
+          },
+        },
+      },
+      tilemap: {
+        tiles: {
+          "1": {
+            frame: "terrain.ramp",
+            slope: { x0: 0, y0: 1, x1: 1, y1: 0 },
+            oneWayPlatform: true,
+          },
+        },
+      },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='tilemap.tiles.1.oneWayPlatform' detail='cannot be combined with slope'.",
+    );
+    return;
+  }
+  throw new Error("Expected combined slope and one-way tile metadata to throw.");
 });
 
 test("resolveShooterGameSpec rejects tilemap data that references missing tiles", () => {
@@ -809,6 +1472,52 @@ test("resolveShooterGameSpec rejects non-boolean tilemap collision flags", () =>
     return;
   }
   throw new Error("Expected invalid tilemap collision spec to throw.");
+});
+
+test("resolveShooterGameSpec accepts collision-only tilemap layers with undefined solid ids", () => {
+  const spec = resolveShooterGameSpec({
+    tilemap: {
+      layers: [{
+        name: "raw-int-grid",
+        columns: 2,
+        rows: 2,
+        collision: true,
+        collisionOnly: true,
+        data: [0, 4294967295, 0, 4294967295],
+      }],
+    },
+  });
+
+  deepEqual(spec.tilemap?.layers[0], {
+    index: 0,
+    name: "raw-int-grid",
+    columns: 2,
+    rows: 2,
+    tileWidth: 32,
+    tileHeight: 32,
+    originX: 0,
+    originY: 0,
+    collision: true,
+    collisionOnly: true,
+    data: [0, 4294967295, 0, 4294967295],
+  });
+});
+
+test("resolveShooterGameSpec rejects collision-only tilemap layers without collision", () => {
+  try {
+    resolveShooterGameSpec({
+      tilemap: {
+        layers: [{ columns: 1, rows: 1, collisionOnly: true, data: [1] }],
+      },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='tilemap.layers.0.collisionOnly' detail='requires collision to be true'.",
+    );
+    return;
+  }
+  throw new Error("Expected invalid collision-only layer spec to throw.");
 });
 
 test("resolveShooterGameSpec rejects tilemap tiles with unknown atlas frames", () => {
@@ -877,8 +1586,8 @@ test("applyShooterGameSpec forwards tilemap definitions and layers to engine", (
       tileHeight: 24,
       origin: { x: 4, y: 8 },
       tiles: {
-        "1": { frame: "terrain.floor", color: [0.6, 0.7, 0.8, 1] },
-        "2": { frame: "terrain.edge" },
+        "1": { frame: "terrain.floor", color: [0.6, 0.7, 0.8, 1], oneWayPlatform: true },
+        "2": { frame: "terrain.edge", slope: { x0: 0, y0: 1, x1: 1, y1: 0 } },
       },
       layers: [
         { name: "floor", columns: 2, rows: 2, collision: true, data: [1, 0, 2, 1] },
@@ -891,9 +1600,60 @@ test("applyShooterGameSpec forwards tilemap definitions and layers to engine", (
     [1, 12, 0, 0, 0.5, 0.5, 0.6, 0.7, 0.8, 1],
     [2, 0, 0.5, 0, 1, 0.5, 1, 1, 1, 1],
   ]);
+  deepEqual(engine.tileSlopes, [
+    [2, 0, 1, 1, 0],
+  ]);
+  deepEqual(engine.tileOneWayPlatforms, [1]);
   deepEqual(engine.tileLayers, [
     [0, 2, 2, 32, 24, 4, 8, true, [1, 0, 2, 1]],
   ]);
+});
+
+test("applyShooterGameSpec forwards atlas animation frame buffers to engine", () => {
+  const engine = new FakeEngine();
+
+  applyShooterGameSpec(engine, {
+    atlas: {
+      frames: {
+        "player.idle.0": {
+          texture: "sprites",
+          uv: { u0: 0, v0: 0, u1: 0.25, v1: 0.5 },
+          size: { width: 16, height: 24 },
+        },
+        "player.move.0": {
+          texture: "sprites",
+          uv: { u0: 0, v0: 0.5, u1: 0.25, v1: 1 },
+          size: { width: 16, height: 24 },
+        },
+        "player.move.1": {
+          texture: "sprites",
+          uv: { u0: 0.25, v0: 0.5, u1: 0.5, v1: 1 },
+          size: { width: 16, height: 24 },
+        },
+      },
+    },
+    prefabs: {
+      player: {
+        animation: {
+          atlas: {
+            idle: { frames: ["player.idle.0"], fps: 1 },
+            move: { frames: ["player.move.0", "player.move.1"], fps: 8 },
+          },
+        },
+      },
+    },
+  }, { textureId: (name) => (name === "sprites" ? 7 : 0) });
+
+  deepEqual(engine.atlasAnimations, [{
+    prefab: 0,
+    textureId: 7,
+    width: 16,
+    height: 24,
+    idleFps: 1,
+    idleFrames: [0, 0, 0.25, 0.5],
+    moveFps: 8,
+    moveFrames: [0, 0.5, 0.25, 1, 0.25, 0.5, 0.5, 1],
+  }]);
 });
 
 test("applyShooterGameSpec forwards resolved config to engine", () => {
@@ -919,7 +1679,11 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
     },
     weapons: { bulletSpeed: 640, cooldown: 0.08, lifetime: 2.4, damage: 2 },
     prefabs: {
-      player: { width: 40, height: 44 },
+      player: {
+        width: 40,
+        height: 44,
+        collider: { halfWidth: 16, halfHeight: 18, offset: { x: 1, y: 2 } },
+      },
       enemy: {
         width: 30,
         height: 34,
@@ -932,7 +1696,23 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
           },
         },
       },
-      bullet: { frame: "bullet.core" },
+      bullet: {
+        frame: "bullet.core",
+        collider: {
+          halfWidth: 4,
+          halfHeight: 5,
+          material: {
+            restitution: 0.2,
+            friction: 0.1,
+            surfaceVelocity: { x: -2, y: 1 },
+            density: 2,
+            contactBaumgarteBiasScale: 0.8,
+            maxContactBaumgarteBiasVelocityScale: 0.7,
+            contactPositionCorrectionScale: 0.6,
+            contactPositionCorrectionSlopScale: 0.5,
+          },
+        },
+      },
     },
     atlas: {
       frames: {
@@ -1043,6 +1823,44 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
       u1: 0.25,
       v1: 0.5,
     },
+	    playerCollider: {
+	      type: "aabb",
+	      halfWidth: 16,
+      halfHeight: 18,
+      offsetX: 1,
+      offsetY: 2,
+      enabled: true,
+      trigger: true,
+    },
+	    enemyCollider: {
+	      type: "aabb",
+	      halfWidth: 15,
+      halfHeight: 17,
+      offsetX: 0,
+      offsetY: 0,
+      enabled: true,
+      trigger: true,
+    },
+	    bulletCollider: {
+	      type: "aabb",
+	      halfWidth: 4,
+      halfHeight: 5,
+      offsetX: 0,
+      offsetY: 0,
+      enabled: true,
+      trigger: true,
+      material: {
+        restitution: 0.2,
+        friction: 0.1,
+        surfaceVelocityX: -2,
+        surfaceVelocityY: 1,
+        density: 2,
+        contactBaumgarteBiasScale: 0.8,
+        maxContactBaumgarteBiasVelocityScale: 0.7,
+        contactPositionCorrectionScale: 0.6,
+        contactPositionCorrectionSlopScale: 0.5,
+      },
+    },
     waves: [
       {
         index: 0,
@@ -1138,5 +1956,85 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
   ]);
   deepEqual(engine.atlasFrames, [
     [2, 7, 14, 16, 0.125, 0.25, 0.25, 0.5],
+  ]);
+  deepEqual(engine.prefabColliders, [
+    [0, 16, 18, 1, 2, true, true, false, 0, 0.4, 0, 0, 1, 1, 1, 1, 1],
+    [1, 15, 17, 0, 0, true, true, false, 0, 0.4, 0, 0, 1, 1, 1, 1, 1],
+    [2, 4, 5, 0, 0, true, true, true, 0.2, 0.1, -2, 1, 2, 0.8, 0.7, 0.6, 0.5],
+  ]);
+});
+
+test("applyShooterGameSpec forwards non-AABB prefab colliders to engine", () => {
+  const engine = new FakeEngine();
+
+  applyShooterGameSpec(engine, {
+    prefabs: {
+      player: {
+        collider: {
+          type: "circle",
+          radius: 12,
+          offset: { x: 1, y: -1 },
+        },
+      },
+      enemy: {
+        collider: {
+          type: "orientedBox",
+          halfWidth: 9,
+          halfHeight: 7,
+          rotationRadians: 0.3,
+          trigger: false,
+        },
+      },
+      bullet: {
+        collider: {
+          type: "convexPolygon",
+          vertices: [
+            { x: -2, y: -1 },
+            { x: 2, y: -1 },
+            { x: 0, y: 2 },
+          ],
+          rotationRadians: 0.1,
+          enabled: false,
+        },
+      },
+    },
+  });
+
+  deepEqual(engine.prefabColliders, []);
+  deepEqual(engine.circlePrefabColliders, [
+    [0, 12, 1, -1, true, true, false, 0, 0.4, 0, 0, 1, 1, 1, 1, 1],
+  ]);
+  deepEqual(engine.orientedBoxPrefabColliders, [
+    [1, 9, 7, 0.3, 0, 0, true, false, false, 0, 0.4, 0, 0, 1, 1, 1, 1, 1],
+  ]);
+  deepEqual(engine.convexPolygonPrefabColliders, [
+    {
+      prefab: 2,
+      vertices: [-2, -1, 2, -1, 0, 2],
+      rotationRadians: 0.1,
+      offsetX: 0,
+      offsetY: 0,
+      enabled: false,
+      trigger: true,
+      hasMaterial: false,
+    },
+  ]);
+
+  const capsuleEngine = new FakeEngine();
+  applyShooterGameSpec(capsuleEngine, {
+    prefabs: {
+      enemy: {
+        collider: {
+          type: "capsule",
+          start: { x: -4, y: 0 },
+          end: { x: 4, y: 0 },
+          radius: 3,
+          offset: { x: 0, y: 1 },
+        },
+      },
+    },
+  });
+  deepEqual(capsuleEngine.capsulePrefabColliders, [
+    [1, -4, 0, 4, 0, 3, 0, 1, true, true, false, 0, 0.4, 0, 0, 1, 1, 1, 1, 1],
   ]);
 });

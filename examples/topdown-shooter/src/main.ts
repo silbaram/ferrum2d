@@ -9,8 +9,43 @@ import {
   type DiagnosticReport,
   type FerrumEngine,
   type LoadedAssets,
+  type ParticlePresetConfig,
   type ShooterGameSpec,
 } from "@ferrum2d/ferrum-web";
+
+const TOPDOWN_HIT_PARTICLE_PRESET_ID = 0;
+const FLOATS_PER_RENDER_COMMAND = 13;
+const COMMAND_COLOR_R_OFFSET = 8;
+const COMMAND_COLOR_G_OFFSET = 9;
+const COMMAND_COLOR_B_OFFSET = 10;
+const COMMAND_COLOR_A_OFFSET = 11;
+const COMMAND_TEXTURE_ID_OFFSET = 12;
+
+interface TopdownTextureIds {
+  player: number;
+  enemy: number;
+  bullet: number;
+}
+
+interface TopdownSmokeFrame {
+  renderCommandCount: number;
+  particleCount: number;
+  enemyFlashCommandCount: number;
+  maxEnemyFlashCommandCount: number;
+  maxParticleCount: number;
+  enemyTextureId: number;
+  bulletTextureId: number;
+  gameState: number;
+  score: number;
+}
+
+type TopdownSmokeWindow = Window & {
+  ferrumEngine?: FerrumEngine;
+  ferrumRuntime?: { engine: FerrumEngine; renderer: WebGL2Renderer };
+  ferrumTopdownSmokeFrame?: TopdownSmokeFrame;
+  ferrumTopdownSmokeStart?: () => void;
+  ferrumTopdownSmokeFireAt?: (mouseX: number, mouseY: number) => void;
+};
 
 function gameStateText(code: number): string {
   if (code === 0) return "Title";
@@ -53,6 +88,10 @@ function applyBootstrapErrorStyles(container: HTMLElement, list: HTMLElement): v
   list.style.gap = "8px 16px";
 }
 
+function publicAssetUrl(path: string): string {
+  return `${import.meta.env.BASE_URL}${path}`;
+}
+
 function requireTextureId(assets: LoadedAssets, name: "player" | "enemy" | "bullet"): number {
   const textureId = assets.textures.tryTextureId(name);
   if (textureId === undefined) {
@@ -69,7 +108,7 @@ function requireSoundId(assets: LoadedAssets, name: "shoot" | "hit" | "gameOver"
   return soundId;
 }
 
-function applyTopdownShooterAssets(engine: FerrumEngine, assets: LoadedAssets): void {
+function applyTopdownShooterAssets(engine: FerrumEngine, assets: LoadedAssets): TopdownTextureIds {
   const player = requireTextureId(assets, "player");
   const enemy = requireTextureId(assets, "enemy");
   const bullet = requireTextureId(assets, "bullet");
@@ -87,6 +126,66 @@ function applyTopdownShooterAssets(engine: FerrumEngine, assets: LoadedAssets): 
     throw assetApplyError("json", "game", "Required Game Spec JSON is missing from loaded assets. Check json manifest key.");
   }
   engine.setGameSpec(assets.json.game as ShooterGameSpec);
+  applyTopdownHitParticles(engine, bullet);
+  return { player, enemy, bullet };
+}
+
+function applyTopdownHitParticles(engine: FerrumEngine, bulletTextureId: number): void {
+  const hitParticles: ParticlePresetConfig = {
+    texture: bulletTextureId,
+    burstCount: 10,
+    lifetime: [0.16, 0.34],
+    speed: [45, 155],
+    startSize: [5, 9],
+    endSize: 1.5,
+    startColor: [1, 0.82, 0.28, 1],
+    endColor: [1, 0.18, 0.05, 0],
+    damping: 1.8,
+  };
+
+  engine.setParticlePreset(TOPDOWN_HIT_PARTICLE_PRESET_ID, hitParticles);
+  engine.setShooterHitParticlePreset(TOPDOWN_HIT_PARTICLE_PRESET_ID);
+}
+
+function recordTopdownSmokeFrame(
+  engine: FerrumEngine,
+  renderCommandBuffer: { buffer: Float32Array; commandCount: number; floatsPerCommand: number },
+  textureIds: TopdownTextureIds,
+  gameState: number,
+  score: number,
+): void {
+  let enemyFlashCommandCount = 0;
+  const floatsPerCommand = renderCommandBuffer.floatsPerCommand || FLOATS_PER_RENDER_COMMAND;
+  for (let commandIndex = 0; commandIndex < renderCommandBuffer.commandCount; commandIndex += 1) {
+    const offset = commandIndex * floatsPerCommand;
+    const textureId = Math.trunc(renderCommandBuffer.buffer[offset + COMMAND_TEXTURE_ID_OFFSET]);
+    if (textureId !== textureIds.enemy) {
+      continue;
+    }
+
+    const red = renderCommandBuffer.buffer[offset + COMMAND_COLOR_R_OFFSET];
+    const green = renderCommandBuffer.buffer[offset + COMMAND_COLOR_G_OFFSET];
+    const blue = renderCommandBuffer.buffer[offset + COMMAND_COLOR_B_OFFSET];
+    const alpha = renderCommandBuffer.buffer[offset + COMMAND_COLOR_A_OFFSET];
+    if (red >= 0.95 && green > 0.6 && blue > 0.32 && alpha >= 0.95) {
+      enemyFlashCommandCount += 1;
+    }
+  }
+
+  const smokeWindow = window as TopdownSmokeWindow;
+  const previous = smokeWindow.ferrumTopdownSmokeFrame;
+  const particleCount = engine.particleCount();
+  smokeWindow.ferrumTopdownSmokeFrame = {
+    renderCommandCount: renderCommandBuffer.commandCount,
+    particleCount,
+    enemyFlashCommandCount,
+    maxEnemyFlashCommandCount: Math.max(previous?.maxEnemyFlashCommandCount ?? 0, enemyFlashCommandCount),
+    maxParticleCount: Math.max(previous?.maxParticleCount ?? 0, particleCount),
+    enemyTextureId: textureIds.enemy,
+    bulletTextureId: textureIds.bullet,
+    gameState,
+    score,
+  };
 }
 
 function reportBootstrapError(error: unknown): void {
@@ -136,6 +235,9 @@ async function bootstrap(): Promise<void> {
     const title = document.createElement("h1");
     const hudEl = document.createElement("p");
     title.textContent = "Ferrum2D Top-down Shooter MVP";
+    const searchParams = new URLSearchParams(window.location.search);
+    const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
+    const effectSmokeEnabled = searchParams.get("effectSmoke") === "true";
 
     const canvas = document.createElement("canvas");
     canvas.style.width = "800px";
@@ -143,7 +245,7 @@ async function bootstrap(): Promise<void> {
     canvas.style.display = "block";
     app.replaceChildren(title, hudEl, canvas);
 
-    const renderer = new WebGL2Renderer(canvas, { clearColor: [0.05, 0.08, 0.12, 1] });
+    const renderer = new WebGL2Renderer(canvas, { clearColor: [0.05, 0.08, 0.12, 1], preserveDrawingBuffer });
     cleanups.push(() => renderer.destroy());
     const platformHost = new BrowserPlatformHost(renderer);
     cleanups.push(() => platformHost.destroy());
@@ -156,7 +258,6 @@ async function bootstrap(): Promise<void> {
     cleanups.push(() => canvas.removeEventListener("pointerdown", unlockAudio));
     const input = new InputManager(canvas);
     cleanups.push(() => input.destroy());
-    const searchParams = new URLSearchParams(window.location.search);
     const debugEnabled = searchParams.get("debug") !== "false";
     const physicsDebugLines = searchParams.get("physicsDebugLines") === "true";
     const debugOverlay = new DebugOverlay(app, { enabled: debugEnabled });
@@ -165,6 +266,23 @@ async function bootstrap(): Promise<void> {
     let audioEventRateWindowStartMs = performance.now();
     let audioEventRateCount = 0;
     let audioEventsPerSecond = 0;
+    let runtimeEngine: FerrumEngine | undefined;
+    let smokeTextureIds: TopdownTextureIds | undefined;
+    let smokeStartQueued = false;
+    let smokeFireQueued: { mouseX: number; mouseY: number } | undefined;
+    const inputSnapshot = () => {
+      const snapshot = input.snapshot();
+      if (smokeStartQueued) {
+        smokeStartQueued = false;
+        return { ...snapshot, enter: true };
+      }
+      if (smokeFireQueued) {
+        const fire = smokeFireQueued;
+        smokeFireQueued = undefined;
+        return { ...snapshot, mouseLeft: true, mouseX: fire.mouseX, mouseY: fire.mouseY };
+      }
+      return snapshot;
+    };
 
     const engine = await createEngine((frame) => {
       const renderStartMs = performance.now();
@@ -194,6 +312,10 @@ async function bootstrap(): Promise<void> {
         hudEl.textContent = `Game Over - final score ${frame.score}. Press Space to restart.`;
       }
 
+      if (effectSmokeEnabled && runtimeEngine && smokeTextureIds) {
+        recordTopdownSmokeFrame(runtimeEngine, frame.renderCommandBuffer, smokeTextureIds, frame.gameState, frame.score);
+      }
+
       debugOverlay.update({
         fps: frame.frameTimeMs > 0 ? 1000 / frame.frameTimeMs : 0,
         frameTimeMs: frame.frameTimeMs,
@@ -215,37 +337,48 @@ async function bootstrap(): Promise<void> {
         gameState: gameStateText(frame.gameState),
         score: frame.score,
       });
-    }, () => input.snapshot(), platformHost, () => {
+    }, inputSnapshot, platformHost, () => {
       renderer.resize();
       return renderer.viewportSize();
     }, { enablePhysicsDebugLines: physicsDebugLines });
+    runtimeEngine = engine;
     cleanups.push(() => engine.destroy());
 
     const assets = await engine.loadAssets({
       textures: {
-        player: "/assets/player.png",
-        enemy: "/assets/enemy.png",
-        bullet: "/assets/bullet.png",
+        player: publicAssetUrl("assets/player.png"),
+        enemy: publicAssetUrl("assets/enemy.png"),
+        bullet: publicAssetUrl("assets/bullet.png"),
       },
       sounds: {
-        shoot: "/assets/shoot.wav",
-        hit: "/assets/hit.wav",
-        gameOver: "/assets/game-over.wav",
+        shoot: publicAssetUrl("assets/shoot.wav"),
+        hit: publicAssetUrl("assets/hit.wav"),
+        gameOver: publicAssetUrl("assets/game-over.wav"),
       },
       json: {
-        game: "/game.json",
+        game: publicAssetUrl("game.json"),
       },
     }, ({ loaded, total, name }) => {
       assetProgressText = `assets: ${loaded}/${total}${name ? ` ${name}` : ""}`;
     });
-    applyTopdownShooterAssets(engine, assets);
+    smokeTextureIds = applyTopdownShooterAssets(engine, assets);
     assetProgressText = `assets: ${assets.progress.loaded}/${assets.progress.total}`;
 
     const onBeforeUnload = (): void => cleanupResources(cleanups);
     window.addEventListener("beforeunload", onBeforeUnload);
     cleanups.push(() => window.removeEventListener("beforeunload", onBeforeUnload));
     engine.start();
-    (window as Window & { ferrumEngine?: typeof engine }).ferrumEngine = engine;
+    const smokeWindow = window as TopdownSmokeWindow;
+    smokeWindow.ferrumEngine = engine;
+    smokeWindow.ferrumRuntime = { engine, renderer };
+    if (effectSmokeEnabled) {
+      smokeWindow.ferrumTopdownSmokeStart = () => {
+        smokeStartQueued = true;
+      };
+      smokeWindow.ferrumTopdownSmokeFireAt = (mouseX: number, mouseY: number) => {
+        smokeFireQueued = { mouseX, mouseY };
+      };
+    }
   } catch (error) {
     cleanupResources(cleanups);
     throw error;
