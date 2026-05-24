@@ -1,6 +1,6 @@
 ---
 name: ferrum-game-designer
-description: Use when designing, tuning, validating, or reviewing Ferrum2D Top-down Shooter Game Spec JSON, game variants, prefab sizes, enemy behavior presets, or agent-generated gameplay changes. Trigger when editing examples/topdown-shooter/public/game.json, creating game variant JSON, balancing shooter values, or coordinating subagents that modify Ferrum2D game data.
+description: Use when designing, tuning, validating, or reviewing Ferrum2D Top-down Shooter Game Spec JSON, game variants, prefab sizes, enemy behavior presets, or agent-generated gameplay changes. Trigger when editing examples/topdown-shooter/public/game.json, creating game variant JSON, balancing shooter values, or coordinating AI agents that modify Ferrum2D game data.
 ---
 
 # Ferrum Game Designer
@@ -10,14 +10,14 @@ Use this skill to make data-only gameplay changes for Ferrum2D. Prefer editing G
 ## Source Of Truth
 
 - Main editable spec: `examples/topdown-shooter/public/game.json`
-- Spec reference: `docs/game-spec.md`
+- Spec reference: `docs/engine/topdown-shooter-game-spec.md`
 - JSON Schema: `schemas/shooter-game-spec.schema.json`
 - Validation command: `pnpm validate:game-spec`
 - Variant helper: `pnpm create:game-variant <name> [output.json]`
 
 ## Workflow
 
-1. Read `docs/game-spec.md` before changing gameplay data.
+1. Read `docs/engine/topdown-shooter-game-spec.md` before changing gameplay data.
 2. Modify only Game Spec JSON for balance/preset changes.
 3. Keep values positive finite numbers.
 4. Use `enemies.behavior` only as `"chase"`, `"drift"`, `"static"`, or `"orbit"`.
@@ -47,14 +47,14 @@ Use this skill to make data-only gameplay changes for Ferrum2D. Prefer editing G
 
 Values outside these ranges may still validate if positive, but should be treated as experimental and documented in the response.
 
-## Subagent Coordination
+## Agent Coordination
 
 When multiple agents work together, keep write ownership separate:
 
-- `game-designer`: owns `examples/topdown-shooter/public/*.json`
-- `schema-agent`: owns `docs/game-spec.md` and `schemas/*`
-- `qa-agent`: runs validation/build/test commands and reports failures
-- `docs-agent`: owns README and docs workflow updates
+- Game data agent (`game_designer` / `game-designer`): owns `examples/topdown-shooter/public/*.json`
+- Schema agent (`schema_agent` / `schema-agent`): owns `docs/engine/topdown-shooter-game-spec.md` and `schemas/*`
+- QA agent (`qa_agent` / `qa-agent`): runs validation/build/test commands and reports failures
+- Docs agent (`docs_agent` / `docs-agent`): owns README and docs workflow updates
 
 Do not let multiple agents edit the same file in parallel.
 

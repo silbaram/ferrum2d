@@ -1,6 +1,6 @@
 # Ferrum2D Agent Instructions
 
-이 문서는 Ferrum2D 저장소에서 Codex(에이전트)가 따라야 할 작업 기준이다.
+이 문서는 Ferrum2D 저장소에서 Codex, Claude, Gemini 등 AI 에이전트가 따라야 할 작업 기준이다.
 목표는 반복 실수를 줄이고, MVP 개발 완료 이후 상용제품 기능 개발 단계에서 일관된 산출물을 만드는 것이다.
 
 ## Project Summary
@@ -25,6 +25,32 @@ Ferrum2D는 Rust + WebAssembly 기반의 2D 웹 게임 엔진이다.
 - `scripts`
 
 위 경로를 기준으로 문서/코드/예제를 배치하며, 구조 변경이 필요할 경우 먼저 문서 합의를 수행한다.
+
+## Agent And Skill Layout
+
+AI 에이전트/스킬 설정은 다음 경로를 기준으로 분리한다.
+
+- 공유 canonical skill: `.agents/skills/*/SKILL.md`
+- Codex custom agents: `.codex/agents/*.toml`
+- Claude project agents: `.claude/agents/*.md`
+- Claude skill wrappers: `.claude/skills/*/SKILL.md`
+- Gemini project agents: `.gemini/agents/*.md`
+- Gemini skill wrappers: `.gemini/skills/*/SKILL.md`
+- Claude 진입 지침: `CLAUDE.md`
+- Gemini 진입 지침: `GEMINI.md`
+
+Claude/Gemini skill wrapper는 workflow를 중복 작성하지 않고 `.agents/skills/*/SKILL.md`를 source of truth로 참조한다. 배포, publish, Git tag, GitHub Release, npm deprecation, 원격 Pages 배포처럼 외부 상태를 바꾸는 작업은 도구와 무관하게 명시적 사용자 승인 전 실행하지 않는다.
+
+현재 agent 역할은 다음 책임으로 구분한다.
+
+- `engine_reviewer` / `engine-reviewer`: 엔진 코드/아키텍처 리뷰, SOLID-style 설계 위험, Rust/TypeScript 경계, Wasm ABI, public API 누수, 테스트 공백 검토
+- `qa_agent` / `qa-agent`: lint, test, build, smoke, package check 같은 명령 실행과 결과 보고
+- `release_agent` / `release-agent`: npm beta release, changelog/version/tag, GitHub Release, publish gate 조정
+- `package_agent` / `package-agent`: npm tarball, package files, Wasm artifact, consumer import 검증
+- `pages_deploy_agent` / `pages-deploy-agent`: GitHub Pages demo/docs artifact와 배포 상태 검증
+- `docs_agent` / `docs-agent`: README, engine docs, development docs, release copy 동기화
+- `game_designer` / `game-designer`: Top-down Shooter Game Spec 데이터 튜닝
+- `schema_agent` / `schema-agent`: Game Spec schema, validation behavior, spec 문서 계약 관리
 
 ## Wasm Boundary Rules
 
