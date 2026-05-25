@@ -12,6 +12,16 @@ const DEFAULT_MODE = "render";
 const TOPDOWN_EFFECTS_MODE = "topdown-effects";
 const BREAKOUT_EFFECTS_MODE = "breakout-effects";
 const PLATFORMER_EFFECTS_MODE = "platformer-effects";
+const PHYSICS_SANDBOX_MODE = "physics-sandbox";
+const PHYSICS_DEMO_SUITE_MODE = "physics-demo-suite";
+const PHYSICS_DEMO_SUITE = [
+  "sandbox",
+  "joint-playground",
+  "projectile-ccd",
+  "platformer-physics",
+  "compound-collider",
+  "weld-joint",
+];
 const TOPDOWN_EFFECT_SMOKE_SPEC = {
   world: { width: 800, height: 480 },
   player: { speed: 180 },
@@ -126,7 +136,14 @@ function parseArgs(args) {
     }
     distDir = arg;
   }
-  if (![DEFAULT_MODE, TOPDOWN_EFFECTS_MODE, BREAKOUT_EFFECTS_MODE, PLATFORMER_EFFECTS_MODE].includes(mode)) {
+  if (![
+    DEFAULT_MODE,
+    TOPDOWN_EFFECTS_MODE,
+    BREAKOUT_EFFECTS_MODE,
+    PLATFORMER_EFFECTS_MODE,
+    PHYSICS_SANDBOX_MODE,
+    PHYSICS_DEMO_SUITE_MODE,
+  ].includes(mode)) {
     throw new Error(`unsupported browser smoke mode: ${mode}`);
   }
   return { mode, distDir };
@@ -139,6 +156,10 @@ function browserSmokeUrl(port, mode) {
   }
   if (mode === TOPDOWN_EFFECTS_MODE) {
     params.set("effectSmoke", "true");
+  }
+  if (mode === PHYSICS_SANDBOX_MODE || mode === PHYSICS_DEMO_SUITE_MODE) {
+    params.set("demo", "sandbox");
+    params.set("physicsDebugLines", "true");
   }
   return `http://${DEFAULT_HOST}:${port}/?${params.toString()}`;
 }
@@ -262,6 +283,10 @@ async function smokeByMode(page, mode, timeoutMs) {
         seed: 31,
         minimumRenderCommandDelta: 1,
       });
+    case PHYSICS_SANDBOX_MODE:
+      return await smokePhysicsSandbox(page, timeoutMs, "sandbox");
+    case PHYSICS_DEMO_SUITE_MODE:
+      return await smokePhysicsDemoSuite(page, timeoutMs);
     default:
       return await smokeDefaultRender(page, timeoutMs);
   }
@@ -378,6 +403,44 @@ async function smokeSceneParticleEffect(page, timeoutMs, options) {
       },
     };
   });
+}
+
+async function smokePhysicsSandbox(page, timeoutMs, demoId) {
+  await page.evaluate(async (id) => {
+    if (globalThis.ferrumPhysicsSandboxLoadDemo) {
+      await globalThis.ferrumPhysicsSandboxLoadDemo(id);
+    }
+  }, demoId);
+
+  await waitForPageFunction(
+    page,
+    `Physics sandbox did not render debug lines for ${demoId}`,
+    (expectedDemoId) => {
+      const frame = globalThis.ferrumPhysicsSandboxSmokeFrame;
+      return Boolean(
+        frame
+        && frame.demoId === expectedDemoId
+        && frame.bodyCount >= 2
+        && frame.physicsDebugLineCount > 0
+        && frame.frameCount > 1,
+      );
+    },
+    timeoutMs,
+    demoId,
+  );
+
+  return await page.evaluate(() => ({
+    physicsSandbox: globalThis.ferrumPhysicsSandboxSmokeFrame,
+  }));
+}
+
+async function smokePhysicsDemoSuite(page, timeoutMs) {
+  const reports = [];
+  for (const demoId of PHYSICS_DEMO_SUITE) {
+    const report = await smokePhysicsSandbox(page, timeoutMs, demoId);
+    reports.push(report.physicsSandbox);
+  }
+  return { physicsDemoSuite: reports };
 }
 
 function topdownEffectsObserved() {

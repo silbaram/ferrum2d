@@ -6,6 +6,7 @@ import {
   diagnosticReport,
   formatDiagnosticReport,
   isFerrumDiagnosticError,
+  physicsSpecDiagnosticError,
 } from "../src/diagnostics.js";
 
 test("diagnostic errors keep stable messages and expose structured reports", () => {
@@ -44,4 +45,24 @@ test("diagnostic reports normalize unknown errors", () => {
     message: "plain failure",
   });
   equal(formatDiagnosticReport("plain failure"), "plain failure");
+});
+
+test("physics spec diagnostic errors use a dedicated kind and code", () => {
+  const error = physicsSpecDiagnosticError("physics.bodies.crate.mass", "must be a positive finite number");
+
+  equal(error.code, "FERRUM_PHYSICS_SPEC_INVALID");
+  equal(error.context.kind, "physics-spec");
+  equal(
+    error.message,
+    "Invalid physics spec: kind=physics-spec path='physics.bodies.crate.mass' detail='must be a positive finite number'.",
+  );
+  deepEqual(diagnosticReport(error), {
+    code: "FERRUM_PHYSICS_SPEC_INVALID",
+    message: error.message,
+    context: {
+      kind: "physics-spec",
+      path: "physics.bodies.crate.mass",
+      detail: "must be a positive finite number",
+    },
+  });
 });

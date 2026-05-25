@@ -1,6 +1,7 @@
 import { deepEqual, equal } from "node:assert/strict";
 import { test } from "node:test";
 import { applyShooterGameSpec, resolveShooterGameSpec } from "../src/gameSpec.js";
+import { resolvePhysicsSpec } from "../src/physicsSpec.js";
 
 class FakeEngine {
   resolvedConfig?: number[];
@@ -726,7 +727,93 @@ test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
     hitPitch: 1,
     gameOverVolume: 0.65,
     gameOverPitch: 0.9,
+    physics: resolvePhysicsSpec(undefined),
   });
+});
+
+test("resolveShooterGameSpec resolves generic physics spec metadata", () => {
+  const spec = resolveShooterGameSpec({
+    physics: {
+      mode: "rigid",
+      gravity: [0, 980],
+      solver: {
+        stepSeconds: 1 / 120,
+        velocityIterations: 10,
+        positionIterations: 6,
+      },
+      materials: {
+        wood: { friction: 0.6, restitution: 0.2, density: 0.8 },
+      },
+      layers: {
+        player: { mask: ["world"] },
+        world: { mask: ["player"] },
+      },
+      bodies: {
+        crate: {
+          type: "dynamic",
+          position: [320, 120],
+          material: "wood",
+          layer: "world",
+          colliders: [
+            { shape: "box", size: [32, 32] },
+            { shape: "edge", start: [-16, 16], end: [16, 16] },
+          ],
+        },
+      },
+      joints: {
+        hinge: {
+          type: "revolute",
+          bodyA: "world",
+          bodyB: "crate",
+          anchor: [320, 120],
+          limit: { enabled: true, lower: -1, upper: 1 },
+        },
+      },
+      debug: { colliders: true, contacts: true },
+    },
+  });
+
+  equal(spec.physics.mode, "rigid");
+  equal(spec.physics.gravityY, 980);
+  equal(spec.physics.solver.stepSeconds, 1 / 120);
+  equal(spec.physics.materials.wood.friction, 0.6);
+  equal(spec.physics.layers.player.maskBits, 2);
+  equal(spec.physics.bodies.crate.colliders[0].shape, "box");
+  equal(spec.physics.bodies.crate.colliders[1].shape, "edge");
+  equal(spec.physics.joints.hinge.bodyA, "world");
+  equal(spec.physics.debug.colliders, true);
+});
+
+test("resolveShooterGameSpec lets runtime physics mode override spec mode", () => {
+  const spec = resolveShooterGameSpec({
+    physics: { mode: "rigid" },
+  }, {
+    physicsModeOverride: "none",
+  });
+
+  equal(spec.physics.mode, "none");
+  equal(spec.physics.continuous, false);
+  equal(spec.physics.solver.fixedTimestep, false);
+});
+
+test("resolveShooterGameSpec rejects invalid physics references with path context", () => {
+  try {
+    resolveShooterGameSpec({
+      physics: {
+        materials: { wood: {} },
+        bodies: {
+          crate: {
+            material: "missing",
+            collider: { shape: "box", size: [32, 32] },
+          },
+        },
+      },
+    });
+  } catch (error) {
+    equal((error as Error).message.includes("physics.bodies.crate.material"), true);
+    return;
+  }
+  throw new Error("Expected resolveShooterGameSpec to reject missing physics material.");
 });
 
 test("resolveShooterGameSpec accepts non-AABB prefab colliders", () => {
@@ -1885,6 +1972,7 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
     hitPitch: 0.9,
     gameOverVolume: 0.75,
     gameOverPitch: 0.8,
+    physics: resolvePhysicsSpec(undefined),
   });
   deepEqual(engine.resolvedConfig, [
     3200,

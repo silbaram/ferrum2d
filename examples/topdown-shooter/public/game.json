@@ -311,5 +311,11 @@
         "pitch": 0.8
       }
     }
+  },
+  "physics": {
+    "mode": "arcade",
+    "solver": {
+      "fixedTimestep": false
+    }
   }
 }

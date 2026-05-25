@@ -94,6 +94,12 @@ AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고
       "hit": { "volume": 0.48, "pitch": 0.95 },
       "gameOver": { "volume": 0.7, "pitch": 0.8 }
     }
+  },
+  "physics": {
+    "mode": "arcade",
+    "solver": {
+      "fixedTimestep": false
+    }
   }
 }
 ```
@@ -101,6 +107,8 @@ AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고
 모든 필드는 선택 사항이다. 누락된 값은 `packages/ferrum-web/src/gameSpec.ts`의 기본값으로 채운다. 위 예시는 player에 state animation을 적용하고 bullet과 tilemap은 atlas frame metadata를 통해 texture/UV/size를 받는 형태다. 실제 예제 `game.json`은 10x6 tilemap에 `floor`, `panel`, `accent`, `block` tile과 `collision: true` obstacle layer를 포함한다. `prefabs.player`, `prefabs.enemy`, `prefabs.bullet`은 같은 animation 구조, atlas frame binding, AABB/circle/capsule/oriented-box/convex-polygon collider metadata를 지원한다.
 
 `schemas/shooter-game-spec.schema.json`은 편집기와 authoring 도구를 위한 구조 보조 schema다. 런타임/CLI에서 최종 판정에 쓰는 기준은 `resolveShooterGameSpec(...)`이며, atlas frame 참조, tile id 참조, `u1 > u0`, layer data 길이처럼 교차 필드 검증은 TypeScript validator를 기준으로 한다.
+
+`physics` namespace는 Top-down Shooter 전용 설정이 아니라 범용 [Physics Spec](physics-spec.md) 계약이다. 예제는 built-in shooter scene의 현재 동작을 유지하기 위해 `"arcade"` mode와 `fixedTimestep: false`를 명시한다.
 
 ## 필드
 
@@ -215,6 +223,11 @@ AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고
 | `audio.events.hit.pitch` | positive number | `1` | hit audio event pitch |
 | `audio.events.gameOver.volume` | non-negative number | `0.65` | game over audio event volume |
 | `audio.events.gameOver.pitch` | positive number | `0.9` | game over audio event pitch |
+| `physics.mode` | string enum | `"arcade"` | 범용 physics mode: `"none"`, `"arcade"`, `"rigid"` |
+| `physics.solver.fixedTimestep` | boolean | mode default | physics mode가 fixed timestep을 적용할지 여부 |
+| `physics.solver.stepSeconds` | positive number | `1/60` | fixed timestep step seconds |
+| `physics.gravity` | `[x, y]` | mode default | generic physics world gravity |
+| `physics.materials/layers/bodies/joints` | object maps | `{}` | 범용 physics authoring metadata. 세부 구조는 [Physics Spec](physics-spec.md)에 둔다. |
 
 ## Sprite Animation
 

@@ -39,7 +39,8 @@ pub use components::{
     RevoluteJoint, RevoluteJointId, RigidBody, RigidBodyType, RigidContactImpulse, RopeJoint,
     RopeJointId, Rotation2D, SpringJoint, SpringJointId, Sprite, SpriteAnimation,
     SpriteAnimationFrameSequence, SpriteAnimationKind, SpriteAnimationState, SpriteFrame,
-    Transform2D, Velocity, MAX_CONVEX_POLYGON_VERTICES, MAX_SPRITE_ANIMATION_FRAMES,
+    Transform2D, Velocity, WeldJoint, WeldJointId, MAX_CONVEX_POLYGON_VERTICES,
+    MAX_SPRITE_ANIMATION_FRAMES,
 };
 pub use engine::{
     Engine, PhysicsBodyContactHit, PhysicsBodyManifoldHit, PhysicsQueryEntityHit,

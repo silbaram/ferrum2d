@@ -1239,6 +1239,118 @@ impl PrismaticJoint {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WeldJointId {
+    pub index: u32,
+    pub generation: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WeldJoint {
+    pub entity_a: Entity,
+    pub entity_b: Entity,
+    pub local_anchor_a_x: f32,
+    pub local_anchor_a_y: f32,
+    pub local_anchor_b_x: f32,
+    pub local_anchor_b_y: f32,
+    pub reference_angle: f32,
+    pub break_distance: f32,
+    pub break_angle: f32,
+    pub stiffness: f32,
+    pub damping: f32,
+    pub angular_stiffness: f32,
+    pub angular_damping: f32,
+    pub enabled: bool,
+}
+
+impl WeldJoint {
+    pub const DEFAULT_STIFFNESS: f32 = 1.0;
+    pub const DEFAULT_DAMPING: f32 = 1.0;
+    pub const DEFAULT_ANGULAR_STIFFNESS: f32 = 1.0;
+    pub const DEFAULT_ANGULAR_DAMPING: f32 = 1.0;
+
+    pub const fn new(entity_a: Entity, entity_b: Entity) -> Self {
+        Self {
+            entity_a,
+            entity_b,
+            local_anchor_a_x: 0.0,
+            local_anchor_a_y: 0.0,
+            local_anchor_b_x: 0.0,
+            local_anchor_b_y: 0.0,
+            reference_angle: 0.0,
+            break_distance: f32::INFINITY,
+            break_angle: f32::INFINITY,
+            stiffness: Self::DEFAULT_STIFFNESS,
+            damping: Self::DEFAULT_DAMPING,
+            angular_stiffness: Self::DEFAULT_ANGULAR_STIFFNESS,
+            angular_damping: Self::DEFAULT_ANGULAR_DAMPING,
+            enabled: true,
+        }
+    }
+
+    pub const fn with_local_anchor_a(mut self, x: f32, y: f32) -> Self {
+        self.local_anchor_a_x = x;
+        self.local_anchor_a_y = y;
+        self
+    }
+
+    pub const fn with_local_anchor_b(mut self, x: f32, y: f32) -> Self {
+        self.local_anchor_b_x = x;
+        self.local_anchor_b_y = y;
+        self
+    }
+
+    pub const fn with_reference_angle(mut self, reference_angle: f32) -> Self {
+        self.reference_angle = reference_angle;
+        self
+    }
+
+    pub const fn with_break_distance(mut self, break_distance: f32) -> Self {
+        self.break_distance = break_distance;
+        self
+    }
+
+    pub const fn without_break_distance(mut self) -> Self {
+        self.break_distance = f32::INFINITY;
+        self
+    }
+
+    pub const fn with_break_angle(mut self, break_angle: f32) -> Self {
+        self.break_angle = break_angle;
+        self
+    }
+
+    pub const fn without_break_angle(mut self) -> Self {
+        self.break_angle = f32::INFINITY;
+        self
+    }
+
+    pub const fn with_stiffness(mut self, stiffness: f32) -> Self {
+        self.stiffness = stiffness;
+        self
+    }
+
+    pub const fn with_damping(mut self, damping: f32) -> Self {
+        self.damping = damping;
+        self
+    }
+
+    pub const fn with_angular_stiffness(mut self, angular_stiffness: f32) -> Self {
+        self.angular_stiffness = angular_stiffness;
+        self
+    }
+
+    pub const fn with_angular_damping(mut self, angular_damping: f32) -> Self {
+        self.angular_damping = angular_damping;
+        self
+    }
+
+    pub const fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GearJointId {
     pub index: u32,
     pub generation: u32,
@@ -1619,6 +1731,74 @@ impl CapsuleCollider {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EdgeCollider {
+    pub start_x: f32,
+    pub start_y: f32,
+    pub end_x: f32,
+    pub end_y: f32,
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub enabled: bool,
+    pub is_trigger: bool,
+    pub layer: CollisionLayer,
+}
+
+impl EdgeCollider {
+    pub const fn new(
+        start_x: f32,
+        start_y: f32,
+        end_x: f32,
+        end_y: f32,
+        is_trigger: bool,
+        layer: CollisionLayer,
+    ) -> Self {
+        Self {
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            enabled: true,
+            is_trigger,
+            layer,
+        }
+    }
+
+    pub const fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    pub const fn with_offset(mut self, offset_x: f32, offset_y: f32) -> Self {
+        self.offset_x = offset_x;
+        self.offset_y = offset_y;
+        self
+    }
+
+    pub const fn start(self, transform: Transform2D) -> Transform2D {
+        Transform2D {
+            x: transform.x + self.offset_x + self.start_x,
+            y: transform.y + self.offset_y + self.start_y,
+        }
+    }
+
+    pub const fn end(self, transform: Transform2D) -> Transform2D {
+        Transform2D {
+            x: transform.x + self.offset_x + self.end_x,
+            y: transform.y + self.offset_y + self.end_y,
+        }
+    }
+
+    pub const fn center(self, transform: Transform2D) -> Transform2D {
+        Transform2D {
+            x: transform.x + self.offset_x + (self.start_x + self.end_x) * 0.5,
+            y: transform.y + self.offset_y + (self.start_y + self.end_y) * 0.5,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ConvexPolygonCollider {
     pub vertices: [Transform2D; MAX_CONVEX_POLYGON_VERTICES],
     pub vertex_count: u32,
@@ -1669,6 +1849,76 @@ impl ConvexPolygonCollider {
         Transform2D {
             x: transform.x + self.offset_x,
             y: transform.y + self.offset_y,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum CompoundColliderShape {
+    Aabb(AabbCollider),
+    Circle(CircleCollider),
+    OrientedBox(OrientedBoxCollider),
+    Capsule(CapsuleCollider),
+    Edge(EdgeCollider),
+    ConvexPolygon(ConvexPolygonCollider),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CompoundCollider {
+    pub shape: CompoundColliderShape,
+    pub material: Option<PhysicsMaterial>,
+    pub filter: Option<CollisionFilter>,
+}
+
+impl CompoundCollider {
+    pub const fn new(shape: CompoundColliderShape) -> Self {
+        Self {
+            shape,
+            material: None,
+            filter: None,
+        }
+    }
+
+    pub const fn with_material(mut self, material: PhysicsMaterial) -> Self {
+        self.material = Some(material);
+        self
+    }
+
+    pub const fn with_filter(mut self, filter: CollisionFilter) -> Self {
+        self.filter = Some(filter);
+        self
+    }
+
+    pub const fn layer(self) -> CollisionLayer {
+        match self.shape {
+            CompoundColliderShape::Aabb(collider) => collider.layer,
+            CompoundColliderShape::Circle(collider) => collider.layer,
+            CompoundColliderShape::OrientedBox(collider) => collider.layer,
+            CompoundColliderShape::Capsule(collider) => collider.layer,
+            CompoundColliderShape::Edge(collider) => collider.layer,
+            CompoundColliderShape::ConvexPolygon(collider) => collider.layer,
+        }
+    }
+
+    pub const fn enabled(self) -> bool {
+        match self.shape {
+            CompoundColliderShape::Aabb(collider) => collider.enabled,
+            CompoundColliderShape::Circle(collider) => collider.enabled,
+            CompoundColliderShape::OrientedBox(collider) => collider.enabled,
+            CompoundColliderShape::Capsule(collider) => collider.enabled,
+            CompoundColliderShape::Edge(collider) => collider.enabled,
+            CompoundColliderShape::ConvexPolygon(collider) => collider.enabled,
+        }
+    }
+
+    pub const fn is_trigger(self) -> bool {
+        match self.shape {
+            CompoundColliderShape::Aabb(collider) => collider.is_trigger,
+            CompoundColliderShape::Circle(collider) => collider.is_trigger,
+            CompoundColliderShape::OrientedBox(collider) => collider.is_trigger,
+            CompoundColliderShape::Capsule(collider) => collider.is_trigger,
+            CompoundColliderShape::Edge(collider) => collider.is_trigger,
+            CompoundColliderShape::ConvexPolygon(collider) => collider.is_trigger,
         }
     }
 }

@@ -9,14 +9,28 @@
 ```ts
 import {
   BrowserPlatformHost,
+  capturePhysicsWorldSnapshot,
+  compilePhysicsAuthoringDocument,
+  createPhysicsReplayInputStream,
   WebGL2Renderer,
   createEngine,
   createFerrumRuntime,
+  createPhysicsWorldFromSpec,
+  createRigidBody,
   createRenderer,
+  runPhysicsReplayInputStream,
+  restorePhysicsWorldSnapshot,
+  verifyPhysicsReplayInputStreamRollback,
+  physicsMaterial,
+  resolvePhysicsSpec,
   resolveShooterGameSpec,
   type FerrumEngine,
   type FerrumRuntime,
   type FrameState,
+  type PhysicsBodyColliderOptions,
+  type PhysicsBodyColliderSnapshot,
+  type PhysicsDebugOptions,
+  type PhysicsMode,
   type ShooterGameSpec,
 } from "@ferrum2d/ferrum-web";
 ```
@@ -37,6 +51,12 @@ import {
 | `createRenderer(...)` | WebGL2 renderer를 생성한다. `preferred: "webgpu"`는 현재 WebGL2 fallback 진단용이다. |
 | `resolveShooterGameSpec(...)` | Shooter Game Spec 기본값과 검증을 적용한다. |
 | `applyShooterGameSpec(...)` | 검증된 Shooter Game Spec을 Rust engine에 적용한다. |
+| `resolvePhysicsSpec(...)` | `physics` namespace의 mode/material/layer/body/collider/joint metadata 기본값과 검증을 적용한다. |
+| `createPhysicsWorldFromSpec(...)` | resolved/raw Physics Spec body/joint metadata를 runtime rigid body world로 적용한다. |
+| `createRigidBody(...)`, `createCollider(...)`, `createJoint(...)` | 낮은 수준 scalar API 대신 intent 중심 physics object를 생성한다. |
+| `capturePhysicsWorldSnapshot(...)`, `restorePhysicsWorldSnapshot(...)`, `verifyPhysicsReplayRollback(...)` | Physics Spec으로 만든 world의 낮은 빈도 snapshot/restore/replay 검증을 수행한다. |
+| `createPhysicsReplayInputStream(...)`, `runPhysicsReplayInputStream(...)`, `verifyPhysicsReplayInputStreamRollback(...)` | frame/seed/fixed step/body event 기반 replay stream과 rollback 검증을 수행한다. |
+| `compilePhysicsAuthoringDocument(...)` | `physicsEditor` metadata를 제거하고 runtime `PhysicsSpec`만 export한다. |
 | `diagnosticReport(...)` | runtime/package 진단 정보를 만든다. |
 
 ## FerrumEngine API 그룹
@@ -46,15 +66,15 @@ import {
 | 그룹 | 대표 API |
 | --- | --- |
 | Lifecycle | `start`, `pause`, `resume`, `stop`, `destroy`, `time`, `version` |
-| Scene | `score`, `entityCount`, `gameState`, `resetGame`, `useBreakoutGame`, `usePlatformerGame`, `setGameSpec`, `setViewportSize` |
+| Scene | `score`, `entityCount`, `gameState`, `resetGame`, `useBreakoutGame`, `usePlatformerGame`, `setGameSpec`, `setViewportSize`, tilemap edit helpers |
 | Asset | `loadAssets`, `textureId`, `soundId`, `setTextureIds`, `setSoundIds` |
 | Particle | `setParticlePreset`, `spawnParticleBurst`, `clearParticles`, `particleCount` |
-| Physics runtime | `configureFixedTimestep`, `setPhysicsDebugLinesEnabled`, `stepRigidBodies` |
-| Physics body | `spawnRigidBody`, `getPhysicsEntity`, `despawnPhysicsEntity`, body/collider control, force/impulse/torque |
+| Physics runtime | `configureFixedTimestep`, `setPhysicsDebugLinesEnabled`, `setPhysicsDebugOptions`, `stepRigidBodies` |
+| Physics body | `spawnRigidBody`, `addPhysicsBodyCollider`, `getPhysicsBodyColliderCount`, `getPhysicsBodyCollider`, `getPhysicsEntity`, `despawnPhysicsEntity`, body/collider control, force/impulse/torque |
 | Physics joint | `spawnPhysicsJoint`, `getPhysicsJoint`, `clearPhysicsJoint`, `setPhysicsJointEnabled` |
 | Physics query | nearest, overlap, raycast, segment-cast, shape-cast, contact/manifold, contact impulse snapshot |
 
-`FrameState`는 render/audio/collision/debug snapshot이다. 게임 규칙의 source of truth가 아니므로 장기 simulation state로 사용하지 않는다.
+`FrameState`는 render/audio/collision/debug snapshot이다. `FrameState.physics.mode`는 현재 runtime physics mode 표시용이며, 게임 규칙의 source of truth가 아니므로 장기 simulation state로 사용하지 않는다.
 
 ## Runtime API
 
@@ -88,8 +108,42 @@ Top-down Shooter Game Spec의 상세 필드와 예시는 [Top-down Shooter Game 
 - `ShooterPrefabSpec`, `ShooterPrefabColliderSpec`: prefab 크기, animation, collider metadata
 - `ShooterTilemapSpec`, `ShooterTileSpec`, `ShooterTileSlopeSpec`: tilemap, one-way, slope metadata
 - `ShooterWaveSpec`, `ShooterEnemyPresetSpec`, `ShooterCameraSpec`, `ShooterAudioSpec`: shooter gameplay 설정
+- `ShooterGameSpec.physics`: 범용 [Physics Spec](physics-spec.md) namespace. 계약/검증, runtime mode 병합, `createPhysicsWorldFromSpec(...)` 기반 generic body/joint apply에 사용한다.
 
 Game Spec 검증의 코드 기준은 `packages/ferrum-web/src/gameSpec.ts`이며, JSON Schema는 편집기 보조 기준이다.
+
+Runtime tilemap 변경은 shooter scene의 기존 tilemap occupancy를 수정하는 낮은 빈도 API다. `FerrumEngine.setShooterTilemapTile(...)`은 단일 cell을, `FerrumEngine.setShooterTilemapTilesRect(...)`는 폭발/드릴 같은 직사각형 cell 묶음을 바꾼다. Collision layer 변경은 Rust tile obstacle cache를 즉시 갱신하고 render command는 같은 tile occupancy에서 다시 생성된다. 이 API는 P2 destructible terrain prototype 표면이며, pixel mask terrain이나 dirty chunk partial rebuild 제품 기능은 아직 포함하지 않는다.
+
+## Physics Spec API
+
+범용 physics authoring 계약은 [Physics Spec](physics-spec.md)에 둔다.
+
+| 타입/API | 역할 |
+| --- | --- |
+| `PhysicsMode` | `"none"`, `"arcade"`, `"rigid"` mode 계약 |
+| `PhysicsSpec` | Game Spec `physics` namespace 입력 구조 |
+| `ResolvedPhysicsSpec` | 기본값, layer bit mask, 참조 검증이 적용된 구조 |
+| `resolvePhysicsSpec(...)` | `PhysicsSpec`을 검증하고 resolved 구조를 반환 |
+| `createPhysicsWorldFromSpec(...)` | raw/resolved Physics Spec을 `FerrumEngine` generic rigid body world에 적용 |
+| `PhysicsWorldApplyResult` | body/joint handle mapping, summary, warning, step option, clear callback |
+| `PhysicsWorldSnapshot` | versioned JSON snapshot. Physics Spec 기반 world의 body/joint runtime state와 replay hash를 담는다. |
+| `capturePhysicsWorldSnapshot(...)` | `PhysicsWorldApplyResult`의 body/joint handle을 조회해 snapshot을 만든다. |
+| `restorePhysicsWorldSnapshot(...)` | snapshot의 `ResolvedPhysicsSpec`을 다시 적용하고 body/joint state를 복원한다. |
+| `verifyPhysicsReplayRollback(...)` | snapshot restore 후 같은 frame 수를 재시뮬레이션해 hash를 비교한다. |
+| `PhysicsReplayInputStream` | frame, seed, fixed step, snapshot interval, body event를 담는 replay input stream |
+| `runPhysicsReplayInputStream(...)` | replay input stream을 실행하고 interval snapshot과 replay hash를 반환한다. |
+| `verifyPhysicsReplayInputStreamRollback(...)` | 같은 input stream을 snapshot restore 이후 다시 실행해 hash를 비교한다. |
+| `PhysicsAuthoringDocument` | runtime `physics`와 editor/AI metadata `physicsEditor`를 분리한 authoring document |
+| `compilePhysicsAuthoringDocument(...)` | authoring document에서 editor metadata를 제거해 runtime `PhysicsSpec`을 반환 |
+| `createRigidBody(...)` | helper options를 `spawnRigidBody(...)` 호출로 정규화 |
+| `createCollider(...)` | `box`/`aabb` alias와 shape option을 runtime collider 구조로 정규화 |
+| `createJoint(...)` | `world` anchor, limit/motor option을 `spawnPhysicsJoint(...)` 호출로 정규화 |
+| `physicsMaterial(...)`, `PHYSICS_MATERIAL_PRESETS` | built-in material preset과 override helper |
+| `createPhysicsLayerMap(...)`, `createPhysicsLayerSpec(...)`, `physicsLayerMaskBits(...)` | named layer pattern에서 category/mask bit 계산 |
+| `PhysicsDebugOptions` | broadphase/contact/collider/joint/sleeping/layer/CCD debug category 옵션 |
+| `CreateEngineOptions.physicsMode` | Game Spec보다 우선하는 engine-level physics mode override |
+| `CreateEngineOptions.physicsDebugOptions` | engine 생성 시 적용할 physics debug category 옵션 |
+| `FerrumRuntimeOptions.physicsMode` | `createFerrumRuntime(...)`에서 직접 지정하는 physics mode override |
 
 ## Asset Pipeline API
 
@@ -109,10 +163,15 @@ Physics 구현 범위는 [2D 물리엔진 기능 맵](../development/architectur
 
 | 그룹 | 대표 타입/API |
 | --- | --- |
+| Spec apply/helper | `createPhysicsWorldFromSpec`, `PhysicsWorldApplyResult`, `createRigidBody`, `createCollider`, `createJoint` |
+| Material/layer authoring | `physicsMaterial`, `PHYSICS_MATERIAL_PRESETS`, `createPhysicsLayerMap`, `createPhysicsLayerSpec`, `physicsLayerMaskBits` |
 | Step/stats | `stepRigidBodies`, `PhysicsRigidBodyStepOptions`, `PhysicsRigidBodyStepStats` |
 | Body authoring | `PhysicsRigidBodySpawnOptions`, `PhysicsEntityHandle`, `PhysicsEntitySnapshot` |
-| Body material/tuning | `PhysicsRigidBodyMaterial`, `PhysicsMaterialSnapshot`, `PhysicsRigidBodyMassProperties`, `PhysicsRigidBodyTuning` |
+| Body control | `setPhysicsBodyPosition`, `setPhysicsBodyVelocity`, `setPhysicsBodyRotation`, `setPhysicsBodyEnabled`, force/impulse/torque |
+| Body collider/material/tuning | `PhysicsBodyColliderOptions`, `PhysicsBodyColliderSnapshot`, `addPhysicsBodyCollider`, `getPhysicsBodyColliderCount`, `getPhysicsBodyCollider`, `setPhysicsBodyColliderMaterial`, `PhysicsRigidBodyMaterial`, `PhysicsMaterialSnapshot`, `PhysicsRigidBodyMassProperties`, `PhysicsRigidBodyTuning` |
 | Joint authoring | `PhysicsJointSpawnOptions`, `PhysicsJointHandle`, `PhysicsJointSnapshot` |
+| Snapshot/replay | `PhysicsWorldSnapshot`, `PhysicsReplayInputStream`, `capturePhysicsWorldSnapshot`, `restorePhysicsWorldSnapshot`, `hashPhysicsWorldSnapshot`, `runPhysicsReplayInputStream`, `verifyPhysicsReplayRollback`, `verifyPhysicsReplayInputStreamRollback` |
+| Editor/AI authoring | `PhysicsAuthoringDocument`, `compilePhysicsAuthoringDocument`, `validatePhysicsAuthoringDocument`, `schemas/physics-authoring.schema.json` |
 | Overlap query | `PhysicsPointBodyQuery`, `PhysicsAabbBodyQuery`, `PhysicsCircleBodyQuery`, `PhysicsOrientedBoxBodyQuery`, `PhysicsCapsuleBodyQuery`, `PhysicsConvexPolygonBodyQuery` |
 | Cast query | `PhysicsRaycastBodyQuery`, `PhysicsSegmentCastBodyQuery`, shape별 `Physics...BodyShapeCastQuery` |
 | Tile query | `PhysicsNearestTileObstacleQuery`, `PhysicsRaycastTileObstacleQuery`, `PhysicsAabbTileObstacleShapeCastQuery`, tile contact/manifold query |
@@ -120,12 +179,19 @@ Physics 구현 범위는 [2D 물리엔진 기능 맵](../development/architectur
 
 Rust crate의 low-level `World`, `PhysicsSystem`, collider/joint helper는 Web package entrypoint에서 직접 re-export하지 않는다.
 
+`PhysicsJointSpawnOptions`의 공식 joint type은 `distance`, `rope`, `spring`, `revolute`, `prismatic`, `weld`, `gear`다. `weld`는 local anchor와 `referenceAngle`을 기준으로 두 rigid body의 상대 위치/회전을 고정하며, `breakDistance`와 `breakAngle`을 지원한다.
+
+`PhysicsRigidBodyCollider`는 generic runtime body 생성에서 AABB, circle, capsule, oriented box, convex polygon, edge를 지원한다. `edge`는 `startX`, `startY`, `endX`, `endY` local segment와 optional offset을 사용하며, zero-length segment는 생성이 거부된다.
+
+`addPhysicsBodyCollider(handle, options)`는 기존 rigid body에 secondary collider를 추가한다. 첫 collider는 기존 `spawnRigidBody(...)`/단일 collider API의 primary collider(index `0`)이고, 추가 collider는 body-local index `1+`를 사용한다. `getPhysicsBodyColliderCount(...)`와 `getPhysicsBodyCollider(...)`는 낮은 빈도 tooling/snapshot 용도로 collider index, type, enabled/trigger, offset, material override, category/mask bit를 조회한다. Contact/query/debug 결과는 현재 public API에서 body/entity 단위로 반환된다. Collider별 material/filter/trigger/enabled 값은 runtime collision/query/debug와 contact solver에 반영된다.
+
 ## UI와 Debug API
 
 - `UiOverlay`: DOM 기반 HUD/menu/dialog/action overlay
 - `UiOverlayState`, `UiPanel`, `UiDialog`, `UiAction`: UI state contract
 - `DebugOverlay`: fps, renderer stats, physics stats, lifecycle/debug metrics 표시
 - `DebugOverlayMetrics`, `RendererStats`: debug overlay와 renderer stats 계약
+- `PhysicsDebugOptions`: `broadphase`, `contacts`, `manifolds`, `colliders`, `joints`, `sleeping`, `layers`, `ccd` category 계약
 
 UI/debug overlay는 platform layer 상태 표시용이다. Rust simulation state를 대체하지 않는다.
 

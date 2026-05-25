@@ -2,6 +2,8 @@ import type { Engine } from "../pkg/ferrum_core";
 import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets } from "./assetLoader";
 import { applyShooterGameSpec } from "./gameSpec";
 import type { ResolvedShooterGameSpec, ShooterGameSpec } from "./gameSpec";
+import { resolvePhysicsSpec } from "./physicsSpec.js";
+import type { PhysicsDebugSpec, PhysicsMode, ResolvedPhysicsSpec } from "./physicsSpec.js";
 import { finiteNumber, particlePresetId, resolveParticlePresetConfigForWasm, uint32Number } from "./particlePreset";
 import type { ParticlePresetConfig } from "./particlePreset";
 import { GameLoop } from "./gameLoop";
@@ -91,7 +93,12 @@ export interface FixedTimestepOptions {
 }
 
 export interface PhysicsFrameStats {
+  mode: PhysicsMode;
+  gravityX: number;
+  gravityY: number;
+  continuous: boolean;
   fixedTimestepEnabled: boolean;
+  fixedStepSeconds: number;
   fixedSteps: number;
   fixedAlpha: number;
   fixedConsumedSeconds: number;
@@ -113,7 +120,13 @@ export interface PhysicsFrameStats {
   collisionTriggerStayEvents: number;
   collisionTriggerExitEvents: number;
   collisionEventCount: number;
+  ccdChecks: number;
+  ccdHits: number;
+  sleepingBodies: number;
+  brokenJoints: number;
 }
+
+export type PhysicsDebugOptions = PhysicsDebugSpec;
 
 export interface PhysicsRigidBodyStepOptions {
   gravityX?: number;
@@ -166,7 +179,8 @@ export type PhysicsColliderType =
   | "circle"
   | "capsule"
   | "orientedBox"
-  | "convexPolygon";
+  | "convexPolygon"
+  | "edge";
 export type PhysicsCollisionLayer = "player" | "enemy" | "bullet" | "wall";
 
 export interface PhysicsEntityHandle {
@@ -234,6 +248,15 @@ export type PhysicsRigidBodyCollider =
       offsetY?: number;
     }
   | {
+      type: "edge";
+      startX: number;
+      startY: number;
+      endX: number;
+      endY: number;
+      offsetX?: number;
+      offsetY?: number;
+    }
+  | {
       type: "orientedBox";
       halfWidth: number;
       halfHeight: number;
@@ -272,6 +295,28 @@ export interface PhysicsRigidBodySpawnOptions {
   angularDamping?: number;
   material?: PhysicsRigidBodyMaterial;
   colliderMaterial?: PhysicsRigidBodyMaterial;
+}
+
+export interface PhysicsBodyColliderOptions {
+  collider: PhysicsRigidBodyCollider;
+  layer?: PhysicsCollisionLayer;
+  categoryBits?: number;
+  maskBits?: number;
+  isTrigger?: boolean;
+  colliderEnabled?: boolean;
+}
+
+export interface PhysicsBodyColliderSnapshot {
+  colliderIndex: number;
+  colliderType: PhysicsColliderType;
+  colliderEnabled: boolean;
+  colliderIsTrigger: boolean;
+  colliderOffsetX: number;
+  colliderOffsetY: number;
+  colliderMaterialOverride: boolean;
+  colliderMaterial: PhysicsMaterialSnapshot;
+  categoryBits: number;
+  maskBits: number;
 }
 
 export interface PhysicsEntitySnapshot extends PhysicsEntityHandle {
@@ -315,6 +360,7 @@ export type PhysicsJointType =
   | "spring"
   | "revolute"
   | "prismatic"
+  | "weld"
   | "gear";
 
 export interface PhysicsJointHandle {
@@ -379,6 +425,18 @@ export type PhysicsJointSpawnOptions =
       motorEnabled?: boolean;
       motorSpeed?: number;
       maxMotorForce?: number;
+    })
+  | (PhysicsJointBaseOptions & {
+      type: "weld";
+      localAnchorAX?: number;
+      localAnchorAY?: number;
+      localAnchorBX?: number;
+      localAnchorBY?: number;
+      referenceAngle?: number;
+      angularStiffness?: number;
+      angularDamping?: number;
+      breakDistance?: number;
+      breakAngle?: number;
     })
   | (PhysicsJointBaseOptions & {
       type: "gear";
@@ -624,12 +682,16 @@ export interface CreateEngineOptions {
   includeAudioEvents?: boolean;
   /** FrameState에 decoded collision event object 배열을 포함할지 여부입니다. 기본값은 false입니다. */
   includeCollisionEvents?: boolean;
-  /** Rust core에서 broadphase/contact physics debug line buffer를 만들지 여부입니다. 기본값은 false입니다. */
-  enablePhysicsDebugLines?: boolean;
+  /** Rust core에서 physics debug line buffer를 만들지 여부입니다. 기본값은 false입니다. */
+  enablePhysicsDebugLines?: boolean | PhysicsDebugOptions;
+  /** Physics debug line category 옵션입니다. enablePhysicsDebugLines=true면 기본 broadphase/contact를 사용합니다. */
+  physicsDebugOptions?: PhysicsDebugOptions;
   /** FrameState에 decoded physics debug line object 배열을 포함할지 여부입니다. 기본값은 false입니다. */
   includePhysicsDebugLines?: boolean;
   /** Optional fixed timestep simulation mode. 기본값은 disabled variable-delta update입니다. */
   fixedTimestep?: boolean | FixedTimestepOptions;
+  /** Runtime physics mode override. 지정하면 Game Spec의 physics.mode보다 우선합니다. */
+  physicsMode?: PhysicsMode;
   /** Platform lifecycle callbacks. These receive snapshots only and must not own simulation state. */
   lifecycle?: EngineLifecycleHooks;
 }
@@ -654,6 +716,14 @@ export interface FerrumSceneApi {
   setViewportSize(width: number, height: number): void;
   setGameSpec(spec: ShooterGameSpec): ResolvedShooterGameSpec;
   setShooterTilemapTile(layerIndex: number, column: number, row: number, tileId: number): boolean;
+  setShooterTilemapTilesRect(
+    layerIndex: number,
+    column: number,
+    row: number,
+    width: number,
+    height: number,
+    tileId: number,
+  ): boolean;
   cameraX(): number;
   cameraY(): number;
 }
@@ -680,7 +750,8 @@ export interface FerrumParticleApi {
 
 export interface FerrumPhysicsRuntimeApi {
   configureFixedTimestep(options: boolean | FixedTimestepOptions): void;
-  setPhysicsDebugLinesEnabled(enabled: boolean): void;
+  setPhysicsDebugLinesEnabled(enabled: boolean | PhysicsDebugOptions): void;
+  setPhysicsDebugOptions(options: PhysicsDebugOptions): void;
   stepRigidBodies(
     deltaSeconds: number,
     options?: PhysicsRigidBodyStepOptions,
@@ -689,8 +760,15 @@ export interface FerrumPhysicsRuntimeApi {
 
 export interface FerrumPhysicsBodyApi {
   spawnRigidBody(options: PhysicsRigidBodySpawnOptions): PhysicsEntityHandle;
+  addPhysicsBodyCollider(handle: PhysicsEntityHandle, options: PhysicsBodyColliderOptions): boolean;
+  getPhysicsBodyColliderCount(handle: PhysicsEntityHandle): number;
+  getPhysicsBodyCollider(
+    handle: PhysicsEntityHandle,
+    colliderIndex: number,
+  ): PhysicsBodyColliderSnapshot | undefined;
   getPhysicsEntity(handle: PhysicsEntityHandle): PhysicsEntitySnapshot | undefined;
   despawnPhysicsEntity(handle: PhysicsEntityHandle): boolean;
+  setPhysicsBodyPosition(handle: PhysicsEntityHandle, x: number, y: number): boolean;
   setPhysicsBodyVelocity(handle: PhysicsEntityHandle, velocityX: number, velocityY: number): boolean;
   setPhysicsBodyRotation(handle: PhysicsEntityHandle, rotationRadians: number): boolean;
   setPhysicsBodyAngularVelocity(handle: PhysicsEntityHandle, radiansPerSecond: number): boolean;
@@ -699,6 +777,11 @@ export interface FerrumPhysicsBodyApi {
   setPhysicsColliderEnabled(handle: PhysicsEntityHandle, enabled: boolean): boolean;
   setPhysicsColliderMaterial(
     handle: PhysicsEntityHandle,
+    material: PhysicsRigidBodyMaterial,
+  ): boolean;
+  setPhysicsBodyColliderMaterial(
+    handle: PhysicsEntityHandle,
+    colliderIndex: number,
     material: PhysicsRigidBodyMaterial,
   ): boolean;
   clearPhysicsColliderMaterial(handle: PhysicsEntityHandle): boolean;
@@ -783,6 +866,12 @@ const DEFAULT_RIGID_BODY_DENSITY = 1;
 const DEFAULT_RIGID_BODY_RESTITUTION = 0;
 const DEFAULT_RIGID_BODY_FRICTION = 0.4;
 const DEFAULT_RIGID_BODY_MATERIAL_SCALE = 1;
+const PHYSICS_DEBUG_BROADPHASE = 1 << 0;
+const PHYSICS_DEBUG_CONTACTS = 1 << 1;
+const PHYSICS_DEBUG_COLLIDERS = 1 << 2;
+const PHYSICS_DEBUG_JOINTS = 1 << 3;
+const PHYSICS_DEBUG_SLEEPING = 1 << 4;
+const PHYSICS_DEBUG_DEFAULT = PHYSICS_DEBUG_BROADPHASE | PHYSICS_DEBUG_CONTACTS;
 const PHYSICS_BODY_TYPE_CODES: Record<PhysicsRigidBodyType, number> = Object.freeze({
   static: 0,
   kinematic: 1,
@@ -800,6 +889,7 @@ const PHYSICS_COLLIDER_TYPES: readonly PhysicsColliderType[] = Object.freeze([
   "capsule",
   "orientedBox",
   "convexPolygon",
+  "edge",
 ]);
 const PHYSICS_LAYER_CODES: Record<PhysicsCollisionLayer, number> = Object.freeze({
   player: 0,
@@ -820,6 +910,7 @@ const PHYSICS_JOINT_TYPE_CODES: Record<PhysicsJointType, number> = Object.freeze
   revolute: 3,
   prismatic: 4,
   gear: 5,
+  weld: 6,
 });
 const PHYSICS_JOINT_TYPES: readonly PhysicsJointType[] = Object.freeze([
   "distance",
@@ -828,10 +919,12 @@ const PHYSICS_JOINT_TYPES: readonly PhysicsJointType[] = Object.freeze([
   "revolute",
   "prismatic",
   "gear",
+  "weld",
 ]);
 interface FramePipelineContext {
   bridge: WasmBridge;
   rustEngine: Engine;
+  physicsSpec: ResolvedPhysicsSpec;
   onFrame?: FrameHandler;
   inputProvider?: InputProvider;
   assetHost?: AssetHost;
@@ -853,11 +946,14 @@ export async function createEngine(
 ): Promise<FerrumEngine> {
   const bridge = await WasmBridge.init();
   const rustEngine: Engine = bridge.engine();
-  applyFixedTimestepOptions(rustEngine, options.fixedTimestep);
-  applyPhysicsDebugLineOptions(rustEngine, options);
+  const initialPhysicsSpec = resolvePhysicsSpec(undefined, {
+    modeOverride: options.physicsMode,
+  });
+  applyPhysicsRuntimeOptions(rustEngine, initialPhysicsSpec, options, options.physicsMode !== undefined);
   const framePipeline: FramePipelineContext = {
     bridge,
     rustEngine,
+    physicsSpec: initialPhysicsSpec,
     onFrame,
     inputProvider,
     assetHost,
@@ -925,7 +1021,15 @@ export async function createEngine(
     requireAlive();
     const resolved = applyShooterGameSpec(rustEngine, spec, {
       textureId: (name) => requireAssetHost().textureId(name),
+      physicsModeOverride: options.physicsMode,
     });
+    framePipeline.physicsSpec = resolved.physics;
+    applyPhysicsRuntimeOptions(
+      rustEngine,
+      resolved.physics,
+      options,
+      spec.physics !== undefined || options.physicsMode !== undefined,
+    );
     assetHost?.configureAudio?.({
       masterVolume: resolved.audioMasterVolume,
       sfxVolume: resolved.audioSfxVolume,
@@ -991,9 +1095,18 @@ export async function createEngine(
     applyFixedTimestepOptions(rustEngine, fixedTimestep);
   };
 
-  const setPhysicsDebugLinesEnabled = (enabled: boolean): void => {
+  const setPhysicsDebugLinesEnabled = (enabled: boolean | PhysicsDebugOptions): void => {
     requireAlive();
-    rustEngine.set_physics_debug_lines_enabled(enabled);
+    const flags = physicsDebugFlags(enabled);
+    rustEngine.set_physics_debug_line_flags(flags);
+    rustEngine.set_physics_debug_lines_enabled(flags !== 0);
+  };
+
+  const setPhysicsDebugOptions = (options: PhysicsDebugOptions): void => {
+    requireAlive();
+    const flags = physicsDebugFlags(options);
+    rustEngine.set_physics_debug_line_flags(flags);
+    rustEngine.set_physics_debug_lines_enabled(flags !== 0);
   };
 
   const stepRigidBodies = (
@@ -1130,6 +1243,26 @@ export async function createEngine(
           canSleep,
         );
         break;
+      case "edge":
+        spawned = rustEngine.spawn_physics_edge_body(
+          x,
+          y,
+          finiteNumber(collider.startX, "physics edge startX"),
+          finiteNumber(collider.startY, "physics edge startY"),
+          finiteNumber(collider.endX, "physics edge endX"),
+          finiteNumber(collider.endY, "physics edge endY"),
+          bodyTypeCode,
+          mass,
+          useDensity,
+          layerCode,
+          categoryBits,
+          maskBits,
+          options.isTrigger === true,
+          colliderEnabled,
+          bodyEnabled,
+          canSleep,
+        );
+        break;
       case "orientedBox":
         spawned = rustEngine.spawn_physics_oriented_box_body(
           x,
@@ -1211,6 +1344,148 @@ export async function createEngine(
     return handle;
   };
 
+  const addPhysicsBodyCollider = (
+    handle: PhysicsEntityHandle,
+    options: PhysicsBodyColliderOptions,
+  ): boolean => {
+    requireAlive();
+    const resolved = physicsEntityHandle(handle);
+    const layer = options.layer ?? "player";
+    const layerCode = physicsCollisionLayerCode(layer);
+    const categoryBits = uint32Number(
+      options.categoryBits ?? PHYSICS_LAYER_MASK_BITS[layer],
+      "physics collider categoryBits",
+    );
+    const maskBits = uint32Number(options.maskBits ?? DEFAULT_PHYSICS_QUERY_MASK_BITS, "physics collider maskBits");
+    const collider = options.collider;
+    let added = false;
+    switch (collider.type) {
+      case "aabb":
+        added = rustEngine.add_physics_aabb_collider(
+          resolved.entityId,
+          resolved.entityGeneration,
+          positiveNumber(collider.halfWidth, "physics aabb halfWidth"),
+          positiveNumber(collider.halfHeight, "physics aabb halfHeight"),
+          finiteNumber(collider.offsetX ?? 0, "physics collider offsetX"),
+          finiteNumber(collider.offsetY ?? 0, "physics collider offsetY"),
+          layerCode,
+          categoryBits,
+          maskBits,
+          options.isTrigger === true,
+          options.colliderEnabled ?? true,
+        );
+        break;
+      case "circle":
+        added = rustEngine.add_physics_circle_collider(
+          resolved.entityId,
+          resolved.entityGeneration,
+          positiveNumber(collider.radius, "physics circle radius"),
+          finiteNumber(collider.offsetX ?? 0, "physics collider offsetX"),
+          finiteNumber(collider.offsetY ?? 0, "physics collider offsetY"),
+          layerCode,
+          categoryBits,
+          maskBits,
+          options.isTrigger === true,
+          options.colliderEnabled ?? true,
+        );
+        break;
+      case "capsule":
+        added = rustEngine.add_physics_capsule_collider(
+          resolved.entityId,
+          resolved.entityGeneration,
+          finiteNumber(collider.startX, "physics capsule startX"),
+          finiteNumber(collider.startY, "physics capsule startY"),
+          finiteNumber(collider.endX, "physics capsule endX"),
+          finiteNumber(collider.endY, "physics capsule endY"),
+          positiveNumber(collider.radius, "physics capsule radius"),
+          finiteNumber(collider.offsetX ?? 0, "physics collider offsetX"),
+          finiteNumber(collider.offsetY ?? 0, "physics collider offsetY"),
+          layerCode,
+          categoryBits,
+          maskBits,
+          options.isTrigger === true,
+          options.colliderEnabled ?? true,
+        );
+        break;
+      case "edge":
+        added = rustEngine.add_physics_edge_collider(
+          resolved.entityId,
+          resolved.entityGeneration,
+          finiteNumber(collider.startX, "physics edge startX"),
+          finiteNumber(collider.startY, "physics edge startY"),
+          finiteNumber(collider.endX, "physics edge endX"),
+          finiteNumber(collider.endY, "physics edge endY"),
+          finiteNumber(collider.offsetX ?? 0, "physics collider offsetX"),
+          finiteNumber(collider.offsetY ?? 0, "physics collider offsetY"),
+          layerCode,
+          categoryBits,
+          maskBits,
+          options.isTrigger === true,
+          options.colliderEnabled ?? true,
+        );
+        break;
+      case "orientedBox":
+        added = rustEngine.add_physics_oriented_box_collider(
+          resolved.entityId,
+          resolved.entityGeneration,
+          positiveNumber(collider.halfWidth, "physics orientedBox halfWidth"),
+          positiveNumber(collider.halfHeight, "physics orientedBox halfHeight"),
+          finiteNumber(collider.rotationRadians ?? 0, "physics orientedBox rotationRadians"),
+          finiteNumber(collider.offsetX ?? 0, "physics collider offsetX"),
+          finiteNumber(collider.offsetY ?? 0, "physics collider offsetY"),
+          layerCode,
+          categoryBits,
+          maskBits,
+          options.isTrigger === true,
+          options.colliderEnabled ?? true,
+        );
+        break;
+      case "convexPolygon":
+        added = rustEngine.add_physics_convex_polygon_collider(
+          resolved.entityId,
+          resolved.entityGeneration,
+          physicsQueryVertexBuffer(collider.vertices),
+          finiteNumber(collider.rotationRadians ?? 0, "physics convexPolygon rotationRadians"),
+          finiteNumber(collider.offsetX ?? 0, "physics collider offsetX"),
+          finiteNumber(collider.offsetY ?? 0, "physics collider offsetY"),
+          layerCode,
+          categoryBits,
+          maskBits,
+          options.isTrigger === true,
+          options.colliderEnabled ?? true,
+        );
+        break;
+      default:
+        throw new Error("physics collider type is not supported.");
+    }
+    if (!added) {
+      return false;
+    }
+    return true;
+  };
+
+  const getPhysicsBodyColliderCount = (handle: PhysicsEntityHandle): number => {
+    requireAlive();
+    const resolved = physicsEntityHandle(handle);
+    return rustEngine.physics_body_collider_count(resolved.entityId, resolved.entityGeneration);
+  };
+
+  const getPhysicsBodyCollider = (
+    handle: PhysicsEntityHandle,
+    colliderIndex: number,
+  ): PhysicsBodyColliderSnapshot | undefined => {
+    requireAlive();
+    const resolved = physicsEntityHandle(handle);
+    if (!rustEngine.query_physics_body_collider(
+      resolved.entityId,
+      resolved.entityGeneration,
+      uint32Number(colliderIndex, "physics collider index"),
+    )) {
+      return undefined;
+    }
+    return readPhysicsBodyColliderSnapshot(rustEngine);
+  };
+
   const getPhysicsEntity = (handle: PhysicsEntityHandle): PhysicsEntitySnapshot | undefined => {
     requireAlive();
     const resolved = physicsEntityHandle(handle);
@@ -1224,6 +1499,21 @@ export async function createEngine(
     requireAlive();
     const resolved = physicsEntityHandle(handle);
     return rustEngine.despawn_physics_entity(resolved.entityId, resolved.entityGeneration);
+  };
+
+  const setPhysicsBodyPosition = (
+    handle: PhysicsEntityHandle,
+    x: number,
+    y: number,
+  ): boolean => {
+    requireAlive();
+    const resolved = physicsEntityHandle(handle);
+    return rustEngine.set_physics_body_position(
+      resolved.entityId,
+      resolved.entityGeneration,
+      finiteNumber(x, "physics body x"),
+      finiteNumber(y, "physics body y"),
+    );
   };
 
   const setPhysicsBodyVelocity = (
@@ -1329,6 +1619,45 @@ export async function createEngine(
         material.contactPositionCorrectionSlopScale ??
         current.colliderMaterial.contactPositionCorrectionSlopScale,
     });
+  };
+
+  const setPhysicsBodyColliderMaterial = (
+    handle: PhysicsEntityHandle,
+    colliderIndex: number,
+    material: PhysicsRigidBodyMaterial,
+  ): boolean => {
+    requireAlive();
+    const resolved = physicsEntityHandle(handle);
+    const resolvedColliderIndex = uint32Number(colliderIndex, "physics collider index");
+    if (!rustEngine.query_physics_body_collider(
+      resolved.entityId,
+      resolved.entityGeneration,
+      resolvedColliderIndex,
+    )) {
+      return false;
+    }
+    const current = readPhysicsBodyColliderSnapshot(rustEngine).colliderMaterial;
+    return setPhysicsCompoundColliderMaterialValues(
+      rustEngine,
+      resolved,
+      resolvedColliderIndex,
+      {
+        restitution: material.restitution ?? current.restitution,
+        friction: material.friction ?? current.friction,
+        surfaceVelocityX: material.surfaceVelocityX ?? current.surfaceVelocityX,
+        surfaceVelocityY: material.surfaceVelocityY ?? current.surfaceVelocityY,
+        density: material.density ?? current.density,
+        contactBaumgarteBiasScale:
+          material.contactBaumgarteBiasScale ?? current.contactBaumgarteBiasScale,
+        maxContactBaumgarteBiasVelocityScale:
+          material.maxContactBaumgarteBiasVelocityScale ??
+          current.maxContactBaumgarteBiasVelocityScale,
+        contactPositionCorrectionScale:
+          material.contactPositionCorrectionScale ?? current.contactPositionCorrectionScale,
+        contactPositionCorrectionSlopScale:
+          material.contactPositionCorrectionSlopScale ?? current.contactPositionCorrectionSlopScale,
+      },
+    );
   };
 
   const clearPhysicsColliderMaterial = (handle: PhysicsEntityHandle): boolean => {
@@ -1575,6 +1904,32 @@ export async function createEngine(
           options.motorEnabled === true,
           finiteNumber(options.motorSpeed ?? 0, "physics prismatic joint motorSpeed"),
           nonNegativeNumber(options.maxMotorForce ?? 0, "physics prismatic joint maxMotorForce"),
+          enabled,
+        );
+        break;
+      case "weld":
+        spawned = rustEngine.spawn_physics_weld_joint(
+          entityA.entityId,
+          entityA.entityGeneration,
+          entityB.entityId,
+          entityB.entityGeneration,
+          finiteNumber(options.localAnchorAX ?? 0, "physics weld joint localAnchorAX"),
+          finiteNumber(options.localAnchorAY ?? 0, "physics weld joint localAnchorAY"),
+          finiteNumber(options.localAnchorBX ?? 0, "physics weld joint localAnchorBX"),
+          finiteNumber(options.localAnchorBY ?? 0, "physics weld joint localAnchorBY"),
+          finiteNumber(options.referenceAngle ?? 0, "physics weld joint referenceAngle"),
+          unitIntervalNumber(options.stiffness ?? 1, "physics weld joint stiffness"),
+          unitIntervalNumber(options.damping ?? 1, "physics weld joint damping"),
+          unitIntervalNumber(options.angularStiffness ?? 1, "physics weld joint angularStiffness"),
+          unitIntervalNumber(options.angularDamping ?? 1, "physics weld joint angularDamping"),
+          breakLimitNumber(
+            options.breakDistance ?? Number.POSITIVE_INFINITY,
+            "physics weld joint breakDistance",
+          ),
+          breakLimitNumber(
+            options.breakAngle ?? Number.POSITIVE_INFINITY,
+            "physics weld joint breakAngle",
+          ),
           enabled,
         );
         break;
@@ -1968,6 +2323,25 @@ export async function createEngine(
     );
   };
 
+  const setShooterTilemapTilesRect = (
+    layerIndex: number,
+    column: number,
+    row: number,
+    width: number,
+    height: number,
+    tileId: number,
+  ): boolean => {
+    requireAlive();
+    return rustEngine.set_shooter_tilemap_tiles_rect(
+      uint32Number(layerIndex, "tilemap layer index"),
+      uint32Number(column, "tilemap column"),
+      uint32Number(row, "tilemap row"),
+      uint32Number(width, "tilemap rect width"),
+      uint32Number(height, "tilemap rect height"),
+      uint32Number(tileId, "tile id"),
+    );
+  };
+
   const lifecycleApi: FerrumLifecycleApi = {
     start: () => {
       requireAlive();
@@ -2026,6 +2400,7 @@ export async function createEngine(
     },
     setGameSpec,
     setShooterTilemapTile,
+    setShooterTilemapTilesRect,
     cameraX: () => { requireAlive(); return rustEngine.camera_x(); },
     cameraY: () => { requireAlive(); return rustEngine.camera_y(); },
   };
@@ -2069,13 +2444,18 @@ export async function createEngine(
   const physicsRuntimeApi: FerrumPhysicsRuntimeApi = {
     configureFixedTimestep,
     setPhysicsDebugLinesEnabled,
+    setPhysicsDebugOptions,
     stepRigidBodies,
   };
 
   const physicsBodyApi: FerrumPhysicsBodyApi = {
     spawnRigidBody,
+    addPhysicsBodyCollider,
+    getPhysicsBodyColliderCount,
+    getPhysicsBodyCollider,
     getPhysicsEntity,
     despawnPhysicsEntity,
+    setPhysicsBodyPosition,
     setPhysicsBodyVelocity,
     setPhysicsBodyRotation,
     setPhysicsBodyAngularVelocity,
@@ -2083,6 +2463,7 @@ export async function createEngine(
     setPhysicsColliderOffset,
     setPhysicsColliderEnabled,
     setPhysicsColliderMaterial,
+    setPhysicsBodyColliderMaterial,
     clearPhysicsColliderMaterial,
     setPhysicsBodyMassProperties,
     setPhysicsBodyTuning,
@@ -2264,9 +2645,38 @@ function readPhysicsEntitySnapshot(rustEngine: Engine): PhysicsEntitySnapshot {
   };
 }
 
+function readPhysicsBodyColliderSnapshot(rustEngine: Engine): PhysicsBodyColliderSnapshot {
+  return {
+    colliderIndex: rustEngine.physics_body_collider_index(),
+    colliderType: PHYSICS_COLLIDER_TYPES[rustEngine.physics_body_collider_type()] ?? "none",
+    colliderEnabled: rustEngine.physics_body_collider_enabled(),
+    colliderIsTrigger: rustEngine.physics_body_collider_is_trigger(),
+    colliderOffsetX: rustEngine.physics_body_collider_offset_x(),
+    colliderOffsetY: rustEngine.physics_body_collider_offset_y(),
+    colliderMaterialOverride: rustEngine.physics_body_collider_material_override(),
+    colliderMaterial: {
+      restitution: rustEngine.physics_body_collider_restitution(),
+      friction: rustEngine.physics_body_collider_friction(),
+      surfaceVelocityX: rustEngine.physics_body_collider_surface_velocity_x(),
+      surfaceVelocityY: rustEngine.physics_body_collider_surface_velocity_y(),
+      density: rustEngine.physics_body_collider_density(),
+      contactBaumgarteBiasScale:
+        rustEngine.physics_body_collider_contact_baumgarte_bias_scale(),
+      maxContactBaumgarteBiasVelocityScale:
+        rustEngine.physics_body_collider_max_contact_baumgarte_bias_velocity_scale(),
+      contactPositionCorrectionScale:
+        rustEngine.physics_body_collider_contact_position_correction_scale(),
+      contactPositionCorrectionSlopScale:
+        rustEngine.physics_body_collider_contact_position_correction_slop_scale(),
+    },
+    categoryBits: rustEngine.physics_body_collider_category_bits(),
+    maskBits: rustEngine.physics_body_collider_mask_bits(),
+  };
+}
+
 function physicsJointHandle(handle: PhysicsJointHandle): PhysicsJointHandle {
   if (!(handle.jointType in PHYSICS_JOINT_TYPE_CODES)) {
-    throw new Error("physics jointType must be distance, rope, spring, revolute, prismatic, or gear.");
+    throw new Error("physics jointType must be distance, rope, spring, revolute, prismatic, weld, or gear.");
   }
   return {
     jointType: handle.jointType,
@@ -2493,6 +2903,46 @@ function setPhysicsColliderMaterialValues(
   );
 }
 
+function setPhysicsCompoundColliderMaterialValues(
+  rustEngine: Engine,
+  handle: PhysicsEntityHandle,
+  colliderIndex: number,
+  material: PhysicsMaterialSnapshot,
+): boolean {
+  return rustEngine.set_physics_compound_collider_material(
+    handle.entityId,
+    handle.entityGeneration,
+    uint32Number(colliderIndex, "physics collider index"),
+    nonNegativeNumber(
+      material.restitution,
+      "physics collider material restitution",
+    ),
+    nonNegativeNumber(
+      material.friction,
+      "physics collider material friction",
+    ),
+    finiteNumber(material.surfaceVelocityX, "physics collider material surfaceVelocityX"),
+    finiteNumber(material.surfaceVelocityY, "physics collider material surfaceVelocityY"),
+    positiveNumber(material.density, "physics collider material density"),
+    nonNegativeNumber(
+      material.contactBaumgarteBiasScale,
+      "physics collider material contactBaumgarteBiasScale",
+    ),
+    nonNegativeNumber(
+      material.maxContactBaumgarteBiasVelocityScale,
+      "physics collider material maxContactBaumgarteBiasVelocityScale",
+    ),
+    nonNegativeNumber(
+      material.contactPositionCorrectionScale,
+      "physics collider material contactPositionCorrectionScale",
+    ),
+    nonNegativeNumber(
+      material.contactPositionCorrectionSlopScale,
+      "physics collider material contactPositionCorrectionSlopScale",
+    ),
+  );
+}
+
 function readRigidBodyStepStats(rustEngine: Engine): PhysicsRigidBodyStepStats {
   return {
     substeps: rustEngine.rigid_body_step_substeps(),
@@ -2545,6 +2995,7 @@ function runFrame(context: FramePipelineContext, deltaSeconds: number): void {
     renderCommandBuffer,
     collisionEventBuffer,
     physicsDebugLineBuffer,
+    context.physicsSpec,
     context.options,
   ));
 }
@@ -2621,9 +3072,10 @@ function buildFrameState(
   renderCommandBuffer: RenderCommandBufferView,
   collisionEventBuffer: CollisionEventBufferView,
   physicsDebugLineBuffer: PhysicsDebugLineBufferView,
+  physicsSpec: ResolvedPhysicsSpec,
   options: CreateEngineOptions,
 ): FrameState {
-  const physics = buildPhysicsFrameStats(rustEngine);
+  const physics = buildPhysicsFrameStats(rustEngine, physicsSpec);
   return {
     timeSeconds: rustEngine.time(),
     frameTimeMs: deltaSeconds * 1000,
@@ -2652,7 +3104,10 @@ function buildFrameState(
   };
 }
 
-function buildPhysicsFrameStats(rustEngine: Engine): PhysicsFrameStats {
+function buildPhysicsFrameStats(
+  rustEngine: Engine,
+  physicsSpec: ResolvedPhysicsSpec,
+): PhysicsFrameStats {
   const collisionEnterEvents = rustEngine.collision_enter_count();
   const collisionStayEvents = rustEngine.collision_stay_count();
   const collisionExitEvents = rustEngine.collision_exit_count();
@@ -2661,7 +3116,12 @@ function buildPhysicsFrameStats(rustEngine: Engine): PhysicsFrameStats {
   const collisionTriggerStayEvents = rustEngine.collision_trigger_stay_count();
   const collisionTriggerExitEvents = rustEngine.collision_trigger_exit_count();
   return {
+    mode: physicsSpec.mode,
+    gravityX: physicsSpec.gravityX,
+    gravityY: physicsSpec.gravityY,
+    continuous: physicsSpec.continuous,
     fixedTimestepEnabled: rustEngine.fixed_timestep_enabled(),
+    fixedStepSeconds: physicsSpec.solver.stepSeconds,
     fixedSteps: rustEngine.physics_fixed_steps(),
     fixedAlpha: rustEngine.fixed_timestep_alpha(),
     fixedConsumedSeconds: rustEngine.fixed_timestep_consumed_seconds(),
@@ -2690,16 +3150,71 @@ function buildPhysicsFrameStats(rustEngine: Engine): PhysicsFrameStats {
       collisionTriggerEnterEvents +
       collisionTriggerStayEvents +
       collisionTriggerExitEvents,
+    ccdChecks: rustEngine.rigid_body_step_ccd_checks(),
+    ccdHits: rustEngine.rigid_body_step_ccd_hits(),
+    sleepingBodies: rustEngine.rigid_body_step_sleeping_bodies(),
+    brokenJoints: rustEngine.rigid_body_step_broken_joints(),
   };
 }
 
 function applyPhysicsDebugLineOptions(
   rustEngine: Engine,
   options: CreateEngineOptions,
+  physicsSpec?: ResolvedPhysicsSpec,
 ): void {
-  rustEngine.set_physics_debug_lines_enabled(
-    options.enablePhysicsDebugLines === true || options.includePhysicsDebugLines === true,
+  const flags = physicsDebugFlags(
+    options.physicsDebugOptions ?? options.enablePhysicsDebugLines,
+    physicsSpec?.debug,
+    options.includePhysicsDebugLines === true,
   );
+  rustEngine.set_physics_debug_line_flags(flags);
+  rustEngine.set_physics_debug_lines_enabled(flags !== 0);
+}
+
+function physicsDebugFlags(
+  options?: boolean | PhysicsDebugOptions,
+  spec?: PhysicsDebugSpec,
+  includePhysicsDebugLines = false,
+): number {
+  if (typeof options === "object") {
+    return physicsDebugCategoryFlags(options);
+  }
+  if (options === true || includePhysicsDebugLines) {
+    return PHYSICS_DEBUG_DEFAULT;
+  }
+  if (spec !== undefined) {
+    return physicsDebugCategoryFlags(spec);
+  }
+  return 0;
+}
+
+function physicsDebugCategoryFlags(options: PhysicsDebugOptions): number {
+  let flags = 0;
+  if (options.broadphase === true) flags |= PHYSICS_DEBUG_BROADPHASE;
+  if (options.contacts === true || options.manifolds === true) flags |= PHYSICS_DEBUG_CONTACTS;
+  if (options.colliders === true || options.layers === true || options.ccd === true) {
+    flags |= PHYSICS_DEBUG_COLLIDERS;
+  }
+  if (options.joints === true) flags |= PHYSICS_DEBUG_JOINTS;
+  if (options.sleeping === true) flags |= PHYSICS_DEBUG_SLEEPING | PHYSICS_DEBUG_COLLIDERS;
+  return flags;
+}
+
+function applyPhysicsRuntimeOptions(
+  rustEngine: Engine,
+  physicsSpec: ResolvedPhysicsSpec,
+  options: CreateEngineOptions,
+  hasPhysicsConfig: boolean,
+): void {
+  if (options.fixedTimestep !== undefined) {
+    applyFixedTimestepOptions(rustEngine, options.fixedTimestep);
+  } else if (hasPhysicsConfig) {
+    applyFixedTimestepOptions(rustEngine, {
+      enabled: physicsSpec.solver.fixedTimestep,
+      stepSeconds: physicsSpec.solver.stepSeconds,
+    });
+  }
+  applyPhysicsDebugLineOptions(rustEngine, options, physicsSpec);
 }
 
 function applyFixedTimestepOptions(

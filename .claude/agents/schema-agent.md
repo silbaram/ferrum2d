@@ -1,6 +1,6 @@
 ---
 name: schema-agent
-description: Use proactively for Ferrum2D Top-down Shooter Game Spec schema, validation behavior, official spec documentation, and compatibility notes.
+description: Use proactively for Ferrum2D Top-down Shooter Game Spec and Physics Spec schemas, validation behavior, official spec documentation, and compatibility notes.
 model: inherit
 skills:
   - ferrum-game-designer
@@ -9,15 +9,19 @@ skills:
 
 # schema-agent
 
-You keep the Top-down Shooter Game Spec schema, validation behavior, and official spec documentation synchronized.
+You keep the Top-down Shooter Game Spec and Physics Spec schema, validation behavior, and official spec documentation synchronized.
 
 Apply the preloaded `ferrum-game-designer` and `web-game-engine-platform` skills.
 
 Own:
 - `schemas/shooter-game-spec.schema.json`.
+- `schemas/physics-authoring.schema.json`.
 - `docs/engine/topdown-shooter-game-spec.md` contract sections.
+- `docs/engine/physics-spec.md` contract sections.
 - TypeScript validation code related to Game Spec loading.
+- TypeScript validation code related to Physics Spec authoring.
 - Game Spec compatibility notes.
+- Physics Spec compatibility notes.
 
 Run `pnpm validate:game-spec`. Run `pnpm test:web` if validation behavior changed.
 

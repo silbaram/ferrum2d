@@ -1,10 +1,11 @@
 use crate::components::{
     AabbCollider, AngularVelocity, CapsuleCollider, CircleCollider, CollisionFilter,
-    CollisionLayer, ConvexPolygonCollider, DistanceJoint, DistanceJointId, GearJoint, GearJointId,
-    OrientedBoxCollider, PhysicsMaterial, PrismaticJoint, PrismaticJointId, RevoluteJoint,
-    RevoluteJointId, RigidBody, RigidBodyType, RigidContactImpulse, RopeJoint, RopeJointId,
-    Rotation2D, SpringJoint, SpringJointId, Sprite, SpriteAnimation, SpriteFrame, Transform2D,
-    Velocity, MAX_CONVEX_POLYGON_VERTICES,
+    CollisionLayer, CompoundCollider, CompoundColliderShape, ConvexPolygonCollider, DistanceJoint,
+    DistanceJointId, EdgeCollider, GearJoint, GearJointId, OrientedBoxCollider, PhysicsMaterial,
+    PrismaticJoint, PrismaticJointId, RevoluteJoint, RevoluteJointId, RigidBody, RigidBodyType,
+    RigidContactImpulse, RopeJoint, RopeJointId, Rotation2D, SpringJoint, SpringJointId, Sprite,
+    SpriteAnimation, SpriteFrame, Transform2D, Velocity, WeldJoint, WeldJointId,
+    MAX_CONVEX_POLYGON_VERTICES,
 };
 use crate::entity::Entity;
 use crate::physics::PhysicsSystem;
@@ -60,6 +61,12 @@ pub enum EntityTemplateColliderShape {
         end_y: f32,
         radius: f32,
     },
+    Edge {
+        start_x: f32,
+        start_y: f32,
+        end_x: f32,
+        end_y: f32,
+    },
     ConvexPolygon {
         vertices: [Transform2D; MAX_CONVEX_POLYGON_VERTICES],
         vertex_count: u32,
@@ -100,6 +107,15 @@ impl EntityTemplateColliderShape {
                 let max_y = start_y.max(end_y) + radius;
                 ((max_x - min_x) * 0.5, (max_y - min_y) * 0.5)
             }
+            Self::Edge {
+                start_x,
+                start_y,
+                end_x,
+                end_y,
+            } => (
+                (start_x.max(end_x) - start_x.min(end_x)) * 0.5,
+                (start_y.max(end_y) - start_y.min(end_y)) * 0.5,
+            ),
             Self::ConvexPolygon {
                 vertices,
                 vertex_count,
@@ -273,6 +289,9 @@ pub struct World {
     pub(crate) prismatic_joints: Vec<Option<PrismaticJoint>>,
     pub(crate) prismatic_joint_generations: Vec<u32>,
     prismatic_joint_free_list: Vec<u32>,
+    pub(crate) weld_joints: Vec<Option<WeldJoint>>,
+    pub(crate) weld_joint_generations: Vec<u32>,
+    weld_joint_free_list: Vec<u32>,
     pub(crate) gear_joints: Vec<Option<GearJoint>>,
     pub(crate) gear_joint_generations: Vec<u32>,
     gear_joint_free_list: Vec<u32>,
@@ -280,7 +299,9 @@ pub struct World {
     pub(crate) circle_colliders: Vec<Option<CircleCollider>>,
     pub(crate) oriented_box_colliders: Vec<Option<OrientedBoxCollider>>,
     pub(crate) capsule_colliders: Vec<Option<CapsuleCollider>>,
+    pub(crate) edge_colliders: Vec<Option<EdgeCollider>>,
     pub(crate) convex_polygon_colliders: Vec<Option<ConvexPolygonCollider>>,
+    pub(crate) compound_colliders: Vec<Vec<CompoundCollider>>,
     pub(crate) collider_materials: Vec<Option<PhysicsMaterial>>,
     pub(crate) collision_filters: Vec<Option<CollisionFilter>>,
     pub(crate) bullet_lifetimes: Vec<Option<f32>>,
@@ -290,7 +311,157 @@ pub struct World {
     pub(crate) player: Option<Entity>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct WorldSnapshot {
+    generations: Vec<u32>,
+    free_list: Vec<u32>,
+    alive: Vec<bool>,
+    transforms: Vec<Option<Transform2D>>,
+    sprites: Vec<Option<Sprite>>,
+    sprite_animations: Vec<Option<SpriteAnimation>>,
+    velocities: Vec<Option<Velocity>>,
+    rotations: Vec<Option<Rotation2D>>,
+    angular_velocities: Vec<Option<AngularVelocity>>,
+    rigid_bodies: Vec<Option<RigidBody>>,
+    rigid_contact_impulses: Vec<RigidContactImpulse>,
+    distance_joints: Vec<Option<DistanceJoint>>,
+    distance_joint_generations: Vec<u32>,
+    distance_joint_free_list: Vec<u32>,
+    rope_joints: Vec<Option<RopeJoint>>,
+    rope_joint_generations: Vec<u32>,
+    rope_joint_free_list: Vec<u32>,
+    spring_joints: Vec<Option<SpringJoint>>,
+    spring_joint_generations: Vec<u32>,
+    spring_joint_free_list: Vec<u32>,
+    revolute_joints: Vec<Option<RevoluteJoint>>,
+    revolute_joint_generations: Vec<u32>,
+    revolute_joint_free_list: Vec<u32>,
+    prismatic_joints: Vec<Option<PrismaticJoint>>,
+    prismatic_joint_generations: Vec<u32>,
+    prismatic_joint_free_list: Vec<u32>,
+    weld_joints: Vec<Option<WeldJoint>>,
+    weld_joint_generations: Vec<u32>,
+    weld_joint_free_list: Vec<u32>,
+    gear_joints: Vec<Option<GearJoint>>,
+    gear_joint_generations: Vec<u32>,
+    gear_joint_free_list: Vec<u32>,
+    colliders: Vec<Option<AabbCollider>>,
+    circle_colliders: Vec<Option<CircleCollider>>,
+    oriented_box_colliders: Vec<Option<OrientedBoxCollider>>,
+    capsule_colliders: Vec<Option<CapsuleCollider>>,
+    edge_colliders: Vec<Option<EdgeCollider>>,
+    convex_polygon_colliders: Vec<Option<ConvexPolygonCollider>>,
+    compound_colliders: Vec<Vec<CompoundCollider>>,
+    collider_materials: Vec<Option<PhysicsMaterial>>,
+    collision_filters: Vec<Option<CollisionFilter>>,
+    bullet_lifetimes: Vec<Option<f32>>,
+    healths: Vec<Option<f32>>,
+    damages: Vec<Option<f32>>,
+    score_rewards: Vec<Option<u32>>,
+    player: Option<Entity>,
+}
+
 impl World {
+    pub fn snapshot(&self) -> WorldSnapshot {
+        WorldSnapshot {
+            generations: self.generations.clone(),
+            free_list: self.free_list.clone(),
+            alive: self.alive.clone(),
+            transforms: self.transforms.clone(),
+            sprites: self.sprites.clone(),
+            sprite_animations: self.sprite_animations.clone(),
+            velocities: self.velocities.clone(),
+            rotations: self.rotations.clone(),
+            angular_velocities: self.angular_velocities.clone(),
+            rigid_bodies: self.rigid_bodies.clone(),
+            rigid_contact_impulses: self.rigid_contact_impulses.clone(),
+            distance_joints: self.distance_joints.clone(),
+            distance_joint_generations: self.distance_joint_generations.clone(),
+            distance_joint_free_list: self.distance_joint_free_list.clone(),
+            rope_joints: self.rope_joints.clone(),
+            rope_joint_generations: self.rope_joint_generations.clone(),
+            rope_joint_free_list: self.rope_joint_free_list.clone(),
+            spring_joints: self.spring_joints.clone(),
+            spring_joint_generations: self.spring_joint_generations.clone(),
+            spring_joint_free_list: self.spring_joint_free_list.clone(),
+            revolute_joints: self.revolute_joints.clone(),
+            revolute_joint_generations: self.revolute_joint_generations.clone(),
+            revolute_joint_free_list: self.revolute_joint_free_list.clone(),
+            prismatic_joints: self.prismatic_joints.clone(),
+            prismatic_joint_generations: self.prismatic_joint_generations.clone(),
+            prismatic_joint_free_list: self.prismatic_joint_free_list.clone(),
+            weld_joints: self.weld_joints.clone(),
+            weld_joint_generations: self.weld_joint_generations.clone(),
+            weld_joint_free_list: self.weld_joint_free_list.clone(),
+            gear_joints: self.gear_joints.clone(),
+            gear_joint_generations: self.gear_joint_generations.clone(),
+            gear_joint_free_list: self.gear_joint_free_list.clone(),
+            colliders: self.colliders.clone(),
+            circle_colliders: self.circle_colliders.clone(),
+            oriented_box_colliders: self.oriented_box_colliders.clone(),
+            capsule_colliders: self.capsule_colliders.clone(),
+            edge_colliders: self.edge_colliders.clone(),
+            convex_polygon_colliders: self.convex_polygon_colliders.clone(),
+            compound_colliders: self.compound_colliders.clone(),
+            collider_materials: self.collider_materials.clone(),
+            collision_filters: self.collision_filters.clone(),
+            bullet_lifetimes: self.bullet_lifetimes.clone(),
+            healths: self.healths.clone(),
+            damages: self.damages.clone(),
+            score_rewards: self.score_rewards.clone(),
+            player: self.player,
+        }
+    }
+
+    pub fn restore_snapshot(&mut self, snapshot: &WorldSnapshot) {
+        self.generations = snapshot.generations.clone();
+        self.free_list = snapshot.free_list.clone();
+        self.alive = snapshot.alive.clone();
+        self.transforms = snapshot.transforms.clone();
+        self.sprites = snapshot.sprites.clone();
+        self.sprite_animations = snapshot.sprite_animations.clone();
+        self.velocities = snapshot.velocities.clone();
+        self.rotations = snapshot.rotations.clone();
+        self.angular_velocities = snapshot.angular_velocities.clone();
+        self.rigid_bodies = snapshot.rigid_bodies.clone();
+        self.rigid_contact_impulses = snapshot.rigid_contact_impulses.clone();
+        self.distance_joints = snapshot.distance_joints.clone();
+        self.distance_joint_generations = snapshot.distance_joint_generations.clone();
+        self.distance_joint_free_list = snapshot.distance_joint_free_list.clone();
+        self.rope_joints = snapshot.rope_joints.clone();
+        self.rope_joint_generations = snapshot.rope_joint_generations.clone();
+        self.rope_joint_free_list = snapshot.rope_joint_free_list.clone();
+        self.spring_joints = snapshot.spring_joints.clone();
+        self.spring_joint_generations = snapshot.spring_joint_generations.clone();
+        self.spring_joint_free_list = snapshot.spring_joint_free_list.clone();
+        self.revolute_joints = snapshot.revolute_joints.clone();
+        self.revolute_joint_generations = snapshot.revolute_joint_generations.clone();
+        self.revolute_joint_free_list = snapshot.revolute_joint_free_list.clone();
+        self.prismatic_joints = snapshot.prismatic_joints.clone();
+        self.prismatic_joint_generations = snapshot.prismatic_joint_generations.clone();
+        self.prismatic_joint_free_list = snapshot.prismatic_joint_free_list.clone();
+        self.weld_joints = snapshot.weld_joints.clone();
+        self.weld_joint_generations = snapshot.weld_joint_generations.clone();
+        self.weld_joint_free_list = snapshot.weld_joint_free_list.clone();
+        self.gear_joints = snapshot.gear_joints.clone();
+        self.gear_joint_generations = snapshot.gear_joint_generations.clone();
+        self.gear_joint_free_list = snapshot.gear_joint_free_list.clone();
+        self.colliders = snapshot.colliders.clone();
+        self.circle_colliders = snapshot.circle_colliders.clone();
+        self.oriented_box_colliders = snapshot.oriented_box_colliders.clone();
+        self.capsule_colliders = snapshot.capsule_colliders.clone();
+        self.edge_colliders = snapshot.edge_colliders.clone();
+        self.convex_polygon_colliders = snapshot.convex_polygon_colliders.clone();
+        self.compound_colliders = snapshot.compound_colliders.clone();
+        self.collider_materials = snapshot.collider_materials.clone();
+        self.collision_filters = snapshot.collision_filters.clone();
+        self.bullet_lifetimes = snapshot.bullet_lifetimes.clone();
+        self.healths = snapshot.healths.clone();
+        self.damages = snapshot.damages.clone();
+        self.score_rewards = snapshot.score_rewards.clone();
+        self.player = snapshot.player;
+    }
+
     pub fn spawn_entity(&mut self) -> Entity {
         if let Some(id) = self.free_list.pop() {
             let i = id as usize;
@@ -315,7 +486,9 @@ impl World {
         self.circle_colliders.push(None);
         self.oriented_box_colliders.push(None);
         self.capsule_colliders.push(None);
+        self.edge_colliders.push(None);
         self.convex_polygon_colliders.push(None);
+        self.compound_colliders.push(Vec::new());
         self.collider_materials.push(None);
         self.collision_filters.push(None);
         self.bullet_lifetimes.push(None);
@@ -341,7 +514,9 @@ impl World {
             self.circle_colliders[i] = None;
             self.oriented_box_colliders[i] = None;
             self.capsule_colliders[i] = None;
+            self.edge_colliders[i] = None;
             self.convex_polygon_colliders[i] = None;
+            self.compound_colliders[i].clear();
             self.collider_materials[i] = None;
             self.collision_filters[i] = None;
             self.bullet_lifetimes[i] = None;
@@ -957,6 +1132,62 @@ impl World {
             .count()
     }
 
+    pub fn add_weld_joint(&mut self, joint: WeldJoint) -> WeldJointId {
+        if let Some(index) = self.weld_joint_free_list.pop() {
+            let index = index as usize;
+            self.weld_joints[index] = Some(joint);
+            return WeldJointId {
+                index: index as u32,
+                generation: self.weld_joint_generations[index],
+            };
+        }
+
+        let index = self.weld_joints.len();
+        self.weld_joints.push(Some(joint));
+        self.weld_joint_generations.push(0);
+        WeldJointId {
+            index: index as u32,
+            generation: 0,
+        }
+    }
+
+    pub fn weld_joint(&self, id: WeldJointId) -> Option<WeldJoint> {
+        let index = self.valid_weld_joint_index(id)?;
+        self.weld_joints[index]
+    }
+
+    pub fn set_weld_joint(&mut self, id: WeldJointId, joint: WeldJoint) {
+        let Some(index) = self.valid_weld_joint_index(id) else {
+            return;
+        };
+        self.weld_joints[index] = Some(joint);
+    }
+
+    pub fn clear_weld_joint(&mut self, id: WeldJointId) -> Option<WeldJoint> {
+        let index = self.valid_weld_joint_index(id)?;
+        let joint = self.weld_joints[index].take();
+        self.weld_joint_generations[index] = self.weld_joint_generations[index].wrapping_add(1);
+        self.weld_joint_free_list.push(id.index);
+        joint
+    }
+
+    pub fn clear_weld_joints(&mut self) {
+        for (index, joint) in self.weld_joints.iter_mut().enumerate() {
+            if joint.take().is_some() {
+                self.weld_joint_generations[index] =
+                    self.weld_joint_generations[index].wrapping_add(1);
+                self.weld_joint_free_list.push(index as u32);
+            }
+        }
+    }
+
+    pub fn weld_joint_count(&self) -> usize {
+        self.weld_joints
+            .iter()
+            .filter(|joint| joint.is_some())
+            .count()
+    }
+
     pub fn add_gear_joint(&mut self, joint: GearJoint) -> GearJointId {
         if let Some(index) = self.gear_joint_free_list.pop() {
             let index = index as usize;
@@ -1026,10 +1257,12 @@ impl World {
         self.circle_colliders[i] = None;
         self.oriented_box_colliders[i] = None;
         self.capsule_colliders[i] = None;
+        self.edge_colliders[i] = None;
         self.convex_polygon_colliders[i] = None;
         if self.collision_filters[i].is_none() {
             self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
         }
+        self.set_primary_compound_collider_at(i, CompoundColliderShape::Aabb(collider));
     }
 
     pub fn circle_collider(&self, entity: Entity) -> Option<CircleCollider> {
@@ -1045,10 +1278,12 @@ impl World {
         self.circle_colliders[i] = Some(collider);
         self.oriented_box_colliders[i] = None;
         self.capsule_colliders[i] = None;
+        self.edge_colliders[i] = None;
         self.convex_polygon_colliders[i] = None;
         if self.collision_filters[i].is_none() {
             self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
         }
+        self.set_primary_compound_collider_at(i, CompoundColliderShape::Circle(collider));
     }
 
     pub fn oriented_box_collider(&self, entity: Entity) -> Option<OrientedBoxCollider> {
@@ -1064,10 +1299,12 @@ impl World {
         self.circle_colliders[i] = None;
         self.oriented_box_colliders[i] = Some(collider);
         self.capsule_colliders[i] = None;
+        self.edge_colliders[i] = None;
         self.convex_polygon_colliders[i] = None;
         if self.collision_filters[i].is_none() {
             self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
         }
+        self.set_primary_compound_collider_at(i, CompoundColliderShape::OrientedBox(collider));
     }
 
     pub fn capsule_collider(&self, entity: Entity) -> Option<CapsuleCollider> {
@@ -1083,10 +1320,33 @@ impl World {
         self.circle_colliders[i] = None;
         self.oriented_box_colliders[i] = None;
         self.capsule_colliders[i] = Some(collider);
+        self.edge_colliders[i] = None;
         self.convex_polygon_colliders[i] = None;
         if self.collision_filters[i].is_none() {
             self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
         }
+        self.set_primary_compound_collider_at(i, CompoundColliderShape::Capsule(collider));
+    }
+
+    pub fn edge_collider(&self, entity: Entity) -> Option<EdgeCollider> {
+        let i = self.valid_index(entity)?;
+        self.edge_colliders[i]
+    }
+
+    pub fn set_edge_collider(&mut self, entity: Entity, collider: EdgeCollider) {
+        let Some(i) = self.valid_index(entity) else {
+            return;
+        };
+        self.colliders[i] = None;
+        self.circle_colliders[i] = None;
+        self.oriented_box_colliders[i] = None;
+        self.capsule_colliders[i] = None;
+        self.edge_colliders[i] = Some(collider);
+        self.convex_polygon_colliders[i] = None;
+        if self.collision_filters[i].is_none() {
+            self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
+        }
+        self.set_primary_compound_collider_at(i, CompoundColliderShape::Edge(collider));
     }
 
     pub fn convex_polygon_collider(&self, entity: Entity) -> Option<ConvexPolygonCollider> {
@@ -1102,10 +1362,12 @@ impl World {
         self.circle_colliders[i] = None;
         self.oriented_box_colliders[i] = None;
         self.capsule_colliders[i] = None;
+        self.edge_colliders[i] = None;
         self.convex_polygon_colliders[i] = Some(collider);
         if self.collision_filters[i].is_none() {
             self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
         }
+        self.set_primary_compound_collider_at(i, CompoundColliderShape::ConvexPolygon(collider));
     }
 
     pub fn clear_collider(&mut self, entity: Entity) {
@@ -1116,7 +1378,9 @@ impl World {
         self.circle_colliders[i] = None;
         self.oriented_box_colliders[i] = None;
         self.capsule_colliders[i] = None;
+        self.edge_colliders[i] = None;
         self.convex_polygon_colliders[i] = None;
+        self.compound_colliders[i].clear();
         self.collider_materials[i] = None;
         self.collision_filters[i] = None;
     }
@@ -1129,11 +1393,15 @@ impl World {
             && self.circle_colliders[i].is_none()
             && self.oriented_box_colliders[i].is_none()
             && self.capsule_colliders[i].is_none()
+            && self.edge_colliders[i].is_none()
             && self.convex_polygon_colliders[i].is_none()
         {
             return;
         }
         self.collider_materials[i] = Some(material);
+        for collider in &mut self.compound_colliders[i] {
+            collider.material = Some(material);
+        }
     }
 
     pub fn clear_collider_material(&mut self, entity: Entity) {
@@ -1141,6 +1409,9 @@ impl World {
             return;
         };
         self.collider_materials[i] = None;
+        for collider in &mut self.compound_colliders[i] {
+            collider.material = None;
+        }
     }
 
     pub fn collider_material(&self, entity: Entity) -> Option<PhysicsMaterial> {
@@ -1168,6 +1439,7 @@ impl World {
                 .copied()
                 .flatten()
                 .is_none()
+            && self.edge_colliders.get(index).copied().flatten().is_none()
             && self
                 .convex_polygon_colliders
                 .get(index)
@@ -1180,6 +1452,203 @@ impl World {
         self.collider_materials.get(index).copied().flatten()
     }
 
+    pub fn add_compound_collider(
+        &mut self,
+        entity: Entity,
+        collider: CompoundCollider,
+    ) -> Option<u32> {
+        let i = self.valid_index(entity)?;
+        if self.compound_colliders[i].is_empty() {
+            if let Some(primary) = self.primary_compound_collider_at(i) {
+                self.compound_colliders[i].push(primary);
+            }
+        }
+        if self.compound_colliders[i].is_empty() {
+            self.sync_primary_collider_slots(i, collider.shape);
+        }
+        self.compound_colliders[i].push(collider);
+        Some((self.compound_colliders[i].len() - 1) as u32)
+    }
+
+    pub fn set_compound_collider_material(
+        &mut self,
+        entity: Entity,
+        collider_index: u32,
+        material: PhysicsMaterial,
+    ) -> bool {
+        let Some(i) = self.valid_index(entity) else {
+            return false;
+        };
+        let collider_index = collider_index as usize;
+        if collider_index >= self.compound_collider_count_at(i) {
+            return false;
+        }
+        if collider_index == 0 {
+            self.collider_materials[i] = Some(material);
+        }
+        if self.compound_colliders[i].is_empty() {
+            if let Some(primary) = self.primary_compound_collider_at(i) {
+                self.compound_colliders[i].push(primary);
+            }
+        }
+        let Some(collider) = self.compound_colliders[i].get_mut(collider_index) else {
+            return false;
+        };
+        collider.material = Some(material);
+        true
+    }
+
+    pub fn compound_collider_count(&self, entity: Entity) -> usize {
+        self.valid_index(entity)
+            .map(|index| self.compound_collider_count_at(index))
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn compound_collider_count_at(&self, index: usize) -> usize {
+        if index >= self.alive.len() || !self.alive[index] {
+            return 0;
+        }
+        let stored_count = self
+            .compound_colliders
+            .get(index)
+            .map(|colliders| colliders.len())
+            .unwrap_or(0);
+        if stored_count > 0 {
+            stored_count
+        } else if self.primary_compound_collider_at(index).is_some() {
+            1
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn compound_collider_at(
+        &self,
+        index: usize,
+        collider_index: usize,
+    ) -> Option<CompoundCollider> {
+        if index >= self.alive.len() || !self.alive[index] {
+            return None;
+        }
+        if let Some(collider) = self
+            .compound_colliders
+            .get(index)
+            .and_then(|colliders| colliders.get(collider_index))
+            .copied()
+        {
+            return Some(collider);
+        }
+        (collider_index == 0)
+            .then(|| self.primary_compound_collider_at(index))
+            .flatten()
+    }
+
+    pub(crate) fn compound_collision_filter_at(
+        &self,
+        index: usize,
+        collider_index: usize,
+    ) -> Option<CollisionFilter> {
+        let collider = self.compound_collider_at(index, collider_index)?;
+        collider
+            .filter
+            .or_else(|| self.collision_filters.get(index).copied().flatten())
+            .or_else(|| Some(CollisionFilter::from_layer(collider.layer())))
+    }
+
+    fn set_primary_compound_collider_at(&mut self, index: usize, shape: CompoundColliderShape) {
+        let mut collider = CompoundCollider::new(shape);
+        collider.material = self.collider_materials[index];
+        collider.filter = self.collision_filters[index];
+        if self.compound_colliders[index].is_empty() {
+            self.compound_colliders[index].push(collider);
+        } else {
+            self.compound_colliders[index][0] = collider;
+        }
+    }
+
+    fn primary_compound_collider_at(&self, index: usize) -> Option<CompoundCollider> {
+        let shape = self
+            .colliders
+            .get(index)
+            .copied()
+            .flatten()
+            .map(CompoundColliderShape::Aabb)
+            .or_else(|| {
+                self.circle_colliders
+                    .get(index)
+                    .copied()
+                    .flatten()
+                    .map(CompoundColliderShape::Circle)
+            })
+            .or_else(|| {
+                self.oriented_box_colliders
+                    .get(index)
+                    .copied()
+                    .flatten()
+                    .map(CompoundColliderShape::OrientedBox)
+            })
+            .or_else(|| {
+                self.capsule_colliders
+                    .get(index)
+                    .copied()
+                    .flatten()
+                    .map(CompoundColliderShape::Capsule)
+            })
+            .or_else(|| {
+                self.edge_colliders
+                    .get(index)
+                    .copied()
+                    .flatten()
+                    .map(CompoundColliderShape::Edge)
+            })
+            .or_else(|| {
+                self.convex_polygon_colliders
+                    .get(index)
+                    .copied()
+                    .flatten()
+                    .map(CompoundColliderShape::ConvexPolygon)
+            })?;
+        let mut collider = CompoundCollider::new(shape);
+        collider.material = self.collider_materials.get(index).copied().flatten();
+        collider.filter = self.collision_filters.get(index).copied().flatten();
+        Some(collider)
+    }
+
+    fn sync_primary_collider_slots(&mut self, index: usize, shape: CompoundColliderShape) {
+        self.colliders[index] = None;
+        self.circle_colliders[index] = None;
+        self.oriented_box_colliders[index] = None;
+        self.capsule_colliders[index] = None;
+        self.edge_colliders[index] = None;
+        self.convex_polygon_colliders[index] = None;
+        match shape {
+            CompoundColliderShape::Aabb(collider) => self.colliders[index] = Some(collider),
+            CompoundColliderShape::Circle(collider) => {
+                self.circle_colliders[index] = Some(collider)
+            }
+            CompoundColliderShape::OrientedBox(collider) => {
+                self.oriented_box_colliders[index] = Some(collider);
+            }
+            CompoundColliderShape::Capsule(collider) => {
+                self.capsule_colliders[index] = Some(collider);
+            }
+            CompoundColliderShape::Edge(collider) => self.edge_colliders[index] = Some(collider),
+            CompoundColliderShape::ConvexPolygon(collider) => {
+                self.convex_polygon_colliders[index] = Some(collider);
+            }
+        }
+        if self.collision_filters[index].is_none() {
+            self.collision_filters[index] = Some(CollisionFilter::from_layer(match shape {
+                CompoundColliderShape::Aabb(collider) => collider.layer,
+                CompoundColliderShape::Circle(collider) => collider.layer,
+                CompoundColliderShape::OrientedBox(collider) => collider.layer,
+                CompoundColliderShape::Capsule(collider) => collider.layer,
+                CompoundColliderShape::Edge(collider) => collider.layer,
+                CompoundColliderShape::ConvexPolygon(collider) => collider.layer,
+            }));
+        }
+    }
+
     pub fn set_collision_filter(&mut self, entity: Entity, filter: CollisionFilter) {
         let i = entity.id as usize;
         if i >= self.alive.len()
@@ -1189,11 +1658,15 @@ impl World {
                 && self.circle_colliders[i].is_none()
                 && self.oriented_box_colliders[i].is_none()
                 && self.capsule_colliders[i].is_none()
+                && self.edge_colliders[i].is_none()
                 && self.convex_polygon_colliders[i].is_none())
         {
             return;
         }
         self.collision_filters[i] = Some(filter);
+        for collider in &mut self.compound_colliders[i] {
+            collider.filter = Some(filter);
+        }
     }
 
     pub fn collision_filter(&self, entity: Entity) -> Option<CollisionFilter> {
@@ -1229,6 +1702,13 @@ impl World {
             })
             .or_else(|| {
                 self.capsule_colliders
+                    .get(index)
+                    .copied()
+                    .flatten()
+                    .map(|collider| collider.layer)
+            })
+            .or_else(|| {
+                self.edge_colliders
                     .get(index)
                     .copied()
                     .flatten()
@@ -1295,6 +1775,14 @@ impl World {
         (index < self.prismatic_joints.len()
             && self.prismatic_joint_generations[index] == id.generation
             && self.prismatic_joints[index].is_some())
+        .then_some(index)
+    }
+
+    fn valid_weld_joint_index(&self, id: WeldJointId) -> Option<usize> {
+        let index = id.index as usize;
+        (index < self.weld_joints.len()
+            && self.weld_joint_generations[index] == id.generation
+            && self.weld_joints[index].is_some())
         .then_some(index)
     }
 
@@ -1392,6 +1880,17 @@ impl World {
                 .with_offset(collider.offset_x, collider.offset_y)
                 .with_enabled(collider.enabled),
             ),
+            EntityTemplateColliderShape::Edge {
+                start_x,
+                start_y,
+                end_x,
+                end_y,
+            } => self.set_edge_collider(
+                entity,
+                EdgeCollider::new(start_x, start_y, end_x, end_y, collider.is_trigger, layer)
+                    .with_offset(collider.offset_x, collider.offset_y)
+                    .with_enabled(collider.enabled),
+            ),
             EntityTemplateColliderShape::ConvexPolygon {
                 vertices,
                 vertex_count,
@@ -1406,6 +1905,9 @@ impl World {
         }
         if let Some(index) = self.valid_index(entity) {
             self.collider_materials[index] = collider.material;
+            if let Some(primary) = self.compound_colliders[index].first_mut() {
+                primary.material = collider.material;
+            }
         }
     }
 
@@ -1453,8 +1955,9 @@ fn wake_rigid_body(body: &mut RigidBody) {
 mod tests {
     use super::*;
     use crate::components::{
-        AngularVelocity, CircleCollider, CollisionFilter, CollisionMask, RigidBodyType, Rotation2D,
-        SpriteAnimation, SpriteAnimationState, MAX_CONVEX_POLYGON_VERTICES,
+        AngularVelocity, CircleCollider, CollisionFilter, CollisionMask, EdgeCollider,
+        RigidBodyType, Rotation2D, SpriteAnimation, SpriteAnimationState,
+        MAX_CONVEX_POLYGON_VERTICES,
     };
 
     #[test]
@@ -1719,6 +2222,80 @@ mod tests {
         assert!(!body.enabled);
         assert_eq!(body.torque, 0.0);
         assert_eq!(body.angular_impulse, 0.0);
+    }
+
+    #[test]
+    fn world_snapshot_restores_physics_state_and_storage_generations() {
+        let mut world = World::default();
+        let a = world.spawn_entity();
+        let b = world.spawn_entity();
+        let joint = world.add_distance_joint(DistanceJoint::new(a, b, 12.0).with_damping(0.25));
+
+        world.set_transform(a, Transform2D { x: 2.0, y: 3.0 });
+        world.set_transform(b, Transform2D { x: 8.0, y: 13.0 });
+        world.set_velocity(a, Velocity { vx: 1.0, vy: -2.0 });
+        world.set_aabb_collider(
+            a,
+            AabbCollider::new(4.0, 5.0, false, CollisionLayer::Player),
+        );
+        world.set_rigid_body(a, RigidBody::dynamic(3.0));
+        world.apply_force(a, Velocity { vx: 10.0, vy: -4.0 });
+        world.apply_impulse(a, Velocity { vx: 2.0, vy: 6.0 });
+        world.apply_torque(a, 7.0);
+        world.apply_angular_impulse(a, 3.0);
+        let body = world.rigid_bodies[a.id as usize].as_mut().unwrap();
+        body.sleep_timer_seconds = 0.5;
+        body.is_sleeping = true;
+        world.rigid_contact_impulses.push(RigidContactImpulse {
+            entity_a: a,
+            entity_b: b,
+            point_x: 4.0,
+            point_y: 5.0,
+            normal_x: 0.0,
+            normal_y: 1.0,
+            normal_impulse: 0.75,
+            tangent_impulse: 0.25,
+        });
+
+        let expected_body = world.rigid_body(a).unwrap();
+        let snapshot = world.snapshot();
+
+        let extra = world.spawn_entity();
+        world.set_transform(b, Transform2D { x: 99.0, y: 100.0 });
+        world.clear_distance_joint(joint);
+        world.rigid_contact_impulses.clear();
+        world.despawn(a);
+
+        assert_ne!(world.rigid_body(a), Some(expected_body));
+
+        world.restore_snapshot(&snapshot);
+
+        assert_eq!(world.alive_count(), 2);
+        assert_eq!(world.transform(a), Some(Transform2D { x: 2.0, y: 3.0 }));
+        assert_eq!(world.transform(b), Some(Transform2D { x: 8.0, y: 13.0 }));
+        assert_eq!(world.velocity(a), Some(Velocity { vx: 1.0, vy: -2.0 }));
+        assert_eq!(world.rigid_body(a), Some(expected_body));
+        assert_eq!(
+            world.distance_joint(joint),
+            Some(DistanceJoint::new(a, b, 12.0).with_damping(0.25))
+        );
+        assert_eq!(world.rigid_contact_impulse_count(), 1);
+        assert_eq!(
+            world.rigid_contact_impulse_at(0),
+            Some(RigidContactImpulse {
+                entity_a: a,
+                entity_b: b,
+                point_x: 4.0,
+                point_y: 5.0,
+                normal_x: 0.0,
+                normal_y: 1.0,
+                normal_impulse: 0.75,
+                tangent_impulse: 0.25,
+            })
+        );
+
+        let after_restore = world.spawn_entity();
+        assert_eq!(after_restore, extra);
     }
 
     #[test]
@@ -2224,6 +2801,29 @@ mod tests {
         assert_eq!(
             world.collision_filter(entity),
             Some(CollisionFilter::from_layer(CollisionLayer::Enemy))
+        );
+    }
+
+    #[test]
+    fn edge_collider_setter_replaces_other_colliders_and_defaults_filter() {
+        let mut world = World::default();
+        let entity = world.spawn_entity();
+        let aabb = AabbCollider::new(6.0, 7.0, false, CollisionLayer::Enemy);
+        let circle = CircleCollider::new(5.0, true, CollisionLayer::Player);
+        let edge = EdgeCollider::new(-4.0, 0.0, 4.0, 0.0, true, CollisionLayer::Wall);
+
+        world.set_aabb_collider(entity, aabb);
+        world.set_circle_collider(entity, circle);
+        world.clear_collider(entity);
+        world.set_edge_collider(entity, edge);
+
+        assert_eq!(world.collider(entity), None);
+        assert_eq!(world.circle_collider(entity), None);
+        assert_eq!(world.capsule_collider(entity), None);
+        assert_eq!(world.edge_collider(entity), Some(edge));
+        assert_eq!(
+            world.collision_filter(entity),
+            Some(CollisionFilter::from_layer(CollisionLayer::Wall))
         );
     }
 

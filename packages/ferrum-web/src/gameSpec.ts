@@ -1,4 +1,6 @@
 import { gameSpecDiagnosticError } from "./diagnostics.js";
+import { resolvePhysicsSpec } from "./physicsSpec.js";
+import type { PhysicsMode, PhysicsSpec, ResolvedPhysicsSpec } from "./physicsSpec.js";
 
 export interface ShooterGameSpec {
   world?: {
@@ -34,6 +36,7 @@ export interface ShooterGameSpec {
   tilemap?: ShooterTilemapSpec;
   camera?: ShooterCameraSpec;
   audio?: ShooterAudioSpec;
+  physics?: PhysicsSpec;
 }
 
 export interface ShooterEnemyPresetSpec {
@@ -431,6 +434,7 @@ export interface ResolvedShooterGameSpec {
   hitPitch: number;
   gameOverVolume: number;
   gameOverPitch: number;
+  physics: ResolvedPhysicsSpec;
 }
 
 export interface ResolvedShooterAtlasAnimation {
@@ -684,6 +688,11 @@ export interface ShooterGameSpecTarget {
 
 export interface ApplyShooterGameSpecOptions {
   textureId?: (name: string) => number;
+  physicsModeOverride?: PhysicsMode;
+}
+
+export interface ResolveShooterGameSpecOptions {
+  physicsModeOverride?: PhysicsMode;
 }
 
 const DEFAULT_SHOOTER_GAME_SPEC: ResolvedShooterGameSpec = {
@@ -784,6 +793,7 @@ const DEFAULT_SHOOTER_GAME_SPEC: ResolvedShooterGameSpec = {
   hitPitch: 1,
   gameOverVolume: 0.65,
   gameOverPitch: 0.9,
+  physics: resolvePhysicsSpec(undefined),
 };
 const TILE_SLOPE_MIN_HORIZONTAL_SPAN = 0.0001;
 const MAX_ATLAS_ANIMATION_FRAMES = 32;
@@ -792,7 +802,10 @@ const DEFAULT_PHYSICS_MATERIAL_FRICTION = 0.4;
 const DEFAULT_PHYSICS_MATERIAL_DENSITY = 1;
 const DEFAULT_PHYSICS_MATERIAL_SCALE = 1;
 
-export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec {
+export function resolveShooterGameSpec(
+  input: unknown,
+  options: ResolveShooterGameSpecOptions = {},
+): ResolvedShooterGameSpec {
   const spec = optionalObject(input, "game spec");
   const world = optionalObject(spec.world, "world");
   const player = optionalObject(spec.player, "player");
@@ -804,6 +817,10 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
   const tilemap = shooterTilemap(spec.tilemap, "tilemap", atlasFrames);
   const camera = optionalObject(spec.camera, "camera");
   const audio = optionalObject(spec.audio, "audio");
+  const physics = resolvePhysicsSpec(spec.physics, {
+    path: "physics",
+    modeOverride: options.physicsModeOverride,
+  });
   const audioEvents = optionalObject(audio.events, "audio.events");
   const cameraDeadZone = optionalObject(camera.deadZone, "camera.deadZone");
   const cameraLookAhead = optionalObject(camera.lookAhead, "camera.lookAhead");
@@ -1045,6 +1062,7 @@ export function resolveShooterGameSpec(input: unknown): ResolvedShooterGameSpec 
     hitPitch: hitAudio.pitch,
     gameOverVolume: gameOverAudio.volume,
     gameOverPitch: gameOverAudio.pitch,
+    physics,
   };
 }
 
@@ -1053,7 +1071,9 @@ export function applyShooterGameSpec(
   input: unknown,
   options: ApplyShooterGameSpecOptions = {},
 ): ResolvedShooterGameSpec {
-  const spec = resolveShooterGameSpec(input);
+  const spec = resolveShooterGameSpec(input, {
+    physicsModeOverride: options.physicsModeOverride,
+  });
   const atlasFrames = [
     atlasFrameApplication(0, spec.playerAtlasFrame, options, "prefabs.player.frame"),
     atlasFrameApplication(1, spec.enemyAtlasFrame, options, "prefabs.enemy.frame"),

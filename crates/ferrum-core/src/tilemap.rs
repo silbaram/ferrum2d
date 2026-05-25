@@ -377,6 +377,55 @@ impl Tilemap {
         true
     }
 
+    pub fn set_tiles_rect(
+        &mut self,
+        layer_index: u32,
+        column: u32,
+        row: u32,
+        width: u32,
+        height: u32,
+        tile_id: u32,
+    ) -> bool {
+        if width == 0 || height == 0 {
+            return false;
+        }
+        let layer_index = layer_index as usize;
+        let (changed, should_rebuild_collision) = {
+            let Some(Some(layer)) = self.layers.get_mut(layer_index) else {
+                return false;
+            };
+            let Some(end_column) = column.checked_add(width) else {
+                return false;
+            };
+            let Some(end_row) = row.checked_add(height) else {
+                return false;
+            };
+            if end_column > layer.columns || end_row > layer.rows {
+                return false;
+            }
+
+            let mut changed = false;
+            for tile_row in row..end_row {
+                for tile_column in column..end_column {
+                    let tile_index = layer.tile_index(tile_column, tile_row);
+                    let Some(tile) = layer.tiles.get_mut(tile_index) else {
+                        return false;
+                    };
+                    if *tile != tile_id {
+                        *tile = tile_id;
+                        changed = true;
+                    }
+                }
+            }
+            (changed, changed && layer.collision)
+        };
+
+        if should_rebuild_collision {
+            self.rebuild_collision_rects_for_layer(layer_index);
+        }
+        changed
+    }
+
     pub fn resolve_dynamic_collisions(&self, world: &mut World) {
         self.resolve_dynamic_collisions_internal(world, None);
     }
@@ -2655,6 +2704,53 @@ mod tests {
         assert!(!tilemap.set_tile(0, 1, 0, 1));
         assert!(!tilemap.set_tile(0, 2, 0, 1));
         assert!(!tilemap.set_tile(4, 0, 0, 1));
+    }
+
+    #[test]
+    fn set_tiles_rect_refreshes_collision_cache_and_render_commands() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_tile_definition(1, 7, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+        tilemap.set_layer(0, 4, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 1, 1, 0]);
+        let camera = Camera2D::new(320.0, 240.0);
+        let mut commands = Vec::new();
+
+        tilemap.append_render_commands(&camera, &mut commands);
+        assert_eq!(commands.len(), 3);
+        assert!(tilemap
+            .nearest_collision_obstacle(Transform2D { x: 5.0, y: 5.0 }, 0.0)
+            .is_some());
+
+        assert!(tilemap.set_tiles_rect(0, 0, 0, 2, 1, 0));
+
+        assert!(tilemap
+            .nearest_collision_obstacle(Transform2D { x: 5.0, y: 5.0 }, 0.0)
+            .is_none());
+        let remaining_hit = tilemap
+            .nearest_collision_obstacle(Transform2D { x: 25.0, y: 5.0 }, 0.0)
+            .expect("remaining solid tile should still be cached as an obstacle");
+        assert_eq!(remaining_hit.tile_index, 2);
+
+        commands.clear();
+        tilemap.append_render_commands(&camera, &mut commands);
+        assert_eq!(commands.len(), 1);
+        assert!((commands[0].x - 20.0).abs() < 0.01);
+
+        let mut stats = TilemapSweepStats::default();
+        let sweep_hit = tilemap
+            .swept_aabb_contact(
+                Transform2D { x: 15.0, y: 5.0 },
+                test_collider(1.0, 1.0),
+                Velocity { vx: 20.0, vy: 0.0 },
+                &mut stats,
+            )
+            .expect("rect edit should leave remaining solid tiles in swept collision cache");
+        assert_eq!(sweep_hit.tile_index, 2);
+        assert!(stats.candidate_tiles > 0);
+
+        assert!(!tilemap.set_tiles_rect(0, 0, 0, 2, 1, 0));
+        assert!(!tilemap.set_tiles_rect(0, 0, 0, 0, 1, 1));
+        assert!(!tilemap.set_tiles_rect(0, 3, 0, 2, 1, 1));
+        assert!(!tilemap.set_tiles_rect(4, 0, 0, 1, 1, 1));
     }
 
     #[test]

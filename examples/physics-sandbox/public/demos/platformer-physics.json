@@ -1,0 +1,80 @@
+{
+  "mode": "rigid",
+  "gravity": [0, 980],
+  "continuous": true,
+  "solver": {
+    "fixedTimestep": true,
+    "stepSeconds": 0.0166666667,
+    "velocityIterations": 8,
+    "positionIterations": 6,
+    "sleep": true
+  },
+  "materials": {
+    "player": { "friction": 0.2, "restitution": 0, "density": 1 },
+    "platform": { "friction": 0.85, "restitution": 0, "density": 1 },
+    "ice": { "friction": 0.03, "restitution": 0.05, "density": 1 }
+  },
+  "layers": {
+    "world": { "mask": ["player"] },
+    "player": { "mask": ["world"] }
+  },
+  "bodies": {
+    "ground": {
+      "type": "static",
+      "position": [400, 452],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [760, 24] }
+    },
+    "slope": {
+      "type": "static",
+      "position": [250, 350],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "edge", "start": [-90, 42], "end": [90, -42] }
+    },
+    "icePlatform": {
+      "type": "static",
+      "position": [540, 318],
+      "material": "ice",
+      "layer": "world",
+      "collider": { "shape": "orientedBox", "size": [170, 20], "rotationRadians": -0.08 }
+    },
+    "movingPlatform": {
+      "type": "kinematic",
+      "position": [470, 230],
+      "velocity": [60, 0],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [110, 18] }
+    },
+    "playerCapsule": {
+      "type": "dynamic",
+      "position": [150, 120],
+      "material": "player",
+      "layer": "player",
+      "linearDamping": 0.15,
+      "angularDamping": 0.8,
+      "collider": { "shape": "capsule", "start": [0, -18], "end": [0, 18], "radius": 13 }
+    },
+    "stepBlock": {
+      "type": "static",
+      "position": [665, 424],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [64, 32] }
+    }
+  },
+  "joints": {
+    "movingPlatformRail": {
+      "type": "prismatic",
+      "bodyA": "world",
+      "bodyB": "movingPlatform",
+      "anchor": [470, 230],
+      "localAxisA": [1, 0],
+      "limit": { "enabled": true, "lower": -120, "upper": 120 },
+      "motor": { "enabled": true, "speed": 45, "maxForce": 80 }
+    }
+  },
+  "debug": { "colliders": true, "contacts": true, "joints": true, "sleeping": true }
+}

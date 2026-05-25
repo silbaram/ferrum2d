@@ -533,6 +533,25 @@ fn collider_shape_or_default(
                 default
             }
         }
+        EntityTemplateColliderShape::Edge {
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+        } => {
+            let dx = end_x - start_x;
+            let dy = end_y - start_y;
+            if start_x.is_finite()
+                && start_y.is_finite()
+                && end_x.is_finite()
+                && end_y.is_finite()
+                && dx * dx + dy * dy > 0.0001 * 0.0001
+            {
+                shape
+            } else {
+                default
+            }
+        }
         EntityTemplateColliderShape::ConvexPolygon {
             vertices,
             vertex_count,
@@ -565,6 +584,7 @@ fn default_half_width(shape: EntityTemplateColliderShape) -> f32 {
             radius,
             ..
         } => ((start_x - end_x).abs() + radius * 2.0) * 0.5,
+        EntityTemplateColliderShape::Edge { start_x, end_x, .. } => (start_x - end_x).abs() * 0.5,
         EntityTemplateColliderShape::ConvexPolygon {
             vertices,
             vertex_count,
@@ -596,6 +616,7 @@ fn default_half_height(shape: EntityTemplateColliderShape) -> f32 {
             radius,
             ..
         } => ((start_y - end_y).abs() + radius * 2.0) * 0.5,
+        EntityTemplateColliderShape::Edge { start_y, end_y, .. } => (start_y - end_y).abs() * 0.5,
         EntityTemplateColliderShape::ConvexPolygon {
             vertices,
             vertex_count,

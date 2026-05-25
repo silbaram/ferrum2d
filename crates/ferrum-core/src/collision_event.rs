@@ -289,6 +289,12 @@ fn entity_has_trigger_collider(world: &World, index: usize) -> bool {
             .flatten()
             .is_some_and(|collider| collider.is_trigger)
         || world
+            .edge_colliders
+            .get(index)
+            .copied()
+            .flatten()
+            .is_some_and(|collider| collider.is_trigger)
+        || world
             .convex_polygon_colliders
             .get(index)
             .copied()

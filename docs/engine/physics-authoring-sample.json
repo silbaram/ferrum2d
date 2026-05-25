@@ -1,0 +1,94 @@
+{
+  "physics": {
+    "mode": "rigid",
+    "gravity": [0, 760],
+    "continuous": true,
+    "solver": {
+      "fixedTimestep": true,
+      "stepSeconds": 0.0166666667,
+      "velocityIterations": 8,
+      "positionIterations": 6,
+      "sleep": true
+    },
+    "materials": {
+      "wood": {
+        "friction": 0.6,
+        "restitution": 0.1,
+        "density": 0.8
+      }
+    },
+    "layers": {
+      "world": {
+        "mask": ["dynamic"]
+      },
+      "dynamic": {
+        "mask": ["world", "dynamic"]
+      }
+    },
+    "bodies": {
+      "ground": {
+        "type": "static",
+        "position": [320, 240],
+        "layer": "world",
+        "collider": {
+          "shape": "box",
+          "size": [480, 24]
+        }
+      },
+      "crate": {
+        "type": "dynamic",
+        "position": [320, 120],
+        "material": "wood",
+        "layer": "dynamic",
+        "colliders": [
+          {
+            "shape": "box",
+            "size": [32, 32],
+            "material": "wood"
+          },
+          {
+            "shape": "circle",
+            "radius": 8,
+            "offset": [20, 0],
+            "trigger": true
+          }
+        ]
+      }
+    },
+    "joints": {},
+    "debug": {
+      "colliders": true,
+      "contacts": true,
+      "broadphase": true
+    }
+  },
+  "physicsEditor": {
+    "version": 1,
+    "displayName": "Physics Authoring Sample",
+    "description": "Editor/AI metadata is stripped before runtime apply.",
+    "lockedFields": ["physics.bodies.crate.colliders.0.shape"],
+    "agentEditableFields": [
+      "physics.bodies.crate.position",
+      "physics.bodies.crate.colliders.1.offset"
+    ],
+    "bodies": {
+      "ground": {
+        "displayName": "Ground",
+        "gizmo": "box",
+        "lockedFields": ["physics.bodies.ground.type"]
+      },
+      "crate": {
+        "displayName": "Crate",
+        "gizmo": "box",
+        "preset": "wood-crate",
+        "agentEditableFields": ["physics.bodies.crate.position"]
+      }
+    },
+    "presets": {
+      "wood-crate": {
+        "displayName": "Wood Crate",
+        "target": "body"
+      }
+    }
+  }
+}

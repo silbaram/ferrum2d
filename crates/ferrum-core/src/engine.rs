@@ -7,15 +7,16 @@ use crate::breakout_scene::{
 use crate::camera::{Camera2D, CameraPresetConfig};
 use crate::collision::{
     AabbBounds, CollisionContact, CollisionManifold, CollisionQueryShape, CollisionSystem,
-    PhysicsDebugLine, RaycastHit, ShapeCastHit,
+    PhysicsDebugLine, RaycastHit, ShapeCastHit, PHYSICS_DEBUG_DEFAULT,
 };
 use crate::collision_event::{CollisionEvent, CollisionEventCounts, CollisionEventTracker};
 use crate::components::{
     AabbCollider, AngularVelocity, CapsuleCollider, CircleCollider, CollisionFilter,
-    CollisionLayer, CollisionMask, ConvexPolygonCollider, DistanceJoint, DistanceJointId,
-    GearJoint, GearJointId, OrientedBoxCollider, PhysicsMaterial, PrismaticJoint, PrismaticJointId,
-    RevoluteJoint, RevoluteJointId, RigidBody, RigidBodyType, RigidContactImpulse, RopeJoint,
-    RopeJointId, Rotation2D, SpringJoint, SpringJointId, SpriteFrame, Transform2D, Velocity,
+    CollisionLayer, CollisionMask, CompoundCollider, CompoundColliderShape, ConvexPolygonCollider,
+    DistanceJoint, DistanceJointId, EdgeCollider, GearJoint, GearJointId, OrientedBoxCollider,
+    PhysicsMaterial, PrismaticJoint, PrismaticJointId, RevoluteJoint, RevoluteJointId, RigidBody,
+    RigidBodyType, RigidContactImpulse, RopeJoint, RopeJointId, Rotation2D, SpringJoint,
+    SpringJointId, SpriteFrame, Transform2D, Velocity, WeldJoint, WeldJointId,
     MAX_CONVEX_POLYGON_VERTICES,
 };
 use crate::entity::Entity;
@@ -50,6 +51,8 @@ const PHYSICS_COLLIDER_TYPE_CIRCLE: u32 = 2;
 const PHYSICS_COLLIDER_TYPE_CAPSULE: u32 = 3;
 const PHYSICS_COLLIDER_TYPE_ORIENTED_BOX: u32 = 4;
 const PHYSICS_COLLIDER_TYPE_CONVEX_POLYGON: u32 = 5;
+const PHYSICS_COLLIDER_TYPE_EDGE: u32 = 6;
+const PHYSICS_EDGE_BODY_RADIUS: f32 = 0.0001;
 const PHYSICS_LAYER_PLAYER: u32 = 0;
 const PHYSICS_LAYER_ENEMY: u32 = 1;
 const PHYSICS_LAYER_BULLET: u32 = 2;
@@ -60,6 +63,7 @@ const PHYSICS_JOINT_SPRING: u32 = 2;
 const PHYSICS_JOINT_REVOLUTE: u32 = 3;
 const PHYSICS_JOINT_PRISMATIC: u32 = 4;
 const PHYSICS_JOINT_GEAR: u32 = 5;
+const PHYSICS_JOINT_WELD: u32 = 6;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum ActiveScene {
@@ -150,6 +154,28 @@ struct PhysicsEntitySnapshot {
     max_contact_baumgarte_bias_velocity_scale: f32,
     contact_position_correction_scale: f32,
     contact_position_correction_slop_scale: f32,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct PhysicsBodyColliderSnapshot {
+    collider_index: u32,
+    collider_type: u32,
+    collider_enabled: bool,
+    collider_is_trigger: bool,
+    collider_offset_x: f32,
+    collider_offset_y: f32,
+    collider_material_override: bool,
+    collider_restitution: f32,
+    collider_friction: f32,
+    collider_surface_velocity_x: f32,
+    collider_surface_velocity_y: f32,
+    collider_density: f32,
+    collider_contact_baumgarte_bias_scale: f32,
+    collider_max_contact_baumgarte_bias_velocity_scale: f32,
+    collider_contact_position_correction_scale: f32,
+    collider_contact_position_correction_slop_scale: f32,
+    collider_category_bits: u32,
+    collider_mask_bits: u32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -455,6 +481,7 @@ pub struct Engine {
     collision_events: Vec<CollisionEvent>,
     physics_debug_lines: Vec<PhysicsDebugLine>,
     physics_debug_lines_enabled: bool,
+    physics_debug_line_flags: u32,
     collision_event_tracker: CollisionEventTracker,
     collision_event_counts: CollisionEventCounts,
     physics_counters: PhysicsCounters,
@@ -468,6 +495,7 @@ pub struct Engine {
     physics_body_manifold_hits: Vec<PhysicsBodyManifoldHit>,
     physics_rigid_contact_impulse_hits: Vec<PhysicsRigidContactImpulseHit>,
     physics_entity_snapshot: PhysicsEntitySnapshot,
+    physics_body_collider_snapshot: PhysicsBodyColliderSnapshot,
     physics_joint_snapshot: PhysicsJointSnapshot,
     rigid_body_step_stats: RigidBodyStepStats,
     fixed_timestep: FixedTimestep,
@@ -500,6 +528,7 @@ impl Engine {
             collision_events: Vec::with_capacity(128),
             physics_debug_lines: Vec::with_capacity(64),
             physics_debug_lines_enabled: false,
+            physics_debug_line_flags: PHYSICS_DEBUG_DEFAULT,
             collision_event_tracker: CollisionEventTracker::default(),
             collision_event_counts: CollisionEventCounts::default(),
             physics_counters: PhysicsCounters::default(),
@@ -513,6 +542,7 @@ impl Engine {
             physics_body_manifold_hits: Vec::with_capacity(16),
             physics_rigid_contact_impulse_hits: Vec::with_capacity(16),
             physics_entity_snapshot: PhysicsEntitySnapshot::default(),
+            physics_body_collider_snapshot: PhysicsBodyColliderSnapshot::default(),
             physics_joint_snapshot: PhysicsJointSnapshot::default(),
             rigid_body_step_stats: RigidBodyStepStats::default(),
             fixed_timestep: FixedTimestep::default(),
@@ -665,6 +695,20 @@ impl Engine {
     ) -> bool {
         self.active_scene = ActiveScene::Shooter;
         self.tilemap.set_tile(layer_index, column, row, tile_id)
+    }
+
+    pub fn set_shooter_tilemap_tiles_rect(
+        &mut self,
+        layer_index: u32,
+        column: u32,
+        row: u32,
+        width: u32,
+        height: u32,
+        tile_id: u32,
+    ) -> bool {
+        self.active_scene = ActiveScene::Shooter;
+        self.tilemap
+            .set_tiles_rect(layer_index, column, row, width, height, tile_id)
     }
 
     pub fn clear_shooter_waves(&mut self) {
@@ -1552,6 +1596,13 @@ impl Engine {
         }
     }
 
+    pub fn set_physics_debug_line_flags(&mut self, flags: u32) {
+        self.physics_debug_line_flags = flags;
+        if flags == 0 {
+            self.physics_debug_lines.clear();
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_physics_aabb_body(
         &mut self,
@@ -1733,6 +1784,69 @@ impl Engine {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn spawn_physics_edge_body(
+        &mut self,
+        x: f32,
+        y: f32,
+        start_x: f32,
+        start_y: f32,
+        end_x: f32,
+        end_y: f32,
+        body_type: u32,
+        mass_or_density: f32,
+        use_density: bool,
+        layer: u32,
+        category_bits: u32,
+        mask_bits: u32,
+        is_trigger: bool,
+        collider_enabled: bool,
+        body_enabled: bool,
+        can_sleep: bool,
+    ) -> bool {
+        if !Self::valid_transform(x, y) || !Self::valid_edge(start_x, start_y, end_x, end_y) {
+            self.physics_entity_snapshot = PhysicsEntitySnapshot::default();
+            return false;
+        }
+        let Some(body) = Self::rigid_body_for_edge(
+            body_type,
+            mass_or_density,
+            use_density,
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            body_enabled,
+            can_sleep,
+        ) else {
+            self.physics_entity_snapshot = PhysicsEntitySnapshot::default();
+            return false;
+        };
+        let entity = self.world.spawn_entity();
+        self.world.set_transform(entity, Transform2D { x, y });
+        self.world.set_edge_collider(
+            entity,
+            EdgeCollider::new(
+                start_x,
+                start_y,
+                end_x,
+                end_y,
+                is_trigger,
+                Self::collision_layer_from_code(layer),
+            )
+            .with_enabled(collider_enabled),
+        );
+        self.world.set_collision_filter(
+            entity,
+            CollisionFilter::new(
+                CollisionMask::from_bits(category_bits),
+                CollisionMask::from_bits(mask_bits),
+            ),
+        );
+        self.world.set_rigid_body(entity, body);
+        self.store_physics_entity_snapshot(entity)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_physics_oriented_box_body(
         &mut self,
         x: f32,
@@ -1857,6 +1971,323 @@ impl Engine {
         self.store_physics_entity_snapshot(entity)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_physics_aabb_collider(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        half_width: f32,
+        half_height: f32,
+        offset_x: f32,
+        offset_y: f32,
+        layer: u32,
+        category_bits: u32,
+        mask_bits: u32,
+        is_trigger: bool,
+        collider_enabled: bool,
+    ) -> bool {
+        if !Self::valid_positive(half_width)
+            || !Self::valid_positive(half_height)
+            || !Self::valid_transform(offset_x, offset_y)
+        {
+            return false;
+        }
+        self.add_physics_compound_collider(
+            entity_id,
+            entity_generation,
+            CompoundColliderShape::Aabb(
+                AabbCollider::new(
+                    half_width,
+                    half_height,
+                    is_trigger,
+                    Self::collision_layer_from_code(layer),
+                )
+                .with_offset(offset_x, offset_y)
+                .with_enabled(collider_enabled),
+            ),
+            category_bits,
+            mask_bits,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_physics_circle_collider(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        radius: f32,
+        offset_x: f32,
+        offset_y: f32,
+        layer: u32,
+        category_bits: u32,
+        mask_bits: u32,
+        is_trigger: bool,
+        collider_enabled: bool,
+    ) -> bool {
+        if !Self::valid_positive(radius) || !Self::valid_transform(offset_x, offset_y) {
+            return false;
+        }
+        self.add_physics_compound_collider(
+            entity_id,
+            entity_generation,
+            CompoundColliderShape::Circle(
+                CircleCollider::new(radius, is_trigger, Self::collision_layer_from_code(layer))
+                    .with_offset(offset_x, offset_y)
+                    .with_enabled(collider_enabled),
+            ),
+            category_bits,
+            mask_bits,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_physics_capsule_collider(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        start_x: f32,
+        start_y: f32,
+        end_x: f32,
+        end_y: f32,
+        radius: f32,
+        offset_x: f32,
+        offset_y: f32,
+        layer: u32,
+        category_bits: u32,
+        mask_bits: u32,
+        is_trigger: bool,
+        collider_enabled: bool,
+    ) -> bool {
+        if !Self::valid_transform(start_x, start_y)
+            || !Self::valid_transform(end_x, end_y)
+            || !Self::valid_positive(radius)
+            || !Self::valid_transform(offset_x, offset_y)
+        {
+            return false;
+        }
+        self.add_physics_compound_collider(
+            entity_id,
+            entity_generation,
+            CompoundColliderShape::Capsule(
+                CapsuleCollider::new(
+                    start_x,
+                    start_y,
+                    end_x,
+                    end_y,
+                    radius,
+                    is_trigger,
+                    Self::collision_layer_from_code(layer),
+                )
+                .with_offset(offset_x, offset_y)
+                .with_enabled(collider_enabled),
+            ),
+            category_bits,
+            mask_bits,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_physics_edge_collider(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        start_x: f32,
+        start_y: f32,
+        end_x: f32,
+        end_y: f32,
+        offset_x: f32,
+        offset_y: f32,
+        layer: u32,
+        category_bits: u32,
+        mask_bits: u32,
+        is_trigger: bool,
+        collider_enabled: bool,
+    ) -> bool {
+        if !Self::valid_edge(start_x, start_y, end_x, end_y)
+            || !Self::valid_transform(offset_x, offset_y)
+        {
+            return false;
+        }
+        self.add_physics_compound_collider(
+            entity_id,
+            entity_generation,
+            CompoundColliderShape::Edge(
+                EdgeCollider::new(
+                    start_x,
+                    start_y,
+                    end_x,
+                    end_y,
+                    is_trigger,
+                    Self::collision_layer_from_code(layer),
+                )
+                .with_offset(offset_x, offset_y)
+                .with_enabled(collider_enabled),
+            ),
+            category_bits,
+            mask_bits,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_physics_oriented_box_collider(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        half_width: f32,
+        half_height: f32,
+        rotation_radians: f32,
+        offset_x: f32,
+        offset_y: f32,
+        layer: u32,
+        category_bits: u32,
+        mask_bits: u32,
+        is_trigger: bool,
+        collider_enabled: bool,
+    ) -> bool {
+        if !Self::valid_positive(half_width)
+            || !Self::valid_positive(half_height)
+            || !rotation_radians.is_finite()
+            || !Self::valid_transform(offset_x, offset_y)
+        {
+            return false;
+        }
+        self.add_physics_compound_collider(
+            entity_id,
+            entity_generation,
+            CompoundColliderShape::OrientedBox(
+                OrientedBoxCollider::new(
+                    half_width,
+                    half_height,
+                    rotation_radians,
+                    is_trigger,
+                    Self::collision_layer_from_code(layer),
+                )
+                .with_offset(offset_x, offset_y)
+                .with_enabled(collider_enabled),
+            ),
+            category_bits,
+            mask_bits,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_physics_convex_polygon_collider(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        vertex_values: Vec<f32>,
+        rotation_radians: f32,
+        offset_x: f32,
+        offset_y: f32,
+        layer: u32,
+        category_bits: u32,
+        mask_bits: u32,
+        is_trigger: bool,
+        collider_enabled: bool,
+    ) -> bool {
+        if !rotation_radians.is_finite() || !Self::valid_transform(offset_x, offset_y) {
+            return false;
+        }
+        let Some((vertices, vertex_count)) = Self::convex_polygon_vertices(&vertex_values) else {
+            return false;
+        };
+        self.add_physics_compound_collider(
+            entity_id,
+            entity_generation,
+            CompoundColliderShape::ConvexPolygon(
+                ConvexPolygonCollider::new(
+                    vertices,
+                    vertex_count,
+                    is_trigger,
+                    Self::collision_layer_from_code(layer),
+                )
+                .with_rotation(rotation_radians)
+                .with_offset(offset_x, offset_y)
+                .with_enabled(collider_enabled),
+            ),
+            category_bits,
+            mask_bits,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_physics_compound_collider_material(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        collider_index: u32,
+        restitution: f32,
+        friction: f32,
+        surface_velocity_x: f32,
+        surface_velocity_y: f32,
+        density: f32,
+        contact_baumgarte_bias_scale: f32,
+        max_contact_baumgarte_bias_velocity_scale: f32,
+        contact_position_correction_scale: f32,
+        contact_position_correction_slop_scale: f32,
+    ) -> bool {
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return false;
+        };
+        let material = PhysicsMaterial {
+            restitution,
+            friction,
+            surface_velocity: Velocity {
+                vx: surface_velocity_x,
+                vy: surface_velocity_y,
+            },
+            density,
+            contact_baumgarte_bias_scale,
+            max_contact_baumgarte_bias_velocity_scale,
+            contact_position_correction_scale,
+            contact_position_correction_slop_scale,
+        };
+        if !Self::valid_physics_material_parts(
+            material.restitution,
+            material.friction,
+            material.surface_velocity.vx,
+            material.surface_velocity.vy,
+            material.density,
+            material.contact_baumgarte_bias_scale,
+            material.max_contact_baumgarte_bias_velocity_scale,
+            material.contact_position_correction_scale,
+            material.contact_position_correction_slop_scale,
+        ) {
+            return false;
+        }
+        if !self
+            .world
+            .set_compound_collider_material(entity, collider_index, material)
+        {
+            return false;
+        }
+        self.store_physics_entity_snapshot(entity)
+    }
+
+    pub fn physics_body_collider_count(&self, entity_id: u32, entity_generation: u32) -> u32 {
+        self.entity_from_handle(entity_id, entity_generation)
+            .map(|entity| self.world.compound_collider_count(entity) as u32)
+            .unwrap_or(0)
+    }
+
+    pub fn query_physics_body_collider(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        collider_index: u32,
+    ) -> bool {
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            self.physics_body_collider_snapshot = PhysicsBodyColliderSnapshot::default();
+            return false;
+        };
+        let Some(snapshot) = self.physics_body_collider_snapshot(entity, collider_index) else {
+            self.physics_body_collider_snapshot = PhysicsBodyColliderSnapshot::default();
+            return false;
+        };
+        self.physics_body_collider_snapshot = snapshot;
+        true
+    }
+
     pub fn query_physics_entity(&mut self, entity_id: u32, entity_generation: u32) -> bool {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             self.physics_entity_snapshot = PhysicsEntitySnapshot::default();
@@ -1872,6 +2303,26 @@ impl Engine {
         self.world.despawn(entity);
         self.clear_physics_history();
         true
+    }
+
+    pub fn set_physics_body_position(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        x: f32,
+        y: f32,
+    ) -> bool {
+        if !Self::valid_transform(x, y) {
+            return false;
+        }
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return false;
+        };
+        if self.world.rigid_body(entity).is_none() {
+            return false;
+        }
+        self.world.set_transform(entity, Transform2D { x, y });
+        self.store_physics_entity_snapshot(entity)
     }
 
     pub fn set_physics_body_velocity(
@@ -2002,6 +2453,11 @@ impl Engine {
                 .set_capsule_collider(entity, collider.with_offset(offset_x, offset_y));
             return self.store_physics_entity_snapshot(entity);
         }
+        if let Some(collider) = self.world.edge_collider(entity) {
+            self.world
+                .set_edge_collider(entity, collider.with_offset(offset_x, offset_y));
+            return self.store_physics_entity_snapshot(entity);
+        }
         if let Some(collider) = self.world.convex_polygon_collider(entity) {
             self.world
                 .set_convex_polygon_collider(entity, collider.with_offset(offset_x, offset_y));
@@ -2037,6 +2493,11 @@ impl Engine {
         if let Some(collider) = self.world.capsule_collider(entity) {
             self.world
                 .set_capsule_collider(entity, collider.with_enabled(enabled));
+            return self.store_physics_entity_snapshot(entity);
+        }
+        if let Some(collider) = self.world.edge_collider(entity) {
+            self.world
+                .set_edge_collider(entity, collider.with_enabled(enabled));
             return self.store_physics_entity_snapshot(entity);
         }
         if let Some(collider) = self.world.convex_polygon_collider(entity) {
@@ -2549,6 +3010,62 @@ impl Engine {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn spawn_physics_weld_joint(
+        &mut self,
+        entity_a_id: u32,
+        entity_a_generation: u32,
+        entity_b_id: u32,
+        entity_b_generation: u32,
+        local_anchor_a_x: f32,
+        local_anchor_a_y: f32,
+        local_anchor_b_x: f32,
+        local_anchor_b_y: f32,
+        reference_angle: f32,
+        stiffness: f32,
+        damping: f32,
+        angular_stiffness: f32,
+        angular_damping: f32,
+        break_distance: f32,
+        break_angle: f32,
+        enabled: bool,
+    ) -> bool {
+        if !Self::valid_transform(local_anchor_a_x, local_anchor_a_y)
+            || !Self::valid_transform(local_anchor_b_x, local_anchor_b_y)
+            || !reference_angle.is_finite()
+            || !Self::valid_unit_interval(stiffness)
+            || !Self::valid_unit_interval(damping)
+            || !Self::valid_unit_interval(angular_stiffness)
+            || !Self::valid_unit_interval(angular_damping)
+            || !Self::valid_break_limit(break_distance)
+            || !Self::valid_break_limit(break_angle)
+        {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        }
+        let Some(entity_a) = self.entity_from_handle(entity_a_id, entity_a_generation) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
+        let Some(entity_b) = self.entity_from_handle(entity_b_id, entity_b_generation) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
+        let joint = WeldJoint::new(entity_a, entity_b)
+            .with_local_anchor_a(local_anchor_a_x, local_anchor_a_y)
+            .with_local_anchor_b(local_anchor_b_x, local_anchor_b_y)
+            .with_reference_angle(reference_angle)
+            .with_stiffness(stiffness)
+            .with_damping(damping)
+            .with_angular_stiffness(angular_stiffness)
+            .with_angular_damping(angular_damping)
+            .with_break_distance(break_distance)
+            .with_break_angle(break_angle)
+            .with_enabled(enabled);
+        let id = self.world.add_weld_joint(joint);
+        self.store_weld_joint_snapshot(id, joint)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_physics_gear_joint(
         &mut self,
         entity_a_id: u32,
@@ -2671,6 +3188,21 @@ impl Engine {
                         joint,
                     )
                 }),
+            PHYSICS_JOINT_WELD => self
+                .world
+                .weld_joint(WeldJointId {
+                    index: joint_index,
+                    generation: joint_generation,
+                })
+                .map(|joint| {
+                    self.store_weld_joint_snapshot(
+                        WeldJointId {
+                            index: joint_index,
+                            generation: joint_generation,
+                        },
+                        joint,
+                    )
+                }),
             PHYSICS_JOINT_GEAR => self
                 .world
                 .gear_joint(GearJointId {
@@ -2732,6 +3264,13 @@ impl Engine {
             PHYSICS_JOINT_PRISMATIC => self
                 .world
                 .clear_prismatic_joint(PrismaticJointId {
+                    index: joint_index,
+                    generation: joint_generation,
+                })
+                .is_some(),
+            PHYSICS_JOINT_WELD => self
+                .world
+                .clear_weld_joint(WeldJointId {
                     index: joint_index,
                     generation: joint_generation,
                 })
@@ -2823,6 +3362,19 @@ impl Engine {
                 joint.enabled = enabled;
                 self.world.set_prismatic_joint(id, joint);
                 self.store_prismatic_joint_snapshot(id, joint)
+            }
+            PHYSICS_JOINT_WELD => {
+                let id = WeldJointId {
+                    index: joint_index,
+                    generation: joint_generation,
+                };
+                let Some(mut joint) = self.world.weld_joint(id) else {
+                    self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+                    return false;
+                };
+                joint.enabled = enabled;
+                self.world.set_weld_joint(id, joint);
+                self.store_weld_joint_snapshot(id, joint)
             }
             PHYSICS_JOINT_GEAR => {
                 let id = GearJointId {
@@ -3575,6 +4127,85 @@ impl Engine {
             .contact_position_correction_slop_scale
     }
 
+    pub fn physics_body_collider_index(&self) -> u32 {
+        self.physics_body_collider_snapshot.collider_index
+    }
+
+    pub fn physics_body_collider_type(&self) -> u32 {
+        self.physics_body_collider_snapshot.collider_type
+    }
+
+    pub fn physics_body_collider_enabled(&self) -> bool {
+        self.physics_body_collider_snapshot.collider_enabled
+    }
+
+    pub fn physics_body_collider_is_trigger(&self) -> bool {
+        self.physics_body_collider_snapshot.collider_is_trigger
+    }
+
+    pub fn physics_body_collider_offset_x(&self) -> f32 {
+        self.physics_body_collider_snapshot.collider_offset_x
+    }
+
+    pub fn physics_body_collider_offset_y(&self) -> f32 {
+        self.physics_body_collider_snapshot.collider_offset_y
+    }
+
+    pub fn physics_body_collider_material_override(&self) -> bool {
+        self.physics_body_collider_snapshot
+            .collider_material_override
+    }
+
+    pub fn physics_body_collider_restitution(&self) -> f32 {
+        self.physics_body_collider_snapshot.collider_restitution
+    }
+
+    pub fn physics_body_collider_friction(&self) -> f32 {
+        self.physics_body_collider_snapshot.collider_friction
+    }
+
+    pub fn physics_body_collider_surface_velocity_x(&self) -> f32 {
+        self.physics_body_collider_snapshot
+            .collider_surface_velocity_x
+    }
+
+    pub fn physics_body_collider_surface_velocity_y(&self) -> f32 {
+        self.physics_body_collider_snapshot
+            .collider_surface_velocity_y
+    }
+
+    pub fn physics_body_collider_density(&self) -> f32 {
+        self.physics_body_collider_snapshot.collider_density
+    }
+
+    pub fn physics_body_collider_contact_baumgarte_bias_scale(&self) -> f32 {
+        self.physics_body_collider_snapshot
+            .collider_contact_baumgarte_bias_scale
+    }
+
+    pub fn physics_body_collider_max_contact_baumgarte_bias_velocity_scale(&self) -> f32 {
+        self.physics_body_collider_snapshot
+            .collider_max_contact_baumgarte_bias_velocity_scale
+    }
+
+    pub fn physics_body_collider_contact_position_correction_scale(&self) -> f32 {
+        self.physics_body_collider_snapshot
+            .collider_contact_position_correction_scale
+    }
+
+    pub fn physics_body_collider_contact_position_correction_slop_scale(&self) -> f32 {
+        self.physics_body_collider_snapshot
+            .collider_contact_position_correction_slop_scale
+    }
+
+    pub fn physics_body_collider_category_bits(&self) -> u32 {
+        self.physics_body_collider_snapshot.collider_category_bits
+    }
+
+    pub fn physics_body_collider_mask_bits(&self) -> u32 {
+        self.physics_body_collider_snapshot.collider_mask_bits
+    }
+
     pub fn physics_joint_type(&self) -> u32 {
         self.physics_joint_snapshot.joint_type
     }
@@ -4194,6 +4825,100 @@ impl Engine {
         }
     }
 
+    fn physics_body_collider_snapshot(
+        &self,
+        entity: Entity,
+        collider_index: u32,
+    ) -> Option<PhysicsBodyColliderSnapshot> {
+        let body = self.world.rigid_body(entity)?;
+        let entity_index = entity.id as usize;
+        let collider = self
+            .world
+            .compound_collider_at(entity_index, collider_index as usize)?;
+        let filter = self
+            .world
+            .compound_collision_filter_at(entity_index, collider_index as usize)
+            .unwrap_or_else(|| CollisionFilter::from_layer(collider.layer()));
+        let material_override = collider.material.is_some();
+        let material = collider.material.unwrap_or(body.material);
+        let (
+            collider_type,
+            collider_enabled,
+            collider_is_trigger,
+            collider_offset_x,
+            collider_offset_y,
+        ) = Self::compound_collider_state(collider);
+        Some(PhysicsBodyColliderSnapshot {
+            collider_index,
+            collider_type,
+            collider_enabled,
+            collider_is_trigger,
+            collider_offset_x,
+            collider_offset_y,
+            collider_material_override: material_override,
+            collider_restitution: material.restitution,
+            collider_friction: material.friction,
+            collider_surface_velocity_x: material.surface_velocity.vx,
+            collider_surface_velocity_y: material.surface_velocity.vy,
+            collider_density: material.density,
+            collider_contact_baumgarte_bias_scale: material.contact_baumgarte_bias_scale,
+            collider_max_contact_baumgarte_bias_velocity_scale: material
+                .max_contact_baumgarte_bias_velocity_scale,
+            collider_contact_position_correction_scale: material.contact_position_correction_scale,
+            collider_contact_position_correction_slop_scale: material
+                .contact_position_correction_slop_scale,
+            collider_category_bits: filter.category.bits,
+            collider_mask_bits: filter.mask.bits,
+        })
+    }
+
+    fn compound_collider_state(collider: CompoundCollider) -> (u32, bool, bool, f32, f32) {
+        match collider.shape {
+            CompoundColliderShape::Aabb(collider) => (
+                PHYSICS_COLLIDER_TYPE_AABB,
+                collider.enabled,
+                collider.is_trigger,
+                collider.offset_x,
+                collider.offset_y,
+            ),
+            CompoundColliderShape::Circle(collider) => (
+                PHYSICS_COLLIDER_TYPE_CIRCLE,
+                collider.enabled,
+                collider.is_trigger,
+                collider.offset_x,
+                collider.offset_y,
+            ),
+            CompoundColliderShape::Capsule(collider) => (
+                PHYSICS_COLLIDER_TYPE_CAPSULE,
+                collider.enabled,
+                collider.is_trigger,
+                collider.offset_x,
+                collider.offset_y,
+            ),
+            CompoundColliderShape::Edge(collider) => (
+                PHYSICS_COLLIDER_TYPE_EDGE,
+                collider.enabled,
+                collider.is_trigger,
+                collider.offset_x,
+                collider.offset_y,
+            ),
+            CompoundColliderShape::OrientedBox(collider) => (
+                PHYSICS_COLLIDER_TYPE_ORIENTED_BOX,
+                collider.enabled,
+                collider.is_trigger,
+                collider.offset_x,
+                collider.offset_y,
+            ),
+            CompoundColliderShape::ConvexPolygon(collider) => (
+                PHYSICS_COLLIDER_TYPE_CONVEX_POLYGON,
+                collider.enabled,
+                collider.is_trigger,
+                collider.offset_x,
+                collider.offset_y,
+            ),
+        }
+    }
+
     fn physics_collider_snapshot(&self, entity: Entity) -> (u32, bool, bool, f32, f32) {
         if let Some(collider) = self.world.collider(entity) {
             return (
@@ -4216,6 +4941,15 @@ impl Engine {
         if let Some(collider) = self.world.capsule_collider(entity) {
             return (
                 PHYSICS_COLLIDER_TYPE_CAPSULE,
+                collider.enabled,
+                collider.is_trigger,
+                collider.offset_x,
+                collider.offset_y,
+            );
+        }
+        if let Some(collider) = self.world.edge_collider(entity) {
+            return (
+                PHYSICS_COLLIDER_TYPE_EDGE,
                 collider.enabled,
                 collider.is_trigger,
                 collider.offset_x,
@@ -4256,6 +4990,30 @@ impl Engine {
             Some(material) => (true, material),
             None => (false, body_material),
         }
+    }
+
+    fn add_physics_compound_collider(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        shape: CompoundColliderShape,
+        category_bits: u32,
+        mask_bits: u32,
+    ) -> bool {
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return false;
+        };
+        if self.world.rigid_body(entity).is_none() {
+            return false;
+        }
+        let collider = CompoundCollider::new(shape).with_filter(CollisionFilter::new(
+            CollisionMask::from_bits(category_bits),
+            CollisionMask::from_bits(mask_bits),
+        ));
+        if self.world.add_compound_collider(entity, collider).is_none() {
+            return false;
+        }
+        self.store_physics_entity_snapshot(entity)
     }
 
     fn store_physics_entity_snapshot(&mut self, entity: Entity) -> bool {
@@ -4471,6 +5229,31 @@ impl Engine {
         true
     }
 
+    fn store_weld_joint_snapshot(&mut self, id: WeldJointId, joint: WeldJoint) -> bool {
+        self.physics_joint_snapshot = PhysicsJointSnapshot {
+            reference_angle: joint.reference_angle,
+            break_distance: joint.break_distance,
+            break_angle: joint.break_angle,
+            stiffness: joint.stiffness,
+            damping: joint.damping,
+            angular_stiffness: joint.angular_stiffness,
+            angular_damping: joint.angular_damping,
+            local_anchor_a_x: joint.local_anchor_a_x,
+            local_anchor_a_y: joint.local_anchor_a_y,
+            local_anchor_b_x: joint.local_anchor_b_x,
+            local_anchor_b_y: joint.local_anchor_b_y,
+            ..Self::joint_snapshot_base(
+                PHYSICS_JOINT_WELD,
+                id.index,
+                id.generation,
+                joint.entity_a,
+                joint.entity_b,
+                joint.enabled,
+            )
+        };
+        true
+    }
+
     fn store_gear_joint_snapshot(&mut self, id: GearJointId, joint: GearJoint) -> bool {
         self.physics_joint_snapshot = PhysicsJointSnapshot {
             ratio: joint.ratio,
@@ -4608,6 +5391,47 @@ impl Engine {
         Some(body.with_enabled(enabled).with_sleeping_enabled(can_sleep))
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn rigid_body_for_edge(
+        body_type: u32,
+        mass_or_density: f32,
+        use_density: bool,
+        start_x: f32,
+        start_y: f32,
+        end_x: f32,
+        end_y: f32,
+        enabled: bool,
+        can_sleep: bool,
+    ) -> Option<RigidBody> {
+        let body_type = Self::rigid_body_type_from_code(body_type)?;
+        let body = match body_type {
+            RigidBodyType::Static => RigidBody::static_body(),
+            RigidBodyType::Kinematic => RigidBody::kinematic(),
+            RigidBodyType::Dynamic => {
+                if use_density {
+                    RigidBody::dynamic_capsule_with_density(
+                        mass_or_density,
+                        start_x,
+                        start_y,
+                        end_x,
+                        end_y,
+                        PHYSICS_EDGE_BODY_RADIUS,
+                    )
+                } else {
+                    RigidBody::dynamic_capsule(
+                        mass_or_density,
+                        start_x,
+                        start_y,
+                        end_x,
+                        end_y,
+                        PHYSICS_EDGE_BODY_RADIUS,
+                    )
+                }
+            }
+        };
+        Some(body.with_enabled(enabled).with_sleeping_enabled(can_sleep))
+    }
+
     fn rigid_body_for_oriented_box(
         body_type: u32,
         mass_or_density: f32,
@@ -4695,6 +5519,15 @@ impl Engine {
 
     const fn valid_positive(value: f32) -> bool {
         value.is_finite() && value > 0.0
+    }
+
+    const fn valid_edge(start_x: f32, start_y: f32, end_x: f32, end_y: f32) -> bool {
+        if !Self::valid_transform(start_x, start_y) || !Self::valid_transform(end_x, end_y) {
+            return false;
+        }
+        let dx = end_x - start_x;
+        let dy = end_y - start_y;
+        dx * dx + dy * dy > PHYSICS_EDGE_BODY_RADIUS * PHYSICS_EDGE_BODY_RADIUS
     }
 
     const fn valid_non_negative(value: f32) -> bool {
@@ -4872,6 +5705,7 @@ impl Engine {
         self.fixed_timestep.reset();
         self.rigid_body_step_stats = RigidBodyStepStats::default();
         self.physics_entity_snapshot = PhysicsEntitySnapshot::default();
+        self.physics_body_collider_snapshot = PhysicsBodyColliderSnapshot::default();
         self.physics_joint_snapshot = PhysicsJointSnapshot::default();
         self.last_fixed_update = FixedTimestepUpdate::default();
         self.fixed_timestep_input_latch.clear();
@@ -4899,12 +5733,14 @@ impl Engine {
     }
 
     fn build_physics_debug_lines(&mut self) {
-        if !self.physics_debug_lines_enabled {
+        if !self.physics_debug_lines_enabled || self.physics_debug_line_flags == 0 {
+            self.physics_debug_lines.clear();
             return;
         }
-        CollisionSystem::build_physics_debug_lines_into(
+        CollisionSystem::build_physics_debug_lines_with_flags_into(
             &self.world,
             16.0,
+            self.physics_debug_line_flags,
             &mut self.physics_debug_lines,
         );
     }
@@ -5362,11 +6198,14 @@ mod tests {
         engine.set_physics_debug_lines_enabled(true);
         engine.update(0.016);
 
-        assert_eq!(engine.physics_debug_line_len(), 9);
+        assert_eq!(engine.physics_debug_line_len(), 11);
         assert_eq!(engine.physics_debug_lines[0].x0, -5.0);
         assert_eq!(engine.physics_debug_lines[0].x1, 5.0);
         assert_eq!(engine.physics_debug_lines[8].x0, 5.0);
         assert_eq!(engine.physics_debug_lines[8].x1, 21.0);
+        assert_eq!(engine.physics_debug_lines[9].y0, 0.0);
+        assert_eq!(engine.physics_debug_lines[10].x0, 5.0);
+        assert_eq!(engine.physics_debug_lines[10].y0, -3.0);
 
         engine.set_physics_debug_lines_enabled(false);
         assert_eq!(engine.physics_debug_line_len(), 0);
@@ -5624,6 +6463,105 @@ mod tests {
     }
 
     #[test]
+    fn engine_queries_compound_collider_snapshot_for_replay_state() {
+        let mut engine = Engine::new();
+        engine.world = World::default();
+        engine.clear_physics_history();
+
+        assert!(engine.spawn_physics_aabb_body(
+            0.0,
+            0.0,
+            5.0,
+            5.0,
+            PHYSICS_BODY_TYPE_DYNAMIC,
+            1.0,
+            true,
+            PHYSICS_LAYER_PLAYER,
+            CollisionMask::PLAYER.bits,
+            CollisionMask::WALL.bits,
+            false,
+            true,
+            true,
+            false,
+        ));
+        let body_id = engine.physics_entity_id();
+        let body_generation = engine.physics_entity_generation();
+        assert_eq!(
+            engine.physics_body_collider_count(body_id, body_generation),
+            1
+        );
+
+        assert!(engine.add_physics_circle_collider(
+            body_id,
+            body_generation,
+            3.0,
+            1.0,
+            2.0,
+            PHYSICS_LAYER_ENEMY,
+            CollisionMask::ENEMY.bits,
+            CollisionMask::PLAYER.bits,
+            true,
+            false,
+        ));
+        assert_eq!(
+            engine.physics_body_collider_count(body_id, body_generation),
+            2
+        );
+        assert!(engine.set_physics_compound_collider_material(
+            body_id,
+            body_generation,
+            1,
+            0.25,
+            0.75,
+            2.0,
+            -1.0,
+            1.5,
+            0.5,
+            0.4,
+            0.3,
+            0.2,
+        ));
+
+        assert!(engine.query_physics_body_collider(body_id, body_generation, 1));
+        assert_eq!(engine.physics_body_collider_index(), 1);
+        assert_eq!(
+            engine.physics_body_collider_type(),
+            PHYSICS_COLLIDER_TYPE_CIRCLE
+        );
+        assert!(!engine.physics_body_collider_enabled());
+        assert!(engine.physics_body_collider_is_trigger());
+        assert!((engine.physics_body_collider_offset_x() - 1.0).abs() < 0.0001);
+        assert!((engine.physics_body_collider_offset_y() - 2.0).abs() < 0.0001);
+        assert!(engine.physics_body_collider_material_override());
+        assert!((engine.physics_body_collider_restitution() - 0.25).abs() < 0.0001);
+        assert!((engine.physics_body_collider_friction() - 0.75).abs() < 0.0001);
+        assert!((engine.physics_body_collider_surface_velocity_x() - 2.0).abs() < 0.0001);
+        assert!((engine.physics_body_collider_surface_velocity_y() + 1.0).abs() < 0.0001);
+        assert!((engine.physics_body_collider_density() - 1.5).abs() < 0.0001);
+        assert!((engine.physics_body_collider_contact_baumgarte_bias_scale() - 0.5).abs() < 0.0001);
+        assert!(
+            (engine.physics_body_collider_max_contact_baumgarte_bias_velocity_scale() - 0.4).abs()
+                < 0.0001
+        );
+        assert!(
+            (engine.physics_body_collider_contact_position_correction_scale() - 0.3).abs() < 0.0001
+        );
+        assert!(
+            (engine.physics_body_collider_contact_position_correction_slop_scale() - 0.2).abs()
+                < 0.0001
+        );
+        assert_eq!(
+            engine.physics_body_collider_category_bits(),
+            CollisionMask::ENEMY.bits
+        );
+        assert_eq!(
+            engine.physics_body_collider_mask_bits(),
+            CollisionMask::PLAYER.bits
+        );
+        assert!(!engine.query_physics_body_collider(body_id, body_generation, 2));
+    }
+
+    #[test]
     fn engine_spawn_physics_body_shapes_and_controls_for_wasm() {
         let mut engine = Engine::new();
         engine.world = World::default();
@@ -5646,9 +6584,12 @@ mod tests {
         ));
         let circle_id = engine.physics_entity_id();
         let circle_generation = engine.physics_entity_generation();
+        assert!(engine.set_physics_body_position(circle_id, circle_generation, 2.0, -3.0));
         assert!(engine.set_physics_collider_offset(circle_id, circle_generation, 1.0, 0.0));
         assert!(engine.set_physics_collider_enabled(circle_id, circle_generation, false));
         assert!(engine.query_physics_entity(circle_id, circle_generation));
+        assert!((engine.physics_entity_x() - 2.0).abs() < 0.0001);
+        assert!((engine.physics_entity_y() + 3.0).abs() < 0.0001);
         assert_eq!(
             engine.physics_entity_collider_type(),
             PHYSICS_COLLIDER_TYPE_CIRCLE
@@ -5770,6 +6711,51 @@ mod tests {
             true,
             PHYSICS_LAYER_ENEMY,
             CollisionMask::ENEMY.bits,
+            CollisionMask::ALL.bits,
+            false,
+            true,
+            true,
+            false,
+        ));
+        assert!(engine.spawn_physics_edge_body(
+            30.0,
+            0.0,
+            -5.0,
+            0.0,
+            5.0,
+            0.0,
+            PHYSICS_BODY_TYPE_STATIC,
+            1.0,
+            true,
+            PHYSICS_LAYER_WALL,
+            CollisionMask::WALL.bits,
+            CollisionMask::ALL.bits,
+            false,
+            true,
+            true,
+            false,
+        ));
+        let edge_id = engine.physics_entity_id();
+        let edge_generation = engine.physics_entity_generation();
+        assert_eq!(
+            engine.physics_entity_collider_type(),
+            PHYSICS_COLLIDER_TYPE_EDGE
+        );
+        assert!(engine.set_physics_collider_offset(edge_id, edge_generation, 0.0, 1.0));
+        assert!(engine.query_physics_entity(edge_id, edge_generation));
+        assert!((engine.physics_entity_collider_offset_y() - 1.0).abs() < 0.0001);
+        assert!(!engine.spawn_physics_edge_body(
+            30.0,
+            0.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            PHYSICS_BODY_TYPE_STATIC,
+            1.0,
+            true,
+            PHYSICS_LAYER_WALL,
+            CollisionMask::WALL.bits,
             CollisionMask::ALL.bits,
             false,
             true,
@@ -6569,6 +7555,47 @@ mod tests {
         assert!(!engine.set_shooter_tilemap_tile(2, 1, 0, 1));
         assert!(!engine.set_shooter_tilemap_tile(2, 2, 0, 1));
         assert!(!engine.set_shooter_tilemap_tile(3, 0, 0, 1));
+    }
+
+    #[test]
+    fn engine_set_shooter_tilemap_tiles_rect_refreshes_queries_and_render_commands() {
+        let mut engine = Engine::new();
+        engine.clear_shooter_tilemap();
+        engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+        engine.set_shooter_tilemap_layer(2, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 1, 1]);
+
+        engine.build_render_commands();
+        assert_eq!(
+            engine
+                .render_commands
+                .iter()
+                .filter(|command| command.texture_id == 9.0)
+                .count(),
+            3
+        );
+        assert!(engine.query_nearest_tile_obstacle(5.0, 5.0, 0.0));
+
+        assert!(engine.set_shooter_tilemap_tiles_rect(2, 0, 0, 2, 1, 0));
+
+        assert!(!engine.query_nearest_tile_obstacle(5.0, 5.0, 0.0));
+        assert!(engine.query_nearest_tile_obstacle(25.0, 5.0, 0.0));
+        assert_eq!(engine.physics_query_tile_layer_index(), 2);
+        assert_eq!(engine.physics_query_tile_index(), 2);
+
+        engine.build_render_commands();
+        assert_eq!(
+            engine
+                .render_commands
+                .iter()
+                .filter(|command| command.texture_id == 9.0)
+                .count(),
+            1
+        );
+
+        assert!(!engine.set_shooter_tilemap_tiles_rect(2, 0, 0, 2, 1, 0));
+        assert!(!engine.set_shooter_tilemap_tiles_rect(2, 0, 0, 0, 1, 1));
+        assert!(!engine.set_shooter_tilemap_tiles_rect(2, 2, 0, 2, 1, 1));
+        assert!(!engine.set_shooter_tilemap_tiles_rect(3, 0, 0, 1, 1, 1));
     }
 
     #[test]

@@ -6,8 +6,9 @@
 
 | 디렉터리 | 역할 | 주요 문서 |
 | --- | --- | --- |
-| `engine/` | 엔진 사용자와 예제 조정자가 읽는 게임엔진 설명, 사용법, public contract | [사용자 설명서](engine/user-guide.md), [Public API](engine/public-api.md), [Top-down Shooter Game Spec](engine/topdown-shooter-game-spec.md) |
+| `engine/` | 엔진 사용자와 예제 조정자가 읽는 게임엔진 설명, 사용법, public contract | [사용자 설명서](engine/user-guide.md), [Public API](engine/public-api.md), [Top-down Shooter Game Spec](engine/topdown-shooter-game-spec.md), [Physics Spec](engine/physics-spec.md) |
 | `development/` | 엔진 개발, 품질 검증, 배포 운영을 위한 내부 기준 | [아키텍처](development/architecture/architecture.md), [2D 물리엔진 기능 맵](development/architecture/physics-engine.md), [Smoke Check](development/quality/smoke-check.md), [npm 베타 패키징](development/operations/npm-release.md) |
+| `planning/` | 아직 구현하지 않기로 한 보류 기능과 다음 개발 후보만 관리하는 임시 planning 영역 | [Planning 문서](planning/README.md) |
 
 ## development 하위 구조
 
@@ -23,6 +24,8 @@
 2. Top-down Shooter 예제 설정을 바꾸는 경우: [Top-down Shooter Game Spec](engine/topdown-shooter-game-spec.md)
 3. 엔진 구조나 경계를 확인하는 경우: [아키텍처](development/architecture/architecture.md) -> [2D 물리엔진 기능 맵](development/architecture/physics-engine.md)
 4. 검증이나 릴리스 작업을 하는 경우: [Smoke Check](development/quality/smoke-check.md) -> [npm 베타 패키징](development/operations/npm-release.md) -> [릴리스 노트 템플릿](development/operations/release-notes-template.md)
+5. Physics Spec 계약을 확인하는 경우: [Physics Spec](engine/physics-spec.md) -> [Public API](engine/public-api.md)
+6. 보류 기능이나 다음 개발 후보를 확인하는 경우: [Planning 문서](planning/README.md)
 
 ## 기준 소스
 

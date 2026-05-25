@@ -1,0 +1,217 @@
+:root {
+  color: #edf2f7;
+  background: #111417;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #111417;
+}
+
+button,
+select {
+  height: 34px;
+  border: 1px solid #3d4750;
+  border-radius: 6px;
+  color: #edf2f7;
+  background: #1c242b;
+  font: inherit;
+}
+
+button {
+  min-width: 68px;
+  cursor: pointer;
+}
+
+button:hover,
+select:hover {
+  background: #26313a;
+}
+
+button:disabled {
+  color: #7d8a95;
+  cursor: default;
+  background: #171d22;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid #5ec4c8;
+  outline-offset: 2px;
+}
+
+.app-shell {
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1180px;
+  margin: 0 auto 12px;
+}
+
+.toolbar h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.controls,
+.debug-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.controls {
+  justify-content: flex-end;
+}
+
+.demo-select {
+  width: 190px;
+  padding: 0 10px;
+}
+
+.debug-controls {
+  max-width: 1180px;
+  margin: 0 auto 12px;
+  color: #b8c6d1;
+  font-size: 13px;
+}
+
+.debug-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid #333d45;
+  border-radius: 6px;
+  background: #171d22;
+}
+
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 800px) 260px;
+  gap: 16px;
+  align-items: start;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.canvas-wrap {
+  position: relative;
+  width: min(800px, 100%);
+}
+
+.physics-canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 5 / 3;
+  height: auto;
+  border: 1px solid #303a43;
+  background: #151a1f;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: minmax(92px, auto) minmax(0, 1fr);
+  gap: 8px 12px;
+  min-height: 168px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #303a43;
+  border-radius: 6px;
+  background: #171d22;
+  font-size: 14px;
+}
+
+.metrics dt {
+  color: #94a6b5;
+}
+
+.metrics dd {
+  margin: 0;
+  color: #ffffff;
+  text-align: right;
+}
+
+.error-box {
+  max-width: 1180px;
+  margin: 12px auto 0;
+  padding: 12px;
+  border: 1px solid #8b4d2d;
+  border-radius: 6px;
+  background: #2a1b16;
+}
+
+.error-box strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #ffb370;
+}
+
+.error-box dl,
+.error-shell dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 0;
+}
+
+.error-box dd,
+.error-shell dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.debug-root {
+  max-width: 1180px;
+  margin: 12px auto 0;
+}
+
+.error-shell {
+  max-width: 760px;
+  margin: 48px auto;
+  padding: 0 24px;
+}
+
+.error-shell h1 {
+  font-size: 22px;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    padding: 14px;
+  }
+
+  .toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .controls {
+    justify-content: flex-start;
+  }
+
+  .stage {
+    grid-template-columns: 1fr;
+  }
+
+  .metrics dd {
+    text-align: left;
+  }
+}

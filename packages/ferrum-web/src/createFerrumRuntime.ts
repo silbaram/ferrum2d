@@ -1,8 +1,16 @@
 import { BrowserPlatformHost } from "./browserPlatformHost.js";
 import { createEngine } from "./createEngine.js";
-import type { AssetHost, CreateEngineOptions, FerrumEngine, FrameState, InputProvider } from "./createEngine.js";
+import type {
+  AssetHost,
+  CreateEngineOptions,
+  FerrumEngine,
+  FrameState,
+  InputProvider,
+  PhysicsDebugOptions,
+} from "./createEngine.js";
 import { DebugOverlay } from "./debugOverlay.js";
 import type { DebugOverlayMetrics, DebugOverlayOptions } from "./debugOverlay.js";
+import type { PhysicsMode } from "./physicsSpec.js";
 import { InputManager } from "./inputManager.js";
 import type { InputManagerOptions, InputSnapshot } from "./inputManager.js";
 import type { RendererStats } from "./renderer.js";
@@ -36,7 +44,8 @@ export interface FerrumRuntimeOptions {
   ui?: boolean | UiOverlayOptions;
   uiOverlay?: UiOverlay;
   uiState?: UiOverlayStateProvider;
-  physicsDebugLines?: boolean;
+  physicsDebugLines?: boolean | PhysicsDebugOptions;
+  physicsMode?: PhysicsMode;
   environment?: FerrumRuntimeEnvironment;
   engine?: CreateEngineOptions;
   autostart?: boolean;
@@ -83,14 +92,17 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     uiOverlay ??= createUiOverlay(options);
     debugOverlay = createDebugOverlay(options);
     const needsRuntimeFrame = debugOverlay !== undefined || uiOverlay !== undefined || options.onFrame !== undefined;
-    const shouldRenderPhysicsDebugLines = options.physicsDebugLines === true;
+    const shouldRenderPhysicsDebugLines =
+      options.physicsDebugLines !== undefined && options.physicsDebugLines !== false;
+    const runtimePhysicsDebugLines =
+      typeof options.physicsDebugLines === "object" ? options.physicsDebugLines : shouldRenderPhysicsDebugLines;
     const engineOptions: CreateEngineOptions = {
       ...options.engine,
+      physicsMode: options.physicsMode ?? options.engine?.physicsMode,
       includeAudioEvents: options.engine?.includeAudioEvents ?? needsRuntimeFrame,
       enablePhysicsDebugLines:
-        options.engine?.enablePhysicsDebugLines === true ||
-        options.engine?.includePhysicsDebugLines === true ||
-        shouldRenderPhysicsDebugLines,
+        options.engine?.enablePhysicsDebugLines ??
+        (options.engine?.includePhysicsDebugLines === true || runtimePhysicsDebugLines),
     };
 
     const runtimeRenderer = renderer;
@@ -278,11 +290,16 @@ function buildDebugMetrics(
     textureSwitchCount: rendererStats.textureSwitchCount,
     physicsDebugLineCount: rendererStats.physicsDebugLineCount,
     audioEventsPerSecond,
+    physicsMode: frame.physics.mode,
     physicsFixedSteps: frame.physics.fixedSteps,
     physicsKinematicHits: frame.physics.kinematicHits,
     physicsTileCandidateChecks: frame.physics.tileCandidateChecks,
     collisionPairCount: frame.physics.collisionPairs,
     collisionEventCount: frame.physics.collisionEventCount,
+    physicsCcdChecks: frame.physics.ccdChecks,
+    physicsCcdHits: frame.physics.ccdHits,
+    physicsSleepingBodies: frame.physics.sleepingBodies,
+    physicsBrokenJoints: frame.physics.brokenJoints,
     rustUpdateTimeMs: frame.rustUpdateTimeMs,
     renderTimeMs,
     mouseX: frame.mouseX,

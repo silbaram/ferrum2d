@@ -46,6 +46,9 @@ jobs:
       - name: Rust tests
         run: cargo test --manifest-path crates/ferrum-core/Cargo.toml
 
+      - name: Physics smoke tests
+        run: pnpm smoke:physics
+
       - name: Build wasm package
         run: wasm-pack build crates/ferrum-core --target web --out-dir
           ../../packages/ferrum-web/pkg

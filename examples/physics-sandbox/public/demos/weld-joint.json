@@ -1,0 +1,86 @@
+{
+  "mode": "rigid",
+  "gravity": [0, 500],
+  "solver": {
+    "fixedTimestep": true,
+    "stepSeconds": 0.016666666666666666,
+    "velocityIterations": 8,
+    "positionIterations": 8,
+    "sleep": true
+  },
+  "debug": {
+    "colliders": true,
+    "contacts": true,
+    "joints": true,
+    "sleeping": true
+  },
+  "materials": {
+    "metal": { "friction": 0.45, "restitution": 0.05, "density": 1.5 },
+    "rubber": { "friction": 0.8, "restitution": 0.1, "density": 1.1 }
+  },
+  "layers": {
+    "world": { "mask": ["payload"] },
+    "payload": { "mask": ["world", "payload"] }
+  },
+  "bodies": {
+    "ground": {
+      "type": "static",
+      "position": [320, 430],
+      "material": "rubber",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [560, 32] }
+    },
+    "beamA": {
+      "type": "dynamic",
+      "position": [280, 220],
+      "rotationRadians": 0.08,
+      "material": "metal",
+      "layer": "payload",
+      "collider": { "shape": "box", "size": [96, 18] },
+      "mass": 2,
+      "inertia": 320
+    },
+    "beamB": {
+      "type": "dynamic",
+      "position": [376, 220],
+      "rotationRadians": -0.08,
+      "material": "metal",
+      "layer": "payload",
+      "collider": { "shape": "box", "size": [96, 18] },
+      "mass": 2,
+      "inertia": 320
+    },
+    "payload": {
+      "type": "dynamic",
+      "position": [328, 172],
+      "material": "rubber",
+      "layer": "payload",
+      "collider": { "shape": "box", "size": [34, 34] },
+      "mass": 3,
+      "inertia": 160
+    }
+  },
+  "joints": {
+    "beam-weld": {
+      "type": "weld",
+      "bodyA": "beamA",
+      "bodyB": "beamB",
+      "localAnchorA": [48, 0],
+      "localAnchorB": [-48, 0],
+      "referenceAngle": -0.16,
+      "stiffness": 1,
+      "damping": 1,
+      "breakDistance": 0,
+      "breakAngle": 0
+    },
+    "payload-hinge": {
+      "type": "revolute",
+      "bodyA": "beamA",
+      "bodyB": "payload",
+      "localAnchorA": [48, 0],
+      "localAnchorB": [0, 18],
+      "stiffness": 0.8,
+      "damping": 1
+    }
+  }
+}

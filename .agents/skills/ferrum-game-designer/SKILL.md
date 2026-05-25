@@ -1,6 +1,6 @@
 ---
 name: ferrum-game-designer
-description: Use when designing, tuning, validating, or reviewing Ferrum2D Top-down Shooter Game Spec JSON, game variants, prefab sizes, enemy behavior presets, or agent-generated gameplay changes. Trigger when editing examples/topdown-shooter/public/game.json, creating game variant JSON, balancing shooter values, or coordinating AI agents that modify Ferrum2D game data.
+description: Use when designing, tuning, validating, or reviewing Ferrum2D Top-down Shooter Game Spec JSON, Physics Spec authoring data, game variants, prefab sizes, enemy behavior presets, or agent-generated gameplay changes. Trigger when editing examples/topdown-shooter/public/game.json, creating game variant JSON, balancing shooter values, editing physics authoring metadata, or coordinating AI agents that modify Ferrum2D game data.
 ---
 
 # Ferrum Game Designer
@@ -12,6 +12,8 @@ Use this skill to make data-only gameplay changes for Ferrum2D. Prefer editing G
 - Main editable spec: `examples/topdown-shooter/public/game.json`
 - Spec reference: `docs/engine/topdown-shooter-game-spec.md`
 - JSON Schema: `schemas/shooter-game-spec.schema.json`
+- Physics Spec reference: `docs/engine/physics-spec.md`
+- Physics authoring schema: `schemas/physics-authoring.schema.json`
 - Validation command: `pnpm validate:game-spec`
 - Variant helper: `pnpm create:game-variant <name> [output.json]`
 
@@ -25,6 +27,18 @@ Use this skill to make data-only gameplay changes for Ferrum2D. Prefer editing G
 6. Run `pnpm validate:game-spec` after editing the main spec.
 7. Run `pnpm test:web` if changing TypeScript validation behavior.
 8. Run `cargo test --manifest-path crates/ferrum-core/Cargo.toml` if Rust behavior or spawn semantics changed.
+
+## Physics Authoring Rules
+
+Use `docs/engine/physics-spec.md` before changing generic physics data.
+
+- Runtime physics data belongs under `physics`.
+- Editor/AI-only metadata belongs under `physicsEditor` and must be stripped before runtime apply.
+- Use `compilePhysicsAuthoringDocument(...)` for editor/AI documents that need runtime `PhysicsSpec` output.
+- `lockedFields` and `agentEditableFields` must reference runtime paths starting with `physics.`.
+- Do not reference `physicsEditor.*` from locked/editable field lists.
+- Metadata keys under `physicsEditor.bodies` and `physicsEditor.joints` must match runtime body/joint ids.
+- Runtime apply supports single `collider` and compound `colliders`; keep compound collider edits low-frequency and validate them through Physics Spec.
 
 ## Safe Tuning Ranges
 

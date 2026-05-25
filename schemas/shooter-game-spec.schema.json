@@ -103,6 +103,7 @@
         }
       }
     },
+    "physics": { "$ref": "#/$defs/physics" },
     "audio": {
       "type": "object",
       "additionalProperties": false,
@@ -309,6 +310,319 @@
         "contactPositionCorrectionScale": { "type": "number", "minimum": 0 },
         "contactPositionCorrectionSlopScale": { "type": "number", "minimum": 0 }
       }
+    },
+    "physics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["none", "arcade", "rigid"] },
+        "gravity": { "$ref": "#/$defs/vector2" },
+        "continuous": { "type": "boolean" },
+        "solver": { "$ref": "#/$defs/physicsSolver" },
+        "materials": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/physicsSpecMaterial" },
+          "propertyNames": { "minLength": 1 }
+        },
+        "layers": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/physicsLayer" },
+          "propertyNames": { "minLength": 1 },
+          "maxProperties": 31
+        },
+        "bodies": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/physicsBody" },
+          "propertyNames": { "minLength": 1 }
+        },
+        "joints": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/physicsJoint" },
+          "propertyNames": { "minLength": 1 }
+        },
+        "debug": {
+          "oneOf": [
+            { "type": "boolean" },
+            { "$ref": "#/$defs/physicsDebug" }
+          ]
+        }
+      }
+    },
+    "physicsSolver": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fixedTimestep": { "type": "boolean" },
+        "stepSeconds": { "type": "number", "exclusiveMinimum": 0 },
+        "velocityIterations": { "type": "integer", "minimum": 0 },
+        "positionIterations": { "type": "integer", "minimum": 0 },
+        "sleep": { "type": "boolean" }
+      }
+    },
+    "physicsSpecMaterial": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "friction": { "type": "number", "minimum": 0 },
+        "restitution": { "type": "number", "minimum": 0 },
+        "density": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "physicsLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mask": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "physicsBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["static", "kinematic", "dynamic"] },
+        "position": { "$ref": "#/$defs/vector2" },
+        "rotationRadians": { "type": "number" },
+        "velocity": { "$ref": "#/$defs/vector2" },
+        "angularVelocityRadiansPerSecond": { "type": "number" },
+        "mass": { "type": "number", "exclusiveMinimum": 0 },
+        "inertia": { "type": "number", "exclusiveMinimum": 0 },
+        "material": { "type": "string", "minLength": 1 },
+        "layer": { "type": "string", "minLength": 1 },
+        "collider": { "$ref": "#/$defs/physicsCollider" },
+        "colliders": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/physicsCollider" }
+        },
+        "gravityScale": { "type": "number" },
+        "linearDamping": { "type": "number", "minimum": 0 },
+        "angularDamping": { "type": "number", "minimum": 0 },
+        "enabled": { "type": "boolean" },
+        "canSleep": { "type": "boolean" }
+      },
+      "not": { "required": ["collider", "colliders"] }
+    },
+    "physicsCollider": {
+      "oneOf": [
+        { "$ref": "#/$defs/physicsBoxCollider" },
+        { "$ref": "#/$defs/physicsCircleCollider" },
+        { "$ref": "#/$defs/physicsCapsuleCollider" },
+        { "$ref": "#/$defs/physicsOrientedBoxCollider" },
+        { "$ref": "#/$defs/physicsConvexPolygonCollider" },
+        { "$ref": "#/$defs/physicsEdgeCollider" },
+        { "$ref": "#/$defs/physicsChainCollider" }
+      ]
+    },
+    "physicsColliderBase": {
+      "type": "object",
+      "properties": {
+        "offset": { "$ref": "#/$defs/vector2" },
+        "material": { "type": "string", "minLength": 1 },
+        "layer": { "type": "string", "minLength": 1 },
+        "trigger": { "type": "boolean" },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "physicsBoxCollider": {
+      "allOf": [
+        { "$ref": "#/$defs/physicsColliderBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["shape"],
+          "properties": {
+            "shape": { "enum": ["aabb", "box"] },
+            "size": { "$ref": "#/$defs/positiveVector2" },
+            "halfSize": { "$ref": "#/$defs/positiveVector2" },
+            "offset": { "$ref": "#/$defs/vector2" },
+            "material": { "type": "string", "minLength": 1 },
+            "layer": { "type": "string", "minLength": 1 },
+            "trigger": { "type": "boolean" },
+            "enabled": { "type": "boolean" }
+          },
+          "oneOf": [
+            { "required": ["size"] },
+            { "required": ["halfSize"] }
+          ]
+        }
+      ]
+    },
+    "physicsCircleCollider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "radius"],
+      "properties": {
+        "shape": { "const": "circle" },
+        "radius": { "type": "number", "exclusiveMinimum": 0 },
+        "offset": { "$ref": "#/$defs/vector2" },
+        "material": { "type": "string", "minLength": 1 },
+        "layer": { "type": "string", "minLength": 1 },
+        "trigger": { "type": "boolean" },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "physicsCapsuleCollider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "start", "end", "radius"],
+      "properties": {
+        "shape": { "const": "capsule" },
+        "start": { "$ref": "#/$defs/vector2" },
+        "end": { "$ref": "#/$defs/vector2" },
+        "radius": { "type": "number", "exclusiveMinimum": 0 },
+        "offset": { "$ref": "#/$defs/vector2" },
+        "material": { "type": "string", "minLength": 1 },
+        "layer": { "type": "string", "minLength": 1 },
+        "trigger": { "type": "boolean" },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "physicsOrientedBoxCollider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape"],
+      "properties": {
+        "shape": { "const": "orientedBox" },
+        "size": { "$ref": "#/$defs/positiveVector2" },
+        "halfSize": { "$ref": "#/$defs/positiveVector2" },
+        "rotationRadians": { "type": "number" },
+        "offset": { "$ref": "#/$defs/vector2" },
+        "material": { "type": "string", "minLength": 1 },
+        "layer": { "type": "string", "minLength": 1 },
+        "trigger": { "type": "boolean" },
+        "enabled": { "type": "boolean" }
+      },
+      "oneOf": [
+        { "required": ["size"] },
+        { "required": ["halfSize"] }
+      ]
+    },
+    "physicsConvexPolygonCollider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "vertices"],
+      "properties": {
+        "shape": { "const": "convexPolygon" },
+        "vertices": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/vector2" }
+        },
+        "rotationRadians": { "type": "number" },
+        "offset": { "$ref": "#/$defs/vector2" },
+        "material": { "type": "string", "minLength": 1 },
+        "layer": { "type": "string", "minLength": 1 },
+        "trigger": { "type": "boolean" },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "physicsEdgeCollider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "start", "end"],
+      "properties": {
+        "shape": { "const": "edge" },
+        "start": { "$ref": "#/$defs/vector2" },
+        "end": { "$ref": "#/$defs/vector2" },
+        "offset": { "$ref": "#/$defs/vector2" },
+        "material": { "type": "string", "minLength": 1 },
+        "layer": { "type": "string", "minLength": 1 },
+        "trigger": { "type": "boolean" },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "physicsChainCollider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "vertices"],
+      "properties": {
+        "shape": { "const": "chain" },
+        "vertices": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/vector2" }
+        },
+        "loop": { "type": "boolean" },
+        "offset": { "$ref": "#/$defs/vector2" },
+        "material": { "type": "string", "minLength": 1 },
+        "layer": { "type": "string", "minLength": 1 },
+        "trigger": { "type": "boolean" },
+        "enabled": { "type": "boolean" }
+      }
+    },
+    "physicsJoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "bodyA", "bodyB"],
+      "properties": {
+        "type": { "enum": ["distance", "rope", "spring", "revolute", "prismatic", "gear"] },
+        "bodyA": { "type": "string", "minLength": 1 },
+        "bodyB": { "type": "string", "minLength": 1 },
+        "anchor": { "$ref": "#/$defs/vector2" },
+        "localAnchorA": { "$ref": "#/$defs/vector2" },
+        "localAnchorB": { "$ref": "#/$defs/vector2" },
+        "localAxisA": { "$ref": "#/$defs/vector2" },
+        "restLength": { "type": "number", "minimum": 0 },
+        "maxLength": { "type": "number", "minimum": 0 },
+        "stiffness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "damping": { "type": "number", "minimum": 0, "maximum": 1 },
+        "enabled": { "type": "boolean" },
+        "limit": { "$ref": "#/$defs/physicsJointLimit" },
+        "motor": { "$ref": "#/$defs/physicsJointMotor" },
+        "ratio": { "type": "number" },
+        "referenceAngle": { "type": "number" },
+        "breakDistance": { "type": "number", "minimum": 0 },
+        "breakAngle": { "type": "number", "minimum": 0 }
+      }
+    },
+    "physicsJointLimit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "lower": { "type": "number" },
+        "upper": { "type": "number" }
+      }
+    },
+    "physicsJointMotor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "speed": { "type": "number" },
+        "maxForce": { "type": "number", "minimum": 0 },
+        "maxTorque": { "type": "number", "minimum": 0 }
+      }
+    },
+    "physicsDebug": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "colliders": { "type": "boolean" },
+        "contacts": { "type": "boolean" },
+        "manifolds": { "type": "boolean" },
+        "broadphase": { "type": "boolean" },
+        "joints": { "type": "boolean" },
+        "sleeping": { "type": "boolean" },
+        "layers": { "type": "boolean" },
+        "ccd": { "type": "boolean" }
+      }
+    },
+    "vector2": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number" }
+    },
+    "positiveVector2": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "type": "number", "exclusiveMinimum": 0 }
     },
     "atlasFrame": {
       "type": "object",

@@ -1,4 +1,4 @@
-export type DiagnosticKind = "texture" | "sound" | "json" | "game-spec" | "asset-pipeline";
+export type DiagnosticKind = "texture" | "sound" | "json" | "game-spec" | "physics-spec" | "asset-pipeline";
 export type AssetDiagnosticKind = "texture" | "sound" | "json";
 export type DiagnosticCode =
   | "FERRUM_ASSET_LOAD"
@@ -10,6 +10,7 @@ export type DiagnosticCode =
   | "FERRUM_ASSET_PIPELINE_INVALID"
   | "FERRUM_DIAGNOSTIC"
   | "FERRUM_GAME_SPEC_INVALID"
+  | "FERRUM_PHYSICS_SPEC_INVALID"
   | "FERRUM_TEXTURE_CREATE"
   | "FERRUM_TEXTURE_DECODE"
   | "FERRUM_TEXTURE_LOAD"
@@ -133,6 +134,14 @@ export function gameSpecDiagnosticError(path: string, detail: string): FerrumDia
     path,
     detail,
   }, "FERRUM_GAME_SPEC_INVALID");
+}
+
+export function physicsSpecDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid physics spec", {
+    kind: "physics-spec",
+    path,
+    detail,
+  }, "FERRUM_PHYSICS_SPEC_INVALID");
 }
 
 export function assetPipelineDiagnosticError(path: string, detail: string): FerrumDiagnosticError {

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ferrum2d.dev/schemas/physics-authoring.schema.json",
+  "title": "Ferrum2D Physics Authoring Document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["physics"],
+  "properties": {
+    "physics": {
+      "type": "object",
+      "description": "Runtime Physics Spec. Export/compile keeps this object and strips physicsEditor metadata."
+    },
+    "physicsEditor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "lockedFields": {
+          "$ref": "#/$defs/runtimeFieldPathList"
+        },
+        "agentEditableFields": {
+          "$ref": "#/$defs/runtimeFieldPathList"
+        },
+        "bodies": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/bodyMetadata"
+          }
+        },
+        "joints": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/jointMetadata"
+          }
+        },
+        "presets": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/presetMetadata"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "runtimeFieldPathList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^physics\\.[A-Za-z0-9_.-]+$"
+      }
+    },
+    "bodyMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "gizmo": {
+          "enum": ["box", "circle", "capsule", "polygon", "edge", "chain"]
+        },
+        "preset": {
+          "type": "string"
+        },
+        "lockedFields": {
+          "$ref": "#/$defs/runtimeFieldPathList"
+        },
+        "agentEditableFields": {
+          "$ref": "#/$defs/runtimeFieldPathList"
+        }
+      }
+    },
+    "jointMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "gizmo": {
+          "enum": ["anchor", "axis", "motor"]
+        },
+        "lockedFields": {
+          "$ref": "#/$defs/runtimeFieldPathList"
+        },
+        "agentEditableFields": {
+          "$ref": "#/$defs/runtimeFieldPathList"
+        }
+      }
+    },
+    "presetMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "target": {
+          "enum": ["body", "collider", "joint", "material", "layer"]
+        }
+      }
+    }
+  }
+}

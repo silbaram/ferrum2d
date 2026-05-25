@@ -1,0 +1,157 @@
+{
+  "mode": "rigid",
+  "gravity": [0, 860],
+  "continuous": true,
+  "solver": {
+    "fixedTimestep": true,
+    "stepSeconds": 0.0166666667,
+    "velocityIterations": 8,
+    "positionIterations": 6,
+    "sleep": true
+  },
+  "materials": {
+    "wood": { "friction": 0.6, "restitution": 0.2, "density": 0.8 },
+    "rubber": { "friction": 0.8, "restitution": 0.85, "density": 1 },
+    "metal": { "friction": 0.35, "restitution": 0.05, "density": 3 },
+    "platform": { "friction": 0.75, "restitution": 0, "density": 1 }
+  },
+  "layers": {
+    "world": { "mask": ["dynamic", "projectile"] },
+    "dynamic": { "mask": ["world", "dynamic", "sensor"] },
+    "projectile": { "mask": ["world", "dynamic"] },
+    "sensor": { "mask": ["dynamic"] }
+  },
+  "bodies": {
+    "ground": {
+      "type": "static",
+      "position": [400, 444],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [760, 28] }
+    },
+    "leftEdge": {
+      "type": "static",
+      "position": [72, 260],
+      "layer": "world",
+      "collider": { "shape": "edge", "start": [0, -150], "end": [0, 120] }
+    },
+    "chainPlatform": {
+      "type": "static",
+      "position": [610, 342],
+      "material": "platform",
+      "layer": "world",
+      "collider": {
+        "shape": "chain",
+        "vertices": [[-120, 0], [-40, -34], [40, -34], [120, 0]]
+      }
+    },
+    "crate": {
+      "type": "dynamic",
+      "position": [250, 92],
+      "material": "wood",
+      "layer": "dynamic",
+      "mass": 1.2,
+      "collider": { "shape": "box", "size": [36, 36] }
+    },
+    "ball": {
+      "type": "dynamic",
+      "position": [350, 96],
+      "material": "rubber",
+      "layer": "dynamic",
+      "collider": { "shape": "circle", "radius": 20 }
+    },
+    "capsule": {
+      "type": "dynamic",
+      "position": [450, 88],
+      "material": "rubber",
+      "layer": "dynamic",
+      "collider": { "shape": "capsule", "start": [-18, 0], "end": [18, 0], "radius": 12 }
+    },
+    "tiltedBox": {
+      "type": "dynamic",
+      "position": [540, 112],
+      "material": "metal",
+      "layer": "dynamic",
+      "collider": { "shape": "orientedBox", "size": [54, 28], "rotationRadians": 0.35 }
+    },
+    "poly": {
+      "type": "dynamic",
+      "position": [640, 96],
+      "material": "wood",
+      "layer": "dynamic",
+      "collider": {
+        "shape": "convexPolygon",
+        "vertices": [[-22, -18], [22, -14], [26, 14], [0, 28], [-26, 14]]
+      }
+    },
+    "slider": {
+      "type": "dynamic",
+      "position": [170, 230],
+      "material": "metal",
+      "layer": "dynamic",
+      "collider": { "shape": "aabb", "halfSize": [18, 18] }
+    },
+    "sensor": {
+      "type": "static",
+      "position": [400, 300],
+      "layer": "sensor",
+      "collider": { "shape": "circle", "radius": 64, "trigger": true }
+    }
+  },
+  "joints": {
+    "crateBallDistance": {
+      "type": "distance",
+      "bodyA": "crate",
+      "bodyB": "ball",
+      "restLength": 92,
+      "stiffness": 0.85,
+      "damping": 0.25
+    },
+    "ballCapsuleSpring": {
+      "type": "spring",
+      "bodyA": "ball",
+      "bodyB": "capsule",
+      "restLength": 96,
+      "stiffness": 0.35,
+      "damping": 0.45
+    },
+    "capsulePolyRope": {
+      "type": "rope",
+      "bodyA": "capsule",
+      "bodyB": "poly",
+      "maxLength": 118,
+      "stiffness": 0.8,
+      "damping": 0.2
+    },
+    "tiltHinge": {
+      "type": "revolute",
+      "bodyA": "world",
+      "bodyB": "tiltedBox",
+      "anchor": [540, 112],
+      "limit": { "enabled": true, "lower": -0.75, "upper": 0.75 }
+    },
+    "sliderRail": {
+      "type": "prismatic",
+      "bodyA": "world",
+      "bodyB": "slider",
+      "anchor": [170, 230],
+      "localAxisA": [1, 0],
+      "limit": { "enabled": true, "lower": -70, "upper": 70 },
+      "motor": { "enabled": true, "speed": 20, "maxForce": 40 }
+    },
+    "cratePolyGear": {
+      "type": "gear",
+      "bodyA": "crate",
+      "bodyB": "poly",
+      "ratio": -1,
+      "referenceAngle": 0
+    }
+  },
+  "debug": {
+    "colliders": true,
+    "contacts": true,
+    "broadphase": false,
+    "joints": true,
+    "sleeping": true
+  }
+}

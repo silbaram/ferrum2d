@@ -1,0 +1,93 @@
+{
+  "mode": "rigid",
+  "gravity": [0, 760],
+  "continuous": true,
+  "solver": {
+    "fixedTimestep": true,
+    "stepSeconds": 0.0166666667,
+    "velocityIterations": 8,
+    "positionIterations": 6,
+    "sleep": true
+  },
+  "materials": {
+    "wood": { "friction": 0.6, "restitution": 0.1, "density": 0.8 },
+    "rubber": { "friction": 0.9, "restitution": 0.6, "density": 1 },
+    "metal": { "friction": 0.35, "restitution": 0.05, "density": 2.5 },
+    "platform": { "friction": 0.8, "restitution": 0, "density": 1 }
+  },
+  "layers": {
+    "world": { "mask": ["dynamic", "sensor"] },
+    "dynamic": { "mask": ["world", "dynamic", "sensor"] },
+    "sensor": { "mask": ["world", "dynamic"] }
+  },
+  "bodies": {
+    "ground": {
+      "type": "static",
+      "position": [400, 444],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [760, 28] }
+    },
+    "leftWall": {
+      "type": "static",
+      "position": [68, 300],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [28, 260] }
+    },
+    "compoundBot": {
+      "type": "dynamic",
+      "position": [310, 120],
+      "material": "wood",
+      "layer": "dynamic",
+      "mass": 2,
+      "colliders": [
+        { "shape": "box", "size": [54, 34], "material": "wood" },
+        { "shape": "circle", "radius": 16, "offset": [38, 0], "material": "rubber" },
+        { "shape": "circle", "radius": 16, "offset": [-38, 0], "material": "rubber" },
+        {
+          "shape": "box",
+          "size": [34, 10],
+          "offset": [0, 25],
+          "layer": "sensor",
+          "trigger": true,
+          "material": "metal"
+        }
+      ]
+    },
+    "compoundCrate": {
+      "type": "dynamic",
+      "position": [470, 84],
+      "material": "metal",
+      "layer": "dynamic",
+      "colliders": [
+        { "shape": "orientedBox", "size": [48, 24], "rotationRadians": 0.25, "material": "metal" },
+        { "shape": "capsule", "start": [-30, 18], "end": [30, 18], "radius": 6, "material": "rubber" }
+      ]
+    },
+    "rubberTarget": {
+      "type": "dynamic",
+      "position": [610, 110],
+      "material": "rubber",
+      "layer": "dynamic",
+      "collider": { "shape": "circle", "radius": 22 }
+    }
+  },
+  "joints": {
+    "botTargetDistance": {
+      "type": "distance",
+      "bodyA": "compoundBot",
+      "bodyB": "rubberTarget",
+      "restLength": 120,
+      "stiffness": 0.7,
+      "damping": 0.35
+    }
+  },
+  "debug": {
+    "colliders": true,
+    "contacts": true,
+    "broadphase": true,
+    "joints": true,
+    "sleeping": true
+  }
+}

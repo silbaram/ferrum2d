@@ -1,13 +1,14 @@
 use crate::collision::{
-    collider_bounds, collider_shape, AabbBounds, ColliderShapeRef, CollisionContact,
-    CollisionManifold, CollisionPair, CollisionSystem, SweptAabbContactHit,
+    collider_bounds, collider_shape, AabbBounds, ColliderCollisionContact, ColliderKey,
+    ColliderPair as CollisionColliderPair, ColliderShapeRef, CollisionManifold, CollisionPair,
+    CollisionSystem, SweptAabbContactHit,
 };
 use crate::components::{
     AabbCollider, AngularVelocity, CapsuleCollider, CollisionMask, ConvexPolygonCollider,
-    DistanceJoint, DistanceJointId, GearJoint, GearJointId, PhysicsMaterial, PrismaticJoint,
-    PrismaticJointId, RevoluteJoint, RevoluteJointId, RigidBody, RigidBodyType,
+    DistanceJoint, DistanceJointId, EdgeCollider, GearJoint, GearJointId, PhysicsMaterial,
+    PrismaticJoint, PrismaticJointId, RevoluteJoint, RevoluteJointId, RigidBody, RigidBodyType,
     RigidContactImpulse, RopeJoint, RopeJointId, Rotation2D, SpringJoint, SpringJointId,
-    Transform2D, Velocity, MAX_CONVEX_POLYGON_VERTICES,
+    Transform2D, Velocity, WeldJoint, WeldJointId, MAX_CONVEX_POLYGON_VERTICES,
 };
 use crate::entity::Entity;
 use crate::tilemap::{Tilemap, TilemapSlopeGroundHit, TilemapSweepStats};
@@ -651,6 +652,7 @@ impl KinematicMoveSettings {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct RigidContactConstraint {
     pair: CollisionPair,
+    collider_pair: CollisionColliderPair,
     point: Transform2D,
     normal: Velocity,
     penetration: f32,
@@ -901,6 +903,14 @@ impl PhysicsSystem {
                     config.velocity_iterations,
                     stats,
                 );
+                solve_weld_joint_velocity_constraints(
+                    world,
+                    &constraints.island_schedule,
+                    island_root,
+                    delta_seconds,
+                    config.velocity_iterations,
+                    stats,
+                );
                 solve_revolute_joint_velocity_constraints(
                     world,
                     &constraints.island_schedule,
@@ -976,6 +986,12 @@ impl PhysicsSystem {
         for _ in 0..config.position_iterations {
             for island_root in constraints.island_schedule.roots() {
                 solve_prismatic_joint_position_constraints(
+                    world,
+                    &constraints.island_schedule,
+                    island_root,
+                    stats,
+                );
+                solve_weld_joint_position_constraints(
                     world,
                     &constraints.island_schedule,
                     island_root,
@@ -1817,12 +1833,17 @@ fn rigid_body_ccd_contact_point(
         (ColliderShapeRef::Capsule(moving_collider), _) => {
             capsule_support_point(moving_transform, moving_collider, normal)
         }
+        (ColliderShapeRef::Edge(moving_collider), _) => {
+            edge_support_point(moving_transform, moving_collider, normal)
+        }
         (ColliderShapeRef::ConvexPolygon(moving_collider, moving_rotation), _) => {
             convex_polygon_support_point(moving_transform, moving_collider, moving_rotation, normal)
         }
         (
             ColliderShapeRef::Aabb(moving_collider),
-            ColliderShapeRef::Capsule(_) | ColliderShapeRef::OrientedBox(_, _),
+            ColliderShapeRef::Capsule(_)
+            | ColliderShapeRef::Edge(_)
+            | ColliderShapeRef::OrientedBox(_, _),
         ) => aabb_support_point(moving_transform, moving_collider, normal),
         (ColliderShapeRef::Aabb(moving_collider), ColliderShapeRef::ConvexPolygon(_, _)) => {
             aabb_support_point(moving_transform, moving_collider, normal)
@@ -1896,6 +1917,27 @@ fn capsule_support_point(
     Transform2D {
         x: endpoint.x + normal_x * collider.radius,
         y: endpoint.y + normal_y * collider.radius,
+    }
+}
+
+fn edge_support_point(
+    transform: Transform2D,
+    collider: EdgeCollider,
+    direction: Velocity,
+) -> Transform2D {
+    let start = collider.start(transform);
+    let end = collider.end(transform);
+    let start_projection = start.x * direction.vx + start.y * direction.vy;
+    let end_projection = end.x * direction.vx + end.y * direction.vy;
+    if (start_projection - end_projection).abs() <= KINEMATIC_EPSILON {
+        Transform2D {
+            x: (start.x + end.x) * 0.5,
+            y: (start.y + end.y) * 0.5,
+        }
+    } else if start_projection > end_projection {
+        start
+    } else {
+        end
     }
 }
 
@@ -1989,6 +2031,16 @@ fn apply_rigid_body_ccd_impact(
         pair: CollisionPair {
             a: entity_at_index(world, moving_index),
             b: entity_at_index(world, hit.target_index),
+        },
+        collider_pair: CollisionColliderPair {
+            a: ColliderKey {
+                entity_index: moving_index,
+                collider_index: 0,
+            },
+            b: ColliderKey {
+                entity_index: hit.target_index,
+                collider_index: 0,
+            },
         },
         point: hit.point,
         normal: hit.normal,
@@ -2271,7 +2323,7 @@ fn rigid_body_island_candidate(world: &World, index: usize) -> Option<RigidBody>
 }
 
 fn union_contact_islands(world: &World, graph: &mut RigidBodyIslandGraph) {
-    for manifold in CollisionSystem::build_manifolds(world) {
+    for manifold in CollisionSystem::build_rigid_manifolds(world) {
         let a_index = manifold.pair.a.id as usize;
         let b_index = manifold.pair.b.id as usize;
         if should_solve_rigid_contact(world, a_index, b_index) {
@@ -2304,6 +2356,9 @@ fn union_joint_islands(world: &World, graph: &mut RigidBodyIslandGraph) {
         union_enabled_joint_island(world, graph, joint.enabled, joint.entity_a, joint.entity_b);
     }
     for joint in world.prismatic_joints.iter().copied().flatten() {
+        union_enabled_joint_island(world, graph, joint.enabled, joint.entity_a, joint.entity_b);
+    }
+    for joint in world.weld_joints.iter().copied().flatten() {
         union_enabled_joint_island(world, graph, joint.enabled, joint.entity_a, joint.entity_b);
     }
     for joint in world.gear_joints.iter().copied().flatten() {
@@ -3035,6 +3090,236 @@ fn clear_prismatic_joint_at_index(world: &mut World, index: usize) -> bool {
     };
     world
         .clear_prismatic_joint(PrismaticJointId {
+            index: index as u32,
+            generation,
+        })
+        .is_some()
+}
+
+fn solve_weld_joint_velocity_constraints(
+    world: &mut World,
+    island_schedule: &RigidBodyIslandSchedule,
+    island_root: usize,
+    delta_seconds: f32,
+    velocity_iterations: u32,
+    stats: &mut RigidBodyStepStats,
+) {
+    for index in 0..world.weld_joints.len() {
+        let Some(joint) = world.weld_joints[index] else {
+            continue;
+        };
+        if !island_schedule.joint_in_island(joint.entity_a, joint.entity_b, island_root) {
+            continue;
+        }
+        if weld_joint_should_break(world, joint) {
+            if clear_weld_joint_at_index(world, index) {
+                stats.broken_joints = stats.broken_joints.saturating_add(1);
+            }
+            continue;
+        }
+        if solve_weld_joint_velocity_constraint(world, joint, delta_seconds, velocity_iterations) {
+            stats.constraint_velocity_corrections =
+                stats.constraint_velocity_corrections.saturating_add(1);
+        }
+    }
+}
+
+fn solve_weld_joint_position_constraints(
+    world: &mut World,
+    island_schedule: &RigidBodyIslandSchedule,
+    island_root: usize,
+    stats: &mut RigidBodyStepStats,
+) {
+    for index in 0..world.weld_joints.len() {
+        let Some(joint) = world.weld_joints[index] else {
+            continue;
+        };
+        if !island_schedule.joint_in_island(joint.entity_a, joint.entity_b, island_root) {
+            continue;
+        }
+        if weld_joint_should_break(world, joint) {
+            if clear_weld_joint_at_index(world, index) {
+                stats.broken_joints = stats.broken_joints.saturating_add(1);
+            }
+            continue;
+        }
+        if solve_weld_joint_position_constraint(world, joint) {
+            stats.constraint_position_corrections =
+                stats.constraint_position_corrections.saturating_add(1);
+        }
+    }
+}
+
+fn solve_weld_joint_velocity_constraint(
+    world: &mut World,
+    joint: WeldJoint,
+    delta_seconds: f32,
+    velocity_iterations: u32,
+) -> bool {
+    let prismatic = prismatic_joint_from_weld_joint(joint);
+    let stiffness = sanitize_unit_interval(joint.stiffness, WeldJoint::DEFAULT_STIFFNESS);
+    let damping = sanitize_unit_interval(joint.damping, WeldJoint::DEFAULT_DAMPING);
+    let angular_stiffness = sanitize_unit_interval(
+        joint.angular_stiffness,
+        WeldJoint::DEFAULT_ANGULAR_STIFFNESS,
+    );
+    let angular_damping =
+        sanitize_unit_interval(joint.angular_damping, WeldJoint::DEFAULT_ANGULAR_DAMPING);
+
+    let mut applied = false;
+    if (angular_stiffness > 0.0 || angular_damping > 0.0)
+        && solve_prismatic_joint_angular_velocity_constraint(
+            world,
+            prismatic,
+            delta_seconds,
+            velocity_iterations,
+            angular_stiffness,
+            angular_damping,
+        )
+    {
+        applied = true;
+    }
+    if (stiffness > 0.0 || damping > 0.0)
+        && solve_prismatic_joint_linear_velocity_constraint(
+            world,
+            prismatic,
+            delta_seconds,
+            velocity_iterations,
+            stiffness,
+            damping,
+        )
+    {
+        applied = true;
+    }
+    if (stiffness > 0.0 || damping > 0.0)
+        && solve_prismatic_joint_limit_velocity_constraint(
+            world,
+            prismatic,
+            delta_seconds,
+            velocity_iterations,
+            stiffness,
+            damping,
+        )
+    {
+        applied = true;
+    }
+
+    applied
+}
+
+fn solve_weld_joint_position_constraint(world: &mut World, joint: WeldJoint) -> bool {
+    let prismatic = prismatic_joint_from_weld_joint(joint);
+    let stiffness = sanitize_unit_interval(joint.stiffness, WeldJoint::DEFAULT_STIFFNESS);
+    let angular_stiffness = sanitize_unit_interval(
+        joint.angular_stiffness,
+        WeldJoint::DEFAULT_ANGULAR_STIFFNESS,
+    );
+
+    let mut applied = false;
+    if angular_stiffness > 0.0
+        && solve_prismatic_joint_angular_position_constraint(world, prismatic, angular_stiffness)
+    {
+        applied = true;
+    }
+    if stiffness > 0.0 && solve_weld_joint_anchor_position_constraint(world, prismatic, stiffness) {
+        applied = true;
+    }
+
+    applied
+}
+
+fn prismatic_joint_from_weld_joint(joint: WeldJoint) -> PrismaticJoint {
+    PrismaticJoint::new(joint.entity_a, joint.entity_b)
+        .with_local_anchor_a(joint.local_anchor_a_x, joint.local_anchor_a_y)
+        .with_local_anchor_b(joint.local_anchor_b_x, joint.local_anchor_b_y)
+        .with_local_axis_a(1.0, 0.0)
+        .with_reference_angle(joint.reference_angle)
+        .with_stiffness(joint.stiffness)
+        .with_damping(joint.damping)
+        .with_angular_stiffness(joint.angular_stiffness)
+        .with_angular_damping(joint.angular_damping)
+        .with_translation_limits(0.0, 0.0)
+        .with_enabled(joint.enabled)
+}
+
+fn weld_joint_should_break(world: &World, joint: WeldJoint) -> bool {
+    let prismatic = prismatic_joint_from_weld_joint(joint);
+    let Some(context) = prismatic_joint_constraint_context(world, prismatic) else {
+        return false;
+    };
+    if sanitize_weld_joint_break_limit(joint.break_distance).is_some_and(|break_distance| {
+        context.linear_error.hypot(context.translation) > break_distance + KINEMATIC_EPSILON
+    }) {
+        return true;
+    }
+    sanitize_weld_joint_break_limit(joint.break_angle)
+        .is_some_and(|break_angle| context.angular_error.abs() > break_angle + KINEMATIC_EPSILON)
+}
+
+fn sanitize_weld_joint_break_limit(break_limit: f32) -> Option<f32> {
+    (break_limit.is_finite() && break_limit >= 0.0).then_some(break_limit)
+}
+
+fn solve_weld_joint_anchor_position_constraint(
+    world: &mut World,
+    joint: PrismaticJoint,
+    stiffness: f32,
+) -> bool {
+    let Some(context) = prismatic_joint_constraint_context(world, joint) else {
+        return false;
+    };
+    let error = Velocity {
+        vx: context.anchor_b.x - context.anchor_a.x,
+        vy: context.anchor_b.y - context.anchor_a.y,
+    };
+    if velocity_len_squared(error) <= KINEMATIC_EPSILON * KINEMATIC_EPSILON {
+        return false;
+    }
+    let denominator = context.inverse_mass_a + context.inverse_mass_b;
+    if denominator <= 0.0 {
+        return false;
+    }
+
+    let impulse = Velocity {
+        vx: -error.vx * stiffness / denominator,
+        vy: -error.vy * stiffness / denominator,
+    };
+    if !impulse.vx.is_finite()
+        || !impulse.vy.is_finite()
+        || velocity_len_squared(impulse) <= KINEMATIC_EPSILON * KINEMATIC_EPSILON
+    {
+        return false;
+    }
+
+    apply_weld_joint_anchor_position_correction(world, context, impulse);
+    true
+}
+
+fn apply_weld_joint_anchor_position_correction(
+    world: &mut World,
+    context: PrismaticJointConstraintContext,
+    impulse: Velocity,
+) {
+    if context.inverse_mass_a > 0.0 {
+        if let Some(transform) = world.transforms[context.a_index].as_mut() {
+            transform.x -= impulse.vx * context.inverse_mass_a;
+            transform.y -= impulse.vy * context.inverse_mass_a;
+        }
+    }
+    if context.inverse_mass_b > 0.0 {
+        if let Some(transform) = world.transforms[context.b_index].as_mut() {
+            transform.x += impulse.vx * context.inverse_mass_b;
+            transform.y += impulse.vy * context.inverse_mass_b;
+        }
+    }
+}
+
+fn clear_weld_joint_at_index(world: &mut World, index: usize) -> bool {
+    let Some(generation) = world.weld_joint_generations.get(index).copied() else {
+        return false;
+    };
+    world
+        .clear_weld_joint(WeldJointId {
             index: index as u32,
             generation,
         })
@@ -4214,18 +4499,20 @@ fn clear_rope_joint_at_index(world: &mut World, index: usize) -> bool {
 
 fn build_rigid_contact_constraints(world: &World) -> Vec<RigidContactConstraint> {
     let mut constraints = Vec::new();
-    for manifold in CollisionSystem::build_manifolds(world) {
+    for collider_manifold in CollisionSystem::build_rigid_collider_manifolds(world) {
+        let manifold = collider_manifold.manifold;
         let a_index = manifold.pair.a.id as usize;
         let b_index = manifold.pair.b.id as usize;
         if !should_solve_rigid_contact(world, a_index, b_index) {
             continue;
         }
-        for point in manifold.points() {
+        for point in collider_manifold.points() {
             let (normal_impulse, tangent_impulse) =
                 cached_contact_impulse_for_point(world, manifold, point.point_x, point.point_y)
                     .unwrap_or_default();
             constraints.push(RigidContactConstraint {
                 pair: manifold.pair,
+                collider_pair: collider_manifold.collider_pair,
                 point: Transform2D {
                     x: point.point_x,
                     y: point.point_y,
@@ -4454,8 +4741,8 @@ fn solve_rigid_body_position_contacts(
     config: RigidBodyStepConfig,
     stats: &mut RigidBodyStepStats,
 ) {
-    for contact in CollisionSystem::build_contacts(world) {
-        if !island_schedule.pair_in_island(contact.pair, island_root) {
+    for contact in CollisionSystem::build_rigid_collider_contacts(world) {
+        if !island_schedule.pair_in_island(contact.contact.pair, island_root) {
             continue;
         }
         stats.contact_checks = stats.contact_checks.saturating_add(1);
@@ -4496,8 +4783,8 @@ fn solve_normal_contact_constraint(
     let relative_velocity = relative_contact_velocity(world, a_index, b_index, point);
     let velocity_along_normal = dot_velocity(relative_velocity, normal);
 
-    let material_a = contact_material(world, a_index);
-    let material_b = contact_material(world, b_index);
+    let material_a = contact_material_for_collider(world, constraint.collider_pair.a);
+    let material_b = contact_material_for_collider(world, constraint.collider_pair.b);
     let material_restitution = material_a.restitution.min(material_b.restitution);
     let restitution = contact_restitution(
         material_restitution,
@@ -4583,8 +4870,8 @@ fn solve_split_impulse_contact_constraint(
     let relative_velocity =
         split_impulses.relative_contact_velocity(world, context.a_index, context.b_index, point);
     let velocity_along_normal = dot_velocity(relative_velocity, normal);
-    let material_a = contact_material(world, context.a_index);
-    let material_b = contact_material(world, context.b_index);
+    let material_a = contact_material_for_collider(world, constraint.collider_pair.a);
+    let material_b = contact_material_for_collider(world, constraint.collider_pair.b);
     let split_bias = contact_baumgarte_bias_velocity(
         constraint.penetration,
         config,
@@ -4652,8 +4939,8 @@ fn solve_tangent_contact_constraint(
 
     let point = finite_transform(constraint.point);
     let normal = finite_velocity(constraint.normal);
-    let material_a = contact_material(world, a_index);
-    let material_b = contact_material(world, b_index);
+    let material_a = contact_material_for_collider(world, constraint.collider_pair.a);
+    let material_b = contact_material_for_collider(world, constraint.collider_pair.b);
     let relative_velocity = relative_contact_velocity(world, a_index, b_index, point);
     let tangent = contact_constraint_tangent(normal);
     let friction = (material_a.friction * material_b.friction).sqrt();
@@ -4730,8 +5017,8 @@ fn solve_velocity_contact_block(
         relative_contact_velocity(world, context.a_index, context.b_index, point_b),
         normal,
     );
-    let material_a = contact_material(world, context.a_index);
-    let material_b = contact_material(world, context.b_index);
+    let material_a = contact_material_for_collider(world, first.collider_pair.a);
+    let material_b = contact_material_for_collider(world, first.collider_pair.b);
     let restitution = material_a.restitution.min(material_b.restitution);
     let baumgarte_bias_a = contact_velocity_baumgarte_bias(
         first.penetration,
@@ -4849,6 +5136,7 @@ fn rigid_contact_constraints_can_block_solve(
     second: &RigidContactConstraint,
 ) -> bool {
     first.pair == second.pair
+        && first.collider_pair == second.collider_pair
         && dot_velocity(
             finite_velocity(first.normal),
             finite_velocity(second.normal),
@@ -5008,9 +5296,10 @@ fn contact_restitution_threshold_skipped(
 
 fn solve_position_contact(
     world: &mut World,
-    contact: CollisionContact,
+    collider_contact: ColliderCollisionContact,
     config: RigidBodyStepConfig,
 ) -> bool {
+    let contact = collider_contact.contact;
     let a_index = contact.pair.a.id as usize;
     let b_index = contact.pair.b.id as usize;
     if !should_solve_rigid_contact(world, a_index, b_index) {
@@ -5049,8 +5338,8 @@ fn solve_position_contact(
         return false;
     }
 
-    let material_a = contact_material(world, a_index);
-    let material_b = contact_material(world, b_index);
+    let material_a = contact_material_for_collider(world, collider_contact.collider_pair.a);
+    let material_b = contact_material_for_collider(world, collider_contact.collider_pair.b);
     let correction_scale = material_a
         .contact_position_correction_scale
         .min(material_b.contact_position_correction_scale);
@@ -6335,13 +6624,15 @@ fn sanitized_inverse_inertia(body: RigidBody) -> f32 {
     }
 }
 
-fn contact_material(world: &World, index: usize) -> PhysicsMaterial {
+fn contact_material_for_collider(world: &World, key: ColliderKey) -> PhysicsMaterial {
     world
-        .collider_material_at(index)
+        .compound_collider_at(key.entity_index, key.collider_index)
+        .and_then(|collider| collider.material)
+        .or_else(|| world.collider_material_at(key.entity_index))
         .or_else(|| {
             world
                 .rigid_bodies
-                .get(index)
+                .get(key.entity_index)
                 .copied()
                 .flatten()
                 .map(|body| body.material)
@@ -7533,9 +7824,9 @@ mod tests {
     use super::*;
     use crate::components::{
         AngularVelocity, CapsuleCollider, CircleCollider, CollisionFilter, CollisionLayer,
-        ConvexPolygonCollider, DistanceJoint, OrientedBoxCollider, PhysicsMaterial, PrismaticJoint,
-        RevoluteJoint, RigidBody, RopeJoint, Rotation2D, SpringJoint, Transform2D, Velocity,
-        MAX_CONVEX_POLYGON_VERTICES,
+        CompoundCollider, CompoundColliderShape, ConvexPolygonCollider, DistanceJoint,
+        OrientedBoxCollider, PhysicsMaterial, PrismaticJoint, RevoluteJoint, RigidBody, RopeJoint,
+        Rotation2D, SpringJoint, Transform2D, Velocity, MAX_CONVEX_POLYGON_VERTICES,
     };
     use crate::tilemap::Tilemap;
 
@@ -10688,6 +10979,71 @@ mod tests {
     }
 
     #[test]
+    fn secondary_compound_collider_material_overrides_body_material_for_contacts() {
+        let mut world = World::default();
+        let body = spawn_dynamic_body(&mut world, 0.0, 0.0, 1.0);
+        world.set_rigid_body(
+            body,
+            RigidBody::dynamic_box(1.0, 2.0, 2.0).with_material(PhysicsMaterial::new(0.0, 0.0)),
+        );
+        assert_eq!(
+            world.add_compound_collider(
+                body,
+                CompoundCollider::new(CompoundColliderShape::Aabb(
+                    AabbCollider::new(1.0, 1.0, false, CollisionLayer::Player)
+                        .with_offset(0.0, 2.0),
+                ))
+                .with_filter(CollisionFilter::new(
+                    CollisionLayer::Player.mask(),
+                    CollisionMask::ALL,
+                )),
+            ),
+            Some(1)
+        );
+        assert!(world.set_compound_collider_material(body, 1, PhysicsMaterial::new(0.0, 10.0)));
+        let ground = spawn_kinematic_body_with_size(
+            &mut world,
+            0.0,
+            3.5,
+            CollisionLayer::Wall,
+            false,
+            8.0,
+            1.0,
+        );
+        world.set_rigid_body(
+            ground,
+            RigidBody::static_body().with_material(PhysicsMaterial::new(0.0, 0.0)),
+        );
+        world.set_collider_material(
+            ground,
+            PhysicsMaterial::new(0.0, 10.0).with_surface_velocity(Velocity { vx: 30.0, vy: 0.0 }),
+        );
+
+        let stats = PhysicsSystem::step_rigid_bodies_with_config(
+            &mut world,
+            0.1,
+            RigidBodyStepConfig {
+                gravity: Velocity { vx: 0.0, vy: 20.0 },
+                velocity_iterations: 4,
+                position_iterations: 1,
+                position_correction_percent: 1.0,
+                position_correction_slop: 0.0,
+                restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+                contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+                max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+                contact_split_impulse: false,
+            },
+        );
+
+        let velocity = world.velocity(body).unwrap();
+        assert!(stats.velocity_impulses > 0);
+        assert!(
+            velocity.vx > 0.1,
+            "secondary compound collider material should participate in contact solving, got {velocity:?}"
+        );
+    }
+
+    #[test]
     fn rigid_body_step_uses_ccd_for_fast_dynamic_aabb() {
         let mut world = World::default();
         let mover = spawn_dynamic_body(&mut world, 0.0, 0.0, 1.0);
@@ -13814,6 +14170,92 @@ mod tests {
         assert_eq!(stats.constraint_velocity_corrections, 0);
         assert_eq!(stats.constraint_position_corrections, 0);
         assert_eq!(world.prismatic_joint_count(), 1);
+    }
+
+    #[test]
+    fn weld_joint_locks_local_anchor_and_relative_angle() {
+        let mut world = World::default();
+        let anchor = world.spawn_entity();
+        world.set_transform(anchor, Transform2D { x: 0.0, y: 0.0 });
+        world.set_rotation(anchor, Rotation2D { radians: 0.0 });
+        world.set_rigid_body(anchor, RigidBody::static_body());
+
+        let body = world.spawn_entity();
+        world.set_transform(body, Transform2D { x: 10.0, y: 2.0 });
+        world.set_rotation(body, Rotation2D { radians: 0.5 });
+        world.set_rigid_body(body, RigidBody::dynamic_box(1.0, 2.0, 2.0));
+        world.add_weld_joint(
+            WeldJoint::new(anchor, body)
+                .with_local_anchor_a(4.0, 0.0)
+                .with_local_anchor_b(-4.0, 0.0)
+                .with_reference_angle(0.0),
+        );
+
+        let stats = PhysicsSystem::step_rigid_bodies_with_config(
+            &mut world,
+            0.1,
+            RigidBodyStepConfig {
+                gravity: Velocity::default(),
+                velocity_iterations: 4,
+                position_iterations: 8,
+                position_correction_percent: 0.0,
+                position_correction_slop: 0.0,
+                restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+                contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+                max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+                contact_split_impulse: false,
+            },
+        );
+
+        let transform = world.transform(body).unwrap();
+        let rotation = world.rotation(body).unwrap_or_default();
+        assert!(stats.constraint_position_corrections > 0);
+        assert!(
+            (transform.x - 8.0).abs() < 0.05 && transform.y.abs() < 0.05,
+            "weld joint should preserve the authored local anchor offset, got {transform:?}"
+        );
+        assert!(
+            rotation.radians.abs() < 0.05,
+            "weld joint should lock relative angle, got {rotation:?}"
+        );
+    }
+
+    #[test]
+    fn weld_joint_breaks_on_linear_or_angular_error() {
+        let mut world = World::default();
+        let anchor = world.spawn_entity();
+        world.set_transform(anchor, Transform2D { x: 0.0, y: 0.0 });
+        world.set_rotation(anchor, Rotation2D { radians: 0.0 });
+        world.set_rigid_body(anchor, RigidBody::static_body());
+
+        let body = world.spawn_entity();
+        world.set_transform(body, Transform2D { x: 4.0, y: 0.0 });
+        world.set_rotation(body, Rotation2D { radians: 2.0 });
+        world.set_rigid_body(body, RigidBody::dynamic_box(1.0, 2.0, 2.0));
+        world.add_weld_joint(
+            WeldJoint::new(anchor, body)
+                .with_break_distance(1.0)
+                .with_break_angle(1.0),
+        );
+
+        let stats = PhysicsSystem::step_rigid_bodies_with_config(
+            &mut world,
+            0.1,
+            RigidBodyStepConfig {
+                gravity: Velocity::default(),
+                velocity_iterations: 1,
+                position_iterations: 1,
+                position_correction_percent: 0.0,
+                position_correction_slop: 0.0,
+                restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+                contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+                max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+                contact_split_impulse: false,
+            },
+        );
+
+        assert_eq!(stats.broken_joints, 1);
+        assert_eq!(world.weld_joint_count(), 0);
     }
 
     #[test]

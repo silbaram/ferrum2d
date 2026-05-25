@@ -9,12 +9,17 @@ export interface DebugOverlayMetrics {
   textureBindCount?: number;
   textureSwitchCount?: number;
   audioEventsPerSecond?: number;
+  physicsMode?: string;
   physicsFixedSteps?: number;
   physicsKinematicHits?: number;
   physicsTileCandidateChecks?: number;
   collisionPairCount?: number;
   collisionEventCount?: number;
   physicsDebugLineCount?: number;
+  physicsCcdChecks?: number;
+  physicsCcdHits?: number;
+  physicsSleepingBodies?: number;
+  physicsBrokenJoints?: number;
   rustUpdateTimeMs: number;
   renderTimeMs: number;
   mouseX: number;
@@ -25,7 +30,7 @@ export interface DebugOverlayMetrics {
   score: number;
 }
 
-export type DebugOverlayMetricUnit = "fps" | "ms" | "count" | "events/s" | "px" | "world" | "state" | "score";
+export type DebugOverlayMetricUnit = "fps" | "ms" | "count" | "events/s" | "px" | "world" | "state" | "score" | "mode";
 
 export interface DebugOverlayRowContract {
   id: string;
@@ -47,12 +52,17 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "textureBindCount", label: "texture binds", unit: "count", optional: true },
   { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
   { id: "audioEventsPerSecond", label: "audio events", unit: "events/s", optional: true },
+  { id: "physicsMode", label: "physics mode", unit: "mode", optional: true },
   { id: "physicsFixedSteps", label: "fixed steps", unit: "count", optional: true },
   { id: "physicsKinematicHits", label: "kinematic hits", unit: "count", optional: true },
   { id: "physicsTileCandidateChecks", label: "tile checks", unit: "count", optional: true },
   { id: "collisionPairCount", label: "collision pairs", unit: "count", optional: true },
   { id: "collisionEventCount", label: "collision events", unit: "count", optional: true },
   { id: "physicsDebugLineCount", label: "physics debug lines", unit: "count", optional: true },
+  { id: "physicsCcdChecks", label: "ccd checks", unit: "count", optional: true },
+  { id: "physicsCcdHits", label: "ccd hits", unit: "count", optional: true },
+  { id: "physicsSleepingBodies", label: "sleeping bodies", unit: "count", optional: true },
+  { id: "physicsBrokenJoints", label: "broken joints", unit: "count", optional: true },
   { id: "mousePosition", label: "mouse", unit: "px" },
   { id: "cameraPosition", label: "camera", unit: "world" },
   { id: "gameState", label: "state", unit: "state" },
@@ -140,6 +150,9 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   if (metrics.audioEventsPerSecond !== undefined) {
     lines.push(row("audioEventsPerSecond", `${metrics.audioEventsPerSecond.toFixed(1)} events/s`));
   }
+  if (metrics.physicsMode !== undefined) {
+    lines.push(row("physicsMode", metrics.physicsMode));
+  }
   if (metrics.physicsFixedSteps !== undefined) {
     lines.push(row("physicsFixedSteps", metrics.physicsFixedSteps));
   }
@@ -157,6 +170,18 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   }
   if (metrics.physicsDebugLineCount !== undefined) {
     lines.push(row("physicsDebugLineCount", metrics.physicsDebugLineCount));
+  }
+  if (metrics.physicsCcdChecks !== undefined) {
+    lines.push(row("physicsCcdChecks", metrics.physicsCcdChecks));
+  }
+  if (metrics.physicsCcdHits !== undefined) {
+    lines.push(row("physicsCcdHits", metrics.physicsCcdHits));
+  }
+  if (metrics.physicsSleepingBodies !== undefined) {
+    lines.push(row("physicsSleepingBodies", metrics.physicsSleepingBodies));
+  }
+  if (metrics.physicsBrokenJoints !== undefined) {
+    lines.push(row("physicsBrokenJoints", metrics.physicsBrokenJoints));
   }
   lines.push(
     row("mousePosition", `${metrics.mouseX.toFixed(1)}, ${metrics.mouseY.toFixed(1)} px`),

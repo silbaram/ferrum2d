@@ -1,0 +1,61 @@
+{
+  "mode": "rigid",
+  "gravity": [0, 0],
+  "continuous": true,
+  "solver": {
+    "fixedTimestep": true,
+    "stepSeconds": 0.0166666667,
+    "velocityIterations": 8,
+    "positionIterations": 6,
+    "sleep": false
+  },
+  "materials": {
+    "metal": { "friction": 0.2, "restitution": 0.15, "density": 3 },
+    "rubber": { "friction": 0.5, "restitution": 0.45, "density": 1 },
+    "platform": { "friction": 0.7, "restitution": 0, "density": 1 }
+  },
+  "layers": {
+    "world": { "mask": ["projectile", "dynamic"] },
+    "projectile": { "mask": ["world", "dynamic"] },
+    "dynamic": { "mask": ["world", "projectile"] }
+  },
+  "bodies": {
+    "thinWall": {
+      "type": "static",
+      "position": [520, 240],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [10, 320] }
+    },
+    "projectile": {
+      "type": "dynamic",
+      "position": [92, 240],
+      "velocity": [1120, 0],
+      "material": "metal",
+      "layer": "projectile",
+      "mass": 0.5,
+      "collider": { "shape": "circle", "radius": 10 }
+    },
+    "target": {
+      "type": "dynamic",
+      "position": [620, 240],
+      "material": "rubber",
+      "layer": "dynamic",
+      "collider": { "shape": "box", "size": [42, 42] }
+    },
+    "topRail": {
+      "type": "static",
+      "position": [400, 70],
+      "layer": "world",
+      "collider": { "shape": "edge", "start": [-320, 0], "end": [320, 0] }
+    },
+    "bottomRail": {
+      "type": "static",
+      "position": [400, 410],
+      "layer": "world",
+      "collider": { "shape": "edge", "start": [-320, 0], "end": [320, 0] }
+    }
+  },
+  "joints": {},
+  "debug": { "colliders": true, "contacts": true, "broadphase": true, "ccd": true }
+}
