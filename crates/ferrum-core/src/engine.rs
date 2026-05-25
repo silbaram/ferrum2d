@@ -11,13 +11,13 @@ use crate::collision::{
 };
 use crate::collision_event::{CollisionEvent, CollisionEventCounts, CollisionEventTracker};
 use crate::components::{
-    AabbCollider, AngularVelocity, CapsuleCollider, CircleCollider, CollisionFilter,
+    AabbCollider, AngularVelocity, CapsuleCollider, ChainCollider, CircleCollider, CollisionFilter,
     CollisionLayer, CollisionMask, CompoundCollider, CompoundColliderShape, ConvexPolygonCollider,
     DistanceJoint, DistanceJointId, EdgeCollider, GearJoint, GearJointId, OrientedBoxCollider,
-    PhysicsMaterial, PrismaticJoint, PrismaticJointId, RevoluteJoint, RevoluteJointId, RigidBody,
-    RigidBodyType, RigidContactImpulse, RopeJoint, RopeJointId, Rotation2D, SpringJoint,
-    SpringJointId, SpriteFrame, Transform2D, Velocity, WeldJoint, WeldJointId,
-    MAX_CONVEX_POLYGON_VERTICES,
+    PhysicsMaterial, PrismaticJoint, PrismaticJointId, PulleyJoint, PulleyJointId, RevoluteJoint,
+    RevoluteJointId, RigidBody, RigidBodyType, RigidContactImpulse, RopeJoint, RopeJointId,
+    Rotation2D, SpringJoint, SpringJointId, SpriteFrame, Transform2D, Velocity, WeldJoint,
+    WeldJointId, MAX_CHAIN_COLLIDER_VERTICES, MAX_CONVEX_POLYGON_VERTICES,
 };
 use crate::entity::Entity;
 use crate::game_state::GameState;
@@ -52,6 +52,7 @@ const PHYSICS_COLLIDER_TYPE_CAPSULE: u32 = 3;
 const PHYSICS_COLLIDER_TYPE_ORIENTED_BOX: u32 = 4;
 const PHYSICS_COLLIDER_TYPE_CONVEX_POLYGON: u32 = 5;
 const PHYSICS_COLLIDER_TYPE_EDGE: u32 = 6;
+const PHYSICS_COLLIDER_TYPE_CHAIN: u32 = 7;
 const PHYSICS_EDGE_BODY_RADIUS: f32 = 0.0001;
 const PHYSICS_LAYER_PLAYER: u32 = 0;
 const PHYSICS_LAYER_ENEMY: u32 = 1;
@@ -64,6 +65,20 @@ const PHYSICS_JOINT_REVOLUTE: u32 = 3;
 const PHYSICS_JOINT_PRISMATIC: u32 = 4;
 const PHYSICS_JOINT_GEAR: u32 = 5;
 const PHYSICS_JOINT_WELD: u32 = 6;
+const PHYSICS_JOINT_PULLEY: u32 = 7;
+const PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY: usize = 31;
+const PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY: usize = 5;
+const PHYSICS_BODY_SNAPSHOT_HANDLE_U32S: usize = 2;
+const PHYSICS_BODY_SNAPSHOT_U32_ENTITY_ID: usize = 0;
+const PHYSICS_BODY_SNAPSHOT_U32_ENTITY_GENERATION: usize = 1;
+const PHYSICS_BODY_SNAPSHOT_U32_BODY_TYPE: usize = 2;
+const PHYSICS_BODY_SNAPSHOT_U32_COLLIDER_TYPE: usize = 3;
+const PHYSICS_BODY_SNAPSHOT_U32_FLAGS: usize = 4;
+const PHYSICS_BODY_SNAPSHOT_FLAG_BODY_ENABLED: u32 = 1 << 0;
+const PHYSICS_BODY_SNAPSHOT_FLAG_SLEEPING: u32 = 1 << 1;
+const PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_ENABLED: u32 = 1 << 2;
+const PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_TRIGGER: u32 = 1 << 3;
+const PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_MATERIAL_OVERRIDE: u32 = 1 << 4;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum ActiveScene {
@@ -203,6 +218,10 @@ struct PhysicsJointSnapshot {
     local_anchor_b_y: f32,
     local_axis_a_x: f32,
     local_axis_a_y: f32,
+    ground_anchor_a_x: f32,
+    ground_anchor_a_y: f32,
+    ground_anchor_b_x: f32,
+    ground_anchor_b_y: f32,
     limit_enabled: bool,
     lower_angle: f32,
     upper_angle: f32,
@@ -497,6 +516,8 @@ pub struct Engine {
     physics_entity_snapshot: PhysicsEntitySnapshot,
     physics_body_collider_snapshot: PhysicsBodyColliderSnapshot,
     physics_joint_snapshot: PhysicsJointSnapshot,
+    physics_body_snapshot_floats: Vec<f32>,
+    physics_body_snapshot_u32s: Vec<u32>,
     rigid_body_step_stats: RigidBodyStepStats,
     fixed_timestep: FixedTimestep,
     fixed_timestep_enabled: bool,
@@ -544,6 +565,8 @@ impl Engine {
             physics_entity_snapshot: PhysicsEntitySnapshot::default(),
             physics_body_collider_snapshot: PhysicsBodyColliderSnapshot::default(),
             physics_joint_snapshot: PhysicsJointSnapshot::default(),
+            physics_body_snapshot_floats: Vec::with_capacity(PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY),
+            physics_body_snapshot_u32s: Vec::with_capacity(PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY),
             rigid_body_step_stats: RigidBodyStepStats::default(),
             fixed_timestep: FixedTimestep::default(),
             fixed_timestep_enabled: false,
@@ -1847,6 +1870,68 @@ impl Engine {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn spawn_physics_chain_body(
+        &mut self,
+        x: f32,
+        y: f32,
+        vertex_values: Vec<f32>,
+        looped: bool,
+        body_type: u32,
+        mass_or_density: f32,
+        use_density: bool,
+        layer: u32,
+        category_bits: u32,
+        mask_bits: u32,
+        is_trigger: bool,
+        collider_enabled: bool,
+        body_enabled: bool,
+        can_sleep: bool,
+    ) -> bool {
+        if !Self::valid_transform(x, y) {
+            self.physics_entity_snapshot = PhysicsEntitySnapshot::default();
+            return false;
+        }
+        let Some((vertices, vertex_count)) = Self::chain_vertices(&vertex_values, looped) else {
+            self.physics_entity_snapshot = PhysicsEntitySnapshot::default();
+            return false;
+        };
+        let Some(body) = Self::rigid_body_for_chain(
+            body_type,
+            mass_or_density,
+            use_density,
+            vertices,
+            vertex_count,
+            body_enabled,
+            can_sleep,
+        ) else {
+            self.physics_entity_snapshot = PhysicsEntitySnapshot::default();
+            return false;
+        };
+        let entity = self.world.spawn_entity();
+        self.world.set_transform(entity, Transform2D { x, y });
+        self.world.set_chain_collider(
+            entity,
+            ChainCollider::new(
+                vertices,
+                vertex_count,
+                looped,
+                is_trigger,
+                Self::collision_layer_from_code(layer),
+            )
+            .with_enabled(collider_enabled),
+        );
+        self.world.set_collision_filter(
+            entity,
+            CollisionFilter::new(
+                CollisionMask::from_bits(category_bits),
+                CollisionMask::from_bits(mask_bits),
+            ),
+        );
+        self.world.set_rigid_body(entity, body);
+        self.store_physics_entity_snapshot(entity)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_physics_oriented_box_body(
         &mut self,
         x: f32,
@@ -2129,6 +2214,46 @@ impl Engine {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn add_physics_chain_collider(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        vertex_values: Vec<f32>,
+        looped: bool,
+        offset_x: f32,
+        offset_y: f32,
+        layer: u32,
+        category_bits: u32,
+        mask_bits: u32,
+        is_trigger: bool,
+        collider_enabled: bool,
+    ) -> bool {
+        if !Self::valid_transform(offset_x, offset_y) {
+            return false;
+        }
+        let Some((vertices, vertex_count)) = Self::chain_vertices(&vertex_values, looped) else {
+            return false;
+        };
+        self.add_physics_compound_collider(
+            entity_id,
+            entity_generation,
+            CompoundColliderShape::Chain(
+                ChainCollider::new(
+                    vertices,
+                    vertex_count,
+                    looped,
+                    is_trigger,
+                    Self::collision_layer_from_code(layer),
+                )
+                .with_offset(offset_x, offset_y)
+                .with_enabled(collider_enabled),
+            ),
+            category_bits,
+            mask_bits,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn add_physics_oriented_box_collider(
         &mut self,
         entity_id: u32,
@@ -2296,6 +2421,110 @@ impl Engine {
         self.store_physics_entity_snapshot(entity)
     }
 
+    pub fn physics_body_snapshot_floats_per_body(&self) -> usize {
+        PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY
+    }
+
+    pub fn physics_body_snapshot_u32s_per_body(&self) -> usize {
+        PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY
+    }
+
+    pub fn physics_body_snapshot_float_ptr(&self) -> *const f32 {
+        self.physics_body_snapshot_floats.as_ptr()
+    }
+
+    pub fn physics_body_snapshot_float_len(&self) -> usize {
+        self.physics_body_snapshot_floats.len()
+    }
+
+    pub fn physics_body_snapshot_u32_ptr(&self) -> *const u32 {
+        self.physics_body_snapshot_u32s.as_ptr()
+    }
+
+    pub fn physics_body_snapshot_u32_len(&self) -> usize {
+        self.physics_body_snapshot_u32s.len()
+    }
+
+    pub fn capture_physics_body_snapshot_bulk(&mut self, handles: Vec<u32>) -> bool {
+        if !handles
+            .len()
+            .is_multiple_of(PHYSICS_BODY_SNAPSHOT_HANDLE_U32S)
+        {
+            self.physics_body_snapshot_floats.clear();
+            self.physics_body_snapshot_u32s.clear();
+            return false;
+        }
+        let body_count = handles.len() / PHYSICS_BODY_SNAPSHOT_HANDLE_U32S;
+        let mut snapshots = Vec::with_capacity(body_count);
+        for chunk in handles.chunks_exact(PHYSICS_BODY_SNAPSHOT_HANDLE_U32S) {
+            let Some(entity) = self.entity_from_handle(chunk[0], chunk[1]) else {
+                self.physics_body_snapshot_floats.clear();
+                self.physics_body_snapshot_u32s.clear();
+                return false;
+            };
+            if !self.store_physics_entity_snapshot(entity) {
+                self.physics_body_snapshot_floats.clear();
+                self.physics_body_snapshot_u32s.clear();
+                return false;
+            }
+            snapshots.push(self.physics_entity_snapshot);
+        }
+        self.physics_body_snapshot_floats.clear();
+        self.physics_body_snapshot_u32s.clear();
+        self.physics_body_snapshot_floats
+            .reserve(body_count * PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY);
+        self.physics_body_snapshot_u32s
+            .reserve(body_count * PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY);
+        for snapshot in snapshots {
+            Self::append_physics_body_snapshot_bulk(
+                snapshot,
+                &mut self.physics_body_snapshot_floats,
+                &mut self.physics_body_snapshot_u32s,
+            );
+        }
+        true
+    }
+
+    pub fn restore_physics_body_snapshot_bulk(
+        &mut self,
+        handles: Vec<u32>,
+        floats: Vec<f32>,
+        u32s: Vec<u32>,
+    ) -> bool {
+        if !handles
+            .len()
+            .is_multiple_of(PHYSICS_BODY_SNAPSHOT_HANDLE_U32S)
+            || !floats
+                .len()
+                .is_multiple_of(PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY)
+            || !u32s
+                .len()
+                .is_multiple_of(PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY)
+        {
+            return false;
+        }
+        let body_count = handles.len() / PHYSICS_BODY_SNAPSHOT_HANDLE_U32S;
+        if floats.len() / PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY != body_count
+            || u32s.len() / PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY != body_count
+        {
+            return false;
+        }
+        for index in 0..body_count {
+            let handle_offset = index * PHYSICS_BODY_SNAPSHOT_HANDLE_U32S;
+            let float_offset = index * PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY;
+            let u32_offset = index * PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY;
+            if !self.restore_physics_body_snapshot_entry(
+                handles[handle_offset],
+                handles[handle_offset + 1],
+                &floats[float_offset..float_offset + PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY],
+                &u32s[u32_offset..u32_offset + PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY],
+            ) {
+                return false;
+            }
+        }
+        true
+    }
+
     pub fn despawn_physics_entity(&mut self, entity_id: u32, entity_generation: u32) -> bool {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
@@ -2458,6 +2687,11 @@ impl Engine {
                 .set_edge_collider(entity, collider.with_offset(offset_x, offset_y));
             return self.store_physics_entity_snapshot(entity);
         }
+        if let Some(collider) = self.world.chain_collider(entity) {
+            self.world
+                .set_chain_collider(entity, collider.with_offset(offset_x, offset_y));
+            return self.store_physics_entity_snapshot(entity);
+        }
         if let Some(collider) = self.world.convex_polygon_collider(entity) {
             self.world
                 .set_convex_polygon_collider(entity, collider.with_offset(offset_x, offset_y));
@@ -2498,6 +2732,11 @@ impl Engine {
         if let Some(collider) = self.world.edge_collider(entity) {
             self.world
                 .set_edge_collider(entity, collider.with_enabled(enabled));
+            return self.store_physics_entity_snapshot(entity);
+        }
+        if let Some(collider) = self.world.chain_collider(entity) {
+            self.world
+                .set_chain_collider(entity, collider.with_enabled(enabled));
             return self.store_physics_entity_snapshot(entity);
         }
         if let Some(collider) = self.world.convex_polygon_collider(entity) {
@@ -2881,6 +3120,63 @@ impl Engine {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn spawn_physics_pulley_joint(
+        &mut self,
+        entity_a_id: u32,
+        entity_a_generation: u32,
+        entity_b_id: u32,
+        entity_b_generation: u32,
+        ground_anchor_a_x: f32,
+        ground_anchor_a_y: f32,
+        ground_anchor_b_x: f32,
+        ground_anchor_b_y: f32,
+        local_anchor_a_x: f32,
+        local_anchor_a_y: f32,
+        local_anchor_b_x: f32,
+        local_anchor_b_y: f32,
+        rest_length: f32,
+        ratio: f32,
+        stiffness: f32,
+        damping: f32,
+        break_distance: f32,
+        enabled: bool,
+    ) -> bool {
+        if !Self::valid_transform(ground_anchor_a_x, ground_anchor_a_y)
+            || !Self::valid_transform(ground_anchor_b_x, ground_anchor_b_y)
+            || !Self::valid_transform(local_anchor_a_x, local_anchor_a_y)
+            || !Self::valid_transform(local_anchor_b_x, local_anchor_b_y)
+            || !Self::valid_non_negative(rest_length)
+            || !Self::valid_positive(ratio)
+            || !Self::valid_unit_interval(stiffness)
+            || !Self::valid_unit_interval(damping)
+            || !Self::valid_break_limit(break_distance)
+        {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        }
+        let Some(entity_a) = self.entity_from_handle(entity_a_id, entity_a_generation) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
+        let Some(entity_b) = self.entity_from_handle(entity_b_id, entity_b_generation) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
+        let joint = PulleyJoint::new(entity_a, entity_b, rest_length)
+            .with_ground_anchor_a(ground_anchor_a_x, ground_anchor_a_y)
+            .with_ground_anchor_b(ground_anchor_b_x, ground_anchor_b_y)
+            .with_local_anchor_a(local_anchor_a_x, local_anchor_a_y)
+            .with_local_anchor_b(local_anchor_b_x, local_anchor_b_y)
+            .with_ratio(ratio)
+            .with_stiffness(stiffness)
+            .with_damping(damping)
+            .with_break_distance(break_distance)
+            .with_enabled(enabled);
+        let id = self.world.add_pulley_joint(joint);
+        self.store_pulley_joint_snapshot(id, joint)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_physics_revolute_joint(
         &mut self,
         entity_a_id: u32,
@@ -3158,6 +3454,21 @@ impl Engine {
                         joint,
                     )
                 }),
+            PHYSICS_JOINT_PULLEY => self
+                .world
+                .pulley_joint(PulleyJointId {
+                    index: joint_index,
+                    generation: joint_generation,
+                })
+                .map(|joint| {
+                    self.store_pulley_joint_snapshot(
+                        PulleyJointId {
+                            index: joint_index,
+                            generation: joint_generation,
+                        },
+                        joint,
+                    )
+                }),
             PHYSICS_JOINT_REVOLUTE => self
                 .world
                 .revolute_joint(RevoluteJointId {
@@ -3254,6 +3565,13 @@ impl Engine {
                     generation: joint_generation,
                 })
                 .is_some(),
+            PHYSICS_JOINT_PULLEY => self
+                .world
+                .clear_pulley_joint(PulleyJointId {
+                    index: joint_index,
+                    generation: joint_generation,
+                })
+                .is_some(),
             PHYSICS_JOINT_REVOLUTE => self
                 .world
                 .clear_revolute_joint(RevoluteJointId {
@@ -3336,6 +3654,19 @@ impl Engine {
                 joint.enabled = enabled;
                 self.world.set_spring_joint(id, joint);
                 self.store_spring_joint_snapshot(id, joint)
+            }
+            PHYSICS_JOINT_PULLEY => {
+                let id = PulleyJointId {
+                    index: joint_index,
+                    generation: joint_generation,
+                };
+                let Some(mut joint) = self.world.pulley_joint(id) else {
+                    self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+                    return false;
+                };
+                joint.enabled = enabled;
+                self.world.set_pulley_joint(id, joint);
+                self.store_pulley_joint_snapshot(id, joint)
             }
             PHYSICS_JOINT_REVOLUTE => {
                 let id = RevoluteJointId {
@@ -4298,6 +4629,22 @@ impl Engine {
         self.physics_joint_snapshot.local_axis_a_y
     }
 
+    pub fn physics_joint_ground_anchor_a_x(&self) -> f32 {
+        self.physics_joint_snapshot.ground_anchor_a_x
+    }
+
+    pub fn physics_joint_ground_anchor_a_y(&self) -> f32 {
+        self.physics_joint_snapshot.ground_anchor_a_y
+    }
+
+    pub fn physics_joint_ground_anchor_b_x(&self) -> f32 {
+        self.physics_joint_snapshot.ground_anchor_b_x
+    }
+
+    pub fn physics_joint_ground_anchor_b_y(&self) -> f32 {
+        self.physics_joint_snapshot.ground_anchor_b_y
+    }
+
     pub fn physics_joint_limit_enabled(&self) -> bool {
         self.physics_joint_snapshot.limit_enabled
     }
@@ -4902,6 +5249,13 @@ impl Engine {
                 collider.offset_x,
                 collider.offset_y,
             ),
+            CompoundColliderShape::Chain(collider) => (
+                PHYSICS_COLLIDER_TYPE_CHAIN,
+                collider.enabled,
+                collider.is_trigger,
+                collider.offset_x,
+                collider.offset_y,
+            ),
             CompoundColliderShape::OrientedBox(collider) => (
                 PHYSICS_COLLIDER_TYPE_ORIENTED_BOX,
                 collider.enabled,
@@ -4950,6 +5304,15 @@ impl Engine {
         if let Some(collider) = self.world.edge_collider(entity) {
             return (
                 PHYSICS_COLLIDER_TYPE_EDGE,
+                collider.enabled,
+                collider.is_trigger,
+                collider.offset_x,
+                collider.offset_y,
+            );
+        }
+        if let Some(collider) = self.world.chain_collider(entity) {
+            return (
+                PHYSICS_COLLIDER_TYPE_CHAIN,
                 collider.enabled,
                 collider.is_trigger,
                 collider.offset_x,
@@ -5091,6 +5454,210 @@ impl Engine {
         true
     }
 
+    fn append_physics_body_snapshot_bulk(
+        snapshot: PhysicsEntitySnapshot,
+        floats: &mut Vec<f32>,
+        u32s: &mut Vec<u32>,
+    ) {
+        u32s.extend_from_slice(&[
+            snapshot.entity_id,
+            snapshot.entity_generation,
+            snapshot.body_type,
+            snapshot.collider_type,
+            Self::physics_body_snapshot_flags(snapshot),
+        ]);
+        floats.extend_from_slice(&[
+            snapshot.x,
+            snapshot.y,
+            snapshot.velocity_x,
+            snapshot.velocity_y,
+            snapshot.rotation_radians,
+            snapshot.angular_velocity_radians_per_second,
+            snapshot.mass,
+            snapshot.inertia,
+            snapshot.gravity_scale,
+            snapshot.linear_damping,
+            snapshot.angular_damping,
+            snapshot.restitution,
+            snapshot.friction,
+            snapshot.surface_velocity_x,
+            snapshot.surface_velocity_y,
+            snapshot.density,
+            snapshot.contact_baumgarte_bias_scale,
+            snapshot.max_contact_baumgarte_bias_velocity_scale,
+            snapshot.contact_position_correction_scale,
+            snapshot.contact_position_correction_slop_scale,
+            snapshot.collider_offset_x,
+            snapshot.collider_offset_y,
+            snapshot.collider_restitution,
+            snapshot.collider_friction,
+            snapshot.collider_surface_velocity_x,
+            snapshot.collider_surface_velocity_y,
+            snapshot.collider_density,
+            snapshot.collider_contact_baumgarte_bias_scale,
+            snapshot.collider_max_contact_baumgarte_bias_velocity_scale,
+            snapshot.collider_contact_position_correction_scale,
+            snapshot.collider_contact_position_correction_slop_scale,
+        ]);
+    }
+
+    fn physics_body_snapshot_flags(snapshot: PhysicsEntitySnapshot) -> u32 {
+        let mut flags = 0;
+        if snapshot.body_enabled {
+            flags |= PHYSICS_BODY_SNAPSHOT_FLAG_BODY_ENABLED;
+        }
+        if snapshot.is_sleeping {
+            flags |= PHYSICS_BODY_SNAPSHOT_FLAG_SLEEPING;
+        }
+        if snapshot.collider_enabled {
+            flags |= PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_ENABLED;
+        }
+        if snapshot.collider_is_trigger {
+            flags |= PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_TRIGGER;
+        }
+        if snapshot.collider_material_override {
+            flags |= PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_MATERIAL_OVERRIDE;
+        }
+        flags
+    }
+
+    fn restore_physics_body_snapshot_entry(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        floats: &[f32],
+        u32s: &[u32],
+    ) -> bool {
+        if u32s[PHYSICS_BODY_SNAPSHOT_U32_ENTITY_ID] != entity_id
+            || u32s[PHYSICS_BODY_SNAPSHOT_U32_ENTITY_GENERATION] != entity_generation
+        {
+            return false;
+        }
+        let Some(body_type) =
+            Self::rigid_body_type_from_code(u32s[PHYSICS_BODY_SNAPSHOT_U32_BODY_TYPE])
+        else {
+            return false;
+        };
+        let flags = u32s[PHYSICS_BODY_SNAPSHOT_U32_FLAGS];
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return false;
+        };
+        let Some(mut body) = self.world.rigid_body(entity) else {
+            return false;
+        };
+        if body.body_type != body_type {
+            return false;
+        }
+        if !Self::valid_transform(floats[0], floats[1])
+            || !Self::valid_transform(floats[2], floats[3])
+            || !floats[4].is_finite()
+            || !floats[5].is_finite()
+            || !floats[8].is_finite()
+            || !Self::valid_non_negative(floats[9])
+            || !Self::valid_non_negative(floats[10])
+            || !Self::valid_transform(floats[20], floats[21])
+            || !Self::valid_physics_material_parts(
+                floats[11], floats[12], floats[13], floats[14], floats[15], floats[16], floats[17],
+                floats[18], floats[19],
+            )
+            || !Self::valid_physics_material_parts(
+                floats[22], floats[23], floats[24], floats[25], floats[26], floats[27], floats[28],
+                floats[29], floats[30],
+            )
+        {
+            return false;
+        }
+        if body.body_type == RigidBodyType::Dynamic
+            && (!Self::valid_positive(floats[6]) || !Self::valid_positive(floats[7]))
+        {
+            return false;
+        }
+
+        self.world.set_transform(
+            entity,
+            Transform2D {
+                x: floats[0],
+                y: floats[1],
+            },
+        );
+        self.world.set_velocity(
+            entity,
+            Velocity {
+                vx: floats[2],
+                vy: floats[3],
+            },
+        );
+        self.world
+            .set_rotation(entity, Rotation2D { radians: floats[4] });
+        self.world.set_angular_velocity(
+            entity,
+            AngularVelocity {
+                radians_per_second: floats[5],
+            },
+        );
+
+        body.enabled = flags & PHYSICS_BODY_SNAPSHOT_FLAG_BODY_ENABLED != 0;
+        body.is_sleeping = flags & PHYSICS_BODY_SNAPSHOT_FLAG_SLEEPING != 0;
+        body.sleep_timer_seconds = 0.0;
+        body.force = Velocity::default();
+        body.impulse = Velocity::default();
+        body.torque = 0.0;
+        body.angular_impulse = 0.0;
+        if body.body_type == RigidBodyType::Dynamic {
+            body.mass = floats[6];
+            body.inverse_mass = 1.0 / floats[6];
+            body.inertia = floats[7];
+            body.inverse_inertia = 1.0 / floats[7];
+        }
+        body.gravity_scale = floats[8];
+        body.linear_damping = floats[9];
+        body.angular_damping = floats[10];
+        body.material = Self::physics_material_from_parts(
+            floats[11], floats[12], floats[13], floats[14], floats[15], floats[16], floats[17],
+            floats[18], floats[19],
+        );
+        self.world.set_rigid_body(entity, body);
+
+        let collider_type = u32s[PHYSICS_BODY_SNAPSHOT_U32_COLLIDER_TYPE];
+        if self.physics_collider_snapshot(entity).0 != collider_type {
+            return false;
+        }
+        if collider_type != PHYSICS_COLLIDER_TYPE_NONE {
+            if !self.set_physics_collider_offset(
+                entity_id,
+                entity_generation,
+                floats[20],
+                floats[21],
+            ) || !self.set_physics_collider_enabled(
+                entity_id,
+                entity_generation,
+                flags & PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_ENABLED != 0,
+            ) {
+                return false;
+            }
+            if flags & PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_MATERIAL_OVERRIDE != 0 {
+                if !self.set_physics_collider_material(
+                    entity_id,
+                    entity_generation,
+                    floats[22],
+                    floats[23],
+                    floats[24],
+                    floats[25],
+                    floats[26],
+                    floats[27],
+                    floats[28],
+                    floats[29],
+                    floats[30],
+                ) {
+                    return false;
+                }
+            } else if !self.clear_physics_collider_material(entity_id, entity_generation) {
+                return false;
+            }
+        }
+        self.store_physics_entity_snapshot(entity)
+    }
+
     fn joint_snapshot_base(
         joint_type: u32,
         joint_index: u32,
@@ -5156,6 +5723,33 @@ impl Engine {
             damping: joint.damping,
             ..Self::joint_snapshot_base(
                 PHYSICS_JOINT_SPRING,
+                id.index,
+                id.generation,
+                joint.entity_a,
+                joint.entity_b,
+                joint.enabled,
+            )
+        };
+        true
+    }
+
+    fn store_pulley_joint_snapshot(&mut self, id: PulleyJointId, joint: PulleyJoint) -> bool {
+        self.physics_joint_snapshot = PhysicsJointSnapshot {
+            rest_length: joint.rest_length,
+            ratio: joint.ratio,
+            break_distance: joint.break_distance,
+            stiffness: joint.stiffness,
+            damping: joint.damping,
+            local_anchor_a_x: joint.local_anchor_a_x,
+            local_anchor_a_y: joint.local_anchor_a_y,
+            local_anchor_b_x: joint.local_anchor_b_x,
+            local_anchor_b_y: joint.local_anchor_b_y,
+            ground_anchor_a_x: joint.ground_anchor_a_x,
+            ground_anchor_a_y: joint.ground_anchor_a_y,
+            ground_anchor_b_x: joint.ground_anchor_b_x,
+            ground_anchor_b_y: joint.ground_anchor_b_y,
+            ..Self::joint_snapshot_base(
+                PHYSICS_JOINT_PULLEY,
                 id.index,
                 id.generation,
                 joint.entity_a,
@@ -5432,6 +6026,46 @@ impl Engine {
         Some(body.with_enabled(enabled).with_sleeping_enabled(can_sleep))
     }
 
+    fn rigid_body_for_chain(
+        body_type: u32,
+        mass_or_density: f32,
+        use_density: bool,
+        vertices: [Transform2D; MAX_CHAIN_COLLIDER_VERTICES],
+        _vertex_count: u32,
+        enabled: bool,
+        can_sleep: bool,
+    ) -> Option<RigidBody> {
+        let body_type = Self::rigid_body_type_from_code(body_type)?;
+        let body = match body_type {
+            RigidBodyType::Static => RigidBody::static_body(),
+            RigidBodyType::Kinematic => RigidBody::kinematic(),
+            RigidBodyType::Dynamic => {
+                let first = vertices[0];
+                let second = vertices[1];
+                if use_density {
+                    RigidBody::dynamic_capsule_with_density(
+                        mass_or_density,
+                        first.x,
+                        first.y,
+                        second.x,
+                        second.y,
+                        PHYSICS_EDGE_BODY_RADIUS,
+                    )
+                } else {
+                    RigidBody::dynamic_capsule(
+                        mass_or_density,
+                        first.x,
+                        first.y,
+                        second.x,
+                        second.y,
+                        PHYSICS_EDGE_BODY_RADIUS,
+                    )
+                }
+            }
+        };
+        Some(body.with_enabled(enabled).with_sleeping_enabled(can_sleep))
+    }
+
     fn rigid_body_for_oriented_box(
         body_type: u32,
         mass_or_density: f32,
@@ -5508,6 +6142,55 @@ impl Engine {
                 x: coords[0],
                 y: coords[1],
             };
+        }
+
+        Some((vertices, vertex_count as u32))
+    }
+
+    fn chain_vertices(
+        vertex_values: &[f32],
+        looped: bool,
+    ) -> Option<([Transform2D; MAX_CHAIN_COLLIDER_VERTICES], u32)> {
+        if !vertex_values.len().is_multiple_of(2) {
+            return None;
+        }
+        let vertex_count = vertex_values.len() / 2;
+        if !(2..=MAX_CHAIN_COLLIDER_VERTICES).contains(&vertex_count) {
+            return None;
+        }
+
+        let mut vertices = [Transform2D { x: 0.0, y: 0.0 }; MAX_CHAIN_COLLIDER_VERTICES];
+        for (index, coords) in vertex_values.chunks_exact(2).enumerate() {
+            if !Self::valid_transform(coords[0], coords[1]) {
+                return None;
+            }
+            vertices[index] = Transform2D {
+                x: coords[0],
+                y: coords[1],
+            };
+            if index > 0
+                && !Self::valid_edge(
+                    vertices[index - 1].x,
+                    vertices[index - 1].y,
+                    vertices[index].x,
+                    vertices[index].y,
+                )
+            {
+                return None;
+            }
+        }
+
+        if looped
+            && vertex_count > 2
+            && vertices[vertex_count - 1] != vertices[0]
+            && !Self::valid_edge(
+                vertices[vertex_count - 1].x,
+                vertices[vertex_count - 1].y,
+                vertices[0].x,
+                vertices[0].y,
+            )
+        {
+            return None;
         }
 
         Some((vertices, vertex_count as u32))
@@ -5695,6 +6378,7 @@ impl Engine {
         self.collision_events.clear();
         self.collision_event_counts.clear();
         self.physics_debug_lines.clear();
+        self.world.clear_rigid_body_ccd_debug_hits();
     }
 
     fn clear_physics_history(&mut self) {
@@ -5702,6 +6386,7 @@ impl Engine {
         self.collision_events.clear();
         self.collision_event_counts.clear();
         self.physics_debug_lines.clear();
+        self.world.clear_rigid_body_ccd_debug_hits();
         self.fixed_timestep.reset();
         self.rigid_body_step_stats = RigidBodyStepStats::default();
         self.physics_entity_snapshot = PhysicsEntitySnapshot::default();
@@ -6209,6 +6894,37 @@ mod tests {
 
         engine.set_physics_debug_lines_enabled(false);
         assert_eq!(engine.physics_debug_line_len(), 0);
+    }
+
+    #[test]
+    fn physics_debug_lines_report_ccd_hit_markers() {
+        let mut engine = Engine::new();
+        engine.world = World::default();
+        engine.clear_physics_history();
+        let mover = spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
+        engine
+            .world
+            .set_rigid_body(mover, RigidBody::dynamic(1.0).with_sleeping_enabled(false));
+        engine
+            .world
+            .set_velocity(mover, Velocity { vx: 100.0, vy: 0.0 });
+        let wall = spawn_test_body(&mut engine.world, 50.0, 0.0, CollisionLayer::Wall);
+        engine.world.set_rigid_body(wall, RigidBody::static_body());
+        engine.set_physics_debug_line_flags(crate::collision::PHYSICS_DEBUG_CCD);
+        engine.set_physics_debug_lines_enabled(true);
+
+        engine.step_rigid_bodies_with_config(1.0, 0.0, 0.0, 1, 1, 1.0, 0.0, 1.0, 0.2, 120.0, false);
+        engine.build_physics_debug_lines();
+
+        assert_eq!(engine.rigid_body_step_ccd_hits(), 1);
+        assert_eq!(engine.physics_debug_line_len(), 3);
+        assert!((engine.physics_debug_lines[0].x0 - 41.0).abs() < 0.001);
+        assert!((engine.physics_debug_lines[0].x1 - 49.0).abs() < 0.001);
+        assert_eq!(engine.physics_debug_lines[0].y0, 0.0);
+        assert!((engine.physics_debug_lines[1].y0 + 4.0).abs() < 0.001);
+        assert!((engine.physics_debug_lines[1].y1 - 4.0).abs() < 0.001);
+        assert!((engine.physics_debug_lines[2].x0 - 45.0).abs() < 0.001);
+        assert!((engine.physics_debug_lines[2].x1 - 57.0).abs() < 0.001);
     }
 
     #[test]
@@ -6762,6 +7478,47 @@ mod tests {
             true,
             false,
         ));
+        assert!(engine.spawn_physics_chain_body(
+            35.0,
+            0.0,
+            vec![0.0, 0.0, 8.0, 0.0, 8.0, 8.0],
+            false,
+            PHYSICS_BODY_TYPE_STATIC,
+            1.0,
+            true,
+            PHYSICS_LAYER_WALL,
+            CollisionMask::WALL.bits,
+            CollisionMask::ALL.bits,
+            false,
+            true,
+            true,
+            false,
+        ));
+        assert_eq!(
+            engine.physics_entity_collider_type(),
+            PHYSICS_COLLIDER_TYPE_CHAIN
+        );
+        let chain_id = engine.physics_entity_id();
+        let chain_generation = engine.physics_entity_generation();
+        assert!(engine.set_physics_collider_offset(chain_id, chain_generation, 0.0, 2.0));
+        assert!(engine.query_physics_entity(chain_id, chain_generation));
+        assert!((engine.physics_entity_collider_offset_y() - 2.0).abs() < 0.0001);
+        assert!(!engine.spawn_physics_chain_body(
+            35.0,
+            0.0,
+            vec![0.0, 0.0, 0.0, 0.0],
+            false,
+            PHYSICS_BODY_TYPE_STATIC,
+            1.0,
+            true,
+            PHYSICS_LAYER_WALL,
+            CollisionMask::WALL.bits,
+            CollisionMask::ALL.bits,
+            false,
+            true,
+            true,
+            false,
+        ));
         assert!(engine.spawn_physics_oriented_box_body(
             40.0,
             0.0,
@@ -6822,6 +7579,114 @@ mod tests {
         assert!(!engine.physics_entity_body_enabled());
         assert!(engine.despawn_physics_entity(circle_id, circle_generation));
         assert!(!engine.query_physics_entity(circle_id, circle_generation));
+    }
+
+    #[test]
+    fn engine_captures_and_restores_physics_body_snapshot_bulk() {
+        let mut engine = Engine::new();
+        engine.world = World::default();
+        engine.clear_physics_history();
+
+        assert!(engine.spawn_physics_aabb_body(
+            0.0,
+            0.0,
+            5.0,
+            6.0,
+            PHYSICS_BODY_TYPE_DYNAMIC,
+            1.0,
+            true,
+            PHYSICS_LAYER_PLAYER,
+            CollisionMask::PLAYER.bits,
+            CollisionMask::ALL.bits,
+            false,
+            true,
+            true,
+            false,
+        ));
+        let body_id = engine.physics_entity_id();
+        let body_generation = engine.physics_entity_generation();
+        assert!(engine.set_physics_body_velocity(body_id, body_generation, 3.0, -2.0));
+        assert!(engine.set_physics_body_rotation(body_id, body_generation, 0.25));
+        assert!(engine.set_physics_body_angular_velocity(body_id, body_generation, 1.5));
+        assert!(engine.set_physics_body_mass_properties(body_id, body_generation, 2.0, 5.0));
+        assert!(engine.set_physics_body_tuning(body_id, body_generation, 0.75, 0.1, 0.2));
+        assert!(engine.set_physics_body_material(
+            body_id,
+            body_generation,
+            0.2,
+            0.6,
+            1.0,
+            -1.0,
+            1.25,
+            0.8,
+            0.9,
+            0.7,
+            0.6,
+        ));
+        assert!(engine.set_physics_collider_offset(body_id, body_generation, 1.5, -2.5));
+        assert!(engine.set_physics_collider_material(
+            body_id,
+            body_generation,
+            0.3,
+            0.7,
+            -2.0,
+            3.0,
+            1.5,
+            0.5,
+            0.4,
+            0.3,
+            0.2,
+        ));
+
+        assert!(engine.capture_physics_body_snapshot_bulk(vec![body_id, body_generation]));
+        assert_eq!(
+            engine.physics_body_snapshot_float_len(),
+            engine.physics_body_snapshot_floats_per_body()
+        );
+        assert_eq!(
+            engine.physics_body_snapshot_u32_len(),
+            engine.physics_body_snapshot_u32s_per_body()
+        );
+        let floats = engine.physics_body_snapshot_floats.clone();
+        let u32s = engine.physics_body_snapshot_u32s.clone();
+
+        assert!(engine.set_physics_body_position(body_id, body_generation, 20.0, 30.0));
+        assert!(engine.set_physics_body_velocity(body_id, body_generation, -8.0, 9.0));
+        assert!(engine.set_physics_body_rotation(body_id, body_generation, -1.0));
+        assert!(engine.set_physics_body_angular_velocity(body_id, body_generation, -4.0));
+        assert!(engine.set_physics_body_mass_properties(body_id, body_generation, 4.0, 8.0));
+        assert!(engine.set_physics_body_tuning(body_id, body_generation, 0.25, 0.4, 0.5));
+        assert!(engine.clear_physics_collider_material(body_id, body_generation));
+        assert!(engine.set_physics_collider_offset(body_id, body_generation, -5.0, 6.0));
+
+        assert!(engine.restore_physics_body_snapshot_bulk(
+            vec![body_id, body_generation],
+            floats,
+            u32s,
+        ));
+        assert!(engine.query_physics_entity(body_id, body_generation));
+        assert!((engine.physics_entity_x()).abs() < 0.0001);
+        assert!((engine.physics_entity_y()).abs() < 0.0001);
+        assert!((engine.physics_entity_velocity_x() - 3.0).abs() < 0.0001);
+        assert!((engine.physics_entity_velocity_y() + 2.0).abs() < 0.0001);
+        assert!((engine.physics_entity_rotation_radians() - 0.25).abs() < 0.0001);
+        assert!((engine.physics_entity_angular_velocity_radians_per_second() - 1.5).abs() < 0.0001);
+        assert!((engine.physics_entity_mass() - 2.0).abs() < 0.0001);
+        assert!((engine.physics_entity_inertia() - 5.0).abs() < 0.0001);
+        assert!((engine.physics_entity_gravity_scale() - 0.75).abs() < 0.0001);
+        assert!((engine.physics_entity_linear_damping() - 0.1).abs() < 0.0001);
+        assert!((engine.physics_entity_angular_damping() - 0.2).abs() < 0.0001);
+        assert!((engine.physics_entity_collider_offset_x() - 1.5).abs() < 0.0001);
+        assert!((engine.physics_entity_collider_offset_y() + 2.5).abs() < 0.0001);
+        assert!(engine.physics_entity_collider_material_override());
+        assert!((engine.physics_entity_collider_friction() - 0.7).abs() < 0.0001);
+
+        assert!(!engine.capture_physics_body_snapshot_bulk(vec![body_id]));
+        assert!(!engine.restore_physics_body_snapshot_bulk(
+            vec![body_id, body_generation],
+            vec![0.0],
+            vec![0],
+        ));
     }
 
     #[test]
@@ -6933,6 +7798,33 @@ mod tests {
         assert_eq!(engine.physics_joint_type(), PHYSICS_JOINT_SPRING);
         assert_eq!(engine.physics_joint_rest_length(), 8.0);
         assert_eq!(engine.physics_joint_stiffness(), 0.75);
+
+        assert!(engine.spawn_physics_pulley_joint(
+            entity_a_id,
+            entity_a_generation,
+            entity_b_id,
+            entity_b_generation,
+            -4.0,
+            10.0,
+            24.0,
+            10.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            30.0,
+            2.0,
+            0.8,
+            0.25,
+            5.0,
+            true,
+        ));
+        assert_eq!(engine.physics_joint_type(), PHYSICS_JOINT_PULLEY);
+        assert_eq!(engine.physics_joint_rest_length(), 30.0);
+        assert_eq!(engine.physics_joint_ratio(), 2.0);
+        assert_eq!(engine.physics_joint_ground_anchor_a_x(), -4.0);
+        assert_eq!(engine.physics_joint_ground_anchor_b_y(), 10.0);
+        assert_eq!(engine.physics_joint_break_distance(), 5.0);
 
         assert!(engine.spawn_physics_revolute_joint(
             entity_a_id,

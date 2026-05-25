@@ -8,6 +8,14 @@ import { finiteNumber, particlePresetId, resolveParticlePresetConfigForWasm, uin
 import type { ParticlePresetConfig } from "./particlePreset";
 import { GameLoop } from "./gameLoop";
 import type { InputSnapshot } from "./inputManager";
+import {
+  PHYSICS_BODY_STATE_BUFFER_FORMAT,
+  PHYSICS_BODY_STATE_BUFFER_VERSION,
+  PHYSICS_BODY_STATE_FLOATS_PER_BODY,
+  PHYSICS_BODY_STATE_U32S_PER_BODY,
+  validatePhysicsBodyStateBufferSnapshot,
+} from "./physicsBodyStateBuffer.js";
+import type { PhysicsBodyStateBufferSnapshot } from "./physicsBodyStateBuffer.js";
 import { EMPTY_AUDIO_EVENTS } from "./wasmBridge";
 import { EMPTY_COLLISION_EVENTS } from "./collisionEventDecoder";
 import { EMPTY_PHYSICS_DEBUG_LINES } from "./physicsDebugLineDecoder";
@@ -32,6 +40,15 @@ import type {
   RenderCommandView,
 } from "./wasmBridge";
 import { WasmBridge } from "./wasmBridge";
+
+export {
+  PHYSICS_BODY_STATE_BUFFER_FORMAT,
+  PHYSICS_BODY_STATE_BUFFER_VERSION,
+  PHYSICS_BODY_STATE_FLOATS_PER_BODY,
+  PHYSICS_BODY_STATE_U32S_PER_BODY,
+  createPhysicsBodyStateBufferSnapshot,
+} from "./physicsBodyStateBuffer.js";
+export type { PhysicsBodyStateBufferSnapshot } from "./physicsBodyStateBuffer.js";
 
 export interface AssetHost {
   loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback): Promise<LoadedAssets>;
@@ -180,7 +197,8 @@ export type PhysicsColliderType =
   | "capsule"
   | "orientedBox"
   | "convexPolygon"
-  | "edge";
+  | "edge"
+  | "chain";
 export type PhysicsCollisionLayer = "player" | "enemy" | "bullet" | "wall";
 
 export interface PhysicsEntityHandle {
@@ -253,6 +271,13 @@ export type PhysicsRigidBodyCollider =
       startY: number;
       endX: number;
       endY: number;
+      offsetX?: number;
+      offsetY?: number;
+    }
+  | {
+      type: "chain";
+      vertices: PhysicsConvexPolygonVertexBuffer;
+      loop?: boolean;
       offsetX?: number;
       offsetY?: number;
     }
@@ -361,7 +386,8 @@ export type PhysicsJointType =
   | "revolute"
   | "prismatic"
   | "weld"
-  | "gear";
+  | "gear"
+  | "pulley";
 
 export interface PhysicsJointHandle {
   jointType: PhysicsJointType;
@@ -391,6 +417,20 @@ export type PhysicsJointSpawnOptions =
   | (PhysicsJointBaseOptions & {
       type: "spring";
       restLength: number;
+      breakDistance?: number;
+    })
+  | (PhysicsJointBaseOptions & {
+      type: "pulley";
+      groundAnchorAX: number;
+      groundAnchorAY: number;
+      groundAnchorBX: number;
+      groundAnchorBY: number;
+      localAnchorAX?: number;
+      localAnchorAY?: number;
+      localAnchorBX?: number;
+      localAnchorBY?: number;
+      restLength: number;
+      ratio?: number;
       breakDistance?: number;
     })
   | (PhysicsJointBaseOptions & {
@@ -465,6 +505,10 @@ export interface PhysicsJointSnapshot extends PhysicsJointHandle {
   localAnchorBY: number;
   localAxisAX: number;
   localAxisAY: number;
+  groundAnchorAX: number;
+  groundAnchorAY: number;
+  groundAnchorBX: number;
+  groundAnchorBY: number;
   limitEnabled: boolean;
   lowerAngle: number;
   upperAngle: number;
@@ -767,6 +811,8 @@ export interface FerrumPhysicsBodyApi {
     colliderIndex: number,
   ): PhysicsBodyColliderSnapshot | undefined;
   getPhysicsEntity(handle: PhysicsEntityHandle): PhysicsEntitySnapshot | undefined;
+  capturePhysicsBodyStateBuffer(handles: readonly PhysicsEntityHandle[]): PhysicsBodyStateBufferSnapshot;
+  restorePhysicsBodyStateBuffer(snapshot: PhysicsBodyStateBufferSnapshot): boolean;
   despawnPhysicsEntity(handle: PhysicsEntityHandle): boolean;
   setPhysicsBodyPosition(handle: PhysicsEntityHandle, x: number, y: number): boolean;
   setPhysicsBodyVelocity(handle: PhysicsEntityHandle, velocityX: number, velocityY: number): boolean;
@@ -871,6 +917,7 @@ const PHYSICS_DEBUG_CONTACTS = 1 << 1;
 const PHYSICS_DEBUG_COLLIDERS = 1 << 2;
 const PHYSICS_DEBUG_JOINTS = 1 << 3;
 const PHYSICS_DEBUG_SLEEPING = 1 << 4;
+const PHYSICS_DEBUG_CCD = 1 << 5;
 const PHYSICS_DEBUG_DEFAULT = PHYSICS_DEBUG_BROADPHASE | PHYSICS_DEBUG_CONTACTS;
 const PHYSICS_BODY_TYPE_CODES: Record<PhysicsRigidBodyType, number> = Object.freeze({
   static: 0,
@@ -890,7 +937,18 @@ const PHYSICS_COLLIDER_TYPES: readonly PhysicsColliderType[] = Object.freeze([
   "orientedBox",
   "convexPolygon",
   "edge",
+  "chain",
 ]);
+const PHYSICS_BODY_STATE_U32_ENTITY_ID = 0;
+const PHYSICS_BODY_STATE_U32_ENTITY_GENERATION = 1;
+const PHYSICS_BODY_STATE_U32_BODY_TYPE = 2;
+const PHYSICS_BODY_STATE_U32_COLLIDER_TYPE = 3;
+const PHYSICS_BODY_STATE_U32_FLAGS = 4;
+const PHYSICS_BODY_STATE_FLAG_BODY_ENABLED = 1 << 0;
+const PHYSICS_BODY_STATE_FLAG_SLEEPING = 1 << 1;
+const PHYSICS_BODY_STATE_FLAG_COLLIDER_ENABLED = 1 << 2;
+const PHYSICS_BODY_STATE_FLAG_COLLIDER_TRIGGER = 1 << 3;
+const PHYSICS_BODY_STATE_FLAG_COLLIDER_MATERIAL_OVERRIDE = 1 << 4;
 const PHYSICS_LAYER_CODES: Record<PhysicsCollisionLayer, number> = Object.freeze({
   player: 0,
   enemy: 1,
@@ -911,6 +969,7 @@ const PHYSICS_JOINT_TYPE_CODES: Record<PhysicsJointType, number> = Object.freeze
   prismatic: 4,
   gear: 5,
   weld: 6,
+  pulley: 7,
 });
 const PHYSICS_JOINT_TYPES: readonly PhysicsJointType[] = Object.freeze([
   "distance",
@@ -920,6 +979,7 @@ const PHYSICS_JOINT_TYPES: readonly PhysicsJointType[] = Object.freeze([
   "prismatic",
   "gear",
   "weld",
+  "pulley",
 ]);
 interface FramePipelineContext {
   bridge: WasmBridge;
@@ -1263,6 +1323,24 @@ export async function createEngine(
           canSleep,
         );
         break;
+      case "chain":
+        spawned = rustEngine.spawn_physics_chain_body(
+          x,
+          y,
+          physicsQueryVertexBuffer(collider.vertices),
+          collider.loop === true,
+          bodyTypeCode,
+          mass,
+          useDensity,
+          layerCode,
+          categoryBits,
+          maskBits,
+          options.isTrigger === true,
+          colliderEnabled,
+          bodyEnabled,
+          canSleep,
+        );
+        break;
       case "orientedBox":
         spawned = rustEngine.spawn_physics_oriented_box_body(
           x,
@@ -1424,6 +1502,21 @@ export async function createEngine(
           options.colliderEnabled ?? true,
         );
         break;
+      case "chain":
+        added = rustEngine.add_physics_chain_collider(
+          resolved.entityId,
+          resolved.entityGeneration,
+          physicsQueryVertexBuffer(collider.vertices),
+          collider.loop === true,
+          finiteNumber(collider.offsetX ?? 0, "physics collider offsetX"),
+          finiteNumber(collider.offsetY ?? 0, "physics collider offsetY"),
+          layerCode,
+          categoryBits,
+          maskBits,
+          options.isTrigger === true,
+          options.colliderEnabled ?? true,
+        );
+        break;
       case "orientedBox":
         added = rustEngine.add_physics_oriented_box_collider(
           resolved.entityId,
@@ -1493,6 +1586,48 @@ export async function createEngine(
       return undefined;
     }
     return readPhysicsEntitySnapshot(rustEngine);
+  };
+
+  const capturePhysicsBodyStateBuffer = (
+    handles: readonly PhysicsEntityHandle[],
+  ): PhysicsBodyStateBufferSnapshot => {
+    requireAlive();
+    const handleBuffer = physicsEntityHandleBuffer(handles);
+    if (!rustEngine.capture_physics_body_snapshot_bulk(handleBuffer)) {
+      throw new Error("capturePhysicsBodyStateBuffer() rejected one or more physics body handles.");
+    }
+    const view = bridge.readPhysicsBodyStateBuffer();
+    const floats = new Float32Array(view.floats);
+    const u32s = new Uint32Array(view.u32s);
+    const states = decodePhysicsBodyStateBuffer({
+      bodyCount: view.bodyCount,
+      handles: new Uint32Array(handleBuffer),
+      floats,
+      u32s,
+      floatsPerBody: view.floatsPerBody,
+      u32sPerBody: view.u32sPerBody,
+    });
+    return {
+      format: PHYSICS_BODY_STATE_BUFFER_FORMAT,
+      version: PHYSICS_BODY_STATE_BUFFER_VERSION,
+      bodyCount: view.bodyCount,
+      handles: new Uint32Array(handleBuffer),
+      floats,
+      u32s,
+      floatsPerBody: view.floatsPerBody,
+      u32sPerBody: view.u32sPerBody,
+      states,
+    };
+  };
+
+  const restorePhysicsBodyStateBuffer = (snapshot: PhysicsBodyStateBufferSnapshot): boolean => {
+    requireAlive();
+    validatePhysicsBodyStateBufferSnapshot(snapshot);
+    return rustEngine.restore_physics_body_snapshot_bulk(
+      snapshot.handles,
+      snapshot.floats,
+      snapshot.u32s,
+    );
   };
 
   const despawnPhysicsEntity = (handle: PhysicsEntityHandle): boolean => {
@@ -1842,6 +1977,31 @@ export async function createEngine(
           breakLimitNumber(
             options.breakDistance ?? Number.POSITIVE_INFINITY,
             "physics spring joint breakDistance",
+          ),
+          enabled,
+        );
+        break;
+      case "pulley":
+        spawned = rustEngine.spawn_physics_pulley_joint(
+          entityA.entityId,
+          entityA.entityGeneration,
+          entityB.entityId,
+          entityB.entityGeneration,
+          finiteNumber(options.groundAnchorAX, "physics pulley joint groundAnchorAX"),
+          finiteNumber(options.groundAnchorAY, "physics pulley joint groundAnchorAY"),
+          finiteNumber(options.groundAnchorBX, "physics pulley joint groundAnchorBX"),
+          finiteNumber(options.groundAnchorBY, "physics pulley joint groundAnchorBY"),
+          finiteNumber(options.localAnchorAX ?? 0, "physics pulley joint localAnchorAX"),
+          finiteNumber(options.localAnchorAY ?? 0, "physics pulley joint localAnchorAY"),
+          finiteNumber(options.localAnchorBX ?? 0, "physics pulley joint localAnchorBX"),
+          finiteNumber(options.localAnchorBY ?? 0, "physics pulley joint localAnchorBY"),
+          nonNegativeNumber(options.restLength, "physics pulley joint restLength"),
+          positiveNumber(options.ratio ?? 1, "physics pulley joint ratio"),
+          unitIntervalNumber(options.stiffness ?? 1, "physics pulley joint stiffness"),
+          unitIntervalNumber(options.damping ?? 0, "physics pulley joint damping"),
+          breakLimitNumber(
+            options.breakDistance ?? Number.POSITIVE_INFINITY,
+            "physics pulley joint breakDistance",
           ),
           enabled,
         );
@@ -2454,6 +2614,8 @@ export async function createEngine(
     getPhysicsBodyColliderCount,
     getPhysicsBodyCollider,
     getPhysicsEntity,
+    capturePhysicsBodyStateBuffer,
+    restorePhysicsBodyStateBuffer,
     despawnPhysicsEntity,
     setPhysicsBodyPosition,
     setPhysicsBodyVelocity,
@@ -2582,6 +2744,17 @@ function physicsEntityHandle(handle: PhysicsEntityHandle): PhysicsEntityHandle {
   };
 }
 
+function physicsEntityHandleBuffer(handles: readonly PhysicsEntityHandle[]): Uint32Array {
+  const buffer = new Uint32Array(handles.length * 2);
+  handles.forEach((handle, index) => {
+    const resolved = physicsEntityHandle(handle);
+    const offset = index * 2;
+    buffer[offset] = resolved.entityId;
+    buffer[offset + 1] = resolved.entityGeneration;
+  });
+  return buffer;
+}
+
 function readPhysicsEntityHandle(rustEngine: Engine): PhysicsEntityHandle {
   return {
     entityId: rustEngine.physics_entity_id(),
@@ -2645,6 +2818,78 @@ function readPhysicsEntitySnapshot(rustEngine: Engine): PhysicsEntitySnapshot {
   };
 }
 
+interface PhysicsBodyStateBufferDecodeInput {
+  bodyCount: number;
+  handles: Uint32Array;
+  floats: Float32Array;
+  u32s: Uint32Array;
+  floatsPerBody: number;
+  u32sPerBody: number;
+}
+
+function decodePhysicsBodyStateBuffer(
+  snapshot: PhysicsBodyStateBufferDecodeInput,
+): readonly PhysicsEntitySnapshot[] {
+  const states: PhysicsEntitySnapshot[] = [];
+  for (let index = 0; index < snapshot.bodyCount; index += 1) {
+    const floatOffset = index * snapshot.floatsPerBody;
+    const u32Offset = index * snapshot.u32sPerBody;
+    const flags = snapshot.u32s[u32Offset + PHYSICS_BODY_STATE_U32_FLAGS];
+    states.push({
+      entityId: snapshot.u32s[u32Offset + PHYSICS_BODY_STATE_U32_ENTITY_ID],
+      entityGeneration: snapshot.u32s[u32Offset + PHYSICS_BODY_STATE_U32_ENTITY_GENERATION],
+      x: snapshot.floats[floatOffset],
+      y: snapshot.floats[floatOffset + 1],
+      velocityX: snapshot.floats[floatOffset + 2],
+      velocityY: snapshot.floats[floatOffset + 3],
+      rotationRadians: snapshot.floats[floatOffset + 4],
+      angularVelocityRadiansPerSecond: snapshot.floats[floatOffset + 5],
+      bodyType: PHYSICS_BODY_TYPES[snapshot.u32s[u32Offset + PHYSICS_BODY_STATE_U32_BODY_TYPE]] ?? "dynamic",
+      bodyEnabled: (flags & PHYSICS_BODY_STATE_FLAG_BODY_ENABLED) !== 0,
+      isSleeping: (flags & PHYSICS_BODY_STATE_FLAG_SLEEPING) !== 0,
+      colliderType:
+        PHYSICS_COLLIDER_TYPES[snapshot.u32s[u32Offset + PHYSICS_BODY_STATE_U32_COLLIDER_TYPE]] ?? "none",
+      colliderEnabled: (flags & PHYSICS_BODY_STATE_FLAG_COLLIDER_ENABLED) !== 0,
+      colliderIsTrigger: (flags & PHYSICS_BODY_STATE_FLAG_COLLIDER_TRIGGER) !== 0,
+      colliderOffsetX: snapshot.floats[floatOffset + 20],
+      colliderOffsetY: snapshot.floats[floatOffset + 21],
+      colliderMaterialOverride: (flags & PHYSICS_BODY_STATE_FLAG_COLLIDER_MATERIAL_OVERRIDE) !== 0,
+      colliderMaterial: {
+        restitution: snapshot.floats[floatOffset + 22],
+        friction: snapshot.floats[floatOffset + 23],
+        surfaceVelocityX: snapshot.floats[floatOffset + 24],
+        surfaceVelocityY: snapshot.floats[floatOffset + 25],
+        density: snapshot.floats[floatOffset + 26],
+        contactBaumgarteBiasScale: snapshot.floats[floatOffset + 27],
+        maxContactBaumgarteBiasVelocityScale: snapshot.floats[floatOffset + 28],
+        contactPositionCorrectionScale: snapshot.floats[floatOffset + 29],
+        contactPositionCorrectionSlopScale: snapshot.floats[floatOffset + 30],
+      },
+      mass: snapshot.floats[floatOffset + 6],
+      inverseMass: inverseOrZero(snapshot.floats[floatOffset + 6]),
+      inertia: snapshot.floats[floatOffset + 7],
+      inverseInertia: inverseOrZero(snapshot.floats[floatOffset + 7]),
+      gravityScale: snapshot.floats[floatOffset + 8],
+      linearDamping: snapshot.floats[floatOffset + 9],
+      angularDamping: snapshot.floats[floatOffset + 10],
+      restitution: snapshot.floats[floatOffset + 11],
+      friction: snapshot.floats[floatOffset + 12],
+      surfaceVelocityX: snapshot.floats[floatOffset + 13],
+      surfaceVelocityY: snapshot.floats[floatOffset + 14],
+      density: snapshot.floats[floatOffset + 15],
+      contactBaumgarteBiasScale: snapshot.floats[floatOffset + 16],
+      maxContactBaumgarteBiasVelocityScale: snapshot.floats[floatOffset + 17],
+      contactPositionCorrectionScale: snapshot.floats[floatOffset + 18],
+      contactPositionCorrectionSlopScale: snapshot.floats[floatOffset + 19],
+    });
+  }
+  return states;
+}
+
+function inverseOrZero(value: number): number {
+  return Number.isFinite(value) && value > 0 ? 1 / value : 0;
+}
+
 function readPhysicsBodyColliderSnapshot(rustEngine: Engine): PhysicsBodyColliderSnapshot {
   return {
     colliderIndex: rustEngine.physics_body_collider_index(),
@@ -2676,7 +2921,9 @@ function readPhysicsBodyColliderSnapshot(rustEngine: Engine): PhysicsBodyCollide
 
 function physicsJointHandle(handle: PhysicsJointHandle): PhysicsJointHandle {
   if (!(handle.jointType in PHYSICS_JOINT_TYPE_CODES)) {
-    throw new Error("physics jointType must be distance, rope, spring, revolute, prismatic, weld, or gear.");
+    throw new Error(
+      "physics jointType must be distance, rope, spring, pulley, revolute, prismatic, weld, or gear.",
+    );
   }
   return {
     jointType: handle.jointType,
@@ -2721,6 +2968,10 @@ function readPhysicsJointSnapshot(rustEngine: Engine): PhysicsJointSnapshot {
     localAnchorBY: rustEngine.physics_joint_local_anchor_b_y(),
     localAxisAX: rustEngine.physics_joint_local_axis_a_x(),
     localAxisAY: rustEngine.physics_joint_local_axis_a_y(),
+    groundAnchorAX: rustEngine.physics_joint_ground_anchor_a_x(),
+    groundAnchorAY: rustEngine.physics_joint_ground_anchor_a_y(),
+    groundAnchorBX: rustEngine.physics_joint_ground_anchor_b_x(),
+    groundAnchorBY: rustEngine.physics_joint_ground_anchor_b_y(),
     limitEnabled: rustEngine.physics_joint_limit_enabled(),
     lowerAngle: rustEngine.physics_joint_lower_angle(),
     upperAngle: rustEngine.physics_joint_upper_angle(),
@@ -3192,11 +3443,12 @@ function physicsDebugCategoryFlags(options: PhysicsDebugOptions): number {
   let flags = 0;
   if (options.broadphase === true) flags |= PHYSICS_DEBUG_BROADPHASE;
   if (options.contacts === true || options.manifolds === true) flags |= PHYSICS_DEBUG_CONTACTS;
-  if (options.colliders === true || options.layers === true || options.ccd === true) {
+  if (options.colliders === true || options.layers === true) {
     flags |= PHYSICS_DEBUG_COLLIDERS;
   }
   if (options.joints === true) flags |= PHYSICS_DEBUG_JOINTS;
   if (options.sleeping === true) flags |= PHYSICS_DEBUG_SLEEPING | PHYSICS_DEBUG_COLLIDERS;
+  if (options.ccd === true) flags |= PHYSICS_DEBUG_CCD;
   return flags;
 }
 

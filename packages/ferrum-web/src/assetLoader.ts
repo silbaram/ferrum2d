@@ -4,7 +4,7 @@ import { SoundRegistry } from "./soundRegistry.js";
 import { TextureRegistry } from "./textureRegistry.js";
 
 export interface TextureAssetManager {
-  loadTexture(textureId: number, url: string): Promise<WebGLTexture>;
+  loadTexture(textureId: number, url: string): Promise<unknown>;
 }
 
 export interface SoundAssetManager {

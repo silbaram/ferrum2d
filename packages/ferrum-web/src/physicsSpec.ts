@@ -15,6 +15,7 @@ export type PhysicsSpecJointType =
   | "distance"
   | "rope"
   | "spring"
+  | "pulley"
   | "revolute"
   | "prismatic"
   | "weld"
@@ -139,6 +140,8 @@ export interface PhysicsJointSpec {
   anchor?: PhysicsSpecVector2;
   localAnchorA?: PhysicsSpecVector2;
   localAnchorB?: PhysicsSpecVector2;
+  groundAnchorA?: PhysicsSpecVector2;
+  groundAnchorB?: PhysicsSpecVector2;
   localAxisA?: PhysicsSpecVector2;
   restLength?: number;
   maxLength?: number;
@@ -316,6 +319,10 @@ export interface ResolvedPhysicsJointSpec {
   localAnchorBY: number;
   localAxisAX: number;
   localAxisAY: number;
+  groundAnchorAX: number;
+  groundAnchorAY: number;
+  groundAnchorBX: number;
+  groundAnchorBY: number;
   restLength: number;
   maxLength: number;
   stiffness: number;
@@ -444,6 +451,8 @@ const JOINT_KEYS = new Set([
   "anchor",
   "localAnchorA",
   "localAnchorB",
+  "groundAnchorA",
+  "groundAnchorB",
   "localAxisA",
   "restLength",
   "maxLength",
@@ -733,6 +742,8 @@ function physicsJoints(
     const anchor = vector2(object.anchor, `${jointPath}.anchor`, { x: 0, y: 0 });
     const localAnchorA = vector2(object.localAnchorA, `${jointPath}.localAnchorA`, { x: 0, y: 0 });
     const localAnchorB = vector2(object.localAnchorB, `${jointPath}.localAnchorB`, { x: 0, y: 0 });
+    const groundAnchorA = vector2(object.groundAnchorA, `${jointPath}.groundAnchorA`, anchor);
+    const groundAnchorB = vector2(object.groundAnchorB, `${jointPath}.groundAnchorB`, anchor);
     const localAxisA = vector2(object.localAxisA, `${jointPath}.localAxisA`, { x: 1, y: 0 });
     const limit = optionalObject(object.limit, `${jointPath}.limit`);
     rejectUnknownKeys(limit, `${jointPath}.limit`, LIMIT_KEYS);
@@ -751,6 +762,10 @@ function physicsJoints(
       localAnchorBY: localAnchorB.y,
       localAxisAX: localAxisA.x,
       localAxisAY: localAxisA.y,
+      groundAnchorAX: groundAnchorA.x,
+      groundAnchorAY: groundAnchorA.y,
+      groundAnchorBX: groundAnchorB.x,
+      groundAnchorBY: groundAnchorB.y,
       restLength: nonNegativeNumber(object.restLength, `${jointPath}.restLength`, 0),
       maxLength: nonNegativeNumber(object.maxLength, `${jointPath}.maxLength`, 0),
       stiffness: unitIntervalNumber(object.stiffness, `${jointPath}.stiffness`, 1),
@@ -763,7 +778,9 @@ function physicsJoints(
       motorSpeed: finiteNumber(motor.speed, `${jointPath}.motor.speed`, 0),
       maxMotorForce: nonNegativeNumber(motor.maxForce, `${jointPath}.motor.maxForce`, 0),
       maxMotorTorque: nonNegativeNumber(motor.maxTorque, `${jointPath}.motor.maxTorque`, 0),
-      ratio: finiteNumber(object.ratio, `${jointPath}.ratio`, 1),
+      ratio: type === "pulley"
+        ? positiveNumber(object.ratio, `${jointPath}.ratio`, 1)
+        : finiteNumber(object.ratio, `${jointPath}.ratio`, 1),
       referenceAngle: finiteNumber(object.referenceAngle, `${jointPath}.referenceAngle`, 0),
       breakDistance: nonNegativeNumber(object.breakDistance, `${jointPath}.breakDistance`, 0),
       breakAngle: nonNegativeNumber(object.breakAngle, `${jointPath}.breakAngle`, 0),
@@ -1033,6 +1050,7 @@ function jointType(value: unknown, path: string): PhysicsSpecJointType {
     value === "distance" ||
     value === "rope" ||
     value === "spring" ||
+    value === "pulley" ||
     value === "revolute" ||
     value === "prismatic" ||
     value === "weld" ||

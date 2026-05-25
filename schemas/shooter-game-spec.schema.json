@@ -559,12 +559,16 @@
       "additionalProperties": false,
       "required": ["type", "bodyA", "bodyB"],
       "properties": {
-        "type": { "enum": ["distance", "rope", "spring", "revolute", "prismatic", "gear"] },
+        "type": {
+          "enum": ["distance", "rope", "spring", "pulley", "revolute", "prismatic", "weld", "gear"]
+        },
         "bodyA": { "type": "string", "minLength": 1 },
         "bodyB": { "type": "string", "minLength": 1 },
         "anchor": { "$ref": "#/$defs/vector2" },
         "localAnchorA": { "$ref": "#/$defs/vector2" },
         "localAnchorB": { "$ref": "#/$defs/vector2" },
+        "groundAnchorA": { "$ref": "#/$defs/vector2" },
+        "groundAnchorB": { "$ref": "#/$defs/vector2" },
         "localAxisA": { "$ref": "#/$defs/vector2" },
         "restLength": { "type": "number", "minimum": 0 },
         "maxLength": { "type": "number", "minimum": 0 },

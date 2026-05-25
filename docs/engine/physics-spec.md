@@ -21,26 +21,29 @@ Physics Spec은 Ferrum2D의 범용 physics authoring 계약이다. Top-down Shoo
 - material/layer/body/joint 참조 오류 diagnostic
 - `createPhysicsWorldFromSpec(...)` 기반 resolved body/joint runtime apply
 - `createRigidBody(...)`, `createCollider(...)`, `createJoint(...)` authoring helper
-- distance/rope/spring/revolute/prismatic/weld/gear joint validation과 runtime apply
+- `createVehicleRig(...)` 기반 chassis/wheel/suspension helper
+- distance/rope/spring/pulley/revolute/prismatic/weld/gear joint validation과 runtime apply
 - material preset과 layer/mask helper
 - `CreateEngineOptions.physicsMode`, `FerrumRuntimeOptions.physicsMode` runtime override
 - `FrameState.physics.mode`와 debug overlay의 physics mode 표시
 - Top-down Shooter `game.json`의 명시적 `physics.mode`
 - generic runtime `edge` collider 생성/API, collision/query/raycast/shape-cast 지원
 - category별 physics debug line flags와 DebugOverlay physics metric 표시
+- `ccd` debug category의 per-hit 위치 marker와 normal line 표시
 - `pnpm smoke:physics` stress/replay smoke runner
 - Physics Spec 기반 world snapshot/restore/replay helper
+- Wasm bulk body state buffer 기반 snapshot/restore ABI와 TypeScript fallback helper
 - editor/AI 도구용 `physicsEditor` authoring metadata strip helper와 JSON Schema
 - `examples/physics-sandbox` browser sandbox와 `pnpm smoke:physics-sandbox`
 - compound collider runtime apply, collider snapshot 조회, body 단위 contact/query/debug
-
-후속 구현 범위:
-
-- Wasm bulk world snapshot/restore ABI
-- dedicated `chain` collider runtime storage와 tilemap boundary extraction 구현
-- CCD hit 위치를 별도 marker로 인코딩하는 debug buffer 확장
+- dedicated `chain` collider runtime storage, collision/query/raycast/shape-cast/debug/snapshot 지원
+- `extractTilemapBoundaryChains(...)` 기반 collision tilemap 외곽선 -> Physics Spec chain body 변환
+- `PixelMaskTerrain` helper 기반 alpha mask 편집, dirty patch 조회, collision-only tilemap/chain boundary 변환
+- `PixelMaskTerrainRuntime` 기반 renderer texture upload, dirty alpha patch upload, chunk collider ownership/rebuild orchestration
 
 따라서 현재 `physics` namespace는 사용자-facing 계약, 검증, 낮은 빈도의 runtime apply 기준을 제공한다. Generic rigid body world는 `createPhysicsWorldFromSpec(...)`로 만들고, 더 직접적인 제어가 필요하면 imperative Physics API인 `spawnRigidBody(...)`, `spawnPhysicsJoint(...)`, `stepRigidBodies(...)`를 사용한다.
+
+`createVehicleRig(...)`는 Physics Spec JSON 필드가 아니라 TypeScript authoring helper다. 새 solver primitive를 추가하지 않고 차체 AABB body, wheel circle body, `prismatic` guide joint, `spring` suspension joint를 생성해 차량/플랫폼 prototype을 빠르게 구성한다.
 
 ## 기본 구조
 
@@ -110,9 +113,9 @@ Physics Spec은 Ferrum2D의 범용 physics authoring 계약이다. Top-down Shoo
 | `orientedBox` | `size` 또는 `halfSize` | spec validation, runtime apply |
 | `convexPolygon` | `vertices` | spec validation, runtime apply |
 | `edge` | `start`, `end` | spec validation, runtime apply |
-| `chain` | `vertices`, optional `loop` | spec validation, runtime apply via edge segments |
+| `chain` | `vertices`, optional `loop` | spec validation, dedicated runtime apply |
 
-`convexPolygon`은 3-16개 convex vertex만 runtime apply에 사용한다. `chain`은 `createPhysicsWorldFromSpec(...)`에서 인접 vertex pair를 edge segment로 낮춰 적용한다. `loop: true`이고 마지막 vertex가 첫 vertex와 다르면 closing edge도 추가한다. dedicated Rust chain storage와 tilemap boundary extraction 구현은 후속 범위다.
+`convexPolygon`은 3-16개 convex vertex만 runtime apply에 사용한다. `chain`은 2-64개 vertex를 하나의 Rust `ChainCollider`로 저장한다. `loop: true`이면 마지막 vertex와 첫 vertex 사이의 closing segment도 collision/query/debug 경로에 참여한다. Rust 내부 broadphase와 narrowphase는 chain segment를 순회하지만 public collider snapshot과 Physics Spec에는 하나의 `chain` collider로 유지된다.
 
 ## Authoring/apply API
 
@@ -140,8 +143,42 @@ Apply 정책:
 - contact/query/debug result는 현재 body/entity 단위로 반환한다. Rust 내부는 collider pair를 순회하지만 public result에는 collider index를 노출하지 않는다.
 - collider별 layer/filter/trigger/enabled/material은 runtime apply와 collision/query/debug/contact solver에 반영된다. 낮은 빈도 tooling은 `getPhysicsBodyColliderCount(...)`와 `getPhysicsBodyCollider(...)`로 collider index, type, enabled/trigger, offset, material override, category/mask bit를 조회할 수 있다.
 - `bodyA`/`bodyB`의 `"world"`는 helper가 collision-disabled static anchor body로 변환한다.
-- `chain`은 하나의 authoring collider로 보존되지만 runtime에서는 여러 edge collider로 적용된다. 첫 segment는 primary collider, 나머지 segment는 secondary collider index로 들어간다.
+- `chain`은 하나의 authoring collider이자 하나의 runtime collider로 적용된다. segment별 collision/query/debug 처리는 Rust 내부 구현 세부사항이며 public collider index를 늘리지 않는다.
 - apply는 authoring 시점의 낮은 빈도 호출을 대상으로 하며 frame hot path에서 body별 JS/Wasm stream을 만들지 않는다.
+
+## Tilemap/Pixel Mask Helper
+
+`extractTilemapBoundaryChains(...)`는 resolved Shooter tilemap의 `collision: true` layer를 Physics Spec static body map으로 변환한다. 일반 layer에서는 `slope` 또는 `oneWayPlatform` tile을 regular solid boundary에서 제외하고, `collisionOnly: true` layer에서는 양수 tile id를 solid cell로 처리한다. 긴 외곽선은 runtime chain vertex limit에 맞춰 여러 body로 분할된다.
+
+`PixelMaskTerrain`은 alpha mask를 낮은 빈도로 편집하고, dirty rect/alpha patch를 조회하며, collision-only tilemap layer 또는 chain boundary body로 변환하는 helper다. `PixelMaskTerrainRuntime`은 이 helper를 WebGL2 texture와 Physics Spec world apply에 연결한다. 생성 시 전체 texture를 만들고, 이후 dirty alpha patch만 `texSubImage2D`로 업로드할 수 있으며, physics 쪽은 chunk 단위로 boundary chain body를 재생성하고 이전 chunk world를 `clear()`로 교체한다. 큰 편집이 한 번에 너무 많은 chunk를 건드리는 경우 `maxDirtyChunksPerSync`로 rebuild budget을 제한한다.
+
+```ts
+import {
+  createPixelMaskTerrain,
+  createPixelMaskTerrainRuntime,
+} from "@ferrum2d/ferrum-web";
+
+const terrain = createPixelMaskTerrain({ width: 128, height: 64, fill: "solid" });
+const runtime = createPixelMaskTerrainRuntime({
+  terrain,
+  texture: {
+    target: renderer,
+    textureId: 12,
+    upload: { color: [255, 255, 255], alphaScale: 1 },
+  },
+  physics: {
+    engine: ferrum.engine,
+    chunkWidth: 32,
+    chunkHeight: 32,
+    maxDirtyChunksPerSync: 4,
+    boundary: { tileWidth: 4, tileHeight: 4, physicsLayer: "world" },
+  },
+});
+
+runtime.carveCircle(48, 24, 8);
+```
+
+이 runtime helper는 낮은 빈도의 destructible terrain 편집용이다. 프레임 hot path에서 매 entity 단위 JS/Wasm 왕복을 만들지 않는다.
 
 ## Joint Type
 
@@ -150,10 +187,13 @@ Apply 정책:
 | `distance` | `restLength`, `stiffness`, `damping`, `breakDistance` | 지원 |
 | `rope` | `maxLength`, `stiffness`, `damping`, `breakDistance` | 지원 |
 | `spring` | `restLength`, `stiffness`, `damping`, `breakDistance` | 지원 |
+| `pulley` | `groundAnchorA`, `groundAnchorB`, local anchor, `restLength`, `ratio`, `breakDistance` | 지원 |
 | `revolute` | `anchor` 또는 local anchor, `limit`, `motor`, `breakDistance` | 지원 |
 | `prismatic` | local anchor, `localAxisA`, `referenceAngle`, `limit`, `motor`, `breakDistance` | 지원 |
 | `weld` | local anchor, `referenceAngle`, `stiffness`, `damping`, `breakDistance`, `breakAngle` | 지원 |
 | `gear` | `ratio`, `referenceAngle`, `breakAngle` | 지원 |
+
+`pulley`는 두 body anchor와 두 world-space ground anchor 사이의 총 길이 `lengthA + ratio * lengthB = restLength`를 유지한다. `groundAnchorA`/`groundAnchorB`는 world 좌표이고, `localAnchorA`/`localAnchorB`는 각 body local 좌표다. `ratio`는 양수만 허용하며, `breakDistance`는 가중 길이 오차가 지정값을 넘으면 joint를 제거한다.
 
 `weld`는 두 body의 local anchor와 상대 각도를 고정하는 목적형 joint다. Physics Spec의 `stiffness`/`damping`은 runtime apply 시 anchor constraint와 angular constraint에 함께 적용된다. 더 세밀하게 나누어야 하는 low-level Web API에서는 `spawnPhysicsJoint({ type: "weld", angularStiffness, angularDamping })`을 사용할 수 있다. `breakDistance`는 두 anchor 간 거리 오차, `breakAngle`은 상대 각도 오차가 지정값을 넘으면 joint를 제거한다. `frequencyHz`/`dampingRatio`/force 기반 break event는 현재 공식 Physics Spec 필드가 아니며, 필요 시 별도 설계 후 추가한다.
 
@@ -165,6 +205,7 @@ Physics Spec으로 만든 generic world는 낮은 빈도 tooling 용도로 snaps
 import {
   capturePhysicsWorldSnapshot,
   createPhysicsReplayInputStream,
+  createPhysicsReplayWorkerClient,
   runPhysicsReplayInputStream,
   restorePhysicsWorldSnapshot,
   verifyPhysicsReplayInputStreamRollback,
@@ -190,6 +231,11 @@ const inputStream = createPhysicsReplayInputStream({
 });
 const replayRun = runPhysicsReplayInputStream(runtime.engine, world, inputStream);
 const rollback = verifyPhysicsReplayInputStreamRollback(runtime.engine, world, inputStream);
+
+const workerClient = createPhysicsReplayWorkerClient();
+const workerReplayRun = await workerClient.runReplay(snapshot, inputStream);
+const transferBenchmark = await workerClient.benchmarkTransfer({ byteLength: 1024 * 1024 });
+workerClient.destroy();
 ```
 
 Snapshot 계약:
@@ -197,6 +243,7 @@ Snapshot 계약:
 - `format: "ferrum2d.physics-world.snapshot"`와 `version: 1`을 포함한다.
 - `ResolvedPhysicsSpec`, body/joint logical id, runtime handle, body/joint snapshot, Physics Spec 기반 collider snapshot, step option, replay hash를 포함한다.
 - restore는 `ResolvedPhysicsSpec`을 다시 적용한 뒤 position, velocity, rotation, body/collider enabled state, mass/tuning/material, secondary collider material override, joint enabled state를 복원한다.
+- body state는 가능하면 `capturePhysicsBodyStateBuffer(...)`/`restorePhysicsBodyStateBuffer(...)` bulk ABI를 사용하고, 해당 API가 없는 호환 target에서는 기존 per-body setter 경로로 fallback한다.
 - hash는 기본적으로 logical id와 runtime state를 기준으로 하며 새 handle/generation 차이는 제외한다. handle까지 비교해야 하면 `hashPhysicsWorldSnapshot(snapshot, { includeHandles: true })`를 사용한다.
 - snapshot은 `PhysicsWorldApplyResult.spec`에 포함된 collider 집합을 기준으로 한다. `addPhysicsBodyCollider(...)`로 spec 밖 runtime collider를 추가한 world는 shape metadata를 안정적으로 복원할 수 없으므로 snapshot capture 시 diagnostic으로 거부한다.
 - force/impulse accumulator, island graph, warm-start contact cache는 현재 public JSON snapshot에 포함하지 않는다. Rust-native `World::snapshot()`은 accumulator, sleep state, warm-start contact impulse cache를 보존하지만 island graph는 step 시점의 derived state로 재계산한다.
@@ -209,7 +256,7 @@ Replay input stream 계약:
 - event는 해당 frame의 physics step 직전에 적용된다.
 - interval snapshot은 frame `0`, 지정 interval, final frame에 남는다.
 
-Replay helper와 `pnpm smoke:physics-replay`는 deterministic regression gate다. multiplayer/network rollback protocol은 포함하지 않는다.
+Replay helper와 `pnpm smoke:physics-replay`는 deterministic regression gate다. `PhysicsReplayWorkerClient`는 같은 snapshot/replay 계약을 Web Worker에서 opt-in으로 실행하고 transferable `ArrayBuffer` round-trip 비용을 측정한다. 전체 scene loop Worker 이전, Wasm threads, multiplayer/network rollback protocol은 포함하지 않는다.
 
 ## Editor/AI authoring schema
 
@@ -298,10 +345,10 @@ const layers = createPhysicsLayerMap({
 | `broadphase` | collider AABB proxy line |
 | `contacts`, `manifolds` | contact normal과 contact point marker |
 | `colliders` | collider outline line |
-| `joints` | joint 연결 body line |
+| `joints` | joint 연결 line. pulley는 ground anchor와 body anchor line을 함께 표시한다. |
 | `sleeping` | sleeping/awake body color 분리 |
 | `layers` | layer/mask 진단용 category flag. 현재 line ABI에는 text label을 넣지 않는다. |
-| `ccd` | DebugOverlay의 `ccd checks`, `ccd hits` metric으로 확인한다. per-hit 위치 marker는 후속 buffer 확장 대상이다. |
+| `ccd` | CCD hit 위치를 cross marker로, hit normal을 짧은 line으로 기존 physics debug line buffer에 기록한다. DebugOverlay의 `ccd checks`, `ccd hits` metric과 함께 확인한다. |
 
 ## 검증 규칙
 

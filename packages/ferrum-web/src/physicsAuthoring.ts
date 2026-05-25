@@ -132,6 +132,12 @@ export type PhysicsColliderAuthoringOptions =
       start: PhysicsSpecVector2;
       end: PhysicsSpecVector2;
       offset?: PhysicsSpecVector2;
+    }
+  | {
+      type: "chain";
+      vertices: readonly PhysicsSpecVector2[];
+      loop?: boolean;
+      offset?: PhysicsSpecVector2;
     };
 
 export interface PhysicsRigidBodyAuthoringOptions {
@@ -191,6 +197,14 @@ export type PhysicsJointAuthoringOptions =
       breakDistance?: number;
     })
   | (PhysicsJointAuthoringBase & {
+      type: "pulley";
+      groundAnchorA: PhysicsSpecVector2;
+      groundAnchorB: PhysicsSpecVector2;
+      restLength: number;
+      ratio?: number;
+      breakDistance?: number;
+    })
+  | (PhysicsJointAuthoringBase & {
       type: "revolute";
       breakDistance?: number;
       limit?: { enabled?: boolean; lower?: number; upper?: number };
@@ -220,6 +234,60 @@ export type PhysicsJointAuthoringOptions =
       referenceAngle?: number;
       breakAngle?: number;
     });
+
+export interface PhysicsVehicleWheelAuthoringOptions {
+  offset: PhysicsSpecVector2;
+  radius?: number;
+  mass?: number;
+  density?: number;
+  material?: PhysicsMaterialAuthoringInput;
+  layer?: string;
+  categoryBits?: number;
+  maskBits?: number;
+  suspensionAxis?: PhysicsSpecVector2;
+  suspensionTravel?: number;
+  restLength?: number;
+  stiffness?: number;
+  damping?: number;
+  guideStiffness?: number;
+  guideDamping?: number;
+  angularVelocityRadiansPerSecond?: number;
+  enabled?: boolean;
+}
+
+export interface PhysicsVehicleRigAuthoringOptions {
+  position?: PhysicsSpecVector2;
+  chassisSize?: PhysicsSpecVector2;
+  chassisMass?: number;
+  chassisDensity?: number;
+  chassisMaterial?: PhysicsMaterialAuthoringInput;
+  chassisLinearDamping?: number;
+  chassisAngularDamping?: number;
+  wheelRadius?: number;
+  wheelMass?: number;
+  wheelDensity?: number;
+  wheelMaterial?: PhysicsMaterialAuthoringInput;
+  suspensionAxis?: PhysicsSpecVector2;
+  suspensionTravel?: number;
+  suspensionStiffness?: number;
+  suspensionDamping?: number;
+  guideStiffness?: number;
+  guideDamping?: number;
+  layer?: string;
+  categoryBits?: number;
+  maskBits?: number;
+  wheels: readonly PhysicsVehicleWheelAuthoringOptions[];
+}
+
+export interface PhysicsVehicleRigResult {
+  chassis: PhysicsEntityHandle;
+  wheels: readonly PhysicsEntityHandle[];
+  guideJoints: readonly PhysicsJointHandle[];
+  suspensionJoints: readonly PhysicsJointHandle[];
+  bodyCount: number;
+  jointCount: number;
+  clear(): void;
+}
 
 export interface PhysicsAuthoringContext {
   path?: string;
@@ -305,11 +373,8 @@ export function createPhysicsWorldFromSpec(
   return result;
 }
 
-export function resolvedPhysicsColliderRuntimeCount(collider: ResolvedPhysicsColliderSpec): number {
-  if (collider.shape !== "chain") {
-    return 1;
-  }
-  return chainEdgeSegments(collider, "physics.collider").length;
+export function resolvedPhysicsColliderRuntimeCount(_collider: ResolvedPhysicsColliderSpec): number {
+  return 1;
 }
 
 export function createRigidBody(
@@ -425,6 +490,12 @@ export function createCollider(
         endY: end.y,
       }, options.offset, path);
     }
+    case "chain":
+      return withColliderOffset({
+        type: "chain",
+        vertices: flattenChainVertices(options.vertices, `${path}.vertices`, options.loop === true),
+        loop: options.loop === true,
+      }, options.offset, path);
   }
 }
 
@@ -441,6 +512,136 @@ export function createJoint(
   const entityA = jointEndpoint(engine, options.bodyA, anchor, `${path}.bodyA`);
   const entityB = jointEndpoint(engine, options.bodyB, anchor, `${path}.bodyB`);
   return spawnJoint(engine, jointOptionsFromAuthoring(options, entityA, entityB, path), path);
+}
+
+export function createVehicleRig(
+  engine: FerrumEngine,
+  options: PhysicsVehicleRigAuthoringOptions,
+  context: PhysicsAuthoringContext = {},
+): PhysicsVehicleRigResult {
+  const path = context.path ?? "physics.vehicle";
+  if (options.wheels.length < 1) {
+    throw physicsSpecDiagnosticError(`${path}.wheels`, "must contain at least one wheel");
+  }
+  const position = vector2(options.position, `${path}.position`, { x: 0, y: 0 });
+  const chassisSize = positiveVector2(options.chassisSize, `${path}.chassisSize`, { x: 80, y: 24 });
+  const sharedLayer = vehicleLayerOptions(options);
+  const chassis = createRigidBody(engine, {
+    type: "dynamic",
+    position: [position.x, position.y],
+    collider: { type: "box", size: [chassisSize.x, chassisSize.y] },
+    ...(options.chassisMass === undefined ? {} : { mass: positiveNumber(options.chassisMass, `${path}.chassisMass`) }),
+    ...(options.chassisDensity === undefined ? {} : { density: positiveNumber(options.chassisDensity, `${path}.chassisDensity`) }),
+    ...(options.chassisMaterial === undefined ? {} : { material: options.chassisMaterial }),
+    ...(options.chassisLinearDamping === undefined
+      ? {}
+      : { linearDamping: nonNegativeNumber(options.chassisLinearDamping, `${path}.chassisLinearDamping`) }),
+    ...(options.chassisAngularDamping === undefined
+      ? {}
+      : { angularDamping: nonNegativeNumber(options.chassisAngularDamping, `${path}.chassisAngularDamping`) }),
+    ...sharedLayer,
+  }, { path: `${path}.chassis` });
+
+  const wheels: PhysicsEntityHandle[] = [];
+  const guideJoints: PhysicsJointHandle[] = [];
+  const suspensionJoints: PhysicsJointHandle[] = [];
+
+  for (const [index, wheel] of options.wheels.entries()) {
+    const wheelPath = `${path}.wheels.${index}`;
+    const offset = requiredVector2(wheel.offset, `${wheelPath}.offset`);
+    const radius = positiveNumber(wheel.radius ?? options.wheelRadius ?? 10, `${wheelPath}.radius`);
+    const axis = normalizedNonZeroVector2(
+      vector2(wheel.suspensionAxis ?? options.suspensionAxis, `${wheelPath}.suspensionAxis`, { x: 0, y: 1 }),
+      `${wheelPath}.suspensionAxis`,
+    );
+    const suspensionTravel = optionalNonNegativeNumber(
+      wheel.suspensionTravel ?? options.suspensionTravel,
+      `${wheelPath}.suspensionTravel`,
+    );
+    const restLength = nonNegativeNumber(
+      wheel.restLength ?? vectorLength(offset),
+      `${wheelPath}.restLength`,
+    );
+    const wheelMass = wheel.mass ?? options.wheelMass;
+    const wheelDensity = wheel.density ?? options.wheelDensity;
+    const wheelMaterial = wheel.material ?? options.wheelMaterial;
+    const wheelLayer = vehicleLayerOptions({
+      ...options,
+      layer: wheel.layer ?? options.layer,
+      categoryBits: wheel.categoryBits ?? options.categoryBits,
+      maskBits: wheel.maskBits ?? options.maskBits,
+    });
+    const wheelHandle = createRigidBody(engine, {
+      type: "dynamic",
+      position: [position.x + offset.x, position.y + offset.y],
+      collider: { type: "circle", radius },
+      ...(wheelMass === undefined ? {} : { mass: positiveNumber(wheelMass, `${wheelPath}.mass`) }),
+      ...(wheelDensity === undefined ? {} : { density: positiveNumber(wheelDensity, `${wheelPath}.density`) }),
+      ...(wheelMaterial === undefined ? {} : { material: wheelMaterial }),
+      ...(wheel.angularVelocityRadiansPerSecond === undefined
+        ? {}
+        : {
+            angularVelocityRadiansPerSecond: finiteNumber(
+              wheel.angularVelocityRadiansPerSecond,
+              `${wheelPath}.angularVelocityRadiansPerSecond`,
+            ),
+          }),
+      ...wheelLayer,
+    }, { path: `${wheelPath}.body` });
+
+    wheels.push(wheelHandle);
+    guideJoints.push(spawnJoint(engine, {
+      type: "prismatic",
+      entityA: chassis,
+      entityB: wheelHandle,
+      localAnchorAX: offset.x,
+      localAnchorAY: offset.y,
+      localAnchorBX: 0,
+      localAnchorBY: 0,
+      localAxisAX: axis.x,
+      localAxisAY: axis.y,
+      angularStiffness: 0,
+      angularDamping: 0,
+      stiffness: unitIntervalNumber(wheel.guideStiffness ?? options.guideStiffness ?? 1, `${wheelPath}.guideStiffness`),
+      damping: unitIntervalNumber(wheel.guideDamping ?? options.guideDamping ?? 0, `${wheelPath}.guideDamping`),
+      limitEnabled: suspensionTravel !== undefined,
+      lowerTranslation: suspensionTravel === undefined ? 0 : -suspensionTravel,
+      upperTranslation: suspensionTravel ?? 0,
+      enabled: wheel.enabled ?? true,
+    }, `${wheelPath}.guideJoint`));
+    suspensionJoints.push(spawnJoint(engine, {
+      type: "spring",
+      entityA: chassis,
+      entityB: wheelHandle,
+      restLength,
+      stiffness: unitIntervalNumber(wheel.stiffness ?? options.suspensionStiffness ?? 0.6, `${wheelPath}.stiffness`),
+      damping: unitIntervalNumber(wheel.damping ?? options.suspensionDamping ?? 0.4, `${wheelPath}.damping`),
+      enabled: wheel.enabled ?? true,
+    }, `${wheelPath}.suspensionJoint`));
+  }
+
+  let cleared = false;
+  return {
+    chassis,
+    wheels,
+    guideJoints,
+    suspensionJoints,
+    bodyCount: wheels.length + 1,
+    jointCount: guideJoints.length + suspensionJoints.length,
+    clear: () => {
+      if (cleared) {
+        return;
+      }
+      cleared = true;
+      for (const joint of [...guideJoints, ...suspensionJoints]) {
+        engine.clearPhysicsJoint(joint);
+      }
+      for (const wheel of wheels) {
+        engine.despawnPhysicsEntity(wheel);
+      }
+      engine.despawnPhysicsEntity(chassis);
+    },
+  };
 }
 
 export function physicsMaterial(
@@ -514,6 +715,16 @@ export function clearPhysicsWorld(engine: FerrumEngine, world: PhysicsWorldApply
   for (const body of Object.values(world.bodies)) {
     engine.despawnPhysicsEntity(body);
   }
+}
+
+function vehicleLayerOptions(
+  options: Pick<PhysicsVehicleRigAuthoringOptions, "layer" | "categoryBits" | "maskBits">,
+): Pick<PhysicsRigidBodyAuthoringOptions, "layer" | "categoryBits" | "maskBits"> {
+  return {
+    ...(options.layer === undefined ? {} : { layer: options.layer }),
+    ...(options.categoryBits === undefined ? {} : { categoryBits: options.categoryBits }),
+    ...(options.maskBits === undefined ? {} : { maskBits: options.maskBits }),
+  };
 }
 
 function applyPhysicsRuntimeOptions(engine: FerrumEngine, spec: ResolvedPhysicsSpec): void {
@@ -811,48 +1022,17 @@ function runtimeCollidersFromResolved(
         },
       }];
     case "chain":
-      return chainEdgeSegments(collider, path).map(({ start, end, path: segmentPath }) => ({
-        path: segmentPath,
+      return [{
+        path,
         collider: {
-          type: "edge",
-          startX: start.x,
-          startY: start.y,
-          endX: end.x,
-          endY: end.y,
+          type: "chain",
+          vertices: flattenResolvedVertices(collider.vertices),
+          loop: collider.loop,
           offsetX: collider.offsetX,
           offsetY: collider.offsetY,
         },
-      }));
+      }];
   }
-}
-
-function chainEdgeSegments(
-  collider: ResolvedPhysicsChainColliderSpec,
-  path: string,
-): Array<{ start: ResolvedPhysicsVector2; end: ResolvedPhysicsVector2; path: string }> {
-  const segments: Array<{ start: ResolvedPhysicsVector2; end: ResolvedPhysicsVector2; path: string }> = [];
-  for (let index = 1; index < collider.vertices.length; index += 1) {
-    segments.push({
-      start: collider.vertices[index - 1],
-      end: collider.vertices[index],
-      path: `${path}.vertices.${index}`,
-    });
-  }
-  if (collider.loop && collider.vertices.length > 2) {
-    const start = collider.vertices[collider.vertices.length - 1];
-    const end = collider.vertices[0];
-    if (start.x !== end.x || start.y !== end.y) {
-      segments.push({
-        start,
-        end,
-        path: `${path}.loop`,
-      });
-    }
-  }
-  if (segments.length < 1) {
-    throw physicsSpecDiagnosticError(`${path}.vertices`, "chain must contain at least one valid segment");
-  }
-  return segments;
 }
 
 function jointOptionsFromResolved(
@@ -888,6 +1068,22 @@ function jointOptionsFromResolved(
         ...base,
         type: "spring",
         restLength: joint.restLength,
+        ...(joint.breakDistance > 0 ? { breakDistance: joint.breakDistance } : {}),
+      };
+    case "pulley":
+      return {
+        ...base,
+        type: "pulley",
+        groundAnchorAX: joint.groundAnchorAX,
+        groundAnchorAY: joint.groundAnchorAY,
+        groundAnchorBX: joint.groundAnchorBX,
+        groundAnchorBY: joint.groundAnchorBY,
+        localAnchorAX: joint.localAnchorAX,
+        localAnchorAY: joint.localAnchorAY,
+        localAnchorBX: joint.localAnchorBX,
+        localAnchorBY: joint.localAnchorBY,
+        restLength: joint.restLength,
+        ratio: joint.ratio,
         ...(joint.breakDistance > 0 ? { breakDistance: joint.breakDistance } : {}),
       };
     case "revolute":
@@ -989,6 +1185,25 @@ function jointOptionsFromAuthoring(
         restLength: nonNegativeNumber(options.restLength, `${path}.restLength`),
         ...(options.breakDistance === undefined ? {} : { breakDistance: nonNegativeNumber(options.breakDistance, `${path}.breakDistance`) }),
       };
+    case "pulley": {
+      const groundAnchorA = vector2(options.groundAnchorA, `${path}.groundAnchorA`, { x: 0, y: 0 });
+      const groundAnchorB = vector2(options.groundAnchorB, `${path}.groundAnchorB`, { x: 0, y: 0 });
+      return {
+        ...base,
+        type: "pulley",
+        groundAnchorAX: groundAnchorA.x,
+        groundAnchorAY: groundAnchorA.y,
+        groundAnchorBX: groundAnchorB.x,
+        groundAnchorBY: groundAnchorB.y,
+        localAnchorAX: localAnchorA.x,
+        localAnchorAY: localAnchorA.y,
+        localAnchorBX: localAnchorB.x,
+        localAnchorBY: localAnchorB.y,
+        restLength: nonNegativeNumber(options.restLength, `${path}.restLength`),
+        ratio: positiveNumber(options.ratio ?? 1, `${path}.ratio`),
+        ...(options.breakDistance === undefined ? {} : { breakDistance: nonNegativeNumber(options.breakDistance, `${path}.breakDistance`) }),
+      };
+    }
     case "revolute":
       return {
         ...base,
@@ -1223,6 +1438,31 @@ function flattenConvexVertices(vertices: readonly PhysicsSpecVector2[], path: st
   return flattenResolvedVertices(resolved);
 }
 
+function flattenChainVertices(
+  vertices: readonly PhysicsSpecVector2[],
+  path: string,
+  loop: boolean,
+): readonly number[] {
+  if (!Array.isArray(vertices)) {
+    throw physicsSpecDiagnosticError(path, "must be an array");
+  }
+  if (vertices.length < 2 || vertices.length > 64) {
+    throw physicsSpecDiagnosticError(path, "must define a chain with 2-64 vertices");
+  }
+  const resolved = vertices.map((vertex, index) => requiredVector2(vertex, `${path}.${index}`));
+  for (let index = 1; index < resolved.length; index += 1) {
+    requireDistinctPoints(resolved[index - 1], resolved[index], `${path}.${index}`);
+  }
+  if (loop && resolved.length > 2) {
+    const first = resolved[0];
+    const last = resolved[resolved.length - 1];
+    if (first.x !== last.x || first.y !== last.y) {
+      requireDistinctPoints(last, first, `${path}.loop`);
+    }
+  }
+  return flattenResolvedVertices(resolved);
+}
+
 function isStrictlyConvexPolygon(vertices: readonly ResolvedPhysicsVector2[]): boolean {
   let sign = 0;
   for (let index = 0; index < vertices.length; index += 1) {
@@ -1256,6 +1496,17 @@ function vector2(
   return requiredVector2(value, path);
 }
 
+function positiveVector2(
+  value: PhysicsSpecVector2 | undefined,
+  path: string,
+  fallback: ResolvedPhysicsVector2,
+): ResolvedPhysicsVector2 {
+  if (value === undefined) {
+    return fallback;
+  }
+  return requiredPositiveVector2(value, path);
+}
+
 function requiredVector2(value: unknown, path: string): ResolvedPhysicsVector2 {
   if (!Array.isArray(value) || value.length !== 2) {
     throw physicsSpecDiagnosticError(path, "must be a [x, y] array");
@@ -1278,6 +1529,21 @@ function requireDistinctPoints(a: ResolvedPhysicsVector2, b: ResolvedPhysicsVect
   if (a.x === b.x && a.y === b.y) {
     throw physicsSpecDiagnosticError(path, "must use distinct points");
   }
+}
+
+function normalizedNonZeroVector2(value: ResolvedPhysicsVector2, path: string): ResolvedPhysicsVector2 {
+  const length = vectorLength(value);
+  if (length === 0) {
+    throw physicsSpecDiagnosticError(path, "must not be a zero vector");
+  }
+  return {
+    x: value.x / length,
+    y: value.y / length,
+  };
+}
+
+function vectorLength(value: ResolvedPhysicsVector2): number {
+  return Math.hypot(value.x, value.y);
 }
 
 function requireName(name: string, path: string): void {
@@ -1307,6 +1573,13 @@ function nonNegativeNumber(value: unknown, path: string): number {
     throw physicsSpecDiagnosticError(path, "must be a non-negative finite number");
   }
   return resolved;
+}
+
+function optionalNonNegativeNumber(value: unknown, path: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return nonNegativeNumber(value, path);
 }
 
 function nonNegativeInteger(value: unknown, path: string): number {

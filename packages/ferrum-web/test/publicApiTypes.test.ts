@@ -31,7 +31,22 @@ import {
   createRigidBody,
   physicsMaterial,
 } from "../src/physicsAuthoring.js";
+import {
+  createPixelMaskTerrain,
+  extractPixelMaskBoundaryChains,
+} from "../src/pixelMaskTerrain.js";
+import { createPixelMaskTerrainRuntime } from "../src/pixelMaskTerrainRuntime.js";
 import { createPhysicsReplayInputStream } from "../src/physicsSnapshot.js";
+import {
+  PHYSICS_REPLAY_WORKER_REQUEST_FORMAT,
+  createPhysicsReplayWorkerClient,
+} from "../src/physicsReplayWorker.js";
+import {
+  PHYSICS_BODY_STATE_BUFFER_FORMAT,
+  PHYSICS_BODY_STATE_FLOATS_PER_BODY,
+  PHYSICS_BODY_STATE_U32S_PER_BODY,
+  createPhysicsBodyStateBufferSnapshot,
+} from "../src/physicsBodyStateBuffer.js";
 import type {
   AsepriteAtlasImportOptions,
   AsepriteAtlasImportResult,
@@ -41,17 +56,21 @@ import type {
   AudioManagerConfig,
   AtlasSpriteInput,
   AtlasSpritePlacement,
+  CreatedRenderer,
   CreateRendererOptions,
   DiagnosticCode,
   DiagnosticContext,
   DiagnosticReport,
   RendererFallbackInfo,
+  PhysicsReplayWorkerRunResult,
+  PhysicsReplayWorkerTransferBenchmarkResult,
   BrowserPlatformHost,
   CreateEngineOptions,
   FerrumRuntime,
   FerrumRuntimeEnvironment,
   FerrumRuntimeFrame,
   FerrumRuntimeOptions,
+  FerrumRuntimeRenderer,
   UiOverlayStateProvider,
   EngineLifecycleHooks,
   EngineLifecycleSnapshot,
@@ -79,6 +98,7 @@ import type {
   PhysicsAuthoringLayer,
   PhysicsBodyColliderOptions,
   PhysicsBodyColliderSnapshot,
+  PhysicsBodyStateBufferSnapshot,
   PhysicsBodyContactHit,
   PhysicsBodyContactHitBufferView,
   PhysicsBodyContactQuery,
@@ -149,6 +169,15 @@ import type {
   PhysicsReplayInputRunResult,
   PhysicsReplayInputStream,
   PhysicsWorldApplyResult,
+  PixelMaskTerrainAlphaPatch,
+  PixelMaskTerrainBoundaryOptions,
+  PixelMaskTerrainDirtyRect,
+  PixelMaskTerrainLayerOptions,
+  PixelMaskTerrainOptions,
+  PixelMaskTerrainRuntimeOptions,
+  PixelMaskTerrainRuntimeSyncResult,
+  PixelMaskTerrainTextureTarget,
+  PixelMaskTerrainTextureUploadOptions,
   Renderer,
   RendererStats,
   LDtkTilemapImportOptions,
@@ -182,6 +211,7 @@ import type {
   ResolvedShooterTilemap,
   ViewportProvider,
   WebGPURenderer,
+  WebGPURendererOptions,
   WebGL2RendererOptions,
   CollisionEventBufferView,
   CollisionEventView,
@@ -190,6 +220,9 @@ import type {
   TiledTilemapImportOptions,
   TiledTilemapImportResult,
   TiledTilesetFrameContext,
+  TilemapBoundaryChain,
+  TilemapBoundaryExtractionOptions,
+  TilemapBoundaryExtractionResult,
   UiOverlay,
   UiOverlayActionEvent,
   UiOverlayOptions,
@@ -214,6 +247,15 @@ test("public API types are importable from entrypoint source", () => {
   const publicPhysicsMaterial: PublicApi["physicsMaterial"] = physicsMaterial;
   const publicCreatePhysicsReplayInputStream: PublicApi["createPhysicsReplayInputStream"] =
     createPhysicsReplayInputStream;
+  const publicCreatePhysicsReplayWorkerClient: PublicApi["createPhysicsReplayWorkerClient"] =
+    createPhysicsReplayWorkerClient;
+  const publicPhysicsReplayWorkerRequestFormat: PublicApi["PHYSICS_REPLAY_WORKER_REQUEST_FORMAT"] =
+    PHYSICS_REPLAY_WORKER_REQUEST_FORMAT;
+  const publicCreatePixelMaskTerrain: PublicApi["createPixelMaskTerrain"] = createPixelMaskTerrain;
+  const publicExtractPixelMaskBoundaryChains: PublicApi["extractPixelMaskBoundaryChains"] =
+    extractPixelMaskBoundaryChains;
+  const publicCreatePixelMaskTerrainRuntime: PublicApi["createPixelMaskTerrainRuntime"] =
+    createPixelMaskTerrainRuntime;
   const authoringCollider: PhysicsColliderAuthoringOptions = { type: "box", size: [16, 24] };
   const bodyAuthoring: PhysicsRigidBodyAuthoringOptions = {
     collider: authoringCollider,
@@ -239,8 +281,42 @@ test("public API types are importable from entrypoint source", () => {
     events: [replayEvent],
   });
   const nullableReplayRun: PhysicsReplayInputRunResult | undefined = undefined;
+  const nullableWorkerReplayRun: PhysicsReplayWorkerRunResult | undefined = undefined;
+  const nullableWorkerBenchmark: PhysicsReplayWorkerTransferBenchmarkResult | undefined = undefined;
+  const pixelMaskOptions: PixelMaskTerrainOptions = { width: 2, height: 2, fill: "solid" };
+  const pixelMaskLayerOptions: PixelMaskTerrainLayerOptions = { tileWidth: 4, tileHeight: 4 };
+  const pixelMaskBoundaryOptions: PixelMaskTerrainBoundaryOptions = { physicsLayer: "world" };
+  const pixelTerrain = publicCreatePixelMaskTerrain(pixelMaskOptions);
+  const pixelTextureUploadOptions: PixelMaskTerrainTextureUploadOptions = {
+    color: [255, 255, 255],
+    alphaScale: 1,
+  };
+  const pixelRuntimeTarget: PixelMaskTerrainTextureTarget = {
+    createPixelMaskTerrainTexture: () => undefined,
+    updatePixelMaskTerrainTexture: () => undefined,
+  };
+  const pixelRuntimeOptions: PixelMaskTerrainRuntimeOptions = {
+    terrain: pixelTerrain,
+    texture: {
+      target: pixelRuntimeTarget,
+      textureId: 1,
+      upload: pixelTextureUploadOptions,
+    },
+    clearDirtyAfterSync: true,
+  };
+  const nullablePixelRuntimeResult: PixelMaskTerrainRuntimeSyncResult | undefined = undefined;
+  const pixelBoundary = publicExtractPixelMaskBoundaryChains(pixelTerrain, pixelMaskBoundaryOptions);
+  const nullableDirtyRect: PixelMaskTerrainDirtyRect | undefined = pixelTerrain.dirtyRect();
+  const nullableAlphaPatch: PixelMaskTerrainAlphaPatch | undefined = pixelTerrain.dirtyAlphaPatch();
+  const tilemapBoundaryOptions: TilemapBoundaryExtractionOptions = { physicsLayer: "world" };
+  const tilemapBoundaryResult: TilemapBoundaryExtractionResult = pixelTerrain.extractBoundaryChains(tilemapBoundaryOptions);
+  const tilemapBoundaryChain: TilemapBoundaryChain | undefined = tilemapBoundaryResult.chains[0];
   equal(typeof publicCreateRigidBody, "function");
   equal(typeof publicCreatePhysicsWorldFromSpec, "function");
+  equal(typeof publicCreatePhysicsReplayWorkerClient, "function");
+  equal(publicPhysicsReplayWorkerRequestFormat, "ferrum2d.physics-replay.worker.request");
+  equal(typeof publicCreatePixelMaskTerrain, "function");
+  equal(typeof publicCreatePixelMaskTerrainRuntime, "function");
   equal(replayInputStream.frameCount, 1);
   equal(bodyCollider.type, "aabb");
   equal(material.density, 0.8);
@@ -249,6 +325,15 @@ test("public API types are importable from entrypoint source", () => {
   equal(bodyAuthoring.material, "wood");
   equal(nullableWorld, undefined);
   equal(nullableReplayRun, undefined);
+  equal(nullableWorkerReplayRun, undefined);
+  equal(nullableWorkerBenchmark, undefined);
+  equal(pixelMaskLayerOptions.tileWidth, 4);
+  equal(pixelRuntimeOptions.texture?.textureId, 1);
+  equal(nullablePixelRuntimeResult, undefined);
+  equal(pixelBoundary.chainCount, 1);
+  equal(nullableDirtyRect, undefined);
+  equal(nullableAlphaPatch, undefined);
+  equal(tilemapBoundaryChain?.collider.shape, "chain");
   const asepriteImportOptions: AsepriteAtlasImportOptions = { texture: "sprites" };
   const publicImportAsepriteAtlas: PublicApi["importAsepriteAtlas"] = importAsepriteAtlas;
   const asepriteImportResult: AsepriteAtlasImportResult = publicImportAsepriteAtlas({
@@ -336,10 +421,12 @@ test("public API types are importable from entrypoint source", () => {
   const rendererOptions: CreateRendererOptions = {
     preferred: "webgpu",
     fallbackBehavior: "silent",
+    webgpu: { powerPreference: "high-performance" },
     onFallback: (info: RendererFallbackInfo) => {
       equal(info.fallback, "webgl2");
     },
   };
+  const webgpuOptions: WebGPURendererOptions = { clearColor: [0, 0, 0, 1], fallbackAdapter: false };
   const webgl2Options: WebGL2RendererOptions = { clearColor: [0, 0, 0, 1], preserveDrawingBuffer: true };
   const physicsDebugLineCamera: PhysicsDebugLineCamera = { x: 0, y: 0 };
   const inputManagerOptions: InputManagerOptions = {
@@ -364,7 +451,9 @@ test("public API types are importable from entrypoint source", () => {
   const runtimeEnvironment: FerrumRuntimeEnvironment = "production";
   const runtimeOptions: FerrumRuntimeOptions = {
     canvas: {} as HTMLCanvasElement,
+    rendererPreference: "webgpu",
     webgl2: webgl2Options,
+    webgpu: webgpuOptions,
     inputOptions: inputManagerOptions,
     ui: uiOptions,
     uiState: uiStateProvider,
@@ -541,6 +630,8 @@ test("public API types are importable from entrypoint source", () => {
   const webGpuCreate: typeof WebGPURenderer.create = async () => {
     throw new Error("WebGPU compatibility shim");
   };
+  const nullableCreatedRenderer: CreatedRenderer | undefined = undefined;
+  const nullableRuntimeRenderer: FerrumRuntimeRenderer | undefined = undefined;
   const runtimeCreate: typeof createFerrumRuntime = async () => ({
     engine: {} as FerrumEngine,
     renderer: {} as FerrumRuntime["renderer"],
@@ -631,6 +722,7 @@ test("public API types are importable from entrypoint source", () => {
   const rigidBodyType: PhysicsRigidBodyType = "dynamic";
   const colliderType: PhysicsColliderType = "aabb";
   const edgeColliderType: PhysicsColliderType = "edge";
+  const chainColliderType: PhysicsColliderType = "chain";
   const collisionLayer: PhysicsCollisionLayer = "player";
   const rigidBodyMaterial: PhysicsRigidBodyMaterial = {
     restitution: 0.1,
@@ -674,6 +766,11 @@ test("public API types are importable from entrypoint source", () => {
     startY: 0,
     endX: 16,
     endY: 0,
+  };
+  const chainRigidBodyCollider: PhysicsRigidBodyCollider = {
+    type: "chain",
+    vertices: [0, 0, 16, 0, 16, 16],
+    loop: false,
   };
   const rigidBodySpawnOptions: PhysicsRigidBodySpawnOptions = {
     x: 10,
@@ -745,6 +842,10 @@ test("public API types are importable from entrypoint source", () => {
     contactPositionCorrectionScale: 1,
     contactPositionCorrectionSlopScale: 1,
   };
+  const publicCreatePhysicsBodyStateBufferSnapshot: PublicApi["createPhysicsBodyStateBufferSnapshot"] =
+    createPhysicsBodyStateBufferSnapshot;
+  const physicsBodyStateBuffer: PhysicsBodyStateBufferSnapshot =
+    publicCreatePhysicsBodyStateBufferSnapshot([physicsEntitySnapshot]);
   const jointType: PhysicsJointType = "distance";
   const jointBaseOptions: PhysicsJointBaseOptions = {
     entityA: physicsEntityHandle,
@@ -767,6 +868,16 @@ test("public API types are importable from entrypoint source", () => {
     referenceAngle: 0,
     breakDistance: 16,
     breakAngle: 1,
+  };
+  const pulleyJointSpawnOptions: PhysicsJointSpawnOptions = {
+    ...jointBaseOptions,
+    type: "pulley",
+    groundAnchorAX: -16,
+    groundAnchorAY: 0,
+    groundAnchorBX: 16,
+    groundAnchorBY: 0,
+    restLength: 32,
+    ratio: 1,
   };
   const physicsJointHandle: PhysicsJointHandle = {
     jointType,
@@ -794,6 +905,10 @@ test("public API types are importable from entrypoint source", () => {
     localAnchorBY: 0,
     localAxisAX: 0,
     localAxisAY: 0,
+    groundAnchorAX: 0,
+    groundAnchorAY: 0,
+    groundAnchorBX: 0,
+    groundAnchorBY: 0,
     limitEnabled: false,
     lowerAngle: 0,
     upperAngle: 0,
@@ -1274,6 +1389,7 @@ test("public API types are importable from entrypoint source", () => {
     "setGameSpec" | "useBreakoutGame" | "configureFixedTimestep" | "stepRigidBodies" |
       "spawnRigidBody" | "addPhysicsBodyCollider" | "getPhysicsBodyColliderCount" |
       "getPhysicsBodyCollider" | "getPhysicsEntity" | "despawnPhysicsEntity" |
+      "capturePhysicsBodyStateBuffer" | "restorePhysicsBodyStateBuffer" |
       "setPhysicsBodyVelocity" | "setPhysicsBodyRotation" | "setPhysicsBodyAngularVelocity" |
       "setPhysicsBodyEnabled" | "setPhysicsColliderOffset" | "setPhysicsColliderEnabled" |
       "setPhysicsColliderMaterial" | "setPhysicsBodyColliderMaterial" | "clearPhysicsColliderMaterial" |
@@ -1383,6 +1499,8 @@ test("public API types are importable from entrypoint source", () => {
     getPhysicsBodyCollider: () => bodyColliderSnapshot,
     getPhysicsEntity: () => physicsEntitySnapshot,
     despawnPhysicsEntity: () => true,
+    capturePhysicsBodyStateBuffer: () => physicsBodyStateBuffer,
+    restorePhysicsBodyStateBuffer: () => true,
     setPhysicsBodyVelocity: () => true,
     setPhysicsBodyRotation: () => true,
     setPhysicsBodyAngularVelocity: () => true,
@@ -1503,6 +1621,7 @@ test("public API types are importable from entrypoint source", () => {
     spriteCount: 1,
   });
   equal(rendererOptions.preferred, "webgpu");
+  equal(runtimeOptions.rendererPreference, "webgpu");
   equal(runtimeOptions.debug, false);
   equal(runtimeOptions.uiState?.({} as FerrumRuntimeFrame).panels?.[0]?.id, "hud");
   equal(physicsDebugLineCamera.x, 0);
@@ -1534,19 +1653,28 @@ test("public API types are importable from entrypoint source", () => {
   equal(atlasPlacement.name, "compat");
   equal(atlasLayoutFn([atlasSprite]).sprites[0].name, "compat");
   equal(typeof webGpuCreate, "function");
+  equal(nullableCreatedRenderer, undefined);
+  equal(nullableRuntimeRenderer, undefined);
   equal(typeof runtimeCreate, "function");
   equal(physicsStats.collisionPairs, 1);
   equal(physicsStats.collisionSolidPairs, 1);
   equal(physicsStats.collisionTriggerPairs, 0);
   equal(physicsStats.collisionEventCount, 1);
   equal(edgeColliderType, "edge");
+  equal(chainColliderType, "chain");
   equal(edgeRigidBodyCollider.type, "edge");
+  equal(chainRigidBodyCollider.type, "chain");
   equal(engine.stepRigidBodies(1 / 60, rigidBodyStepOptions).dynamicBodies, 1);
   equal(engine.spawnRigidBody(rigidBodySpawnOptions).entityId, 9);
   equal(engine.addPhysicsBodyCollider(physicsEntityHandle, bodyColliderOptions), true);
   equal(engine.getPhysicsBodyColliderCount(physicsEntityHandle), 2);
   equal(engine.getPhysicsBodyCollider(physicsEntityHandle, 1)?.colliderMaterial.friction, 0.8);
   equal(engine.getPhysicsEntity(physicsEntityHandle)?.bodyType, "dynamic");
+  equal(physicsBodyStateBuffer.format, PHYSICS_BODY_STATE_BUFFER_FORMAT);
+  equal(physicsBodyStateBuffer.floatsPerBody, PHYSICS_BODY_STATE_FLOATS_PER_BODY);
+  equal(physicsBodyStateBuffer.u32sPerBody, PHYSICS_BODY_STATE_U32S_PER_BODY);
+  equal(engine.capturePhysicsBodyStateBuffer([physicsEntityHandle]).bodyCount, 1);
+  equal(engine.restorePhysicsBodyStateBuffer(physicsBodyStateBuffer), true);
   equal(engine.setPhysicsBodyVelocity(physicsEntityHandle, 1, 2), true);
   equal(engine.setPhysicsBodyRotation(physicsEntityHandle, 0.25), true);
   equal(engine.setPhysicsBodyAngularVelocity(physicsEntityHandle, 3), true);
@@ -1566,6 +1694,7 @@ test("public API types are importable from entrypoint source", () => {
   equal(engine.despawnPhysicsEntity(physicsEntityHandle), true);
   equal(engine.spawnPhysicsJoint(jointSpawnOptions).jointType, "distance");
   equal(weldJointSpawnOptions.type, "weld");
+  equal(pulleyJointSpawnOptions.type, "pulley");
   equal(engine.getPhysicsJoint(physicsJointHandle)?.restLength, 12);
   equal(engine.setPhysicsJointEnabled(physicsJointHandle, false), true);
   equal(engine.clearPhysicsJoint(physicsJointHandle), true);

@@ -1,8 +1,19 @@
 import { describeError, diagnosticError } from "./diagnostics.js";
+import type {
+  PixelMaskTerrain,
+  PixelMaskTerrainAlphaPatch,
+  PixelMaskTerrainTextureUploadOptions,
+} from "./pixelMaskTerrain.js";
+
+interface TextureSize {
+  width: number;
+  height: number;
+}
 
 export class TextureManager {
   private readonly textures = new Set<WebGLTexture>();
   private readonly texturesById = new Map<number, WebGLTexture>();
+  private readonly textureSizesById = new Map<number, TextureSize>();
   private destroyed = false;
 
   constructor(private readonly gl: WebGL2RenderingContext) {}
@@ -56,6 +67,65 @@ export class TextureManager {
     return texture;
   }
 
+  createPixelMaskTerrainTexture(
+    textureId: number,
+    terrain: PixelMaskTerrain,
+    options: PixelMaskTerrainTextureUploadOptions = {},
+  ): WebGLTexture {
+    this.assertAlive();
+    const texture = this.createTextureFromRgbaData(
+      terrain.width,
+      terrain.height,
+      rgbaFromAlpha(terrain.width, terrain.height, terrain.data, options),
+    );
+    this.setTexture(textureId, texture, { width: terrain.width, height: terrain.height });
+    return texture;
+  }
+
+  updatePixelMaskTerrainTexture(
+    textureId: number,
+    patch: PixelMaskTerrainAlphaPatch,
+    options: PixelMaskTerrainTextureUploadOptions = {},
+  ): void {
+    this.assertAlive();
+    const texture = this.texture(textureId);
+    const size = this.textureSizesById.get(textureId);
+    if (size === undefined) {
+      throw diagnosticError("Texture update error", {
+        kind: "texture",
+        id: textureId,
+        detail: "Texture size is unknown. Create the pixel mask terrain texture before patch updates.",
+      }, "FERRUM_TEXTURE_REGISTRY");
+    }
+    if (
+      patch.rect.x < 0
+      || patch.rect.y < 0
+      || patch.rect.x + patch.rect.width > size.width
+      || patch.rect.y + patch.rect.height > size.height
+    ) {
+      throw diagnosticError("Texture update error", {
+        kind: "texture",
+        id: textureId,
+        detail: "Pixel mask terrain patch is outside the texture bounds.",
+      }, "FERRUM_TEXTURE_REGISTRY");
+    }
+    const rgba = rgbaFromAlpha(patch.rect.width, patch.rect.height, patch.alpha, options);
+    this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+    this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+    this.gl.texSubImage2D(
+      this.gl.TEXTURE_2D,
+      0,
+      patch.rect.x,
+      patch.rect.y,
+      patch.rect.width,
+      patch.rect.height,
+      this.gl.RGBA,
+      this.gl.UNSIGNED_BYTE,
+      rgba,
+    );
+    this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+  }
+
   createPlaceholderTextureForId(textureId: number, size = 64): WebGLTexture {
     this.assertAlive();
     const texture = this.createPlaceholderTexture(size);
@@ -85,7 +155,7 @@ export class TextureManager {
     return this.createTextureFromSource(canvas);
   }
 
-  setTexture(textureId: number, texture: WebGLTexture): void {
+  setTexture(textureId: number, texture: WebGLTexture, size?: TextureSize): void {
     this.assertAlive();
     if (!Number.isInteger(textureId) || textureId < 0) {
       throw diagnosticError("Texture registry error", {
@@ -103,6 +173,11 @@ export class TextureManager {
 
     this.textures.add(texture);
     this.texturesById.set(textureId, texture);
+    if (size === undefined) {
+      this.textureSizesById.delete(textureId);
+    } else {
+      this.textureSizesById.set(textureId, size);
+    }
   }
 
   texture(textureId: number): WebGLTexture {
@@ -131,6 +206,37 @@ export class TextureManager {
     for (const texture of this.textures) this.gl.deleteTexture(texture);
     this.textures.clear();
     this.texturesById.clear();
+    this.textureSizesById.clear();
+  }
+
+  private createTextureFromRgbaData(width: number, height: number, data: Uint8Array): WebGLTexture {
+    const texture = this.gl.createTexture();
+    if (!texture) {
+      throw diagnosticError("Texture create error", {
+        kind: "texture",
+        detail: "WebGL texture creation returned null",
+      }, "FERRUM_TEXTURE_CREATE");
+    }
+    this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+    this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+    this.gl.texImage2D(
+      this.gl.TEXTURE_2D,
+      0,
+      this.gl.RGBA,
+      width,
+      height,
+      0,
+      this.gl.RGBA,
+      this.gl.UNSIGNED_BYTE,
+      data,
+    );
+    this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+    this.textures.add(texture);
+    return texture;
   }
 
   private assertAlive(): void {
@@ -178,4 +284,43 @@ export class TextureManager {
       }, "FERRUM_TEXTURE_DECODE");
     }
   }
+}
+
+function rgbaFromAlpha(
+  width: number,
+  height: number,
+  alpha: Uint8Array,
+  options: PixelMaskTerrainTextureUploadOptions,
+): Uint8Array {
+  if (alpha.length !== width * height) {
+    throw new Error("pixel mask terrain alpha length must equal width * height.");
+  }
+  const [rawR, rawG, rawB] = options.color ?? [255, 255, 255];
+  const r = colorByte(rawR, "pixelMaskTerrain.texture.color[0]");
+  const g = colorByte(rawG, "pixelMaskTerrain.texture.color[1]");
+  const b = colorByte(rawB, "pixelMaskTerrain.texture.color[2]");
+  const alphaScale = finitePositiveNumber(options.alphaScale ?? 1, "pixelMaskTerrain.texture.alphaScale");
+  const rgba = new Uint8Array(width * height * 4);
+  for (let index = 0; index < alpha.length; index += 1) {
+    const offset = index * 4;
+    rgba[offset] = r;
+    rgba[offset + 1] = g;
+    rgba[offset + 2] = b;
+    rgba[offset + 3] = Math.min(255, Math.round(alpha[index] * alphaScale));
+  }
+  return rgba;
+}
+
+function colorByte(value: number, path: string): number {
+  if (!Number.isFinite(value) || value < 0 || value > 255) {
+    throw new Error(`${path} must be between 0 and 255.`);
+  }
+  return Math.round(value);
+}
+
+function finitePositiveNumber(value: number, path: string): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${path} must be a non-negative finite number.`);
+  }
+  return value;
 }

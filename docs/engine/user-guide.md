@@ -214,14 +214,17 @@ pnpm create:game-variant drift-swarm /tmp/game.drift-swarm.json
 
 만든 파일은 검증한 뒤 `examples/topdown-shooter/public/game.json`에 반영해서 실행해볼 수 있다.
 
-## AI 에이전트로 개발 보조하기
+## AI 에이전트로 개발하기
 
-Ferrum2D는 AI 에이전트가 게임을 조정하기 좋은 방향으로 Game Spec과 검증 도구를 제공한다. 권장 흐름은 다음과 같다.
+Ferrum2D는 비주얼 에디터 중심 엔진이 아니라 AI agent-first 2D game engine을 목표로 한다. AI 에이전트가 Game Spec, Physics Spec, template, validation, smoke check를 반복하며 게임을 생성하고 수정하는 흐름을 우선한다.
+
+권장 흐름은 다음과 같다.
 
 1. 목표를 설명한다.
-2. 에이전트가 `examples/topdown-shooter/public/game.json` 또는 별도 variant JSON을 수정한다.
-3. `pnpm validate:game-spec`로 설정을 검증한다.
-4. 브라우저에서 플레이 감각을 확인한다.
+2. 에이전트가 `@ferrum2d/create-game` 템플릿 또는 예제 프로젝트에서 시작한다.
+3. 에이전트가 Game Spec, Physics Spec, asset metadata, TypeScript glue code를 수정한다.
+4. `pnpm validate:game-spec`, `pnpm validate:physics-authoring`, smoke check로 결과를 검증한다.
+5. 브라우저에서 플레이 감각을 확인하고 다시 반복한다.
 
 AI 에이전트에게 게임 밸런스 작업을 맡길 때는 가능하면 Rust/TypeScript 코드보다 `game.json`을 먼저 수정하게 하는 것이 좋다. 코드 변경은 새로운 엔진 기능이 필요할 때만 진행한다.
 
@@ -229,11 +232,10 @@ AI 에이전트에게 게임 밸런스 작업을 맡길 때는 가능하면 Rust
 
 MVP 개발 완료 이후 상용제품 기능 개발 단계에서도 다음 기능은 아직 사용자 기능으로 제공하지 않는다.
 
-- WebGPU 렌더러
 - 3D 게임
-- 에디터
+- 비주얼 에디터
 - 멀티플레이어
-- Web Worker 또는 Wasm threads
+- 전체 게임 루프의 Web Worker 이전 또는 Wasm threads
 - 복잡한 물리 엔진
 - 사용자 스크립트/plugin runtime
 - 스켈레탈 애니메이션

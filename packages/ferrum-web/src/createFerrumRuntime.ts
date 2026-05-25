@@ -13,11 +13,22 @@ import type { DebugOverlayMetrics, DebugOverlayOptions } from "./debugOverlay.js
 import type { PhysicsMode } from "./physicsSpec.js";
 import { InputManager } from "./inputManager.js";
 import type { InputManagerOptions, InputSnapshot } from "./inputManager.js";
+import { createRenderer } from "./createRenderer.js";
+import type { CreatedRenderer } from "./createRenderer.js";
 import type { RendererStats } from "./renderer.js";
+import type { TextureAssetManager } from "./assetLoader.js";
 import { UiOverlay } from "./uiOverlay.js";
 import type { UiOverlayOptions, UiOverlayState } from "./uiOverlay.js";
-import { WebGL2Renderer } from "./webgl2Renderer.js";
 import type { WebGL2RendererOptions } from "./webgl2Renderer.js";
+import type { WebGPURendererOptions } from "./webgpuRenderer.js";
+import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch.js";
+import type { PhysicsDebugLineBufferView, RenderCommandBufferView } from "./wasmBridge.js";
+
+export type FerrumRuntimeRenderer = CreatedRenderer & TextureAssetManager & {
+  renderCommands(commands: RenderCommandBufferView): RendererStats;
+  renderPhysicsDebugLines(lines: PhysicsDebugLineBufferView, camera: PhysicsDebugLineCamera): RendererStats;
+  viewportSize(): { width: number; height: number };
+};
 
 export type FerrumRuntimeEnvironment = "development" | "production";
 
@@ -34,7 +45,9 @@ export type UiOverlayStateProvider = (frame: FerrumRuntimeFrame) => UiOverlaySta
 export interface FerrumRuntimeOptions {
   canvas: HTMLCanvasElement;
   webgl2?: WebGL2RendererOptions;
-  renderer?: WebGL2Renderer;
+  webgpu?: WebGPURendererOptions;
+  rendererPreference?: "webgl2" | "webgpu";
+  renderer?: FerrumRuntimeRenderer;
   input?: InputManager;
   inputOptions?: InputManagerOptions;
   assetHost?: AssetHost;
@@ -56,7 +69,7 @@ export interface FerrumRuntimeOptions {
 
 export interface FerrumRuntime {
   engine: FerrumEngine;
-  renderer: WebGL2Renderer;
+  renderer: FerrumRuntimeRenderer;
   input: InputManager;
   assetHost: AssetHost;
   uiOverlay?: UiOverlay;
@@ -73,7 +86,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
   const ownsInput = options.input === undefined;
   const ownsAssetHost = options.assetHost === undefined;
   const ownsUiOverlay = options.uiOverlay === undefined;
-  let renderer: WebGL2Renderer | undefined = options.renderer;
+  let renderer: FerrumRuntimeRenderer | undefined = options.renderer;
   let input: InputManager | undefined = options.input;
   let assetHost: AssetHost | undefined = options.assetHost;
   let uiOverlay: UiOverlay | undefined = options.uiOverlay;
@@ -86,7 +99,11 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
   let destroyed = false;
 
   try {
-    renderer ??= new WebGL2Renderer(options.canvas, options.webgl2);
+    renderer ??= await createRenderer(options.canvas, {
+      preferred: options.rendererPreference ?? "webgl2",
+      webgl2: options.webgl2,
+      webgpu: options.webgpu,
+    });
     input ??= new InputManager(options.canvas, options.inputOptions);
     assetHost ??= new BrowserPlatformHost(renderer);
     uiOverlay ??= createUiOverlay(options);
@@ -246,7 +263,7 @@ function resolveDebugOptions(options: FerrumRuntimeOptions): DebugOverlayOptions
   return options.environment === "development" ? { enabled: true } : undefined;
 }
 
-function observeRendererResize(canvas: HTMLCanvasElement, renderer: WebGL2Renderer): () => void {
+function observeRendererResize(canvas: HTMLCanvasElement, renderer: FerrumRuntimeRenderer): () => void {
   const resize = (): void => {
     renderer.resize();
   };

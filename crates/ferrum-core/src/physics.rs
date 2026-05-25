@@ -6,9 +6,10 @@ use crate::collision::{
 use crate::components::{
     AabbCollider, AngularVelocity, CapsuleCollider, CollisionMask, ConvexPolygonCollider,
     DistanceJoint, DistanceJointId, EdgeCollider, GearJoint, GearJointId, PhysicsMaterial,
-    PrismaticJoint, PrismaticJointId, RevoluteJoint, RevoluteJointId, RigidBody, RigidBodyType,
-    RigidContactImpulse, RopeJoint, RopeJointId, Rotation2D, SpringJoint, SpringJointId,
-    Transform2D, Velocity, WeldJoint, WeldJointId, MAX_CONVEX_POLYGON_VERTICES,
+    PrismaticJoint, PrismaticJointId, PulleyJoint, PulleyJointId, RevoluteJoint, RevoluteJointId,
+    RigidBody, RigidBodyCcdDebugHit, RigidBodyType, RigidContactImpulse, RopeJoint, RopeJointId,
+    Rotation2D, SpringJoint, SpringJointId, Transform2D, Velocity, WeldJoint, WeldJointId,
+    MAX_CONVEX_POLYGON_VERTICES,
 };
 use crate::entity::Entity;
 use crate::tilemap::{Tilemap, TilemapSlopeGroundHit, TilemapSweepStats};
@@ -784,6 +785,7 @@ impl PhysicsSystem {
         substeps: u32,
         config: RigidBodyStepConfig,
     ) -> RigidBodyStepStats {
+        world.clear_rigid_body_ccd_debug_hits();
         let delta_seconds = sanitize_delta_seconds(delta_seconds);
         if delta_seconds <= 0.0 {
             return RigidBodyStepStats::default();
@@ -935,6 +937,14 @@ impl PhysicsSystem {
                     config.velocity_iterations,
                     stats,
                 );
+                solve_pulley_joint_velocity_constraints(
+                    world,
+                    &constraints.island_schedule,
+                    island_root,
+                    delta_seconds,
+                    config.velocity_iterations,
+                    stats,
+                );
                 solve_distance_joint_velocity_constraints(
                     world,
                     &constraints.island_schedule,
@@ -1004,6 +1014,12 @@ impl PhysicsSystem {
                     stats,
                 );
                 solve_gear_joint_position_constraints(
+                    world,
+                    &constraints.island_schedule,
+                    island_root,
+                    stats,
+                );
+                solve_pulley_joint_position_constraints(
                     world,
                     &constraints.island_schedule,
                     island_root,
@@ -1581,6 +1597,15 @@ fn integrate_dynamic_rigid_body_position_with_ccd(
         if apply_rigid_body_ccd_impact(world, index, hit, config) {
             stats.velocity_impulses = stats.velocity_impulses.saturating_add(1);
         }
+        world.record_rigid_body_ccd_debug_hit(RigidBodyCcdDebugHit {
+            moving_entity: entity_at_index(world, index),
+            target_entity: entity_at_index(world, hit.target_index),
+            time: hit.time,
+            point_x: hit.point.x,
+            point_y: hit.point.y,
+            normal_x: hit.normal.vx,
+            normal_y: hit.normal.vy,
+        });
         stats.ccd_hits = stats.ccd_hits.saturating_add(1);
         handled_ccd_hit = true;
 
@@ -2036,10 +2061,12 @@ fn apply_rigid_body_ccd_impact(
             a: ColliderKey {
                 entity_index: moving_index,
                 collider_index: 0,
+                segment_index: 0,
             },
             b: ColliderKey {
                 entity_index: hit.target_index,
                 collider_index: 0,
+                segment_index: 0,
             },
         },
         point: hit.point,
@@ -2352,6 +2379,9 @@ fn union_joint_islands(world: &World, graph: &mut RigidBodyIslandGraph) {
     for joint in world.spring_joints.iter().copied().flatten() {
         union_enabled_joint_island(world, graph, joint.enabled, joint.entity_a, joint.entity_b);
     }
+    for joint in world.pulley_joints.iter().copied().flatten() {
+        union_enabled_joint_island(world, graph, joint.enabled, joint.entity_a, joint.entity_b);
+    }
     for joint in world.revolute_joints.iter().copied().flatten() {
         union_enabled_joint_island(world, graph, joint.enabled, joint.entity_a, joint.entity_b);
     }
@@ -2519,6 +2549,24 @@ struct SpringJointConstraintContext {
     inverse_mass_a: f32,
     inverse_mass_b: f32,
     inverse_mass_sum: f32,
+    error: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PulleyJointConstraintContext {
+    a_index: usize,
+    b_index: usize,
+    anchor_a: Transform2D,
+    anchor_b: Transform2D,
+    radius_a: Velocity,
+    radius_b: Velocity,
+    normal_a: Velocity,
+    normal_b: Velocity,
+    inverse_mass_a: f32,
+    inverse_mass_b: f32,
+    inverse_inertia_a: f32,
+    inverse_inertia_b: f32,
+    ratio: f32,
     error: f32,
 }
 
@@ -4299,6 +4347,266 @@ fn clear_spring_joint_at_index(world: &mut World, index: usize) -> bool {
     };
     world
         .clear_spring_joint(SpringJointId {
+            index: index as u32,
+            generation,
+        })
+        .is_some()
+}
+
+fn solve_pulley_joint_velocity_constraints(
+    world: &mut World,
+    island_schedule: &RigidBodyIslandSchedule,
+    island_root: usize,
+    delta_seconds: f32,
+    velocity_iterations: u32,
+    stats: &mut RigidBodyStepStats,
+) {
+    for index in 0..world.pulley_joints.len() {
+        let Some(joint) = world.pulley_joints[index] else {
+            continue;
+        };
+        if !island_schedule.joint_in_island(joint.entity_a, joint.entity_b, island_root) {
+            continue;
+        }
+        if pulley_joint_should_break(world, joint) {
+            if clear_pulley_joint_at_index(world, index) {
+                stats.broken_joints = stats.broken_joints.saturating_add(1);
+            }
+            continue;
+        }
+        if solve_pulley_joint_velocity_constraint(world, joint, delta_seconds, velocity_iterations)
+        {
+            stats.constraint_velocity_corrections =
+                stats.constraint_velocity_corrections.saturating_add(1);
+        }
+    }
+}
+
+fn solve_pulley_joint_position_constraints(
+    world: &mut World,
+    island_schedule: &RigidBodyIslandSchedule,
+    island_root: usize,
+    stats: &mut RigidBodyStepStats,
+) {
+    for index in 0..world.pulley_joints.len() {
+        let Some(joint) = world.pulley_joints[index] else {
+            continue;
+        };
+        if !island_schedule.joint_in_island(joint.entity_a, joint.entity_b, island_root) {
+            continue;
+        }
+        if pulley_joint_should_break(world, joint) {
+            if clear_pulley_joint_at_index(world, index) {
+                stats.broken_joints = stats.broken_joints.saturating_add(1);
+            }
+            continue;
+        }
+        if solve_pulley_joint_position_constraint(world, joint) {
+            stats.constraint_position_corrections =
+                stats.constraint_position_corrections.saturating_add(1);
+        }
+    }
+}
+
+fn solve_pulley_joint_velocity_constraint(
+    world: &mut World,
+    joint: PulleyJoint,
+    delta_seconds: f32,
+    velocity_iterations: u32,
+) -> bool {
+    let stiffness = sanitize_unit_interval(joint.stiffness, PulleyJoint::DEFAULT_STIFFNESS);
+    let damping = sanitize_unit_interval(joint.damping, PulleyJoint::DEFAULT_DAMPING);
+    if stiffness <= 0.0 && damping <= 0.0 {
+        return false;
+    }
+    let Some(context) = pulley_joint_constraint_context(world, joint, false) else {
+        return false;
+    };
+    let denominator = pulley_joint_denominator(context);
+    if denominator <= 0.0 {
+        return false;
+    }
+
+    let relative_velocity = pulley_joint_constraint_velocity(world, context);
+    let iteration_count = velocity_iterations.max(1) as f32;
+    let bias_velocity = if stiffness > 0.0 && delta_seconds > 0.0 {
+        context.error * stiffness / (delta_seconds * iteration_count)
+    } else {
+        0.0
+    };
+    let damping_velocity = relative_velocity * damping;
+    let correction_velocity = bias_velocity + damping_velocity;
+    if !correction_velocity.is_finite() || correction_velocity.abs() <= KINEMATIC_EPSILON {
+        return false;
+    }
+
+    let impulse_magnitude = -correction_velocity / denominator;
+    if !impulse_magnitude.is_finite() || impulse_magnitude.abs() <= KINEMATIC_EPSILON {
+        return false;
+    }
+
+    apply_pulley_joint_anchor_impulse(world, context, impulse_magnitude);
+    true
+}
+
+fn solve_pulley_joint_position_constraint(world: &mut World, joint: PulleyJoint) -> bool {
+    let stiffness = sanitize_unit_interval(joint.stiffness, PulleyJoint::DEFAULT_STIFFNESS);
+    if stiffness <= 0.0 {
+        return false;
+    }
+    let Some(context) = pulley_joint_constraint_context(world, joint, true) else {
+        return false;
+    };
+    let denominator = pulley_joint_denominator(context);
+    if denominator <= 0.0 {
+        return false;
+    }
+
+    let impulse_magnitude = -context.error * stiffness / denominator;
+    if !impulse_magnitude.is_finite() || impulse_magnitude.abs() <= KINEMATIC_EPSILON {
+        return false;
+    }
+
+    apply_pulley_joint_anchor_position_correction(world, context, impulse_magnitude);
+    true
+}
+
+fn pulley_joint_constraint_context(
+    world: &World,
+    joint: PulleyJoint,
+    require_position_error: bool,
+) -> Option<PulleyJointConstraintContext> {
+    if !joint.enabled || joint.entity_a == joint.entity_b {
+        return None;
+    }
+    let a_index = valid_world_entity_index(world, joint.entity_a)?;
+    let b_index = valid_world_entity_index(world, joint.entity_b)?;
+    let transform_a = world.transforms.get(a_index).copied().flatten()?;
+    let transform_b = world.transforms.get(b_index).copied().flatten()?;
+    let inverse_mass_a = rigid_body_inverse_mass(world, a_index);
+    let inverse_mass_b = rigid_body_inverse_mass(world, b_index);
+    let inverse_inertia_a = rigid_body_inverse_inertia(world, a_index);
+    let inverse_inertia_b = rigid_body_inverse_inertia(world, b_index);
+    if inverse_mass_a + inverse_mass_b + inverse_inertia_a + inverse_inertia_b <= 0.0 {
+        return None;
+    }
+
+    let radius_a = revolute_joint_world_radius(
+        world,
+        a_index,
+        joint.local_anchor_a_x,
+        joint.local_anchor_a_y,
+    );
+    let radius_b = revolute_joint_world_radius(
+        world,
+        b_index,
+        joint.local_anchor_b_x,
+        joint.local_anchor_b_y,
+    );
+    let anchor_a = Transform2D {
+        x: transform_a.x + radius_a.vx,
+        y: transform_a.y + radius_a.vy,
+    };
+    let anchor_b = Transform2D {
+        x: transform_b.x + radius_b.vx,
+        y: transform_b.y + radius_b.vy,
+    };
+    let ground_anchor_a = Transform2D {
+        x: sanitize_finite(joint.ground_anchor_a_x),
+        y: sanitize_finite(joint.ground_anchor_a_y),
+    };
+    let ground_anchor_b = Transform2D {
+        x: sanitize_finite(joint.ground_anchor_b_x),
+        y: sanitize_finite(joint.ground_anchor_b_y),
+    };
+    let delta_a = Velocity {
+        vx: anchor_a.x - ground_anchor_a.x,
+        vy: anchor_a.y - ground_anchor_a.y,
+    };
+    let delta_b = Velocity {
+        vx: anchor_b.x - ground_anchor_b.x,
+        vy: anchor_b.y - ground_anchor_b.y,
+    };
+    let length_a = delta_a.vx.hypot(delta_a.vy);
+    let length_b = delta_b.vx.hypot(delta_b.vy);
+    if !length_a.is_finite() || !length_b.is_finite() {
+        return None;
+    }
+    let ratio = sanitize_pulley_joint_ratio(joint.ratio);
+    let rest_length = sanitize_pulley_joint_rest_length(joint.rest_length);
+    let error = length_a + ratio * length_b - rest_length;
+    if !error.is_finite() || (require_position_error && error.abs() <= KINEMATIC_EPSILON) {
+        return None;
+    }
+
+    Some(PulleyJointConstraintContext {
+        a_index,
+        b_index,
+        anchor_a,
+        anchor_b,
+        radius_a,
+        radius_b,
+        normal_a: normalized_pulley_segment(delta_a),
+        normal_b: normalized_pulley_segment(delta_b),
+        inverse_mass_a,
+        inverse_mass_b,
+        inverse_inertia_a,
+        inverse_inertia_b,
+        ratio,
+        error,
+    })
+}
+
+fn pulley_joint_constraint_velocity(world: &World, context: PulleyJointConstraintContext) -> f32 {
+    let velocity_a = anchor_velocity(world, context.a_index, context.anchor_a);
+    let velocity_b = anchor_velocity(world, context.b_index, context.anchor_b);
+    dot_velocity(velocity_a, context.normal_a)
+        + context.ratio * dot_velocity(velocity_b, context.normal_b)
+}
+
+fn pulley_joint_denominator(context: PulleyJointConstraintContext) -> f32 {
+    let radius_a_cross_normal = cross_velocity(context.radius_a, context.normal_a);
+    let radius_b_cross_normal = cross_velocity(context.radius_b, context.normal_b);
+    let effective_mass_a = context.inverse_mass_a
+        + context.inverse_inertia_a * radius_a_cross_normal * radius_a_cross_normal;
+    let effective_mass_b = context.inverse_mass_b
+        + context.inverse_inertia_b * radius_b_cross_normal * radius_b_cross_normal;
+    effective_mass_a + context.ratio * context.ratio * effective_mass_b
+}
+
+fn normalized_pulley_segment(segment: Velocity) -> Velocity {
+    let length_squared = velocity_len_squared(segment);
+    if length_squared <= KINEMATIC_EPSILON * KINEMATIC_EPSILON {
+        return Velocity { vx: 1.0, vy: 0.0 };
+    }
+
+    let length = length_squared.sqrt();
+    Velocity {
+        vx: segment.vx / length,
+        vy: segment.vy / length,
+    }
+}
+
+fn pulley_joint_should_break(world: &World, joint: PulleyJoint) -> bool {
+    let Some(break_distance) = sanitize_pulley_joint_break_distance(joint.break_distance) else {
+        return false;
+    };
+    let Some(context) = pulley_joint_constraint_context(world, joint, false) else {
+        return false;
+    };
+    context.error.abs() > break_distance + KINEMATIC_EPSILON
+}
+
+fn sanitize_pulley_joint_break_distance(break_distance: f32) -> Option<f32> {
+    (break_distance.is_finite() && break_distance >= 0.0).then_some(break_distance)
+}
+
+fn clear_pulley_joint_at_index(world: &mut World, index: usize) -> bool {
+    let Some(generation) = world.pulley_joint_generations.get(index).copied() else {
+        return false;
+    };
+    world
+        .clear_pulley_joint(PulleyJointId {
             index: index as u32,
             generation,
         })
@@ -6375,6 +6683,10 @@ fn sanitize_spring_joint_rest_length(rest_length: f32) -> f32 {
     sanitize_non_negative(rest_length)
 }
 
+fn sanitize_pulley_joint_rest_length(rest_length: f32) -> f32 {
+    sanitize_non_negative(rest_length)
+}
+
 fn sanitize_unit_interval(value: f32, default: f32) -> f32 {
     if value.is_finite() {
         value.clamp(0.0, 1.0)
@@ -6388,6 +6700,14 @@ fn sanitize_gear_joint_ratio(ratio: f32) -> f32 {
         ratio
     } else {
         GearJoint::DEFAULT_RATIO
+    }
+}
+
+fn sanitize_pulley_joint_ratio(ratio: f32) -> f32 {
+    if ratio.is_finite() && ratio > KINEMATIC_EPSILON {
+        ratio
+    } else {
+        PulleyJoint::DEFAULT_RATIO
     }
 }
 
@@ -7388,6 +7708,58 @@ fn apply_revolute_joint_anchor_impulse(
     }
 }
 
+fn apply_pulley_joint_anchor_impulse(
+    world: &mut World,
+    context: PulleyJointConstraintContext,
+    impulse_magnitude: f32,
+) {
+    let impulse_a = Velocity {
+        vx: context.normal_a.vx * impulse_magnitude,
+        vy: context.normal_a.vy * impulse_magnitude,
+    };
+    let impulse_b = Velocity {
+        vx: context.normal_b.vx * impulse_magnitude * context.ratio,
+        vy: context.normal_b.vy * impulse_magnitude * context.ratio,
+    };
+    apply_single_body_anchor_impulse(
+        world,
+        context.a_index,
+        context.radius_a,
+        impulse_a,
+        context.inverse_mass_a,
+        context.inverse_inertia_a,
+    );
+    apply_single_body_anchor_impulse(
+        world,
+        context.b_index,
+        context.radius_b,
+        impulse_b,
+        context.inverse_mass_b,
+        context.inverse_inertia_b,
+    );
+}
+
+fn apply_single_body_anchor_impulse(
+    world: &mut World,
+    index: usize,
+    radius: Velocity,
+    impulse: Velocity,
+    inverse_mass: f32,
+    inverse_inertia: f32,
+) {
+    if inverse_mass > 0.0 {
+        let mut velocity = world.velocities[index].unwrap_or_default();
+        velocity.vx += impulse.vx * inverse_mass;
+        velocity.vy += impulse.vy * inverse_mass;
+        world.velocities[index] = Some(finite_velocity(velocity));
+    }
+    if inverse_inertia > 0.0 {
+        let mut angular_velocity = world.angular_velocities[index].unwrap_or_default();
+        angular_velocity.radians_per_second += cross_velocity(radius, impulse) * inverse_inertia;
+        world.angular_velocities[index] = Some(finite_angular_velocity(angular_velocity));
+    }
+}
+
 fn apply_revolute_joint_angular_impulse(
     world: &mut World,
     context: RevoluteJointConstraintContext,
@@ -7497,6 +7869,62 @@ fn apply_revolute_joint_anchor_position_correction(
         rotation.radians = finite_rotation(Rotation2D {
             radians: rotation.radians
                 + cross_velocity(context.radius_b, impulse) * context.inverse_inertia_b,
+        })
+        .radians;
+    }
+}
+
+fn apply_pulley_joint_anchor_position_correction(
+    world: &mut World,
+    context: PulleyJointConstraintContext,
+    impulse_magnitude: f32,
+) {
+    let impulse_a = Velocity {
+        vx: context.normal_a.vx * impulse_magnitude,
+        vy: context.normal_a.vy * impulse_magnitude,
+    };
+    let impulse_b = Velocity {
+        vx: context.normal_b.vx * impulse_magnitude * context.ratio,
+        vy: context.normal_b.vy * impulse_magnitude * context.ratio,
+    };
+    apply_single_body_anchor_position_correction(
+        world,
+        context.a_index,
+        context.radius_a,
+        impulse_a,
+        context.inverse_mass_a,
+        context.inverse_inertia_a,
+    );
+    apply_single_body_anchor_position_correction(
+        world,
+        context.b_index,
+        context.radius_b,
+        impulse_b,
+        context.inverse_mass_b,
+        context.inverse_inertia_b,
+    );
+}
+
+fn apply_single_body_anchor_position_correction(
+    world: &mut World,
+    index: usize,
+    radius: Velocity,
+    impulse: Velocity,
+    inverse_mass: f32,
+    inverse_inertia: f32,
+) {
+    if inverse_mass > 0.0 {
+        if let Some(transform) = world.transforms[index].as_mut() {
+            *transform = finite_transform(Transform2D {
+                x: transform.x + impulse.vx * inverse_mass,
+                y: transform.y + impulse.vy * inverse_mass,
+            });
+        }
+    }
+    if inverse_inertia > 0.0 {
+        let rotation = world.rotations[index].get_or_insert_with(Rotation2D::default);
+        rotation.radians = finite_rotation(Rotation2D {
+            radians: rotation.radians + cross_velocity(radius, impulse) * inverse_inertia,
         })
         .radians;
     }
@@ -11084,6 +11512,15 @@ mod tests {
 
         assert!(stats.ccd_checks > 0);
         assert_eq!(stats.ccd_hits, 1);
+        let debug_hit = world
+            .rigid_body_ccd_debug_hit_at(0)
+            .expect("CCD impact should record a debug hit");
+        assert_eq!(world.rigid_body_ccd_debug_hit_count(), 1);
+        assert_eq!(debug_hit.moving_entity, mover);
+        assert_eq!(debug_hit.target_entity, wall);
+        assert!((debug_hit.point_x - 45.0).abs() < 0.001);
+        assert!((debug_hit.point_y - 0.0).abs() < 0.001);
+        assert!((debug_hit.normal_x - 1.0).abs() < 0.001);
         assert!(stats.velocity_impulses > 0);
         let transform = world.transform(mover).unwrap();
         assert!(
@@ -12307,6 +12744,87 @@ mod tests {
         assert_eq!(stats.constraint_velocity_corrections, 0);
         assert_eq!(stats.constraint_position_corrections, 0);
         assert_eq!(world.distance_joint_count(), 1);
+    }
+
+    #[test]
+    fn pulley_joint_moves_dynamic_body_to_weighted_rest_length() {
+        let mut world = World::default();
+        let anchor = world.spawn_entity();
+        world.set_transform(anchor, Transform2D { x: 0.0, y: 0.0 });
+        world.set_rigid_body(anchor, RigidBody::static_body());
+        let body = world.spawn_entity();
+        world.set_transform(body, Transform2D { x: 10.0, y: 0.0 });
+        world.set_rigid_body(body, RigidBody::dynamic(1.0));
+        world.add_pulley_joint(
+            PulleyJoint::new(anchor, body, 8.0)
+                .with_ground_anchor_a(0.0, 0.0)
+                .with_ground_anchor_b(0.0, 0.0)
+                .with_ratio(2.0),
+        );
+
+        let stats = PhysicsSystem::step_rigid_bodies_with_config(
+            &mut world,
+            0.1,
+            RigidBodyStepConfig {
+                gravity: Velocity::default(),
+                velocity_iterations: 1,
+                position_iterations: 1,
+                position_correction_percent: 0.0,
+                position_correction_slop: 0.0,
+                restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+                contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+                max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+                contact_split_impulse: false,
+            },
+        );
+
+        assert_eq!(stats.constraint_position_corrections, 1);
+        assert_eq!(
+            world.transform(anchor),
+            Some(Transform2D { x: 0.0, y: 0.0 })
+        );
+        let body_transform = world.transform(body).unwrap();
+        assert!(
+            (body_transform.x - 4.0).abs() < 0.001,
+            "ratio 2 pulley should move the body to length 4, got {body_transform:?}"
+        );
+    }
+
+    #[test]
+    fn pulley_joint_breaks_when_weighted_length_error_exceeds_break_distance() {
+        let mut world = World::default();
+        let anchor = world.spawn_entity();
+        world.set_transform(anchor, Transform2D { x: 0.0, y: 0.0 });
+        world.set_rigid_body(anchor, RigidBody::static_body());
+        let body = world.spawn_entity();
+        world.set_transform(body, Transform2D { x: 10.0, y: 0.0 });
+        world.set_rigid_body(body, RigidBody::dynamic(1.0));
+        world.add_pulley_joint(
+            PulleyJoint::new(anchor, body, 4.0)
+                .with_ground_anchor_a(0.0, 0.0)
+                .with_ground_anchor_b(0.0, 0.0)
+                .with_break_distance(2.0),
+        );
+
+        let stats = PhysicsSystem::step_rigid_bodies_with_config(
+            &mut world,
+            0.1,
+            RigidBodyStepConfig {
+                gravity: Velocity::default(),
+                velocity_iterations: 1,
+                position_iterations: 1,
+                position_correction_percent: 0.0,
+                position_correction_slop: 0.0,
+                restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+                contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+                max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+                contact_split_impulse: false,
+            },
+        );
+
+        assert_eq!(stats.broken_joints, 1);
+        assert_eq!(world.pulley_joint_count(), 0);
+        assert_eq!(world.transform(body), Some(Transform2D { x: 10.0, y: 0.0 }));
     }
 
     #[test]

@@ -7,12 +7,18 @@
 
 Ferrum2D는 Rust + WebAssembly 기반의 2D 웹 게임 엔진이다.
 
+제품 목표:
+
+- Ferrum2D는 비주얼 에디터 중심 엔진이 아니라 AI agent-first 2D game engine을 목표로 한다.
+- 게임 개발 흐름은 사람이 에디터 UI에서 모든 것을 조작하는 방식보다, AI agent가 Game Spec, Physics Spec, 프로젝트 템플릿, agent/skill, 검증 스크립트를 사용해 코드를 생성/수정/검증하는 방식을 우선한다.
+- Visual editor는 기본 제품 목표가 아니며, 필요하더라도 별도 승인된 보조 도구로만 검토한다.
+
 아키텍처 원칙:
 
 - Rust core: 게임 상태, 엔티티 저장, 수학/충돌, 씬 로직, 렌더 커맨드 생성 담당
-- TypeScript platform layer: 브라우저 API, canvas, WebGL2, 입력 이벤트, 오디오, 에셋 로딩, Wasm 로딩 담당
-- 첫 렌더러는 WebGL2로 한정
-- WebGPU는 차기 제품 단계에서 검토하되 별도 설계/승인 전 구현 금지
+- TypeScript platform layer: 브라우저 API, canvas, WebGL2/WebGPU, 입력 이벤트, 오디오, 에셋 로딩, Wasm 로딩 담당
+- 기본 렌더러는 WebGL2이며 WebGPU는 지원 환경에서 선택 renderer로 제공한다.
+- WebGPU는 Rust render command ABI를 바꾸지 않고 WebGL2 fallback을 유지한다.
 
 ## Repository Layout
 
@@ -79,6 +85,8 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 - ✅ TypeScript GameLoop
 - ✅ WebGL2 renderer basic
 - ✅ sprite renderer
+- ✅ optional WebGPU renderer
+- ✅ opt-in physics replay Worker client
 - ✅ render command buffer
 - ✅ input
 - ✅ world/entity
@@ -92,6 +100,8 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 - 상용제품 기능 개발
 - Top-down Shooter 안정화
 - Game Spec 기반 밸런스/variant 조정
+- AI agent-first 게임 개발 흐름 고도화
+- consumer game development용 agent/skill/template 고도화
 - debug overlay와 smoke 검증 보강
 - Product runtime/API/package 품질 개선
 - 문서 동기화
@@ -99,9 +109,8 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 
 다음 금지 범위:
 
-- 별도 설계/승인 없는 WebGPU
-- 별도 설계/승인 없는 Worker/멀티스레딩
-- 별도 설계/승인 없는 editor
+- 별도 설계/승인 없는 전체 게임 루프 Worker 이전/Wasm threads
+- 별도 설계/승인 없는 visual editor
 - 별도 설계/승인 없는 multiplayer
 - 별도 설계/승인 없는 complex physics
 
@@ -123,10 +132,9 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 현재 제품 범위에서 별도 설계/승인 전 구현하지 않는 항목:
 
 - 3D 렌더링
-- WebGPU 렌더러
-- 에디터
+- visual editor
 - 멀티플레이어
-- Web Workers
+- 전체 게임 루프 Worker 이전
 - Wasm threads
 - 복잡한 물리 엔진
 - 스켈레탈 애니메이션
@@ -137,8 +145,9 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 - 현재 마일스톤에 필요하지 않은 대규모 추상화는 도입하지 않는다.
 - 새 프로덕션 의존성은 필요성과 대안을 설명하기 전에는 추가하지 않는다.
 - Rust와 TypeScript 책임 경계를 엄격히 유지한다.
-- Rust가 WebGL API를 직접 호출하면 안 된다.
+- Rust가 WebGL/WebGPU API를 직접 호출하면 안 된다.
 - TypeScript는 브라우저/플랫폼 상태를 제외한 게임 시뮬레이션 상태를 소유하지 않는다.
+- 사람이 클릭해서 모든 것을 만드는 visual editor보다 AI agent가 수정하기 쉬운 spec, schema, template, validation, smoke check를 우선한다.
 - "영리한 설계"보다 단순하고 테스트 가능한 구현을 우선한다.
 
 ## Required Checks

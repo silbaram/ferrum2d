@@ -16,7 +16,10 @@
 | Physics Spec resolver | `packages/ferrum-web/src/physicsSpec.ts` |
 | Physics authoring/apply helper | `packages/ferrum-web/src/physicsAuthoring.ts` |
 | Physics snapshot/replay helper | `packages/ferrum-web/src/physicsSnapshot.ts` |
+| Physics replay Worker client | `packages/ferrum-web/src/physicsReplayWorker.ts`, `packages/ferrum-web/src/physicsReplayWorkerEntry.ts` |
 | Physics editor/AI authoring schema | `packages/ferrum-web/src/physicsAuthoringSchema.ts`, `schemas/physics-authoring.schema.json` |
+| Tilemap boundary extraction | `packages/ferrum-web/src/tilemapPhysics.ts` |
+| Pixel mask terrain helper/runtime | `packages/ferrum-web/src/pixelMaskTerrain.ts`, `packages/ferrum-web/src/pixelMaskTerrainRuntime.ts` |
 | Query decoders | `packages/ferrum-web/src/physicsQueryDecoder.ts`, `wasmBridge.ts` |
 | Browser sandbox | `examples/physics-sandbox` |
 
@@ -33,7 +36,7 @@
 | 영역 | 지원 내용 |
 | --- | --- |
 | Transform/velocity | `Transform2D`, `Velocity`, `Rotation2D`, `AngularVelocity` |
-| Collider | AABB, circle, capsule, oriented box, convex polygon, edge |
+| Collider | AABB, circle, capsule, oriented box, convex polygon, edge, chain |
 | Collider 옵션 | local offset, enable/disable, material override, collision filter |
 | Collision filter | layer pair와 category/mask bitset |
 | Broadphase | AABB proxy 기반 sweep-and-prune |
@@ -43,10 +46,11 @@
 | Platformer support | ground probe, controller config/state, coyote time, jump buffering, step offset, slope snap |
 | Rigid body | static/kinematic/dynamic, mass/inertia, force/impulse/torque, gravity scale, damping, sleep/wake |
 | Solver | substep, contact impulse, friction/restitution, Baumgarte tuning, split impulse, island metrics/scheduling |
-| Joints | distance, rope, spring, revolute, prismatic, weld, gear |
-| Tilemap physics | merged AABB obstacle cache, runtime cell/rect refresh, one-way tile, slope definition |
+| Joints | distance, rope, spring, pulley, revolute, prismatic, weld, gear |
+| Tilemap physics | merged AABB obstacle cache, dirty chunk 기반 runtime cell/rect refresh, one-way tile, slope definition, collision layer -> chain boundary extraction |
+| Pixel mask terrain | alpha mask edit, dirty patch extraction, WebGL2 texture create/update, chunk 단위 Physics Spec chain collider rebuild |
 | Events/stats | collision enter/stay/exit/hit, trigger lifecycle, physics frame stats, rigid body step stats |
-| Debug | category별 broadphase/contact/collider/joint debug line buffer, sleeping color, DebugOverlay physics metrics, WebGL2 debug line rendering |
+| Debug | category별 broadphase/contact/collider/joint/CCD debug line buffer, sleeping color, DebugOverlay physics metrics, WebGL2 debug line rendering |
 
 ## Runtime별 사용 경계
 
@@ -63,14 +67,15 @@
 `FerrumEngine`은 낮은 빈도의 physics authoring/control/query API를 제공한다.
 
 - runtime: `configureFixedTimestep(...)`, `setPhysicsDebugLinesEnabled(...)`, `stepRigidBodies(...)`
-- spec apply/helper: `createPhysicsWorldFromSpec(...)`, `createRigidBody(...)`, `createCollider(...)`, `createJoint(...)`
+- spec apply/helper: `createPhysicsWorldFromSpec(...)`, `createRigidBody(...)`, `createCollider(...)`, `createJoint(...)`, `createVehicleRig(...)`
 - body: `spawnRigidBody(...)`, `getPhysicsEntity(...)`, `despawnPhysicsEntity(...)`, `setPhysicsBodyPosition(...)`
 - body control: velocity, rotation, angular velocity, enabled, force/impulse, torque/angular impulse
 - material/tuning: body material, collider material, mass properties, solver tuning
 - joint: `spawnPhysicsJoint(...)`, `getPhysicsJoint(...)`, `clearPhysicsJoint(...)`, `setPhysicsJointEnabled(...)`
 - query: nearest body/tile, body overlap, body raycast/segment-cast, body shape-cast, tile raycast/segment-cast, tile shape-cast/contact/manifold, current body contact/manifold, rigid contact impulse snapshot
-- snapshot/replay: `capturePhysicsWorldSnapshot(...)`, `restorePhysicsWorldSnapshot(...)`, `createPhysicsReplayInputStream(...)`, `runPhysicsReplayInputStream(...)`, `verifyPhysicsReplayRollback(...)`, `verifyPhysicsReplayInputStreamRollback(...)`
+- snapshot/replay: `capturePhysicsWorldSnapshot(...)`, `restorePhysicsWorldSnapshot(...)`, `capturePhysicsBodyStateBuffer(...)`, `restorePhysicsBodyStateBuffer(...)`, `createPhysicsReplayInputStream(...)`, `runPhysicsReplayInputStream(...)`, `verifyPhysicsReplayRollback(...)`, `verifyPhysicsReplayInputStreamRollback(...)`, `createPhysicsReplayWorkerClient(...)`
 - editor/AI authoring: `compilePhysicsAuthoringDocument(...)`, `validatePhysicsAuthoringDocument(...)`, `physicsEditor` metadata schema
+- terrain authoring/runtime: `extractTilemapBoundaryChains(...)`, `PixelMaskTerrain`, `extractPixelMaskBoundaryChains(...)`, `createPixelMaskTerrainRuntime(...)`
 
 이 API는 editor나 runtime tooling처럼 호출 빈도가 낮은 흐름을 대상으로 한다. entity별 매 프레임 authoring stream 용도가 아니다.
 
@@ -94,7 +99,7 @@ Web package가 이 Rust helper를 직접 re-export하지는 않는다.
 | body cast | `raycastBodies`, `segmentCastBodies`, shape별 `shapeCast...Bodies` |
 | tile obstacle | `raycastTileObstacles`, `segmentCastTileObstacles`, `shapeCastAabbTileObstacles` |
 | contact/manifold | `queryBodyContacts`, `queryBodyManifolds`, `queryAabbTileObstacleContacts`, `queryAabbTileObstacleManifolds` |
-| solver snapshot | `World::snapshot()`/`restore_snapshot(...)`, `queryRigidContactImpulses`, `stepRigidBodies` stats, Physics Spec world snapshot/replay helper, replay input stream interval snapshot |
+| solver snapshot | `World::snapshot()`/`restore_snapshot(...)`, Wasm bulk body state buffer, `queryRigidContactImpulses`, `stepRigidBodies` stats, Physics Spec world snapshot/replay helper, replay input stream interval snapshot |
 
 정확한 타입 이름과 필드는 `packages/ferrum-web/src/createEngine.ts`와 [Public API](../../engine/public-api.md)를 기준으로 한다.
 
@@ -121,18 +126,15 @@ Shooter 전용 Game Spec은 다음 physics metadata를 지원한다.
 - tile slope metadata
 - Tiled/LDtk import helper를 통한 atlas/tilemap metadata 변환
 
-Generic rigid body/joint authoring metadata는 `physics` namespace에서 검증되고, `createPhysicsWorldFromSpec(...)`를 통해 runtime world에 opt-in 적용할 수 있다. 현재 apply 경로는 body당 1개 이상의 collider, AABB/box/circle/capsule/oriented-box/convex-polygon/edge collider, edge segment로 낮춘 chain collider, distance/rope/spring/revolute/prismatic/weld/gear joint를 지원한다. 첫 collider는 primary collider(index `0`)로 기존 단일 collider API와 호환되고, secondary collider는 `addPhysicsBodyCollider(...)` 경로로 같은 body에 추가된다. `"world"` joint endpoint는 helper가 collision-disabled static anchor body로 변환한다. dedicated `chain` runtime storage는 여러 edge segment 또는 별도 composite storage를 Rust core에 직접 넣을 후속 범위다.
+Generic rigid body/joint authoring metadata는 `physics` namespace에서 검증되고, `createPhysicsWorldFromSpec(...)`를 통해 runtime world에 opt-in 적용할 수 있다. 현재 apply 경로는 body당 1개 이상의 collider, AABB/box/circle/capsule/oriented-box/convex-polygon/edge/chain collider, distance/rope/spring/pulley/revolute/prismatic/weld/gear joint를 지원한다. 첫 collider는 primary collider(index `0`)로 기존 단일 collider API와 호환되고, secondary collider는 `addPhysicsBodyCollider(...)` 경로로 같은 body에 추가된다. `"world"` joint endpoint는 helper가 collision-disabled static anchor body로 변환한다. `chain`은 Rust core에서 dedicated storage로 보존되고, 내부 collision/query/debug 경로에서 segment를 순회한다.
 
 ## 현재 제외 또는 제한
 
-- dedicated chain collider runtime storage와 tilemap boundary extraction 구현
-- tilemap destructible terrain dirty chunk partial rebuild와 pixel mask terrain
-- CCD per-hit 위치 marker line ABI
 - external physics dependency
 - per-entity Web callback 기반 collision handling
 - built-in scene loop에 generic Physics Spec body/joint를 자동 적용하는 것
 - built-in scene loop에 generic rigid body solver를 자동 적용하는 것
-- Web Worker/Wasm threads 기반 physics execution
+- 전체 built-in scene loop의 Web Worker 이전 또는 Wasm threads 기반 physics execution
 
 ## 문서 동기화 규칙
 

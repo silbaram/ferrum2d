@@ -17,13 +17,26 @@ test("IndexedDbAssetCache remains a deprecated cache-miss shim", async () => {
   await cache.invalidateJson("/game.json");
 });
 
-test("WebGPURenderer reports unsupported MVP scope", async () => {
+test("WebGPURenderer reports missing canvas or unavailable browser support", async () => {
+  await rejectsWithMessage(
+    async () => await WebGPURenderer.create(),
+    /requires an HTMLCanvasElement/,
+  );
+
+  if (!WebGPURenderer.isSupported()) {
+    await rejectsWithMessage(
+      async () => await WebGPURenderer.create({} as HTMLCanvasElement),
+      /WebGPU is not available/,
+    );
+  }
+});
+
+async function rejectsWithMessage(run: () => Promise<unknown>, expected: RegExp): Promise<void> {
   try {
-    await WebGPURenderer.create();
+    await run();
   } catch (error) {
-    ok(/WebGPU renderer is outside the current Ferrum2D MVP scope/.test(String(error)));
+    ok(expected.test(String(error instanceof Error ? error.message : error)));
     return;
   }
-
-  throw new Error("Expected WebGPURenderer.create() to reject.");
-});
+  throw new Error("Expected promise to reject.");
+}

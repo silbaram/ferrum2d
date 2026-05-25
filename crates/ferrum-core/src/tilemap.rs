@@ -11,6 +11,7 @@ use crate::world::World;
 const MAX_NAVIGATION_CELLS: usize = 4096;
 const MAX_TILE_COLLISION_RESOLUTION_STEPS: usize = 4;
 pub const MAX_TILEMAP_CONTACT_MANIFOLD_POINTS: usize = 2;
+const TILE_COLLISION_CHUNK_SIZE: u32 = 16;
 const TILE_SWEEP_EPSILON: f32 = 0.0001;
 const TILE_GROUND_NORMAL_Y_MIN: f32 = 0.5;
 const UNVISITED_CELL: usize = usize::MAX;
@@ -44,6 +45,7 @@ pub struct Tilemap {
     one_way_platform_definitions: Vec<bool>,
     layers: Vec<Option<TilemapLayer>>,
     collision_rects: Vec<Option<Vec<TileCollisionRect>>>,
+    collision_rect_chunks: Vec<Option<TileCollisionChunkCache>>,
 }
 
 #[derive(Debug, Default)]
@@ -69,6 +71,15 @@ struct TileCollisionRect {
     min_row: u32,
     columns: u32,
     rows: u32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct TileCollisionChunkCache {
+    chunk_columns: u32,
+    chunk_rows: u32,
+    chunks: Vec<Vec<TileCollisionRect>>,
+    last_rebuilt_chunks: u32,
+    total_rebuilt_chunks: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -222,6 +233,7 @@ impl Tilemap {
         self.one_way_platform_definitions.clear();
         self.layers.clear();
         self.collision_rects.clear();
+        self.collision_rect_chunks.clear();
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -347,6 +359,9 @@ impl Tilemap {
         if index >= self.collision_rects.len() {
             self.collision_rects.resize_with(index + 1, || None);
         }
+        if index >= self.collision_rect_chunks.len() {
+            self.collision_rect_chunks.resize_with(index + 1, || None);
+        }
         self.layers[index] = Some(layer);
         self.rebuild_collision_rects_for_layer(index);
     }
@@ -372,7 +387,7 @@ impl Tilemap {
         };
 
         if should_rebuild_collision {
-            self.rebuild_collision_rects_for_layer(layer_index);
+            self.rebuild_collision_rect_chunks_for_layer(layer_index, column, row, 1, 1);
         }
         true
     }
@@ -421,9 +436,25 @@ impl Tilemap {
         };
 
         if should_rebuild_collision {
-            self.rebuild_collision_rects_for_layer(layer_index);
+            self.rebuild_collision_rect_chunks_for_layer(layer_index, column, row, width, height);
         }
         changed
+    }
+
+    pub fn collision_cache_last_rebuilt_chunks(&self, layer_index: u32) -> u32 {
+        self.collision_rect_chunks
+            .get(layer_index as usize)
+            .and_then(Option::as_ref)
+            .map(|cache| cache.last_rebuilt_chunks)
+            .unwrap_or(0)
+    }
+
+    pub fn collision_cache_total_rebuilt_chunks(&self, layer_index: u32) -> u32 {
+        self.collision_rect_chunks
+            .get(layer_index as usize)
+            .and_then(Option::as_ref)
+            .map(|cache| cache.total_rebuilt_chunks)
+            .unwrap_or(0)
     }
 
     pub fn resolve_dynamic_collisions(&self, world: &mut World) {
@@ -1347,6 +1378,9 @@ impl Tilemap {
         if self.collision_rects.len() < layer_count {
             self.collision_rects.resize_with(layer_count, || None);
         }
+        if self.collision_rect_chunks.len() < layer_count {
+            self.collision_rect_chunks.resize_with(layer_count, || None);
+        }
         for index in 0..layer_count {
             self.rebuild_collision_rects_for_layer(index);
         }
@@ -1356,19 +1390,102 @@ impl Tilemap {
         if index >= self.collision_rects.len() {
             self.collision_rects.resize_with(index + 1, || None);
         }
-        self.collision_rects[index] =
-            self.layers
-                .get(index)
-                .and_then(Option::as_ref)
-                .and_then(|layer| {
-                    layer.collision.then(|| {
-                        build_collision_rects_for_layer(
-                            layer,
-                            &self.slope_definitions,
-                            &self.one_way_platform_definitions,
-                        )
-                    })
-                });
+        if index >= self.collision_rect_chunks.len() {
+            self.collision_rect_chunks.resize_with(index + 1, || None);
+        }
+        let Some(layer) = self.layers.get(index).and_then(Option::as_ref) else {
+            self.collision_rects[index] = None;
+            self.collision_rect_chunks[index] = None;
+            return;
+        };
+        if !layer.collision {
+            self.collision_rects[index] = None;
+            self.collision_rect_chunks[index] = None;
+            return;
+        }
+
+        let cache = build_collision_chunk_cache_for_layer(
+            layer,
+            &self.slope_definitions,
+            &self.one_way_platform_definitions,
+        );
+        self.collision_rects[index] = Some(cache.flattened_rects());
+        self.collision_rect_chunks[index] = Some(cache);
+    }
+
+    fn rebuild_collision_rect_chunks_for_layer(
+        &mut self,
+        index: usize,
+        column: u32,
+        row: u32,
+        width: u32,
+        height: u32,
+    ) {
+        if !self.collision_chunk_cache_matches_layer(index) {
+            self.rebuild_collision_rects_for_layer(index);
+            return;
+        }
+
+        let Some(layer) = self.layers.get(index).and_then(Option::as_ref) else {
+            self.rebuild_collision_rects_for_layer(index);
+            return;
+        };
+        if !layer.collision {
+            self.rebuild_collision_rects_for_layer(index);
+            return;
+        }
+        let Some(cache) = self.collision_rect_chunks[index].as_ref() else {
+            self.rebuild_collision_rects_for_layer(index);
+            return;
+        };
+        let Some(changed_range) = tile_range_from_rect(layer, column, row, width, height) else {
+            self.rebuild_collision_rects_for_layer(index);
+            return;
+        };
+        let chunk_range = chunk_range_for_tile_range(changed_range, cache);
+        let mut rebuilt_chunks = Vec::new();
+        for chunk_row in chunk_range.min_row..=chunk_range.max_row {
+            for chunk_column in chunk_range.min_column..=chunk_range.max_column {
+                let chunk_index = cache.chunk_index(chunk_column, chunk_row);
+                let tile_range = tile_range_for_chunk(layer, chunk_column, chunk_row);
+                let rects = build_collision_rects_for_layer_range(
+                    layer,
+                    tile_range,
+                    &self.slope_definitions,
+                    &self.one_way_platform_definitions,
+                );
+                rebuilt_chunks.push((chunk_index, rects));
+            }
+        }
+
+        let Some(cache) = self.collision_rect_chunks[index].as_mut() else {
+            self.rebuild_collision_rects_for_layer(index);
+            return;
+        };
+        let rebuilt_count = rebuilt_chunks.len() as u32;
+        for (chunk_index, rects) in rebuilt_chunks {
+            if let Some(chunk) = cache.chunks.get_mut(chunk_index) {
+                *chunk = rects;
+            }
+        }
+        cache.last_rebuilt_chunks = rebuilt_count;
+        cache.total_rebuilt_chunks = cache.total_rebuilt_chunks.saturating_add(rebuilt_count);
+        self.collision_rects[index] = Some(cache.flattened_rects());
+    }
+
+    fn collision_chunk_cache_matches_layer(&self, index: usize) -> bool {
+        let Some(layer) = self.layers.get(index).and_then(Option::as_ref) else {
+            return false;
+        };
+        let Some(cache) = self
+            .collision_rect_chunks
+            .get(index)
+            .and_then(Option::as_ref)
+        else {
+            return false;
+        };
+        cache.chunk_columns == collision_chunk_count(layer.columns)
+            && cache.chunk_rows == collision_chunk_count(layer.rows)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1554,6 +1671,33 @@ impl TileCollisionRect {
             is_trigger: false,
             layer: dynamic_layer,
         }
+    }
+}
+
+impl TileCollisionChunkCache {
+    fn new(chunk_columns: u32, chunk_rows: u32) -> Self {
+        let chunk_count = (chunk_columns as usize).saturating_mul(chunk_rows as usize);
+        Self {
+            chunk_columns,
+            chunk_rows,
+            chunks: vec![Vec::new(); chunk_count],
+            last_rebuilt_chunks: 0,
+            total_rebuilt_chunks: 0,
+        }
+    }
+
+    fn chunk_index(&self, chunk_column: u32, chunk_row: u32) -> usize {
+        (chunk_row * self.chunk_columns + chunk_column) as usize
+    }
+
+    fn flattened_rects(&self) -> Vec<TileCollisionRect> {
+        let mut rects: Vec<_> = self
+            .chunks
+            .iter()
+            .flat_map(|chunk| chunk.iter().copied())
+            .collect();
+        rects.sort_by_key(|rect| rect.tile_index);
+        rects
     }
 }
 
@@ -1793,8 +1937,53 @@ fn reconstruct_next_cell(start: usize, goal: usize, came_from: &[usize]) -> Opti
     Some(current)
 }
 
+#[cfg(test)]
 fn build_collision_rects_for_layer(
     layer: &TilemapLayer,
+    slope_definitions: &[Option<TileSlopeDefinition>],
+    one_way_platform_definitions: &[bool],
+) -> Vec<TileCollisionRect> {
+    let Some(range) = tile_range_from_rect(layer, 0, 0, layer.columns, layer.rows) else {
+        return Vec::new();
+    };
+    build_collision_rects_for_layer_range(
+        layer,
+        range,
+        slope_definitions,
+        one_way_platform_definitions,
+    )
+}
+
+fn build_collision_chunk_cache_for_layer(
+    layer: &TilemapLayer,
+    slope_definitions: &[Option<TileSlopeDefinition>],
+    one_way_platform_definitions: &[bool],
+) -> TileCollisionChunkCache {
+    let chunk_columns = collision_chunk_count(layer.columns);
+    let chunk_rows = collision_chunk_count(layer.rows);
+    let mut cache = TileCollisionChunkCache::new(chunk_columns, chunk_rows);
+
+    for chunk_row in 0..chunk_rows {
+        for chunk_column in 0..chunk_columns {
+            let chunk_index = cache.chunk_index(chunk_column, chunk_row);
+            let tile_range = tile_range_for_chunk(layer, chunk_column, chunk_row);
+            cache.chunks[chunk_index] = build_collision_rects_for_layer_range(
+                layer,
+                tile_range,
+                slope_definitions,
+                one_way_platform_definitions,
+            );
+        }
+    }
+    let rebuilt_count = chunk_columns.saturating_mul(chunk_rows);
+    cache.last_rebuilt_chunks = rebuilt_count;
+    cache.total_rebuilt_chunks = rebuilt_count;
+    cache
+}
+
+fn build_collision_rects_for_layer_range(
+    layer: &TilemapLayer,
+    range: TileRange,
     slope_definitions: &[Option<TileSlopeDefinition>],
     one_way_platform_definitions: &[bool],
 ) -> Vec<TileCollisionRect> {
@@ -1802,9 +1991,16 @@ fn build_collision_rects_for_layer(
     let mut active = Vec::new();
     let mut next_active = Vec::new();
 
-    for row in 0..layer.rows {
+    for row in range.min_row..=range.max_row {
         next_active.clear();
-        for run in solid_runs_for_row(layer, row, slope_definitions, one_way_platform_definitions) {
+        for run in solid_runs_for_row_range(
+            layer,
+            row,
+            range.min_column,
+            range.max_column,
+            slope_definitions,
+            one_way_platform_definitions,
+        ) {
             if let Some(active_index) = active.iter().position(|rect: &TileCollisionRect| {
                 rect.min_column == run.min_column
                     && rect.columns == run.columns
@@ -1832,16 +2028,22 @@ fn build_collision_rects_for_layer(
     completed
 }
 
-fn solid_runs_for_row(
+fn solid_runs_for_row_range(
     layer: &TilemapLayer,
     row: u32,
+    min_column: u32,
+    max_column: u32,
     slope_definitions: &[Option<TileSlopeDefinition>],
     one_way_platform_definitions: &[bool],
 ) -> Vec<TileRun> {
     let mut runs = Vec::new();
-    let mut column = 0;
-    while column < layer.columns {
-        while column < layer.columns
+    if min_column > max_column || row >= layer.rows || min_column >= layer.columns {
+        return runs;
+    }
+    let max_column = max_column.min(layer.columns - 1);
+    let mut column = min_column;
+    while column <= max_column {
+        while column <= max_column
             && !is_solid_tile(
                 layer,
                 column,
@@ -1852,11 +2054,11 @@ fn solid_runs_for_row(
         {
             column += 1;
         }
-        if column >= layer.columns {
+        if column > max_column {
             break;
         }
-        let min_column = column;
-        while column < layer.columns
+        let run_min_column = column;
+        while column <= max_column
             && is_solid_tile(
                 layer,
                 column,
@@ -1868,11 +2070,58 @@ fn solid_runs_for_row(
             column += 1;
         }
         runs.push(TileRun {
-            min_column,
-            columns: column - min_column,
+            min_column: run_min_column,
+            columns: column - run_min_column,
         });
     }
     runs
+}
+
+fn collision_chunk_count(tile_count: u32) -> u32 {
+    tile_count.div_ceil(TILE_COLLISION_CHUNK_SIZE).max(1)
+}
+
+fn tile_range_from_rect(
+    layer: &TilemapLayer,
+    column: u32,
+    row: u32,
+    width: u32,
+    height: u32,
+) -> Option<TileRange> {
+    if width == 0 || height == 0 || column >= layer.columns || row >= layer.rows {
+        return None;
+    }
+    let end_column = column.checked_add(width)?;
+    let end_row = row.checked_add(height)?;
+    if end_column > layer.columns || end_row > layer.rows {
+        return None;
+    }
+    Some(TileRange {
+        min_column: column,
+        max_column: end_column - 1,
+        min_row: row,
+        max_row: end_row - 1,
+    })
+}
+
+fn tile_range_for_chunk(layer: &TilemapLayer, chunk_column: u32, chunk_row: u32) -> TileRange {
+    let min_column = chunk_column * TILE_COLLISION_CHUNK_SIZE;
+    let min_row = chunk_row * TILE_COLLISION_CHUNK_SIZE;
+    TileRange {
+        min_column,
+        max_column: (min_column + TILE_COLLISION_CHUNK_SIZE - 1).min(layer.columns - 1),
+        min_row,
+        max_row: (min_row + TILE_COLLISION_CHUNK_SIZE - 1).min(layer.rows - 1),
+    }
+}
+
+fn chunk_range_for_tile_range(range: TileRange, cache: &TileCollisionChunkCache) -> TileRange {
+    TileRange {
+        min_column: (range.min_column / TILE_COLLISION_CHUNK_SIZE).min(cache.chunk_columns - 1),
+        max_column: (range.max_column / TILE_COLLISION_CHUNK_SIZE).min(cache.chunk_columns - 1),
+        min_row: (range.min_row / TILE_COLLISION_CHUNK_SIZE).min(cache.chunk_rows - 1),
+        max_row: (range.max_row / TILE_COLLISION_CHUNK_SIZE).min(cache.chunk_rows - 1),
+    }
 }
 
 fn is_solid_tile(
@@ -2751,6 +3000,29 @@ mod tests {
         assert!(!tilemap.set_tiles_rect(0, 0, 0, 0, 1, 1));
         assert!(!tilemap.set_tiles_rect(0, 3, 0, 2, 1, 1));
         assert!(!tilemap.set_tiles_rect(4, 0, 0, 1, 1, 1));
+    }
+
+    #[test]
+    fn set_tiles_rect_rebuilds_only_dirty_collision_chunks() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(0, 40, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1; 40]);
+
+        assert_eq!(tilemap.collision_cache_last_rebuilt_chunks(0), 3);
+        assert_eq!(tilemap.collision_cache_total_rebuilt_chunks(0), 3);
+
+        assert!(tilemap.set_tiles_rect(0, 4, 0, 2, 1, 0));
+        assert_eq!(tilemap.collision_cache_last_rebuilt_chunks(0), 1);
+        assert_eq!(tilemap.collision_cache_total_rebuilt_chunks(0), 4);
+        assert!(tilemap
+            .nearest_collision_obstacle(Transform2D { x: 305.0, y: 5.0 }, 0.0)
+            .is_some());
+
+        assert!(tilemap.set_tiles_rect(0, 15, 0, 2, 1, 0));
+        assert_eq!(tilemap.collision_cache_last_rebuilt_chunks(0), 2);
+        assert_eq!(tilemap.collision_cache_total_rebuilt_chunks(0), 6);
+        assert!(tilemap
+            .nearest_collision_obstacle(Transform2D { x: 175.0, y: 5.0 }, 0.0)
+            .is_some());
     }
 
     #[test]

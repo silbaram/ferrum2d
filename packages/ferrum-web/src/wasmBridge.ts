@@ -87,8 +87,18 @@ export interface AudioEventBufferView {
   floatsPerEvent: number;
 }
 
+export interface PhysicsBodyStateBufferView {
+  floats: Float32Array;
+  u32s: Uint32Array;
+  bodyCount: number;
+  floatsPerBody: number;
+  u32sPerBody: number;
+}
+
 const FLOATS_PER_COMMAND = 13;
 const FLOATS_PER_AUDIO_EVENT = 3;
+const FLOATS_PER_PHYSICS_BODY_STATE = 31;
+const U32S_PER_PHYSICS_BODY_STATE = 5;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
 const BYTES_PER_U32 = Uint32Array.BYTES_PER_ELEMENT;
 const BYTES_PER_COMMAND = FLOATS_PER_COMMAND * BYTES_PER_F32;
@@ -111,6 +121,8 @@ export class WasmBridge {
   private readonly bytesPerPhysicsBodyContactHit: number;
   private readonly bytesPerPhysicsBodyManifoldHit: number;
   private readonly bytesPerPhysicsRigidContactImpulseHit: number;
+  private readonly floatsPerPhysicsBodyState: number;
+  private readonly u32sPerPhysicsBodyState: number;
 
   private constructor(
     private readonly engineInstance: Engine,
@@ -238,6 +250,20 @@ export class WasmBridge {
           "Physics rigid contact impulse hit ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
       );
     }
+    const rustFloatsPerPhysicsBodyState = this.engineInstance.physics_body_snapshot_floats_per_body();
+    if (rustFloatsPerPhysicsBodyState !== FLOATS_PER_PHYSICS_BODY_STATE) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_body_snapshot_floats_per_body=${rustFloatsPerPhysicsBodyState}, TS FLOATS_PER_PHYSICS_BODY_STATE=${FLOATS_PER_PHYSICS_BODY_STATE}. ` +
+          "Physics body snapshot ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
+    const rustU32sPerPhysicsBodyState = this.engineInstance.physics_body_snapshot_u32s_per_body();
+    if (rustU32sPerPhysicsBodyState !== U32S_PER_PHYSICS_BODY_STATE) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] Rust physics_body_snapshot_u32s_per_body=${rustU32sPerPhysicsBodyState}, TS U32S_PER_PHYSICS_BODY_STATE=${U32S_PER_PHYSICS_BODY_STATE}. ` +
+          "Physics body snapshot ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+      );
+    }
     this.floatsPerCommand = rustFloatsPerCommand;
     this.floatsPerAudioEvent = rustFloatsPerAudioEvent;
     this.u32sPerCollisionEvent = rustU32sPerCollisionEvent;
@@ -250,6 +276,8 @@ export class WasmBridge {
     this.bytesPerPhysicsBodyContactHit = rustBytesPerPhysicsBodyContactHit;
     this.bytesPerPhysicsBodyManifoldHit = rustBytesPerPhysicsBodyManifoldHit;
     this.bytesPerPhysicsRigidContactImpulseHit = rustBytesPerPhysicsRigidContactImpulseHit;
+    this.floatsPerPhysicsBodyState = rustFloatsPerPhysicsBodyState;
+    this.u32sPerPhysicsBodyState = rustU32sPerPhysicsBodyState;
   }
 
   static async init(): Promise<WasmBridge> {
@@ -470,6 +498,27 @@ export class WasmBridge {
     return this.decodePhysicsRigidContactImpulseHits(
       this.readPhysicsRigidContactImpulseHitBuffer(),
     );
+  }
+
+  readPhysicsBodyStateBuffer(): PhysicsBodyStateBufferView {
+    const floatPtr = this.engineInstance.physics_body_snapshot_float_ptr();
+    const floatLen = this.engineInstance.physics_body_snapshot_float_len();
+    const u32Ptr = this.engineInstance.physics_body_snapshot_u32_ptr();
+    const u32Len = this.engineInstance.physics_body_snapshot_u32_len();
+    const bodyCount = floatLen / this.floatsPerPhysicsBodyState;
+    if (!Number.isInteger(bodyCount) || u32Len !== bodyCount * this.u32sPerPhysicsBodyState) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] physics body state buffer lengths are inconsistent: ` +
+          `floatLen=${floatLen}, u32Len=${u32Len}.`,
+      );
+    }
+    return {
+      floats: new Float32Array(this.memory.buffer, floatPtr, floatLen),
+      u32s: new Uint32Array(this.memory.buffer, u32Ptr, u32Len),
+      bodyCount,
+      floatsPerBody: this.floatsPerPhysicsBodyState,
+      u32sPerBody: this.u32sPerPhysicsBodyState,
+    };
   }
 
   decodeCollisionEvents(view: CollisionEventBufferView): readonly CollisionEventView[] {

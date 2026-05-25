@@ -1,106 +1,45 @@
 ---
 name: ferrum-engine-reviewer
-description: Use when reviewing Ferrum2D engine code, architecture, public APIs, Rust/TypeScript responsibility boundaries, SOLID-style design issues, Wasm ABI safety, hot-path performance risks, missing tests, or code changes before merge/release. Trigger for code review, architecture review, SOLID review, Rust review, TypeScript review, Wasm boundary review, public API review, or engine design risk analysis.
+description: Ferrum2D 엔진의 코드 및 아키텍처 리뷰를 담당하며, SOLID 설계 준수 여부, Rust 소유권 및 성능 제약, TS 인터페이스 경계, Wasm ABI 안정성 등을 검토합니다.
 ---
 
 # Ferrum Engine Reviewer
 
-Use this skill for Ferrum2D code and architecture review. This is a review skill, not a test runner. It identifies design, correctness, maintainability, boundary, and release risks before implementation is accepted.
+이 스킬은 Ferrum2D 엔진의 아키텍처, 성능, 코드 설계 품질을 리뷰할 때 사용합니다. 단순한 빌드 및 린트 성공 여부(qa-agent 영역)를 넘어, 엔진 설계의 일관성과 최적화를 유지하는 역할을 합니다.
 
-## Source Of Truth
+## 검토 기준 (Source Of Truth)
 
-- Repository rules: `AGENTS.md`
-- Architecture docs: `docs/development/architecture/architecture.md`
-- Public API docs: `docs/engine/public-api.md`
-- Smoke policy: `docs/development/quality/smoke-check.md`
-- Code review baseline: `docs/development/quality/code-review.md`
-- Rust conventions: `.agents/skills/rust-game-engine-conventions/SKILL.md`
-- Web platform conventions: `.agents/skills/web-game-engine-platform/SKILL.md`
+- 아키텍처 문서: `docs/development/architecture/architecture.md`
+- 공용 API 규격: `docs/engine/public-api.md`
+- Rust ECS 및 규약: `.agents/skills/rust-game-engine-conventions/SKILL.md`
+- Web 플랫폼 규약: `.agents/skills/web-game-engine-platform/SKILL.md`
 
-## Review Scope
+## 주요 리뷰 원칙
 
-Review the changed surface first, then follow dependencies only when needed.
+### 1. TypeScript (플랫폼 레이어) 설계 원칙
+- **SOLID / SRP (단일 책임 원칙)**: `Renderer`, `AssetLoader`, `AudioManager`, `InputManager` 등의 모듈 책임이 하나로 유지되고 섞이지 않았는지 검토합니다.
+- **DIP / 추상화**: 구체적인 구현 클래스보다 인터페이스/추상 계약에 의존하는지 확인합니다.
+- **상태 분리**: WebGL2/WebGPU 렌더러가 게임 시뮬레이션 상태를 직접 소유하거나 수정하지 않고, 전달받은 렌더 커맨드 버퍼만 소비하는지 확인합니다.
+- **시뮬레이션 배제**: 게임의 물리/상태 업데이트 로직이 TypeScript 영역에 노출되거나 중복 작성되지 않았는지 검토합니다.
 
-- Rust core: state, entity/world storage, math/collision, scene logic, render command generation.
-- TypeScript platform: browser APIs, canvas/WebGL2, input, audio, assets, Wasm loading.
-- Wasm boundary: `#[repr(C)]`, ptr/len buffers, typed array views, command buffer layout, string/object hot-path avoidance.
-- Public API: package entrypoint, exported types, backwards compatibility, docs synchronization.
-- Examples and Game Spec: runtime behavior, schema compatibility, generated variant safety.
-- Packaging/deploy impact: only flag release/package/docs risks; defer execution to release/package/pages/qa agents.
+### 2. Rust (코어 레이어) 설계 원칙
+- **단일 책임**: `World`, `EntityStore`, `CollisionSystem`, `RenderCommandBuffer` 등의 시스템이 독립적으로 동작하는지 확인합니다.
+- **명시적 소유권(Ownership)**: 데이터의 소유, 대여(Borrow), 수명이 컴파일러와 런타임 성능 관점에서 명확히 설계되었는지 확인합니다.
+- **에러 핸들링**: 라이브러리/엔진 코드 전반에 `unwrap()`이나 `panic!`이 무분별하게 퍼져 있지 않고, `Result`와 `Option`을 통해 명시적으로 처리하는지 검토합니다.
+- **Zero-Cost Abstraction**: 핫패스(Hot Path) 루프 내에서 불필요한 메모리 할당(Allocation)이나 동적 디스패치(Dynamic Dispatch)가 발생하지 않는지 확인합니다.
 
-## SOLID For Ferrum2D
+### 3. Wasm 경계 및 인터페이스 (Wasm Boundary)
+- **벌크 전송(Bulk Buffer) 최적화**: 핫패스에서 Entity별로 JS/Wasm 간 왕복 호출을 하지 않고, 대용량 버퍼(Typed Array)를 통해 데이터를 주고받는지 확인합니다.
+- **안정성 (repr)**: Rust와 TypeScript가 공유하는 구조체가 `#[repr(C)]` 선언과 크기 검증(Alignment/Size)을 가지고 있는지 확인합니다.
+- **구현 누수 차단**: 내부 구현(`dist/*`, `pkg/*` 등)이 외부 public API에 직접 노출되어 강한 의존성을 만들지 않는지 검증합니다.
 
-Apply SOLID as a design smell framework, not as Java-style class doctrine.
+### 4. 테스트 및 문서화
+- 변경 사항에 대한 단위 테스트 또는 스모크 테스트 누락 여부를 검토합니다.
+- API나 아키텍처 구조의 변경이 생겼을 때, README 및 개발 문서의 동기화 여부를 체크합니다.
 
-- SRP: each module, struct, class, function, and package owns one clear responsibility.
-- OCP: new renderer/runtime/example behavior should not require editing unrelated stable modules.
-- LSP: TypeScript interfaces and Rust traits must allow substitutable implementations without hidden preconditions.
-- ISP: avoid broad interfaces or traits that force unrelated implementers to provide unused behavior.
-- DIP: high-level engine/runtime code should depend on stable contracts, not concrete browser/WebGL/package internals.
+## 워크플로우
 
-Ferrum2D-specific priority is higher than generic SOLID: Rust core and TypeScript platform responsibilities must not cross.
-
-## Rust Review Criteria
-
-Use `rust-game-engine-conventions` for detailed Rust guidance when `.rs` files are involved.
-
-Flag:
-
-- `unwrap()`/`expect()` in library paths without a proven invariant.
-- runtime checks that should be encoded in types or explicit `Result`/`Option`.
-- oversized traits, leaky modules, or trait methods unrelated to one capability.
-- unclear ownership, avoidable clones, or borrow patterns that hide data flow.
-- hot-path allocation, unnecessary dynamic dispatch, or entity-per-call Wasm crossings.
-- missing `#[repr(C)]` or size/layout checks for Wasm-shared structs.
-- renderer/browser/platform dependencies entering Rust simulation code.
-
-## TypeScript Review Criteria
-
-Use `web-game-engine-platform` for detailed browser/Wasm/WebGL2 guidance when `.ts` or `.js` files are involved.
-
-Flag:
-
-- TypeScript owning simulation state that belongs in Rust.
-- renderer, input, asset, audio, or Wasm bridge responsibilities mixed into one class.
-- public API exposing `dist/*`, `pkg/*`, or generated wasm-bindgen internals.
-- per-entity JS/Wasm calls in frame hot paths.
-- stale typed array views across Wasm memory growth.
-- missing canvas resize/DPR, WebGL2 context, asset decode, audio unlock, or requestAnimationFrame lifecycle handling.
-- broad interfaces that couple independent platform services.
-
-## Review Workflow
-
-1. Inspect `git status --short` and identify the review target.
-2. Read the relevant changed files and nearby contracts.
-3. Classify the surface: Rust, TypeScript, Wasm boundary, public API, Game Spec, docs, package/deploy.
-4. Apply the criteria above plus the matching language/platform skill.
-5. Report findings first, ordered by severity.
-6. Include file/line references for each finding.
-7. Separate concrete defects from design concerns, open questions, and optional cleanup.
-8. Recommend the minimum fix that preserves current milestone boundaries.
-
-## Severity
-
-- Critical: likely runtime breakage, memory/ABI corruption, publish/deploy damage, data loss, or hard security issue.
-- High: user-visible regression, public API break, invalid Wasm boundary, hot-path scalability failure, or architecture boundary violation.
-- Medium: maintainability issue that will make near-term product work unsafe or expensive.
-- Low: localized cleanup, naming, small duplication, or documentation clarity.
-
-## Output Format
-
-Use a code-review stance:
-
-1. Findings first.
-2. Open questions or assumptions.
-3. Change summary only after findings.
-4. Tests/checks reviewed or recommended.
-
-If no issues are found, say that clearly and mention residual test or smoke risk.
-
-## Hard Boundaries
-
-- Do not rewrite code during a review unless the user explicitly asks for fixes.
-- Do not treat generic SOLID preferences as blockers when Ferrum2D boundary rules are satisfied.
-- Do not recommend WebGPU, Workers, editor, multiplayer, or complex physics unless the user explicitly approved that scope.
-- Do not ask `qa_agent` to run checks when a static review is enough; recommend checks instead.
-- Do not claim a command passed unless it was actually run.
+1. 변경된 파일의 영향 범위를 파악하고 Rust/TypeScript 영역으로 나눕니다.
+2. 위 리뷰 원칙을 기준으로 변경 사항의 코드 구조를 심층 분석합니다.
+3. 기계적 오류(컴파일, 린트)는 `qa-agent`에 리포트를 요청하고, 자신은 아키텍처와 구조적 설계 리뷰 리포트를 작성합니다.
+4. 발견된 설계 결함, 성능 병목 요소, 문서 불일치 요소를 명확히 지적하고 대안을 제시합니다.

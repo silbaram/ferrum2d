@@ -10,6 +10,7 @@ const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MODE = "render";
 const TOPDOWN_EFFECTS_MODE = "topdown-effects";
+const DESTRUCTIBLE_TERRAIN_MODE = "destructible-terrain";
 const BREAKOUT_EFFECTS_MODE = "breakout-effects";
 const PLATFORMER_EFFECTS_MODE = "platformer-effects";
 const PHYSICS_SANDBOX_MODE = "physics-sandbox";
@@ -130,6 +131,10 @@ function parseArgs(args) {
       mode = BREAKOUT_EFFECTS_MODE;
       continue;
     }
+    if (arg === "--destructible-terrain") {
+      mode = DESTRUCTIBLE_TERRAIN_MODE;
+      continue;
+    }
     if (arg === "--platformer-effects") {
       mode = PLATFORMER_EFFECTS_MODE;
       continue;
@@ -139,6 +144,7 @@ function parseArgs(args) {
   if (![
     DEFAULT_MODE,
     TOPDOWN_EFFECTS_MODE,
+    DESTRUCTIBLE_TERRAIN_MODE,
     BREAKOUT_EFFECTS_MODE,
     PLATFORMER_EFFECTS_MODE,
     PHYSICS_SANDBOX_MODE,
@@ -156,6 +162,9 @@ function browserSmokeUrl(port, mode) {
   }
   if (mode === TOPDOWN_EFFECTS_MODE) {
     params.set("effectSmoke", "true");
+  }
+  if (mode === DESTRUCTIBLE_TERRAIN_MODE) {
+    params.set("destructibleTerrainDemo", "true");
   }
   if (mode === PHYSICS_SANDBOX_MODE || mode === PHYSICS_DEMO_SUITE_MODE) {
     params.set("demo", "sandbox");
@@ -271,6 +280,8 @@ async function smokeByMode(page, mode, timeoutMs) {
   switch (mode) {
     case TOPDOWN_EFFECTS_MODE:
       return await smokeTopdownEffects(page, timeoutMs);
+    case DESTRUCTIBLE_TERRAIN_MODE:
+      return await smokeDestructibleTerrain(page, timeoutMs);
     case BREAKOUT_EFFECTS_MODE:
       return await smokeSceneParticleEffect(page, timeoutMs, {
         description: "Breakout brick hit particle burst",
@@ -357,6 +368,63 @@ async function smokeTopdownEffects(page, timeoutMs) {
     entityCountAfterEffect: globalThis.ferrumEngine?.entityCount?.() ?? 0,
     particleCountAfterEffect: globalThis.ferrumEngine?.particleCount?.() ?? 0,
   }));
+}
+
+async function smokeDestructibleTerrain(page, timeoutMs) {
+  await waitForPageFunction(
+    page,
+    "Destructible terrain smoke did not observe the initial Top-down Shooter render",
+    () => (globalThis.ferrumRuntime?.renderer?.stats?.().renderCommandCount ?? 0) > 0,
+    timeoutMs,
+  );
+
+  const initial = await page.evaluate(() => {
+    const engine = globalThis.ferrumEngine;
+    const renderer = globalThis.ferrumRuntime?.renderer;
+    if (!engine || !renderer) {
+      throw new Error("Destructible terrain smoke requires window.ferrumEngine and window.ferrumRuntime.renderer.");
+    }
+    const target = { layerIndex: 1, column: 2, row: 1, x: 400, y: 240 };
+    const beforeHit = engine.queryNearestTileObstacle({ x: target.x, y: target.y, maxDistance: 0 });
+    const beforeRenderCommandCount = renderer.stats().renderCommandCount;
+    const changed = engine.setShooterTilemapTilesRect(target.layerIndex, target.column, target.row, 1, 1, 0);
+    const afterHit = engine.queryNearestTileObstacle({ x: target.x, y: target.y, maxDistance: 0 });
+    return {
+      target,
+      changed,
+      beforeHit,
+      afterHit,
+      beforeRenderCommandCount,
+    };
+  });
+
+  if (!initial.beforeHit) {
+    throw new Error("Destructible terrain smoke target did not start on a collision tile.");
+  }
+  if (!initial.changed) {
+    throw new Error("Destructible terrain smoke target tile was not changed.");
+  }
+  if (initial.afterHit) {
+    throw new Error("Destructible terrain smoke target still reports a collision hit after removal.");
+  }
+
+  await waitForPageFunction(
+    page,
+    "Destructible terrain smoke did not observe a rendered tile count drop",
+    (beforeRenderCommandCount) => {
+      const renderer = globalThis.ferrumRuntime?.renderer;
+      return Boolean(renderer && renderer.stats().renderCommandCount < beforeRenderCommandCount);
+    },
+    timeoutMs,
+    initial.beforeRenderCommandCount,
+  );
+
+  return await page.evaluate((initialReport) => ({
+    destructibleTerrain: {
+      ...initialReport,
+      afterRenderCommandCount: globalThis.ferrumRuntime?.renderer?.stats?.().renderCommandCount ?? 0,
+    },
+  }), initial);
 }
 
 

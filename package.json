@@ -23,6 +23,7 @@
     "smoke:destructible-terrain": "node scripts/destructible-terrain-smoke.mjs",
     "smoke:browser": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/minimal-game build && node scripts/browser-render-smoke.mjs examples/minimal-game/dist",
     "smoke:topdown": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/topdown-shooter build && node scripts/browser-render-smoke.mjs --mode=topdown-effects examples/topdown-shooter/dist",
+    "smoke:destructible-terrain-browser": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/topdown-shooter build && node scripts/browser-render-smoke.mjs --mode=destructible-terrain examples/topdown-shooter/dist",
     "smoke:breakout": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/breakout build && node scripts/browser-render-smoke.mjs examples/breakout/dist",
     "smoke:breakout-effects": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/breakout build && node scripts/browser-render-smoke.mjs --mode=breakout-effects examples/breakout/dist",
     "smoke:platformer": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/platformer build && node scripts/browser-render-smoke.mjs examples/platformer/dist",

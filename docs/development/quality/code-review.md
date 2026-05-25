@@ -9,7 +9,7 @@
 
 ### 1) 범위 적합성
 - 변경사항이 현재 제품 목표, 로드맵, 사용자-facing 가치와 연결되는가?
-- 별도 설계/승인 없는 Out-of-Scope(WebGPU/Worker/3D/Editor)가 섞여 있지 않은가?
+- 별도 설계/승인 없는 Out-of-Scope(전체 게임 루프 Worker 이전/3D/Editor)가 섞여 있지 않은가?
 - networking, multiplayer, complex ECS, complex physics가 승인된 제품 기능 범위 없이 끼어들지 않았는가?
 
 ### 2) 아키텍처 경계

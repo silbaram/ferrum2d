@@ -4,6 +4,7 @@ import type {
   FerrumEngine,
   PhysicsBodyColliderOptions,
   PhysicsBodyColliderSnapshot,
+  PhysicsBodyStateBufferSnapshot,
   PhysicsEntityHandle,
   PhysicsEntitySnapshot,
   PhysicsJointHandle,
@@ -15,6 +16,7 @@ import type {
   PhysicsRigidBodyStepOptions,
   PhysicsRigidBodyStepStats,
 } from "../src/createEngine.js";
+import { createPhysicsBodyStateBufferSnapshot } from "../src/physicsBodyStateBuffer.js";
 import { createPhysicsWorldFromSpec } from "../src/physicsAuthoring.js";
 import {
   capturePhysicsWorldSnapshot,
@@ -30,6 +32,9 @@ import {
 } from "../src/physicsSnapshot.js";
 
 class FakeSnapshotEngine {
+  bulkCaptureCount = 0;
+  bulkRestoreCount = 0;
+
   private nextEntityId = 1;
   private bodies = new Map<number, PhysicsEntitySnapshot>();
   private colliders = new Map<number, PhysicsBodyColliderSnapshot[]>();
@@ -127,6 +132,44 @@ class FakeSnapshotEngine {
 
   getPhysicsEntity(handle: PhysicsEntityHandle): PhysicsEntitySnapshot | undefined {
     return cloneBody(this.bodies.get(handle.entityId));
+  }
+
+  capturePhysicsBodyStateBuffer(
+    handles: readonly PhysicsEntityHandle[],
+  ): PhysicsBodyStateBufferSnapshot {
+    this.bulkCaptureCount += 1;
+    return createPhysicsBodyStateBufferSnapshot(handles.map((handle) => {
+      const body = cloneBody(this.bodies.get(handle.entityId));
+      if (body === undefined) {
+        throw new Error("missing fake physics body");
+      }
+      return body;
+    }));
+  }
+
+  restorePhysicsBodyStateBuffer(snapshot: PhysicsBodyStateBufferSnapshot): boolean {
+    this.bulkRestoreCount += 1;
+    for (const state of snapshot.states) {
+      if (!this.bodies.has(state.entityId)) {
+        return false;
+      }
+      const body = cloneBody(state);
+      if (body === undefined) {
+        return false;
+      }
+      this.bodies.set(state.entityId, body);
+      const primary = this.colliders.get(state.entityId)?.[0];
+      if (primary !== undefined) {
+        primary.colliderType = state.colliderType;
+        primary.colliderEnabled = state.colliderEnabled;
+        primary.colliderIsTrigger = state.colliderIsTrigger;
+        primary.colliderOffsetX = state.colliderOffsetX;
+        primary.colliderOffsetY = state.colliderOffsetY;
+        primary.colliderMaterialOverride = state.colliderMaterialOverride;
+        primary.colliderMaterial = { ...state.colliderMaterial };
+      }
+    }
+    return true;
   }
 
   despawnPhysicsEntity(handle: PhysicsEntityHandle): boolean {
@@ -314,6 +357,10 @@ class FakeSnapshotEngine {
       localAnchorBY: "localAnchorBY" in options ? options.localAnchorBY ?? 0 : 0,
       localAxisAX: "localAxisAX" in options ? options.localAxisAX ?? 1 : 1,
       localAxisAY: "localAxisAY" in options ? options.localAxisAY ?? 0 : 0,
+      groundAnchorAX: "groundAnchorAX" in options ? options.groundAnchorAX : 0,
+      groundAnchorAY: "groundAnchorAY" in options ? options.groundAnchorAY : 0,
+      groundAnchorBX: "groundAnchorBX" in options ? options.groundAnchorBX : 0,
+      groundAnchorBY: "groundAnchorBY" in options ? options.groundAnchorBY : 0,
       limitEnabled: "limitEnabled" in options ? options.limitEnabled === true : false,
       lowerAngle: "lowerAngle" in options ? options.lowerAngle ?? 0 : 0,
       upperAngle: "upperAngle" in options ? options.upperAngle ?? 0 : 0,
@@ -386,6 +433,8 @@ test("physics world snapshot captures versioned state and restores via Physics S
   equal(restoredState?.velocityX, 4);
   equal(restored.sourceSnapshot.replayHash, snapshot.replayHash);
   equal(hashPhysicsWorldSnapshot(snapshot), snapshot.replayHash);
+  equal(fake.bulkCaptureCount, 1);
+  equal(fake.bulkRestoreCount, 1);
 });
 
 test("physics replay rollback compares deterministic snapshot hashes", () => {
@@ -512,7 +561,7 @@ test("physics world snapshot hashes and restores secondary collider material sta
   equal(engine.getPhysicsBodyCollider(restored.bodies.compound, 1)?.colliderMaterial.friction, 0.9);
 });
 
-test("physics world snapshot accepts chain colliders expanded to edge segments", () => {
+test("physics world snapshot preserves dedicated chain colliders", () => {
   const fake = new FakeSnapshotEngine();
   const engine = fake as unknown as FerrumEngine;
   const world = createPhysicsWorldFromSpec(engine, {
@@ -531,12 +580,12 @@ test("physics world snapshot accepts chain colliders expanded to edge segments",
 
   const snapshot = capturePhysicsWorldSnapshot(engine, world, { frame: 1 });
 
-  equal(snapshot.bodies.chainWall.colliders.length, 3);
+  equal(snapshot.bodies.chainWall.colliders.length, 1);
   equal(snapshot.bodies.chainWall.colliders[0]?.spec.shape, "chain");
-  equal(snapshot.bodies.chainWall.colliders[2]?.state.colliderType, "edge");
+  equal(snapshot.bodies.chainWall.colliders[0]?.state.colliderType, "chain");
 
   const restored = restorePhysicsWorldSnapshot(engine, snapshot, { replace: world });
-  equal(engine.getPhysicsBodyColliderCount(restored.bodies.chainWall), 3);
+  equal(engine.getPhysicsBodyColliderCount(restored.bodies.chainWall), 1);
 });
 
 test("physics world snapshot rejects runtime colliders outside the resolved spec", () => {

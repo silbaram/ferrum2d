@@ -1,7 +1,20 @@
-export { createEngine } from "./createEngine";
+export {
+  PHYSICS_BODY_STATE_BUFFER_FORMAT,
+  PHYSICS_BODY_STATE_BUFFER_VERSION,
+  PHYSICS_BODY_STATE_FLOATS_PER_BODY,
+  PHYSICS_BODY_STATE_U32S_PER_BODY,
+  createEngine,
+  createPhysicsBodyStateBufferSnapshot,
+} from "./createEngine";
 export { createFerrumRuntime } from "./createFerrumRuntime";
 export { createRenderer } from "./createRenderer";
-export type { FerrumRuntime, FerrumRuntimeEnvironment, FerrumRuntimeFrame, FerrumRuntimeOptions } from "./createFerrumRuntime";
+export type {
+  FerrumRuntime,
+  FerrumRuntimeEnvironment,
+  FerrumRuntimeFrame,
+  FerrumRuntimeOptions,
+  FerrumRuntimeRenderer,
+} from "./createFerrumRuntime";
 export type { UiOverlayStateProvider } from "./createFerrumRuntime";
 export type {
   AssetHost,
@@ -30,6 +43,7 @@ export type {
   PhysicsAabbTileObstacleShapeCastQuery,
   PhysicsBodyColliderOptions,
   PhysicsBodyColliderSnapshot,
+  PhysicsBodyStateBufferSnapshot,
   PhysicsBodyContactQuery,
   PhysicsBodyManifoldQuery,
   PhysicsCapsuleBodyShapeCastQuery,
@@ -134,6 +148,25 @@ export type {
   RestorePhysicsWorldSnapshotOptions,
 } from "./physicsSnapshot";
 export {
+  PHYSICS_REPLAY_WORKER_REQUEST_FORMAT,
+  PHYSICS_REPLAY_WORKER_RESPONSE_FORMAT,
+  PHYSICS_REPLAY_WORKER_VERSION,
+  PhysicsReplayWorkerClient,
+  createPhysicsReplayWorkerClient,
+} from "./physicsReplayWorker";
+export type {
+  CreatePhysicsReplayWorkerClientOptions,
+  PhysicsReplayWorkerError,
+  PhysicsReplayWorkerPort,
+  PhysicsReplayWorkerRequest,
+  PhysicsReplayWorkerResponse,
+  PhysicsReplayWorkerRunOptions,
+  PhysicsReplayWorkerRunResult,
+  PhysicsReplayWorkerTransferBenchmarkOptions,
+  PhysicsReplayWorkerTransferBenchmarkResult,
+  PhysicsReplayWorkerTransferBenchmarkSample,
+} from "./physicsReplayWorker";
+export {
   PHYSICS_BUILTIN_COLLISION_LAYERS,
   PHYSICS_COMMON_LAYER_PATTERN,
   PHYSICS_MATERIAL_PRESETS,
@@ -144,6 +177,7 @@ export {
   createPhysicsLayerSpec,
   createPhysicsWorldFromSpec,
   createRigidBody,
+  createVehicleRig,
   physicsLayerMaskBits,
   physicsMaterial,
 } from "./physicsAuthoring";
@@ -159,10 +193,42 @@ export type {
   PhysicsMaterialAuthoringInput,
   PhysicsMaterialPresetName,
   PhysicsRigidBodyAuthoringOptions,
+  PhysicsVehicleRigAuthoringOptions,
+  PhysicsVehicleRigResult,
+  PhysicsVehicleWheelAuthoringOptions,
   PhysicsWorldApplyOptions,
   PhysicsWorldApplyResult,
   PhysicsWorldApplyWarning,
 } from "./physicsAuthoring";
+export {
+  PixelMaskTerrain,
+  createPixelMaskTerrain,
+  extractPixelMaskBoundaryChains,
+  pixelMaskTerrainToTilemapLayer,
+} from "./pixelMaskTerrain";
+export type {
+  PixelMaskTerrainAlphaPatch,
+  PixelMaskTerrainBoundaryOptions,
+  PixelMaskTerrainDirtyRect,
+  PixelMaskTerrainLayerOptions,
+  PixelMaskTerrainOptions,
+  PixelMaskTerrainTextureUploadOptions,
+} from "./pixelMaskTerrain";
+export { PixelMaskTerrainRuntime, createPixelMaskTerrainRuntime } from "./pixelMaskTerrainRuntime";
+export type {
+  PixelMaskTerrainRuntimeOptions,
+  PixelMaskTerrainRuntimePhysicsOptions,
+  PixelMaskTerrainRuntimeSyncOptions,
+  PixelMaskTerrainRuntimeSyncResult,
+  PixelMaskTerrainRuntimeTextureOptions,
+  PixelMaskTerrainTextureTarget,
+} from "./pixelMaskTerrainRuntime";
+export { extractTilemapBoundaryChains } from "./tilemapPhysics";
+export type {
+  TilemapBoundaryChain,
+  TilemapBoundaryExtractionOptions,
+  TilemapBoundaryExtractionResult,
+} from "./tilemapPhysics";
 export { DEFAULT_PHYSICS_MODE, resolvePhysicsMode, resolvePhysicsSpec } from "./physicsSpec";
 export type {
   PhysicsBodySpec,
@@ -253,9 +319,10 @@ export type {
   ParticleUvRect,
 } from "./particlePreset";
 export type { Renderer, RendererStats } from "./renderer";
-export type { CreateRendererOptions, RendererFallbackInfo } from "./createRenderer";
+export type { CreatedRenderer, CreateRendererOptions, RendererFallbackInfo } from "./createRenderer";
 export { WebGL2Renderer } from "./webgl2Renderer";
 export type { WebGL2RendererOptions } from "./webgl2Renderer";
+export type { WebGPURendererOptions } from "./webgpuRenderer";
 export type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch";
 export { BrowserPlatformHost } from "./browserPlatformHost";
 export { WebGPURenderer } from "./webgpuRenderer";

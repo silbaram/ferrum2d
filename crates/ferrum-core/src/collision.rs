@@ -1,7 +1,7 @@
 use crate::components::{
-    AabbCollider, CapsuleCollider, CircleCollider, CollisionLayer, CollisionMask, CompoundCollider,
-    CompoundColliderShape, ConvexPolygonCollider, EdgeCollider, OrientedBoxCollider, Transform2D,
-    Velocity,
+    AabbCollider, CapsuleCollider, ChainCollider, CircleCollider, CollisionLayer, CollisionMask,
+    CompoundCollider, CompoundColliderShape, ConvexPolygonCollider, EdgeCollider,
+    OrientedBoxCollider, PulleyJoint, Transform2D, Velocity,
 };
 use crate::entity::Entity;
 use crate::world::World;
@@ -14,7 +14,10 @@ const BROADPHASE_DEBUG_COLOR: [f32; 4] = [0.1, 0.75, 1.0, 0.55];
 const COLLIDER_AWAKE_DEBUG_COLOR: [f32; 4] = [0.2, 0.85, 0.35, 0.9];
 const COLLIDER_SLEEPING_DEBUG_COLOR: [f32; 4] = [0.45, 0.55, 0.65, 0.75];
 const JOINT_DEBUG_COLOR: [f32; 4] = [0.95, 0.75, 0.15, 0.9];
+const CCD_HIT_DEBUG_COLOR: [f32; 4] = [1.0, 0.45, 0.05, 1.0];
 const CONTACT_POINT_MARKER_SIZE: f32 = 3.0;
+const CCD_HIT_MARKER_SIZE: f32 = 4.0;
+const CCD_HIT_NORMAL_LENGTH: f32 = 12.0;
 pub const MAX_COLLISION_MANIFOLD_POINTS: usize = 2;
 pub use crate::components::MAX_CONVEX_POLYGON_VERTICES;
 pub const PHYSICS_DEBUG_BROADPHASE: u32 = 1 << 0;
@@ -22,6 +25,7 @@ pub const PHYSICS_DEBUG_CONTACTS: u32 = 1 << 1;
 pub const PHYSICS_DEBUG_COLLIDERS: u32 = 1 << 2;
 pub const PHYSICS_DEBUG_JOINTS: u32 = 1 << 3;
 pub const PHYSICS_DEBUG_SLEEPING: u32 = 1 << 4;
+pub const PHYSICS_DEBUG_CCD: u32 = 1 << 5;
 pub const PHYSICS_DEBUG_DEFAULT: u32 = PHYSICS_DEBUG_BROADPHASE | PHYSICS_DEBUG_CONTACTS;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,6 +38,7 @@ pub struct CollisionPair {
 pub(crate) struct ColliderKey {
     pub entity_index: usize,
     pub collider_index: usize,
+    pub segment_index: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -680,22 +685,26 @@ impl CollisionSystem {
                 continue;
             };
             for collider_index in 0..world.compound_collider_count_at(index) {
-                let Some(shape) = collider_shape_at(world, index, collider_index) else {
-                    continue;
-                };
                 if !mask_contains_collider(world, index, collider_index, query_mask) {
                     continue;
                 }
-                let Some(hit) = nearest_body_hit(
-                    point,
-                    transform,
-                    shape,
-                    entity_from_index(world, index),
-                    max_distance,
-                ) else {
-                    continue;
-                };
-                update_nearest_body_hit(&mut best, hit);
+                for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                    let Some(shape) =
+                        collider_shape_at_segment(world, index, collider_index, segment_index)
+                    else {
+                        continue;
+                    };
+                    let Some(hit) = nearest_body_hit(
+                        point,
+                        transform,
+                        shape,
+                        entity_from_index(world, index),
+                        max_distance,
+                    ) else {
+                        continue;
+                    };
+                    update_nearest_body_hit(&mut best, hit);
+                }
             }
         }
         best
@@ -1015,6 +1024,9 @@ impl CollisionSystem {
         if flags & PHYSICS_DEBUG_JOINTS != 0 {
             Self::append_joint_debug_lines_into(world, lines);
         }
+        if flags & PHYSICS_DEBUG_CCD != 0 {
+            Self::append_ccd_debug_lines_into(world, lines);
+        }
         if flags & PHYSICS_DEBUG_CONTACTS != 0 && is_valid_debug_line_length(normal_length) {
             Self::append_contact_debug_lines_into(world, normal_length, lines);
         }
@@ -1050,15 +1062,19 @@ impl CollisionSystem {
                 continue;
             };
             for collider_index in 0..world.compound_collider_count_at(index) {
-                let Some(shape) = collider_shape_at(world, index, collider_index) else {
-                    continue;
-                };
-                append_collider_outline_debug_lines(
-                    transform,
-                    shape,
-                    collider_debug_color(world, index, show_sleeping_state),
-                    lines,
-                );
+                for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                    let Some(shape) =
+                        collider_shape_at_segment(world, index, collider_index, segment_index)
+                    else {
+                        continue;
+                    };
+                    append_collider_outline_debug_lines(
+                        transform,
+                        shape,
+                        collider_debug_color(world, index, show_sleeping_state),
+                        lines,
+                    );
+                }
             }
         }
     }
@@ -1102,6 +1118,9 @@ impl CollisionSystem {
                 lines,
             );
         }
+        for joint in world.pulley_joints.iter().copied().flatten() {
+            append_pulley_joint_debug_lines(world, joint, lines);
+        }
         for joint in world.revolute_joints.iter().copied().flatten() {
             append_entity_link_debug_line(
                 world,
@@ -1137,6 +1156,25 @@ impl CollisionSystem {
                 JOINT_DEBUG_COLOR,
                 lines,
             );
+        }
+    }
+
+    pub(crate) fn append_ccd_debug_lines_into(world: &World, lines: &mut Vec<PhysicsDebugLine>) {
+        for hit in world.rigid_body_ccd_debug_hits() {
+            append_cross_debug_lines(
+                hit.point_x,
+                hit.point_y,
+                CCD_HIT_MARKER_SIZE,
+                CCD_HIT_DEBUG_COLOR,
+                lines,
+            );
+            lines.push(debug_line(
+                hit.point_x,
+                hit.point_y,
+                hit.point_x + hit.normal_x * CCD_HIT_NORMAL_LENGTH,
+                hit.point_y + hit.normal_y * CCD_HIT_NORMAL_LENGTH,
+                CCD_HIT_DEBUG_COLOR,
+            ));
         }
     }
 
@@ -1323,17 +1361,22 @@ impl CollisionSystem {
                 continue;
             };
             for collider_index in 0..world.compound_collider_count_at(index) {
-                let Some(shape) = collider_shape_at(world, index, collider_index) else {
-                    continue;
-                };
-                if !mask_contains_collider(world, index, collider_index, query_mask)
-                    || !collider_contains_point(transform, shape, point)
-                {
+                if !mask_contains_collider(world, index, collider_index, query_mask) {
                     continue;
                 }
-                let entity = entity_from_index(world, index);
-                if !hits.iter().any(|hit| hit.entity == entity) {
-                    hits.push(PointQueryHit { entity });
+                for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                    let Some(shape) =
+                        collider_shape_at_segment(world, index, collider_index, segment_index)
+                    else {
+                        continue;
+                    };
+                    if !collider_contains_point(transform, shape, point) {
+                        continue;
+                    }
+                    let entity = entity_from_index(world, index);
+                    if !hits.iter().any(|hit| hit.entity == entity) {
+                        hits.push(PointQueryHit { entity });
+                    }
                 }
             }
         }
@@ -1354,17 +1397,22 @@ impl CollisionSystem {
                 continue;
             };
             for collider_index in 0..world.compound_collider_count_at(index) {
-                let Some(shape) = collider_shape_at(world, index, collider_index) else {
-                    continue;
-                };
-                if !mask_contains_collider(world, index, collider_index, query_mask)
-                    || !collider_overlaps_aabb(transform, shape, bounds)
-                {
+                if !mask_contains_collider(world, index, collider_index, query_mask) {
                     continue;
                 }
-                let entity = entity_from_index(world, index);
-                if !hits.iter().any(|hit| hit.entity == entity) {
-                    hits.push(AabbQueryHit { entity });
+                for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                    let Some(shape) =
+                        collider_shape_at_segment(world, index, collider_index, segment_index)
+                    else {
+                        continue;
+                    };
+                    if !collider_overlaps_aabb(transform, shape, bounds) {
+                        continue;
+                    }
+                    let entity = entity_from_index(world, index);
+                    if !hits.iter().any(|hit| hit.entity == entity) {
+                        hits.push(AabbQueryHit { entity });
+                    }
                 }
             }
         }
@@ -1389,17 +1437,22 @@ impl CollisionSystem {
                 continue;
             };
             for collider_index in 0..world.compound_collider_count_at(index) {
-                let Some(shape) = collider_shape_at(world, index, collider_index) else {
-                    continue;
-                };
-                if !mask_contains_collider(world, index, collider_index, query_mask)
-                    || !collider_overlaps_circle(transform, shape, center, radius)
-                {
+                if !mask_contains_collider(world, index, collider_index, query_mask) {
                     continue;
                 }
-                let entity = entity_from_index(world, index);
-                if !hits.iter().any(|hit| hit.entity == entity) {
-                    hits.push(CircleQueryHit { entity });
+                for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                    let Some(shape) =
+                        collider_shape_at_segment(world, index, collider_index, segment_index)
+                    else {
+                        continue;
+                    };
+                    if !collider_overlaps_circle(transform, shape, center, radius) {
+                        continue;
+                    }
+                    let entity = entity_from_index(world, index);
+                    if !hits.iter().any(|hit| hit.entity == entity) {
+                        hits.push(CircleQueryHit { entity });
+                    }
                 }
             }
         }
@@ -1423,17 +1476,22 @@ impl CollisionSystem {
                 continue;
             };
             for collider_index in 0..world.compound_collider_count_at(index) {
-                let Some(collider_shape) = collider_shape_at(world, index, collider_index) else {
-                    continue;
-                };
-                if !mask_contains_collider(world, index, collider_index, query_mask)
-                    || !query_shape_overlaps_collider(shape, transform, collider_shape)
-                {
+                if !mask_contains_collider(world, index, collider_index, query_mask) {
                     continue;
                 }
-                let entity = entity_from_index(world, index);
-                if !hits.iter().any(|hit| hit.entity == entity) {
-                    hits.push(ShapeQueryHit { entity });
+                for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                    let Some(collider_shape) =
+                        collider_shape_at_segment(world, index, collider_index, segment_index)
+                    else {
+                        continue;
+                    };
+                    if !query_shape_overlaps_collider(shape, transform, collider_shape) {
+                        continue;
+                    }
+                    let entity = entity_from_index(world, index);
+                    if !hits.iter().any(|hit| hit.entity == entity) {
+                        hits.push(ShapeQueryHit { entity });
+                    }
                 }
             }
         }
@@ -1463,25 +1521,29 @@ impl CollisionSystem {
                 continue;
             };
             for collider_index in 0..world.compound_collider_count_at(index) {
-                let Some(shape) = collider_shape_at(world, index, collider_index) else {
-                    continue;
-                };
                 if !mask_contains_collider(world, index, collider_index, query_mask) {
                     continue;
                 }
-                let Some(hit) =
-                    raycast_shape(origin, unit_x, unit_y, max_distance, transform, shape)
-                else {
-                    continue;
-                };
-                hits.push(RaycastHit {
-                    entity: entity_from_index(world, index),
-                    distance: hit.distance,
-                    point_x: origin.x + unit_x * hit.distance,
-                    point_y: origin.y + unit_y * hit.distance,
-                    normal_x: hit.normal_x,
-                    normal_y: hit.normal_y,
-                });
+                for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                    let Some(shape) =
+                        collider_shape_at_segment(world, index, collider_index, segment_index)
+                    else {
+                        continue;
+                    };
+                    let Some(hit) =
+                        raycast_shape(origin, unit_x, unit_y, max_distance, transform, shape)
+                    else {
+                        continue;
+                    };
+                    hits.push(RaycastHit {
+                        entity: entity_from_index(world, index),
+                        distance: hit.distance,
+                        point_x: origin.x + unit_x * hit.distance,
+                        point_y: origin.y + unit_y * hit.distance,
+                        normal_x: hit.normal_x,
+                        normal_y: hit.normal_y,
+                    });
+                }
             }
         }
         hits.sort_by(|a, b| {
@@ -1531,33 +1593,38 @@ impl CollisionSystem {
                 continue;
             };
             for collider_index in 0..world.compound_collider_count_at(index) {
-                let Some(collider_shape) = collider_shape_at(world, index, collider_index) else {
-                    continue;
-                };
-                if !mask_contains_collider(world, index, collider_index, query_mask)
-                    || !sweep_bounds.overlaps(collider_bounds(transform, collider_shape))
-                {
+                if !mask_contains_collider(world, index, collider_index, query_mask) {
                     continue;
                 }
-                let Some(hit) = shape_cast_hit(
-                    shape,
-                    unit_x,
-                    unit_y,
-                    max_distance,
-                    transform,
-                    collider_shape,
-                ) else {
-                    continue;
-                };
-                let reference = query_shape_reference_point(shape);
-                hits.push(ShapeCastHit {
-                    entity: entity_from_index(world, index),
-                    distance: hit.distance,
-                    point_x: reference.x + unit_x * hit.distance,
-                    point_y: reference.y + unit_y * hit.distance,
-                    normal_x: hit.normal_x,
-                    normal_y: hit.normal_y,
-                });
+                for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                    let Some(collider_shape) =
+                        collider_shape_at_segment(world, index, collider_index, segment_index)
+                    else {
+                        continue;
+                    };
+                    if !sweep_bounds.overlaps(collider_bounds(transform, collider_shape)) {
+                        continue;
+                    }
+                    let Some(hit) = shape_cast_hit(
+                        shape,
+                        unit_x,
+                        unit_y,
+                        max_distance,
+                        transform,
+                        collider_shape,
+                    ) else {
+                        continue;
+                    };
+                    let reference = query_shape_reference_point(shape);
+                    hits.push(ShapeCastHit {
+                        entity: entity_from_index(world, index),
+                        distance: hit.distance,
+                        point_x: reference.x + unit_x * hit.distance,
+                        point_y: reference.y + unit_y * hit.distance,
+                        normal_x: hit.normal_x,
+                        normal_y: hit.normal_y,
+                    });
+                }
             }
         }
         hits.sort_by(|a, b| {
@@ -1572,8 +1639,10 @@ fn fill_current_proxies(world: &World, proxies: &mut Vec<CollisionProxy>) {
     proxies.clear();
     for index in 0..world.transforms.len() {
         for collider_index in 0..world.compound_collider_count_at(index) {
-            if let Some(proxy) = current_proxy(world, index, collider_index) {
-                proxies.push(proxy);
+            for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                if let Some(proxy) = current_proxy(world, index, collider_index, segment_index) {
+                    proxies.push(proxy);
+                }
             }
         }
     }
@@ -1654,6 +1723,7 @@ fn fill_swept_layer_proxies(
             key: ColliderKey {
                 entity_index: index,
                 collider_index: 0,
+                segment_index: 0,
             },
             bounds,
         });
@@ -1694,6 +1764,7 @@ fn fill_swept_mask_proxies(
             key: ColliderKey {
                 entity_index: index,
                 collider_index: 0,
+                segment_index: 0,
             },
             bounds,
         });
@@ -1701,16 +1772,22 @@ fn fill_swept_mask_proxies(
     proxies.sort_by(proxy_order);
 }
 
-fn current_proxy(world: &World, index: usize, collider_index: usize) -> Option<CollisionProxy> {
+fn current_proxy(
+    world: &World,
+    index: usize,
+    collider_index: usize,
+    segment_index: usize,
+) -> Option<CollisionProxy> {
     if !world.alive.get(index).copied().unwrap_or(false) {
         return None;
     }
     let transform = world.transforms[index]?;
-    let shape = collider_shape_at(world, index, collider_index)?;
+    let shape = collider_shape_at_segment(world, index, collider_index, segment_index)?;
     Some(CollisionProxy {
         key: ColliderKey {
             entity_index: index,
             collider_index,
+            segment_index,
         },
         bounds: collider_bounds(transform, shape),
     })
@@ -1722,6 +1799,7 @@ fn proxy_order(a: &CollisionProxy, b: &CollisionProxy) -> std::cmp::Ordering {
         .total_cmp(&b.bounds.min_x)
         .then_with(|| a.key.entity_index.cmp(&b.key.entity_index))
         .then_with(|| a.key.collider_index.cmp(&b.key.collider_index))
+        .then_with(|| a.key.segment_index.cmp(&b.key.segment_index))
 }
 
 fn pair_from_indices(world: &World, a: usize, b: usize) -> CollisionPair {
@@ -1760,14 +1838,34 @@ pub(crate) fn collider_shape_at(
     index: usize,
     collider_index: usize,
 ) -> Option<ColliderShapeRef> {
+    collider_shape_at_segment(world, index, collider_index, 0)
+}
+
+fn collider_segment_count_at(world: &World, index: usize, collider_index: usize) -> usize {
+    let Some(collider) = world.compound_collider_at(index, collider_index) else {
+        return 0;
+    };
+    match collider.shape {
+        CompoundColliderShape::Chain(collider) => collider.segment_count(),
+        _ => 1,
+    }
+}
+
+fn collider_shape_at_segment(
+    world: &World,
+    index: usize,
+    collider_index: usize,
+    segment_index: usize,
+) -> Option<ColliderShapeRef> {
     let collider = world.compound_collider_at(index, collider_index)?;
-    collider_shape_from_compound(world, index, collider)
+    collider_shape_from_compound(world, index, collider, segment_index)
 }
 
 fn collider_shape_from_compound(
     world: &World,
     index: usize,
     collider: CompoundCollider,
+    segment_index: usize,
 ) -> Option<ColliderShapeRef> {
     if !collider.enabled() {
         return None;
@@ -1790,6 +1888,10 @@ fn collider_shape_from_compound(
         CompoundColliderShape::Edge(collider) => {
             edge_collider_is_valid(collider).then_some(ColliderShapeRef::Edge(collider))
         }
+        CompoundColliderShape::Chain(collider) => chain_collider_segment(collider, segment_index)
+            .and_then(|segment| {
+                edge_collider_is_valid(segment).then_some(ColliderShapeRef::Edge(segment))
+            }),
         CompoundColliderShape::ConvexPolygon(collider) => {
             (convex_polygon_collider_is_valid(collider)).then(|| {
                 ColliderShapeRef::ConvexPolygon(
@@ -1913,7 +2015,12 @@ fn swept_shape_contact_normal(
 }
 
 fn collider_layer_at(world: &World, key: ColliderKey) -> Option<CollisionLayer> {
-    match collider_shape_at(world, key.entity_index, key.collider_index)? {
+    match collider_shape_at_segment(
+        world,
+        key.entity_index,
+        key.collider_index,
+        key.segment_index,
+    )? {
         ColliderShapeRef::Aabb(collider) => Some(collider.layer),
         ColliderShapeRef::Circle(collider) => Some(collider.layer),
         ColliderShapeRef::OrientedBox(collider, _) => Some(collider.layer),
@@ -2626,9 +2733,19 @@ impl ColliderPairContext {
         Some(Self {
             pair,
             at: world.transforms.get(a_index).copied().flatten()?,
-            ac: collider_shape_at(world, a_index, collider_pair.a.collider_index)?,
+            ac: collider_shape_at_segment(
+                world,
+                a_index,
+                collider_pair.a.collider_index,
+                collider_pair.a.segment_index,
+            )?,
             bt: world.transforms.get(b_index).copied().flatten()?,
-            bc: collider_shape_at(world, b_index, collider_pair.b.collider_index)?,
+            bc: collider_shape_at_segment(
+                world,
+                b_index,
+                collider_pair.b.collider_index,
+                collider_pair.b.segment_index,
+            )?,
         })
     }
 
@@ -2716,23 +2833,27 @@ fn contact_debug_line(
 }
 
 fn append_contact_point_debug_lines(contact: CollisionContact, lines: &mut Vec<PhysicsDebugLine>) {
-    if !contact.point_x.is_finite() || !contact.point_y.is_finite() {
+    append_cross_debug_lines(
+        contact.point_x,
+        contact.point_y,
+        CONTACT_POINT_MARKER_SIZE,
+        CONTACT_DEBUG_COLOR,
+        lines,
+    );
+}
+
+fn append_cross_debug_lines(
+    x: f32,
+    y: f32,
+    marker_size: f32,
+    color: [f32; 4],
+    lines: &mut Vec<PhysicsDebugLine>,
+) {
+    if !x.is_finite() || !y.is_finite() || !marker_size.is_finite() || marker_size <= 0.0 {
         return;
     }
-    lines.push(debug_line(
-        contact.point_x - CONTACT_POINT_MARKER_SIZE,
-        contact.point_y,
-        contact.point_x + CONTACT_POINT_MARKER_SIZE,
-        contact.point_y,
-        CONTACT_DEBUG_COLOR,
-    ));
-    lines.push(debug_line(
-        contact.point_x,
-        contact.point_y - CONTACT_POINT_MARKER_SIZE,
-        contact.point_x,
-        contact.point_y + CONTACT_POINT_MARKER_SIZE,
-        CONTACT_DEBUG_COLOR,
-    ));
+    lines.push(debug_line(x - marker_size, y, x + marker_size, y, color));
+    lines.push(debug_line(x, y - marker_size, x, y + marker_size, color));
 }
 
 fn append_collider_outline_debug_lines(
@@ -2851,6 +2972,91 @@ fn append_entity_link_debug_line(
         return;
     };
     lines.push(debug_line(a.x, a.y, b.x, b.y, color));
+}
+
+fn append_pulley_joint_debug_lines(
+    world: &World,
+    joint: PulleyJoint,
+    lines: &mut Vec<PhysicsDebugLine>,
+) {
+    let Some(anchor_a) = pulley_joint_world_anchor(
+        world,
+        joint.entity_a,
+        joint.local_anchor_a_x,
+        joint.local_anchor_a_y,
+    ) else {
+        return;
+    };
+    let Some(anchor_b) = pulley_joint_world_anchor(
+        world,
+        joint.entity_b,
+        joint.local_anchor_b_x,
+        joint.local_anchor_b_y,
+    ) else {
+        return;
+    };
+    let ground_anchor_a = Transform2D {
+        x: finite_debug_number(joint.ground_anchor_a_x),
+        y: finite_debug_number(joint.ground_anchor_a_y),
+    };
+    let ground_anchor_b = Transform2D {
+        x: finite_debug_number(joint.ground_anchor_b_x),
+        y: finite_debug_number(joint.ground_anchor_b_y),
+    };
+    lines.push(debug_line(
+        ground_anchor_a.x,
+        ground_anchor_a.y,
+        anchor_a.x,
+        anchor_a.y,
+        JOINT_DEBUG_COLOR,
+    ));
+    lines.push(debug_line(
+        ground_anchor_b.x,
+        ground_anchor_b.y,
+        anchor_b.x,
+        anchor_b.y,
+        JOINT_DEBUG_COLOR,
+    ));
+    lines.push(debug_line(
+        ground_anchor_a.x,
+        ground_anchor_a.y,
+        ground_anchor_b.x,
+        ground_anchor_b.y,
+        JOINT_DEBUG_COLOR,
+    ));
+}
+
+fn pulley_joint_world_anchor(
+    world: &World,
+    entity: Entity,
+    local_anchor_x: f32,
+    local_anchor_y: f32,
+) -> Option<Transform2D> {
+    let transform = world.transform(entity)?;
+    let index = entity.id as usize;
+    let rotation = world
+        .rotations
+        .get(index)
+        .copied()
+        .flatten()
+        .map(|rotation| rotation.radians)
+        .filter(|radians| radians.is_finite())
+        .unwrap_or(0.0);
+    let (sin, cos) = rotation.sin_cos();
+    let x = finite_debug_number(local_anchor_x);
+    let y = finite_debug_number(local_anchor_y);
+    Some(Transform2D {
+        x: transform.x + x * cos - y * sin,
+        y: transform.y + x * sin + y * cos,
+    })
+}
+
+fn finite_debug_number(value: f32) -> f32 {
+    if value.is_finite() {
+        value
+    } else {
+        0.0
+    }
 }
 
 fn append_bounds_debug_lines(
@@ -6935,6 +7141,13 @@ fn edge_as_capsule(collider: EdgeCollider) -> CapsuleCollider {
     )
     .with_offset(collider.offset_x, collider.offset_y)
     .with_enabled(collider.enabled)
+}
+
+fn chain_collider_segment(collider: ChainCollider, segment_index: usize) -> Option<EdgeCollider> {
+    if !collider.enabled {
+        return None;
+    }
+    collider.segment(segment_index)
 }
 
 fn point_aabb_distance_squared(point: Transform2D, bounds: AabbBounds) -> f32 {
@@ -14712,6 +14925,71 @@ mod tests {
         );
     }
 
+    #[test]
+    fn chain_collider_segments_participate_in_queries_contacts_and_debug_lines() {
+        let mut world = World::default();
+        let chain = spawn_custom_chain(
+            &mut world,
+            0.0,
+            0.0,
+            chain(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)], false),
+            CollisionMask::WALL,
+            CollisionMask::PLAYER,
+        );
+        let player = spawn_custom_circle(
+            &mut world,
+            10.0,
+            5.0,
+            1.0,
+            CollisionMask::PLAYER,
+            CollisionMask::WALL,
+        );
+
+        let aabb_hits = CollisionSystem::aabb_query(
+            &world,
+            AabbBounds::from_center(Transform2D { x: 10.0, y: 5.0 }, 1.0, 1.0)
+                .expect("valid query bounds"),
+            CollisionMask::WALL,
+        );
+        assert_eq!(aabb_hits, vec![AabbQueryHit { entity: chain }]);
+
+        let contacts = CollisionSystem::build_contacts(&world);
+        assert!(
+            contacts.iter().any(|contact| {
+                (contact.pair.a == chain && contact.pair.b == player)
+                    || (contact.pair.a == player && contact.pair.b == chain)
+            }),
+            "chain segment should contact circle body, got {contacts:?}"
+        );
+
+        let hits = CollisionSystem::raycast_all(
+            &world,
+            Transform2D { x: 15.0, y: 5.0 },
+            Velocity { vx: -1.0, vy: 0.0 },
+            20.0,
+            CollisionMask::WALL,
+        );
+        assert_eq!(hits.first().map(|hit| hit.entity), Some(chain));
+
+        let debug_lines = CollisionSystem::build_physics_debug_lines_with_flags(
+            &world,
+            4.0,
+            PHYSICS_DEBUG_COLLIDERS,
+        );
+        assert!(debug_lines.iter().any(|line| {
+            (line.x0 - 0.0).abs() < 0.0001
+                && (line.y0 - 0.0).abs() < 0.0001
+                && (line.x1 - 10.0).abs() < 0.0001
+                && (line.y1 - 0.0).abs() < 0.0001
+        }));
+        assert!(debug_lines.iter().any(|line| {
+            (line.x0 - 10.0).abs() < 0.0001
+                && (line.y0 - 0.0).abs() < 0.0001
+                && (line.x1 - 10.0).abs() < 0.0001
+                && (line.y1 - 10.0).abs() < 0.0001
+        }));
+    }
+
     fn spawn_custom_body(
         world: &mut World,
         x: f32,
@@ -14780,6 +15058,21 @@ mod tests {
         entity
     }
 
+    fn spawn_custom_chain(
+        world: &mut World,
+        x: f32,
+        y: f32,
+        collider: ChainCollider,
+        category: CollisionMask,
+        mask: CollisionMask,
+    ) -> Entity {
+        let entity = world.spawn_entity();
+        world.set_transform(entity, Transform2D { x, y });
+        world.set_chain_collider(entity, collider);
+        world.set_collision_filter(entity, CollisionFilter::new(category, mask));
+        entity
+    }
+
     fn spawn_custom_oriented_box(
         world: &mut World,
         x: f32,
@@ -14808,5 +15101,20 @@ mod tests {
         world.set_convex_polygon_collider(entity, collider);
         world.set_collision_filter(entity, CollisionFilter::new(category, mask));
         entity
+    }
+
+    fn chain(points: &[(f32, f32)], looped: bool) -> ChainCollider {
+        let mut vertices =
+            [Transform2D { x: 0.0, y: 0.0 }; crate::components::MAX_CHAIN_COLLIDER_VERTICES];
+        for (index, (x, y)) in points.iter().copied().enumerate() {
+            vertices[index] = Transform2D { x, y };
+        }
+        ChainCollider::new(
+            vertices,
+            points.len() as u32,
+            looped,
+            false,
+            CollisionLayer::Wall,
+        )
     }
 }

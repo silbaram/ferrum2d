@@ -12,6 +12,7 @@ const scenarios = [
     purpose: "tile occupancy rect edits keep collision queries and render commands synchronized",
     tests: [
       "tilemap::tests::set_tiles_rect_refreshes_collision_cache_and_render_commands",
+      "tilemap::tests::set_tiles_rect_rebuilds_only_dirty_collision_chunks",
       "engine::tests::engine_set_shooter_tilemap_tiles_rect_refreshes_queries_and_render_commands",
     ],
   },

@@ -1,11 +1,11 @@
 use crate::components::{
-    AabbCollider, AngularVelocity, CapsuleCollider, CircleCollider, CollisionFilter,
+    AabbCollider, AngularVelocity, CapsuleCollider, ChainCollider, CircleCollider, CollisionFilter,
     CollisionLayer, CompoundCollider, CompoundColliderShape, ConvexPolygonCollider, DistanceJoint,
     DistanceJointId, EdgeCollider, GearJoint, GearJointId, OrientedBoxCollider, PhysicsMaterial,
-    PrismaticJoint, PrismaticJointId, RevoluteJoint, RevoluteJointId, RigidBody, RigidBodyType,
-    RigidContactImpulse, RopeJoint, RopeJointId, Rotation2D, SpringJoint, SpringJointId, Sprite,
-    SpriteAnimation, SpriteFrame, Transform2D, Velocity, WeldJoint, WeldJointId,
-    MAX_CONVEX_POLYGON_VERTICES,
+    PrismaticJoint, PrismaticJointId, PulleyJoint, PulleyJointId, RevoluteJoint, RevoluteJointId,
+    RigidBody, RigidBodyCcdDebugHit, RigidBodyType, RigidContactImpulse, RopeJoint, RopeJointId,
+    Rotation2D, SpringJoint, SpringJointId, Sprite, SpriteAnimation, SpriteFrame, Transform2D,
+    Velocity, WeldJoint, WeldJointId, MAX_CONVEX_POLYGON_VERTICES,
 };
 use crate::entity::Entity;
 use crate::physics::PhysicsSystem;
@@ -274,6 +274,7 @@ pub struct World {
     pub(crate) angular_velocities: Vec<Option<AngularVelocity>>,
     pub(crate) rigid_bodies: Vec<Option<RigidBody>>,
     pub(crate) rigid_contact_impulses: Vec<RigidContactImpulse>,
+    pub(crate) rigid_body_ccd_debug_hits: Vec<RigidBodyCcdDebugHit>,
     pub(crate) distance_joints: Vec<Option<DistanceJoint>>,
     pub(crate) distance_joint_generations: Vec<u32>,
     distance_joint_free_list: Vec<u32>,
@@ -283,6 +284,9 @@ pub struct World {
     pub(crate) spring_joints: Vec<Option<SpringJoint>>,
     pub(crate) spring_joint_generations: Vec<u32>,
     spring_joint_free_list: Vec<u32>,
+    pub(crate) pulley_joints: Vec<Option<PulleyJoint>>,
+    pub(crate) pulley_joint_generations: Vec<u32>,
+    pulley_joint_free_list: Vec<u32>,
     pub(crate) revolute_joints: Vec<Option<RevoluteJoint>>,
     pub(crate) revolute_joint_generations: Vec<u32>,
     revolute_joint_free_list: Vec<u32>,
@@ -300,6 +304,7 @@ pub struct World {
     pub(crate) oriented_box_colliders: Vec<Option<OrientedBoxCollider>>,
     pub(crate) capsule_colliders: Vec<Option<CapsuleCollider>>,
     pub(crate) edge_colliders: Vec<Option<EdgeCollider>>,
+    pub(crate) chain_colliders: Vec<Option<ChainCollider>>,
     pub(crate) convex_polygon_colliders: Vec<Option<ConvexPolygonCollider>>,
     pub(crate) compound_colliders: Vec<Vec<CompoundCollider>>,
     pub(crate) collider_materials: Vec<Option<PhysicsMaterial>>,
@@ -324,6 +329,7 @@ pub struct WorldSnapshot {
     angular_velocities: Vec<Option<AngularVelocity>>,
     rigid_bodies: Vec<Option<RigidBody>>,
     rigid_contact_impulses: Vec<RigidContactImpulse>,
+    rigid_body_ccd_debug_hits: Vec<RigidBodyCcdDebugHit>,
     distance_joints: Vec<Option<DistanceJoint>>,
     distance_joint_generations: Vec<u32>,
     distance_joint_free_list: Vec<u32>,
@@ -333,6 +339,9 @@ pub struct WorldSnapshot {
     spring_joints: Vec<Option<SpringJoint>>,
     spring_joint_generations: Vec<u32>,
     spring_joint_free_list: Vec<u32>,
+    pulley_joints: Vec<Option<PulleyJoint>>,
+    pulley_joint_generations: Vec<u32>,
+    pulley_joint_free_list: Vec<u32>,
     revolute_joints: Vec<Option<RevoluteJoint>>,
     revolute_joint_generations: Vec<u32>,
     revolute_joint_free_list: Vec<u32>,
@@ -350,6 +359,7 @@ pub struct WorldSnapshot {
     oriented_box_colliders: Vec<Option<OrientedBoxCollider>>,
     capsule_colliders: Vec<Option<CapsuleCollider>>,
     edge_colliders: Vec<Option<EdgeCollider>>,
+    chain_colliders: Vec<Option<ChainCollider>>,
     convex_polygon_colliders: Vec<Option<ConvexPolygonCollider>>,
     compound_colliders: Vec<Vec<CompoundCollider>>,
     collider_materials: Vec<Option<PhysicsMaterial>>,
@@ -375,6 +385,7 @@ impl World {
             angular_velocities: self.angular_velocities.clone(),
             rigid_bodies: self.rigid_bodies.clone(),
             rigid_contact_impulses: self.rigid_contact_impulses.clone(),
+            rigid_body_ccd_debug_hits: self.rigid_body_ccd_debug_hits.clone(),
             distance_joints: self.distance_joints.clone(),
             distance_joint_generations: self.distance_joint_generations.clone(),
             distance_joint_free_list: self.distance_joint_free_list.clone(),
@@ -384,6 +395,9 @@ impl World {
             spring_joints: self.spring_joints.clone(),
             spring_joint_generations: self.spring_joint_generations.clone(),
             spring_joint_free_list: self.spring_joint_free_list.clone(),
+            pulley_joints: self.pulley_joints.clone(),
+            pulley_joint_generations: self.pulley_joint_generations.clone(),
+            pulley_joint_free_list: self.pulley_joint_free_list.clone(),
             revolute_joints: self.revolute_joints.clone(),
             revolute_joint_generations: self.revolute_joint_generations.clone(),
             revolute_joint_free_list: self.revolute_joint_free_list.clone(),
@@ -401,6 +415,7 @@ impl World {
             oriented_box_colliders: self.oriented_box_colliders.clone(),
             capsule_colliders: self.capsule_colliders.clone(),
             edge_colliders: self.edge_colliders.clone(),
+            chain_colliders: self.chain_colliders.clone(),
             convex_polygon_colliders: self.convex_polygon_colliders.clone(),
             compound_colliders: self.compound_colliders.clone(),
             collider_materials: self.collider_materials.clone(),
@@ -425,6 +440,7 @@ impl World {
         self.angular_velocities = snapshot.angular_velocities.clone();
         self.rigid_bodies = snapshot.rigid_bodies.clone();
         self.rigid_contact_impulses = snapshot.rigid_contact_impulses.clone();
+        self.rigid_body_ccd_debug_hits = snapshot.rigid_body_ccd_debug_hits.clone();
         self.distance_joints = snapshot.distance_joints.clone();
         self.distance_joint_generations = snapshot.distance_joint_generations.clone();
         self.distance_joint_free_list = snapshot.distance_joint_free_list.clone();
@@ -434,6 +450,9 @@ impl World {
         self.spring_joints = snapshot.spring_joints.clone();
         self.spring_joint_generations = snapshot.spring_joint_generations.clone();
         self.spring_joint_free_list = snapshot.spring_joint_free_list.clone();
+        self.pulley_joints = snapshot.pulley_joints.clone();
+        self.pulley_joint_generations = snapshot.pulley_joint_generations.clone();
+        self.pulley_joint_free_list = snapshot.pulley_joint_free_list.clone();
         self.revolute_joints = snapshot.revolute_joints.clone();
         self.revolute_joint_generations = snapshot.revolute_joint_generations.clone();
         self.revolute_joint_free_list = snapshot.revolute_joint_free_list.clone();
@@ -451,6 +470,7 @@ impl World {
         self.oriented_box_colliders = snapshot.oriented_box_colliders.clone();
         self.capsule_colliders = snapshot.capsule_colliders.clone();
         self.edge_colliders = snapshot.edge_colliders.clone();
+        self.chain_colliders = snapshot.chain_colliders.clone();
         self.convex_polygon_colliders = snapshot.convex_polygon_colliders.clone();
         self.compound_colliders = snapshot.compound_colliders.clone();
         self.collider_materials = snapshot.collider_materials.clone();
@@ -487,6 +507,7 @@ impl World {
         self.oriented_box_colliders.push(None);
         self.capsule_colliders.push(None);
         self.edge_colliders.push(None);
+        self.chain_colliders.push(None);
         self.convex_polygon_colliders.push(None);
         self.compound_colliders.push(Vec::new());
         self.collider_materials.push(None);
@@ -515,6 +536,7 @@ impl World {
             self.oriented_box_colliders[i] = None;
             self.capsule_colliders[i] = None;
             self.edge_colliders[i] = None;
+            self.chain_colliders[i] = None;
             self.convex_polygon_colliders[i] = None;
             self.compound_colliders[i].clear();
             self.collider_materials[i] = None;
@@ -757,6 +779,26 @@ impl World {
 
     pub fn rigid_contact_impulses(&self) -> impl Iterator<Item = RigidContactImpulse> + '_ {
         self.rigid_contact_impulses.iter().copied()
+    }
+
+    pub fn rigid_body_ccd_debug_hit_count(&self) -> usize {
+        self.rigid_body_ccd_debug_hits.len()
+    }
+
+    pub fn rigid_body_ccd_debug_hit_at(&self, index: usize) -> Option<RigidBodyCcdDebugHit> {
+        self.rigid_body_ccd_debug_hits.get(index).copied()
+    }
+
+    pub fn rigid_body_ccd_debug_hits(&self) -> impl Iterator<Item = RigidBodyCcdDebugHit> + '_ {
+        self.rigid_body_ccd_debug_hits.iter().copied()
+    }
+
+    pub(crate) fn clear_rigid_body_ccd_debug_hits(&mut self) {
+        self.rigid_body_ccd_debug_hits.clear();
+    }
+
+    pub(crate) fn record_rigid_body_ccd_debug_hit(&mut self, hit: RigidBodyCcdDebugHit) {
+        self.rigid_body_ccd_debug_hits.push(hit);
     }
 
     pub fn apply_force(&mut self, entity: Entity, force: Velocity) {
@@ -1018,6 +1060,62 @@ impl World {
             .count()
     }
 
+    pub fn add_pulley_joint(&mut self, joint: PulleyJoint) -> PulleyJointId {
+        if let Some(index) = self.pulley_joint_free_list.pop() {
+            let index = index as usize;
+            self.pulley_joints[index] = Some(joint);
+            return PulleyJointId {
+                index: index as u32,
+                generation: self.pulley_joint_generations[index],
+            };
+        }
+
+        let index = self.pulley_joints.len();
+        self.pulley_joints.push(Some(joint));
+        self.pulley_joint_generations.push(0);
+        PulleyJointId {
+            index: index as u32,
+            generation: 0,
+        }
+    }
+
+    pub fn pulley_joint(&self, id: PulleyJointId) -> Option<PulleyJoint> {
+        let index = self.valid_pulley_joint_index(id)?;
+        self.pulley_joints[index]
+    }
+
+    pub fn set_pulley_joint(&mut self, id: PulleyJointId, joint: PulleyJoint) {
+        let Some(index) = self.valid_pulley_joint_index(id) else {
+            return;
+        };
+        self.pulley_joints[index] = Some(joint);
+    }
+
+    pub fn clear_pulley_joint(&mut self, id: PulleyJointId) -> Option<PulleyJoint> {
+        let index = self.valid_pulley_joint_index(id)?;
+        let joint = self.pulley_joints[index].take();
+        self.pulley_joint_generations[index] = self.pulley_joint_generations[index].wrapping_add(1);
+        self.pulley_joint_free_list.push(id.index);
+        joint
+    }
+
+    pub fn clear_pulley_joints(&mut self) {
+        for (index, joint) in self.pulley_joints.iter_mut().enumerate() {
+            if joint.take().is_some() {
+                self.pulley_joint_generations[index] =
+                    self.pulley_joint_generations[index].wrapping_add(1);
+                self.pulley_joint_free_list.push(index as u32);
+            }
+        }
+    }
+
+    pub fn pulley_joint_count(&self) -> usize {
+        self.pulley_joints
+            .iter()
+            .filter(|joint| joint.is_some())
+            .count()
+    }
+
     pub fn add_revolute_joint(&mut self, joint: RevoluteJoint) -> RevoluteJointId {
         if let Some(index) = self.revolute_joint_free_list.pop() {
             let index = index as usize;
@@ -1258,6 +1356,7 @@ impl World {
         self.oriented_box_colliders[i] = None;
         self.capsule_colliders[i] = None;
         self.edge_colliders[i] = None;
+        self.chain_colliders[i] = None;
         self.convex_polygon_colliders[i] = None;
         if self.collision_filters[i].is_none() {
             self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
@@ -1279,6 +1378,7 @@ impl World {
         self.oriented_box_colliders[i] = None;
         self.capsule_colliders[i] = None;
         self.edge_colliders[i] = None;
+        self.chain_colliders[i] = None;
         self.convex_polygon_colliders[i] = None;
         if self.collision_filters[i].is_none() {
             self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
@@ -1300,6 +1400,7 @@ impl World {
         self.oriented_box_colliders[i] = Some(collider);
         self.capsule_colliders[i] = None;
         self.edge_colliders[i] = None;
+        self.chain_colliders[i] = None;
         self.convex_polygon_colliders[i] = None;
         if self.collision_filters[i].is_none() {
             self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
@@ -1321,6 +1422,7 @@ impl World {
         self.oriented_box_colliders[i] = None;
         self.capsule_colliders[i] = Some(collider);
         self.edge_colliders[i] = None;
+        self.chain_colliders[i] = None;
         self.convex_polygon_colliders[i] = None;
         if self.collision_filters[i].is_none() {
             self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
@@ -1342,6 +1444,7 @@ impl World {
         self.oriented_box_colliders[i] = None;
         self.capsule_colliders[i] = None;
         self.edge_colliders[i] = Some(collider);
+        self.chain_colliders[i] = None;
         self.convex_polygon_colliders[i] = None;
         if self.collision_filters[i].is_none() {
             self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
@@ -1354,6 +1457,28 @@ impl World {
         self.convex_polygon_colliders[i]
     }
 
+    pub fn chain_collider(&self, entity: Entity) -> Option<ChainCollider> {
+        let i = self.valid_index(entity)?;
+        self.chain_colliders[i]
+    }
+
+    pub fn set_chain_collider(&mut self, entity: Entity, collider: ChainCollider) {
+        let Some(i) = self.valid_index(entity) else {
+            return;
+        };
+        self.colliders[i] = None;
+        self.circle_colliders[i] = None;
+        self.oriented_box_colliders[i] = None;
+        self.capsule_colliders[i] = None;
+        self.edge_colliders[i] = None;
+        self.chain_colliders[i] = Some(collider);
+        self.convex_polygon_colliders[i] = None;
+        if self.collision_filters[i].is_none() {
+            self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
+        }
+        self.set_primary_compound_collider_at(i, CompoundColliderShape::Chain(collider));
+    }
+
     pub fn set_convex_polygon_collider(&mut self, entity: Entity, collider: ConvexPolygonCollider) {
         let Some(i) = self.valid_index(entity) else {
             return;
@@ -1363,6 +1488,7 @@ impl World {
         self.oriented_box_colliders[i] = None;
         self.capsule_colliders[i] = None;
         self.edge_colliders[i] = None;
+        self.chain_colliders[i] = None;
         self.convex_polygon_colliders[i] = Some(collider);
         if self.collision_filters[i].is_none() {
             self.collision_filters[i] = Some(CollisionFilter::from_layer(collider.layer));
@@ -1379,6 +1505,7 @@ impl World {
         self.oriented_box_colliders[i] = None;
         self.capsule_colliders[i] = None;
         self.edge_colliders[i] = None;
+        self.chain_colliders[i] = None;
         self.convex_polygon_colliders[i] = None;
         self.compound_colliders[i].clear();
         self.collider_materials[i] = None;
@@ -1394,6 +1521,7 @@ impl World {
             && self.oriented_box_colliders[i].is_none()
             && self.capsule_colliders[i].is_none()
             && self.edge_colliders[i].is_none()
+            && self.chain_colliders[i].is_none()
             && self.convex_polygon_colliders[i].is_none()
         {
             return;
@@ -1440,6 +1568,7 @@ impl World {
                 .flatten()
                 .is_none()
             && self.edge_colliders.get(index).copied().flatten().is_none()
+            && self.chain_colliders.get(index).copied().flatten().is_none()
             && self
                 .convex_polygon_colliders
                 .get(index)
@@ -1602,6 +1731,13 @@ impl World {
                     .map(CompoundColliderShape::Edge)
             })
             .or_else(|| {
+                self.chain_colliders
+                    .get(index)
+                    .copied()
+                    .flatten()
+                    .map(CompoundColliderShape::Chain)
+            })
+            .or_else(|| {
                 self.convex_polygon_colliders
                     .get(index)
                     .copied()
@@ -1620,6 +1756,7 @@ impl World {
         self.oriented_box_colliders[index] = None;
         self.capsule_colliders[index] = None;
         self.edge_colliders[index] = None;
+        self.chain_colliders[index] = None;
         self.convex_polygon_colliders[index] = None;
         match shape {
             CompoundColliderShape::Aabb(collider) => self.colliders[index] = Some(collider),
@@ -1633,6 +1770,7 @@ impl World {
                 self.capsule_colliders[index] = Some(collider);
             }
             CompoundColliderShape::Edge(collider) => self.edge_colliders[index] = Some(collider),
+            CompoundColliderShape::Chain(collider) => self.chain_colliders[index] = Some(collider),
             CompoundColliderShape::ConvexPolygon(collider) => {
                 self.convex_polygon_colliders[index] = Some(collider);
             }
@@ -1644,6 +1782,7 @@ impl World {
                 CompoundColliderShape::OrientedBox(collider) => collider.layer,
                 CompoundColliderShape::Capsule(collider) => collider.layer,
                 CompoundColliderShape::Edge(collider) => collider.layer,
+                CompoundColliderShape::Chain(collider) => collider.layer,
                 CompoundColliderShape::ConvexPolygon(collider) => collider.layer,
             }));
         }
@@ -1659,6 +1798,7 @@ impl World {
                 && self.oriented_box_colliders[i].is_none()
                 && self.capsule_colliders[i].is_none()
                 && self.edge_colliders[i].is_none()
+                && self.chain_colliders[i].is_none()
                 && self.convex_polygon_colliders[i].is_none())
         {
             return;
@@ -1715,6 +1855,13 @@ impl World {
                     .map(|collider| collider.layer)
             })
             .or_else(|| {
+                self.chain_colliders
+                    .get(index)
+                    .copied()
+                    .flatten()
+                    .map(|collider| collider.layer)
+            })
+            .or_else(|| {
                 self.convex_polygon_colliders
                     .get(index)
                     .copied()
@@ -1759,6 +1906,14 @@ impl World {
         (index < self.spring_joints.len()
             && self.spring_joint_generations[index] == id.generation
             && self.spring_joints[index].is_some())
+        .then_some(index)
+    }
+
+    fn valid_pulley_joint_index(&self, id: PulleyJointId) -> Option<usize> {
+        let index = id.index as usize;
+        (index < self.pulley_joints.len()
+            && self.pulley_joint_generations[index] == id.generation
+            && self.pulley_joints[index].is_some())
         .then_some(index)
     }
 
@@ -2455,6 +2610,74 @@ mod tests {
         assert_ne!(second.generation, first.generation);
         assert_eq!(
             world.spring_joint(second).map(|joint| joint.rest_length),
+            Some(4.0)
+        );
+    }
+
+    #[test]
+    fn pulley_joint_handles_add_update_clear_and_reuse_storage() {
+        let mut world = World::default();
+        let a = world.spawn_entity();
+        let b = world.spawn_entity();
+        let first = world.add_pulley_joint(
+            PulleyJoint::new(a, b, 12.0)
+                .with_ground_anchor_a(-4.0, 2.0)
+                .with_ground_anchor_b(4.0, 2.0)
+                .with_ratio(2.0)
+                .with_break_distance(3.0),
+        );
+
+        assert_eq!(world.pulley_joint_count(), 1);
+        assert_eq!(
+            world.pulley_joint(first).map(|joint| joint.rest_length),
+            Some(12.0)
+        );
+        assert_eq!(
+            world.pulley_joint(first).map(|joint| joint.ratio),
+            Some(2.0)
+        );
+        assert_eq!(
+            world.pulley_joint(first).map(|joint| (
+                joint.ground_anchor_a_x,
+                joint.ground_anchor_a_y,
+                joint.ground_anchor_b_x,
+                joint.ground_anchor_b_y,
+            )),
+            Some((-4.0, 2.0, 4.0, 2.0))
+        );
+
+        world.set_pulley_joint(
+            first,
+            PulleyJoint::new(a, b, 6.0)
+                .with_ratio(1.5)
+                .with_break_distance(2.0)
+                .without_break_distance()
+                .with_damping(0.5),
+        );
+
+        assert_eq!(
+            world.pulley_joint(first).map(|joint| joint.rest_length),
+            Some(6.0)
+        );
+        assert_eq!(
+            world.pulley_joint(first).map(|joint| joint.break_distance),
+            Some(f32::INFINITY)
+        );
+        assert_eq!(
+            world.pulley_joint(first).map(|joint| joint.damping),
+            Some(0.5)
+        );
+
+        assert!(world.clear_pulley_joint(first).is_some());
+        assert_eq!(world.pulley_joint(first), None);
+        assert_eq!(world.pulley_joint_count(), 0);
+
+        let second = world.add_pulley_joint(PulleyJoint::new(a, b, 4.0));
+
+        assert_eq!(second.index, first.index);
+        assert_ne!(second.generation, first.generation);
+        assert_eq!(
+            world.pulley_joint(second).map(|joint| joint.rest_length),
             Some(4.0)
         );
     }

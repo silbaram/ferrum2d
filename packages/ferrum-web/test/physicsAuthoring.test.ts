@@ -14,6 +14,7 @@ import {
   createPhysicsLayerMap,
   createPhysicsWorldFromSpec,
   createRigidBody,
+  createVehicleRig,
   physicsMaterial,
 } from "../src/physicsAuthoring.js";
 import { diagnosticReport } from "../src/diagnostics.js";
@@ -135,14 +136,25 @@ test("createPhysicsWorldFromSpec applies resolved bodies, layers, materials, wor
         breakDistance: 24,
         breakAngle: 0.75,
       },
+      lift: {
+        type: "pulley",
+        bodyA: "ground",
+        bodyB: "crate",
+        groundAnchorA: [240, 40],
+        groundAnchorB: [400, 40],
+        localAnchorB: [0, -16],
+        restLength: 220,
+        ratio: 1.5,
+        breakDistance: 64,
+      },
     },
   });
 
   equal(world.bodyCount, 2);
-  equal(world.jointCount, 2);
+  equal(world.jointCount, 3);
   equal(world.worldAnchors.length, 1);
   equal(fake.bodies.length, 3);
-  equal(fake.joints.length, 2);
+  equal(fake.joints.length, 3);
   equal(world.stepSeconds, 1 / 120);
   ok(fake.fixedTimestep);
   ok(fake.debugLines);
@@ -187,9 +199,19 @@ test("createPhysicsWorldFromSpec applies resolved bodies, layers, materials, wor
     equal(weld.breakDistance, 24);
     equal(weld.breakAngle, 0.75);
   }
+  const pulley = fake.joints[2];
+  equal(pulley.type, "pulley");
+  if (pulley.type === "pulley") {
+    equal(pulley.groundAnchorAX, 240);
+    equal(pulley.groundAnchorBY, 40);
+    equal(pulley.localAnchorBY, -16);
+    equal(pulley.restLength, 220);
+    equal(pulley.ratio, 1.5);
+    equal(pulley.breakDistance, 64);
+  }
 
   world.clear();
-  equal(fake.clearedJoints.length, 2);
+  equal(fake.clearedJoints.length, 3);
   equal(fake.despawnedBodies.length, 3);
 });
 
@@ -228,10 +250,92 @@ test("helper APIs normalize collider aliases, material presets, and layer bit he
     equal(circle.offsetX, 1);
     equal(circle.offsetY, 2);
   }
+  const chainCollider = createCollider({
+    type: "chain",
+    vertices: [[0, 0], [8, 0], [8, 8]],
+    loop: false,
+  });
+  equal(chainCollider.type, "chain");
+  if (chainCollider.type === "chain") {
+    equal(chainCollider.vertices.length, 6);
+  }
   equal(physicsMaterial("wood").density, 0.8);
 });
 
-test("createPhysicsWorldFromSpec lowers chain colliders to edge compound colliders", () => {
+test("createVehicleRig composes chassis, wheels, guide joints, and suspension springs", () => {
+  const fake = new FakePhysicsEngine();
+  const engine = fake as unknown as FerrumEngine;
+
+  const rig = createVehicleRig(engine, {
+    position: [100, 50],
+    chassisSize: [80, 20],
+    chassisMass: 4,
+    wheelRadius: 12,
+    wheelMass: 1,
+    wheelMaterial: "rubber",
+    suspensionTravel: 8,
+    suspensionStiffness: 0.7,
+    suspensionDamping: 0.35,
+    layer: "world",
+    categoryBits: 4,
+    maskBits: 2,
+    wheels: [
+      { offset: [-30, 18], angularVelocityRadiansPerSecond: 5 },
+      { offset: [30, 18], radius: 10, stiffness: 0.6 },
+    ],
+  });
+
+  equal(rig.bodyCount, 3);
+  equal(rig.jointCount, 4);
+  equal(fake.bodies.length, 3);
+  equal(fake.joints.length, 4);
+
+  const chassis = fake.bodies[0];
+  equal(chassis.bodyType, "dynamic");
+  equal(chassis.mass, 4);
+  equal(chassis.collider.type, "aabb");
+  if (chassis.collider.type === "aabb") {
+    equal(chassis.collider.halfWidth, 40);
+    equal(chassis.collider.halfHeight, 10);
+  }
+
+  const frontWheel = fake.bodies[1];
+  equal(frontWheel.x, 70);
+  equal(frontWheel.y, 68);
+  equal(frontWheel.collider.type, "circle");
+  if (frontWheel.collider.type === "circle") {
+    equal(frontWheel.collider.radius, 12);
+  }
+  equal(frontWheel.material?.friction, 0.8);
+  equal(frontWheel.angularVelocityRadiansPerSecond, 5);
+
+  const guide = fake.joints[0];
+  equal(guide.type, "prismatic");
+  if (guide.type === "prismatic") {
+    equal(guide.localAnchorAX, -30);
+    equal(guide.localAnchorAY, 18);
+    equal(guide.localAxisAX, 0);
+    equal(guide.localAxisAY, 1);
+    equal(guide.angularStiffness, 0);
+    equal(guide.limitEnabled, true);
+    equal(guide.lowerTranslation, -8);
+    equal(guide.upperTranslation, 8);
+  }
+
+  const spring = fake.joints[1];
+  equal(spring.type, "spring");
+  if (spring.type === "spring") {
+    equal(spring.restLength, Math.hypot(-30, 18));
+    equal(spring.stiffness, 0.7);
+    equal(spring.damping, 0.35);
+  }
+
+  rig.clear();
+  equal(fake.clearedJoints.length, 4);
+  equal(fake.despawnedBodies.length, 3);
+});
+
+test("createPhysicsWorldFromSpec applies chain colliders as dedicated runtime colliders", () => {
   const fake = new FakePhysicsEngine();
   createPhysicsWorldFromSpec(fake as unknown as FerrumEngine, {
     mode: "rigid",
@@ -258,42 +362,24 @@ test("createPhysicsWorldFromSpec lowers chain colliders to edge compound collide
   });
 
   equal(fake.bodies.length, 1);
-  equal(fake.compoundColliders.length, 2);
+  equal(fake.compoundColliders.length, 0);
 
   const primary = fake.bodies[0];
-  equal(primary.collider.type, "edge");
-  if (primary.collider.type === "edge") {
-    equal(primary.collider.startX, 0);
-    equal(primary.collider.startY, 0);
-    equal(primary.collider.endX, 80);
-    equal(primary.collider.endY, 0);
+  equal(primary.collider.type, "chain");
+  if (primary.collider.type === "chain") {
+    equal(primary.collider.vertices.length, 6);
+    equal(primary.collider.vertices[0], 0);
+    equal(primary.collider.vertices[1], 0);
+    equal(primary.collider.vertices[4], 80);
+    equal(primary.collider.vertices[5], 40);
+    equal(primary.collider.loop, true);
     equal(primary.collider.offsetX, 2);
     equal(primary.collider.offsetY, 3);
   }
   equal(primary.categoryBits, 1);
   equal(primary.maskBits, 2);
   equal(primary.colliderMaterial?.friction, 0.7);
-
-  const second = fake.compoundColliders[0].options;
-  equal(second.collider.type, "edge");
-  if (second.collider.type === "edge") {
-    equal(second.collider.startX, 80);
-    equal(second.collider.startY, 0);
-    equal(second.collider.endX, 80);
-    equal(second.collider.endY, 40);
-  }
-
-  const closing = fake.compoundColliders[1].options;
-  equal(closing.collider.type, "edge");
-  if (closing.collider.type === "edge") {
-    equal(closing.collider.startX, 80);
-    equal(closing.collider.startY, 40);
-    equal(closing.collider.endX, 0);
-    equal(closing.collider.endY, 0);
-  }
-  equal(fake.compoundColliderMaterials.length, 2);
-  equal(fake.compoundColliderMaterials[0].index, 1);
-  equal(fake.compoundColliderMaterials[1].index, 2);
+  equal(fake.compoundColliderMaterials.length, 0);
 });
 
 test("createPhysicsWorldFromSpec applies compound colliders after primary body spawn", () => {

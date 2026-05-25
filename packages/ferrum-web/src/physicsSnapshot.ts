@@ -11,6 +11,10 @@ import type {
 } from "./createEngine.js";
 import { physicsSpecDiagnosticError } from "./diagnostics.js";
 import {
+  createPhysicsBodyStateBufferSnapshot,
+  type PhysicsBodyStateBufferSnapshot,
+} from "./physicsBodyStateBuffer.js";
+import {
   createPhysicsWorldFromSpec,
   resolvedPhysicsColliderRuntimeCount,
   type PhysicsWorldApplyOptions,
@@ -215,10 +219,12 @@ export function capturePhysicsWorldSnapshot(
   options: CapturePhysicsWorldSnapshotOptions = {},
 ): PhysicsWorldSnapshot {
   const frame = nonNegativeInteger(options.frame ?? 0, "physics snapshot frame");
+  const bodyEntries = Object.entries(world.bodies);
+  const bulkBodyState = captureBulkBodyState(engine, bodyEntries.map(([, handle]) => handle));
   const bodies = Object.fromEntries(
-    Object.entries(world.bodies).map(([id, handle]) => {
-      const state = engine.getPhysicsEntity(handle);
-      if (!state) {
+    bodyEntries.map(([id, handle], entryIndex) => {
+      const state = bulkBodyState?.states[entryIndex] ?? engine.getPhysicsEntity(handle);
+      if (state === undefined) {
         throw physicsSpecDiagnosticError(`physics.snapshot.bodies.${id}`, "body handle is no longer alive");
       }
       const bodySpec = world.spec.bodies[id];
@@ -288,6 +294,29 @@ function runtimeColliderSpecsForSnapshot(
   );
 }
 
+function captureBulkBodyState(
+  engine: FerrumEngine,
+  handles: readonly PhysicsEntityHandle[],
+): PhysicsBodyStateBufferSnapshot | undefined {
+  if (handles.length === 0 || typeof engine.capturePhysicsBodyStateBuffer !== "function") {
+    return undefined;
+  }
+  return engine.capturePhysicsBodyStateBuffer(handles);
+}
+
+function restoreBulkBodyState(
+  engine: FerrumEngine,
+  states: readonly PhysicsEntitySnapshot[],
+): boolean {
+  if (states.length === 0) {
+    return true;
+  }
+  if (typeof engine.restorePhysicsBodyStateBuffer !== "function") {
+    return false;
+  }
+  return engine.restorePhysicsBodyStateBuffer(createPhysicsBodyStateBufferSnapshot(states));
+}
+
 export function restorePhysicsWorldSnapshot(
   engine: FerrumEngine,
   snapshot: PhysicsWorldSnapshot,
@@ -301,12 +330,30 @@ export function restorePhysicsWorldSnapshot(
     onWarning: options.onWarning,
   });
 
-  for (const [id, entry] of Object.entries(snapshot.bodies)) {
+  const bodyEntries = Object.entries(snapshot.bodies);
+  const restoredBodyStates: PhysicsEntitySnapshot[] = [];
+  for (const [id, entry] of bodyEntries) {
     const handle = restored.bodies[id];
     if (!handle) {
       throw physicsSpecDiagnosticError(`physics.snapshot.bodies.${id}`, "body is missing after restore");
     }
-    restorePhysicsBodyState(engine, handle, entry.state, `physics.snapshot.bodies.${id}`);
+    restoredBodyStates.push({ ...entry.state, ...handle });
+  }
+  if (!restoreBulkBodyState(engine, restoredBodyStates)) {
+    for (const [id, entry] of bodyEntries) {
+      const handle = restored.bodies[id];
+      if (!handle) {
+        throw physicsSpecDiagnosticError(`physics.snapshot.bodies.${id}`, "body is missing after restore");
+      }
+      restorePhysicsBodyState(engine, handle, entry.state, `physics.snapshot.bodies.${id}`);
+    }
+  }
+
+  for (const [id, entry] of bodyEntries) {
+    const handle = restored.bodies[id];
+    if (!handle) {
+      throw physicsSpecDiagnosticError(`physics.snapshot.bodies.${id}`, "body is missing after restore");
+    }
     restorePhysicsBodyColliderStates(engine, handle, entry.colliders, `physics.snapshot.bodies.${id}.colliders`);
   }
 
@@ -845,6 +892,10 @@ function canonicalJointSnapshot(joint: PhysicsWorldSnapshotJoint, includeHandles
       localAnchorBY: state.localAnchorBY,
       localAxisAX: state.localAxisAX,
       localAxisAY: state.localAxisAY,
+      groundAnchorAX: state.groundAnchorAX,
+      groundAnchorAY: state.groundAnchorAY,
+      groundAnchorBX: state.groundAnchorBX,
+      groundAnchorBY: state.groundAnchorBY,
       limitEnabled: state.limitEnabled,
       lowerAngle: state.lowerAngle,
       upperAngle: state.upperAngle,

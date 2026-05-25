@@ -406,6 +406,17 @@ pub struct RigidContactImpulse {
     pub tangent_impulse: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RigidBodyCcdDebugHit {
+    pub moving_entity: Entity,
+    pub target_entity: Entity,
+    pub time: f32,
+    pub point_x: f32,
+    pub point_y: f32,
+    pub normal_x: f32,
+    pub normal_y: f32,
+}
+
 impl RigidBody {
     pub const fn static_body() -> Self {
         Self {
@@ -976,6 +987,117 @@ impl SpringJoint {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PulleyJointId {
+    pub index: u32,
+    pub generation: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PulleyJoint {
+    pub entity_a: Entity,
+    pub entity_b: Entity,
+    pub ground_anchor_a_x: f32,
+    pub ground_anchor_a_y: f32,
+    pub ground_anchor_b_x: f32,
+    pub ground_anchor_b_y: f32,
+    pub local_anchor_a_x: f32,
+    pub local_anchor_a_y: f32,
+    pub local_anchor_b_x: f32,
+    pub local_anchor_b_y: f32,
+    pub rest_length: f32,
+    pub ratio: f32,
+    pub break_distance: f32,
+    pub stiffness: f32,
+    pub damping: f32,
+    pub enabled: bool,
+}
+
+impl PulleyJoint {
+    pub const DEFAULT_RATIO: f32 = 1.0;
+    pub const DEFAULT_STIFFNESS: f32 = 1.0;
+    pub const DEFAULT_DAMPING: f32 = 0.0;
+
+    pub fn new(entity_a: Entity, entity_b: Entity, rest_length: f32) -> Self {
+        Self {
+            entity_a,
+            entity_b,
+            ground_anchor_a_x: 0.0,
+            ground_anchor_a_y: 0.0,
+            ground_anchor_b_x: 0.0,
+            ground_anchor_b_y: 0.0,
+            local_anchor_a_x: 0.0,
+            local_anchor_a_y: 0.0,
+            local_anchor_b_x: 0.0,
+            local_anchor_b_y: 0.0,
+            rest_length: if rest_length.is_finite() && rest_length >= 0.0 {
+                rest_length
+            } else {
+                0.0
+            },
+            ratio: Self::DEFAULT_RATIO,
+            break_distance: f32::INFINITY,
+            stiffness: Self::DEFAULT_STIFFNESS,
+            damping: Self::DEFAULT_DAMPING,
+            enabled: true,
+        }
+    }
+
+    pub const fn with_ground_anchor_a(mut self, x: f32, y: f32) -> Self {
+        self.ground_anchor_a_x = x;
+        self.ground_anchor_a_y = y;
+        self
+    }
+
+    pub const fn with_ground_anchor_b(mut self, x: f32, y: f32) -> Self {
+        self.ground_anchor_b_x = x;
+        self.ground_anchor_b_y = y;
+        self
+    }
+
+    pub const fn with_local_anchor_a(mut self, x: f32, y: f32) -> Self {
+        self.local_anchor_a_x = x;
+        self.local_anchor_a_y = y;
+        self
+    }
+
+    pub const fn with_local_anchor_b(mut self, x: f32, y: f32) -> Self {
+        self.local_anchor_b_x = x;
+        self.local_anchor_b_y = y;
+        self
+    }
+
+    pub const fn with_ratio(mut self, ratio: f32) -> Self {
+        self.ratio = ratio;
+        self
+    }
+
+    pub const fn with_break_distance(mut self, break_distance: f32) -> Self {
+        self.break_distance = break_distance;
+        self
+    }
+
+    pub const fn without_break_distance(mut self) -> Self {
+        self.break_distance = f32::INFINITY;
+        self
+    }
+
+    pub const fn with_stiffness(mut self, stiffness: f32) -> Self {
+        self.stiffness = stiffness;
+        self
+    }
+
+    pub const fn with_damping(mut self, damping: f32) -> Self {
+        self.damping = damping;
+        self
+    }
+
+    pub const fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RevoluteJointId {
     pub index: u32,
     pub generation: u32,
@@ -1513,6 +1635,7 @@ impl CollisionFilter {
 }
 
 pub const MAX_CONVEX_POLYGON_VERTICES: usize = 16;
+pub const MAX_CHAIN_COLLIDER_VERTICES: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AabbCollider {
@@ -1799,6 +1922,108 @@ impl EdgeCollider {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ChainCollider {
+    pub vertices: [Transform2D; MAX_CHAIN_COLLIDER_VERTICES],
+    pub vertex_count: u32,
+    pub looped: bool,
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub enabled: bool,
+    pub is_trigger: bool,
+    pub layer: CollisionLayer,
+}
+
+impl ChainCollider {
+    pub const fn new(
+        vertices: [Transform2D; MAX_CHAIN_COLLIDER_VERTICES],
+        vertex_count: u32,
+        looped: bool,
+        is_trigger: bool,
+        layer: CollisionLayer,
+    ) -> Self {
+        Self {
+            vertices,
+            vertex_count,
+            looped,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            enabled: true,
+            is_trigger,
+            layer,
+        }
+    }
+
+    pub const fn with_enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
+        self
+    }
+
+    pub const fn with_offset(mut self, offset_x: f32, offset_y: f32) -> Self {
+        self.offset_x = offset_x;
+        self.offset_y = offset_y;
+        self
+    }
+
+    pub fn vertices(&self) -> &[Transform2D] {
+        let vertex_count = (self.vertex_count as usize).min(MAX_CHAIN_COLLIDER_VERTICES);
+        &self.vertices[..vertex_count]
+    }
+
+    pub fn segment_count(&self) -> usize {
+        let vertex_count = self.vertices().len();
+        if vertex_count < 2 {
+            return 0;
+        }
+        let closing_segment = if self.looped
+            && vertex_count > 2
+            && self.vertices[vertex_count - 1] != self.vertices[0]
+        {
+            1
+        } else {
+            0
+        };
+        vertex_count - 1 + closing_segment
+    }
+
+    pub fn segment(&self, index: usize) -> Option<EdgeCollider> {
+        let vertices = self.vertices();
+        let segment_count = self.segment_count();
+        if index >= segment_count {
+            return None;
+        }
+        let start = vertices[index];
+        let end = if index + 1 < vertices.len() {
+            vertices[index + 1]
+        } else {
+            vertices[0]
+        };
+        Some(
+            EdgeCollider::new(start.x, start.y, end.x, end.y, self.is_trigger, self.layer)
+                .with_offset(self.offset_x, self.offset_y)
+                .with_enabled(self.enabled),
+        )
+    }
+
+    pub fn center(&self, transform: Transform2D) -> Transform2D {
+        let vertices = self.vertices();
+        if vertices.is_empty() {
+            return Transform2D {
+                x: transform.x + self.offset_x,
+                y: transform.y + self.offset_y,
+            };
+        }
+        let (sum_x, sum_y) = vertices
+            .iter()
+            .fold((0.0, 0.0), |(x, y), vertex| (x + vertex.x, y + vertex.y));
+        let scale = 1.0 / vertices.len() as f32;
+        Transform2D {
+            x: transform.x + self.offset_x + sum_x * scale,
+            y: transform.y + self.offset_y + sum_y * scale,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ConvexPolygonCollider {
     pub vertices: [Transform2D; MAX_CONVEX_POLYGON_VERTICES],
     pub vertex_count: u32,
@@ -1853,6 +2078,9 @@ impl ConvexPolygonCollider {
     }
 }
 
+// ChainCollider intentionally keeps a fixed vertex buffer to avoid per-collider
+// heap allocation and preserve Copy semantics for low-frequency authoring paths.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CompoundColliderShape {
     Aabb(AabbCollider),
@@ -1860,6 +2088,7 @@ pub enum CompoundColliderShape {
     OrientedBox(OrientedBoxCollider),
     Capsule(CapsuleCollider),
     Edge(EdgeCollider),
+    Chain(ChainCollider),
     ConvexPolygon(ConvexPolygonCollider),
 }
 
@@ -1896,6 +2125,7 @@ impl CompoundCollider {
             CompoundColliderShape::OrientedBox(collider) => collider.layer,
             CompoundColliderShape::Capsule(collider) => collider.layer,
             CompoundColliderShape::Edge(collider) => collider.layer,
+            CompoundColliderShape::Chain(collider) => collider.layer,
             CompoundColliderShape::ConvexPolygon(collider) => collider.layer,
         }
     }
@@ -1907,6 +2137,7 @@ impl CompoundCollider {
             CompoundColliderShape::OrientedBox(collider) => collider.enabled,
             CompoundColliderShape::Capsule(collider) => collider.enabled,
             CompoundColliderShape::Edge(collider) => collider.enabled,
+            CompoundColliderShape::Chain(collider) => collider.enabled,
             CompoundColliderShape::ConvexPolygon(collider) => collider.enabled,
         }
     }
@@ -1918,6 +2149,7 @@ impl CompoundCollider {
             CompoundColliderShape::OrientedBox(collider) => collider.is_trigger,
             CompoundColliderShape::Capsule(collider) => collider.is_trigger,
             CompoundColliderShape::Edge(collider) => collider.is_trigger,
+            CompoundColliderShape::Chain(collider) => collider.is_trigger,
             CompoundColliderShape::ConvexPolygon(collider) => collider.is_trigger,
         }
     }

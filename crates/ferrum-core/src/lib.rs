@@ -33,14 +33,14 @@ pub use collision_event::{
     COLLISION_EVENT_TRIGGER_ENTER, COLLISION_EVENT_TRIGGER_EXIT, COLLISION_EVENT_TRIGGER_STAY,
 };
 pub use components::{
-    AabbCollider, AngularVelocity, CapsuleCollider, CircleCollider, CollisionFilter,
+    AabbCollider, AngularVelocity, CapsuleCollider, ChainCollider, CircleCollider, CollisionFilter,
     CollisionLayer, CollisionMask, ConvexPolygonCollider, DistanceJoint, DistanceJointId,
     GearJoint, GearJointId, OrientedBoxCollider, PhysicsMaterial, PrismaticJoint, PrismaticJointId,
-    RevoluteJoint, RevoluteJointId, RigidBody, RigidBodyType, RigidContactImpulse, RopeJoint,
-    RopeJointId, Rotation2D, SpringJoint, SpringJointId, Sprite, SpriteAnimation,
-    SpriteAnimationFrameSequence, SpriteAnimationKind, SpriteAnimationState, SpriteFrame,
-    Transform2D, Velocity, WeldJoint, WeldJointId, MAX_CONVEX_POLYGON_VERTICES,
-    MAX_SPRITE_ANIMATION_FRAMES,
+    PulleyJoint, PulleyJointId, RevoluteJoint, RevoluteJointId, RigidBody, RigidBodyCcdDebugHit,
+    RigidBodyType, RigidContactImpulse, RopeJoint, RopeJointId, Rotation2D, SpringJoint,
+    SpringJointId, Sprite, SpriteAnimation, SpriteAnimationFrameSequence, SpriteAnimationKind,
+    SpriteAnimationState, SpriteFrame, Transform2D, Velocity, WeldJoint, WeldJointId,
+    MAX_CHAIN_COLLIDER_VERTICES, MAX_CONVEX_POLYGON_VERTICES, MAX_SPRITE_ANIMATION_FRAMES,
 };
 pub use engine::{
     Engine, PhysicsBodyContactHit, PhysicsBodyManifoldHit, PhysicsQueryEntityHit,

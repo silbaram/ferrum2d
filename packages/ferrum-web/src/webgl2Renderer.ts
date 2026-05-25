@@ -5,6 +5,11 @@ import type { Renderer } from "./renderer";
 import type { RendererStats } from "./renderer";
 import { SpriteBatch } from "./spriteBatch";
 import { TextureManager } from "./textureManager";
+import type {
+  PixelMaskTerrain,
+  PixelMaskTerrainAlphaPatch,
+  PixelMaskTerrainTextureUploadOptions,
+} from "./pixelMaskTerrain";
 import type { PhysicsDebugLineBufferView, RenderCommandBufferView } from "./wasmBridge";
 
 export interface WebGL2RendererOptions {
@@ -51,6 +56,24 @@ export class WebGL2Renderer implements Renderer {
     } catch {
       return this.textureManager.createPlaceholderTexture();
     }
+  }
+
+  createPixelMaskTerrainTexture(
+    textureId: number,
+    terrain: PixelMaskTerrain,
+    options?: PixelMaskTerrainTextureUploadOptions,
+  ): WebGLTexture {
+    this.assertAlive();
+    return this.textureManager.createPixelMaskTerrainTexture(textureId, terrain, options);
+  }
+
+  updatePixelMaskTerrainTexture(
+    textureId: number,
+    patch: PixelMaskTerrainAlphaPatch,
+    options?: PixelMaskTerrainTextureUploadOptions,
+  ): void {
+    this.assertAlive();
+    this.textureManager.updatePixelMaskTerrainTexture(textureId, patch, options);
   }
 
   stats(): RendererStats {

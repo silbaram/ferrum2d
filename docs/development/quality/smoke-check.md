@@ -36,12 +36,13 @@ Rust 물리엔진의 대표 solver/CCD/query 회귀를 빠르게 확인하려면
 pnpm smoke:physics
 pnpm smoke:physics-replay
 pnpm smoke:destructible-terrain
+pnpm smoke:destructible-terrain-browser
 ```
 
 이 명령은 `scripts/physics-smoke.mjs`가 canonical Rust test fixture를 scenario 단위로 실행하고, 각 scenario와 전체 suite의 seed/frame/suite hash를 출력한다. 이 hash는 실행한 scenario manifest와 통과 결과를 식별하는 smoke summary 값이다.
 `pnpm smoke:physics-replay`는 같은 physics smoke suite를 2회 실행해 suite hash가 안정적으로 일치하는지 확인하고, Web public replay helper가 생성한 snapshot state hash(`stateReplayHash`)도 함께 비교한다. 실패 시 run, seed, frame, suite hash, scenario별 hash 차이를 출력한다.
 `stateReplayHash`는 Web replay helper의 snapshot/restore/hash 계약을 Node deterministic harness에서 확인하는 값이며, Wasm physics state 전체를 직렬화한 hash는 아니다.
-`pnpm smoke:destructible-terrain`은 tilemap rect edit prototype이 collision query와 render command를 같은 tile occupancy source에서 갱신하는지 확인하고 seed/frame/suite hash를 출력한다.
+`pnpm smoke:destructible-terrain`은 tilemap rect edit가 collision query와 render command를 같은 tile occupancy source에서 갱신하고 collision obstacle cache를 dirty chunk 단위로 재빌드하는지 확인하며 seed/frame/suite hash를 출력한다. `pnpm smoke:destructible-terrain-browser`는 Top-down Shooter production build에서 deterministic tile 제거를 실행해 browser query와 render command count가 함께 변하는지 확인한다.
 Web public API의 `PhysicsReplayInputStream`은 frame/seed/fixed step/body event와 interval snapshot을 기록해 tooling 단위 rollback 검증에 사용한다.
 
 현재 scenario:
@@ -118,7 +119,8 @@ pnpm smoke:headless
 - `pnpm smoke:breakout-effects`는 `resetGame()` 이후 자연 ball/brick hit에서 scene-internal particle burst와 render command 증가가 관측되는지 확인한다.
 - `pnpm smoke:platformer-effects`는 `resetGame()` 이후 player landing transition에서 scene-internal dust burst와 render command 증가가 관측되는지 확인한다.
 - `pnpm smoke:physics-sandbox`는 Physics Spec fixture가 body/joint를 생성하고 physics debug line을 렌더링하는지 확인한다.
-- `pnpm smoke:physics-demo-suite`는 sandbox, joint playground, weld joint, projectile CCD, platformer physics, compound collider fixture를 순서대로 로드해 debug line과 summary를 확인한다.
+- `pnpm smoke:physics-demo-suite`는 sandbox, joint playground, weld joint, projectile CCD, platformer physics, compound collider fixture를 순서대로 로드해 debug line, CCD metric, summary를 확인한다. Rust unit test는 CCD hit marker line을 직접 검증한다.
+- `pnpm smoke:destructible-terrain-browser`는 Top-down Shooter의 collision tile 하나를 제거하고 같은 frame 경로에서 query hit 제거와 render command 감소를 확인한다.
 - browser console error와 page error가 발생하지 않는다.
 
 기본 브라우저 채널은 `chrome`이다. 환경에 따라 다음 환경 변수를 사용할 수 있다.
@@ -163,7 +165,8 @@ GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `fer
 - `pnpm validate:physics-authoring`으로 `physicsEditor` 샘플이 runtime Physics Spec으로 compile되고 resolver를 통과하는지 확인한다.
 - `pnpm smoke:physics`로 물리 solver/CCD/query 대표 scenario와 suite hash를 확인한다.
 - `pnpm smoke:physics-replay`로 physics smoke suite hash와 Web replay helper state hash 재현성을 확인한다.
-- `pnpm smoke:destructible-terrain`으로 tilemap rect edit prototype의 query/render 동기화와 suite hash를 확인한다.
+- `pnpm smoke:destructible-terrain`으로 tilemap rect edit의 query/render 동기화, dirty chunk collision cache, suite hash를 확인한다.
+- `pnpm smoke:destructible-terrain-browser`로 Top-down Shooter browser path의 deterministic tile 제거 demo를 확인한다.
 - `pnpm smoke:headless`로 Game Spec 적용 경로, collision/navigation 전제, representative render command buffer를 확인한다.
 - `pnpm smoke:topdown`으로 Top-down Shooter production build에서 particle burst와 non-lethal enemy tint flash가 browser render path에 도달하는지 확인한다.
 - `pnpm smoke:physics-demo-suite`로 Physics Spec apply/sandbox fixture browser path를 확인한다.

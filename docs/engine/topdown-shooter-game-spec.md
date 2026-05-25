@@ -442,6 +442,8 @@ const spec: ShooterGameSpec = {
 
 `tilemap.tiles`의 key는 positive integer string이어야 한다. `0`은 빈 타일로 예약되어 layer data에서만 사용할 수 있다. 일반 layer의 양수 tile id는 `tilemap.tiles`에 존재해야 렌더링할 수 있다. `collisionOnly: true` layer는 반드시 `collision: true`여야 하며, 양수 tile id가 `tilemap.tiles`에 없어도 렌더링하지 않는 solid cell로 허용한다. 이 경로는 LDtk raw `IntGrid`처럼 충돌 그리드만 있는 데이터를 표현하기 위한 것이다. `collision: true` layer의 양수 tile은 player/enemy 이동을 막는 정적 AABB로 해석되고, Rust는 인접 solid tile run을 merged AABB obstacle로 캐시해 충돌 후보 검사를 줄인다. 런타임 단일 cell 변경은 Game Spec 필드가 아니라 `FerrumEngine.setShooterTilemapTile(...)` API로 수행하며, collision layer 변경 시 Rust가 해당 cache를 즉시 refresh한다. 단, `tilemap.tiles.*.slope`가 정의된 tile id는 Rust `TileSlopeDefinition`으로 등록되고 merged AABB solid에서는 제외된다. `tilemap.tiles.*.oneWayPlatform: true`가 정의된 tile id도 merged AABB solid에서는 제외되고, 위에서 내려오는 swept movement와 ground probe만 막는다. `slope`와 `oneWayPlatform: true`는 같은 tile definition에 함께 사용할 수 없다. slope endpoint는 tile-local normalized 좌표이며 `x1`은 `x0`와 달라야 한다. chase enemy는 같은 collision layer의 원본 tile grid를 4방향 navigation 장애물로 사용한다. Navigation v1은 Rust core 내부에서 계산되며 새 Game Spec 필드를 추가하지 않는다. bullet-wall 충돌, 자동 타일링, editor, per-tile script, navmesh, crowd simulation은 포함하지 않는다.
 
+`extractTilemapBoundaryChains(...)`는 resolved tilemap의 `collision: true` layer를 generic Physics Spec의 static `chain` body map으로 변환하는 helper다. 이 helper는 Game Spec 필드가 아니며, slope/one-way tile은 regular solid boundary에서 제외한다. `PixelMaskTerrain`은 alpha mask를 collision-only tilemap layer로 변환한 뒤 같은 chain boundary 추출 경로를 재사용할 수 있다.
+
 ### Tiled JSON Import
 
 `importTiledGameSpec(...)`는 Tiled finite orthogonal JSON map을 Game Spec `atlas`/`tilemap` 조각으로 변환한다. embedded tileset image metadata를 frame UV로 바꾸고, tile layer `data`의 global tile id를 그대로 Game Spec tile id로 사용한다.
