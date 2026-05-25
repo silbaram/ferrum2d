@@ -21,10 +21,12 @@ Do not use it for:
 ## Workflow
 
 1. Inspect available scripts in `package.json`.
-2. Prefer the smallest check that proves the changed behavior.
-3. For browser checks, record URL, viewport, user steps, console errors, and visual symptoms.
-4. Check debug overlay or exposed runtime stats when available.
-5. Separate game bug reports from suspected engine bugs.
-6. Report commands run, failures, and skipped checks with reasons.
+2. Run `npm run ferrum:report` when available to capture project context before testing.
+3. Prefer the smallest check that proves the changed behavior.
+4. Use `npm run ferrum:smoke` for build-level smoke when available.
+5. For browser checks, record URL, viewport, user steps, console errors, and visual symptoms.
+6. Check debug overlay or exposed runtime stats when available.
+7. Separate game bug reports from suspected engine bugs.
+8. Report commands run, failures, and skipped checks with reasons.
 
 If a dev server remains running after testing, stop it before finishing unless the user asked to keep it running.

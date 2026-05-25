@@ -26,6 +26,6 @@ Do not use it for:
 3. Keep browser/platform UI code in the app layer.
 4. Use narrow adapters instead of scattering direct runtime calls across unrelated files.
 5. Preserve hot-path discipline: do not create per-entity JS/Wasm round trips in frame loops.
-6. Validate by running build and, when possible, a browser smoke pass.
+6. Validate with `npm run ferrum:smoke` when available, otherwise run build and, when possible, a browser smoke pass.
 
 If the public API cannot express the requested gameplay, stop and document the missing engine capability.

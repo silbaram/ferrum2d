@@ -21,10 +21,11 @@ Do not use it for:
 ## Workflow
 
 1. Confirm the target is an application project, not the Ferrum2D engine repository.
-2. Read `package.json` and verify `@ferrum2d/ferrum-web` is a dependency.
-3. Keep app code under `src/`, browser assets under `public/`, and generated build output out of source edits.
-4. Use only public imports from `@ferrum2d/ferrum-web`.
-5. Keep startup failure handling visible in the page so agent-generated projects are debuggable.
-6. Validate with the project scripts that exist, usually `npm run build` or the package manager equivalent.
+2. Read `.agents/harness/ferrum-game-development.md` when present.
+3. Read `package.json` and verify `@ferrum2d/ferrum-web` is a dependency.
+4. Keep app code under `src/`, browser assets under `public/`, and generated build output out of source edits.
+5. Use only public imports from `@ferrum2d/ferrum-web`.
+6. Keep startup failure handling visible in the page so agent-generated projects are debuggable.
+7. Validate with `npm run ferrum:validate` when available, then `npm run build` or the package manager equivalent.
 
 If a requested feature needs engine behavior that is not public, report the gap and propose an engine feature request instead of modifying installed package files.

@@ -226,6 +226,20 @@ Ferrum2D는 비주얼 에디터 중심 엔진이 아니라 AI agent-first 2D gam
 4. `pnpm validate:game-spec`, `pnpm validate:physics-authoring`, smoke check로 결과를 검증한다.
 5. 브라우저에서 플레이 감각을 확인하고 다시 반복한다.
 
+`@ferrum2d/create-game`으로 만든 프로젝트는 다음 하네스 명령을 제공한다.
+
+```bash
+npm run ferrum:report
+npm run ferrum:validate
+npm run ferrum:smoke
+```
+
+AI 도구별 개발 지침은 명시적으로 설치한다. Codex/Claude는 공식 subagent와 skill 경로를 사용하고, Gemini CLI는 공식 `GEMINI.md` context file과 `.gemini/commands/*.toml` custom command를 사용한다.
+
+```bash
+npx @ferrum2d/agents init --tools codex,claude,gemini
+```
+
 AI 에이전트에게 게임 밸런스 작업을 맡길 때는 가능하면 Rust/TypeScript 코드보다 `game.json`을 먼저 수정하게 하는 것이 좋다. 코드 변경은 새로운 엔진 기능이 필요할 때만 진행한다.
 
 ## 현재 지원하지 않는 것

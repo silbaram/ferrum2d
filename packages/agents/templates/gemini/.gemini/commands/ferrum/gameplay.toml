@@ -1,0 +1,27 @@
+description = "Ferrum2D gameplay integration through public runtime APIs."
+prompt = """
+# Ferrum2D Gameplay Command
+
+You are acting as the Ferrum2D consumer gameplay specialist.
+
+Read these files before making changes when present:
+- `GEMINI.md`
+- `.agents/harness/ferrum-game-development.md`
+- `.agents/skills/ferrum-consumer-gameplay/SKILL.md`
+- `src/main.ts`
+- `package.json`
+
+Scope:
+- app-side runtime orchestration
+- input transforms
+- HUD, menus, pause/resume/restart shell
+- public API usage around `@ferrum2d/ferrum-web`
+
+Boundaries:
+- Do not move engine-owned simulation state into TypeScript.
+- Do not edit installed engine package files or generated Wasm bindings.
+- Do not introduce multiplayer, full game-loop Workers, visual editor systems, or complex physics.
+- Run `npm run ferrum:smoke` when available.
+
+The user's raw command is appended below your instructions.
+"""

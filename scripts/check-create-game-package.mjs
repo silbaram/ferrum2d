@@ -28,6 +28,7 @@ const requiredPackageFiles = [
   "bin/create-game.mjs",
   "templates/minimal/index.html",
   "templates/minimal/package.json",
+  "templates/minimal/scripts/ferrum-harness.mjs",
   "templates/minimal/src/main.ts",
   "templates/minimal/src/styles.css",
 ];
@@ -38,6 +39,7 @@ const requiredPackedFiles = [
   "package/bin/create-game.mjs",
   "package/templates/minimal/index.html",
   "package/templates/minimal/package.json",
+  "package/templates/minimal/scripts/ferrum-harness.mjs",
   "package/templates/minimal/src/main.ts",
   "package/templates/minimal/src/styles.css",
 ];
@@ -88,6 +90,9 @@ async function checkGeneratedProject() {
     assert(generatedPackage.dependencies?.["@ferrum2d/ferrum-web"] === "0.0.0-test", "generated game must depend on @ferrum2d/ferrum-web");
     assert(generatedPackage.scripts?.dev === "vite", "generated game must include dev script");
     assert(generatedPackage.scripts?.build === "vite build --base=./", "generated game must include static-safe build script");
+    assert(generatedPackage.scripts?.["ferrum:validate"] === "node scripts/ferrum-harness.mjs validate", "generated game must include ferrum:validate script");
+    assert(generatedPackage.scripts?.["ferrum:smoke"] === "node scripts/ferrum-harness.mjs smoke", "generated game must include ferrum:smoke script");
+    assert(generatedPackage.scripts?.["ferrum:report"] === "node scripts/ferrum-harness.mjs report", "generated game must include ferrum:report script");
     assert(generatedPackage.devDependencies?.vite !== undefined, "generated game must include vite devDependency");
 
     const mainSource = await readFile(path.join(targetRoot, "src/main.ts"), "utf8");
@@ -97,6 +102,7 @@ async function checkGeneratedProject() {
     assert(!mainSource.includes("@ferrum2d/ferrum-web/src/"), "generated game must not import source internals");
 
     await requireFile(path.join(targetRoot, "index.html"), repoRoot);
+    await requireFile(path.join(targetRoot, "scripts/ferrum-harness.mjs"), repoRoot);
     await requireFile(path.join(targetRoot, "src/styles.css"), repoRoot);
   } finally {
     await rm(tempDir, { recursive: true, force: true });

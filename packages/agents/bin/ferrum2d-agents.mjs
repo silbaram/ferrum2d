@@ -254,6 +254,8 @@ Use these agents only for games that depend on @ferrum2d/ferrum-web.
 - consumer_playtest_agent: local playtest, smoke checks, debug overlay evidence.
 - consumer_build_agent: production build, static deploy artifact checks.
 
+Read .agents/harness/ferrum-game-development.md for the shared harness. Prefer npm run ferrum:report, npm run ferrum:validate, and npm run ferrum:smoke when those scripts are available.
+
 Do not use these agents for Ferrum2D engine internals, Rust/Wasm core changes, renderer implementation, npm package publishing, or release management.
 `;
 }
@@ -264,6 +266,8 @@ function claudeInstructions() {
 
 Use the consumer-* project agents and ferrum-consumer-* skills only for games that depend on @ferrum2d/ferrum-web.
 
+Read .agents/harness/ferrum-game-development.md for the shared harness. Prefer npm run ferrum:report, npm run ferrum:validate, and npm run ferrum:smoke when those scripts are available.
+
 Do not use these agents for Ferrum2D engine internals, Rust/Wasm core changes, renderer implementation, npm package publishing, or release management.
 `;
 }
@@ -272,9 +276,11 @@ function geminiInstructions() {
   return `
 # Ferrum2D Consumer Development
 
-Use the consumer-* project agents for game projects that depend on @ferrum2d/ferrum-web.
+Use GEMINI.md plus the /ferrum:* project commands for games that depend on @ferrum2d/ferrum-web.
 
-Gemini skills are installed through the shared .agents/skills workspace alias. Do not add duplicate .gemini/skills wrappers unless Gemini changes its discovery rules.
+Gemini CLI officially discovers project context through GEMINI.md and project commands through .gemini/commands/*.toml. Ferrum2D installs /ferrum:project, /ferrum:game-spec, /ferrum:assets, /ferrum:gameplay, /ferrum:playtest, and /ferrum:build commands. Shared skill instructions are installed under .agents/skills/ and referenced by those commands; do not add duplicate .gemini/skills wrappers unless Gemini changes its discovery rules.
+
+Read .agents/harness/ferrum-game-development.md for the shared harness. Prefer npm run ferrum:report, npm run ferrum:validate, and npm run ferrum:smoke when those scripts are available.
 
 Do not use these agents for Ferrum2D engine internals, Rust/Wasm core changes, renderer implementation, npm package publishing, or release management.
 `;

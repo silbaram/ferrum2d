@@ -25,6 +25,7 @@ Do not use it for:
 3. Verify manifest keys match the names used by runtime code and game spec data.
 4. Prefer explicit startup diagnostics for missing assets.
 5. Avoid very large unoptimized assets unless the user asked for high fidelity and accepts the cost.
-6. Build the project and confirm required assets are present in the output.
+6. Run `npm run ferrum:report` when available to inspect public assets and spec status.
+7. Build the project and confirm required assets are present in the output.
 
 For browser games, treat case-sensitive file paths as required even if the local filesystem is forgiving.

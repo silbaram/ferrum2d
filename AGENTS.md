@@ -42,15 +42,15 @@ AI 에이전트/스킬 설정은 다음 경로를 기준으로 분리한다.
 - Codex custom agents: `.codex/agents/*.toml`
 - Claude project agents: `.claude/agents/*.md`
 - Claude skill wrappers: `.claude/skills/*/SKILL.md`
-- Gemini project agents: `.gemini/agents/*.md`
-- Gemini skill wrappers: `.gemini/skills/*/SKILL.md`
+- Gemini CLI official context: `GEMINI.md`
+- Gemini CLI official custom commands: `.gemini/commands/*.toml`
 - Claude 진입 지침: `CLAUDE.md`
 - Gemini 진입 지침: `GEMINI.md`
 - 배포용 consumer agent/skill 템플릿: `packages/agents/templates/**`
 
-Claude/Gemini skill wrapper는 workflow를 중복 작성하지 않고 `.agents/skills/*/SKILL.md`를 source of truth로 참조한다. 배포, publish, Git tag, GitHub Release, npm deprecation, 원격 Pages 배포처럼 외부 상태를 바꾸는 작업은 도구와 무관하게 명시적 사용자 승인 전 실행하지 않는다.
+Claude skill wrapper는 workflow를 중복 작성하지 않고 `.agents/skills/*/SKILL.md`를 source of truth로 참조한다. Gemini CLI는 공식 subagent/skill discovery가 아니라 `GEMINI.md`와 `.gemini/commands/*.toml` custom command를 기준으로 한다. 배포, publish, Git tag, GitHub Release, npm deprecation, 원격 Pages 배포처럼 외부 상태를 바꾸는 작업은 도구와 무관하게 명시적 사용자 승인 전 실행하지 않는다.
 
-`packages/agents/templates/**` 하위의 `consumer-*` agent와 `ferrum-consumer-*` skill은 Ferrum2D 엔진을 사용하는 게임 프로젝트에 설치하기 위한 배포 템플릿이다. Ferrum2D 엔진 자체 개발, release, package QA, Pages 배포 작업에는 이 consumer agent/skill을 사용하지 않는다.
+`packages/agents/templates/**` 하위의 `consumer-*` Codex/Claude agent, `ferrum-consumer-*` skill, Gemini `/ferrum:*` command는 Ferrum2D 엔진을 사용하는 게임 프로젝트에 설치하기 위한 배포 템플릿이다. Ferrum2D 엔진 자체 개발, release, package QA, Pages 배포 작업에는 이 consumer harness를 사용하지 않는다.
 
 현재 agent 역할은 다음 책임으로 구분한다.
 

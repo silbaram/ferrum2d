@@ -39,16 +39,26 @@ const agents = [
   "consumer-playtest-agent",
   "consumer-build-agent",
 ];
+const geminiCommands = [
+  "project",
+  "game-spec",
+  "assets",
+  "gameplay",
+  "playtest",
+  "build",
+];
 const requiredPackedFiles = [
   "package/package.json",
   "package/LICENSE",
   "package/README.md",
   "package/bin/ferrum2d-agents.mjs",
+  "package/templates/shared/.agents/harness/ferrum-game-development.md",
   ...skills.map((skill) => `package/templates/shared/.agents/skills/${skill}/SKILL.md`),
+  "package/templates/codex/.codex/config.toml",
   ...agents.map((agent) => `package/templates/codex/.codex/agents/${agent}.toml`),
   ...agents.map((agent) => `package/templates/claude/.claude/agents/${agent}.md`),
   ...skills.map((skill) => `package/templates/claude/.claude/skills/${skill}/SKILL.md`),
-  ...agents.map((agent) => `package/templates/gemini/.gemini/agents/${agent}.md`),
+  ...geminiCommands.map((command) => `package/templates/gemini/.gemini/commands/ferrum/${command}.toml`),
 ];
 
 assert(packageJson.name === packageLabel, "agents package name must stay @ferrum2d/agents");
@@ -75,6 +85,7 @@ if (verifyPack) {
       "package/node_modules/",
       "package/dist/",
       "package/test/",
+      "package/templates/gemini/.gemini/agents/",
       "package/templates/gemini/.gemini/skills/",
     ],
   });
@@ -83,6 +94,8 @@ if (verifyPack) {
 console.log("packages/agents package check ok");
 
 async function checkTemplates() {
+  await requireFile(path.join(templatesRoot, "shared/.agents/harness/ferrum-game-development.md"), repoRoot);
+
   for (const skill of skills) {
     const sharedFile = path.join(templatesRoot, `shared/.agents/skills/${skill}/SKILL.md`);
     const sharedSource = await readFile(sharedFile, "utf8");
@@ -112,16 +125,27 @@ async function checkTemplates() {
     assert(skillRefs.length === 1, `${path.relative(repoRoot, claudeFile)} must reference exactly one skill`);
     assert(skills.includes(skillRefs[0]), `${path.relative(repoRoot, claudeFile)} references unknown skill ${skillRefs[0]}`);
 
-    const geminiFile = path.join(templatesRoot, `gemini/.gemini/agents/${agent}.md`);
-    const geminiSource = await readFile(geminiFile, "utf8");
-    assertFrontmatterField(geminiSource, "name", agent, geminiFile);
-    assertFrontmatterExists(geminiSource, "description", geminiFile);
-    assert(geminiSource.includes(".agents/skills/ferrum-consumer-"), `${path.relative(repoRoot, geminiFile)} must read canonical .agents skill`);
   }
 
+  const codexConfigFile = path.join(templatesRoot, "codex/.codex/config.toml");
+  const codexConfigSource = await readFile(codexConfigFile, "utf8");
+  assert(codexConfigSource.includes("[agents]"), "Codex template config must define [agents]");
+  assert(codexConfigSource.includes("max_depth = 1"), "Codex template config must limit subagent depth");
+
+  for (const command of geminiCommands) {
+    const geminiFile = path.join(templatesRoot, `gemini/.gemini/commands/ferrum/${command}.toml`);
+    const geminiSource = await readFile(geminiFile, "utf8");
+    assert(/^description\s*=\s*"/m.test(geminiSource), `${path.relative(repoRoot, geminiFile)} must define Gemini command description`);
+    assert(/^prompt\s*=\s*"""/m.test(geminiSource), `${path.relative(repoRoot, geminiFile)} must define Gemini command prompt`);
+    assert(geminiSource.includes(".agents/skills/ferrum-consumer-"), `${path.relative(repoRoot, geminiFile)} must reference canonical .agents skill`);
+    assert(geminiSource.includes(".agents/harness/ferrum-game-development.md"), `${path.relative(repoRoot, geminiFile)} must reference shared harness`);
+  }
+
+  const geminiAgentsPath = path.join(templatesRoot, "gemini/.gemini/agents");
+  assert(!await hasFiles(geminiAgentsPath), "Gemini template must not include unsupported .gemini/agents files");
+
   const geminiSkillsPath = path.join(templatesRoot, "gemini/.gemini/skills");
-  const geminiSkillsExists = await exists(geminiSkillsPath);
-  assert(!geminiSkillsExists, "Gemini template must not include .gemini/skills wrappers");
+  assert(!await hasFiles(geminiSkillsPath), "Gemini template must not include .gemini/skills wrappers");
 }
 
 async function checkInstallerOutput() {
@@ -139,14 +163,19 @@ async function checkInstallerOutput() {
       await requireFile(path.join(targetRoot, `.agents/skills/${skill}/SKILL.md`), repoRoot);
       await requireFile(path.join(targetRoot, `.claude/skills/${skill}/SKILL.md`), repoRoot);
     }
+    await requireFile(path.join(targetRoot, ".agents/harness/ferrum-game-development.md"), repoRoot);
     for (const agent of agents) {
       await requireFile(path.join(targetRoot, `.codex/agents/${agent}.toml`), repoRoot);
       await requireFile(path.join(targetRoot, `.claude/agents/${agent}.md`), repoRoot);
-      await requireFile(path.join(targetRoot, `.gemini/agents/${agent}.md`), repoRoot);
+    }
+    await requireFile(path.join(targetRoot, ".codex/config.toml"), repoRoot);
+    for (const command of geminiCommands) {
+      await requireFile(path.join(targetRoot, `.gemini/commands/ferrum/${command}.toml`), repoRoot);
     }
     await requireFile(path.join(targetRoot, "AGENTS.md"), repoRoot);
     await requireFile(path.join(targetRoot, "CLAUDE.md"), repoRoot);
     await requireFile(path.join(targetRoot, "GEMINI.md"), repoRoot);
+    assert(!await exists(path.join(targetRoot, ".gemini/agents")), "installed output must not create unsupported .gemini/agents");
     assert(!await exists(path.join(targetRoot, ".gemini/skills")), "installed output must not create .gemini/skills wrappers");
 
     const dryRunTarget = path.join(tempDir, "dry-run-game");
@@ -184,6 +213,21 @@ async function exists(filePath) {
   try {
     await stat(filePath);
     return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+async function hasFiles(directoryPath) {
+  try {
+    const entries = await readdir(directoryPath, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = path.join(directoryPath, entry.name);
+      if (entry.isFile()) return true;
+      if (entry.isDirectory() && await hasFiles(entryPath)) return true;
+    }
+    return false;
   } catch (error) {
     if (error?.code === "ENOENT") return false;
     throw error;

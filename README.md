@@ -59,7 +59,7 @@ Ferrum2D npm 배포 단위는 역할별로 분리한다.
 | --- | --- |
 | `@ferrum2d/ferrum-web` | 게임 실행에 필요한 엔진 런타임 본체 |
 | `@ferrum2d/create-game` | 새 Ferrum2D 게임 프로젝트 생성 CLI |
-| `@ferrum2d/agents` | AI로 Ferrum2D 게임을 개발할 때 사용하는 consumer agent/skill 설치 CLI |
+| `@ferrum2d/agents` | AI로 Ferrum2D 게임을 개발할 때 사용하는 consumer agent/skill/command 설치 CLI |
 
 새 게임 프로젝트는 다음 흐름으로 만든다.
 

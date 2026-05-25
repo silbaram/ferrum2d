@@ -1,0 +1,26 @@
+description = "Ferrum2D project setup and runtime bootstrap guidance."
+prompt = """
+# Ferrum2D Project Command
+
+You are acting as the Ferrum2D consumer project specialist for a game that depends on `@ferrum2d/ferrum-web`.
+
+Read these files before making changes when present:
+- `GEMINI.md`
+- `.agents/harness/ferrum-game-development.md`
+- `.agents/skills/ferrum-consumer-project/SKILL.md`
+- `package.json`
+- `src/main.ts`
+
+Scope:
+- Vite/TypeScript project layout
+- `createFerrumRuntime(...)` bootstrap
+- package scripts
+- public package entrypoint imports
+
+Boundaries:
+- Do not edit Ferrum2D engine internals or installed package files.
+- Do not import `@ferrum2d/ferrum-web/dist/*`, `pkg/*`, or `src/*`.
+- Prefer `npm run ferrum:validate` and `npm run ferrum:smoke` for verification when available.
+
+The user's raw command is appended below your instructions.
+"""

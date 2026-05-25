@@ -23,8 +23,9 @@ Do not use it for:
 1. Read `package.json` and identify build/preview scripts.
 2. Confirm the app imports only public APIs from `@ferrum2d/ferrum-web`.
 3. Check Vite `base` handling for the target host.
-4. Run the production build.
-5. Inspect output for missing Wasm, JSON, images, audio, or incorrect absolute paths.
-6. Run preview or a static smoke check when available.
+4. Run `npm run ferrum:validate` when available.
+5. Run the production build.
+6. Inspect output for missing Wasm, JSON, images, audio, or incorrect absolute paths.
+7. Run preview or a static smoke check when available.
 
 For deploys, clearly separate local artifact creation from any command that changes remote state.

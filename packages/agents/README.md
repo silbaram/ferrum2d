@@ -1,9 +1,18 @@
 # @ferrum2d/agents
 
-Ferrum2D consumer game development용 AI agent와 skill을 프로젝트에 설치하는 CLI다.
+Ferrum2D consumer game development용 AI agent, skill, Gemini command, shared harness를 프로젝트에 설치하는 CLI다.
 
 ```bash
 npx @ferrum2d/agents init --tools codex,claude,gemini
 ```
 
 이 패키지는 Ferrum2D 엔진 개발용 agent를 설치하지 않는다. 설치 대상은 `@ferrum2d/ferrum-web`을 사용하는 게임 프로젝트다.
+
+설치 내용:
+
+- Codex: `.codex/config.toml`, `.codex/agents/consumer-*.toml`, `.agents/skills/ferrum-consumer-*`
+- Claude: `.claude/agents/consumer-*.md`, `.claude/skills/ferrum-consumer-*/SKILL.md`
+- Gemini CLI: `.gemini/commands/ferrum/*.toml`, `GEMINI.md`
+- Shared harness: `.agents/harness/ferrum-game-development.md`
+
+Gemini CLI는 공식적으로 `GEMINI.md` context file과 `.gemini/commands/*.toml` custom command를 사용한다. 그래서 이 패키지는 `.gemini/agents` 또는 `.gemini/skills` wrapper를 설치하지 않고, project command가 shared `.agents/skills` 파일을 읽도록 구성한다.

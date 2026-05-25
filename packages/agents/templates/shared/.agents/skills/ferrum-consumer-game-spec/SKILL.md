@@ -25,6 +25,6 @@ Do not use it for:
 3. Keep gameplay behavior changes data-driven when existing public spec fields support them.
 4. Avoid inventing undocumented fields. If a field is needed but unsupported, report the limitation.
 5. Check references available in the project, such as schema files, package types, README snippets, or generated docs.
-6. Run the project validation script if present. If no validator exists, run at least the production build.
+6. Run `npm run ferrum:validate` when available. If no harness exists, run the project validation script or at least the production build.
 
 Balance changes should state expected player impact: difficulty, pacing, enemy density, projectile feel, or scoring.
