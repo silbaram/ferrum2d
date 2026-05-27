@@ -98,6 +98,19 @@ function findButton(element: FakeElement, label: string): FakeElement | undefine
   return undefined;
 }
 
+function findByAttribute(element: FakeElement, name: string, value: string): FakeElement | undefined {
+  if (element.attributes.get(name) === value) {
+    return element;
+  }
+  for (const child of element.children) {
+    const result = findByAttribute(child, name, value);
+    if (result) {
+      return result;
+    }
+  }
+  return undefined;
+}
+
 test("UiOverlay renders HUD panels and dialog text", () => {
   installFakeDocument((body) => {
     const overlay = new UiOverlay(body as unknown as HTMLElement);
@@ -155,6 +168,39 @@ test("UiOverlay forwards panel and dialog action events", () => {
       { id: "start", panelId: "menu" },
       { id: "cancel", dialogId: "confirm" },
     ]);
+  });
+});
+
+test("UiOverlay renders meter lines with theme and accessibility attributes", () => {
+  installFakeDocument((body) => {
+    const overlay = new UiOverlay(body as unknown as HTMLElement, { theme: "light" });
+    overlay.update({
+      panels: [{
+        id: "stats",
+        title: "Stats",
+        ariaLive: "polite",
+        lines: [{
+          id: "hp",
+          label: "HP",
+          value: "50%",
+          meter: { value: 5, max: 10 },
+          ariaLabel: "Health",
+        }],
+        actions: [{ id: "pause", label: "Pause", ariaLabel: "Pause game" }],
+      }],
+    });
+
+    equal(body.children[0].style.color, "#0f172a");
+    const panel = findByAttribute(body, "data-ferrum-ui-panel", "stats");
+    equal(panel?.attributes.get("role"), "region");
+    equal(panel?.attributes.get("aria-label"), "Stats");
+    equal(panel?.attributes.get("aria-live"), "polite");
+    const meter = findByAttribute(body, "role", "progressbar");
+    equal(meter?.attributes.get("aria-valuenow"), "5");
+    equal(meter?.attributes.get("aria-valuemax"), "10");
+    equal(meter?.attributes.get("aria-label"), "Health");
+    equal(meter?.children[0].style.width, "50%");
+    equal(findButton(body, "Pause")?.attributes.get("aria-label"), "Pause game");
   });
 });
 

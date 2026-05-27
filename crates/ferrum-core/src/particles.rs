@@ -2,7 +2,7 @@ use std::f32::consts::TAU;
 
 use crate::camera::Camera2D;
 use crate::components::{SpriteFrame, Transform2D};
-use crate::render_command::SpriteRenderCommand;
+use crate::render_command::{SpriteRenderCommand, SPRITE_EFFECT_NONE};
 
 const DEFAULT_PARTICLE_CAPACITY: usize = 512;
 const DEFAULT_PARTICLE_SEED: u32 = 0xA341_316C;
@@ -263,6 +263,7 @@ impl ParticleSystem {
                 b: color[2],
                 a: color[3],
                 texture_id: particle.texture_id as f32,
+                effect_flags: SPRITE_EFFECT_NONE,
             });
         }
     }

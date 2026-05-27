@@ -7,6 +7,13 @@ on:
       - 'ferrum-web-v*'
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      consumer_smoke:
+        description: 'Run package consumer smoke'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   validate:
@@ -49,6 +56,9 @@ jobs:
       - name: Physics smoke tests
         run: pnpm smoke:physics
 
+      - name: Runtime budget profile gate
+        run: pnpm smoke:runtime-budgets
+
       - name: Build wasm package
         run: wasm-pack build crates/ferrum-core --target web --out-dir
           ../../packages/ferrum-web/pkg
@@ -61,3 +71,46 @@ jobs:
 
       - name: Build TypeScript packages
         run: pnpm build
+
+  consumer-smoke:
+    runs-on: ubuntu-latest
+    needs: validate
+    if: startsWith(github.ref, 'refs/tags/ferrum-web-v') || (github.event_name == 'workflow_dispatch' && inputs.consumer_smoke)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm 10.8.0
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.0
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Package consumer smoke
+        run: pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke
+
+      - name: Upload consumer smoke failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: consumer-smoke-artifacts
+          path: artifacts/consumer-smoke
+          if-no-files-found: ignore

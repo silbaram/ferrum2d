@@ -5,6 +5,9 @@ packages/*/dist-test/
 examples/*/dist/
 .antigravitycli/
 dist-pages/
+artifacts/
 
 docs/physics-v*
-docs/planning
+docs/planning/*
+!docs/planning/README.md
+!docs/planning/feature-candidates.md

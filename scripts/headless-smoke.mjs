@@ -9,7 +9,7 @@ import { applyShooterGameSpec, resolveShooterGameSpec } from "../packages/ferrum
 import { decodeRenderCommands } from "../packages/ferrum-web/dist/renderCommandDecoder.js";
 import { rendererStatsForCommands } from "../packages/ferrum-web/dist/renderer.js";
 
-const FLOATS_PER_COMMAND = 13;
+const FLOATS_PER_COMMAND = 14;
 const DEFAULT_SPEC_PATH = "examples/topdown-shooter/public/game.json";
 const PARTICLE_SMOKE_PRESET_ID = 0;
 const PARTICLE_SMOKE_BURST_COUNT = 4;
@@ -323,6 +323,7 @@ function tilemapRenderCommandBuffer(resolved) {
         tile.color[2],
         tile.color[3],
         typeof frame.texture === "number" ? frame.texture : textureId(frame.texture),
+        0,
       );
     }
   }

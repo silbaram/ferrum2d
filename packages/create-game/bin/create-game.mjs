@@ -16,6 +16,11 @@ try {
     process.exit(0);
   }
 
+  if (options.listTemplates) {
+    await printTemplateList();
+    process.exit(0);
+  }
+
   if (!options.projectDir) {
     console.error("Missing project directory.");
     printHelp();
@@ -33,6 +38,7 @@ function parseArgs(args) {
     ferrumVersion: defaultFerrumVersion,
     force: false,
     help: false,
+    listTemplates: false,
     projectDir: undefined,
     template: defaultTemplate,
   };
@@ -45,6 +51,10 @@ function parseArgs(args) {
     }
     if (arg === "--force") {
       parsed.force = true;
+      continue;
+    }
+    if (arg === "--list-templates") {
+      parsed.listTemplates = true;
       continue;
     }
     if (arg === "--template") {
@@ -86,8 +96,22 @@ function requireValue(args, index, optionName) {
 }
 
 async function createGameProject({ ferrumVersion, force, projectDir, template }) {
-  const templateRoot = path.join(templatesRoot, template);
-  await requireDirectory(templateRoot, `Unknown template '${template}'.`);
+  const catalog = await loadTemplateCatalog();
+  const templateIds = catalog.templates.map((entry) => entry.id);
+  const templateEntry = catalog.templates.find((entry) => entry.id === template);
+  if (!templateEntry) {
+    throw new Error(`Unknown template '${template}'. Available templates: ${templateIds.join(", ")}.`);
+  }
+  const templateRoot = path.resolve(templatesRoot, templateEntry.id);
+  assertInsideDirectory(
+    templatesRoot,
+    templateRoot,
+    `Template '${templateEntry.id}' resolves outside the templates directory.`,
+  );
+  await requireDirectory(
+    templateRoot,
+    `Template '${templateEntry.id}' is listed in manifest but its directory is missing.`,
+  );
 
   const targetRoot = path.resolve(process.cwd(), projectDir);
   const targetName = path.basename(targetRoot);
@@ -119,6 +143,37 @@ function formatShellPath(targetRoot) {
   return relativePath;
 }
 
+async function loadTemplateCatalog() {
+  const source = await readFile(path.join(templatesRoot, "manifest.json"), "utf8");
+  const catalog = JSON.parse(source);
+  if (!Array.isArray(catalog.templates)) {
+    throw new Error("Invalid template manifest: templates must be an array.");
+  }
+  const ids = new Set();
+  for (const template of catalog.templates) {
+    if (typeof template.id !== "string" || !/^[a-z0-9-]+$/.test(template.id)) {
+      throw new Error("Invalid template manifest: template ids must use lowercase letters, numbers, and hyphens.");
+    }
+    if (ids.has(template.id)) {
+      throw new Error(`Invalid template manifest: duplicate template id '${template.id}'.`);
+    }
+    ids.add(template.id);
+  }
+  if (typeof catalog.defaultTemplate !== "string" || !ids.has(catalog.defaultTemplate)) {
+    throw new Error("Invalid template manifest: defaultTemplate must reference a listed template id.");
+  }
+  return catalog;
+}
+
+async function printTemplateList() {
+  const catalog = await loadTemplateCatalog();
+  console.log("Available Ferrum2D templates:");
+  for (const template of catalog.templates) {
+    const recommended = template.id === catalog.defaultTemplate ? " (default)" : "";
+    console.log(`  ${template.id}${recommended} - ${template.description}`);
+  }
+}
+
 async function requireDirectory(directoryPath, message) {
   try {
     const stats = await stat(directoryPath);
@@ -130,6 +185,13 @@ async function requireDirectory(directoryPath, message) {
       throw new Error(message);
     }
     throw error;
+  }
+}
+
+function assertInsideDirectory(parentDirectory, childPath, message) {
+  const relative = path.relative(parentDirectory, childPath);
+  if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(message);
   }
 }
 
@@ -203,6 +265,7 @@ function printHelp() {
 
 Options:
   --template <name>          Template to use. Default: minimal
+  --list-templates           Print available templates
   --ferrum-version <range>   @ferrum2d/ferrum-web dependency range. Default: ^0.1.0
   --force                    Allow writing into a non-empty target directory
   -h, --help                 Show this help

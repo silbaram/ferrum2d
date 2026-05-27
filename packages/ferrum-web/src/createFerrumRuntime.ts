@@ -11,8 +11,15 @@ import type {
 import { DebugOverlay } from "./debugOverlay.js";
 import type { DebugOverlayMetrics, DebugOverlayOptions } from "./debugOverlay.js";
 import type { PhysicsMode } from "./physicsSpec.js";
+import { applyPhysicsSceneProfile } from "./physicsSceneIntegration.js";
+import type { PhysicsSceneProfileApplyResult, PhysicsSceneProfileSpec } from "./physicsSceneIntegration.js";
 import { InputManager } from "./inputManager.js";
 import type { InputManagerOptions, InputSnapshot } from "./inputManager.js";
+import type { LightingScene2D } from "./lighting.js";
+import type { PostProcessStackInput } from "./cameraPostProcessing.js";
+import type { SpriteMaterialPresetInput } from "./spriteMaterial.js";
+import { RuntimeProfiler } from "./runtimeProfiler.js";
+import type { RuntimeProfilerOptions } from "./runtimeProfiler.js";
 import { createRenderer } from "./createRenderer.js";
 import type { CreatedRenderer } from "./createRenderer.js";
 import type { RendererStats } from "./renderer.js";
@@ -28,6 +35,10 @@ export type FerrumRuntimeRenderer = CreatedRenderer & TextureAssetManager & {
   renderCommands(commands: RenderCommandBufferView): RendererStats;
   renderPhysicsDebugLines(lines: PhysicsDebugLineBufferView, camera: PhysicsDebugLineCamera): RendererStats;
   viewportSize(): { width: number; height: number };
+  setLighting?(scene: LightingScene2D | false | undefined): void;
+  setPostProcess?(postProcess: PostProcessStackInput): void;
+  renderPostProcess?(postProcess?: PostProcessStackInput): RendererStats;
+  setSpriteMaterial?(material: SpriteMaterialPresetInput): void;
 };
 
 export type FerrumRuntimeEnvironment = "development" | "production";
@@ -41,6 +52,9 @@ export interface FerrumRuntimeFrame {
 }
 
 export type UiOverlayStateProvider = (frame: FerrumRuntimeFrame) => UiOverlayState;
+export type LightingSceneProvider = (frame: FrameState) => LightingScene2D | false | undefined;
+export type PostProcessProvider = (frame: FrameState) => PostProcessStackInput;
+export type SpriteMaterialProvider = (frame: FrameState) => SpriteMaterialPresetInput;
 
 export interface FerrumRuntimeOptions {
   canvas: HTMLCanvasElement;
@@ -59,8 +73,13 @@ export interface FerrumRuntimeOptions {
   uiState?: UiOverlayStateProvider;
   physicsDebugLines?: boolean | PhysicsDebugOptions;
   physicsMode?: PhysicsMode;
+  physicsScene?: PhysicsSceneProfileSpec | false;
   environment?: FerrumRuntimeEnvironment;
   engine?: CreateEngineOptions;
+  lighting?: LightingScene2D | false | LightingSceneProvider;
+  postProcess?: PostProcessStackInput | PostProcessProvider;
+  spriteMaterial?: SpriteMaterialPresetInput | SpriteMaterialProvider;
+  profiler?: boolean | RuntimeProfiler | RuntimeProfilerOptions;
   autostart?: boolean;
   inputTransform?: (snapshot: InputSnapshot) => InputSnapshot;
   gameStateLabel?: (code: number) => string;
@@ -72,6 +91,8 @@ export interface FerrumRuntime {
   renderer: FerrumRuntimeRenderer;
   input: InputManager;
   assetHost: AssetHost;
+  profiler?: RuntimeProfiler;
+  physicsScene?: PhysicsSceneProfileApplyResult;
   uiOverlay?: UiOverlay;
   debugOverlay?: DebugOverlay;
   start(): void;
@@ -102,13 +123,15 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     renderer ??= await createRenderer(options.canvas, {
       preferred: options.rendererPreference ?? "webgl2",
       webgl2: options.webgl2,
-      webgpu: options.webgpu,
+      webgpu: webGpuOptionsWithStaticPostProcess(options),
     });
     input ??= new InputManager(options.canvas, options.inputOptions);
     assetHost ??= new BrowserPlatformHost(renderer);
     uiOverlay ??= createUiOverlay(options);
     debugOverlay = createDebugOverlay(options);
-    const needsRuntimeFrame = debugOverlay !== undefined || uiOverlay !== undefined || options.onFrame !== undefined;
+    const profiler = createRuntimeProfiler(options.profiler);
+    const needsRuntimeFrame =
+      debugOverlay !== undefined || uiOverlay !== undefined || options.onFrame !== undefined || profiler !== undefined;
     const shouldRenderPhysicsDebugLines =
       options.physicsDebugLines !== undefined && options.physicsDebugLines !== false;
     const runtimePhysicsDebugLines =
@@ -126,6 +149,9 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     const runtimeInput = input;
     const runtimeAssetHost = assetHost;
     runtimeRenderer.resize();
+    configureStaticLighting(runtimeRenderer, options.lighting);
+    configureStaticPostProcess(runtimeRenderer, options.postProcess);
+    configureStaticSpriteMaterial(runtimeRenderer, options.spriteMaterial);
     detachRendererResize = observeRendererResize(options.canvas, runtimeRenderer);
 
     const inputProvider: InputProvider = () => {
@@ -135,6 +161,15 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
 
     const engine = await createEngine((frame) => {
       const renderStartMs = needsRuntimeFrame ? performance.now() : 0;
+      if (typeof options.lighting === "function") {
+        runtimeRenderer.setLighting?.(options.lighting(frame));
+      }
+      if (typeof options.spriteMaterial === "function") {
+        runtimeRenderer.setSpriteMaterial?.(options.spriteMaterial(frame));
+      }
+      if (typeof options.postProcess === "function") {
+        runtimeRenderer.setPostProcess?.(options.postProcess(frame));
+      }
       runtimeRenderer.render();
       let rendererStats = runtimeRenderer.renderCommands(frame.renderCommandBuffer);
       if (shouldRenderPhysicsDebugLines) {
@@ -143,6 +178,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
           y: frame.cameraY,
         });
       }
+      rendererStats = runtimeRenderer.renderPostProcess?.() ?? rendererStats;
       if (!needsRuntimeFrame) {
         return;
       }
@@ -176,14 +212,26 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       if (uiOverlay && options.uiState) {
         uiOverlay.update(options.uiState(runtimeFrame));
       }
+      profiler?.recordFrame(debugMetrics);
       options.onFrame?.(runtimeFrame);
     }, inputProvider, runtimeAssetHost, () => runtimeRenderer.viewportSize(), engineOptions);
+    let physicsScene: PhysicsSceneProfileApplyResult | undefined;
+    if (options.physicsScene !== undefined && options.physicsScene !== false) {
+      try {
+        physicsScene = applyPhysicsSceneProfile(engine, options.physicsScene);
+      } catch (error) {
+        engine.destroy();
+        throw error;
+      }
+    }
 
     const runtime: FerrumRuntime = {
       engine,
       renderer: runtimeRenderer,
       input: runtimeInput,
       assetHost: runtimeAssetHost,
+      ...(profiler === undefined ? {} : { profiler }),
+      ...(physicsScene === undefined ? {} : { physicsScene }),
       uiOverlay,
       debugOverlay,
       start: () => engine.start(),
@@ -197,6 +245,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
         destroyed = true;
         detachRendererResize?.();
         detachRendererResize = undefined;
+        physicsScene?.clear();
         engine.destroy();
         if (ownsUiOverlay) uiOverlay?.destroy();
         debugOverlay?.destroy();
@@ -220,6 +269,43 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     if (ownsRenderer && renderer) renderer.destroy();
     throw error;
   }
+}
+
+function configureStaticLighting(
+  renderer: FerrumRuntimeRenderer,
+  lighting: FerrumRuntimeOptions["lighting"],
+): void {
+  if (lighting !== undefined && typeof lighting !== "function") {
+    renderer.setLighting?.(lighting);
+  }
+}
+
+function configureStaticSpriteMaterial(
+  renderer: FerrumRuntimeRenderer,
+  spriteMaterial: FerrumRuntimeOptions["spriteMaterial"],
+): void {
+  if (spriteMaterial !== undefined && typeof spriteMaterial !== "function") {
+    renderer.setSpriteMaterial?.(spriteMaterial);
+  }
+}
+
+function configureStaticPostProcess(
+  renderer: FerrumRuntimeRenderer,
+  postProcess: FerrumRuntimeOptions["postProcess"],
+): void {
+  if (postProcess !== undefined && typeof postProcess !== "function") {
+    renderer.setPostProcess?.(postProcess);
+  }
+}
+
+function webGpuOptionsWithStaticPostProcess(options: FerrumRuntimeOptions): WebGPURendererOptions | undefined {
+  if (options.postProcess === undefined || typeof options.postProcess === "function") {
+    return options.webgpu;
+  }
+  return {
+    ...options.webgpu,
+    postProcess: options.postProcess,
+  };
 }
 
 function createUiOverlay(options: FerrumRuntimeOptions): UiOverlay | undefined {
@@ -261,6 +347,19 @@ function resolveDebugOptions(options: FerrumRuntimeOptions): DebugOverlayOptions
     return options.debug.enabled === false ? undefined : options.debug;
   }
   return options.environment === "development" ? { enabled: true } : undefined;
+}
+
+function createRuntimeProfiler(option: FerrumRuntimeOptions["profiler"]): RuntimeProfiler | undefined {
+  if (option === undefined || option === false) {
+    return undefined;
+  }
+  if (option === true) {
+    return new RuntimeProfiler();
+  }
+  if (option instanceof RuntimeProfiler) {
+    return option;
+  }
+  return new RuntimeProfiler(option);
 }
 
 function observeRendererResize(canvas: HTMLCanvasElement, renderer: FerrumRuntimeRenderer): () => void {
@@ -305,6 +404,13 @@ function buildDebugMetrics(
     renderCommandCount: rendererStats.renderCommandCount,
     textureBindCount: rendererStats.textureBindCount,
     textureSwitchCount: rendererStats.textureSwitchCount,
+    lightingDrawCalls: rendererStats.lightingDrawCalls,
+    pointLightCount: rendererStats.pointLightCount,
+    tileOccluderCount: rendererStats.tileOccluderCount,
+    shadowDrawCalls: rendererStats.shadowDrawCalls,
+    shadowCasterCount: rendererStats.shadowCasterCount,
+    postProcessDrawCalls: rendererStats.postProcessDrawCalls,
+    postProcessPassCount: rendererStats.postProcessPassCount,
     physicsDebugLineCount: rendererStats.physicsDebugLineCount,
     audioEventsPerSecond,
     physicsMode: frame.physics.mode,

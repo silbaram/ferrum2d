@@ -19,6 +19,13 @@ function rejectsWithMessage(run: () => unknown, expected: string): void {
   throw new Error("Expected function to throw.");
 }
 
+function compressedTiledLayerData(values: readonly number[]): string {
+  const bytes = new Uint8Array(values.length * 4);
+  const view = new DataView(bytes.buffer);
+  values.forEach((value, index) => view.setUint32(index * 4, value, true));
+  return btoa(String.fromCharCode(...bytes));
+}
+
 test("importAsepriteAtlas converts hash frames into Shooter atlas metadata", () => {
   const imported = importAsepriteAtlas({
     frames: {
@@ -340,11 +347,130 @@ test("importTiledTilemap rejects unresolved external tilesets", () => {
       tilesets: [{ firstgid: 1, source: "terrain.tsx" }],
       layers: [{ type: "tilelayer", width: 1, height: 1, data: [1] }],
     }),
-    "Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.tiled.tilesets.0.source' detail='external Tiled tilesets must be resolved before import'.",
+    "Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.tiled.tilesets.0.source' detail='external Tiled tileset terrain.tsx must be provided in options.externalTilesets'.",
   );
 });
 
-test("importTiledTilemap rejects encoded tile layer data", () => {
+test("importTiledTilemap imports preloaded external Tiled tilesets", () => {
+  const imported = importTiledTilemap({
+    orientation: "orthogonal",
+    width: 2,
+    height: 1,
+    tilewidth: 16,
+    tileheight: 16,
+    tilesets: [{ firstgid: 10, source: "terrain.tsx" }],
+    layers: [{ type: "tilelayer", width: 2, height: 1, data: [10, 11] }],
+  }, {
+    externalTilesets: {
+      "terrain.tsx": {
+        name: "terrain",
+        image: "terrain.png",
+        imagewidth: 32,
+        imageheight: 16,
+        tilewidth: 16,
+        tileheight: 16,
+        columns: 2,
+        tilecount: 2,
+        tiles: [{
+          id: 1,
+          properties: [{ name: "oneWayPlatform", type: "bool", value: true }],
+        }],
+      },
+    },
+  });
+
+  deepEqual(imported.usedGids, [10, 11]);
+  deepEqual(imported.tilemap.tiles, {
+    "10": { frame: "terrain.0" },
+    "11": { frame: "terrain.1", oneWayPlatform: true },
+  });
+  deepEqual(imported.atlas.frames?.["terrain.1"], {
+    texture: "terrain",
+    uv: { u0: 0.5, v0: 0, u1: 1, v1: 1 },
+    size: { width: 16, height: 16 },
+  });
+});
+
+test("importTiledTilemap applies tileset margin/spacing and hidden layer policy", () => {
+  const map = {
+    orientation: "orthogonal",
+    width: 2,
+    height: 1,
+    tilewidth: 16,
+    tileheight: 16,
+    tilesets: [{
+      firstgid: 1,
+      name: "terrain",
+      image: "terrain.png",
+      imagewidth: 36,
+      imageheight: 18,
+      tilewidth: 16,
+      tileheight: 16,
+      margin: 1,
+      spacing: 2,
+      columns: 2,
+      tilecount: 2,
+    }],
+    layers: [
+      { type: "tilelayer", name: "ground", width: 2, height: 1, data: [1, 2] },
+      { type: "tilelayer", name: "secret", visible: false, width: 2, height: 1, data: [2, 1] },
+    ],
+  };
+
+  const skipped = importTiledTilemap(map);
+  const included = importTiledTilemap(map, { includeHiddenLayers: true, collisionLayerNames: ["secret"] });
+
+  deepEqual(skipped.layerNames, ["ground"]);
+  deepEqual(included.layerNames, ["ground", "secret"]);
+  deepEqual(included.tilemap.layers?.[1], {
+    name: "secret",
+    columns: 2,
+    rows: 1,
+    collision: true,
+    data: [2, 1],
+  });
+  deepEqual(included.atlas.frames?.["terrain.1"], {
+    texture: "terrain",
+    uv: { u0: 19 / 36, v0: 1 / 18, u1: 35 / 36, v1: 17 / 18 },
+    size: { width: 16, height: 16 },
+  });
+});
+
+test("importTiledTilemap supports uncompressed base64 tile layer data", () => {
+  const imported = importTiledTilemap({
+    orientation: "orthogonal",
+    width: 2,
+    height: 1,
+    tilewidth: 16,
+    tileheight: 16,
+    tilesets: [{
+      firstgid: 1,
+      name: "terrain",
+      imagewidth: 32,
+      imageheight: 16,
+      tilewidth: 16,
+      tileheight: 16,
+      columns: 2,
+      tilecount: 2,
+    }],
+    layers: [{
+      type: "tilelayer",
+      width: 2,
+      height: 1,
+      encoding: "base64",
+      data: "AQAAAAIAAAA=",
+    }],
+  });
+
+  deepEqual(imported.usedGids, [1, 2]);
+  deepEqual(imported.tilemap.layers?.[0]?.data, [1, 2]);
+  deepEqual(imported.tilemap.tiles, {
+    "1": { frame: "terrain.0" },
+    "2": { frame: "terrain.1" },
+  });
+});
+
+test("importTiledTilemap rejects compressed base64 tile layer data", () => {
   rejectsWithMessage(
     () => importTiledTilemap({
       orientation: "orthogonal",
@@ -362,10 +488,47 @@ test("importTiledTilemap rejects encoded tile layer data", () => {
         columns: 1,
         tilecount: 1,
       }],
-      layers: [{ type: "tilelayer", width: 1, height: 1, encoding: "base64", data: "AAAA" }],
+      layers: [{ type: "tilelayer", width: 1, height: 1, encoding: "base64", compression: "zlib", data: "AQAAAA==" }],
     }),
-    "Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.tiled.layers.0.data' detail='must be an array'.",
+    "Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.tiled.layers.0.compression' detail='compressed Tiled layer data requires options.decodeCompressedLayerData'.",
   );
+});
+
+test("importTiledTilemap supports compressed base64 data through an explicit decoder hook", () => {
+  const imported = importTiledTilemap({
+    orientation: "orthogonal",
+    width: 2,
+    height: 1,
+    tilewidth: 16,
+    tileheight: 16,
+    tilesets: [{
+      firstgid: 1,
+      name: "terrain",
+      imagewidth: 32,
+      imageheight: 16,
+      tilewidth: 16,
+      tileheight: 16,
+      columns: 2,
+      tilecount: 2,
+    }],
+    layers: [{
+      type: "tilelayer",
+      width: 2,
+      height: 1,
+      encoding: "base64",
+      compression: "zlib",
+      data: compressedTiledLayerData([1, 2]),
+    }],
+  }, {
+    decodeCompressedLayerData: (bytes, context) => {
+      equal(context.compression, "zlib");
+      equal(context.expectedByteLength, 8);
+      return bytes;
+    },
+  });
+
+  deepEqual(imported.usedGids, [1, 2]);
+  deepEqual(imported.tilemap.layers?.[0]?.data, [1, 2]);
 });
 
 test("importLDtkTilemap converts embedded level tile layers and atlas frames", () => {
@@ -423,13 +586,58 @@ test("importLDtkTilemap converts embedded level tile layers and atlas frames", (
             { px: [16, 0], src: [32, 0], t: 2, f: 0 },
           ],
         },
-        { __identifier: "actors", __type: "Entities", entityInstances: [] },
+        {
+          __identifier: "actors",
+          __type: "Entities",
+          __gridSize: 16,
+          __pxTotalOffsetX: 1,
+          __pxTotalOffsetY: 2,
+          entityInstances: [{
+            __identifier: "EnemySpawn",
+            iid: "enemy-1",
+            defUid: 7,
+            px: [16, 8],
+            __grid: [1, 0],
+            width: 12,
+            height: 10,
+            fieldInstances: [{
+              __identifier: "enemy",
+              __type: "LocalEnum.Enemy",
+              __value: "grunt",
+            }, {
+              __identifier: "wave",
+              __type: "Int",
+              __value: 2,
+            }],
+          }],
+        },
       ],
     }],
   }, { collisionLayerNames: ["walls"], origin: { x: -8, y: 4 } });
 
   deepEqual(imported.usedTileIds, [1, 2, 3, 4]);
   deepEqual(imported.layerNames, ["ground", "walls"]);
+  deepEqual(imported.entities, [{
+    identifier: "EnemySpawn",
+    iid: "enemy-1",
+    defUid: 7,
+    layerName: "actors",
+    layerIndex: 2,
+    x: 9,
+    y: 14,
+    gridX: 1,
+    gridY: 0,
+    width: 12,
+    height: 10,
+    fields: {
+      enemy: "grunt",
+      wave: 2,
+    },
+    fieldTypes: {
+      enemy: "LocalEnum.Enemy",
+      wave: "Int",
+    },
+  }]);
   deepEqual(imported.tilesetNames, ["terrain"]);
   equal(imported.levelIdentifier, "Level_0");
   equal(imported.levelIid, "level-iid");
@@ -476,6 +684,100 @@ test("importLDtkTilemap converts embedded level tile layers and atlas frames", (
     uv: { u0: 0.5, v0: 0, u1: 0.75, v1: 0.5 },
     size: { width: 16, height: 16 },
   });
+});
+
+test("importLDtkTilemap derives tile ids from padded source coordinates", () => {
+  const imported = importLDtkTilemap({
+    defs: {
+      tilesets: [{
+        uid: 1,
+        identifier: "terrain",
+        relPath: "terrain.png",
+        pxWid: 36,
+        pxHei: 18,
+        tileGridSize: 16,
+        padding: 1,
+        spacing: 2,
+      }],
+    },
+    levels: [{
+      identifier: "Level_0",
+      pxWid: 32,
+      pxHei: 16,
+      layerInstances: [{
+        __identifier: "ground",
+        __type: "Tiles",
+        __cWid: 2,
+        __cHei: 1,
+        __gridSize: 16,
+        __tilesetDefUid: 1,
+        gridTiles: [
+          { px: [16, 0], src: [19, 1], f: 0 },
+        ],
+      }],
+    }],
+  });
+
+  deepEqual(imported.usedTileIds, [1]);
+  deepEqual(imported.tilemap.layers?.[0]?.data, [0, 1]);
+  deepEqual(imported.tilemap.tiles, {
+    "1": { frame: "terrain.1" },
+  });
+  deepEqual(imported.atlas.frames?.["terrain.1"], {
+    texture: "terrain",
+    uv: { u0: 19 / 36, v0: 1 / 18, u1: 35 / 36, v1: 17 / 18 },
+    size: { width: 16, height: 16 },
+  });
+});
+
+test("importLDtkTilemap rejects duplicate LDtk entity fields", () => {
+  rejectsWithMessage(
+    () => importLDtkTilemap({
+      defs: {
+        tilesets: [{
+          uid: 1,
+          identifier: "terrain",
+          pxWid: 16,
+          pxHei: 16,
+          tileGridSize: 16,
+        }],
+      },
+      levels: [{
+        identifier: "Level_0",
+        pxWid: 16,
+        pxHei: 16,
+        layerInstances: [{
+          __identifier: "ground",
+          __type: "Tiles",
+          __cWid: 1,
+          __cHei: 1,
+          __gridSize: 16,
+          __tilesetDefUid: 1,
+          gridTiles: [{ px: [0, 0], src: [0, 0], t: 0, f: 0 }],
+        }, {
+          __identifier: "actors",
+          __type: "Entities",
+          __gridSize: 16,
+          entityInstances: [{
+            __identifier: "Spawn",
+            px: [0, 0],
+            width: 16,
+            height: 16,
+            fieldInstances: [{
+              __identifier: "kind",
+              __type: "String",
+              __value: "a",
+            }, {
+              __identifier: "kind",
+              __type: "String",
+              __value: "b",
+            }],
+          }],
+        }],
+      }],
+    }),
+    "Invalid asset pipeline metadata: kind=asset-pipeline path='assetPipeline.ldtk.levels.0.layerInstances.1.entityInstances.0.fieldInstances.1.__identifier' detail='duplicate LDtk entity field \\'kind\\''.",
+  );
 });
 
 test("importLDtkTilemap rejects invalid tile slope metadata", () => {

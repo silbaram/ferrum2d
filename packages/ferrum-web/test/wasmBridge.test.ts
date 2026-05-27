@@ -8,14 +8,14 @@ test("decodeRenderCommands parses packed sprite command floats", () => {
       10, 20, 30, 40,
       0, 0.25, 0.5, 1,
       0.125, 0.25, 0.5, 1,
-      7,
+      7, 1,
       -1, -2, 3, 4,
       0.5, 0.5, 1, 1,
       1, 0.875, 0.75, 0.625,
-      3,
+      3, 2,
     ]),
     commandCount: 2,
-    floatsPerCommand: 13,
+    floatsPerCommand: 14,
   };
 
   const commands = decodeRenderCommands(view);
@@ -29,6 +29,7 @@ test("decodeRenderCommands parses packed sprite command floats", () => {
     uv: [0, 0.25, 0.5, 1],
     color: [0.125, 0.25, 0.5, 1],
     textureId: 7,
+    effectFlags: 1,
   });
   deepEqual(commands[1], {
     x: -1,
@@ -38,5 +39,28 @@ test("decodeRenderCommands parses packed sprite command floats", () => {
     uv: [0.5, 0.5, 1, 1],
     color: [1, 0.875, 0.75, 0.625],
     textureId: 3,
+    effectFlags: 2,
   });
+});
+
+test("decodeRenderCommands defaults effectFlags for legacy 13-float commands", () => {
+  const view: RenderCommandBufferView = {
+    buffer: new Float32Array([
+      10, 20, 30, 40,
+      0, 0.25, 0.5, 1,
+      0.125, 0.25, 0.5, 1,
+      7,
+      -1, -2, 3, 4,
+      0.5, 0.5, 1, 1,
+      1, 0.875, 0.75, 0.625,
+      3,
+    ]),
+    commandCount: 2,
+    floatsPerCommand: 13,
+  };
+
+  const commands = decodeRenderCommands(view);
+
+  equal(commands[0]?.effectFlags, 0);
+  equal(commands[1]?.effectFlags, 0);
 });

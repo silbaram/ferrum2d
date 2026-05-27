@@ -1,5 +1,17 @@
 import type { TextureManager } from "./textureManager";
 import type { RenderCommandBufferView } from "./wasmBridge";
+import {
+  DEFAULT_SPRITE_MATERIAL_PRESET,
+  SPRITE_RENDER_COMMAND_FLOATS,
+  spriteMaterialPasses,
+  spriteMaterialPassRequiresCommandCopy,
+  writeSpriteMaterialPassCommands,
+} from "./spriteMaterial";
+import type {
+  ResolvedSpriteMaterialPreset,
+  SpriteMaterialBlendMode,
+  SpriteMaterialPass,
+} from "./spriteMaterial";
 
 export interface SpriteDrawOptions {
   position: [number, number];
@@ -13,7 +25,7 @@ export interface SpriteBatchStats {
   textureSwitchCount: number;
 }
 
-const FLOATS_PER_COMMAND = 13;
+const FLOATS_PER_COMMAND = SPRITE_RENDER_COMMAND_FLOATS;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
 const COMMAND_STRIDE_BYTES = FLOATS_PER_COMMAND * BYTES_PER_F32;
 
@@ -24,6 +36,8 @@ export class SpriteBatch {
   private readonly resolutionLocation: WebGLUniformLocation;
   private readonly textureLocation: WebGLUniformLocation;
   private instanceCapacityFloats = 0;
+  private materialStaging = new Float32Array(0);
+  private readonly textureRangeScratch: Array<{ textureId: number; start: number; end: number }> = [];
   private destroyed = false;
 
   constructor(private readonly gl: WebGL2RenderingContext) {
@@ -57,38 +71,41 @@ export class SpriteBatch {
     this.textureLocation = textureLocation;
   }
 
-  drawBatches(textureManager: TextureManager, commands: RenderCommandBufferView, resolution: [number, number]): SpriteBatchStats {
+  drawBatches(
+    textureManager: TextureManager,
+    commands: RenderCommandBufferView,
+    resolution: [number, number],
+    material: ResolvedSpriteMaterialPreset = DEFAULT_SPRITE_MATERIAL_PRESET,
+  ): SpriteBatchStats {
     this.assertAlive();
     if (commands.commandCount === 0) return { drawCalls: 0, textureSwitchCount: 0 };
+    const ranges = this.textureRanges(commands);
     let drawCalls = 0;
-    let textureSwitchCount = 0;
-    let batchStart = 0;
-    let currentTextureId = this.textureIdAt(commands, 0);
-
-    for (let i = 1; i < commands.commandCount; i += 1) {
-      const nextTextureId = this.textureIdAt(commands, i);
-      if (nextTextureId === currentTextureId) {
-        continue;
+    for (const pass of spriteMaterialPasses(material)) {
+      this.applyBlendMode(pass.blendMode);
+      for (const range of ranges) {
+        const texture = textureManager.texture(range.textureId);
+        drawCalls += this.drawRange(texture, commands, resolution, range.start, range.end, pass);
       }
-
-      const texture = textureManager.texture(currentTextureId);
-      drawCalls += this.drawRange(texture, commands, resolution, batchStart, i);
-      textureSwitchCount += 1;
-      batchStart = i;
-      currentTextureId = nextTextureId;
     }
-
-    const texture = textureManager.texture(currentTextureId);
-    drawCalls += this.drawRange(texture, commands, resolution, batchStart, commands.commandCount);
-    return { drawCalls, textureSwitchCount };
+    this.applyBlendMode("alpha");
+    return { drawCalls, textureSwitchCount: ranges.length - 1 };
   }
 
-  drawBatch(texture: WebGLTexture, commands: RenderCommandBufferView, resolution: [number, number]): SpriteBatchStats {
+  drawBatch(
+    texture: WebGLTexture,
+    commands: RenderCommandBufferView,
+    resolution: [number, number],
+    material: ResolvedSpriteMaterialPreset = DEFAULT_SPRITE_MATERIAL_PRESET,
+  ): SpriteBatchStats {
     this.assertAlive();
-    return {
-      drawCalls: this.drawRange(texture, commands, resolution, 0, commands.commandCount),
-      textureSwitchCount: 0,
-    };
+    let drawCalls = 0;
+    for (const pass of spriteMaterialPasses(material)) {
+      this.applyBlendMode(pass.blendMode);
+      drawCalls += this.drawRange(texture, commands, resolution, 0, commands.commandCount, pass);
+    }
+    this.applyBlendMode("alpha");
+    return { drawCalls, textureSwitchCount: 0 };
   }
 
   private drawRange(
@@ -97,20 +114,33 @@ export class SpriteBatch {
     resolution: [number, number],
     startCommand: number,
     endCommand: number,
+    pass: SpriteMaterialPass,
   ): number {
     const commandCount = endCommand - startCommand;
     if (commandCount === 0) return 0;
 
     const commandFloatOffset = startCommand * commands.floatsPerCommand;
-    const floatCount = commandCount * commands.floatsPerCommand;
+    const uploadFloatCount = commandCount * FLOATS_PER_COMMAND;
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vbo);
-    if (this.instanceCapacityFloats < floatCount) {
-      this.instanceCapacityFloats = this.nextPowerOfTwo(floatCount);
+    if (this.instanceCapacityFloats < uploadFloatCount) {
+      this.instanceCapacityFloats = this.nextPowerOfTwo(uploadFloatCount);
       this.gl.bufferData(this.gl.ARRAY_BUFFER, this.instanceCapacityFloats * BYTES_PER_F32, this.gl.DYNAMIC_DRAW);
     }
-    this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, commands.buffer, commandFloatOffset, floatCount);
+    if (commands.floatsPerCommand !== FLOATS_PER_COMMAND || spriteMaterialPassRequiresCommandCopy(pass)) {
+      this.ensureMaterialStaging(uploadFloatCount);
+      const materialCommands = writeSpriteMaterialPassCommands(
+        commands,
+        startCommand,
+        endCommand,
+        pass,
+        this.materialStaging,
+      );
+      this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, materialCommands);
+    } else {
+      this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, commands.buffer, commandFloatOffset, uploadFloatCount);
+    }
 
     this.gl.uniform2f(this.resolutionLocation, resolution[0], resolution[1]);
     this.gl.activeTexture(this.gl.TEXTURE0);
@@ -119,6 +149,39 @@ export class SpriteBatch {
     this.gl.drawArraysInstanced(this.gl.TRIANGLES, 0, 6, commandCount);
     this.gl.bindVertexArray(null);
     return 1;
+  }
+
+  private textureRanges(commands: RenderCommandBufferView): Array<{ textureId: number; start: number; end: number }> {
+    const ranges = this.textureRangeScratch;
+    let rangeCount = 0;
+    let start = 0;
+    let currentTextureId = this.textureIdAt(commands, 0);
+
+    for (let index = 1; index < commands.commandCount; index += 1) {
+      const nextTextureId = this.textureIdAt(commands, index);
+      if (nextTextureId === currentTextureId) {
+        continue;
+      }
+      this.writeTextureRange(rangeCount, currentTextureId, start, index);
+      rangeCount += 1;
+      start = index;
+      currentTextureId = nextTextureId;
+    }
+    this.writeTextureRange(rangeCount, currentTextureId, start, commands.commandCount);
+    rangeCount += 1;
+    ranges.length = rangeCount;
+    return ranges;
+  }
+
+  private writeTextureRange(index: number, textureId: number, start: number, end: number): void {
+    const range = this.textureRangeScratch[index];
+    if (range === undefined) {
+      this.textureRangeScratch.push({ textureId, start, end });
+      return;
+    }
+    range.textureId = textureId;
+    range.start = start;
+    range.end = end;
   }
 
   private textureIdAt(commands: RenderCommandBufferView, commandIndex: number): number {
@@ -130,6 +193,21 @@ export class SpriteBatch {
     return 2 ** Math.ceil(Math.log2(Math.max(value, 1)));
   }
 
+  private ensureMaterialStaging(floatCount: number): void {
+    if (this.materialStaging.length < floatCount) {
+      this.materialStaging = new Float32Array(this.nextPowerOfTwo(floatCount));
+    }
+  }
+
+  private applyBlendMode(blendMode: SpriteMaterialBlendMode): void {
+    this.gl.enable(this.gl.BLEND);
+    if (blendMode === "additive") {
+      this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE);
+      return;
+    }
+    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+  }
+
   destroy(): void {
     if (this.destroyed) {
       return;
@@ -139,6 +217,7 @@ export class SpriteBatch {
     this.gl.deleteVertexArray(this.vao);
     this.gl.deleteProgram(this.program);
     this.instanceCapacityFloats = 0;
+    this.materialStaging = new Float32Array(0);
   }
 
   private assertAlive(): void {

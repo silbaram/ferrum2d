@@ -103,6 +103,7 @@
         }
       }
     },
+    "postProcessing": { "$ref": "#/$defs/postProcessing" },
     "physics": { "$ref": "#/$defs/physics" },
     "audio": {
       "type": "object",
@@ -159,6 +160,173 @@
       "properties": {
         "volume": { "type": "number", "minimum": 0 },
         "pitch": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "postProcessing": {
+      "oneOf": [
+        { "type": "boolean", "const": false },
+        { "$ref": "#/$defs/postProcessPass" },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/postProcessPass" }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "passes": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/postProcessPass" }
+            },
+            "fade": {
+              "oneOf": [
+                { "type": "boolean", "const": false },
+                { "$ref": "#/$defs/fadePostProcessPass" }
+              ]
+            },
+            "bloom": {
+              "oneOf": [
+                { "type": "boolean", "const": false },
+                { "$ref": "#/$defs/bloomPostProcessConfig" }
+              ]
+            },
+            "crt": {
+              "oneOf": [
+                { "type": "boolean", "const": false },
+                { "$ref": "#/$defs/crtPostProcessConfig" }
+              ]
+            },
+            "vignette": {
+              "oneOf": [
+                { "type": "boolean", "const": false },
+                { "$ref": "#/$defs/vignettePostProcessConfig" }
+              ]
+            },
+            "glitch": {
+              "oneOf": [
+                { "type": "boolean", "const": false },
+                { "$ref": "#/$defs/glitchPostProcessConfig" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "postProcessPass": {
+      "oneOf": [
+        { "$ref": "#/$defs/fadePostProcessPass" },
+        { "$ref": "#/$defs/bloomPostProcessPass" },
+        { "$ref": "#/$defs/crtPostProcessPass" },
+        { "$ref": "#/$defs/vignettePostProcessPass" },
+        { "$ref": "#/$defs/glitchPostProcessPass" }
+      ]
+    },
+    "postProcessColor": {
+      "oneOf": [
+        {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      ]
+    },
+    "fadePostProcessPass": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "fade" },
+        "color": { "$ref": "#/$defs/postProcessColor" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "bloomPostProcessConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+        "intensity": { "type": "number", "minimum": 0 },
+        "radius": { "type": "number", "minimum": 0 }
+      }
+    },
+    "bloomPostProcessPass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "bloom" },
+        "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+        "intensity": { "type": "number", "minimum": 0 },
+        "radius": { "type": "number", "minimum": 0 }
+      }
+    },
+    "crtPostProcessConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "curvature": { "type": "number", "minimum": 0 },
+        "scanlineIntensity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "chromaticAberration": { "type": "number", "minimum": 0 }
+      }
+    },
+    "crtPostProcessPass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "crt" },
+        "curvature": { "type": "number", "minimum": 0 },
+        "scanlineIntensity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "chromaticAberration": { "type": "number", "minimum": 0 }
+      }
+    },
+    "vignettePostProcessConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "color": { "$ref": "#/$defs/postProcessColor" },
+        "intensity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "radius": { "type": "number", "minimum": 0, "maximum": 1 },
+        "softness": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "vignettePostProcessPass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "vignette" },
+        "color": { "$ref": "#/$defs/postProcessColor" },
+        "intensity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "radius": { "type": "number", "minimum": 0, "maximum": 1 },
+        "softness": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "glitchPostProcessConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "intensity": { "type": "number", "minimum": 0 },
+        "chromaticAberration": { "type": "number", "minimum": 0 },
+        "seed": { "type": "number" }
+      }
+    },
+    "glitchPostProcessPass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "glitch" },
+        "intensity": { "type": "number", "minimum": 0 },
+        "chromaticAberration": { "type": "number", "minimum": 0 },
+        "seed": { "type": "number" }
       }
     },
     "tilemap": {

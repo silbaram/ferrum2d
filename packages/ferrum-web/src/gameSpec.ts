@@ -1,4 +1,6 @@
 import { gameSpecDiagnosticError } from "./diagnostics.js";
+import { resolvePostProcessPasses } from "./cameraPostProcessing.js";
+import type { PostProcessStackInput, ResolvedPostProcessPass } from "./cameraPostProcessing.js";
 import { resolvePhysicsSpec } from "./physicsSpec.js";
 import type { PhysicsMode, PhysicsSpec, ResolvedPhysicsSpec } from "./physicsSpec.js";
 
@@ -35,6 +37,7 @@ export interface ShooterGameSpec {
   atlas?: ShooterAtlasSpec;
   tilemap?: ShooterTilemapSpec;
   camera?: ShooterCameraSpec;
+  postProcessing?: PostProcessStackInput;
   audio?: ShooterAudioSpec;
   physics?: PhysicsSpec;
 }
@@ -434,6 +437,7 @@ export interface ResolvedShooterGameSpec {
   hitPitch: number;
   gameOverVolume: number;
   gameOverPitch: number;
+  postProcessing: readonly ResolvedPostProcessPass[];
   physics: ResolvedPhysicsSpec;
 }
 
@@ -793,6 +797,7 @@ const DEFAULT_SHOOTER_GAME_SPEC: ResolvedShooterGameSpec = {
   hitPitch: 1,
   gameOverVolume: 0.65,
   gameOverPitch: 0.9,
+  postProcessing: [],
   physics: resolvePhysicsSpec(undefined),
 };
 const TILE_SLOPE_MIN_HORIZONTAL_SPAN = 0.0001;
@@ -816,6 +821,10 @@ export function resolveShooterGameSpec(
   const atlasFrames = atlasFrameMap(spec.atlas, "atlas");
   const tilemap = shooterTilemap(spec.tilemap, "tilemap", atlasFrames);
   const camera = optionalObject(spec.camera, "camera");
+  const postProcessing = resolvePostProcessPasses(
+    spec.postProcessing as PostProcessStackInput,
+    { path: "postProcessing" },
+  );
   const audio = optionalObject(spec.audio, "audio");
   const physics = resolvePhysicsSpec(spec.physics, {
     path: "physics",
@@ -1062,6 +1071,7 @@ export function resolveShooterGameSpec(
     hitPitch: hitAudio.pitch,
     gameOverVolume: gameOverAudio.volume,
     gameOverPitch: gameOverAudio.pitch,
+    postProcessing,
     physics,
   };
 }

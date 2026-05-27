@@ -28,6 +28,150 @@ WebGL2 실제 화면의 black-frame 회귀만 자동 확인하려면 별도 brow
 pnpm smoke:browser
 ```
 
+Minimal Game의 실제 browser runtime에서 profiler frame/render/asset budget 회귀까지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:browser-budget
+pnpm smoke:runtime-budgets
+pnpm smoke:topdown-budget
+pnpm smoke:breakout-budget
+pnpm smoke:platformer-budget
+pnpm smoke:physics-sandbox-budget
+```
+
+Minimal Game의 loading overlay, asset preload progress, IndexedDB JSON/texture body cache 회귀를 확인하려면 다음을 실행한다. Top-down Shooter의 실제 asset manifest preload/cache 적용은 `pnpm smoke:topdown` production build 경로에서 함께 검증한다.
+
+```bash
+pnpm smoke:preload
+```
+
+WebGL2 lighting pass가 ambient overlay, point light, tile occluder debug draw, shadow projection을 실제 canvas에 반영하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:lighting
+```
+
+WebGPU lighting pass가 같은 lighting/shadow stats를 보고하는지 확인하려면 다음을 실행한다. WebGPU를 사용할 수 없거나 renderer가 WebGL2로 fallback한 환경에서는 capability-aware skip 결과를 낸다.
+
+```bash
+pnpm smoke:lighting-webgpu
+```
+
+Sprite material preset의 outline/additive fallback pass가 WebGL2/WebGPU renderer에서 동작하는지 확인하려면 다음을 실행한다. WebGPU를 사용할 수 없거나 renderer가 WebGL2로 fallback한 환경에서는 WebGPU smoke가 skip 결과를 낸다.
+
+```bash
+pnpm smoke:material
+pnpm smoke:material-webgpu
+```
+
+Particle/VFX preset의 trail emitter가 runtime particle burst와 render command로 이어지는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:particle-vfx
+```
+
+Animation timeline의 frame event와 signal/atEnd transition helper가 public package build에서 동작하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:animation-timeline
+```
+
+Scene composition의 prefab variant/override 검증과 reusable fragment apply path가 public package build에서 동작하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:scene-composition
+```
+
+Behavior recipe schema가 common gameplay command를 만들고 runtime adapter target으로 전달하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:behavior-recipes
+```
+
+HUD toolkit의 theme token과 meter/counter/prompt component preset이 public overlay state로 변환되는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:hud-toolkit
+```
+
+Audio System v2의 BGM loop/fade와 master/bgm/sfx/ui bus 상태가 public package build에서 동작하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:audio-system
+```
+
+Camera/post-processing pack의 camera bounds/dead-zone helper와 fullscreen post-processing pass가 public package/browser runtime에서 동작하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:camera-postprocess
+```
+
+Cutscene/sequence helper의 wait/camera/audio/dialogue command 진행과 adapter hook이 public package build에서 동작하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:cutscene-sequence
+```
+
+Localization/text helper의 string table fallback, text wrapping, font loading policy가 public package build에서 동작하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:localization
+```
+
+Dialogue/quest helper의 graph 진행, UI overlay hook, save-state snapshot restore가 public package build에서 동작하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:dialogue-quest
+```
+
+Generic Physics Scene Integration의 scene profile apply와 runtime auto-step option 연결이 public package build에서 동작하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:physics-scene
+```
+
+Texture Atlas Packing의 deterministic atlas JSON CLI와 public conversion helper가 동작하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:texture-atlas
+```
+
+Level Streaming/Chunking의 chunk manifest, viewport 기반 load/unload plan, asset lifetime policy가 public package build에서 동작하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:level-streaming
+```
+
+In-game Debug Gizmos의 path/spawn/prefab/collider category가 physics debug line buffer로 변환되는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:debug-gizmos
+```
+
+Accessibility Options의 reduced motion adapter, subtitle panel, contrast palette hook이 public package build에서 동작하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:accessibility-options
+```
+
+Browser smoke screenshot artifact와 screenshot summary threshold 비교 경로를 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:screenshot-capture
+```
+
+Marketplace-ready template set의 `minimal`, `topdown`, `platformer` create-game template 생성/검증 경로를 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:template-set
+```
+
+DOM virtual joystick/button preset이 runtime input으로 합성되는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:mobile-input
+```
+
 ## Physics smoke check
 
 Rust 물리엔진의 대표 solver/CCD/query 회귀를 빠르게 확인하려면 다음을 실행한다.
@@ -37,6 +181,12 @@ pnpm smoke:physics
 pnpm smoke:physics-replay
 pnpm smoke:destructible-terrain
 pnpm smoke:destructible-terrain-browser
+```
+
+Tilemap authoring helper의 autotile/animated tile bake와 Tiled/LDtk import fixture 연동 회귀를 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:tilemap-authoring
 ```
 
 이 명령은 `scripts/physics-smoke.mjs`가 canonical Rust test fixture를 scenario 단위로 실행하고, 각 scenario와 전체 suite의 seed/frame/suite hash를 출력한다. 이 hash는 실행한 scenario manifest와 통과 결과를 식별하는 smoke summary 값이다.
@@ -67,6 +217,7 @@ Top-down Shooter의 particle burst와 non-lethal enemy tint flash가 production 
 
 ```bash
 pnpm smoke:topdown
+pnpm smoke:topdown-save-load
 ```
 
 Breakout 예제의 두 번째 장르 runtime/render path를 확인하려면 다음을 실행한다. Brick hit particle burst까지 자동 관측하려면 effect smoke를 실행한다.
@@ -115,20 +266,61 @@ pnpm smoke:headless
 - `createFerrumRuntime(...)` 또는 예제 bootstrap이 browser runtime을 초기화한다.
 - WebGL2 canvas가 생성되고 Rust/Wasm render command를 소비한다.
 - canvas pixel readback에서 placeholder texture의 녹색 픽셀이 일정 수 이상 검출된다.
-- `pnpm smoke:topdown`은 smoke 전용 URL parameter로 deterministic enemy hit를 만들고, particle count와 enemy tint flash render command가 관측되는지 확인한다.
+- `pnpm smoke:runtime-budgets`는 `scripts/runtime-budget-profiles.mjs`의 per-example profile과 browser smoke mode mapping을 CI-safe 방식으로 검증한다.
+- `pnpm smoke:browser-budget`은 Minimal Game에서 `RuntimeProfiler`를 켜고 frame time, Rust update, render time, draw call, render command, texture switch, physics count, asset load elapsed budget을 구조화된 report로 검증한다.
+- `pnpm smoke:topdown-budget`, `pnpm smoke:breakout-budget`, `pnpm smoke:platformer-budget`, `pnpm smoke:physics-sandbox-budget`은 같은 browser budget harness를 각 예제 profile로 실행한다. 직접 `node scripts/browser-render-smoke.mjs --budget --budget-profile=<profile>`을 사용할 수도 있다.
+- `pnpm smoke:preload`는 Minimal Game에서 `LoadingOverlay`를 켜고 data URL manifest를 두 번 preload해 첫 실행 fetch와 두 번째 IndexedDB JSON/texture body cache hit를 검증한다.
+- `pnpm smoke:mobile-input`은 Minimal Game에서 `VirtualControls` DOM preset을 켜고 joystick/button state가 `W/D/Space/mouseLeft` input으로 합성되고 release되는지 확인한다.
+- `pnpm smoke:topdown`은 Top-down Shooter production build에서 실제 asset manifest preload/cache/loading overlay를 거친 뒤 smoke 전용 URL parameter로 deterministic enemy hit를 만들고, particle count와 enemy tint flash render command가 관측되는지 확인한다.
+- `pnpm smoke:topdown-save-load`는 Top-down Shooter production build에서 enemy/bullet이 포함된 built-in shooter snapshot을 캡처하고, `resetGame()` 이후 restore 및 재캡처 hash 일치를 확인한다.
 - `pnpm smoke:breakout-effects`는 `resetGame()` 이후 자연 ball/brick hit에서 scene-internal particle burst와 render command 증가가 관측되는지 확인한다.
 - `pnpm smoke:platformer-effects`는 `resetGame()` 이후 player landing transition에서 scene-internal dust burst와 render command 증가가 관측되는지 확인한다.
 - `pnpm smoke:physics-sandbox`는 Physics Spec fixture가 body/joint를 생성하고 physics debug line을 렌더링하는지 확인한다.
 - `pnpm smoke:physics-demo-suite`는 sandbox, joint playground, weld joint, projectile CCD, platformer physics, compound collider fixture를 순서대로 로드해 debug line, CCD metric, summary를 확인한다. Rust unit test는 CCD hit marker line을 직접 검증한다.
 - `pnpm smoke:destructible-terrain-browser`는 Top-down Shooter의 collision tile 하나를 제거하고 같은 frame 경로에서 query hit 제거와 render command 감소를 확인한다.
+- `pnpm smoke:lighting`은 Minimal Game에서 lighting smoke URL을 켜고 renderer stats의 lighting draw/point light/tile occluder/shadow count와 canvas warm pixel을 확인한다.
+- `pnpm smoke:lighting-webgpu`는 Minimal Game에서 `renderer=webgpu`와 lighting smoke URL을 켜고 WebGPU renderer stats의 lighting draw/point light/tile occluder/shadow count를 확인한다. WebGPU 미지원 또는 fallback 환경은 실패 대신 skip으로 보고한다.
+- `pnpm smoke:material`은 Minimal Game에서 outline sprite material preset을 켜고 WebGL2 canvas pixel과 renderer draw call이 material pass 수만큼 증가하는지 확인한다.
+- `pnpm smoke:material-webgpu`는 Minimal Game에서 `renderer=webgpu`와 outline sprite material preset을 켜고 WebGPU renderer stats의 material pass draw call을 확인한다. WebGPU 미지원 또는 fallback 환경은 실패 대신 skip으로 보고한다.
+- `pnpm smoke:particle-vfx`는 Minimal Game에서 `ParticleVfxEmitter`의 trail preset을 켜고 particle burst count, live particle count, render command 증가를 확인한다.
+- `pnpm smoke:animation-timeline`은 public package build에서 `AnimationTimelinePlayer`의 frame event, signal transition, atEnd transition을 확인한다.
+- `pnpm smoke:scene-composition`은 public package build에서 prefab variant props, fragment include transform, idPrefix, target apply 결과를 확인한다.
+- `pnpm smoke:behavior-recipes`는 public package build에서 health/damage/pickup/chase recipe가 runtime adapter command로 변환되는지 확인한다.
+- `pnpm smoke:hud-toolkit`은 public package build에서 HUD theme token과 meter/counter/prompt overlay state preset을 확인한다.
+- `pnpm smoke:audio-system`은 public package build에서 `AudioManager` BGM loop/fade와 master/bgm/sfx/ui bus state를 확인한다.
+- `pnpm smoke:camera-postprocess`는 Minimal Game browser runtime에서 renderer fullscreen post-processing pass stats와 camera/post-process public helper를 확인한다.
+- `pnpm smoke:cutscene-sequence`는 public package build에서 `CutsceneSequencePlayer`가 wait/camera/audio/dialogue command event를 순서대로 방출하고 target adapter hook을 호출하는지 확인한다.
+- `pnpm smoke:localization`은 public package build에서 `LocalizationBundle` fallback/interpolation, text wrapping, web/bitmap font loading policy를 확인한다.
+- `pnpm smoke:dialogue-quest`는 public package build에서 `DialogueSession`, `QuestLog`, UI overlay hook, dialogue/quest snapshot restore를 확인한다.
+- `pnpm smoke:physics-scene`은 public package build에서 `applyPhysicsSceneProfile(...)`의 runtime profile, auto rigid-body step option, clear 동작을 확인한다.
+- `pnpm smoke:texture-atlas`는 public package build에서 atlas packer를 빌드하고, CLI가 입력 순서와 무관한 deterministic atlas JSON, frame UV, placement metadata를 생성하는지 확인한다.
+- `pnpm smoke:level-streaming`은 public package build에서 chunk manifest bounds, viewport active/preload selection, load/unload candidate, chunk asset manifest 생성을 확인한다.
+- `pnpm smoke:debug-gizmos`는 public package build에서 path/spawn/prefab/collider debug category가 metadata가 있는 line view와 physics debug line buffer로 변환되는지 확인한다.
+- `pnpm smoke:accessibility-options`는 public package build에서 reduced motion camera/fade adapter, subtitle panel helper, high-contrast HUD theme hook, input assist metadata 정규화를 확인한다.
+- `pnpm smoke:screenshot-capture`는 Minimal Game browser smoke에서 PNG와 `*.summary.json` artifact를 생성하고 screenshot summary threshold helper가 동작하는지 확인한다.
+- `pnpm smoke:template-set`은 `@ferrum2d/create-game`의 `minimal`, `topdown`, `platformer` template catalog, 필수 파일, generated project public import, harness script 구성을 확인한다.
+- `pnpm smoke:tilemap-authoring`은 `applyTileRules(...)`, `bakeAnimatedTileLayer(...)`, Tiled import 결과 authoring, LDtk entity/tile layer fixture를 함께 확인한다.
 - browser console error와 page error가 발생하지 않는다.
+
+새 browser smoke에서 frame/render/physics budget을 검사할 때는 `RuntimeProfiler`를 우선 사용한다. `FerrumRuntimeOptions.profiler`를 켜면 runtime이 `DebugOverlayMetrics`를 profiler에 기록하고, smoke script는 `--budget` 모드에서 profiler snapshot의 frame time, Rust update, render time, draw call, render command, texture switch, physics count, asset load elapsed budget 위반을 구조화된 결과로 확인한다.
 
 기본 브라우저 채널은 `chrome`이다. 환경에 따라 다음 환경 변수를 사용할 수 있다.
 
 ```bash
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:browser
 FERRUM_BROWSER_EXECUTABLE=/path/to/browser pnpm smoke:browser
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:browser-budget
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:topdown-budget
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:physics-sandbox-budget
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:preload
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:mobile-input
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:lighting
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:lighting-webgpu
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:material
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:material-webgpu
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:particle-vfx
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:topdown
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:topdown-save-load
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:breakout-effects
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:platformer-effects
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:physics-demo-suite
@@ -143,9 +335,27 @@ cargo fmt --manifest-path crates/ferrum-core/Cargo.toml --check
 cargo clippy --manifest-path crates/ferrum-core/Cargo.toml -- -D warnings
 ```
 
+## Package consumer smoke check
+
+npm package 후보가 실제 사용자 프로젝트에서 설치되고 빌드되는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm package:consumer-smoke
+```
+
+이 명령은 세 package의 allowlist/pack 검증을 먼저 실행한 뒤 임시 consumer 환경에서 다음을 확인한다.
+
+- `@ferrum2d/create-game` tarball의 bin으로 starter project를 생성한다.
+- 생성 프로젝트가 `@ferrum2d/ferrum-web` tarball을 dependency로 설치한다.
+- public entrypoint import가 성공하고 `@ferrum2d/ferrum-web/dist/*` 내부 import가 package exports로 차단된다.
+- `@ferrum2d/agents` tarball의 bin이 생성 프로젝트에 대해 dry-run으로 파일을 쓰지 않는다.
+- 생성 프로젝트의 `ferrum:validate`와 production build가 통과한다.
+
+의존성 store가 준비된 CI 환경에서는 `pnpm package:consumer-smoke -- --offline`으로 registry resolution 없이 실행할 수 있다. 새 머신에서는 일반 실행으로 Vite/TypeScript 범위 의존성을 consumer install과 같은 방식으로 해석한다. 실패 재현용 파일을 보존하려면 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`를 사용한다.
+
 ## CI와 로컬 검증 차이
 
-GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `ferrum-web-v*` tag push에서는 release metadata check도 실행한다.
+GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `ferrum-web-v*` tag push에서는 release metadata check와 package consumer smoke gate도 실행한다. 일반 PR에서 consumer smoke가 필요할 때는 CI workflow를 수동 실행하고 `consumer_smoke` input을 켠다.
 
 현재 CI 기준:
 
@@ -156,6 +366,7 @@ GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `fer
 5. `pnpm lint`
 6. `pnpm test`
 7. `pnpm build`
+8. tag 또는 수동 opt-in일 때 `pnpm package:consumer-smoke -- --offline --artifact-dir artifacts/consumer-smoke`
 
 로컬 릴리스 후보 검증은 CI 명령에 더해 Game Spec 검증과 브라우저 수동 확인을 포함한다.
 
@@ -169,8 +380,11 @@ GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `fer
 - `pnpm smoke:destructible-terrain-browser`로 Top-down Shooter browser path의 deterministic tile 제거 demo를 확인한다.
 - `pnpm smoke:headless`로 Game Spec 적용 경로, collision/navigation 전제, representative render command buffer를 확인한다.
 - `pnpm smoke:topdown`으로 Top-down Shooter production build에서 particle burst와 non-lethal enemy tint flash가 browser render path에 도달하는지 확인한다.
+- `pnpm smoke:topdown-save-load`로 built-in shooter save/load snapshot restore가 browser production build에서 재현되는지 확인한다.
+- `pnpm smoke:runtime-budgets`로 CI에서 runtime budget profile 계약을 확인하고, 예제별 성능 회귀가 의심되면 해당 `smoke:*-budget` browser smoke를 추가로 실행한다.
 - `pnpm smoke:physics-demo-suite`로 Physics Spec apply/sandbox fixture browser path를 확인한다.
 - `pnpm package:check`로 runtime package entrypoint, create-game scaffold, agents template, files allowlist, generated Wasm artifact, 실제 `pnpm pack` tarball 구성을 확인한다.
+- `pnpm package:consumer-smoke`로 local tarball install, generated game build, agents dry-run을 임시 consumer project에서 확인한다.
 - `pnpm release:check`로 changelog, beta version, release tag metadata 구조를 확인한다.
 - `pnpm build`로 Wasm package와 Top-down Shooter production build를 확인한다.
 - `pnpm build:pages`로 GitHub Pages demo/docs artifact 구성과 문서 HTML 생성을 확인한다.
@@ -198,6 +412,8 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 ## Screenshot 갱신
 
 README preview용 스크린샷 절차는 [screenshots README](screenshots/README.md)를 따른다. smoke check에서 화면이 바뀐 것을 의도했다면 `docs/development/quality/screenshots/topdown-shooter-title.png` 갱신 여부를 함께 판단한다.
+
+자동 browser smoke artifact가 필요하면 `browser-render-smoke.mjs`에 `--screenshot-artifact-dir <dir>`와 `--screenshot-name <name>`을 전달한다. baseline summary JSON과 비교하려면 `--screenshot-baseline <summary.json>`을 함께 전달하고, 허용 오차는 `--screenshot-max-average-delta`, `--screenshot-max-opaque-ratio-delta`, `--screenshot-max-non-transparent-ratio-delta`로 조정한다.
 
 ## 실패 기록 형식
 

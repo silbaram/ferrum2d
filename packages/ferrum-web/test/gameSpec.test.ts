@@ -727,8 +727,22 @@ test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
     hitPitch: 1,
     gameOverVolume: 0.65,
     gameOverPitch: 0.9,
+    postProcessing: [],
     physics: resolvePhysicsSpec(undefined),
   });
+});
+
+test("resolveShooterGameSpec resolves post-processing passes", () => {
+  const spec = resolveShooterGameSpec({
+    postProcessing: {
+      bloom: { threshold: 0.75, intensity: 0.5 },
+      vignette: { intensity: 0.25, color: [0, 0, 0, 0.7] },
+    },
+  });
+
+  equal(spec.postProcessing.length, 2);
+  equal(spec.postProcessing[0]?.kind, "bloom");
+  equal(spec.postProcessing[1]?.kind, "vignette");
 });
 
 test("resolveShooterGameSpec resolves generic physics spec metadata", () => {
@@ -1972,6 +1986,7 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
     hitPitch: 0.9,
     gameOverVolume: 0.75,
     gameOverPitch: 0.8,
+    postProcessing: [],
     physics: resolvePhysicsSpec(undefined),
   });
   deepEqual(engine.resolvedConfig, [

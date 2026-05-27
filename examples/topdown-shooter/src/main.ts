@@ -1,10 +1,16 @@
 import {
   BrowserPlatformHost,
   DebugOverlay,
+  IndexedDbAssetCache,
   InputManager,
+  LoadingOverlay,
   WebGL2Renderer,
   createEngine,
+  createAssetPreloadCachePolicy,
   diagnosticReport,
+  preloadAssetManifest,
+  type AssetLoadProgress,
+  type AssetManifest,
   type DiagnosticContext,
   type DiagnosticReport,
   type FerrumEngine,
@@ -14,12 +20,14 @@ import {
 } from "@ferrum2d/ferrum-web";
 
 const TOPDOWN_HIT_PARTICLE_PRESET_ID = 0;
-const FLOATS_PER_RENDER_COMMAND = 13;
+const FLOATS_PER_RENDER_COMMAND = 14;
 const COMMAND_COLOR_R_OFFSET = 8;
 const COMMAND_COLOR_G_OFFSET = 9;
 const COMMAND_COLOR_B_OFFSET = 10;
 const COMMAND_COLOR_A_OFFSET = 11;
 const COMMAND_TEXTURE_ID_OFFSET = 12;
+const TOPDOWN_ASSET_CACHE_SALT = "topdown-shooter-v1";
+const TOPDOWN_ASSET_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface TopdownTextureIds {
   player: number;
@@ -90,6 +98,55 @@ function applyBootstrapErrorStyles(container: HTMLElement, list: HTMLElement): v
 
 function publicAssetUrl(path: string): string {
   return `${import.meta.env.BASE_URL}${path}`;
+}
+
+function topdownAssetManifest(): AssetManifest {
+  return {
+    textures: {
+      player: publicAssetUrl("assets/player.png"),
+      enemy: publicAssetUrl("assets/enemy.png"),
+      bullet: publicAssetUrl("assets/bullet.png"),
+    },
+    sounds: {
+      shoot: publicAssetUrl("assets/shoot.wav"),
+      hit: publicAssetUrl("assets/hit.wav"),
+      gameOver: publicAssetUrl("assets/game-over.wav"),
+    },
+    json: {
+      game: publicAssetUrl("game.json"),
+    },
+  };
+}
+
+function assetProgressLabel(prefix: string, progress: AssetLoadProgress): string {
+  const name = progress.name ? ` ${progress.name}` : "";
+  const cached = progress.cached === true ? " cached" : "";
+  return `${prefix}: ${progress.loaded}/${progress.total}${name}${cached}`;
+}
+
+async function preloadTopdownAssets(
+  manifest: AssetManifest,
+  overlay: LoadingOverlay,
+  onProgressText: (text: string) => void,
+): Promise<void> {
+  const cache = new IndexedDbAssetCache({
+    databaseName: "ferrum2d-topdown-shooter-assets",
+    storeName: "json",
+    binaryStoreName: "binary",
+  });
+  const cachePolicy = createAssetPreloadCachePolicy(manifest, {
+    versionSalt: TOPDOWN_ASSET_CACHE_SALT,
+    ttlMs: TOPDOWN_ASSET_CACHE_TTL_MS,
+  });
+
+  await preloadAssetManifest(manifest, {
+    cache,
+    cachePolicy,
+    onProgress: (progress) => {
+      onProgressText(assetProgressLabel("preload", progress));
+      overlay.update(progress);
+    },
+  });
 }
 
 function requireTextureId(assets: LoadedAssets, name: "player" | "enemy" | "bullet"): number {
@@ -262,6 +319,12 @@ async function bootstrap(): Promise<void> {
     const physicsDebugLines = searchParams.get("physicsDebugLines") === "true";
     const debugOverlay = new DebugOverlay(app, { enabled: debugEnabled });
     cleanups.push(() => debugOverlay.destroy());
+    const loadingOverlay = new LoadingOverlay(app, {
+      title: "Loading assets",
+      completeTitle: "Ready",
+      autoHideOnComplete: true,
+    });
+    cleanups.push(() => loadingOverlay.destroy());
     let assetProgressText = "assets: 0/0";
     let audioEventRateWindowStartMs = performance.now();
     let audioEventRateCount = 0;
@@ -294,7 +357,7 @@ async function bootstrap(): Promise<void> {
           y: frame.cameraY,
         });
       }
-      const renderStats = renderer.stats();
+      const renderStats = renderer.renderPostProcess();
       const renderTimeMs = performance.now() - renderStartMs;
       audioEventRateCount += frame.audioEvents.length;
       const audioEventRateElapsedMs = performance.now() - audioEventRateWindowStartMs;
@@ -344,23 +407,21 @@ async function bootstrap(): Promise<void> {
     runtimeEngine = engine;
     cleanups.push(() => engine.destroy());
 
-    const assets = await engine.loadAssets({
-      textures: {
-        player: publicAssetUrl("assets/player.png"),
-        enemy: publicAssetUrl("assets/enemy.png"),
-        bullet: publicAssetUrl("assets/bullet.png"),
-      },
-      sounds: {
-        shoot: publicAssetUrl("assets/shoot.wav"),
-        hit: publicAssetUrl("assets/hit.wav"),
-        gameOver: publicAssetUrl("assets/game-over.wav"),
-      },
-      json: {
-        game: publicAssetUrl("game.json"),
-      },
-    }, ({ loaded, total, name }) => {
-      assetProgressText = `assets: ${loaded}/${total}${name ? ` ${name}` : ""}`;
-    });
+    const manifest = topdownAssetManifest();
+    let assets: LoadedAssets;
+    try {
+      await preloadTopdownAssets(manifest, loadingOverlay, (text) => {
+        assetProgressText = text;
+      });
+      assets = await engine.loadAssets(manifest, (progress) => {
+        assetProgressText = assetProgressLabel("assets", progress);
+        loadingOverlay.update(progress);
+      });
+      loadingOverlay.complete();
+    } catch (error) {
+      loadingOverlay.fail(error);
+      throw error;
+    }
     smokeTextureIds = applyTopdownShooterAssets(engine, assets);
     assetProgressText = `assets: ${assets.progress.loaded}/${assets.progress.total}`;
 

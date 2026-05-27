@@ -20,6 +20,7 @@ Physics Spec은 Ferrum2D의 범용 physics authoring 계약이다. Top-down Shoo
 - material, layer, body, collider, joint metadata 구조 검증
 - material/layer/body/joint 참조 오류 diagnostic
 - `createPhysicsWorldFromSpec(...)` 기반 resolved body/joint runtime apply
+- `applyPhysicsSceneProfile(...)` 기반 `manual`/`runtime` scene profile apply와 Rust update loop 내부 auto rigid-body step
 - `createRigidBody(...)`, `createCollider(...)`, `createJoint(...)` authoring helper
 - `createVehicleRig(...)` 기반 chassis/wheel/suspension helper
 - distance/rope/spring/pulley/revolute/prismatic/weld/gear joint validation과 runtime apply
@@ -41,7 +42,7 @@ Physics Spec은 Ferrum2D의 범용 physics authoring 계약이다. Top-down Shoo
 - `PixelMaskTerrain` helper 기반 alpha mask 편집, dirty patch 조회, collision-only tilemap/chain boundary 변환
 - `PixelMaskTerrainRuntime` 기반 renderer texture upload, dirty alpha patch upload, chunk collider ownership/rebuild orchestration
 
-따라서 현재 `physics` namespace는 사용자-facing 계약, 검증, 낮은 빈도의 runtime apply 기준을 제공한다. Generic rigid body world는 `createPhysicsWorldFromSpec(...)`로 만들고, 더 직접적인 제어가 필요하면 imperative Physics API인 `spawnRigidBody(...)`, `spawnPhysicsJoint(...)`, `stepRigidBodies(...)`를 사용한다.
+따라서 현재 `physics` namespace는 사용자-facing 계약, 검증, 낮은 빈도의 runtime apply 기준을 제공한다. Generic rigid body world는 `createPhysicsWorldFromSpec(...)`로 만들고, built-in runtime loop에 붙일 때는 `applyPhysicsSceneProfile(...)` 또는 `FerrumRuntimeOptions.physicsScene`을 사용한다. 더 직접적인 제어가 필요하면 imperative Physics API인 `spawnRigidBody(...)`, `spawnPhysicsJoint(...)`, `stepRigidBodies(...)`를 사용한다.
 
 `createVehicleRig(...)`는 Physics Spec JSON 필드가 아니라 TypeScript authoring helper다. 새 solver primitive를 추가하지 않고 차체 AABB body, wheel circle body, `prismatic` guide joint, `spring` suspension joint를 생성해 차량/플랫폼 prototype을 빠르게 구성한다.
 
@@ -123,6 +124,7 @@ Physics Spec은 Ferrum2D의 범용 physics authoring 계약이다. Top-down Shoo
 
 ```ts
 import {
+  applyPhysicsSceneProfile,
   createPhysicsWorldFromSpec,
   resolvePhysicsSpec,
 } from "@ferrum2d/ferrum-web";
@@ -132,9 +134,16 @@ const resolved = resolvePhysicsSpec(raw, { path: "physics" });
 const world = createPhysicsWorldFromSpec(runtime.engine, resolved);
 
 runtime.engine.stepRigidBodies(world.stepSeconds, world.stepOptions);
+
+const scene = applyPhysicsSceneProfile(runtime.engine, {
+  profile: "runtime",
+  physics: resolved,
+});
 ```
 
 반환값은 body id -> `PhysicsEntityHandle`, joint id -> `PhysicsJointHandle`, body/joint count, warning, `stepOptions`, `clear()`를 포함한다. 같은 fixture를 다시 적용할 때는 `createPhysicsWorldFromSpec(engine, next, { replace: previousWorld })`를 사용한다.
+
+`applyPhysicsSceneProfile(...)`은 같은 world apply 결과를 감싸고, `runtime` profile에서는 Rust `Engine.update()` 내부 auto rigid-body step을 켠다. `manual` profile은 body/joint만 적용하고 사용자가 `stepRigidBodies(...)`를 직접 호출하는 기존 경로를 유지한다. 이 통합은 scene 생성/교체 시점의 opt-in API이며 frame hot path에서 entity별 JS/Wasm 왕복을 만들지 않는다.
 
 Apply 정책:
 

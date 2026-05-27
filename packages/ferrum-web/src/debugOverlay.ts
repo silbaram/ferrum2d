@@ -8,6 +8,13 @@ export interface DebugOverlayMetrics {
   renderCommandCount?: number;
   textureBindCount?: number;
   textureSwitchCount?: number;
+  lightingDrawCalls?: number;
+  pointLightCount?: number;
+  tileOccluderCount?: number;
+  shadowDrawCalls?: number;
+  shadowCasterCount?: number;
+  postProcessDrawCalls?: number;
+  postProcessPassCount?: number;
   audioEventsPerSecond?: number;
   physicsMode?: string;
   physicsFixedSteps?: number;
@@ -51,6 +58,13 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "renderCommandCount", label: "render commands", unit: "count", optional: true },
   { id: "textureBindCount", label: "texture binds", unit: "count", optional: true },
   { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
+  { id: "lightingDrawCalls", label: "lighting draws", unit: "count", optional: true },
+  { id: "pointLightCount", label: "point lights", unit: "count", optional: true },
+  { id: "tileOccluderCount", label: "tile occluders", unit: "count", optional: true },
+  { id: "shadowDrawCalls", label: "shadow draws", unit: "count", optional: true },
+  { id: "shadowCasterCount", label: "shadow casters", unit: "count", optional: true },
+  { id: "postProcessDrawCalls", label: "post-process draws", unit: "count", optional: true },
+  { id: "postProcessPassCount", label: "post-process passes", unit: "count", optional: true },
   { id: "audioEventsPerSecond", label: "audio events", unit: "events/s", optional: true },
   { id: "physicsMode", label: "physics mode", unit: "mode", optional: true },
   { id: "physicsFixedSteps", label: "fixed steps", unit: "count", optional: true },
@@ -146,6 +160,27 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   }
   if (metrics.textureSwitchCount !== undefined) {
     lines.push(row("textureSwitchCount", metrics.textureSwitchCount));
+  }
+  if (metrics.lightingDrawCalls !== undefined) {
+    lines.push(row("lightingDrawCalls", metrics.lightingDrawCalls));
+  }
+  if (metrics.pointLightCount !== undefined) {
+    lines.push(row("pointLightCount", metrics.pointLightCount));
+  }
+  if (metrics.tileOccluderCount !== undefined) {
+    lines.push(row("tileOccluderCount", metrics.tileOccluderCount));
+  }
+  if (metrics.shadowDrawCalls !== undefined) {
+    lines.push(row("shadowDrawCalls", metrics.shadowDrawCalls));
+  }
+  if (metrics.shadowCasterCount !== undefined) {
+    lines.push(row("shadowCasterCount", metrics.shadowCasterCount));
+  }
+  if (metrics.postProcessDrawCalls !== undefined) {
+    lines.push(row("postProcessDrawCalls", metrics.postProcessDrawCalls));
+  }
+  if (metrics.postProcessPassCount !== undefined) {
+    lines.push(row("postProcessPassCount", metrics.postProcessPassCount));
   }
   if (metrics.audioEventsPerSecond !== undefined) {
     lines.push(row("audioEventsPerSecond", `${metrics.audioEventsPerSecond.toFixed(1)} events/s`));

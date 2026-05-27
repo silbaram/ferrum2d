@@ -1,0 +1,97 @@
+import { deepEqual, equal } from "node:assert/strict";
+import { test } from "node:test";
+import {
+  evaluateRuntimeDiagnosticsSample,
+  evaluateRuntimeProfilerBudget,
+  RuntimeProfiler,
+  runtimeDiagnosticsFrameSample,
+} from "../src/runtimeProfiler.js";
+import type { DebugOverlayMetrics } from "../src/debugOverlay.js";
+
+test("RuntimeProfiler records frame samples and aggregate budget violations", () => {
+  const profiler = new RuntimeProfiler({
+    budget: {
+      maxFrameTimeMs: 16.7,
+      maxRenderTimeMs: 4,
+      maxDrawCalls: 2,
+      maxAssetLoadElapsedMs: 50,
+    },
+  });
+
+  equal(profiler.recordFrame(metrics({ frameTimeMs: 15, drawCalls: 2 })).passed, true);
+  const report = profiler.recordFrame(metrics({ frameTimeMs: 20, renderTimeMs: 5, drawCalls: 3 }));
+  equal(report.passed, false);
+  deepEqual(report.violations.map((violation) => violation.id), [
+    "maxFrameTimeMs",
+    "maxRenderTimeMs",
+    "maxDrawCalls",
+  ]);
+
+  profiler.recordAssetProgress({ loaded: 1, total: 2, elapsedMs: 20, kind: "texture", name: "player" });
+  profiler.recordAssetProgress({ loaded: 2, total: 2, elapsedMs: 75, kind: "json", name: "game" });
+  const snapshot = profiler.snapshot();
+  equal(snapshot.frameSampleCount, 2);
+  equal(snapshot.assetSampleCount, 2);
+  equal(snapshot.averageFrameTimeMs, 17.5);
+  equal(snapshot.maxFrameTimeMs, 20);
+  equal(snapshot.maxAssetLoadElapsedMs, 75);
+  equal(snapshot.budgetReport?.passed, false);
+  equal(snapshot.budgetReport?.violations.some((violation) => violation.id === "maxAssetLoadElapsedMs"), true);
+});
+
+test("RuntimeProfiler keeps bounded sample windows", () => {
+  const profiler = new RuntimeProfiler({ maxFrameSamples: 2, maxAssetSamples: 1 });
+  profiler.recordFrame(metrics({ frameTimeMs: 10 }));
+  profiler.recordFrame(metrics({ frameTimeMs: 11 }));
+  profiler.recordFrame(metrics({ frameTimeMs: 12 }));
+  profiler.recordAssetProgress({ loaded: 0, total: 1, elapsedMs: 1 });
+  profiler.recordAssetProgress({ loaded: 1, total: 1, elapsedMs: 2 });
+
+  const snapshot = profiler.snapshot();
+  equal(snapshot.frameSampleCount, 2);
+  equal(snapshot.assetSampleCount, 1);
+  equal(snapshot.averageFrameTimeMs, 11.5);
+  equal(snapshot.latestAsset?.elapsedMs, 2);
+});
+
+test("runtime diagnostics helpers evaluate frame samples directly", () => {
+  const sample = runtimeDiagnosticsFrameSample(metrics({
+    renderCommandCount: 12,
+    textureSwitchCount: 4,
+    physicsFixedSteps: 3,
+    collisionPairCount: 8,
+  }));
+  const report = evaluateRuntimeDiagnosticsSample(sample, {
+    maxRenderCommandCount: 10,
+    maxTextureSwitchCount: 4,
+    maxPhysicsFixedSteps: 2,
+    maxCollisionPairCount: 8,
+  });
+
+  equal(report.passed, false);
+  deepEqual(report.violations.map((violation) => violation.id), [
+    "maxRenderCommandCount",
+    "maxPhysicsFixedSteps",
+  ]);
+  equal(evaluateRuntimeProfilerBudget(new RuntimeProfiler().snapshot(), { maxFrameTimeMs: 1 }).passed, true);
+});
+
+function metrics(overrides: Partial<DebugOverlayMetrics> = {}): DebugOverlayMetrics {
+  return {
+    fps: 60,
+    frameTimeMs: 16,
+    rustUpdateTimeMs: 1,
+    renderTimeMs: 2,
+    entityCount: 3,
+    spriteCount: 3,
+    drawCalls: 1,
+    batchCount: 1,
+    mouseX: 0,
+    mouseY: 0,
+    cameraX: 0,
+    cameraY: 0,
+    gameState: "Playing",
+    score: 0,
+    ...overrides,
+  };
+}

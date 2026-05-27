@@ -311,7 +311,14 @@ export function createPhysicsWorldFromSpec(
   }
 
   options.replace?.clear();
-  applyPhysicsRuntimeOptions(engine, spec);
+  const runtimeConfigurable = engine as FerrumEngine & {
+    configurePhysicsRuntime?: (spec: ResolvedPhysicsSpec) => ResolvedPhysicsSpec;
+  };
+  if (typeof runtimeConfigurable.configurePhysicsRuntime === "function") {
+    runtimeConfigurable.configurePhysicsRuntime(spec);
+  } else {
+    applyPhysicsRuntimeOptions(engine, spec);
+  }
 
   const warnings = physicsApplyWarnings(spec, path, options.unsafeUnitScaleThreshold);
   for (const warning of warnings) {

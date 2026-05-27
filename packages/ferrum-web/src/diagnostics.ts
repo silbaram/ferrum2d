@@ -1,6 +1,23 @@
-export type DiagnosticKind = "texture" | "sound" | "json" | "game-spec" | "physics-spec" | "asset-pipeline";
+export type DiagnosticKind =
+  | "accessibility"
+  | "texture"
+  | "sound"
+  | "json"
+  | "game-spec"
+  | "physics-spec"
+  | "asset-pipeline"
+  | "scene-composition"
+  | "behavior-recipe"
+  | "camera-postprocessing"
+  | "cutscene-sequence"
+  | "debug-gizmo"
+  | "level-streaming"
+  | "localization"
+  | "dialogue-quest"
+  | "screenshot-capture";
 export type AssetDiagnosticKind = "texture" | "sound" | "json";
 export type DiagnosticCode =
+  | "FERRUM_ACCESSIBILITY_INVALID"
   | "FERRUM_ASSET_LOAD"
   | "FERRUM_ASSET_LOOKUP"
   | "FERRUM_AUDIO_CONTEXT"
@@ -8,9 +25,18 @@ export type DiagnosticCode =
   | "FERRUM_AUDIO_LOAD"
   | "FERRUM_AUDIO_PLAYBACK"
   | "FERRUM_ASSET_PIPELINE_INVALID"
+  | "FERRUM_BEHAVIOR_RECIPE_INVALID"
+  | "FERRUM_CAMERA_POSTPROCESSING_INVALID"
+  | "FERRUM_CUTSCENE_SEQUENCE_INVALID"
+  | "FERRUM_DEBUG_GIZMO_INVALID"
   | "FERRUM_DIAGNOSTIC"
+  | "FERRUM_DIALOGUE_QUEST_INVALID"
   | "FERRUM_GAME_SPEC_INVALID"
+  | "FERRUM_LEVEL_STREAMING_INVALID"
+  | "FERRUM_LOCALIZATION_INVALID"
   | "FERRUM_PHYSICS_SPEC_INVALID"
+  | "FERRUM_SCREENSHOT_CAPTURE_INVALID"
+  | "FERRUM_SCENE_COMPOSITION_INVALID"
   | "FERRUM_TEXTURE_CREATE"
   | "FERRUM_TEXTURE_DECODE"
   | "FERRUM_TEXTURE_LOAD"
@@ -150,6 +176,86 @@ export function assetPipelineDiagnosticError(path: string, detail: string): Ferr
     path,
     detail,
   }, "FERRUM_ASSET_PIPELINE_INVALID");
+}
+
+export function accessibilityDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid accessibility options", {
+    kind: "accessibility",
+    path,
+    detail,
+  }, "FERRUM_ACCESSIBILITY_INVALID");
+}
+
+export function sceneCompositionDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid scene composition", {
+    kind: "scene-composition",
+    path,
+    detail,
+  }, "FERRUM_SCENE_COMPOSITION_INVALID");
+}
+
+export function behaviorRecipeDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid behavior recipe", {
+    kind: "behavior-recipe",
+    path,
+    detail,
+  }, "FERRUM_BEHAVIOR_RECIPE_INVALID");
+}
+
+export function cameraPostProcessingDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid camera/post-processing config", {
+    kind: "camera-postprocessing",
+    path,
+    detail,
+  }, "FERRUM_CAMERA_POSTPROCESSING_INVALID");
+}
+
+export function cutsceneSequenceDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid cutscene sequence", {
+    kind: "cutscene-sequence",
+    path,
+    detail,
+  }, "FERRUM_CUTSCENE_SEQUENCE_INVALID");
+}
+
+export function debugGizmoDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid debug gizmo data", {
+    kind: "debug-gizmo",
+    path,
+    detail,
+  }, "FERRUM_DEBUG_GIZMO_INVALID");
+}
+
+export function levelStreamingDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid level streaming config", {
+    kind: "level-streaming",
+    path,
+    detail,
+  }, "FERRUM_LEVEL_STREAMING_INVALID");
+}
+
+export function localizationDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid localization config", {
+    kind: "localization",
+    path,
+    detail,
+  }, "FERRUM_LOCALIZATION_INVALID");
+}
+
+export function dialogueQuestDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid dialogue/quest data", {
+    kind: "dialogue-quest",
+    path,
+    detail,
+  }, "FERRUM_DIALOGUE_QUEST_INVALID");
+}
+
+export function screenshotCaptureDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid screenshot capture data", {
+    kind: "screenshot-capture",
+    path,
+    detail,
+  }, "FERRUM_SCREENSHOT_CAPTURE_INVALID");
 }
 
 function quote(value: string): string {

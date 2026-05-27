@@ -20,9 +20,12 @@ export interface AssetManifest {
 export interface AssetLoadProgress {
   loaded: number;
   total: number;
+  ratio?: number;
+  elapsedMs?: number;
   kind?: "texture" | "sound" | "json";
   name?: string;
   url?: string;
+  cached?: boolean;
 }
 
 export type AssetLoadProgressCallback = (progress: AssetLoadProgress) => void;
@@ -49,6 +52,7 @@ export class AssetLoader {
     manifest: AssetManifest,
     onProgress?: AssetLoadProgressCallback,
   ): Promise<LoadedAssets> {
+    const startedAtMs = nowMs();
     const textureEntries = Object.entries(manifest.textures ?? {});
     const soundEntries = Object.entries(manifest.sounds ?? {});
     const jsonEntries = Object.entries(manifest.json ?? {});
@@ -57,7 +61,13 @@ export class AssetLoader {
     const json: Record<string, unknown> = {};
 
     const emitProgress = (progress: Omit<AssetLoadProgress, "loaded" | "total"> = {}): void => {
-      onProgress?.({ loaded, total, ...progress });
+      onProgress?.({
+        loaded,
+        total,
+        ratio: total <= 0 ? 1 : loaded / total,
+        elapsedMs: nowMs() - startedAtMs,
+        ...progress,
+      });
     };
 
     emitProgress();
@@ -86,16 +96,17 @@ export class AssetLoader {
     }
 
     for (const [name, url] of jsonEntries) {
-      json[name] = await this.loadJson(name, url);
+      const loadedJson = await this.loadJson(name, url);
+      json[name] = loadedJson.value;
       loaded += 1;
-      emitProgress({ kind: "json", name, url });
+      emitProgress({ kind: "json", name, url, cached: loadedJson.cached });
     }
 
     return {
       textures: this.textureRegistry,
       sounds: this.soundRegistry,
       json,
-      progress: { loaded, total },
+      progress: { loaded, total, ratio: total <= 0 ? 1 : loaded / total, elapsedMs: nowMs() - startedAtMs },
     };
   }
 
@@ -142,10 +153,10 @@ export class AssetLoader {
     }
   }
 
-  private async loadJson(name: string, url: string): Promise<unknown> {
+  private async loadJson(name: string, url: string): Promise<{ value: unknown; cached: boolean }> {
     const cached = await this.cache?.getJson(url, { version: this.cacheVersion });
     if (cached !== undefined && cached !== null) {
-      return cached;
+      return { value: cached, cached: true };
     }
 
     let response: Response;
@@ -176,7 +187,7 @@ export class AssetLoader {
         etag: response.headers?.get("etag") ?? undefined,
         lastModified: response.headers?.get("last-modified") ?? undefined,
       });
-      return parsed;
+      return { value: parsed, cached: false };
     } catch (error) {
       throw assetLoadError({
         kind: "json",
@@ -186,4 +197,8 @@ export class AssetLoader {
       });
     }
   }
+}
+
+function nowMs(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
 }

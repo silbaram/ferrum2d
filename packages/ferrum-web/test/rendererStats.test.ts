@@ -5,6 +5,8 @@ import {
   estimateTextureSwitchCount,
   RENDERER_STATS_FIELD_CONTRACT,
   rendererStatsForCommands,
+  rendererStatsWithLighting,
+  rendererStatsWithPostProcess,
   rendererStatsWithPhysicsDebugLines,
 } from "../src/renderer.js";
 import type { RenderCommandBufferView } from "../src/renderCommandDecoder.js";
@@ -31,6 +33,13 @@ test("emptyRendererStats returns zeroed counters", () => {
     textureBindCount: 0,
     textureSwitchCount: 0,
     physicsDebugLineCount: 0,
+    lightingDrawCalls: 0,
+    pointLightCount: 0,
+    tileOccluderCount: 0,
+    shadowDrawCalls: 0,
+    shadowCasterCount: 0,
+    postProcessDrawCalls: 0,
+    postProcessPassCount: 0,
   });
 });
 
@@ -47,6 +56,13 @@ test("RendererStats field contract fixes labels and units", () => {
     { field: "textureBindCount", label: "texture binds", unit: "count" },
     { field: "textureSwitchCount", label: "texture switches", unit: "count" },
     { field: "physicsDebugLineCount", label: "physics debug lines", unit: "count" },
+    { field: "lightingDrawCalls", label: "lighting draw calls", unit: "count" },
+    { field: "pointLightCount", label: "point lights", unit: "count" },
+    { field: "tileOccluderCount", label: "tile occluders", unit: "count" },
+    { field: "shadowDrawCalls", label: "shadow draw calls", unit: "count" },
+    { field: "shadowCasterCount", label: "shadow casters", unit: "count" },
+    { field: "postProcessDrawCalls", label: "post-process draw calls", unit: "count" },
+    { field: "postProcessPassCount", label: "post-process passes", unit: "count" },
   ]);
 });
 
@@ -65,6 +81,13 @@ test("rendererStatsForCommands derives command and texture counters", () => {
     textureBindCount: 3,
     textureSwitchCount: 2,
     physicsDebugLineCount: 0,
+    lightingDrawCalls: 0,
+    pointLightCount: 0,
+    tileOccluderCount: 0,
+    shadowDrawCalls: 0,
+    shadowCasterCount: 0,
+    postProcessDrawCalls: 0,
+    postProcessPassCount: 0,
   });
 });
 
@@ -77,5 +100,50 @@ test("rendererStatsWithPhysicsDebugLines adds debug line draw calls", () => {
     textureBindCount: 1,
     textureSwitchCount: 0,
     physicsDebugLineCount: 2,
+    lightingDrawCalls: 0,
+    pointLightCount: 0,
+    tileOccluderCount: 0,
+    shadowDrawCalls: 0,
+    shadowCasterCount: 0,
+    postProcessDrawCalls: 0,
+    postProcessPassCount: 0,
+  });
+});
+
+test("rendererStatsWithLighting adds lighting pass counters", () => {
+  deepEqual(rendererStatsWithLighting(rendererStatsForCommands(commandBuffer([1]), 1), 3, 2, 4, 1, 1), {
+    drawCalls: 4,
+    batchCount: 1,
+    spriteCount: 1,
+    renderCommandCount: 1,
+    textureBindCount: 1,
+    textureSwitchCount: 0,
+    physicsDebugLineCount: 0,
+    lightingDrawCalls: 3,
+    pointLightCount: 2,
+    tileOccluderCount: 4,
+    shadowDrawCalls: 1,
+    shadowCasterCount: 1,
+    postProcessDrawCalls: 0,
+    postProcessPassCount: 0,
+  });
+});
+
+test("rendererStatsWithPostProcess adds fullscreen pass counters", () => {
+  deepEqual(rendererStatsWithPostProcess(rendererStatsForCommands(commandBuffer([1]), 1), 2, 2), {
+    drawCalls: 3,
+    batchCount: 1,
+    spriteCount: 1,
+    renderCommandCount: 1,
+    textureBindCount: 1,
+    textureSwitchCount: 0,
+    physicsDebugLineCount: 0,
+    lightingDrawCalls: 0,
+    pointLightCount: 0,
+    tileOccluderCount: 0,
+    shadowDrawCalls: 0,
+    shadowCasterCount: 0,
+    postProcessDrawCalls: 2,
+    postProcessPassCount: 2,
   });
 });

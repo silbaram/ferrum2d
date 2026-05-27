@@ -1,3 +1,7 @@
+pub const SPRITE_EFFECT_NONE: f32 = 0.0;
+pub const SPRITE_EFFECT_FADE: f32 = 1.0;
+pub const SPRITE_EFFECT_GLITCH: f32 = 2.0;
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SpriteRenderCommand {
@@ -14,4 +18,5 @@ pub struct SpriteRenderCommand {
     pub b: f32,
     pub a: f32,
     pub texture_id: f32,
+    pub effect_flags: f32,
 }

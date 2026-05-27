@@ -2,6 +2,13 @@ import type { Engine } from "../pkg/ferrum_core";
 import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets } from "./assetLoader";
 import { applyShooterGameSpec } from "./gameSpec";
 import type { ResolvedShooterGameSpec, ShooterGameSpec } from "./gameSpec";
+import type { PostProcessStackInput } from "./cameraPostProcessing";
+import {
+  BUILT_IN_SHOOTER_STATE_FORMAT,
+  BUILT_IN_SHOOTER_STATE_VERSION,
+  validateBuiltInShooterStateSnapshot,
+} from "./builtInShooterStateSnapshot.js";
+import type { BuiltInShooterStateSnapshot } from "./builtInShooterStateSnapshot.js";
 import { resolvePhysicsSpec } from "./physicsSpec.js";
 import type { PhysicsDebugSpec, PhysicsMode, ResolvedPhysicsSpec } from "./physicsSpec.js";
 import { finiteNumber, particlePresetId, resolveParticlePresetConfigForWasm, uint32Number } from "./particlePreset";
@@ -38,6 +45,8 @@ import type {
   PhysicsTileShapeCastHit,
   RenderCommandBufferView,
   RenderCommandView,
+  ShooterStateBufferView,
+  TilemapNavigationPathBufferView,
 } from "./wasmBridge";
 import { WasmBridge } from "./wasmBridge";
 
@@ -57,6 +66,7 @@ export interface AssetHost {
   playAudioEventBuffer?(events: AudioEventBufferView): void;
   playAudioEvents?(events: readonly AudioEventView[]): void;
   configureAudio?(config: AudioBusConfig): void;
+  setPostProcess?(postProcess: PostProcessStackInput): void;
 }
 
 export interface AudioBusConfig {
@@ -549,6 +559,39 @@ export interface PhysicsNearestTileObstacleHit {
   distance: number;
 }
 
+export interface TilemapNavigationWaypointQuery {
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+}
+
+export interface TilemapNavigationWaypoint {
+  x: number;
+  y: number;
+  distance: number;
+}
+
+export type TilemapNavigationPathQuery = TilemapNavigationWaypointQuery;
+
+export interface TilemapNavigationPathPoint {
+  x: number;
+  y: number;
+}
+
+export interface TilemapNavigationPath {
+  pointBuffer: Float32Array;
+  pointCount: number;
+  points: readonly TilemapNavigationPathPoint[];
+  distance: number;
+  debugLineBuffer: PhysicsDebugLineBufferView;
+  debugLines: readonly PhysicsDebugLineView[];
+}
+
+export interface TilemapRectEditOptions {
+  maxCollisionRebuildChunks?: number;
+}
+
 export interface PhysicsBodyContactQuery {
   categoryABits?: number;
   categoryBBits?: number;
@@ -755,6 +798,8 @@ export interface FerrumSceneApi {
   gameState(): number;
   spriteCount(): number;
   resetGame(): void;
+  captureShooterStateSnapshot(): BuiltInShooterStateSnapshot | undefined;
+  restoreShooterStateSnapshot(snapshot: BuiltInShooterStateSnapshot): boolean;
   useBreakoutGame(): void;
   usePlatformerGame(): void;
   setViewportSize(width: number, height: number): void;
@@ -767,7 +812,11 @@ export interface FerrumSceneApi {
     width: number,
     height: number,
     tileId: number,
+    options?: TilemapRectEditOptions,
   ): boolean;
+  setShooterTilemapNavigationCost(layerIndex: number, column: number, row: number, cost: number): boolean;
+  queryTilemapNavigationWaypoint(query: TilemapNavigationWaypointQuery): TilemapNavigationWaypoint | undefined;
+  queryTilemapNavigationPath(query: TilemapNavigationPathQuery): TilemapNavigationPath | undefined;
   cameraX(): number;
   cameraY(): number;
 }
@@ -793,7 +842,9 @@ export interface FerrumParticleApi {
 }
 
 export interface FerrumPhysicsRuntimeApi {
+  configurePhysicsRuntime(spec: ResolvedPhysicsSpec): ResolvedPhysicsSpec;
   configureFixedTimestep(options: boolean | FixedTimestepOptions): void;
+  configureAutoRigidBodyStep(options: boolean | PhysicsRigidBodyStepOptions): void;
   setPhysicsDebugLinesEnabled(enabled: boolean | PhysicsDebugOptions): void;
   setPhysicsDebugOptions(options: PhysicsDebugOptions): void;
   stepRigidBodies(
@@ -1094,7 +1145,34 @@ export async function createEngine(
       masterVolume: resolved.audioMasterVolume,
       sfxVolume: resolved.audioSfxVolume,
     });
+    assetHost?.setPostProcess?.(resolved.postProcessing);
     return resolved;
+  };
+
+  const configurePhysicsRuntime = (spec: ResolvedPhysicsSpec): ResolvedPhysicsSpec => {
+    requireAlive();
+    framePipeline.physicsSpec = spec;
+    applyPhysicsRuntimeOptions(rustEngine, spec, options, true);
+    return spec;
+  };
+
+  const captureShooterStateSnapshot = (): BuiltInShooterStateSnapshot | undefined => {
+    requireAlive();
+    if (!rustEngine.capture_shooter_snapshot()) {
+      return undefined;
+    }
+    return copyBuiltInShooterStateSnapshot(bridge.readShooterStateBuffer());
+  };
+
+  const restoreShooterStateSnapshot = (snapshot: BuiltInShooterStateSnapshot): boolean => {
+    requireAlive();
+    validateBuiltInShooterStateSnapshot(snapshot);
+    return rustEngine.restore_shooter_snapshot(
+      new Float32Array(snapshot.headerFloats),
+      new Uint32Array(snapshot.headerU32s),
+      new Float32Array(snapshot.entityFloats),
+      new Uint32Array(snapshot.entityU32s),
+    );
   };
 
   const setParticlePreset = (presetId: number, preset: ParticlePresetConfig): void => {
@@ -1153,6 +1231,45 @@ export async function createEngine(
   const configureFixedTimestep = (fixedTimestep: boolean | FixedTimestepOptions): void => {
     requireAlive();
     applyFixedTimestepOptions(rustEngine, fixedTimestep);
+  };
+
+  const configureAutoRigidBodyStep = (autoStep: boolean | PhysicsRigidBodyStepOptions): void => {
+    requireAlive();
+    const options = typeof autoStep === "object" ? autoStep : undefined;
+    rustEngine.configure_auto_rigid_body_step(
+      autoStep !== false,
+      finiteNumber(options?.gravityX ?? DEFAULT_RIGID_BODY_GRAVITY_X, "auto rigid body gravityX"),
+      finiteNumber(options?.gravityY ?? DEFAULT_RIGID_BODY_GRAVITY_Y, "auto rigid body gravityY"),
+      uint32Number(
+        options?.velocityIterations ?? DEFAULT_RIGID_BODY_VELOCITY_ITERATIONS,
+        "auto rigid body velocityIterations",
+      ),
+      uint32Number(
+        options?.positionIterations ?? DEFAULT_RIGID_BODY_POSITION_ITERATIONS,
+        "auto rigid body positionIterations",
+      ),
+      finiteNumber(
+        options?.positionCorrectionPercent ?? DEFAULT_RIGID_BODY_POSITION_CORRECTION_PERCENT,
+        "auto rigid body positionCorrectionPercent",
+      ),
+      finiteNumber(
+        options?.positionCorrectionSlop ?? DEFAULT_RIGID_BODY_POSITION_CORRECTION_SLOP,
+        "auto rigid body positionCorrectionSlop",
+      ),
+      finiteNumber(
+        options?.restitutionVelocityThreshold ?? DEFAULT_RIGID_BODY_RESTITUTION_VELOCITY_THRESHOLD,
+        "auto rigid body restitutionVelocityThreshold",
+      ),
+      finiteNumber(
+        options?.contactBaumgarteBiasFactor ?? DEFAULT_RIGID_BODY_CONTACT_BAUMGARTE_BIAS_FACTOR,
+        "auto rigid body contactBaumgarteBiasFactor",
+      ),
+      finiteNumber(
+        options?.maxContactBaumgarteBiasVelocity ?? DEFAULT_RIGID_BODY_MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+        "auto rigid body maxContactBaumgarteBiasVelocity",
+      ),
+      options?.contactSplitImpulse === true,
+    );
   };
 
   const setPhysicsDebugLinesEnabled = (enabled: boolean | PhysicsDebugOptions): void => {
@@ -2490,8 +2607,20 @@ export async function createEngine(
     width: number,
     height: number,
     tileId: number,
+    options?: TilemapRectEditOptions,
   ): boolean => {
     requireAlive();
+    if (options?.maxCollisionRebuildChunks !== undefined) {
+      return rustEngine.set_shooter_tilemap_tiles_rect_with_rebuild_budget(
+        uint32Number(layerIndex, "tilemap layer index"),
+        uint32Number(column, "tilemap column"),
+        uint32Number(row, "tilemap row"),
+        uint32Number(width, "tilemap rect width"),
+        uint32Number(height, "tilemap rect height"),
+        uint32Number(tileId, "tile id"),
+        uint32Number(options.maxCollisionRebuildChunks, "tilemap collision rebuild chunk budget"),
+      );
+    }
     return rustEngine.set_shooter_tilemap_tiles_rect(
       uint32Number(layerIndex, "tilemap layer index"),
       uint32Number(column, "tilemap column"),
@@ -2500,6 +2629,79 @@ export async function createEngine(
       uint32Number(height, "tilemap rect height"),
       uint32Number(tileId, "tile id"),
     );
+  };
+
+  const setShooterTilemapNavigationCost = (
+    layerIndex: number,
+    column: number,
+    row: number,
+    cost: number,
+  ): boolean => {
+    requireAlive();
+    return rustEngine.set_shooter_tilemap_navigation_cost(
+      uint32Number(layerIndex, "tilemap layer index"),
+      uint32Number(column, "tilemap column"),
+      uint32Number(row, "tilemap row"),
+      uint32Number(cost, "tilemap navigation cost"),
+    );
+  };
+
+  const queryTilemapNavigationWaypoint = (
+    query: TilemapNavigationWaypointQuery,
+  ): TilemapNavigationWaypoint | undefined => {
+    requireAlive();
+    const hit = rustEngine.query_tilemap_navigation_waypoint(
+      query.fromX,
+      query.fromY,
+      query.toX,
+      query.toY,
+    );
+    if (!hit) {
+      return undefined;
+    }
+    return {
+      x: rustEngine.physics_query_point_x(),
+      y: rustEngine.physics_query_point_y(),
+      distance: rustEngine.physics_query_distance(),
+    };
+  };
+
+  const queryTilemapNavigationPath = (
+    query: TilemapNavigationPathQuery,
+  ): TilemapNavigationPath | undefined => {
+    requireAlive();
+    const hit = rustEngine.query_tilemap_navigation_path(
+      query.fromX,
+      query.fromY,
+      query.toX,
+      query.toY,
+    );
+    if (!hit) {
+      return undefined;
+    }
+
+    const pathBuffer = bridge.readTilemapNavigationPathBuffer();
+    const pointBuffer = new Float32Array(pathBuffer.buffer);
+    const copiedPathBuffer: TilemapNavigationPathBufferView = {
+      buffer: pointBuffer,
+      pointCount: pathBuffer.pointCount,
+      floatsPerPoint: pathBuffer.floatsPerPoint,
+    };
+    const debugLineBuffer = bridge.readTilemapNavigationDebugLineBuffer();
+    const copiedDebugLineBuffer: PhysicsDebugLineBufferView = {
+      buffer: new Float32Array(debugLineBuffer.buffer),
+      lineCount: debugLineBuffer.lineCount,
+      floatsPerLine: debugLineBuffer.floatsPerLine,
+    };
+
+    return {
+      pointBuffer,
+      pointCount: copiedPathBuffer.pointCount,
+      points: decodeTilemapNavigationPathPoints(copiedPathBuffer),
+      distance: rustEngine.physics_query_distance(),
+      debugLineBuffer: copiedDebugLineBuffer,
+      debugLines: bridge.decodePhysicsDebugLines(copiedDebugLineBuffer),
+    };
   };
 
   const lifecycleApi: FerrumLifecycleApi = {
@@ -2552,6 +2754,8 @@ export async function createEngine(
     gameState: () => { requireAlive(); return rustEngine.game_state(); },
     spriteCount: () => { requireAlive(); return rustEngine.sprite_count(); },
     resetGame: () => { requireAlive(); rustEngine.reset_game(); },
+    captureShooterStateSnapshot,
+    restoreShooterStateSnapshot,
     useBreakoutGame,
     usePlatformerGame,
     setViewportSize: (width, height) => {
@@ -2561,6 +2765,9 @@ export async function createEngine(
     setGameSpec,
     setShooterTilemapTile,
     setShooterTilemapTilesRect,
+    setShooterTilemapNavigationCost,
+    queryTilemapNavigationWaypoint,
+    queryTilemapNavigationPath,
     cameraX: () => { requireAlive(); return rustEngine.camera_x(); },
     cameraY: () => { requireAlive(); return rustEngine.camera_y(); },
   };
@@ -2602,7 +2809,9 @@ export async function createEngine(
   };
 
   const physicsRuntimeApi: FerrumPhysicsRuntimeApi = {
+    configurePhysicsRuntime,
     configureFixedTimestep,
+    configureAutoRigidBodyStep,
     setPhysicsDebugLinesEnabled,
     setPhysicsDebugOptions,
     stepRigidBodies,
@@ -3249,6 +3458,34 @@ function runFrame(context: FramePipelineContext, deltaSeconds: number): void {
     context.physicsSpec,
     context.options,
   ));
+}
+
+function decodeTilemapNavigationPathPoints(
+  view: TilemapNavigationPathBufferView,
+): readonly TilemapNavigationPathPoint[] {
+  const points: TilemapNavigationPathPoint[] = [];
+  for (let index = 0; index < view.pointCount; index += 1) {
+    const offset = index * view.floatsPerPoint;
+    points.push({
+      x: view.buffer[offset],
+      y: view.buffer[offset + 1],
+    });
+  }
+  return points;
+}
+
+function copyBuiltInShooterStateSnapshot(view: ShooterStateBufferView): BuiltInShooterStateSnapshot {
+  return {
+    format: BUILT_IN_SHOOTER_STATE_FORMAT,
+    version: BUILT_IN_SHOOTER_STATE_VERSION,
+    headerFloats: Array.from(view.headerFloats),
+    headerU32s: Array.from(view.headerU32s),
+    entityFloats: Array.from(view.entityFloats),
+    entityU32s: Array.from(view.entityU32s),
+    entityCount: view.entityCount,
+    floatsPerEntity: view.floatsPerEntity,
+    u32sPerEntity: view.u32sPerEntity,
+  };
 }
 
 function pushInput(rustEngine: Engine, inputProvider?: InputProvider): InputSnapshot | undefined {

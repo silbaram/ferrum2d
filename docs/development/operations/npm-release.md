@@ -64,6 +64,7 @@ pnpm test
 pnpm validate:game-spec
 pnpm smoke:headless
 pnpm package:check:ferrum-web
+pnpm package:consumer-smoke
 pnpm build:web
 ```
 
@@ -88,7 +89,7 @@ cargo clippy --manifest-path crates/ferrum-core/Cargo.toml -- -D warnings
 pnpm release:check
 ```
 
-`ferrum-web-v*` tag push가 발생하면 CI가 같은 검증을 실행한다. tag 기반 검증에서는 다음 조건을 추가로 요구한다.
+`ferrum-web-v*` tag push가 발생하면 CI가 같은 검증을 실행하고 package consumer smoke를 별도 job으로 gate한다. PR이나 일반 push에서는 무겁기 때문에 기본 실행하지 않으며, 수동 `workflow_dispatch`에서 `consumer_smoke` input을 켜면 같은 job을 opt-in으로 실행한다. tag 기반 검증에서는 다음 조건을 추가로 요구한다.
 
 - `packages/ferrum-web/package.json` version이 `x.y.z-beta.N` 형식이다.
 - Git tag가 정확히 `ferrum-web-vx.y.z-beta.N` 형식이며 package version과 일치한다.
@@ -124,6 +125,20 @@ import { createFerrumRuntime } from "@ferrum2d/ferrum-web";
 ```
 
 `@ferrum2d/ferrum-web/dist/*`, `@ferrum2d/ferrum-web/pkg/*`, generated wasm-bindgen API는 public import 경로가 아니다.
+
+세 package를 함께 검증할 때는 사람이 직접 임시 프로젝트를 만들기보다 다음 명령을 우선 사용한다.
+
+```bash
+pnpm package:consumer-smoke
+```
+
+이 명령은 `@ferrum2d/ferrum-web`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 로컬 tarball로 pack하고, 임시 consumer project에서 tool package 설치, `create-game` template matrix 생성, agents dry-run, runtime tarball install, public import smoke, production build를 한 번에 확인한다. 기본값은 `packages/create-game/templates/*` 전체이며, 좁은 확인이 필요하면 `pnpm package:consumer-smoke -- --templates minimal`처럼 실행한다.
+
+CI에서 consumer smoke가 실패하면 `artifacts/consumer-smoke`에 failure report, tarball, node_modules/dist를 제외한 tool/generated project snapshot을 남기고 `actions/upload-artifact`로 업로드한다. 로컬에서도 같은 보존 정책을 쓰려면 다음을 실행한다.
+
+```bash
+pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke
+```
 
 ## 실제 publish 절차
 

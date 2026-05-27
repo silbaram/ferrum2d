@@ -1,0 +1,42 @@
+{
+  "world": {
+    "width": 960,
+    "height": 540
+  },
+  "player": {
+    "speed": 210
+  },
+  "enemies": {
+    "speed": 64,
+    "spawnInterval": 2.5,
+    "waves": [
+      {
+        "duration": 24,
+        "spawnInterval": 2.5,
+        "enemyCount": 8
+      }
+    ]
+  },
+  "weapons": {
+    "bulletSpeed": 520,
+    "cooldown": 0.18,
+    "damage": 1
+  },
+  "prefabs": {
+    "player": {
+      "width": 30,
+      "height": 30
+    },
+    "enemy": {
+      "width": 28,
+      "height": 28
+    },
+    "bullet": {
+      "width": 8,
+      "height": 8
+    }
+  },
+  "camera": {
+    "preset": "follow"
+  }
+}

@@ -30,18 +30,24 @@ use crate::physics::{
 use crate::platformer_scene::{
     platformer_landing_dust_particle_preset, PlatformerParticleBurstSink, PlatformerScene,
 };
-use crate::render_command::SpriteRenderCommand;
+use crate::render_command::{SpriteRenderCommand, SPRITE_EFFECT_NONE};
 use crate::shooter_scene::{
     EnemyBehavior, EnemySpawnPattern, ParticleBurstSink, ShooterAudioPolicy, ShooterConfig,
-    ShooterScene, ShooterWaveConfig, TweenSink,
+    ShooterEntitySnapshot, ShooterScene, ShooterSceneSnapshot, ShooterWaveConfig, TweenSink,
+    SHOOTER_SNAPSHOT_ENTITY_FLOATS, SHOOTER_SNAPSHOT_ENTITY_U32S, SHOOTER_SNAPSHOT_HEADER_FLOATS,
+    SHOOTER_SNAPSHOT_HEADER_U32S,
 };
-use crate::tilemap::{Tilemap, TilemapContactHit, TilemapContactManifoldHit, TilemapShapeCastHit};
+use crate::tilemap::{
+    Tilemap, TilemapContactHit, TilemapContactManifoldHit, TilemapNavigationScratch,
+    TilemapShapeCastHit,
+};
 use crate::tweens::TweenSystem;
 use crate::world::{EntityTemplateCollider, EntityTemplateColliderShape, World};
 
 const DEFAULT_VIEWPORT_WIDTH: f32 = 800.0;
 const DEFAULT_VIEWPORT_HEIGHT: f32 = 480.0;
 const MAX_PARTICLE_PRESETS: usize = 256;
+const TILEMAP_NAVIGATION_DEBUG_COLOR: [f32; 4] = [0.1, 0.75, 1.0, 1.0];
 const PHYSICS_BODY_TYPE_STATIC: u32 = 0;
 const PHYSICS_BODY_TYPE_KINEMATIC: u32 = 1;
 const PHYSICS_BODY_TYPE_DYNAMIC: u32 = 2;
@@ -499,6 +505,9 @@ pub struct Engine {
     audio_events: Vec<AudioEvent>,
     collision_events: Vec<CollisionEvent>,
     physics_debug_lines: Vec<PhysicsDebugLine>,
+    tilemap_navigation_path_points: Vec<f32>,
+    tilemap_navigation_debug_lines: Vec<PhysicsDebugLine>,
+    tilemap_navigation_scratch: TilemapNavigationScratch,
     physics_debug_lines_enabled: bool,
     physics_debug_line_flags: u32,
     collision_event_tracker: CollisionEventTracker,
@@ -518,7 +527,13 @@ pub struct Engine {
     physics_joint_snapshot: PhysicsJointSnapshot,
     physics_body_snapshot_floats: Vec<f32>,
     physics_body_snapshot_u32s: Vec<u32>,
+    shooter_snapshot_header_floats: Vec<f32>,
+    shooter_snapshot_header_u32s: Vec<u32>,
+    shooter_snapshot_entity_floats: Vec<f32>,
+    shooter_snapshot_entity_u32s: Vec<u32>,
     rigid_body_step_stats: RigidBodyStepStats,
+    auto_rigid_body_step_enabled: bool,
+    auto_rigid_body_step_config: RigidBodyStepConfig,
     fixed_timestep: FixedTimestep,
     fixed_timestep_enabled: bool,
     last_fixed_update: FixedTimestepUpdate,
@@ -548,6 +563,9 @@ impl Engine {
             audio_events: Vec::with_capacity(16),
             collision_events: Vec::with_capacity(128),
             physics_debug_lines: Vec::with_capacity(64),
+            tilemap_navigation_path_points: Vec::with_capacity(32),
+            tilemap_navigation_debug_lines: Vec::with_capacity(16),
+            tilemap_navigation_scratch: TilemapNavigationScratch::default(),
             physics_debug_lines_enabled: false,
             physics_debug_line_flags: PHYSICS_DEBUG_DEFAULT,
             collision_event_tracker: CollisionEventTracker::default(),
@@ -567,7 +585,13 @@ impl Engine {
             physics_joint_snapshot: PhysicsJointSnapshot::default(),
             physics_body_snapshot_floats: Vec::with_capacity(PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY),
             physics_body_snapshot_u32s: Vec::with_capacity(PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY),
+            shooter_snapshot_header_floats: Vec::with_capacity(SHOOTER_SNAPSHOT_HEADER_FLOATS),
+            shooter_snapshot_header_u32s: Vec::with_capacity(SHOOTER_SNAPSHOT_HEADER_U32S),
+            shooter_snapshot_entity_floats: Vec::with_capacity(SHOOTER_SNAPSHOT_ENTITY_FLOATS * 16),
+            shooter_snapshot_entity_u32s: Vec::with_capacity(SHOOTER_SNAPSHOT_ENTITY_U32S * 16),
             rigid_body_step_stats: RigidBodyStepStats::default(),
+            auto_rigid_body_step_enabled: false,
+            auto_rigid_body_step_config: RigidBodyStepConfig::default(),
             fixed_timestep: FixedTimestep::default(),
             fixed_timestep_enabled: false,
             last_fixed_update: FixedTimestepUpdate::default(),
@@ -732,6 +756,112 @@ impl Engine {
         self.active_scene = ActiveScene::Shooter;
         self.tilemap
             .set_tiles_rect(layer_index, column, row, width, height, tile_id)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_shooter_tilemap_tiles_rect_with_rebuild_budget(
+        &mut self,
+        layer_index: u32,
+        column: u32,
+        row: u32,
+        width: u32,
+        height: u32,
+        tile_id: u32,
+        max_rebuilt_chunks: u32,
+    ) -> bool {
+        self.active_scene = ActiveScene::Shooter;
+        self.tilemap.set_tiles_rect_with_rebuild_budget(
+            layer_index,
+            column,
+            row,
+            width,
+            height,
+            tile_id,
+            max_rebuilt_chunks,
+        )
+    }
+
+    pub fn set_shooter_tilemap_navigation_cost(
+        &mut self,
+        layer_index: u32,
+        column: u32,
+        row: u32,
+        cost: u32,
+    ) -> bool {
+        self.active_scene = ActiveScene::Shooter;
+        self.tilemap
+            .set_navigation_cost(layer_index, column, row, cost)
+    }
+
+    pub fn query_tilemap_navigation_waypoint(
+        &mut self,
+        from_x: f32,
+        from_y: f32,
+        to_x: f32,
+        to_y: f32,
+    ) -> bool {
+        let Some(waypoint) = self.tilemap.navigation_waypoint_with_scratch(
+            Transform2D {
+                x: from_x,
+                y: from_y,
+            },
+            Transform2D { x: to_x, y: to_y },
+            &mut self.tilemap_navigation_scratch,
+        ) else {
+            self.physics_query_result = PhysicsQueryResult::default();
+            return false;
+        };
+
+        self.physics_query_result = PhysicsQueryResult {
+            entity_id: 0,
+            entity_generation: 0,
+            tile_layer_index: 0,
+            tile_index: 0,
+            point_x: waypoint.x,
+            point_y: waypoint.y,
+            distance: ((waypoint.x - from_x).powi(2) + (waypoint.y - from_y).powi(2)).sqrt(),
+        };
+        true
+    }
+
+    pub fn query_tilemap_navigation_path(
+        &mut self,
+        from_x: f32,
+        from_y: f32,
+        to_x: f32,
+        to_y: f32,
+    ) -> bool {
+        let from = Transform2D {
+            x: from_x,
+            y: from_y,
+        };
+        let Some(path) = self.tilemap.navigation_path_with_scratch(
+            from,
+            Transform2D { x: to_x, y: to_y },
+            &mut self.tilemap_navigation_scratch,
+        ) else {
+            self.physics_query_result = PhysicsQueryResult::default();
+            self.tilemap_navigation_path_points.clear();
+            self.tilemap_navigation_debug_lines.clear();
+            return false;
+        };
+
+        let (first, distance) = Self::store_tilemap_navigation_path(
+            &mut self.tilemap_navigation_path_points,
+            &mut self.tilemap_navigation_debug_lines,
+            from,
+            path,
+        );
+        self.physics_query_result = PhysicsQueryResult {
+            entity_id: 0,
+            entity_generation: 0,
+            tile_layer_index: 0,
+            tile_index: 0,
+            point_x: first.x,
+            point_y: first.y,
+            distance,
+        };
+        true
     }
 
     pub fn clear_shooter_waves(&mut self) {
@@ -1596,6 +1726,7 @@ impl Engine {
                 let input = self.fixed_step_input(step_index == 0);
                 self.tweens.update(&mut self.world, step_seconds);
                 self.update_scene(step_seconds, input);
+                self.step_auto_rigid_bodies(step_seconds);
                 if step_index == 0 {
                     self.fixed_timestep_input_latch.clear();
                 }
@@ -1605,6 +1736,7 @@ impl Engine {
             self.last_fixed_update = FixedTimestepUpdate::default();
             self.tweens.update(&mut self.world, delta as f32);
             self.update_scene(delta as f32, self.input);
+            self.step_auto_rigid_bodies(delta as f32);
             self.record_collision_events();
         }
         self.particles.update(delta as f32);
@@ -2443,6 +2575,123 @@ impl Engine {
 
     pub fn physics_body_snapshot_u32_len(&self) -> usize {
         self.physics_body_snapshot_u32s.len()
+    }
+
+    pub fn shooter_snapshot_header_floats(&self) -> usize {
+        SHOOTER_SNAPSHOT_HEADER_FLOATS
+    }
+
+    pub fn shooter_snapshot_header_u32s(&self) -> usize {
+        SHOOTER_SNAPSHOT_HEADER_U32S
+    }
+
+    pub fn shooter_snapshot_entity_floats(&self) -> usize {
+        SHOOTER_SNAPSHOT_ENTITY_FLOATS
+    }
+
+    pub fn shooter_snapshot_entity_u32s(&self) -> usize {
+        SHOOTER_SNAPSHOT_ENTITY_U32S
+    }
+
+    pub fn shooter_snapshot_header_float_ptr(&self) -> *const f32 {
+        self.shooter_snapshot_header_floats.as_ptr()
+    }
+
+    pub fn shooter_snapshot_header_float_len(&self) -> usize {
+        self.shooter_snapshot_header_floats.len()
+    }
+
+    pub fn shooter_snapshot_header_u32_ptr(&self) -> *const u32 {
+        self.shooter_snapshot_header_u32s.as_ptr()
+    }
+
+    pub fn shooter_snapshot_header_u32_len(&self) -> usize {
+        self.shooter_snapshot_header_u32s.len()
+    }
+
+    pub fn shooter_snapshot_entity_float_ptr(&self) -> *const f32 {
+        self.shooter_snapshot_entity_floats.as_ptr()
+    }
+
+    pub fn shooter_snapshot_entity_float_len(&self) -> usize {
+        self.shooter_snapshot_entity_floats.len()
+    }
+
+    pub fn shooter_snapshot_entity_u32_ptr(&self) -> *const u32 {
+        self.shooter_snapshot_entity_u32s.as_ptr()
+    }
+
+    pub fn shooter_snapshot_entity_u32_len(&self) -> usize {
+        self.shooter_snapshot_entity_u32s.len()
+    }
+
+    pub fn capture_shooter_snapshot(&mut self) -> bool {
+        if self.active_scene != ActiveScene::Shooter {
+            self.shooter_snapshot_header_floats.clear();
+            self.shooter_snapshot_header_u32s.clear();
+            self.shooter_snapshot_entity_floats.clear();
+            self.shooter_snapshot_entity_u32s.clear();
+            return false;
+        }
+        let snapshot = self.scene.snapshot(&self.world, &self.camera);
+        self.store_shooter_snapshot(&snapshot);
+        true
+    }
+
+    pub fn restore_shooter_snapshot(
+        &mut self,
+        header_floats: Vec<f32>,
+        header_u32s: Vec<u32>,
+        entity_floats: Vec<f32>,
+        entity_u32s: Vec<u32>,
+    ) -> bool {
+        if header_floats.len() != SHOOTER_SNAPSHOT_HEADER_FLOATS
+            || header_u32s.len() != SHOOTER_SNAPSHOT_HEADER_U32S
+            || !entity_floats
+                .len()
+                .is_multiple_of(SHOOTER_SNAPSHOT_ENTITY_FLOATS)
+            || !entity_u32s
+                .len()
+                .is_multiple_of(SHOOTER_SNAPSHOT_ENTITY_U32S)
+            || entity_floats.len() / SHOOTER_SNAPSHOT_ENTITY_FLOATS
+                != entity_u32s.len() / SHOOTER_SNAPSHOT_ENTITY_U32S
+        {
+            return false;
+        }
+
+        let mut snapshot = ShooterSceneSnapshot {
+            header_floats: [0.0; SHOOTER_SNAPSHOT_HEADER_FLOATS],
+            header_u32s: [0; SHOOTER_SNAPSHOT_HEADER_U32S],
+            entities: Vec::with_capacity(entity_u32s.len() / SHOOTER_SNAPSHOT_ENTITY_U32S),
+        };
+        snapshot.header_floats.copy_from_slice(&header_floats);
+        snapshot.header_u32s.copy_from_slice(&header_u32s);
+        for (floats, u32s) in entity_floats
+            .chunks_exact(SHOOTER_SNAPSHOT_ENTITY_FLOATS)
+            .zip(entity_u32s.chunks_exact(SHOOTER_SNAPSHOT_ENTITY_U32S))
+        {
+            let mut entity = ShooterEntitySnapshot {
+                floats: [0.0; SHOOTER_SNAPSHOT_ENTITY_FLOATS],
+                u32s: [0; SHOOTER_SNAPSHOT_ENTITY_U32S],
+            };
+            entity.floats.copy_from_slice(floats);
+            entity.u32s.copy_from_slice(u32s);
+            snapshot.entities.push(entity);
+        }
+
+        let restored = self.scene.restore_snapshot(
+            &mut self.world,
+            &mut self.camera,
+            &mut self.audio_events,
+            &snapshot,
+        );
+        if restored {
+            self.active_scene = ActiveScene::Shooter;
+            self.particles.clear();
+            self.tweens.clear();
+            self.clear_physics_history();
+        }
+        restored
     }
 
     pub fn capture_physics_body_snapshot_bulk(&mut self, handles: Vec<u32>) -> bool {
@@ -3801,6 +4050,41 @@ impl Engine {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn configure_auto_rigid_body_step(
+        &mut self,
+        enabled: bool,
+        gravity_x: f32,
+        gravity_y: f32,
+        velocity_iterations: u32,
+        position_iterations: u32,
+        position_correction_percent: f32,
+        position_correction_slop: f32,
+        restitution_velocity_threshold: f32,
+        contact_baumgarte_bias_factor: f32,
+        max_contact_baumgarte_bias_velocity: f32,
+        contact_split_impulse: bool,
+    ) {
+        self.auto_rigid_body_step_enabled = enabled;
+        self.auto_rigid_body_step_config = RigidBodyStepConfig {
+            gravity: Velocity {
+                vx: gravity_x,
+                vy: gravity_y,
+            },
+            velocity_iterations,
+            position_iterations,
+            position_correction_percent,
+            position_correction_slop,
+            restitution_velocity_threshold,
+            contact_baumgarte_bias_factor,
+            max_contact_baumgarte_bias_velocity,
+            contact_split_impulse,
+        };
+        if !enabled {
+            self.rigid_body_step_stats = RigidBodyStepStats::default();
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn step_rigid_bodies_with_config(
         &mut self,
         delta_seconds: f32,
@@ -4939,6 +5223,22 @@ impl Engine {
         self.physics_debug_lines.len()
     }
 
+    pub fn tilemap_navigation_path_point_ptr(&self) -> *const f32 {
+        self.tilemap_navigation_path_points.as_ptr()
+    }
+
+    pub fn tilemap_navigation_path_point_len(&self) -> usize {
+        self.tilemap_navigation_path_points.len() / 2
+    }
+
+    pub fn tilemap_navigation_debug_line_ptr(&self) -> *const PhysicsDebugLine {
+        self.tilemap_navigation_debug_lines.as_ptr()
+    }
+
+    pub fn tilemap_navigation_debug_line_len(&self) -> usize {
+        self.tilemap_navigation_debug_lines.len()
+    }
+
     pub fn time(&self) -> f64 {
         self.elapsed_seconds
     }
@@ -5377,6 +5677,28 @@ impl Engine {
             return false;
         }
         self.store_physics_entity_snapshot(entity)
+    }
+
+    fn store_shooter_snapshot(&mut self, snapshot: &ShooterSceneSnapshot) {
+        self.shooter_snapshot_header_floats.clear();
+        self.shooter_snapshot_header_u32s.clear();
+        self.shooter_snapshot_entity_floats.clear();
+        self.shooter_snapshot_entity_u32s.clear();
+
+        self.shooter_snapshot_header_floats
+            .extend_from_slice(&snapshot.header_floats);
+        self.shooter_snapshot_header_u32s
+            .extend_from_slice(&snapshot.header_u32s);
+        self.shooter_snapshot_entity_floats
+            .reserve(snapshot.entities.len() * SHOOTER_SNAPSHOT_ENTITY_FLOATS);
+        self.shooter_snapshot_entity_u32s
+            .reserve(snapshot.entities.len() * SHOOTER_SNAPSHOT_ENTITY_U32S);
+        for entity in &snapshot.entities {
+            self.shooter_snapshot_entity_floats
+                .extend_from_slice(&entity.floats);
+            self.shooter_snapshot_entity_u32s
+                .extend_from_slice(&entity.u32s);
+        }
     }
 
     fn store_physics_entity_snapshot(&mut self, entity: Entity) -> bool {
@@ -6397,6 +6719,17 @@ impl Engine {
         self.previous_input_sample = self.input;
     }
 
+    fn step_auto_rigid_bodies(&mut self, delta_seconds: f32) {
+        if !self.auto_rigid_body_step_enabled {
+            return;
+        }
+        self.rigid_body_step_stats = PhysicsSystem::step_rigid_bodies_with_config(
+            &mut self.world,
+            delta_seconds,
+            self.auto_rigid_body_step_config,
+        );
+    }
+
     fn record_collision_events(&mut self) {
         let counts = self
             .collision_event_tracker
@@ -6428,6 +6761,37 @@ impl Engine {
             self.physics_debug_line_flags,
             &mut self.physics_debug_lines,
         );
+    }
+
+    fn store_tilemap_navigation_path(
+        tilemap_navigation_path_points: &mut Vec<f32>,
+        tilemap_navigation_debug_lines: &mut Vec<PhysicsDebugLine>,
+        from: Transform2D,
+        path: &[Transform2D],
+    ) -> (Transform2D, f32) {
+        tilemap_navigation_path_points.clear();
+        tilemap_navigation_debug_lines.clear();
+
+        let mut previous = from;
+        let mut distance = 0.0;
+        for point in path.iter().copied() {
+            tilemap_navigation_path_points.push(point.x);
+            tilemap_navigation_path_points.push(point.y);
+            distance += ((point.x - previous.x).powi(2) + (point.y - previous.y).powi(2)).sqrt();
+            tilemap_navigation_debug_lines.push(PhysicsDebugLine {
+                x0: previous.x,
+                y0: previous.y,
+                x1: point.x,
+                y1: point.y,
+                r: TILEMAP_NAVIGATION_DEBUG_COLOR[0],
+                g: TILEMAP_NAVIGATION_DEBUG_COLOR[1],
+                b: TILEMAP_NAVIGATION_DEBUG_COLOR[2],
+                a: TILEMAP_NAVIGATION_DEBUG_COLOR[3],
+            });
+            previous = point;
+        }
+
+        (path.first().copied().unwrap_or(from), distance)
     }
 
     fn observe_input_sample(&mut self, input: InputState) {
@@ -6470,6 +6834,7 @@ impl Engine {
                     b: s.b,
                     a: s.a,
                     texture_id: s.texture_id as f32,
+                    effect_flags: SPRITE_EFFECT_NONE,
                 });
             }
         }
@@ -7124,6 +7489,35 @@ mod tests {
     }
 
     #[test]
+    fn engine_auto_rigid_body_step_runs_inside_update() {
+        let mut engine = Engine::new();
+        engine.world = World::default();
+        engine.clear_physics_history();
+        let body = spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
+        engine
+            .world
+            .set_rigid_body(body, RigidBody::dynamic(1.0).with_sleeping_enabled(false));
+
+        engine.configure_auto_rigid_body_step(
+            true, 0.0, 20.0, 1, 1, 0.8, 0.01, 1.0, 0.2, 120.0, false,
+        );
+        engine.update(0.5);
+
+        let velocity = engine
+            .world
+            .velocity(body)
+            .expect("auto-stepped rigid body should keep velocity");
+        assert!(velocity.vy > 0.0);
+        assert_eq!(engine.rigid_body_step_substeps(), 1);
+        assert_eq!(engine.rigid_body_step_dynamic_bodies(), 1);
+
+        engine.configure_auto_rigid_body_step(
+            false, 0.0, 20.0, 1, 1, 0.8, 0.01, 1.0, 0.2, 120.0, false,
+        );
+        assert_eq!(engine.rigid_body_step_dynamic_bodies(), 0);
+    }
+
+    #[test]
     fn engine_spawn_physics_aabb_body_authoring_steps_and_queries_snapshot() {
         let mut engine = Engine::new();
         engine.world = World::default();
@@ -7579,6 +7973,116 @@ mod tests {
         assert!(!engine.physics_entity_body_enabled());
         assert!(engine.despawn_physics_entity(circle_id, circle_generation));
         assert!(!engine.query_physics_entity(circle_id, circle_generation));
+    }
+
+    #[test]
+    fn engine_captures_and_restores_builtin_shooter_snapshot() {
+        let mut engine = Engine::new();
+        engine.set_input(false, false, false, false, false, true, false, 0.0, 0.0);
+        engine.update(0.016);
+        engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
+
+        let enemy = engine.world.spawn_enemy(500.0, 240.0, DEFAULT_TEXTURE_ID);
+        let bullet = engine
+            .world
+            .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+        engine.world.damages[bullet.id as usize] = Some(1.0);
+        engine.update(0.016);
+        assert_eq!(engine.score(), 1);
+        assert!(!engine.world.alive[enemy.id as usize]);
+
+        let saved_enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+        let saved_bullet = engine
+            .world
+            .spawn_bullet(120.0, 100.0, 12.0, 0.0, DEFAULT_TEXTURE_ID);
+        assert!(engine.world.alive[saved_enemy.id as usize]);
+        assert!(engine.world.alive[saved_bullet.id as usize]);
+        let saved_entity_count = engine.entity_count();
+        engine.camera.x = 320.0;
+        engine.camera.y = 240.0;
+
+        assert!(engine.capture_shooter_snapshot());
+        assert_eq!(
+            engine.shooter_snapshot_header_float_len(),
+            engine.shooter_snapshot_header_floats()
+        );
+        assert_eq!(
+            engine.shooter_snapshot_header_u32_len(),
+            engine.shooter_snapshot_header_u32s()
+        );
+        assert!(engine.shooter_snapshot_entity_float_len() >= SHOOTER_SNAPSHOT_ENTITY_FLOATS);
+        let header_floats = engine.shooter_snapshot_header_floats.clone();
+        let header_u32s = engine.shooter_snapshot_header_u32s.clone();
+        let entity_floats = engine.shooter_snapshot_entity_floats.clone();
+        let entity_u32s = engine.shooter_snapshot_entity_u32s.clone();
+
+        engine.reset_game();
+        assert_eq!(engine.score(), 0);
+        set_test_particle_preset(&mut engine, 0, DEFAULT_TEXTURE_ID, 2, 1.0);
+        assert_eq!(engine.spawn_particle_burst(0, 100.0, 100.0), 2);
+        assert_eq!(engine.particle_count(), 2);
+        assert!(engine.restore_shooter_snapshot(
+            header_floats,
+            header_u32s,
+            entity_floats,
+            entity_u32s
+        ));
+
+        assert_eq!(engine.score(), 1);
+        assert_eq!(engine.game_state(), 1);
+        assert_eq!(engine.entity_count(), saved_entity_count);
+        assert_eq!(engine.camera_x(), 320.0);
+        assert_eq!(engine.camera_y(), 240.0);
+        assert_eq!(engine.particle_count(), 0);
+        assert!(engine
+            .world
+            .transforms
+            .iter()
+            .flatten()
+            .any(|transform| (transform.x - 100.0).abs() < 0.001));
+        assert!(engine
+            .world
+            .velocities
+            .iter()
+            .flatten()
+            .any(|velocity| (velocity.vx - 12.0).abs() < 0.001));
+    }
+
+    #[test]
+    fn shooter_snapshot_capture_does_not_switch_non_shooter_scene() {
+        let mut engine = Engine::new();
+        engine.use_platformer_scene();
+        let entity_count = engine.entity_count();
+
+        assert_eq!(engine.active_scene, ActiveScene::Platformer);
+        assert!(!engine.capture_shooter_snapshot());
+
+        assert_eq!(engine.active_scene, ActiveScene::Platformer);
+        assert_eq!(engine.entity_count(), entity_count);
+        assert_eq!(engine.shooter_snapshot_header_float_len(), 0);
+        assert_eq!(engine.shooter_snapshot_header_u32_len(), 0);
+        assert_eq!(engine.shooter_snapshot_entity_float_len(), 0);
+        assert_eq!(engine.shooter_snapshot_entity_u32_len(), 0);
+    }
+
+    #[test]
+    fn failed_shooter_snapshot_restore_preserves_active_scene() {
+        let mut engine = Engine::new();
+        engine.use_platformer_scene();
+        let entity_count = engine.entity_count();
+        let mut header_u32s = vec![0; SHOOTER_SNAPSHOT_HEADER_U32S];
+        header_u32s[0] = crate::shooter_scene::SHOOTER_SNAPSHOT_VERSION;
+
+        assert_eq!(engine.active_scene, ActiveScene::Platformer);
+        assert!(!engine.restore_shooter_snapshot(
+            vec![0.0; SHOOTER_SNAPSHOT_HEADER_FLOATS],
+            header_u32s,
+            Vec::new(),
+            Vec::new(),
+        ));
+
+        assert_eq!(engine.active_scene, ActiveScene::Platformer);
+        assert_eq!(engine.entity_count(), entity_count);
     }
 
     #[test]
@@ -8450,6 +8954,73 @@ mod tests {
     }
 
     #[test]
+    fn engine_tilemap_rect_edit_can_enforce_rebuild_budget_for_wasm() {
+        let mut engine = Engine::new();
+        engine.clear_shooter_tilemap();
+        engine.set_shooter_tilemap_layer(0, 40, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1; 40]);
+
+        assert!(!engine.set_shooter_tilemap_tiles_rect_with_rebuild_budget(0, 15, 0, 2, 1, 0, 1));
+        assert!(engine.query_nearest_tile_obstacle(155.0, 5.0, 0.0));
+
+        assert!(engine.set_shooter_tilemap_tiles_rect_with_rebuild_budget(0, 15, 0, 2, 1, 0, 2));
+        assert!(!engine.query_nearest_tile_obstacle(155.0, 5.0, 0.0));
+        assert!(engine.query_nearest_tile_obstacle(175.0, 5.0, 0.0));
+    }
+
+    #[test]
+    fn engine_query_tilemap_navigation_waypoint_stores_scalar_result_for_wasm() {
+        let mut engine = Engine::new();
+        engine.clear_shooter_tilemap();
+        engine.set_shooter_tilemap_layer(
+            0,
+            3,
+            3,
+            10.0,
+            10.0,
+            0.0,
+            0.0,
+            true,
+            vec![0, 1, 0, 0, 1, 0, 0, 0, 0],
+        );
+
+        assert!(engine.query_tilemap_navigation_waypoint(5.0, 5.0, 25.0, 5.0));
+        assert_eq!(engine.physics_query_point_x(), 5.0);
+        assert_eq!(engine.physics_query_point_y(), 15.0);
+        assert!((engine.physics_query_distance() - 10.0).abs() < 0.001);
+
+        assert!(!engine.query_tilemap_navigation_waypoint(15.0, 5.0, 25.0, 5.0));
+        assert_eq!(engine.physics_query_point_x(), 0.0);
+        assert_eq!(engine.physics_query_point_y(), 0.0);
+    }
+
+    #[test]
+    fn engine_query_tilemap_navigation_path_exposes_buffer_and_debug_lines() {
+        let mut engine = Engine::new();
+        engine.clear_shooter_tilemap();
+        engine.set_shooter_tilemap_layer(0, 3, 2, 10.0, 10.0, 0.0, 0.0, true, vec![0; 6]);
+        assert!(engine.set_shooter_tilemap_navigation_cost(0, 1, 0, 20));
+
+        assert!(engine.query_tilemap_navigation_path(5.0, 5.0, 25.0, 5.0));
+
+        assert_eq!(engine.tilemap_navigation_path_point_len(), 4);
+        let points = unsafe {
+            std::slice::from_raw_parts(
+                engine.tilemap_navigation_path_point_ptr(),
+                engine.tilemap_navigation_path_point_len() * 2,
+            )
+        };
+        assert_eq!(points, &[5.0, 15.0, 15.0, 15.0, 25.0, 15.0, 25.0, 5.0]);
+        assert_eq!(engine.tilemap_navigation_debug_line_len(), 4);
+        assert_eq!(engine.physics_query_point_x(), 5.0);
+        assert_eq!(engine.physics_query_point_y(), 15.0);
+        assert!((engine.physics_query_distance() - 40.0).abs() < 0.001);
+
+        assert!(!engine.query_tilemap_navigation_path(-5.0, -5.0, 25.0, 5.0));
+        assert_eq!(engine.tilemap_navigation_path_point_len(), 0);
+        assert_eq!(engine.tilemap_navigation_debug_line_len(), 0);
+    }
+
+    #[test]
     fn engine_set_shooter_tilemap_tiles_rect_refreshes_queries_and_render_commands() {
         let mut engine = Engine::new();
         engine.clear_shooter_tilemap();
@@ -8969,7 +9540,11 @@ mod tests {
         assert_eq!(command.v0, 0.5);
         assert_eq!(command.u1, 0.5);
         assert_eq!(command.v1, 0.75);
-        assert_eq!(crate::sprite_render_command_floats(), 13);
+        assert_eq!(
+            command.effect_flags,
+            crate::render_command::SPRITE_EFFECT_NONE
+        );
+        assert_eq!(crate::sprite_render_command_floats(), 14);
     }
 
     #[test]

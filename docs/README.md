@@ -10,7 +10,7 @@ Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI a
 | --- | --- | --- |
 | `engine/` | 엔진 사용자와 AI agent가 읽는 게임엔진 설명, 사용법, public contract | [사용자 설명서](engine/user-guide.md), [Public API](engine/public-api.md), [Top-down Shooter Game Spec](engine/topdown-shooter-game-spec.md), [Physics Spec](engine/physics-spec.md) |
 | `development/` | 엔진 개발, agent authoring 품질 검증, 배포 운영을 위한 내부 기준 | [아키텍처](development/architecture/architecture.md), [2D 물리엔진 기능 맵](development/architecture/physics-engine.md), [Smoke Check](development/quality/smoke-check.md), [npm 베타 패키징](development/operations/npm-release.md) |
-| `planning/` | 별도 설계/승인 전 구현하지 않는 기능만 관리하는 planning 영역 | [Planning 문서](planning/README.md) |
+| `planning/` | 신규 기능 후보와 승인 필요 기능을 관리하는 planning 영역 | [Planning 문서](planning/README.md) |
 
 ## development 하위 구조
 
@@ -27,7 +27,7 @@ Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI a
 3. 엔진 구조나 경계를 확인하는 경우: [아키텍처](development/architecture/architecture.md) -> [2D 물리엔진 기능 맵](development/architecture/physics-engine.md)
 4. 검증이나 릴리스 작업을 하는 경우: [Smoke Check](development/quality/smoke-check.md) -> [npm 베타 패키징](development/operations/npm-release.md) -> [릴리스 노트 템플릿](development/operations/release-notes-template.md)
 5. Physics Spec 계약을 확인하는 경우: [Physics Spec](engine/physics-spec.md) -> [Public API](engine/public-api.md)
-6. 승인 전 구현 금지 기능과 개발 진입 조건을 확인하는 경우: [Planning 문서](planning/README.md) -> [보류 기능 원장](planning/deferred-features.md)
+6. 신규 기능 후보와 승인 필요 항목을 확인하는 경우: [Planning 문서](planning/README.md) -> [신규 기능 후보](planning/feature-candidates.md)
 
 ## 기준 소스
 

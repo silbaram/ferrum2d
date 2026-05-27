@@ -1,4 +1,5 @@
 import type { RenderCommandBufferView } from "./renderCommandDecoder";
+import type { PostProcessStackInput } from "./cameraPostProcessing";
 
 export interface RendererStats {
   /** WebGL draw calls submitted by the renderer for the current frame. */
@@ -15,6 +16,20 @@ export interface RendererStats {
   textureSwitchCount: number;
   /** Physics debug line primitives rendered by the debug line pass for the current frame. */
   physicsDebugLineCount: number;
+  /** WebGL draw calls submitted by the lighting pass for the current frame. */
+  lightingDrawCalls: number;
+  /** Point lights consumed by the lighting pass for the current frame. */
+  pointLightCount: number;
+  /** Tile occluder debug rectangles rendered by the lighting pass for the current frame. */
+  tileOccluderCount: number;
+  /** Shadow projection draw calls submitted by the lighting pass for the current frame. */
+  shadowDrawCalls: number;
+  /** Tile occluder shadow projections rendered by the lighting pass for the current frame. */
+  shadowCasterCount: number;
+  /** Fullscreen post-processing draw calls submitted for the current frame. */
+  postProcessDrawCalls: number;
+  /** Fullscreen post-processing passes consumed for the current frame. */
+  postProcessPassCount: number;
 }
 
 export type RendererStatsUnit = "count";
@@ -69,12 +84,56 @@ export const RENDERER_STATS_FIELD_CONTRACT: readonly RendererStatsFieldContract[
     unit: "count",
     description: "Physics debug line primitives rendered by the debug line pass for the current frame.",
   },
+  {
+    field: "lightingDrawCalls",
+    label: "lighting draw calls",
+    unit: "count",
+    description: "WebGL draw calls submitted by the lighting pass for the current frame.",
+  },
+  {
+    field: "pointLightCount",
+    label: "point lights",
+    unit: "count",
+    description: "Point lights consumed by the lighting pass for the current frame.",
+  },
+  {
+    field: "tileOccluderCount",
+    label: "tile occluders",
+    unit: "count",
+    description: "Tile occluder debug rectangles rendered by the lighting pass for the current frame.",
+  },
+  {
+    field: "shadowDrawCalls",
+    label: "shadow draw calls",
+    unit: "count",
+    description: "Shadow projection draw calls submitted by the lighting pass for the current frame.",
+  },
+  {
+    field: "shadowCasterCount",
+    label: "shadow casters",
+    unit: "count",
+    description: "Tile occluder shadow projections rendered by the lighting pass for the current frame.",
+  },
+  {
+    field: "postProcessDrawCalls",
+    label: "post-process draw calls",
+    unit: "count",
+    description: "Fullscreen post-processing draw calls submitted for the current frame.",
+  },
+  {
+    field: "postProcessPassCount",
+    label: "post-process passes",
+    unit: "count",
+    description: "Fullscreen post-processing passes consumed for the current frame.",
+  },
 ];
 
 export interface Renderer {
   render(): void;
   resize(): void;
   stats(): RendererStats;
+  setPostProcess?(postProcess: PostProcessStackInput): void;
+  renderPostProcess?(postProcess?: PostProcessStackInput): RendererStats;
   destroy(): void;
 }
 
@@ -87,6 +146,13 @@ export function emptyRendererStats(): RendererStats {
     textureBindCount: 0,
     textureSwitchCount: 0,
     physicsDebugLineCount: 0,
+    lightingDrawCalls: 0,
+    pointLightCount: 0,
+    tileOccluderCount: 0,
+    shadowDrawCalls: 0,
+    shadowCasterCount: 0,
+    postProcessDrawCalls: 0,
+    postProcessPassCount: 0,
   };
 }
 
@@ -103,6 +169,13 @@ export function rendererStatsForCommands(
     textureBindCount: drawCalls,
     textureSwitchCount,
     physicsDebugLineCount: 0,
+    lightingDrawCalls: 0,
+    pointLightCount: 0,
+    tileOccluderCount: 0,
+    shadowDrawCalls: 0,
+    shadowCasterCount: 0,
+    postProcessDrawCalls: 0,
+    postProcessPassCount: 0,
   };
 }
 
@@ -115,6 +188,38 @@ export function rendererStatsWithPhysicsDebugLines(
     ...stats,
     drawCalls: stats.drawCalls + drawCalls,
     physicsDebugLineCount: lineCount,
+  };
+}
+
+export function rendererStatsWithLighting(
+  stats: RendererStats,
+  lightingDrawCalls: number,
+  pointLightCount: number,
+  tileOccluderCount: number,
+  shadowDrawCalls = 0,
+  shadowCasterCount = 0,
+): RendererStats {
+  return {
+    ...stats,
+    drawCalls: stats.drawCalls + lightingDrawCalls,
+    lightingDrawCalls,
+    pointLightCount,
+    tileOccluderCount,
+    shadowDrawCalls,
+    shadowCasterCount,
+  };
+}
+
+export function rendererStatsWithPostProcess(
+  stats: RendererStats,
+  postProcessDrawCalls: number,
+  postProcessPassCount: number,
+): RendererStats {
+  return {
+    ...stats,
+    drawCalls: stats.drawCalls + postProcessDrawCalls,
+    postProcessDrawCalls,
+    postProcessPassCount,
   };
 }
 

@@ -23,6 +23,11 @@ import init, {
 import { decodeCollisionEvents, U32S_PER_COLLISION_EVENT } from "./collisionEventDecoder";
 import type { CollisionEventBufferView, CollisionEventView } from "./collisionEventDecoder";
 import {
+  decodeAudioEvents,
+  FLOATS_PER_AUDIO_EVENT,
+} from "./audioEventDecoder";
+import type { AudioEventBufferView, AudioEventView } from "./audioEventDecoder";
+import {
   decodePhysicsDebugLines,
   FLOATS_PER_PHYSICS_DEBUG_LINE,
 } from "./physicsDebugLineDecoder";
@@ -75,18 +80,6 @@ import type {
 import { decodeRenderCommands } from "./renderCommandDecoder";
 import type { RenderCommandBufferView, RenderCommandView } from "./renderCommandDecoder";
 
-export interface AudioEventView {
-  soundId: number;
-  volume: number;
-  pitch: number;
-}
-
-export interface AudioEventBufferView {
-  buffer: Float32Array;
-  eventCount: number;
-  floatsPerEvent: number;
-}
-
 export interface PhysicsBodyStateBufferView {
   floats: Float32Array;
   u32s: Uint32Array;
@@ -95,8 +88,23 @@ export interface PhysicsBodyStateBufferView {
   u32sPerBody: number;
 }
 
-const FLOATS_PER_COMMAND = 13;
-const FLOATS_PER_AUDIO_EVENT = 3;
+export interface TilemapNavigationPathBufferView {
+  buffer: Float32Array;
+  pointCount: number;
+  floatsPerPoint: number;
+}
+
+export interface ShooterStateBufferView {
+  headerFloats: Float32Array;
+  headerU32s: Uint32Array;
+  entityFloats: Float32Array;
+  entityU32s: Uint32Array;
+  entityCount: number;
+  floatsPerEntity: number;
+  u32sPerEntity: number;
+}
+
+const FLOATS_PER_COMMAND = 14;
 const FLOATS_PER_PHYSICS_BODY_STATE = 31;
 const U32S_PER_PHYSICS_BODY_STATE = 5;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
@@ -106,7 +114,6 @@ const BYTES_PER_AUDIO_EVENT = FLOATS_PER_AUDIO_EVENT * BYTES_PER_F32;
 const BYTES_PER_COLLISION_EVENT = U32S_PER_COLLISION_EVENT * BYTES_PER_U32;
 const BYTES_PER_PHYSICS_DEBUG_LINE = FLOATS_PER_PHYSICS_DEBUG_LINE * BYTES_PER_F32;
 const BYTES_PER_PHYSICS_QUERY_HIT = U32S_PER_PHYSICS_QUERY_HIT * BYTES_PER_U32;
-export const EMPTY_AUDIO_EVENTS: readonly AudioEventView[] = Object.freeze([]);
 
 export class WasmBridge {
   private readonly floatsPerCommand: number;
@@ -354,6 +361,67 @@ export class WasmBridge {
     return this.decodePhysicsDebugLines(this.readPhysicsDebugLineBuffer());
   }
 
+  readTilemapNavigationPathBuffer(): TilemapNavigationPathBufferView {
+    const ptr = this.engineInstance.tilemap_navigation_path_point_ptr();
+    const pointCount = this.engineInstance.tilemap_navigation_path_point_len();
+    return {
+      buffer: new Float32Array(
+        this.memory.buffer,
+        ptr,
+        pointCount * 2,
+      ),
+      pointCount,
+      floatsPerPoint: 2,
+    };
+  }
+
+  readTilemapNavigationDebugLineBuffer(): PhysicsDebugLineBufferView {
+    const ptr = this.engineInstance.tilemap_navigation_debug_line_ptr();
+    const lineCount = this.engineInstance.tilemap_navigation_debug_line_len();
+    return {
+      buffer: new Float32Array(
+        this.memory.buffer,
+        ptr,
+        lineCount * this.floatsPerPhysicsDebugLine,
+      ),
+      lineCount,
+      floatsPerLine: this.floatsPerPhysicsDebugLine,
+    };
+  }
+
+  readShooterStateBuffer(): ShooterStateBufferView {
+    const floatsPerEntity = this.engineInstance.shooter_snapshot_entity_floats();
+    const u32sPerEntity = this.engineInstance.shooter_snapshot_entity_u32s();
+    const entityFloatLen = this.engineInstance.shooter_snapshot_entity_float_len();
+    const entityU32Len = this.engineInstance.shooter_snapshot_entity_u32_len();
+    const entityCount = Math.floor(entityU32Len / u32sPerEntity);
+    return {
+      headerFloats: new Float32Array(
+        this.memory.buffer,
+        this.engineInstance.shooter_snapshot_header_float_ptr(),
+        this.engineInstance.shooter_snapshot_header_float_len(),
+      ),
+      headerU32s: new Uint32Array(
+        this.memory.buffer,
+        this.engineInstance.shooter_snapshot_header_u32_ptr(),
+        this.engineInstance.shooter_snapshot_header_u32_len(),
+      ),
+      entityFloats: new Float32Array(
+        this.memory.buffer,
+        this.engineInstance.shooter_snapshot_entity_float_ptr(),
+        entityFloatLen,
+      ),
+      entityU32s: new Uint32Array(
+        this.memory.buffer,
+        this.engineInstance.shooter_snapshot_entity_u32_ptr(),
+        entityU32Len,
+      ),
+      entityCount,
+      floatsPerEntity,
+      u32sPerEntity,
+    };
+  }
+
   readPhysicsQueryHitBuffer(): PhysicsQueryHitBufferView {
     const ptr = this.engineInstance.physics_query_hit_ptr();
     const hitCount = this.engineInstance.physics_query_hit_len();
@@ -586,24 +654,20 @@ export class WasmBridge {
   }
 
   decodeAudioEvents(view: AudioEventBufferView): readonly AudioEventView[] {
-    if (view.eventCount === 0) {
-      return EMPTY_AUDIO_EVENTS;
-    }
-
-    const events: AudioEventView[] = [];
-    for (let i = 0; i < view.eventCount; i += 1) {
-      const offset = i * view.floatsPerEvent;
-      events.push({
-        soundId: Math.trunc(view.buffer[offset]),
-        volume: view.buffer[offset + 1],
-        pitch: view.buffer[offset + 2],
-      });
-    }
-    return events;
+    return decodeAudioEvents(view);
   }
 }
 
 export { decodeRenderCommands };
+export {
+  AUDIO_CHANNEL_BGM,
+  AUDIO_CHANNEL_SFX,
+  AUDIO_CHANNEL_UI,
+  decodeAudioEvents,
+  EMPTY_AUDIO_EVENTS,
+  FLOATS_PER_AUDIO_EVENT,
+} from "./audioEventDecoder";
+export type { AudioEventBufferView, AudioEventView } from "./audioEventDecoder";
 export { decodeCollisionEvents };
 export { decodePhysicsDebugLines };
 export { decodePhysicsBodyContactHits };

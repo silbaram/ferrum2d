@@ -67,6 +67,32 @@ http://localhost:5173?debug=false
 | `Space` | GameOver에서 재시작 |
 | touch/pen drag | 드래그 방향을 `W/A/S/D` 이동으로 합성 |
 | gamepad left stick / A / Start / right trigger | 이동 / Space action / Enter action / 발사 입력으로 합성 |
+| `VirtualControls` DOM preset | 화면 joystick과 `primary`/`menu` button을 `InputSnapshot` 또는 action profile virtual button으로 합성 |
+
+`InputManagerOptions.gamepadMapping`으로 standard gamepad axis/button index를 다시 매핑할 수 있다. `resolveInputActionState(...)`와 `DEFAULT_INPUT_ACTION_PROFILE`은 `InputSnapshot`을 action/axis state로 바꾸는 public helper다. `VirtualControls`는 browser DOM joystick/button preset이며, `applyToSnapshot(...)`으로 raw snapshot에 합성하거나 `virtualButtons()`를 action profile에 주입한다.
+
+## 로딩 화면과 Asset Preload
+
+웹 배포에서 시작 전 asset URL을 미리 가져오려면 `resolveAssetPreloadPlan(...)`과 `preloadAssetManifest(...)`를 사용한다. `createAssetPreloadCachePolicy(...)`는 manifest URL 목록과 release salt에서 cache version을 만들고, `LoadingOverlay`는 `AssetLoadProgress`를 바로 표시하는 DOM preset이다.
+
+```ts
+const loading = new LoadingOverlay(canvas.parentElement ?? document.body);
+const cache = new IndexedDbAssetCache();
+const cachePolicy = createAssetPreloadCachePolicy(manifest, {
+  versionSalt: "game-v1",
+  ttlMs: 7 * 24 * 60 * 60 * 1000,
+});
+
+await preloadAssetManifest(manifest, {
+  cache,
+  cachePolicy,
+  onProgress: (progress) => loading.update(progress),
+});
+
+loading.complete();
+```
+
+`IndexedDbAssetCache`는 JSON과 texture/sound URL body를 opt-in으로 저장한다. decoded WebGL texture는 renderer runtime에서 다시 생성하므로, cache 정책은 네트워크 fetch와 loading screen 진행률을 안정화하는 용도로 사용한다. asset URL이나 `versionSalt`가 바뀌면 `createAssetPreloadCachePolicy(...)`가 새 cache version을 만들고, 수동 삭제가 필요하면 `invalidatePreloadedAssetCache(manifest, cache, { policy: cachePolicy })`로 같은 manifest entry를 무효화한다.
 
 ## 가장 먼저 볼 파일
 

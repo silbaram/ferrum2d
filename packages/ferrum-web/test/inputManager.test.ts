@@ -272,3 +272,33 @@ test("InputManager can disable gamepad polling", () => {
     input.destroy();
   });
 });
+
+test("InputManager supports JSON-friendly gamepad remapping", () => {
+  const fakeWindow = new FakeEventTarget();
+  const canvas = new FakeCanvas();
+  const buttons = Array.from({ length: 12 }, () => gamepadButton(false));
+  buttons[2] = gamepadButton(true);
+  buttons[4] = gamepadButton(true);
+  buttons[11] = gamepadButton(true);
+  withWindowAndNavigator(fakeWindow, {
+    getGamepads: () => [gamepadSnapshot([0, 0, -0.9, 0.8], buttons)],
+  }, () => {
+    const input = new InputManager(canvas as unknown as HTMLCanvasElement, {
+      gamepadDeadzone: 0.25,
+      gamepadMapping: {
+        moveXAxis: 2,
+        moveYAxis: 3,
+        actionButtons: [2],
+        menuButtons: [11],
+        pointerButtons: [4],
+      },
+    });
+    const snapshot = input.snapshot();
+    equal(snapshot.a, true);
+    equal(snapshot.s, true);
+    equal(snapshot.space, true);
+    equal(snapshot.enter, true);
+    equal(snapshot.mouseLeft, true);
+    input.destroy();
+  });
+});

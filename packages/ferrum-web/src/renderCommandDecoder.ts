@@ -4,6 +4,7 @@ export interface RenderCommandView {
   width: number;
   height: number;
   textureId: number;
+  effectFlags: number;
   uv: [number, number, number, number];
   color: [number, number, number, number];
 }
@@ -26,6 +27,7 @@ export function decodeRenderCommands(view: RenderCommandBufferView): RenderComma
       uv: [view.buffer[offset + 4], view.buffer[offset + 5], view.buffer[offset + 6], view.buffer[offset + 7]],
       color: [view.buffer[offset + 8], view.buffer[offset + 9], view.buffer[offset + 10], view.buffer[offset + 11]],
       textureId: Math.trunc(view.buffer[offset + 12]),
+      effectFlags: view.floatsPerCommand > 13 ? view.buffer[offset + 13] : 0,
     });
   }
   return commands;

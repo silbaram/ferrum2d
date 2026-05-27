@@ -15,12 +15,22 @@ export interface InputManagerOptions {
   gamepad?: boolean;
   /** Optional fixed gamepad slot. When omitted, the first connected gamepad is used. */
   gamepadIndex?: number;
+  /** JSON-friendly mapping for standard gamepad axes and buttons. */
+  gamepadMapping?: GamepadInputMapping;
   /** Axis magnitude required before stick input maps to WASD. Default: 0.25. */
   gamepadDeadzone?: number;
   /** Enables touch/pen drag gestures that map to WASD. Default: true. */
   pointerGestures?: boolean;
   /** Drag distance in CSS pixels before a pointer gesture maps to movement. Default: 18. */
   pointerGestureThreshold?: number;
+}
+
+export interface GamepadInputMapping {
+  moveXAxis?: number;
+  moveYAxis?: number;
+  actionButtons?: readonly number[];
+  menuButtons?: readonly number[];
+  pointerButtons?: readonly number[];
 }
 
 interface DirectionState {
@@ -37,6 +47,13 @@ interface Point {
 
 const DEFAULT_GAMEPAD_DEADZONE = 0.25;
 const DEFAULT_POINTER_GESTURE_THRESHOLD = 18;
+const DEFAULT_GAMEPAD_MAPPING: Required<GamepadInputMapping> = {
+  moveXAxis: 0,
+  moveYAxis: 1,
+  actionButtons: [0],
+  menuButtons: [9],
+  pointerButtons: [5, 7],
+};
 
 export class InputManager {
   private state: InputSnapshot = {
@@ -304,16 +321,17 @@ export class InputManager {
       return emptyInputSnapshot(this.state.mouseX, this.state.mouseY);
     }
     const deadzone = this.gamepadDeadzone();
-    const axisX = gamepad.axes[0] ?? 0;
-    const axisY = gamepad.axes[1] ?? 0;
+    const mapping = this.gamepadMapping();
+    const axisX = gamepad.axes[mapping.moveXAxis] ?? 0;
+    const axisY = gamepad.axes[mapping.moveYAxis] ?? 0;
     return {
       w: axisY < -deadzone,
       a: axisX < -deadzone,
       s: axisY > deadzone,
       d: axisX > deadzone,
-      space: this.isGamepadButtonPressed(gamepad.buttons[0]),
-      enter: this.isGamepadButtonPressed(gamepad.buttons[9]),
-      mouseLeft: this.isGamepadButtonPressed(gamepad.buttons[5]) || this.isGamepadButtonPressed(gamepad.buttons[7]),
+      space: this.isAnyGamepadButtonPressed(gamepad, mapping.actionButtons),
+      enter: this.isAnyGamepadButtonPressed(gamepad, mapping.menuButtons),
+      mouseLeft: this.isAnyGamepadButtonPressed(gamepad, mapping.pointerButtons),
       mouseX: this.state.mouseX,
       mouseY: this.state.mouseY,
     };
@@ -332,9 +350,36 @@ export class InputManager {
     return Number.isFinite(deadzone) ? Math.min(Math.max(deadzone, 0), 1) : DEFAULT_GAMEPAD_DEADZONE;
   }
 
+  private gamepadMapping(): Required<GamepadInputMapping> {
+    const mapping = this.options.gamepadMapping ?? {};
+    return {
+      moveXAxis: gamepadAxisIndex(mapping.moveXAxis, DEFAULT_GAMEPAD_MAPPING.moveXAxis),
+      moveYAxis: gamepadAxisIndex(mapping.moveYAxis, DEFAULT_GAMEPAD_MAPPING.moveYAxis),
+      actionButtons: gamepadButtonIndices(mapping.actionButtons, DEFAULT_GAMEPAD_MAPPING.actionButtons),
+      menuButtons: gamepadButtonIndices(mapping.menuButtons, DEFAULT_GAMEPAD_MAPPING.menuButtons),
+      pointerButtons: gamepadButtonIndices(mapping.pointerButtons, DEFAULT_GAMEPAD_MAPPING.pointerButtons),
+    };
+  }
+
+  private isAnyGamepadButtonPressed(gamepad: Gamepad, indices: readonly number[]): boolean {
+    return indices.some((index) => this.isGamepadButtonPressed(gamepad.buttons[index]));
+  }
+
   private isGamepadButtonPressed(button: GamepadButton | undefined): boolean {
     return button?.pressed === true || (button?.value ?? 0) > 0.5;
   }
+}
+
+function gamepadAxisIndex(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isInteger(value) && value >= 0 ? value : fallback;
+}
+
+function gamepadButtonIndices(values: readonly number[] | undefined, fallback: readonly number[]): readonly number[] {
+  if (values === undefined) {
+    return fallback;
+  }
+  const valid = values.filter((value) => Number.isInteger(value) && value >= 0);
+  return valid.length === 0 ? fallback : valid;
 }
 
 function emptyInputSnapshot(mouseX: number, mouseY: number): InputSnapshot {

@@ -3,16 +3,21 @@ import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets, TextureAss
 import { AudioManager } from "./audioManager.js";
 import type { AudioManagerConfig } from "./audioManager.js";
 import type { AssetHost } from "./createEngine.js";
+import type { PostProcessStackInput } from "./cameraPostProcessing.js";
 import type { AudioEventBufferView, AudioEventView } from "./wasmBridge.js";
+
+interface PostProcessTarget {
+  setPostProcess?(postProcess: PostProcessStackInput): void;
+}
 
 export class BrowserPlatformHost implements AssetHost {
   private readonly audioManager: AudioManager;
   private readonly assetLoader: AssetLoader;
   private destroyed = false;
 
-  constructor(textureAssetManager: TextureAssetManager, audioManager = new AudioManager()) {
+  constructor(private readonly textureAssetManager: TextureAssetManager & PostProcessTarget, audioManager = new AudioManager()) {
     this.audioManager = audioManager;
-    this.assetLoader = new AssetLoader(textureAssetManager, audioManager);
+    this.assetLoader = new AssetLoader(this.textureAssetManager, audioManager);
   }
 
   async loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback): Promise<LoadedAssets> {
@@ -45,6 +50,11 @@ export class BrowserPlatformHost implements AssetHost {
   configureAudio(config: AudioManagerConfig): void {
     this.assertAlive();
     this.audioManager.configure(config);
+  }
+
+  setPostProcess(postProcess: PostProcessStackInput): void {
+    this.assertAlive();
+    this.textureAssetManager.setPostProcess?.(postProcess);
   }
 
   async unlockAudio(): Promise<boolean> {

@@ -1,0 +1,28 @@
+{
+  "format": "ferrum-create-game-template-catalog",
+  "version": 1,
+  "defaultTemplate": "minimal",
+  "templates": [
+    {
+      "id": "minimal",
+      "name": "Minimal Runtime",
+      "description": "Small browser runtime starter with HUD, debug metrics, and public API imports.",
+      "genre": "starter",
+      "tags": ["runtime", "hud", "debug"]
+    },
+    {
+      "id": "topdown",
+      "name": "Top-down Shooter",
+      "description": "Shooter starter using Game Spec, runtime HUD, and keyboard movement/fire controls.",
+      "genre": "topdown-shooter",
+      "tags": ["shooter", "game-spec", "desktop"]
+    },
+    {
+      "id": "platformer",
+      "name": "Platformer",
+      "description": "Side-scroller starter using the built-in platformer scene and runtime HUD.",
+      "genre": "platformer",
+      "tags": ["platformer", "side-scroller", "starter"]
+    }
+  ]
+}

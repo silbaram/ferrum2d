@@ -1,4 +1,4 @@
-import { assetPipelineDiagnosticError } from "./diagnostics.js";
+import { assetPipelineDiagnosticError, describeError } from "./diagnostics.js";
 import type {
   ShooterAtlasFrameSpec,
   ShooterAtlasSpec,
@@ -32,10 +32,23 @@ export interface TiledTilesetFrameContext {
   tilesetName: string;
 }
 
+export interface TiledLayerCompressionContext {
+  compression: string;
+  path: string;
+  expectedByteLength: number;
+}
+
+export type TiledLayerDataDecoder = (
+  data: Uint8Array,
+  context: TiledLayerCompressionContext,
+) => Uint8Array | ArrayBuffer;
+
 export interface TiledTilemapImportOptions {
+  externalTilesets?: Record<string, unknown>;
   texture?: string | number | ((context: TiledTilesetFrameContext) => string | number);
   frameNamePrefix?: string;
   frameNameForGid?: (context: TiledTilesetFrameContext) => string;
+  decodeCompressedLayerData?: TiledLayerDataDecoder;
   collisionLayerNames?: readonly string[];
   includeHiddenLayers?: boolean;
   origin?: {
@@ -66,6 +79,22 @@ export interface LDtkTilesetFrameContext {
   relPath?: string;
 }
 
+export interface LDtkEntityInstance {
+  identifier: string;
+  iid?: string;
+  defUid?: number;
+  layerName: string;
+  layerIndex: number;
+  x: number;
+  y: number;
+  gridX: number;
+  gridY: number;
+  width: number;
+  height: number;
+  fields: Record<string, unknown>;
+  fieldTypes: Record<string, string>;
+}
+
 export interface LDtkTilemapImportOptions {
   levelIdentifier?: string;
   levelIid?: string;
@@ -88,6 +117,7 @@ export interface LDtkTilemapImportResult {
   tilemap: ShooterTilemapSpec;
   usedTileIds: number[];
   layerNames: string[];
+  entities: LDtkEntityInstance[];
   tilesetNames: string[];
   levelIdentifier: string;
   levelIid?: string;
@@ -225,13 +255,17 @@ export function importTiledTilemap(
   const height = positiveInteger(root.height, `${TILED_ROOT_PATH}.height`);
   const tileWidth = positiveNumber(root.tilewidth, `${TILED_ROOT_PATH}.tilewidth`);
   const tileHeight = positiveNumber(root.tileheight, `${TILED_ROOT_PATH}.tileheight`);
-  const tilesets = tiledTilesets(root.tilesets, `${TILED_ROOT_PATH}.tilesets`);
+  const tilesets = tiledTilesets(root.tilesets, {
+    path: `${TILED_ROOT_PATH}.tilesets`,
+    externalTilesets: options.externalTilesets,
+  });
   const usedGids = new Set<number>();
   const layerNames: string[] = [];
   const layers = tiledLayers(root.layers, {
     path: `${TILED_ROOT_PATH}.layers`,
     mapWidth: width,
     mapHeight: height,
+    decodeCompressedLayerData: options.decodeCompressedLayerData,
     includeHiddenLayers: options.includeHiddenLayers === true,
     collisionLayerNames: new Set(options.collisionLayerNames ?? []),
     usedGids,
@@ -312,12 +346,22 @@ export function importLDtkTilemap(
   const collisionLayerNames = new Set(options.collisionLayerNames ?? []);
   const importedTiles = new Map<string, LDtkTileRef>();
   const layers: NonNullable<ShooterTilemapSpec["layers"]> = [];
+  const entities: LDtkEntityInstance[] = [];
   const originX = finiteNumber(options.origin?.x, `${LDTK_ROOT_PATH}.origin.x`, 0);
   const originY = finiteNumber(options.origin?.y, `${LDTK_ROOT_PATH}.origin.y`, 0);
 
   for (const [index, entry] of level.layers.entries()) {
+    const path = `${level.path}.layerInstances.${index}`;
+    entities.push(...ldtkEntityLayer(entry, {
+      path,
+      fallbackName: `layer-${index}`,
+      layerIndex: index,
+      includeHiddenLayers: options.includeHiddenLayers === true,
+      originX,
+      originY,
+    }));
     const imported = ldtkLayer(entry, {
-      path: `${level.path}.layerInstances.${index}`,
+      path,
       fallbackName: `layer-${index}`,
       tilesets,
       includeHiddenLayers: options.includeHiddenLayers === true,
@@ -372,6 +416,7 @@ export function importLDtkTilemap(
     tilemap,
     usedTileIds: tileRefs.map((tile) => tile.gameTileId),
     layerNames: layers.map((layer, index) => layer.name ?? `layer-${index}`),
+    entities,
     tilesetNames: [...new Set(tileRefs.map((tile) => tile.tileset.identifier))],
     levelIdentifier: level.identifier,
     levelIid: level.iid,
@@ -464,32 +509,35 @@ function normalizeFrameName(rawName: string, options: AsepriteAtlasImportOptions
   return `${options.frameNamePrefix ?? ""}${stripped}`;
 }
 
-function tiledTilesets(value: unknown, path: string): TiledTileset[] {
-  const entries = arrayValue(value, path);
+function tiledTilesets(
+  value: unknown,
+  options: { path: string; externalTilesets: Record<string, unknown> | undefined },
+): TiledTileset[] {
+  const entries = arrayValue(value, options.path);
   if (entries.length === 0) {
-    throw assetPipelineDiagnosticError(path, "must contain at least one tileset");
+    throw assetPipelineDiagnosticError(options.path, "must contain at least one tileset");
   }
 
   return entries.map((entry, index) => {
-    const entryPath = `${path}.${index}`;
-    const record = objectValue(entry, entryPath);
-    if (record.source !== undefined) {
-      throw assetPipelineDiagnosticError(`${entryPath}.source`, "external Tiled tilesets must be resolved before import");
-    }
-    const firstGid = positiveInteger(record.firstgid, `${entryPath}.firstgid`);
-    const name = requiredString(record.name, `${entryPath}.name`);
-    const tileWidth = positiveNumber(record.tilewidth, `${entryPath}.tilewidth`);
-    const tileHeight = positiveNumber(record.tileheight, `${entryPath}.tileheight`);
-    const imageWidth = positiveNumber(record.imagewidth, `${entryPath}.imagewidth`);
-    const imageHeight = positiveNumber(record.imageheight, `${entryPath}.imageheight`);
-    const columns = positiveInteger(record.columns, `${entryPath}.columns`);
-    const tileCount = positiveInteger(record.tilecount, `${entryPath}.tilecount`);
+    const entryPath = `${options.path}.${index}`;
+    const tileset = tiledTilesetRecord(entry, {
+      path: entryPath,
+      externalTilesets: options.externalTilesets,
+    });
+    const { firstGid, record, metadataPath } = tileset;
+    const name = requiredString(record.name, `${metadataPath}.name`);
+    const tileWidth = positiveNumber(record.tilewidth, `${metadataPath}.tilewidth`);
+    const tileHeight = positiveNumber(record.tileheight, `${metadataPath}.tileheight`);
+    const imageWidth = positiveNumber(record.imagewidth, `${metadataPath}.imagewidth`);
+    const imageHeight = positiveNumber(record.imageheight, `${metadataPath}.imageheight`);
+    const columns = positiveInteger(record.columns, `${metadataPath}.columns`);
+    const tileCount = positiveInteger(record.tilecount, `${metadataPath}.tilecount`);
     const tileSlopes = tiledTileSlopes(record.tiles, {
-      path: `${entryPath}.tiles`,
+      path: `${metadataPath}.tiles`,
       tileCount,
     });
     const tileOneWayPlatforms = tiledTileOneWayPlatforms(record.tiles, {
-      path: `${entryPath}.tiles`,
+      path: `${metadataPath}.tiles`,
       tileCount,
     });
     return {
@@ -503,11 +551,34 @@ function tiledTilesets(value: unknown, path: string): TiledTileset[] {
       tileCount,
       tileSlopes,
       tileOneWayPlatforms,
-      margin: nonNegativeNumber(record.margin ?? 0, `${entryPath}.margin`),
-      spacing: nonNegativeNumber(record.spacing ?? 0, `${entryPath}.spacing`),
+      margin: nonNegativeNumber(record.margin ?? 0, `${metadataPath}.margin`),
+      spacing: nonNegativeNumber(record.spacing ?? 0, `${metadataPath}.spacing`),
       path: entryPath,
     };
   }).sort((a, b) => a.firstGid - b.firstGid);
+}
+
+function tiledTilesetRecord(
+  value: unknown,
+  options: { path: string; externalTilesets: Record<string, unknown> | undefined },
+): { firstGid: number; record: JsonRecord; metadataPath: string } {
+  const mapEntry = objectValue(value, options.path);
+  const firstGid = positiveInteger(mapEntry.firstgid, `${options.path}.firstgid`);
+  const source = optionalString(mapEntry.source, `${options.path}.source`);
+  if (source === undefined) {
+    return { firstGid, record: mapEntry, metadataPath: options.path };
+  }
+
+  const externalTileset = options.externalTilesets?.[source];
+  if (externalTileset === undefined) {
+    throw assetPipelineDiagnosticError(
+      `${options.path}.source`,
+      `external Tiled tileset ${source} must be provided in options.externalTilesets`,
+    );
+  }
+  const metadataPath = `${TILED_ROOT_PATH}.externalTilesets.${source}`;
+  const record = objectValue(externalTileset, metadataPath);
+  return { firstGid, record, metadataPath };
 }
 
 function tiledTileSlopes(
@@ -569,6 +640,7 @@ function tiledLayers(
     path: string;
     mapWidth: number;
     mapHeight: number;
+    decodeCompressedLayerData: TiledLayerDataDecoder | undefined;
     includeHiddenLayers: boolean;
     collisionLayerNames: Set<string>;
     usedGids: Set<number>;
@@ -595,9 +667,10 @@ function tiledLayers(
     if (rows !== options.mapHeight) {
       throw assetPipelineDiagnosticError(`${entryPath}.height`, "must match map height");
     }
-    const data = tiledLayerData(layer.data, {
-      path: `${entryPath}.data`,
+    const data = tiledLayerData(layer, {
+      path: entryPath,
       expectedLength: columns * rows,
+      decodeCompressedLayerData: options.decodeCompressedLayerData,
       usedGids: options.usedGids,
     });
     const name = optionalString(layer.name, `${entryPath}.name`) ?? `layer-${index}`;
@@ -612,15 +685,20 @@ function tiledLayers(
 }
 
 function tiledLayerData(
-  value: unknown,
-  options: { path: string; expectedLength: number; usedGids: Set<number> },
+  layer: JsonRecord,
+  options: {
+    path: string;
+    expectedLength: number;
+    decodeCompressedLayerData: TiledLayerDataDecoder | undefined;
+    usedGids: Set<number>;
+  },
 ): number[] {
-  const values = arrayValue(value, options.path);
+  const values = tiledLayerDataValues(layer, options);
   if (values.length !== options.expectedLength) {
-    throw assetPipelineDiagnosticError(options.path, `must contain exactly ${options.expectedLength} tile ids`);
+    throw assetPipelineDiagnosticError(`${options.path}.data`, `must contain exactly ${options.expectedLength} tile ids`);
   }
   return values.map((value, index) => {
-    const path = `${options.path}.${index}`;
+    const path = `${options.path}.data.${index}`;
     const rawGid = nonNegativeInteger(value, path);
     const flags = rawGid & TILED_GID_FLAG_MASK;
     if (flags !== 0) {
@@ -632,6 +710,108 @@ function tiledLayerData(
     }
     return gid;
   });
+}
+
+function tiledLayerDataValues(
+  layer: JsonRecord,
+  options: {
+    path: string;
+    expectedLength: number;
+    decodeCompressedLayerData: TiledLayerDataDecoder | undefined;
+  },
+): unknown[] {
+  const compression = optionalString(layer.compression, `${options.path}.compression`);
+  const encoding = optionalString(layer.encoding, `${options.path}.encoding`);
+  if (encoding === undefined) {
+    if (compression !== undefined) {
+      throw assetPipelineDiagnosticError(`${options.path}.compression`, "compressed Tiled layer data requires base64 encoding");
+    }
+    return arrayValue(layer.data, `${options.path}.data`);
+  }
+  if (encoding !== "base64") {
+    throw assetPipelineDiagnosticError(`${options.path}.encoding`, "must be base64 or omitted");
+  }
+  return tiledBase64LayerData(requiredString(layer.data, `${options.path}.data`), {
+    path: `${options.path}.data`,
+    compressionPath: `${options.path}.compression`,
+    expectedLength: options.expectedLength,
+    compression,
+    decodeCompressedLayerData: options.decodeCompressedLayerData,
+  });
+}
+
+function tiledBase64LayerData(
+  value: string,
+  options: {
+    path: string;
+    compressionPath: string;
+    expectedLength: number;
+    compression: string | undefined;
+    decodeCompressedLayerData: TiledLayerDataDecoder | undefined;
+  },
+): number[] {
+  const expectedByteLength = options.expectedLength * 4;
+  const bytes = decodeTiledLayerBytes(decodeBase64Bytes(value, options.path), {
+    path: options.path,
+    compressionPath: options.compressionPath,
+    expectedByteLength,
+    compression: options.compression,
+    decodeCompressedLayerData: options.decodeCompressedLayerData,
+  });
+  if (bytes.byteLength !== expectedByteLength) {
+    throw assetPipelineDiagnosticError(options.path, `must decode to exactly ${expectedByteLength} bytes`);
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return Array.from({ length: options.expectedLength }, (_, index) => view.getUint32(index * 4, true));
+}
+
+function decodeTiledLayerBytes(
+  bytes: Uint8Array,
+  options: {
+    path: string;
+    compressionPath: string;
+    expectedByteLength: number;
+    compression: string | undefined;
+    decodeCompressedLayerData: TiledLayerDataDecoder | undefined;
+  },
+): Uint8Array {
+  if (options.compression === undefined) {
+    return bytes;
+  }
+  if (!options.decodeCompressedLayerData) {
+    throw assetPipelineDiagnosticError(
+      options.compressionPath,
+      "compressed Tiled layer data requires options.decodeCompressedLayerData",
+    );
+  }
+  try {
+    return normalizeDecodedBytes(options.decodeCompressedLayerData(bytes, {
+      compression: options.compression,
+      path: options.path,
+      expectedByteLength: options.expectedByteLength,
+    }));
+  } catch (error) {
+    throw assetPipelineDiagnosticError(
+      options.compressionPath,
+      `compressed Tiled layer decode failed: ${describeError(error)}`,
+    );
+  }
+}
+
+function normalizeDecodedBytes(value: Uint8Array | ArrayBuffer): Uint8Array {
+  return value instanceof Uint8Array ? value : new Uint8Array(value);
+}
+
+function decodeBase64Bytes(value: string, path: string): Uint8Array {
+  const compact = value.replace(/\s+/g, "");
+  let decoded: string;
+  try {
+    decoded = globalThis.atob(compact);
+  } catch {
+    throw assetPipelineDiagnosticError(path, "must be valid base64");
+  }
+  return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
 }
 
 function isCollisionLayer(
@@ -918,6 +1098,123 @@ function ldtkLevelIndex(levels: unknown[], options: LDtkTilemapImportOptions): n
   }
 
   return 0;
+}
+
+function ldtkEntityLayer(
+  value: unknown,
+  options: {
+    path: string;
+    fallbackName: string;
+    layerIndex: number;
+    includeHiddenLayers: boolean;
+    originX: number;
+    originY: number;
+  },
+): LDtkEntityInstance[] {
+  const layer = objectValue(value, options.path);
+  const type = optionalString(layer.__type, `${options.path}.__type`) ?? "Tiles";
+  if (type !== "Entities") {
+    return [];
+  }
+
+  const visible = optionalBoolean(layer.visible, `${options.path}.visible`) ?? true;
+  if (!visible && !options.includeHiddenLayers) {
+    return [];
+  }
+
+  const name = optionalString(layer.__identifier, `${options.path}.__identifier`) ?? options.fallbackName;
+  const gridSize = positiveNumber(layer.__gridSize, `${options.path}.__gridSize`);
+  const offsetX = finiteNumber(layer.__pxTotalOffsetX, `${options.path}.__pxTotalOffsetX`, 0);
+  const offsetY = finiteNumber(layer.__pxTotalOffsetY, `${options.path}.__pxTotalOffsetY`, 0);
+  return arrayValue(layer.entityInstances, `${options.path}.entityInstances`).map((entry, index) => {
+    return ldtkEntityInstance(entry, {
+      path: `${options.path}.entityInstances.${index}`,
+      layerName: name,
+      layerIndex: options.layerIndex,
+      gridSize,
+      offsetX: options.originX + offsetX,
+      offsetY: options.originY + offsetY,
+    });
+  });
+}
+
+function ldtkEntityInstance(
+  value: unknown,
+  options: {
+    path: string;
+    layerName: string;
+    layerIndex: number;
+    gridSize: number;
+    offsetX: number;
+    offsetY: number;
+  },
+): LDtkEntityInstance {
+  const entity = objectValue(value, options.path);
+  const [pxX, pxY] = ldtkNumberPair(entity.px, `${options.path}.px`);
+  const [gridX, gridY] = ldtkOptionalIntegerPair(entity.__grid, `${options.path}.__grid`, [
+    Math.floor(pxX / options.gridSize),
+    Math.floor(pxY / options.gridSize),
+  ]);
+  const fields = ldtkEntityFields(entity.fieldInstances, `${options.path}.fieldInstances`);
+  const defUid = entity.defUid === undefined
+    ? undefined
+    : positiveInteger(entity.defUid, `${options.path}.defUid`);
+
+  return {
+    identifier: requiredString(entity.__identifier, `${options.path}.__identifier`),
+    ...(entity.iid === undefined ? {} : { iid: requiredString(entity.iid, `${options.path}.iid`) }),
+    ...(defUid === undefined ? {} : { defUid }),
+    layerName: options.layerName,
+    layerIndex: options.layerIndex,
+    x: options.offsetX + pxX,
+    y: options.offsetY + pxY,
+    gridX,
+    gridY,
+    width: positiveNumber(entity.width, `${options.path}.width`),
+    height: positiveNumber(entity.height, `${options.path}.height`),
+    fields: fields.values,
+    fieldTypes: fields.types,
+  };
+}
+
+function ldtkOptionalIntegerPair(
+  value: unknown,
+  path: string,
+  fallback: [number, number],
+): [number, number] {
+  if (value === undefined) {
+    return fallback;
+  }
+  const values = arrayValue(value, path);
+  if (values.length !== 2) {
+    throw assetPipelineDiagnosticError(path, "must contain exactly two integers");
+  }
+  return [
+    nonNegativeInteger(values[0], `${path}.0`),
+    nonNegativeInteger(values[1], `${path}.1`),
+  ];
+}
+
+function ldtkEntityFields(value: unknown, path: string): {
+  values: Record<string, unknown>;
+  types: Record<string, string>;
+} {
+  const fields: Record<string, unknown> = {};
+  const types: Record<string, string> = {};
+  for (const [index, entry] of optionalArray(value, path).entries()) {
+    const fieldPath = `${path}.${index}`;
+    const field = objectValue(entry, fieldPath);
+    const identifier = requiredString(field.__identifier, `${fieldPath}.__identifier`);
+    if (Object.prototype.hasOwnProperty.call(fields, identifier)) {
+      throw assetPipelineDiagnosticError(`${fieldPath}.__identifier`, `duplicate LDtk entity field '${identifier}'`);
+    }
+    fields[identifier] = field.__value;
+    const type = optionalString(field.__type, `${fieldPath}.__type`);
+    if (type !== undefined) {
+      types[identifier] = type;
+    }
+  }
+  return { values: fields, types };
 }
 
 function ldtkLayer(

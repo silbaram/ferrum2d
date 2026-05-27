@@ -5,10 +5,11 @@ use crate::camera::Camera2D;
 use crate::collision::{AabbBounds, AabbContact, CollisionSystem, SweptAabbContactHit};
 use crate::components::{AabbCollider, CollisionLayer, SpriteFrame, Transform2D, Velocity};
 use crate::physics::{PhysicsCounters, SlopeConfig, SlopeSegment, SlopeSurfaceHit};
-use crate::render_command::SpriteRenderCommand;
+use crate::render_command::{SpriteRenderCommand, SPRITE_EFFECT_NONE};
 use crate::world::World;
 
 const MAX_NAVIGATION_CELLS: usize = 4096;
+const DEFAULT_NAVIGATION_COST: u32 = 1;
 const MAX_TILE_COLLISION_RESOLUTION_STEPS: usize = 4;
 pub const MAX_TILEMAP_CONTACT_MANIFOLD_POINTS: usize = 2;
 const TILE_COLLISION_CHUNK_SIZE: u32 = 16;
@@ -36,6 +37,7 @@ pub struct TilemapLayer {
     pub origin_y: f32,
     pub collision: bool,
     pub tiles: Vec<u32>,
+    navigation_costs: Vec<u32>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -54,6 +56,8 @@ pub(crate) struct TilemapNavigationScratch {
     g_scores: Vec<u32>,
     visited: Vec<usize>,
     open: BinaryHeap<PathNode>,
+    path_cells: Vec<usize>,
+    path_points: Vec<Transform2D>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -197,6 +201,8 @@ impl TileSlopeDefinition {
 impl TilemapNavigationScratch {
     fn prepare(&mut self, cell_count: usize) {
         self.clear_dirty();
+        self.path_cells.clear();
+        self.path_points.clear();
         if self.came_from.len() < cell_count {
             self.came_from.resize(cell_count, UNVISITED_CELL);
         }
@@ -439,6 +445,58 @@ impl Tilemap {
             self.rebuild_collision_rect_chunks_for_layer(layer_index, column, row, width, height);
         }
         changed
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_tiles_rect_with_rebuild_budget(
+        &mut self,
+        layer_index: u32,
+        column: u32,
+        row: u32,
+        width: u32,
+        height: u32,
+        tile_id: u32,
+        max_rebuilt_chunks: u32,
+    ) -> bool {
+        let layer_index_usize = layer_index as usize;
+        let Some(rebuilt_chunks) = self.collision_rebuild_chunk_count_for_rect(
+            layer_index_usize,
+            column,
+            row,
+            width,
+            height,
+        ) else {
+            return false;
+        };
+        if rebuilt_chunks > max_rebuilt_chunks {
+            return false;
+        }
+        self.set_tiles_rect(layer_index, column, row, width, height, tile_id)
+    }
+
+    pub fn set_navigation_cost(
+        &mut self,
+        layer_index: u32,
+        column: u32,
+        row: u32,
+        cost: u32,
+    ) -> bool {
+        let layer_index = layer_index as usize;
+        let Some(Some(layer)) = self.layers.get_mut(layer_index) else {
+            return false;
+        };
+        if column >= layer.columns || row >= layer.rows {
+            return false;
+        }
+        let tile_index = layer.tile_index(column, row);
+        let Some(cell_cost) = layer.navigation_costs.get_mut(tile_index) else {
+            return false;
+        };
+        if *cell_cost == cost {
+            return false;
+        }
+        *cell_cost = cost;
+        true
     }
 
     pub fn collision_cache_last_rebuilt_chunks(&self, layer_index: u32) -> u32 {
@@ -1092,6 +1150,12 @@ impl Tilemap {
         self.navigation_waypoint_with_scratch(from, to, &mut scratch)
     }
 
+    pub fn navigation_path(&self, from: Transform2D, to: Transform2D) -> Option<Vec<Transform2D>> {
+        let mut scratch = TilemapNavigationScratch::default();
+        self.navigation_path_with_scratch(from, to, &mut scratch)
+            .map(ToOwned::to_owned)
+    }
+
     pub fn nearest_collision_obstacle(
         &self,
         point: Transform2D,
@@ -1248,6 +1312,42 @@ impl Tilemap {
         None
     }
 
+    pub(crate) fn navigation_path_with_scratch<'a>(
+        &self,
+        from: Transform2D,
+        to: Transform2D,
+        scratch: &'a mut TilemapNavigationScratch,
+    ) -> Option<&'a [Transform2D]> {
+        for layer in self.layers.iter().flatten().filter(|layer| layer.collision) {
+            let Some(cell_count) = layer.cell_count() else {
+                continue;
+            };
+            if cell_count > MAX_NAVIGATION_CELLS {
+                continue;
+            }
+            let Some(start) = layer.walkable_cell_at(from) else {
+                continue;
+            };
+            let Some(goal) = layer.walkable_cell_at(to) else {
+                continue;
+            };
+            if start == goal {
+                scratch.prepare(cell_count);
+                scratch.path_points.push(to);
+                return Some(&scratch.path_points);
+            }
+            if !layer.find_path_cells_with_scratch(start, goal, scratch) {
+                continue;
+            }
+            scratch.path_points.clear();
+            for cell in scratch.path_cells.iter().copied().skip(1) {
+                scratch.path_points.push(layer.tile_center(cell));
+            }
+            return Some(&scratch.path_points);
+        }
+        None
+    }
+
     fn resolve_transform_against_solid_tiles(
         &self,
         transform: &mut Transform2D,
@@ -1336,6 +1436,7 @@ impl Tilemap {
                 b: definition.b,
                 a: definition.a,
                 texture_id: definition.texture_id as f32,
+                effect_flags: SPRITE_EFFECT_NONE,
             });
         }
     }
@@ -1471,6 +1572,38 @@ impl Tilemap {
         cache.last_rebuilt_chunks = rebuilt_count;
         cache.total_rebuilt_chunks = cache.total_rebuilt_chunks.saturating_add(rebuilt_count);
         self.collision_rects[index] = Some(cache.flattened_rects());
+    }
+
+    fn collision_rebuild_chunk_count_for_rect(
+        &self,
+        index: usize,
+        column: u32,
+        row: u32,
+        width: u32,
+        height: u32,
+    ) -> Option<u32> {
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let layer = self.layers.get(index).and_then(Option::as_ref)?;
+        let end_column = column.checked_add(width)?;
+        let end_row = row.checked_add(height)?;
+        if end_column > layer.columns || end_row > layer.rows {
+            return None;
+        }
+        if !layer.collision {
+            return Some(0);
+        }
+        if !self.collision_chunk_cache_matches_layer(index) {
+            return None;
+        }
+        let cache = self.collision_rect_chunks.get(index)?.as_ref()?;
+        let changed_range = tile_range_from_rect(layer, column, row, width, height)?;
+        let chunk_range = chunk_range_for_tile_range(changed_range, cache);
+        Some(
+            (chunk_range.max_column - chunk_range.min_column + 1)
+                .saturating_mul(chunk_range.max_row - chunk_range.min_row + 1),
+        )
     }
 
     fn collision_chunk_cache_matches_layer(&self, index: usize) -> bool {
@@ -1729,6 +1862,7 @@ impl TilemapLayer {
             origin_y: finite_or_default(origin_y, 0.0),
             collision,
             tiles,
+            navigation_costs: vec![0; expected_len],
         })
     }
 
@@ -1827,7 +1961,17 @@ impl TilemapLayer {
     }
 
     fn is_walkable(&self, cell: usize) -> bool {
-        self.tiles.get(cell).copied().unwrap_or(0) == 0
+        self.navigation_cost(cell).is_some()
+    }
+
+    fn navigation_cost(&self, cell: usize) -> Option<u32> {
+        (self.tiles.get(cell).copied().unwrap_or(0) == 0).then(|| {
+            self.navigation_costs
+                .get(cell)
+                .copied()
+                .unwrap_or(0)
+                .max(DEFAULT_NAVIGATION_COST)
+        })
     }
 
     fn next_path_cell_with_scratch(
@@ -1836,7 +1980,20 @@ impl TilemapLayer {
         goal: usize,
         scratch: &mut TilemapNavigationScratch,
     ) -> Option<usize> {
-        let cell_count = self.cell_count()?;
+        self.find_path_cells_with_scratch(start, goal, scratch)
+            .then(|| scratch.path_cells.get(1).copied())
+            .flatten()
+    }
+
+    fn find_path_cells_with_scratch(
+        &self,
+        start: usize,
+        goal: usize,
+        scratch: &mut TilemapNavigationScratch,
+    ) -> bool {
+        let Some(cell_count) = self.cell_count() else {
+            return false;
+        };
         scratch.prepare(cell_count);
         scratch.g_scores[start] = 0;
         scratch.visited.push(start);
@@ -1846,20 +2003,25 @@ impl TilemapLayer {
             f_score: self.manhattan_distance(start, goal),
         });
 
-        let mut result = None;
+        let mut found = false;
         while let Some(node) = scratch.open.pop() {
             if node.cell == goal {
-                result = reconstruct_next_cell(start, goal, &scratch.came_from);
+                found = reconstruct_path_cells(
+                    start,
+                    goal,
+                    &scratch.came_from,
+                    &mut scratch.path_cells,
+                );
                 break;
             }
             if node.g_score != scratch.g_scores[node.cell] {
                 continue;
             }
             for neighbor in self.neighbor_indices(node.cell).into_iter().flatten() {
-                if !self.is_walkable(neighbor) {
+                let Some(move_cost) = self.navigation_cost(neighbor) else {
                     continue;
-                }
-                let next_g_score = node.g_score.saturating_add(1);
+                };
+                let next_g_score = node.g_score.saturating_add(move_cost);
                 if next_g_score >= scratch.g_scores[neighbor] {
                     continue;
                 }
@@ -1873,7 +2035,7 @@ impl TilemapLayer {
         }
 
         scratch.clear_dirty();
-        result
+        found
     }
 
     fn neighbor_indices(&self, cell: usize) -> [Option<usize>; 4] {
@@ -1919,22 +2081,31 @@ impl PartialOrd for PathNode {
     }
 }
 
-fn reconstruct_next_cell(start: usize, goal: usize, came_from: &[usize]) -> Option<usize> {
+fn reconstruct_path_cells(
+    start: usize,
+    goal: usize,
+    came_from: &[usize],
+    out: &mut Vec<usize>,
+) -> bool {
+    out.clear();
     let mut current = goal;
-    let mut previous = came_from.get(current).copied()?;
-    if previous == UNVISITED_CELL {
-        return None;
-    }
+    out.push(current);
 
-    while previous != start {
-        current = previous;
-        previous = came_from.get(current).copied()?;
+    while current != start {
+        let Some(previous) = came_from.get(current).copied() else {
+            out.clear();
+            return false;
+        };
         if previous == UNVISITED_CELL {
-            return None;
+            out.clear();
+            return false;
         }
+        current = previous;
+        out.push(current);
     }
 
-    Some(current)
+    out.reverse();
+    true
 }
 
 #[cfg(test)]
@@ -3017,7 +3188,14 @@ mod tests {
             .nearest_collision_obstacle(Transform2D { x: 305.0, y: 5.0 }, 0.0)
             .is_some());
 
-        assert!(tilemap.set_tiles_rect(0, 15, 0, 2, 1, 0));
+        assert!(!tilemap.set_tiles_rect_with_rebuild_budget(0, 15, 0, 2, 1, 0, 1));
+        assert_eq!(tilemap.collision_cache_last_rebuilt_chunks(0), 1);
+        assert_eq!(tilemap.collision_cache_total_rebuilt_chunks(0), 4);
+        assert!(tilemap
+            .nearest_collision_obstacle(Transform2D { x: 155.0, y: 5.0 }, 0.0)
+            .is_some());
+
+        assert!(tilemap.set_tiles_rect_with_rebuild_budget(0, 15, 0, 2, 1, 0, 2));
         assert_eq!(tilemap.collision_cache_last_rebuilt_chunks(0), 2);
         assert_eq!(tilemap.collision_cache_total_rebuilt_chunks(0), 6);
         assert!(tilemap
@@ -3429,6 +3607,45 @@ mod tests {
         assert_eq!(scratch.came_from.capacity(), came_from_capacity);
         assert_eq!(scratch.g_scores.capacity(), g_scores_capacity);
         assert_eq!(scratch.open.capacity(), open_capacity);
+    }
+
+    #[test]
+    fn navigation_path_returns_all_waypoints_after_start() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(0, 3, 2, 10.0, 10.0, 0.0, 0.0, true, vec![0; 6]);
+        assert!(tilemap.set_navigation_cost(0, 1, 0, 20));
+
+        let path = tilemap
+            .navigation_path(
+                Transform2D { x: 5.0, y: 5.0 },
+                Transform2D { x: 25.0, y: 5.0 },
+            )
+            .unwrap();
+
+        assert_eq!(
+            path,
+            vec![
+                Transform2D { x: 5.0, y: 15.0 },
+                Transform2D { x: 15.0, y: 15.0 },
+                Transform2D { x: 25.0, y: 15.0 },
+                Transform2D { x: 25.0, y: 5.0 },
+            ]
+        );
+    }
+
+    #[test]
+    fn navigation_path_uses_exact_goal_when_start_and_goal_share_cell() {
+        let mut tilemap = Tilemap::default();
+        tilemap.set_layer(0, 2, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 0]);
+
+        let path = tilemap
+            .navigation_path(
+                Transform2D { x: 2.0, y: 2.0 },
+                Transform2D { x: 8.0, y: 8.0 },
+            )
+            .unwrap();
+
+        assert_eq!(path, vec![Transform2D { x: 8.0, y: 8.0 }]);
     }
 
     #[test]
