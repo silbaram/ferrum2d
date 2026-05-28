@@ -1,0 +1,2 @@
+pub const MAX_CONVEX_POLYGON_VERTICES: usize = 16;
+pub const MAX_CHAIN_COLLIDER_VERTICES: usize = 64;

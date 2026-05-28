@@ -1,5 +1,5 @@
 import { BrowserPlatformHost } from "./browserPlatformHost.js";
-import { createEngine } from "./createEngine.js";
+import { createEngineWithFramePipeline } from "./createEngine.js";
 import type {
   AssetHost,
   CreateEngineOptions,
@@ -7,7 +7,7 @@ import type {
   FrameState,
   InputProvider,
   PhysicsDebugOptions,
-} from "./createEngine.js";
+} from "./engineTypes.js";
 import { DebugOverlay } from "./debugOverlay.js";
 import type { DebugOverlayMetrics, DebugOverlayOptions } from "./debugOverlay.js";
 import type { PhysicsMode } from "./physicsSpec.js";
@@ -30,6 +30,7 @@ import type { WebGL2RendererOptions } from "./webgl2Renderer.js";
 import type { WebGPURendererOptions } from "./webgpuRenderer.js";
 import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch.js";
 import type { PhysicsDebugLineBufferView, RenderCommandBufferView } from "./wasmBridge.js";
+import { RuntimeFrameRenderer } from "./runtimeFrameRenderer.js";
 
 export type FerrumRuntimeRenderer = CreatedRenderer & TextureAssetManager & {
   renderCommands(commands: RenderCommandBufferView): RendererStats;
@@ -114,9 +115,6 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
   let debugOverlay: DebugOverlay | undefined;
   let detachRendererResize: (() => void) | undefined;
 
-  let audioEventRateWindowStartMs = performance.now();
-  let audioEventRateCount = 0;
-  let audioEventsPerSecond = 0;
   let destroyed = false;
 
   try {
@@ -132,6 +130,11 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     const profiler = createRuntimeProfiler(options.profiler);
     const needsRuntimeFrame =
       debugOverlay !== undefined || uiOverlay !== undefined || options.onFrame !== undefined || profiler !== undefined;
+    const hasDynamicFrameProviders =
+      typeof options.lighting === "function"
+      || typeof options.spriteMaterial === "function"
+      || typeof options.postProcess === "function";
+    const needsFullFrame = needsRuntimeFrame || hasDynamicFrameProviders;
     const shouldRenderPhysicsDebugLines =
       options.physicsDebugLines !== undefined && options.physicsDebugLines !== false;
     const runtimePhysicsDebugLines =
@@ -158,62 +161,25 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       const snapshot = runtimeInput.snapshot();
       return options.inputTransform?.(snapshot) ?? snapshot;
     };
+    const runtimeFrameRenderer = new RuntimeFrameRenderer({
+      renderer: runtimeRenderer,
+      lighting: options.lighting,
+      postProcess: options.postProcess,
+      spriteMaterial: options.spriteMaterial,
+      shouldRenderPhysicsDebugLines,
+      needsRuntimeFrame,
+      debugOverlay,
+      uiOverlay,
+      uiState: options.uiState,
+      profiler,
+      gameStateLabel: options.gameStateLabel,
+      onFrame: options.onFrame,
+    });
 
-    const engine = await createEngine((frame) => {
-      const renderStartMs = needsRuntimeFrame ? performance.now() : 0;
-      if (typeof options.lighting === "function") {
-        runtimeRenderer.setLighting?.(options.lighting(frame));
-      }
-      if (typeof options.spriteMaterial === "function") {
-        runtimeRenderer.setSpriteMaterial?.(options.spriteMaterial(frame));
-      }
-      if (typeof options.postProcess === "function") {
-        runtimeRenderer.setPostProcess?.(options.postProcess(frame));
-      }
-      runtimeRenderer.render();
-      let rendererStats = runtimeRenderer.renderCommands(frame.renderCommandBuffer);
-      if (shouldRenderPhysicsDebugLines) {
-        rendererStats = runtimeRenderer.renderPhysicsDebugLines(frame.physicsDebugLineBuffer, {
-          x: frame.cameraX,
-          y: frame.cameraY,
-        });
-      }
-      rendererStats = runtimeRenderer.renderPostProcess?.() ?? rendererStats;
-      if (!needsRuntimeFrame) {
-        return;
-      }
-
-      const renderTimeMs = performance.now() - renderStartMs;
-      audioEventRateCount += frame.audioEventCount;
-      const audioEventRateElapsedMs = performance.now() - audioEventRateWindowStartMs;
-      if (audioEventRateElapsedMs >= 1000) {
-        audioEventsPerSecond = audioEventRateCount / (audioEventRateElapsedMs / 1000);
-        audioEventRateWindowStartMs = performance.now();
-        audioEventRateCount = 0;
-      }
-
-      const fps = frame.frameTimeMs > 0 ? 1000 / frame.frameTimeMs : 0;
-      const debugMetrics = buildDebugMetrics(
-        frame,
-        rendererStats,
-        fps,
-        renderTimeMs,
-        audioEventsPerSecond,
-        options.gameStateLabel ?? defaultGameStateLabel,
-      );
-      debugOverlay?.update(debugMetrics);
-      const runtimeFrame: FerrumRuntimeFrame = {
-        frame,
-        rendererStats,
-        debugMetrics,
-        fps,
-        renderTimeMs,
-      };
-      if (uiOverlay && options.uiState) {
-        uiOverlay.update(options.uiState(runtimeFrame));
-      }
-      profiler?.recordFrame(debugMetrics);
-      options.onFrame?.(runtimeFrame);
+    const engine = await createEngineWithFramePipeline({
+      needsFrameState: needsFullFrame,
+      needsPhysicsDebugLineBuffer: shouldRenderPhysicsDebugLines,
+      onRenderFrame: (renderFrame) => runtimeFrameRenderer.renderFrame(renderFrame),
     }, inputProvider, runtimeAssetHost, () => runtimeRenderer.viewportSize(), engineOptions);
     let physicsScene: PhysicsSceneProfileApplyResult | undefined;
     if (options.physicsScene !== undefined && options.physicsScene !== false) {
@@ -384,61 +350,6 @@ function observeRendererResize(canvas: HTMLCanvasElement, renderer: FerrumRuntim
       dispose();
     }
   };
-}
-
-function buildDebugMetrics(
-  frame: FrameState,
-  rendererStats: RendererStats,
-  fps: number,
-  renderTimeMs: number,
-  audioEventsPerSecond: number,
-  gameStateLabel: (code: number) => string,
-): DebugOverlayMetrics {
-  return {
-    fps,
-    frameTimeMs: frame.frameTimeMs,
-    entityCount: frame.entityCount,
-    spriteCount: frame.spriteCount,
-    drawCalls: rendererStats.drawCalls,
-    batchCount: rendererStats.batchCount,
-    renderCommandCount: rendererStats.renderCommandCount,
-    textureBindCount: rendererStats.textureBindCount,
-    textureSwitchCount: rendererStats.textureSwitchCount,
-    lightingDrawCalls: rendererStats.lightingDrawCalls,
-    pointLightCount: rendererStats.pointLightCount,
-    tileOccluderCount: rendererStats.tileOccluderCount,
-    shadowDrawCalls: rendererStats.shadowDrawCalls,
-    shadowCasterCount: rendererStats.shadowCasterCount,
-    postProcessDrawCalls: rendererStats.postProcessDrawCalls,
-    postProcessPassCount: rendererStats.postProcessPassCount,
-    physicsDebugLineCount: rendererStats.physicsDebugLineCount,
-    audioEventsPerSecond,
-    physicsMode: frame.physics.mode,
-    physicsFixedSteps: frame.physics.fixedSteps,
-    physicsKinematicHits: frame.physics.kinematicHits,
-    physicsTileCandidateChecks: frame.physics.tileCandidateChecks,
-    collisionPairCount: frame.physics.collisionPairs,
-    collisionEventCount: frame.physics.collisionEventCount,
-    physicsCcdChecks: frame.physics.ccdChecks,
-    physicsCcdHits: frame.physics.ccdHits,
-    physicsSleepingBodies: frame.physics.sleepingBodies,
-    physicsBrokenJoints: frame.physics.brokenJoints,
-    rustUpdateTimeMs: frame.rustUpdateTimeMs,
-    renderTimeMs,
-    mouseX: frame.mouseX,
-    mouseY: frame.mouseY,
-    cameraX: frame.cameraX,
-    cameraY: frame.cameraY,
-    gameState: gameStateLabel(frame.gameState),
-    score: frame.score,
-  };
-}
-
-function defaultGameStateLabel(code: number): string {
-  if (code === 0) return "Title";
-  if (code === 1) return "Playing";
-  if (code === 2) return "GameOver";
-  return `State ${code}`;
 }
 
 function destroyAssetHost(assetHost: AssetHost): void {

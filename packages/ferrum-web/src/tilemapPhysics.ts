@@ -152,23 +152,35 @@ function isSolidCell(
 }
 
 function connectBoundarySegments(segments: BoundarySegment[]): BoundaryPath[] {
-  const unused = new Set(segments.map((_, index) => index));
+  const unused = new Set<number>();
+  const orderedIndices: number[] = [];
   const byStart = new Map<string, number[]>();
-  for (const [index, segment] of segments.entries()) {
+  for (let index = 0; index < segments.length; index += 1) {
+    const segment = segments[index];
+    unused.add(index);
+    orderedIndices.push(index);
     const key = pointKey(segment.start);
     const entries = byStart.get(key) ?? [];
     entries.push(index);
     byStart.set(key, entries);
   }
+  orderedIndices.sort((a, b) =>
+    pointOrder(segments[a].start, segments[b].start) || pointOrder(segments[a].end, segments[b].end)
+  );
   for (const entries of byStart.values()) {
     entries.sort((a, b) => pointOrder(segments[a].end, segments[b].end));
   }
 
   const paths: BoundaryPath[] = [];
+  let orderedCursor = 0;
   while (unused.size > 0) {
-    const firstIndex = [...unused].sort((a, b) =>
-      pointOrder(segments[a].start, segments[b].start) || pointOrder(segments[a].end, segments[b].end)
-    )[0];
+    while (orderedCursor < orderedIndices.length && !unused.has(orderedIndices[orderedCursor])) {
+      orderedCursor += 1;
+    }
+    const firstIndex = orderedIndices[orderedCursor];
+    if (firstIndex === undefined) {
+      break;
+    }
     unused.delete(firstIndex);
     const first = segments[firstIndex];
     const vertices: PhysicsSpecVector2[] = [first.start, first.end];

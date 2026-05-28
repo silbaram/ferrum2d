@@ -2,7 +2,7 @@ import { AssetLoader } from "./assetLoader.js";
 import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets, TextureAssetManager } from "./assetLoader.js";
 import { AudioManager } from "./audioManager.js";
 import type { AudioManagerConfig } from "./audioManager.js";
-import type { AssetHost } from "./createEngine.js";
+import type { AssetHost } from "./engineTypes.js";
 import type { PostProcessStackInput } from "./cameraPostProcessing.js";
 import type { AudioEventBufferView, AudioEventView } from "./wasmBridge.js";
 

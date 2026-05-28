@@ -1,4 +1,4 @@
-import type { FerrumEngine, PhysicsRigidBodyStepOptions } from "./createEngine.js";
+import type { FerrumEngine, PhysicsRigidBodyStepOptions } from "./engineTypes.js";
 import { physicsSpecDiagnosticError } from "./diagnostics.js";
 import {
   createPhysicsWorldFromSpec,

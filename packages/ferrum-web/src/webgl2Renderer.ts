@@ -1,9 +1,10 @@
 import {
+  addLightingStatsInto,
+  addPhysicsDebugLineStatsInto,
+  addPostProcessStatsInto,
   emptyRendererStats,
-  rendererStatsForCommands,
-  rendererStatsWithLighting,
-  rendererStatsWithPostProcess,
-  rendererStatsWithPhysicsDebugLines,
+  resetRendererStatsInto,
+  writeRendererStatsForCommandsInto,
 } from "./renderer";
 import { PhysicsDebugLineBatch } from "./physicsDebugLineBatch";
 import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch";
@@ -15,8 +16,8 @@ import {
 } from "./cameraPostProcessing";
 import type { PostProcessStackInput, ResolvedPostProcessPass } from "./cameraPostProcessing";
 import { SpriteBatch } from "./spriteBatch";
-import { normalizeLightingScene } from "./lighting";
 import type { LightingScene2D, ResolvedLightingScene2D } from "./lighting";
+import { createResolvedLightingScene, resolveLightingSceneInto } from "./lightingNormalize";
 import { resolveSpriteMaterialPreset } from "./spriteMaterial";
 import type { ResolvedSpriteMaterialPreset, SpriteMaterialPresetInput } from "./spriteMaterial";
 import { TextureManager } from "./textureManager";
@@ -53,7 +54,8 @@ export class WebGL2Renderer implements Renderer {
   private readonly lightingPass: WebGL2LightingPass;
   private readonly fullscreenPass: WebGL2FullscreenPass;
   private currentStats: RendererStats = emptyRendererStats();
-  private lightingScene: ResolvedLightingScene2D;
+  private lightingScene: ResolvedLightingScene2D = createResolvedLightingScene();
+  private lightingSceneStaging: ResolvedLightingScene2D = createResolvedLightingScene();
   private spriteMaterial: ResolvedSpriteMaterialPreset;
   private postProcessPasses: readonly ResolvedPostProcessPass[];
   private sceneRenderTarget?: WebGL2RenderTarget;
@@ -61,6 +63,8 @@ export class WebGL2Renderer implements Renderer {
   private postProcessScratchB?: WebGL2RenderTarget;
   private logicalWidth = 0;
   private logicalHeight = 0;
+  private readonly logicalResolution: [number, number] = [0, 0];
+  private readonly drawingBufferResolution: [number, number] = [0, 0];
   private frameStarted = false;
   private frameHasDrawnScene = false;
   private frameTargetMode: WebGL2FrameTargetMode = "default";
@@ -78,7 +82,7 @@ export class WebGL2Renderer implements Renderer {
     this.physicsDebugLineBatch = new PhysicsDebugLineBatch(gl);
     this.lightingPass = new WebGL2LightingPass(gl);
     this.fullscreenPass = new WebGL2FullscreenPass(gl);
-    this.lightingScene = normalizeLightingScene(options.lighting);
+    resolveLightingSceneInto(this.lightingScene, options.lighting);
     this.spriteMaterial = resolveSpriteMaterialPreset(options.spriteMaterial);
     this.postProcessPasses = resolvePostProcessPasses(options.postProcess);
     this.resize();
@@ -126,7 +130,9 @@ export class WebGL2Renderer implements Renderer {
 
   setLighting(scene: LightingScene2D | false | undefined): void {
     this.assertAlive();
-    this.lightingScene = normalizeLightingScene(scene);
+    const nextLightingScene = resolveLightingSceneInto(this.lightingSceneStaging, scene);
+    this.lightingSceneStaging = this.lightingScene;
+    this.lightingScene = nextLightingScene;
   }
 
   setSpriteMaterial(material: SpriteMaterialPresetInput): void {
@@ -158,6 +164,8 @@ export class WebGL2Renderer implements Renderer {
       this.canvas.width = drawingBufferWidth;
       this.canvas.height = drawingBufferHeight;
     }
+    this.logicalResolution[0] = this.logicalWidth;
+    this.logicalResolution[1] = this.logicalHeight;
 
     this.resizePostProcessTargets();
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -176,7 +184,7 @@ export class WebGL2Renderer implements Renderer {
 
   render(): void {
     this.assertAlive();
-    this.currentStats = emptyRendererStats();
+    resetRendererStatsInto(this.currentStats);
     this.frameStarted = true;
     this.frameHasDrawnScene = false;
     this.bindFrameStartTarget();
@@ -192,17 +200,28 @@ export class WebGL2Renderer implements Renderer {
     this.assertAlive();
     this.ensureCurrentFrameTarget();
     const commands = second ?? (first as RenderCommandBufferView);
+    const resolution = this.logicalResolution;
     const batchStats = second
-      ? this.spriteBatch.drawBatch(first as WebGLTexture, second, [this.logicalWidth, this.logicalHeight], this.spriteMaterial)
+      ? this.spriteBatch.drawBatch(
+        first as WebGLTexture,
+        second,
+        resolution,
+        this.spriteMaterial,
+      )
       : this.spriteBatch.drawBatches(
         this.textureManager,
         commands,
-        [this.logicalWidth, this.logicalHeight],
+        resolution,
         this.spriteMaterial,
       );
-    this.currentStats = rendererStatsForCommands(commands, batchStats.drawCalls, batchStats.textureSwitchCount);
-    const lightingStats = this.lightingPass.draw(this.lightingScene, [this.logicalWidth, this.logicalHeight]);
-    this.currentStats = rendererStatsWithLighting(
+    writeRendererStatsForCommandsInto(
+      this.currentStats,
+      commands,
+      batchStats.drawCalls,
+      batchStats.textureSwitchCount,
+    );
+    const lightingStats = this.lightingPass.draw(this.lightingScene, resolution);
+    addLightingStatsInto(
       this.currentStats,
       lightingStats.drawCalls,
       lightingStats.pointLightCount,
@@ -222,10 +241,10 @@ export class WebGL2Renderer implements Renderer {
     this.ensureCurrentFrameTarget();
     const drawCalls = this.physicsDebugLineBatch.draw(
       lines,
-      [this.logicalWidth, this.logicalHeight],
+      this.logicalResolution,
       camera,
     );
-    this.currentStats = rendererStatsWithPhysicsDebugLines(
+    addPhysicsDebugLineStatsInto(
       this.currentStats,
       lines.lineCount,
       drawCalls,
@@ -247,16 +266,14 @@ export class WebGL2Renderer implements Renderer {
         copyDrawCalls = this.copySceneTargetToDefaultFramebuffer().drawCalls;
       }
       this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
-      const stats = rendererStatsWithPostProcess(this.currentStats, copyDrawCalls, 0);
-      this.currentStats = stats;
+      addPostProcessStatsInto(this.currentStats, copyDrawCalls, 0);
       this.frameStarted = false;
       this.frameTargetMode = "default";
       return this.stats();
     }
     if (this.frameTargetMode !== "postProcess") {
       this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
-      const stats = rendererStatsWithPostProcess(this.currentStats, 0, 0);
-      this.currentStats = stats;
+      addPostProcessStatsInto(this.currentStats, 0, 0);
       this.frameStarted = false;
       this.frameTargetMode = "default";
       return this.stats();
@@ -266,10 +283,10 @@ export class WebGL2Renderer implements Renderer {
     const postProcessStats = this.fullscreenPass.draw({
       sourceTexture: targets.scene.texture,
       passes: this.postProcessPasses,
-      resolution: [this.canvas.width, this.canvas.height],
+      resolution: this.currentDrawingBufferResolution(),
       scratchTargets: [targets.scratchA, targets.scratchB],
     });
-    this.currentStats = rendererStatsWithPostProcess(
+    addPostProcessStatsInto(
       this.currentStats,
       postProcessStats.drawCalls,
       postProcessStats.passCount,
@@ -277,6 +294,12 @@ export class WebGL2Renderer implements Renderer {
     this.frameStarted = false;
     this.frameTargetMode = "default";
     return this.stats();
+  }
+
+  private currentDrawingBufferResolution(): [number, number] {
+    this.drawingBufferResolution[0] = this.canvas.width;
+    this.drawingBufferResolution[1] = this.canvas.height;
+    return this.drawingBufferResolution;
   }
 
   destroy(): void {
@@ -344,7 +367,7 @@ export class WebGL2Renderer implements Renderer {
     return this.fullscreenPass.draw({
       sourceTexture: targets.scene.texture,
       passes: [COPY_POST_PROCESS_PASS],
-      resolution: [this.canvas.width, this.canvas.height],
+      resolution: this.currentDrawingBufferResolution(),
       scratchTargets: [targets.scratchA, targets.scratchB],
     });
   }

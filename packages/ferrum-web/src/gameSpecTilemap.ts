@@ -1,0 +1,192 @@
+import { TILE_SLOPE_MIN_HORIZONTAL_SPAN } from "./gameSpecDefaults.js";
+import {
+  booleanValue,
+  finiteNumber,
+  gameSpecError,
+  layerName,
+  nonNegativeInteger,
+  normalizedNumber,
+  optionalObject,
+  positiveNumber,
+  requiredPositiveInteger,
+} from "./gameSpecValidation.js";
+import type {
+  ResolvedShooterAtlasFrame,
+  ResolvedShooterTileDefinition,
+  ResolvedShooterTileLayer,
+  ResolvedShooterTileSlopeDefinition,
+  ResolvedShooterTilemap,
+} from "./gameSpecTypes.js";
+import { atlasFrameReference } from "./gameSpecAtlas.js";
+
+export function shooterTilemap(
+  value: unknown,
+  path: string,
+  atlasFrames: Record<string, ResolvedShooterAtlasFrame>,
+): ResolvedShooterTilemap | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const tilemap = optionalObject(value, path);
+  const origin = optionalObject(tilemap.origin, `${path}.origin`);
+  const tileWidth = positiveNumber(tilemap.tileWidth, `${path}.tileWidth`, 32);
+  const tileHeight = positiveNumber(tilemap.tileHeight, `${path}.tileHeight`, 32);
+  const originX = finiteNumber(origin.x, `${path}.origin.x`, 0);
+  const originY = finiteNumber(origin.y, `${path}.origin.y`, 0);
+  const tiles = tileDefinitions(tilemap.tiles, `${path}.tiles`, atlasFrames);
+  const tileIds = new Set(tiles.map((tile) => tile.id));
+  const layers = tilemapLayers(tilemap.layers, `${path}.layers`, {
+    tileWidth,
+    tileHeight,
+    originX,
+    originY,
+    tileIds,
+  });
+
+  return { tiles, layers };
+}
+
+function tileDefinitions(
+  value: unknown,
+  path: string,
+  atlasFrames: Record<string, ResolvedShooterAtlasFrame>,
+): ResolvedShooterTileDefinition[] {
+  const tiles = optionalObject(value, path);
+  const resolved: ResolvedShooterTileDefinition[] = [];
+
+  for (const [idText, tileValue] of Object.entries(tiles)) {
+    const tilePath = `${path}.${idText}`;
+    const id = tileId(idText, tilePath);
+    const tile = optionalObject(tileValue, tilePath);
+    const slope = tileSlope(tile.slope, `${tilePath}.slope`);
+    const oneWayPlatform = booleanValue(tile.oneWayPlatform, `${tilePath}.oneWayPlatform`, false);
+    if (slope && oneWayPlatform) {
+      throw gameSpecError(`${tilePath}.oneWayPlatform`, "cannot be combined with slope");
+    }
+    resolved.push({
+      id,
+      frame: atlasFrameReference(tile.frame, `${tilePath}.frame`, atlasFrames),
+      color: tileColor(tile.color, `${tilePath}.color`),
+      ...(slope ? { slope } : {}),
+      ...(oneWayPlatform ? { oneWayPlatform } : {}),
+    });
+  }
+
+  return resolved.sort((a, b) => a.id - b.id);
+}
+
+function tileId(value: string, path: string): number {
+  if (/^[1-9]\d*$/.test(value)) {
+    const id = Number(value);
+    if (Number.isSafeInteger(id)) {
+      return id;
+    }
+  }
+  throw gameSpecError(path, "tile id must be a positive integer string");
+}
+
+function tileColor(value: unknown, path: string): [number, number, number, number] {
+  if (value === undefined) {
+    return [1, 1, 1, 1];
+  }
+  if (!Array.isArray(value) || value.length !== 4) {
+    throw gameSpecError(path, "must be an array of four normalized numbers");
+  }
+  return [
+    normalizedNumber(value[0], `${path}.0`),
+    normalizedNumber(value[1], `${path}.1`),
+    normalizedNumber(value[2], `${path}.2`),
+    normalizedNumber(value[3], `${path}.3`),
+  ];
+}
+
+function tileSlope(value: unknown, path: string): ResolvedShooterTileSlopeDefinition | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const slope = optionalObject(value, path);
+  const x0 = normalizedNumber(slope.x0, `${path}.x0`);
+  const y0 = normalizedNumber(slope.y0, `${path}.y0`);
+  const x1 = normalizedNumber(slope.x1, `${path}.x1`);
+  const y1 = normalizedNumber(slope.y1, `${path}.y1`);
+  if (Math.abs(x1 - x0) <= TILE_SLOPE_MIN_HORIZONTAL_SPAN) {
+    throw gameSpecError(`${path}.x1`, "must differ from slope.x0");
+  }
+  return { x0, y0, x1, y1 };
+}
+
+interface TilemapLayerDefaults {
+  tileWidth: number;
+  tileHeight: number;
+  originX: number;
+  originY: number;
+  tileIds: Set<number>;
+}
+
+function tilemapLayers(
+  value: unknown,
+  path: string,
+  defaults: TilemapLayerDefaults,
+): ResolvedShooterTileLayer[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw gameSpecError(path, "must be an array");
+  }
+
+  return value.map((layerValue, index) => {
+    const layerPath = `${path}.${index}`;
+    const layer = optionalObject(layerValue, layerPath);
+    const origin = optionalObject(layer.origin, `${layerPath}.origin`);
+    const columns = requiredPositiveInteger(layer.columns, `${layerPath}.columns`);
+    const rows = requiredPositiveInteger(layer.rows, `${layerPath}.rows`);
+    const collision = booleanValue(layer.collision, `${layerPath}.collision`, false);
+    const collisionOnly = booleanValue(layer.collisionOnly, `${layerPath}.collisionOnly`, false);
+    if (collisionOnly && !collision) {
+      throw gameSpecError(`${layerPath}.collisionOnly`, "requires collision to be true");
+    }
+    return {
+      index,
+      name: layerName(layer.name, `${layerPath}.name`, `layer-${index}`),
+      columns,
+      rows,
+      tileWidth: positiveNumber(layer.tileWidth, `${layerPath}.tileWidth`, defaults.tileWidth),
+      tileHeight: positiveNumber(layer.tileHeight, `${layerPath}.tileHeight`, defaults.tileHeight),
+      originX: finiteNumber(origin.x, `${layerPath}.origin.x`, defaults.originX),
+      originY: finiteNumber(origin.y, `${layerPath}.origin.y`, defaults.originY),
+      collision,
+      collisionOnly,
+      data: tilemapLayerData(layer.data, `${layerPath}.data`, {
+        expectedLength: columns * rows,
+        tileIds: defaults.tileIds,
+        allowUndefinedTileIds: collisionOnly,
+      }),
+    };
+  });
+}
+
+function tilemapLayerData(
+  value: unknown,
+  path: string,
+  options: {
+    expectedLength: number;
+    tileIds: Set<number>;
+    allowUndefinedTileIds: boolean;
+  },
+): number[] {
+  if (!Array.isArray(value)) {
+    throw gameSpecError(path, "must be an array");
+  }
+  if (value.length !== options.expectedLength) {
+    throw gameSpecError(path, `must contain exactly ${options.expectedLength} tile ids`);
+  }
+  return value.map((tileValue, index) => {
+    const tile = nonNegativeInteger(tileValue, `${path}.${index}`, 0);
+    if (tile !== 0 && !options.allowUndefinedTileIds && !options.tileIds.has(tile)) {
+      throw gameSpecError(`${path}.${index}`, "must reference a tile id in tilemap.tiles or be 0");
+    }
+    return tile;
+  });
+}

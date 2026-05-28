@@ -1,0 +1,189 @@
+use super::*;
+
+#[test]
+fn player_render_command_uses_centered_transform() {
+    let mut engine = Engine::new();
+    engine.build_render_commands();
+
+    let command = engine.render_commands[0];
+    assert!((command.x - 382.0).abs() < 0.01);
+    assert!((command.y - 222.0).abs() < 0.01);
+}
+
+#[test]
+fn camera_follows_player_and_offsets_render_commands() {
+    let mut engine = Engine::new();
+    engine.set_viewport_size(400.0, 240.0);
+    let player = engine.world.player.unwrap();
+    engine.world.transforms[player.id as usize] = Some(Transform2D {
+        x: 1000.0,
+        y: 600.0,
+    });
+
+    engine
+        .scene
+        .update_camera_follow(&engine.world, &mut engine.camera);
+    engine.build_render_commands();
+
+    assert_eq!(engine.camera_x(), 1000.0);
+    assert_eq!(engine.camera_y(), 600.0);
+    let command = engine.render_commands[0];
+    assert!((command.x - 182.0).abs() < 0.01);
+    assert!((command.y - 102.0).abs() < 0.01);
+}
+
+#[test]
+fn configured_texture_ids_are_written_to_render_commands() {
+    let mut engine = Engine::new();
+    engine.set_texture_ids(1, 2, 3);
+    engine.world.spawn_enemy(100.0, 100.0, 2);
+    engine.world.spawn_bullet(120.0, 100.0, 0.0, 0.0, 3);
+    engine.build_render_commands();
+
+    let texture_ids: Vec<u32> = engine
+        .render_commands
+        .iter()
+        .map(|command| command.texture_id as u32)
+        .collect();
+    assert!(texture_ids.contains(&1));
+    assert!(texture_ids.contains(&2));
+    assert!(texture_ids.contains(&3));
+}
+
+#[test]
+fn camera_preset_applies_without_resetting_world() {
+    let mut engine = Engine::new();
+    engine.set_viewport_size(400.0, 240.0);
+    let player = engine.world.player.unwrap();
+    engine.world.transforms[player.id as usize] = Some(Transform2D {
+        x: 1000.0,
+        y: 600.0,
+    });
+    engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+
+    engine.set_shooter_camera_preset(2, 160.0, 96.0, 80.0, 6.0, 8.0);
+
+    assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 1);
+    assert_eq!(engine.camera_x(), 1000.0);
+    assert_eq!(engine.camera_y(), 600.0);
+
+    engine.world.velocities[player.id as usize] =
+        Some(crate::components::Velocity { vx: 1.0, vy: 0.0 });
+    engine
+        .scene
+        .update_camera_follow(&engine.world, &mut engine.camera);
+
+    assert_eq!(engine.camera_x(), 1080.0);
+    assert_eq!(engine.camera_y(), 600.0);
+}
+
+#[test]
+fn atlas_frame_updates_prefab_without_render_abi_change() {
+    let mut engine = Engine::new();
+
+    engine.set_shooter_atlas_frame(2, 9, 12.0, 10.0, 0.25, 0.5, 0.5, 0.75);
+    engine.world.spawn_bullet_from_template(
+        Transform2D { x: 120.0, y: 100.0 },
+        crate::components::Velocity { vx: 0.0, vy: 0.0 },
+        9,
+        1.0,
+        engine.scene.config().bullet_template,
+        1.0,
+    );
+    engine.build_render_commands();
+
+    let command = engine
+        .render_commands
+        .iter()
+        .find(|command| command.texture_id == 9.0)
+        .expect("bullet render command should use configured atlas texture");
+    assert_eq!(command.width, 12.0);
+    assert_eq!(command.height, 10.0);
+    assert_eq!(command.u0, 0.25);
+    assert_eq!(command.v0, 0.5);
+    assert_eq!(command.u1, 0.5);
+    assert_eq!(command.v1, 0.75);
+    assert_eq!(
+        command.effect_flags,
+        crate::render_command::SPRITE_EFFECT_NONE
+    );
+    assert_eq!(crate::sprite_render_command_floats(), 14);
+}
+
+#[test]
+fn atlas_animation_updates_prefab_uvs_in_rust() {
+    let mut engine = Engine::new();
+
+    engine.set_shooter_atlas_animation(
+        2,
+        9,
+        12.0,
+        10.0,
+        1.0,
+        vec![0.0, 0.0, 0.25, 0.5],
+        8.0,
+        vec![0.0, 0.5, 0.25, 1.0, 0.25, 0.5, 0.5, 1.0],
+    );
+    engine.world.spawn_bullet_from_template(
+        Transform2D { x: 120.0, y: 100.0 },
+        crate::components::Velocity { vx: 10.0, vy: 0.0 },
+        9,
+        1.0,
+        engine.scene.config().bullet_template,
+        1.0,
+    );
+    engine.world.update(0.125);
+    engine.build_render_commands();
+
+    let command = engine
+        .render_commands
+        .iter()
+        .find(|command| command.texture_id == 9.0)
+        .expect("bullet render command should use configured atlas animation texture");
+    assert_eq!(command.width, 12.0);
+    assert_eq!(command.height, 10.0);
+    assert_eq!(command.u0, 0.25);
+    assert_eq!(command.v0, 0.5);
+    assert_eq!(command.u1, 0.5);
+    assert_eq!(command.v1, 1.0);
+}
+
+#[test]
+fn tilemap_render_commands_are_emitted_before_entities() {
+    let mut engine = Engine::new();
+    engine.set_viewport_size(1600.0, 960.0);
+    engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 0.4, 0.5, 0.6, 0.7);
+    engine.set_shooter_tilemap_layer(0, 2, 1, 32.0, 32.0, 0.0, 0.0, false, vec![1, 0]);
+
+    engine.build_render_commands();
+
+    assert_eq!(engine.render_commands.len(), 2);
+    let tile = engine.render_commands[0];
+    assert_eq!(tile.texture_id, 9.0);
+    assert_eq!(tile.width, 32.0);
+    assert_eq!(tile.height, 32.0);
+    assert_eq!(tile.r, 0.4);
+    assert_eq!(tile.a, 0.7);
+    assert!((tile.x - 0.0).abs() < 0.01);
+    assert!((tile.y - 0.0).abs() < 0.01);
+
+    let player = engine.render_commands[1];
+    assert_eq!(player.texture_id, DEFAULT_TEXTURE_ID as f32);
+}
+
+#[test]
+fn clear_tilemap_removes_static_tile_render_commands() {
+    let mut engine = Engine::new();
+    engine.set_viewport_size(1600.0, 960.0);
+    engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+    engine.set_shooter_tilemap_layer(0, 1, 1, 32.0, 32.0, 0.0, 0.0, false, vec![1]);
+
+    engine.clear_shooter_tilemap();
+    engine.build_render_commands();
+
+    assert_eq!(engine.render_commands.len(), 1);
+    assert_eq!(
+        engine.render_commands[0].texture_id,
+        DEFAULT_TEXTURE_ID as f32
+    );
+}

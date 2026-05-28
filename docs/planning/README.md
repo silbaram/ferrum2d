@@ -7,6 +7,7 @@
 | 문서 | 역할 |
 | --- | --- |
 | [신규 기능 후보](feature-candidates.md) | 외부 2D 엔진 조사 기반 신규 기능 후보, 초보용 설명, 우선순위, 승인 필요 항목 |
+| [리팩토링 로드맵](refactor-roadmap.md) | SOLID/Rust/TypeScript 원칙 기반 구조 분리와 성능 개선 진행 기준 |
 
 ## 관리 규칙
 

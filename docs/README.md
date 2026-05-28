@@ -35,8 +35,8 @@ Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI a
 | --- | --- |
 | package entrypoint export | `packages/ferrum-web/src/index.ts` |
 | renderer/debug stats 필드 | `packages/ferrum-web/src/renderer.ts`, `packages/ferrum-web/src/debugOverlay.ts` |
-| Asset pipeline helper | `packages/ferrum-web/src/assetPipeline.ts` |
-| Game Spec 타입과 기본값 | `packages/ferrum-web/src/gameSpec.ts` |
+| Asset pipeline helper | `packages/ferrum-web/src/assetPipeline.ts`, `packages/ferrum-web/src/assetPipeline*.ts` |
+| Game Spec 타입과 기본값 | `packages/ferrum-web/src/gameSpec.ts`, `packages/ferrum-web/src/gameSpec*.ts` |
 | Game Spec 구조 보조 JSON Schema | `schemas/shooter-game-spec.schema.json` |
 | AI agent/skill 배포 템플릿 | `packages/agents/templates/**` |
 | 실제 Top-down Shooter 설정 | `examples/topdown-shooter/public/game.json` |

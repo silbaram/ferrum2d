@@ -192,7 +192,7 @@ function digitalControl(value: unknown, path: string): InputDigitalControl {
 
 function actionId(value: unknown, path: string, actions: Record<string, boolean>): string {
   const id = stringId(value, path);
-  if (!(id in actions)) {
+  if (!hasOwnKey(actions, id)) {
     throw new Error(`${path} references unknown action '${id}'.`);
   }
   return id;
@@ -207,4 +207,8 @@ function stringId(value: unknown, path: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasOwnKey(object: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(object, key);
 }

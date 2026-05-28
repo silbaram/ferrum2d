@@ -4,6 +4,7 @@ import {
   IndexedDbAssetCache,
   InputManager,
   LoadingOverlay,
+  RuntimeProfiler,
   WebGL2Renderer,
   createEngine,
   createAssetPreloadCachePolicy,
@@ -49,7 +50,7 @@ interface TopdownSmokeFrame {
 
 type TopdownSmokeWindow = Window & {
   ferrumEngine?: FerrumEngine;
-  ferrumRuntime?: { engine: FerrumEngine; renderer: WebGL2Renderer };
+  ferrumRuntime?: { engine: FerrumEngine; renderer: WebGL2Renderer; profiler?: RuntimeProfiler };
   ferrumTopdownSmokeFrame?: TopdownSmokeFrame;
   ferrumTopdownSmokeStart?: () => void;
   ferrumTopdownSmokeFireAt?: (mouseX: number, mouseY: number) => void;
@@ -295,6 +296,7 @@ async function bootstrap(): Promise<void> {
     const searchParams = new URLSearchParams(window.location.search);
     const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
     const effectSmokeEnabled = searchParams.get("effectSmoke") === "true";
+    const profilerSmokeEnabled = searchParams.get("profilerSmoke") === "true";
 
     const canvas = document.createElement("canvas");
     canvas.style.width = "800px";
@@ -319,6 +321,7 @@ async function bootstrap(): Promise<void> {
     const physicsDebugLines = searchParams.get("physicsDebugLines") === "true";
     const debugOverlay = new DebugOverlay(app, { enabled: debugEnabled });
     cleanups.push(() => debugOverlay.destroy());
+    const runtimeProfiler = profilerSmokeEnabled ? new RuntimeProfiler() : undefined;
     const loadingOverlay = new LoadingOverlay(app, {
       title: "Loading assets",
       completeTitle: "Ready",
@@ -379,7 +382,7 @@ async function bootstrap(): Promise<void> {
         recordTopdownSmokeFrame(runtimeEngine, frame.renderCommandBuffer, smokeTextureIds, frame.gameState, frame.score);
       }
 
-      debugOverlay.update({
+      const debugMetrics = {
         fps: frame.frameTimeMs > 0 ? 1000 / frame.frameTimeMs : 0,
         frameTimeMs: frame.frameTimeMs,
         entityCount: frame.entityCount,
@@ -399,7 +402,9 @@ async function bootstrap(): Promise<void> {
         cameraY: frame.cameraY,
         gameState: gameStateText(frame.gameState),
         score: frame.score,
-      });
+      };
+      runtimeProfiler?.recordFrame(debugMetrics);
+      debugOverlay.update(debugMetrics);
     }, inputSnapshot, platformHost, () => {
       renderer.resize();
       return renderer.viewportSize();
@@ -431,7 +436,7 @@ async function bootstrap(): Promise<void> {
     engine.start();
     const smokeWindow = window as TopdownSmokeWindow;
     smokeWindow.ferrumEngine = engine;
-    smokeWindow.ferrumRuntime = { engine, renderer };
+    smokeWindow.ferrumRuntime = { engine, renderer, ...(runtimeProfiler === undefined ? {} : { profiler: runtimeProfiler }) };
     if (effectSmokeEnabled) {
       smokeWindow.ferrumTopdownSmokeStart = () => {
         smokeStartQueued = true;

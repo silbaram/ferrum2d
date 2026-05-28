@@ -51,7 +51,14 @@ test("RuntimeProfiler keeps bounded sample windows", () => {
   equal(snapshot.frameSampleCount, 2);
   equal(snapshot.assetSampleCount, 1);
   equal(snapshot.averageFrameTimeMs, 11.5);
+  equal(snapshot.latestFrame?.frameTimeMs, 12);
   equal(snapshot.latestAsset?.elapsedMs, 2);
+  deepEqual(Object.keys(snapshot).slice(0, 4), [
+    "frameSampleCount",
+    "assetSampleCount",
+    "latestFrame",
+    "latestAsset",
+  ]);
 });
 
 test("runtime diagnostics helpers evaluate frame samples directly", () => {
@@ -76,6 +83,40 @@ test("runtime diagnostics helpers evaluate frame samples directly", () => {
   equal(evaluateRuntimeProfilerBudget(new RuntimeProfiler().snapshot(), { maxFrameTimeMs: 1 }).passed, true);
 });
 
+test("runtime diagnostics preserve optional field omission and zero values", () => {
+  const minimalFrame = runtimeDiagnosticsFrameSample(metrics());
+  equal(hasOwn(minimalFrame, "renderCommandCount"), false);
+  equal(hasOwn(minimalFrame, "physicsFixedSteps"), false);
+
+  const zeroFrame = runtimeDiagnosticsFrameSample(metrics({
+    renderCommandCount: 0,
+    textureBindCount: 0,
+    textureSwitchCount: 0,
+    audioEventsPerSecond: 0,
+    physicsFixedSteps: 0,
+    physicsKinematicHits: 0,
+    physicsTileCandidateChecks: 0,
+    collisionPairCount: 0,
+    collisionEventCount: 0,
+    physicsDebugLineCount: 0,
+    physicsCcdChecks: 0,
+    physicsCcdHits: 0,
+    physicsSleepingBodies: 0,
+    physicsBrokenJoints: 0,
+  }));
+  equal(hasOwn(zeroFrame, "renderCommandCount"), true);
+  equal(zeroFrame.physicsBrokenJoints, 0);
+
+  const profiler = new RuntimeProfiler();
+  const minimalAsset = profiler.recordAssetProgress({ loaded: 0, total: 1 });
+  equal(hasOwn(minimalAsset, "elapsedMs"), false);
+  const zeroAsset = profiler.recordAssetProgress({ loaded: 1, total: 1, elapsedMs: 0 });
+  equal(hasOwn(zeroAsset, "elapsedMs"), true);
+  equal(zeroAsset.elapsedMs, 0);
+  equal(hasOwn(profiler.snapshot(), "budgetReport"), false);
+  equal(hasOwn(new RuntimeProfiler({ budget: { maxFrameTimeMs: 1 } }).snapshot(), "budgetReport"), true);
+});
+
 function metrics(overrides: Partial<DebugOverlayMetrics> = {}): DebugOverlayMetrics {
   return {
     fps: 60,
@@ -94,4 +135,8 @@ function metrics(overrides: Partial<DebugOverlayMetrics> = {}): DebugOverlayMetr
     score: 0,
     ...overrides,
   };
+}
+
+function hasOwn(object: object, property: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(object, property);
 }

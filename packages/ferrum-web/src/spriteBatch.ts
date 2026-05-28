@@ -5,7 +5,7 @@ import {
   SPRITE_RENDER_COMMAND_FLOATS,
   spriteMaterialPasses,
   spriteMaterialPassRequiresCommandCopy,
-  writeSpriteMaterialPassCommands,
+  writeSpriteMaterialPassCommandsInto,
 } from "./spriteMaterial";
 import type {
   ResolvedSpriteMaterialPreset,
@@ -28,6 +28,7 @@ export interface SpriteBatchStats {
 const FLOATS_PER_COMMAND = SPRITE_RENDER_COMMAND_FLOATS;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
 const COMMAND_STRIDE_BYTES = FLOATS_PER_COMMAND * BYTES_PER_F32;
+const DEFAULT_SPRITE_MATERIAL_PASSES = spriteMaterialPasses(DEFAULT_SPRITE_MATERIAL_PRESET);
 
 export class SpriteBatch {
   private readonly program: WebGLProgram;
@@ -37,6 +38,8 @@ export class SpriteBatch {
   private readonly textureLocation: WebGLUniformLocation;
   private instanceCapacityFloats = 0;
   private materialStaging = new Float32Array(0);
+  private cachedMaterial: ResolvedSpriteMaterialPreset = DEFAULT_SPRITE_MATERIAL_PRESET;
+  private cachedMaterialPasses: readonly SpriteMaterialPass[] = DEFAULT_SPRITE_MATERIAL_PASSES;
   private readonly textureRangeScratch: Array<{ textureId: number; start: number; end: number }> = [];
   private destroyed = false;
 
@@ -75,13 +78,20 @@ export class SpriteBatch {
     textureManager: TextureManager,
     commands: RenderCommandBufferView,
     resolution: [number, number],
+    material?: ResolvedSpriteMaterialPreset,
+  ): SpriteBatchStats;
+  drawBatches(
+    textureManager: TextureManager,
+    commands: RenderCommandBufferView,
+    resolution: [number, number],
     material: ResolvedSpriteMaterialPreset = DEFAULT_SPRITE_MATERIAL_PRESET,
   ): SpriteBatchStats {
     this.assertAlive();
     if (commands.commandCount === 0) return { drawCalls: 0, textureSwitchCount: 0 };
     const ranges = this.textureRanges(commands);
+    const materialPasses = this.materialPassesFor(material);
     let drawCalls = 0;
-    for (const pass of spriteMaterialPasses(material)) {
+    for (const pass of materialPasses) {
       this.applyBlendMode(pass.blendMode);
       for (const range of ranges) {
         const texture = textureManager.texture(range.textureId);
@@ -96,11 +106,18 @@ export class SpriteBatch {
     texture: WebGLTexture,
     commands: RenderCommandBufferView,
     resolution: [number, number],
+    material?: ResolvedSpriteMaterialPreset,
+  ): SpriteBatchStats;
+  drawBatch(
+    texture: WebGLTexture,
+    commands: RenderCommandBufferView,
+    resolution: [number, number],
     material: ResolvedSpriteMaterialPreset = DEFAULT_SPRITE_MATERIAL_PRESET,
   ): SpriteBatchStats {
     this.assertAlive();
+    const materialPasses = this.materialPassesFor(material);
     let drawCalls = 0;
-    for (const pass of spriteMaterialPasses(material)) {
+    for (const pass of materialPasses) {
       this.applyBlendMode(pass.blendMode);
       drawCalls += this.drawRange(texture, commands, resolution, 0, commands.commandCount, pass);
     }
@@ -130,14 +147,14 @@ export class SpriteBatch {
     }
     if (commands.floatsPerCommand !== FLOATS_PER_COMMAND || spriteMaterialPassRequiresCommandCopy(pass)) {
       this.ensureMaterialStaging(uploadFloatCount);
-      const materialCommands = writeSpriteMaterialPassCommands(
+      const materialFloatCount = writeSpriteMaterialPassCommandsInto(
         commands,
         startCommand,
         endCommand,
         pass,
         this.materialStaging,
       );
-      this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, materialCommands);
+      this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, this.materialStaging, 0, materialFloatCount);
     } else {
       this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, commands.buffer, commandFloatOffset, uploadFloatCount);
     }
@@ -197,6 +214,14 @@ export class SpriteBatch {
     if (this.materialStaging.length < floatCount) {
       this.materialStaging = new Float32Array(this.nextPowerOfTwo(floatCount));
     }
+  }
+
+  private materialPassesFor(material: ResolvedSpriteMaterialPreset): readonly SpriteMaterialPass[] {
+    if (material !== this.cachedMaterial) {
+      this.cachedMaterial = material;
+      this.cachedMaterialPasses = spriteMaterialPasses(material);
+    }
+    return this.cachedMaterialPasses;
   }
 
   private applyBlendMode(blendMode: SpriteMaterialBlendMode): void {

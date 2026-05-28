@@ -85,6 +85,35 @@ test("extractTilemapBoundaryChains skips non-solid special tile metadata and sup
   deepEqual(collisionOnly.chains[0].collider.vertices[0], [40, 0]);
 });
 
+test("extractTilemapBoundaryChains orders disconnected boundary chains deterministically", () => {
+  const tilemap: ResolvedShooterTilemap = {
+    tiles: [tile(1)],
+    layers: [{
+      index: 0,
+      name: "islands",
+      columns: 3,
+      rows: 1,
+      tileWidth: 10,
+      tileHeight: 10,
+      originX: 0,
+      originY: 0,
+      collision: true,
+      collisionOnly: false,
+      data: [1, 0, 1],
+    }],
+  };
+
+  const extracted = extractTilemapBoundaryChains(tilemap);
+
+  equal(extracted.chainCount, 2);
+  deepEqual(extracted.chains.map((chain) => chain.bodyId), [
+    "tilemapBoundary.0.0",
+    "tilemapBoundary.0.1",
+  ]);
+  deepEqual(extracted.chains[0].collider.vertices, [[0, 0], [10, 0], [10, 10], [0, 10]]);
+  deepEqual(extracted.chains[1].collider.vertices, [[20, 0], [30, 0], [30, 10], [20, 10]]);
+});
+
 test("extractTilemapBoundaryChains splits long chains to runtime vertex limits", () => {
   const data = Array.from({ length: 70 }, () => 1);
   const tilemap: ResolvedShooterTilemap = {

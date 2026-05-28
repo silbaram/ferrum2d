@@ -1,4 +1,4 @@
-import type { PhysicsColliderType, PhysicsEntitySnapshot, PhysicsRigidBodyType } from "./createEngine.js";
+import type { PhysicsColliderType, PhysicsEntitySnapshot, PhysicsRigidBodyType } from "./engineTypes.js";
 
 export const PHYSICS_BODY_STATE_BUFFER_FORMAT = "ferrum2d.physics-body-state-buffer";
 export const PHYSICS_BODY_STATE_BUFFER_VERSION = 1;
@@ -22,6 +22,11 @@ const PHYSICS_BODY_TYPE_CODES: Record<PhysicsRigidBodyType, number> = Object.fre
   kinematic: 1,
   dynamic: 2,
 });
+const PHYSICS_BODY_TYPES: readonly PhysicsRigidBodyType[] = Object.freeze([
+  "static",
+  "kinematic",
+  "dynamic",
+]);
 const PHYSICS_COLLIDER_TYPES: readonly PhysicsColliderType[] = Object.freeze([
   "none",
   "aabb",
@@ -139,6 +144,78 @@ export function validatePhysicsBodyStateBufferSnapshot(
   if (snapshot.u32s.length !== bodyCount * snapshot.u32sPerBody) {
     throw new Error("physics body state buffer u32s length must match bodyCount.");
   }
+}
+
+export interface PhysicsBodyStateBufferDecodeInput {
+  bodyCount: number;
+  handles: Uint32Array;
+  floats: Float32Array;
+  u32s: Uint32Array;
+  floatsPerBody: number;
+  u32sPerBody: number;
+}
+
+export function decodePhysicsBodyStateBuffer(
+  snapshot: PhysicsBodyStateBufferDecodeInput,
+): readonly PhysicsEntitySnapshot[] {
+  const states: PhysicsEntitySnapshot[] = [];
+  for (let index = 0; index < snapshot.bodyCount; index += 1) {
+    const floatOffset = index * snapshot.floatsPerBody;
+    const u32Offset = index * snapshot.u32sPerBody;
+    const flags = snapshot.u32s[u32Offset + PHYSICS_BODY_STATE_U32_FLAGS];
+    states.push({
+      entityId: snapshot.u32s[u32Offset + PHYSICS_BODY_STATE_U32_ENTITY_ID],
+      entityGeneration: snapshot.u32s[u32Offset + PHYSICS_BODY_STATE_U32_ENTITY_GENERATION],
+      x: snapshot.floats[floatOffset],
+      y: snapshot.floats[floatOffset + 1],
+      velocityX: snapshot.floats[floatOffset + 2],
+      velocityY: snapshot.floats[floatOffset + 3],
+      rotationRadians: snapshot.floats[floatOffset + 4],
+      angularVelocityRadiansPerSecond: snapshot.floats[floatOffset + 5],
+      bodyType: PHYSICS_BODY_TYPES[snapshot.u32s[u32Offset + PHYSICS_BODY_STATE_U32_BODY_TYPE]] ?? "dynamic",
+      bodyEnabled: (flags & PHYSICS_BODY_STATE_FLAG_BODY_ENABLED) !== 0,
+      isSleeping: (flags & PHYSICS_BODY_STATE_FLAG_SLEEPING) !== 0,
+      colliderType:
+        PHYSICS_COLLIDER_TYPES[snapshot.u32s[u32Offset + PHYSICS_BODY_STATE_U32_COLLIDER_TYPE]] ?? "none",
+      colliderEnabled: (flags & PHYSICS_BODY_STATE_FLAG_COLLIDER_ENABLED) !== 0,
+      colliderIsTrigger: (flags & PHYSICS_BODY_STATE_FLAG_COLLIDER_TRIGGER) !== 0,
+      colliderOffsetX: snapshot.floats[floatOffset + 20],
+      colliderOffsetY: snapshot.floats[floatOffset + 21],
+      colliderMaterialOverride: (flags & PHYSICS_BODY_STATE_FLAG_COLLIDER_MATERIAL_OVERRIDE) !== 0,
+      colliderMaterial: {
+        restitution: snapshot.floats[floatOffset + 22],
+        friction: snapshot.floats[floatOffset + 23],
+        surfaceVelocityX: snapshot.floats[floatOffset + 24],
+        surfaceVelocityY: snapshot.floats[floatOffset + 25],
+        density: snapshot.floats[floatOffset + 26],
+        contactBaumgarteBiasScale: snapshot.floats[floatOffset + 27],
+        maxContactBaumgarteBiasVelocityScale: snapshot.floats[floatOffset + 28],
+        contactPositionCorrectionScale: snapshot.floats[floatOffset + 29],
+        contactPositionCorrectionSlopScale: snapshot.floats[floatOffset + 30],
+      },
+      mass: snapshot.floats[floatOffset + 6],
+      inverseMass: inverseOrZero(snapshot.floats[floatOffset + 6]),
+      inertia: snapshot.floats[floatOffset + 7],
+      inverseInertia: inverseOrZero(snapshot.floats[floatOffset + 7]),
+      gravityScale: snapshot.floats[floatOffset + 8],
+      linearDamping: snapshot.floats[floatOffset + 9],
+      angularDamping: snapshot.floats[floatOffset + 10],
+      restitution: snapshot.floats[floatOffset + 11],
+      friction: snapshot.floats[floatOffset + 12],
+      surfaceVelocityX: snapshot.floats[floatOffset + 13],
+      surfaceVelocityY: snapshot.floats[floatOffset + 14],
+      density: snapshot.floats[floatOffset + 15],
+      contactBaumgarteBiasScale: snapshot.floats[floatOffset + 16],
+      maxContactBaumgarteBiasVelocityScale: snapshot.floats[floatOffset + 17],
+      contactPositionCorrectionScale: snapshot.floats[floatOffset + 18],
+      contactPositionCorrectionSlopScale: snapshot.floats[floatOffset + 19],
+    });
+  }
+  return states;
+}
+
+function inverseOrZero(value: number): number {
+  return Number.isFinite(value) && value > 0 ? 1 / value : 0;
 }
 
 function physicsColliderTypeCode(colliderType: PhysicsColliderType): number {

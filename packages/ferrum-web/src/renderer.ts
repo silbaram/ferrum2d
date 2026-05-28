@@ -138,7 +138,7 @@ export interface Renderer {
 }
 
 export function emptyRendererStats(): RendererStats {
-  return {
+  return resetRendererStatsInto({
     drawCalls: 0,
     batchCount: 0,
     spriteCount: 0,
@@ -153,7 +153,25 @@ export function emptyRendererStats(): RendererStats {
     shadowCasterCount: 0,
     postProcessDrawCalls: 0,
     postProcessPassCount: 0,
-  };
+  });
+}
+
+export function resetRendererStatsInto(stats: RendererStats): RendererStats {
+  stats.drawCalls = 0;
+  stats.batchCount = 0;
+  stats.spriteCount = 0;
+  stats.renderCommandCount = 0;
+  stats.textureBindCount = 0;
+  stats.textureSwitchCount = 0;
+  stats.physicsDebugLineCount = 0;
+  stats.lightingDrawCalls = 0;
+  stats.pointLightCount = 0;
+  stats.tileOccluderCount = 0;
+  stats.shadowDrawCalls = 0;
+  stats.shadowCasterCount = 0;
+  stats.postProcessDrawCalls = 0;
+  stats.postProcessPassCount = 0;
+  return stats;
 }
 
 export function rendererStatsForCommands(
@@ -161,22 +179,28 @@ export function rendererStatsForCommands(
   drawCalls: number,
   textureSwitchCount = estimateTextureSwitchCount(commands),
 ): RendererStats {
-  return {
+  return writeRendererStatsForCommandsInto(
+    emptyRendererStats(),
+    commands,
     drawCalls,
-    batchCount: drawCalls,
-    spriteCount: commands.commandCount,
-    renderCommandCount: commands.commandCount,
-    textureBindCount: drawCalls,
     textureSwitchCount,
-    physicsDebugLineCount: 0,
-    lightingDrawCalls: 0,
-    pointLightCount: 0,
-    tileOccluderCount: 0,
-    shadowDrawCalls: 0,
-    shadowCasterCount: 0,
-    postProcessDrawCalls: 0,
-    postProcessPassCount: 0,
-  };
+  );
+}
+
+export function writeRendererStatsForCommandsInto(
+  stats: RendererStats,
+  commands: RenderCommandBufferView,
+  drawCalls: number,
+  textureSwitchCount = estimateTextureSwitchCount(commands),
+): RendererStats {
+  resetRendererStatsInto(stats);
+  stats.drawCalls = drawCalls;
+  stats.batchCount = drawCalls;
+  stats.spriteCount = commands.commandCount;
+  stats.renderCommandCount = commands.commandCount;
+  stats.textureBindCount = drawCalls;
+  stats.textureSwitchCount = textureSwitchCount;
+  return stats;
 }
 
 export function rendererStatsWithPhysicsDebugLines(
@@ -184,11 +208,17 @@ export function rendererStatsWithPhysicsDebugLines(
   lineCount: number,
   drawCalls: number,
 ): RendererStats {
-  return {
-    ...stats,
-    drawCalls: stats.drawCalls + drawCalls,
-    physicsDebugLineCount: lineCount,
-  };
+  return addPhysicsDebugLineStatsInto({ ...stats }, lineCount, drawCalls);
+}
+
+export function addPhysicsDebugLineStatsInto(
+  stats: RendererStats,
+  lineCount: number,
+  drawCalls: number,
+): RendererStats {
+  stats.drawCalls += drawCalls;
+  stats.physicsDebugLineCount = lineCount;
+  return stats;
 }
 
 export function rendererStatsWithLighting(
@@ -199,15 +229,31 @@ export function rendererStatsWithLighting(
   shadowDrawCalls = 0,
   shadowCasterCount = 0,
 ): RendererStats {
-  return {
-    ...stats,
-    drawCalls: stats.drawCalls + lightingDrawCalls,
+  return addLightingStatsInto(
+    { ...stats },
     lightingDrawCalls,
     pointLightCount,
     tileOccluderCount,
     shadowDrawCalls,
     shadowCasterCount,
-  };
+  );
+}
+
+export function addLightingStatsInto(
+  stats: RendererStats,
+  lightingDrawCalls: number,
+  pointLightCount: number,
+  tileOccluderCount: number,
+  shadowDrawCalls = 0,
+  shadowCasterCount = 0,
+): RendererStats {
+  stats.drawCalls += lightingDrawCalls;
+  stats.lightingDrawCalls = lightingDrawCalls;
+  stats.pointLightCount = pointLightCount;
+  stats.tileOccluderCount = tileOccluderCount;
+  stats.shadowDrawCalls = shadowDrawCalls;
+  stats.shadowCasterCount = shadowCasterCount;
+  return stats;
 }
 
 export function rendererStatsWithPostProcess(
@@ -215,12 +261,18 @@ export function rendererStatsWithPostProcess(
   postProcessDrawCalls: number,
   postProcessPassCount: number,
 ): RendererStats {
-  return {
-    ...stats,
-    drawCalls: stats.drawCalls + postProcessDrawCalls,
-    postProcessDrawCalls,
-    postProcessPassCount,
-  };
+  return addPostProcessStatsInto({ ...stats }, postProcessDrawCalls, postProcessPassCount);
+}
+
+export function addPostProcessStatsInto(
+  stats: RendererStats,
+  postProcessDrawCalls: number,
+  postProcessPassCount: number,
+): RendererStats {
+  stats.drawCalls += postProcessDrawCalls;
+  stats.postProcessDrawCalls = postProcessDrawCalls;
+  stats.postProcessPassCount = postProcessPassCount;
+  return stats;
 }
 
 export function estimateTextureSwitchCount(commands: RenderCommandBufferView): number {

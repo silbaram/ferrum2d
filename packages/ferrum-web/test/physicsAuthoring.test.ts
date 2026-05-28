@@ -1,4 +1,4 @@
-import { equal, ok } from "node:assert/strict";
+import { deepEqual, equal, ok } from "node:assert/strict";
 import { test } from "node:test";
 import type {
   FerrumEngine,
@@ -10,7 +10,9 @@ import type {
   PhysicsRigidBodySpawnOptions,
 } from "../src/createEngine.js";
 import {
+  clearPhysicsWorld,
   createCollider,
+  createJoint,
   createPhysicsLayerMap,
   createPhysicsWorldFromSpec,
   createRigidBody,
@@ -19,6 +21,7 @@ import {
 } from "../src/physicsAuthoring.js";
 import { diagnosticReport } from "../src/diagnostics.js";
 import { resolvePhysicsSpec } from "../src/physicsSpec.js";
+import type { ResolvedPhysicsSpec } from "../src/physicsSpec.js";
 
 class FakePhysicsEngine {
   bodies: PhysicsRigidBodySpawnOptions[] = [];
@@ -30,6 +33,14 @@ class FakePhysicsEngine {
   fixedTimestep: unknown;
   debugLines: unknown;
   massProperties: Array<{ handle: PhysicsEntityHandle; properties: { mass: number; inertia: number } }> = [];
+  failNextJointSpawn = false;
+  failJointSpawnCall: number | undefined;
+  failBodySpawnCall: number | undefined;
+  bodySpawnAttempts = 0;
+  jointSpawnAttempts = 0;
+  rejectCompoundCollider = false;
+  rejectColliderMaterial = false;
+  rejectMassProperties = false;
 
   configureFixedTimestep(options: unknown): void {
     this.fixedTimestep = options;
@@ -40,11 +51,18 @@ class FakePhysicsEngine {
   }
 
   spawnRigidBody(options: PhysicsRigidBodySpawnOptions): PhysicsEntityHandle {
+    this.bodySpawnAttempts += 1;
+    if (this.failBodySpawnCall === this.bodySpawnAttempts) {
+      throw new Error("body spawn rejected");
+    }
     this.bodies.push(options);
     return { entityId: this.bodies.length, entityGeneration: 1 };
   }
 
   addPhysicsBodyCollider(handle: PhysicsEntityHandle, options: PhysicsBodyColliderOptions): boolean {
+    if (this.rejectCompoundCollider) {
+      return false;
+    }
     this.compoundColliders.push({ handle, options });
     return true;
   }
@@ -54,16 +72,27 @@ class FakePhysicsEngine {
     index: number,
     material: PhysicsRigidBodyMaterial,
   ): boolean {
+    if (this.rejectColliderMaterial) {
+      return false;
+    }
     this.compoundColliderMaterials.push({ handle, index, material });
     return true;
   }
 
   spawnPhysicsJoint(options: PhysicsJointSpawnOptions): PhysicsJointHandle {
+    this.jointSpawnAttempts += 1;
+    if (this.failNextJointSpawn || this.failJointSpawnCall === this.jointSpawnAttempts) {
+      this.failNextJointSpawn = false;
+      throw new Error("joint spawn rejected");
+    }
     this.joints.push(options);
     return { jointType: options.type, jointIndex: this.joints.length - 1, jointGeneration: 1 };
   }
 
   setPhysicsBodyMassProperties(handle: PhysicsEntityHandle, properties: { mass: number; inertia: number }): boolean {
+    if (this.rejectMassProperties) {
+      return false;
+    }
     this.massProperties.push({ handle, properties });
     return true;
   }
@@ -76,6 +105,16 @@ class FakePhysicsEngine {
   despawnPhysicsEntity(handle: PhysicsEntityHandle): boolean {
     this.despawnedBodies.push(handle);
     return true;
+  }
+}
+
+function ignoreReadonlyMutation(action: () => void): void {
+  try {
+    action();
+  } catch (error) {
+    if (!(error instanceof TypeError)) {
+      throw error;
+    }
   }
 }
 
@@ -215,6 +254,58 @@ test("createPhysicsWorldFromSpec applies resolved bodies, layers, materials, wor
   equal(fake.despawnedBodies.length, 3);
 });
 
+test("clearPhysicsWorld delegates to idempotent world cleanup", () => {
+  const fake = new FakePhysicsEngine();
+  const engine = fake as unknown as FerrumEngine;
+
+  const world = createPhysicsWorldFromSpec(engine, {
+    mode: "rigid",
+    bodies: {
+      crate: {
+        type: "dynamic",
+        collider: { shape: "box", size: [24, 24] },
+      },
+    },
+    joints: {
+      hinge: {
+        type: "distance",
+        bodyA: "world",
+        bodyB: "crate",
+        anchor: [0, 0],
+        restLength: 12,
+      },
+    },
+  });
+
+  const publicCrate = world.bodies.crate;
+  const publicAnchor = world.worldAnchors[0];
+  equal(Object.isFrozen(world.bodies), true);
+  equal(Object.isFrozen(publicCrate), true);
+  equal(Object.isFrozen(world.joints), true);
+  equal(Object.isFrozen(world.joints.hinge), true);
+  equal(Object.isFrozen(world.worldAnchors), true);
+  equal(Object.isFrozen(publicAnchor), true);
+
+  ignoreReadonlyMutation(() => {
+    (world.bodies as Record<string, PhysicsEntityHandle>).crate = { entityId: 999, entityGeneration: 1 };
+  });
+  ignoreReadonlyMutation(() => {
+    (publicCrate as { entityId: number }).entityId = 999;
+  });
+  ignoreReadonlyMutation(() => {
+    (world.worldAnchors as unknown as PhysicsEntityHandle[]).pop();
+  });
+
+  clearPhysicsWorld(engine, world);
+  clearPhysicsWorld(engine, world);
+  world.clear();
+
+  equal(fake.clearedJoints.length, 1);
+  equal(fake.despawnedBodies.length, 2);
+  deepEqual(fake.despawnedBodies[0], publicAnchor);
+  deepEqual(fake.despawnedBodies[1], publicCrate);
+});
+
 test("helper APIs normalize collider aliases, material presets, and layer bit helpers", () => {
   const fake = new FakePhysicsEngine();
   const engine = fake as unknown as FerrumEngine;
@@ -262,6 +353,13 @@ test("helper APIs normalize collider aliases, material presets, and layer bit he
   equal(physicsMaterial("wood").density, 0.8);
 });
 
+test("physicsMaterial rejects inherited preset names", () => {
+  expectThrow(
+    () => physicsMaterial("toString" as never),
+    /must be one of/,
+  );
+});
+
 test("createVehicleRig composes chassis, wheels, guide joints, and suspension springs", () => {
   const fake = new FakePhysicsEngine();
   const engine = fake as unknown as FerrumEngine;
@@ -287,6 +385,13 @@ test("createVehicleRig composes chassis, wheels, guide joints, and suspension sp
 
   equal(rig.bodyCount, 3);
   equal(rig.jointCount, 4);
+  equal(Object.isFrozen(rig.chassis), true);
+  equal(Object.isFrozen(rig.wheels), true);
+  equal(Object.isFrozen(rig.wheels[0]), true);
+  equal(Object.isFrozen(rig.guideJoints), true);
+  equal(Object.isFrozen(rig.guideJoints[0]), true);
+  equal(Object.isFrozen(rig.suspensionJoints), true);
+  equal(Object.isFrozen(rig.suspensionJoints[0]), true);
   equal(fake.bodies.length, 3);
   equal(fake.joints.length, 4);
 
@@ -329,10 +434,296 @@ test("createVehicleRig composes chassis, wheels, guide joints, and suspension sp
     equal(spring.stiffness, 0.7);
     equal(spring.damping, 0.35);
   }
+  ok(captureError(() => {
+    rig.chassis.entityId = 999;
+  }) instanceof TypeError);
+  ok(captureError(() => {
+    rig.wheels[0].entityId = 999;
+  }) instanceof TypeError);
+  ok(captureError(() => {
+    rig.guideJoints[0].jointIndex = 999;
+  }) instanceof TypeError);
 
+  rig.clear();
   rig.clear();
   equal(fake.clearedJoints.length, 4);
   equal(fake.despawnedBodies.length, 3);
+  equal(fake.despawnedBodies[0].entityId, 2);
+  equal(fake.despawnedBodies[1].entityId, 3);
+  equal(fake.despawnedBodies[2].entityId, 1);
+});
+
+test("createVehicleRig rolls back chassis when first wheel validation fails", () => {
+  const fake = new FakePhysicsEngine();
+  const engine = fake as unknown as FerrumEngine;
+
+  expectThrow(() => createVehicleRig(engine, {
+    position: [100, 50],
+    chassisSize: [80, 20],
+    wheels: [
+      { offset: [0, 16], radius: -1 },
+    ],
+  }), /positive finite number/);
+
+  equal(fake.bodies.length, 1);
+  equal(fake.joints.length, 0);
+  equal(fake.clearedJoints.length, 0);
+  equal(fake.despawnedBodies.length, 1);
+  equal(fake.despawnedBodies[0].entityId, 1);
+});
+
+test("createVehicleRig rolls back chassis and wheel when guide joint spawn fails", () => {
+  const fake = new FakePhysicsEngine();
+  fake.failJointSpawnCall = 1;
+  const engine = fake as unknown as FerrumEngine;
+
+  expectThrow(() => createVehicleRig(engine, {
+    position: [100, 50],
+    chassisSize: [80, 20],
+    wheels: [
+      { offset: [0, 16] },
+    ],
+  }), /runtime rejected joint/);
+
+  equal(fake.bodies.length, 2);
+  equal(fake.joints.length, 0);
+  equal(fake.clearedJoints.length, 0);
+  equal(fake.despawnedBodies.length, 2);
+  equal(fake.despawnedBodies[0].entityId, 2);
+  equal(fake.despawnedBodies[1].entityId, 1);
+});
+
+test("createVehicleRig rolls back partial guide joint when suspension joint spawn fails", () => {
+  const fake = new FakePhysicsEngine();
+  fake.failJointSpawnCall = 2;
+  const engine = fake as unknown as FerrumEngine;
+
+  expectThrow(() => createVehicleRig(engine, {
+    position: [100, 50],
+    chassisSize: [80, 20],
+    wheels: [
+      { offset: [0, 16] },
+    ],
+  }), /runtime rejected joint/);
+
+  equal(fake.bodies.length, 2);
+  equal(fake.joints.length, 1);
+  equal(fake.clearedJoints.length, 1);
+  equal(fake.despawnedBodies.length, 2);
+  equal(fake.despawnedBodies[0].entityId, 2);
+  equal(fake.despawnedBodies[1].entityId, 1);
+});
+
+test("createVehicleRig rolls back previous wheel when a later wheel body spawn fails", () => {
+  const fake = new FakePhysicsEngine();
+  fake.failBodySpawnCall = 3;
+  const engine = fake as unknown as FerrumEngine;
+
+  expectThrow(() => createVehicleRig(engine, {
+    position: [100, 50],
+    chassisSize: [80, 20],
+    wheels: [
+      { offset: [-20, 16] },
+      { offset: [20, 16] },
+    ],
+  }), /runtime rejected body/);
+
+  equal(fake.bodies.length, 2);
+  equal(fake.joints.length, 2);
+  equal(fake.clearedJoints.length, 2);
+  equal(fake.despawnedBodies.length, 2);
+  equal(fake.despawnedBodies[0].entityId, 2);
+  equal(fake.despawnedBodies[1].entityId, 1);
+});
+
+test("createJoint exposes cleanup for generated world anchors", () => {
+  const fake = new FakePhysicsEngine();
+  const engine = fake as unknown as FerrumEngine;
+  const body = { entityId: 42, entityGeneration: 1 };
+
+  const joint = createJoint(engine, {
+    type: "revolute",
+    bodyA: "world",
+    bodyB: body,
+    anchor: [5, 6],
+  });
+
+  equal(fake.bodies.length, 1);
+  equal(fake.bodies[0].bodyType, "static");
+  equal(fake.bodies[0].x, 5);
+  equal(fake.bodies[0].y, 6);
+  equal(fake.bodies[0].colliderEnabled, false);
+  equal(fake.joints.length, 1);
+  equal(joint.worldAnchors.length, 1);
+  equal(Object.isFrozen(joint), true);
+  equal(Object.isFrozen(joint.worldAnchors), true);
+  equal(Object.isFrozen(joint.worldAnchors[0]), true);
+
+  const publicAnchor = joint.worldAnchors[0];
+  ignoreReadonlyMutation(() => {
+    (joint.worldAnchors as unknown as PhysicsEntityHandle[]).pop();
+  });
+
+  joint.clear();
+  joint.clear();
+
+  equal(fake.clearedJoints.length, 1);
+  equal(fake.despawnedBodies.length, 1);
+  deepEqual(fake.despawnedBodies[0], publicAnchor);
+});
+
+test("createJoint rolls back generated world anchors when joint spawn fails", () => {
+  const fake = new FakePhysicsEngine();
+  fake.failNextJointSpawn = true;
+  const engine = fake as unknown as FerrumEngine;
+
+  expectThrow(() => createJoint(engine, {
+    type: "revolute",
+    bodyA: "world",
+    bodyB: { entityId: 42, entityGeneration: 1 },
+    anchor: [5, 6],
+  }), /runtime rejected joint/);
+
+  equal(fake.bodies.length, 1);
+  equal(fake.joints.length, 0);
+  equal(fake.despawnedBodies.length, 1);
+  equal(fake.despawnedBodies[0].entityId, 1);
+});
+
+test("createPhysicsWorldFromSpec rolls back bodies and world anchors when joint spawn fails", () => {
+  const fake = new FakePhysicsEngine();
+  fake.failNextJointSpawn = true;
+  const engine = fake as unknown as FerrumEngine;
+
+  expectThrow(() => createPhysicsWorldFromSpec(engine, {
+    mode: "rigid",
+    bodies: {
+      crate: {
+        type: "dynamic",
+        collider: { shape: "box", size: [24, 24] },
+      },
+    },
+    joints: {
+      hinge: {
+        type: "distance",
+        bodyA: "world",
+        bodyB: "crate",
+        anchor: [5, 6],
+        restLength: 12,
+      },
+    },
+  }), /runtime rejected joint/);
+
+  equal(fake.bodies.length, 2);
+  equal(fake.joints.length, 0);
+  equal(fake.despawnedBodies.length, 2);
+  equal(fake.despawnedBodies[0].entityId, 2);
+  equal(fake.despawnedBodies[1].entityId, 1);
+});
+
+test("createPhysicsWorldFromSpec rolls back world anchors when resolved joint references are stale", () => {
+  const fake = new FakePhysicsEngine();
+  const engine = fake as unknown as FerrumEngine;
+  const spec = resolvePhysicsSpec({
+    mode: "rigid",
+    bodies: {
+      crate: {
+        type: "dynamic",
+        collider: { shape: "box", size: [24, 24] },
+      },
+    },
+    joints: {
+      hinge: {
+        type: "distance",
+        bodyA: "world",
+        bodyB: "crate",
+        anchor: [5, 6],
+        restLength: 12,
+      },
+    },
+  });
+  delete (spec.bodies as Record<string, ResolvedPhysicsSpec["bodies"][string]>).crate;
+
+  expectThrow(() => createPhysicsWorldFromSpec(engine, spec), /unknown body/);
+
+  equal(fake.bodies.length, 1);
+  equal(fake.joints.length, 0);
+  equal(fake.despawnedBodies.length, 1);
+  equal(fake.despawnedBodies[0].entityId, 1);
+});
+
+test("createPhysicsWorldFromSpec despawns a partially applied body when collider apply fails", () => {
+  const fake = new FakePhysicsEngine();
+  fake.rejectCompoundCollider = true;
+  const engine = fake as unknown as FerrumEngine;
+
+  expectThrow(() => createPhysicsWorldFromSpec(engine, {
+    mode: "rigid",
+    bodies: {
+      crate: {
+        type: "dynamic",
+        colliders: [
+          { shape: "box", size: [24, 24] },
+          { shape: "circle", radius: 4 },
+        ],
+      },
+    },
+  }), /runtime rejected compound collider/);
+
+  equal(fake.bodies.length, 1);
+  equal(fake.despawnedBodies.length, 1);
+  equal(fake.despawnedBodies[0].entityId, 1);
+});
+
+test("createPhysicsWorldFromSpec despawns a partially applied body when mass properties fail", () => {
+  const fake = new FakePhysicsEngine();
+  fake.rejectMassProperties = true;
+  const engine = fake as unknown as FerrumEngine;
+
+  expectThrow(() => createPhysicsWorldFromSpec(engine, {
+    mode: "rigid",
+    bodies: {
+      crate: {
+        type: "dynamic",
+        mass: 2,
+        inertia: 3,
+        collider: { shape: "box", size: [24, 24] },
+      },
+    },
+  }), /runtime rejected body mass properties/);
+
+  equal(fake.bodies.length, 1);
+  equal(fake.massProperties.length, 0);
+  equal(fake.despawnedBodies.length, 1);
+  equal(fake.despawnedBodies[0].entityId, 1);
+});
+
+test("createPhysicsWorldFromSpec despawns a partially applied body when collider material fails", () => {
+  const fake = new FakePhysicsEngine();
+  fake.rejectColliderMaterial = true;
+  const engine = fake as unknown as FerrumEngine;
+
+  expectThrow(() => createPhysicsWorldFromSpec(engine, {
+    mode: "rigid",
+    materials: {
+      sensor: { friction: 0.1, restitution: 0.2, density: 0.5 },
+    },
+    bodies: {
+      crate: {
+        type: "dynamic",
+        colliders: [
+          { shape: "box", size: [24, 24] },
+          { shape: "circle", radius: 4, material: "sensor" },
+        ],
+      },
+    },
+  }), /runtime rejected compound collider material/);
+
+  equal(fake.bodies.length, 1);
+  equal(fake.compoundColliders.length, 1);
+  equal(fake.compoundColliderMaterials.length, 0);
+  equal(fake.despawnedBodies.length, 1);
+  equal(fake.despawnedBodies[0].entityId, 1);
 });
 
 test("createPhysicsWorldFromSpec applies chain colliders as dedicated runtime colliders", () => {
@@ -452,4 +843,11 @@ function captureError(action: () => void): unknown {
     return error;
   }
   throw new Error("expected action to throw");
+}
+
+function expectThrow(action: () => void, pattern: RegExp): unknown {
+  const error = captureError(action);
+  const report = diagnosticReport(error);
+  ok(pattern.test(report.message));
+  return error;
 }

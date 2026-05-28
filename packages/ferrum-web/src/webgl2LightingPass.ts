@@ -3,11 +3,13 @@ import type {
   ResolvedLightingShadowOptions,
   ResolvedPointLight2D,
   TileOccluder2D,
-} from "./lighting";
+} from "./lightingTypes.js";
+import { distanceSquaredToTileOccluder } from "./lightingTileOccluders.js";
 import {
-  distanceToTileOccluder,
-  projectTileOccluderShadowTriangles,
-} from "./lighting";
+  createShadowProjectionScratch,
+  MAX_TILE_OCCLUDER_SHADOW_TRIANGLE_FLOATS,
+  writeTileOccluderShadowTrianglesInto,
+} from "./lightingShadows.js";
 
 export interface WebGL2LightingPassStats {
   drawCalls: number;
@@ -39,6 +41,8 @@ export class WebGL2LightingPass {
   private readonly shadowLightRadiusLocation: WebGLUniformLocation;
   private shadowVertexData = new Float32Array(12);
   private readonly activePointLightScratch: ResolvedPointLight2D[] = [];
+  private readonly shadowProjectionScratch = createShadowProjectionScratch();
+  private readonly shadowClipRect = { x: 0, y: 0, width: 0, height: 0 };
   private destroyed = false;
 
   constructor(private readonly gl: WebGL2RenderingContext) {
@@ -137,8 +141,8 @@ export class WebGL2LightingPass {
       drawCalls += this.drawPointLight(light);
     }
 
-    const shadowDrawCalls = this.drawShadows(scene.tileOccluders, activePointLights, scene.shadows, resolution);
-    drawCalls += shadowDrawCalls;
+    const shadowStats = this.drawShadows(scene.tileOccluders, activePointLights, scene.shadows, resolution);
+    drawCalls += shadowStats.drawCalls;
 
     let tileOccluderCount = 0;
     if (scene.debug.tileOccluders) {
@@ -156,8 +160,8 @@ export class WebGL2LightingPass {
       drawCalls,
       pointLightCount: activePointLights.length,
       tileOccluderCount,
-      shadowDrawCalls,
-      shadowCasterCount: shadowDrawCalls,
+      shadowDrawCalls: shadowStats.drawCalls,
+      shadowCasterCount: shadowStats.casterCount,
     };
   }
 
@@ -212,9 +216,9 @@ export class WebGL2LightingPass {
     lights: readonly ResolvedPointLight2D[],
     shadows: ResolvedLightingShadowOptions,
     resolution: [number, number],
-  ): number {
+  ): { drawCalls: number; casterCount: number } {
     if (!shadows.enabled || shadows.color[3] <= 0 || occluders.length === 0 || lights.length === 0) {
-      return 0;
+      return { drawCalls: 0, casterCount: 0 };
     }
 
     this.gl.useProgram(this.shadowProgram);
@@ -223,33 +227,49 @@ export class WebGL2LightingPass {
     this.gl.uniform2f(this.shadowResolutionLocation, resolution[0], resolution[1]);
     this.gl.uniform4f(this.shadowColorLocation, shadows.color[0], shadows.color[1], shadows.color[2], shadows.color[3]);
     this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+    this.shadowClipRect.x = 0;
+    this.shadowClipRect.y = 0;
+    this.shadowClipRect.width = resolution[0];
+    this.shadowClipRect.height = resolution[1];
+    this.ensureShadowVertexDataCapacity(occluders.length * MAX_TILE_OCCLUDER_SHADOW_TRIANGLE_FLOATS);
 
     let drawCalls = 0;
+    let casterCount = 0;
     for (const light of lights) {
       const maxDistance = shadows.maxDistance ?? light.radius;
+      const maxDistanceSquared = maxDistance * maxDistance;
       const projectionLength = Math.max(shadows.projectionLength, light.radius);
-      this.gl.uniform2f(this.shadowLightCenterLocation, light.x, light.y);
-      this.gl.uniform1f(this.shadowLightRadiusLocation, light.radius);
+      let shadowFloatCount = 0;
       for (const occluder of occluders) {
-        if (distanceToTileOccluder(light, occluder) > maxDistance) {
+        if (distanceSquaredToTileOccluder(light, occluder) > maxDistanceSquared) {
           continue;
         }
 
-        const shadowQuad = projectTileOccluderShadowTriangles(occluder, light, projectionLength, {
-          clipRect: { x: 0, y: 0, width: resolution[0], height: resolution[1] },
-        });
-        if (!shadowQuad) {
+        const written = writeTileOccluderShadowTrianglesInto(
+          this.shadowVertexData,
+          shadowFloatCount,
+          occluder,
+          light,
+          projectionLength,
+          this.shadowProjectionScratch,
+          this.shadowClipRect,
+        );
+        if (written === 0) {
           continue;
         }
+        shadowFloatCount += written;
+        casterCount += 1;
+      }
 
-        this.ensureShadowVertexDataCapacity(shadowQuad.length);
-        this.shadowVertexData.set(shadowQuad);
-        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, this.shadowVertexData.subarray(0, shadowQuad.length));
-        this.gl.drawArrays(this.gl.TRIANGLES, 0, shadowQuad.length / 2);
+      if (shadowFloatCount > 0) {
+        this.gl.uniform2f(this.shadowLightCenterLocation, light.x, light.y);
+        this.gl.uniform1f(this.shadowLightRadiusLocation, light.radius);
+        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, this.shadowVertexData, 0, shadowFloatCount);
+        this.gl.drawArrays(this.gl.TRIANGLES, 0, shadowFloatCount / 2);
         drawCalls += 1;
       }
     }
-    return drawCalls;
+    return { drawCalls, casterCount };
   }
 
   private ensureShadowVertexDataCapacity(floatCount: number): void {

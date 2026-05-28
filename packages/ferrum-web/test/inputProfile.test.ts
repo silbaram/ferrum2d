@@ -84,6 +84,22 @@ test("resolveInputActionState rejects unknown axis action references", () => {
   throw new Error("expected profile validation to fail");
 });
 
+test("resolveInputActionState rejects inherited axis action references", () => {
+  const actions = Object.create({ toString: [{ control: "space" }] }) as InputActionProfile["actions"];
+  actions.moveLeft = [{ control: "a" }];
+
+  try {
+    resolveInputActionState(input(), {
+      actions,
+      axes: { moveX: { negative: "moveLeft", positive: "toString" } },
+    });
+  } catch (error) {
+    equal(error instanceof Error ? error.message : String(error), "input.profile.axes.moveX.positive references unknown action 'toString'.");
+    return;
+  }
+  throw new Error("expected inherited action validation to fail");
+});
+
 function input(overrides: Partial<InputSnapshot> = {}): InputSnapshot {
   return {
     w: false,

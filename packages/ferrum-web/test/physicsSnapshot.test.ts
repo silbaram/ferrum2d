@@ -24,12 +24,14 @@ import {
   hashPhysicsWorldSnapshot,
   PHYSICS_REPLAY_INPUT_STREAM_FORMAT,
   PHYSICS_REPLAY_INPUT_STREAM_VERSION,
+  PHYSICS_WORLD_SNAPSHOT_FORMAT,
   PHYSICS_WORLD_SNAPSHOT_VERSION,
   restorePhysicsWorldSnapshot,
   runPhysicsReplayInputStream,
   verifyPhysicsReplayInputStreamRollback,
   verifyPhysicsReplayRollback,
 } from "../src/physicsSnapshot.js";
+import type { PhysicsWorldSnapshot } from "../src/physicsSnapshot.js";
 
 class FakeSnapshotEngine {
   bulkCaptureCount = 0;
@@ -437,6 +439,45 @@ test("physics world snapshot captures versioned state and restores via Physics S
   equal(fake.bulkRestoreCount, 1);
 });
 
+test("physics world snapshot rejects malformed public JSON before restore", () => {
+  const fake = new FakeSnapshotEngine();
+  const engine = fake as unknown as FerrumEngine;
+  const world = createPhysicsWorldFromSpec(engine, {
+    mode: "rigid",
+    solver: { stepSeconds: 0.25 },
+    bodies: {
+      crate: {
+        type: "dynamic",
+        collider: { shape: "box", size: [20, 20] },
+        velocity: [4, 0],
+      },
+    },
+  });
+  const snapshot = capturePhysicsWorldSnapshot(engine, world, { frame: 1 });
+  const mismatchedCount = jsonClone(snapshot);
+  mismatchedCount.bodyCount += 1;
+  throwsDiagnostic(
+    () => restorePhysicsWorldSnapshot(engine, mismatchedCount, { replace: world }),
+    /bodyCount/,
+  );
+
+  const staleHash = jsonClone(snapshot);
+  staleHash.bodies.crate.state.x += 1;
+  throwsDiagnostic(
+    () => restorePhysicsWorldSnapshot(engine, staleHash, { replace: world }),
+    /replayHash/,
+  );
+
+  const missingBody = jsonClone(snapshot);
+  delete missingBody.bodies.crate;
+  missingBody.bodyCount = 0;
+  missingBody.replayHash = hashPhysicsWorldSnapshot(missingBody as PhysicsWorldSnapshot);
+  throwsDiagnostic(
+    () => restorePhysicsWorldSnapshot(engine, missingBody, { replace: world }),
+    /spec\.bodies\.crate/,
+  );
+});
+
 test("physics replay rollback compares deterministic snapshot hashes", () => {
   const fake = new FakeSnapshotEngine();
   const engine = fake as unknown as FerrumEngine;
@@ -517,6 +558,52 @@ test("physics replay input stream records interval snapshots and rollback hashes
   ok(rollback.passed);
   equal(rollback.expectedHash, rollback.actualHash);
   equal(rollback.expectedRun.finalSnapshot.bodies.mover.state.x, 4.5);
+});
+
+test("physics replay input stream rejects malformed public JSON", () => {
+  const fake = new FakeSnapshotEngine();
+  const engine = fake as unknown as FerrumEngine;
+  const world = createPhysicsWorldFromSpec(engine, {
+    mode: "rigid",
+    solver: { stepSeconds: 0.5 },
+    bodies: {
+      mover: {
+        type: "dynamic",
+        collider: { shape: "circle", radius: 5 },
+        velocity: [1, 0],
+      },
+    },
+  });
+  const baseStream = {
+    format: PHYSICS_REPLAY_INPUT_STREAM_FORMAT,
+    version: PHYSICS_REPLAY_INPUT_STREAM_VERSION,
+    frameCount: 1,
+  };
+
+  throwsDiagnostic(
+    () =>
+      runPhysicsReplayInputStream(engine, world, {
+        ...baseStream,
+        events: {},
+      } as unknown as ReturnType<typeof createPhysicsReplayInputStream>),
+    /events/,
+  );
+  throwsDiagnostic(
+    () =>
+      runPhysicsReplayInputStream(engine, world, {
+        ...baseStream,
+        events: [{ frame: 0, body: 1, type: "setPosition", x: 0, y: 0 }],
+      } as unknown as ReturnType<typeof createPhysicsReplayInputStream>),
+    /body/,
+  );
+  throwsDiagnostic(
+    () =>
+      runPhysicsReplayInputStream(engine, world, {
+        ...baseStream,
+        events: [{ frame: 0, body: "mover", type: "setEnabled", enabled: "yes" }],
+      } as unknown as ReturnType<typeof createPhysicsReplayInputStream>),
+    /enabled/,
+  );
 });
 
 test("physics world snapshot hashes and restores secondary collider material state", () => {
@@ -634,4 +721,18 @@ function cloneBody(body: PhysicsEntitySnapshot | undefined): PhysicsEntitySnapsh
         ...body,
         colliderMaterial: { ...body.colliderMaterial },
       };
+}
+
+function jsonClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function throwsDiagnostic(run: () => void, pattern: RegExp): void {
+  try {
+    run();
+  } catch (error) {
+    ok(pattern.test(String(error)), `expected ${String(error)} to match ${pattern}`);
+    return;
+  }
+  ok(false, `expected error matching ${pattern}`);
 }

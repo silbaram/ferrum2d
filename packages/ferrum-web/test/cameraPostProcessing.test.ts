@@ -54,6 +54,14 @@ test("camera rig validation reports path context", () => {
   );
 });
 
+test("resolveCameraRigSpec does not share mutable default dead-zone objects", () => {
+  const first = resolveCameraRigSpec();
+  first.deadZone.width = 99;
+
+  const second = resolveCameraRigSpec();
+  equal(second.deadZone.width, 0);
+});
+
 test("ScreenFadeTransition exposes fade passes while active", () => {
   const transition = new ScreenFadeTransition({
     durationSeconds: 2,
@@ -105,6 +113,13 @@ test("resolvePostProcessPasses resolves configured bloom crt vignette and glitch
   if (passes[2]?.kind === "vignette") equal(passes[2].color[3], 0.8);
 });
 
+test("resolvePostProcessPasses reports diagnostics for invalid shorthand pass configs", () => {
+  expectThrows(
+    () => resolvePostProcessPasses({ fade: null } as unknown as Parameters<typeof resolvePostProcessPasses>[0]),
+    /Invalid camera\/post-processing config: kind=camera-postprocessing path='postProcess\[0\]'/,
+  );
+});
+
 test("resolvePostProcessPasses accepts ordered pass arrays and disabled configs", () => {
   equal(resolvePostProcessPasses({ enabled: false, bloom: { intensity: 1 } }).length, 0);
   const passes = resolvePostProcessPasses([
@@ -115,6 +130,17 @@ test("resolvePostProcessPasses accepts ordered pass arrays and disabled configs"
   equal(passes.length, 2);
   equal(passes[0]?.kind, "crt");
   equal(passes[1]?.kind, "vignette");
+});
+
+test("resolvePostProcessPasses ignores inherited config marker keys", () => {
+  const input = Object.create({ enabled: false }) as { opacity: number };
+  input.opacity = 0.25;
+
+  const passes = resolvePostProcessPasses(input);
+
+  equal(passes.length, 1);
+  equal(passes[0]?.kind, "fade");
+  if (passes[0]?.kind === "fade") equal(passes[0].color[3], 0.25);
 });
 
 function expectThrows(callback: () => void, pattern: RegExp): void {

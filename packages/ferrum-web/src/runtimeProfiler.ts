@@ -122,21 +122,29 @@ export class RuntimeProfiler {
       loaded: nonNegativeInteger(progress.loaded, "asset loaded"),
       total: nonNegativeInteger(progress.total, "asset total"),
       progress: progress.total <= 0 ? 1 : clamp(progress.loaded / progress.total, 0, 1),
-      ...(progress.elapsedMs === undefined ? {} : { elapsedMs: finiteNumber(progress.elapsedMs, "asset elapsedMs") }),
-      ...(progress.kind === undefined ? {} : { kind: progress.kind }),
-      ...(progress.name === undefined ? {} : { name: progress.name }),
-      ...(progress.url === undefined ? {} : { url: progress.url }),
     };
+    if (progress.elapsedMs !== undefined) {
+      sample.elapsedMs = finiteNumber(progress.elapsedMs, "asset elapsedMs");
+    }
+    if (progress.kind !== undefined) {
+      sample.kind = progress.kind;
+    }
+    if (progress.name !== undefined) {
+      sample.name = progress.name;
+    }
+    if (progress.url !== undefined) {
+      sample.url = progress.url;
+    }
     pushBounded(this.assets, sample, this.maxAssetSamples);
     return sample;
   }
 
   snapshot(): RuntimeProfilerSnapshot {
-    const summary = summarizeRuntimeProfiler(this.frames, this.assets);
-    return {
-      ...summary,
-      ...(this.budget === undefined ? {} : { budgetReport: evaluateRuntimeProfilerBudget(summary, this.budget) }),
-    };
+    const snapshot = summarizeRuntimeProfiler(this.frames, this.assets);
+    if (this.budget !== undefined) {
+      snapshot.budgetReport = evaluateRuntimeProfilerBudget(snapshot, this.budget);
+    }
+    return snapshot;
   }
 
   reset(): void {
@@ -148,7 +156,7 @@ export class RuntimeProfiler {
 export function runtimeDiagnosticsFrameSample(
   metrics: DebugOverlayMetrics | RuntimeDiagnosticsFrameSample,
 ): RuntimeDiagnosticsFrameSample {
-  return {
+  const sample: RuntimeDiagnosticsFrameSample = {
     fps: finiteNumber(metrics.fps, "fps"),
     frameTimeMs: finiteNumber(metrics.frameTimeMs, "frameTimeMs"),
     rustUpdateTimeMs: finiteNumber(metrics.rustUpdateTimeMs, "rustUpdateTimeMs"),
@@ -157,241 +165,323 @@ export function runtimeDiagnosticsFrameSample(
     spriteCount: nonNegativeInteger(metrics.spriteCount, "spriteCount"),
     drawCalls: nonNegativeInteger(metrics.drawCalls, "drawCalls"),
     batchCount: nonNegativeInteger(metrics.batchCount, "batchCount"),
-    ...(metrics.renderCommandCount === undefined
-      ? {}
-      : { renderCommandCount: nonNegativeInteger(metrics.renderCommandCount, "renderCommandCount") }),
-    ...(metrics.textureBindCount === undefined
-      ? {}
-      : { textureBindCount: nonNegativeInteger(metrics.textureBindCount, "textureBindCount") }),
-    ...(metrics.textureSwitchCount === undefined
-      ? {}
-      : { textureSwitchCount: nonNegativeInteger(metrics.textureSwitchCount, "textureSwitchCount") }),
-    ...(metrics.audioEventsPerSecond === undefined
-      ? {}
-      : { audioEventsPerSecond: finiteNumber(metrics.audioEventsPerSecond, "audioEventsPerSecond") }),
-    ...(metrics.physicsFixedSteps === undefined
-      ? {}
-      : { physicsFixedSteps: nonNegativeInteger(metrics.physicsFixedSteps, "physicsFixedSteps") }),
-    ...(metrics.physicsKinematicHits === undefined
-      ? {}
-      : { physicsKinematicHits: nonNegativeInteger(metrics.physicsKinematicHits, "physicsKinematicHits") }),
-    ...(metrics.physicsTileCandidateChecks === undefined
-      ? {}
-      : {
-          physicsTileCandidateChecks: nonNegativeInteger(
-            metrics.physicsTileCandidateChecks,
-            "physicsTileCandidateChecks",
-          ),
-        }),
-    ...(metrics.collisionPairCount === undefined
-      ? {}
-      : { collisionPairCount: nonNegativeInteger(metrics.collisionPairCount, "collisionPairCount") }),
-    ...(metrics.collisionEventCount === undefined
-      ? {}
-      : { collisionEventCount: nonNegativeInteger(metrics.collisionEventCount, "collisionEventCount") }),
-    ...(metrics.physicsDebugLineCount === undefined
-      ? {}
-      : { physicsDebugLineCount: nonNegativeInteger(metrics.physicsDebugLineCount, "physicsDebugLineCount") }),
-    ...(metrics.physicsCcdChecks === undefined
-      ? {}
-      : { physicsCcdChecks: nonNegativeInteger(metrics.physicsCcdChecks, "physicsCcdChecks") }),
-    ...(metrics.physicsCcdHits === undefined
-      ? {}
-      : { physicsCcdHits: nonNegativeInteger(metrics.physicsCcdHits, "physicsCcdHits") }),
-    ...(metrics.physicsSleepingBodies === undefined
-      ? {}
-      : { physicsSleepingBodies: nonNegativeInteger(metrics.physicsSleepingBodies, "physicsSleepingBodies") }),
-    ...(metrics.physicsBrokenJoints === undefined
-      ? {}
-      : { physicsBrokenJoints: nonNegativeInteger(metrics.physicsBrokenJoints, "physicsBrokenJoints") }),
   };
+  if (metrics.renderCommandCount !== undefined) {
+    sample.renderCommandCount = nonNegativeInteger(metrics.renderCommandCount, "renderCommandCount");
+  }
+  if (metrics.textureBindCount !== undefined) {
+    sample.textureBindCount = nonNegativeInteger(metrics.textureBindCount, "textureBindCount");
+  }
+  if (metrics.textureSwitchCount !== undefined) {
+    sample.textureSwitchCount = nonNegativeInteger(metrics.textureSwitchCount, "textureSwitchCount");
+  }
+  if (metrics.audioEventsPerSecond !== undefined) {
+    sample.audioEventsPerSecond = finiteNumber(metrics.audioEventsPerSecond, "audioEventsPerSecond");
+  }
+  if (metrics.physicsFixedSteps !== undefined) {
+    sample.physicsFixedSteps = nonNegativeInteger(metrics.physicsFixedSteps, "physicsFixedSteps");
+  }
+  if (metrics.physicsKinematicHits !== undefined) {
+    sample.physicsKinematicHits = nonNegativeInteger(metrics.physicsKinematicHits, "physicsKinematicHits");
+  }
+  if (metrics.physicsTileCandidateChecks !== undefined) {
+    sample.physicsTileCandidateChecks = nonNegativeInteger(
+      metrics.physicsTileCandidateChecks,
+      "physicsTileCandidateChecks",
+    );
+  }
+  if (metrics.collisionPairCount !== undefined) {
+    sample.collisionPairCount = nonNegativeInteger(metrics.collisionPairCount, "collisionPairCount");
+  }
+  if (metrics.collisionEventCount !== undefined) {
+    sample.collisionEventCount = nonNegativeInteger(metrics.collisionEventCount, "collisionEventCount");
+  }
+  if (metrics.physicsDebugLineCount !== undefined) {
+    sample.physicsDebugLineCount = nonNegativeInteger(metrics.physicsDebugLineCount, "physicsDebugLineCount");
+  }
+  if (metrics.physicsCcdChecks !== undefined) {
+    sample.physicsCcdChecks = nonNegativeInteger(metrics.physicsCcdChecks, "physicsCcdChecks");
+  }
+  if (metrics.physicsCcdHits !== undefined) {
+    sample.physicsCcdHits = nonNegativeInteger(metrics.physicsCcdHits, "physicsCcdHits");
+  }
+  if (metrics.physicsSleepingBodies !== undefined) {
+    sample.physicsSleepingBodies = nonNegativeInteger(metrics.physicsSleepingBodies, "physicsSleepingBodies");
+  }
+  if (metrics.physicsBrokenJoints !== undefined) {
+    sample.physicsBrokenJoints = nonNegativeInteger(metrics.physicsBrokenJoints, "physicsBrokenJoints");
+  }
+  return sample;
 }
 
 export function evaluateRuntimeDiagnosticsSample(
   sample: RuntimeDiagnosticsFrameSample,
   budget: RuntimeDiagnosticsBudget,
 ): RuntimeDiagnosticsReport {
-  return budgetReport([
-    violation("maxFrameTimeMs", "frame time", sample.frameTimeMs, budget.maxFrameTimeMs, "ms"),
-    violation("maxRustUpdateTimeMs", "rust update", sample.rustUpdateTimeMs, budget.maxRustUpdateTimeMs, "ms"),
-    violation("maxRenderTimeMs", "render", sample.renderTimeMs, budget.maxRenderTimeMs, "ms"),
-    violation("maxDrawCalls", "draw calls", sample.drawCalls, budget.maxDrawCalls, "count"),
-    violation(
+  const violations: RuntimeDiagnosticsViolation[] = [];
+  addViolation(violations, "maxFrameTimeMs", "frame time", sample.frameTimeMs, budget.maxFrameTimeMs, "ms");
+  addViolation(
+    violations,
+    "maxRustUpdateTimeMs",
+    "rust update",
+    sample.rustUpdateTimeMs,
+    budget.maxRustUpdateTimeMs,
+    "ms",
+  );
+  addViolation(violations, "maxRenderTimeMs", "render", sample.renderTimeMs, budget.maxRenderTimeMs, "ms");
+  addViolation(violations, "maxDrawCalls", "draw calls", sample.drawCalls, budget.maxDrawCalls, "count");
+  addViolation(
+    violations,
       "maxRenderCommandCount",
       "render commands",
       sample.renderCommandCount,
       budget.maxRenderCommandCount,
       "count",
-    ),
-    violation(
-      "maxTextureSwitchCount",
-      "texture switches",
-      sample.textureSwitchCount,
-      budget.maxTextureSwitchCount,
-      "count",
-    ),
-    violation(
-      "maxAudioEventsPerSecond",
-      "audio events",
-      sample.audioEventsPerSecond,
-      budget.maxAudioEventsPerSecond,
-      "events/s",
-    ),
-    violation(
-      "maxPhysicsFixedSteps",
-      "fixed steps",
-      sample.physicsFixedSteps,
-      budget.maxPhysicsFixedSteps,
-      "count",
-    ),
-    violation(
-      "maxPhysicsTileCandidateChecks",
-      "tile checks",
-      sample.physicsTileCandidateChecks,
-      budget.maxPhysicsTileCandidateChecks,
-      "count",
-    ),
-    violation(
-      "maxCollisionPairCount",
-      "collision pairs",
-      sample.collisionPairCount,
-      budget.maxCollisionPairCount,
-      "count",
-    ),
-  ]);
+  );
+  addViolation(
+    violations,
+    "maxTextureSwitchCount",
+    "texture switches",
+    sample.textureSwitchCount,
+    budget.maxTextureSwitchCount,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxAudioEventsPerSecond",
+    "audio events",
+    sample.audioEventsPerSecond,
+    budget.maxAudioEventsPerSecond,
+    "events/s",
+  );
+  addViolation(
+    violations,
+    "maxPhysicsFixedSteps",
+    "fixed steps",
+    sample.physicsFixedSteps,
+    budget.maxPhysicsFixedSteps,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxPhysicsTileCandidateChecks",
+    "tile checks",
+    sample.physicsTileCandidateChecks,
+    budget.maxPhysicsTileCandidateChecks,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxCollisionPairCount",
+    "collision pairs",
+    sample.collisionPairCount,
+    budget.maxCollisionPairCount,
+    "count",
+  );
+  return budgetReport(violations);
 }
 
 export function evaluateRuntimeProfilerBudget(
   snapshot: RuntimeProfilerSnapshot,
   budget: RuntimeDiagnosticsBudget,
 ): RuntimeDiagnosticsReport {
-  return budgetReport([
-    violation("maxFrameTimeMs", "frame time", snapshot.maxFrameTimeMs, budget.maxFrameTimeMs, "ms"),
-    violation("maxRustUpdateTimeMs", "rust update", snapshot.maxRustUpdateTimeMs, budget.maxRustUpdateTimeMs, "ms"),
-    violation("maxRenderTimeMs", "render", snapshot.maxRenderTimeMs, budget.maxRenderTimeMs, "ms"),
-    violation("maxDrawCalls", "draw calls", snapshot.maxDrawCalls, budget.maxDrawCalls, "count"),
-    violation(
+  const violations: RuntimeDiagnosticsViolation[] = [];
+  addViolation(violations, "maxFrameTimeMs", "frame time", snapshot.maxFrameTimeMs, budget.maxFrameTimeMs, "ms");
+  addViolation(
+    violations,
+    "maxRustUpdateTimeMs",
+    "rust update",
+    snapshot.maxRustUpdateTimeMs,
+    budget.maxRustUpdateTimeMs,
+    "ms",
+  );
+  addViolation(violations, "maxRenderTimeMs", "render", snapshot.maxRenderTimeMs, budget.maxRenderTimeMs, "ms");
+  addViolation(violations, "maxDrawCalls", "draw calls", snapshot.maxDrawCalls, budget.maxDrawCalls, "count");
+  addViolation(
+    violations,
       "maxRenderCommandCount",
       "render commands",
       snapshot.maxRenderCommandCount,
       budget.maxRenderCommandCount,
       "count",
-    ),
-    violation(
-      "maxTextureSwitchCount",
-      "texture switches",
-      snapshot.maxTextureSwitchCount,
-      budget.maxTextureSwitchCount,
-      "count",
-    ),
-    violation(
-      "maxAudioEventsPerSecond",
-      "audio events",
-      snapshot.maxAudioEventsPerSecond,
-      budget.maxAudioEventsPerSecond,
-      "events/s",
-    ),
-    violation(
-      "maxPhysicsFixedSteps",
-      "fixed steps",
-      snapshot.maxPhysicsFixedSteps,
-      budget.maxPhysicsFixedSteps,
-      "count",
-    ),
-    violation(
-      "maxPhysicsTileCandidateChecks",
-      "tile checks",
-      snapshot.maxPhysicsTileCandidateChecks,
-      budget.maxPhysicsTileCandidateChecks,
-      "count",
-    ),
-    violation(
-      "maxCollisionPairCount",
-      "collision pairs",
-      snapshot.maxCollisionPairCount,
-      budget.maxCollisionPairCount,
-      "count",
-    ),
-    violation(
-      "maxAssetLoadElapsedMs",
-      "asset load",
-      snapshot.maxAssetLoadElapsedMs,
-      budget.maxAssetLoadElapsedMs,
-      "ms",
-    ),
-  ]);
+  );
+  addViolation(
+    violations,
+    "maxTextureSwitchCount",
+    "texture switches",
+    snapshot.maxTextureSwitchCount,
+    budget.maxTextureSwitchCount,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxAudioEventsPerSecond",
+    "audio events",
+    snapshot.maxAudioEventsPerSecond,
+    budget.maxAudioEventsPerSecond,
+    "events/s",
+  );
+  addViolation(
+    violations,
+    "maxPhysicsFixedSteps",
+    "fixed steps",
+    snapshot.maxPhysicsFixedSteps,
+    budget.maxPhysicsFixedSteps,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxPhysicsTileCandidateChecks",
+    "tile checks",
+    snapshot.maxPhysicsTileCandidateChecks,
+    budget.maxPhysicsTileCandidateChecks,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxCollisionPairCount",
+    "collision pairs",
+    snapshot.maxCollisionPairCount,
+    budget.maxCollisionPairCount,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxAssetLoadElapsedMs",
+    "asset load",
+    snapshot.maxAssetLoadElapsedMs,
+    budget.maxAssetLoadElapsedMs,
+    "ms",
+  );
+  return budgetReport(violations);
 }
 
 function summarizeRuntimeProfiler(
   frames: readonly RuntimeDiagnosticsFrameSample[],
   assets: readonly RuntimeAssetLoadSample[],
-): Omit<RuntimeProfilerSnapshot, "budgetReport"> {
-  return {
+): RuntimeProfilerSnapshot {
+  let totalFrameTimeMs = 0;
+  let totalRustUpdateTimeMs = 0;
+  let totalRenderTimeMs = 0;
+  let maxFrameTimeMs = 0;
+  let maxRustUpdateTimeMs = 0;
+  let maxRenderTimeMs = 0;
+  let maxDrawCalls = 0;
+  let maxRenderCommandCount = 0;
+  let maxTextureSwitchCount = 0;
+  let maxAudioEventsPerSecond = 0;
+  let maxPhysicsFixedSteps = 0;
+  let maxPhysicsTileCandidateChecks = 0;
+  let maxCollisionPairCount = 0;
+
+  for (let i = 0; i < frames.length; i += 1) {
+    const sample = frames[i];
+    totalFrameTimeMs += sample.frameTimeMs;
+    totalRustUpdateTimeMs += sample.rustUpdateTimeMs;
+    totalRenderTimeMs += sample.renderTimeMs;
+
+    const renderCommandCount = sample.renderCommandCount ?? 0;
+    const textureSwitchCount = sample.textureSwitchCount ?? 0;
+    const audioEventsPerSecond = sample.audioEventsPerSecond ?? 0;
+    const physicsFixedSteps = sample.physicsFixedSteps ?? 0;
+    const physicsTileCandidateChecks = sample.physicsTileCandidateChecks ?? 0;
+    const collisionPairCount = sample.collisionPairCount ?? 0;
+
+    if (i === 0) {
+      maxFrameTimeMs = sample.frameTimeMs;
+      maxRustUpdateTimeMs = sample.rustUpdateTimeMs;
+      maxRenderTimeMs = sample.renderTimeMs;
+      maxDrawCalls = sample.drawCalls;
+      maxRenderCommandCount = renderCommandCount;
+      maxTextureSwitchCount = textureSwitchCount;
+      maxAudioEventsPerSecond = audioEventsPerSecond;
+      maxPhysicsFixedSteps = physicsFixedSteps;
+      maxPhysicsTileCandidateChecks = physicsTileCandidateChecks;
+      maxCollisionPairCount = collisionPairCount;
+      continue;
+    }
+
+    maxFrameTimeMs = Math.max(maxFrameTimeMs, sample.frameTimeMs);
+    maxRustUpdateTimeMs = Math.max(maxRustUpdateTimeMs, sample.rustUpdateTimeMs);
+    maxRenderTimeMs = Math.max(maxRenderTimeMs, sample.renderTimeMs);
+    maxDrawCalls = Math.max(maxDrawCalls, sample.drawCalls);
+    maxRenderCommandCount = Math.max(maxRenderCommandCount, renderCommandCount);
+    maxTextureSwitchCount = Math.max(maxTextureSwitchCount, textureSwitchCount);
+    maxAudioEventsPerSecond = Math.max(maxAudioEventsPerSecond, audioEventsPerSecond);
+    maxPhysicsFixedSteps = Math.max(maxPhysicsFixedSteps, physicsFixedSteps);
+    maxPhysicsTileCandidateChecks = Math.max(maxPhysicsTileCandidateChecks, physicsTileCandidateChecks);
+    maxCollisionPairCount = Math.max(maxCollisionPairCount, collisionPairCount);
+  }
+
+  let maxAssetLoadElapsedMs = 0;
+  for (let i = 0; i < assets.length; i += 1) {
+    const elapsedMs = assets[i].elapsedMs ?? 0;
+    if (i === 0 || elapsedMs > maxAssetLoadElapsedMs) {
+      maxAssetLoadElapsedMs = elapsedMs;
+    }
+  }
+
+  const snapshot = {
     frameSampleCount: frames.length,
     assetSampleCount: assets.length,
-    ...(frames.length === 0 ? {} : { latestFrame: frames[frames.length - 1] }),
-    ...(assets.length === 0 ? {} : { latestAsset: assets[assets.length - 1] }),
-    averageFrameTimeMs: average(frames.map((sample) => sample.frameTimeMs)),
-    maxFrameTimeMs: max(frames.map((sample) => sample.frameTimeMs)),
-    averageRustUpdateTimeMs: average(frames.map((sample) => sample.rustUpdateTimeMs)),
-    maxRustUpdateTimeMs: max(frames.map((sample) => sample.rustUpdateTimeMs)),
-    averageRenderTimeMs: average(frames.map((sample) => sample.renderTimeMs)),
-    maxRenderTimeMs: max(frames.map((sample) => sample.renderTimeMs)),
-    maxDrawCalls: max(frames.map((sample) => sample.drawCalls)),
-    maxRenderCommandCount: max(frames.map((sample) => sample.renderCommandCount ?? 0)),
-    maxTextureSwitchCount: max(frames.map((sample) => sample.textureSwitchCount ?? 0)),
-    maxAudioEventsPerSecond: max(frames.map((sample) => sample.audioEventsPerSecond ?? 0)),
-    maxPhysicsFixedSteps: max(frames.map((sample) => sample.physicsFixedSteps ?? 0)),
-    maxPhysicsTileCandidateChecks: max(frames.map((sample) => sample.physicsTileCandidateChecks ?? 0)),
-    maxCollisionPairCount: max(frames.map((sample) => sample.collisionPairCount ?? 0)),
-    maxAssetLoadElapsedMs: max(assets.map((sample) => sample.elapsedMs ?? 0)),
-  };
+  } as RuntimeProfilerSnapshot;
+  if (frames.length > 0) {
+    snapshot.latestFrame = frames[frames.length - 1];
+  }
+  if (assets.length > 0) {
+    snapshot.latestAsset = assets[assets.length - 1];
+  }
+  snapshot.averageFrameTimeMs = frames.length === 0 ? 0 : totalFrameTimeMs / frames.length;
+  snapshot.maxFrameTimeMs = maxFrameTimeMs;
+  snapshot.averageRustUpdateTimeMs = frames.length === 0 ? 0 : totalRustUpdateTimeMs / frames.length;
+  snapshot.maxRustUpdateTimeMs = maxRustUpdateTimeMs;
+  snapshot.averageRenderTimeMs = frames.length === 0 ? 0 : totalRenderTimeMs / frames.length;
+  snapshot.maxRenderTimeMs = maxRenderTimeMs;
+  snapshot.maxDrawCalls = maxDrawCalls;
+  snapshot.maxRenderCommandCount = maxRenderCommandCount;
+  snapshot.maxTextureSwitchCount = maxTextureSwitchCount;
+  snapshot.maxAudioEventsPerSecond = maxAudioEventsPerSecond;
+  snapshot.maxPhysicsFixedSteps = maxPhysicsFixedSteps;
+  snapshot.maxPhysicsTileCandidateChecks = maxPhysicsTileCandidateChecks;
+  snapshot.maxCollisionPairCount = maxCollisionPairCount;
+  snapshot.maxAssetLoadElapsedMs = maxAssetLoadElapsedMs;
+  return snapshot;
 }
 
-function budgetReport(entries: Array<RuntimeDiagnosticsViolation | undefined>): RuntimeDiagnosticsReport {
-  const violations = entries.filter((entry): entry is RuntimeDiagnosticsViolation => entry !== undefined);
+function budgetReport(violations: RuntimeDiagnosticsViolation[]): RuntimeDiagnosticsReport {
   return {
     passed: violations.length === 0,
     violations,
   };
 }
 
-function violation(
+function addViolation(
+  violations: RuntimeDiagnosticsViolation[],
   id: keyof RuntimeDiagnosticsBudget,
   label: string,
   actual: number | undefined,
   limit: number | undefined,
   unit: RuntimeDiagnosticsUnit,
-): RuntimeDiagnosticsViolation | undefined {
+): void {
   if (actual === undefined || limit === undefined || actual <= limit) {
-    return undefined;
+    return;
   }
-  return {
+  violations.push({
     id,
     label,
     actual,
     limit,
     unit,
-  };
+  });
 }
 
 function pushBounded<T>(samples: T[], sample: T, maxSamples: number): void {
   samples.push(sample);
   const overflow = samples.length - maxSamples;
   if (overflow > 0) {
-    samples.splice(0, overflow);
+    samples.copyWithin(0, overflow);
+    samples.length = maxSamples;
   }
-}
-
-function average(values: readonly number[]): number {
-  if (values.length === 0) {
-    return 0;
-  }
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function max(values: readonly number[]): number {
-  return values.length === 0 ? 0 : Math.max(...values);
 }
 
 function clamp(value: number, min: number, maxValue: number): number {

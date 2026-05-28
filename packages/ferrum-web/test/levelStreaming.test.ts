@@ -70,7 +70,10 @@ test("resolveLevelStreamingPlan selects active, preload, retain, load, and unloa
   });
 
   deepEqual(plan.activeChunkIds, ["0,0"]);
+  deepEqual(plan.preloadChunks.map((chunk) => chunk.id), ["0,0", "1,0", "0,1", "1,1"]);
   deepEqual(plan.preloadChunkIds, ["0,0", "0,1", "1,0", "1,1"]);
+  deepEqual(plan.retainChunks.map((chunk) => chunk.id), ["0,0"]);
+  deepEqual(plan.retainChunkIds, ["0,0"]);
   deepEqual(plan.loadChunkIds, ["0,0", "1,0", "0,1"]);
   deepEqual(plan.unloadChunkIds, ["1,1"]);
   equal(plan.assetManifest.json?.["0,0:tilemap"], "/chunks/0-0.json");
@@ -91,6 +94,63 @@ test("LevelChunkStreamer tracks loaded chunks and reuses the streaming policy", 
   deepEqual(secondPlan.activeChunkIds, ["1,1"]);
   deepEqual(secondPlan.loadChunkIds, ["1,1"]);
   deepEqual(secondPlan.unloadChunkIds, ["0,0"]);
+});
+
+test("resolveLevelStreamingPlan caps retained chunks before unload decisions", () => {
+  const manifest = resolveLevelChunkManifest(manifestSpec);
+  const plan = resolveLevelStreamingPlan(manifest, {
+    x: 0,
+    y: 0,
+    width: 16,
+    height: 16,
+  }, {
+    loadedChunkIds: ["0,0", "1,0", "0,1", "1,1"],
+    assetLifetime: {
+      preloadMarginChunks: 0,
+      retainMarginChunks: 1,
+      maxRetainedChunks: 2,
+    },
+  });
+
+  deepEqual(plan.retainChunkIds, ["0,0", "1,0"]);
+  deepEqual(plan.retainChunks.map((chunk) => chunk.id), ["0,0", "1,0"]);
+  deepEqual(plan.unloadChunkIds, ["0,1", "1,1"]);
+});
+
+test("resolveLevelStreamingPlan preserves capped retain membership and string-sorted id summaries", () => {
+  const manifest = resolveLevelChunkManifest({
+    tileWidth: 16,
+    tileHeight: 16,
+    chunkColumns: 4,
+    chunkRows: 4,
+    chunks: [
+      { id: "10,0", chunkX: 10, chunkY: 0 },
+      { id: "0,0", chunkX: 0, chunkY: 0 },
+      { id: "2,0", chunkX: 2, chunkY: 0 },
+      { id: "1,0", chunkX: 1, chunkY: 0 },
+    ],
+  });
+
+  const plan = resolveLevelStreamingPlan(manifest, {
+    x: 408,
+    y: 0,
+    width: 16,
+    height: 16,
+  }, {
+    loadedChunkIds: ["0,0", "1,0", "2,0", "10,0"],
+    assetLifetime: {
+      preloadMarginChunks: 10,
+      retainMarginChunks: 10,
+      maxRetainedChunks: 2,
+    },
+  });
+
+  deepEqual(plan.preloadChunks.map((chunk) => chunk.id), ["0,0", "1,0", "2,0", "10,0"]);
+  deepEqual(plan.preloadChunkIds, ["0,0", "1,0", "10,0", "2,0"]);
+  deepEqual(plan.retainChunks.map((chunk) => chunk.id), ["2,0", "10,0"]);
+  deepEqual(plan.retainChunkIds, ["10,0", "2,0"]);
+  deepEqual(plan.loadChunkIds, []);
+  deepEqual(plan.unloadChunkIds, ["0,0", "1,0"]);
 });
 
 test("resolveLevelChunkManifest rejects duplicate chunk ids with diagnostic context", () => {

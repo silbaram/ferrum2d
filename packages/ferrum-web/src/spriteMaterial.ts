@@ -153,9 +153,20 @@ export function writeSpriteMaterialPassCommands(
   pass: SpriteMaterialPass,
   target: Float32Array,
 ): Float32Array {
+  const floatCount = writeSpriteMaterialPassCommandsInto(source, startCommand, endCommand, pass, target);
+  return target.subarray(0, floatCount);
+}
+
+export function writeSpriteMaterialPassCommandsInto(
+  source: RenderCommandBufferView,
+  startCommand: number,
+  endCommand: number,
+  pass: SpriteMaterialPass,
+  target: Float32Array,
+): number {
   const commandCount = endCommand - startCommand;
   if (commandCount <= 0) {
-    return target.subarray(0, 0);
+    return 0;
   }
   assertSupportedCommandLayout(source);
   const floatCount = commandCount * SPRITE_RENDER_COMMAND_FLOATS;
@@ -189,7 +200,7 @@ export function writeSpriteMaterialPassCommands(
     }
   }
 
-  return target.subarray(0, floatCount);
+  return floatCount;
 }
 
 function assertSupportedCommandLayout(source: RenderCommandBufferView): void {

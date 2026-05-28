@@ -1,6 +1,9 @@
 import { deepEqual, equal } from "node:assert/strict";
 import { test } from "node:test";
 import {
+  addLightingStatsInto,
+  addPhysicsDebugLineStatsInto,
+  addPostProcessStatsInto,
   emptyRendererStats,
   estimateTextureSwitchCount,
   RENDERER_STATS_FIELD_CONTRACT,
@@ -8,6 +11,8 @@ import {
   rendererStatsWithLighting,
   rendererStatsWithPostProcess,
   rendererStatsWithPhysicsDebugLines,
+  resetRendererStatsInto,
+  writeRendererStatsForCommandsInto,
 } from "../src/renderer.js";
 import type { RenderCommandBufferView } from "../src/renderCommandDecoder.js";
 
@@ -145,5 +150,33 @@ test("rendererStatsWithPostProcess adds fullscreen pass counters", () => {
     shadowCasterCount: 0,
     postProcessDrawCalls: 2,
     postProcessPassCount: 2,
+  });
+});
+
+test("mutating renderer stats helpers reuse the provided object", () => {
+  const stats = rendererStatsForCommands(commandBuffer([1]), 1);
+
+  equal(resetRendererStatsInto(stats), stats);
+  deepEqual(stats, emptyRendererStats());
+
+  equal(writeRendererStatsForCommandsInto(stats, commandBuffer([1, 2]), 2), stats);
+  equal(addLightingStatsInto(stats, 1, 2, 3, 4, 5), stats);
+  equal(addPhysicsDebugLineStatsInto(stats, 6, 1), stats);
+  equal(addPostProcessStatsInto(stats, 2, 1), stats);
+  deepEqual(stats, {
+    drawCalls: 6,
+    batchCount: 2,
+    spriteCount: 2,
+    renderCommandCount: 2,
+    textureBindCount: 2,
+    textureSwitchCount: 1,
+    physicsDebugLineCount: 6,
+    lightingDrawCalls: 1,
+    pointLightCount: 2,
+    tileOccluderCount: 3,
+    shadowDrawCalls: 4,
+    shadowCasterCount: 5,
+    postProcessDrawCalls: 2,
+    postProcessPassCount: 1,
   });
 });

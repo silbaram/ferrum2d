@@ -2,7 +2,7 @@ import {
   validateBuiltInShooterStateSnapshot,
   type BuiltInShooterStateSnapshot,
 } from "./builtInShooterStateSnapshot.js";
-import type { FerrumEngine } from "./createEngine.js";
+import type { FerrumEngine } from "./engineTypes.js";
 import type { PhysicsWorldApplyResult } from "./physicsAuthoring.js";
 import {
   capturePhysicsWorldSnapshot,

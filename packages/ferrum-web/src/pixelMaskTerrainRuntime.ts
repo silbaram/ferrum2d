@@ -1,4 +1,4 @@
-import type { FerrumEngine } from "./createEngine.js";
+import type { FerrumEngine } from "./engineTypes.js";
 import {
   createPhysicsWorldFromSpec,
   type PhysicsWorldApplyResult,
