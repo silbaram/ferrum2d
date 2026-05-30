@@ -1,14 +1,15 @@
 use super::*;
 use crate::components::{
     CapsuleCollider, CircleCollider, CollisionFilter, CollisionLayer, CollisionMask,
-    CompoundCollider, CompoundColliderShape, ConvexPolygonCollider, EdgeCollider,
-    OrientedBoxCollider,
+    CompoundCollider, CompoundColliderShape, ConvexPolygonCollider, EdgeCollider, HeightSpan,
+    OrientedBoxCollider, PhysicsFloorId,
 };
 
 mod area_queries;
 mod compound_colliders;
 mod contact_builders;
 mod debug_lines;
+mod height_spans;
 mod manifold_basic;
 mod manifold_capsule;
 mod manifold_convex;

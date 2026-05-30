@@ -1,14 +1,18 @@
-use super::{TileRange, TileSlopeDefinition, TilemapLayer, TILE_COLLISION_CHUNK_SIZE};
+use super::queries::tile_id_blocks_movement;
+use super::{
+    Hd2dTileDefinition, TileRange, TileSlopeDefinition, TilemapLayer, TILE_COLLISION_CHUNK_SIZE,
+};
 use crate::collision::AabbBounds;
-use crate::components::{AabbCollider, CollisionLayer, Transform2D};
+use crate::components::{AabbCollider, CollisionLayer, HeightSpan, Transform2D};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct TileCollisionRect {
     pub(super) tile_index: usize,
     pub(super) min_column: u32,
     pub(super) min_row: u32,
     pub(super) columns: u32,
     pub(super) rows: u32,
+    pub(super) height_span: Option<HeightSpan>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -20,10 +24,19 @@ pub(super) struct TileCollisionChunkCache {
     pub(super) total_rebuilt_chunks: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct TileRun {
     min_column: u32,
     columns: u32,
+    height_span: Option<HeightSpan>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TileCollisionDefinitions<'a> {
+    slope: &'a [Option<TileSlopeDefinition>],
+    one_way_platform: &'a [bool],
+    height_span: &'a [Option<HeightSpan>],
+    hd2d: &'a [Option<Hd2dTileDefinition>],
 }
 
 impl TileCollisionRect {
@@ -119,6 +132,8 @@ pub(super) fn build_collision_rects_for_layer(
     layer: &TilemapLayer,
     slope_definitions: &[Option<TileSlopeDefinition>],
     one_way_platform_definitions: &[bool],
+    height_span_definitions: &[Option<HeightSpan>],
+    hd2d_definitions: &[Option<Hd2dTileDefinition>],
 ) -> Vec<TileCollisionRect> {
     let Some(range) = tile_range_from_rect(layer, 0, 0, layer.columns, layer.rows) else {
         return Vec::new();
@@ -128,6 +143,8 @@ pub(super) fn build_collision_rects_for_layer(
         range,
         slope_definitions,
         one_way_platform_definitions,
+        height_span_definitions,
+        hd2d_definitions,
     )
 }
 
@@ -135,6 +152,8 @@ pub(super) fn build_collision_chunk_cache_for_layer(
     layer: &TilemapLayer,
     slope_definitions: &[Option<TileSlopeDefinition>],
     one_way_platform_definitions: &[bool],
+    height_span_definitions: &[Option<HeightSpan>],
+    hd2d_definitions: &[Option<Hd2dTileDefinition>],
 ) -> TileCollisionChunkCache {
     let chunk_columns = collision_chunk_count(layer.columns);
     let chunk_rows = collision_chunk_count(layer.rows);
@@ -149,6 +168,8 @@ pub(super) fn build_collision_chunk_cache_for_layer(
                 tile_range,
                 slope_definitions,
                 one_way_platform_definitions,
+                height_span_definitions,
+                hd2d_definitions,
             );
         }
     }
@@ -163,11 +184,19 @@ pub(super) fn build_collision_rects_for_layer_range(
     range: TileRange,
     slope_definitions: &[Option<TileSlopeDefinition>],
     one_way_platform_definitions: &[bool],
+    height_span_definitions: &[Option<HeightSpan>],
+    hd2d_definitions: &[Option<Hd2dTileDefinition>],
 ) -> Vec<TileCollisionRect> {
     let mut completed = Vec::new();
     let mut active = Vec::new();
     let mut next_active = Vec::new();
     let mut row_runs = Vec::new();
+    let definitions = TileCollisionDefinitions {
+        slope: slope_definitions,
+        one_way_platform: one_way_platform_definitions,
+        height_span: height_span_definitions,
+        hd2d: hd2d_definitions,
+    };
 
     for row in range.min_row..=range.max_row {
         next_active.clear();
@@ -176,8 +205,7 @@ pub(super) fn build_collision_rects_for_layer_range(
             row,
             range.min_column,
             range.max_column,
-            slope_definitions,
-            one_way_platform_definitions,
+            definitions,
             &mut row_runs,
         );
 
@@ -186,6 +214,7 @@ pub(super) fn build_collision_rects_for_layer_range(
                 rect.min_column == run.min_column
                     && rect.columns == run.columns
                     && rect.min_row + rect.rows == row
+                    && rect.height_span == run.height_span
             }) {
                 let mut rect = active.swap_remove(active_index);
                 rect.rows += 1;
@@ -197,6 +226,7 @@ pub(super) fn build_collision_rects_for_layer_range(
                     min_row: row,
                     columns: run.columns,
                     rows: 1,
+                    height_span: run.height_span,
                 });
             }
         }
@@ -214,8 +244,7 @@ fn write_solid_runs_for_row_range(
     row: u32,
     min_column: u32,
     max_column: u32,
-    slope_definitions: &[Option<TileSlopeDefinition>],
-    one_way_platform_definitions: &[bool],
+    definitions: TileCollisionDefinitions<'_>,
     runs: &mut Vec<TileRun>,
 ) {
     runs.clear();
@@ -225,35 +254,29 @@ fn write_solid_runs_for_row_range(
     let max_column = max_column.min(layer.columns - 1);
     let mut column = min_column;
     while column <= max_column {
-        while column <= max_column
-            && !is_solid_tile(
-                layer,
-                column,
-                row,
-                slope_definitions,
-                one_way_platform_definitions,
-            )
-        {
-            column += 1;
-        }
-        if column > max_column {
+        let mut height_span = None;
+        while column <= max_column {
+            let Some(tile_height_span) = solid_tile_height_span(layer, column, row, definitions)
+            else {
+                column += 1;
+                continue;
+            };
+            height_span = Some(tile_height_span);
             break;
         }
+        let Some(run_height_span) = height_span else {
+            break;
+        };
         let run_min_column = column;
         while column <= max_column
-            && is_solid_tile(
-                layer,
-                column,
-                row,
-                slope_definitions,
-                one_way_platform_definitions,
-            )
+            && solid_tile_height_span(layer, column, row, definitions) == Some(run_height_span)
         {
             column += 1;
         }
         runs.push(TileRun {
             min_column: run_min_column,
             columns: column - run_min_column,
+            height_span: run_height_span,
         });
     }
 }
@@ -312,24 +335,34 @@ pub(super) fn chunk_range_for_tile_range(
     }
 }
 
-fn is_solid_tile(
+fn solid_tile_height_span(
     layer: &TilemapLayer,
     column: u32,
     row: u32,
-    slope_definitions: &[Option<TileSlopeDefinition>],
-    one_way_platform_definitions: &[bool],
-) -> bool {
+    definitions: TileCollisionDefinitions<'_>,
+) -> Option<Option<HeightSpan>> {
     let tile_id = layer
         .tiles
         .get(layer.tile_index(column, row))
         .copied()
         .unwrap_or(0);
-    tile_id != 0
-        && slope_definitions
+    if !tile_id_blocks_movement(tile_id, definitions.hd2d)
+        || definitions
+            .slope
             .get(tile_id as usize)
-            .is_none_or(Option::is_none)
-        && !one_way_platform_definitions
+            .is_some_and(Option::is_some)
+        || definitions
+            .one_way_platform
             .get(tile_id as usize)
             .copied()
             .unwrap_or(false)
+    {
+        return None;
+    }
+    Some(
+        definitions
+            .height_span
+            .get(tile_id as usize)
+            .and_then(|height_span| *height_span),
+    )
 }

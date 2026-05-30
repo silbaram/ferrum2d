@@ -11,6 +11,8 @@ import { prefabCollider } from "./gameSpecPrefab.js";
 import { shooterTilemap } from "./gameSpecTilemap.js";
 import {
   gameSpecError,
+  booleanValue,
+  finiteNumber,
   nonNegativeInteger,
   nonNegativeNumber,
   optionalObject,
@@ -20,6 +22,7 @@ import {
 import type {
   ResolveShooterGameSpecOptions,
   ResolvedShooterGameSpec,
+  ResolvedShooterProjectileArcSpec,
   ResolvedShooterWave,
   ShooterEnemyBehaviorPreset,
   ShooterEnemySpawnPatternPreset,
@@ -37,17 +40,19 @@ export function resolveShooterGameSpec(
   const weapons = optionalObject(spec.weapons, "weapons");
   const prefabs = optionalObject(spec.prefabs, "prefabs");
   const atlasFrames = atlasFrameMap(spec.atlas, "atlas");
-  const tilemap = shooterTilemap(spec.tilemap, "tilemap", atlasFrames);
+  const physics = resolvePhysicsSpec(spec.physics, {
+    path: "physics",
+    modeOverride: options.physicsModeOverride,
+  });
+  const tilemap = shooterTilemap(spec.tilemap, "tilemap", atlasFrames, {
+    defaultHeight: physics.hd2d.enabled ? physics.hd2d.defaultHeight : 0,
+  });
   const camera = optionalObject(spec.camera, "camera");
   const postProcessing = resolvePostProcessPasses(
     spec.postProcessing as PostProcessStackInput,
     { path: "postProcessing" },
   );
   const audio = optionalObject(spec.audio, "audio");
-  const physics = resolvePhysicsSpec(spec.physics, {
-    path: "physics",
-    modeOverride: options.physicsModeOverride,
-  });
   const audioEvents = optionalObject(audio.events, "audio.events");
   const cameraDeadZone = optionalObject(camera.deadZone, "camera.deadZone");
   const cameraLookAhead = optionalObject(camera.lookAhead, "camera.lookAhead");
@@ -182,6 +187,7 @@ export function resolveShooterGameSpec(
     bulletWidth,
     bulletHeight,
   );
+  const projectileArc = shooterProjectileArc(weapons.projectileArc, "weapons.projectileArc");
 
   return {
     worldWidth: positiveNumber(world.width, "world.width", DEFAULT_SHOOTER_GAME_SPEC.worldWidth),
@@ -236,6 +242,7 @@ export function resolveShooterGameSpec(
     ...resolvedEnemySpawnPattern,
     enemyHealth,
     bulletDamage: positiveNumber(weapons.damage, "weapons.damage", DEFAULT_SHOOTER_GAME_SPEC.bulletDamage),
+    projectileArc,
     scoreReward,
     orbitRadius,
     orbitRadialBand,
@@ -291,6 +298,17 @@ export function resolveShooterGameSpec(
     gameOverPitch: gameOverAudio.pitch,
     postProcessing,
     physics,
+  };
+}
+
+function shooterProjectileArc(value: unknown, path: string): ResolvedShooterProjectileArcSpec {
+  const arc = optionalObject(value, path);
+  return {
+    enabled: booleanValue(arc.enabled, `${path}.enabled`, false),
+    launchHeight: nonNegativeNumber(arc.launchHeight, `${path}.launchHeight`, 0),
+    zVelocity: finiteNumber(arc.zVelocity, `${path}.zVelocity`, 0),
+    gravity: nonNegativeNumber(arc.gravity, `${path}.gravity`, 0),
+    hitHeight: nonNegativeNumber(arc.hitHeight, `${path}.hitHeight`, 0),
   };
 }
 

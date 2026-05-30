@@ -30,9 +30,8 @@ pub(super) fn ground_probe_internal(
     };
     let mut best = None;
 
-    for target_index in 0..world.transforms.len() {
-        if target_index == moving_index || !world.alive.get(target_index).copied().unwrap_or(false)
-        {
+    for &target_index in world.alive_indices() {
+        if target_index == moving_index {
             continue;
         }
         let Some(target_collider) = world.colliders[target_index] else {

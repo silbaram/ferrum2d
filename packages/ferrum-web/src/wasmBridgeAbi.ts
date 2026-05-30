@@ -4,6 +4,8 @@ import {
   audio_event_floats,
   collision_event_bytes,
   collision_event_u32s,
+  frame_telemetry_bytes,
+  frame_telemetry_f64s,
   physics_body_contact_hit_bytes,
   physics_body_manifold_hit_bytes,
   physics_debug_line_bytes,
@@ -33,11 +35,14 @@ import {
 } from "./physicsQueryDecoder";
 
 const FLOATS_PER_COMMAND = 14;
+export const F64S_PER_FRAME_TELEMETRY = 37;
 const FLOATS_PER_PHYSICS_BODY_STATE = 31;
 const U32S_PER_PHYSICS_BODY_STATE = 5;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
+const BYTES_PER_F64 = Float64Array.BYTES_PER_ELEMENT;
 const BYTES_PER_U32 = Uint32Array.BYTES_PER_ELEMENT;
 const BYTES_PER_COMMAND = FLOATS_PER_COMMAND * BYTES_PER_F32;
+const BYTES_PER_FRAME_TELEMETRY = F64S_PER_FRAME_TELEMETRY * BYTES_PER_F64;
 const BYTES_PER_AUDIO_EVENT = FLOATS_PER_AUDIO_EVENT * BYTES_PER_F32;
 const BYTES_PER_COLLISION_EVENT = U32S_PER_COLLISION_EVENT * BYTES_PER_U32;
 const BYTES_PER_PHYSICS_DEBUG_LINE = FLOATS_PER_PHYSICS_DEBUG_LINE * BYTES_PER_F32;
@@ -45,6 +50,7 @@ const BYTES_PER_PHYSICS_QUERY_HIT = U32S_PER_PHYSICS_QUERY_HIT * BYTES_PER_U32;
 
 export interface WasmBridgeAbiLayout {
   floatsPerCommand: number;
+  f64sPerFrameTelemetry: number;
   floatsPerAudioEvent: number;
   u32sPerCollisionEvent: number;
   floatsPerPhysicsDebugLine: number;
@@ -73,6 +79,21 @@ export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
     throw new Error(
       `[Ferrum2D ABI mismatch] Rust sprite_render_command_bytes=${rustBytesPerCommand}, TS BYTES_PER_COMMAND=${BYTES_PER_COMMAND}. ` +
         "SpriteRenderCommand ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+    );
+  }
+
+  const rustF64sPerFrameTelemetry = frame_telemetry_f64s();
+  const rustBytesPerFrameTelemetry = frame_telemetry_bytes();
+  if (rustF64sPerFrameTelemetry !== F64S_PER_FRAME_TELEMETRY) {
+    throw new Error(
+      `[Ferrum2D ABI mismatch] Rust frame_telemetry_f64s=${rustF64sPerFrameTelemetry}, TS F64S_PER_FRAME_TELEMETRY=${F64S_PER_FRAME_TELEMETRY}. ` +
+        "FrameTelemetry ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+    );
+  }
+  if (rustBytesPerFrameTelemetry !== BYTES_PER_FRAME_TELEMETRY) {
+    throw new Error(
+      `[Ferrum2D ABI mismatch] Rust frame_telemetry_bytes=${rustBytesPerFrameTelemetry}, TS BYTES_PER_FRAME_TELEMETRY=${BYTES_PER_FRAME_TELEMETRY}. ` +
+        "FrameTelemetry ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
     );
   }
 
@@ -210,6 +231,7 @@ export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
 
   return {
     floatsPerCommand: rustFloatsPerCommand,
+    f64sPerFrameTelemetry: rustF64sPerFrameTelemetry,
     floatsPerAudioEvent: rustFloatsPerAudioEvent,
     u32sPerCollisionEvent: rustU32sPerCollisionEvent,
     floatsPerPhysicsDebugLine: rustFloatsPerPhysicsDebugLine,

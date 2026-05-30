@@ -100,6 +100,13 @@ test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
     enemySpawnPatternCode: 1,
     enemyHealth: 3,
     bulletDamage: 2,
+    projectileArc: {
+      enabled: false,
+      launchHeight: 0,
+      zVelocity: 0,
+      gravity: 0,
+      hitHeight: 0,
+    },
     scoreReward: 5,
     orbitRadius: 220,
     orbitRadialBand: 18,

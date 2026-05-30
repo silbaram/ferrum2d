@@ -107,7 +107,15 @@ fn player_enemy_collision_sets_game_over() {
     let pt = world.transforms[player.id as usize].unwrap();
     world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
 
-    scene.handle_collisions(&mut world, &mut audio_events, 0.0, None, None, None);
+    scene.handle_collisions(
+        &mut world,
+        &Tilemap::default(),
+        &mut audio_events,
+        0.0,
+        None,
+        None,
+        None,
+    );
 
     assert_eq!(scene.game_state(), GameState::GameOver);
 }

@@ -57,6 +57,37 @@ fn move_and_slide_with_tilemap_stops_at_solid_tile() {
 }
 
 #[test]
+fn move_and_slide_with_tilemap_passes_nonblocking_hd2d_tile() {
+    let mut world = World::default();
+    let tilemap = single_nonblocking_hd2d_tilemap();
+    let mover = spawn_kinematic_body_with_size(
+        &mut world,
+        0.0,
+        5.0,
+        CollisionLayer::Player,
+        true,
+        2.0,
+        2.0,
+    );
+
+    let result = PhysicsSystem::move_and_slide_with_tilemap(
+        &mut world,
+        &tilemap,
+        mover,
+        Velocity { vx: 20.0, vy: 0.0 },
+        CollisionMask::ENEMY,
+        4,
+    );
+
+    assert_eq!(result.hit_count, 0);
+    assert!(!result.blocked_x);
+    assert_eq!(
+        world.transform(mover),
+        Some(Transform2D { x: 20.0, y: 5.0 })
+    );
+}
+
+#[test]
 fn move_and_slide_with_tilemap_and_counters_records_tile_hit() {
     let mut world = World::default();
     let tilemap = single_wall_tilemap();

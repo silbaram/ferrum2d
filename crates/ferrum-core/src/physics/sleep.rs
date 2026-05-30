@@ -79,10 +79,9 @@ fn update_rigid_body_sleep_timers(
     delta_seconds: f32,
     stats: &mut RigidBodyStepStats,
 ) {
-    for index in 0..world.rigid_bodies.len() {
-        if !world.alive.get(index).copied().unwrap_or(false) {
-            continue;
-        }
+    let alive_count = world.alive_indices().len();
+    for alive_position in 0..alive_count {
+        let index = world.alive_indices()[alive_position];
         let Some(mut body) = world.rigid_bodies[index] else {
             continue;
         };

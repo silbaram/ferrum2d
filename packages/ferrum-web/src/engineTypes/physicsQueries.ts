@@ -1,7 +1,16 @@
 import type { PhysicsDebugLineBufferView, PhysicsDebugLineView } from "../wasmBridge";
+import type { ShooterTileKind, ShooterTileRampSpec } from "../gameSpecTypes.js";
+import type { PhysicsBodyHeightSpan } from "./physicsBodies.js";
 import type { PhysicsConvexPolygonVertexBuffer } from "./physicsGeometry.js";
 
-export interface PhysicsNearestBodyQuery {
+export interface PhysicsBodyHeightSpanQuery {
+  heightSpan?: PhysicsBodyHeightSpan;
+}
+
+export type PhysicsTileHeightSpanQuery = PhysicsBodyHeightSpanQuery;
+export type PhysicsTileHeightSpan = PhysicsBodyHeightSpan;
+
+export interface PhysicsNearestBodyQuery extends PhysicsBodyHeightSpanQuery {
   x: number;
   y: number;
   maxDistance: number;
@@ -16,7 +25,7 @@ export interface PhysicsNearestBodyHit {
   distance: number;
 }
 
-export interface PhysicsNearestTileObstacleQuery {
+export interface PhysicsNearestTileObstacleQuery extends PhysicsTileHeightSpanQuery {
   x: number;
   y: number;
   maxDistance: number;
@@ -30,17 +39,19 @@ export interface PhysicsNearestTileObstacleHit {
   distance: number;
 }
 
-export interface TilemapNavigationWaypointQuery {
+export interface TilemapNavigationWaypointQuery extends PhysicsTileHeightSpanQuery {
   fromX: number;
   fromY: number;
   toX: number;
   toY: number;
+  toHeightSpan?: PhysicsBodyHeightSpan;
 }
 
 export interface TilemapNavigationWaypoint {
   x: number;
   y: number;
   distance: number;
+  heightSpan?: PhysicsBodyHeightSpan;
 }
 
 export type TilemapNavigationPathQuery = TilemapNavigationWaypointQuery;
@@ -48,6 +59,7 @@ export type TilemapNavigationPathQuery = TilemapNavigationWaypointQuery;
 export interface TilemapNavigationPathPoint {
   x: number;
   y: number;
+  heightSpan?: PhysicsBodyHeightSpan;
 }
 
 export interface TilemapNavigationPath {
@@ -63,6 +75,24 @@ export interface TilemapRectEditOptions {
   maxCollisionRebuildChunks?: number;
 }
 
+export interface ShooterTileHd2dMetadata {
+  kind?: ShooterTileKind;
+  ramp?: ShooterTileRampSpec;
+  bridgePortal?: ShooterTileBridgePortalMetadata;
+  blocksMovement?: boolean;
+  blocksProjectile?: boolean;
+  blocksVision?: boolean;
+  occluderHeight?: number;
+}
+
+export interface ShooterTileBridgePortalMetadata {
+  lowerFloorId: number;
+  upperFloorId: number;
+  lowerElevation: number;
+  upperElevation: number;
+  navigationCost?: number;
+}
+
 export interface PhysicsBodyContactQuery {
   categoryABits?: number;
   categoryBBits?: number;
@@ -70,13 +100,13 @@ export interface PhysicsBodyContactQuery {
 
 export type PhysicsBodyManifoldQuery = PhysicsBodyContactQuery;
 
-export interface PhysicsPointBodyQuery {
+export interface PhysicsPointBodyQuery extends PhysicsBodyHeightSpanQuery {
   x: number;
   y: number;
   queryMaskBits?: number;
 }
 
-export interface PhysicsAabbBodyQuery {
+export interface PhysicsAabbBodyQuery extends PhysicsBodyHeightSpanQuery {
   x: number;
   y: number;
   halfWidth: number;
@@ -84,14 +114,14 @@ export interface PhysicsAabbBodyQuery {
   queryMaskBits?: number;
 }
 
-export interface PhysicsCircleBodyQuery {
+export interface PhysicsCircleBodyQuery extends PhysicsBodyHeightSpanQuery {
   x: number;
   y: number;
   radius: number;
   queryMaskBits?: number;
 }
 
-export interface PhysicsOrientedBoxBodyQuery {
+export interface PhysicsOrientedBoxBodyQuery extends PhysicsBodyHeightSpanQuery {
   x: number;
   y: number;
   halfWidth: number;
@@ -100,7 +130,7 @@ export interface PhysicsOrientedBoxBodyQuery {
   queryMaskBits?: number;
 }
 
-export interface PhysicsCapsuleBodyQuery {
+export interface PhysicsCapsuleBodyQuery extends PhysicsBodyHeightSpanQuery {
   startX: number;
   startY: number;
   endX: number;
@@ -109,12 +139,12 @@ export interface PhysicsCapsuleBodyQuery {
   queryMaskBits?: number;
 }
 
-export interface PhysicsConvexPolygonBodyQuery {
+export interface PhysicsConvexPolygonBodyQuery extends PhysicsBodyHeightSpanQuery {
   vertices: PhysicsConvexPolygonVertexBuffer;
   queryMaskBits?: number;
 }
 
-export interface PhysicsRaycastBodyQuery {
+export interface PhysicsRaycastBodyQuery extends PhysicsBodyHeightSpanQuery {
   originX: number;
   originY: number;
   directionX: number;
@@ -123,7 +153,7 @@ export interface PhysicsRaycastBodyQuery {
   queryMaskBits?: number;
 }
 
-export interface PhysicsSegmentCastBodyQuery {
+export interface PhysicsSegmentCastBodyQuery extends PhysicsBodyHeightSpanQuery {
   startX: number;
   startY: number;
   endX: number;
@@ -131,7 +161,7 @@ export interface PhysicsSegmentCastBodyQuery {
   queryMaskBits?: number;
 }
 
-export interface PhysicsRaycastTileObstacleQuery {
+export interface PhysicsRaycastTileObstacleQuery extends PhysicsTileHeightSpanQuery {
   originX: number;
   originY: number;
   directionX: number;
@@ -139,21 +169,21 @@ export interface PhysicsRaycastTileObstacleQuery {
   maxDistance: number;
 }
 
-export interface PhysicsSegmentCastTileObstacleQuery {
+export interface PhysicsSegmentCastTileObstacleQuery extends PhysicsTileHeightSpanQuery {
   startX: number;
   startY: number;
   endX: number;
   endY: number;
 }
 
-export interface PhysicsShapeCastMotionQuery {
+export interface PhysicsShapeCastMotionQuery extends PhysicsBodyHeightSpanQuery {
   directionX: number;
   directionY: number;
   maxDistance: number;
   queryMaskBits?: number;
 }
 
-export interface PhysicsTileShapeCastMotionQuery {
+export interface PhysicsTileShapeCastMotionQuery extends PhysicsTileHeightSpanQuery {
   directionX: number;
   directionY: number;
   maxDistance: number;
@@ -173,14 +203,14 @@ export interface PhysicsAabbTileObstacleShapeCastQuery extends PhysicsTileShapeC
   halfHeight: number;
 }
 
-export interface PhysicsAabbTileObstacleContactQuery {
+export interface PhysicsAabbTileObstacleContactQuery extends PhysicsTileHeightSpanQuery {
   x: number;
   y: number;
   halfWidth: number;
   halfHeight: number;
 }
 
-export interface PhysicsAabbTileObstacleManifoldQuery {
+export interface PhysicsAabbTileObstacleManifoldQuery extends PhysicsTileHeightSpanQuery {
   x: number;
   y: number;
   halfWidth: number;

@@ -86,6 +86,8 @@ export function importLDtkTilemap(
     usedFrameNames.add(frameName);
     tiles[String(tile.gameTileId)] = {
       frame: frameName,
+      ...(tile.heightMetadata ?? {}),
+      ...(tile.hd2dMetadata ?? {}),
       ...(tile.slope ? { slope: tile.slope } : {}),
       ...(tile.oneWayPlatform ? { oneWayPlatform: true } : {}),
     };

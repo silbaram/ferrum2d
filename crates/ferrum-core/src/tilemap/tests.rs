@@ -2,7 +2,9 @@ use super::collision_cache::{build_collision_rects_for_layer, TileCollisionRect}
 use super::*;
 use crate::camera::Camera2D;
 use crate::collision::AabbBounds;
-use crate::components::{AabbCollider, CollisionLayer, Transform2D, Velocity};
+use crate::components::{
+    AabbCollider, CollisionLayer, HeightSpan, PhysicsFloorId, Transform2D, Velocity,
+};
 use crate::physics::{PhysicsCounters, SlopeConfig};
 use crate::world::World;
 

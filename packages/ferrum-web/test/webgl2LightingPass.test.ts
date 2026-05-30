@@ -191,7 +191,7 @@ test("WebGL2LightingPass skips culled shadow casters without uploads", () => {
   equal(gl.drawArraysCalls.length, 1);
 });
 
-test("WebGL2LightingPass grows shadow buffer by capacity and uploads only written floats", () => {
+test("WebGL2LightingPass grows shadow buffer only when written shadow geometry exceeds capacity", () => {
   const gl = new FakeWebGL2Context();
   const pass = new WebGL2LightingPass(gl as unknown as WebGL2RenderingContext);
   const smallScene = normalizeLightingScene({
@@ -214,9 +214,9 @@ test("WebGL2LightingPass grows shadow buffer by capacity and uploads only writte
 
   equal(gl.bufferDataCalls.length, 1);
   pass.draw(smallScene, [240, 120]);
-  equal(gl.bufferDataCalls.length, 2);
+  equal(gl.bufferDataCalls.length, 1);
   pass.draw(largeScene, [240, 120]);
-  equal(gl.bufferDataCalls.length, 3);
+  equal(gl.bufferDataCalls.length, 2);
   const grownCapacityFloats =
     gl.bufferDataCalls[gl.bufferDataCalls.length - 1]!.byteLength / Float32Array.BYTES_PER_ELEMENT;
   const uploadedFloats = gl.bufferSubDataCalls[gl.bufferSubDataCalls.length - 1]!.length;
@@ -224,5 +224,5 @@ test("WebGL2LightingPass grows shadow buffer by capacity and uploads only writte
   ok(uploadedFloats < grownCapacityFloats);
 
   pass.draw(smallScene, [240, 120]);
-  equal(gl.bufferDataCalls.length, 3);
+  equal(gl.bufferDataCalls.length, 2);
 });

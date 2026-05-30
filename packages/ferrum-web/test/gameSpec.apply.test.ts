@@ -46,6 +46,17 @@ test("applyShooterGameSpec forwards tilemap definitions and layers to engine", (
           uv: { u0: 0.5, v0: 0, u1: 1, v1: 0.5 },
           size: { width: 16, height: 16 },
         },
+        "terrain.bridge": {
+          texture: 0,
+          uv: { u0: 0, v0: 0.5, u1: 0.5, v1: 1 },
+          size: { width: 16, height: 16 },
+        },
+      },
+    },
+    physics: {
+      hd2d: {
+        enabled: true,
+        defaultHeight: 6,
       },
     },
     tilemap: {
@@ -53,11 +64,36 @@ test("applyShooterGameSpec forwards tilemap definitions and layers to engine", (
       tileHeight: 24,
       origin: { x: 4, y: 8 },
       tiles: {
-        "1": { frame: "terrain.floor", color: [0.6, 0.7, 0.8, 1], oneWayPlatform: true },
-        "2": { frame: "terrain.edge", slope: { x0: 0, y0: 1, x1: 1, y1: 0 } },
+        "1": {
+          frame: "terrain.floor",
+          color: [0.6, 0.7, 0.8, 1],
+          floor: "ground",
+          elevation: 4,
+          height: 12,
+          oneWayPlatform: true,
+        },
+        "2": {
+          frame: "terrain.edge",
+          kind: "ramp",
+          ramp: { axis: "y", startElevation: 0, endElevation: 6 },
+          slope: { x0: 0, y0: 1, x1: 1, y1: 0 },
+        },
+        "3": {
+          frame: "terrain.bridge",
+          kind: "bridge",
+          floor: "ground",
+          height: 8,
+          blocksMovement: false,
+          bridgePortal: {
+            lowerFloor: "ground",
+            upperFloor: "bridge",
+            upperElevation: 12,
+            navigationCost: 2,
+          },
+        },
       },
       layers: [
-        { name: "floor", columns: 2, rows: 2, collision: true, data: [1, 0, 2, 1] },
+        { name: "floor", columns: 2, rows: 2, collision: true, data: [1, 3, 2, 1] },
       ],
     },
   }, { textureId: (name) => (name === "terrain" ? 12 : 0) });
@@ -66,13 +102,26 @@ test("applyShooterGameSpec forwards tilemap definitions and layers to engine", (
   deepEqual(engine.tiles, [
     [1, 12, 0, 0, 0.5, 0.5, 0.6, 0.7, 0.8, 1],
     [2, 0, 0.5, 0, 1, 0.5, 1, 1, 1, 1],
+    [3, 0, 0, 0.5, 0.5, 1, 1, 1, 1, 1],
   ]);
   deepEqual(engine.tileSlopes, [
     [2, 0, 1, 1, 0],
   ]);
   deepEqual(engine.tileOneWayPlatforms, [1]);
+  deepEqual(engine.tileHeightSpans, [
+    [1, 2, 4, 12],
+    [2, 0, 0, 6],
+    [3, 2, 0, 8],
+  ]);
+  deepEqual(engine.tileHd2dMetadata, [
+    [2, 2, true, true, true, 6, true, 1, 0, 6],
+    [3, 4, false, false, false, 8, false, 0, 0, 0],
+  ]);
+  deepEqual(engine.tileBridgePortals, [
+    [3, 2, 1, 0, 12, 2],
+  ]);
   deepEqual(engine.tileLayers, [
-    [0, 2, 2, 32, 24, 4, 8, true, [1, 0, 2, 1]],
+    [0, 2, 2, 32, 24, 4, 8, true, [1, 3, 2, 1]],
   ]);
 });
 
@@ -144,7 +193,13 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
         { enemy: "elite", duration: 14, spawnInterval: 0.6, enemyCount: 5 },
       ],
     },
-    weapons: { bulletSpeed: 640, cooldown: 0.08, lifetime: 2.4, damage: 2 },
+    weapons: {
+      bulletSpeed: 640,
+      cooldown: 0.08,
+      lifetime: 2.4,
+      damage: 2,
+      projectileArc: { enabled: true, launchHeight: 6, zVelocity: 120, gravity: 240, hitHeight: 2 },
+    },
     prefabs: {
       player: {
         width: 40,
@@ -258,6 +313,13 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
     enemySpawnPatternCode: 2,
     enemyHealth: 4,
     bulletDamage: 2,
+    projectileArc: {
+      enabled: true,
+      launchHeight: 6,
+      zVelocity: 120,
+      gravity: 240,
+      hitHeight: 2,
+    },
     scoreReward: 9,
     orbitRadius: 200,
     orbitRadialBand: 12,
@@ -384,6 +446,7 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
     200,
     12,
   ]);
+  deepEqual(engine.projectileArcConfig, [true, 6, 120, 240, 2]);
   deepEqual(engine.animationConfig, [
     1,
     1,

@@ -23,6 +23,9 @@ export interface TilemapBoundaryChain {
   layerIndex: number;
   layerName: string;
   collider: PhysicsChainColliderSpec;
+  floor?: string;
+  elevation?: number;
+  height?: number;
   segmentCount: number;
 }
 
@@ -44,41 +47,50 @@ interface BoundaryPath {
   segmentCount: number;
 }
 
+interface SolidTileGroup {
+  tileIds: ReadonlySet<number>;
+  heightMetadata?: {
+    floor: string;
+    elevation: number;
+    height: number;
+  };
+}
+
 export function extractTilemapBoundaryChains(
   tilemap: ResolvedShooterTilemap,
   options: TilemapBoundaryExtractionOptions = {},
 ): TilemapBoundaryExtractionResult {
   const path = options.path ?? "tilemap";
   const maxVerticesPerChain = boundedMaxVertices(options.maxVerticesPerChain, `${path}.maxVerticesPerChain`);
-  const solidTileIds = new Set(
-    tilemap.tiles
-      .filter((tile) => tile.slope === undefined && tile.oneWayPlatform !== true)
-      .map((tile) => tile.id),
-  );
+  const solidTileGroups = solidTileGroupsForBoundaryExtraction(tilemap);
   const layers = tilemap.layers.filter((layer) =>
     layer.collision && (options.layerIndex === undefined || layer.index === options.layerIndex)
   );
   const chains: TilemapBoundaryChain[] = [];
 
   for (const layer of layers) {
-    const paths = boundaryPathsForLayer(layer, solidTileIds);
-    for (const pathEntry of paths) {
-      for (const chunk of splitBoundaryPath(pathEntry, maxVerticesPerChain)) {
-        const bodyId = `${bodyIdPrefix(options.bodyIdPrefix)}.${layer.index}.${chains.length}`;
-        const collider: PhysicsChainColliderSpec = {
-          shape: "chain",
-          vertices: chunk.vertices,
-          loop: chunk.loop,
-          ...(options.material === undefined ? {} : { material: options.material }),
-          ...(options.physicsLayer === undefined ? {} : { layer: options.physicsLayer }),
-        };
-        chains.push({
-          bodyId,
-          layerIndex: layer.index,
-          layerName: layer.name,
-          collider,
-          segmentCount: chunk.segmentCount,
-        });
+    const layerGroups = layer.collisionOnly ? [collisionOnlySolidGroup()] : solidTileGroups;
+    for (const group of layerGroups) {
+      const paths = boundaryPathsForLayer(layer, group.tileIds);
+      for (const pathEntry of paths) {
+        for (const chunk of splitBoundaryPath(pathEntry, maxVerticesPerChain)) {
+          const bodyId = `${bodyIdPrefix(options.bodyIdPrefix)}.${layer.index}.${chains.length}`;
+          const collider: PhysicsChainColliderSpec = {
+            shape: "chain",
+            vertices: chunk.vertices,
+            loop: chunk.loop,
+            ...(options.material === undefined ? {} : { material: options.material }),
+            ...(options.physicsLayer === undefined ? {} : { layer: options.physicsLayer }),
+          };
+          chains.push({
+            bodyId,
+            layerIndex: layer.index,
+            layerName: layer.name,
+            collider,
+            ...(group.heightMetadata ?? {}),
+            segmentCount: chunk.segmentCount,
+          });
+        }
       }
     }
   }
@@ -89,6 +101,7 @@ export function extractTilemapBoundaryChains(
       {
         type: "static",
         position: [0, 0],
+        ...chainHeightMetadata(chain),
         ...(options.physicsLayer === undefined ? {} : { layer: options.physicsLayer }),
         ...(options.material === undefined ? {} : { material: options.material }),
         collider: chain.collider,
@@ -101,6 +114,57 @@ export function extractTilemapBoundaryChains(
     bodies,
     chainCount: chains.length,
     segmentCount: chains.reduce((sum, chain) => sum + chain.segmentCount, 0),
+  };
+}
+
+function collisionOnlySolidGroup(): SolidTileGroup {
+  return { tileIds: new Set<number>() };
+}
+
+function solidTileGroupsForBoundaryExtraction(tilemap: ResolvedShooterTilemap): SolidTileGroup[] {
+  const groups = new Map<string, { tileIds: Set<number>; heightMetadata?: SolidTileGroup["heightMetadata"] }>();
+  for (const tile of tilemap.tiles) {
+    if (tile.blocksMovement === false || tile.slope !== undefined || tile.oneWayPlatform === true) {
+      continue;
+    }
+    const heightMetadata = tileHeightMetadataForBoundaryExtraction(tile);
+    const key = heightMetadata === undefined
+      ? "legacy"
+      : `${heightMetadata.floor}\0${heightMetadata.elevation}\0${heightMetadata.height}`;
+    const group = groups.get(key);
+    if (group) {
+      group.tileIds.add(tile.id);
+    } else {
+      groups.set(key, {
+        tileIds: new Set([tile.id]),
+        ...(heightMetadata === undefined ? {} : { heightMetadata }),
+      });
+    }
+  }
+  return [...groups.values()];
+}
+
+function tileHeightMetadataForBoundaryExtraction(
+  tile: ResolvedShooterTilemap["tiles"][number],
+): SolidTileGroup["heightMetadata"] | undefined {
+  if (tile.floor === "default" && tile.elevation === 0 && tile.height === 0) {
+    return undefined;
+  }
+  return {
+    floor: tile.floor,
+    elevation: tile.elevation,
+    height: tile.height,
+  };
+}
+
+function chainHeightMetadata(chain: TilemapBoundaryChain): Pick<PhysicsBodySpec, "floor" | "elevation" | "height"> {
+  if (chain.floor === undefined || chain.elevation === undefined || chain.height === undefined) {
+    return {};
+  }
+  return {
+    floor: chain.floor,
+    elevation: chain.elevation,
+    height: chain.height,
   };
 }
 

@@ -67,6 +67,8 @@ export class InputManager {
   private activeTouchId: number | undefined;
   private activeTouchOrigin: Point | undefined;
   private destroyed = false;
+  private readonly resolvedGamepadMapping: Required<GamepadInputMapping>;
+  private readonly gamepadState: InputSnapshot = emptyInputSnapshot(0, 0);
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (!this.destroyed) this.setKey(e, true);
@@ -162,6 +164,7 @@ export class InputManager {
     private readonly canvas: HTMLCanvasElement,
     private readonly options: InputManagerOptions = {},
   ) {
+    this.resolvedGamepadMapping = resolveGamepadMapping(options.gamepadMapping);
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
     canvas.addEventListener("mousemove", this.onMouseMove);
@@ -313,28 +316,28 @@ export class InputManager {
 
   private readGamepadState(): InputSnapshot {
     if (this.options.gamepad === false || typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") {
-      return emptyInputSnapshot(this.state.mouseX, this.state.mouseY);
+      return this.clearGamepadState();
     }
     const gamepads = navigator.getGamepads();
     const gamepad = this.selectGamepad(gamepads);
     if (!gamepad) {
-      return emptyInputSnapshot(this.state.mouseX, this.state.mouseY);
+      return this.clearGamepadState();
     }
     const deadzone = this.gamepadDeadzone();
-    const mapping = this.gamepadMapping();
+    const mapping = this.resolvedGamepadMapping;
     const axisX = gamepad.axes[mapping.moveXAxis] ?? 0;
     const axisY = gamepad.axes[mapping.moveYAxis] ?? 0;
-    return {
-      w: axisY < -deadzone,
-      a: axisX < -deadzone,
-      s: axisY > deadzone,
-      d: axisX > deadzone,
-      space: this.isAnyGamepadButtonPressed(gamepad, mapping.actionButtons),
-      enter: this.isAnyGamepadButtonPressed(gamepad, mapping.menuButtons),
-      mouseLeft: this.isAnyGamepadButtonPressed(gamepad, mapping.pointerButtons),
-      mouseX: this.state.mouseX,
-      mouseY: this.state.mouseY,
-    };
+    const state = this.gamepadState;
+    state.w = axisY < -deadzone;
+    state.a = axisX < -deadzone;
+    state.s = axisY > deadzone;
+    state.d = axisX > deadzone;
+    state.space = this.isAnyGamepadButtonPressed(gamepad, mapping.actionButtons);
+    state.enter = this.isAnyGamepadButtonPressed(gamepad, mapping.menuButtons);
+    state.mouseLeft = this.isAnyGamepadButtonPressed(gamepad, mapping.pointerButtons);
+    state.mouseX = this.state.mouseX;
+    state.mouseY = this.state.mouseY;
+    return state;
   }
 
   private selectGamepad(gamepads: readonly (Gamepad | null)[]): Gamepad | undefined {
@@ -350,23 +353,26 @@ export class InputManager {
     return Number.isFinite(deadzone) ? Math.min(Math.max(deadzone, 0), 1) : DEFAULT_GAMEPAD_DEADZONE;
   }
 
-  private gamepadMapping(): Required<GamepadInputMapping> {
-    const mapping = this.options.gamepadMapping ?? {};
-    return {
-      moveXAxis: gamepadAxisIndex(mapping.moveXAxis, DEFAULT_GAMEPAD_MAPPING.moveXAxis),
-      moveYAxis: gamepadAxisIndex(mapping.moveYAxis, DEFAULT_GAMEPAD_MAPPING.moveYAxis),
-      actionButtons: gamepadButtonIndices(mapping.actionButtons, DEFAULT_GAMEPAD_MAPPING.actionButtons),
-      menuButtons: gamepadButtonIndices(mapping.menuButtons, DEFAULT_GAMEPAD_MAPPING.menuButtons),
-      pointerButtons: gamepadButtonIndices(mapping.pointerButtons, DEFAULT_GAMEPAD_MAPPING.pointerButtons),
-    };
-  }
-
   private isAnyGamepadButtonPressed(gamepad: Gamepad, indices: readonly number[]): boolean {
     return indices.some((index) => this.isGamepadButtonPressed(gamepad.buttons[index]));
   }
 
   private isGamepadButtonPressed(button: GamepadButton | undefined): boolean {
     return button?.pressed === true || (button?.value ?? 0) > 0.5;
+  }
+
+  private clearGamepadState(): InputSnapshot {
+    const state = this.gamepadState;
+    state.w = false;
+    state.a = false;
+    state.s = false;
+    state.d = false;
+    state.space = false;
+    state.enter = false;
+    state.mouseLeft = false;
+    state.mouseX = this.state.mouseX;
+    state.mouseY = this.state.mouseY;
+    return state;
   }
 }
 
@@ -380,6 +386,17 @@ function gamepadButtonIndices(values: readonly number[] | undefined, fallback: r
   }
   const valid = values.filter((value) => Number.isInteger(value) && value >= 0);
   return valid.length === 0 ? fallback : valid;
+}
+
+function resolveGamepadMapping(mapping: GamepadInputMapping | undefined): Required<GamepadInputMapping> {
+  const input = mapping ?? {};
+  return {
+    moveXAxis: gamepadAxisIndex(input.moveXAxis, DEFAULT_GAMEPAD_MAPPING.moveXAxis),
+    moveYAxis: gamepadAxisIndex(input.moveYAxis, DEFAULT_GAMEPAD_MAPPING.moveYAxis),
+    actionButtons: gamepadButtonIndices(input.actionButtons, DEFAULT_GAMEPAD_MAPPING.actionButtons),
+    menuButtons: gamepadButtonIndices(input.menuButtons, DEFAULT_GAMEPAD_MAPPING.menuButtons),
+    pointerButtons: gamepadButtonIndices(input.pointerButtons, DEFAULT_GAMEPAD_MAPPING.pointerButtons),
+  };
 }
 
 function emptyInputSnapshot(mouseX: number, mouseY: number): InputSnapshot {

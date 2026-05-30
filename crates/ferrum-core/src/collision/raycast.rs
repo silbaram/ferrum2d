@@ -1,5 +1,8 @@
 use super::*;
+use crate::components::HeightSpan;
 use std::cmp::Ordering;
+
+use super::query::query_height_span_allows;
 
 impl CollisionSystem {
     pub fn raycast(
@@ -10,9 +13,15 @@ impl CollisionSystem {
         query_mask: CollisionMask,
     ) -> Option<RaycastHit> {
         let mut nearest = None;
-        visit_raycast_hits(world, origin, direction, max_distance, query_mask, |hit| {
-            update_nearest_raycast_hit(&mut nearest, hit)
-        });
+        visit_raycast_hits(
+            world,
+            origin,
+            direction,
+            max_distance,
+            query_mask,
+            None,
+            |hit| update_nearest_raycast_hit(&mut nearest, hit),
+        );
         nearest
     }
 
@@ -65,9 +74,36 @@ impl CollisionSystem {
         hits: &mut Vec<RaycastHit>,
     ) {
         hits.clear();
-        visit_raycast_hits(world, origin, direction, max_distance, query_mask, |hit| {
-            hits.push(hit)
-        });
+        Self::raycast_all_with_height_span_into(
+            world,
+            origin,
+            direction,
+            max_distance,
+            query_mask,
+            None,
+            hits,
+        );
+    }
+
+    pub(crate) fn raycast_all_with_height_span_into(
+        world: &World,
+        origin: Transform2D,
+        direction: Velocity,
+        max_distance: f32,
+        query_mask: CollisionMask,
+        query_height_span: Option<HeightSpan>,
+        hits: &mut Vec<RaycastHit>,
+    ) {
+        hits.clear();
+        visit_raycast_hits(
+            world,
+            origin,
+            direction,
+            max_distance,
+            query_mask,
+            query_height_span,
+            |hit| hits.push(hit),
+        );
         hits.sort_by(raycast_hit_order);
     }
 
@@ -84,6 +120,29 @@ impl CollisionSystem {
         };
         Self::raycast_all_into(world, start, direction, max_distance, query_mask, hits);
     }
+
+    pub(crate) fn segment_cast_all_with_height_span_into(
+        world: &World,
+        start: Transform2D,
+        end: Transform2D,
+        query_mask: CollisionMask,
+        query_height_span: Option<HeightSpan>,
+        hits: &mut Vec<RaycastHit>,
+    ) {
+        hits.clear();
+        let Some((direction, max_distance)) = segment_direction_and_distance(start, end) else {
+            return;
+        };
+        Self::raycast_all_with_height_span_into(
+            world,
+            start,
+            direction,
+            max_distance,
+            query_mask,
+            query_height_span,
+            hits,
+        );
+    }
 }
 
 fn visit_raycast_hits(
@@ -92,6 +151,7 @@ fn visit_raycast_hits(
     direction: Velocity,
     max_distance: f32,
     query_mask: CollisionMask,
+    query_height_span: Option<HeightSpan>,
     mut visit: impl FnMut(RaycastHit),
 ) {
     let Some((unit_x, unit_y)) = normalized_direction(direction) else {
@@ -101,8 +161,8 @@ fn visit_raycast_hits(
         return;
     }
 
-    for index in 0..world.transforms.len() {
-        if !world.alive.get(index).copied().unwrap_or(false) {
+    for &index in world.alive_indices() {
+        if !query_height_span_allows(world, index, query_height_span) {
             continue;
         }
         let Some(transform) = world.transforms[index] else {

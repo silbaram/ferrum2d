@@ -82,9 +82,11 @@ export type {
   PhysicsAabbTileObstacleContactQuery,
   PhysicsAabbTileObstacleManifoldQuery,
   PhysicsAabbTileObstacleShapeCastQuery,
+  PhysicsBodyHeightSpan,
   PhysicsBodyColliderOptions,
   PhysicsBodyColliderSnapshot,
   PhysicsBodyContactQuery,
+  PhysicsBodyHeightSpanQuery,
   PhysicsBodyManifoldQuery,
   PhysicsCapsuleBodyQuery,
   PhysicsCapsuleBodyShapeCastQuery,
@@ -99,6 +101,8 @@ export type {
   PhysicsEntityHandle,
   PhysicsEntitySnapshot,
   PhysicsFrameStats,
+  PhysicsHd2dKinematicMoveOptions,
+  PhysicsHd2dKinematicMoveResult,
   PhysicsJointBaseOptions,
   PhysicsJointHandle,
   PhysicsJointSnapshot,
@@ -126,6 +130,10 @@ export type {
   PhysicsSegmentCastTileObstacleQuery,
   PhysicsShapeCastMotionQuery,
   PhysicsTileShapeCastMotionQuery,
+  PhysicsTileHeightSpan,
+  PhysicsTileHeightSpanQuery,
+  ShooterTileBridgePortalMetadata,
+  ShooterTileHd2dMetadata,
   ShooterSoundIds,
   ShooterTextureIds,
   TilemapNavigationPath,
@@ -170,6 +178,7 @@ export async function createEngineWithFramePipeline(
 ): Promise<FerrumEngine> {
   const bridge = await WasmBridge.init();
   const rustEngine: Engine = bridge.engine();
+  rustEngine.set_collision_lifecycle_events_enabled(options.includeCollisionEvents === true);
   const initialPhysicsSpec = resolvePhysicsSpec(undefined, {
     modeOverride: options.physicsMode,
   });
@@ -435,6 +444,7 @@ export async function createEngineWithFramePipeline(
     setViewportSize: (width, height) => {
       requireAlive();
       rustEngine.set_viewport_size(width, height);
+      framePipeline.viewportDirty = true;
     },
     setGameSpec,
     ...tilemapSceneApi,

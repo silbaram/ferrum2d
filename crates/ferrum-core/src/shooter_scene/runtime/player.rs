@@ -1,6 +1,6 @@
 use crate::audio_event::AudioEvent;
 use crate::camera::Camera2D;
-use crate::components::{Transform2D, Velocity};
+use crate::components::{HeightSpan, PhysicsFloorId, ProjectileArc, Transform2D, Velocity};
 use crate::entity::Entity;
 use crate::input::InputState;
 use crate::physics::{PhysicsBounds, PhysicsSystem};
@@ -93,7 +93,7 @@ impl ShooterScene {
                 .sprite_width
                 .max(self.config.bullet_template.sprite_height)
                 * 0.5;
-        world.spawn_bullet_from_template(
+        let bullet = world.spawn_bullet_from_template(
             Transform2D {
                 x: player_t.x + nx * spawn_offset,
                 y: player_t.y + ny * spawn_offset,
@@ -107,6 +107,23 @@ impl ShooterScene {
             self.config.bullet_template,
             self.config.bullet_damage,
         );
+        if self.config.projectile_arc.enabled {
+            let player_height_span = world.height_span(player).unwrap_or(HeightSpan {
+                floor: PhysicsFloorId::DEFAULT,
+                elevation: 0.0,
+                height: 0.0,
+            });
+            if let Some(arc) = ProjectileArc::new(
+                player_height_span.floor,
+                player_height_span.elevation,
+                self.config.projectile_arc.launch_height,
+                self.config.projectile_arc.z_velocity,
+                self.config.projectile_arc.gravity,
+                self.config.projectile_arc.hit_height,
+            ) {
+                world.set_projectile_arc(bullet, arc);
+            }
+        }
         push_audio_event(
             audio_events,
             self.sound_ids.shoot,

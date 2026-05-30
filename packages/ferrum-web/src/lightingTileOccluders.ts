@@ -1,9 +1,10 @@
 import type {
+  Hd2dTileOccluderGridInput,
   ResolvedPointLight2D,
   TileOccluder2D,
   TileOccluderGridInput,
 } from "./lightingTypes.js";
-import { positiveInteger, positiveNumber } from "./lightingValidation.js";
+import { nonNegativeNumber, positiveInteger, positiveNumber } from "./lightingValidation.js";
 
 export function deriveTileOccludersFromTilemapGrid(input: TileOccluderGridInput): TileOccluder2D[] {
   const width = positiveInteger(input.width, "width");
@@ -55,6 +56,41 @@ export function deriveTileOccludersFromTilemapGrid(input: TileOccluderGridInput)
   }
 
   occluders.push(...activeOccluders);
+  occluders.sort(compareTileOccludersByPosition);
+  return occluders;
+}
+
+export function deriveHd2dTileOccludersFromTilemapGrid(input: Hd2dTileOccluderGridInput): TileOccluder2D[] {
+  const width = positiveInteger(input.width, "width");
+  const height = positiveInteger(input.height, "height");
+  const tileSize = positiveNumber(input.tileSize, "tileSize");
+  if (input.data.length !== width * height) {
+    throw new Error(`Tile occluder grid data length must be width * height, got ${input.data.length}.`);
+  }
+
+  const occluders: TileOccluder2D[] = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const tileId = input.data[y * width + x];
+      if (!Number.isInteger(tileId)) {
+        throw new Error(`Tile occluder grid data must contain integer tile ids, got ${tileId}.`);
+      }
+      if (tileId <= 0) {
+        continue;
+      }
+      const tile = input.tiles[tileId];
+      if (tile?.blocksVision === false) {
+        continue;
+      }
+      const occluderHeight = nonNegativeNumber(tile?.occluderHeight ?? 0, `tiles.${tileId}.occluderHeight`);
+      occluders.push({
+        x: x * tileSize,
+        y: y * tileSize - occluderHeight,
+        width: tileSize,
+        height: tileSize + occluderHeight,
+      });
+    }
+  }
   occluders.sort(compareTileOccludersByPosition);
   return occluders;
 }

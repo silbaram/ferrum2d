@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::HeightSpan;
 
 mod capsule;
 mod convex_polygon;
@@ -22,6 +23,8 @@ use oriented_box::{
 use segment::shape_cast_moving_segment_circle;
 use std::cmp::Ordering;
 
+use super::query::query_height_span_allows;
+
 impl CollisionSystem {
     pub fn shape_cast(
         world: &World,
@@ -31,9 +34,15 @@ impl CollisionSystem {
         query_mask: CollisionMask,
     ) -> Option<ShapeCastHit> {
         let mut nearest = None;
-        visit_shape_cast_hits(world, shape, direction, max_distance, query_mask, |hit| {
-            update_nearest_shape_cast_hit(&mut nearest, hit)
-        });
+        visit_shape_cast_hits(
+            world,
+            shape,
+            direction,
+            max_distance,
+            query_mask,
+            None,
+            |hit| update_nearest_shape_cast_hit(&mut nearest, hit),
+        );
         nearest
     }
 
@@ -58,9 +67,36 @@ impl CollisionSystem {
         hits: &mut Vec<ShapeCastHit>,
     ) {
         hits.clear();
-        visit_shape_cast_hits(world, shape, direction, max_distance, query_mask, |hit| {
-            hits.push(hit)
-        });
+        Self::shape_cast_all_with_height_span_into(
+            world,
+            shape,
+            direction,
+            max_distance,
+            query_mask,
+            None,
+            hits,
+        );
+    }
+
+    pub(crate) fn shape_cast_all_with_height_span_into(
+        world: &World,
+        shape: CollisionQueryShape,
+        direction: Velocity,
+        max_distance: f32,
+        query_mask: CollisionMask,
+        query_height_span: Option<HeightSpan>,
+        hits: &mut Vec<ShapeCastHit>,
+    ) {
+        hits.clear();
+        visit_shape_cast_hits(
+            world,
+            shape,
+            direction,
+            max_distance,
+            query_mask,
+            query_height_span,
+            |hit| hits.push(hit),
+        );
         hits.sort_by(shape_cast_hit_order);
     }
 }
@@ -71,6 +107,7 @@ fn visit_shape_cast_hits(
     direction: Velocity,
     max_distance: f32,
     query_mask: CollisionMask,
+    query_height_span: Option<HeightSpan>,
     mut visit: impl FnMut(ShapeCastHit),
 ) {
     if !query_shape_is_valid(shape) || !max_distance.is_finite() || max_distance < 0.0 {
@@ -83,8 +120,8 @@ fn visit_shape_cast_hits(
         query_shape_sweep_bounds(shape, unit_x * max_distance, unit_y * max_distance);
     let reference = query_shape_reference_point(shape);
 
-    for index in 0..world.transforms.len() {
-        if !world.alive.get(index).copied().unwrap_or(false) {
+    for &index in world.alive_indices() {
+        if !query_height_span_allows(world, index, query_height_span) {
             continue;
         }
         let Some(transform) = world.transforms[index] else {

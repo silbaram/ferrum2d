@@ -1,5 +1,5 @@
 import { assetPipelineDiagnosticError } from "./diagnostics.js";
-import type { ShooterTileSlopeSpec } from "./gameSpec.js";
+import type { ShooterTileSlopeSpec, ShooterTileSpec } from "./gameSpec.js";
 import {
   arrayValue,
   isRecord,
@@ -13,7 +13,11 @@ import {
   positiveNumber,
   requiredString,
 } from "./assetPipelineValidation.js";
-import { tileSlopeFromRecord } from "./assetPipelineTileMetadata.js";
+import {
+  tileHd2dMetadataFromRecord,
+  tileHeightMetadataFromRecord,
+  tileSlopeFromRecord,
+} from "./assetPipelineTileMetadata.js";
 
 export interface LDtkTileset {
   uid: number;
@@ -28,6 +32,11 @@ export interface LDtkTileset {
   relPath?: string;
   tileSlopes: Map<number, ShooterTileSlopeSpec>;
   tileOneWayPlatforms: Set<number>;
+  tileHeightMetadata: Map<number, Pick<ShooterTileSpec, "floor" | "elevation" | "height">>;
+  tileHd2dMetadata: Map<number, Pick<
+    ShooterTileSpec,
+    "kind" | "ramp" | "blocksMovement" | "blocksProjectile" | "blocksVision" | "occluderHeight"
+  >>;
   path: string;
 }
 
@@ -39,6 +48,11 @@ export interface LDtkTileRef {
   srcY: number;
   slope?: ShooterTileSlopeSpec;
   oneWayPlatform?: boolean;
+  heightMetadata?: Pick<ShooterTileSpec, "floor" | "elevation" | "height">;
+  hd2dMetadata?: Pick<
+    ShooterTileSpec,
+    "kind" | "ramp" | "blocksMovement" | "blocksProjectile" | "blocksVision" | "occluderHeight"
+  >;
   path: string;
 }
 
@@ -83,6 +97,8 @@ export function ldtkTilesets(value: unknown, path: string): Map<number, LDtkTile
       relPath: optionalNullableString(record.relPath, `${entryPath}.relPath`),
       tileSlopes: ldtkTileSlopes(record.customData, `${entryPath}.customData`),
       tileOneWayPlatforms: ldtkTileOneWayPlatforms(record.customData, `${entryPath}.customData`),
+      tileHeightMetadata: ldtkTileHeightMetadata(record.customData, `${entryPath}.customData`),
+      tileHd2dMetadata: ldtkTileHd2dMetadata(record.customData, `${entryPath}.customData`),
       path: entryPath,
     });
   }
@@ -104,6 +120,8 @@ export function ldtkImportedTile(options: {
   }
   const slope = options.tileset.tileSlopes.get(options.ldtkTileId);
   const oneWayPlatform = options.tileset.tileOneWayPlatforms.has(options.ldtkTileId);
+  const heightMetadata = options.tileset.tileHeightMetadata.get(options.ldtkTileId);
+  const hd2dMetadata = options.tileset.tileHd2dMetadata.get(options.ldtkTileId);
   if (slope && oneWayPlatform) {
     throw assetPipelineDiagnosticError(
       options.path,
@@ -118,6 +136,8 @@ export function ldtkImportedTile(options: {
     srcY: options.srcY,
     ...(slope ? { slope } : {}),
     ...(oneWayPlatform ? { oneWayPlatform } : {}),
+    ...(heightMetadata ? { heightMetadata } : {}),
+    ...(hd2dMetadata ? { hd2dMetadata } : {}),
     path: options.path,
   };
   options.importedTiles.set(key, ref);
@@ -192,6 +212,70 @@ function ldtkTileOneWayPlatforms(value: unknown, path: string): Set<number> {
   return oneWayPlatforms;
 }
 
+function ldtkTileHeightMetadata(
+  value: unknown,
+  path: string,
+): Map<number, Pick<ShooterTileSpec, "floor" | "elevation" | "height">> {
+  const entries = new Map<number, Pick<ShooterTileSpec, "floor" | "elevation" | "height">>();
+  if (value === undefined) {
+    return entries;
+  }
+
+  for (const [index, entry] of arrayValue(value, path).entries()) {
+    const entryPath = `${path}.${index}`;
+    const metadata = objectValue(entry, entryPath);
+    const data = optionalString(metadata.data, `${entryPath}.data`);
+    if (data === undefined) {
+      continue;
+    }
+    const heightMetadata = ldtkCustomDataHeightMetadata(data, `${entryPath}.data`);
+    if (heightMetadata === undefined) {
+      continue;
+    }
+    const tileId = nonNegativeInteger(metadata.tileId, `${entryPath}.tileId`);
+    if (entries.has(tileId)) {
+      throw assetPipelineDiagnosticError(`${entryPath}.tileId`, `duplicate height metadata for tile id ${tileId}`);
+    }
+    entries.set(tileId, heightMetadata);
+  }
+  return entries;
+}
+
+function ldtkTileHd2dMetadata(
+  value: unknown,
+  path: string,
+): Map<number, Pick<
+  ShooterTileSpec,
+  "kind" | "ramp" | "blocksMovement" | "blocksProjectile" | "blocksVision" | "occluderHeight"
+>> {
+  const entries = new Map<number, Pick<
+    ShooterTileSpec,
+    "kind" | "ramp" | "blocksMovement" | "blocksProjectile" | "blocksVision" | "occluderHeight"
+  >>();
+  if (value === undefined) {
+    return entries;
+  }
+
+  for (const [index, entry] of arrayValue(value, path).entries()) {
+    const entryPath = `${path}.${index}`;
+    const metadata = objectValue(entry, entryPath);
+    const data = optionalString(metadata.data, `${entryPath}.data`);
+    if (data === undefined) {
+      continue;
+    }
+    const hd2dMetadata = ldtkCustomDataHd2dMetadata(data, `${entryPath}.data`);
+    if (hd2dMetadata === undefined) {
+      continue;
+    }
+    const tileId = nonNegativeInteger(metadata.tileId, `${entryPath}.tileId`);
+    if (entries.has(tileId)) {
+      throw assetPipelineDiagnosticError(`${entryPath}.tileId`, `duplicate HD-2D metadata for tile id ${tileId}`);
+    }
+    entries.set(tileId, hd2dMetadata);
+  }
+  return entries;
+}
+
 function ldtkCustomDataSlope(value: string, path: string): ShooterTileSlopeSpec | undefined {
   const trimmed = value.trim();
   if (!trimmed.startsWith("{")) {
@@ -226,4 +310,49 @@ function ldtkCustomDataOneWayPlatform(value: string, path: string): boolean {
     return false;
   }
   return optionalBoolean(parsed.oneWayPlatform, `${path}.oneWayPlatform`) === true;
+}
+
+function ldtkCustomDataHeightMetadata(
+  value: string,
+  path: string,
+): Pick<ShooterTileSpec, "floor" | "elevation" | "height"> | undefined {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{")) {
+    return undefined;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed)) {
+    return undefined;
+  }
+  return tileHeightMetadataFromRecord(parsed, path);
+}
+
+function ldtkCustomDataHd2dMetadata(
+  value: string,
+  path: string,
+): Pick<
+  ShooterTileSpec,
+  "kind" | "ramp" | "blocksMovement" | "blocksProjectile" | "blocksVision" | "occluderHeight"
+> | undefined {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{")) {
+    return undefined;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(parsed)) {
+    return undefined;
+  }
+  return tileHd2dMetadataFromRecord(parsed, path);
 }

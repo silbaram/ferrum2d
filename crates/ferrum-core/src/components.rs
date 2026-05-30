@@ -1,5 +1,6 @@
 mod colliders;
 mod collision_masks;
+mod hd2d;
 pub(crate) mod joints;
 mod limits;
 mod material;
@@ -13,6 +14,7 @@ pub use colliders::{
 };
 pub(crate) use colliders::{CompoundColliderRef, CompoundColliderShapeRef};
 pub use collision_masks::{CollisionFilter, CollisionLayer, CollisionMask};
+pub use hd2d::{HeightSpan, PhysicsFloorId, ProjectileArc};
 pub use joints::{
     DistanceJoint, DistanceJointId, GearJoint, GearJointId, PrismaticJoint, PrismaticJointId,
     PulleyJoint, PulleyJointId, RevoluteJoint, RevoluteJointId, RopeJoint, RopeJointId,

@@ -1,6 +1,7 @@
 export type * from "./lightingTypes.js";
 export { normalizeLightingScene } from "./lightingNormalize.js";
 export {
+  deriveHd2dTileOccludersFromTilemapGrid,
   deriveTileOccludersFromTilemapGrid,
   distanceSquaredToTileOccluder,
   distanceToTileOccluder,

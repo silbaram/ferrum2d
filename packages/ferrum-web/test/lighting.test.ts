@@ -2,6 +2,7 @@ import { deepEqual, equal, ok } from "node:assert/strict";
 import { test } from "node:test";
 import {
   createShadowProjectionScratch,
+  deriveHd2dTileOccludersFromTilemapGrid,
   deriveTileOccludersFromTilemapGrid,
   distanceSquaredToTileOccluder,
   distanceToTileOccluder,
@@ -11,7 +12,11 @@ import {
   writeTileOccluderShadowTrianglesInto,
 } from "../src/lighting.js";
 import type { LightingScene2D } from "../src/lighting.js";
-import { createResolvedLightingScene, resolveLightingSceneInto } from "../src/lightingNormalize.js";
+import {
+  createLightingSceneResolveCache,
+  createResolvedLightingScene,
+  resolveLightingSceneInto,
+} from "../src/lightingNormalize.js";
 
 test("normalizeLightingScene resolves ambient, point lights, and debug options", () => {
   const scene = normalizeLightingScene({
@@ -194,6 +199,28 @@ test("resolveLightingSceneInto reuses resolved lighting objects for dynamic prov
   deepEqual(third.ambient, [0, 0, 0, 0]);
 });
 
+test("resolveLightingSceneInto caches tile occluders without hiding in-place mutations", () => {
+  const cache = createLightingSceneResolveCache();
+  const target = createResolvedLightingScene();
+  const tileOccluders = [{ x: 1, y: 2, width: 3, height: 4 }];
+
+  const first = resolveLightingSceneInto(target, { tileOccluders }, cache);
+  const firstTileOccluders = first.tileOccluders;
+  deepEqual(firstTileOccluders, [{ x: 1, y: 2, width: 3, height: 4 }]);
+
+  const second = resolveLightingSceneInto(target, { tileOccluders }, cache);
+  equal(second.tileOccluders, firstTileOccluders);
+
+  tileOccluders[0].width = 5;
+  const third = resolveLightingSceneInto(target, { tileOccluders }, cache);
+  equal(third.tileOccluders === firstTileOccluders, false);
+  deepEqual(third.tileOccluders, [{ x: 1, y: 2, width: 5, height: 4 }]);
+
+  tileOccluders[0].width = 0;
+  throwsMessage(() => resolveLightingSceneInto(target, { tileOccluders }, cache), /tileOccluders\[0\]\.width/);
+  deepEqual(third.tileOccluders, [{ x: 1, y: 2, width: 5, height: 4 }]);
+});
+
 test("resolveLightingSceneInto supports atomic staging after validation failures", () => {
   const current = resolveLightingSceneInto(createResolvedLightingScene(), {
     ambient: [0, 0, 0, 0.3],
@@ -305,6 +332,23 @@ test("deriveTileOccludersFromTilemapGrid supports explicit solid tile ids", () =
   }), [
     { x: 8, y: 0, width: 8, height: 8 },
     { x: 24, y: 0, width: 8, height: 8 },
+  ]);
+});
+
+test("deriveHd2dTileOccludersFromTilemapGrid applies blocksVision and occluderHeight", () => {
+  deepEqual(deriveHd2dTileOccludersFromTilemapGrid({
+    width: 3,
+    height: 1,
+    tileSize: 16,
+    data: [1, 2, 3],
+    tiles: {
+      1: { blocksVision: true, occluderHeight: 8 },
+      2: { blocksVision: false, occluderHeight: 12 },
+      3: { blocksVision: true },
+    },
+  }), [
+    { x: 0, y: -8, width: 16, height: 24 },
+    { x: 32, y: 0, width: 16, height: 16 },
   ]);
 });
 

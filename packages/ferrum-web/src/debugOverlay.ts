@@ -20,6 +20,11 @@ export interface DebugOverlayMetrics {
   physicsFixedSteps?: number;
   physicsKinematicHits?: number;
   physicsTileCandidateChecks?: number;
+  physicsHd2dFilteredEntityCandidates?: number;
+  physicsHd2dFilteredTileCandidates?: number;
+  playerFloorId?: number;
+  playerElevation?: number;
+  playerHeight?: number;
   collisionPairCount?: number;
   collisionEventCount?: number;
   physicsDebugLineCount?: number;
@@ -70,6 +75,11 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "physicsFixedSteps", label: "fixed steps", unit: "count", optional: true },
   { id: "physicsKinematicHits", label: "kinematic hits", unit: "count", optional: true },
   { id: "physicsTileCandidateChecks", label: "tile checks", unit: "count", optional: true },
+  { id: "physicsHd2dFilteredEntityCandidates", label: "hd2d entity filters", unit: "count", optional: true },
+  { id: "physicsHd2dFilteredTileCandidates", label: "hd2d tile filters", unit: "count", optional: true },
+  { id: "playerHd2dFloor", label: "player floor", unit: "count", optional: true },
+  { id: "playerHd2dElevation", label: "player elevation", unit: "world", optional: true },
+  { id: "playerHd2dHeight", label: "player height", unit: "world", optional: true },
   { id: "collisionPairCount", label: "collision pairs", unit: "count", optional: true },
   { id: "collisionEventCount", label: "collision events", unit: "count", optional: true },
   { id: "physicsDebugLineCount", label: "physics debug lines", unit: "count", optional: true },
@@ -196,6 +206,21 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   }
   if (metrics.physicsTileCandidateChecks !== undefined) {
     lines.push(row("physicsTileCandidateChecks", metrics.physicsTileCandidateChecks));
+  }
+  if (metrics.physicsHd2dFilteredEntityCandidates !== undefined) {
+    lines.push(row("physicsHd2dFilteredEntityCandidates", metrics.physicsHd2dFilteredEntityCandidates));
+  }
+  if (metrics.physicsHd2dFilteredTileCandidates !== undefined) {
+    lines.push(row("physicsHd2dFilteredTileCandidates", metrics.physicsHd2dFilteredTileCandidates));
+  }
+  if (metrics.playerFloorId !== undefined) {
+    lines.push(row("playerHd2dFloor", metrics.playerFloorId));
+  }
+  if (metrics.playerElevation !== undefined) {
+    lines.push(row("playerHd2dElevation", `${metrics.playerElevation.toFixed(2)} world`));
+  }
+  if (metrics.playerHeight !== undefined) {
+    lines.push(row("playerHd2dHeight", `${metrics.playerHeight.toFixed(2)} world`));
   }
   if (metrics.collisionPairCount !== undefined) {
     lines.push(row("collisionPairCount", metrics.collisionPairCount));

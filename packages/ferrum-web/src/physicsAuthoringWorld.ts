@@ -1,5 +1,6 @@
 import type {
   FerrumEngine,
+  PhysicsBodyHeightSpan,
   PhysicsCollisionLayer,
   PhysicsEntityHandle,
   PhysicsJointHandle,
@@ -29,6 +30,7 @@ import type {
 } from "./physicsAuthoringTypes.js";
 import { isObject } from "./physicsAuthoringValidation.js";
 import { resolvePhysicsSpec } from "./physicsSpec.js";
+import { createHd2dFloorIds } from "./physicsHd2dFloorIds.js";
 import type {
   PhysicsSpec,
   ResolvedPhysicsBodySpec,
@@ -69,13 +71,16 @@ export function createPhysicsWorldFromSpec(
     options.onWarning?.(warning);
   }
 
+  const hd2dFloorIds = createHd2dFloorIds([
+    Object.values(spec.bodies).map((body) => body.floor),
+  ]);
   const bodyHandles: Record<string, PhysicsEntityHandle> = {};
   const jointHandles: Record<string, PhysicsJointHandle> = {};
   const worldAnchors: PhysicsEntityHandle[] = [];
 
   try {
     for (const body of bodies) {
-      bodyHandles[body.id] = spawnResolvedBody(engine, spec, body, `${path}.bodies.${body.id}`);
+      bodyHandles[body.id] = spawnResolvedBody(engine, spec, hd2dFloorIds, body, `${path}.bodies.${body.id}`);
     }
 
     for (const joint of joints) {
@@ -155,6 +160,7 @@ function applyPhysicsRuntimeOptions(engine: FerrumEngine, spec: ResolvedPhysicsS
 function spawnResolvedBody(
   engine: FerrumEngine,
   spec: ResolvedPhysicsSpec,
+  hd2dFloorIds: ReadonlyMap<string, number>,
   body: ResolvedPhysicsBodySpec,
   path: string,
 ): PhysicsEntityHandle {
@@ -197,6 +203,7 @@ function spawnResolvedBody(
     gravityScale: body.gravityScale,
     linearDamping: body.linearDamping,
     angularDamping: body.angularDamping,
+    ...(physicsBodyHeightSpan(spec, hd2dFloorIds, body) ?? {}),
   };
   const handle = spawnBody(engine, spawnOptions, path);
   try {
@@ -237,6 +244,28 @@ function spawnResolvedBody(
     throw error;
   }
   return handle;
+}
+
+function physicsBodyHeightSpan(
+  spec: ResolvedPhysicsSpec,
+  hd2dFloorIds: ReadonlyMap<string, number>,
+  body: ResolvedPhysicsBodySpec,
+): { heightSpan: PhysicsBodyHeightSpan } | undefined {
+  if (
+    !spec.hd2d.enabled &&
+    body.floor === "default" &&
+    body.elevation === 0 &&
+    body.height === 0
+  ) {
+    return undefined;
+  }
+  return {
+    heightSpan: {
+      floorId: hd2dFloorIds.get(body.floor) ?? 0,
+      elevation: body.elevation,
+      height: body.height,
+    },
+  };
 }
 
 function addResolvedCollider(

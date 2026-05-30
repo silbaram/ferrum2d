@@ -1,6 +1,7 @@
 import { physicsSpecDiagnosticError } from "./diagnostics.js";
 import type {
   PhysicsBodyColliderSnapshot,
+  PhysicsBodyHeightSpan,
   PhysicsEntityHandle,
   PhysicsEntitySnapshot,
   PhysicsJointHandle,
@@ -386,7 +387,25 @@ function validateBodyState(value: unknown, path: string): PhysicsEntitySnapshot 
   for (const field of BODY_STATE_BOOLEAN_FIELDS) {
     booleanValue(state[field], `${path}.${String(field)}`);
   }
+  if (Object.prototype.hasOwnProperty.call(state, "heightSpan")) {
+    validateBodyHeightSpan(state.heightSpan, `${path}.heightSpan`);
+  }
   return state as unknown as PhysicsEntitySnapshot;
+}
+
+function validateBodyHeightSpan(value: unknown, path: string): void {
+  if (value === null || value === undefined) {
+    return;
+  }
+  const heightSpan = recordValue(value, path) as unknown as PhysicsBodyHeightSpan;
+  if (heightSpan.floorId !== undefined) {
+    nonNegativeInteger(heightSpan.floorId, `${path}.floorId`);
+  }
+  finiteNumber(heightSpan.elevation, `${path}.elevation`);
+  const height = finiteNumber(heightSpan.height, `${path}.height`);
+  if (height < 0) {
+    throw physicsSpecDiagnosticError(`${path}.height`, "must be a non-negative number");
+  }
 }
 
 function validateColliderState(value: unknown, path: string): PhysicsBodyColliderSnapshot {

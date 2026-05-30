@@ -5,6 +5,7 @@ import {
   gameSpecError,
   layerName,
   nonNegativeInteger,
+  nonNegativeNumber,
   normalizedNumber,
   optionalObject,
   positiveNumber,
@@ -12,17 +13,29 @@ import {
 } from "./gameSpecValidation.js";
 import type {
   ResolvedShooterAtlasFrame,
+  ResolvedShooterTileBridgePortalDefinition,
   ResolvedShooterTileDefinition,
   ResolvedShooterTileLayer,
+  ResolvedShooterTileRampDefinition,
   ResolvedShooterTileSlopeDefinition,
   ResolvedShooterTilemap,
+  ShooterTileKind,
+  ShooterTileRampAxis,
 } from "./gameSpecTypes.js";
 import { atlasFrameReference } from "./gameSpecAtlas.js";
+
+export interface ShooterTilemapResolveOptions {
+  defaultHeight?: number;
+}
+
+const TILE_KINDS = new Set<ShooterTileKind>(["flat", "stair", "ramp", "ledge", "bridge"]);
+const TILE_RAMP_AXES = new Set<ShooterTileRampAxis>(["x", "y"]);
 
 export function shooterTilemap(
   value: unknown,
   path: string,
   atlasFrames: Record<string, ResolvedShooterAtlasFrame>,
+  options: ShooterTilemapResolveOptions = {},
 ): ResolvedShooterTilemap | undefined {
   if (value === undefined) {
     return undefined;
@@ -34,7 +47,9 @@ export function shooterTilemap(
   const tileHeight = positiveNumber(tilemap.tileHeight, `${path}.tileHeight`, 32);
   const originX = finiteNumber(origin.x, `${path}.origin.x`, 0);
   const originY = finiteNumber(origin.y, `${path}.origin.y`, 0);
-  const tiles = tileDefinitions(tilemap.tiles, `${path}.tiles`, atlasFrames);
+  const tiles = tileDefinitions(tilemap.tiles, `${path}.tiles`, atlasFrames, {
+    defaultHeight: options.defaultHeight ?? 0,
+  });
   const tileIds = new Set(tiles.map((tile) => tile.id));
   const layers = tilemapLayers(tilemap.layers, `${path}.layers`, {
     tileWidth,
@@ -51,6 +66,7 @@ function tileDefinitions(
   value: unknown,
   path: string,
   atlasFrames: Record<string, ResolvedShooterAtlasFrame>,
+  options: Required<ShooterTilemapResolveOptions>,
 ): ResolvedShooterTileDefinition[] {
   const tiles = optionalObject(value, path);
   const resolved: ResolvedShooterTileDefinition[] = [];
@@ -59,6 +75,16 @@ function tileDefinitions(
     const tilePath = `${path}.${idText}`;
     const id = tileId(idText, tilePath);
     const tile = optionalObject(tileValue, tilePath);
+    const elevation = finiteNumber(tile.elevation, `${tilePath}.elevation`, 0);
+    const height = nonNegativeNumber(tile.height, `${tilePath}.height`, options.defaultHeight);
+    const kind = tileKind(tile.kind, `${tilePath}.kind`);
+    const ramp = tileRamp(tile.ramp, `${tilePath}.ramp`, kind, elevation);
+    const bridgePortal = tileBridgePortal(tile.bridgePortal, `${tilePath}.bridgePortal`, kind, {
+      floor: layerName(tile.floor, `${tilePath}.floor`, "default"),
+      elevation,
+      height,
+    });
+    const blocksMovement = booleanValue(tile.blocksMovement, `${tilePath}.blocksMovement`, true);
     const slope = tileSlope(tile.slope, `${tilePath}.slope`);
     const oneWayPlatform = booleanValue(tile.oneWayPlatform, `${tilePath}.oneWayPlatform`, false);
     if (slope && oneWayPlatform) {
@@ -68,12 +94,53 @@ function tileDefinitions(
       id,
       frame: atlasFrameReference(tile.frame, `${tilePath}.frame`, atlasFrames),
       color: tileColor(tile.color, `${tilePath}.color`),
+      floor: bridgePortal?.lowerFloor ?? layerName(tile.floor, `${tilePath}.floor`, "default"),
+      elevation,
+      height,
+      kind,
+      blocksMovement,
+      blocksProjectile: booleanValue(tile.blocksProjectile, `${tilePath}.blocksProjectile`, blocksMovement),
+      blocksVision: booleanValue(tile.blocksVision, `${tilePath}.blocksVision`, blocksMovement),
+      occluderHeight: nonNegativeNumber(tile.occluderHeight, `${tilePath}.occluderHeight`, height),
+      ...(ramp ? { ramp } : {}),
+      ...(bridgePortal ? { bridgePortal } : {}),
       ...(slope ? { slope } : {}),
       ...(oneWayPlatform ? { oneWayPlatform } : {}),
     });
   }
 
   return resolved.sort((a, b) => a.id - b.id);
+}
+
+function tileBridgePortal(
+  value: unknown,
+  path: string,
+  kind: ShooterTileKind,
+  defaults: { floor: string; elevation: number; height: number },
+): ResolvedShooterTileBridgePortalDefinition | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (kind !== "bridge") {
+    throw gameSpecError(path, "requires kind to be bridge");
+  }
+  const portal = optionalObject(value, path);
+  const lowerFloor = layerName(portal.lowerFloor, `${path}.lowerFloor`, defaults.floor);
+  const upperFloor = layerName(portal.upperFloor, `${path}.upperFloor`, "bridge");
+  if (lowerFloor === upperFloor) {
+    throw gameSpecError(`${path}.upperFloor`, "must differ from bridgePortal.lowerFloor");
+  }
+  return {
+    lowerFloor,
+    upperFloor,
+    lowerElevation: finiteNumber(portal.lowerElevation, `${path}.lowerElevation`, defaults.elevation),
+    upperElevation: finiteNumber(
+      portal.upperElevation,
+      `${path}.upperElevation`,
+      defaults.elevation + defaults.height,
+    ),
+    navigationCost: nonNegativeInteger(portal.navigationCost, `${path}.navigationCost`, 1),
+  };
 }
 
 function tileId(value: string, path: string): number {
@@ -84,6 +151,49 @@ function tileId(value: string, path: string): number {
     }
   }
   throw gameSpecError(path, "tile id must be a positive integer string");
+}
+
+function tileKind(value: unknown, path: string): ShooterTileKind {
+  if (value === undefined) {
+    return "flat";
+  }
+  if (typeof value === "string" && TILE_KINDS.has(value as ShooterTileKind)) {
+    return value as ShooterTileKind;
+  }
+  throw gameSpecError(path, "must be one of flat, stair, ramp, ledge, or bridge");
+}
+
+function tileRamp(
+  value: unknown,
+  path: string,
+  kind: ShooterTileKind,
+  elevation: number,
+): ResolvedShooterTileRampDefinition | undefined {
+  if (value === undefined) {
+    if (kind === "ramp") {
+      throw gameSpecError(path, "is required when kind is ramp");
+    }
+    return undefined;
+  }
+  if (kind !== "ramp") {
+    throw gameSpecError(path, "requires kind to be ramp");
+  }
+  const ramp = optionalObject(value, path);
+  return {
+    axis: tileRampAxis(ramp.axis, `${path}.axis`),
+    startElevation: finiteNumber(ramp.startElevation, `${path}.startElevation`, elevation),
+    endElevation: finiteNumber(ramp.endElevation, `${path}.endElevation`, elevation),
+  };
+}
+
+function tileRampAxis(value: unknown, path: string): ShooterTileRampAxis {
+  if (value === undefined) {
+    return "x";
+  }
+  if (typeof value === "string" && TILE_RAMP_AXES.has(value as ShooterTileRampAxis)) {
+    return value as ShooterTileRampAxis;
+  }
+  throw gameSpecError(path, "must be x or y");
 }
 
 function tileColor(value: unknown, path: string): [number, number, number, number] {

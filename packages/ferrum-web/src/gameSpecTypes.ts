@@ -1,5 +1,5 @@
 import type { PostProcessStackInput, ResolvedPostProcessPass } from "./cameraPostProcessing.js";
-import type { PhysicsMode, PhysicsSpec, ResolvedPhysicsSpec } from "./physicsSpec.js";
+import type { PhysicsFloorId, PhysicsMode, PhysicsSpec, ResolvedPhysicsSpec } from "./physicsSpec.js";
 
 export interface ShooterGameSpec {
   world?: {
@@ -25,6 +25,7 @@ export interface ShooterGameSpec {
     cooldown?: number;
     lifetime?: number;
     damage?: number;
+    projectileArc?: ShooterProjectileArcSpec;
   };
   prefabs?: {
     player?: ShooterPrefabSpec;
@@ -45,6 +46,14 @@ export interface ShooterEnemyPresetSpec {
   spawnPattern?: ShooterEnemySpawnPatternPreset;
   health?: number;
   scoreReward?: number;
+}
+
+export interface ShooterProjectileArcSpec {
+  enabled?: boolean;
+  launchHeight?: number;
+  zVelocity?: number;
+  gravity?: number;
+  hitHeight?: number;
 }
 
 export interface ShooterEnemyOrbitSpec {
@@ -156,9 +165,36 @@ export interface ShooterTilemapSpec {
   layers?: ShooterTileLayerSpec[];
 }
 
+export type ShooterTileKind = "flat" | "stair" | "ramp" | "ledge" | "bridge";
+export type ShooterTileRampAxis = "x" | "y";
+
+export interface ShooterTileRampSpec {
+  axis?: ShooterTileRampAxis;
+  startElevation?: number;
+  endElevation?: number;
+}
+
+export interface ShooterTileBridgePortalSpec {
+  lowerFloor?: PhysicsFloorId;
+  upperFloor?: PhysicsFloorId;
+  lowerElevation?: number;
+  upperElevation?: number;
+  navigationCost?: number;
+}
+
 export interface ShooterTileSpec {
   frame?: string;
   color?: [number, number, number, number];
+  floor?: PhysicsFloorId;
+  elevation?: number;
+  height?: number;
+  kind?: ShooterTileKind;
+  ramp?: ShooterTileRampSpec;
+  bridgePortal?: ShooterTileBridgePortalSpec;
+  blocksMovement?: boolean;
+  blocksProjectile?: boolean;
+  blocksVision?: boolean;
+  occluderHeight?: number;
   slope?: ShooterTileSlopeSpec;
   oneWayPlatform?: boolean;
 }
@@ -214,8 +250,32 @@ export interface ResolvedShooterTileDefinition {
   id: number;
   frame: ResolvedShooterAtlasFrame;
   color: [number, number, number, number];
+  floor: PhysicsFloorId;
+  elevation: number;
+  height: number;
+  kind: ShooterTileKind;
+  blocksMovement: boolean;
+  blocksProjectile: boolean;
+  blocksVision: boolean;
+  occluderHeight: number;
+  ramp?: ResolvedShooterTileRampDefinition;
+  bridgePortal?: ResolvedShooterTileBridgePortalDefinition;
   slope?: ResolvedShooterTileSlopeDefinition;
   oneWayPlatform?: boolean;
+}
+
+export interface ResolvedShooterTileRampDefinition {
+  axis: ShooterTileRampAxis;
+  startElevation: number;
+  endElevation: number;
+}
+
+export interface ResolvedShooterTileBridgePortalDefinition {
+  lowerFloor: PhysicsFloorId;
+  upperFloor: PhysicsFloorId;
+  lowerElevation: number;
+  upperElevation: number;
+  navigationCost: number;
 }
 
 export interface ResolvedShooterTileSlopeDefinition {
@@ -404,6 +464,7 @@ export interface ResolvedShooterGameSpec {
   enemySpawnPatternCode: number;
   enemyHealth: number;
   bulletDamage: number;
+  projectileArc: ResolvedShooterProjectileArcSpec;
   scoreReward: number;
   orbitRadius: number;
   orbitRadialBand: number;
@@ -436,6 +497,14 @@ export interface ResolvedShooterGameSpec {
   gameOverPitch: number;
   postProcessing: readonly ResolvedPostProcessPass[];
   physics: ResolvedPhysicsSpec;
+}
+
+export interface ResolvedShooterProjectileArcSpec {
+  enabled: boolean;
+  launchHeight: number;
+  zVelocity: number;
+  gravity: number;
+  hitHeight: number;
 }
 
 export interface ResolvedShooterAtlasAnimation {
@@ -480,6 +549,13 @@ export interface ShooterGameSpecTarget {
     scoreReward: number,
     orbitRadius: number,
     orbitRadialBand: number,
+  ): void;
+  set_shooter_projectile_arc?(
+    enabled: boolean,
+    launchHeight: number,
+    zVelocity: number,
+    gravity: number,
+    hitHeight: number,
   ): void;
   set_shooter_animations?(
     playerColumns: number,
@@ -654,6 +730,32 @@ export interface ShooterGameSpecTarget {
     localY1: number,
   ): void;
   set_shooter_tile_one_way_platform?(tileId: number): void;
+  set_shooter_tile_height_span?(
+    tileId: number,
+    floorId: number,
+    elevation: number,
+    height: number,
+  ): boolean;
+  set_shooter_tile_hd2d_metadata?(
+    tileId: number,
+    kind: number,
+    blocksMovement: boolean,
+    blocksProjectile: boolean,
+    blocksVision: boolean,
+    occluderHeight: number,
+    hasRamp: boolean,
+    rampAxis: number,
+    rampStartElevation: number,
+    rampEndElevation: number,
+  ): boolean;
+  set_shooter_tile_bridge_portal?(
+    tileId: number,
+    lowerFloorId: number,
+    upperFloorId: number,
+    lowerElevation: number,
+    upperElevation: number,
+    navigationCost: number,
+  ): boolean;
   set_shooter_tilemap_layer?(
     index: number,
     columns: number,

@@ -50,7 +50,7 @@ use config::{
 };
 pub(crate) use config::{
     EnemyBehavior, EnemySpawnPattern, ShooterAudioPolicy, ShooterConfig, ShooterPrefabKind,
-    ShooterWaveConfig,
+    ShooterProjectileArcConfig, ShooterWaveConfig,
 };
 use runtime::NavigationTargetCache;
 pub(crate) use runtime::{ParticleBurstSink, TweenSink};
@@ -497,7 +497,6 @@ impl ShooterScene {
         self.game_state
     }
 
-    #[cfg(test)]
     pub(crate) fn config(&self) -> ShooterConfig {
         self.config
     }
@@ -521,7 +520,9 @@ impl ShooterScene {
     }
 
     fn apply_texture_ids_to_existing_sprites(&self, world: &mut World) {
-        for i in 0..world.sprites.len() {
+        let alive_count = world.alive_indices().len();
+        for alive_position in 0..alive_count {
+            let i = world.alive_indices()[alive_position];
             let Some(layer) = world.collider_layer_at(i) else {
                 continue;
             };
@@ -544,7 +545,9 @@ impl ShooterScene {
         texture_id: u32,
         template: EntityTemplate,
     ) {
-        for i in 0..world.alive.len() {
+        let alive_count = world.alive_indices().len();
+        for alive_position in 0..alive_count {
+            let i = world.alive_indices()[alive_position];
             if world.collider_layer_at(i) != Some(layer) {
                 continue;
             }

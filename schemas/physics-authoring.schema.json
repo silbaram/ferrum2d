@@ -8,7 +8,12 @@
   "properties": {
     "physics": {
       "type": "object",
-      "description": "Runtime Physics Spec. Export/compile keeps this object and strips physicsEditor metadata."
+      "description": "Runtime Physics Spec. Export/compile keeps this object and strips physicsEditor metadata.",
+      "properties": {
+        "hd2d": {
+          "$ref": "#/$defs/physicsHd2d"
+        }
+      }
     },
     "physicsEditor": {
       "type": "object",
@@ -79,6 +84,27 @@
         },
         "agentEditableFields": {
           "$ref": "#/$defs/runtimeFieldPathList"
+        }
+      }
+    },
+    "physicsHd2d": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "defaultHeight": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maxStepHeight": {
+          "type": "number",
+          "minimum": 0
+        },
+        "maxDropHeight": {
+          "type": "number",
+          "minimum": 0
         }
       }
     },

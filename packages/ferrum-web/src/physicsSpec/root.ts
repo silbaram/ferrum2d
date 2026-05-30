@@ -16,6 +16,7 @@ import type {
 import { DEFAULT_PHYSICS_MODE, MODE_DEFAULTS } from "./defaults.js";
 import { physicsDebugSpec } from "./debug.js";
 import { physicsBodies } from "./bodies.js";
+import { physicsHd2dSpec } from "./hd2d.js";
 import { physicsJoints } from "./joints.js";
 import { physicsLayers, physicsMaterials } from "./materialsLayers.js";
 import { PHYSICS_KEYS, SOLVER_KEYS } from "./keys.js";
@@ -31,9 +32,10 @@ export function resolvePhysicsSpec(input: unknown, options: ResolvePhysicsSpecOp
   );
   const modeDefaults = MODE_DEFAULTS[mode];
   const solver = physicsSolverSpec(spec.solver, `${path}.solver`, modeDefaults.solver);
+  const hd2d = physicsHd2dSpec(spec.hd2d, `${path}.hd2d`);
   const materials = physicsMaterials(spec.materials, `${path}.materials`);
   const layers = physicsLayers(spec.layers, `${path}.layers`);
-  const bodies = physicsBodies(spec.bodies, `${path}.bodies`, materials, layers);
+  const bodies = physicsBodies(spec.bodies, `${path}.bodies`, materials, layers, hd2d);
   const joints = physicsJoints(spec.joints, `${path}.joints`, bodies);
   const gravity = vector2(spec.gravity, `${path}.gravity`, {
     x: modeDefaults.gravityX,
@@ -45,6 +47,7 @@ export function resolvePhysicsSpec(input: unknown, options: ResolvePhysicsSpecOp
     gravityX: gravity.x,
     gravityY: gravity.y,
     continuous: booleanValue(spec.continuous, `${path}.continuous`, modeDefaults.continuous),
+    hd2d,
     solver,
     materials,
     layers,

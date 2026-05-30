@@ -48,6 +48,7 @@ import { verifyWasmBridgeAbi } from "./wasmBridgeAbi.js";
 import {
   audioEventBufferView,
   collisionEventBufferView,
+  frameTelemetryBufferView,
   physicsBodyContactHitBufferView,
   physicsBodyManifoldHitBufferView,
   physicsBodyStateBufferView,
@@ -64,6 +65,8 @@ import {
   tilemapNavigationPathBufferView,
 } from "./wasmBridgeBufferViews.js";
 import type {
+  FrameTelemetryBufferView,
+  FrameTelemetryBufferViewCache,
   PhysicsBodyStateBufferView,
   ShooterStateBufferView,
   TilemapNavigationPathBufferView,
@@ -72,6 +75,7 @@ import type {
 
 export class WasmBridge {
   private readonly bufferContext: WasmBridgeBufferContext;
+  private readonly frameTelemetryBufferCache: FrameTelemetryBufferViewCache = {};
 
   private constructor(
     private readonly engineInstance: Engine,
@@ -101,6 +105,10 @@ export class WasmBridge {
 
   readRenderCommandBuffer(): RenderCommandBufferView {
     return renderCommandBufferView(this.bufferContext);
+  }
+
+  readFrameTelemetryBuffer(): FrameTelemetryBufferView {
+    return frameTelemetryBufferView(this.bufferContext, this.frameTelemetryBufferCache);
   }
 
   readRenderCommands(): RenderCommandView[] {
@@ -319,6 +327,8 @@ export type {
 } from "./collisionEventDecoder";
 export type { PhysicsDebugLineBufferView, PhysicsDebugLineView };
 export type {
+  FrameTelemetryBufferView,
+  FrameTelemetryBufferViewCache,
   PhysicsBodyStateBufferView,
   ShooterStateBufferView,
   TilemapNavigationPathBufferView,

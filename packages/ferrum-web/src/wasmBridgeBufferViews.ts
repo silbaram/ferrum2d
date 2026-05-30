@@ -29,6 +29,16 @@ export interface TilemapNavigationPathBufferView {
   floatsPerPoint: number;
 }
 
+export interface FrameTelemetryBufferView {
+  buffer: Float64Array;
+  f64sPerFrame: number;
+}
+
+export interface FrameTelemetryBufferViewCache {
+  memoryBuffer?: ArrayBuffer;
+  view?: FrameTelemetryBufferView;
+}
+
 export interface ShooterStateBufferView {
   headerFloats: Float32Array;
   headerU32s: Uint32Array;
@@ -59,6 +69,27 @@ export function renderCommandBufferView(
     commandCount,
     floatsPerCommand: context.layout.floatsPerCommand,
   };
+}
+
+export function frameTelemetryBufferView(
+  context: WasmBridgeBufferContext,
+  cache?: FrameTelemetryBufferViewCache,
+): FrameTelemetryBufferView {
+  const memoryBuffer = context.memory.buffer;
+  if (cache?.view !== undefined && cache.memoryBuffer === memoryBuffer) {
+    return cache.view;
+  }
+
+  const ptr = context.engine.frame_telemetry_ptr();
+  const view = {
+    buffer: new Float64Array(memoryBuffer, ptr, context.layout.f64sPerFrameTelemetry),
+    f64sPerFrame: context.layout.f64sPerFrameTelemetry,
+  };
+  if (cache !== undefined) {
+    cache.memoryBuffer = memoryBuffer;
+    cache.view = view;
+  }
+  return view;
 }
 
 export function audioEventBufferView(context: WasmBridgeBufferContext): AudioEventBufferView {
@@ -112,10 +143,11 @@ export function tilemapNavigationPathBufferView(
 ): TilemapNavigationPathBufferView {
   const ptr = context.engine.tilemap_navigation_path_point_ptr();
   const pointCount = context.engine.tilemap_navigation_path_point_len();
+  const floatsPerPoint = 5;
   return {
-    buffer: new Float32Array(context.memory.buffer, ptr, pointCount * 2),
+    buffer: new Float32Array(context.memory.buffer, ptr, pointCount * floatsPerPoint),
     pointCount,
-    floatsPerPoint: 2,
+    floatsPerPoint,
   };
 }
 

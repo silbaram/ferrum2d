@@ -1,6 +1,8 @@
 use wasm_bindgen::prelude::*;
 
-use crate::components::{AngularVelocity, RigidBodyType, Rotation2D, Transform2D, Velocity};
+use crate::components::{
+    AngularVelocity, HeightSpan, PhysicsFloorId, RigidBodyType, Rotation2D, Transform2D, Velocity,
+};
 
 use super::super::Engine;
 
@@ -103,6 +105,67 @@ impl Engine {
         self.world
             .set_angular_velocity(entity, AngularVelocity { radians_per_second });
         self.store_physics_entity_snapshot(entity)
+    }
+
+    pub fn set_physics_body_height_span(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        floor_id: u32,
+        elevation: f32,
+        height: f32,
+    ) -> bool {
+        let Some(span) = HeightSpan::new(PhysicsFloorId(floor_id), elevation, height) else {
+            return false;
+        };
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return false;
+        };
+        if self.world.rigid_body(entity).is_none() {
+            return false;
+        }
+        self.world.set_height_span(entity, span)
+    }
+
+    pub fn clear_physics_body_height_span(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+    ) -> bool {
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return false;
+        };
+        if self.world.rigid_body(entity).is_none() {
+            return false;
+        }
+        self.world.clear_height_span(entity)
+    }
+
+    pub fn physics_body_has_height_span(&self, entity_id: u32, entity_generation: u32) -> bool {
+        self.entity_from_handle(entity_id, entity_generation)
+            .and_then(|entity| self.world.height_span(entity))
+            .is_some()
+    }
+
+    pub fn physics_body_floor_id(&self, entity_id: u32, entity_generation: u32) -> u32 {
+        self.entity_from_handle(entity_id, entity_generation)
+            .and_then(|entity| self.world.height_span(entity))
+            .map(|span| span.floor.0)
+            .unwrap_or(0)
+    }
+
+    pub fn physics_body_elevation(&self, entity_id: u32, entity_generation: u32) -> f32 {
+        self.entity_from_handle(entity_id, entity_generation)
+            .and_then(|entity| self.world.height_span(entity))
+            .map(|span| span.elevation)
+            .unwrap_or(0.0)
+    }
+
+    pub fn physics_body_height(&self, entity_id: u32, entity_generation: u32) -> f32 {
+        self.entity_from_handle(entity_id, entity_generation)
+            .and_then(|entity| self.world.height_span(entity))
+            .map(|span| span.height)
+            .unwrap_or(0.0)
     }
 
     pub fn set_physics_body_enabled(

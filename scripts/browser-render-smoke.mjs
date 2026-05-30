@@ -21,6 +21,7 @@ const PRELOAD_MODE = "preload";
 const VIRTUAL_CONTROLS_MODE = "virtual-controls";
 const TOPDOWN_EFFECTS_MODE = "topdown-effects";
 const TOPDOWN_SAVE_LOAD_MODE = "topdown-save-load";
+const TOPDOWN_HD2D_MODE = "topdown-hd2d";
 const DESTRUCTIBLE_TERRAIN_MODE = "destructible-terrain";
 const BREAKOUT_EFFECTS_MODE = "breakout-effects";
 const PLATFORMER_EFFECTS_MODE = "platformer-effects";
@@ -63,6 +64,90 @@ const TOPDOWN_EFFECT_SMOKE_SPEC = {
     player: { width: 32, height: 32 },
     enemy: { width: 120, height: 120 },
     bullet: { width: 48, height: 48 },
+  },
+  camera: { preset: "follow" },
+};
+const TOPDOWN_HD2D_SMOKE_SPEC = {
+  world: { width: 256, height: 128 },
+  player: { speed: 120 },
+  enemies: {
+    speed: 1,
+    spawnInterval: 10,
+    behavior: "static",
+    spawnPattern: "edge",
+    health: 2,
+    scoreReward: 1,
+    waves: [],
+  },
+  weapons: {
+    bulletSpeed: 420,
+    cooldown: 0.2,
+    lifetime: 1.5,
+    damage: 1,
+    projectileArc: {
+      enabled: true,
+      launchHeight: 12,
+      zVelocity: 80,
+      gravity: 160,
+      hitHeight: 4,
+    },
+  },
+  prefabs: {
+    player: { width: 24, height: 32 },
+    enemy: { width: 24, height: 32 },
+    bullet: { width: 8, height: 8 },
+  },
+  atlas: {
+    frames: {
+      "hd2d.tile": {
+        texture: "bullet",
+        uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+        size: { width: 32, height: 32 },
+      },
+    },
+  },
+  tilemap: {
+    tileWidth: 32,
+    tileHeight: 32,
+    tiles: {
+      "1": {
+        frame: "hd2d.tile",
+        floor: "ground",
+        elevation: 0,
+        height: 8,
+        kind: "bridge",
+        blocksMovement: false,
+        blocksProjectile: false,
+        blocksVision: true,
+        occluderHeight: 16,
+        bridgePortal: {
+          lowerFloor: "ground",
+          upperFloor: "bridge",
+          lowerElevation: 0,
+          upperElevation: 12,
+          navigationCost: 2,
+        },
+      },
+    },
+    layers: [
+      {
+        name: "hd2d-bridge",
+        columns: 3,
+        rows: 1,
+        tileWidth: 32,
+        tileHeight: 32,
+        collision: true,
+        data: [0, 1, 0],
+      },
+    ],
+  },
+  physics: {
+    hd2d: {
+      enabled: true,
+      defaultHeight: 8,
+      maxStepHeight: 4,
+      maxDropHeight: 4,
+    },
   },
   camera: { preset: "follow" },
 };
@@ -232,6 +317,10 @@ function parseArgs(args) {
       mode = TOPDOWN_EFFECTS_MODE;
       continue;
     }
+    if (arg === "--topdown-hd2d") {
+      mode = TOPDOWN_HD2D_MODE;
+      continue;
+    }
     if (arg === "--breakout-effects") {
       mode = BREAKOUT_EFFECTS_MODE;
       continue;
@@ -258,6 +347,7 @@ function parseArgs(args) {
     VIRTUAL_CONTROLS_MODE,
     TOPDOWN_EFFECTS_MODE,
     TOPDOWN_SAVE_LOAD_MODE,
+    TOPDOWN_HD2D_MODE,
     DESTRUCTIBLE_TERRAIN_MODE,
     BREAKOUT_EFFECTS_MODE,
     PLATFORMER_EFFECTS_MODE,
@@ -309,6 +399,9 @@ function browserSmokeUrl(port, options) {
     params.set("effectSmoke", "true");
   }
   if (mode === TOPDOWN_SAVE_LOAD_MODE) {
+    params.set("effectSmoke", "true");
+  }
+  if (mode === TOPDOWN_HD2D_MODE) {
     params.set("effectSmoke", "true");
   }
   if (mode === DESTRUCTIBLE_TERRAIN_MODE) {
@@ -500,6 +593,8 @@ async function smokeByMode(page, mode, timeoutMs) {
       return await smokeTopdownEffects(page, timeoutMs);
     case TOPDOWN_SAVE_LOAD_MODE:
       return await smokeTopdownSaveLoad(page, timeoutMs);
+    case TOPDOWN_HD2D_MODE:
+      return await smokeTopdownHd2d(page, timeoutMs);
     case DESTRUCTIBLE_TERRAIN_MODE:
       return await smokeDestructibleTerrain(page, timeoutMs);
     case BREAKOUT_EFFECTS_MODE:
@@ -1028,6 +1123,96 @@ async function smokeTopdownSaveLoad(page, timeoutMs) {
     throw new Error(`Top-down save/load smoke did not restore entityCount:\n${JSON.stringify(report, null, 2)}`);
   }
   return { saveLoadSmoke: report };
+}
+
+async function smokeTopdownHd2d(page, timeoutMs) {
+  const initial = await page.evaluate((spec) => {
+    const engine = globalThis.ferrumEngine;
+    if (!engine) {
+      throw new Error("Top-down HD-2D smoke requires window.ferrumEngine.");
+    }
+    const resolved = engine.setGameSpec(spec);
+    engine.resetGame();
+
+    const bridgeFloorId = 1;
+    const groundFloorId = 2;
+    const path = engine.queryTilemapNavigationPath({
+      fromX: 16,
+      fromY: 16,
+      toX: 80,
+      toY: 16,
+      heightSpan: { floorId: groundFloorId, elevation: 0, height: 8 },
+      toHeightSpan: { floorId: bridgeFloorId, elevation: 12, height: 8 },
+    });
+    const underpassPath = engine.queryTilemapNavigationPath({
+      fromX: 16,
+      fromY: 16,
+      toX: 80,
+      toY: 16,
+      heightSpan: { floorId: groundFloorId, elevation: 0, height: 8 },
+    });
+    return {
+      projectileArc: resolved.projectileArc,
+      path: path === undefined ? undefined : {
+        pointCount: path.pointCount,
+        points: path.points,
+        distance: path.distance,
+        floatsPerPoint: path.pointBuffer.length / Math.max(1, path.pointCount),
+        debugLineCount: path.debugLineBuffer.lineCount,
+      },
+      underpassPath: underpassPath === undefined ? undefined : {
+        pointCount: underpassPath.pointCount,
+        points: underpassPath.points,
+      },
+    };
+  }, TOPDOWN_HD2D_SMOKE_SPEC);
+
+  if (!initial.projectileArc?.enabled) {
+    throw new Error(`Top-down HD-2D smoke did not enable projectileArc:\n${JSON.stringify(initial, null, 2)}`);
+  }
+  if (!initial.path || initial.path.pointCount < 3) {
+    throw new Error(`Top-down HD-2D smoke did not produce a bridge portal path:\n${JSON.stringify(initial, null, 2)}`);
+  }
+  if (initial.path.floatsPerPoint !== 5) {
+    throw new Error(`Top-down HD-2D smoke path did not use 5-float HD-2D points:\n${JSON.stringify(initial, null, 2)}`);
+  }
+  if (!initial.underpassPath || initial.underpassPath.points.some((point) => point.heightSpan?.floorId !== 2)) {
+    throw new Error(`Top-down HD-2D smoke did not preserve lower-floor bridge underpass path:\n${JSON.stringify(initial, null, 2)}`);
+  }
+  const floors = initial.path.points.map((point) => point.heightSpan?.floorId);
+  if (!floors.includes(2) || !floors.includes(1)) {
+    throw new Error(`Top-down HD-2D smoke path did not include ground and bridge floors:\n${JSON.stringify(initial, null, 2)}`);
+  }
+
+  await page.evaluate(() => {
+    if (globalThis.ferrumTopdownSmokeStart) {
+      globalThis.ferrumTopdownSmokeStart();
+      return;
+    }
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter", key: "Enter", bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent("keyup", { code: "Enter", key: "Enter", bubbles: true }));
+  });
+  await waitForPageFunction(
+    page,
+    "Top-down HD-2D smoke did not enter Playing state",
+    () => globalThis.ferrumEngine?.gameState?.() === 1,
+    timeoutMs,
+  );
+  await waitForPageFunction(
+    page,
+    "Top-down HD-2D smoke did not render tile/entity commands",
+    () => (globalThis.ferrumRuntime?.renderer?.stats?.().renderCommandCount ?? 0) > 0,
+    timeoutMs,
+  );
+
+  return await page.evaluate((initialReport) => ({
+    topdownHd2dSmoke: {
+      ...initialReport,
+      gameState: globalThis.ferrumEngine?.gameState?.() ?? -1,
+      renderCommandCount: globalThis.ferrumRuntime?.renderer?.stats?.().renderCommandCount ?? 0,
+      entityCount: globalThis.ferrumEngine?.entityCount?.() ?? 0,
+    },
+  }), initial);
 }
 
 async function smokeDestructibleTerrain(page, timeoutMs) {

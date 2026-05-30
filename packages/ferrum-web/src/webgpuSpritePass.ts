@@ -1,5 +1,4 @@
 import {
-  DEFAULT_SPRITE_MATERIAL_PRESET,
   SPRITE_RENDER_COMMAND_FLOATS,
   spriteMaterialPassRequiresCommandCopy,
   writeSpriteMaterialPassCommandsInto,
@@ -60,12 +59,24 @@ export class WebGpuSpritePass {
     }
 
     const ranges = spriteRanges(commands, this.spriteRangeScratch);
+    const commandBytes = commands.commandCount * COMMAND_STRIDE_BYTES;
+    this.ensureSpriteInstanceCapacity(commandBytes * spriteMaterialPasses.length);
+    for (let passIndex = 0; passIndex < spriteMaterialPasses.length; passIndex += 1) {
+      this.uploadMaterialPass(
+        commands,
+        spriteMaterialPasses[passIndex],
+        passIndex * commandBytes,
+      );
+    }
+
     let drawCalls = 0;
-    for (const materialPass of spriteMaterialPasses) {
+    for (let passIndex = 0; passIndex < spriteMaterialPasses.length; passIndex += 1) {
+      const materialPass = spriteMaterialPasses[passIndex];
       pass.setPipeline(this.spritePipelineForBlendMode(materialPass.blendMode));
       pass.setBindGroup(0, this.resolutionBindGroup);
+      const passByteOffset = passIndex * commandBytes;
       for (const range of ranges) {
-        drawCalls += this.drawRange(pass, commands, range, materialPass);
+        drawCalls += this.drawRange(pass, range, passByteOffset);
       }
     }
     return { drawCalls, textureSwitchCount: ranges.length - 1 };
@@ -159,52 +170,57 @@ export class WebGpuSpritePass {
 
   private drawRange(
     pass: GPURenderPassEncoder,
-    commands: RenderCommandBufferView,
     range: WebGpuSpriteRange,
-    materialPass: SpriteMaterialPass = {
-      kind: "base",
-      blendMode: DEFAULT_SPRITE_MATERIAL_PRESET.blendMode,
-      offsetX: 0,
-      offsetY: 0,
-    },
+    passByteOffset: number,
   ): number {
     const commandCount = range.end - range.start;
     if (commandCount <= 0) {
       return 0;
     }
-    const commandFloatOffset = range.start * commands.floatsPerCommand;
-    const uploadFloatCount = commandCount * FLOATS_PER_COMMAND;
+    pass.setBindGroup(1, this.textureStore.resource(range.textureId).bindGroup);
+    pass.setVertexBuffer(
+      0,
+      this.spriteInstanceBuffer,
+      passByteOffset + range.start * COMMAND_STRIDE_BYTES,
+      commandCount * COMMAND_STRIDE_BYTES,
+    );
+    pass.draw(6, commandCount, 0, 0);
+    return 1;
+  }
+
+  private uploadMaterialPass(
+    commands: RenderCommandBufferView,
+    materialPass: SpriteMaterialPass,
+    byteOffset: number,
+  ): void {
+    const uploadFloatCount = commands.commandCount * FLOATS_PER_COMMAND;
     const byteCount = uploadFloatCount * BYTES_PER_F32;
-    this.ensureSpriteInstanceCapacity(byteCount);
     if (commands.floatsPerCommand !== FLOATS_PER_COMMAND || spriteMaterialPassRequiresCommandCopy(materialPass)) {
       this.ensureMaterialStaging(uploadFloatCount);
       const materialFloatCount = writeSpriteMaterialPassCommandsInto(
         commands,
-        range.start,
-        range.end,
+        0,
+        commands.commandCount,
         materialPass,
         this.materialStaging,
       );
       this.device.queue.writeBuffer(
         this.spriteInstanceBuffer,
-        0,
+        byteOffset,
         this.materialStaging.buffer,
         this.materialStaging.byteOffset,
         materialFloatCount * BYTES_PER_F32,
       );
-    } else {
-      this.device.queue.writeBuffer(
-        this.spriteInstanceBuffer,
-        0,
-        commands.buffer.buffer,
-        commands.buffer.byteOffset + commandFloatOffset * BYTES_PER_F32,
-        byteCount,
-      );
+      return;
     }
-    pass.setBindGroup(1, this.textureStore.resource(range.textureId).bindGroup);
-    pass.setVertexBuffer(0, this.spriteInstanceBuffer);
-    pass.draw(6, commandCount, 0, 0);
-    return 1;
+
+    this.device.queue.writeBuffer(
+      this.spriteInstanceBuffer,
+      byteOffset,
+      commands.buffer.buffer,
+      commands.buffer.byteOffset,
+      byteCount,
+    );
   }
 
   private spritePipelineForBlendMode(blendMode: SpriteMaterialBlendMode): GPURenderPipeline {

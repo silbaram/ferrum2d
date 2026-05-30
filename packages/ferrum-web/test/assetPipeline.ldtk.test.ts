@@ -20,7 +20,7 @@ test("importLDtkTilemap converts embedded level tile layers and atlas frames", (
         padding: 0,
         customData: [{
           tileId: 1,
-          data: "{\"oneWayPlatform\":true}",
+          data: "{\"oneWayPlatform\":true,\"floor\":\"ground\",\"elevation\":0,\"height\":8,\"kind\":\"bridge\",\"blocksMovement\":false,\"blocksProjectile\":false,\"blocksVision\":false,\"occluderHeight\":6,\"bridgePortal\":{\"lowerFloor\":\"ground\",\"upperFloor\":\"bridge\",\"upperElevation\":12,\"navigationCost\":2}}",
         }, {
           tileId: 2,
           data: "{\"slope\":{\"x0\":0,\"y0\":1,\"x1\":1,\"y1\":0}}",
@@ -122,7 +122,24 @@ test("importLDtkTilemap converts embedded level tile layers and atlas frames", (
     origin: { x: -8, y: 4 },
     tiles: {
       "1": { frame: "terrain.0" },
-      "2": { frame: "terrain.1", oneWayPlatform: true },
+      "2": {
+        frame: "terrain.1",
+        floor: "ground",
+        elevation: 0,
+        height: 8,
+        kind: "bridge",
+        bridgePortal: {
+          lowerFloor: "ground",
+          upperFloor: "bridge",
+          upperElevation: 12,
+          navigationCost: 2,
+        },
+        blocksMovement: false,
+        blocksProjectile: false,
+        blocksVision: false,
+        occluderHeight: 6,
+        oneWayPlatform: true,
+      },
       "3": { frame: "terrain.4" },
       "4": { frame: "terrain.2", slope: { x0: 0, y0: 1, x1: 1, y1: 0 } },
     },

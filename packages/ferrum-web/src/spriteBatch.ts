@@ -91,14 +91,19 @@ export class SpriteBatch {
     const ranges = this.textureRanges(commands);
     const materialPasses = this.materialPassesFor(material);
     let drawCalls = 0;
-    for (const pass of materialPasses) {
-      this.applyBlendMode(pass.blendMode);
-      for (const range of ranges) {
-        const texture = textureManager.texture(range.textureId);
-        drawCalls += this.drawRange(texture, commands, resolution, range.start, range.end, pass);
+    this.bindForDraw(resolution);
+    try {
+      for (const pass of materialPasses) {
+        this.applyBlendMode(pass.blendMode);
+        for (const range of ranges) {
+          const texture = textureManager.texture(range.textureId);
+          drawCalls += this.drawRange(texture, commands, range.start, range.end, pass);
+        }
       }
+    } finally {
+      this.gl.bindVertexArray(null);
+      this.applyBlendMode("alpha");
     }
-    this.applyBlendMode("alpha");
     return { drawCalls, textureSwitchCount: ranges.length - 1 };
   }
 
@@ -117,18 +122,22 @@ export class SpriteBatch {
     this.assertAlive();
     const materialPasses = this.materialPassesFor(material);
     let drawCalls = 0;
-    for (const pass of materialPasses) {
-      this.applyBlendMode(pass.blendMode);
-      drawCalls += this.drawRange(texture, commands, resolution, 0, commands.commandCount, pass);
+    this.bindForDraw(resolution);
+    try {
+      for (const pass of materialPasses) {
+        this.applyBlendMode(pass.blendMode);
+        drawCalls += this.drawRange(texture, commands, 0, commands.commandCount, pass);
+      }
+    } finally {
+      this.gl.bindVertexArray(null);
+      this.applyBlendMode("alpha");
     }
-    this.applyBlendMode("alpha");
     return { drawCalls, textureSwitchCount: 0 };
   }
 
   private drawRange(
     texture: WebGLTexture,
     commands: RenderCommandBufferView,
-    resolution: [number, number],
     startCommand: number,
     endCommand: number,
     pass: SpriteMaterialPass,
@@ -138,9 +147,6 @@ export class SpriteBatch {
 
     const commandFloatOffset = startCommand * commands.floatsPerCommand;
     const uploadFloatCount = commandCount * FLOATS_PER_COMMAND;
-    this.gl.useProgram(this.program);
-    this.gl.bindVertexArray(this.vao);
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vbo);
     if (this.instanceCapacityFloats < uploadFloatCount) {
       this.instanceCapacityFloats = this.nextPowerOfTwo(uploadFloatCount);
       this.gl.bufferData(this.gl.ARRAY_BUFFER, this.instanceCapacityFloats * BYTES_PER_F32, this.gl.DYNAMIC_DRAW);
@@ -159,13 +165,18 @@ export class SpriteBatch {
       this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, commands.buffer, commandFloatOffset, uploadFloatCount);
     }
 
+    this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+    this.gl.drawArraysInstanced(this.gl.TRIANGLES, 0, 6, commandCount);
+    return 1;
+  }
+
+  private bindForDraw(resolution: [number, number]): void {
+    this.gl.useProgram(this.program);
+    this.gl.bindVertexArray(this.vao);
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vbo);
     this.gl.uniform2f(this.resolutionLocation, resolution[0], resolution[1]);
     this.gl.activeTexture(this.gl.TEXTURE0);
-    this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
     this.gl.uniform1i(this.textureLocation, 0);
-    this.gl.drawArraysInstanced(this.gl.TRIANGLES, 0, 6, commandCount);
-    this.gl.bindVertexArray(null);
-    return 1;
   }
 
   private textureRanges(commands: RenderCommandBufferView): Array<{ textureId: number; start: number; end: number }> {

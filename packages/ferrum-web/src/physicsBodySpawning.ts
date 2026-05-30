@@ -10,6 +10,7 @@ import { physicsEntityHandle, readPhysicsEntityHandle } from "./physicsHandles.j
 import { DEFAULT_PHYSICS_MASK_BITS, physicsVertexBuffer } from "./physicsWasmInputs.js";
 import type {
   PhysicsBodyColliderOptions,
+  PhysicsBodyHeightSpan,
   PhysicsCollisionLayer,
   PhysicsEntityHandle,
   PhysicsRigidBodyCollider,
@@ -207,6 +208,13 @@ export function spawnPhysicsRigidBody(
     throw new Error("spawnRigidBody() rejected invalid physics body options.");
   }
   const handle = readPhysicsEntityHandle(rustEngine);
+  if (
+    options.heightSpan !== undefined &&
+    !applyPhysicsBodyHeightSpan(rustEngine, handle, options.heightSpan)
+  ) {
+    rustEngine.despawn_physics_entity(handle.entityId, handle.entityGeneration);
+    throw new Error("spawnRigidBody() rejected invalid physics body heightSpan.");
+  }
   applyPhysicsColliderOffset(rustEngine, handle, collider);
   applyPhysicsBodyTuning(rustEngine, handle, bodyType, options);
   if (material !== undefined) {
@@ -241,6 +249,21 @@ export function spawnPhysicsRigidBody(
     );
   }
   return handle;
+}
+
+export function applyPhysicsBodyHeightSpan(
+  rustEngine: Engine,
+  handle: PhysicsEntityHandle,
+  span: PhysicsBodyHeightSpan,
+): boolean {
+  const resolved = physicsEntityHandle(handle);
+  return rustEngine.set_physics_body_height_span(
+    resolved.entityId,
+    resolved.entityGeneration,
+    uint32Number(span.floorId ?? 0, "physics body floorId"),
+    finiteNumber(span.elevation, "physics body elevation"),
+    nonNegativeNumber(span.height, "physics body height"),
+  );
 }
 
 export function addPhysicsBodyColliderToRigidBody(

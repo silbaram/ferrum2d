@@ -10,6 +10,7 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     world.set_transform(a, Transform2D { x: 2.0, y: 3.0 });
     world.set_transform(b, Transform2D { x: 8.0, y: 13.0 });
     world.set_velocity(a, Velocity { vx: 1.0, vy: -2.0 });
+    world.set_height_span(a, HeightSpan::on_default_floor(4.0, 16.0).unwrap());
     world.set_aabb_collider(
         a,
         AabbCollider::new(4.0, 5.0, false, CollisionLayer::Player),
@@ -47,9 +48,14 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     world.restore_snapshot(&snapshot);
 
     assert_eq!(world.alive_count(), 2);
+    assert_eq!(world.alive_indices(), &[0, 1]);
     assert_eq!(world.transform(a), Some(Transform2D { x: 2.0, y: 3.0 }));
     assert_eq!(world.transform(b), Some(Transform2D { x: 8.0, y: 13.0 }));
     assert_eq!(world.velocity(a), Some(Velocity { vx: 1.0, vy: -2.0 }));
+    assert_eq!(
+        world.height_span(a),
+        HeightSpan::on_default_floor(4.0, 16.0)
+    );
     assert_eq!(world.rigid_body(a), Some(expected_body));
     assert_eq!(
         world.distance_joint(joint),
@@ -72,4 +78,6 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
 
     let after_restore = world.spawn_entity();
     assert_eq!(after_restore, extra);
+    assert_eq!(world.alive_count(), 3);
+    assert_eq!(world.alive_indices(), &[0, 1, 2]);
 }

@@ -62,7 +62,7 @@ fn valid_shooter_snapshot_entity(entity: ShooterEntitySnapshot) -> bool {
 impl ShooterScene {
     pub fn snapshot(&self, world: &World, camera: &Camera2D) -> ShooterSceneSnapshot {
         let mut entities = Vec::new();
-        for index in 0..world.transforms.len() {
+        for &index in world.alive_indices() {
             let Some(kind) = shooter_snapshot_entity_kind(world.collider_layer_at(index)) else {
                 continue;
             };

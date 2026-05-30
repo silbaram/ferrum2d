@@ -9,6 +9,7 @@ import {
 import { physicsEntityHandle, physicsEntityHandleBuffer } from "./physicsHandles.js";
 import {
   addPhysicsBodyColliderToRigidBody,
+  applyPhysicsBodyHeightSpan,
   spawnPhysicsRigidBody,
 } from "./physicsBodySpawning.js";
 import {
@@ -27,13 +28,27 @@ import type {
   FerrumPhysicsBodyApi,
   PhysicsBodyColliderOptions,
   PhysicsBodyColliderSnapshot,
+  PhysicsBodyHeightSpan,
   PhysicsEntityHandle,
   PhysicsEntitySnapshot,
+  PhysicsHd2dKinematicMoveOptions,
+  PhysicsHd2dKinematicMoveResult,
   PhysicsRigidBodyMassProperties,
   PhysicsRigidBodyMaterial,
   PhysicsRigidBodySpawnOptions,
   PhysicsRigidBodyTuning,
 } from "./engineTypes.js";
+
+const DEFAULT_HD2D_KINEMATIC_SOLID_MASK_BITS = 1 << 3;
+const DEFAULT_HD2D_KINEMATIC_MAX_ITERATIONS = 4;
+const HD2D_KINEMATIC_STEPPED_UP = 1 << 0;
+const HD2D_KINEMATIC_STEPPED_DOWN = 1 << 1;
+const HD2D_KINEMATIC_CHANGED_FLOOR = 1 << 2;
+const HD2D_KINEMATIC_PASSED_UNDER_BRIDGE = 1 << 3;
+const HD2D_KINEMATIC_BLOCKED_BY_STEP = 1 << 4;
+const HD2D_KINEMATIC_BLOCKED_BY_DROP = 1 << 5;
+const HD2D_KINEMATIC_BLOCKED_X = 1 << 6;
+const HD2D_KINEMATIC_BLOCKED_Y = 1 << 7;
 
 export interface PhysicsBodyApiContext {
   rustEngine: Engine;
@@ -192,6 +207,77 @@ export function createPhysicsBodyApi({
       resolved.entityGeneration,
       finiteNumber(radiansPerSecond, "physics body angularVelocityRadiansPerSecond"),
     );
+  };
+
+  const setPhysicsBodyHeightSpan = (
+    handle: PhysicsEntityHandle,
+    span: PhysicsBodyHeightSpan,
+  ): boolean => {
+    requireAlive();
+    return applyPhysicsBodyHeightSpan(rustEngine, handle, span);
+  };
+
+  const clearPhysicsBodyHeightSpan = (handle: PhysicsEntityHandle): boolean => {
+    requireAlive();
+    const resolved = physicsEntityHandle(handle);
+    return rustEngine.clear_physics_body_height_span(
+      resolved.entityId,
+      resolved.entityGeneration,
+    );
+  };
+
+  const getPhysicsBodyHeightSpan = (
+    handle: PhysicsEntityHandle,
+  ): PhysicsBodyHeightSpan | undefined => {
+    requireAlive();
+    const resolved = physicsEntityHandle(handle);
+    if (
+      !rustEngine.physics_body_has_height_span(
+        resolved.entityId,
+        resolved.entityGeneration,
+      )
+    ) {
+      return undefined;
+    }
+    return {
+      floorId: rustEngine.physics_body_floor_id(resolved.entityId, resolved.entityGeneration),
+      elevation: rustEngine.physics_body_elevation(resolved.entityId, resolved.entityGeneration),
+      height: rustEngine.physics_body_height(resolved.entityId, resolved.entityGeneration),
+    };
+  };
+
+  const moveHd2dKinematicBodyWithTilemap = (
+    handle: PhysicsEntityHandle,
+    options: PhysicsHd2dKinematicMoveOptions,
+  ): PhysicsHd2dKinematicMoveResult | undefined => {
+    requireAlive();
+    const resolved = physicsEntityHandle(handle);
+    const accepted = rustEngine.move_hd2d_kinematic_body_with_tilemap(
+      resolved.entityId,
+      resolved.entityGeneration,
+      finiteNumber(options.displacementX, "HD-2D kinematic displacementX"),
+      finiteNumber(options.displacementY, "HD-2D kinematic displacementY"),
+      uint32Number(
+        options.solidMaskBits ?? DEFAULT_HD2D_KINEMATIC_SOLID_MASK_BITS,
+        "HD-2D kinematic solidMaskBits",
+      ),
+      uint32Number(
+        options.maxIterations ?? DEFAULT_HD2D_KINEMATIC_MAX_ITERATIONS,
+        "HD-2D kinematic maxIterations",
+      ),
+      nonNegativeNumber(options.maxStepHeight ?? 0, "HD-2D kinematic maxStepHeight"),
+      nonNegativeNumber(options.maxDropHeight ?? 0, "HD-2D kinematic maxDropHeight"),
+      booleanOption(options.allowLedgeDrop, "HD-2D kinematic allowLedgeDrop", false),
+    );
+    if (!accepted) {
+      return undefined;
+    }
+    return {
+      body: readPhysicsEntitySnapshot(rustEngine),
+      elevationDelta: rustEngine.hd2d_kinematic_elevation_delta(),
+      hitCount: rustEngine.hd2d_kinematic_hit_count(),
+      ...decodeHd2dKinematicFlags(rustEngine.hd2d_kinematic_flags()),
+    };
   };
 
   const setPhysicsBodyEnabled = (handle: PhysicsEntityHandle, enabled: boolean): boolean => {
@@ -440,6 +526,10 @@ export function createPhysicsBodyApi({
     setPhysicsBodyVelocity,
     setPhysicsBodyRotation,
     setPhysicsBodyAngularVelocity,
+    setPhysicsBodyHeightSpan,
+    clearPhysicsBodyHeightSpan,
+    getPhysicsBodyHeightSpan,
+    moveHd2dKinematicBodyWithTilemap,
     setPhysicsBodyEnabled,
     setPhysicsColliderOffset,
     setPhysicsColliderEnabled,
@@ -454,4 +544,27 @@ export function createPhysicsBodyApi({
     applyPhysicsBodyTorque,
     applyPhysicsBodyAngularImpulse,
   };
+}
+
+function decodeHd2dKinematicFlags(flags: number): Omit<PhysicsHd2dKinematicMoveResult, "body" | "elevationDelta" | "hitCount"> {
+  return {
+    steppedUp: (flags & HD2D_KINEMATIC_STEPPED_UP) !== 0,
+    steppedDown: (flags & HD2D_KINEMATIC_STEPPED_DOWN) !== 0,
+    changedFloor: (flags & HD2D_KINEMATIC_CHANGED_FLOOR) !== 0,
+    passedUnderBridge: (flags & HD2D_KINEMATIC_PASSED_UNDER_BRIDGE) !== 0,
+    blockedByStep: (flags & HD2D_KINEMATIC_BLOCKED_BY_STEP) !== 0,
+    blockedByDrop: (flags & HD2D_KINEMATIC_BLOCKED_BY_DROP) !== 0,
+    blockedX: (flags & HD2D_KINEMATIC_BLOCKED_X) !== 0,
+    blockedY: (flags & HD2D_KINEMATIC_BLOCKED_Y) !== 0,
+  };
+}
+
+function booleanOption(value: boolean | undefined, label: string, fallback: boolean): boolean {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value !== "boolean") {
+    throw new Error(`${label} must be a boolean.`);
+  }
+  return value;
 }

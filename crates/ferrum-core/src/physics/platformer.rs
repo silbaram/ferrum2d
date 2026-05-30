@@ -1,4 +1,4 @@
-use crate::components::{CollisionMask, Transform2D, Velocity};
+use crate::components::{CollisionMask, HeightSpan, Transform2D, Velocity};
 use crate::entity::Entity;
 
 use super::KINEMATIC_EPSILON;
@@ -18,6 +18,7 @@ pub(super) struct KinematicMoveSettings {
     pub(super) one_way_platforms: OneWayPlatformConfig,
     pub(super) max_iterations: u32,
     pub(super) ignored_entity: Option<Entity>,
+    pub(super) height_span: Option<HeightSpan>,
 }
 
 impl KinematicMoveSettings {
@@ -31,11 +32,17 @@ impl KinematicMoveSettings {
             one_way_platforms,
             max_iterations,
             ignored_entity: None,
+            height_span: None,
         }
     }
 
     pub(super) const fn ignoring_entity(mut self, entity: Entity) -> Self {
         self.ignored_entity = Some(entity);
+        self
+    }
+
+    pub(super) const fn with_height_span(mut self, height_span: Option<HeightSpan>) -> Self {
+        self.height_span = height_span;
         self
     }
 }

@@ -1,16 +1,17 @@
 use wasm_bindgen::prelude::*;
 
 use crate::collision::{CollisionSystem, PhysicsDebugLine};
-use crate::components::Transform2D;
+use crate::components::{HeightSpan, PhysicsFloorId, Transform2D};
 use crate::input::InputState;
 use crate::physics::{
     FixedTimestep, FixedTimestepConfig, FixedTimestepUpdate, PhysicsSystem, RigidBodyStepStats,
 };
+use crate::tilemap::TilemapNavigationPathPoint;
 
 use super::physics_bridge::{
     PhysicsBodyColliderSnapshot, PhysicsEntitySnapshot, PhysicsJointSnapshot,
 };
-use super::{Engine, TILEMAP_NAVIGATION_DEBUG_COLOR};
+use super::{Engine, TILEMAP_NAVIGATION_DEBUG_COLOR, TILEMAP_NAVIGATION_PATH_POINT_FLOATS};
 
 #[wasm_bindgen]
 impl Engine {
@@ -43,6 +44,33 @@ impl Engine {
     }
 
     pub fn update(&mut self, delta: f64) {
+        self.update_frame(delta, true, true, true);
+    }
+
+    pub fn update_frame(
+        &mut self,
+        delta: f64,
+        render_commands: bool,
+        frame_telemetry: bool,
+        physics_debug_lines: bool,
+    ) {
+        self.advance_simulation(delta);
+        if physics_debug_lines {
+            self.build_physics_debug_lines();
+        } else {
+            self.physics_debug_lines.clear();
+        }
+        if render_commands {
+            self.build_render_commands();
+        } else {
+            self.render_commands.clear();
+        }
+        if frame_telemetry {
+            self.write_frame_telemetry();
+        }
+    }
+
+    fn advance_simulation(&mut self, delta: f64) {
         self.elapsed_seconds += delta;
         self.clear_physics_frame();
         if self.fixed_timestep_enabled {
@@ -58,18 +86,16 @@ impl Engine {
                 if step_index == 0 {
                     self.fixed_timestep_input_latch.clear();
                 }
-                self.record_collision_events();
+                self.record_collision_lifecycle_events();
             }
         } else {
             self.last_fixed_update = FixedTimestepUpdate::default();
             self.tweens.update(&mut self.world, delta as f32);
             self.update_scene(delta as f32, self.input);
             self.step_auto_rigid_bodies(delta as f32);
-            self.record_collision_events();
+            self.record_collision_lifecycle_events();
         }
         self.particles.update(delta as f32);
-        self.build_physics_debug_lines();
-        self.build_render_commands();
     }
 
     pub fn configure_fixed_timestep(
@@ -99,6 +125,13 @@ impl Engine {
 
     pub fn clear_audio_events(&mut self) {
         self.audio_events.clear();
+    }
+
+    pub fn set_collision_lifecycle_events_enabled(&mut self, enabled: bool) {
+        if self.collision_lifecycle_events_enabled != enabled {
+            self.collision_event_tracker.clear();
+        }
+        self.collision_lifecycle_events_enabled = enabled;
     }
 
     pub fn reset_game(&mut self) {
@@ -146,7 +179,11 @@ impl Engine {
         );
     }
 
-    fn record_collision_events(&mut self) {
+    fn record_collision_lifecycle_events(&mut self) {
+        if !self.collision_lifecycle_events_enabled {
+            self.collision_event_tracker.clear();
+            return;
+        }
         let counts = self
             .collision_event_tracker
             .update(&self.world, &mut self.collision_events);
@@ -185,14 +222,40 @@ impl Engine {
         from: Transform2D,
         path: &[Transform2D],
     ) -> (Transform2D, f32) {
+        Self::store_tilemap_navigation_path_with_height_span(
+            tilemap_navigation_path_points,
+            tilemap_navigation_debug_lines,
+            from,
+            path,
+            HeightSpan {
+                floor: PhysicsFloorId::DEFAULT,
+                elevation: 0.0,
+                height: 0.0,
+            },
+        )
+    }
+
+    pub(super) fn store_tilemap_navigation_path_with_height_span(
+        tilemap_navigation_path_points: &mut Vec<f32>,
+        tilemap_navigation_debug_lines: &mut Vec<PhysicsDebugLine>,
+        from: Transform2D,
+        path: &[Transform2D],
+        height_span: HeightSpan,
+    ) -> (Transform2D, f32) {
         tilemap_navigation_path_points.clear();
         tilemap_navigation_debug_lines.clear();
+        tilemap_navigation_path_points.reserve(
+            path.len()
+                .saturating_mul(TILEMAP_NAVIGATION_PATH_POINT_FLOATS),
+        );
 
         let mut previous = from;
         let mut distance = 0.0;
         for point in path.iter().copied() {
-            tilemap_navigation_path_points.push(point.x);
-            tilemap_navigation_path_points.push(point.y);
+            push_tilemap_navigation_path_point(
+                tilemap_navigation_path_points,
+                TilemapNavigationPathPoint::new(point, height_span),
+            );
             distance += ((point.x - previous.x).powi(2) + (point.y - previous.y).powi(2)).sqrt();
             tilemap_navigation_debug_lines.push(PhysicsDebugLine {
                 x0: previous.x,
@@ -210,6 +273,47 @@ impl Engine {
         (path.first().copied().unwrap_or(from), distance)
     }
 
+    pub(super) fn store_hd2d_tilemap_navigation_path(
+        tilemap_navigation_path_points: &mut Vec<f32>,
+        tilemap_navigation_debug_lines: &mut Vec<PhysicsDebugLine>,
+        from: Transform2D,
+        path: &[TilemapNavigationPathPoint],
+    ) -> (TilemapNavigationPathPoint, f32) {
+        tilemap_navigation_path_points.clear();
+        tilemap_navigation_debug_lines.clear();
+        tilemap_navigation_path_points.reserve(
+            path.len()
+                .saturating_mul(TILEMAP_NAVIGATION_PATH_POINT_FLOATS),
+        );
+
+        let mut previous = from;
+        let mut distance = 0.0;
+        for point in path.iter().copied() {
+            push_tilemap_navigation_path_point(tilemap_navigation_path_points, point);
+            distance += ((point.x - previous.x).powi(2) + (point.y - previous.y).powi(2)).sqrt();
+            tilemap_navigation_debug_lines.push(PhysicsDebugLine {
+                x0: previous.x,
+                y0: previous.y,
+                x1: point.x,
+                y1: point.y,
+                r: TILEMAP_NAVIGATION_DEBUG_COLOR[0],
+                g: TILEMAP_NAVIGATION_DEBUG_COLOR[1],
+                b: TILEMAP_NAVIGATION_DEBUG_COLOR[2],
+                a: TILEMAP_NAVIGATION_DEBUG_COLOR[3],
+            });
+            previous = point.transform();
+        }
+
+        let first = path.first().copied().unwrap_or(TilemapNavigationPathPoint {
+            x: from.x,
+            y: from.y,
+            floor: PhysicsFloorId::DEFAULT,
+            elevation: 0.0,
+            height: 0.0,
+        });
+        (first, distance)
+    }
+
     fn observe_input_sample(&mut self, input: InputState) {
         if self.fixed_timestep_enabled {
             self.fixed_timestep_input_latch
@@ -225,4 +329,12 @@ impl Engine {
             self.input
         }
     }
+}
+
+fn push_tilemap_navigation_path_point(out: &mut Vec<f32>, point: TilemapNavigationPathPoint) {
+    out.push(point.x);
+    out.push(point.y);
+    out.push(point.floor.0 as f32);
+    out.push(point.elevation);
+    out.push(point.height);
 }

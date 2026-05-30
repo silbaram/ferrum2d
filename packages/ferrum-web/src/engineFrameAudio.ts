@@ -31,7 +31,9 @@ export function drainAudioEvents(
       decodedAudioEvents = bridge.decodeAudioEvents(audioEventBuffer);
     }
   } finally {
-    rustEngine.clear_audio_events();
+    if (audioEventBuffer.eventCount > 0) {
+      rustEngine.clear_audio_events();
+    }
   }
   if (!includeAudioEvents) {
     return {

@@ -5,6 +5,7 @@ fn engine_collision_events_report_enter_stay_and_exit() {
     let mut engine = Engine::new();
     engine.world = World::default();
     engine.clear_physics_history();
+    engine.set_collision_lifecycle_events_enabled(true);
     let a = spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
     let b = spawn_test_body(&mut engine.world, 8.0, 0.0, CollisionLayer::Enemy);
 
@@ -37,6 +38,7 @@ fn engine_collision_events_report_trigger_lifecycle_counts() {
     let mut engine = Engine::new();
     engine.world = World::default();
     engine.clear_physics_history();
+    engine.set_collision_lifecycle_events_enabled(true);
     let sensor =
         spawn_test_body_with_trigger(&mut engine.world, 0.0, 0.0, CollisionLayer::Player, true);
     let actor = spawn_test_body(&mut engine.world, 8.0, 0.0, CollisionLayer::Enemy);
@@ -74,6 +76,27 @@ fn engine_collision_events_report_trigger_lifecycle_counts() {
         COLLISION_EVENT_TRIGGER_EXIT
     );
     assert_eq!(engine.collision_events[0].a_id, sensor.id.min(actor.id));
+}
+
+#[test]
+fn engine_collision_lifecycle_events_are_opt_in() {
+    let mut engine = Engine::new();
+    engine.world = World::default();
+    engine.clear_physics_history();
+    spawn_test_body(&mut engine.world, 0.0, 0.0, CollisionLayer::Player);
+    spawn_test_body(&mut engine.world, 8.0, 0.0, CollisionLayer::Enemy);
+
+    engine.update(0.016);
+
+    assert_eq!(engine.collision_enter_count(), 0);
+    assert_eq!(engine.collision_event_len(), 0);
+    assert_eq!(engine.physics_collision_pairs(), 0);
+
+    engine.set_collision_lifecycle_events_enabled(true);
+    engine.update(0.016);
+
+    assert_eq!(engine.collision_enter_count(), 1);
+    assert_eq!(engine.collision_event_len(), 1);
 }
 
 #[test]

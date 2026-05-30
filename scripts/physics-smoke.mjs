@@ -60,6 +60,17 @@ const scenarios = [
     ],
   },
   {
+    id: "physics:hd2d-navigation-combat",
+    purpose: "HD-2D bridge portal navigation, projectile arc, projectile/tile height filtering, and render ordering",
+    tests: [
+      "tilemap::tests::navigation::navigation_path_between_height_spans_uses_bridge_portal_floor_edge",
+      "engine::tests::physics_queries::engine_query_tilemap_navigation_between_height_spans_uses_bridge_portal",
+      "shooter_scene::tests::combat::projectile_arc_updates_bullet_height_span_before_combat",
+      "shooter_scene::tests::combat::bullet_tile_collision_requires_overlapping_height_span_when_authored",
+      "engine::tests::rendering::render_commands_sort_entities_by_hd2d_floor_elevation_and_foot_y",
+    ],
+  },
+  {
     id: "physics:query-cast-matrix",
     purpose: "overlap, raycast, segment cast, and shape-cast matrix coverage",
     tests: [

@@ -4,12 +4,7 @@ import type {
   ResolvedPointLight2D,
   TileOccluder2D,
 } from "./lightingTypes.js";
-import { distanceSquaredToTileOccluder } from "./lightingTileOccluders.js";
-import {
-  createShadowProjectionScratch,
-  MAX_TILE_OCCLUDER_SHADOW_TRIANGLE_FLOATS,
-  writeTileOccluderShadowTrianglesInto,
-} from "./lightingShadows.js";
+import { LightingShadowGeometryCache } from "./lightingShadowGeometryCache.js";
 
 export interface WebGL2LightingPassStats {
   drawCalls: number;
@@ -41,7 +36,7 @@ export class WebGL2LightingPass {
   private readonly shadowLightRadiusLocation: WebGLUniformLocation;
   private shadowVertexData = new Float32Array(12);
   private readonly activePointLightScratch: ResolvedPointLight2D[] = [];
-  private readonly shadowProjectionScratch = createShadowProjectionScratch();
+  private readonly shadowGeometryCache = new LightingShadowGeometryCache();
   private readonly shadowClipRect = { x: 0, y: 0, width: 0, height: 0 };
   private destroyed = false;
 
@@ -231,42 +226,28 @@ export class WebGL2LightingPass {
     this.shadowClipRect.y = 0;
     this.shadowClipRect.width = resolution[0];
     this.shadowClipRect.height = resolution[1];
-    this.ensureShadowVertexDataCapacity(occluders.length * MAX_TILE_OCCLUDER_SHADOW_TRIANGLE_FLOATS);
+    const occluderVersion = this.shadowGeometryCache.syncOccluders(occluders);
 
     let drawCalls = 0;
     let casterCount = 0;
-    for (const light of lights) {
-      const maxDistance = shadows.maxDistance ?? light.radius;
-      const maxDistanceSquared = maxDistance * maxDistance;
-      const projectionLength = Math.max(shadows.projectionLength, light.radius);
-      let shadowFloatCount = 0;
-      for (const occluder of occluders) {
-        if (distanceSquaredToTileOccluder(light, occluder) > maxDistanceSquared) {
-          continue;
-        }
-
-        const written = writeTileOccluderShadowTrianglesInto(
-          this.shadowVertexData,
-          shadowFloatCount,
-          occluder,
-          light,
-          projectionLength,
-          this.shadowProjectionScratch,
-          this.shadowClipRect,
-        );
-        if (written === 0) {
-          continue;
-        }
-        shadowFloatCount += written;
-        casterCount += 1;
-      }
-
-      if (shadowFloatCount > 0) {
+    for (let lightIndex = 0; lightIndex < lights.length; lightIndex += 1) {
+      const light = lights[lightIndex];
+      const shadowGeometry = this.shadowGeometryCache.resolveLightGeometry(
+        lightIndex,
+        occluderVersion,
+        occluders,
+        light,
+        shadows,
+        this.shadowClipRect,
+      );
+      if (shadowGeometry.floatCount > 0) {
+        this.ensureShadowVertexDataCapacity(shadowGeometry.floatCount);
         this.gl.uniform2f(this.shadowLightCenterLocation, light.x, light.y);
         this.gl.uniform1f(this.shadowLightRadiusLocation, light.radius);
-        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, this.shadowVertexData, 0, shadowFloatCount);
-        this.gl.drawArrays(this.gl.TRIANGLES, 0, shadowFloatCount / 2);
+        this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, shadowGeometry.positions, 0, shadowGeometry.floatCount);
+        this.gl.drawArrays(this.gl.TRIANGLES, 0, shadowGeometry.floatCount / 2);
         drawCalls += 1;
+        casterCount += shadowGeometry.casterCount;
       }
     }
     return { drawCalls, casterCount };

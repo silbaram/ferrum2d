@@ -8,6 +8,8 @@ import type {
   FerrumRuntimeFrame,
   FerrumRuntimeOptions,
   FerrumRuntimeRenderer,
+  PostProcessProvider,
+  SpriteMaterialProvider,
   UiOverlayStateProvider,
 } from "./createFerrumRuntime.js";
 import type { RendererStats } from "./renderer.js";
@@ -33,6 +35,10 @@ export class RuntimeFrameRenderer {
   private audioEventRateWindowStartMs: number;
   private audioEventRateCount = 0;
   private audioEventsPerSecond = 0;
+  private lastPrimitiveSpriteMaterialProviderValue: PrimitiveDynamicProviderValue | typeof UNSET_PROVIDER_VALUE =
+    UNSET_PROVIDER_VALUE;
+  private lastPrimitivePostProcessProviderValue: PrimitiveDynamicProviderValue | typeof UNSET_PROVIDER_VALUE =
+    UNSET_PROVIDER_VALUE;
 
   constructor(private readonly options: RuntimeFrameRendererOptions) {
     this.now = options.now ?? (() => performance.now());
@@ -72,12 +78,42 @@ export class RuntimeFrameRenderer {
       this.options.renderer.setLighting?.(this.options.lighting(frame));
     }
     if (typeof this.options.spriteMaterial === "function") {
-      this.options.renderer.setSpriteMaterial?.(this.options.spriteMaterial(frame));
+      const spriteMaterial = this.options.spriteMaterial(frame);
+      if (this.shouldApplySpriteMaterial(spriteMaterial)) {
+        this.options.renderer.setSpriteMaterial?.(spriteMaterial);
+      }
     }
     if (typeof this.options.postProcess === "function") {
-      this.options.renderer.setPostProcess?.(this.options.postProcess(frame));
+      const postProcess = this.options.postProcess(frame);
+      if (this.shouldApplyPostProcess(postProcess)) {
+        this.options.renderer.setPostProcess?.(postProcess);
+      }
     }
     return frame;
+  }
+
+  private shouldApplySpriteMaterial(value: ReturnType<SpriteMaterialProvider>): boolean {
+    if (!isPrimitiveDynamicProviderValue(value)) {
+      this.lastPrimitiveSpriteMaterialProviderValue = UNSET_PROVIDER_VALUE;
+      return true;
+    }
+    if (this.lastPrimitiveSpriteMaterialProviderValue === value) {
+      return false;
+    }
+    this.lastPrimitiveSpriteMaterialProviderValue = value;
+    return true;
+  }
+
+  private shouldApplyPostProcess(value: ReturnType<PostProcessProvider>): boolean {
+    if (!isPrimitiveDynamicProviderValue(value)) {
+      this.lastPrimitivePostProcessProviderValue = UNSET_PROVIDER_VALUE;
+      return true;
+    }
+    if (this.lastPrimitivePostProcessProviderValue === value) {
+      return false;
+    }
+    this.lastPrimitivePostProcessProviderValue = value;
+    return true;
   }
 
   private publishRuntimeFrame(frame: FrameState, rendererStats: RendererStats, renderTimeMs: number): void {
@@ -121,6 +157,13 @@ function hasDynamicFrameProviders(options: RuntimeFrameRendererOptions): boolean
     || typeof options.postProcess === "function";
 }
 
+const UNSET_PROVIDER_VALUE = Symbol("unset dynamic provider value");
+type PrimitiveDynamicProviderValue = string | boolean | undefined;
+
+function isPrimitiveDynamicProviderValue(value: unknown): value is PrimitiveDynamicProviderValue {
+  return value === undefined || typeof value === "string" || typeof value === "boolean";
+}
+
 function requireFrameState(renderFrame: RenderFrameState): FrameState {
   if (renderFrame.frameState === undefined) {
     throw new Error("FerrumRuntime frame state was not requested for this runtime frame.");
@@ -159,8 +202,12 @@ function buildDebugMetrics(
     physicsFixedSteps: frame.physics.fixedSteps,
     physicsKinematicHits: frame.physics.kinematicHits,
     physicsTileCandidateChecks: frame.physics.tileCandidateChecks,
-    collisionPairCount: frame.physics.collisionPairs,
-    collisionEventCount: frame.physics.collisionEventCount,
+    physicsHd2dFilteredEntityCandidates: frame.physics.hd2dFilteredEntityCandidates,
+    physicsHd2dFilteredTileCandidates: frame.physics.hd2dFilteredTileCandidates,
+    playerFloorId: frame.playerFloorId,
+    playerElevation: frame.playerElevation,
+    playerHeight: frame.playerHeight,
+    ...collisionDebugMetrics(frame),
     physicsCcdChecks: frame.physics.ccdChecks,
     physicsCcdHits: frame.physics.ccdHits,
     physicsSleepingBodies: frame.physics.sleepingBodies,
@@ -173,6 +220,18 @@ function buildDebugMetrics(
     cameraY: frame.cameraY,
     gameState: gameStateLabel(frame.gameState),
     score: frame.score,
+  };
+}
+
+function collisionDebugMetrics(
+  frame: FrameState,
+): Pick<DebugOverlayMetrics, "collisionPairCount" | "collisionEventCount"> {
+  if (frame.physics.collisionLifecycleEventsEnabled !== true) {
+    return {};
+  }
+  return {
+    collisionPairCount: frame.physics.collisionPairs,
+    collisionEventCount: frame.physics.collisionEventCount,
   };
 }
 

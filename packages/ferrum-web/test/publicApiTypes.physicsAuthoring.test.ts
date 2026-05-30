@@ -29,7 +29,11 @@ import type {
   ApplyTileRulesOptions,
   PhysicsAuthoringJointHandle,
   PhysicsAuthoringLayer,
+  PhysicsBodyHeightSpan,
+  PhysicsBodyHeightSpanQuery,
   PhysicsColliderAuthoringOptions,
+  PhysicsFloorId,
+  PhysicsHd2dSpec,
   PhysicsJointAuthoringOptions,
   PhysicsLayerPattern,
   PhysicsMaterialPresetName,
@@ -41,6 +45,8 @@ import type {
   PhysicsRigidBodyAuthoringOptions,
   PhysicsSceneProfileId,
   PhysicsSceneProfileSpec,
+  PhysicsTileHeightSpan,
+  PhysicsTileHeightSpanQuery,
   PhysicsWorldApplyResult,
   PixelMaskTerrainAlphaPatch,
   PixelMaskTerrainBoundaryOptions,
@@ -52,6 +58,7 @@ import type {
   PixelMaskTerrainTextureTarget,
   PixelMaskTerrainTextureUploadOptions,
   PublicApi,
+  ResolvedPhysicsHd2dSpec,
   TileRuleGrid,
   TileRuleSpec,
   TilemapBoundaryChain,
@@ -108,12 +115,34 @@ test("public API physics authoring, replay, terrain, and tilemap types", () => {
     profile: physicsSceneProfileId,
     physics: {
       mode: "rigid",
+      hd2d: {
+        enabled: true,
+        defaultHeight: 32,
+      },
       bodies: {
-        crate: { type: "dynamic", collider: { shape: "box", size: [8, 8] } },
+        crate: {
+          type: "dynamic",
+          floor: "ground",
+          elevation: 0,
+          height: 32,
+          collider: { shape: "box", size: [8, 8] },
+        },
       },
     },
   };
   const physicsSceneProfileOptions: ApplyPhysicsSceneProfileOptions = { path: "physicsScene" };
+  const physicsFloorId: PhysicsFloorId = "ground";
+  const bodyHeightSpan: PhysicsBodyHeightSpan = { floorId: 1, elevation: 0, height: 32 };
+  const bodyHeightSpanQuery: PhysicsBodyHeightSpanQuery = { heightSpan: bodyHeightSpan };
+  const tileHeightSpan: PhysicsTileHeightSpan = bodyHeightSpan;
+  const tileHeightSpanQuery: PhysicsTileHeightSpanQuery = { heightSpan: tileHeightSpan };
+  const hd2dSpec: PhysicsHd2dSpec = { enabled: true, defaultHeight: 32 };
+  const resolvedHd2dSpec: ResolvedPhysicsHd2dSpec = {
+    enabled: true,
+    defaultHeight: 32,
+    maxStepHeight: 8,
+    maxDropHeight: 16,
+  };
   const replayEvent: PhysicsReplayInputEvent = {
     frame: 0,
     body: "crate",
@@ -178,6 +207,11 @@ test("public API physics authoring, replay, terrain, and tilemap types", () => {
   equal(authoringLayerSpec.player.mask[0], "world");
   equal(physicsLayerMap.player.maskBits, 2);
   equal(bodyAuthoring.material, "wood");
+  equal(physicsFloorId, "ground");
+  equal(bodyHeightSpanQuery.heightSpan?.floorId, 1);
+  equal(tileHeightSpanQuery.heightSpan?.height, 32);
+  equal(hd2dSpec.defaultHeight, 32);
+  equal(resolvedHd2dSpec.maxDropHeight, 16);
   equal(nullableWorld, undefined);
   equal(nullableReplayRun, undefined);
   equal(nullableWorkerReplayRun, undefined);

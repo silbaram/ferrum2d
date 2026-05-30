@@ -79,6 +79,13 @@ export function stringArray(value: unknown, path: string, fallback: string[]): s
   });
 }
 
+export function stringValue(value: unknown, path: string, fallback: string): string {
+  if (value === undefined) {
+    return fallback;
+  }
+  return requiredString(value, path);
+}
+
 export function optionalReference<T>(
   value: unknown,
   path: string,

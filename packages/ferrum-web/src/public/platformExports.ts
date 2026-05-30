@@ -130,6 +130,7 @@ export {
   resolveParticleVfxPresetConfig,
 } from "../particleVfx";
 export {
+  deriveHd2dTileOccludersFromTilemapGrid,
   deriveTileOccludersFromTilemapGrid,
   normalizeLightingScene,
 } from "../lighting";
@@ -206,6 +207,8 @@ export type {
   LightingColor4,
   LightingDebugOptions,
   LightingShadowOptions,
+  Hd2dTileOccluderDefinition,
+  Hd2dTileOccluderGridInput,
   LightingScene2D,
   PointLight2D,
   ResolvedLightingDebugOptions,

@@ -29,6 +29,9 @@ import type {
 import type {
   PhysicsBodyColliderOptions,
   PhysicsBodyColliderSnapshot,
+  PhysicsBodyHeightSpan,
+  PhysicsHd2dKinematicMoveOptions,
+  PhysicsHd2dKinematicMoveResult,
   PhysicsEntityHandle,
   PhysicsEntitySnapshot,
   PhysicsRigidBodyMassProperties,
@@ -64,6 +67,8 @@ import type {
   PhysicsSegmentCastTileObstacleQuery,
   PhysicsShapeCastMotionQuery,
   PhysicsTileShapeCastMotionQuery,
+  ShooterTileBridgePortalMetadata,
+  ShooterTileHd2dMetadata,
   TilemapNavigationPath,
   TilemapNavigationPathQuery,
   TilemapNavigationWaypoint,
@@ -94,7 +99,7 @@ export interface CreateEngineOptions {
   useWorkerClock?: boolean;
   /** FrameState에 decoded audio event object 배열을 포함할지 여부입니다. 기본값은 true입니다. */
   includeAudioEvents?: boolean;
-  /** FrameState에 decoded collision event object 배열을 포함할지 여부입니다. 기본값은 false입니다. */
+  /** Rust collision lifecycle tracking과 FrameState decoded collision event 배열을 켤지 여부입니다. 기본값은 false입니다. */
   includeCollisionEvents?: boolean;
   /** Rust core에서 physics debug line buffer를 만들지 여부입니다. 기본값은 false입니다. */
   enablePhysicsDebugLines?: boolean | PhysicsDebugOptions;
@@ -141,6 +146,12 @@ export interface FerrumSceneApi {
     tileId: number,
     options?: TilemapRectEditOptions,
   ): boolean;
+  setShooterTileHeightSpan(tileId: number, heightSpan: PhysicsBodyHeightSpan): boolean;
+  clearShooterTileHeightSpan(tileId: number): boolean;
+  setShooterTileHd2dMetadata(tileId: number, metadata: ShooterTileHd2dMetadata): boolean;
+  clearShooterTileHd2dMetadata(tileId: number): boolean;
+  setShooterTileBridgePortal(tileId: number, portal: ShooterTileBridgePortalMetadata): boolean;
+  clearShooterTileBridgePortal(tileId: number): boolean;
   setShooterTilemapNavigationCost(layerIndex: number, column: number, row: number, cost: number): boolean;
   queryTilemapNavigationWaypoint(query: TilemapNavigationWaypointQuery): TilemapNavigationWaypoint | undefined;
   queryTilemapNavigationPath(query: TilemapNavigationPathQuery): TilemapNavigationPath | undefined;
@@ -196,6 +207,13 @@ export interface FerrumPhysicsBodyApi {
   setPhysicsBodyVelocity(handle: PhysicsEntityHandle, velocityX: number, velocityY: number): boolean;
   setPhysicsBodyRotation(handle: PhysicsEntityHandle, rotationRadians: number): boolean;
   setPhysicsBodyAngularVelocity(handle: PhysicsEntityHandle, radiansPerSecond: number): boolean;
+  setPhysicsBodyHeightSpan(handle: PhysicsEntityHandle, span: PhysicsBodyHeightSpan): boolean;
+  clearPhysicsBodyHeightSpan(handle: PhysicsEntityHandle): boolean;
+  getPhysicsBodyHeightSpan(handle: PhysicsEntityHandle): PhysicsBodyHeightSpan | undefined;
+  moveHd2dKinematicBodyWithTilemap(
+    handle: PhysicsEntityHandle,
+    options: PhysicsHd2dKinematicMoveOptions,
+  ): PhysicsHd2dKinematicMoveResult | undefined;
   setPhysicsBodyEnabled(handle: PhysicsEntityHandle, enabled: boolean): boolean;
   setPhysicsColliderOffset(handle: PhysicsEntityHandle, offsetX: number, offsetY: number): boolean;
   setPhysicsColliderEnabled(handle: PhysicsEntityHandle, enabled: boolean): boolean;

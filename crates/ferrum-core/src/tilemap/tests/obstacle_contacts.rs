@@ -23,6 +23,35 @@ fn aabb_obstacle_contacts_return_merged_solid_overlap() {
 }
 
 #[test]
+fn explicit_height_span_filters_tile_obstacle_contacts_and_manifolds() {
+    let mut tilemap = Tilemap::default();
+    assert!(tilemap.set_tile_height_span_definition(1, 1, 0.0, 8.0));
+    assert!(tilemap.set_tile_height_span_definition(2, 2, 0.0, 8.0));
+    tilemap.set_layer(0, 2, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 2]);
+    let query_span = HeightSpan::new(PhysicsFloorId(2), 0.0, 8.0);
+
+    let mut contacts = Vec::new();
+    tilemap.aabb_obstacle_contacts_with_height_span_into(
+        Transform2D { x: 10.0, y: 5.0 },
+        test_collider(12.0, 2.0),
+        query_span,
+        &mut contacts,
+    );
+    assert_eq!(contacts.len(), 1);
+    assert_eq!(contacts[0].tile_index, 1);
+
+    let mut manifolds = Vec::new();
+    tilemap.aabb_obstacle_manifolds_with_height_span_into(
+        Transform2D { x: 10.0, y: 5.0 },
+        test_collider(12.0, 2.0),
+        query_span,
+        &mut manifolds,
+    );
+    assert_eq!(manifolds.len(), 1);
+    assert_eq!(manifolds[0].tile_index, 1);
+}
+
+#[test]
 fn aabb_obstacle_contacts_skip_non_solid_tile_metadata_and_clear_invalid_queries() {
     let mut tilemap = Tilemap::default();
     tilemap.set_layer(0, 2, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 2]);

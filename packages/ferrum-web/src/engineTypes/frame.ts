@@ -46,20 +46,27 @@ export interface FrameState {
   score: number;
   entityCount: number;
   gameState: number;
+  /** Rust-side culling 이후 현재 frame에서 보이는 sprite render command 수입니다. */
   spriteCount: number;
   mouseX: number;
   mouseY: number;
   cameraX: number;
   cameraY: number;
+  playerFloorId?: number;
+  playerElevation?: number;
+  playerHeight?: number;
   audioEventCount: number;
   audioEvents: readonly AudioEventView[];
   physics: PhysicsFrameStats;
+  /** Wasm memory view입니다. frame 안에서 동기 소비하거나 보관 전 복사하세요. */
   collisionEventBuffer: CollisionEventBufferView;
   collisionEvents: readonly CollisionEventView[];
+  /** Wasm memory view입니다. frame 안에서 동기 소비하거나 보관 전 복사하세요. */
   physicsDebugLineBuffer: PhysicsDebugLineBufferView;
   physicsDebugLines: readonly PhysicsDebugLineView[];
   /** @deprecated 호환성 유지용. hot path에서는 renderCommandBuffer를 사용하세요. */
   renderCommands: RenderCommandView[];
+  /** Wasm memory view입니다. frame 안에서 동기 소비하거나 보관 전 복사하세요. */
   renderCommandBuffer: RenderCommandBufferView;
 }
 
@@ -89,6 +96,9 @@ export interface PhysicsFrameStats {
   kinematicTileHits: number;
   solidCandidateChecks: number;
   tileCandidateChecks: number;
+  hd2dFilteredEntityCandidates: number;
+  hd2dFilteredTileCandidates: number;
+  collisionLifecycleEventsEnabled?: boolean;
   collisionPairs: number;
   collisionSolidPairs: number;
   collisionTriggerPairs: number;

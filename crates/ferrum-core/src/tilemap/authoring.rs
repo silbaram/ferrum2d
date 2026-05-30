@@ -3,14 +3,20 @@ use super::collision_cache::{
     chunk_range_for_tile_range, collision_chunk_count, tile_range_for_chunk, tile_range_from_rect,
 };
 use super::queries::{normalized_or_default, tile_slope_definition_from_values};
-use super::{TileDefinition, Tilemap, TilemapLayer};
-use crate::components::SpriteFrame;
+use super::{
+    Hd2dBridgePortalDefinition, Hd2dRampAxis, Hd2dRampDefinition, Hd2dTileDefinition, Hd2dTileKind,
+    TileDefinition, Tilemap, TilemapLayer,
+};
+use crate::components::{HeightSpan, PhysicsFloorId, SpriteFrame};
 
 impl Tilemap {
     pub fn clear(&mut self) {
         self.definitions.clear();
         self.slope_definitions.clear();
         self.one_way_platform_definitions.clear();
+        self.height_span_definitions.clear();
+        self.hd2d_definitions.clear();
+        self.bridge_portal_definitions.clear();
         self.layers.clear();
         self.collision_rects.clear();
         self.collision_rect_chunks.clear();
@@ -104,6 +110,156 @@ impl Tilemap {
         }
         self.one_way_platform_definitions[index] = false;
         self.rebuild_collision_rects();
+    }
+
+    pub fn set_tile_height_span_definition(
+        &mut self,
+        tile_id: u32,
+        floor_id: u32,
+        elevation: f32,
+        height: f32,
+    ) -> bool {
+        if tile_id == 0 {
+            return false;
+        }
+        let Some(height_span) = HeightSpan::new(PhysicsFloorId(floor_id), elevation, height) else {
+            return false;
+        };
+        let index = tile_id as usize;
+        if index >= self.height_span_definitions.len() {
+            self.height_span_definitions.resize(index + 1, None);
+        }
+        if self.height_span_definitions[index] == Some(height_span) {
+            return false;
+        }
+        self.height_span_definitions[index] = Some(height_span);
+        self.rebuild_collision_rects();
+        true
+    }
+
+    pub fn clear_tile_height_span_definition(&mut self, tile_id: u32) -> bool {
+        let index = tile_id as usize;
+        if index == 0 || index >= self.height_span_definitions.len() {
+            return false;
+        }
+        if self.height_span_definitions[index].is_none() {
+            return false;
+        }
+        self.height_span_definitions[index] = None;
+        self.rebuild_collision_rects();
+        true
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_tile_hd2d_definition(
+        &mut self,
+        tile_id: u32,
+        kind_code: u32,
+        blocks_movement: bool,
+        blocks_projectile: bool,
+        blocks_vision: bool,
+        occluder_height: f32,
+        has_ramp: bool,
+        ramp_axis_code: u32,
+        ramp_start_elevation: f32,
+        ramp_end_elevation: f32,
+    ) -> bool {
+        if tile_id == 0 {
+            return false;
+        }
+        let Some(kind) = Hd2dTileKind::from_code(kind_code) else {
+            return false;
+        };
+        let ramp = if has_ramp {
+            let Some(axis) = Hd2dRampAxis::from_code(ramp_axis_code) else {
+                return false;
+            };
+            let Some(ramp) =
+                Hd2dRampDefinition::new(axis, ramp_start_elevation, ramp_end_elevation)
+            else {
+                return false;
+            };
+            Some(ramp)
+        } else {
+            None
+        };
+        let Some(definition) = Hd2dTileDefinition::new(
+            kind,
+            blocks_movement,
+            blocks_projectile,
+            blocks_vision,
+            occluder_height,
+            ramp,
+        ) else {
+            return false;
+        };
+        let index = tile_id as usize;
+        if index >= self.hd2d_definitions.len() {
+            self.hd2d_definitions.resize(index + 1, None);
+        }
+        if self.hd2d_definitions[index] == Some(definition) {
+            return false;
+        }
+        self.hd2d_definitions[index] = Some(definition);
+        self.rebuild_collision_rects();
+        true
+    }
+
+    pub fn clear_tile_hd2d_definition(&mut self, tile_id: u32) -> bool {
+        let index = tile_id as usize;
+        if index == 0 || index >= self.hd2d_definitions.len() {
+            return false;
+        }
+        if self.hd2d_definitions[index].is_none() {
+            return false;
+        }
+        self.hd2d_definitions[index] = None;
+        self.rebuild_collision_rects();
+        true
+    }
+
+    pub fn set_tile_bridge_portal_definition(
+        &mut self,
+        tile_id: u32,
+        lower_floor_id: u32,
+        upper_floor_id: u32,
+        lower_elevation: f32,
+        upper_elevation: f32,
+        navigation_cost: u32,
+    ) -> bool {
+        if tile_id == 0 {
+            return false;
+        }
+        let Some(definition) = Hd2dBridgePortalDefinition::new(
+            PhysicsFloorId(lower_floor_id),
+            PhysicsFloorId(upper_floor_id),
+            lower_elevation,
+            upper_elevation,
+            navigation_cost,
+        ) else {
+            return false;
+        };
+        let index = tile_id as usize;
+        if index >= self.bridge_portal_definitions.len() {
+            self.bridge_portal_definitions.resize(index + 1, None);
+        }
+        if self.bridge_portal_definitions[index] == Some(definition) {
+            return false;
+        }
+        self.bridge_portal_definitions[index] = Some(definition);
+        true
+    }
+
+    pub fn clear_tile_bridge_portal_definition(&mut self, tile_id: u32) -> bool {
+        let index = tile_id as usize;
+        if index == 0 || index >= self.bridge_portal_definitions.len() {
+            return false;
+        }
+        if self.bridge_portal_definitions[index].is_none() {
+            return false;
+        }
+        self.bridge_portal_definitions[index] = None;
+        true
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -324,6 +480,8 @@ impl Tilemap {
             layer,
             &self.slope_definitions,
             &self.one_way_platform_definitions,
+            &self.height_span_definitions,
+            &self.hd2d_definitions,
         );
         self.collision_rects[index] = Some(cache.flattened_rects());
         self.collision_rect_chunks[index] = Some(cache);
@@ -369,6 +527,8 @@ impl Tilemap {
                     tile_range,
                     &self.slope_definitions,
                     &self.one_way_platform_definitions,
+                    &self.height_span_definitions,
+                    &self.hd2d_definitions,
                 );
                 rebuilt_chunks.push((chunk_index, rects));
             }

@@ -36,11 +36,18 @@ interface MutableResolvedLightingScene2D extends ResolvedLightingScene2D {
   debug: MutableResolvedLightingDebugOptions;
 }
 
+export interface LightingSceneResolveCache {
+  tileOccludersInput?: readonly TileOccluder2D[];
+  tileOccluders: TileOccluder2D[];
+  tileOccluderStaging: TileOccluder2D[];
+}
+
 const DEFAULT_DISABLED_AMBIENT: MutableLightingColor4 = [0, 0, 0, 0];
 const DEFAULT_AMBIENT: MutableLightingColor4 = [0, 0, 0, 0.45];
 const DEFAULT_LIGHT_COLOR: MutableLightingColor4 = [1, 0.92, 0.72, 1];
 const DEFAULT_SHADOW_COLOR: MutableLightingColor4 = [0, 0, 0, 0.42];
 const DEFAULT_DEBUG_COLOR: MutableLightingColor4 = [1, 0.15, 0.05, 0.35];
+const EMPTY_TILE_OCCLUDERS: readonly TileOccluder2D[] = [];
 
 const DISABLED_LIGHTING_SCENE: ResolvedLightingScene2D = Object.freeze({
   enabled: false,
@@ -84,16 +91,24 @@ export function createResolvedLightingScene(): ResolvedLightingScene2D {
   };
 }
 
+export function createLightingSceneResolveCache(): LightingSceneResolveCache {
+  return {
+    tileOccluders: [],
+    tileOccluderStaging: [],
+  };
+}
+
 export function resolveLightingSceneInto(
   target: ResolvedLightingScene2D,
   scene: LightingScene2D | false | undefined,
+  cache?: LightingSceneResolveCache,
 ): ResolvedLightingScene2D {
   const mutableTarget = target as MutableResolvedLightingScene2D;
   if (scene === undefined || scene === false || scene.enabled === false) {
     mutableTarget.enabled = false;
     writeColor4Into(mutableTarget.ambient, DEFAULT_DISABLED_AMBIENT);
     mutableTarget.pointLights.length = 0;
-    mutableTarget.tileOccluders.length = 0;
+    writeEmptyTileOccludersInto(mutableTarget, cache);
     writeDisabledShadowsInto(mutableTarget.shadows);
     mutableTarget.debug.tileOccluders = false;
     writeColor4Into(mutableTarget.debug.color, DEFAULT_DEBUG_COLOR);
@@ -110,35 +125,90 @@ export function resolveLightingSceneInto(
   }
   mutableTarget.pointLights.length = pointLights.length;
 
-  const tileOccluders = scene.tileOccluders ?? [];
-  ensureTileOccluderCapacity(mutableTarget.tileOccluders, tileOccluders.length);
-  for (let index = 0; index < tileOccluders.length; index += 1) {
-    resolveTileOccluderInto(mutableTarget.tileOccluders[index], tileOccluders[index], index);
-  }
-  mutableTarget.tileOccluders.length = tileOccluders.length;
+  const tileOccluders = scene.tileOccluders ?? EMPTY_TILE_OCCLUDERS;
+  const resolvedTileOccluders = resolveTileOccluders(tileOccluders, mutableTarget, cache);
 
   resolveLightingShadowsInto(mutableTarget.shadows, scene.shadows);
   mutableTarget.debug.tileOccluders = scene.debug?.tileOccluders ?? false;
   writeNormalizedColor4Into(mutableTarget.debug.color, scene.debug?.color ?? DEFAULT_DEBUG_COLOR, "debug.color");
+  mutableTarget.tileOccluders = resolvedTileOccluders;
   return mutableTarget;
 }
 
+function writeEmptyTileOccludersInto(
+  target: MutableResolvedLightingScene2D,
+  cache: LightingSceneResolveCache | undefined,
+): void {
+  if (cache !== undefined && target.tileOccluders === cache.tileOccluders) {
+    target.tileOccluders = [];
+    return;
+  }
+  target.tileOccluders.length = 0;
+}
+
+function resolveTileOccluders(
+  source: readonly TileOccluder2D[],
+  target: MutableResolvedLightingScene2D,
+  cache: LightingSceneResolveCache | undefined,
+): TileOccluder2D[] {
+  if (cache === undefined) {
+    ensureTileOccluderCapacity(target.tileOccluders, source.length);
+    for (let index = 0; index < source.length; index += 1) {
+      resolveTileOccluderInto(target.tileOccluders[index], source[index], index);
+    }
+    target.tileOccluders.length = source.length;
+    return target.tileOccluders;
+  }
+
+  if (cache.tileOccludersInput === source && tileOccludersMatch(source, cache.tileOccluders)) {
+    return cache.tileOccluders;
+  }
+
+  ensureTileOccluderCapacity(cache.tileOccluderStaging, source.length);
+  for (let index = 0; index < source.length; index += 1) {
+    resolveTileOccluderInto(cache.tileOccluderStaging[index], source[index], index);
+  }
+  cache.tileOccluderStaging.length = source.length;
+  const previousTileOccluders = cache.tileOccluders;
+  cache.tileOccluders = cache.tileOccluderStaging;
+  cache.tileOccluderStaging = previousTileOccluders;
+  cache.tileOccludersInput = source;
+  return cache.tileOccluders;
+}
+
+function tileOccludersMatch(source: readonly TileOccluder2D[], cached: readonly TileOccluder2D[]): boolean {
+  if (source.length !== cached.length) {
+    return false;
+  }
+  for (let index = 0; index < source.length; index += 1) {
+    const sourceOccluder = source[index];
+    const cachedOccluder = cached[index];
+    if (
+      sourceOccluder.x !== cachedOccluder.x ||
+      sourceOccluder.y !== cachedOccluder.y ||
+      sourceOccluder.width !== cachedOccluder.width ||
+      sourceOccluder.height !== cachedOccluder.height
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function resolvePointLightInto(target: MutableResolvedPointLight2D, light: PointLight2D, index: number): void {
-  const path = `pointLights[${index}]`;
-  target.x = finiteNumber(light.x, `${path}.x`);
-  target.y = finiteNumber(light.y, `${path}.y`);
-  target.radius = positiveNumber(light.radius, `${path}.radius`);
-  writeNormalizedColor4Into(target.color, light.color ?? DEFAULT_LIGHT_COLOR, `${path}.color`);
-  target.intensity = nonNegativeNumber(light.intensity ?? 1, `${path}.intensity`);
-  target.falloff = positiveNumber(light.falloff ?? 2, `${path}.falloff`);
+  target.x = finiteIndexedNumber(light.x, "pointLights", index, "x");
+  target.y = finiteIndexedNumber(light.y, "pointLights", index, "y");
+  target.radius = positiveIndexedNumber(light.radius, "pointLights", index, "radius");
+  writeIndexedNormalizedColor4Into(target.color, light.color ?? DEFAULT_LIGHT_COLOR, "pointLights", index, "color");
+  target.intensity = nonNegativeIndexedNumber(light.intensity ?? 1, "pointLights", index, "intensity");
+  target.falloff = positiveIndexedNumber(light.falloff ?? 2, "pointLights", index, "falloff");
 }
 
 function resolveTileOccluderInto(target: TileOccluder2D, occluder: TileOccluder2D, index: number): void {
-  const path = `tileOccluders[${index}]`;
-  target.x = finiteNumber(occluder.x, `${path}.x`);
-  target.y = finiteNumber(occluder.y, `${path}.y`);
-  target.width = positiveNumber(occluder.width, `${path}.width`);
-  target.height = positiveNumber(occluder.height, `${path}.height`);
+  target.x = finiteIndexedNumber(occluder.x, "tileOccluders", index, "x");
+  target.y = finiteIndexedNumber(occluder.y, "tileOccluders", index, "y");
+  target.width = positiveIndexedNumber(occluder.width, "tileOccluders", index, "width");
+  target.height = positiveIndexedNumber(occluder.height, "tileOccluders", index, "height");
 }
 
 function resolveLightingShadowsInto(
@@ -232,4 +302,71 @@ function normalizedChannel(value: number, path: string): number {
     throw new Error(`${path} must be between 0 and 1.`);
   }
   return channel;
+}
+
+function writeIndexedNormalizedColor4Into(
+  target: MutableLightingColor4,
+  color: readonly [number, number, number] | readonly [number, number, number, number],
+  collection: string,
+  index: number,
+  field: string,
+): void {
+  const length = color.length;
+  if (length !== 3 && length !== 4) {
+    throw new Error(`${collection}[${index}].${field} must contain 3 or 4 normalized color channels.`);
+  }
+  target[0] = indexedNormalizedChannel(color[0], collection, index, field, 0);
+  target[1] = indexedNormalizedChannel(color[1], collection, index, field, 1);
+  target[2] = indexedNormalizedChannel(color[2], collection, index, field, 2);
+  target[3] = indexedNormalizedChannel(length === 4 ? color[3] : 1, collection, index, field, 3);
+}
+
+function indexedNormalizedChannel(
+  value: number,
+  collection: string,
+  index: number,
+  field: string,
+  channelIndex: number,
+): number {
+  const channel = finiteIndexedColorChannel(value, collection, index, field, channelIndex);
+  if (channel < 0 || channel > 1) {
+    throw new Error(`${collection}[${index}].${field}[${channelIndex}] must be between 0 and 1.`);
+  }
+  return channel;
+}
+
+function finiteIndexedColorChannel(
+  value: number,
+  collection: string,
+  index: number,
+  field: string,
+  channelIndex: number,
+): number {
+  if (!Number.isFinite(value)) {
+    throw new Error(`${collection}[${index}].${field}[${channelIndex}] must be a finite number.`);
+  }
+  return value;
+}
+
+function finiteIndexedNumber(value: number, collection: string, index: number, field: string): number {
+  if (!Number.isFinite(value)) {
+    throw new Error(`${collection}[${index}].${field} must be a finite number.`);
+  }
+  return value;
+}
+
+function positiveIndexedNumber(value: number, collection: string, index: number, field: string): number {
+  const number = finiteIndexedNumber(value, collection, index, field);
+  if (number <= 0) {
+    throw new Error(`${collection}[${index}].${field} must be greater than 0.`);
+  }
+  return number;
+}
+
+function nonNegativeIndexedNumber(value: number, collection: string, index: number, field: string): number {
+  const number = finiteIndexedNumber(value, collection, index, field);
+  if (number < 0) {
+    throw new Error(`${collection}[${index}].${field} must be greater than or equal to 0.`);
+  }
+  return number;
 }

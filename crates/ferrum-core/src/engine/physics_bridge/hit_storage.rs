@@ -2,7 +2,7 @@ use crate::collision::{
     AabbQueryHit, CircleQueryHit, CollisionContact, CollisionManifold, CollisionQueryShape,
     CollisionSystem, PointQueryHit, RaycastHit, ShapeQueryHit,
 };
-use crate::components::{CollisionMask, Velocity};
+use crate::components::{CollisionMask, HeightSpan, Velocity};
 use crate::entity::Entity;
 use crate::tilemap::{TilemapContactHit, TilemapContactManifoldHit, TilemapShapeCastHit};
 
@@ -70,6 +70,30 @@ impl Engine {
         self.store_physics_shape_cast_hits_from_scratch()
     }
 
+    pub(in crate::engine) fn store_physics_shape_cast_hits_with_height_span(
+        &mut self,
+        shape: CollisionQueryShape,
+        direction_x: f32,
+        direction_y: f32,
+        max_distance: f32,
+        query_mask_bits: u32,
+        query_height_span: HeightSpan,
+    ) -> u32 {
+        CollisionSystem::shape_cast_all_with_height_span_into(
+            &self.world,
+            shape,
+            Velocity {
+                vx: direction_x,
+                vy: direction_y,
+            },
+            max_distance,
+            CollisionMask::from_bits(query_mask_bits),
+            Some(query_height_span),
+            &mut self.physics_shape_cast_scratch,
+        );
+        self.store_physics_shape_cast_hits_from_scratch()
+    }
+
     pub(in crate::engine) fn store_physics_shape_cast_hits_from_scratch(&mut self) -> u32 {
         self.physics_raycast_hits.clear();
         self.physics_raycast_hits.extend(
@@ -125,6 +149,22 @@ impl Engine {
             &self.world,
             shape,
             CollisionMask::from_bits(query_mask_bits),
+            &mut self.physics_shape_query_scratch,
+        );
+        self.store_physics_query_entities_from_shape_scratch()
+    }
+
+    pub(in crate::engine) fn store_physics_shape_query_entities_with_height_span(
+        &mut self,
+        shape: CollisionQueryShape,
+        query_mask_bits: u32,
+        query_height_span: HeightSpan,
+    ) -> u32 {
+        CollisionSystem::shape_query_with_height_span_into(
+            &self.world,
+            shape,
+            CollisionMask::from_bits(query_mask_bits),
+            Some(query_height_span),
             &mut self.physics_shape_query_scratch,
         );
         self.store_physics_query_entities_from_shape_scratch()

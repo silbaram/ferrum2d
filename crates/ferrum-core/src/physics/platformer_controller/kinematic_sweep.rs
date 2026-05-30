@@ -1,5 +1,5 @@
 use crate::collision::{CollisionSystem, SweptAabbContactHit};
-use crate::components::{AabbCollider, CollisionMask, Transform2D, Velocity};
+use crate::components::{AabbCollider, CollisionMask, HeightSpan, Transform2D, Velocity};
 use crate::entity::Entity;
 use crate::tilemap::{Tilemap, TilemapSweepStats};
 use crate::world::World;
@@ -26,6 +26,7 @@ pub(super) struct KinematicSweep<'a> {
     pub(super) solid_mask: CollisionMask,
     pub(super) one_way_platforms: OneWayPlatformConfig,
     pub(super) ignored_entity: Option<Entity>,
+    pub(super) height_span: Option<HeightSpan>,
 }
 
 pub(super) fn earliest_solid_hit(
@@ -42,13 +43,13 @@ pub(super) fn earliest_solid_hit(
         solid_mask,
         one_way_platforms,
         ignored_entity,
+        height_span,
     } = sweep;
     let moving_index = entity.id as usize;
     let mut best: Option<KinematicHit> = None;
 
-    for target_index in 0..world.transforms.len() {
-        if target_index == moving_index || !world.alive.get(target_index).copied().unwrap_or(false)
-        {
+    for &target_index in world.alive_indices() {
+        if target_index == moving_index {
             continue;
         }
         if ignored_entity.is_some_and(|entity| {
@@ -69,6 +70,13 @@ pub(super) fn earliest_solid_hit(
         if target_collider.is_trigger
             || !solid_filter_allows(world, moving_index, target_index, solid_mask)
         {
+            continue;
+        }
+        if !height_span_allows_kinematic_target(world, target_index, height_span) {
+            if let Some(counters) = counters.as_deref_mut() {
+                counters.hd2d_filtered_entity_candidates =
+                    counters.hd2d_filtered_entity_candidates.saturating_add(1);
+            }
             continue;
         }
         let Some(target_transform) = world.transforms[target_index] else {
@@ -123,11 +131,20 @@ pub(super) fn earliest_solid_hit(
 
     if let Some(tilemap) = tilemap {
         let mut stats = TilemapSweepStats::default();
-        if let Some(hit) = tilemap.swept_aabb_contact(position, collider, remaining, &mut stats) {
+        if let Some(hit) = tilemap.swept_aabb_contact_with_movement_height_span(
+            position,
+            collider,
+            remaining,
+            height_span,
+            &mut stats,
+        ) {
             if let Some(counters) = counters.as_deref_mut() {
                 counters.tile_candidate_checks = counters
                     .tile_candidate_checks
                     .saturating_add(stats.candidate_tiles);
+                counters.hd2d_filtered_tile_candidates = counters
+                    .hd2d_filtered_tile_candidates
+                    .saturating_add(stats.hd2d_filtered_tiles);
             }
             if best.is_none_or(|best_hit| hit.contact.time < best_hit.contact.time) {
                 best = Some(KinematicHit {
@@ -139,8 +156,24 @@ pub(super) fn earliest_solid_hit(
             counters.tile_candidate_checks = counters
                 .tile_candidate_checks
                 .saturating_add(stats.candidate_tiles);
+            counters.hd2d_filtered_tile_candidates = counters
+                .hd2d_filtered_tile_candidates
+                .saturating_add(stats.hd2d_filtered_tiles);
         }
     }
 
     best
+}
+
+fn height_span_allows_kinematic_target(
+    world: &World,
+    target_index: usize,
+    moving_height_span: Option<crate::components::HeightSpan>,
+) -> bool {
+    match moving_height_span {
+        Some(query_span) => world
+            .height_span_at(target_index)
+            .is_none_or(|target_span| query_span.overlaps(target_span)),
+        None => true,
+    }
 }

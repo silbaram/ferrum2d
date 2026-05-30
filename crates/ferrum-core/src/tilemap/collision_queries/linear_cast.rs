@@ -1,21 +1,44 @@
 use super::super::queries::{
-    best_tile_hit_is_better, sort_tile_linear_hits, tile_raycast_bounds,
-    tile_raycast_query_is_valid, tile_segment_direction_and_distance,
-    tile_shape_cast_query_is_valid, tile_shape_cast_unit_direction, tilemap_raycast_bounds,
-    tilemap_shape_cast_hit_from_contact,
+    best_tile_hit_is_better, sort_tile_linear_hits, tile_height_span_allows,
+    tile_height_span_allows_movement, tile_raycast_bounds, tile_raycast_query_is_valid,
+    tile_segment_direction_and_distance, tile_shape_cast_query_is_valid,
+    tile_shape_cast_unit_direction, tilemap_raycast_bounds, tilemap_shape_cast_hit_from_contact,
 };
 use super::super::{
     Tilemap, TilemapShapeCastHit, TilemapSweepHit, TilemapSweepStats, TILE_SWEEP_EPSILON,
 };
 use crate::collision::{AabbBounds, CollisionSystem};
-use crate::components::{AabbCollider, Transform2D, Velocity};
+use crate::components::{AabbCollider, HeightSpan, Transform2D, Velocity};
 
 impl Tilemap {
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn swept_aabb_contact(
         &self,
         start: Transform2D,
         collider: AabbCollider,
         displacement: Velocity,
+        stats: &mut TilemapSweepStats,
+    ) -> Option<TilemapSweepHit> {
+        self.swept_aabb_contact_internal(start, collider, displacement, None, stats)
+    }
+
+    pub(crate) fn swept_aabb_contact_with_movement_height_span(
+        &self,
+        start: Transform2D,
+        collider: AabbCollider,
+        displacement: Velocity,
+        query_height_span: Option<HeightSpan>,
+        stats: &mut TilemapSweepStats,
+    ) -> Option<TilemapSweepHit> {
+        self.swept_aabb_contact_internal(start, collider, displacement, query_height_span, stats)
+    }
+
+    fn swept_aabb_contact_internal(
+        &self,
+        start: Transform2D,
+        collider: AabbCollider,
+        displacement: Velocity,
+        query_height_span: Option<HeightSpan>,
         stats: &mut TilemapSweepStats,
     ) -> Option<TilemapSweepHit> {
         let end = Transform2D {
@@ -37,6 +60,10 @@ impl Tilemap {
             };
 
             self.visit_collision_rect_candidates(layer_index, range, |rect| {
+                if !tile_height_span_allows_movement(rect, query_height_span) {
+                    stats.hd2d_filtered_tiles = stats.hd2d_filtered_tiles.saturating_add(1);
+                    return true;
+                }
                 let rect_bounds = rect.bounds(layer);
                 if !rect_bounds.overlaps(swept_bounds) {
                     return true;
@@ -85,6 +112,7 @@ impl Tilemap {
                 start,
                 collider,
                 displacement,
+                query_height_span,
                 Some(&mut *stats),
                 &mut best,
             );
@@ -111,6 +139,25 @@ impl Tilemap {
         collider: AabbCollider,
         direction: Velocity,
         max_distance: f32,
+        hits: &mut Vec<TilemapShapeCastHit>,
+    ) {
+        self.shape_cast_aabb_obstacles_with_height_span_into(
+            start,
+            collider,
+            direction,
+            max_distance,
+            None,
+            hits,
+        );
+    }
+
+    pub fn shape_cast_aabb_obstacles_with_height_span_into(
+        &self,
+        start: Transform2D,
+        collider: AabbCollider,
+        direction: Velocity,
+        max_distance: f32,
+        query_height_span: Option<HeightSpan>,
         hits: &mut Vec<TilemapShapeCastHit>,
     ) {
         hits.clear();
@@ -143,6 +190,9 @@ impl Tilemap {
             };
 
             self.visit_collision_rect_candidates(layer_index, range, |rect| {
+                if !tile_height_span_allows(rect, query_height_span) {
+                    return true;
+                }
                 let rect_bounds = rect.bounds(layer);
                 if !rect_bounds.overlaps(swept_bounds) {
                     return true;
@@ -196,6 +246,7 @@ impl Tilemap {
                 unit_x,
                 unit_y,
                 max_distance,
+                query_height_span,
                 hits,
             );
         }
@@ -226,6 +277,17 @@ impl Tilemap {
         max_distance: f32,
         hits: &mut Vec<TilemapShapeCastHit>,
     ) {
+        self.raycast_obstacles_with_height_span_into(origin, direction, max_distance, None, hits);
+    }
+
+    pub fn raycast_obstacles_with_height_span_into(
+        &self,
+        origin: Transform2D,
+        direction: Velocity,
+        max_distance: f32,
+        query_height_span: Option<HeightSpan>,
+        hits: &mut Vec<TilemapShapeCastHit>,
+    ) {
         hits.clear();
         if !tile_raycast_query_is_valid(origin, max_distance) {
             return;
@@ -249,6 +311,9 @@ impl Tilemap {
             };
 
             self.visit_collision_rect_candidates(layer_index, range, |rect| {
+                if !tile_height_span_allows(rect, query_height_span) {
+                    return true;
+                }
                 let rect_bounds = rect.bounds(layer);
                 if !rect_bounds.overlaps(ray_bounds) {
                     return true;
@@ -290,11 +355,27 @@ impl Tilemap {
         end: Transform2D,
         hits: &mut Vec<TilemapShapeCastHit>,
     ) {
+        self.segment_cast_obstacles_with_height_span_into(start, end, None, hits);
+    }
+
+    pub fn segment_cast_obstacles_with_height_span_into(
+        &self,
+        start: Transform2D,
+        end: Transform2D,
+        query_height_span: Option<HeightSpan>,
+        hits: &mut Vec<TilemapShapeCastHit>,
+    ) {
         hits.clear();
         let Some((direction, max_distance)) = tile_segment_direction_and_distance(start, end)
         else {
             return;
         };
-        self.raycast_obstacles_into(start, direction, max_distance, hits);
+        self.raycast_obstacles_with_height_span_into(
+            start,
+            direction,
+            max_distance,
+            query_height_span,
+            hits,
+        );
     }
 }

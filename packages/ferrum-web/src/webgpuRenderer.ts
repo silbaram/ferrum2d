@@ -10,7 +10,11 @@ import {
 import type { Renderer, RendererStats } from "./renderer.js";
 import type { PostProcessStackInput } from "./cameraPostProcessing.js";
 import type { LightingScene2D, ResolvedLightingScene2D } from "./lighting.js";
-import { createResolvedLightingScene, resolveLightingSceneInto } from "./lightingNormalize.js";
+import {
+  createLightingSceneResolveCache,
+  createResolvedLightingScene,
+  resolveLightingSceneInto,
+} from "./lightingNormalize.js";
 import { resolveSpriteMaterialPreset, spriteMaterialPasses } from "./spriteMaterial.js";
 import type { SpriteMaterialPass, SpriteMaterialPresetInput } from "./spriteMaterial.js";
 import type {
@@ -52,6 +56,7 @@ export class WebGPURenderer implements Renderer {
   private currentStats: RendererStats = emptyRendererStats();
   private lightingScene: ResolvedLightingScene2D = createResolvedLightingScene();
   private lightingSceneStaging: ResolvedLightingScene2D = createResolvedLightingScene();
+  private readonly lightingResolveCache = createLightingSceneResolveCache();
   private spriteMaterialPasses: readonly SpriteMaterialPass[];
   private logicalWidth = 0;
   private logicalHeight = 0;
@@ -108,7 +113,7 @@ export class WebGPURenderer implements Renderer {
       this.uniformPipelineLayout,
       this.resolutionBindGroup,
     );
-    resolveLightingSceneInto(this.lightingScene, options.lighting);
+    resolveLightingSceneInto(this.lightingScene, options.lighting, this.lightingResolveCache);
     this.spriteMaterialPasses = spriteMaterialPasses(resolveSpriteMaterialPreset(options.spriteMaterial));
     this.resize();
     this.textureStore.createPlaceholderTextureForId(PLACEHOLDER_TEXTURE_ID);
@@ -206,7 +211,7 @@ export class WebGPURenderer implements Renderer {
 
   setLighting(scene: LightingScene2D | false | undefined): void {
     this.assertAlive();
-    const nextLightingScene = resolveLightingSceneInto(this.lightingSceneStaging, scene);
+    const nextLightingScene = resolveLightingSceneInto(this.lightingSceneStaging, scene, this.lightingResolveCache);
     this.lightingSceneStaging = this.lightingScene;
     this.lightingScene = nextLightingScene;
   }

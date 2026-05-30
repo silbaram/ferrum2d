@@ -2,11 +2,9 @@ use super::World;
 
 impl World {
     pub(super) fn update_sprite_animations(&mut self, delta: f32) {
-        for i in 0..self.alive.len() {
-            if !self.alive[i] {
-                continue;
-            }
-
+        let alive_count = self.alive_indices().len();
+        for alive_position in 0..alive_count {
+            let i = self.alive_indices()[alive_position];
             let Some(animation) = self.sprite_animations[i].as_mut() else {
                 continue;
             };

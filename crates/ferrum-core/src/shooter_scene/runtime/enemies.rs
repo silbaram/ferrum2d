@@ -33,10 +33,9 @@ impl ShooterScene {
             .and_then(|player| world.transforms[player.id as usize]);
         let speed = self.active_enemy_speed();
         let behavior = self.active_enemy_behavior();
-        for i in 0..world.transforms.len() {
-            if !world.alive[i] {
-                continue;
-            }
+        let alive_count = world.alive_indices().len();
+        for alive_position in 0..alive_count {
+            let i = world.alive_indices()[alive_position];
             if world.collider_layer_at(i) != Some(CollisionLayer::Enemy) {
                 continue;
             }

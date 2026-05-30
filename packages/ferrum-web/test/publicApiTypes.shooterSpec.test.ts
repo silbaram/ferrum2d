@@ -69,6 +69,7 @@ import type {
   ResolvedShooterPrefabColliderBase,
   ResolvedShooterPrefabColliderVertex,
   ResolvedShooterTileDefinition,
+  ResolvedShooterTileRampDefinition,
   ResolvedShooterTileSlopeDefinition,
   ResolvedShooterTilemap,
   ShooterAtlasAnimationSpec,
@@ -81,11 +82,18 @@ import type {
   ShooterEnemyPresetSpec,
   ShooterGameSpec,
   ShooterPhysicsMaterialSpec,
+  ShooterProjectileArcSpec,
   ShooterPrefabColliderSpec,
   ShooterPrefabColliderType,
+  ShooterTileBridgePortalSpec,
+  ShooterTileKind,
   ShooterTileLayerSpec,
+  ShooterTileRampAxis,
+  ShooterTileRampSpec,
   ShooterTileSlopeSpec,
   ShooterTileSpec,
+  ResolvedShooterProjectileArcSpec,
+  ResolvedShooterTileBridgePortalDefinition,
   ShooterTilemapSpec,
   ShooterWaveSpec,
   SpatialAudioOptions,
@@ -205,13 +213,22 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   const prefabColliderSpec: ShooterPrefabColliderSpec = gameSpec.prefabs?.bullet?.collider ?? {};
   const prefabColliderType: ShooterPrefabColliderType = prefabColliderSpec.type ?? "aabb";
   const physicsMaterialSpec: ShooterPhysicsMaterialSpec = prefabColliderSpec.material ?? {};
+  const projectileArcSpec: ShooterProjectileArcSpec = gameSpec.weapons?.projectileArc ?? {};
   const enemyPresetSpec: ShooterEnemyPresetSpec = gameSpec.enemies?.presets?.bruiser ?? {};
   const enemyOrbitSpec: ShooterEnemyOrbitSpec = gameSpec.enemies?.orbit ?? {};
   const orbitEnemyPresetSpec: ShooterEnemyPresetSpec = { behavior: "orbit", speed: 84 };
   const waveSpec: ShooterWaveSpec = gameSpec.enemies?.waves?.[0] ?? {};
   const tilemapSpec: ShooterTilemapSpec = gameSpec.tilemap ?? {};
   const tileSpec: ShooterTileSpec = tilemapSpec.tiles?.["1"] ?? {};
+  const tileKind: ShooterTileKind = tileSpec.kind ?? "flat";
+  const tileRampAxis: ShooterTileRampAxis = tileSpec.ramp?.axis ?? "x";
+  const tileRampSpec: ShooterTileRampSpec = tileSpec.ramp ?? { axis: tileRampAxis };
+  const tileBridgePortalSpec: ShooterTileBridgePortalSpec = tileSpec.bridgePortal ?? {
+    lowerFloor: "default",
+    upperFloor: "bridge",
+  };
   const tileSlopeSpec: ShooterTileSlopeSpec = tileSpec.slope ?? { x0: 0, y0: 1, x1: 1, y1: 0 };
+  const tileFloorSpec = tileSpec.floor ?? "default";
   const tileLayerSpec: ShooterTileLayerSpec = tilemapSpec.layers?.[0] ?? {};
   const audioBusConfig: AudioBusConfig = { masterVolume: 0.9, sfxVolume: 0.7 };
   const audioBus: AudioBus = "bgm";
@@ -243,7 +260,34 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
     id: 1,
     frame: { name: "bullet", texture: "bullet", width: 8, height: 8, u0: 0, v0: 0, u1: 1, v1: 1 },
     color: [1, 1, 1, 1],
+    floor: "default",
+    elevation: 0,
+    height: 0,
+    kind: tileKind,
+    blocksMovement: true,
+    blocksProjectile: true,
+    blocksVision: true,
+    occluderHeight: 0,
     slope: { x0: 0, y0: 1, x1: 1, y1: 0 },
+  };
+  const resolvedTileRamp: ResolvedShooterTileRampDefinition = {
+    axis: tileRampSpec.axis ?? "x",
+    startElevation: tileRampSpec.startElevation ?? 0,
+    endElevation: tileRampSpec.endElevation ?? 8,
+  };
+  const resolvedTileBridgePortal: ResolvedShooterTileBridgePortalDefinition = {
+    lowerFloor: tileBridgePortalSpec.lowerFloor ?? "default",
+    upperFloor: tileBridgePortalSpec.upperFloor ?? "bridge",
+    lowerElevation: tileBridgePortalSpec.lowerElevation ?? 0,
+    upperElevation: tileBridgePortalSpec.upperElevation ?? 8,
+    navigationCost: tileBridgePortalSpec.navigationCost ?? 1,
+  };
+  const resolvedProjectileArc: ResolvedShooterProjectileArcSpec = {
+    enabled: projectileArcSpec.enabled ?? false,
+    launchHeight: projectileArcSpec.launchHeight ?? 0,
+    zVelocity: projectileArcSpec.zVelocity ?? 0,
+    gravity: projectileArcSpec.gravity ?? 0,
+    hitHeight: projectileArcSpec.hitHeight ?? 0,
   };
   const resolvedAtlasAnimationState: ResolvedShooterAtlasAnimationState = {
     frames: [resolvedTileDefinition.frame],
@@ -557,6 +601,8 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
       "getPhysicsBodyCollider" | "getPhysicsEntity" | "despawnPhysicsEntity" |
       "capturePhysicsBodyStateBuffer" | "restorePhysicsBodyStateBuffer" |
       "setPhysicsBodyVelocity" | "setPhysicsBodyRotation" | "setPhysicsBodyAngularVelocity" |
+      "setPhysicsBodyHeightSpan" | "clearPhysicsBodyHeightSpan" | "getPhysicsBodyHeightSpan" |
+      "moveHd2dKinematicBodyWithTilemap" |
       "setPhysicsBodyEnabled" | "setPhysicsColliderOffset" | "setPhysicsColliderEnabled" |
       "setPhysicsColliderMaterial" | "setPhysicsBodyColliderMaterial" | "clearPhysicsColliderMaterial" |
       "setPhysicsBodyMassProperties" |
@@ -574,6 +620,9 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
       "shapeCastCapsuleBodies" | "shapeCastConvexPolygonBodies" | "shapeCastAabbTileObstacles" |
       "queryAabbTileObstacleContacts" | "queryAabbTileObstacleManifolds" |
       "setShooterTilemapTile" | "setShooterTilemapTilesRect" |
+      "setShooterTileHeightSpan" | "clearShooterTileHeightSpan" |
+      "setShooterTileHd2dMetadata" | "clearShooterTileHd2dMetadata" |
+      "setShooterTileBridgePortal" | "clearShooterTileBridgePortal" |
       "setShooterTilemapNavigationCost" | "queryTilemapNavigationWaypoint" | "queryTilemapNavigationPath" |
       "setParticlePreset" | "clearParticlePresets" | "setShooterHitParticlePreset" |
       "clearShooterHitParticlePreset" | "setParticleSeed" | "spawnParticleBurst" | "clearParticles" |
@@ -630,6 +679,7 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
       enemySpawnPatternCode: 0,
       enemyHealth: 1,
       bulletDamage: 1,
+      projectileArc: resolvedProjectileArc,
       scoreReward: 1,
       orbitRadius: 180,
       orbitRadialBand: 24,
@@ -676,6 +726,10 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
     setPhysicsBodyVelocity: () => true,
     setPhysicsBodyRotation: () => true,
     setPhysicsBodyAngularVelocity: () => true,
+    setPhysicsBodyHeightSpan: () => true,
+    clearPhysicsBodyHeightSpan: () => true,
+    getPhysicsBodyHeightSpan: () => ({ floorId: 0, elevation: 0, height: 16 }),
+    moveHd2dKinematicBodyWithTilemap: () => undefined,
     setPhysicsBodyEnabled: () => true,
     setPhysicsColliderOffset: () => true,
     setPhysicsColliderEnabled: () => true,
@@ -718,6 +772,12 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
     queryAabbTileObstacleManifolds: () => [tileManifoldHit],
     setShooterTilemapTile: () => true,
     setShooterTilemapTilesRect: () => true,
+    setShooterTileHeightSpan: () => true,
+    clearShooterTileHeightSpan: () => true,
+    setShooterTileHd2dMetadata: () => true,
+    clearShooterTileHd2dMetadata: () => true,
+    setShooterTileBridgePortal: () => true,
+    clearShooterTileBridgePortal: () => true,
     setShooterTilemapNavigationCost: () => true,
     queryTilemapNavigationWaypoint: () => navigationWaypoint,
     queryTilemapNavigationPath: () => navigationPath,
@@ -741,10 +801,19 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   equal(prefabColliderType, "aabb");
   equal(prefabColliderSpec.offset?.x, 1);
   equal(physicsMaterialSpec.friction, 0.8);
+  equal(projectileArcSpec.launchHeight, undefined);
+  equal(resolvedProjectileArc.enabled, false);
   equal(resolvedPrefabCollider.material?.surfaceVelocityX, 2);
   equal(resolvedPrefabColliderVertex.x, -2);
   equal(tileSlopeSpec.y0, 1);
+  equal(tileKind, "flat");
+  equal(tileRampAxis, "x");
+  equal(tileRampSpec.axis, "x");
+  equal(tileBridgePortalSpec.upperFloor, "bridge");
+  equal(tileFloorSpec, "default");
   equal(resolvedTileSlope.x1, 1);
+  equal(resolvedTileRamp.endElevation, 8);
+  equal(resolvedTileBridgePortal.navigationCost, 1);
   equal(enemyPresetSpec.health, 4);
   equal(enemyOrbitSpec.radius, 180);
   equal(orbitEnemyPresetSpec.behavior, "orbit");

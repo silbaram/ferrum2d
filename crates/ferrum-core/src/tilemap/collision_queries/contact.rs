@@ -1,10 +1,10 @@
 use super::super::queries::{
-    tile_aabb_query_is_valid, tilemap_contact_hit_from_contact,
+    tile_aabb_query_is_valid, tile_height_span_allows, tilemap_contact_hit_from_contact,
     tilemap_contact_manifold_hit_from_contact,
 };
 use super::super::{Tilemap, TilemapContactHit, TilemapContactManifoldHit};
 use crate::collision::{AabbBounds, CollisionSystem};
-use crate::components::{AabbCollider, Transform2D};
+use crate::components::{AabbCollider, HeightSpan, Transform2D};
 
 impl Tilemap {
     pub fn aabb_obstacle_contacts(
@@ -21,6 +21,16 @@ impl Tilemap {
         &self,
         transform: Transform2D,
         collider: AabbCollider,
+        hits: &mut Vec<TilemapContactHit>,
+    ) {
+        self.aabb_obstacle_contacts_with_height_span_into(transform, collider, None, hits);
+    }
+
+    pub fn aabb_obstacle_contacts_with_height_span_into(
+        &self,
+        transform: Transform2D,
+        collider: AabbCollider,
+        query_height_span: Option<HeightSpan>,
         hits: &mut Vec<TilemapContactHit>,
     ) {
         hits.clear();
@@ -41,6 +51,9 @@ impl Tilemap {
             };
 
             self.visit_collision_rect_candidates(layer_index, range, |rect| {
+                if !tile_height_span_allows(rect, query_height_span) {
+                    return true;
+                }
                 let rect_bounds = rect.bounds(layer);
                 if !rect_bounds.overlaps(bounds) {
                     return true;
@@ -91,6 +104,16 @@ impl Tilemap {
         collider: AabbCollider,
         hits: &mut Vec<TilemapContactManifoldHit>,
     ) {
+        self.aabb_obstacle_manifolds_with_height_span_into(transform, collider, None, hits);
+    }
+
+    pub fn aabb_obstacle_manifolds_with_height_span_into(
+        &self,
+        transform: Transform2D,
+        collider: AabbCollider,
+        query_height_span: Option<HeightSpan>,
+        hits: &mut Vec<TilemapContactManifoldHit>,
+    ) {
         hits.clear();
         if !tile_aabb_query_is_valid(transform, collider) {
             return;
@@ -109,6 +132,9 @@ impl Tilemap {
             };
 
             self.visit_collision_rect_candidates(layer_index, range, |rect| {
+                if !tile_height_span_allows(rect, query_height_span) {
+                    return true;
+                }
                 let rect_bounds = rect.bounds(layer);
                 if !rect_bounds.overlaps(bounds) {
                     return true;

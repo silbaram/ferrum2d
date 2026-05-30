@@ -228,6 +228,18 @@ fn engine_spawn_physics_body_shapes_and_controls_for_wasm() {
     );
     assert!((engine.physics_entity_contact_position_correction_scale() - 0.7).abs() < 0.0001);
     assert!((engine.physics_entity_contact_position_correction_slop_scale() - 0.6).abs() < 0.0001);
+    assert!(!engine.physics_body_has_height_span(circle_id, circle_generation));
+    assert!(engine.set_physics_body_height_span(circle_id, circle_generation, 2, 4.0, 12.0));
+    assert!(engine.physics_body_has_height_span(circle_id, circle_generation));
+    assert_eq!(
+        engine.physics_body_floor_id(circle_id, circle_generation),
+        2
+    );
+    assert!((engine.physics_body_elevation(circle_id, circle_generation) - 4.0).abs() < 0.0001);
+    assert!((engine.physics_body_height(circle_id, circle_generation) - 12.0).abs() < 0.0001);
+    assert!(!engine.set_physics_body_height_span(circle_id, circle_generation, 2, f32::NAN, 12.0,));
+    assert!(engine.clear_physics_body_height_span(circle_id, circle_generation));
+    assert!(!engine.physics_body_has_height_span(circle_id, circle_generation));
     assert!(!engine.physics_entity_collider_material_override());
     assert!((engine.physics_entity_collider_restitution() - 0.1).abs() < 0.0001);
     assert!((engine.physics_entity_collider_friction() - 0.5).abs() < 0.0001);

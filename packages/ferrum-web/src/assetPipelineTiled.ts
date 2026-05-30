@@ -27,7 +27,11 @@ import {
   textureValue,
 } from "./assetPipelineValidation.js";
 import type { JsonRecord } from "./assetPipelineValidation.js";
-import { tileSlopeFromEndpointProperties } from "./assetPipelineTileMetadata.js";
+import {
+  tileHd2dMetadataFromProperties,
+  tileHeightMetadataFromProperties,
+  tileSlopeFromEndpointProperties,
+} from "./assetPipelineTileMetadata.js";
 
 const TILED_ROOT_PATH = "assetPipeline.tiled";
 const TILED_GID_FLAG_MASK = 0xf0000000;
@@ -44,6 +48,11 @@ interface TiledTileset {
   tileCount: number;
   tileSlopes: Map<number, ShooterTileSlopeSpec>;
   tileOneWayPlatforms: Set<number>;
+  tileHeightMetadata: Map<number, Pick<ShooterTileSpec, "floor" | "elevation" | "height">>;
+  tileHd2dMetadata: Map<number, Pick<
+    ShooterTileSpec,
+    "kind" | "ramp" | "blocksMovement" | "blocksProjectile" | "blocksVision" | "occluderHeight"
+  >>;
   margin: number;
   spacing: number;
   path: string;
@@ -97,6 +106,8 @@ export function importTiledTilemap(
     const frameName = tiledFrameName(context, options);
     const slope = tileset.tileSlopes.get(localId);
     const oneWayPlatform = tileset.tileOneWayPlatforms.has(localId);
+    const heightMetadata = tileset.tileHeightMetadata.get(localId);
+    const hd2dMetadata = tileset.tileHd2dMetadata.get(localId);
     if (slope && oneWayPlatform) {
       throw assetPipelineDiagnosticError(
         `${tileset.path}.tiles`,
@@ -105,6 +116,8 @@ export function importTiledTilemap(
     }
     tiles[String(gid)] = {
       frame: frameName,
+      ...(heightMetadata ?? {}),
+      ...(hd2dMetadata ?? {}),
       ...(slope ? { slope } : {}),
       ...(oneWayPlatform ? { oneWayPlatform } : {}),
     };
@@ -178,6 +191,14 @@ function tiledTilesets(
       path: `${metadataPath}.tiles`,
       tileCount,
     });
+    const tileHeightMetadata = tiledTileHeightMetadata(record.tiles, {
+      path: `${metadataPath}.tiles`,
+      tileCount,
+    });
+    const tileHd2dMetadata = tiledTileHd2dMetadata(record.tiles, {
+      path: `${metadataPath}.tiles`,
+      tileCount,
+    });
     return {
       firstGid,
       name,
@@ -189,6 +210,8 @@ function tiledTilesets(
       tileCount,
       tileSlopes,
       tileOneWayPlatforms,
+      tileHeightMetadata,
+      tileHd2dMetadata,
       margin: nonNegativeNumber(record.margin ?? 0, `${metadataPath}.margin`),
       spacing: nonNegativeNumber(record.spacing ?? 0, `${metadataPath}.spacing`),
       path: entryPath,
@@ -270,6 +293,68 @@ function tiledTileOneWayPlatforms(value: unknown, options: { path: string; tileC
     oneWayPlatforms.add(id);
   }
   return oneWayPlatforms;
+}
+
+function tiledTileHeightMetadata(
+  value: unknown,
+  options: { path: string; tileCount: number },
+): Map<number, Pick<ShooterTileSpec, "floor" | "elevation" | "height">> {
+  const entries = new Map<number, Pick<ShooterTileSpec, "floor" | "elevation" | "height">>();
+  if (value === undefined) {
+    return entries;
+  }
+
+  for (const [index, entry] of arrayValue(value, options.path).entries()) {
+    const tilePath = `${options.path}.${index}`;
+    const tile = objectValue(entry, tilePath);
+    const metadata = tiledTileHeightSpan(tile.properties, `${tilePath}.properties`);
+    if (metadata === undefined) {
+      continue;
+    }
+    const id = nonNegativeInteger(tile.id, `${tilePath}.id`);
+    if (id >= options.tileCount) {
+      throw assetPipelineDiagnosticError(`${tilePath}.id`, "must reference a tile inside the tileset");
+    }
+    if (entries.has(id)) {
+      throw assetPipelineDiagnosticError(`${tilePath}.id`, `duplicate height metadata for tile id ${id}`);
+    }
+    entries.set(id, metadata);
+  }
+  return entries;
+}
+
+function tiledTileHd2dMetadata(
+  value: unknown,
+  options: { path: string; tileCount: number },
+): Map<number, Pick<
+  ShooterTileSpec,
+  "kind" | "ramp" | "blocksMovement" | "blocksProjectile" | "blocksVision" | "occluderHeight"
+>> {
+  const entries = new Map<number, Pick<
+    ShooterTileSpec,
+    "kind" | "ramp" | "blocksMovement" | "blocksProjectile" | "blocksVision" | "occluderHeight"
+  >>();
+  if (value === undefined) {
+    return entries;
+  }
+
+  for (const [index, entry] of arrayValue(value, options.path).entries()) {
+    const tilePath = `${options.path}.${index}`;
+    const tile = objectValue(entry, tilePath);
+    const metadata = tiledTileHd2d(tile.properties, `${tilePath}.properties`);
+    if (metadata === undefined) {
+      continue;
+    }
+    const id = nonNegativeInteger(tile.id, `${tilePath}.id`);
+    if (id >= options.tileCount) {
+      throw assetPipelineDiagnosticError(`${tilePath}.id`, "must reference a tile inside the tileset");
+    }
+    if (entries.has(id)) {
+      throw assetPipelineDiagnosticError(`${tilePath}.id`, `duplicate HD-2D metadata for tile id ${id}`);
+    }
+    entries.set(id, metadata);
+  }
+  return entries;
 }
 
 function tiledLayers(
@@ -491,7 +576,51 @@ function tiledTileSlope(value: unknown, path: string): ShooterTileSlopeSpec | un
   );
 }
 
+function tiledTileHeightSpan(
+  value: unknown,
+  path: string,
+): Pick<ShooterTileSpec, "floor" | "elevation" | "height"> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return tileHeightMetadataFromProperties(
+    tiledProperty(value, "floor", path),
+    tiledProperty(value, "elevation", path),
+    tiledProperty(value, "height", path),
+  );
+}
+
+function tiledTileHd2d(
+  value: unknown,
+  path: string,
+): Pick<
+  ShooterTileSpec,
+  "kind" | "ramp" | "blocksMovement" | "blocksProjectile" | "blocksVision" | "occluderHeight"
+> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return tileHd2dMetadataFromProperties(
+    tiledProperty(value, "kind", path),
+    tiledProperty(value, "rampAxis", path),
+    tiledProperty(value, "rampStartElevation", path),
+    tiledProperty(value, "rampEndElevation", path),
+    tiledProperty(value, "blocksMovement", path),
+    tiledProperty(value, "blocksProjectile", path),
+    tiledProperty(value, "blocksVision", path),
+    tiledProperty(value, "occluderHeight", path),
+  );
+}
+
 function tiledNumberProperty(
+  value: unknown,
+  name: string,
+  path: string,
+): { value: unknown; path: string } | undefined {
+  return tiledProperty(value, name, path);
+}
+
+function tiledProperty(
   value: unknown,
   name: string,
   path: string,

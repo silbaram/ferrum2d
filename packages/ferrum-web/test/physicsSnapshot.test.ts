@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type {
   FerrumEngine,
   PhysicsBodyColliderOptions,
+  PhysicsBodyHeightSpan,
   PhysicsBodyColliderSnapshot,
   PhysicsBodyStateBufferSnapshot,
   PhysicsEntityHandle,
@@ -39,6 +40,7 @@ class FakeSnapshotEngine {
 
   private nextEntityId = 1;
   private bodies = new Map<number, PhysicsEntitySnapshot>();
+  private heightSpans = new Map<number, PhysicsBodyHeightSpan>();
   private colliders = new Map<number, PhysicsBodyColliderSnapshot[]>();
   private nextJointIndex = 0;
   private joints = new Map<number, PhysicsJointSnapshot>();
@@ -95,6 +97,9 @@ class FakeSnapshotEngine {
       categoryBits: options.categoryBits ?? 1,
       maskBits: options.maskBits ?? 0xffffffff,
     }]);
+    if (options.heightSpan !== undefined) {
+      this.heightSpans.set(handle.entityId, { ...options.heightSpan });
+    }
     return handle;
   }
 
@@ -175,8 +180,26 @@ class FakeSnapshotEngine {
   }
 
   despawnPhysicsEntity(handle: PhysicsEntityHandle): boolean {
+    this.heightSpans.delete(handle.entityId);
     this.colliders.delete(handle.entityId);
     return this.bodies.delete(handle.entityId);
+  }
+
+  setPhysicsBodyHeightSpan(handle: PhysicsEntityHandle, span: PhysicsBodyHeightSpan): boolean {
+    if (!this.bodies.has(handle.entityId)) return false;
+    this.heightSpans.set(handle.entityId, { ...span });
+    return true;
+  }
+
+  clearPhysicsBodyHeightSpan(handle: PhysicsEntityHandle): boolean {
+    if (!this.bodies.has(handle.entityId)) return false;
+    this.heightSpans.delete(handle.entityId);
+    return true;
+  }
+
+  getPhysicsBodyHeightSpan(handle: PhysicsEntityHandle): PhysicsBodyHeightSpan | undefined {
+    const span = this.heightSpans.get(handle.entityId);
+    return span === undefined ? undefined : { ...span };
   }
 
   setPhysicsBodyPosition(handle: PhysicsEntityHandle, x: number, y: number): boolean {
@@ -437,6 +460,65 @@ test("physics world snapshot captures versioned state and restores via Physics S
   equal(hashPhysicsWorldSnapshot(snapshot), snapshot.replayHash);
   equal(fake.bulkCaptureCount, 1);
   equal(fake.bulkRestoreCount, 1);
+});
+
+test("physics world snapshot preserves HD-2D height spans outside bulk body ABI", () => {
+  const fake = new FakeSnapshotEngine();
+  const engine = fake as unknown as FerrumEngine;
+  const world = createPhysicsWorldFromSpec(engine, {
+    mode: "rigid",
+    hd2d: {
+      enabled: true,
+      defaultHeight: 24,
+    },
+    bodies: {
+      lower: {
+        type: "kinematic",
+        floor: "ground",
+        elevation: 0,
+        collider: { shape: "circle", radius: 6 },
+      },
+      upper: {
+        type: "kinematic",
+        floor: "bridge",
+        elevation: 16,
+        height: 20,
+        collider: { shape: "circle", radius: 6 },
+      },
+    },
+  });
+
+  const lowerInitialSpan = engine.getPhysicsBodyHeightSpan(world.bodies.lower);
+  const upperInitialSpan = engine.getPhysicsBodyHeightSpan(world.bodies.upper);
+  ok((lowerInitialSpan?.floorId ?? 0) > 0);
+  equal(lowerInitialSpan?.height, 24);
+  ok((upperInitialSpan?.floorId ?? 0) > 0);
+  ok(lowerInitialSpan?.floorId !== upperInitialSpan?.floorId);
+
+  ok(engine.setPhysicsBodyHeightSpan(world.bodies.upper, {
+    floorId: 3,
+    elevation: 32,
+    height: 12,
+  }));
+  const snapshot = capturePhysicsWorldSnapshot(engine, world, { frame: 1 });
+
+  equal(snapshot.bodies.upper.state.heightSpan?.floorId, 3);
+  equal(snapshot.bodies.upper.state.heightSpan?.elevation, 32);
+  equal(snapshot.bodies.upper.state.heightSpan?.height, 12);
+
+  ok(engine.setPhysicsBodyHeightSpan(world.bodies.upper, {
+    floorId: 9,
+    elevation: 0,
+    height: 1,
+  }));
+  const changed = capturePhysicsWorldSnapshot(engine, world, { frame: 1 });
+  ok(hashPhysicsWorldSnapshot(changed) !== snapshot.replayHash);
+
+  const restored = restorePhysicsWorldSnapshot(engine, snapshot, { replace: world });
+  const restoredSpan = engine.getPhysicsBodyHeightSpan(restored.bodies.upper);
+  equal(restoredSpan?.floorId, 3);
+  equal(restoredSpan?.elevation, 32);
+  equal(restoredSpan?.height, 12);
 });
 
 test("physics world snapshot rejects malformed public JSON before restore", () => {

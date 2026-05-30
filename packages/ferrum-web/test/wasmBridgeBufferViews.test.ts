@@ -18,6 +18,7 @@ import type { WasmBridgeAbiLayout } from "../src/wasmBridgeAbi.js";
 import {
   audioEventBufferView,
   collisionEventBufferView,
+  frameTelemetryBufferView,
   physicsBodyContactHitBufferView,
   physicsBodyManifoldHitBufferView,
   physicsBodyStateBufferView,
@@ -31,10 +32,14 @@ import {
   shooterStateBufferView,
   tilemapNavigationPathBufferView,
 } from "../src/wasmBridgeBufferViews.js";
-import type { WasmBridgeBufferContext } from "../src/wasmBridgeBufferViews.js";
+import type {
+  FrameTelemetryBufferViewCache,
+  WasmBridgeBufferContext,
+} from "../src/wasmBridgeBufferViews.js";
 
 const layout: WasmBridgeAbiLayout = {
   floatsPerCommand: 14,
+  f64sPerFrameTelemetry: 37,
   floatsPerAudioEvent: FLOATS_PER_AUDIO_EVENT,
   u32sPerCollisionEvent: U32S_PER_COLLISION_EVENT,
   floatsPerPhysicsDebugLine: FLOATS_PER_PHYSICS_DEBUG_LINE,
@@ -54,6 +59,7 @@ function context(overrides: Record<string, () => number> = {}): WasmBridgeBuffer
   const engine = {
     render_command_ptr: () => 16,
     render_command_len: () => 2,
+    frame_telemetry_ptr: () => 64,
     audio_event_ptr: () => 128,
     audio_event_len: () => 3,
     collision_event_ptr: () => 256,
@@ -109,6 +115,12 @@ test("wasmBridge buffer views preserve element and byte length contracts", () =>
   equal(render.commandCount, 2);
   equal(render.floatsPerCommand, layout.floatsPerCommand);
   ok(render.buffer !== renderCommandBufferView(ctx).buffer);
+
+  const frameTelemetry = frameTelemetryBufferView(ctx);
+  equal(frameTelemetry.buffer.constructor, Float64Array);
+  equal(frameTelemetry.buffer.byteOffset, 64);
+  equal(frameTelemetry.buffer.length, layout.f64sPerFrameTelemetry);
+  equal(frameTelemetry.f64sPerFrame, layout.f64sPerFrameTelemetry);
 
   const audio = audioEventBufferView(ctx);
   equal(audio.buffer.constructor, Float32Array);
@@ -173,8 +185,29 @@ test("wasmBridge buffer views preserve element and byte length contracts", () =>
   const path = tilemapNavigationPathBufferView(ctx);
   equal(path.buffer.constructor, Float32Array);
   equal(path.buffer.byteOffset, 512);
-  equal(path.buffer.length, 10);
-  equal(path.floatsPerPoint, 2);
+  equal(path.buffer.length, 25);
+  equal(path.floatsPerPoint, 5);
+});
+
+test("frameTelemetryBufferView reuses cache until wasm memory grows", () => {
+  const ctx = context();
+  const cache: FrameTelemetryBufferViewCache = {};
+  const first = frameTelemetryBufferView(ctx, cache);
+  const second = frameTelemetryBufferView(ctx, cache);
+  const previousMemoryBuffer = ctx.memory.buffer;
+
+  equal(second, first);
+  equal(second.buffer, first.buffer);
+
+  ctx.memory.grow(1);
+  const third = frameTelemetryBufferView(ctx, cache);
+
+  ok(ctx.memory.buffer !== previousMemoryBuffer);
+  ok(third !== first);
+  ok(third.buffer !== first.buffer);
+  equal(third.buffer.buffer, ctx.memory.buffer);
+  equal(third.buffer.byteOffset, 64);
+  equal(third.buffer.length, layout.f64sPerFrameTelemetry);
 });
 
 test("wasmBridge snapshot views preserve body and shooter stride contracts", () => {

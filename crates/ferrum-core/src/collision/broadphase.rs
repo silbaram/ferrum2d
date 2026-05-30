@@ -257,7 +257,7 @@ pub(super) fn current_proxy_bounds(world: &World) -> Vec<AabbBounds> {
 
 fn fill_current_proxies(world: &World, proxies: &mut Vec<CollisionProxy>) {
     proxies.clear();
-    for index in 0..world.transforms.len() {
+    for &index in world.alive_indices() {
         for collider_index in 0..world.compound_collider_count_at(index) {
             for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
                 if let Some(proxy) = current_proxy(world, index, collider_index, segment_index) {
@@ -320,10 +320,7 @@ fn fill_swept_layer_proxies(
     proxies: &mut Vec<CollisionProxy>,
 ) {
     proxies.clear();
-    for index in 0..world.transforms.len() {
-        if !world.alive.get(index).copied().unwrap_or(false) {
-            continue;
-        }
+    for &index in world.alive_indices() {
         let Some(collider) = world.colliders[index] else {
             continue;
         };
@@ -359,10 +356,8 @@ fn fill_swept_mask_proxies(
     proxies: &mut Vec<CollisionProxy>,
 ) {
     proxies.clear();
-    for index in 0..world.transforms.len() {
-        if !world.alive.get(index).copied().unwrap_or(false)
-            || !mask_contains_entity(world, index, category)
-        {
+    for &index in world.alive_indices() {
+        if !mask_contains_entity(world, index, category) {
             continue;
         }
         let Some(collider) = world.colliders[index] else {

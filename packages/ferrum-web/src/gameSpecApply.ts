@@ -16,10 +16,15 @@ import type {
   ResolvedShooterPrefabColliderVertex,
   ResolvedShooterTileDefinition,
   ResolvedShooterTileLayer,
+  ResolvedShooterTileRampDefinition,
   ResolvedShooterTileSlopeDefinition,
   ResolvedShooterTilemap,
   ShooterGameSpecTarget,
+  ShooterTileKind,
+  ShooterTileRampAxis,
 } from "./gameSpecTypes.js";
+import type { ResolvedPhysicsSpec } from "./physicsSpec.js";
+import { createHd2dFloorIds } from "./physicsHd2dFloorIds.js";
 
 export function applyShooterGameSpec(
   engine: ShooterGameSpecTarget,
@@ -39,7 +44,7 @@ export function applyShooterGameSpec(
     atlasAnimationApplication(1, spec.enemyAtlasAnimation, options, "prefabs.enemy.animation.atlas"),
     atlasAnimationApplication(2, spec.bulletAtlasAnimation, options, "prefabs.bullet.animation.atlas"),
   ].filter((animation): animation is ResolvedAtlasAnimationApplication => animation !== undefined);
-  const tilemap = tilemapApplication(spec.tilemap, options);
+  const tilemap = tilemapApplication(spec.tilemap, spec.physics, options);
   engine.set_shooter_resolved_config(
     spec.worldWidth,
     spec.worldHeight,
@@ -68,6 +73,13 @@ export function applyShooterGameSpec(
     spec.scoreReward,
     spec.orbitRadius,
     spec.orbitRadialBand,
+  );
+  engine.set_shooter_projectile_arc?.(
+    spec.projectileArc.enabled,
+    spec.projectileArc.launchHeight,
+    spec.projectileArc.zVelocity,
+    spec.projectileArc.gravity,
+    spec.projectileArc.hitHeight,
   );
   engine.set_shooter_animations?.(
     spec.playerAnimationColumns,
@@ -378,8 +390,37 @@ interface ResolvedTileDefinitionApplication {
   textureId: number;
   frame: ResolvedShooterAtlasFrame;
   color: [number, number, number, number];
+  hd2d?: ResolvedTileHd2dMetadataApplication;
+  heightSpan?: {
+    floorId: number;
+    elevation: number;
+    height: number;
+  };
   slope?: ResolvedShooterTileSlopeDefinition;
   oneWayPlatform?: boolean;
+}
+
+interface ResolvedTileHd2dMetadataApplication {
+  kind: ShooterTileKind;
+  kindCode: number;
+  blocksMovement: boolean;
+  blocksProjectile: boolean;
+  blocksVision: boolean;
+  occluderHeight: number;
+  ramp?: ResolvedTileHd2dRampApplication;
+  bridgePortal?: ResolvedTileBridgePortalApplication;
+}
+
+interface ResolvedTileHd2dRampApplication extends ResolvedShooterTileRampDefinition {
+  axisCode: number;
+}
+
+interface ResolvedTileBridgePortalApplication {
+  lowerFloorId: number;
+  upperFloorId: number;
+  lowerElevation: number;
+  upperElevation: number;
+  navigationCost: number;
 }
 
 interface ResolvedTilemapApplication {
@@ -387,23 +428,120 @@ interface ResolvedTilemapApplication {
   layers: ResolvedShooterTileLayer[];
 }
 
+const TILE_KIND_CODES: Record<ShooterTileKind, number> = {
+  flat: 0,
+  stair: 1,
+  ramp: 2,
+  ledge: 3,
+  bridge: 4,
+};
+
+const TILE_RAMP_AXIS_CODES: Record<ShooterTileRampAxis, number> = {
+  x: 0,
+  y: 1,
+};
+
 function tilemapApplication(
   tilemap: ResolvedShooterTilemap | undefined,
+  physics: ResolvedPhysicsSpec,
   options: ApplyShooterGameSpecOptions,
 ): ResolvedTilemapApplication {
   if (!tilemap) {
     return { tiles: [], layers: [] };
   }
+  const floorIds = createTilemapHd2dFloorIds(physics, tilemap);
   return {
     tiles: tilemap.tiles.map((tile) => ({
       id: tile.id,
       textureId: atlasTextureId(tile.frame.texture, options, `tilemap.tiles.${tile.id}.frame`),
       frame: tile.frame,
       color: tile.color,
+      ...(tileHd2dMetadataApplication(tile, floorIds) ?? {}),
+      ...(tileHeightSpanApplication(physics, tile, floorIds) ?? {}),
       ...(tile.slope ? { slope: tile.slope } : {}),
       ...(tile.oneWayPlatform ? { oneWayPlatform: true } : {}),
     })),
     layers: tilemap.layers,
+  };
+}
+
+function tileHd2dMetadataApplication(
+  tile: ResolvedShooterTileDefinition,
+  floorIds: ReadonlyMap<string, number>,
+): Pick<ResolvedTileDefinitionApplication, "hd2d"> | undefined {
+  if (
+    tile.kind === "flat" &&
+    tile.blocksMovement &&
+    tile.blocksProjectile &&
+    tile.blocksVision &&
+    tile.occluderHeight === tile.height &&
+    tile.ramp === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    hd2d: {
+      kind: tile.kind,
+      kindCode: TILE_KIND_CODES[tile.kind],
+      blocksMovement: tile.blocksMovement,
+      blocksProjectile: tile.blocksProjectile,
+      blocksVision: tile.blocksVision,
+      occluderHeight: tile.occluderHeight,
+      ...(tile.ramp
+        ? {
+            ramp: {
+              ...tile.ramp,
+              axisCode: TILE_RAMP_AXIS_CODES[tile.ramp.axis],
+            },
+          }
+        : {}),
+      ...(tile.bridgePortal
+        ? {
+            bridgePortal: {
+              lowerFloorId: floorIds.get(tile.bridgePortal.lowerFloor) ?? 0,
+              upperFloorId: floorIds.get(tile.bridgePortal.upperFloor) ?? 0,
+              lowerElevation: tile.bridgePortal.lowerElevation,
+              upperElevation: tile.bridgePortal.upperElevation,
+              navigationCost: tile.bridgePortal.navigationCost,
+            },
+          }
+        : {}),
+    },
+  };
+}
+
+function createTilemapHd2dFloorIds(
+  physics: ResolvedPhysicsSpec,
+  tilemap: ResolvedShooterTilemap,
+): ReadonlyMap<string, number> {
+  return createHd2dFloorIds([
+    Object.values(physics.bodies).map((body) => body.floor),
+    tilemap.tiles.map((tile) => tile.floor),
+    tilemap.tiles.flatMap((tile) => tile.bridgePortal === undefined
+      ? []
+      : [tile.bridgePortal.lowerFloor, tile.bridgePortal.upperFloor]),
+  ]);
+}
+
+function tileHeightSpanApplication(
+  physics: ResolvedPhysicsSpec,
+  tile: ResolvedShooterTileDefinition,
+  floorIds: ReadonlyMap<string, number>,
+): Pick<ResolvedTileDefinitionApplication, "heightSpan"> | undefined {
+  if (
+    !physics.hd2d.enabled &&
+    tile.floor === "default" &&
+    tile.elevation === 0 &&
+    tile.height === 0
+  ) {
+    return undefined;
+  }
+  return {
+    heightSpan: {
+      floorId: floorIds.get(tile.floor) ?? 0,
+      elevation: tile.elevation,
+      height: tile.height,
+    },
   };
 }
 
@@ -421,6 +559,37 @@ function applyTileDefinition(engine: ShooterGameSpecTarget, application: Resolve
     color[2],
     color[3],
   );
+  if (application.hd2d !== undefined) {
+    const ramp = application.hd2d.ramp;
+    const accepted = engine.set_shooter_tile_hd2d_metadata?.(
+      application.id,
+      application.hd2d.kindCode,
+      application.hd2d.blocksMovement,
+      application.hd2d.blocksProjectile,
+      application.hd2d.blocksVision,
+      application.hd2d.occluderHeight,
+      ramp !== undefined,
+      ramp?.axisCode ?? 0,
+      ramp?.startElevation ?? 0,
+      ramp?.endElevation ?? 0,
+    );
+    if (accepted === false) {
+      throw gameSpecError(`tilemap.tiles.${application.id}.kind`, "runtime rejected tile HD-2D metadata");
+    }
+    if (application.hd2d.bridgePortal !== undefined) {
+      const portalAccepted = engine.set_shooter_tile_bridge_portal?.(
+        application.id,
+        application.hd2d.bridgePortal.lowerFloorId,
+        application.hd2d.bridgePortal.upperFloorId,
+        application.hd2d.bridgePortal.lowerElevation,
+        application.hd2d.bridgePortal.upperElevation,
+        application.hd2d.bridgePortal.navigationCost,
+      );
+      if (portalAccepted === false) {
+        throw gameSpecError(`tilemap.tiles.${application.id}.bridgePortal`, "runtime rejected bridge portal metadata");
+      }
+    }
+  }
   if (application.slope) {
     engine.set_shooter_tile_slope?.(
       application.id,
@@ -432,5 +601,16 @@ function applyTileDefinition(engine: ShooterGameSpecTarget, application: Resolve
   }
   if (application.oneWayPlatform) {
     engine.set_shooter_tile_one_way_platform?.(application.id);
+  }
+  if (application.heightSpan !== undefined) {
+    const accepted = engine.set_shooter_tile_height_span?.(
+      application.id,
+      application.heightSpan.floorId,
+      application.heightSpan.elevation,
+      application.heightSpan.height,
+    );
+    if (accepted === false) {
+      throw gameSpecError(`tilemap.tiles.${application.id}.height`, "runtime rejected tile height span");
+    }
   }
 }

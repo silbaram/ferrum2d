@@ -1,12 +1,14 @@
 use super::queries::{
     best_tile_hit_is_better, is_tilemap_blocked_layer, nearest_obstacle_hit,
-    resolve_dynamic_aabb_against_static, update_nearest_obstacle_hit,
+    resolve_dynamic_aabb_against_static, tile_height_span_allows, tile_id_blocks_projectile,
+    tile_id_height_span_allows, update_nearest_obstacle_hit,
 };
 use super::{
     Tilemap, TilemapNearestObstacleHit, TilemapResolveStats, TilemapSweepHit,
     MAX_TILE_COLLISION_RESOLUTION_STEPS, TILE_GROUND_NORMAL_Y_MIN, TILE_SWEEP_EPSILON,
 };
 use crate::collision::{AabbBounds, CollisionSystem};
+use crate::components::HeightSpan;
 use crate::components::{AabbCollider, Transform2D, Velocity};
 use crate::physics::PhysicsCounters;
 use crate::world::World;
@@ -17,6 +19,74 @@ mod one_way;
 mod slope;
 
 impl Tilemap {
+    pub(crate) fn projectile_aabb_hits_blocking_tile(
+        &self,
+        start: Transform2D,
+        velocity: Velocity,
+        collider: AabbCollider,
+        delta: f32,
+        query_height_span: Option<HeightSpan>,
+    ) -> bool {
+        if !collider.enabled {
+            return false;
+        }
+
+        let end = if is_valid_tilemap_delta(delta) {
+            Transform2D {
+                x: start.x + velocity.vx * delta,
+                y: start.y + velocity.vy * delta,
+            }
+        } else {
+            start
+        };
+        let swept_bounds = AabbBounds::swept(start, end, collider);
+
+        for layer in self.layers.iter().flatten().filter(|layer| layer.collision) {
+            let Some(range) = layer.candidate_tile_range_for_bounds(swept_bounds) else {
+                continue;
+            };
+
+            for row in range.min_row..=range.max_row {
+                for column in range.min_column..=range.max_column {
+                    let tile_index = layer.tile_index(column, row);
+                    let Some(tile_id) = layer.tiles.get(tile_index).copied() else {
+                        continue;
+                    };
+                    if !tile_id_blocks_projectile(tile_id, &self.hd2d_definitions)
+                        || !tile_id_height_span_allows(
+                            tile_id,
+                            &self.height_span_definitions,
+                            query_height_span,
+                        )
+                    {
+                        continue;
+                    }
+                    if !layer.tile_bounds(column, row).overlaps(swept_bounds) {
+                        continue;
+                    }
+
+                    let tile_center = layer.tile_center(tile_index);
+                    let tile_collider = layer.tile_aabb_collider(collider.layer);
+                    if CollisionSystem::swept_aabb_contact(
+                        start,
+                        velocity,
+                        collider,
+                        tile_center,
+                        Velocity::default(),
+                        tile_collider,
+                        delta,
+                    )
+                    .is_some()
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
     pub fn resolve_dynamic_collisions(&self, world: &mut World) {
         self.resolve_dynamic_collisions_internal(world, None);
     }
@@ -34,10 +104,9 @@ impl Tilemap {
         world: &mut World,
         mut counters: Option<&mut PhysicsCounters>,
     ) {
-        for entity_index in 0..world.transforms.len() {
-            if !world.alive[entity_index] {
-                continue;
-            }
+        let alive_count = world.alive_indices().len();
+        for alive_position in 0..alive_count {
+            let entity_index = world.alive_indices()[alive_position];
             let Some(collider) = world.colliders[entity_index] else {
                 continue;
             };
@@ -144,6 +213,7 @@ impl Tilemap {
                 collider,
                 displacement,
                 None,
+                None,
                 &mut best,
             );
         }
@@ -155,6 +225,15 @@ impl Tilemap {
         &self,
         point: Transform2D,
         max_distance: f32,
+    ) -> Option<TilemapNearestObstacleHit> {
+        self.nearest_collision_obstacle_with_height_span(point, max_distance, None)
+    }
+
+    pub fn nearest_collision_obstacle_with_height_span(
+        &self,
+        point: Transform2D,
+        max_distance: f32,
+        query_height_span: Option<HeightSpan>,
     ) -> Option<TilemapNearestObstacleHit> {
         if !point.x.is_finite()
             || !point.y.is_finite()
@@ -177,6 +256,9 @@ impl Tilemap {
                 continue;
             };
             self.visit_collision_rect_candidates(layer_index, range, |rect| {
+                if !tile_height_span_allows(rect, query_height_span) {
+                    return true;
+                }
                 let Some(hit) = nearest_obstacle_hit(point, max_distance, layer_index, layer, rect)
                 else {
                     return true;
@@ -241,4 +323,8 @@ impl Tilemap {
         }
         stats
     }
+}
+
+fn is_valid_tilemap_delta(delta: f32) -> bool {
+    delta.is_finite() && delta > 0.0
 }

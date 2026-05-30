@@ -36,8 +36,8 @@ fn camera_follows_player_and_offsets_render_commands() {
 fn configured_texture_ids_are_written_to_render_commands() {
     let mut engine = Engine::new();
     engine.set_texture_ids(1, 2, 3);
-    engine.world.spawn_enemy(100.0, 100.0, 2);
-    engine.world.spawn_bullet(120.0, 100.0, 0.0, 0.0, 3);
+    engine.world.spawn_enemy(820.0, 480.0, 2);
+    engine.world.spawn_bullet(840.0, 480.0, 0.0, 0.0, 3);
     engine.build_render_commands();
 
     let texture_ids: Vec<u32> = engine
@@ -48,6 +48,36 @@ fn configured_texture_ids_are_written_to_render_commands() {
     assert!(texture_ids.contains(&1));
     assert!(texture_ids.contains(&2));
     assert!(texture_ids.contains(&3));
+}
+
+#[test]
+fn offscreen_entity_sprites_do_not_emit_render_commands() {
+    let mut engine = Engine::new();
+    engine.world.spawn_enemy(2_000.0, 2_000.0, 99);
+
+    engine.build_render_commands();
+
+    assert!(!engine
+        .render_commands
+        .iter()
+        .any(|command| command.texture_id == 99.0));
+}
+
+#[test]
+fn non_finite_entity_position_does_not_emit_render_commands() {
+    let mut engine = Engine::new();
+    let enemy = engine.world.spawn_enemy(f32::NAN, 480.0, 99);
+    engine.world.transforms[enemy.id as usize] = Some(Transform2D {
+        x: f32::NAN,
+        y: 480.0,
+    });
+
+    engine.build_render_commands();
+
+    assert!(!engine
+        .render_commands
+        .iter()
+        .any(|command| command.texture_id == 99.0));
 }
 
 #[test]
@@ -83,7 +113,7 @@ fn atlas_frame_updates_prefab_without_render_abi_change() {
 
     engine.set_shooter_atlas_frame(2, 9, 12.0, 10.0, 0.25, 0.5, 0.5, 0.75);
     engine.world.spawn_bullet_from_template(
-        Transform2D { x: 120.0, y: 100.0 },
+        Transform2D { x: 820.0, y: 480.0 },
         crate::components::Velocity { vx: 0.0, vy: 0.0 },
         9,
         1.0,
@@ -125,7 +155,7 @@ fn atlas_animation_updates_prefab_uvs_in_rust() {
         vec![0.0, 0.5, 0.25, 1.0, 0.25, 0.5, 0.5, 1.0],
     );
     engine.world.spawn_bullet_from_template(
-        Transform2D { x: 120.0, y: 100.0 },
+        Transform2D { x: 820.0, y: 480.0 },
         crate::components::Velocity { vx: 10.0, vy: 0.0 },
         9,
         1.0,
@@ -172,6 +202,60 @@ fn tilemap_render_commands_are_emitted_before_entities() {
 }
 
 #[test]
+fn non_hd2d_render_commands_keep_layer_order_over_foot_y() {
+    let mut engine = Engine::new();
+    engine.set_viewport_size(1600.0, 960.0);
+    let player = engine.world.player.unwrap();
+    engine.world.transforms[player.id as usize] = Some(Transform2D { x: 16.0, y: 8.0 });
+    engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+    engine.set_shooter_tilemap_layer(0, 1, 1, 32.0, 32.0, 0.0, 240.0, false, vec![1]);
+
+    engine.build_render_commands();
+
+    assert_eq!(
+        engine
+            .render_commands
+            .iter()
+            .map(|command| command.texture_id as u32)
+            .collect::<Vec<_>>(),
+        vec![9, DEFAULT_TEXTURE_ID]
+    );
+}
+
+#[test]
+fn non_hd2d_tilemap_rendering_preserves_texture_bucket_order() {
+    let mut engine = Engine::new();
+    engine.set_viewport_size(1600.0, 960.0);
+    engine.set_shooter_tile(1, 11, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+    engine.set_shooter_tile(2, 22, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+    engine.set_shooter_tilemap_layer(0, 4, 1, 32.0, 32.0, 0.0, 0.0, false, vec![1, 2, 1, 2]);
+
+    engine.build_render_commands();
+
+    assert_eq!(
+        engine.render_commands[..4]
+            .iter()
+            .map(|command| command.texture_id as u32)
+            .collect::<Vec<_>>(),
+        vec![11, 11, 22, 22]
+    );
+}
+
+#[test]
+fn non_hd2d_particles_emit_after_entities_over_foot_y() {
+    let mut engine = Engine::new();
+    engine.set_viewport_size(1600.0, 960.0);
+    let player = engine.world.player.unwrap();
+    engine.world.transforms[player.id as usize] = Some(Transform2D { x: 800.0, y: 480.0 });
+    set_test_particle_preset(&mut engine, 0, 77, 1, 1.0);
+
+    assert_eq!(engine.spawn_particle_burst(0, 16.0, 8.0), 1);
+    engine.build_render_commands();
+
+    assert_eq!(engine.render_commands.last().unwrap().texture_id, 77.0);
+}
+
+#[test]
 fn clear_tilemap_removes_static_tile_render_commands() {
     let mut engine = Engine::new();
     engine.set_viewport_size(1600.0, 960.0);
@@ -186,4 +270,73 @@ fn clear_tilemap_removes_static_tile_render_commands() {
         engine.render_commands[0].texture_id,
         DEFAULT_TEXTURE_ID as f32
     );
+}
+
+#[test]
+fn render_commands_sort_entities_by_hd2d_floor_elevation_and_foot_y() {
+    let mut engine = Engine::new();
+    engine.set_viewport_size(1600.0, 960.0);
+    let player = engine.world.player.unwrap();
+    engine.world.transforms[player.id as usize] = Some(Transform2D { x: 100.0, y: 120.0 });
+    engine.world.sprites[player.id as usize]
+        .as_mut()
+        .unwrap()
+        .texture_id = 1;
+    assert!(engine.world.set_height_span(
+        player,
+        HeightSpan::new(PhysicsFloorId(0), 10.0, 16.0).unwrap(),
+    ));
+
+    let low_enemy = engine.world.spawn_enemy(120.0, 180.0, 2);
+    assert!(engine.world.set_height_span(
+        low_enemy,
+        HeightSpan::new(PhysicsFloorId(0), 0.0, 16.0).unwrap(),
+    ));
+    let upper_enemy = engine.world.spawn_enemy(140.0, 80.0, 3);
+    assert!(engine.world.set_height_span(
+        upper_enemy,
+        HeightSpan::new(PhysicsFloorId(1), 0.0, 16.0).unwrap(),
+    ));
+
+    engine.build_render_commands();
+
+    assert_eq!(
+        engine
+            .render_commands
+            .iter()
+            .map(|command| command.texture_id as u32)
+            .collect::<Vec<_>>(),
+        vec![2, 1, 3]
+    );
+}
+
+#[test]
+fn hd2d_render_commands_sort_tiles_and_entities_by_foot_y_without_render_abi_change() {
+    let mut engine = Engine::new();
+    engine.set_viewport_size(1600.0, 960.0);
+    let player = engine.world.player.unwrap();
+    engine.world.transforms[player.id as usize] = Some(Transform2D { x: 16.0, y: 8.0 });
+    engine.world.sprites[player.id as usize]
+        .as_mut()
+        .unwrap()
+        .texture_id = 1;
+    assert!(engine.world.set_height_span(
+        player,
+        HeightSpan::new(PhysicsFloorId::DEFAULT, 0.0, 16.0).unwrap(),
+    ));
+    engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+    engine.set_shooter_tilemap_layer(0, 1, 1, 32.0, 32.0, 0.0, 0.0, false, vec![1]);
+    assert!(engine.set_shooter_tile_height_span(1, 0, 0.0, 32.0));
+
+    engine.build_render_commands();
+
+    assert_eq!(
+        engine
+            .render_commands
+            .iter()
+            .map(|command| command.texture_id as u32)
+            .collect::<Vec<_>>(),
+        vec![1, 9]
+    );
+    assert_eq!(crate::sprite_render_command_floats(), 14);
 }

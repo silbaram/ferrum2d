@@ -50,7 +50,7 @@ impl RigidBodyIslandGraph {
         self.active.clear();
         self.sleeping.clear();
 
-        for index in 0..world.rigid_bodies.len() {
+        for &index in world.alive_indices() {
             let Some(body) = rigid_body_island_candidate(world, index) else {
                 continue;
             };

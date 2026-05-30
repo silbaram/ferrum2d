@@ -1,5 +1,6 @@
 use std::f32::consts::TAU;
 
+use crate::collision::AabbBounds;
 use crate::components::{Transform2D, Velocity};
 
 const DEFAULT_DEAD_ZONE_WIDTH: f32 = 160.0;
@@ -150,6 +151,15 @@ impl Camera2D {
         Transform2D {
             x: transform.x + self.left(),
             y: transform.y + self.top(),
+        }
+    }
+
+    pub fn visible_bounds(&self) -> AabbBounds {
+        AabbBounds {
+            min_x: self.left(),
+            min_y: self.top(),
+            max_x: self.left() + self.viewport_width,
+            max_y: self.top() + self.viewport_height,
         }
     }
 

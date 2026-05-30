@@ -9,6 +9,11 @@ import { TextureRegistry } from "../src/textureRegistry.js";
 class FakeEngine {
   readonly order: string[];
   clearAudioCount = 0;
+  readonly updateCalls: Array<{
+    renderCommands: boolean;
+    frameTelemetry: boolean;
+    physicsDebugLines: boolean;
+  }> = [];
 
   constructor(order: string[] = []) {
     this.order = order;
@@ -23,6 +28,16 @@ class FakeEngine {
   }
 
   update(): void {
+    this.order.push("update");
+  }
+
+  update_frame(
+    _deltaSeconds: number,
+    renderCommands: boolean,
+    frameTelemetry: boolean,
+    physicsDebugLines: boolean,
+  ): void {
+    this.updateCalls.push({ renderCommands, frameTelemetry, physicsDebugLines });
     this.order.push("update");
   }
 
@@ -97,12 +112,58 @@ class FakeBridge {
     };
   }
 
+  readFrameTelemetryBuffer(): unknown {
+    this.order.push("read_telemetry");
+    return {
+      buffer: new Float64Array([
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        1,
+        8,
+        0.5,
+        0.016,
+        0,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        18,
+        19,
+        20,
+        21,
+        2,
+        4,
+        32,
+      ]),
+      f64sPerFrame: 37,
+    };
+  }
+
   readCollisionEventBuffer(): unknown {
     this.order.push("read_collision");
     return {
       buffer: new Uint32Array(0),
       eventCount: 0,
-      u32sPerEvent: 5,
+      u32sPerEvent: 6,
     };
   }
 
@@ -141,17 +202,40 @@ test("runFrame preserves input, viewport, update, audio, buffer, callback order"
     order,
     onFrame: (frame) => {
       order.push("on_frame");
+      equal(frame.timeSeconds, 1);
       equal(frame.frameTimeMs, 16);
+      equal(frame.score, 2);
+      equal(frame.entityCount, 3);
+      equal(frame.gameState, 4);
+      equal(frame.spriteCount, 5);
       equal(frame.mouseX, 20);
       equal(frame.mouseY, 30);
+      equal(frame.cameraX, 6);
+      equal(frame.cameraY, 7);
+      equal(frame.playerFloorId, 2);
+      equal(frame.playerElevation, 4);
+      equal(frame.playerHeight, 32);
       equal(frame.audioEventCount, 1);
       equal(frame.audioEvents.length, 1);
-      equal(frame.physics.collisionEventCount, 28);
+      equal(frame.physics.fixedTimestepEnabled, true);
+      equal(frame.physics.fixedSteps, 8);
+      equal(frame.physics.kinematicMoves, 9);
+      equal(frame.physics.hd2dFilteredEntityCandidates, 15);
+      equal(frame.physics.hd2dFilteredTileCandidates, 16);
+      equal(frame.physics.ccdChecks, 18);
+      equal(frame.physics.brokenJoints, 21);
+      equal(frame.physics.collisionLifecycleEventsEnabled, false);
+      equal(frame.physics.collisionEventCount, 0);
+      equal(frame.collisionEventBuffer.eventCount, 0);
+      equal(frame.physicsDebugLineBuffer.lineCount, 0);
     },
   });
 
   runFrame(context, 0.016);
 
+  deepEqual(engine.updateCalls, [
+    { renderCommands: true, frameTelemetry: true, physicsDebugLines: false },
+  ]);
   deepEqual(order, [
     "input",
     "viewport",
@@ -161,8 +245,7 @@ test("runFrame preserves input, viewport, update, audio, buffer, callback order"
     "decode_audio",
     "clear_audio",
     "read_render",
-    "read_collision",
-    "read_debug",
+    "read_telemetry",
     "on_frame",
   ]);
 });
@@ -176,13 +259,11 @@ test("runFrame skips frame buffer reads when no onFrame handler is registered", 
 
   runFrame(context, 0.016);
 
-  deepEqual(order, [
-    "input",
-    "viewport",
-    "update",
-    "read_audio",
-    "clear_audio",
+  deepEqual(engine.updateCalls, [
+    { renderCommands: false, frameTelemetry: false, physicsDebugLines: false },
   ]);
+  deepEqual(order, ["input", "viewport", "update", "read_audio"]);
+  equal(engine.clearAudioCount, 0);
   equal(bridge.decodeAudioCount, 0);
 });
 
@@ -202,12 +283,14 @@ test("runFrame render-only path avoids full FrameState buffer reads", () => {
 
   runFrame(context, 0.016);
 
+  deepEqual(engine.updateCalls, [
+    { renderCommands: true, frameTelemetry: false, physicsDebugLines: false },
+  ]);
   deepEqual(order, [
     "input",
     "viewport",
     "update",
     "read_audio",
-    "clear_audio",
     "read_render",
     "render_frame",
   ]);
@@ -232,12 +315,14 @@ test("runFrame render-only path reads physics debug buffer only when requested",
 
   runFrame(context, 0.016);
 
+  deepEqual(engine.updateCalls, [
+    { renderCommands: true, frameTelemetry: false, physicsDebugLines: true },
+  ]);
   deepEqual(order, [
     "input",
     "viewport",
     "update",
     "read_audio",
-    "clear_audio",
     "read_render",
     "read_debug",
     "render_frame",
@@ -336,8 +421,7 @@ test("runFrame omits FrameState audio objects when includeAudioEvents is false a
     "play_audio_events",
     "clear_audio",
     "read_render",
-    "read_collision",
-    "read_debug",
+    "read_telemetry",
     "on_frame",
   ]);
 });
@@ -357,6 +441,8 @@ test("runFrame builds optional FrameState decoded views only when requested", ()
     },
     onFrame: (frame) => {
       order.push("on_frame");
+      equal(frame.physics.collisionLifecycleEventsEnabled, true);
+      equal(frame.physics.collisionEventCount, 28);
       equal(frame.collisionEvents.length, 0);
       equal(frame.physicsDebugLines.length, 0);
       equal(frame.renderCommands.length, 0);
@@ -365,19 +451,106 @@ test("runFrame builds optional FrameState decoded views only when requested", ()
 
   runFrame(context, 0.016);
 
+  deepEqual(engine.updateCalls, [
+    { renderCommands: true, frameTelemetry: true, physicsDebugLines: true },
+  ]);
   deepEqual(order, [
     "input",
     "viewport",
     "update",
     "read_audio",
-    "clear_audio",
     "read_render",
+    "read_telemetry",
     "read_collision",
     "read_debug",
     "decode_collision",
     "decode_debug",
     "on_frame",
   ]);
+});
+
+test("runFrame only reads optional FrameState buffers when requested", () => {
+  const order: string[] = [];
+  const bridge = new FakeBridge(order, 0);
+  const engine = new FakeEngine(order);
+  const context = framePipelineContext({
+    bridge,
+    engine,
+    order,
+    onFrame: (frame) => {
+      order.push("on_frame");
+      equal(frame.collisionEventBuffer.eventCount, 0);
+      equal(frame.physicsDebugLineBuffer.lineCount, 0);
+      equal(frame.collisionEvents.length, 0);
+      equal(frame.physicsDebugLines.length, 0);
+    },
+  });
+
+  runFrame(context, 0.016);
+
+  equal(order.includes("read_collision"), false);
+  equal(order.includes("read_debug"), false);
+  equal(order.includes("read_telemetry"), true);
+});
+
+test("runFrame avoids update timing on render-only path and measures full FrameState path", () => {
+  let nowCalls = 0;
+  const previousNow = performance.now;
+  Object.defineProperty(performance, "now", {
+    configurable: true,
+    value: () => {
+      nowCalls += 1;
+      return nowCalls;
+    },
+  });
+
+  try {
+    const renderOnlyOrder: string[] = [];
+    const renderOnlyContext = framePipelineContext({
+      bridge: new FakeBridge(renderOnlyOrder, 0),
+      engine: new FakeEngine(renderOnlyOrder),
+      order: renderOnlyOrder,
+    });
+    renderOnlyContext.onFrame = undefined;
+    renderOnlyContext.onRenderFrame = () => {};
+    renderOnlyContext.needsFrameState = false;
+
+    runFrame(renderOnlyContext, 0.016);
+    equal(nowCalls, 0);
+
+    const fullFrameOrder: string[] = [];
+    const fullFrameContext = framePipelineContext({
+      bridge: new FakeBridge(fullFrameOrder, 0),
+      engine: new FakeEngine(fullFrameOrder),
+      order: fullFrameOrder,
+    });
+    runFrame(fullFrameContext, 0.016);
+    equal(nowCalls, 2);
+  } finally {
+    Object.defineProperty(performance, "now", {
+      configurable: true,
+      value: previousNow,
+    });
+  }
+});
+
+test("runFrame pushes viewport only when changed or invalidated", () => {
+  const order: string[] = [];
+  const bridge = new FakeBridge(order, 0);
+  const engine = new FakeEngine(order);
+  const context = framePipelineContext({ bridge, engine, order });
+
+  runFrame(context, 0.016);
+  runFrame(context, 0.016);
+  equal(order.filter((entry) => entry === "viewport").length, 1);
+
+  context.viewportProvider = () => ({ width: 800, height: 360 });
+  runFrame(context, 0.016);
+  equal(order.filter((entry) => entry === "viewport").length, 2);
+
+  context.viewportDirty = true;
+  runFrame(context, 0.016);
+  equal(order.filter((entry) => entry === "viewport").length, 3);
 });
 
 function framePipelineContext(args: {
@@ -445,6 +618,12 @@ function physicsSpec(): ResolvedPhysicsSpec {
     gravityX: 0,
     gravityY: 0,
     continuous: false,
+    hd2d: {
+      enabled: false,
+      defaultHeight: 0,
+      maxStepHeight: 0,
+      maxDropHeight: 0,
+    },
     solver: {
       fixedTimestep: true,
       stepSeconds: 1 / 60,

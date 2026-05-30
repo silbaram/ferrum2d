@@ -6,6 +6,7 @@ import {
   captureGameStateSnapshot,
   decodeCollisionEvents,
   decodePhysicsDebugLines,
+  deriveHd2dTileOccludersFromTilemapGrid,
   deriveTileOccludersFromTilemapGrid,
   equal,
   evaluateRuntimeProfilerBudget,
@@ -48,6 +49,8 @@ import type {
   GameStateSnapshotStorage,
   GlitchPostProcessPassInput,
   HudThemePresetName,
+  Hd2dTileOccluderDefinition,
+  Hd2dTileOccluderGridInput,
   InputManagerOptions,
   LightingScene2D,
   LightingSceneProvider,
@@ -56,6 +59,8 @@ import type {
   PhysicsDebugLineCamera,
   PhysicsDebugLineView,
   PhysicsFrameStats,
+  PhysicsHd2dKinematicMoveOptions,
+  PhysicsHd2dKinematicMoveResult,
   PointLight2D,
   PostProcessColor,
   PostProcessPassInput,
@@ -96,11 +101,19 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   const pointLight: PointLight2D = { x: 24, y: 32, radius: 96, color: [1, 0.9, 0.65], intensity: 1 };
   const tileOccluderGrid: TileOccluderGridInput = { width: 1, height: 1, tileSize: 16, data: [1] };
   const tileOccluder: TileOccluder2D = deriveTileOccludersFromTilemapGrid(tileOccluderGrid)[0];
+  const hd2dTileOccluderDefinition: Hd2dTileOccluderDefinition = { blocksVision: true, occluderHeight: 12 };
+  const hd2dTileOccluderGrid: Hd2dTileOccluderGridInput = {
+    ...tileOccluderGrid,
+    tiles: { 1: hd2dTileOccluderDefinition },
+  };
+  const hd2dTileOccluder: TileOccluder2D = deriveHd2dTileOccludersFromTilemapGrid(hd2dTileOccluderGrid)[0];
+  const publicDeriveHd2dTileOccluders: PublicApi["deriveHd2dTileOccludersFromTilemapGrid"] =
+    deriveHd2dTileOccludersFromTilemapGrid;
   const lightingShadows: LightingShadowOptions = { enabled: true, projectionLength: 128 };
   const lightingScene: LightingScene2D = {
     ambient: [0, 0, 0, 0.4],
     pointLights: [pointLight],
-    tileOccluders: [tileOccluder],
+    tileOccluders: [tileOccluder, hd2dTileOccluder],
     shadows: lightingShadows,
     debug: { tileOccluders: true },
   };
@@ -127,6 +140,72 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   const publicScreenFadeTransition: PublicApi["ScreenFadeTransition"] = ScreenFadeTransition;
   const fadeTransition = publicScreenFadeTransition.create(fadeTransitionSpec);
   const postProcessProvider: PostProcessProvider = () => fadeTransition.postProcessPasses();
+  const hd2dKinematicOptions: PhysicsHd2dKinematicMoveOptions = {
+    displacementX: 8,
+    displacementY: 0,
+    maxStepHeight: 4,
+    maxDropHeight: 4,
+    allowLedgeDrop: false,
+  };
+  const hd2dKinematicResult: PhysicsHd2dKinematicMoveResult = {
+    body: {
+      entityId: 1,
+      entityGeneration: 1,
+      x: 8,
+      y: 0,
+      velocityX: 0,
+      velocityY: 0,
+      rotationRadians: 0,
+      angularVelocityRadiansPerSecond: 0,
+      bodyType: "kinematic",
+      bodyEnabled: true,
+      isSleeping: false,
+      colliderType: "aabb",
+      colliderEnabled: true,
+      colliderIsTrigger: false,
+      colliderOffsetX: 0,
+      colliderOffsetY: 0,
+      colliderMaterialOverride: false,
+      colliderMaterial: {
+        restitution: 0,
+        friction: 0.4,
+        surfaceVelocityX: 0,
+        surfaceVelocityY: 0,
+        density: 1,
+        contactBaumgarteBiasScale: 1,
+        maxContactBaumgarteBiasVelocityScale: 1,
+        contactPositionCorrectionScale: 1,
+        contactPositionCorrectionSlopScale: 1,
+      },
+      mass: 1,
+      inverseMass: 1,
+      inertia: 1,
+      inverseInertia: 1,
+      gravityScale: 1,
+      linearDamping: 0,
+      angularDamping: 0,
+      restitution: 0,
+      friction: 0.4,
+      surfaceVelocityX: 0,
+      surfaceVelocityY: 0,
+      density: 1,
+      contactBaumgarteBiasScale: 1,
+      maxContactBaumgarteBiasVelocityScale: 1,
+      contactPositionCorrectionScale: 1,
+      contactPositionCorrectionSlopScale: 1,
+      heightSpan: { floorId: 1, elevation: 0, height: 8 },
+    },
+    elevationDelta: 0,
+    hitCount: 0,
+    steppedUp: false,
+    steppedDown: false,
+    changedFloor: false,
+    passedUnderBridge: false,
+    blockedByStep: false,
+    blockedByDrop: false,
+    blockedX: false,
+    blockedY: false,
+  };
   const runtimeProfilerOptions: RuntimeProfilerOptions = {
     budget: {
       maxFrameTimeMs: 16.7,
@@ -154,6 +233,9 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     runtimeDiagnosticsFrameSample;
   const publicEvaluateRuntimeProfilerBudget: PublicApi["evaluateRuntimeProfilerBudget"] =
     evaluateRuntimeProfilerBudget;
+  equal(publicDeriveHd2dTileOccluders(hd2dTileOccluderGrid)[0]?.height, 28);
+  equal(hd2dKinematicOptions.displacementX, 8);
+  equal(hd2dKinematicResult.body.bodyType, "kinematic");
   const snapshotEngine: Pick<
     FerrumEngine,
     "score" | "gameState" | "entityCount" | "spriteCount" | "cameraX" | "cameraY"
@@ -375,6 +457,8 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     kinematicTileHits: 0,
     solidCandidateChecks: 0,
     tileCandidateChecks: 0,
+    hd2dFilteredEntityCandidates: 0,
+    hd2dFilteredTileCandidates: 0,
     collisionPairs: 1,
     collisionSolidPairs: 1,
     collisionTriggerPairs: 0,

@@ -1,4 +1,4 @@
-import { equal } from "node:assert/strict";
+import { equal, ok } from "node:assert/strict";
 import { test } from "node:test";
 import { InputManager } from "../src/inputManager.js";
 
@@ -126,12 +126,15 @@ test("InputManager snapshot reflects keyboard and mouse state", () => {
     equal(snapshot.mouseLeft, true);
     equal(snapshot.mouseX, 32);
     equal(snapshot.mouseY, 43);
+    const pressedSnapshot = snapshot;
 
     fakeWindow.dispatch("keyup", keyEvent("KeyW"));
     fakeWindow.dispatch("keyup", keyEvent("Enter"));
     fakeWindow.dispatch("mouseup", { button: 0 });
     snapshot = input.snapshot();
 
+    ok(snapshot !== pressedSnapshot);
+    equal(pressedSnapshot.w, true);
     equal(snapshot.w, false);
     equal(snapshot.enter, false);
     equal(snapshot.mouseLeft, false);

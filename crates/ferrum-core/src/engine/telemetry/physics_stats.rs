@@ -161,6 +161,14 @@ impl Engine {
         self.physics_counters.tile_candidate_checks
     }
 
+    pub fn physics_hd2d_filtered_entity_candidates(&self) -> u32 {
+        self.physics_counters.hd2d_filtered_entity_candidates
+    }
+
+    pub fn physics_hd2d_filtered_tile_candidates(&self) -> u32 {
+        self.physics_counters.hd2d_filtered_tile_candidates
+    }
+
     pub fn physics_collision_pairs(&self) -> u32 {
         self.physics_counters.collision_pairs
     }

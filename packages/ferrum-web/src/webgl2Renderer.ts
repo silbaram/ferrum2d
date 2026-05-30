@@ -17,7 +17,11 @@ import {
 import type { PostProcessStackInput, ResolvedPostProcessPass } from "./cameraPostProcessing";
 import { SpriteBatch } from "./spriteBatch";
 import type { LightingScene2D, ResolvedLightingScene2D } from "./lighting";
-import { createResolvedLightingScene, resolveLightingSceneInto } from "./lightingNormalize";
+import {
+  createLightingSceneResolveCache,
+  createResolvedLightingScene,
+  resolveLightingSceneInto,
+} from "./lightingNormalize";
 import { resolveSpriteMaterialPreset } from "./spriteMaterial";
 import type { ResolvedSpriteMaterialPreset, SpriteMaterialPresetInput } from "./spriteMaterial";
 import { TextureManager } from "./textureManager";
@@ -56,6 +60,7 @@ export class WebGL2Renderer implements Renderer {
   private currentStats: RendererStats = emptyRendererStats();
   private lightingScene: ResolvedLightingScene2D = createResolvedLightingScene();
   private lightingSceneStaging: ResolvedLightingScene2D = createResolvedLightingScene();
+  private readonly lightingResolveCache = createLightingSceneResolveCache();
   private spriteMaterial: ResolvedSpriteMaterialPreset;
   private postProcessPasses: readonly ResolvedPostProcessPass[];
   private sceneRenderTarget?: WebGL2RenderTarget;
@@ -82,7 +87,7 @@ export class WebGL2Renderer implements Renderer {
     this.physicsDebugLineBatch = new PhysicsDebugLineBatch(gl);
     this.lightingPass = new WebGL2LightingPass(gl);
     this.fullscreenPass = new WebGL2FullscreenPass(gl);
-    resolveLightingSceneInto(this.lightingScene, options.lighting);
+    resolveLightingSceneInto(this.lightingScene, options.lighting, this.lightingResolveCache);
     this.spriteMaterial = resolveSpriteMaterialPreset(options.spriteMaterial);
     this.postProcessPasses = resolvePostProcessPasses(options.postProcess);
     this.resize();
@@ -130,7 +135,7 @@ export class WebGL2Renderer implements Renderer {
 
   setLighting(scene: LightingScene2D | false | undefined): void {
     this.assertAlive();
-    const nextLightingScene = resolveLightingSceneInto(this.lightingSceneStaging, scene);
+    const nextLightingScene = resolveLightingSceneInto(this.lightingSceneStaging, scene, this.lightingResolveCache);
     this.lightingSceneStaging = this.lightingScene;
     this.lightingScene = nextLightingScene;
   }

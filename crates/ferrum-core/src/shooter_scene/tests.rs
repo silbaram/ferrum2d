@@ -1,9 +1,12 @@
 use super::*;
 use crate::audio_event::AUDIO_CHANNEL_SFX;
 use crate::collision::CollisionSystem;
-use crate::components::{CollisionLayer, PhysicsMaterial, Transform2D, Velocity};
+use crate::components::{
+    CollisionLayer, HeightSpan, PhysicsFloorId, PhysicsMaterial, ProjectileArc, Transform2D,
+    Velocity,
+};
 use crate::input::InputState;
-use crate::tilemap::Tilemap;
+use crate::tilemap::{Hd2dTileKind, Tilemap};
 use crate::world::EntityTemplateColliderShape;
 
 mod audio_events;

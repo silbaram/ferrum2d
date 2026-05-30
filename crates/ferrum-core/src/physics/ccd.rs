@@ -212,7 +212,7 @@ fn earliest_rigid_body_ccd_hit(
     stats: &mut RigidBodyStepStats,
 ) -> Option<RigidBodyCcdHit> {
     let mut best = None;
-    for target_index in 0..world.transforms.len() {
+    for &target_index in world.alive_indices() {
         if !rigid_body_ccd_target_allows(world, query.moving_index, target_index, query.integrated)
         {
             continue;
@@ -317,7 +317,7 @@ fn rigid_contact_filter_allows(world: &World, a_index: usize, b_index: usize) ->
     let Some(b_filter) = world.collision_filter_at(b_index) else {
         return false;
     };
-    a_filter.can_collide_with(b_filter)
+    a_filter.can_collide_with(b_filter) && world.height_spans_allow_at(a_index, b_index)
 }
 
 fn rigid_body_ccd_contact_point(

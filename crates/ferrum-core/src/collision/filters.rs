@@ -45,6 +45,9 @@ pub(super) fn orient_mask_pair(
     if !a_filter.can_collide_with(b_filter) {
         return None;
     }
+    if !world.height_spans_allow_at(pair.a.entity_index, pair.b.entity_index) {
+        return None;
+    }
 
     let a_in_a = a_filter.category.intersects(category_a);
     let b_in_b = b_filter.category.intersects(category_b);
@@ -93,6 +96,7 @@ pub(super) fn filters_allow_collider_pair(world: &World, pair: ColliderPair) -> 
         return false;
     };
     a_filter.can_collide_with(b_filter)
+        && world.height_spans_allow_at(pair.a.entity_index, pair.b.entity_index)
 }
 
 pub(super) fn collider_pair_has_trigger(world: &World, pair: ColliderPair) -> bool {
@@ -111,5 +115,5 @@ pub(super) fn filters_allow(world: &World, a: usize, b: usize) -> bool {
     let Some(b_filter) = world.collision_filter_at(b) else {
         return false;
     };
-    a_filter.can_collide_with(b_filter)
+    a_filter.can_collide_with(b_filter) && world.height_spans_allow_at(a, b)
 }

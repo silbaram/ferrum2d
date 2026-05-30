@@ -1,10 +1,10 @@
 use super::World;
 use crate::components::{
     AabbCollider, AngularVelocity, CapsuleCollider, ChainCollider, CircleCollider, CollisionFilter,
-    CompoundCollider, ConvexPolygonCollider, DistanceJoint, EdgeCollider, GearJoint,
-    OrientedBoxCollider, PhysicsMaterial, PrismaticJoint, PulleyJoint, RevoluteJoint, RigidBody,
-    RigidBodyCcdDebugHit, RigidContactImpulse, RopeJoint, Rotation2D, SpringJoint, Sprite,
-    SpriteAnimation, Transform2D, Velocity, WeldJoint,
+    CompoundCollider, ConvexPolygonCollider, DistanceJoint, EdgeCollider, GearJoint, HeightSpan,
+    OrientedBoxCollider, PhysicsMaterial, PrismaticJoint, ProjectileArc, PulleyJoint,
+    RevoluteJoint, RigidBody, RigidBodyCcdDebugHit, RigidContactImpulse, RopeJoint, Rotation2D,
+    SpringJoint, Sprite, SpriteAnimation, Transform2D, Velocity, WeldJoint,
 };
 use crate::entity::Entity;
 
@@ -19,6 +19,8 @@ pub struct WorldSnapshot {
     velocities: Vec<Option<Velocity>>,
     rotations: Vec<Option<Rotation2D>>,
     angular_velocities: Vec<Option<AngularVelocity>>,
+    height_spans: Vec<Option<HeightSpan>>,
+    projectile_arcs: Vec<Option<ProjectileArc>>,
     rigid_bodies: Vec<Option<RigidBody>>,
     rigid_contact_impulses: Vec<RigidContactImpulse>,
     rigid_body_ccd_debug_hits: Vec<RigidBodyCcdDebugHit>,
@@ -75,6 +77,8 @@ impl World {
             velocities: self.velocities.clone(),
             rotations: self.rotations.clone(),
             angular_velocities: self.angular_velocities.clone(),
+            height_spans: self.height_spans.clone(),
+            projectile_arcs: self.projectile_arcs.clone(),
             rigid_bodies: self.rigid_bodies.clone(),
             rigid_contact_impulses: self.rigid_contact_impulses.clone(),
             rigid_body_ccd_debug_hits: self.rigid_body_ccd_debug_hits.clone(),
@@ -124,12 +128,15 @@ impl World {
         self.generations = snapshot.generations.clone();
         self.free_list = snapshot.free_list.clone();
         self.alive = snapshot.alive.clone();
+        self.rebuild_alive_indices();
         self.transforms = snapshot.transforms.clone();
         self.sprites = snapshot.sprites.clone();
         self.sprite_animations = snapshot.sprite_animations.clone();
         self.velocities = snapshot.velocities.clone();
         self.rotations = snapshot.rotations.clone();
         self.angular_velocities = snapshot.angular_velocities.clone();
+        self.height_spans = snapshot.height_spans.clone();
+        self.projectile_arcs = snapshot.projectile_arcs.clone();
         self.rigid_bodies = snapshot.rigid_bodies.clone();
         self.rigid_contact_impulses = snapshot.rigid_contact_impulses.clone();
         self.rigid_body_ccd_debug_hits = snapshot.rigid_body_ccd_debug_hits.clone();

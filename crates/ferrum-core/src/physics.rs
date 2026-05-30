@@ -5,6 +5,7 @@ mod body_impulses;
 mod ccd;
 mod counters;
 mod fixed_timestep;
+mod hd2d_kinematic;
 mod islands;
 mod joints;
 mod math;
@@ -20,6 +21,7 @@ mod system;
 pub(in crate::physics) use body_impulses::{apply_contact_impulse, contact_point_velocity};
 pub use counters::PhysicsCounters;
 pub use fixed_timestep::{FixedTimestep, FixedTimestepConfig, FixedTimestepUpdate};
+pub use hd2d_kinematic::{Hd2dKinematicControllerConfig, Hd2dKinematicMoveResult};
 #[cfg(test)]
 use islands::RigidBodyJointIslandBuckets;
 pub(in crate::physics) use islands::{
@@ -62,10 +64,9 @@ const DEFAULT_SLEEP_TIME_THRESHOLD_SECONDS: f32 = 0.5;
 
 impl PhysicsSystem {
     pub fn integrate(world: &mut World, delta: f32) {
-        for i in 0..world.transforms.len() {
-            if !world.alive[i] {
-                continue;
-            }
+        let alive_count = world.alive_indices().len();
+        for alive_position in 0..alive_count {
+            let i = world.alive_indices()[alive_position];
             if let (Some(transform), Some(velocity)) =
                 (world.transforms[i].as_mut(), world.velocities[i])
             {

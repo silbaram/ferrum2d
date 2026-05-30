@@ -12,6 +12,9 @@ pub(in crate::physics) fn should_solve_rigid_contact(
     if has_disabled_rigid_body(world, a_index) || has_disabled_rigid_body(world, b_index) {
         return false;
     }
+    if !world.height_spans_allow_at(a_index, b_index) {
+        return false;
+    }
     rigid_body_inverse_mass(world, a_index) > 0.0 || rigid_body_inverse_mass(world, b_index) > 0.0
 }
 

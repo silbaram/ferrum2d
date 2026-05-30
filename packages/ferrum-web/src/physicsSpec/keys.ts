@@ -2,6 +2,7 @@ export const PHYSICS_KEYS = new Set([
   "mode",
   "gravity",
   "continuous",
+  "hd2d",
   "solver",
   "materials",
   "layers",
@@ -10,6 +11,7 @@ export const PHYSICS_KEYS = new Set([
   "debug",
 ]);
 
+export const HD2D_KEYS = new Set(["enabled", "defaultHeight", "maxStepHeight", "maxDropHeight"]);
 export const SOLVER_KEYS = new Set(["fixedTimestep", "stepSeconds", "velocityIterations", "positionIterations", "sleep"]);
 export const MATERIAL_KEYS = new Set(["friction", "restitution", "density"]);
 export const LAYER_KEYS = new Set(["mask"]);
@@ -20,6 +22,9 @@ export const BODY_KEYS = new Set([
   "rotationRadians",
   "velocity",
   "angularVelocityRadiansPerSecond",
+  "floor",
+  "elevation",
+  "height",
   "mass",
   "inertia",
   "material",

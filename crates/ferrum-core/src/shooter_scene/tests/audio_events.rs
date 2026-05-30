@@ -54,7 +54,15 @@ fn bullet_enemy_collision_pushes_hit_audio_event() {
     let b = world.spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
     let e = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
 
-    scene.handle_collisions(&mut world, &mut audio_events, 0.0, None, None, None);
+    scene.handle_collisions(
+        &mut world,
+        &Tilemap::default(),
+        &mut audio_events,
+        0.0,
+        None,
+        None,
+        None,
+    );
 
     assert!(!world.alive[b.id as usize]);
     assert!(!world.alive[e.id as usize]);
@@ -71,8 +79,24 @@ fn game_over_pushes_event_once_and_clear_events_removes_it() {
     let pt = world.transforms[player.id as usize].unwrap();
     world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
 
-    scene.handle_collisions(&mut world, &mut audio_events, 0.0, None, None, None);
-    scene.handle_collisions(&mut world, &mut audio_events, 0.0, None, None, None);
+    scene.handle_collisions(
+        &mut world,
+        &Tilemap::default(),
+        &mut audio_events,
+        0.0,
+        None,
+        None,
+        None,
+    );
+    scene.handle_collisions(
+        &mut world,
+        &Tilemap::default(),
+        &mut audio_events,
+        0.0,
+        None,
+        None,
+        None,
+    );
 
     assert_eq!(scene.game_state(), GameState::GameOver);
     assert_eq!(audio_events.len(), 1);

@@ -10,6 +10,13 @@ export const DEFAULT_SHOOTER_GAME_SPEC: ResolvedShooterGameSpec = {
   bulletSpeed: 360,
   fireCooldown: 0.12,
   bulletLifetime: 1.8,
+  projectileArc: {
+    enabled: false,
+    launchHeight: 0,
+    zVelocity: 0,
+    gravity: 0,
+    hitHeight: 0,
+  },
   playerWidth: 36,
   playerHeight: 36,
   enemyWidth: 24,

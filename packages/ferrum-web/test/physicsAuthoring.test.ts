@@ -254,6 +254,46 @@ test("createPhysicsWorldFromSpec applies resolved bodies, layers, materials, wor
   equal(fake.despawnedBodies.length, 3);
 });
 
+test("createPhysicsWorldFromSpec applies HD-2D floor height spans to spawned bodies", () => {
+  const fake = new FakePhysicsEngine();
+  createPhysicsWorldFromSpec(fake as unknown as FerrumEngine, {
+    mode: "rigid",
+    hd2d: {
+      enabled: true,
+      defaultHeight: 24,
+    },
+    bodies: {
+      bridge: {
+        type: "kinematic",
+        floor: "bridge",
+        elevation: 16,
+        height: 32,
+        collider: { shape: "circle", radius: 6 },
+      },
+      ground: {
+        type: "kinematic",
+        floor: "ground",
+        collider: { shape: "circle", radius: 6 },
+      },
+      defaultFloor: {
+        type: "kinematic",
+        collider: { shape: "circle", radius: 6 },
+      },
+    },
+  });
+
+  const bridge = fake.bodies[0].heightSpan;
+  const ground = fake.bodies[1].heightSpan;
+  const defaultFloor = fake.bodies[2].heightSpan;
+  equal(bridge?.elevation, 16);
+  equal(bridge?.height, 32);
+  equal(ground?.height, 24);
+  equal(defaultFloor?.floorId, 0);
+  ok((bridge?.floorId ?? 0) > 0);
+  ok((ground?.floorId ?? 0) > 0);
+  ok(bridge?.floorId !== ground?.floorId);
+});
+
 test("clearPhysicsWorld delegates to idempotent world cleanup", () => {
   const fake = new FakePhysicsEngine();
   const engine = fake as unknown as FerrumEngine;

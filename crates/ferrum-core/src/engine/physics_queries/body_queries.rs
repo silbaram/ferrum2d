@@ -15,6 +15,7 @@ use super::super::{
     PHYSICS_JOINT_PULLEY, PHYSICS_JOINT_REVOLUTE, PHYSICS_JOINT_ROPE, PHYSICS_JOINT_SPRING,
     PHYSICS_JOINT_WELD,
 };
+use super::area_queries::physics_query_height_span;
 
 #[wasm_bindgen]
 impl Engine {
@@ -197,6 +198,44 @@ impl Engine {
             Transform2D { x, y },
             max_distance,
             CollisionMask::from_bits(query_mask_bits),
+        ) else {
+            self.physics_query_result = PhysicsQueryResult::default();
+            return false;
+        };
+
+        self.physics_query_result = PhysicsQueryResult {
+            entity_id: hit.entity.id,
+            entity_generation: hit.entity.generation,
+            tile_layer_index: 0,
+            tile_index: 0,
+            point_x: hit.point_x,
+            point_y: hit.point_y,
+            distance: hit.distance,
+        };
+        true
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn query_nearest_body_with_height_span(
+        &mut self,
+        x: f32,
+        y: f32,
+        max_distance: f32,
+        query_mask_bits: u32,
+        floor_id: u32,
+        elevation: f32,
+        height: f32,
+    ) -> bool {
+        let Some(height_span) = physics_query_height_span(floor_id, elevation, height) else {
+            self.physics_query_result = PhysicsQueryResult::default();
+            return false;
+        };
+        let Some(hit) = CollisionSystem::nearest_body_query_with_height_span(
+            &self.world,
+            Transform2D { x, y },
+            max_distance,
+            CollisionMask::from_bits(query_mask_bits),
+            Some(height_span),
         ) else {
             self.physics_query_result = PhysicsQueryResult::default();
             return false;

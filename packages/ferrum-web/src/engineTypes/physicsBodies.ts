@@ -52,6 +52,36 @@ export interface PhysicsRigidBodyTuning {
   angularDamping?: number;
 }
 
+export interface PhysicsBodyHeightSpan {
+  floorId?: number;
+  elevation: number;
+  height: number;
+}
+
+export interface PhysicsHd2dKinematicMoveOptions {
+  displacementX: number;
+  displacementY: number;
+  solidMaskBits?: number;
+  maxIterations?: number;
+  maxStepHeight?: number;
+  maxDropHeight?: number;
+  allowLedgeDrop?: boolean;
+}
+
+export interface PhysicsHd2dKinematicMoveResult {
+  body: PhysicsEntitySnapshot;
+  elevationDelta: number;
+  hitCount: number;
+  steppedUp: boolean;
+  steppedDown: boolean;
+  changedFloor: boolean;
+  passedUnderBridge: boolean;
+  blockedByStep: boolean;
+  blockedByDrop: boolean;
+  blockedX: boolean;
+  blockedY: boolean;
+}
+
 export type PhysicsRigidBodyCollider =
   | {
       type: "aabb";
@@ -126,6 +156,7 @@ export interface PhysicsRigidBodySpawnOptions {
   velocityY?: number;
   rotationRadians?: number;
   angularVelocityRadiansPerSecond?: number;
+  heightSpan?: PhysicsBodyHeightSpan;
   gravityScale?: number;
   linearDamping?: number;
   angularDamping?: number;
@@ -188,4 +219,5 @@ export interface PhysicsEntitySnapshot extends PhysicsEntityHandle {
   maxContactBaumgarteBiasVelocityScale: number;
   contactPositionCorrectionScale: number;
   contactPositionCorrectionSlopScale: number;
+  heightSpan?: PhysicsBodyHeightSpan | null;
 }

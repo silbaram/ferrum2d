@@ -109,6 +109,9 @@ function canonicalBodySnapshot(body: PhysicsWorldSnapshotBody, includeHandles: b
       maxContactBaumgarteBiasVelocityScale: state.maxContactBaumgarteBiasVelocityScale,
       contactPositionCorrectionScale: state.contactPositionCorrectionScale,
       contactPositionCorrectionSlopScale: state.contactPositionCorrectionSlopScale,
+      heightSpan: Object.prototype.hasOwnProperty.call(state, "heightSpan")
+        ? state.heightSpan ?? null
+        : undefined,
     },
     colliders: body.colliders.map((collider) => canonicalColliderSnapshot(collider)),
   };

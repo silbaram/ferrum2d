@@ -144,6 +144,45 @@ impl ShooterWaveConfig {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ShooterProjectileArcConfig {
+    pub enabled: bool,
+    pub launch_height: f32,
+    pub z_velocity: f32,
+    pub gravity: f32,
+    pub hit_height: f32,
+}
+
+impl Default for ShooterProjectileArcConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            launch_height: 0.0,
+            z_velocity: 0.0,
+            gravity: 0.0,
+            hit_height: 0.0,
+        }
+    }
+}
+
+impl ShooterProjectileArcConfig {
+    pub fn from_values(
+        enabled: bool,
+        launch_height: f32,
+        z_velocity: f32,
+        gravity: f32,
+        hit_height: f32,
+    ) -> Self {
+        Self {
+            enabled,
+            launch_height: non_negative_or_default(launch_height, 0.0),
+            z_velocity: finite_or_default(z_velocity, 0.0),
+            gravity: non_negative_or_default(gravity, 0.0),
+            hit_height: non_negative_or_default(hit_height, 0.0),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ShooterPrefabKind {
     Player,
@@ -182,6 +221,7 @@ pub(crate) struct ShooterConfig {
     pub score_reward: u32,
     pub orbit_radius: f32,
     pub orbit_radial_band: f32,
+    pub projectile_arc: ShooterProjectileArcConfig,
     pub camera: CameraPresetConfig,
     pub audio_policy: ShooterAudioPolicy,
 }
@@ -207,6 +247,7 @@ impl Default for ShooterConfig {
             score_reward: DEFAULT_SCORE_REWARD,
             orbit_radius: DEFAULT_ORBIT_RADIUS,
             orbit_radial_band: DEFAULT_ORBIT_RADIAL_BAND,
+            projectile_arc: ShooterProjectileArcConfig::default(),
             camera: CameraPresetConfig::default(),
             audio_policy: ShooterAudioPolicy::default(),
         }
@@ -369,6 +410,11 @@ impl ShooterConfig {
     pub fn with_orbit(mut self, radius: f32, radial_band: f32) -> Self {
         self.orbit_radius = positive_or_default(radius, DEFAULT_ORBIT_RADIUS);
         self.orbit_radial_band = non_negative_or_default(radial_band, DEFAULT_ORBIT_RADIAL_BAND);
+        self
+    }
+
+    pub fn with_projectile_arc(mut self, projectile_arc: ShooterProjectileArcConfig) -> Self {
+        self.projectile_arc = projectile_arc;
         self
     }
 

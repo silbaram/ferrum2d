@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn particle_preset_api_spawns_and_appends_render_commands_after_entities() {
+fn particle_preset_api_spawns_and_emits_render_command() {
     let mut engine = Engine::new();
     engine.build_render_commands();
     let entity_command_count = engine.render_commands.len();
@@ -18,7 +18,11 @@ fn particle_preset_api_spawns_and_appends_render_commands_after_entities() {
     assert_eq!(spawned, 1);
     assert_eq!(engine.particle_count(), 1);
     assert_eq!(engine.render_commands.len(), entity_command_count + 1);
-    let command = engine.render_commands.last().unwrap();
+    let command = engine
+        .render_commands
+        .iter()
+        .find(|command| command.texture_id == 77.0)
+        .unwrap();
     assert_eq!(command.texture_id, 77.0);
     assert_eq!(command.width, 6.0);
     assert_eq!(command.height, 6.0);
@@ -28,6 +32,22 @@ fn particle_preset_api_spawns_and_appends_render_commands_after_entities() {
     assert_eq!(command.v1, 1.0);
     assert_eq!(command.r, 1.0);
     assert_eq!(command.a, 1.0);
+}
+
+#[test]
+fn offscreen_particles_do_not_emit_render_commands() {
+    let mut engine = Engine::new();
+    set_test_particle_preset(&mut engine, 0, 77, 1, 1.0);
+
+    let spawned = engine.spawn_particle_burst(0, 2_000.0, 2_000.0);
+    engine.build_render_commands();
+
+    assert_eq!(spawned, 1);
+    assert_eq!(engine.particle_count(), 1);
+    assert!(!engine
+        .render_commands
+        .iter()
+        .any(|command| command.texture_id == 77.0));
 }
 
 #[test]

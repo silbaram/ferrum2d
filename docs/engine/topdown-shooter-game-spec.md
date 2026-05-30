@@ -139,6 +139,11 @@ AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고
 | `weapons.cooldown` | positive number | `0.12` | fire cooldown in seconds |
 | `weapons.lifetime` | positive number | `1.8` | bullet lifetime in seconds |
 | `weapons.damage` | positive number | `1` | damage dealt by one bullet |
+| `weapons.projectileArc.enabled` | boolean | `false` | bullet height span을 시간에 따라 갱신하는 HD-2D projectile arc 활성화 |
+| `weapons.projectileArc.launchHeight` | non-negative number | `0` | 발사 시 bullet base elevation 위의 시작 높이 |
+| `weapons.projectileArc.zVelocity` | finite number | `0` | projectile height velocity |
+| `weapons.projectileArc.gravity` | non-negative number | `0` | projectile height velocity에 적용할 중력 |
+| `weapons.projectileArc.hitHeight` | non-negative number | `0` | bullet hitbox로 사용할 height span 높이 |
 | `prefabs.player.width` | positive number | `36` | player sprite width and default collider base |
 | `prefabs.player.height` | positive number | `36` | player sprite height and default collider base |
 | `prefabs.enemy.width` | positive number | `24` | enemy sprite width and default collider base |
@@ -196,6 +201,22 @@ AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고
 | `tilemap.origin.y` | finite number | `0` | default tilemap world origin y |
 | `tilemap.tiles.*.frame` | string | required | atlas frame used by this positive tile id |
 | `tilemap.tiles.*.color` | `[r,g,b,a]` normalized numbers | `[1,1,1,1]` | tile tint color |
+| `tilemap.tiles.*.floor` | string | `"default"` | HD-2D tile floor id. Runtime에서는 deterministic numeric `floorId`로 변환된다. |
+| `tilemap.tiles.*.elevation` | finite number | `0` | HD-2D tile surface elevation |
+| `tilemap.tiles.*.height` | non-negative number | `physics.hd2d.defaultHeight` when HD-2D is enabled, otherwise `0` | HD-2D tile obstacle/query height |
+| `tilemap.tiles.*.kind` | `flat`, `stair`, `ramp`, `ledge`, `bridge` | `flat` | HD-2D tile authoring kind. `moveHd2dKinematicBodyWithTilemap(...)`에서 step/ramp/ledge/bridge 이동 semantics로 소비된다. |
+| `tilemap.tiles.*.ramp.axis` | `x` or `y` | `x` | `kind: "ramp"` tile의 elevation 보간 축 metadata |
+| `tilemap.tiles.*.ramp.startElevation` | finite number | tile `elevation` | ramp 시작 elevation metadata |
+| `tilemap.tiles.*.ramp.endElevation` | finite number | tile `elevation` | ramp 끝 elevation metadata |
+| `tilemap.tiles.*.blocksMovement` | boolean | `true` | `false`이면 양수 collision layer tile이어도 Rust tile obstacle/cache/navigation/boundary extraction에서 이동 장애물로 쓰지 않는다. |
+| `tilemap.tiles.*.bridgePortal.lowerFloor` | string | tile `floor` | `kind: "bridge"` tile의 아래 floor id |
+| `tilemap.tiles.*.bridgePortal.upperFloor` | string | `"bridge"` | `kind: "bridge"` tile의 위 floor id |
+| `tilemap.tiles.*.bridgePortal.lowerElevation` | finite number | tile `elevation` | bridge portal 아래 floor elevation |
+| `tilemap.tiles.*.bridgePortal.upperElevation` | finite number | tile `elevation + height` | bridge portal 위 floor elevation |
+| `tilemap.tiles.*.bridgePortal.navigationCost` | non-negative integer | `1` | lower/upper floor edge를 이동할 때 사용할 navigation cost |
+| `tilemap.tiles.*.blocksProjectile` | boolean | `blocksMovement` | bullet-tile 충돌에서 `heightSpan`과 함께 소비하는 투사체 차단 metadata |
+| `tilemap.tiles.*.blocksVision` | boolean | `blocksMovement` | `deriveHd2dTileOccludersFromTilemapGrid(...)`가 lighting occluder 입력으로 변환하는 시야 차단 metadata |
+| `tilemap.tiles.*.occluderHeight` | non-negative number | tile `height` | lighting occluder rect 높이에 더하는 HD-2D 높이 metadata |
 | `tilemap.tiles.*.slope` | object | unset | tile-local slope segment descriptor used by Rust `TileSlopeDefinition` |
 | `tilemap.tiles.*.slope.x0/y0/x1/y1` | normalized number | required when `slope` is set | tile-local segment endpoints; `x1` must differ from `x0` |
 | `tilemap.tiles.*.oneWayPlatform` | boolean | `false` | 위에서 내려오는 tilemap movement/ground probe만 막는 one-way platform tile 표시 |
@@ -411,7 +432,7 @@ const spec: ShooterGameSpec = {
 
 ## Tilemap Runtime
 
-`tilemap`은 정적 tile layer를 렌더링하고 선택적으로 단순 AABB 장애물, tile-local slope descriptor, one-way platform tile을 만들기 위한 설정이다. TypeScript는 positive tile id, atlas frame 참조, tint color, slope endpoint, one-way flag, layer 크기, `collision` boolean, row-major `data` 길이와 tile id 참조를 검증한다. Rust에는 tile id, texture id, UV, color, slope endpoint, one-way tile id, layer dimension, tile size, origin, collision flag, `Uint32Array` tile data만 전달된다.
+`tilemap`은 정적 tile layer를 렌더링하고 선택적으로 단순 AABB 장애물, HD-2D floor/elevation/height metadata, tile-local slope descriptor, one-way platform tile을 만들기 위한 설정이다. TypeScript는 positive tile id, atlas frame 참조, tint color, HD-2D height metadata, slope endpoint, one-way flag, layer 크기, `collision` boolean, row-major `data` 길이와 tile id 참조를 검증한다. Rust에는 tile id, texture id, UV, color, optional tile height span, slope endpoint, one-way tile id, layer dimension, tile size, origin, collision flag, `Uint32Array` tile data만 전달된다.
 
 ```json
 {
@@ -440,13 +461,13 @@ const spec: ShooterGameSpec = {
 }
 ```
 
-`tilemap.tiles`의 key는 positive integer string이어야 한다. `0`은 빈 타일로 예약되어 layer data에서만 사용할 수 있다. 일반 layer의 양수 tile id는 `tilemap.tiles`에 존재해야 렌더링할 수 있다. `collisionOnly: true` layer는 반드시 `collision: true`여야 하며, 양수 tile id가 `tilemap.tiles`에 없어도 렌더링하지 않는 solid cell로 허용한다. 이 경로는 LDtk raw `IntGrid`처럼 충돌 그리드만 있는 데이터를 표현하기 위한 것이다. `collision: true` layer의 양수 tile은 player/enemy 이동을 막는 정적 AABB로 해석되고, Rust는 인접 solid tile run을 merged AABB obstacle로 캐시해 충돌 후보 검사를 줄인다. 런타임 단일 cell 변경은 Game Spec 필드가 아니라 `FerrumEngine.setShooterTilemapTile(...)` API로 수행하며, collision layer 변경 시 Rust가 해당 cache를 즉시 refresh한다. Rect edit은 `maxCollisionRebuildChunks` 옵션으로 dirty collision chunk budget을 넘는 변경을 거부할 수 있다. 단, `tilemap.tiles.*.slope`가 정의된 tile id는 Rust `TileSlopeDefinition`으로 등록되고 merged AABB solid에서는 제외된다. `tilemap.tiles.*.oneWayPlatform: true`가 정의된 tile id도 merged AABB solid에서는 제외되고, 위에서 내려오는 swept movement와 ground probe만 막는다. `slope`와 `oneWayPlatform: true`는 같은 tile definition에 함께 사용할 수 없다. slope endpoint는 tile-local normalized 좌표이며 `x1`은 `x0`와 달라야 한다. chase enemy는 같은 collision layer의 원본 tile grid를 4방향 navigation 장애물로 사용한다. Navigation v1은 Rust core 내부에서 계산되며 새 Game Spec 필드를 추가하지 않는다. 낮은 빈도 gameplay/tooling query는 `FerrumEngine.queryTilemapNavigationWaypoint(...)`와 `FerrumEngine.queryTilemapNavigationPath(...)`를 사용하고, runtime terrain weight는 `FerrumEngine.setShooterTilemapNavigationCost(...)`로 walkable cell에 별도 설정한다. Path query는 전체 waypoint buffer와 debug line buffer를 함께 반환한다. bullet-wall 충돌, runtime animated tile, editor, per-tile script, navmesh, crowd simulation은 포함하지 않는다.
+`tilemap.tiles`의 key는 positive integer string이어야 한다. `0`은 빈 타일로 예약되어 layer data에서만 사용할 수 있다. 일반 layer의 양수 tile id는 `tilemap.tiles`에 존재해야 렌더링할 수 있다. `collisionOnly: true` layer는 반드시 `collision: true`여야 하며, 양수 tile id가 `tilemap.tiles`에 없어도 렌더링하지 않는 solid cell로 허용한다. 이 경로는 LDtk raw `IntGrid`처럼 충돌 그리드만 있는 데이터를 표현하기 위한 것이다. `collision: true` layer의 양수 tile은 player/enemy 이동을 막는 정적 AABB로 해석되고, Rust는 인접 solid tile run을 merged AABB obstacle로 캐시해 충돌 후보 검사를 줄인다. Height span이 다른 solid tile은 같은 run으로 병합하지 않아서 explicit tile query filter가 층/고도를 유지한다. 런타임 단일 cell 변경은 Game Spec 필드가 아니라 `FerrumEngine.setShooterTilemapTile(...)` API로 수행하며, collision layer 변경 시 Rust가 해당 cache를 즉시 refresh한다. Tile height span metadata는 `FerrumEngine.setShooterTileHeightSpan(...)` / `clearShooterTileHeightSpan(...)`로 낮은 빈도 runtime 변경이 가능하다. Rect edit은 `maxCollisionRebuildChunks` 옵션으로 dirty collision chunk budget을 넘는 변경을 거부할 수 있다. 단, `tilemap.tiles.*.slope`가 정의된 tile id는 Rust `TileSlopeDefinition`으로 등록되고 merged AABB solid에서는 제외된다. `tilemap.tiles.*.oneWayPlatform: true`가 정의된 tile id도 merged AABB solid에서는 제외되고, 위에서 내려오는 swept movement와 ground probe만 막는다. `slope`와 `oneWayPlatform: true`는 같은 tile definition에 함께 사용할 수 없다. slope endpoint는 tile-local normalized 좌표이며 `x1`은 `x0`와 달라야 한다. chase enemy는 같은 collision layer의 원본 tile grid를 4방향 navigation 장애물로 사용한다. 낮은 빈도 gameplay/tooling query는 `FerrumEngine.queryTilemapNavigationWaypoint(...)`와 `FerrumEngine.queryTilemapNavigationPath(...)`를 사용하고, 두 query는 optional `heightSpan`이 지정되면 해당 span과 겹치는 solid tile만 장애물로 취급한다. `toHeightSpan`을 함께 지정하면 bridge portal lower/upper floor edge를 포함한 multi-floor path를 반환하며 path point는 `x`, `y`, `heightSpan`을 포함한다. runtime terrain weight는 `FerrumEngine.setShooterTilemapNavigationCost(...)`로 walkable cell에 별도 설정한다. Path query는 전체 waypoint buffer와 debug line buffer를 함께 반환한다. `weapons.projectileArc`가 켜진 bullet과 bullet-tile 충돌은 height span과 `blocksProjectile`을 사용한다. runtime animated tile, editor, per-tile script, navmesh, crowd simulation, 별도 multi-hitbox/hurtbox authoring DSL은 포함하지 않는다.
 
 `applyTileRules(...)`는 Game Spec 필드가 아니라 authoring helper다. row-major tile layer data와 ordered neighbor rule을 받아 새 layer data를 생성한다. `match`는 `number`, `number[]`, `"empty"`, `"filled"`, `"any"`를 지원하고 neighbor는 `n/e/s/w/ne/se/sw/nw` 방향에서 같은 조건 또는 `"same"`을 사용할 수 있다. 이 helper로 자동 타일링 결과를 미리 bake한 뒤 `tilemap.layers.*.data`에 넣는다.
 
 `resolveAnimatedTileFrame(...)`와 `bakeAnimatedTileLayer(...)`도 authoring helper다. Ferrum2D는 현재 Rust tilemap render path에 animated tile state를 소유시키지 않고, AI/빌드/저빈도 runtime code가 시간값을 기준으로 tile id를 정적 layer data로 bake하는 정책을 사용한다. 이 방식은 tilemap Game Spec ABI를 늘리지 않고 기존 `setShooterTilemapTile(...)`/`setShooterTilemapTilesRect(...)` 경로와 함께 사용할 수 있다. 매 프레임 대량 tile animation을 JS에서 Wasm으로 밀어 넣는 방식은 hot path 경계 원칙상 권장하지 않는다.
 
-`extractTilemapBoundaryChains(...)`는 resolved tilemap의 `collision: true` layer를 generic Physics Spec의 static `chain` body map으로 변환하는 helper다. 이 helper는 Game Spec 필드가 아니며, slope/one-way tile은 regular solid boundary에서 제외한다. `PixelMaskTerrain`은 alpha mask를 collision-only tilemap layer로 변환한 뒤 같은 chain boundary 추출 경로를 재사용할 수 있다.
+`extractTilemapBoundaryChains(...)`는 resolved tilemap의 `collision: true` layer를 generic Physics Spec의 static `chain` body map으로 변환하는 helper다. 이 helper는 Game Spec 필드가 아니며, slope/one-way tile은 regular solid boundary에서 제외한다. HD-2D tile height metadata가 있는 solid tile은 height span별로 boundary를 분리하고 생성된 Physics Spec body에 `floor`, `elevation`, `height`를 보존한다. `PixelMaskTerrain`은 alpha mask를 collision-only tilemap layer로 변환한 뒤 같은 chain boundary 추출 경로를 재사용할 수 있다.
 
 ### Tiled JSON Import
 
@@ -481,6 +502,8 @@ const spec: ShooterGameSpec = {
 - Tiled custom property `collision: true` 또는 `collisionLayerNames` 옵션을 통한 collision layer 지정
 - embedded tileset `tiles.*.properties`의 `slopeX0`, `slopeY0`, `slopeX1`, `slopeY1` numeric custom property를 통한 Game Spec `tilemap.tiles.*.slope` 생성
 - embedded tileset `tiles.*.properties`의 `oneWayPlatform: true` boolean custom property를 통한 Game Spec `tilemap.tiles.*.oneWayPlatform` 생성
+- embedded tileset `tiles.*.properties`의 `floor`, `elevation`, `height`, `kind`, `rampAxis`, `rampStartElevation`, `rampEndElevation`, `blocksMovement`, `blocksProjectile`, `blocksVision`, `occluderHeight` custom property를 통한 Game Spec HD-2D tile metadata 생성
+- embedded tileset `tiles.*.properties`의 `bridgePortal` JSON custom property를 통한 Game Spec `tilemap.tiles.*.bridgePortal` 생성
 
 현재 제외 범위:
 
@@ -520,6 +543,8 @@ const spec: ShooterGameSpec = {
 - `frameNameForTile`과 `texture` callback을 통한 frame/texture name 조정
 - tileset `customData`의 JSON 문자열 `{"slope":{"x0":0,"y0":1,"x1":1,"y1":0}}`를 통한 Game Spec `tilemap.tiles.*.slope` 생성
 - tileset `customData`의 JSON 문자열 `{"oneWayPlatform":true}`를 통한 Game Spec `tilemap.tiles.*.oneWayPlatform` 생성
+- tileset `customData`의 JSON 문자열 `{"floor":"bridge","elevation":12,"height":8,"kind":"bridge","blocksProjectile":false}`를 통한 Game Spec HD-2D tile metadata 생성
+- tileset `customData`의 JSON 문자열 `{"bridgePortal":{"lowerFloor":"ground","upperFloor":"bridge","lowerElevation":0,"upperElevation":12}}`를 통한 Game Spec bridge portal metadata 생성
 
 현재 제외 범위:
 

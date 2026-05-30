@@ -1,6 +1,7 @@
 import type {
   FerrumEngine,
   PhysicsBodyColliderSnapshot,
+  PhysicsBodyHeightSpan,
   PhysicsEntityHandle,
   PhysicsEntitySnapshot,
   PhysicsRigidBodyMaterial,
@@ -48,7 +49,10 @@ export function capturePhysicsWorldSnapshot(
   const bulkBodyState = captureBulkBodyState(engine, bodyEntries.map(([, handle]) => handle));
   const bodies = Object.fromEntries(
     bodyEntries.map(([id, handle], entryIndex) => {
-      const state = bulkBodyState?.states[entryIndex] ?? engine.getPhysicsEntity(handle);
+      const capturedState = bulkBodyState?.states[entryIndex] ?? engine.getPhysicsEntity(handle);
+      const state = capturedState === undefined
+        ? undefined
+        : withRuntimeHeightSpan(engine, handle, capturedState);
       if (state === undefined) {
         throw physicsSpecDiagnosticError(`physics.snapshot.bodies.${id}`, "body handle is no longer alive");
       }
@@ -148,6 +152,14 @@ export function restorePhysicsWorldSnapshot(
     if (!handle) {
       throw physicsSpecDiagnosticError(`physics.snapshot.bodies.${id}`, "body is missing after restore");
     }
+    restorePhysicsBodyHeightSpan(engine, handle, entry.state, `physics.snapshot.bodies.${id}.state.heightSpan`);
+  }
+
+  for (const [id, entry] of bodyEntries) {
+    const handle = restored.bodies[id];
+    if (!handle) {
+      throw physicsSpecDiagnosticError(`physics.snapshot.bodies.${id}`, "body is missing after restore");
+    }
     restorePhysicsBodyColliderStates(engine, handle, entry.colliders, `physics.snapshot.bodies.${id}.colliders`);
   }
 
@@ -238,6 +250,32 @@ function restoreBulkBodyState(
   return engine.restorePhysicsBodyStateBuffer(createPhysicsBodyStateBufferSnapshot(states));
 }
 
+function withRuntimeHeightSpan(
+  engine: FerrumEngine,
+  handle: PhysicsEntityHandle,
+  state: PhysicsEntitySnapshot,
+): PhysicsEntitySnapshot {
+  const heightSpan = readRuntimeHeightSpan(engine, handle);
+  return {
+    ...state,
+    heightSpan: heightSpan === undefined ? null : heightSpan,
+  };
+}
+
+function readRuntimeHeightSpan(
+  engine: FerrumEngine,
+  handle: PhysicsEntityHandle,
+): PhysicsBodyHeightSpan | undefined {
+  const reader = (engine as FerrumEngine & {
+    getPhysicsBodyHeightSpan?: (body: PhysicsEntityHandle) => PhysicsBodyHeightSpan | undefined;
+  }).getPhysicsBodyHeightSpan;
+  if (typeof reader !== "function") {
+    return undefined;
+  }
+  const heightSpan = reader.call(engine, handle);
+  return heightSpan === undefined ? undefined : { ...heightSpan };
+}
+
 function restorePhysicsBodyState(
   engine: FerrumEngine,
   handle: PhysicsEntityHandle,
@@ -292,6 +330,22 @@ function restorePhysicsBodyState(
   } else {
     ensureRuntimeAccepted(engine.clearPhysicsColliderMaterial(handle), `${path}.colliderMaterial`);
   }
+}
+
+function restorePhysicsBodyHeightSpan(
+  engine: FerrumEngine,
+  handle: PhysicsEntityHandle,
+  state: PhysicsEntitySnapshot,
+  path: string,
+): void {
+  if (!Object.prototype.hasOwnProperty.call(state, "heightSpan")) {
+    return;
+  }
+  if (state.heightSpan === null || state.heightSpan === undefined) {
+    ensureRuntimeAccepted(engine.clearPhysicsBodyHeightSpan(handle), path);
+    return;
+  }
+  ensureRuntimeAccepted(engine.setPhysicsBodyHeightSpan(handle, state.heightSpan), path);
 }
 
 function restorePhysicsBodyColliderStates(

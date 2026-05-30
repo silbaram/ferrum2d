@@ -1,18 +1,20 @@
 use crate::components::{
     AabbCollider, AngularVelocity, CapsuleCollider, ChainCollider, CircleCollider, CollisionFilter,
-    CompoundCollider, ConvexPolygonCollider, DistanceJoint, EdgeCollider, GearJoint,
-    OrientedBoxCollider, PhysicsMaterial, PrismaticJoint, PulleyJoint, RevoluteJoint, RigidBody,
-    RigidBodyCcdDebugHit, RigidContactImpulse, RopeJoint, Rotation2D, SpringJoint, Sprite,
-    SpriteAnimation, Transform2D, Velocity, WeldJoint,
+    CompoundCollider, ConvexPolygonCollider, DistanceJoint, EdgeCollider, GearJoint, HeightSpan,
+    OrientedBoxCollider, PhysicsMaterial, PrismaticJoint, ProjectileArc, PulleyJoint,
+    RevoluteJoint, RigidBody, RigidBodyCcdDebugHit, RigidContactImpulse, RopeJoint, Rotation2D,
+    SpringJoint, Sprite, SpriteAnimation, Transform2D, Velocity, WeldJoint,
 };
 use crate::entity::Entity;
 use crate::physics::PhysicsSystem;
 
 pub const BULLET_LIFETIME: f32 = 1.8;
+const DEAD_ALIVE_POSITION: usize = usize::MAX;
 
 mod colliders;
 mod component_access;
 mod entity_lifecycle;
+mod hd2d;
 mod joints;
 mod rigid_bodies;
 mod snapshot;
@@ -33,12 +35,16 @@ pub struct World {
     pub(crate) generations: Vec<u32>,
     free_list: Vec<u32>,
     pub(crate) alive: Vec<bool>,
+    alive_indices: Vec<usize>,
+    alive_positions: Vec<usize>,
     pub(crate) transforms: Vec<Option<Transform2D>>,
     pub(crate) sprites: Vec<Option<Sprite>>,
     pub(crate) sprite_animations: Vec<Option<SpriteAnimation>>,
     pub(crate) velocities: Vec<Option<Velocity>>,
     pub(crate) rotations: Vec<Option<Rotation2D>>,
     pub(crate) angular_velocities: Vec<Option<AngularVelocity>>,
+    pub(crate) height_spans: Vec<Option<HeightSpan>>,
+    pub(crate) projectile_arcs: Vec<Option<ProjectileArc>>,
     pub(crate) rigid_bodies: Vec<Option<RigidBody>>,
     pub(crate) rigid_contact_impulses: Vec<RigidContactImpulse>,
     pub(crate) rigid_body_ccd_debug_hits: Vec<RigidBodyCcdDebugHit>,

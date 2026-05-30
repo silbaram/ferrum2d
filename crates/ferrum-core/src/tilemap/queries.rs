@@ -1,4 +1,5 @@
 use super::collision_cache::TileCollisionRect;
+use super::Hd2dTileDefinition;
 use super::{
     TileSlopeDefinition, TilemapContactHit, TilemapContactManifoldHit, TilemapContactPoint,
     TilemapLayer, TilemapNearestObstacleHit, TilemapShapeCastHit, TilemapSlopeGroundHit,
@@ -6,7 +7,7 @@ use super::{
     TILE_SWEEP_EPSILON,
 };
 use crate::collision::{AabbBounds, AabbContact, CollisionSystem, SweptAabbContactHit};
-use crate::components::{AabbCollider, CollisionLayer, Transform2D, Velocity};
+use crate::components::{AabbCollider, CollisionLayer, HeightSpan, Transform2D, Velocity};
 
 pub(super) fn one_way_tile_contact_blocks(
     start: Transform2D,
@@ -377,6 +378,80 @@ pub(super) fn sort_tile_linear_hits(hits: &mut [TilemapShapeCastHit]) {
             .then_with(|| a.layer_index.cmp(&b.layer_index))
             .then_with(|| a.tile_index.cmp(&b.tile_index))
     });
+}
+
+pub(super) fn tile_height_span_allows(
+    rect: TileCollisionRect,
+    query_height_span: Option<HeightSpan>,
+) -> bool {
+    match query_height_span {
+        Some(query_span) => rect
+            .height_span
+            .is_some_and(|tile_span| query_span.overlaps(tile_span)),
+        None => true,
+    }
+}
+
+pub(super) fn tile_height_span_allows_movement(
+    rect: TileCollisionRect,
+    query_height_span: Option<HeightSpan>,
+) -> bool {
+    match query_height_span {
+        Some(query_span) => rect
+            .height_span
+            .is_none_or(|tile_span| query_span.overlaps(tile_span)),
+        None => true,
+    }
+}
+
+pub(super) fn tile_id_height_span_allows(
+    tile_id: u32,
+    height_span_definitions: &[Option<HeightSpan>],
+    query_height_span: Option<HeightSpan>,
+) -> bool {
+    match query_height_span {
+        Some(query_span) => height_span_definitions
+            .get(tile_id as usize)
+            .and_then(|height_span| *height_span)
+            .is_some_and(|tile_span| query_span.overlaps(tile_span)),
+        None => true,
+    }
+}
+
+pub(super) fn tile_id_height_span_allows_movement(
+    tile_id: u32,
+    height_span_definitions: &[Option<HeightSpan>],
+    query_height_span: Option<HeightSpan>,
+) -> bool {
+    match query_height_span {
+        Some(query_span) => height_span_definitions
+            .get(tile_id as usize)
+            .and_then(|height_span| *height_span)
+            .is_none_or(|tile_span| query_span.overlaps(tile_span)),
+        None => true,
+    }
+}
+
+pub(super) fn tile_id_blocks_movement(
+    tile_id: u32,
+    hd2d_definitions: &[Option<Hd2dTileDefinition>],
+) -> bool {
+    tile_id != 0
+        && hd2d_definitions
+            .get(tile_id as usize)
+            .and_then(|definition| *definition)
+            .is_none_or(|definition| definition.blocks_movement)
+}
+
+pub(super) fn tile_id_blocks_projectile(
+    tile_id: u32,
+    hd2d_definitions: &[Option<Hd2dTileDefinition>],
+) -> bool {
+    tile_id != 0
+        && hd2d_definitions
+            .get(tile_id as usize)
+            .and_then(|definition| *definition)
+            .is_none_or(|definition| definition.blocks_projectile)
 }
 
 pub(super) fn tile_slope_definition_from_values(

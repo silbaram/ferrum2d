@@ -107,3 +107,12 @@ export interface TileOccluderGridInput {
   data: readonly number[];
   solidTileIds?: readonly number[];
 }
+
+export interface Hd2dTileOccluderDefinition {
+  blocksVision?: boolean;
+  occluderHeight?: number;
+}
+
+export interface Hd2dTileOccluderGridInput extends TileOccluderGridInput {
+  tiles: Readonly<Record<number, Hd2dTileOccluderDefinition | undefined>>;
+}

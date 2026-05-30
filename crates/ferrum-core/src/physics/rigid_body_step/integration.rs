@@ -23,10 +23,9 @@ pub(super) fn integrate_rigid_body_velocities(
     accumulator_mode: RigidBodyAccumulatorMode,
     stats: &mut RigidBodyStepStats,
 ) {
-    for index in 0..world.rigid_bodies.len() {
-        if !world.alive.get(index).copied().unwrap_or(false) {
-            continue;
-        }
+    let alive_count = world.alive_indices().len();
+    for alive_position in 0..alive_count {
+        let index = world.alive_indices()[alive_position];
         let Some(mut body) = world.rigid_bodies[index] else {
             continue;
         };
@@ -119,11 +118,10 @@ pub(super) fn integrate_rigid_body_positions(
 ) {
     integrated.clear();
     integrated.resize(world.rigid_bodies.len(), false);
-    for index in 0..world.rigid_bodies.len() {
+    let alive_count = world.alive_indices().len();
+    for alive_position in 0..alive_count {
+        let index = world.alive_indices()[alive_position];
         if integrated.get(index).copied().unwrap_or(false) {
-            continue;
-        }
-        if !world.alive.get(index).copied().unwrap_or(false) {
             continue;
         }
         let Some(body) = world.rigid_bodies[index] else {

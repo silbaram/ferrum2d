@@ -3,6 +3,7 @@ use crate::collision::CollisionSystem;
 use crate::components::CollisionLayer;
 use crate::entity::Entity;
 use crate::game_state::GameState;
+use crate::tilemap::Tilemap;
 use crate::world::World;
 
 use super::super::{
@@ -11,9 +12,11 @@ use super::super::{
 use super::{push_audio_event, CollisionEventSink, ParticleBurstSink, TweenSink};
 
 impl ShooterScene {
+    #[allow(clippy::too_many_arguments)]
     pub(in crate::shooter_scene) fn handle_collisions(
         &mut self,
         world: &mut World,
+        tilemap: &Tilemap,
         audio_events: &mut Vec<AudioEvent>,
         delta: f32,
         mut collision_events: Option<&mut CollisionEventSink<'_>>,
@@ -23,6 +26,7 @@ impl ShooterScene {
         self.prepare_collision_scratch(world.alive.len());
         self.handle_bullet_enemy_collisions(
             world,
+            tilemap,
             audio_events,
             delta,
             collision_events.as_deref_mut(),
@@ -41,15 +45,18 @@ impl ShooterScene {
         self.collision_pairs.clear();
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn handle_bullet_enemy_collisions(
         &mut self,
         world: &mut World,
+        tilemap: &Tilemap,
         audio_events: &mut Vec<AudioEvent>,
         delta: f32,
         mut collision_events: Option<&mut CollisionEventSink<'_>>,
         mut hit_particles: Option<&mut ParticleBurstSink<'_>>,
         mut hit_tweens: Option<&mut TweenSink<'_>>,
     ) {
+        self.handle_bullet_tile_collisions(world, tilemap, delta);
         CollisionSystem::build_swept_layer_pairs_into(
             &mut self.collision_scratch,
             world,
@@ -111,6 +118,44 @@ impl ShooterScene {
                 );
             }
             push_audio_event(audio_events, hit_sound_id, hit_volume, hit_pitch);
+        }
+    }
+
+    fn handle_bullet_tile_collisions(&mut self, world: &World, tilemap: &Tilemap, delta: f32) {
+        for &bullet_index in world.alive_indices() {
+            if !Self::is_alive_layer(world, bullet_index, CollisionLayer::Bullet)
+                || self.marked_for_despawn[bullet_index]
+            {
+                continue;
+            }
+            let Some(collider) = world.colliders[bullet_index] else {
+                continue;
+            };
+            let Some(transform) = world.transforms[bullet_index] else {
+                continue;
+            };
+            let velocity = world.velocities[bullet_index].unwrap_or_default();
+            let start = if delta.is_finite() && delta > 0.0 {
+                crate::components::Transform2D {
+                    x: transform.x - velocity.vx * delta,
+                    y: transform.y - velocity.vy * delta,
+                }
+            } else {
+                transform
+            };
+            if tilemap.projectile_aabb_hits_blocking_tile(
+                start,
+                velocity,
+                collider,
+                delta,
+                world.height_spans[bullet_index],
+            ) {
+                self.marked_for_despawn[bullet_index] = true;
+                self.pending_despawn.push(Entity {
+                    id: bullet_index as u32,
+                    generation: world.generations[bullet_index],
+                });
+            }
         }
     }
 

@@ -84,7 +84,7 @@ fn engine_can_switch_to_platformer_scene() {
     assert_eq!(engine.game_state(), 0);
     assert_eq!(engine.score(), 0);
     assert_eq!(engine.entity_count(), 8);
-    assert_eq!(engine.sprite_count(), 8);
+    assert_eq!(engine.sprite_count(), 7);
     assert_eq!(count_layer(&engine, CollisionLayer::Wall), 6);
     assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 1);
 

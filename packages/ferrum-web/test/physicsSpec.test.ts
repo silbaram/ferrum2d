@@ -3,6 +3,58 @@ import { test } from "node:test";
 import { diagnosticReport } from "../src/diagnostics.js";
 import { resolvePhysicsSpec } from "../src/physicsSpec.js";
 
+test("resolvePhysicsSpec defaults HD-2D authoring to disabled without changing body height", () => {
+  const spec = resolvePhysicsSpec({
+    bodies: {
+      actor: {
+        collider: { shape: "box", size: [16, 16] },
+      },
+    },
+  });
+
+  equal(spec.hd2d.enabled, false);
+  equal(spec.hd2d.defaultHeight, 0);
+  equal(spec.hd2d.maxStepHeight, 0);
+  equal(spec.hd2d.maxDropHeight, 0);
+  equal(spec.bodies.actor.floor, "default");
+  equal(spec.bodies.actor.elevation, 0);
+  equal(spec.bodies.actor.height, 0);
+});
+
+test("resolvePhysicsSpec resolves HD-2D defaults and body floor spans", () => {
+  const spec = resolvePhysicsSpec({
+    hd2d: {
+      enabled: true,
+      defaultHeight: 32,
+      maxStepHeight: 8,
+      maxDropHeight: 16,
+    },
+    bodies: {
+      actor: {
+        type: "kinematic",
+        floor: "ground",
+        elevation: 4,
+        height: 40,
+        collider: { shape: "capsule", start: [0, -8], end: [0, 8], radius: 8 },
+      },
+      crate: {
+        collider: { shape: "box", size: [12, 12] },
+      },
+    },
+  });
+
+  equal(spec.hd2d.enabled, true);
+  equal(spec.hd2d.defaultHeight, 32);
+  equal(spec.hd2d.maxStepHeight, 8);
+  equal(spec.hd2d.maxDropHeight, 16);
+  equal(spec.bodies.actor.floor, "ground");
+  equal(spec.bodies.actor.elevation, 4);
+  equal(spec.bodies.actor.height, 40);
+  equal(spec.bodies.crate.floor, "default");
+  equal(spec.bodies.crate.elevation, 0);
+  equal(spec.bodies.crate.height, 32);
+});
+
 test("resolvePhysicsSpec computes layer masks from declared layer order", () => {
   const spec = resolvePhysicsSpec({
     layers: {
@@ -123,6 +175,45 @@ test("resolvePhysicsSpec reports non-array colliders as physics diagnostics", ()
       },
     }),
     /path='physics\.bodies\.actor\.colliders'/,
+  );
+});
+
+test("resolvePhysicsSpec rejects invalid HD-2D values", () => {
+  const hd2dCases: Array<[unknown, RegExp]> = [
+    [{ enabled: "true" }, /path='physics\.hd2d\.enabled'/],
+    [{ defaultHeight: -1 }, /path='physics\.hd2d\.defaultHeight'/],
+    [{ maxStepHeight: -1 }, /path='physics\.hd2d\.maxStepHeight'/],
+    [{ maxDropHeight: Number.NaN }, /path='physics\.hd2d\.maxDropHeight'/],
+  ];
+  for (const [hd2d, pattern] of hd2dCases) {
+    expectPhysicsSpecDiagnostic(
+      () => resolvePhysicsSpec({ hd2d }),
+      pattern,
+    );
+  }
+
+  expectPhysicsSpecDiagnostic(
+    () => resolvePhysicsSpec({
+      bodies: {
+        actor: {
+          elevation: Number.POSITIVE_INFINITY,
+          collider: { shape: "box", size: [16, 16] },
+        },
+      },
+    }),
+    /path='physics\.bodies\.actor\.elevation'/,
+  );
+
+  expectPhysicsSpecDiagnostic(
+    () => resolvePhysicsSpec({
+      bodies: {
+        actor: {
+          height: -0.5,
+          collider: { shape: "box", size: [16, 16] },
+        },
+      },
+    }),
+    /path='physics\.bodies\.actor\.height'/,
   );
 });
 

@@ -10,10 +10,12 @@ import {
   rejectUnknownKeys,
   requireName,
   requiredObject,
+  stringValue,
   vector2,
 } from "../physicsSpecValidation.js";
 import type {
   ResolvedPhysicsBodySpec,
+  ResolvedPhysicsHd2dSpec,
   ResolvedPhysicsLayerSpec,
   ResolvedPhysicsMaterialSpec,
 } from "../physicsSpecTypes.js";
@@ -26,6 +28,7 @@ export function physicsBodies(
   path: string,
   materials: Record<string, ResolvedPhysicsMaterialSpec>,
   layers: Record<string, ResolvedPhysicsLayerSpec>,
+  hd2d: ResolvedPhysicsHd2dSpec,
 ): Record<string, ResolvedPhysicsBodySpec> {
   const bodies = optionalObject(value, path);
   const resolved: Record<string, ResolvedPhysicsBodySpec> = {};
@@ -57,6 +60,13 @@ export function physicsBodies(
         `${bodyPath}.angularVelocityRadiansPerSecond`,
         0,
       ),
+      floor: physicsFloorId(object.floor, `${bodyPath}.floor`),
+      elevation: finiteNumber(object.elevation, `${bodyPath}.elevation`, 0),
+      height: nonNegativeNumber(
+        object.height,
+        `${bodyPath}.height`,
+        hd2d.enabled ? hd2d.defaultHeight : 0,
+      ),
       colliders,
       gravityScale: finiteNumber(object.gravityScale, `${bodyPath}.gravityScale`, 1),
       linearDamping: nonNegativeNumber(object.linearDamping, `${bodyPath}.linearDamping`, 0),
@@ -79,4 +89,10 @@ export function physicsBodies(
     setRecordEntry(resolved, id, resolvedBody);
   }
   return resolved;
+}
+
+function physicsFloorId(value: unknown, path: string): string {
+  const floor = stringValue(value, path, "default");
+  requireName(floor, path);
+  return floor;
 }

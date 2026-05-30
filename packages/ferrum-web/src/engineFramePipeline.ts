@@ -9,9 +9,12 @@ import type {
 } from "./engineTypes.js";
 import type { InputSnapshot } from "./inputManager";
 import type { ResolvedPhysicsSpec } from "./physicsSpec.js";
+import { U32S_PER_COLLISION_EVENT } from "./collisionEventDecoder.js";
 import { drainAudioEvents } from "./engineFrameAudio.js";
 import { buildFrameState } from "./engineFrameState.js";
+import { FLOATS_PER_PHYSICS_DEBUG_LINE } from "./physicsDebugLineDecoder.js";
 import type {
+  CollisionEventBufferView,
   PhysicsDebugLineBufferView,
   RenderCommandBufferView,
   WasmBridge,
@@ -28,6 +31,9 @@ export interface FramePipelineContext {
   inputProvider?: InputProvider;
   assetHost?: AssetHost;
   viewportProvider?: ViewportProvider;
+  lastViewportWidth?: number;
+  lastViewportHeight?: number;
+  viewportDirty?: boolean;
   options: CreateEngineOptions;
 }
 
@@ -41,12 +47,34 @@ export interface RenderFrameState {
 
 export type RenderFrameHandler = (state: RenderFrameState) => void;
 
+const EMPTY_COLLISION_EVENT_BUFFER: CollisionEventBufferView = {
+  buffer: new Uint32Array(0),
+  eventCount: 0,
+  u32sPerEvent: U32S_PER_COLLISION_EVENT,
+};
+const EMPTY_PHYSICS_DEBUG_LINE_BUFFER: PhysicsDebugLineBufferView = {
+  buffer: new Float32Array(0),
+  lineCount: 0,
+  floatsPerLine: FLOATS_PER_PHYSICS_DEBUG_LINE,
+};
+
 export function runFrame(context: FramePipelineContext, deltaSeconds: number): void {
-  const input = pushInput(context.rustEngine, context.inputProvider);
-  pushViewport(context.rustEngine, context.viewportProvider);
-  const rustUpdateTimeMs = updateRust(context.rustEngine, deltaSeconds);
   const needsFrameState = context.needsFrameState ?? context.onFrame !== undefined;
   const needsRenderFrame = context.onRenderFrame !== undefined;
+  const shouldReadPhysicsDebugLineBuffer =
+    context.needsPhysicsDebugLineBuffer === true
+    || (needsFrameState && context.options.includePhysicsDebugLines === true);
+  const needsRenderCommandBuffer = needsFrameState || needsRenderFrame;
+  const input = pushInput(context.rustEngine, context.inputProvider);
+  pushViewport(context);
+  const rustUpdateTimeMs = updateRust(
+    context.rustEngine,
+    deltaSeconds,
+    needsFrameState,
+    needsRenderCommandBuffer,
+    needsFrameState,
+    shouldReadPhysicsDebugLineBuffer,
+  );
   const shouldIncludeAudioEvents = needsFrameState && (context.options.includeAudioEvents ?? true);
   const audioEvents = drainAudioEvents(
     context.bridge,
@@ -62,22 +90,27 @@ export function runFrame(context: FramePipelineContext, deltaSeconds: number): v
   let physicsDebugLineBuffer: PhysicsDebugLineBufferView | undefined;
 
   if (needsFrameState) {
-    const collisionEventBuffer = context.bridge.readCollisionEventBuffer();
-    physicsDebugLineBuffer = context.bridge.readPhysicsDebugLineBuffer();
+    const frameTelemetryBuffer = context.bridge.readFrameTelemetryBuffer();
+    const collisionEventBuffer = context.options.includeCollisionEvents === true
+      ? context.bridge.readCollisionEventBuffer()
+      : EMPTY_COLLISION_EVENT_BUFFER;
+    physicsDebugLineBuffer = shouldReadPhysicsDebugLineBuffer
+      ? context.bridge.readPhysicsDebugLineBuffer()
+      : EMPTY_PHYSICS_DEBUG_LINE_BUFFER;
     frameState = buildFrameState({
       bridge: context.bridge,
-      rustEngine: context.rustEngine,
       deltaSeconds,
       rustUpdateTimeMs,
       input,
       audioEvents,
+      frameTelemetryBuffer,
       renderCommandBuffer,
       collisionEventBuffer,
       physicsDebugLineBuffer,
       physicsSpec: context.physicsSpec,
       options: context.options,
     });
-  } else if (context.needsPhysicsDebugLineBuffer) {
+  } else if (shouldReadPhysicsDebugLineBuffer) {
     physicsDebugLineBuffer = context.bridge.readPhysicsDebugLineBuffer();
   }
 
@@ -115,15 +148,36 @@ function pushInput(rustEngine: Engine, inputProvider?: InputProvider): InputSnap
   return input;
 }
 
-function pushViewport(rustEngine: Engine, viewportProvider?: ViewportProvider): void {
-  const viewport = viewportProvider?.();
-  if (viewport) {
-    rustEngine.set_viewport_size(viewport.width, viewport.height);
+function pushViewport(context: FramePipelineContext): void {
+  const viewport = context.viewportProvider?.();
+  if (!viewport) {
+    return;
+  }
+  if (
+    context.viewportDirty === true
+    || viewport.width !== context.lastViewportWidth
+    || viewport.height !== context.lastViewportHeight
+  ) {
+    context.rustEngine.set_viewport_size(viewport.width, viewport.height);
+    context.lastViewportWidth = viewport.width;
+    context.lastViewportHeight = viewport.height;
+    context.viewportDirty = false;
   }
 }
 
-function updateRust(rustEngine: Engine, deltaSeconds: number): number {
+function updateRust(
+  rustEngine: Engine,
+  deltaSeconds: number,
+  measure: boolean,
+  renderCommands: boolean,
+  frameTelemetry: boolean,
+  physicsDebugLines: boolean,
+): number {
+  if (!measure) {
+    rustEngine.update_frame(deltaSeconds, renderCommands, frameTelemetry, physicsDebugLines);
+    return 0;
+  }
   const updateStartMs = performance.now();
-  rustEngine.update(deltaSeconds);
+  rustEngine.update_frame(deltaSeconds, renderCommands, frameTelemetry, physicsDebugLines);
   return performance.now() - updateStartMs;
 }

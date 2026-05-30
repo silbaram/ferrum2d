@@ -20,17 +20,26 @@ export type PhysicsSpecJointType =
   | "gear";
 
 export type PhysicsSpecVector2 = readonly [number, number];
+export type PhysicsFloorId = string;
 
 export interface PhysicsSpec {
   mode?: PhysicsMode;
   gravity?: PhysicsSpecVector2;
   continuous?: boolean;
+  hd2d?: PhysicsHd2dSpec;
   solver?: PhysicsSolverSpec;
   materials?: Record<string, PhysicsMaterialSpec>;
   layers?: Record<string, PhysicsLayerSpec>;
   bodies?: Record<string, PhysicsBodySpec>;
   joints?: Record<string, PhysicsJointSpec>;
   debug?: boolean | PhysicsDebugSpec;
+}
+
+export interface PhysicsHd2dSpec {
+  enabled?: boolean;
+  defaultHeight?: number;
+  maxStepHeight?: number;
+  maxDropHeight?: number;
 }
 
 export interface PhysicsSolverSpec {
@@ -57,6 +66,9 @@ export interface PhysicsBodySpec {
   rotationRadians?: number;
   velocity?: PhysicsSpecVector2;
   angularVelocityRadiansPerSecond?: number;
+  floor?: PhysicsFloorId;
+  elevation?: number;
+  height?: number;
   mass?: number;
   inertia?: number;
   material?: string;
@@ -183,12 +195,20 @@ export interface ResolvedPhysicsSpec {
   gravityX: number;
   gravityY: number;
   continuous: boolean;
+  hd2d: ResolvedPhysicsHd2dSpec;
   solver: ResolvedPhysicsSolverSpec;
   materials: Record<string, ResolvedPhysicsMaterialSpec>;
   layers: Record<string, ResolvedPhysicsLayerSpec>;
   bodies: Record<string, ResolvedPhysicsBodySpec>;
   joints: Record<string, ResolvedPhysicsJointSpec>;
   debug: ResolvedPhysicsDebugSpec;
+}
+
+export interface ResolvedPhysicsHd2dSpec {
+  enabled: boolean;
+  defaultHeight: number;
+  maxStepHeight: number;
+  maxDropHeight: number;
 }
 
 export interface ResolvedPhysicsSolverSpec {
@@ -221,6 +241,9 @@ export interface ResolvedPhysicsBodySpec {
   velocityX: number;
   velocityY: number;
   angularVelocityRadiansPerSecond: number;
+  floor: PhysicsFloorId;
+  elevation: number;
+  height: number;
   mass?: number;
   inertia?: number;
   material?: string;

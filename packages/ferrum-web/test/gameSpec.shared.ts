@@ -3,6 +3,7 @@ export class FakeEngine {
   animationConfig?: number[];
   cameraConfig?: number[];
   audioConfig?: number[];
+  projectileArcConfig?: [boolean, number, number, number, number];
   wavesCleared = false;
   waves: number[][] = [];
   atlasFrames: number[][] = [];
@@ -101,6 +102,20 @@ export class FakeEngine {
   tiles: number[][] = [];
   tileSlopes: number[][] = [];
   tileOneWayPlatforms: number[] = [];
+  tileHeightSpans: number[][] = [];
+  tileBridgePortals: number[][] = [];
+  tileHd2dMetadata: Array<[
+    number,
+    number,
+    boolean,
+    boolean,
+    boolean,
+    number,
+    boolean,
+    number,
+    number,
+    number,
+  ]> = [];
   tileLayers: Array<[number, number, number, number, number, number, number, boolean, number[]]> = [];
 
   set_shooter_resolved_config(
@@ -161,6 +176,16 @@ export class FakeEngine {
       orbitRadius,
       orbitRadialBand,
     ];
+  }
+
+  set_shooter_projectile_arc(
+    enabled: boolean,
+    launchHeight: number,
+    zVelocity: number,
+    gravity: number,
+    hitHeight: number,
+  ): void {
+    this.projectileArcConfig = [enabled, launchHeight, zVelocity, gravity, hitHeight];
   }
 
   set_shooter_animations(
@@ -486,6 +511,9 @@ export class FakeEngine {
     this.tiles = [];
     this.tileSlopes = [];
     this.tileOneWayPlatforms = [];
+    this.tileHeightSpans = [];
+    this.tileBridgePortals = [];
+    this.tileHd2dMetadata = [];
     this.tileLayers = [];
   }
 
@@ -516,6 +544,62 @@ export class FakeEngine {
 
   set_shooter_tile_one_way_platform(tileId: number): void {
     this.tileOneWayPlatforms.push(tileId);
+  }
+
+  set_shooter_tile_height_span(
+    tileId: number,
+    floorId: number,
+    elevation: number,
+    height: number,
+  ): boolean {
+    this.tileHeightSpans.push([tileId, floorId, elevation, height]);
+    return true;
+  }
+
+  set_shooter_tile_hd2d_metadata(
+    tileId: number,
+    kind: number,
+    blocksMovement: boolean,
+    blocksProjectile: boolean,
+    blocksVision: boolean,
+    occluderHeight: number,
+    hasRamp: boolean,
+    rampAxis: number,
+    rampStartElevation: number,
+    rampEndElevation: number,
+  ): boolean {
+    this.tileHd2dMetadata.push([
+      tileId,
+      kind,
+      blocksMovement,
+      blocksProjectile,
+      blocksVision,
+      occluderHeight,
+      hasRamp,
+      rampAxis,
+      rampStartElevation,
+      rampEndElevation,
+    ]);
+    return true;
+  }
+
+  set_shooter_tile_bridge_portal(
+    tileId: number,
+    lowerFloorId: number,
+    upperFloorId: number,
+    lowerElevation: number,
+    upperElevation: number,
+    navigationCost: number,
+  ): boolean {
+    this.tileBridgePortals.push([
+      tileId,
+      lowerFloorId,
+      upperFloorId,
+      lowerElevation,
+      upperElevation,
+      navigationCost,
+    ]);
+    return true;
   }
 
   set_shooter_tilemap_layer(

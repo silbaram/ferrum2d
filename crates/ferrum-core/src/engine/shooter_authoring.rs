@@ -2,7 +2,8 @@ use wasm_bindgen::prelude::*;
 
 use crate::camera::CameraPresetConfig;
 use crate::shooter_scene::{
-    EnemyBehavior, EnemySpawnPattern, ShooterAudioPolicy, ShooterConfig, ShooterWaveConfig,
+    EnemyBehavior, EnemySpawnPattern, ShooterAudioPolicy, ShooterConfig,
+    ShooterProjectileArcConfig, ShooterWaveConfig,
 };
 
 use super::scenes::ActiveScene;
@@ -154,6 +155,34 @@ impl Engine {
             enemy_health,
             bullet_damage,
             score_reward,
+        );
+        self.clear_physics_history();
+    }
+
+    pub fn set_shooter_projectile_arc(
+        &mut self,
+        enabled: bool,
+        launch_height: f32,
+        z_velocity: f32,
+        gravity: f32,
+        hit_height: f32,
+    ) {
+        self.active_scene = ActiveScene::Shooter;
+        let config =
+            self.scene
+                .config()
+                .with_projectile_arc(ShooterProjectileArcConfig::from_values(
+                    enabled,
+                    launch_height,
+                    z_velocity,
+                    gravity,
+                    hit_height,
+                ));
+        self.scene.set_config(
+            &mut self.world,
+            &mut self.camera,
+            &mut self.audio_events,
+            config,
         );
         self.clear_physics_history();
     }

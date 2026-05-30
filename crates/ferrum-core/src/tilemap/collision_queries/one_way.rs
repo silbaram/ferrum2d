@@ -1,9 +1,12 @@
-use super::super::queries::{one_way_tile_contact_blocks, tilemap_shape_cast_hit_from_contact};
+use super::super::queries::{
+    one_way_tile_contact_blocks, tile_id_height_span_allows, tile_id_height_span_allows_movement,
+    tilemap_shape_cast_hit_from_contact,
+};
 use super::super::{
     TileRange, Tilemap, TilemapLayer, TilemapShapeCastHit, TilemapSweepHit, TILE_SWEEP_EPSILON,
 };
 use crate::collision::{AabbBounds, CollisionSystem};
-use crate::components::{AabbCollider, Transform2D, Velocity};
+use crate::components::{AabbCollider, HeightSpan, Transform2D, Velocity};
 
 impl Tilemap {
     fn is_one_way_platform_tile(&self, tile_id: u32) -> bool {
@@ -25,6 +28,7 @@ impl Tilemap {
         start: Transform2D,
         collider: AabbCollider,
         displacement: Velocity,
+        query_height_span: Option<HeightSpan>,
         mut stats: Option<&mut super::super::TilemapSweepStats>,
         best: &mut Option<TilemapSweepHit>,
     ) {
@@ -33,6 +37,16 @@ impl Tilemap {
                 let tile_index = layer.tile_index(column, row);
                 let tile_id = layer.tiles.get(tile_index).copied().unwrap_or(0);
                 if !self.is_one_way_platform_tile(tile_id) {
+                    continue;
+                }
+                if !tile_id_height_span_allows_movement(
+                    tile_id,
+                    &self.height_span_definitions,
+                    query_height_span,
+                ) {
+                    if let Some(stats) = stats.as_deref_mut() {
+                        stats.hd2d_filtered_tiles = stats.hd2d_filtered_tiles.saturating_add(1);
+                    }
                     continue;
                 }
 
@@ -96,6 +110,7 @@ impl Tilemap {
         unit_x: f32,
         unit_y: f32,
         max_distance: f32,
+        query_height_span: Option<HeightSpan>,
         hits: &mut Vec<TilemapShapeCastHit>,
     ) {
         for row in range.min_row..=range.max_row {
@@ -103,6 +118,13 @@ impl Tilemap {
                 let tile_index = layer.tile_index(column, row);
                 let tile_id = layer.tiles.get(tile_index).copied().unwrap_or(0);
                 if !self.is_one_way_platform_tile(tile_id) {
+                    continue;
+                }
+                if !tile_id_height_span_allows(
+                    tile_id,
+                    &self.height_span_definitions,
+                    query_height_span,
+                ) {
                     continue;
                 }
 

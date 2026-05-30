@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::HeightSpan;
 
 impl CollisionSystem {
     pub fn point_query(
@@ -56,9 +57,27 @@ impl CollisionSystem {
             return None;
         }
 
+        Self::nearest_body_query_with_height_span(world, point, max_distance, query_mask, None)
+    }
+
+    pub fn nearest_body_query_with_height_span(
+        world: &World,
+        point: Transform2D,
+        max_distance: f32,
+        query_mask: CollisionMask,
+        query_height_span: Option<HeightSpan>,
+    ) -> Option<NearestBodyQueryHit> {
+        if !point.x.is_finite()
+            || !point.y.is_finite()
+            || !max_distance.is_finite()
+            || max_distance < 0.0
+        {
+            return None;
+        }
+
         let mut best = None;
-        for index in 0..world.transforms.len() {
-            if !world.alive.get(index).copied().unwrap_or(false) {
+        for &index in world.alive_indices() {
+            if !query_height_span_allows(world, index, query_height_span) {
                 continue;
             }
             let Some(transform) = world.transforms[index] else {
@@ -97,8 +116,19 @@ impl CollisionSystem {
         hits: &mut Vec<PointQueryHit>,
     ) {
         hits.clear();
-        for index in 0..world.transforms.len() {
-            if !world.alive.get(index).copied().unwrap_or(false) {
+        Self::point_query_with_height_span_into(world, point, query_mask, None, hits);
+    }
+
+    pub(crate) fn point_query_with_height_span_into(
+        world: &World,
+        point: Transform2D,
+        query_mask: CollisionMask,
+        query_height_span: Option<HeightSpan>,
+        hits: &mut Vec<PointQueryHit>,
+    ) {
+        hits.clear();
+        for &index in world.alive_indices() {
+            if !query_height_span_allows(world, index, query_height_span) {
                 continue;
             }
             let Some(transform) = world.transforms[index] else {
@@ -133,8 +163,19 @@ impl CollisionSystem {
         hits: &mut Vec<AabbQueryHit>,
     ) {
         hits.clear();
-        for index in 0..world.transforms.len() {
-            if !world.alive.get(index).copied().unwrap_or(false) {
+        Self::aabb_query_with_height_span_into(world, bounds, query_mask, None, hits);
+    }
+
+    pub(crate) fn aabb_query_with_height_span_into(
+        world: &World,
+        bounds: AabbBounds,
+        query_mask: CollisionMask,
+        query_height_span: Option<HeightSpan>,
+        hits: &mut Vec<AabbQueryHit>,
+    ) {
+        hits.clear();
+        for &index in world.alive_indices() {
+            if !query_height_span_allows(world, index, query_height_span) {
                 continue;
             }
             let Some(transform) = world.transforms[index] else {
@@ -173,8 +214,23 @@ impl CollisionSystem {
         if !is_valid_radius(radius) {
             return;
         }
-        for index in 0..world.transforms.len() {
-            if !world.alive.get(index).copied().unwrap_or(false) {
+        Self::circle_query_with_height_span_into(world, center, radius, query_mask, None, hits);
+    }
+
+    pub(crate) fn circle_query_with_height_span_into(
+        world: &World,
+        center: Transform2D,
+        radius: f32,
+        query_mask: CollisionMask,
+        query_height_span: Option<HeightSpan>,
+        hits: &mut Vec<CircleQueryHit>,
+    ) {
+        hits.clear();
+        if !is_valid_radius(radius) {
+            return;
+        }
+        for &index in world.alive_indices() {
+            if !query_height_span_allows(world, index, query_height_span) {
                 continue;
             }
             let Some(transform) = world.transforms[index] else {
@@ -212,8 +268,22 @@ impl CollisionSystem {
         if !query_shape_is_valid(shape) {
             return;
         }
-        for index in 0..world.transforms.len() {
-            if !world.alive.get(index).copied().unwrap_or(false) {
+        Self::shape_query_with_height_span_into(world, shape, query_mask, None, hits);
+    }
+
+    pub(crate) fn shape_query_with_height_span_into(
+        world: &World,
+        shape: CollisionQueryShape,
+        query_mask: CollisionMask,
+        query_height_span: Option<HeightSpan>,
+        hits: &mut Vec<ShapeQueryHit>,
+    ) {
+        hits.clear();
+        if !query_shape_is_valid(shape) {
+            return;
+        }
+        for &index in world.alive_indices() {
+            if !query_height_span_allows(world, index, query_height_span) {
                 continue;
             }
             let Some(transform) = world.transforms[index] else {
@@ -239,6 +309,19 @@ impl CollisionSystem {
                 }
             }
         }
+    }
+}
+
+pub(crate) fn query_height_span_allows(
+    world: &World,
+    index: usize,
+    query_height_span: Option<HeightSpan>,
+) -> bool {
+    match query_height_span {
+        Some(query_span) => world
+            .height_span_at(index)
+            .is_some_and(|body_span| query_span.overlaps(body_span)),
+        None => true,
     }
 }
 

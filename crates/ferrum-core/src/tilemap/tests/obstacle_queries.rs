@@ -17,6 +17,45 @@ fn nearest_collision_obstacle_returns_nearest_merged_rect() {
 }
 
 #[test]
+fn explicit_height_span_filters_tile_obstacle_linear_queries() {
+    let mut tilemap = Tilemap::default();
+    assert!(tilemap.set_tile_height_span_definition(1, 1, 0.0, 8.0));
+    assert!(tilemap.set_tile_height_span_definition(2, 2, 0.0, 8.0));
+    tilemap.set_layer(0, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 2, 0]);
+    let query_span = HeightSpan::new(PhysicsFloorId(2), 0.0, 8.0);
+
+    let nearest = tilemap
+        .nearest_collision_obstacle_with_height_span(
+            Transform2D { x: 0.0, y: 5.0 },
+            100.0,
+            query_span,
+        )
+        .expect("matching floor tile should be found");
+    assert_eq!(nearest.tile_index, 1);
+
+    let mut ray_hits = Vec::new();
+    tilemap.raycast_obstacles_with_height_span_into(
+        Transform2D { x: 0.0, y: 5.0 },
+        Velocity { vx: 1.0, vy: 0.0 },
+        40.0,
+        query_span,
+        &mut ray_hits,
+    );
+    assert_eq!(ray_hits.len(), 1);
+    assert_eq!(ray_hits[0].tile_index, 1);
+
+    let mut segment_hits = Vec::new();
+    tilemap.segment_cast_obstacles_with_height_span_into(
+        Transform2D { x: 0.0, y: 5.0 },
+        Transform2D { x: 30.0, y: 5.0 },
+        query_span,
+        &mut segment_hits,
+    );
+    assert_eq!(segment_hits.len(), 1);
+    assert_eq!(segment_hits[0].tile_index, 1);
+}
+
+#[test]
 fn nearest_collision_obstacle_returns_zero_inside_obstacle() {
     let mut tilemap = Tilemap::default();
     tilemap.set_layer(0, 1, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1]);
@@ -120,6 +159,27 @@ fn raycast_obstacles_reports_zero_when_origin_is_inside_obstacle() {
             normal_y: 0.0,
         }]
     );
+}
+
+#[test]
+fn explicit_height_span_filters_tile_shape_cast_queries() {
+    let mut tilemap = Tilemap::default();
+    assert!(tilemap.set_tile_height_span_definition(1, 1, 0.0, 8.0));
+    assert!(tilemap.set_tile_height_span_definition(2, 2, 0.0, 8.0));
+    tilemap.set_layer(0, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 2, 0]);
+
+    let mut hits = Vec::new();
+    tilemap.shape_cast_aabb_obstacles_with_height_span_into(
+        Transform2D { x: 0.0, y: 5.0 },
+        test_collider(1.0, 1.0),
+        Velocity { vx: 1.0, vy: 0.0 },
+        40.0,
+        HeightSpan::new(PhysicsFloorId(2), 0.0, 8.0),
+        &mut hits,
+    );
+
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].tile_index, 1);
 }
 
 #[test]

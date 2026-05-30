@@ -292,11 +292,21 @@ function normalizeColor(input: SpriteMaterialColor, path: string): SpriteMateria
     throw new Error(`${path} must contain 4 normalized color channels.`);
   }
   return [
-    normalizedNumber(input[0], `${path}[0]`),
-    normalizedNumber(input[1], `${path}[1]`),
-    normalizedNumber(input[2], `${path}[2]`),
-    normalizedNumber(input[3], `${path}[3]`),
+    normalizedColorChannel(input[0], path, 0),
+    normalizedColorChannel(input[1], path, 1),
+    normalizedColorChannel(input[2], path, 2),
+    normalizedColorChannel(input[3], path, 3),
   ];
+}
+
+function normalizedColorChannel(value: number, path: string, channelIndex: number): number {
+  if (!Number.isFinite(value)) {
+    throw new Error(`${path}[${channelIndex}] must be a finite number.`);
+  }
+  if (value < 0 || value > 1) {
+    throw new Error(`${path}[${channelIndex}] must be between 0 and 1.`);
+  }
+  return value;
 }
 
 function normalizedNumber(value: number, path: string): number {

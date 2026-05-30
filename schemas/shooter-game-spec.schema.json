@@ -49,7 +49,19 @@
         "bulletSpeed": { "type": "number", "exclusiveMinimum": 0 },
         "cooldown": { "type": "number", "exclusiveMinimum": 0 },
         "lifetime": { "type": "number", "exclusiveMinimum": 0 },
-        "damage": { "type": "number", "exclusiveMinimum": 0 }
+        "damage": { "type": "number", "exclusiveMinimum": 0 },
+        "projectileArc": { "$ref": "#/$defs/projectileArc" }
+      }
+    },
+    "projectileArc": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "launchHeight": { "type": "number", "minimum": 0 },
+        "zVelocity": { "type": "number" },
+        "gravity": { "type": "number", "minimum": 0 },
+        "hitHeight": { "type": "number", "minimum": 0 }
       }
     },
     "prefabs": {
@@ -367,6 +379,19 @@
           "maxItems": 4,
           "items": { "type": "number", "minimum": 0, "maximum": 1 }
         },
+        "floor": { "type": "string", "minLength": 1 },
+        "elevation": { "type": "number" },
+        "height": { "type": "number", "minimum": 0 },
+        "kind": {
+          "type": "string",
+          "enum": ["flat", "stair", "ramp", "ledge", "bridge"]
+        },
+        "ramp": { "$ref": "#/$defs/tileRamp" },
+        "bridgePortal": { "$ref": "#/$defs/tileBridgePortal" },
+        "blocksMovement": { "type": "boolean" },
+        "blocksProjectile": { "type": "boolean" },
+        "blocksVision": { "type": "boolean" },
+        "occluderHeight": { "type": "number", "minimum": 0 },
         "slope": { "$ref": "#/$defs/tileSlope" },
         "oneWayPlatform": { "type": "boolean" }
       },
@@ -375,6 +400,29 @@
         "properties": {
           "oneWayPlatform": { "const": true }
         }
+      }
+    },
+    "tileRamp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "axis": {
+          "type": "string",
+          "enum": ["x", "y"]
+        },
+        "startElevation": { "type": "number" },
+        "endElevation": { "type": "number" }
+      }
+    },
+    "tileBridgePortal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lowerFloor": { "type": "string", "minLength": 1 },
+        "upperFloor": { "type": "string", "minLength": 1 },
+        "lowerElevation": { "type": "number" },
+        "upperElevation": { "type": "number" },
+        "navigationCost": { "type": "integer", "minimum": 0 }
       }
     },
     "tileSlope": {
@@ -486,6 +534,7 @@
         "mode": { "enum": ["none", "arcade", "rigid"] },
         "gravity": { "$ref": "#/$defs/vector2" },
         "continuous": { "type": "boolean" },
+        "hd2d": { "$ref": "#/$defs/physicsHd2d" },
         "solver": { "$ref": "#/$defs/physicsSolver" },
         "materials": {
           "type": "object",
@@ -527,6 +576,16 @@
         "sleep": { "type": "boolean" }
       }
     },
+    "physicsHd2d": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "defaultHeight": { "type": "number", "minimum": 0 },
+        "maxStepHeight": { "type": "number", "minimum": 0 },
+        "maxDropHeight": { "type": "number", "minimum": 0 }
+      }
+    },
     "physicsSpecMaterial": {
       "type": "object",
       "additionalProperties": false,
@@ -555,6 +614,9 @@
         "rotationRadians": { "type": "number" },
         "velocity": { "$ref": "#/$defs/vector2" },
         "angularVelocityRadiansPerSecond": { "type": "number" },
+        "floor": { "type": "string", "minLength": 1 },
+        "elevation": { "type": "number" },
+        "height": { "type": "number", "minimum": 0 },
         "mass": { "type": "number", "exclusiveMinimum": 0 },
         "inertia": { "type": "number", "exclusiveMinimum": 0 },
         "material": { "type": "string", "minLength": 1 },

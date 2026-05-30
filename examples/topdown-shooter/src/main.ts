@@ -306,6 +306,9 @@ async function bootstrap(): Promise<void> {
 
     const renderer = new WebGL2Renderer(canvas, { clearColor: [0.05, 0.08, 0.12, 1], preserveDrawingBuffer });
     cleanups.push(() => renderer.destroy());
+    const resizeRenderer = (): void => renderer.resize();
+    window.addEventListener("resize", resizeRenderer);
+    cleanups.push(() => window.removeEventListener("resize", resizeRenderer));
     const platformHost = new BrowserPlatformHost(renderer);
     cleanups.push(() => platformHost.destroy());
     const unlockAudio = (): void => {
@@ -405,10 +408,7 @@ async function bootstrap(): Promise<void> {
       };
       runtimeProfiler?.recordFrame(debugMetrics);
       debugOverlay.update(debugMetrics);
-    }, inputSnapshot, platformHost, () => {
-      renderer.resize();
-      return renderer.viewportSize();
-    }, { enablePhysicsDebugLines: physicsDebugLines });
+    }, inputSnapshot, platformHost, () => renderer.viewportSize(), { enablePhysicsDebugLines: physicsDebugLines });
     runtimeEngine = engine;
     cleanups.push(() => engine.destroy());
 

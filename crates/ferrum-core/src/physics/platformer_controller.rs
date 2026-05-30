@@ -309,7 +309,7 @@ impl PhysicsSystem {
     }
 }
 
-fn move_and_slide_internal(
+pub(super) fn move_and_slide_internal(
     world: &mut World,
     tilemap: Option<&Tilemap>,
     entity: Entity,
@@ -397,6 +397,7 @@ fn move_and_slide_internal(
                 solid_mask: settings.solid_mask,
                 one_way_platforms: settings.one_way_platforms,
                 ignored_entity: settings.ignored_entity,
+                height_span: settings.height_span,
             },
             counters.as_deref_mut(),
         ) else {

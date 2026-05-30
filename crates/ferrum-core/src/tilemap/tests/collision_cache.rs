@@ -36,7 +36,7 @@ fn collision_rects_merge_adjacent_solid_tile_runs() {
     )
     .unwrap();
 
-    let rects = build_collision_rects_for_layer(&layer, &[], &[]);
+    let rects = build_collision_rects_for_layer(&layer, &[], &[], &[], &[]);
 
     assert_eq!(
         rects,
@@ -47,6 +47,7 @@ fn collision_rects_merge_adjacent_solid_tile_runs() {
                 min_row: 0,
                 columns: 2,
                 rows: 2,
+                height_span: None,
             },
             TileCollisionRect {
                 tile_index: 7,
@@ -54,6 +55,76 @@ fn collision_rects_merge_adjacent_solid_tile_runs() {
                 min_row: 2,
                 columns: 2,
                 rows: 1,
+                height_span: None,
+            },
+        ]
+    );
+}
+
+#[test]
+fn collision_rects_do_not_merge_tiles_with_different_height_spans() {
+    let layer = TilemapLayer::from_values(3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 2, 3]).unwrap();
+    let height_spans = vec![
+        None,
+        HeightSpan::new(PhysicsFloorId(0), 0.0, 8.0),
+        HeightSpan::new(PhysicsFloorId(1), 0.0, 8.0),
+        HeightSpan::new(PhysicsFloorId(1), 0.0, 8.0),
+    ];
+
+    let rects = build_collision_rects_for_layer(&layer, &[], &[], &height_spans, &[]);
+
+    assert_eq!(
+        rects,
+        vec![
+            TileCollisionRect {
+                tile_index: 0,
+                min_column: 0,
+                min_row: 0,
+                columns: 1,
+                rows: 1,
+                height_span: HeightSpan::new(PhysicsFloorId(0), 0.0, 8.0),
+            },
+            TileCollisionRect {
+                tile_index: 1,
+                min_column: 1,
+                min_row: 0,
+                columns: 2,
+                rows: 1,
+                height_span: HeightSpan::new(PhysicsFloorId(1), 0.0, 8.0),
+            },
+        ]
+    );
+}
+
+#[test]
+fn collision_rects_skip_hd2d_tiles_that_do_not_block_movement() {
+    let layer = TilemapLayer::from_values(3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 2, 1]).unwrap();
+    let hd2d_definitions = vec![
+        None,
+        None,
+        Hd2dTileDefinition::new(Hd2dTileKind::Bridge, false, false, false, 0.0, None),
+    ];
+
+    let rects = build_collision_rects_for_layer(&layer, &[], &[], &[], &hd2d_definitions);
+
+    assert_eq!(
+        rects,
+        vec![
+            TileCollisionRect {
+                tile_index: 0,
+                min_column: 0,
+                min_row: 0,
+                columns: 1,
+                rows: 1,
+                height_span: None,
+            },
+            TileCollisionRect {
+                tile_index: 2,
+                min_column: 2,
+                min_row: 0,
+                columns: 1,
+                rows: 1,
+                height_span: None,
             },
         ]
     );
@@ -207,7 +278,7 @@ fn slope_tiles_sample_surface_and_skip_solid_collision_merge() {
 fn one_way_tiles_block_only_downward_sweeps_and_skip_solid_collision_merge() {
     let layer = TilemapLayer::from_values(1, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1]).unwrap();
     let one_way_definitions = vec![false, true];
-    let rects = build_collision_rects_for_layer(&layer, &[], &one_way_definitions);
+    let rects = build_collision_rects_for_layer(&layer, &[], &one_way_definitions, &[], &[]);
 
     assert!(rects.is_empty());
 

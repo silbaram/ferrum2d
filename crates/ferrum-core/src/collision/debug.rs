@@ -115,10 +115,7 @@ impl CollisionSystem {
         show_sleeping_state: bool,
         lines: &mut Vec<PhysicsDebugLine>,
     ) {
-        for index in 0..world.transforms.len() {
-            if !world.alive.get(index).copied().unwrap_or(false) {
-                continue;
-            }
+        for &index in world.alive_indices() {
             let Some(transform) = world.transforms[index] else {
                 continue;
             };

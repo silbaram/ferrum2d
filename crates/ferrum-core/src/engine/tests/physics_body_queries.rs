@@ -113,3 +113,54 @@ fn engine_query_rigid_contact_impulses_writes_bulk_results_for_wasm() {
             && hit.b_entity_generation == ground.generation
             && hit.normal_impulse > 0.0));
 }
+
+#[test]
+fn engine_moves_hd2d_kinematic_body_with_shooter_tilemap() {
+    let mut engine = Engine::new();
+    engine.world = World::default();
+    engine.clear_physics_history();
+    engine.tilemap.clear();
+    engine
+        .tilemap
+        .set_layer(0, 1, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1]);
+    assert!(engine
+        .tilemap
+        .set_tile_height_span_definition(1, 0, 0.0, 0.0));
+    assert!(engine.tilemap.set_tile_hd2d_definition(
+        1,
+        crate::tilemap::Hd2dTileKind::Ramp.code(),
+        false,
+        false,
+        false,
+        0.0,
+        true,
+        crate::tilemap::Hd2dRampAxis::X.code(),
+        0.0,
+        8.0,
+    ));
+    let body = spawn_test_body(&mut engine.world, 0.0, 5.0, CollisionLayer::Player);
+    engine.world.set_rigid_body(body, RigidBody::kinematic());
+    assert!(engine.world.set_height_span(
+        body,
+        HeightSpan::new(PhysicsFloorId::DEFAULT, 0.0, 16.0).unwrap()
+    ));
+
+    assert!(engine.move_hd2d_kinematic_body_with_tilemap(
+        body.id,
+        body.generation,
+        5.0,
+        0.0,
+        CollisionMask::WALL.bits,
+        4,
+        8.0,
+        4.0,
+        false,
+    ));
+
+    assert_eq!(engine.physics_entity_id(), body.id);
+    assert_eq!(engine.physics_entity_x(), 5.0);
+    assert_eq!(engine.hd2d_kinematic_hit_count(), 0);
+    assert!((engine.hd2d_kinematic_elevation_delta() - 4.0).abs() < 0.001);
+    assert_eq!(engine.hd2d_kinematic_flags() & (1 << 0), 1 << 0);
+    assert!((engine.world.height_span(body).unwrap().elevation - 4.0).abs() < 0.001);
+}

@@ -39,18 +39,51 @@ test("extractTilemapBoundaryChains converts collision tile runs to Physics Spec 
   equal(extracted.bodies["tilemapBoundary.0.0"]?.collider?.shape, "chain");
 });
 
+test("extractTilemapBoundaryChains preserves HD-2D tile height metadata on generated bodies", () => {
+  const tilemap: ResolvedShooterTilemap = {
+    tiles: [
+      tile(1, { floor: "ground", elevation: 0, height: 8 }),
+      tile(2, { floor: "bridge", elevation: 16, height: 8 }),
+    ],
+    layers: [{
+      index: 0,
+      name: "terrain",
+      columns: 2,
+      rows: 1,
+      tileWidth: 10,
+      tileHeight: 10,
+      originX: 0,
+      originY: 0,
+      collision: true,
+      collisionOnly: false,
+      data: [1, 2],
+    }],
+  };
+
+  const extracted = extractTilemapBoundaryChains(tilemap);
+
+  equal(extracted.chainCount, 2);
+  deepEqual(extracted.chains.map((chain) => [chain.floor, chain.elevation, chain.height]), [
+    ["ground", 0, 8],
+    ["bridge", 16, 8],
+  ]);
+  equal(extracted.bodies["tilemapBoundary.0.0"]?.floor, "ground");
+  equal(extracted.bodies["tilemapBoundary.0.1"]?.floor, "bridge");
+});
+
 test("extractTilemapBoundaryChains skips non-solid special tile metadata and supports collisionOnly layers", () => {
   const tilemap: ResolvedShooterTilemap = {
     tiles: [
       tile(1, { slope: { x0: 0, y0: 1, x1: 1, y1: 0 } }),
       tile(2, { oneWayPlatform: true }),
-      tile(3),
+      tile(3, { kind: "bridge", blocksMovement: false }),
+      tile(4),
     ],
     layers: [
       {
         index: 0,
         name: "metadata",
-        columns: 3,
+        columns: 4,
         rows: 1,
         tileWidth: 8,
         tileHeight: 8,
@@ -58,7 +91,7 @@ test("extractTilemapBoundaryChains skips non-solid special tile metadata and sup
         originY: 0,
         collision: true,
         collisionOnly: false,
-        data: [1, 2, 3],
+        data: [1, 2, 3, 4],
       },
       {
         index: 1,
@@ -78,7 +111,7 @@ test("extractTilemapBoundaryChains skips non-solid special tile metadata and sup
 
   const visual = extractTilemapBoundaryChains(tilemap, { layerIndex: 0 });
   equal(visual.chainCount, 1);
-  deepEqual(visual.chains[0].collider.vertices[0], [16, 0]);
+  deepEqual(visual.chains[0].collider.vertices[0], [24, 0]);
 
   const collisionOnly = extractTilemapBoundaryChains(tilemap, { layerIndex: 1 });
   equal(collisionOnly.chainCount, 1);
@@ -141,7 +174,10 @@ test("extractTilemapBoundaryChains splits long chains to runtime vertex limits",
 
 function tile(
   id: number,
-  options: Partial<Pick<ResolvedShooterTilemap["tiles"][number], "slope" | "oneWayPlatform">> = {},
+  options: Partial<Pick<
+    ResolvedShooterTilemap["tiles"][number],
+    "floor" | "elevation" | "height" | "kind" | "blocksMovement" | "slope" | "oneWayPlatform"
+  >> = {},
 ): ResolvedShooterTilemap["tiles"][number] {
   return {
     id,
@@ -156,6 +192,14 @@ function tile(
       v1: 1,
     },
     color: [1, 1, 1, 1],
+    floor: "default",
+    elevation: 0,
+    height: 0,
+    kind: "flat",
+    blocksMovement: true,
+    blocksProjectile: true,
+    blocksVision: true,
+    occluderHeight: 0,
     ...options,
   };
 }

@@ -23,8 +23,19 @@ const PHYSICS_COLLIDER_TYPES: readonly PhysicsColliderType[] = Object.freeze([
   "chain",
 ]);
 export function readPhysicsEntitySnapshot(rustEngine: Engine): PhysicsEntitySnapshot {
+  const handle = readPhysicsEntityHandle(rustEngine);
+  const heightSpan = rustEngine.physics_body_has_height_span(
+    handle.entityId,
+    handle.entityGeneration,
+  )
+    ? {
+        floorId: rustEngine.physics_body_floor_id(handle.entityId, handle.entityGeneration),
+        elevation: rustEngine.physics_body_elevation(handle.entityId, handle.entityGeneration),
+        height: rustEngine.physics_body_height(handle.entityId, handle.entityGeneration),
+      }
+    : undefined;
   return {
-    ...readPhysicsEntityHandle(rustEngine),
+    ...handle,
     x: rustEngine.physics_entity_x(),
     y: rustEngine.physics_entity_y(),
     velocityX: rustEngine.physics_entity_velocity_x(),
@@ -75,6 +86,7 @@ export function readPhysicsEntitySnapshot(rustEngine: Engine): PhysicsEntitySnap
       rustEngine.physics_entity_contact_position_correction_scale(),
     contactPositionCorrectionSlopScale:
       rustEngine.physics_entity_contact_position_correction_slop_scale(),
+    ...(heightSpan ? { heightSpan } : {}),
   };
 }
 

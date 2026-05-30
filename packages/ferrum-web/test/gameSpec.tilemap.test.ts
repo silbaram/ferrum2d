@@ -57,6 +57,14 @@ test("resolveShooterGameSpec resolves static tilemap layers", () => {
           v1: 0.5,
         },
         color: [1, 1, 1, 1],
+        floor: "default",
+        elevation: 0,
+        height: 0,
+        kind: "flat",
+        blocksMovement: true,
+        blocksProjectile: true,
+        blocksVision: true,
+        occluderHeight: 0,
         oneWayPlatform: true,
       },
       {
@@ -72,6 +80,14 @@ test("resolveShooterGameSpec resolves static tilemap layers", () => {
           v1: 0.5,
         },
         color: [0.8, 0.7, 0.6, 0.5],
+        floor: "default",
+        elevation: 0,
+        height: 0,
+        kind: "flat",
+        blocksMovement: true,
+        blocksProjectile: true,
+        blocksVision: true,
+        occluderHeight: 0,
         slope: { x0: 0, y0: 1, x1: 1, y1: 0 },
       },
     ],
@@ -91,6 +107,181 @@ test("resolveShooterGameSpec resolves static tilemap layers", () => {
       },
     ],
   });
+});
+
+test("resolveShooterGameSpec resolves HD-2D tile metadata", () => {
+  const spec = resolveShooterGameSpec({
+    atlas: {
+      frames: {
+        "terrain.bridge": {
+          texture: 0,
+          uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+          size: { width: 16, height: 16 },
+        },
+        "terrain.ramp": {
+          texture: 0,
+          uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+          size: { width: 16, height: 16 },
+        },
+      },
+    },
+    tilemap: {
+      tiles: {
+        "1": {
+          frame: "terrain.bridge",
+          kind: "bridge",
+          floor: "ground",
+          height: 8,
+          blocksMovement: false,
+          blocksProjectile: false,
+          blocksVision: false,
+          occluderHeight: 6,
+          bridgePortal: {
+            lowerFloor: "ground",
+            upperFloor: "bridge",
+            upperElevation: 12,
+            navigationCost: 2,
+          },
+        },
+        "2": {
+          frame: "terrain.ramp",
+          elevation: 4,
+          kind: "ramp",
+          ramp: { axis: "y", startElevation: 4, endElevation: 12 },
+        },
+      },
+    },
+  });
+
+  deepEqual(spec.tilemap?.tiles.map((tile) => ({
+    id: tile.id,
+    kind: tile.kind,
+    blocksMovement: tile.blocksMovement,
+    blocksProjectile: tile.blocksProjectile,
+    blocksVision: tile.blocksVision,
+    occluderHeight: tile.occluderHeight,
+    ramp: tile.ramp,
+    bridgePortal: tile.bridgePortal,
+  })), [
+    {
+      id: 1,
+      kind: "bridge",
+      blocksMovement: false,
+      blocksProjectile: false,
+      blocksVision: false,
+      occluderHeight: 6,
+      ramp: undefined,
+      bridgePortal: {
+        lowerFloor: "ground",
+        upperFloor: "bridge",
+        lowerElevation: 0,
+        upperElevation: 12,
+        navigationCost: 2,
+      },
+    },
+    {
+      id: 2,
+      kind: "ramp",
+      blocksMovement: true,
+      blocksProjectile: true,
+      blocksVision: true,
+      occluderHeight: 0,
+      ramp: { axis: "y", startElevation: 4, endElevation: 12 },
+      bridgePortal: undefined,
+    },
+  ]);
+});
+
+test("resolveShooterGameSpec rejects invalid HD-2D tile metadata", () => {
+  try {
+    resolveShooterGameSpec({
+      atlas: {
+        frames: {
+          "terrain.bridge": {
+            texture: 0,
+            uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+            size: { width: 16, height: 16 },
+          },
+        },
+      },
+      tilemap: {
+        tiles: {
+          "1": { frame: "terrain.bridge", kind: "bridge", ramp: { axis: "x" } },
+        },
+      },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='tilemap.tiles.1.ramp' detail='requires kind to be ramp'.",
+    );
+    return;
+  }
+  throw new Error("Expected invalid HD-2D tile metadata to throw.");
+});
+
+test("resolveShooterGameSpec rejects bridge portal on non-bridge tiles", () => {
+  try {
+    resolveShooterGameSpec({
+      atlas: {
+        frames: {
+          "terrain.floor": {
+            texture: 0,
+            uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+            size: { width: 16, height: 16 },
+          },
+        },
+      },
+      tilemap: {
+        tiles: {
+          "1": {
+            frame: "terrain.floor",
+            kind: "flat",
+            bridgePortal: { lowerFloor: "ground", upperFloor: "bridge" },
+          },
+        },
+      },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='tilemap.tiles.1.bridgePortal' detail='requires kind to be bridge'.",
+    );
+    return;
+  }
+  throw new Error("Expected invalid bridge portal metadata to throw.");
+});
+
+test("resolveShooterGameSpec rejects bridge portal with same floors", () => {
+  try {
+    resolveShooterGameSpec({
+      atlas: {
+        frames: {
+          "terrain.bridge": {
+            texture: 0,
+            uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+            size: { width: 16, height: 16 },
+          },
+        },
+      },
+      tilemap: {
+        tiles: {
+          "1": {
+            frame: "terrain.bridge",
+            kind: "bridge",
+            bridgePortal: { lowerFloor: "ground", upperFloor: "ground" },
+          },
+        },
+      },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='tilemap.tiles.1.bridgePortal.upperFloor' detail='must differ from bridgePortal.lowerFloor'.",
+    );
+    return;
+  }
+  throw new Error("Expected invalid bridge portal floor metadata to throw.");
 });
 
 test("resolveShooterGameSpec rejects vertical tile slope definitions", () => {
@@ -147,6 +338,34 @@ test("resolveShooterGameSpec rejects non-boolean one-way tile metadata", () => {
     return;
   }
   throw new Error("Expected non-boolean one-way tile metadata to throw.");
+});
+
+test("resolveShooterGameSpec rejects invalid tile height metadata", () => {
+  try {
+    resolveShooterGameSpec({
+      atlas: {
+        frames: {
+          "terrain.block": {
+            texture: 0,
+            uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+            size: { width: 16, height: 16 },
+          },
+        },
+      },
+      tilemap: {
+        tiles: {
+          "1": { frame: "terrain.block", floor: "", elevation: 0, height: 8 },
+        },
+      },
+    });
+  } catch (error) {
+    equal(
+      error instanceof Error ? error.message : String(error),
+      "Invalid shooter game spec: kind=game-spec path='tilemap.tiles.1.floor' detail='must be a non-empty string'.",
+    );
+    return;
+  }
+  throw new Error("Expected invalid tile height metadata to throw.");
 });
 
 test("resolveShooterGameSpec rejects tiles that combine slope and one-way platform metadata", () => {

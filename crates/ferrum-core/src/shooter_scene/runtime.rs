@@ -120,6 +120,7 @@ impl ShooterScene {
                 self.spawn_enemy_if_needed(world);
                 self.handle_collisions(
                     world,
+                    tilemap,
                     audio_events,
                     delta,
                     sinks.collision_events.as_mut(),

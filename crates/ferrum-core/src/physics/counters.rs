@@ -9,6 +9,8 @@ pub struct PhysicsCounters {
     pub kinematic_tile_hits: u32,
     pub solid_candidate_checks: u32,
     pub tile_candidate_checks: u32,
+    pub hd2d_filtered_entity_candidates: u32,
+    pub hd2d_filtered_tile_candidates: u32,
     pub collision_pairs: u32,
     pub collision_solid_pairs: u32,
     pub collision_trigger_pairs: u32,

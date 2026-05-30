@@ -49,6 +49,94 @@ test("createPhysicsBodyApi forwards rigid body spawn defaults and post-spawn con
   ]);
 });
 
+test("createPhysicsBodyApi applies and reads physics body height spans", () => {
+  const context = fakeBodyContext();
+  const api = createPhysicsBodyApi(context);
+
+  const handle = api.spawnRigidBody({
+    x: 10,
+    y: 20,
+    bodyType: "kinematic",
+    collider: { type: "circle", radius: 5 },
+    heightSpan: { floorId: 2, elevation: 4, height: 12 },
+  });
+
+  deepEqual(api.getPhysicsBodyHeightSpan(handle), { floorId: 2, elevation: 4, height: 12 });
+  equal(api.setPhysicsBodyHeightSpan(handle, { elevation: 8, height: 16 }), true);
+  deepEqual(api.getPhysicsBodyHeightSpan(handle), { floorId: 0, elevation: 8, height: 16 });
+  equal(api.clearPhysicsBodyHeightSpan(handle), true);
+  equal(api.getPhysicsBodyHeightSpan(handle), undefined);
+
+  deepEqual(context.calls, [
+    ["alive"],
+    [
+      "spawn_physics_circle_body",
+      10,
+      20,
+      5,
+      1,
+      1,
+      true,
+      0,
+      1,
+      DEFAULT_PHYSICS_MASK_BITS,
+      false,
+      true,
+      true,
+      false,
+    ],
+    ["set_physics_body_height_span", 101, 202, 2, 4, 12],
+    ["alive"],
+    ["alive"],
+    ["set_physics_body_height_span", 101, 202, 0, 8, 16],
+    ["alive"],
+    ["alive"],
+    ["clear_physics_body_height_span", 101, 202],
+    ["alive"],
+  ]);
+});
+
+test("createPhysicsBodyApi moves HD-2D kinematic bodies through the shooter tilemap", () => {
+  const context = fakeBodyContext();
+  const api = createPhysicsBodyApi(context);
+
+  const result = api.moveHd2dKinematicBodyWithTilemap(
+    { entityId: 31, entityGeneration: 32 },
+    {
+      displacementX: 5,
+      displacementY: 0,
+      maxStepHeight: 8,
+      maxDropHeight: 4,
+      allowLedgeDrop: true,
+    },
+  );
+
+  if (result === undefined) {
+    throw new Error("Expected HD-2D kinematic move to return a result.");
+  }
+  equal(result.elevationDelta, 3);
+  equal(result.hitCount, 2);
+  equal(result.steppedUp, true);
+  equal(result.passedUnderBridge, true);
+  equal(result.blockedByDrop, false);
+  equal(result.body.entityId, 101);
+  deepEqual(context.calls, [
+    ["alive"],
+    [
+      "move_hd2d_kinematic_body_with_tilemap",
+      31,
+      32,
+      5,
+      0,
+      8,
+      4,
+      8,
+      4,
+      true,
+    ],
+  ]);
+});
+
 test("createPhysicsBodyApi rejects inherited body and layer names", () => {
   const bodyContext = fakeBodyContext();
   const bodyApi = createPhysicsBodyApi(bodyContext);
@@ -205,6 +293,7 @@ function fakeBodyContext(): PhysicsBodyApiContext & {
   };
 } {
   const calls: unknown[][] = [];
+  let heightSpan: { floorId: number; elevation: number; height: number } | undefined;
   const floats = new Float32Array(PHYSICS_BODY_STATE_FLOATS_PER_BODY);
   for (let index = 0; index < floats.length; index += 1) {
     floats[index] = index + 1;
@@ -223,6 +312,10 @@ function fakeBodyContext(): PhysicsBodyApiContext & {
       calls.push(["spawn_physics_aabb_body", ...args]);
       return true;
     },
+    spawn_physics_circle_body(...args: unknown[]) {
+      calls.push(["spawn_physics_circle_body", ...args]);
+      return true;
+    },
     physics_entity_id: () => 101,
     physics_entity_generation: () => 202,
     set_physics_body_velocity(...args: unknown[]) {
@@ -233,6 +326,40 @@ function fakeBodyContext(): PhysicsBodyApiContext & {
       calls.push(["set_physics_body_rotation", ...args]);
       return true;
     },
+    set_physics_body_height_span(
+      entityId: number,
+      entityGeneration: number,
+      floorId: number,
+      elevation: number,
+      height: number,
+    ) {
+      calls.push([
+        "set_physics_body_height_span",
+        entityId,
+        entityGeneration,
+        floorId,
+        elevation,
+        height,
+      ]);
+      heightSpan = { floorId, elevation, height };
+      return true;
+    },
+    clear_physics_body_height_span(entityId: number, entityGeneration: number) {
+      calls.push(["clear_physics_body_height_span", entityId, entityGeneration]);
+      heightSpan = undefined;
+      return true;
+    },
+    physics_body_has_height_span: () => heightSpan !== undefined,
+    physics_body_floor_id: () => heightSpan?.floorId ?? 0,
+    physics_body_elevation: () => heightSpan?.elevation ?? 0,
+    physics_body_height: () => heightSpan?.height ?? 0,
+    move_hd2d_kinematic_body_with_tilemap(...args: unknown[]) {
+      calls.push(["move_hd2d_kinematic_body_with_tilemap", ...args]);
+      return true;
+    },
+    hd2d_kinematic_elevation_delta: () => 3,
+    hd2d_kinematic_hit_count: () => 2,
+    hd2d_kinematic_flags: () => (1 << 0) | (1 << 3),
     add_physics_chain_collider(
       entityId: number,
       entityGeneration: number,

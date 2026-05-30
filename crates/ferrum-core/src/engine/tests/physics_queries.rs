@@ -427,6 +427,90 @@ fn engine_query_nearest_tile_obstacle_stores_scalar_result_for_wasm() {
 }
 
 #[test]
+fn engine_tile_obstacle_height_span_queries_write_filtered_wasm_results() {
+    let mut engine = Engine::new();
+    engine.clear_shooter_tilemap();
+    engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+    engine.set_shooter_tile(2, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+    assert!(engine.set_shooter_tile_height_span(1, 1, 0.0, 8.0));
+    assert!(engine.set_shooter_tile_height_span(2, 2, 0.0, 8.0));
+    engine.set_shooter_tilemap_layer(0, 2, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 2]);
+
+    assert!(engine.query_nearest_tile_obstacle_with_height_span(0.0, 5.0, 40.0, 2, 0.0, 8.0));
+    assert_eq!(engine.physics_query_tile_index(), 1);
+
+    let raycast_count =
+        engine.raycast_tile_obstacles_with_height_span(0.0, 5.0, 1.0, 0.0, 40.0, 2, 0.0, 8.0);
+    assert_eq!(raycast_count, 1);
+    assert_eq!(engine.physics_tile_shape_cast_hits[0].tile_index, 1);
+
+    let segment_count =
+        engine.segment_cast_tile_obstacles_with_height_span(0.0, 5.0, 30.0, 5.0, 2, 0.0, 8.0);
+    assert_eq!(segment_count, 1);
+    assert_eq!(engine.physics_tile_shape_cast_hits[0].tile_index, 1);
+
+    let shape_count = engine.shape_cast_aabb_tile_obstacles_with_height_span(
+        0.0, 5.0, 1.0, 1.0, 1.0, 0.0, 40.0, 2, 0.0, 8.0,
+    );
+    assert_eq!(shape_count, 1);
+    assert_eq!(engine.physics_tile_shape_cast_hits[0].tile_index, 1);
+
+    let contact_count = engine
+        .query_aabb_tile_obstacle_contacts_with_height_span(10.0, 5.0, 12.0, 2.0, 2, 0.0, 8.0);
+    assert_eq!(contact_count, 1);
+    assert_eq!(engine.physics_tile_contact_hits[0].tile_index, 1);
+
+    let manifold_count = engine
+        .query_aabb_tile_obstacle_manifolds_with_height_span(10.0, 5.0, 12.0, 2.0, 2, 0.0, 8.0);
+    assert_eq!(manifold_count, 1);
+    assert_eq!(engine.physics_tile_manifold_hits[0].tile_index, 1);
+}
+
+#[test]
+fn engine_tile_obstacle_height_span_queries_clear_results_on_invalid_filter() {
+    let mut engine = Engine::new();
+    engine.clear_shooter_tilemap();
+    engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+    assert!(engine.set_shooter_tile_height_span(1, 1, 0.0, 8.0));
+    engine.set_shooter_tilemap_layer(0, 1, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1]);
+
+    assert!(engine.query_nearest_tile_obstacle_with_height_span(0.0, 5.0, 40.0, 1, 0.0, 8.0));
+    assert!(!engine.query_nearest_tile_obstacle_with_height_span(0.0, 5.0, 40.0, 1, f32::NAN, 8.0));
+    assert_eq!(engine.physics_query_tile_index(), 0);
+
+    assert_eq!(
+        engine.raycast_tile_obstacles_with_height_span(0.0, 5.0, 1.0, 0.0, 40.0, 1, 0.0, 8.0),
+        1
+    );
+    assert_eq!(
+        engine.raycast_tile_obstacles_with_height_span(0.0, 5.0, 1.0, 0.0, 40.0, 1, 0.0, -1.0),
+        0
+    );
+    assert!(engine.physics_tile_shape_cast_hits.is_empty());
+
+    assert_eq!(
+        engine.query_aabb_tile_obstacle_contacts_with_height_span(5.0, 5.0, 6.0, 2.0, 1, 0.0, 8.0),
+        1
+    );
+    assert_eq!(
+        engine.query_aabb_tile_obstacle_contacts_with_height_span(5.0, 5.0, 6.0, 2.0, 1, 0.0, -1.0),
+        0
+    );
+    assert!(engine.physics_tile_contact_hits.is_empty());
+
+    assert_eq!(
+        engine.query_aabb_tile_obstacle_manifolds_with_height_span(5.0, 5.0, 6.0, 2.0, 1, 0.0, 8.0),
+        1
+    );
+    assert_eq!(
+        engine
+            .query_aabb_tile_obstacle_manifolds_with_height_span(5.0, 5.0, 6.0, 2.0, 1, 0.0, -1.0),
+        0
+    );
+    assert!(engine.physics_tile_manifold_hits.is_empty());
+}
+
+#[test]
 fn engine_shape_cast_aabb_tile_obstacles_write_bulk_results_for_wasm() {
     let mut engine = Engine::new();
     engine.clear_shooter_tilemap();
@@ -637,10 +721,16 @@ fn engine_query_tilemap_navigation_path_exposes_buffer_and_debug_lines() {
     let points = unsafe {
         std::slice::from_raw_parts(
             engine.tilemap_navigation_path_point_ptr(),
-            engine.tilemap_navigation_path_point_len() * 2,
+            engine.tilemap_navigation_path_point_len() * 5,
         )
     };
-    assert_eq!(points, &[5.0, 15.0, 15.0, 15.0, 25.0, 15.0, 25.0, 5.0]);
+    assert_eq!(
+        points,
+        &[
+            5.0, 15.0, 0.0, 0.0, 0.0, 15.0, 15.0, 0.0, 0.0, 0.0, 25.0, 15.0, 0.0, 0.0, 0.0, 25.0,
+            5.0, 0.0, 0.0, 0.0,
+        ]
+    );
     assert_eq!(engine.tilemap_navigation_debug_line_len(), 4);
     assert_eq!(engine.physics_query_point_x(), 5.0);
     assert_eq!(engine.physics_query_point_y(), 15.0);
@@ -652,9 +742,92 @@ fn engine_query_tilemap_navigation_path_exposes_buffer_and_debug_lines() {
 }
 
 #[test]
+fn engine_query_tilemap_navigation_with_height_span_filters_obstacles() {
+    let mut engine = Engine::new();
+    engine.clear_shooter_tilemap();
+    engine.set_shooter_tilemap_layer(0, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 1, 0]);
+    assert!(engine.set_shooter_tile_height_span(1, 1, 0.0, 8.0));
+
+    assert!(!engine.query_tilemap_navigation_path(5.0, 5.0, 25.0, 5.0));
+    assert!(
+        !engine.query_tilemap_navigation_path_with_height_span(5.0, 5.0, 25.0, 5.0, 1, 0.0, 8.0)
+    );
+    assert!(
+        engine.query_tilemap_navigation_waypoint_with_height_span(5.0, 5.0, 25.0, 5.0, 2, 0.0, 8.0)
+    );
+    assert_eq!(engine.physics_query_point_x(), 15.0);
+    assert_eq!(engine.physics_query_point_y(), 5.0);
+
+    assert!(engine.query_tilemap_navigation_path_with_height_span(5.0, 5.0, 25.0, 5.0, 2, 0.0, 8.0));
+    assert_eq!(engine.tilemap_navigation_path_point_len(), 2);
+    let points = unsafe {
+        std::slice::from_raw_parts(
+            engine.tilemap_navigation_path_point_ptr(),
+            engine.tilemap_navigation_path_point_len() * 5,
+        )
+    };
+    assert_eq!(
+        points,
+        &[15.0, 5.0, 2.0, 0.0, 8.0, 25.0, 5.0, 2.0, 0.0, 8.0]
+    );
+
+    assert!(
+        !engine.query_tilemap_navigation_path_with_height_span(5.0, 5.0, 25.0, 5.0, 2, 0.0, -1.0)
+    );
+    assert_eq!(engine.tilemap_navigation_path_point_len(), 0);
+    assert_eq!(engine.tilemap_navigation_debug_line_len(), 0);
+}
+
+#[test]
+fn engine_set_shooter_tile_hd2d_metadata_updates_navigation_obstacles() {
+    let mut engine = Engine::new();
+    engine.clear_shooter_tilemap();
+    engine.set_shooter_tilemap_layer(0, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 1, 0]);
+
+    assert!(!engine.query_tilemap_navigation_path(5.0, 5.0, 25.0, 5.0));
+    assert!(
+        engine.set_shooter_tile_hd2d_metadata(1, 4, false, false, false, 0.0, false, 0, 0.0, 0.0)
+    );
+    assert!(engine.query_tilemap_navigation_path(5.0, 5.0, 25.0, 5.0));
+    assert_eq!(engine.tilemap_navigation_path_point_len(), 2);
+
+    assert!(
+        !engine.set_shooter_tile_hd2d_metadata(1, 2, false, false, false, 0.0, false, 0, 0.0, 8.0)
+    );
+}
+
+#[test]
+fn engine_query_tilemap_navigation_between_height_spans_uses_bridge_portal() {
+    let mut engine = Engine::new();
+    engine.clear_shooter_tilemap();
+    engine.set_shooter_tilemap_layer(0, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![0, 1, 0]);
+    assert!(
+        engine.set_shooter_tile_hd2d_metadata(1, 4, false, false, false, 0.0, false, 0, 0.0, 0.0)
+    );
+    assert!(engine.set_shooter_tile_bridge_portal(1, 1, 2, 0.0, 12.0, 2));
+
+    assert!(engine.query_tilemap_navigation_path_between_height_spans(
+        5.0, 5.0, 25.0, 5.0, 1, 0.0, 8.0, 2, 12.0, 8.0
+    ));
+    assert_eq!(engine.tilemap_navigation_path_point_len(), 3);
+    let points = unsafe {
+        std::slice::from_raw_parts(
+            engine.tilemap_navigation_path_point_ptr(),
+            engine.tilemap_navigation_path_point_len() * 5,
+        )
+    };
+    assert_eq!(
+        points,
+        &[15.0, 5.0, 1.0, 0.0, 8.0, 15.0, 5.0, 2.0, 12.0, 8.0, 25.0, 5.0, 2.0, 12.0, 8.0,]
+    );
+}
+
+#[test]
 fn engine_set_shooter_tilemap_tiles_rect_refreshes_queries_and_render_commands() {
     let mut engine = Engine::new();
     engine.clear_shooter_tilemap();
+    engine.camera.x = 15.0;
+    engine.camera.y = 5.0;
     engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
     engine.set_shooter_tilemap_layer(2, 3, 1, 10.0, 10.0, 0.0, 0.0, true, vec![1, 1, 1]);
 

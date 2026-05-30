@@ -4,7 +4,8 @@ use crate::collision_event::{
     COLLISION_EVENT_TRIGGER_ENTER, COLLISION_EVENT_TRIGGER_EXIT, COLLISION_EVENT_TRIGGER_STAY,
 };
 use crate::components::{
-    AabbCollider, CollisionFilter, CollisionLayer, CollisionMask, RigidBody, Transform2D, Velocity,
+    AabbCollider, CollisionFilter, CollisionLayer, CollisionMask, HeightSpan, PhysicsFloorId,
+    RigidBody, Transform2D, Velocity,
 };
 use crate::physics::PhysicsSystem;
 use crate::shooter_scene::{EnemyBehavior, EnemySpawnPattern, DEFAULT_TEXTURE_ID};
@@ -19,6 +20,7 @@ mod physics_joint_controls;
 mod physics_queries;
 mod physics_rigid_steps;
 mod rendering;
+mod runtime_outputs;
 mod scene_switching;
 mod shooter_authoring;
 mod shooter_snapshots;

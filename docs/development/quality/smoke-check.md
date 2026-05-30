@@ -203,6 +203,7 @@ Web public API의 `PhysicsReplayInputStream`은 frame/seed/fixed step/body event
 - `physics:tile-edge-snagging`: edge collider pair/contact/cast 회귀
 - `physics:moving-platform-character`: moving platform carry와 platformer controller
 - `physics:query-cast-matrix`: overlap/raycast/shape-cast matrix
+- `physics:hd2d-navigation-combat`: bridge portal multi-floor navigation, projectile arc height span, projectile/tile height filter, render sort
 
 Compound collider runtime apply는 Rust collision/solver unit test, Web physics authoring unit test, `compound-collider` sandbox fixture로 보장한다.
 Destructible terrain prototype은 Rust tilemap/engine unit test와 `destructible-terrain:tile-rect-edit` smoke scenario로 보장한다.
@@ -218,6 +219,7 @@ Top-down Shooter의 particle burst와 non-lethal enemy tint flash가 production 
 ```bash
 pnpm smoke:topdown
 pnpm smoke:topdown-save-load
+pnpm smoke:topdown-hd2d
 ```
 
 Breakout 예제의 두 번째 장르 runtime/render path를 확인하려면 다음을 실행한다. Brick hit particle burst까지 자동 관측하려면 effect smoke를 실행한다.
@@ -261,7 +263,7 @@ pnpm smoke:headless
 
 ## Browser render smoke check
 
-`pnpm smoke:browser`는 `examples/minimal-game` production build를, `pnpm smoke:topdown`은 `examples/topdown-shooter` production build를, `pnpm smoke:breakout`/`pnpm smoke:breakout-effects`는 `examples/breakout` production build를, `pnpm smoke:platformer`/`pnpm smoke:platformer-effects`는 `examples/platformer` production build를, `pnpm smoke:physics-sandbox`/`pnpm smoke:physics-demo-suite`는 `examples/physics-sandbox` production build를 정적 서버로 띄운 뒤 Playwright Core로 설치된 Chrome/Chromium을 실행한다. 검증 범위는 다음과 같다.
+`pnpm smoke:browser`는 `examples/minimal-game` production build를, `pnpm smoke:topdown`/`pnpm smoke:topdown-hd2d`는 `examples/topdown-shooter` production build를, `pnpm smoke:breakout`/`pnpm smoke:breakout-effects`는 `examples/breakout` production build를, `pnpm smoke:platformer`/`pnpm smoke:platformer-effects`는 `examples/platformer` production build를, `pnpm smoke:physics-sandbox`/`pnpm smoke:physics-demo-suite`는 `examples/physics-sandbox` production build를 정적 서버로 띄운 뒤 Playwright Core로 설치된 Chrome/Chromium을 실행한다. 검증 범위는 다음과 같다.
 
 - `createFerrumRuntime(...)` 또는 예제 bootstrap이 browser runtime을 초기화한다.
 - WebGL2 canvas가 생성되고 Rust/Wasm render command를 소비한다.
@@ -273,6 +275,7 @@ pnpm smoke:headless
 - `pnpm smoke:mobile-input`은 Minimal Game에서 `VirtualControls` DOM preset을 켜고 joystick/button state가 `W/D/Space/mouseLeft` input으로 합성되고 release되는지 확인한다.
 - `pnpm smoke:topdown`은 Top-down Shooter production build에서 실제 asset manifest preload/cache/loading overlay를 거친 뒤 smoke 전용 URL parameter로 deterministic enemy hit를 만들고, particle count와 enemy tint flash render command가 관측되는지 확인한다.
 - `pnpm smoke:topdown-save-load`는 Top-down Shooter production build에서 enemy/bullet이 포함된 built-in shooter snapshot을 캡처하고, `resetGame()` 이후 restore 및 재캡처 hash 일치를 확인한다.
+- `pnpm smoke:topdown-hd2d`는 Top-down Shooter production build에 smoke 전용 HD-2D spec을 적용해 `weapons.projectileArc`, bridge `toHeightSpan` path, under-pass same-floor path, render command 생성을 확인한다.
 - `pnpm smoke:breakout-effects`는 `resetGame()` 이후 자연 ball/brick hit에서 scene-internal particle burst와 render command 증가가 관측되는지 확인한다.
 - `pnpm smoke:platformer-effects`는 `resetGame()` 이후 player landing transition에서 scene-internal dust burst와 render command 증가가 관측되는지 확인한다.
 - `pnpm smoke:physics-sandbox`는 Physics Spec fixture가 body/joint를 생성하고 physics debug line을 렌더링하는지 확인한다.
@@ -321,6 +324,7 @@ FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:material-webgpu
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:particle-vfx
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:topdown
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:topdown-save-load
+FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:topdown-hd2d
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:breakout-effects
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:platformer-effects
 FERRUM_BROWSER_CHANNEL=chromium pnpm smoke:physics-demo-suite
@@ -381,6 +385,7 @@ GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `fer
 - `pnpm smoke:headless`로 Game Spec 적용 경로, collision/navigation 전제, representative render command buffer를 확인한다.
 - `pnpm smoke:topdown`으로 Top-down Shooter production build에서 particle burst와 non-lethal enemy tint flash가 browser render path에 도달하는지 확인한다.
 - `pnpm smoke:topdown-save-load`로 built-in shooter save/load snapshot restore가 browser production build에서 재현되는지 확인한다.
+- `pnpm smoke:topdown-hd2d`로 bridge portal navigation, projectile arc, HD-2D render path가 Top-down Shooter browser production build에서 재현되는지 확인한다.
 - `pnpm smoke:runtime-budgets`로 CI에서 runtime budget profile 계약을 확인하고, 예제별 성능 회귀가 의심되면 해당 `smoke:*-budget` browser smoke를 추가로 실행한다.
 - `pnpm smoke:physics-demo-suite`로 Physics Spec apply/sandbox fixture browser path를 확인한다.
 - `pnpm package:check`로 runtime package entrypoint, create-game scaffold, agents template, files allowlist, generated Wasm artifact, 실제 `pnpm pack` tarball 구성을 확인한다.

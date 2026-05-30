@@ -35,24 +35,27 @@ pub use collision_event::{
 pub use components::{
     AabbCollider, AngularVelocity, CapsuleCollider, ChainCollider, CircleCollider, CollisionFilter,
     CollisionLayer, CollisionMask, ConvexPolygonCollider, DistanceJoint, DistanceJointId,
-    GearJoint, GearJointId, OrientedBoxCollider, PhysicsMaterial, PrismaticJoint, PrismaticJointId,
-    PulleyJoint, PulleyJointId, RevoluteJoint, RevoluteJointId, RigidBody, RigidBodyCcdDebugHit,
-    RigidBodyType, RigidContactImpulse, RopeJoint, RopeJointId, Rotation2D, SpringJoint,
-    SpringJointId, Sprite, SpriteAnimation, SpriteAnimationFrameSequence, SpriteAnimationKind,
-    SpriteAnimationState, SpriteFrame, Transform2D, Velocity, WeldJoint, WeldJointId,
-    MAX_CHAIN_COLLIDER_VERTICES, MAX_CONVEX_POLYGON_VERTICES, MAX_SPRITE_ANIMATION_FRAMES,
+    GearJoint, GearJointId, HeightSpan, OrientedBoxCollider, PhysicsFloorId, PhysicsMaterial,
+    PrismaticJoint, PrismaticJointId, PulleyJoint, PulleyJointId, RevoluteJoint, RevoluteJointId,
+    RigidBody, RigidBodyCcdDebugHit, RigidBodyType, RigidContactImpulse, RopeJoint, RopeJointId,
+    Rotation2D, SpringJoint, SpringJointId, Sprite, SpriteAnimation, SpriteAnimationFrameSequence,
+    SpriteAnimationKind, SpriteAnimationState, SpriteFrame, Transform2D, Velocity, WeldJoint,
+    WeldJointId, MAX_CHAIN_COLLIDER_VERTICES, MAX_CONVEX_POLYGON_VERTICES,
+    MAX_SPRITE_ANIMATION_FRAMES,
 };
 pub use engine::{
     Engine, PhysicsBodyContactHit, PhysicsBodyManifoldHit, PhysicsQueryEntityHit,
     PhysicsRaycastBodyHit, PhysicsRigidContactImpulseHit, PhysicsTileContactHit,
     PhysicsTileManifoldHit, PhysicsTileShapeCastHit,
 };
+use engine::{FrameTelemetry, FRAME_TELEMETRY_F64S};
 pub use entity::Entity;
 pub use game_state::GameState;
 pub use input::InputState;
 pub use particles::{Particle, ParticlePreset, ParticleRange, ParticleSystem};
 pub use physics::{
-    FixedTimestep, FixedTimestepConfig, FixedTimestepUpdate, GroundProbeHit, KinematicMoveResult,
+    FixedTimestep, FixedTimestepConfig, FixedTimestepUpdate, GroundProbeHit,
+    Hd2dKinematicControllerConfig, Hd2dKinematicMoveResult, KinematicMoveResult,
     MovingPlatformCarryConfig, OneWayPlatformConfig, PhysicsBounds, PhysicsCounters, PhysicsSystem,
     PlatformerControllerConfig, PlatformerControllerInput, PlatformerControllerResult,
     PlatformerControllerState, RigidBodyIslandStats, RigidBodyStepConfig, RigidBodyStepStats,
@@ -60,9 +63,10 @@ pub use physics::{
 };
 pub use render_command::SpriteRenderCommand;
 pub use tilemap::{
+    Hd2dBridgePortalDefinition, Hd2dRampAxis, Hd2dRampDefinition, Hd2dTileDefinition, Hd2dTileKind,
     TileDefinition, TileSlopeDefinition, Tilemap, TilemapContactHit, TilemapContactManifoldHit,
-    TilemapContactPoint, TilemapLayer, TilemapNearestObstacleHit, TilemapShapeCastHit,
-    MAX_TILEMAP_CONTACT_MANIFOLD_POINTS,
+    TilemapContactPoint, TilemapHd2dSurfaceHit, TilemapLayer, TilemapNavigationPathPoint,
+    TilemapNearestObstacleHit, TilemapShapeCastHit, MAX_TILEMAP_CONTACT_MANIFOLD_POINTS,
 };
 pub use world::{EntityTemplate, EntityTemplateCollider, EntityTemplateColliderShape, World};
 
@@ -94,6 +98,16 @@ pub fn collision_event_u32s() -> usize {
 #[wasm_bindgen]
 pub fn collision_event_bytes() -> usize {
     std::mem::size_of::<CollisionEvent>()
+}
+
+#[wasm_bindgen]
+pub fn frame_telemetry_f64s() -> usize {
+    FRAME_TELEMETRY_F64S
+}
+
+#[wasm_bindgen]
+pub fn frame_telemetry_bytes() -> usize {
+    std::mem::size_of::<FrameTelemetry>()
 }
 
 #[wasm_bindgen]

@@ -102,6 +102,60 @@ test("RuntimeFrameRenderer render-only fast path does not require FrameState", (
   ]);
 });
 
+test("RuntimeFrameRenderer omits collision metrics when lifecycle tracking is disabled", () => {
+  const order: string[] = [];
+  const renderer = fakeRuntimeRenderer(order);
+  let debugMetrics: Record<string, unknown> | undefined;
+  const runtimeFrameRenderer = new RuntimeFrameRenderer({
+    renderer,
+    shouldRenderPhysicsDebugLines: false,
+    needsRuntimeFrame: true,
+    debugOverlay: {
+      update: (metrics: unknown) => {
+        debugMetrics = metrics as Record<string, unknown>;
+      },
+    } as never,
+  });
+  const physics = {
+    ...physicsFrameStats(),
+    collisionLifecycleEventsEnabled: false,
+    collisionPairs: 4,
+    collisionEventCount: 7,
+  };
+
+  runtimeFrameRenderer.renderFrame(renderFrameState({ frameState: frameState({ physics }) }));
+
+  equal(debugMetrics?.collisionPairCount, undefined);
+  equal(debugMetrics?.collisionEventCount, undefined);
+});
+
+test("RuntimeFrameRenderer includes collision metrics when lifecycle tracking is enabled", () => {
+  const order: string[] = [];
+  const renderer = fakeRuntimeRenderer(order);
+  let debugMetrics: Record<string, unknown> | undefined;
+  const runtimeFrameRenderer = new RuntimeFrameRenderer({
+    renderer,
+    shouldRenderPhysicsDebugLines: false,
+    needsRuntimeFrame: true,
+    debugOverlay: {
+      update: (metrics: unknown) => {
+        debugMetrics = metrics as Record<string, unknown>;
+      },
+    } as never,
+  });
+  const physics = {
+    ...physicsFrameStats(),
+    collisionLifecycleEventsEnabled: true,
+    collisionPairs: 4,
+    collisionEventCount: 7,
+  };
+
+  runtimeFrameRenderer.renderFrame(renderFrameState({ frameState: frameState({ physics }) }));
+
+  equal(debugMetrics?.collisionPairCount, 4);
+  equal(debugMetrics?.collisionEventCount, 7);
+});
+
 test("RuntimeFrameRenderer supports dynamic providers without runtime diagnostics", () => {
   const order: string[] = [];
   const renderer = fakeRuntimeRenderer(order);
@@ -120,6 +174,79 @@ test("RuntimeFrameRenderer supports dynamic providers without runtime diagnostic
   deepEqual(order, [
     "lighting_provider:12",
     "set_lighting",
+    "render",
+    "render_commands",
+    "post_process",
+  ]);
+});
+
+test("RuntimeFrameRenderer skips repeated primitive visual provider setter calls", () => {
+  const order: string[] = [];
+  const renderer = fakeRuntimeRenderer(order);
+  const runtimeFrameRenderer = new RuntimeFrameRenderer({
+    renderer,
+    spriteMaterial: (frame) => {
+      order.push(`sprite_provider:${frame.score}`);
+      return frame.score > 0 ? "flash" : false;
+    },
+    postProcess: () => {
+      order.push("post_provider");
+      return false;
+    },
+    shouldRenderPhysicsDebugLines: false,
+    needsRuntimeFrame: false,
+  });
+
+  runtimeFrameRenderer.renderFrame(renderFrameState({ frameState: frameState({ score: 1 }) }));
+  runtimeFrameRenderer.renderFrame(renderFrameState({ frameState: frameState({ score: 2 }) }));
+  runtimeFrameRenderer.renderFrame(renderFrameState({ frameState: frameState({ score: 0 }) }));
+
+  deepEqual(order, [
+    "sprite_provider:1",
+    "set_sprite",
+    "post_provider",
+    "set_post",
+    "render",
+    "render_commands",
+    "post_process",
+    "sprite_provider:2",
+    "post_provider",
+    "render",
+    "render_commands",
+    "post_process",
+    "sprite_provider:0",
+    "set_sprite",
+    "post_provider",
+    "render",
+    "render_commands",
+    "post_process",
+  ]);
+});
+
+test("RuntimeFrameRenderer still applies object visual provider values every frame", () => {
+  const order: string[] = [];
+  const renderer = fakeRuntimeRenderer(order);
+  const postProcess = { opacity: 0.5 };
+  const spriteMaterial = { name: "custom" };
+  const runtimeFrameRenderer = new RuntimeFrameRenderer({
+    renderer,
+    spriteMaterial: () => spriteMaterial,
+    postProcess: () => postProcess,
+    shouldRenderPhysicsDebugLines: false,
+    needsRuntimeFrame: false,
+  });
+
+  runtimeFrameRenderer.renderFrame(renderFrameState({ frameState: frameState() }));
+  runtimeFrameRenderer.renderFrame(renderFrameState({ frameState: frameState() }));
+
+  deepEqual(order, [
+    "set_sprite",
+    "set_post",
+    "render",
+    "render_commands",
+    "post_process",
+    "set_sprite",
+    "set_post",
     "render",
     "render_commands",
     "post_process",
@@ -258,6 +385,8 @@ function physicsFrameStats(): PhysicsFrameStats {
     kinematicTileHits: 0,
     solidCandidateChecks: 0,
     tileCandidateChecks: 0,
+    hd2dFilteredEntityCandidates: 0,
+    hd2dFilteredTileCandidates: 0,
     collisionPairs: 0,
     collisionSolidPairs: 0,
     collisionTriggerPairs: 0,

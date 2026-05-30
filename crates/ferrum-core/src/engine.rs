@@ -16,7 +16,7 @@ use crate::physics::{
     RigidBodyStepStats,
 };
 use crate::platformer_scene::PlatformerScene;
-use crate::render_command::SpriteRenderCommand;
+use crate::render_command::{SpriteRenderCommand, SpriteRenderItem};
 use crate::shooter_scene::{
     ShooterScene, SHOOTER_SNAPSHOT_ENTITY_FLOATS, SHOOTER_SNAPSHOT_ENTITY_U32S,
     SHOOTER_SNAPSHOT_HEADER_FLOATS, SHOOTER_SNAPSHOT_HEADER_U32S,
@@ -72,11 +72,13 @@ pub use physics_bridge::{
     PhysicsTileShapeCastHit,
 };
 use scenes::ActiveScene;
+pub(crate) use telemetry::frame_stats::{FrameTelemetry, FRAME_TELEMETRY_F64S};
 
 const DEFAULT_VIEWPORT_WIDTH: f32 = 800.0;
 const DEFAULT_VIEWPORT_HEIGHT: f32 = 480.0;
 const MAX_PARTICLE_PRESETS: usize = 256;
 const TILEMAP_NAVIGATION_DEBUG_COLOR: [f32; 4] = [0.1, 0.75, 1.0, 1.0];
+const TILEMAP_NAVIGATION_PATH_POINT_FLOATS: usize = 5;
 
 #[wasm_bindgen]
 pub struct Engine {
@@ -96,13 +98,16 @@ pub struct Engine {
     particle_presets: Vec<Option<ParticlePreset>>,
     shooter_hit_particle_preset: Option<u32>,
     render_commands: Vec<SpriteRenderCommand>,
+    render_items: Vec<SpriteRenderItem>,
     audio_events: Vec<AudioEvent>,
     collision_events: Vec<CollisionEvent>,
+    frame_telemetry: FrameTelemetry,
     physics_debug_lines: Vec<PhysicsDebugLine>,
     tilemap_navigation_path_points: Vec<f32>,
     tilemap_navigation_debug_lines: Vec<PhysicsDebugLine>,
     tilemap_navigation_scratch: TilemapNavigationScratch,
     physics_debug_lines_enabled: bool,
+    collision_lifecycle_events_enabled: bool,
     physics_debug_line_flags: u32,
     collision_event_tracker: CollisionEventTracker,
     collision_event_counts: CollisionEventCounts,
@@ -139,6 +144,9 @@ pub struct Engine {
     shooter_snapshot_entity_u32s: Vec<u32>,
     rigid_body_step_stats: RigidBodyStepStats,
     rigid_body_step_scratch: RigidBodyStepScratch,
+    hd2d_kinematic_elevation_delta: f32,
+    hd2d_kinematic_flags: u32,
+    hd2d_kinematic_hit_count: u32,
     auto_rigid_body_step_enabled: bool,
     auto_rigid_body_step_config: RigidBodyStepConfig,
     fixed_timestep: FixedTimestep,
@@ -167,13 +175,16 @@ impl Engine {
             particle_presets: Vec::new(),
             shooter_hit_particle_preset: None,
             render_commands: Vec::with_capacity(256),
+            render_items: Vec::with_capacity(256),
             audio_events: Vec::with_capacity(16),
             collision_events: Vec::with_capacity(128),
+            frame_telemetry: FrameTelemetry::default(),
             physics_debug_lines: Vec::with_capacity(64),
             tilemap_navigation_path_points: Vec::with_capacity(32),
             tilemap_navigation_debug_lines: Vec::with_capacity(16),
             tilemap_navigation_scratch: TilemapNavigationScratch::default(),
             physics_debug_lines_enabled: false,
+            collision_lifecycle_events_enabled: false,
             physics_debug_line_flags: PHYSICS_DEBUG_DEFAULT,
             collision_event_tracker: CollisionEventTracker::default(),
             collision_event_counts: CollisionEventCounts::default(),
@@ -210,6 +221,9 @@ impl Engine {
             shooter_snapshot_entity_u32s: Vec::with_capacity(SHOOTER_SNAPSHOT_ENTITY_U32S * 16),
             rigid_body_step_stats: RigidBodyStepStats::default(),
             rigid_body_step_scratch: RigidBodyStepScratch::default(),
+            hd2d_kinematic_elevation_delta: 0.0,
+            hd2d_kinematic_flags: 0,
+            hd2d_kinematic_hit_count: 0,
             auto_rigid_body_step_enabled: false,
             auto_rigid_body_step_config: RigidBodyStepConfig::default(),
             fixed_timestep: FixedTimestep::default(),
@@ -217,6 +231,7 @@ impl Engine {
             last_fixed_update: FixedTimestepUpdate::default(),
         };
         engine.reset_to_title();
+        engine.write_frame_telemetry();
         engine
     }
 }

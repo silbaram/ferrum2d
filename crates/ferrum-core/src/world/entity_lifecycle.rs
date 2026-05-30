@@ -1,4 +1,4 @@
-use super::World;
+use super::{World, DEAD_ALIVE_POSITION};
 use crate::entity::Entity;
 
 impl World {
@@ -6,6 +6,7 @@ impl World {
         if let Some(id) = self.free_list.pop() {
             let i = id as usize;
             self.alive[i] = true;
+            self.track_alive_index(i);
             return Entity {
                 id,
                 generation: self.generations[i],
@@ -15,12 +16,16 @@ impl World {
         let id = self.generations.len() as u32;
         self.generations.push(0);
         self.alive.push(true);
+        self.alive_positions.push(DEAD_ALIVE_POSITION);
+        self.track_alive_index(id as usize);
         self.transforms.push(None);
         self.sprites.push(None);
         self.sprite_animations.push(None);
         self.velocities.push(None);
         self.rotations.push(None);
         self.angular_velocities.push(None);
+        self.height_spans.push(None);
+        self.projectile_arcs.push(None);
         self.rigid_bodies.push(None);
         self.colliders.push(None);
         self.circle_colliders.push(None);
@@ -50,6 +55,8 @@ impl World {
             self.velocities[i] = None;
             self.rotations[i] = None;
             self.angular_velocities[i] = None;
+            self.height_spans[i] = None;
+            self.projectile_arcs[i] = None;
             self.rigid_bodies[i] = None;
             self.colliders[i] = None;
             self.circle_colliders[i] = None;
@@ -65,6 +72,7 @@ impl World {
             self.healths[i] = None;
             self.damages[i] = None;
             self.score_rewards[i] = None;
+            self.untrack_alive_index(i);
             if self.player == Some(entity) {
                 self.player = None;
             }
@@ -73,12 +81,47 @@ impl World {
     }
 
     pub fn alive_count(&self) -> usize {
-        self.alive.iter().filter(|a| **a).count()
+        self.alive_indices.len()
+    }
+
+    pub(crate) fn alive_indices(&self) -> &[usize] {
+        &self.alive_indices
     }
 
     pub(super) fn valid_index(&self, entity: Entity) -> Option<usize> {
         let i = entity.id as usize;
         (i < self.alive.len() && self.alive[i] && self.generations[i] == entity.generation)
             .then_some(i)
+    }
+
+    pub(super) fn rebuild_alive_indices(&mut self) {
+        self.alive_indices.clear();
+        self.alive_positions
+            .resize(self.alive.len(), DEAD_ALIVE_POSITION);
+        self.alive_positions.fill(DEAD_ALIVE_POSITION);
+        for index in 0..self.alive.len() {
+            if self.alive[index] {
+                self.track_alive_index(index);
+            }
+        }
+    }
+
+    fn track_alive_index(&mut self, index: usize) {
+        debug_assert!(self.alive[index]);
+        debug_assert_eq!(self.alive_positions[index], DEAD_ALIVE_POSITION);
+        self.alive_positions[index] = self.alive_indices.len();
+        self.alive_indices.push(index);
+    }
+
+    fn untrack_alive_index(&mut self, index: usize) {
+        let position = self.alive_positions[index];
+        debug_assert_ne!(position, DEAD_ALIVE_POSITION);
+        let last_position = self.alive_indices.len() - 1;
+        let moved_index = self.alive_indices[last_position];
+        self.alive_indices.swap_remove(position);
+        if position != last_position {
+            self.alive_positions[moved_index] = position;
+        }
+        self.alive_positions[index] = DEAD_ALIVE_POSITION;
     }
 }

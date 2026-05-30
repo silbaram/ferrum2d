@@ -35,6 +35,8 @@ Physics Spec은 Ferrum2D의 범용 physics authoring 계약이다. Top-down Shoo
 - Physics Spec 기반 world snapshot/restore/replay helper
 - Wasm bulk body state buffer 기반 snapshot/restore ABI와 TypeScript fallback helper
 - editor/AI 도구용 `physicsEditor` authoring metadata strip helper와 JSON Schema
+- HD-2D `physics.hd2d` authoring/resolved 필드와 body별 `floor`/`elevation`/`height` 검증
+- HD-2D body `heightSpan` 기반 collision filter와 body query/raycast/shape-cast optional filter
 - `examples/physics-sandbox` browser sandbox와 `pnpm smoke:physics-sandbox`
 - compound collider runtime apply, collider snapshot 조회, body 단위 contact/query/debug
 - dedicated `chain` collider runtime storage, collision/query/raycast/shape-cast/debug/snapshot 지원
@@ -103,6 +105,61 @@ Physics Spec은 Ferrum2D의 범용 physics authoring 계약이다. Top-down Shoo
 | `rigid` | dynamic rigid body, joint, stack, realistic response | `[0, 700]` | `true` | `true` | `8/8` |
 
 명시적 `CreateEngineOptions.physicsMode` 또는 `FerrumRuntimeOptions.physicsMode`는 Game Spec의 `physics.mode`보다 우선한다.
+
+## HD-2D Authoring
+
+`physics.hd2d`는 2D XY 물리 위에 floor/elevation/height authoring 정보를 얹기 위한 opt-in 계약이다. 기본값은 disabled이며 기존 Physics Spec body는 `floor: "default"`, `elevation: 0`, `height: 0`으로 resolve되어 기존 런타임 동작을 유지한다.
+
+```json
+{
+  "physics": {
+    "mode": "rigid",
+    "hd2d": {
+      "enabled": true,
+      "defaultHeight": 32,
+      "maxStepHeight": 8,
+      "maxDropHeight": 16
+    },
+    "bodies": {
+      "player": {
+        "type": "kinematic",
+        "position": [120, 80],
+        "floor": "ground",
+        "elevation": 0,
+        "height": 32,
+        "collider": {
+          "shape": "capsule",
+          "start": [0, -8],
+          "end": [0, 8],
+          "radius": 8
+        }
+      }
+    }
+  }
+}
+```
+
+필드 정책:
+
+- `physics.hd2d.enabled`: boolean, 기본 `false`
+- `physics.hd2d.defaultHeight`: non-negative finite number, 기본 `0`
+- `physics.hd2d.maxStepHeight`: non-negative finite number, 기본 `0`
+- `physics.hd2d.maxDropHeight`: non-negative finite number, 기본 `0`
+- `body.floor`: non-empty string, 기본 `"default"`
+- `body.elevation`: finite number, 기본 `0`
+- `body.height`: non-negative finite number, 기본은 `hd2d.enabled`가 `true`이면 `physics.hd2d.defaultHeight`, 아니면 `0`
+
+현재 구현 단계는 `physics.hd2d` authoring/resolved metadata를 runtime body `heightSpan`으로 적용한다. `createPhysicsWorldFromSpec(...)`는 body `floor` 문자열을 deterministic numeric `floorId`로 변환해 `spawnRigidBody(..., { heightSpan })`에 전달한다. `FerrumEngine` body API도 `setPhysicsBodyHeightSpan(...)`, `clearPhysicsBodyHeightSpan(...)`, `getPhysicsBodyHeightSpan(...)`을 제공한다.
+
+Rust core는 `PhysicsFloorId`와 `HeightSpan`을 `World` 선택 component로 저장하며 entity/entity 충돌 pair, swept pair, rigid contact solver, CCD contact filter에서 기존 layer/category filter와 height/floor filter를 AND로 적용한다. 둘 중 하나에 height span이 없으면 기존 호환을 위해 height filter를 통과한다. Body query/raycast/shape-cast API는 query option의 `heightSpan`이 지정된 경우에만 explicit floor/elevation/height 필터를 적용하며, 이때 height span이 없는 legacy body는 결과에서 제외된다.
+
+Shooter Game Spec tile definition도 `floor`, `elevation`, `height`, `kind`, `ramp`, `bridgePortal`, `blocksMovement`, `blocksProjectile`, `blocksVision`, `occluderHeight` metadata를 받을 수 있다. `physics.hd2d.enabled`가 켜져 있으면 tile `height` 기본값은 `physics.hd2d.defaultHeight`이고, Rust tilemap collision cache는 height span이 다른 solid run을 합치지 않는다. `blocksMovement: false`는 양수 collision layer tile을 이동 obstacle에서 제외하며, Rust merged collision cache, kinematic tile movement, tilemap navigation, TypeScript boundary extraction이 같은 의미를 사용한다. `moveHd2dKinematicBodyWithTilemap(...)`은 body `heightSpan`을 사용해 다른 floor의 entity/tile obstacle을 필터링하고, tile `kind/ramp` metadata로 step up/down, stair/ramp elevation 보간, ledge drop opt-in, bridge under-pass를 처리한다. `bridgePortal`은 같은 XY tile에서 lower/upper floor edge를 만들어 `queryTilemapNavigationPath({ heightSpan, toHeightSpan })`가 다층 path를 반환하게 한다. Shooter projectile arc는 bullet height span을 갱신하고, combat/projectile tile hit는 height span overlap과 `blocksProjectile` metadata를 함께 사용한다. `blocksVision`/`occluderHeight`는 `deriveHd2dTileOccludersFromTilemapGrid(...)` helper로 lighting shadow occluder 입력에 연결할 수 있다.
+
+`FerrumEngine.setShooterTileHeightSpan(...)` / `clearShooterTileHeightSpan(...)`은 낮은 빈도 runtime tile height metadata 변경용 API이고, `setShooterTileHd2dMetadata(...)` / `clearShooterTileHd2dMetadata(...)`는 tile kind/ramp/blocking metadata 변경용 API다. tile nearest/raycast/segment-cast/shape-cast/contact/manifold query와 tilemap navigation waypoint/path query도 optional `heightSpan` filter를 지원한다. explicit tile obstacle query filter가 지정되면 height span이 없는 legacy tile은 결과에서 제외된다. explicit navigation filter가 지정되면 height span이 없는 legacy obstacle tile은 해당 filtered path에서 장애물로 취급하지 않는다. Frame telemetry와 DebugOverlay는 HD-2D height filter로 제외된 kinematic entity/tile candidate 수를 노출한다.
+
+Physics world snapshot/replay는 bulk body state ABI v1(`31 floats / 5 u32s`)을 유지한다. Height span은 snapshot `state.heightSpan` sidecar로 보존하고 restore 시 bulk body state 복원 뒤 별도 body API로 복원한다.
+
+별도 multi-hitbox/hurtbox authoring DSL, 고급 roof/wall visibility rule, entity shadow scale/offset, material 기반 lighting response, 3D rigid body solver는 이 HD-2D foundation 범위에 포함하지 않는다.
 
 ## Collider Shape
 

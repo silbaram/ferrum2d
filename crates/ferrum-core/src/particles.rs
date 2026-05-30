@@ -1,8 +1,11 @@
 use std::f32::consts::TAU;
 
 use crate::camera::Camera2D;
+use crate::collision::AabbBounds;
 use crate::components::{SpriteFrame, Transform2D};
-use crate::render_command::{SpriteRenderCommand, SPRITE_EFFECT_NONE};
+use crate::render_command::{
+    SpriteRenderCommand, SpriteRenderItem, SpriteRenderSortKey, SPRITE_EFFECT_NONE,
+};
 
 const DEFAULT_PARTICLE_CAPACITY: usize = 512;
 const DEFAULT_PARTICLE_SEED: u32 = 0xA341_316C;
@@ -236,6 +239,7 @@ impl ParticleSystem {
         camera: &Camera2D,
         render_commands: &mut Vec<SpriteRenderCommand>,
     ) {
+        let visible_bounds = camera.visible_bounds();
         for particle in &self.particles {
             let t = particle.normalized_age();
             let size = lerp(particle.start_size, particle.end_size, t);
@@ -244,10 +248,15 @@ impl ParticleSystem {
                 continue;
             }
 
-            let screen = camera.world_to_screen(Transform2D {
+            let center = Transform2D {
                 x: particle.x,
                 y: particle.y,
-            });
+            };
+            if !particle_intersects_viewport(center, size, visible_bounds) {
+                continue;
+            }
+
+            let screen = camera.world_to_screen(center);
             let (u0, v0, u1, v1) = particle.frame.uv();
             render_commands.push(SpriteRenderCommand {
                 x: screen.x - size * 0.5,
@@ -267,6 +276,67 @@ impl ParticleSystem {
             });
         }
     }
+
+    pub(crate) fn append_render_items(
+        &self,
+        camera: &Camera2D,
+        render_items: &mut Vec<SpriteRenderItem>,
+    ) {
+        let visible_bounds = camera.visible_bounds();
+        for (index, particle) in self.particles.iter().enumerate() {
+            let t = particle.normalized_age();
+            let size = lerp(particle.start_size, particle.end_size, t);
+            let color = lerp_color(particle.start_color, particle.end_color, t);
+            if size <= PARTICLE_EPSILON || color[3] <= 0.0 {
+                continue;
+            }
+
+            let center = Transform2D {
+                x: particle.x,
+                y: particle.y,
+            };
+            if !particle_intersects_viewport(center, size, visible_bounds) {
+                continue;
+            }
+
+            let screen = camera.world_to_screen(center);
+            let (u0, v0, u1, v1) = particle.frame.uv();
+            render_items.push(SpriteRenderItem {
+                command: SpriteRenderCommand {
+                    x: screen.x - size * 0.5,
+                    y: screen.y - size * 0.5,
+                    width: size,
+                    height: size,
+                    u0,
+                    v0,
+                    u1,
+                    v1,
+                    r: color[0],
+                    g: color[1],
+                    b: color[2],
+                    a: color[3],
+                    texture_id: particle.texture_id as f32,
+                    effect_flags: SPRITE_EFFECT_NONE,
+                },
+                sort_key: SpriteRenderSortKey {
+                    floor_id: 0,
+                    elevation: 0.0,
+                    foot_y: particle.y + size * 0.5,
+                    render_layer: i32::MAX - 1,
+                    stable_id: index as u32,
+                },
+            });
+        }
+    }
+}
+
+fn particle_intersects_viewport(
+    center: Transform2D,
+    size: f32,
+    visible_bounds: AabbBounds,
+) -> bool {
+    AabbBounds::from_center(center, size * 0.5, size * 0.5)
+        .is_some_and(|bounds| bounds.overlaps(visible_bounds))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
