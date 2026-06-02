@@ -1,0 +1,426 @@
+{
+  "$schema": "../../../schemas/topdown-authored-behavior-variant.schema.json",
+  "format": "ferrum2d.topdown-shooter.authored-behavior-variant",
+  "version": 1,
+  "extendsGameSpec": "./game.json",
+  "replayScenario": "topdown-authored-behavior",
+  "semantics": {
+    "fsmStateEntryMode": "manualReplaceSupported",
+    "browserPlacement": {
+      "anchorReplayBody": "pickup",
+      "target": "worldCenter",
+      "scale": 0.4
+    }
+  },
+  "ids": {
+    "items": {
+      "score": 1
+    },
+    "actions": {
+      "primary": 1,
+      "dash": 2,
+      "collect-score": 7,
+      "summon-enemy": 11
+    },
+    "timers": {
+      "wake": 13
+    }
+  },
+  "sceneComposition": {
+    "initialFragment": "authored-behavior-arena",
+    "prefabs": {
+      "builtin.player": {
+        "props": {
+          "kind": "player",
+          "behaviorRecipes": "player.primary",
+          "runtimeEntity": "builtinShooterPlayer"
+        }
+      },
+      "pickup.score": {
+        "props": {
+          "kind": "pickup",
+          "behaviorRecipes": "pickup.score",
+          "physicsBody": {
+            "halfWidth": 8,
+            "halfHeight": 8,
+            "layer": 4,
+            "isTrigger": true
+          }
+        }
+      },
+      "interaction.source": {
+        "props": {
+          "kind": "trigger",
+          "behaviorRecipes": "interaction.source",
+          "physicsBody": {
+            "halfWidth": 8,
+            "halfHeight": 8,
+            "layer": 3,
+            "isTrigger": true
+          }
+        },
+        "variants": {
+          "single-use": {
+            "props": {
+              "interactionMode": "once"
+            }
+          }
+        }
+      },
+      "projectile.test": {
+        "props": {
+          "kind": "projectile",
+          "behaviorRecipes": "projectile.test",
+          "physicsBody": {
+            "halfWidth": 8,
+            "halfHeight": 8,
+            "layer": 2,
+            "isTrigger": false
+          }
+        }
+      },
+      "projectile.neutral": {
+        "props": {
+          "kind": "projectile",
+          "behaviorRecipes": "projectile.neutral",
+          "physicsBody": {
+            "halfWidth": 8,
+            "halfHeight": 8,
+            "layer": 2,
+            "isTrigger": false
+          }
+        }
+      },
+      "enemy.rewarded": {
+        "props": {
+          "kind": "enemy",
+          "behaviorRecipes": "enemy.rewarded",
+          "physicsBody": {
+            "halfWidth": 16,
+            "halfHeight": 16,
+            "layer": 1,
+            "isTrigger": false
+          }
+        }
+      },
+      "enemy.neutral-target": {
+        "props": {
+          "kind": "enemy",
+          "behaviorRecipes": "enemy.neutral-target",
+          "physicsBody": {
+            "halfWidth": 16,
+            "halfHeight": 16,
+            "layer": 1,
+            "isTrigger": false
+          }
+        }
+      },
+      "timer.source": {
+        "props": {
+          "kind": "trigger",
+          "behaviorRecipes": "timer.source",
+          "physicsBody": {
+            "halfWidth": 8,
+            "halfHeight": 8,
+            "layer": 3,
+            "isTrigger": true
+          }
+        }
+      }
+    },
+    "fragments": {
+      "authored-behavior-arena": {
+        "instances": [
+          {
+            "id": "builtin-player",
+            "prefab": "builtin.player"
+          },
+          {
+            "id": "score-pickup",
+            "prefab": "pickup.score",
+            "x": 400,
+            "y": 240,
+            "props": {
+              "replayBody": "pickup"
+            }
+          },
+          {
+            "id": "interaction-source",
+            "prefab": "interaction.source",
+            "variant": "single-use",
+            "x": 424,
+            "y": 240,
+            "props": {
+              "replayBody": "interactionSource",
+              "behaviorStateMachine": "interaction-source"
+            }
+          },
+          {
+            "id": "test-projectile",
+            "prefab": "projectile.test",
+            "x": 600,
+            "y": 240,
+            "props": {
+              "replayBody": "bullet",
+              "behaviorStateMachine": "test-projectile"
+            }
+          },
+          {
+            "id": "rewarded-enemy",
+            "prefab": "enemy.rewarded",
+            "x": 600,
+            "y": 240,
+            "props": {
+              "replayBody": "enemy"
+            }
+          },
+          {
+            "id": "neutral-projectile",
+            "prefab": "projectile.neutral",
+            "x": 660,
+            "y": 240,
+            "props": {
+              "replayBody": "neutralBullet"
+            }
+          },
+          {
+            "id": "neutral-enemy",
+            "prefab": "enemy.neutral-target",
+            "x": 660,
+            "y": 240,
+            "props": {
+              "replayBody": "neutralEnemy"
+            }
+          },
+          {
+            "id": "timer-source",
+            "prefab": "timer.source",
+            "x": 720,
+            "y": 240,
+            "props": {
+              "replayBody": "timerSource",
+              "behaviorStateMachine": "timer-source"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {
+      "player.primary": {
+        "recipes": [
+          {
+            "kind": "projectileAction",
+            "action": "primary",
+            "cooldownSeconds": 0.08,
+            "speed": 720,
+            "damage": 2,
+            "lifetimeSeconds": 1.6
+          },
+          {
+            "kind": "dashAction",
+            "action": "dash",
+            "cooldownSeconds": 0.75,
+            "distance": 96,
+            "aim": "input"
+          },
+          {
+            "kind": "spawnPrefabAction",
+            "action": "summon-enemy",
+            "cooldownSeconds": 0.5,
+            "prefab": "enemy",
+            "prefabId": 1,
+            "offsetX": 72,
+            "offsetY": 0
+          }
+        ]
+      },
+      "pickup.score": {
+        "recipes": [
+          {
+            "kind": "pickup",
+            "item": "score",
+            "itemId": 1,
+            "count": 3,
+            "despawn": true
+          }
+        ]
+      },
+      "interaction.source": {
+        "recipes": [
+          {
+            "kind": "interaction",
+            "action": "collect-score",
+            "radius": 64,
+            "prompt": "Collect score",
+            "once": true
+          }
+        ]
+      },
+      "projectile.test": {
+        "recipes": [
+          {
+            "kind": "damage",
+            "amount": 1,
+            "target": "other",
+            "cooldownSeconds": 0
+          }
+        ]
+      },
+      "projectile.neutral": {
+        "recipes": [
+          {
+            "kind": "damage",
+            "amount": 1,
+            "target": "other",
+            "cooldownSeconds": 0
+          },
+          {
+            "kind": "faction",
+            "faction": "neutral"
+          },
+          {
+            "kind": "lifetime",
+            "seconds": 0.02
+          }
+        ]
+      },
+      "projectile.spent": {
+        "recipes": [
+          {
+            "kind": "lifetime",
+            "seconds": 0.25
+          }
+        ]
+      },
+      "enemy.rewarded": {
+        "recipes": [
+          {
+            "kind": "health",
+            "max": 1,
+            "start": 1,
+            "onZero": "despawn"
+          },
+          {
+            "kind": "scoreReward",
+            "reward": 11
+          }
+        ]
+      },
+      "enemy.neutral-target": {
+        "recipes": [
+          {
+            "kind": "health",
+            "max": 1,
+            "start": 1,
+            "onZero": "despawn"
+          },
+          {
+            "kind": "faction",
+            "faction": "enemy"
+          }
+        ]
+      },
+      "timer.source": {
+        "recipes": [
+          {
+            "kind": "spawnPrefabAction",
+            "action": "summon-enemy",
+            "cooldownSeconds": 0.25,
+            "prefab": "enemy",
+            "prefabId": 1,
+            "offsetX": -72,
+            "offsetY": 0
+          },
+          {
+            "kind": "timerTrigger",
+            "timer": "wake",
+            "action": "summon-enemy",
+            "seconds": 0.05
+          }
+        ]
+      }
+    }
+  },
+  "behaviorStateMachines": {
+    "machines": {
+      "interaction-source": {
+        "initial": "idle",
+        "states": {
+          "idle": {
+            "behaviorRecipes": "interaction.source",
+            "transitions": [
+              {
+                "id": "on-collect-score",
+                "to": "triggered",
+                "when": {
+                  "type": "gameplayEvent",
+                  "event": "interaction",
+                  "action": "collect-score"
+                }
+              }
+            ]
+          },
+          "triggered": {}
+        }
+      },
+      "test-projectile": {
+        "initial": "armed",
+        "states": {
+          "armed": {
+            "behaviorRecipes": "projectile.test",
+            "transitions": [
+              {
+                "id": "on-damage",
+                "to": "spent",
+                "when": {
+                  "type": "gameplayEvent",
+                  "event": "collisionDamage"
+                }
+              }
+            ]
+          },
+          "spent": {
+            "behaviorRecipes": "projectile.spent"
+          }
+        }
+      },
+      "timer-source": {
+        "initial": "idle",
+        "states": {
+          "idle": {
+            "behaviorRecipes": "timer.source",
+            "transitions": [
+              {
+                "id": "on-wake-timer",
+                "to": "awake",
+                "when": {
+                  "type": "gameplayEvent",
+                  "event": "timer",
+                  "timer": "wake"
+                }
+              }
+            ]
+          },
+          "awake": {}
+        }
+      }
+    }
+  },
+  "expected": {
+    "replayHash": "ab94f41f",
+    "finalScore": 14,
+    "eventFrame": 2,
+    "eventKinds": ["collisionDamage", "factionDamageDenied", "pickupCollected", "interaction", "behaviorStateChanged", "behaviorStateChanged"],
+    "actionFailureFrame": 3,
+    "actionFailureEventKinds": ["actionFailed"],
+    "timerFrame": 4,
+    "timerEventKinds": ["timer", "prefabSpawned", "behaviorStateChanged"],
+    "states": {
+      "interaction-source": "triggered",
+      "test-projectile": "spent",
+      "timer-source": "awake"
+    }
+  }
+}

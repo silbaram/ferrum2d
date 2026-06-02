@@ -1,16 +1,25 @@
 use wasm_bindgen::prelude::*;
 
 use crate::collision::{CollisionSystem, PhysicsDebugLine};
+use crate::components::gameplay::BehaviorStateEnterActionPhase;
 use crate::components::{HeightSpan, PhysicsFloorId, Transform2D};
+use crate::entity::Entity;
+use crate::gameplay::{
+    action_failure_gameplay_event, apply_behavior_state_machine_events,
+    tick_gameplay_timer_triggers,
+};
+use crate::gameplay_event::GAMEPLAY_EVENT_BEHAVIOR_STATE_CHANGED;
 use crate::input::InputState;
 use crate::physics::{
     FixedTimestep, FixedTimestepConfig, FixedTimestepUpdate, PhysicsSystem, RigidBodyStepStats,
 };
+use crate::shooter_scene::ActionTriggerCommand;
 use crate::tilemap::TilemapNavigationPathPoint;
 
 use super::physics_bridge::{
     PhysicsBodyColliderSnapshot, PhysicsEntitySnapshot, PhysicsJointSnapshot,
 };
+use super::scenes::ActiveScene;
 use super::{Engine, TILEMAP_NAVIGATION_DEBUG_COLOR, TILEMAP_NAVIGATION_PATH_POINT_FLOATS};
 
 #[wasm_bindgen]
@@ -73,6 +82,7 @@ impl Engine {
     fn advance_simulation(&mut self, delta: f64) {
         self.elapsed_seconds += delta;
         self.clear_physics_frame();
+        self.reset_active_scene_action_trigger_frame_diagnostics();
         if self.fixed_timestep_enabled {
             let update = self.fixed_timestep.advance(delta as f32);
             self.last_fixed_update = update;
@@ -88,13 +98,30 @@ impl Engine {
                 }
                 self.record_collision_lifecycle_events();
             }
+            if !self.active_scene_ticks_gameplay_timers() {
+                tick_gameplay_timer_triggers(
+                    &mut self.world,
+                    update.consumed_seconds,
+                    &mut self.gameplay_events,
+                );
+            }
         } else {
             self.last_fixed_update = FixedTimestepUpdate::default();
             self.tweens.update(&mut self.world, delta as f32);
             self.update_scene(delta as f32, self.input);
             self.step_auto_rigid_bodies(delta as f32);
             self.record_collision_lifecycle_events();
+            if !self.active_scene_ticks_gameplay_timers() {
+                tick_gameplay_timer_triggers(
+                    &mut self.world,
+                    delta as f32,
+                    &mut self.gameplay_events,
+                );
+            }
         }
+        let behavior_event_start = self.gameplay_events.len();
+        apply_behavior_state_machine_events(&mut self.world, &mut self.gameplay_events);
+        self.queue_behavior_state_enter_actions(behavior_event_start);
         self.particles.update(delta as f32);
     }
 
@@ -121,10 +148,15 @@ impl Engine {
 
     pub fn clear_events(&mut self) {
         self.clear_audio_events();
+        self.clear_gameplay_events();
     }
 
     pub fn clear_audio_events(&mut self) {
         self.audio_events.clear();
+    }
+
+    pub fn clear_gameplay_events(&mut self) {
+        self.gameplay_events.clear();
     }
 
     pub fn set_collision_lifecycle_events_enabled(&mut self, enabled: bool) {
@@ -146,6 +178,7 @@ impl Engine {
     fn clear_physics_frame(&mut self) {
         self.physics_counters.clear();
         self.collision_events.clear();
+        self.gameplay_events.clear();
         self.collision_event_counts.clear();
         self.physics_debug_lines.clear();
         self.world.clear_rigid_body_ccd_debug_hits();
@@ -154,6 +187,7 @@ impl Engine {
     pub(super) fn clear_physics_history(&mut self) {
         self.collision_event_tracker.clear();
         self.collision_events.clear();
+        self.gameplay_events.clear();
         self.collision_event_counts.clear();
         self.physics_debug_lines.clear();
         self.world.clear_rigid_body_ccd_debug_hits();
@@ -201,6 +235,66 @@ impl Engine {
             .collision_trigger_pairs
             .saturating_add(pair_counts.trigger);
         self.collision_event_counts.add(counts);
+    }
+
+    fn queue_behavior_state_enter_actions(&mut self, event_start: usize) {
+        if self.active_scene != ActiveScene::Shooter
+            || event_start >= self.gameplay_events.len()
+            || !self
+                .world
+                .behavior_state_enter_actions
+                .iter()
+                .any(Option::is_some)
+        {
+            return;
+        }
+
+        let event_end = self.gameplay_events.len();
+        for event_index in event_start..event_end {
+            let event = self.gameplay_events[event_index];
+            if event.kind != GAMEPLAY_EVENT_BEHAVIOR_STATE_CHANGED {
+                continue;
+            }
+            let Some(actions) = self
+                .world
+                .behavior_state_enter_actions
+                .get(event.source_id as usize)
+                .and_then(|actions| *actions)
+            else {
+                continue;
+            };
+            if self
+                .world
+                .generations
+                .get(event.source_id as usize)
+                .copied()
+                != Some(event.source_generation)
+                || !self
+                    .world
+                    .alive
+                    .get(event.source_id as usize)
+                    .copied()
+                    .unwrap_or(false)
+            {
+                continue;
+            }
+            let source = Entity {
+                id: event.source_id,
+                generation: event.source_generation,
+            };
+            for action in actions.iter_for_state(event.token_id) {
+                match action.phase {
+                    BehaviorStateEnterActionPhase::NextFramePrePhysics => {
+                        let command =
+                            ActionTriggerCommand::behavior_state_enter(source, action.action_id);
+                        if let Err(data) = self.scene.queue_action_trigger_result(command) {
+                            self.gameplay_events
+                                .push(action_failure_gameplay_event(data));
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub(super) fn build_physics_debug_lines(&mut self) {

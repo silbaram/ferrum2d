@@ -8,10 +8,15 @@ import type {
 } from "./engineTypes.js";
 import type { InputSnapshot } from "./inputManager.js";
 import type { ResolvedPhysicsSpec } from "./physicsSpec.js";
+import {
+  EMPTY_GAMEPLAY_EVENTS,
+  GAMEPLAY_ACTION_FAILURE_MAX_REASON_CODE,
+} from "./gameplayEventDecoder.js";
 import { decodeRenderCommands } from "./renderCommandDecoder.js";
 import type {
   CollisionEventBufferView,
   FrameTelemetryBufferView,
+  GameplayEventBufferView,
   PhysicsDebugLineBufferView,
   RenderCommandBufferView,
   RenderCommandView,
@@ -27,6 +32,7 @@ export interface FrameStateBuildInput {
   frameTelemetryBuffer: FrameTelemetryBufferView;
   renderCommandBuffer: RenderCommandBufferView;
   collisionEventBuffer: CollisionEventBufferView;
+  gameplayEventBuffer: GameplayEventBufferView;
   physicsDebugLineBuffer: PhysicsDebugLineBufferView;
   physicsSpec: ResolvedPhysicsSpec;
   options: CreateEngineOptions;
@@ -70,6 +76,26 @@ const TELEMETRY_BROKEN_JOINTS = 33;
 const TELEMETRY_PLAYER_FLOOR_ID = 34;
 const TELEMETRY_PLAYER_ELEVATION = 35;
 const TELEMETRY_PLAYER_HEIGHT = 36;
+const TELEMETRY_ACTION_TRIGGER_ATTEMPTS = 37;
+const TELEMETRY_ACTION_TRIGGER_FAILURES = 38;
+const TELEMETRY_ACTION_TRIGGER_FAILURE_EVENTS_PUSHED = 39;
+const TELEMETRY_ACTION_TRIGGER_COMMIT_SKIPS = 40;
+const TELEMETRY_ACTION_LAST_PREPARED_TRIGGER_FAILURE_REASON_CODE = 41;
+const TELEMETRY_ACTION_FAILURE_REASON_COUNTS = 42;
+const TELEMETRY_SPAWN_FLUSH_COMMANDS_DRAINED =
+  TELEMETRY_ACTION_FAILURE_REASON_COUNTS + GAMEPLAY_ACTION_FAILURE_MAX_REASON_CODE + 1;
+const TELEMETRY_SPAWN_FLUSH_PROJECTILE_SPAWNS =
+  TELEMETRY_SPAWN_FLUSH_COMMANDS_DRAINED + 1;
+const TELEMETRY_SPAWN_FLUSH_PROJECTILE_ARCS_APPLIED =
+  TELEMETRY_SPAWN_FLUSH_PROJECTILE_SPAWNS + 1;
+const TELEMETRY_SPAWN_FLUSH_PROJECTILE_SHOOT_AUDIO_EVENTS_PUSHED =
+  TELEMETRY_SPAWN_FLUSH_PROJECTILE_ARCS_APPLIED + 1;
+const TELEMETRY_SPAWN_FLUSH_PREFAB_SPAWNS =
+  TELEMETRY_SPAWN_FLUSH_PROJECTILE_SHOOT_AUDIO_EVENTS_PUSHED + 1;
+const TELEMETRY_SPAWN_FLUSH_PREFAB_SPAWNED_PAYLOADS =
+  TELEMETRY_SPAWN_FLUSH_PREFAB_SPAWNS + 1;
+const TELEMETRY_SPAWN_FLUSH_PREFAB_SPAWNED_EVENTS_PUSHED =
+  TELEMETRY_SPAWN_FLUSH_PREFAB_SPAWNED_PAYLOADS + 1;
 
 export function buildFrameState(input: FrameStateBuildInput): FrameState {
   const {
@@ -80,6 +106,7 @@ export function buildFrameState(input: FrameStateBuildInput): FrameState {
     frameTelemetryBuffer,
     renderCommandBuffer,
     collisionEventBuffer,
+    gameplayEventBuffer,
     physicsDebugLineBuffer,
     physicsSpec,
     options,
@@ -106,6 +133,8 @@ export function buildFrameState(input: FrameStateBuildInput): FrameState {
     playerFloorId: finiteTelemetry(telemetry[TELEMETRY_PLAYER_FLOOR_ID]),
     playerElevation: finiteTelemetry(telemetry[TELEMETRY_PLAYER_ELEVATION]),
     playerHeight: finiteTelemetry(telemetry[TELEMETRY_PLAYER_HEIGHT]),
+    actionDiagnostics: buildActionFrameDiagnostics(frameTelemetryBuffer),
+    spawnDiagnostics: buildSpawnFrameDiagnostics(frameTelemetryBuffer),
     audioEventCount: audioEvents.audioEventCount,
     audioEvents: audioEvents.audioEvents,
     physics,
@@ -113,6 +142,10 @@ export function buildFrameState(input: FrameStateBuildInput): FrameState {
     collisionEvents: includeCollisionLifecycleEvents
       ? bridge.decodeCollisionEvents(collisionEventBuffer)
       : EMPTY_COLLISION_EVENTS,
+    gameplayEventBuffer,
+    gameplayEvents: options.includeGameplayEvents === false
+      ? EMPTY_GAMEPLAY_EVENTS
+      : bridge.decodeGameplayEvents(gameplayEventBuffer),
     physicsDebugLineBuffer,
     physicsDebugLines: options.includePhysicsDebugLines
       ? bridge.decodePhysicsDebugLines(physicsDebugLineBuffer)
@@ -121,6 +154,37 @@ export function buildFrameState(input: FrameStateBuildInput): FrameState {
     renderCommands: options.includeDeprecatedRenderCommands
       ? decodeRenderCommands(renderCommandBuffer)
       : EMPTY_RENDER_COMMANDS,
+  };
+}
+
+export function buildActionFrameDiagnostics(frameTelemetryBuffer: FrameTelemetryBufferView) {
+  const telemetry = frameTelemetryBuffer.buffer;
+  const lastReasonCode = telemetry[TELEMETRY_ACTION_LAST_PREPARED_TRIGGER_FAILURE_REASON_CODE];
+  return {
+    triggerAttempts: telemetry[TELEMETRY_ACTION_TRIGGER_ATTEMPTS] ?? 0,
+    triggerFailures: telemetry[TELEMETRY_ACTION_TRIGGER_FAILURES] ?? 0,
+    triggerFailureEventsPushed: telemetry[TELEMETRY_ACTION_TRIGGER_FAILURE_EVENTS_PUSHED] ?? 0,
+    triggerCommitSkips: telemetry[TELEMETRY_ACTION_TRIGGER_COMMIT_SKIPS] ?? 0,
+    lastPreparedTriggerFailureReasonCode: lastReasonCode > 0 ? lastReasonCode : undefined,
+    failureReasonCounts: Array.from(
+      { length: GAMEPLAY_ACTION_FAILURE_MAX_REASON_CODE + 1 },
+      (_, reasonCode) => telemetry[TELEMETRY_ACTION_FAILURE_REASON_COUNTS + reasonCode] ?? 0,
+    ),
+  };
+}
+
+export function buildSpawnFrameDiagnostics(frameTelemetryBuffer: FrameTelemetryBufferView) {
+  const telemetry = frameTelemetryBuffer.buffer;
+  return {
+    commandsDrained: telemetry[TELEMETRY_SPAWN_FLUSH_COMMANDS_DRAINED] ?? 0,
+    projectileSpawns: telemetry[TELEMETRY_SPAWN_FLUSH_PROJECTILE_SPAWNS] ?? 0,
+    projectileArcsApplied: telemetry[TELEMETRY_SPAWN_FLUSH_PROJECTILE_ARCS_APPLIED] ?? 0,
+    projectileShootAudioEventsPushed:
+      telemetry[TELEMETRY_SPAWN_FLUSH_PROJECTILE_SHOOT_AUDIO_EVENTS_PUSHED] ?? 0,
+    prefabSpawns: telemetry[TELEMETRY_SPAWN_FLUSH_PREFAB_SPAWNS] ?? 0,
+    prefabSpawnedPayloads: telemetry[TELEMETRY_SPAWN_FLUSH_PREFAB_SPAWNED_PAYLOADS] ?? 0,
+    prefabSpawnedEventsPushed:
+      telemetry[TELEMETRY_SPAWN_FLUSH_PREFAB_SPAWNED_EVENTS_PUSHED] ?? 0,
   };
 }
 

@@ -153,8 +153,33 @@ class FakeBridge {
         2,
         4,
         32,
+        2,
+        2,
+        1,
+        0,
+        4,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        3,
+        2,
+        1,
+        1,
+        4,
+        4,
+        4,
       ]),
-      f64sPerFrame: 37,
+      f64sPerFrame: 62,
     };
   }
 
@@ -164,6 +189,15 @@ class FakeBridge {
       buffer: new Uint32Array(0),
       eventCount: 0,
       u32sPerEvent: 6,
+    };
+  }
+
+  readGameplayEventBuffer(): unknown {
+    this.order.push("read_gameplay");
+    return {
+      buffer: new Uint32Array(0),
+      eventCount: 0,
+      u32sPerEvent: 8,
     };
   }
 
@@ -178,6 +212,11 @@ class FakeBridge {
 
   decodeCollisionEvents(): readonly unknown[] {
     this.order.push("decode_collision");
+    return [];
+  }
+
+  decodeGameplayEvents(): readonly unknown[] {
+    this.order.push("decode_gameplay");
     return [];
   }
 
@@ -215,6 +254,20 @@ test("runFrame preserves input, viewport, update, audio, buffer, callback order"
       equal(frame.playerFloorId, 2);
       equal(frame.playerElevation, 4);
       equal(frame.playerHeight, 32);
+      equal(frame.actionDiagnostics.triggerAttempts, 2);
+      equal(frame.actionDiagnostics.triggerFailures, 2);
+      equal(frame.actionDiagnostics.triggerFailureEventsPushed, 1);
+      equal(frame.actionDiagnostics.triggerCommitSkips, 0);
+      equal(frame.actionDiagnostics.lastPreparedTriggerFailureReasonCode, 4);
+      equal(frame.actionDiagnostics.failureReasonCounts[4], 1);
+      equal(frame.actionDiagnostics.failureReasonCounts[9], 1);
+      equal(frame.spawnDiagnostics.commandsDrained, 3);
+      equal(frame.spawnDiagnostics.projectileSpawns, 2);
+      equal(frame.spawnDiagnostics.projectileArcsApplied, 1);
+      equal(frame.spawnDiagnostics.projectileShootAudioEventsPushed, 1);
+      equal(frame.spawnDiagnostics.prefabSpawns, 4);
+      equal(frame.spawnDiagnostics.prefabSpawnedPayloads, 4);
+      equal(frame.spawnDiagnostics.prefabSpawnedEventsPushed, 4);
       equal(frame.audioEventCount, 1);
       equal(frame.audioEvents.length, 1);
       equal(frame.physics.fixedTimestepEnabled, true);
@@ -246,6 +299,8 @@ test("runFrame preserves input, viewport, update, audio, buffer, callback order"
     "clear_audio",
     "read_render",
     "read_telemetry",
+    "read_gameplay",
+    "decode_gameplay",
     "on_frame",
   ]);
 });
@@ -422,6 +477,37 @@ test("runFrame omits FrameState audio objects when includeAudioEvents is false a
     "clear_audio",
     "read_render",
     "read_telemetry",
+    "read_gameplay",
+    "decode_gameplay",
+    "on_frame",
+  ]);
+});
+
+test("runFrame skips gameplay event buffer read and decode when includeGameplayEvents is false", () => {
+  const order: string[] = [];
+  const bridge = new FakeBridge(order, 0);
+  const engine = new FakeEngine(order);
+  const context = framePipelineContext({
+    bridge,
+    engine,
+    order,
+    options: { includeGameplayEvents: false },
+    onFrame: (frame) => {
+      order.push("on_frame");
+      equal(frame.gameplayEventBuffer.eventCount, 0);
+      equal(frame.gameplayEvents.length, 0);
+    },
+  });
+
+  runFrame(context, 0.016);
+
+  deepEqual(order, [
+    "input",
+    "viewport",
+    "update",
+    "read_audio",
+    "read_render",
+    "read_telemetry",
     "on_frame",
   ]);
 });
@@ -462,8 +548,10 @@ test("runFrame builds optional FrameState decoded views only when requested", ()
     "read_render",
     "read_telemetry",
     "read_collision",
+    "read_gameplay",
     "read_debug",
     "decode_collision",
+    "decode_gameplay",
     "decode_debug",
     "on_frame",
   ]);
@@ -490,6 +578,7 @@ test("runFrame only reads optional FrameState buffers when requested", () => {
 
   equal(order.includes("read_collision"), false);
   equal(order.includes("read_debug"), false);
+  equal(order.includes("read_gameplay"), true);
   equal(order.includes("read_telemetry"), true);
 });
 

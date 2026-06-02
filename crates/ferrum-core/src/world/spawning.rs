@@ -3,11 +3,27 @@ use super::{
     World, BULLET_LIFETIME, DEFAULT_BULLET_TEMPLATE, DEFAULT_ENEMY_TEMPLATE,
     DEFAULT_PLAYER_TEMPLATE,
 };
+use crate::components::gameplay::{
+    GameplayFaction, ProjectileCollisionTarget, ProjectileTileImpact,
+};
 use crate::components::{
     AabbCollider, CapsuleCollider, CircleCollider, CollisionLayer, ConvexPolygonCollider,
     EdgeCollider, OrientedBoxCollider, Sprite, Transform2D, Velocity,
 };
 use crate::entity::Entity;
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BulletSpawnRequest {
+    pub(crate) transform: Transform2D,
+    pub(crate) velocity: Velocity,
+    pub(crate) texture_id: u32,
+    pub(crate) lifetime: f32,
+    pub(crate) template: EntityTemplate,
+    pub(crate) damage: f32,
+    pub(crate) collision_target: ProjectileCollisionTarget,
+    pub(crate) tile_impact: ProjectileTileImpact,
+    pub(crate) source_faction: Option<GameplayFaction>,
+}
 
 impl World {
     pub fn spawn_player(&mut self, x: f32, y: f32, texture_id: u32) -> Entity {
@@ -116,14 +132,28 @@ impl World {
         template: EntityTemplate,
         damage: f32,
     ) -> Entity {
+        self.spawn_bullet_from_request(BulletSpawnRequest {
+            transform,
+            velocity,
+            texture_id,
+            lifetime,
+            template,
+            damage,
+            collision_target: ProjectileCollisionTarget::Enemies,
+            tile_impact: ProjectileTileImpact::Despawn,
+            source_faction: None,
+        })
+    }
+
+    pub(crate) fn spawn_bullet_from_request(&mut self, request: BulletSpawnRequest) -> Entity {
         let e = self.spawn_entity();
         let i = e.id as usize;
-        let (u0, v0, u1, v1) = initial_uv(template);
-        self.transforms[i] = Some(transform);
+        let (u0, v0, u1, v1) = initial_uv(request.template);
+        self.transforms[i] = Some(request.transform);
         self.sprites[i] = Some(Sprite {
-            texture_id,
-            width: template.sprite_width,
-            height: template.sprite_height,
+            texture_id: request.texture_id,
+            width: request.template.sprite_width,
+            height: request.template.sprite_height,
             u0,
             v0,
             u1,
@@ -133,12 +163,15 @@ impl World {
             b: 0.2,
             a: 1.0,
         });
-        self.sprite_animations[i] = template.animation;
-        self.velocities[i] = Some(velocity);
+        self.sprite_animations[i] = request.template.animation;
+        self.velocities[i] = Some(request.velocity);
         let layer = CollisionLayer::Bullet;
-        self.apply_template_collider(e, layer, template);
-        self.bullet_lifetimes[i] = Some(lifetime);
-        self.damages[i] = Some(damage);
+        self.apply_template_collider(e, layer, request.template);
+        self.bullet_lifetimes[i] = Some(request.lifetime);
+        self.projectile_collision_targets[i] = Some(request.collision_target);
+        self.projectile_tile_impacts[i] = Some(request.tile_impact);
+        self.gameplay_factions[i] = request.source_faction;
+        self.damages[i] = Some(request.damage);
         e
     }
 

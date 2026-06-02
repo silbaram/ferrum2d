@@ -6,7 +6,7 @@ import { extname, join, resolve, sep } from "node:path";
 import { chromium } from "playwright-core";
 import { runtimeBudgetForSmokeMode } from "./runtime-budget-profiles.mjs";
 
-const DEFAULT_DIST_DIR = "examples/minimal-game/dist";
+const DEFAULT_DIST_DIR = "examples/starter-runtime/dist";
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MODE = "render";
@@ -21,6 +21,7 @@ const PRELOAD_MODE = "preload";
 const VIRTUAL_CONTROLS_MODE = "virtual-controls";
 const TOPDOWN_EFFECTS_MODE = "topdown-effects";
 const TOPDOWN_SAVE_LOAD_MODE = "topdown-save-load";
+const TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_MODE = "topdown-authored-behavior-variant";
 const TOPDOWN_HD2D_MODE = "topdown-hd2d";
 const DESTRUCTIBLE_TERRAIN_MODE = "destructible-terrain";
 const BREAKOUT_EFFECTS_MODE = "breakout-effects";
@@ -347,6 +348,7 @@ function parseArgs(args) {
     VIRTUAL_CONTROLS_MODE,
     TOPDOWN_EFFECTS_MODE,
     TOPDOWN_SAVE_LOAD_MODE,
+    TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_MODE,
     TOPDOWN_HD2D_MODE,
     DESTRUCTIBLE_TERRAIN_MODE,
     BREAKOUT_EFFECTS_MODE,
@@ -403,6 +405,9 @@ function browserSmokeUrl(port, options) {
   }
   if (mode === TOPDOWN_HD2D_MODE) {
     params.set("effectSmoke", "true");
+  }
+  if (mode === TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_MODE) {
+    params.set("authoredBehaviorVariantApply", "true");
   }
   if (mode === DESTRUCTIBLE_TERRAIN_MODE) {
     params.set("destructibleTerrainDemo", "true");
@@ -593,6 +598,8 @@ async function smokeByMode(page, mode, timeoutMs) {
       return await smokeTopdownEffects(page, timeoutMs);
     case TOPDOWN_SAVE_LOAD_MODE:
       return await smokeTopdownSaveLoad(page, timeoutMs);
+    case TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_MODE:
+      return await smokeTopdownAuthoredBehaviorVariant(page, timeoutMs);
     case TOPDOWN_HD2D_MODE:
       return await smokeTopdownHd2d(page, timeoutMs);
     case DESTRUCTIBLE_TERRAIN_MODE:
@@ -932,6 +939,344 @@ function evaluateRuntimeBudgetSnapshot(snapshot, budget) {
   };
 }
 
+async function smokeTopdownAuthoredBehaviorVariant(page, timeoutMs) {
+  await waitForPageFunction(
+    page,
+    "Top-down authored behavior variant smoke did not expose variant summary",
+    () => globalThis.ferrumTopdownAuthoredBehaviorVariant?.replayScenario === "topdown-authored-behavior",
+    timeoutMs,
+  );
+  await page.evaluate(() => {
+    const summary = globalThis.ferrumTopdownAuthoredBehaviorVariant;
+    if (!summary) {
+      throw new Error("Top-down authored behavior variant summary is missing.");
+    }
+    if (summary.commandCount !== 15) {
+      throw new Error(`Top-down authored behavior variant command count mismatch: ${summary.commandCount}`);
+    }
+    if (summary.instanceCount !== 8) {
+      throw new Error(`Top-down authored behavior variant instance count mismatch: ${summary.instanceCount}`);
+    }
+    if (summary.expectedReplayHash !== "ab94f41f") {
+      throw new Error(`Top-down authored behavior variant replay hash mismatch: ${summary.expectedReplayHash}`);
+    }
+    if (
+      !Number.isInteger(summary.expectedStateIds?.["interaction-source"]) ||
+      !Number.isInteger(summary.expectedStateIds?.["test-projectile"]) ||
+      !Number.isInteger(summary.expectedStateIds?.["timer-source"])
+    ) {
+      throw new Error(`Top-down authored behavior variant state id mismatch: ${JSON.stringify(summary.expectedStateIds)}`);
+    }
+    if (summary.runtimeApply?.instanceCount !== 8) {
+      throw new Error(`Top-down authored behavior variant runtime instance count mismatch: ${summary.runtimeApply?.instanceCount}`);
+    }
+    if (summary.runtimeApply?.commandCount !== 15) {
+      throw new Error(`Top-down authored behavior variant runtime command count mismatch: ${summary.runtimeApply?.commandCount}`);
+    }
+    if (summary.runtimeApply?.machineCount !== 3) {
+      throw new Error(`Top-down authored behavior variant runtime FSM count mismatch: ${summary.runtimeApply?.machineCount}`);
+    }
+    if (summary.runtimeApply?.applyId !== 1) {
+      throw new Error(`Top-down authored behavior variant runtime apply id mismatch: ${summary.runtimeApply?.applyId}`);
+    }
+    if (
+      !Number.isInteger(summary.runtimeApply?.initialStateIds?.["interaction-source"]) ||
+      !Number.isInteger(summary.runtimeApply?.initialStateIds?.["test-projectile"]) ||
+      !Number.isInteger(summary.runtimeApply?.initialStateIds?.["timer-source"]) ||
+      summary.runtimeApply?.currentStateIds?.["interaction-source"] !== summary.runtimeApply?.initialStateIds?.["interaction-source"] ||
+      summary.runtimeApply?.currentStateIds?.["test-projectile"] !== summary.runtimeApply?.initialStateIds?.["test-projectile"] ||
+      summary.runtimeApply?.currentStateIds?.["timer-source"] !== summary.runtimeApply?.initialStateIds?.["timer-source"]
+    ) {
+      throw new Error(`Top-down authored behavior variant runtime FSM state mismatch: ${JSON.stringify(summary.runtimeApply)}`);
+    }
+    if (
+      summary.runtimeApply?.placementAnchorReplayBody !== "pickup" ||
+      summary.runtimeApply?.placementTarget !== "worldCenter" ||
+      summary.runtimeApply?.placementOffsetX !== 400 ||
+      summary.runtimeApply?.placementOffsetY !== 240 ||
+      summary.runtimeApply?.placementScale !== 0.4
+    ) {
+      throw new Error(`Top-down authored behavior variant runtime placement mismatch: ${JSON.stringify(summary.runtimeApply)}`);
+    }
+    const playerHandle = summary.runtimeApply?.builtInPlayerHandle;
+    const playerAction = summary.runtimeApply?.builtInPlayerAction;
+    const playerDashAction = summary.runtimeApply?.builtInPlayerDashAction;
+    if (
+      playerHandle === undefined ||
+      summary.runtimeApply?.handles?.["builtin-player"]?.entityId !== playerHandle.entityId ||
+      summary.runtimeApply?.handles?.["builtin-player"]?.entityGeneration !== playerHandle.entityGeneration ||
+      playerAction?.actionId !== 1 ||
+      Math.abs(playerAction.cooldownSeconds - 0.08) > 0.0001 ||
+      Math.abs(playerAction.remainingCooldownSeconds) > 0.0001 ||
+      Math.abs(playerAction.speed - 720) > 0.0001 ||
+      Math.abs(playerAction.damage - 2) > 0.0001 ||
+      Math.abs(playerAction.lifetimeSeconds - 1.6) > 0.0001
+    ) {
+      throw new Error(`Top-down authored behavior variant built-in player action mismatch: ${JSON.stringify(summary.runtimeApply)}`);
+    }
+    if (
+      playerDashAction?.actionId !== 2 ||
+      Math.abs(playerDashAction.cooldownSeconds - 0.75) > 0.0001 ||
+      Math.abs(playerDashAction.remainingCooldownSeconds) > 0.0001 ||
+      Math.abs(playerDashAction.distance - 96) > 0.0001
+    ) {
+      throw new Error(`Top-down authored behavior variant built-in player dash action mismatch: ${JSON.stringify(summary.runtimeApply)}`);
+    }
+    if (typeof globalThis.ferrumTopdownAuthoredBehaviorStart !== "function") {
+      throw new Error("Top-down authored behavior start helper is missing.");
+    }
+    if (typeof globalThis.ferrumTopdownAuthoredBehaviorResetAndReapply !== "function") {
+      throw new Error("Top-down authored behavior reset/re-apply helper is missing.");
+    }
+    if (typeof globalThis.ferrumTopdownAuthoredBehaviorApplyCurrentStateCommands !== "function") {
+      throw new Error("Top-down authored behavior state command apply helper is missing.");
+    }
+    globalThis.ferrumTopdownAuthoredBehaviorStart();
+  });
+  await page.waitForTimeout(500);
+  const firstRun = await page.evaluate(() => {
+    const summary = globalThis.ferrumTopdownAuthoredBehaviorVariant;
+    const frame = globalThis.ferrumTopdownAuthoredBehaviorFrame;
+    if (!summary || !frame) {
+      throw new Error("Top-down authored behavior playable summary is missing.");
+    }
+    if (frame.applyId !== summary.runtimeApply.applyId) {
+      throw new Error(`Top-down authored behavior playable apply id mismatch: ${JSON.stringify(frame)}`);
+    }
+    if (frame.maxScore !== 15) {
+      throw new Error(`Top-down authored behavior playable score mismatch: ${JSON.stringify(frame)}`);
+    }
+    if (
+      !frame.observedEventKinds.includes("collisionDamage") ||
+      !frame.observedEventKinds.includes("interaction") ||
+      !frame.observedEventKinds.includes("behaviorStateChanged") ||
+      !frame.observedEventKinds.includes("timer")
+    ) {
+      throw new Error(`Top-down authored behavior playable event mismatch: ${JSON.stringify(frame.observedEventKinds)}`);
+    }
+    if (frame.interactionEventCount !== 1 || frame.collisionDamageEventCount !== 2 || frame.behaviorStateChangedEventCount !== 3) {
+      throw new Error(`Top-down authored behavior playable event count mismatch: ${JSON.stringify(frame)}`);
+    }
+    const interaction = frame.interactionEvents[0];
+    const collisionDamage = frame.collisionDamageEvents[0];
+    const handles = summary.runtimeApply.handles;
+    const interactionStateChanged = frame.behaviorStateChangedEvents.find((event) => event.sourceId === handles["interaction-source"].entityId);
+    const projectileStateChanged = frame.behaviorStateChangedEvents.find((event) => event.sourceId === handles["test-projectile"].entityId);
+    const timerStateChanged = frame.behaviorStateChangedEvents.find((event) => event.sourceId === handles["timer-source"].entityId);
+    if (
+      interaction.tokenId !== 7 ||
+      interaction.once !== true ||
+      interaction.consumedThisFrame !== true ||
+      interaction.sourceId !== handles["interaction-source"].entityId ||
+      interaction.sourceGeneration !== handles["interaction-source"].entityGeneration
+    ) {
+      throw new Error(`Top-down authored behavior interaction payload mismatch: ${JSON.stringify(interaction)}`);
+    }
+    if (
+      collisionDamage.sourceId !== handles["test-projectile"].entityId ||
+      collisionDamage.sourceGeneration !== handles["test-projectile"].entityGeneration ||
+      collisionDamage.actorId !== handles["rewarded-enemy"].entityId ||
+      collisionDamage.actorGeneration !== handles["rewarded-enemy"].entityGeneration ||
+      collisionDamage.targetRemoved !== true ||
+      collisionDamage.payloadBits !== 0x3f800000
+    ) {
+      throw new Error(`Top-down authored behavior collision payload mismatch: ${JSON.stringify(collisionDamage)}`);
+    }
+    if (
+      frame.currentStateIds?.["interaction-source"] !== summary.expectedStateIds?.["interaction-source"] ||
+      frame.currentStateIds?.["test-projectile"] !== summary.expectedStateIds?.["test-projectile"] ||
+      frame.currentStateIds?.["timer-source"] !== summary.expectedStateIds?.["timer-source"]
+    ) {
+      throw new Error(`Top-down authored behavior playable FSM mismatch: ${JSON.stringify(frame.currentStateIds)}`);
+    }
+    if (
+      interactionStateChanged?.payloadBits !== summary.runtimeApply.initialStateIds["interaction-source"] ||
+      interactionStateChanged?.tokenId !== summary.expectedStateIds["interaction-source"] ||
+      projectileStateChanged?.payloadBits !== summary.runtimeApply.initialStateIds["test-projectile"] ||
+      projectileStateChanged?.tokenId !== summary.expectedStateIds["test-projectile"] ||
+      timerStateChanged?.payloadBits !== summary.runtimeApply.initialStateIds["timer-source"] ||
+      timerStateChanged?.tokenId !== summary.expectedStateIds["timer-source"]
+    ) {
+      throw new Error(`Top-down authored behavior state change telemetry mismatch: ${JSON.stringify(frame.behaviorStateChangedEvents)}`);
+    }
+    return { summary, frame };
+  });
+  const firstStateCommandApply = await page.evaluate(() => {
+    const stateCommandApply = globalThis.ferrumTopdownAuthoredBehaviorApplyCurrentStateCommands();
+    const expectedStateIds = globalThis.ferrumTopdownAuthoredBehaviorVariant?.expectedStateIds;
+    if (
+      stateCommandApply?.applyId !== 1 ||
+      stateCommandApply.mode !== "replaceSupported" ||
+      stateCommandApply.machineCount !== 3 ||
+      stateCommandApply.states?.["interaction-source"] !== "triggered" ||
+      stateCommandApply.states?.["test-projectile"] !== "spent" ||
+      stateCommandApply.states?.["timer-source"] !== "awake" ||
+      stateCommandApply.stateIds?.["interaction-source"] !== expectedStateIds?.["interaction-source"] ||
+      stateCommandApply.stateIds?.["test-projectile"] !== expectedStateIds?.["test-projectile"] ||
+      stateCommandApply.stateIds?.["timer-source"] !== expectedStateIds?.["timer-source"] ||
+      stateCommandApply.commandCounts?.["interaction-source"] !== 0 ||
+      stateCommandApply.commandCounts?.["test-projectile"] !== 1 ||
+      stateCommandApply.commandCounts?.["timer-source"] !== 0 ||
+      JSON.stringify(stateCommandApply.commandTypes?.["interaction-source"]) !== "[]" ||
+      JSON.stringify(stateCommandApply.commandTypes?.["test-projectile"]) !== JSON.stringify(["configureLifetime"]) ||
+      JSON.stringify(stateCommandApply.commandTypes?.["timer-source"]) !== "[]" ||
+      stateCommandApply.resultCounts?.["interaction-source"] !== 11 ||
+      stateCommandApply.resultCounts?.["test-projectile"] !== 12 ||
+      stateCommandApply.resultCounts?.["timer-source"] !== 11
+    ) {
+      throw new Error(`Top-down authored behavior state command apply mismatch: ${JSON.stringify(stateCommandApply)}`);
+    }
+    return stateCommandApply;
+  });
+
+  await page.evaluate(() => {
+    const runtimeApply = globalThis.ferrumTopdownAuthoredBehaviorResetAndReapply();
+    if (runtimeApply?.applyId !== 2) {
+      throw new Error(`Top-down authored behavior reset/re-apply id mismatch: ${JSON.stringify(runtimeApply)}`);
+    }
+    if (
+      runtimeApply?.instanceCount !== 8 ||
+      runtimeApply.commandCount !== 15 ||
+      runtimeApply.builtInPlayerAction?.actionId !== 1 ||
+      runtimeApply.builtInPlayerAction?.speed !== 720 ||
+      runtimeApply.builtInPlayerDashAction?.actionId !== 2 ||
+      runtimeApply.builtInPlayerDashAction?.distance !== 96
+    ) {
+      throw new Error(`Top-down authored behavior reset/re-apply runtime action mismatch: ${JSON.stringify(runtimeApply)}`);
+    }
+    if (globalThis.ferrumTopdownAuthoredBehaviorFrame !== undefined) {
+      throw new Error(`Top-down authored behavior frame state was not cleared: ${JSON.stringify(globalThis.ferrumTopdownAuthoredBehaviorFrame)}`);
+    }
+    if (globalThis.ferrumTopdownAuthoredBehaviorStateCommandApply !== undefined) {
+      throw new Error(`Top-down authored behavior state command apply state was not cleared: ${JSON.stringify(globalThis.ferrumTopdownAuthoredBehaviorStateCommandApply)}`);
+    }
+    globalThis.ferrumTopdownAuthoredBehaviorStart();
+  });
+  await waitForPageFunction(
+    page,
+    "Top-down authored behavior reset/re-apply did not produce playable events",
+    () => {
+      const summary = globalThis.ferrumTopdownAuthoredBehaviorVariant;
+      const frame = globalThis.ferrumTopdownAuthoredBehaviorFrame;
+      return Boolean(
+        summary?.runtimeApply?.applyId === 2
+        && frame?.applyId === 2
+        && frame?.maxScore === 15
+        && frame?.interactionEventCount === 1
+        && frame?.collisionDamageEventCount === 2
+        && frame?.behaviorStateChangedEventCount === 3
+      );
+    },
+    timeoutMs,
+  );
+  const secondRun = await page.evaluate(() => {
+    const summary = globalThis.ferrumTopdownAuthoredBehaviorVariant;
+    const frame = globalThis.ferrumTopdownAuthoredBehaviorFrame;
+    if (!summary || !frame) {
+      throw new Error("Top-down authored behavior reset/re-apply summary is missing.");
+    }
+    if (summary.runtimeApply?.applyId !== 2 || frame.applyId !== 2) {
+      throw new Error(`Top-down authored behavior reset/re-apply summary mismatch: ${JSON.stringify(summary.runtimeApply)}`);
+    }
+    if (
+      frame.maxScore !== 15 ||
+      frame.interactionEventCount !== 1 ||
+      frame.collisionDamageEventCount !== 2 ||
+      frame.behaviorStateChangedEventCount !== 3
+    ) {
+      throw new Error(`Top-down authored behavior reset/re-apply frame mismatch: ${JSON.stringify(frame)}`);
+    }
+    const interaction = frame.interactionEvents[0];
+    const collisionDamage = frame.collisionDamageEvents[0];
+    const handles = summary.runtimeApply.handles;
+    const interactionStateChanged = frame.behaviorStateChangedEvents.find((event) => event.sourceId === handles["interaction-source"].entityId);
+    const projectileStateChanged = frame.behaviorStateChangedEvents.find((event) => event.sourceId === handles["test-projectile"].entityId);
+    const timerStateChanged = frame.behaviorStateChangedEvents.find((event) => event.sourceId === handles["timer-source"].entityId);
+    if (
+      interaction.tokenId !== 7 ||
+      interaction.once !== true ||
+      interaction.consumedThisFrame !== true ||
+      interaction.sourceId !== handles["interaction-source"].entityId ||
+      interaction.sourceGeneration !== handles["interaction-source"].entityGeneration
+    ) {
+      throw new Error(`Top-down authored behavior reset/re-apply interaction payload mismatch: ${JSON.stringify(interaction)}`);
+    }
+    if (
+      collisionDamage.sourceId !== handles["test-projectile"].entityId ||
+      collisionDamage.sourceGeneration !== handles["test-projectile"].entityGeneration ||
+      collisionDamage.actorId !== handles["rewarded-enemy"].entityId ||
+      collisionDamage.actorGeneration !== handles["rewarded-enemy"].entityGeneration ||
+      collisionDamage.targetRemoved !== true ||
+      collisionDamage.payloadBits !== 0x3f800000
+    ) {
+      throw new Error(`Top-down authored behavior reset/re-apply collision payload mismatch: ${JSON.stringify(collisionDamage)}`);
+    }
+    if (
+      frame.currentStateIds?.["interaction-source"] !== summary.expectedStateIds?.["interaction-source"] ||
+      frame.currentStateIds?.["test-projectile"] !== summary.expectedStateIds?.["test-projectile"] ||
+      frame.currentStateIds?.["timer-source"] !== summary.expectedStateIds?.["timer-source"]
+    ) {
+      throw new Error(`Top-down authored behavior reset/re-apply FSM mismatch: ${JSON.stringify(frame.currentStateIds)}`);
+    }
+    if (
+      interactionStateChanged?.payloadBits !== summary.runtimeApply.initialStateIds["interaction-source"] ||
+      interactionStateChanged?.tokenId !== summary.expectedStateIds["interaction-source"] ||
+      projectileStateChanged?.payloadBits !== summary.runtimeApply.initialStateIds["test-projectile"] ||
+      projectileStateChanged?.tokenId !== summary.expectedStateIds["test-projectile"] ||
+      timerStateChanged?.payloadBits !== summary.runtimeApply.initialStateIds["timer-source"] ||
+      timerStateChanged?.tokenId !== summary.expectedStateIds["timer-source"]
+    ) {
+      throw new Error(`Top-down authored behavior reset/re-apply state change telemetry mismatch: ${JSON.stringify(frame.behaviorStateChangedEvents)}`);
+    }
+    return { summary, frame };
+  });
+  const secondStateCommandApply = await page.evaluate(() => {
+    const stateCommandApply = globalThis.ferrumTopdownAuthoredBehaviorApplyCurrentStateCommands();
+    if (
+      stateCommandApply?.applyId !== 2 ||
+      stateCommandApply.mode !== "replaceSupported" ||
+      stateCommandApply.machineCount !== 3 ||
+      stateCommandApply.states?.["interaction-source"] !== "triggered" ||
+      stateCommandApply.states?.["test-projectile"] !== "spent" ||
+      stateCommandApply.states?.["timer-source"] !== "awake" ||
+      stateCommandApply.commandCounts?.["interaction-source"] !== 0 ||
+      stateCommandApply.commandCounts?.["test-projectile"] !== 1 ||
+      stateCommandApply.commandCounts?.["timer-source"] !== 0 ||
+      JSON.stringify(stateCommandApply.commandTypes?.["interaction-source"]) !== "[]" ||
+      JSON.stringify(stateCommandApply.commandTypes?.["test-projectile"]) !== JSON.stringify(["configureLifetime"]) ||
+      JSON.stringify(stateCommandApply.commandTypes?.["timer-source"]) !== "[]" ||
+      stateCommandApply.resultCounts?.["interaction-source"] !== 11 ||
+      stateCommandApply.resultCounts?.["test-projectile"] !== 12 ||
+      stateCommandApply.resultCounts?.["timer-source"] !== 11
+    ) {
+      throw new Error(`Top-down authored behavior reset/re-apply state command mismatch: ${JSON.stringify(stateCommandApply)}`);
+    }
+    return stateCommandApply;
+  });
+  await page.waitForTimeout(250);
+  const secondRunFollowup = await page.evaluate(() => {
+    const frame = globalThis.ferrumTopdownAuthoredBehaviorFrame;
+    if (
+      frame?.applyId !== 2 ||
+      frame.interactionEventCount !== 1 ||
+      frame.collisionDamageEventCount !== 2 ||
+      frame.behaviorStateChangedEventCount !== 3
+    ) {
+      throw new Error(`Top-down authored behavior reset/re-apply one-shot event repeated: ${JSON.stringify(frame)}`);
+    }
+    return frame;
+  });
+
+  return {
+    topdownAuthoredBehaviorVariantSmoke: secondRun.summary,
+    topdownAuthoredBehaviorFrameSmoke: firstRun.frame,
+    topdownAuthoredBehaviorStateCommandApplySmoke: firstStateCommandApply,
+    topdownAuthoredBehaviorResetReapplySmoke: secondRun.frame,
+    topdownAuthoredBehaviorResetReapplyStateCommandApplySmoke: secondStateCommandApply,
+    topdownAuthoredBehaviorResetReapplyFollowupSmoke: secondRunFollowup,
+  };
+}
+
 async function smokeTopdownEffects(page, timeoutMs) {
   await page.evaluate((spec) => {
     const engine = globalThis.ferrumEngine;
@@ -1058,7 +1403,8 @@ async function smokeTopdownSaveLoad(page, timeoutMs) {
     if (!engine) {
       throw new Error("Top-down save/load smoke requires window.ferrumEngine.");
     }
-    const saved = engine.captureShooterStateSnapshot?.();
+    const savedGameState = captureGameplaySnapshot(0);
+    const saved = savedGameState.builtInShooter;
     if (!saved) {
       throw new Error("Top-down save/load smoke could not capture a shooter snapshot.");
     }
@@ -1075,7 +1421,8 @@ async function smokeTopdownSaveLoad(page, timeoutMs) {
       score: engine.score(),
     };
     const restored = engine.restoreShooterStateSnapshot?.(saved) === true;
-    const restoredSnapshot = engine.captureShooterStateSnapshot?.();
+    const restoredGameState = captureGameplaySnapshot(0);
+    const restoredSnapshot = restoredGameState.builtInShooter;
     if (!restoredSnapshot) {
       throw new Error("Top-down save/load smoke could not recapture restored shooter state.");
     }
@@ -1091,9 +1438,29 @@ async function smokeTopdownSaveLoad(page, timeoutMs) {
         entityCount: engine.entityCount(),
         score: engine.score(),
       },
+      savedGameState,
+      restoredGameState,
       savedEntityCount: saved.entityCount,
       restoredEntityCount: restoredSnapshot.entityCount,
     };
+
+    function captureGameplaySnapshot(frame) {
+      return {
+        format: "ferrum2d.game-state.snapshot",
+        version: 1,
+        frame,
+        source: "ferrum-runtime",
+        scene: {
+          score: engine.score(),
+          gameState: engine.gameState(),
+          entityCount: engine.entityCount(),
+          spriteCount: engine.spriteCount(),
+          cameraX: engine.cameraX(),
+          cameraY: engine.cameraY(),
+        },
+        builtInShooter: engine.captureShooterStateSnapshot?.(),
+      };
+    }
 
     function stableShooterStateSnapshot(snapshot) {
       return JSON.stringify({
@@ -1122,7 +1489,40 @@ async function smokeTopdownSaveLoad(page, timeoutMs) {
   if (report.afterRestore.entityCount !== report.beforeReset.entityCount) {
     throw new Error(`Top-down save/load smoke did not restore entityCount:\n${JSON.stringify(report, null, 2)}`);
   }
-  return { saveLoadSmoke: report };
+  const gameplayReplay = await compareTopdownSaveLoadGameplayReplay(report);
+  if (!gameplayReplay.comparison.passed) {
+    throw new Error(`Top-down save/load gameplay replay mismatch:\n${JSON.stringify(gameplayReplay, null, 2)}`);
+  }
+  const {
+    savedGameState: _savedGameState,
+    restoredGameState: _restoredGameState,
+    ...smokeReport
+  } = report;
+  return { saveLoadSmoke: { ...smokeReport, gameplayReplay } };
+}
+
+async function compareTopdownSaveLoadGameplayReplay(report) {
+  const {
+    compareGameplayReplayRuns,
+    createGameplayReplayRun,
+  } = await import("../packages/ferrum-web/dist/gameplayReplay.js");
+  const {
+    hashGameStateSnapshot,
+  } = await import("../packages/ferrum-web/dist/gameStateSnapshot.js");
+  const expectedRun = createGameplayReplayRun([withGameStateSnapshotHash(report.savedGameState, hashGameStateSnapshot)]);
+  const actualRun = createGameplayReplayRun([withGameStateSnapshotHash(report.restoredGameState, hashGameStateSnapshot)]);
+  return {
+    expectedHash: expectedRun.replayHash,
+    actualHash: actualRun.replayHash,
+    comparison: compareGameplayReplayRuns(expectedRun, actualRun),
+  };
+}
+
+function withGameStateSnapshotHash(snapshot, hashGameStateSnapshot) {
+  return {
+    ...snapshot,
+    snapshotHash: hashGameStateSnapshot(snapshot),
+  };
 }
 
 async function smokeTopdownHd2d(page, timeoutMs) {

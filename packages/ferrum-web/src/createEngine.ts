@@ -2,6 +2,13 @@ import type { Engine } from "../pkg/ferrum_core";
 import { applyShooterGameSpec } from "./gameSpec";
 import type { ResolvedShooterGameSpec, ShooterGameSpec } from "./gameSpec";
 import {
+  applyBehaviorStateMachineStateCommands as applyBehaviorStateMachineStateCommandsToRuntime,
+  createBehaviorStateMachineCurrentStateCommandPlan as createBehaviorStateMachineCurrentStateCommandPlanFromRuntime,
+  installBehaviorStateMachineRuntime as installBehaviorStateMachineRuntimeOnEngine,
+  preflightBehaviorStateMachineStateCommands as preflightBehaviorStateMachineStateCommandsToRuntime,
+} from "./behaviorStateMachine.js";
+import { applyGameplayBehaviorCommands as applyGameplayBehaviorCommandsToRuntime } from "./gameplayAuthoring.js";
+import {
   BUILT_IN_SHOOTER_STATE_FORMAT,
   BUILT_IN_SHOOTER_STATE_VERSION,
   validateBuiltInShooterStateSnapshot,
@@ -20,12 +27,17 @@ import type {
   EngineLifecycleSnapshot,
   FerrumAssetApi,
   FerrumEngine,
+  FerrumGameplayAuthoringApi,
+  FerrumInputActionApi,
   FerrumLifecycleApi,
   FerrumParticleApi,
   FerrumPhysicsRuntimeApi,
   FerrumSceneApi,
   FixedTimestepOptions,
   FrameHandler,
+  InputActionActivation,
+  InputActionRuntimeBinding,
+  InputActionRuntimeControl,
   InputProvider,
   PhysicsDebugOptions,
   PhysicsRigidBodyStepOptions,
@@ -34,6 +46,26 @@ import type {
   ShooterTextureIds,
   ViewportProvider,
 } from "./engineTypes.js";
+import type {
+  BehaviorRecipeCommand,
+  BehaviorRecipeDocumentSpec,
+  ResolvedBehaviorRecipeDocument,
+} from "./behaviorRecipes.js";
+import type {
+  ApplyBehaviorStateMachineStateCommandsOptions,
+  BehaviorStateMachineDocumentSpec,
+  BehaviorStateMachineRuntimeInstallOptions,
+  BehaviorStateMachineRuntimeInstallPlan,
+  BehaviorStateMachineStateCommandPreflightResult,
+  BehaviorStateMachineStateCommandOptions,
+  BehaviorStateMachineStateCommandPlan,
+  ResolvedBehaviorStateMachineDocument,
+} from "./behaviorStateMachine.js";
+import type {
+  ApplyGameplayBehaviorCommandsOptions,
+  GameplayEntityHandle,
+  GameplayEntityHandleMap,
+} from "./gameplayAuthoring.js";
 import {
   applyFixedTimestepOptions,
   applyPhysicsRuntimeOptions,
@@ -58,6 +90,7 @@ export {
 export type { PhysicsBodyStateBufferSnapshot } from "./physicsBodyStateBuffer.js";
 
 export type {
+  ActionFrameDiagnostics,
   AssetHost,
   AudioBusConfig,
   CreateEngineOptions,
@@ -65,6 +98,8 @@ export type {
   EngineLifecycleSnapshot,
   FerrumAssetApi,
   FerrumEngine,
+  FerrumGameplayAuthoringApi,
+  FerrumInputActionApi,
   FerrumLifecycleApi,
   FerrumParticleApi,
   FerrumPhysicsApi,
@@ -76,6 +111,10 @@ export type {
   FixedTimestepOptions,
   FrameHandler,
   FrameState,
+  SpawnFrameDiagnostics,
+  InputActionActivation,
+  InputActionRuntimeBinding,
+  InputActionRuntimeControl,
   InputProvider,
   PhysicsAabbBodyQuery,
   PhysicsAabbBodyShapeCastQuery,
@@ -300,6 +339,18 @@ export async function createEngineWithFramePipeline(
     );
   };
 
+  const builtInShooterPlayerHandle = (): GameplayEntityHandle | undefined => {
+    requireAlive();
+    const entityId = rustEngine.built_in_shooter_player_entity_id();
+    if (entityId === 0xffffffff) {
+      return undefined;
+    }
+    return {
+      entityId,
+      entityGeneration: rustEngine.built_in_shooter_player_entity_generation(),
+    };
+  };
+
   const setParticlePreset = (presetId: number, preset: ParticlePresetConfig): void => {
     requireAlive();
     const id = particlePresetId(presetId);
@@ -437,6 +488,7 @@ export async function createEngineWithFramePipeline(
     gameState: () => { requireAlive(); return rustEngine.game_state(); },
     spriteCount: () => { requireAlive(); return rustEngine.sprite_count(); },
     resetGame: () => { requireAlive(); rustEngine.reset_game(); },
+    builtInShooterPlayerHandle,
     captureShooterStateSnapshot,
     restoreShooterStateSnapshot,
     useBreakoutGame,
@@ -501,6 +553,103 @@ export async function createEngineWithFramePipeline(
 
   const physicsJointApi = createPhysicsJointApi({ rustEngine, requireAlive });
   const physicsQueryApi = createPhysicsQueryApi({ rustEngine, bridge, requireAlive });
+  const inputActionApi: FerrumInputActionApi = {
+    setInputActionBinding: (actionId, bindingIndex, binding) => {
+      requireAlive();
+      return rustEngine.set_input_action_binding(
+        positiveUint32Number(actionId, "inputAction.actionId"),
+        uint32Number(bindingIndex, "inputAction.bindingIndex"),
+        inputActionControlCode(binding.control),
+        inputActionActivationCode(binding.activation),
+      );
+    },
+    clearInputActionBindings: (actionId) => {
+      requireAlive();
+      return rustEngine.clear_input_action_bindings(positiveUint32Number(actionId, "inputAction.actionId"));
+    },
+    resetInputActionBindings: () => {
+      requireAlive();
+      rustEngine.reset_input_action_bindings();
+    },
+  };
+  const gameplayAuthoringApi: FerrumGameplayAuthoringApi = {
+    gameplayEntityExists: (entity: GameplayEntityHandle) => {
+      requireAlive();
+      const handle = gameplayAuthoringEntityHandle(entity, "gameplayEntityExists.entity");
+      return rustEngine.gameplay_entity_exists(handle.entityId, handle.entityGeneration);
+    },
+    applyGameplayBehaviorCommands: (
+      commands: readonly BehaviorRecipeCommand[],
+      entityHandles: GameplayEntityHandleMap,
+      options?: ApplyGameplayBehaviorCommandsOptions,
+    ) => {
+      requireAlive();
+      return applyGameplayBehaviorCommandsToRuntime(rustEngine, commands, entityHandles, options);
+    },
+    installBehaviorStateMachineRuntime: (
+      document: BehaviorStateMachineDocumentSpec | ResolvedBehaviorStateMachineDocument,
+      machineId: string,
+      entity: GameplayEntityHandle,
+      options?: BehaviorStateMachineRuntimeInstallOptions,
+    ) => {
+      requireAlive();
+      return installBehaviorStateMachineRuntimeOnEngine(
+        rustEngine,
+        document,
+        machineId,
+        gameplayAuthoringEntityHandle(entity, "behaviorStateMachines.entity"),
+        options,
+      );
+    },
+    gameplayBehaviorState: (entity: GameplayEntityHandle) => {
+      requireAlive();
+      const handle = gameplayAuthoringEntityHandle(entity, "gameplayBehaviorState.entity");
+      return rustEngine.gameplay_behavior_state(handle.entityId, handle.entityGeneration);
+    },
+    createBehaviorStateMachineCurrentStateCommandPlan: (
+      document: BehaviorStateMachineDocumentSpec | ResolvedBehaviorStateMachineDocument,
+      recipes: BehaviorRecipeDocumentSpec | ResolvedBehaviorRecipeDocument,
+      installPlan: BehaviorStateMachineRuntimeInstallPlan,
+      entity: GameplayEntityHandle,
+      options?: BehaviorStateMachineStateCommandOptions,
+    ) => {
+      requireAlive();
+      return createBehaviorStateMachineCurrentStateCommandPlanFromRuntime(
+        rustEngine,
+        document,
+        recipes,
+        installPlan,
+        gameplayAuthoringEntityHandle(entity, "behaviorStateMachines.entity"),
+        options,
+      );
+    },
+    applyBehaviorStateMachineStateCommands: (
+      plan: BehaviorStateMachineStateCommandPlan,
+      entity: GameplayEntityHandle,
+      options?: ApplyBehaviorStateMachineStateCommandsOptions,
+    ) => {
+      requireAlive();
+      return applyBehaviorStateMachineStateCommandsToRuntime(
+        rustEngine,
+        plan,
+        gameplayAuthoringEntityHandle(entity, "behaviorStateMachines.entity"),
+        options,
+      );
+    },
+    preflightBehaviorStateMachineStateCommands: (
+      plan: BehaviorStateMachineStateCommandPlan,
+      entity: GameplayEntityHandle,
+      options?: ApplyBehaviorStateMachineStateCommandsOptions,
+    ): BehaviorStateMachineStateCommandPreflightResult => {
+      requireAlive();
+      return preflightBehaviorStateMachineStateCommandsToRuntime(
+        rustEngine,
+        plan,
+        gameplayAuthoringEntityHandle(entity, "behaviorStateMachines.entity"),
+        options,
+      );
+    },
+  };
 
   return {
     ...lifecycleApi,
@@ -511,7 +660,48 @@ export async function createEngineWithFramePipeline(
     ...physicsBodyApi,
     ...physicsJointApi,
     ...physicsQueryApi,
+    ...gameplayAuthoringApi,
+    ...inputActionApi,
   };
+}
+
+function gameplayAuthoringEntityHandle(entity: GameplayEntityHandle, label: string): GameplayEntityHandle {
+  return {
+    entityId: uint32Number(entity.entityId, `${label}.entityId`),
+    entityGeneration: uint32Number(entity.entityGeneration, `${label}.entityGeneration`),
+  };
+}
+
+function positiveUint32Number(value: number, label: string): number {
+  const integer = uint32Number(value, label);
+  if (integer === 0) {
+    throw new Error(`${label} must be greater than 0.`);
+  }
+  return integer;
+}
+
+function inputActionControlCode(control: InputActionRuntimeControl): number {
+  switch (control) {
+    case "space":
+      return 1;
+    case "enter":
+      return 2;
+    case "mouseLeft":
+      return 3;
+    default:
+      throw new Error("inputAction.control must be 'space', 'enter', or 'mouseLeft'.");
+  }
+}
+
+function inputActionActivationCode(activation: InputActionActivation): number {
+  switch (activation) {
+    case "down":
+      return 1;
+    case "pressed":
+      return 2;
+    default:
+      throw new Error("inputAction.activation must be 'down' or 'pressed'.");
+  }
 }
 
 function copyBuiltInShooterStateSnapshot(view: ShooterStateBufferView): BuiltInShooterStateSnapshot {

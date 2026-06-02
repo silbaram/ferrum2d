@@ -115,6 +115,15 @@ export function restoreGameStateSnapshot(
     && options.restoreBuiltInShooterState !== false
   ) {
     builtInShooterStateApplied = engine.restoreShooterStateSnapshot(snapshot.builtInShooter);
+    if (!builtInShooterStateApplied) {
+      return {
+        sourceSnapshot: snapshot,
+        sceneBefore,
+        sceneAfter: captureGameStateSceneSnapshot(engine),
+        builtInShooterStateApplied,
+        customStateApplied: false,
+      };
+    }
   }
   const physicsWorld = snapshot.physics === undefined
     ? undefined

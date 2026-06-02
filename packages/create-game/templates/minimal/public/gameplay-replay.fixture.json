@@ -1,0 +1,103 @@
+{
+  "format": "ferrum2d.consumer.gameplay-replay.fixture",
+  "version": 1,
+  "scenario": "minimal-template-surface",
+  "description": "Generated minimal template surface replay contract. This fixture validates public replay helper hashing and template surface drift; it is not a browser frame runner.",
+  "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json",
+  "coverageTags": [
+    "starter-runtime-template"
+  ],
+  "replay": {
+    "format": "ferrum2d.gameplay-replay.run",
+    "version": 1,
+    "snapshots": [
+      {
+        "frame": 0,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 0,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 0,
+            "entityCount": 0,
+            "spriteCount": 0,
+            "cameraX": 0,
+            "cameraY": 0
+          },
+          "custom": {
+            "templateReplay": {
+              "version": 1,
+              "scenario": "minimal-template-surface",
+              "phase": "template-loaded",
+              "template": {
+                "template": "minimal",
+                "hasFerrumDependency": true,
+                "hasMainSource": true,
+                "publicAssets": [
+                  "gameplay-replay.coverage-tags.json",
+                  "gameplay-replay.fixture.json",
+                  "gameplay-runtime-replay.coverage-tags.json",
+                  "gameplay-runtime-replay.fixture.json"
+                ],
+                "scripts": [
+                  "ferrum:validate",
+                  "ferrum:authoring-report",
+                  "ferrum:replay-report",
+                  "ferrum:update-replay-fixture"
+                ]
+              }
+            }
+          },
+          "snapshotHash": "1ce229a0"
+        },
+        "replayHash": "1ce229a0"
+      },
+      {
+        "frame": 1,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 1,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 1,
+            "spriteCount": 1,
+            "cameraX": 0,
+            "cameraY": 0
+          },
+          "custom": {
+            "templateReplay": {
+              "version": 1,
+              "scenario": "minimal-template-surface",
+              "phase": "runtime-ready",
+              "template": {
+                "template": "minimal",
+                "hasFerrumDependency": true,
+                "hasMainSource": true,
+                "publicAssets": [
+                  "gameplay-replay.coverage-tags.json",
+                  "gameplay-replay.fixture.json",
+                  "gameplay-runtime-replay.coverage-tags.json",
+                  "gameplay-runtime-replay.fixture.json"
+                ],
+                "scripts": [
+                  "ferrum:validate",
+                  "ferrum:authoring-report",
+                  "ferrum:replay-report",
+                  "ferrum:update-replay-fixture"
+                ]
+              }
+            }
+          },
+          "snapshotHash": "ef72b214"
+        },
+        "replayHash": "ef72b214"
+      }
+    ],
+    "replayHash": "2a35b14d"
+  }
+}

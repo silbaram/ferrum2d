@@ -25,12 +25,32 @@ fn entity_ids_increment_and_generation_changes_on_despawn() {
 fn despawned_entity_slots_are_reused_with_new_generation() {
     let mut world = World::default();
     let first = world.spawn_entity();
+    assert!(world.upsert_action_binding(first, ActionBinding::projectile(7, 0.12, 420.0, 2.0, 1.5)));
+    world.set_movement_pattern(first, MovementPattern::Linear { vx: 1.0, vy: 2.0 });
+    assert!(world.set_interaction(first, Interaction::new(9, 24.0, true)));
+    assert!(world.set_behavior_state_machine(first, BehaviorStateMachine::new(1)));
+    assert!(world.add_behavior_state_enter_action(
+        first,
+        BehaviorStateEnterAction::new(2, 11, BehaviorStateEnterActionPhase::NextFramePrePhysics),
+    ));
+    assert!(world.add_collision_reaction(
+        first,
+        CollisionReaction::Despawn {
+            target: CollisionTarget::SelfEntity,
+        },
+    ));
     world.despawn(first);
 
     let reused = world.spawn_entity();
 
     assert_eq!(reused.id, first.id);
     assert_eq!(reused.generation, first.generation + 1);
+    assert_eq!(world.action_bindings(reused), None);
+    assert_eq!(world.movement_pattern(reused), None);
+    assert_eq!(world.interaction(reused), None);
+    assert_eq!(world.behavior_state_machine(reused), None);
+    assert_eq!(world.behavior_state_enter_actions(reused), None);
+    assert_eq!(world.collision_reactions(reused), None);
     assert!(world.alive[reused.id as usize]);
     assert_eq!(world.alive_count(), 1);
     assert_eq!(world.alive_indices(), &[reused.id as usize]);

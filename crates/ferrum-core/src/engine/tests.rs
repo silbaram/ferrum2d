@@ -3,12 +3,25 @@ use crate::collision_event::{
     COLLISION_EVENT_ENTER, COLLISION_EVENT_EXIT, COLLISION_EVENT_HIT, COLLISION_EVENT_STAY,
     COLLISION_EVENT_TRIGGER_ENTER, COLLISION_EVENT_TRIGGER_EXIT, COLLISION_EVENT_TRIGGER_STAY,
 };
+use crate::components::gameplay::{
+    ActionBinding, ActionPattern, BehaviorStateEnterAction, BehaviorStateEnterActionPhase,
+    BehaviorStateMachine, BehaviorStateTransition, CollisionReaction, CollisionReactionTrigger,
+    CollisionTarget, Cooldown, GameplayFaction, GameplayTimerTrigger, Interaction, MovementPattern,
+    MovementTarget, Pickup, ProjectileTileImpact, SpawnAnchor, SpawnPhase, GAMEPLAY_FACTION_ENEMY,
+    GAMEPLAY_FACTION_PLAYER, GAMEPLAY_PICKUP_ITEM_SCORE,
+};
 use crate::components::{
     AabbCollider, CollisionFilter, CollisionLayer, CollisionMask, HeightSpan, PhysicsFloorId,
     RigidBody, Transform2D, Velocity,
 };
 use crate::physics::PhysicsSystem;
 use crate::shooter_scene::{EnemyBehavior, EnemySpawnPattern, DEFAULT_TEXTURE_ID};
+use crate::{
+    GAMEPLAY_EVENT_COLLISION_DAMAGE, GAMEPLAY_EVENT_FLAG_CONSUMED_THIS_FRAME,
+    GAMEPLAY_EVENT_FLAG_ONCE, GAMEPLAY_EVENT_FLAG_TARGET_REMOVED, GAMEPLAY_EVENT_INTERACTION,
+    GAMEPLAY_EVENT_PICKUP_COLLECTED, GAMEPLAY_EVENT_PREFAB_SPAWNED, GAMEPLAY_EVENT_TILE_IMPACT,
+    GAMEPLAY_EVENT_TIMER,
+};
 
 mod collision_events;
 mod fixed_timestep;

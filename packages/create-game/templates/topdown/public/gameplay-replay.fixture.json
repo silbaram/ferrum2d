@@ -1,0 +1,127 @@
+{
+  "format": "ferrum2d.consumer.gameplay-replay.fixture",
+  "version": 1,
+  "scenario": "topdown-template-game-spec",
+  "description": "Generated topdown template Game Spec replay contract. This fixture validates public replay helper hashing and template Game Spec drift; it is not a browser frame runner.",
+  "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json",
+  "coverageTags": [
+    "template-game-spec"
+  ],
+  "replay": {
+    "format": "ferrum2d.gameplay-replay.run",
+    "version": 1,
+    "snapshots": [
+      {
+        "frame": 0,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 0,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 0,
+            "entityCount": 0,
+            "spriteCount": 0,
+            "cameraX": 0,
+            "cameraY": 0
+          },
+          "custom": {
+            "templateReplay": {
+              "version": 1,
+              "scenario": "topdown-template-game-spec",
+              "phase": "spec-loaded",
+              "spec": {
+                "world": {
+                  "width": 960,
+                  "height": 540
+                },
+                "player": {
+                  "speed": 210,
+                  "width": 30,
+                  "height": 30
+                },
+                "enemies": {
+                  "speed": 64,
+                  "spawnInterval": 2.5,
+                  "behavior": "chase",
+                  "spawnPattern": "edge",
+                  "health": 1,
+                  "scoreReward": 1,
+                  "waveCount": 1
+                },
+                "weapons": {
+                  "bulletSpeed": 520,
+                  "cooldown": 0.18,
+                  "damage": 1,
+                  "lifetime": 1.8
+                },
+                "camera": {
+                  "preset": "follow"
+                }
+              }
+            }
+          },
+          "snapshotHash": "de1f24d0"
+        },
+        "replayHash": "de1f24d0"
+      },
+      {
+        "frame": 1,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 1,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 1,
+            "spriteCount": 1,
+            "cameraX": 480,
+            "cameraY": 270
+          },
+          "custom": {
+            "templateReplay": {
+              "version": 1,
+              "scenario": "topdown-template-game-spec",
+              "phase": "playable-baseline",
+              "spec": {
+                "world": {
+                  "width": 960,
+                  "height": 540
+                },
+                "player": {
+                  "speed": 210,
+                  "width": 30,
+                  "height": 30
+                },
+                "enemies": {
+                  "speed": 64,
+                  "spawnInterval": 2.5,
+                  "behavior": "chase",
+                  "spawnPattern": "edge",
+                  "health": 1,
+                  "scoreReward": 1,
+                  "waveCount": 1
+                },
+                "weapons": {
+                  "bulletSpeed": 520,
+                  "cooldown": 0.18,
+                  "damage": 1,
+                  "lifetime": 1.8
+                },
+                "camera": {
+                  "preset": "follow"
+                }
+              }
+            }
+          },
+          "snapshotHash": "f651ed26"
+        },
+        "replayHash": "f651ed26"
+      }
+    ],
+    "replayHash": "c6b29700"
+  }
+}

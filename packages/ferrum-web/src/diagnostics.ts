@@ -4,6 +4,7 @@ export type DiagnosticKind =
   | "sound"
   | "json"
   | "game-spec"
+  | "gameplay-authoring"
   | "physics-spec"
   | "asset-pipeline"
   | "scene-composition"
@@ -32,6 +33,7 @@ export type DiagnosticCode =
   | "FERRUM_DIAGNOSTIC"
   | "FERRUM_DIALOGUE_QUEST_INVALID"
   | "FERRUM_GAME_SPEC_INVALID"
+  | "FERRUM_GAMEPLAY_AUTHORING_INVALID"
   | "FERRUM_LEVEL_STREAMING_INVALID"
   | "FERRUM_LOCALIZATION_INVALID"
   | "FERRUM_PHYSICS_SPEC_INVALID"
@@ -160,6 +162,14 @@ export function gameSpecDiagnosticError(path: string, detail: string): FerrumDia
     path,
     detail,
   }, "FERRUM_GAME_SPEC_INVALID");
+}
+
+export function gameplayAuthoringDiagnosticError(path: string, detail: string): FerrumDiagnosticError {
+  return diagnosticError("Invalid gameplay authoring data", {
+    kind: "gameplay-authoring",
+    path,
+    detail,
+  }, "FERRUM_GAMEPLAY_AUTHORING_INVALID");
 }
 
 export function physicsSpecDiagnosticError(path: string, detail: string): FerrumDiagnosticError {

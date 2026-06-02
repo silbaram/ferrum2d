@@ -4,6 +4,7 @@ pub enum CollisionLayer {
     Enemy,
     Bullet,
     Wall,
+    Pickup,
 }
 
 impl CollisionLayer {
@@ -13,6 +14,7 @@ impl CollisionLayer {
             Self::Enemy => CollisionMask::ENEMY,
             Self::Bullet => CollisionMask::BULLET,
             Self::Wall => CollisionMask::WALL,
+            Self::Pickup => CollisionMask::PICKUP,
         }
     }
 }
@@ -28,6 +30,7 @@ impl CollisionMask {
     pub const ENEMY: Self = Self { bits: 1 << 1 };
     pub const BULLET: Self = Self { bits: 1 << 2 };
     pub const WALL: Self = Self { bits: 1 << 3 };
+    pub const PICKUP: Self = Self { bits: 1 << 4 };
     pub const ALL: Self = Self { bits: u32::MAX };
 
     pub const fn from_bits(bits: u32) -> Self {

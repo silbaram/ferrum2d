@@ -1,6 +1,29 @@
 import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets } from "../assetLoader";
 import type { BuiltInShooterStateSnapshot } from "../builtInShooterStateSnapshot.js";
+import type {
+  BehaviorRecipeApplyResult,
+  BehaviorRecipeCommand,
+  BehaviorRecipeDocumentSpec,
+  ResolvedBehaviorRecipeDocument,
+} from "../behaviorRecipes.js";
+import type {
+  ApplyBehaviorStateMachineStateCommandsOptions,
+  BehaviorStateMachineDocumentSpec,
+  BehaviorStateMachineRuntimeInstallOptions,
+  BehaviorStateMachineRuntimeInstallPlan,
+  BehaviorStateMachineRuntimeInstallResult,
+  BehaviorStateMachineStateCommandApplyResult,
+  BehaviorStateMachineStateCommandOptions,
+  BehaviorStateMachineStateCommandPlan,
+  BehaviorStateMachineStateCommandPreflightResult,
+  ResolvedBehaviorStateMachineDocument,
+} from "../behaviorStateMachine.js";
 import type { ResolvedShooterGameSpec, ShooterGameSpec } from "../gameSpec";
+import type {
+  ApplyGameplayBehaviorCommandsOptions,
+  GameplayEntityHandle,
+  GameplayEntityHandleMap,
+} from "../gameplayAuthoring.js";
 import type { InputSnapshot } from "../inputManager";
 import type { ParticlePresetConfig } from "../particlePreset";
 import type { PhysicsMode, ResolvedPhysicsSpec } from "../physicsSpec.js";
@@ -101,6 +124,8 @@ export interface CreateEngineOptions {
   includeAudioEvents?: boolean;
   /** Rust collision lifecycle tracking과 FrameState decoded collision event 배열을 켤지 여부입니다. 기본값은 false입니다. */
   includeCollisionEvents?: boolean;
+  /** FrameState에 gameplay event buffer와 decoded object 배열을 포함할지 여부입니다. 기본값은 true입니다. */
+  includeGameplayEvents?: boolean;
   /** Rust core에서 physics debug line buffer를 만들지 여부입니다. 기본값은 false입니다. */
   enablePhysicsDebugLines?: boolean | PhysicsDebugOptions;
   /** Physics debug line category 옵션입니다. enablePhysicsDebugLines=true면 기본 broadphase/contact를 사용합니다. */
@@ -130,6 +155,7 @@ export interface FerrumSceneApi {
   gameState(): number;
   spriteCount(): number;
   resetGame(): void;
+  builtInShooterPlayerHandle(): GameplayEntityHandle | undefined;
   captureShooterStateSnapshot(): BuiltInShooterStateSnapshot | undefined;
   restoreShooterStateSnapshot(snapshot: BuiltInShooterStateSnapshot): boolean;
   useBreakoutGame(): void;
@@ -278,12 +304,61 @@ export interface FerrumPhysicsApi
     FerrumPhysicsJointApi,
     FerrumPhysicsQueryApi {}
 
+export interface FerrumGameplayAuthoringApi {
+  gameplayEntityExists(entity: GameplayEntityHandle): boolean;
+  applyGameplayBehaviorCommands(
+    commands: readonly BehaviorRecipeCommand[],
+    entityHandles: GameplayEntityHandleMap,
+    options?: ApplyGameplayBehaviorCommandsOptions,
+  ): BehaviorRecipeApplyResult;
+  installBehaviorStateMachineRuntime(
+    document: BehaviorStateMachineDocumentSpec | ResolvedBehaviorStateMachineDocument,
+    machineId: string,
+    entity: GameplayEntityHandle,
+    options?: BehaviorStateMachineRuntimeInstallOptions,
+  ): BehaviorStateMachineRuntimeInstallResult;
+  gameplayBehaviorState(entity: GameplayEntityHandle): number;
+  createBehaviorStateMachineCurrentStateCommandPlan(
+    document: BehaviorStateMachineDocumentSpec | ResolvedBehaviorStateMachineDocument,
+    recipes: BehaviorRecipeDocumentSpec | ResolvedBehaviorRecipeDocument,
+    installPlan: BehaviorStateMachineRuntimeInstallPlan,
+    entity: GameplayEntityHandle,
+    options?: BehaviorStateMachineStateCommandOptions,
+  ): BehaviorStateMachineStateCommandPlan;
+  applyBehaviorStateMachineStateCommands(
+    plan: BehaviorStateMachineStateCommandPlan,
+    entity: GameplayEntityHandle,
+    options?: ApplyBehaviorStateMachineStateCommandsOptions,
+  ): BehaviorStateMachineStateCommandApplyResult;
+  preflightBehaviorStateMachineStateCommands(
+    plan: BehaviorStateMachineStateCommandPlan,
+    entity: GameplayEntityHandle,
+    options?: ApplyBehaviorStateMachineStateCommandsOptions,
+  ): BehaviorStateMachineStateCommandPreflightResult;
+}
+
+export type InputActionRuntimeControl = "space" | "enter" | "mouseLeft";
+export type InputActionActivation = "down" | "pressed";
+
+export interface InputActionRuntimeBinding {
+  control: InputActionRuntimeControl;
+  activation: InputActionActivation;
+}
+
+export interface FerrumInputActionApi {
+  setInputActionBinding(actionId: number, bindingIndex: number, binding: InputActionRuntimeBinding): boolean;
+  clearInputActionBindings(actionId: number): boolean;
+  resetInputActionBindings(): void;
+}
+
 export interface FerrumEngine
   extends FerrumLifecycleApi,
     FerrumSceneApi,
     FerrumAssetApi,
     FerrumParticleApi,
-    FerrumPhysicsApi {}
+    FerrumPhysicsApi,
+    FerrumGameplayAuthoringApi,
+    FerrumInputActionApi {}
 
 export interface ViewportSnapshot {
   width: number;

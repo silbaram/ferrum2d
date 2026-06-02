@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::*;
 use crate::audio_event::AudioEvent;
 use crate::collision::PhysicsDebugLine;
 use crate::collision_event::CollisionEvent;
+use crate::gameplay_event::GameplayEvent;
 use crate::render_command::SpriteRenderCommand;
 
 use super::super::{Engine, TILEMAP_NAVIGATION_PATH_POINT_FLOATS};
@@ -15,6 +16,14 @@ impl Engine {
 
     pub fn collision_event_len(&self) -> usize {
         self.collision_events.len()
+    }
+
+    pub fn gameplay_event_ptr(&self) -> *const GameplayEvent {
+        self.gameplay_events.as_ptr()
+    }
+
+    pub fn gameplay_event_len(&self) -> usize {
+        self.gameplay_events.len()
     }
 
     pub fn frame_telemetry_ptr(&self) -> *const f64 {

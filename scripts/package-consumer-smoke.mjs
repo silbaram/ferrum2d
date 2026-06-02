@@ -13,6 +13,10 @@ const packageRoots = {
 };
 const repoPackageJson = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
 const packageManager = repoPackageJson.packageManager ?? "pnpm@10.8.0";
+const DEFAULT_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
+const templateCatalog = JSON.parse(await readFile(path.join(packageRoots.createGame, "templates/manifest.json"), "utf8"));
+const templateCatalogEntries = validateTemplateCatalog(templateCatalog);
+const templateCatalogById = new Map(templateCatalogEntries.map((template) => [template.id, template]));
 
 const options = parseArgs(process.argv.slice(2));
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -109,6 +113,8 @@ function parseArgs(args) {
     skipPackageCheck: false,
     templates: undefined,
     artifactDir: process.env.FERRUM_CONSUMER_SMOKE_ARTIFACT_DIR,
+    commandTimeoutMs: optionalPositiveIntegerEnv(process.env.FERRUM_CONSUMER_SMOKE_COMMAND_TIMEOUT_MS)
+      ?? DEFAULT_COMMAND_TIMEOUT_MS,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -141,6 +147,13 @@ function parseArgs(args) {
       assert(next, "--artifact-dir requires a path");
       parsed.artifactDir = next;
       index += 1;
+    } else if (arg.startsWith("--command-timeout-ms=")) {
+      parsed.commandTimeoutMs = parsePositiveInteger(arg.slice("--command-timeout-ms=".length), "--command-timeout-ms");
+    } else if (arg === "--command-timeout-ms") {
+      const next = args[index + 1];
+      assert(next, "--command-timeout-ms requires a positive integer");
+      parsed.commandTimeoutMs = parsePositiveInteger(next, "--command-timeout-ms");
+      index += 1;
     } else {
       throw new Error(`Unknown option: ${arg}`);
     }
@@ -155,9 +168,22 @@ function parseTemplateList(value) {
   return [...new Set(templates)];
 }
 
+function optionalPositiveIntegerEnv(value) {
+  if (value === undefined || value.length === 0) {
+    return undefined;
+  }
+  return parsePositiveInteger(value, "FERRUM_CONSUMER_SMOKE_COMMAND_TIMEOUT_MS");
+}
+
+function parsePositiveInteger(value, label) {
+  const parsed = Number(value);
+  assert(Number.isInteger(parsed) && parsed > 0, `${label} must be a positive integer`);
+  return parsed;
+}
+
 async function resolveTemplateMatrix(requestedTemplates) {
-  const availableTemplates = await listCreateGameTemplates();
-  assert(availableTemplates.length > 0, "create-game package must include at least one template");
+  const availableTemplates = templateCatalogEntries.map((template) => template.id);
+  await assertTemplateCatalogMatchesDirectories(availableTemplates);
   if (requestedTemplates === undefined) {
     return availableTemplates;
   }
@@ -170,7 +196,41 @@ async function resolveTemplateMatrix(requestedTemplates) {
   return requestedTemplates;
 }
 
-async function listCreateGameTemplates() {
+function validateTemplateCatalog(catalog) {
+  assert(
+    catalog !== null && typeof catalog === "object" && !Array.isArray(catalog),
+    "create-game template manifest must be an object",
+  );
+  assert(Array.isArray(catalog.templates), "create-game template manifest must include templates[]");
+  assert(catalog.templates.length > 0, "create-game template manifest must include at least one template");
+  const seen = new Set();
+  for (const [index, template] of catalog.templates.entries()) {
+    assert(
+      template !== null && typeof template === "object" && !Array.isArray(template),
+      `create-game template manifest templates.${index} must be an object`,
+    );
+    assert(typeof template.id === "string" && template.id.length > 0, `create-game template manifest templates.${index}.id must be a non-empty string`);
+    assert(!seen.has(template.id), `create-game template manifest includes duplicate template id '${template.id}'`);
+    seen.add(template.id);
+  }
+  return catalog.templates;
+}
+
+async function assertTemplateCatalogMatchesDirectories(catalogTemplateIds) {
+  const directoryTemplateIds = await listCreateGameTemplateDirectories();
+  const manifestOnly = catalogTemplateIds.filter((templateName) => !directoryTemplateIds.includes(templateName));
+  const directoryOnly = directoryTemplateIds.filter((templateName) => !catalogTemplateIds.includes(templateName));
+  assert(
+    manifestOnly.length === 0 && directoryOnly.length === 0,
+    [
+      "create-game template manifest must match template directories",
+      manifestOnly.length > 0 ? `manifest-only: ${manifestOnly.join(", ")}` : undefined,
+      directoryOnly.length > 0 ? `directory-only: ${directoryOnly.join(", ")}` : undefined,
+    ].filter(Boolean).join("; "),
+  );
+}
+
+async function listCreateGameTemplateDirectories() {
   const entries = await readdir(path.join(packageRoots.createGame, "templates"), { withFileTypes: true });
   return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
 }
@@ -228,6 +288,117 @@ async function runGeneratedGameConsumer({
     "scripts/package-type-smoke.ts",
   ], generatedGameRoot);
   await runRequired(pnpm, ["run", "ferrum:validate"], generatedGameRoot);
+  const authoringReport = await runJsonReport(
+    pnpm,
+    ["run", "ferrum:authoring-report"],
+    generatedGameRoot,
+    "ferrum2d.consumer.gameplay-authoring.report",
+  );
+  assertConsumerAuthoringReport(authoringReport, templateName);
+  const replayReport = await runJsonReport(
+    pnpm,
+    ["run", "ferrum:replay-report"],
+    generatedGameRoot,
+    "ferrum2d.consumer.gameplay-replay.report",
+  );
+  assertConsumerReplayReport(replayReport, templateName);
+  const runtimeReplayReport = await runJsonReport(
+    pnpm,
+    ["run", "ferrum:runtime-replay-report"],
+    generatedGameRoot,
+    "ferrum2d.consumer.runtime-gameplay-replay.report",
+  );
+  assertConsumerRuntimeReplayReport(runtimeReplayReport, templateName);
+  const runtimeReplayRecipe = await runJsonReport(
+    pnpm,
+    ["run", "ferrum:runtime-replay-recipe"],
+    generatedGameRoot,
+    "ferrum2d.consumer.runtime-gameplay-replay.recipe",
+  );
+  assertConsumerRuntimeReplayRecipe(runtimeReplayRecipe, templateName);
+  const runtimeReplayTemplate = templateCatalogById.get(templateName);
+  if (runtimeReplayTemplate?.runtimeGameplayReplay?.configured === true) {
+    const runtimeReplayUpdateReport = await runJsonReport(
+      pnpm,
+      ["run", "ferrum:update-runtime-replay-fixture"],
+      generatedGameRoot,
+      "ferrum2d.consumer.runtime-gameplay-replay.fixture-update-report",
+    );
+    assertConsumerRuntimeReplayFixtureUpdateReport(runtimeReplayUpdateReport, templateName);
+    await requireFile(
+      path.join(generatedGameRoot, "public/gameplay-runtime-replay.fixture.json"),
+      `${templateName} configured runtime replay update must keep fixture present`,
+    );
+    await requireFile(
+      path.join(generatedGameRoot, "public/gameplay-runtime-replay.coverage-tags.json"),
+      `${templateName} configured runtime replay update must keep coverage tags present`,
+    );
+  } else {
+    const runtimeReplayUpdateReport = await runJsonReportAllowFailure(
+      pnpm,
+      ["run", "ferrum:update-runtime-replay-fixture"],
+      generatedGameRoot,
+      "ferrum2d.consumer.runtime-gameplay-replay.report",
+    );
+    assert(runtimeReplayUpdateReport.result.code !== 0, `${templateName} runtime replay fixture update must fail while scaffold is not configured`);
+    assertConsumerRuntimeReplayUpdateNotConfiguredReport(runtimeReplayUpdateReport.report, templateName);
+    await assertMissing(
+      path.join(generatedGameRoot, "public/gameplay-runtime-replay.fixture.json"),
+      `${templateName} runtime replay update must not create a fixture while scaffold is not configured`,
+    );
+    await assertMissing(
+      path.join(generatedGameRoot, "public/gameplay-runtime-replay.coverage-tags.json"),
+      `${templateName} runtime replay update must not create coverage tags while scaffold is not configured`,
+    );
+  }
+  if (templateName === "topdown") {
+    await writeStaleTopdownReplayFixture(generatedGameRoot);
+    const staleReplayReport = await runJsonReportAllowFailure(
+      pnpm,
+      ["run", "ferrum:replay-report"],
+      generatedGameRoot,
+      "ferrum2d.consumer.gameplay-replay.report",
+    );
+    assert(staleReplayReport.result.code !== 0, "topdown replay report must fail for a stale replay fixture");
+    assertTopdownStaleReplayReport(staleReplayReport.report);
+    const updateReport = await runJsonReport(
+      pnpm,
+      ["run", "ferrum:update-replay-fixture"],
+      generatedGameRoot,
+      "ferrum2d.consumer.gameplay-replay.fixture-update-report",
+    );
+    assertConsumerReplayFixtureUpdateReport(updateReport, replayReport);
+    const replayReportAfterUpdate = await runJsonReport(
+      pnpm,
+      ["run", "ferrum:replay-report"],
+      generatedGameRoot,
+      "ferrum2d.consumer.gameplay-replay.report",
+    );
+    assertConsumerReplayReport(replayReportAfterUpdate, templateName);
+    await writeTopdownGameSpecDrift(generatedGameRoot);
+    const driftReplayReport = await runJsonReportAllowFailure(
+      pnpm,
+      ["run", "ferrum:replay-report"],
+      generatedGameRoot,
+      "ferrum2d.consumer.gameplay-replay.report",
+    );
+    assert(driftReplayReport.result.code !== 0, "topdown replay report must fail when Game Spec drifts from the replay fixture");
+    assertTopdownGameSpecDriftReplayReport(driftReplayReport.report);
+    const driftUpdateReport = await runJsonReport(
+      pnpm,
+      ["run", "ferrum:update-replay-fixture"],
+      generatedGameRoot,
+      "ferrum2d.consumer.gameplay-replay.fixture-update-report",
+    );
+    assertConsumerReplayFixtureUpdateReport(driftUpdateReport, driftReplayReport.report);
+    const replayReportAfterDriftUpdate = await runJsonReport(
+      pnpm,
+      ["run", "ferrum:replay-report"],
+      generatedGameRoot,
+      "ferrum2d.consumer.gameplay-replay.report",
+    );
+    assertConsumerReplayReport(replayReportAfterDriftUpdate, templateName);
+  }
   await runRequired(pnpm, ["run", "build"], generatedGameRoot);
   await requireFile(
     path.join(generatedGameRoot, "dist/index.html"),
@@ -288,12 +459,15 @@ async function writePublicImportSmoke(targetRoot) {
   ScreenFadeTransition,
   SCREENSHOT_CAPTURE_SUMMARY_FORMAT,
   TEXTURE_ATLAS_PACK_FORMAT,
+  GAMEPLAY_BEHAVIOR_BINDING_PROP,
   PARTICLE_VFX_PRESETS,
   SPRITE_MATERIAL_PRESETS,
   assetManifestFingerprint,
   applyPhysicsSceneProfile,
   applyAccessibilityToCameraRigSpec,
+  applyGameplayBehaviorCommands,
   behaviorRecipeCommandsForEntity,
+  bindSceneBehaviorRecipes,
   buildDebugGizmoLineBuffer,
   captureDialogueQuestState,
   resolveCutsceneSequenceSpec,
@@ -303,6 +477,9 @@ async function writePublicImportSmoke(targetRoot) {
   createAssetPreloadCachePolicy,
   createFerrumRuntime,
   diagnosticReport,
+  dryRunSceneBehaviorRecipes,
+  gameplayActionDiagnosticReports,
+  gameplaySpawnDiagnosticReports,
   particleVfxPreset,
   resolveAnimationTimelineSpec,
   resolveAccessibilityOptions,
@@ -311,15 +488,20 @@ async function writePublicImportSmoke(targetRoot) {
   resolveFontLoadingPolicy,
   resolveLevelChunkManifest,
   resolveLevelStreamingPlan,
+  compareGameplayReplayRuns,
+  createGameplayReplayRun,
   resolveQuestDocument,
   resolvePostProcessPasses,
   resolveAccessibilityHudTheme,
   resolveHudTheme,
+  hashGameStateSnapshot,
   summarizeScreenshotPixels,
   compareScreenshotSummaries,
   resolveSceneCompositionSpec,
   resolveSpriteMaterialPreset,
   resolveShooterGameSpec,
+  suggestionForActionFailureReason,
+  suggestionForSpawnDiagnosticMetric,
   packTextureAtlas,
   textureAtlasDocumentToShooterAtlas,
 } from "@ferrum2d/ferrum-web";
@@ -362,11 +544,144 @@ if (typeof behaviorRecipeCommandsForEntity !== "function") {
 }
 const behaviorRecipes = resolveBehaviorRecipeDocument({
   entities: {
-    enemy: { recipes: [{ kind: "health", max: 2 }] },
+    enemy: { recipes: [{ kind: "health", max: 2 }, { kind: "lifetime", seconds: 1 }, { kind: "scoreReward", reward: 0 }] },
   },
 });
 if (behaviorRecipeCommandsForEntity(behaviorRecipes, "enemy")[0]?.type !== "configureHealth") {
   throw new Error("behavior recipe helpers must emit public runtime adapter commands.");
+}
+if (behaviorRecipeCommandsForEntity(behaviorRecipes, "enemy", { kinds: ["lifetime"] })[0]?.type !== "configureLifetime") {
+  throw new Error("behavior recipe helpers must emit lifetime runtime adapter commands.");
+}
+if (behaviorRecipeCommandsForEntity(behaviorRecipes, "enemy", { kinds: ["scoreReward"] })[0]?.type !== "configureScoreReward") {
+  throw new Error("behavior recipe helpers must emit score reward runtime adapter commands.");
+}
+if (GAMEPLAY_BEHAVIOR_BINDING_PROP !== "behaviorRecipes") {
+  throw new Error("GAMEPLAY_BEHAVIOR_BINDING_PROP must be exported from the public entrypoint.");
+}
+if (typeof bindSceneBehaviorRecipes !== "function" || typeof dryRunSceneBehaviorRecipes !== "function") {
+  throw new Error("gameplay authoring helpers must be exported from the public entrypoint.");
+}
+const gameplayBindingPlan = bindSceneBehaviorRecipes({
+  prefabs: { enemy: { props: { behaviorRecipes: "enemy" } } },
+  fragments: { main: { instances: [{ id: "enemy-a", prefab: "enemy" }] } },
+}, behaviorRecipes);
+if (gameplayBindingPlan.commands[0]?.entity !== "enemy-a") {
+  throw new Error("gameplay authoring helpers must retarget behavior commands to scene instances.");
+}
+const gameplayBehaviorApply = applyGameplayBehaviorCommands({
+  set_gameplay_health: () => true,
+  clear_gameplay_health: () => true,
+  set_gameplay_damage: () => true,
+  clear_gameplay_damage: () => true,
+  set_gameplay_lifetime: () => true,
+  clear_gameplay_lifetime: () => true,
+  set_gameplay_score_reward: () => true,
+  clear_gameplay_score_reward: () => true,
+  set_gameplay_pickup: () => true,
+  clear_gameplay_pickup: () => true,
+  set_gameplay_interaction: () => true,
+  clear_gameplay_interaction: () => true,
+  set_gameplay_movement_chase_player: () => true,
+  set_gameplay_movement_chase_entity: () => true,
+  add_gameplay_collision_damage: () => true,
+}, gameplayBindingPlan.commands, { "enemy-a": { entityId: 1, entityGeneration: 1 } });
+if (gameplayBehaviorApply.results[0] !== true) {
+  throw new Error("gameplay authoring helpers must apply supported behavior commands to entity handles.");
+}
+if (!dryRunSceneBehaviorRecipes(sceneComposition, behaviorRecipes).ok) {
+  throw new Error("gameplay authoring dry-run must return ok for valid composition and behavior recipes.");
+}
+if (
+  typeof createGameplayReplayRun !== "function" ||
+  typeof compareGameplayReplayRuns !== "function" ||
+  typeof hashGameStateSnapshot !== "function"
+) {
+  throw new Error("gameplay replay helpers must be exported from the public entrypoint.");
+}
+const gameplayReplaySnapshot = {
+  format: "ferrum2d.game-state.snapshot",
+  version: 1,
+  frame: 0,
+  source: "ferrum-runtime",
+  scene: {
+    score: 0,
+    gameState: 0,
+    entityCount: 0,
+    spriteCount: 0,
+    cameraX: 0,
+    cameraY: 0,
+  },
+  snapshotHash: "",
+  custom: { score: 0 },
+};
+gameplayReplaySnapshot.snapshotHash = hashGameStateSnapshot(gameplayReplaySnapshot);
+const gameplayReplayRun = createGameplayReplayRun([gameplayReplaySnapshot]);
+if (!compareGameplayReplayRuns(gameplayReplayRun, gameplayReplayRun).passed) {
+  throw new Error("gameplay replay helpers must compare public deterministic replay runs.");
+}
+if (typeof gameplayActionDiagnosticReports !== "function" || typeof suggestionForActionFailureReason !== "function") {
+  throw new Error("gameplay action diagnostic helpers must be exported from the public entrypoint.");
+}
+if (typeof gameplaySpawnDiagnosticReports !== "function" || typeof suggestionForSpawnDiagnosticMetric !== "function") {
+  throw new Error("gameplay spawn diagnostic helpers must be exported from the public entrypoint.");
+}
+const gameplayActionReports = gameplayActionDiagnosticReports({
+  triggerAttempts: 1,
+  triggerFailures: 1,
+  triggerFailureEventsPushed: 1,
+  triggerCommitSkips: 0,
+  lastPreparedTriggerFailureReasonCode: 5,
+  failureReasonCounts: [0, 0, 0, 0, 0, 1],
+}, {
+  actionFailures: [{
+    type: "actionFailed",
+    actor: { entityId: 1, entityGeneration: 1 },
+    source: { entityId: 1, entityGeneration: 1 },
+    actionId: 11,
+    reasonCode: 5,
+    reason: "spawnQueueFull",
+    flags: 0,
+    payloadBits: 5,
+    event: {
+      kind: "actionFailed",
+      kindCode: 6,
+      actorId: 1,
+      actorGeneration: 1,
+      sourceId: 1,
+      sourceGeneration: 1,
+      tokenId: 11,
+      flags: 0,
+      payloadBits: 5,
+      once: false,
+      consumedThisFrame: false,
+      targetRemoved: false,
+    },
+  }],
+  actionNames: { 11: "summon" },
+});
+if (gameplayActionReports[0]?.code !== "FERRUM_GAMEPLAY_ACTION_TRIGGER_FAILURE") {
+  throw new Error("gameplay action diagnostic helpers must emit machine-actionable reports.");
+}
+if (!suggestionForActionFailureReason("spawnQueueFull").includes("deferred spawn queue")) {
+  throw new Error("gameplay action diagnostic helpers must expose actionable suggestions.");
+}
+const gameplaySpawnReports = gameplaySpawnDiagnosticReports({
+  commandsDrained: 1,
+  projectileSpawns: 1,
+  projectileArcsApplied: 0,
+  projectileShootAudioEventsPushed: 1,
+  prefabSpawns: 0,
+  prefabSpawnedPayloads: 0,
+  prefabSpawnedEventsPushed: 0,
+}, {
+  includeActivity: true,
+});
+if (gameplaySpawnReports[0]?.code !== "FERRUM_GAMEPLAY_SPAWN_FLUSH_ACTIVITY") {
+  throw new Error("gameplay spawn diagnostic helpers must emit machine-actionable reports.");
+}
+if (!suggestionForSpawnDiagnosticMetric("prefabSpawns").includes("spawnPrefab")) {
+  throw new Error("gameplay spawn diagnostic helpers must expose actionable suggestions.");
 }
 if (typeof resolveHudTheme !== "function") {
   throw new Error("resolveHudTheme must be exported from the public entrypoint.");
@@ -598,10 +913,23 @@ async function writePublicTypesSmoke(targetRoot) {
   await writeFile(path.join(targetRoot, "scripts/package-type-smoke.ts"), `import {
   createAssetPreloadCachePolicy,
   createFerrumRuntime,
+  applyGameplayBehaviorCommands,
+  dryRunSceneBehaviorRecipes,
+  gameplayActionDiagnosticReports,
+  gameplaySpawnDiagnosticReports,
   resolveShooterGameSpec,
+  suggestionForActionFailureReason,
+  suggestionForSpawnDiagnosticMetric,
+  type ActionFrameDiagnostics,
   type AssetPreloadCachePolicy,
   type FerrumRuntime,
+  type GameplayActionDiagnosticReport,
+  type GameplayActionFailedEventAction,
+  type GameplayEntityHandle,
+  type GameplaySpawnDiagnosticReport,
+  type SceneBehaviorBindingDryRunResult,
   type ShooterGameSpec,
+  type SpawnFrameDiagnostics,
 } from "@ferrum2d/ferrum-web";
 
 const spec: ShooterGameSpec = {
@@ -614,11 +942,94 @@ const resolved = resolveShooterGameSpec(spec);
 const policy: AssetPreloadCachePolicy = createAssetPreloadCachePolicy({
   json: { game: "/game.json" },
 });
+const behaviorDryRun: SceneBehaviorBindingDryRunResult = dryRunSceneBehaviorRecipes({
+  prefabs: { actor: { props: { behaviorRecipes: "actor" } } },
+  fragments: { main: { instances: [{ id: "actor-a", prefab: "actor" }] } },
+}, {
+  entities: { actor: { recipes: [{ kind: "health", max: 1 }, { kind: "lifetime", seconds: 1 }, { kind: "scoreReward", reward: 0 }] } },
+});
+const gameplayHandle: GameplayEntityHandle = { entityId: 1, entityGeneration: 1 };
+const gameplayRuntime: Parameters<typeof applyGameplayBehaviorCommands>[0] = {
+  set_gameplay_health: () => true,
+  clear_gameplay_health: () => true,
+  set_gameplay_damage: () => true,
+  clear_gameplay_damage: () => true,
+  set_gameplay_lifetime: () => true,
+  clear_gameplay_lifetime: () => true,
+  set_gameplay_score_reward: () => true,
+  clear_gameplay_score_reward: () => true,
+  set_gameplay_pickup: () => true,
+  clear_gameplay_pickup: () => true,
+  set_gameplay_interaction: () => true,
+  clear_gameplay_interaction: () => true,
+  set_gameplay_movement_chase_player: () => true,
+  set_gameplay_movement_chase_entity: () => true,
+  add_gameplay_collision_damage: () => true,
+};
+const gameplayApply = applyGameplayBehaviorCommands(gameplayRuntime, behaviorDryRun.ok ? behaviorDryRun.plan.commands : [], {
+  "actor-a": gameplayHandle,
+});
+const actionDiagnostics: ActionFrameDiagnostics = {
+  triggerAttempts: 1,
+  triggerFailures: 1,
+  triggerFailureEventsPushed: 1,
+  triggerCommitSkips: 0,
+  lastPreparedTriggerFailureReasonCode: 5,
+  failureReasonCounts: [0, 0, 0, 0, 0, 1],
+};
+const actionFailed: GameplayActionFailedEventAction = {
+  type: "actionFailed",
+  actor: gameplayHandle,
+  source: gameplayHandle,
+  actionId: 11,
+  reasonCode: 5,
+  reason: "spawnQueueFull",
+  flags: 0,
+  payloadBits: 5,
+  event: {
+    kind: "actionFailed",
+    kindCode: 6,
+    actorId: 1,
+    actorGeneration: 1,
+    sourceId: 1,
+    sourceGeneration: 1,
+    tokenId: 11,
+    flags: 0,
+    payloadBits: 5,
+    once: false,
+    consumedThisFrame: false,
+    targetRemoved: false,
+  },
+};
+const actionDiagnosticReport: GameplayActionDiagnosticReport | undefined = gameplayActionDiagnosticReports(actionDiagnostics, {
+  actionFailures: [actionFailed],
+  actionNames: { 11: "summon" },
+})[0];
+const actionDiagnosticSuggestion: string = suggestionForActionFailureReason("spawnQueueFull");
+const spawnDiagnostics: SpawnFrameDiagnostics = {
+  commandsDrained: 1,
+  projectileSpawns: 1,
+  projectileArcsApplied: 0,
+  projectileShootAudioEventsPushed: 1,
+  prefabSpawns: 0,
+  prefabSpawnedPayloads: 0,
+  prefabSpawnedEventsPushed: 0,
+};
+const spawnDiagnosticReport: GameplaySpawnDiagnosticReport | undefined = gameplaySpawnDiagnosticReports(spawnDiagnostics, {
+  includeActivity: true,
+})[0];
+const spawnDiagnosticSuggestion: string = suggestionForSpawnDiagnosticMetric("projectileSpawns");
 const runtimeFactory: typeof createFerrumRuntime = createFerrumRuntime;
 declare const runtime: FerrumRuntime;
 runtime.engine.setGameSpec(spec);
 void policy;
 void resolved;
+void behaviorDryRun;
+void gameplayApply;
+void actionDiagnosticReport;
+void actionDiagnosticSuggestion;
+void spawnDiagnosticReport;
+void spawnDiagnosticSuggestion;
 void runtimeFactory;
 `);
 }
@@ -633,10 +1044,10 @@ function fileDependency(filePath) {
 
 async function runRequired(command, args, cwd) {
   console.log(`$ ${formatCommand(command, args)} (${path.relative(repoRoot, cwd) || "."})`);
-  const result = await run(command, args, cwd);
+  const result = await run(command, args, cwd, options.commandTimeoutMs);
   assert(
-    result.code === 0,
-    `command failed with exit code ${result.code}: ${formatCommand(command, args)}\n${result.stdout}\n${result.stderr}`.trim(),
+    !result.timedOut && result.code === 0,
+    commandFailureMessage(command, args, result),
   );
   if (result.stdout.trim().length > 0) {
     console.log(result.stdout.trim());
@@ -644,13 +1055,393 @@ async function runRequired(command, args, cwd) {
   if (result.stderr.trim().length > 0) {
     console.error(result.stderr.trim());
   }
+  return result;
 }
 
-function run(command, args, cwd) {
+async function runJsonReport(command, args, cwd, expectedFormat) {
+  const result = await runRequired(command, args, cwd);
+  return parseJsonReport(result.stdout, expectedFormat, formatCommand(command, args));
+}
+
+async function runJsonReportAllowFailure(command, args, cwd, expectedFormat) {
+  console.log(`$ ${formatCommand(command, args)} (${path.relative(repoRoot, cwd) || "."})`);
+  const result = await run(command, args, cwd, options.commandTimeoutMs);
+  assert(!result.timedOut, commandFailureMessage(command, args, result));
+  if (result.stdout.trim().length > 0) {
+    console.log(result.stdout.trim());
+  }
+  if (result.stderr.trim().length > 0) {
+    console.error(result.stderr.trim());
+  }
+  return {
+    result,
+    report: parseJsonReport(result.stdout, expectedFormat, formatCommand(command, args)),
+  };
+}
+
+function parseJsonReport(stdout, expectedFormat, commandLabel) {
+  const marker = `{\n  "format": "${expectedFormat}"`;
+  const start = stdout.indexOf(marker);
+  assert(start >= 0, `command did not emit ${expectedFormat} JSON report: ${commandLabel}`);
+  const end = findJsonObjectEnd(stdout, start);
+  assert(end >= 0, `command emitted an incomplete ${expectedFormat} JSON report: ${commandLabel}`);
+  try {
+    return JSON.parse(stdout.slice(start, end));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`failed to parse ${expectedFormat} JSON report from ${commandLabel}: ${message}`);
+  }
+}
+
+function findJsonObjectEnd(source, start) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === "\"") {
+      inString = true;
+    } else if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return index + 1;
+      }
+    }
+  }
+  return -1;
+}
+
+function assertConsumerAuthoringReport(report, templateName) {
+  assert(report.format === "ferrum2d.consumer.gameplay-authoring.report", `${templateName} authoring report format is invalid`);
+  assert(report.version === 1, `${templateName} authoring report version is invalid`);
+  assert(report.ok === true, `${templateName} authoring report must be ok for a generated template`);
+  assert(report.gameplayAuthoring?.packageName === templateName, `${templateName} authoring report packageName is invalid`);
+  assert(Array.isArray(report.gameplayAuthoring?.diagnostics), `${templateName} authoring report diagnostics must be an array`);
+  assert(Array.isArray(report.gameplayAuthoring?.reports), `${templateName} authoring report reports must be an array`);
+  assertMachineActionableReports(report.gameplayAuthoring.reports, `${templateName} authoring report gameplayAuthoring.reports`);
+  if (templateName === "topdown") {
+    assert(report.gameplayAuthoring.status === "validated", "topdown authoring report must validate public/game.json");
+    assert(report.gameplayAuthoring.gameSpec?.ok === true, "topdown authoring report must include a valid Game Spec result");
+    assert(report.gameplayAuthoring.gameSpec?.file === "public/game.json", "topdown authoring report must identify public/game.json");
+  } else {
+    assert(report.gameplayAuthoring.status === "not-configured", `${templateName} authoring report must be not-configured`);
+    assert(report.gameplayAuthoring.gameSpec?.ok === null, `${templateName} authoring report must mark missing Game Spec as a structured skip`);
+  }
+}
+
+function assertConsumerReplayReport(report, templateName) {
+  assert(report.format === "ferrum2d.consumer.gameplay-replay.report", `${templateName} replay report format is invalid`);
+  assert(report.version === 1, `${templateName} replay report version is invalid`);
+  assert(report.ok === true, `${templateName} replay report must be ok for default templates`);
+  assert(report.gameplayReplay?.packageName === templateName, `${templateName} replay report packageName is invalid`);
+  assert(Array.isArray(report.gameplayReplay?.reports), `${templateName} replay report reports must be an array`);
+  assertMachineActionableReports(report.gameplayReplay.reports, `${templateName} replay report gameplayReplay.reports`);
+  assert(report.gameplayReplay?.status === "validated", `${templateName} replay report must validate its replay fixture`);
+  assert(report.gameplayReplay?.configured === true, `${templateName} replay report must mark replay as configured`);
+  assert(typeof report.gameplayReplay?.scenario === "string" && report.gameplayReplay.scenario.length > 0, `${templateName} replay report scenario is invalid`);
+  assert(report.gameplayReplay?.fixture === "public/gameplay-replay.fixture.json", `${templateName} replay report fixture path is invalid`);
+  assert(report.gameplayReplay?.coverageTagDefinitionsPath === "public/gameplay-replay.coverage-tags.json", `${templateName} replay report coverage vocabulary path is invalid`);
+  assert(Array.isArray(report.gameplayReplay?.coverageTags) && report.gameplayReplay.coverageTags.length > 0, `${templateName} replay report coverage tags are invalid`);
+  assertCoverageRegistryReport(report.gameplayReplay, `${templateName} replay report`);
+  if (templateName === "topdown") {
+    assert(report.gameplayReplay.scenario === "topdown-template-game-spec", "topdown replay report scenario is invalid");
+    assertDeepEqual(report.gameplayReplay.coverageTags, ["template-game-spec"], "topdown replay report coverage tags are invalid");
+    assertTopdownCoverageRegistry(report.gameplayReplay, "topdown replay report");
+  }
+  assert(report.gameplayReplay?.comparison?.passed === true, `${templateName} replay comparison must pass`);
+  assert(typeof report.gameplayReplay?.expectedHash === "string", `${templateName} replay report must include expectedHash`);
+  assert(report.gameplayReplay?.expectedHash === report.gameplayReplay?.actualHash, `${templateName} replay expectedHash and actualHash must match`);
+}
+
+function assertConsumerRuntimeReplayReport(report, templateName) {
+  const runtimeReplayConfigured = templateCatalogById.get(templateName)?.runtimeGameplayReplay?.configured === true;
+  assert(report.format === "ferrum2d.consumer.runtime-gameplay-replay.report", `${templateName} runtime replay report format is invalid`);
+  assert(report.version === 1, `${templateName} runtime replay report version is invalid`);
+  assert(report.ok === true, `${templateName} runtime replay report must be ok`);
+  assert(report.runtimeGameplayReplay?.configured === runtimeReplayConfigured, `${templateName} runtime replay configured flag is invalid`);
+  assert(report.runtimeGameplayReplay?.status === (runtimeReplayConfigured ? "validated" : "not-configured"), `${templateName} runtime replay status is invalid`);
+  assert(report.runtimeGameplayReplay?.scenario === "project-runtime", `${templateName} runtime replay scenario is invalid`);
+  assert(report.runtimeGameplayReplay?.fixture === "public/gameplay-runtime-replay.fixture.json", `${templateName} runtime replay fixture path is invalid`);
+  assert(
+    report.runtimeGameplayReplay?.coverageTagDefinitionsPath === "public/gameplay-runtime-replay.coverage-tags.json",
+    `${templateName} runtime replay coverage vocabulary path is invalid`,
+  );
+  assertDeepEqual(report.runtimeGameplayReplay?.coverageTags, ["project-runtime"], `${templateName} runtime replay coverage tags are invalid`);
+  assert(report.runtimeGameplayReplay?.recipe?.template === templateName, `${templateName} runtime replay report recipe template is invalid`);
+  if (runtimeReplayConfigured) {
+    assertDeepEqual(report.runtimeGameplayReplay?.reports, [], `${templateName} runtime replay reports must be empty when validated`);
+    assert(report.runtimeGameplayReplay?.comparison?.passed === true, `${templateName} runtime replay comparison must pass`);
+    assert(report.runtimeGameplayReplay?.expectedHash === report.runtimeGameplayReplay?.actualHash, `${templateName} runtime replay hash must match`);
+  } else {
+    assertMachineActionableReports(report.runtimeGameplayReplay?.reports, `${templateName} runtime replay reports`);
+    assert(
+      report.runtimeGameplayReplay?.reports?.[0]?.code === "FERRUM_CONSUMER_RUNTIME_REPLAY_NOT_CONFIGURED",
+      `${templateName} runtime replay report must include not-configured diagnostic code`,
+    );
+  }
+}
+
+function assertConsumerRuntimeReplayRecipe(recipe, templateName) {
+  const runtimeReplayConfigured = templateCatalogById.get(templateName)?.runtimeGameplayReplay?.configured === true;
+  assert(recipe.format === "ferrum2d.consumer.runtime-gameplay-replay.recipe", `${templateName} runtime replay recipe format is invalid`);
+  assert(recipe.version === 1, `${templateName} runtime replay recipe version is invalid`);
+  assert(recipe.template === templateName, `${templateName} runtime replay recipe template is invalid`);
+  assert(recipe.scenario === "project-runtime", `${templateName} runtime replay recipe scenario is invalid`);
+  assert(recipe.status === (runtimeReplayConfigured ? "configured" : "scaffold"), `${templateName} runtime replay recipe status is invalid`);
+  assert(recipe.fixture === "public/gameplay-runtime-replay.fixture.json", `${templateName} runtime replay recipe fixture path is invalid`);
+  assert(
+    recipe.coverageTagDefinitionsPath === "public/gameplay-runtime-replay.coverage-tags.json",
+    `${templateName} runtime replay recipe coverage path is invalid`,
+  );
+  assertDeepEqual(recipe.coverageTags, ["project-runtime"], `${templateName} runtime replay recipe coverage tags are invalid`);
+  assert(recipe.deterministicRun?.fixedDelta === 1 / 60, `${templateName} runtime replay recipe fixedDelta is invalid`);
+  assert(typeof recipe.deterministicRun?.seed === "string" && recipe.deterministicRun.seed.length > 0, `${templateName} runtime replay recipe seed is invalid`);
+  assertRuntimeReplayInputSequence(recipe.deterministicRun?.inputSequence, `${templateName} runtime replay recipe inputSequence`);
+  assert(Array.isArray(recipe.deterministicRun?.captureFrames) && recipe.deterministicRun.captureFrames.length > 0, `${templateName} runtime replay recipe captureFrames must be non-empty`);
+  assertStringArray(recipe.canonicalState?.required, `${templateName} runtime replay recipe canonicalState.required`);
+  assertStringArray(recipe.canonicalState?.excluded, `${templateName} runtime replay recipe canonicalState.excluded`);
+  assertStringArray(recipe.implementationSteps, `${templateName} runtime replay recipe implementationSteps`);
+  assert(recipe.canonicalState.excluded.includes("render commands"), `${templateName} runtime replay recipe must exclude render commands`);
+  assert(recipe.canonicalState.excluded.includes("audio playback"), `${templateName} runtime replay recipe must exclude audio playback`);
+}
+
+function assertConsumerRuntimeReplayFixtureUpdateReport(report, templateName) {
+  assert(report.format === "ferrum2d.consumer.runtime-gameplay-replay.fixture-update-report", `${templateName} runtime replay update format is invalid`);
+  assert(report.version === 1, `${templateName} runtime replay update version is invalid`);
+  assert(report.ok === true, `${templateName} runtime replay update must pass when configured`);
+  assert(report.runtimeGameplayReplayFixture?.fixture === "public/gameplay-runtime-replay.fixture.json", `${templateName} runtime replay update fixture path is invalid`);
+  assert(report.runtimeGameplayReplayFixture?.scenario === "project-runtime", `${templateName} runtime replay update scenario is invalid`);
+  assert(
+    report.runtimeGameplayReplayFixture?.coverageTagDefinitionsPath === "public/gameplay-runtime-replay.coverage-tags.json",
+    `${templateName} runtime replay update coverage path is invalid`,
+  );
+  assertDeepEqual(report.runtimeGameplayReplayFixture?.coverageTags, ["project-runtime"], `${templateName} runtime replay update coverage tags are invalid`);
+  assert(typeof report.runtimeGameplayReplayFixture?.replayHash === "string" && report.runtimeGameplayReplayFixture.replayHash.length > 0, `${templateName} runtime replay update replayHash is invalid`);
+  assert(report.runtimeGameplayReplayFixture?.snapshotCount > 0, `${templateName} runtime replay update snapshotCount must be positive`);
+}
+
+function assertConsumerRuntimeReplayUpdateNotConfiguredReport(report, templateName) {
+  assert(report.format === "ferrum2d.consumer.runtime-gameplay-replay.report", `${templateName} runtime replay update report format is invalid`);
+  assert(report.version === 1, `${templateName} runtime replay update report version is invalid`);
+  assert(report.ok === false, `${templateName} runtime replay update report must be ok=false while not configured`);
+  assert(report.runtimeGameplayReplay?.configured === false, `${templateName} runtime replay update must keep configured=false`);
+  assert(report.runtimeGameplayReplay?.status === "not-configured", `${templateName} runtime replay update status must be not-configured`);
+  assert(report.runtimeGameplayReplay?.updateAttempted === true, `${templateName} runtime replay update report must mark updateAttempted`);
+  assert(report.runtimeGameplayReplay?.recipe?.template === templateName, `${templateName} runtime replay update report recipe template is invalid`);
+  assertMachineActionableReports(report.runtimeGameplayReplay?.reports, `${templateName} runtime replay update reports`);
+  assert(
+    report.runtimeGameplayReplay?.reports?.[0]?.code === "FERRUM_CONSUMER_RUNTIME_REPLAY_NOT_CONFIGURED",
+    `${templateName} runtime replay update report must include not-configured diagnostic code`,
+  );
+}
+
+function assertConsumerReplayFixtureUpdateReport(report, replayReport) {
+  assert(report.format === "ferrum2d.consumer.gameplay-replay.fixture-update-report", "topdown replay fixture update report format is invalid");
+  assert(report.version === 1, "topdown replay fixture update report version is invalid");
+  assert(report.ok === true, "topdown replay fixture update report must be ok");
+  assert(report.gameplayReplayFixture?.fixture === "public/gameplay-replay.fixture.json", "topdown replay fixture update report fixture path is invalid");
+  assert(report.gameplayReplayFixture?.scenario === "topdown-template-game-spec", "topdown replay fixture update report scenario is invalid");
+  assert(report.gameplayReplayFixture?.coverageTagDefinitionsPath === "public/gameplay-replay.coverage-tags.json", "topdown replay fixture update report coverage vocabulary path is invalid");
+  assertDeepEqual(report.gameplayReplayFixture?.coverageTags, ["template-game-spec"], "topdown replay fixture update report coverage tags are invalid");
+  assertTopdownCoverageRegistry(report.gameplayReplayFixture, "topdown replay fixture update report");
+  assert(report.gameplayReplayFixture?.snapshotCount === 2, "topdown replay fixture update report snapshotCount is invalid");
+  assert(
+    report.gameplayReplayFixture?.replayHash === replayReport.gameplayReplay?.actualHash,
+    "topdown replay fixture update hash must match the validated replay report actualHash",
+  );
+}
+
+function assertTopdownStaleReplayReport(report) {
+  assert(report.format === "ferrum2d.consumer.gameplay-replay.report", "stale topdown replay report format is invalid");
+  assert(report.version === 1, "stale topdown replay report version is invalid");
+  assert(report.ok === false, "stale topdown replay report must not be ok");
+  assert(report.gameplayReplay?.packageName === "topdown", "stale topdown replay report packageName is invalid");
+  assert(report.gameplayReplay?.configured === true, "stale topdown replay report must remain configured");
+  assert(report.gameplayReplay?.status === "invalid", "stale topdown replay report must mark the fixture invalid");
+  assert(report.gameplayReplay?.fixture === "public/gameplay-replay.fixture.json", "stale topdown replay report fixture path is invalid");
+  assert(report.gameplayReplay?.coverageTagDefinitionsPath === "public/gameplay-replay.coverage-tags.json", "stale topdown replay report coverage vocabulary path is invalid");
+  assertDeepEqual(report.gameplayReplay?.coverageTags, ["template-game-spec"], "stale topdown replay report coverage tags are invalid");
+  assert(report.gameplayReplay?.expectedHash === "00000000", "stale topdown replay report must include the stale fixture hash");
+  assert(Array.isArray(report.gameplayReplay?.reports), "stale topdown replay report must include gameplayReplay reports");
+  assert(Array.isArray(report.diagnostics), "stale topdown replay report must include top-level diagnostics");
+  assert(Array.isArray(report.reports), "stale topdown replay report must include top-level reports");
+  assertMachineActionableReports(report.gameplayReplay.reports, "stale topdown replay report gameplayReplay.reports");
+  assertMachineActionableReports(report.reports, "stale topdown replay report reports");
+  assert(
+    report.reports[0]?.code === "FERRUM_CONSUMER_REPLAY_FIXTURE_INVALID",
+    "stale topdown replay report must use the replay fixture invalid code",
+  );
+  assert(
+    report.gameplayReplay.reports[0]?.code === "FERRUM_CONSUMER_REPLAY_FIXTURE_INVALID",
+    "stale topdown gameplayReplay report must use the replay fixture invalid code",
+  );
+  assert(
+    report.reports[0]?.path === "public/gameplay-replay.fixture.json",
+    "stale topdown replay report must point at the replay fixture path",
+  );
+  assert(
+    String(report.reports[0]?.actual ?? "").includes("canonical run hash"),
+    "stale topdown replay report must explain the canonical hash failure",
+  );
+}
+
+function assertTopdownGameSpecDriftReplayReport(report) {
+  assert(report.format === "ferrum2d.consumer.gameplay-replay.report", "drift topdown replay report format is invalid");
+  assert(report.version === 1, "drift topdown replay report version is invalid");
+  assert(report.ok === false, "drift topdown replay report must not be ok");
+  assert(report.gameplayReplay?.packageName === "topdown", "drift topdown replay report packageName is invalid");
+  assert(report.gameplayReplay?.configured === true, "drift topdown replay report must remain configured");
+  assert(report.gameplayReplay?.status === "mismatch", "drift topdown replay report must mark the replay as mismatch");
+  assert(report.gameplayReplay?.fixture === "public/gameplay-replay.fixture.json", "drift topdown replay report fixture path is invalid");
+  assert(report.gameplayReplay?.coverageTagDefinitionsPath === "public/gameplay-replay.coverage-tags.json", "drift topdown replay report coverage vocabulary path is invalid");
+  assertDeepEqual(report.gameplayReplay?.coverageTags, ["template-game-spec"], "drift topdown replay report coverage tags are invalid");
+  assertTopdownCoverageRegistry(report.gameplayReplay, "drift topdown replay report");
+  assert(report.gameplayReplay?.comparison?.passed === false, "drift topdown replay comparison must fail");
+  assert(
+    report.gameplayReplay?.expectedHash !== report.gameplayReplay?.actualHash,
+    "drift topdown replay report must include different expected and actual hashes",
+  );
+  assert(Array.isArray(report.gameplayReplay?.reports), "drift topdown replay report must include gameplayReplay reports");
+  assert(Array.isArray(report.gameplayReplay?.replayFixturePatches), "drift topdown replay report must include replay fixture patch candidates");
+  assert(Array.isArray(report.reports), "drift topdown replay report must include top-level reports");
+  assertMachineActionableReports(report.gameplayReplay.reports, "drift topdown replay report gameplayReplay.reports");
+  assertMachineActionableReports(report.reports, "drift topdown replay report reports");
+  assertMachineActionableReports(report.gameplayReplay.replayFixturePatches, "drift topdown replay report replayFixturePatches");
+  assert(
+    report.reports[0]?.code === "FERRUM_CONSUMER_REPLAY_MISMATCH",
+    "drift topdown replay report must use the replay mismatch code",
+  );
+  assert(
+    String(report.reports[0]?.path ?? "").includes("custom.templateReplay.spec.player.speed"),
+    "drift topdown replay report must point at the changed Game Spec value",
+  );
+  const patch = report.gameplayReplay.replayFixturePatches[0];
+  assert(
+    patch?.code === "FERRUM_CONSUMER_REPLAY_FIXTURE_PATCH_CANDIDATE",
+    "drift topdown replay report must include a fixture patch candidate code",
+  );
+  assert(
+    patch?.path === "public/gameplay-replay.fixture.json",
+    "drift topdown replay fixture patch must point at the fixture path",
+  );
+  assert(
+    patch?.expected?.format === "ferrum2d.consumer.gameplay-replay.fixture",
+    "drift topdown replay fixture patch must include candidate fixture content",
+  );
+  assert(
+    patch?.expected?.coverageTagDefinitionsPath === "public/gameplay-replay.coverage-tags.json",
+    "drift topdown replay fixture patch must include coverage vocabulary path",
+  );
+  assertDeepEqual(
+    patch?.expected?.coverageTags,
+    ["template-game-spec"],
+    "drift topdown replay fixture patch must include coverage tags",
+  );
+  assert(
+    patch?.expected?.replay?.replayHash === report.gameplayReplay.actualHash,
+    "drift topdown replay fixture patch hash must match the actual replay hash",
+  );
+}
+
+function assertTopdownCoverageRegistry(value, label) {
+  assert(
+    value?.coverageTagDefinitions?.["template-game-spec"] === "Consumer replay validates the generated Top-down template Game Spec contract.",
+    `${label} must include resolved coverage tag definitions`,
+  );
+  assertDeepEqual(
+    value?.coverageTagGroups,
+    {
+      "template-contracts": {
+        description: "Consumer template replay contracts generated with create-game.",
+        tags: ["template-game-spec"],
+      },
+    },
+    `${label} coverage tag groups are invalid`,
+  );
+  assertDeepEqual(value?.deprecatedCoverageTags, {}, `${label} deprecated coverage tags are invalid`);
+}
+
+function assertCoverageRegistryReport(value, label) {
+  assert(
+    value?.coverageTagDefinitions !== null
+      && typeof value?.coverageTagDefinitions === "object"
+      && !Array.isArray(value?.coverageTagDefinitions),
+    `${label} coverage definitions must be an object`,
+  );
+  assert(Object.keys(value.coverageTagDefinitions).length > 0, `${label} coverage definitions must not be empty`);
+  assert(
+    value?.coverageTagGroups !== null
+      && typeof value?.coverageTagGroups === "object"
+      && !Array.isArray(value?.coverageTagGroups),
+    `${label} coverage groups must be an object`,
+  );
+  assertDeepEqual(value?.deprecatedCoverageTags, {}, `${label} deprecated coverage tags are invalid`);
+}
+
+function assertMachineActionableReports(reports, label) {
+  assert(Array.isArray(reports), `${label} must be an array`);
+  for (const [index, report] of reports.entries()) {
+    assert(report !== null && typeof report === "object" && !Array.isArray(report), `${label}[${index}] must be an object`);
+    assert(typeof report.kind === "string" && report.kind.length > 0, `${label}[${index}].kind must be a non-empty string`);
+    assert(typeof report.code === "string" && report.code.length > 0, `${label}[${index}].code must be a non-empty string`);
+    assert(typeof report.path === "string" && report.path.length > 0, `${label}[${index}].path must be a non-empty string`);
+    assert(typeof report.message === "string" && report.message.length > 0, `${label}[${index}].message must be a non-empty string`);
+    assert(typeof report.suggestion === "string" && report.suggestion.length > 0, `${label}[${index}].suggestion must be a non-empty string`);
+  }
+}
+
+async function writeStaleTopdownReplayFixture(generatedGameRoot) {
+  const fixturePath = path.join(generatedGameRoot, "public/gameplay-replay.fixture.json");
+  const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
+  fixture.replay = {
+    ...fixture.replay,
+    replayHash: "00000000",
+  };
+  await writeJson(fixturePath, fixture);
+}
+
+async function writeTopdownGameSpecDrift(generatedGameRoot) {
+  const gameSpecPath = path.join(generatedGameRoot, "public/game.json");
+  const gameSpec = JSON.parse(await readFile(gameSpecPath, "utf8"));
+  gameSpec.player = {
+    ...gameSpec.player,
+    speed: 211,
+  };
+  await writeJson(gameSpecPath, gameSpec);
+}
+
+function run(command, args, cwd, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, {
+      cwd,
+      detached: process.platform !== "win32",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      killChildTree(child, "SIGTERM");
+      setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) {
+          killChildTree(child, "SIGKILL");
+        }
+      }, 5000).unref();
+    }, timeoutMs);
+    timeout.unref();
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
@@ -659,11 +1450,38 @@ function run(command, args, cwd) {
     child.stderr.on("data", (chunk) => {
       stderr += chunk;
     });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
     child.on("close", (code) => {
-      resolve({ code, stdout, stderr });
+      clearTimeout(timeout);
+      resolve({ code, stdout, stderr, timedOut, timeoutMs });
     });
   });
+}
+
+function killChildTree(child, signal) {
+  if (process.platform !== "win32" && child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch (error) {
+      if (error?.code !== "ESRCH") {
+        child.kill(signal);
+      }
+      return;
+    }
+  }
+  child.kill(signal);
+}
+
+function commandFailureMessage(command, args, result) {
+  const label = formatCommand(command, args);
+  if (result.timedOut) {
+    return `command timed out after ${result.timeoutMs}ms: ${label}\n${result.stdout}\n${result.stderr}`.trim();
+  }
+  return `command failed with exit code ${result.code}: ${label}\n${result.stdout}\n${result.stderr}`.trim();
 }
 
 async function requireFile(filePath, message) {
@@ -746,6 +1564,33 @@ function assert(condition, message) {
   }
 }
 
+function assertDeepEqual(actual, expected, message) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`[consumer smoke] ${message}: actual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`);
+  }
+}
+
+function assertStringArray(value, message) {
+  assert(Array.isArray(value), `${message} must be an array`);
+  assert(value.length > 0, `${message} must not be empty`);
+  for (const [index, item] of value.entries()) {
+    assert(typeof item === "string" && item.length > 0, `${message}[${index}] must be a non-empty string`);
+  }
+}
+
+function assertRuntimeReplayInputSequence(value, message) {
+  assert(Array.isArray(value), `${message} must be an array`);
+  for (const [index, entry] of value.entries()) {
+    assert(entry !== null && typeof entry === "object" && !Array.isArray(entry), `${message}[${index}] must be an object`);
+    assert(Number.isInteger(entry.frame) && entry.frame >= 0, `${message}[${index}].frame must be a non-negative integer`);
+    assert(entry.action === "press" || entry.action === "release", `${message}[${index}].action must be press or release`);
+    assert(typeof entry.control === "string" && entry.control.length > 0, `${message}[${index}].control must be a non-empty string`);
+    for (const key of Object.keys(entry)) {
+      assert(key === "frame" || key === "action" || key === "control", `${message}[${index}] has unsupported field ${key}`);
+    }
+  }
+}
+
 function describeError(error) {
   if (error instanceof Error) {
     return {
@@ -771,6 +1616,7 @@ Options:
   --offline               Require all non-local dependencies to already be in the pnpm store
   --templates <names>     Comma-separated create-game templates to test. Default: every template
   --artifact-dir <path>   Copy failure diagnostics and light project snapshots to this directory
+  --command-timeout-ms <n> Fail an individual child command after n milliseconds. Default: ${DEFAULT_COMMAND_TIMEOUT_MS}
   --keep-temp             Keep the temporary consumer project for inspection
   -h, --help              Show this help
 `);

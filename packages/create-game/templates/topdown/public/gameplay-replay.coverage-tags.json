@@ -1,0 +1,16 @@
+{
+  "format": "ferrum2d.consumer.gameplay-replay.coverage-tags",
+  "version": 1,
+  "coverageTagDefinitions": {
+    "template-game-spec": "Consumer replay validates the generated Top-down template Game Spec contract."
+  },
+  "coverageTagGroups": {
+    "template-contracts": {
+      "description": "Consumer template replay contracts generated with create-game.",
+      "tags": [
+        "template-game-spec"
+      ]
+    }
+  },
+  "deprecatedCoverageTags": {}
+}

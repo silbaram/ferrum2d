@@ -10,7 +10,7 @@ export const PHYSICS_MATERIAL_PRESETS = {
   platform: { friction: 0.7, restitution: 0, density: 1 },
 } as const satisfies Record<string, Readonly<Required<Pick<PhysicsRigidBodyMaterial, "friction" | "restitution" | "density">>>>;
 
-export const PHYSICS_BUILTIN_COLLISION_LAYERS = ["player", "enemy", "bullet", "wall"] as const;
+export const PHYSICS_BUILTIN_COLLISION_LAYERS = ["player", "enemy", "bullet", "wall", "pickup"] as const;
 
 export const PHYSICS_COMMON_LAYER_PATTERN = {
   player: ["world", "enemy", "pickup", "trigger"],

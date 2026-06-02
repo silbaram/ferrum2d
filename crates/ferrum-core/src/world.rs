@@ -1,3 +1,8 @@
+use crate::components::gameplay::{
+    ActionBindingSet, BehaviorStateEnterActionSet, BehaviorStateMachine, CollisionReactionSet,
+    GameplayFaction, GameplayTimerTrigger, Interaction, MovementPattern, Pickup,
+    ProjectileCollisionTarget, ProjectileTileImpact,
+};
 use crate::components::{
     AabbCollider, AngularVelocity, CapsuleCollider, ChainCollider, CircleCollider, CollisionFilter,
     CompoundCollider, ConvexPolygonCollider, DistanceJoint, EdgeCollider, GearJoint, HeightSpan,
@@ -25,6 +30,7 @@ mod templates;
 mod tests;
 
 pub use snapshot::WorldSnapshot;
+pub(crate) use spawning::BulletSpawnRequest;
 pub use templates::{
     EntityTemplate, EntityTemplateCollider, EntityTemplateColliderShape, DEFAULT_BULLET_TEMPLATE,
     DEFAULT_ENEMY_TEMPLATE, DEFAULT_PLAYER_TEMPLATE,
@@ -83,9 +89,20 @@ pub struct World {
     pub(crate) collider_materials: Vec<Option<PhysicsMaterial>>,
     pub(crate) collision_filters: Vec<Option<CollisionFilter>>,
     pub(crate) bullet_lifetimes: Vec<Option<f32>>,
+    pub(crate) projectile_collision_targets: Vec<Option<ProjectileCollisionTarget>>,
+    pub(crate) projectile_tile_impacts: Vec<Option<ProjectileTileImpact>>,
     pub(crate) healths: Vec<Option<f32>>,
     pub(crate) damages: Vec<Option<f32>>,
     pub(crate) score_rewards: Vec<Option<u32>>,
+    pub(crate) gameplay_factions: Vec<Option<GameplayFaction>>,
+    pub(crate) action_bindings: Vec<Option<ActionBindingSet>>,
+    pub(crate) pickups: Vec<Option<Pickup>>,
+    pub(crate) interactions: Vec<Option<Interaction>>,
+    pub(crate) movement_patterns: Vec<Option<MovementPattern>>,
+    pub(crate) collision_reactions: Vec<Option<CollisionReactionSet>>,
+    pub(crate) behavior_state_machines: Vec<Option<BehaviorStateMachine>>,
+    pub(crate) behavior_state_enter_actions: Vec<Option<BehaviorStateEnterActionSet>>,
+    pub(crate) gameplay_timer_triggers: Vec<Option<GameplayTimerTrigger>>,
     pub(crate) player: Option<Entity>,
 }
 

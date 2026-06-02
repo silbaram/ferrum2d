@@ -1,10 +1,12 @@
 use crate::audio_event::AudioEvent;
 use crate::camera::{Camera2D, CameraPresetConfig};
-use crate::collision::{CollisionPair, CollisionScratch};
-use crate::components::{CollisionLayer, SpriteAnimation, SpriteFrame, Transform2D};
+use crate::collision::{CircleQueryHit, CollisionPair, CollisionScratch};
+use crate::components::{CollisionLayer, SpriteAnimation, SpriteFrame};
 use crate::entity::Entity;
 use crate::game_state::GameState;
-use crate::tilemap::TilemapNavigationScratch;
+use crate::gameplay::{ActionTriggerQueue, CollisionContactTracker, MovementNavigationTargetCache};
+use crate::input::{InputState, INPUT_ACTION_REGISTRY_SNAPSHOT_U32S};
+use crate::tilemap::{TilemapContactHit, TilemapNavigationScratch};
 use crate::tweens::SpriteTint;
 use crate::world::{EntityTemplate, EntityTemplateCollider, World};
 
@@ -27,11 +29,19 @@ const DEFAULT_GAME_OVER_VOLUME: f32 = 0.65;
 const DEFAULT_SOUND_PITCH: f32 = 1.0;
 const NAVIGATION_REPATH_INTERVAL: f32 = 0.25;
 const NAVIGATION_TARGET_REACHED_DISTANCE_SQUARED: f32 = 4.0;
-pub const SHOOTER_SNAPSHOT_VERSION: u32 = 1;
-pub const SHOOTER_SNAPSHOT_HEADER_FLOATS: usize = 6;
-pub const SHOOTER_SNAPSHOT_HEADER_U32S: usize = 8;
-pub const SHOOTER_SNAPSHOT_ENTITY_FLOATS: usize = 7;
-pub const SHOOTER_SNAPSHOT_ENTITY_U32S: usize = 2;
+pub(crate) const SHOOTER_PRIMARY_FIRE_ACTION_ID: u32 = 1;
+pub(crate) const SHOOTER_DASH_ACTION_ID: u32 = 2;
+pub(crate) const SHOOTER_MELEE_ACTION_ID: u32 = 3;
+const MAX_AUTHORED_COLLISION_CONTACTS: usize = 1024;
+pub const SHOOTER_SNAPSHOT_VERSION: u32 = 11;
+pub const SHOOTER_SNAPSHOT_HEADER_FLOATS: usize = 8;
+pub(crate) const SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET: usize = 9;
+const SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S: usize = 4;
+pub const SHOOTER_SNAPSHOT_HEADER_U32S: usize = SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
+    + INPUT_ACTION_REGISTRY_SNAPSHOT_U32S
+    + SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S;
+pub const SHOOTER_SNAPSHOT_ENTITY_FLOATS: usize = 35;
+pub const SHOOTER_SNAPSHOT_ENTITY_U32S: usize = 21;
 pub const SHOOTER_SNAPSHOT_ENTITY_PLAYER: u32 = 0;
 pub const SHOOTER_SNAPSHOT_ENTITY_ENEMY: u32 = 1;
 pub const SHOOTER_SNAPSHOT_ENTITY_BULLET: u32 = 2;
@@ -52,15 +62,8 @@ pub(crate) use config::{
     EnemyBehavior, EnemySpawnPattern, ShooterAudioPolicy, ShooterConfig, ShooterPrefabKind,
     ShooterProjectileArcConfig, ShooterWaveConfig,
 };
-use runtime::NavigationTargetCache;
-pub(crate) use runtime::{ParticleBurstSink, TweenSink};
+pub(crate) use runtime::{ActionTriggerCommand, ParticleBurstSink, TweenSink};
 pub use snapshot::{ShooterEntitySnapshot, ShooterSceneSnapshot};
-
-fn has_reached_navigation_target(from: Transform2D, to: Transform2D) -> bool {
-    let dx = to.x - from.x;
-    let dy = to.y - from.y;
-    dx * dx + dy * dy <= NAVIGATION_TARGET_REACHED_DISTANCE_SQUARED
-}
 
 #[derive(Debug)]
 pub struct ShooterScene {
@@ -69,22 +72,37 @@ pub struct ShooterScene {
     enemy_spawn_timer: f32,
     previous_space: u8,
     previous_enter: u8,
+    previous_mouse_left: u8,
+    previous_input: InputState,
     game_state: GameState,
     spawn_index: u32,
     texture_ids: TextureIds,
     sound_ids: SoundIds,
     config: ShooterConfig,
     waves: Vec<ShooterWaveConfig>,
+    wave_action_triggers: Vec<Option<runtime::WaveActionTrigger>>,
     active_wave_index: usize,
     wave_elapsed_seconds: f32,
     wave_spawned_count: u32,
     camera_elapsed_seconds: f32,
-    navigation_targets: Vec<Option<NavigationTargetCache>>,
+    navigation_targets: Vec<Option<MovementNavigationTargetCache>>,
     navigation_scratch: TilemapNavigationScratch,
     collision_scratch: CollisionScratch,
     collision_pairs: Vec<CollisionPair>,
+    authored_collision_contacts: CollisionContactTracker,
+    last_action_trigger_phase_result: runtime::ActionTriggerPhaseProcessResult,
+    last_spawn_flush_result: runtime::SpawnFlushResult,
+    melee_hits: Vec<CircleQueryHit>,
+    spawn_obstacle_contacts: Vec<TilemapContactHit>,
+    action_triggers: ActionTriggerQueue<runtime::ActionTriggerCommand>,
+    action_trigger_commands: Vec<runtime::ActionTriggerCommand>,
+    pending_spawns: Vec<runtime::ShooterSpawnCommand>,
+    spawn_commands: Vec<runtime::ShooterSpawnCommand>,
+    pending_melee_attacks: Vec<runtime::MeleeAttackCommand>,
+    melee_attack_commands: Vec<runtime::MeleeAttackCommand>,
     pending_despawn: Vec<Entity>,
     marked_for_despawn: Vec<bool>,
+    bounced_projectiles_this_frame: Vec<bool>,
 }
 
 impl Default for ShooterScene {
@@ -95,12 +113,15 @@ impl Default for ShooterScene {
             enemy_spawn_timer: DEFAULT_ENEMY_SPAWN_INTERVAL,
             previous_space: 0,
             previous_enter: 0,
+            previous_mouse_left: 0,
+            previous_input: InputState::default(),
             game_state: GameState::Title,
             spawn_index: 0,
             texture_ids: TextureIds::default(),
             sound_ids: SoundIds::default(),
             config: ShooterConfig::default(),
             waves: Vec::new(),
+            wave_action_triggers: Vec::new(),
             active_wave_index: 0,
             wave_elapsed_seconds: 0.0,
             wave_spawned_count: 0,
@@ -109,8 +130,22 @@ impl Default for ShooterScene {
             navigation_scratch: TilemapNavigationScratch::default(),
             collision_scratch: CollisionScratch::default(),
             collision_pairs: Vec::with_capacity(256),
+            authored_collision_contacts: CollisionContactTracker::with_capacity(
+                MAX_AUTHORED_COLLISION_CONTACTS,
+            ),
+            last_action_trigger_phase_result: runtime::ActionTriggerPhaseProcessResult::default(),
+            last_spawn_flush_result: runtime::SpawnFlushResult::default(),
+            melee_hits: Vec::with_capacity(16),
+            spawn_obstacle_contacts: Vec::with_capacity(8),
+            action_triggers: ActionTriggerQueue::with_capacity(64),
+            action_trigger_commands: Vec::with_capacity(64),
+            pending_spawns: Vec::with_capacity(64),
+            spawn_commands: Vec::with_capacity(64),
+            pending_melee_attacks: Vec::with_capacity(8),
+            melee_attack_commands: Vec::with_capacity(8),
             pending_despawn: Vec::with_capacity(128),
             marked_for_despawn: Vec::with_capacity(256),
+            bounced_projectiles_this_frame: Vec::with_capacity(256),
         }
     }
 }
@@ -141,10 +176,26 @@ impl ShooterScene {
         self.enemy_spawn_timer = self.config.enemy_spawn_interval;
         self.previous_space = 0;
         self.previous_enter = 0;
+        self.previous_mouse_left = 0;
+        self.previous_input = InputState::default();
         self.spawn_index = 0;
         self.reset_wave_state();
         self.camera_elapsed_seconds = 0.0;
         self.navigation_targets.clear();
+        self.collision_pairs.clear();
+        self.authored_collision_contacts.clear();
+        self.last_action_trigger_phase_result = runtime::ActionTriggerPhaseProcessResult::default();
+        self.last_spawn_flush_result = runtime::SpawnFlushResult::default();
+        self.wave_action_triggers.clear();
+        self.action_triggers.clear();
+        self.action_trigger_commands.clear();
+        self.pending_spawns.clear();
+        self.spawn_commands.clear();
+        self.pending_melee_attacks.clear();
+        self.melee_attack_commands.clear();
+        self.pending_despawn.clear();
+        self.marked_for_despawn.clear();
+        self.bounced_projectiles_this_frame.clear();
         audio_events.clear();
         *world = World::default();
         world.spawn_player_from_template(
@@ -188,6 +239,7 @@ impl ShooterScene {
 
     pub fn clear_wave_configs(&mut self) {
         self.waves.clear();
+        self.wave_action_triggers.clear();
         self.reset_wave_state();
     }
 
@@ -197,6 +249,9 @@ impl ShooterScene {
             self.waves.resize(index + 1, wave);
         }
         self.waves[index] = wave;
+        if index >= self.wave_action_triggers.len() {
+            self.wave_action_triggers.resize(index + 1, None);
+        }
         self.reset_wave_state();
     }
 
@@ -493,6 +548,80 @@ impl ShooterScene {
         self.score
     }
 
+    pub(crate) fn reset_action_trigger_frame_diagnostics(&mut self) {
+        self.last_action_trigger_phase_result = runtime::ActionTriggerPhaseProcessResult::default();
+        self.last_spawn_flush_result = runtime::SpawnFlushResult::default();
+    }
+
+    #[cfg(test)]
+    pub(in crate::shooter_scene) fn last_spawn_flush_result(&self) -> runtime::SpawnFlushResult {
+        self.last_spawn_flush_result
+    }
+
+    pub(crate) fn last_action_trigger_attempts(&self) -> usize {
+        self.last_action_trigger_phase_result.triggers_processed
+    }
+
+    pub(crate) fn last_action_trigger_failures(&self) -> usize {
+        self.last_action_trigger_phase_result
+            .prepared_dispatch_failures
+            .saturating_add(self.last_action_trigger_phase_result.preparation_failures)
+    }
+
+    pub(crate) fn last_action_trigger_failure_events_pushed(&self) -> usize {
+        self.last_action_trigger_phase_result
+            .prepared_dispatch_failure_events_pushed
+            .saturating_add(
+                self.last_action_trigger_phase_result
+                    .preparation_failure_events_pushed,
+            )
+    }
+
+    pub(crate) fn last_action_trigger_commit_skips(&self) -> usize {
+        self.last_action_trigger_phase_result
+            .prepared_dispatch_commit_skips
+    }
+
+    pub(crate) fn last_prepared_action_trigger_failure_reason_code(&self) -> u32 {
+        self.last_action_trigger_phase_result
+            .last_prepared_dispatch_failure_reason_code
+            .unwrap_or(0)
+    }
+
+    pub(crate) fn last_action_trigger_failure_count_for_reason(&self, reason_code: u32) -> usize {
+        self.last_action_trigger_phase_result
+            .action_failure_count_for_reason(reason_code)
+    }
+
+    pub(crate) fn last_spawn_flush_commands_drained(&self) -> usize {
+        self.last_spawn_flush_result.commands_drained
+    }
+
+    pub(crate) fn last_spawn_flush_projectile_spawns(&self) -> usize {
+        self.last_spawn_flush_result.projectile_spawns
+    }
+
+    pub(crate) fn last_spawn_flush_projectile_arcs_applied(&self) -> usize {
+        self.last_spawn_flush_result.projectile_arcs_applied
+    }
+
+    pub(crate) fn last_spawn_flush_projectile_shoot_audio_events_pushed(&self) -> usize {
+        self.last_spawn_flush_result
+            .projectile_shoot_audio_events_pushed
+    }
+
+    pub(crate) fn last_spawn_flush_prefab_spawns(&self) -> usize {
+        self.last_spawn_flush_result.prefab_spawns
+    }
+
+    pub(crate) fn last_spawn_flush_prefab_spawned_payloads(&self) -> usize {
+        self.last_spawn_flush_result.prefab_spawned_payloads
+    }
+
+    pub(crate) fn last_spawn_flush_prefab_spawned_events_pushed(&self) -> usize {
+        self.last_spawn_flush_result.prefab_spawned_events_pushed
+    }
+
     pub fn game_state(&self) -> GameState {
         self.game_state
     }
@@ -533,7 +662,7 @@ impl ShooterScene {
                 CollisionLayer::Player => self.texture_ids.player,
                 CollisionLayer::Enemy => self.texture_ids.enemy,
                 CollisionLayer::Bullet => self.texture_ids.bullet,
-                CollisionLayer::Wall => sprite.texture_id,
+                CollisionLayer::Wall | CollisionLayer::Pickup => sprite.texture_id,
             };
         }
     }

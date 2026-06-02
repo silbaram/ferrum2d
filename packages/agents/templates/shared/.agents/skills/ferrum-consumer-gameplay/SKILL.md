@@ -26,6 +26,17 @@ Do not use it for:
 3. Keep browser/platform UI code in the app layer.
 4. Use narrow adapters instead of scattering direct runtime calls across unrelated files.
 5. Preserve hot-path discipline: do not create per-entity JS/Wasm round trips in frame loops.
-6. Validate with `npm run ferrum:smoke` when available, otherwise run build and, when possible, a browser smoke pass.
+6. For data-driven gameplay or behavior authoring, run `npm run ferrum:authoring-report` when the project provides it after authoring and before browser playtest.
+7. Treat authoring/replay reports as machine-readable evidence only after checking `format`, `version`, `ok`, and failure `reports[]` entries with `path`, `message`, and `suggestion`.
+8. After applying data-driven gameplay changes, run `npm run ferrum:replay-report` when the project provides it, or hand off to playtest for deterministic replay evidence.
+9. When the generated template-surface replay is not enough, use `.agents/harness/ferrum-runtime-replay.md` to add a project-specific deterministic runtime replay runner and fixture.
+10. If the project provides a local report artifact validator, run it after generating report artifacts. Do not require Ferrum2D engine workspace schema files in ordinary consumer projects.
+11. Validate with `npm run ferrum:smoke` when available, otherwise run build and, when possible, a browser smoke pass.
+
+## Runtime Replay Harness
+
+Project-specific replay harnesses must use only the public `@ferrum2d/ferrum-web` entrypoint. The expected public helpers are `createGameplayReplayRun(...)`, `compareGameplayReplayRuns(...)`, and `hashGameStateSnapshot(...)`.
+
+Do not import `@ferrum2d/ferrum-web/dist/*`, `@ferrum2d/ferrum-web/pkg/*`, `@ferrum2d/ferrum-web/src/*`, generated Wasm bindings, or Ferrum2D engine workspace files into a consumer game. Replay fixtures should capture canonical gameplay state only and should keep render/audio/wall-clock/debug data outside the replay hash.
 
 If the public API cannot express the requested gameplay, stop and document the missing engine capability.

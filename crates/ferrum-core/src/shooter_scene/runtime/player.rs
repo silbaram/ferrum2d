@@ -1,63 +1,589 @@
+#[cfg(test)]
 use crate::audio_event::AudioEvent;
 use crate::camera::Camera2D;
-use crate::components::{HeightSpan, PhysicsFloorId, ProjectileArc, Transform2D, Velocity};
+use crate::components::gameplay::{
+    ActionAimSource, ActionPattern, ProjectileCollisionTarget, ProjectileTileImpact,
+};
+use crate::components::{Transform2D, Velocity};
 use crate::entity::Entity;
-use crate::input::InputState;
+use crate::gameplay::{
+    action_failure_event_data, apply_dash_action_core_data, apply_topdown_input_movement_phase,
+    dash_action_core_data_from_plan, input_action_trigger_failure_decision_for_policy,
+    melee_attack_core_data_from_plan, plan_input_dash_action_transform, plan_input_melee_action,
+    plan_input_projectile_action, prepare_input_action_if_ready,
+    projectile_action_plan_failure_reason, projectile_spawn_core_data_from_plan,
+    push_action_failure_event, should_report_fixed_action_pattern_mismatch,
+    topdown_input_direction, validate_input_projectile_action_support,
+    ActionAttemptFailureDecision, ActionAttemptFailurePolicy, DashActionPayload,
+    FrameInputSnapshot, InputActionTrigger, MeleeActionPayload, ProjectileActionPayload,
+    SpawnPrefabActionPayload, TopdownInputMovementPhaseConfig,
+};
+use crate::gameplay_event::{
+    GAMEPLAY_ACTION_FAILURE_MISSING_SOURCE_TRANSFORM, GAMEPLAY_ACTION_FAILURE_PATTERN_MISMATCH,
+    GAMEPLAY_ACTION_FAILURE_SPAWN_QUEUE_FULL,
+};
+use crate::input::{InputActionRegistry, InputState};
 use crate::physics::{PhysicsBounds, PhysicsSystem};
+use crate::tilemap::Tilemap;
 use crate::world::World;
 
-use super::super::ShooterScene;
-use super::push_audio_event;
+use super::super::{
+    ShooterScene, SHOOTER_DASH_ACTION_ID, SHOOTER_MELEE_ACTION_ID, SHOOTER_PRIMARY_FIRE_ACTION_ID,
+};
+use super::spawn::ProjectileSpawnCommand;
+use super::{
+    commit_prepared_input_action, dash_action_plan_failure_reason,
+    melee_action_plan_failure_reason, ActionPatternKind, GameplayEventSink,
+};
+
+#[derive(Debug, Clone, Copy)]
+pub(in crate::shooter_scene) struct ProjectileFireConfig {
+    pub(in crate::shooter_scene) speed: f32,
+    pub(in crate::shooter_scene) damage: f32,
+    pub(in crate::shooter_scene) lifetime_seconds: f32,
+    pub(in crate::shooter_scene) aim: ActionAimSource,
+    pub(in crate::shooter_scene) collision_target: ProjectileCollisionTarget,
+    pub(in crate::shooter_scene) tile_impact: ProjectileTileImpact,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PlayerActionInput<'a> {
+    snapshot: FrameInputSnapshot,
+    registry: &'a InputActionRegistry,
+}
 
 impl ShooterScene {
-    pub(in crate::shooter_scene) fn normalized_input_direction(input: InputState) -> Velocity {
-        let mut x: f32 = 0.0;
-        let mut y: f32 = 0.0;
-        if input.w == 1 {
-            y -= 1.0;
-        }
-        if input.s == 1 {
-            y += 1.0;
-        }
-        if input.a == 1 {
-            x -= 1.0;
-        }
-        if input.d == 1 {
-            x += 1.0;
-        }
-        let len = (x * x + y * y).sqrt();
-        if len > 0.0 {
-            Velocity {
-                vx: x / len,
-                vy: y / len,
-            }
-        } else {
-            Velocity::default()
-        }
-    }
-
+    #[cfg(test)]
     pub(in crate::shooter_scene) fn apply_player_input(
         &mut self,
         world: &mut World,
         camera: &Camera2D,
         input: InputState,
-        audio_events: &mut Vec<AudioEvent>,
+        _audio_events: &mut Vec<AudioEvent>,
+    ) {
+        // Compatibility helper for legacy tests; production frames flush
+        // deferred spawns and emit audio through `update_internal`.
+        let input_actions = InputActionRegistry::default();
+        let previous_input = self.previous_input;
+        self.apply_player_input_with_actions(
+            world,
+            camera,
+            input,
+            previous_input,
+            &input_actions,
+            &Tilemap::default(),
+            None,
+        );
+        self.previous_space = input.space;
+        self.previous_enter = input.enter;
+        self.previous_mouse_left = input.mouse_left;
+        self.previous_input = input;
+    }
+
+    pub(in crate::shooter_scene) fn normalized_input_direction(input: InputState) -> Velocity {
+        topdown_input_direction(input)
+    }
+
+    #[cfg(test)]
+    pub(in crate::shooter_scene) fn apply_player_movement_input(
+        &mut self,
+        world: &mut World,
+        input: InputState,
+    ) {
+        self.apply_player_movement_input_snapshot(world, FrameInputSnapshot::current_only(input));
+    }
+
+    pub(in crate::shooter_scene) fn apply_player_movement_input_snapshot(
+        &mut self,
+        world: &mut World,
+        input: FrameInputSnapshot,
+    ) {
+        if let Some(player) = world.player {
+            apply_topdown_input_movement_phase(
+                world,
+                TopdownInputMovementPhaseConfig {
+                    entity: player,
+                    input,
+                    default_speed: self.config.player_speed,
+                },
+            );
+        }
+    }
+
+    #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::shooter_scene) fn apply_player_input_with_actions(
+        &mut self,
+        world: &mut World,
+        camera: &Camera2D,
+        input: InputState,
+        previous_input: InputState,
+        input_actions: &InputActionRegistry,
+        tilemap: &Tilemap,
+        gameplay_events: Option<&mut GameplayEventSink<'_>>,
+    ) {
+        let input = FrameInputSnapshot::new(input, previous_input);
+        self.apply_player_movement_input_snapshot(world, input);
+        self.apply_player_actions_with_snapshot(
+            world,
+            camera,
+            input,
+            input_actions,
+            tilemap,
+            gameplay_events,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[cfg(test)]
+    pub(in crate::shooter_scene) fn apply_player_actions_with_input(
+        &mut self,
+        world: &mut World,
+        camera: &Camera2D,
+        input: InputState,
+        previous_input: InputState,
+        input_actions: &InputActionRegistry,
+        tilemap: &Tilemap,
+        gameplay_events: Option<&mut GameplayEventSink<'_>>,
+    ) {
+        self.apply_player_actions_with_snapshot(
+            world,
+            camera,
+            FrameInputSnapshot::new(input, previous_input),
+            input_actions,
+            tilemap,
+            gameplay_events,
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::shooter_scene) fn apply_player_actions_with_snapshot(
+        &mut self,
+        world: &mut World,
+        camera: &Camera2D,
+        input: FrameInputSnapshot,
+        input_actions: &InputActionRegistry,
+        tilemap: &Tilemap,
+        mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
     ) {
         let Some(player) = world.player else {
             return;
         };
-        let dir = Self::normalized_input_direction(input);
-        world.velocities[player.id as usize] = Some(Velocity {
-            vx: dir.vx * self.config.player_speed,
-            vy: dir.vy * self.config.player_speed,
-        });
-        let wants_fire = input.space == 1 || input.mouse_left == 1;
-        if wants_fire && self.fire_cooldown_seconds <= 0.0 {
-            self.fire_bullet_toward_mouse(world, camera, input, player, audio_events);
+        let dir = Self::normalized_input_direction(input.current);
+        let action_input = PlayerActionInput {
+            snapshot: input,
+            registry: input_actions,
+        };
+        self.try_dash_player(
+            world,
+            camera,
+            action_input,
+            player,
+            dir,
+            gameplay_events.as_deref_mut(),
+        );
+        self.try_queue_melee_player(world, action_input, player, gameplay_events.as_deref_mut());
+        self.try_queue_spawn_prefab_player(
+            world,
+            action_input,
+            player,
+            tilemap,
+            gameplay_events.as_deref_mut(),
+        );
+
+        match prepare_input_action_if_ready(
+            world,
+            action_input.registry,
+            action_input.snapshot,
+            player,
+            SHOOTER_PRIMARY_FIRE_ACTION_ID,
+            ActionPatternKind::Projectile,
+        ) {
+            InputActionTrigger::Ready(prepared) => {
+                let ActionPattern::Projectile {
+                    speed,
+                    damage,
+                    lifetime_seconds,
+                    aim,
+                    collision_target,
+                    tile_impact,
+                } = prepared.binding.pattern
+                else {
+                    return;
+                };
+                let command = match self.projectile_spawn_command_toward_mouse(
+                    world,
+                    camera,
+                    input.current,
+                    player,
+                    ProjectileFireConfig {
+                        speed,
+                        damage,
+                        lifetime_seconds,
+                        aim,
+                        collision_target,
+                        tile_impact,
+                    },
+                ) {
+                    Ok(command) => command,
+                    Err(reason_code) => {
+                        push_action_failure_event(
+                            gameplay_events,
+                            action_failure_event_data(
+                                player,
+                                player,
+                                SHOOTER_PRIMARY_FIRE_ACTION_ID,
+                                reason_code,
+                            ),
+                        );
+                        return;
+                    }
+                };
+                if let Err(reason_code) = self
+                    .commit_projectile_spawn_with_pre_commit_gate(command, || {
+                        commit_prepared_input_action(world, prepared)
+                    })
+                {
+                    debug_assert_eq!(reason_code, GAMEPLAY_ACTION_FAILURE_SPAWN_QUEUE_FULL);
+                    push_action_failure_event(
+                        gameplay_events.as_deref_mut(),
+                        action_failure_event_data(
+                            player,
+                            player,
+                            SHOOTER_PRIMARY_FIRE_ACTION_ID,
+                            reason_code,
+                        ),
+                    );
+                    return;
+                }
+                return;
+            }
+            trigger => match input_action_trigger_failure_decision_for_policy(
+                trigger,
+                ActionAttemptFailurePolicy::PrimaryInputWithMissingFallback,
+            ) {
+                ActionAttemptFailureDecision::Fallback => {}
+                ActionAttemptFailureDecision::Noop => return,
+                ActionAttemptFailureDecision::Failure(reason_code) => {
+                    if should_report_fixed_action_pattern_mismatch(
+                        world
+                            .action_binding(player, SHOOTER_PRIMARY_FIRE_ACTION_ID)
+                            .map(|binding| ActionPatternKind::from_pattern(binding.pattern)),
+                    ) {
+                        push_action_failure_event(
+                            gameplay_events,
+                            action_failure_event_data(
+                                player,
+                                player,
+                                SHOOTER_PRIMARY_FIRE_ACTION_ID,
+                                reason_code,
+                            ),
+                        );
+                    }
+                    return;
+                }
+            },
+        }
+
+        let wants_legacy_fire = input.current.space == 1 || input.current.mouse_left == 1;
+        if wants_legacy_fire
+            && self.fire_cooldown_seconds <= 0.0
+            && self.queue_bullet_toward_mouse_with_projectile(
+                world,
+                camera,
+                input.current,
+                player,
+                ProjectileFireConfig {
+                    speed: self.config.bullet_speed,
+                    damage: self.config.bullet_damage,
+                    lifetime_seconds: self.config.bullet_lifetime,
+                    aim: ActionAimSource::Input,
+                    collision_target: ProjectileCollisionTarget::Enemies,
+                    tile_impact: ProjectileTileImpact::Despawn,
+                },
+            )
+        {
             self.fire_cooldown_seconds = self.config.fire_cooldown;
         }
     }
 
+    fn try_queue_melee_player(
+        &mut self,
+        world: &mut World,
+        action_input: PlayerActionInput<'_>,
+        player: Entity,
+        mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
+    ) {
+        match prepare_input_action_if_ready(
+            world,
+            action_input.registry,
+            action_input.snapshot,
+            player,
+            SHOOTER_MELEE_ACTION_ID,
+            ActionPatternKind::Melee,
+        ) {
+            InputActionTrigger::Ready(prepared) => {
+                let Some(player_t) = world.transform(player) else {
+                    push_action_failure_event(
+                        gameplay_events.as_deref_mut(),
+                        action_failure_event_data(
+                            player,
+                            player,
+                            SHOOTER_MELEE_ACTION_ID,
+                            GAMEPLAY_ACTION_FAILURE_MISSING_SOURCE_TRANSFORM,
+                        ),
+                    );
+                    return;
+                };
+                let ActionPattern::Melee {
+                    range,
+                    damage,
+                    target,
+                } = prepared.binding.pattern
+                else {
+                    push_action_failure_event(
+                        gameplay_events.as_deref_mut(),
+                        action_failure_event_data(
+                            player,
+                            player,
+                            SHOOTER_MELEE_ACTION_ID,
+                            GAMEPLAY_ACTION_FAILURE_PATTERN_MISMATCH,
+                        ),
+                    );
+                    return;
+                };
+                let plan = match plan_input_melee_action(
+                    MeleeActionPayload {
+                        range,
+                        damage,
+                        target,
+                    },
+                    player_t,
+                ) {
+                    Ok(plan) => plan,
+                    Err(error) => {
+                        push_action_failure_event(
+                            gameplay_events,
+                            action_failure_event_data(
+                                player,
+                                player,
+                                SHOOTER_MELEE_ACTION_ID,
+                                melee_action_plan_failure_reason(error),
+                            ),
+                        );
+                        return;
+                    }
+                };
+                let core_data = melee_attack_core_data_from_plan(
+                    prepared.entity,
+                    plan,
+                    world.height_span(prepared.entity),
+                );
+                if commit_prepared_input_action(world, prepared) {
+                    self.queue_melee_attack(core_data);
+                }
+            }
+            trigger @ InputActionTrigger::PatternMismatch => {
+                if should_report_fixed_action_pattern_mismatch(
+                    world
+                        .action_binding(player, SHOOTER_MELEE_ACTION_ID)
+                        .map(|binding| ActionPatternKind::from_pattern(binding.pattern)),
+                ) {
+                    if let ActionAttemptFailureDecision::Failure(reason_code) =
+                        input_action_trigger_failure_decision_for_policy(
+                            trigger,
+                            ActionAttemptFailurePolicy::ReportPatternMismatchOnly,
+                        )
+                    {
+                        push_action_failure_event(
+                            gameplay_events,
+                            action_failure_event_data(
+                                player,
+                                player,
+                                SHOOTER_MELEE_ACTION_ID,
+                                reason_code,
+                            ),
+                        );
+                    }
+                }
+            }
+            InputActionTrigger::Inactive
+            | InputActionTrigger::Missing
+            | InputActionTrigger::CoolingDown => {}
+        }
+    }
+
+    fn try_queue_spawn_prefab_player(
+        &mut self,
+        world: &mut World,
+        action_input: PlayerActionInput<'_>,
+        player: Entity,
+        tilemap: &Tilemap,
+        mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
+    ) {
+        let Some(bindings) = world.action_bindings(player) else {
+            return;
+        };
+        for binding in bindings.iter() {
+            let ActionPattern::SpawnPrefab { .. } = binding.pattern else {
+                continue;
+            };
+            let trigger = prepare_input_action_if_ready(
+                world,
+                action_input.registry,
+                action_input.snapshot,
+                player,
+                binding.action_id,
+                ActionPatternKind::SpawnPrefab,
+            );
+            let InputActionTrigger::Ready(prepared) = trigger else {
+                debug_assert_eq!(
+                    input_action_trigger_failure_decision_for_policy(
+                        trigger,
+                        ActionAttemptFailurePolicy::Silent,
+                    ),
+                    ActionAttemptFailureDecision::Noop
+                );
+                continue;
+            };
+            let ActionPattern::SpawnPrefab {
+                prefab_id,
+                anchor,
+                phase,
+                offset_x,
+                offset_y,
+            } = prepared.binding.pattern
+            else {
+                continue;
+            };
+            let command = match self.spawn_prefab_command(
+                world,
+                player,
+                prepared.action_id,
+                SpawnPrefabActionPayload {
+                    prefab_id,
+                    anchor,
+                    phase,
+                    offset_x,
+                    offset_y,
+                },
+            ) {
+                Ok(command) => command,
+                Err(reason_code) => {
+                    push_action_failure_event(
+                        gameplay_events.as_deref_mut(),
+                        action_failure_event_data(player, player, prepared.action_id, reason_code),
+                    );
+                    continue;
+                }
+            };
+            if let Err(reason_code) =
+                self.commit_prefab_spawn_with_pre_commit_gate(tilemap, command, || {
+                    commit_prepared_input_action(world, prepared)
+                })
+            {
+                push_action_failure_event(
+                    gameplay_events.as_deref_mut(),
+                    action_failure_event_data(player, player, prepared.action_id, reason_code),
+                );
+                continue;
+            }
+        }
+    }
+
+    fn try_dash_player(
+        &self,
+        world: &mut World,
+        camera: &Camera2D,
+        action_input: PlayerActionInput<'_>,
+        player: Entity,
+        input_direction: Velocity,
+        mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
+    ) {
+        match prepare_input_action_if_ready(
+            world,
+            action_input.registry,
+            action_input.snapshot,
+            player,
+            SHOOTER_DASH_ACTION_ID,
+            ActionPatternKind::Dash,
+        ) {
+            InputActionTrigger::Ready(prepared) => {
+                let Some(player_t) = world.transform(player) else {
+                    push_action_failure_event(
+                        gameplay_events.as_deref_mut(),
+                        action_failure_event_data(
+                            player,
+                            player,
+                            SHOOTER_DASH_ACTION_ID,
+                            GAMEPLAY_ACTION_FAILURE_MISSING_SOURCE_TRANSFORM,
+                        ),
+                    );
+                    return;
+                };
+                let ActionPattern::Dash { distance, aim } = prepared.binding.pattern else {
+                    return;
+                };
+                let aim_target = camera.screen_to_world(Transform2D {
+                    x: action_input.snapshot.current.mouse_x,
+                    y: action_input.snapshot.current.mouse_y,
+                });
+                let transform = match plan_input_dash_action_transform(
+                    DashActionPayload { distance, aim },
+                    player_t,
+                    input_direction,
+                    aim_target,
+                ) {
+                    Ok(transform) => transform,
+                    Err(error) => {
+                        push_action_failure_event(
+                            gameplay_events,
+                            action_failure_event_data(
+                                player,
+                                player,
+                                SHOOTER_DASH_ACTION_ID,
+                                dash_action_plan_failure_reason(error),
+                            ),
+                        );
+                        return;
+                    }
+                };
+                let dash_data = dash_action_core_data_from_plan(prepared.entity, transform);
+                if commit_prepared_input_action(world, prepared) {
+                    apply_dash_action_core_data(world, dash_data);
+                }
+            }
+            trigger @ InputActionTrigger::PatternMismatch => {
+                if should_report_fixed_action_pattern_mismatch(
+                    world
+                        .action_binding(player, SHOOTER_DASH_ACTION_ID)
+                        .map(|binding| ActionPatternKind::from_pattern(binding.pattern)),
+                ) {
+                    if let ActionAttemptFailureDecision::Failure(reason_code) =
+                        input_action_trigger_failure_decision_for_policy(
+                            trigger,
+                            ActionAttemptFailurePolicy::ReportPatternMismatchOnly,
+                        )
+                    {
+                        push_action_failure_event(
+                            gameplay_events,
+                            action_failure_event_data(
+                                player,
+                                player,
+                                SHOOTER_DASH_ACTION_ID,
+                                reason_code,
+                            ),
+                        );
+                    }
+                }
+            }
+            InputActionTrigger::Inactive
+            | InputActionTrigger::Missing
+            | InputActionTrigger::CoolingDown => {}
+        }
+    }
+
+    #[cfg(test)]
     pub(in crate::shooter_scene) fn fire_bullet_toward_mouse(
         &self,
         world: &mut World,
@@ -66,21 +592,65 @@ impl ShooterScene {
         player: Entity,
         audio_events: &mut Vec<AudioEvent>,
     ) {
-        let Some(player_t) = world.transforms[player.id as usize] else {
-            return;
+        if let Ok(command) = self.projectile_spawn_command_toward_mouse(
+            world,
+            camera,
+            input,
+            player,
+            ProjectileFireConfig {
+                speed: self.config.bullet_speed,
+                damage: self.config.bullet_damage,
+                lifetime_seconds: self.config.bullet_lifetime,
+                aim: ActionAimSource::Input,
+                collision_target: ProjectileCollisionTarget::Enemies,
+                tile_impact: ProjectileTileImpact::Despawn,
+            },
+        ) {
+            self.spawn_projectile_now(world, audio_events, command);
+        }
+    }
+
+    fn queue_bullet_toward_mouse_with_projectile(
+        &mut self,
+        world: &mut World,
+        camera: &Camera2D,
+        input: InputState,
+        player: Entity,
+        projectile: ProjectileFireConfig,
+    ) -> bool {
+        if let Ok(command) =
+            self.projectile_spawn_command_toward_mouse(world, camera, input, player, projectile)
+        {
+            return self.queue_projectile_spawn(command).is_ok();
+        }
+        false
+    }
+
+    fn projectile_spawn_command_toward_mouse(
+        &self,
+        world: &World,
+        camera: &Camera2D,
+        input: InputState,
+        player: Entity,
+        projectile: ProjectileFireConfig,
+    ) -> Result<ProjectileSpawnCommand, u32> {
+        let payload = ProjectileActionPayload {
+            speed: projectile.speed,
+            damage: projectile.damage,
+            lifetime_seconds: projectile.lifetime_seconds,
+            aim: projectile.aim,
+            collision_target: projectile.collision_target,
+            tile_impact: projectile.tile_impact,
+        };
+        validate_input_projectile_action_support(payload)
+            .map_err(projectile_action_plan_failure_reason)?;
+        let Some(player_t) = world.transform(player) else {
+            return Err(GAMEPLAY_ACTION_FAILURE_MISSING_SOURCE_TRANSFORM);
         };
         let target = camera.screen_to_world(Transform2D {
             x: input.mouse_x,
             y: input.mouse_y,
         });
-        let dx = target.x - player_t.x;
-        let dy = target.y - player_t.y;
-        let len = (dx * dx + dy * dy).sqrt();
-        let (nx, ny) = if len > 0.0001 {
-            (dx / len, dy / len)
-        } else {
-            (1.0, 0.0)
-        };
         let spawn_offset = self
             .config
             .player_template
@@ -93,43 +663,10 @@ impl ShooterScene {
                 .sprite_width
                 .max(self.config.bullet_template.sprite_height)
                 * 0.5;
-        let bullet = world.spawn_bullet_from_template(
-            Transform2D {
-                x: player_t.x + nx * spawn_offset,
-                y: player_t.y + ny * spawn_offset,
-            },
-            Velocity {
-                vx: nx * self.config.bullet_speed,
-                vy: ny * self.config.bullet_speed,
-            },
-            self.texture_ids.bullet,
-            self.config.bullet_lifetime,
-            self.config.bullet_template,
-            self.config.bullet_damage,
-        );
-        if self.config.projectile_arc.enabled {
-            let player_height_span = world.height_span(player).unwrap_or(HeightSpan {
-                floor: PhysicsFloorId::DEFAULT,
-                elevation: 0.0,
-                height: 0.0,
-            });
-            if let Some(arc) = ProjectileArc::new(
-                player_height_span.floor,
-                player_height_span.elevation,
-                self.config.projectile_arc.launch_height,
-                self.config.projectile_arc.z_velocity,
-                self.config.projectile_arc.gravity,
-                self.config.projectile_arc.hit_height,
-            ) {
-                world.set_projectile_arc(bullet, arc);
-            }
-        }
-        push_audio_event(
-            audio_events,
-            self.sound_ids.shoot,
-            self.config.audio_policy.shoot_volume,
-            self.config.audio_policy.shoot_pitch,
-        );
+        let plan = plan_input_projectile_action(payload, player_t, target, spawn_offset)
+            .map_err(projectile_action_plan_failure_reason)?;
+        let command_data = projectile_spawn_core_data_from_plan(plan, payload);
+        Ok(self.projectile_spawn_command_from_core_data(world, player, command_data))
     }
 
     pub(in crate::shooter_scene) fn clamp_player_to_world(&self, world: &mut World) {

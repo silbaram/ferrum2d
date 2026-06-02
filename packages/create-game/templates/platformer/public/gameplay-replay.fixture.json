@@ -1,0 +1,93 @@
+{
+  "format": "ferrum2d.consumer.gameplay-replay.fixture",
+  "version": 1,
+  "scenario": "platformer-template-surface",
+  "description": "Generated platformer template surface replay contract. This fixture validates public replay helper hashing and template surface drift; it is not a browser frame runner.",
+  "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json",
+  "coverageTags": [
+    "platformer-template"
+  ],
+  "replay": {
+    "format": "ferrum2d.gameplay-replay.run",
+    "version": 1,
+    "snapshots": [
+      {
+        "frame": 0,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 0,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 0,
+            "entityCount": 0,
+            "spriteCount": 0,
+            "cameraX": 0,
+            "cameraY": 0
+          },
+          "custom": {
+            "templateReplay": {
+              "version": 1,
+              "scenario": "platformer-template-surface",
+              "phase": "template-loaded",
+              "template": {
+                "template": "platformer",
+                "scene": "builtin-platformer",
+                "hasFerrumDependency": true,
+                "hasMainSource": true,
+                "scripts": [
+                  "ferrum:validate",
+                  "ferrum:authoring-report",
+                  "ferrum:replay-report",
+                  "ferrum:update-replay-fixture"
+                ]
+              }
+            }
+          },
+          "snapshotHash": "55e2a5ca"
+        },
+        "replayHash": "55e2a5ca"
+      },
+      {
+        "frame": 1,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 1,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 1,
+            "spriteCount": 1,
+            "cameraX": 0,
+            "cameraY": 0
+          },
+          "custom": {
+            "templateReplay": {
+              "version": 1,
+              "scenario": "platformer-template-surface",
+              "phase": "platformer-ready",
+              "template": {
+                "template": "platformer",
+                "scene": "builtin-platformer",
+                "hasFerrumDependency": true,
+                "hasMainSource": true,
+                "scripts": [
+                  "ferrum:validate",
+                  "ferrum:authoring-report",
+                  "ferrum:replay-report",
+                  "ferrum:update-replay-fixture"
+                ]
+              }
+            }
+          },
+          "snapshotHash": "cd795338"
+        },
+        "replayHash": "cd795338"
+      }
+    ],
+    "replayHash": "fcf94dbe"
+  }
+}

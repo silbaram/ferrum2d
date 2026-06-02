@@ -10,6 +10,40 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     world.set_transform(a, Transform2D { x: 2.0, y: 3.0 });
     world.set_transform(b, Transform2D { x: 8.0, y: 13.0 });
     world.set_velocity(a, Velocity { vx: 1.0, vy: -2.0 });
+    let action = ActionBinding::projectile(7, 0.12, 420.0, 2.0, 1.5);
+    assert!(world.upsert_action_binding(a, action));
+    assert_eq!(world.commit_action_cooldown_if_ready(a, 7), Some(action));
+    let expected_action = world.action_binding(a, 7).unwrap();
+    world.set_movement_pattern(
+        a,
+        MovementPattern::Orbit {
+            target: MovementTarget::Player,
+            speed: 80.0,
+            radius: 24.0,
+            radial_band: 4.0,
+        },
+    );
+    let mut state_machine = BehaviorStateMachine::new(1);
+    assert!(state_machine.push_transition(BehaviorStateTransition::new(1, 2, 7)));
+    assert!(world.set_behavior_state_machine(a, state_machine));
+    let state_enter_action =
+        BehaviorStateEnterAction::new(2, 11, BehaviorStateEnterActionPhase::NextFramePrePhysics);
+    assert!(world.add_behavior_state_enter_action(a, state_enter_action));
+    assert!(world.set_pickup(a, Pickup::new(GAMEPLAY_PICKUP_ITEM_SCORE, 3, true)));
+    assert!(world.set_interaction(a, Interaction::new(7, 24.0, true)));
+    assert!(world.set_gameplay_timer_trigger(a, GameplayTimerTrigger::new(9, 0.5)));
+    assert!(world.add_collision_reaction(
+        a,
+        CollisionReaction::Damage {
+            target: CollisionTarget::OtherEntity,
+        },
+    ));
+    assert!(world.add_collision_reaction(
+        a,
+        CollisionReaction::Despawn {
+            target: CollisionTarget::SelfEntity,
+        },
+    ));
     world.set_height_span(a, HeightSpan::on_default_floor(4.0, 16.0).unwrap());
     world.set_aabb_collider(
         a,
@@ -39,6 +73,14 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
 
     let extra = world.spawn_entity();
     world.set_transform(b, Transform2D { x: 99.0, y: 100.0 });
+    world.clear_action_bindings(a);
+    world.clear_movement_pattern(a);
+    world.clear_behavior_state_machine(a);
+    world.clear_behavior_state_enter_actions(a);
+    world.clear_pickup(a);
+    world.clear_interaction(a);
+    world.clear_gameplay_timer_trigger(a);
+    world.clear_collision_reactions(a);
     world.clear_distance_joint(joint);
     world.rigid_contact_impulses.clear();
     world.despawn(a);
@@ -52,6 +94,58 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     assert_eq!(world.transform(a), Some(Transform2D { x: 2.0, y: 3.0 }));
     assert_eq!(world.transform(b), Some(Transform2D { x: 8.0, y: 13.0 }));
     assert_eq!(world.velocity(a), Some(Velocity { vx: 1.0, vy: -2.0 }));
+    assert_eq!(
+        world
+            .action_bindings(a)
+            .map(|bindings| bindings.iter().collect::<Vec<_>>()),
+        Some(vec![expected_action])
+    );
+    assert_eq!(world.commit_action_cooldown_if_ready(a, 7), None);
+    world.tick_action_cooldowns(0.12);
+    assert_eq!(
+        world
+            .commit_action_cooldown_if_ready(a, 7)
+            .map(|binding| binding.pattern),
+        Some(action.pattern)
+    );
+    assert_eq!(
+        world.movement_pattern(a),
+        Some(MovementPattern::Orbit {
+            target: MovementTarget::Player,
+            speed: 80.0,
+            radius: 24.0,
+            radial_band: 4.0,
+        })
+    );
+    assert_eq!(world.behavior_state_machine(a), Some(state_machine));
+    assert_eq!(
+        world
+            .behavior_state_enter_actions(a)
+            .map(|actions| actions.iter_for_state(2).collect::<Vec<_>>()),
+        Some(vec![state_enter_action])
+    );
+    assert_eq!(
+        world.pickup(a),
+        Some(Pickup::new(GAMEPLAY_PICKUP_ITEM_SCORE, 3, true))
+    );
+    assert_eq!(world.interaction(a), Some(Interaction::new(7, 24.0, true)));
+    assert_eq!(
+        world.gameplay_timer_trigger(a),
+        Some(GameplayTimerTrigger::new(9, 0.5))
+    );
+    assert_eq!(
+        world
+            .collision_reactions(a)
+            .map(|reactions| reactions.iter().collect::<Vec<_>>()),
+        Some(vec![
+            CollisionReaction::Damage {
+                target: CollisionTarget::OtherEntity,
+            },
+            CollisionReaction::Despawn {
+                target: CollisionTarget::SelfEntity,
+            },
+        ])
+    );
     assert_eq!(
         world.height_span(a),
         HeightSpan::on_default_floor(4.0, 16.0)

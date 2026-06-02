@@ -15,9 +15,9 @@ const docsSourceDir = "docs";
 const docsOutputDir = path.join(outputDir, "docs");
 const examples = [
   {
-    id: "minimal-game",
-    title: "Minimal Game",
-    description: "Starter runtime flow with UiOverlay HUD/dialog.",
+    id: "starter-runtime",
+    title: "Starter Runtime",
+    description: "Smallest createFerrumRuntime flow with WebGL2, UiOverlay, DebugOverlay, and profiler smoke.",
   },
   {
     id: "topdown-shooter",

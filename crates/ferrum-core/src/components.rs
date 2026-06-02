@@ -1,5 +1,6 @@
 mod colliders;
 mod collision_masks;
+pub(crate) mod gameplay;
 mod hd2d;
 pub(crate) mod joints;
 mod limits;

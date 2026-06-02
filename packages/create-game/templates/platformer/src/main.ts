@@ -86,8 +86,8 @@ async function bootstrap(): Promise<void> {
     webgl2: { clearColor: [0.08, 0.08, 0.1, 1] },
   });
 
-  runtime.engine.usePlatformerGame();
   runtime.engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });
+  runtime.engine.usePlatformerGame();
   runtime.start();
   shell.queueStart();
 

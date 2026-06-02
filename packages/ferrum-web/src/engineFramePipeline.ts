@@ -12,9 +12,11 @@ import type { ResolvedPhysicsSpec } from "./physicsSpec.js";
 import { U32S_PER_COLLISION_EVENT } from "./collisionEventDecoder.js";
 import { drainAudioEvents } from "./engineFrameAudio.js";
 import { buildFrameState } from "./engineFrameState.js";
+import { U32S_PER_GAMEPLAY_EVENT } from "./gameplayEventDecoder.js";
 import { FLOATS_PER_PHYSICS_DEBUG_LINE } from "./physicsDebugLineDecoder.js";
 import type {
   CollisionEventBufferView,
+  GameplayEventBufferView,
   PhysicsDebugLineBufferView,
   RenderCommandBufferView,
   WasmBridge,
@@ -57,6 +59,11 @@ const EMPTY_PHYSICS_DEBUG_LINE_BUFFER: PhysicsDebugLineBufferView = {
   lineCount: 0,
   floatsPerLine: FLOATS_PER_PHYSICS_DEBUG_LINE,
 };
+const EMPTY_GAMEPLAY_EVENT_BUFFER: GameplayEventBufferView = {
+  buffer: new Uint32Array(0),
+  eventCount: 0,
+  u32sPerEvent: U32S_PER_GAMEPLAY_EVENT,
+};
 
 export function runFrame(context: FramePipelineContext, deltaSeconds: number): void {
   const needsFrameState = context.needsFrameState ?? context.onFrame !== undefined;
@@ -94,6 +101,9 @@ export function runFrame(context: FramePipelineContext, deltaSeconds: number): v
     const collisionEventBuffer = context.options.includeCollisionEvents === true
       ? context.bridge.readCollisionEventBuffer()
       : EMPTY_COLLISION_EVENT_BUFFER;
+    const gameplayEventBuffer = context.options.includeGameplayEvents === false
+      ? EMPTY_GAMEPLAY_EVENT_BUFFER
+      : context.bridge.readGameplayEventBuffer();
     physicsDebugLineBuffer = shouldReadPhysicsDebugLineBuffer
       ? context.bridge.readPhysicsDebugLineBuffer()
       : EMPTY_PHYSICS_DEBUG_LINE_BUFFER;
@@ -106,6 +116,7 @@ export function runFrame(context: FramePipelineContext, deltaSeconds: number): v
       frameTelemetryBuffer,
       renderCommandBuffer,
       collisionEventBuffer,
+      gameplayEventBuffer,
       physicsDebugLineBuffer,
       physicsSpec: context.physicsSpec,
       options: context.options,

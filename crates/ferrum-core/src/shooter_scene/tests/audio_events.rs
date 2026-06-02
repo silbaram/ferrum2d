@@ -62,6 +62,7 @@ fn bullet_enemy_collision_pushes_hit_audio_event() {
         None,
         None,
         None,
+        None,
     );
 
     assert!(!world.alive[b.id as usize]);
@@ -87,12 +88,14 @@ fn game_over_pushes_event_once_and_clear_events_removes_it() {
         None,
         None,
         None,
+        None,
     );
     scene.handle_collisions(
         &mut world,
         &Tilemap::default(),
         &mut audio_events,
         0.0,
+        None,
         None,
         None,
         None,

@@ -23,10 +23,12 @@ Do not use it for:
 1. Inspect available scripts in `package.json`.
 2. Run `npm run ferrum:report` when available to capture project context before testing.
 3. Prefer the smallest check that proves the changed behavior.
-4. Use `npm run ferrum:smoke` for build-level smoke when available.
-5. For browser checks, record URL, viewport, user steps, console errors, and visual symptoms.
-6. Check debug overlay or exposed runtime stats when available.
-7. Separate game bug reports from suspected engine bugs.
-8. Report commands run, failures, and skipped checks with reasons.
+4. Use `npm run ferrum:authoring-report` for data-driven gameplay validation and `npm run ferrum:replay-report` for deterministic gameplay regression evidence when the project provides them.
+5. Check report `format`, `version`, `ok`, and failure `reports[]` entries before treating a report as evidence. If a project-specific artifact validator exists, run it after report generation.
+6. Use `npm run ferrum:smoke` for build-level smoke when available.
+7. For browser checks, record URL, viewport, user steps, console errors, and visual symptoms.
+8. Check debug overlay or exposed runtime stats when available.
+9. Separate game bug reports from suspected engine bugs.
+10. Report commands run, failures, and skipped checks with reasons.
 
 If a dev server remains running after testing, stop it before finishing unless the user asked to keep it running.

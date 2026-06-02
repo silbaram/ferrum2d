@@ -48,6 +48,22 @@ impl Engine {
         );
     }
 
+    pub fn set_shooter_wave_action_trigger(
+        &mut self,
+        wave_index: u32,
+        source_entity_id: u32,
+        source_entity_generation: u32,
+        action_id: u32,
+    ) -> bool {
+        self.active_scene = ActiveScene::Shooter;
+        let Some(source) = self.entity_from_handle(source_entity_id, source_entity_generation)
+        else {
+            return false;
+        };
+        self.scene
+            .set_wave_action_trigger(&self.world, wave_index, source, action_id)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn set_shooter_audio_policy(
         &mut self,

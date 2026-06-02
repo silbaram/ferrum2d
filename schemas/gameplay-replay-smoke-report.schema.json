@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://ferrum2d.dev/schemas/gameplay-replay-smoke-report.schema.json",
+  "title": "Ferrum2D Gameplay Replay Smoke Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "format",
+    "version",
+    "ok",
+    "gameplayReplaySmoke"
+  ],
+  "properties": {
+    "format": {
+      "const": "ferrum2d.gameplay-replay.smoke-report"
+    },
+    "version": {
+      "const": 1
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "gameplayReplaySmoke": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/scenarioRun"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/errorSummary"
+      }
+    }
+  },
+  "definitions": {
+    "scenarioRun": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "scenario",
+        "replayHash",
+        "frameCount",
+        "fixedDeltaSeconds",
+        "snapshots",
+        "actionDiagnostics",
+        "spawnDiagnostics",
+        "passed"
+      ],
+      "properties": {
+        "fixturePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scenario": {
+          "type": "string",
+          "minLength": 1
+        },
+        "phase": {
+          "type": "string",
+          "minLength": 1
+        },
+        "replayHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}$"
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "fixedDeltaSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "snapshots": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "actionDiagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/frameDiagnostics"
+          }
+        },
+        "spawnDiagnostics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/frameDiagnostics"
+          }
+        },
+        "spawnExpectationPatches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/machineActionableReport"
+          }
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "error": {
+          "$ref": "#/definitions/errorSummary"
+        }
+      }
+    },
+    "frameDiagnostics": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "frame",
+        "reports"
+      ],
+      "properties": {
+        "frame": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/machineActionableReport"
+          }
+        }
+      }
+    },
+    "machineActionableReport": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "code",
+        "path",
+        "message",
+        "suggestion"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "suggestion": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "errorSummary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "message"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

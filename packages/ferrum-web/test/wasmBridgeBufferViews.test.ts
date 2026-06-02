@@ -2,6 +2,7 @@ import { equal, ok } from "node:assert/strict";
 import { test } from "node:test";
 import { FLOATS_PER_AUDIO_EVENT } from "../src/audioEventDecoder.js";
 import { U32S_PER_COLLISION_EVENT } from "../src/collisionEventDecoder.js";
+import { U32S_PER_GAMEPLAY_EVENT } from "../src/gameplayEventDecoder.js";
 import { PHYSICS_BODY_STATE_FLOATS_PER_BODY, PHYSICS_BODY_STATE_U32S_PER_BODY } from "../src/physicsBodyStateBuffer.js";
 import { FLOATS_PER_PHYSICS_DEBUG_LINE } from "../src/physicsDebugLineDecoder.js";
 import {
@@ -19,6 +20,7 @@ import {
   audioEventBufferView,
   collisionEventBufferView,
   frameTelemetryBufferView,
+  gameplayEventBufferView,
   physicsBodyContactHitBufferView,
   physicsBodyManifoldHitBufferView,
   physicsBodyStateBufferView,
@@ -39,9 +41,10 @@ import type {
 
 const layout: WasmBridgeAbiLayout = {
   floatsPerCommand: 14,
-  f64sPerFrameTelemetry: 37,
+  f64sPerFrameTelemetry: 62,
   floatsPerAudioEvent: FLOATS_PER_AUDIO_EVENT,
   u32sPerCollisionEvent: U32S_PER_COLLISION_EVENT,
+  u32sPerGameplayEvent: U32S_PER_GAMEPLAY_EVENT,
   floatsPerPhysicsDebugLine: FLOATS_PER_PHYSICS_DEBUG_LINE,
   u32sPerPhysicsQueryHit: U32S_PER_PHYSICS_QUERY_HIT,
   bytesPerPhysicsRaycastHit: BYTES_PER_PHYSICS_RAYCAST_HIT,
@@ -64,6 +67,8 @@ function context(overrides: Record<string, () => number> = {}): WasmBridgeBuffer
     audio_event_len: () => 3,
     collision_event_ptr: () => 256,
     collision_event_len: () => 4,
+    gameplay_event_ptr: () => 384,
+    gameplay_event_len: () => 2,
     tilemap_navigation_path_point_ptr: () => 512,
     tilemap_navigation_path_point_len: () => 5,
     physics_query_hit_ptr: () => 768,
@@ -86,9 +91,9 @@ function context(overrides: Record<string, () => number> = {}): WasmBridgeBuffer
     physics_body_snapshot_float_len: () => layout.floatsPerPhysicsBodyState * 2,
     physics_body_snapshot_u32_ptr: () => 2816,
     physics_body_snapshot_u32_len: () => layout.u32sPerPhysicsBodyState * 2,
-    shooter_snapshot_entity_floats: () => 12,
+    shooter_snapshot_entity_floats: () => 15,
     shooter_snapshot_entity_u32s: () => 4,
-    shooter_snapshot_entity_float_len: () => 24,
+    shooter_snapshot_entity_float_len: () => 30,
     shooter_snapshot_entity_u32_len: () => 8,
     shooter_snapshot_header_float_ptr: () => 2304,
     shooter_snapshot_header_float_len: () => 6,
@@ -133,6 +138,12 @@ test("wasmBridge buffer views preserve element and byte length contracts", () =>
   equal(collision.buffer.byteOffset, 256);
   equal(collision.buffer.length, 4 * layout.u32sPerCollisionEvent);
   equal(collision.eventCount, 4);
+
+  const gameplay = gameplayEventBufferView(ctx);
+  equal(gameplay.buffer.constructor, Uint32Array);
+  equal(gameplay.buffer.byteOffset, 384);
+  equal(gameplay.buffer.length, 2 * layout.u32sPerGameplayEvent);
+  equal(gameplay.eventCount, 2);
 
   const query = physicsQueryHitBufferView(ctx);
   equal(query.buffer.constructor, Uint32Array);
@@ -228,7 +239,7 @@ test("wasmBridge snapshot views preserve body and shooter stride contracts", () 
   equal(shooter.entityFloats.byteOffset, 2496);
   equal(shooter.entityU32s.byteOffset, 2592);
   equal(shooter.entityCount, 2);
-  equal(shooter.floatsPerEntity, 12);
+  equal(shooter.floatsPerEntity, 15);
   equal(shooter.u32sPerEntity, 4);
 });
 

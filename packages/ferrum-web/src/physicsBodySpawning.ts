@@ -29,6 +29,7 @@ const PHYSICS_LAYER_CODES: Record<PhysicsCollisionLayer, number> = Object.freeze
   enemy: 1,
   bullet: 2,
   wall: 3,
+  pickup: 4,
 });
 
 const PHYSICS_LAYER_MASK_BITS: Record<PhysicsCollisionLayer, number> = Object.freeze({
@@ -36,6 +37,7 @@ const PHYSICS_LAYER_MASK_BITS: Record<PhysicsCollisionLayer, number> = Object.fr
   enemy: 1 << 1,
   bullet: 1 << 2,
   wall: 1 << 3,
+  pickup: 1 << 4,
 });
 
 export function spawnPhysicsRigidBody(
@@ -414,7 +416,7 @@ function physicsCollisionLayerCode(layer: PhysicsCollisionLayer): number {
   if (isPhysicsCollisionLayer(layer)) {
     return PHYSICS_LAYER_CODES[layer];
   }
-  throw new Error("physics collision layer must be player, enemy, bullet, or wall.");
+  throw new Error("physics collision layer must be player, enemy, bullet, wall, or pickup.");
 }
 
 function isPhysicsRigidBodyType(bodyType: string): bodyType is PhysicsRigidBodyType {

@@ -1,4 +1,9 @@
 use super::World;
+use crate::components::gameplay::{
+    ActionBindingSet, BehaviorStateEnterActionSet, BehaviorStateMachine, CollisionReactionSet,
+    GameplayFaction, GameplayTimerTrigger, Interaction, MovementPattern, Pickup,
+    ProjectileCollisionTarget, ProjectileTileImpact,
+};
 use crate::components::{
     AabbCollider, AngularVelocity, CapsuleCollider, ChainCollider, CircleCollider, CollisionFilter,
     CompoundCollider, ConvexPolygonCollider, DistanceJoint, EdgeCollider, GearJoint, HeightSpan,
@@ -59,9 +64,20 @@ pub struct WorldSnapshot {
     collider_materials: Vec<Option<PhysicsMaterial>>,
     collision_filters: Vec<Option<CollisionFilter>>,
     bullet_lifetimes: Vec<Option<f32>>,
+    projectile_collision_targets: Vec<Option<ProjectileCollisionTarget>>,
+    projectile_tile_impacts: Vec<Option<ProjectileTileImpact>>,
     healths: Vec<Option<f32>>,
     damages: Vec<Option<f32>>,
     score_rewards: Vec<Option<u32>>,
+    gameplay_factions: Vec<Option<GameplayFaction>>,
+    action_bindings: Vec<Option<ActionBindingSet>>,
+    pickups: Vec<Option<Pickup>>,
+    interactions: Vec<Option<Interaction>>,
+    movement_patterns: Vec<Option<MovementPattern>>,
+    collision_reactions: Vec<Option<CollisionReactionSet>>,
+    behavior_state_machines: Vec<Option<BehaviorStateMachine>>,
+    behavior_state_enter_actions: Vec<Option<BehaviorStateEnterActionSet>>,
+    gameplay_timer_triggers: Vec<Option<GameplayTimerTrigger>>,
     player: Option<Entity>,
 }
 
@@ -117,9 +133,20 @@ impl World {
             collider_materials: self.collider_materials.clone(),
             collision_filters: self.collision_filters.clone(),
             bullet_lifetimes: self.bullet_lifetimes.clone(),
+            projectile_collision_targets: self.projectile_collision_targets.clone(),
+            projectile_tile_impacts: self.projectile_tile_impacts.clone(),
             healths: self.healths.clone(),
             damages: self.damages.clone(),
             score_rewards: self.score_rewards.clone(),
+            gameplay_factions: self.gameplay_factions.clone(),
+            action_bindings: self.action_bindings.clone(),
+            pickups: self.pickups.clone(),
+            interactions: self.interactions.clone(),
+            movement_patterns: self.movement_patterns.clone(),
+            collision_reactions: self.collision_reactions.clone(),
+            behavior_state_machines: self.behavior_state_machines.clone(),
+            behavior_state_enter_actions: self.behavior_state_enter_actions.clone(),
+            gameplay_timer_triggers: self.gameplay_timer_triggers.clone(),
             player: self.player,
         }
     }
@@ -175,9 +202,20 @@ impl World {
         self.collider_materials = snapshot.collider_materials.clone();
         self.collision_filters = snapshot.collision_filters.clone();
         self.bullet_lifetimes = snapshot.bullet_lifetimes.clone();
+        self.projectile_collision_targets = snapshot.projectile_collision_targets.clone();
+        self.projectile_tile_impacts = snapshot.projectile_tile_impacts.clone();
         self.healths = snapshot.healths.clone();
         self.damages = snapshot.damages.clone();
         self.score_rewards = snapshot.score_rewards.clone();
+        self.gameplay_factions = snapshot.gameplay_factions.clone();
+        self.action_bindings = snapshot.action_bindings.clone();
+        self.pickups = snapshot.pickups.clone();
+        self.interactions = snapshot.interactions.clone();
+        self.movement_patterns = snapshot.movement_patterns.clone();
+        self.collision_reactions = snapshot.collision_reactions.clone();
+        self.behavior_state_machines = snapshot.behavior_state_machines.clone();
+        self.behavior_state_enter_actions = snapshot.behavior_state_enter_actions.clone();
+        self.gameplay_timer_triggers = snapshot.gameplay_timer_triggers.clone();
         self.player = snapshot.player;
     }
 }

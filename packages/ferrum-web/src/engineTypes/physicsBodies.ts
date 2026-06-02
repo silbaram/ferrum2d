@@ -10,7 +10,7 @@ export type PhysicsColliderType =
   | "convexPolygon"
   | "edge"
   | "chain";
-export type PhysicsCollisionLayer = "player" | "enemy" | "bullet" | "wall";
+export type PhysicsCollisionLayer = "player" | "enemy" | "bullet" | "wall" | "pickup";
 
 export interface PhysicsEntityHandle {
   entityId: number;

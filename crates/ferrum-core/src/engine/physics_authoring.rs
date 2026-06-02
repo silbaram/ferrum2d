@@ -6,8 +6,8 @@ use crate::components::{
 
 use super::{
     Engine, PHYSICS_BODY_TYPE_DYNAMIC, PHYSICS_BODY_TYPE_KINEMATIC, PHYSICS_BODY_TYPE_STATIC,
-    PHYSICS_EDGE_BODY_RADIUS, PHYSICS_LAYER_BULLET, PHYSICS_LAYER_ENEMY, PHYSICS_LAYER_PLAYER,
-    PHYSICS_LAYER_WALL,
+    PHYSICS_EDGE_BODY_RADIUS, PHYSICS_LAYER_BULLET, PHYSICS_LAYER_ENEMY, PHYSICS_LAYER_PICKUP,
+    PHYSICS_LAYER_PLAYER, PHYSICS_LAYER_WALL,
 };
 
 impl Engine {
@@ -33,6 +33,7 @@ impl Engine {
             PHYSICS_LAYER_ENEMY => CollisionLayer::Enemy,
             PHYSICS_LAYER_BULLET => CollisionLayer::Bullet,
             PHYSICS_LAYER_WALL => CollisionLayer::Wall,
+            PHYSICS_LAYER_PICKUP => CollisionLayer::Pickup,
             PHYSICS_LAYER_PLAYER => CollisionLayer::Player,
             _ => CollisionLayer::Player,
         }

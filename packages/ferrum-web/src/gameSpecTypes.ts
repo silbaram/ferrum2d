@@ -779,6 +779,12 @@ export interface ShooterGameSpecTarget {
     enemyHealth: number,
     scoreReward: number,
   ): void;
+  set_shooter_wave_action_trigger?(
+    waveIndex: number,
+    sourceEntityId: number,
+    sourceEntityGeneration: number,
+    actionId: number,
+  ): boolean;
   set_shooter_audio_policy?(
     shootVolume: number,
     shootPitch: number,

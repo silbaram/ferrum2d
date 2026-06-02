@@ -6,6 +6,8 @@ import {
   collision_event_u32s,
   frame_telemetry_bytes,
   frame_telemetry_f64s,
+  gameplay_event_bytes,
+  gameplay_event_u32s,
   physics_body_contact_hit_bytes,
   physics_body_manifold_hit_bytes,
   physics_debug_line_bytes,
@@ -22,6 +24,7 @@ import {
 } from "../pkg/ferrum_core.js";
 import { FLOATS_PER_AUDIO_EVENT } from "./audioEventDecoder";
 import { U32S_PER_COLLISION_EVENT } from "./collisionEventDecoder";
+import { U32S_PER_GAMEPLAY_EVENT } from "./gameplayEventDecoder";
 import { FLOATS_PER_PHYSICS_DEBUG_LINE } from "./physicsDebugLineDecoder";
 import {
   BYTES_PER_PHYSICS_BODY_CONTACT_HIT,
@@ -35,7 +38,7 @@ import {
 } from "./physicsQueryDecoder";
 
 const FLOATS_PER_COMMAND = 14;
-export const F64S_PER_FRAME_TELEMETRY = 37;
+export const F64S_PER_FRAME_TELEMETRY = 62;
 const FLOATS_PER_PHYSICS_BODY_STATE = 31;
 const U32S_PER_PHYSICS_BODY_STATE = 5;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
@@ -45,6 +48,7 @@ const BYTES_PER_COMMAND = FLOATS_PER_COMMAND * BYTES_PER_F32;
 const BYTES_PER_FRAME_TELEMETRY = F64S_PER_FRAME_TELEMETRY * BYTES_PER_F64;
 const BYTES_PER_AUDIO_EVENT = FLOATS_PER_AUDIO_EVENT * BYTES_PER_F32;
 const BYTES_PER_COLLISION_EVENT = U32S_PER_COLLISION_EVENT * BYTES_PER_U32;
+const BYTES_PER_GAMEPLAY_EVENT = U32S_PER_GAMEPLAY_EVENT * BYTES_PER_U32;
 const BYTES_PER_PHYSICS_DEBUG_LINE = FLOATS_PER_PHYSICS_DEBUG_LINE * BYTES_PER_F32;
 const BYTES_PER_PHYSICS_QUERY_HIT = U32S_PER_PHYSICS_QUERY_HIT * BYTES_PER_U32;
 
@@ -53,6 +57,7 @@ export interface WasmBridgeAbiLayout {
   f64sPerFrameTelemetry: number;
   floatsPerAudioEvent: number;
   u32sPerCollisionEvent: number;
+  u32sPerGameplayEvent: number;
   floatsPerPhysicsDebugLine: number;
   u32sPerPhysicsQueryHit: number;
   bytesPerPhysicsRaycastHit: number;
@@ -124,6 +129,21 @@ export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
     throw new Error(
       `[Ferrum2D ABI mismatch] Rust collision_event_bytes=${rustBytesPerCollisionEvent}, TS BYTES_PER_COLLISION_EVENT=${BYTES_PER_COLLISION_EVENT}. ` +
         "CollisionEvent ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+    );
+  }
+
+  const rustU32sPerGameplayEvent = gameplay_event_u32s();
+  const rustBytesPerGameplayEvent = gameplay_event_bytes();
+  if (rustU32sPerGameplayEvent !== U32S_PER_GAMEPLAY_EVENT) {
+    throw new Error(
+      `[Ferrum2D ABI mismatch] Rust gameplay_event_u32s=${rustU32sPerGameplayEvent}, TS U32S_PER_GAMEPLAY_EVENT=${U32S_PER_GAMEPLAY_EVENT}. ` +
+        "GameplayEvent ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+    );
+  }
+  if (rustBytesPerGameplayEvent !== BYTES_PER_GAMEPLAY_EVENT) {
+    throw new Error(
+      `[Ferrum2D ABI mismatch] Rust gameplay_event_bytes=${rustBytesPerGameplayEvent}, TS BYTES_PER_GAMEPLAY_EVENT=${BYTES_PER_GAMEPLAY_EVENT}. ` +
+        "GameplayEvent ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
     );
   }
 
@@ -234,6 +254,7 @@ export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
     f64sPerFrameTelemetry: rustF64sPerFrameTelemetry,
     floatsPerAudioEvent: rustFloatsPerAudioEvent,
     u32sPerCollisionEvent: rustU32sPerCollisionEvent,
+    u32sPerGameplayEvent: rustU32sPerGameplayEvent,
     floatsPerPhysicsDebugLine: rustFloatsPerPhysicsDebugLine,
     u32sPerPhysicsQueryHit: rustU32sPerPhysicsQueryHit,
     bytesPerPhysicsRaycastHit: rustBytesPerPhysicsRaycastHit,

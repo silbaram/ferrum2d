@@ -1,0 +1,436 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://ferrum2d.dev/schemas/topdown-authored-behavior-variant.schema.json",
+  "title": "Ferrum2D Top-down Authored Behavior Variant",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "format",
+    "version",
+    "extendsGameSpec",
+    "replayScenario",
+    "semantics",
+    "ids",
+    "sceneComposition",
+    "behaviorRecipes",
+    "behaviorStateMachines",
+    "expected"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "format": {
+      "const": "ferrum2d.topdown-shooter.authored-behavior-variant"
+    },
+    "version": {
+      "const": 1
+    },
+    "extendsGameSpec": {
+      "type": "string",
+      "minLength": 1
+    },
+    "replayScenario": {
+      "type": "string",
+      "minLength": 1
+    },
+    "semantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fsmStateEntryMode",
+        "browserPlacement"
+      ],
+      "properties": {
+        "fsmStateEntryMode": {
+          "const": "manualReplaceSupported"
+        },
+        "browserPlacement": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "anchorReplayBody",
+            "target",
+            "scale"
+          ],
+          "properties": {
+            "anchorReplayBody": {
+              "type": "string",
+              "minLength": 1
+            },
+            "target": {
+              "const": "worldCenter"
+            },
+            "scale": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        }
+      }
+    },
+    "ids": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items",
+        "actions",
+        "timers"
+      ],
+      "properties": {
+        "items": {
+          "type": "object",
+          "required": [
+            "score"
+          ],
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4294967295
+          },
+          "properties": {
+            "score": {
+              "const": 1
+            }
+          }
+        },
+        "actions": {
+          "type": "object",
+          "required": [
+            "primary",
+            "dash",
+            "collect-score",
+            "summon-enemy"
+          ],
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4294967295
+          },
+          "properties": {
+            "primary": {
+              "const": 1
+            },
+            "dash": {
+              "const": 2
+            },
+            "collect-score": {
+              "const": 7
+            },
+            "summon-enemy": {
+              "const": 11
+            }
+          }
+        },
+        "timers": {
+          "type": "object",
+          "required": [
+            "wake"
+          ],
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4294967295
+          },
+          "properties": {
+            "wake": {
+              "const": 13
+            }
+          }
+        }
+      }
+    },
+    "sceneComposition": {
+      "type": "object",
+      "required": [
+        "prefabs",
+        "fragments"
+      ],
+      "properties": {
+        "initialFragment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prefabs": {
+          "type": "object"
+        },
+        "fragments": {
+          "type": "object"
+        }
+      }
+    },
+    "behaviorRecipes": {
+      "type": "object",
+      "required": [
+        "entities"
+      ],
+      "properties": {
+        "recipes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/behaviorRecipe"
+          }
+        },
+        "entities": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+              "recipes"
+            ],
+            "properties": {
+              "recipes": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "$ref": "#/definitions/behaviorRecipeReference"
+                    },
+                    {
+                      "$ref": "#/definitions/behaviorRecipe"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "behaviorStateMachines": {
+      "type": "object",
+      "required": [
+        "machines"
+      ],
+      "properties": {
+        "machines": {
+          "type": "object",
+          "minProperties": 1
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "replayHash",
+        "finalScore",
+        "eventFrame",
+        "eventKinds",
+        "actionFailureFrame",
+        "actionFailureEventKinds",
+        "timerFrame",
+        "timerEventKinds",
+        "states"
+      ],
+      "properties": {
+        "replayHash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}$"
+        },
+        "finalScore": {
+          "type": "number"
+        },
+        "eventFrame": {
+          "type": "number"
+        },
+        "eventKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "collisionDamage",
+              "factionDamageDenied",
+              "pickupCollected",
+              "collisionDespawn",
+              "behaviorStateChanged",
+              "interaction"
+            ]
+          },
+          "minItems": 1
+        },
+        "timerFrame": {
+          "type": "number"
+        },
+        "actionFailureFrame": {
+          "type": "number"
+        },
+        "actionFailureEventKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "actionFailed"
+            ]
+          },
+          "minItems": 1
+        },
+        "timerEventKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "timer",
+              "prefabSpawned",
+              "behaviorStateChanged"
+            ]
+          },
+          "minItems": 1
+        },
+        "states": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "behaviorRecipeReference": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "use"
+      ],
+      "properties": {
+        "use": {
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "overrides": {
+          "$ref": "#/definitions/behaviorRecipeOverride"
+        }
+      },
+      "not": {
+        "required": [
+          "kind"
+        ]
+      }
+    },
+    "behaviorRecipe": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "health",
+            "damage",
+            "faction",
+            "lifetime",
+            "scoreReward",
+            "pickup",
+            "collisionPickup",
+            "collisionSound",
+            "collisionParticle",
+            "collisionDespawn",
+            "chase",
+            "interaction",
+            "projectileAction",
+            "dashAction",
+            "meleeAction",
+            "spawnPrefabAction",
+            "timerTrigger"
+          ]
+        },
+        "faction": {
+          "$ref": "#/definitions/behaviorRecipeFaction"
+        },
+        "damages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/behaviorRecipeFaction"
+          }
+        },
+        "tileImpact": {
+          "enum": [
+            "despawn",
+            "passThrough",
+            "bounce"
+          ]
+        },
+        "trigger": {
+          "enum": [
+            "contact",
+            "enter"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "faction"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "faction"
+            ]
+          }
+        }
+      ]
+    },
+    "behaviorRecipeOverride": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "faction": {
+          "$ref": "#/definitions/behaviorRecipeFaction"
+        },
+        "damages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/behaviorRecipeFaction"
+          }
+        },
+        "tileImpact": {
+          "enum": [
+            "despawn",
+            "passThrough",
+            "bounce"
+          ]
+        },
+        "trigger": {
+          "enum": [
+            "contact",
+            "enter"
+          ]
+        }
+      }
+    },
+    "behaviorRecipeFaction": {
+      "anyOf": [
+        {
+          "enum": [
+            "neutral",
+            "player",
+            "enemy"
+          ]
+        },
+        {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31
+        }
+      ]
+    }
+  }
+}

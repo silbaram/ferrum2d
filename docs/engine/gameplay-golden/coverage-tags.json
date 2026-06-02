@@ -1,0 +1,89 @@
+{
+  "format": "ferrum2d.gameplay-replay.coverage-tags",
+  "version": 1,
+  "coverageTagDefinitions": {
+    "action-failure": "Scenario expects Rust-owned action failure telemetry.",
+    "action-trigger": "Scenario covers Rust-owned action trigger producers or consumers.",
+    "authored-behavior": "Scenario installs gameplay authoring data instead of relying only on built-in config.",
+    "baseline": "Scenario covers the default Top-down Shooter baseline.",
+    "collision-damage": "Scenario covers authored or default collision damage outcomes.",
+    "dash": "Scenario covers dash action behavior.",
+    "enemy-target": "Scenario covers actions targeting enemy entities.",
+    "faction": "Scenario covers gameplay faction damage-mask policy or denial telemetry.",
+    "fsm": "Scenario covers BehaviorStateMachine transition semantics.",
+    "game-over": "Scenario reaches or verifies GameOver state.",
+    "interaction": "Scenario covers interaction radius events.",
+    "melee": "Scenario covers melee action behavior.",
+    "pickup": "Scenario covers pickup collection semantics.",
+    "player-damage": "Scenario covers damage applied to the player.",
+    "projectile": "Scenario covers projectile action or projectile collision behavior.",
+    "score": "Scenario covers score mutation.",
+    "spawn-diagnostics": "Scenario asserts deferred spawn telemetry metrics.",
+    "spawn-prefab": "Scenario covers spawnPrefabAction behavior.",
+    "state-enter": "Scenario covers FSM state-enter action trigger behavior.",
+    "target-player": "Scenario covers non-player actions targeting the live player.",
+    "tile-impact": "Scenario covers blocking tile impact gameplay event telemetry.",
+    "timer": "Scenario covers gameplay timer events or timer-triggered actions.",
+    "unsupported-aim": "Scenario covers unsupported aim source failure.",
+    "unsupported-collision-target": "Scenario covers unsupported collision target failure.",
+    "variant": "Scenario is linked to an authored behavior variant file.",
+    "wave": "Scenario covers wave-enter behavior."
+  },
+  "coverageTagGroups": {
+    "scenario-source": {
+      "description": "How the replay scenario is sourced or authored.",
+      "tags": [
+        "baseline",
+        "authored-behavior",
+        "variant"
+      ]
+    },
+    "gameplay-events": {
+      "description": "Gameplay state, collision, and event telemetry observed by replay.",
+      "tags": [
+        "collision-damage",
+        "faction",
+        "game-over",
+        "interaction",
+        "pickup",
+        "player-damage",
+        "score",
+        "tile-impact",
+        "timer"
+      ]
+    },
+    "actions": {
+      "description": "Action producers, action consumers, and target policies covered by replay.",
+      "tags": [
+        "action-trigger",
+        "dash",
+        "enemy-target",
+        "melee",
+        "projectile",
+        "spawn-prefab",
+        "state-enter",
+        "target-player",
+        "wave"
+      ]
+    },
+    "diagnostics": {
+      "description": "Agent-facing failure and diagnostic report coverage.",
+      "tags": [
+        "action-failure",
+        "spawn-diagnostics",
+        "unsupported-aim",
+        "unsupported-collision-target"
+      ]
+    },
+    "sequencing": {
+      "description": "Behavior sequencing and state machine coverage.",
+      "tags": [
+        "fsm",
+        "state-enter",
+        "timer",
+        "wave"
+      ]
+    }
+  },
+  "deprecatedCoverageTags": {}
+}

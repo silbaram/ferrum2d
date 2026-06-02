@@ -72,6 +72,21 @@ jobs:
       - name: Build TypeScript packages
         run: pnpm build
 
+      - name: Gameplay authoring report
+        run: pnpm validate:gameplay-authoring:report
+
+      - name: Gameplay replay report
+        run: pnpm smoke:gameplay-replay:report
+
+      - name: Gameplay report artifact validation
+        run: pnpm validate:gameplay-report-artifacts
+
+      - name: Create-game template report smoke
+        run: pnpm smoke:create-game-template-reports
+
+      - name: Topdown template replay report smoke
+        run: pnpm smoke:topdown-template-replay-report
+
   consumer-smoke:
     runs-on: ubuntu-latest
     needs: validate

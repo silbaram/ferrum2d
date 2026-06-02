@@ -6,6 +6,8 @@ import type {
   AudioEventView,
   CollisionEventBufferView,
   CollisionEventView,
+  GameplayEventBufferView,
+  GameplayEventView,
   PhysicsDebugLineBufferView,
   PhysicsDebugLineView,
   RenderCommandBufferView,
@@ -55,12 +57,17 @@ export interface FrameState {
   playerFloorId?: number;
   playerElevation?: number;
   playerHeight?: number;
+  actionDiagnostics: ActionFrameDiagnostics;
+  spawnDiagnostics: SpawnFrameDiagnostics;
   audioEventCount: number;
   audioEvents: readonly AudioEventView[];
   physics: PhysicsFrameStats;
   /** Wasm memory view입니다. frame 안에서 동기 소비하거나 보관 전 복사하세요. */
   collisionEventBuffer: CollisionEventBufferView;
   collisionEvents: readonly CollisionEventView[];
+  /** Wasm memory view입니다. frame 안에서 동기 소비하거나 보관 전 복사하세요. */
+  gameplayEventBuffer: GameplayEventBufferView;
+  gameplayEvents: readonly GameplayEventView[];
   /** Wasm memory view입니다. frame 안에서 동기 소비하거나 보관 전 복사하세요. */
   physicsDebugLineBuffer: PhysicsDebugLineBufferView;
   physicsDebugLines: readonly PhysicsDebugLineView[];
@@ -71,6 +78,25 @@ export interface FrameState {
 }
 
 export type FrameHandler = (state: FrameState) => void;
+
+export interface ActionFrameDiagnostics {
+  triggerAttempts: number;
+  triggerFailures: number;
+  triggerFailureEventsPushed: number;
+  triggerCommitSkips: number;
+  lastPreparedTriggerFailureReasonCode?: number;
+  failureReasonCounts: readonly number[];
+}
+
+export interface SpawnFrameDiagnostics {
+  commandsDrained: number;
+  projectileSpawns: number;
+  projectileArcsApplied: number;
+  projectileShootAudioEventsPushed: number;
+  prefabSpawns: number;
+  prefabSpawnedPayloads: number;
+  prefabSpawnedEventsPushed: number;
+}
 
 export interface FixedTimestepOptions {
   enabled?: boolean;

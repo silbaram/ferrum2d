@@ -1,8 +1,10 @@
 use wasm_bindgen::prelude::*;
 
+use crate::input::INPUT_ACTION_REGISTRY_SNAPSHOT_U32S;
 use crate::shooter_scene::{
     ShooterEntitySnapshot, ShooterSceneSnapshot, SHOOTER_SNAPSHOT_ENTITY_FLOATS,
     SHOOTER_SNAPSHOT_ENTITY_U32S, SHOOTER_SNAPSHOT_HEADER_FLOATS, SHOOTER_SNAPSHOT_HEADER_U32S,
+    SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET,
 };
 
 use super::scenes::ActiveScene;
@@ -90,7 +92,15 @@ impl Engine {
             self.clear_shooter_snapshot_buffers();
             return false;
         }
-        let snapshot = self.scene.snapshot(&self.world, &self.camera);
+        let mut snapshot = self.scene.snapshot(&self.world, &self.camera);
+        if !self.input_actions.write_snapshot(
+            &mut snapshot.header_u32s[SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
+                ..SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
+                    + INPUT_ACTION_REGISTRY_SNAPSHOT_U32S],
+        ) {
+            self.clear_shooter_snapshot_buffers();
+            return false;
+        }
         self.store_shooter_snapshot(&snapshot);
         true
     }
@@ -136,6 +146,13 @@ impl Engine {
             snapshot.entities.push(entity);
         }
 
+        let Some(input_actions) = crate::input::InputActionRegistry::from_snapshot(
+            &snapshot.header_u32s[SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
+                ..SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
+                    + INPUT_ACTION_REGISTRY_SNAPSHOT_U32S],
+        ) else {
+            return false;
+        };
         let restored = self.scene.restore_snapshot(
             &mut self.world,
             &mut self.camera,
@@ -144,6 +161,7 @@ impl Engine {
         );
         if restored {
             self.active_scene = ActiveScene::Shooter;
+            self.input_actions = input_actions;
             self.particles.clear();
             self.tweens.clear();
             self.clear_physics_history();

@@ -91,6 +91,108 @@ fn generic_component_setters_update_entity_components() {
 }
 
 #[test]
+fn gameplay_component_setters_update_movement_and_collision_reactions() {
+    let mut world = World::default();
+    let entity = world.spawn_entity();
+    let movement = MovementPattern::Chase {
+        target: MovementTarget::Player,
+        speed: 90.0,
+    };
+    let action = ActionBinding::melee(7, 0.12, 32.0, 2.0);
+    let interaction = Interaction::new(5, 32.0, true);
+    let state_enter_action =
+        BehaviorStateEnterAction::new(2, 7, BehaviorStateEnterActionPhase::NextFramePrePhysics);
+    let mut machine = BehaviorStateMachine::new(1);
+    assert!(machine.push_transition(BehaviorStateTransition::new(1, 2, 5)));
+
+    world.set_movement_pattern(entity, movement);
+    assert!(world.upsert_action_binding(entity, action));
+    assert!(world.set_interaction(entity, interaction));
+    assert!(world.set_behavior_state_machine(entity, machine));
+    assert!(world.add_behavior_state_enter_action(entity, state_enter_action));
+    assert_eq!(world.movement_pattern(entity), Some(movement));
+    assert_eq!(
+        world
+            .action_bindings(entity)
+            .map(|bindings| bindings.iter().collect::<Vec<_>>()),
+        Some(vec![action])
+    );
+    assert_eq!(world.interaction(entity), Some(interaction));
+    assert_eq!(world.behavior_state_machine(entity), Some(machine));
+    assert_eq!(
+        world
+            .behavior_state_enter_actions(entity)
+            .map(|actions| actions.iter_for_state(2).collect::<Vec<_>>()),
+        Some(vec![state_enter_action])
+    );
+    assert!(world.add_behavior_state_transition(entity, BehaviorStateTransition::new(2, 3, 6),));
+    assert_eq!(world.behavior_state_machine(entity).unwrap().len(), 2);
+
+    assert!(world.add_collision_reaction(
+        entity,
+        CollisionReaction::Damage {
+            target: CollisionTarget::OtherEntity,
+        },
+    ));
+    assert!(world.add_collision_reaction(
+        entity,
+        CollisionReaction::Despawn {
+            target: CollisionTarget::SelfEntity,
+        },
+    ));
+
+    let reactions = world.collision_reactions(entity).unwrap();
+    assert_eq!(reactions.len(), 2);
+    assert_eq!(
+        reactions.iter().collect::<Vec<_>>(),
+        vec![
+            CollisionReaction::Damage {
+                target: CollisionTarget::OtherEntity,
+            },
+            CollisionReaction::Despawn {
+                target: CollisionTarget::SelfEntity,
+            },
+        ]
+    );
+
+    world.clear_movement_pattern(entity);
+    world.clear_action_bindings(entity);
+    world.clear_interaction(entity);
+    world.clear_collision_reactions(entity);
+    world.clear_behavior_state_machine(entity);
+    world.clear_behavior_state_enter_actions(entity);
+    assert_eq!(world.movement_pattern(entity), None);
+    assert_eq!(world.action_bindings(entity), None);
+    assert_eq!(world.interaction(entity), None);
+    assert_eq!(world.collision_reactions(entity), None);
+    assert_eq!(world.behavior_state_machine(entity), None);
+    assert_eq!(world.behavior_state_enter_actions(entity), None);
+}
+
+#[test]
+fn world_ticks_and_triggers_action_binding_cooldowns() {
+    let mut world = World::default();
+    let entity = world.spawn_entity();
+    let action = ActionBinding::projectile(7, 0.12, 420.0, 2.0, 1.5);
+    assert!(world.upsert_action_binding(entity, action));
+
+    assert_eq!(world.action_binding(entity, 7), Some(action));
+    assert_eq!(
+        world.commit_action_cooldown_if_ready(entity, 7),
+        Some(action)
+    );
+    assert_eq!(world.commit_action_cooldown_if_ready(entity, 7), None);
+
+    world.tick_action_cooldowns(0.06);
+    assert_eq!(world.commit_action_cooldown_if_ready(entity, 7), None);
+
+    world.tick_action_cooldowns(0.06);
+    let triggered = world.commit_action_cooldown_if_ready(entity, 7).unwrap();
+    assert_eq!(triggered.action_id, action.action_id);
+    assert_eq!(triggered.pattern, action.pattern);
+}
+
+#[test]
 fn set_rigid_body_fills_missing_motion_components_without_overwriting_existing_values() {
     let mut world = World::default();
     let existing = world.spawn_entity();

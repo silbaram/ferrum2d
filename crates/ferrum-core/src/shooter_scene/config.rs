@@ -1,4 +1,5 @@
 use crate::camera::CameraPresetConfig;
+use crate::gameplay::DefaultMovementPatternKind;
 use crate::world::{
     EntityTemplate, EntityTemplateCollider, DEFAULT_BULLET_TEMPLATE, DEFAULT_ENEMY_TEMPLATE,
     DEFAULT_PLAYER_TEMPLATE,
@@ -37,6 +38,15 @@ impl EnemyBehavior {
             2 => Self::Static,
             3 => Self::Orbit,
             _ => Self::Chase,
+        }
+    }
+
+    pub(crate) const fn default_movement_pattern_kind(self) -> DefaultMovementPatternKind {
+        match self {
+            Self::Chase => DefaultMovementPatternKind::ChasePlayer,
+            Self::Drift => DefaultMovementPatternKind::MoveToWorldCenter,
+            Self::Static => DefaultMovementPatternKind::Static,
+            Self::Orbit => DefaultMovementPatternKind::OrbitPlayer,
         }
     }
 }

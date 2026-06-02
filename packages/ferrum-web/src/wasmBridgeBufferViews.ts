@@ -1,6 +1,7 @@
 import type { Engine } from "../pkg/ferrum_core";
 import type { AudioEventBufferView } from "./audioEventDecoder";
 import type { CollisionEventBufferView } from "./collisionEventDecoder";
+import type { GameplayEventBufferView } from "./gameplayEventDecoder";
 import type { PhysicsDebugLineBufferView } from "./physicsDebugLineDecoder";
 import type {
   PhysicsBodyContactHitBufferView,
@@ -119,6 +120,20 @@ export function collisionEventBufferView(
     ),
     eventCount,
     u32sPerEvent: context.layout.u32sPerCollisionEvent,
+  };
+}
+
+export function gameplayEventBufferView(context: WasmBridgeBufferContext): GameplayEventBufferView {
+  const ptr = context.engine.gameplay_event_ptr();
+  const eventCount = context.engine.gameplay_event_len();
+  return {
+    buffer: new Uint32Array(
+      context.memory.buffer,
+      ptr,
+      eventCount * context.layout.u32sPerGameplayEvent,
+    ),
+    eventCount,
+    u32sPerEvent: context.layout.u32sPerGameplayEvent,
   };
 }
 

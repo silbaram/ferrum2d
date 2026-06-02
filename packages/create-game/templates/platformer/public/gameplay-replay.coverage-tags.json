@@ -1,0 +1,16 @@
+{
+  "format": "ferrum2d.consumer.gameplay-replay.coverage-tags",
+  "version": 1,
+  "coverageTagDefinitions": {
+    "platformer-template": "Consumer replay validates the generated Platformer template surface contract."
+  },
+  "coverageTagGroups": {
+    "template-contracts": {
+      "description": "Consumer template replay contracts generated with create-game.",
+      "tags": [
+        "platformer-template"
+      ]
+    }
+  },
+  "deprecatedCoverageTags": {}
+}

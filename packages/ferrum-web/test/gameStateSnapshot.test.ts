@@ -1,6 +1,9 @@
 import { deepEqual, equal, ok } from "node:assert/strict";
 import { test } from "node:test";
-import type { BuiltInShooterStateSnapshot } from "../src/builtInShooterStateSnapshot.js";
+import {
+  validateBuiltInShooterStateSnapshot,
+  type BuiltInShooterStateSnapshot,
+} from "../src/builtInShooterStateSnapshot.js";
 import type { FerrumEngine } from "../src/createEngine.js";
 import {
   captureGameStateSnapshot,
@@ -88,6 +91,67 @@ test("game state snapshot captures and restores built-in shooter state", () => {
   deepEqual(engine.captureShooterStateSnapshot(), shooterState);
 });
 
+test("game state restore aborts side effects when built-in shooter restore fails", () => {
+  const shooterState = fakeShooterState({ score: 7 });
+  const engine = fakeEngine({ score: 7, shooterState });
+  const snapshot = captureGameStateSnapshot(engine, {
+    includeBuiltInShooterState: true,
+    customState: { checkpoint: "after-boss" },
+  });
+  let restoredCustom: unknown;
+
+  engine.setScene({
+    score: 0,
+    shooterState: fakeShooterState({ score: 0 }),
+    restoreShooterStateSnapshotResult: false,
+  });
+  const result = restoreGameStateSnapshot(engine, snapshot, {
+    applyCustomState: (customState) => {
+      restoredCustom = customState;
+    },
+  });
+
+  equal(result.builtInShooterStateApplied, false);
+  equal(result.customStateApplied, false);
+  equal(restoredCustom, undefined);
+  equal(result.sceneAfter.score, 0);
+  deepEqual(engine.captureShooterStateSnapshot(), fakeShooterState({ score: 0 }));
+});
+
+test("built-in shooter state validation rejects header version mismatch", () => {
+  const shooterState = fakeShooterState();
+
+  assertThrows(
+    () =>
+      validateBuiltInShooterStateSnapshot({
+        ...shooterState,
+        headerU32s: [6, ...shooterState.headerU32s.slice(1)],
+      }),
+    /headerU32s\.0 must match version/,
+  );
+});
+
+test("built-in shooter state validation rejects legacy v11 layout sizes", () => {
+  const shooterState = fakeShooterState();
+
+  assertThrows(
+    () =>
+      validateBuiltInShooterStateSnapshot({
+        ...shooterState,
+        headerFloats: shooterState.headerFloats.slice(0, 6),
+      }),
+    /headerFloats length must be 8/,
+  );
+  assertThrows(
+    () =>
+      validateBuiltInShooterStateSnapshot({
+        ...shooterState,
+        headerU32s: shooterState.headerU32s.slice(0, 9),
+      }),
+    /headerU32s length must be 37/,
+  );
+});
+
 test("game state snapshot rejects non-JSON custom state", () => {
   assertThrows(
     () => captureGameStateSnapshot(fakeEngine(), {
@@ -116,6 +180,7 @@ function fakeEngine(initial: Partial<FakeScene> = {}): FerrumEngine & { setScene
     cameraX: initial.cameraX ?? 0,
     cameraY: initial.cameraY ?? 0,
     shooterState: initial.shooterState ?? fakeShooterState(),
+    restoreShooterStateSnapshotResult: initial.restoreShooterStateSnapshotResult ?? true,
   };
   return {
     score: () => scene.score,
@@ -126,6 +191,9 @@ function fakeEngine(initial: Partial<FakeScene> = {}): FerrumEngine & { setScene
     cameraY: () => scene.cameraY,
     captureShooterStateSnapshot: () => scene.shooterState,
     restoreShooterStateSnapshot: (snapshot) => {
+      if (!scene.restoreShooterStateSnapshotResult) {
+        return false;
+      }
       scene.shooterState = snapshot;
       scene.score = snapshot.headerU32s[2] ?? scene.score;
       return true;
@@ -144,19 +212,20 @@ interface FakeScene {
   cameraX: number;
   cameraY: number;
   shooterState: BuiltInShooterStateSnapshot;
+  restoreShooterStateSnapshotResult: boolean;
 }
 
 function fakeShooterState(overrides: { score?: number } = {}): BuiltInShooterStateSnapshot {
   return {
     format: "ferrum2d.builtin-shooter-state",
-    version: 1,
-    headerFloats: [0, 1, 0, 0, 400, 240],
-    headerU32s: [1, 1, overrides.score ?? 0, 0, 0, 0, 0, 0],
-    entityFloats: [400, 240, 0, 0, 0, 0, 0],
-    entityU32s: [0, 0],
+    version: 11,
+    headerFloats: [0, 1, 0, 0, 400, 240, 0, 0],
+    headerU32s: [11, 1, overrides.score ?? 0, 0, 0, 0, 0, 0, 0, ...Array(28).fill(0)],
+    entityFloats: [400, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    entityU32s: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     entityCount: 1,
-    floatsPerEntity: 7,
-    u32sPerEntity: 2,
+    floatsPerEntity: 35,
+    u32sPerEntity: 21,
   };
 }
 

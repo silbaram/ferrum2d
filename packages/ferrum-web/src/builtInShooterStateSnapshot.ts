@@ -1,5 +1,9 @@
 export const BUILT_IN_SHOOTER_STATE_FORMAT = "ferrum2d.builtin-shooter-state";
-export const BUILT_IN_SHOOTER_STATE_VERSION = 1;
+export const BUILT_IN_SHOOTER_STATE_VERSION = 11;
+export const BUILT_IN_SHOOTER_STATE_HEADER_FLOATS = 8;
+export const BUILT_IN_SHOOTER_STATE_HEADER_U32S = 37;
+export const BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY = 35;
+export const BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY = 21;
 
 export interface BuiltInShooterStateSnapshot {
   readonly format: typeof BUILT_IN_SHOOTER_STATE_FORMAT;
@@ -20,14 +24,29 @@ export function validateBuiltInShooterStateSnapshot(snapshot: BuiltInShooterStat
   if (snapshot.version !== BUILT_IN_SHOOTER_STATE_VERSION) {
     throw new Error(`built-in shooter state version must be ${BUILT_IN_SHOOTER_STATE_VERSION}.`);
   }
+  if (snapshot.headerU32s[0] !== snapshot.version) {
+    throw new Error("built-in shooter state headerU32s.0 must match version.");
+  }
+  if (snapshot.headerFloats.length !== BUILT_IN_SHOOTER_STATE_HEADER_FLOATS) {
+    throw new Error(`built-in shooter state headerFloats length must be ${BUILT_IN_SHOOTER_STATE_HEADER_FLOATS}.`);
+  }
+  if (snapshot.headerU32s.length !== BUILT_IN_SHOOTER_STATE_HEADER_U32S) {
+    throw new Error(`built-in shooter state headerU32s length must be ${BUILT_IN_SHOOTER_STATE_HEADER_U32S}.`);
+  }
   if (!Number.isInteger(snapshot.entityCount) || snapshot.entityCount < 0) {
     throw new Error("built-in shooter state entityCount must be a non-negative integer.");
   }
   if (!Number.isInteger(snapshot.floatsPerEntity) || snapshot.floatsPerEntity <= 0) {
     throw new Error("built-in shooter state floatsPerEntity must be a positive integer.");
   }
+  if (snapshot.floatsPerEntity !== BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY) {
+    throw new Error(`built-in shooter state floatsPerEntity must be ${BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY}.`);
+  }
   if (!Number.isInteger(snapshot.u32sPerEntity) || snapshot.u32sPerEntity <= 0) {
     throw new Error("built-in shooter state u32sPerEntity must be a positive integer.");
+  }
+  if (snapshot.u32sPerEntity !== BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY) {
+    throw new Error(`built-in shooter state u32sPerEntity must be ${BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY}.`);
   }
   if (snapshot.entityFloats.length !== snapshot.entityCount * snapshot.floatsPerEntity) {
     throw new Error("built-in shooter state entityFloats length does not match entityCount.");

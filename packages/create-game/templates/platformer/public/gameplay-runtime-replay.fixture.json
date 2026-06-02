@@ -1,0 +1,407 @@
+{
+  "format": "ferrum2d.consumer.runtime-gameplay-replay.fixture",
+  "version": 1,
+  "scenario": "project-runtime",
+  "description": "Project-specific deterministic runtime gameplay replay fixture.",
+  "coverageTagDefinitionsPath": "public/gameplay-runtime-replay.coverage-tags.json",
+  "coverageTags": [
+    "project-runtime"
+  ],
+  "replay": {
+    "format": "ferrum2d.gameplay-replay.run",
+    "version": 1,
+    "snapshots": [
+      {
+        "frame": 0,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 0,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 0,
+            "entityCount": 8,
+            "spriteCount": 0,
+            "cameraX": 400,
+            "cameraY": 400
+          },
+          "custom": {
+            "template": "platformer",
+            "platformer": {
+              "scene": "built-in-platformer",
+              "controls": {
+                "moveRight": "ArrowRight",
+                "jump": "Space",
+                "start": "Enter"
+              }
+            },
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "platformer-project-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 3,
+                  "action": "press",
+                  "control": "ArrowRight"
+                },
+                {
+                  "frame": 12,
+                  "action": "press",
+                  "control": "Space"
+                },
+                {
+                  "frame": 18,
+                  "action": "release",
+                  "control": "Space"
+                },
+                {
+                  "frame": 30,
+                  "action": "release",
+                  "control": "ArrowRight"
+                }
+              ],
+              "captureFrames": [
+                0,
+                1,
+                12,
+                24,
+                40
+              ],
+              "viewport": {
+                "width": 960,
+                "height": 540
+              }
+            }
+          },
+          "snapshotHash": "4ff07641"
+        },
+        "replayHash": "4ff07641"
+      },
+      {
+        "frame": 1,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 1,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 8,
+            "spriteCount": 0,
+            "cameraX": 480,
+            "cameraY": 370
+          },
+          "custom": {
+            "template": "platformer",
+            "platformer": {
+              "scene": "built-in-platformer",
+              "controls": {
+                "moveRight": "ArrowRight",
+                "jump": "Space",
+                "start": "Enter"
+              }
+            },
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "platformer-project-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 3,
+                  "action": "press",
+                  "control": "ArrowRight"
+                },
+                {
+                  "frame": 12,
+                  "action": "press",
+                  "control": "Space"
+                },
+                {
+                  "frame": 18,
+                  "action": "release",
+                  "control": "Space"
+                },
+                {
+                  "frame": 30,
+                  "action": "release",
+                  "control": "ArrowRight"
+                }
+              ],
+              "captureFrames": [
+                0,
+                1,
+                12,
+                24,
+                40
+              ],
+              "viewport": {
+                "width": 960,
+                "height": 540
+              }
+            }
+          },
+          "snapshotHash": "0aba6059"
+        },
+        "replayHash": "0aba6059"
+      },
+      {
+        "frame": 12,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 12,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 8,
+            "spriteCount": 0,
+            "cameraX": 480,
+            "cameraY": 370
+          },
+          "custom": {
+            "template": "platformer",
+            "platformer": {
+              "scene": "built-in-platformer",
+              "controls": {
+                "moveRight": "ArrowRight",
+                "jump": "Space",
+                "start": "Enter"
+              }
+            },
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "platformer-project-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 3,
+                  "action": "press",
+                  "control": "ArrowRight"
+                },
+                {
+                  "frame": 12,
+                  "action": "press",
+                  "control": "Space"
+                },
+                {
+                  "frame": 18,
+                  "action": "release",
+                  "control": "Space"
+                },
+                {
+                  "frame": 30,
+                  "action": "release",
+                  "control": "ArrowRight"
+                }
+              ],
+              "captureFrames": [
+                0,
+                1,
+                12,
+                24,
+                40
+              ],
+              "viewport": {
+                "width": 960,
+                "height": 540
+              }
+            }
+          },
+          "snapshotHash": "23a7a3f9"
+        },
+        "replayHash": "23a7a3f9"
+      },
+      {
+        "frame": 24,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 24,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 8,
+            "spriteCount": 0,
+            "cameraX": 480,
+            "cameraY": 370
+          },
+          "custom": {
+            "template": "platformer",
+            "platformer": {
+              "scene": "built-in-platformer",
+              "controls": {
+                "moveRight": "ArrowRight",
+                "jump": "Space",
+                "start": "Enter"
+              }
+            },
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "platformer-project-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 3,
+                  "action": "press",
+                  "control": "ArrowRight"
+                },
+                {
+                  "frame": 12,
+                  "action": "press",
+                  "control": "Space"
+                },
+                {
+                  "frame": 18,
+                  "action": "release",
+                  "control": "Space"
+                },
+                {
+                  "frame": 30,
+                  "action": "release",
+                  "control": "ArrowRight"
+                }
+              ],
+              "captureFrames": [
+                0,
+                1,
+                12,
+                24,
+                40
+              ],
+              "viewport": {
+                "width": 960,
+                "height": 540
+              }
+            }
+          },
+          "snapshotHash": "35777cf2"
+        },
+        "replayHash": "35777cf2"
+      },
+      {
+        "frame": 40,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 40,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 8,
+            "spriteCount": 0,
+            "cameraX": 480,
+            "cameraY": 370
+          },
+          "custom": {
+            "template": "platformer",
+            "platformer": {
+              "scene": "built-in-platformer",
+              "controls": {
+                "moveRight": "ArrowRight",
+                "jump": "Space",
+                "start": "Enter"
+              }
+            },
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "platformer-project-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 3,
+                  "action": "press",
+                  "control": "ArrowRight"
+                },
+                {
+                  "frame": 12,
+                  "action": "press",
+                  "control": "Space"
+                },
+                {
+                  "frame": 18,
+                  "action": "release",
+                  "control": "Space"
+                },
+                {
+                  "frame": 30,
+                  "action": "release",
+                  "control": "ArrowRight"
+                }
+              ],
+              "captureFrames": [
+                0,
+                1,
+                12,
+                24,
+                40
+              ],
+              "viewport": {
+                "width": 960,
+                "height": 540
+              }
+            }
+          },
+          "snapshotHash": "b8d195b0"
+        },
+        "replayHash": "b8d195b0"
+      }
+    ],
+    "replayHash": "275b73cb"
+  }
+}

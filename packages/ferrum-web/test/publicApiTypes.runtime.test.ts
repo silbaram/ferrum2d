@@ -1,6 +1,20 @@
 import {
   GAME_STATE_SNAPSHOT_FORMAT,
   GAME_STATE_SNAPSHOT_VERSION,
+  GAMEPLAY_EVENT_FLAG_TILE_IMPACT_BOUNCED,
+  GAMEPLAY_EVENT_FLAG_TILE_IMPACT_IDENTITY_TRUNCATED,
+  GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED,
+  GAMEPLAY_EVENT_KIND_TILE_IMPACT,
+  GAMEPLAY_EVENT_TILE_IMPACT_LAYER_MASK,
+  GAMEPLAY_EVENT_TILE_IMPACT_LAYER_SHIFT,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_MASK,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NEGATIVE_X,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NEGATIVE_Y,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NONE,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_POSITIVE_X,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_POSITIVE_Y,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_SHIFT,
+  GAMEPLAY_EVENT_TILE_IMPACT_TILE_MASK,
   RuntimeProfiler,
   ScreenFadeTransition,
   captureGameStateSnapshot,
@@ -34,6 +48,8 @@ import type {
   EngineLifecycleSnapshot,
   FadePostProcessPassInput,
   FerrumEngine,
+  FerrumGameplayAuthoringApi,
+  FerrumInputActionApi,
   FerrumRuntime,
   FerrumRuntimeEnvironment,
   FerrumRuntimeFrame,
@@ -51,6 +67,8 @@ import type {
   HudThemePresetName,
   Hd2dTileOccluderDefinition,
   Hd2dTileOccluderGridInput,
+  InputActionRuntimeBinding,
+  InputActionRuntimeControl,
   InputManagerOptions,
   LightingScene2D,
   LightingSceneProvider,
@@ -213,6 +231,66 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     },
   };
   const runtimeProfiler = new RuntimeProfiler(runtimeProfilerOptions);
+  equal(GAMEPLAY_EVENT_KIND_TILE_IMPACT, 9);
+  equal(GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED, 10);
+  equal(GAMEPLAY_EVENT_FLAG_TILE_IMPACT_BOUNCED, 8);
+  equal(GAMEPLAY_EVENT_FLAG_TILE_IMPACT_IDENTITY_TRUNCATED, 16);
+  equal(GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_SHIFT, 8);
+  equal(GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_MASK, 0b111 << 8);
+  equal(GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NONE, 0);
+  equal(GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_POSITIVE_X, 1);
+  equal(GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NEGATIVE_X, 2);
+  equal(GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_POSITIVE_Y, 3);
+  equal(GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NEGATIVE_Y, 4);
+  equal(GAMEPLAY_EVENT_TILE_IMPACT_LAYER_SHIFT, 24);
+  equal(GAMEPLAY_EVENT_TILE_IMPACT_LAYER_MASK, 0xff << 24);
+  equal(GAMEPLAY_EVENT_TILE_IMPACT_TILE_MASK, 0x00ff_ffff);
+  const gameplayAuthoringApi: FerrumGameplayAuthoringApi = {
+    gameplayEntityExists: () => true,
+    applyGameplayBehaviorCommands: (commands) => ({ commands, results: [] }),
+    installBehaviorStateMachineRuntime: () => ({
+      plan: {
+        machine: "enemyAi",
+        initial: "idle",
+        initialStateId: 1,
+        states: [],
+        transitions: [],
+      },
+      applied: true,
+    }),
+    gameplayBehaviorState: () => 1,
+    createBehaviorStateMachineCurrentStateCommandPlan: () => ({
+      machine: "enemyAi",
+      state: "idle",
+      stateId: 1,
+      behaviorProfiles: [],
+      sourceCommands: [],
+      commands: [],
+    }),
+    applyBehaviorStateMachineStateCommands: (plan) => ({
+      plan,
+      commands: plan.commands,
+      results: [],
+    }),
+    preflightBehaviorStateMachineStateCommands: (plan) => ({
+      plan,
+      commands: plan.commands,
+      results: [],
+      mode: "overlay",
+      clearOperations: [],
+    }),
+  };
+  const inputActionControl: InputActionRuntimeControl = "enter";
+  const inputActionBinding: InputActionRuntimeBinding = {
+    control: inputActionControl,
+    activation: "pressed",
+  };
+  const inputActionApi: FerrumInputActionApi = {
+    setInputActionBinding: (actionId, bindingIndex, binding) =>
+      actionId === 3 && bindingIndex === 0 && binding.control === "enter" && binding.activation === "pressed",
+    clearInputActionBindings: (actionId) => actionId === 3,
+    resetInputActionBindings: () => undefined,
+  };
   const runtimeBudget: RuntimeDiagnosticsBudget = { maxFrameTimeMs: 16.7, maxAssetLoadElapsedMs: 250 };
   const runtimeFrameSample: RuntimeDiagnosticsFrameSample = runtimeDiagnosticsFrameSample({
     fps: 60,
@@ -250,14 +328,14 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   const gameStateCustom: GameStateSnapshotJsonValue = { checkpoint: "alpha" };
   const builtInShooterState: BuiltInShooterStateSnapshot = {
     format: "ferrum2d.builtin-shooter-state",
-    version: 1,
-    headerFloats: [0, 1, 0, 0, 400, 240],
-    headerU32s: [1, 1, 3, 0, 0, 0, 0, 0],
-    entityFloats: [400, 240, 0, 0, 0, 0, 0],
-    entityU32s: [0, 0],
+    version: 11,
+    headerFloats: [0, 1, 0, 0, 400, 240, 0, 0],
+    headerU32s: [11, 1, 3, 0, 0, 0, 0, 0, 0, ...Array(28).fill(0)],
+    entityFloats: [400, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    entityU32s: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     entityCount: 1,
-    floatsPerEntity: 7,
-    u32sPerEntity: 2,
+    floatsPerEntity: 35,
+    u32sPerEntity: 21,
   };
   const publicCaptureGameStateSnapshot: PublicApi["captureGameStateSnapshot"] = captureGameStateSnapshot;
   const publicGameStateSnapshotFormat: PublicApi["GAME_STATE_SNAPSHOT_FORMAT"] = GAME_STATE_SNAPSHOT_FORMAT;
@@ -287,6 +365,11 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   equal(publicRuntimeDiagnosticsFrameSample(runtimeFrameSample).drawCalls, 1);
   equal(publicEvaluateRuntimeProfilerBudget(runtimeSnapshot, runtimeBudget).passed, true);
   equal(runtimeReport.passed, true);
+  equal(gameplayAuthoringApi.gameplayEntityExists({ entityId: 1, entityGeneration: 1 }), true);
+  equal(gameplayAuthoringApi.gameplayBehaviorState({ entityId: 1, entityGeneration: 1 }), 1);
+  equal(inputActionApi.setInputActionBinding(3, 0, inputActionBinding), true);
+  equal(inputActionApi.clearInputActionBindings(3), true);
+  inputActionApi.resetInputActionBindings();
   equal(runtimeViolation, undefined);
   equal(publicGameStateSnapshotFormat, "ferrum2d.game-state.snapshot");
   equal(publicGameStateSnapshotVersion, 1);
@@ -519,11 +602,33 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     mouseY: 0,
     cameraX: 0,
     cameraY: 0,
+    actionDiagnostics: {
+      triggerAttempts: 0,
+      triggerFailures: 0,
+      triggerFailureEventsPushed: 0,
+      triggerCommitSkips: 0,
+      failureReasonCounts: [],
+    },
+    spawnDiagnostics: {
+      commandsDrained: 0,
+      projectileSpawns: 0,
+      projectileArcsApplied: 0,
+      projectileShootAudioEventsPushed: 0,
+      prefabSpawns: 0,
+      prefabSpawnedPayloads: 0,
+      prefabSpawnedEventsPushed: 0,
+    },
     audioEventCount: 0,
     audioEvents: [],
     physics: physicsStats,
     collisionEventBuffer,
     collisionEvents: [collisionEvent],
+    gameplayEventBuffer: {
+      buffer: new Uint32Array(0),
+      eventCount: 0,
+      u32sPerEvent: 8,
+    },
+    gameplayEvents: [],
     physicsDebugLineBuffer,
     physicsDebugLines: [physicsDebugLine],
     renderCommands: [],

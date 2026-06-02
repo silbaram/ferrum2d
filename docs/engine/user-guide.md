@@ -1,6 +1,6 @@
 # Ferrum2D 사용자 설명서
 
-Ferrum2D는 브라우저에서 실행되는 2D 게임을 만들기 위한 Rust + WebAssembly 기반 게임 엔진이다. 현재 단계는 **MVP 개발 완료, 상용제품 기능 개발** 이며, `examples/minimal-game` starter, `examples/topdown-shooter`, `examples/breakout`, `examples/platformer` 예제를 기준으로 runtime, 입력, 충돌, 렌더링, 에셋, 효과음, 디버그 표시를 검증한다.
+Ferrum2D는 브라우저에서 실행되는 2D 게임을 만들기 위한 Rust + WebAssembly 기반 게임 엔진이다. 현재 단계는 **MVP 개발 완료, 상용제품 기능 개발** 이며, `examples/starter-runtime`, `examples/topdown-shooter`, `examples/breakout`, `examples/platformer` 예제를 기준으로 runtime, 입력, 충돌, 렌더링, 에셋, 효과음, 디버그 표시를 검증한다.
 
 이 문서는 실행과 간단한 게임 수정 흐름을 안내한다. Top-down Shooter 예제 설정의 전체 필드, 기본값, 검증 규칙은 [Top-down Shooter Game Spec](topdown-shooter-game-spec.md)을 기준으로 삼는다.
 
@@ -9,7 +9,7 @@ Ferrum2D는 브라우저에서 실행되는 2D 게임을 만들기 위한 Rust +
 - 브라우저에서 Top-down Shooter 예제를 실행한다.
 - 브라우저에서 Breakout 예제를 실행해 shooter와 다른 장르 흐름을 확인한다.
 - 브라우저에서 Platformer 예제를 실행해 kinematic platformer controller, coyote/jump buffering, step offset, one-way/moving platform 경로를 확인한다.
-- `examples/minimal-game`에서 `createFerrumRuntime()` 기반 starter 흐름과 `UiOverlay` HUD/dialog를 확인한다.
+- `examples/starter-runtime`에서 `createFerrumRuntime()` 기반 starter 흐름과 `UiOverlay` HUD/dialog를 확인한다.
 - `examples/topdown-shooter/public/game.json`을 수정해 난이도, 적 등장 방식, 무기 성능, prefab 크기와 collider, camera, tilemap, audio policy를 조정한다.
 - Aseprite JSON metadata를 `importAsepriteAtlasFrames(...)`로 Game Spec `atlas.frames`에 연결한다.
 - Tiled orthogonal JSON map을 `importTiledGameSpec(...)`로 Game Spec `atlas`/`tilemap`에 연결한다.
@@ -23,7 +23,7 @@ Ferrum2D는 브라우저에서 실행되는 2D 게임을 만들기 위한 Rust +
 가장 작은 starter 예제는 별도 asset 없이 실행된다.
 
 ```bash
-pnpm dev:minimal
+pnpm dev:starter-runtime
 ```
 
 Breakout 예제도 별도 asset 없이 실행된다.

@@ -461,7 +461,7 @@ const spec: ShooterGameSpec = {
 }
 ```
 
-`tilemap.tiles`의 key는 positive integer string이어야 한다. `0`은 빈 타일로 예약되어 layer data에서만 사용할 수 있다. 일반 layer의 양수 tile id는 `tilemap.tiles`에 존재해야 렌더링할 수 있다. `collisionOnly: true` layer는 반드시 `collision: true`여야 하며, 양수 tile id가 `tilemap.tiles`에 없어도 렌더링하지 않는 solid cell로 허용한다. 이 경로는 LDtk raw `IntGrid`처럼 충돌 그리드만 있는 데이터를 표현하기 위한 것이다. `collision: true` layer의 양수 tile은 player/enemy 이동을 막는 정적 AABB로 해석되고, Rust는 인접 solid tile run을 merged AABB obstacle로 캐시해 충돌 후보 검사를 줄인다. Height span이 다른 solid tile은 같은 run으로 병합하지 않아서 explicit tile query filter가 층/고도를 유지한다. 런타임 단일 cell 변경은 Game Spec 필드가 아니라 `FerrumEngine.setShooterTilemapTile(...)` API로 수행하며, collision layer 변경 시 Rust가 해당 cache를 즉시 refresh한다. Tile height span metadata는 `FerrumEngine.setShooterTileHeightSpan(...)` / `clearShooterTileHeightSpan(...)`로 낮은 빈도 runtime 변경이 가능하다. Rect edit은 `maxCollisionRebuildChunks` 옵션으로 dirty collision chunk budget을 넘는 변경을 거부할 수 있다. 단, `tilemap.tiles.*.slope`가 정의된 tile id는 Rust `TileSlopeDefinition`으로 등록되고 merged AABB solid에서는 제외된다. `tilemap.tiles.*.oneWayPlatform: true`가 정의된 tile id도 merged AABB solid에서는 제외되고, 위에서 내려오는 swept movement와 ground probe만 막는다. `slope`와 `oneWayPlatform: true`는 같은 tile definition에 함께 사용할 수 없다. slope endpoint는 tile-local normalized 좌표이며 `x1`은 `x0`와 달라야 한다. chase enemy는 같은 collision layer의 원본 tile grid를 4방향 navigation 장애물로 사용한다. 낮은 빈도 gameplay/tooling query는 `FerrumEngine.queryTilemapNavigationWaypoint(...)`와 `FerrumEngine.queryTilemapNavigationPath(...)`를 사용하고, 두 query는 optional `heightSpan`이 지정되면 해당 span과 겹치는 solid tile만 장애물로 취급한다. `toHeightSpan`을 함께 지정하면 bridge portal lower/upper floor edge를 포함한 multi-floor path를 반환하며 path point는 `x`, `y`, `heightSpan`을 포함한다. runtime terrain weight는 `FerrumEngine.setShooterTilemapNavigationCost(...)`로 walkable cell에 별도 설정한다. Path query는 전체 waypoint buffer와 debug line buffer를 함께 반환한다. `weapons.projectileArc`가 켜진 bullet과 bullet-tile 충돌은 height span과 `blocksProjectile`을 사용한다. runtime animated tile, editor, per-tile script, navmesh, crowd simulation, 별도 multi-hitbox/hurtbox authoring DSL은 포함하지 않는다.
+`tilemap.tiles`의 key는 positive integer string이어야 한다. `0`은 빈 타일로 예약되어 layer data에서만 사용할 수 있다. 일반 layer의 양수 tile id는 `tilemap.tiles`에 존재해야 렌더링할 수 있다. `collisionOnly: true` layer는 반드시 `collision: true`여야 하며, 양수 tile id가 `tilemap.tiles`에 없어도 렌더링하지 않는 solid cell로 허용한다. 이 경로는 LDtk raw `IntGrid`처럼 충돌 그리드만 있는 데이터를 표현하기 위한 것이다. `collision: true` layer의 양수 tile은 player/enemy 이동을 막는 정적 AABB로 해석되고, Rust는 인접 solid tile run을 merged AABB obstacle로 캐시해 충돌 후보 검사를 줄인다. Height span이 다른 solid tile은 같은 run으로 병합하지 않아서 explicit tile query filter가 층/고도를 유지한다. 런타임 단일 cell 변경은 Game Spec 필드가 아니라 `FerrumEngine.setShooterTilemapTile(...)` API로 수행하며, collision layer 변경 시 Rust가 해당 cache를 즉시 refresh한다. Tile height span metadata는 `FerrumEngine.setShooterTileHeightSpan(...)` / `clearShooterTileHeightSpan(...)`로 낮은 빈도 runtime 변경이 가능하다. Rect edit은 `maxCollisionRebuildChunks` 옵션으로 dirty collision chunk budget을 넘는 변경을 거부할 수 있다. 단, `tilemap.tiles.*.slope`가 정의된 tile id는 Rust `TileSlopeDefinition`으로 등록되고 merged AABB solid에서는 제외된다. `tilemap.tiles.*.oneWayPlatform: true`가 정의된 tile id도 merged AABB solid에서는 제외되고, 위에서 내려오는 swept movement와 ground probe만 막는다. `slope`와 `oneWayPlatform: true`는 같은 tile definition에 함께 사용할 수 없다. slope endpoint는 tile-local normalized 좌표이며 `x1`은 `x0`와 달라야 한다. chase enemy는 같은 collision layer의 원본 tile grid를 4방향 navigation 장애물로 사용한다. 낮은 빈도 gameplay/tooling query는 `FerrumEngine.queryTilemapNavigationWaypoint(...)`와 `FerrumEngine.queryTilemapNavigationPath(...)`를 사용하고, 두 query는 optional `heightSpan`이 지정되면 해당 span과 겹치는 solid tile만 장애물로 취급한다. `toHeightSpan`을 함께 지정하면 bridge portal lower/upper floor edge를 포함한 multi-floor path를 반환하며 path point는 `x`, `y`, `heightSpan`을 포함한다. runtime terrain weight는 `FerrumEngine.setShooterTilemapNavigationCost(...)`로 walkable cell에 별도 설정한다. Path query는 전체 waypoint buffer와 debug line buffer를 함께 반환한다. `weapons.projectileArc`가 켜진 bullet과 bullet-tile 충돌은 height span과 `blocksProjectile`을 사용한다. authored projectile의 blocking tile impact는 Game Spec tile field가 아니라 `behaviorRecipes`의 `projectileAction.tileImpact`로 선언하며, 허용값은 기존 Shooter 의미와 같은 `"despawn"`, blocking tile hit를 완전히 무시하는 `"passThrough"`, contact normal로 projectile velocity를 반사하는 `"bounce"`이다. `passThrough`는 tile-side authored sound/particle/despawn reaction도 실행하지 않고 같은 frame의 entity collision phase로 진행한다. `despawn`과 `bounce` blocking hit는 `GameplayEvent.kind = "tileImpact"` telemetry를 남기며 decoded action은 projectile handle, tile impact policy, layer/tile index, normal direction, bounced/identityTruncated/targetRemoved flag를 제공한다. Behavior FSM은 `event: "tileImpact"` predicate로 이 telemetry를 projectile-scoped state transition에 사용할 수 있으며, predicate 값은 실제 telemetry를 emit하는 `despawn`/`bounce` 또는 code `0`/`2`로 제한된다. `passThrough`는 tile impact telemetry를 만들지 않으므로 FSM predicate로 설치하지 않는다. layer/tile identity가 8-u32 event payload의 layer 8비트 + tile index 24비트 범위를 넘으면 packed payload는 하위 비트만 담고 `identityTruncated`가 true가 된다. world/contact `x/y` impact position과 정확한 초대형 tile identity는 별도 detail buffer 설계 대상이다. `bounce`는 tile-side authored self reaction을 additive로 실행하되, 명시 `Despawn(self)`가 있으면 bounce보다 despawn이 우선한다. runtime animated tile, editor, per-tile script, navmesh, crowd simulation, 별도 multi-hitbox/hurtbox authoring DSL은 포함하지 않는다.
 
 `applyTileRules(...)`는 Game Spec 필드가 아니라 authoring helper다. row-major tile layer data와 ordered neighbor rule을 받아 새 layer data를 생성한다. `match`는 `number`, `number[]`, `"empty"`, `"filled"`, `"any"`를 지원하고 neighbor는 `n/e/s/w/ne/se/sw/nw` 방향에서 같은 조건 또는 `"same"`을 사용할 수 있다. 이 helper로 자동 타일링 결과를 미리 bake한 뒤 `tilemap.layers.*.data`에 넣는다.
 
@@ -561,12 +561,12 @@ const spec: ShooterGameSpec = {
 
 ## Enemy Behavior
 
-- `"chase"`: enemies move toward the player. `collision: true` tilemap layer가 있으면 Rust navigation grid의 다음 waypoint를 향해 이동하고, 경로가 없으면 기존처럼 player를 직접 추적한다.
+- `"chase"`: enemies move toward the player. `collision: true` tilemap layer가 있으면 Rust navigation grid의 다음 waypoint를 향해 이동하고, 경로가 없으면 기존처럼 player를 직접 추적한다. Behavior recipe의 `configureChase`로 entity target을 지정한 경우에도 같은 tilemap waypoint/cache 경로를 사용한다.
 - `"drift"`: enemies move toward the world center.
 - `"static"`: enemies stay still after spawning.
 - `"orbit"`: enemies circle around the player with radial correction based on `enemies.orbit.radius` and `enemies.orbit.radialBand`. navigation grid를 사용하지 않는다.
 
-Behavior and global orbit tuning are validated in TypeScript and sent to Rust as numeric values through `set_shooter_resolved_config(...)`. `chase` navigation은 runtime enemy movement 내부에서 사용하며, `FerrumEngine.queryTilemapNavigationWaypoint(...)`와 `FerrumEngine.queryTilemapNavigationPath(...)`로 같은 collision tilemap 기반 A* 결과를 낮은 빈도 gameplay query에서도 사용할 수 있다. `FerrumEngine.setShooterTilemapNavigationCost(...)`는 walkable cell별 weighted cost를 설정한다. navmesh와 crowd simulation은 포함하지 않는다.
+Behavior and global orbit tuning are validated in TypeScript and sent to Rust as numeric values through `set_shooter_resolved_config(...)`. `chase` navigation은 runtime enemy movement 내부에서 사용하며, player target과 entity target은 cache target identity를 구분한다. `FerrumEngine.queryTilemapNavigationWaypoint(...)`와 `FerrumEngine.queryTilemapNavigationPath(...)`로 같은 collision tilemap 기반 A* 결과를 낮은 빈도 gameplay query에서도 사용할 수 있다. `FerrumEngine.setShooterTilemapNavigationCost(...)`는 walkable cell별 weighted cost를 설정한다. navmesh와 crowd simulation은 포함하지 않는다.
 
 ## Enemy Spawn Pattern
 
@@ -580,7 +580,7 @@ Spawn pattern is validated in TypeScript and sent to Rust as a numeric code thro
 
 `enemies.presets`는 이름이 붙은 enemy 설정 묶음이다. 각 preset은 speed, behavior, spawnPattern, health, scoreReward를 부분적으로 덮어쓸 수 있고 누락된 값은 `enemies.*` 기본값을 따른다. `default` preset은 항상 `enemies.*` 값으로 생성된다.
 
-`enemies.waves`가 있으면 Rust `ShooterScene`이 wave 진행 상태, spawn timer, wave별 spawn count를 소유한다. TypeScript는 wave와 preset 이름을 검증한 뒤 `set_shooter_wave(...)`로 duration, spawnInterval, enemyCount, enemySpeed, behavior code, spawnPattern code, health, scoreReward 숫자만 전달한다. 모든 wave가 끝나면 첫 wave부터 반복된다.
+`enemies.waves`가 있으면 Rust `ShooterScene`이 wave 진행 상태, spawn timer, wave별 spawn count를 소유한다. TypeScript는 wave와 preset 이름을 검증한 뒤 `set_shooter_wave(...)`로 duration, spawnInterval, enemyCount, enemySpeed, behavior code, spawnPattern code, health, scoreReward 숫자만 전달한다. 모든 wave가 끝나면 첫 wave부터 반복된다. 낮은 빈도 Rust/Wasm authoring API `set_shooter_wave_action_trigger(...)`는 특정 wave 진입 시 generation-checked source entity의 action id를 `ActionTriggerQueue`에 넣는 보조 경로다. 이 경로는 wave spawn을 대체하지 않는 additive trigger이며, source entity가 stale이면 queue하지 않는다.
 
 ## Combat
 
@@ -623,6 +623,48 @@ node scripts/validate-game-spec.mjs path/to/game.json
 검증기는 `resolveShooterGameSpec(...)`와 같은 경로를 사용하므로 브라우저 런타임과 CLI의 판정이 일치한다.
 
 JSON Schema는 구조 검토와 편집기 보조용으로 유지한다. 새 필드를 추가할 때는 `schemas/shooter-game-spec.schema.json`도 갱신하되, 실제 기본값과 오류 메시지는 TypeScript validator에 맞춘다.
+
+## Authored Behavior Variant
+
+`examples/topdown-shooter/public/authored-behavior.variant.json`은 메인 `game.json`에 새 namespace를 넣지 않고, Top-down Shooter가 gameplay authoring 데이터를 어떻게 묶는지 보여주는 예제용 variant다.
+
+이 파일은 편집기 보조와 agent patch review를 위해 `schemas/topdown-authored-behavior-variant.schema.json`을 `$schema`로 참조한다. JSON Schema는 envelope와 주요 authoring field shape를 잡고, semantic drift는 아래 validation/smoke command가 public package helper와 replay manifest를 함께 읽어 검증한다.
+
+이 variant는 다음 데이터를 함께 가진다.
+
+- `extendsGameSpec`: 기준 Top-down Shooter `game.json` 경로
+- `semantics.fsmStateEntryMode`: browser smoke/demo가 FSM current state command를 적용하는 방식. 현재 값은 `manualReplaceSupported`이며, 자동 state-enter runtime이 아니라 helper가 현재 state command를 낮은 빈도 경계에서 `replaceSupported`로 적용한다는 뜻이다.
+- `semantics.browserPlacement`: replay fixture 좌표를 production browser demo world에 배치하는 별도 계약. 현재는 `anchorReplayBody: "pickup"` instance를 `target: "worldCenter"`에 맞추고 전체 authored fixture 좌표를 `scale: 0.4`로 압축한다.
+- `ids`: `items`/`actions`/`timers` runtime token registry. 현재 variant는 `score -> 1`, `primary -> 1`, `dash -> 2`, `collect-score -> 7`, `summon-enemy -> 11`, `wake -> 13`을 선언하고, recipe와 FSM predicate는 가능하면 inline numeric id 대신 이 registry를 참조한다.
+- `sceneComposition`: prefab/variant/instance와 instance별 `behaviorRecipes` binding. 대부분의 instance는 browser demo에서 physics body로 spawn되지만, `props.runtimeEntity: "builtinShooterPlayer"`를 가진 instance는 새 body를 만들지 않고 현재 built-in Shooter player handle에 command를 적용한다.
+- `behaviorRecipes`: player projectile/dash action, projectile `tileImpact: "despawn"|"passThrough"|"bounce"` policy, pickup, interaction, projectile damage, health, faction damage policy, score reward recipe. `faction`은 gameplay damage mask이며 physics `CollisionLayer`나 tile collision layer를 대체하지 않는다. projectile spawn은 source faction을 bullet에 복사하고 기본 projectile damage gate에서 사용한다. player/authored melee가 enemy를 kill하면 target `scoreReward`를 점수로 반영하고, melee default damage/GameOver도 source/target faction mask를 통과할 때만 적용한다. authored `Damage` reaction과 기본 projectile/melee damage gate가 faction mask로 deny되면 `factionDamageDenied` telemetry가 source/target faction id를 남기고 default hit presentation은 만들지 않는다. full faction relation table은 아직 열지 않는다.
+- `behaviorStateMachines`: interaction, collisionDamage, timer, pickupCollected, tileImpact 같은 Rust-owned gameplay event를 받는 최소 FSM. 현재 예제 variant는 필요한 machine만 선언하며, FSM vocabulary 전체가 visual editor나 callback runtime을 의미하지는 않는다.
+- `replayScenario`: `docs/engine/gameplay-golden/scenarios.json`의 authored behavior scenario id
+
+`sceneComposition`의 instance props는 `replayBody`, `physicsBody`, `behaviorStateMachine`을 명시한다. smoke는 이 값이 replay scenario의 authored body metadata와 일치하는지, FSM machine id가 resolved instance id와 명시적으로 연결되는지 검증한다. `expected.states`는 사람이 읽는 state 문자열을 source of truth로 두며, numeric runtime state id는 smoke가 install plan에서 파생한다.
+
+`docs/engine/gameplay-golden/scenarios.json`의 `topdown-authored-behavior.variantPath`도 이 파일을 가리킨다. 따라서 replay input/body/component metadata와 variant의 prefab/recipe/FSM metadata가 어긋나면 `pnpm smoke:gameplay-replay`와 `pnpm smoke:topdown-authored-behavior-variant` 중 하나가 실패한다.
+
+검증:
+
+```bash
+pnpm validate:topdown-authored-behavior-variant
+pnpm smoke:topdown-authored-behavior-variant
+```
+
+두 명령은 같은 semantic validator를 실행한다. `resolveShooterGameSpec(...)`, `resolveGameplayBehaviorRuntimeIds(...)`, `resolveSceneCompositionSpec(...)`, `dryRunSceneBehaviorRecipes(...)`, `resolveBehaviorStateMachineDocument(...)`, `createBehaviorStateMachineRuntimeInstallPlan(...)`를 public package build에서 실행하고, `ids.actions`, `semantics.browserPlacement`, replay manifest 연결도 확인한다. 즉 variant는 browser runtime에서 바로 로드되는 메인 Game Spec은 아니지만, agent가 prefab/behavior/FSM/replay 계약을 한 파일에서 patch하고 검증할 수 있는 authoring artifact다. 현재 variant의 FSM은 state transition telemetry를 검증하는 범위이며, state entry마다 behavior profile을 자동 apply/clear하는 runtime을 의미하지 않는다.
+
+Production Top-down Shooter build도 이 variant JSON을 asset manifest로 로드하고, 같은 public authoring API 검증 결과를 `window.ferrumTopdownAuthoredBehaviorVariant` summary로 노출한다. `authoredBehaviorVariantApply=true` query가 켜지면 예제 runtime은 scene load 이후 낮은 빈도 경로에서 variant의 spawn 대상 `SceneComposition` instance를 physics body로 만들고, `runtimeEntity: "builtinShooterPlayer"` instance는 `FerrumEngine.builtInShooterPlayerHandle()`로 현재 player handle을 조회해 같은 handle map에 넣는다. 이후 variant `ids` registry를 `FerrumEngine`의 gameplay authoring facade에 넘겨 `BehaviorRecipeCommand[]`와 FSM install plan을 Rust component storage에 적용한다. browser demo 배치는 production `game.json`의 타일맵 장애물을 피하기 위해 `semantics.browserPlacement`가 선언한 anchor/target/scale로 replay fixture 좌표를 player 중심 주변에 압축 배치한다(`runtimeApply.placementAnchorReplayBody`, `placementTarget`, `placementScale`). browser runtime smoke:
+
+```bash
+pnpm smoke:topdown-authored-behavior-runtime
+```
+
+이 smoke는 query toggle을 사용해 variant를 실제 gameplay entity로 spawn/apply하고, `runtimeApply` summary의 instance count `8`, command count `15`, FSM initial/current state id와 `applyId`를 확인한다. `builtin-player` binding은 새 body가 아니라 built-in player handle이며, snapshot의 player primary/dash/spawnPrefab action binding이 variant registry의 action id와 recipe 값으로 적용됐는지도 확인한다. 이후 shooter를 Title에서 Playing으로 진입시켜 Rust frame loop가 score pickup, interaction event, collisionDamage/factionDamageDenied event, actionFailed event, timer event, prefabSpawned event, FSM transition을 처리하는지도 확인한다. 검증값은 score `15`, interaction `tokenId=7`/`once`/`consumedThisFrame`, FSM state `2/2/1`, `behaviorStateChanged` event 3건이다.
+
+transition 후 현재 FSM state의 behavior profile 적용도 자동 frame runtime으로 실행하지 않는다. browser smoke/demo는 window-only helper `ferrumTopdownAuthoredBehaviorApplyCurrentStateCommands()`로 `FerrumEngine.createBehaviorStateMachineCurrentStateCommandPlan(...)`과 `applyBehaviorStateMachineStateCommands(..., { mode: "replaceSupported" })`를 낮은 빈도 경계에서 호출한다. 현재 variant의 `triggered`와 `awake` state는 비어 있어 이전 `interaction`/`timer`/action component를 clear하고, `spent` state는 `projectile.spent` profile의 `configureLifetime` 1건을 적용한다. smoke는 clear-only state의 command count `0`/result count `11`과 `spent` command type `configureLifetime`/result count `12`로 clear-only와 non-empty state profile apply가 같은 helper 경계에서 모두 동작하는지 확인하며, supported clear subset에는 faction, timer trigger, action binding, movement, collision reaction도 포함된다.
+
+`resetGame()`은 World를 새로 만들기 때문에 이전 authored instance handle은 World epoch 범위에서만 유효하다. entity id/generation 숫자가 reset 후 재사용될 수 있으므로 browser demo는 public engine API가 아니라 window-only smoke helper `ferrumTopdownAuthoredBehaviorResetAndReapply()`로 smoke frame/state-command summary를 비우고 variant를 다시 적용한다. smoke는 두 번째 `applyId`에서 runtime apply summary가 교체됐는지, 새 frame summary가 같은 `applyId`를 가지는지, 이벤트 payload가 현재 `runtimeApply.handles`와 일치하는지, current-state command apply가 같은 `applyId`에서 다시 동작하는지, one-shot interaction이 재발행되지 않는지까지 확인한다. 이 적용은 scene load/user-triggered/agent apply 같은 낮은 빈도 경로이며, state entry마다 behavior profile을 자동 apply/clear하는 frame runtime이나 per-entity JS callback은 아니다.
 
 ## Variant 생성
 

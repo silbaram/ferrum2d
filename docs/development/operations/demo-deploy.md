@@ -1,6 +1,6 @@
 # GitHub Pages 데모/문서 배포
 
-Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 관리한다. 목적은 예제 네 개의 production build와 `docs/**/*.md` 기반 HTML 문서를 한 artifact로 묶어 새 사용자가 브라우저에서 바로 확인할 수 있게 하는 것이다.
+Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 관리한다. 목적은 starter와 장르별 production build, `docs/**/*.md` 기반 HTML 문서를 한 artifact로 묶어 새 사용자가 브라우저에서 바로 확인할 수 있게 하는 것이다.
 
 ## 배포 대상
 
@@ -10,7 +10,7 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 | --- | --- |
 | `/` | Pages home: 데모와 문서 진입점 |
 | `/docs/` | `docs/**/*.md` 기반 HTML 문서 사이트 |
-| `/minimal-game/` | `examples/minimal-game/dist` |
+| `/starter-runtime/` | `examples/starter-runtime/dist` |
 | `/topdown-shooter/` | `examples/topdown-shooter/dist` |
 | `/breakout/` | `examples/breakout/dist` |
 | `/platformer/` | `examples/platformer/dist` |

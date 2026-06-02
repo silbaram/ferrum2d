@@ -38,9 +38,20 @@ impl World {
         self.collider_materials.push(None);
         self.collision_filters.push(None);
         self.bullet_lifetimes.push(None);
+        self.projectile_collision_targets.push(None);
+        self.projectile_tile_impacts.push(None);
         self.healths.push(None);
         self.damages.push(None);
         self.score_rewards.push(None);
+        self.gameplay_factions.push(None);
+        self.action_bindings.push(None);
+        self.pickups.push(None);
+        self.interactions.push(None);
+        self.movement_patterns.push(None);
+        self.collision_reactions.push(None);
+        self.behavior_state_machines.push(None);
+        self.behavior_state_enter_actions.push(None);
+        self.gameplay_timer_triggers.push(None);
         Entity { id, generation: 0 }
     }
 
@@ -69,9 +80,20 @@ impl World {
             self.collider_materials[i] = None;
             self.collision_filters[i] = None;
             self.bullet_lifetimes[i] = None;
+            self.projectile_collision_targets[i] = None;
+            self.projectile_tile_impacts[i] = None;
             self.healths[i] = None;
             self.damages[i] = None;
             self.score_rewards[i] = None;
+            self.gameplay_factions[i] = None;
+            self.action_bindings[i] = None;
+            self.pickups[i] = None;
+            self.interactions[i] = None;
+            self.movement_patterns[i] = None;
+            self.collision_reactions[i] = None;
+            self.behavior_state_machines[i] = None;
+            self.behavior_state_enter_actions[i] = None;
+            self.gameplay_timer_triggers[i] = None;
             self.untrack_alive_index(i);
             if self.player == Some(entity) {
                 self.player = None;

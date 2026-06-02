@@ -1,0 +1,146 @@
+{
+  "format": "ferrum2d.consumer.runtime-gameplay-replay.fixture",
+  "version": 1,
+  "scenario": "project-runtime",
+  "description": "Project-specific deterministic runtime gameplay replay fixture.",
+  "coverageTagDefinitionsPath": "public/gameplay-runtime-replay.coverage-tags.json",
+  "coverageTags": [
+    "project-runtime"
+  ],
+  "replay": {
+    "format": "ferrum2d.gameplay-replay.run",
+    "version": 1,
+    "snapshots": [
+      {
+        "frame": 0,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 0,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 0,
+            "entityCount": 1,
+            "spriteCount": 0,
+            "cameraX": 800,
+            "cameraY": 480
+          },
+          "custom": {
+            "template": "minimal",
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "minimal-headless-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                }
+              ],
+              "viewport": {
+                "width": 800,
+                "height": 480
+              }
+            }
+          },
+          "snapshotHash": "c858f54d"
+        },
+        "replayHash": "c858f54d"
+      },
+      {
+        "frame": 1,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 1,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 1,
+            "spriteCount": 0,
+            "cameraX": 800,
+            "cameraY": 480
+          },
+          "custom": {
+            "template": "minimal",
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "minimal-headless-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                }
+              ],
+              "viewport": {
+                "width": 800,
+                "height": 480
+              }
+            }
+          },
+          "snapshotHash": "22ee23b3"
+        },
+        "replayHash": "22ee23b3"
+      },
+      {
+        "frame": 2,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 2,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 1,
+            "spriteCount": 0,
+            "cameraX": 800,
+            "cameraY": 480
+          },
+          "custom": {
+            "template": "minimal",
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "minimal-headless-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                }
+              ],
+              "viewport": {
+                "width": 800,
+                "height": 480
+              }
+            }
+          },
+          "snapshotHash": "47b137b8"
+        },
+        "replayHash": "47b137b8"
+      }
+    ],
+    "replayHash": "bed65038"
+  }
+}

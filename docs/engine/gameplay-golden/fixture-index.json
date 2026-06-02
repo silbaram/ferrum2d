@@ -1,0 +1,225 @@
+{
+  "format": "ferrum2d.gameplay-replay.fixture-index",
+  "version": 1,
+  "scenarioManifestPath": "docs/engine/gameplay-golden/scenarios.json",
+  "coverageTagDefinitionsPath": "docs/engine/gameplay-golden/coverage-tags.json",
+  "fixtures": [
+    {
+      "id": "topdown-basic",
+      "description": "Baseline Top-down Shooter replay covering deterministic start, primary projectile spawn, enemy damage, score reward, and spawn diagnostics.",
+      "coverageTags": [
+        "baseline",
+        "projectile",
+        "score",
+        "spawn-diagnostics"
+      ],
+      "runner": "topdownBasic",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-basic-replay.json",
+      "replayHash": "2f77d0f1",
+      "frameCount": 36,
+      "captureFrameCount": 9
+    },
+    {
+      "id": "topdown-authored-behavior",
+      "description": "Authored behavior replay covering variant-driven pickup, interaction, collision damage, timer, FSM transitions, blocked spawn failure, and timer-driven prefab spawn.",
+      "coverageTags": [
+        "authored-behavior",
+        "variant",
+        "pickup",
+        "interaction",
+        "collision-damage",
+        "faction",
+        "timer",
+        "fsm",
+        "spawn-prefab",
+        "action-failure",
+        "spawn-diagnostics"
+      ],
+      "runner": "topdownAuthoredBehavior",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-authored-behavior-replay.json",
+      "replayHash": "ab94f41f",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "topdown-authored-player-damage-collision",
+      "description": "Authored collision damage replay covering enemy contact damage against the player and GameOver without despawning the player or enemy.",
+      "coverageTags": [
+        "authored-behavior",
+        "collision-damage",
+        "player-damage",
+        "game-over"
+      ],
+      "runner": "topdownAuthoredPlayerDamageCollision",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-authored-player-damage-collision-replay.json",
+      "replayHash": "5219f08a",
+      "frameCount": 3,
+      "captureFrameCount": 4
+    },
+    {
+      "id": "topdown-wave-action-trigger",
+      "description": "Wave-enter action trigger replay covering Rust-owned wave producer to spawnPrefabAction consumer through deferred spawn flush.",
+      "coverageTags": [
+        "wave",
+        "action-trigger",
+        "spawn-prefab",
+        "spawn-diagnostics"
+      ],
+      "runner": "topdownWaveActionTrigger",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-wave-action-trigger-replay.json",
+      "replayHash": "3ba07e50",
+      "frameCount": 6,
+      "captureFrameCount": 7
+    },
+    {
+      "id": "topdown-state-enter-action-trigger",
+      "description": "State-enter action trigger replay covering FSM transition followed by next-frame spawnPrefabAction execution.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "spawn-prefab",
+        "spawn-diagnostics"
+      ],
+      "runner": "topdownStateEnterActionTrigger",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-state-enter-action-trigger-replay.json",
+      "replayHash": "151917e4",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "topdown-state-enter-dash-action-trigger",
+      "description": "State-enter dash replay covering targetPlayer dash execution from a non-player source without success gameplay events.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "dash",
+        "target-player"
+      ],
+      "runner": "topdownStateEnterDashActionTrigger",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-state-enter-dash-action-trigger-replay.json",
+      "replayHash": "49281a4d",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "topdown-state-enter-dash-input-aim-failure",
+      "description": "State-enter dash failure replay covering unsupported input aim for non-player Rust-owned triggers.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "dash",
+        "action-failure",
+        "unsupported-aim"
+      ],
+      "runner": "topdownStateEnterDashActionTrigger",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-state-enter-dash-input-aim-failure-replay.json",
+      "replayHash": "07202429",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "topdown-state-enter-projectile-action-trigger",
+      "description": "State-enter projectile replay covering targetPlayer projectile execution, Bullet-to-Player collision target metadata, and spawn diagnostics.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "projectile",
+        "target-player",
+        "spawn-diagnostics"
+      ],
+      "runner": "topdownStateEnterProjectileActionTrigger",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-state-enter-projectile-action-trigger-replay.json",
+      "replayHash": "c97a7a21",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "topdown-state-enter-projectile-tile-impact",
+      "description": "State-enter projectile replay covering blocking tile impact telemetry before the projectile can hit the target player.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "projectile",
+        "target-player",
+        "tile-impact",
+        "spawn-diagnostics"
+      ],
+      "runner": "topdownStateEnterProjectileActionTrigger",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-state-enter-projectile-tile-impact-replay.json",
+      "replayHash": "1389e9f9",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "topdown-authored-projectile-tile-impact-fsm",
+      "description": "Authored projectile replay covering bounce tileImpact telemetry driving a projectile-scoped FSM transition in the same Rust frame.",
+      "coverageTags": [
+        "authored-behavior",
+        "fsm",
+        "projectile",
+        "tile-impact"
+      ],
+      "runner": "topdownAuthoredProjectileTileImpactFsm",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-authored-projectile-tile-impact-fsm-replay.json",
+      "replayHash": "5937ad27",
+      "frameCount": 2,
+      "captureFrameCount": 3
+    },
+    {
+      "id": "topdown-state-enter-projectile-collision-target-failure",
+      "description": "State-enter projectile failure replay covering unsupported collision target handling for Rust-owned triggered projectiles.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "projectile",
+        "action-failure",
+        "unsupported-collision-target"
+      ],
+      "runner": "topdownStateEnterProjectileActionTrigger",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-state-enter-projectile-collision-target-failure-replay.json",
+      "replayHash": "edaf772d",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "topdown-state-enter-melee-action-trigger",
+      "description": "State-enter melee replay covering target-player melee execution and player GameOver from a non-player source.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "melee",
+        "target-player",
+        "game-over"
+      ],
+      "runner": "topdownStateEnterMeleeActionTrigger",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-state-enter-melee-action-trigger-replay.json",
+      "replayHash": "7929a860",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "topdown-state-enter-melee-enemy-target",
+      "description": "State-enter melee replay covering enemy-target execution from a non-player source.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "melee",
+        "enemy-target",
+        "collision-damage"
+      ],
+      "runner": "topdownStateEnterMeleeActionTrigger",
+      "fixturePath": "docs/engine/gameplay-golden/topdown-state-enter-melee-enemy-target-replay.json",
+      "replayHash": "afa2aca6",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    }
+  ]
+}

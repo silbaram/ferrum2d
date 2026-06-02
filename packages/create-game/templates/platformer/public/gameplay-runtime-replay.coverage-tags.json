@@ -1,0 +1,16 @@
+{
+  "format": "ferrum2d.consumer.gameplay-replay.coverage-tags",
+  "version": 1,
+  "coverageTagDefinitions": {
+    "project-runtime": "Project-specific deterministic runtime gameplay replay coverage."
+  },
+  "coverageTagGroups": {
+    "runtime": {
+      "description": "Project runtime replay coverage.",
+      "tags": [
+        "project-runtime"
+      ]
+    }
+  },
+  "deprecatedCoverageTags": {}
+}

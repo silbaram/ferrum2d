@@ -1,6 +1,21 @@
+use crate::entity::Entity;
+use crate::gameplay::push_action_failure_event;
 use crate::world::World;
 
 use super::super::{EnemyBehavior, EnemySpawnPattern, ShooterScene, ShooterWaveConfig};
+use super::{ActionTriggerCommand, GameplayEventSink};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::shooter_scene) struct WaveActionTrigger {
+    pub(in crate::shooter_scene) source: Entity,
+    pub(in crate::shooter_scene) action_id: u32,
+}
+
+impl WaveActionTrigger {
+    pub(in crate::shooter_scene) const fn new(source: Entity, action_id: u32) -> Self {
+        Self { source, action_id }
+    }
+}
 
 impl ShooterScene {
     pub(in crate::shooter_scene) fn tick_playing_timers(&mut self, delta: f32) {
@@ -22,7 +37,11 @@ impl ShooterScene {
         self.enemy_spawn_timer = self.active_spawn_interval();
     }
 
-    pub(in crate::shooter_scene) fn advance_wave_if_needed(&mut self) {
+    pub(in crate::shooter_scene) fn advance_wave_if_needed(
+        &mut self,
+        world: &World,
+        gameplay_events: Option<&mut GameplayEventSink<'_>>,
+    ) {
         let Some(wave) = self.active_wave() else {
             return;
         };
@@ -34,6 +53,7 @@ impl ShooterScene {
         self.wave_elapsed_seconds = 0.0;
         self.wave_spawned_count = 0;
         self.enemy_spawn_timer = self.active_spawn_interval();
+        self.queue_active_wave_action_trigger(world, gameplay_events);
     }
 
     fn active_wave(&self) -> Option<ShooterWaveConfig> {
@@ -80,6 +100,54 @@ impl ShooterScene {
         self.active_wave()
             .map(|wave| self.wave_spawned_count >= wave.enemy_count)
             .unwrap_or(false)
+    }
+
+    pub(crate) fn set_wave_action_trigger(
+        &mut self,
+        world: &World,
+        wave_index: u32,
+        source: Entity,
+        action_id: u32,
+    ) -> bool {
+        if action_id == 0 || !Self::source_is_fresh(world, source) {
+            return false;
+        }
+        let index = wave_index as usize;
+        if index >= self.waves.len() {
+            return false;
+        }
+        if index >= self.wave_action_triggers.len() {
+            self.wave_action_triggers.resize(index + 1, None);
+        }
+        self.wave_action_triggers[index] = Some(WaveActionTrigger::new(source, action_id));
+        true
+    }
+
+    fn queue_active_wave_action_trigger(
+        &mut self,
+        world: &World,
+        gameplay_events: Option<&mut GameplayEventSink<'_>>,
+    ) {
+        let Some(trigger) = self
+            .wave_action_triggers
+            .get(self.active_wave_index)
+            .and_then(|trigger| *trigger)
+        else {
+            return;
+        };
+        if !Self::source_is_fresh(world, trigger.source) {
+            return;
+        }
+        let action_trigger = ActionTriggerCommand::wave(trigger.source, trigger.action_id);
+        if let Err(data) = self.action_triggers.queue_action_trigger(action_trigger) {
+            push_action_failure_event(gameplay_events, data);
+        }
+    }
+
+    fn source_is_fresh(world: &World, source: Entity) -> bool {
+        let index = source.id as usize;
+        world.alive.get(index).copied().unwrap_or(false)
+            && world.generations.get(index).copied() == Some(source.generation)
     }
 
     pub(in crate::shooter_scene) fn spawn_enemy_if_needed(&mut self, world: &mut World) {

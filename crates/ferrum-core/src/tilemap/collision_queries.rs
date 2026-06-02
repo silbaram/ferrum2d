@@ -19,16 +19,16 @@ mod one_way;
 mod slope;
 
 impl Tilemap {
-    pub(crate) fn projectile_aabb_hits_blocking_tile(
+    pub(crate) fn projectile_aabb_blocking_tile_hit(
         &self,
         start: Transform2D,
         velocity: Velocity,
         collider: AabbCollider,
         delta: f32,
         query_height_span: Option<HeightSpan>,
-    ) -> bool {
+    ) -> Option<TilemapSweepHit> {
         if !collider.enabled {
-            return false;
+            return None;
         }
 
         let end = if is_valid_tilemap_delta(delta) {
@@ -40,8 +40,12 @@ impl Tilemap {
             start
         };
         let swept_bounds = AabbBounds::swept(start, end, collider);
+        let mut best = None;
 
-        for layer in self.layers.iter().flatten().filter(|layer| layer.collision) {
+        for (layer_index, layer) in self.layers.iter().enumerate() {
+            let Some(layer) = layer.as_ref().filter(|layer| layer.collision) else {
+                continue;
+            };
             let Some(range) = layer.candidate_tile_range_for_bounds(swept_bounds) else {
                 continue;
             };
@@ -67,7 +71,7 @@ impl Tilemap {
 
                     let tile_center = layer.tile_center(tile_index);
                     let tile_collider = layer.tile_aabb_collider(collider.layer);
-                    if CollisionSystem::swept_aabb_contact(
+                    let Some(contact) = CollisionSystem::swept_aabb_contact(
                         start,
                         velocity,
                         collider,
@@ -75,16 +79,21 @@ impl Tilemap {
                         Velocity::default(),
                         tile_collider,
                         delta,
-                    )
-                    .is_some()
-                    {
-                        return true;
+                    ) else {
+                        continue;
+                    };
+                    if best_tile_hit_is_better(&best, contact, layer_index, tile_index) {
+                        best = Some(TilemapSweepHit {
+                            layer_index,
+                            tile_index,
+                            contact,
+                        });
                     }
                 }
             }
         }
 
-        false
+        best
     }
 
     pub fn resolve_dynamic_collisions(&self, world: &mut World) {

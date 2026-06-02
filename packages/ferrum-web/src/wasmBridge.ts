@@ -1,6 +1,8 @@
 import init, { Engine, version, wasm_memory } from "../pkg/ferrum_core.js";
 import { decodeCollisionEvents } from "./collisionEventDecoder";
 import type { CollisionEventBufferView, CollisionEventView } from "./collisionEventDecoder";
+import { decodeGameplayEvents } from "./gameplayEventDecoder";
+import type { GameplayEventBufferView, GameplayEventView } from "./gameplayEventDecoder";
 import { decodeAudioEvents } from "./audioEventDecoder";
 import type { AudioEventBufferView, AudioEventView } from "./audioEventDecoder";
 import { decodePhysicsDebugLines } from "./physicsDebugLineDecoder";
@@ -49,6 +51,7 @@ import {
   audioEventBufferView,
   collisionEventBufferView,
   frameTelemetryBufferView,
+  gameplayEventBufferView,
   physicsBodyContactHitBufferView,
   physicsBodyManifoldHitBufferView,
   physicsBodyStateBufferView,
@@ -129,6 +132,14 @@ export class WasmBridge {
 
   readCollisionEvents(): readonly CollisionEventView[] {
     return this.decodeCollisionEvents(this.readCollisionEventBuffer());
+  }
+
+  readGameplayEventBuffer(): GameplayEventBufferView {
+    return gameplayEventBufferView(this.bufferContext);
+  }
+
+  readGameplayEvents(): readonly GameplayEventView[] {
+    return this.decodeGameplayEvents(this.readGameplayEventBuffer());
   }
 
   readPhysicsDebugLineBuffer(): PhysicsDebugLineBufferView {
@@ -233,6 +244,10 @@ export class WasmBridge {
     return decodeCollisionEvents(view);
   }
 
+  decodeGameplayEvents(view: GameplayEventBufferView): readonly GameplayEventView[] {
+    return decodeGameplayEvents(view);
+  }
+
   decodePhysicsDebugLines(view: PhysicsDebugLineBufferView): readonly PhysicsDebugLineView[] {
     return decodePhysicsDebugLines(view);
   }
@@ -309,6 +324,48 @@ export {
 } from "./audioEventDecoder";
 export type { AudioEventBufferView, AudioEventView } from "./audioEventDecoder";
 export { decodeCollisionEvents };
+export {
+  decodeGameplayEvents,
+  EMPTY_GAMEPLAY_EVENTS,
+  GAMEPLAY_ACTION_FAILURE_BLOCKED_PLACEMENT,
+  GAMEPLAY_ACTION_FAILURE_COOLING_DOWN,
+  GAMEPLAY_ACTION_FAILURE_MISSING_ACTION_BINDING,
+  GAMEPLAY_ACTION_FAILURE_MISSING_ACTION_TARGET,
+  GAMEPLAY_ACTION_FAILURE_MISSING_SOURCE_TRANSFORM,
+  GAMEPLAY_ACTION_FAILURE_PATTERN_MISMATCH,
+  GAMEPLAY_ACTION_FAILURE_SPAWN_QUEUE_FULL,
+  GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_AIM_SOURCE,
+  GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_ANCHOR,
+  GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_COLLISION_TARGET,
+  GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PHASE,
+  GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PREFAB,
+  GAMEPLAY_EVENT_KIND_ACTION_FAILED,
+  GAMEPLAY_EVENT_KIND_BEHAVIOR_STATE_CHANGED,
+  GAMEPLAY_EVENT_KIND_COLLISION_DAMAGE,
+  GAMEPLAY_EVENT_KIND_COLLISION_DESPAWN,
+  GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED,
+  GAMEPLAY_EVENT_KIND_INTERACTION,
+  GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED,
+  GAMEPLAY_EVENT_KIND_PREFAB_SPAWNED,
+  GAMEPLAY_EVENT_KIND_TILE_IMPACT,
+  GAMEPLAY_EVENT_KIND_TIMER,
+  GAMEPLAY_EVENT_FLAG_CONSUMED_THIS_FRAME,
+  GAMEPLAY_EVENT_FLAG_ONCE,
+  GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
+  GAMEPLAY_EVENT_FLAG_TILE_IMPACT_BOUNCED,
+  GAMEPLAY_EVENT_FLAG_TILE_IMPACT_IDENTITY_TRUNCATED,
+  GAMEPLAY_EVENT_TILE_IMPACT_LAYER_MASK,
+  GAMEPLAY_EVENT_TILE_IMPACT_LAYER_SHIFT,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_MASK,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NEGATIVE_X,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NEGATIVE_Y,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NONE,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_POSITIVE_X,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_POSITIVE_Y,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_SHIFT,
+  GAMEPLAY_EVENT_TILE_IMPACT_TILE_MASK,
+  U32S_PER_GAMEPLAY_EVENT,
+} from "./gameplayEventDecoder";
 export { decodePhysicsDebugLines };
 export { decodePhysicsBodyContactHits };
 export { decodePhysicsBodyManifoldHits };
@@ -325,6 +382,11 @@ export type {
   CollisionEventKind,
   CollisionEventView,
 } from "./collisionEventDecoder";
+export type {
+  GameplayEventBufferView,
+  GameplayEventKind,
+  GameplayEventView,
+} from "./gameplayEventDecoder";
 export type { PhysicsDebugLineBufferView, PhysicsDebugLineView };
 export type {
   FrameTelemetryBufferView,

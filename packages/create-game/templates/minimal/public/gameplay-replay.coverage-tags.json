@@ -1,0 +1,16 @@
+{
+  "format": "ferrum2d.consumer.gameplay-replay.coverage-tags",
+  "version": 1,
+  "coverageTagDefinitions": {
+    "starter-runtime-template": "Consumer replay validates the generated Minimal Runtime template surface contract."
+  },
+  "coverageTagGroups": {
+    "template-contracts": {
+      "description": "Consumer template replay contracts generated with create-game.",
+      "tags": [
+        "starter-runtime-template"
+      ]
+    }
+  },
+  "deprecatedCoverageTags": {}
+}

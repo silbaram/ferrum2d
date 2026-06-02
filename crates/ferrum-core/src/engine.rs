@@ -9,7 +9,8 @@ use crate::collision::{
     PHYSICS_DEBUG_DEFAULT,
 };
 use crate::collision_event::{CollisionEvent, CollisionEventCounts, CollisionEventTracker};
-use crate::input::InputState;
+use crate::gameplay_event::GameplayEvent;
+use crate::input::{InputActionRegistry, InputState};
 use crate::particles::{ParticlePreset, ParticleSystem};
 use crate::physics::{
     FixedTimestep, FixedTimestepUpdate, PhysicsCounters, RigidBodyStepConfig, RigidBodyStepScratch,
@@ -29,6 +30,8 @@ use crate::tweens::TweenSystem;
 use crate::world::World;
 
 mod fixed_step;
+mod gameplay_authoring;
+mod input_actions;
 mod particle_controls;
 mod physics_abi;
 mod physics_authoring;
@@ -47,6 +50,7 @@ mod telemetry;
 mod tilemap_api;
 mod viewport_controls;
 use fixed_step::FixedTimestepInputLatch;
+use gameplay_authoring::GameplayAuthoringSnapshot;
 use physics_abi::{
     PHYSICS_BODY_SNAPSHOT_FLAG_BODY_ENABLED, PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_ENABLED,
     PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_MATERIAL_OVERRIDE,
@@ -61,7 +65,8 @@ use physics_abi::{
     PHYSICS_COLLIDER_TYPE_NONE, PHYSICS_COLLIDER_TYPE_ORIENTED_BOX, PHYSICS_EDGE_BODY_RADIUS,
     PHYSICS_JOINT_DISTANCE, PHYSICS_JOINT_GEAR, PHYSICS_JOINT_PRISMATIC, PHYSICS_JOINT_PULLEY,
     PHYSICS_JOINT_REVOLUTE, PHYSICS_JOINT_ROPE, PHYSICS_JOINT_SPRING, PHYSICS_JOINT_WELD,
-    PHYSICS_LAYER_BULLET, PHYSICS_LAYER_ENEMY, PHYSICS_LAYER_PLAYER, PHYSICS_LAYER_WALL,
+    PHYSICS_LAYER_BULLET, PHYSICS_LAYER_ENEMY, PHYSICS_LAYER_PICKUP, PHYSICS_LAYER_PLAYER,
+    PHYSICS_LAYER_WALL,
 };
 use physics_bridge::{
     PhysicsBodyColliderSnapshot, PhysicsEntitySnapshot, PhysicsJointSnapshot, PhysicsQueryResult,
@@ -84,6 +89,7 @@ const TILEMAP_NAVIGATION_PATH_POINT_FLOATS: usize = 5;
 pub struct Engine {
     elapsed_seconds: f64,
     input: InputState,
+    input_actions: InputActionRegistry,
     previous_input_sample: InputState,
     fixed_timestep_input_latch: FixedTimestepInputLatch,
     scene: ShooterScene,
@@ -92,6 +98,7 @@ pub struct Engine {
     active_scene: ActiveScene,
     camera: Camera2D,
     world: World,
+    gameplay_authoring_snapshot: Option<GameplayAuthoringSnapshot>,
     tilemap: Tilemap,
     particles: ParticleSystem,
     tweens: TweenSystem,
@@ -101,6 +108,7 @@ pub struct Engine {
     render_items: Vec<SpriteRenderItem>,
     audio_events: Vec<AudioEvent>,
     collision_events: Vec<CollisionEvent>,
+    gameplay_events: Vec<GameplayEvent>,
     frame_telemetry: FrameTelemetry,
     physics_debug_lines: Vec<PhysicsDebugLine>,
     tilemap_navigation_path_points: Vec<f32>,
@@ -161,6 +169,7 @@ impl Engine {
         let mut engine = Self {
             elapsed_seconds: 0.0,
             input: InputState::default(),
+            input_actions: InputActionRegistry::default(),
             previous_input_sample: InputState::default(),
             fixed_timestep_input_latch: FixedTimestepInputLatch::default(),
             scene: ShooterScene::new(),
@@ -169,6 +178,7 @@ impl Engine {
             active_scene: ActiveScene::Shooter,
             camera: Camera2D::new(DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT),
             world: World::default(),
+            gameplay_authoring_snapshot: None,
             tilemap: Tilemap::default(),
             particles: ParticleSystem::new(),
             tweens: TweenSystem::new(),
@@ -178,6 +188,7 @@ impl Engine {
             render_items: Vec::with_capacity(256),
             audio_events: Vec::with_capacity(16),
             collision_events: Vec::with_capacity(128),
+            gameplay_events: Vec::with_capacity(32),
             frame_telemetry: FrameTelemetry::default(),
             physics_debug_lines: Vec::with_capacity(64),
             tilemap_navigation_path_points: Vec::with_capacity(32),

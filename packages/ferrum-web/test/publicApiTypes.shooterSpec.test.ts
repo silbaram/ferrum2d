@@ -130,14 +130,14 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
     publicResolvePostProcessPasses(postProcessStackInput, postProcessOptions);
   const builtInShooterState: BuiltInShooterStateSnapshot = {
     format: "ferrum2d.builtin-shooter-state",
-    version: 1,
-    headerFloats: [0, 1, 0, 0, 400, 240],
-    headerU32s: [1, 1, 3, 0, 0, 0, 0, 0],
-    entityFloats: [400, 240, 0, 0, 0, 0, 0],
-    entityU32s: [0, 0],
+    version: 11,
+    headerFloats: [0, 1, 0, 0, 400, 240, 0, 0],
+    headerU32s: [11, 1, 3, 0, 0, 0, 0, 0, 0, ...Array(28).fill(0)],
+    entityFloats: [400, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    entityU32s: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     entityCount: 1,
-    floatsPerEntity: 7,
-    u32sPerEntity: 2,
+    floatsPerEntity: 35,
+    u32sPerEntity: 21,
   };
   const physicsDebugLineCamera: PhysicsDebugLineCamera = { x: 0, y: 0 };
   const gameSpec: ShooterGameSpec = {
@@ -594,7 +594,7 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   };
   const engine: Pick<
     FerrumEngine,
-    "setGameSpec" | "captureShooterStateSnapshot" | "restoreShooterStateSnapshot" |
+    "setGameSpec" | "builtInShooterPlayerHandle" | "captureShooterStateSnapshot" | "restoreShooterStateSnapshot" |
       "useBreakoutGame" | "configurePhysicsRuntime" | "configureFixedTimestep" |
       "configureAutoRigidBodyStep" | "stepRigidBodies" |
       "spawnRigidBody" | "addPhysicsBodyCollider" | "getPhysicsBodyColliderCount" |
@@ -708,6 +708,7 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
       postProcessing: resolvedPostProcessPasses,
       physics: resolvePhysicsSpec(gameSpec.physics),
     }),
+    builtInShooterPlayerHandle: () => physicsEntityHandle,
     captureShooterStateSnapshot: () => builtInShooterState,
     restoreShooterStateSnapshot: () => true,
     useBreakoutGame: () => undefined,
@@ -839,5 +840,6 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   equal(physicsLayerSpec.mask?.[0], "world");
   equal(physicsDebugSpec.colliders, true);
   equal(engine.setGameSpec(gameSpec).enemyBehavior, "chase");
+  equal(engine.builtInShooterPlayerHandle()?.entityId, physicsEntityHandle.entityId);
   engine.useBreakoutGame();
 });

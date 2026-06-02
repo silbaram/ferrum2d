@@ -16,6 +16,7 @@ pub(super) const PHYSICS_LAYER_PLAYER: u32 = 0;
 pub(super) const PHYSICS_LAYER_ENEMY: u32 = 1;
 pub(super) const PHYSICS_LAYER_BULLET: u32 = 2;
 pub(super) const PHYSICS_LAYER_WALL: u32 = 3;
+pub(super) const PHYSICS_LAYER_PICKUP: u32 = 4;
 
 pub(super) const PHYSICS_JOINT_DISTANCE: u32 = 0;
 pub(super) const PHYSICS_JOINT_ROPE: u32 = 1;

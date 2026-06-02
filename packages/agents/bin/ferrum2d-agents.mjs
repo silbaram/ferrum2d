@@ -254,7 +254,7 @@ Use these agents only for games that depend on @ferrum2d/ferrum-web.
 - consumer_playtest_agent: local playtest, smoke checks, debug overlay evidence.
 - consumer_build_agent: production build, static deploy artifact checks.
 
-Read .agents/harness/ferrum-game-development.md for the shared harness. Prefer npm run ferrum:report, npm run ferrum:validate, and npm run ferrum:smoke when those scripts are available.
+Read .agents/harness/ferrum-game-development.md for the shared harness. Prefer npm run ferrum:report, npm run ferrum:validate, and npm run ferrum:smoke when those scripts are available. For data-driven gameplay changes, also prefer npm run ferrum:authoring-report and npm run ferrum:replay-report when the project provides them. Treat report output as evidence after checking format, version, ok, and failure reports with path/message/suggestion.
 
 Do not use these agents for Ferrum2D engine internals, Rust/Wasm core changes, renderer implementation, npm package publishing, or release management.
 `;
@@ -266,7 +266,7 @@ function claudeInstructions() {
 
 Use the consumer-* project agents and ferrum-consumer-* skills only for games that depend on @ferrum2d/ferrum-web.
 
-Read .agents/harness/ferrum-game-development.md for the shared harness. Prefer npm run ferrum:report, npm run ferrum:validate, and npm run ferrum:smoke when those scripts are available.
+Read .agents/harness/ferrum-game-development.md for the shared harness. Prefer npm run ferrum:report, npm run ferrum:validate, and npm run ferrum:smoke when those scripts are available. For data-driven gameplay changes, also prefer npm run ferrum:authoring-report and npm run ferrum:replay-report when the project provides them. Treat report output as evidence after checking format, version, ok, and failure reports with path/message/suggestion.
 
 Do not use these agents for Ferrum2D engine internals, Rust/Wasm core changes, renderer implementation, npm package publishing, or release management.
 `;
@@ -280,7 +280,7 @@ Use GEMINI.md plus the /ferrum:* project commands for games that depend on @ferr
 
 Gemini CLI officially discovers project context through GEMINI.md and project commands through .gemini/commands/*.toml. Ferrum2D installs /ferrum:project, /ferrum:game-spec, /ferrum:assets, /ferrum:gameplay, /ferrum:playtest, and /ferrum:build commands. Shared skill instructions are installed under .agents/skills/ and referenced by those commands; do not add duplicate .gemini/skills wrappers unless Gemini changes its discovery rules.
 
-Read .agents/harness/ferrum-game-development.md for the shared harness. Prefer npm run ferrum:report, npm run ferrum:validate, and npm run ferrum:smoke when those scripts are available.
+Read .agents/harness/ferrum-game-development.md for the shared harness. Prefer npm run ferrum:report, npm run ferrum:validate, and npm run ferrum:smoke when those scripts are available. For data-driven gameplay changes, also prefer npm run ferrum:authoring-report and npm run ferrum:replay-report when the project provides them. Treat report output as evidence after checking format, version, ok, and failure reports with path/message/suggestion.
 
 Do not use these agents for Ferrum2D engine internals, Rust/Wasm core changes, renderer implementation, npm package publishing, or release management.
 `;

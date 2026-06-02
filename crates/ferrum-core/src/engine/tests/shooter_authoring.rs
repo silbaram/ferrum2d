@@ -70,6 +70,1060 @@ fn resolved_shooter_config_applies_all_values_with_one_call() {
 }
 
 #[test]
+fn gameplay_component_authoring_sets_and_clears_scalar_components() {
+    let mut engine = Engine::new();
+    let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+    let bouncer = engine.world.spawn_enemy(140.0, 100.0, DEFAULT_TEXTURE_ID);
+    let bullet = engine
+        .world
+        .spawn_bullet(120.0, 100.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+
+    assert!(engine.set_gameplay_health(enemy.id, enemy.generation, 4.0));
+    assert!(engine.set_gameplay_score_reward(enemy.id, enemy.generation, 9));
+    assert!(engine.set_gameplay_action_projectile(
+        enemy.id,
+        enemy.generation,
+        7,
+        0.12,
+        420.0,
+        2.0,
+        1.5
+    ));
+    assert!(engine.set_gameplay_action_projectile_with_target(
+        bouncer.id,
+        bouncer.generation,
+        11,
+        0.2,
+        360.0,
+        1.0,
+        1.25,
+        0,
+        0,
+        2
+    ));
+    assert!(engine.set_gameplay_action_dash(enemy.id, enemy.generation, 8, 0.4, 96.0));
+    assert!(engine.set_gameplay_action_melee(enemy.id, enemy.generation, 9, 0.3, 36.0, 4.0));
+    assert!(engine.set_gameplay_action_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        10,
+        0.6,
+        1,
+        0,
+        0,
+        8.0,
+        -4.0
+    ));
+    assert!(engine.set_gameplay_pickup(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_PICKUP_ITEM_SCORE,
+        3,
+        true
+    ));
+    assert!(engine.set_gameplay_interaction(enemy.id, enemy.generation, 5, 28.0, true));
+    assert!(engine.set_gameplay_timer_trigger(enemy.id, enemy.generation, 6, 0.25));
+    assert!(engine.set_gameplay_faction(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_FACTION_ENEMY,
+        1 << GAMEPLAY_FACTION_PLAYER
+    ));
+    assert!(engine.set_gameplay_damage(bullet.id, bullet.generation, 2.0));
+    assert!(engine.set_gameplay_lifetime(bullet.id, bullet.generation, 1.25));
+    assert!(engine.set_gameplay_projectile_tile_impact(
+        bullet.id,
+        bullet.generation,
+        ProjectileTileImpact::Bounce.code()
+    ));
+
+    assert_eq!(engine.world.healths[enemy.id as usize], Some(4.0));
+    assert_eq!(engine.world.score_rewards[enemy.id as usize], Some(9));
+    assert_eq!(
+        engine.world.action_bindings[enemy.id as usize]
+            .unwrap()
+            .iter()
+            .collect::<Vec<_>>(),
+        vec![
+            ActionBinding::projectile(7, 0.12, 420.0, 2.0, 1.5),
+            ActionBinding::dash(8, 0.4, 96.0),
+            ActionBinding::melee(9, 0.3, 36.0, 4.0),
+            ActionBinding::spawn_prefab(
+                10,
+                0.6,
+                1,
+                SpawnAnchor::SelfEntity,
+                SpawnPhase::PrePhysics,
+                8.0,
+                -4.0,
+            ),
+        ]
+    );
+    assert_eq!(
+        engine.world.action_bindings[bouncer.id as usize]
+            .unwrap()
+            .iter()
+            .collect::<Vec<_>>(),
+        vec![ActionBinding::projectile_with_target(
+            11,
+            0.2,
+            crate::components::gameplay::ProjectileActionConfig {
+                speed: 360.0,
+                damage: 1.0,
+                lifetime_seconds: 1.25,
+                aim: crate::components::gameplay::ActionAimSource::Input,
+                collision_target: crate::components::gameplay::ProjectileCollisionTarget::Enemies,
+                tile_impact: ProjectileTileImpact::Bounce,
+            },
+        )]
+    );
+    assert_eq!(
+        engine.world.pickups[enemy.id as usize],
+        Some(Pickup::new(GAMEPLAY_PICKUP_ITEM_SCORE, 3, true))
+    );
+    assert_eq!(
+        engine.world.interactions[enemy.id as usize],
+        Some(Interaction::new(5, 28.0, true))
+    );
+    assert_eq!(
+        engine.world.gameplay_timer_trigger(enemy),
+        Some(GameplayTimerTrigger::new(6, 0.25))
+    );
+    assert_eq!(
+        engine.world.gameplay_faction(enemy),
+        Some(GameplayFaction::new(GAMEPLAY_FACTION_ENEMY, 1 << GAMEPLAY_FACTION_PLAYER).unwrap())
+    );
+    assert_eq!(engine.world.damages[bullet.id as usize], Some(2.0));
+    assert_eq!(
+        engine.world.bullet_lifetimes[bullet.id as usize],
+        Some(1.25)
+    );
+    assert_eq!(
+        engine.world.projectile_tile_impacts[bullet.id as usize],
+        Some(ProjectileTileImpact::Bounce)
+    );
+
+    assert!(engine.clear_gameplay_health(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_score_reward(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_actions(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_pickup(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_interaction(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_timer_trigger(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_faction(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_damage(bullet.id, bullet.generation));
+    assert!(engine.clear_gameplay_lifetime(bullet.id, bullet.generation));
+
+    assert_eq!(engine.world.healths[enemy.id as usize], None);
+    assert_eq!(engine.world.score_rewards[enemy.id as usize], None);
+    assert_eq!(engine.world.action_bindings[enemy.id as usize], None);
+    assert_eq!(engine.world.pickups[enemy.id as usize], None);
+    assert_eq!(engine.world.interactions[enemy.id as usize], None);
+    assert_eq!(engine.world.gameplay_timer_trigger(enemy), None);
+    assert_eq!(engine.world.gameplay_faction(enemy), None);
+    assert_eq!(engine.world.damages[bullet.id as usize], None);
+    assert_eq!(engine.world.bullet_lifetimes[bullet.id as usize], None);
+}
+
+#[test]
+fn gameplay_authoring_snapshot_restores_supported_runtime_component_slots() {
+    let mut engine = Engine::new();
+    let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+
+    assert!(engine.set_gameplay_health(enemy.id, enemy.generation, 4.0));
+    assert!(engine.set_gameplay_damage(enemy.id, enemy.generation, 2.0));
+    assert!(engine.set_gameplay_lifetime(enemy.id, enemy.generation, 1.25));
+    assert!(engine.set_gameplay_score_reward(enemy.id, enemy.generation, 9));
+    assert!(engine.set_gameplay_faction(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_FACTION_ENEMY,
+        1 << GAMEPLAY_FACTION_PLAYER
+    ));
+    assert!(engine.set_gameplay_pickup(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_PICKUP_ITEM_SCORE,
+        3,
+        true
+    ));
+    assert!(engine.set_gameplay_interaction(enemy.id, enemy.generation, 5, 28.0, true));
+    assert!(engine.set_gameplay_timer_action_trigger(enemy.id, enemy.generation, 6, 0.25, 7));
+    assert!(engine.set_gameplay_movement_orbit_player(
+        enemy.id,
+        enemy.generation,
+        72.0,
+        120.0,
+        12.0
+    ));
+    assert!(engine.set_gameplay_action_projectile(
+        enemy.id,
+        enemy.generation,
+        7,
+        0.12,
+        420.0,
+        2.0,
+        1.5
+    ));
+    assert!(engine.set_gameplay_action_dash(enemy.id, enemy.generation, 8, 0.4, 96.0));
+    assert!(engine.set_gameplay_action_melee(enemy.id, enemy.generation, 9, 0.3, 36.0, 4.0));
+    assert!(engine.set_gameplay_action_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        10,
+        0.6,
+        1,
+        0,
+        0,
+        8.0,
+        -4.0
+    ));
+    assert!(engine.add_gameplay_collision_damage(enemy.id, enemy.generation, 1));
+    assert!(engine.add_gameplay_collision_despawn(enemy.id, enemy.generation, 0));
+    assert!(engine.add_gameplay_collision_sound_with_cooldown(
+        enemy.id,
+        enemy.generation,
+        12,
+        0.75,
+        1.1,
+        0.5
+    ));
+    assert!(engine.add_gameplay_collision_particle_with_cooldown(
+        enemy.id,
+        enemy.generation,
+        2,
+        1,
+        0.25
+    ));
+
+    let index = enemy.id as usize;
+    engine.world.interactions[index].as_mut().unwrap().consumed = true;
+    let timer = engine.world.gameplay_timer_triggers[index]
+        .as_mut()
+        .unwrap();
+    timer.remaining_seconds = 0.1;
+    timer.fired = true;
+    assert!(engine
+        .world
+        .commit_action_cooldown_if_ready(enemy, 7)
+        .is_some());
+    for reaction in engine.world.collision_reactions[index]
+        .as_mut()
+        .unwrap()
+        .iter_mut()
+    {
+        match reaction {
+            CollisionReaction::PlaySound { cooldown, .. }
+            | CollisionReaction::SpawnParticle { cooldown, .. } => {
+                cooldown.remaining_seconds = cooldown.duration_seconds;
+            }
+            CollisionReaction::Damage { .. }
+            | CollisionReaction::Pickup { .. }
+            | CollisionReaction::Despawn { .. } => {}
+        }
+    }
+
+    let expected_health = engine.world.healths[index];
+    let expected_damage = engine.world.damages[index];
+    let expected_lifetime = engine.world.bullet_lifetimes[index];
+    let expected_score_reward = engine.world.score_rewards[index];
+    let expected_faction = engine.world.gameplay_factions[index];
+    let expected_pickup = engine.world.pickups[index];
+    let expected_interaction = engine.world.interactions[index];
+    let expected_timer = engine.world.gameplay_timer_triggers[index];
+    let expected_movement = engine.world.movement_patterns[index];
+    let expected_actions = engine.world.action_bindings[index];
+    let expected_collision_reactions = engine.world.collision_reactions[index];
+
+    assert!(engine.capture_gameplay_authoring_snapshot(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_health(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_damage(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_lifetime(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_score_reward(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_faction(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_pickup(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_interaction(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_timer_trigger(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_movement(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_actions(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_collision_reactions(enemy.id, enemy.generation));
+
+    assert!(engine.restore_gameplay_authoring_snapshot(enemy.id, enemy.generation));
+    assert_eq!(engine.world.healths[index], expected_health);
+    assert_eq!(engine.world.damages[index], expected_damage);
+    assert_eq!(engine.world.bullet_lifetimes[index], expected_lifetime);
+    assert_eq!(engine.world.score_rewards[index], expected_score_reward);
+    assert_eq!(engine.world.gameplay_factions[index], expected_faction);
+    assert_eq!(engine.world.pickups[index], expected_pickup);
+    assert_eq!(engine.world.interactions[index], expected_interaction);
+    assert_eq!(engine.world.gameplay_timer_triggers[index], expected_timer);
+    assert_eq!(engine.world.movement_patterns[index], expected_movement);
+    assert_eq!(engine.world.action_bindings[index], expected_actions);
+    assert_eq!(
+        engine.world.collision_reactions[index],
+        expected_collision_reactions
+    );
+
+    engine.clear_gameplay_authoring_snapshot();
+    assert!(!engine.restore_gameplay_authoring_snapshot(enemy.id, enemy.generation));
+    assert!(!engine.capture_gameplay_authoring_snapshot(enemy.id + 1, enemy.generation));
+}
+
+#[test]
+fn gameplay_authoring_snapshot_rejects_stale_or_despawned_restore_handles() {
+    let mut engine = Engine::new();
+    let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+
+    assert!(engine.set_gameplay_health(enemy.id, enemy.generation, 4.0));
+    assert!(engine.capture_gameplay_authoring_snapshot(enemy.id, enemy.generation));
+    assert!(!engine.restore_gameplay_authoring_snapshot(enemy.id, enemy.generation + 1));
+
+    engine.world.despawn(enemy);
+
+    assert!(!engine.restore_gameplay_authoring_snapshot(enemy.id, enemy.generation));
+    assert!(!engine.capture_gameplay_authoring_snapshot(enemy.id, enemy.generation));
+}
+
+#[test]
+fn gameplay_component_authoring_sets_behavior_state_machine() {
+    let mut engine = Engine::new();
+    let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+
+    assert!(engine.set_gameplay_behavior_state_machine(enemy.id, enemy.generation, 1));
+    assert_eq!(
+        engine.world.behavior_state_machines[enemy.id as usize],
+        Some(BehaviorStateMachine::new(1))
+    );
+    assert_eq!(
+        engine.gameplay_behavior_state(enemy.id, enemy.generation),
+        1
+    );
+
+    assert!(engine.add_gameplay_behavior_transition(enemy.id, enemy.generation, 1, 2, 7));
+    let mut expected = BehaviorStateMachine::new(1);
+    assert!(expected.push_transition(BehaviorStateTransition::new(1, 2, 7)));
+    assert_eq!(
+        engine.world.behavior_state_machines[enemy.id as usize],
+        Some(expected)
+    );
+
+    assert!(engine.add_gameplay_behavior_event_transition(
+        enemy.id,
+        enemy.generation,
+        2,
+        3,
+        GAMEPLAY_EVENT_COLLISION_DAMAGE,
+        0,
+    ));
+    assert!(expected.push_transition(BehaviorStateTransition::new_event(
+        2,
+        3,
+        GAMEPLAY_EVENT_COLLISION_DAMAGE,
+        0,
+    )));
+    assert_eq!(
+        engine.world.behavior_state_machines[enemy.id as usize],
+        Some(expected)
+    );
+
+    assert!(engine.add_gameplay_behavior_state_enter_action(enemy.id, enemy.generation, 2, 11, 0,));
+    assert_eq!(
+        engine.world.behavior_state_enter_actions[enemy.id as usize]
+            .unwrap()
+            .iter_for_state(2)
+            .collect::<Vec<_>>(),
+        vec![BehaviorStateEnterAction::new(
+            2,
+            11,
+            BehaviorStateEnterActionPhase::NextFramePrePhysics,
+        )]
+    );
+
+    assert!(engine.clear_gameplay_behavior_state_machine(enemy.id, enemy.generation));
+    assert_eq!(
+        engine.gameplay_behavior_state(enemy.id, enemy.generation),
+        0
+    );
+    assert_eq!(
+        engine.world.behavior_state_machines[enemy.id as usize],
+        None
+    );
+    assert!(engine.clear_gameplay_behavior_state_enter_actions(enemy.id, enemy.generation,));
+    assert_eq!(
+        engine.world.behavior_state_enter_actions[enemy.id as usize],
+        None
+    );
+}
+
+#[test]
+fn gameplay_component_authoring_rejects_invalid_values_and_stale_handles() {
+    let mut engine = Engine::new();
+    let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+
+    assert!(!engine.set_gameplay_health(enemy.id, enemy.generation, f32::NAN));
+    assert!(!engine.set_gameplay_health(enemy.id, enemy.generation, -1.0));
+    assert!(!engine.set_gameplay_damage(enemy.id, enemy.generation, 0.0));
+    assert!(!engine.set_gameplay_damage(enemy.id, enemy.generation, f32::INFINITY));
+    assert!(!engine.set_gameplay_lifetime(enemy.id, enemy.generation, f32::NAN));
+    assert!(engine.set_gameplay_projectile_tile_impact(
+        enemy.id,
+        enemy.generation,
+        ProjectileTileImpact::Bounce.code()
+    ));
+    assert!(!engine.set_gameplay_projectile_tile_impact(enemy.id, enemy.generation, 99));
+    assert_eq!(
+        engine.world.projectile_tile_impacts[enemy.id as usize],
+        Some(ProjectileTileImpact::Bounce)
+    );
+    assert!(engine.set_gameplay_score_reward(enemy.id, enemy.generation, 0));
+    assert!(!engine.set_gameplay_pickup(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_PICKUP_ITEM_SCORE,
+        0,
+        true
+    ));
+    assert!(!engine.set_gameplay_pickup(enemy.id, enemy.generation, 99, 1, true));
+    assert!(!engine.set_gameplay_pickup(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_PICKUP_ITEM_SCORE,
+        1,
+        false
+    ));
+    assert!(!engine.set_gameplay_interaction(enemy.id, enemy.generation, 0, 24.0, true));
+    assert!(!engine.set_gameplay_interaction(enemy.id, enemy.generation, 5, 0.0, true));
+    assert!(!engine.set_gameplay_interaction(enemy.id, enemy.generation, 5, f32::NAN, true));
+    assert!(!engine.set_gameplay_timer_trigger(enemy.id, enemy.generation, 0, 0.25));
+    assert!(!engine.set_gameplay_timer_trigger(enemy.id, enemy.generation, 6, 0.0));
+    assert!(!engine.set_gameplay_timer_trigger(enemy.id, enemy.generation, 6, f32::INFINITY));
+    assert!(!engine.set_gameplay_action_projectile(
+        enemy.id,
+        enemy.generation,
+        0,
+        0.1,
+        420.0,
+        1.0,
+        1.0
+    ));
+    assert!(!engine.set_gameplay_action_projectile(
+        enemy.id,
+        enemy.generation,
+        7,
+        f32::NAN,
+        420.0,
+        1.0,
+        1.0
+    ));
+    assert!(!engine.set_gameplay_action_projectile(
+        enemy.id,
+        enemy.generation,
+        7,
+        0.1,
+        0.0,
+        1.0,
+        1.0
+    ));
+    assert!(!engine.set_gameplay_action_projectile(
+        enemy.id,
+        enemy.generation,
+        7,
+        0.1,
+        420.0,
+        0.0,
+        1.0
+    ));
+    assert!(!engine.set_gameplay_action_projectile(
+        enemy.id,
+        enemy.generation,
+        7,
+        0.1,
+        420.0,
+        1.0,
+        f32::INFINITY
+    ));
+    assert!(!engine.set_gameplay_action_projectile_with_target(
+        enemy.id,
+        enemy.generation,
+        7,
+        0.1,
+        420.0,
+        1.0,
+        1.0,
+        0,
+        0,
+        99
+    ));
+    assert!(!engine.set_gameplay_action_dash(enemy.id, enemy.generation, 0, 0.4, 96.0));
+    assert!(!engine.set_gameplay_action_dash(
+        enemy.id,
+        enemy.generation,
+        8,
+        f32::NEG_INFINITY,
+        96.0
+    ));
+    assert!(!engine.set_gameplay_action_dash(enemy.id, enemy.generation, 8, 0.4, 0.0));
+    assert!(!engine.set_gameplay_action_dash(enemy.id, enemy.generation, 8, 0.4, f32::NAN));
+    assert!(!engine.set_gameplay_action_melee(enemy.id, enemy.generation, 0, 0.3, 36.0, 4.0));
+    assert!(!engine.set_gameplay_action_melee(enemy.id, enemy.generation, 9, f32::NAN, 36.0, 4.0));
+    assert!(!engine.set_gameplay_action_melee(enemy.id, enemy.generation, 9, 0.3, 0.0, 4.0));
+    assert!(!engine.set_gameplay_action_melee(
+        enemy.id,
+        enemy.generation,
+        9,
+        0.3,
+        36.0,
+        f32::INFINITY
+    ));
+    assert!(!engine.set_gameplay_action_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        0,
+        0.5,
+        1,
+        0,
+        0,
+        0.0,
+        0.0
+    ));
+    assert!(!engine.set_gameplay_action_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        10,
+        f32::NAN,
+        1,
+        0,
+        0,
+        0.0,
+        0.0
+    ));
+    assert!(!engine.set_gameplay_action_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        10,
+        0.5,
+        2,
+        0,
+        0,
+        0.0,
+        0.0
+    ));
+    assert!(!engine.set_gameplay_action_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        10,
+        0.5,
+        1,
+        1,
+        0,
+        0.0,
+        0.0
+    ));
+    assert!(!engine.set_gameplay_action_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        10,
+        0.5,
+        1,
+        0,
+        1,
+        0.0,
+        0.0
+    ));
+    assert!(!engine.set_gameplay_action_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        10,
+        0.5,
+        1,
+        0,
+        0,
+        f32::INFINITY,
+        0.0
+    ));
+    assert!(!engine.set_gameplay_behavior_state_machine(enemy.id, enemy.generation, 0));
+    assert!(!engine.add_gameplay_behavior_transition(enemy.id, enemy.generation, 1, 2, 7));
+    assert!(engine.set_gameplay_behavior_state_machine(enemy.id, enemy.generation, 1));
+    assert!(!engine.add_gameplay_behavior_transition(enemy.id, enemy.generation, 0, 2, 7));
+    assert!(!engine.add_gameplay_behavior_transition(enemy.id, enemy.generation, 1, 0, 7));
+    assert!(!engine.add_gameplay_behavior_transition(enemy.id, enemy.generation, 1, 2, 0));
+    assert!(!engine.add_gameplay_behavior_state_enter_action(enemy.id, enemy.generation, 0, 11, 0,));
+    assert!(!engine.add_gameplay_behavior_state_enter_action(enemy.id, enemy.generation, 2, 0, 0,));
+    assert!(!engine.add_gameplay_behavior_state_enter_action(enemy.id, enemy.generation, 2, 11, 1,));
+    assert!(engine.add_gameplay_behavior_state_enter_action(enemy.id, enemy.generation, 2, 11, 0,));
+    assert!(!engine.add_gameplay_behavior_event_transition(
+        enemy.id,
+        enemy.generation,
+        1,
+        2,
+        99,
+        0
+    ));
+    assert!(!engine.add_gameplay_behavior_event_transition(
+        enemy.id,
+        enemy.generation,
+        1,
+        2,
+        GAMEPLAY_EVENT_COLLISION_DAMAGE,
+        7,
+    ));
+    assert!(!engine.add_gameplay_behavior_event_transition(
+        enemy.id,
+        enemy.generation,
+        1,
+        2,
+        GAMEPLAY_EVENT_PICKUP_COLLECTED,
+        0,
+    ));
+    assert!(engine.add_gameplay_behavior_event_transition(
+        enemy.id,
+        enemy.generation,
+        1,
+        2,
+        GAMEPLAY_EVENT_PICKUP_COLLECTED,
+        1,
+    ));
+    assert!(!engine.add_gameplay_behavior_event_transition(
+        enemy.id,
+        enemy.generation,
+        1,
+        2,
+        GAMEPLAY_EVENT_TIMER,
+        0,
+    ));
+    assert!(engine.add_gameplay_behavior_event_transition(
+        enemy.id,
+        enemy.generation,
+        1,
+        2,
+        GAMEPLAY_EVENT_TIMER,
+        6,
+    ));
+    assert!(!engine.add_gameplay_behavior_event_transition(
+        enemy.id,
+        enemy.generation,
+        1,
+        2,
+        GAMEPLAY_EVENT_TILE_IMPACT,
+        3,
+    ));
+    assert!(!engine.add_gameplay_behavior_event_transition(
+        enemy.id,
+        enemy.generation,
+        1,
+        2,
+        GAMEPLAY_EVENT_TILE_IMPACT,
+        1,
+    ));
+    assert!(engine.add_gameplay_behavior_event_transition(
+        enemy.id,
+        enemy.generation,
+        1,
+        2,
+        GAMEPLAY_EVENT_TILE_IMPACT,
+        0,
+    ));
+    assert!(engine.add_gameplay_behavior_event_transition(
+        enemy.id,
+        enemy.generation,
+        1,
+        2,
+        GAMEPLAY_EVENT_TILE_IMPACT,
+        2,
+    ));
+    assert!(engine.gameplay_entity_exists(enemy.id, enemy.generation));
+
+    engine.world.despawn(enemy);
+    assert!(!engine.gameplay_entity_exists(enemy.id, enemy.generation));
+    assert!(!engine.set_gameplay_health(enemy.id, enemy.generation, 1.0));
+    assert!(!engine.set_gameplay_projectile_tile_impact(
+        enemy.id,
+        enemy.generation,
+        ProjectileTileImpact::Despawn.code()
+    ));
+    assert!(!engine.clear_gameplay_score_reward(enemy.id, enemy.generation));
+    assert!(!engine.clear_gameplay_actions(enemy.id, enemy.generation));
+    assert!(!engine.clear_gameplay_pickup(enemy.id, enemy.generation));
+    assert!(!engine.clear_gameplay_interaction(enemy.id, enemy.generation));
+    assert!(!engine.clear_gameplay_timer_trigger(enemy.id, enemy.generation));
+    assert!(!engine.clear_gameplay_behavior_state_machine(enemy.id, enemy.generation));
+    assert!(!engine.clear_gameplay_behavior_state_enter_actions(enemy.id, enemy.generation));
+    assert_eq!(
+        engine.gameplay_behavior_state(enemy.id, enemy.generation),
+        0
+    );
+}
+
+#[test]
+fn input_action_authoring_rejects_invalid_bindings_and_can_reset_defaults() {
+    let mut engine = Engine::new();
+
+    assert!(!engine.set_input_action_binding(
+        0,
+        0,
+        crate::input::INPUT_ACTION_CONTROL_SPACE,
+        crate::input::INPUT_ACTION_ACTIVATION_DOWN,
+    ));
+    assert!(!engine.set_input_action_binding(
+        1,
+        8,
+        crate::input::INPUT_ACTION_CONTROL_SPACE,
+        crate::input::INPUT_ACTION_ACTIVATION_DOWN,
+    ));
+    assert!(!engine.set_input_action_binding(1, 0, 99, crate::input::INPUT_ACTION_ACTIVATION_DOWN,));
+    assert!(!engine.set_input_action_binding(1, 0, crate::input::INPUT_ACTION_CONTROL_SPACE, 99,));
+    assert!(!engine.clear_input_action_bindings(0));
+    assert!(engine.clear_input_action_bindings(1));
+    assert!(engine.set_input_action_binding(
+        1,
+        0,
+        crate::input::INPUT_ACTION_CONTROL_SPACE,
+        crate::input::INPUT_ACTION_ACTIVATION_DOWN,
+    ));
+    engine.reset_input_action_bindings();
+}
+
+#[test]
+fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
+    let mut engine = Engine::new();
+    let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+    let pickup = engine.world.spawn_entity();
+    let target = engine.world.spawn_enemy(140.0, 100.0, DEFAULT_TEXTURE_ID);
+
+    assert!(engine.set_gameplay_movement_topdown_input(enemy.id, enemy.generation, 180.0));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::TopdownInput { speed: 180.0 })
+    );
+
+    assert!(engine.set_gameplay_movement_linear(enemy.id, enemy.generation, 1.0, -2.0));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::Linear { vx: 1.0, vy: -2.0 })
+    );
+
+    assert!(engine.set_gameplay_movement_to_point(enemy.id, enemy.generation, 320.0, 180.0, 90.0));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::MoveToPoint {
+            x: 320.0,
+            y: 180.0,
+            speed: 90.0,
+        })
+    );
+
+    assert!(engine.set_gameplay_movement_chase_player(enemy.id, enemy.generation, 95.0));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::Chase {
+            target: MovementTarget::Player,
+            speed: 95.0,
+        })
+    );
+
+    assert!(engine.set_gameplay_movement_chase_entity(
+        enemy.id,
+        enemy.generation,
+        target.id,
+        target.generation,
+        75.0
+    ));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::Chase {
+            target: MovementTarget::Entity(target),
+            speed: 75.0,
+        })
+    );
+
+    assert!(engine.set_gameplay_movement_orbit_player(enemy.id, enemy.generation, 80.0, 48.0, 6.0));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::Orbit {
+            target: MovementTarget::Player,
+            speed: 80.0,
+            radius: 48.0,
+            radial_band: 6.0,
+        })
+    );
+
+    assert!(engine.add_gameplay_collision_damage(enemy.id, enemy.generation, 1));
+    assert!(engine.add_gameplay_collision_sound(enemy.id, enemy.generation, 42, 0.75, 1.25));
+    assert!(engine.add_gameplay_collision_particle(enemy.id, enemy.generation, 3, 1));
+    assert!(engine.add_gameplay_collision_despawn(enemy.id, enemy.generation, 0));
+    assert!(engine.add_gameplay_collision_pickup(pickup.id, pickup.generation, 0));
+    let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
+    assert_eq!(
+        reactions.iter().collect::<Vec<_>>(),
+        vec![
+            CollisionReaction::Damage {
+                target: CollisionTarget::OtherEntity,
+            },
+            CollisionReaction::PlaySound {
+                sound_id: 42,
+                volume: 0.75,
+                pitch: 1.25,
+                cooldown: Cooldown::ready(0.0),
+                replace_default: false,
+                trigger: CollisionReactionTrigger::Contact,
+            },
+            CollisionReaction::SpawnParticle {
+                preset_id: 3,
+                target: CollisionTarget::OtherEntity,
+                cooldown: Cooldown::ready(0.0),
+                replace_default: false,
+                trigger: CollisionReactionTrigger::Contact,
+            },
+            CollisionReaction::Despawn {
+                target: CollisionTarget::SelfEntity,
+            },
+        ]
+    );
+    let pickup_reactions = engine.world.collision_reactions[pickup.id as usize].unwrap();
+    assert_eq!(
+        pickup_reactions.iter().collect::<Vec<_>>(),
+        vec![CollisionReaction::Pickup {
+            target: CollisionTarget::SelfEntity,
+        }]
+    );
+
+    let policy_enemy = engine.world.spawn_enemy(180.0, 100.0, DEFAULT_TEXTURE_ID);
+    assert!(engine.add_gameplay_collision_sound_with_policy(
+        policy_enemy.id,
+        policy_enemy.generation,
+        43,
+        0.5,
+        0.9,
+        0.2,
+        true,
+    ));
+    assert!(engine.add_gameplay_collision_particle_with_policy(
+        policy_enemy.id,
+        policy_enemy.generation,
+        4,
+        1,
+        0.3,
+        true,
+    ));
+    let policy_reactions = engine.world.collision_reactions[policy_enemy.id as usize].unwrap();
+    assert_eq!(
+        policy_reactions.iter().collect::<Vec<_>>(),
+        vec![
+            CollisionReaction::PlaySound {
+                sound_id: 43,
+                volume: 0.5,
+                pitch: 0.9,
+                cooldown: Cooldown::ready(0.2),
+                replace_default: true,
+                trigger: CollisionReactionTrigger::Contact,
+            },
+            CollisionReaction::SpawnParticle {
+                preset_id: 4,
+                target: CollisionTarget::OtherEntity,
+                cooldown: Cooldown::ready(0.3),
+                replace_default: true,
+                trigger: CollisionReactionTrigger::Contact,
+            },
+        ]
+    );
+
+    let trigger_enemy = engine.world.spawn_enemy(220.0, 100.0, DEFAULT_TEXTURE_ID);
+    assert!(engine.add_gameplay_collision_sound_with_trigger(
+        trigger_enemy.id,
+        trigger_enemy.generation,
+        44,
+        0.4,
+        1.2,
+        0.15,
+        false,
+        1,
+    ));
+    assert!(engine.add_gameplay_collision_particle_with_trigger(
+        trigger_enemy.id,
+        trigger_enemy.generation,
+        5,
+        1,
+        0.2,
+        false,
+        1,
+    ));
+    assert!(!engine.add_gameplay_collision_sound_with_trigger(
+        trigger_enemy.id,
+        trigger_enemy.generation,
+        45,
+        0.4,
+        1.2,
+        0.15,
+        false,
+        99,
+    ));
+    assert!(!engine.add_gameplay_collision_particle_with_trigger(
+        trigger_enemy.id,
+        trigger_enemy.generation,
+        6,
+        1,
+        0.2,
+        false,
+        99,
+    ));
+    let trigger_reactions = engine.world.collision_reactions[trigger_enemy.id as usize].unwrap();
+    assert_eq!(
+        trigger_reactions.iter().collect::<Vec<_>>(),
+        vec![
+            CollisionReaction::PlaySound {
+                sound_id: 44,
+                volume: 0.4,
+                pitch: 1.2,
+                cooldown: Cooldown::ready(0.15),
+                replace_default: false,
+                trigger: CollisionReactionTrigger::Enter,
+            },
+            CollisionReaction::SpawnParticle {
+                preset_id: 5,
+                target: CollisionTarget::OtherEntity,
+                cooldown: Cooldown::ready(0.2),
+                replace_default: false,
+                trigger: CollisionReactionTrigger::Enter,
+            },
+        ]
+    );
+
+    assert!(engine.clear_gameplay_movement(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_collision_reactions(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_collision_reactions(pickup.id, pickup.generation));
+    assert!(engine.clear_gameplay_collision_reactions(policy_enemy.id, policy_enemy.generation));
+    assert!(engine.clear_gameplay_collision_reactions(trigger_enemy.id, trigger_enemy.generation));
+    assert_eq!(engine.world.movement_patterns[enemy.id as usize], None);
+    assert_eq!(engine.world.collision_reactions[enemy.id as usize], None);
+    assert_eq!(engine.world.collision_reactions[pickup.id as usize], None);
+    assert_eq!(
+        engine.world.collision_reactions[policy_enemy.id as usize],
+        None
+    );
+    assert_eq!(
+        engine.world.collision_reactions[trigger_enemy.id as usize],
+        None
+    );
+}
+
+#[test]
+fn gameplay_component_authoring_sets_atomic_damage_reaction() {
+    let mut engine = Engine::new();
+    let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+
+    assert!(engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, 2.5, 1));
+    assert_eq!(engine.world.damages[enemy.id as usize], Some(2.5));
+    let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
+    assert_eq!(
+        reactions.iter().collect::<Vec<_>>(),
+        vec![CollisionReaction::Damage {
+            target: CollisionTarget::OtherEntity,
+        }]
+    );
+
+    assert!(engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, 3.5, 1));
+    assert_eq!(engine.world.damages[enemy.id as usize], Some(3.5));
+    let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
+    assert_eq!(reactions.len(), 1);
+    assert_eq!(
+        reactions.iter().collect::<Vec<_>>(),
+        vec![CollisionReaction::Damage {
+            target: CollisionTarget::OtherEntity,
+        }]
+    );
+}
+
+#[test]
+fn gameplay_component_authoring_damage_reaction_failure_is_atomic() {
+    let mut engine = Engine::new();
+    let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+
+    assert!(engine.add_gameplay_collision_despawn(enemy.id, enemy.generation, 0));
+    assert!(engine.add_gameplay_collision_despawn(enemy.id, enemy.generation, 1));
+    assert!(engine.add_gameplay_collision_sound(enemy.id, enemy.generation, 42, 0.75, 1.25));
+    assert!(engine.add_gameplay_collision_particle(enemy.id, enemy.generation, 3, 1));
+    let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
+    assert_eq!(reactions.len(), 4);
+
+    assert!(!engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, 3.0, 1));
+    assert_eq!(engine.world.damages[enemy.id as usize], None);
+    let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
+    assert_eq!(reactions.len(), 4);
+    assert!(!reactions
+        .iter()
+        .any(|reaction| matches!(reaction, CollisionReaction::Damage { .. })));
+}
+
+#[test]
+fn gameplay_component_authoring_rejects_invalid_movement_and_collision_values() {
+    let mut engine = Engine::new();
+    let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+    let target = engine.world.spawn_enemy(140.0, 100.0, DEFAULT_TEXTURE_ID);
+
+    assert!(!engine.set_gameplay_movement_topdown_input(enemy.id, enemy.generation, 0.0));
+    assert!(!engine.set_gameplay_movement_linear(enemy.id, enemy.generation, f32::NAN, 0.0));
+    assert!(!engine.set_gameplay_movement_to_point(
+        enemy.id,
+        enemy.generation,
+        0.0,
+        f32::INFINITY,
+        1.0
+    ));
+    assert!(!engine.set_gameplay_movement_chase_player(enemy.id, enemy.generation, -1.0));
+    assert!(!engine.set_gameplay_movement_orbit_player(enemy.id, enemy.generation, 1.0, 0.0, 0.0));
+    assert!(!engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, 0.0, 1));
+    assert!(!engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, f32::INFINITY, 1));
+    assert!(!engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, 1.0, 99));
+    assert_eq!(engine.world.damages[enemy.id as usize], None);
+    assert_eq!(engine.world.collision_reactions[enemy.id as usize], None);
+    assert!(!engine.add_gameplay_collision_damage(enemy.id, enemy.generation, 99));
+    assert!(!engine.add_gameplay_collision_pickup(enemy.id, enemy.generation, 99));
+    assert!(!engine.add_gameplay_collision_sound(enemy.id, enemy.generation, 0, 1.0, 1.0));
+    assert!(!engine.add_gameplay_collision_sound(enemy.id, enemy.generation, 1, f32::NAN, 1.0));
+    assert!(!engine.add_gameplay_collision_sound(enemy.id, enemy.generation, 1, 1.0, 0.0));
+    assert!(!engine.add_gameplay_collision_sound_with_cooldown(
+        enemy.id,
+        enemy.generation,
+        1,
+        1.0,
+        1.0,
+        -0.1
+    ));
+    assert!(!engine.add_gameplay_collision_particle(enemy.id, enemy.generation, 256, 1));
+    assert!(!engine.add_gameplay_collision_particle(enemy.id, enemy.generation, 1, 99));
+    assert!(!engine.add_gameplay_collision_particle_with_cooldown(
+        enemy.id,
+        enemy.generation,
+        1,
+        1,
+        f32::NAN
+    ));
+    assert!(engine.add_gameplay_collision_sound_with_cooldown(
+        enemy.id,
+        enemy.generation,
+        1,
+        0.8,
+        1.2,
+        0.25
+    ));
+    assert!(engine.add_gameplay_collision_particle_with_cooldown(
+        enemy.id,
+        enemy.generation,
+        2,
+        0,
+        0.5
+    ));
+
+    engine.world.despawn(target);
+    assert!(!engine.set_gameplay_movement_chase_entity(
+        enemy.id,
+        enemy.generation,
+        target.id,
+        target.generation,
+        75.0
+    ));
+}
+
+#[test]
 fn shooter_prefab_collider_api_updates_template_and_existing_entities() {
     let mut engine = Engine::new();
 

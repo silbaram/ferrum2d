@@ -9,7 +9,13 @@
     "preview": "vite preview",
     "ferrum:validate": "node scripts/ferrum-harness.mjs validate",
     "ferrum:smoke": "node scripts/ferrum-harness.mjs smoke",
-    "ferrum:report": "node scripts/ferrum-harness.mjs report"
+    "ferrum:report": "node scripts/ferrum-harness.mjs report",
+    "ferrum:authoring-report": "node scripts/ferrum-harness.mjs authoring-report",
+    "ferrum:replay-report": "node scripts/ferrum-harness.mjs replay-report",
+    "ferrum:update-replay-fixture": "node scripts/ferrum-harness.mjs update-replay-fixture",
+    "ferrum:runtime-replay-report": "node scripts/ferrum-runtime-replay.mjs report",
+    "ferrum:runtime-replay-recipe": "node scripts/ferrum-runtime-replay.mjs recipe",
+    "ferrum:update-runtime-replay-fixture": "node scripts/ferrum-runtime-replay.mjs update-fixture"
   },
   "dependencies": {
     "@ferrum2d/ferrum-web": "__FERRUM_WEB_VERSION__"

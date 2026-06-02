@@ -8,21 +8,57 @@
       "name": "Minimal Runtime",
       "description": "Small browser runtime starter with HUD, debug metrics, and public API imports.",
       "genre": "starter",
-      "tags": ["runtime", "hud", "debug"]
+      "tags": ["runtime", "hud", "debug"],
+      "gameplayReplay": {
+        "configured": true,
+        "scenario": "minimal-template-surface",
+        "fixturePath": "public/gameplay-replay.fixture.json",
+        "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json"
+      },
+      "runtimeGameplayReplay": {
+        "configured": true,
+        "scenario": "project-runtime",
+        "fixturePath": "public/gameplay-runtime-replay.fixture.json",
+        "coverageTagDefinitionsPath": "public/gameplay-runtime-replay.coverage-tags.json"
+      }
     },
     {
       "id": "topdown",
       "name": "Top-down Shooter",
       "description": "Shooter starter using Game Spec, runtime HUD, and keyboard movement/fire controls.",
       "genre": "topdown-shooter",
-      "tags": ["shooter", "game-spec", "desktop"]
+      "tags": ["shooter", "game-spec", "desktop"],
+      "gameplayReplay": {
+        "configured": true,
+        "scenario": "topdown-template-game-spec",
+        "fixturePath": "public/gameplay-replay.fixture.json",
+        "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json"
+      },
+      "runtimeGameplayReplay": {
+        "configured": true,
+        "scenario": "project-runtime",
+        "fixturePath": "public/gameplay-runtime-replay.fixture.json",
+        "coverageTagDefinitionsPath": "public/gameplay-runtime-replay.coverage-tags.json"
+      }
     },
     {
       "id": "platformer",
       "name": "Platformer",
       "description": "Side-scroller starter using the built-in platformer scene and runtime HUD.",
       "genre": "platformer",
-      "tags": ["platformer", "side-scroller", "starter"]
+      "tags": ["platformer", "side-scroller", "starter"],
+      "gameplayReplay": {
+        "configured": true,
+        "scenario": "platformer-template-surface",
+        "fixturePath": "public/gameplay-replay.fixture.json",
+        "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json"
+      },
+      "runtimeGameplayReplay": {
+        "configured": true,
+        "scenario": "project-runtime",
+        "fixturePath": "public/gameplay-runtime-replay.fixture.json",
+        "coverageTagDefinitionsPath": "public/gameplay-runtime-replay.coverage-tags.json"
+      }
     }
   ]
 }
