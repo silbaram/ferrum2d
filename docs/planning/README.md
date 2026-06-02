@@ -8,7 +8,6 @@
 | --- | --- |
 | [신규 기능 후보](feature-candidates.md) | 아직 구현하지 않은 신규 기능 후보와 승인 필요 항목 |
 | [데모 게임 정리 로드맵](demo-game-roadmap.md) | `examples/` 하위 기술 데모 재구성 후보와 우선순위 |
-| [Gameplay Authoring 고도화 방향](gameplay-authoring-roadmap.md) | 적 행동, 이동 패턴, 충돌 반응을 데이터 기반 Rust gameplay system으로 확장하기 위한 방향 |
 | [리팩토링 로드맵](refactor-roadmap.md) | 아직 진행하지 않은 구조 분리와 성능 개선 후보 |
 
 ## 관리 규칙
