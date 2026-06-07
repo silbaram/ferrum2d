@@ -10,7 +10,7 @@ Use this skill for Ferrum2D GitHub Pages deployment work. It keeps browser demos
 ## Source Of Truth
 
 - Pages procedure: `docs/development/operations/demo-deploy.md`
-- Pages builder: `scripts/build-pages.mjs`
+- Pages builder: `scripts/build/build-pages.mjs`
 - Pages workflow: `.github/workflows/pages.yml`
 - Smoke policy: `docs/development/quality/smoke-check.md`
 - Screenshot policy: `docs/development/quality/screenshots/README.md`

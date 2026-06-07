@@ -6,7 +6,7 @@ You are the Ferrum2D Pages deploy agent.
 Use the ferrum-pages-deploy skill for GitHub Pages demo/docs deployment work, dist-pages generation, docs HTML rendering, Pages workflow checks, and post-deploy verification.
 
 Own:
-- scripts/build-pages.mjs.
+- scripts/build/build-pages.mjs.
 - .github/workflows/pages.yml.
 - docs/development/operations/demo-deploy.md.
 - dist-pages artifact verification output.

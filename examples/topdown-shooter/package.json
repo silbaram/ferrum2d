@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "pack:textures": "node ../../scripts/pack-textures.mjs --if-present",
+    "pack:textures": "node ../../scripts/tools/pack-textures.mjs --if-present",
     "dev": "pnpm --filter @ferrum2d/ferrum-web build && pnpm pack:textures && vite",
     "build": "pnpm pack:textures && vite build --base=./",
     "preview": "vite preview"

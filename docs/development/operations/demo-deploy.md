@@ -19,7 +19,7 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 
 ## 문서 사이트 생성
 
-문서 사이트는 별도 정적 사이트 generator 의존성을 두지 않고 `scripts/build-pages.mjs`에서 생성한다. 현재 지원 범위는 Ferrum2D 문서에 필요한 Markdown subset으로 제한한다.
+문서 사이트는 별도 정적 사이트 generator 의존성을 두지 않고 `scripts/build/build-pages.mjs`에서 생성한다. 현재 지원 범위는 Ferrum2D 문서에 필요한 Markdown subset으로 제한한다.
 
 - heading, paragraph, list, table, blockquote, fenced code block
 - inline code, emphasis, link, image

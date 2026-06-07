@@ -228,7 +228,7 @@ Tilemap authoring helper의 autotile/animated tile bake와 Tiled/LDtk import fix
 pnpm smoke:tilemap-authoring
 ```
 
-이 명령은 `scripts/physics-smoke.mjs`가 canonical Rust test fixture를 scenario 단위로 실행하고, 각 scenario와 전체 suite의 seed/frame/suite hash를 출력한다. 이 hash는 실행한 scenario manifest와 통과 결과를 식별하는 smoke summary 값이다.
+이 명령은 `tests/smoke/physics-smoke.mjs`가 canonical Rust test fixture를 scenario 단위로 실행하고, 각 scenario와 전체 suite의 seed/frame/suite hash를 출력한다. 이 hash는 실행한 scenario manifest와 통과 결과를 식별하는 smoke summary 값이다.
 `pnpm smoke:physics-replay`는 같은 physics smoke suite를 2회 실행해 suite hash가 안정적으로 일치하는지 확인하고, Web public replay helper가 생성한 snapshot state hash(`stateReplayHash`)도 함께 비교한다. 실패 시 run, seed, frame, suite hash, scenario별 hash 차이를 출력한다.
 `stateReplayHash`는 Web replay helper의 snapshot/restore/hash 계약을 Node deterministic harness에서 확인하는 값이며, Wasm physics state 전체를 직렬화한 hash는 아니다.
 `pnpm smoke:destructible-terrain`은 tilemap rect edit가 collision query와 render command를 같은 tile occupancy source에서 갱신하고 collision obstacle cache를 dirty chunk 단위로 재빌드하는지 확인하며 seed/frame/suite hash를 출력한다. `pnpm smoke:destructible-terrain-browser`는 Top-down Shooter production build에서 deterministic tile 제거를 실행해 browser query와 render command count가 함께 변하는지 확인한다.
@@ -250,7 +250,7 @@ Destructible terrain prototype은 Rust tilemap/engine unit test와 `destructible
 개별 scenario 목록은 다음으로 확인한다.
 
 ```bash
-node scripts/physics-smoke.mjs --list
+node tests/smoke/physics-smoke.mjs --list
 ```
 
 Top-down Shooter의 particle burst와 non-lethal enemy tint flash가 production build의 browser render path에서 감지되는지 확인하려면 다음을 실행한다.
@@ -276,7 +276,7 @@ pnpm smoke:topdown-hd2d
 pnpm update:gameplay-replay-golden
 ```
 
-baseline 갱신 PR/commit에는 replay hash 변경 이유와 기대 gameplay 변화가 함께 기록되어야 한다. 입력 stream, frame count, fixed delta, capture frame 목록이 바뀌면 fixture metadata 검증이 실패하므로 먼저 `scenarios.json`, fixture, 문서를 함께 갱신한다. `--update`는 manifest의 `fixtureIndexPath`가 있으면 index를 manifest에서 다시 생성하므로 index를 손으로 patch하지 않는다. 단일 scenario는 `pnpm update:gameplay-replay-golden -- --scenario=<scenario-id>`로 갱신할 수 있고, 실험 manifest는 `node scripts/gameplay-replay-smoke.mjs --manifest <path>`로 실행할 수 있다. Manifest의 `fixturePath`와 `variantPath`는 기본적으로 repo root 기준이다. 실험 manifest가 자기 파일 위치 기준 경로를 쓰려면 `./fixture.json` 또는 `../fixtures/foo.json`처럼 명시적인 relative prefix를 사용한다.
+baseline 갱신 PR/commit에는 replay hash 변경 이유와 기대 gameplay 변화가 함께 기록되어야 한다. 입력 stream, frame count, fixed delta, capture frame 목록이 바뀌면 fixture metadata 검증이 실패하므로 먼저 `scenarios.json`, fixture, 문서를 함께 갱신한다. `--update`는 manifest의 `fixtureIndexPath`가 있으면 index를 manifest에서 다시 생성하므로 index를 손으로 patch하지 않는다. 단일 scenario는 `pnpm update:gameplay-replay-golden -- --scenario=<scenario-id>`로 갱신할 수 있고, 실험 manifest는 `node tests/smoke/gameplay-replay-smoke.mjs --manifest <path>`로 실행할 수 있다. Manifest의 `fixturePath`와 `variantPath`는 기본적으로 repo root 기준이다. 실험 manifest가 자기 파일 위치 기준 경로를 쓰려면 `./fixture.json` 또는 `../fixtures/foo.json`처럼 명시적인 relative prefix를 사용한다.
 
 Breakout 예제의 두 번째 장르 runtime/render path를 확인하려면 다음을 실행한다. Brick hit particle burst까지 자동 관측하려면 effect smoke를 실행한다.
 
@@ -307,7 +307,7 @@ pnpm smoke:physics-demo-suite
 pnpm smoke:headless
 ```
 
-이 명령은 Wasm 패키지와 `@ferrum2d/ferrum-web`을 빌드한 뒤 `scripts/headless-smoke.mjs`를 실행한다. 검증 범위는 다음과 같다.
+이 명령은 Wasm 패키지와 `@ferrum2d/ferrum-web`을 빌드한 뒤 `tests/smoke/headless-smoke.mjs`를 실행한다. 검증 범위는 다음과 같다.
 
 - 예제 `game.json`이 `resolveShooterGameSpec(...)`를 통과한다.
 - `applyShooterGameSpec(...)`가 resolved config, orbit tuning, camera, audio policy, tilemap, wave, atlas frame을 fake engine target에 빠짐없이 전달한다.
@@ -324,9 +324,10 @@ pnpm smoke:headless
 - `createFerrumRuntime(...)` 또는 예제 bootstrap이 browser runtime을 초기화한다.
 - WebGL2 canvas가 생성되고 Rust/Wasm render command를 소비한다.
 - canvas pixel readback에서 placeholder texture의 녹색 픽셀이 일정 수 이상 검출된다.
-- `pnpm smoke:runtime-budgets`는 `scripts/runtime-budget-profiles.mjs`의 per-example profile과 browser smoke mode mapping을 CI-safe 방식으로 검증한다.
+- `pnpm smoke:browser`는 Starter Runtime의 weapon profile panel, 실제 DOM profile/capture report 버튼 클릭, profile별 projectile visual texture/size/rate, snapshot/replay report hook도 함께 확인한다.
+- `pnpm smoke:runtime-budgets`는 `tests/smoke/runtime-budget-profiles.mjs`의 per-example profile과 browser smoke mode mapping을 CI-safe 방식으로 검증한다.
 - `pnpm smoke:browser-budget`은 Starter Runtime에서 `RuntimeProfiler`를 켜고 frame time, Rust update, render time, draw call, render command, texture switch, physics count, asset load elapsed budget을 구조화된 report로 검증한다.
-- `pnpm smoke:topdown-budget`, `pnpm smoke:breakout-budget`, `pnpm smoke:platformer-budget`, `pnpm smoke:physics-sandbox-budget`은 같은 browser budget harness를 각 예제 profile로 실행한다. 직접 `node scripts/browser-render-smoke.mjs --budget --budget-profile=<profile>`을 사용할 수도 있다.
+- `pnpm smoke:topdown-budget`, `pnpm smoke:breakout-budget`, `pnpm smoke:platformer-budget`, `pnpm smoke:physics-sandbox-budget`은 같은 browser budget harness를 각 예제 profile로 실행한다. 직접 `node tests/smoke/browser-render-smoke.mjs --budget --budget-profile=<profile>`을 사용할 수도 있다.
 - `pnpm smoke:preload`는 Minimal Game에서 `LoadingOverlay`를 켜고 data URL manifest를 두 번 preload해 첫 실행 fetch와 두 번째 IndexedDB JSON/texture body cache hit를 검증한다.
 - `pnpm smoke:mobile-input`은 Minimal Game에서 `VirtualControls` DOM preset을 켜고 joystick/button state가 `W/D/Space/mouseLeft` input으로 합성되고 release되는지 확인한다.
 - `pnpm smoke:topdown`은 Top-down Shooter production build에서 실제 asset manifest preload/cache/loading overlay를 거친 뒤 smoke 전용 URL parameter로 deterministic enemy hit를 만들고, particle count와 enemy tint flash render command가 관측되는지 확인한다.
@@ -486,7 +487,7 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 
 README preview용 스크린샷 절차는 [screenshots README](screenshots/README.md)를 따른다. smoke check에서 화면이 바뀐 것을 의도했다면 `docs/development/quality/screenshots/topdown-shooter-title.png` 갱신 여부를 함께 판단한다.
 
-자동 browser smoke artifact가 필요하면 `browser-render-smoke.mjs`에 `--screenshot-artifact-dir <dir>`와 `--screenshot-name <name>`을 전달한다. baseline summary JSON과 비교하려면 `--screenshot-baseline <summary.json>`을 함께 전달하고, 허용 오차는 `--screenshot-max-average-delta`, `--screenshot-max-opaque-ratio-delta`, `--screenshot-max-non-transparent-ratio-delta`로 조정한다.
+자동 browser smoke artifact가 필요하면 `tests/smoke/browser-render-smoke.mjs`에 `--screenshot-artifact-dir <dir>`와 `--screenshot-name <name>`을 전달한다. baseline summary JSON과 비교하려면 `--screenshot-baseline <summary.json>`을 함께 전달하고, 허용 오차는 `--screenshot-max-average-delta`, `--screenshot-max-opaque-ratio-delta`, `--screenshot-max-non-transparent-ratio-delta`로 조정한다.
 
 ## 실패 기록 형식
 

@@ -7,12 +7,15 @@ import {
   diagnosticReport,
   compileWeaponProfiles,
   hashGameStateSnapshot,
+  projectile,
+  weapon,
   type FerrumRuntime,
   type FerrumRuntimeEnvironment,
   type GameStateSnapshot,
   type GameplayReplayComparison,
   type GameplayReplayRun,
   type ProjectileDefinition,
+  type ShooterGameSpec,
   type WeaponDefinition,
 } from "@ferrum2d/ferrum-web";
 
@@ -25,54 +28,104 @@ import "./styles.css";
 
 const STARTER_RUNTIME_REPORT_FORMAT = "ferrum2d.starter-runtime.report";
 const STARTER_RUNTIME_REPORT_VERSION = 1;
-type StarterWeaponProfileId = "standard" | "piercing" | "bounce";
+const STARTER_PRIMARY_ACTION = "primary";
+const STARTER_PRIMARY_ACTION_ID = 1;
+const STARTER_WEAPON_PROFILE_IDS = ["standard", "piercing", "bounce"] as const;
+type StarterWeaponProfileId = typeof STARTER_WEAPON_PROFILE_IDS[number];
 
-const STARTER_WEAPON_PROFILE_ACTION_IDS: Record<StarterWeaponProfileId, number> = {
-  standard: 1,
-  piercing: 2,
-  bounce: 3,
+const STARTER_WEAPON_PROFILE_ACTION_IDS: Record<typeof STARTER_PRIMARY_ACTION, number> = {
+  [STARTER_PRIMARY_ACTION]: STARTER_PRIMARY_ACTION_ID,
 };
 
 type StarterWeaponProfileDefinition = WeaponDefinition & {
-  readonly action: StarterWeaponProfileId;
+  readonly id: StarterWeaponProfileId;
+  readonly action: typeof STARTER_PRIMARY_ACTION;
   readonly projectile: ProjectileDefinition;
 };
 
-const STARTER_RUNTIME_WEAPON_PROFILE_DEFINITIONS: readonly StarterWeaponProfileDefinition[] = [
-  {
+interface StarterProjectileVisual {
+  readonly textureId: number;
+  readonly label: string;
+  readonly accentColor: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+interface StarterWeaponProfileCatalogEntry {
+  readonly id: StarterWeaponProfileId;
+  readonly label: string;
+  readonly summary: string;
+  readonly cooldownSeconds: number;
+  readonly projectile: Required<Pick<ProjectileDefinition, "speed" | "damage" | "lifetimeSeconds">>
+    & Pick<ProjectileDefinition, "collisionTarget" | "tileImpact">;
+  readonly visual: StarterProjectileVisual;
+}
+
+const STARTER_WEAPON_PROFILE_CATALOG: Record<StarterWeaponProfileId, StarterWeaponProfileCatalogEntry> = {
+  standard: {
     id: "standard",
-    action: "standard",
-    cooldownSeconds: 0.08,
+    label: "Standard",
+    summary: "Tiny rapid pellet with the fastest fire rate.",
+    cooldownSeconds: 0.055,
     projectile: {
-      id: "standard-shot",
-      speed: 720,
+      speed: 920,
       damage: 1,
-      lifetimeSeconds: 1.6,
+      lifetimeSeconds: 1.25,
+      collisionTarget: "enemies",
+      tileImpact: "despawn",
+    },
+    visual: {
+      textureId: 21,
+      label: "Tiny green pellet",
+      accentColor: "#7ddc9d",
+      width: 6,
+      height: 6,
     },
   },
-  {
+  piercing: {
     id: "piercing",
-    action: "piercing",
+    label: "Piercing",
+    summary: "Long spear projectile with a slower deliberate cadence.",
+    cooldownSeconds: 0.22,
     projectile: {
-      id: "piercing-shot",
-      speed: 520,
+      speed: 640,
+      damage: 1,
+      lifetimeSeconds: 2.1,
       collisionTarget: "enemies",
       tileImpact: "passThrough",
     },
-  },
-  {
-    id: "bounce",
-    action: "bounce",
-    cooldownSeconds: 0.1,
-    projectile: {
-      id: "bounce-shot",
-      speed: 420,
-      damage: 2,
-      lifetimeSeconds: 1,
-      tileImpact: "bounce",
+    visual: {
+      textureId: 22,
+      label: "Long cyan spear",
+      accentColor: "#67e8f9",
+      width: 20,
+      height: 5,
     },
   },
-] as const;
+  bounce: {
+    id: "bounce",
+    label: "Bounce",
+    summary: "Large slow orb with the heaviest hit and bounce behavior.",
+    cooldownSeconds: 0.42,
+    projectile: {
+      speed: 260,
+      damage: 3,
+      lifetimeSeconds: 1.6,
+      collisionTarget: "enemies",
+      tileImpact: "bounce",
+    },
+    visual: {
+      textureId: 23,
+      label: "Large amber orb",
+      accentColor: "#f59e0b",
+      width: 18,
+      height: 18,
+    },
+  },
+};
+
+const STARTER_RUNTIME_WEAPON_PROFILE_DEFINITIONS: readonly StarterWeaponProfileDefinition[] =
+  STARTER_WEAPON_PROFILE_IDS.map((profileId) => starterWeaponProfileDefinition(profileId));
 
 const STARTER_RUNTIME_WEAPON_PROFILES = compileWeaponProfiles(STARTER_RUNTIME_WEAPON_PROFILE_DEFINITIONS, {
   path: "starterRuntime.weaponProfiles",
@@ -94,6 +147,15 @@ interface StarterRuntimeReport {
   readonly replayHash: string;
   readonly comparison: GameplayReplayComparison;
   readonly weaponProfile: StarterWeaponProfileId;
+  readonly weaponProfileSummary: string;
+  readonly projectileVisual: string;
+  readonly projectileTextureId: number;
+  readonly projectileWidth: number;
+  readonly projectileHeight: number;
+  readonly fireCooldownSeconds: number;
+  readonly profileSwitchCount: number;
+  readonly captureCount: number;
+  readonly lastPanelAction: string;
   readonly snapshot: GameStateSnapshot;
   readonly replay: GameplayReplayRun;
 }
@@ -106,7 +168,22 @@ interface StarterRuntimeReportHooks {
 interface StarterRuntimeWindow extends Window {
   ferrumStarterRuntimeReport?: StarterRuntimeReport;
   ferrumStarterRuntimeCaptureReport?: () => StarterRuntimeReport;
+  ferrumStarterRuntimeApplyWeaponProfile?: (profile: string) => StarterRuntimeReport;
   ferrumStarterRuntimeWeaponProfile?: StarterWeaponProfileId;
+}
+
+interface StarterRuntimeDemoState {
+  selectedProfile: StarterWeaponProfileId;
+  latestReport?: StarterRuntimeReport;
+  profileSwitchCount: number;
+  captureCount: number;
+  lastPanelAction: string;
+}
+
+interface StarterRuntimeControlPanel {
+  readonly element: HTMLElement;
+  update(): void;
+  destroy(): void;
 }
 
 async function bootstrap(): Promise<void> {
@@ -116,6 +193,7 @@ async function bootstrap(): Promise<void> {
   });
   let runtime: FerrumRuntime | undefined;
   let reportHooks: StarterRuntimeReportHooks | undefined;
+  let controlPanel: StarterRuntimeControlPanel | undefined;
   let smokeReportCaptured = false;
 
   try {
@@ -128,12 +206,17 @@ async function bootstrap(): Promise<void> {
     const profilerSmoke = searchParams.get("profilerSmoke") === "true";
     const reportSmoke = searchParams.get("reportSmoke") === "true";
     const weaponProfile = resolveStarterWeaponProfile(searchParams);
-    const weaponActionId = STARTER_WEAPON_PROFILE_ACTION_IDS[weaponProfile];
+    const demoState: StarterRuntimeDemoState = {
+      selectedProfile: weaponProfile,
+      profileSwitchCount: 0,
+      captureCount: 0,
+      lastPanelAction: `${STARTER_WEAPON_PROFILE_CATALOG[weaponProfile].label} loaded`,
+    };
 
     runtime = await createFerrumRuntime({
       canvas: shell.canvas,
       debugParent: shell.debugRoot,
-      debug: debugParam === null ? undefined : { enabled: debugParam !== "false" },
+      debug: { enabled: debugParam === "true" },
       environment,
       gameStateLabel: starterRuntimeStateLabel,
       profiler: profilerSmoke,
@@ -149,7 +232,7 @@ async function bootstrap(): Promise<void> {
           }
         },
       },
-      uiState: () => shell.uiState(),
+      uiState: () => ({ dialog: shell.uiState().dialog }),
       inputTransform: shell.inputTransform,
       onFrame: (frame) => {
         shell.updateFrame(frame);
@@ -166,22 +249,43 @@ async function bootstrap(): Promise<void> {
       },
     });
 
-    runtime.engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });
-    requireInputActionBinding(runtime, weaponActionId, 0, {
+    await loadStarterRuntimeProjectileTextures(runtime);
+    controlPanel = createStarterRuntimeControlPanel(demoState, {
+      onProfile: (profile) => {
+        if (runtime === undefined) {
+          return;
+        }
+        switchStarterRuntimeWeaponProfile(runtime, demoState, profile);
+        if (reportHooks?.publish("manual") === undefined) {
+          controlPanel?.update();
+        }
+      },
+      onCapture: () => {
+        demoState.captureCount += 1;
+        demoState.lastPanelAction = `Report captured #${demoState.captureCount}`;
+        if (reportHooks?.publish("manual") === undefined) {
+          controlPanel?.update();
+        }
+      },
+    });
+    shell.stage.append(controlPanel.element);
+
+    requireInputActionBinding(runtime, STARTER_PRIMARY_ACTION_ID, 0, {
       control: "space",
       activation: "down",
     });
-    requireInputActionBinding(runtime, weaponActionId, 1, {
+    requireInputActionBinding(runtime, STARTER_PRIMARY_ACTION_ID, 1, {
       control: "mouseLeft",
       activation: "down",
     });
     applyStarterRuntimeWeaponProfile(runtime, weaponProfile);
     shell.attachRuntime(runtime);
-    reportHooks = installStarterRuntimeReportHooks(runtime, weaponProfile);
+    reportHooks = installStarterRuntimeReportHooks(runtime, demoState, () => controlPanel?.update());
     runtime.start();
     shell.queueStart();
     reportHooks.publish("bootstrap");
   } catch (error) {
+    controlPanel?.destroy();
     reportHooks?.uninstall();
     runtime?.destroy();
     shell.destroy();
@@ -191,27 +295,41 @@ async function bootstrap(): Promise<void> {
 
 function installStarterRuntimeReportHooks(
   runtime: FerrumRuntime,
-  weaponProfile: StarterWeaponProfileId,
+  demoState: StarterRuntimeDemoState,
+  onReportUpdated?: () => void,
 ): StarterRuntimeReportHooks {
   const target = window as StarterRuntimeWindow;
-  let baselineReplay: GameplayReplayRun | undefined;
-  target.ferrumStarterRuntimeWeaponProfile = weaponProfile;
+  const baselineReplayByProfile: Partial<Record<StarterWeaponProfileId, GameplayReplayRun>> = {};
+  target.ferrumStarterRuntimeWeaponProfile = demoState.selectedProfile;
 
   const publish = (label: StarterRuntimeReportLabel): StarterRuntimeReport => {
+    const weaponProfile = demoState.selectedProfile;
+    const baselineReplay = baselineReplayByProfile[weaponProfile];
     const hasBaselineReplay = baselineReplay !== undefined;
-    const report = createStarterRuntimeReport(runtime, label, baselineReplay, weaponProfile);
+    const report = createStarterRuntimeReport(runtime, label, baselineReplay, demoState);
     if (!hasBaselineReplay) {
-      baselineReplay = report.replay;
+      baselineReplayByProfile[weaponProfile] = report.replay;
     }
+    demoState.latestReport = report;
     target.ferrumStarterRuntimeReport = report;
+    onReportUpdated?.();
     return report;
   };
   target.ferrumStarterRuntimeCaptureReport = () => publish("manual");
+  target.ferrumStarterRuntimeApplyWeaponProfile = (profile: string) => {
+    const nextProfile = parseStarterWeaponProfile(profile);
+    if (nextProfile === undefined) {
+      throw new Error(`starter-runtime: unknown weapon profile '${profile}'.`);
+    }
+    switchStarterRuntimeWeaponProfile(runtime, demoState, nextProfile);
+    return publish("manual");
+  };
   return {
     publish,
     uninstall: () => {
       delete target.ferrumStarterRuntimeReport;
       delete target.ferrumStarterRuntimeCaptureReport;
+      delete target.ferrumStarterRuntimeApplyWeaponProfile;
       delete target.ferrumStarterRuntimeWeaponProfile;
     },
   };
@@ -221,8 +339,10 @@ function createStarterRuntimeReport(
   runtime: FerrumRuntime,
   label: StarterRuntimeReportLabel,
   baselineReplay: GameplayReplayRun | undefined,
-  weaponProfile: StarterWeaponProfileId,
+  demoState: StarterRuntimeDemoState,
 ): StarterRuntimeReport {
+  const weaponProfile = demoState.selectedProfile;
+  const profile = STARTER_WEAPON_PROFILE_CATALOG[weaponProfile];
   const timeSeconds = runtime.engine.time();
   const frame = runtimeFrameIndex(timeSeconds);
   const snapshot = captureGameStateSnapshot(runtime.engine, {
@@ -232,6 +352,14 @@ function createStarterRuntimeReport(
       example: "starter-runtime",
       label,
       weaponProfile,
+      profileSwitchCount: demoState.profileSwitchCount,
+      captureCount: demoState.captureCount,
+      lastPanelAction: demoState.lastPanelAction,
+      projectileVisual: profile.visual.label,
+      projectileTextureId: profile.visual.textureId,
+      projectileWidth: profile.visual.width,
+      projectileHeight: profile.visual.height,
+      fireCooldownSeconds: profile.cooldownSeconds,
       renderer: starterRuntimeRendererName(runtime),
       stateLabel: starterRuntimeStateLabel(runtime.engine.gameState()),
     },
@@ -252,6 +380,15 @@ function createStarterRuntimeReport(
     replayHash: replay.replayHash,
     comparison: compareGameplayReplayRuns(resolvedBaselineReplay, replay),
     weaponProfile,
+    weaponProfileSummary: profile.summary,
+    projectileVisual: profile.visual.label,
+    projectileTextureId: profile.visual.textureId,
+    projectileWidth: profile.visual.width,
+    projectileHeight: profile.visual.height,
+    fireCooldownSeconds: profile.cooldownSeconds,
+    profileSwitchCount: demoState.profileSwitchCount,
+    captureCount: demoState.captureCount,
+    lastPanelAction: demoState.lastPanelAction,
     snapshot,
     replay,
   };
@@ -282,6 +419,7 @@ function starterRuntimeStateLabel(code: number): string {
 }
 
 function applyStarterRuntimeWeaponProfile(runtime: FerrumRuntime, profile: StarterWeaponProfileId): void {
+  applyStarterRuntimeWeaponVisual(runtime, profile);
   const profileCommands = behaviorRecipeCommandsForEntity(
     STARTER_RUNTIME_WEAPON_PROFILES,
     profile,
@@ -297,20 +435,254 @@ function applyStarterRuntimeWeaponProfile(runtime: FerrumRuntime, profile: Start
   });
 }
 
+function applyStarterRuntimeWeaponVisual(runtime: FerrumRuntime, profile: StarterWeaponProfileId): void {
+  const visual = STARTER_WEAPON_PROFILE_CATALOG[profile].visual;
+  runtime.engine.setGameSpec(starterRuntimeWeaponVisualSpec(visual));
+}
+
+function starterRuntimeWeaponVisualSpec(visual: StarterProjectileVisual): ShooterGameSpec {
+  return {
+    atlas: {
+      frames: {
+        bullet: {
+          texture: visual.textureId,
+          size: {
+            width: visual.width,
+            height: visual.height,
+          },
+          uv: {
+            u0: 0,
+            v0: 0,
+            u1: 1,
+            v1: 1,
+          },
+        },
+      },
+    },
+    prefabs: {
+      bullet: {
+        frame: "bullet",
+      },
+    },
+  };
+}
+
+function switchStarterRuntimeWeaponProfile(
+  runtime: FerrumRuntime,
+  demoState: StarterRuntimeDemoState,
+  profile: StarterWeaponProfileId,
+): void {
+  const nextProfile = STARTER_WEAPON_PROFILE_CATALOG[profile];
+  if (demoState.selectedProfile === profile) {
+    demoState.lastPanelAction = `${nextProfile.label} already active`;
+    return;
+  }
+  applyStarterRuntimeWeaponProfile(runtime, profile);
+  demoState.selectedProfile = profile;
+  demoState.profileSwitchCount += 1;
+  demoState.lastPanelAction = `${nextProfile.label} applied`;
+  (window as StarterRuntimeWindow).ferrumStarterRuntimeWeaponProfile = profile;
+}
+
+function createStarterRuntimeControlPanel(
+  demoState: StarterRuntimeDemoState,
+  options: {
+    onProfile(profile: StarterWeaponProfileId): void;
+    onCapture(): void;
+  },
+): StarterRuntimeControlPanel {
+  const element = document.createElement("section");
+  element.className = "starter-profile-panel";
+  element.setAttribute("aria-label", "Starter Runtime weapon profile");
+  element.setAttribute("data-starter-runtime-profile-panel", "true");
+
+  const update = (): void => {
+    const profile = STARTER_WEAPON_PROFILE_CATALOG[demoState.selectedProfile];
+    const report = demoState.latestReport;
+    const title = document.createElement("h2");
+    const summary = document.createElement("p");
+    const details = document.createElement("dl");
+    const actions = document.createElement("div");
+
+    title.textContent = "Weapon Profile";
+    summary.textContent = profile.summary;
+    details.className = "starter-profile-details";
+    actions.className = "starter-profile-actions";
+
+    appendStarterProfileDetail(details, "Status", demoState.lastPanelAction);
+    appendStarterProfileDetail(details, "Profile", profile.label);
+    appendStarterProfileDetail(details, "Shot", `${profile.projectile.speed} / dmg ${profile.projectile.damage}`);
+    appendStarterProfileDetail(details, "Rate", starterFireRateLabel(profile.cooldownSeconds));
+    appendStarterProfileDetail(details, "Size", `${profile.visual.width}x${profile.visual.height}`);
+    appendStarterProfileDetail(details, "Tile", profile.projectile.tileImpact ?? "despawn");
+    appendStarterProfileVisualDetail(details, "Visual", profile.visual);
+    appendStarterProfileDetail(details, "Replay", report === undefined ? "pending" : shortHash(report.replayHash));
+    appendStarterProfileDetail(details, "Reports", demoState.captureCount);
+
+    for (const profileId of STARTER_WEAPON_PROFILE_IDS) {
+      actions.appendChild(starterControlButton(
+        STARTER_WEAPON_PROFILE_CATALOG[profileId].label,
+        profileId === demoState.selectedProfile,
+        () => options.onProfile(profileId),
+        { "data-starter-profile-button": profileId },
+      ));
+    }
+    actions.appendChild(starterControlButton("Capture Report", false, options.onCapture, {
+      "data-starter-capture-button": "true",
+      "aria-label": "Capture runtime report",
+    }));
+    element.replaceChildren(title, summary, details, actions);
+  };
+
+  update();
+  return {
+    element,
+    update,
+    destroy: () => element.remove(),
+  };
+}
+
+function appendStarterProfileDetail(parent: HTMLElement, label: string, value: string | number): void {
+  const term = document.createElement("dt");
+  const description = document.createElement("dd");
+  term.textContent = label;
+  description.textContent = String(value);
+  parent.append(term, description);
+}
+
+function appendStarterProfileVisualDetail(parent: HTMLElement, label: string, visual: StarterProjectileVisual): void {
+  const term = document.createElement("dt");
+  const description = document.createElement("dd");
+  const swatch = document.createElement("span");
+  const text = document.createElement("span");
+  term.textContent = label;
+  description.className = "starter-profile-visual";
+  swatch.className = "starter-profile-swatch";
+  swatch.style.background = visual.accentColor;
+  text.textContent = visual.label;
+  description.append(swatch, text);
+  parent.append(term, description);
+}
+
+function starterControlButton(
+  label: string,
+  active: boolean,
+  onClick: () => void,
+  attributes: Readonly<Record<string, string>> = {},
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.className = active ? "starter-profile-button is-active" : "starter-profile-button";
+  button.setAttribute("aria-pressed", String(active));
+  for (const [name, value] of Object.entries(attributes)) {
+    button.setAttribute(name, value);
+  }
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+async function loadStarterRuntimeProjectileTextures(runtime: FerrumRuntime): Promise<void> {
+  await Promise.all(STARTER_WEAPON_PROFILE_IDS.map(async (profileId) => {
+    const profile = STARTER_WEAPON_PROFILE_CATALOG[profileId];
+    await runtime.renderer.loadTexture(
+      profile.visual.textureId,
+      starterRuntimeProjectileTextureDataUrl(profileId),
+    );
+  }));
+}
+
+function starterRuntimeProjectileTextureDataUrl(profileId: StarterWeaponProfileId): string {
+  const canvas = document.createElement("canvas");
+  canvas.width = 32;
+  canvas.height = 32;
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    throw new Error("starter-runtime: failed to create projectile texture canvas.");
+  }
+  context.imageSmoothingEnabled = false;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (profileId === "standard") {
+    context.fillStyle = "#14532d";
+    context.fillRect(12, 12, 8, 8);
+    context.fillStyle = "#7ddc9d";
+    context.fillRect(14, 10, 4, 12);
+    context.fillRect(10, 14, 12, 4);
+    context.fillStyle = "#dcfce7";
+    context.fillRect(15, 15, 2, 2);
+  } else if (profileId === "piercing") {
+    context.fillStyle = "#164e63";
+    context.fillRect(2, 13, 24, 6);
+    context.fillStyle = "#67e8f9";
+    context.fillRect(4, 14, 20, 4);
+    context.beginPath();
+    context.moveTo(24, 10);
+    context.lineTo(31, 16);
+    context.lineTo(24, 22);
+    context.closePath();
+    context.fill();
+    context.fillStyle = "#ecfeff";
+    context.fillRect(18, 15, 8, 2);
+  } else {
+    context.fillStyle = "#7c2d12";
+    context.beginPath();
+    context.arc(16, 16, 15, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#f59e0b";
+    context.beginPath();
+    context.arc(16, 16, 13, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#451a03";
+    context.beginPath();
+    context.arc(16, 16, 5, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#fef3c7";
+    context.fillRect(21, 7, 4, 4);
+  }
+
+  return canvas.toDataURL("image/png");
+}
+
+function starterFireRateLabel(cooldownSeconds: number): string {
+  return `${(1 / cooldownSeconds).toFixed(1)} /s`;
+}
+
+function starterWeaponProfileDefinition(profileId: StarterWeaponProfileId): StarterWeaponProfileDefinition {
+  const profile = STARTER_WEAPON_PROFILE_CATALOG[profileId];
+  const projectileDefinition = projectile(`${profile.id}-shot`)
+    .speed(profile.projectile.speed)
+    .damage(profile.projectile.damage)
+    .lifetime(profile.projectile.lifetimeSeconds)
+    .collisionTarget(profile.projectile.collisionTarget ?? "enemies")
+    .tileImpact(profile.projectile.tileImpact ?? "despawn");
+  return weapon(profile.id)
+    .action(STARTER_PRIMARY_ACTION)
+    .actionId(STARTER_PRIMARY_ACTION_ID)
+    .cooldown(profile.cooldownSeconds)
+    .fire(projectileDefinition)
+    .build() as StarterWeaponProfileDefinition;
+}
+
 function resolveStarterWeaponProfile(searchParams: URLSearchParams): StarterWeaponProfileId {
   const raw = searchParams.get("profile");
   if (raw === null) {
     return STARTER_WEAPON_PROFILE_DEFAULT;
   }
-  const normalized = raw.trim().toLowerCase();
-  if (isStarterWeaponProfileId(normalized)) {
-    return normalized;
-  }
-  return STARTER_WEAPON_PROFILE_DEFAULT;
+  return parseStarterWeaponProfile(raw) ?? STARTER_WEAPON_PROFILE_DEFAULT;
+}
+
+function parseStarterWeaponProfile(value: string): StarterWeaponProfileId | undefined {
+  const normalized = value.trim().toLowerCase();
+  return isStarterWeaponProfileId(normalized) ? normalized : undefined;
 }
 
 function isStarterWeaponProfileId(value: string): value is StarterWeaponProfileId {
-  return value === "standard" || value === "piercing" || value === "bounce";
+  return (STARTER_WEAPON_PROFILE_IDS as readonly string[]).includes(value);
+}
+
+function shortHash(value: string): string {
+  return value.length <= 8 ? value : value.slice(0, 8);
 }
 
 function requireInputActionBinding(

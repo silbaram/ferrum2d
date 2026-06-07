@@ -44,8 +44,8 @@ Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI a
 | 실제 Top-down Shooter 설정 | `examples/topdown-shooter/public/game.json` |
 | Rust/Wasm ABI | `crates/ferrum-core/src/render_command.rs`, `crates/ferrum-core/src/audio_event.rs`, `packages/ferrum-web/src/wasmBridge.ts` |
 | npm package 역할 분리 | `packages/ferrum-web/package.json`, `packages/create-game/package.json`, `packages/agents/package.json`, `docs/development/operations/npm-package-strategy.md` |
-| package/release artifact 검증 | `scripts/check-package-files.mjs`, `scripts/check-create-game-package.mjs`, `scripts/check-agents-package.mjs`, `scripts/check-release-readiness.mjs`, `packages/*/package.json`, `CHANGELOG.md`, `.github/release.yml` |
-| 검증/배포/문서 사이트 스크립트 | 루트 `package.json`, `scripts/build-pages.mjs`, `.github/workflows/ci.yml`, `.github/workflows/pages.yml` |
+| package/release artifact 검증 | `scripts/package/check-package-files.mjs`, `scripts/package/check-create-game-package.mjs`, `scripts/package/check-agents-package.mjs`, `scripts/package/check-release-readiness.mjs`, `packages/*/package.json`, `CHANGELOG.md`, `.github/release.yml` |
+| 검증/배포/문서 사이트 스크립트 | 루트 `package.json`, `scripts/build/build-pages.mjs`, `scripts/validate/**`, `tests/smoke/**`, `.github/workflows/ci.yml`, `.github/workflows/pages.yml` |
 
 `schemas/shooter-game-spec.schema.json`은 편집기 자동완성과 구조 검토를 돕는 보조 기준이다. 런타임과 CLI에서 실제로 적용되는 기본값, preset 해석, 교차 필드 검증의 최종 기준은 `packages/ferrum-web/src/gameSpec.ts`의 `resolveShooterGameSpec(...)`이다.
 

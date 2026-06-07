@@ -13,8 +13,8 @@ Use this skill for Ferrum2D release work. It coordinates release metadata, packa
 - Release notes template: `docs/development/operations/release-notes-template.md`
 - Package metadata: `packages/ferrum-web/package.json`
 - Changelog: `CHANGELOG.md`
-- Release readiness script: `scripts/check-release-readiness.mjs`
-- Package artifact script: `scripts/check-package-files.mjs`
+- Release readiness script: `scripts/package/check-release-readiness.mjs`
+- Package artifact script: `scripts/package/check-package-files.mjs`
 - Root release commands: `package.json`
 
 ## Release Scope

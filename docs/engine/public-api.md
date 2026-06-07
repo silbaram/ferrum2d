@@ -978,7 +978,7 @@ Runtime tilemap 변경은 shooter scene의 기존 tilemap occupancy를 수정하
 | `textureAtlasDocumentToShooterAtlas(...)` | atlas pack JSON의 frame map을 `ShooterAtlasSpec`으로 변환 |
 | `TEXTURE_ATLAS_PACK_FORMAT`, `TEXTURE_ATLAS_PACK_VERSION` | offline atlas pack artifact 식별자 |
 
-Offline atlas pack prototype은 `scripts/texture-atlas-pack.mjs --input sprites.json --output atlas.json`으로 실행한다. 이 CLI는 실제 PNG 합성이나 trimming/rotation을 수행하지 않고, agent/tooling이 검증 가능한 deterministic frame 위치와 UV JSON을 생성하는 authoring 단계 helper다.
+Offline atlas pack prototype은 `scripts/tools/texture-atlas-pack.mjs --input sprites.json --output atlas.json`으로 실행한다. 이 CLI는 실제 PNG 합성이나 trimming/rotation을 수행하지 않고, agent/tooling이 검증 가능한 deterministic frame 위치와 UV JSON을 생성하는 authoring 단계 helper다.
 
 `AssetLoadProgress`는 `loaded`, `total`, `ratio`, `elapsedMs`, `kind`, `name`, `url`, `cached`를 포함한다. `preloadAssetManifest(...)`는 texture/sound URL body를 미리 fetch하고, `cachePolicy.json`, `cachePolicy.textures`, `cachePolicy.sounds`, 또는 `cachePolicy.binary`가 켜져 있으면 `IndexedDbAssetCache` 같은 cache 구현을 cache-first로 사용한다. `createAssetPreloadCachePolicy(...)`는 manifest URL과 `versionSalt`를 cache version에 반영하므로 release마다 salt를 갱신하면 stale body cache를 새 version으로 분리할 수 있다. 이 cache는 URL body를 재사용하는 preload layer이며, decoded WebGL texture 자체를 영속 저장하지는 않는다.
 
@@ -1068,7 +1068,7 @@ Accessibility helper는 설정 UI나 Game Spec adapter가 공유할 reduced moti
 
 ### Screenshot & Capture API
 
-Screenshot capture helper는 browser smoke나 release tooling이 canvas pixel readback 결과를 deterministic summary로 저장하고 baseline summary와 threshold 비교를 수행하기 위한 API다. PNG 파일 작성과 Playwright 실행은 `scripts/browser-render-smoke.mjs`가 담당하고, package API는 summary/비교 계약만 제공한다.
+Screenshot capture helper는 browser smoke나 release tooling이 canvas pixel readback 결과를 deterministic summary로 저장하고 baseline summary와 threshold 비교를 수행하기 위한 API다. PNG 파일 작성과 Playwright 실행은 `tests/smoke/browser-render-smoke.mjs`가 담당하고, package API는 summary/비교 계약만 제공한다.
 
 | 타입/API | 역할 |
 | --- | --- |
@@ -1078,7 +1078,7 @@ Screenshot capture helper는 browser smoke나 release tooling이 canvas pixel re
 | `compareScreenshotSummaries(...)` | actual/baseline summary의 average color, opaque ratio, non-transparent ratio delta를 threshold와 비교한다. |
 | `SCREENSHOT_CAPTURE_SUMMARY_FORMAT`, `SCREENSHOT_CAPTURE_SUMMARY_VERSION` | screenshot summary JSON artifact 식별자 |
 
-`browser-render-smoke.mjs --screenshot-artifact-dir artifacts/screenshot-capture-smoke --screenshot-name minimal-render examples/minimal-game/dist`는 browser PNG와 `minimal-render.summary.json`을 함께 저장한다.
+`tests/smoke/browser-render-smoke.mjs --screenshot-artifact-dir artifacts/screenshot-capture-smoke --screenshot-name minimal-render examples/minimal-game/dist`는 browser PNG와 `minimal-render.summary.json`을 함께 저장한다.
 
 ## Physics API
 

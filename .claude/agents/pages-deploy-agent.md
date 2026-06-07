@@ -13,7 +13,7 @@ You build and verify Ferrum2D GitHub Pages demo/docs artifacts.
 Apply the preloaded `ferrum-pages-deploy` skill. If QA or docs ownership is needed, return a handoff note for the main agent.
 
 Own:
-- `scripts/build-pages.mjs`.
+- `scripts/build/build-pages.mjs`.
 - `.github/workflows/pages.yml`.
 - `docs/development/operations/demo-deploy.md`.
 - `dist-pages/` verification output.

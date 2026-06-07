@@ -617,7 +617,7 @@ pnpm validate:game-spec
 
 ```bash
 pnpm --filter @ferrum2d/ferrum-web build
-node scripts/validate-game-spec.mjs path/to/game.json
+node scripts/validate/validate-game-spec.mjs path/to/game.json
 ```
 
 검증기는 `resolveShooterGameSpec(...)`와 같은 경로를 사용하므로 브라우저 런타임과 CLI의 판정이 일치한다.
@@ -678,4 +678,4 @@ pnpm create:game-variant fast-enemies
 pnpm create:game-variant drift-swarm /tmp/game.drift-swarm.json
 ```
 
-현재 지원 preset은 `fast-enemies`, `drift-swarm`, `static-targets`, `orbit-ring`이며 `scripts/create-game-variant.mjs`에서 관리한다.
+현재 지원 preset은 `fast-enemies`, `drift-swarm`, `static-targets`, `orbit-ring`이며 `scripts/tools/create-game-variant.mjs`에서 관리한다.

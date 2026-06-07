@@ -13,8 +13,8 @@ Use this skill to verify Ferrum2D npm packages without leaking source/test files
 - npm package procedure: `docs/development/operations/npm-release.md`
 - Runtime package metadata: `packages/ferrum-web/package.json`
 - CLI package metadata: `packages/create-game/package.json`, `packages/agents/package.json`
-- Package check scripts: `scripts/check-package-files.mjs`, `scripts/check-create-game-package.mjs`, `scripts/check-agents-package.mjs`
-- Release readiness script: `scripts/check-release-readiness.mjs`
+- Package check scripts: `scripts/package/check-package-files.mjs`, `scripts/package/check-create-game-package.mjs`, `scripts/package/check-agents-package.mjs`
+- Release readiness script: `scripts/package/check-release-readiness.mjs`
 - Public API contract: `docs/engine/public-api.md`
 
 ## Runtime Package Contract
