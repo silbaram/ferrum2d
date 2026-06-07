@@ -53,7 +53,7 @@ Generated agents should reject active fixture tags that are missing, deprecated,
 
 ## Report Contract
 
-`npm run ferrum:replay-report` should keep the generated report envelope and extend it with the project-specific scenario result.
+`npm run ferrum:runtime-replay-report` should emit a runtime-specific report envelope and keep it separate from template-surface `ferrum:replay-report` output.
 
 Expected report fields:
 
@@ -61,23 +61,26 @@ Expected report fields:
 - `version`
 - `ok`
 - `reports[]`
-- `gameplayReplay.configured`
-- `gameplayReplay.status`
-- `gameplayReplay.scenario`
-- `gameplayReplay.replayHash`
-- `gameplayReplay.comparison`
+- `runtimeGameplayReplay.configured`
+- `runtimeGameplayReplay.status`
+- `runtimeGameplayReplay.scenario`
+- `runtimeGameplayReplay.fixture`
+- `runtimeGameplayReplay.coverageTags`
+- `runtimeGameplayReplay.expectedHash`
+- `runtimeGameplayReplay.actualHash`
+- `runtimeGameplayReplay.comparison`
 
 On mismatch, include a report entry with:
 
 - `kind`: `error`
-- `code`: stable project-owned code, for example `FERRUM_CONSUMER_REPLAY_MISMATCH`
-- `path`: `gameplayReplay.snapshots.N.snapshot...` when available
+- `code`: stable project-owned code, for example `FERRUM_CONSUMER_RUNTIME_REPLAY_MISMATCH`
+- `path`: `runtimeGameplayReplay.snapshots.N.snapshot...` when available
 - `message`
 - `expected`
 - `actual`
 - `suggestion`
 
-If the harness can compute an updated fixture without changing external state, include a `patchCandidate` or equivalent JSON value in stdout. Do not overwrite fixtures unless the user explicitly runs `npm run ferrum:update-replay-fixture`.
+If the runtime runner is still scaffolded, report `runtimeGameplayReplay.status: "not-configured"` with a machine-actionable diagnostic such as `FERRUM_CONSUMER_RUNTIME_REPLAY_NOT_CONFIGURED`. If the harness can compute an updated fixture without changing external state, include a `patchCandidate` or equivalent JSON value in stdout. Do not overwrite fixtures unless the user explicitly runs `npm run ferrum:update-runtime-replay-fixture`.
 
 ## Runner Rules
 
@@ -94,9 +97,9 @@ Use this order for gameplay changes that affect runtime behavior:
 
 1. Edit Game Spec, Behavior Spec, assets, or app glue.
 2. Run `npm run ferrum:authoring-report` when provided.
-3. Run `npm run ferrum:replay-report`.
+3. Run `npm run ferrum:runtime-replay-report`.
 4. If the mismatch is expected, inspect the JSON path diff and patch candidate.
-5. Run `npm run ferrum:update-replay-fixture` only after confirming the intended gameplay change.
+5. Run `npm run ferrum:update-runtime-replay-fixture` only after confirming the intended gameplay change.
 6. Run `npm run ferrum:smoke` or `npm run build`.
 
 Do not update a fixture to hide an unexplained regression.

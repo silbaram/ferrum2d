@@ -16,6 +16,7 @@ Scope:
 - `createFerrumRuntime(...)` bootstrap
 - package scripts
 - public package entrypoint imports
+- handoff to /ferrum:architecture when `src/main.ts` grows beyond bootstrap wiring
 
 Boundaries:
 - Do not edit Ferrum2D engine internals or installed package files.

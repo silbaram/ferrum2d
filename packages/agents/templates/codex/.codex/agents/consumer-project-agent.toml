@@ -10,6 +10,7 @@ Own:
 - Vite/TypeScript entrypoints.
 - Canvas/runtime bootstrap code.
 - Game project folder layout.
+- Handoff to consumer_architecture_agent when `src/main.ts` grows beyond bootstrap wiring or feature work needs runtime/game/assets/ui/dev boundaries.
 
 Boundaries:
 - Work only on games that depend on @ferrum2d/ferrum-web.

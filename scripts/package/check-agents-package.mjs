@@ -25,6 +25,7 @@ const packageLabel = "@ferrum2d/agents";
 const expectedFiles = ["LICENSE", "README.md", "bin", "templates"];
 const skills = [
   "ferrum-consumer-project",
+  "ferrum-consumer-architecture",
   "ferrum-consumer-game-spec",
   "ferrum-consumer-asset-pipeline",
   "ferrum-consumer-gameplay",
@@ -33,6 +34,7 @@ const skills = [
 ];
 const agents = [
   "consumer-project-agent",
+  "consumer-architecture-agent",
   "consumer-game-spec-agent",
   "consumer-asset-agent",
   "consumer-gameplay-agent",
@@ -41,12 +43,40 @@ const agents = [
 ];
 const geminiCommands = [
   "project",
+  "architecture",
   "game-spec",
   "assets",
   "gameplay",
   "playtest",
   "build",
 ];
+const agentSkillMap = new Map([
+  ["consumer-project-agent", "ferrum-consumer-project"],
+  ["consumer-architecture-agent", "ferrum-consumer-architecture"],
+  ["consumer-game-spec-agent", "ferrum-consumer-game-spec"],
+  ["consumer-asset-agent", "ferrum-consumer-asset-pipeline"],
+  ["consumer-gameplay-agent", "ferrum-consumer-gameplay"],
+  ["consumer-playtest-agent", "ferrum-consumer-playtest"],
+  ["consumer-build-agent", "ferrum-consumer-build"],
+]);
+const codexAgentNameMap = new Map([
+  ["consumer-project-agent", "consumer_project_agent"],
+  ["consumer-architecture-agent", "consumer_architecture_agent"],
+  ["consumer-game-spec-agent", "consumer_game_spec_agent"],
+  ["consumer-asset-agent", "consumer_asset_agent"],
+  ["consumer-gameplay-agent", "consumer_gameplay_agent"],
+  ["consumer-playtest-agent", "consumer_playtest_agent"],
+  ["consumer-build-agent", "consumer_build_agent"],
+]);
+const geminiCommandSkillMap = new Map([
+  ["project", "ferrum-consumer-project"],
+  ["architecture", "ferrum-consumer-architecture"],
+  ["game-spec", "ferrum-consumer-game-spec"],
+  ["assets", "ferrum-consumer-asset-pipeline"],
+  ["gameplay", "ferrum-consumer-gameplay"],
+  ["playtest", "ferrum-consumer-playtest"],
+  ["build", "ferrum-consumer-build"],
+]);
 const expectedTemplateFiles = [
   "shared/.agents/harness/ferrum-game-development.md",
   "shared/.agents/harness/ferrum-runtime-replay.md",
@@ -147,6 +177,8 @@ async function checkTemplates() {
   );
   assertConsumerProjectileWeaponAuthoringContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertConsumerRuntimeApplyContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
+  assertConsumerArchitectureContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
+  assertForbiddenPublicImportBoundary(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertNoForbiddenImportExamples(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
 
   const runtimeReplayHarnessSource = await readFile(runtimeReplayHarnessFile, "utf8");
@@ -165,6 +197,11 @@ async function checkTemplates() {
           sharedSource.includes("npm run ferrum:replay-report"),
         `${path.relative(repoRoot, sharedFile)} must require authoring and replay report checks for data-driven gameplay`,
       );
+    }
+    if (skill === "ferrum-consumer-architecture") {
+      assertConsumerArchitectureContract(sharedSource, sharedFile);
+      assertForbiddenPublicImportBoundary(sharedSource, sharedFile);
+      assertNoForbiddenImportExamples(sharedSource, sharedFile);
     }
     if (skill === "ferrum-consumer-gameplay") {
       assert(
@@ -190,11 +227,19 @@ async function checkTemplates() {
   }
 
   for (const agent of agents) {
+    const expectedSkill = agentSkillMap.get(agent);
+    const expectedCodexName = codexAgentNameMap.get(agent);
+    assert(expectedSkill !== undefined, `missing expected skill mapping for ${agent}`);
+    assert(expectedCodexName !== undefined, `missing expected Codex name mapping for ${agent}`);
     const codexFile = path.join(templatesRoot, `codex/.codex/agents/${agent}.toml`);
     const codexSource = await readFile(codexFile, "utf8");
-    assert(/^name\s*=\s*"consumer_[a-z_]+"/m.test(codexSource), `${path.relative(repoRoot, codexFile)} must define Codex name`);
+    assert(
+      new RegExp(`^name\\s*=\\s*"${escapeRegExp(expectedCodexName)}"$`, "m").test(codexSource),
+      `${path.relative(repoRoot, codexFile)} must define Codex name ${expectedCodexName}`,
+    );
     assert(/^description\s*=\s*"/m.test(codexSource), `${path.relative(repoRoot, codexFile)} must define Codex description`);
     assert(/^developer_instructions\s*=\s*"""/m.test(codexSource), `${path.relative(repoRoot, codexFile)} must define Codex instructions`);
+    assert(codexSource.includes(`Use the ${expectedSkill} skill.`), `${path.relative(repoRoot, codexFile)} must reference ${expectedSkill}`);
     assert(codexSource.includes("Do not"), `${path.relative(repoRoot, codexFile)} must include boundaries`);
 
     const claudeFile = path.join(templatesRoot, `claude/.claude/agents/${agent}.md`);
@@ -204,6 +249,7 @@ async function checkTemplates() {
     const skillRefs = [...frontmatter(claudeSource, claudeFile).matchAll(/^\s*-\s+(ferrum-consumer-[a-z-]+)$/gm)].map((match) => match[1]);
     assert(skillRefs.length === 1, `${path.relative(repoRoot, claudeFile)} must reference exactly one skill`);
     assert(skills.includes(skillRefs[0]), `${path.relative(repoRoot, claudeFile)} references unknown skill ${skillRefs[0]}`);
+    assert(skillRefs[0] === expectedSkill, `${path.relative(repoRoot, claudeFile)} must reference ${expectedSkill}`);
 
   }
 
@@ -213,11 +259,16 @@ async function checkTemplates() {
   assert(codexConfigSource.includes("max_depth = 1"), "Codex template config must limit subagent depth");
 
   for (const command of geminiCommands) {
+    const expectedSkill = geminiCommandSkillMap.get(command);
+    assert(expectedSkill !== undefined, `missing expected Gemini skill mapping for ${command}`);
     const geminiFile = path.join(templatesRoot, `gemini/.gemini/commands/ferrum/${command}.toml`);
     const geminiSource = await readFile(geminiFile, "utf8");
     assert(/^description\s*=\s*"/m.test(geminiSource), `${path.relative(repoRoot, geminiFile)} must define Gemini command description`);
     assert(/^prompt\s*=\s*"""/m.test(geminiSource), `${path.relative(repoRoot, geminiFile)} must define Gemini command prompt`);
-    assert(geminiSource.includes(".agents/skills/ferrum-consumer-"), `${path.relative(repoRoot, geminiFile)} must reference canonical .agents skill`);
+    assert(
+      geminiSource.includes(`.agents/skills/${expectedSkill}/SKILL.md`),
+      `${path.relative(repoRoot, geminiFile)} must reference canonical ${expectedSkill} skill`,
+    );
     assert(geminiSource.includes(".agents/harness/ferrum-game-development.md"), `${path.relative(repoRoot, geminiFile)} must reference shared harness`);
   }
 
@@ -337,18 +388,19 @@ function assertRuntimeReplayHarnessContract(source, filePath) {
     `${path.relative(repoRoot, filePath)} must describe consumer replay coverage registry shape`,
   );
   assert(
-    source.includes("FERRUM_CONSUMER_REPLAY_MISMATCH") &&
+    source.includes("FERRUM_CONSUMER_RUNTIME_REPLAY_MISMATCH") &&
+      source.includes("FERRUM_CONSUMER_RUNTIME_REPLAY_NOT_CONFIGURED") &&
       source.includes("patchCandidate") &&
-      source.includes("ferrum:update-replay-fixture"),
+      source.includes("ferrum:update-runtime-replay-fixture"),
     `${path.relative(repoRoot, filePath)} must describe mismatch diagnostics and explicit fixture updates`,
   );
   assert(
-    source.includes("gameplayReplay.snapshots.N.snapshot") &&
+    source.includes("runtimeGameplayReplay.snapshots.N.snapshot") &&
       source.includes("format") &&
       source.includes("version") &&
       source.includes("ok") &&
       source.includes("reports[]") &&
-      source.includes("gameplayReplay.status") &&
+      source.includes("runtimeGameplayReplay.status") &&
       source.includes("comparison") &&
       source.includes("expected") &&
       source.includes("actual") &&
@@ -382,6 +434,20 @@ function assertConsumerRuntimeApplyContract(source, filePath) {
   );
 }
 
+function assertConsumerArchitectureContract(source, filePath) {
+  assert(
+    source.includes("src/main.ts") &&
+      source.includes("bootstrap") &&
+      source.includes("src/runtime/") &&
+      source.includes("src/game/") &&
+      source.includes("src/assets/") &&
+      source.includes("src/ui/") &&
+      source.includes("src/dev/") &&
+      source.includes("tests/playtest/"),
+    `${path.relative(repoRoot, filePath)} must document consumer architecture module boundaries`,
+  );
+}
+
 function assertForbiddenPublicImportBoundary(source, filePath) {
   assert(
     source.includes("@ferrum2d/ferrum-web") &&
@@ -398,6 +464,10 @@ function assertNoForbiddenImportExamples(source, filePath) {
     !forbiddenImport.test(source),
     `${path.relative(repoRoot, filePath)} must not include import examples from ferrum-web internals`,
   );
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function exists(filePath) {

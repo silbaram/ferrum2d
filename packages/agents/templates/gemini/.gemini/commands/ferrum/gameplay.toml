@@ -16,6 +16,7 @@ Scope:
 - input transforms
 - HUD, menus, pause/resume/restart shell
 - public API usage around `@ferrum2d/ferrum-web`
+- handoff to /ferrum:architecture for new module boundaries or smoke/report separation
 
 Boundaries:
 - Do not move engine-owned simulation state into TypeScript.

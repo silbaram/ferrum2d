@@ -9,7 +9,7 @@ Ferrum2D consumer projects are AI agent-first. The default development loop is n
 ## Standard Loop
 
 1. Inspect `package.json`, `src/`, `public/`, `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md`.
-2. Identify whether the task is project setup, spec data, assets, gameplay glue, playtest, or build.
+2. Identify whether the task is project setup, architecture, spec data, assets, gameplay glue, playtest, or build.
 3. Use the matching `ferrum-consumer-*` skill under `.agents/skills/`.
 4. Prefer public imports from `@ferrum2d/ferrum-web`.
 5. For data-driven gameplay or behavior changes, run an authoring validation command before browser playtest when the project provides one.
@@ -27,6 +27,19 @@ Prefer supported authoring data and public helper APIs before writing bespoke ru
 - Runtime apply path: use public engine methods such as `applyGameplayBehaviorCommands(...)`, `setInputActionBinding(...)`, and `builtInShooterPlayerHandle()` when the generated template exposes a built-in player.
 
 For projectile or weapon changes, keep the source as serializable authoring data when possible. The usual loop is `edit definition -> compile command document -> apply through public runtime facade -> run authoring/replay report -> smoke/build`. Do not add per-frame TypeScript movement, collision, or damage loops for behavior already supported by Ferrum2D primitives.
+
+## Consumer Game Architecture
+
+Real games should keep `src/main.ts` as a bootstrap entrypoint rather than a large demo file. Prefer this module split as the project grows:
+
+- `src/runtime/`: `createFerrumRuntime(...)`, lifecycle, renderer/input/audio wiring, and public API adapter seams.
+- `src/game/`: Game Spec fragments, projectile/weapon authoring data, scene flow, and gameplay command selection.
+- `src/assets/`: app-owned asset manifests, URLs, atlas metadata, and load/preload helpers.
+- `src/ui/`: HUD, menus, panels, pause/restart UI, and app-facing callbacks.
+- `src/dev/`: smoke globals, runtime reports, replay diagnostics, debug-only panels, and local test hooks.
+- `tests/playtest/`: scripted browser/manual playtest scenarios, reproduction notes, and non-shipping test assets.
+
+Use `ferrum-consumer-architecture` when a task changes file layout, grows `src/main.ts`, adds reusable runtime adapters, or mixes smoke/report code with shippable gameplay. UI modules should call app-owned service functions instead of scattering raw `runtime.engine.*` calls. Dev/report modules may observe runtime state but should not own gameplay behavior.
 
 ## Standard Commands
 

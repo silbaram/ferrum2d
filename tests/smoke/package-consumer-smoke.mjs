@@ -23,11 +23,13 @@ const AGENT_INSTALL_EXPECTED_FILES = Object.freeze([
   ".agents/harness/ferrum-game-development.md",
   ".agents/harness/ferrum-runtime-replay.md",
   ".agents/skills/ferrum-consumer-asset-pipeline/SKILL.md",
+  ".agents/skills/ferrum-consumer-architecture/SKILL.md",
   ".agents/skills/ferrum-consumer-build/SKILL.md",
   ".agents/skills/ferrum-consumer-game-spec/SKILL.md",
   ".agents/skills/ferrum-consumer-gameplay/SKILL.md",
   ".agents/skills/ferrum-consumer-playtest/SKILL.md",
   ".agents/skills/ferrum-consumer-project/SKILL.md",
+  ".codex/agents/consumer-architecture-agent.toml",
   ".codex/config.toml",
   ".codex/agents/consumer-asset-agent.toml",
   ".codex/agents/consumer-build-agent.toml",
@@ -35,6 +37,7 @@ const AGENT_INSTALL_EXPECTED_FILES = Object.freeze([
   ".codex/agents/consumer-gameplay-agent.toml",
   ".codex/agents/consumer-playtest-agent.toml",
   ".codex/agents/consumer-project-agent.toml",
+  ".claude/agents/consumer-architecture-agent.md",
   ".claude/agents/consumer-asset-agent.md",
   ".claude/agents/consumer-build-agent.md",
   ".claude/agents/consumer-game-spec-agent.md",
@@ -42,11 +45,13 @@ const AGENT_INSTALL_EXPECTED_FILES = Object.freeze([
   ".claude/agents/consumer-playtest-agent.md",
   ".claude/agents/consumer-project-agent.md",
   ".claude/skills/ferrum-consumer-asset-pipeline/SKILL.md",
+  ".claude/skills/ferrum-consumer-architecture/SKILL.md",
   ".claude/skills/ferrum-consumer-build/SKILL.md",
   ".claude/skills/ferrum-consumer-game-spec/SKILL.md",
   ".claude/skills/ferrum-consumer-gameplay/SKILL.md",
   ".claude/skills/ferrum-consumer-playtest/SKILL.md",
   ".claude/skills/ferrum-consumer-project/SKILL.md",
+  ".gemini/commands/ferrum/architecture.toml",
   ".gemini/commands/ferrum/assets.toml",
   ".gemini/commands/ferrum/build.toml",
   ".gemini/commands/ferrum/game-spec.toml",
@@ -581,12 +586,20 @@ async function assertGeneratedAgentsInstall(generatedGameRoot, templateName) {
     path.join(generatedGameRoot, ".agents/skills/ferrum-consumer-game-spec/SKILL.md"),
     "utf8",
   );
+  const architectureSkill = await readFile(
+    path.join(generatedGameRoot, ".agents/skills/ferrum-consumer-architecture/SKILL.md"),
+    "utf8",
+  );
   const gameplaySkill = await readFile(
     path.join(generatedGameRoot, ".agents/skills/ferrum-consumer-gameplay/SKILL.md"),
     "utf8",
   );
   assertConsumerProjectileWeaponAuthoringContract(gameDevelopmentHarness, `${templateName} installed game-development harness`);
   assertConsumerRuntimeApplyContract(gameDevelopmentHarness, `${templateName} installed game-development harness`);
+  assertConsumerArchitectureContract(gameDevelopmentHarness, `${templateName} installed game-development harness`);
+  assertForbiddenPublicImportBoundary(gameDevelopmentHarness, `${templateName} installed game-development harness`);
+  assertConsumerArchitectureContract(architectureSkill, `${templateName} installed architecture skill`);
+  assertForbiddenPublicImportBoundary(architectureSkill, `${templateName} installed architecture skill`);
   assertConsumerProjectileWeaponAuthoringContract(gameSpecSkill, `${templateName} installed game-spec skill`);
   assert(
     gameSpecSkill.includes("npm run ferrum:authoring-report") &&
@@ -1691,6 +1704,30 @@ function assertConsumerRuntimeApplyContract(source, label) {
       source.includes("setInputActionBinding") &&
       source.includes("builtInShooterPlayerHandle"),
     `${label} must document public runtime apply helpers`,
+  );
+}
+
+function assertConsumerArchitectureContract(source, label) {
+  assert(
+    source.includes("src/main.ts") &&
+      source.includes("bootstrap") &&
+      source.includes("src/runtime/") &&
+      source.includes("src/game/") &&
+      source.includes("src/assets/") &&
+      source.includes("src/ui/") &&
+      source.includes("src/dev/") &&
+      source.includes("tests/playtest/"),
+    `${label} must document consumer architecture module boundaries`,
+  );
+}
+
+function assertForbiddenPublicImportBoundary(source, label) {
+  assert(
+    source.includes("@ferrum2d/ferrum-web") &&
+      source.includes("@ferrum2d/ferrum-web/dist/*") &&
+      source.includes("@ferrum2d/ferrum-web/pkg/*") &&
+      source.includes("@ferrum2d/ferrum-web/src/*"),
+    `${label} must document public entrypoint and forbidden internal imports`,
   );
 }
 

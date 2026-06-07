@@ -23,17 +23,19 @@ Do not use it for:
 ## Workflow
 
 1. Find the app entrypoint and runtime creation code.
-2. Keep simulation state in Ferrum2D when public APIs already own it.
-3. Keep browser/platform UI code in the app layer.
-4. Use narrow adapters instead of scattering direct runtime calls across unrelated files.
-5. Preserve hot-path discipline: do not create per-entity JS/Wasm round trips in frame loops.
-6. For projectile/weapon profile changes, prefer public helpers such as `compileWeaponProfiles(...)`, `behaviorRecipeCommandsForEntity(...)`, `applyGameplayBehaviorCommands(...)`, `setInputActionBinding(...)`, and `builtInShooterPlayerHandle()` over bespoke simulation code.
-7. For data-driven gameplay or behavior authoring, run `npm run ferrum:authoring-report` when the project provides it after authoring and before browser playtest.
-8. Treat authoring/replay reports as machine-readable evidence only after checking `format`, `version`, `ok`, and failure `reports[]` entries with `path`, `message`, and `suggestion`.
-9. After applying data-driven gameplay changes, run `npm run ferrum:replay-report` when the project provides it, or hand off to playtest for deterministic replay evidence.
-10. When the generated template-surface replay is not enough, use `.agents/harness/ferrum-runtime-replay.md` to add a project-specific deterministic runtime replay runner and fixture.
-11. If the project provides a local report artifact validator, run it after generating report artifacts. Do not require Ferrum2D engine workspace schema files in ordinary consumer projects.
-12. Validate with `npm run ferrum:smoke` when available, otherwise run build and, when possible, a browser smoke pass.
+2. Use `ferrum-consumer-architecture` first when the feature would make `src/main.ts` large, mix UI/dev/report code with gameplay, or require new module boundaries.
+3. Keep simulation state in Ferrum2D when public APIs already own it.
+4. Keep browser/platform UI code in the app layer.
+5. Use narrow adapters instead of scattering direct runtime calls across unrelated files.
+6. Preserve hot-path discipline: do not create per-entity JS/Wasm round trips in frame loops.
+7. For projectile/weapon profile changes, prefer public helpers such as `compileWeaponProfiles(...)`, `behaviorRecipeCommandsForEntity(...)`, `applyGameplayBehaviorCommands(...)`, `setInputActionBinding(...)`, and `builtInShooterPlayerHandle()` over bespoke simulation code.
+8. Keep smoke globals, runtime reports, replay diagnostics, and debug-only panels in `src/dev/` or equivalent test-only modules.
+9. For data-driven gameplay or behavior authoring, run `npm run ferrum:authoring-report` when the project provides it after authoring and before browser playtest.
+10. Treat authoring/replay reports as machine-readable evidence only after checking `format`, `version`, `ok`, and failure `reports[]` entries with `path`, `message`, and `suggestion`.
+11. After applying data-driven gameplay changes, run `npm run ferrum:replay-report` when the project provides it, or hand off to playtest for deterministic replay evidence.
+12. When the generated template-surface replay is not enough, use `.agents/harness/ferrum-runtime-replay.md` to add a project-specific deterministic runtime replay runner and fixture.
+13. If the project provides a local report artifact validator, run it after generating report artifacts. Do not require Ferrum2D engine workspace schema files in ordinary consumer projects.
+14. Validate with `npm run ferrum:smoke` when available, otherwise run build and, when possible, a browser smoke pass.
 
 ## Projectile/Weapon Runtime Apply
 
@@ -44,6 +46,7 @@ Generated templates may expose profile ids such as `standard`, `piercing`, or `b
 - Bind input actions with `setInputActionBinding(...)` when a non-default action id is selected.
 - Apply the selected command list with `applyGameplayBehaviorCommands(...)` against a stable entity handle.
 - Expose selected profile state through simple app-owned telemetry or HUD text when useful for smoke checks.
+- Put profile catalogs and command compilation in `src/game/`, runtime apply functions in a narrow gameplay adapter, and UI controls in `src/ui/`.
 
 If a requested profile needs unsupported core behavior, report the missing Ferrum2D capability instead of moving collision, steering, or damage ownership into TypeScript.
 

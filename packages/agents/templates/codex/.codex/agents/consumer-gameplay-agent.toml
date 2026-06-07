@@ -9,6 +9,7 @@ Own:
 - App-side gameplay integration through public APIs.
 - UI/HUD/menu/pause/restart behavior around the runtime.
 - Input transform and runtime callback coordination.
+- Handoff to consumer_architecture_agent when gameplay work needs new modules, repeated runtime adapters, or smoke/report separation.
 
 Boundaries:
 - Do not move engine-owned simulation state into TypeScript.

@@ -7,7 +7,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DEFAULT_ARTIFACT_DIR = "artifacts/consumer-smoke";
 const REPORT_FORMAT = "ferrum2d.package.consumer-smoke.report";
 const REPORT_VERSION = 1;
-const EXPECTED_AGENT_FILES_CHECKED = 36;
+const EXPECTED_AGENT_FILES_CHECKED = 41;
 const REQUIRED_TEMPLATE_CHECKS = Object.freeze([
   "createGame",
   "agentsDryRun",
@@ -183,8 +183,8 @@ function validateTemplateReports(template, label, reportStatus, reportErrors) {
     return;
   }
   validateStatusString(template.reports.authoring?.status, `${label}.reports.authoring.status`, reportErrors);
-  validateReplaySummary(template.reports.gameplayReplay, `${label}.reports.gameplayReplay`, reportErrors);
-  validateReplaySummary(template.reports.runtimeReplay, `${label}.reports.runtimeReplay`, reportErrors);
+  validateConfiguredReplaySummary(template.reports.gameplayReplay, `${label}.reports.gameplayReplay`, reportErrors);
+  validateRuntimeReplaySummary(template.reports.runtimeReplay, `${label}.reports.runtimeReplay`, reportErrors);
   validateRuntimeRecipeSummary(template.reports.runtimeReplayRecipe, `${label}.reports.runtimeReplayRecipe`, reportErrors);
   if (!isRecord(template.buildOutput)) {
     reportErrors.push(`${label}.buildOutput must be an object`);
@@ -198,7 +198,7 @@ function validateTemplateReports(template, label, reportStatus, reportErrors) {
   }
 }
 
-function validateReplaySummary(value, label, reportErrors) {
+function validateConfiguredReplaySummary(value, label, reportErrors) {
   if (!isRecord(value)) {
     reportErrors.push(`${label} must be an object`);
     return;
@@ -221,6 +221,41 @@ function validateReplaySummary(value, label, reportErrors) {
   }
   if (value.comparisonPassed !== true) {
     reportErrors.push(`${label}.comparisonPassed must be true`);
+  }
+}
+
+function validateRuntimeReplaySummary(value, label, reportErrors) {
+  if (!isRecord(value)) {
+    reportErrors.push(`${label} must be an object`);
+    return;
+  }
+  validateStatusString(value.status, `${label}.status`, reportErrors);
+  if (typeof value.configured !== "boolean") {
+    reportErrors.push(`${label}.configured must be a boolean`);
+  }
+  if (typeof value.scenario !== "string" || value.scenario.length === 0) {
+    reportErrors.push(`${label}.scenario must be a non-empty string`);
+  }
+  if (!Array.isArray(value.coverageTags) || value.coverageTags.length === 0) {
+    reportErrors.push(`${label}.coverageTags must be a non-empty array`);
+  }
+  if (value.configured === true) {
+    if (typeof value.expectedHash !== "string" || value.expectedHash.length === 0) {
+      reportErrors.push(`${label}.expectedHash must be a non-empty string when configured`);
+    }
+    if (typeof value.actualHash !== "string" || value.actualHash.length === 0) {
+      reportErrors.push(`${label}.actualHash must be a non-empty string when configured`);
+    }
+    if (value.comparisonPassed !== true) {
+      reportErrors.push(`${label}.comparisonPassed must be true when configured`);
+    }
+  } else if (value.configured === false) {
+    if (value.status !== "not-configured") {
+      reportErrors.push(`${label}.status must be not-configured when configured is false`);
+    }
+    if (!Number.isFinite(value.reports) || value.reports <= 0) {
+      reportErrors.push(`${label}.reports must include at least one diagnostic when not configured`);
+    }
   }
 }
 

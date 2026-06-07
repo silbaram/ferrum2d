@@ -28,7 +28,9 @@ Do not use it for:
 6. Use `npm run ferrum:smoke` for build-level smoke when available.
 7. For browser checks, record URL, viewport, user steps, console errors, and visual symptoms.
 8. Check debug overlay or exposed runtime stats when available.
-9. Separate game bug reports from suspected engine bugs.
-10. Report commands run, failures, and skipped checks with reasons.
+9. If playtest requires adding browser hooks or scripted scenarios, put browser-only hooks in `src/dev/` and scenarios/notes in `tests/playtest/`. Do not add these hooks directly to `src/main.ts`.
+10. When playtest uncovers architecture issues, report whether the issue is in bootstrap, runtime adapter, game data, UI, assets, or dev/report hook code. Hand off layout/refactor work to `ferrum-consumer-architecture`.
+11. Separate game bug reports from suspected engine bugs.
+12. Report commands run, failures, and skipped checks with reasons.
 
 If a dev server remains running after testing, stop it before finishing unless the user asked to keep it running.
