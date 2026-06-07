@@ -8,7 +8,6 @@
 | --- | --- |
 | [신규 기능 후보](feature-candidates.md) | 아직 구현하지 않은 신규 기능 후보와 승인 필요 항목 |
 | [데모 게임 정리 로드맵](demo-game-roadmap.md) | `examples/` 하위 기술 데모 재구성 후보와 우선순위 |
-| [런타임 확장성 고도화 로드맵](runtime-extensibility-roadmap.md) | Rust 범용 실행 코어와 TypeScript authoring 확장 레이어 고도화 계획 |
 | [리팩토링 로드맵](refactor-roadmap.md) | 아직 진행하지 않은 구조 분리와 성능 개선 후보 |
 
 ## 관리 규칙
