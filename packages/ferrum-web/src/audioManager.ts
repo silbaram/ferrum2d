@@ -111,6 +111,11 @@ export class AudioManager {
     return buffer;
   }
 
+  hasSound(soundId: number): boolean {
+    this.assertAlive();
+    return this.buffersById.has(Math.trunc(soundId));
+  }
+
   setBusVolume(bus: AudioBus, volume: number): void {
     this.assertAlive();
     const gain = Math.max(0, volume);

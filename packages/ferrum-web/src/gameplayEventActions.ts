@@ -25,6 +25,8 @@ import {
   GAMEPLAY_EVENT_TILE_IMPACT_LAYER_SHIFT,
   GAMEPLAY_EVENT_TILE_IMPACT_TILE_MASK,
   GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_SHIFT,
+  gameplayPresentationEffectKind,
+  type GameplayPresentationEffectKind,
 } from "./gameplayEventDecoder.js";
 
 const FLOAT32_BITS_VIEW = new DataView(new ArrayBuffer(4));
@@ -189,6 +191,18 @@ export interface GameplayFactionDamageDeniedEventAction {
   event: GameplayEventView;
 }
 
+export interface GameplayPresentationEffectEventAction {
+  type: "presentationEffect";
+  actor: GameplayEntityHandle;
+  source: GameplayEntityHandle;
+  effectId: number;
+  effectType: number;
+  effectKind: GameplayPresentationEffectKind;
+  flags: number;
+  payloadBits: number;
+  event: GameplayEventView;
+}
+
 export type GameplayEventAction =
   | GameplayInteractionEventAction
   | GameplayCollisionDamageEventAction
@@ -199,7 +213,8 @@ export type GameplayEventAction =
   | GameplayTimerEventAction
   | GameplayPickupCollectedEventAction
   | GameplayTileImpactEventAction
-  | GameplayFactionDamageDeniedEventAction;
+  | GameplayFactionDamageDeniedEventAction
+  | GameplayPresentationEffectEventAction;
 
 export interface GameplayEventActionTarget {
   applyGameplayEventAction(action: GameplayEventAction): unknown;
@@ -299,6 +314,10 @@ export function gameplayActionsForEvents(
     }
     if (event.kind === "factionDamageDenied") {
       actions.push(factionDamageDeniedActionForEvent(event, eventPath));
+      return;
+    }
+    if (event.kind === "presentationEffect") {
+      actions.push(presentationEffectActionForEvent(event, eventPath));
       return;
     }
     if (unknownEvent === "error") {
@@ -460,6 +479,23 @@ function factionDamageDeniedActionForEvent(
     source: entityHandleForEvent(event.sourceId, event.sourceGeneration, `${path}.source`),
     sourceFactionId: nonNegativeInteger(event.tokenId, `${path}.sourceFactionId`),
     targetFactionId: nonNegativeInteger(event.payloadBits, `${path}.targetFactionId`),
+    flags: nonNegativeInteger(event.flags, `${path}.flags`),
+    payloadBits: nonNegativeInteger(event.payloadBits, `${path}.payloadBits`),
+    event,
+  };
+}
+
+function presentationEffectActionForEvent(
+  event: GameplayEventView,
+  path: string,
+): GameplayPresentationEffectEventAction {
+  return {
+    type: "presentationEffect",
+    actor: entityHandleForEvent(event.actorId, event.actorGeneration, `${path}.actor`),
+    source: entityHandleForEvent(event.sourceId, event.sourceGeneration, `${path}.source`),
+    effectId: nonNegativeInteger(event.tokenId, `${path}.tokenId`),
+    effectType: nonNegativeInteger(event.payloadBits, `${path}.payloadBits`),
+    effectKind: gameplayPresentationEffectKind(event.payloadBits),
     flags: nonNegativeInteger(event.flags, `${path}.flags`),
     payloadBits: nonNegativeInteger(event.payloadBits, `${path}.payloadBits`),
     event,

@@ -59,6 +59,12 @@ jobs:
       - name: Runtime budget profile gate
         run: pnpm smoke:runtime-budgets
 
+      - name: Mass object stress smoke
+        run: pnpm smoke:mass-objects
+
+      - name: Top-down browser mass object smoke
+        run: pnpm smoke:topdown-mass-objects
+
       - name: Build wasm package
         run: wasm-pack build crates/ferrum-core --target web --out-dir
           ../../packages/ferrum-web/pkg
@@ -80,6 +86,9 @@ jobs:
 
       - name: Gameplay report artifact validation
         run: pnpm validate:gameplay-report-artifacts
+
+      - name: Consumer smoke report validator smoke
+        run: pnpm smoke:consumer-smoke-report
 
       - name: Create-game template report smoke
         run: pnpm smoke:create-game-template-reports
@@ -120,10 +129,17 @@ jobs:
         run: pnpm install
 
       - name: Package consumer smoke
+        id: package_consumer_smoke
         run: pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke
 
-      - name: Upload consumer smoke failure artifacts
-        if: failure()
+      - name: Validate consumer smoke report
+        if: always()
+        env:
+          EXPECT_STATUS: ${{ steps.package_consumer_smoke.outcome == 'success' && 'passed' || 'failed' }}
+        run: pnpm validate:consumer-smoke-report -- --expect-status "$EXPECT_STATUS"
+
+      - name: Upload consumer smoke artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: consumer-smoke-artifacts

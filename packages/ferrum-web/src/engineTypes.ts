@@ -4,3 +4,7 @@ export type * from "./engineTypes/physicsBodies.js";
 export type * from "./engineTypes/physicsGeometry.js";
 export type * from "./engineTypes/physicsJoints.js";
 export type * from "./engineTypes/physicsQueries.js";
+export type {
+  EffectEventAssetValidationPolicy,
+  EffectEventRuntimeOptions,
+} from "./effectEventRuntime.js";

@@ -102,7 +102,7 @@ test("RuntimeFrameRenderer render-only fast path does not require FrameState", (
   ]);
 });
 
-test("RuntimeFrameRenderer omits collision metrics when lifecycle tracking is disabled", () => {
+test("RuntimeFrameRenderer reports collision pair count when lifecycle tracking is disabled", () => {
   const order: string[] = [];
   const renderer = fakeRuntimeRenderer(order);
   let debugMetrics: Record<string, unknown> | undefined;
@@ -125,7 +125,7 @@ test("RuntimeFrameRenderer omits collision metrics when lifecycle tracking is di
 
   runtimeFrameRenderer.renderFrame(renderFrameState({ frameState: frameState({ physics }) }));
 
-  equal(debugMetrics?.collisionPairCount, undefined);
+  equal(debugMetrics?.collisionPairCount, 4);
   equal(debugMetrics?.collisionEventCount, undefined);
 });
 
@@ -373,6 +373,12 @@ function frameState(overrides: Partial<FrameState> = {}): FrameState {
       u32sPerEvent: 8,
     } as never,
     gameplayEvents: [],
+    effectEventBuffer: {
+      buffer: new DataView(new ArrayBuffer(0)),
+      eventCount: 0,
+      bytesPerEvent: 40,
+    } as never,
+    effectEvents: [],
     physicsDebugLineBuffer: {
       buffer: new Float32Array(0),
       lineCount: 0,

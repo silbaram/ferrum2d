@@ -16,9 +16,15 @@ class FakeTextureManager implements TextureAssetManager {
 class FakeAudioManager {
   destroyCount = 0;
   eventBufferCount = 0;
+  readonly loadedSoundIds = new Set<number>();
 
-  async loadSound(_soundId: number, _url: string): Promise<AudioBuffer> {
+  async loadSound(soundId: number, _url: string): Promise<AudioBuffer> {
+    this.loadedSoundIds.add(soundId);
     return {} as AudioBuffer;
+  }
+
+  hasSound(soundId: number): boolean {
+    return this.loadedSoundIds.has(soundId);
   }
 
   playEvents(): void {}
@@ -47,11 +53,16 @@ test("BrowserPlatformHost loads assets through composed texture manager", async 
     const host = new BrowserPlatformHost(textureManager, audioManager as unknown as AudioManager);
     const assets = await host.loadAssets({
       textures: { player: "/assets/player.png" },
+      sounds: { hit: "/assets/hit.wav" },
       json: { game: "/game.json" },
     });
 
     equal(host.textureId("player"), 1);
+    equal(host.soundId("hit"), 1);
+    equal(host.hasSound(1), true);
+    equal(host.hasSound(2), false);
     equal(assets.textures.textureId("player"), 1);
+    equal(assets.sounds.soundId("hit"), 1);
     deepEqual(textureManager.loaded, [{ textureId: 1, url: "/assets/player.png" }]);
     deepEqual(assets.json.game, { source: "/game.json" });
     host.playAudioEventBuffer({ buffer: new Float32Array(), eventCount: 0, floatsPerEvent: 3 });

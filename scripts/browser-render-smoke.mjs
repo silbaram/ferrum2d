@@ -20,6 +20,9 @@ const PARTICLE_VFX_MODE = "particle-vfx";
 const PRELOAD_MODE = "preload";
 const VIRTUAL_CONTROLS_MODE = "virtual-controls";
 const TOPDOWN_EFFECTS_MODE = "topdown-effects";
+const TOPDOWN_MASS_OBJECTS_MODE = "topdown-mass-objects";
+const TOPDOWN_MASS_OBJECTS_PLAYING_STATE = 1;
+const TOPDOWN_MASS_OBJECTS_COLLISION_PAIR_BUDGET = 2_000;
 const TOPDOWN_SAVE_LOAD_MODE = "topdown-save-load";
 const TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_MODE = "topdown-authored-behavior-variant";
 const TOPDOWN_HD2D_MODE = "topdown-hd2d";
@@ -318,6 +321,10 @@ function parseArgs(args) {
       mode = TOPDOWN_EFFECTS_MODE;
       continue;
     }
+    if (arg === "--topdown-mass-objects") {
+      mode = TOPDOWN_MASS_OBJECTS_MODE;
+      continue;
+    }
     if (arg === "--topdown-hd2d") {
       mode = TOPDOWN_HD2D_MODE;
       continue;
@@ -347,6 +354,7 @@ function parseArgs(args) {
     PRELOAD_MODE,
     VIRTUAL_CONTROLS_MODE,
     TOPDOWN_EFFECTS_MODE,
+    TOPDOWN_MASS_OBJECTS_MODE,
     TOPDOWN_SAVE_LOAD_MODE,
     TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_MODE,
     TOPDOWN_HD2D_MODE,
@@ -399,6 +407,9 @@ function browserSmokeUrl(port, options) {
   }
   if (mode === TOPDOWN_EFFECTS_MODE) {
     params.set("effectSmoke", "true");
+  }
+  if (mode === TOPDOWN_MASS_OBJECTS_MODE) {
+    params.set("massObjectsSmoke", "true");
   }
   if (mode === TOPDOWN_SAVE_LOAD_MODE) {
     params.set("effectSmoke", "true");
@@ -596,6 +607,8 @@ async function smokeByMode(page, mode, timeoutMs) {
       return await smokeVirtualControls(page, timeoutMs);
     case TOPDOWN_EFFECTS_MODE:
       return await smokeTopdownEffects(page, timeoutMs);
+    case TOPDOWN_MASS_OBJECTS_MODE:
+      return await smokeTopdownMassObjects(page, timeoutMs);
     case TOPDOWN_SAVE_LOAD_MODE:
       return await smokeTopdownSaveLoad(page, timeoutMs);
     case TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_MODE:
@@ -943,7 +956,7 @@ async function smokeTopdownAuthoredBehaviorVariant(page, timeoutMs) {
   await waitForPageFunction(
     page,
     "Top-down authored behavior variant smoke did not expose variant summary",
-    () => globalThis.ferrumTopdownAuthoredBehaviorVariant?.replayScenario === "topdown-authored-behavior",
+    () => globalThis.ferrumTopdownAuthoredBehaviorVariant?.replayScenario === "example-topdown-authored-behavior",
     timeoutMs,
   );
   await page.evaluate(() => {
@@ -1336,6 +1349,45 @@ async function smokeTopdownEffects(page, timeoutMs) {
     effectSmoke: globalThis.ferrumTopdownSmokeFrame,
     entityCountAfterEffect: globalThis.ferrumEngine?.entityCount?.() ?? 0,
     particleCountAfterEffect: globalThis.ferrumEngine?.particleCount?.() ?? 0,
+  }));
+}
+
+async function smokeTopdownMassObjects(page, timeoutMs) {
+  await waitForPageFunction(
+    page,
+    "Top-down Shooter mass object smoke did not restore and render 1000+ objects",
+    ({ playingState, collisionPairBudget }) => {
+      const frame = globalThis.ferrumTopdownMassObjectsSmokeFrame;
+      if (!frame) {
+        return false;
+      }
+      return frame.restored === true
+        && frame.gameState === playingState
+        && frame.enemyCount >= 1024
+        && frame.entityCount >= 1025
+        && frame.snapshotEntityCount >= 1025
+        && frame.renderCommandCount >= 1024
+        && frame.maxRenderCommandCount >= 1024
+        && frame.spriteCount >= 1024
+        && frame.drawCalls >= 1
+        && frame.drawCalls <= 8
+        && frame.textureSwitchCount <= 8
+        && frame.collisionPairCount >= 0
+        && frame.collisionPairCount <= collisionPairBudget
+        && frame.maxCollisionPairCount >= 0
+        && frame.maxCollisionPairCount <= collisionPairBudget;
+    },
+    timeoutMs,
+    {
+      playingState: TOPDOWN_MASS_OBJECTS_PLAYING_STATE,
+      collisionPairBudget: TOPDOWN_MASS_OBJECTS_COLLISION_PAIR_BUDGET,
+    },
+  );
+  return await page.evaluate(() => ({
+    topdownMassObjectsSmoke: globalThis.ferrumTopdownMassObjectsSmokeFrame,
+    rendererStats: globalThis.ferrumRuntime?.renderer?.stats?.(),
+    entityCountAfterMassObjects: globalThis.ferrumEngine?.entityCount?.() ?? 0,
+    spriteCountAfterMassObjects: globalThis.ferrumEngine?.spriteCount?.() ?? 0,
   }));
 }
 

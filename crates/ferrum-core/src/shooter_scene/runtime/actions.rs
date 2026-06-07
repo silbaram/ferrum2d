@@ -1376,6 +1376,7 @@ mod tests {
             prepared,
             SpawnPrefabActionPayload {
                 prefab_id: 1,
+                projectile: None,
                 anchor: SpawnAnchor::SelfEntity,
                 phase: SpawnPhase::PrePhysics,
                 offset_x: 16.0,
@@ -1433,6 +1434,7 @@ mod tests {
             prepared,
             SpawnPrefabActionPayload {
                 prefab_id: 1,
+                projectile: None,
                 anchor: SpawnAnchor::SelfEntity,
                 phase: SpawnPhase::PrePhysics,
                 offset_x: 16.0,
@@ -1492,6 +1494,7 @@ mod tests {
             prepared,
             SpawnPrefabActionPayload {
                 prefab_id: 99,
+                projectile: None,
                 anchor: SpawnAnchor::SelfEntity,
                 phase: SpawnPhase::PrePhysics,
                 offset_x: 16.0,
@@ -1549,6 +1552,7 @@ mod tests {
             prepared,
             SpawnPrefabActionPayload {
                 prefab_id: 1,
+                projectile: None,
                 anchor: SpawnAnchor::SelfEntity,
                 phase: SpawnPhase::PrePhysics,
                 offset_x: 0.0,
@@ -1610,6 +1614,7 @@ mod tests {
             prepared,
             SpawnPrefabActionPayload {
                 prefab_id: 1,
+                projectile: None,
                 anchor: SpawnAnchor::SelfEntity,
                 phase: SpawnPhase::PrePhysics,
                 offset_x: 0.0,
@@ -1680,6 +1685,7 @@ mod tests {
             prepared,
             SpawnPrefabActionPayload {
                 prefab_id: 1,
+                projectile: None,
                 anchor: SpawnAnchor::SelfEntity,
                 phase: SpawnPhase::PrePhysics,
                 offset_x: 0.0,

@@ -17,6 +17,17 @@ Ferrum2D consumer projects are AI agent-first. The default development loop is n
 7. Run the narrowest command that proves the change.
 8. Report commands, result, skipped checks, and next action.
 
+## Agent-First Authoring Surfaces
+
+Prefer supported authoring data and public helper APIs before writing bespoke runtime logic.
+
+- Game Spec data: `public/game.json` and schema-compatible variants for scene, prefab, wave, collider, score, and balance values.
+- Behavior Recipe data: declarative behavior profiles that compile to runtime commands.
+- Projectile/weapon authoring: `ProjectileDefinition`, `WeaponDefinition`, `compileWeaponProfiles(...)`, and `behaviorRecipeCommandsForEntity(...)` from `@ferrum2d/ferrum-web`.
+- Runtime apply path: use public engine methods such as `applyGameplayBehaviorCommands(...)`, `setInputActionBinding(...)`, and `builtInShooterPlayerHandle()` when the generated template exposes a built-in player.
+
+For projectile or weapon changes, keep the source as serializable authoring data when possible. The usual loop is `edit definition -> compile command document -> apply through public runtime facade -> run authoring/replay report -> smoke/build`. Do not add per-frame TypeScript movement, collision, or damage loops for behavior already supported by Ferrum2D primitives.
+
 ## Standard Commands
 
 Generated projects from `@ferrum2d/create-game` include:

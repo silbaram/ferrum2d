@@ -9,6 +9,7 @@ export type GameplayEventKind =
   | "pickupCollected"
   | "tileImpact"
   | "factionDamageDenied"
+  | "presentationEffect"
   | "unknown";
 
 export interface GameplayEventView {
@@ -43,6 +44,11 @@ export const GAMEPLAY_EVENT_KIND_TIMER = 7;
 export const GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED = 8;
 export const GAMEPLAY_EVENT_KIND_TILE_IMPACT = 9;
 export const GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED = 10;
+export const GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT = 11;
+export const GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND = 1;
+export const GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE = 2;
+export const GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE = 3;
+export const GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM = 4;
 export const GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PREFAB = 1;
 export const GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_ANCHOR = 2;
 export const GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PHASE = 3;
@@ -72,6 +78,8 @@ export const GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NEGATIVE_Y = 4;
 export const GAMEPLAY_EVENT_TILE_IMPACT_LAYER_SHIFT = 24;
 export const GAMEPLAY_EVENT_TILE_IMPACT_LAYER_MASK = 0xff << GAMEPLAY_EVENT_TILE_IMPACT_LAYER_SHIFT;
 export const GAMEPLAY_EVENT_TILE_IMPACT_TILE_MASK = 0x00ff_ffff;
+
+export type GameplayPresentationEffectKind = "sound" | "particle" | "cameraShake" | "custom" | "unknown";
 export const EMPTY_GAMEPLAY_EVENTS: readonly GameplayEventView[] = Object.freeze([]);
 
 export function decodeGameplayEvents(view: GameplayEventBufferView): readonly GameplayEventView[] {
@@ -113,5 +121,14 @@ export function gameplayEventKind(kindCode: number): GameplayEventKind {
   if (kindCode === GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED) return "pickupCollected";
   if (kindCode === GAMEPLAY_EVENT_KIND_TILE_IMPACT) return "tileImpact";
   if (kindCode === GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED) return "factionDamageDenied";
+  if (kindCode === GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT) return "presentationEffect";
+  return "unknown";
+}
+
+export function gameplayPresentationEffectKind(typeCode: number): GameplayPresentationEffectKind {
+  if (typeCode === GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND) return "sound";
+  if (typeCode === GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE) return "particle";
+  if (typeCode === GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE) return "cameraShake";
+  if (typeCode === GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM) return "custom";
   return "unknown";
 }

@@ -105,9 +105,10 @@ test("public API platform interface types", () => {
     postProcessPassCount: 0,
   };
   const renderer: Pick<Renderer, "stats"> = { stats: () => stats };
-  const assetHost: Pick<AssetHost, "textureId"> = { textureId: () => 1 };
-  const browserPlatformHost: Pick<BrowserPlatformHost, "textureId" | "destroy"> = {
+  const assetHost: Pick<AssetHost, "textureId" | "hasSound"> = { textureId: () => 1, hasSound: () => true };
+  const browserPlatformHost: Pick<BrowserPlatformHost, "textureId" | "hasSound" | "destroy"> = {
     textureId: () => 1,
+    hasSound: () => true,
     destroy: () => undefined,
   };
   const audioAssetLoader: Pick<AudioAssetLoader, "load"> = {
@@ -120,6 +121,8 @@ test("public API platform interface types", () => {
   equal(viewportProvider().height, 480);
   equal(renderer.stats().drawCalls, 0);
   equal(assetHost.textureId("player"), 1);
+  equal(assetHost.hasSound?.(1), true);
   equal(browserPlatformHost.textureId("player"), 1);
+  equal(browserPlatformHost.hasSound(1), true);
   equal(typeof audioAssetLoader.load, "function");
 });

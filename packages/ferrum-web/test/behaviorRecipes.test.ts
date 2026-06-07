@@ -27,6 +27,18 @@ function sampleRecipes(): BehaviorRecipeDocumentSpec {
           "shortLived",
           "killReward",
           { kind: "chase", target: "player", speed: 96, stopDistance: 18 },
+          { kind: "chase", target: "nearestPlayer", speed: 84, stopDistance: 0 },
+          { kind: "chase", target: "nearestEnemy", speed: 72, stopDistance: 0 },
+          { kind: "chase", target: "nearestLayer:bullet", speed: 60, stopDistance: 0 },
+          { kind: "chase", target: "nearestFaction:enemy", speed: 54, stopDistance: 0 },
+          { kind: "chase", target: "nearestTag:hostile", speed: 52, stopDistance: 0 },
+          { kind: "seekTarget", target: "player", speed: 220, turnRate: 4 },
+          { kind: "seekTarget", target: "nearestPlayer", speed: 200, turnRate: 3 },
+          { kind: "seekTarget", target: "nearestEnemy", speed: 180, turnRate: 2 },
+          { kind: "seekTarget", target: "nearestLayer:pickup", speed: 160, turnRate: 1.5 },
+          { kind: "seekTarget", target: "nearestFaction:7", speed: 150, turnRate: 1.25 },
+          { kind: "seekTarget", target: "nearestTag:3", speed: 140, turnRate: 1 },
+          { kind: "accelerate", accelerationX: 2, accelerationY: -1, maxSpeed: 12 },
         ],
       },
       coin: {
@@ -37,6 +49,10 @@ function sampleRecipes(): BehaviorRecipeDocumentSpec {
           { kind: "dashAction", action: "dash", actionId: 3, cooldownSeconds: 0.75, distance: 96 },
           { kind: "meleeAction", action: "slash", actionId: 4, cooldownSeconds: 0.4, range: 36, damage: 3 },
           { kind: "collisionPickup", target: "self" },
+          { kind: "collisionAreaDamage", amount: 4, radius: 72, targetLayer: "enemy" },
+          { kind: "collisionKnockback", target: "other", impulse: 180 },
+          { kind: "collisionEmitEffect", effectId: 99, effectKind: "custom", target: "self", intensity: 0.65, radius: 48, cooldownSeconds: 0.25, trigger: "enter" },
+          { kind: "collisionSpawnPrefab", action: "split", actionId: 7, prefab: "enemy", prefabId: 1, target: "other", cooldownSeconds: 0.5, trigger: "enter", offsetX: 6, offsetY: -3 },
           { kind: "collisionSound", soundId: 9, volume: 0.6, pitch: 1.2, cooldownSeconds: 0.25, replaceDefault: true, trigger: "enter" },
           { kind: "collisionParticle", presetId: 3, target: "other", cooldownSeconds: 0.5, replaceDefault: true, trigger: "enter" },
           { kind: "collisionDespawn", target: "self" },
@@ -68,6 +84,18 @@ test("behaviorRecipeCommandsForEntity emits runtime adapter commands", () => {
     "configureLifetime",
     "configureScoreReward",
     "configureChase",
+    "configureChase",
+    "configureChase",
+    "configureChase",
+    "configureChase",
+    "configureChase",
+    "configureSeekTarget",
+    "configureSeekTarget",
+    "configureSeekTarget",
+    "configureSeekTarget",
+    "configureSeekTarget",
+    "configureSeekTarget",
+    "configureAccelerate",
   ]);
   const health = commands[0];
   equal(health.type, "configureHealth");
@@ -77,6 +105,99 @@ test("behaviorRecipeCommandsForEntity emits runtime adapter commands", () => {
   }
   const chase = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["chase"] })[0];
   equal(chase.type, "configureChase");
+  const chaseNearestPlayer = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["chase"] })[1];
+  equal(chaseNearestPlayer.type, "configureChase");
+  if (chaseNearestPlayer.type === "configureChase") {
+    equal(chaseNearestPlayer.target, "nearestPlayer");
+    equal(chaseNearestPlayer.speed, 84);
+    equal(chaseNearestPlayer.stopDistance, 0);
+  }
+  const chaseQueryPreset = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["chase"] })[2];
+  equal(chaseQueryPreset.type, "configureChase");
+  if (chaseQueryPreset.type === "configureChase") {
+    equal(chaseQueryPreset.target, "nearestEnemy");
+    equal(chaseQueryPreset.speed, 72);
+    equal(chaseQueryPreset.stopDistance, 0);
+  }
+  const chaseLayerQueryPreset = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["chase"] })[3];
+  equal(chaseLayerQueryPreset.type, "configureChase");
+  if (chaseLayerQueryPreset.type === "configureChase") {
+    equal(chaseLayerQueryPreset.target, "nearestLayer:bullet");
+    equal(chaseLayerQueryPreset.speed, 60);
+    equal(chaseLayerQueryPreset.stopDistance, 0);
+  }
+  const chaseFactionQueryPreset = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["chase"] })[4];
+  equal(chaseFactionQueryPreset.type, "configureChase");
+  if (chaseFactionQueryPreset.type === "configureChase") {
+    equal(chaseFactionQueryPreset.target, "nearestFaction:enemy");
+    equal(chaseFactionQueryPreset.speed, 54);
+    equal(chaseFactionQueryPreset.stopDistance, 0);
+  }
+  const chaseTagQueryPreset = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["chase"] })[5];
+  equal(chaseTagQueryPreset.type, "configureChase");
+  if (chaseTagQueryPreset.type === "configureChase") {
+    equal(chaseTagQueryPreset.target, "nearestTag:hostile");
+    equal(chaseTagQueryPreset.speed, 52);
+    equal(chaseTagQueryPreset.stopDistance, 0);
+  }
+  const seekTarget = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["seekTarget"] })[0];
+  equal(seekTarget.type, "configureSeekTarget");
+  if (seekTarget.type === "configureSeekTarget") {
+    equal(seekTarget.target, "player");
+    equal(seekTarget.speed, 220);
+    equal(seekTarget.turnRate, 4);
+  }
+  const seekTargetNearestPlayer = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["seekTarget"] })[1];
+  equal(seekTargetNearestPlayer.type, "configureSeekTarget");
+  if (seekTargetNearestPlayer.type === "configureSeekTarget") {
+    equal(seekTargetNearestPlayer.target, "nearestPlayer");
+    equal(seekTargetNearestPlayer.speed, 200);
+    equal(seekTargetNearestPlayer.turnRate, 3);
+  }
+  const seekTargetQueryPreset = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["seekTarget"] })[2];
+  equal(seekTargetQueryPreset.type, "configureSeekTarget");
+  if (seekTargetQueryPreset.type === "configureSeekTarget") {
+    equal(seekTargetQueryPreset.target, "nearestEnemy");
+    equal(seekTargetQueryPreset.speed, 180);
+    equal(seekTargetQueryPreset.turnRate, 2);
+  }
+  const seekTargetLayerQueryPreset = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["seekTarget"] })[3];
+  equal(seekTargetLayerQueryPreset.type, "configureSeekTarget");
+  if (seekTargetLayerQueryPreset.type === "configureSeekTarget") {
+    equal(seekTargetLayerQueryPreset.target, "nearestLayer:pickup");
+    equal(seekTargetLayerQueryPreset.speed, 160);
+    equal(seekTargetLayerQueryPreset.turnRate, 1.5);
+  }
+  const seekTargetFactionQueryPreset = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["seekTarget"] })[4];
+  equal(seekTargetFactionQueryPreset.type, "configureSeekTarget");
+  if (seekTargetFactionQueryPreset.type === "configureSeekTarget") {
+    equal(seekTargetFactionQueryPreset.target, "nearestFaction:7");
+    equal(seekTargetFactionQueryPreset.speed, 150);
+    equal(seekTargetFactionQueryPreset.turnRate, 1.25);
+  }
+  const seekTargetTagQueryPreset = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["seekTarget"] })[5];
+  equal(seekTargetTagQueryPreset.type, "configureSeekTarget");
+  if (seekTargetTagQueryPreset.type === "configureSeekTarget") {
+    equal(seekTargetTagQueryPreset.target, "nearestTag:3");
+    equal(seekTargetTagQueryPreset.speed, 140);
+    equal(seekTargetTagQueryPreset.turnRate, 1);
+  }
+
+  const taggedCommands = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", {
+    includeEntityTags: true,
+    kinds: ["chase"],
+  });
+  equal(taggedCommands[0]?.type, "configureTags");
+  if (taggedCommands[0]?.type === "configureTags") {
+    deepEqual(taggedCommands[0].tags, ["hostile"]);
+  }
+  const accelerate = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["accelerate"] })[0];
+  equal(accelerate.type, "configureAccelerate");
+  if (accelerate.type === "configureAccelerate") {
+    equal(accelerate.accelerationX, 2);
+    equal(accelerate.accelerationY, -1);
+    equal(accelerate.maxSpeed, 12);
+  }
   const faction = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["faction"] })[0];
   equal(faction.type, "configureFaction");
   if (faction.type === "configureFaction") {
@@ -164,6 +285,42 @@ test("behaviorRecipeCommandsForEntity emits runtime adapter commands", () => {
   if (collisionPickup.type === "configureCollisionPickup") {
     equal(collisionPickup.target, "self");
   }
+  const collisionAreaDamage = behaviorRecipeCommandsForEntity(sampleRecipes(), "coin", { kinds: ["collisionAreaDamage"] })[0];
+  equal(collisionAreaDamage.type, "configureCollisionAreaDamage");
+  if (collisionAreaDamage.type === "configureCollisionAreaDamage") {
+    equal(collisionAreaDamage.amount, 4);
+    equal(collisionAreaDamage.radius, 72);
+    equal(collisionAreaDamage.targetLayer, "enemy");
+  }
+  const collisionKnockback = behaviorRecipeCommandsForEntity(sampleRecipes(), "coin", { kinds: ["collisionKnockback"] })[0];
+  equal(collisionKnockback.type, "configureCollisionKnockback");
+  if (collisionKnockback.type === "configureCollisionKnockback") {
+    equal(collisionKnockback.target, "other");
+    equal(collisionKnockback.impulse, 180);
+  }
+  const collisionEmitEffect = behaviorRecipeCommandsForEntity(sampleRecipes(), "coin", { kinds: ["collisionEmitEffect"] })[0];
+  equal(collisionEmitEffect.type, "configureCollisionEmitEffect");
+  if (collisionEmitEffect.type === "configureCollisionEmitEffect") {
+    equal(collisionEmitEffect.effectId, 99);
+    equal(collisionEmitEffect.effectKind, "custom");
+    equal(collisionEmitEffect.effectType, 4);
+    equal(collisionEmitEffect.target, "self");
+    equal(collisionEmitEffect.intensity, 0.65);
+    equal(collisionEmitEffect.radius, 48);
+    equal(collisionEmitEffect.cooldownSeconds, 0.25);
+    equal(collisionEmitEffect.trigger, "enter");
+  }
+  const collisionSpawnPrefab = behaviorRecipeCommandsForEntity(sampleRecipes(), "coin", { kinds: ["collisionSpawnPrefab"] })[0];
+  equal(collisionSpawnPrefab.type, "configureCollisionSpawnPrefab");
+  if (collisionSpawnPrefab.type === "configureCollisionSpawnPrefab") {
+    equal(collisionSpawnPrefab.actionId, 7);
+    equal(collisionSpawnPrefab.prefabId, 1);
+    equal(collisionSpawnPrefab.target, "other");
+    equal(collisionSpawnPrefab.cooldownSeconds, 0.5);
+    equal(collisionSpawnPrefab.trigger, "enter");
+    equal(collisionSpawnPrefab.offsetX, 6);
+    equal(collisionSpawnPrefab.offsetY, -3);
+  }
   const collisionSound = behaviorRecipeCommandsForEntity(sampleRecipes(), "coin", { kinds: ["collisionSound"] })[0];
   equal(collisionSound.type, "configureCollisionSound");
   if (collisionSound.type === "configureCollisionSound") {
@@ -219,13 +376,17 @@ test("applyBehaviorRecipes forwards commands to a target adapter", () => {
     "coin:configureDashAction",
     "coin:configureMeleeAction",
     "coin:configureCollisionPickup",
+    "coin:configureCollisionAreaDamage",
+    "coin:configureCollisionKnockback",
+    "coin:configureCollisionEmitEffect",
+    "coin:configureCollisionSpawnPrefab",
     "coin:configureCollisionSound",
     "coin:configureCollisionParticle",
     "coin:configureCollisionDespawn",
     "coin:configureSpawnPrefabAction",
     "coin:configureTimerTrigger",
   ]);
-  deepEqual(result.results, ["coin.0", "coin.1", "coin.2", "coin.3", "coin.4", "coin.5", "coin.6", "coin.7", "coin.8", "coin.9", "coin.10"]);
+  deepEqual(result.results, ["coin.0", "coin.1", "coin.2", "coin.3", "coin.4", "coin.5", "coin.6", "coin.7", "coin.8", "coin.9", "coin.10", "coin.11", "coin.12", "coin.13", "coin.14"]);
 });
 
 test("projectileAction carries aim and collision target authoring metadata", () => {
@@ -332,6 +493,54 @@ test("resolveBehaviorRecipeDocument rejects invalid recipe references and duplic
 
   expectMessage(() => resolveBehaviorRecipeDocument({
     entities: {
+      enemy: { recipes: [{ kind: "collisionEmitEffect", effectKind: "flash" }] },
+    },
+  } as unknown as BehaviorRecipeDocumentSpec), /sound, particle, cameraShake, or custom/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      enemy: { recipes: [{ kind: "collisionEmitEffect", cooldownSeconds: -0.1 }] },
+    },
+  }), /greater than or equal to 0/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      enemy: { recipes: [{ kind: "collisionEmitEffect", effectId: 0x1_0000_0000 }] },
+    },
+  }), /safe u32/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      enemy: { recipes: [{ kind: "collisionEmitEffect", intensity: -0.1 }] },
+    },
+  }), /greater than or equal to 0/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      enemy: { recipes: [{ kind: "collisionEmitEffect", radius: Number.POSITIVE_INFINITY }] },
+    },
+  }), /finite number/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      enemy: { recipes: [{ kind: "seekTarget", target: "nearestLayer:terrain" }] },
+    },
+  }), /nearestLayer target must be one of/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      enemy: { recipes: [{ kind: "seekTarget", target: "nearestFaction:32" }] },
+    },
+  }), /nearestFaction target must be/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      enemy: { recipes: [{ kind: "seekTarget", target: "nearestTag:32" }] },
+    },
+  }), /nearestTag target must be/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
       enemy: { recipes: [{ kind: "pickup", item: "coin", itemId: 0 }] },
     },
   }), /positive integer/);
@@ -401,6 +610,90 @@ test("resolveBehaviorRecipeDocument rejects invalid recipe references and duplic
       enemy: { recipes: [{ kind: "timerTrigger", timer: "wake", seconds: 0 }] },
     },
   }), /greater than 0/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      enemy: {
+        recipes: [{
+          kind: "seekTarget",
+          target: "player",
+          speed: 0,
+        }],
+      },
+    },
+  }), /speed/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      enemy: {
+        recipes: [{
+          kind: "seekTarget",
+          target: "player",
+          turnRate: -0.25,
+        }],
+      },
+    },
+  }), /turnRate/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      enemy: {
+        recipes: [{
+          kind: "accelerate",
+          accelerationX: 0,
+          accelerationY: 0,
+          maxSpeed: 4,
+        }],
+      },
+    },
+  }), /accelerationX/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      enemy: {
+        recipes: [{
+          kind: "accelerate",
+          accelerationX: 2,
+          accelerationY: -1,
+          maxSpeed: 0,
+        }],
+      },
+    },
+  }), /maxSpeed/);
+});
+
+test("collisionEmitEffect recipes can reference named presentation effects", () => {
+  const document = resolveBehaviorRecipeDocument({
+    entities: {
+      projectile: {
+        recipes: [{
+          kind: "collisionEmitEffect",
+          effect: "impactSpark",
+          effectKind: "custom",
+          target: "self",
+          intensity: 0.75,
+          radius: 16,
+          trigger: "enter",
+        }],
+      },
+    },
+  });
+  const command = behaviorRecipeCommandsForEntity(document, "projectile")[0];
+
+  deepEqual(command, {
+    entity: "projectile",
+    recipe: "projectile.0",
+    tags: [],
+    type: "configureCollisionEmitEffect",
+    effect: "impactSpark",
+    effectKind: "custom",
+    effectType: 4,
+    target: "self",
+    intensity: 0.75,
+    radius: 16,
+    cooldownSeconds: 0,
+    trigger: "enter",
+  });
 });
 
 function expectMessage(fn: () => void, pattern: RegExp): void {

@@ -149,6 +149,7 @@ impl Engine {
     pub fn clear_events(&mut self) {
         self.clear_audio_events();
         self.clear_gameplay_events();
+        self.clear_effect_events();
     }
 
     pub fn clear_audio_events(&mut self) {
@@ -157,6 +158,10 @@ impl Engine {
 
     pub fn clear_gameplay_events(&mut self) {
         self.gameplay_events.clear();
+    }
+
+    pub fn clear_effect_events(&mut self) {
+        self.effect_events.clear();
     }
 
     pub fn set_collision_lifecycle_events_enabled(&mut self, enabled: bool) {
@@ -179,6 +184,7 @@ impl Engine {
         self.physics_counters.clear();
         self.collision_events.clear();
         self.gameplay_events.clear();
+        self.effect_events.clear();
         self.collision_event_counts.clear();
         self.physics_debug_lines.clear();
         self.world.clear_rigid_body_ccd_debug_hits();
@@ -188,6 +194,7 @@ impl Engine {
         self.collision_event_tracker.clear();
         self.collision_events.clear();
         self.gameplay_events.clear();
+        self.effect_events.clear();
         self.collision_event_counts.clear();
         self.physics_debug_lines.clear();
         self.world.clear_rigid_body_ccd_debug_hits();

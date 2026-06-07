@@ -126,6 +126,7 @@ test("AudioManager reports missing playback buffers with diagnostic context", ()
   const manager = new AudioManager();
 
   try {
+    equal(manager.hasSound(7), false);
     manager.play(7);
   } catch (error) {
     equal(
@@ -137,6 +138,30 @@ test("AudioManager reports missing playback buffers with diagnostic context", ()
     return;
   }
   throw new Error("Expected play() to throw.");
+});
+
+test("AudioManager reports loaded sound ids for runtime validation", async () => {
+  const previousFetch = globalThis.fetch;
+  (globalThis as unknown as { fetch: typeof fetch }).fetch = async () => ({
+    ok: true,
+    arrayBuffer: async () => new ArrayBuffer(8),
+  } as unknown as Response);
+  const globalWindow = globalThis as unknown as { window?: TestWindow };
+  if (!globalWindow.window) globalWindow.window = {};
+  const previous = globalWindow.window.AudioContext;
+  globalWindow.window.AudioContext = FakeAudioContext as unknown as typeof AudioContext;
+  const manager = new AudioManager();
+
+  try {
+    equal(manager.hasSound(7), false);
+    await manager.loadSound(7, "/assets/hit.wav");
+    equal(manager.hasSound(7), true);
+    equal(manager.hasSound(8), false);
+  } finally {
+    manager.destroy();
+    globalWindow.window.AudioContext = previous;
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
+  }
 });
 
 test("AudioManager exposes master, bgm, sfx, and ui bus controls", () => {

@@ -8,9 +8,15 @@ import {
   WebGL2Renderer,
   createBehaviorStateMachineRuntimeInstallPlan,
   createEngine,
+  GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE,
+  GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE,
+  GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND,
+  AUDIO_CHANNEL_SFX,
+  gameplayActionsForEvents,
   createAssetPreloadCachePolicy,
   diagnosticReport,
   dryRunSceneBehaviorRecipes,
+  type AudioEventView,
   preloadAssetManifest,
   resolveBehaviorRecipeDocument,
   resolveGameplayBehaviorRuntimeIds,
@@ -32,6 +38,7 @@ import {
   type ParticlePresetConfig,
   type PhysicsCollisionLayer,
   type PhysicsEntityHandle,
+  type RendererStats,
   type SceneCompositionSpec,
   type SceneBehaviorBindingPlan,
   type ShooterGameSpec,
@@ -43,6 +50,15 @@ import {
 const TOPDOWN_HIT_PARTICLE_PRESET_ID = 0;
 const TOPDOWN_AUTHORED_RUNTIME_ENTITY_BUILTIN_PLAYER = "builtinShooterPlayer";
 const SHOOTER_SNAPSHOT_ENTITY_PLAYER = 0;
+const SHOOTER_SNAPSHOT_ENTITY_ENEMY = 1;
+const SHOOTER_SNAPSHOT_HEADER_ENEMY_SPAWN_TIMER_FLOAT_OFFSET = 1;
+const SHOOTER_SNAPSHOT_HEADER_GAME_STATE_U32_OFFSET = 1;
+const SHOOTER_SNAPSHOT_GAME_STATE_PLAYING = 1;
+const SHOOTER_SNAPSHOT_ENTITY_X_FLOAT_OFFSET = 0;
+const SHOOTER_SNAPSHOT_ENTITY_Y_FLOAT_OFFSET = 1;
+const SHOOTER_SNAPSHOT_ENTITY_HEALTH_FLOAT_OFFSET = 4;
+const SHOOTER_SNAPSHOT_ENTITY_KIND_U32_OFFSET = 0;
+const SHOOTER_SNAPSHOT_ENTITY_SCORE_REWARD_U32_OFFSET = 1;
 const SHOOTER_SNAPSHOT_ACTION_COOLDOWN_DURATION = 7;
 const SHOOTER_SNAPSHOT_ACTION_COOLDOWN_REMAINING = 8;
 const SHOOTER_SNAPSHOT_ACTION_PROJECTILE_SPEED = 9;
@@ -54,6 +70,10 @@ const SHOOTER_SNAPSHOT_DASH_COOLDOWN_REMAINING = 13;
 const SHOOTER_SNAPSHOT_DASH_DISTANCE = 14;
 const SHOOTER_SNAPSHOT_DASH_ACTION_ID = 3;
 const FLOATS_PER_RENDER_COMMAND = 14;
+const TOPDOWN_MASS_OBJECTS_SMOKE_COMMAND_COUNT = 1024;
+const TOPDOWN_MASS_OBJECTS_SMOKE_COLUMNS = 32;
+const TOPDOWN_MASS_OBJECTS_SMOKE_SPAWN_INTERVAL_SECONDS = 999;
+const TOPDOWN_MASS_OBJECTS_SMOKE_COLLISION_PAIR_BUDGET = 2_000;
 const COMMAND_COLOR_R_OFFSET = 8;
 const COMMAND_COLOR_G_OFFSET = 9;
 const COMMAND_COLOR_B_OFFSET = 10;
@@ -61,6 +81,10 @@ const COMMAND_COLOR_A_OFFSET = 11;
 const COMMAND_TEXTURE_ID_OFFSET = 12;
 const TOPDOWN_ASSET_CACHE_SALT = "topdown-shooter-v1";
 const TOPDOWN_ASSET_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const TOPDOWN_CAMERA_SHAKE_DURATION_MS = 220;
+const TOPDOWN_CAMERA_SHAKE_AMPLITUDE = 8;
+const TOPDOWN_CAMERA_SHAKE_FREQUENCY = 24;
+const TWO_PI = Math.PI * 2;
 const TOPDOWN_AUTHORED_PHYSICS_LAYER_NAMES: Record<number, PhysicsCollisionLayer> = Object.freeze({
   0: "player",
   1: "enemy",
@@ -68,6 +92,26 @@ const TOPDOWN_AUTHORED_PHYSICS_LAYER_NAMES: Record<number, PhysicsCollisionLayer
   3: "wall",
   4: "pickup",
 });
+const TOPDOWN_MASS_OBJECTS_SMOKE_SPEC: ShooterGameSpec = {
+  world: { width: 800, height: 480 },
+  player: { speed: 1 },
+  enemies: {
+    speed: 1,
+    spawnInterval: TOPDOWN_MASS_OBJECTS_SMOKE_SPAWN_INTERVAL_SECONDS,
+    behavior: "static",
+    spawnPattern: "edge",
+    health: 1,
+    scoreReward: 1,
+    waves: [],
+  },
+  weapons: { bulletSpeed: 420, cooldown: 10, lifetime: 1, damage: 1 },
+  prefabs: {
+    player: { width: 16, height: 16 },
+    enemy: { width: 8, height: 8 },
+    bullet: { width: 6, height: 6 },
+  },
+  camera: { preset: "follow" },
+};
 
 interface TopdownTextureIds {
   player: number;
@@ -85,6 +129,45 @@ interface TopdownSmokeFrame {
   bulletTextureId: number;
   gameState: number;
   score: number;
+}
+
+interface TopdownMassObjectsSmokeFrame {
+  requestedRenderCommandCount: number;
+  restored: boolean;
+  enemyCount: number;
+  baseEntityCount: number;
+  snapshotEntityCount: number;
+  restoredEntityCount: number;
+  renderCommandCount: number;
+  maxRenderCommandCount: number;
+  spriteCount: number;
+  drawCalls: number;
+  batchCount: number;
+  textureBindCount: number;
+  textureSwitchCount: number;
+  collisionPairCount: number;
+  maxCollisionPairCount: number;
+  renderTimeMs: number;
+  maxRenderTimeMs: number;
+  entityCount: number;
+  engineSpriteCount: number;
+  gameState: number;
+  rendererStats: RendererStats;
+}
+
+interface TopdownMassObjectsSnapshotApplySummary {
+  restored: boolean;
+  enemyCount: number;
+  baseEntityCount: number;
+  snapshotEntityCount: number;
+  restoredEntityCount: number;
+  floatsPerEntity: number;
+  u32sPerEntity: number;
+}
+
+interface TopdownCameraShakeState {
+  remainingMs: number;
+  phaseRadians: number;
 }
 
 interface TopdownAuthoredBehaviorVariantSpec {
@@ -216,6 +299,11 @@ type TopdownAuthoredBehaviorEventSummary = Pick<
   | "targetRemoved"
 >;
 
+interface TopdownPresentationEffectAudioEvent {
+  volume: number;
+  pitch: number;
+}
+
 type TopdownSmokeWindow = Window & {
   ferrumEngine?: FerrumEngine;
   ferrumRuntime?: { engine: FerrumEngine; renderer: WebGL2Renderer; profiler?: RuntimeProfiler };
@@ -223,6 +311,7 @@ type TopdownSmokeWindow = Window & {
   ferrumTopdownAuthoredBehaviorVariant?: TopdownAuthoredBehaviorVariantSummary;
   ferrumTopdownAuthoredBehaviorFrame?: TopdownAuthoredBehaviorFrameSummary;
   ferrumTopdownAuthoredBehaviorStateCommandApply?: TopdownAuthoredBehaviorStateCommandApplySummary;
+  ferrumTopdownMassObjectsSmokeFrame?: TopdownMassObjectsSmokeFrame;
   ferrumTopdownAuthoredBehaviorStart?: () => void;
   ferrumTopdownAuthoredBehaviorApplyCurrentStateCommands?: () => TopdownAuthoredBehaviorStateCommandApplySummary;
   ferrumTopdownAuthoredBehaviorResetAndReapply?: () => TopdownAuthoredBehaviorVariantApplySummary;
@@ -725,6 +814,94 @@ function copyGameplayEventSummary(event: GameplayEventView): TopdownAuthoredBeha
   };
 }
 
+function applyTopdownPresentationEffects(
+  frame: { gameplayEvents: readonly GameplayEventView[]; audioEvents: readonly AudioEventView[] },
+  runtimeEngine: FerrumEngine | undefined,
+  platformHost: BrowserPlatformHost,
+  cameraShakeState: TopdownCameraShakeState,
+): void {
+  if (runtimeEngine === undefined) {
+    return;
+  }
+
+  const actions = gameplayActionsForEvents(frame.gameplayEvents, { path: "frame.gameplayEvents" });
+  const audioEventBudget = new Map<number, TopdownPresentationEffectAudioEvent[]>();
+  for (const event of frame.audioEvents) {
+    const soundId = Math.trunc(event.soundId);
+    if (soundId <= 0 || !Number.isFinite(soundId)) {
+      continue;
+    }
+    const bucket = audioEventBudget.get(soundId) ?? [];
+    bucket.push({
+      volume: Number.isFinite(event.volume) ? event.volume : 1,
+      pitch: Number.isFinite(event.pitch) ? event.pitch : 1,
+    });
+    audioEventBudget.set(soundId, bucket);
+  }
+
+  for (const action of actions) {
+    if (action.type === "presentationEffect" && action.effectType === GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE) {
+      const actorSnapshot = runtimeEngine.getPhysicsEntity(action.actor);
+      const sourceSnapshot = runtimeEngine.getPhysicsEntity(action.source);
+      const spawnTarget = actorSnapshot ?? sourceSnapshot;
+      if (spawnTarget !== undefined) {
+        runtimeEngine.spawnParticleBurst(action.effectId, spawnTarget.x, spawnTarget.y);
+      }
+      continue;
+    }
+
+    if (
+      action.type === "presentationEffect" &&
+      (action.effectKind === "cameraShake" || action.effectType === GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE)
+    ) {
+      cameraShakeState.remainingMs = Math.max(
+        cameraShakeState.remainingMs,
+        TOPDOWN_CAMERA_SHAKE_DURATION_MS,
+      );
+      cameraShakeState.phaseRadians += (action.actor.id + action.source.id) * 0.17;
+      continue;
+    }
+
+    if (action.type !== "presentationEffect" || action.effectType !== GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND) {
+      continue;
+    }
+
+    const soundEventBudget = audioEventBudget.get(action.effectId);
+    if (soundEventBudget !== undefined && soundEventBudget.length > 0) {
+      soundEventBudget.shift();
+      continue;
+    }
+
+    platformHost.playAudioEvents([{
+      soundId: action.effectId,
+      volume: 1,
+      pitch: 1,
+      channelId: AUDIO_CHANNEL_SFX,
+    }]);
+  }
+}
+
+function consumeTopdownCameraShake(
+  frameMs: number,
+  state: TopdownCameraShakeState,
+): { x: number; y: number } {
+  if (state.remainingMs <= 0) {
+    state.remainingMs = 0;
+    return { x: 0, y: 0 };
+  }
+
+  const deltaSeconds = Math.max(0, frameMs) / 1000;
+  state.phaseRadians = (state.phaseRadians + deltaSeconds * TOPDOWN_CAMERA_SHAKE_FREQUENCY * TWO_PI) % TWO_PI;
+  const intensity = (state.remainingMs / TOPDOWN_CAMERA_SHAKE_DURATION_MS);
+  state.remainingMs = Math.max(0, state.remainingMs - frameMs);
+
+  const amp = TOPDOWN_CAMERA_SHAKE_AMPLITUDE * intensity;
+  return {
+    x: Math.sin(state.phaseRadians) * amp,
+    y: Math.cos(state.phaseRadians) * amp,
+  };
+}
+
 function authoredBehaviorMachineHandles(
   apply: TopdownAuthoredBehaviorVariantApplySummary,
 ): Record<string, GameplayEntityHandle> {
@@ -917,6 +1094,164 @@ function recordTopdownSmokeFrame(
   };
 }
 
+function restoreTopdownMassObjectsSnapshot(
+  engine: FerrumEngine,
+  viewport: { width: number; height: number },
+): TopdownMassObjectsSnapshotApplySummary {
+  const baseSnapshot = engine.captureShooterStateSnapshot?.();
+  if (baseSnapshot === undefined) {
+    throw assetApplyError("json", "massObjectsSmoke", "Base shooter snapshot capture is unavailable.");
+  }
+  const playerSlot = snapshotEntitySlot(baseSnapshot.entityU32s, baseSnapshot.u32sPerEntity, SHOOTER_SNAPSHOT_ENTITY_PLAYER);
+  if (playerSlot < 0) {
+    throw assetApplyError("json", "massObjectsSmoke", "Base shooter snapshot does not include a player entity.");
+  }
+
+  const enemyCount = TOPDOWN_MASS_OBJECTS_SMOKE_COMMAND_COUNT;
+  const entityCount = enemyCount + 1;
+  const floatsPerEntity = baseSnapshot.floatsPerEntity;
+  const u32sPerEntity = baseSnapshot.u32sPerEntity;
+  const headerFloats = [...baseSnapshot.headerFloats];
+  const headerU32s = [...baseSnapshot.headerU32s];
+  const entityFloats = new Array(entityCount * floatsPerEntity).fill(0);
+  const entityU32s = new Array(entityCount * u32sPerEntity).fill(0);
+  headerU32s[SHOOTER_SNAPSHOT_HEADER_GAME_STATE_U32_OFFSET] = SHOOTER_SNAPSHOT_GAME_STATE_PLAYING;
+  headerFloats[SHOOTER_SNAPSHOT_HEADER_ENEMY_SPAWN_TIMER_FLOAT_OFFSET] =
+    TOPDOWN_MASS_OBJECTS_SMOKE_SPAWN_INTERVAL_SECONDS;
+  copySnapshotEntity(
+    baseSnapshot.entityFloats,
+    entityFloats,
+    playerSlot,
+    0,
+    floatsPerEntity,
+  );
+  copySnapshotEntity(
+    baseSnapshot.entityU32s,
+    entityU32s,
+    playerSlot,
+    0,
+    u32sPerEntity,
+  );
+
+  for (let enemyIndex = 0; enemyIndex < enemyCount; enemyIndex += 1) {
+    writeTopdownMassObjectsEnemySnapshot(
+      entityFloats,
+      entityU32s,
+      enemyIndex + 1,
+      enemyIndex,
+      floatsPerEntity,
+      u32sPerEntity,
+      viewport,
+    );
+  }
+
+  const restored = engine.restoreShooterStateSnapshot?.({
+    ...baseSnapshot,
+    headerFloats,
+    headerU32s,
+    entityFloats,
+    entityU32s,
+    entityCount,
+  }) === true;
+  if (!restored) {
+    throw assetApplyError("json", "massObjectsSmoke", "Mass object shooter snapshot restore returned false.");
+  }
+  const restoredSnapshot = engine.captureShooterStateSnapshot?.();
+  return {
+    restored,
+    enemyCount,
+    baseEntityCount: baseSnapshot.entityCount,
+    snapshotEntityCount: restoredSnapshot?.entityCount ?? entityCount,
+    restoredEntityCount: engine.entityCount(),
+    floatsPerEntity,
+    u32sPerEntity,
+  };
+}
+
+function snapshotEntitySlot(entityU32s: readonly number[], u32sPerEntity: number, kind: number): number {
+  const entityCount = Math.floor(entityU32s.length / u32sPerEntity);
+  for (let slot = 0; slot < entityCount; slot += 1) {
+    if (entityU32s[slot * u32sPerEntity] === kind) {
+      return slot;
+    }
+  }
+  return -1;
+}
+
+function copySnapshotEntity(
+  source: readonly number[],
+  target: number[],
+  sourceSlot: number,
+  targetSlot: number,
+  stride: number,
+): void {
+  const sourceBase = sourceSlot * stride;
+  const targetBase = targetSlot * stride;
+  for (let field = 0; field < stride; field += 1) {
+    target[targetBase + field] = source[sourceBase + field] ?? 0;
+  }
+}
+
+function writeTopdownMassObjectsEnemySnapshot(
+  entityFloats: number[],
+  entityU32s: number[],
+  slot: number,
+  enemyIndex: number,
+  floatsPerEntity: number,
+  u32sPerEntity: number,
+  viewport: { width: number; height: number },
+): void {
+  const columns = TOPDOWN_MASS_OBJECTS_SMOKE_COLUMNS;
+  const rows = Math.ceil(TOPDOWN_MASS_OBJECTS_SMOKE_COMMAND_COUNT / columns);
+  const cellWidth = Math.max(1, viewport.width / columns);
+  const cellHeight = Math.max(1, viewport.height / rows);
+  const column = enemyIndex % columns;
+  const row = Math.floor(enemyIndex / columns);
+  const floatBase = slot * floatsPerEntity;
+  const u32Base = slot * u32sPerEntity;
+  entityFloats[floatBase + SHOOTER_SNAPSHOT_ENTITY_X_FLOAT_OFFSET] = column * cellWidth + cellWidth * 0.5;
+  entityFloats[floatBase + SHOOTER_SNAPSHOT_ENTITY_Y_FLOAT_OFFSET] = row * cellHeight + cellHeight * 0.5;
+  entityFloats[floatBase + SHOOTER_SNAPSHOT_ENTITY_HEALTH_FLOAT_OFFSET] = 1;
+  entityU32s[u32Base + SHOOTER_SNAPSHOT_ENTITY_KIND_U32_OFFSET] = SHOOTER_SNAPSHOT_ENTITY_ENEMY;
+  entityU32s[u32Base + SHOOTER_SNAPSHOT_ENTITY_SCORE_REWARD_U32_OFFSET] = 1;
+}
+
+function recordTopdownMassObjectsSmokeFrame(
+  engine: FerrumEngine,
+  snapshotApply: TopdownMassObjectsSnapshotApplySummary,
+  rendererStats: RendererStats,
+  renderTimeMs: number,
+  gameState: number,
+  collisionPairCount: number,
+): void {
+  const smokeWindow = window as TopdownSmokeWindow;
+  const previous = smokeWindow.ferrumTopdownMassObjectsSmokeFrame;
+  const renderCommandCount = rendererStats.renderCommandCount;
+  smokeWindow.ferrumTopdownMassObjectsSmokeFrame = {
+    requestedRenderCommandCount: TOPDOWN_MASS_OBJECTS_SMOKE_COMMAND_COUNT,
+    restored: snapshotApply.restored,
+    enemyCount: snapshotApply.enemyCount,
+    baseEntityCount: snapshotApply.baseEntityCount,
+    snapshotEntityCount: snapshotApply.snapshotEntityCount,
+    restoredEntityCount: snapshotApply.restoredEntityCount,
+    renderCommandCount,
+    maxRenderCommandCount: Math.max(previous?.maxRenderCommandCount ?? 0, renderCommandCount),
+    spriteCount: rendererStats.spriteCount,
+    drawCalls: rendererStats.drawCalls,
+    batchCount: rendererStats.batchCount,
+    textureBindCount: rendererStats.textureBindCount,
+    textureSwitchCount: rendererStats.textureSwitchCount,
+    collisionPairCount,
+    maxCollisionPairCount: Math.max(previous?.maxCollisionPairCount ?? 0, collisionPairCount),
+    renderTimeMs,
+    maxRenderTimeMs: Math.max(previous?.maxRenderTimeMs ?? 0, renderTimeMs),
+    entityCount: engine.entityCount(),
+    engineSpriteCount: engine.spriteCount(),
+    gameState,
+    rendererStats: { ...rendererStats },
+  };
+}
+
 function reportBootstrapError(error: unknown): void {
   console.error("Ferrum2D bootstrap failed", error);
   const app = document.querySelector<HTMLDivElement>("#app");
@@ -967,6 +1302,7 @@ async function bootstrap(): Promise<void> {
     const searchParams = new URLSearchParams(window.location.search);
     const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
     const effectSmokeEnabled = searchParams.get("effectSmoke") === "true";
+    const massObjectsSmokeEnabled = searchParams.get("massObjectsSmoke") === "true";
     const profilerSmokeEnabled = searchParams.get("profilerSmoke") === "true";
     const authoredBehaviorVariantApplyEnabled = searchParams.get("authoredBehaviorVariantApply") === "true";
 
@@ -1009,10 +1345,15 @@ async function bootstrap(): Promise<void> {
     let audioEventsPerSecond = 0;
     let runtimeEngine: FerrumEngine | undefined;
     let smokeTextureIds: TopdownTextureIds | undefined;
+    let massObjectsSmokeApply: TopdownMassObjectsSnapshotApplySummary | undefined;
     let authoredBehaviorVariantSummary: TopdownAuthoredBehaviorVariantSummary | undefined;
     let authoredBehaviorVariantApplyId = 0;
     let smokeStartQueued = false;
     let smokeFireQueued: { mouseX: number; mouseY: number } | undefined;
+    const topdownCameraShakeState: TopdownCameraShakeState = {
+      remainingMs: 0,
+      phaseRadians: 0,
+    };
     const inputSnapshot = () => {
       const snapshot = input.snapshot();
       if (smokeStartQueued) {
@@ -1028,13 +1369,25 @@ async function bootstrap(): Promise<void> {
     };
 
     const engine = await createEngine((frame) => {
+      applyTopdownPresentationEffects(
+        { gameplayEvents: frame.gameplayEvents, audioEvents: frame.audioEvents },
+        runtimeEngine,
+        platformHost,
+        topdownCameraShakeState,
+      );
+      const cameraShakeOffset = consumeTopdownCameraShake(frame.frameTimeMs, topdownCameraShakeState);
       const renderStartMs = performance.now();
       renderer.render();
-      renderer.renderCommands(frame.renderCommandBuffer);
+      renderer.setSpriteScreenOffset(cameraShakeOffset.x, cameraShakeOffset.y);
+      try {
+        renderer.renderCommands(frame.renderCommandBuffer);
+      } finally {
+        renderer.setSpriteScreenOffset(0, 0);
+      }
       if (physicsDebugLines) {
         renderer.renderPhysicsDebugLines(frame.physicsDebugLineBuffer, {
-          x: frame.cameraX,
-          y: frame.cameraY,
+          x: frame.cameraX + cameraShakeOffset.x,
+          y: frame.cameraY + cameraShakeOffset.y,
         });
       }
       const renderStats = renderer.renderPostProcess();
@@ -1058,6 +1411,16 @@ async function bootstrap(): Promise<void> {
       if (effectSmokeEnabled && runtimeEngine && smokeTextureIds) {
         recordTopdownSmokeFrame(runtimeEngine, frame.renderCommandBuffer, smokeTextureIds, frame.gameState, frame.score);
       }
+      if (massObjectsSmokeEnabled && runtimeEngine && massObjectsSmokeApply) {
+        recordTopdownMassObjectsSmokeFrame(
+          runtimeEngine,
+          massObjectsSmokeApply,
+          renderStats,
+          renderTimeMs,
+          frame.gameState,
+          frame.physics.collisionPairs,
+        );
+      }
       if (authoredBehaviorVariantApplyEnabled) {
         recordTopdownAuthoredBehaviorFrame(frame, authoredBehaviorVariantSummary, runtimeEngine);
       }
@@ -1073,6 +1436,10 @@ async function bootstrap(): Promise<void> {
         textureBindCount: renderStats.textureBindCount,
         textureSwitchCount: renderStats.textureSwitchCount,
         physicsDebugLineCount: renderStats.physicsDebugLineCount,
+        physicsFixedSteps: frame.physics.fixedSteps,
+        physicsTileCandidateChecks: frame.physics.tileCandidateChecks,
+        collisionPairCount: frame.physics.collisionPairs,
+        collisionEventCount: frame.physics.collisionEventCount,
         audioEventsPerSecond,
         rustUpdateTimeMs: frame.rustUpdateTimeMs,
         renderTimeMs,
@@ -1105,6 +1472,11 @@ async function bootstrap(): Promise<void> {
       throw error;
     }
     smokeTextureIds = applyTopdownShooterAssets(engine, assets);
+    if (massObjectsSmokeEnabled) {
+      engine.setGameSpec(TOPDOWN_MASS_OBJECTS_SMOKE_SPEC);
+      engine.resetGame();
+      massObjectsSmokeApply = restoreTopdownMassObjectsSnapshot(engine, renderer.viewportSize());
+    }
     const authoredBehaviorVariant = assets.json.authoredBehaviorVariant;
     if (authoredBehaviorVariant === undefined) {
       throw assetApplyError("json", "authoredBehaviorVariant", "Required authored behavior variant JSON is missing from loaded assets.");
@@ -1112,7 +1484,7 @@ async function bootstrap(): Promise<void> {
     const authoredBehaviorVariantPrepared = prepareTopdownAuthoredBehaviorVariant(authoredBehaviorVariant);
     authoredBehaviorVariantSummary = authoredBehaviorVariantPrepared.summary;
     if (authoredBehaviorVariantApplyEnabled) {
-        authoredBehaviorVariantSummary.runtimeApply = applyTopdownAuthoredBehaviorVariant(
+      authoredBehaviorVariantSummary.runtimeApply = applyTopdownAuthoredBehaviorVariant(
         engine,
         authoredBehaviorVariantPrepared,
         assets.json.game as ShooterGameSpec,

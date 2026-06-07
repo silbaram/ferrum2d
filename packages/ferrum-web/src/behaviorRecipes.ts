@@ -2,6 +2,28 @@ import { behaviorRecipeDiagnosticError } from "./diagnostics.js";
 
 const MAX_PARTICLE_PRESETS = 256;
 const MAX_GAMEPLAY_FACTION_ID = 31;
+const MAX_GAMEPLAY_TAG_ID = 31;
+const MOVEMENT_NEAREST_LAYER_TARGET_PREFIX = "nearestLayer:" as const;
+const MOVEMENT_NEAREST_FACTION_TARGET_PREFIX = "nearestFaction:" as const;
+const MOVEMENT_NEAREST_TAG_TARGET_PREFIX = "nearestTag:" as const;
+const MOVEMENT_QUERY_LAYERS = Object.freeze({
+  player: true,
+  enemy: true,
+  bullet: true,
+  wall: true,
+  pickup: true,
+} as const);
+const MOVEMENT_QUERY_FACTIONS = Object.freeze({
+  neutral: true,
+  player: true,
+  enemy: true,
+} as const);
+const PRESENTATION_EFFECT_TYPE_CODES = Object.freeze({
+  sound: 1,
+  particle: 2,
+  cameraShake: 3,
+  custom: 4,
+} as const);
 
 export type BehaviorRecipeKind =
   | "health"
@@ -11,10 +33,17 @@ export type BehaviorRecipeKind =
   | "scoreReward"
   | "pickup"
   | "collisionPickup"
+  | "collisionAreaDamage"
+  | "collisionKnockback"
+  | "collisionEmitEffect"
+  | "collisionSpawnPrefab"
   | "collisionSound"
   | "collisionParticle"
+  | "collisionShake"
   | "collisionDespawn"
   | "chase"
+  | "seekTarget"
+  | "accelerate"
   | "interaction"
   | "projectileAction"
   | "dashAction"
@@ -29,6 +58,8 @@ export type BehaviorRecipeProjectileCollisionTarget = "enemies" | "player";
 export type BehaviorRecipeProjectileTileImpact = "despawn" | "passThrough" | "bounce";
 export type BehaviorRecipeMeleeTarget = "enemies" | "player";
 export type BehaviorRecipeCollisionTrigger = "contact" | "enter";
+export type BehaviorRecipeCollisionLayer = keyof typeof MOVEMENT_QUERY_LAYERS;
+export type BehaviorRecipePresentationEffectKind = keyof typeof PRESENTATION_EFFECT_TYPE_CODES;
 
 export interface BehaviorRecipeBaseSpec {
   id?: string;
@@ -81,6 +112,44 @@ export interface CollisionPickupBehaviorRecipeSpec extends BehaviorRecipeBaseSpe
   target?: BehaviorRecipeDamageTarget;
 }
 
+export interface CollisionAreaDamageBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+  kind: "collisionAreaDamage";
+  amount?: number;
+  radius?: number;
+  targetLayer?: BehaviorRecipeCollisionLayer;
+}
+
+export interface CollisionKnockbackBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+  kind: "collisionKnockback";
+  target?: BehaviorRecipeDamageTarget;
+  impulse?: number;
+}
+
+export interface CollisionEmitEffectBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+  kind: "collisionEmitEffect";
+  effect?: string;
+  effectId?: number;
+  effectKind?: BehaviorRecipePresentationEffectKind;
+  target?: BehaviorRecipeDamageTarget;
+  intensity?: number;
+  radius?: number;
+  cooldownSeconds?: number;
+  trigger?: BehaviorRecipeCollisionTrigger;
+}
+
+export interface CollisionSpawnPrefabBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+  kind: "collisionSpawnPrefab";
+  action: string;
+  actionId?: number;
+  prefab: string;
+  prefabId?: number;
+  target?: BehaviorRecipeDamageTarget;
+  cooldownSeconds?: number;
+  trigger?: BehaviorRecipeCollisionTrigger;
+  offsetX?: number;
+  offsetY?: number;
+}
+
 export interface CollisionSoundBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
   kind: "collisionSound";
   soundId: number;
@@ -100,6 +169,12 @@ export interface CollisionParticleBehaviorRecipeSpec extends BehaviorRecipeBaseS
   trigger?: BehaviorRecipeCollisionTrigger;
 }
 
+export interface CollisionShakeBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+  kind: "collisionShake";
+  cooldownSeconds?: number;
+  trigger?: BehaviorRecipeCollisionTrigger;
+}
+
 export interface CollisionDespawnBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
   kind: "collisionDespawn";
   target?: BehaviorRecipeDamageTarget;
@@ -111,6 +186,20 @@ export interface ChaseBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
   speed?: number;
   stopDistance?: number;
   maxDistance?: number;
+}
+
+export interface SeekTargetBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+  kind: "seekTarget";
+  target?: string;
+  speed?: number;
+  turnRate?: number;
+}
+
+export interface AccelerateBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+  kind: "accelerate";
+  accelerationX?: number;
+  accelerationY?: number;
+  maxSpeed?: number;
 }
 
 export interface InteractionBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
@@ -127,6 +216,15 @@ export interface ProjectileActionBehaviorRecipeSpec extends BehaviorRecipeBaseSp
   action: string;
   actionId?: number;
   cooldownSeconds?: number;
+  speed?: number;
+  damage?: number;
+  lifetimeSeconds?: number;
+  aim?: BehaviorRecipeActionAim;
+  collisionTarget?: BehaviorRecipeProjectileCollisionTarget;
+  tileImpact?: BehaviorRecipeProjectileTileImpact;
+}
+
+export interface SpawnPrefabProjectilePayloadSpec {
   speed?: number;
   damage?: number;
   lifetimeSeconds?: number;
@@ -165,6 +263,7 @@ export interface SpawnPrefabActionBehaviorRecipeSpec extends BehaviorRecipeBaseS
   phase?: "prePhysics";
   offsetX?: number;
   offsetY?: number;
+  projectile?: SpawnPrefabProjectilePayloadSpec;
 }
 
 export interface TimerTriggerBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
@@ -184,10 +283,17 @@ export type BehaviorRecipeSpec =
   | ScoreRewardBehaviorRecipeSpec
   | PickupBehaviorRecipeSpec
   | CollisionPickupBehaviorRecipeSpec
+  | CollisionAreaDamageBehaviorRecipeSpec
+  | CollisionKnockbackBehaviorRecipeSpec
+  | CollisionEmitEffectBehaviorRecipeSpec
+  | CollisionSpawnPrefabBehaviorRecipeSpec
   | CollisionSoundBehaviorRecipeSpec
   | CollisionParticleBehaviorRecipeSpec
+  | CollisionShakeBehaviorRecipeSpec
   | CollisionDespawnBehaviorRecipeSpec
   | ChaseBehaviorRecipeSpec
+  | SeekTargetBehaviorRecipeSpec
+  | AccelerateBehaviorRecipeSpec
   | InteractionBehaviorRecipeSpec
   | ProjectileActionBehaviorRecipeSpec
   | DashActionBehaviorRecipeSpec
@@ -219,6 +325,7 @@ export interface ResolveBehaviorRecipeDocumentOptions {
 
 export interface BehaviorRecipeCommandOptions {
   kinds?: readonly BehaviorRecipeKind[];
+  includeEntityTags?: boolean;
 }
 
 export interface ApplyBehaviorRecipesOptions extends BehaviorRecipeCommandOptions {
@@ -277,6 +384,45 @@ export interface ResolvedCollisionPickupBehaviorRecipe extends ResolvedBehaviorR
   target: BehaviorRecipeDamageTarget;
 }
 
+export interface ResolvedCollisionAreaDamageBehaviorRecipe extends ResolvedBehaviorRecipeBase {
+  kind: "collisionAreaDamage";
+  amount: number;
+  radius: number;
+  targetLayer: BehaviorRecipeCollisionLayer;
+}
+
+export interface ResolvedCollisionKnockbackBehaviorRecipe extends ResolvedBehaviorRecipeBase {
+  kind: "collisionKnockback";
+  target: BehaviorRecipeDamageTarget;
+  impulse: number;
+}
+
+export interface ResolvedCollisionEmitEffectBehaviorRecipe extends ResolvedBehaviorRecipeBase {
+  kind: "collisionEmitEffect";
+  effect?: string;
+  effectId?: number;
+  effectKind: BehaviorRecipePresentationEffectKind;
+  effectType: number;
+  target: BehaviorRecipeDamageTarget;
+  intensity?: number;
+  radius?: number;
+  cooldownSeconds: number;
+  trigger: BehaviorRecipeCollisionTrigger;
+}
+
+export interface ResolvedCollisionSpawnPrefabBehaviorRecipe extends ResolvedBehaviorRecipeBase {
+  kind: "collisionSpawnPrefab";
+  action: string;
+  actionId?: number;
+  prefab: string;
+  prefabId?: number;
+  target: BehaviorRecipeDamageTarget;
+  cooldownSeconds: number;
+  trigger: BehaviorRecipeCollisionTrigger;
+  offsetX: number;
+  offsetY: number;
+}
+
 export interface ResolvedCollisionSoundBehaviorRecipe extends ResolvedBehaviorRecipeBase {
   kind: "collisionSound";
   soundId: number;
@@ -296,6 +442,12 @@ export interface ResolvedCollisionParticleBehaviorRecipe extends ResolvedBehavio
   trigger: BehaviorRecipeCollisionTrigger;
 }
 
+export interface ResolvedCollisionShakeBehaviorRecipe extends ResolvedBehaviorRecipeBase {
+  kind: "collisionShake";
+  cooldownSeconds: number;
+  trigger: BehaviorRecipeCollisionTrigger;
+}
+
 export interface ResolvedCollisionDespawnBehaviorRecipe extends ResolvedBehaviorRecipeBase {
   kind: "collisionDespawn";
   target: BehaviorRecipeDamageTarget;
@@ -307,6 +459,20 @@ export interface ResolvedChaseBehaviorRecipe extends ResolvedBehaviorRecipeBase 
   speed: number;
   stopDistance: number;
   maxDistance?: number;
+}
+
+export interface ResolvedSeekTargetBehaviorRecipe extends ResolvedBehaviorRecipeBase {
+  kind: "seekTarget";
+  target: string;
+  speed: number;
+  turnRate: number;
+}
+
+export interface ResolvedAccelerateBehaviorRecipe extends ResolvedBehaviorRecipeBase {
+  kind: "accelerate";
+  accelerationX: number;
+  accelerationY: number;
+  maxSpeed: number;
 }
 
 export interface ResolvedInteractionBehaviorRecipe extends ResolvedBehaviorRecipeBase {
@@ -323,6 +489,15 @@ export interface ResolvedProjectileActionBehaviorRecipe extends ResolvedBehavior
   action: string;
   actionId?: number;
   cooldownSeconds: number;
+  speed: number;
+  damage: number;
+  lifetimeSeconds: number;
+  aim: BehaviorRecipeActionAim;
+  collisionTarget: BehaviorRecipeProjectileCollisionTarget;
+  tileImpact: BehaviorRecipeProjectileTileImpact;
+}
+
+export interface ResolvedSpawnPrefabProjectilePayload {
   speed: number;
   damage: number;
   lifetimeSeconds: number;
@@ -361,6 +536,7 @@ export interface ResolvedSpawnPrefabActionBehaviorRecipe extends ResolvedBehavio
   phase: "prePhysics";
   offsetX: number;
   offsetY: number;
+  projectile?: ResolvedSpawnPrefabProjectilePayload;
 }
 
 export interface ResolvedTimerTriggerBehaviorRecipe extends ResolvedBehaviorRecipeBase {
@@ -380,10 +556,17 @@ export type ResolvedBehaviorRecipe =
   | ResolvedScoreRewardBehaviorRecipe
   | ResolvedPickupBehaviorRecipe
   | ResolvedCollisionPickupBehaviorRecipe
+  | ResolvedCollisionAreaDamageBehaviorRecipe
+  | ResolvedCollisionKnockbackBehaviorRecipe
+  | ResolvedCollisionEmitEffectBehaviorRecipe
+  | ResolvedCollisionSpawnPrefabBehaviorRecipe
   | ResolvedCollisionSoundBehaviorRecipe
   | ResolvedCollisionParticleBehaviorRecipe
+  | ResolvedCollisionShakeBehaviorRecipe
   | ResolvedCollisionDespawnBehaviorRecipe
   | ResolvedChaseBehaviorRecipe
+  | ResolvedSeekTargetBehaviorRecipe
+  | ResolvedAccelerateBehaviorRecipe
   | ResolvedInteractionBehaviorRecipe
   | ResolvedProjectileActionBehaviorRecipe
   | ResolvedDashActionBehaviorRecipe
@@ -403,6 +586,7 @@ export interface ResolvedBehaviorRecipeDocument {
 }
 
 export type BehaviorRecipeCommand =
+  | ConfigureTagsBehaviorCommand
   | ConfigureHealthBehaviorCommand
   | ConfigureDamageBehaviorCommand
   | ConfigureFactionBehaviorCommand
@@ -410,10 +594,17 @@ export type BehaviorRecipeCommand =
   | ConfigureScoreRewardBehaviorCommand
   | ConfigurePickupBehaviorCommand
   | ConfigureCollisionPickupBehaviorCommand
+  | ConfigureCollisionAreaDamageBehaviorCommand
+  | ConfigureCollisionKnockbackBehaviorCommand
+  | ConfigureCollisionEmitEffectBehaviorCommand
+  | ConfigureCollisionSpawnPrefabBehaviorCommand
   | ConfigureCollisionSoundBehaviorCommand
   | ConfigureCollisionParticleBehaviorCommand
   | ConfigureCollisionDespawnBehaviorCommand
+  | ConfigureCollisionShakeBehaviorCommand
   | ConfigureChaseBehaviorCommand
+  | ConfigureSeekTargetBehaviorCommand
+  | ConfigureAccelerateBehaviorCommand
   | ConfigureInteractionBehaviorCommand
   | ConfigureProjectileActionBehaviorCommand
   | ConfigureDashActionBehaviorCommand
@@ -425,6 +616,10 @@ export interface BehaviorRecipeCommandBase {
   entity: string;
   recipe: string;
   tags: readonly string[];
+}
+
+export interface ConfigureTagsBehaviorCommand extends BehaviorRecipeCommandBase {
+  type: "configureTags";
 }
 
 export interface ConfigureHealthBehaviorCommand extends BehaviorRecipeCommandBase {
@@ -471,6 +666,45 @@ export interface ConfigureCollisionPickupBehaviorCommand extends BehaviorRecipeC
   target: BehaviorRecipeDamageTarget;
 }
 
+export interface ConfigureCollisionAreaDamageBehaviorCommand extends BehaviorRecipeCommandBase {
+  type: "configureCollisionAreaDamage";
+  amount: number;
+  radius: number;
+  targetLayer: BehaviorRecipeCollisionLayer;
+}
+
+export interface ConfigureCollisionKnockbackBehaviorCommand extends BehaviorRecipeCommandBase {
+  type: "configureCollisionKnockback";
+  target: BehaviorRecipeDamageTarget;
+  impulse: number;
+}
+
+export interface ConfigureCollisionEmitEffectBehaviorCommand extends BehaviorRecipeCommandBase {
+  type: "configureCollisionEmitEffect";
+  effect?: string;
+  effectId?: number;
+  effectKind: BehaviorRecipePresentationEffectKind;
+  effectType: number;
+  target: BehaviorRecipeDamageTarget;
+  intensity?: number;
+  radius?: number;
+  cooldownSeconds?: number;
+  trigger?: BehaviorRecipeCollisionTrigger;
+}
+
+export interface ConfigureCollisionSpawnPrefabBehaviorCommand extends BehaviorRecipeCommandBase {
+  type: "configureCollisionSpawnPrefab";
+  action: string;
+  actionId?: number;
+  prefab: string;
+  prefabId?: number;
+  target: BehaviorRecipeDamageTarget;
+  cooldownSeconds?: number;
+  trigger?: BehaviorRecipeCollisionTrigger;
+  offsetX: number;
+  offsetY: number;
+}
+
 export interface ConfigureCollisionSoundBehaviorCommand extends BehaviorRecipeCommandBase {
   type: "configureCollisionSound";
   soundId: number;
@@ -495,12 +729,32 @@ export interface ConfigureCollisionDespawnBehaviorCommand extends BehaviorRecipe
   target: BehaviorRecipeDamageTarget;
 }
 
+export interface ConfigureCollisionShakeBehaviorCommand extends BehaviorRecipeCommandBase {
+  type: "configureCollisionShake";
+  cooldownSeconds?: number;
+  trigger?: BehaviorRecipeCollisionTrigger;
+}
+
 export interface ConfigureChaseBehaviorCommand extends BehaviorRecipeCommandBase {
   type: "configureChase";
   target: string;
   speed: number;
   stopDistance: number;
   maxDistance?: number;
+}
+
+export interface ConfigureSeekTargetBehaviorCommand extends BehaviorRecipeCommandBase {
+  type: "configureSeekTarget";
+  target: string;
+  speed: number;
+  turnRate: number;
+}
+
+export interface ConfigureAccelerateBehaviorCommand extends BehaviorRecipeCommandBase {
+  type: "configureAccelerate";
+  accelerationX: number;
+  accelerationY: number;
+  maxSpeed: number;
 }
 
 export interface ConfigureInteractionBehaviorCommand extends BehaviorRecipeCommandBase {
@@ -555,6 +809,7 @@ export interface ConfigureSpawnPrefabActionBehaviorCommand extends BehaviorRecip
   phase: "prePhysics";
   offsetX: number;
   offsetY: number;
+  projectile?: ResolvedSpawnPrefabProjectilePayload;
 }
 
 export interface ConfigureTimerTriggerBehaviorCommand extends BehaviorRecipeCommandBase {
@@ -604,9 +859,13 @@ export function behaviorRecipeCommandsForEntity(
     throw behaviorRecipeDiagnosticError("behaviorRecipes.entity", `references unknown entity '${entityId}'`);
   }
   const kinds = recipeKindSet(options.kinds, "behaviorRecipes.kinds");
-  return entity.recipes
+  const commands = entity.recipes
     .filter((recipe) => recipe.enabled && (kinds === undefined || kinds.has(recipe.kind)))
     .map((recipe) => commandForRecipe(entity.id, recipe));
+  if (options.includeEntityTags === true && entity.tags.length > 0) {
+    return [commandForEntityTags(entity), ...commands];
+  }
+  return commands;
 }
 
 export function applyBehaviorRecipes(
@@ -779,6 +1038,55 @@ function resolveBehaviorRecipe(value: unknown, path: string, fallbackId: string)
         kind,
         target: damageTarget(value.target ?? "self", `${path}.target`),
       };
+    case "collisionAreaDamage":
+      return {
+        ...base,
+        kind,
+        amount: positiveNumber(value.amount ?? 1, `${path}.amount`),
+        radius: positiveNumber(value.radius ?? 32, `${path}.radius`),
+        targetLayer: collisionLayer(value.targetLayer ?? "enemy", `${path}.targetLayer`),
+      };
+    case "collisionKnockback":
+      return {
+        ...base,
+        kind,
+        target: damageTarget(value.target ?? "other", `${path}.target`),
+        impulse: positiveNumber(value.impulse ?? 120, `${path}.impulse`),
+      };
+    case "collisionEmitEffect": {
+      const effectKind = presentationEffectKind(value.effectKind ?? "custom", `${path}.effectKind`);
+      const effect = value.effect === undefined ? undefined : requiredString(value.effect, `${path}.effect`);
+      const effectId = value.effectId === undefined
+        ? effect === undefined ? 0 : undefined
+        : nonNegativeU32(value.effectId, `${path}.effectId`);
+      return {
+        ...base,
+        kind,
+        ...(effect === undefined ? {} : { effect }),
+        ...(effectId === undefined ? {} : { effectId }),
+        effectKind,
+        effectType: presentationEffectTypeCode(effectKind),
+        target: damageTarget(value.target ?? "self", `${path}.target`),
+        ...(value.intensity === undefined ? {} : { intensity: nonNegativeNumber(value.intensity, `${path}.intensity`) }),
+        ...(value.radius === undefined ? {} : { radius: nonNegativeNumber(value.radius, `${path}.radius`) }),
+        cooldownSeconds: nonNegativeNumber(value.cooldownSeconds ?? 0, `${path}.cooldownSeconds`),
+        trigger: collisionTrigger(value.trigger ?? "contact", `${path}.trigger`),
+      };
+    }
+    case "collisionSpawnPrefab":
+      return {
+        ...base,
+        kind,
+        action: requiredString(value.action, `${path}.action`),
+        ...(value.actionId === undefined ? {} : { actionId: positiveInteger(value.actionId, `${path}.actionId`) }),
+        prefab: requiredString(value.prefab, `${path}.prefab`),
+        ...(value.prefabId === undefined ? {} : { prefabId: positiveInteger(value.prefabId, `${path}.prefabId`) }),
+        target: damageTarget(value.target ?? "self", `${path}.target`),
+        cooldownSeconds: nonNegativeNumber(value.cooldownSeconds ?? 0, `${path}.cooldownSeconds`),
+        trigger: collisionTrigger(value.trigger ?? "contact", `${path}.trigger`),
+        offsetX: finiteNumber(value.offsetX ?? 0, `${path}.offsetX`),
+        offsetY: finiteNumber(value.offsetY ?? 0, `${path}.offsetY`),
+      };
     case "collisionSound":
       return {
         ...base,
@@ -800,6 +1108,13 @@ function resolveBehaviorRecipe(value: unknown, path: string, fallbackId: string)
         replaceDefault: optionalBoolean(value.replaceDefault, `${path}.replaceDefault`, false),
         trigger: collisionTrigger(value.trigger ?? "contact", `${path}.trigger`),
       };
+    case "collisionShake":
+      return {
+        ...base,
+        kind,
+        cooldownSeconds: nonNegativeNumber(value.cooldownSeconds ?? 0, `${path}.cooldownSeconds`),
+        trigger: collisionTrigger(value.trigger ?? "contact", `${path}.trigger`),
+      };
     case "collisionDespawn":
       return {
         ...base,
@@ -810,11 +1125,37 @@ function resolveBehaviorRecipe(value: unknown, path: string, fallbackId: string)
       return {
         ...base,
         kind,
-        target: optionalString(value.target, `${path}.target`, "player"),
+        target: optionalMovementTarget(value.target, `${path}.target`, "player"),
         speed: positiveNumber(value.speed ?? 80, `${path}.speed`),
         stopDistance: nonNegativeNumber(value.stopDistance ?? 12, `${path}.stopDistance`),
         ...(value.maxDistance === undefined ? {} : { maxDistance: positiveNumber(value.maxDistance, `${path}.maxDistance`) }),
       };
+    case "seekTarget":
+      return {
+        ...base,
+        kind,
+        target: optionalMovementTarget(value.target, `${path}.target`, "player"),
+        speed: positiveNumber(value.speed ?? 260, `${path}.speed`),
+        turnRate: nonNegativeNumber(value.turnRate ?? 0, `${path}.turnRate`),
+      };
+    case "accelerate": {
+      const accelerationX = finiteNumber(value.accelerationX ?? 0, `${path}.accelerationX`);
+      const accelerationY = finiteNumber(value.accelerationY ?? 0, `${path}.accelerationY`);
+      const maxSpeed = positiveNumber(value.maxSpeed ?? 1, `${path}.maxSpeed`);
+      if (accelerationX === 0 && accelerationY === 0) {
+        throw behaviorRecipeDiagnosticError(
+          `${path}`,
+          "at least one of accelerationX or accelerationY must be non-zero",
+        );
+      }
+      return {
+        ...base,
+        kind,
+        accelerationX,
+        accelerationY,
+        maxSpeed,
+      };
+    }
     case "interaction":
       return {
         ...base,
@@ -860,7 +1201,21 @@ function resolveBehaviorRecipe(value: unknown, path: string, fallbackId: string)
         damage: positiveNumber(value.damage ?? 1, `${path}.damage`),
         target: meleeTarget(value.target ?? "enemies", `${path}.target`),
       };
-    case "spawnPrefabAction":
+    case "spawnPrefabAction": {
+      const projectileValue = value.projectile;
+      if (projectileValue !== undefined && !isRecord(projectileValue)) {
+        throw behaviorRecipeDiagnosticError(`${path}.projectile`, "must be an object when provided");
+      }
+      const projectile = projectileValue === undefined
+        ? undefined
+        : {
+            speed: positiveNumber(projectileValue.speed ?? 360, `${path}.projectile.speed`),
+            damage: positiveNumber(projectileValue.damage ?? 1, `${path}.projectile.damage`),
+            lifetimeSeconds: positiveNumber(projectileValue.lifetimeSeconds ?? 1, `${path}.projectile.lifetimeSeconds`),
+            aim: actionAim(projectileValue.aim ?? "targetPlayer", `${path}.projectile.aim`),
+            collisionTarget: projectileCollisionTarget(projectileValue.collisionTarget ?? "player", `${path}.projectile.collisionTarget`),
+            tileImpact: projectileTileImpact(projectileValue.tileImpact ?? "despawn", `${path}.projectile.tileImpact`),
+          };
       return {
         ...base,
         kind,
@@ -873,7 +1228,9 @@ function resolveBehaviorRecipe(value: unknown, path: string, fallbackId: string)
         phase: spawnPrefabPhase(value.phase ?? "prePhysics", `${path}.phase`),
         offsetX: finiteNumber(value.offsetX ?? 0, `${path}.offsetX`),
         offsetY: finiteNumber(value.offsetY ?? 0, `${path}.offsetY`),
+        ...(projectile === undefined ? {} : { projectile }),
       };
+    }
     case "timerTrigger":
       return {
         ...base,
@@ -945,6 +1302,49 @@ function commandForRecipe(entity: string, recipe: ResolvedBehaviorRecipe): Behav
         type: "configureCollisionPickup",
         target: recipe.target,
       };
+    case "collisionAreaDamage":
+      return {
+        ...base,
+        type: "configureCollisionAreaDamage",
+        amount: recipe.amount,
+        radius: recipe.radius,
+        targetLayer: recipe.targetLayer,
+      };
+    case "collisionKnockback":
+      return {
+        ...base,
+        type: "configureCollisionKnockback",
+        target: recipe.target,
+        impulse: recipe.impulse,
+      };
+    case "collisionEmitEffect":
+      return {
+        ...base,
+        type: "configureCollisionEmitEffect",
+        ...(recipe.effect === undefined ? {} : { effect: recipe.effect }),
+        ...(recipe.effectId === undefined ? {} : { effectId: recipe.effectId }),
+        effectKind: recipe.effectKind,
+        effectType: recipe.effectType,
+        target: recipe.target,
+        ...(recipe.intensity === undefined ? {} : { intensity: recipe.intensity }),
+        ...(recipe.radius === undefined ? {} : { radius: recipe.radius }),
+        cooldownSeconds: recipe.cooldownSeconds,
+        trigger: recipe.trigger,
+      };
+    case "collisionSpawnPrefab":
+      return {
+        ...base,
+        type: "configureCollisionSpawnPrefab",
+        action: recipe.action,
+        ...(recipe.actionId === undefined ? {} : { actionId: recipe.actionId }),
+        prefab: recipe.prefab,
+        ...(recipe.prefabId === undefined ? {} : { prefabId: recipe.prefabId }),
+        target: recipe.target,
+        cooldownSeconds: recipe.cooldownSeconds,
+        trigger: recipe.trigger,
+        offsetX: recipe.offsetX,
+        offsetY: recipe.offsetY,
+      };
     case "collisionSound":
       return {
         ...base,
@@ -966,6 +1366,13 @@ function commandForRecipe(entity: string, recipe: ResolvedBehaviorRecipe): Behav
         replaceDefault: recipe.replaceDefault,
         trigger: recipe.trigger,
       };
+    case "collisionShake":
+      return {
+        ...base,
+        type: "configureCollisionShake",
+        cooldownSeconds: recipe.cooldownSeconds,
+        trigger: recipe.trigger,
+      };
     case "collisionDespawn":
       return {
         ...base,
@@ -980,6 +1387,22 @@ function commandForRecipe(entity: string, recipe: ResolvedBehaviorRecipe): Behav
         speed: recipe.speed,
         stopDistance: recipe.stopDistance,
         ...(recipe.maxDistance === undefined ? {} : { maxDistance: recipe.maxDistance }),
+      };
+    case "seekTarget":
+      return {
+        ...base,
+        type: "configureSeekTarget",
+        target: recipe.target,
+        speed: recipe.speed,
+        turnRate: recipe.turnRate,
+      };
+    case "accelerate":
+      return {
+        ...base,
+        type: "configureAccelerate",
+        accelerationX: recipe.accelerationX,
+        accelerationY: recipe.accelerationY,
+        maxSpeed: recipe.maxSpeed,
       };
     case "interaction":
       return {
@@ -1039,6 +1462,7 @@ function commandForRecipe(entity: string, recipe: ResolvedBehaviorRecipe): Behav
         phase: recipe.phase,
         offsetX: recipe.offsetX,
         offsetY: recipe.offsetY,
+        ...(recipe.projectile === undefined ? {} : { projectile: recipe.projectile }),
       };
     case "timerTrigger":
       return {
@@ -1051,6 +1475,15 @@ function commandForRecipe(entity: string, recipe: ResolvedBehaviorRecipe): Behav
         seconds: recipe.seconds,
       };
   }
+}
+
+function commandForEntityTags(entity: ResolvedBehaviorRecipeEntity): ConfigureTagsBehaviorCommand {
+  return {
+    entity: entity.id,
+    recipe: "entity.tags",
+    tags: entity.tags,
+    type: "configureTags",
+  };
 }
 
 function assertUniqueRecipeIds(recipes: readonly ResolvedBehaviorRecipe[], path: string): void {
@@ -1079,10 +1512,17 @@ function behaviorRecipeKind(value: unknown, path: string): BehaviorRecipeKind {
     || value === "scoreReward"
     || value === "pickup"
     || value === "collisionPickup"
+    || value === "collisionAreaDamage"
+    || value === "collisionKnockback"
+    || value === "collisionEmitEffect"
+    || value === "collisionSpawnPrefab"
     || value === "collisionSound"
     || value === "collisionParticle"
+    || value === "collisionShake"
     || value === "collisionDespawn"
     || value === "chase"
+    || value === "seekTarget"
+    || value === "accelerate"
     || value === "interaction"
     || value === "projectileAction"
     || value === "dashAction"
@@ -1092,7 +1532,7 @@ function behaviorRecipeKind(value: unknown, path: string): BehaviorRecipeKind {
   ) {
     return value;
   }
-  throw behaviorRecipeDiagnosticError(path, "must be one of health, damage, faction, lifetime, scoreReward, pickup, collisionPickup, collisionSound, collisionParticle, collisionDespawn, chase, interaction, projectileAction, dashAction, meleeAction, spawnPrefabAction, or timerTrigger");
+  throw behaviorRecipeDiagnosticError(path, "must be one of health, damage, faction, lifetime, scoreReward, pickup, collisionPickup, collisionAreaDamage, collisionKnockback, collisionEmitEffect, collisionSpawnPrefab, collisionSound, collisionParticle, collisionShake, collisionDespawn, chase, seekTarget, accelerate, interaction, projectileAction, dashAction, meleeAction, spawnPrefabAction, or timerTrigger");
 }
 
 function spawnPrefabAnchor(value: unknown, path: string): "self" {
@@ -1149,6 +1589,24 @@ function damageTarget(value: unknown, path: string): BehaviorRecipeDamageTarget 
     return value;
   }
   throw behaviorRecipeDiagnosticError(path, "must be one of other or self");
+}
+
+function collisionLayer(value: unknown, path: string): BehaviorRecipeCollisionLayer {
+  if (typeof value === "string" && Object.prototype.hasOwnProperty.call(MOVEMENT_QUERY_LAYERS, value)) {
+    return value as BehaviorRecipeCollisionLayer;
+  }
+  throw behaviorRecipeDiagnosticError(path, "must be one of player, enemy, bullet, wall, or pickup");
+}
+
+function presentationEffectKind(value: unknown, path: string): BehaviorRecipePresentationEffectKind {
+  if (typeof value === "string" && Object.prototype.hasOwnProperty.call(PRESENTATION_EFFECT_TYPE_CODES, value)) {
+    return value as BehaviorRecipePresentationEffectKind;
+  }
+  throw behaviorRecipeDiagnosticError(path, "must be one of sound, particle, cameraShake, or custom");
+}
+
+function presentationEffectTypeCode(kind: BehaviorRecipePresentationEffectKind): number {
+  return PRESENTATION_EFFECT_TYPE_CODES[kind];
 }
 
 function gameplayFaction(value: unknown, path: string): BehaviorRecipeFaction {
@@ -1210,6 +1668,63 @@ function optionalString<T extends string | undefined>(value: unknown, path: stri
   return requiredString(value, path);
 }
 
+function optionalMovementTarget<T extends string>(value: unknown, path: string, fallback: T): string | T {
+  const target = optionalString(value, path, fallback);
+  if (!target.startsWith(MOVEMENT_NEAREST_LAYER_TARGET_PREFIX)) {
+    if (!target.startsWith(MOVEMENT_NEAREST_FACTION_TARGET_PREFIX)) {
+      if (!target.startsWith(MOVEMENT_NEAREST_TAG_TARGET_PREFIX)) {
+        return target;
+      }
+      const tag = target.slice(MOVEMENT_NEAREST_TAG_TARGET_PREFIX.length);
+      if (isMovementQueryTag(tag)) {
+        return target;
+      }
+      throw behaviorRecipeDiagnosticError(
+        path,
+        "nearestTag target must be nearestTag:<tagName> or nearestTag:<0..31>",
+      );
+    }
+    const faction = target.slice(MOVEMENT_NEAREST_FACTION_TARGET_PREFIX.length);
+    if (isMovementQueryFaction(faction)) {
+      return target;
+    }
+    throw behaviorRecipeDiagnosticError(
+      path,
+      "nearestFaction target must be nearestFaction:neutral, nearestFaction:player, nearestFaction:enemy, or nearestFaction:<0..31>",
+    );
+  }
+  const layer = target.slice(MOVEMENT_NEAREST_LAYER_TARGET_PREFIX.length);
+  if (Object.prototype.hasOwnProperty.call(MOVEMENT_QUERY_LAYERS, layer)) {
+    return target;
+  }
+  throw behaviorRecipeDiagnosticError(
+    path,
+    "nearestLayer target must be one of nearestLayer:player, nearestLayer:enemy, nearestLayer:bullet, nearestLayer:wall, or nearestLayer:pickup",
+  );
+}
+
+function isMovementQueryTag(value: string): boolean {
+  if (value.length === 0) {
+    return false;
+  }
+  if (!/^\d+$/.test(value)) {
+    return true;
+  }
+  const tagId = Number(value);
+  return Number.isInteger(tagId) && tagId >= 0 && tagId <= MAX_GAMEPLAY_TAG_ID;
+}
+
+function isMovementQueryFaction(value: string): boolean {
+  if (Object.prototype.hasOwnProperty.call(MOVEMENT_QUERY_FACTIONS, value)) {
+    return true;
+  }
+  if (!/^\d+$/.test(value)) {
+    return false;
+  }
+  const factionId = Number(value);
+  return Number.isInteger(factionId) && factionId >= 0 && factionId <= MAX_GAMEPLAY_FACTION_ID;
+}
+
 function optionalBoolean(value: unknown, path: string, fallback: boolean): boolean {
   if (value === undefined) {
     return fallback;
@@ -1230,6 +1745,13 @@ function positiveInteger(value: unknown, path: string): number {
 function nonNegativeInteger(value: unknown, path: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
     throw behaviorRecipeDiagnosticError(path, "must be a non-negative integer");
+  }
+  return value;
+}
+
+function nonNegativeU32(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > 0xffffffff) {
+    throw behaviorRecipeDiagnosticError(path, "must be a non-negative safe u32 integer");
   }
   return value;
 }

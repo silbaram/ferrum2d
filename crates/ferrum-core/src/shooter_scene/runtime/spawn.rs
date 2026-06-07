@@ -1,6 +1,7 @@
 use crate::audio_event::AudioEvent;
 use crate::components::gameplay::{
-    GameplayFaction, ProjectileCollisionTarget, ProjectileTileImpact,
+    GameplayFaction, ProjectileCollisionTarget, ProjectileTileImpact, SpawnAnchor, SpawnPhase,
+    SpawnPrefabProjectilePayload,
 };
 use crate::components::{
     CollisionLayer, HeightSpan, PhysicsFloorId, ProjectileArc, Transform2D, Velocity,
@@ -11,24 +12,33 @@ use crate::gameplay::{
     plan_projectile_action_toward_target, plan_supported_spawn_prefab_action,
     prefab_spawned_event_payload, projectile_action_plan_failure_reason,
     projectile_spawn_core_data_from_plan, spawn_prefab_action_plan_failure_reason,
-    spawn_prefab_core_data_from_plan, spawn_prefab_enemy_entity,
-    spawn_prefab_placement_is_blocked_by_tilemap, spawn_prefab_pre_commit_failure_reason,
-    spawn_projectile_entity, try_push_bounded_deferred_command,
-    validate_spawn_prefab_pre_commit_gates, PrefabEnemyEntitySpawnData, PrefabSpawnedEventPayload,
-    ProjectileActionPayload, ProjectileEntitySpawnData, ProjectileSpawnCoreData,
-    SpawnPrefabActionPayload, SpawnPrefabCoreData, SpawnPrefabSupport,
+    spawn_prefab_core_data_from_plan, spawn_prefab_placement_is_blocked_by_tilemap,
+    spawn_prefab_pre_commit_failure_reason, spawn_projectile_entity,
+    try_push_bounded_deferred_command, validate_spawn_prefab_pre_commit_gates,
+    PrefabSpawnedEventPayload, ProjectileActionPayload, ProjectileEntitySpawnData,
+    ProjectileSpawnCoreData, SpawnPrefabActionPayload, SpawnPrefabCoreData, SpawnPrefabSupport,
 };
 use crate::gameplay_event::{
     GAMEPLAY_ACTION_FAILURE_MISSING_SOURCE_TRANSFORM, GAMEPLAY_ACTION_FAILURE_SPAWN_QUEUE_FULL,
+    GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PREFAB,
 };
 use crate::tilemap::Tilemap;
-use crate::world::{BulletSpawnRequest, EntityTemplate, World};
+use crate::world::{
+    EntityTemplate, PrefabEntitySpawnRequest, PrefabSpriteTint, ProjectileSpawnRequest, World,
+};
 
-use super::super::{ShooterPrefabKind, ShooterScene};
+use super::super::{
+    ShooterPrefabKind, ShooterPrefabResolvedComponents, ShooterPrefabTextureSlot, ShooterScene,
+};
 use super::{push_audio_event, GameplayEventSink};
+
+#[cfg(test)]
+use crate::gameplay::PrefabEnemyEntitySpawnData;
 
 pub(in crate::shooter_scene) const MAX_PENDING_SPAWNS: usize = 64;
 
+// Spawn commands stay Copy because the pending queue is a small fixed-size buffer.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Copy)]
 pub(in crate::shooter_scene) enum ShooterSpawnCommand {
     Projectile(ProjectileSpawnCommand),
@@ -54,9 +64,12 @@ pub(in crate::shooter_scene) struct ProjectileSpawnCommand {
 
 #[derive(Debug, Clone, Copy)]
 pub(in crate::shooter_scene) struct PrefabSpawnCommand {
+    pub(in crate::shooter_scene) kind: ShooterPrefabKind,
+    pub(in crate::shooter_scene) layer: CollisionLayer,
     pub(in crate::shooter_scene) source: Entity,
     pub(in crate::shooter_scene) action_id: u32,
     pub(in crate::shooter_scene) prefab_id: u32,
+    pub(in crate::shooter_scene) projectile: Option<ProjectileSpawnCommand>,
     pub(in crate::shooter_scene) transform: Transform2D,
     pub(in crate::shooter_scene) texture_id: u32,
     pub(in crate::shooter_scene) template: EntityTemplate,
@@ -154,6 +167,7 @@ pub(in crate::shooter_scene) struct ProjectileSpawnDispatchResult {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PrefabSpawnDispatchResult {
+    kind: ShooterPrefabKind,
     spawned: Entity,
 }
 
@@ -213,14 +227,24 @@ impl ShooterScene {
         command: PrefabSpawnCommand,
         commit: impl FnOnce() -> bool,
     ) -> Result<bool, u32> {
-        validate_spawn_prefab_pre_commit_gates(self.has_pending_spawn_capacity(), || {
-            spawn_prefab_placement_is_blocked_by_tilemap(
+        validate_spawn_prefab_pre_commit_gates(self.has_pending_spawn_capacity(), || match command
+            .layer
+        {
+            CollisionLayer::Enemy => spawn_prefab_placement_is_blocked_by_tilemap(
                 tilemap,
                 command.template,
                 command.transform,
-                CollisionLayer::Enemy,
+                command.layer,
                 &mut self.spawn_obstacle_contacts,
-            )
+            ),
+            CollisionLayer::Bullet => false,
+            CollisionLayer::Player | CollisionLayer::Wall | CollisionLayer::Pickup => {
+                debug_assert!(
+                    false,
+                    "unsupported prefab spawn commands are rejected before queueing"
+                );
+                true
+            }
         })
         .map_err(spawn_prefab_pre_commit_failure_reason)?;
         if commit() {
@@ -237,12 +261,25 @@ impl ShooterScene {
         source: Entity,
         core_data: ProjectileSpawnCoreData,
     ) -> ProjectileSpawnCommand {
+        let components = self.projectile_spawn_components();
+        self.projectile_spawn_command_from_core_data_with_components(
+            world, source, core_data, components,
+        )
+    }
+
+    fn projectile_spawn_command_from_core_data_with_components(
+        &self,
+        world: &World,
+        source: Entity,
+        core_data: ProjectileSpawnCoreData,
+        components: ShooterPrefabResolvedComponents,
+    ) -> ProjectileSpawnCommand {
         ProjectileSpawnCommand {
             transform: core_data.transform,
             velocity: core_data.velocity,
-            texture_id: self.texture_ids.bullet,
+            texture_id: self.texture_id_for_prefab_texture_slot(components.texture),
             lifetime_seconds: core_data.lifetime_seconds,
-            template: self.config.bullet_template,
+            template: components.template,
             damage: core_data.damage,
             collision_target: core_data.collision_target,
             tile_impact: core_data.tile_impact,
@@ -272,11 +309,10 @@ impl ShooterScene {
             .copied()
             .flatten()
             .map_or(0.0, |sprite| sprite.width.max(sprite.height) * 0.5);
-        let bullet_half_extent = self
-            .config
-            .bullet_template
+        let projectile_template = self.projectile_spawn_components().template;
+        let bullet_half_extent = projectile_template
             .sprite_width
-            .max(self.config.bullet_template.sprite_height)
+            .max(projectile_template.sprite_height)
             * 0.5;
         let spawn_offset = source_half_extent + bullet_half_extent;
         let plan =
@@ -284,6 +320,10 @@ impl ShooterScene {
                 .map_err(projectile_action_plan_failure_reason)?;
         let command_data = projectile_spawn_core_data_from_plan(plan, payload);
         Ok(self.projectile_spawn_command_from_core_data(world, source, command_data))
+    }
+
+    fn projectile_spawn_components(&self) -> ShooterPrefabResolvedComponents {
+        self.resolve_builtin_prefab_components(ShooterPrefabKind::Bullet)
     }
 
     fn projectile_arc_for_source(&self, world: &World, source: Entity) -> Option<ProjectileArc> {
@@ -305,19 +345,97 @@ impl ShooterScene {
         )
     }
 
+    #[cfg(test)]
     pub(in crate::shooter_scene) fn prefab_spawn_command_from_core_data(
         &self,
         core_data: SpawnPrefabCoreData,
+    ) -> Result<PrefabSpawnCommand, u32> {
+        let Some(components) = self.prefab_spawn_components_for_prefab_id(core_data.prefab_id)
+        else {
+            return Err(GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PREFAB);
+        };
+        Ok(self.prefab_spawn_command_from_core_data_with_components(core_data, components))
+    }
+
+    fn prefab_spawn_command_from_core_data_with_components(
+        &self,
+        core_data: SpawnPrefabCoreData,
+        components: ShooterPrefabResolvedComponents,
     ) -> PrefabSpawnCommand {
         PrefabSpawnCommand {
+            kind: components.kind,
+            layer: components.layer,
             source: core_data.source,
             action_id: core_data.action_id,
             prefab_id: core_data.prefab_id,
+            projectile: None,
             transform: core_data.transform,
-            texture_id: self.texture_ids.enemy,
-            template: self.config.enemy_template,
-            health: self.active_enemy_health(),
-            score_reward: self.active_score_reward(),
+            texture_id: self.texture_id_for_prefab_texture_slot(components.texture),
+            template: components.template,
+            health: components
+                .health
+                .unwrap_or_else(|| self.active_enemy_health()),
+            score_reward: components
+                .score_reward
+                .unwrap_or_else(|| self.active_score_reward()),
+        }
+    }
+
+    #[cfg(test)]
+    fn prefab_spawn_components_for_prefab_id(
+        &self,
+        prefab_id: u32,
+    ) -> Option<ShooterPrefabResolvedComponents> {
+        let registration = self.resolve_spawn_prefab_registration(prefab_id)?;
+        let mut components = self.resolve_spawn_prefab_components(registration);
+        if components.layer != CollisionLayer::Enemy {
+            return None;
+        }
+        components.health = Some(self.active_enemy_health());
+        components.score_reward = Some(self.active_score_reward());
+        Some(components)
+    }
+
+    fn projectile_prefab_spawn_command_from_core_data_with_components(
+        &self,
+        world: &World,
+        source: Entity,
+        core_data: SpawnPrefabCoreData,
+        components: ShooterPrefabResolvedComponents,
+    ) -> Result<PrefabSpawnCommand, u32> {
+        let Some(spawn_payload) = core_data.projectile else {
+            return Err(GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PREFAB);
+        };
+        let projectile_payload = projectile_action_payload_from_spawn_prefab_payload(spawn_payload);
+        let Some(source_t) = world.transform(source) else {
+            return Err(GAMEPLAY_ACTION_FAILURE_MISSING_SOURCE_TRANSFORM);
+        };
+        let target = world
+            .player_entity()
+            .and_then(|player| world.transform(player).map(|transform| (player, transform)));
+        let plan =
+            plan_projectile_action_toward_target(projectile_payload, source, source_t, target, 0.0)
+                .map_err(projectile_action_plan_failure_reason)?;
+        let mut projectile_core_data =
+            projectile_spawn_core_data_from_plan(plan, projectile_payload);
+        projectile_core_data.transform = core_data.transform;
+        let projectile_command = self.projectile_spawn_command_from_core_data_with_components(
+            world,
+            source,
+            projectile_core_data,
+            components,
+        );
+        let mut command =
+            self.prefab_spawn_command_from_core_data_with_components(core_data, components);
+        command.projectile = Some(projectile_command);
+        Ok(command)
+    }
+
+    fn texture_id_for_prefab_texture_slot(&self, slot: ShooterPrefabTextureSlot) -> u32 {
+        match slot {
+            ShooterPrefabTextureSlot::Player => self.texture_ids.player,
+            ShooterPrefabTextureSlot::Enemy => self.texture_ids.enemy,
+            ShooterPrefabTextureSlot::Bullet => self.texture_ids.bullet,
         }
     }
 
@@ -328,16 +446,85 @@ impl ShooterScene {
         action_id: u32,
         payload: SpawnPrefabActionPayload,
     ) -> Result<PrefabSpawnCommand, u32> {
-        let support =
-            if ShooterPrefabKind::from_code(payload.prefab_id) == Some(ShooterPrefabKind::Enemy) {
+        let registration = self.resolve_spawn_prefab_registration(payload.prefab_id);
+        let support = match registration {
+            Some(registration)
+                if self.resolve_spawn_prefab_components(registration).layer
+                    == CollisionLayer::Enemy
+                    && payload.projectile.is_none() =>
+            {
                 SpawnPrefabSupport::Supported
-            } else {
-                SpawnPrefabSupport::Unsupported
-            };
+            }
+            Some(registration)
+                if self.resolve_spawn_prefab_components(registration).layer
+                    == CollisionLayer::Bullet
+                    && payload.projectile.is_some() =>
+            {
+                SpawnPrefabSupport::Supported
+            }
+            _ => SpawnPrefabSupport::Unsupported,
+        };
         let plan = plan_supported_spawn_prefab_action(payload, world.transform(source), support)
             .map_err(spawn_prefab_action_plan_failure_reason)?;
         let core_data = spawn_prefab_core_data_from_plan(source, action_id, plan);
-        Ok(self.prefab_spawn_command_from_core_data(core_data))
+        let Some(registration) = registration else {
+            return Err(GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PREFAB);
+        };
+        let components = self.resolve_spawn_prefab_components(registration);
+        match components.layer {
+            CollisionLayer::Enemy => {
+                Ok(self.prefab_spawn_command_from_core_data_with_components(core_data, components))
+            }
+            CollisionLayer::Bullet => self
+                .projectile_prefab_spawn_command_from_core_data_with_components(
+                    world, source, core_data, components,
+                ),
+            CollisionLayer::Player | CollisionLayer::Wall | CollisionLayer::Pickup => {
+                Err(GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PREFAB)
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::shooter_scene) fn collision_spawn_prefab_command(
+        &self,
+        world: &World,
+        source: Entity,
+        anchor: Entity,
+        action_id: u32,
+        prefab_id: u32,
+        offset_x: f32,
+        offset_y: f32,
+    ) -> Result<PrefabSpawnCommand, u32> {
+        let payload = SpawnPrefabActionPayload {
+            prefab_id,
+            projectile: None,
+            anchor: SpawnAnchor::SelfEntity,
+            phase: SpawnPhase::PrePhysics,
+            offset_x,
+            offset_y,
+        };
+        let registration = self.resolve_spawn_prefab_registration(prefab_id);
+        let support = match registration {
+            Some(registration)
+                if self.resolve_spawn_prefab_components(registration).layer
+                    == CollisionLayer::Enemy =>
+            {
+                SpawnPrefabSupport::Supported
+            }
+            _ => SpawnPrefabSupport::Unsupported,
+        };
+        let plan = plan_supported_spawn_prefab_action(payload, world.transform(anchor), support)
+            .map_err(spawn_prefab_action_plan_failure_reason)?;
+        let core_data = spawn_prefab_core_data_from_plan(source, action_id, plan);
+        let Some(registration) = registration else {
+            return Err(GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PREFAB);
+        };
+        let components = self.resolve_spawn_prefab_components(registration);
+        if components.layer != CollisionLayer::Enemy {
+            return Err(GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PREFAB);
+        }
+        Ok(self.prefab_spawn_command_from_core_data_with_components(core_data, components))
     }
 
     #[cfg(test)]
@@ -426,8 +613,8 @@ fn prefab_spawned_payload_from_command(
 
 fn bullet_spawn_request_from_projectile_command(
     command: ProjectileSpawnCommand,
-) -> BulletSpawnRequest {
-    BulletSpawnRequest {
+) -> ProjectileSpawnRequest {
+    ProjectileSpawnRequest {
         transform: command.transform,
         velocity: command.velocity,
         texture_id: command.texture_id,
@@ -440,13 +627,57 @@ fn bullet_spawn_request_from_projectile_command(
     }
 }
 
-fn prefab_enemy_spawn_data_from_command(command: PrefabSpawnCommand) -> PrefabEnemyEntitySpawnData {
+fn projectile_action_payload_from_spawn_prefab_payload(
+    payload: SpawnPrefabProjectilePayload,
+) -> ProjectileActionPayload {
+    ProjectileActionPayload {
+        speed: payload.speed,
+        damage: payload.damage,
+        lifetime_seconds: payload.lifetime_seconds,
+        aim: payload.aim,
+        collision_target: payload.collision_target,
+        tile_impact: payload.tile_impact,
+    }
+}
+
+#[cfg(test)]
+fn enemy_entity_spawn_data_from_prefab_command(
+    command: PrefabSpawnCommand,
+) -> PrefabEnemyEntitySpawnData {
+    debug_assert_eq!(command.kind, ShooterPrefabKind::Enemy);
+    debug_assert!(command.projectile.is_none());
     PrefabEnemyEntitySpawnData {
         transform: command.transform,
         texture_id: command.texture_id,
         template: command.template,
         health: command.health,
         score_reward: command.score_reward,
+    }
+}
+
+fn prefab_entity_spawn_request_from_command(
+    command: PrefabSpawnCommand,
+) -> PrefabEntitySpawnRequest {
+    let sprite_tint = match command.layer {
+        CollisionLayer::Player => PrefabSpriteTint::PLAYER,
+        CollisionLayer::Enemy => PrefabSpriteTint::ENEMY,
+        CollisionLayer::Bullet => PrefabSpriteTint::PROJECTILE,
+        CollisionLayer::Wall | CollisionLayer::Pickup => PrefabSpriteTint::PLAYER,
+    };
+    PrefabEntitySpawnRequest {
+        transform: command.transform,
+        velocity: None,
+        texture_id: command.texture_id,
+        template: command.template,
+        layer: command.layer,
+        sprite_tint,
+        lifetime_seconds: None,
+        projectile_policy: None,
+        gameplay_faction: None,
+        damage: None,
+        health: Some(command.health),
+        score_reward: Some(command.score_reward),
+        player_marker: command.layer == CollisionLayer::Player,
     }
 }
 
@@ -482,7 +713,7 @@ fn dispatch_spawn_command(
             SpawnCommandDispatchResult::Projectile(spawned)
         }
         ShooterSpawnCommand::Prefab(prefab) => {
-            let spawn_result = spawn_prefab_now(world, prefab);
+            let spawn_result = spawn_prefab_now(world, audio_events, prefab);
             SpawnCommandDispatchResult::Prefab(PrefabSpawnCommandDispatchResult {
                 prefab_spawn: spawn_result,
                 spawned_event_payload: prefab_spawned_payload_from_command(
@@ -535,10 +766,34 @@ fn spawn_projectile_now(
     }
 }
 
-fn spawn_prefab_now(world: &mut World, command: PrefabSpawnCommand) -> PrefabSpawnDispatchResult {
-    let result = spawn_prefab_enemy_entity(world, prefab_enemy_spawn_data_from_command(command));
-    PrefabSpawnDispatchResult {
-        spawned: result.spawned,
+fn spawn_prefab_now(
+    world: &mut World,
+    audio_events: &mut Vec<AudioEvent>,
+    command: PrefabSpawnCommand,
+) -> PrefabSpawnDispatchResult {
+    match command.layer {
+        CollisionLayer::Enemy => {
+            let spawned = world.spawn_prefab_entity_from_request(
+                prefab_entity_spawn_request_from_command(command),
+            );
+            PrefabSpawnDispatchResult {
+                kind: command.kind,
+                spawned,
+            }
+        }
+        CollisionLayer::Bullet => {
+            let projectile = command
+                .projectile
+                .expect("bullet prefab commands carry projectile data by construction");
+            let result = spawn_projectile_now(world, audio_events, projectile);
+            PrefabSpawnDispatchResult {
+                kind: command.kind,
+                spawned: result.spawned,
+            }
+        }
+        CollisionLayer::Player | CollisionLayer::Wall | CollisionLayer::Pickup => {
+            unreachable!("unsupported prefab spawn commands are rejected before queueing")
+        }
     }
 }
 
@@ -573,18 +828,24 @@ mod tests {
     }
 
     fn test_prefab_spawn_command() -> PrefabSpawnCommand {
+        let template = EntityTemplate::new(12.0, 14.0);
+        let health = 3.0;
+        let score_reward = 2;
         PrefabSpawnCommand {
+            kind: ShooterPrefabKind::Enemy,
+            layer: CollisionLayer::Enemy,
             source: Entity {
                 id: 7,
                 generation: 1,
             },
             action_id: 9,
             prefab_id: 1,
+            projectile: None,
             transform: Transform2D { x: 16.0, y: 24.0 },
             texture_id: 11,
-            template: EntityTemplate::new(12.0, 14.0),
-            health: 3.0,
-            score_reward: 2,
+            template,
+            health,
+            score_reward,
         }
     }
 
@@ -643,11 +904,11 @@ mod tests {
     }
 
     #[test]
-    fn prefab_enemy_spawn_data_from_command_preserves_enemy_spawn_fields() {
+    fn enemy_entity_spawn_data_from_prefab_command_preserves_enemy_spawn_fields() {
         let command = test_prefab_spawn_command();
 
         assert_eq!(
-            prefab_enemy_spawn_data_from_command(command),
+            enemy_entity_spawn_data_from_prefab_command(command),
             PrefabEnemyEntitySpawnData {
                 transform: command.transform,
                 texture_id: command.texture_id,
@@ -860,12 +1121,19 @@ mod tests {
     fn spawn_prefab_now_spawns_enemy_from_prefab_command_fields() {
         let mut world = World::default();
         let command = test_prefab_spawn_command();
+        let mut audio_events = Vec::new();
 
-        let result = spawn_prefab_now(&mut world, command);
+        let result = spawn_prefab_now(&mut world, &mut audio_events, command);
         let spawned = result.spawned;
         let spawned_index = spawned.id as usize;
 
-        assert_eq!(result, PrefabSpawnDispatchResult { spawned });
+        assert_eq!(
+            result,
+            PrefabSpawnDispatchResult {
+                kind: ShooterPrefabKind::Enemy,
+                spawned
+            }
+        );
         assert_eq!(world.transforms[spawned_index], Some(command.transform));
         assert_eq!(
             world.sprites[spawned_index].map(|sprite| sprite.texture_id),
@@ -945,6 +1213,7 @@ mod tests {
         assert_eq!(
             prefab_result.prefab_spawn,
             PrefabSpawnDispatchResult {
+                kind: ShooterPrefabKind::Enemy,
                 spawned: prefab_result.spawned_event_payload.spawned,
             }
         );
@@ -989,7 +1258,10 @@ mod tests {
             let mut sink = GameplayEventSink::new(&mut gameplay_events);
             consume_spawn_command_dispatch_result(
                 SpawnCommandDispatchResult::Prefab(PrefabSpawnCommandDispatchResult {
-                    prefab_spawn: PrefabSpawnDispatchResult { spawned },
+                    prefab_spawn: PrefabSpawnDispatchResult {
+                        kind: ShooterPrefabKind::Enemy,
+                        spawned,
+                    },
                     spawned_event_payload: payload,
                 }),
                 Some(&mut sink),
@@ -1047,7 +1319,10 @@ mod tests {
 
         let result = consume_spawn_command_dispatch_result(
             SpawnCommandDispatchResult::Prefab(PrefabSpawnCommandDispatchResult {
-                prefab_spawn: PrefabSpawnDispatchResult { spawned },
+                prefab_spawn: PrefabSpawnDispatchResult {
+                    kind: ShooterPrefabKind::Enemy,
+                    spawned,
+                },
                 spawned_event_payload: payload,
             }),
             None,
@@ -1087,7 +1362,10 @@ mod tests {
         ));
         result.record_dispatch(SpawnCommandDispatchResult::Prefab(
             PrefabSpawnCommandDispatchResult {
-                prefab_spawn: PrefabSpawnDispatchResult { spawned },
+                prefab_spawn: PrefabSpawnDispatchResult {
+                    kind: ShooterPrefabKind::Enemy,
+                    spawned,
+                },
                 spawned_event_payload: payload,
             },
         ));
@@ -1481,10 +1759,13 @@ mod tests {
             source,
             action_id: 41,
             prefab_id: 1,
+            projectile: None,
             transform: Transform2D { x: 72.0, y: 80.0 },
         };
 
-        let command = scene.prefab_spawn_command_from_core_data(core_data);
+        let command = scene
+            .prefab_spawn_command_from_core_data(core_data)
+            .unwrap();
 
         assert_eq!(command.source, source);
         assert_eq!(command.action_id, 41);
@@ -1515,6 +1796,7 @@ mod tests {
                 41,
                 SpawnPrefabActionPayload {
                     prefab_id: 1,
+                    projectile: None,
                     anchor: SpawnAnchor::SelfEntity,
                     phase: SpawnPhase::PrePhysics,
                     offset_x: 4.0,
@@ -1531,6 +1813,98 @@ mod tests {
         assert_eq!(command.template, EntityTemplate::new(20.0, 24.0));
         assert_eq!(command.health, 7.5);
         assert_eq!(command.score_reward, 11);
+    }
+
+    #[test]
+    fn spawn_prefab_command_uses_registered_enemy_prefab_alias() {
+        let mut scene = ShooterScene::new();
+        scene.texture_ids.enemy = 31;
+        scene.config.enemy_template = EntityTemplate::new(20.0, 24.0);
+        scene.config.enemy_health = 7.5;
+        scene.config.score_reward = 11;
+        assert!(scene.register_spawn_prefab_kind(7, ShooterPrefabKind::Enemy));
+
+        let mut world = World::default();
+        let source = world.spawn_entity();
+        world.set_transform(source, Transform2D { x: 72.0, y: 80.0 });
+
+        let command = scene
+            .spawn_prefab_command(
+                &world,
+                source,
+                41,
+                SpawnPrefabActionPayload {
+                    prefab_id: 7,
+                    projectile: None,
+                    anchor: SpawnAnchor::SelfEntity,
+                    phase: SpawnPhase::PrePhysics,
+                    offset_x: 4.0,
+                    offset_y: -8.0,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(command.prefab_id, 7);
+        assert_eq!(command.transform, Transform2D { x: 76.0, y: 72.0 });
+        assert_eq!(command.texture_id, 31);
+        assert_eq!(command.template, EntityTemplate::new(20.0, 24.0));
+        assert_eq!(command.health, 7.5);
+        assert_eq!(command.score_reward, 11);
+    }
+
+    #[test]
+    fn spawn_prefab_command_uses_registered_bullet_prefab_alias_with_projectile_payload() {
+        let mut scene = ShooterScene::new();
+        scene.texture_ids.bullet = 17;
+        scene.config.bullet_template = EntityTemplate::new(6.0, 10.0);
+        assert!(scene.register_spawn_prefab_kind(9, ShooterPrefabKind::Bullet));
+
+        let mut world = World::default();
+        let source = world.spawn_entity();
+        world.set_transform(source, Transform2D { x: 72.0, y: 80.0 });
+        let player = world.spawn_player(172.0, 80.0, DEFAULT_TEXTURE_ID);
+
+        let command = scene
+            .spawn_prefab_command(
+                &world,
+                source,
+                41,
+                SpawnPrefabActionPayload {
+                    prefab_id: 9,
+                    projectile: Some(SpawnPrefabProjectilePayload {
+                        speed: 120.0,
+                        damage: 3.0,
+                        lifetime_seconds: 1.5,
+                        aim: ActionAimSource::TargetPlayer,
+                        collision_target: ProjectileCollisionTarget::Player,
+                        tile_impact: ProjectileTileImpact::Bounce,
+                    }),
+                    anchor: SpawnAnchor::SelfEntity,
+                    phase: SpawnPhase::PrePhysics,
+                    offset_x: 4.0,
+                    offset_y: -8.0,
+                },
+            )
+            .unwrap();
+
+        let projectile = command
+            .projectile
+            .expect("bullet prefab command should carry projectile command data");
+        assert_eq!(world.player, Some(player));
+        assert_eq!(command.kind, ShooterPrefabKind::Bullet);
+        assert_eq!(command.prefab_id, 9);
+        assert_eq!(command.transform, Transform2D { x: 76.0, y: 72.0 });
+        assert_eq!(projectile.transform, Transform2D { x: 76.0, y: 72.0 });
+        assert_eq!(projectile.velocity, Velocity { vx: 120.0, vy: 0.0 });
+        assert_eq!(projectile.texture_id, 17);
+        assert_eq!(projectile.template, EntityTemplate::new(6.0, 10.0));
+        assert_eq!(projectile.damage, 3.0);
+        assert_eq!(projectile.lifetime_seconds, 1.5);
+        assert_eq!(
+            projectile.collision_target,
+            ProjectileCollisionTarget::Player
+        );
+        assert_eq!(projectile.tile_impact, ProjectileTileImpact::Bounce);
     }
 
     #[test]
@@ -1554,12 +1928,15 @@ mod tests {
 
         let mut world = World::default();
         let source = world.spawn_entity();
-        let command = scene.prefab_spawn_command_from_core_data(SpawnPrefabCoreData {
-            source,
-            action_id: 41,
-            prefab_id: 1,
-            transform: Transform2D { x: 72.0, y: 80.0 },
-        });
+        let command = scene
+            .prefab_spawn_command_from_core_data(SpawnPrefabCoreData {
+                source,
+                action_id: 41,
+                prefab_id: 1,
+                projectile: None,
+                transform: Transform2D { x: 72.0, y: 80.0 },
+            })
+            .unwrap();
 
         assert_eq!(command.health, 9.0);
         assert_eq!(command.score_reward, 13);

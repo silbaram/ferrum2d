@@ -12,9 +12,11 @@ import {
   EMPTY_GAMEPLAY_EVENTS,
   GAMEPLAY_ACTION_FAILURE_MAX_REASON_CODE,
 } from "./gameplayEventDecoder.js";
+import { EMPTY_EFFECT_EVENTS } from "./effectEventDecoder.js";
 import { decodeRenderCommands } from "./renderCommandDecoder.js";
 import type {
   CollisionEventBufferView,
+  EffectEventBufferView,
   FrameTelemetryBufferView,
   GameplayEventBufferView,
   PhysicsDebugLineBufferView,
@@ -33,6 +35,7 @@ export interface FrameStateBuildInput {
   renderCommandBuffer: RenderCommandBufferView;
   collisionEventBuffer: CollisionEventBufferView;
   gameplayEventBuffer: GameplayEventBufferView;
+  effectEventBuffer: EffectEventBufferView;
   physicsDebugLineBuffer: PhysicsDebugLineBufferView;
   physicsSpec: ResolvedPhysicsSpec;
   options: CreateEngineOptions;
@@ -107,6 +110,7 @@ export function buildFrameState(input: FrameStateBuildInput): FrameState {
     renderCommandBuffer,
     collisionEventBuffer,
     gameplayEventBuffer,
+    effectEventBuffer,
     physicsDebugLineBuffer,
     physicsSpec,
     options,
@@ -146,6 +150,10 @@ export function buildFrameState(input: FrameStateBuildInput): FrameState {
     gameplayEvents: options.includeGameplayEvents === false
       ? EMPTY_GAMEPLAY_EVENTS
       : bridge.decodeGameplayEvents(gameplayEventBuffer),
+    effectEventBuffer,
+    effectEvents: options.includeEffectEvents === false
+      ? EMPTY_EFFECT_EVENTS
+      : bridge.decodeEffectEvents(effectEventBuffer),
     physicsDebugLineBuffer,
     physicsDebugLines: options.includePhysicsDebugLines
       ? bridge.decodePhysicsDebugLines(physicsDebugLineBuffer)
@@ -239,13 +247,9 @@ function buildPhysicsFrameStats(
     hd2dFilteredEntityCandidates: telemetry[TELEMETRY_HD2D_FILTERED_ENTITY_CANDIDATES],
     hd2dFilteredTileCandidates: telemetry[TELEMETRY_HD2D_FILTERED_TILE_CANDIDATES],
     collisionLifecycleEventsEnabled: includeCollisionLifecycleEvents,
-    collisionPairs: includeCollisionLifecycleEvents ? telemetry[TELEMETRY_COLLISION_PAIRS] : 0,
-    collisionSolidPairs: includeCollisionLifecycleEvents
-      ? telemetry[TELEMETRY_COLLISION_SOLID_PAIRS]
-      : 0,
-    collisionTriggerPairs: includeCollisionLifecycleEvents
-      ? telemetry[TELEMETRY_COLLISION_TRIGGER_PAIRS]
-      : 0,
+    collisionPairs: telemetry[TELEMETRY_COLLISION_PAIRS],
+    collisionSolidPairs: telemetry[TELEMETRY_COLLISION_SOLID_PAIRS],
+    collisionTriggerPairs: telemetry[TELEMETRY_COLLISION_TRIGGER_PAIRS],
     collisionEnterEvents,
     collisionStayEvents,
     collisionExitEvents,

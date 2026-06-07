@@ -12,10 +12,13 @@ import type { ResolvedPhysicsSpec } from "./physicsSpec.js";
 import { U32S_PER_COLLISION_EVENT } from "./collisionEventDecoder.js";
 import { drainAudioEvents } from "./engineFrameAudio.js";
 import { buildFrameState } from "./engineFrameState.js";
+import { createEffectEventDispatchTarget, dispatchRuntimeEffectEvents } from "./effectEventRuntime.js";
+import { BYTES_PER_EFFECT_EVENT } from "./effectEventDecoder.js";
 import { U32S_PER_GAMEPLAY_EVENT } from "./gameplayEventDecoder.js";
 import { FLOATS_PER_PHYSICS_DEBUG_LINE } from "./physicsDebugLineDecoder.js";
 import type {
   CollisionEventBufferView,
+  EffectEventBufferView,
   GameplayEventBufferView,
   PhysicsDebugLineBufferView,
   RenderCommandBufferView,
@@ -32,6 +35,7 @@ export interface FramePipelineContext {
   needsPhysicsDebugLineBuffer?: boolean;
   inputProvider?: InputProvider;
   assetHost?: AssetHost;
+  particlePresetExists?: (presetId: number) => boolean;
   viewportProvider?: ViewportProvider;
   lastViewportWidth?: number;
   lastViewportHeight?: number;
@@ -64,9 +68,17 @@ const EMPTY_GAMEPLAY_EVENT_BUFFER: GameplayEventBufferView = {
   eventCount: 0,
   u32sPerEvent: U32S_PER_GAMEPLAY_EVENT,
 };
+const EMPTY_EFFECT_EVENT_BUFFER: EffectEventBufferView = {
+  buffer: new DataView(new ArrayBuffer(0)),
+  eventCount: 0,
+  bytesPerEvent: BYTES_PER_EFFECT_EVENT,
+};
 
 export function runFrame(context: FramePipelineContext, deltaSeconds: number): void {
-  const needsFrameState = context.needsFrameState ?? context.onFrame !== undefined;
+  const effectEventRuntime = context.options.effectEvents === false ? undefined : context.options.effectEvents;
+  const shouldDispatchEffectEvents = effectEventRuntime !== undefined;
+  const requestedFrameState = context.needsFrameState ?? context.onFrame !== undefined;
+  const needsFrameState = requestedFrameState || shouldDispatchEffectEvents;
   const needsRenderFrame = context.onRenderFrame !== undefined;
   const shouldReadPhysicsDebugLineBuffer =
     context.needsPhysicsDebugLineBuffer === true
@@ -104,6 +116,9 @@ export function runFrame(context: FramePipelineContext, deltaSeconds: number): v
     const gameplayEventBuffer = context.options.includeGameplayEvents === false
       ? EMPTY_GAMEPLAY_EVENT_BUFFER
       : context.bridge.readGameplayEventBuffer();
+    const effectEventBuffer = context.options.includeEffectEvents === false && !shouldDispatchEffectEvents
+      ? EMPTY_EFFECT_EVENT_BUFFER
+      : context.bridge.readEffectEventBuffer();
     physicsDebugLineBuffer = shouldReadPhysicsDebugLineBuffer
       ? context.bridge.readPhysicsDebugLineBuffer()
       : EMPTY_PHYSICS_DEBUG_LINE_BUFFER;
@@ -117,12 +132,33 @@ export function runFrame(context: FramePipelineContext, deltaSeconds: number): v
       renderCommandBuffer,
       collisionEventBuffer,
       gameplayEventBuffer,
+      effectEventBuffer,
       physicsDebugLineBuffer,
       physicsSpec: context.physicsSpec,
-      options: context.options,
+      options: shouldDispatchEffectEvents && context.options.includeEffectEvents === false
+        ? { ...context.options, includeEffectEvents: true }
+        : context.options,
     });
   } else if (shouldReadPhysicsDebugLineBuffer) {
     physicsDebugLineBuffer = context.bridge.readPhysicsDebugLineBuffer();
+  }
+
+  if (effectEventRuntime !== undefined && frameState !== undefined) {
+    dispatchRuntimeEffectEvents(
+      frameState,
+      effectEventRuntime,
+      createEffectEventDispatchTarget({
+        assetHost: context.assetHost,
+        assetValidation: effectEventRuntime.assetValidation,
+        hasSoundEffect: effectEventRuntime.hasSoundEffect,
+        hasParticlePreset: effectEventRuntime.hasParticlePreset ?? context.particlePresetExists,
+        spawnParticleBurst: (presetId, x, y) => context.rustEngine.spawn_particle_burst(presetId, x, y),
+        shakeCameraEffect: effectEventRuntime.shakeCameraEffect,
+        applyCustomEffect: effectEventRuntime.applyCustomEffect,
+        path: effectEventRuntime.path,
+        target: effectEventRuntime.target,
+      }),
+    );
   }
 
   if (context.onRenderFrame) {

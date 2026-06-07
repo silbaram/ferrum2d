@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert/strict";
+import { deepEqual, equal, ok } from "node:assert/strict";
 import { test } from "node:test";
 
 import {
@@ -7,6 +7,7 @@ import {
   bindSceneBehaviorRecipes,
   createGameplayBehaviorRuntimeTarget,
   dryRunSceneBehaviorRecipes,
+  registerGameplayPrefabs,
   resolveGameplayBehaviorRuntimeIds,
 } from "../src/gameplayAuthoring.js";
 import type { BehaviorRecipeDocumentSpec, BehaviorRecipeCommand } from "../src/behaviorRecipes.js";
@@ -16,6 +17,16 @@ import type { SceneCompositionSpec } from "../src/sceneComposition.js";
 class MockGameplayEngine implements GameplayBehaviorRuntimeEngine {
   readonly calls: unknown[][] = [];
   failNext = false;
+
+  register_gameplay_enemy_prefab(...args: [number]): boolean {
+    this.calls.push(["register_gameplay_enemy_prefab", ...args]);
+    return this.consumeResult();
+  }
+
+  register_gameplay_bullet_prefab(...args: [number]): boolean {
+    this.calls.push(["register_gameplay_bullet_prefab", ...args]);
+    return this.consumeResult();
+  }
 
   set_gameplay_health(...args: [number, number, number]): boolean {
     this.calls.push(["set_gameplay_health", ...args]);
@@ -37,6 +48,11 @@ class MockGameplayEngine implements GameplayBehaviorRuntimeEngine {
     return this.consumeResult();
   }
 
+  set_gameplay_area_damage_reaction(...args: [number, number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_area_damage_reaction", ...args]);
+    return this.consumeResult();
+  }
+
   clear_gameplay_damage(...args: [number, number]): boolean {
     this.calls.push(["clear_gameplay_damage", ...args]);
     return this.consumeResult();
@@ -49,6 +65,16 @@ class MockGameplayEngine implements GameplayBehaviorRuntimeEngine {
 
   clear_gameplay_faction(...args: [number, number]): boolean {
     this.calls.push(["clear_gameplay_faction", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_tags(...args: [number, number, number]): boolean {
+    this.calls.push(["set_gameplay_tags", ...args]);
+    return this.consumeResult();
+  }
+
+  clear_gameplay_tags(...args: [number, number]): boolean {
+    this.calls.push(["clear_gameplay_tags", ...args]);
     return this.consumeResult();
   }
 
@@ -142,6 +168,11 @@ class MockGameplayEngine implements GameplayBehaviorRuntimeEngine {
     return this.consumeResult();
   }
 
+  set_gameplay_action_spawn_projectile_prefab(...args: [number, number, number, number, number, number, number, number, number, number, number, number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_action_spawn_projectile_prefab", ...args]);
+    return this.consumeResult();
+  }
+
   clear_gameplay_actions(...args: [number, number]): boolean {
     this.calls.push(["clear_gameplay_actions", ...args]);
     return this.consumeResult();
@@ -152,13 +183,98 @@ class MockGameplayEngine implements GameplayBehaviorRuntimeEngine {
     return this.consumeResult();
   }
 
+  set_gameplay_movement_chase_nearest_player(...args: [number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_chase_nearest_player", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_chase_nearest_enemy(...args: [number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_chase_nearest_enemy", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_chase_nearest_layer(...args: [number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_chase_nearest_layer", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_chase_nearest_faction(...args: [number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_chase_nearest_faction", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_chase_nearest_tag(...args: [number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_chase_nearest_tag", ...args]);
+    return this.consumeResult();
+  }
+
   set_gameplay_movement_chase_entity(...args: [number, number, number, number, number]): boolean {
     this.calls.push(["set_gameplay_movement_chase_entity", ...args]);
     return this.consumeResult();
   }
 
+  set_gameplay_movement_seek_target_player(...args: [number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_seek_target_player", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_seek_target_nearest_player(...args: [number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_seek_target_nearest_player", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_seek_target_nearest_enemy(...args: [number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_seek_target_nearest_enemy", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_seek_target_nearest_layer(...args: [number, number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_seek_target_nearest_layer", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_seek_target_nearest_faction(...args: [number, number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_seek_target_nearest_faction", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_seek_target_nearest_tag(...args: [number, number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_seek_target_nearest_tag", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_seek_target_entity(...args: [number, number, number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_seek_target_entity", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_accelerate(...args: [number, number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_accelerate", ...args]);
+    return this.consumeResult();
+  }
+
   add_gameplay_collision_damage(...args: [number, number, number]): boolean {
     this.calls.push(["add_gameplay_collision_damage", ...args]);
+    return this.consumeResult();
+  }
+
+  add_gameplay_collision_area_damage(...args: [number, number, number, number]): boolean {
+    this.calls.push(["add_gameplay_collision_area_damage", ...args]);
+    return this.consumeResult();
+  }
+
+  add_gameplay_collision_knockback(...args: [number, number, number, number]): boolean {
+    this.calls.push(["add_gameplay_collision_knockback", ...args]);
+    return this.consumeResult();
+  }
+
+  add_gameplay_collision_emit_effect(...args: [number, number, number, number, number, number, number]): boolean {
+    this.calls.push(["add_gameplay_collision_emit_effect", ...args]);
+    return this.consumeResult();
+  }
+
+  add_gameplay_collision_spawn_prefab(...args: [number, number, number, number, number, number, number, number, number]): boolean {
+    this.calls.push(["add_gameplay_collision_spawn_prefab", ...args]);
     return this.consumeResult();
   }
 
@@ -212,12 +328,21 @@ class MockGameplayEngine implements GameplayBehaviorRuntimeEngine {
     return this.consumeResult();
   }
 
-  private consumeResult(): boolean {
+  protected consumeResult(): boolean {
     if (this.failNext) {
       this.failNext = false;
       return false;
     }
     return true;
+  }
+}
+
+class PayloadMockGameplayEngine extends MockGameplayEngine {
+  add_gameplay_collision_emit_effect_with_payload(
+    ...args: [number, number, number, number, number, number, number, number, number]
+  ): boolean {
+    this.calls.push(["add_gameplay_collision_emit_effect_with_payload", ...args]);
+    return this.consumeResult();
   }
 }
 
@@ -227,16 +352,22 @@ test("resolveGameplayBehaviorRuntimeIds validates named runtime id registries", 
     actions: { primary: 1, inspect: 7 },
     prefabs: { enemy: 1 },
     timers: { wake: 6 },
+    tags: { hostile: 0, airborne: 7 },
+    effects: { impactSpark: 42 },
   }, {
     requiredItems: ["score"],
     requiredActions: ["primary", "inspect"],
     requiredPrefabs: ["enemy"],
     requiredTimers: ["wake"],
+    requiredTags: ["hostile", "airborne"],
+    requiredEffects: ["impactSpark"],
   }), {
     items: { score: 1 },
     actions: { primary: 1, inspect: 7 },
     prefabs: { enemy: 1 },
     timers: { wake: 6 },
+    tags: { hostile: 0, airborne: 7 },
+    effects: { impactSpark: 42 },
   });
 
   expectDiagnostic(
@@ -262,6 +393,67 @@ test("resolveGameplayBehaviorRuntimeIds validates named runtime id registries", 
   expectDiagnostic(
     () => resolveGameplayBehaviorRuntimeIds({ timers: {} }, { requiredTimers: ["wake"] }),
     "gameplayRuntimeIds.timers.wake",
+  );
+  expectDiagnostic(
+    () => resolveGameplayBehaviorRuntimeIds({ tags: { hostile: 32 } }),
+    "gameplayRuntimeIds.tags.hostile",
+  );
+  expectDiagnostic(
+    () => resolveGameplayBehaviorRuntimeIds({ tags: {} }, { requiredTags: ["hostile"] }),
+    "gameplayRuntimeIds.tags.hostile",
+  );
+  expectDiagnostic(
+    () => resolveGameplayBehaviorRuntimeIds({ effects: { impactSpark: 0 } }),
+    "gameplayRuntimeIds.effects.impactSpark",
+  );
+  expectDiagnostic(
+    () => resolveGameplayBehaviorRuntimeIds({ effects: {} }, { requiredEffects: ["impactSpark"] }),
+    "gameplayRuntimeIds.effects.impactSpark",
+  );
+});
+
+test("registerGameplayPrefabs applies supported prefab registrations", () => {
+  const engine = new MockGameplayEngine();
+
+  const result = registerGameplayPrefabs(engine, [
+    { prefab: "eliteEnemy", kind: "enemy" },
+    { prefab: "bossEnemy", prefabId: 9, kind: "enemy" },
+    { prefab: "rocket", prefabId: 10, kind: "bullet" },
+  ], {
+    ids: { prefabs: { eliteEnemy: 7 } },
+  });
+
+  deepEqual(result.results, [true, true, true]);
+  deepEqual(engine.calls, [
+    ["register_gameplay_enemy_prefab", 7],
+    ["register_gameplay_enemy_prefab", 9],
+    ["register_gameplay_bullet_prefab", 10],
+  ]);
+});
+
+test("registerGameplayPrefabs reports unsupported or missing prefab registrations", () => {
+  const engine = new MockGameplayEngine();
+
+  expectDiagnostic(
+    () => registerGameplayPrefabs(engine, [{ prefab: "eliteEnemy", kind: "enemy" }]),
+    "gameplayPrefabRegistry.registrations.0.prefab",
+  );
+  expectDiagnostic(
+    () => registerGameplayPrefabs(engine, [{ prefab: "eliteEnemy", prefabId: 7, kind: "player" as "enemy" }]),
+    "gameplayPrefabRegistry.registrations.0.kind",
+  );
+
+  const missingRegistryEngine = new MockGameplayEngine();
+  Object.defineProperty(missingRegistryEngine, "register_gameplay_enemy_prefab", { value: undefined });
+  expectDiagnostic(
+    () => registerGameplayPrefabs(missingRegistryEngine, [{ prefab: "eliteEnemy", prefabId: 7, kind: "enemy" }]),
+    "gameplayPrefabRegistry.registrations.0.kind",
+  );
+
+  engine.failNext = true;
+  expectDiagnostic(
+    () => registerGameplayPrefabs(engine, [{ prefab: "eliteEnemy", prefabId: 7, kind: "enemy" }]),
+    "gameplayPrefabRegistry.registrations.0",
   );
 });
 
@@ -444,6 +636,29 @@ test("applyGameplayBehaviorCommands applies supported gameplay component command
   ]);
 });
 
+test("applyGameplayBehaviorCommands encodes gameplay tags as unsigned masks", () => {
+  const engine = new MockGameplayEngine();
+  const handles = {
+    enemy: { entityId: 1, entityGeneration: 10 },
+  };
+
+  const result = applyGameplayBehaviorCommands(engine, [
+    {
+      entity: "enemy",
+      recipe: "entity.tags",
+      tags: ["hostile", "boss", "hostile"],
+      type: "configureTags",
+    },
+  ], handles, {
+    ids: { tags: { hostile: 5, boss: 31 } },
+  });
+
+  deepEqual(result.results, [true]);
+  deepEqual(engine.calls, [
+    ["set_gameplay_tags", 1, 10, 2 ** 5 + 2 ** 31],
+  ]);
+});
+
 test("applyGameplayBehaviorCommands supports chase entity targets and self damage reactions", () => {
   const engine = new MockGameplayEngine();
   const handles = {
@@ -452,6 +667,51 @@ test("applyGameplayBehaviorCommands supports chase entity targets and self damag
   };
 
   const result = applyGameplayBehaviorCommands(engine, [
+    {
+      entity: "enemy",
+      recipe: "followNearestPlayer",
+      tags: [],
+      type: "configureChase",
+      target: "nearestPlayer",
+      speed: 72,
+      stopDistance: 0,
+    },
+    {
+      entity: "enemy",
+      recipe: "followNearestEnemy",
+      tags: [],
+      type: "configureChase",
+      target: "nearestEnemy",
+      speed: 48,
+      stopDistance: 0,
+    },
+    {
+      entity: "enemy",
+      recipe: "followNearestBullet",
+      tags: [],
+      type: "configureChase",
+      target: "nearestLayer:bullet",
+      speed: 44,
+      stopDistance: 0,
+    },
+    {
+      entity: "enemy",
+      recipe: "followNearestEnemyFaction",
+      tags: [],
+      type: "configureChase",
+      target: "nearestFaction:enemy",
+      speed: 40,
+      stopDistance: 0,
+    },
+    {
+      entity: "enemy",
+      recipe: "followNearestHostileTag",
+      tags: [],
+      type: "configureChase",
+      target: "nearestTag:hostile",
+      speed: 38,
+      stopDistance: 0,
+    },
     {
       entity: "enemy",
       recipe: "follow",
@@ -470,12 +730,180 @@ test("applyGameplayBehaviorCommands supports chase entity targets and self damag
       target: "self",
       cooldownSeconds: 0,
     },
-  ], handles);
+  ], handles, {
+    ids: { tags: { hostile: 5 } },
+  });
 
-  deepEqual(result.results, [true, true]);
+  deepEqual(result.results, [true, true, true, true, true, true, true]);
   deepEqual(engine.calls, [
+    ["set_gameplay_movement_chase_nearest_player", 1, 10, 72],
+    ["set_gameplay_movement_chase_nearest_enemy", 1, 10, 48],
+    ["set_gameplay_movement_chase_nearest_layer", 1, 10, 2, 44],
+    ["set_gameplay_movement_chase_nearest_faction", 1, 10, 2, 40],
+    ["set_gameplay_movement_chase_nearest_tag", 1, 10, 5, 38],
     ["set_gameplay_movement_chase_entity", 1, 10, 2, 20, 64],
     ["set_gameplay_damage_reaction", 1, 10, 3, 0],
+  ]);
+});
+
+test("applyGameplayBehaviorCommands supports seekTarget and accelerate movement commands", () => {
+  const engine = new MockGameplayEngine();
+  const handles = {
+    enemy: { entityId: 1, entityGeneration: 10 },
+    target: { entityId: 2, entityGeneration: 20 },
+  };
+
+  const result = applyGameplayBehaviorCommands(engine, [
+    {
+      entity: "enemy",
+      recipe: "seekPlayer",
+      tags: [],
+      type: "configureSeekTarget",
+      target: "player",
+      speed: 220,
+      turnRate: 4,
+    },
+    {
+      entity: "enemy",
+      recipe: "seekEntity",
+      tags: [],
+      type: "configureSeekTarget",
+      target: "target",
+      speed: 220,
+      turnRate: 4,
+    },
+    {
+      entity: "enemy",
+      recipe: "seekNearestPlayer",
+      tags: [],
+      type: "configureSeekTarget",
+      target: "nearestPlayer",
+      speed: 200,
+      turnRate: 3,
+    },
+    {
+      entity: "enemy",
+      recipe: "seekNearestEnemy",
+      tags: [],
+      type: "configureSeekTarget",
+      target: "nearestEnemy",
+      speed: 180,
+      turnRate: 2,
+    },
+    {
+      entity: "enemy",
+      recipe: "seekNearestPickup",
+      tags: [],
+      type: "configureSeekTarget",
+      target: "nearestLayer:pickup",
+      speed: 160,
+      turnRate: 1.5,
+    },
+    {
+      entity: "enemy",
+      recipe: "seekNearestCustomFaction",
+      tags: [],
+      type: "configureSeekTarget",
+      target: "nearestFaction:7",
+      speed: 150,
+      turnRate: 1.25,
+    },
+    {
+      entity: "enemy",
+      recipe: "seekNearestHostileTag",
+      tags: [],
+      type: "configureSeekTarget",
+      target: "nearestTag:hostile",
+      speed: 140,
+      turnRate: 1,
+    },
+    {
+      entity: "enemy",
+      recipe: "accelerate",
+      tags: [],
+      type: "configureAccelerate",
+      accelerationX: 2,
+      accelerationY: -1,
+      maxSpeed: 12,
+    },
+  ], handles, {
+    ids: { tags: { hostile: 5 } },
+  });
+
+  deepEqual(result.results, [true, true, true, true, true, true, true, true]);
+  deepEqual(engine.calls, [
+    ["set_gameplay_movement_seek_target_player", 1, 10, 220, 4],
+    ["set_gameplay_movement_seek_target_entity", 1, 10, 2, 20, 220, 4],
+    ["set_gameplay_movement_seek_target_nearest_player", 1, 10, 200, 3],
+    ["set_gameplay_movement_seek_target_nearest_enemy", 1, 10, 180, 2],
+    ["set_gameplay_movement_seek_target_nearest_layer", 1, 10, 4, 160, 1.5],
+    ["set_gameplay_movement_seek_target_nearest_faction", 1, 10, 7, 150, 1.25],
+    ["set_gameplay_movement_seek_target_nearest_tag", 1, 10, 5, 140, 1],
+    ["set_gameplay_movement_accelerate", 1, 10, 2, -1, 12],
+  ]);
+});
+
+test("homing missile behavior fixture binds movement damage effect and despawn commands", () => {
+  const engine = new MockGameplayEngine();
+  const composition: SceneCompositionSpec = {
+    initialFragment: "arena",
+    prefabs: {
+      missile: {
+        props: {
+          behaviorRecipes: "projectile.homingMissile",
+        },
+      },
+      enemy: {
+        props: {
+          behaviorRecipes: "enemy.hostile",
+        },
+      },
+    },
+    fragments: {
+      arena: {
+        instances: [
+          { id: "missile-1", prefab: "missile" },
+          { id: "enemy-1", prefab: "enemy" },
+        ],
+      },
+    },
+  };
+  const recipes: BehaviorRecipeDocumentSpec = {
+    entities: {
+      "enemy.hostile": {
+        tags: ["hostile"],
+        recipes: [],
+      },
+      "projectile.homingMissile": {
+        recipes: [
+          { kind: "faction", faction: "player", damages: ["enemy"] },
+          { kind: "damage", amount: 1, target: "other", cooldownSeconds: 0 },
+          { kind: "collisionParticle", presetId: 5, target: "self" },
+          { kind: "collisionDespawn", target: "self" },
+          { kind: "seekTarget", target: "nearestTag:hostile", speed: 260, turnRate: 1 },
+          { kind: "lifetime", seconds: 2 },
+        ],
+      },
+    },
+  };
+
+  const plan = bindSceneBehaviorRecipes(composition, recipes);
+  const result = applyGameplayBehaviorCommands(engine, plan.commands, {
+    "missile-1": { entityId: 7, entityGeneration: 8 },
+    "enemy-1": { entityId: 9, entityGeneration: 10 },
+  }, {
+    ids: { tags: { hostile: 5 } },
+  });
+
+  deepEqual(result.results, [true, true, true, true, true, true, true]);
+  deepEqual(engine.calls, [
+    ["set_gameplay_faction", 7, 8, 1, 4],
+    ["set_gameplay_damage_reaction", 7, 8, 1, 1],
+    ["add_gameplay_collision_particle", 7, 8, 5, 0],
+    ["add_gameplay_collision_despawn", 7, 8, 0],
+    ["set_gameplay_movement_seek_target_nearest_tag", 7, 8, 5, 260, 1],
+    ["set_gameplay_lifetime", 7, 8, 2],
+    ["set_gameplay_tags", 9, 10, 32],
   ]);
 });
 
@@ -643,6 +1071,166 @@ test("applyGameplayBehaviorCommands applies collision pickup reactions", () => {
   deepEqual(result.results, [true]);
   deepEqual(engine.calls, [
     ["add_gameplay_collision_pickup", 1, 10, 0],
+  ]);
+});
+
+test("applyGameplayBehaviorCommands applies collision area damage reactions", () => {
+  const engine = new MockGameplayEngine();
+  const handles = {
+    rocket: { entityId: 1, entityGeneration: 10 },
+  };
+
+  const result = applyGameplayBehaviorCommands(engine, [
+    {
+      entity: "rocket",
+      recipe: "explosion",
+      tags: [],
+      type: "configureCollisionAreaDamage",
+      amount: 4,
+      radius: 72,
+      targetLayer: "enemy",
+    },
+  ], handles);
+
+  deepEqual(result.results, [true]);
+  deepEqual(engine.calls, [
+    ["set_gameplay_area_damage_reaction", 1, 10, 4, 72, 1],
+  ]);
+});
+
+test("applyGameplayBehaviorCommands applies collision knockback reactions", () => {
+  const engine = new MockGameplayEngine();
+  const handles = {
+    bumper: { entityId: 1, entityGeneration: 10 },
+  };
+
+  const result = applyGameplayBehaviorCommands(engine, [
+    {
+      entity: "bumper",
+      recipe: "push",
+      tags: [],
+      type: "configureCollisionKnockback",
+      target: "other",
+      impulse: 180,
+    },
+  ], handles);
+
+  deepEqual(result.results, [true]);
+  deepEqual(engine.calls, [
+    ["add_gameplay_collision_knockback", 1, 10, 1, 180],
+  ]);
+});
+
+test("applyGameplayBehaviorCommands applies collision emit effect reactions", () => {
+  const engine = new MockGameplayEngine();
+  const handles = {
+    spark: { entityId: 1, entityGeneration: 10 },
+  };
+
+  const result = applyGameplayBehaviorCommands(engine, [
+    {
+      entity: "spark",
+      recipe: "impactEffect",
+      tags: [],
+      type: "configureCollisionEmitEffect",
+      effectId: 99,
+      effectKind: "custom",
+      effectType: 4,
+      target: "self",
+      cooldownSeconds: 0.25,
+      trigger: "enter",
+    },
+  ], handles);
+
+  deepEqual(result.results, [true]);
+  deepEqual(engine.calls, [
+    ["add_gameplay_collision_emit_effect", 1, 10, 99, 4, 0, 0.25, 1],
+  ]);
+});
+
+test("applyGameplayBehaviorCommands applies collision emit effect payload overrides", () => {
+  const engine = new PayloadMockGameplayEngine();
+  const handles = {
+    spark: { entityId: 1, entityGeneration: 10 },
+  };
+
+  const result = applyGameplayBehaviorCommands(engine, [
+    {
+      entity: "spark",
+      recipe: "impactEffect",
+      tags: [],
+      type: "configureCollisionEmitEffect",
+      effectId: 99,
+      effectKind: "custom",
+      effectType: 4,
+      target: "self",
+      intensity: 0.65,
+      radius: 48,
+      cooldownSeconds: 0.25,
+      trigger: "enter",
+    },
+  ], handles);
+
+  deepEqual(result.results, [true]);
+  deepEqual(engine.calls, [
+    ["add_gameplay_collision_emit_effect_with_payload", 1, 10, 99, 4, 0, 0.25, 1, 0.65, 48],
+  ]);
+});
+
+test("applyGameplayBehaviorCommands resolves named collision emit effects", () => {
+  const engine = new MockGameplayEngine();
+  const handles = {
+    spark: { entityId: 1, entityGeneration: 10 },
+  };
+
+  const result = applyGameplayBehaviorCommands(engine, [
+    {
+      entity: "spark",
+      recipe: "impactEffect",
+      tags: [],
+      type: "configureCollisionEmitEffect",
+      effect: "impactSpark",
+      effectKind: "custom",
+      effectType: 4,
+      target: "self",
+      cooldownSeconds: 0.25,
+      trigger: "enter",
+    },
+  ], handles, {
+    ids: { effects: { impactSpark: 42 } },
+  });
+
+  deepEqual(result.results, [true]);
+  deepEqual(engine.calls, [
+    ["add_gameplay_collision_emit_effect", 1, 10, 42, 4, 0, 0.25, 1],
+  ]);
+});
+
+test("applyGameplayBehaviorCommands applies collision spawn prefab reactions", () => {
+  const engine = new MockGameplayEngine();
+  const handles = {
+    spawner: { entityId: 1, entityGeneration: 10 },
+  };
+
+  const result = applyGameplayBehaviorCommands(engine, [
+    {
+      entity: "spawner",
+      recipe: "splitOnHit",
+      tags: [],
+      type: "configureCollisionSpawnPrefab",
+      action: "split",
+      prefab: "enemy",
+      target: "other",
+      cooldownSeconds: 0.5,
+      trigger: "enter",
+      offsetX: 12,
+      offsetY: -6,
+    },
+  ], handles, { ids: { actions: { split: 17 }, prefabs: { enemy: 3 } } });
+
+  deepEqual(result.results, [true]);
+  deepEqual(engine.calls, [
+    ["add_gameplay_collision_spawn_prefab", 1, 10, 17, 3, 1, 0.5, 1, 12, -6],
   ]);
 });
 
@@ -1100,6 +1688,7 @@ test("applyGameplayBehaviorCommands applies supported spawn prefab action comman
   const handles = {
     summoner: { entityId: 7, entityGeneration: 8 },
     spawner: { entityId: 9, entityGeneration: 10 },
+    turret: { entityId: 11, entityGeneration: 12 },
   };
 
   const result = applyGameplayBehaviorCommands(engine, [
@@ -1131,6 +1720,29 @@ test("applyGameplayBehaviorCommands applies supported spawn prefab action comman
       offsetX: 0,
       offsetY: 4,
     },
+    {
+      entity: "turret",
+      recipe: "rocket",
+      tags: [],
+      type: "configureSpawnPrefabAction",
+      action: "fireRocket",
+      actionId: 13,
+      prefab: "rocket",
+      prefabId: 9,
+      cooldownSeconds: 0.75,
+      anchor: "self",
+      phase: "prePhysics",
+      offsetX: 6,
+      offsetY: 2,
+      projectile: {
+        speed: 240,
+        damage: 4,
+        lifetimeSeconds: 1.6,
+        aim: "targetPlayer",
+        collisionTarget: "player",
+        tileImpact: "bounce",
+      },
+    },
   ], handles, {
     ids: {
       actions: { spawn: 12 },
@@ -1138,10 +1750,11 @@ test("applyGameplayBehaviorCommands applies supported spawn prefab action comman
     },
   });
 
-  deepEqual(result.results, [true, true]);
+  deepEqual(result.results, [true, true, true]);
   deepEqual(engine.calls, [
     ["set_gameplay_action_spawn_prefab", 7, 8, 11, 1.2, 1, 0, 0, 12, -6],
     ["set_gameplay_action_spawn_prefab", 9, 10, 12, 0.5, 1, 0, 0, 0, 4],
+    ["set_gameplay_action_spawn_projectile_prefab", 11, 12, 13, 0.75, 9, 0, 0, 6, 2, 240, 4, 1.6, 1, 1, 2],
   ]);
 });
 
@@ -1283,6 +1896,119 @@ test("applyGameplayBehaviorCommands rejects unsupported command semantics", () =
 
   expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
     entity: "enemy",
+    recipe: "impactEffect",
+    tags: [],
+    type: "configureCollisionEmitEffect",
+    effectId: 99,
+    effectKind: "custom",
+    effectType: 0,
+    target: "self",
+    cooldownSeconds: 0,
+    trigger: "contact",
+  }], handles), "gameplayAuthoring.commands.0.effectType");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "impactEffect",
+    tags: [],
+    type: "configureCollisionEmitEffect",
+    effectId: 0x1_0000_0000,
+    effectKind: "custom",
+    effectType: 4,
+    target: "self",
+    cooldownSeconds: 0,
+    trigger: "contact",
+  }], handles), "gameplayAuthoring.commands.0.effectId");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "impactEffect",
+    tags: [],
+    type: "configureCollisionEmitEffect",
+    effectId: 99,
+    effectKind: "custom",
+    effectType: 4,
+    target: "self",
+    intensity: -0.1,
+    cooldownSeconds: 0,
+    trigger: "contact",
+  }], handles), "gameplayAuthoring.commands.0.intensity");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "impactEffect",
+    tags: [],
+    type: "configureCollisionEmitEffect",
+    effectId: 99,
+    effectKind: "custom",
+    effectType: 4,
+    target: "self",
+    radius: Number.POSITIVE_INFINITY,
+    cooldownSeconds: 0,
+    trigger: "contact",
+  }], handles), "gameplayAuthoring.commands.0.radius");
+
+  const missingCollisionEmitEffectSetterEngine = new MockGameplayEngine();
+  Object.defineProperty(missingCollisionEmitEffectSetterEngine, "add_gameplay_collision_emit_effect", { value: undefined });
+  expectDiagnostic(() => applyGameplayBehaviorCommands(missingCollisionEmitEffectSetterEngine, [{
+    entity: "enemy",
+    recipe: "impactEffect",
+    tags: [],
+    type: "configureCollisionEmitEffect",
+    effectId: 99,
+    effectKind: "custom",
+    effectType: 4,
+    target: "self",
+    cooldownSeconds: 0,
+    trigger: "contact",
+  }], handles), "gameplayAuthoring.commands.0.type");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "impactEffect",
+    tags: [],
+    type: "configureCollisionEmitEffect",
+    effectId: 99,
+    effectKind: "custom",
+    effectType: 4,
+    target: "self",
+    intensity: 0.5,
+    cooldownSeconds: 0,
+    trigger: "contact",
+  }], handles), "gameplayAuthoring.commands.0.type");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "splitOnHit",
+    tags: [],
+    type: "configureCollisionSpawnPrefab",
+    action: "split",
+    prefab: "enemy",
+    target: "self",
+    cooldownSeconds: 0,
+    trigger: "contact",
+    offsetX: Number.NaN,
+    offsetY: 0,
+  }], handles, { ids: { actions: { split: 17 }, prefabs: { enemy: 3 } } }), "gameplayAuthoring.commands.0.offsetX");
+
+  const missingCollisionSpawnPrefabSetterEngine = new MockGameplayEngine();
+  Object.defineProperty(missingCollisionSpawnPrefabSetterEngine, "add_gameplay_collision_spawn_prefab", { value: undefined });
+  expectDiagnostic(() => applyGameplayBehaviorCommands(missingCollisionSpawnPrefabSetterEngine, [{
+    entity: "enemy",
+    recipe: "splitOnHit",
+    tags: [],
+    type: "configureCollisionSpawnPrefab",
+    action: "split",
+    prefab: "enemy",
+    target: "self",
+    cooldownSeconds: 0,
+    trigger: "contact",
+    offsetX: 0,
+    offsetY: 0,
+  }], handles, { ids: { actions: { split: 17 }, prefabs: { enemy: 3 } } }), "gameplayAuthoring.commands.0.type");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
     recipe: "primary",
     tags: [],
     type: "configureProjectileAction",
@@ -1379,6 +2105,171 @@ test("applyGameplayBehaviorCommands rejects unsupported command semantics", () =
     aim: "targetPlayer",
     collisionTarget: "player",
   }], handles), "gameplayAuthoring.commands.0.type");
+
+  const missingSeekTargetPlayerSetterEngine = new MockGameplayEngine();
+  Object.defineProperty(missingSeekTargetPlayerSetterEngine, "set_gameplay_movement_seek_target_player", { value: undefined });
+  expectDiagnostic(() => applyGameplayBehaviorCommands(missingSeekTargetPlayerSetterEngine, [{
+    entity: "enemy",
+    recipe: "seekPlayer",
+    tags: [],
+    type: "configureSeekTarget",
+    target: "player",
+    speed: 220,
+    turnRate: 4,
+  }], handles), "gameplayAuthoring.commands.0.type");
+
+  const missingSeekTargetEntitySetterEngine = new MockGameplayEngine();
+  Object.defineProperty(missingSeekTargetEntitySetterEngine, "set_gameplay_movement_seek_target_entity", { value: undefined });
+  expectDiagnostic(() => applyGameplayBehaviorCommands(missingSeekTargetEntitySetterEngine, [{
+    entity: "enemy",
+    recipe: "seekEntity",
+    tags: [],
+    type: "configureSeekTarget",
+    target: "target",
+    speed: 220,
+    turnRate: 4,
+  }], { enemy: { entityId: 1, entityGeneration: 10 }, target: { entityId: 2, entityGeneration: 20 } }), "gameplayAuthoring.commands.0.type");
+
+  const missingChaseNearestLayerSetterEngine = new MockGameplayEngine();
+  Object.defineProperty(missingChaseNearestLayerSetterEngine, "set_gameplay_movement_chase_nearest_layer", { value: undefined });
+  expectDiagnostic(() => applyGameplayBehaviorCommands(missingChaseNearestLayerSetterEngine, [{
+    entity: "enemy",
+    recipe: "followBullet",
+    tags: [],
+    type: "configureChase",
+    target: "nearestLayer:bullet",
+    speed: 44,
+    stopDistance: 0,
+  }], handles), "gameplayAuthoring.commands.0.type");
+
+  const missingSeekTargetNearestFactionSetterEngine = new MockGameplayEngine();
+  Object.defineProperty(missingSeekTargetNearestFactionSetterEngine, "set_gameplay_movement_seek_target_nearest_faction", { value: undefined });
+  expectDiagnostic(() => applyGameplayBehaviorCommands(missingSeekTargetNearestFactionSetterEngine, [{
+    entity: "enemy",
+    recipe: "seekFaction",
+    tags: [],
+    type: "configureSeekTarget",
+    target: "nearestFaction:enemy",
+    speed: 160,
+    turnRate: 1,
+  }], handles), "gameplayAuthoring.commands.0.type");
+
+  const missingSeekTargetNearestTagSetterEngine = new MockGameplayEngine();
+  Object.defineProperty(missingSeekTargetNearestTagSetterEngine, "set_gameplay_movement_seek_target_nearest_tag", { value: undefined });
+  expectDiagnostic(() => applyGameplayBehaviorCommands(missingSeekTargetNearestTagSetterEngine, [{
+    entity: "enemy",
+    recipe: "seekTag",
+    tags: [],
+    type: "configureSeekTarget",
+    target: "nearestTag:hostile",
+    speed: 160,
+    turnRate: 1,
+  }], handles, {
+    ids: { tags: { hostile: 5 } },
+  }), "gameplayAuthoring.commands.0.type");
+
+  const missingTagsSetterEngine = new MockGameplayEngine();
+  Object.defineProperty(missingTagsSetterEngine, "set_gameplay_tags", { value: undefined });
+  expectDiagnostic(() => applyGameplayBehaviorCommands(missingTagsSetterEngine, [{
+    entity: "enemy",
+    recipe: "entity.tags",
+    tags: ["hostile"],
+    type: "configureTags",
+  }], handles, {
+    ids: { tags: { hostile: 5 } },
+  }), "gameplayAuthoring.commands.0.type");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "seekTerrain",
+    tags: [],
+    type: "configureSeekTarget",
+    target: "nearestLayer:terrain",
+    speed: 160,
+    turnRate: 1,
+  }], handles), "gameplayAuthoring.commands.0.target");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "seekTag",
+    tags: [],
+    type: "configureSeekTarget",
+    target: "nearestTag:hostile",
+    speed: 160,
+    turnRate: 1,
+  }], handles), "gameplayAuthoring.commands.0.target");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "seekTag",
+    tags: [],
+    type: "configureSeekTarget",
+    target: "nearestTag:32",
+    speed: 160,
+    turnRate: 1,
+  }], handles), "gameplayAuthoring.commands.0.target");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "seekFaction",
+    tags: [],
+    type: "configureSeekTarget",
+    target: "nearestFaction:32",
+    speed: 160,
+    turnRate: 1,
+  }], handles), "gameplayAuthoring.commands.0.target");
+
+  const missingAccelerateSetterEngine = new MockGameplayEngine();
+  Object.defineProperty(missingAccelerateSetterEngine, "set_gameplay_movement_accelerate", { value: undefined });
+  expectDiagnostic(() => applyGameplayBehaviorCommands(missingAccelerateSetterEngine, [{
+    entity: "enemy",
+    recipe: "accelerate",
+    tags: [],
+    type: "configureAccelerate",
+    accelerationX: 2,
+    accelerationY: -1,
+    maxSpeed: 12,
+  }], handles), "gameplayAuthoring.commands.0.type");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "seekPlayer",
+    tags: [],
+    type: "configureSeekTarget",
+    target: "player",
+    speed: 0,
+    turnRate: 4,
+  }], handles), "gameplayAuthoring.commands.0.speed");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "seekPlayer",
+    tags: [],
+    type: "configureSeekTarget",
+    target: "player",
+    speed: 220,
+    turnRate: -1,
+  }], handles), "gameplayAuthoring.commands.0.turnRate");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "accelerate",
+    tags: [],
+    type: "configureAccelerate",
+    accelerationX: 0,
+    accelerationY: 0,
+    maxSpeed: 12,
+  }], handles), "gameplayAuthoring.commands.0.accelerationX");
+
+  expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
+    entity: "enemy",
+    recipe: "accelerate",
+    tags: [],
+    type: "configureAccelerate",
+    accelerationX: 2,
+    accelerationY: -1,
+    maxSpeed: 0,
+  }], handles), "gameplayAuthoring.commands.0.maxSpeed");
 
   expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [{
     entity: "enemy",
@@ -1593,20 +2484,25 @@ test("applyGameplayBehaviorCommands reports missing handles and failed rust appl
   expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [command], {}), "gameplayAuthoring.commands.0.entity");
 
   engine.failNext = true;
-  expectDiagnostic(
+  const diagnostic = expectDiagnostic(
     () => applyGameplayBehaviorCommands(engine, [command], { enemy: { entityId: 1, entityGeneration: 1 } }),
     "gameplayAuthoring.commands.0",
   );
+  const detail =
+    (diagnostic as Error & { context?: { detail?: string } }).context?.detail ?? diagnostic.message;
+  ok(/runtime rejected 'configureHealth' for entity 'enemy'/.test(detail));
+  ok(/stale handles/.test(detail));
+  ok(/capacity limits/.test(detail));
 });
 
-function expectDiagnostic(fn: () => void, path: string): void {
+function expectDiagnostic(fn: () => void, path: string): Error {
   try {
     fn();
   } catch (error) {
     equal(error instanceof Error, true);
     const diagnostic = error as Error & { context?: { path?: string } };
     equal(diagnostic.context?.path, path);
-    return;
+    return diagnostic;
   }
   throw new Error("Expected function to throw.");
 }

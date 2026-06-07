@@ -2,13 +2,15 @@
   "format": "ferrum2d.consumer.gameplay-replay.coverage-tags",
   "version": 1,
   "coverageTagDefinitions": {
-    "starter-runtime-template": "Consumer replay validates the generated Minimal Runtime template surface contract."
+    "starter-runtime-template": "Consumer replay validates the generated Minimal Runtime template surface contract.",
+    "template-weapon-authoring": "Consumer replay validates the Minimal Runtime projectile/weapon authoring surface."
   },
   "coverageTagGroups": {
     "template-contracts": {
       "description": "Consumer template replay contracts generated with create-game.",
       "tags": [
-        "starter-runtime-template"
+        "starter-runtime-template",
+        "template-weapon-authoring"
       ]
     }
   },

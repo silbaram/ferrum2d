@@ -70,6 +70,7 @@ export class WebGL2Renderer implements Renderer {
   private logicalHeight = 0;
   private readonly logicalResolution: [number, number] = [0, 0];
   private readonly drawingBufferResolution: [number, number] = [0, 0];
+  private readonly spriteScreenOffset: [number, number] = [0, 0];
   private frameStarted = false;
   private frameHasDrawnScene = false;
   private frameTargetMode: WebGL2FrameTargetMode = "default";
@@ -145,6 +146,12 @@ export class WebGL2Renderer implements Renderer {
     this.spriteMaterial = resolveSpriteMaterialPreset(material);
   }
 
+  setSpriteScreenOffset(x: number, y: number): void {
+    this.assertAlive();
+    this.spriteScreenOffset[0] = Number.isFinite(x) ? x : 0;
+    this.spriteScreenOffset[1] = Number.isFinite(y) ? y : 0;
+  }
+
   setPostProcess(postProcess: PostProcessStackInput): void {
     this.assertAlive();
     const nextPasses = resolvePostProcessPasses(postProcess);
@@ -212,12 +219,14 @@ export class WebGL2Renderer implements Renderer {
         second,
         resolution,
         this.spriteMaterial,
+        this.spriteScreenOffset,
       )
       : this.spriteBatch.drawBatches(
         this.textureManager,
         commands,
         resolution,
         this.spriteMaterial,
+        this.spriteScreenOffset,
       );
     writeRendererStatsForCommandsInto(
       this.currentStats,

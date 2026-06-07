@@ -26,6 +26,8 @@ export type {
   CreateEngineOptions,
   EngineLifecycleHooks,
   EngineLifecycleSnapshot,
+  EffectEventAssetValidationPolicy,
+  EffectEventRuntimeOptions,
   FerrumAssetApi,
   FerrumEngine,
   FerrumGameplayAuthoringApi,

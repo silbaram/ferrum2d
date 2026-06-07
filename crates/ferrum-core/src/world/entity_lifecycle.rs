@@ -37,6 +37,8 @@ impl World {
         self.compound_colliders.push(Vec::new());
         self.collider_materials.push(None);
         self.collision_filters.push(None);
+        self.lifetimes.push(None);
+        self.projectile_policies.push(None);
         self.bullet_lifetimes.push(None);
         self.projectile_collision_targets.push(None);
         self.projectile_tile_impacts.push(None);
@@ -44,6 +46,7 @@ impl World {
         self.damages.push(None);
         self.score_rewards.push(None);
         self.gameplay_factions.push(None);
+        self.gameplay_tags.push(None);
         self.action_bindings.push(None);
         self.pickups.push(None);
         self.interactions.push(None);
@@ -79,13 +82,15 @@ impl World {
             self.compound_colliders[i].clear();
             self.collider_materials[i] = None;
             self.collision_filters[i] = None;
+            self.lifetimes[i] = None;
+            self.projectile_policies[i] = None;
             self.bullet_lifetimes[i] = None;
             self.projectile_collision_targets[i] = None;
             self.projectile_tile_impacts[i] = None;
             self.healths[i] = None;
             self.damages[i] = None;
             self.score_rewards[i] = None;
-            self.gameplay_factions[i] = None;
+            self.clear_gameplay_query_indices_at_index(i);
             self.action_bindings[i] = None;
             self.pickups[i] = None;
             self.interactions[i] = None;

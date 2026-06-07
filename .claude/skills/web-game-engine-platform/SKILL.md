@@ -1,6 +1,6 @@
 ---
 name: web-game-engine-platform
-description: Apply TypeScript/JavaScript web platform-layer conventions for Ferrum2D Rust/Wasm browser runtime, wasm-bindgen wrappers, WebGL2 rendering, asset loading, input, audio, canvas handling, and public engine APIs.
+description: Apply TypeScript/JavaScript web platform-layer conventions for Ferrum2D Rust/Wasm browser runtime, wasm-bindgen wrappers, WebGL2 rendering, browser smoke/runtime budget checks, asset loading, input, audio, canvas handling, and public engine APIs.
 ---
 
 # Web Game Engine Platform

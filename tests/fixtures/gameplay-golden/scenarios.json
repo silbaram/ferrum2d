@@ -1,0 +1,1890 @@
+{
+  "format": "ferrum2d.gameplay-replay.scenarios",
+  "version": 1,
+  "fixedDeltaSeconds": 0.016666666666666666,
+  "fixtureIndexPath": "tests/fixtures/gameplay-golden/fixture-index.json",
+  "coverageTagDefinitionsPath": "tests/fixtures/gameplay-golden/coverage-tags.json",
+  "scenarios": [
+    {
+      "id": "example-topdown-basic",
+      "description": "Baseline Top-down Shooter replay covering deterministic start, primary projectile spawn, enemy damage, score reward, and spawn diagnostics.",
+      "coverageTags": [
+        "baseline",
+        "projectile",
+        "score",
+        "spawn-diagnostics"
+      ],
+      "runner": "exampleTopdownBasic",
+      "fixturePath": "tests/fixtures/gameplay-golden/example-topdown-basic-replay.json",
+      "frameCount": 36,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        4,
+        8,
+        16,
+        24,
+        32,
+        36
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 3,
+            "type": "press",
+            "control": "space"
+          },
+          {
+            "frame": 3,
+            "type": "press",
+            "control": "mouseLeft",
+            "x": 1,
+            "y": 1
+          }
+        ]
+      },
+      "expected": {
+        "replayHash": "b7df3223",
+        "finalScore": 1,
+        "spawnDiagnostics": [
+          {
+            "frame": 4,
+            "metrics": {
+              "commandsDrained": 1,
+              "projectileSpawns": 1,
+              "projectileShootAudioEventsPushed": 1
+            }
+          }
+        ],
+        "spawnExpectationPatchCount": 0
+      }
+    },
+    {
+      "id": "example-topdown-authored-behavior",
+      "description": "Authored behavior replay covering variant-driven pickup, interaction, collision damage, timer, FSM transitions, blocked spawn failure, and timer-driven prefab spawn.",
+      "coverageTags": [
+        "authored-behavior",
+        "variant",
+        "pickup",
+        "interaction",
+        "collision-damage",
+        "faction",
+        "timer",
+        "fsm",
+        "spawn-prefab",
+        "action-failure",
+        "spawn-diagnostics"
+      ],
+      "runner": "exampleTopdownAuthoredBehavior",
+      "variantPath": "examples/topdown-shooter/public/authored-behavior.variant.json",
+      "fixturePath": "tests/fixtures/gameplay-golden/example-topdown-authored-behavior-replay.json",
+      "frameCount": 5,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "spawnPickupInteractionAndCollisionPair",
+            "bodies": {
+              "interactionSource": {
+                "x": 424,
+                "y": 240,
+                "halfWidth": 8,
+                "halfHeight": 8,
+                "layer": 3,
+                "isTrigger": true
+              },
+              "pickup": {
+                "x": 400,
+                "y": 240,
+                "halfWidth": 8,
+                "halfHeight": 8,
+                "layer": 4,
+                "isTrigger": true
+              },
+              "bullet": {
+                "x": 600,
+                "y": 240,
+                "halfWidth": 8,
+                "halfHeight": 8,
+                "layer": 2
+              },
+              "enemy": {
+                "x": 600,
+                "y": 240,
+                "halfWidth": 16,
+                "halfHeight": 16,
+                "layer": 1
+              },
+              "neutralBullet": {
+                "x": 660,
+                "y": 240,
+                "halfWidth": 8,
+                "halfHeight": 8,
+                "layer": 2
+              },
+              "neutralEnemy": {
+                "x": 660,
+                "y": 240,
+                "halfWidth": 16,
+                "halfHeight": 16,
+                "layer": 1
+              },
+              "timerSource": {
+                "x": 720,
+                "y": 240,
+                "halfWidth": 8,
+                "halfHeight": 8,
+                "layer": 3,
+                "isTrigger": true
+              }
+            },
+            "components": {
+              "pickup": {
+                "itemId": 1,
+                "count": 3,
+                "despawnOnCollect": true
+              },
+              "interaction": {
+                "actionId": 7,
+                "radius": 64,
+                "once": true
+              },
+              "collision": {
+                "damage": 1,
+                "enemyHealth": 1,
+                "enemyScoreReward": 11,
+                "target": 1
+              },
+              "fsm": {
+                "initialState": 1,
+                "transitionedState": 2
+              },
+              "timer": {
+                "timerId": 13,
+                "durationSeconds": 0.05,
+                "actionId": 11,
+                "initialState": 2,
+                "transitionedState": 1
+              },
+              "timerSpawnPrefab": {
+                "actionId": 11,
+                "cooldownSeconds": 0.25,
+                "prefabId": 1,
+                "anchorCode": 0,
+                "phaseCode": 0,
+                "offsetX": -72,
+                "offsetY": 0
+              },
+              "blockedSpawnPrefab": {
+                "actionId": 11,
+                "cooldownSeconds": 0.5,
+                "prefabId": 1,
+                "anchorCode": 0,
+                "phaseCode": 0,
+                "offsetX": 72,
+                "offsetY": 0,
+                "input": {
+                  "bindingIndex": 3,
+                  "controlCode": 2,
+                  "activationCode": 2
+                },
+                "blockedTilemap": {
+                  "layerIndex": 0,
+                  "columns": 1,
+                  "rows": 1,
+                  "tileWidth": 32,
+                  "tileHeight": 32,
+                  "originX": 456,
+                  "originY": 224,
+                  "data": [
+                    1
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "frame": 2,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 2,
+            "type": "expect",
+            "action": "pickupInteractionCollisionDamageAndFsmTransitions",
+            "score": 14,
+            "eventKinds": [
+              "collisionDamage",
+              "factionDamageDenied",
+              "pickupCollected",
+              "interaction",
+              "behaviorStateChanged",
+              "behaviorStateChanged"
+            ],
+            "fsmState": 2
+          },
+          {
+            "frame": 3,
+            "type": "expect",
+            "action": "blockedSpawnPrefabActionFailure",
+            "eventKinds": [
+              "actionFailed"
+            ],
+            "reason": "blockedPlacement"
+          }
+        ]
+      },
+      "expected": {
+        "replayHash": "c8b8f279",
+        "finalScore": 14,
+        "eventFrame": 2,
+        "eventKinds": [
+          "collisionDamage",
+          "factionDamageDenied",
+          "pickupCollected",
+          "interaction",
+          "behaviorStateChanged",
+          "behaviorStateChanged"
+        ],
+        "fsmState": 2,
+        "actionFailureFrame": 3,
+        "actionFailureActionId": 11,
+        "actionFailureReason": 7,
+        "actionFailureEventKinds": [
+          "actionFailed"
+        ],
+        "timerFrame": 4,
+        "timerEventKinds": [
+          "timer",
+          "prefabSpawned",
+          "behaviorStateChanged"
+        ],
+        "timerFsmState": 1,
+        "spawnDiagnostics": [
+          {
+            "frame": 4,
+            "metrics": {
+              "commandsDrained": 1,
+              "prefabSpawns": 1,
+              "prefabSpawnedPayloads": 1,
+              "prefabSpawnedEventsPushed": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "collision-player-damage-game-over",
+      "description": "Authored collision damage replay covering enemy contact damage against the player and GameOver without despawning the player or enemy.",
+      "coverageTags": [
+        "authored-behavior",
+        "collision-damage",
+        "player-damage",
+        "game-over"
+      ],
+      "runner": "playerDamageCollision",
+      "fixturePath": "tests/fixtures/gameplay-golden/collision-player-damage-game-over-replay.json",
+      "frameCount": 3,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installAuthoredPlayerDamageCollision",
+            "bodies": {
+              "enemy": {
+                "x": 400,
+                "y": 240,
+                "halfWidth": 16,
+                "halfHeight": 16,
+                "layer": 1
+              }
+            },
+            "components": {
+              "playerHealth": 1,
+              "damage": 1,
+              "target": 1
+            }
+          }
+        ]
+      },
+      "expected": {
+        "replayHash": "a8e2ac9c",
+        "finalScore": 0,
+        "finalGameState": 2,
+        "entityCountAfterSetup": 2,
+        "eventFrame": 2,
+        "eventKinds": [
+          "collisionDamage"
+        ]
+      }
+    },
+    {
+      "id": "wave-action-spawn-prefab",
+      "description": "Wave-enter action trigger replay covering Rust-owned wave producer to spawnPrefabAction consumer through deferred spawn flush.",
+      "coverageTags": [
+        "wave",
+        "action-trigger",
+        "spawn-prefab",
+        "spawn-diagnostics"
+      ],
+      "runner": "waveActionSpawnPrefab",
+      "fixturePath": "tests/fixtures/gameplay-golden/wave-action-spawn-prefab-replay.json",
+      "frameCount": 6,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          }
+        ]
+      },
+      "waveAction": {
+        "waveIndex": 1,
+        "spawnPrefab": {
+          "actionId": 11,
+          "cooldownSeconds": 0.5,
+          "prefabId": 1,
+          "anchorCode": 0,
+          "phaseCode": 0,
+          "offsetX": -72,
+          "offsetY": 0
+        },
+        "waves": [
+          {
+            "index": 0,
+            "durationSeconds": 0.05,
+            "spawnIntervalSeconds": 999,
+            "enemyCount": 1,
+            "enemySpeed": 1,
+            "enemyBehaviorCode": 0,
+            "enemySpawnPatternCode": 0,
+            "enemyHealth": 1,
+            "scoreReward": 1
+          },
+          {
+            "index": 1,
+            "durationSeconds": 999,
+            "spawnIntervalSeconds": 999,
+            "enemyCount": 1,
+            "enemySpeed": 1,
+            "enemyBehaviorCode": 0,
+            "enemySpawnPatternCode": 0,
+            "enemyHealth": 1,
+            "scoreReward": 1
+          }
+        ]
+      },
+      "expected": {
+        "replayHash": "cf15ca10",
+        "finalScore": 0,
+        "eventFrame": 4,
+        "eventKinds": [
+          "prefabSpawned"
+        ],
+        "spawnDiagnostics": [
+          {
+            "frame": 4,
+            "metrics": {
+              "commandsDrained": 1,
+              "prefabSpawns": 1,
+              "prefabSpawnedPayloads": 1,
+              "prefabSpawnedEventsPushed": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fsm-state-enter-spawn-prefab",
+      "description": "State-enter action trigger replay covering FSM transition followed by next-frame spawnPrefabAction execution.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "spawn-prefab",
+        "spawn-diagnostics"
+      ],
+      "runner": "fsmStateEnterSpawnPrefab",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-spawn-prefab-replay.json",
+      "frameCount": 5,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installStateEnterSpawnPrefabAction"
+          }
+        ]
+      },
+      "stateEnterAction": {
+        "sourceBody": {
+          "x": 720,
+          "y": 240,
+          "halfWidth": 8,
+          "halfHeight": 8,
+          "layer": 3,
+          "isTrigger": true
+        },
+        "timer": {
+          "timerId": 21,
+          "durationSeconds": 0.02
+        },
+        "fsm": {
+          "initialState": 1,
+          "transitionedState": 2
+        },
+        "stateEnter": {
+          "phaseCode": 0
+        },
+        "spawnPrefab": {
+          "actionId": 11,
+          "cooldownSeconds": 0.25,
+          "prefabId": 1,
+          "anchorCode": 0,
+          "phaseCode": 0,
+          "offsetX": -72,
+          "offsetY": 0
+        }
+      },
+      "expected": {
+        "replayHash": "9d1a9d22",
+        "finalScore": 0,
+        "transitionFrame": 3,
+        "transitionEventKinds": [
+          "timer",
+          "behaviorStateChanged"
+        ],
+        "eventFrame": 4,
+        "eventKinds": [
+          "prefabSpawned"
+        ],
+        "fsmState": 2,
+        "spawnDiagnostics": [
+          {
+            "frame": 4,
+            "metrics": {
+              "commandsDrained": 1,
+              "prefabSpawns": 1,
+              "prefabSpawnedPayloads": 1,
+              "prefabSpawnedEventsPushed": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fsm-state-enter-dash-target-player",
+      "description": "State-enter dash replay covering targetPlayer dash execution from a non-player source without success gameplay events.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "dash",
+        "target-player"
+      ],
+      "runner": "fsmStateEnterDashAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-dash-target-player-replay.json",
+      "frameCount": 5,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installStateEnterDashAction"
+          }
+        ]
+      },
+      "stateEnterDashAction": {
+        "sourceBody": {
+          "x": 720,
+          "y": 240,
+          "halfWidth": 8,
+          "halfHeight": 8,
+          "layer": 3,
+          "isTrigger": true
+        },
+        "timer": {
+          "timerId": 31,
+          "durationSeconds": 0.02
+        },
+        "fsm": {
+          "initialState": 1,
+          "transitionedState": 2
+        },
+        "stateEnter": {
+          "phaseCode": 0
+        },
+        "dashAction": {
+          "actionId": 21,
+          "cooldownSeconds": 0.5,
+          "distance": 80,
+          "aimCode": 1
+        }
+      },
+      "expected": {
+        "replayHash": "86918f46",
+        "finalScore": 0,
+        "transitionFrame": 3,
+        "transitionEventKinds": [
+          "timer",
+          "behaviorStateChanged"
+        ],
+        "dashFrame": 4,
+        "dashEventKinds": [],
+        "sourceBeforeDash": {
+          "x": 720,
+          "y": 240
+        },
+        "sourceAfterDash": {
+          "x": 640,
+          "y": 240
+        },
+        "fsmState": 2
+      }
+    },
+    {
+      "id": "fsm-state-enter-dash-input-aim-failure",
+      "description": "State-enter dash failure replay covering unsupported input aim for non-player Rust-owned triggers.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "dash",
+        "action-failure",
+        "unsupported-aim"
+      ],
+      "runner": "fsmStateEnterDashAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-dash-input-aim-failure-replay.json",
+      "frameCount": 5,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installStateEnterDashInputAimAction"
+          }
+        ]
+      },
+      "stateEnterDashAction": {
+        "sourceBody": {
+          "x": 720,
+          "y": 240,
+          "halfWidth": 8,
+          "halfHeight": 8,
+          "layer": 3,
+          "isTrigger": true
+        },
+        "timer": {
+          "timerId": 32,
+          "durationSeconds": 0.02
+        },
+        "fsm": {
+          "initialState": 1,
+          "transitionedState": 2
+        },
+        "stateEnter": {
+          "phaseCode": 0
+        },
+        "dashAction": {
+          "actionId": 22,
+          "cooldownSeconds": 0.5,
+          "distance": 80,
+          "aimCode": 0
+        }
+      },
+      "expected": {
+        "replayHash": "dedb6c70",
+        "finalScore": 0,
+        "transitionFrame": 3,
+        "transitionEventKinds": [
+          "timer",
+          "behaviorStateChanged"
+        ],
+        "dashFrame": 4,
+        "dashEventKinds": [
+          "actionFailed"
+        ],
+        "actionFailureReason": 10,
+        "sourceBeforeDash": {
+          "x": 720,
+          "y": 240
+        },
+        "sourceAfterDash": {
+          "x": 720,
+          "y": 240
+        },
+        "fsmState": 2
+      }
+    },
+    {
+      "id": "fsm-state-enter-projectile-spawn",
+      "description": "State-enter projectile replay covering targetPlayer projectile execution, Bullet-to-Player collision target metadata, and spawn diagnostics.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "projectile",
+        "target-player",
+        "spawn-diagnostics"
+      ],
+      "runner": "fsmStateEnterProjectileAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-projectile-spawn-replay.json",
+      "frameCount": 5,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installStateEnterProjectileAction"
+          }
+        ]
+      },
+      "stateEnterProjectileAction": {
+        "sourceBody": {
+          "x": 720,
+          "y": 240,
+          "halfWidth": 8,
+          "halfHeight": 8,
+          "layer": 3,
+          "isTrigger": true
+        },
+        "timer": {
+          "timerId": 41,
+          "durationSeconds": 0.02
+        },
+        "fsm": {
+          "initialState": 1,
+          "transitionedState": 2
+        },
+        "stateEnter": {
+          "phaseCode": 0
+        },
+        "projectileAction": {
+          "actionId": 41,
+          "cooldownSeconds": 0.5,
+          "speed": 18000,
+          "damage": 1,
+          "lifetimeSeconds": 1,
+          "aimCode": 1,
+          "collisionTargetCode": 1
+        }
+      },
+      "expected": {
+        "replayHash": "b864645e",
+        "finalScore": 0,
+        "transitionFrame": 3,
+        "transitionEventKinds": [
+          "timer",
+          "behaviorStateChanged"
+        ],
+        "projectileFrame": 4,
+        "projectileEventKinds": [],
+        "projectileFrameGameState": 2,
+        "fsmState": 2,
+        "spawnDiagnostics": [
+          {
+            "frame": 4,
+            "metrics": {
+              "commandsDrained": 1,
+              "projectileSpawns": 1,
+              "projectileShootAudioEventsPushed": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fsm-state-enter-projectile-tile-impact",
+      "description": "State-enter projectile replay covering blocking tile impact telemetry before the projectile can hit the target player.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "projectile",
+        "target-player",
+        "tile-impact",
+        "spawn-diagnostics"
+      ],
+      "runner": "fsmStateEnterProjectileAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-projectile-tile-impact-replay.json",
+      "frameCount": 5,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installStateEnterProjectileTileImpact"
+          }
+        ]
+      },
+      "stateEnterProjectileAction": {
+        "sourceBody": {
+          "x": 720,
+          "y": 240,
+          "halfWidth": 8,
+          "halfHeight": 8,
+          "layer": 3,
+          "isTrigger": true
+        },
+        "blockingTilemap": {
+          "layerIndex": 0,
+          "columns": 1,
+          "rows": 1,
+          "tileWidth": 32,
+          "tileHeight": 32,
+          "originX": 592,
+          "originY": 224,
+          "data": [
+            1
+          ]
+        },
+        "timer": {
+          "timerId": 43,
+          "durationSeconds": 0.02
+        },
+        "fsm": {
+          "initialState": 1,
+          "transitionedState": 2
+        },
+        "stateEnter": {
+          "phaseCode": 0
+        },
+        "projectileAction": {
+          "actionId": 43,
+          "cooldownSeconds": 0.5,
+          "speed": 18000,
+          "damage": 1,
+          "lifetimeSeconds": 1,
+          "aimCode": 1,
+          "collisionTargetCode": 1
+        }
+      },
+      "expected": {
+        "replayHash": "f0e562c7",
+        "finalScore": 0,
+        "transitionFrame": 3,
+        "transitionEventKinds": [
+          "timer",
+          "behaviorStateChanged"
+        ],
+        "projectileFrame": 4,
+        "projectileEventKinds": [
+          "tileImpact"
+        ],
+        "projectileFrameGameState": 1,
+        "tileImpact": {
+          "projectileId": 2,
+          "projectileGeneration": 0,
+          "tileImpactCode": 0,
+          "flags": 516,
+          "targetRemoved": true,
+          "payloadBits": 0
+        },
+        "fsmState": 2,
+        "spawnDiagnostics": [
+          {
+            "frame": 4,
+            "metrics": {
+              "commandsDrained": 1,
+              "projectileSpawns": 1,
+              "projectileShootAudioEventsPushed": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "projectile-tile-impact-fsm-authored",
+      "description": "Authored projectile replay covering bounce tileImpact telemetry driving a projectile-scoped FSM transition in the same Rust frame.",
+      "coverageTags": [
+        "authored-behavior",
+        "fsm",
+        "projectile",
+        "tile-impact"
+      ],
+      "runner": "projectileTileImpactFsmAuthored",
+      "fixturePath": "tests/fixtures/gameplay-golden/projectile-tile-impact-fsm-authored-replay.json",
+      "frameCount": 2,
+      "captureFrames": [
+        0,
+        1,
+        2
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installAuthoredProjectileTileImpactFsm"
+          }
+        ]
+      },
+      "authoredProjectileTileImpactFsm": {
+        "projectileBody": {
+          "x": 720,
+          "y": 240,
+          "halfWidth": 8,
+          "halfHeight": 8,
+          "layer": 2
+        },
+        "velocity": {
+          "x": -18000,
+          "y": 0
+        },
+        "tileImpactCode": 2,
+        "blockingTilemap": {
+          "layerIndex": 0,
+          "columns": 1,
+          "rows": 1,
+          "tileWidth": 32,
+          "tileHeight": 32,
+          "originX": 592,
+          "originY": 224,
+          "data": [
+            1
+          ]
+        },
+        "fsm": {
+          "initialState": 1,
+          "transitionedState": 2
+        }
+      },
+      "expected": {
+        "replayHash": "14d007e2",
+        "finalScore": 0,
+        "eventFrame": 2,
+        "eventKinds": [
+          "tileImpact",
+          "behaviorStateChanged"
+        ],
+        "tileImpact": {
+          "projectileId": 1,
+          "projectileGeneration": 0,
+          "tileImpactCode": 2,
+          "flags": 520,
+          "targetRemoved": false,
+          "payloadBits": 0
+        },
+        "fsmState": 2
+      }
+    },
+    {
+      "id": "projectile-homing-nearest-tag",
+      "description": "Authored homing missile replay covering TS BehaviorRecipe binding, nearestTag target query, projectile movement, collision damage, despawn, presentation effect telemetry, and score reward.",
+      "coverageTags": [
+        "authored-behavior",
+        "projectile",
+        "homing",
+        "movement-query",
+        "nearest-tag",
+        "collision-damage",
+        "presentation-effect",
+        "score"
+      ],
+      "runner": "projectileHomingNearestTag",
+      "fixturePath": "tests/fixtures/gameplay-golden/projectile-homing-nearest-tag-replay.json",
+      "frameCount": 6,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        6
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installHomingMissileBehaviorRecipe"
+          }
+        ]
+      },
+      "homingMissile": {
+        "ids": {
+          "tags": {
+            "hostile": 5
+          }
+        },
+        "bodies": {
+          "missile": {
+            "x": 50,
+            "y": 50,
+            "halfWidth": 8,
+            "halfHeight": 8,
+            "layer": 2,
+            "bodyType": 2,
+            "canSleep": false
+          },
+          "decoy-enemy": {
+            "x": 60,
+            "y": 90,
+            "halfWidth": 16,
+            "halfHeight": 16,
+            "layer": 1
+          },
+          "hostile-enemy": {
+            "x": 80,
+            "y": 50,
+            "halfWidth": 16,
+            "halfHeight": 16,
+            "layer": 1
+          }
+        },
+        "sceneComposition": {
+          "initialFragment": "arena",
+          "prefabs": {
+            "missile": {
+              "props": {
+                "behaviorRecipes": "projectile.homingMissile"
+              }
+            },
+            "decoyEnemy": {
+              "props": {
+                "behaviorRecipes": "enemy.decoy"
+              }
+            },
+            "hostileEnemy": {
+              "props": {
+                "behaviorRecipes": "enemy.hostile"
+              }
+            }
+          },
+          "fragments": {
+            "arena": {
+              "instances": [
+                {
+                  "id": "missile",
+                  "prefab": "missile"
+                },
+                {
+                  "id": "decoy-enemy",
+                  "prefab": "decoyEnemy"
+                },
+                {
+                  "id": "hostile-enemy",
+                  "prefab": "hostileEnemy"
+                }
+              ]
+            }
+          }
+        },
+        "behaviorRecipes": {
+          "entities": {
+            "projectile.homingMissile": {
+              "recipes": [
+                {
+                  "kind": "faction",
+                  "faction": "player",
+                  "damages": [
+                    "enemy"
+                  ]
+                },
+                {
+                  "kind": "damage",
+                  "amount": 1,
+                  "target": "other"
+                },
+                {
+                  "kind": "collisionParticle",
+                  "presetId": 5,
+                  "target": "self"
+                },
+                {
+                  "kind": "collisionDespawn",
+                  "target": "self"
+                },
+                {
+                  "kind": "seekTarget",
+                  "target": "nearestTag:hostile",
+                  "speed": 260,
+                  "turnRate": 1
+                },
+                {
+                  "kind": "lifetime",
+                  "seconds": 2
+                }
+              ]
+            },
+            "enemy.decoy": {
+              "recipes": [
+                {
+                  "kind": "health",
+                  "current": 1,
+                  "max": 1
+                },
+                {
+                  "kind": "scoreReward",
+                  "reward": 3
+                }
+              ]
+            },
+            "enemy.hostile": {
+              "tags": [
+                "hostile"
+              ],
+              "recipes": [
+                {
+                  "kind": "health",
+                  "current": 1,
+                  "max": 1
+                },
+                {
+                  "kind": "scoreReward",
+                  "reward": 7
+                }
+              ]
+            }
+          }
+        },
+        "expected": {
+          "damage": 1,
+          "particlePresetId": 5
+        }
+      },
+      "expected": {
+        "replayHash": "4b0b00be",
+        "finalScore": 7,
+        "movementFrame": 2,
+        "eventFrame": 3,
+        "eventKinds": [
+          "collisionDamage",
+          "collisionDespawn",
+          "presentationEffect"
+        ],
+        "boundCommands": [
+          "missile:configureFaction",
+          "missile:configureDamage",
+          "missile:configureCollisionParticle",
+          "missile:configureCollisionDespawn",
+          "missile:configureSeekTarget",
+          "missile:configureLifetime",
+          "decoy-enemy:configureHealth",
+          "decoy-enemy:configureScoreReward",
+          "hostile-enemy:configureTags",
+          "hostile-enemy:configureHealth",
+          "hostile-enemy:configureScoreReward"
+        ]
+      }
+    },
+    {
+      "id": "fsm-state-enter-projectile-collision-target-failure",
+      "description": "State-enter projectile failure replay covering unsupported collision target handling for Rust-owned triggered projectiles.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "projectile",
+        "action-failure",
+        "unsupported-collision-target"
+      ],
+      "runner": "fsmStateEnterProjectileAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-projectile-collision-target-failure-replay.json",
+      "frameCount": 5,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installStateEnterProjectileCollisionTargetFailure"
+          }
+        ]
+      },
+      "stateEnterProjectileAction": {
+        "sourceBody": {
+          "x": 720,
+          "y": 240,
+          "halfWidth": 8,
+          "halfHeight": 8,
+          "layer": 3,
+          "isTrigger": true
+        },
+        "timer": {
+          "timerId": 42,
+          "durationSeconds": 0.02
+        },
+        "fsm": {
+          "initialState": 1,
+          "transitionedState": 2
+        },
+        "stateEnter": {
+          "phaseCode": 0
+        },
+        "projectileAction": {
+          "actionId": 42,
+          "cooldownSeconds": 0.5,
+          "speed": 18000,
+          "damage": 1,
+          "lifetimeSeconds": 1,
+          "aimCode": 1,
+          "collisionTargetCode": 0
+        }
+      },
+      "expected": {
+        "replayHash": "d80d276d",
+        "finalScore": 0,
+        "transitionFrame": 3,
+        "transitionEventKinds": [
+          "timer",
+          "behaviorStateChanged"
+        ],
+        "projectileFrame": 4,
+        "projectileEventKinds": [
+          "actionFailed"
+        ],
+        "actionFailureReason": 12,
+        "projectileFrameGameState": 1,
+        "fsmState": 2
+      }
+    },
+    {
+      "id": "fsm-state-enter-melee-target-player",
+      "description": "State-enter melee replay covering target-player melee execution and player GameOver from a non-player source.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "melee",
+        "target-player",
+        "game-over"
+      ],
+      "runner": "fsmStateEnterMeleeAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-melee-target-player-replay.json",
+      "frameCount": 5,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installStateEnterMeleeAction"
+          }
+        ]
+      },
+      "stateEnterMeleeAction": {
+        "sourceBody": {
+          "x": 424,
+          "y": 240,
+          "halfWidth": 8,
+          "halfHeight": 8,
+          "layer": 3,
+          "isTrigger": true
+        },
+        "timer": {
+          "timerId": 51,
+          "durationSeconds": 0.02
+        },
+        "fsm": {
+          "initialState": 1,
+          "transitionedState": 2
+        },
+        "stateEnter": {
+          "phaseCode": 0
+        },
+        "meleeAction": {
+          "actionId": 51,
+          "cooldownSeconds": 0.5,
+          "range": 64,
+          "damage": 1,
+          "targetCode": 1
+        }
+      },
+      "expected": {
+        "replayHash": "b4ab8f9c",
+        "finalScore": 0,
+        "transitionFrame": 3,
+        "transitionEventKinds": [
+          "timer",
+          "behaviorStateChanged"
+        ],
+        "meleeFrame": 4,
+        "meleeEventKinds": [],
+        "meleeFrameGameState": 2,
+        "fsmState": 2
+      }
+    },
+    {
+      "id": "fsm-state-enter-melee-enemy-target",
+      "description": "State-enter melee replay covering enemy-target execution from a non-player source.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "melee",
+        "enemy-target",
+        "collision-damage"
+      ],
+      "runner": "fsmStateEnterMeleeAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-melee-enemy-target-replay.json",
+      "frameCount": 5,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installStateEnterMeleeEnemyTarget"
+          }
+        ]
+      },
+      "stateEnterMeleeAction": {
+        "sourceBody": {
+          "x": 424,
+          "y": 240,
+          "halfWidth": 8,
+          "halfHeight": 8,
+          "layer": 3,
+          "isTrigger": true
+        },
+        "targetBody": {
+          "x": 432,
+          "y": 240,
+          "halfWidth": 8,
+          "halfHeight": 8,
+          "layer": 1,
+          "isTrigger": true
+        },
+        "timer": {
+          "timerId": 52,
+          "durationSeconds": 0.02
+        },
+        "fsm": {
+          "initialState": 1,
+          "transitionedState": 2
+        },
+        "stateEnter": {
+          "phaseCode": 0
+        },
+        "meleeAction": {
+          "actionId": 52,
+          "cooldownSeconds": 0.5,
+          "range": 64,
+          "damage": 1,
+          "targetCode": 0
+        }
+      },
+      "expected": {
+        "replayHash": "620cb86c",
+        "finalScore": 1,
+        "transitionFrame": 3,
+        "transitionEventKinds": [
+          "timer",
+          "behaviorStateChanged"
+        ],
+        "meleeFrame": 4,
+        "meleeEventKinds": [
+          "collisionDamage"
+        ],
+        "meleeFrameGameState": 1,
+        "fsmState": 2
+      }
+    },
+    {
+      "id": "projectile-area-damage-entity-impact",
+      "description": "Authored explosive projectile replay covering TS BehaviorRecipe binding, accelerate movement, collisionAreaDamage splash, collisionEmitEffect telemetry, collisionDespawn, score reward, and radius falloff.",
+      "coverageTags": [
+        "authored-behavior",
+        "projectile",
+        "area-damage",
+        "collision-damage",
+        "presentation-effect",
+        "score"
+      ],
+      "runner": "projectileAreaDamageEntityImpact",
+      "fixturePath": "tests/fixtures/gameplay-golden/projectile-area-damage-entity-impact-replay.json",
+      "frameCount": 5,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        4,
+        5
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installExplosiveProjectileBehaviorRecipe"
+          }
+        ]
+      },
+      "explosiveProjectile": {
+        "bodies": {
+          "explosive-projectile": {
+            "x": 50,
+            "y": 140,
+            "halfWidth": 8,
+            "halfHeight": 8,
+            "layer": 2,
+            "bodyType": 2,
+            "canSleep": false
+          },
+          "blast-direct": {
+            "x": 96,
+            "y": 140,
+            "halfWidth": 16,
+            "halfHeight": 16,
+            "layer": 1
+          },
+          "blast-splash": {
+            "x": 116,
+            "y": 140,
+            "halfWidth": 16,
+            "halfHeight": 16,
+            "layer": 1
+          },
+          "blast-far": {
+            "x": 184,
+            "y": 140,
+            "halfWidth": 16,
+            "halfHeight": 16,
+            "layer": 1
+          }
+        },
+        "sceneComposition": {
+          "initialFragment": "arena",
+          "prefabs": {
+            "projectile": {
+              "props": {
+                "behaviorRecipes": "projectile.explosive"
+              }
+            },
+            "directEnemy": {
+              "props": {
+                "behaviorRecipes": "enemy.direct"
+              }
+            },
+            "splashEnemy": {
+              "props": {
+                "behaviorRecipes": "enemy.splash"
+              }
+            },
+            "farEnemy": {
+              "props": {
+                "behaviorRecipes": "enemy.far"
+              }
+            }
+          },
+          "fragments": {
+            "arena": {
+              "instances": [
+                {
+                  "id": "explosive-projectile",
+                  "prefab": "projectile"
+                },
+                {
+                  "id": "blast-direct",
+                  "prefab": "directEnemy"
+                },
+                {
+                  "id": "blast-splash",
+                  "prefab": "splashEnemy"
+                },
+                {
+                  "id": "blast-far",
+                  "prefab": "farEnemy"
+                }
+              ]
+            }
+          }
+        },
+        "behaviorRecipes": {
+          "entities": {
+            "projectile.explosive": {
+              "recipes": [
+                {
+                  "kind": "collisionAreaDamage",
+                  "amount": 2,
+                  "radius": 56,
+                  "targetLayer": "enemy"
+                },
+                {
+                  "kind": "collisionEmitEffect",
+                  "effectId": 9,
+                  "effectKind": "particle",
+                  "target": "self",
+                  "trigger": "enter"
+                },
+                {
+                  "kind": "collisionDespawn",
+                  "target": "self"
+                },
+                {
+                  "kind": "accelerate",
+                  "accelerationX": 480,
+                  "accelerationY": 0,
+                  "maxSpeed": 480
+                },
+                {
+                  "kind": "lifetime",
+                  "seconds": 2
+                }
+              ]
+            },
+            "enemy.direct": {
+              "recipes": [
+                {
+                  "kind": "health",
+                  "current": 1,
+                  "max": 1
+                },
+                {
+                  "kind": "scoreReward",
+                  "reward": 3
+                }
+              ]
+            },
+            "enemy.splash": {
+              "recipes": [
+                {
+                  "kind": "health",
+                  "current": 2,
+                  "max": 2
+                },
+                {
+                  "kind": "scoreReward",
+                  "reward": 5
+                }
+              ]
+            },
+            "enemy.far": {
+              "recipes": [
+                {
+                  "kind": "health",
+                  "current": 2,
+                  "max": 2
+                },
+                {
+                  "kind": "scoreReward",
+                  "reward": 11
+                }
+              ]
+            }
+          }
+        },
+        "expected": {
+          "damage": 2,
+          "radius": 56,
+          "effectId": 9
+        }
+      },
+      "expected": {
+        "replayHash": "e0521704",
+        "finalScore": 8,
+        "movementFrame": 2,
+        "eventFrame": 4,
+        "eventKinds": [
+          "collisionDamage",
+          "collisionDamage",
+          "collisionDespawn",
+          "presentationEffect"
+        ],
+        "boundCommands": [
+          "explosive-projectile:configureCollisionAreaDamage",
+          "explosive-projectile:configureCollisionEmitEffect",
+          "explosive-projectile:configureCollisionDespawn",
+          "explosive-projectile:configureAccelerate",
+          "explosive-projectile:configureLifetime",
+          "blast-direct:configureHealth",
+          "blast-direct:configureScoreReward",
+          "blast-splash:configureHealth",
+          "blast-splash:configureScoreReward",
+          "blast-far:configureHealth",
+          "blast-far:configureScoreReward"
+        ]
+      }
+    },
+    {
+      "id": "projectile-area-damage-tile-impact",
+      "description": "Authored projectile replay covering tile impact contact point AreaDamage, collisionDamage telemetry, terminal tileImpact telemetry, score reward, and radius falloff.",
+      "coverageTags": [
+        "authored-behavior",
+        "projectile",
+        "tile-impact",
+        "area-damage",
+        "collision-damage",
+        "score"
+      ],
+      "runner": "projectileAreaDamageTileImpact",
+      "fixturePath": "tests/fixtures/gameplay-golden/projectile-area-damage-tile-impact-replay.json",
+      "frameCount": 3,
+      "captureFrames": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "input": {
+        "events": [
+          {
+            "frame": 0,
+            "type": "press",
+            "control": "enter"
+          },
+          {
+            "frame": 1,
+            "type": "authoring",
+            "phase": "afterFrameUpdate",
+            "action": "installTileImpactAreaDamageBehaviorRecipe"
+          }
+        ]
+      },
+      "tileImpactAreaDamage": {
+        "bodies": {
+          "tile-projectile": {
+            "x": 50,
+            "y": 140,
+            "halfWidth": 8,
+            "halfHeight": 8,
+            "layer": 2,
+            "bodyType": 2,
+            "canSleep": false
+          },
+          "tile-blast-direct": {
+            "x": 92,
+            "y": 140,
+            "halfWidth": 16,
+            "halfHeight": 16,
+            "layer": 1
+          },
+          "tile-blast-splash": {
+            "x": 110,
+            "y": 140,
+            "halfWidth": 16,
+            "halfHeight": 16,
+            "layer": 1
+          },
+          "tile-blast-far": {
+            "x": 150,
+            "y": 140,
+            "halfWidth": 16,
+            "halfHeight": 16,
+            "layer": 1
+          }
+        },
+        "velocity": {
+          "x": 9000,
+          "y": 0
+        },
+        "tileImpactCode": 0,
+        "blockingTilemap": {
+          "layerIndex": 0,
+          "columns": 1,
+          "rows": 1,
+          "tileWidth": 32,
+          "tileHeight": 32,
+          "originX": 96,
+          "originY": 124,
+          "data": [
+            1
+          ]
+        },
+        "sceneComposition": {
+          "initialFragment": "arena",
+          "prefabs": {
+            "projectile": {
+              "props": {
+                "behaviorRecipes": "projectile.tileImpactArea"
+              }
+            },
+            "directEnemy": {
+              "props": {
+                "behaviorRecipes": "enemy.direct"
+              }
+            },
+            "splashEnemy": {
+              "props": {
+                "behaviorRecipes": "enemy.splash"
+              }
+            },
+            "farEnemy": {
+              "props": {
+                "behaviorRecipes": "enemy.far"
+              }
+            }
+          },
+          "fragments": {
+            "arena": {
+              "instances": [
+                {
+                  "id": "tile-projectile",
+                  "prefab": "projectile"
+                },
+                {
+                  "id": "tile-blast-direct",
+                  "prefab": "directEnemy"
+                },
+                {
+                  "id": "tile-blast-splash",
+                  "prefab": "splashEnemy"
+                },
+                {
+                  "id": "tile-blast-far",
+                  "prefab": "farEnemy"
+                }
+              ]
+            }
+          }
+        },
+        "behaviorRecipes": {
+          "entities": {
+            "projectile.tileImpactArea": {
+              "recipes": [
+                {
+                  "kind": "collisionAreaDamage",
+                  "amount": 2,
+                  "radius": 36,
+                  "targetLayer": "enemy"
+                }
+              ]
+            },
+            "enemy.direct": {
+              "recipes": [
+                {
+                  "kind": "health",
+                  "current": 1,
+                  "max": 1
+                },
+                {
+                  "kind": "scoreReward",
+                  "reward": 3
+                }
+              ]
+            },
+            "enemy.splash": {
+              "recipes": [
+                {
+                  "kind": "health",
+                  "current": 2,
+                  "max": 2
+                },
+                {
+                  "kind": "scoreReward",
+                  "reward": 5
+                }
+              ]
+            },
+            "enemy.far": {
+              "recipes": [
+                {
+                  "kind": "health",
+                  "current": 2,
+                  "max": 2
+                },
+                {
+                  "kind": "scoreReward",
+                  "reward": 11
+                }
+              ]
+            }
+          }
+        },
+        "expected": {
+          "damage": 2,
+          "radius": 36
+        }
+      },
+      "expected": {
+        "replayHash": "51a0827e",
+        "finalScore": 8,
+        "eventFrame": 2,
+        "eventKinds": [
+          "collisionDamage",
+          "collisionDamage",
+          "tileImpact"
+        ],
+        "tileImpact": {
+          "projectileId": 1,
+          "projectileGeneration": 0,
+          "tileImpactCode": 0,
+          "flags": 260,
+          "targetRemoved": true,
+          "payloadBits": 0
+        },
+        "boundCommands": [
+          "tile-projectile:configureCollisionAreaDamage",
+          "tile-blast-direct:configureHealth",
+          "tile-blast-direct:configureScoreReward",
+          "tile-blast-splash:configureHealth",
+          "tile-blast-splash:configureScoreReward",
+          "tile-blast-far:configureHealth",
+          "tile-blast-far:configureScoreReward"
+        ]
+      }
+    }
+  ]
+}

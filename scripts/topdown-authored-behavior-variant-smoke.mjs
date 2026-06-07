@@ -21,7 +21,7 @@ import {
 const VARIANT_FORMAT = "ferrum2d.topdown-shooter.authored-behavior-variant";
 const VARIANT_VERSION = 1;
 const DEFAULT_VARIANT_PATH = "examples/topdown-shooter/public/authored-behavior.variant.json";
-const DEFAULT_REPLAY_MANIFEST_PATH = "docs/engine/gameplay-golden/scenarios.json";
+const DEFAULT_REPLAY_MANIFEST_PATH = "tests/fixtures/gameplay-golden/scenarios.json";
 const VARIANT_SCHEMA_PATH = "schemas/topdown-authored-behavior-variant.schema.json";
 const REPLAY_MANIFEST_FORMAT = "ferrum2d.gameplay-replay.scenarios";
 const REPLAY_FIXTURE_INDEX_FORMAT = "ferrum2d.gameplay-replay.fixture-index";
@@ -428,7 +428,7 @@ function validateVariantSchemaContract(schema) {
     format: VARIANT_FORMAT,
     version: VARIANT_VERSION,
     extendsGameSpec: "./game.json",
-    replayScenario: "topdown-authored-behavior",
+    replayScenario: "example-topdown-authored-behavior",
     semantics: {
       fsmStateEntryMode: "manualReplaceSupported",
       browserPlacement: {

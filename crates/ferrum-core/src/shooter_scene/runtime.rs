@@ -2,6 +2,7 @@ use crate::audio_event::AudioEvent;
 use crate::camera::Camera2D;
 use crate::collision_event::{CollisionEvent, CollisionEventCounts};
 use crate::components::{HeightSpan, Transform2D};
+use crate::effect_event::EffectEvent;
 use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::gameplay::FrameInputSnapshot;
@@ -123,6 +124,7 @@ impl ShooterScene {
         collision_events: &mut Vec<CollisionEvent>,
         collision_event_counts: &mut CollisionEventCounts,
         gameplay_events: &mut Vec<GameplayEvent>,
+        effect_events: &mut Vec<EffectEvent>,
         hit_particles: Option<ParticleBurstSink<'_>>,
         hit_tweens: Option<TweenSink<'_>>,
     ) {
@@ -139,6 +141,7 @@ impl ShooterScene {
                 collision_events,
                 collision_event_counts,
                 gameplay_events,
+                effect_events,
                 hit_particles,
                 hit_tweens,
             ),
@@ -204,6 +207,7 @@ impl ShooterScene {
                 );
                 self.last_spawn_flush_result.accumulate(spawn_flush_result);
                 self.apply_enemy_movement_phase(world, tilemap, delta);
+                self.apply_projectile_movement_phase(world);
                 world.update(delta);
                 if let Some(counters) = sinks.physics_counters.as_deref_mut() {
                     tilemap.resolve_dynamic_collisions_with_counters(world, counters);

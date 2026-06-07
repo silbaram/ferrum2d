@@ -102,7 +102,7 @@ function compareDocs(a, b) {
     "README.md",
     "engine/user-guide.md",
     "engine/public-api.md",
-    "engine/topdown-shooter-game-spec.md",
+    "examples/topdown-shooter/game-spec.md",
     "development/architecture/architecture.md",
     "development/architecture/physics-engine.md",
     "development/quality/smoke-check.md",
@@ -193,7 +193,7 @@ function pageHtml(items) {
             <span class="tile-title">Public API</span>
             <span class="tile-description">Supported imports, runtime contracts, and compatibility policy.</span>
           </a>
-          <a class="tile" href="./docs/engine/topdown-shooter-game-spec.html">
+          <a class="tile" href="./docs/examples/topdown-shooter/game-spec.html">
             <span class="tile-title">Top-down Shooter Spec</span>
             <span class="tile-description">Top-down Shooter JSON schema, defaults, and validation rules.</span>
           </a>

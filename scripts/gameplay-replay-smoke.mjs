@@ -15,6 +15,7 @@ import { applyShooterGameSpec } from "../packages/ferrum-web/dist/gameSpec.js";
 import {
   createBehaviorStateMachineRuntimeInstallPlan,
   applyGameplayBehaviorCommands,
+  bindSceneBehaviorRecipes,
   dryRunSceneBehaviorRecipes,
   gameplayActionDiagnosticReports,
   gameplaySpawnDiagnosticReports,
@@ -43,6 +44,7 @@ import {
   GAMEPLAY_EVENT_FLAG_ONCE,
   GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
   GAMEPLAY_EVENT_FLAG_TILE_IMPACT_BOUNCED,
+  GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_POSITIVE_X,
   GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NEGATIVE_X,
   GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_SHIFT,
   GAMEPLAY_EVENT_KIND_ACTION_FAILED,
@@ -53,8 +55,10 @@ import {
   GAMEPLAY_EVENT_KIND_INTERACTION,
   GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED,
   GAMEPLAY_EVENT_KIND_PREFAB_SPAWNED,
+  GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT,
   GAMEPLAY_EVENT_KIND_TILE_IMPACT,
   GAMEPLAY_EVENT_KIND_TIMER,
+  GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE,
   U32S_PER_GAMEPLAY_EVENT,
 } from "../packages/ferrum-web/dist/gameplayEventDecoder.js";
 import { hashGameStateSnapshot } from "../packages/ferrum-web/dist/gameStateSnapshot.js";
@@ -63,16 +67,18 @@ import {
   buildSpawnFrameDiagnostics,
 } from "../packages/ferrum-web/dist/engineFrameState.js";
 import { F64S_PER_FRAME_TELEMETRY } from "../packages/ferrum-web/dist/wasmBridgeAbi.js";
+import {
+  BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY,
+  BUILT_IN_SHOOTER_STATE_HEADER_FLOATS,
+  BUILT_IN_SHOOTER_STATE_HEADER_U32S,
+  BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY,
+  BUILT_IN_SHOOTER_STATE_VERSION,
+} from "../packages/ferrum-web/dist/builtInShooterStateSnapshot.js";
 
 const GOLDEN_FIXTURE_FORMAT = "ferrum2d.gameplay-replay.golden";
 const GOLDEN_FIXTURE_VERSION = 1;
 const SMOKE_REPORT_FORMAT = "ferrum2d.gameplay-replay.smoke-report";
 const SMOKE_REPORT_VERSION = 1;
-const BUILT_IN_SHOOTER_STATE_VERSION = 11;
-const BUILT_IN_SHOOTER_STATE_HEADER_FLOATS = 8;
-const BUILT_IN_SHOOTER_STATE_HEADER_U32S = 37;
-const BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY = 35;
-const BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY = 21;
 const SCENARIO_MANIFEST_FORMAT = "ferrum2d.gameplay-replay.scenarios";
 const SCENARIO_MANIFEST_VERSION = 1;
 const FIXTURE_INDEX_FORMAT = "ferrum2d.gameplay-replay.fixture-index";
@@ -82,11 +88,12 @@ const COVERAGE_TAGS_VERSION = 1;
 const TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_FORMAT = "ferrum2d.topdown-shooter.authored-behavior-variant";
 const TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_VERSION = 1;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_SCENARIO_MANIFEST_PATH = "docs/engine/gameplay-golden/scenarios.json";
+const DEFAULT_SCENARIO_MANIFEST_PATH = "tests/fixtures/gameplay-golden/scenarios.json";
 const DEFAULT_ARTIFACT_REPORT_NAME = "gameplay-replay-smoke-report.json";
 const SMOKE_REPORT_SCHEMA_PATH = resolve(REPO_ROOT, "schemas/gameplay-replay-smoke-report.schema.json");
 const FIXED_DELTA_SECONDS = 1 / 60;
 const PHYSICS_BODY_STATIC = 0;
+const PHYSICS_BODY_DYNAMIC = 2;
 const PHYSICS_LAYER_ENEMY = 1;
 const PHYSICS_LAYER_BULLET = 2;
 const PHYSICS_LAYER_WALL = 3;
@@ -173,47 +180,62 @@ const TOPDOWN_AUTHORED_SPEC = Object.freeze({
   camera: { preset: "follow" },
 });
 const SCENARIO_RUNNERS = Object.freeze({
-  topdownBasic: {
+  exampleTopdownBasic: {
     run: runTopdownGoldenReplay,
     validateFixture: validateTopdownGoldenFixture,
     validateOutcome: validateBasicScenarioOutcome,
   },
-  topdownAuthoredBehavior: {
+  exampleTopdownAuthoredBehavior: {
     run: runTopdownAuthoredBehaviorReplay,
     validateFixture: validateTopdownAuthoredFixture,
     validateOutcome: validateAuthoredScenarioOutcome,
   },
-  topdownAuthoredPlayerDamageCollision: {
+  playerDamageCollision: {
     run: runTopdownAuthoredPlayerDamageCollisionReplay,
     validateFixture: validateTopdownAuthoredPlayerDamageCollisionFixture,
     validateOutcome: validateAuthoredPlayerDamageCollisionScenarioOutcome,
   },
-  topdownAuthoredProjectileTileImpactFsm: {
+  projectileTileImpactFsmAuthored: {
     run: runTopdownAuthoredProjectileTileImpactFsmReplay,
     validateFixture: validateTopdownAuthoredProjectileTileImpactFsmFixture,
     validateOutcome: validateAuthoredProjectileTileImpactFsmScenarioOutcome,
   },
-  topdownWaveActionTrigger: {
+  projectileHomingNearestTag: {
+    run: runTopdownHomingMissileReplay,
+    validateFixture: validateTopdownHomingMissileFixture,
+    validateOutcome: validateHomingMissileScenarioOutcome,
+  },
+  projectileAreaDamageEntityImpact: {
+    run: runTopdownExplosiveProjectileReplay,
+    validateFixture: validateTopdownExplosiveProjectileFixture,
+    validateOutcome: validateExplosiveProjectileScenarioOutcome,
+  },
+  projectileAreaDamageTileImpact: {
+    run: runTopdownTileImpactAreaDamageReplay,
+    validateFixture: validateTopdownTileImpactAreaDamageFixture,
+    validateOutcome: validateTileImpactAreaDamageScenarioOutcome,
+  },
+  waveActionSpawnPrefab: {
     run: runTopdownWaveActionTriggerReplay,
     validateFixture: validateTopdownWaveActionFixture,
     validateOutcome: validateWaveActionScenarioOutcome,
   },
-  topdownStateEnterActionTrigger: {
+  fsmStateEnterSpawnPrefab: {
     run: runTopdownStateEnterActionTriggerReplay,
     validateFixture: validateTopdownStateEnterActionFixture,
     validateOutcome: validateStateEnterActionScenarioOutcome,
   },
-  topdownStateEnterDashActionTrigger: {
+  fsmStateEnterDashAction: {
     run: runTopdownStateEnterDashActionTriggerReplay,
     validateFixture: validateTopdownStateEnterDashActionFixture,
     validateOutcome: validateStateEnterDashActionScenarioOutcome,
   },
-  topdownStateEnterProjectileActionTrigger: {
+  fsmStateEnterProjectileAction: {
     run: runTopdownStateEnterProjectileActionTriggerReplay,
     validateFixture: validateTopdownStateEnterProjectileActionFixture,
     validateOutcome: validateStateEnterProjectileActionScenarioOutcome,
   },
-  topdownStateEnterMeleeActionTrigger: {
+  fsmStateEnterMeleeAction: {
     run: runTopdownStateEnterMeleeActionTriggerReplay,
     validateFixture: validateTopdownStateEnterMeleeActionFixture,
     validateOutcome: validateStateEnterMeleeActionScenarioOutcome,
@@ -291,6 +313,10 @@ try {
   process.exitCode = 1;
 }
 const smokeReport = createSmokeReport(scenarioRuns, errors);
+if (scenarioRuns.length === 0 && errors.length > 0) {
+  console.error(errors[0].message);
+  process.exit(process.exitCode ?? 1);
+}
 await validateSmokeReportSchema(smokeReport);
 if (options.artifactDir !== undefined) {
   await writeSmokeReportArtifact(options.artifactDir, smokeReport);
@@ -519,6 +545,159 @@ function runTopdownAuthoredProjectileTileImpactFsmReplay(scenario) {
       if (scenario.captureFrames.includes(nextFrame)) {
         appendSnapshot(engine, snapshots, nextFrame, withActionDiagnostics(
           authoredProjectileTileImpactFsmSnapshotOptions(engine, projectile),
+          actionDiagnostics,
+          spawnDiagnostics,
+        ));
+      }
+    }
+    setEngineInput(engine, emptyInputState());
+
+    return {
+      format: GOLDEN_FIXTURE_FORMAT,
+      version: GOLDEN_FIXTURE_VERSION,
+      scenario: scenario.id,
+      input: {
+        frameCount: scenario.frameCount,
+        fixedDeltaSeconds: FIXED_DELTA_SECONDS,
+        captureFrames: scenario.captureFrames,
+        events: scenario.input.events,
+      },
+      run: createGameplayReplayRun(snapshots),
+      actionDiagnostics,
+      spawnDiagnostics,
+    };
+  } finally {
+    engine.free();
+  }
+}
+
+function runTopdownHomingMissileReplay(scenario) {
+  const engine = new Engine();
+  try {
+    engine.set_viewport_size(800, 480);
+    engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
+    engine.set_sound_ids(SOUND_IDS.shoot, SOUND_IDS.hit, SOUND_IDS.gameOver);
+    applyShooterGameSpec(engine, TOPDOWN_AUTHORED_SPEC);
+    engine.reset_game();
+
+    const snapshots = [];
+    const actionDiagnostics = [];
+    const spawnDiagnostics = createSpawnDiagnosticsCollector(scenario);
+    let homing;
+    appendSnapshot(engine, snapshots, 0, { actionDiagnostics, spawnDiagnostics });
+    for (let frame = 0; frame < scenario.frameCount; frame += 1) {
+      applyFrameInput(engine, frame, scenario.input.events);
+      engine.update_frame(FIXED_DELTA_SECONDS, false, true, false);
+      const nextFrame = frame + 1;
+      const authoringEvent = authoringEventForFrame(scenario, nextFrame, "afterFrameUpdate");
+      if (authoringEvent !== undefined) {
+        homing = installHomingMissileScenario(engine, scenario.homingMissile);
+      }
+      if (scenario.captureFrames.includes(nextFrame)) {
+        appendSnapshot(engine, snapshots, nextFrame, withActionDiagnostics(
+          homingMissileSnapshotOptions(engine, homing),
+          actionDiagnostics,
+          spawnDiagnostics,
+        ));
+      }
+    }
+    setEngineInput(engine, emptyInputState());
+
+    return {
+      format: GOLDEN_FIXTURE_FORMAT,
+      version: GOLDEN_FIXTURE_VERSION,
+      scenario: scenario.id,
+      input: {
+        frameCount: scenario.frameCount,
+        fixedDeltaSeconds: FIXED_DELTA_SECONDS,
+        captureFrames: scenario.captureFrames,
+        events: scenario.input.events,
+      },
+      run: createGameplayReplayRun(snapshots),
+      actionDiagnostics,
+      spawnDiagnostics,
+    };
+  } finally {
+    engine.free();
+  }
+}
+
+function runTopdownExplosiveProjectileReplay(scenario) {
+  const engine = new Engine();
+  try {
+    engine.set_viewport_size(800, 480);
+    engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
+    engine.set_sound_ids(SOUND_IDS.shoot, SOUND_IDS.hit, SOUND_IDS.gameOver);
+    applyShooterGameSpec(engine, TOPDOWN_AUTHORED_SPEC);
+    engine.reset_game();
+
+    const snapshots = [];
+    const actionDiagnostics = [];
+    const spawnDiagnostics = createSpawnDiagnosticsCollector(scenario);
+    let explosive;
+    appendSnapshot(engine, snapshots, 0, { actionDiagnostics, spawnDiagnostics });
+    for (let frame = 0; frame < scenario.frameCount; frame += 1) {
+      applyFrameInput(engine, frame, scenario.input.events);
+      engine.update_frame(FIXED_DELTA_SECONDS, false, true, false);
+      const nextFrame = frame + 1;
+      const authoringEvent = authoringEventForFrame(scenario, nextFrame, "afterFrameUpdate");
+      if (authoringEvent !== undefined) {
+        explosive = installExplosiveProjectileScenario(engine, scenario.explosiveProjectile);
+      }
+      if (scenario.captureFrames.includes(nextFrame)) {
+        appendSnapshot(engine, snapshots, nextFrame, withActionDiagnostics(
+          explosiveProjectileSnapshotOptions(engine, explosive),
+          actionDiagnostics,
+          spawnDiagnostics,
+        ));
+      }
+    }
+    setEngineInput(engine, emptyInputState());
+
+    return {
+      format: GOLDEN_FIXTURE_FORMAT,
+      version: GOLDEN_FIXTURE_VERSION,
+      scenario: scenario.id,
+      input: {
+        frameCount: scenario.frameCount,
+        fixedDeltaSeconds: FIXED_DELTA_SECONDS,
+        captureFrames: scenario.captureFrames,
+        events: scenario.input.events,
+      },
+      run: createGameplayReplayRun(snapshots),
+      actionDiagnostics,
+      spawnDiagnostics,
+    };
+  } finally {
+    engine.free();
+  }
+}
+
+function runTopdownTileImpactAreaDamageReplay(scenario) {
+  const engine = new Engine();
+  try {
+    engine.set_viewport_size(800, 480);
+    engine.set_texture_ids(TEXTURE_IDS.player, TEXTURE_IDS.enemy, TEXTURE_IDS.bullet);
+    engine.set_sound_ids(SOUND_IDS.shoot, SOUND_IDS.hit, SOUND_IDS.gameOver);
+    applyShooterGameSpec(engine, TOPDOWN_AUTHORED_SPEC);
+    engine.reset_game();
+
+    const snapshots = [];
+    const actionDiagnostics = [];
+    const spawnDiagnostics = createSpawnDiagnosticsCollector(scenario);
+    let authored;
+    appendSnapshot(engine, snapshots, 0, { actionDiagnostics, spawnDiagnostics });
+    for (let frame = 0; frame < scenario.frameCount; frame += 1) {
+      applyFrameInput(engine, frame, scenario.input.events);
+      engine.update_frame(FIXED_DELTA_SECONDS, false, true, false);
+      const nextFrame = frame + 1;
+      const authoringEvent = authoringEventForFrame(scenario, nextFrame, "afterFrameUpdate");
+      if (authoringEvent !== undefined) {
+        authored = installTileImpactAreaDamageScenario(engine, scenario.tileImpactAreaDamage);
+      }
+      if (scenario.captureFrames.includes(nextFrame)) {
+        appendSnapshot(engine, snapshots, nextFrame, withActionDiagnostics(
+          tileImpactAreaDamageSnapshotOptions(engine, authored),
           actionDiagnostics,
           spawnDiagnostics,
         ));
@@ -920,7 +1099,7 @@ function applyNeutralFactionBehaviorCommands(engine, variantMetadata, entityHand
   ));
   assert.ok(commands?.length > 0, "neutral faction behavior commands must be present in variant dry-run metadata");
   const result = applyGameplayBehaviorCommands(engine, commands, entityHandles, {
-    path: "topdownAuthoredBehavior.neutralFaction",
+    path: "authoredBehavior.neutralFaction",
   });
   assert.deepEqual(result.results, commands.map(() => true), "neutral faction behavior commands must apply through runtime adapter");
 }
@@ -993,6 +1172,127 @@ function installAuthoredProjectileTileImpactFsmScenario(engine, authored) {
     authored.tileImpactCode,
   );
   return projectile;
+}
+
+function installHomingMissileScenario(engine, authored) {
+  const handles = {};
+  for (const [id, body] of Object.entries(authored.bodies)) {
+    handles[id] = spawnAuthoredAabbBody(engine, body);
+  }
+  const composition = resolveSceneCompositionSpec(authored.sceneComposition, {
+    path: "homingMissile.sceneComposition",
+  });
+  const recipes = resolveBehaviorRecipeDocument(authored.behaviorRecipes, {
+    path: "homingMissile.behaviorRecipes",
+  });
+  const plan = bindSceneBehaviorRecipes(composition, recipes, {
+    path: "homingMissile.gameplayAuthoring",
+    missingBehavior: "error",
+  });
+  const result = applyGameplayBehaviorCommands(engine, plan.commands, handles, {
+    ids: authored.ids,
+    path: "homingMissile.apply",
+  });
+  assert.deepEqual(
+    result.results,
+    plan.commands.map(() => true),
+    "homing missile behavior commands must apply through the runtime adapter",
+  );
+  return {
+    handles,
+    commandSummary: plan.commands.map((command) => ({
+      entity: command.entity,
+      type: command.type,
+      recipe: command.recipe,
+    })),
+  };
+}
+
+function installExplosiveProjectileScenario(engine, authored) {
+  const handles = {};
+  for (const [id, body] of Object.entries(authored.bodies)) {
+    handles[id] = spawnAuthoredAabbBody(engine, body);
+  }
+  const composition = resolveSceneCompositionSpec(authored.sceneComposition, {
+    path: "explosiveProjectile.sceneComposition",
+  });
+  const recipes = resolveBehaviorRecipeDocument(authored.behaviorRecipes, {
+    path: "explosiveProjectile.behaviorRecipes",
+  });
+  const plan = bindSceneBehaviorRecipes(composition, recipes, {
+    path: "explosiveProjectile.gameplayAuthoring",
+    missingBehavior: "error",
+  });
+  const result = applyGameplayBehaviorCommands(engine, plan.commands, handles, {
+    path: "explosiveProjectile.apply",
+  });
+  assert.deepEqual(
+    result.results,
+    plan.commands.map(() => true),
+    "explosive projectile behavior commands must apply through the runtime adapter",
+  );
+  return {
+    handles,
+    commandSummary: plan.commands.map((command) => ({
+      entity: command.entity,
+      type: command.type,
+      recipe: command.recipe,
+    })),
+  };
+}
+
+function installTileImpactAreaDamageScenario(engine, authored) {
+  installProjectileBlockingTilemap(engine, authored.blockingTilemap);
+  const handles = {};
+  for (const [id, body] of Object.entries(authored.bodies)) {
+    handles[id] = spawnAuthoredAabbBody(engine, body);
+  }
+  const composition = resolveSceneCompositionSpec(authored.sceneComposition, {
+    path: "tileImpactAreaDamage.sceneComposition",
+  });
+  const recipes = resolveBehaviorRecipeDocument(authored.behaviorRecipes, {
+    path: "tileImpactAreaDamage.behaviorRecipes",
+  });
+  const plan = bindSceneBehaviorRecipes(composition, recipes, {
+    path: "tileImpactAreaDamage.gameplayAuthoring",
+    missingBehavior: "error",
+  });
+  const result = applyGameplayBehaviorCommands(engine, plan.commands, handles, {
+    path: "tileImpactAreaDamage.apply",
+  });
+  assert.deepEqual(
+    result.results,
+    plan.commands.map(() => true),
+    "tile impact area damage behavior commands must apply through the runtime adapter",
+  );
+  const projectile = handles["tile-projectile"];
+  assert.equal(
+    engine.set_physics_body_velocity(
+      projectile.entityId,
+      projectile.entityGeneration,
+      authored.velocity.x,
+      authored.velocity.y,
+    ),
+    true,
+    "tile impact area damage projectile velocity must install",
+  );
+  assert.equal(
+    engine.set_gameplay_projectile_tile_impact(
+      projectile.entityId,
+      projectile.entityGeneration,
+      authored.tileImpactCode,
+    ),
+    true,
+    "tile impact area damage projectile tile impact policy must install",
+  );
+  return {
+    handles,
+    commandSummary: plan.commands.map((command) => ({
+      entity: command.entity,
+      type: command.type,
+      recipe: command.recipe,
+    })),
+  };
 }
 
 function installTimerTriggerScenario(engine, timerSource, timer, spawnPrefab) {
@@ -1381,7 +1681,18 @@ function installBehaviorFsm(engine, handle, fsm, eventKind, tokenId) {
 
 function spawnAuthoredAabbBody(
   engine,
-  { x, y, halfWidth, halfHeight, layer, isTrigger = false },
+  {
+    x,
+    y,
+    halfWidth,
+    halfHeight,
+    layer,
+    isTrigger = false,
+    bodyType = PHYSICS_BODY_STATIC,
+    massOrDensity = 1,
+    useDensity = false,
+    canSleep = false,
+  },
 ) {
   assert.equal(
     engine.spawn_physics_aabb_body(
@@ -1389,16 +1700,16 @@ function spawnAuthoredAabbBody(
       y,
       halfWidth,
       halfHeight,
-      PHYSICS_BODY_STATIC,
-      1,
-      false,
+      bodyType,
+      massOrDensity,
+      useDensity,
       layer,
       1 << layer,
       0xffffffff,
       isTrigger,
       true,
       true,
-      false,
+      canSleep,
     ),
     true,
     "authored scenario physics body must spawn",
@@ -1453,6 +1764,67 @@ function authoredProjectileTileImpactFsmSnapshotOptions(engine, projectile) {
           gameplayEvents: readGameplayEventSummary(engine),
         },
       };
+}
+
+function homingMissileSnapshotOptions(engine, homing) {
+  if (homing === undefined) {
+    return {};
+  }
+  const missilePhysics = optionalPhysicsEntityState(engine, homing.handles.missile);
+  const hostileEnemyPhysics = optionalPhysicsEntityState(engine, homing.handles["hostile-enemy"]);
+  const decoyEnemyPhysics = optionalPhysicsEntityState(engine, homing.handles["decoy-enemy"]);
+  return {
+    customState: {
+      handles: homing.handles,
+      commandSummary: homing.commandSummary,
+      ...(missilePhysics === undefined ? {} : { missilePhysics }),
+      ...(hostileEnemyPhysics === undefined ? {} : { hostileEnemyPhysics }),
+      ...(decoyEnemyPhysics === undefined ? {} : { decoyEnemyPhysics }),
+      gameplayEvents: readGameplayEventSummary(engine),
+    },
+  };
+}
+
+function explosiveProjectileSnapshotOptions(engine, explosive) {
+  if (explosive === undefined) {
+    return {};
+  }
+  const projectilePhysics = optionalPhysicsEntityState(engine, explosive.handles["explosive-projectile"]);
+  const directEnemyPhysics = optionalPhysicsEntityState(engine, explosive.handles["blast-direct"]);
+  const splashEnemyPhysics = optionalPhysicsEntityState(engine, explosive.handles["blast-splash"]);
+  const farEnemyPhysics = optionalPhysicsEntityState(engine, explosive.handles["blast-far"]);
+  return {
+    customState: {
+      handles: explosive.handles,
+      commandSummary: explosive.commandSummary,
+      ...(projectilePhysics === undefined ? {} : { projectilePhysics }),
+      ...(directEnemyPhysics === undefined ? {} : { directEnemyPhysics }),
+      ...(splashEnemyPhysics === undefined ? {} : { splashEnemyPhysics }),
+      ...(farEnemyPhysics === undefined ? {} : { farEnemyPhysics }),
+      gameplayEvents: readGameplayEventSummary(engine),
+    },
+  };
+}
+
+function tileImpactAreaDamageSnapshotOptions(engine, authored) {
+  if (authored === undefined) {
+    return {};
+  }
+  const projectilePhysics = optionalPhysicsEntityState(engine, authored.handles["tile-projectile"]);
+  const directEnemyPhysics = optionalPhysicsEntityState(engine, authored.handles["tile-blast-direct"]);
+  const splashEnemyPhysics = optionalPhysicsEntityState(engine, authored.handles["tile-blast-splash"]);
+  const farEnemyPhysics = optionalPhysicsEntityState(engine, authored.handles["tile-blast-far"]);
+  return {
+    customState: {
+      handles: authored.handles,
+      commandSummary: authored.commandSummary,
+      ...(projectilePhysics === undefined ? {} : { projectilePhysics }),
+      ...(directEnemyPhysics === undefined ? {} : { directEnemyPhysics }),
+      ...(splashEnemyPhysics === undefined ? {} : { splashEnemyPhysics }),
+      ...(farEnemyPhysics === undefined ? {} : { farEnemyPhysics }),
+      gameplayEvents: readGameplayEventSummary(engine),
+    },
+  };
 }
 
 function waveActionSnapshotOptions(engine, source) {
@@ -1539,6 +1911,20 @@ function physicsEntityState(engine, handle) {
     true,
     "authored scenario physics entity must be queryable",
   );
+  return {
+    entityId: handle.entityId,
+    entityGeneration: handle.entityGeneration,
+    x: engine.physics_entity_x(),
+    y: engine.physics_entity_y(),
+    velocityX: engine.physics_entity_velocity_x(),
+    velocityY: engine.physics_entity_velocity_y(),
+  };
+}
+
+function optionalPhysicsEntityState(engine, handle) {
+  if (!engine.query_physics_entity(handle.entityId, handle.entityGeneration)) {
+    return undefined;
+  }
   return {
     entityId: handle.entityId,
     entityGeneration: handle.entityGeneration,
@@ -1768,10 +2154,10 @@ function appendSnapshot(engine, snapshots, frame, options = {}) {
 
 function captureShooterStateSnapshot(engine) {
   assert.equal(engine.capture_shooter_snapshot(), true, "shooter snapshot capture must succeed");
-  assert.equal(engine.shooter_snapshot_header_floats(), BUILT_IN_SHOOTER_STATE_HEADER_FLOATS, "shooter header float stride must match built-in state v11");
-  assert.equal(engine.shooter_snapshot_header_u32s(), BUILT_IN_SHOOTER_STATE_HEADER_U32S, "shooter header u32 stride must match built-in state v11");
-  assert.equal(engine.shooter_snapshot_entity_floats(), BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY, "shooter entity float stride must match built-in state v11");
-  assert.equal(engine.shooter_snapshot_entity_u32s(), BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY, "shooter entity u32 stride must match built-in state v11");
+  assert.equal(engine.shooter_snapshot_header_floats(), BUILT_IN_SHOOTER_STATE_HEADER_FLOATS, "shooter header float stride must match built-in state snapshot ABI");
+  assert.equal(engine.shooter_snapshot_header_u32s(), BUILT_IN_SHOOTER_STATE_HEADER_U32S, "shooter header u32 stride must match built-in state snapshot ABI");
+  assert.equal(engine.shooter_snapshot_entity_floats(), BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY, "shooter entity float stride must match built-in state snapshot ABI");
+  assert.equal(engine.shooter_snapshot_entity_u32s(), BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY, "shooter entity u32 stride must match built-in state snapshot ABI");
   const headerFloats = copyFloatBuffer(engine.shooter_snapshot_header_float_ptr(), engine.shooter_snapshot_header_float_len());
   const headerU32s = copyU32Buffer(engine.shooter_snapshot_header_u32_ptr(), engine.shooter_snapshot_header_u32_len());
   const entityFloats = copyFloatBuffer(engine.shooter_snapshot_entity_float_ptr(), engine.shooter_snapshot_entity_float_len());
@@ -1996,6 +2382,42 @@ function validateTopdownAuthoredProjectileTileImpactFsmFixture(fixture, fixtureP
     this.input.events,
   );
   validateAuthoredProjectileTileImpactFsmScenarioOutcome.call(this, fixture, fixturePath);
+}
+
+function validateTopdownHomingMissileFixture(fixture, fixturePath) {
+  validateGoldenFixtureCommon(
+    fixture,
+    fixturePath,
+    this,
+    this.frameCount,
+    this.captureFrames,
+    this.input.events,
+  );
+  validateHomingMissileScenarioOutcome.call(this, fixture, fixturePath);
+}
+
+function validateTopdownExplosiveProjectileFixture(fixture, fixturePath) {
+  validateGoldenFixtureCommon(
+    fixture,
+    fixturePath,
+    this,
+    this.frameCount,
+    this.captureFrames,
+    this.input.events,
+  );
+  validateExplosiveProjectileScenarioOutcome.call(this, fixture, fixturePath);
+}
+
+function validateTopdownTileImpactAreaDamageFixture(fixture, fixturePath) {
+  validateGoldenFixtureCommon(
+    fixture,
+    fixturePath,
+    this,
+    this.frameCount,
+    this.captureFrames,
+    this.input.events,
+  );
+  validateTileImpactAreaDamageScenarioOutcome.call(this, fixture, fixturePath);
 }
 
 function validateTopdownWaveActionFixture(fixture, fixturePath) {
@@ -2325,6 +2747,261 @@ function validateAuthoredProjectileTileImpactFsmScenarioOutcome(fixture, label) 
     this.expected.eventKinds,
     `${label} must include authored projectile tile impact FSM event kinds`,
   );
+}
+
+function validateHomingMissileScenarioOutcome(fixture, label) {
+  const snapshots = fixture.run?.snapshots ?? [];
+  const authoringFrame = this.input.events.find((event) => event.type === "authoring")?.frame;
+  const setupSnapshot = snapshots.find((entry) => entry.frame === authoringFrame)?.snapshot;
+  const movementSnapshot = snapshots.find((entry) => entry.frame === this.expected.movementFrame)?.snapshot;
+  const eventSnapshot = snapshots.find((entry) => entry.frame === this.expected.eventFrame)?.snapshot;
+  const finalSnapshot = snapshots.at(-1)?.snapshot;
+  const handles = eventSnapshot?.custom?.handles;
+  const missile = handles?.missile;
+  const hostileEnemy = handles?.["hostile-enemy"];
+  const decoyEnemy = handles?.["decoy-enemy"];
+
+  assert.equal(finalSnapshot?.frame, this.frameCount, `${label} final snapshot frame must match`);
+  assert.equal(finalSnapshot?.scene?.score, this.expected.finalScore, `${label} final score must include homing missile reward`);
+  assert.deepEqual(
+    setupSnapshot?.custom?.commandSummary.map((command) => `${command.entity}:${command.type}`),
+    this.expected.boundCommands,
+    `${label} must bind expected homing missile behavior commands`,
+  );
+  assert.deepEqual(setupSnapshot?.custom?.gameplayEvents, [], `${label} setup frame must not emit gameplay events early`);
+  assert.equal(movementSnapshot?.scene?.score, 0, `${label} movement frame must occur before collision score`);
+  assert.ok(
+    movementSnapshot?.custom?.missilePhysics?.x > this.homingMissile.bodies.missile.x,
+    `${label} missile must move toward the tagged hostile target before impact`,
+  );
+  assertApproximatelyEqual(
+    movementSnapshot?.custom?.missilePhysics?.y,
+    this.homingMissile.bodies.missile.y,
+    `${label} missile should stay on the horizontal homing line before impact`,
+  );
+  assert.deepEqual(eventSnapshot?.custom?.gameplayEvents, [
+    {
+      kind: "collisionDamage",
+      kindCode: GAMEPLAY_EVENT_KIND_COLLISION_DAMAGE,
+      actorId: hostileEnemy?.entityId,
+      actorGeneration: hostileEnemy?.entityGeneration,
+      sourceId: missile?.entityId,
+      sourceGeneration: missile?.entityGeneration,
+      tokenId: 0,
+      flags: GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
+      targetRemoved: true,
+      payloadBits: f32Bits(this.homingMissile.expected.damage),
+    },
+    {
+      kind: "collisionDespawn",
+      kindCode: GAMEPLAY_EVENT_KIND_COLLISION_DESPAWN,
+      actorId: missile?.entityId,
+      actorGeneration: missile?.entityGeneration,
+      sourceId: missile?.entityId,
+      sourceGeneration: missile?.entityGeneration,
+      tokenId: 0,
+      flags: GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
+      targetRemoved: true,
+      payloadBits: 0,
+    },
+    {
+      kind: "presentationEffect",
+      kindCode: GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT,
+      actorId: missile?.entityId,
+      actorGeneration: missile?.entityGeneration,
+      sourceId: hostileEnemy?.entityId,
+      sourceGeneration: hostileEnemy?.entityGeneration,
+      tokenId: this.homingMissile.expected.particlePresetId,
+      flags: 0,
+      targetRemoved: false,
+      payloadBits: GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE,
+    },
+  ], `${label} must include exact homing missile impact telemetry`);
+  assert.deepEqual(
+    (eventSnapshot?.custom?.gameplayEvents ?? []).map((event) => event.kind),
+    this.expected.eventKinds,
+    `${label} must include homing missile event kinds`,
+  );
+  assert.equal(eventSnapshot?.scene?.score, this.expected.finalScore, `${label} impact frame must apply score reward`);
+  assert.equal(eventSnapshot?.custom?.missilePhysics, undefined, `${label} impact frame must despawn missile`);
+  assert.equal(eventSnapshot?.custom?.hostileEnemyPhysics, undefined, `${label} impact frame must despawn hostile enemy`);
+  assert.ok(eventSnapshot?.custom?.decoyEnemyPhysics !== undefined, `${label} nearestTag target must leave untagged decoy alive`);
+  assert.equal(
+    eventSnapshot?.custom?.decoyEnemyPhysics?.entityId,
+    decoyEnemy?.entityId,
+    `${label} surviving decoy physics state must match decoy handle`,
+  );
+  assert.deepEqual(finalSnapshot?.custom?.gameplayEvents, [], `${label} final frame must clear gameplay event buffer`);
+}
+
+function validateExplosiveProjectileScenarioOutcome(fixture, label) {
+  const snapshots = fixture.run?.snapshots ?? [];
+  const authoringFrame = this.input.events.find((event) => event.type === "authoring")?.frame;
+  const setupSnapshot = snapshots.find((entry) => entry.frame === authoringFrame)?.snapshot;
+  const movementSnapshot = snapshots.find((entry) => entry.frame === this.expected.movementFrame)?.snapshot;
+  const eventSnapshot = snapshots.find((entry) => entry.frame === this.expected.eventFrame)?.snapshot;
+  const finalSnapshot = snapshots.at(-1)?.snapshot;
+  const handles = eventSnapshot?.custom?.handles;
+  const projectile = handles?.["explosive-projectile"];
+  const directEnemy = handles?.["blast-direct"];
+  const splashEnemy = handles?.["blast-splash"];
+  const farEnemy = handles?.["blast-far"];
+
+  assert.equal(finalSnapshot?.frame, this.frameCount, `${label} final snapshot frame must match`);
+  assert.equal(finalSnapshot?.scene?.score, this.expected.finalScore, `${label} final score must include explosive area reward`);
+  assert.deepEqual(
+    setupSnapshot?.custom?.commandSummary.map((command) => `${command.entity}:${command.type}`),
+    this.expected.boundCommands,
+    `${label} must bind expected explosive projectile behavior commands`,
+  );
+  assert.deepEqual(setupSnapshot?.custom?.gameplayEvents, [], `${label} setup frame must not emit gameplay events early`);
+  assert.equal(movementSnapshot?.scene?.score, 0, `${label} movement frame must occur before explosive impact score`);
+  assert.ok(
+    movementSnapshot?.custom?.projectilePhysics?.x > this.explosiveProjectile.bodies["explosive-projectile"].x,
+    `${label} explosive projectile must move before impact`,
+  );
+  assert.deepEqual(eventSnapshot?.custom?.gameplayEvents, [
+    {
+      kind: "collisionDamage",
+      kindCode: GAMEPLAY_EVENT_KIND_COLLISION_DAMAGE,
+      actorId: directEnemy?.entityId,
+      actorGeneration: directEnemy?.entityGeneration,
+      sourceId: projectile?.entityId,
+      sourceGeneration: projectile?.entityGeneration,
+      tokenId: 0,
+      flags: GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
+      targetRemoved: true,
+      payloadBits: f32Bits(this.explosiveProjectile.expected.damage),
+    },
+    {
+      kind: "collisionDamage",
+      kindCode: GAMEPLAY_EVENT_KIND_COLLISION_DAMAGE,
+      actorId: splashEnemy?.entityId,
+      actorGeneration: splashEnemy?.entityGeneration,
+      sourceId: projectile?.entityId,
+      sourceGeneration: projectile?.entityGeneration,
+      tokenId: 0,
+      flags: GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
+      targetRemoved: true,
+      payloadBits: f32Bits(this.explosiveProjectile.expected.damage),
+    },
+    {
+      kind: "collisionDespawn",
+      kindCode: GAMEPLAY_EVENT_KIND_COLLISION_DESPAWN,
+      actorId: projectile?.entityId,
+      actorGeneration: projectile?.entityGeneration,
+      sourceId: projectile?.entityId,
+      sourceGeneration: projectile?.entityGeneration,
+      tokenId: 0,
+      flags: GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
+      targetRemoved: true,
+      payloadBits: 0,
+    },
+    {
+      kind: "presentationEffect",
+      kindCode: GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT,
+      actorId: projectile?.entityId,
+      actorGeneration: projectile?.entityGeneration,
+      sourceId: directEnemy?.entityId,
+      sourceGeneration: directEnemy?.entityGeneration,
+      tokenId: this.explosiveProjectile.expected.effectId,
+      flags: 0,
+      targetRemoved: false,
+      payloadBits: GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE,
+    },
+  ], `${label} must include exact explosive projectile impact telemetry`);
+  assert.deepEqual(
+    (eventSnapshot?.custom?.gameplayEvents ?? []).map((event) => event.kind),
+    this.expected.eventKinds,
+    `${label} must include explosive projectile event kinds`,
+  );
+  assert.equal(eventSnapshot?.scene?.score, this.expected.finalScore, `${label} impact frame must apply area score reward`);
+  assert.equal(eventSnapshot?.custom?.projectilePhysics, undefined, `${label} impact frame must despawn explosive projectile`);
+  assert.equal(eventSnapshot?.custom?.directEnemyPhysics, undefined, `${label} impact frame must despawn direct target`);
+  assert.equal(eventSnapshot?.custom?.splashEnemyPhysics, undefined, `${label} impact frame must despawn splash target`);
+  assert.ok(eventSnapshot?.custom?.farEnemyPhysics !== undefined, `${label} area damage radius must leave far target alive`);
+  assert.equal(
+    eventSnapshot?.custom?.farEnemyPhysics?.entityId,
+    farEnemy?.entityId,
+    `${label} surviving far enemy physics state must match far enemy handle`,
+  );
+  assert.deepEqual(finalSnapshot?.custom?.gameplayEvents, [], `${label} final frame must clear gameplay event buffer`);
+}
+
+function validateTileImpactAreaDamageScenarioOutcome(fixture, label) {
+  const snapshots = fixture.run?.snapshots ?? [];
+  const authoringFrame = this.input.events.find((event) => event.type === "authoring")?.frame;
+  const setupSnapshot = snapshots.find((entry) => entry.frame === authoringFrame)?.snapshot;
+  const eventSnapshot = snapshots.find((entry) => entry.frame === this.expected.eventFrame)?.snapshot;
+  const finalSnapshot = snapshots.at(-1)?.snapshot;
+  const handles = eventSnapshot?.custom?.handles;
+  const projectile = handles?.["tile-projectile"];
+  const directEnemy = handles?.["tile-blast-direct"];
+  const splashEnemy = handles?.["tile-blast-splash"];
+  const farEnemy = handles?.["tile-blast-far"];
+
+  assert.equal(finalSnapshot?.frame, this.frameCount, `${label} final snapshot frame must match`);
+  assert.equal(finalSnapshot?.scene?.score, this.expected.finalScore, `${label} final score must include tile impact area reward`);
+  assert.deepEqual(
+    setupSnapshot?.custom?.commandSummary.map((command) => `${command.entity}:${command.type}`),
+    this.expected.boundCommands,
+    `${label} must bind expected tile impact area damage commands`,
+  );
+  assert.deepEqual(setupSnapshot?.custom?.gameplayEvents, [], `${label} setup frame must not emit gameplay events early`);
+  assert.deepEqual(eventSnapshot?.custom?.gameplayEvents, [
+    {
+      kind: "collisionDamage",
+      kindCode: GAMEPLAY_EVENT_KIND_COLLISION_DAMAGE,
+      actorId: directEnemy?.entityId,
+      actorGeneration: directEnemy?.entityGeneration,
+      sourceId: projectile?.entityId,
+      sourceGeneration: projectile?.entityGeneration,
+      tokenId: 0,
+      flags: GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
+      targetRemoved: true,
+      payloadBits: f32Bits(this.tileImpactAreaDamage.expected.damage),
+    },
+    {
+      kind: "collisionDamage",
+      kindCode: GAMEPLAY_EVENT_KIND_COLLISION_DAMAGE,
+      actorId: splashEnemy?.entityId,
+      actorGeneration: splashEnemy?.entityGeneration,
+      sourceId: projectile?.entityId,
+      sourceGeneration: projectile?.entityGeneration,
+      tokenId: 0,
+      flags: GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
+      targetRemoved: true,
+      payloadBits: f32Bits(this.tileImpactAreaDamage.expected.damage),
+    },
+    {
+      kind: "tileImpact",
+      kindCode: GAMEPLAY_EVENT_KIND_TILE_IMPACT,
+      actorId: projectile?.entityId,
+      actorGeneration: projectile?.entityGeneration,
+      sourceId: projectile?.entityId,
+      sourceGeneration: projectile?.entityGeneration,
+      tokenId: this.tileImpactAreaDamage.tileImpactCode,
+      flags: this.expected.tileImpact.flags,
+      targetRemoved: true,
+      payloadBits: this.expected.tileImpact.payloadBits,
+    },
+  ], `${label} must include exact tile impact area damage telemetry`);
+  assert.deepEqual(
+    (eventSnapshot?.custom?.gameplayEvents ?? []).map((event) => event.kind),
+    this.expected.eventKinds,
+    `${label} must include tile impact area damage event kinds`,
+  );
+  assert.equal(eventSnapshot?.scene?.score, this.expected.finalScore, `${label} impact frame must apply tile impact area score reward`);
+  assert.equal(eventSnapshot?.custom?.projectilePhysics, undefined, `${label} impact frame must despawn tile projectile`);
+  assert.equal(eventSnapshot?.custom?.directEnemyPhysics, undefined, `${label} impact frame must despawn direct tile area target`);
+  assert.equal(eventSnapshot?.custom?.splashEnemyPhysics, undefined, `${label} impact frame must despawn splash tile area target`);
+  assert.ok(eventSnapshot?.custom?.farEnemyPhysics !== undefined, `${label} tile area radius must leave far target alive`);
+  assert.equal(
+    eventSnapshot?.custom?.farEnemyPhysics?.entityId,
+    farEnemy?.entityId,
+    `${label} surviving far enemy physics state must match far enemy handle`,
+  );
+  assert.deepEqual(finalSnapshot?.custom?.gameplayEvents, [], `${label} final frame must clear gameplay event buffer`);
 }
 
 function validateWaveActionScenarioOutcome(fixture, label) {
@@ -2818,28 +3495,37 @@ function validateScenarioManifest(manifest, manifestPath) {
       assertNonNegativeInteger(scenario.expected.spawnExpectationPatchCount, `${label}.expected.spawnExpectationPatchCount`);
     }
 
-    if (scenario.runner === "topdownAuthoredBehavior") {
+    if (scenario.runner === "exampleTopdownAuthoredBehavior") {
       assertAuthoredScenarioMetadata(scenario, label);
     }
-    if (scenario.runner === "topdownAuthoredPlayerDamageCollision") {
+    if (scenario.runner === "playerDamageCollision") {
       assertAuthoredPlayerDamageCollisionScenarioMetadata(scenario, label);
     }
-    if (scenario.runner === "topdownAuthoredProjectileTileImpactFsm") {
+    if (scenario.runner === "projectileTileImpactFsmAuthored") {
       assertAuthoredProjectileTileImpactFsmScenarioMetadata(scenario, label);
     }
-    if (scenario.runner === "topdownWaveActionTrigger") {
+    if (scenario.runner === "projectileHomingNearestTag") {
+      assertHomingMissileScenarioMetadata(scenario, label);
+    }
+    if (scenario.runner === "projectileAreaDamageEntityImpact") {
+      assertExplosiveProjectileScenarioMetadata(scenario, label);
+    }
+    if (scenario.runner === "projectileAreaDamageTileImpact") {
+      assertTileImpactAreaDamageScenarioMetadata(scenario, label);
+    }
+    if (scenario.runner === "waveActionSpawnPrefab") {
       assertWaveActionScenarioMetadata(scenario, label);
     }
-    if (scenario.runner === "topdownStateEnterActionTrigger") {
+    if (scenario.runner === "fsmStateEnterSpawnPrefab") {
       assertStateEnterActionScenarioMetadata(scenario, label);
     }
-    if (scenario.runner === "topdownStateEnterDashActionTrigger") {
+    if (scenario.runner === "fsmStateEnterDashAction") {
       assertStateEnterDashActionScenarioMetadata(scenario, label);
     }
-    if (scenario.runner === "topdownStateEnterProjectileActionTrigger") {
+    if (scenario.runner === "fsmStateEnterProjectileAction") {
       assertStateEnterProjectileActionScenarioMetadata(scenario, label);
     }
-    if (scenario.runner === "topdownStateEnterMeleeActionTrigger") {
+    if (scenario.runner === "fsmStateEnterMeleeAction") {
       assertStateEnterMeleeActionScenarioMetadata(scenario, label);
     }
   });
@@ -3415,6 +4101,242 @@ function assertAuthoredProjectileTileImpactFsmScenarioMetadata(scenario, label) 
   assertFiniteNumber(scenario.expected.fsmState, `${label}.expected.fsmState`);
 }
 
+function assertHomingMissileScenarioMetadata(scenario, label) {
+  const authoredEvents = scenario.input.events.filter((event) => event.type === "authoring");
+  assert.equal(authoredEvents.length, 1, `${label} must include exactly one homing missile authoring event`);
+  assertPlainObject(scenario.homingMissile, `${label}.homingMissile`);
+  assertPlainObject(scenario.homingMissile.ids, `${label}.homingMissile.ids`);
+  assertPlainObject(scenario.homingMissile.ids.tags, `${label}.homingMissile.ids.tags`);
+  assertFiniteNumber(scenario.homingMissile.ids.tags.hostile, `${label}.homingMissile.ids.tags.hostile`);
+  assertPlainObject(scenario.homingMissile.bodies, `${label}.homingMissile.bodies`);
+  for (const bodyName of ["missile", "hostile-enemy", "decoy-enemy"]) {
+    assertBodyMetadata(scenario.homingMissile.bodies[bodyName], `${label}.homingMissile.bodies.${bodyName}`);
+  }
+  assert.equal(scenario.homingMissile.bodies.missile.bodyType, PHYSICS_BODY_DYNAMIC, `${label}.homingMissile.bodies.missile.bodyType must be dynamic`);
+  assert.equal(scenario.homingMissile.bodies.missile.layer, PHYSICS_LAYER_BULLET, `${label}.homingMissile.bodies.missile.layer must be Bullet`);
+  assert.equal(scenario.homingMissile.bodies["hostile-enemy"].layer, PHYSICS_LAYER_ENEMY, `${label}.homingMissile.bodies.hostile-enemy.layer must be Enemy`);
+  assert.equal(scenario.homingMissile.bodies["decoy-enemy"].layer, PHYSICS_LAYER_ENEMY, `${label}.homingMissile.bodies.decoy-enemy.layer must be Enemy`);
+  assertPlainObject(scenario.homingMissile.expected, `${label}.homingMissile.expected`);
+  assertFiniteNumber(scenario.homingMissile.expected.damage, `${label}.homingMissile.expected.damage`);
+  assertFiniteNumber(scenario.homingMissile.expected.particlePresetId, `${label}.homingMissile.expected.particlePresetId`);
+
+  const composition = resolveSceneCompositionSpec(scenario.homingMissile.sceneComposition, {
+    path: `${label}.homingMissile.sceneComposition`,
+  });
+  const recipes = resolveBehaviorRecipeDocument(scenario.homingMissile.behaviorRecipes, {
+    path: `${label}.homingMissile.behaviorRecipes`,
+  });
+  const plan = bindSceneBehaviorRecipes(composition, recipes, {
+    path: `${label}.homingMissile.gameplayAuthoring`,
+    missingBehavior: "error",
+  });
+  assert.deepEqual(
+    plan.commands.map((command) => `${command.entity}:${command.type}`),
+    scenario.expected.boundCommands,
+    `${label}.expected.boundCommands must match homing missile bound command order`,
+  );
+  assert.equal(
+    commandByEntityAndType(plan.commands, "missile", "configureSeekTarget").target,
+    "nearestTag:hostile",
+    `${label} missile must seek nearest hostile tag`,
+  );
+  assert.equal(
+    commandByEntityAndType(plan.commands, "missile", "configureDamage").amount,
+    scenario.homingMissile.expected.damage,
+    `${label} missile damage command must match expected damage`,
+  );
+  assert.equal(
+    commandByEntityAndType(plan.commands, "missile", "configureCollisionParticle").presetId,
+    scenario.homingMissile.expected.particlePresetId,
+    `${label} missile particle command must match expected preset`,
+  );
+  assert.deepEqual(
+    commandByEntityAndType(plan.commands, "hostile-enemy", "configureTags").tags,
+    ["hostile"],
+    `${label} hostile enemy must install hostile tag`,
+  );
+  assertFiniteNumber(scenario.expected.movementFrame, `${label}.expected.movementFrame`);
+  assertFiniteNumber(scenario.expected.eventFrame, `${label}.expected.eventFrame`);
+  assert.ok(scenario.captureFrames.includes(authoredEvents[0].frame), `${label}.captureFrames must include the authoring frame`);
+  assert.ok(scenario.captureFrames.includes(scenario.expected.movementFrame), `${label}.captureFrames must include expected.movementFrame`);
+  assert.ok(scenario.captureFrames.includes(scenario.expected.eventFrame), `${label}.captureFrames must include expected.eventFrame`);
+  assert.deepEqual(
+    scenario.expected.eventKinds,
+    ["collisionDamage", "collisionDespawn", "presentationEffect"],
+    `${label}.expected.eventKinds must stay exact`,
+  );
+}
+
+function assertExplosiveProjectileScenarioMetadata(scenario, label) {
+  const authoredEvents = scenario.input.events.filter((event) => event.type === "authoring");
+  assert.equal(authoredEvents.length, 1, `${label} must include exactly one explosive projectile authoring event`);
+  assertPlainObject(scenario.explosiveProjectile, `${label}.explosiveProjectile`);
+  assertPlainObject(scenario.explosiveProjectile.bodies, `${label}.explosiveProjectile.bodies`);
+  for (const bodyName of ["explosive-projectile", "blast-direct", "blast-splash", "blast-far"]) {
+    assertBodyMetadata(scenario.explosiveProjectile.bodies[bodyName], `${label}.explosiveProjectile.bodies.${bodyName}`);
+  }
+  assert.equal(
+    scenario.explosiveProjectile.bodies["explosive-projectile"].bodyType,
+    PHYSICS_BODY_DYNAMIC,
+    `${label}.explosiveProjectile.bodies.explosive-projectile.bodyType must be dynamic`,
+  );
+  assert.equal(
+    scenario.explosiveProjectile.bodies["explosive-projectile"].layer,
+    PHYSICS_LAYER_BULLET,
+    `${label}.explosiveProjectile.bodies.explosive-projectile.layer must be Bullet`,
+  );
+  for (const bodyName of ["blast-direct", "blast-splash", "blast-far"]) {
+    assert.equal(
+      scenario.explosiveProjectile.bodies[bodyName].layer,
+      PHYSICS_LAYER_ENEMY,
+      `${label}.explosiveProjectile.bodies.${bodyName}.layer must be Enemy`,
+    );
+  }
+  assertPlainObject(scenario.explosiveProjectile.expected, `${label}.explosiveProjectile.expected`);
+  assertFiniteNumber(scenario.explosiveProjectile.expected.damage, `${label}.explosiveProjectile.expected.damage`);
+  assertFiniteNumber(scenario.explosiveProjectile.expected.radius, `${label}.explosiveProjectile.expected.radius`);
+  assertFiniteNumber(scenario.explosiveProjectile.expected.effectId, `${label}.explosiveProjectile.expected.effectId`);
+
+  const composition = resolveSceneCompositionSpec(scenario.explosiveProjectile.sceneComposition, {
+    path: `${label}.explosiveProjectile.sceneComposition`,
+  });
+  const recipes = resolveBehaviorRecipeDocument(scenario.explosiveProjectile.behaviorRecipes, {
+    path: `${label}.explosiveProjectile.behaviorRecipes`,
+  });
+  const plan = bindSceneBehaviorRecipes(composition, recipes, {
+    path: `${label}.explosiveProjectile.gameplayAuthoring`,
+    missingBehavior: "error",
+  });
+  assert.deepEqual(
+    plan.commands.map((command) => `${command.entity}:${command.type}`),
+    scenario.expected.boundCommands,
+    `${label}.expected.boundCommands must match explosive projectile bound command order`,
+  );
+  const areaDamageCommand = commandByEntityAndType(plan.commands, "explosive-projectile", "configureCollisionAreaDamage");
+  assert.equal(
+    areaDamageCommand.amount,
+    scenario.explosiveProjectile.expected.damage,
+    `${label} explosive projectile area damage amount must match expected damage`,
+  );
+  assert.equal(
+    areaDamageCommand.radius,
+    scenario.explosiveProjectile.expected.radius,
+    `${label} explosive projectile area damage radius must match expected radius`,
+  );
+  assert.equal(
+    areaDamageCommand.targetLayer,
+    "enemy",
+    `${label} explosive projectile area damage must target enemy layer`,
+  );
+  const emitEffectCommand = commandByEntityAndType(plan.commands, "explosive-projectile", "configureCollisionEmitEffect");
+  assert.equal(
+    emitEffectCommand.effectId,
+    scenario.explosiveProjectile.expected.effectId,
+    `${label} explosive projectile effect id must match expected effect`,
+  );
+  assert.equal(
+    emitEffectCommand.effectKind,
+    "particle",
+    `${label} explosive projectile effect kind must stay particle`,
+  );
+  assertFiniteNumber(scenario.expected.movementFrame, `${label}.expected.movementFrame`);
+  assertFiniteNumber(scenario.expected.eventFrame, `${label}.expected.eventFrame`);
+  assert.ok(scenario.captureFrames.includes(authoredEvents[0].frame), `${label}.captureFrames must include the authoring frame`);
+  assert.ok(scenario.captureFrames.includes(scenario.expected.movementFrame), `${label}.captureFrames must include expected.movementFrame`);
+  assert.ok(scenario.captureFrames.includes(scenario.expected.eventFrame), `${label}.captureFrames must include expected.eventFrame`);
+  assert.deepEqual(
+    scenario.expected.eventKinds,
+    ["collisionDamage", "collisionDamage", "collisionDespawn", "presentationEffect"],
+    `${label}.expected.eventKinds must stay exact`,
+  );
+}
+
+function assertTileImpactAreaDamageScenarioMetadata(scenario, label) {
+  const authoredEvents = scenario.input.events.filter((event) => event.type === "authoring");
+  assert.equal(authoredEvents.length, 1, `${label} must include exactly one tile impact area damage authoring event`);
+  assertPlainObject(scenario.tileImpactAreaDamage, `${label}.tileImpactAreaDamage`);
+  assertPlainObject(scenario.tileImpactAreaDamage.bodies, `${label}.tileImpactAreaDamage.bodies`);
+  for (const bodyName of ["tile-projectile", "tile-blast-direct", "tile-blast-splash", "tile-blast-far"]) {
+    assertBodyMetadata(scenario.tileImpactAreaDamage.bodies[bodyName], `${label}.tileImpactAreaDamage.bodies.${bodyName}`);
+  }
+  assert.equal(
+    scenario.tileImpactAreaDamage.bodies["tile-projectile"].bodyType,
+    PHYSICS_BODY_DYNAMIC,
+    `${label}.tileImpactAreaDamage.bodies.tile-projectile.bodyType must be dynamic`,
+  );
+  assert.equal(
+    scenario.tileImpactAreaDamage.bodies["tile-projectile"].layer,
+    PHYSICS_LAYER_BULLET,
+    `${label}.tileImpactAreaDamage.bodies.tile-projectile.layer must be Bullet`,
+  );
+  for (const bodyName of ["tile-blast-direct", "tile-blast-splash", "tile-blast-far"]) {
+    assert.equal(
+      scenario.tileImpactAreaDamage.bodies[bodyName].layer,
+      PHYSICS_LAYER_ENEMY,
+      `${label}.tileImpactAreaDamage.bodies.${bodyName}.layer must be Enemy`,
+    );
+  }
+  assertPlainObject(scenario.tileImpactAreaDamage.velocity, `${label}.tileImpactAreaDamage.velocity`);
+  assertFiniteNumber(scenario.tileImpactAreaDamage.velocity.x, `${label}.tileImpactAreaDamage.velocity.x`);
+  assertFiniteNumber(scenario.tileImpactAreaDamage.velocity.y, `${label}.tileImpactAreaDamage.velocity.y`);
+  assert.equal(
+    scenario.tileImpactAreaDamage.tileImpactCode,
+    0,
+    `${label}.tileImpactAreaDamage.tileImpactCode must be despawn for terminal tile area coverage`,
+  );
+  assertBlockedTilemapMetadata(scenario.tileImpactAreaDamage.blockingTilemap, `${label}.tileImpactAreaDamage.blockingTilemap`);
+  assertPlainObject(scenario.tileImpactAreaDamage.expected, `${label}.tileImpactAreaDamage.expected`);
+  assertFiniteNumber(scenario.tileImpactAreaDamage.expected.damage, `${label}.tileImpactAreaDamage.expected.damage`);
+  assertFiniteNumber(scenario.tileImpactAreaDamage.expected.radius, `${label}.tileImpactAreaDamage.expected.radius`);
+
+  const composition = resolveSceneCompositionSpec(scenario.tileImpactAreaDamage.sceneComposition, {
+    path: `${label}.tileImpactAreaDamage.sceneComposition`,
+  });
+  const recipes = resolveBehaviorRecipeDocument(scenario.tileImpactAreaDamage.behaviorRecipes, {
+    path: `${label}.tileImpactAreaDamage.behaviorRecipes`,
+  });
+  const plan = bindSceneBehaviorRecipes(composition, recipes, {
+    path: `${label}.tileImpactAreaDamage.gameplayAuthoring`,
+    missingBehavior: "error",
+  });
+  assert.deepEqual(
+    plan.commands.map((command) => `${command.entity}:${command.type}`),
+    scenario.expected.boundCommands,
+    `${label}.expected.boundCommands must match tile impact area damage bound command order`,
+  );
+  const areaDamageCommand = commandByEntityAndType(plan.commands, "tile-projectile", "configureCollisionAreaDamage");
+  assert.equal(
+    areaDamageCommand.amount,
+    scenario.tileImpactAreaDamage.expected.damage,
+    `${label} tile impact area damage amount must match expected damage`,
+  );
+  assert.equal(
+    areaDamageCommand.radius,
+    scenario.tileImpactAreaDamage.expected.radius,
+    `${label} tile impact area damage radius must match expected radius`,
+  );
+  assert.equal(
+    areaDamageCommand.targetLayer,
+    "enemy",
+    `${label} tile impact area damage must target enemy layer`,
+  );
+  assertFiniteNumber(scenario.expected.eventFrame, `${label}.expected.eventFrame`);
+  assert.ok(scenario.captureFrames.includes(authoredEvents[0].frame), `${label}.captureFrames must include the authoring frame`);
+  assert.ok(scenario.captureFrames.includes(scenario.expected.eventFrame), `${label}.captureFrames must include expected.eventFrame`);
+  assert.deepEqual(
+    scenario.expected.eventKinds,
+    ["collisionDamage", "collisionDamage", "tileImpact"],
+    `${label}.expected.eventKinds must stay exact`,
+  );
+  assertTileImpactExpectation(scenario.expected.tileImpact, `${label}.expected.tileImpact`);
+  assert.equal(
+    scenario.expected.tileImpact.flags,
+    GAMEPLAY_EVENT_FLAG_TARGET_REMOVED
+      | (GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_POSITIVE_X << GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_SHIFT),
+    `${label}.expected.tileImpact.flags must encode terminal positive-x tile impact`,
+  );
+}
+
 function assertWaveActionScenarioMetadata(scenario, label) {
   assertPlainObject(scenario.waveAction, `${label}.waveAction`);
   assertFiniteNumber(scenario.waveAction.waveIndex, `${label}.waveAction.waveIndex`);
@@ -3706,6 +4628,16 @@ function assertBodyMetadata(body, label) {
   for (const field of ["x", "y", "halfWidth", "halfHeight", "layer"]) {
     assertFiniteNumber(body[field], `${label}.${field}`);
   }
+  for (const field of ["bodyType", "massOrDensity"]) {
+    if (body[field] !== undefined) {
+      assertFiniteNumber(body[field], `${label}.${field}`);
+    }
+  }
+  for (const field of ["useDensity", "canSleep"]) {
+    if (body[field] !== undefined) {
+      assert.equal(typeof body[field], "boolean", `${label}.${field} must be boolean`);
+    }
+  }
   if (body.isTrigger !== undefined) {
     assert.equal(typeof body.isTrigger, "boolean", `${label}.isTrigger must be boolean`);
   }
@@ -3875,7 +4807,7 @@ function parseArgs(args) {
     throw new Error(`unsupported gameplay replay smoke option: ${arg}`);
   }
   if (fixturePath !== undefined && scenario === "all") {
-    scenario = "topdown-basic";
+    scenario = "example-topdown-basic";
   }
   return {
     update,

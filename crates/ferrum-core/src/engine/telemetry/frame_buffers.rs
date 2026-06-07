@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::*;
 use crate::audio_event::AudioEvent;
 use crate::collision::PhysicsDebugLine;
 use crate::collision_event::CollisionEvent;
+use crate::effect_event::EffectEvent;
 use crate::gameplay_event::GameplayEvent;
 use crate::render_command::SpriteRenderCommand;
 
@@ -24,6 +25,14 @@ impl Engine {
 
     pub fn gameplay_event_len(&self) -> usize {
         self.gameplay_events.len()
+    }
+
+    pub fn effect_event_ptr(&self) -> *const EffectEvent {
+        self.effect_events.as_ptr()
+    }
+
+    pub fn effect_event_len(&self) -> usize {
+        self.effect_events.len()
     }
 
     pub fn frame_telemetry_ptr(&self) -> *const f64 {

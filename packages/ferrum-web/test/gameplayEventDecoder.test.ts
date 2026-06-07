@@ -20,6 +20,8 @@ import {
   GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED,
   GAMEPLAY_EVENT_KIND_TILE_IMPACT,
   GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED,
+  GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT,
+  GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
   GAMEPLAY_EVENT_FLAG_CONSUMED_THIS_FRAME,
   GAMEPLAY_EVENT_FLAG_ONCE,
   GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
@@ -28,6 +30,7 @@ import {
   GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_SHIFT,
   decodeGameplayEvents,
   gameplayEventKind,
+  gameplayPresentationEffectKind,
 } from "../src/gameplayEventDecoder.js";
 
 test("gameplay event kind constants match the Rust ABI codes", () => {
@@ -42,6 +45,7 @@ test("gameplay event kind constants match the Rust ABI codes", () => {
     [GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED, gameplayEventKind(GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED)],
     [GAMEPLAY_EVENT_KIND_TILE_IMPACT, gameplayEventKind(GAMEPLAY_EVENT_KIND_TILE_IMPACT)],
     [GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED, gameplayEventKind(GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED)],
+    [GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT, gameplayEventKind(GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT)],
   ], [
     [1, "interaction"],
     [2, "collisionDamage"],
@@ -53,6 +57,17 @@ test("gameplay event kind constants match the Rust ABI codes", () => {
     [8, "pickupCollected"],
     [9, "tileImpact"],
     [10, "factionDamageDenied"],
+    [11, "presentationEffect"],
+  ]);
+});
+
+test("gameplay presentation effect kind constants match the public effect codes", () => {
+  deepEqual([
+    [GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM, gameplayPresentationEffectKind(GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM)],
+    [99, gameplayPresentationEffectKind(99)],
+  ], [
+    [4, "custom"],
+    [99, "unknown"],
   ]);
 });
 
@@ -163,8 +178,16 @@ test("decodeGameplayEvents parses packed gameplay event u32s", () => {
       2,
       GAMEPLAY_EVENT_FLAG_TILE_IMPACT_BOUNCED | (GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NEGATIVE_X << GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_SHIFT),
       (1 << 24) | 4,
+      GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT,
+      13,
+      2,
+      7,
+      1,
+      99,
+      0,
+      GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
     ]),
-    eventCount: 10,
+    eventCount: 11,
     u32sPerEvent: 8,
   });
 
@@ -305,6 +328,20 @@ test("decodeGameplayEvents parses packed gameplay event u32s", () => {
       tokenId: 2,
       flags: GAMEPLAY_EVENT_FLAG_TILE_IMPACT_BOUNCED | (GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NEGATIVE_X << GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_SHIFT),
       payloadBits: (1 << 24) | 4,
+      once: false,
+      consumedThisFrame: false,
+      targetRemoved: false,
+    },
+    {
+      kind: "presentationEffect",
+      kindCode: GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT,
+      actorId: 13,
+      actorGeneration: 2,
+      sourceId: 7,
+      sourceGeneration: 1,
+      tokenId: 99,
+      flags: 0,
+      payloadBits: GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
       once: false,
       consumedThisFrame: false,
       targetRemoved: false,

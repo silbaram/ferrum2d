@@ -14,6 +14,46 @@ const packageRoots = {
 const repoPackageJson = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
 const packageManager = repoPackageJson.packageManager ?? "pnpm@10.8.0";
 const DEFAULT_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
+const CONSUMER_SMOKE_REPORT_FORMAT = "ferrum2d.package.consumer-smoke.report";
+const CONSUMER_SMOKE_REPORT_VERSION = 1;
+const AGENT_INSTALL_EXPECTED_FILES = Object.freeze([
+  "AGENTS.md",
+  "CLAUDE.md",
+  "GEMINI.md",
+  ".agents/harness/ferrum-game-development.md",
+  ".agents/harness/ferrum-runtime-replay.md",
+  ".agents/skills/ferrum-consumer-asset-pipeline/SKILL.md",
+  ".agents/skills/ferrum-consumer-build/SKILL.md",
+  ".agents/skills/ferrum-consumer-game-spec/SKILL.md",
+  ".agents/skills/ferrum-consumer-gameplay/SKILL.md",
+  ".agents/skills/ferrum-consumer-playtest/SKILL.md",
+  ".agents/skills/ferrum-consumer-project/SKILL.md",
+  ".codex/config.toml",
+  ".codex/agents/consumer-asset-agent.toml",
+  ".codex/agents/consumer-build-agent.toml",
+  ".codex/agents/consumer-game-spec-agent.toml",
+  ".codex/agents/consumer-gameplay-agent.toml",
+  ".codex/agents/consumer-playtest-agent.toml",
+  ".codex/agents/consumer-project-agent.toml",
+  ".claude/agents/consumer-asset-agent.md",
+  ".claude/agents/consumer-build-agent.md",
+  ".claude/agents/consumer-game-spec-agent.md",
+  ".claude/agents/consumer-gameplay-agent.md",
+  ".claude/agents/consumer-playtest-agent.md",
+  ".claude/agents/consumer-project-agent.md",
+  ".claude/skills/ferrum-consumer-asset-pipeline/SKILL.md",
+  ".claude/skills/ferrum-consumer-build/SKILL.md",
+  ".claude/skills/ferrum-consumer-game-spec/SKILL.md",
+  ".claude/skills/ferrum-consumer-gameplay/SKILL.md",
+  ".claude/skills/ferrum-consumer-playtest/SKILL.md",
+  ".claude/skills/ferrum-consumer-project/SKILL.md",
+  ".gemini/commands/ferrum/assets.toml",
+  ".gemini/commands/ferrum/build.toml",
+  ".gemini/commands/ferrum/game-spec.toml",
+  ".gemini/commands/ferrum/gameplay.toml",
+  ".gemini/commands/ferrum/playtest.toml",
+  ".gemini/commands/ferrum/project.toml",
+]);
 const templateCatalog = JSON.parse(await readFile(path.join(packageRoots.createGame, "templates/manifest.json"), "utf8"));
 const templateCatalogEntries = validateTemplateCatalog(templateCatalog);
 const templateCatalogById = new Map(templateCatalogEntries.map((template) => [template.id, template]));
@@ -28,7 +68,11 @@ const installArgs = [
 ];
 
 let tempRoot;
-let failed = false;
+let ferrumWebTarball;
+let createGameTarball;
+let agentsTarball;
+const smokeStartedAt = new Date();
+const templateSummaries = [];
 
 if (options.help) {
   printHelp();
@@ -65,9 +109,9 @@ try {
   }
 
   await mkdir(tarballRoot, { recursive: true });
-  const ferrumWebTarball = await packPackage(packageRoots.ferrumWeb, tarballRoot);
-  const createGameTarball = await packPackage(packageRoots.createGame, tarballRoot);
-  const agentsTarball = await packPackage(packageRoots.agents, tarballRoot);
+  ferrumWebTarball = await packPackage(packageRoots.ferrumWeb, tarballRoot);
+  createGameTarball = await packPackage(packageRoots.createGame, tarballRoot);
+  agentsTarball = await packPackage(packageRoots.agents, tarballRoot);
 
   await writeToolConsumerPackage(toolConsumerRoot, {
     createGameTarball,
@@ -76,27 +120,33 @@ try {
   await runRequired(pnpm, installArgs, toolConsumerRoot);
 
   for (const templateName of templateNames) {
-    await runGeneratedGameConsumer({
-      ferrumWebTarball,
-      generatedGamesRoot,
-      templateName,
-      toolConsumerRoot,
-    });
+    const templateSummary = createTemplateSummary(templateName);
+    templateSummaries.push(templateSummary);
+    try {
+      await runGeneratedGameConsumer({
+        ferrumWebTarball,
+        generatedGamesRoot,
+        templateName,
+        templateSummary,
+        toolConsumerRoot,
+      });
+      templateSummary.status = "passed";
+    } catch (error) {
+      templateSummary.status = "failed";
+      templateSummary.error = describeError(error);
+      throw error;
+    }
   }
 
+  const report = buildConsumerSmokeReport({ status: "passed" });
+  await writeConsumerSmokeArtifacts(report);
   console.log("package consumer smoke ok");
-  console.log(JSON.stringify({
-    ferrumWebTarball: path.basename(ferrumWebTarball),
-    createGameTarball: path.basename(createGameTarball),
-    agentsTarball: path.basename(agentsTarball),
-    templates: templateNames,
-    installMode: options.offline ? "offline" : "online",
-    artifactDir: options.artifactDir,
-    tempRoot: options.keepTemp ? tempRoot : undefined,
-  }, null, 2));
+  console.log(JSON.stringify(report, null, 2));
 } catch (error) {
-  failed = true;
-  await preserveFailureArtifacts(error);
+  await writeConsumerSmokeArtifacts(buildConsumerSmokeReport({
+    status: "failed",
+    error: describeError(error),
+  }));
   throw error;
 } finally {
   if (tempRoot && !options.keepTemp) {
@@ -239,9 +289,11 @@ async function runGeneratedGameConsumer({
   ferrumWebTarball,
   generatedGamesRoot,
   templateName,
+  templateSummary,
   toolConsumerRoot,
 }) {
   const generatedGameRoot = path.join(generatedGamesRoot, templateName);
+  templateSummary.generatedProject = path.relative(tempRoot, generatedGameRoot);
   await runRequired(pnpm, [
     "exec",
     "create-ferrum2d-game",
@@ -251,6 +303,7 @@ async function runGeneratedGameConsumer({
     "--ferrum-version",
     fileDependency(ferrumWebTarball),
   ], toolConsumerRoot);
+  templateSummary.checks.createGame = true;
   await pinGeneratedPackageManager(generatedGameRoot);
 
   await runRequired(pnpm, [
@@ -267,11 +320,30 @@ async function runGeneratedGameConsumer({
   await assertMissing(path.join(generatedGameRoot, ".codex"), "agents dry-run must not create .codex");
   await assertMissing(path.join(generatedGameRoot, ".claude"), "agents dry-run must not create .claude");
   await assertMissing(path.join(generatedGameRoot, ".gemini"), "agents dry-run must not create .gemini");
+  templateSummary.checks.agentsDryRun = true;
+  await runRequired(pnpm, [
+    "exec",
+    "ferrum2d-agents",
+    "init",
+    "--target",
+    generatedGameRoot,
+    "--tools",
+    "codex,claude,gemini",
+  ], toolConsumerRoot);
+  await assertGeneratedAgentsInstall(generatedGameRoot, templateName);
+  templateSummary.checks.agentsInstall = true;
+  templateSummary.agents = {
+    tools: ["codex", "claude", "gemini"],
+    expectedFilesChecked: AGENT_INSTALL_EXPECTED_FILES.length,
+    unsupportedGeminiWrappersAbsent: true,
+  };
 
   await runRequired(pnpm, installArgs, generatedGameRoot);
+  templateSummary.checks.install = true;
   await writePublicImportSmoke(generatedGameRoot);
   await writePublicTypesSmoke(generatedGameRoot);
   await runRequired(process.execPath, ["scripts/package-import-smoke.mjs"], generatedGameRoot);
+  templateSummary.checks.publicImportSmoke = true;
   await runRequired(pnpm, [
     "exec",
     "tsc",
@@ -287,7 +359,9 @@ async function runGeneratedGameConsumer({
     "ESNext,DOM",
     "scripts/package-type-smoke.ts",
   ], generatedGameRoot);
+  templateSummary.checks.publicTypeSmoke = true;
   await runRequired(pnpm, ["run", "ferrum:validate"], generatedGameRoot);
+  templateSummary.checks.validate = true;
   const authoringReport = await runJsonReport(
     pnpm,
     ["run", "ferrum:authoring-report"],
@@ -295,6 +369,7 @@ async function runGeneratedGameConsumer({
     "ferrum2d.consumer.gameplay-authoring.report",
   );
   assertConsumerAuthoringReport(authoringReport, templateName);
+  templateSummary.reports.authoring = summarizeConsumerAuthoringReport(authoringReport);
   const replayReport = await runJsonReport(
     pnpm,
     ["run", "ferrum:replay-report"],
@@ -302,6 +377,7 @@ async function runGeneratedGameConsumer({
     "ferrum2d.consumer.gameplay-replay.report",
   );
   assertConsumerReplayReport(replayReport, templateName);
+  templateSummary.reports.gameplayReplay = summarizeConsumerReplayReport(replayReport);
   const runtimeReplayReport = await runJsonReport(
     pnpm,
     ["run", "ferrum:runtime-replay-report"],
@@ -309,6 +385,7 @@ async function runGeneratedGameConsumer({
     "ferrum2d.consumer.runtime-gameplay-replay.report",
   );
   assertConsumerRuntimeReplayReport(runtimeReplayReport, templateName);
+  templateSummary.reports.runtimeReplay = summarizeConsumerRuntimeReplayReport(runtimeReplayReport);
   const runtimeReplayRecipe = await runJsonReport(
     pnpm,
     ["run", "ferrum:runtime-replay-recipe"],
@@ -316,6 +393,7 @@ async function runGeneratedGameConsumer({
     "ferrum2d.consumer.runtime-gameplay-replay.recipe",
   );
   assertConsumerRuntimeReplayRecipe(runtimeReplayRecipe, templateName);
+  templateSummary.reports.runtimeReplayRecipe = summarizeConsumerRuntimeReplayRecipe(runtimeReplayRecipe);
   const runtimeReplayTemplate = templateCatalogById.get(templateName);
   if (runtimeReplayTemplate?.runtimeGameplayReplay?.configured === true) {
     const runtimeReplayUpdateReport = await runJsonReport(
@@ -325,6 +403,7 @@ async function runGeneratedGameConsumer({
       "ferrum2d.consumer.runtime-gameplay-replay.fixture-update-report",
     );
     assertConsumerRuntimeReplayFixtureUpdateReport(runtimeReplayUpdateReport, templateName);
+    templateSummary.reports.runtimeReplayFixtureUpdate = summarizeRuntimeReplayFixtureUpdateReport(runtimeReplayUpdateReport);
     await requireFile(
       path.join(generatedGameRoot, "public/gameplay-runtime-replay.fixture.json"),
       `${templateName} configured runtime replay update must keep fixture present`,
@@ -342,6 +421,11 @@ async function runGeneratedGameConsumer({
     );
     assert(runtimeReplayUpdateReport.result.code !== 0, `${templateName} runtime replay fixture update must fail while scaffold is not configured`);
     assertConsumerRuntimeReplayUpdateNotConfiguredReport(runtimeReplayUpdateReport.report, templateName);
+    templateSummary.reports.runtimeReplayFixtureUpdate = {
+      status: "not-configured",
+      rejected: true,
+      report: summarizeConsumerRuntimeReplayReport(runtimeReplayUpdateReport.report),
+    };
     await assertMissing(
       path.join(generatedGameRoot, "public/gameplay-runtime-replay.fixture.json"),
       `${templateName} runtime replay update must not create a fixture while scaffold is not configured`,
@@ -361,6 +445,7 @@ async function runGeneratedGameConsumer({
     );
     assert(staleReplayReport.result.code !== 0, "topdown replay report must fail for a stale replay fixture");
     assertTopdownStaleReplayReport(staleReplayReport.report);
+    templateSummary.mutationChecks.staleReplayFixtureRejected = summarizeRejectedReport(staleReplayReport.report);
     const updateReport = await runJsonReport(
       pnpm,
       ["run", "ferrum:update-replay-fixture"],
@@ -368,6 +453,7 @@ async function runGeneratedGameConsumer({
       "ferrum2d.consumer.gameplay-replay.fixture-update-report",
     );
     assertConsumerReplayFixtureUpdateReport(updateReport, replayReport);
+    templateSummary.mutationChecks.staleReplayFixtureUpdate = summarizeGameplayReplayFixtureUpdateReport(updateReport);
     const replayReportAfterUpdate = await runJsonReport(
       pnpm,
       ["run", "ferrum:replay-report"],
@@ -384,6 +470,7 @@ async function runGeneratedGameConsumer({
     );
     assert(driftReplayReport.result.code !== 0, "topdown replay report must fail when Game Spec drifts from the replay fixture");
     assertTopdownGameSpecDriftReplayReport(driftReplayReport.report);
+    templateSummary.mutationChecks.gameSpecDriftRejected = summarizeRejectedReport(driftReplayReport.report);
     const driftUpdateReport = await runJsonReport(
       pnpm,
       ["run", "ferrum:update-replay-fixture"],
@@ -391,6 +478,7 @@ async function runGeneratedGameConsumer({
       "ferrum2d.consumer.gameplay-replay.fixture-update-report",
     );
     assertConsumerReplayFixtureUpdateReport(driftUpdateReport, driftReplayReport.report);
+    templateSummary.mutationChecks.gameSpecDriftFixtureUpdate = summarizeGameplayReplayFixtureUpdateReport(driftUpdateReport);
     const replayReportAfterDriftUpdate = await runJsonReport(
       pnpm,
       ["run", "ferrum:replay-report"],
@@ -400,10 +488,13 @@ async function runGeneratedGameConsumer({
     assertConsumerReplayReport(replayReportAfterDriftUpdate, templateName);
   }
   await runRequired(pnpm, ["run", "build"], generatedGameRoot);
+  templateSummary.checks.build = true;
   await requireFile(
     path.join(generatedGameRoot, "dist/index.html"),
     `generated ${templateName} game build must emit dist/index.html`,
   );
+  templateSummary.buildOutput.distIndexHtml = path.join(templateSummary.generatedProject, "dist/index.html");
+  templateSummary.buildOutput.preservedInArtifactSnapshot = false;
 }
 
 async function packPackage(packageRoot, destination) {
@@ -421,6 +512,28 @@ async function listTarballs(directory) {
     throw error;
   });
   return entries.filter((entry) => entry.endsWith(".tgz")).sort();
+}
+
+function createTemplateSummary(templateName) {
+  return {
+    template: templateName,
+    status: "running",
+    generatedProject: undefined,
+    checks: {
+      createGame: false,
+      agentsDryRun: false,
+      agentsInstall: false,
+      install: false,
+      publicImportSmoke: false,
+      publicTypeSmoke: false,
+      validate: false,
+      build: false,
+    },
+    agents: undefined,
+    reports: {},
+    mutationChecks: {},
+    buildOutput: {},
+  };
 }
 
 async function writeToolConsumerPackage(targetRoot, { createGameTarball, agentsTarball }) {
@@ -442,6 +555,46 @@ async function pinGeneratedPackageManager(targetRoot) {
   const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
   packageJson.packageManager ??= packageManager;
   await writeJson(packageJsonPath, packageJson);
+}
+
+async function assertGeneratedAgentsInstall(generatedGameRoot, templateName) {
+  for (const file of AGENT_INSTALL_EXPECTED_FILES) {
+    await requireFile(
+      path.join(generatedGameRoot, file),
+      `${templateName} generated game must include installed agents file ${file}`,
+    );
+  }
+  await assertMissing(
+    path.join(generatedGameRoot, ".gemini/agents"),
+    `${templateName} generated game must not install unsupported Gemini agents`,
+  );
+  await assertMissing(
+    path.join(generatedGameRoot, ".gemini/skills"),
+    `${templateName} generated game must not install Gemini skill wrappers`,
+  );
+
+  const gameDevelopmentHarness = await readFile(
+    path.join(generatedGameRoot, ".agents/harness/ferrum-game-development.md"),
+    "utf8",
+  );
+  const gameSpecSkill = await readFile(
+    path.join(generatedGameRoot, ".agents/skills/ferrum-consumer-game-spec/SKILL.md"),
+    "utf8",
+  );
+  const gameplaySkill = await readFile(
+    path.join(generatedGameRoot, ".agents/skills/ferrum-consumer-gameplay/SKILL.md"),
+    "utf8",
+  );
+  assertConsumerProjectileWeaponAuthoringContract(gameDevelopmentHarness, `${templateName} installed game-development harness`);
+  assertConsumerRuntimeApplyContract(gameDevelopmentHarness, `${templateName} installed game-development harness`);
+  assertConsumerProjectileWeaponAuthoringContract(gameSpecSkill, `${templateName} installed game-spec skill`);
+  assert(
+    gameSpecSkill.includes("npm run ferrum:authoring-report") &&
+      gameSpecSkill.includes("npm run ferrum:replay-report"),
+    `${templateName} installed game-spec skill must require authoring and replay report checks`,
+  );
+  assertConsumerProjectileWeaponAuthoringContract(gameplaySkill, `${templateName} installed gameplay skill`);
+  assertConsumerRuntimeApplyContract(gameplaySkill, `${templateName} installed gameplay skill`);
 }
 
 async function writePublicImportSmoke(targetRoot) {
@@ -470,6 +623,7 @@ async function writePublicImportSmoke(targetRoot) {
   bindSceneBehaviorRecipes,
   buildDebugGizmoLineBuffer,
   captureDialogueQuestState,
+  compileWeaponProfiles,
   resolveCutsceneSequenceSpec,
   createHudOverlayState,
   dialogueNodeToUiOverlayState,
@@ -481,6 +635,7 @@ async function writePublicImportSmoke(targetRoot) {
   gameplayActionDiagnosticReports,
   gameplaySpawnDiagnosticReports,
   particleVfxPreset,
+  projectile,
   resolveAnimationTimelineSpec,
   resolveAccessibilityOptions,
   resolveBehaviorRecipeDocument,
@@ -502,6 +657,7 @@ async function writePublicImportSmoke(targetRoot) {
   resolveShooterGameSpec,
   suggestionForActionFailureReason,
   suggestionForSpawnDiagnosticMetric,
+  weapon,
   packTextureAtlas,
   textureAtlasDocumentToShooterAtlas,
 } from "@ferrum2d/ferrum-web";
@@ -555,6 +711,30 @@ if (behaviorRecipeCommandsForEntity(behaviorRecipes, "enemy", { kinds: ["lifetim
 }
 if (behaviorRecipeCommandsForEntity(behaviorRecipes, "enemy", { kinds: ["scoreReward"] })[0]?.type !== "configureScoreReward") {
   throw new Error("behavior recipe helpers must emit score reward runtime adapter commands.");
+}
+if (typeof compileWeaponProfiles !== "function" || typeof projectile !== "function" || typeof weapon !== "function") {
+  throw new Error("projectile/weapon authoring helpers must be exported from the public entrypoint.");
+}
+const weaponProfiles = compileWeaponProfiles([
+  weapon("standard").action("standard").actionId(1).cooldown(0.08).fire(
+    projectile("standard-shot").speed(720).damage(1).lifetime(1.6),
+  ),
+  weapon("piercing").action("piercing").actionId(4).fire(
+    projectile("piercing-shot").speed(520).collisionTarget("enemies").tileImpact("passThrough"),
+  ),
+  weapon("bounce").action("bounce").actionId(5).cooldown(0.1).fire(
+    projectile("bounce-shot").speed(420).damage(2).lifetime(1).tileImpact("bounce"),
+  ),
+], {
+  path: "consumerSmoke.weaponProfiles",
+});
+const piercingCommand = behaviorRecipeCommandsForEntity(weaponProfiles, "piercing")[0];
+const bounceCommand = behaviorRecipeCommandsForEntity(weaponProfiles, "bounce")[0];
+if (piercingCommand?.type !== "configureProjectileAction" || piercingCommand.tileImpact !== "passThrough") {
+  throw new Error("weapon authoring helpers must compile piercing projectiles to passThrough projectileAction commands.");
+}
+if (bounceCommand?.type !== "configureProjectileAction" || bounceCommand.tileImpact !== "bounce") {
+  throw new Error("weapon authoring helpers must compile bounce projectiles to bounce projectileAction commands.");
 }
 if (GAMEPLAY_BEHAVIOR_BINDING_PROP !== "behaviorRecipes") {
   throw new Error("GAMEPLAY_BEHAVIOR_BINDING_PROP must be exported from the public entrypoint.");
@@ -914,12 +1094,16 @@ async function writePublicTypesSmoke(targetRoot) {
   createAssetPreloadCachePolicy,
   createFerrumRuntime,
   applyGameplayBehaviorCommands,
+  behaviorRecipeCommandsForEntity,
+  compileWeaponProfiles,
   dryRunSceneBehaviorRecipes,
   gameplayActionDiagnosticReports,
   gameplaySpawnDiagnosticReports,
+  projectile,
   resolveShooterGameSpec,
   suggestionForActionFailureReason,
   suggestionForSpawnDiagnosticMetric,
+  weapon,
   type ActionFrameDiagnostics,
   type AssetPreloadCachePolicy,
   type FerrumRuntime,
@@ -927,9 +1111,11 @@ async function writePublicTypesSmoke(targetRoot) {
   type GameplayActionFailedEventAction,
   type GameplayEntityHandle,
   type GameplaySpawnDiagnosticReport,
+  type ProjectileDefinition,
   type SceneBehaviorBindingDryRunResult,
   type ShooterGameSpec,
   type SpawnFrameDiagnostics,
+  type WeaponDefinition,
 } from "@ferrum2d/ferrum-web";
 
 const spec: ShooterGameSpec = {
@@ -969,6 +1155,20 @@ const gameplayRuntime: Parameters<typeof applyGameplayBehaviorCommands>[0] = {
 const gameplayApply = applyGameplayBehaviorCommands(gameplayRuntime, behaviorDryRun.ok ? behaviorDryRun.plan.commands : [], {
   "actor-a": gameplayHandle,
 });
+const projectileDefinition: ProjectileDefinition = projectile("typed-shot")
+  .speed(480)
+  .damage(2)
+  .lifetime(1)
+  .tileImpact("bounce")
+  .build();
+const weaponDefinition: WeaponDefinition = weapon("typed-weapon")
+  .action("typed")
+  .actionId(6)
+  .cooldown(0.2)
+  .fire(projectileDefinition)
+  .build();
+const weaponProfileDocument = compileWeaponProfiles([weaponDefinition], { path: "typeSmoke.weaponProfiles" });
+const weaponProfileCommand = behaviorRecipeCommandsForEntity(weaponProfileDocument, "typed-weapon")[0];
 const actionDiagnostics: ActionFrameDiagnostics = {
   triggerAttempts: 1,
   triggerFailures: 1,
@@ -1026,6 +1226,7 @@ void policy;
 void resolved;
 void behaviorDryRun;
 void gameplayApply;
+void weaponProfileCommand;
 void actionDiagnosticReport;
 void actionDiagnosticSuggestion;
 void spawnDiagnosticReport;
@@ -1139,6 +1340,9 @@ function assertConsumerAuthoringReport(report, templateName) {
     assert(report.gameplayAuthoring.status === "not-configured", `${templateName} authoring report must be not-configured`);
     assert(report.gameplayAuthoring.gameSpec?.ok === null, `${templateName} authoring report must mark missing Game Spec as a structured skip`);
   }
+  if (templateName === "minimal") {
+    assertMinimalTemplateAuthoringSurface(report.gameplayAuthoring?.authoringSurface, "minimal authoring report");
+  }
 }
 
 function assertConsumerReplayReport(report, templateName) {
@@ -1159,6 +1363,18 @@ function assertConsumerReplayReport(report, templateName) {
     assert(report.gameplayReplay.scenario === "topdown-template-game-spec", "topdown replay report scenario is invalid");
     assertDeepEqual(report.gameplayReplay.coverageTags, ["template-game-spec"], "topdown replay report coverage tags are invalid");
     assertTopdownCoverageRegistry(report.gameplayReplay, "topdown replay report");
+  } else if (templateName === "minimal") {
+    assert(report.gameplayReplay.scenario === "minimal-template-surface", "minimal replay report scenario is invalid");
+    assertDeepEqual(
+      report.gameplayReplay.coverageTags,
+      ["starter-runtime-template", "template-weapon-authoring"],
+      "minimal replay report coverage tags are invalid",
+    );
+    assertMinimalCoverageRegistry(report.gameplayReplay, "minimal replay report");
+  } else if (templateName === "platformer") {
+    assert(report.gameplayReplay.scenario === "platformer-template-surface", "platformer replay report scenario is invalid");
+    assertDeepEqual(report.gameplayReplay.coverageTags, ["platformer-template"], "platformer replay report coverage tags are invalid");
+    assertPlatformerCoverageRegistry(report.gameplayReplay, "platformer replay report");
   }
   assert(report.gameplayReplay?.comparison?.passed === true, `${templateName} replay comparison must pass`);
   assert(typeof report.gameplayReplay?.expectedHash === "string", `${templateName} replay report must include expectedHash`);
@@ -1373,6 +1589,63 @@ function assertTopdownCoverageRegistry(value, label) {
   assertDeepEqual(value?.deprecatedCoverageTags, {}, `${label} deprecated coverage tags are invalid`);
 }
 
+function assertMinimalCoverageRegistry(value, label) {
+  assert(
+    value?.coverageTagDefinitions?.["starter-runtime-template"] === "Consumer replay validates the generated Minimal Runtime template surface contract.",
+    `${label} must include starter runtime template coverage definition`,
+  );
+  assert(
+    value?.coverageTagDefinitions?.["template-weapon-authoring"] === "Consumer replay validates the Minimal Runtime projectile/weapon authoring surface.",
+    `${label} must include template weapon authoring coverage definition`,
+  );
+  assertDeepEqual(
+    value?.coverageTagGroups,
+    {
+      "template-contracts": {
+        description: "Consumer template replay contracts generated with create-game.",
+        tags: ["starter-runtime-template", "template-weapon-authoring"],
+      },
+    },
+    `${label} coverage tag groups are invalid`,
+  );
+  assertDeepEqual(value?.deprecatedCoverageTags, {}, `${label} deprecated coverage tags are invalid`);
+}
+
+function assertPlatformerCoverageRegistry(value, label) {
+  assert(
+    value?.coverageTagDefinitions?.["platformer-template"] === "Consumer replay validates the generated Platformer template surface contract.",
+    `${label} must include platformer template coverage definition`,
+  );
+  assertDeepEqual(
+    value?.coverageTagGroups,
+    {
+      "template-contracts": {
+        description: "Consumer template replay contracts generated with create-game.",
+        tags: ["platformer-template"],
+      },
+    },
+    `${label} coverage tag groups are invalid`,
+  );
+  assertDeepEqual(value?.deprecatedCoverageTags, {}, `${label} deprecated coverage tags are invalid`);
+}
+
+function assertMinimalTemplateAuthoringSurface(value, label) {
+  assert(value !== null && typeof value === "object" && !Array.isArray(value), `${label} must include authoringSurface object`);
+  assertDeepEqual(
+    value.weaponProfiles,
+    ["standard", "piercing", "bounce"],
+    `${label} weaponProfiles are invalid`,
+  );
+  assert(value.publicApis?.behaviorRecipeCommandsForEntity === true, `${label} must expose behaviorRecipeCommandsForEntity`);
+  assert(value.publicApis?.compileWeaponProfiles === true, `${label} must expose compileWeaponProfiles`);
+  assert(value.publicApis?.ProjectileDefinition === true, `${label} must expose ProjectileDefinition`);
+  assert(value.publicApis?.WeaponDefinition === true, `${label} must expose WeaponDefinition`);
+  assert(value.runtimeHooks?.applyGameplayBehaviorCommands === true, `${label} must expose applyGameplayBehaviorCommands`);
+  assert(value.runtimeHooks?.builtInShooterPlayerHandle === true, `${label} must expose builtInShooterPlayerHandle`);
+  assert(value.runtimeHooks?.setInputActionBinding === true, `${label} must expose setInputActionBinding`);
+  assert(value.runtimeHooks?.profileQueryParam === true, `${label} must expose profile query param hook`);
+}
+
 function assertCoverageRegistryReport(value, label) {
   assert(
     value?.coverageTagDefinitions !== null
@@ -1400,6 +1673,118 @@ function assertMachineActionableReports(reports, label) {
     assert(typeof report.message === "string" && report.message.length > 0, `${label}[${index}].message must be a non-empty string`);
     assert(typeof report.suggestion === "string" && report.suggestion.length > 0, `${label}[${index}].suggestion must be a non-empty string`);
   }
+}
+
+function assertConsumerProjectileWeaponAuthoringContract(source, label) {
+  assert(
+    source.includes("ProjectileDefinition") &&
+      source.includes("WeaponDefinition") &&
+      source.includes("compileWeaponProfiles") &&
+      source.includes("behaviorRecipeCommandsForEntity"),
+    `${label} must document projectile/weapon authoring helpers`,
+  );
+}
+
+function assertConsumerRuntimeApplyContract(source, label) {
+  assert(
+    source.includes("applyGameplayBehaviorCommands") &&
+      source.includes("setInputActionBinding") &&
+      source.includes("builtInShooterPlayerHandle"),
+    `${label} must document public runtime apply helpers`,
+  );
+}
+
+function summarizeConsumerAuthoringReport(report) {
+  return {
+    status: report.gameplayAuthoring?.status,
+    gameSpec: {
+      ok: report.gameplayAuthoring?.gameSpec?.ok,
+      file: report.gameplayAuthoring?.gameSpec?.file,
+      message: report.gameplayAuthoring?.gameSpec?.message,
+    },
+    diagnostics: report.gameplayAuthoring?.diagnostics?.length ?? 0,
+    reports: report.gameplayAuthoring?.reports?.length ?? 0,
+    authoringSurface: report.gameplayAuthoring?.authoringSurface === undefined
+      ? undefined
+      : {
+        weaponProfiles: report.gameplayAuthoring.authoringSurface.weaponProfiles,
+        publicApis: report.gameplayAuthoring.authoringSurface.publicApis,
+        runtimeHooks: report.gameplayAuthoring.authoringSurface.runtimeHooks,
+      },
+  };
+}
+
+function summarizeConsumerReplayReport(report) {
+  return {
+    status: report.gameplayReplay?.status,
+    configured: report.gameplayReplay?.configured,
+    scenario: report.gameplayReplay?.scenario,
+    fixture: report.gameplayReplay?.fixture,
+    coverageTags: report.gameplayReplay?.coverageTags,
+    expectedHash: report.gameplayReplay?.expectedHash,
+    actualHash: report.gameplayReplay?.actualHash,
+    comparisonPassed: report.gameplayReplay?.comparison?.passed,
+    reports: report.gameplayReplay?.reports?.length ?? 0,
+  };
+}
+
+function summarizeConsumerRuntimeReplayReport(report) {
+  return {
+    status: report.runtimeGameplayReplay?.status,
+    configured: report.runtimeGameplayReplay?.configured,
+    scenario: report.runtimeGameplayReplay?.scenario,
+    fixture: report.runtimeGameplayReplay?.fixture,
+    coverageTags: report.runtimeGameplayReplay?.coverageTags,
+    expectedHash: report.runtimeGameplayReplay?.expectedHash,
+    actualHash: report.runtimeGameplayReplay?.actualHash,
+    comparisonPassed: report.runtimeGameplayReplay?.comparison?.passed,
+    reports: report.runtimeGameplayReplay?.reports?.length ?? 0,
+  };
+}
+
+function summarizeConsumerRuntimeReplayRecipe(recipe) {
+  return {
+    template: recipe.template,
+    status: recipe.status,
+    scenario: recipe.scenario,
+    coverageTags: recipe.coverageTags,
+    fixedDelta: recipe.deterministicRun?.fixedDelta,
+    inputFrames: recipe.deterministicRun?.inputSequence?.map((entry) => entry.frame),
+    captureFrames: recipe.deterministicRun?.captureFrames,
+  };
+}
+
+function summarizeRuntimeReplayFixtureUpdateReport(report) {
+  return {
+    status: "updated",
+    fixture: report.runtimeGameplayReplayFixture?.fixture,
+    scenario: report.runtimeGameplayReplayFixture?.scenario,
+    coverageTags: report.runtimeGameplayReplayFixture?.coverageTags,
+    replayHash: report.runtimeGameplayReplayFixture?.replayHash,
+    snapshotCount: report.runtimeGameplayReplayFixture?.snapshotCount,
+  };
+}
+
+function summarizeGameplayReplayFixtureUpdateReport(report) {
+  return {
+    status: "updated",
+    fixture: report.gameplayReplayFixture?.fixture,
+    scenario: report.gameplayReplayFixture?.scenario,
+    coverageTags: report.gameplayReplayFixture?.coverageTags,
+    replayHash: report.gameplayReplayFixture?.replayHash,
+    snapshotCount: report.gameplayReplayFixture?.snapshotCount,
+  };
+}
+
+function summarizeRejectedReport(report) {
+  const firstReport = report?.reports?.[0] ?? report?.gameplayReplay?.reports?.[0] ?? report?.runtimeGameplayReplay?.reports?.[0];
+  return {
+    rejected: true,
+    status: report?.gameplayReplay?.status ?? report?.runtimeGameplayReplay?.status,
+    code: firstReport?.code,
+    path: firstReport?.path,
+    message: firstReport?.message,
+  };
 }
 
 async function writeStaleTopdownReplayFixture(generatedGameRoot) {
@@ -1504,22 +1889,46 @@ async function assertMissing(filePath, message) {
   }
 }
 
-async function preserveFailureArtifacts(error) {
-  if (!failed || !tempRoot || !options.artifactDir) {
+function buildConsumerSmokeReport({ status, error }) {
+  const completedAt = new Date();
+  return {
+    format: CONSUMER_SMOKE_REPORT_FORMAT,
+    version: CONSUMER_SMOKE_REPORT_VERSION,
+    status,
+    startedAt: smokeStartedAt.toISOString(),
+    completedAt: completedAt.toISOString(),
+    durationMs: completedAt.getTime() - smokeStartedAt.getTime(),
+    packageManager,
+    installMode: options.offline ? "offline" : "online",
+    options: {
+      skipBuild: options.skipBuild,
+      skipPackageCheck: options.skipPackageCheck,
+      keepTemp: options.keepTemp,
+      artifactDir: options.artifactDir,
+      commandTimeoutMs: options.commandTimeoutMs,
+    },
+    tarballs: {
+      ferrumWeb: ferrumWebTarball === undefined ? undefined : path.basename(ferrumWebTarball),
+      createGame: createGameTarball === undefined ? undefined : path.basename(createGameTarball),
+      agents: agentsTarball === undefined ? undefined : path.basename(agentsTarball),
+    },
+    templates: templateSummaries,
+    requestedTemplates: templateNames,
+    artifactDir: options.artifactDir,
+    tempRoot: options.keepTemp ? tempRoot : undefined,
+    ...(error === undefined ? {} : { error }),
+  };
+}
+
+async function writeConsumerSmokeArtifacts(report) {
+  if (!tempRoot || !options.artifactDir) {
     return;
   }
 
   const artifactRoot = path.resolve(repoRoot, options.artifactDir);
   await rm(artifactRoot, { recursive: true, force: true });
   await mkdir(artifactRoot, { recursive: true });
-  await writeJson(path.join(artifactRoot, "consumer-smoke-report.json"), {
-    status: "failed",
-    timestamp: new Date().toISOString(),
-    tempRoot,
-    installMode: options.offline ? "offline" : "online",
-    templates: templateNames,
-    error: describeError(error),
-  });
+  await writeJson(path.join(artifactRoot, "consumer-smoke-report.json"), report);
   await copyIfExists(path.join(tempRoot, "tarballs"), path.join(artifactRoot, "tarballs"));
   await copyTreeIfExists(path.join(tempRoot, "tool-consumer"), path.join(artifactRoot, "tool-consumer"));
   await copyTreeIfExists(path.join(tempRoot, "sample-games"), path.join(artifactRoot, "sample-games"));
@@ -1615,7 +2024,7 @@ Options:
   --skip-package-check    Skip package allowlist and pack checks before consumer smoke
   --offline               Require all non-local dependencies to already be in the pnpm store
   --templates <names>     Comma-separated create-game templates to test. Default: every template
-  --artifact-dir <path>   Copy failure diagnostics and light project snapshots to this directory
+  --artifact-dir <path>   Copy the smoke report, tarballs, and light project snapshots to this directory
   --command-timeout-ms <n> Fail an individual child command after n milliseconds. Default: ${DEFAULT_COMMAND_TIMEOUT_MS}
   --keep-temp             Keep the temporary consumer project for inspection
   -h, --help              Show this help

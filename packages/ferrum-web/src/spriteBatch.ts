@@ -29,12 +29,14 @@ const FLOATS_PER_COMMAND = SPRITE_RENDER_COMMAND_FLOATS;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
 const COMMAND_STRIDE_BYTES = FLOATS_PER_COMMAND * BYTES_PER_F32;
 const DEFAULT_SPRITE_MATERIAL_PASSES = spriteMaterialPasses(DEFAULT_SPRITE_MATERIAL_PRESET);
+const ZERO_SCREEN_OFFSET: readonly [number, number] = [0, 0];
 
 export class SpriteBatch {
   private readonly program: WebGLProgram;
   private readonly vao: WebGLVertexArrayObject;
   private readonly vbo: WebGLBuffer;
   private readonly resolutionLocation: WebGLUniformLocation;
+  private readonly screenOffsetLocation: WebGLUniformLocation;
   private readonly textureLocation: WebGLUniformLocation;
   private instanceCapacityFloats = 0;
   private materialStaging = new Float32Array(0);
@@ -68,9 +70,11 @@ export class SpriteBatch {
     this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
 
     const resolutionLocation = this.gl.getUniformLocation(this.program, "u_resolution");
+    const screenOffsetLocation = this.gl.getUniformLocation(this.program, "u_screen_offset");
     const textureLocation = this.gl.getUniformLocation(this.program, "u_texture");
-    if (!resolutionLocation || !textureLocation) throw new Error("Sprite shader uniform location 조회 실패");
+    if (!resolutionLocation || !screenOffsetLocation || !textureLocation) throw new Error("Sprite shader uniform location 조회 실패");
     this.resolutionLocation = resolutionLocation;
+    this.screenOffsetLocation = screenOffsetLocation;
     this.textureLocation = textureLocation;
   }
 
@@ -79,19 +83,21 @@ export class SpriteBatch {
     commands: RenderCommandBufferView,
     resolution: [number, number],
     material?: ResolvedSpriteMaterialPreset,
+    screenOffset?: readonly [number, number],
   ): SpriteBatchStats;
   drawBatches(
     textureManager: TextureManager,
     commands: RenderCommandBufferView,
     resolution: [number, number],
     material: ResolvedSpriteMaterialPreset = DEFAULT_SPRITE_MATERIAL_PRESET,
+    screenOffset: readonly [number, number] = ZERO_SCREEN_OFFSET,
   ): SpriteBatchStats {
     this.assertAlive();
     if (commands.commandCount === 0) return { drawCalls: 0, textureSwitchCount: 0 };
     const ranges = this.textureRanges(commands);
     const materialPasses = this.materialPassesFor(material);
     let drawCalls = 0;
-    this.bindForDraw(resolution);
+    this.bindForDraw(resolution, screenOffset);
     try {
       for (const pass of materialPasses) {
         this.applyBlendMode(pass.blendMode);
@@ -112,17 +118,19 @@ export class SpriteBatch {
     commands: RenderCommandBufferView,
     resolution: [number, number],
     material?: ResolvedSpriteMaterialPreset,
+    screenOffset?: readonly [number, number],
   ): SpriteBatchStats;
   drawBatch(
     texture: WebGLTexture,
     commands: RenderCommandBufferView,
     resolution: [number, number],
     material: ResolvedSpriteMaterialPreset = DEFAULT_SPRITE_MATERIAL_PRESET,
+    screenOffset: readonly [number, number] = ZERO_SCREEN_OFFSET,
   ): SpriteBatchStats {
     this.assertAlive();
     const materialPasses = this.materialPassesFor(material);
     let drawCalls = 0;
-    this.bindForDraw(resolution);
+    this.bindForDraw(resolution, screenOffset);
     try {
       for (const pass of materialPasses) {
         this.applyBlendMode(pass.blendMode);
@@ -170,11 +178,12 @@ export class SpriteBatch {
     return 1;
   }
 
-  private bindForDraw(resolution: [number, number]): void {
+  private bindForDraw(resolution: [number, number], screenOffset: readonly [number, number]): void {
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vbo);
     this.gl.uniform2f(this.resolutionLocation, resolution[0], resolution[1]);
+    this.gl.uniform2f(this.screenOffsetLocation, screenOffset[0], screenOffset[1]);
     this.gl.activeTexture(this.gl.TEXTURE0);
     this.gl.uniform1i(this.textureLocation, 0);
   }
@@ -265,9 +274,9 @@ export class SpriteBatch {
   private createProgram(): WebGLProgram { /* unchanged */
     const vert = this.compile(this.gl.VERTEX_SHADER, `#version 300 es
       layout(location=0) in vec4 a_rect;layout(location=1) in vec4 a_uv_rect;layout(location=2) in vec4 a_color;
-      uniform vec2 u_resolution;out vec2 v_uv;out vec4 v_color;
+      uniform vec2 u_resolution;uniform vec2 u_screen_offset;out vec2 v_uv;out vec4 v_color;
       vec2 cornerForVertex(int v){if(v==0)return vec2(0.0,0.0);if(v==1)return vec2(1.0,0.0);if(v==2)return vec2(0.0,1.0);if(v==3)return vec2(0.0,1.0);if(v==4)return vec2(1.0,0.0);return vec2(1.0,1.0);}
-      void main(){vec2 corner=cornerForVertex(gl_VertexID%6);vec2 position=a_rect.xy+(corner*a_rect.zw);vec2 z=position/u_resolution;vec2 c=(z*2.0)-1.0;gl_Position=vec4(c*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_color=a_color;}`);
+      void main(){vec2 corner=cornerForVertex(gl_VertexID%6);vec2 position=a_rect.xy+u_screen_offset+(corner*a_rect.zw);vec2 z=position/u_resolution;vec2 c=(z*2.0)-1.0;gl_Position=vec4(c*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_color=a_color;}`);
     const frag = this.compile(this.gl.FRAGMENT_SHADER, `#version 300 es
       precision mediump float;in vec2 v_uv;in vec4 v_color;uniform sampler2D u_texture;out vec4 outColor;
       void main(){outColor=texture(u_texture,v_uv)*v_color;}`);

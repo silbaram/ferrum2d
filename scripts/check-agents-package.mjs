@@ -96,6 +96,8 @@ assert(
     packageReadmeSource.includes("hashGameStateSnapshot"),
   "agents README must document public gameplay replay helpers",
 );
+assertConsumerProjectileWeaponAuthoringContract(packageReadmeSource, packageReadmeFile);
+assertConsumerRuntimeApplyContract(packageReadmeSource, packageReadmeFile);
 assertForbiddenPublicImportBoundary(packageReadmeSource, packageReadmeFile);
 assertNoForbiddenImportExamples(packageReadmeSource, packageReadmeFile);
 await requireFile(path.join(packageRoot, "bin/ferrum2d-agents.mjs"), repoRoot);
@@ -143,6 +145,8 @@ async function checkTemplates() {
     gameDevelopmentHarnessSource.includes(".agents/harness/ferrum-runtime-replay.md"),
     "game development harness must point to project-specific runtime replay harness",
   );
+  assertConsumerProjectileWeaponAuthoringContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
+  assertConsumerRuntimeApplyContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertNoForbiddenImportExamples(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
 
   const runtimeReplayHarnessSource = await readFile(runtimeReplayHarnessFile, "utf8");
@@ -154,6 +158,14 @@ async function checkTemplates() {
     assertFrontmatterField(sharedSource, "name", skill, sharedFile);
     assertFrontmatterExists(sharedSource, "description", sharedFile);
     assert(sharedSource.includes("Do not use"), `${path.relative(repoRoot, sharedFile)} must define hard boundaries`);
+    if (skill === "ferrum-consumer-game-spec") {
+      assertConsumerProjectileWeaponAuthoringContract(sharedSource, sharedFile);
+      assert(
+        sharedSource.includes("npm run ferrum:authoring-report") &&
+          sharedSource.includes("npm run ferrum:replay-report"),
+        `${path.relative(repoRoot, sharedFile)} must require authoring and replay report checks for data-driven gameplay`,
+      );
+    }
     if (skill === "ferrum-consumer-gameplay") {
       assert(
         sharedSource.includes(".agents/harness/ferrum-runtime-replay.md"),
@@ -165,6 +177,8 @@ async function checkTemplates() {
           sharedSource.includes("hashGameStateSnapshot"),
         `${path.relative(repoRoot, sharedFile)} must name public gameplay replay helpers`,
       );
+      assertConsumerProjectileWeaponAuthoringContract(sharedSource, sharedFile);
+      assertConsumerRuntimeApplyContract(sharedSource, sharedFile);
       assertForbiddenPublicImportBoundary(sharedSource, sharedFile);
       assertNoForbiddenImportExamples(sharedSource, sharedFile);
     }
@@ -347,6 +361,25 @@ function assertRuntimeReplayHarnessContract(source, filePath) {
   );
   assertForbiddenPublicImportBoundary(source, filePath);
   assertNoForbiddenImportExamples(source, filePath);
+}
+
+function assertConsumerProjectileWeaponAuthoringContract(source, filePath) {
+  assert(
+    source.includes("ProjectileDefinition") &&
+      source.includes("WeaponDefinition") &&
+      source.includes("compileWeaponProfiles") &&
+      source.includes("behaviorRecipeCommandsForEntity"),
+    `${path.relative(repoRoot, filePath)} must document projectile/weapon authoring helpers`,
+  );
+}
+
+function assertConsumerRuntimeApplyContract(source, filePath) {
+  assert(
+    source.includes("applyGameplayBehaviorCommands") &&
+      source.includes("setInputActionBinding") &&
+      source.includes("builtInShooterPlayerHandle"),
+    `${path.relative(repoRoot, filePath)} must document public runtime apply helpers for compiled behavior commands`,
+  );
 }
 
 function assertForbiddenPublicImportBoundary(source, filePath) {

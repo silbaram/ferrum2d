@@ -130,14 +130,14 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
     publicResolvePostProcessPasses(postProcessStackInput, postProcessOptions);
   const builtInShooterState: BuiltInShooterStateSnapshot = {
     format: "ferrum2d.builtin-shooter-state",
-    version: 11,
+    version: 15,
     headerFloats: [0, 1, 0, 0, 400, 240, 0, 0],
-    headerU32s: [11, 1, 3, 0, 0, 0, 0, 0, 0, ...Array(28).fill(0)],
-    entityFloats: [400, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    entityU32s: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    headerU32s: [15, 1, 3, 0, 0, 0, 0, 0, 0, ...Array(76).fill(0)],
+    entityFloats: [400, 240, 0, 0, ...Array(71).fill(0)],
+    entityU32s: [0, ...Array(60).fill(0)],
     entityCount: 1,
-    floatsPerEntity: 35,
-    u32sPerEntity: 21,
+    floatsPerEntity: 75,
+    u32sPerEntity: 61,
   };
   const physicsDebugLineCamera: PhysicsDebugLineCamera = { x: 0, y: 0 };
   const gameSpec: ShooterGameSpec = {

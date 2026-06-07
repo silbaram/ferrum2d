@@ -23,6 +23,8 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
             radial_band: 4.0,
         },
     );
+    world.set_gameplay_tags(a, GameplayTags::new(1 << 5).unwrap());
+    world.set_gameplay_faction(a, GameplayFaction::new(5, 0).unwrap());
     let mut state_machine = BehaviorStateMachine::new(1);
     assert!(state_machine.push_transition(BehaviorStateTransition::new(1, 2, 7)));
     assert!(world.set_behavior_state_machine(a, state_machine));
@@ -75,6 +77,8 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     world.set_transform(b, Transform2D { x: 99.0, y: 100.0 });
     world.clear_action_bindings(a);
     world.clear_movement_pattern(a);
+    world.clear_gameplay_tags(a);
+    world.clear_gameplay_faction(a);
     world.clear_behavior_state_machine(a);
     world.clear_behavior_state_enter_actions(a);
     world.clear_pickup(a);
@@ -117,6 +121,10 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
             radial_band: 4.0,
         })
     );
+    assert_eq!(world.gameplay_tags(a), GameplayTags::new(1 << 5));
+    assert_eq!(world.gameplay_faction(a), GameplayFaction::new(5, 0));
+    assert_eq!(world.gameplay_tag_query_indices(5), &[a.id as usize]);
+    assert_eq!(world.gameplay_faction_query_indices(5), &[a.id as usize]);
     assert_eq!(world.behavior_state_machine(a), Some(state_machine));
     assert_eq!(
         world

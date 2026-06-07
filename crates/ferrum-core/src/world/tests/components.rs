@@ -106,11 +106,13 @@ fn gameplay_component_setters_update_movement_and_collision_reactions() {
     assert!(machine.push_transition(BehaviorStateTransition::new(1, 2, 5)));
 
     world.set_movement_pattern(entity, movement);
+    world.set_gameplay_tags(entity, GameplayTags::new(1 << 5).unwrap());
     assert!(world.upsert_action_binding(entity, action));
     assert!(world.set_interaction(entity, interaction));
     assert!(world.set_behavior_state_machine(entity, machine));
     assert!(world.add_behavior_state_enter_action(entity, state_enter_action));
     assert_eq!(world.movement_pattern(entity), Some(movement));
+    assert_eq!(world.gameplay_tags(entity), GameplayTags::new(1 << 5));
     assert_eq!(
         world
             .action_bindings(entity)
@@ -156,17 +158,151 @@ fn gameplay_component_setters_update_movement_and_collision_reactions() {
     );
 
     world.clear_movement_pattern(entity);
+    world.clear_gameplay_tags(entity);
     world.clear_action_bindings(entity);
     world.clear_interaction(entity);
     world.clear_collision_reactions(entity);
     world.clear_behavior_state_machine(entity);
     world.clear_behavior_state_enter_actions(entity);
     assert_eq!(world.movement_pattern(entity), None);
+    assert_eq!(world.gameplay_tags(entity), None);
     assert_eq!(world.action_bindings(entity), None);
     assert_eq!(world.interaction(entity), None);
     assert_eq!(world.collision_reactions(entity), None);
     assert_eq!(world.behavior_state_machine(entity), None);
     assert_eq!(world.behavior_state_enter_actions(entity), None);
+}
+
+#[test]
+fn gameplay_query_indices_follow_faction_and_tag_mutations() {
+    let mut world = World::default();
+    let entity = world.spawn_entity();
+    let index = entity.id as usize;
+    let faction_a = GameplayFaction::new(5, 0).unwrap();
+    let faction_b = GameplayFaction::new(6, 0).unwrap();
+    let tags_a = GameplayTags::new((1 << 5) | (1 << 6)).unwrap();
+    let tags_b = GameplayTags::new((1 << 6) | (1 << 7)).unwrap();
+
+    world.set_gameplay_faction(entity, faction_a);
+    world.set_gameplay_tags(entity, tags_a);
+
+    assert_eq!(world.gameplay_faction_query_indices(5), &[index]);
+    assert_eq!(world.gameplay_faction_query_indices(6), &[]);
+    assert_eq!(world.gameplay_tag_query_indices(5), &[index]);
+    assert_eq!(world.gameplay_tag_query_indices(6), &[index]);
+    assert_eq!(world.gameplay_tag_query_indices(7), &[]);
+
+    world.set_gameplay_faction(entity, faction_b);
+    world.set_gameplay_tags(entity, tags_b);
+
+    assert_eq!(world.gameplay_faction_query_indices(5), &[]);
+    assert_eq!(world.gameplay_faction_query_indices(6), &[index]);
+    assert_eq!(world.gameplay_tag_query_indices(5), &[]);
+    assert_eq!(world.gameplay_tag_query_indices(6), &[index]);
+    assert_eq!(world.gameplay_tag_query_indices(7), &[index]);
+
+    world.clear_gameplay_faction(entity);
+    world.clear_gameplay_tags(entity);
+
+    assert_eq!(world.gameplay_faction_query_indices(6), &[]);
+    assert_eq!(world.gameplay_tag_query_indices(6), &[]);
+    assert_eq!(world.gameplay_tag_query_indices(7), &[]);
+}
+
+#[test]
+fn gameplay_query_indices_remove_despawned_and_reused_entities() {
+    let mut world = World::default();
+    let entity = world.spawn_entity();
+    let index = entity.id as usize;
+
+    world.set_gameplay_faction(entity, GameplayFaction::new(5, 0).unwrap());
+    world.set_gameplay_tags(entity, GameplayTags::new(1 << 5).unwrap());
+    assert_eq!(world.gameplay_faction_query_indices(5), &[index]);
+    assert_eq!(world.gameplay_tag_query_indices(5), &[index]);
+
+    world.despawn(entity);
+    assert_eq!(world.gameplay_faction_query_indices(5), &[]);
+    assert_eq!(world.gameplay_tag_query_indices(5), &[]);
+
+    let reused = world.spawn_entity();
+    assert_eq!(reused.id as usize, index);
+    world.set_gameplay_faction(reused, GameplayFaction::new(5, 0).unwrap());
+    world.set_gameplay_tags(reused, GameplayTags::new(1 << 5).unwrap());
+
+    assert_eq!(world.gameplay_faction_query_indices(5), &[index]);
+    assert_eq!(world.gameplay_tag_query_indices(5), &[index]);
+}
+
+#[test]
+fn gameplay_query_indices_track_projectile_source_faction() {
+    let mut world = World::default();
+    let faction = GameplayFaction::new(5, 0).unwrap();
+
+    let projectile = world.spawn_projectile_from_request(ProjectileSpawnRequest {
+        transform: Transform2D { x: 4.0, y: 8.0 },
+        velocity: Velocity { vx: 1.0, vy: 2.0 },
+        texture_id: 7,
+        lifetime: 1.5,
+        template: DEFAULT_BULLET_TEMPLATE,
+        damage: 2.0,
+        collision_target: ProjectileCollisionTarget::Enemies,
+        tile_impact: ProjectileTileImpact::Despawn,
+        source_faction: Some(faction),
+    });
+
+    assert_eq!(world.gameplay_faction(projectile), Some(faction));
+    assert_eq!(
+        world.gameplay_faction_query_indices(5),
+        &[projectile.id as usize]
+    );
+}
+
+#[test]
+fn lifetime_and_projectile_policy_components_mirror_legacy_storage() {
+    let mut world = World::default();
+    let entity = world.spawn_entity();
+    let index = entity.id as usize;
+    let policy = ProjectilePolicy::new(
+        ProjectileCollisionTarget::Player,
+        ProjectileTileImpact::Bounce,
+    );
+
+    assert!(world.set_gameplay_lifetime_at(index, 1.5));
+    assert!(world.set_projectile_policy_at(index, policy));
+
+    assert_eq!(world.lifetimes[index], Some(GameplayLifetime::new(1.5)));
+    assert_eq!(world.bullet_lifetimes[index], Some(1.5));
+    assert_eq!(world.projectile_policies[index], Some(policy));
+    assert_eq!(
+        world.projectile_collision_targets[index],
+        Some(ProjectileCollisionTarget::Player)
+    );
+    assert_eq!(
+        world.projectile_tile_impacts[index],
+        Some(ProjectileTileImpact::Bounce)
+    );
+    assert_eq!(world.gameplay_lifetime_at(index), Some(1.5));
+    assert_eq!(
+        world.projectile_collision_target_at(index),
+        ProjectileCollisionTarget::Player
+    );
+    assert_eq!(
+        world.projectile_tile_impact_at(index),
+        ProjectileTileImpact::Bounce
+    );
+}
+
+#[test]
+fn lifetime_helper_syncs_legacy_direct_writes_to_component_storage() {
+    let mut world = World::default();
+    let entity = world.spawn_entity();
+    let index = entity.id as usize;
+
+    world.bullet_lifetimes[index] = Some(0.75);
+
+    assert_eq!(world.tick_gameplay_lifetime_at(index, 0.25), Some(0.5));
+    assert_eq!(world.lifetimes[index], Some(GameplayLifetime::new(0.5)));
+    assert_eq!(world.bullet_lifetimes[index], Some(0.5));
 }
 
 #[test]

@@ -1,9 +1,9 @@
 use crate::collision::{CircleQueryHit, CollisionPair, CollisionScratch, CollisionSystem};
 use crate::components::gameplay::{
     ActionAimSource, ActionBinding, ActionPattern, CollisionReaction, CollisionReactionSet,
-    CollisionTarget, GameplayTimerTrigger, MeleeTarget, MovementPattern, MovementTarget,
-    ProjectileCollisionTarget, ProjectileTileImpact, SpawnAnchor, SpawnPhase,
-    GAMEPLAY_PICKUP_ITEM_SCORE, MAX_COLLISION_REACTIONS_PER_ENTITY,
+    CollisionTarget, GameplayFaction, GameplayTimerTrigger, MeleeTarget, MovementPattern,
+    MovementTarget, ProjectileCollisionTarget, ProjectileTileImpact, SpawnAnchor, SpawnPhase,
+    SpawnPrefabProjectilePayload, GAMEPLAY_PICKUP_ITEM_SCORE, MAX_COLLISION_REACTIONS_PER_ENTITY,
 };
 use crate::components::{
     AabbCollider, CollisionLayer, CollisionMask, HeightSpan, ProjectileArc, Transform2D, Velocity,
@@ -20,7 +20,7 @@ use crate::gameplay_event::{
 };
 use crate::input::{InputActionRegistry, InputState};
 use crate::tilemap::{Tilemap, TilemapContactHit};
-use crate::world::{BulletSpawnRequest, EntityTemplate, World};
+use crate::world::{EntityTemplate, ProjectileSpawnRequest, World};
 
 const MAX_COLLISION_GAMEPLAY_EVENTS_PER_REACTION_SET: usize =
     MAX_COLLISION_REACTIONS_PER_ENTITY * 3;
@@ -56,6 +56,7 @@ impl ActionPatternKind {
             } => Self::Melee,
             ActionPattern::SpawnPrefab {
                 prefab_id: _,
+                projectile: _,
                 anchor: _,
                 phase: _,
                 offset_x: _,
@@ -633,7 +634,7 @@ pub(crate) struct ProjectileSpawnCoreData {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ProjectileEntitySpawnData {
-    pub(crate) request: BulletSpawnRequest,
+    pub(crate) request: ProjectileSpawnRequest,
     pub(crate) arc: Option<ProjectileArc>,
 }
 
@@ -643,6 +644,7 @@ pub(crate) struct ProjectileEntitySpawnResult {
     pub(crate) arc_applied: bool,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct PrefabEnemyEntitySpawnData {
     pub(crate) transform: Transform2D,
@@ -652,6 +654,7 @@ pub(crate) struct PrefabEnemyEntitySpawnData {
     pub(crate) score_reward: u32,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct PrefabEnemyEntitySpawnResult {
     pub(crate) spawned: Entity,
@@ -768,7 +771,7 @@ pub(crate) fn spawn_projectile_entity(
     world: &mut World,
     data: ProjectileEntitySpawnData,
 ) -> ProjectileEntitySpawnResult {
-    let bullet = world.spawn_bullet_from_request(data.request);
+    let bullet = world.spawn_projectile_from_request(data.request);
     let arc_applied = if let Some(arc) = data.arc {
         world.set_projectile_arc(bullet, arc);
         true
@@ -781,6 +784,7 @@ pub(crate) fn spawn_projectile_entity(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn spawn_prefab_enemy_entity(
     world: &mut World,
     data: PrefabEnemyEntitySpawnData,
@@ -1057,15 +1061,46 @@ pub(crate) const fn melee_action_payload_from_binding(
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct SpawnPrefabActionPayload {
     pub(crate) prefab_id: u32,
+    pub(crate) projectile: Option<SpawnPrefabProjectilePayload>,
     pub(crate) anchor: SpawnAnchor,
     pub(crate) phase: SpawnPhase,
     pub(crate) offset_x: f32,
     pub(crate) offset_y: f32,
 }
 
+impl SpawnPrefabActionPayload {
+    pub(crate) const fn placement(self) -> SpawnPrefabPlacement {
+        SpawnPrefabPlacement {
+            anchor: self.anchor,
+            phase: self.phase,
+            offset_x: self.offset_x,
+            offset_y: self.offset_y,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct SpawnPrefabPlacement {
+    pub(crate) anchor: SpawnAnchor,
+    pub(crate) phase: SpawnPhase,
+    pub(crate) offset_x: f32,
+    pub(crate) offset_y: f32,
+}
+
+impl SpawnPrefabPlacement {
+    pub(crate) fn transform_from_source(self, source_transform: Transform2D) -> Transform2D {
+        Transform2D {
+            x: source_transform.x + self.offset_x,
+            y: source_transform.y + self.offset_y,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct SpawnPrefabActionPlan {
     pub(crate) prefab_id: u32,
+    pub(crate) projectile: Option<SpawnPrefabProjectilePayload>,
+    pub(crate) placement: SpawnPrefabPlacement,
     pub(crate) transform: Transform2D,
 }
 
@@ -1074,6 +1109,7 @@ pub(crate) struct SpawnPrefabCoreData {
     pub(crate) source: Entity,
     pub(crate) action_id: u32,
     pub(crate) prefab_id: u32,
+    pub(crate) projectile: Option<SpawnPrefabProjectilePayload>,
     pub(crate) transform: Transform2D,
 }
 
@@ -1102,10 +1138,11 @@ pub(crate) enum SpawnPrefabSupport {
 pub(crate) fn validate_spawn_prefab_action_support(
     payload: SpawnPrefabActionPayload,
 ) -> Result<(), SpawnPrefabActionPlanError> {
-    if payload.anchor != SpawnAnchor::SelfEntity {
+    let placement = payload.placement();
+    if placement.anchor != SpawnAnchor::SelfEntity {
         return Err(SpawnPrefabActionPlanError::UnsupportedAnchor);
     }
-    if payload.phase != SpawnPhase::PrePhysics {
+    if placement.phase != SpawnPhase::PrePhysics {
         return Err(SpawnPrefabActionPlanError::UnsupportedPhase);
     }
     Ok(())
@@ -1119,12 +1156,12 @@ pub(crate) fn plan_spawn_prefab_action(
     let Some(source_transform) = source_transform else {
         return Err(SpawnPrefabActionPlanError::MissingSourceTransform);
     };
+    let placement = payload.placement();
     Ok(SpawnPrefabActionPlan {
         prefab_id: payload.prefab_id,
-        transform: Transform2D {
-            x: source_transform.x + payload.offset_x,
-            y: source_transform.y + payload.offset_y,
-        },
+        projectile: payload.projectile,
+        placement,
+        transform: placement.transform_from_source(source_transform),
     })
 }
 
@@ -1148,6 +1185,7 @@ pub(crate) const fn spawn_prefab_core_data_from_plan(
         source,
         action_id,
         prefab_id: plan.prefab_id,
+        projectile: plan.projectile,
         transform: plan.transform,
     }
 }
@@ -1253,6 +1291,7 @@ pub(crate) const fn spawn_prefab_action_payload_from_binding(
 ) -> Result<SpawnPrefabActionPayload, ActionReadiness> {
     let ActionPattern::SpawnPrefab {
         prefab_id,
+        projectile,
         anchor,
         phase,
         offset_x,
@@ -1263,6 +1302,7 @@ pub(crate) const fn spawn_prefab_action_payload_from_binding(
     };
     Ok(SpawnPrefabActionPayload {
         prefab_id,
+        projectile,
         anchor,
         phase,
         offset_x,
@@ -1349,12 +1389,14 @@ pub(crate) const fn prepared_action_payload_from_binding(
         }),
         ActionPattern::SpawnPrefab {
             prefab_id,
+            projectile,
             anchor,
             phase,
             offset_x,
             offset_y,
         } => PreparedActionPayload::SpawnPrefab(SpawnPrefabActionPayload {
             prefab_id,
+            projectile,
             anchor,
             phase,
             offset_x,
@@ -1449,6 +1491,7 @@ fn action_pattern_identity_matches(a: ActionPattern, b: ActionPattern) -> bool {
         (
             ActionPattern::SpawnPrefab {
                 prefab_id: a_prefab_id,
+                projectile: a_projectile,
                 anchor: a_anchor,
                 phase: a_phase,
                 offset_x: a_offset_x,
@@ -1456,6 +1499,7 @@ fn action_pattern_identity_matches(a: ActionPattern, b: ActionPattern) -> bool {
             },
             ActionPattern::SpawnPrefab {
                 prefab_id: b_prefab_id,
+                projectile: b_projectile,
                 anchor: b_anchor,
                 phase: b_phase,
                 offset_x: b_offset_x,
@@ -1465,6 +1509,7 @@ fn action_pattern_identity_matches(a: ActionPattern, b: ActionPattern) -> bool {
             a_prefab_id == b_prefab_id
                 && a_anchor == b_anchor
                 && a_phase == b_phase
+                && a_projectile == b_projectile
                 && f32_identity_matches(a_offset_x, b_offset_x)
                 && f32_identity_matches(a_offset_y, b_offset_y)
         }
@@ -1630,6 +1675,13 @@ pub(crate) struct CollisionDespawnReactionOutcome {
     pub(crate) target: Entity,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct CollisionKnockbackReactionOutcome {
+    pub(crate) target_index: usize,
+    pub(crate) target: Entity,
+    pub(crate) impulse: Velocity,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CollisionPickupReactionOutcome {
     pub(crate) pickup_index: usize,
@@ -1711,6 +1763,14 @@ pub(crate) enum CollisionSideEffect {
         preset_id: u32,
         target_index: usize,
     },
+    CameraShake,
+    EmitEffect {
+        effect_id: u32,
+        effect_type: u32,
+        target_index: usize,
+        intensity: f32,
+        radius: f32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1724,6 +1784,27 @@ pub(crate) enum CollisionSideEffectPayload {
         preset_id: u32,
         position: Transform2D,
     },
+    CameraShake,
+    PresentationEffect {
+        actor: Entity,
+        effect_id: u32,
+        effect_type: u32,
+        intensity: f32,
+        radius: f32,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct CollisionSpawnPrefabEvaluation {
+    pub(crate) reaction_owner_index: usize,
+    pub(crate) source: Entity,
+    pub(crate) action_id: u32,
+    pub(crate) prefab_id: u32,
+    pub(crate) target: CollisionTarget,
+    pub(crate) anchor_index: usize,
+    pub(crate) anchor: Entity,
+    pub(crate) offset_x: f32,
+    pub(crate) offset_y: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -1838,8 +1919,11 @@ pub(crate) struct CollisionReactionSetOutcome {
     damage_outcomes: [Option<CollisionDamageReactionOutcome>; MAX_COLLISION_REACTIONS_PER_ENTITY],
     faction_damage_denials: [Option<FactionDamageDenial>; MAX_COLLISION_REACTIONS_PER_ENTITY],
     despawn_outcomes: [Option<CollisionDespawnReactionOutcome>; MAX_COLLISION_REACTIONS_PER_ENTITY],
+    knockback_outcomes:
+        [Option<CollisionKnockbackReactionOutcome>; MAX_COLLISION_REACTIONS_PER_ENTITY],
     pickup_outcomes: [Option<CollisionPickupReactionOutcome>; MAX_COLLISION_REACTIONS_PER_ENTITY],
     side_effects: [Option<CollisionSideEffectEvaluation>; MAX_COLLISION_REACTIONS_PER_ENTITY],
+    spawn_prefabs: [Option<CollisionSpawnPrefabEvaluation>; MAX_COLLISION_REACTIONS_PER_ENTITY],
 }
 
 impl Default for CollisionReactionSetOutcome {
@@ -1851,8 +1935,10 @@ impl Default for CollisionReactionSetOutcome {
             damage_outcomes: [None; MAX_COLLISION_REACTIONS_PER_ENTITY],
             faction_damage_denials: [None; MAX_COLLISION_REACTIONS_PER_ENTITY],
             despawn_outcomes: [None; MAX_COLLISION_REACTIONS_PER_ENTITY],
+            knockback_outcomes: [None; MAX_COLLISION_REACTIONS_PER_ENTITY],
             pickup_outcomes: [None; MAX_COLLISION_REACTIONS_PER_ENTITY],
             side_effects: [None; MAX_COLLISION_REACTIONS_PER_ENTITY],
+            spawn_prefabs: [None; MAX_COLLISION_REACTIONS_PER_ENTITY],
         }
     }
 }
@@ -1876,6 +1962,15 @@ impl CollisionReactionSetOutcome {
         self.despawn_outcomes.iter().filter_map(|outcome| *outcome)
     }
 
+    #[cfg(test)]
+    pub(crate) fn knockback_outcomes(
+        &self,
+    ) -> impl Iterator<Item = CollisionKnockbackReactionOutcome> + '_ {
+        self.knockback_outcomes
+            .iter()
+            .filter_map(|outcome| *outcome)
+    }
+
     pub(crate) fn pickup_outcomes(
         &self,
     ) -> impl Iterator<Item = CollisionPickupReactionOutcome> + '_ {
@@ -1885,28 +1980,34 @@ impl CollisionReactionSetOutcome {
     pub(crate) fn side_effects(&self) -> impl Iterator<Item = CollisionSideEffectEvaluation> + '_ {
         self.side_effects.iter().filter_map(|effect| *effect)
     }
-}
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct TileCollisionReactionSetOutcome {
-    pub(crate) queued_self_despawn: bool,
-    pub(crate) despawn_outcome: Option<CollisionDespawnReactionOutcome>,
-    side_effects: [Option<CollisionSideEffectEvaluation>; MAX_COLLISION_REACTIONS_PER_ENTITY],
-}
-
-impl Default for TileCollisionReactionSetOutcome {
-    fn default() -> Self {
-        Self {
-            queued_self_despawn: false,
-            despawn_outcome: None,
-            side_effects: [None; MAX_COLLISION_REACTIONS_PER_ENTITY],
-        }
+    pub(crate) fn spawn_prefabs(
+        &self,
+    ) -> impl Iterator<Item = CollisionSpawnPrefabEvaluation> + '_ {
+        self.spawn_prefabs.iter().filter_map(|spawn| *spawn)
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(crate) struct TileCollisionReactionSetOutcome {
+    pub(crate) queued_self_despawn: bool,
+    pub(crate) despawn_outcome: Option<CollisionDespawnReactionOutcome>,
+    reaction_outcome: CollisionReactionSetOutcome,
+}
+
 impl TileCollisionReactionSetOutcome {
+    pub(crate) fn reaction_outcome(&self) -> &CollisionReactionSetOutcome {
+        &self.reaction_outcome
+    }
+
     pub(crate) fn side_effects(&self) -> impl Iterator<Item = CollisionSideEffectEvaluation> + '_ {
-        self.side_effects.iter().filter_map(|effect| *effect)
+        self.reaction_outcome.side_effects()
+    }
+
+    pub(crate) fn spawn_prefabs(
+        &self,
+    ) -> impl Iterator<Item = CollisionSpawnPrefabEvaluation> + '_ {
+        self.reaction_outcome.spawn_prefabs()
     }
 }
 
@@ -1915,6 +2016,7 @@ pub(crate) struct PickupCollisionReactionSetOutcome {
     pub(crate) handled_pickup: bool,
     pickup_outcomes: [Option<CollisionPickupReactionOutcome>; MAX_COLLISION_REACTIONS_PER_ENTITY],
     side_effects: [Option<CollisionSideEffectEvaluation>; MAX_COLLISION_REACTIONS_PER_ENTITY],
+    spawn_prefabs: [Option<CollisionSpawnPrefabEvaluation>; MAX_COLLISION_REACTIONS_PER_ENTITY],
 }
 
 impl Default for PickupCollisionReactionSetOutcome {
@@ -1923,6 +2025,7 @@ impl Default for PickupCollisionReactionSetOutcome {
             handled_pickup: false,
             pickup_outcomes: [None; MAX_COLLISION_REACTIONS_PER_ENTITY],
             side_effects: [None; MAX_COLLISION_REACTIONS_PER_ENTITY],
+            spawn_prefabs: [None; MAX_COLLISION_REACTIONS_PER_ENTITY],
         }
     }
 }
@@ -1936,6 +2039,12 @@ impl PickupCollisionReactionSetOutcome {
 
     pub(crate) fn side_effects(&self) -> impl Iterator<Item = CollisionSideEffectEvaluation> + '_ {
         self.side_effects.iter().filter_map(|effect| *effect)
+    }
+
+    pub(crate) fn spawn_prefabs(
+        &self,
+    ) -> impl Iterator<Item = CollisionSpawnPrefabEvaluation> + '_ {
+        self.spawn_prefabs.iter().filter_map(|spawn| *spawn)
     }
 }
 
@@ -2171,6 +2280,18 @@ pub(crate) enum MovementPatternEvaluation {
         target_transform: Transform2D,
         speed: f32,
     },
+    SeekTarget {
+        target_transform: Transform2D,
+        current_velocity: Velocity,
+        speed: f32,
+        turn_rate: f32,
+    },
+    Accelerate {
+        current_velocity: Velocity,
+        acceleration_x: f32,
+        acceleration_y: f32,
+        max_speed: f32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -2194,6 +2315,11 @@ pub(crate) struct MovementNavigationSource {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum MovementNavigationTargetIdentity {
     Player,
+    NearestPlayer,
+    NearestEnemy,
+    NearestLayer(CollisionLayer),
+    NearestFaction(u32),
+    NearestTag(u32),
     Entity(Entity),
 }
 
@@ -2266,6 +2392,15 @@ pub(crate) fn movement_navigation_target_identity(
 ) -> MovementNavigationTargetIdentity {
     match target {
         MovementTarget::Player => MovementNavigationTargetIdentity::Player,
+        MovementTarget::NearestPlayer => MovementNavigationTargetIdentity::NearestPlayer,
+        MovementTarget::NearestEnemy => MovementNavigationTargetIdentity::NearestEnemy,
+        MovementTarget::NearestLayer(layer) => {
+            MovementNavigationTargetIdentity::NearestLayer(layer)
+        }
+        MovementTarget::NearestFaction(faction_id) => {
+            MovementNavigationTargetIdentity::NearestFaction(faction_id)
+        }
+        MovementTarget::NearestTag(tag_id) => MovementNavigationTargetIdentity::NearestTag(tag_id),
         MovementTarget::Entity(entity) => MovementNavigationTargetIdentity::Entity(entity),
     }
 }
@@ -2329,6 +2464,7 @@ pub(crate) fn evaluate_movement_pattern(
     world: &World,
     player_transform: Option<Transform2D>,
     transform: Transform2D,
+    current_velocity: Option<Velocity>,
     pattern: MovementPattern,
 ) -> Option<MovementPatternEvaluation> {
     match pattern {
@@ -2341,7 +2477,8 @@ pub(crate) fn evaluate_movement_pattern(
             velocity_toward(transform, Transform2D { x, y }, speed),
         )),
         MovementPattern::Chase { target, speed } => {
-            let Some(target_transform) = movement_target_transform(world, player_transform, target)
+            let Some(target_transform) =
+                movement_target_transform_from(world, player_transform, transform, target)
             else {
                 return Some(MovementPatternEvaluation::Velocity(Velocity::default()));
             };
@@ -2357,7 +2494,8 @@ pub(crate) fn evaluate_movement_pattern(
             radius,
             radial_band,
         } => {
-            let Some(target_transform) = movement_target_transform(world, player_transform, target)
+            let Some(target_transform) =
+                movement_target_transform_from(world, player_transform, transform, target)
             else {
                 return Some(MovementPatternEvaluation::Velocity(Velocity::default()));
             };
@@ -2365,6 +2503,33 @@ pub(crate) fn evaluate_movement_pattern(
                 orbit_velocity_with_band(transform, target_transform, speed, radius, radial_band),
             ))
         }
+        MovementPattern::SeekTarget {
+            target,
+            speed,
+            turn_rate,
+        } => {
+            let Some(target_transform) =
+                movement_target_transform_from(world, player_transform, transform, target)
+            else {
+                return Some(MovementPatternEvaluation::Velocity(Velocity::default()));
+            };
+            Some(MovementPatternEvaluation::SeekTarget {
+                target_transform,
+                current_velocity: current_velocity.unwrap_or_default(),
+                speed,
+                turn_rate: clamp_turn_rate(turn_rate),
+            })
+        }
+        MovementPattern::Accelerate {
+            acceleration_x,
+            acceleration_y,
+            max_speed,
+        } => Some(MovementPatternEvaluation::Accelerate {
+            current_velocity: current_velocity.unwrap_or_default(),
+            acceleration_x,
+            acceleration_y,
+            max_speed,
+        }),
     }
 }
 
@@ -2377,7 +2542,14 @@ pub(crate) fn apply_scene_neutral_movement_pattern(
     let Some(transform) = world.transforms.get(entity_index).and_then(|value| *value) else {
         return MovementPatternApplication::Unsupported;
     };
-    match evaluate_movement_pattern(world, player_transform, transform, pattern) {
+    let current_velocity = world.velocities.get(entity_index).copied().flatten();
+    match evaluate_movement_pattern(
+        world,
+        player_transform,
+        transform,
+        current_velocity,
+        pattern,
+    ) {
         Some(MovementPatternEvaluation::Velocity(velocity)) => {
             let Some(slot) = world.velocities.get_mut(entity_index) else {
                 return MovementPatternApplication::Unsupported;
@@ -2394,6 +2566,40 @@ pub(crate) fn apply_scene_neutral_movement_pattern(
             target_transform,
             speed,
         },
+        Some(MovementPatternEvaluation::SeekTarget {
+            target_transform,
+            current_velocity,
+            speed,
+            turn_rate,
+        }) => {
+            let desired_velocity = velocity_toward(transform, target_transform, speed);
+            let Some(slot) = world.velocities.get_mut(entity_index) else {
+                return MovementPatternApplication::Unsupported;
+            };
+            *slot = Some(velocity_interpolate(
+                current_velocity,
+                desired_velocity,
+                turn_rate,
+            ));
+            MovementPatternApplication::Applied
+        }
+        Some(MovementPatternEvaluation::Accelerate {
+            current_velocity,
+            acceleration_x,
+            acceleration_y,
+            max_speed,
+        }) => {
+            let Some(slot) = world.velocities.get_mut(entity_index) else {
+                return MovementPatternApplication::Unsupported;
+            };
+            *slot = Some(velocity_with_acceleration_and_speed_cap(
+                current_velocity,
+                acceleration_x,
+                acceleration_y,
+                max_speed,
+            ));
+            MovementPatternApplication::Applied
+        }
         None => MovementPatternApplication::Unsupported,
     }
 }
@@ -2866,15 +3072,116 @@ pub(crate) fn topdown_input_velocity(input: InputState, speed: f32) -> Velocity 
     }
 }
 
-pub(crate) fn movement_target_transform(
+fn movement_target_transform_from(
     world: &World,
     player_transform: Option<Transform2D>,
+    source_transform: Transform2D,
     target: MovementTarget,
 ) -> Option<Transform2D> {
     match target {
-        MovementTarget::Player => player_transform,
+        MovementTarget::Player | MovementTarget::NearestPlayer => player_transform,
+        MovementTarget::NearestEnemy => {
+            nearest_layer_transform(world, source_transform, CollisionLayer::Enemy)
+        }
+        MovementTarget::NearestLayer(layer) => {
+            nearest_layer_transform(world, source_transform, layer)
+        }
+        MovementTarget::NearestFaction(faction_id) => {
+            nearest_faction_transform(world, source_transform, faction_id)
+        }
+        MovementTarget::NearestTag(tag_id) => {
+            nearest_tag_transform(world, source_transform, tag_id)
+        }
         MovementTarget::Entity(entity) => world.transform(entity),
     }
+}
+
+fn nearest_layer_transform(
+    world: &World,
+    source_transform: Transform2D,
+    layer: CollisionLayer,
+) -> Option<Transform2D> {
+    let mut nearest = None;
+    let mut nearest_distance_squared = f32::INFINITY;
+    for &index in world.alive_indices() {
+        if world.collider_layer_at(index) != Some(layer) {
+            continue;
+        }
+        let Some(transform) = world.transforms[index] else {
+            continue;
+        };
+        let dx = transform.x - source_transform.x;
+        let dy = transform.y - source_transform.y;
+        let distance_squared = dx * dx + dy * dy;
+        if distance_squared <= 0.0001 || distance_squared >= nearest_distance_squared {
+            continue;
+        }
+        nearest = Some(transform);
+        nearest_distance_squared = distance_squared;
+    }
+    nearest
+}
+
+fn nearest_faction_transform(
+    world: &World,
+    source_transform: Transform2D,
+    faction_id: u32,
+) -> Option<Transform2D> {
+    GameplayFaction::new(faction_id, 0)?;
+    let mut nearest = None;
+    let mut nearest_distance_squared = f32::INFINITY;
+    for &index in world.gameplay_faction_indices(faction_id) {
+        let Some(faction) = world.gameplay_factions[index] else {
+            continue;
+        };
+        if faction.faction_id != faction_id {
+            continue;
+        }
+        let Some(transform) = world.transforms[index] else {
+            continue;
+        };
+        let dx = transform.x - source_transform.x;
+        let dy = transform.y - source_transform.y;
+        let distance_squared = dx * dx + dy * dy;
+        if distance_squared <= 0.0001 || distance_squared >= nearest_distance_squared {
+            continue;
+        }
+        nearest = Some(transform);
+        nearest_distance_squared = distance_squared;
+    }
+    nearest
+}
+
+fn nearest_tag_transform(
+    world: &World,
+    source_transform: Transform2D,
+    tag_id: u32,
+) -> Option<Transform2D> {
+    if tag_id > crate::components::gameplay::GAMEPLAY_TAG_MAX_ID {
+        return None;
+    }
+    let mut nearest = None;
+    let mut nearest_distance_squared = f32::INFINITY;
+    for &index in world.gameplay_tag_indices(tag_id) {
+        let Some(tags) = world.gameplay_tags[index] else {
+            continue;
+        };
+        if !tags.contains(tag_id) {
+            continue;
+        }
+        let Some(transform) = world.transforms[index] else {
+            continue;
+        };
+        let dx = transform.x - source_transform.x;
+        let dy = transform.y - source_transform.y;
+        let distance_squared = dx * dx + dy * dy;
+        if distance_squared <= 0.0001 || distance_squared >= nearest_distance_squared {
+            continue;
+        }
+        nearest = Some(transform);
+        nearest_distance_squared = distance_squared;
+    }
+    nearest
 }
 
 pub(crate) fn velocity_toward(from: Transform2D, to: Transform2D, speed: f32) -> Velocity {
@@ -2889,6 +3196,50 @@ pub(crate) fn velocity_toward(from: Transform2D, to: Transform2D, speed: f32) ->
     } else {
         Velocity::default()
     }
+}
+
+fn clamp_turn_rate(turn_rate: f32) -> f32 {
+    if !turn_rate.is_finite() {
+        0.0
+    } else {
+        turn_rate.clamp(0.0, 1.0)
+    }
+}
+
+fn velocity_interpolate(current: Velocity, desired: Velocity, turn_rate: f32) -> Velocity {
+    if turn_rate <= 0.0 {
+        return current;
+    }
+    if turn_rate >= 1.0 {
+        return desired;
+    }
+    Velocity {
+        vx: current.vx + (desired.vx - current.vx) * turn_rate,
+        vy: current.vy + (desired.vy - current.vy) * turn_rate,
+    }
+}
+
+fn velocity_with_acceleration_and_speed_cap(
+    current: Velocity,
+    acceleration_x: f32,
+    acceleration_y: f32,
+    max_speed: f32,
+) -> Velocity {
+    let mut velocity = Velocity {
+        vx: current.vx + acceleration_x,
+        vy: current.vy + acceleration_y,
+    };
+    let speed_sq = velocity.vx * velocity.vx + velocity.vy * velocity.vy;
+    let max_speed_sq = max_speed * max_speed;
+    if speed_sq > max_speed_sq {
+        let current_speed = speed_sq.sqrt();
+        if current_speed > 0.0 {
+            let scale = max_speed / current_speed;
+            velocity.vx *= scale;
+            velocity.vy *= scale;
+        }
+    }
+    velocity
 }
 
 fn has_reached_movement_navigation_target(
@@ -2943,16 +3294,12 @@ pub(crate) fn tick_lifetime(
     entity_index: usize,
     delta_seconds: f32,
 ) -> Option<f32> {
-    let time_left = world.bullet_lifetimes.get_mut(entity_index)?.as_mut()?;
-    *time_left -= delta_seconds;
-    Some(*time_left)
+    world.tick_gameplay_lifetime_at(entity_index, delta_seconds)
 }
 
 pub(crate) fn has_expired_lifetime(world: &World, entity_index: usize) -> bool {
     world
-        .bullet_lifetimes
-        .get(entity_index)
-        .and_then(|lifetime| *lifetime)
+        .gameplay_lifetime_at(entity_index)
         .is_some_and(|time_left| time_left <= 0.0)
 }
 
@@ -3054,12 +3401,7 @@ pub(crate) fn projectile_collision_target_at(
     world: &World,
     projectile_index: usize,
 ) -> ProjectileCollisionTarget {
-    world
-        .projectile_collision_targets
-        .get(projectile_index)
-        .copied()
-        .flatten()
-        .unwrap_or(ProjectileCollisionTarget::Enemies)
+    world.projectile_collision_target_at(projectile_index)
 }
 
 pub(crate) fn default_projectile_damage_allowed(
@@ -3256,10 +3598,84 @@ pub(crate) fn commit_collision_side_effect_reaction_for_pair(
                 effect,
             })
         }
+        CollisionReaction::CameraShake { cooldown, trigger } => {
+            let effect = if trigger.is_allowed(contact_entered) && cooldown.commit_if_ready() {
+                Some(CollisionSideEffect::CameraShake)
+            } else {
+                None
+            };
+            Some(CollisionSideEffectEvaluation {
+                replace_default_audio: false,
+                replace_default_particle: false,
+                effect,
+            })
+        }
+        CollisionReaction::EmitEffect {
+            effect_id,
+            effect_type,
+            target,
+            intensity,
+            radius,
+            cooldown,
+            trigger,
+        } => {
+            let effect = if trigger.is_allowed(contact_entered) && cooldown.commit_if_ready() {
+                Some(CollisionSideEffect::EmitEffect {
+                    effect_id: *effect_id,
+                    effect_type: *effect_type,
+                    target_index: pair.target_index(*target),
+                    intensity: *intensity,
+                    radius: *radius,
+                })
+            } else {
+                None
+            };
+            Some(CollisionSideEffectEvaluation {
+                replace_default_audio: false,
+                replace_default_particle: false,
+                effect,
+            })
+        }
         CollisionReaction::Damage { .. }
+        | CollisionReaction::AreaDamage { .. }
+        | CollisionReaction::Knockback { .. }
         | CollisionReaction::Pickup { .. }
-        | CollisionReaction::Despawn { .. } => None,
+        | CollisionReaction::Despawn { .. }
+        | CollisionReaction::SpawnPrefab { .. } => None,
     }
+}
+
+pub(crate) fn collision_spawn_prefab_reaction_for_pair(
+    pair: CollisionReactionPair,
+    reaction: CollisionReaction,
+    contact_entered: bool,
+) -> Option<CollisionSpawnPrefabEvaluation> {
+    let CollisionReaction::SpawnPrefab {
+        action_id,
+        prefab_id,
+        target,
+        cooldown,
+        trigger,
+        offset_x,
+        offset_y,
+    } = reaction
+    else {
+        return None;
+    };
+    if !trigger.is_allowed(contact_entered) || !cooldown.is_ready() {
+        return None;
+    }
+    Some(CollisionSpawnPrefabEvaluation {
+        reaction_owner_index: pair.source_index,
+        source: pair.source,
+        action_id,
+        prefab_id,
+        target,
+        anchor_index: pair.target_index(target),
+        anchor: pair.target_entity(target),
+        offset_x,
+        offset_y,
+    })
 }
 
 pub(crate) fn commit_tile_collision_side_effect_reaction(
@@ -3311,21 +3727,130 @@ pub(crate) fn commit_tile_collision_side_effect_reaction(
                 effect,
             })
         }
+        CollisionReaction::CameraShake { cooldown, trigger } => {
+            let effect = if trigger.is_allowed(true) && cooldown.commit_if_ready() {
+                Some(CollisionSideEffect::CameraShake)
+            } else {
+                None
+            };
+            Some(CollisionSideEffectEvaluation {
+                replace_default_audio: false,
+                replace_default_particle: false,
+                effect,
+            })
+        }
+        CollisionReaction::EmitEffect {
+            effect_id,
+            effect_type,
+            target: CollisionTarget::SelfEntity,
+            intensity,
+            radius,
+            cooldown,
+            trigger,
+        } => {
+            let effect = if trigger.is_allowed(true) && cooldown.commit_if_ready() {
+                Some(CollisionSideEffect::EmitEffect {
+                    effect_id: *effect_id,
+                    effect_type: *effect_type,
+                    target_index: source_index,
+                    intensity: *intensity,
+                    radius: *radius,
+                })
+            } else {
+                None
+            };
+            Some(CollisionSideEffectEvaluation {
+                replace_default_audio: false,
+                replace_default_particle: false,
+                effect,
+            })
+        }
         CollisionReaction::SpawnParticle {
             target: CollisionTarget::OtherEntity,
             ..
         }
+        | CollisionReaction::EmitEffect {
+            target: CollisionTarget::OtherEntity,
+            ..
+        }
+        | CollisionReaction::AreaDamage { .. }
+        | CollisionReaction::Knockback { .. }
         | CollisionReaction::Damage { .. }
         | CollisionReaction::Pickup { .. }
-        | CollisionReaction::Despawn { .. } => None,
+        | CollisionReaction::Despawn { .. }
+        | CollisionReaction::SpawnPrefab { .. } => None,
     }
 }
 
+pub(crate) fn tile_collision_spawn_prefab_reaction(
+    world: &World,
+    source_index: usize,
+    reaction: CollisionReaction,
+) -> Option<CollisionSpawnPrefabEvaluation> {
+    let CollisionReaction::SpawnPrefab {
+        action_id,
+        prefab_id,
+        target,
+        cooldown,
+        trigger,
+        offset_x,
+        offset_y,
+    } = reaction
+    else {
+        return None;
+    };
+    if target != CollisionTarget::SelfEntity || !trigger.is_allowed(true) || !cooldown.is_ready() {
+        return None;
+    }
+    let source = entity_at(world, source_index)?;
+    Some(CollisionSpawnPrefabEvaluation {
+        reaction_owner_index: source_index,
+        source,
+        action_id,
+        prefab_id,
+        target,
+        anchor_index: source_index,
+        anchor: source,
+        offset_x,
+        offset_y,
+    })
+}
+
+pub(crate) fn commit_collision_spawn_prefab_reaction_cooldown(
+    world: &mut World,
+    evaluation: CollisionSpawnPrefabEvaluation,
+) -> bool {
+    let Some(Some(reactions)) = world
+        .collision_reactions
+        .get_mut(evaluation.reaction_owner_index)
+    else {
+        return false;
+    };
+    for reaction in reactions.iter_mut() {
+        let CollisionReaction::SpawnPrefab {
+            action_id,
+            cooldown,
+            ..
+        } = reaction
+        else {
+            continue;
+        };
+        if *action_id != evaluation.action_id || !cooldown.is_ready() {
+            continue;
+        }
+        cooldown.commit();
+        return true;
+    }
+    false
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_collision_reaction_set_for_pair<F>(
     world: &mut World,
     pair: CollisionReactionPair,
     reactions: &mut CollisionReactionSet,
     contact_entered: bool,
+    area_damage_hits: &mut Vec<CircleQueryHit>,
     marked_for_despawn: &mut [bool],
     pending_despawn: &mut Vec<Entity>,
     mut damage_defaults_for: F,
@@ -3358,6 +3883,28 @@ where
                     push_reaction_outcome(&mut outcome.faction_damage_denials, denial);
                 }
             }
+            CollisionReaction::AreaDamage {
+                radius,
+                target_layer,
+            } => {
+                outcome.overrides_default_gameplay = true;
+                let area_outcome = apply_collision_area_damage_reaction_for_pair(
+                    world,
+                    pair,
+                    *radius,
+                    *target_layer,
+                    area_damage_hits,
+                    marked_for_despawn,
+                    pending_despawn,
+                    &mut damage_defaults_for,
+                );
+                for damage_outcome in area_outcome.damage_outcomes() {
+                    push_reaction_outcome(&mut outcome.damage_outcomes, damage_outcome);
+                }
+                for denial in area_outcome.faction_damage_denials() {
+                    push_reaction_outcome(&mut outcome.faction_damage_denials, denial);
+                }
+            }
             CollisionReaction::Pickup { target } => {
                 outcome.overrides_default_gameplay = true;
                 let pickup_outcome = apply_collision_pickup_reaction_for_pair(
@@ -3369,6 +3916,18 @@ where
                 );
                 if let Some(pickup_outcome) = pickup_outcome {
                     push_reaction_outcome(&mut outcome.pickup_outcomes, pickup_outcome);
+                }
+            }
+            CollisionReaction::Knockback { target, impulse } => {
+                let knockback_outcome = apply_collision_knockback_reaction_for_pair(
+                    world,
+                    pair,
+                    *target,
+                    *impulse,
+                    marked_for_despawn,
+                );
+                if let Some(knockback_outcome) = knockback_outcome {
+                    push_reaction_outcome(&mut outcome.knockback_outcomes, knockback_outcome);
                 }
             }
             CollisionReaction::Despawn { target } => {
@@ -3384,13 +3943,23 @@ where
                     push_reaction_outcome(&mut outcome.despawn_outcomes, despawn_outcome);
                 }
             }
-            CollisionReaction::PlaySound { .. } | CollisionReaction::SpawnParticle { .. } => {
+            CollisionReaction::PlaySound { .. }
+            | CollisionReaction::SpawnParticle { .. }
+            | CollisionReaction::CameraShake { .. }
+            | CollisionReaction::EmitEffect { .. } => {
                 if let Some(evaluation) =
                     commit_collision_side_effect_reaction_for_pair(pair, reaction, contact_entered)
                 {
                     outcome.replace_default_audio |= evaluation.replace_default_audio;
                     outcome.replace_default_particle |= evaluation.replace_default_particle;
                     push_reaction_outcome(&mut outcome.side_effects, evaluation);
+                }
+            }
+            CollisionReaction::SpawnPrefab { .. } => {
+                if let Some(evaluation) =
+                    collision_spawn_prefab_reaction_for_pair(pair, *reaction, contact_entered)
+                {
+                    push_reaction_outcome(&mut outcome.spawn_prefabs, evaluation);
                 }
             }
         }
@@ -3402,6 +3971,7 @@ pub(crate) fn apply_collision_reaction_sets_for_pair<F>(
     world: &mut World,
     pair: CollisionReactionPair,
     contact_entered: bool,
+    area_damage_hits: &mut Vec<CircleQueryHit>,
     marked_for_despawn: &mut [bool],
     pending_despawn: &mut Vec<Entity>,
     damage_defaults: F,
@@ -3430,6 +4000,7 @@ where
             pair,
             &mut reactions,
             contact_entered,
+            area_damage_hits,
             marked_for_despawn,
             pending_despawn,
             damage_defaults,
@@ -3444,6 +4015,7 @@ where
             reversed,
             &mut reactions,
             contact_entered,
+            area_damage_hits,
             marked_for_despawn,
             pending_despawn,
             damage_defaults,
@@ -3641,6 +4213,22 @@ pub(crate) fn collision_side_effect_payload(
                 preset_id,
                 position,
             }),
+        Some(CollisionSideEffect::CameraShake) => Some(CollisionSideEffectPayload::CameraShake),
+        Some(CollisionSideEffect::EmitEffect {
+            effect_id,
+            effect_type,
+            target_index,
+            intensity,
+            radius,
+        }) => entity_at(world, target_index).map(|actor| {
+            CollisionSideEffectPayload::PresentationEffect {
+                actor,
+                effect_id,
+                effect_type,
+                intensity,
+                radius,
+            }
+        }),
         None => None,
     }
 }
@@ -3710,16 +4298,50 @@ pub(crate) fn apply_default_collision_game_over_hit(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_tile_collision_reaction_set(
-    world: &World,
+    world: &mut World,
     source_index: usize,
+    impact_center: Transform2D,
     reactions: &mut CollisionReactionSet,
+    area_damage_hits: &mut Vec<CircleQueryHit>,
     marked_for_despawn: &mut [bool],
     pending_despawn: &mut Vec<Entity>,
+    mut damage_defaults_for: impl FnMut(&World, usize) -> CollisionDamageReactionDefaults,
 ) -> TileCollisionReactionSetOutcome {
     let mut outcome = TileCollisionReactionSetOutcome::default();
     for reaction in reactions.iter_mut() {
         match reaction {
+            CollisionReaction::AreaDamage {
+                radius,
+                target_layer,
+            } => {
+                let query_height_span = world.height_spans.get(source_index).copied().flatten();
+                let area_outcome = apply_collision_area_damage_reaction_at_center(
+                    world,
+                    source_index,
+                    impact_center,
+                    *radius,
+                    *target_layer,
+                    query_height_span,
+                    area_damage_hits,
+                    marked_for_despawn,
+                    pending_despawn,
+                    &mut damage_defaults_for,
+                );
+                for damage_outcome in area_outcome.damage_outcomes() {
+                    push_reaction_outcome(
+                        &mut outcome.reaction_outcome.damage_outcomes,
+                        damage_outcome,
+                    );
+                }
+                for denial in area_outcome.faction_damage_denials() {
+                    push_reaction_outcome(
+                        &mut outcome.reaction_outcome.faction_damage_denials,
+                        denial,
+                    );
+                }
+            }
             CollisionReaction::Despawn {
                 target: CollisionTarget::SelfEntity,
             } => {
@@ -3733,14 +4355,29 @@ pub(crate) fn apply_tile_collision_reaction_set(
                     }
                 }
             }
-            CollisionReaction::PlaySound { .. } | CollisionReaction::SpawnParticle { .. } => {
+            CollisionReaction::PlaySound { .. }
+            | CollisionReaction::SpawnParticle { .. }
+            | CollisionReaction::CameraShake { .. }
+            | CollisionReaction::EmitEffect { .. } => {
                 if let Some(evaluation) =
                     commit_tile_collision_side_effect_reaction(source_index, reaction)
                 {
-                    push_reaction_outcome(&mut outcome.side_effects, evaluation);
+                    outcome.reaction_outcome.replace_default_audio |=
+                        evaluation.replace_default_audio;
+                    outcome.reaction_outcome.replace_default_particle |=
+                        evaluation.replace_default_particle;
+                    push_reaction_outcome(&mut outcome.reaction_outcome.side_effects, evaluation);
+                }
+            }
+            CollisionReaction::SpawnPrefab { .. } => {
+                if let Some(evaluation) =
+                    tile_collision_spawn_prefab_reaction(world, source_index, *reaction)
+                {
+                    push_reaction_outcome(&mut outcome.reaction_outcome.spawn_prefabs, evaluation);
                 }
             }
             CollisionReaction::Damage { .. }
+            | CollisionReaction::Knockback { .. }
             | CollisionReaction::Pickup { .. }
             | CollisionReaction::Despawn {
                 target: CollisionTarget::OtherEntity,
@@ -3774,14 +4411,27 @@ pub(crate) fn apply_pickup_collision_reaction_set_for_pair(
                     push_reaction_outcome(&mut outcome.pickup_outcomes, pickup_outcome);
                 }
             }
-            CollisionReaction::PlaySound { .. } | CollisionReaction::SpawnParticle { .. } => {
+            CollisionReaction::PlaySound { .. }
+            | CollisionReaction::SpawnParticle { .. }
+            | CollisionReaction::CameraShake { .. }
+            | CollisionReaction::EmitEffect { .. } => {
                 if let Some(evaluation) =
                     commit_collision_side_effect_reaction_for_pair(pair, reaction, contact_entered)
                 {
                     push_reaction_outcome(&mut outcome.side_effects, evaluation);
                 }
             }
-            CollisionReaction::Damage { .. } | CollisionReaction::Despawn { .. } => {}
+            CollisionReaction::SpawnPrefab { .. } => {
+                if let Some(evaluation) =
+                    collision_spawn_prefab_reaction_for_pair(pair, *reaction, contact_entered)
+                {
+                    push_reaction_outcome(&mut outcome.spawn_prefabs, evaluation);
+                }
+            }
+            CollisionReaction::Damage { .. }
+            | CollisionReaction::AreaDamage { .. }
+            | CollisionReaction::Knockback { .. }
+            | CollisionReaction::Despawn { .. } => {}
         }
     }
     outcome
@@ -3878,6 +4528,190 @@ pub(crate) fn apply_collision_damage_reaction_for_pair(
         target_removed,
         score_reward: damage_outcome.score_reward,
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_collision_area_damage_reaction_for_pair<F>(
+    world: &mut World,
+    pair: CollisionReactionPair,
+    radius: f32,
+    target_layer: CollisionLayer,
+    area_damage_hits: &mut Vec<CircleQueryHit>,
+    marked_for_despawn: &mut [bool],
+    pending_despawn: &mut Vec<Entity>,
+    mut damage_defaults_for: F,
+) -> CollisionReactionSetOutcome
+where
+    F: FnMut(&World, usize) -> CollisionDamageReactionDefaults,
+{
+    let Some(center) = collision_area_damage_center(world, pair) else {
+        return CollisionReactionSetOutcome::default();
+    };
+    let query_height_span = world
+        .height_spans
+        .get(pair.source_index)
+        .copied()
+        .flatten()
+        .or_else(|| world.height_spans.get(pair.other_index).copied().flatten());
+    apply_collision_area_damage_reaction_at_center(
+        world,
+        pair.source_index,
+        center,
+        radius,
+        target_layer,
+        query_height_span,
+        area_damage_hits,
+        marked_for_despawn,
+        pending_despawn,
+        &mut damage_defaults_for,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_collision_area_damage_reaction_at_center<F>(
+    world: &mut World,
+    source_index: usize,
+    center: Transform2D,
+    radius: f32,
+    target_layer: CollisionLayer,
+    query_height_span: Option<crate::components::HeightSpan>,
+    area_damage_hits: &mut Vec<CircleQueryHit>,
+    marked_for_despawn: &mut [bool],
+    pending_despawn: &mut Vec<Entity>,
+    mut damage_defaults_for: F,
+) -> CollisionReactionSetOutcome
+where
+    F: FnMut(&World, usize) -> CollisionDamageReactionDefaults,
+{
+    let mut outcome = CollisionReactionSetOutcome::default();
+    CollisionSystem::circle_query_with_height_span_into(
+        world,
+        center,
+        radius,
+        target_layer.mask(),
+        query_height_span,
+        area_damage_hits,
+    );
+
+    let damage = damage_at_or_default(world, source_index, 0.0);
+    let mut damaged_targets = 0;
+    for hit in area_damage_hits.iter().copied() {
+        if damaged_targets >= MAX_COLLISION_REACTIONS_PER_ENTITY {
+            break;
+        }
+        let target_index = hit.entity.id as usize;
+        if target_index == source_index {
+            continue;
+        }
+        if entity_at(world, target_index) != Some(hit.entity)
+            || !is_alive_layer(world, target_index, target_layer)
+            || marked_for_despawn
+                .get(target_index)
+                .copied()
+                .unwrap_or(false)
+        {
+            continue;
+        }
+        if !collision_damage_allowed(world, source_index, target_index) {
+            if let Some(denial) = faction_damage_denial(world, source_index, target_index) {
+                push_reaction_outcome(&mut outcome.faction_damage_denials, denial);
+            }
+            continue;
+        }
+
+        let defaults = damage_defaults_for(world, target_index);
+        let damage_outcome = apply_damage_to_health(
+            world,
+            target_index,
+            damage,
+            defaults.health,
+            defaults.score_reward,
+        );
+        let target_removed = damage_outcome.killed
+            && defaults.despawn_on_kill
+            && queue_marked_despawn(world, target_index, marked_for_despawn, pending_despawn);
+        push_reaction_outcome(
+            &mut outcome.damage_outcomes,
+            CollisionDamageReactionOutcome {
+                target_index,
+                target: hit.entity,
+                damage,
+                killed: damage_outcome.killed,
+                target_removed,
+                score_reward: damage_outcome.score_reward,
+            },
+        );
+        damaged_targets += 1;
+    }
+    outcome
+}
+
+pub(crate) fn apply_collision_knockback_reaction_for_pair(
+    world: &mut World,
+    pair: CollisionReactionPair,
+    target: CollisionTarget,
+    impulse: f32,
+    marked_for_despawn: &[bool],
+) -> Option<CollisionKnockbackReactionOutcome> {
+    if !impulse.is_finite() || impulse <= 0.0 {
+        return None;
+    }
+    let target_index = pair.target_index(target);
+    if !world.alive.get(target_index).copied().unwrap_or(false)
+        || marked_for_despawn
+            .get(target_index)
+            .copied()
+            .unwrap_or(false)
+    {
+        return None;
+    }
+    let target_entity = entity_at(world, target_index)?;
+    let direction = collision_knockback_direction(world, pair, target);
+    let impulse = Velocity {
+        vx: direction.vx * impulse,
+        vy: direction.vy * impulse,
+    };
+    let velocity = world.velocities.get_mut(target_index)?;
+    let current = velocity.unwrap_or_default();
+    *velocity = Some(Velocity {
+        vx: current.vx + impulse.vx,
+        vy: current.vy + impulse.vy,
+    });
+    Some(CollisionKnockbackReactionOutcome {
+        target_index,
+        target: target_entity,
+        impulse,
+    })
+}
+
+fn collision_knockback_direction(
+    world: &World,
+    pair: CollisionReactionPair,
+    target: CollisionTarget,
+) -> Velocity {
+    let (target_index, origin_index, fallback) = match target {
+        CollisionTarget::SelfEntity => (
+            pair.source_index,
+            pair.other_index,
+            Velocity { vx: -1.0, vy: 0.0 },
+        ),
+        CollisionTarget::OtherEntity => (
+            pair.other_index,
+            pair.source_index,
+            Velocity { vx: 1.0, vy: 0.0 },
+        ),
+    };
+    let Some(target_transform) = world.transforms.get(target_index).copied().flatten() else {
+        return fallback;
+    };
+    let Some(origin_transform) = world.transforms.get(origin_index).copied().flatten() else {
+        return fallback;
+    };
+    normalized_direction(
+        target_transform.x - origin_transform.x,
+        target_transform.y - origin_transform.y,
+    )
+    .unwrap_or(fallback)
 }
 
 pub(crate) fn collision_damage_reaction_faction_denial(
@@ -4066,6 +4900,15 @@ fn entity_at(world: &World, entity_index: usize) -> Option<Entity> {
         id: entity_index as u32,
         generation,
     })
+}
+
+fn collision_area_damage_center(world: &World, pair: CollisionReactionPair) -> Option<Transform2D> {
+    world
+        .transforms
+        .get(pair.source_index)
+        .copied()
+        .flatten()
+        .or_else(|| world.transforms.get(pair.other_index).copied().flatten())
 }
 
 fn is_alive_layer(world: &World, index: usize, layer: CollisionLayer) -> bool {
@@ -4280,6 +5123,7 @@ mod tests {
             prepared_action_payload_from_binding(spawn_prefab),
             PreparedActionPayload::SpawnPrefab(SpawnPrefabActionPayload {
                 prefab_id: 7,
+                projectile: None,
                 anchor: SpawnAnchor::SelfEntity,
                 phase: SpawnPhase::PrePhysics,
                 offset_x: 16.0,
@@ -5398,7 +6242,7 @@ mod tests {
             1.5,
         )
         .expect("test projectile arc values are finite and valid");
-        let request = BulletSpawnRequest {
+        let request = ProjectileSpawnRequest {
             transform: Transform2D { x: 10.0, y: 20.0 },
             velocity: Velocity { vx: 30.0, vy: 0.0 },
             texture_id: 4,
@@ -5815,6 +6659,7 @@ mod tests {
             prepare_spawn_prefab_action_payload(&world, source, 11),
             Ok(SpawnPrefabActionPayload {
                 prefab_id: 7,
+                projectile: None,
                 anchor: SpawnAnchor::SelfEntity,
                 phase: SpawnPhase::PrePhysics,
                 offset_x: 16.0,
@@ -5843,6 +6688,7 @@ mod tests {
     fn plan_spawn_prefab_action_plans_supported_self_anchor_without_mutation() {
         let payload = SpawnPrefabActionPayload {
             prefab_id: 7,
+            projectile: None,
             anchor: SpawnAnchor::SelfEntity,
             phase: SpawnPhase::PrePhysics,
             offset_x: 16.0,
@@ -5859,6 +6705,8 @@ mod tests {
             plan_spawn_prefab_action(payload, Some(source_t)),
             Ok(SpawnPrefabActionPlan {
                 prefab_id: 7,
+                projectile: None,
+                placement: payload.placement(),
                 transform: Transform2D { x: 48.0, y: 36.0 },
             }),
         );
@@ -5882,6 +6730,8 @@ mod tests {
             ),
             Ok(SpawnPrefabActionPlan {
                 prefab_id: 7,
+                projectile: None,
+                placement: payload.placement(),
                 transform: Transform2D { x: 48.0, y: 36.0 },
             }),
         );
@@ -5895,6 +6745,13 @@ mod tests {
         };
         let plan = SpawnPrefabActionPlan {
             prefab_id: 7,
+            projectile: None,
+            placement: SpawnPrefabPlacement {
+                anchor: SpawnAnchor::SelfEntity,
+                phase: SpawnPhase::PrePhysics,
+                offset_x: 16.0,
+                offset_y: -4.0,
+            },
             transform: Transform2D { x: 48.0, y: 36.0 },
         };
 
@@ -5904,6 +6761,7 @@ mod tests {
                 source,
                 action_id: 13,
                 prefab_id: 7,
+                projectile: None,
                 transform: Transform2D { x: 48.0, y: 36.0 },
             },
         );
@@ -7303,12 +8161,14 @@ mod tests {
             CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
         let mut marked = vec![false; world.alive.len()];
         let mut pending = Vec::new();
+        let mut area_damage_hits = Vec::new();
 
         let outcome = apply_collision_reaction_set_for_pair(
             &mut world,
             pair,
             &mut reactions,
             true,
+            &mut area_damage_hits,
             &mut marked,
             &mut pending,
             |_, _| CollisionDamageReactionDefaults {
@@ -7341,6 +8201,188 @@ mod tests {
     }
 
     #[test]
+    fn collision_reaction_set_for_pair_applies_knockback_without_overriding_gameplay() {
+        let mut world = World::default();
+        let source = world.spawn_entity();
+        let target = world.spawn_entity();
+        world.set_transform(source, Transform2D { x: 0.0, y: 0.0 });
+        world.set_transform(target, Transform2D { x: 3.0, y: 4.0 });
+        world.set_velocity(target, Velocity { vx: 1.0, vy: -1.0 });
+        let mut reactions = CollisionReactionSet::default();
+        assert!(reactions.push(CollisionReaction::Knockback {
+            target: CollisionTarget::OtherEntity,
+            impulse: 10.0,
+        }));
+        let pair =
+            CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
+        let mut marked = vec![false; world.alive.len()];
+        let mut pending = Vec::new();
+        let mut area_damage_hits = Vec::new();
+
+        let outcome = apply_collision_reaction_set_for_pair(
+            &mut world,
+            pair,
+            &mut reactions,
+            true,
+            &mut area_damage_hits,
+            &mut marked,
+            &mut pending,
+            |_, _| CollisionDamageReactionDefaults {
+                health: 1.0,
+                score_reward: 0,
+                despawn_on_kill: false,
+            },
+        );
+
+        assert!(!outcome.overrides_default_gameplay);
+        assert_eq!(
+            outcome.knockback_outcomes().collect::<Vec<_>>(),
+            vec![CollisionKnockbackReactionOutcome {
+                target_index: target.id as usize,
+                target,
+                impulse: Velocity { vx: 6.0, vy: 8.0 },
+            }],
+        );
+        assert_eq!(
+            world.velocities[target.id as usize],
+            Some(Velocity { vx: 7.0, vy: 7.0 })
+        );
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn collision_area_damage_reaction_damages_enemy_layer_targets_in_radius() {
+        let mut world = World::default();
+        let source = world.spawn_bullet(0.0, 0.0, 0.0, 0.0, 1);
+        let direct = world.spawn_enemy(4.0, 0.0, 1);
+        let splash = world.spawn_enemy(18.0, 0.0, 1);
+        let far = world.spawn_enemy(96.0, 0.0, 1);
+        let pickup = world.spawn_entity();
+        world.set_transform(pickup, Transform2D { x: 10.0, y: 0.0 });
+        world.set_aabb_collider(
+            pickup,
+            AabbCollider::new(4.0, 4.0, true, CollisionLayer::Pickup),
+        );
+        world.damages[source.id as usize] = Some(2.0);
+        world.healths[direct.id as usize] = Some(2.0);
+        world.healths[splash.id as usize] = Some(3.0);
+        world.healths[far.id as usize] = Some(2.0);
+        world.score_rewards[direct.id as usize] = Some(7);
+        world.score_rewards[splash.id as usize] = Some(5);
+        let pair =
+            CollisionReactionPair::new(source.id as usize, direct.id as usize, source, direct);
+        let mut reactions = CollisionReactionSet::default();
+        assert!(reactions.push(CollisionReaction::AreaDamage {
+            radius: 24.0,
+            target_layer: CollisionLayer::Enemy,
+        }));
+        let mut marked = vec![false; world.alive.len()];
+        let mut pending = Vec::new();
+        let mut area_damage_hits = Vec::new();
+
+        let outcome = apply_collision_reaction_set_for_pair(
+            &mut world,
+            pair,
+            &mut reactions,
+            true,
+            &mut area_damage_hits,
+            &mut marked,
+            &mut pending,
+            |_, _| CollisionDamageReactionDefaults {
+                health: 1.0,
+                score_reward: 1,
+                despawn_on_kill: true,
+            },
+        );
+
+        assert!(outcome.overrides_default_gameplay);
+        assert_eq!(
+            outcome.damage_outcomes().collect::<Vec<_>>(),
+            vec![
+                CollisionDamageReactionOutcome {
+                    target_index: direct.id as usize,
+                    target: direct,
+                    damage: 2.0,
+                    killed: true,
+                    target_removed: true,
+                    score_reward: 7,
+                },
+                CollisionDamageReactionOutcome {
+                    target_index: splash.id as usize,
+                    target: splash,
+                    damage: 2.0,
+                    killed: false,
+                    target_removed: false,
+                    score_reward: 0,
+                },
+            ],
+        );
+        assert_eq!(world.healths[splash.id as usize], Some(1.0));
+        assert_eq!(world.healths[far.id as usize], Some(2.0));
+        assert_eq!(world.healths[pickup.id as usize], None);
+        assert_eq!(pending, vec![direct]);
+    }
+
+    #[test]
+    fn collision_area_damage_reaction_reports_faction_denials() {
+        use crate::components::gameplay::{
+            GameplayFaction, GAMEPLAY_FACTION_ENEMY, GAMEPLAY_FACTION_PLAYER,
+        };
+
+        let mut world = World::default();
+        let source = world.spawn_bullet(0.0, 0.0, 0.0, 0.0, 1);
+        let blocked = world.spawn_enemy(4.0, 0.0, 1);
+        world.damages[source.id as usize] = Some(2.0);
+        world.healths[blocked.id as usize] = Some(2.0);
+        world.set_gameplay_faction(
+            source,
+            GameplayFaction::new(GAMEPLAY_FACTION_PLAYER, 0).unwrap(),
+        );
+        world.set_gameplay_faction(
+            blocked,
+            GameplayFaction::new(GAMEPLAY_FACTION_ENEMY, 1 << GAMEPLAY_FACTION_PLAYER).unwrap(),
+        );
+        let pair =
+            CollisionReactionPair::new(source.id as usize, blocked.id as usize, source, blocked);
+        let mut reactions = CollisionReactionSet::default();
+        assert!(reactions.push(CollisionReaction::AreaDamage {
+            radius: 24.0,
+            target_layer: CollisionLayer::Enemy,
+        }));
+        let mut marked = vec![false; world.alive.len()];
+        let mut pending = Vec::new();
+        let mut area_damage_hits = Vec::new();
+
+        let outcome = apply_collision_reaction_set_for_pair(
+            &mut world,
+            pair,
+            &mut reactions,
+            true,
+            &mut area_damage_hits,
+            &mut marked,
+            &mut pending,
+            |_, _| CollisionDamageReactionDefaults {
+                health: 1.0,
+                score_reward: 1,
+                despawn_on_kill: true,
+            },
+        );
+
+        assert!(outcome.damage_outcomes().next().is_none());
+        assert_eq!(
+            outcome.faction_damage_denials().collect::<Vec<_>>(),
+            vec![FactionDamageDenial {
+                source,
+                target: blocked,
+                source_faction_id: GAMEPLAY_FACTION_PLAYER,
+                target_faction_id: GAMEPLAY_FACTION_ENEMY,
+            }],
+        );
+        assert_eq!(world.healths[blocked.id as usize], Some(2.0));
+        assert!(pending.is_empty());
+    }
+
+    #[test]
     fn collision_reaction_set_for_pair_keeps_side_effects_additive() {
         let mut world = World::default();
         let source = world.spawn_entity();
@@ -7357,12 +8399,14 @@ mod tests {
         let pair = CollisionReactionPair::new(source.id as usize, other.id as usize, source, other);
         let mut marked = vec![false; world.alive.len()];
         let mut pending = Vec::new();
+        let mut area_damage_hits = Vec::new();
 
         let outcome = apply_collision_reaction_set_for_pair(
             &mut world,
             pair,
             &mut reactions,
             false,
+            &mut area_damage_hits,
             &mut marked,
             &mut pending,
             |_, _| CollisionDamageReactionDefaults {
@@ -7406,12 +8450,14 @@ mod tests {
             .reversed();
         let mut marked = vec![false; world.alive.len()];
         let mut pending = Vec::new();
+        let mut area_damage_hits = Vec::new();
 
         let outcome = apply_collision_reaction_set_for_pair(
             &mut world,
             pair,
             &mut reactions,
             true,
+            &mut area_damage_hits,
             &mut marked,
             &mut pending,
             |_, _| CollisionDamageReactionDefaults {
@@ -7461,11 +8507,13 @@ mod tests {
         let pair = CollisionReactionPair::new(first.id as usize, second.id as usize, first, second);
         let mut marked = vec![false; world.alive.len()];
         let mut pending = Vec::new();
+        let mut area_damage_hits = Vec::new();
 
         let outcome = apply_collision_reaction_sets_for_pair(
             &mut world,
             pair,
             false,
+            &mut area_damage_hits,
             &mut marked,
             &mut pending,
             |_, _| CollisionDamageReactionDefaults {
@@ -7507,6 +8555,7 @@ mod tests {
             &mut world,
             pair,
             false,
+            &mut area_damage_hits,
             &mut marked,
             &mut pending,
             |_, _| CollisionDamageReactionDefaults {
@@ -7554,12 +8603,14 @@ mod tests {
         let pair = CollisionReactionPair::new(source.id as usize, enemy.id as usize, source, enemy);
         let mut marked = vec![false; world.alive.len()];
         let mut pending = Vec::new();
+        let mut area_damage_hits = Vec::new();
 
         let reaction_outcome = apply_collision_reaction_set_for_pair(
             &mut world,
             pair,
             &mut reactions,
             false,
+            &mut area_damage_hits,
             &mut marked,
             &mut pending,
             |_, _| CollisionDamageReactionDefaults {
@@ -7624,12 +8675,14 @@ mod tests {
             CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
         let mut marked = vec![false; world.alive.len()];
         let mut pending = Vec::new();
+        let mut area_damage_hits = Vec::new();
 
         let reaction_outcome = apply_collision_reaction_set_for_pair(
             &mut world,
             pair,
             &mut reactions,
             false,
+            &mut area_damage_hits,
             &mut marked,
             &mut pending,
             |_, _| CollisionDamageReactionDefaults {
@@ -7690,12 +8743,14 @@ mod tests {
             CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
         let mut marked = vec![false; world.alive.len()];
         let mut pending = Vec::new();
+        let mut area_damage_hits = Vec::new();
 
         let reaction_outcome = apply_collision_reaction_set_for_pair(
             &mut world,
             pair,
             &mut reactions,
             false,
+            &mut area_damage_hits,
             &mut marked,
             &mut pending,
             |_, _| CollisionDamageReactionDefaults {
@@ -7768,12 +8823,14 @@ mod tests {
             CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
         let mut marked = vec![false; world.alive.len()];
         let mut pending = Vec::new();
+        let mut area_damage_hits = Vec::new();
 
         let reaction_outcome = apply_collision_reaction_set_for_pair(
             &mut world,
             pair,
             &mut reactions,
             false,
+            &mut area_damage_hits,
             &mut marked,
             &mut pending,
             |_, _| CollisionDamageReactionDefaults {
@@ -8277,6 +9334,177 @@ mod tests {
     }
 
     #[test]
+    fn collision_side_effect_reaction_for_pair_commits_camera_shake_only_once_with_cooldown() {
+        let source = Entity {
+            id: 1,
+            generation: 0,
+        };
+        let other = Entity {
+            id: 4,
+            generation: 0,
+        };
+        let pair = CollisionReactionPair::new(1, 4, source, other);
+        let mut reaction = CollisionReaction::CameraShake {
+            cooldown: Cooldown::ready(0.25),
+            trigger: CollisionReactionTrigger::Contact,
+        };
+
+        assert_eq!(
+            commit_collision_side_effect_reaction_for_pair(pair, &mut reaction, false),
+            Some(CollisionSideEffectEvaluation {
+                replace_default_audio: false,
+                replace_default_particle: false,
+                effect: Some(CollisionSideEffect::CameraShake),
+            }),
+        );
+        assert_eq!(
+            commit_collision_side_effect_reaction_for_pair(pair, &mut reaction, false),
+            Some(CollisionSideEffectEvaluation {
+                replace_default_audio: false,
+                replace_default_particle: false,
+                effect: None,
+            }),
+        );
+    }
+
+    #[test]
+    fn collision_side_effect_reaction_for_pair_commits_emit_effect_with_target_actor() {
+        let source = Entity {
+            id: 1,
+            generation: 0,
+        };
+        let other = Entity {
+            id: 4,
+            generation: 0,
+        };
+        let pair = CollisionReactionPair::new(1, 4, source, other);
+        let mut reaction = CollisionReaction::EmitEffect {
+            effect_id: 99,
+            effect_type: 4,
+            target: CollisionTarget::OtherEntity,
+            intensity: 0.75,
+            radius: 32.0,
+            cooldown: Cooldown::ready(0.25),
+            trigger: CollisionReactionTrigger::Enter,
+        };
+
+        assert_eq!(
+            commit_collision_side_effect_reaction_for_pair(pair, &mut reaction, false),
+            Some(CollisionSideEffectEvaluation {
+                replace_default_audio: false,
+                replace_default_particle: false,
+                effect: None,
+            }),
+        );
+        assert_eq!(
+            commit_collision_side_effect_reaction_for_pair(pair, &mut reaction, true),
+            Some(CollisionSideEffectEvaluation {
+                replace_default_audio: false,
+                replace_default_particle: false,
+                effect: Some(CollisionSideEffect::EmitEffect {
+                    effect_id: 99,
+                    effect_type: 4,
+                    target_index: 4,
+                    intensity: 0.75,
+                    radius: 32.0,
+                }),
+            }),
+        );
+    }
+
+    #[test]
+    fn collision_spawn_prefab_reaction_for_pair_respects_enter_trigger_and_anchor_target() {
+        let source = Entity {
+            id: 1,
+            generation: 0,
+        };
+        let other = Entity {
+            id: 4,
+            generation: 0,
+        };
+        let pair = CollisionReactionPair::new(1, 4, source, other);
+        let reaction = CollisionReaction::SpawnPrefab {
+            action_id: 17,
+            prefab_id: 3,
+            target: CollisionTarget::OtherEntity,
+            cooldown: Cooldown::ready(0.5),
+            trigger: CollisionReactionTrigger::Enter,
+            offset_x: 6.0,
+            offset_y: -3.0,
+        };
+
+        assert_eq!(
+            collision_spawn_prefab_reaction_for_pair(pair, reaction, false),
+            None,
+        );
+        assert_eq!(
+            collision_spawn_prefab_reaction_for_pair(pair, reaction, true),
+            Some(CollisionSpawnPrefabEvaluation {
+                reaction_owner_index: 1,
+                source,
+                action_id: 17,
+                prefab_id: 3,
+                target: CollisionTarget::OtherEntity,
+                anchor_index: 4,
+                anchor: other,
+                offset_x: 6.0,
+                offset_y: -3.0,
+            }),
+        );
+    }
+
+    #[test]
+    fn collision_spawn_prefab_cooldown_commits_only_after_successful_runtime_queue() {
+        let mut world = World::default();
+        let source = world.spawn_player(0.0, 0.0, 1);
+        let other = world.spawn_enemy(4.0, 0.0, 1);
+        assert!(world.add_collision_reaction(
+            source,
+            CollisionReaction::SpawnPrefab {
+                action_id: 17,
+                prefab_id: 1,
+                target: CollisionTarget::OtherEntity,
+                cooldown: Cooldown::ready(0.5),
+                trigger: CollisionReactionTrigger::Contact,
+                offset_x: 6.0,
+                offset_y: -3.0,
+            },
+        ));
+        let pair = CollisionReactionPair::new(source.id as usize, other.id as usize, source, other);
+        let evaluation = collision_spawn_prefab_reaction_for_pair(
+            pair,
+            world.collision_reactions[source.id as usize]
+                .expect("source has reactions")
+                .iter()
+                .next()
+                .expect("spawn reaction exists"),
+            false,
+        )
+        .expect("spawn prefab reaction should be ready");
+
+        assert!(commit_collision_spawn_prefab_reaction_cooldown(
+            &mut world, evaluation,
+        ));
+        let mut reactions = world.collision_reactions[source.id as usize]
+            .expect("source reactions are written back");
+        let reaction = reactions.iter_mut().next().expect("spawn reaction remains");
+        let CollisionReaction::SpawnPrefab { cooldown, .. } = reaction else {
+            panic!("expected spawn prefab reaction");
+        };
+        assert_eq!(
+            *cooldown,
+            Cooldown {
+                duration_seconds: 0.5,
+                remaining_seconds: 0.5,
+            },
+        );
+        world.collision_reactions[source.id as usize] = Some(reactions);
+        assert!(!commit_collision_spawn_prefab_reaction_cooldown(
+            &mut world, evaluation,
+        ));
+    }
+
+    #[test]
     fn collision_side_effect_payload_maps_sound_without_runtime_sink() {
         let world = World::default();
 
@@ -8343,6 +9571,70 @@ mod tests {
     }
 
     #[test]
+    fn collision_side_effect_payload_maps_camera_shake() {
+        assert_eq!(
+            collision_side_effect_payload(
+                &World::default(),
+                CollisionSideEffectEvaluation {
+                    replace_default_audio: false,
+                    replace_default_particle: false,
+                    effect: Some(CollisionSideEffect::CameraShake),
+                },
+            ),
+            Some(CollisionSideEffectPayload::CameraShake),
+        );
+    }
+
+    #[test]
+    fn collision_side_effect_payload_maps_emit_effect_actor() {
+        let mut world = World::default();
+        let target = world.spawn_enemy(12.0, -3.0, 1);
+
+        assert_eq!(
+            collision_side_effect_payload(
+                &world,
+                CollisionSideEffectEvaluation {
+                    replace_default_audio: false,
+                    replace_default_particle: false,
+                    effect: Some(CollisionSideEffect::EmitEffect {
+                        effect_id: 99,
+                        effect_type: 4,
+                        target_index: target.id as usize,
+                        intensity: 0.5,
+                        radius: 24.0,
+                    }),
+                },
+            ),
+            Some(CollisionSideEffectPayload::PresentationEffect {
+                actor: target,
+                effect_id: 99,
+                effect_type: 4,
+                intensity: 0.5,
+                radius: 24.0,
+            }),
+        );
+
+        world.despawn(target);
+        assert_eq!(
+            collision_side_effect_payload(
+                &world,
+                CollisionSideEffectEvaluation {
+                    replace_default_audio: false,
+                    replace_default_particle: false,
+                    effect: Some(CollisionSideEffect::EmitEffect {
+                        effect_id: 99,
+                        effect_type: 4,
+                        target_index: target.id as usize,
+                        intensity: 1.0,
+                        radius: 0.0,
+                    }),
+                },
+            ),
+            None,
+        );
+    }
+
+    #[test]
     fn tile_collision_side_effect_reaction_is_self_only_and_ignores_replace_policy() {
         let mut sound = CollisionReaction::PlaySound {
             sound_id: 7,
@@ -8386,6 +9678,73 @@ mod tests {
                 trigger: CollisionReactionTrigger::Contact,
             },
         );
+
+        let mut emit = CollisionReaction::EmitEffect {
+            effect_id: 77,
+            effect_type: 4,
+            target: CollisionTarget::SelfEntity,
+            intensity: 0.25,
+            radius: 18.0,
+            cooldown: Cooldown::ready(0.0),
+            trigger: CollisionReactionTrigger::Contact,
+        };
+        assert_eq!(
+            commit_tile_collision_side_effect_reaction(3, &mut emit),
+            Some(CollisionSideEffectEvaluation {
+                replace_default_audio: false,
+                replace_default_particle: false,
+                effect: Some(CollisionSideEffect::EmitEffect {
+                    effect_id: 77,
+                    effect_type: 4,
+                    target_index: 3,
+                    intensity: 0.25,
+                    radius: 18.0,
+                }),
+            }),
+        );
+
+        let mut other_emit = CollisionReaction::EmitEffect {
+            effect_id: 78,
+            effect_type: 4,
+            target: CollisionTarget::OtherEntity,
+            intensity: 1.0,
+            radius: 0.0,
+            cooldown: Cooldown::ready(0.0),
+            trigger: CollisionReactionTrigger::Contact,
+        };
+        assert_eq!(
+            commit_tile_collision_side_effect_reaction(3, &mut other_emit),
+            None,
+        );
+    }
+
+    #[test]
+    fn tile_collision_side_effect_reaction_ignores_non_self_particle_and_queues_camera_shake() {
+        let mut shake = CollisionReaction::CameraShake {
+            cooldown: Cooldown::ready(0.5),
+            trigger: CollisionReactionTrigger::Contact,
+        };
+        assert_eq!(
+            commit_tile_collision_side_effect_reaction(3, &mut shake),
+            Some(CollisionSideEffectEvaluation {
+                replace_default_audio: false,
+                replace_default_particle: false,
+                effect: Some(CollisionSideEffect::CameraShake),
+            }),
+        );
+
+        let mut shake_enter = CollisionReaction::CameraShake {
+            cooldown: Cooldown::ready(0.5),
+            trigger: CollisionReactionTrigger::Enter,
+        };
+        assert_eq!(
+            commit_tile_collision_side_effect_reaction(3, &mut shake_enter),
+            Some(CollisionSideEffectEvaluation {
+                replace_default_audio: false,
+                replace_default_particle: false,
+                effect: Some(CollisionSideEffect::CameraShake),
+            }),
+        );
     }
 
     #[test]
@@ -8407,13 +9766,21 @@ mod tests {
         }));
         let mut marked = vec![false; world.alive.len()];
         let mut pending = Vec::new();
+        let mut area_hits = Vec::new();
 
         let outcome = apply_tile_collision_reaction_set(
-            &world,
+            &mut world,
             bullet_index,
+            Transform2D { x: 0.0, y: 0.0 },
             &mut reactions,
+            &mut area_hits,
             &mut marked,
             &mut pending,
+            |_, _| CollisionDamageReactionDefaults {
+                health: 1.0,
+                score_reward: 0,
+                despawn_on_kill: true,
+            },
         );
 
         assert!(outcome.queued_self_despawn);
@@ -8456,13 +9823,21 @@ mod tests {
         }));
         let mut marked = vec![false; world.alive.len()];
         let mut pending = Vec::new();
+        let mut area_hits = Vec::new();
 
         let outcome = apply_tile_collision_reaction_set(
-            &world,
+            &mut world,
             bullet.id as usize,
+            Transform2D { x: 0.0, y: 0.0 },
             &mut reactions,
+            &mut area_hits,
             &mut marked,
             &mut pending,
+            |_, _| CollisionDamageReactionDefaults {
+                health: 1.0,
+                score_reward: 0,
+                despawn_on_kill: true,
+            },
         );
 
         assert!(!outcome.queued_self_despawn);
@@ -8484,6 +9859,57 @@ mod tests {
                 },
             ],
         );
+    }
+
+    #[test]
+    fn tile_collision_area_damage_reaction_uses_impact_center() {
+        let mut world = World::default();
+        let bullet = world.spawn_bullet(0.0, 0.0, 0.0, 0.0, 1);
+        let direct = world.spawn_enemy(10.0, 0.0, 1);
+        let splash = world.spawn_enemy(15.0, 0.0, 1);
+        let far = world.spawn_enemy(40.0, 0.0, 1);
+        world.damages[bullet.id as usize] = Some(2.0);
+        world.healths[direct.id as usize] = Some(2.0);
+        world.healths[splash.id as usize] = Some(3.0);
+        world.healths[far.id as usize] = Some(2.0);
+        world.score_rewards[direct.id as usize] = Some(7);
+        world.score_rewards[splash.id as usize] = Some(11);
+        let mut reactions = CollisionReactionSet::default();
+        assert!(reactions.push(CollisionReaction::AreaDamage {
+            radius: 12.0,
+            target_layer: CollisionLayer::Enemy,
+        }));
+        let mut marked = vec![false; world.alive.len()];
+        let mut pending = Vec::new();
+        let mut area_hits = Vec::new();
+
+        let outcome = apply_tile_collision_reaction_set(
+            &mut world,
+            bullet.id as usize,
+            Transform2D { x: 5.0, y: 0.0 },
+            &mut reactions,
+            &mut area_hits,
+            &mut marked,
+            &mut pending,
+            |world, target_index| CollisionDamageReactionDefaults {
+                health: world.healths[target_index].unwrap_or(1.0),
+                score_reward: world.score_rewards[target_index].unwrap_or(0),
+                despawn_on_kill: true,
+            },
+        );
+
+        assert_eq!(
+            outcome
+                .reaction_outcome()
+                .damage_outcomes()
+                .map(|outcome| (outcome.target, outcome.damage, outcome.killed))
+                .collect::<Vec<_>>(),
+            vec![(direct, 2.0, true), (splash, 2.0, false)],
+        );
+        assert!(marked[direct.id as usize]);
+        assert_eq!(pending, vec![direct]);
+        assert_eq!(world.healths[splash.id as usize], Some(1.0));
+        assert_eq!(world.healths[far.id as usize], Some(2.0));
     }
 
     #[test]
@@ -8562,7 +9988,7 @@ mod tests {
         let transform = Transform2D { x: 0.0, y: 0.0 };
 
         assert_eq!(
-            evaluate_movement_pattern(&world, None, transform, MovementPattern::Static),
+            evaluate_movement_pattern(&world, None, transform, None, MovementPattern::Static),
             Some(MovementPatternEvaluation::Velocity(Velocity::default())),
         );
         assert_eq!(
@@ -8570,6 +9996,7 @@ mod tests {
                 &world,
                 None,
                 transform,
+                None,
                 MovementPattern::Linear { vx: 3.0, vy: -4.0 },
             ),
             Some(MovementPatternEvaluation::Velocity(Velocity {
@@ -8582,6 +10009,7 @@ mod tests {
                 &world,
                 None,
                 transform,
+                None,
                 MovementPattern::MoveToPoint {
                     x: 0.0,
                     y: 10.0,
@@ -8598,6 +10026,7 @@ mod tests {
                 &world,
                 None,
                 transform,
+                None,
                 MovementPattern::TopdownInput { speed: 5.0 },
             ),
             None,
@@ -8694,6 +10123,8 @@ mod tests {
 
     #[test]
     fn evaluate_movement_pattern_resolves_targets_without_scene_navigation() {
+        use crate::components::gameplay::{GameplayFaction, GameplayTags, GAMEPLAY_FACTION_ENEMY};
+
         let mut world = World::default();
         let target = world.spawn_entity();
         world.set_transform(target, Transform2D { x: 24.0, y: 8.0 });
@@ -8704,6 +10135,7 @@ mod tests {
                 &world,
                 None,
                 transform,
+                None,
                 MovementPattern::Chase {
                     target: MovementTarget::Entity(target),
                     speed: 7.0,
@@ -8716,18 +10148,183 @@ mod tests {
             }),
         );
 
+        assert_eq!(
+            evaluate_movement_pattern(
+                &world,
+                Some(Transform2D { x: 30.0, y: 8.0 }),
+                transform,
+                None,
+                MovementPattern::Chase {
+                    target: MovementTarget::NearestPlayer,
+                    speed: 9.0,
+                },
+            ),
+            Some(MovementPatternEvaluation::Chase {
+                target: MovementTarget::NearestPlayer,
+                target_transform: Transform2D { x: 30.0, y: 8.0 },
+                speed: 9.0,
+            }),
+        );
+
+        let _source_enemy = world.spawn_enemy(4.0, 8.0, 0);
+        let _far_enemy = world.spawn_enemy(40.0, 8.0, 0);
+        let _near_enemy = world.spawn_enemy(8.0, 8.0, 0);
+        assert_eq!(
+            evaluate_movement_pattern(
+                &world,
+                None,
+                transform,
+                Some(Velocity { vx: 1.0, vy: 0.0 }),
+                MovementPattern::SeekTarget {
+                    target: MovementTarget::NearestEnemy,
+                    speed: 12.0,
+                    turn_rate: 0.5,
+                },
+            ),
+            Some(MovementPatternEvaluation::SeekTarget {
+                target_transform: Transform2D { x: 8.0, y: 8.0 },
+                current_velocity: Velocity { vx: 1.0, vy: 0.0 },
+                speed: 12.0,
+                turn_rate: 0.5,
+            }),
+        );
+
+        let _near_bullet = world.spawn_bullet(6.0, 8.0, 0.0, 0.0, 0);
+        assert_eq!(
+            evaluate_movement_pattern(
+                &world,
+                None,
+                transform,
+                None,
+                MovementPattern::Chase {
+                    target: MovementTarget::NearestLayer(CollisionLayer::Bullet),
+                    speed: 10.0,
+                },
+            ),
+            Some(MovementPatternEvaluation::Chase {
+                target: MovementTarget::NearestLayer(CollisionLayer::Bullet),
+                target_transform: Transform2D { x: 6.0, y: 8.0 },
+                speed: 10.0,
+            }),
+        );
+
+        let far_faction = world.spawn_entity();
+        world.set_transform(far_faction, Transform2D { x: 32.0, y: 8.0 });
+        world.set_gameplay_faction(
+            far_faction,
+            GameplayFaction::new(GAMEPLAY_FACTION_ENEMY, 0).unwrap(),
+        );
+        let near_faction = world.spawn_entity();
+        world.set_transform(near_faction, Transform2D { x: 7.0, y: 8.0 });
+        world.set_gameplay_faction(
+            near_faction,
+            GameplayFaction::new(GAMEPLAY_FACTION_ENEMY, 0).unwrap(),
+        );
+        assert_eq!(
+            evaluate_movement_pattern(
+                &world,
+                None,
+                transform,
+                None,
+                MovementPattern::Chase {
+                    target: MovementTarget::NearestFaction(GAMEPLAY_FACTION_ENEMY),
+                    speed: 11.0,
+                },
+            ),
+            Some(MovementPatternEvaluation::Chase {
+                target: MovementTarget::NearestFaction(GAMEPLAY_FACTION_ENEMY),
+                target_transform: Transform2D { x: 7.0, y: 8.0 },
+                speed: 11.0,
+            }),
+        );
+
+        let near_untagged = world.spawn_entity();
+        world.set_transform(near_untagged, Transform2D { x: 5.0, y: 8.0 });
+        let far_tagged = world.spawn_entity();
+        world.set_transform(far_tagged, Transform2D { x: 34.0, y: 8.0 });
+        world.set_gameplay_tags(far_tagged, GameplayTags::new(1 << 5).unwrap());
+        let near_tagged = world.spawn_entity();
+        world.set_transform(near_tagged, Transform2D { x: 9.0, y: 8.0 });
+        world.set_gameplay_tags(near_tagged, GameplayTags::new(1 << 5).unwrap());
+        assert_eq!(
+            evaluate_movement_pattern(
+                &world,
+                None,
+                transform,
+                None,
+                MovementPattern::Chase {
+                    target: MovementTarget::NearestTag(5),
+                    speed: 13.0,
+                },
+            ),
+            Some(MovementPatternEvaluation::Chase {
+                target: MovementTarget::NearestTag(5),
+                target_transform: Transform2D { x: 9.0, y: 8.0 },
+                speed: 13.0,
+            }),
+        );
+
         world.despawn(target);
         assert_eq!(
             evaluate_movement_pattern(
                 &world,
                 None,
                 transform,
+                None,
                 MovementPattern::Chase {
                     target: MovementTarget::Entity(target),
                     speed: 7.0,
                 },
             ),
             Some(MovementPatternEvaluation::Velocity(Velocity::default())),
+        );
+    }
+
+    #[test]
+    fn evaluate_movement_pattern_handles_seek_target_and_accelerate_variants() {
+        let mut world = World::default();
+        let target = world.spawn_entity();
+        world.set_transform(target, Transform2D { x: 10.0, y: 0.0 });
+        let transform = Transform2D { x: 0.0, y: 0.0 };
+
+        assert_eq!(
+            evaluate_movement_pattern(
+                &world,
+                None,
+                transform,
+                Some(Velocity { vx: 4.0, vy: 0.0 }),
+                MovementPattern::SeekTarget {
+                    target: MovementTarget::Entity(target),
+                    speed: 10.0,
+                    turn_rate: 2.0,
+                },
+            ),
+            Some(MovementPatternEvaluation::SeekTarget {
+                target_transform: Transform2D { x: 10.0, y: 0.0 },
+                current_velocity: Velocity { vx: 4.0, vy: 0.0 },
+                speed: 10.0,
+                turn_rate: 1.0,
+            }),
+        );
+
+        assert_eq!(
+            evaluate_movement_pattern(
+                &world,
+                None,
+                transform,
+                Some(Velocity { vx: 1.0, vy: 1.0 }),
+                MovementPattern::Accelerate {
+                    acceleration_x: 2.0,
+                    acceleration_y: 2.0,
+                    max_speed: 10.0,
+                },
+            ),
+            Some(MovementPatternEvaluation::Accelerate {
+                current_velocity: Velocity { vx: 1.0, vy: 1.0 },
+                acceleration_x: 2.0,
+                acceleration_y: 2.0,
+                max_speed: 10.0,
+            }),
         );
     }
 
@@ -8893,6 +10490,62 @@ mod tests {
             Some(Velocity { vx: 0.0, vy: 5.0 }),
         );
 
+        assert_eq!(
+            apply_scene_neutral_movement_pattern(
+                &mut world,
+                actor.id as usize,
+                None,
+                MovementPattern::SeekTarget {
+                    target: MovementTarget::Entity(target),
+                    speed: 10.0,
+                    turn_rate: 0.25,
+                },
+            ),
+            MovementPatternApplication::Applied,
+        );
+        assert_eq!(
+            world.velocities[actor.id as usize],
+            Some(Velocity { vx: 2.5, vy: 3.75 }),
+        );
+
+        assert_eq!(
+            apply_scene_neutral_movement_pattern(
+                &mut world,
+                actor.id as usize,
+                None,
+                MovementPattern::Accelerate {
+                    acceleration_x: 1.0,
+                    acceleration_y: 0.0,
+                    max_speed: 10.0,
+                },
+            ),
+            MovementPatternApplication::Applied,
+        );
+        assert_eq!(
+            world.velocities[actor.id as usize],
+            Some(Velocity { vx: 3.5, vy: 3.75 }),
+        );
+
+        world.velocities[actor.id as usize] = Some(Velocity::default());
+        assert_eq!(
+            apply_scene_neutral_movement_pattern(
+                &mut world,
+                actor.id as usize,
+                None,
+                MovementPattern::Accelerate {
+                    acceleration_x: 10.0,
+                    acceleration_y: 0.0,
+                    max_speed: 5.0,
+                },
+            ),
+            MovementPatternApplication::Applied,
+        );
+        assert_eq!(
+            world.velocities[actor.id as usize],
+            Some(Velocity { vx: 5.0, vy: 0.0 }),
+        );
+
+        world.velocities[actor.id as usize] = Some(Velocity::default());
         assert_eq!(
             apply_scene_neutral_movement_pattern(
                 &mut world,

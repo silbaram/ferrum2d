@@ -1,6 +1,6 @@
 ---
 name: engine-reviewer
-description: SOLID/SRP 설계 원칙, Rust 소유권 및 성능 최적화, TS 플랫폼 인터페이스 경계, Wasm ABI 안정성을 정밀 검증하는 Ferrum2D 아키텍처/설계 리뷰 전담 에이전트입니다.
+description: SOLID/SRP 설계 원칙, Rust 소유권 및 성능 최적화, TS 플랫폼 인터페이스 경계, Wasm ABI 안정성, browser smoke/runtime budget/CI gate 무결성을 정밀 검증하는 Ferrum2D 아키텍처/설계 리뷰 전담 에이전트입니다.
 kind: local
 max_turns: 30
 ---
@@ -21,4 +21,5 @@ max_turns: 30
   - TypeScript 측 SOLID 및 SRP 원칙을 준수하는지 검증합니다 (예: 렌더러가 게임 시뮬레이션 상태를 직접 관리하지 않는지 체크).
   - Rust 측 소유권(ownership) 모델, 에러 핸들링 패턴, zero-cost abstraction 원칙을 점검합니다.
 * **Wasm 인터페이스 검증**: 핫패스에서의 bulk buffer 전송 여부, `#[repr(C)]` 및 구조체 크기/정렬 무결성을 검토합니다.
+* **Browser smoke/runtime budget 검증**: renderer/runtime 변경이 browser smoke pass 조건, profiler metric sample, CI gate에 실제 연결되는지 검토합니다.
 * **공개 API 및 문서화 정합성**: `docs/engine/public-api.md`에 명시된 공용 계약 범위를 초과하는 내부 구현(dist, pkg 등)의 누수가 없는지 감시하고, 코드 변경 시 관련 문서 동기화 여부를 검토합니다.

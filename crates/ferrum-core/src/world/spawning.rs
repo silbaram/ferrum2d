@@ -4,7 +4,7 @@ use super::{
     DEFAULT_PLAYER_TEMPLATE,
 };
 use crate::components::gameplay::{
-    GameplayFaction, ProjectileCollisionTarget, ProjectileTileImpact,
+    GameplayFaction, ProjectileCollisionTarget, ProjectilePolicy, ProjectileTileImpact,
 };
 use crate::components::{
     AabbCollider, CapsuleCollider, CircleCollider, CollisionLayer, ConvexPolygonCollider,
@@ -12,8 +12,54 @@ use crate::components::{
 };
 use crate::entity::Entity;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct PrefabSpriteTint {
+    pub(crate) r: f32,
+    pub(crate) g: f32,
+    pub(crate) b: f32,
+    pub(crate) a: f32,
+}
+
+impl PrefabSpriteTint {
+    pub(crate) const PLAYER: Self = Self {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: 1.0,
+    };
+    pub(crate) const ENEMY: Self = Self {
+        r: 0.9,
+        g: 0.3,
+        b: 0.3,
+        a: 0.9,
+    };
+    pub(crate) const PROJECTILE: Self = Self {
+        r: 1.0,
+        g: 1.0,
+        b: 0.2,
+        a: 1.0,
+    };
+}
+
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct BulletSpawnRequest {
+pub(crate) struct PrefabEntitySpawnRequest {
+    pub(crate) transform: Transform2D,
+    pub(crate) velocity: Option<Velocity>,
+    pub(crate) texture_id: u32,
+    pub(crate) template: EntityTemplate,
+    pub(crate) layer: CollisionLayer,
+    pub(crate) sprite_tint: PrefabSpriteTint,
+    pub(crate) lifetime_seconds: Option<f32>,
+    pub(crate) projectile_policy: Option<ProjectilePolicy>,
+    pub(crate) gameplay_faction: Option<GameplayFaction>,
+    pub(crate) damage: Option<f32>,
+    pub(crate) health: Option<f32>,
+    pub(crate) score_reward: Option<u32>,
+    pub(crate) player_marker: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ProjectileSpawnRequest {
     pub(crate) transform: Transform2D,
     pub(crate) velocity: Velocity,
     pub(crate) texture_id: u32,
@@ -38,27 +84,24 @@ impl World {
         template: EntityTemplate,
     ) -> Entity {
         let e = self.spawn_entity();
-        let i = e.id as usize;
-        let (u0, v0, u1, v1) = initial_uv(template);
-        self.transforms[i] = Some(Transform2D { x, y });
-        self.sprites[i] = Some(Sprite {
-            texture_id,
-            width: template.sprite_width,
-            height: template.sprite_height,
-            u0,
-            v0,
-            u1,
-            v1,
-            r: 1.0,
-            g: 1.0,
-            b: 1.0,
-            a: 1.0,
-        });
-        self.sprite_animations[i] = template.animation;
-        self.velocities[i] = Some(Velocity::default());
-        let layer = CollisionLayer::Player;
-        self.apply_template_collider(e, layer, template);
-        self.player = Some(e);
+        self.apply_prefab_entity_spawn_request(
+            e,
+            PrefabEntitySpawnRequest {
+                transform: Transform2D { x, y },
+                velocity: Some(Velocity::default()),
+                texture_id,
+                template,
+                layer: CollisionLayer::Player,
+                sprite_tint: PrefabSpriteTint::PLAYER,
+                lifetime_seconds: None,
+                projectile_policy: None,
+                gameplay_faction: None,
+                damage: None,
+                health: None,
+                score_reward: None,
+                player_marker: true,
+            },
+        );
         e
     }
 
@@ -76,27 +119,24 @@ impl World {
         score_reward: u32,
     ) -> Entity {
         let e = self.spawn_entity();
-        let i = e.id as usize;
-        let (u0, v0, u1, v1) = initial_uv(template);
-        self.transforms[i] = Some(Transform2D { x, y });
-        self.sprites[i] = Some(Sprite {
-            texture_id,
-            width: template.sprite_width,
-            height: template.sprite_height,
-            u0,
-            v0,
-            u1,
-            v1,
-            r: 0.9,
-            g: 0.3,
-            b: 0.3,
-            a: 0.9,
-        });
-        self.sprite_animations[i] = template.animation;
-        let layer = CollisionLayer::Enemy;
-        self.apply_template_collider(e, layer, template);
-        self.healths[i] = Some(health);
-        self.score_rewards[i] = Some(score_reward);
+        self.apply_prefab_entity_spawn_request(
+            e,
+            PrefabEntitySpawnRequest {
+                transform: Transform2D { x, y },
+                velocity: None,
+                texture_id,
+                template,
+                layer: CollisionLayer::Enemy,
+                sprite_tint: PrefabSpriteTint::ENEMY,
+                lifetime_seconds: None,
+                projectile_policy: None,
+                gameplay_faction: None,
+                damage: None,
+                health: Some(health),
+                score_reward: Some(score_reward),
+                player_marker: false,
+            },
+        );
         e
     }
 
@@ -132,7 +172,7 @@ impl World {
         template: EntityTemplate,
         damage: f32,
     ) -> Entity {
-        self.spawn_bullet_from_request(BulletSpawnRequest {
+        self.spawn_projectile_from_request(ProjectileSpawnRequest {
             transform,
             velocity,
             texture_id,
@@ -145,9 +185,53 @@ impl World {
         })
     }
 
-    pub(crate) fn spawn_bullet_from_request(&mut self, request: BulletSpawnRequest) -> Entity {
+    pub(crate) fn spawn_projectile_from_request(
+        &mut self,
+        request: ProjectileSpawnRequest,
+    ) -> Entity {
         let e = self.spawn_entity();
-        let i = e.id as usize;
+        self.apply_prefab_entity_spawn_request(
+            e,
+            PrefabEntitySpawnRequest {
+                transform: request.transform,
+                velocity: Some(request.velocity),
+                texture_id: request.texture_id,
+                template: request.template,
+                layer: CollisionLayer::Bullet,
+                sprite_tint: PrefabSpriteTint::PROJECTILE,
+                lifetime_seconds: Some(request.lifetime),
+                projectile_policy: Some(ProjectilePolicy::new(
+                    request.collision_target,
+                    request.tile_impact,
+                )),
+                gameplay_faction: request.source_faction,
+                damage: Some(request.damage),
+                health: None,
+                score_reward: None,
+                player_marker: false,
+            },
+        );
+        e
+    }
+
+    pub(crate) fn spawn_prefab_entity_from_request(
+        &mut self,
+        request: PrefabEntitySpawnRequest,
+    ) -> Entity {
+        let e = self.spawn_entity();
+        self.apply_prefab_entity_spawn_request(e, request);
+        e
+    }
+
+    fn apply_prefab_entity_spawn_request(
+        &mut self,
+        entity: Entity,
+        request: PrefabEntitySpawnRequest,
+    ) {
+        let i = entity.id as usize;
+        if i >= self.alive.len() || !self.alive[i] || self.generations[i] != entity.generation {
+            return;
+        }
         let (u0, v0, u1, v1) = initial_uv(request.template);
         self.transforms[i] = Some(request.transform);
         self.sprites[i] = Some(Sprite {
@@ -158,21 +242,31 @@ impl World {
             v0,
             u1,
             v1,
-            r: 1.0,
-            g: 1.0,
-            b: 0.2,
-            a: 1.0,
+            r: request.sprite_tint.r,
+            g: request.sprite_tint.g,
+            b: request.sprite_tint.b,
+            a: request.sprite_tint.a,
         });
         self.sprite_animations[i] = request.template.animation;
-        self.velocities[i] = Some(request.velocity);
-        let layer = CollisionLayer::Bullet;
-        self.apply_template_collider(e, layer, request.template);
-        self.bullet_lifetimes[i] = Some(request.lifetime);
-        self.projectile_collision_targets[i] = Some(request.collision_target);
-        self.projectile_tile_impacts[i] = Some(request.tile_impact);
-        self.gameplay_factions[i] = request.source_faction;
-        self.damages[i] = Some(request.damage);
-        e
+        self.velocities[i] = request.velocity;
+        self.apply_template_collider(entity, request.layer, request.template);
+        if let Some(lifetime_seconds) = request.lifetime_seconds {
+            self.set_gameplay_lifetime_at(i, lifetime_seconds);
+        }
+        if let Some(policy) = request.projectile_policy {
+            self.set_projectile_policy_at(i, policy);
+        }
+        if let Some(faction) = request.gameplay_faction {
+            self.set_gameplay_faction_at_index(i, faction);
+        } else {
+            self.clear_gameplay_faction_at_index(i);
+        }
+        self.damages[i] = request.damage;
+        self.healths[i] = request.health;
+        self.score_rewards[i] = request.score_reward;
+        if request.player_marker {
+            self.player = Some(entity);
+        }
     }
 
     pub(crate) fn apply_template_to_entity(

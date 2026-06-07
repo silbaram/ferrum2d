@@ -5,7 +5,8 @@
   "description": "Generated minimal template surface replay contract. This fixture validates public replay helper hashing and template surface drift; it is not a browser frame runner.",
   "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json",
   "coverageTags": [
-    "starter-runtime-template"
+    "starter-runtime-template",
+    "template-weapon-authoring"
   ],
   "replay": {
     "format": "ferrum2d.gameplay-replay.run",
@@ -35,6 +36,25 @@
                 "template": "minimal",
                 "hasFerrumDependency": true,
                 "hasMainSource": true,
+                "authoringSurface": {
+                  "weaponProfiles": [
+                    "standard",
+                    "piercing",
+                    "bounce"
+                  ],
+                  "publicApis": {
+                    "behaviorRecipeCommandsForEntity": true,
+                    "compileWeaponProfiles": true,
+                    "ProjectileDefinition": true,
+                    "WeaponDefinition": true
+                  },
+                  "runtimeHooks": {
+                    "applyGameplayBehaviorCommands": true,
+                    "builtInShooterPlayerHandle": true,
+                    "setInputActionBinding": true,
+                    "profileQueryParam": true
+                  }
+                },
                 "publicAssets": [
                   "gameplay-replay.coverage-tags.json",
                   "gameplay-replay.fixture.json",
@@ -50,9 +70,9 @@
               }
             }
           },
-          "snapshotHash": "1ce229a0"
+          "snapshotHash": "a66fa87f"
         },
-        "replayHash": "1ce229a0"
+        "replayHash": "a66fa87f"
       },
       {
         "frame": 1,
@@ -78,6 +98,25 @@
                 "template": "minimal",
                 "hasFerrumDependency": true,
                 "hasMainSource": true,
+                "authoringSurface": {
+                  "weaponProfiles": [
+                    "standard",
+                    "piercing",
+                    "bounce"
+                  ],
+                  "publicApis": {
+                    "behaviorRecipeCommandsForEntity": true,
+                    "compileWeaponProfiles": true,
+                    "ProjectileDefinition": true,
+                    "WeaponDefinition": true
+                  },
+                  "runtimeHooks": {
+                    "applyGameplayBehaviorCommands": true,
+                    "builtInShooterPlayerHandle": true,
+                    "setInputActionBinding": true,
+                    "profileQueryParam": true
+                  }
+                },
                 "publicAssets": [
                   "gameplay-replay.coverage-tags.json",
                   "gameplay-replay.fixture.json",
@@ -93,11 +132,11 @@
               }
             }
           },
-          "snapshotHash": "ef72b214"
+          "snapshotHash": "0c031dbf"
         },
-        "replayHash": "ef72b214"
+        "replayHash": "0c031dbf"
       }
     ],
-    "replayHash": "2a35b14d"
+    "replayHash": "e730a3bf"
   }
 }

@@ -3,7 +3,7 @@
   "format": "ferrum2d.topdown-shooter.authored-behavior-variant",
   "version": 1,
   "extendsGameSpec": "./game.json",
-  "replayScenario": "topdown-authored-behavior",
+  "replayScenario": "example-topdown-authored-behavior",
   "semantics": {
     "fsmStateEntryMode": "manualReplaceSupported",
     "browserPlacement": {
@@ -409,7 +409,7 @@
     }
   },
   "expected": {
-    "replayHash": "ab94f41f",
+    "replayHash": "c8b8f279",
     "finalScore": 14,
     "eventFrame": 2,
     "eventKinds": ["collisionDamage", "factionDamageDenied", "pickupCollected", "interaction", "behaviorStateChanged", "behaviorStateChanged"],

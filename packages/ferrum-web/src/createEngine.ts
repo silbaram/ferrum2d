@@ -7,7 +7,10 @@ import {
   installBehaviorStateMachineRuntime as installBehaviorStateMachineRuntimeOnEngine,
   preflightBehaviorStateMachineStateCommands as preflightBehaviorStateMachineStateCommandsToRuntime,
 } from "./behaviorStateMachine.js";
-import { applyGameplayBehaviorCommands as applyGameplayBehaviorCommandsToRuntime } from "./gameplayAuthoring.js";
+import {
+  applyGameplayBehaviorCommands as applyGameplayBehaviorCommandsToRuntime,
+  registerGameplayPrefabs as registerGameplayPrefabsOnRuntime,
+} from "./gameplayAuthoring.js";
 import {
   BUILT_IN_SHOOTER_STATE_FORMAT,
   BUILT_IN_SHOOTER_STATE_VERSION,
@@ -65,6 +68,8 @@ import type {
   ApplyGameplayBehaviorCommandsOptions,
   GameplayEntityHandle,
   GameplayEntityHandleMap,
+  GameplayPrefabRegistration,
+  RegisterGameplayPrefabsOptions,
 } from "./gameplayAuthoring.js";
 import {
   applyFixedTimestepOptions,
@@ -184,6 +189,10 @@ export type {
   ViewportProvider,
   ViewportSnapshot,
 } from "./engineTypes.js";
+export type {
+  EffectEventAssetValidationPolicy,
+  EffectEventRuntimeOptions,
+} from "./effectEventRuntime.js";
 
 export async function createEngine(
   onFrame?: FrameHandler,
@@ -218,6 +227,7 @@ export async function createEngineWithFramePipeline(
   const bridge = await WasmBridge.init();
   const rustEngine: Engine = bridge.engine();
   rustEngine.set_collision_lifecycle_events_enabled(options.includeCollisionEvents === true);
+  const registeredParticlePresetIds = new Set<number>();
   const initialPhysicsSpec = resolvePhysicsSpec(undefined, {
     modeOverride: options.physicsMode,
   });
@@ -232,6 +242,7 @@ export async function createEngineWithFramePipeline(
     needsPhysicsDebugLineBuffer: frameHandlers.needsPhysicsDebugLineBuffer,
     inputProvider,
     assetHost,
+    particlePresetExists: (presetId) => registeredParticlePresetIds.has(presetId),
     viewportProvider,
     options,
   };
@@ -383,6 +394,7 @@ export async function createEngineWithFramePipeline(
       resolved.accelerationY,
       resolved.damping,
     );
+    registeredParticlePresetIds.add(id);
   };
 
   const spawnParticleBurst = (presetId: number, x: number, y: number): number => {
@@ -527,7 +539,11 @@ export async function createEngineWithFramePipeline(
 
   const particleApi: FerrumParticleApi = {
     setParticlePreset,
-    clearParticlePresets: () => { requireAlive(); rustEngine.clear_particle_presets(); },
+    clearParticlePresets: () => {
+      requireAlive();
+      rustEngine.clear_particle_presets();
+      registeredParticlePresetIds.clear();
+    },
     setShooterHitParticlePreset: (presetId) => {
       requireAlive();
       rustEngine.set_shooter_hit_particle_preset(particlePresetId(presetId));
@@ -577,6 +593,13 @@ export async function createEngineWithFramePipeline(
       requireAlive();
       const handle = gameplayAuthoringEntityHandle(entity, "gameplayEntityExists.entity");
       return rustEngine.gameplay_entity_exists(handle.entityId, handle.entityGeneration);
+    },
+    registerGameplayPrefabs: (
+      registrations: readonly GameplayPrefabRegistration[],
+      options?: RegisterGameplayPrefabsOptions,
+    ) => {
+      requireAlive();
+      return registerGameplayPrefabsOnRuntime(rustEngine, registrations, options);
     },
     applyGameplayBehaviorCommands: (
       commands: readonly BehaviorRecipeCommand[],

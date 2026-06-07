@@ -1,8 +1,9 @@
 use super::*;
 use crate::components::gameplay::{
     ActionBinding, BehaviorStateEnterAction, BehaviorStateEnterActionPhase, BehaviorStateMachine,
-    BehaviorStateTransition, CollisionReaction, CollisionTarget, GameplayTimerTrigger, Interaction,
-    MovementPattern, MovementTarget, Pickup, GAMEPLAY_PICKUP_ITEM_SCORE,
+    BehaviorStateTransition, CollisionReaction, CollisionTarget, GameplayFaction, GameplayLifetime,
+    GameplayTags, GameplayTimerTrigger, Interaction, MovementPattern, MovementTarget, Pickup,
+    ProjectileCollisionTarget, ProjectilePolicy, ProjectileTileImpact, GAMEPLAY_PICKUP_ITEM_SCORE,
 };
 use crate::components::{
     AngularVelocity, CircleCollider, CollisionFilter, CollisionLayer, CollisionMask, EdgeCollider,

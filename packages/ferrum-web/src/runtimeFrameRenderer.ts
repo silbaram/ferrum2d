@@ -226,13 +226,14 @@ function buildDebugMetrics(
 function collisionDebugMetrics(
   frame: FrameState,
 ): Pick<DebugOverlayMetrics, "collisionPairCount" | "collisionEventCount"> {
-  if (frame.physics.collisionLifecycleEventsEnabled !== true) {
-    return {};
-  }
-  return {
+  const metrics: Pick<DebugOverlayMetrics, "collisionPairCount" | "collisionEventCount"> = {
     collisionPairCount: frame.physics.collisionPairs,
-    collisionEventCount: frame.physics.collisionEventCount,
   };
+  if (frame.physics.collisionLifecycleEventsEnabled !== true) {
+    return metrics;
+  }
+  metrics.collisionEventCount = frame.physics.collisionEventCount;
+  return metrics;
 }
 
 function defaultGameStateLabel(code: number): string {

@@ -1,19 +1,25 @@
 use wasm_bindgen::prelude::*;
 
-use super::{Engine, MAX_PARTICLE_PRESETS};
+use super::{
+    Engine, MAX_PARTICLE_PRESETS, PHYSICS_LAYER_BULLET, PHYSICS_LAYER_ENEMY, PHYSICS_LAYER_PICKUP,
+    PHYSICS_LAYER_PLAYER, PHYSICS_LAYER_WALL,
+};
 use crate::components::gameplay::{
-    ActionAimSource, ActionBinding, ActionBindingSet, BehaviorStateEnterAction,
+    ActionAimSource, ActionBinding, ActionBindingSet, ActionPattern, BehaviorStateEnterAction,
     BehaviorStateEnterActionPhase, BehaviorStateMachine, BehaviorStateTransition,
     CollisionReaction, CollisionReactionSet, CollisionReactionTrigger, CollisionTarget, Cooldown,
-    GameplayFaction, GameplayTimerTrigger, Interaction, MeleeTarget, MovementPattern,
+    GameplayFaction, GameplayTags, GameplayTimerTrigger, Interaction, MeleeTarget, MovementPattern,
     MovementTarget, Pickup, ProjectileActionConfig, ProjectileCollisionTarget,
-    ProjectileTileImpact, SpawnAnchor, SpawnPhase, GAMEPLAY_FACTION_MAX_ID,
-    GAMEPLAY_PICKUP_ITEM_SCORE,
+    ProjectileTileImpact, SpawnAnchor, SpawnPhase, SpawnPrefabProjectilePayload,
+    GAMEPLAY_FACTION_MAX_ID, GAMEPLAY_PICKUP_ITEM_SCORE, GAMEPLAY_TAG_MAX_ID,
 };
+use crate::components::CollisionLayer;
 use crate::entity::Entity;
 use crate::gameplay_event::{
     GAMEPLAY_EVENT_COLLISION_DAMAGE, GAMEPLAY_EVENT_COLLISION_DESPAWN, GAMEPLAY_EVENT_INTERACTION,
     GAMEPLAY_EVENT_PICKUP_COLLECTED, GAMEPLAY_EVENT_TILE_IMPACT, GAMEPLAY_EVENT_TIMER,
+    GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE, GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
+    GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE, GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND,
 };
 use crate::shooter_scene::ShooterPrefabKind;
 
@@ -25,6 +31,7 @@ pub(super) struct GameplayAuthoringSnapshot {
     lifetime: Option<f32>,
     score_reward: Option<u32>,
     faction: Option<GameplayFaction>,
+    tags: Option<GameplayTags>,
     pickup: Option<Pickup>,
     interaction: Option<Interaction>,
     timer_trigger: Option<GameplayTimerTrigger>,
@@ -40,9 +47,10 @@ impl GameplayAuthoringSnapshot {
             entity,
             health: engine.world.healths[index],
             damage: engine.world.damages[index],
-            lifetime: engine.world.bullet_lifetimes[index],
+            lifetime: engine.world.gameplay_lifetime_at(index),
             score_reward: engine.world.score_rewards[index],
             faction: engine.world.gameplay_factions[index],
+            tags: engine.world.gameplay_tags[index],
             pickup: engine.world.pickups[index],
             interaction: engine.world.interactions[index],
             timer_trigger: engine.world.gameplay_timer_triggers[index],
@@ -56,9 +64,22 @@ impl GameplayAuthoringSnapshot {
         let index = self.entity.id as usize;
         engine.world.healths[index] = self.health;
         engine.world.damages[index] = self.damage;
-        engine.world.bullet_lifetimes[index] = self.lifetime;
+        if let Some(lifetime) = self.lifetime {
+            engine.world.set_gameplay_lifetime_at(index, lifetime);
+        } else {
+            engine.world.clear_gameplay_lifetime_at(index);
+        }
         engine.world.score_rewards[index] = self.score_reward;
-        engine.world.gameplay_factions[index] = self.faction;
+        if let Some(faction) = self.faction {
+            engine.world.set_gameplay_faction_at_index(index, faction);
+        } else {
+            engine.world.clear_gameplay_faction_at_index(index);
+        }
+        if let Some(tags) = self.tags {
+            engine.world.set_gameplay_tags_at_index(index, tags);
+        } else {
+            engine.world.clear_gameplay_tags_at_index(index);
+        }
         engine.world.pickups[index] = self.pickup;
         engine.world.interactions[index] = self.interaction;
         engine.world.gameplay_timer_triggers[index] = self.timer_trigger;
@@ -127,7 +148,6 @@ impl Engine {
             return false;
         };
         self.world.healths[entity.id as usize] = Some(current);
-        self.clear_physics_history();
         true
     }
 
@@ -136,7 +156,6 @@ impl Engine {
             return false;
         };
         self.world.healths[entity.id as usize] = None;
-        self.clear_physics_history();
         true
     }
 
@@ -153,7 +172,6 @@ impl Engine {
             return false;
         };
         self.world.damages[entity.id as usize] = Some(amount);
-        self.clear_physics_history();
         true
     }
 
@@ -162,7 +180,6 @@ impl Engine {
             return false;
         };
         self.world.damages[entity.id as usize] = None;
-        self.clear_physics_history();
         true
     }
 
@@ -191,7 +208,6 @@ impl Engine {
 
         self.world.damages[index] = Some(amount);
         self.world.collision_reactions[index] = Some(reactions);
-        self.clear_physics_history();
         true
     }
 
@@ -207,8 +223,8 @@ impl Engine {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
         };
-        self.world.bullet_lifetimes[entity.id as usize] = Some(seconds);
-        self.clear_physics_history();
+        self.world
+            .set_gameplay_lifetime_at(entity.id as usize, seconds);
         true
     }
 
@@ -216,8 +232,7 @@ impl Engine {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
         };
-        self.world.bullet_lifetimes[entity.id as usize] = None;
-        self.clear_physics_history();
+        self.world.clear_gameplay_lifetime_at(entity.id as usize);
         true
     }
 
@@ -233,8 +248,8 @@ impl Engine {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
         };
-        self.world.projectile_tile_impacts[entity.id as usize] = Some(tile_impact);
-        self.clear_physics_history();
+        self.world
+            .set_projectile_tile_impact_at(entity.id as usize, tile_impact);
         true
     }
 
@@ -248,7 +263,6 @@ impl Engine {
             return false;
         };
         self.world.score_rewards[entity.id as usize] = Some(reward);
-        self.clear_physics_history();
         true
     }
 
@@ -257,7 +271,38 @@ impl Engine {
             return false;
         };
         self.world.score_rewards[entity.id as usize] = None;
-        self.clear_physics_history();
+        true
+    }
+
+    pub fn set_gameplay_area_damage_reaction(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        amount: f32,
+        radius: f32,
+        target_layer_code: u32,
+    ) -> bool {
+        if !Self::valid_positive(amount) || !Self::valid_positive(radius) {
+            return false;
+        }
+        let Some(target_layer) = Self::movement_query_layer_from_code(target_layer_code) else {
+            return false;
+        };
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return false;
+        };
+
+        let index = entity.id as usize;
+        let mut reactions = self.world.collision_reactions[index].unwrap_or_default();
+        if !reactions.push(CollisionReaction::AreaDamage {
+            radius,
+            target_layer,
+        }) {
+            return false;
+        }
+
+        self.world.damages[index] = Some(amount);
+        self.world.collision_reactions[index] = Some(reactions);
         true
     }
 
@@ -278,7 +323,6 @@ impl Engine {
             return false;
         };
         self.world.set_gameplay_faction(entity, faction);
-        self.clear_physics_history();
         true
     }
 
@@ -287,7 +331,30 @@ impl Engine {
             return false;
         };
         self.world.clear_gameplay_faction(entity);
-        self.clear_physics_history();
+        true
+    }
+
+    pub fn set_gameplay_tags(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        tag_mask: u32,
+    ) -> bool {
+        let Some(tags) = GameplayTags::new(tag_mask) else {
+            return false;
+        };
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return false;
+        };
+        self.world.set_gameplay_tags(entity, tags);
+        true
+    }
+
+    pub fn clear_gameplay_tags(&mut self, entity_id: u32, entity_generation: u32) -> bool {
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return false;
+        };
+        self.world.clear_gameplay_tags(entity);
         true
     }
 
@@ -368,7 +435,6 @@ impl Engine {
         ) {
             return false;
         }
-        self.clear_physics_history();
         true
     }
 
@@ -417,7 +483,6 @@ impl Engine {
         ) {
             return false;
         }
-        self.clear_physics_history();
         true
     }
 
@@ -446,7 +511,6 @@ impl Engine {
         ) {
             return false;
         }
-        self.clear_physics_history();
         true
     }
 
@@ -480,7 +544,6 @@ impl Engine {
         ) {
             return false;
         }
-        self.clear_physics_history();
         true
     }
 
@@ -505,7 +568,7 @@ impl Engine {
         };
         if action_id == 0
             || prefab_id == 0
-            || ShooterPrefabKind::from_code(prefab_id) != Some(ShooterPrefabKind::Enemy)
+            || !self.scene.supports_spawn_prefab_id(prefab_id)
             || !Self::valid_non_negative(cooldown_seconds)
             || !offset_x.is_finite()
             || !offset_y.is_finite()
@@ -529,7 +592,103 @@ impl Engine {
         ) {
             return false;
         }
-        self.clear_physics_history();
+        true
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_gameplay_action_spawn_projectile_prefab(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        action_id: u32,
+        cooldown_seconds: f32,
+        prefab_id: u32,
+        anchor_code: u32,
+        phase_code: u32,
+        offset_x: f32,
+        offset_y: f32,
+        speed: f32,
+        damage: f32,
+        lifetime_seconds: f32,
+        aim_code: u32,
+        collision_target_code: u32,
+        tile_impact_code: u32,
+    ) -> bool {
+        let Some(anchor) = SpawnAnchor::from_code(anchor_code) else {
+            return false;
+        };
+        let Some(phase) = SpawnPhase::from_code(phase_code) else {
+            return false;
+        };
+        let Some(aim) = ActionAimSource::from_code(aim_code) else {
+            return false;
+        };
+        let Some(collision_target) = ProjectileCollisionTarget::from_code(collision_target_code)
+        else {
+            return false;
+        };
+        let Some(tile_impact) = ProjectileTileImpact::from_code(tile_impact_code) else {
+            return false;
+        };
+        if !self.scene.supports_projectile_prefab_id(prefab_id)
+            || action_id == 0
+            || prefab_id == 0
+            || !Self::valid_non_negative(cooldown_seconds)
+            || !Self::valid_positive(speed)
+            || !Self::valid_positive(damage)
+            || !Self::valid_positive(lifetime_seconds)
+            || !offset_x.is_finite()
+            || !offset_y.is_finite()
+        {
+            return false;
+        }
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return false;
+        };
+        if !self.world.upsert_action_binding(
+            entity,
+            ActionBinding {
+                action_id,
+                pattern: ActionPattern::SpawnPrefab {
+                    prefab_id,
+                    projectile: Some(SpawnPrefabProjectilePayload {
+                        speed,
+                        damage,
+                        lifetime_seconds,
+                        aim,
+                        collision_target,
+                        tile_impact,
+                    }),
+                    anchor,
+                    phase,
+                    offset_x,
+                    offset_y,
+                },
+                cooldown: Cooldown::ready(cooldown_seconds),
+            },
+        ) {
+            return false;
+        }
+        true
+    }
+
+    pub fn register_gameplay_enemy_prefab(&mut self, prefab_id: u32) -> bool {
+        if !self
+            .scene
+            .register_spawn_prefab_kind(prefab_id, ShooterPrefabKind::Enemy)
+        {
+            return false;
+        }
+        true
+    }
+
+    pub fn register_gameplay_bullet_prefab(&mut self, prefab_id: u32) -> bool {
+        if !self
+            .scene
+            .register_spawn_prefab_kind(prefab_id, ShooterPrefabKind::Bullet)
+        {
+            return false;
+        }
         true
     }
 
@@ -538,7 +697,6 @@ impl Engine {
             return false;
         };
         self.world.clear_action_bindings(entity);
-        self.clear_physics_history();
         true
     }
 
@@ -562,7 +720,6 @@ impl Engine {
         {
             return false;
         }
-        self.clear_physics_history();
         true
     }
 
@@ -571,7 +728,6 @@ impl Engine {
             return false;
         };
         self.world.clear_pickup(entity);
-        self.clear_physics_history();
         true
     }
 
@@ -595,7 +751,6 @@ impl Engine {
         {
             return false;
         }
-        self.clear_physics_history();
         true
     }
 
@@ -604,7 +759,6 @@ impl Engine {
             return false;
         };
         self.world.clear_interaction(entity);
-        self.clear_physics_history();
         true
     }
 
@@ -627,7 +781,6 @@ impl Engine {
         ) {
             return false;
         }
-        self.clear_physics_history();
         true
     }
 
@@ -651,7 +804,6 @@ impl Engine {
         ) {
             return false;
         }
-        self.clear_physics_history();
         true
     }
 
@@ -660,7 +812,6 @@ impl Engine {
             return false;
         };
         self.world.clear_gameplay_timer_trigger(entity);
-        self.clear_physics_history();
         true
     }
 
@@ -733,6 +884,88 @@ impl Engine {
         )
     }
 
+    pub fn set_gameplay_movement_chase_nearest_player(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        speed: f32,
+    ) -> bool {
+        self.set_gameplay_movement_chase_target(
+            entity_id,
+            entity_generation,
+            MovementTarget::NearestPlayer,
+            speed,
+        )
+    }
+
+    pub fn set_gameplay_movement_chase_nearest_enemy(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        speed: f32,
+    ) -> bool {
+        self.set_gameplay_movement_chase_target(
+            entity_id,
+            entity_generation,
+            MovementTarget::NearestEnemy,
+            speed,
+        )
+    }
+
+    pub fn set_gameplay_movement_chase_nearest_layer(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        layer_code: u32,
+        speed: f32,
+    ) -> bool {
+        let Some(layer) = Self::movement_query_layer_from_code(layer_code) else {
+            return false;
+        };
+        self.set_gameplay_movement_chase_target(
+            entity_id,
+            entity_generation,
+            MovementTarget::NearestLayer(layer),
+            speed,
+        )
+    }
+
+    pub fn set_gameplay_movement_chase_nearest_faction(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        faction_id: u32,
+        speed: f32,
+    ) -> bool {
+        if faction_id > GAMEPLAY_FACTION_MAX_ID {
+            return false;
+        }
+        self.set_gameplay_movement_chase_target(
+            entity_id,
+            entity_generation,
+            MovementTarget::NearestFaction(faction_id),
+            speed,
+        )
+    }
+
+    pub fn set_gameplay_movement_chase_nearest_tag(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        tag_id: u32,
+        speed: f32,
+    ) -> bool {
+        if tag_id > GAMEPLAY_TAG_MAX_ID {
+            return false;
+        }
+        self.set_gameplay_movement_chase_target(
+            entity_id,
+            entity_generation,
+            MovementTarget::NearestTag(tag_id),
+            speed,
+        )
+    }
+
     pub fn set_gameplay_movement_chase_entity(
         &mut self,
         entity_id: u32,
@@ -770,6 +1003,161 @@ impl Engine {
         )
     }
 
+    pub fn set_gameplay_movement_seek_target_player(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        speed: f32,
+        turn_rate: f32,
+    ) -> bool {
+        self.set_gameplay_movement_seek_target(
+            entity_id,
+            entity_generation,
+            MovementTarget::Player,
+            speed,
+            turn_rate,
+        )
+    }
+
+    pub fn set_gameplay_movement_seek_target_nearest_player(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        speed: f32,
+        turn_rate: f32,
+    ) -> bool {
+        self.set_gameplay_movement_seek_target(
+            entity_id,
+            entity_generation,
+            MovementTarget::NearestPlayer,
+            speed,
+            turn_rate,
+        )
+    }
+
+    pub fn set_gameplay_movement_seek_target_nearest_enemy(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        speed: f32,
+        turn_rate: f32,
+    ) -> bool {
+        self.set_gameplay_movement_seek_target(
+            entity_id,
+            entity_generation,
+            MovementTarget::NearestEnemy,
+            speed,
+            turn_rate,
+        )
+    }
+
+    pub fn set_gameplay_movement_seek_target_nearest_layer(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        layer_code: u32,
+        speed: f32,
+        turn_rate: f32,
+    ) -> bool {
+        let Some(layer) = Self::movement_query_layer_from_code(layer_code) else {
+            return false;
+        };
+        self.set_gameplay_movement_seek_target(
+            entity_id,
+            entity_generation,
+            MovementTarget::NearestLayer(layer),
+            speed,
+            turn_rate,
+        )
+    }
+
+    pub fn set_gameplay_movement_seek_target_nearest_faction(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        faction_id: u32,
+        speed: f32,
+        turn_rate: f32,
+    ) -> bool {
+        if faction_id > GAMEPLAY_FACTION_MAX_ID {
+            return false;
+        }
+        self.set_gameplay_movement_seek_target(
+            entity_id,
+            entity_generation,
+            MovementTarget::NearestFaction(faction_id),
+            speed,
+            turn_rate,
+        )
+    }
+
+    pub fn set_gameplay_movement_seek_target_nearest_tag(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        tag_id: u32,
+        speed: f32,
+        turn_rate: f32,
+    ) -> bool {
+        if tag_id > GAMEPLAY_TAG_MAX_ID {
+            return false;
+        }
+        self.set_gameplay_movement_seek_target(
+            entity_id,
+            entity_generation,
+            MovementTarget::NearestTag(tag_id),
+            speed,
+            turn_rate,
+        )
+    }
+
+    pub fn set_gameplay_movement_seek_target_entity(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        target_id: u32,
+        target_generation: u32,
+        speed: f32,
+        turn_rate: f32,
+    ) -> bool {
+        let Some(target) = self.entity_from_handle(target_id, target_generation) else {
+            return false;
+        };
+        self.set_gameplay_movement_seek_target(
+            entity_id,
+            entity_generation,
+            MovementTarget::Entity(target),
+            speed,
+            turn_rate,
+        )
+    }
+
+    pub fn set_gameplay_movement_accelerate(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        acceleration_x: f32,
+        acceleration_y: f32,
+        max_speed: f32,
+    ) -> bool {
+        if !acceleration_x.is_finite()
+            || !acceleration_y.is_finite()
+            || !Self::valid_positive(max_speed)
+            || (acceleration_x == 0.0 && acceleration_y == 0.0)
+        {
+            return false;
+        }
+        self.set_gameplay_movement_pattern(
+            entity_id,
+            entity_generation,
+            MovementPattern::Accelerate {
+                acceleration_x,
+                acceleration_y,
+                max_speed,
+            },
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn set_gameplay_movement_orbit_entity(
         &mut self,
@@ -799,7 +1187,6 @@ impl Engine {
             return false;
         };
         self.world.clear_movement_pattern(entity);
-        self.clear_physics_history();
         true
     }
 
@@ -812,7 +1199,6 @@ impl Engine {
             return false;
         };
         self.world.clear_collision_reactions(entity);
-        self.clear_physics_history();
         true
     }
 
@@ -829,6 +1215,157 @@ impl Engine {
             entity_id,
             entity_generation,
             CollisionReaction::Damage { target },
+        )
+    }
+
+    pub fn add_gameplay_collision_area_damage(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        radius: f32,
+        target_layer_code: u32,
+    ) -> bool {
+        if !Self::valid_positive(radius) {
+            return false;
+        }
+        let Some(target_layer) = Self::movement_query_layer_from_code(target_layer_code) else {
+            return false;
+        };
+        self.add_gameplay_collision_reaction(
+            entity_id,
+            entity_generation,
+            CollisionReaction::AreaDamage {
+                radius,
+                target_layer,
+            },
+        )
+    }
+
+    pub fn add_gameplay_collision_knockback(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        target: u32,
+        impulse: f32,
+    ) -> bool {
+        if !Self::valid_positive(impulse) {
+            return false;
+        }
+        let Some(target) = collision_target_from_code(target) else {
+            return false;
+        };
+        self.add_gameplay_collision_reaction(
+            entity_id,
+            entity_generation,
+            CollisionReaction::Knockback { target, impulse },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_gameplay_collision_emit_effect(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        effect_id: u32,
+        effect_type: u32,
+        target: u32,
+        cooldown_seconds: f32,
+        trigger_code: u32,
+    ) -> bool {
+        self.add_gameplay_collision_emit_effect_with_payload(
+            entity_id,
+            entity_generation,
+            effect_id,
+            effect_type,
+            target,
+            cooldown_seconds,
+            trigger_code,
+            1.0,
+            0.0,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_gameplay_collision_emit_effect_with_payload(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        effect_id: u32,
+        effect_type: u32,
+        target: u32,
+        cooldown_seconds: f32,
+        trigger_code: u32,
+        intensity: f32,
+        radius: f32,
+    ) -> bool {
+        if !Self::valid_non_negative(cooldown_seconds)
+            || !valid_presentation_effect_type(effect_type)
+            || !Self::valid_non_negative(intensity)
+            || !Self::valid_non_negative(radius)
+        {
+            return false;
+        }
+        let Some(target) = collision_target_from_code(target) else {
+            return false;
+        };
+        let Some(trigger) = collision_reaction_trigger_from_code(trigger_code) else {
+            return false;
+        };
+        self.add_gameplay_collision_reaction(
+            entity_id,
+            entity_generation,
+            CollisionReaction::EmitEffect {
+                effect_id,
+                effect_type,
+                target,
+                intensity,
+                radius,
+                cooldown: Cooldown::ready(cooldown_seconds),
+                trigger,
+            },
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_gameplay_collision_spawn_prefab(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        action_id: u32,
+        prefab_id: u32,
+        target: u32,
+        cooldown_seconds: f32,
+        trigger_code: u32,
+        offset_x: f32,
+        offset_y: f32,
+    ) -> bool {
+        if action_id == 0
+            || prefab_id == 0
+            || !self.scene.supports_spawn_prefab_id(prefab_id)
+            || !Self::valid_non_negative(cooldown_seconds)
+            || !offset_x.is_finite()
+            || !offset_y.is_finite()
+        {
+            return false;
+        }
+        let Some(target) = collision_target_from_code(target) else {
+            return false;
+        };
+        let Some(trigger) = collision_reaction_trigger_from_code(trigger_code) else {
+            return false;
+        };
+        self.add_gameplay_collision_reaction(
+            entity_id,
+            entity_generation,
+            CollisionReaction::SpawnPrefab {
+                action_id,
+                prefab_id,
+                target,
+                cooldown: Cooldown::ready(cooldown_seconds),
+                trigger,
+                offset_x,
+                offset_y,
+            },
         )
     }
 
@@ -961,6 +1498,51 @@ impl Engine {
         )
     }
 
+    pub fn add_gameplay_collision_camera_shake(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+    ) -> bool {
+        self.add_gameplay_collision_camera_shake_with_cooldown(entity_id, entity_generation, 0.0)
+    }
+
+    pub fn add_gameplay_collision_camera_shake_with_cooldown(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        cooldown_seconds: f32,
+    ) -> bool {
+        self.add_gameplay_collision_camera_shake_with_trigger(
+            entity_id,
+            entity_generation,
+            cooldown_seconds,
+            0,
+        )
+    }
+
+    pub fn add_gameplay_collision_camera_shake_with_trigger(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        cooldown_seconds: f32,
+        trigger_code: u32,
+    ) -> bool {
+        if !Self::valid_non_negative(cooldown_seconds) {
+            return false;
+        }
+        let Some(trigger) = collision_reaction_trigger_from_code(trigger_code) else {
+            return false;
+        };
+        self.add_gameplay_collision_reaction(
+            entity_id,
+            entity_generation,
+            CollisionReaction::CameraShake {
+                cooldown: Cooldown::ready(cooldown_seconds),
+                trigger,
+            },
+        )
+    }
+
     pub fn add_gameplay_collision_particle(
         &mut self,
         entity_id: u32,
@@ -1069,7 +1651,6 @@ impl Engine {
         {
             return false;
         }
-        self.clear_physics_history();
         true
     }
 
@@ -1115,7 +1696,6 @@ impl Engine {
         ) {
             return false;
         }
-        self.clear_physics_history();
         true
     }
 
@@ -1128,7 +1708,6 @@ impl Engine {
             return false;
         };
         self.world.clear_behavior_state_machine(entity);
-        self.clear_physics_history();
         true
     }
 
@@ -1164,7 +1743,6 @@ impl Engine {
         ) {
             return false;
         }
-        self.clear_physics_history();
         true
     }
 
@@ -1177,7 +1755,6 @@ impl Engine {
             return false;
         };
         self.world.clear_behavior_state_enter_actions(entity);
-        self.clear_physics_history();
         true
     }
 }
@@ -1227,6 +1804,39 @@ impl Engine {
         )
     }
 
+    fn set_gameplay_movement_seek_target(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        target: MovementTarget,
+        speed: f32,
+        turn_rate: f32,
+    ) -> bool {
+        if !Self::valid_positive(speed) || !turn_rate.is_finite() || turn_rate < 0.0 {
+            return false;
+        }
+        self.set_gameplay_movement_pattern(
+            entity_id,
+            entity_generation,
+            MovementPattern::SeekTarget {
+                target,
+                speed,
+                turn_rate,
+            },
+        )
+    }
+
+    const fn movement_query_layer_from_code(code: u32) -> Option<CollisionLayer> {
+        match code {
+            PHYSICS_LAYER_PLAYER => Some(CollisionLayer::Player),
+            PHYSICS_LAYER_ENEMY => Some(CollisionLayer::Enemy),
+            PHYSICS_LAYER_BULLET => Some(CollisionLayer::Bullet),
+            PHYSICS_LAYER_WALL => Some(CollisionLayer::Wall),
+            PHYSICS_LAYER_PICKUP => Some(CollisionLayer::Pickup),
+            _ => None,
+        }
+    }
+
     fn set_gameplay_movement_pattern(
         &mut self,
         entity_id: u32,
@@ -1237,7 +1847,6 @@ impl Engine {
             return false;
         };
         self.world.set_movement_pattern(entity, movement);
-        self.clear_physics_history();
         true
     }
 
@@ -1253,7 +1862,6 @@ impl Engine {
         if !self.world.add_collision_reaction(entity, reaction) {
             return false;
         }
-        self.clear_physics_history();
         true
     }
 }
@@ -1272,6 +1880,16 @@ fn collision_reaction_trigger_from_code(code: u32) -> Option<CollisionReactionTr
         1 => Some(CollisionReactionTrigger::Enter),
         _ => None,
     }
+}
+
+const fn valid_presentation_effect_type(effect_type: u32) -> bool {
+    matches!(
+        effect_type,
+        GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND
+            | GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE
+            | GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE
+            | GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM
+    )
 }
 
 fn valid_behavior_transition_event(event_kind: u32, token_id: u32) -> bool {

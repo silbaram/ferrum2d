@@ -348,6 +348,7 @@ fn shooter_snapshot_restores_authored_primary_fire_action_cooldown() {
         restored_spawn_prefab.pattern,
         ActionPattern::SpawnPrefab {
             prefab_id: 1,
+            projectile: None,
             anchor: SpawnAnchor::SelfEntity,
             phase: SpawnPhase::PrePhysics,
             offset_x: 24.0,
@@ -475,6 +476,7 @@ fn shooter_snapshot_restores_multiple_spawn_prefab_action_bindings() {
         restored_first.pattern,
         ActionPattern::SpawnPrefab {
             prefab_id: 1,
+            projectile: None,
             anchor: SpawnAnchor::SelfEntity,
             phase: SpawnPhase::PrePhysics,
             offset_x: 24.0,
@@ -489,6 +491,7 @@ fn shooter_snapshot_restores_multiple_spawn_prefab_action_bindings() {
         restored_second.pattern,
         ActionPattern::SpawnPrefab {
             prefab_id: 1,
+            projectile: None,
             anchor: SpawnAnchor::SelfEntity,
             phase: SpawnPhase::PrePhysics,
             offset_x: -32.0,
@@ -537,20 +540,15 @@ fn shooter_snapshot_rejects_action_binding_count_over_capacity() {
     set_valid_primary_snapshot_action(&mut entity_floats, &mut entity_u32s, player_slot);
     set_valid_dash_snapshot_action(&mut entity_floats, &mut entity_u32s, player_slot);
     set_valid_melee_snapshot_action(&mut entity_floats, &mut entity_u32s, player_slot);
-    set_valid_spawn_prefab_snapshot_action(
-        &mut entity_floats,
-        &mut entity_u32s,
-        player_slot,
-        0,
-        11,
-    );
-    set_valid_spawn_prefab_snapshot_action(
-        &mut entity_floats,
-        &mut entity_u32s,
-        player_slot,
-        1,
-        12,
-    );
+    for slot in 0..6 {
+        set_valid_spawn_prefab_snapshot_action(
+            &mut entity_floats,
+            &mut entity_u32s,
+            player_slot,
+            slot,
+            11 + slot as u32,
+        );
+    }
 
     assert!(!engine.restore_shooter_snapshot(
         header_floats,
@@ -724,9 +722,9 @@ const SNAPSHOT_MELEE_RANGE: usize = 17;
 const SNAPSHOT_MELEE_DAMAGE: usize = 18;
 const SNAPSHOT_MELEE_ACTION_ID: usize = 4;
 const SNAPSHOT_SPAWN_PREFAB_FLOAT_BASE: usize = 19;
-const SNAPSHOT_SPAWN_PREFAB_FLOAT_STRIDE: usize = 4;
+const SNAPSHOT_SPAWN_PREFAB_FLOAT_STRIDE: usize = 7;
 const SNAPSHOT_SPAWN_PREFAB_U32_BASE: usize = 5;
-const SNAPSHOT_SPAWN_PREFAB_U32_STRIDE: usize = 4;
+const SNAPSHOT_SPAWN_PREFAB_U32_STRIDE: usize = 7;
 
 fn player_snapshot_slot(entity_u32s: &[u32]) -> usize {
     entity_u32s

@@ -46,3 +46,20 @@ fn fixed_timestep_latches_action_input_until_next_step() {
     assert_eq!(engine.physics_fixed_steps(), 1);
     assert_eq!(engine.game_state_code(), 1);
 }
+
+#[test]
+fn gameplay_authoring_setters_do_not_reset_fixed_timestep_history() {
+    let mut engine = Engine::new();
+    engine.configure_fixed_timestep(true, 0.1, 1.0, 4);
+    let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+
+    engine.update(0.05);
+    assert_eq!(engine.physics_fixed_steps(), 0);
+    assert!((engine.fixed_timestep_alpha() - 0.5).abs() < 0.01);
+
+    assert!(engine.set_gameplay_health(enemy.id, enemy.generation, 3.0));
+    assert!((engine.fixed_timestep_alpha() - 0.5).abs() < 0.01);
+
+    engine.update(0.05);
+    assert_eq!(engine.physics_fixed_steps(), 1);
+}

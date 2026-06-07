@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { runFrame } from "../src/engineFramePipeline.js";
 import type { FramePipelineContext } from "../src/engineFramePipeline.js";
 import type { ResolvedPhysicsSpec } from "../src/physicsSpec.js";
+import { resolvePresentationEffectRegistry } from "../src/presentationEffects.js";
 import { SoundRegistry } from "../src/soundRegistry.js";
 import { TextureRegistry } from "../src/textureRegistry.js";
 
@@ -14,6 +15,7 @@ class FakeEngine {
     frameTelemetry: boolean;
     physicsDebugLines: boolean;
   }> = [];
+  readonly particleBursts: Array<{ presetId: number; x: number; y: number }> = [];
 
   constructor(order: string[] = []) {
     this.order = order;
@@ -44,6 +46,12 @@ class FakeEngine {
   clear_audio_events(): void {
     this.clearAudioCount += 1;
     this.order.push("clear_audio");
+  }
+
+  spawn_particle_burst(presetId: number, x: number, y: number): number {
+    this.particleBursts.push({ presetId, x, y });
+    this.order.push("spawn_particle");
+    return this.particleBursts.length;
   }
 
   time(): number { return 1; }
@@ -86,6 +94,7 @@ class FakeBridge {
   constructor(
     private readonly order: string[],
     private readonly audioEventCount = 1,
+    private readonly effectEvents: readonly unknown[] = [],
   ) {}
 
   readAudioEventBuffer(): unknown {
@@ -201,6 +210,15 @@ class FakeBridge {
     };
   }
 
+  readEffectEventBuffer(): unknown {
+    this.order.push("read_effect");
+    return {
+      buffer: new DataView(new ArrayBuffer(0)),
+      eventCount: this.effectEvents.length,
+      bytesPerEvent: 40,
+    };
+  }
+
   readPhysicsDebugLineBuffer(): unknown {
     this.order.push("read_debug");
     return {
@@ -218,6 +236,11 @@ class FakeBridge {
   decodeGameplayEvents(): readonly unknown[] {
     this.order.push("decode_gameplay");
     return [];
+  }
+
+  decodeEffectEvents(): readonly unknown[] {
+    this.order.push("decode_effect");
+    return this.effectEvents;
   }
 
   decodePhysicsDebugLines(): readonly unknown[] {
@@ -278,8 +301,13 @@ test("runFrame preserves input, viewport, update, audio, buffer, callback order"
       equal(frame.physics.ccdChecks, 18);
       equal(frame.physics.brokenJoints, 21);
       equal(frame.physics.collisionLifecycleEventsEnabled, false);
+      equal(frame.physics.collisionPairs, 17);
+      equal(frame.physics.collisionSolidPairs, 18);
+      equal(frame.physics.collisionTriggerPairs, 19);
       equal(frame.physics.collisionEventCount, 0);
       equal(frame.collisionEventBuffer.eventCount, 0);
+      equal(frame.effectEventBuffer.eventCount, 0);
+      equal(frame.effectEvents.length, 0);
       equal(frame.physicsDebugLineBuffer.lineCount, 0);
     },
   });
@@ -300,7 +328,9 @@ test("runFrame preserves input, viewport, update, audio, buffer, callback order"
     "read_render",
     "read_telemetry",
     "read_gameplay",
+    "read_effect",
     "decode_gameplay",
+    "decode_effect",
     "on_frame",
   ]);
 });
@@ -478,7 +508,9 @@ test("runFrame omits FrameState audio objects when includeAudioEvents is false a
     "read_render",
     "read_telemetry",
     "read_gameplay",
+    "read_effect",
     "decode_gameplay",
+    "decode_effect",
     "on_frame",
   ]);
 });
@@ -496,6 +528,8 @@ test("runFrame skips gameplay event buffer read and decode when includeGameplayE
       order.push("on_frame");
       equal(frame.gameplayEventBuffer.eventCount, 0);
       equal(frame.gameplayEvents.length, 0);
+      equal(frame.effectEventBuffer.eventCount, 0);
+      equal(frame.effectEvents.length, 0);
     },
   });
 
@@ -508,8 +542,157 @@ test("runFrame skips gameplay event buffer read and decode when includeGameplayE
     "read_audio",
     "read_render",
     "read_telemetry",
+    "read_effect",
+    "decode_effect",
     "on_frame",
   ]);
+});
+
+test("runFrame skips effect event buffer read and decode when includeEffectEvents is false", () => {
+  const order: string[] = [];
+  const bridge = new FakeBridge(order, 0);
+  const engine = new FakeEngine(order);
+  const context = framePipelineContext({
+    bridge,
+    engine,
+    order,
+    options: { includeEffectEvents: false },
+    onFrame: (frame) => {
+      order.push("on_frame");
+      equal(frame.effectEventBuffer.eventCount, 0);
+      equal(frame.effectEvents.length, 0);
+    },
+  });
+
+  runFrame(context, 0.016);
+
+  deepEqual(order, [
+    "input",
+    "viewport",
+    "update",
+    "read_audio",
+    "read_render",
+    "read_telemetry",
+    "read_gameplay",
+    "decode_gameplay",
+    "on_frame",
+  ]);
+});
+
+test("runFrame dispatches opt-in runtime effect events even when FrameState effect events are disabled", () => {
+  const order: string[] = [];
+  const effectEvents = [{
+    effectId: 99,
+    effectType: 2,
+    effectKind: "particle",
+    actorId: 1,
+    actorGeneration: 0,
+    sourceId: 2,
+    sourceGeneration: 0,
+    x: 12,
+    y: 16,
+    intensity: 1,
+    radius: 0,
+  }];
+  const bridge = new FakeBridge(order, 0, effectEvents);
+  const engine = new FakeEngine(order);
+  const registry = resolvePresentationEffectRegistry({
+    impactBurst: {
+      effectId: 99,
+      kind: "particle",
+      particlePresetId: 3,
+    },
+  });
+  const context = framePipelineContext({
+    bridge,
+    engine,
+    order,
+    options: {
+      includeEffectEvents: false,
+      effectEvents: {
+        registry,
+        onDispatchSummary: (summary, frame) => {
+          order.push("effect_summary");
+          equal(summary.particleEffects, 1);
+          equal(frame.effectEvents.length, 1);
+        },
+      },
+    },
+  });
+  context.onFrame = undefined;
+
+  runFrame(context, 0.016);
+
+  deepEqual(engine.updateCalls, [
+    { renderCommands: true, frameTelemetry: true, physicsDebugLines: false },
+  ]);
+  deepEqual(engine.particleBursts, [{ presetId: 3, x: 12, y: 16 }]);
+  deepEqual(order, [
+    "input",
+    "viewport",
+    "update",
+    "read_audio",
+    "read_render",
+    "read_telemetry",
+    "read_gameplay",
+    "read_effect",
+    "decode_gameplay",
+    "decode_effect",
+    "spawn_particle",
+    "effect_summary",
+  ]);
+});
+
+test("runFrame validates runtime particle preset assets before effect dispatch", () => {
+  const order: string[] = [];
+  const effectEvents = [{
+    effectId: 99,
+    effectType: 2,
+    effectKind: "particle",
+    actorId: 1,
+    actorGeneration: 0,
+    sourceId: 2,
+    sourceGeneration: 0,
+    x: 12,
+    y: 16,
+    intensity: 1,
+    radius: 0,
+  }];
+  const bridge = new FakeBridge(order, 0, effectEvents);
+  const engine = new FakeEngine(order);
+  const registry = resolvePresentationEffectRegistry({
+    impactBurst: {
+      effectId: 99,
+      kind: "particle",
+      particlePresetId: 3,
+    },
+  });
+  const context = framePipelineContext({
+    bridge,
+    engine,
+    order,
+    particlePresetExists: () => false,
+    options: {
+      effectEvents: {
+        registry,
+        assetValidation: "error",
+      },
+    },
+  });
+  context.onFrame = undefined;
+
+  let thrownError: unknown;
+  try {
+    runFrame(context, 0.016);
+  } catch (error) {
+    thrownError = error;
+  }
+
+  equal(
+    thrownError instanceof Error ? thrownError.message : String(thrownError),
+    "Invalid gameplay authoring data: kind=gameplay-authoring path='effectEvents.events.0.particlePresetId' detail='must reference a registered particle preset id 3'.",
+  );
+  deepEqual(engine.particleBursts, []);
 });
 
 test("runFrame builds optional FrameState decoded views only when requested", () => {
@@ -549,9 +732,11 @@ test("runFrame builds optional FrameState decoded views only when requested", ()
     "read_telemetry",
     "read_collision",
     "read_gameplay",
+    "read_effect",
     "read_debug",
     "decode_collision",
     "decode_gameplay",
+    "decode_effect",
     "decode_debug",
     "on_frame",
   ]);
@@ -579,6 +764,7 @@ test("runFrame only reads optional FrameState buffers when requested", () => {
   equal(order.includes("read_collision"), false);
   equal(order.includes("read_debug"), false);
   equal(order.includes("read_gameplay"), true);
+  equal(order.includes("read_effect"), true);
   equal(order.includes("read_telemetry"), true);
 });
 
@@ -650,6 +836,8 @@ function framePipelineContext(args: {
   onFrame?: FramePipelineContext["onFrame"];
   playAudioEventBuffer?: ((events: unknown) => void) | null;
   playAudioEvents?: ((events: readonly unknown[]) => void) | null;
+  hasSound?: (soundId: number) => boolean;
+  particlePresetExists?: (presetId: number) => boolean;
 }): FramePipelineContext {
   const {
     bridge,
@@ -661,6 +849,8 @@ function framePipelineContext(args: {
     },
     playAudioEventBuffer,
     playAudioEvents,
+    hasSound,
+    particlePresetExists,
   } = args;
   const assetHost: NonNullable<FramePipelineContext["assetHost"]> = {
     loadAssets: async () => ({
@@ -671,6 +861,9 @@ function framePipelineContext(args: {
     }),
     textureId: () => 0,
   };
+  if (hasSound) {
+    assetHost.hasSound = hasSound;
+  }
   if (playAudioEventBuffer !== null) {
     assetHost.playAudioEventBuffer = playAudioEventBuffer ?? (() => {
       order.push("play_audio_buffer");
@@ -697,6 +890,7 @@ function framePipelineContext(args: {
     }),
     viewportProvider: () => ({ width: 640, height: 360 }),
     assetHost,
+    particlePresetExists,
     options,
   };
 }

@@ -22,6 +22,62 @@ fn authored_non_bullet_lifetime_despawns() {
 }
 
 #[test]
+fn projectile_movement_phase_preserves_velocity_without_authored_pattern() {
+    let (mut scene, mut world, _, _) = playing_scene();
+    let bullet = world.spawn_bullet(50.0, 50.0, 20.0, -5.0, DEFAULT_TEXTURE_ID);
+
+    scene.apply_projectile_movement_phase(&mut world);
+
+    assert_eq!(
+        world.velocities[bullet.id as usize],
+        Some(Velocity { vx: 20.0, vy: -5.0 })
+    );
+}
+
+#[test]
+fn projectile_movement_phase_seek_target_overrides_velocity_toward_nearest_enemy() {
+    let (mut scene, mut world, _, _) = playing_scene();
+    let bullet = world.spawn_bullet(50.0, 50.0, 0.0, -40.0, DEFAULT_TEXTURE_ID);
+    world.spawn_enemy(80.0, 50.0, DEFAULT_TEXTURE_ID);
+    world.set_movement_pattern(
+        bullet,
+        MovementPattern::SeekTarget {
+            target: MovementTarget::NearestEnemy,
+            speed: 120.0,
+            turn_rate: 1.0,
+        },
+    );
+
+    scene.apply_projectile_movement_phase(&mut world);
+
+    assert_eq!(
+        world.velocities[bullet.id as usize],
+        Some(Velocity { vx: 120.0, vy: 0.0 })
+    );
+}
+
+#[test]
+fn projectile_movement_phase_seek_target_without_target_stops_projectile() {
+    let (mut scene, mut world, _, _) = playing_scene();
+    let bullet = world.spawn_bullet(50.0, 50.0, 20.0, -5.0, DEFAULT_TEXTURE_ID);
+    world.set_movement_pattern(
+        bullet,
+        MovementPattern::SeekTarget {
+            target: MovementTarget::NearestEnemy,
+            speed: 120.0,
+            turn_rate: 1.0,
+        },
+    );
+
+    scene.apply_projectile_movement_phase(&mut world);
+
+    assert_eq!(
+        world.velocities[bullet.id as usize],
+        Some(Velocity::default())
+    );
+}
+
+#[test]
 fn bullet_enemy_collision_increments_score() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let b = world.spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
@@ -539,7 +595,7 @@ fn player_target_projectile_causes_game_over_without_score() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let player = world.player_entity().unwrap();
     let player_t = world.transform(player).unwrap();
-    let bullet = world.spawn_bullet_from_request(crate::world::BulletSpawnRequest {
+    let bullet = world.spawn_projectile_from_request(crate::world::ProjectileSpawnRequest {
         transform: Transform2D {
             x: player_t.x,
             y: player_t.y,
@@ -576,7 +632,7 @@ fn default_bullet_player_damage_respects_gameplay_faction_damage_mask() {
     let mut gameplay_events = Vec::new();
     let player = world.player_entity().unwrap();
     let player_t = world.transform(player).unwrap();
-    let bullet = world.spawn_bullet_from_request(crate::world::BulletSpawnRequest {
+    let bullet = world.spawn_projectile_from_request(crate::world::ProjectileSpawnRequest {
         transform: Transform2D {
             x: player_t.x,
             y: player_t.y,
@@ -630,7 +686,7 @@ fn enemy_target_projectile_does_not_hit_player() {
     let mut gameplay_events = Vec::new();
     let player = world.player_entity().unwrap();
     let player_t = world.transform(player).unwrap();
-    let bullet = world.spawn_bullet_from_request(crate::world::BulletSpawnRequest {
+    let bullet = world.spawn_projectile_from_request(crate::world::ProjectileSpawnRequest {
         transform: Transform2D {
             x: player_t.x,
             y: player_t.y,
@@ -1012,6 +1068,79 @@ fn despawn_projectile_emits_terminal_tile_impact_event() {
 }
 
 #[test]
+fn tile_area_damage_reaction_damages_enemies_at_impact_center() {
+    let (mut scene, mut world, mut camera, mut audio_events) = playing_scene();
+    scene.set_combat(&mut world, &mut camera, &mut audio_events, 3.0, 1.0, 5);
+    let bullet = world.spawn_bullet(40.0, 50.0, 200.0, 0.0, DEFAULT_TEXTURE_ID);
+    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::Despawn);
+    assert!(world.add_collision_reaction(
+        bullet,
+        CollisionReaction::AreaDamage {
+            radius: 12.0,
+            target_layer: CollisionLayer::Enemy,
+        },
+    ));
+    let near_enemy = world.spawn_enemy_from_template(
+        43.0,
+        50.0,
+        DEFAULT_TEXTURE_ID,
+        scene.config.enemy_template,
+        1.0,
+        8,
+    );
+    let far_enemy = world.spawn_enemy_from_template(
+        70.0,
+        50.0,
+        DEFAULT_TEXTURE_ID,
+        scene.config.enemy_template,
+        3.0,
+        8,
+    );
+    let tilemap = projectile_tilemap(true, None);
+    let mut gameplay_events = Vec::new();
+
+    world.update(0.1);
+    {
+        let mut gameplay_sink = GameplayEventSink::new(&mut gameplay_events);
+        scene.handle_collisions(
+            &mut world,
+            &tilemap,
+            &mut audio_events,
+            0.1,
+            None,
+            Some(&mut gameplay_sink),
+            None,
+            None,
+        );
+    }
+
+    assert!(!world.alive[bullet.id as usize]);
+    assert!(!world.alive[near_enemy.id as usize]);
+    assert!(world.alive[far_enemy.id as usize]);
+    assert_eq!(world.healths[far_enemy.id as usize], Some(3.0));
+    assert_eq!(scene.score(), 8);
+    assert_eq!(gameplay_events.len(), 2);
+    assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_COLLISION_DAMAGE);
+    assert_eq!(gameplay_events[0].actor_id, near_enemy.id);
+    assert_eq!(gameplay_events[0].source_id, bullet.id);
+    assert_eq!(
+        gameplay_events[0].payload_bits,
+        DEFAULT_BULLET_DAMAGE.to_bits()
+    );
+    assert_eq!(
+        gameplay_events[0].flags & GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
+        GAMEPLAY_EVENT_FLAG_TARGET_REMOVED
+    );
+    assert_eq!(gameplay_events[1].kind, GAMEPLAY_EVENT_TILE_IMPACT);
+    assert_eq!(gameplay_events[1].actor_id, bullet.id);
+    assert_eq!(gameplay_events[1].source_id, bullet.id);
+    assert_eq!(
+        gameplay_events[1].token_id,
+        ProjectileTileImpact::Despawn.code()
+    );
+}
+
+#[test]
 fn bounce_projectile_does_not_hit_enemy_behind_blocking_tile_in_same_frame() {
     let (mut scene, mut world, mut camera, mut audio_events) = playing_scene();
     scene.set_combat(&mut world, &mut camera, &mut audio_events, 3.0, 1.0, 5);
@@ -1224,19 +1353,35 @@ fn authored_bullet_tile_collision_reactions_can_despawn_and_emit_side_effects() 
     assert_eq!(audio_events[0].volume, 0.5);
     assert_eq!(audio_events[0].pitch, 1.25);
     assert_eq!(particles.particle_count(), 2);
-    assert_eq!(gameplay_events.len(), 2);
+    assert_eq!(gameplay_events.len(), 4);
     assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_COLLISION_DESPAWN);
     assert_eq!(gameplay_events[0].actor_id, bullet.id);
     assert_eq!(gameplay_events[0].source_id, bullet.id);
-    assert_eq!(gameplay_events[1].kind, GAMEPLAY_EVENT_TILE_IMPACT);
+    assert_eq!(gameplay_events[1].kind, GAMEPLAY_EVENT_PRESENTATION_EFFECT);
     assert_eq!(gameplay_events[1].actor_id, bullet.id);
     assert_eq!(gameplay_events[1].source_id, bullet.id);
+    assert_eq!(gameplay_events[1].token_id, 42);
     assert_eq!(
-        gameplay_events[1].token_id,
+        gameplay_events[1].payload_bits,
+        GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND
+    );
+    assert_eq!(gameplay_events[2].kind, GAMEPLAY_EVENT_PRESENTATION_EFFECT);
+    assert_eq!(gameplay_events[2].actor_id, bullet.id);
+    assert_eq!(gameplay_events[2].source_id, bullet.id);
+    assert_eq!(gameplay_events[2].token_id, 0);
+    assert_eq!(
+        gameplay_events[2].payload_bits,
+        GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE
+    );
+    assert_eq!(gameplay_events[3].kind, GAMEPLAY_EVENT_TILE_IMPACT);
+    assert_eq!(gameplay_events[3].actor_id, bullet.id);
+    assert_eq!(gameplay_events[3].source_id, bullet.id);
+    assert_eq!(
+        gameplay_events[3].token_id,
         ProjectileTileImpact::Despawn.code()
     );
     assert_eq!(
-        gameplay_events[1].flags & GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
+        gameplay_events[3].flags & GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
         GAMEPLAY_EVENT_FLAG_TARGET_REMOVED
     );
 }
@@ -2573,8 +2718,406 @@ fn authored_pickup_collision_sound_and_particle_keep_default_collection() {
     assert_eq!(audio_events.len(), 1);
     assert_eq!(audio_events[0].sound_id, 9.0);
     assert_eq!(particles.particle_count(), 2);
-    assert_eq!(gameplay_events.len(), 1);
-    assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_PICKUP_COLLECTED);
+    assert_eq!(gameplay_events.len(), 3);
+    assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_PRESENTATION_EFFECT);
+    assert_eq!(gameplay_events[0].actor_id, player.id);
+    assert_eq!(gameplay_events[0].source_id, pickup.id);
+    assert_eq!(gameplay_events[0].token_id, 9);
+    assert_eq!(
+        gameplay_events[0].payload_bits,
+        GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND
+    );
+    assert_eq!(gameplay_events[1].kind, GAMEPLAY_EVENT_PRESENTATION_EFFECT);
+    assert_eq!(gameplay_events[1].actor_id, player.id);
+    assert_eq!(gameplay_events[1].source_id, pickup.id);
+    assert_eq!(gameplay_events[1].token_id, 3);
+    assert_eq!(
+        gameplay_events[1].payload_bits,
+        GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE
+    );
+    assert_eq!(gameplay_events[2].kind, GAMEPLAY_EVENT_PICKUP_COLLECTED);
+}
+
+#[test]
+fn collision_spawn_prefab_reaction_queues_prefab_and_commits_cooldown_after_collision() {
+    let (mut scene, mut world, _, mut audio_events) = playing_scene();
+    let mut gameplay_events = Vec::new();
+    let player = world.player.unwrap();
+    world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
+    let pickup = world.spawn_entity();
+    world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
+    world.set_aabb_collider(
+        pickup,
+        AabbCollider::new(8.0, 8.0, true, CollisionLayer::Pickup),
+    );
+    assert!(world.set_pickup(pickup, Pickup::new(GAMEPLAY_PICKUP_ITEM_SCORE, 3, true)));
+    assert!(world.add_collision_reaction(
+        player,
+        CollisionReaction::SpawnPrefab {
+            action_id: 17,
+            prefab_id: 1,
+            target: CollisionTarget::SelfEntity,
+            cooldown: Cooldown::ready(0.5),
+            trigger: CollisionReactionTrigger::Enter,
+            offset_x: 6.0,
+            offset_y: -3.0,
+        },
+    ));
+
+    {
+        let mut gameplay_sink = GameplayEventSink::new(&mut gameplay_events);
+        scene.handle_collisions(
+            &mut world,
+            &Tilemap::default(),
+            &mut audio_events,
+            0.0,
+            None,
+            Some(&mut gameplay_sink),
+            None,
+            None,
+        );
+        scene.flush_pending_spawns_with_events(
+            &mut world,
+            &mut audio_events,
+            Some(&mut gameplay_sink),
+        );
+    }
+
+    assert!(world.pickups[pickup.id as usize].is_none());
+    assert_eq!(scene.score(), 3);
+    let pickup_event = gameplay_events
+        .iter()
+        .find(|event| event.kind == GAMEPLAY_EVENT_PICKUP_COLLECTED)
+        .expect("fallback pickup collection should still run");
+    assert_eq!(pickup_event.source_id, pickup.id);
+    assert_eq!(pickup_event.source_generation, pickup.generation);
+    let spawned_event = gameplay_events
+        .iter()
+        .find(|event| event.kind == GAMEPLAY_EVENT_PREFAB_SPAWNED)
+        .expect("collision spawn prefab should emit prefabSpawned after spawn flush");
+    assert_eq!(spawned_event.source_id, player.id);
+    assert_eq!(spawned_event.token_id, 1);
+    assert_eq!(spawned_event.payload_bits, 17);
+    let spawned_index = spawned_event.actor_id as usize;
+    assert_eq!(
+        world.collider_layer_at(spawned_index),
+        Some(CollisionLayer::Enemy)
+    );
+    assert_eq!(
+        world.transforms[spawned_index],
+        Some(Transform2D { x: 56.0, y: 47.0 }),
+    );
+    let reactions = world.collision_reactions[player.id as usize]
+        .expect("player collision reaction should remain");
+    let cooldown = reactions
+        .iter()
+        .find_map(|reaction| match reaction {
+            CollisionReaction::SpawnPrefab { cooldown, .. } => Some(cooldown),
+            _ => None,
+        })
+        .expect("spawn prefab reaction remains");
+    assert_eq!(
+        cooldown,
+        Cooldown {
+            duration_seconds: 0.5,
+            remaining_seconds: 0.5,
+        },
+    );
+}
+
+#[test]
+fn collision_spawn_prefab_reaction_reports_unsupported_prefab_without_consuming_cooldown() {
+    let (mut scene, mut world, _, mut audio_events) = playing_scene();
+    let mut gameplay_events = Vec::new();
+    let player = world.player.unwrap();
+    world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
+    let pickup = world.spawn_entity();
+    world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
+    world.set_aabb_collider(
+        pickup,
+        AabbCollider::new(8.0, 8.0, true, CollisionLayer::Pickup),
+    );
+    assert!(world.set_pickup(pickup, Pickup::new(GAMEPLAY_PICKUP_ITEM_SCORE, 3, true)));
+    assert!(world.add_collision_reaction(
+        player,
+        CollisionReaction::SpawnPrefab {
+            action_id: 18,
+            prefab_id: 999,
+            target: CollisionTarget::SelfEntity,
+            cooldown: Cooldown::ready(0.5),
+            trigger: CollisionReactionTrigger::Enter,
+            offset_x: 0.0,
+            offset_y: 0.0,
+        },
+    ));
+
+    {
+        let mut gameplay_sink = GameplayEventSink::new(&mut gameplay_events);
+        scene.handle_collisions(
+            &mut world,
+            &Tilemap::default(),
+            &mut audio_events,
+            0.0,
+            None,
+            Some(&mut gameplay_sink),
+            None,
+            None,
+        );
+    }
+
+    assert_eq!(scene.pending_spawn_count(), 0);
+    assert_eq!(count_layer(&world, CollisionLayer::Enemy), 0);
+    let failed_event = gameplay_events
+        .iter()
+        .find(|event| event.kind == GAMEPLAY_EVENT_ACTION_FAILED)
+        .expect("unsupported prefab should emit actionFailed");
+    assert_eq!(failed_event.source_id, player.id);
+    assert_eq!(failed_event.token_id, 18);
+    assert_eq!(
+        failed_event.payload_bits,
+        GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PREFAB
+    );
+    assert_eq!(
+        collision_spawn_prefab_cooldown(&world, player),
+        Cooldown::ready(0.5),
+    );
+}
+
+#[test]
+fn collision_spawn_prefab_reaction_reports_blocked_placement_without_consuming_cooldown() {
+    let (mut scene, mut world, _, mut audio_events) = playing_scene();
+    let mut gameplay_events = Vec::new();
+    let player = world.player.unwrap();
+    world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
+    let pickup = world.spawn_entity();
+    world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
+    world.set_aabb_collider(
+        pickup,
+        AabbCollider::new(8.0, 8.0, true, CollisionLayer::Pickup),
+    );
+    assert!(world.set_pickup(pickup, Pickup::new(GAMEPLAY_PICKUP_ITEM_SCORE, 3, true)));
+    assert!(world.add_collision_reaction(
+        player,
+        CollisionReaction::SpawnPrefab {
+            action_id: 19,
+            prefab_id: 1,
+            target: CollisionTarget::SelfEntity,
+            cooldown: Cooldown::ready(0.5),
+            trigger: CollisionReactionTrigger::Enter,
+            offset_x: 0.0,
+            offset_y: 0.0,
+        },
+    ));
+    let mut tilemap = Tilemap::default();
+    tilemap.set_layer(0, 1, 1, 32.0, 32.0, 34.0, 34.0, true, vec![1]);
+
+    {
+        let mut gameplay_sink = GameplayEventSink::new(&mut gameplay_events);
+        scene.handle_collisions(
+            &mut world,
+            &tilemap,
+            &mut audio_events,
+            0.0,
+            None,
+            Some(&mut gameplay_sink),
+            None,
+            None,
+        );
+    }
+
+    assert_eq!(scene.pending_spawn_count(), 0);
+    assert_eq!(count_layer(&world, CollisionLayer::Enemy), 0);
+    let failed_event = gameplay_events
+        .iter()
+        .find(|event| event.kind == GAMEPLAY_EVENT_ACTION_FAILED)
+        .expect("blocked placement should emit actionFailed");
+    assert_eq!(failed_event.source_id, player.id);
+    assert_eq!(failed_event.token_id, 19);
+    assert_eq!(
+        failed_event.payload_bits,
+        GAMEPLAY_ACTION_FAILURE_BLOCKED_PLACEMENT
+    );
+    assert_eq!(
+        collision_spawn_prefab_cooldown(&world, player),
+        Cooldown::ready(0.5),
+    );
+}
+
+#[test]
+fn collision_spawn_prefab_reaction_reports_queue_full_without_consuming_cooldown() {
+    let (mut scene, mut world, _, mut audio_events) = playing_scene();
+    let mut gameplay_events = Vec::new();
+    let player = world.player.unwrap();
+    world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
+    let pickup = world.spawn_entity();
+    world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
+    world.set_aabb_collider(
+        pickup,
+        AabbCollider::new(8.0, 8.0, true, CollisionLayer::Pickup),
+    );
+    assert!(world.set_pickup(pickup, Pickup::new(GAMEPLAY_PICKUP_ITEM_SCORE, 3, true)));
+    assert!(world.add_collision_reaction(
+        player,
+        CollisionReaction::SpawnPrefab {
+            action_id: 20,
+            prefab_id: 1,
+            target: CollisionTarget::SelfEntity,
+            cooldown: Cooldown::ready(0.5),
+            trigger: CollisionReactionTrigger::Enter,
+            offset_x: 0.0,
+            offset_y: 0.0,
+        },
+    ));
+    scene.fill_pending_spawns_for_test();
+
+    {
+        let mut gameplay_sink = GameplayEventSink::new(&mut gameplay_events);
+        scene.handle_collisions(
+            &mut world,
+            &Tilemap::default(),
+            &mut audio_events,
+            0.0,
+            None,
+            Some(&mut gameplay_sink),
+            None,
+            None,
+        );
+    }
+
+    assert_eq!(scene.pending_spawn_count(), 64);
+    assert_eq!(count_layer(&world, CollisionLayer::Enemy), 0);
+    let failed_event = gameplay_events
+        .iter()
+        .find(|event| event.kind == GAMEPLAY_EVENT_ACTION_FAILED)
+        .expect("queue full should emit actionFailed");
+    assert_eq!(failed_event.source_id, player.id);
+    assert_eq!(failed_event.token_id, 20);
+    assert_eq!(
+        failed_event.payload_bits,
+        GAMEPLAY_ACTION_FAILURE_SPAWN_QUEUE_FULL
+    );
+    assert_eq!(
+        collision_spawn_prefab_cooldown(&world, player),
+        Cooldown::ready(0.5),
+    );
+}
+
+#[test]
+fn collision_spawn_prefab_tile_self_queues_prefab_and_commits_cooldown() {
+    let (mut scene, mut world, _, mut audio_events) = playing_scene();
+    let mut gameplay_events = Vec::new();
+    let bullet = world.spawn_bullet(60.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::Bounce);
+    assert!(world.add_collision_reaction(
+        bullet,
+        CollisionReaction::SpawnPrefab {
+            action_id: 21,
+            prefab_id: 1,
+            target: CollisionTarget::SelfEntity,
+            cooldown: Cooldown::ready(0.5),
+            trigger: CollisionReactionTrigger::Enter,
+            offset_x: 80.0,
+            offset_y: -4.0,
+        },
+    ));
+    let tilemap = projectile_tilemap(true, None);
+
+    {
+        let mut gameplay_sink = GameplayEventSink::new(&mut gameplay_events);
+        scene.handle_collisions(
+            &mut world,
+            &tilemap,
+            &mut audio_events,
+            0.0,
+            None,
+            Some(&mut gameplay_sink),
+            None,
+            None,
+        );
+        scene.flush_pending_spawns_with_events(
+            &mut world,
+            &mut audio_events,
+            Some(&mut gameplay_sink),
+        );
+    }
+
+    assert!(world.alive[bullet.id as usize]);
+    let spawned_event = gameplay_events
+        .iter()
+        .find(|event| event.kind == GAMEPLAY_EVENT_PREFAB_SPAWNED)
+        .expect("tile self collision spawn should flush prefab");
+    assert_eq!(spawned_event.source_id, bullet.id);
+    assert_eq!(spawned_event.token_id, 1);
+    assert_eq!(spawned_event.payload_bits, 21);
+    let spawned_index = spawned_event.actor_id as usize;
+    assert_eq!(
+        world.collider_layer_at(spawned_index),
+        Some(CollisionLayer::Enemy)
+    );
+    assert_eq!(
+        world.transforms[spawned_index],
+        Some(Transform2D { x: 140.0, y: 46.0 }),
+    );
+    assert_eq!(
+        collision_spawn_prefab_cooldown(&world, bullet),
+        Cooldown {
+            duration_seconds: 0.5,
+            remaining_seconds: 0.5,
+        },
+    );
+}
+
+#[test]
+fn collision_spawn_prefab_tile_other_is_noop_without_consuming_cooldown() {
+    let (mut scene, mut world, _, mut audio_events) = playing_scene();
+    let mut gameplay_events = Vec::new();
+    let bullet = world.spawn_bullet(60.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::Bounce);
+    assert!(world.add_collision_reaction(
+        bullet,
+        CollisionReaction::SpawnPrefab {
+            action_id: 22,
+            prefab_id: 1,
+            target: CollisionTarget::OtherEntity,
+            cooldown: Cooldown::ready(0.5),
+            trigger: CollisionReactionTrigger::Enter,
+            offset_x: 80.0,
+            offset_y: -4.0,
+        },
+    ));
+    let tilemap = projectile_tilemap(true, None);
+
+    {
+        let mut gameplay_sink = GameplayEventSink::new(&mut gameplay_events);
+        scene.handle_collisions(
+            &mut world,
+            &tilemap,
+            &mut audio_events,
+            0.0,
+            None,
+            Some(&mut gameplay_sink),
+            None,
+            None,
+        );
+        scene.flush_pending_spawns_with_events(
+            &mut world,
+            &mut audio_events,
+            Some(&mut gameplay_sink),
+        );
+    }
+
+    assert!(world.alive[bullet.id as usize]);
+    assert_eq!(count_layer(&world, CollisionLayer::Enemy), 0);
+    assert!(gameplay_events
+        .iter()
+        .all(|event| event.kind != GAMEPLAY_EVENT_PREFAB_SPAWNED));
+    assert!(gameplay_events
+        .iter()
+        .all(|event| event.kind != GAMEPLAY_EVENT_ACTION_FAILED));
+    assert_eq!(
+        collision_spawn_prefab_cooldown(&world, bullet),
+        Cooldown::ready(0.5),
+    );
 }
 
 #[test]
@@ -2832,6 +3375,19 @@ fn one_bullet_scores_once_when_overlapping_multiple_enemies() {
     assert!(!world.alive[first_enemy.id as usize]);
     assert!(world.alive[second_enemy.id as usize]);
     assert_eq!(scene.score(), 1);
+}
+
+fn collision_spawn_prefab_cooldown(world: &World, entity: crate::entity::Entity) -> Cooldown {
+    let reactions = world.collision_reactions[entity.id as usize]
+        .expect("entity should keep collision reactions");
+    let cooldown = reactions
+        .iter()
+        .find_map(|reaction| match reaction {
+            CollisionReaction::SpawnPrefab { cooldown, .. } => Some(cooldown),
+            _ => None,
+        })
+        .expect("spawn prefab reaction should remain");
+    cooldown
 }
 
 fn projectile_tilemap(blocks_projectile: bool, height_span: Option<HeightSpan>) -> Tilemap {

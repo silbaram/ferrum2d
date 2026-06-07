@@ -41,6 +41,12 @@ pub const GAMEPLAY_EVENT_TILE_IMPACT_LAYER_SHIFT: u32 = 24;
 pub const GAMEPLAY_EVENT_TILE_IMPACT_LAYER_MASK: u32 =
     0xff << GAMEPLAY_EVENT_TILE_IMPACT_LAYER_SHIFT;
 pub const GAMEPLAY_EVENT_TILE_IMPACT_TILE_MASK: u32 = 0x00ff_ffff;
+pub const GAMEPLAY_EVENT_PRESENTATION_EFFECT: u32 = 11;
+pub const GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND: u32 = 1;
+pub const GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE: u32 = 2;
+/// Category kept in `payload_bits` so Rust gameplay remains data-driven while TS decides playback.
+pub const GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE: u32 = 3;
+pub const GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM: u32 = 4;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -126,6 +132,26 @@ impl GameplayEvent {
             token_id: 0,
             flags: GAMEPLAY_EVENT_FLAG_TARGET_REMOVED,
             payload_bits: 0,
+        }
+    }
+
+    pub fn presentation_effect(
+        actor: Entity,
+        source: Entity,
+        effect_id: u32,
+        effect_type: u32,
+    ) -> Self {
+        // Keep payload ABI minimal: effect_id in token_id for stable replay/hash ordering.
+        // effect_type can be interpreted by the TS presentation layer as a sub-type/category.
+        Self {
+            kind: GAMEPLAY_EVENT_PRESENTATION_EFFECT,
+            actor_id: actor.id,
+            actor_generation: actor.generation,
+            source_id: source.id,
+            source_generation: source.generation,
+            token_id: effect_id,
+            flags: 0,
+            payload_bits: effect_type,
         }
     }
 

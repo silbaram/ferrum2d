@@ -6,6 +6,7 @@ pub mod camera;
 pub mod collision;
 pub mod collision_event;
 pub mod components;
+pub mod effect_event;
 pub mod engine;
 pub mod entity;
 pub mod game_state;
@@ -45,6 +46,7 @@ pub use components::{
     WeldJointId, MAX_CHAIN_COLLIDER_VERTICES, MAX_CONVEX_POLYGON_VERTICES,
     MAX_SPRITE_ANIMATION_FRAMES,
 };
+pub use effect_event::EffectEvent;
 pub use engine::{
     Engine, PhysicsBodyContactHit, PhysicsBodyManifoldHit, PhysicsQueryEntityHit,
     PhysicsRaycastBodyHit, PhysicsRigidContactImpulseHit, PhysicsTileContactHit,
@@ -66,7 +68,8 @@ pub use gameplay_event::{
     GAMEPLAY_EVENT_FLAG_CONSUMED_THIS_FRAME, GAMEPLAY_EVENT_FLAG_ONCE,
     GAMEPLAY_EVENT_FLAG_TARGET_REMOVED, GAMEPLAY_EVENT_FLAG_TILE_IMPACT_BOUNCED,
     GAMEPLAY_EVENT_FLAG_TILE_IMPACT_IDENTITY_TRUNCATED, GAMEPLAY_EVENT_INTERACTION,
-    GAMEPLAY_EVENT_PICKUP_COLLECTED, GAMEPLAY_EVENT_PREFAB_SPAWNED, GAMEPLAY_EVENT_TILE_IMPACT,
+    GAMEPLAY_EVENT_PICKUP_COLLECTED, GAMEPLAY_EVENT_PREFAB_SPAWNED,
+    GAMEPLAY_EVENT_PRESENTATION_EFFECT, GAMEPLAY_EVENT_TILE_IMPACT,
     GAMEPLAY_EVENT_TILE_IMPACT_LAYER_MASK, GAMEPLAY_EVENT_TILE_IMPACT_LAYER_SHIFT,
     GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_MASK, GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NEGATIVE_X,
     GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NEGATIVE_Y, GAMEPLAY_EVENT_TILE_IMPACT_NORMAL_NONE,
@@ -131,6 +134,11 @@ pub fn gameplay_event_u32s() -> usize {
 #[wasm_bindgen]
 pub fn gameplay_event_bytes() -> usize {
     std::mem::size_of::<GameplayEvent>()
+}
+
+#[wasm_bindgen]
+pub fn effect_event_bytes() -> usize {
+    std::mem::size_of::<EffectEvent>()
 }
 
 #[wasm_bindgen]

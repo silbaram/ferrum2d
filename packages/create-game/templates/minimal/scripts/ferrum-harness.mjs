@@ -11,7 +11,7 @@ const REPLAY_FIXTURE_FORMAT = "ferrum2d.consumer.gameplay-replay.fixture";
 const REPLAY_FIXTURE_VERSION = 1;
 const REPLAY_SCENARIO = "minimal-template-surface";
 const REPLAY_COVERAGE_TAGS_PATH = "public/gameplay-replay.coverage-tags.json";
-const REPLAY_COVERAGE_TAGS = Object.freeze(["starter-runtime-template"]);
+const REPLAY_COVERAGE_TAGS = Object.freeze(["starter-runtime-template", "template-weapon-authoring"]);
 
 try {
   if (command === "validate") {
@@ -77,6 +77,7 @@ async function printReport() {
       gameSpec: result.gameSpec?.file ?? null,
       publicAssets: result.publicAssets,
     },
+    authoringSurface: result.authoringSurface,
     checks: {
       hasFerrumDependency: result.hasFerrumDependency,
       internalImports: result.internalImports,
@@ -103,6 +104,7 @@ async function printAuthoringReport() {
     gameplayAuthoring: {
       packageName: result.packageJson.name,
       status: authoringStatus(result),
+      authoringSurface: result.authoringSurface,
       gameSpec: result.gameSpec ?? { ok: null, message: "public/game.json not present" },
       publicAssets: result.publicAssets,
       diagnostics,
@@ -228,8 +230,29 @@ async function inspectProject() {
     hasFerrumDependency: packageJson.dependencies?.["@ferrum2d/ferrum-web"] !== undefined,
     hasMainSource,
     internalImports,
+    authoringSurface: inspectTemplateAuthoringSurface(mainSource),
     gameSpec: await inspectGameSpec(),
     publicAssets: await listPublicAssets(),
+  };
+}
+
+function inspectTemplateAuthoringSurface(mainSource) {
+  return {
+    weaponProfiles: ["standard", "piercing", "bounce"].filter((profile) => (
+      mainSource.includes(`"${profile}"`)
+    )),
+    publicApis: {
+      behaviorRecipeCommandsForEntity: mainSource.includes("behaviorRecipeCommandsForEntity"),
+      compileWeaponProfiles: mainSource.includes("compileWeaponProfiles"),
+      ProjectileDefinition: mainSource.includes("ProjectileDefinition"),
+      WeaponDefinition: mainSource.includes("WeaponDefinition"),
+    },
+    runtimeHooks: {
+      applyGameplayBehaviorCommands: mainSource.includes("applyGameplayBehaviorCommands"),
+      builtInShooterPlayerHandle: mainSource.includes("builtInShooterPlayerHandle"),
+      setInputActionBinding: mainSource.includes("setInputActionBinding"),
+      profileQueryParam: mainSource.includes('searchParams.get("profile")'),
+    },
   };
 }
 
@@ -394,6 +417,7 @@ function templateSummary(result) {
     template: "minimal",
     hasFerrumDependency: result.hasFerrumDependency,
     hasMainSource: result.hasMainSource,
+    authoringSurface: result.authoringSurface,
     publicAssets: result.publicAssets,
     scripts: ["ferrum:validate", "ferrum:authoring-report", "ferrum:replay-report", "ferrum:update-replay-fixture"],
   };

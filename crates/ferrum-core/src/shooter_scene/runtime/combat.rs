@@ -5,23 +5,29 @@ use crate::components::gameplay::{
 use crate::components::{CollisionLayer, Transform2D, Velocity};
 use crate::entity::Entity;
 use crate::gameplay::{
-    apply_collision_pickup_reaction_for_pair, apply_collision_reaction_sets_for_pair,
-    apply_default_collision_damage_hit, apply_default_collision_game_over_hit,
-    apply_pickup_collision_reaction_sets_for_pair, apply_tile_collision_reaction_set,
-    build_collision_layer_pairs, build_swept_collision_layer_pairs,
-    collision_gameplay_events_for_reaction_outcome, collision_hit_presentation_payload,
-    collision_reaction_pair_for_layer_pair, collision_side_effect_payload, damage_at_or_default,
-    default_collision_damage_gameplay_event_payload, default_collision_damage_score_delta,
-    default_melee_damage_allowed, default_projectile_damage_allowed, drain_deferred_commands_into,
-    faction_damage_denial, has_collision_reaction_sets_for_pair, melee_attack_attacker_can_resolve,
-    melee_attack_target_can_receive_hit, projectile_collision_target_at, queue_marked_despawn,
-    run_melee_attack_query, should_emit_default_game_over_audio,
+    action_failure_event_data, apply_collision_pickup_reaction_for_pair,
+    apply_collision_reaction_sets_for_pair, apply_default_collision_damage_hit,
+    apply_default_collision_game_over_hit, apply_pickup_collision_reaction_sets_for_pair,
+    apply_tile_collision_reaction_set, build_collision_layer_pairs,
+    build_swept_collision_layer_pairs, collision_gameplay_events_for_reaction_outcome,
+    collision_hit_presentation_payload, collision_reaction_pair_for_layer_pair,
+    collision_side_effect_payload, commit_collision_spawn_prefab_reaction_cooldown,
+    damage_at_or_default, default_collision_damage_gameplay_event_payload,
+    default_collision_damage_score_delta, default_melee_damage_allowed,
+    default_projectile_damage_allowed, drain_deferred_commands_into, faction_damage_denial,
+    has_collision_reaction_sets_for_pair, melee_attack_attacker_can_resolve,
+    melee_attack_target_can_receive_hit, projectile_collision_target_at, push_action_failure_event,
+    queue_marked_despawn, run_melee_attack_query, should_emit_default_game_over_audio,
     summarize_collision_reaction_set_outcome,
     target_only_default_collision_damage_hit_presentation_payload, CollisionDamageReactionDefaults,
     CollisionHitPresentationPayload, CollisionReactionOutcomeSummary, CollisionReactionPair,
     CollisionReactionSetOutcome, CollisionReactionTargetRole, CollisionSideEffectEvaluation,
-    CollisionSideEffectPayload, DefaultCollisionDamageHitOutcome,
+    CollisionSideEffectPayload, CollisionSpawnPrefabEvaluation, DefaultCollisionDamageHitOutcome,
     PickupCollisionReactionSetOutcome,
+};
+use crate::gameplay_event::{
+    GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE, GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE,
+    GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND,
 };
 use crate::tilemap::Tilemap;
 use crate::world::World;
@@ -89,6 +95,7 @@ impl ShooterScene {
         mut hit_tweens: Option<&mut TweenSink<'_>>,
     ) {
         self.prepare_collision_scratch(world.alive.len());
+        self.last_collision_pair_stats = Default::default();
         self.handle_pending_melee_attacks(
             world,
             audio_events,
@@ -116,12 +123,19 @@ impl ShooterScene {
         );
         self.handle_player_enemy_collisions(
             world,
+            tilemap,
             audio_events,
             collision_events,
             gameplay_events.as_deref_mut(),
             hit_particles.as_deref_mut(),
         );
-        self.handle_player_pickup_collisions(world, audio_events, gameplay_events, hit_particles);
+        self.handle_player_pickup_collisions(
+            world,
+            tilemap,
+            audio_events,
+            gameplay_events,
+            hit_particles,
+        );
 
         self.despawn_pending(world);
         self.finish_authored_collision_contacts();
@@ -143,6 +157,32 @@ impl ShooterScene {
 
     fn finish_authored_collision_contacts(&mut self) {
         self.authored_collision_contacts.finish();
+    }
+
+    fn record_bullet_enemy_swept_collision_query(&mut self) {
+        let usage = self.collision_scratch.usage();
+        self.last_collision_pair_stats.bullet_enemy_swept_pairs = self.collision_pairs.len();
+        self.last_collision_pair_stats.bullet_enemy_moving_proxies = usage.moving_proxies;
+        self.last_collision_pair_stats.bullet_enemy_target_proxies = usage.target_proxies;
+    }
+
+    fn record_bullet_player_swept_collision_query(&mut self) {
+        let usage = self.collision_scratch.usage();
+        self.last_collision_pair_stats.bullet_player_swept_pairs = self.collision_pairs.len();
+        self.last_collision_pair_stats.bullet_player_moving_proxies = usage.moving_proxies;
+        self.last_collision_pair_stats.bullet_player_target_proxies = usage.target_proxies;
+    }
+
+    fn record_player_enemy_collision_query(&mut self) {
+        let usage = self.collision_scratch.usage();
+        self.last_collision_pair_stats.player_enemy_pairs = self.collision_pairs.len();
+        self.last_collision_pair_stats.player_enemy_current_proxies = usage.current_proxies;
+    }
+
+    fn record_player_pickup_collision_query(&mut self) {
+        let usage = self.collision_scratch.usage();
+        self.last_collision_pair_stats.player_pickup_pairs = self.collision_pairs.len();
+        self.last_collision_pair_stats.player_pickup_current_proxies = usage.current_proxies;
     }
 
     fn handle_pending_melee_attacks(
@@ -448,6 +488,7 @@ impl ShooterScene {
             delta,
             &mut self.collision_pairs,
         );
+        self.record_bullet_enemy_swept_collision_query();
         let hit_sound_id = self.sound_ids.hit;
         let hit_volume = self.config.audio_policy.hit_volume;
         let hit_pitch = self.config.audio_policy.hit_pitch;
@@ -475,6 +516,7 @@ impl ShooterScene {
 
             let authored_outcome = self.apply_authored_collision_reactions(
                 world,
+                tilemap,
                 reaction_pair.source,
                 reaction_pair.other,
                 audio_events,
@@ -593,6 +635,7 @@ impl ShooterScene {
             delta,
             &mut self.collision_pairs,
         );
+        self.record_bullet_player_swept_collision_query();
         for pair_index in 0..self.collision_pairs.len() {
             let pair = self.collision_pairs[pair_index];
             let Some(reaction_pair) = collision_reaction_pair_for_layer_pair(
@@ -705,6 +748,7 @@ impl ShooterScene {
             ) else {
                 continue;
             };
+            let impact_center = tile_impact_center(start, velocity, delta, tile_hit);
             {
                 let reactions = world
                     .collision_reactions
@@ -715,10 +759,44 @@ impl ShooterScene {
                     let outcome = apply_tile_collision_reaction_set(
                         world,
                         bullet_index,
+                        impact_center,
                         &mut reactions,
+                        &mut self.area_damage_hits,
                         &mut self.marked_for_despawn,
                         &mut self.pending_despawn,
+                        Self::collision_damage_defaults,
                     );
+                    world.collision_reactions[bullet_index] = Some(reactions);
+
+                    let reaction_summary =
+                        summarize_collision_reaction_set_outcome(outcome.reaction_outcome(), {
+                            |target_index| Self::collision_reaction_target_role(world, target_index)
+                        });
+                    self.commit_score_delta(reaction_summary.score_delta);
+                    if reaction_summary.player_game_over {
+                        self.enter_game_over();
+                    }
+
+                    let projectile_entity = Entity {
+                        id: bullet_index as u32,
+                        generation: world.generations.get(bullet_index).copied().unwrap_or(0),
+                    };
+                    if let Some(events) = gameplay_events.as_mut() {
+                        let context = CollisionReactionPair::new(
+                            bullet_index,
+                            bullet_index,
+                            projectile_entity,
+                            projectile_entity,
+                        );
+                        let payloads = collision_gameplay_events_for_reaction_outcome(
+                            context,
+                            outcome.reaction_outcome(),
+                        );
+                        for payload in payloads.events() {
+                            events.push_collision_payload(payload);
+                        }
+                    }
+
                     if let Some(despawn_outcome) = outcome.despawn_outcome {
                         if let Some(events) = gameplay_events.as_mut() {
                             events.push_collision_despawn(
@@ -733,9 +811,19 @@ impl ShooterScene {
                             side_effect,
                             audio_events,
                             hit_particles.as_deref_mut(),
+                            gameplay_events.as_deref_mut(),
+                            projectile_entity,
+                            projectile_entity,
                         );
                     }
-                    world.collision_reactions[bullet_index] = Some(reactions);
+                    for spawn in outcome.spawn_prefabs() {
+                        self.apply_collision_spawn_prefab(
+                            world,
+                            tilemap,
+                            spawn,
+                            gameplay_events.as_deref_mut(),
+                        );
+                    }
                     outcome.queued_self_despawn
                 } else {
                     false
@@ -798,6 +886,7 @@ impl ShooterScene {
     fn handle_player_enemy_collisions(
         &mut self,
         world: &mut World,
+        tilemap: &Tilemap,
         audio_events: &mut Vec<AudioEvent>,
         mut collision_events: Option<&mut CollisionEventSink<'_>>,
         mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
@@ -819,6 +908,7 @@ impl ShooterScene {
             CollisionLayer::Enemy,
             &mut self.collision_pairs,
         );
+        self.record_player_enemy_collision_query();
         for pair_index in 0..self.collision_pairs.len() {
             let pair = self.collision_pairs[pair_index];
             let Some(reaction_pair) = collision_reaction_pair_for_layer_pair(
@@ -836,6 +926,7 @@ impl ShooterScene {
             }
             let authored_outcome = self.apply_authored_collision_reactions(
                 world,
+                tilemap,
                 reaction_pair.source,
                 reaction_pair.other,
                 audio_events,
@@ -910,6 +1001,7 @@ impl ShooterScene {
     fn handle_player_pickup_collisions(
         &mut self,
         world: &mut World,
+        tilemap: &Tilemap,
         audio_events: &mut Vec<AudioEvent>,
         mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
         mut hit_particles: Option<&mut ParticleBurstSink<'_>>,
@@ -934,6 +1026,7 @@ impl ShooterScene {
             CollisionLayer::Pickup,
             &mut self.collision_pairs,
         );
+        self.record_player_pickup_collision_query();
         for pair_index in 0..self.collision_pairs.len() {
             let pair = self.collision_pairs[pair_index];
             let Some(reaction_pair) = collision_reaction_pair_for_layer_pair(
@@ -955,6 +1048,7 @@ impl ShooterScene {
             let pickup_entity = reaction_pair.other;
             if self.apply_authored_pickup_collision_reactions(
                 world,
+                tilemap,
                 reaction_pair.source,
                 reaction_pair.other,
                 audio_events,
@@ -972,9 +1066,11 @@ impl ShooterScene {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn apply_authored_pickup_collision_reactions(
         &mut self,
         world: &mut World,
+        tilemap: &Tilemap,
         first: Entity,
         second: Entity,
         audio_events: &mut Vec<AudioEvent>,
@@ -1000,6 +1096,8 @@ impl ShooterScene {
         for applied in reaction_outcomes.outcomes() {
             self.apply_pickup_collision_reaction_set_outcome(
                 world,
+                tilemap,
+                pair,
                 applied.outcome,
                 audio_events,
                 gameplay_events.as_deref_mut(),
@@ -1009,9 +1107,12 @@ impl ShooterScene {
         reaction_outcomes.handled_pickup
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn apply_pickup_collision_reaction_set_outcome(
         &mut self,
-        world: &World,
+        world: &mut World,
+        tilemap: &Tilemap,
+        context: CollisionReactionPair,
         outcome: PickupCollisionReactionSetOutcome,
         audio_events: &mut Vec<AudioEvent>,
         mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
@@ -1035,6 +1136,17 @@ impl ShooterScene {
                 side_effect,
                 audio_events,
                 hit_particles.as_deref_mut(),
+                gameplay_events.as_deref_mut(),
+                context.source,
+                context.other,
+            );
+        }
+        for spawn in outcome.spawn_prefabs() {
+            self.apply_collision_spawn_prefab(
+                world,
+                tilemap,
+                spawn,
+                gameplay_events.as_deref_mut(),
             );
         }
     }
@@ -1044,9 +1156,11 @@ impl ShooterScene {
             && world.collider_layer_at(index) == Some(layer)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn apply_authored_collision_reactions(
         &mut self,
         world: &mut World,
+        tilemap: &Tilemap,
         first: Entity,
         second: Entity,
         audio_events: &mut Vec<AudioEvent>,
@@ -1063,6 +1177,7 @@ impl ShooterScene {
             world,
             pair,
             contact_entered,
+            &mut self.area_damage_hits,
             &mut self.marked_for_despawn,
             &mut self.pending_despawn,
             Self::collision_damage_defaults,
@@ -1070,6 +1185,7 @@ impl ShooterScene {
         for applied in reaction_outcomes.outcomes() {
             game_over_entered |= self.apply_authored_collision_reaction_outcome(
                 world,
+                tilemap,
                 applied.pair,
                 applied.outcome,
                 &mut outcome,
@@ -1087,7 +1203,8 @@ impl ShooterScene {
     #[allow(clippy::too_many_arguments)]
     fn apply_authored_collision_reaction_outcome(
         &mut self,
-        world: &World,
+        world: &mut World,
+        tilemap: &Tilemap,
         context: CollisionReactionPair,
         reaction_outcome: CollisionReactionSetOutcome,
         outcome: &mut CollisionReactionOutcomeSummary,
@@ -1117,6 +1234,18 @@ impl ShooterScene {
                 side_effect,
                 audio_events,
                 hit_particles.as_deref_mut(),
+                gameplay_events.as_deref_mut(),
+                context.source,
+                context.other,
+            );
+        }
+
+        for spawn in reaction_outcome.spawn_prefabs() {
+            self.apply_collision_spawn_prefab(
+                world,
+                tilemap,
+                spawn,
+                gameplay_events.as_deref_mut(),
             );
         }
 
@@ -1154,24 +1283,135 @@ impl ShooterScene {
         }
     }
 
+    fn apply_collision_spawn_prefab(
+        &mut self,
+        world: &mut World,
+        tilemap: &Tilemap,
+        evaluation: CollisionSpawnPrefabEvaluation,
+        gameplay_events: Option<&mut GameplayEventSink<'_>>,
+    ) -> bool {
+        let command = match self.collision_spawn_prefab_command(
+            world,
+            evaluation.source,
+            evaluation.anchor,
+            evaluation.action_id,
+            evaluation.prefab_id,
+            evaluation.offset_x,
+            evaluation.offset_y,
+        ) {
+            Ok(command) => command,
+            Err(reason_code) => {
+                push_action_failure_event(
+                    gameplay_events,
+                    action_failure_event_data(
+                        evaluation.source,
+                        evaluation.source,
+                        evaluation.action_id,
+                        reason_code,
+                    ),
+                );
+                return false;
+            }
+        };
+        match self.commit_prefab_spawn_with_pre_commit_gate(tilemap, command, || {
+            commit_collision_spawn_prefab_reaction_cooldown(world, evaluation)
+        }) {
+            Ok(prefab_queued) => prefab_queued,
+            Err(reason_code) => {
+                push_action_failure_event(
+                    gameplay_events,
+                    action_failure_event_data(
+                        evaluation.source,
+                        evaluation.source,
+                        evaluation.action_id,
+                        reason_code,
+                    ),
+                );
+                false
+            }
+        }
+    }
+
     fn apply_collision_side_effect(
         world: &World,
         evaluation: CollisionSideEffectEvaluation,
         audio_events: &mut Vec<AudioEvent>,
         mut hit_particles: Option<&mut ParticleBurstSink<'_>>,
+        mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
+        actor: Entity,
+        source: Entity,
     ) {
         match collision_side_effect_payload(world, evaluation) {
             Some(CollisionSideEffectPayload::PlaySound {
                 sound_id,
                 volume,
                 pitch,
-            }) => push_audio_event(audio_events, sound_id, volume, pitch),
+            }) => {
+                if let Some(events) = gameplay_events.as_mut() {
+                    let position = effect_position_for(world, actor, source);
+                    events.push_presentation_effect_at(
+                        actor,
+                        source,
+                        sound_id,
+                        GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND,
+                        position,
+                        1.0,
+                        0.0,
+                    );
+                }
+                push_audio_event(audio_events, sound_id, volume, pitch);
+            }
             Some(CollisionSideEffectPayload::SpawnParticleAt {
                 preset_id,
                 position,
             }) => {
+                if let Some(events) = gameplay_events.as_mut() {
+                    events.push_presentation_effect_at(
+                        actor,
+                        source,
+                        preset_id,
+                        GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE,
+                        position,
+                        1.0,
+                        0.0,
+                    );
+                }
                 if let Some(particles) = hit_particles.as_mut() {
                     particles.spawn_preset_at(preset_id, position);
+                }
+            }
+            Some(CollisionSideEffectPayload::CameraShake) => {
+                if let Some(events) = gameplay_events.as_mut() {
+                    let position = effect_position_for(world, actor, source);
+                    events.push_presentation_effect_at(
+                        actor,
+                        source,
+                        0,
+                        GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE,
+                        position,
+                        1.0,
+                        0.0,
+                    );
+                }
+            }
+            Some(CollisionSideEffectPayload::PresentationEffect {
+                actor: effect_actor,
+                effect_id,
+                effect_type,
+                intensity,
+                radius,
+            }) => {
+                if let Some(events) = gameplay_events.as_mut() {
+                    let position = effect_position_for(world, effect_actor, source);
+                    events.push_presentation_effect_at(
+                        effect_actor,
+                        source,
+                        effect_id,
+                        effect_type,
+                        position,
+                        intensity,
+                        radius,
+                    );
                 }
             }
             None => {}
@@ -1229,7 +1469,7 @@ fn dispatch_collision_hit_presentation_payload(
 }
 
 fn projectile_tile_impact(world: &World, index: usize) -> ProjectileTileImpact {
-    world.projectile_tile_impacts[index].unwrap_or(ProjectileTileImpact::Despawn)
+    world.projectile_tile_impact_at(index)
 }
 
 fn entity_at(world: &World, index: usize) -> Option<crate::entity::Entity> {
@@ -1240,6 +1480,37 @@ fn entity_at(world: &World, index: usize) -> Option<crate::entity::Entity> {
         id: index as u32,
         generation: *world.generations.get(index)?,
     })
+}
+
+fn effect_position_for(world: &World, actor: Entity, source: Entity) -> Transform2D {
+    transform_for_entity(world, actor)
+        .or_else(|| transform_for_entity(world, source))
+        .unwrap_or_default()
+}
+
+fn transform_for_entity(world: &World, entity: Entity) -> Option<Transform2D> {
+    let index = entity.id as usize;
+    if entity_at(world, index) != Some(entity) {
+        return None;
+    }
+    world.transforms.get(index).copied().flatten()
+}
+
+fn tile_impact_center(
+    start: Transform2D,
+    velocity: Velocity,
+    delta: f32,
+    tile_hit: crate::tilemap::TilemapSweepHit,
+) -> Transform2D {
+    let travel = if delta.is_finite() && delta > 0.0 {
+        delta * tile_hit.contact.time.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    Transform2D {
+        x: start.x + velocity.vx * travel,
+        y: start.y + velocity.vy * travel,
+    }
 }
 
 fn bounce_projectile_off_tile(
@@ -1507,8 +1778,10 @@ mod tests {
 
     #[test]
     fn pending_player_target_melee_resolution_respects_faction_gate() {
-        let mut scene = ShooterScene::default();
-        scene.game_state = GameState::Playing;
+        let mut scene = ShooterScene {
+            game_state: GameState::Playing,
+            ..Default::default()
+        };
         let mut world = World::default();
         let mut audio_events = Vec::new();
         let mut collision_events = Vec::new();

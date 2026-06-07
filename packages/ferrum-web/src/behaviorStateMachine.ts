@@ -29,7 +29,7 @@ import {
   type GameplayTileImpactPolicy,
 } from "./gameplayEventActions.js";
 
-export const BEHAVIOR_STATE_MACHINE_RUNTIME_MAX_TRANSITIONS = 8 as const;
+export const BEHAVIOR_STATE_MACHINE_RUNTIME_MAX_TRANSITIONS = 16 as const;
 
 export type BehaviorStateMachineTriggerKind = "gameplayEvent";
 export type BehaviorStateMachineGameplayEventKind =
@@ -1113,6 +1113,15 @@ function clearSupportedGameplayBehaviorComponents(
             "clear gameplay faction",
           ),
         ]),
+    ...(engine.clear_gameplay_tags === undefined
+      ? []
+      : [
+          requireRuntimeApplied(
+            engine.clear_gameplay_tags(handle.entityId, handle.entityGeneration),
+            `${path}.tags`,
+            "clear gameplay tags",
+          ),
+        ]),
     requireRuntimeApplied(
       engine.clear_gameplay_lifetime(handle.entityId, handle.entityGeneration),
       `${path}.lifetime`,
@@ -1169,6 +1178,7 @@ function replaceSupportedClearOperationNames(
     "health",
     "damage",
     ...(engine.clear_gameplay_faction === undefined ? [] : ["faction"]),
+    ...(engine.clear_gameplay_tags === undefined ? [] : ["tags"]),
     "lifetime",
     "scoreReward",
     "pickup",
@@ -1236,6 +1246,10 @@ function gameplayBehaviorRuntimeCapabilityPreflightEngine(
       ? {}
       : { set_gameplay_faction: entitySetter }),
     ...(engine.clear_gameplay_faction === undefined ? {} : { clear_gameplay_faction: () => true }),
+    ...(engine.set_gameplay_tags === undefined
+      ? {}
+      : { set_gameplay_tags: entitySetter }),
+    ...(engine.clear_gameplay_tags === undefined ? {} : { clear_gameplay_tags: () => true }),
     set_gameplay_lifetime: entitySetter,
     clear_gameplay_lifetime: () => true,
     set_gameplay_score_reward: entitySetter,
@@ -1274,10 +1288,55 @@ function gameplayBehaviorRuntimeCapabilityPreflightEngine(
       : { set_gameplay_action_spawn_prefab: entitySetter }),
     ...(engine.clear_gameplay_actions === undefined ? {} : { clear_gameplay_actions: () => true }),
     set_gameplay_movement_chase_player: entitySetter,
+    ...(engine.set_gameplay_movement_chase_nearest_player === undefined
+      ? {}
+      : { set_gameplay_movement_chase_nearest_player: entitySetter }),
+    ...(engine.set_gameplay_movement_chase_nearest_enemy === undefined
+      ? {}
+      : { set_gameplay_movement_chase_nearest_enemy: entitySetter }),
+    ...(engine.set_gameplay_movement_chase_nearest_layer === undefined
+      ? {}
+      : { set_gameplay_movement_chase_nearest_layer: entitySetter }),
+    ...(engine.set_gameplay_movement_chase_nearest_faction === undefined
+      ? {}
+      : { set_gameplay_movement_chase_nearest_faction: entitySetter }),
+    ...(engine.set_gameplay_movement_chase_nearest_tag === undefined
+      ? {}
+      : { set_gameplay_movement_chase_nearest_tag: entitySetter }),
     set_gameplay_movement_chase_entity: entityPairSetter,
+    ...(engine.set_gameplay_movement_seek_target_player === undefined
+      ? {}
+      : { set_gameplay_movement_seek_target_player: entitySetter }),
+    ...(engine.set_gameplay_movement_seek_target_nearest_player === undefined
+      ? {}
+      : { set_gameplay_movement_seek_target_nearest_player: entitySetter }),
+    ...(engine.set_gameplay_movement_seek_target_nearest_enemy === undefined
+      ? {}
+      : { set_gameplay_movement_seek_target_nearest_enemy: entitySetter }),
+    ...(engine.set_gameplay_movement_seek_target_nearest_layer === undefined
+      ? {}
+      : { set_gameplay_movement_seek_target_nearest_layer: entitySetter }),
+    ...(engine.set_gameplay_movement_seek_target_nearest_faction === undefined
+      ? {}
+      : { set_gameplay_movement_seek_target_nearest_faction: entitySetter }),
+    ...(engine.set_gameplay_movement_seek_target_nearest_tag === undefined
+      ? {}
+      : { set_gameplay_movement_seek_target_nearest_tag: entitySetter }),
+    ...(engine.set_gameplay_movement_seek_target_entity === undefined
+      ? {}
+      : { set_gameplay_movement_seek_target_entity: entityPairSetter }),
     ...(engine.clear_gameplay_movement === undefined ? {} : { clear_gameplay_movement: () => true }),
     ...(engine.clear_gameplay_collision_reactions === undefined ? {} : { clear_gameplay_collision_reactions: () => true }),
     add_gameplay_collision_damage: entitySetter,
+    ...(engine.add_gameplay_collision_knockback === undefined
+      ? {}
+      : { add_gameplay_collision_knockback: entitySetter }),
+    ...(engine.add_gameplay_collision_emit_effect === undefined
+      ? {}
+      : { add_gameplay_collision_emit_effect: entitySetter }),
+    ...(engine.add_gameplay_collision_spawn_prefab === undefined
+      ? {}
+      : { add_gameplay_collision_spawn_prefab: entitySetter }),
     ...(engine.add_gameplay_collision_pickup === undefined
       ? {}
       : { add_gameplay_collision_pickup: entitySetter }),

@@ -1,9 +1,9 @@
 export const BUILT_IN_SHOOTER_STATE_FORMAT = "ferrum2d.builtin-shooter-state";
-export const BUILT_IN_SHOOTER_STATE_VERSION = 11;
+export const BUILT_IN_SHOOTER_STATE_VERSION = 15;
 export const BUILT_IN_SHOOTER_STATE_HEADER_FLOATS = 8;
-export const BUILT_IN_SHOOTER_STATE_HEADER_U32S = 37;
-export const BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY = 35;
-export const BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY = 21;
+export const BUILT_IN_SHOOTER_STATE_HEADER_U32S = 85;
+export const BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY = 75;
+export const BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY = 61;
 
 export interface BuiltInShooterStateSnapshot {
   readonly format: typeof BUILT_IN_SHOOTER_STATE_FORMAT;

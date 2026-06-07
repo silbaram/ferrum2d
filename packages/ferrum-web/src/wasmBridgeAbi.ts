@@ -4,6 +4,7 @@ import {
   audio_event_floats,
   collision_event_bytes,
   collision_event_u32s,
+  effect_event_bytes,
   frame_telemetry_bytes,
   frame_telemetry_f64s,
   gameplay_event_bytes,
@@ -24,6 +25,7 @@ import {
 } from "../pkg/ferrum_core.js";
 import { FLOATS_PER_AUDIO_EVENT } from "./audioEventDecoder";
 import { U32S_PER_COLLISION_EVENT } from "./collisionEventDecoder";
+import { BYTES_PER_EFFECT_EVENT } from "./effectEventDecoder";
 import { U32S_PER_GAMEPLAY_EVENT } from "./gameplayEventDecoder";
 import { FLOATS_PER_PHYSICS_DEBUG_LINE } from "./physicsDebugLineDecoder";
 import {
@@ -58,6 +60,7 @@ export interface WasmBridgeAbiLayout {
   floatsPerAudioEvent: number;
   u32sPerCollisionEvent: number;
   u32sPerGameplayEvent: number;
+  bytesPerEffectEvent: number;
   floatsPerPhysicsDebugLine: number;
   u32sPerPhysicsQueryHit: number;
   bytesPerPhysicsRaycastHit: number;
@@ -144,6 +147,14 @@ export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
     throw new Error(
       `[Ferrum2D ABI mismatch] Rust gameplay_event_bytes=${rustBytesPerGameplayEvent}, TS BYTES_PER_GAMEPLAY_EVENT=${BYTES_PER_GAMEPLAY_EVENT}. ` +
         "GameplayEvent ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
+    );
+  }
+
+  const rustBytesPerEffectEvent = effect_event_bytes();
+  if (rustBytesPerEffectEvent !== BYTES_PER_EFFECT_EVENT) {
+    throw new Error(
+      `[Ferrum2D ABI mismatch] Rust effect_event_bytes=${rustBytesPerEffectEvent}, TS BYTES_PER_EFFECT_EVENT=${BYTES_PER_EFFECT_EVENT}. ` +
+        "EffectEvent ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
     );
   }
 
@@ -255,6 +266,7 @@ export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
     floatsPerAudioEvent: rustFloatsPerAudioEvent,
     u32sPerCollisionEvent: rustU32sPerCollisionEvent,
     u32sPerGameplayEvent: rustU32sPerGameplayEvent,
+    bytesPerEffectEvent: rustBytesPerEffectEvent,
     floatsPerPhysicsDebugLine: rustFloatsPerPhysicsDebugLine,
     u32sPerPhysicsQueryHit: rustU32sPerPhysicsQueryHit,
     bytesPerPhysicsRaycastHit: rustBytesPerPhysicsRaycastHit,

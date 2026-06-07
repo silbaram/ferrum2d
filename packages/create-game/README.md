@@ -25,9 +25,11 @@ npx @ferrum2d/create-game my-shooter --template topdown
 npx @ferrum2d/create-game my-platformer --template platformer
 ```
 
-- `minimal`: runtime/HUD/debug metric을 확인하기 위한 가장 작은 starter
+- `minimal`: runtime/HUD/debug metric과 `ProjectileDefinition`/`WeaponDefinition` authoring 예제를 포함한 가장 작은 starter
 - `topdown`: Game Spec 기반 Top-down Shooter starter
 - `platformer`: built-in platformer scene starter
+
+`minimal` 템플릿은 public `compileWeaponProfiles(...)`와 `behaviorRecipeCommandsForEntity(...)` 경로로 `standard`, `piercing`, `bounce` projectile profile을 컴파일한 뒤 built-in player에 적용한다. 브라우저에서 `?profile=piercing` 또는 `?profile=bounce` query를 붙이면 같은 Rust core 수정 없이 다른 projectile behavior를 확인할 수 있다.
 
 생성된 프로젝트에는 AI agent-first 개발용 하네스 명령이 포함된다.
 

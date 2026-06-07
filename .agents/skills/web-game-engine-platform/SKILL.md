@@ -1,6 +1,6 @@
 ---
 name: web-game-engine-platform
-description: "Apply TypeScript/JavaScript web platform-layer conventions for Rust/Wasm-based browser game engines. Use whenever working on the JS/TS side of a browser game engine with a Rust/Wasm core — wasm-bindgen wrappers, WasmBridge classes, render command buffer consumers, WebGL2 sprite batchers, AssetLoader, AudioManager, GameLoop, InputManager, canvas resize/DPR handling, ImageBitmap pipelines, Vite + wasm-pack build setup, or the public engine API surface. Trigger for .ts/.js files in a browser engine context, wasm-bindgen, wasm-pack, WebGL2, WebGPU, requestAnimationFrame, OffscreenCanvas, AudioContext, ImageBitmap, render command, sprite batch, devicePixelRatio, canvas resize, Wasm linear memory, TypedArray view, or ptr/len bridging. Combine with rust-game-engine-conventions when both sides are involved. Err on the side of triggering — pitfalls here are easy to fall into and expensive to fix."
+description: "Apply TypeScript/JavaScript web platform-layer conventions for Rust/Wasm-based browser game engines. Use whenever working on the JS/TS side of a browser game engine with a Rust/Wasm core — wasm-bindgen wrappers, WasmBridge classes, render command buffer consumers, WebGL2 sprite batchers, AssetLoader, AudioManager, GameLoop, InputManager, canvas resize/DPR handling, ImageBitmap pipelines, Vite + wasm-pack build setup, browser smoke/runtime budget checks, or the public engine API surface. Trigger for .ts/.js files in a browser engine context, browser smoke scripts, runtime budget profiles, wasm-bindgen, wasm-pack, WebGL2, WebGPU, requestAnimationFrame, OffscreenCanvas, AudioContext, ImageBitmap, render command, sprite batch, devicePixelRatio, canvas resize, Wasm linear memory, TypedArray view, or ptr/len bridging. Combine with rust-game-engine-conventions when both sides are involved. Err on the side of triggering — pitfalls here are easy to fall into and expensive to fix."
 ---
 
 # Web Platform Layer for Rust/Wasm Game Engines
@@ -168,6 +168,16 @@ this.rafId = requestAnimationFrame(loop);
 
 fixed timestep 변형 / accumulator 패턴 / 결정성 요구 시: `references/browser-runtime.md` §1, 또는 `rust-game-engine-conventions/references/game-patterns.md` §4.
 
+### 3.3 Browser smoke / runtime budget 작성 규칙
+
+브라우저 smoke나 runtime budget gate를 추가/수정할 때는 검증 무결성을 코드로 보장합니다.
+
+- Smoke pass 조건은 **상태 + 규모 + 비용**을 함께 확인한다. 예: `restored === true`, `gameState === Playing`, `entityCount >= N`, `renderCommandCount >= N`, `drawCalls <= budget`, `textureSwitchCount <= budget`, `collisionPairCount <= budget`.
+- `runtime-budget-profiles.mjs`에 budget field를 추가했다면 같은 field가 `RuntimeProfiler.recordFrame(...)` sample에 실제로 기록되는지 확인한다. sample에 없고 snapshot에서 0으로만 집계되면 gate가 아니다.
+- Playwright `page.waitForFunction(...)` predicate는 browser context에서 실행된다. Node-side 상수/함수를 직접 참조하지 말고 `arg`로 전달하거나 페이지 전역/리터럴만 사용한다.
+- 예제 smoke 전용 state 주입은 public runtime API를 넓히기보다 setup-only snapshot/fixture 경로를 우선한다. 단, snapshot layout offset은 named constants나 test utility로 격리한다.
+- 새 smoke script는 `package.json` script, 관련 aggregate script, CI workflow 중 의도한 gate 위치에 모두 연결한다. 문서에는 실제로 검증하는 metric만 적는다.
+
 ---
 
 ## 4. WebGL2 Renderer 핵심 규칙
@@ -293,6 +303,8 @@ Rust newtype의 짝. `Sprite.texture_id`에 `SoundId`가 들어가는 사고를 
 ### 8.2 Wasm 모듈 타입 — 자동 생성에 의존
 
 `wasm-pack`이 `.d.ts` 자동 생성. 손으로 다시 쓰지 마 — `import init, { Engine } from "../wasm/pkg/engine_core.js"`.
+
+Ferrum2D 저장소에서는 generated `pkg/*.d.ts`를 직접 수정하지 않는다. 다만 package-facing facade나 수동 선언 파일(예: `packages/ferrum-web/src/wasm.d.ts`)을 유지하는 경우에는 generated Wasm API와 public TypeScript facade를 함께 동기화한다.
 
 ### 8.3 `as const` + 배열 → union
 

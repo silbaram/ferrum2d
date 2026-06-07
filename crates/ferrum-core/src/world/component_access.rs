@@ -1,8 +1,8 @@
 use super::World;
 use crate::components::gameplay::{
     ActionBinding, ActionBindingSet, BehaviorStateEnterAction, BehaviorStateMachine,
-    BehaviorStateTransition, CollisionReaction, GameplayFaction, GameplayTimerTrigger, Interaction,
-    MovementPattern, Pickup,
+    BehaviorStateTransition, CollisionReaction, GameplayFaction, GameplayTags,
+    GameplayTimerTrigger, Interaction, MovementPattern, Pickup,
 };
 use crate::components::{AngularVelocity, Rotation2D, Transform2D, Velocity};
 use crate::entity::Entity;
@@ -119,14 +119,34 @@ impl World {
         let Some(i) = self.valid_index(entity) else {
             return;
         };
-        self.gameplay_factions[i] = Some(faction);
+        self.set_gameplay_faction_at_index(i, faction);
     }
 
     pub(crate) fn clear_gameplay_faction(&mut self, entity: Entity) {
         let Some(i) = self.valid_index(entity) else {
             return;
         };
-        self.gameplay_factions[i] = None;
+        self.clear_gameplay_faction_at_index(i);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn gameplay_tags(&self, entity: Entity) -> Option<GameplayTags> {
+        let i = self.valid_index(entity)?;
+        self.gameplay_tags[i]
+    }
+
+    pub(crate) fn set_gameplay_tags(&mut self, entity: Entity, tags: GameplayTags) {
+        let Some(i) = self.valid_index(entity) else {
+            return;
+        };
+        self.set_gameplay_tags_at_index(i, tags);
+    }
+
+    pub(crate) fn clear_gameplay_tags(&mut self, entity: Entity) {
+        let Some(i) = self.valid_index(entity) else {
+            return;
+        };
+        self.clear_gameplay_tags_at_index(i);
     }
 
     pub(crate) fn tick_collision_reaction_cooldowns(&mut self, delta: f32) {

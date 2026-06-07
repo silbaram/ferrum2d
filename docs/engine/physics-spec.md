@@ -352,7 +352,7 @@ Editor 또는 AI agent가 runtime Physics Spec을 수정할 때는 다음 author
 
 `compilePhysicsAuthoringDocument(...)`는 `physicsEditor` metadata를 제거하고 runtime `PhysicsSpec`만 반환한다. `lockedFields`와 `agentEditableFields`는 `physics.`로 시작하는 runtime path만 허용하며, metadata가 없는 body/joint를 참조하면 path 포함 diagnostic으로 실패한다. JSON Schema 보조 기준은 `schemas/physics-authoring.schema.json`이다.
 
-샘플 authoring document는 `docs/engine/physics-authoring-sample.json`에 있으며, 다음 명령으로 runtime export와 Physics Spec resolver 통과 여부를 확인한다.
+샘플 authoring document는 `docs/engine/samples/physics-authoring-sample.json`에 있으며, 다음 명령으로 runtime export와 Physics Spec resolver 통과 여부를 확인한다.
 
 ```bash
 pnpm validate:physics-authoring

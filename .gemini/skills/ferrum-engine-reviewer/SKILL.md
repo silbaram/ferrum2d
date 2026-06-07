@@ -1,6 +1,6 @@
 ---
 name: ferrum-engine-reviewer
-description: Ferrum2D 엔진의 코드 및 아키텍처 리뷰를 담당하며, SOLID 설계 준수 여부, Rust 소유권 및 성능 제약, TS 인터페이스 경계, Wasm ABI 안정성 등을 검토합니다.
+description: Ferrum2D 엔진의 코드 및 아키텍처 리뷰를 담당하며, SOLID 설계 준수 여부, Rust 소유권 및 성능 제약, TS 인터페이스 경계, Wasm ABI 안정성, browser smoke/runtime budget/CI gate 무결성을 검토합니다.
 ---
 
 # Ferrum Engine Reviewer

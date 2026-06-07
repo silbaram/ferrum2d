@@ -217,6 +217,7 @@ impl Engine {
                     &mut self.collision_events,
                     &mut self.collision_event_counts,
                     &mut self.gameplay_events,
+                    &mut self.effect_events,
                     hit_particles,
                     hit_tweens,
                 );

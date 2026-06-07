@@ -1,0 +1,278 @@
+{
+  "format": "ferrum2d.gameplay-replay.fixture-index",
+  "version": 1,
+  "scenarioManifestPath": "tests/fixtures/gameplay-golden/scenarios.json",
+  "coverageTagDefinitionsPath": "tests/fixtures/gameplay-golden/coverage-tags.json",
+  "fixtures": [
+    {
+      "id": "example-topdown-basic",
+      "description": "Baseline Top-down Shooter replay covering deterministic start, primary projectile spawn, enemy damage, score reward, and spawn diagnostics.",
+      "coverageTags": [
+        "baseline",
+        "projectile",
+        "score",
+        "spawn-diagnostics"
+      ],
+      "runner": "exampleTopdownBasic",
+      "fixturePath": "tests/fixtures/gameplay-golden/example-topdown-basic-replay.json",
+      "replayHash": "b7df3223",
+      "frameCount": 36,
+      "captureFrameCount": 9
+    },
+    {
+      "id": "example-topdown-authored-behavior",
+      "description": "Authored behavior replay covering variant-driven pickup, interaction, collision damage, timer, FSM transitions, blocked spawn failure, and timer-driven prefab spawn.",
+      "coverageTags": [
+        "authored-behavior",
+        "variant",
+        "pickup",
+        "interaction",
+        "collision-damage",
+        "faction",
+        "timer",
+        "fsm",
+        "spawn-prefab",
+        "action-failure",
+        "spawn-diagnostics"
+      ],
+      "runner": "exampleTopdownAuthoredBehavior",
+      "fixturePath": "tests/fixtures/gameplay-golden/example-topdown-authored-behavior-replay.json",
+      "replayHash": "c8b8f279",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "collision-player-damage-game-over",
+      "description": "Authored collision damage replay covering enemy contact damage against the player and GameOver without despawning the player or enemy.",
+      "coverageTags": [
+        "authored-behavior",
+        "collision-damage",
+        "player-damage",
+        "game-over"
+      ],
+      "runner": "playerDamageCollision",
+      "fixturePath": "tests/fixtures/gameplay-golden/collision-player-damage-game-over-replay.json",
+      "replayHash": "a8e2ac9c",
+      "frameCount": 3,
+      "captureFrameCount": 4
+    },
+    {
+      "id": "wave-action-spawn-prefab",
+      "description": "Wave-enter action trigger replay covering Rust-owned wave producer to spawnPrefabAction consumer through deferred spawn flush.",
+      "coverageTags": [
+        "wave",
+        "action-trigger",
+        "spawn-prefab",
+        "spawn-diagnostics"
+      ],
+      "runner": "waveActionSpawnPrefab",
+      "fixturePath": "tests/fixtures/gameplay-golden/wave-action-spawn-prefab-replay.json",
+      "replayHash": "cf15ca10",
+      "frameCount": 6,
+      "captureFrameCount": 7
+    },
+    {
+      "id": "fsm-state-enter-spawn-prefab",
+      "description": "State-enter action trigger replay covering FSM transition followed by next-frame spawnPrefabAction execution.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "spawn-prefab",
+        "spawn-diagnostics"
+      ],
+      "runner": "fsmStateEnterSpawnPrefab",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-spawn-prefab-replay.json",
+      "replayHash": "9d1a9d22",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "fsm-state-enter-dash-target-player",
+      "description": "State-enter dash replay covering targetPlayer dash execution from a non-player source without success gameplay events.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "dash",
+        "target-player"
+      ],
+      "runner": "fsmStateEnterDashAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-dash-target-player-replay.json",
+      "replayHash": "86918f46",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "fsm-state-enter-dash-input-aim-failure",
+      "description": "State-enter dash failure replay covering unsupported input aim for non-player Rust-owned triggers.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "dash",
+        "action-failure",
+        "unsupported-aim"
+      ],
+      "runner": "fsmStateEnterDashAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-dash-input-aim-failure-replay.json",
+      "replayHash": "dedb6c70",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "fsm-state-enter-projectile-spawn",
+      "description": "State-enter projectile replay covering targetPlayer projectile execution, Bullet-to-Player collision target metadata, and spawn diagnostics.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "projectile",
+        "target-player",
+        "spawn-diagnostics"
+      ],
+      "runner": "fsmStateEnterProjectileAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-projectile-spawn-replay.json",
+      "replayHash": "b864645e",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "fsm-state-enter-projectile-tile-impact",
+      "description": "State-enter projectile replay covering blocking tile impact telemetry before the projectile can hit the target player.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "projectile",
+        "target-player",
+        "tile-impact",
+        "spawn-diagnostics"
+      ],
+      "runner": "fsmStateEnterProjectileAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-projectile-tile-impact-replay.json",
+      "replayHash": "f0e562c7",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "projectile-tile-impact-fsm-authored",
+      "description": "Authored projectile replay covering bounce tileImpact telemetry driving a projectile-scoped FSM transition in the same Rust frame.",
+      "coverageTags": [
+        "authored-behavior",
+        "fsm",
+        "projectile",
+        "tile-impact"
+      ],
+      "runner": "projectileTileImpactFsmAuthored",
+      "fixturePath": "tests/fixtures/gameplay-golden/projectile-tile-impact-fsm-authored-replay.json",
+      "replayHash": "14d007e2",
+      "frameCount": 2,
+      "captureFrameCount": 3
+    },
+    {
+      "id": "projectile-homing-nearest-tag",
+      "description": "Authored homing missile replay covering TS BehaviorRecipe binding, nearestTag target query, projectile movement, collision damage, despawn, presentation effect telemetry, and score reward.",
+      "coverageTags": [
+        "authored-behavior",
+        "projectile",
+        "homing",
+        "movement-query",
+        "nearest-tag",
+        "collision-damage",
+        "presentation-effect",
+        "score"
+      ],
+      "runner": "projectileHomingNearestTag",
+      "fixturePath": "tests/fixtures/gameplay-golden/projectile-homing-nearest-tag-replay.json",
+      "replayHash": "4b0b00be",
+      "frameCount": 6,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "fsm-state-enter-projectile-collision-target-failure",
+      "description": "State-enter projectile failure replay covering unsupported collision target handling for Rust-owned triggered projectiles.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "projectile",
+        "action-failure",
+        "unsupported-collision-target"
+      ],
+      "runner": "fsmStateEnterProjectileAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-projectile-collision-target-failure-replay.json",
+      "replayHash": "d80d276d",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "fsm-state-enter-melee-target-player",
+      "description": "State-enter melee replay covering target-player melee execution and player GameOver from a non-player source.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "melee",
+        "target-player",
+        "game-over"
+      ],
+      "runner": "fsmStateEnterMeleeAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-melee-target-player-replay.json",
+      "replayHash": "b4ab8f9c",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "fsm-state-enter-melee-enemy-target",
+      "description": "State-enter melee replay covering enemy-target execution from a non-player source.",
+      "coverageTags": [
+        "state-enter",
+        "fsm",
+        "action-trigger",
+        "melee",
+        "enemy-target",
+        "collision-damage"
+      ],
+      "runner": "fsmStateEnterMeleeAction",
+      "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-melee-enemy-target-replay.json",
+      "replayHash": "620cb86c",
+      "frameCount": 5,
+      "captureFrameCount": 6
+    },
+    {
+      "id": "projectile-area-damage-entity-impact",
+      "description": "Authored explosive projectile replay covering TS BehaviorRecipe binding, accelerate movement, collisionAreaDamage splash, collisionEmitEffect telemetry, collisionDespawn, score reward, and radius falloff.",
+      "coverageTags": [
+        "authored-behavior",
+        "projectile",
+        "area-damage",
+        "collision-damage",
+        "presentation-effect",
+        "score"
+      ],
+      "runner": "projectileAreaDamageEntityImpact",
+      "fixturePath": "tests/fixtures/gameplay-golden/projectile-area-damage-entity-impact-replay.json",
+      "replayHash": "e0521704",
+      "frameCount": 5,
+      "captureFrameCount": 5
+    },
+    {
+      "id": "projectile-area-damage-tile-impact",
+      "description": "Authored projectile replay covering tile impact contact point AreaDamage, collisionDamage telemetry, terminal tileImpact telemetry, score reward, and radius falloff.",
+      "coverageTags": [
+        "authored-behavior",
+        "projectile",
+        "tile-impact",
+        "area-damage",
+        "collision-damage",
+        "score"
+      ],
+      "runner": "projectileAreaDamageTileImpact",
+      "fixturePath": "tests/fixtures/gameplay-golden/projectile-area-damage-tile-impact-replay.json",
+      "replayHash": "51a0827e",
+      "frameCount": 3,
+      "captureFrameCount": 4
+    }
+  ]
+}

@@ -30,7 +30,7 @@ const REPLAY_COVERAGE_TAGS_FORMAT = "ferrum2d.gameplay-replay.coverage-tags";
 const REPLAY_COVERAGE_TAGS_VERSION = 1;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_VARIANT_PATH = "examples/topdown-shooter/public/authored-behavior.variant.json";
-const DEFAULT_REPLAY_MANIFEST_PATH = "docs/engine/gameplay-golden/scenarios.json";
+const DEFAULT_REPLAY_MANIFEST_PATH = "tests/fixtures/gameplay-golden/scenarios.json";
 const DEFAULT_ARTIFACT_REPORT_NAME = "gameplay-authoring-dry-run-report.json";
 const REPORT_SCHEMA_PATH = resolve(REPO_ROOT, "schemas/gameplay-authoring-dry-run-report.schema.json");
 
@@ -407,7 +407,7 @@ async function validateReplayManifestLink(variant, replayManifestPath, diagnosti
       `references missing replay scenario '${variant.replayScenario}'`,
       "existing replay scenario id",
       variant.replayScenario,
-      "Add the scenario to docs/engine/gameplay-golden/scenarios.json or update variant.replayScenario.",
+      "Add the scenario to tests/fixtures/gameplay-golden/scenarios.json or update variant.replayScenario.",
     );
     return { replayManifestPath, linked: false, scenario: variant.replayScenario };
   }
@@ -489,7 +489,7 @@ async function validateReplayFixtureIndexLink(replayManifest, replayManifestPath
     pushGameplayAuthoringReport(diagnostics, reports,
       "gameplayAuthoring.replayManifest.fixtureIndexPath",
       "must reference a fixture index",
-      "docs/engine/gameplay-golden/fixture-index.json",
+      "tests/fixtures/gameplay-golden/fixture-index.json",
       replayManifest.fixtureIndexPath,
       "Add fixtureIndexPath to the replay scenario manifest so agents can inspect committed golden fixtures.",
     );
@@ -504,7 +504,7 @@ async function validateReplayFixtureIndexLink(replayManifest, replayManifestPath
       `must be '${REPLAY_FIXTURE_INDEX_FORMAT}'`,
       REPLAY_FIXTURE_INDEX_FORMAT,
       fixtureIndex.format,
-      "Use the fixture index generated for docs/engine/gameplay-golden/scenarios.json.",
+      "Use the fixture index generated for tests/fixtures/gameplay-golden/scenarios.json.",
     );
     return { linked: false, fixtureIndexPath };
   }
@@ -544,7 +544,7 @@ async function validateReplayFixtureIndexLink(replayManifest, replayManifestPath
       `must include replay scenario '${variant.replayScenario}'`,
       variant.replayScenario,
       fixtureIndex.fixtures?.map((candidate) => candidate.id),
-      "Add the scenario fixture to docs/engine/gameplay-golden/fixture-index.json.",
+      "Add the scenario fixture to tests/fixtures/gameplay-golden/fixture-index.json.",
     );
     return { linked: false, fixtureIndexPath };
   }

@@ -183,109 +183,32 @@ impl ShooterScene {
             gameplay_events.as_deref_mut(),
         );
         self.try_queue_melee_player(world, action_input, player, gameplay_events.as_deref_mut());
-        self.try_queue_spawn_prefab_player(
+        let spawn_prefab_consumed_primary_fire = self.try_queue_spawn_prefab_player(
             world,
             action_input,
             player,
             tilemap,
             gameplay_events.as_deref_mut(),
         );
-
-        match prepare_input_action_if_ready(
+        if spawn_prefab_consumed_primary_fire {
+            return;
+        }
+        if self.try_queue_projectile_player(
             world,
-            action_input.registry,
-            action_input.snapshot,
+            action_input,
+            camera,
             player,
-            SHOOTER_PRIMARY_FIRE_ACTION_ID,
-            ActionPatternKind::Projectile,
+            gameplay_events.as_deref_mut(),
         ) {
-            InputActionTrigger::Ready(prepared) => {
-                let ActionPattern::Projectile {
-                    speed,
-                    damage,
-                    lifetime_seconds,
-                    aim,
-                    collision_target,
-                    tile_impact,
-                } = prepared.binding.pattern
-                else {
-                    return;
-                };
-                let command = match self.projectile_spawn_command_toward_mouse(
-                    world,
-                    camera,
-                    input.current,
-                    player,
-                    ProjectileFireConfig {
-                        speed,
-                        damage,
-                        lifetime_seconds,
-                        aim,
-                        collision_target,
-                        tile_impact,
-                    },
-                ) {
-                    Ok(command) => command,
-                    Err(reason_code) => {
-                        push_action_failure_event(
-                            gameplay_events,
-                            action_failure_event_data(
-                                player,
-                                player,
-                                SHOOTER_PRIMARY_FIRE_ACTION_ID,
-                                reason_code,
-                            ),
-                        );
-                        return;
-                    }
-                };
-                if let Err(reason_code) = self
-                    .commit_projectile_spawn_with_pre_commit_gate(command, || {
-                        commit_prepared_input_action(world, prepared)
-                    })
-                {
-                    debug_assert_eq!(reason_code, GAMEPLAY_ACTION_FAILURE_SPAWN_QUEUE_FULL);
-                    push_action_failure_event(
-                        gameplay_events.as_deref_mut(),
-                        action_failure_event_data(
-                            player,
-                            player,
-                            SHOOTER_PRIMARY_FIRE_ACTION_ID,
-                            reason_code,
-                        ),
-                    );
-                    return;
-                }
-                return;
-            }
-            trigger => match input_action_trigger_failure_decision_for_policy(
-                trigger,
-                ActionAttemptFailurePolicy::PrimaryInputWithMissingFallback,
-            ) {
-                ActionAttemptFailureDecision::Fallback => {}
-                ActionAttemptFailureDecision::Noop => return,
-                ActionAttemptFailureDecision::Failure(reason_code) => {
-                    if should_report_fixed_action_pattern_mismatch(
-                        world
-                            .action_binding(player, SHOOTER_PRIMARY_FIRE_ACTION_ID)
-                            .map(|binding| ActionPatternKind::from_pattern(binding.pattern)),
-                    ) {
-                        push_action_failure_event(
-                            gameplay_events,
-                            action_failure_event_data(
-                                player,
-                                player,
-                                SHOOTER_PRIMARY_FIRE_ACTION_ID,
-                                reason_code,
-                            ),
-                        );
-                    }
-                    return;
-                }
-            },
+            return;
         }
 
         let wants_legacy_fire = input.current.space == 1 || input.current.mouse_left == 1;
+        if wants_legacy_fire
+            && self.primary_fire_binding_blocks_legacy_fire(world, player, gameplay_events)
+        {
+            return;
+        }
         if wants_legacy_fire
             && self.fire_cooldown_seconds <= 0.0
             && self.queue_bullet_toward_mouse_with_projectile(
@@ -305,6 +228,36 @@ impl ShooterScene {
         {
             self.fire_cooldown_seconds = self.config.fire_cooldown;
         }
+    }
+
+    fn primary_fire_binding_blocks_legacy_fire(
+        &self,
+        world: &World,
+        player: Entity,
+        gameplay_events: Option<&mut GameplayEventSink<'_>>,
+    ) -> bool {
+        let Some(binding) = world.action_binding(player, SHOOTER_PRIMARY_FIRE_ACTION_ID) else {
+            return false;
+        };
+        let kind = ActionPatternKind::from_pattern(binding.pattern);
+        if matches!(
+            kind,
+            ActionPatternKind::Projectile | ActionPatternKind::SpawnPrefab
+        ) {
+            return true;
+        }
+        if should_report_fixed_action_pattern_mismatch(Some(kind)) {
+            push_action_failure_event(
+                gameplay_events,
+                action_failure_event_data(
+                    player,
+                    player,
+                    SHOOTER_PRIMARY_FIRE_ACTION_ID,
+                    GAMEPLAY_ACTION_FAILURE_PATTERN_MISMATCH,
+                ),
+            );
+        }
+        true
     }
 
     fn try_queue_melee_player(
@@ -420,10 +373,11 @@ impl ShooterScene {
         player: Entity,
         tilemap: &Tilemap,
         mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
-    ) {
+    ) -> bool {
         let Some(bindings) = world.action_bindings(player) else {
-            return;
+            return false;
         };
+        let mut consumed_primary_fire = false;
         for binding in bindings.iter() {
             let ActionPattern::SpawnPrefab { .. } = binding.pattern else {
                 continue;
@@ -446,8 +400,10 @@ impl ShooterScene {
                 );
                 continue;
             };
+            consumed_primary_fire |= prepared.action_id == SHOOTER_PRIMARY_FIRE_ACTION_ID;
             let ActionPattern::SpawnPrefab {
                 prefab_id,
+                projectile,
                 anchor,
                 phase,
                 offset_x,
@@ -462,6 +418,7 @@ impl ShooterScene {
                 prepared.action_id,
                 SpawnPrefabActionPayload {
                     prefab_id,
+                    projectile,
                     anchor,
                     phase,
                     offset_x,
@@ -489,6 +446,118 @@ impl ShooterScene {
                 continue;
             }
         }
+        consumed_primary_fire
+    }
+
+    fn try_queue_projectile_player(
+        &mut self,
+        world: &mut World,
+        action_input: PlayerActionInput<'_>,
+        camera: &Camera2D,
+        player: Entity,
+        mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
+    ) -> bool {
+        let Some(bindings) = world.action_bindings(player) else {
+            return false;
+        };
+        for binding in bindings.iter() {
+            let ActionPattern::Projectile {
+                speed,
+                damage,
+                lifetime_seconds,
+                aim,
+                collision_target,
+                tile_impact,
+            } = binding.pattern
+            else {
+                continue;
+            };
+            match prepare_input_action_if_ready(
+                world,
+                action_input.registry,
+                action_input.snapshot,
+                player,
+                binding.action_id,
+                ActionPatternKind::Projectile,
+            ) {
+                InputActionTrigger::Ready(prepared) => {
+                    let command = match self.projectile_spawn_command_toward_mouse(
+                        world,
+                        camera,
+                        action_input.snapshot.current,
+                        player,
+                        ProjectileFireConfig {
+                            speed,
+                            damage,
+                            lifetime_seconds,
+                            aim,
+                            collision_target,
+                            tile_impact,
+                        },
+                    ) {
+                        Ok(command) => command,
+                        Err(reason_code) => {
+                            push_action_failure_event(
+                                gameplay_events,
+                                action_failure_event_data(
+                                    player,
+                                    player,
+                                    prepared.action_id,
+                                    reason_code,
+                                ),
+                            );
+                            return true;
+                        }
+                    };
+                    if let Err(reason_code) = self
+                        .commit_projectile_spawn_with_pre_commit_gate(command, || {
+                            commit_prepared_input_action(world, prepared)
+                        })
+                    {
+                        debug_assert_eq!(reason_code, GAMEPLAY_ACTION_FAILURE_SPAWN_QUEUE_FULL);
+                        push_action_failure_event(
+                            gameplay_events.as_deref_mut(),
+                            action_failure_event_data(
+                                player,
+                                player,
+                                binding.action_id,
+                                reason_code,
+                            ),
+                        );
+                    }
+                    return true;
+                }
+                trigger @ InputActionTrigger::PatternMismatch => {
+                    match input_action_trigger_failure_decision_for_policy(
+                        trigger,
+                        ActionAttemptFailurePolicy::PrimaryInputWithMissingFallback,
+                    ) {
+                        ActionAttemptFailureDecision::Fallback => {}
+                        ActionAttemptFailureDecision::Noop => return true,
+                        ActionAttemptFailureDecision::Failure(reason_code) => {
+                            if should_report_fixed_action_pattern_mismatch(Some(
+                                ActionPatternKind::from_pattern(binding.pattern),
+                            )) {
+                                push_action_failure_event(
+                                    gameplay_events,
+                                    action_failure_event_data(
+                                        player,
+                                        player,
+                                        binding.action_id,
+                                        reason_code,
+                                    ),
+                                );
+                            }
+                            return true;
+                        }
+                    }
+                }
+                InputActionTrigger::Inactive
+                | InputActionTrigger::Missing
+                | InputActionTrigger::CoolingDown => {}
+            }
+        }
+        false
     }
 
     fn try_dash_player(

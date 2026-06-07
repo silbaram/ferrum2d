@@ -1,7 +1,8 @@
 use crate::components::gameplay::{
     ActionBindingSet, BehaviorStateEnterActionSet, BehaviorStateMachine, CollisionReactionSet,
-    GameplayFaction, GameplayTimerTrigger, Interaction, MovementPattern, Pickup,
-    ProjectileCollisionTarget, ProjectileTileImpact,
+    GameplayFaction, GameplayLifetime, GameplayTags, GameplayTimerTrigger, Interaction,
+    MovementPattern, Pickup, ProjectileCollisionTarget, ProjectilePolicy, ProjectileTileImpact,
+    GAMEPLAY_FACTION_MAX_ID, GAMEPLAY_TAG_MAX_ID,
 };
 use crate::components::{
     AabbCollider, AngularVelocity, CapsuleCollider, ChainCollider, CircleCollider, CollisionFilter,
@@ -15,12 +16,16 @@ use crate::physics::PhysicsSystem;
 
 pub const BULLET_LIFETIME: f32 = 1.8;
 const DEAD_ALIVE_POSITION: usize = usize::MAX;
+const GAMEPLAY_FACTION_INDEX_BUCKETS: usize = GAMEPLAY_FACTION_MAX_ID as usize + 1;
+const GAMEPLAY_TAG_INDEX_BUCKETS: usize = GAMEPLAY_TAG_MAX_ID as usize + 1;
 
 mod colliders;
 mod component_access;
 mod entity_lifecycle;
+mod gameplay_query_indices;
 mod hd2d;
 mod joints;
+mod projectiles;
 mod rigid_bodies;
 mod snapshot;
 mod spawning;
@@ -30,7 +35,7 @@ mod templates;
 mod tests;
 
 pub use snapshot::WorldSnapshot;
-pub(crate) use spawning::BulletSpawnRequest;
+pub(crate) use spawning::{PrefabEntitySpawnRequest, PrefabSpriteTint, ProjectileSpawnRequest};
 pub use templates::{
     EntityTemplate, EntityTemplateCollider, EntityTemplateColliderShape, DEFAULT_BULLET_TEMPLATE,
     DEFAULT_ENEMY_TEMPLATE, DEFAULT_PLAYER_TEMPLATE,
@@ -88,6 +93,8 @@ pub struct World {
     pub(crate) compound_colliders: Vec<Vec<CompoundCollider>>,
     pub(crate) collider_materials: Vec<Option<PhysicsMaterial>>,
     pub(crate) collision_filters: Vec<Option<CollisionFilter>>,
+    pub(crate) lifetimes: Vec<Option<GameplayLifetime>>,
+    pub(crate) projectile_policies: Vec<Option<ProjectilePolicy>>,
     pub(crate) bullet_lifetimes: Vec<Option<f32>>,
     pub(crate) projectile_collision_targets: Vec<Option<ProjectileCollisionTarget>>,
     pub(crate) projectile_tile_impacts: Vec<Option<ProjectileTileImpact>>,
@@ -95,6 +102,9 @@ pub struct World {
     pub(crate) damages: Vec<Option<f32>>,
     pub(crate) score_rewards: Vec<Option<u32>>,
     pub(crate) gameplay_factions: Vec<Option<GameplayFaction>>,
+    pub(crate) gameplay_tags: Vec<Option<GameplayTags>>,
+    gameplay_faction_indices: [Vec<usize>; GAMEPLAY_FACTION_INDEX_BUCKETS],
+    gameplay_tag_indices: [Vec<usize>; GAMEPLAY_TAG_INDEX_BUCKETS],
     pub(crate) action_bindings: Vec<Option<ActionBindingSet>>,
     pub(crate) pickups: Vec<Option<Pickup>>,
     pub(crate) interactions: Vec<Option<Interaction>>,

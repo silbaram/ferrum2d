@@ -12,19 +12,29 @@ import {
   behaviorRecipeCommandsForEntity,
   behaviorStateMachineBehaviorProfilesForState,
   behaviorStateMachineCommandsForState,
+  bindPresentationEffectActions,
   bindSceneBehaviorRecipes,
+  BYTES_PER_EFFECT_EVENT,
   compareBehaviorStateMachineReplay,
   compareGameplayReplayRuns,
   createBehaviorStateMachineCurrentStateCommandPlan,
   createBehaviorStateMachineRuntimeInstallPlan,
+  createEffectEventDispatchTarget,
   createBehaviorStateMachineStateCommandPlan,
   createGameplayBehaviorRuntimeTarget,
   createGameplayReplayRun,
+  decodeEffectEvents,
+  dispatchEffectEvents,
+  dispatchRuntimeEffectEvents,
   dryRunSceneBehaviorRecipes,
+  effectDispatchesForEvents,
   equal,
+  EMPTY_EFFECT_EVENTS,
   GAMEPLAY_BEHAVIOR_BINDING_PROP,
   GAMEPLAY_REPLAY_RUN_FORMAT,
   GAMEPLAY_REPLAY_RUN_VERSION,
+  GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT,
+  GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
   gameplayActionDiagnosticReports,
   gameplaySpawnDiagnosticReports,
   gameplayActionFailureReasonForCode,
@@ -42,6 +52,7 @@ import {
   resolveBehaviorStateMachineDocument,
   resolveCutsceneSequenceSpec,
   resolveGameplayBehaviorRuntimeIds,
+  resolvePresentationEffectRegistry,
   runBehaviorStateMachineReplay,
   resolveSceneCompositionSpec,
   unpackTileImpactLayerIndex,
@@ -69,6 +80,8 @@ import type {
   BehaviorRecipeCommand,
   BehaviorRecipeCommandBase,
   BehaviorRecipeCommandOptions,
+  BehaviorRecipeCollisionLayer,
+  BehaviorRecipeCollisionTrigger,
   BehaviorRecipeDamageTarget,
   BehaviorRecipeDocumentSpec,
   BehaviorRecipeEntitySpec,
@@ -78,6 +91,7 @@ import type {
   BehaviorRecipeKind,
   BehaviorRecipeProjectileCollisionTarget,
   BehaviorRecipeProjectileTileImpact,
+  BehaviorRecipePresentationEffectKind,
   BehaviorRecipeReferenceSpec,
   BehaviorRecipeRuntimeTarget,
   BehaviorRecipeSpec,
@@ -113,9 +127,15 @@ import type {
   CameraPoint,
   ChaseBehaviorRecipeSpec,
   ConfigureChaseBehaviorCommand,
+  ConfigureCollisionAreaDamageBehaviorCommand,
   ConfigureCollisionDespawnBehaviorCommand,
+  ConfigureCollisionEmitEffectBehaviorCommand,
+  ConfigureCollisionKnockbackBehaviorCommand,
   ConfigureCollisionPickupBehaviorCommand,
   ConfigureCollisionParticleBehaviorCommand,
+  ConfigureCollisionShakeBehaviorCommand,
+  ConfigureCollisionSpawnPrefabBehaviorCommand,
+  ConfigureCollisionSoundBehaviorCommand,
   ConfigureDamageBehaviorCommand,
   ConfigureDashActionBehaviorCommand,
   ConfigureFactionBehaviorCommand,
@@ -128,6 +148,7 @@ import type {
   ConfigureScoreRewardBehaviorCommand,
   ConfigureSpawnPrefabActionBehaviorCommand,
   ConfigureTimerTriggerBehaviorCommand,
+  ConfigureTagsBehaviorCommand,
   CutsceneAudioAction,
   CutsceneAudioBus,
   CutsceneAudioCommandSpec,
@@ -144,12 +165,30 @@ import type {
   CutsceneSequenceUpdateOptions,
   CutsceneSequenceUpdateResult,
   CutsceneWaitCommandSpec,
+  CollisionAreaDamageBehaviorRecipeSpec,
   CollisionDespawnBehaviorRecipeSpec,
+  CollisionEmitEffectBehaviorRecipeSpec,
+  CollisionKnockbackBehaviorRecipeSpec,
   CollisionPickupBehaviorRecipeSpec,
   CollisionParticleBehaviorRecipeSpec,
+  CollisionShakeBehaviorRecipeSpec,
+  CollisionSpawnPrefabBehaviorRecipeSpec,
+  CollisionSoundBehaviorRecipeSpec,
   DamageBehaviorRecipeSpec,
   DashActionBehaviorRecipeSpec,
   FactionBehaviorRecipeSpec,
+  EffectCustomEventDispatch,
+  EffectEventDispatch,
+  EffectEventDispatchOptions,
+  EffectEventDispatchSummary,
+  EffectEventDispatchTarget,
+  EffectEventAssetValidationPolicy,
+  EffectEventDispatchTargetFactoryOptions,
+  EffectEventRuntimeOptions,
+  EffectEventBufferView,
+  EffectEventView,
+  FrameState,
+  MissingEffectEventHandlerPolicy,
   HealthBehaviorRecipeSpec,
   LifetimeBehaviorRecipeSpec,
   MeleeActionBehaviorRecipeSpec,
@@ -185,11 +224,22 @@ import type {
   GameplayInteractionActionMetadata,
   GameplayInteractionEventAction,
   GameplayPickupCollectedEventAction,
+  GameplayPresentationEffectEventAction,
+  GameplayPresentationEffectKind,
   GameplayPrefabSpawnedEventAction,
   GameplayTimerEventAction,
   GameplayTileImpactEventAction,
   GameplayTileImpactNormal,
   GameplayTileImpactPolicy,
+  UnknownEffectEventPolicy,
+  PresentationEffectActionBinding,
+  PresentationEffectActionBindingOptions,
+  PresentationEffectDefinitionSpec,
+  PresentationEffectKind,
+  PresentationEffectRegistrySpec,
+  ResolvePresentationEffectRegistryOptions,
+  ResolvedPresentationEffectDefinition,
+  ResolvedPresentationEffectRegistry,
   GameplayReplayComparison,
   GameplayReplayFrameSnapshot,
   GameplayReplayRun,
@@ -226,6 +276,9 @@ import type {
   ResolvedBehaviorStateMachineTransition,
   ResolvedBehaviorStateMachineTransitionPredicate,
   ResolvedChaseBehaviorRecipe,
+  ResolvedCollisionAreaDamageBehaviorRecipe,
+  ResolvedCollisionEmitEffectBehaviorRecipe,
+  ResolvedCollisionKnockbackBehaviorRecipe,
   ResolvedCutsceneAudioCommand,
   ResolvedCutsceneCameraCommand,
   ResolvedCutsceneCommandBase,
@@ -236,6 +289,9 @@ import type {
   ResolvedCollisionDespawnBehaviorRecipe,
   ResolvedCollisionPickupBehaviorRecipe,
   ResolvedCollisionParticleBehaviorRecipe,
+  ResolvedCollisionShakeBehaviorRecipe,
+  ResolvedCollisionSpawnPrefabBehaviorRecipe,
+  ResolvedCollisionSoundBehaviorRecipe,
   ResolvedDamageBehaviorRecipe,
   ResolvedDashActionBehaviorRecipe,
   ResolvedFactionBehaviorRecipe,
@@ -415,10 +471,60 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     kind: "collisionPickup",
     target: "self",
   };
+  const collisionAreaDamageTargetLayer: BehaviorRecipeCollisionLayer = "enemy";
+  const collisionAreaDamageBehaviorRecipe: CollisionAreaDamageBehaviorRecipeSpec = {
+    kind: "collisionAreaDamage",
+    amount: 4,
+    radius: 72,
+    targetLayer: collisionAreaDamageTargetLayer,
+  };
+  const collisionKnockbackBehaviorRecipe: CollisionKnockbackBehaviorRecipeSpec = {
+    kind: "collisionKnockback",
+    target: behaviorRecipeDamageTarget,
+    impulse: 180,
+  };
+  const presentationEffectKind: BehaviorRecipePresentationEffectKind = "custom";
+  const collisionEmitEffectBehaviorRecipe: CollisionEmitEffectBehaviorRecipeSpec = {
+    kind: "collisionEmitEffect",
+    effect: "impactSpark",
+    effectId: 99,
+    effectKind: presentationEffectKind,
+    target: "self",
+    intensity: 0.65,
+    radius: 48,
+    cooldownSeconds: 0.25,
+    trigger: "enter",
+  };
+  const collisionSpawnPrefabBehaviorRecipe: CollisionSpawnPrefabBehaviorRecipeSpec = {
+    kind: "collisionSpawnPrefab",
+    action: "split",
+    actionId: 7,
+    prefab: "enemy",
+    prefabId: 1,
+    target: "other",
+    cooldownSeconds: 0.5,
+    trigger: "enter",
+    offsetX: 6,
+    offsetY: -3,
+  };
+  const collisionTrigger: BehaviorRecipeCollisionTrigger = "enter";
+  const collisionSoundBehaviorRecipe: CollisionSoundBehaviorRecipeSpec = {
+    kind: "collisionSound",
+    soundId: 2,
+    volume: 0.8,
+    pitch: 1,
+    cooldownSeconds: 0.1,
+    trigger: collisionTrigger,
+  };
   const collisionParticleBehaviorRecipe: CollisionParticleBehaviorRecipeSpec = {
     kind: "collisionParticle",
     presetId: 3,
     target: behaviorRecipeDamageTarget,
+  };
+  const collisionShakeBehaviorRecipe: CollisionShakeBehaviorRecipeSpec = {
+    kind: "collisionShake",
+    cooldownSeconds: 0.2,
+    trigger: collisionTrigger,
   };
   const collisionDespawnBehaviorRecipe: CollisionDespawnBehaviorRecipeSpec = {
     kind: "collisionDespawn",
@@ -507,7 +613,13 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
       lifetimeBehaviorRecipe,
       scoreRewardBehaviorRecipe,
       collisionPickupBehaviorRecipe,
+      collisionAreaDamageBehaviorRecipe,
+      collisionKnockbackBehaviorRecipe,
+      collisionEmitEffectBehaviorRecipe,
+      collisionSpawnPrefabBehaviorRecipe,
+      collisionSoundBehaviorRecipe,
       collisionParticleBehaviorRecipe,
+      collisionShakeBehaviorRecipe,
       collisionDespawnBehaviorRecipe,
       projectileActionBehaviorRecipe,
       dashActionBehaviorRecipe,
@@ -570,12 +682,16 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     requiredActions: ["inspect", "primary", "dash"],
     requiredPrefabs: ["enemy"],
     requiredTimers: ["wake"],
+    requiredTags: ["hostile"],
+    requiredEffects: ["impactSpark"],
   };
   const gameplayBehaviorRuntimeIds: GameplayBehaviorRuntimeIds = resolveGameplayBehaviorRuntimeIds({
     items: { coin: 1 },
     actions: { inspect: 2, primary: 1, dash: 3 },
     prefabs: { enemy: 1 },
     timers: { wake: 6 },
+    tags: { hostile: 5 },
+    effects: { impactSpark: 99 },
   }, gameplayBehaviorRuntimeIdsOptions);
   const behaviorStateMachineCommandOptions: BehaviorStateMachineCommandOptions = {
     kinds: ["chase"],
@@ -599,27 +715,97 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   const resolvedBehaviorRecipeDocument: ResolvedBehaviorRecipeDocument =
     publicResolveBehaviorRecipeDocument(behaviorRecipeDocument, behaviorRecipeResolveOptions);
   const resolvedProjectileActionBehaviorRecipe: ResolvedProjectileActionBehaviorRecipe =
-    resolvedBehaviorRecipeDocument.entities.enemy.recipes[9] as ResolvedProjectileActionBehaviorRecipe;
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[15] as ResolvedProjectileActionBehaviorRecipe;
   const resolvedDashActionBehaviorRecipe: ResolvedDashActionBehaviorRecipe =
-    resolvedBehaviorRecipeDocument.entities.enemy.recipes[10] as ResolvedDashActionBehaviorRecipe;
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[16] as ResolvedDashActionBehaviorRecipe;
   const resolvedMeleeActionBehaviorRecipe: ResolvedMeleeActionBehaviorRecipe =
-    resolvedBehaviorRecipeDocument.entities.enemy.recipes[11] as ResolvedMeleeActionBehaviorRecipe;
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[17] as ResolvedMeleeActionBehaviorRecipe;
   const resolvedSpawnPrefabActionBehaviorRecipe: ResolvedSpawnPrefabActionBehaviorRecipe =
-    resolvedBehaviorRecipeDocument.entities.enemy.recipes[12] as ResolvedSpawnPrefabActionBehaviorRecipe;
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[18] as ResolvedSpawnPrefabActionBehaviorRecipe;
   const resolvedTimerTriggerBehaviorRecipe: ResolvedTimerTriggerBehaviorRecipe =
-    resolvedBehaviorRecipeDocument.entities.enemy.recipes[13] as ResolvedTimerTriggerBehaviorRecipe;
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[19] as ResolvedTimerTriggerBehaviorRecipe;
   const resolvedCollisionPickupBehaviorRecipe: ResolvedCollisionPickupBehaviorRecipe =
     resolvedBehaviorRecipeDocument.entities.enemy.recipes[6] as ResolvedCollisionPickupBehaviorRecipe;
+  const resolvedCollisionAreaDamageBehaviorRecipe: ResolvedCollisionAreaDamageBehaviorRecipe =
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[7] as ResolvedCollisionAreaDamageBehaviorRecipe;
+  const resolvedCollisionKnockbackBehaviorRecipe: ResolvedCollisionKnockbackBehaviorRecipe =
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[8] as ResolvedCollisionKnockbackBehaviorRecipe;
+  const resolvedCollisionEmitEffectBehaviorRecipe: ResolvedCollisionEmitEffectBehaviorRecipe =
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[9] as ResolvedCollisionEmitEffectBehaviorRecipe;
+  const resolvedCollisionSpawnPrefabBehaviorRecipe: ResolvedCollisionSpawnPrefabBehaviorRecipe =
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[10] as ResolvedCollisionSpawnPrefabBehaviorRecipe;
+  const resolvedCollisionSoundBehaviorRecipe: ResolvedCollisionSoundBehaviorRecipe =
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[11] as ResolvedCollisionSoundBehaviorRecipe;
   const resolvedCollisionParticleBehaviorRecipe: ResolvedCollisionParticleBehaviorRecipe =
-    resolvedBehaviorRecipeDocument.entities.enemy.recipes[7] as ResolvedCollisionParticleBehaviorRecipe;
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[12] as ResolvedCollisionParticleBehaviorRecipe;
+  const resolvedCollisionShakeBehaviorRecipe: ResolvedCollisionShakeBehaviorRecipe =
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[13] as ResolvedCollisionShakeBehaviorRecipe;
   const resolvedCollisionDespawnBehaviorRecipe: ResolvedCollisionDespawnBehaviorRecipe =
-    resolvedBehaviorRecipeDocument.entities.enemy.recipes[8] as ResolvedCollisionDespawnBehaviorRecipe;
+    resolvedBehaviorRecipeDocument.entities.enemy.recipes[14] as ResolvedCollisionDespawnBehaviorRecipe;
   const configureCollisionPickupCommand: ConfigureCollisionPickupBehaviorCommand = {
     entity: "enemy",
     recipe: "collisionPickup",
     tags: [],
     type: "configureCollisionPickup",
     target: resolvedCollisionPickupBehaviorRecipe.target,
+  };
+  const configureCollisionAreaDamageCommand: ConfigureCollisionAreaDamageBehaviorCommand = {
+    entity: "enemy",
+    recipe: "collisionAreaDamage",
+    tags: [],
+    type: "configureCollisionAreaDamage",
+    amount: resolvedCollisionAreaDamageBehaviorRecipe.amount,
+    radius: resolvedCollisionAreaDamageBehaviorRecipe.radius,
+    targetLayer: resolvedCollisionAreaDamageBehaviorRecipe.targetLayer,
+  };
+  const configureCollisionKnockbackCommand: ConfigureCollisionKnockbackBehaviorCommand = {
+    entity: "enemy",
+    recipe: "collisionKnockback",
+    tags: [],
+    type: "configureCollisionKnockback",
+    target: resolvedCollisionKnockbackBehaviorRecipe.target,
+    impulse: resolvedCollisionKnockbackBehaviorRecipe.impulse,
+  };
+  const configureCollisionEmitEffectCommand: ConfigureCollisionEmitEffectBehaviorCommand = {
+    entity: "enemy",
+    recipe: "collisionEmitEffect",
+    tags: [],
+    type: "configureCollisionEmitEffect",
+    effect: resolvedCollisionEmitEffectBehaviorRecipe.effect,
+    effectId: resolvedCollisionEmitEffectBehaviorRecipe.effectId,
+    effectKind: resolvedCollisionEmitEffectBehaviorRecipe.effectKind,
+    effectType: resolvedCollisionEmitEffectBehaviorRecipe.effectType,
+    target: resolvedCollisionEmitEffectBehaviorRecipe.target,
+    intensity: resolvedCollisionEmitEffectBehaviorRecipe.intensity,
+    radius: resolvedCollisionEmitEffectBehaviorRecipe.radius,
+    cooldownSeconds: resolvedCollisionEmitEffectBehaviorRecipe.cooldownSeconds,
+    trigger: resolvedCollisionEmitEffectBehaviorRecipe.trigger,
+  };
+  const configureCollisionSpawnPrefabCommand: ConfigureCollisionSpawnPrefabBehaviorCommand = {
+    entity: "enemy",
+    recipe: "collisionSpawnPrefab",
+    tags: [],
+    type: "configureCollisionSpawnPrefab",
+    action: resolvedCollisionSpawnPrefabBehaviorRecipe.action,
+    actionId: resolvedCollisionSpawnPrefabBehaviorRecipe.actionId,
+    prefab: resolvedCollisionSpawnPrefabBehaviorRecipe.prefab,
+    prefabId: resolvedCollisionSpawnPrefabBehaviorRecipe.prefabId,
+    target: resolvedCollisionSpawnPrefabBehaviorRecipe.target,
+    cooldownSeconds: resolvedCollisionSpawnPrefabBehaviorRecipe.cooldownSeconds,
+    trigger: resolvedCollisionSpawnPrefabBehaviorRecipe.trigger,
+    offsetX: resolvedCollisionSpawnPrefabBehaviorRecipe.offsetX,
+    offsetY: resolvedCollisionSpawnPrefabBehaviorRecipe.offsetY,
+  };
+  const configureCollisionSoundCommand: ConfigureCollisionSoundBehaviorCommand = {
+    entity: "enemy",
+    recipe: "collisionSound",
+    tags: [],
+    type: "configureCollisionSound",
+    soundId: resolvedCollisionSoundBehaviorRecipe.soundId,
+    volume: resolvedCollisionSoundBehaviorRecipe.volume,
+    pitch: resolvedCollisionSoundBehaviorRecipe.pitch,
+    cooldownSeconds: resolvedCollisionSoundBehaviorRecipe.cooldownSeconds,
+    trigger: resolvedCollisionSoundBehaviorRecipe.trigger,
   };
   const configureCollisionParticleCommand: ConfigureCollisionParticleBehaviorCommand = {
     entity: "enemy",
@@ -628,6 +814,14 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     type: "configureCollisionParticle",
     presetId: resolvedCollisionParticleBehaviorRecipe.presetId,
     target: resolvedCollisionParticleBehaviorRecipe.target,
+  };
+  const configureCollisionShakeCommand: ConfigureCollisionShakeBehaviorCommand = {
+    entity: "enemy",
+    recipe: "collisionShake",
+    tags: [],
+    type: "configureCollisionShake",
+    cooldownSeconds: resolvedCollisionShakeBehaviorRecipe.cooldownSeconds,
+    trigger: resolvedCollisionShakeBehaviorRecipe.trigger,
   };
   const configureCollisionDespawnCommand: ConfigureCollisionDespawnBehaviorCommand = {
     entity: "enemy",
@@ -783,13 +977,17 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     resolvedBehaviorRecipeDocument.entities.coin.recipes[0] as ResolvedPickupBehaviorRecipe;
   const resolvedInteractionBehaviorRecipe: ResolvedInteractionBehaviorRecipe =
     resolvedBehaviorRecipeDocument.entities.coin.recipes[1] as ResolvedInteractionBehaviorRecipe;
-  const behaviorRecipeCommandOptions: BehaviorRecipeCommandOptions = { kinds: ["damage"] };
+  const behaviorRecipeCommandOptions: BehaviorRecipeCommandOptions = {
+    kinds: ["damage"],
+    includeEntityTags: true,
+  };
   const behaviorRecipeCommands: BehaviorRecipeCommand[] =
     publicBehaviorRecipeCommandsForEntity(resolvedBehaviorRecipeDocument, "enemy", behaviorRecipeCommandOptions);
   const behaviorRecipeCommandBase: BehaviorRecipeCommandBase = behaviorRecipeCommands[0];
+  const tagsBehaviorCommand: ConfigureTagsBehaviorCommand = behaviorRecipeCommands[0] as ConfigureTagsBehaviorCommand;
   const healthBehaviorCommand: ConfigureHealthBehaviorCommand =
     publicBehaviorRecipeCommandsForEntity(resolvedBehaviorRecipeDocument, "enemy")[0] as ConfigureHealthBehaviorCommand;
-  const damageBehaviorCommand: ConfigureDamageBehaviorCommand = behaviorRecipeCommands[0] as ConfigureDamageBehaviorCommand;
+  const damageBehaviorCommand: ConfigureDamageBehaviorCommand = behaviorRecipeCommands[1] as ConfigureDamageBehaviorCommand;
   const factionBehaviorCommand: ConfigureFactionBehaviorCommand =
     publicBehaviorRecipeCommandsForEntity(resolvedBehaviorRecipeDocument, "enemy", { kinds: ["faction"] })[0] as ConfigureFactionBehaviorCommand;
   const chaseBehaviorCommand: ConfigureChaseBehaviorCommand =
@@ -838,6 +1036,8 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     set_gameplay_damage_reaction: () => true,
     set_gameplay_faction: () => true,
     clear_gameplay_faction: () => true,
+    set_gameplay_tags: () => true,
+    clear_gameplay_tags: () => true,
     set_gameplay_lifetime: () => true,
     clear_gameplay_lifetime: () => true,
     set_gameplay_score_reward: () => true,
@@ -857,6 +1057,10 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     set_gameplay_movement_chase_entity: () => true,
     add_gameplay_collision_damage: () => true,
     add_gameplay_collision_pickup: () => true,
+    add_gameplay_collision_knockback: () => true,
+    add_gameplay_collision_emit_effect: () => true,
+    add_gameplay_collision_emit_effect_with_payload: () => true,
+    add_gameplay_collision_spawn_prefab: () => true,
   };
   const applyGameplayBehaviorCommandsOptions: ApplyGameplayBehaviorCommandsOptions = {
     path: "gameplay",
@@ -1102,6 +1306,118 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     event: gameplayEventActionApplyResult.events[0],
   };
   equal(gameplayFactionDamageDeniedEventAction.sourceFactionId, 2);
+  const gameplayPresentationEffectKind: GameplayPresentationEffectKind = "custom";
+  const gameplayPresentationEffectEventAction: GameplayPresentationEffectEventAction = {
+    type: "presentationEffect",
+    actor: gameplayEntityHandle,
+    source: gameplayEntityHandle,
+    effectId: 99,
+    effectType: GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
+    effectKind: gameplayPresentationEffectKind,
+    flags: 0,
+    payloadBits: GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
+    event: gameplayEventActionApplyResult.events[0],
+  };
+  equal(gameplayPresentationEffectEventAction.effectType, GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM);
+  const presentationEffectKindForRegistry: PresentationEffectKind = "custom";
+  const presentationEffectDefinitionSpec: PresentationEffectDefinitionSpec = {
+    effectId: 99,
+    kind: presentationEffectKindForRegistry,
+    key: "impact-spark",
+    intensity: 1,
+    tags: ["impact"],
+  };
+  const presentationEffectRegistrySpec: PresentationEffectRegistrySpec = {
+    impactSpark: presentationEffectDefinitionSpec,
+  };
+  const presentationEffectRegistryOptions: ResolvePresentationEffectRegistryOptions = {
+    ids: gameplayBehaviorRuntimeIds,
+  };
+  const resolvedPresentationEffectRegistry: ResolvedPresentationEffectRegistry =
+    resolvePresentationEffectRegistry(presentationEffectRegistrySpec, presentationEffectRegistryOptions);
+  const resolvedPresentationEffectDefinition: ResolvedPresentationEffectDefinition =
+    resolvedPresentationEffectRegistry.effects.impactSpark;
+  const presentationEffectBindingOptions: PresentationEffectActionBindingOptions = {
+    requireKindMatch: true,
+  };
+  const presentationEffectBindings: readonly PresentationEffectActionBinding[] =
+    bindPresentationEffectActions([gameplayPresentationEffectEventAction], resolvedPresentationEffectRegistry, presentationEffectBindingOptions);
+  equal(resolvedPresentationEffectDefinition.effectId, 99);
+  equal(presentationEffectBindings[0]?.effect.effect, "impactSpark");
+  equal(GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT, 11);
+  const effectEventBuffer: EffectEventBufferView = {
+    buffer: new DataView(new ArrayBuffer(0)),
+    eventCount: 0,
+    bytesPerEvent: BYTES_PER_EFFECT_EVENT,
+  };
+  const publicDecodeEffectEvents: PublicApi["decodeEffectEvents"] = decodeEffectEvents;
+  const effectEvents: readonly EffectEventView[] = publicDecodeEffectEvents(effectEventBuffer);
+  equal(effectEvents, EMPTY_EFFECT_EVENTS);
+  const effectEventDispatchOptions: EffectEventDispatchOptions = { unknownEffect: "passthrough" };
+  const unknownEffectEventPolicy: UnknownEffectEventPolicy = "passthrough";
+  const missingEffectEventHandlerPolicy: MissingEffectEventHandlerPolicy = "ignore";
+  const customEffectEvent: EffectEventView = {
+    effectId: 99,
+    effectType: GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
+    effectKind: "custom",
+    actorId: gameplayEntityHandle.entityId,
+    actorGeneration: gameplayEntityHandle.entityGeneration,
+    sourceId: gameplayEntityHandle.entityId,
+    sourceGeneration: gameplayEntityHandle.entityGeneration,
+    x: 4,
+    y: 5,
+    intensity: 1,
+    radius: 0,
+  };
+  const publicEffectDispatchesForEvents: PublicApi["effectDispatchesForEvents"] =
+    effectDispatchesForEvents;
+  const effectEventDispatches: readonly EffectEventDispatch[] =
+    publicEffectDispatchesForEvents([customEffectEvent], resolvedPresentationEffectRegistry, effectEventDispatchOptions);
+  const customEffectDispatches: EffectCustomEventDispatch[] = [];
+  const effectEventDispatchTarget: EffectEventDispatchTarget = {
+    applyCustomEffect: (dispatch) => {
+      customEffectDispatches.push(dispatch);
+    },
+  };
+  const publicDispatchEffectEvents: PublicApi["dispatchEffectEvents"] = dispatchEffectEvents;
+  const effectEventDispatchSummary: EffectEventDispatchSummary =
+    publicDispatchEffectEvents([customEffectEvent], resolvedPresentationEffectRegistry, effectEventDispatchTarget, {
+      unknownEffect: unknownEffectEventPolicy,
+      missingHandler: missingEffectEventHandlerPolicy,
+    });
+  const effectEventDispatchTargetFactoryOptions: EffectEventDispatchTargetFactoryOptions = {
+    assetValidation: "ignore",
+    target: effectEventDispatchTarget,
+  };
+  const publicCreateEffectEventDispatchTarget: PublicApi["createEffectEventDispatchTarget"] =
+    createEffectEventDispatchTarget;
+  const runtimeEffectEventDispatchTarget: EffectEventDispatchTarget =
+    publicCreateEffectEventDispatchTarget(effectEventDispatchTargetFactoryOptions);
+  const runtimeEffectEventFrame: FrameState = {
+    effectEvents: [customEffectEvent],
+  } as unknown as FrameState;
+  const effectEventRuntimeOptions: EffectEventRuntimeOptions = {
+    registry: resolvedPresentationEffectRegistry,
+    assetValidation: "ignore",
+    target: runtimeEffectEventDispatchTarget,
+    onDispatchSummary: (summary) => {
+      equal(summary.customEffects, 1);
+    },
+  };
+  const publicDispatchRuntimeEffectEvents: PublicApi["dispatchRuntimeEffectEvents"] =
+    dispatchRuntimeEffectEvents;
+  const effectEventAssetValidationPolicy: EffectEventAssetValidationPolicy = "error";
+  const runtimeEffectEventDispatchSummary: EffectEventDispatchSummary =
+    publicDispatchRuntimeEffectEvents(
+      runtimeEffectEventFrame,
+      effectEventRuntimeOptions,
+      runtimeEffectEventDispatchTarget,
+    );
+  equal(effectEventDispatches[0]?.kind, "custom");
+  equal(customEffectDispatches[0]?.effect?.effect, "impactSpark");
+  equal(effectEventDispatchSummary.customEffects, 1);
+  equal(effectEventAssetValidationPolicy, "error");
+  equal(runtimeEffectEventDispatchSummary.customEffects, 1);
   const behaviorStateMachineReplayFrame: BehaviorStateMachineReplayFrame = {
     frame: 0,
     events: [gameplayInteractionEventAction, gameplayCollisionDamageEventAction, gameplayTimerEventAction],
@@ -1293,6 +1609,8 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(resolvedSpawnPrefabActionBehaviorRecipe.prefabId, 1);
   equal(behaviorRecipeKind, "health");
   equal(healthBehaviorCommand.type, "configureHealth");
+  equal(tagsBehaviorCommand.type, "configureTags");
+  equal(tagsBehaviorCommand.tags[0], "hostile");
   equal(damageBehaviorCommand.amount, 2);
   equal(factionBehaviorCommand.type, "configureFaction");
   equal(factionBehaviorCommand.faction, "enemy");
@@ -1301,8 +1619,28 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(scoreRewardBehaviorCommand.reward, 2);
   equal(resolvedCollisionPickupBehaviorRecipe.target, "self");
   equal(configureCollisionPickupCommand.type, "configureCollisionPickup");
+  equal(resolvedCollisionAreaDamageBehaviorRecipe.radius, 72);
+  equal(configureCollisionAreaDamageCommand.type, "configureCollisionAreaDamage");
+  equal(resolvedCollisionKnockbackBehaviorRecipe.impulse, 180);
+  equal(configureCollisionKnockbackCommand.type, "configureCollisionKnockback");
+  equal(resolvedCollisionEmitEffectBehaviorRecipe.effectKind, "custom");
+  equal(resolvedCollisionEmitEffectBehaviorRecipe.effectType, GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM);
+  equal(resolvedCollisionEmitEffectBehaviorRecipe.intensity, 0.65);
+  equal(resolvedCollisionEmitEffectBehaviorRecipe.radius, 48);
+  equal(configureCollisionEmitEffectCommand.type, "configureCollisionEmitEffect");
+  equal(configureCollisionEmitEffectCommand.intensity, 0.65);
+  equal(configureCollisionEmitEffectCommand.radius, 48);
+  equal(configureCollisionEmitEffectCommand.trigger, "enter");
+  equal(resolvedCollisionSpawnPrefabBehaviorRecipe.actionId, 7);
+  equal(resolvedCollisionSpawnPrefabBehaviorRecipe.prefabId, 1);
+  equal(configureCollisionSpawnPrefabCommand.type, "configureCollisionSpawnPrefab");
+  equal(configureCollisionSpawnPrefabCommand.offsetY, -3);
+  equal(resolvedCollisionSoundBehaviorRecipe.soundId, 2);
+  equal(configureCollisionSoundCommand.type, "configureCollisionSound");
   equal(resolvedCollisionParticleBehaviorRecipe.presetId, 3);
   equal(configureCollisionParticleCommand.type, "configureCollisionParticle");
+  equal(resolvedCollisionShakeBehaviorRecipe.trigger, "enter");
+  equal(configureCollisionShakeCommand.type, "configureCollisionShake");
   equal(resolvedCollisionDespawnBehaviorRecipe.target, "self");
   equal(configureCollisionDespawnCommand.type, "configureCollisionDespawn");
   equal(pickupBehaviorCommand.type, "configurePickup");
@@ -1321,6 +1659,7 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(configureTimerTriggerCommand.type, "configureTimerTrigger");
   equal(configureTimerTriggerCommand.timerId, 6);
   equal(behaviorRecipeCommandBase.entity, "enemy");
+  equal(behaviorRecipeCommands.length, 2);
   equal(behaviorRecipeApplyResult.results[0], "configurePickup");
   equal(behaviorRecipeSpec.kind, "damage");
   equal(lifetimeBehaviorRecipe.kind, "lifetime");
@@ -1348,7 +1687,7 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     "configureChase",
   );
   equal(typeof publicResolveBehaviorStateMachineDocument, "function");
-  equal(publicBehaviorStateMachineRuntimeMaxTransitions, 8);
+  equal(publicBehaviorStateMachineRuntimeMaxTransitions, 16);
   equal(behaviorStateMachineRuntimeInstallPlan.initial, "idle");
   equal(behaviorStateMachineRuntimeStateId.state.length > 0, true);
   equal(behaviorStateMachineRuntimeTransition.actionId, 2);
@@ -1371,9 +1710,9 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(publicGameplayBehaviorBindingProp, "behaviorRecipes");
   equal(sceneBehaviorBindingPlan.commands[0]?.entity, "a.enemy");
   equal(boundBehaviorRecipeCommand.behaviorEntity, "enemy");
-  equal(sceneBehaviorDryRunCommandCount, 16);
+  equal(sceneBehaviorDryRunCommandCount, 23);
   equal(gameplayBehaviorApplyResult.results[0], true);
-  equal(gameplayBehaviorRuntimeTarget.applyBehaviorRecipeCommand(sceneBehaviorBindingPlan.commands[0]), true);
+  equal(gameplayBehaviorRuntimeTarget.applyBehaviorRecipeCommand(sceneBehaviorBindingPlan.commands[1]), true);
   equal(typeof publicBindSceneBehaviorRecipes, "function");
   equal(typeof publicDryRunSceneBehaviorRecipes, "function");
   equal(typeof publicApplyGameplayBehaviorCommands, "function");

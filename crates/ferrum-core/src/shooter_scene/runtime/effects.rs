@@ -1,6 +1,7 @@
 use crate::audio_event::{AudioEvent, AUDIO_CHANNEL_SFX};
 use crate::collision_event::{CollisionEvent, CollisionEventCounts, COLLISION_EVENT_HIT};
 use crate::components::Transform2D;
+use crate::effect_event::EffectEvent;
 use crate::entity::Entity;
 use crate::gameplay::{
     action_failure_gameplay_event, ActionFailureEventData, ActionFailureEventSink,
@@ -53,6 +54,7 @@ impl<'a> CollisionEventSink<'a> {
 
 pub(in crate::shooter_scene) struct GameplayEventSink<'a> {
     events: &'a mut Vec<GameplayEvent>,
+    effect_events: Option<&'a mut Vec<EffectEvent>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,9 +62,25 @@ pub(in crate::shooter_scene) struct PrefabSpawnedEventDispatchResult {
     pub(in crate::shooter_scene) event_pushed: bool,
 }
 
-impl GameplayEventSink<'_> {
-    pub(in crate::shooter_scene) fn new(events: &mut Vec<GameplayEvent>) -> GameplayEventSink<'_> {
-        GameplayEventSink { events }
+impl<'a> GameplayEventSink<'a> {
+    #[cfg(test)]
+    pub(in crate::shooter_scene) fn new(
+        events: &'a mut Vec<GameplayEvent>,
+    ) -> GameplayEventSink<'a> {
+        GameplayEventSink {
+            events,
+            effect_events: None,
+        }
+    }
+
+    pub(in crate::shooter_scene) fn with_effect_events(
+        events: &'a mut Vec<GameplayEvent>,
+        effect_events: &'a mut Vec<EffectEvent>,
+    ) -> GameplayEventSink<'a> {
+        GameplayEventSink {
+            events,
+            effect_events: Some(effect_events),
+        }
     }
 
     pub(in crate::shooter_scene) fn push_interaction_once_per_frame(
@@ -122,6 +140,46 @@ impl GameplayEventSink<'_> {
         }
         self.events
             .push(GameplayEvent::collision_despawn(actor, source));
+    }
+
+    pub(in crate::shooter_scene) fn push_presentation_effect(
+        &mut self,
+        actor: Entity,
+        source: Entity,
+        effect_id: u32,
+        effect_type: u32,
+    ) {
+        self.events.push(GameplayEvent::presentation_effect(
+            actor,
+            source,
+            effect_id,
+            effect_type,
+        ));
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::shooter_scene) fn push_presentation_effect_at(
+        &mut self,
+        actor: Entity,
+        source: Entity,
+        effect_id: u32,
+        effect_type: u32,
+        position: Transform2D,
+        intensity: f32,
+        radius: f32,
+    ) {
+        self.push_presentation_effect(actor, source, effect_id, effect_type);
+        if let Some(effect_events) = self.effect_events.as_mut() {
+            effect_events.push(EffectEvent::new(
+                actor,
+                source,
+                effect_id,
+                effect_type,
+                position,
+                intensity,
+                radius,
+            ));
+        }
     }
 
     pub(in crate::shooter_scene) fn push_prefab_spawned(
@@ -371,6 +429,7 @@ impl<'a> ShooterRuntimeSinks<'a> {
         collision_events: &'a mut Vec<CollisionEvent>,
         collision_event_counts: &'a mut CollisionEventCounts,
         gameplay_events: &'a mut Vec<GameplayEvent>,
+        effect_events: &'a mut Vec<EffectEvent>,
         hit_particles: Option<ParticleBurstSink<'a>>,
         hit_tweens: Option<TweenSink<'a>>,
     ) -> Self {
@@ -380,7 +439,10 @@ impl<'a> ShooterRuntimeSinks<'a> {
                 collision_events,
                 collision_event_counts,
             )),
-            gameplay_events: Some(GameplayEventSink::new(gameplay_events)),
+            gameplay_events: Some(GameplayEventSink::with_effect_events(
+                gameplay_events,
+                effect_events,
+            )),
             hit_particles,
             hit_tweens,
         }
@@ -447,6 +509,7 @@ mod tests {
         GAMEPLAY_ACTION_FAILURE_MISSING_ACTION_BINDING, GAMEPLAY_EVENT_ACTION_FAILED,
         GAMEPLAY_EVENT_COLLISION_DAMAGE, GAMEPLAY_EVENT_COLLISION_DESPAWN,
         GAMEPLAY_EVENT_FLAG_TARGET_REMOVED, GAMEPLAY_EVENT_PICKUP_COLLECTED,
+        GAMEPLAY_EVENT_PRESENTATION_EFFECT, GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
     };
     use crate::shooter_scene::DEFAULT_TEXTURE_ID;
 
@@ -571,6 +634,55 @@ mod tests {
 
         assert_eq!(events.len(), 1);
         assert_eq!(events[0], GameplayEvent::timer(source, 9, 0.25));
+    }
+
+    #[test]
+    fn gameplay_event_sink_pushes_attached_effect_event() {
+        let actor = Entity {
+            id: 1,
+            generation: 2,
+        };
+        let source = Entity {
+            id: 3,
+            generation: 4,
+        };
+        let mut events = Vec::new();
+        let mut effect_events = Vec::new();
+        {
+            let mut sink = GameplayEventSink::with_effect_events(&mut events, &mut effect_events);
+            sink.push_presentation_effect_at(
+                actor,
+                source,
+                99,
+                GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
+                Transform2D { x: 4.0, y: -5.0 },
+                0.5,
+                12.0,
+            );
+        }
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].kind, GAMEPLAY_EVENT_PRESENTATION_EFFECT);
+        assert_eq!(events[0].actor_id, actor.id);
+        assert_eq!(events[0].source_id, source.id);
+        assert_eq!(events[0].token_id, 99);
+        assert_eq!(
+            events[0].payload_bits,
+            GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM
+        );
+        assert_eq!(effect_events.len(), 1);
+        assert_eq!(
+            effect_events[0],
+            EffectEvent::new(
+                actor,
+                source,
+                99,
+                GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
+                Transform2D { x: 4.0, y: -5.0 },
+                0.5,
+                12.0,
+            )
+        );
     }
 
     #[test]

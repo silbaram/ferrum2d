@@ -23,9 +23,13 @@ import type {
   ApplyGameplayBehaviorCommandsOptions,
   GameplayEntityHandle,
   GameplayEntityHandleMap,
+  GameplayPrefabRegistration,
+  RegisterGameplayPrefabsOptions,
+  RegisterGameplayPrefabsResult,
 } from "../gameplayAuthoring.js";
 import type { InputSnapshot } from "../inputManager";
 import type { ParticlePresetConfig } from "../particlePreset";
+import type { EffectEventRuntimeOptions } from "../effectEventRuntime.js";
 import type { PhysicsMode, ResolvedPhysicsSpec } from "../physicsSpec.js";
 import type { PhysicsBodyStateBufferSnapshot } from "../physicsBodyStateBuffer.js";
 import type {
@@ -126,6 +130,10 @@ export interface CreateEngineOptions {
   includeCollisionEvents?: boolean;
   /** FrameState에 gameplay event buffer와 decoded object 배열을 포함할지 여부입니다. 기본값은 true입니다. */
   includeGameplayEvents?: boolean;
+  /** FrameState에 presentation effect event buffer와 decoded object 배열을 포함할지 여부입니다. 기본값은 true입니다. */
+  includeEffectEvents?: boolean;
+  /** EffectEvent frame-end dispatch를 켤 때 사용합니다. 기본값은 disabled입니다. */
+  effectEvents?: EffectEventRuntimeOptions | false;
   /** Rust core에서 physics debug line buffer를 만들지 여부입니다. 기본값은 false입니다. */
   enablePhysicsDebugLines?: boolean | PhysicsDebugOptions;
   /** Physics debug line category 옵션입니다. enablePhysicsDebugLines=true면 기본 broadphase/contact를 사용합니다. */
@@ -306,6 +314,10 @@ export interface FerrumPhysicsApi
 
 export interface FerrumGameplayAuthoringApi {
   gameplayEntityExists(entity: GameplayEntityHandle): boolean;
+  registerGameplayPrefabs(
+    registrations: readonly GameplayPrefabRegistration[],
+    options?: RegisterGameplayPrefabsOptions,
+  ): RegisterGameplayPrefabsResult;
   applyGameplayBehaviorCommands(
     commands: readonly BehaviorRecipeCommand[],
     entityHandles: GameplayEntityHandleMap,

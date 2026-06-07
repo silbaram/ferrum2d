@@ -279,6 +279,9 @@ async function checkGeneratedProject(template) {
     assert(!mainSource.includes("@ferrum2d/ferrum-web/dist/"), "generated game must not import dist internals");
     assert(!mainSource.includes("@ferrum2d/ferrum-web/pkg/"), "generated game must not import wasm package internals");
     assert(!mainSource.includes("@ferrum2d/ferrum-web/src/"), "generated game must not import source internals");
+    if (templateName === "minimal") {
+      assertMinimalTemplateWeaponAuthoring(mainSource);
+    }
 
     await requireFile(path.join(targetRoot, "index.html"), repoRoot);
     const generatedHarnessPath = path.join(targetRoot, "scripts/ferrum-harness.mjs");
@@ -319,6 +322,31 @@ async function checkGeneratedProject(template) {
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
+}
+
+function assertMinimalTemplateWeaponAuthoring(mainSource) {
+  assert(
+    mainSource.includes("compileWeaponProfiles") &&
+      mainSource.includes("behaviorRecipeCommandsForEntity") &&
+      mainSource.includes("ProjectileDefinition") &&
+      mainSource.includes("WeaponDefinition"),
+    "minimal template must include public projectile/weapon authoring imports",
+  );
+  assert(
+    mainSource.includes('"standard"') &&
+      mainSource.includes('"piercing"') &&
+      mainSource.includes('"bounce"') &&
+      mainSource.includes("tileImpact: \"passThrough\"") &&
+      mainSource.includes("tileImpact: \"bounce\""),
+    "minimal template must include standard, piercing, and bounce projectile authoring profiles",
+  );
+  assert(
+    mainSource.includes("applyGameplayBehaviorCommands") &&
+      mainSource.includes("builtInShooterPlayerHandle") &&
+      mainSource.includes("setInputActionBinding") &&
+      mainSource.includes('searchParams.get("profile")'),
+    "minimal template must apply selected weapon profile through public runtime authoring APIs",
+  );
 }
 
 async function assertRuntimeReplayScaffold(filePath, templateName) {

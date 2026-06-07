@@ -21,6 +21,25 @@ pub(crate) struct CollisionScratch {
     pub(super) collider_pairs: Vec<ColliderPair>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct CollisionScratchUsage {
+    pub(crate) current_proxies: usize,
+    pub(crate) moving_proxies: usize,
+    pub(crate) target_proxies: usize,
+    pub(crate) collider_pairs: usize,
+}
+
+impl CollisionScratch {
+    pub(crate) fn usage(&self) -> CollisionScratchUsage {
+        CollisionScratchUsage {
+            current_proxies: self.current_proxies.len(),
+            moving_proxies: self.moving_proxies.len(),
+            target_proxies: self.target_proxies.len(),
+            collider_pairs: self.collider_pairs.len(),
+        }
+    }
+}
+
 impl CollisionSystem {
     pub fn build_pairs(world: &World) -> Vec<CollisionPair> {
         let mut pairs = Vec::new();

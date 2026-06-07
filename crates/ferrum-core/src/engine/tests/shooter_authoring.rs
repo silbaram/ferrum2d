@@ -129,6 +129,8 @@ fn gameplay_component_authoring_sets_and_clears_scalar_components() {
         GAMEPLAY_FACTION_ENEMY,
         1 << GAMEPLAY_FACTION_PLAYER
     ));
+    assert!(engine.set_gameplay_tags(enemy.id, enemy.generation, 1 << 5));
+    assert!(!engine.set_gameplay_tags(enemy.id, enemy.generation, 0));
     assert!(engine.set_gameplay_damage(bullet.id, bullet.generation, 2.0));
     assert!(engine.set_gameplay_lifetime(bullet.id, bullet.generation, 1.25));
     assert!(engine.set_gameplay_projectile_tile_impact(
@@ -193,6 +195,7 @@ fn gameplay_component_authoring_sets_and_clears_scalar_components() {
         engine.world.gameplay_faction(enemy),
         Some(GameplayFaction::new(GAMEPLAY_FACTION_ENEMY, 1 << GAMEPLAY_FACTION_PLAYER).unwrap())
     );
+    assert_eq!(engine.world.gameplay_tags(enemy), GameplayTags::new(1 << 5));
     assert_eq!(engine.world.damages[bullet.id as usize], Some(2.0));
     assert_eq!(
         engine.world.bullet_lifetimes[bullet.id as usize],
@@ -210,6 +213,7 @@ fn gameplay_component_authoring_sets_and_clears_scalar_components() {
     assert!(engine.clear_gameplay_interaction(enemy.id, enemy.generation));
     assert!(engine.clear_gameplay_timer_trigger(enemy.id, enemy.generation));
     assert!(engine.clear_gameplay_faction(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_tags(enemy.id, enemy.generation));
     assert!(engine.clear_gameplay_damage(bullet.id, bullet.generation));
     assert!(engine.clear_gameplay_lifetime(bullet.id, bullet.generation));
 
@@ -220,6 +224,7 @@ fn gameplay_component_authoring_sets_and_clears_scalar_components() {
     assert_eq!(engine.world.interactions[enemy.id as usize], None);
     assert_eq!(engine.world.gameplay_timer_trigger(enemy), None);
     assert_eq!(engine.world.gameplay_faction(enemy), None);
+    assert_eq!(engine.world.gameplay_tags(enemy), None);
     assert_eq!(engine.world.damages[bullet.id as usize], None);
     assert_eq!(engine.world.bullet_lifetimes[bullet.id as usize], None);
 }
@@ -239,6 +244,7 @@ fn gameplay_authoring_snapshot_restores_supported_runtime_component_slots() {
         GAMEPLAY_FACTION_ENEMY,
         1 << GAMEPLAY_FACTION_PLAYER
     ));
+    assert!(engine.set_gameplay_tags(enemy.id, enemy.generation, 1 << 5));
     assert!(engine.set_gameplay_pickup(
         enemy.id,
         enemy.generation,
@@ -277,6 +283,29 @@ fn gameplay_authoring_snapshot_restores_supported_runtime_component_slots() {
         8.0,
         -4.0
     ));
+    assert!(!engine.set_gameplay_action_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        11,
+        0.6,
+        7,
+        0,
+        0,
+        0.0,
+        0.0
+    ));
+    assert!(engine.register_gameplay_enemy_prefab(7));
+    assert!(engine.set_gameplay_action_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        11,
+        0.6,
+        7,
+        0,
+        0,
+        0.0,
+        0.0
+    ));
     assert!(engine.add_gameplay_collision_damage(enemy.id, enemy.generation, 1));
     assert!(engine.add_gameplay_collision_despawn(enemy.id, enemy.generation, 0));
     assert!(engine.add_gameplay_collision_sound_with_cooldown(
@@ -313,11 +342,16 @@ fn gameplay_authoring_snapshot_restores_supported_runtime_component_slots() {
     {
         match reaction {
             CollisionReaction::PlaySound { cooldown, .. }
-            | CollisionReaction::SpawnParticle { cooldown, .. } => {
+            | CollisionReaction::SpawnParticle { cooldown, .. }
+            | CollisionReaction::EmitEffect { cooldown, .. }
+            | CollisionReaction::SpawnPrefab { cooldown, .. } => {
                 cooldown.remaining_seconds = cooldown.duration_seconds;
             }
             CollisionReaction::Damage { .. }
             | CollisionReaction::Pickup { .. }
+            | CollisionReaction::CameraShake { .. }
+            | CollisionReaction::AreaDamage { .. }
+            | CollisionReaction::Knockback { .. }
             | CollisionReaction::Despawn { .. } => {}
         }
     }
@@ -327,6 +361,7 @@ fn gameplay_authoring_snapshot_restores_supported_runtime_component_slots() {
     let expected_lifetime = engine.world.bullet_lifetimes[index];
     let expected_score_reward = engine.world.score_rewards[index];
     let expected_faction = engine.world.gameplay_factions[index];
+    let expected_tags = engine.world.gameplay_tags[index];
     let expected_pickup = engine.world.pickups[index];
     let expected_interaction = engine.world.interactions[index];
     let expected_timer = engine.world.gameplay_timer_triggers[index];
@@ -340,6 +375,7 @@ fn gameplay_authoring_snapshot_restores_supported_runtime_component_slots() {
     assert!(engine.clear_gameplay_lifetime(enemy.id, enemy.generation));
     assert!(engine.clear_gameplay_score_reward(enemy.id, enemy.generation));
     assert!(engine.clear_gameplay_faction(enemy.id, enemy.generation));
+    assert!(engine.clear_gameplay_tags(enemy.id, enemy.generation));
     assert!(engine.clear_gameplay_pickup(enemy.id, enemy.generation));
     assert!(engine.clear_gameplay_interaction(enemy.id, enemy.generation));
     assert!(engine.clear_gameplay_timer_trigger(enemy.id, enemy.generation));
@@ -353,6 +389,14 @@ fn gameplay_authoring_snapshot_restores_supported_runtime_component_slots() {
     assert_eq!(engine.world.bullet_lifetimes[index], expected_lifetime);
     assert_eq!(engine.world.score_rewards[index], expected_score_reward);
     assert_eq!(engine.world.gameplay_factions[index], expected_faction);
+    assert_eq!(engine.world.gameplay_tags[index], expected_tags);
+    assert_eq!(
+        engine
+            .world
+            .gameplay_faction_query_indices(GAMEPLAY_FACTION_ENEMY),
+        &[index]
+    );
+    assert_eq!(engine.world.gameplay_tag_query_indices(5), &[index]);
     assert_eq!(engine.world.pickups[index], expected_pickup);
     assert_eq!(engine.world.interactions[index], expected_interaction);
     assert_eq!(engine.world.gameplay_timer_triggers[index], expected_timer);
@@ -820,6 +864,57 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         })
     );
 
+    assert!(engine.set_gameplay_movement_chase_nearest_player(enemy.id, enemy.generation, 85.0));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::Chase {
+            target: MovementTarget::NearestPlayer,
+            speed: 85.0,
+        })
+    );
+
+    assert!(engine.set_gameplay_movement_chase_nearest_enemy(enemy.id, enemy.generation, 65.0));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::Chase {
+            target: MovementTarget::NearestEnemy,
+            speed: 65.0,
+        })
+    );
+
+    assert!(engine.set_gameplay_movement_chase_nearest_layer(enemy.id, enemy.generation, 2, 55.0));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::Chase {
+            target: MovementTarget::NearestLayer(CollisionLayer::Bullet),
+            speed: 55.0,
+        })
+    );
+
+    assert!(engine.set_gameplay_movement_chase_nearest_faction(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_FACTION_ENEMY,
+        50.0,
+    ));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::Chase {
+            target: MovementTarget::NearestFaction(GAMEPLAY_FACTION_ENEMY),
+            speed: 50.0,
+        })
+    );
+
+    assert!(engine.set_gameplay_movement_chase_nearest_tag(enemy.id, enemy.generation, 5, 45.0));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::Chase {
+            target: MovementTarget::NearestTag(5),
+            speed: 45.0,
+        })
+    );
+    assert!(!engine.set_gameplay_movement_chase_nearest_tag(enemy.id, enemy.generation, 32, 45.0,));
+
     assert!(engine.set_gameplay_movement_chase_entity(
         enemy.id,
         enemy.generation,
@@ -845,12 +940,146 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
             radial_band: 6.0,
         })
     );
+    assert!(engine.set_gameplay_movement_seek_target_player(enemy.id, enemy.generation, 90.0, 0.6,));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::SeekTarget {
+            target: MovementTarget::Player,
+            speed: 90.0,
+            turn_rate: 0.6,
+        })
+    );
+    assert!(engine.set_gameplay_movement_seek_target_nearest_player(
+        enemy.id,
+        enemy.generation,
+        88.0,
+        0.4,
+    ));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::SeekTarget {
+            target: MovementTarget::NearestPlayer,
+            speed: 88.0,
+            turn_rate: 0.4,
+        })
+    );
+    assert!(engine.set_gameplay_movement_seek_target_nearest_enemy(
+        enemy.id,
+        enemy.generation,
+        78.0,
+        0.8,
+    ));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::SeekTarget {
+            target: MovementTarget::NearestEnemy,
+            speed: 78.0,
+            turn_rate: 0.8,
+        })
+    );
+    assert!(engine.set_gameplay_movement_seek_target_nearest_layer(
+        enemy.id,
+        enemy.generation,
+        4,
+        68.0,
+        0.7,
+    ));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::SeekTarget {
+            target: MovementTarget::NearestLayer(CollisionLayer::Pickup),
+            speed: 68.0,
+            turn_rate: 0.7,
+        })
+    );
+    assert!(engine.set_gameplay_movement_seek_target_nearest_faction(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_FACTION_PLAYER,
+        58.0,
+        0.9,
+    ));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::SeekTarget {
+            target: MovementTarget::NearestFaction(GAMEPLAY_FACTION_PLAYER),
+            speed: 58.0,
+            turn_rate: 0.9,
+        })
+    );
+    assert!(engine.set_gameplay_movement_seek_target_nearest_tag(
+        enemy.id,
+        enemy.generation,
+        6,
+        52.0,
+        0.95,
+    ));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::SeekTarget {
+            target: MovementTarget::NearestTag(6),
+            speed: 52.0,
+            turn_rate: 0.95,
+        })
+    );
+    assert!(!engine.set_gameplay_movement_seek_target_nearest_tag(
+        enemy.id,
+        enemy.generation,
+        32,
+        52.0,
+        0.95,
+    ));
+    assert!(engine.set_gameplay_movement_seek_target_entity(
+        enemy.id,
+        enemy.generation,
+        target.id,
+        target.generation,
+        95.0,
+        1.0,
+    ));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::SeekTarget {
+            target: MovementTarget::Entity(target),
+            speed: 95.0,
+            turn_rate: 1.0,
+        })
+    );
+    assert!(engine.set_gameplay_movement_accelerate(enemy.id, enemy.generation, 2.0, 0.0, 12.0));
+    assert_eq!(
+        engine.world.movement_patterns[enemy.id as usize],
+        Some(MovementPattern::Accelerate {
+            acceleration_x: 2.0,
+            acceleration_y: 0.0,
+            max_speed: 12.0,
+        })
+    );
 
     assert!(engine.add_gameplay_collision_damage(enemy.id, enemy.generation, 1));
     assert!(engine.add_gameplay_collision_sound(enemy.id, enemy.generation, 42, 0.75, 1.25));
     assert!(engine.add_gameplay_collision_particle(enemy.id, enemy.generation, 3, 1));
-    assert!(engine.add_gameplay_collision_despawn(enemy.id, enemy.generation, 0));
+    assert!(engine.add_gameplay_collision_knockback(enemy.id, enemy.generation, 1, 120.0));
     assert!(engine.add_gameplay_collision_pickup(pickup.id, pickup.generation, 0));
+    assert!(engine.add_gameplay_collision_emit_effect(
+        pickup.id,
+        pickup.generation,
+        99,
+        4,
+        0,
+        0.25,
+        1,
+    ));
+    assert!(engine.add_gameplay_collision_spawn_prefab(
+        pickup.id,
+        pickup.generation,
+        17,
+        1,
+        0,
+        0.5,
+        1,
+        6.0,
+        -3.0,
+    ));
     let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
     assert_eq!(
         reactions.iter().collect::<Vec<_>>(),
@@ -873,16 +1102,62 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
                 replace_default: false,
                 trigger: CollisionReactionTrigger::Contact,
             },
-            CollisionReaction::Despawn {
-                target: CollisionTarget::SelfEntity,
+            CollisionReaction::Knockback {
+                target: CollisionTarget::OtherEntity,
+                impulse: 120.0,
             },
         ]
     );
     let pickup_reactions = engine.world.collision_reactions[pickup.id as usize].unwrap();
     assert_eq!(
         pickup_reactions.iter().collect::<Vec<_>>(),
-        vec![CollisionReaction::Pickup {
-            target: CollisionTarget::SelfEntity,
+        vec![
+            CollisionReaction::Pickup {
+                target: CollisionTarget::SelfEntity,
+            },
+            CollisionReaction::EmitEffect {
+                effect_id: 99,
+                effect_type: 4,
+                target: CollisionTarget::SelfEntity,
+                intensity: 1.0,
+                radius: 0.0,
+                cooldown: Cooldown::ready(0.25),
+                trigger: CollisionReactionTrigger::Enter,
+            },
+            CollisionReaction::SpawnPrefab {
+                action_id: 17,
+                prefab_id: 1,
+                target: CollisionTarget::SelfEntity,
+                cooldown: Cooldown::ready(0.5),
+                trigger: CollisionReactionTrigger::Enter,
+                offset_x: 6.0,
+                offset_y: -3.0,
+            },
+        ]
+    );
+    let effect_source = engine.world.spawn_entity();
+    assert!(engine.add_gameplay_collision_emit_effect_with_payload(
+        effect_source.id,
+        effect_source.generation,
+        100,
+        3,
+        1,
+        0.1,
+        0,
+        0.4,
+        24.0,
+    ));
+    let effect_reactions = engine.world.collision_reactions[effect_source.id as usize].unwrap();
+    assert_eq!(
+        effect_reactions.iter().collect::<Vec<_>>(),
+        vec![CollisionReaction::EmitEffect {
+            effect_id: 100,
+            effect_type: 3,
+            target: CollisionTarget::OtherEntity,
+            intensity: 0.4,
+            radius: 24.0,
+            cooldown: Cooldown::ready(0.1),
+            trigger: CollisionReactionTrigger::Contact,
         }]
     );
 
@@ -1041,16 +1316,51 @@ fn gameplay_component_authoring_damage_reaction_failure_is_atomic() {
     assert!(engine.add_gameplay_collision_despawn(enemy.id, enemy.generation, 1));
     assert!(engine.add_gameplay_collision_sound(enemy.id, enemy.generation, 42, 0.75, 1.25));
     assert!(engine.add_gameplay_collision_particle(enemy.id, enemy.generation, 3, 1));
+    assert!(engine.add_gameplay_collision_pickup(enemy.id, enemy.generation, 0));
+    assert!(engine.add_gameplay_collision_pickup(enemy.id, enemy.generation, 1));
+    assert!(engine.add_gameplay_collision_knockback(enemy.id, enemy.generation, 0, 12.0));
+    assert!(engine.add_gameplay_collision_knockback(enemy.id, enemy.generation, 1, 12.0));
     let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
-    assert_eq!(reactions.len(), 4);
+    assert_eq!(reactions.len(), 8);
 
     assert!(!engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, 3.0, 1));
     assert_eq!(engine.world.damages[enemy.id as usize], None);
     let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
-    assert_eq!(reactions.len(), 4);
+    assert_eq!(reactions.len(), 8);
     assert!(!reactions
         .iter()
         .any(|reaction| matches!(reaction, CollisionReaction::Damage { .. })));
+}
+
+#[test]
+fn gameplay_component_authoring_sets_area_damage_reaction() {
+    let mut engine = Engine::new();
+    let bullet = engine
+        .world
+        .spawn_bullet(100.0, 100.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+
+    assert!(engine.set_gameplay_area_damage_reaction(bullet.id, bullet.generation, 3.0, 48.0, 1,));
+    assert_eq!(engine.world.damages[bullet.id as usize], Some(3.0));
+    let reactions = engine.world.collision_reactions[bullet.id as usize].unwrap();
+    assert_eq!(
+        reactions.iter().collect::<Vec<_>>(),
+        vec![CollisionReaction::AreaDamage {
+            radius: 48.0,
+            target_layer: CollisionLayer::Enemy,
+        }]
+    );
+
+    assert!(engine.set_gameplay_area_damage_reaction(bullet.id, bullet.generation, 4.0, 64.0, 1,));
+    assert_eq!(engine.world.damages[bullet.id as usize], Some(4.0));
+    let reactions = engine.world.collision_reactions[bullet.id as usize].unwrap();
+    assert_eq!(reactions.len(), 1);
+    assert_eq!(
+        reactions.iter().collect::<Vec<_>>(),
+        vec![CollisionReaction::AreaDamage {
+            radius: 64.0,
+            target_layer: CollisionLayer::Enemy,
+        }]
+    );
 }
 
 #[test]
@@ -1069,13 +1379,199 @@ fn gameplay_component_authoring_rejects_invalid_movement_and_collision_values() 
         1.0
     ));
     assert!(!engine.set_gameplay_movement_chase_player(enemy.id, enemy.generation, -1.0));
+    assert!(!engine.set_gameplay_movement_chase_nearest_enemy(enemy.id, enemy.generation, -1.0));
+    assert!(!engine.set_gameplay_movement_chase_nearest_layer(enemy.id, enemy.generation, 99, 1.0));
+    assert!(!engine.set_gameplay_movement_chase_nearest_faction(
+        enemy.id,
+        enemy.generation,
+        32,
+        1.0,
+    ));
+    assert!(!engine.set_gameplay_movement_seek_target_player(
+        enemy.id,
+        enemy.generation,
+        60.0,
+        -0.5,
+    ));
+    assert!(!engine.set_gameplay_movement_seek_target_nearest_enemy(
+        enemy.id,
+        enemy.generation,
+        60.0,
+        -0.5,
+    ));
+    assert!(!engine.set_gameplay_movement_seek_target_nearest_layer(
+        enemy.id,
+        enemy.generation,
+        99,
+        60.0,
+        0.5,
+    ));
+    assert!(!engine.set_gameplay_movement_seek_target_nearest_faction(
+        enemy.id,
+        enemy.generation,
+        32,
+        60.0,
+        0.5,
+    ));
+    assert!(!engine.set_gameplay_movement_seek_target_player(
+        enemy.id,
+        enemy.generation,
+        60.0,
+        f32::NAN,
+    ));
+    assert!(!engine.set_gameplay_movement_accelerate(enemy.id, enemy.generation, 0.0, 0.0, 1.0,));
+    assert!(!engine.set_gameplay_movement_accelerate(
+        enemy.id,
+        enemy.generation,
+        f32::NAN,
+        1.0,
+        1.0,
+    ));
     assert!(!engine.set_gameplay_movement_orbit_player(enemy.id, enemy.generation, 1.0, 0.0, 0.0));
     assert!(!engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, 0.0, 1));
     assert!(!engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, f32::INFINITY, 1));
     assert!(!engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, 1.0, 99));
+    assert!(!engine.set_gameplay_area_damage_reaction(enemy.id, enemy.generation, 0.0, 24.0, 1));
+    assert!(!engine.set_gameplay_area_damage_reaction(enemy.id, enemy.generation, 1.0, 0.0, 1));
+    assert!(!engine.set_gameplay_area_damage_reaction(enemy.id, enemy.generation, 1.0, 24.0, 99,));
     assert_eq!(engine.world.damages[enemy.id as usize], None);
     assert_eq!(engine.world.collision_reactions[enemy.id as usize], None);
     assert!(!engine.add_gameplay_collision_damage(enemy.id, enemy.generation, 99));
+    assert!(!engine.add_gameplay_collision_area_damage(enemy.id, enemy.generation, 0.0, 1,));
+    assert!(!engine.add_gameplay_collision_area_damage(
+        enemy.id,
+        enemy.generation,
+        f32::INFINITY,
+        1,
+    ));
+    assert!(!engine.add_gameplay_collision_area_damage(enemy.id, enemy.generation, 24.0, 99,));
+    assert!(!engine.add_gameplay_collision_knockback(enemy.id, enemy.generation, 99, 24.0));
+    assert!(!engine.add_gameplay_collision_knockback(enemy.id, enemy.generation, 1, 0.0));
+    assert!(!engine.add_gameplay_collision_knockback(enemy.id, enemy.generation, 1, f32::INFINITY,));
+    assert!(!engine.add_gameplay_collision_emit_effect(
+        enemy.id,
+        enemy.generation,
+        1,
+        0,
+        1,
+        0.0,
+        0,
+    ));
+    assert!(!engine.add_gameplay_collision_emit_effect(
+        enemy.id,
+        enemy.generation,
+        1,
+        4,
+        99,
+        0.0,
+        0,
+    ));
+    assert!(!engine.add_gameplay_collision_emit_effect(
+        enemy.id,
+        enemy.generation,
+        1,
+        4,
+        1,
+        -0.1,
+        0,
+    ));
+    assert!(!engine.add_gameplay_collision_emit_effect(
+        enemy.id,
+        enemy.generation,
+        1,
+        4,
+        1,
+        0.0,
+        99,
+    ));
+    assert!(!engine.add_gameplay_collision_emit_effect_with_payload(
+        enemy.id,
+        enemy.generation,
+        1,
+        4,
+        1,
+        0.0,
+        0,
+        -0.1,
+        0.0,
+    ));
+    assert!(!engine.add_gameplay_collision_emit_effect_with_payload(
+        enemy.id,
+        enemy.generation,
+        1,
+        4,
+        1,
+        0.0,
+        0,
+        1.0,
+        f32::INFINITY,
+    ));
+    assert!(!engine.add_gameplay_collision_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        0,
+        1,
+        1,
+        0.0,
+        0,
+        0.0,
+        0.0,
+    ));
+    assert!(!engine.add_gameplay_collision_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        17,
+        99,
+        1,
+        0.0,
+        0,
+        0.0,
+        0.0,
+    ));
+    assert!(!engine.add_gameplay_collision_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        17,
+        1,
+        99,
+        0.0,
+        0,
+        0.0,
+        0.0,
+    ));
+    assert!(!engine.add_gameplay_collision_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        17,
+        1,
+        1,
+        -0.1,
+        0,
+        0.0,
+        0.0,
+    ));
+    assert!(!engine.add_gameplay_collision_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        17,
+        1,
+        1,
+        0.0,
+        99,
+        0.0,
+        0.0,
+    ));
+    assert!(!engine.add_gameplay_collision_spawn_prefab(
+        enemy.id,
+        enemy.generation,
+        17,
+        1,
+        1,
+        0.0,
+        0,
+        f32::NAN,
+        0.0,
+    ));
     assert!(!engine.add_gameplay_collision_pickup(enemy.id, enemy.generation, 99));
     assert!(!engine.add_gameplay_collision_sound(enemy.id, enemy.generation, 0, 1.0, 1.0));
     assert!(!engine.add_gameplay_collision_sound(enemy.id, enemy.generation, 1, f32::NAN, 1.0));
@@ -1120,6 +1616,14 @@ fn gameplay_component_authoring_rejects_invalid_movement_and_collision_values() 
         target.id,
         target.generation,
         75.0
+    ));
+    assert!(!engine.set_gameplay_movement_seek_target_entity(
+        enemy.id,
+        enemy.generation,
+        target.id,
+        target.generation,
+        95.0,
+        0.5,
     ));
 }
 

@@ -60,8 +60,8 @@ Claude skill wrapper는 workflow를 중복 작성하지 않고 `.agents/skills/*
 - `package_agent` / `package-agent`: npm tarball, package files, Wasm artifact, consumer import 검증
 - `pages_deploy_agent` / `pages-deploy-agent`: GitHub Pages demo/docs artifact와 배포 상태 검증
 - `docs_agent` / `docs-agent`: README, engine docs, development docs, release copy 동기화
-- `game_designer` / `game-designer`: Top-down Shooter Game Spec 데이터 튜닝
-- `schema_agent` / `schema-agent`: Game Spec schema, validation behavior, spec 문서 계약 관리
+- `game_designer` / `game-designer`: Top-down Shooter 예제 Game Spec 데이터 튜닝. 범용 엔진 runtime/API/schema 설계에는 사용하지 않는다.
+- `schema_agent` / `schema-agent`: Top-down Shooter 예제 Game Spec schema와 Physics authoring schema, validation behavior, spec 문서 계약 관리. 범용 엔진 schema/API/ABI 설계는 `engine_reviewer`와 조정한다.
 
 ## Wasm Boundary Rules
 

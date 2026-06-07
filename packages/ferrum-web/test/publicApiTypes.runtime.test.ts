@@ -247,6 +247,10 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   equal(GAMEPLAY_EVENT_TILE_IMPACT_TILE_MASK, 0x00ff_ffff);
   const gameplayAuthoringApi: FerrumGameplayAuthoringApi = {
     gameplayEntityExists: () => true,
+    registerGameplayPrefabs: (registrations) => ({
+      registrations,
+      results: registrations.map(() => true),
+    }),
     applyGameplayBehaviorCommands: (commands) => ({ commands, results: [] }),
     installBehaviorStateMachineRuntime: () => ({
       plan: {
@@ -328,14 +332,14 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   const gameStateCustom: GameStateSnapshotJsonValue = { checkpoint: "alpha" };
   const builtInShooterState: BuiltInShooterStateSnapshot = {
     format: "ferrum2d.builtin-shooter-state",
-    version: 11,
+    version: 15,
     headerFloats: [0, 1, 0, 0, 400, 240, 0, 0],
-    headerU32s: [11, 1, 3, 0, 0, 0, 0, 0, 0, ...Array(28).fill(0)],
-    entityFloats: [400, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    entityU32s: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    headerU32s: [15, 1, 3, 0, 0, 0, 0, 0, 0, ...Array(76).fill(0)],
+    entityFloats: [400, 240, 0, 0, ...Array(71).fill(0)],
+    entityU32s: [0, ...Array(60).fill(0)],
     entityCount: 1,
-    floatsPerEntity: 35,
-    u32sPerEntity: 21,
+    floatsPerEntity: 75,
+    u32sPerEntity: 61,
   };
   const publicCaptureGameStateSnapshot: PublicApi["captureGameStateSnapshot"] = captureGameStateSnapshot;
   const publicGameStateSnapshotFormat: PublicApi["GAME_STATE_SNAPSHOT_FORMAT"] = GAME_STATE_SNAPSHOT_FORMAT;
@@ -393,6 +397,8 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     useWorkerClock: true,
     includeAudioEvents: true,
     includeCollisionEvents: true,
+    includeEffectEvents: true,
+    includeGameplayEvents: true,
     enablePhysicsDebugLines: true,
     includePhysicsDebugLines: true,
     physicsDebugOptions: { colliders: true, contacts: true },
@@ -629,6 +635,12 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
       u32sPerEvent: 8,
     },
     gameplayEvents: [],
+    effectEventBuffer: {
+      buffer: new DataView(new ArrayBuffer(0)),
+      eventCount: 0,
+      bytesPerEvent: 40,
+    },
+    effectEvents: [],
     physicsDebugLineBuffer,
     physicsDebugLines: [physicsDebugLine],
     renderCommands: [],

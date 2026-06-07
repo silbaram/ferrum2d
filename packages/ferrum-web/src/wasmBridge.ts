@@ -1,6 +1,8 @@
 import init, { Engine, version, wasm_memory } from "../pkg/ferrum_core.js";
 import { decodeCollisionEvents } from "./collisionEventDecoder";
 import type { CollisionEventBufferView, CollisionEventView } from "./collisionEventDecoder";
+import { decodeEffectEvents } from "./effectEventDecoder";
+import type { EffectEventBufferView, EffectEventView } from "./effectEventDecoder";
 import { decodeGameplayEvents } from "./gameplayEventDecoder";
 import type { GameplayEventBufferView, GameplayEventView } from "./gameplayEventDecoder";
 import { decodeAudioEvents } from "./audioEventDecoder";
@@ -50,6 +52,7 @@ import { verifyWasmBridgeAbi } from "./wasmBridgeAbi.js";
 import {
   audioEventBufferView,
   collisionEventBufferView,
+  effectEventBufferView,
   frameTelemetryBufferView,
   gameplayEventBufferView,
   physicsBodyContactHitBufferView,
@@ -140,6 +143,14 @@ export class WasmBridge {
 
   readGameplayEvents(): readonly GameplayEventView[] {
     return this.decodeGameplayEvents(this.readGameplayEventBuffer());
+  }
+
+  readEffectEventBuffer(): EffectEventBufferView {
+    return effectEventBufferView(this.bufferContext);
+  }
+
+  readEffectEvents(): readonly EffectEventView[] {
+    return this.decodeEffectEvents(this.readEffectEventBuffer());
   }
 
   readPhysicsDebugLineBuffer(): PhysicsDebugLineBufferView {
@@ -248,6 +259,10 @@ export class WasmBridge {
     return decodeGameplayEvents(view);
   }
 
+  decodeEffectEvents(view: EffectEventBufferView): readonly EffectEventView[] {
+    return decodeEffectEvents(view);
+  }
+
   decodePhysicsDebugLines(view: PhysicsDebugLineBufferView): readonly PhysicsDebugLineView[] {
     return decodePhysicsDebugLines(view);
   }
@@ -325,6 +340,12 @@ export {
 export type { AudioEventBufferView, AudioEventView } from "./audioEventDecoder";
 export { decodeCollisionEvents };
 export {
+  BYTES_PER_EFFECT_EVENT,
+  decodeEffectEvents,
+  EMPTY_EFFECT_EVENTS,
+} from "./effectEventDecoder";
+export type { EffectEventBufferView, EffectEventView } from "./effectEventDecoder";
+export {
   decodeGameplayEvents,
   EMPTY_GAMEPLAY_EVENTS,
   GAMEPLAY_ACTION_FAILURE_BLOCKED_PLACEMENT,
@@ -347,6 +368,11 @@ export {
   GAMEPLAY_EVENT_KIND_INTERACTION,
   GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED,
   GAMEPLAY_EVENT_KIND_PREFAB_SPAWNED,
+  GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT,
+  GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE,
+  GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
+  GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE,
+  GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND,
   GAMEPLAY_EVENT_KIND_TILE_IMPACT,
   GAMEPLAY_EVENT_KIND_TIMER,
   GAMEPLAY_EVENT_FLAG_CONSUMED_THIS_FRAME,
@@ -385,6 +411,7 @@ export type {
 export type {
   GameplayEventBufferView,
   GameplayEventKind,
+  GameplayPresentationEffectKind,
   GameplayEventView,
 } from "./gameplayEventDecoder";
 export type { PhysicsDebugLineBufferView, PhysicsDebugLineView };

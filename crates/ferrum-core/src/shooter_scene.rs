@@ -33,15 +33,16 @@ pub(crate) const SHOOTER_PRIMARY_FIRE_ACTION_ID: u32 = 1;
 pub(crate) const SHOOTER_DASH_ACTION_ID: u32 = 2;
 pub(crate) const SHOOTER_MELEE_ACTION_ID: u32 = 3;
 const MAX_AUTHORED_COLLISION_CONTACTS: usize = 1024;
-pub const SHOOTER_SNAPSHOT_VERSION: u32 = 11;
+pub const SHOOTER_SNAPSHOT_VERSION: u32 = 15;
 pub const SHOOTER_SNAPSHOT_HEADER_FLOATS: usize = 8;
 pub(crate) const SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET: usize = 9;
 const SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S: usize = 4;
 pub const SHOOTER_SNAPSHOT_HEADER_U32S: usize = SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
     + INPUT_ACTION_REGISTRY_SNAPSHOT_U32S
-    + SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S;
-pub const SHOOTER_SNAPSHOT_ENTITY_FLOATS: usize = 35;
-pub const SHOOTER_SNAPSHOT_ENTITY_U32S: usize = 21;
+    + SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S
+    + config::SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S;
+pub const SHOOTER_SNAPSHOT_ENTITY_FLOATS: usize = 75;
+pub const SHOOTER_SNAPSHOT_ENTITY_U32S: usize = 61;
 pub const SHOOTER_SNAPSHOT_ENTITY_PLAYER: u32 = 0;
 pub const SHOOTER_SNAPSHOT_ENTITY_ENEMY: u32 = 1;
 pub const SHOOTER_SNAPSHOT_ENTITY_BULLET: u32 = 2;
@@ -60,10 +61,25 @@ use config::{
 };
 pub(crate) use config::{
     EnemyBehavior, EnemySpawnPattern, ShooterAudioPolicy, ShooterConfig, ShooterPrefabKind,
+    ShooterPrefabRegistration, ShooterPrefabResolvedComponents, ShooterPrefabTextureSlot,
     ShooterProjectileArcConfig, ShooterWaveConfig,
 };
 pub(crate) use runtime::{ActionTriggerCommand, ParticleBurstSink, TweenSink};
 pub use snapshot::{ShooterEntitySnapshot, ShooterSceneSnapshot};
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct ShooterCollisionPairStats {
+    pub(crate) bullet_enemy_swept_pairs: usize,
+    pub(crate) bullet_enemy_moving_proxies: usize,
+    pub(crate) bullet_enemy_target_proxies: usize,
+    pub(crate) bullet_player_swept_pairs: usize,
+    pub(crate) bullet_player_moving_proxies: usize,
+    pub(crate) bullet_player_target_proxies: usize,
+    pub(crate) player_enemy_pairs: usize,
+    pub(crate) player_enemy_current_proxies: usize,
+    pub(crate) player_pickup_pairs: usize,
+    pub(crate) player_pickup_current_proxies: usize,
+}
 
 #[derive(Debug)]
 pub struct ShooterScene {
@@ -93,6 +109,7 @@ pub struct ShooterScene {
     last_action_trigger_phase_result: runtime::ActionTriggerPhaseProcessResult,
     last_spawn_flush_result: runtime::SpawnFlushResult,
     melee_hits: Vec<CircleQueryHit>,
+    area_damage_hits: Vec<CircleQueryHit>,
     spawn_obstacle_contacts: Vec<TilemapContactHit>,
     action_triggers: ActionTriggerQueue<runtime::ActionTriggerCommand>,
     action_trigger_commands: Vec<runtime::ActionTriggerCommand>,
@@ -103,6 +120,7 @@ pub struct ShooterScene {
     pending_despawn: Vec<Entity>,
     marked_for_despawn: Vec<bool>,
     bounced_projectiles_this_frame: Vec<bool>,
+    last_collision_pair_stats: ShooterCollisionPairStats,
 }
 
 impl Default for ShooterScene {
@@ -136,6 +154,7 @@ impl Default for ShooterScene {
             last_action_trigger_phase_result: runtime::ActionTriggerPhaseProcessResult::default(),
             last_spawn_flush_result: runtime::SpawnFlushResult::default(),
             melee_hits: Vec::with_capacity(16),
+            area_damage_hits: Vec::with_capacity(16),
             spawn_obstacle_contacts: Vec::with_capacity(8),
             action_triggers: ActionTriggerQueue::with_capacity(64),
             action_trigger_commands: Vec::with_capacity(64),
@@ -146,6 +165,7 @@ impl Default for ShooterScene {
             pending_despawn: Vec::with_capacity(128),
             marked_for_despawn: Vec::with_capacity(256),
             bounced_projectiles_this_frame: Vec::with_capacity(256),
+            last_collision_pair_stats: ShooterCollisionPairStats::default(),
         }
     }
 }
@@ -153,6 +173,11 @@ impl Default for ShooterScene {
 impl ShooterScene {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn last_collision_pair_stats(&self) -> ShooterCollisionPairStats {
+        self.last_collision_pair_stats
     }
 
     pub fn reset_to_title(
@@ -257,6 +282,50 @@ impl ShooterScene {
 
     pub fn set_audio_policy(&mut self, audio_policy: ShooterAudioPolicy) {
         self.config = self.config.with_audio_policy(audio_policy);
+    }
+
+    pub(crate) fn register_spawn_prefab_kind(
+        &mut self,
+        prefab_id: u32,
+        kind: ShooterPrefabKind,
+    ) -> bool {
+        if prefab_id == 0 {
+            return false;
+        }
+        self.config.register_spawn_prefab(prefab_id, kind)
+    }
+
+    pub(crate) fn resolve_spawn_prefab_registration(
+        &self,
+        prefab_id: u32,
+    ) -> Option<ShooterPrefabRegistration> {
+        self.config.resolve_spawn_prefab(prefab_id)
+    }
+
+    pub(crate) fn resolve_spawn_prefab_components(
+        &self,
+        registration: ShooterPrefabRegistration,
+    ) -> ShooterPrefabResolvedComponents {
+        self.config.resolve_spawn_prefab_components(registration)
+    }
+
+    pub(crate) fn resolve_builtin_prefab_components(
+        &self,
+        kind: ShooterPrefabKind,
+    ) -> ShooterPrefabResolvedComponents {
+        self.config.resolve_builtin_prefab_components(kind)
+    }
+
+    pub(crate) fn supports_spawn_prefab_id(&self, prefab_id: u32) -> bool {
+        self.resolve_spawn_prefab_registration(prefab_id)
+            .map(|registration| self.resolve_spawn_prefab_components(registration).layer)
+            == Some(CollisionLayer::Enemy)
+    }
+
+    pub(crate) fn supports_projectile_prefab_id(&self, prefab_id: u32) -> bool {
+        self.resolve_spawn_prefab_registration(prefab_id)
+            .map(|registration| self.resolve_spawn_prefab_components(registration).layer)
+            == Some(CollisionLayer::Bullet)
     }
 
     pub fn set_enemy_behavior(

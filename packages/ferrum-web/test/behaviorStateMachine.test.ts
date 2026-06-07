@@ -663,6 +663,19 @@ test("runtime FSM installation requires numeric action IDs and bounded transitio
     to: "idle",
     when: { type: "gameplayEvent" as const, event: "interaction" as const, actionId: index + 1 },
   }));
+  const boundedTransitions = transitions.slice(0, BEHAVIOR_STATE_MACHINE_RUNTIME_MAX_TRANSITIONS);
+  const boundedPlan = createBehaviorStateMachineRuntimeInstallPlan({
+    machines: {
+      enemy: {
+        initial: "idle",
+        states: {
+          idle: { transitions: boundedTransitions },
+        },
+      },
+    },
+  }, "enemy", { behaviorRecipes: recipes });
+  equal(boundedPlan.transitions.length, BEHAVIOR_STATE_MACHINE_RUNTIME_MAX_TRANSITIONS);
+
   expectMessage(() => createBehaviorStateMachineRuntimeInstallPlan({
     machines: {
       enemy: {
@@ -672,7 +685,7 @@ test("runtime FSM installation requires numeric action IDs and bounded transitio
         },
       },
     },
-  }, "enemy", { behaviorRecipes: recipes }), /at most 8 runtime transitions/);
+  }, "enemy", { behaviorRecipes: recipes }), new RegExp(`at most ${BEHAVIOR_STATE_MACHINE_RUNTIME_MAX_TRANSITIONS} runtime transitions`));
 
   expectMessage(() => createBehaviorStateMachineRuntimeInstallPlan({
     machines: {

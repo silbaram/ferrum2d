@@ -134,7 +134,7 @@ pnpm package:consumer-smoke
 
 이 명령은 `@ferrum2d/ferrum-web`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 로컬 tarball로 pack하고, 임시 consumer project에서 tool package 설치, `create-game` template matrix 생성, agents dry-run, runtime tarball install, public import smoke, production build를 한 번에 확인한다. 기본값은 `packages/create-game/templates/*` 전체이며, 좁은 확인이 필요하면 `pnpm package:consumer-smoke -- --templates minimal`처럼 실행한다.
 
-CI에서 consumer smoke가 실패하면 `artifacts/consumer-smoke`에 failure report, tarball, node_modules/dist를 제외한 tool/generated project snapshot을 남기고 `actions/upload-artifact`로 업로드한다. 로컬에서도 같은 보존 정책을 쓰려면 다음을 실행한다.
+CI에서 consumer smoke를 실행하면 성공/실패 모두 `artifacts/consumer-smoke`에 report, tarball, node_modules/dist를 제외한 tool/generated project snapshot을 남기고 `actions/upload-artifact`로 업로드한다. CI는 smoke 결과에 맞춰 `pnpm validate:consumer-smoke-report`도 실행해 `consumer-smoke-report.json` format/version/status, 템플릿별 checks/reports, tarball 존재, snapshot 정리 상태를 검증한다. `pnpm smoke:consumer-smoke-report`는 초기 실패/중간 실패/오염 snapshot synthetic artifact로 failed report validator를 별도 검증한다. 로컬에서도 같은 보존 정책을 쓰려면 다음을 실행한다.
 
 ```bash
 pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke

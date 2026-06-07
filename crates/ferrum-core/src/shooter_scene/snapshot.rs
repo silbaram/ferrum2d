@@ -3,14 +3,15 @@ use crate::camera::Camera2D;
 use crate::components::gameplay::{
     ActionAimSource, ActionBinding, ActionPattern, Cooldown, GameplayFaction,
     ProjectileCollisionTarget, ProjectileTileImpact, SpawnAnchor, SpawnPhase,
-    GAMEPLAY_FACTION_MAX_ID, MAX_ACTION_BINDINGS_PER_ENTITY,
+    SpawnPrefabProjectilePayload, GAMEPLAY_FACTION_MAX_ID, MAX_ACTION_BINDINGS_PER_ENTITY,
 };
 use crate::components::{CollisionLayer, Transform2D, Velocity};
 use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::input::InputState;
-use crate::world::{BulletSpawnRequest, World};
+use crate::world::{ProjectileSpawnRequest, World};
 
+use super::config::SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S;
 use super::{finite_or_default, non_negative_or_default, positive_or_default, ShooterScene};
 use super::{
     SHOOTER_DASH_ACTION_ID, SHOOTER_MELEE_ACTION_ID, SHOOTER_PRIMARY_FIRE_ACTION_ID,
@@ -41,17 +42,23 @@ const SNAPSHOT_MELEE_DAMAGE: usize = 18;
 const SNAPSHOT_MELEE_ACTION_ID: usize = 4;
 const SNAPSHOT_SPAWN_PREFAB_BINDINGS: usize = MAX_ACTION_BINDINGS_PER_ENTITY;
 const SNAPSHOT_SPAWN_PREFAB_FLOAT_BASE: usize = 19;
-const SNAPSHOT_SPAWN_PREFAB_FLOAT_STRIDE: usize = 4;
+const SNAPSHOT_SPAWN_PREFAB_FLOAT_STRIDE: usize = 7;
 const SNAPSHOT_SPAWN_PREFAB_COOLDOWN_DURATION_FIELD: usize = 0;
 const SNAPSHOT_SPAWN_PREFAB_COOLDOWN_REMAINING_FIELD: usize = 1;
 const SNAPSHOT_SPAWN_PREFAB_OFFSET_X_FIELD: usize = 2;
 const SNAPSHOT_SPAWN_PREFAB_OFFSET_Y_FIELD: usize = 3;
+const SNAPSHOT_SPAWN_PREFAB_PROJECTILE_SPEED_FIELD: usize = 4;
+const SNAPSHOT_SPAWN_PREFAB_PROJECTILE_DAMAGE_FIELD: usize = 5;
+const SNAPSHOT_SPAWN_PREFAB_PROJECTILE_LIFETIME_FIELD: usize = 6;
 const SNAPSHOT_SPAWN_PREFAB_U32_BASE: usize = 5;
-const SNAPSHOT_SPAWN_PREFAB_U32_STRIDE: usize = 4;
+const SNAPSHOT_SPAWN_PREFAB_U32_STRIDE: usize = 7;
 const SNAPSHOT_SPAWN_PREFAB_ACTION_ID_FIELD: usize = 0;
 const SNAPSHOT_SPAWN_PREFAB_ID_FIELD: usize = 1;
 const SNAPSHOT_SPAWN_PREFAB_ANCHOR_FIELD: usize = 2;
 const SNAPSHOT_SPAWN_PREFAB_PHASE_FIELD: usize = 3;
+const SNAPSHOT_SPAWN_PREFAB_PROJECTILE_FLAG_FIELD: usize = 4;
+const SNAPSHOT_SPAWN_PREFAB_PROJECTILE_AIM_FIELD: usize = 5;
+const SNAPSHOT_SPAWN_PREFAB_PROJECTILE_POLICY_FIELD: usize = 6;
 const SNAPSHOT_PREVIOUS_INPUT_MOUSE_X: usize = 6;
 const SNAPSHOT_PREVIOUS_INPUT_MOUSE_Y: usize = 7;
 const SNAPSHOT_PREVIOUS_INPUT_SPACE: usize = 6;
@@ -62,6 +69,7 @@ const SNAPSHOT_PREVIOUS_INPUT_W: usize = SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_
 const SNAPSHOT_PREVIOUS_INPUT_A: usize = SNAPSHOT_PREVIOUS_INPUT_W + 1;
 const SNAPSHOT_PREVIOUS_INPUT_S: usize = SNAPSHOT_PREVIOUS_INPUT_W + 2;
 const SNAPSHOT_PREVIOUS_INPUT_D: usize = SNAPSHOT_PREVIOUS_INPUT_W + 3;
+const SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET: usize = SNAPSHOT_PREVIOUS_INPUT_D + 1;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ShooterSceneSnapshot {
@@ -229,7 +237,7 @@ fn valid_snapshot_spawn_prefab_action_binding(entity: ShooterEntitySnapshot) -> 
         }
         previous_action_id = action_id;
         entity.u32s[0] == SHOOTER_SNAPSHOT_ENTITY_PLAYER
-            && entity.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_ID_FIELD)] == 1
+            && entity.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_ID_FIELD)] > 0
             && entity.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_ANCHOR_FIELD)] == 0
             && entity.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_PHASE_FIELD)] == 0
             && entity.floats
@@ -242,7 +250,45 @@ fn valid_snapshot_spawn_prefab_action_binding(entity: ShooterEntitySnapshot) -> 
                 .is_finite()
             && entity.floats[spawn_prefab_float_index(slot, SNAPSHOT_SPAWN_PREFAB_OFFSET_Y_FIELD)]
                 .is_finite()
+            && valid_snapshot_spawn_prefab_projectile_payload(entity, slot)
     })
+}
+
+fn valid_snapshot_spawn_prefab_projectile_payload(
+    entity: ShooterEntitySnapshot,
+    slot: usize,
+) -> bool {
+    let projectile_flag =
+        entity.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_FLAG_FIELD)];
+    let projectile_speed =
+        entity.floats[spawn_prefab_float_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_SPEED_FIELD)];
+    let projectile_damage = entity.floats
+        [spawn_prefab_float_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_DAMAGE_FIELD)];
+    let projectile_lifetime = entity.floats
+        [spawn_prefab_float_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_LIFETIME_FIELD)];
+    let projectile_aim =
+        entity.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_AIM_FIELD)];
+    let projectile_policy =
+        entity.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_POLICY_FIELD)];
+
+    match projectile_flag {
+        0 => {
+            projectile_speed == 0.0
+                && projectile_damage == 0.0
+                && projectile_lifetime == 0.0
+                && projectile_aim == 0
+                && projectile_policy == 0
+        }
+        1 => {
+            projectile_speed > 0.0
+                && projectile_damage > 0.0
+                && projectile_lifetime > 0.0
+                && ActionAimSource::from_code(projectile_aim).is_some()
+                && unpack_projectile_collision_target(projectile_policy).is_some()
+                && unpack_projectile_tile_impact(projectile_policy).is_some()
+        }
+        _ => false,
+    }
 }
 
 fn valid_snapshot_action_binding_ids(entity: ShooterEntitySnapshot) -> bool {
@@ -313,24 +359,14 @@ impl ShooterScene {
             entity.floats[3] = velocity.vy;
             entity.floats[4] = world.healths[index].unwrap_or(0.0);
             entity.floats[5] = world.damages[index].unwrap_or(0.0);
-            entity.floats[6] = world.bullet_lifetimes[index].unwrap_or(0.0);
+            entity.floats[6] = world.gameplay_lifetime_at(index).unwrap_or(0.0);
             entity.u32s[0] = kind;
             if kind == SHOOTER_SNAPSHOT_ENTITY_ENEMY {
                 entity.u32s[1] = world.score_rewards[index].unwrap_or(0);
             }
             if kind == SHOOTER_SNAPSHOT_ENTITY_BULLET {
-                let collision_target = world
-                    .projectile_collision_targets
-                    .get(index)
-                    .copied()
-                    .flatten()
-                    .unwrap_or(ProjectileCollisionTarget::Enemies);
-                let tile_impact = world
-                    .projectile_tile_impacts
-                    .get(index)
-                    .copied()
-                    .flatten()
-                    .unwrap_or(ProjectileTileImpact::Despawn);
+                let collision_target = world.projectile_collision_target_at(index);
+                let tile_impact = world.projectile_tile_impact_at(index);
                 entity.u32s[SNAPSHOT_PROJECTILE_POLICY] =
                     pack_projectile_policy(collision_target, tile_impact);
                 if let Some(faction) = world.gameplay_factions.get(index).copied().flatten() {
@@ -402,7 +438,7 @@ impl ShooterScene {
                 if let Some(bindings) = world.action_bindings(player) {
                     for binding in bindings
                         .iter()
-                        .filter(|binding| snapshot_supported_spawn_prefab_binding(*binding))
+                        .filter(|binding| snapshot_supported_spawn_prefab_binding(self, *binding))
                     {
                         if spawn_prefab_binding_count >= SNAPSHOT_SPAWN_PREFAB_BINDINGS {
                             break;
@@ -440,6 +476,10 @@ impl ShooterScene {
         header_u32s[SNAPSHOT_PREVIOUS_INPUT_A] = self.previous_input.a as u32;
         header_u32s[SNAPSHOT_PREVIOUS_INPUT_S] = self.previous_input.s as u32;
         header_u32s[SNAPSHOT_PREVIOUS_INPUT_D] = self.previous_input.d as u32;
+        self.config.write_prefab_registry_snapshot(
+            &mut header_u32s[SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET
+                ..SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S],
+        );
 
         ShooterSceneSnapshot {
             header_floats: [
@@ -467,6 +507,12 @@ impl ShooterScene {
         if snapshot.header_u32s[0] != SHOOTER_SNAPSHOT_VERSION {
             return false;
         }
+        if !self.config.prefab_registry_snapshot_matches(
+            &snapshot.header_u32s[SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET
+                ..SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S],
+        ) {
+            return false;
+        }
         let Some(game_state) = game_state_from_code(snapshot.header_u32s[1]) else {
             return false;
         };
@@ -481,6 +527,9 @@ impl ShooterScene {
             .iter()
             .any(|entity| !valid_shooter_snapshot_entity(*entity))
         {
+            return false;
+        }
+        if !snapshot_spawn_prefab_bindings_match_registry(self, &snapshot.entities) {
             return false;
         }
 
@@ -577,7 +626,7 @@ impl ShooterScene {
                 let tile_impact =
                     unpack_projectile_tile_impact(snapshot.u32s[SNAPSHOT_PROJECTILE_POLICY])
                         .unwrap_or(ProjectileTileImpact::Despawn);
-                world.spawn_bullet_from_request(BulletSpawnRequest {
+                world.spawn_projectile_from_request(ProjectileSpawnRequest {
                     transform,
                     velocity,
                     texture_id: self.texture_ids.bullet,
@@ -594,17 +643,39 @@ impl ShooterScene {
     }
 }
 
-fn snapshot_supported_spawn_prefab_binding(binding: ActionBinding) -> bool {
-    matches!(
-        binding.pattern,
+fn snapshot_supported_spawn_prefab_binding(scene: &ShooterScene, binding: ActionBinding) -> bool {
+    match binding.pattern {
         ActionPattern::SpawnPrefab {
-            prefab_id: 1,
+            prefab_id,
+            projectile,
             anchor: SpawnAnchor::SelfEntity,
             phase: SpawnPhase::PrePhysics,
             offset_x: _,
-            offset_y: _
-        }
-    )
+            offset_y: _,
+        } => scene
+            .resolve_spawn_prefab_registration(prefab_id)
+            .map(|registration| scene.resolve_spawn_prefab_components(registration).layer)
+            .map(|layer| match layer {
+                CollisionLayer::Enemy => projectile.is_none(),
+                CollisionLayer::Bullet => projectile.is_some(),
+                CollisionLayer::Player | CollisionLayer::Wall | CollisionLayer::Pickup => false,
+            })
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
+fn snapshot_spawn_prefab_bindings_match_registry(
+    scene: &ShooterScene,
+    entities: &[ShooterEntitySnapshot],
+) -> bool {
+    entities.iter().all(|entity| {
+        (0..SNAPSHOT_SPAWN_PREFAB_BINDINGS).all(|slot| {
+            snapshot_spawn_prefab_action_binding(*entity, slot)
+                .map(|binding| snapshot_supported_spawn_prefab_binding(scene, binding))
+                .unwrap_or(true)
+        })
+    })
 }
 
 fn write_snapshot_spawn_prefab_action_binding(
@@ -614,6 +685,7 @@ fn write_snapshot_spawn_prefab_action_binding(
 ) {
     if let ActionPattern::SpawnPrefab {
         prefab_id,
+        projectile,
         anchor: SpawnAnchor::SelfEntity,
         phase: SpawnPhase::PrePhysics,
         offset_x,
@@ -635,6 +707,25 @@ fn write_snapshot_spawn_prefab_action_binding(
         snapshot.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_ID_FIELD)] = prefab_id;
         snapshot.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_ANCHOR_FIELD)] = 0;
         snapshot.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_PHASE_FIELD)] = 0;
+        if let Some(projectile) = projectile {
+            snapshot.floats
+                [spawn_prefab_float_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_SPEED_FIELD)] =
+                projectile.speed;
+            snapshot.floats
+                [spawn_prefab_float_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_DAMAGE_FIELD)] =
+                projectile.damage;
+            snapshot.floats
+                [spawn_prefab_float_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_LIFETIME_FIELD)] =
+                projectile.lifetime_seconds;
+            snapshot.u32s
+                [spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_FLAG_FIELD)] = 1;
+            snapshot.u32s
+                [spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_AIM_FIELD)] =
+                projectile.aim.code();
+            snapshot.u32s
+                [spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_POLICY_FIELD)] =
+                pack_projectile_policy(projectile.collision_target, projectile.tile_impact);
+        }
     }
 }
 
@@ -695,10 +786,15 @@ fn snapshot_spawn_prefab_action_binding(
 ) -> Option<ActionBinding> {
     let action_id =
         snapshot.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_ACTION_ID_FIELD)];
-    (action_id != 0).then_some(ActionBinding {
+    if action_id == 0 {
+        return None;
+    }
+    let projectile = snapshot_spawn_prefab_projectile_payload(snapshot, slot)?;
+    Some(ActionBinding {
         action_id,
         pattern: ActionPattern::SpawnPrefab {
             prefab_id: snapshot.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_ID_FIELD)],
+            projectile,
             anchor: SpawnAnchor::SelfEntity,
             phase: SpawnPhase::PrePhysics,
             offset_x: snapshot.floats
@@ -713,4 +809,151 @@ fn snapshot_spawn_prefab_action_binding(
                 [spawn_prefab_float_index(slot, SNAPSHOT_SPAWN_PREFAB_COOLDOWN_REMAINING_FIELD)],
         },
     })
+}
+
+fn snapshot_spawn_prefab_projectile_payload(
+    snapshot: ShooterEntitySnapshot,
+    slot: usize,
+) -> Option<Option<SpawnPrefabProjectilePayload>> {
+    match snapshot.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_FLAG_FIELD)] {
+        0 => Some(None),
+        1 => {
+            let policy = snapshot.u32s
+                [spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_POLICY_FIELD)];
+            Some(Some(SpawnPrefabProjectilePayload {
+                speed: snapshot.floats
+                    [spawn_prefab_float_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_SPEED_FIELD)],
+                damage: snapshot.floats
+                    [spawn_prefab_float_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_DAMAGE_FIELD)],
+                lifetime_seconds: snapshot.floats[spawn_prefab_float_index(
+                    slot,
+                    SNAPSHOT_SPAWN_PREFAB_PROJECTILE_LIFETIME_FIELD,
+                )],
+                aim: ActionAimSource::from_code(
+                    snapshot.u32s
+                        [spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_PROJECTILE_AIM_FIELD)],
+                )?,
+                collision_target: unpack_projectile_collision_target(policy)?,
+                tile_impact: unpack_projectile_tile_impact(policy)?,
+            }))
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shooter_scene::ShooterPrefabKind;
+
+    fn spawn_prefab_binding(prefab_id: u32) -> ActionBinding {
+        ActionBinding {
+            action_id: 9,
+            pattern: ActionPattern::SpawnPrefab {
+                prefab_id,
+                projectile: None,
+                anchor: SpawnAnchor::SelfEntity,
+                phase: SpawnPhase::PrePhysics,
+                offset_x: 4.0,
+                offset_y: -2.0,
+            },
+            cooldown: Cooldown {
+                duration_seconds: 0.5,
+                remaining_seconds: 0.25,
+            },
+        }
+    }
+
+    fn spawn_prefab_projectile_binding(prefab_id: u32) -> ActionBinding {
+        ActionBinding {
+            action_id: 10,
+            pattern: ActionPattern::SpawnPrefab {
+                prefab_id,
+                projectile: Some(SpawnPrefabProjectilePayload {
+                    speed: 480.0,
+                    damage: 2.0,
+                    lifetime_seconds: 1.25,
+                    aim: ActionAimSource::TargetPlayer,
+                    collision_target: ProjectileCollisionTarget::Player,
+                    tile_impact: ProjectileTileImpact::Bounce,
+                }),
+                anchor: SpawnAnchor::SelfEntity,
+                phase: SpawnPhase::PrePhysics,
+                offset_x: 4.0,
+                offset_y: -2.0,
+            },
+            cooldown: Cooldown {
+                duration_seconds: 0.5,
+                remaining_seconds: 0.25,
+            },
+        }
+    }
+
+    fn snapshot_with_spawn_prefab_binding(binding: ActionBinding) -> ShooterEntitySnapshot {
+        let mut snapshot = ShooterEntitySnapshot {
+            floats: [0.0; SHOOTER_SNAPSHOT_ENTITY_FLOATS],
+            u32s: [0; SHOOTER_SNAPSHOT_ENTITY_U32S],
+        };
+        write_snapshot_spawn_prefab_action_binding(&mut snapshot, 0, binding);
+        snapshot
+    }
+
+    fn snapshot_with_spawn_prefab(prefab_id: u32) -> ShooterEntitySnapshot {
+        snapshot_with_spawn_prefab_binding(spawn_prefab_binding(prefab_id))
+    }
+
+    #[test]
+    fn snapshot_spawn_prefab_support_accepts_registered_enemy_alias() {
+        let mut scene = ShooterScene::new();
+
+        assert!(scene.register_spawn_prefab_kind(7, ShooterPrefabKind::Enemy));
+
+        assert!(snapshot_supported_spawn_prefab_binding(
+            &scene,
+            spawn_prefab_binding(7)
+        ));
+        assert!(snapshot_spawn_prefab_bindings_match_registry(
+            &scene,
+            &[snapshot_with_spawn_prefab(7)]
+        ));
+    }
+
+    #[test]
+    fn snapshot_spawn_prefab_support_rejects_unregistered_or_non_enemy_alias() {
+        let mut scene = ShooterScene::new();
+
+        assert!(scene.register_spawn_prefab_kind(8, ShooterPrefabKind::Bullet));
+
+        assert!(!snapshot_supported_spawn_prefab_binding(
+            &scene,
+            spawn_prefab_binding(7)
+        ));
+        assert!(!snapshot_supported_spawn_prefab_binding(
+            &scene,
+            spawn_prefab_binding(8)
+        ));
+        assert!(!snapshot_spawn_prefab_bindings_match_registry(
+            &scene,
+            &[snapshot_with_spawn_prefab(8)]
+        ));
+    }
+
+    #[test]
+    fn snapshot_spawn_prefab_support_accepts_registered_bullet_alias_with_projectile_payload() {
+        let mut scene = ShooterScene::new();
+        let binding = spawn_prefab_projectile_binding(8);
+        let snapshot = snapshot_with_spawn_prefab_binding(binding);
+
+        assert!(scene.register_spawn_prefab_kind(8, ShooterPrefabKind::Bullet));
+
+        assert!(snapshot_supported_spawn_prefab_binding(&scene, binding));
+        assert!(snapshot_spawn_prefab_bindings_match_registry(
+            &scene,
+            &[snapshot]
+        ));
+        assert_eq!(
+            snapshot_spawn_prefab_action_binding(snapshot, 0),
+            Some(binding)
+        );
+    }
 }

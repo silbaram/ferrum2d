@@ -37,6 +37,11 @@ export class BrowserPlatformHost implements AssetHost {
     return this.assetLoader.soundId(name);
   }
 
+  hasSound(soundId: number): boolean {
+    this.assertAlive();
+    return this.audioManager.hasSound(soundId);
+  }
+
   playAudioEvents(events: readonly AudioEventView[]): void {
     this.assertAlive();
     this.audioManager.playEvents(events);

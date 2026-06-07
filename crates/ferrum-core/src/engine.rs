@@ -9,6 +9,7 @@ use crate::collision::{
     PHYSICS_DEBUG_DEFAULT,
 };
 use crate::collision_event::{CollisionEvent, CollisionEventCounts, CollisionEventTracker};
+use crate::effect_event::EffectEvent;
 use crate::gameplay_event::GameplayEvent;
 use crate::input::{InputActionRegistry, InputState};
 use crate::particles::{ParticlePreset, ParticleSystem};
@@ -107,6 +108,7 @@ pub struct Engine {
     render_commands: Vec<SpriteRenderCommand>,
     render_items: Vec<SpriteRenderItem>,
     audio_events: Vec<AudioEvent>,
+    effect_events: Vec<EffectEvent>,
     collision_events: Vec<CollisionEvent>,
     gameplay_events: Vec<GameplayEvent>,
     frame_telemetry: FrameTelemetry,
@@ -187,6 +189,7 @@ impl Engine {
             render_commands: Vec::with_capacity(256),
             render_items: Vec::with_capacity(256),
             audio_events: Vec::with_capacity(16),
+            effect_events: Vec::with_capacity(16),
             collision_events: Vec::with_capacity(128),
             gameplay_events: Vec::with_capacity(32),
             frame_telemetry: FrameTelemetry::default(),

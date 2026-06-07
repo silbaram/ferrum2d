@@ -33,6 +33,7 @@ export {
   bindSceneBehaviorRecipes,
   createGameplayBehaviorRuntimeTarget,
   dryRunSceneBehaviorRecipes,
+  registerGameplayPrefabs,
   resolveGameplayBehaviorRuntimeIds,
 } from "../gameplayAuthoring";
 export {
@@ -46,6 +47,18 @@ export {
   unpackTileImpactTileIndex,
 } from "../gameplayEventActions";
 export {
+  dispatchEffectEvents,
+  effectDispatchesForEvents,
+} from "../effectEventAdapters";
+export {
+  createEffectEventDispatchTarget,
+  dispatchRuntimeEffectEvents,
+} from "../effectEventRuntime";
+export {
+  bindPresentationEffectActions,
+  resolvePresentationEffectRegistry,
+} from "../presentationEffects";
+export {
   gameplayActionDiagnosticReports,
   suggestionForActionFailureReason,
 } from "../gameplayActionDiagnostics";
@@ -53,6 +66,11 @@ export {
   gameplaySpawnDiagnosticReports,
   suggestionForSpawnDiagnosticMetric,
 } from "../gameplaySpawnDiagnostics";
+export {
+  compileWeaponProfiles,
+  projectile,
+  weapon,
+} from "../projectileAuthoring";
 export {
   captureGameStateSnapshot,
   GAME_STATE_SNAPSHOT_FORMAT,
@@ -120,6 +138,8 @@ export type {
   BehaviorRecipeCommand,
   BehaviorRecipeCommandBase,
   BehaviorRecipeCommandOptions,
+  BehaviorRecipeCollisionLayer,
+  BehaviorRecipeCollisionTrigger,
   BehaviorRecipeDamageTarget,
   BehaviorRecipeDocumentSpec,
   BehaviorRecipeEntrySpec,
@@ -129,17 +149,30 @@ export type {
   BehaviorRecipeKind,
   BehaviorRecipeProjectileCollisionTarget,
   BehaviorRecipeProjectileTileImpact,
+  BehaviorRecipePresentationEffectKind,
   BehaviorRecipeReferenceSpec,
   BehaviorRecipeRuntimeTarget,
   BehaviorRecipeSpec,
   ChaseBehaviorRecipeSpec,
   ConfigureChaseBehaviorCommand,
+  ConfigureCollisionAreaDamageBehaviorCommand,
   ConfigureCollisionDespawnBehaviorCommand,
+  ConfigureCollisionEmitEffectBehaviorCommand,
+  ConfigureCollisionKnockbackBehaviorCommand,
   ConfigureCollisionPickupBehaviorCommand,
   ConfigureCollisionParticleBehaviorCommand,
+  ConfigureCollisionShakeBehaviorCommand,
+  ConfigureCollisionSpawnPrefabBehaviorCommand,
+  ConfigureCollisionSoundBehaviorCommand,
+  CollisionAreaDamageBehaviorRecipeSpec,
   CollisionDespawnBehaviorRecipeSpec,
+  CollisionEmitEffectBehaviorRecipeSpec,
+  CollisionKnockbackBehaviorRecipeSpec,
   CollisionPickupBehaviorRecipeSpec,
   CollisionParticleBehaviorRecipeSpec,
+  CollisionShakeBehaviorRecipeSpec,
+  CollisionSpawnPrefabBehaviorRecipeSpec,
+  CollisionSoundBehaviorRecipeSpec,
   ConfigureDamageBehaviorCommand,
   ConfigureDashActionBehaviorCommand,
   ConfigureFactionBehaviorCommand,
@@ -152,6 +185,7 @@ export type {
   FactionBehaviorRecipeSpec,
   ConfigureScoreRewardBehaviorCommand,
   ConfigureSpawnPrefabActionBehaviorCommand,
+  ConfigureTagsBehaviorCommand,
   ConfigureTimerTriggerBehaviorCommand,
   DamageBehaviorRecipeSpec,
   DashActionBehaviorRecipeSpec,
@@ -169,9 +203,15 @@ export type {
   ResolvedBehaviorRecipeDocument,
   ResolvedBehaviorRecipeEntity,
   ResolvedChaseBehaviorRecipe,
+  ResolvedCollisionAreaDamageBehaviorRecipe,
   ResolvedCollisionDespawnBehaviorRecipe,
+  ResolvedCollisionEmitEffectBehaviorRecipe,
+  ResolvedCollisionKnockbackBehaviorRecipe,
   ResolvedCollisionPickupBehaviorRecipe,
   ResolvedCollisionParticleBehaviorRecipe,
+  ResolvedCollisionShakeBehaviorRecipe,
+  ResolvedCollisionSpawnPrefabBehaviorRecipe,
+  ResolvedCollisionSoundBehaviorRecipe,
   ResolvedDamageBehaviorRecipe,
   ResolvedDashActionBehaviorRecipe,
   ResolvedFactionBehaviorRecipe,
@@ -230,7 +270,11 @@ export type {
   GameplayBehaviorRuntimeIds,
   GameplayEntityHandle,
   GameplayEntityHandleMap,
+  GameplayPrefabRegistration,
+  GameplayPrefabRegistrationKind,
   MissingSceneBehaviorBinding,
+  RegisterGameplayPrefabsOptions,
+  RegisterGameplayPrefabsResult,
   ResolveGameplayBehaviorRuntimeIdsOptions,
   SceneBehaviorBindingDryRunResult,
   SceneBehaviorBindingOptions,
@@ -251,6 +295,16 @@ export type {
   GameplaySpawnDiagnosticValue,
 } from "../gameplaySpawnDiagnostics";
 export type {
+  ProjectileActionAim,
+  ProjectileCollisionTarget,
+  ProjectileDefinition,
+  ProjectileDefinitionBuilder,
+  ProjectileTileImpact,
+  WeaponDefinition,
+  WeaponDefinitionBuilder,
+} from "../projectileAuthoring";
+export type { ProjectileAuthoringCompileOptions } from "../projectileAuthoring";
+export type {
   GameplayActionFailedEventAction,
   GameplayActionFailureReason,
   GameplayBehaviorStateChangedEventAction,
@@ -267,6 +321,7 @@ export type {
   GameplayInteractionActionMetadata,
   GameplayInteractionEventAction,
   GameplayPickupCollectedEventAction,
+  GameplayPresentationEffectEventAction,
   GameplayPrefabSpawnedEventAction,
   GameplayTimerEventAction,
   GameplayTileImpactEventAction,
@@ -274,6 +329,35 @@ export type {
   GameplayTileImpactPolicy,
   UnknownGameplayEventPolicy,
 } from "../gameplayEventActions";
+export type {
+  EffectCameraShakeEventDispatch,
+  EffectCustomEventDispatch,
+  EffectEventDispatch,
+  EffectEventDispatchBase,
+  EffectEventDispatchOptions,
+  EffectEventDispatchSummary,
+  EffectEventDispatchTarget,
+  EffectParticleEventDispatch,
+  EffectSoundEventDispatch,
+  MissingEffectEventHandlerPolicy,
+  UnknownEffectEventPolicy,
+} from "../effectEventAdapters";
+export type {
+  EffectEventAssetValidationPolicy,
+  EffectEventDispatchTargetFactoryOptions,
+  EffectEventRuntimeOptions,
+} from "../effectEventRuntime";
+export type {
+  PresentationEffectActionBinding,
+  PresentationEffectActionBindingOptions,
+  PresentationEffectDefinitionSpec,
+  PresentationEffectKind,
+  PresentationEffectRegistrySpec,
+  ResolvePresentationEffectRegistryOptions,
+  ResolvedPresentationEffectDefinition,
+  ResolvedPresentationEffectRegistry,
+  UnknownPresentationEffectPolicy,
+} from "../presentationEffects";
 export type {
   CaptureGameStateSnapshotOptions,
   GameStateSceneSnapshot,

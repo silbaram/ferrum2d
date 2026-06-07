@@ -17,17 +17,19 @@ pnpm smoke:check
 3. `pnpm validate:game-spec`
 4. `pnpm validate:physics-authoring`
 5. `pnpm smoke:runtime-budgets`
-6. `pnpm smoke:physics`
-7. `pnpm smoke:topdown-authored-behavior-variant`
-8. `pnpm validate:gameplay-authoring:report`
-9. `pnpm smoke:gameplay-replay:report`
-10. `pnpm validate:gameplay-report-artifacts`
-11. `pnpm smoke:create-game-template-reports`
-12. `pnpm smoke:topdown-template-replay-report`
-13. `pnpm smoke:topdown-authored-behavior-runtime`
-14. `pnpm smoke:starter-runtime`
-15. `pnpm smoke:headless`
-16. `pnpm build`
+6. `pnpm smoke:mass-objects`
+7. `pnpm smoke:physics`
+8. `pnpm smoke:topdown-authored-behavior-variant`
+9. `pnpm validate:gameplay-authoring:report`
+10. `pnpm smoke:gameplay-replay:report`
+11. `pnpm validate:gameplay-report-artifacts`
+12. `pnpm smoke:create-game-template-reports`
+13. `pnpm smoke:topdown-template-replay-report`
+14. `pnpm smoke:topdown-authored-behavior-runtime`
+15. `pnpm smoke:topdown-mass-objects`
+16. `pnpm smoke:starter-runtime`
+17. `pnpm smoke:headless`
+18. `pnpm build`
 
 `pnpm smoke:check`는 Starter Runtime과 Top-down authored behavior runtime의 browser smoke까지 포함하지만, 모든 장르의 WebGL2 화면, 키보드/마우스 입력, 브라우저 오디오 unlock 상태를 전부 확인하지는 않는다. 나머지 항목은 아래 browser render smoke check와 수동 smoke check에서 확인한다.
 
@@ -64,11 +66,17 @@ Starter Runtime의 실제 browser runtime에서 profiler frame/render/asset budg
 ```bash
 pnpm smoke:browser-budget
 pnpm smoke:runtime-budgets
+pnpm smoke:mass-objects
+pnpm smoke:topdown-mass-objects
 pnpm smoke:topdown-budget
 pnpm smoke:breakout-budget
 pnpm smoke:platformer-budget
 pnpm smoke:physics-sandbox-budget
 ```
+
+`pnpm smoke:mass-objects`는 Rust core 내부 `Engine` 테스트를 통해 1,000개 visible enemy와 512개 projectile lane이 한 frame에서 Shooter update/render command 경로를 통과하고, sparse horde 배치에서 collision pair가 폭증하지 않는지 확인한다. 또한 128개 overlapping enemy의 collision lifecycle total/trigger pair budget을 고정해 dense 배치에서 broadphase pair 수가 의도치 않게 바뀌는 회귀를 잡는다. 출력은 `format: "ferrum2d.mass-object-stress.smoke-report"` report와 scenario별 `enemyCount`, `projectileCount`, `entityCount`, `renderCommandCount`, `collisionPairCount`, `collisionSolidPairCount`, `collisionTriggerPairCount`, `shooterBulletEnemy*`, `shooterBulletPlayer*`, `shooterPlayerEnemy*`, `updateMicros` metric을 포함한다. `shooter*ProxyCount` metric은 Shooter 전용 collision/swept pair builder가 실제 대량 레이어 proxy를 통과했는지 고정한다. 이 smoke는 browser GPU frame time을 대체하지 않고, 대량 오브젝트 최적화 전후의 Rust-side 구조 회귀를 빠르게 고정하기 위한 기준이다.
+
+`pnpm smoke:topdown-mass-objects`는 Top-down Shooter production build를 browser에서 열고 smoke-only snapshot restore로 1,024개 enemy entity를 한 번에 복원한다. 이후 일반 frame loop가 Playing 상태에서 Rust render command buffer를 만들고 WebGL2 renderer가 이를 소비하는지 확인하며, `RuntimeProfiler` budget으로 render command count, draw call, texture switch, collision pair count, frame/render time 회귀를 함께 검증한다. 이 smoke는 public spawn API나 새 Wasm ABI를 추가하지 않고 `restoreShooterStateSnapshot()` setup 경로만 사용한다.
 
 Minimal Game smoke fixture의 loading overlay, asset preload progress, IndexedDB JSON/texture body cache 회귀를 확인하려면 다음을 실행한다. Top-down Shooter의 실제 asset manifest preload/cache 적용은 `pnpm smoke:topdown` production build 경로에서 함께 검증한다.
 
@@ -262,7 +270,7 @@ pnpm smoke:topdown-hd2d
 
 `pnpm smoke:topdown-authored-behavior-runtime`은 production Top-down Shooter build가 같은 variant JSON을 asset manifest로 preload/load하고, browser runtime에서 `window.ferrumTopdownAuthoredBehaviorVariant` summary로 노출하는지 확인한다. smoke URL은 `authoredBehaviorVariantApply=true`를 사용해 scene load 이후 낮은 빈도 경로에서 variant instance를 physics body로 spawn하거나 `runtimeEntity: "builtinShooterPlayer"`를 현재 built-in player handle에 매핑하고, variant `ids` registry를 통해 `FerrumEngine` gameplay authoring facade로 behavior commands와 FSM install plan을 Rust component storage에 적용한다. smoke는 `runtimeApply` summary의 instance count `8`, command count `15`, FSM initial/current state id, `applyId`, `semantics.browserPlacement`에서 온 placement anchor/target/scale, built-in player primary projectile action binding, dash action binding, spawnPrefab action binding(`summon-enemy`)을 검증한다. 또한 browser frame을 실제 Playing 상태로 진행해 score `15`, `interaction`/`collisionDamage`/`factionDamageDenied`/`pickupCollected`/`actionFailed`/`timer`/`prefabSpawned` event payload, one-shot interaction non-repeat, authored FSM state `2/2/1`을 `FrameState.gameplayEvents`와 typed engine query로 검증한다. 그 뒤 window-only helper `ferrumTopdownAuthoredBehaviorApplyCurrentStateCommands()`를 호출해 현재 FSM state command plan을 `replaceSupported` mode로 적용한다. smoke는 clear-only profile과 `test-projectile.spent`의 non-empty profile(`configureLifetime`)을 함께 검증한다. 이후 `ferrumTopdownAuthoredBehaviorResetAndReapply()`를 호출해 `resetGame()` 이후 stale handle을 버리고 variant를 다시 적용한다. 두 번째 run은 frame summary가 새 `applyId`를 갖는지, 이벤트 payload가 현재 `runtimeApply.handles`와 일치하는지, reset 직후 frame/state-command summary가 비워졌는지, state command apply가 두 번째 `applyId`에서도 동작하는지, one-shot interaction과 state change telemetry가 다시 중복 발행되지 않는지 확인한다. 이는 demo apply toggle이지 frame hot path callback이나 state-entry 자동 runtime이 아니다.
 
-`pnpm smoke:gameplay-replay`는 `docs/engine/gameplay-golden/scenarios.json` manifest를 읽어 raw Wasm `Engine`을 fixed timestep으로 실행하고, 각 scenario의 `fixturePath`에 있는 golden fixture와 `GameStateSnapshot` replay hash를 비교한다. manifest는 scenario id, human-readable description, kebab-case `coverageTags`, coverage vocabulary path, runner, optional `variantPath`, frame count, capture frame, input event, expected replay hash와 score/event/FSM metadata, optional `expected.spawnDiagnostics` frame metric을 고정하는 scenario 계약이다. `fixtureIndexPath`가 가리키는 `docs/engine/gameplay-golden/fixture-index.json`은 agent가 빠르게 읽는 파생 catalog이며, source of truth는 manifest다. coverage vocabulary의 source of truth는 `docs/engine/gameplay-golden/coverage-tags.json`이고, active `coverageTagDefinitions`, 빠른 탐색용 `coverageTagGroups`, 폐기 tag 보존용 `deprecatedCoverageTags`를 포함한다. 이 vocabulary는 앞으로 만들 gameplay taxonomy가 아니라 현재 커밋된 golden scenario coverage tag contract다. 따라서 모든 active definition은 최소 하나의 scenario에서 사용되어야 하고, 모든 active tag는 최소 하나의 group에 포함되어야 하며, scenario는 deprecated tag를 사용할 수 없다. 아직 coverage가 없는 계획용 tag는 roadmap에만 둔다. smoke는 index의 coverage vocabulary path, scenario id, description, coverage tags, runner, fixture path, replay hash, frame count, capture frame count가 manifest와 일치하는지 먼저 검증한다. 모든 coverage tag는 active vocabulary에 정의되어야 하며, 현재 smoke는 `spawn-diagnostics`/`action-failure`/`variant` 같은 일부 tag가 관련 manifest field와 함께 쓰이는지도 확인한다. 장르별 setup과 exact payload assertion은 runner가 소유한다. `topdown-authored-behavior`는 `variantPath`가 가리키는 Top-down authored behavior variant를 함께 읽어 scene instance, physics body metadata, behavior recipe command, FSM expected state가 replay authoring event와 일치하는지 검증한다. 각 scenario는 같은 build에서 두 번 실행해 actual-vs-actual determinism을 먼저 확인한다. 기본 fixture는 deterministic enemy spawn, projectile travel, enemy damage, score reward를 포함한다. authored behavior fixture는 raw Wasm setter로 설치한 score pickup, interaction event, collisionDamage reaction, source-scoped FSM transition을 exact event payload와 custom JSON state까지 포함해 검증한다. `topdown-authored-projectile-tile-impact-fsm` fixture는 raw Wasm authoring setter로 bounce tileImpact policy를 가진 projectile body와 FSM을 설치하고, 같은 Rust frame의 `tileImpact`와 `behaviorStateChanged` event payload를 exact custom state로 검증한다. authored timer spawn, wave action spawn, state-enter spawn/projectile scenario는 `expected.spawnDiagnostics`로 deferred spawn queue drain, projectile spawn, prefab payload/event push count를 검증하며 mismatch는 `gameplayReplay.frames.<frame>.spawnDiagnostics.<metric>` path와 expected/actual/suggestion을 가진 report로 실패한다. expectation 없이 관측된 positive spawn activity는 `spawnExpectationPatches`로 실행 중인 manifest의 patch 후보를 제공한다. `--artifact-dir`로 저장되는 smoke report는 출력/저장 전에 `schemas/gameplay-replay-smoke-report.schema.json` 계약으로 self-validate한다. 비교 범위는 scene metric, built-in shooter snapshot, custom JSON state이며 render/audio/debug/profiler output과 action/spawn diagnostic summary는 golden fixture/hash에서 제외한다. 의도한 gameplay behavior 변경으로 baseline을 갱신해야 할 때는 변경 리뷰 후 다음 명령을 실행해 fixture와 fixture index를 재생성한다.
+`pnpm smoke:gameplay-replay`는 `tests/fixtures/gameplay-golden/scenarios.json` manifest를 읽어 raw Wasm `Engine`을 fixed timestep으로 실행하고, 각 scenario의 `fixturePath`에 있는 golden fixture와 `GameStateSnapshot` replay hash를 비교한다. manifest는 scenario id, human-readable description, kebab-case `coverageTags`, coverage vocabulary path, runner, optional `variantPath`, frame count, capture frame, input event, expected replay hash와 score/event/FSM metadata, optional `expected.spawnDiagnostics` frame metric을 고정하는 scenario 계약이다. `fixtureIndexPath`가 가리키는 `tests/fixtures/gameplay-golden/fixture-index.json`은 agent가 빠르게 읽는 파생 catalog이며, source of truth는 manifest다. coverage vocabulary의 source of truth는 `tests/fixtures/gameplay-golden/coverage-tags.json`이고, active `coverageTagDefinitions`, 빠른 탐색용 `coverageTagGroups`, 폐기 tag 보존용 `deprecatedCoverageTags`를 포함한다. 이 vocabulary는 앞으로 만들 gameplay taxonomy가 아니라 현재 커밋된 golden scenario coverage tag contract다. 따라서 모든 active definition은 최소 하나의 scenario에서 사용되어야 하고, 모든 active tag는 최소 하나의 group에 포함되어야 하며, scenario는 deprecated tag를 사용할 수 없다. 아직 coverage가 없는 계획용 tag는 roadmap에만 둔다. smoke는 index의 coverage vocabulary path, scenario id, description, coverage tags, runner, fixture path, replay hash, frame count, capture frame count가 manifest와 일치하는지 먼저 검증한다. 모든 coverage tag는 active vocabulary에 정의되어야 하며, 현재 smoke는 `spawn-diagnostics`/`action-failure`/`variant` 같은 일부 tag가 관련 manifest field와 함께 쓰이는지도 확인한다. 장르별 setup과 exact payload assertion은 runner가 소유한다. `example-topdown-authored-behavior`는 `variantPath`가 가리키는 Top-down authored behavior variant를 함께 읽어 scene instance, physics body metadata, behavior recipe command, FSM expected state가 replay authoring event와 일치하는지 검증한다. 각 scenario는 같은 build에서 두 번 실행해 actual-vs-actual determinism을 먼저 확인한다. 기본 fixture는 deterministic enemy spawn, projectile travel, enemy damage, score reward를 포함한다. authored behavior fixture는 raw Wasm setter로 설치한 score pickup, interaction event, collisionDamage reaction, source-scoped FSM transition을 exact event payload와 custom JSON state까지 포함해 검증한다. `projectile-tile-impact-fsm-authored` fixture는 raw Wasm authoring setter로 bounce tileImpact policy를 가진 projectile body와 FSM을 설치하고, 같은 Rust frame의 `tileImpact`와 `behaviorStateChanged` event payload를 exact custom state로 검증한다. `projectile-homing-nearest-tag` fixture는 TS `SceneComposition`/`BehaviorRecipe` binding으로 `seekTarget(nearestTag:hostile)`, damage, collision particle, collision despawn, lifetime을 설치한 뒤 Rust projectile movement, tagged target collision, `collisionDamage -> collisionDespawn -> presentationEffect` event payload, score reward, untagged decoy 생존을 exact custom state로 검증한다. `projectile-area-damage-entity-impact` fixture는 같은 TS binding 경로로 `collisionAreaDamage`, `collisionEmitEffect`, `collisionDespawn`, `accelerate`, lifetime을 설치한 뒤 반경 내 direct/splash enemy 제거, 합산 score reward, 반경 밖 enemy 생존, `collisionDamage -> collisionDamage -> collisionDespawn -> presentationEffect` event payload를 exact custom state로 검증한다. `projectile-area-damage-tile-impact` fixture는 TS `SceneComposition`/`BehaviorRecipe` binding으로 `collisionAreaDamage`를 설치한 projectile이 blocking tile에 닿을 때 Rust swept tile contact point 중심으로 direct/splash enemy damage, score reward, terminal `tileImpact` telemetry, 반경 밖 enemy 생존을 검증한다. authored timer spawn, wave action spawn, state-enter spawn/projectile scenario는 `expected.spawnDiagnostics`로 deferred spawn queue drain, projectile spawn, prefab payload/event push count를 검증하며 mismatch는 `gameplayReplay.frames.<frame>.spawnDiagnostics.<metric>` path와 expected/actual/suggestion을 가진 report로 실패한다. expectation 없이 관측된 positive spawn activity는 `spawnExpectationPatches`로 실행 중인 manifest의 patch 후보를 제공한다. `--artifact-dir`로 저장되는 smoke report는 출력/저장 전에 `schemas/gameplay-replay-smoke-report.schema.json` 계약으로 self-validate한다. 비교 범위는 scene metric, built-in shooter snapshot, custom JSON state이며 render/audio/debug/profiler output과 action/spawn diagnostic summary는 golden fixture/hash에서 제외한다. 의도한 gameplay behavior 변경으로 baseline을 갱신해야 할 때는 변경 리뷰 후 다음 명령을 실행해 fixture와 fixture index를 재생성한다.
 
 ```bash
 pnpm update:gameplay-replay-golden
@@ -311,7 +319,7 @@ pnpm smoke:headless
 
 ## Browser render smoke check
 
-`pnpm smoke:browser`는 `examples/starter-runtime` production build를, `pnpm smoke:topdown`/`pnpm smoke:topdown-hd2d`는 `examples/topdown-shooter` production build를, `pnpm smoke:breakout`/`pnpm smoke:breakout-effects`는 `examples/breakout` production build를, `pnpm smoke:platformer`/`pnpm smoke:platformer-effects`는 `examples/platformer` production build를, `pnpm smoke:physics-sandbox`/`pnpm smoke:physics-demo-suite`는 `examples/physics-sandbox` production build를 정적 서버로 띄운 뒤 Playwright Core로 설치된 Chrome/Chromium을 실행한다. 검증 범위는 다음과 같다.
+`pnpm smoke:browser`는 `examples/starter-runtime` production build를, `pnpm smoke:topdown`/`pnpm smoke:topdown-mass-objects`/`pnpm smoke:topdown-hd2d`는 `examples/topdown-shooter` production build를, `pnpm smoke:breakout`/`pnpm smoke:breakout-effects`는 `examples/breakout` production build를, `pnpm smoke:platformer`/`pnpm smoke:platformer-effects`는 `examples/platformer` production build를, `pnpm smoke:physics-sandbox`/`pnpm smoke:physics-demo-suite`는 `examples/physics-sandbox` production build를 정적 서버로 띄운 뒤 Playwright Core로 설치된 Chrome/Chromium을 실행한다. 검증 범위는 다음과 같다.
 
 - `createFerrumRuntime(...)` 또는 예제 bootstrap이 browser runtime을 초기화한다.
 - WebGL2 canvas가 생성되고 Rust/Wasm render command를 소비한다.
@@ -322,6 +330,7 @@ pnpm smoke:headless
 - `pnpm smoke:preload`는 Minimal Game에서 `LoadingOverlay`를 켜고 data URL manifest를 두 번 preload해 첫 실행 fetch와 두 번째 IndexedDB JSON/texture body cache hit를 검증한다.
 - `pnpm smoke:mobile-input`은 Minimal Game에서 `VirtualControls` DOM preset을 켜고 joystick/button state가 `W/D/Space/mouseLeft` input으로 합성되고 release되는지 확인한다.
 - `pnpm smoke:topdown`은 Top-down Shooter production build에서 실제 asset manifest preload/cache/loading overlay를 거친 뒤 smoke 전용 URL parameter로 deterministic enemy hit를 만들고, particle count와 enemy tint flash render command가 관측되는지 확인한다.
+- `pnpm smoke:topdown-mass-objects`는 Top-down Shooter production build에서 Playing 상태의 1,024개 enemy snapshot restore, 1,000개 이상 Rust render command, WebGL2 batching stats, collision pair budget, runtime budget profile을 확인한다.
 - `pnpm smoke:topdown-save-load`는 Top-down Shooter production build에서 enemy/bullet이 포함된 built-in shooter snapshot을 캡처하고, `resetGame()` 이후 restore 및 재캡처 hash 일치를 확인한다. 또한 저장/복원 전후 `GameStateSnapshot`을 `createGameplayReplayRun(...)` / `compareGameplayReplayRuns(...)`로 비교해 첫 mismatch frame과 JSON path를 실패 report에 포함한다.
 - `pnpm smoke:gameplay-replay`는 Top-down Shooter raw Wasm runtime을 deterministic input stream으로 실행하고 committed golden fixture의 replay hash와 비교한다. 이 경로는 browser rendering smoke가 아니라 gameplay canonical state 회귀 gate다.
 - `pnpm smoke:topdown-hd2d`는 Top-down Shooter production build에 smoke 전용 HD-2D spec을 적용해 `weapons.projectileArc`, bridge `toHeightSpan` path, under-pass same-floor path, render command 생성을 확인한다.
@@ -408,7 +417,7 @@ Top-down template replay report 계약만 빠르게 확인하려면 `pnpm smoke:
 
 전체 create-game template이 consumer agent가 읽을 수 있는 report envelope를 내는지만 빠르게 확인하려면 `pnpm smoke:create-game-template-reports`를 사용한다. 이 smoke는 `packages/create-game/templates/manifest.json`의 모든 template을 임시 폴더에 복사하고, `package.json` placeholder만 temp copy에서 정규화한 뒤 `ferrum-harness.mjs authoring-report`와 `replay-report`, `ferrum-runtime-replay.mjs report`, `ferrum-runtime-replay.mjs recipe`, `ferrum-runtime-replay.mjs update-fixture`를 직접 실행한다. manifest의 `gameplayReplay`와 `runtimeGameplayReplay` entry는 template별 deterministic replay fixture 제공 여부를 catalog로 고정하며, smoke는 각 harness의 configured 값이 catalog와 일치하는지도 확인한다. 모든 기본 template은 workspace `@ferrum2d/ferrum-web` package를 symlink해 replay fixture를 검증한다. `topdown`은 Game Spec contract replay를, `minimal`/`platformer`는 template surface contract replay를 검증한다. runtime replay는 모든 기본 template의 configured headless runtime fixture/report/update path를 확인한다. 이 명령은 install, tarball pack, create-game CLI token replacement, production build를 검증하지 않는다.
 
-의존성 store가 준비된 CI 환경에서는 `pnpm package:consumer-smoke -- --offline`으로 registry resolution 없이 실행할 수 있다. 새 머신에서는 일반 실행으로 Vite/TypeScript 범위 의존성을 consumer install과 같은 방식으로 해석한다. offline 실행은 generated project의 direct dependency tarball(예: TypeScript)이 pnpm store에 없으면 `ERR_PNPM_NO_OFFLINE_TARBALL`로 실패한다. 실패 재현용 파일을 보존하려면 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`를 사용한다.
+의존성 store가 준비된 CI 환경에서는 `pnpm package:consumer-smoke -- --offline`으로 registry resolution 없이 실행할 수 있다. 새 머신에서는 일반 실행으로 Vite/TypeScript 범위 의존성을 consumer install과 같은 방식으로 해석한다. offline 실행은 generated project의 direct dependency tarball(예: TypeScript)이 pnpm store에 없으면 `ERR_PNPM_NO_OFFLINE_TARBALL`로 실패한다. 성공/실패 report와 재현용 파일을 보존하려면 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`를 사용한다. 이 artifact는 `pnpm validate:consumer-smoke-report`로 `consumer-smoke-report.json`, tarball, `node_modules`/`dist` 없는 snapshot 계약을 검증한다. `pnpm smoke:consumer-smoke-report`는 tarball 생성 전 초기 실패처럼 snapshot이 아직 없을 수 있는 failed report를 허용하면서, 존재하는 snapshot의 `node_modules`/`dist`/`.pnpm` 오염은 계속 실패시키는지 확인한다.
 
 ## CI와 로컬 검증 차이
 
@@ -419,11 +428,15 @@ GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `fer
 1. `pnpm install`
 2. `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
 3. `pnpm smoke:physics`
-4. `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
-5. `pnpm lint`
-6. `pnpm test`
-7. `pnpm build`
-8. tag 또는 수동 opt-in일 때 `pnpm package:consumer-smoke -- --offline --artifact-dir artifacts/consumer-smoke`
+4. `pnpm smoke:runtime-budgets`
+5. `pnpm smoke:mass-objects`
+6. `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
+7. `pnpm lint`
+8. `pnpm test`
+9. `pnpm build`
+10. tag 또는 수동 opt-in일 때 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`
+11. consumer smoke 직후 `pnpm validate:consumer-smoke-report -- --expect-status passed` 또는 실패 시 `--expect-status failed`
+12. `pnpm smoke:consumer-smoke-report`
 
 로컬 릴리스 후보 검증은 CI 명령에 더해 Game Spec 검증과 브라우저 수동 확인을 포함한다.
 
@@ -437,9 +450,11 @@ GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `fer
 - `pnpm smoke:destructible-terrain-browser`로 Top-down Shooter browser path의 deterministic tile 제거 demo를 확인한다.
 - `pnpm smoke:headless`로 Game Spec 적용 경로, collision/navigation 전제, representative render command buffer를 확인한다.
 - `pnpm smoke:topdown`으로 Top-down Shooter production build에서 particle burst와 non-lethal enemy tint flash가 browser render path에 도달하는지 확인한다.
+- `pnpm smoke:topdown-mass-objects`로 Top-down Shooter browser path에서 Playing 상태의 1,024개 enemy entity restore, WebGL2 대량 sprite command budget, collision pair budget을 확인한다.
 - `pnpm smoke:topdown-save-load`로 built-in shooter save/load snapshot restore가 browser production build에서 재현되는지 확인한다.
 - `pnpm smoke:topdown-hd2d`로 bridge portal navigation, projectile arc, HD-2D render path가 Top-down Shooter browser production build에서 재현되는지 확인한다.
 - `pnpm smoke:runtime-budgets`로 CI에서 runtime budget profile 계약을 확인하고, 예제별 성능 회귀가 의심되면 해당 `smoke:*-budget` browser smoke를 추가로 실행한다.
+- `pnpm smoke:mass-objects`로 1,000개 이상 enemy/projectile Rust frame path와 collision pair budget 회귀를 확인한다.
 - `pnpm smoke:physics-demo-suite`로 Physics Spec apply/sandbox fixture browser path를 확인한다.
 - `pnpm package:check`로 runtime package entrypoint, create-game scaffold, agents template, files allowlist, generated Wasm artifact, 실제 `pnpm pack` tarball 구성을 확인한다.
 - `pnpm package:consumer-smoke`로 local tarball install, generated game build, agents dry-run을 임시 consumer project에서 확인한다.

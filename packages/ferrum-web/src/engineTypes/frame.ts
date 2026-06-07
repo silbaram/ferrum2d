@@ -6,6 +6,8 @@ import type {
   AudioEventView,
   CollisionEventBufferView,
   CollisionEventView,
+  EffectEventBufferView,
+  EffectEventView,
   GameplayEventBufferView,
   GameplayEventView,
   PhysicsDebugLineBufferView,
@@ -18,6 +20,7 @@ export interface AssetHost {
   loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback): Promise<LoadedAssets>;
   textureId(name: string): number;
   soundId?(name: string): number;
+  hasSound?(soundId: number): boolean;
   playAudioEventBuffer?(events: AudioEventBufferView): void;
   playAudioEvents?(events: readonly AudioEventView[]): void;
   configureAudio?(config: AudioBusConfig): void;
@@ -68,6 +71,9 @@ export interface FrameState {
   /** Wasm memory view입니다. frame 안에서 동기 소비하거나 보관 전 복사하세요. */
   gameplayEventBuffer: GameplayEventBufferView;
   gameplayEvents: readonly GameplayEventView[];
+  /** Wasm memory view입니다. frame 안에서 동기 소비하거나 보관 전 복사하세요. */
+  effectEventBuffer: EffectEventBufferView;
+  effectEvents: readonly EffectEventView[];
   /** Wasm memory view입니다. frame 안에서 동기 소비하거나 보관 전 복사하세요. */
   physicsDebugLineBuffer: PhysicsDebugLineBufferView;
   physicsDebugLines: readonly PhysicsDebugLineView[];

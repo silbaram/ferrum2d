@@ -259,6 +259,8 @@ export function getWasmMemory(): WebAssembly.Memory {
 - `Engine` — Rust `#[wasm_bindgen]` struct에 대응. 메서드 시그니처가 자동 생성됨.
 - `InitOutput` — `init()` 반환값 타입, `memory: WebAssembly.Memory` 등 포함.
 
+Ferrum2D 저장소에서는 generated `pkg/*.d.ts`를 직접 수정하지 않는다. package-facing facade나 수동 선언 파일(예: `packages/ferrum-web/src/wasm.d.ts`)을 유지하는 경우에는 generated Wasm API와 public TypeScript facade를 함께 동기화한다.
+
 ### 6.1 `.d.ts` 안 보이는 경우
 
 `wasm-pack build`의 `--target web`이 `.d.ts`도 생성. tsconfig에 wasm 폴더가 포함돼 있는지 확인:

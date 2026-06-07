@@ -215,6 +215,110 @@ fn gameplay_action_projectile_setter_drives_player_primary_fire() {
 }
 
 #[test]
+fn homing_projectile_seek_target_nearest_enemy_runs_through_shooter_frame_loop() {
+    let mut engine = Engine::new();
+    start_shooter_playing(&mut engine);
+    let player = engine.world.player.unwrap();
+    engine
+        .world
+        .set_transform(player, Transform2D { x: 400.0, y: 240.0 });
+    let bullet = engine
+        .world
+        .spawn_bullet(50.0, 50.0, 0.0, -40.0, DEFAULT_TEXTURE_ID);
+    let enemy = engine.world.spawn_enemy(80.0, 50.0, DEFAULT_TEXTURE_ID);
+
+    assert!(engine.set_gameplay_movement_static(enemy.id, enemy.generation));
+    assert!(engine.set_gameplay_movement_seek_target_nearest_enemy(
+        bullet.id,
+        bullet.generation,
+        120.0,
+        1.0,
+    ));
+
+    engine.update_frame(0.25, false, false, false);
+
+    assert!(!engine.world.alive[bullet.id as usize]);
+    assert!(!engine.world.alive[enemy.id as usize]);
+    assert_eq!(engine.score(), 1);
+    assert_eq!(count_layer(&engine, CollisionLayer::Bullet), 0);
+    assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 0);
+}
+
+#[test]
+fn homing_projectile_seek_target_nearest_tag_runs_through_shooter_frame_loop() {
+    let mut engine = Engine::new();
+    start_shooter_playing(&mut engine);
+    let player = engine.world.player.unwrap();
+    engine
+        .world
+        .set_transform(player, Transform2D { x: 400.0, y: 240.0 });
+    let bullet = engine
+        .world
+        .spawn_bullet(50.0, 50.0, 0.0, -40.0, DEFAULT_TEXTURE_ID);
+    let near_untagged = engine.world.spawn_enemy(60.0, 90.0, DEFAULT_TEXTURE_ID);
+    let tagged_enemy = engine.world.spawn_enemy(80.0, 50.0, DEFAULT_TEXTURE_ID);
+
+    assert!(engine.set_gameplay_movement_static(near_untagged.id, near_untagged.generation));
+    assert!(engine.set_gameplay_movement_static(tagged_enemy.id, tagged_enemy.generation));
+    engine
+        .world
+        .set_gameplay_tags(tagged_enemy, GameplayTags::new(1 << 5).unwrap());
+    assert!(engine.set_gameplay_movement_seek_target_nearest_tag(
+        bullet.id,
+        bullet.generation,
+        5,
+        120.0,
+        1.0,
+    ));
+
+    engine.update_frame(0.25, false, false, false);
+
+    assert!(!engine.world.alive[bullet.id as usize]);
+    assert!(engine.world.alive[near_untagged.id as usize]);
+    assert!(!engine.world.alive[tagged_enemy.id as usize]);
+    assert_eq!(engine.score(), 1);
+    assert_eq!(count_layer(&engine, CollisionLayer::Bullet), 0);
+    assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 1);
+}
+
+#[test]
+fn collision_emit_effect_payload_reaches_effect_event_buffer() {
+    let mut engine = Engine::new();
+    start_shooter_playing(&mut engine);
+    let enemy = engine.world.spawn_enemy(500.0, 240.0, DEFAULT_TEXTURE_ID);
+    let bullet = engine
+        .world
+        .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+
+    assert!(engine.add_gameplay_collision_emit_effect_with_payload(
+        bullet.id,
+        bullet.generation,
+        77,
+        GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
+        1,
+        0.0,
+        0,
+        0.65,
+        48.0,
+    ));
+
+    engine.update_frame(0.016, false, false, false);
+
+    let events =
+        unsafe { std::slice::from_raw_parts(engine.effect_event_ptr(), engine.effect_event_len()) };
+    let event = events
+        .iter()
+        .find(|event| event.effect_id == 77)
+        .expect("authored emit effect should produce an effect event");
+    assert_eq!(event.actor_id, enemy.id);
+    assert_eq!(event.actor_generation, enemy.generation);
+    assert_eq!(event.effect_id, 77);
+    assert_eq!(event.effect_type, GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM);
+    assert_eq!(event.intensity, 0.65);
+    assert_eq!(event.radius, 48.0);
+}
+
+#[test]
 fn input_action_binding_remaps_player_primary_fire_without_widening_input_state() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);

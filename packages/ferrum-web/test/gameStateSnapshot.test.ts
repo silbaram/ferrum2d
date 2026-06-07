@@ -148,7 +148,7 @@ test("built-in shooter state validation rejects legacy v11 layout sizes", () => 
         ...shooterState,
         headerU32s: shooterState.headerU32s.slice(0, 9),
       }),
-    /headerU32s length must be 37/,
+    /headerU32s length must be 85/,
   );
 });
 
@@ -218,14 +218,14 @@ interface FakeScene {
 function fakeShooterState(overrides: { score?: number } = {}): BuiltInShooterStateSnapshot {
   return {
     format: "ferrum2d.builtin-shooter-state",
-    version: 11,
+    version: 15,
     headerFloats: [0, 1, 0, 0, 400, 240, 0, 0],
-    headerU32s: [11, 1, overrides.score ?? 0, 0, 0, 0, 0, 0, 0, ...Array(28).fill(0)],
-    entityFloats: [400, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    entityU32s: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    headerU32s: [15, 1, overrides.score ?? 0, 0, 0, 0, 0, 0, 0, ...Array(76).fill(0)],
+    entityFloats: [400, 240, 0, 0, ...Array(71).fill(0)],
+    entityU32s: [0, ...Array(60).fill(0)],
     entityCount: 1,
-    floatsPerEntity: 35,
-    u32sPerEntity: 21,
+    floatsPerEntity: 75,
+    u32sPerEntity: 61,
   };
 }
 
