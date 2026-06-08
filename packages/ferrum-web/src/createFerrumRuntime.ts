@@ -24,8 +24,16 @@ import { createRenderer } from "./createRenderer.js";
 import type { CreatedRenderer } from "./createRenderer.js";
 import type { RendererStats } from "./renderer.js";
 import type { TextureAssetManager } from "./assetLoader.js";
+import { DialogueSession, dialogueNodeToUiOverlayState } from "./dialogueQuest.js";
+import type {
+  DialogueChoiceResult,
+  DialogueGraphSpec,
+  DialogueSessionSnapshot,
+  DialogueUiOptions,
+  ResolvedDialogueGraph,
+} from "./dialogueQuest.js";
 import { UiOverlay } from "./uiOverlay.js";
-import type { UiOverlayOptions, UiOverlayState } from "./uiOverlay.js";
+import type { UiOverlayActionEvent, UiOverlayOptions, UiOverlayState } from "./uiOverlay.js";
 import type { WebGL2RendererOptions } from "./webgl2Renderer.js";
 import type { WebGPURendererOptions } from "./webgpuRenderer.js";
 import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch.js";
@@ -57,6 +65,20 @@ export type LightingSceneProvider = (frame: FrameState) => LightingScene2D | fal
 export type PostProcessProvider = (frame: FrameState) => PostProcessStackInput;
 export type SpriteMaterialProvider = (frame: FrameState) => SpriteMaterialPresetInput;
 
+export interface FerrumRuntimeDialogueOptions {
+  graph: DialogueGraphSpec | ResolvedDialogueGraph;
+  session?: DialogueSession;
+  ui?: DialogueUiOptions;
+  onChoice?: (result: DialogueChoiceResult, session: DialogueSession) => void;
+}
+
+export interface FerrumRuntimeDialogue {
+  session: DialogueSession;
+  choose(choiceId: string): DialogueChoiceResult;
+  snapshot(): DialogueSessionSnapshot;
+  uiState(): UiOverlayState;
+}
+
 export interface FerrumRuntimeOptions {
   canvas: HTMLCanvasElement;
   webgl2?: WebGL2RendererOptions;
@@ -72,6 +94,7 @@ export interface FerrumRuntimeOptions {
   ui?: boolean | UiOverlayOptions;
   uiOverlay?: UiOverlay;
   uiState?: UiOverlayStateProvider;
+  dialogue?: false | FerrumRuntimeDialogueOptions;
   physicsDebugLines?: boolean | PhysicsDebugOptions;
   physicsMode?: PhysicsMode;
   physicsScene?: PhysicsSceneProfileSpec | false;
@@ -94,6 +117,7 @@ export interface FerrumRuntime {
   assetHost: AssetHost;
   profiler?: RuntimeProfiler;
   physicsScene?: PhysicsSceneProfileApplyResult;
+  dialogue?: FerrumRuntimeDialogue;
   uiOverlay?: UiOverlay;
   debugOverlay?: DebugOverlay;
   start(): void;
@@ -125,7 +149,9 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     });
     input ??= new InputManager(options.canvas, options.inputOptions);
     assetHost ??= new BrowserPlatformHost(renderer);
-    uiOverlay ??= createUiOverlay(options);
+    const dialogue = createRuntimeDialogue(options.dialogue);
+    const runtimeUiState = createRuntimeUiStateProvider(options.uiState, dialogue);
+    uiOverlay ??= createUiOverlay(options, dialogue);
     debugOverlay = createDebugOverlay(options);
     const profiler = createRuntimeProfiler(options.profiler);
     const needsRuntimeFrame =
@@ -170,7 +196,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       needsRuntimeFrame,
       debugOverlay,
       uiOverlay,
-      uiState: options.uiState,
+      uiState: runtimeUiState,
       profiler,
       gameStateLabel: options.gameStateLabel,
       onFrame: options.onFrame,
@@ -198,6 +224,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       assetHost: runtimeAssetHost,
       ...(profiler === undefined ? {} : { profiler }),
       ...(physicsScene === undefined ? {} : { physicsScene }),
+      ...(dialogue === undefined ? {} : { dialogue }),
       uiOverlay,
       debugOverlay,
       start: () => engine.start(),
@@ -274,16 +301,17 @@ function webGpuOptionsWithStaticPostProcess(options: FerrumRuntimeOptions): WebG
   };
 }
 
-function createUiOverlay(options: FerrumRuntimeOptions): UiOverlay | undefined {
+function createUiOverlay(
+  options: FerrumRuntimeOptions,
+  dialogue: FerrumRuntimeDialogue | undefined,
+): UiOverlay | undefined {
   if (options.ui === false) {
     return undefined;
   }
-  if (options.ui === undefined && options.uiState === undefined) {
+  if (options.ui === undefined && options.uiState === undefined && dialogue === undefined) {
     return undefined;
   }
-  const uiOptions: UiOverlayOptions = options.ui === true || options.ui === undefined
-    ? { enabled: true }
-    : options.ui;
+  const uiOptions = createUiOverlayOptions(options.ui, dialogue);
   if (uiOptions.enabled === false) {
     return undefined;
   }
@@ -291,6 +319,81 @@ function createUiOverlay(options: FerrumRuntimeOptions): UiOverlay | undefined {
     options.uiParent ?? options.canvas.parentElement ?? document.body,
     uiOptions,
   );
+}
+
+function createUiOverlayOptions(
+  ui: true | UiOverlayOptions | undefined,
+  dialogue: FerrumRuntimeDialogue | undefined,
+): UiOverlayOptions {
+  const uiOptions: UiOverlayOptions = ui === true || ui === undefined
+    ? { enabled: true }
+    : ui;
+  if (dialogue === undefined) {
+    return uiOptions;
+  }
+
+  return {
+    ...uiOptions,
+    onAction: (event) => {
+      if (isDialogueChoiceAction(dialogue, event)) {
+        dialogue.choose(event.id);
+        return;
+      }
+      uiOptions.onAction?.(event);
+    },
+  };
+}
+
+function createRuntimeDialogue(
+  options: FerrumRuntimeOptions["dialogue"],
+): FerrumRuntimeDialogue | undefined {
+  if (options === undefined || options === false) {
+    return undefined;
+  }
+
+  const session = options.session ?? new DialogueSession(options.graph);
+  const uiOptions = options.ui;
+  return {
+    session,
+    choose: (choiceId) => {
+      const result = session.choose(choiceId);
+      options.onChoice?.(result, session);
+      return result;
+    },
+    snapshot: () => session.snapshot(),
+    uiState: () => dialogueNodeToUiOverlayState(session, uiOptions),
+  };
+}
+
+function createRuntimeUiStateProvider(
+  baseProvider: UiOverlayStateProvider | undefined,
+  dialogue: FerrumRuntimeDialogue | undefined,
+): UiOverlayStateProvider | undefined {
+  if (dialogue === undefined) {
+    return baseProvider;
+  }
+  return (frame) => mergeUiOverlayStates(baseProvider?.(frame), dialogue.uiState());
+}
+
+function mergeUiOverlayStates(
+  baseState: UiOverlayState | undefined,
+  dialogueState: UiOverlayState,
+): UiOverlayState {
+  return {
+    panels: [
+      ...(baseState?.panels ?? []),
+      ...(dialogueState.panels ?? []),
+    ],
+    dialog: baseState?.dialog ?? dialogueState.dialog,
+  };
+}
+
+function isDialogueChoiceAction(dialogue: FerrumRuntimeDialogue, event: UiOverlayActionEvent): boolean {
+  const dialogId = dialogue.uiState().dialog?.id;
+  if (dialogId === undefined || event.dialogId !== dialogId) {
+    return false;
+  }
+  return dialogue.session.availableChoices().some((choice) => choice.id === event.id);
 }
 
 function createDebugOverlay(options: FerrumRuntimeOptions): DebugOverlay | undefined {

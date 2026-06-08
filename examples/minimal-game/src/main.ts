@@ -10,6 +10,7 @@ import {
   type DiagnosticContext,
   type DiagnosticReport,
   type AssetLoadProgress,
+  type DialogueGraphSpec,
   type FerrumEngine,
   type FerrumRuntime,
   type FerrumRuntimeEnvironment,
@@ -25,6 +26,22 @@ import "./styles.css";
 const PRELOAD_SMOKE_TEXTURE_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 const PRELOAD_SMOKE_JSON_URL = "data:application/json,%7B%22ok%22%3Atrue%7D";
+
+const MINIMAL_DIALOGUE_GRAPH: DialogueGraphSpec = {
+  initialNode: "welcome",
+  nodes: {
+    welcome: {
+      speaker: "Ferrum Guide",
+      text: "This dialogue is driven by createFerrumRuntime({ dialogue }) and rendered by UiOverlay.",
+      choices: [{ id: "continue", label: "Continue", to: "done" }],
+    },
+    done: {
+      speaker: "Ferrum Guide",
+      text: "Dialogue choice handled. The runtime stays connected without custom example UI glue.",
+      end: true,
+    },
+  },
+};
 
 function gameStateLabel(code: number): string {
   if (code === 0) return "Title";
@@ -282,6 +299,14 @@ async function bootstrap(): Promise<void> {
       postProcess: cameraPostProcessSmoke ? cameraPostProcessSmokePass : undefined,
       spriteMaterial: materialSmoke ? "outline" : undefined,
       uiParent: shell.canvasFrame,
+      dialogue: {
+        graph: MINIMAL_DIALOGUE_GRAPH,
+        ui: { dialogId: "minimal-dialogue", title: "Runtime Dialogue" },
+        onChoice: (_result, session) => {
+          (window as Window & { ferrumMinimalDialogueSnapshot?: ReturnType<typeof session.snapshot> })
+            .ferrumMinimalDialogueSnapshot = session.snapshot();
+        },
+      },
       ui: {
         onAction: (event) => {
           if (event.id === "start") {

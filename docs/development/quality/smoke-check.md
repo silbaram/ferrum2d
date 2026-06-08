@@ -157,7 +157,7 @@ Localization/text helper의 string table fallback, text wrapping, font loading p
 pnpm smoke:localization
 ```
 
-Dialogue/quest helper의 graph 진행, UI overlay hook, save-state snapshot restore가 public package build에서 동작하는지 확인하려면 다음을 실행한다.
+Dialogue/quest helper의 graph 진행, createFerrumRuntime opt-in export, UI overlay hook, save-state snapshot restore가 public package build에서 동작하는지 확인하려면 다음을 실행한다.
 
 ```bash
 pnpm smoke:dialogue-quest

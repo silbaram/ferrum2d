@@ -10,6 +10,8 @@ export { createFerrumRuntime } from "../createFerrumRuntime";
 export { createRenderer } from "../createRenderer";
 export type {
   FerrumRuntime,
+  FerrumRuntimeDialogue,
+  FerrumRuntimeDialogueOptions,
   FerrumRuntimeEnvironment,
   FerrumRuntimeFrame,
   FerrumRuntimeOptions,
