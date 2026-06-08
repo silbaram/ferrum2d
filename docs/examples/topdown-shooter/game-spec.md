@@ -108,7 +108,7 @@ AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고
 
 `schemas/shooter-game-spec.schema.json`은 편집기와 authoring 도구를 위한 구조 보조 schema다. 런타임/CLI에서 최종 판정에 쓰는 기준은 `resolveShooterGameSpec(...)`이며, atlas frame 참조, tile id 참조, `u1 > u0`, layer data 길이처럼 교차 필드 검증은 TypeScript validator를 기준으로 한다.
 
-`physics` namespace는 Top-down Shooter 전용 설정이 아니라 범용 [Physics Spec](physics-spec.md) 계약이다. 예제는 built-in shooter scene의 현재 동작을 유지하기 위해 `"arcade"` mode와 `fixedTimestep: false`를 명시한다.
+`physics` namespace는 Top-down Shooter 전용 설정이 아니라 범용 [Physics Spec](../../engine/physics-spec.md) 계약이다. 예제는 built-in shooter scene의 현재 동작을 유지하기 위해 `"arcade"` mode와 `fixedTimestep: false`를 명시한다.
 
 ## 필드
 
@@ -248,7 +248,7 @@ AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고
 | `physics.solver.fixedTimestep` | boolean | mode default | physics mode가 fixed timestep을 적용할지 여부 |
 | `physics.solver.stepSeconds` | positive number | `1/60` | fixed timestep step seconds |
 | `physics.gravity` | `[x, y]` | mode default | generic physics world gravity |
-| `physics.materials/layers/bodies/joints` | object maps | `{}` | 범용 physics authoring metadata. 세부 구조는 [Physics Spec](physics-spec.md)에 둔다. |
+| `physics.materials/layers/bodies/joints` | object maps | `{}` | 범용 physics authoring metadata. 세부 구조는 [Physics Spec](../../engine/physics-spec.md)에 둔다. |
 
 ## Sprite Animation
 
