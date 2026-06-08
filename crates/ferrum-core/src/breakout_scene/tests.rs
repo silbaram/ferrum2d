@@ -1,5 +1,6 @@
 use crate::camera::Camera2D;
 use crate::collision_event::{CollisionEventCounts, COLLISION_EVENT_HIT};
+use crate::components::gameplay::{CollisionReaction, MovementPattern};
 use crate::components::{Transform2D, Velocity};
 use crate::game_state::GameState;
 use crate::input::InputState;
@@ -7,7 +8,8 @@ use crate::particles::ParticleSystem;
 use crate::world::World;
 
 use super::config::{
-    BALL_SPEED, BRICK_HEIGHT, BRICK_HIT_PARTICLE_COUNT, BRICK_SCORE, WORLD_HEIGHT, WORLD_WIDTH,
+    BALL_SPEED, BRICK_HEIGHT, BRICK_HIT_PARTICLE_COUNT, BRICK_HIT_PARTICLE_PRESET_ID, BRICK_SCORE,
+    WORLD_HEIGHT, WORLD_WIDTH,
 };
 use super::runtime::is_alive;
 use super::{breakout_brick_hit_particle_preset, BreakoutParticleBurstSink, BreakoutScene};
@@ -29,6 +31,23 @@ fn title_level_spawns_breakout_bodies_without_launching_ball() {
         world.velocities[ball.id as usize],
         Some(Velocity::default())
     );
+    let paddle = scene.paddle.expect("title level creates paddle");
+    assert_eq!(
+        world.movement_pattern(paddle),
+        Some(MovementPattern::TopdownInput { speed: 420.0 })
+    );
+    assert_eq!(world.damages[ball.id as usize], Some(1.0));
+    let brick = *scene.bricks.first().expect("level has bricks");
+    assert_eq!(world.healths[brick.id as usize], Some(1.0));
+    assert_eq!(world.score_rewards[brick.id as usize], Some(BRICK_SCORE));
+    let reactions = world.collision_reactions[brick.id as usize]
+        .expect("brick has authored collision reactions");
+    assert_eq!(reactions.len(), 1);
+    assert!(reactions.iter().any(|reaction| matches!(
+        reaction,
+        CollisionReaction::SpawnParticle { preset_id, .. }
+            if preset_id == BRICK_HIT_PARTICLE_PRESET_ID
+    )));
 }
 
 #[test]

@@ -6,6 +6,7 @@ mod runtime;
 #[cfg(test)]
 mod tests;
 
+use crate::collision::CircleQueryHit;
 use crate::entity::Entity;
 use crate::game_state::GameState;
 
@@ -21,6 +22,9 @@ pub(crate) struct BreakoutScene {
     ball: Option<Entity>,
     bricks: Vec<Entity>,
     walls: Vec<Entity>,
+    marked_for_despawn: Vec<bool>,
+    pending_despawn: Vec<Entity>,
+    area_damage_hits: Vec<CircleQueryHit>,
 }
 
 impl Default for BreakoutScene {
@@ -32,6 +36,9 @@ impl Default for BreakoutScene {
             ball: None,
             bricks: Vec::with_capacity((BRICK_COLUMNS * BRICK_ROWS) as usize),
             walls: Vec::with_capacity(3),
+            marked_for_despawn: Vec::new(),
+            pending_despawn: Vec::with_capacity(1),
+            area_damage_hits: Vec::new(),
         }
     }
 }

@@ -124,6 +124,26 @@ TypeScript `applyGameplayBehaviorCommands(...)` facade는 raw Wasm setter가 `fa
 
 `EffectEvent`는 gameplay state를 바꾸지 않는다. Rust는 event를 enqueue하고, TypeScript는 frame-end adapter에서 browser/audio/VFX side effect만 실행한다.
 
+
+## Breakout Authoring Convergence Proof
+
+P2 `범용 authoring 경로 수렴·입증`의 첫 Breakout slice는 built-in Breakout scene의 public `useBreakoutGame()` API와 render/audio/event buffer layout을 유지하면서 Rust core 내부 조립 경로를 prefab/component/reaction primitive로 옮기는 방식으로 진행한다. 이 proof는 create-game/template로 공개하기 전 단계의 runtime proof이며, frame hot path에 entity별 JS/Wasm callback을 추가하지 않는다.
+
+현재 proof 범위:
+
+| 항목 | 상태 | 계약 |
+| --- | --- | --- |
+| prefab/component spawn | 완료 | paddle, ball, wall, brick body는 `PrefabEntitySpawnRequest`/`EntityTemplate` 기반으로 생성한다. |
+| paddle movement component | 완료 | paddle speed는 `MovementPattern::TopdownInput` component에 저장하고 Breakout runtime은 x축 clamp만 scene rule로 유지한다. |
+| brick gameplay metadata | 완료 | ball damage, brick health, brick score reward를 component로 저장한다. |
+| brick damage/score/despawn | 완료 | brick hit는 shared collision damage helper로 health/score/despawn outcome을 계산한다. |
+| brick particle side effect | 완료 | brick에 authored `CollisionReaction::SpawnParticle`를 설치하고 shared side-effect evaluator를 통해 기존 particle sink로 dispatch한다. |
+| bounce response | 완료(내부 primitive) | wall/brick surface bounce와 paddle contact-offset bounce는 generic velocity reflection helper를 사용한다. |
+| swept hit selection | 완료(내부 primitive) | ball의 earliest swept AABB hit는 scene-neutral swept kinematic helper로 계산하고, Breakout은 target role ordering만 제공한다. |
+| create-game 연결 | proof only | 아직 consumer template/schema로 공개하지 않고, Breakout unit tests와 runtime-extensibility 문서가 proof contract를 고정한다. |
+
+후속으로 create-game template/schema에 공개하려면 `breakout` template 추가, replay fixture, package consumer smoke allowlist, docs/public API 문서 갱신을 별도 논리 변경으로 진행한다.
+
 ## Agent-First Template And Package QA
 
 AI agent가 consumer project에서 같은 범용 contract를 사용할 수 있도록 package/template 검증이 확장됐다.
