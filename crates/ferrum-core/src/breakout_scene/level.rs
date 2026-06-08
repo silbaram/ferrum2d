@@ -1,15 +1,16 @@
 use crate::camera::Camera2D;
-use crate::components::{
-    AabbCollider, CollisionFilter, CollisionLayer, Sprite, SpriteFrame, Transform2D, Velocity,
+use crate::components::gameplay::{
+    CollisionReaction, CollisionReactionTrigger, CollisionTarget, Cooldown, MovementPattern,
 };
+use crate::components::{CollisionLayer, Transform2D, Velocity};
 use crate::entity::Entity;
 use crate::game_state::GameState;
-use crate::world::World;
+use crate::world::{EntityTemplate, PrefabEntitySpawnRequest, PrefabSpriteTint, World};
 
 use super::config::{
-    BALL_SIZE, BALL_SPEED, BRICK_COLUMNS, BRICK_GAP, BRICK_HEIGHT, BRICK_ROWS, BRICK_SCORE,
-    BRICK_START_Y, BRICK_WIDTH, DEFAULT_TEXTURE_ID, PADDLE_HEIGHT, PADDLE_WIDTH, PADDLE_Y,
-    WALL_THICKNESS, WORLD_HEIGHT, WORLD_WIDTH,
+    BALL_SIZE, BALL_SPEED, BRICK_COLUMNS, BRICK_GAP, BRICK_HEIGHT, BRICK_HIT_PARTICLE_PRESET_ID,
+    BRICK_ROWS, BRICK_SCORE, BRICK_START_Y, BRICK_WIDTH, DEFAULT_TEXTURE_ID, PADDLE_HEIGHT,
+    PADDLE_SPEED, PADDLE_WIDTH, PADDLE_Y, WALL_THICKNESS, WORLD_HEIGHT, WORLD_WIDTH,
 };
 use super::BreakoutScene;
 
@@ -41,23 +42,36 @@ impl BreakoutScene {
         self.ball = None;
         self.bricks.clear();
         self.walls.clear();
+        self.marked_for_despawn.clear();
+        self.pending_despawn.clear();
         self.game_state = game_state;
         self.update_camera(camera);
 
         self.spawn_walls(world);
         let paddle = spawn_body(
             world,
-            Transform2D {
-                x: WORLD_WIDTH * 0.5,
-                y: PADDLE_Y,
+            BreakoutBodySpawnRequest {
+                transform: Transform2D {
+                    x: WORLD_WIDTH * 0.5,
+                    y: PADDLE_Y,
+                },
+                width: PADDLE_WIDTH,
+                height: PADDLE_HEIGHT,
+                layer: CollisionLayer::Player,
+                velocity: Velocity::default(),
+                color: [0.2, 0.85, 0.45, 1.0],
+                damage: None,
+                health: None,
+                score_reward: None,
+                player_marker: true,
             },
-            PADDLE_WIDTH,
-            PADDLE_HEIGHT,
-            CollisionLayer::Player,
-            Velocity::default(),
-            [0.2, 0.85, 0.45, 1.0],
         );
-        world.player = Some(paddle);
+        world.set_movement_pattern(
+            paddle,
+            MovementPattern::TopdownInput {
+                speed: PADDLE_SPEED,
+            },
+        );
         self.paddle = Some(paddle);
 
         let ball_velocity = if launch_ball {
@@ -70,15 +84,21 @@ impl BreakoutScene {
         };
         self.ball = Some(spawn_body(
             world,
-            Transform2D {
-                x: WORLD_WIDTH * 0.5,
-                y: PADDLE_Y - 28.0,
+            BreakoutBodySpawnRequest {
+                transform: Transform2D {
+                    x: WORLD_WIDTH * 0.5,
+                    y: PADDLE_Y - 28.0,
+                },
+                width: BALL_SIZE,
+                height: BALL_SIZE,
+                layer: CollisionLayer::Bullet,
+                velocity: ball_velocity,
+                color: [0.96, 0.98, 0.78, 1.0],
+                damage: Some(1.0),
+                health: None,
+                score_reward: None,
+                player_marker: false,
             },
-            BALL_SIZE,
-            BALL_SIZE,
-            CollisionLayer::Bullet,
-            ball_velocity,
-            [0.96, 0.98, 0.78, 1.0],
         ));
 
         self.spawn_bricks(world);
@@ -87,39 +107,57 @@ impl BreakoutScene {
     fn spawn_walls(&mut self, world: &mut World) {
         self.walls.push(spawn_body(
             world,
-            Transform2D {
-                x: WALL_THICKNESS * 0.5,
-                y: WORLD_HEIGHT * 0.5,
+            BreakoutBodySpawnRequest {
+                transform: Transform2D {
+                    x: WALL_THICKNESS * 0.5,
+                    y: WORLD_HEIGHT * 0.5,
+                },
+                width: WALL_THICKNESS,
+                height: WORLD_HEIGHT,
+                layer: CollisionLayer::Wall,
+                velocity: Velocity::default(),
+                color: [0.18, 0.45, 0.9, 1.0],
+                damage: None,
+                health: None,
+                score_reward: None,
+                player_marker: false,
             },
-            WALL_THICKNESS,
-            WORLD_HEIGHT,
-            CollisionLayer::Wall,
-            Velocity::default(),
-            [0.18, 0.45, 0.9, 1.0],
         ));
         self.walls.push(spawn_body(
             world,
-            Transform2D {
-                x: WORLD_WIDTH - WALL_THICKNESS * 0.5,
-                y: WORLD_HEIGHT * 0.5,
+            BreakoutBodySpawnRequest {
+                transform: Transform2D {
+                    x: WORLD_WIDTH - WALL_THICKNESS * 0.5,
+                    y: WORLD_HEIGHT * 0.5,
+                },
+                width: WALL_THICKNESS,
+                height: WORLD_HEIGHT,
+                layer: CollisionLayer::Wall,
+                velocity: Velocity::default(),
+                color: [0.18, 0.45, 0.9, 1.0],
+                damage: None,
+                health: None,
+                score_reward: None,
+                player_marker: false,
             },
-            WALL_THICKNESS,
-            WORLD_HEIGHT,
-            CollisionLayer::Wall,
-            Velocity::default(),
-            [0.18, 0.45, 0.9, 1.0],
         ));
         self.walls.push(spawn_body(
             world,
-            Transform2D {
-                x: WORLD_WIDTH * 0.5,
-                y: WALL_THICKNESS * 0.5,
+            BreakoutBodySpawnRequest {
+                transform: Transform2D {
+                    x: WORLD_WIDTH * 0.5,
+                    y: WALL_THICKNESS * 0.5,
+                },
+                width: WORLD_WIDTH,
+                height: WALL_THICKNESS,
+                layer: CollisionLayer::Wall,
+                velocity: Velocity::default(),
+                color: [0.18, 0.45, 0.9, 1.0],
+                damage: None,
+                health: None,
+                score_reward: None,
+                player_marker: false,
             },
-            WORLD_WIDTH,
-            WALL_THICKNESS,
-            CollisionLayer::Wall,
-            Velocity::default(),
-            [0.18, 0.45, 0.9, 1.0],
         ));
     }
 
@@ -131,61 +169,77 @@ impl BreakoutScene {
             for column in 0..BRICK_COLUMNS {
                 let entity = spawn_body(
                     world,
-                    Transform2D {
-                        x: start_x + column as f32 * (BRICK_WIDTH + BRICK_GAP),
-                        y: BRICK_START_Y + row as f32 * (BRICK_HEIGHT + BRICK_GAP),
+                    BreakoutBodySpawnRequest {
+                        transform: Transform2D {
+                            x: start_x + column as f32 * (BRICK_WIDTH + BRICK_GAP),
+                            y: BRICK_START_Y + row as f32 * (BRICK_HEIGHT + BRICK_GAP),
+                        },
+                        width: BRICK_WIDTH,
+                        height: BRICK_HEIGHT,
+                        layer: CollisionLayer::Enemy,
+                        velocity: Velocity::default(),
+                        color: brick_color(row),
+                        damage: None,
+                        health: Some(1.0),
+                        score_reward: Some(BRICK_SCORE),
+                        player_marker: false,
                     },
-                    BRICK_WIDTH,
-                    BRICK_HEIGHT,
-                    CollisionLayer::Enemy,
-                    Velocity::default(),
-                    brick_color(row),
                 );
-                world.score_rewards[entity.id as usize] = Some(BRICK_SCORE);
+                attach_brick_hit_reactions(world, entity);
                 self.bricks.push(entity);
             }
         }
     }
 }
 
-fn spawn_body(
-    world: &mut World,
+#[derive(Clone, Copy, Debug)]
+struct BreakoutBodySpawnRequest {
     transform: Transform2D,
     width: f32,
     height: f32,
     layer: CollisionLayer,
     velocity: Velocity,
     color: [f32; 4],
-) -> Entity {
-    let entity = world.spawn_entity();
-    let index = entity.id as usize;
-    let frame = SpriteFrame::FULL;
-    world.transforms[index] = Some(transform);
-    world.sprites[index] = Some(Sprite {
+    damage: Option<f32>,
+    health: Option<f32>,
+    score_reward: Option<u32>,
+    player_marker: bool,
+}
+
+fn spawn_body(world: &mut World, request: BreakoutBodySpawnRequest) -> Entity {
+    world.spawn_prefab_entity_from_request(PrefabEntitySpawnRequest {
+        transform: request.transform,
+        velocity: Some(request.velocity),
         texture_id: DEFAULT_TEXTURE_ID,
-        width,
-        height,
-        u0: frame.u0,
-        v0: frame.v0,
-        u1: frame.u1,
-        v1: frame.v1,
-        r: color[0],
-        g: color[1],
-        b: color[2],
-        a: color[3],
-    });
-    world.velocities[index] = Some(velocity);
-    world.colliders[index] = Some(AabbCollider {
-        half_width: width * 0.5,
-        half_height: height * 0.5,
-        offset_x: 0.0,
-        offset_y: 0.0,
-        enabled: true,
-        is_trigger: true,
-        layer,
-    });
-    world.collision_filters[index] = Some(CollisionFilter::from_layer(layer));
-    entity
+        template: EntityTemplate::new(request.width, request.height),
+        layer: request.layer,
+        sprite_tint: PrefabSpriteTint {
+            r: request.color[0],
+            g: request.color[1],
+            b: request.color[2],
+            a: request.color[3],
+        },
+        lifetime_seconds: None,
+        projectile_policy: None,
+        gameplay_faction: None,
+        damage: request.damage,
+        health: request.health,
+        score_reward: request.score_reward,
+        player_marker: request.player_marker,
+    })
+}
+
+fn attach_brick_hit_reactions(world: &mut World, brick: Entity) {
+    world.add_collision_reaction(
+        brick,
+        CollisionReaction::SpawnParticle {
+            preset_id: BRICK_HIT_PARTICLE_PRESET_ID,
+            target: CollisionTarget::SelfEntity,
+            cooldown: Cooldown::ready(0.0),
+            replace_default: false,
+            trigger: CollisionReactionTrigger::Enter,
+        },
+    );
 }
 
 fn brick_color(row: u32) -> [f32; 4] {

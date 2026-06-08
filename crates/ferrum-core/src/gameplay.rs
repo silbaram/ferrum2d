@@ -2305,6 +2305,20 @@ pub(crate) enum MovementPatternApplication {
     Unsupported,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct SweptKinematicHit {
+    pub(crate) entity: Entity,
+    pub(crate) time: f32,
+    pub(crate) normal_x: f32,
+    pub(crate) normal_y: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum VelocityReflection {
+    SurfaceNormal { normal_x: f32, normal_y: f32 },
+    ContactOffsetX { surface: Entity, speed: f32 },
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct MovementNavigationSource {
     pub(crate) index: usize,
@@ -2458,6 +2472,115 @@ where
         remaining_seconds: repath_interval_seconds.max(0.0),
     });
     target
+}
+
+pub(crate) fn first_swept_kinematic_hit<I>(
+    world: &World,
+    mover: Entity,
+    targets: I,
+    delta: f32,
+) -> Option<SweptKinematicHit>
+where
+    I: IntoIterator<Item = Entity>,
+{
+    let mover_index = mover.id as usize;
+    let start = world.transforms.get(mover_index).copied().flatten()?;
+    let velocity = world.velocities.get(mover_index).copied().flatten()?;
+    let collider = world.colliders.get(mover_index).copied().flatten()?;
+    if !collider.enabled {
+        return None;
+    }
+
+    let mut best: Option<SweptKinematicHit> = None;
+    for target in targets {
+        if target == mover {
+            continue;
+        }
+        let target_index = target.id as usize;
+        let Some(live_target) = entity_at(world, target_index) else {
+            continue;
+        };
+        if live_target.generation != target.generation {
+            continue;
+        }
+        let (Some(target_transform), Some(target_collider)) = (
+            world.transforms.get(target_index).copied().flatten(),
+            world.colliders.get(target_index).copied().flatten(),
+        ) else {
+            continue;
+        };
+        if !target_collider.enabled {
+            continue;
+        }
+        let Some(contact) = CollisionSystem::swept_aabb_contact(
+            start,
+            velocity,
+            collider,
+            target_transform,
+            Velocity::default(),
+            target_collider,
+            delta,
+        ) else {
+            continue;
+        };
+        let time = contact.time.clamp(0.0, 1.0);
+        if best.as_ref().is_none_or(|hit| time < hit.time) {
+            best = Some(SweptKinematicHit {
+                entity: target,
+                time,
+                normal_x: contact.normal_x,
+                normal_y: contact.normal_y,
+            });
+        }
+    }
+    best
+}
+
+pub(crate) fn apply_velocity_reflection(
+    world: &mut World,
+    target: Entity,
+    reflection: VelocityReflection,
+) -> bool {
+    match reflection {
+        VelocityReflection::SurfaceNormal { normal_x, normal_y } => {
+            let Some(velocity) = world
+                .velocities
+                .get_mut(target.id as usize)
+                .and_then(Option::as_mut)
+            else {
+                return false;
+            };
+            if normal_x.abs() >= normal_y.abs() {
+                velocity.vx = -velocity.vx;
+            } else {
+                velocity.vy = -velocity.vy;
+            }
+            true
+        }
+        VelocityReflection::ContactOffsetX { surface, speed } => {
+            let target_index = target.id as usize;
+            let surface_index = surface.id as usize;
+            let (Some(target_transform), Some(surface_transform), Some(surface_collider)) = (
+                world.transforms.get(target_index).copied().flatten(),
+                world.transforms.get(surface_index).copied().flatten(),
+                world.colliders.get(surface_index).copied().flatten(),
+            ) else {
+                return false;
+            };
+            let Some(velocity) = world
+                .velocities
+                .get_mut(target_index)
+                .and_then(Option::as_mut)
+            else {
+                return false;
+            };
+            let offset = ((target_transform.x - surface_transform.x) / surface_collider.half_width)
+                .clamp(-1.0, 1.0);
+            velocity.vx = offset * speed;
+            velocity.vy = -speed;
+            true
+        }
+    }
 }
 
 pub(crate) fn evaluate_movement_pattern(

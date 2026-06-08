@@ -15,4 +15,5 @@ pub(super) const BRICK_HEIGHT: f32 = 20.0;
 pub(super) const BRICK_GAP: f32 = 8.0;
 pub(super) const BRICK_START_Y: f32 = 68.0;
 pub(super) const BRICK_SCORE: u32 = 10;
+pub(super) const BRICK_HIT_PARTICLE_PRESET_ID: u32 = 0;
 pub(super) const BRICK_HIT_PARTICLE_COUNT: u32 = 10;

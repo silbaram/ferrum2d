@@ -1,9 +1,15 @@
 use crate::camera::Camera2D;
-use crate::collision::CollisionSystem;
 use crate::collision_event::{CollisionEvent, CollisionEventCounts, COLLISION_EVENT_HIT};
-use crate::components::{AabbCollider, Transform2D, Velocity};
+use crate::components::gameplay::{CollisionTarget, MovementPattern};
+use crate::components::Velocity;
 use crate::entity::Entity;
 use crate::game_state::GameState;
+use crate::gameplay::{
+    apply_collision_damage_reaction_for_pair, apply_collision_reaction_sets_for_pair,
+    apply_velocity_reflection, collision_side_effect_payload, commit_score_delta,
+    first_swept_kinematic_hit, topdown_input_velocity, CollisionDamageReactionDefaults,
+    CollisionReactionPair, CollisionSideEffectPayload, SweptKinematicHit, VelocityReflection,
+};
 use crate::input::InputState;
 use crate::world::World;
 
@@ -108,7 +114,15 @@ impl BreakoutScene {
             return;
         }
 
-        let direction = f32::from(input.d) - f32::from(input.a);
+        let speed = match world.movement_patterns.get(index).copied().flatten() {
+            Some(MovementPattern::TopdownInput { speed }) => speed,
+            _ => PADDLE_SPEED,
+        };
+        let velocity = Velocity {
+            vy: 0.0,
+            ..topdown_input_velocity(input, speed)
+        };
+        world.velocities[index] = Some(velocity);
         let Some(transform) = world.transforms[index].as_mut() else {
             return;
         };
@@ -118,63 +132,36 @@ impl BreakoutScene {
         if !collider.enabled {
             return;
         }
-        transform.x = (transform.x + direction * PADDLE_SPEED * delta).clamp(
+        transform.x = (transform.x + velocity.vx * delta).clamp(
             WALL_THICKNESS + collider.half_width,
             WORLD_WIDTH - WALL_THICKNESS - collider.half_width,
         );
     }
 
     fn first_ball_hit(&self, world: &World, ball: Entity, delta: f32) -> Option<BreakoutHit> {
-        let ball_index = ball.id as usize;
-        let start = world.transforms.get(ball_index).copied().flatten()?;
-        let velocity = world.velocities.get(ball_index).copied().flatten()?;
-        let collider = world.colliders.get(ball_index).copied().flatten()?;
-        if !collider.enabled {
-            return None;
-        }
-        let mut best: Option<(f32, BreakoutHit)> = None;
-
-        if let Some(paddle) = self.paddle {
-            update_best_hit(
+        let mut best = self.paddle.and_then(|paddle| {
+            first_breakout_hit(world, ball, [paddle], BreakoutHitKind::Paddle, delta)
+        });
+        best = earlier_breakout_hit(
+            best,
+            first_breakout_hit(
                 world,
                 ball,
-                start,
-                velocity,
-                collider,
-                paddle,
-                BreakoutHitKind::Paddle,
-                delta,
-                &mut best,
-            );
-        }
-        for wall in self.walls.iter().copied() {
-            update_best_hit(
-                world,
-                ball,
-                start,
-                velocity,
-                collider,
-                wall,
+                self.walls.iter().copied(),
                 BreakoutHitKind::Wall,
                 delta,
-                &mut best,
-            );
-        }
-        for brick in self.bricks.iter().copied() {
-            update_best_hit(
+            ),
+        );
+        earlier_breakout_hit(
+            best,
+            first_breakout_hit(
                 world,
                 ball,
-                start,
-                velocity,
-                collider,
-                brick,
+                self.bricks.iter().copied(),
                 BreakoutHitKind::Brick,
                 delta,
-                &mut best,
-            );
-        }
-
-        best.map(|(_, hit)| hit)
+            ),
+        )
     }
 
     fn integrate_ball(&self, world: &mut World, ball: Entity, delta: f32) {
@@ -209,13 +196,8 @@ impl BreakoutScene {
             BreakoutHitKind::Paddle => self.bounce_from_paddle(world, ball, hit.entity),
             BreakoutHitKind::Brick => {
                 self.bounce_from_surface(world, ball, hit.normal_x, hit.normal_y);
-                let hit_position = world.transforms[hit.entity.id as usize];
-                if let (Some(sink), Some(position)) = (hit_particles, hit_position) {
-                    sink.spawn_brick_hit(position);
-                }
-                let reward = world.score_rewards[hit.entity.id as usize].unwrap_or(BRICK_SCORE);
-                self.score = self.score.saturating_add(reward);
-                world.despawn(hit.entity);
+                self.apply_brick_side_effect_reactions(world, ball, hit.entity, hit_particles);
+                self.apply_brick_damage_reaction(world, ball, hit.entity);
             }
             BreakoutHitKind::Wall => {
                 self.bounce_from_surface(world, ball, hit.normal_x, hit.normal_y)
@@ -223,35 +205,87 @@ impl BreakoutScene {
         }
     }
 
-    fn bounce_from_paddle(&self, world: &mut World, ball: Entity, paddle: Entity) {
-        let ball_index = ball.id as usize;
-        let paddle_index = paddle.id as usize;
-        let (Some(ball_transform), Some(paddle_transform), Some(paddle_collider)) = (
-            world.transforms[ball_index],
-            world.transforms[paddle_index],
-            world.colliders[paddle_index],
+    fn apply_brick_side_effect_reactions(
+        &mut self,
+        world: &mut World,
+        ball: Entity,
+        brick: Entity,
+        hit_particles: Option<&mut BreakoutParticleBurstSink<'_>>,
+    ) {
+        let pair = CollisionReactionPair::new(ball.id as usize, brick.id as usize, ball, brick);
+        self.marked_for_despawn.clear();
+        self.marked_for_despawn.resize(world.alive.len(), false);
+        self.pending_despawn.clear();
+        self.area_damage_hits.clear();
+        let Some(outcome) = apply_collision_reaction_sets_for_pair(
+            world,
+            pair,
+            true,
+            &mut self.area_damage_hits,
+            &mut self.marked_for_despawn,
+            &mut self.pending_despawn,
+            breakout_collision_damage_defaults,
         ) else {
             return;
         };
-        let Some(velocity) = world.velocities[ball_index].as_mut() else {
+        let Some(sink) = hit_particles else {
             return;
         };
+        for applied in outcome.outcomes() {
+            for effect in applied.outcome.side_effects() {
+                if let Some(CollisionSideEffectPayload::SpawnParticleAt { position, .. }) =
+                    collision_side_effect_payload(world, effect)
+                {
+                    sink.spawn_brick_hit(position);
+                }
+            }
+        }
+    }
 
-        let offset =
-            ((ball_transform.x - paddle_transform.x) / paddle_collider.half_width).clamp(-1.0, 1.0);
-        velocity.vx = offset * BALL_SPEED;
-        velocity.vy = -BALL_SPEED;
+    fn apply_brick_damage_reaction(&mut self, world: &mut World, ball: Entity, brick: Entity) {
+        let ball_index = ball.id as usize;
+        let brick_index = brick.id as usize;
+        let pair = CollisionReactionPair::new(ball_index, brick_index, ball, brick);
+        self.marked_for_despawn.clear();
+        self.marked_for_despawn.resize(world.alive.len(), false);
+        self.pending_despawn.clear();
+        let outcome = apply_collision_damage_reaction_for_pair(
+            world,
+            pair,
+            CollisionTarget::OtherEntity,
+            CollisionDamageReactionDefaults {
+                health: 1.0,
+                score_reward: BRICK_SCORE,
+                despawn_on_kill: true,
+            },
+            &mut self.marked_for_despawn,
+            &mut self.pending_despawn,
+        );
+        if let Some(outcome) = outcome {
+            commit_score_delta(&mut self.score, outcome.score_reward);
+        }
+        for entity in self.pending_despawn.drain(..) {
+            world.despawn(entity);
+        }
+    }
+
+    fn bounce_from_paddle(&self, world: &mut World, ball: Entity, paddle: Entity) {
+        apply_velocity_reflection(
+            world,
+            ball,
+            VelocityReflection::ContactOffsetX {
+                surface: paddle,
+                speed: BALL_SPEED,
+            },
+        );
     }
 
     fn bounce_from_surface(&self, world: &mut World, ball: Entity, normal_x: f32, normal_y: f32) {
-        let Some(velocity) = world.velocities[ball.id as usize].as_mut() else {
-            return;
-        };
-        if normal_x.abs() >= normal_y.abs() {
-            velocity.vx = -velocity.vx;
-        } else {
-            velocity.vy = -velocity.vy;
-        }
+        apply_velocity_reflection(
+            world,
+            ball,
+            VelocityReflection::SurfaceNormal { normal_x, normal_y },
+        );
     }
 
     fn finish_playing_frame(&mut self, world: &World) {
@@ -279,54 +313,49 @@ impl BreakoutScene {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn update_best_hit(
+fn breakout_collision_damage_defaults(
+    _world: &World,
+    _entity_index: usize,
+) -> CollisionDamageReactionDefaults {
+    CollisionDamageReactionDefaults {
+        health: 1.0,
+        score_reward: BRICK_SCORE,
+        despawn_on_kill: true,
+    }
+}
+
+fn first_breakout_hit<I>(
     world: &World,
     ball: Entity,
-    start: Transform2D,
-    velocity: Velocity,
-    collider: AabbCollider,
-    target: Entity,
+    targets: I,
     kind: BreakoutHitKind,
     delta: f32,
-    best: &mut Option<(f32, BreakoutHit)>,
-) {
-    if target == ball || !is_alive(world, target) {
-        return;
+) -> Option<BreakoutHit>
+where
+    I: IntoIterator<Item = Entity>,
+{
+    first_swept_kinematic_hit(world, ball, targets, delta).map(|hit| breakout_hit(kind, hit))
+}
+
+fn breakout_hit(kind: BreakoutHitKind, hit: SweptKinematicHit) -> BreakoutHit {
+    BreakoutHit {
+        entity: hit.entity,
+        kind,
+        time: hit.time,
+        normal_x: hit.normal_x,
+        normal_y: hit.normal_y,
     }
-    let target_index = target.id as usize;
-    let (Some(target_transform), Some(target_collider)) = (
-        world.transforms.get(target_index).copied().flatten(),
-        world.colliders.get(target_index).copied().flatten(),
-    ) else {
-        return;
-    };
-    if !target_collider.enabled {
-        return;
-    }
-    let Some(contact) = CollisionSystem::swept_aabb_contact(
-        start,
-        velocity,
-        collider,
-        target_transform,
-        Velocity::default(),
-        target_collider,
-        delta,
-    ) else {
-        return;
-    };
-    let time = contact.time.clamp(0.0, 1.0);
-    if best.as_ref().is_none_or(|(best_time, _)| time < *best_time) {
-        *best = Some((
-            time,
-            BreakoutHit {
-                entity: target,
-                kind,
-                time,
-                normal_x: contact.normal_x,
-                normal_y: contact.normal_y,
-            },
-        ));
+}
+
+fn earlier_breakout_hit(
+    current: Option<BreakoutHit>,
+    candidate: Option<BreakoutHit>,
+) -> Option<BreakoutHit> {
+    match (current, candidate) {
+        (None, next) => next,
+        (Some(hit), None) => Some(hit),
+        (Some(hit), Some(next)) if hit.time <= next.time => Some(hit),
+        (Some(_), Some(next)) => Some(next),
     }
 }
 
