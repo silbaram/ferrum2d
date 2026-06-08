@@ -2,6 +2,7 @@
 import {
   DialogueSession,
   QuestLog,
+  createFerrumRuntime,
   captureDialogueQuestState,
   dialogueNodeToUiOverlayState,
   restoreDialogueQuestState,
@@ -44,7 +45,14 @@ const graph = {
 
 const questLog = new QuestLog(quests);
 const session = new DialogueSession(graph, questLog);
-const uiState = dialogueNodeToUiOverlayState(session);
+if (typeof createFerrumRuntime !== "function") {
+  throw new Error("createFerrumRuntime must expose the runtime dialogue opt-in entrypoint.");
+}
+
+const uiState = dialogueNodeToUiOverlayState(session, { dialogId: "smoke-dialogue", title: "Smoke Dialogue" });
+if (uiState.dialog?.id !== "smoke-dialogue" || uiState.dialog?.title !== "Smoke Dialogue") {
+  throw new Error(`dialogue runtime UI options failed: ${JSON.stringify(uiState)}`);
+}
 if (uiState.dialog?.actions?.[0]?.id !== "yes") {
   throw new Error(`dialogue UI hook failed: ${JSON.stringify(uiState)}`);
 }
@@ -60,6 +68,8 @@ if (restoredSession.snapshot().nodeId !== "done" || restoredQuestLog.snapshot().
 
 console.log(JSON.stringify({
   dialogueQuestSmoke: {
+    runtimeFactory: typeof createFerrumRuntime,
+    dialogId: uiState.dialog?.id,
     nodeId: restoredSession.snapshot().nodeId,
     ended: restoredSession.snapshot().ended,
     quest: restoredQuestLog.snapshot().quests[0],

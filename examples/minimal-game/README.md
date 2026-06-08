@@ -9,7 +9,7 @@ pnpm build:wasm
 pnpm --filter @ferrum2d/minimal-game dev
 ```
 
-브라우저에서 Vite URL을 열면 `createFerrumRuntime(...)`이 engine loop, input snapshot, render command buffer, WebGL2 renderer, BrowserPlatformHost, UiOverlay HUD/dialog, DebugOverlay를 연결한 상태를 확인할 수 있다.
+브라우저에서 Vite URL을 열면 `createFerrumRuntime(...)`이 engine loop, input snapshot, render command buffer, WebGL2 renderer, BrowserPlatformHost, UiOverlay HUD/dialog, DebugOverlay를 연결한 상태를 확인할 수 있다. 시작 후에는 `createFerrumRuntime({ dialogue })`로 opt-in 연결된 Dialogue 예제가 `UiOverlay` dialog로 표시되고, 선택지를 누르면 다음 dialogue node로 진행한다.
 
 기본 실행은 starter 개발 흐름을 보여주기 위해 `environment: "development"`로 runtime을 생성한다. 상용 기본값처럼 DebugOverlay를 끄려면 URL에 `?environment=production`을 붙인다. 명시적으로 제어하려면 `?debug=true` 또는 `?debug=false`를 사용할 수 있다. Broadphase bounds와 contact normal debug line pass는 `?physicsDebugLines=true`로 켠다.
 
