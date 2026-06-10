@@ -2,7 +2,6 @@ use wasm_bindgen::prelude::*;
 
 use crate::world::{EntityTemplateCollider, EntityTemplateColliderShape};
 
-use super::super::scenes::ActiveScene;
 use super::super::Engine;
 
 #[wasm_bindgen]
@@ -60,8 +59,8 @@ impl Engine {
                 contact_position_correction_slop_scale,
             )
         });
-        self.active_scene = ActiveScene::Shooter;
-        let applied = self.scene.set_prefab_collider(
+        self.activate_built_in_shooter_scene();
+        let applied = self.scenes.shooter.set_prefab_collider(
             &mut self.world,
             prefab,
             EntityTemplateCollider::aabb(
@@ -373,8 +372,8 @@ impl Engine {
                 contact_position_correction_slop_scale,
             )
         });
-        self.active_scene = ActiveScene::Shooter;
-        let applied = self.scene.set_prefab_collider(
+        self.activate_built_in_shooter_scene();
+        let applied = self.scenes.shooter.set_prefab_collider(
             &mut self.world,
             prefab,
             EntityTemplateCollider {

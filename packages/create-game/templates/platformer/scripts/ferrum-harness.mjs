@@ -11,7 +11,11 @@ const REPLAY_FIXTURE_FORMAT = "ferrum2d.consumer.gameplay-replay.fixture";
 const REPLAY_FIXTURE_VERSION = 1;
 const REPLAY_SCENARIO = "platformer-template-surface";
 const REPLAY_COVERAGE_TAGS_PATH = "public/gameplay-replay.coverage-tags.json";
-const REPLAY_COVERAGE_TAGS = Object.freeze(["platformer-template"]);
+const SCENE_AUTHORING_PATH = "public/scene-authoring.json";
+const REPLAY_COVERAGE_TAGS = Object.freeze([
+  "platformer-template",
+  "platformer-scene-composition-authoring",
+]);
 
 try {
   if (command === "validate") await validateProject();
@@ -55,12 +59,15 @@ async function inspectProject() {
   const mainPath = path.join(root, "src/main.ts");
   const hasMainSource = await exists(mainPath);
   const mainSource = hasMainSource ? await readFile(mainPath, "utf8") : "";
+  const sceneAuthoring = await inspectSceneAuthoring();
   return {
     packageName: packageJson.name,
     hasFerrumDependency: packageJson.dependencies?.["@ferrum2d/ferrum-web"] !== undefined,
     hasMainSource,
     internalImports: [...mainSource.matchAll(/from\s+["'](@ferrum2d\/ferrum-web\/(?:dist|pkg|src)\/[^"']*)["']/g)]
       .map((match) => match[1]),
+    authoringSurface: inspectTemplateAuthoringSurface(sceneAuthoring),
+    sceneAuthoring,
   };
 }
 
@@ -73,8 +80,10 @@ async function printAuthoringReport() {
     ok: diagnostics.length === 0,
     gameplayAuthoring: {
       packageName: result.packageName,
-      status: diagnostics.length === 0 ? "not-configured" : "invalid",
+      status: diagnostics.length === 0 ? authoringStatus(result) : "invalid",
+      authoringSurface: result.authoringSurface,
       gameSpec: { ok: null, message: "public/game.json not present" },
+      sceneAuthoring: result.sceneAuthoring ?? { ok: null, message: `${SCENE_AUTHORING_PATH} not present` },
       diagnostics,
       reports: diagnostics.map(reportFromDiagnostic),
     },
@@ -87,6 +96,146 @@ async function printAuthoringReport() {
   if (!report.ok) {
     process.exitCode = 1;
   }
+}
+
+function inspectTemplateAuthoringSurface(sceneAuthoring) {
+  return {
+    publicApis: {
+      applySceneBehaviorRecipes: sceneAuthoring?.publicApis?.applySceneBehaviorRecipes === true,
+      dryRunSceneBehaviorRecipes: sceneAuthoring?.publicApis?.dryRunSceneBehaviorRecipes === true,
+      resolveSceneCompositionSpec: sceneAuthoring?.publicApis?.resolveSceneCompositionSpec === true,
+      resolveBehaviorRecipeDocument: sceneAuthoring?.publicApis?.resolveBehaviorRecipeDocument === true,
+    },
+    runtimeHooks: {
+      usePlatformerGame: true,
+      builtInPlatformerPlayerHandle: false,
+    },
+    sceneComposition: sceneAuthoring === undefined
+      ? { configured: false }
+      : {
+        configured: true,
+        ok: sceneAuthoring.ok,
+        file: sceneAuthoring.file,
+        instanceCount: sceneAuthoring.summary?.instanceCount ?? 0,
+        behaviorCommandCount: sceneAuthoring.summary?.behaviorCommandCount ?? 0,
+        appliedCommandCount: sceneAuthoring.summary?.appliedCommandCount ?? 0,
+        runtimeEntities: sceneAuthoring.summary?.runtimeEntities ?? [],
+        runtimeEntityHandles: sceneAuthoring.summary?.runtimeEntityHandles ?? [],
+      },
+  };
+}
+
+async function inspectSceneAuthoring() {
+  const file = path.join(root, SCENE_AUTHORING_PATH);
+  if (!await exists(file)) return undefined;
+  try {
+    const source = await readFile(file, "utf8");
+    const json = JSON.parse(source);
+    const {
+      applySceneBehaviorRecipes,
+      dryRunSceneBehaviorRecipes,
+      resolveBehaviorRecipeDocument,
+      resolveSceneAuthoringDocument,
+      resolveSceneCompositionSpec,
+    } = await import("@ferrum2d/ferrum-web");
+    const resolved = resolveSceneAuthoringDocument(json, {
+      path: "sceneAuthoring",
+      validateBindings: true,
+      missingBehavior: "error",
+    });
+    const composition = resolved.sceneComposition;
+    const recipes = resolved.behaviorRecipes;
+    const engine = createSceneAuthoringMockEngine();
+    const applied = applySceneBehaviorRecipes(engine, {
+      spawnSceneInstance: (instance) => {
+        if (instance.props.runtimeEntity !== "builtinPlatformerPlayer") {
+          throw sceneAuthoringError(
+            `sceneAuthoring.sceneComposition.instances.${instance.id}.props.runtimeEntity`,
+            "platformer template scene authoring supports builtinPlatformerPlayer runtime entity only",
+          );
+        }
+        return { entityId: 1, entityGeneration: 0 };
+      },
+    }, composition, recipes, {
+      path: "sceneAuthoring",
+      missingBehavior: "error",
+    });
+    return {
+      ok: true,
+      file: SCENE_AUTHORING_PATH,
+      format: resolved.format,
+      version: resolved.version,
+      publicApis: {
+        applySceneBehaviorRecipes: typeof applySceneBehaviorRecipes === "function",
+        dryRunSceneBehaviorRecipes: typeof dryRunSceneBehaviorRecipes === "function",
+        resolveSceneCompositionSpec: typeof resolveSceneCompositionSpec === "function",
+        resolveBehaviorRecipeDocument: typeof resolveBehaviorRecipeDocument === "function",
+      },
+      summary: {
+        fragment: applied.plan.fragment,
+        instanceCount: applied.plan.instances.length,
+        behaviorCommandCount: applied.plan.commands.length,
+        appliedCommandCount: applied.behaviorApplyResult.results.length,
+        appliedCalls: engine.calls,
+        runtimeEntities: applied.plan.instances
+          .map((instance) => instance.props.runtimeEntity)
+          .filter((value) => typeof value === "string"),
+        runtimeEntityHandles: sceneRuntimeEntityHandles(applied),
+        behaviorProfiles: Object.keys(recipes.entities),
+      },
+    };
+  } catch (error) {
+    const { diagnosticReport } = await import("@ferrum2d/ferrum-web").catch(() => ({ diagnosticReport: undefined }));
+    const report = typeof diagnosticReport === "function" ? diagnosticReport(error) : undefined;
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      file: SCENE_AUTHORING_PATH,
+      path: sceneAuthoringErrorPath(error) ?? report?.context?.path ?? SCENE_AUTHORING_PATH,
+      message,
+      detail: report?.context?.detail ?? message,
+    };
+  }
+}
+
+function createSceneAuthoringMockEngine() {
+  const calls = [];
+  return {
+    calls,
+    set_gameplay_health(entityId, entityGeneration, current) {
+      calls.push([
+        "set_gameplay_health",
+        entityId,
+        entityGeneration,
+        current,
+      ]);
+      return true;
+    },
+  };
+}
+
+function sceneAuthoringError(path, detail) {
+  const error = new Error(`Invalid Ferrum2D scene authoring data: path=${JSON.stringify(path)} detail=${JSON.stringify(detail)}.`);
+  error.sceneAuthoringPath = path;
+  return error;
+}
+
+function sceneAuthoringErrorPath(error) {
+  return error instanceof Error && typeof error.sceneAuthoringPath === "string"
+    ? error.sceneAuthoringPath
+    : undefined;
+}
+
+function sceneRuntimeEntityHandles(applied) {
+  return applied.plan.instances.map((instance) => {
+    const handle = applied.entityHandles[instance.id];
+    return {
+      instanceId: instance.id,
+      runtimeEntity: typeof instance.props.runtimeEntity === "string" ? instance.props.runtimeEntity : null,
+      entityId: handle.entityId,
+      entityGeneration: handle.entityGeneration,
+    };
+  });
 }
 
 async function printReplayReport() {
@@ -197,7 +346,16 @@ function validationDiagnostics(result) {
   for (const importPath of result.internalImports) {
     diagnostics.push(diagnostic("src/main.ts", `Use the public package entrypoint instead of internal import: ${importPath}`));
   }
+  if (result.sceneAuthoring?.ok === false) {
+    diagnostics.push(diagnostic(result.sceneAuthoring.path, result.sceneAuthoring.detail ?? result.sceneAuthoring.message));
+  }
   return diagnostics;
+}
+
+function authoringStatus(result) {
+  if (result.sceneAuthoring?.ok === false) return "invalid";
+  if (result.sceneAuthoring?.ok === true) return "validated";
+  return "not-configured";
 }
 
 function diagnostic(path, detail) {
@@ -336,6 +494,7 @@ function templateSummary(result) {
     scene: "builtin-platformer",
     hasFerrumDependency: result.hasFerrumDependency,
     hasMainSource: result.hasMainSource,
+    authoringSurface: result.authoringSurface,
     scripts: ["ferrum:validate", "ferrum:authoring-report", "ferrum:replay-report", "ferrum:update-replay-fixture"],
   };
 }

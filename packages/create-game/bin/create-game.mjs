@@ -5,8 +5,10 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const templatesRoot = path.join(packageRoot, "templates");
+const sharedTemplateRoot = path.join(templatesRoot, "_shared");
 const defaultTemplate = "minimal";
 const defaultFerrumVersion = "^0.1.0";
+const SCENE_AUTHORING_FORMAT = "ferrum2d.consumer.scene-authoring";
 
 try {
   const options = parseArgs(process.argv.slice(2));
@@ -17,8 +19,12 @@ try {
   }
 
   if (options.listTemplates) {
-    await printTemplateList();
+    await printTemplateList({ json: options.json });
     process.exit(0);
+  }
+
+  if (options.json) {
+    throw new Error("--json can only be used with --list-templates.");
   }
 
   if (!options.projectDir) {
@@ -38,6 +44,7 @@ function parseArgs(args) {
     ferrumVersion: defaultFerrumVersion,
     force: false,
     help: false,
+    json: false,
     listTemplates: false,
     projectDir: undefined,
     template: defaultTemplate,
@@ -55,6 +62,10 @@ function parseArgs(args) {
     }
     if (arg === "--list-templates") {
       parsed.listTemplates = true;
+      continue;
+    }
+    if (arg === "--json") {
+      parsed.json = true;
       continue;
     }
     if (arg === "--template") {
@@ -119,11 +130,17 @@ async function createGameProject({ ferrumVersion, force, projectDir, template })
   const projectTitle = toTitle(targetName);
 
   await assertWritableTarget(targetRoot, force);
-  await copyTemplate(templateRoot, targetRoot, {
+  await requireDirectory(
+    sharedTemplateRoot,
+    "Shared create-game template scaffold is missing.",
+  );
+  const replacements = {
     __FERRUM_WEB_VERSION__: ferrumVersion,
     __PROJECT_NAME__: packageName,
     __PROJECT_TITLE__: projectTitle,
-  });
+  };
+  await copyTemplate(sharedTemplateRoot, targetRoot, replacements);
+  await copyTemplate(templateRoot, targetRoot, replacements);
 
   console.log(`Created Ferrum2D game project at ${targetRoot}`);
   console.log("");
@@ -146,17 +163,35 @@ function formatShellPath(targetRoot) {
 async function loadTemplateCatalog() {
   const source = await readFile(path.join(templatesRoot, "manifest.json"), "utf8");
   const catalog = JSON.parse(source);
+  assertPlainObject(catalog, "Invalid template manifest: manifest must be an object.");
+  if (catalog.format !== "ferrum-create-game-template-catalog") {
+    throw new Error("Invalid template manifest: format must be ferrum-create-game-template-catalog.");
+  }
+  if (catalog.version !== 1) {
+    throw new Error("Invalid template manifest: version must be 1.");
+  }
   if (!Array.isArray(catalog.templates)) {
     throw new Error("Invalid template manifest: templates must be an array.");
   }
   const ids = new Set();
   for (const template of catalog.templates) {
+    assertPlainObject(template, "Invalid template manifest: template entries must be objects.");
     if (typeof template.id !== "string" || !/^[a-z0-9-]+$/.test(template.id)) {
       throw new Error("Invalid template manifest: template ids must use lowercase letters, numbers, and hyphens.");
     }
     if (ids.has(template.id)) {
       throw new Error(`Invalid template manifest: duplicate template id '${template.id}'.`);
     }
+    assertNonEmptyString(template.description, `Invalid template manifest: template '${template.id}' description must be a non-empty string.`);
+    validateTemplateSceneAuthoringCatalog(template);
+    await validateTemplateSceneAuthoringFixture(template);
+    validateTemplateReplayCatalog(template, "gameplayReplay", "public/gameplay-replay.fixture.json", "public/gameplay-replay.coverage-tags.json");
+    validateTemplateReplayCatalog(
+      template,
+      "runtimeGameplayReplay",
+      "public/gameplay-runtime-replay.fixture.json",
+      "public/gameplay-runtime-replay.coverage-tags.json",
+    );
     ids.add(template.id);
   }
   if (typeof catalog.defaultTemplate !== "string" || !ids.has(catalog.defaultTemplate)) {
@@ -165,13 +200,132 @@ async function loadTemplateCatalog() {
   return catalog;
 }
 
-async function printTemplateList() {
+function validateTemplateSceneAuthoringCatalog(template) {
+  const sceneAuthoring = template.sceneAuthoring;
+  assertPlainObject(sceneAuthoring, `Invalid template manifest: template '${template.id}' sceneAuthoring must be an object.`);
+  if (typeof sceneAuthoring.configured !== "boolean") {
+    throw new Error(`Invalid template manifest: template '${template.id}' sceneAuthoring.configured must be a boolean.`);
+  }
+  if (sceneAuthoring.configured) {
+    assertNonEmptyString(
+      sceneAuthoring.fixturePath,
+      `Invalid template manifest: template '${template.id}' sceneAuthoring.fixturePath must be a non-empty string.`,
+    );
+    if (sceneAuthoring.fixturePath !== "public/scene-authoring.json") {
+      throw new Error(`Invalid template manifest: template '${template.id}' sceneAuthoring.fixturePath must be public/scene-authoring.json.`);
+    }
+    if (sceneAuthoring.format !== SCENE_AUTHORING_FORMAT) {
+      throw new Error(`Invalid template manifest: template '${template.id}' sceneAuthoring.format must be ${SCENE_AUTHORING_FORMAT}.`);
+    }
+  } else {
+    assertNonEmptyString(
+      sceneAuthoring.reason,
+      `Invalid template manifest: template '${template.id}' sceneAuthoring.reason must be a non-empty string.`,
+    );
+    if (sceneAuthoring.fixturePath !== undefined || sceneAuthoring.format !== undefined) {
+      throw new Error(`Invalid template manifest: template '${template.id}' unconfigured sceneAuthoring must not include fixturePath or format.`);
+    }
+  }
+}
+
+async function validateTemplateSceneAuthoringFixture(template) {
+  const sceneAuthoring = template.sceneAuthoring;
+  if (!sceneAuthoring.configured) {
+    return;
+  }
+  const fixturePath = path.join(templatesRoot, template.id, sceneAuthoring.fixturePath);
+  assertInsideDirectory(
+    path.join(templatesRoot, template.id),
+    fixturePath,
+    `Invalid template manifest: template '${template.id}' sceneAuthoring.fixturePath resolves outside the template directory.`,
+  );
+  let fixture;
+  try {
+    fixture = JSON.parse(await readFile(fixturePath, "utf8"));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid template manifest: template '${template.id}' scene authoring fixture is unreadable: ${detail}`);
+  }
+  assertPlainObject(fixture, `Invalid template manifest: template '${template.id}' scene authoring fixture must be an object.`);
+  if (fixture.format !== SCENE_AUTHORING_FORMAT) {
+    throw new Error(`Invalid template manifest: template '${template.id}' scene authoring fixture format must be ${SCENE_AUTHORING_FORMAT}.`);
+  }
+  if (fixture.version !== 1) {
+    throw new Error(`Invalid template manifest: template '${template.id}' scene authoring fixture version must be 1.`);
+  }
+  assertPlainObject(
+    fixture.sceneComposition,
+    `Invalid template manifest: template '${template.id}' scene authoring fixture sceneComposition must be an object.`,
+  );
+  assertPlainObject(
+    fixture.behaviorRecipes,
+    `Invalid template manifest: template '${template.id}' scene authoring fixture behaviorRecipes must be an object.`,
+  );
+}
+
+function validateTemplateReplayCatalog(template, key, expectedFixturePath, expectedCoveragePath) {
+  const replay = template[key];
+  assertPlainObject(replay, `Invalid template manifest: template '${template.id}' ${key} must be an object.`);
+  if (typeof replay.configured !== "boolean") {
+    throw new Error(`Invalid template manifest: template '${template.id}' ${key}.configured must be a boolean.`);
+  }
+  if (replay.configured) {
+    assertNonEmptyString(replay.scenario, `Invalid template manifest: template '${template.id}' ${key}.scenario must be a non-empty string.`);
+    if (replay.fixturePath !== expectedFixturePath) {
+      throw new Error(`Invalid template manifest: template '${template.id}' ${key}.fixturePath must be ${expectedFixturePath}.`);
+    }
+    if (replay.coverageTagDefinitionsPath !== expectedCoveragePath) {
+      throw new Error(`Invalid template manifest: template '${template.id}' ${key}.coverageTagDefinitionsPath must be ${expectedCoveragePath}.`);
+    }
+  } else {
+    assertNonEmptyString(replay.reason, `Invalid template manifest: template '${template.id}' ${key}.reason must be a non-empty string.`);
+    if (replay.scenario !== undefined || replay.fixturePath !== undefined || replay.coverageTagDefinitionsPath !== undefined) {
+      throw new Error(`Invalid template manifest: template '${template.id}' unconfigured ${key} must not include scenario, fixturePath, or coverageTagDefinitionsPath.`);
+    }
+  }
+}
+
+function assertPlainObject(value, message) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(message);
+  }
+}
+
+function assertNonEmptyString(value, message) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(message);
+  }
+}
+
+async function printTemplateList({ json = false } = {}) {
   const catalog = await loadTemplateCatalog();
+  if (json) {
+    console.log(JSON.stringify(templateCatalogListReport(catalog), null, 2));
+    return;
+  }
   console.log("Available Ferrum2D templates:");
   for (const template of catalog.templates) {
     const recommended = template.id === catalog.defaultTemplate ? " (default)" : "";
     console.log(`  ${template.id}${recommended} - ${template.description}`);
   }
+}
+
+function templateCatalogListReport(catalog) {
+  return {
+    format: "ferrum-create-game-template-list",
+    version: 1,
+    defaultTemplate: catalog.defaultTemplate,
+    templates: catalog.templates.map((template) => ({
+      id: template.id,
+      name: template.name,
+      description: template.description,
+      genre: template.genre,
+      tags: template.tags,
+      sceneAuthoring: template.sceneAuthoring,
+      gameplayReplay: template.gameplayReplay,
+      runtimeGameplayReplay: template.runtimeGameplayReplay,
+    })),
+  };
 }
 
 async function requireDirectory(directoryPath, message) {
@@ -266,6 +420,7 @@ function printHelp() {
 Options:
   --template <name>          Template to use. Default: minimal
   --list-templates           Print available templates
+  --json                     With --list-templates, print a machine-readable template catalog
   --ferrum-version <range>   @ferrum2d/ferrum-web dependency range. Default: ^0.1.0
   --force                    Allow writing into a non-empty target directory
   -h, --help                 Show this help

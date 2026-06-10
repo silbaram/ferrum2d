@@ -9,9 +9,12 @@ Own:
 - App-owned assets under public/ or source asset folders.
 - Texture/audio/json manifest names and paths.
 - Missing asset diagnostics and build output asset checks.
+- Raw asset import -> validation -> Game Spec atlas/content update loops.
+- Aseprite, Tiled, LDtk, localization, and audio manifest conversion through public Ferrum2D helpers when the project uses them.
 
 Boundaries:
 - Do not edit Ferrum2D engine asset loader internals.
+- Do not import from @ferrum2d/ferrum-web/dist/*, @ferrum2d/ferrum-web/pkg/*, or @ferrum2d/ferrum-web/src/*.
 - Do not commit generated build output unless the user explicitly asks for artifact changes.
 - Treat path case sensitivity as required for deployed browser builds.
 """

@@ -1,0 +1,18 @@
+{
+  "format": "ferrum2d.consumer.gameplay-replay.coverage-tags",
+  "version": 1,
+  "coverageTagDefinitions": {
+    "breakout-template": "Consumer replay validates the generated Breakout template surface contract.",
+    "breakout-built-in-scene": "Consumer replay validates the Breakout starter's public useBreakoutGame runtime hook."
+  },
+  "coverageTagGroups": {
+    "template-contracts": {
+      "description": "Consumer template replay contracts generated with create-game.",
+      "tags": [
+        "breakout-template",
+        "breakout-built-in-scene"
+      ]
+    }
+  },
+  "deprecatedCoverageTags": {}
+}

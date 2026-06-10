@@ -1,7 +1,13 @@
 import {
+  BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY,
+  BUILT_IN_SHOOTER_STATE_HEADER_U32S,
+  BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY,
+  BUILT_IN_SHOOTER_STATE_VERSION,
+  createShooterContentRuntimeOptions,
   createPhysicsBodyStateBufferSnapshot,
   equal,
   physicsMaterial,
+  resolveShooterContentRuntimeSelection,
   resolvePhysicsSpec,
   resolvePostProcessPasses,
   test,
@@ -64,6 +70,7 @@ import type {
   ResolvedPostProcessPass,
   ResolvedShooterAtlasAnimation,
   ResolvedShooterAtlasAnimationState,
+  ResolvedShooterContentSpec,
   ResolvedShooterPhysicsMaterial,
   ResolvedShooterPrefabCollider,
   ResolvedShooterPrefabColliderBase,
@@ -78,6 +85,11 @@ import type {
   ShooterAtlasSpec,
   ShooterCameraPreset,
   ShooterCameraSpec,
+  ShooterContentSpec,
+  ShooterContentRuntimeOptions,
+  ShooterContentRuntimeOptionSet,
+  ShooterContentRuntimeSelection,
+  ShooterDialogueContentSpec,
   ShooterEnemyOrbitSpec,
   ShooterEnemyPresetSpec,
   ShooterGameSpec,
@@ -130,14 +142,25 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
     publicResolvePostProcessPasses(postProcessStackInput, postProcessOptions);
   const builtInShooterState: BuiltInShooterStateSnapshot = {
     format: "ferrum2d.builtin-shooter-state",
-    version: 15,
+    version: BUILT_IN_SHOOTER_STATE_VERSION,
     headerFloats: [0, 1, 0, 0, 400, 240, 0, 0],
-    headerU32s: [15, 1, 3, 0, 0, 0, 0, 0, 0, ...Array(76).fill(0)],
-    entityFloats: [400, 240, 0, 0, ...Array(71).fill(0)],
-    entityU32s: [0, ...Array(60).fill(0)],
+    headerU32s: [
+      BUILT_IN_SHOOTER_STATE_VERSION,
+      1,
+      3,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      ...Array(BUILT_IN_SHOOTER_STATE_HEADER_U32S - 9).fill(0),
+    ],
+    entityFloats: [400, 240, 0, 0, ...Array(BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY - 4).fill(0)],
+    entityU32s: [0, ...Array(BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY - 1).fill(0)],
     entityCount: 1,
-    floatsPerEntity: 75,
-    u32sPerEntity: 61,
+    floatsPerEntity: BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY,
+    u32sPerEntity: BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY,
   };
   const physicsDebugLineCamera: PhysicsDebugLineCamera = { x: 0, y: 0 };
   const gameSpec: ShooterGameSpec = {
@@ -179,6 +202,28 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
       waves: [{ enemy: "bruiser", duration: 12, spawnInterval: 1, enemyCount: 6 }],
     },
     audio: { masterVolume: 0.9, sfxVolume: 0.7, events: { shoot: { volume: 0.3, pitch: 1.1 } } },
+    content: {
+      localization: {
+        defaultLocale: "en",
+        locales: {
+          en: { strings: { "intro.ready": "Ready" } },
+        },
+      },
+      dialogue: {
+        graphs: {
+          intro: {
+            initialNode: "start",
+            nodes: { start: { text: "intro.ready", end: true } },
+          },
+        },
+      },
+      cutscenes: {
+        intro: {
+          id: "intro",
+          commands: [{ kind: "dialogue", text: "intro.ready", durationSeconds: 1 }],
+        },
+      },
+    },
     physics: {
       mode: "rigid",
       gravity: [0, 700],
@@ -206,6 +251,13 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   const physicsDebugOptions: PhysicsDebugOptions = physicsDebugSpec;
   const cameraPreset: ShooterCameraPreset = "look-ahead";
   const cameraSpec: ShooterCameraSpec = { preset: cameraPreset };
+  const contentSpec: ShooterContentSpec = gameSpec.content ?? {};
+  const dialogueContentSpec: ShooterDialogueContentSpec = contentSpec.dialogue ?? {};
+  const contentRuntimeOptionsInput: ShooterContentRuntimeOptions = {
+    dialogueGraphId: false,
+    cutsceneId: false,
+    locale: "en",
+  };
   const atlasSpec: ShooterAtlasSpec = gameSpec.atlas ?? {};
   const atlasFrameSpec: ShooterAtlasFrameSpec = atlasSpec.frames?.bullet ?? {};
   const atlasAnimationStateSpec: ShooterAtlasAnimationStateSpec = { frames: ["bullet"], fps: 1 };
@@ -300,6 +352,14 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
     idle: resolvedAtlasAnimationState,
     move: resolvedAtlasAnimationState,
   };
+  const resolvedContentSpec: ResolvedShooterContentSpec = {
+    dialogueGraphs: {},
+    cutscenes: {},
+  };
+  const contentRuntimeSelection: ShooterContentRuntimeSelection =
+    resolveShooterContentRuntimeSelection(resolvedContentSpec, contentRuntimeOptionsInput);
+  const contentRuntimeOptionSet: ShooterContentRuntimeOptionSet =
+    createShooterContentRuntimeOptions(resolvedContentSpec, contentRuntimeOptionsInput);
   const resolvedTileSlope: ResolvedShooterTileSlopeDefinition = resolvedTileDefinition.slope ?? {
     x0: 0,
     y0: 1,
@@ -595,7 +655,7 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   const engine: Pick<
     FerrumEngine,
     "setGameSpec" | "builtInShooterPlayerHandle" | "captureShooterStateSnapshot" | "restoreShooterStateSnapshot" |
-      "useBreakoutGame" | "configurePhysicsRuntime" | "configureFixedTimestep" |
+      "useDataScene" | "useBreakoutGame" | "configurePhysicsRuntime" | "configureFixedTimestep" |
       "configureAutoRigidBodyStep" | "stepRigidBodies" |
       "spawnRigidBody" | "addPhysicsBodyCollider" | "getPhysicsBodyColliderCount" |
       "getPhysicsBodyCollider" | "getPhysicsEntity" | "despawnPhysicsEntity" |
@@ -707,10 +767,12 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
       gameOverPitch: 0.9,
       postProcessing: resolvedPostProcessPasses,
       physics: resolvePhysicsSpec(gameSpec.physics),
+      content: resolvedContentSpec,
     }),
     builtInShooterPlayerHandle: () => physicsEntityHandle,
     captureShooterStateSnapshot: () => builtInShooterState,
     restoreShooterStateSnapshot: () => true,
+    useDataScene: () => undefined,
     useBreakoutGame: () => undefined,
     configurePhysicsRuntime: (spec) => spec,
     configureFixedTimestep: () => undefined,
@@ -795,6 +857,9 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   equal(physicsDebugLineCamera.x, 0);
   equal(physicsDebugOptions.colliders, true);
   equal(gameSpec.world?.width, 1600);
+  equal(dialogueContentSpec.graphs?.intro?.initialNode, "start");
+  equal(contentRuntimeSelection.localization, false);
+  equal(contentRuntimeOptionSet.dialogue, undefined);
   equal(cameraSpec.preset, "look-ahead");
   equal(atlasFrameSpec.texture, "bullet");
   equal(atlasAnimationSpec.idle?.frames?.[0], "bullet");
@@ -841,5 +906,6 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   equal(physicsDebugSpec.colliders, true);
   equal(engine.setGameSpec(gameSpec).enemyBehavior, "chase");
   equal(engine.builtInShooterPlayerHandle()?.entityId, physicsEntityHandle.entityId);
+  engine.useDataScene();
   engine.useBreakoutGame();
 });

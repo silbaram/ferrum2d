@@ -40,7 +40,7 @@ Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI a
 | Asset pipeline helper | `packages/ferrum-web/src/assetPipeline.ts`, `packages/ferrum-web/src/assetPipeline*.ts` |
 | Game Spec 타입과 기본값 | `packages/ferrum-web/src/gameSpec.ts`, `packages/ferrum-web/src/gameSpec*.ts` |
 | Game Spec 구조 보조 JSON Schema | `schemas/shooter-game-spec.schema.json` |
-| AI agent/skill 배포 템플릿 | `packages/agents/templates/**` |
+| AI agent/skill 배포 템플릿과 showcase | `packages/agents/README.md`, `packages/agents/templates/**` |
 | 실제 Top-down Shooter 설정 | `examples/topdown-shooter/public/game.json` |
 | Rust/Wasm ABI | `crates/ferrum-core/src/render_command.rs`, `crates/ferrum-core/src/audio_event.rs`, `packages/ferrum-web/src/wasmBridge.ts` |
 | npm package 역할 분리 | `packages/ferrum-web/package.json`, `packages/create-game/package.json`, `packages/agents/package.json`, `docs/development/operations/npm-package-strategy.md` |

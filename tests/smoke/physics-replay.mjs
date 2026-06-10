@@ -185,6 +185,7 @@ class ReplayStateEngine {
       gravityScale: options.gravityScale ?? 1,
       linearDamping: options.linearDamping ?? 0,
       angularDamping: options.angularDamping ?? 0,
+      ...(options.heightSpan === undefined ? {} : { heightSpan: normalizeHeightSpan(options.heightSpan) }),
       ...material,
     });
     this.colliders.set(handle.entityId, [{
@@ -270,6 +271,25 @@ class ReplayStateEngine {
     if (!body) return false;
     body.angularVelocityRadiansPerSecond = radiansPerSecond;
     return true;
+  }
+
+  setPhysicsBodyHeightSpan(handle, span) {
+    const body = this.bodies.get(handle.entityId);
+    if (!body) return false;
+    body.heightSpan = normalizeHeightSpan(span);
+    return true;
+  }
+
+  clearPhysicsBodyHeightSpan(handle) {
+    const body = this.bodies.get(handle.entityId);
+    if (!body) return false;
+    delete body.heightSpan;
+    return true;
+  }
+
+  getPhysicsBodyHeightSpan(handle) {
+    const body = this.bodies.get(handle.entityId);
+    return body?.heightSpan === undefined ? undefined : { ...body.heightSpan };
   }
 
   setPhysicsBodyEnabled(handle, enabled) {
@@ -411,12 +431,21 @@ function materialSnapshot(material) {
   };
 }
 
+function normalizeHeightSpan(span) {
+  return {
+    floorId: span.floorId ?? 0,
+    elevation: span.elevation,
+    height: span.height,
+  };
+}
+
 function cloneBody(body) {
   return body === undefined
     ? undefined
     : {
         ...body,
         colliderMaterial: { ...body.colliderMaterial },
+        ...(body.heightSpan === undefined ? {} : { heightSpan: { ...body.heightSpan } }),
       };
 }
 

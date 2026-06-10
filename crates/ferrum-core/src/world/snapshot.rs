@@ -1,8 +1,9 @@
 use super::World;
 use crate::components::gameplay::{
     ActionBindingSet, BehaviorStateEnterActionSet, BehaviorStateMachine, CollisionReactionSet,
-    GameplayFaction, GameplayLifetime, GameplayTags, GameplayTimerTrigger, Interaction,
-    MovementPattern, Pickup, ProjectileCollisionTarget, ProjectilePolicy, ProjectileTileImpact,
+    FactionRelationTable, GameplayFaction, GameplayLifetime, GameplayTags, GameplayTimerTrigger,
+    Interaction, MovementPattern, Pickup, ProjectileCollisionTarget, ProjectilePolicy,
+    ProjectileTileImpact,
 };
 use crate::components::{
     AabbCollider, AngularVelocity, CapsuleCollider, ChainCollider, CircleCollider, CollisionFilter,
@@ -72,6 +73,7 @@ pub struct WorldSnapshot {
     damages: Vec<Option<f32>>,
     score_rewards: Vec<Option<u32>>,
     gameplay_factions: Vec<Option<GameplayFaction>>,
+    gameplay_faction_relations: FactionRelationTable,
     gameplay_tags: Vec<Option<GameplayTags>>,
     action_bindings: Vec<Option<ActionBindingSet>>,
     pickups: Vec<Option<Pickup>>,
@@ -144,6 +146,7 @@ impl World {
             damages: self.damages.clone(),
             score_rewards: self.score_rewards.clone(),
             gameplay_factions: self.gameplay_factions.clone(),
+            gameplay_faction_relations: self.gameplay_faction_relations.clone(),
             gameplay_tags: self.gameplay_tags.clone(),
             action_bindings: self.action_bindings.clone(),
             pickups: self.pickups.clone(),
@@ -216,6 +219,7 @@ impl World {
         self.damages = snapshot.damages.clone();
         self.score_rewards = snapshot.score_rewards.clone();
         self.gameplay_factions = snapshot.gameplay_factions.clone();
+        self.gameplay_faction_relations = snapshot.gameplay_faction_relations.clone();
         self.gameplay_tags = snapshot.gameplay_tags.clone();
         self.action_bindings = snapshot.action_bindings.clone();
         self.pickups = snapshot.pickups.clone();

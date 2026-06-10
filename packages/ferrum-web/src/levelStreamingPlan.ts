@@ -72,6 +72,7 @@ export function resolveLevelStreamingPlanForResolvedManifest(
   );
   const retainChunkIds = sortedChunkIds(retainChunks);
   const retainChunkIdSet = new Set(retainChunkIds);
+  const unloadChunkIds = unloadedChunkIds(loaded, retainChunkIdSet);
 
   return {
     manifestId: resolved.id,
@@ -79,11 +80,12 @@ export function resolveLevelStreamingPlanForResolvedManifest(
     preloadChunkIds: classification.preloadChunkIds.sort(),
     retainChunkIds,
     loadChunkIds: classification.loadChunkIds,
-    unloadChunkIds: unloadedChunkIds(loaded, retainChunkIdSet),
+    unloadChunkIds,
     assetManifest: assetManifestForChunks(classification.preloadAssetChunks),
     activeChunks: classification.activeChunks,
     preloadChunks: classification.preloadChunks,
     retainChunks,
+    unloadChunks: chunksByIds(resolved, unloadChunkIds),
   };
 }
 
@@ -171,6 +173,20 @@ function unloadedChunkIds(
     }
   }
   return chunkIds.sort();
+}
+
+function chunksByIds(
+  manifest: ResolvedLevelChunkManifest,
+  chunkIds: readonly string[],
+): readonly ResolvedLevelChunk[] {
+  const chunks: ResolvedLevelChunk[] = [];
+  for (const chunkId of chunkIds) {
+    const chunk = manifest.chunksById[chunkId];
+    if (chunk !== undefined) {
+      chunks.push(chunk);
+    }
+  }
+  return chunks;
 }
 
 function resolveViewport(viewport: LevelStreamingViewport, path: string): LevelStreamingViewport {

@@ -1,0 +1,186 @@
+{
+  "format": "ferrum2d.consumer.gameplay-replay.fixture",
+  "version": 1,
+  "scenario": "breakout-template-surface",
+  "description": "Generated Breakout template surface replay contract. This fixture validates public replay helper hashing and template surface drift; it is not a browser frame runner.",
+  "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json",
+  "coverageTags": [
+    "breakout-template",
+    "breakout-built-in-scene"
+  ],
+  "replay": {
+    "format": "ferrum2d.gameplay-replay.run",
+    "version": 1,
+    "snapshots": [
+      {
+        "frame": 0,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 0,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 0,
+            "entityCount": 0,
+            "spriteCount": 0,
+            "cameraX": 0,
+            "cameraY": 0
+          },
+          "custom": {
+            "templateReplay": {
+              "version": 1,
+              "scenario": "breakout-template-surface",
+              "phase": "template-loaded",
+              "template": {
+                "template": "breakout",
+                "scene": "builtin-breakout",
+                "hasFerrumDependency": true,
+                "hasMainSource": true,
+                "authoringSurface": {
+                  "publicApis": {
+                    "applySceneBehaviorRecipes": true,
+                    "dryRunSceneBehaviorRecipes": true,
+                    "resolveSceneCompositionSpec": true,
+                    "resolveBehaviorRecipeDocument": true
+                  },
+                  "runtimeHooks": {
+                    "useBreakoutGame": true,
+                    "resetGame": true,
+                    "runtimeMetrics": true
+                  },
+                  "sceneComposition": {
+                    "configured": true,
+                    "ok": true,
+                    "file": "public/scene-authoring.json",
+                    "instanceCount": 2,
+                    "behaviorCommandCount": 2,
+                    "appliedCommandCount": 2,
+                    "runtimeEntities": [
+                      "builtinBreakoutPaddle",
+                      "builtinBreakoutBall"
+                    ],
+                    "runtimeEntityHandles": [
+                      {
+                        "instanceId": "paddle",
+                        "runtimeEntity": "builtinBreakoutPaddle",
+                        "entityId": 1,
+                        "entityGeneration": 0
+                      },
+                      {
+                        "instanceId": "ball",
+                        "runtimeEntity": "builtinBreakoutBall",
+                        "entityId": 2,
+                        "entityGeneration": 0
+                      }
+                    ]
+                  }
+                },
+                "publicAssets": [
+                  "gameplay-replay.coverage-tags.json",
+                  "gameplay-replay.fixture.json",
+                  "gameplay-runtime-replay.coverage-tags.json",
+                  "gameplay-runtime-replay.fixture.json",
+                  "scene-authoring.json"
+                ],
+                "scripts": [
+                  "ferrum:validate",
+                  "ferrum:authoring-report",
+                  "ferrum:replay-report",
+                  "ferrum:update-replay-fixture"
+                ]
+              }
+            }
+          },
+          "snapshotHash": "34f427e5"
+        },
+        "replayHash": "34f427e5"
+      },
+      {
+        "frame": 1,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 1,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 1,
+            "spriteCount": 1,
+            "cameraX": 0,
+            "cameraY": 0
+          },
+          "custom": {
+            "templateReplay": {
+              "version": 1,
+              "scenario": "breakout-template-surface",
+              "phase": "breakout-ready",
+              "template": {
+                "template": "breakout",
+                "scene": "builtin-breakout",
+                "hasFerrumDependency": true,
+                "hasMainSource": true,
+                "authoringSurface": {
+                  "publicApis": {
+                    "applySceneBehaviorRecipes": true,
+                    "dryRunSceneBehaviorRecipes": true,
+                    "resolveSceneCompositionSpec": true,
+                    "resolveBehaviorRecipeDocument": true
+                  },
+                  "runtimeHooks": {
+                    "useBreakoutGame": true,
+                    "resetGame": true,
+                    "runtimeMetrics": true
+                  },
+                  "sceneComposition": {
+                    "configured": true,
+                    "ok": true,
+                    "file": "public/scene-authoring.json",
+                    "instanceCount": 2,
+                    "behaviorCommandCount": 2,
+                    "appliedCommandCount": 2,
+                    "runtimeEntities": [
+                      "builtinBreakoutPaddle",
+                      "builtinBreakoutBall"
+                    ],
+                    "runtimeEntityHandles": [
+                      {
+                        "instanceId": "paddle",
+                        "runtimeEntity": "builtinBreakoutPaddle",
+                        "entityId": 1,
+                        "entityGeneration": 0
+                      },
+                      {
+                        "instanceId": "ball",
+                        "runtimeEntity": "builtinBreakoutBall",
+                        "entityId": 2,
+                        "entityGeneration": 0
+                      }
+                    ]
+                  }
+                },
+                "publicAssets": [
+                  "gameplay-replay.coverage-tags.json",
+                  "gameplay-replay.fixture.json",
+                  "gameplay-runtime-replay.coverage-tags.json",
+                  "gameplay-runtime-replay.fixture.json",
+                  "scene-authoring.json"
+                ],
+                "scripts": [
+                  "ferrum:validate",
+                  "ferrum:authoring-report",
+                  "ferrum:replay-report",
+                  "ferrum:update-replay-fixture"
+                ]
+              }
+            }
+          },
+          "snapshotHash": "f640d6ac"
+        },
+        "replayHash": "f640d6ac"
+      }
+    ],
+    "replayHash": "06284dd3"
+  }
+}

@@ -157,13 +157,7 @@ export class TextureManager {
 
   setTexture(textureId: number, texture: WebGLTexture, size?: TextureSize): void {
     this.assertAlive();
-    if (!Number.isInteger(textureId) || textureId < 0) {
-      throw diagnosticError("Texture registry error", {
-        kind: "texture",
-        id: textureId,
-        detail: "texture_id must be a non-negative integer",
-      }, "FERRUM_TEXTURE_REGISTRY");
-    }
+    validateTextureId(textureId);
 
     const previousTexture = this.texturesById.get(textureId);
     if (previousTexture && previousTexture !== texture) {
@@ -178,6 +172,23 @@ export class TextureManager {
     } else {
       this.textureSizesById.set(textureId, size);
     }
+  }
+
+  evictTexture(textureId: number): boolean {
+    this.assertAlive();
+    validateTextureId(textureId);
+    if (textureId === 0) {
+      return false;
+    }
+    const texture = this.texturesById.get(textureId);
+    if (!texture) {
+      return false;
+    }
+    this.gl.deleteTexture(texture);
+    this.textures.delete(texture);
+    this.texturesById.delete(textureId);
+    this.textureSizesById.delete(textureId);
+    return true;
   }
 
   texture(textureId: number): WebGLTexture {
@@ -323,4 +334,14 @@ function finitePositiveNumber(value: number, path: string): number {
     throw new Error(`${path} must be a non-negative finite number.`);
   }
   return value;
+}
+
+function validateTextureId(textureId: number): void {
+  if (!Number.isInteger(textureId) || textureId < 0) {
+    throw diagnosticError("Texture registry error", {
+      kind: "texture",
+      id: textureId,
+      detail: "texture_id must be a non-negative integer",
+    }, "FERRUM_TEXTURE_REGISTRY");
+  }
 }

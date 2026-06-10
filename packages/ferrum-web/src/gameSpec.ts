@@ -1,5 +1,9 @@
 export { applyShooterGameSpec } from "./gameSpecApply.js";
 export { resolveShooterGameSpec } from "./gameSpecResolve.js";
+export {
+  createShooterContentRuntimeOptions,
+  resolveShooterContentRuntimeSelection,
+} from "./gameSpecContent.js";
 export type {
   ShooterGameSpec,
   ShooterEnemyPresetSpec,
@@ -8,6 +12,9 @@ export type {
   ShooterProjectileArcSpec,
   ShooterAudioSpec,
   ShooterAudioEventPolicySpec,
+  ShooterContentSpec,
+  ShooterDialogueContentSpec,
+  ResolvedShooterContentSpec,
   ShooterCameraSpec,
   ShooterPrefabSpec,
   ShooterPrefabColliderType,
@@ -51,3 +58,8 @@ export type {
   ApplyShooterGameSpecOptions,
   ResolveShooterGameSpecOptions,
 } from "./gameSpecTypes.js";
+export type {
+  ShooterContentRuntimeOptions,
+  ShooterContentRuntimeOptionSet,
+  ShooterContentRuntimeSelection,
+} from "./gameSpecContent.js";

@@ -1,0 +1,57 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "sceneComposition": {
+    "initialFragment": "runtime",
+    "prefabs": {
+      "builtinPaddle": {
+        "props": {
+          "runtimeEntity": "builtinBreakoutPaddle",
+          "behaviorRecipes": "paddle.survivability"
+        }
+      },
+      "builtinBall": {
+        "props": {
+          "runtimeEntity": "builtinBreakoutBall",
+          "behaviorRecipes": "ball.sessionLifetime"
+        }
+      }
+    },
+    "fragments": {
+      "runtime": {
+        "instances": [
+          {
+            "id": "paddle",
+            "prefab": "builtinPaddle"
+          },
+          {
+            "id": "ball",
+            "prefab": "builtinBall"
+          }
+        ]
+      }
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {
+      "paddle.survivability": {
+        "recipes": [
+          {
+            "kind": "health",
+            "max": 3,
+            "start": 3,
+            "onZero": "despawn"
+          }
+        ]
+      },
+      "ball.sessionLifetime": {
+        "recipes": [
+          {
+            "kind": "lifetime",
+            "seconds": 60
+          }
+        ]
+      }
+    }
+  }
+}

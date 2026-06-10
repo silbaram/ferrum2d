@@ -2593,9 +2593,11 @@ pub(crate) fn evaluate_movement_pattern(
     match pattern {
         MovementPattern::Static => Some(MovementPatternEvaluation::Velocity(Velocity::default())),
         MovementPattern::TopdownInput { .. } => None,
+        MovementPattern::PlatformerInput { .. } => None,
         MovementPattern::Linear { vx, vy } => {
             Some(MovementPatternEvaluation::Velocity(Velocity { vx, vy }))
         }
+        MovementPattern::Oscillate { .. } => None,
         MovementPattern::MoveToPoint { x, y, speed } => Some(MovementPatternEvaluation::Velocity(
             velocity_toward(transform, Transform2D { x, y }, speed),
         )),
@@ -3509,7 +3511,14 @@ pub(crate) fn faction_damage_denial(
         .get(target_index)
         .copied()
         .flatten()?;
-    if source_faction.can_damage(target_faction) {
+    let can_damage = if world.gameplay_faction_relations.enabled() {
+        world
+            .gameplay_faction_relations
+            .can_damage(source_faction.faction_id, target_faction.faction_id)
+    } else {
+        source_faction.can_damage(target_faction)
+    };
+    if can_damage {
         return None;
     }
     Some(FactionDamageDenial {
@@ -7664,6 +7673,108 @@ mod tests {
     }
 
     #[test]
+    fn collision_damage_allowed_uses_relation_table_when_enabled() {
+        use crate::components::gameplay::{
+            FactionRelation, GameplayFaction, GAMEPLAY_FACTION_ENEMY, GAMEPLAY_FACTION_PLAYER,
+        };
+
+        let mut world = World::default();
+        let source = world.spawn_entity();
+        let target = world.spawn_entity();
+        world.set_gameplay_faction(
+            source,
+            GameplayFaction::new(GAMEPLAY_FACTION_PLAYER, 0).unwrap(),
+        );
+        world.set_gameplay_faction(
+            target,
+            GameplayFaction::new(GAMEPLAY_FACTION_ENEMY, 1 << GAMEPLAY_FACTION_PLAYER).unwrap(),
+        );
+
+        assert!(!collision_damage_allowed(
+            &world,
+            source.id as usize,
+            target.id as usize,
+        ));
+
+        assert!(world.gameplay_faction_relations.set_relation(
+            GAMEPLAY_FACTION_PLAYER,
+            GAMEPLAY_FACTION_ENEMY,
+            FactionRelation::Hostile,
+        ));
+        assert!(collision_damage_allowed(
+            &world,
+            source.id as usize,
+            target.id as usize,
+        ));
+
+        assert!(world.gameplay_faction_relations.set_relation(
+            GAMEPLAY_FACTION_PLAYER,
+            GAMEPLAY_FACTION_ENEMY,
+            FactionRelation::Friendly,
+        ));
+        let friendly_denial = faction_damage_denial(&world, source.id as usize, target.id as usize)
+            .expect("friendly relation should deny damage");
+        assert_eq!(friendly_denial.source_faction_id, GAMEPLAY_FACTION_PLAYER);
+        assert_eq!(friendly_denial.target_faction_id, GAMEPLAY_FACTION_ENEMY);
+
+        assert!(world.gameplay_faction_relations.set_relation(
+            GAMEPLAY_FACTION_PLAYER,
+            GAMEPLAY_FACTION_ENEMY,
+            FactionRelation::Neutral,
+        ));
+        assert!(!collision_damage_allowed(
+            &world,
+            source.id as usize,
+            target.id as usize,
+        ));
+
+        world.clear_gameplay_faction(target);
+        assert!(collision_damage_allowed(
+            &world,
+            source.id as usize,
+            target.id as usize,
+        ));
+    }
+
+    #[test]
+    fn collision_damage_allowed_respects_directed_relation_table() {
+        use crate::components::gameplay::{
+            FactionRelation, GameplayFaction, GAMEPLAY_FACTION_ENEMY, GAMEPLAY_FACTION_PLAYER,
+        };
+
+        let mut world = World::default();
+        let player = world.spawn_entity();
+        let enemy = world.spawn_entity();
+        world.set_gameplay_faction(
+            player,
+            GameplayFaction::new(GAMEPLAY_FACTION_PLAYER, 1 << GAMEPLAY_FACTION_ENEMY).unwrap(),
+        );
+        world.set_gameplay_faction(
+            enemy,
+            GameplayFaction::new(GAMEPLAY_FACTION_ENEMY, 1 << GAMEPLAY_FACTION_PLAYER).unwrap(),
+        );
+        world
+            .gameplay_faction_relations
+            .set_default_relation(FactionRelation::Neutral);
+        assert!(world.gameplay_faction_relations.set_relation(
+            GAMEPLAY_FACTION_PLAYER,
+            GAMEPLAY_FACTION_ENEMY,
+            FactionRelation::Hostile,
+        ));
+
+        assert!(collision_damage_allowed(
+            &world,
+            player.id as usize,
+            enemy.id as usize,
+        ));
+        assert!(!collision_damage_allowed(
+            &world,
+            enemy.id as usize,
+            player.id as usize,
+        ));
+    }
+
+    #[test]
     fn default_projectile_damage_allowed_checks_target_and_faction_gate() {
         use crate::components::gameplay::{
             GameplayFaction, GAMEPLAY_FACTION_ENEMY, GAMEPLAY_FACTION_PLAYER,
@@ -10126,6 +10237,41 @@ mod tests {
                 vx: 3.0,
                 vy: -4.0
             })),
+        );
+        assert_eq!(
+            evaluate_movement_pattern(
+                &world,
+                None,
+                transform,
+                None,
+                MovementPattern::Oscillate {
+                    origin_x: 0.0,
+                    origin_y: 0.0,
+                    amplitude_x: 10.0,
+                    amplitude_y: 0.0,
+                    phase_speed: 1.0,
+                },
+            ),
+            None,
+        );
+        assert_eq!(
+            evaluate_movement_pattern(
+                &world,
+                None,
+                transform,
+                None,
+                MovementPattern::PlatformerInput {
+                    horizontal_speed: 210.0,
+                    gravity: 900.0,
+                    jump_speed: 420.0,
+                    max_fall_speed: 760.0,
+                    ground_probe_distance: 2.0,
+                    step_offset: 12.0,
+                    coyote_time_seconds: 0.08,
+                    jump_buffer_seconds: 0.10,
+                },
+            ),
+            None,
         );
         assert_eq!(
             evaluate_movement_pattern(

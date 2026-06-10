@@ -106,7 +106,7 @@ fn sparse_visible_horde_updates_one_thousand_enemies_without_pair_growth() {
     let entity_count = engine.entity_count();
     let render_commands = engine.render_command_len();
     let collision_pairs = engine.physics_collision_pairs();
-    let shooter_collision_pairs = engine.scene.last_collision_pair_stats();
+    let shooter_collision_pairs = engine.scenes.shooter.last_collision_pair_stats();
 
     assert_eq!(enemy_count, MASS_HORDE_ENEMY_COUNT);
     assert_eq!(entity_count, MASS_HORDE_ENEMY_COUNT + 1);
@@ -167,7 +167,7 @@ fn projectile_lane_horde_updates_projectiles_without_pair_growth() {
     let entity_count = engine.entity_count();
     let render_commands = engine.render_command_len();
     let collision_pairs = engine.physics_collision_pairs();
-    let shooter_collision_pairs = engine.scene.last_collision_pair_stats();
+    let shooter_collision_pairs = engine.scenes.shooter.last_collision_pair_stats();
 
     assert_eq!(enemy_count, MASS_HORDE_ENEMY_COUNT);
     assert_eq!(projectile_count, MASS_PROJECTILE_COUNT);
@@ -242,7 +242,7 @@ fn dense_lifecycle_horde_reports_collision_pair_budget() {
     let collision_solid_pairs = engine.physics_collision_solid_pairs();
     let collision_trigger_pairs = engine.physics_collision_trigger_pairs();
     let expected_collision_pairs = dense_pair_budget(MASS_DENSE_ENEMY_COUNT);
-    let shooter_collision_pairs = engine.scene.last_collision_pair_stats();
+    let shooter_collision_pairs = engine.scenes.shooter.last_collision_pair_stats();
 
     assert_eq!(enemy_count, MASS_DENSE_ENEMY_COUNT);
     assert_eq!(entity_count, MASS_DENSE_ENEMY_COUNT + 1);

@@ -103,6 +103,7 @@ export interface LevelStreamingPlan {
   activeChunks: readonly ResolvedLevelChunk[];
   preloadChunks: readonly ResolvedLevelChunk[];
   retainChunks: readonly ResolvedLevelChunk[];
+  unloadChunks: readonly ResolvedLevelChunk[];
 }
 
 export interface LevelChunkStreamerSnapshot {

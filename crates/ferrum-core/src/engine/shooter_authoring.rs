@@ -6,7 +6,6 @@ use crate::shooter_scene::{
     ShooterProjectileArcConfig, ShooterWaveConfig,
 };
 
-use super::scenes::ActiveScene;
 use super::Engine;
 
 mod animation;
@@ -15,8 +14,8 @@ mod colliders;
 #[wasm_bindgen]
 impl Engine {
     pub fn clear_shooter_waves(&mut self) {
-        self.active_scene = ActiveScene::Shooter;
-        self.scene.clear_wave_configs();
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.clear_wave_configs();
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -32,8 +31,8 @@ impl Engine {
         enemy_health: f32,
         score_reward: u32,
     ) {
-        self.active_scene = ActiveScene::Shooter;
-        self.scene.set_wave_config(
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.set_wave_config(
             index,
             ShooterWaveConfig::from_values(
                 duration,
@@ -55,12 +54,13 @@ impl Engine {
         source_entity_generation: u32,
         action_id: u32,
     ) -> bool {
-        self.active_scene = ActiveScene::Shooter;
+        self.activate_built_in_shooter_scene();
         let Some(source) = self.entity_from_handle(source_entity_id, source_entity_generation)
         else {
             return false;
         };
-        self.scene
+        self.scenes
+            .shooter
             .set_wave_action_trigger(&self.world, wave_index, source, action_id)
     }
 
@@ -74,15 +74,17 @@ impl Engine {
         game_over_volume: f32,
         game_over_pitch: f32,
     ) {
-        self.active_scene = ActiveScene::Shooter;
-        self.scene.set_audio_policy(ShooterAudioPolicy::from_values(
-            shoot_volume,
-            shoot_pitch,
-            hit_volume,
-            hit_pitch,
-            game_over_volume,
-            game_over_pitch,
-        ));
+        self.activate_built_in_shooter_scene();
+        self.scenes
+            .shooter
+            .set_audio_policy(ShooterAudioPolicy::from_values(
+                shoot_volume,
+                shoot_pitch,
+                hit_volume,
+                hit_pitch,
+                game_over_volume,
+                game_over_pitch,
+            ));
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -97,8 +99,8 @@ impl Engine {
         fire_cooldown: f32,
         bullet_lifetime: f32,
     ) {
-        self.active_scene = ActiveScene::Shooter;
-        self.scene.set_config(
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.set_config(
             &mut self.world,
             &mut self.camera,
             &mut self.audio_events,
@@ -125,8 +127,8 @@ impl Engine {
         bullet_width: f32,
         bullet_height: f32,
     ) {
-        self.active_scene = ActiveScene::Shooter;
-        self.scene.set_prefabs(
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.set_prefabs(
             &mut self.world,
             &mut self.camera,
             &mut self.audio_events,
@@ -141,8 +143,8 @@ impl Engine {
     }
 
     pub fn set_shooter_behavior(&mut self, enemy_behavior: u32) {
-        self.active_scene = ActiveScene::Shooter;
-        self.scene.set_enemy_behavior(
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.set_enemy_behavior(
             &mut self.world,
             &mut self.camera,
             &mut self.audio_events,
@@ -152,8 +154,8 @@ impl Engine {
     }
 
     pub fn set_shooter_spawn_pattern(&mut self, enemy_spawn_pattern: u32) {
-        self.active_scene = ActiveScene::Shooter;
-        self.scene.set_enemy_spawn_pattern(
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.set_enemy_spawn_pattern(
             &mut self.world,
             &mut self.camera,
             &mut self.audio_events,
@@ -163,8 +165,8 @@ impl Engine {
     }
 
     pub fn set_shooter_combat(&mut self, enemy_health: f32, bullet_damage: f32, score_reward: u32) {
-        self.active_scene = ActiveScene::Shooter;
-        self.scene.set_combat(
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.set_combat(
             &mut self.world,
             &mut self.camera,
             &mut self.audio_events,
@@ -183,18 +185,17 @@ impl Engine {
         gravity: f32,
         hit_height: f32,
     ) {
-        self.active_scene = ActiveScene::Shooter;
-        let config =
-            self.scene
-                .config()
-                .with_projectile_arc(ShooterProjectileArcConfig::from_values(
-                    enabled,
-                    launch_height,
-                    z_velocity,
-                    gravity,
-                    hit_height,
-                ));
-        self.scene.set_config(
+        self.activate_built_in_shooter_scene();
+        let config = self.scenes.shooter.config().with_projectile_arc(
+            ShooterProjectileArcConfig::from_values(
+                enabled,
+                launch_height,
+                z_velocity,
+                gravity,
+                hit_height,
+            ),
+        );
+        self.scenes.shooter.set_config(
             &mut self.world,
             &mut self.camera,
             &mut self.audio_events,
@@ -212,8 +213,8 @@ impl Engine {
         shake_amplitude: f32,
         shake_frequency: f32,
     ) {
-        self.active_scene = ActiveScene::Shooter;
-        self.scene.set_camera_preset(
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.set_camera_preset(
             &self.world,
             &mut self.camera,
             CameraPresetConfig::from_values(
@@ -258,7 +259,7 @@ impl Engine {
         orbit_radius: f32,
         orbit_radial_band: f32,
     ) {
-        self.active_scene = ActiveScene::Shooter;
+        self.activate_built_in_shooter_scene();
         let config = ShooterConfig::from_values(
             world_width,
             world_height,
@@ -290,7 +291,7 @@ impl Engine {
         .with_combat(enemy_health, bullet_damage, score_reward)
         .with_orbit(orbit_radius, orbit_radial_band);
 
-        self.scene.set_config(
+        self.scenes.shooter.set_config(
             &mut self.world,
             &mut self.camera,
             &mut self.audio_events,

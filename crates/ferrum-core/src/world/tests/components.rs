@@ -210,6 +210,46 @@ fn gameplay_query_indices_follow_faction_and_tag_mutations() {
 }
 
 #[test]
+fn gameplay_query_indices_support_u32_mask_boundary_ids() {
+    let mut world = World::default();
+    let entity = world.spawn_entity();
+    let index = entity.id as usize;
+    let max_tag_mask = 1_u32 << GAMEPLAY_TAG_MAX_ID;
+
+    world.set_gameplay_faction(
+        entity,
+        GameplayFaction::new(GAMEPLAY_FACTION_MAX_ID, 0).unwrap(),
+    );
+    world.set_gameplay_tags(entity, GameplayTags::new(max_tag_mask).unwrap());
+
+    assert_eq!(
+        world.gameplay_faction_query_indices(GAMEPLAY_FACTION_MAX_ID),
+        &[index]
+    );
+    assert_eq!(
+        world.gameplay_tag_query_indices(GAMEPLAY_TAG_MAX_ID),
+        &[index]
+    );
+    assert_eq!(
+        world.gameplay_faction_query_indices(GAMEPLAY_FACTION_MAX_ID + 1),
+        &[]
+    );
+    assert_eq!(
+        world.gameplay_tag_query_indices(GAMEPLAY_TAG_MAX_ID + 1),
+        &[]
+    );
+
+    world.clear_gameplay_faction(entity);
+    world.clear_gameplay_tags(entity);
+
+    assert_eq!(
+        world.gameplay_faction_query_indices(GAMEPLAY_FACTION_MAX_ID),
+        &[]
+    );
+    assert_eq!(world.gameplay_tag_query_indices(GAMEPLAY_TAG_MAX_ID), &[]);
+}
+
+#[test]
 fn gameplay_query_indices_remove_despawned_and_reused_entities() {
     let mut world = World::default();
     let entity = world.spawn_entity();

@@ -5,7 +5,8 @@
   "description": "Generated topdown template Game Spec replay contract. This fixture validates public replay helper hashing and template Game Spec drift; it is not a browser frame runner.",
   "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json",
   "coverageTags": [
-    "template-game-spec"
+    "template-game-spec",
+    "topdown-scene-composition-authoring"
   ],
   "replay": {
     "format": "ferrum2d.gameplay-replay.run",
@@ -59,12 +60,43 @@
                 "camera": {
                   "preset": "follow"
                 }
+              },
+              "authoringSurface": {
+                "publicApis": {
+                  "applySceneBehaviorRecipes": true,
+                  "dryRunSceneBehaviorRecipes": true,
+                  "resolveSceneCompositionSpec": true,
+                  "resolveBehaviorRecipeDocument": true
+                },
+                "runtimeHooks": {
+                  "resolveShooterGameSpec": true,
+                  "builtinShooterPlayerHandle": false
+                },
+                "sceneComposition": {
+                  "configured": true,
+                  "ok": true,
+                  "file": "public/scene-authoring.json",
+                  "instanceCount": 1,
+                  "behaviorCommandCount": 1,
+                  "appliedCommandCount": 1,
+                  "runtimeEntities": [
+                    "builtinShooterPlayer"
+                  ],
+                  "runtimeEntityHandles": [
+                    {
+                      "instanceId": "player",
+                      "runtimeEntity": "builtinShooterPlayer",
+                      "entityId": 1,
+                      "entityGeneration": 0
+                    }
+                  ]
+                }
               }
             }
           },
-          "snapshotHash": "de1f24d0"
+          "snapshotHash": "69cd092f"
         },
-        "replayHash": "de1f24d0"
+        "replayHash": "69cd092f"
       },
       {
         "frame": 1,
@@ -114,14 +146,45 @@
                 "camera": {
                   "preset": "follow"
                 }
+              },
+              "authoringSurface": {
+                "publicApis": {
+                  "applySceneBehaviorRecipes": true,
+                  "dryRunSceneBehaviorRecipes": true,
+                  "resolveSceneCompositionSpec": true,
+                  "resolveBehaviorRecipeDocument": true
+                },
+                "runtimeHooks": {
+                  "resolveShooterGameSpec": true,
+                  "builtinShooterPlayerHandle": false
+                },
+                "sceneComposition": {
+                  "configured": true,
+                  "ok": true,
+                  "file": "public/scene-authoring.json",
+                  "instanceCount": 1,
+                  "behaviorCommandCount": 1,
+                  "appliedCommandCount": 1,
+                  "runtimeEntities": [
+                    "builtinShooterPlayer"
+                  ],
+                  "runtimeEntityHandles": [
+                    {
+                      "instanceId": "player",
+                      "runtimeEntity": "builtinShooterPlayer",
+                      "entityId": 1,
+                      "entityGeneration": 0
+                    }
+                  ]
+                }
               }
             }
           },
-          "snapshotHash": "f651ed26"
+          "snapshotHash": "80351575"
         },
-        "replayHash": "f651ed26"
+        "replayHash": "80351575"
       }
     ],
-    "replayHash": "c6b29700"
+    "replayHash": "f59df8f2"
   }
 }

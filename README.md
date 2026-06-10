@@ -194,7 +194,7 @@ Ferrum2D npm 배포 단위는 역할별로 분리한다.
 | --- | --- |
 | `@ferrum2d/ferrum-web` | 게임 실행에 필요한 엔진 런타임 본체 |
 | `@ferrum2d/create-game` | 새 Ferrum2D 게임 프로젝트 생성 CLI |
-| `@ferrum2d/agents` | AI로 Ferrum2D 게임을 개발할 때 사용하는 consumer agent/skill/command 설치 CLI |
+| `@ferrum2d/agents` | AI로 Ferrum2D 게임을 개발할 때 사용하는 consumer agent/skill/command 설치 CLI. Agent Template Showcase 기준은 [packages/agents/README.md](packages/agents/README.md#agent-template-showcase)다. |
 
 새 게임 프로젝트는 다음 흐름으로 만든다.
 
@@ -338,8 +338,11 @@ pnpm smoke:check
 
 ```bash
 pnpm package:check
+pnpm package:consumer-smoke
 pnpm release:check
 ```
+
+실제 publish 후보 전환 전 전체 release gate는 `docs/development/operations/npm-release.md`를 기준으로 한다.
 
 GitHub Pages demo/docs artifact 생성:
 
@@ -357,6 +360,7 @@ pnpm test
 pnpm validate:game-spec
 pnpm smoke:headless
 pnpm package:check
+pnpm package:consumer-smoke
 pnpm release:check
 pnpm build
 ```
@@ -372,7 +376,7 @@ packages/create-game/       npm create용 게임 프로젝트 생성 CLI
 packages/agents/            consumer game development용 AI agent/skill 설치 CLI
 examples/shared/            예제 공통 demo shell, metric panel, smoke hook
 examples/starter-runtime/   createFerrumRuntime starter 예제
-examples/minimal-game/      visual/preload/input smoke fixture
+examples/minimal-game/      Minimal Runtime Lab; visual-runtime-lab/input-ui-lab smoke fixture
 examples/breakout/          Breakout 장르 검증 예제
 examples/platformer/        Platformer controller 검증 예제
 examples/topdown-shooter/   Top-down Shooter 검증 예제
@@ -397,12 +401,25 @@ scripts/                    저장소 보조 스크립트
 
 - `pnpm install`
 - `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
+- `pnpm smoke:physics`
+- `pnpm smoke:runtime-budgets`
+- `pnpm smoke:mass-objects`
+- `pnpm smoke:topdown-mass-objects`
 - `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
 - `pnpm lint`
 - `pnpm test`
 - `pnpm build`
+- `pnpm package:check`
+- `pnpm validate:gameplay-authoring:report`
+- `pnpm smoke:gameplay-replay:report`
+- `pnpm validate:gameplay-report-artifacts`
+- `pnpm smoke:consumer-smoke-report`
+- `pnpm smoke:asset-pipeline`
+- `pnpm smoke:create-game-template-catalog`
+- `pnpm smoke:create-game-template-reports`
+- `pnpm smoke:topdown-template-replay-report`
 
-로컬 릴리스 후보 검증에서는 CI 명령에 더해 `pnpm validate:game-spec`와 브라우저 수동 smoke check를 함께 실행하는 것을 권장한다. 실제 npm publish는 `private: true` 해제와 npm 권한 확인이 승인된 뒤 별도로 수행한다.
+`ferrum-web-v*` tag push에서는 일반 `pnpm package:check` 대신 publish 후보용 `pnpm package:publish-check:ferrum-web`을 실행한다. `ferrum-web-v*` tag push 또는 수동 `consumer_smoke` opt-in에서는 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`와 `pnpm validate:consumer-smoke-report`도 실행한다. 로컬 릴리스 후보 검증에서는 CI 명령에 더해 `pnpm validate:game-spec`와 브라우저 수동 smoke check를 함께 실행하는 것을 권장한다. 실제 npm publish는 `private: true` 해제와 npm 권한 확인이 승인된 뒤 별도로 수행한다.
 
 ## License
 

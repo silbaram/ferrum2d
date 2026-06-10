@@ -78,6 +78,8 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 
 현재 개발 단계는 **MVP 개발 완료, 상용제품 기능 개발** 이다.
 
+주의: 아래 MVP baseline은 최소 완료 기준이며, 현재 코드베이스는 물리 authoring/solver, 범용 gameplay/FSM, 콘텐츠 런타임 라이브러리, create-game 템플릿, agent workflow, browser smoke/runtime budget 검증까지 확장된 상용제품 기능 개발 브랜치다. 신규 작업은 "MVP 직후"가 아니라 문서화된 roadmap과 planning 후보의 현재 상태를 기준으로 판단한다.
+
 완료된 항목:
 
 - ✅ monorepo bootstrap

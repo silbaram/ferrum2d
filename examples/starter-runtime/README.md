@@ -19,6 +19,12 @@
 ## 실행
 
 ```bash
+pnpm dev:starter-runtime
+```
+
+직접 package만 실행하려면 다음 명령을 사용한다.
+
+```bash
 pnpm build:wasm
 pnpm --filter @ferrum2d/starter-runtime dev
 ```
@@ -40,14 +46,26 @@ DebugOverlay를 켜려면 `?debug=true`를 사용한다.
 ## 검증
 
 ```bash
+pnpm --filter @ferrum2d/starter-runtime build
 pnpm smoke:starter-runtime
 pnpm smoke:starter-runtime-budget
 ```
 
 `pnpm smoke:starter-runtime`은 WebGL2 placeholder pixel readback, profile panel 렌더링, 실제 DOM profile/capture 버튼 클릭, profile별 projectile visual texture, snapshot/replay report hook을 함께 확인한다.
 
+## Pages 노출
+
+`pnpm build:pages`는 production build를 `dist-pages/starter-runtime/`에 복사하고 Pages 홈의 Demos 목록에 노출한다.
+
+## 참고 문서
+
+- [Runtime extensibility](../../docs/engine/runtime-extensibility.md)
+- [Public API](../../docs/engine/public-api.md)
+- [Smoke Check](../../docs/development/quality/smoke-check.md)
+- [GitHub Pages 배포](../../docs/development/operations/demo-deploy.md)
+
 ## 다음 단계
 
 - texture/sound/JSON asset이 필요하면 `examples/topdown-shooter`의 manifest 흐름을 따른다.
-- lighting, material, post-process, particle VFX를 확인하려면 현재 `examples/minimal-game`의 visual smoke mode를 참고한다.
+- lighting, material, post-process, particle VFX를 확인하려면 `examples/minimal-game`의 `visual-runtime-lab` profile을 참고한다.
 - 새 Physics Spec fixture를 확인하려면 `examples/physics-sandbox`를 사용한다.

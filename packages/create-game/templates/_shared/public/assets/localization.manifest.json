@@ -1,0 +1,7 @@
+{
+  "format": "ferrum2d.consumer.localization-manifest",
+  "version": 1,
+  "gameSpec": "public/game.json",
+  "source": "gameSpec.content.localization",
+  "documents": {}
+}

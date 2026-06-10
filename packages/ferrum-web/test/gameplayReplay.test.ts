@@ -1,6 +1,12 @@
 import { equal, deepEqual, ok } from "node:assert/strict";
 import { test } from "node:test";
-import type { BuiltInShooterStateSnapshot } from "../src/builtInShooterStateSnapshot.js";
+import {
+  BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY,
+  BUILT_IN_SHOOTER_STATE_HEADER_U32S,
+  BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY,
+  BUILT_IN_SHOOTER_STATE_VERSION,
+  type BuiltInShooterStateSnapshot,
+} from "../src/builtInShooterStateSnapshot.js";
 import type { FerrumEngine } from "../src/createEngine.js";
 import { captureGameStateSnapshot } from "../src/gameStateSnapshot.js";
 import {
@@ -162,13 +168,24 @@ interface FakeScene {
 function fakeShooterState(score: number): BuiltInShooterStateSnapshot {
   return {
     format: "ferrum2d.builtin-shooter-state",
-    version: 15,
+    version: BUILT_IN_SHOOTER_STATE_VERSION,
     headerFloats: [0, 1, 0, 0, 400, 240, 0, 0],
-    headerU32s: [15, 1, score, 0, 0, 0, 0, 0, 0, ...Array(76).fill(0)],
-    entityFloats: [400, 240, 0, 0, 5, ...Array(70).fill(0)],
-    entityU32s: [0, ...Array(60).fill(0)],
+    headerU32s: [
+      BUILT_IN_SHOOTER_STATE_VERSION,
+      1,
+      score,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      ...Array(BUILT_IN_SHOOTER_STATE_HEADER_U32S - 9).fill(0),
+    ],
+    entityFloats: [400, 240, 0, 0, 5, ...Array(BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY - 5).fill(0)],
+    entityU32s: [0, ...Array(BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY - 1).fill(0)],
     entityCount: 1,
-    floatsPerEntity: 75,
-    u32sPerEntity: 61,
+    floatsPerEntity: BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY,
+    u32sPerEntity: BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY,
   };
 }

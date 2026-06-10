@@ -17,16 +17,33 @@ Ferrum2D consumer projects are AI agent-first. The default development loop is n
 7. Run the narrowest command that proves the change.
 8. Report commands, result, skipped checks, and next action.
 
+## Template Discovery
+
+When creating a new Ferrum2D consumer project or choosing a closer starting point, prefer the machine-readable create-game catalog before guessing a template:
+
+```bash
+npx @ferrum2d/create-game --list-templates --json
+```
+
+Use the catalog's `sceneAuthoring`, `gameplayReplay`, and `runtimeGameplayReplay` entries to decide which template already provides data-driven authoring reports, deterministic template replay, and runtime replay scaffolding. Keep the selected template id in the task notes so later agents know which scaffold contract they inherited.
+
 ## Agent-First Authoring Surfaces
 
 Prefer supported authoring data and public helper APIs before writing bespoke runtime logic.
 
 - Game Spec data: `public/game.json` and schema-compatible variants for scene, prefab, wave, collider, score, and balance values.
+- Game Spec content data: `content.localization`, `content.dialogue.graphs`, and `content.cutscenes` for localized dialogue, cutscenes, and HUD-friendly text.
 - Behavior Recipe data: declarative behavior profiles that compile to runtime commands.
 - Projectile/weapon authoring: `ProjectileDefinition`, `WeaponDefinition`, `compileWeaponProfiles(...)`, and `behaviorRecipeCommandsForEntity(...)` from `@ferrum2d/ferrum-web`.
-- Runtime apply path: use public engine methods such as `applyGameplayBehaviorCommands(...)`, `setInputActionBinding(...)`, and `builtInShooterPlayerHandle()` when the generated template exposes a built-in player.
+- Runtime content apply path: use `resolveShooterGameSpec(...)` and `createShooterContentRuntimeOptions(...)` to convert validated Game Spec content into `createFerrumRuntime(...)` `localization`/`dialogue`/`cutscene` options.
+- Runtime gameplay apply path: use public engine methods such as `applyGameplayBehaviorCommands(...)`, `setInputActionBinding(...)`, and `builtInShooterPlayerHandle()` when the generated template exposes a built-in player.
+- Asset import path: keep raw sprite/audio/localization/Tiled/LDtk/Aseprite inputs in app-owned folders, generate runtime-ready atlas/audio/metadata with project-owned scripts or public `@ferrum2d/ferrum-web` helpers such as `packTextureAtlas(...)`, `textureAtlasDocumentToShooterAtlas(...)`, `importAsepriteAtlas(...)`, `importTiledGameSpec(...)`, `importLDtkGameSpec(...)`, `AudioAssetLoader`, and `LocalizationBundle`, then follow the `import -> validate -> Game Spec` loop by validating the merged Game Spec with `npm run ferrum:validate`.
 
 For projectile or weapon changes, keep the source as serializable authoring data when possible. The usual loop is `edit definition -> compile command document -> apply through public runtime facade -> run authoring/replay report -> smoke/build`. Do not add per-frame TypeScript movement, collision, or damage loops for behavior already supported by Ferrum2D primitives.
+
+For narrative or localized UI changes, keep text, dialogue graph, and cutscene sequence data in Game Spec `content` when the project uses `public/game.json`. The usual loop is `edit content namespace -> run ferrum:validate -> resolve spec -> createShooterContentRuntimeOptions(...) -> createFerrumRuntime(...) -> run ferrum:smoke` or the project's browser smoke. Do not hardcode localization, dialogue progression, or cutscene text in frame loops when Game Spec content and public runtime hooks can express it.
+
+For asset import changes, keep the source as reproducible files and scripts. The usual loop is `add raw assets -> run pack/import script -> merge atlas/tilemap/localization/audio manifest into Game Spec or app manifest -> run ferrum:validate -> run ferrum:smoke/build`. Do not import Ferrum2D engine workspace scripts or internal package paths into a consumer project.
 
 ## Consumer Game Architecture
 
@@ -46,6 +63,8 @@ Use `ferrum-consumer-architecture` when a task changes file layout, grows `src/m
 Generated projects from `@ferrum2d/create-game` include:
 
 - `npm run ferrum:report`: print package, asset, spec, and validation context for agents.
+- `npm run ferrum:asset-report`: print texture, audio, localization, atlas metadata, and Game Spec asset status when the project includes `scripts/ferrum-assets.mjs`.
+- `npm run ferrum:asset-validate`: validate asset manifests through the public `@ferrum2d/ferrum-web` entrypoint when the project includes `scripts/ferrum-assets.mjs`.
 - `npm run ferrum:validate`: check package dependency, public imports, and `public/game.json` when present.
 - `npm run ferrum:authoring-report`: validate data-driven gameplay authoring and print a machine-readable report.
 - `npm run ferrum:replay-report`: print deterministic replay status; templates without replay fixtures report `not-configured`.

@@ -416,6 +416,10 @@ test("applyShooterGameSpec forwards resolved config to engine", () => {
     gameOverPitch: 0.8,
     postProcessing: [],
     physics: resolvePhysicsSpec(undefined),
+    content: {
+      dialogueGraphs: {},
+      cutscenes: {},
+    },
   });
   deepEqual(engine.resolvedConfig, [
     3200,

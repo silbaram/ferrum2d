@@ -1,7 +1,6 @@
 use wasm_bindgen::prelude::*;
 
 use crate::audio_event::AudioEvent;
-use crate::breakout_scene::BreakoutScene;
 use crate::camera::Camera2D;
 use crate::collision::{
     AabbQueryHit, CircleQueryHit, CollisionContact, CollisionManifold, CollisionScratch,
@@ -17,11 +16,10 @@ use crate::physics::{
     FixedTimestep, FixedTimestepUpdate, PhysicsCounters, RigidBodyStepConfig, RigidBodyStepScratch,
     RigidBodyStepStats,
 };
-use crate::platformer_scene::PlatformerScene;
 use crate::render_command::{SpriteRenderCommand, SpriteRenderItem};
 use crate::shooter_scene::{
-    ShooterScene, SHOOTER_SNAPSHOT_ENTITY_FLOATS, SHOOTER_SNAPSHOT_ENTITY_U32S,
-    SHOOTER_SNAPSHOT_HEADER_FLOATS, SHOOTER_SNAPSHOT_HEADER_U32S,
+    SHOOTER_SNAPSHOT_ENTITY_FLOATS, SHOOTER_SNAPSHOT_ENTITY_U32S, SHOOTER_SNAPSHOT_HEADER_FLOATS,
+    SHOOTER_SNAPSHOT_HEADER_U32S,
 };
 use crate::tilemap::{
     Tilemap, TilemapContactHit, TilemapContactManifoldHit, TilemapNavigationScratch,
@@ -77,7 +75,7 @@ pub use physics_bridge::{
     PhysicsRigidContactImpulseHit, PhysicsTileContactHit, PhysicsTileManifoldHit,
     PhysicsTileShapeCastHit,
 };
-use scenes::ActiveScene;
+use scenes::{BuiltInSceneSlots, DataSceneRuntime, SceneMode};
 pub(crate) use telemetry::frame_stats::{FrameTelemetry, FRAME_TELEMETRY_F64S};
 
 const DEFAULT_VIEWPORT_WIDTH: f32 = 800.0;
@@ -93,10 +91,9 @@ pub struct Engine {
     input_actions: InputActionRegistry,
     previous_input_sample: InputState,
     fixed_timestep_input_latch: FixedTimestepInputLatch,
-    scene: ShooterScene,
-    breakout_scene: BreakoutScene,
-    platformer_scene: PlatformerScene,
-    active_scene: ActiveScene,
+    scene_mode: SceneMode,
+    scenes: BuiltInSceneSlots,
+    data_scene: DataSceneRuntime,
     camera: Camera2D,
     world: World,
     gameplay_authoring_snapshot: Option<GameplayAuthoringSnapshot>,
@@ -174,10 +171,9 @@ impl Engine {
             input_actions: InputActionRegistry::default(),
             previous_input_sample: InputState::default(),
             fixed_timestep_input_latch: FixedTimestepInputLatch::default(),
-            scene: ShooterScene::new(),
-            breakout_scene: BreakoutScene::new(),
-            platformer_scene: PlatformerScene::new(),
-            active_scene: ActiveScene::Shooter,
+            scene_mode: SceneMode::BuiltIn,
+            scenes: BuiltInSceneSlots::new(),
+            data_scene: DataSceneRuntime::new(),
             camera: Camera2D::new(DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT),
             world: World::default(),
             gameplay_authoring_snapshot: None,

@@ -15,6 +15,8 @@ import {
 
 export const GAME_STATE_SNAPSHOT_FORMAT = "ferrum2d.game-state.snapshot";
 export const GAME_STATE_SNAPSHOT_VERSION = 1;
+export const DATA_SCENE_STATE_FORMAT = "ferrum2d.data-scene-state";
+export const DATA_SCENE_STATE_VERSION = 1;
 
 export type GameStateSnapshotJsonValue =
   | null
@@ -33,12 +35,20 @@ export interface GameStateSceneSnapshot {
   readonly cameraY: number;
 }
 
+export interface DataSceneStateSnapshot {
+  readonly format: typeof DATA_SCENE_STATE_FORMAT;
+  readonly version: typeof DATA_SCENE_STATE_VERSION;
+  readonly scene: GameStateSceneSnapshot;
+  readonly custom?: GameStateSnapshotJsonValue;
+}
+
 export interface GameStateSnapshot {
   readonly format: typeof GAME_STATE_SNAPSHOT_FORMAT;
   readonly version: typeof GAME_STATE_SNAPSHOT_VERSION;
   readonly frame: number;
   readonly source: "ferrum-runtime";
   readonly scene: GameStateSceneSnapshot;
+  readonly dataScene?: DataSceneStateSnapshot;
   readonly builtInShooter?: BuiltInShooterStateSnapshot;
   readonly physics?: PhysicsWorldSnapshot;
   readonly custom?: GameStateSnapshotJsonValue;
@@ -48,7 +58,9 @@ export interface GameStateSnapshot {
 export interface CaptureGameStateSnapshotOptions {
   frame?: number;
   includeBuiltInShooterState?: boolean;
+  includeDataSceneState?: boolean;
   physicsWorld?: PhysicsWorldApplyResult;
+  dataSceneCustomState?: GameStateSnapshotJsonValue;
   customState?: GameStateSnapshotJsonValue;
 }
 
@@ -56,6 +68,8 @@ export interface RestoreGameStateSnapshotOptions
   extends Pick<RestorePhysicsWorldSnapshotOptions, "path" | "unsafeUnitScaleThreshold" | "onWarning"> {
   physicsReplace?: PhysicsWorldApplyResult;
   restoreBuiltInShooterState?: boolean;
+  restoreDataSceneState?: boolean;
+  applyDataSceneCustomState?: (customState: GameStateSnapshotJsonValue) => void;
   applyCustomState?: (customState: GameStateSnapshotJsonValue) => void;
 }
 
@@ -64,7 +78,9 @@ export interface GameStateSnapshotRestoreResult {
   readonly sceneBefore: GameStateSceneSnapshot;
   readonly sceneAfter: GameStateSceneSnapshot;
   readonly builtInShooterStateApplied: boolean;
+  readonly dataSceneStateApplied?: boolean;
   readonly physicsWorld?: PhysicsWorldRestoreResult;
+  readonly dataSceneCustomStateApplied?: boolean;
   readonly customStateApplied: boolean;
 }
 
@@ -78,16 +94,24 @@ export function captureGameStateSnapshot(
   engine: FerrumEngine,
   options: CaptureGameStateSnapshotOptions = {},
 ): GameStateSnapshot {
+  if (options.includeBuiltInShooterState === true && options.includeDataSceneState === true) {
+    throw new Error("game state snapshot cannot include both built-in shooter state and data scene state.");
+  }
   const frame = nonNegativeInteger(options.frame ?? 0, "game state snapshot frame");
+  const scene = captureGameStateSceneSnapshot(engine);
   const builtInShooter = options.includeBuiltInShooterState === true
     ? captureBuiltInShooterState(engine)
+    : undefined;
+  const dataScene = options.includeDataSceneState === true
+    ? captureDataSceneState(scene, options.dataSceneCustomState)
     : undefined;
   const snapshot: Omit<GameStateSnapshot, "snapshotHash"> = {
     format: GAME_STATE_SNAPSHOT_FORMAT,
     version: GAME_STATE_SNAPSHOT_VERSION,
     frame,
     source: "ferrum-runtime",
-    scene: captureGameStateSceneSnapshot(engine),
+    scene,
+    ...(dataScene === undefined ? {} : { dataScene }),
     ...(builtInShooter === undefined ? {} : { builtInShooter }),
     ...(options.physicsWorld === undefined
       ? {}
@@ -110,6 +134,7 @@ export function restoreGameStateSnapshot(
   validateGameStateSnapshot(snapshot);
   const sceneBefore = captureGameStateSceneSnapshot(engine);
   let builtInShooterStateApplied = false;
+  let dataSceneStateApplied = false;
   if (
     snapshot.builtInShooter !== undefined
     && options.restoreBuiltInShooterState !== false
@@ -121,9 +146,17 @@ export function restoreGameStateSnapshot(
         sceneBefore,
         sceneAfter: captureGameStateSceneSnapshot(engine),
         builtInShooterStateApplied,
+        ...(snapshot.dataScene === undefined ? {} : { dataSceneStateApplied }),
         customStateApplied: false,
       };
     }
+  }
+  if (
+    snapshot.dataScene !== undefined
+    && options.restoreDataSceneState !== false
+  ) {
+    engine.useDataScene();
+    dataSceneStateApplied = true;
   }
   const physicsWorld = snapshot.physics === undefined
     ? undefined
@@ -133,6 +166,18 @@ export function restoreGameStateSnapshot(
         unsafeUnitScaleThreshold: options.unsafeUnitScaleThreshold,
         onWarning: options.onWarning,
       });
+  let dataSceneCustomStateApplied = false;
+  if (
+    snapshot.dataScene?.custom !== undefined
+    && dataSceneStateApplied
+    && options.applyDataSceneCustomState !== undefined
+  ) {
+    options.applyDataSceneCustomState(cloneJsonValue(
+      snapshot.dataScene.custom,
+      "game state snapshot dataScene custom",
+    ));
+    dataSceneCustomStateApplied = true;
+  }
   let customStateApplied = false;
   if (snapshot.custom !== undefined && options.applyCustomState !== undefined) {
     options.applyCustomState(cloneJsonValue(snapshot.custom, "game state snapshot custom"));
@@ -143,6 +188,7 @@ export function restoreGameStateSnapshot(
     sceneBefore,
     sceneAfter: captureGameStateSceneSnapshot(engine),
     builtInShooterStateApplied,
+    ...(snapshot.dataScene === undefined ? {} : { dataSceneStateApplied, dataSceneCustomStateApplied }),
     ...(physicsWorld === undefined ? {} : { physicsWorld }),
     customStateApplied,
   };
@@ -158,6 +204,9 @@ export function hashGameStateSnapshot(
     frame: snapshot.frame,
     source: snapshot.source,
     scene: snapshot.scene,
+    ...(snapshotWithOptionalHash.dataScene === undefined
+      ? {}
+      : { dataScene: snapshotWithOptionalHash.dataScene }),
     ...(snapshotWithOptionalHash.builtInShooter === undefined
       ? {}
       : { builtInShooter: snapshotWithOptionalHash.builtInShooter }),
@@ -232,6 +281,9 @@ export function validateGameStateSnapshot(
     throw new Error(`${path}.source must be 'ferrum-runtime'.`);
   }
   validateSceneSnapshot(snapshot.scene, `${path}.scene`);
+  if (snapshot.builtInShooter !== undefined && snapshot.dataScene !== undefined) {
+    throw new Error(`${path} cannot contain both builtInShooter and dataScene state.`);
+  }
   if (snapshot.physics !== undefined) {
     if (!isRecord(snapshot.physics)) {
       throw new Error(`${path}.physics must be an object.`);
@@ -245,6 +297,12 @@ export function validateGameStateSnapshot(
   if (snapshot.builtInShooter !== undefined) {
     validateBuiltInShooterStateSnapshot(snapshot.builtInShooter as BuiltInShooterStateSnapshot);
   }
+  if (snapshot.dataScene !== undefined) {
+    validateDataSceneStateSnapshot(snapshot.dataScene, `${path}.dataScene`);
+    if (!sceneSnapshotsEqual(snapshot.scene as GameStateSceneSnapshot, snapshot.dataScene.scene)) {
+      throw new Error(`${path}.dataScene.scene must match ${path}.scene.`);
+    }
+  }
   if (snapshot.custom !== undefined) {
     cloneJsonValue(snapshot.custom as GameStateSnapshotJsonValue, `${path}.custom`);
   }
@@ -257,6 +315,25 @@ export function validateGameStateSnapshot(
   }
 }
 
+export function validateDataSceneStateSnapshot(
+  snapshot: unknown,
+  path = "dataScene.snapshot",
+): asserts snapshot is DataSceneStateSnapshot {
+  if (!isRecord(snapshot)) {
+    throw new Error(`${path} must be an object.`);
+  }
+  if (snapshot.format !== DATA_SCENE_STATE_FORMAT) {
+    throw new Error(`${path}.format must be '${DATA_SCENE_STATE_FORMAT}'.`);
+  }
+  if (snapshot.version !== DATA_SCENE_STATE_VERSION) {
+    throw new Error(`${path}.version must be ${DATA_SCENE_STATE_VERSION}.`);
+  }
+  validateSceneSnapshot(snapshot.scene, `${path}.scene`);
+  if (snapshot.custom !== undefined) {
+    cloneJsonValue(snapshot.custom as GameStateSnapshotJsonValue, `${path}.custom`);
+  }
+}
+
 function captureGameStateSceneSnapshot(engine: FerrumEngine): GameStateSceneSnapshot {
   return {
     score: finiteNumber(engine.score(), "game state scene score"),
@@ -265,6 +342,20 @@ function captureGameStateSceneSnapshot(engine: FerrumEngine): GameStateSceneSnap
     spriteCount: nonNegativeInteger(engine.spriteCount(), "game state scene spriteCount"),
     cameraX: finiteNumber(engine.cameraX(), "game state scene cameraX"),
     cameraY: finiteNumber(engine.cameraY(), "game state scene cameraY"),
+  };
+}
+
+function captureDataSceneState(
+  scene: GameStateSceneSnapshot,
+  customState: GameStateSnapshotJsonValue | undefined,
+): DataSceneStateSnapshot {
+  return {
+    format: DATA_SCENE_STATE_FORMAT,
+    version: DATA_SCENE_STATE_VERSION,
+    scene: { ...scene },
+    ...(customState === undefined
+      ? {}
+      : { custom: cloneJsonValue(customState, "data scene state customState") }),
   };
 }
 
@@ -286,6 +377,15 @@ function validateSceneSnapshot(value: unknown, path: string): void {
   nonNegativeInteger(value.spriteCount, `${path}.spriteCount`);
   finiteNumber(value.cameraX, `${path}.cameraX`);
   finiteNumber(value.cameraY, `${path}.cameraY`);
+}
+
+function sceneSnapshotsEqual(left: GameStateSceneSnapshot, right: GameStateSceneSnapshot): boolean {
+  return left.score === right.score
+    && left.gameState === right.gameState
+    && left.entityCount === right.entityCount
+    && left.spriteCount === right.spriteCount
+    && left.cameraX === right.cameraX
+    && left.cameraY === right.cameraY;
 }
 
 function cloneJsonValue(value: GameStateSnapshotJsonValue, path: string): GameStateSnapshotJsonValue {

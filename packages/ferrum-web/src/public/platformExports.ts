@@ -85,9 +85,13 @@ export {
   resolveLocalizationDocument,
 } from "../localization";
 export {
+  createLevelStreamingPixelMaskTerrainPhysicsOptions,
+  createRuntimeLevelStreaming,
+  extractLevelStreamingTilemapChunkBoundaryChains,
   LevelChunkStreamer,
   resolveLevelChunkManifest,
   resolveLevelStreamingPlan,
+  tilemapLayerForLevelStreamingChunk,
 } from "../levelStreaming";
 export {
   DialogueSession,
@@ -440,14 +444,23 @@ export type {
   LevelChunkStreamerSnapshot,
   LevelStreamingAssetLifetimePolicy,
   LevelStreamingOrigin,
+  LevelStreamingPixelMaskTerrainPhysicsOptions,
   LevelStreamingPlan,
   LevelStreamingPlanOptions,
+  LevelStreamingTilemapChunkBoundaryOptions,
   LevelStreamingViewport,
   LevelTilemapChunkSpec,
   ResolveLevelChunkManifestOptions,
   ResolvedLevelChunk,
   ResolvedLevelChunkManifest,
   ResolvedLevelTilemapChunk,
+  FerrumRuntimeLevelStreaming,
+  FerrumRuntimeLevelStreamingChunkContext,
+  FerrumRuntimeLevelStreamingOptions,
+  FerrumRuntimeLevelStreamingPreloadOptions,
+  FerrumRuntimeLevelStreamingTarget,
+  FerrumRuntimeLevelStreamingUpdateResult,
+  FerrumRuntimeLevelStreamingViewportProvider,
 } from "../levelStreaming";
 export type {
   DialogueChoiceResult,

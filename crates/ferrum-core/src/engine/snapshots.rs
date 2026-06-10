@@ -7,7 +7,7 @@ use crate::shooter_scene::{
     SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET,
 };
 
-use super::scenes::ActiveScene;
+use super::scenes::{ActiveScene, SceneMode};
 use super::{
     Engine, PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY, PHYSICS_BODY_SNAPSHOT_HANDLE_U32S,
     PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY,
@@ -88,11 +88,11 @@ impl Engine {
     }
 
     pub fn capture_shooter_snapshot(&mut self) -> bool {
-        if self.active_scene != ActiveScene::Shooter {
+        if self.scene_mode != SceneMode::BuiltIn || self.scenes.active() != ActiveScene::Shooter {
             self.clear_shooter_snapshot_buffers();
             return false;
         }
-        let mut snapshot = self.scene.snapshot(&self.world, &self.camera);
+        let mut snapshot = self.scenes.shooter.snapshot(&self.world, &self.camera);
         if !self.input_actions.write_snapshot(
             &mut snapshot.header_u32s[SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
                 ..SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
@@ -153,14 +153,14 @@ impl Engine {
         ) else {
             return false;
         };
-        let restored = self.scene.restore_snapshot(
+        let restored = self.scenes.shooter.restore_snapshot(
             &mut self.world,
             &mut self.camera,
             &mut self.audio_events,
             &snapshot,
         );
         if restored {
-            self.active_scene = ActiveScene::Shooter;
+            self.activate_built_in_shooter_scene();
             self.input_actions = input_actions;
             self.particles.clear();
             self.tweens.clear();

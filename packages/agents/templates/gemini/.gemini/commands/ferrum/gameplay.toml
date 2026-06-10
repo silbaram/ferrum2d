@@ -13,6 +13,7 @@ Read these files before making changes when present:
 
 Scope:
 - app-side runtime orchestration
+- content runtime wiring for `content.localization`, `content.dialogue.graphs`, and `content.cutscenes` with `resolveShooterGameSpec(...)` and `createShooterContentRuntimeOptions(...)`
 - input transforms
 - HUD, menus, pause/resume/restart shell
 - public API usage around `@ferrum2d/ferrum-web`
@@ -20,6 +21,7 @@ Scope:
 
 Boundaries:
 - Do not move engine-owned simulation state into TypeScript.
+- Do not duplicate Game Spec content into parallel app state when public runtime helpers can wire localization/dialogue/cutscene options.
 - Do not edit installed engine package files or generated Wasm bindings.
 - Do not introduce multiplayer, full game-loop Workers, visual editor systems, or complex physics.
 - Run `npm run ferrum:smoke` when available.

@@ -1,6 +1,5 @@
 use wasm_bindgen::prelude::*;
 
-use super::super::scenes::ActiveScene;
 use super::super::Engine;
 
 #[wasm_bindgen]
@@ -17,8 +16,8 @@ impl Engine {
         u1: f32,
         v1: f32,
     ) {
-        self.active_scene = ActiveScene::Shooter;
-        self.scene.set_atlas_frame(
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.set_atlas_frame(
             &mut self.world,
             prefab,
             texture_id,
@@ -43,8 +42,8 @@ impl Engine {
         move_fps: f32,
         move_frames: Vec<f32>,
     ) {
-        self.active_scene = ActiveScene::Shooter;
-        self.scene.set_atlas_animation(
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.set_atlas_animation(
             &mut self.world,
             prefab,
             texture_id,
@@ -85,8 +84,8 @@ impl Engine {
         bullet_move_frames: u32,
         bullet_move_fps: f32,
     ) {
-        self.active_scene = ActiveScene::Shooter;
-        self.scene.set_animation_states(
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.set_animation_states(
             &mut self.world,
             &mut self.camera,
             &mut self.audio_events,

@@ -14,6 +14,7 @@ declare module "../pkg/ferrum_core.js" {
     set_sound_ids(shoot:number,hit:number,game_over:number): void;
     built_in_shooter_player_entity_id(): number;
     built_in_shooter_player_entity_generation(): number;
+    use_data_scene(): void;
     use_breakout_scene(): void;
     use_platformer_scene(): void;
     clear_shooter_tilemap(): void;
@@ -63,6 +64,9 @@ declare module "../pkg/ferrum_core.js" {
     set_gameplay_area_damage_reaction(entity_id:number,entity_generation:number,amount:number,radius:number,target_layer_code:number): boolean;
     set_gameplay_faction(entity_id:number,entity_generation:number,faction_id:number,damage_mask:number): boolean;
     clear_gameplay_faction(entity_id:number,entity_generation:number): boolean;
+    clear_gameplay_faction_relations(): void;
+    set_gameplay_faction_default_relation(relation_code:number): boolean;
+    set_gameplay_faction_relation(source_faction_id:number,target_faction_id:number,relation_code:number): boolean;
     set_gameplay_tags(entity_id:number,entity_generation:number,tag_mask:number): boolean;
     clear_gameplay_tags(entity_id:number,entity_generation:number): boolean;
     set_gameplay_lifetime(entity_id:number,entity_generation:number,seconds:number): boolean;

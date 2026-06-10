@@ -76,6 +76,7 @@ let tempRoot;
 let ferrumWebTarball;
 let createGameTarball;
 let agentsTarball;
+let createGameCatalogSummary;
 const smokeStartedAt = new Date();
 const templateSummaries = [];
 
@@ -123,6 +124,7 @@ try {
     agentsTarball,
   });
   await runRequired(pnpm, installArgs, toolConsumerRoot);
+  createGameCatalogSummary = await assertInstalledCreateGameTemplateCatalog(toolConsumerRoot);
 
   for (const templateName of templateNames) {
     const templateSummary = createTemplateSummary(templateName);
@@ -266,9 +268,27 @@ function validateTemplateCatalog(catalog) {
     );
     assert(typeof template.id === "string" && template.id.length > 0, `create-game template manifest templates.${index}.id must be a non-empty string`);
     assert(!seen.has(template.id), `create-game template manifest includes duplicate template id '${template.id}'`);
+    assertTemplateSceneAuthoringCatalog(template, `create-game template manifest templates.${index}`);
     seen.add(template.id);
   }
   return catalog.templates;
+}
+
+function assertTemplateSceneAuthoringCatalog(template, label) {
+  assert(
+    template.sceneAuthoring !== null && typeof template.sceneAuthoring === "object" && !Array.isArray(template.sceneAuthoring),
+    `${label}.sceneAuthoring must be an object`,
+  );
+  assert(typeof template.sceneAuthoring.configured === "boolean", `${label}.sceneAuthoring.configured must be boolean`);
+  if (template.sceneAuthoring.configured) {
+    assert(template.sceneAuthoring.fixturePath === "public/scene-authoring.json", `${label}.sceneAuthoring.fixturePath is invalid`);
+    assert(
+      template.sceneAuthoring.format === "ferrum2d.consumer.scene-authoring",
+      `${label}.sceneAuthoring.format is invalid`,
+    );
+  } else {
+    assert(typeof template.sceneAuthoring.reason === "string" && template.sceneAuthoring.reason.length > 0, `${label}.sceneAuthoring.reason is invalid`);
+  }
 }
 
 async function assertTemplateCatalogMatchesDirectories(catalogTemplateIds) {
@@ -287,7 +307,10 @@ async function assertTemplateCatalogMatchesDirectories(catalogTemplateIds) {
 
 async function listCreateGameTemplateDirectories() {
   const entries = await readdir(path.join(packageRoots.createGame, "templates"), { withFileTypes: true });
-  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  return entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
+    .map((entry) => entry.name)
+    .sort();
 }
 
 async function runGeneratedGameConsumer({
@@ -383,6 +406,30 @@ async function runGeneratedGameConsumer({
   );
   assertConsumerReplayReport(replayReport, templateName);
   templateSummary.reports.gameplayReplay = summarizeConsumerReplayReport(replayReport);
+  const gameplayReplayTemplate = templateCatalogById.get(templateName);
+  if (gameplayReplayTemplate?.gameplayReplay?.configured === false) {
+    const replayUpdateReport = await runJsonReportAllowFailure(
+      pnpm,
+      ["run", "ferrum:update-replay-fixture"],
+      generatedGameRoot,
+      "ferrum2d.consumer.gameplay-replay.report",
+    );
+    assert(replayUpdateReport.result.code !== 0, `${templateName} gameplay replay fixture update must fail while scaffold is not configured`);
+    assertConsumerReplayUpdateNotConfiguredReport(replayUpdateReport.report, templateName);
+    templateSummary.reports.gameplayReplayFixtureUpdate = {
+      status: "not-configured",
+      rejected: true,
+      report: summarizeConsumerReplayReport(replayUpdateReport.report),
+    };
+    await assertMissing(
+      path.join(generatedGameRoot, "public/gameplay-replay.fixture.json"),
+      `${templateName} gameplay replay update must not create a fixture while scaffold is not configured`,
+    );
+    await assertMissing(
+      path.join(generatedGameRoot, "public/gameplay-replay.coverage-tags.json"),
+      `${templateName} gameplay replay update must not create coverage tags while scaffold is not configured`,
+    );
+  }
   const runtimeReplayReport = await runJsonReport(
     pnpm,
     ["run", "ferrum:runtime-replay-report"],
@@ -502,6 +549,50 @@ async function runGeneratedGameConsumer({
   templateSummary.buildOutput.preservedInArtifactSnapshot = false;
 }
 
+async function assertInstalledCreateGameTemplateCatalog(toolConsumerRoot) {
+  const result = await runRequired(pnpm, [
+    "exec",
+    "create-ferrum2d-game",
+    "--list-templates",
+    "--json",
+  ], toolConsumerRoot);
+  const report = parseJsonReport(
+    result.stdout,
+    "ferrum-create-game-template-list",
+    "pnpm exec create-ferrum2d-game --list-templates --json",
+  );
+  assert(report.format === "ferrum-create-game-template-list", "installed create-game template catalog format is invalid");
+  assert(report.version === 1, "installed create-game template catalog version is invalid");
+  assert(report.defaultTemplate === templateCatalog.defaultTemplate, "installed create-game template catalog defaultTemplate must match manifest");
+  assert(Array.isArray(report.templates), "installed create-game template catalog templates must be an array");
+  assert(report.templates.length === templateCatalogEntries.length, "installed create-game template catalog template count must match manifest");
+  const summaries = [];
+  for (const template of templateCatalogEntries) {
+    const listed = report.templates.find((candidate) => candidate.id === template.id);
+    assert(listed !== undefined, `installed create-game template catalog must include ${template.id}`);
+    assertDeepEqual(listed.sceneAuthoring, template.sceneAuthoring, `${template.id} installed catalog sceneAuthoring must match manifest`);
+    assertDeepEqual(listed.gameplayReplay, template.gameplayReplay, `${template.id} installed catalog gameplayReplay must match manifest`);
+    assertDeepEqual(
+      listed.runtimeGameplayReplay,
+      template.runtimeGameplayReplay,
+      `${template.id} installed catalog runtimeGameplayReplay must match manifest`,
+    );
+    summaries.push({
+      id: listed.id,
+      sceneAuthoringConfigured: listed.sceneAuthoring?.configured === true,
+      gameplayReplayConfigured: listed.gameplayReplay?.configured === true,
+      runtimeGameplayReplayConfigured: listed.runtimeGameplayReplay?.configured === true,
+    });
+  }
+  return {
+    format: report.format,
+    version: report.version,
+    defaultTemplate: report.defaultTemplate,
+    templateCount: report.templates.length,
+    templates: summaries,
+  };
+}
+
 async function packPackage(packageRoot, destination) {
   const before = new Set(await listTarballs(destination));
   await runRequired(pnpm, ["pack", "--pack-destination", destination], packageRoot);
@@ -594,20 +685,43 @@ async function assertGeneratedAgentsInstall(generatedGameRoot, templateName) {
     path.join(generatedGameRoot, ".agents/skills/ferrum-consumer-gameplay/SKILL.md"),
     "utf8",
   );
+  const codexGameSpecAgent = await readFile(
+    path.join(generatedGameRoot, ".codex/agents/consumer-game-spec-agent.toml"),
+    "utf8",
+  );
+  const codexGameplayAgent = await readFile(
+    path.join(generatedGameRoot, ".codex/agents/consumer-gameplay-agent.toml"),
+    "utf8",
+  );
+  const geminiGameSpecCommand = await readFile(
+    path.join(generatedGameRoot, ".gemini/commands/ferrum/game-spec.toml"),
+    "utf8",
+  );
+  const geminiGameplayCommand = await readFile(
+    path.join(generatedGameRoot, ".gemini/commands/ferrum/gameplay.toml"),
+    "utf8",
+  );
   assertConsumerProjectileWeaponAuthoringContract(gameDevelopmentHarness, `${templateName} installed game-development harness`);
+  assertConsumerContentAuthoringContract(gameDevelopmentHarness, `${templateName} installed game-development harness`);
   assertConsumerRuntimeApplyContract(gameDevelopmentHarness, `${templateName} installed game-development harness`);
   assertConsumerArchitectureContract(gameDevelopmentHarness, `${templateName} installed game-development harness`);
   assertForbiddenPublicImportBoundary(gameDevelopmentHarness, `${templateName} installed game-development harness`);
   assertConsumerArchitectureContract(architectureSkill, `${templateName} installed architecture skill`);
   assertForbiddenPublicImportBoundary(architectureSkill, `${templateName} installed architecture skill`);
   assertConsumerProjectileWeaponAuthoringContract(gameSpecSkill, `${templateName} installed game-spec skill`);
+  assertConsumerContentAuthoringContract(gameSpecSkill, `${templateName} installed game-spec skill`);
   assert(
     gameSpecSkill.includes("npm run ferrum:authoring-report") &&
       gameSpecSkill.includes("npm run ferrum:replay-report"),
     `${templateName} installed game-spec skill must require authoring and replay report checks`,
   );
   assertConsumerProjectileWeaponAuthoringContract(gameplaySkill, `${templateName} installed gameplay skill`);
+  assertConsumerContentAuthoringContract(gameplaySkill, `${templateName} installed gameplay skill`);
   assertConsumerRuntimeApplyContract(gameplaySkill, `${templateName} installed gameplay skill`);
+  assertConsumerContentAuthoringContract(codexGameSpecAgent, `${templateName} installed Codex game-spec agent`);
+  assertConsumerContentAuthoringContract(codexGameplayAgent, `${templateName} installed Codex gameplay agent`);
+  assertConsumerContentAuthoringContract(geminiGameSpecCommand, `${templateName} installed Gemini game-spec command`);
+  assertConsumerContentAuthoringContract(geminiGameplayCommand, `${templateName} installed Gemini gameplay command`);
 }
 
 async function writePublicImportSmoke(targetRoot) {
@@ -632,6 +746,7 @@ async function writePublicImportSmoke(targetRoot) {
   applyPhysicsSceneProfile,
   applyAccessibilityToCameraRigSpec,
   applyGameplayBehaviorCommands,
+  applySceneBehaviorRecipes,
   behaviorRecipeCommandsForEntity,
   bindSceneBehaviorRecipes,
   buildDebugGizmoLineBuffer,
@@ -643,6 +758,7 @@ async function writePublicImportSmoke(targetRoot) {
   instantiateSceneFragment,
   createAssetPreloadCachePolicy,
   createFerrumRuntime,
+  createShooterContentRuntimeOptions,
   diagnosticReport,
   dryRunSceneBehaviorRecipes,
   gameplayActionDiagnosticReports,
@@ -663,11 +779,15 @@ async function writePublicImportSmoke(targetRoot) {
   resolveAccessibilityHudTheme,
   resolveHudTheme,
   hashGameStateSnapshot,
+  importAsepriteAtlas,
+  importLDtkGameSpec,
+  importTiledGameSpec,
   summarizeScreenshotPixels,
   compareScreenshotSummaries,
   resolveSceneCompositionSpec,
   resolveSpriteMaterialPreset,
   resolveShooterGameSpec,
+  resolveShooterContentRuntimeSelection,
   suggestionForActionFailureReason,
   suggestionForSpawnDiagnosticMetric,
   weapon,
@@ -691,6 +811,30 @@ const animationTimeline = resolveAnimationTimelineSpec({
 });
 if (AnimationTimelinePlayer.create(animationTimeline).currentState() !== "idle") {
   throw new Error("AnimationTimelinePlayer must resolve and play public animation timeline specs.");
+}
+if (typeof createShooterContentRuntimeOptions !== "function") {
+  throw new Error("createShooterContentRuntimeOptions must be exported from the public entrypoint.");
+}
+if (typeof resolveShooterContentRuntimeSelection !== "function") {
+  throw new Error("resolveShooterContentRuntimeSelection must be exported from the public entrypoint.");
+}
+const contentGameSpec = resolveShooterGameSpec({
+  content: {
+    dialogue: {
+      graphs: {
+        intro: {
+          initialNode: "start",
+          nodes: { start: { text: "Ready.", end: true } },
+        },
+      },
+    },
+  },
+});
+if (resolveShooterContentRuntimeSelection(contentGameSpec.content).dialogueGraphId !== "intro") {
+  throw new Error("content runtime selection must auto-select a single dialogue graph.");
+}
+if (createShooterContentRuntimeOptions(contentGameSpec.content).dialogue?.graph.initialNode !== "start") {
+  throw new Error("content runtime options must wire a selected dialogue graph.");
 }
 if (typeof resolveSceneCompositionSpec !== "function") {
   throw new Error("resolveSceneCompositionSpec must be exported from the public entrypoint.");
@@ -752,7 +896,11 @@ if (bounceCommand?.type !== "configureProjectileAction" || bounceCommand.tileImp
 if (GAMEPLAY_BEHAVIOR_BINDING_PROP !== "behaviorRecipes") {
   throw new Error("GAMEPLAY_BEHAVIOR_BINDING_PROP must be exported from the public entrypoint.");
 }
-if (typeof bindSceneBehaviorRecipes !== "function" || typeof dryRunSceneBehaviorRecipes !== "function") {
+if (
+  typeof bindSceneBehaviorRecipes !== "function" ||
+  typeof dryRunSceneBehaviorRecipes !== "function" ||
+  typeof applySceneBehaviorRecipes !== "function"
+) {
   throw new Error("gameplay authoring helpers must be exported from the public entrypoint.");
 }
 const gameplayBindingPlan = bindSceneBehaviorRecipes({
@@ -781,6 +929,19 @@ const gameplayBehaviorApply = applyGameplayBehaviorCommands({
 }, gameplayBindingPlan.commands, { "enemy-a": { entityId: 1, entityGeneration: 1 } });
 if (gameplayBehaviorApply.results[0] !== true) {
   throw new Error("gameplay authoring helpers must apply supported behavior commands to entity handles.");
+}
+const sceneBehaviorApply = applySceneBehaviorRecipes({
+  set_gameplay_health: () => true,
+}, {
+  spawnSceneInstance: () => ({ entityId: 2, entityGeneration: 1 }),
+}, {
+  prefabs: { enemy: { props: { behaviorRecipes: "enemy" } } },
+  fragments: { main: { instances: [{ id: "enemy-a", prefab: "enemy" }] } },
+}, behaviorRecipes, {
+  kinds: ["health"],
+});
+if (sceneBehaviorApply.behaviorApplyResult.results[0] !== true) {
+  throw new Error("scene behavior apply helper must connect scene spawn handles to behavior commands.");
 }
 if (!dryRunSceneBehaviorRecipes(sceneComposition, behaviorRecipes).ok) {
   throw new Error("gameplay authoring dry-run must return ok for valid composition and behavior recipes.");
@@ -1077,6 +1238,66 @@ if (packedAtlas.frames.hero?.texture !== "packed" || packedAtlas.placements[0]?.
 if (textureAtlasDocumentToShooterAtlas(packedAtlas).frames?.hero?.texture !== "packed") {
   throw new Error("textureAtlasDocumentToShooterAtlas must convert atlas pack documents.");
 }
+if (typeof importAsepriteAtlas !== "function" || typeof importTiledGameSpec !== "function" || typeof importLDtkGameSpec !== "function") {
+  throw new Error("asset import helpers must be exported from the public entrypoint.");
+}
+const asepriteAtlas = importAsepriteAtlas({
+  frames: {
+    "hero.png": {
+      frame: { x: 0, y: 0, w: 16, h: 16 },
+      sourceSize: { w: 16, h: 16 },
+    },
+  },
+  meta: { size: { w: 32, h: 32 }, image: "atlas.png" },
+}, { texture: "aseprite" });
+if (asepriteAtlas.atlas.frames.hero.texture !== "aseprite") {
+  throw new Error("importAsepriteAtlas must convert public Aseprite frame metadata.");
+}
+const tiledSpec = importTiledGameSpec({
+  width: 1,
+  height: 1,
+  tilewidth: 16,
+  tileheight: 16,
+  orientation: "orthogonal",
+  infinite: false,
+  layers: [{ id: 1, name: "Ground", type: "tilelayer", width: 1, height: 1, data: [1], visible: true }],
+  tilesets: [{ firstgid: 1, name: "tiles", image: "tiles.png", imagewidth: 16, imageheight: 16, tilewidth: 16, tileheight: 16, tilecount: 1, columns: 1 }],
+});
+if (tiledSpec.tilemap?.layers?.[0]?.data?.[0] !== 1) {
+  throw new Error("importTiledGameSpec must convert public Tiled tile layers.");
+}
+const ldtkSpec = importLDtkGameSpec({
+  defs: {
+    tilesets: [{
+      uid: 1,
+      identifier: "Tiles",
+      relPath: "tiles.png",
+      pxWid: 16,
+      pxHei: 16,
+      tileGridSize: 16,
+      spacing: 0,
+      padding: 0,
+    }],
+  },
+  levels: [{
+    identifier: "Level_0",
+    uid: 1,
+    pxWid: 16,
+    pxHei: 16,
+    layerInstances: [{
+      __identifier: "Tiles",
+      __type: "Tiles",
+      __cWid: 1,
+      __cHei: 1,
+      __gridSize: 16,
+      __tilesetDefUid: 1,
+      gridTiles: [{ px: [0, 0], src: [0, 0], t: 0, f: 0 }],
+    }],
+  }],
+});
+if (ldtkSpec.tilemap?.layers?.[0]?.data?.[0] !== 1) {
+  throw new Error("importLDtkGameSpec must convert public LDtk tile layers.");
+}
 if (diagnosticReport(new Error("smoke")).code !== "FERRUM_UNKNOWN") {
   throw new Error("diagnosticReport must keep the public error contract.");
 }
@@ -1107,6 +1328,7 @@ async function writePublicTypesSmoke(targetRoot) {
   createAssetPreloadCachePolicy,
   createFerrumRuntime,
   applyGameplayBehaviorCommands,
+  applySceneBehaviorRecipes,
   behaviorRecipeCommandsForEntity,
   compileWeaponProfiles,
   dryRunSceneBehaviorRecipes,
@@ -1125,7 +1347,9 @@ async function writePublicTypesSmoke(targetRoot) {
   type GameplayEntityHandle,
   type GameplaySpawnDiagnosticReport,
   type ProjectileDefinition,
+  type SceneBehaviorApplyResult,
   type SceneBehaviorBindingDryRunResult,
+  type SceneBehaviorRuntimeTarget,
   type ShooterGameSpec,
   type SpawnFrameDiagnostics,
   type WeaponDefinition,
@@ -1167,6 +1391,17 @@ const gameplayRuntime: Parameters<typeof applyGameplayBehaviorCommands>[0] = {
 };
 const gameplayApply = applyGameplayBehaviorCommands(gameplayRuntime, behaviorDryRun.ok ? behaviorDryRun.plan.commands : [], {
   "actor-a": gameplayHandle,
+});
+const sceneTarget: SceneBehaviorRuntimeTarget = {
+  spawnSceneInstance: () => gameplayHandle,
+};
+const sceneApply: SceneBehaviorApplyResult = applySceneBehaviorRecipes(gameplayRuntime, sceneTarget, {
+  prefabs: { actor: { props: { behaviorRecipes: "actor" } } },
+  fragments: { main: { instances: [{ id: "actor-a", prefab: "actor" }] } },
+}, {
+  entities: { actor: { recipes: [{ kind: "health", max: 1 }] } },
+}, {
+  kinds: ["health"],
 });
 const projectileDefinition: ProjectileDefinition = projectile("typed-shot")
   .speed(480)
@@ -1239,6 +1474,7 @@ void policy;
 void resolved;
 void behaviorDryRun;
 void gameplayApply;
+void sceneApply;
 void weaponProfileCommand;
 void actionDiagnosticReport;
 void actionDiagnosticSuggestion;
@@ -1338,6 +1574,7 @@ function findJsonObjectEnd(source, start) {
 }
 
 function assertConsumerAuthoringReport(report, templateName) {
+  const template = templateCatalogById.get(templateName);
   assert(report.format === "ferrum2d.consumer.gameplay-authoring.report", `${templateName} authoring report format is invalid`);
   assert(report.version === 1, `${templateName} authoring report version is invalid`);
   assert(report.ok === true, `${templateName} authoring report must be ok for a generated template`);
@@ -1350,21 +1587,48 @@ function assertConsumerAuthoringReport(report, templateName) {
     assert(report.gameplayAuthoring.gameSpec?.ok === true, "topdown authoring report must include a valid Game Spec result");
     assert(report.gameplayAuthoring.gameSpec?.file === "public/game.json", "topdown authoring report must identify public/game.json");
   } else {
-    assert(report.gameplayAuthoring.status === "not-configured", `${templateName} authoring report must be not-configured`);
     assert(report.gameplayAuthoring.gameSpec?.ok === null, `${templateName} authoring report must mark missing Game Spec as a structured skip`);
+  }
+  if (template?.sceneAuthoring?.configured === true) {
+    assert(report.gameplayAuthoring.status === "validated", `${templateName} authoring report must validate scene authoring data`);
+    assert(report.gameplayAuthoring.sceneAuthoring?.ok === true, `${templateName} authoring report must include valid scene authoring data`);
+    assert(report.gameplayAuthoring.sceneAuthoring?.file === template.sceneAuthoring.fixturePath, `${templateName} authoring report scene authoring file is invalid`);
+  } else if (templateName !== "topdown") {
+    assert(report.gameplayAuthoring.status === "not-configured", `${templateName} authoring report must be not-configured`);
   }
   if (templateName === "minimal") {
     assertMinimalTemplateAuthoringSurface(report.gameplayAuthoring?.authoringSurface, "minimal authoring report");
+  } else if (templateName === "topdown") {
+    assertTopdownTemplateAuthoringSurface(report.gameplayAuthoring?.authoringSurface, "topdown authoring report");
+  } else if (templateName === "platformer") {
+    assertPlatformerTemplateAuthoringSurface(report.gameplayAuthoring?.authoringSurface, "platformer authoring report");
+  } else if (templateName === "breakout") {
+    assertBreakoutTemplateAuthoringSurface(report.gameplayAuthoring?.authoringSurface, "breakout authoring report");
   }
 }
 
 function assertConsumerReplayReport(report, templateName) {
+  const replayConfigured = templateCatalogById.get(templateName)?.gameplayReplay?.configured === true;
   assert(report.format === "ferrum2d.consumer.gameplay-replay.report", `${templateName} replay report format is invalid`);
   assert(report.version === 1, `${templateName} replay report version is invalid`);
   assert(report.ok === true, `${templateName} replay report must be ok for default templates`);
   assert(report.gameplayReplay?.packageName === templateName, `${templateName} replay report packageName is invalid`);
   assert(Array.isArray(report.gameplayReplay?.reports), `${templateName} replay report reports must be an array`);
   assertMachineActionableReports(report.gameplayReplay.reports, `${templateName} replay report gameplayReplay.reports`);
+  assert(report.gameplayReplay?.configured === replayConfigured, `${templateName} replay configured flag is invalid`);
+  if (!replayConfigured) {
+    assert(report.gameplayReplay?.status === "not-configured", `${templateName} replay report must be not-configured`);
+    assert(report.gameplayReplay?.fixture === "public/gameplay-replay.fixture.json", `${templateName} replay report fixture path is invalid`);
+    assert(
+      report.gameplayReplay?.reason === "This template does not include a deterministic gameplay replay manifest.",
+      `${templateName} replay report reason is invalid`,
+    );
+    assert(
+      report.gameplayReplay?.reports?.[0]?.code === "FERRUM_CONSUMER_REPLAY_NOT_CONFIGURED",
+      `${templateName} replay report must include not-configured diagnostic code`,
+    );
+    return;
+  }
   assert(report.gameplayReplay?.status === "validated", `${templateName} replay report must validate its replay fixture`);
   assert(report.gameplayReplay?.configured === true, `${templateName} replay report must mark replay as configured`);
   assert(typeof report.gameplayReplay?.scenario === "string" && report.gameplayReplay.scenario.length > 0, `${templateName} replay report scenario is invalid`);
@@ -1374,20 +1638,36 @@ function assertConsumerReplayReport(report, templateName) {
   assertCoverageRegistryReport(report.gameplayReplay, `${templateName} replay report`);
   if (templateName === "topdown") {
     assert(report.gameplayReplay.scenario === "topdown-template-game-spec", "topdown replay report scenario is invalid");
-    assertDeepEqual(report.gameplayReplay.coverageTags, ["template-game-spec"], "topdown replay report coverage tags are invalid");
+    assertDeepEqual(
+      report.gameplayReplay.coverageTags,
+      ["template-game-spec", "topdown-scene-composition-authoring"],
+      "topdown replay report coverage tags are invalid",
+    );
     assertTopdownCoverageRegistry(report.gameplayReplay, "topdown replay report");
   } else if (templateName === "minimal") {
     assert(report.gameplayReplay.scenario === "minimal-template-surface", "minimal replay report scenario is invalid");
     assertDeepEqual(
       report.gameplayReplay.coverageTags,
-      ["starter-runtime-template", "template-weapon-authoring"],
+      ["starter-runtime-template", "template-weapon-authoring", "template-scene-composition-authoring"],
       "minimal replay report coverage tags are invalid",
     );
     assertMinimalCoverageRegistry(report.gameplayReplay, "minimal replay report");
   } else if (templateName === "platformer") {
     assert(report.gameplayReplay.scenario === "platformer-template-surface", "platformer replay report scenario is invalid");
-    assertDeepEqual(report.gameplayReplay.coverageTags, ["platformer-template"], "platformer replay report coverage tags are invalid");
+    assertDeepEqual(
+      report.gameplayReplay.coverageTags,
+      ["platformer-template", "platformer-scene-composition-authoring"],
+      "platformer replay report coverage tags are invalid",
+    );
     assertPlatformerCoverageRegistry(report.gameplayReplay, "platformer replay report");
+  } else if (templateName === "breakout") {
+    assert(report.gameplayReplay.scenario === "breakout-template-surface", "breakout replay report scenario is invalid");
+    assertDeepEqual(
+      report.gameplayReplay.coverageTags,
+      ["breakout-template", "breakout-built-in-scene"],
+      "breakout replay report coverage tags are invalid",
+    );
+    assertBreakoutCoverageRegistry(report.gameplayReplay, "breakout replay report");
   }
   assert(report.gameplayReplay?.comparison?.passed === true, `${templateName} replay comparison must pass`);
   assert(typeof report.gameplayReplay?.expectedHash === "string", `${templateName} replay report must include expectedHash`);
@@ -1476,6 +1756,22 @@ function assertConsumerRuntimeReplayUpdateNotConfiguredReport(report, templateNa
   );
 }
 
+function assertConsumerReplayUpdateNotConfiguredReport(report, templateName) {
+  assert(report.format === "ferrum2d.consumer.gameplay-replay.report", `${templateName} replay update report format is invalid`);
+  assert(report.version === 1, `${templateName} replay update report version is invalid`);
+  assert(report.ok === false, `${templateName} replay update report must be ok=false while not configured`);
+  assert(report.gameplayReplay?.packageName === templateName, `${templateName} replay update report packageName is invalid`);
+  assert(report.gameplayReplay?.configured === false, `${templateName} replay update must keep configured=false`);
+  assert(report.gameplayReplay?.status === "not-configured", `${templateName} replay update status must be not-configured`);
+  assert(report.gameplayReplay?.fixture === "public/gameplay-replay.fixture.json", `${templateName} replay update fixture path is invalid`);
+  assert(report.gameplayReplay?.updateAttempted === true, `${templateName} replay update report must mark updateAttempted`);
+  assertMachineActionableReports(report.gameplayReplay?.reports, `${templateName} replay update reports`);
+  assert(
+    report.gameplayReplay?.reports?.[0]?.code === "FERRUM_CONSUMER_REPLAY_NOT_CONFIGURED",
+    `${templateName} replay update report must include not-configured diagnostic code`,
+  );
+}
+
 function assertConsumerReplayFixtureUpdateReport(report, replayReport) {
   assert(report.format === "ferrum2d.consumer.gameplay-replay.fixture-update-report", "topdown replay fixture update report format is invalid");
   assert(report.version === 1, "topdown replay fixture update report version is invalid");
@@ -1483,7 +1779,11 @@ function assertConsumerReplayFixtureUpdateReport(report, replayReport) {
   assert(report.gameplayReplayFixture?.fixture === "public/gameplay-replay.fixture.json", "topdown replay fixture update report fixture path is invalid");
   assert(report.gameplayReplayFixture?.scenario === "topdown-template-game-spec", "topdown replay fixture update report scenario is invalid");
   assert(report.gameplayReplayFixture?.coverageTagDefinitionsPath === "public/gameplay-replay.coverage-tags.json", "topdown replay fixture update report coverage vocabulary path is invalid");
-  assertDeepEqual(report.gameplayReplayFixture?.coverageTags, ["template-game-spec"], "topdown replay fixture update report coverage tags are invalid");
+  assertDeepEqual(
+    report.gameplayReplayFixture?.coverageTags,
+    ["template-game-spec", "topdown-scene-composition-authoring"],
+    "topdown replay fixture update report coverage tags are invalid",
+  );
   assertTopdownCoverageRegistry(report.gameplayReplayFixture, "topdown replay fixture update report");
   assert(report.gameplayReplayFixture?.snapshotCount === 2, "topdown replay fixture update report snapshotCount is invalid");
   assert(
@@ -1501,7 +1801,11 @@ function assertTopdownStaleReplayReport(report) {
   assert(report.gameplayReplay?.status === "invalid", "stale topdown replay report must mark the fixture invalid");
   assert(report.gameplayReplay?.fixture === "public/gameplay-replay.fixture.json", "stale topdown replay report fixture path is invalid");
   assert(report.gameplayReplay?.coverageTagDefinitionsPath === "public/gameplay-replay.coverage-tags.json", "stale topdown replay report coverage vocabulary path is invalid");
-  assertDeepEqual(report.gameplayReplay?.coverageTags, ["template-game-spec"], "stale topdown replay report coverage tags are invalid");
+  assertDeepEqual(
+    report.gameplayReplay?.coverageTags,
+    ["template-game-spec", "topdown-scene-composition-authoring"],
+    "stale topdown replay report coverage tags are invalid",
+  );
   assert(report.gameplayReplay?.expectedHash === "00000000", "stale topdown replay report must include the stale fixture hash");
   assert(Array.isArray(report.gameplayReplay?.reports), "stale topdown replay report must include gameplayReplay reports");
   assert(Array.isArray(report.diagnostics), "stale topdown replay report must include top-level diagnostics");
@@ -1535,7 +1839,11 @@ function assertTopdownGameSpecDriftReplayReport(report) {
   assert(report.gameplayReplay?.status === "mismatch", "drift topdown replay report must mark the replay as mismatch");
   assert(report.gameplayReplay?.fixture === "public/gameplay-replay.fixture.json", "drift topdown replay report fixture path is invalid");
   assert(report.gameplayReplay?.coverageTagDefinitionsPath === "public/gameplay-replay.coverage-tags.json", "drift topdown replay report coverage vocabulary path is invalid");
-  assertDeepEqual(report.gameplayReplay?.coverageTags, ["template-game-spec"], "drift topdown replay report coverage tags are invalid");
+  assertDeepEqual(
+    report.gameplayReplay?.coverageTags,
+    ["template-game-spec", "topdown-scene-composition-authoring"],
+    "drift topdown replay report coverage tags are invalid",
+  );
   assertTopdownCoverageRegistry(report.gameplayReplay, "drift topdown replay report");
   assert(report.gameplayReplay?.comparison?.passed === false, "drift topdown replay comparison must fail");
   assert(
@@ -1575,7 +1883,7 @@ function assertTopdownGameSpecDriftReplayReport(report) {
   );
   assertDeepEqual(
     patch?.expected?.coverageTags,
-    ["template-game-spec"],
+    ["template-game-spec", "topdown-scene-composition-authoring"],
     "drift topdown replay fixture patch must include coverage tags",
   );
   assert(
@@ -1589,12 +1897,16 @@ function assertTopdownCoverageRegistry(value, label) {
     value?.coverageTagDefinitions?.["template-game-spec"] === "Consumer replay validates the generated Top-down template Game Spec contract.",
     `${label} must include resolved coverage tag definitions`,
   );
+  assert(
+    value?.coverageTagDefinitions?.["topdown-scene-composition-authoring"] === "Consumer replay validates the Top-down SceneComposition and BehaviorRecipe authoring surface.",
+    `${label} must include topdown scene composition authoring coverage definition`,
+  );
   assertDeepEqual(
     value?.coverageTagGroups,
     {
       "template-contracts": {
         description: "Consumer template replay contracts generated with create-game.",
-        tags: ["template-game-spec"],
+        tags: ["template-game-spec", "topdown-scene-composition-authoring"],
       },
     },
     `${label} coverage tag groups are invalid`,
@@ -1611,12 +1923,16 @@ function assertMinimalCoverageRegistry(value, label) {
     value?.coverageTagDefinitions?.["template-weapon-authoring"] === "Consumer replay validates the Minimal Runtime projectile/weapon authoring surface.",
     `${label} must include template weapon authoring coverage definition`,
   );
+  assert(
+    value?.coverageTagDefinitions?.["template-scene-composition-authoring"] === "Consumer replay validates the Minimal Runtime SceneComposition and BehaviorRecipe authoring surface.",
+    `${label} must include template scene composition authoring coverage definition`,
+  );
   assertDeepEqual(
     value?.coverageTagGroups,
     {
       "template-contracts": {
         description: "Consumer template replay contracts generated with create-game.",
-        tags: ["starter-runtime-template", "template-weapon-authoring"],
+        tags: ["starter-runtime-template", "template-weapon-authoring", "template-scene-composition-authoring"],
       },
     },
     `${label} coverage tag groups are invalid`,
@@ -1629,12 +1945,38 @@ function assertPlatformerCoverageRegistry(value, label) {
     value?.coverageTagDefinitions?.["platformer-template"] === "Consumer replay validates the generated Platformer template surface contract.",
     `${label} must include platformer template coverage definition`,
   );
+  assert(
+    value?.coverageTagDefinitions?.["platformer-scene-composition-authoring"] === "Consumer replay validates the Platformer SceneComposition and BehaviorRecipe authoring surface.",
+    `${label} must include platformer scene composition authoring coverage definition`,
+  );
   assertDeepEqual(
     value?.coverageTagGroups,
     {
       "template-contracts": {
         description: "Consumer template replay contracts generated with create-game.",
-        tags: ["platformer-template"],
+        tags: ["platformer-template", "platformer-scene-composition-authoring"],
+      },
+    },
+    `${label} coverage tag groups are invalid`,
+  );
+  assertDeepEqual(value?.deprecatedCoverageTags, {}, `${label} deprecated coverage tags are invalid`);
+}
+
+function assertBreakoutCoverageRegistry(value, label) {
+  assert(
+    value?.coverageTagDefinitions?.["breakout-template"] === "Consumer replay validates the generated Breakout template surface contract.",
+    `${label} must include breakout template coverage definition`,
+  );
+  assert(
+    value?.coverageTagDefinitions?.["breakout-built-in-scene"] === "Consumer replay validates the Breakout starter's public useBreakoutGame runtime hook.",
+    `${label} must include breakout built-in scene coverage definition`,
+  );
+  assertDeepEqual(
+    value?.coverageTagGroups,
+    {
+      "template-contracts": {
+        description: "Consumer template replay contracts generated with create-game.",
+        tags: ["breakout-template", "breakout-built-in-scene"],
       },
     },
     `${label} coverage tag groups are invalid`,
@@ -1653,10 +1995,77 @@ function assertMinimalTemplateAuthoringSurface(value, label) {
   assert(value.publicApis?.compileWeaponProfiles === true, `${label} must expose compileWeaponProfiles`);
   assert(value.publicApis?.ProjectileDefinition === true, `${label} must expose ProjectileDefinition`);
   assert(value.publicApis?.WeaponDefinition === true, `${label} must expose WeaponDefinition`);
+  assert(value.publicApis?.applySceneBehaviorRecipes === true, `${label} must expose applySceneBehaviorRecipes`);
+  assert(value.publicApis?.dryRunSceneBehaviorRecipes === true, `${label} must expose dryRunSceneBehaviorRecipes`);
+  assert(value.publicApis?.resolveSceneCompositionSpec === true, `${label} must expose resolveSceneCompositionSpec`);
+  assert(value.publicApis?.resolveBehaviorRecipeDocument === true, `${label} must expose resolveBehaviorRecipeDocument`);
   assert(value.runtimeHooks?.applyGameplayBehaviorCommands === true, `${label} must expose applyGameplayBehaviorCommands`);
   assert(value.runtimeHooks?.builtInShooterPlayerHandle === true, `${label} must expose builtInShooterPlayerHandle`);
   assert(value.runtimeHooks?.setInputActionBinding === true, `${label} must expose setInputActionBinding`);
   assert(value.runtimeHooks?.profileQueryParam === true, `${label} must expose profile query param hook`);
+  assert(value.sceneComposition?.configured === true, `${label} must include scene composition authoring`);
+  assert(value.sceneComposition?.ok === true, `${label} scene composition authoring must be valid`);
+  assert(value.sceneComposition?.file === "public/scene-authoring.json", `${label} scene composition file is invalid`);
+  assert(value.sceneComposition?.instanceCount === 1, `${label} scene composition instance count is invalid`);
+  assert(value.sceneComposition?.behaviorCommandCount === 1, `${label} scene behavior command count is invalid`);
+  assert(value.sceneComposition?.appliedCommandCount === 1, `${label} scene behavior applied command count is invalid`);
+  assertDeepEqual(value.sceneComposition?.runtimeEntities, ["builtinShooterPlayer"], `${label} runtime entity summary is invalid`);
+}
+
+function assertTopdownTemplateAuthoringSurface(value, label) {
+  assert(value !== null && typeof value === "object" && !Array.isArray(value), `${label} must include authoringSurface object`);
+  assert(value.publicApis?.applySceneBehaviorRecipes === true, `${label} must expose applySceneBehaviorRecipes`);
+  assert(value.publicApis?.dryRunSceneBehaviorRecipes === true, `${label} must expose dryRunSceneBehaviorRecipes`);
+  assert(value.publicApis?.resolveSceneCompositionSpec === true, `${label} must expose resolveSceneCompositionSpec`);
+  assert(value.publicApis?.resolveBehaviorRecipeDocument === true, `${label} must expose resolveBehaviorRecipeDocument`);
+  assert(value.runtimeHooks?.resolveShooterGameSpec === true, `${label} must identify resolveShooterGameSpec runtime hook`);
+  assert(value.runtimeHooks?.builtinShooterPlayerHandle === false, `${label} must not claim a public topdown player handle yet`);
+  assert(value.sceneComposition?.configured === true, `${label} must include scene composition authoring`);
+  assert(value.sceneComposition?.ok === true, `${label} scene composition authoring must be valid`);
+  assert(value.sceneComposition?.file === "public/scene-authoring.json", `${label} scene composition file is invalid`);
+  assert(value.sceneComposition?.instanceCount === 1, `${label} scene composition instance count is invalid`);
+  assert(value.sceneComposition?.behaviorCommandCount === 1, `${label} scene behavior command count is invalid`);
+  assert(value.sceneComposition?.appliedCommandCount === 1, `${label} scene behavior applied command count is invalid`);
+  assertDeepEqual(value.sceneComposition?.runtimeEntities, ["builtinShooterPlayer"], `${label} runtime entity summary is invalid`);
+}
+
+function assertPlatformerTemplateAuthoringSurface(value, label) {
+  assert(value !== null && typeof value === "object" && !Array.isArray(value), `${label} must include authoringSurface object`);
+  assert(value.publicApis?.applySceneBehaviorRecipes === true, `${label} must expose applySceneBehaviorRecipes`);
+  assert(value.publicApis?.dryRunSceneBehaviorRecipes === true, `${label} must expose dryRunSceneBehaviorRecipes`);
+  assert(value.publicApis?.resolveSceneCompositionSpec === true, `${label} must expose resolveSceneCompositionSpec`);
+  assert(value.publicApis?.resolveBehaviorRecipeDocument === true, `${label} must expose resolveBehaviorRecipeDocument`);
+  assert(value.runtimeHooks?.usePlatformerGame === true, `${label} must identify usePlatformerGame runtime hook`);
+  assert(value.runtimeHooks?.builtInPlatformerPlayerHandle === false, `${label} must not claim a public platformer player handle yet`);
+  assert(value.sceneComposition?.configured === true, `${label} must include scene composition authoring`);
+  assert(value.sceneComposition?.ok === true, `${label} scene composition authoring must be valid`);
+  assert(value.sceneComposition?.file === "public/scene-authoring.json", `${label} scene composition file is invalid`);
+  assert(value.sceneComposition?.instanceCount === 1, `${label} scene composition instance count is invalid`);
+  assert(value.sceneComposition?.behaviorCommandCount === 1, `${label} scene behavior command count is invalid`);
+  assert(value.sceneComposition?.appliedCommandCount === 1, `${label} scene behavior applied command count is invalid`);
+  assertDeepEqual(value.sceneComposition?.runtimeEntities, ["builtinPlatformerPlayer"], `${label} runtime entity summary is invalid`);
+}
+
+function assertBreakoutTemplateAuthoringSurface(value, label) {
+  assert(value !== null && typeof value === "object" && !Array.isArray(value), `${label} must include authoringSurface object`);
+  assert(value.publicApis?.applySceneBehaviorRecipes === true, `${label} must expose applySceneBehaviorRecipes`);
+  assert(value.publicApis?.dryRunSceneBehaviorRecipes === true, `${label} must expose dryRunSceneBehaviorRecipes`);
+  assert(value.publicApis?.resolveSceneCompositionSpec === true, `${label} must expose resolveSceneCompositionSpec`);
+  assert(value.publicApis?.resolveBehaviorRecipeDocument === true, `${label} must expose resolveBehaviorRecipeDocument`);
+  assert(value.runtimeHooks?.useBreakoutGame === true, `${label} must identify useBreakoutGame runtime hook`);
+  assert(value.runtimeHooks?.resetGame === true, `${label} must expose resetGame runtime hook`);
+  assert(value.runtimeHooks?.runtimeMetrics === true, `${label} must expose runtime metrics hook`);
+  assert(value.sceneComposition?.configured === true, `${label} must include scene composition authoring`);
+  assert(value.sceneComposition?.ok === true, `${label} scene composition authoring must be valid`);
+  assert(value.sceneComposition?.file === "public/scene-authoring.json", `${label} scene composition file is invalid`);
+  assert(value.sceneComposition?.instanceCount === 2, `${label} scene composition instance count is invalid`);
+  assert(value.sceneComposition?.behaviorCommandCount === 2, `${label} scene behavior command count is invalid`);
+  assert(value.sceneComposition?.appliedCommandCount === 2, `${label} scene behavior applied command count is invalid`);
+  assertDeepEqual(
+    value.sceneComposition?.runtimeEntities,
+    ["builtinBreakoutPaddle", "builtinBreakoutBall"],
+    `${label} runtime entity summary is invalid`,
+  );
 }
 
 function assertCoverageRegistryReport(value, label) {
@@ -1695,6 +2104,16 @@ function assertConsumerProjectileWeaponAuthoringContract(source, label) {
       source.includes("compileWeaponProfiles") &&
       source.includes("behaviorRecipeCommandsForEntity"),
     `${label} must document projectile/weapon authoring helpers`,
+  );
+}
+
+function assertConsumerContentAuthoringContract(source, label) {
+  assert(
+    source.includes("content.localization") &&
+      source.includes("content.dialogue.graphs") &&
+      source.includes("content.cutscenes") &&
+      source.includes("createShooterContentRuntimeOptions"),
+    `${label} must document Game Spec content runtime authoring helpers`,
   );
 }
 
@@ -1739,6 +2158,11 @@ function summarizeConsumerAuthoringReport(report) {
       file: report.gameplayAuthoring?.gameSpec?.file,
       message: report.gameplayAuthoring?.gameSpec?.message,
     },
+    sceneAuthoring: {
+      ok: report.gameplayAuthoring?.sceneAuthoring?.ok,
+      file: report.gameplayAuthoring?.sceneAuthoring?.file,
+      message: report.gameplayAuthoring?.sceneAuthoring?.message,
+    },
     diagnostics: report.gameplayAuthoring?.diagnostics?.length ?? 0,
     reports: report.gameplayAuthoring?.reports?.length ?? 0,
     authoringSurface: report.gameplayAuthoring?.authoringSurface === undefined
@@ -1747,6 +2171,7 @@ function summarizeConsumerAuthoringReport(report) {
         weaponProfiles: report.gameplayAuthoring.authoringSurface.weaponProfiles,
         publicApis: report.gameplayAuthoring.authoringSurface.publicApis,
         runtimeHooks: report.gameplayAuthoring.authoringSurface.runtimeHooks,
+        sceneComposition: report.gameplayAuthoring.authoringSurface.sceneComposition,
       },
   };
 }
@@ -1949,6 +2374,7 @@ function buildConsumerSmokeReport({ status, error }) {
       createGame: createGameTarball === undefined ? undefined : path.basename(createGameTarball),
       agents: agentsTarball === undefined ? undefined : path.basename(agentsTarball),
     },
+    createGameCatalog: createGameCatalogSummary,
     templates: templateSummaries,
     requestedTemplates: templateNames,
     artifactDir: options.artifactDir,

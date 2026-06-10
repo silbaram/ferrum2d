@@ -13,6 +13,10 @@ try {
   await assertEarlyFailedReportPasses();
   await assertPartialFailedReportPasses();
   await assertPassedNotConfiguredRuntimeReplayPasses();
+  await assertPassedNotConfiguredGameplayReplayPasses();
+  await assertPassedMissingCreateGameCatalogFails();
+  await assertPassedCatalogMissingRequestedTemplateFails();
+  await assertPassedTemplateMatrixMismatchFails();
   await assertDirtySnapshotFails();
   console.log("consumer smoke report validation smoke ok");
 } finally {
@@ -46,6 +50,70 @@ async function assertPassedNotConfiguredRuntimeReplayPasses() {
     0,
     ["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"],
     "passed report with not-configured runtime replay",
+  );
+}
+
+async function assertPassedNotConfiguredGameplayReplayPasses() {
+  const artifactDir = path.join(tempRoot, "passed-not-configured-gameplay-replay");
+  await mkdir(artifactDir, { recursive: true });
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), createPassedReportWithNotConfiguredGameplayReplay({
+    artifactDir,
+  }));
+  await runValidatorExpecting(
+    0,
+    ["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"],
+    "passed report with not-configured gameplay replay",
+  );
+}
+
+async function assertPassedMissingCreateGameCatalogFails() {
+  const artifactDir = path.join(tempRoot, "passed-missing-create-game-catalog");
+  await mkdir(artifactDir, { recursive: true });
+  const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  delete report.createGameCatalog;
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  const result = await runValidator(["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"]);
+  assert(result.code !== 0, "passed report without createGameCatalog must fail validation");
+  assert(
+    result.stdout.includes("createGameCatalog must be an object"),
+    `missing createGameCatalog validation must be reported\n${result.stdout}\n${result.stderr}`,
+  );
+}
+
+async function assertPassedCatalogMissingRequestedTemplateFails() {
+  const artifactDir = path.join(tempRoot, "passed-catalog-missing-requested-template");
+  await mkdir(artifactDir, { recursive: true });
+  const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  report.createGameCatalog.defaultTemplate = "platformer";
+  report.createGameCatalog.templates = [
+    {
+      id: "platformer",
+      sceneAuthoringConfigured: true,
+      gameplayReplayConfigured: true,
+      runtimeGameplayReplayConfigured: true,
+    },
+  ];
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  const result = await runValidator(["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"]);
+  assert(result.code !== 0, "passed report whose catalog misses a requested template must fail validation");
+  assert(
+    result.stdout.includes("createGameCatalog.templates must include requested template minimal"),
+    `missing requested template validation must be reported\n${result.stdout}\n${result.stderr}`,
+  );
+}
+
+async function assertPassedTemplateMatrixMismatchFails() {
+  const artifactDir = path.join(tempRoot, "passed-template-matrix-mismatch");
+  await mkdir(artifactDir, { recursive: true });
+  const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  report.templates[0].template = "platformer";
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  const result = await runValidator(["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"]);
+  assert(result.code !== 0, "passed report whose templates[] differ from requestedTemplates must fail validation");
+  assert(
+    result.stdout.includes("passed report templates must include requested template minimal") &&
+      result.stdout.includes("passed report templates must not include unrequested template platformer"),
+    `template matrix mismatch validation must be reported\n${result.stdout}\n${result.stderr}`,
   );
 }
 
@@ -174,6 +242,20 @@ function createPassedReportWithNotConfiguredRuntime({ artifactDir }) {
       createGame: "ferrum2d-create-game-0.1.0.tgz",
       agents: "ferrum2d-agents-0.1.0.tgz",
     },
+    createGameCatalog: {
+      format: "ferrum-create-game-template-list",
+      version: 1,
+      defaultTemplate: "minimal",
+      templateCount: 1,
+      templates: [
+        {
+          id: "minimal",
+          sceneAuthoringConfigured: true,
+          gameplayReplayConfigured: true,
+          runtimeGameplayReplayConfigured: false,
+        },
+      ],
+    },
     requestedTemplates: ["minimal"],
     templates: [
       {
@@ -242,6 +324,82 @@ function createPassedReportWithNotConfiguredRuntime({ artifactDir }) {
       },
     ],
   };
+}
+
+function createPassedReportWithNotConfiguredGameplayReplay({ artifactDir }) {
+  const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  report.createGameCatalog.templateCount = 2;
+  report.createGameCatalog.templates.push({
+    id: "prototype",
+    sceneAuthoringConfigured: false,
+    gameplayReplayConfigured: false,
+    runtimeGameplayReplayConfigured: false,
+  });
+  report.requestedTemplates.push("prototype");
+  report.templates.push({
+    template: "prototype",
+    status: "passed",
+    generatedProject: "sample-games/prototype",
+    checks: {
+      createGame: true,
+      agentsDryRun: true,
+      agentsInstall: true,
+      install: true,
+      publicImportSmoke: true,
+      publicTypeSmoke: true,
+      validate: true,
+      build: true,
+    },
+    agents: {
+      tools: ["codex", "claude", "gemini"],
+      expectedFilesChecked: 41,
+      unsupportedGeminiWrappersAbsent: true,
+    },
+    reports: {
+      authoring: {
+        status: "not-configured",
+        gameSpec: {
+          ok: null,
+          message: "public/game.json not present",
+        },
+        diagnostics: 0,
+        reports: 0,
+      },
+      gameplayReplay: {
+        status: "not-configured",
+        configured: false,
+        fixture: "public/gameplay-replay.fixture.json",
+        reports: 1,
+      },
+      gameplayReplayFixtureUpdate: {
+        status: "not-configured",
+        rejected: true,
+      },
+      runtimeReplay: {
+        status: "not-configured",
+        configured: false,
+        scenario: "project-runtime",
+        fixture: "public/gameplay-runtime-replay.fixture.json",
+        coverageTags: ["project-runtime"],
+        reports: 1,
+      },
+      runtimeReplayRecipe: {
+        template: "prototype",
+        status: "scaffold",
+        scenario: "project-runtime",
+        coverageTags: ["project-runtime"],
+        fixedDelta: 1 / 60,
+        inputFrames: [1, 2],
+        captureFrames: [0, 1, 2],
+      },
+    },
+    mutationChecks: {},
+    buildOutput: {
+      distIndexHtml: "sample-games/prototype/dist/index.html",
+      preservedInArtifactSnapshot: false,
+    },
+  });
+  return report;
 }
 
 async function runValidatorExpecting(expectedCode, args, label) {

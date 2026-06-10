@@ -1,4 +1,6 @@
 use super::*;
+use crate::components::gameplay::MAX_ACTION_BINDINGS_PER_ENTITY;
+use crate::engine::scenes::ActiveScene;
 use crate::shooter_scene::SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET;
 
 #[test]
@@ -33,6 +35,15 @@ fn engine_captures_and_restores_builtin_shooter_snapshot() {
     let saved_entity_count = engine.entity_count();
     engine.camera.x = 320.0;
     engine.camera.y = 240.0;
+    engine
+        .world
+        .gameplay_faction_relations
+        .set_default_relation(FactionRelation::Friendly);
+    assert!(engine.world.gameplay_faction_relations.set_relation(
+        GAMEPLAY_FACTION_PLAYER,
+        GAMEPLAY_FACTION_ENEMY,
+        FactionRelation::Hostile,
+    ));
 
     assert!(engine.capture_shooter_snapshot());
     assert_eq!(
@@ -91,6 +102,17 @@ fn engine_captures_and_restores_builtin_shooter_snapshot() {
         .iter()
         .flatten()
         .any(|faction| *faction == saved_bullet_faction));
+    assert_eq!(
+        engine.world.gameplay_faction_relations.default_relation(),
+        FactionRelation::Friendly
+    );
+    assert_eq!(
+        engine
+            .world
+            .gameplay_faction_relations
+            .relation(GAMEPLAY_FACTION_PLAYER, GAMEPLAY_FACTION_ENEMY),
+        Some(FactionRelation::Hostile)
+    );
 }
 
 #[test]
@@ -501,6 +523,74 @@ fn shooter_snapshot_restores_multiple_spawn_prefab_action_bindings() {
 }
 
 #[test]
+fn shooter_snapshot_restores_maximum_spawn_prefab_action_bindings() {
+    let mut engine = Engine::new();
+    engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
+    engine.update(0.016);
+    engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
+    let player = engine.world.player.unwrap();
+    for slot in (0..MAX_ACTION_BINDINGS_PER_ENTITY).rev() {
+        assert!(engine.set_gameplay_action_spawn_prefab(
+            player.id,
+            player.generation,
+            20 + slot as u32,
+            0.2 + slot as f32 * 0.01,
+            1,
+            0,
+            0,
+            slot as f32,
+            -(slot as f32),
+        ));
+    }
+
+    assert!(engine.capture_shooter_snapshot());
+    let header_floats = engine.shooter_snapshot_header_floats.clone();
+    let header_u32s = engine.shooter_snapshot_header_u32s.clone();
+    let entity_floats = engine.shooter_snapshot_entity_floats.clone();
+    let entity_u32s = engine.shooter_snapshot_entity_u32s.clone();
+    let player_slot = player_snapshot_slot(&entity_u32s);
+    let player_u32_base = player_slot * SHOOTER_SNAPSHOT_ENTITY_U32S;
+    for slot in 0..MAX_ACTION_BINDINGS_PER_ENTITY {
+        assert_eq!(
+            entity_u32s[player_u32_base
+                + SNAPSHOT_SPAWN_PREFAB_U32_BASE
+                + slot * SNAPSHOT_SPAWN_PREFAB_U32_STRIDE],
+            20 + slot as u32
+        );
+    }
+
+    engine.reset_game();
+    assert!(engine.restore_shooter_snapshot(
+        header_floats,
+        header_u32s,
+        entity_floats,
+        entity_u32s,
+    ));
+
+    let restored_player = engine.world.player.unwrap();
+    for slot in 0..MAX_ACTION_BINDINGS_PER_ENTITY {
+        let action_id = 20 + slot as u32;
+        let restored = engine
+            .world
+            .action_binding(restored_player, action_id)
+            .unwrap();
+        assert_eq!(restored.action_id, action_id);
+        assert_eq!(restored.cooldown.duration_seconds, 0.2 + slot as f32 * 0.01);
+        assert_eq!(
+            restored.pattern,
+            ActionPattern::SpawnPrefab {
+                prefab_id: 1,
+                projectile: None,
+                anchor: SpawnAnchor::SelfEntity,
+                phase: SpawnPhase::PrePhysics,
+                offset_x: slot as f32,
+                offset_y: -(slot as f32),
+            }
+        );
+    }
+}
+
+#[test]
 fn shooter_snapshot_rejects_duplicate_action_binding_ids() {
     let mut engine = Engine::new();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
@@ -540,7 +630,7 @@ fn shooter_snapshot_rejects_action_binding_count_over_capacity() {
     set_valid_primary_snapshot_action(&mut entity_floats, &mut entity_u32s, player_slot);
     set_valid_dash_snapshot_action(&mut entity_floats, &mut entity_u32s, player_slot);
     set_valid_melee_snapshot_action(&mut entity_floats, &mut entity_u32s, player_slot);
-    for slot in 0..6 {
+    for slot in 0..(MAX_ACTION_BINDINGS_PER_ENTITY - 2) {
         set_valid_spawn_prefab_snapshot_action(
             &mut entity_floats,
             &mut entity_u32s,
@@ -674,10 +764,10 @@ fn shooter_snapshot_capture_does_not_switch_non_shooter_scene() {
     engine.use_platformer_scene();
     let entity_count = engine.entity_count();
 
-    assert_eq!(engine.active_scene, ActiveScene::Platformer);
+    assert_eq!(engine.scenes.active(), ActiveScene::Platformer);
     assert!(!engine.capture_shooter_snapshot());
 
-    assert_eq!(engine.active_scene, ActiveScene::Platformer);
+    assert_eq!(engine.scenes.active(), ActiveScene::Platformer);
     assert_eq!(engine.entity_count(), entity_count);
     assert_eq!(engine.shooter_snapshot_header_float_len(), 0);
     assert_eq!(engine.shooter_snapshot_header_u32_len(), 0);
@@ -693,7 +783,7 @@ fn failed_shooter_snapshot_restore_preserves_active_scene() {
     let mut header_u32s = vec![0; SHOOTER_SNAPSHOT_HEADER_U32S];
     header_u32s[0] = crate::shooter_scene::SHOOTER_SNAPSHOT_VERSION;
 
-    assert_eq!(engine.active_scene, ActiveScene::Platformer);
+    assert_eq!(engine.scenes.active(), ActiveScene::Platformer);
     assert!(!engine.restore_shooter_snapshot(
         vec![0.0; SHOOTER_SNAPSHOT_HEADER_FLOATS],
         header_u32s,
@@ -701,8 +791,29 @@ fn failed_shooter_snapshot_restore_preserves_active_scene() {
         Vec::new(),
     ));
 
-    assert_eq!(engine.active_scene, ActiveScene::Platformer);
+    assert_eq!(engine.scenes.active(), ActiveScene::Platformer);
     assert_eq!(engine.entity_count(), entity_count);
+}
+
+#[test]
+fn shooter_snapshot_restore_rejects_previous_snapshot_version() {
+    let mut engine = Engine::new();
+    engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
+    engine.update(0.016);
+    assert!(engine.capture_shooter_snapshot());
+
+    let header_floats = engine.shooter_snapshot_header_floats.clone();
+    let mut header_u32s = engine.shooter_snapshot_header_u32s.clone();
+    let entity_floats = engine.shooter_snapshot_entity_floats.clone();
+    let entity_u32s = engine.shooter_snapshot_entity_u32s.clone();
+    header_u32s[0] = crate::shooter_scene::SHOOTER_SNAPSHOT_VERSION - 1;
+
+    assert!(!engine.restore_shooter_snapshot(
+        header_floats,
+        header_u32s,
+        entity_floats,
+        entity_u32s,
+    ));
 }
 
 const SNAPSHOT_PRIMARY_COOLDOWN_DURATION: usize = 7;

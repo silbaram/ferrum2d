@@ -29,7 +29,7 @@ import {
   type GameplayTileImpactPolicy,
 } from "./gameplayEventActions.js";
 
-export const BEHAVIOR_STATE_MACHINE_RUNTIME_MAX_TRANSITIONS = 16 as const;
+export const BEHAVIOR_STATE_MACHINE_RUNTIME_MAX_TRANSITIONS = 32 as const;
 
 export type BehaviorStateMachineTriggerKind = "gameplayEvent";
 export type BehaviorStateMachineGameplayEventKind =

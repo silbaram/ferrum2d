@@ -37,7 +37,7 @@ Physics Spec은 Ferrum2D의 범용 physics authoring 계약이다. Top-down Shoo
 - editor/AI 도구용 `physicsEditor` authoring metadata strip helper와 JSON Schema
 - HD-2D `physics.hd2d` authoring/resolved 필드와 body별 `floor`/`elevation`/`height` 검증
 - HD-2D body `heightSpan` 기반 collision filter와 body query/raycast/shape-cast optional filter
-- `examples/physics-sandbox` browser sandbox와 `pnpm smoke:physics-sandbox`
+- `examples/physics-sandbox` browser sandbox, fixture catalog, `pnpm smoke:physics-sandbox`, `pnpm smoke:physics-demo-suite`
 - compound collider runtime apply, collider snapshot 조회, body 단위 contact/query/debug
 - dedicated `chain` collider runtime storage, collision/query/raycast/shape-cast/debug/snapshot 지원
 - `extractTilemapBoundaryChains(...)` 기반 collision tilemap 외곽선 -> Physics Spec chain body 변환
@@ -216,7 +216,7 @@ Apply 정책:
 
 `extractTilemapBoundaryChains(...)`는 resolved Shooter tilemap의 `collision: true` layer를 Physics Spec static body map으로 변환한다. 일반 layer에서는 `slope` 또는 `oneWayPlatform` tile을 regular solid boundary에서 제외하고, `collisionOnly: true` layer에서는 양수 tile id를 solid cell로 처리한다. 긴 외곽선은 runtime chain vertex limit에 맞춰 여러 body로 분할된다.
 
-`PixelMaskTerrain`은 alpha mask를 낮은 빈도로 편집하고, dirty rect/alpha patch를 조회하며, collision-only tilemap layer 또는 chain boundary body로 변환하는 helper다. `PixelMaskTerrainRuntime`은 이 helper를 WebGL2 texture와 Physics Spec world apply에 연결한다. 생성 시 전체 texture를 만들고, 이후 dirty alpha patch만 `texSubImage2D`로 업로드할 수 있으며, physics 쪽은 chunk 단위로 boundary chain body를 재생성하고 이전 chunk world를 `clear()`로 교체한다. 큰 편집이 한 번에 너무 많은 chunk를 건드리는 경우 `maxDirtyChunksPerSync`로 rebuild budget을 제한한다.
+`PixelMaskTerrain`은 alpha mask를 낮은 빈도로 편집하고, dirty rect/alpha patch를 조회하며, collision-only tilemap layer 또는 chain boundary body로 변환하는 helper다. `PixelMaskTerrainRuntime`은 이 helper를 WebGL2 texture와 Physics Spec world apply에 연결한다. 생성 시 전체 texture를 만들고, 이후 dirty alpha patch만 `texSubImage2D`로 업로드할 수 있으며, physics 쪽은 chunk 단위로 boundary chain body를 재생성하고 이전 chunk world를 `clear()`로 교체한다. 큰 편집이 한 번에 너무 많은 chunk를 건드리는 경우 `maxDirtyChunksPerSync`로 rebuild budget을 제한한다. Level streaming manifest와 같은 chunk 단위를 써야 할 때는 `createLevelStreamingPixelMaskTerrainPhysicsOptions(...)`로 `chunkWidth`/`chunkHeight`, boundary tile size/origin을 맞추고, static tilemap chunk는 `tilemapLayerForLevelStreamingChunk(...)` 또는 `extractLevelStreamingTilemapChunkBoundaryChains(...)`로 `ResolvedLevelChunk` 단위 boundary chain을 만든다.
 
 ```ts
 import {

@@ -6,7 +6,8 @@
   "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json",
   "coverageTags": [
     "starter-runtime-template",
-    "template-weapon-authoring"
+    "template-weapon-authoring",
+    "template-scene-composition-authoring"
   ],
   "replay": {
     "format": "ferrum2d.gameplay-replay.run",
@@ -46,20 +47,44 @@
                     "behaviorRecipeCommandsForEntity": true,
                     "compileWeaponProfiles": true,
                     "ProjectileDefinition": true,
-                    "WeaponDefinition": true
+                    "WeaponDefinition": true,
+                    "applySceneBehaviorRecipes": true,
+                    "dryRunSceneBehaviorRecipes": true,
+                    "resolveSceneCompositionSpec": true,
+                    "resolveBehaviorRecipeDocument": true
                   },
                   "runtimeHooks": {
                     "applyGameplayBehaviorCommands": true,
                     "builtInShooterPlayerHandle": true,
                     "setInputActionBinding": true,
                     "profileQueryParam": true
+                  },
+                  "sceneComposition": {
+                    "configured": true,
+                    "ok": true,
+                    "file": "public/scene-authoring.json",
+                    "instanceCount": 1,
+                    "behaviorCommandCount": 1,
+                    "appliedCommandCount": 1,
+                    "runtimeEntities": [
+                      "builtinShooterPlayer"
+                    ],
+                    "runtimeEntityHandles": [
+                      {
+                        "instanceId": "player",
+                        "runtimeEntity": "builtinShooterPlayer",
+                        "entityId": 1,
+                        "entityGeneration": 0
+                      }
+                    ]
                   }
                 },
                 "publicAssets": [
                   "gameplay-replay.coverage-tags.json",
                   "gameplay-replay.fixture.json",
                   "gameplay-runtime-replay.coverage-tags.json",
-                  "gameplay-runtime-replay.fixture.json"
+                  "gameplay-runtime-replay.fixture.json",
+                  "scene-authoring.json"
                 ],
                 "scripts": [
                   "ferrum:validate",
@@ -70,9 +95,9 @@
               }
             }
           },
-          "snapshotHash": "a66fa87f"
+          "snapshotHash": "a0a1a566"
         },
-        "replayHash": "a66fa87f"
+        "replayHash": "a0a1a566"
       },
       {
         "frame": 1,
@@ -108,20 +133,44 @@
                     "behaviorRecipeCommandsForEntity": true,
                     "compileWeaponProfiles": true,
                     "ProjectileDefinition": true,
-                    "WeaponDefinition": true
+                    "WeaponDefinition": true,
+                    "applySceneBehaviorRecipes": true,
+                    "dryRunSceneBehaviorRecipes": true,
+                    "resolveSceneCompositionSpec": true,
+                    "resolveBehaviorRecipeDocument": true
                   },
                   "runtimeHooks": {
                     "applyGameplayBehaviorCommands": true,
                     "builtInShooterPlayerHandle": true,
                     "setInputActionBinding": true,
                     "profileQueryParam": true
+                  },
+                  "sceneComposition": {
+                    "configured": true,
+                    "ok": true,
+                    "file": "public/scene-authoring.json",
+                    "instanceCount": 1,
+                    "behaviorCommandCount": 1,
+                    "appliedCommandCount": 1,
+                    "runtimeEntities": [
+                      "builtinShooterPlayer"
+                    ],
+                    "runtimeEntityHandles": [
+                      {
+                        "instanceId": "player",
+                        "runtimeEntity": "builtinShooterPlayer",
+                        "entityId": 1,
+                        "entityGeneration": 0
+                      }
+                    ]
                   }
                 },
                 "publicAssets": [
                   "gameplay-replay.coverage-tags.json",
                   "gameplay-replay.fixture.json",
                   "gameplay-runtime-replay.coverage-tags.json",
-                  "gameplay-runtime-replay.fixture.json"
+                  "gameplay-runtime-replay.fixture.json",
+                  "scene-authoring.json"
                 ],
                 "scripts": [
                   "ferrum:validate",
@@ -132,11 +181,11 @@
               }
             }
           },
-          "snapshotHash": "0c031dbf"
+          "snapshotHash": "290c2612"
         },
-        "replayHash": "0c031dbf"
+        "replayHash": "290c2612"
       }
     ],
-    "replayHash": "e730a3bf"
+    "replayHash": "2eb8afaf"
   }
 }

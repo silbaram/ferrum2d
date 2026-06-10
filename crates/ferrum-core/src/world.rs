@@ -1,8 +1,8 @@
 use crate::components::gameplay::{
     ActionBindingSet, BehaviorStateEnterActionSet, BehaviorStateMachine, CollisionReactionSet,
-    GameplayFaction, GameplayLifetime, GameplayTags, GameplayTimerTrigger, Interaction,
-    MovementPattern, Pickup, ProjectileCollisionTarget, ProjectilePolicy, ProjectileTileImpact,
-    GAMEPLAY_FACTION_MAX_ID, GAMEPLAY_TAG_MAX_ID,
+    FactionRelationTable, GameplayFaction, GameplayLifetime, GameplayTags, GameplayTimerTrigger,
+    Interaction, MovementPattern, Pickup, ProjectileCollisionTarget, ProjectilePolicy,
+    ProjectileTileImpact, GAMEPLAY_FACTION_MAX_ID, GAMEPLAY_TAG_MAX_ID,
 };
 use crate::components::{
     AabbCollider, AngularVelocity, CapsuleCollider, ChainCollider, CircleCollider, CollisionFilter,
@@ -102,6 +102,7 @@ pub struct World {
     pub(crate) damages: Vec<Option<f32>>,
     pub(crate) score_rewards: Vec<Option<u32>>,
     pub(crate) gameplay_factions: Vec<Option<GameplayFaction>>,
+    pub(crate) gameplay_faction_relations: FactionRelationTable,
     pub(crate) gameplay_tags: Vec<Option<GameplayTags>>,
     gameplay_faction_indices: [Vec<usize>; GAMEPLAY_FACTION_INDEX_BUCKETS],
     gameplay_tag_indices: [Vec<usize>; GAMEPLAY_TAG_INDEX_BUCKETS],

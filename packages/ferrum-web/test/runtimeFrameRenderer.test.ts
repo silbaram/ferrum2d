@@ -44,6 +44,24 @@ test("RuntimeFrameRenderer preserves dynamic provider, render, overlay, profiler
       equal(runtimeFrame.rendererStats, postProcessStats);
       return {};
     },
+    animationTimeline: {
+      update: () => {
+        order.push("animation_timeline_update");
+        return undefined;
+      },
+    } as never,
+    cutscene: {
+      update: () => {
+        order.push("cutscene_update");
+        return undefined;
+      },
+    } as never,
+    levelStreaming: {
+      update: () => {
+        order.push("level_streaming_update");
+        return undefined;
+      },
+    } as never,
     profiler: {
       recordFrame: () => {
         order.push("profiler_record");
@@ -71,6 +89,9 @@ test("RuntimeFrameRenderer preserves dynamic provider, render, overlay, profiler
     "render_debug:11,22",
     "post_process",
     "debug_update",
+    "animation_timeline_update",
+    "cutscene_update",
+    "level_streaming_update",
     "ui_state",
     "ui_update",
     "profiler_record",

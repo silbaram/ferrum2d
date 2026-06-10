@@ -6,9 +6,11 @@ use crate::collision_event::{
 use crate::components::gameplay::{
     ActionBinding, ActionPattern, BehaviorStateEnterAction, BehaviorStateEnterActionPhase,
     BehaviorStateMachine, BehaviorStateTransition, CollisionReaction, CollisionReactionTrigger,
-    CollisionTarget, Cooldown, GameplayFaction, GameplayTags, GameplayTimerTrigger, Interaction,
-    MovementPattern, MovementTarget, Pickup, ProjectileTileImpact, SpawnAnchor, SpawnPhase,
-    GAMEPLAY_FACTION_ENEMY, GAMEPLAY_FACTION_PLAYER, GAMEPLAY_PICKUP_ITEM_SCORE,
+    CollisionTarget, Cooldown, FactionRelation, GameplayFaction, GameplayTags,
+    GameplayTimerTrigger, Interaction, MovementPattern, MovementTarget, Pickup,
+    ProjectileTileImpact, SpawnAnchor, SpawnPhase, GAMEPLAY_FACTION_ENEMY, GAMEPLAY_FACTION_MAX_ID,
+    GAMEPLAY_FACTION_PLAYER, GAMEPLAY_PICKUP_ITEM_SCORE, GAMEPLAY_TAG_MAX_ID,
+    MAX_BEHAVIOR_STATE_ENTER_ACTIONS_PER_ENTITY, MAX_COLLISION_REACTIONS_PER_ENTITY,
 };
 use crate::components::{
     AabbCollider, CollisionFilter, CollisionLayer, CollisionMask, HeightSpan, PhysicsFloorId,

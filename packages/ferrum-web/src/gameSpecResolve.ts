@@ -2,6 +2,7 @@ import { resolvePostProcessPasses } from "./cameraPostProcessing.js";
 import type { PostProcessStackInput } from "./cameraPostProcessing.js";
 import { resolvePhysicsSpec } from "./physicsSpec.js";
 import { DEFAULT_SHOOTER_GAME_SPEC } from "./gameSpecDefaults.js";
+import { shooterContent } from "./gameSpecContent.js";
 import {
   atlasFrameMap,
   prefabAtlasAnimation,
@@ -52,6 +53,7 @@ export function resolveShooterGameSpec(
     spec.postProcessing as PostProcessStackInput,
     { path: "postProcessing" },
   );
+  const content = shooterContent(spec.content, "content");
   const audio = optionalObject(spec.audio, "audio");
   const audioEvents = optionalObject(audio.events, "audio.events");
   const cameraDeadZone = optionalObject(camera.deadZone, "camera.deadZone");
@@ -298,6 +300,7 @@ export function resolveShooterGameSpec(
     gameOverPitch: gameOverAudio.pitch,
     postProcessing,
     physics,
+    content,
   };
 }
 

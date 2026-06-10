@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn reset_game_clears_score_and_recreates_player() {
     let mut engine = Engine::new();
-    engine.scene.update(
+    engine.scenes.shooter.update(
         &mut engine.world,
         &mut engine.camera,
         InputState {
@@ -22,6 +22,136 @@ fn reset_game_clears_score_and_recreates_player() {
     assert!(engine.world.player.is_some());
     assert_eq!(count_layer(&engine, CollisionLayer::Player), 1);
     assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 0);
+}
+
+#[test]
+fn data_scene_mode_starts_blank_and_updates_generic_world_state() {
+    let mut engine = Engine::new();
+
+    engine.use_data_scene();
+    assert_eq!(engine.game_state(), 1);
+    assert_eq!(engine.score(), 0);
+    assert_eq!(engine.entity_count(), 0);
+    assert_eq!(engine.built_in_shooter_player_entity_id(), u32::MAX);
+
+    let entity = engine.world.spawn_entity();
+    engine
+        .world
+        .set_transform(entity, Transform2D { x: 10.0, y: 20.0 });
+    engine
+        .world
+        .set_velocity(entity, Velocity { vx: 8.0, vy: -4.0 });
+
+    engine.update_frame(0.5, false, false, false);
+
+    let transform = engine.world.transforms[entity.id as usize].expect("entity has transform");
+    assert_eq!(engine.entity_count(), 1);
+    assert!((transform.x - 14.0).abs() < f32::EPSILON);
+    assert!((transform.y - 18.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn data_scene_reset_keeps_data_mode_without_recreating_builtin_entities() {
+    let mut engine = Engine::new();
+    engine.use_breakout_scene();
+    assert!(engine.entity_count() > 0);
+
+    engine.use_data_scene();
+    let entity = engine.world.spawn_entity();
+    engine
+        .world
+        .set_transform(entity, Transform2D { x: 10.0, y: 10.0 });
+    assert_eq!(engine.entity_count(), 1);
+
+    engine.reset_game();
+
+    assert_eq!(engine.game_state(), 1);
+    assert_eq!(engine.score(), 0);
+    assert_eq!(engine.entity_count(), 0);
+    assert_eq!(engine.built_in_shooter_player_entity_id(), u32::MAX);
+}
+
+#[test]
+fn data_scene_switch_and_reset_clear_stale_output_buffers() {
+    fn test_render_command() -> crate::render_command::SpriteRenderCommand {
+        crate::render_command::SpriteRenderCommand {
+            x: 1.0,
+            y: 2.0,
+            width: 3.0,
+            height: 4.0,
+            u0: 0.0,
+            v0: 0.0,
+            u1: 1.0,
+            v1: 1.0,
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: 1.0,
+            texture_id: 0.0,
+            effect_flags: 0.0,
+        }
+    }
+
+    fn test_render_item() -> crate::render_command::SpriteRenderItem {
+        crate::render_command::SpriteRenderItem {
+            command: test_render_command(),
+            sort_key: crate::render_command::SpriteRenderSortKey {
+                floor_id: 0,
+                elevation: 0.0,
+                foot_y: 0.0,
+                render_layer: 0,
+                stable_id: 0,
+            },
+        }
+    }
+
+    fn test_audio_event() -> crate::audio_event::AudioEvent {
+        crate::audio_event::AudioEvent {
+            sound_id: 1.0,
+            volume: 1.0,
+            pitch: 1.0,
+            channel_id: crate::audio_event::AUDIO_CHANNEL_SFX,
+        }
+    }
+
+    let mut engine = Engine::new();
+    engine.use_breakout_scene();
+    engine.update(0.016);
+    engine.audio_events.push(test_audio_event());
+    engine.render_items.push(test_render_item());
+
+    assert!(engine.render_command_len() > 0);
+    assert_eq!(engine.audio_event_len(), 1);
+    assert_eq!(engine.render_items.len(), 1);
+
+    engine.use_data_scene();
+
+    assert_eq!(engine.render_command_len(), 0);
+    assert_eq!(engine.audio_event_len(), 0);
+    assert!(engine.render_items.is_empty());
+
+    engine.render_commands.push(test_render_command());
+    engine.render_items.push(test_render_item());
+    engine.audio_events.push(test_audio_event());
+
+    engine.reset_game();
+
+    assert_eq!(engine.render_command_len(), 0);
+    assert_eq!(engine.audio_event_len(), 0);
+    assert!(engine.render_items.is_empty());
+}
+
+#[test]
+fn data_scene_rejects_builtin_shooter_snapshot_capture() {
+    let mut engine = Engine::new();
+
+    engine.use_data_scene();
+
+    assert!(!engine.capture_shooter_snapshot());
+    assert_eq!(engine.shooter_snapshot_header_float_len(), 0);
+    assert_eq!(engine.shooter_snapshot_header_u32_len(), 0);
+    assert_eq!(engine.shooter_snapshot_entity_float_len(), 0);
+    assert_eq!(engine.shooter_snapshot_entity_u32_len(), 0);
 }
 
 #[test]
@@ -87,6 +217,9 @@ fn engine_can_switch_to_platformer_scene() {
     assert_eq!(engine.sprite_count(), 7);
     assert_eq!(count_layer(&engine, CollisionLayer::Wall), 6);
     assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 1);
+    assert!(engine.world.player_entity().is_some());
+    assert_eq!(engine.built_in_shooter_player_entity_id(), u32::MAX);
+    assert_eq!(engine.built_in_shooter_player_entity_generation(), 0);
 
     engine.set_input(false, false, false, false, false, true, false, 0.0, 0.0);
     engine.update(0.016);

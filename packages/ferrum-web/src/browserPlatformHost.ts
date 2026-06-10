@@ -1,7 +1,7 @@
 import { AssetLoader } from "./assetLoader.js";
 import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets, TextureAssetManager } from "./assetLoader.js";
 import { AudioManager } from "./audioManager.js";
-import type { AudioManagerConfig } from "./audioManager.js";
+import type { AudioManagerConfig, PlayBgmOptions, StopBgmOptions } from "./audioManager.js";
 import type { AssetHost } from "./engineTypes.js";
 import type { PostProcessStackInput } from "./cameraPostProcessing.js";
 import type { AudioEventBufferView, AudioEventView } from "./wasmBridge.js";
@@ -50,6 +50,16 @@ export class BrowserPlatformHost implements AssetHost {
   playAudioEventBuffer(events: AudioEventBufferView): void {
     this.assertAlive();
     this.audioManager.playEventBuffer(events);
+  }
+
+  playBgm(soundId: number, options: PlayBgmOptions = {}): void {
+    this.assertAlive();
+    this.audioManager.playBgm(soundId, options);
+  }
+
+  stopBgm(options: StopBgmOptions = {}): void {
+    this.assertAlive();
+    this.audioManager.stopBgm(options);
   }
 
   configureAudio(config: AudioManagerConfig): void {

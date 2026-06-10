@@ -19,7 +19,7 @@ use crate::tilemap::TilemapNavigationPathPoint;
 use super::physics_bridge::{
     PhysicsBodyColliderSnapshot, PhysicsEntitySnapshot, PhysicsJointSnapshot,
 };
-use super::scenes::ActiveScene;
+use super::scenes::{ActiveScene, SceneMode};
 use super::{Engine, TILEMAP_NAVIGATION_DEBUG_COLOR, TILEMAP_NAVIGATION_PATH_POINT_FLOATS};
 
 #[wasm_bindgen]
@@ -176,10 +176,19 @@ impl Engine {
         self.particles.clear();
         self.tweens.clear();
         self.clear_physics_history();
+        if self.scene_mode == SceneMode::Data {
+            self.clear_scene_output_buffers();
+        }
     }
 }
 
 impl Engine {
+    pub(super) fn clear_scene_output_buffers(&mut self) {
+        self.render_commands.clear();
+        self.render_items.clear();
+        self.audio_events.clear();
+    }
+
     fn clear_physics_frame(&mut self) {
         self.physics_counters.clear();
         self.collision_events.clear();
@@ -245,7 +254,8 @@ impl Engine {
     }
 
     fn queue_behavior_state_enter_actions(&mut self, event_start: usize) {
-        if self.active_scene != ActiveScene::Shooter
+        if self.scene_mode != SceneMode::BuiltIn
+            || self.scenes.active() != ActiveScene::Shooter
             || event_start >= self.gameplay_events.len()
             || !self
                 .world
@@ -294,7 +304,8 @@ impl Engine {
                     BehaviorStateEnterActionPhase::NextFramePrePhysics => {
                         let command =
                             ActionTriggerCommand::behavior_state_enter(source, action.action_id);
-                        if let Err(data) = self.scene.queue_action_trigger_result(command) {
+                        if let Err(data) = self.scenes.shooter.queue_action_trigger_result(command)
+                        {
                             self.gameplay_events
                                 .push(action_failure_gameplay_event(data));
                         }

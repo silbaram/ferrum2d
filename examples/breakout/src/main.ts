@@ -199,6 +199,7 @@ async function bootstrap(): Promise<void> {
       : "development";
     const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
     const physicsDebugLines = searchParams.get("physicsDebugLines") === "true";
+    const profilerSmokeEnabled = searchParams.get("profilerSmoke") === "true";
     let runtimeEngine: FerrumEngine | undefined;
     const runtime = await createFerrumRuntime({
       canvas: shell.canvas,
@@ -206,6 +207,7 @@ async function bootstrap(): Promise<void> {
       debug: debugParam === null ? undefined : { enabled: debugParam !== "false" },
       physicsDebugLines,
       environment,
+      profiler: profilerSmokeEnabled,
       webgl2: { clearColor: [0.05, 0.06, 0.08, 1], preserveDrawingBuffer },
       inputTransform: (snapshot) => shell.inputSnapshot(snapshot),
       gameStateLabel,

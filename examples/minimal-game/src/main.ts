@@ -9,13 +9,16 @@ import {
   preloadAssetManifest,
   type DiagnosticContext,
   type DiagnosticReport,
+  type AnimationTimelineSpec,
   type AssetLoadProgress,
+  type CutsceneSequenceSpec,
   type DialogueGraphSpec,
   type FerrumEngine,
   type FerrumRuntime,
   type FerrumRuntimeEnvironment,
   type InputSnapshot,
   type LightingScene2D,
+  type LocalizationDocumentSpec,
   type PostProcessStackInput,
   type UiOverlayState,
   VirtualControls,
@@ -26,6 +29,19 @@ import "./styles.css";
 const PRELOAD_SMOKE_TEXTURE_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 const PRELOAD_SMOKE_JSON_URL = "data:application/json,%7B%22ok%22%3Atrue%7D";
+
+type ContentRuntimeSmokeFrame = {
+  sequenceId: string;
+  locale?: string;
+  completed: boolean;
+  eventKinds: string[];
+  dialogId?: string;
+  title?: string;
+  body?: string;
+  dialogueEventObserved: boolean;
+  renderCommandCount: number;
+  gameState: number;
+};
 
 const MINIMAL_DIALOGUE_GRAPH: DialogueGraphSpec = {
   initialNode: "welcome",
@@ -39,6 +55,42 @@ const MINIMAL_DIALOGUE_GRAPH: DialogueGraphSpec = {
       speaker: "Ferrum Guide",
       text: "Dialogue choice handled. The runtime stays connected without custom example UI glue.",
       end: true,
+    },
+  },
+};
+
+const MINIMAL_CONTENT_LOCALIZATION: LocalizationDocumentSpec = {
+  defaultLocale: "en",
+  fallbackLocale: "en",
+  locales: {
+    en: {
+      strings: {
+        "minimal.cutscene.ready": "Ferrum2D localized cutscene online for {example}.",
+      },
+    },
+  },
+};
+
+const MINIMAL_CONTENT_CUTSCENE: CutsceneSequenceSpec = {
+  id: "minimal-content-runtime",
+  commands: [
+    {
+      kind: "dialogue",
+      id: "localized-ready",
+      speaker: "Ferrum Guide",
+      text: "minimal.cutscene.ready",
+      durationSeconds: 30,
+    },
+  ],
+};
+
+const MINIMAL_CONTENT_ANIMATION_TIMELINE: AnimationTimelineSpec = {
+  initialState: "runtime",
+  states: {
+    runtime: {
+      frames: ["runtime.0", "runtime.1", "runtime.2"],
+      fps: 8,
+      events: [{ frame: 1, id: "runtime-tick", payload: { source: "content-runtime" } }],
     },
   },
 };
@@ -221,8 +273,10 @@ function runtimeUiState(
   frame: { gameState: number; score: number; entityCount: number },
   renderCommandCount: number,
   fps: number,
+  options: { titleDialog?: boolean } = {},
 ): UiOverlayState {
   const state = gameStateLabel(frame.gameState);
+  const showTitleDialog = options.titleDialog ?? true;
   return {
     panels: [{
       id: "starter-hud",
@@ -236,7 +290,7 @@ function runtimeUiState(
         { id: "fps", label: "FPS", value: fps.toFixed(1), tone: "accent" },
       ],
     }],
-    dialog: frame.gameState === 0
+    dialog: showTitleDialog && frame.gameState === 0
       ? {
         id: "title",
         title: "Ready",
@@ -267,6 +321,7 @@ async function bootstrap(): Promise<void> {
     const profilerSmoke = searchParams.get("profilerSmoke") === "true";
     const preloadSmoke = searchParams.get("preloadSmoke") === "true";
     const virtualControlsSmoke = searchParams.get("virtualControlsSmoke") === "true";
+    const contentRuntimeSmoke = searchParams.get("contentRuntimeSmoke") === "true";
     const preloadSmokeReport = preloadSmoke
       ? await runPreloadSmoke(shell.canvasFrame, cleanups)
       : undefined;
@@ -278,6 +333,8 @@ async function bootstrap(): Promise<void> {
     }
     let particleVfxEmitter: ParticleVfxEmitter | undefined;
     let particleVfxEngine: FerrumEngine | undefined;
+    let contentRuntimeDialogueEventObserved = false;
+    let contentRuntimeAnimationEventObserved = false;
     const runtime = await createFerrumRuntime({
       canvas: shell.canvas,
       debugParent: shell.debugRoot,
@@ -298,15 +355,121 @@ async function bootstrap(): Promise<void> {
       lighting: lightingSmoke ? minimalLightingScene() : undefined,
       postProcess: cameraPostProcessSmoke ? cameraPostProcessSmokePass : undefined,
       spriteMaterial: materialSmoke ? "outline" : undefined,
+      localization: contentRuntimeSmoke
+        ? {
+          document: MINIMAL_CONTENT_LOCALIZATION,
+          locale: "en",
+        }
+        : undefined,
       uiParent: shell.canvasFrame,
-      dialogue: {
-        graph: MINIMAL_DIALOGUE_GRAPH,
-        ui: { dialogId: "minimal-dialogue", title: "Runtime Dialogue" },
-        onChoice: (_result, session) => {
-          (window as Window & { ferrumMinimalDialogueSnapshot?: ReturnType<typeof session.snapshot> })
-            .ferrumMinimalDialogueSnapshot = session.snapshot();
+      hud: contentRuntimeSmoke
+        ? {
+          panelId: "minimal-content-hud",
+          title: "Runtime HUD",
+          region: "top-right",
+          components: ({ frame, rendererStats }) => [
+            {
+              type: "counter",
+              id: "state",
+              label: "State",
+              value: gameStateLabel(frame.gameState),
+            },
+            {
+              type: "counter",
+              id: "commands",
+              label: "Commands",
+              value: rendererStats.renderCommandCount,
+            },
+            {
+              type: "message",
+              id: "content-runtime",
+              text: "Content runtime HUD connected through createFerrumRuntime.",
+            },
+          ],
+        }
+        : undefined,
+      accessibility: contentRuntimeSmoke
+        ? {
+          spec: {
+            subtitles: true,
+            contrastPalette: "high-contrast",
+          },
+          title: "Runtime Subtitles",
+          subtitle: {
+            id: "minimal-content-subtitles",
+            speaker: "Ferrum Guide",
+            text: "Accessibility subtitles connected through createFerrumRuntime.",
+            region: "bottom-left",
+          },
+        }
+        : undefined,
+      animationTimeline: contentRuntimeSmoke
+        ? {
+          timeline: MINIMAL_CONTENT_ANIMATION_TIMELINE,
+          maxEvents: 4,
+          onUpdate: (result, frame) => {
+            contentRuntimeAnimationEventObserved ||= result.events
+              .some((event) => event.id === "runtime-tick");
+            (window as Window & {
+              ferrumContentRuntimeAnimationFrame?: {
+                state: string;
+                frame: string | number;
+                eventIds: string[];
+                eventObserved: boolean;
+                renderCommandCount: number;
+                gameState: number;
+              };
+            }).ferrumContentRuntimeAnimationFrame = {
+              state: result.snapshot.state,
+              frame: result.snapshot.frame,
+              eventIds: result.events.map((event) => event.id),
+              eventObserved: contentRuntimeAnimationEventObserved,
+              renderCommandCount: frame.rendererStats.renderCommandCount,
+              gameState: frame.frame.gameState,
+            };
+          },
+        }
+        : undefined,
+      dialogue: contentRuntimeSmoke
+        ? false
+        : {
+          graph: MINIMAL_DIALOGUE_GRAPH,
+          ui: { dialogId: "minimal-dialogue", title: "Runtime Dialogue" },
+          onChoice: (_result, session) => {
+            (window as Window & { ferrumMinimalDialogueSnapshot?: ReturnType<typeof session.snapshot> })
+              .ferrumMinimalDialogueSnapshot = session.snapshot();
+          },
         },
-      },
+      cutscene: contentRuntimeSmoke
+        ? {
+          sequence: MINIMAL_CONTENT_CUTSCENE,
+          dialogue: {
+            dialogId: "minimal-content-cutscene",
+            title: "Runtime Cutscene",
+            textMode: "localizationKey",
+            values: { example: "Minimal Game" },
+          },
+          audio: false,
+          onUpdate: (result, frame, cutscene) => {
+            contentRuntimeDialogueEventObserved ||= result.events
+              .some((event) => event.command.kind === "dialogue");
+            const dialog = cutscene.uiState()?.dialog;
+            (window as Window & { ferrumContentRuntimeSmokeFrame?: ContentRuntimeSmokeFrame })
+              .ferrumContentRuntimeSmokeFrame = {
+                sequenceId: result.snapshot.sequenceId,
+                locale: "en",
+                completed: result.completed,
+                eventKinds: result.events.map((event) => event.command.kind),
+                dialogId: dialog?.id,
+                title: dialog?.title,
+                body: dialog?.body,
+                dialogueEventObserved: contentRuntimeDialogueEventObserved,
+                renderCommandCount: frame.rendererStats.renderCommandCount,
+                gameState: frame.frame.gameState,
+              };
+          },
+        }
+        : undefined,
       ui: {
         onAction: (event) => {
           if (event.id === "start") {
@@ -314,7 +477,8 @@ async function bootstrap(): Promise<void> {
           }
         },
       },
-      uiState: ({ frame, rendererStats, fps }) => runtimeUiState(frame, rendererStats.renderCommandCount, fps),
+      uiState: ({ frame, rendererStats, fps }) =>
+        runtimeUiState(frame, rendererStats.renderCommandCount, fps, { titleDialog: !contentRuntimeSmoke }),
       inputTransform: (snapshot) => {
         const transformed = virtualControls?.applyToSnapshot(shell.inputSnapshot(snapshot))
           ?? shell.inputSnapshot(snapshot);

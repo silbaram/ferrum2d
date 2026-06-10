@@ -2,10 +2,10 @@ use crate::components::CollisionLayer;
 use crate::entity::Entity;
 use crate::gameplay_event::GAMEPLAY_EVENT_INTERACTION;
 
-pub(crate) const MAX_COLLISION_REACTIONS_PER_ENTITY: usize = 8;
-pub(crate) const MAX_BEHAVIOR_STATE_TRANSITIONS_PER_ENTITY: usize = 16;
-pub(crate) const MAX_BEHAVIOR_STATE_ENTER_ACTIONS_PER_ENTITY: usize = 16;
-pub(crate) const MAX_ACTION_BINDINGS_PER_ENTITY: usize = 8;
+pub(crate) const MAX_COLLISION_REACTIONS_PER_ENTITY: usize = 16;
+pub(crate) const MAX_BEHAVIOR_STATE_TRANSITIONS_PER_ENTITY: usize = 32;
+pub(crate) const MAX_BEHAVIOR_STATE_ENTER_ACTIONS_PER_ENTITY: usize = 32;
+pub(crate) const MAX_ACTION_BINDINGS_PER_ENTITY: usize = 16;
 pub(crate) const GAMEPLAY_PICKUP_ITEM_SCORE: u32 = 1;
 #[cfg(test)]
 pub(crate) const GAMEPLAY_FACTION_NEUTRAL: u32 = 0;
@@ -14,6 +14,11 @@ pub(crate) const GAMEPLAY_FACTION_PLAYER: u32 = 1;
 #[cfg(test)]
 pub(crate) const GAMEPLAY_FACTION_ENEMY: u32 = 2;
 pub(crate) const GAMEPLAY_FACTION_MAX_ID: u32 = 31;
+pub(crate) const GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS: usize =
+    GAMEPLAY_FACTION_MAX_ID as usize + 1;
+pub(crate) const GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S: usize =
+    2 + GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS * 2;
+const GAMEPLAY_FACTION_RELATION_TABLE_FULL_MASK: u32 = u32::MAX;
 pub(crate) const GAMEPLAY_TAG_MAX_ID: u32 = 31;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +65,192 @@ pub(crate) const fn gameplay_faction_mask(faction_id: u32) -> u32 {
         return 0;
     }
     1_u32 << faction_id
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FactionRelation {
+    Neutral,
+    Friendly,
+    Hostile,
+}
+
+impl FactionRelation {
+    pub(crate) const fn from_code(code: u32) -> Option<Self> {
+        match code {
+            0 => Some(Self::Neutral),
+            1 => Some(Self::Friendly),
+            2 => Some(Self::Hostile),
+            _ => None,
+        }
+    }
+
+    pub(crate) const fn code(self) -> u32 {
+        match self {
+            Self::Neutral => 0,
+            Self::Friendly => 1,
+            Self::Hostile => 2,
+        }
+    }
+
+    const fn damage_allowed(self) -> bool {
+        matches!(self, Self::Hostile)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FactionRelationTable {
+    enabled: bool,
+    default_relation: FactionRelation,
+    friendly_masks: [u32; GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS],
+    hostile_masks: [u32; GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS],
+}
+
+impl Default for FactionRelationTable {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            default_relation: FactionRelation::Neutral,
+            friendly_masks: [0; GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS],
+            hostile_masks: [0; GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS],
+        }
+    }
+}
+
+impl FactionRelationTable {
+    pub(crate) fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    pub(crate) const fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn default_relation(&self) -> FactionRelation {
+        self.default_relation
+    }
+
+    pub(crate) fn set_default_relation(&mut self, relation: FactionRelation) {
+        self.enabled = true;
+        self.default_relation = relation;
+        let (friendly_mask, hostile_mask) = relation_fill_masks(relation);
+        self.friendly_masks = [friendly_mask; GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS];
+        self.hostile_masks = [hostile_mask; GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS];
+    }
+
+    pub(crate) fn set_relation(
+        &mut self,
+        source_faction_id: u32,
+        target_faction_id: u32,
+        relation: FactionRelation,
+    ) -> bool {
+        if source_faction_id > GAMEPLAY_FACTION_MAX_ID
+            || target_faction_id > GAMEPLAY_FACTION_MAX_ID
+        {
+            return false;
+        }
+        if !self.enabled {
+            self.set_default_relation(FactionRelation::Neutral);
+        }
+        let source_index = source_faction_id as usize;
+        let target_mask = gameplay_faction_mask(target_faction_id);
+        self.friendly_masks[source_index] &= !target_mask;
+        self.hostile_masks[source_index] &= !target_mask;
+        match relation {
+            FactionRelation::Neutral => {}
+            FactionRelation::Friendly => self.friendly_masks[source_index] |= target_mask,
+            FactionRelation::Hostile => self.hostile_masks[source_index] |= target_mask,
+        }
+        true
+    }
+
+    pub(crate) fn relation(
+        &self,
+        source_faction_id: u32,
+        target_faction_id: u32,
+    ) -> Option<FactionRelation> {
+        if source_faction_id > GAMEPLAY_FACTION_MAX_ID
+            || target_faction_id > GAMEPLAY_FACTION_MAX_ID
+        {
+            return None;
+        }
+        let source_index = source_faction_id as usize;
+        let target_mask = gameplay_faction_mask(target_faction_id);
+        if self.hostile_masks[source_index] & target_mask != 0 {
+            return Some(FactionRelation::Hostile);
+        }
+        if self.friendly_masks[source_index] & target_mask != 0 {
+            return Some(FactionRelation::Friendly);
+        }
+        Some(FactionRelation::Neutral)
+    }
+
+    pub(crate) fn can_damage(&self, source_faction_id: u32, target_faction_id: u32) -> bool {
+        self.enabled
+            && self
+                .relation(source_faction_id, target_faction_id)
+                .is_some_and(FactionRelation::damage_allowed)
+    }
+
+    pub(crate) fn write_snapshot(&self, output: &mut [u32]) -> bool {
+        if output.len() != GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S {
+            return false;
+        }
+        output[0] = if self.enabled { 1 } else { 0 };
+        output[1] = self.default_relation.code();
+        let friendly_start = 2;
+        let hostile_start = friendly_start + GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS;
+        output[friendly_start..hostile_start].copy_from_slice(&self.friendly_masks);
+        output[hostile_start..hostile_start + GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS]
+            .copy_from_slice(&self.hostile_masks);
+        true
+    }
+
+    pub(crate) fn from_snapshot(input: &[u32]) -> Option<Self> {
+        if input.len() != GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S {
+            return None;
+        }
+        let enabled = match input[0] {
+            0 => false,
+            1 => true,
+            _ => return None,
+        };
+        let default_relation = FactionRelation::from_code(input[1])?;
+        let friendly_start = 2;
+        let hostile_start = friendly_start + GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS;
+        let mut friendly_masks = [0; GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS];
+        let mut hostile_masks = [0; GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS];
+        friendly_masks.copy_from_slice(&input[friendly_start..hostile_start]);
+        hostile_masks.copy_from_slice(
+            &input[hostile_start..hostile_start + GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS],
+        );
+        for (friendly, hostile) in friendly_masks.iter().zip(hostile_masks.iter()) {
+            if friendly & hostile != 0 {
+                return None;
+            }
+        }
+        if !enabled
+            && (default_relation != FactionRelation::Neutral
+                || friendly_masks.iter().any(|mask| *mask != 0)
+                || hostile_masks.iter().any(|mask| *mask != 0))
+        {
+            return None;
+        }
+        Some(Self {
+            enabled,
+            default_relation,
+            friendly_masks,
+            hostile_masks,
+        })
+    }
+}
+
+const fn relation_fill_masks(relation: FactionRelation) -> (u32, u32) {
+    match relation {
+        FactionRelation::Neutral => (0, 0),
+        FactionRelation::Friendly => (GAMEPLAY_FACTION_RELATION_TABLE_FULL_MASK, 0),
+        FactionRelation::Hostile => (0, GAMEPLAY_FACTION_RELATION_TABLE_FULL_MASK),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,9 +302,26 @@ pub(crate) enum MovementPattern {
     TopdownInput {
         speed: f32,
     },
+    PlatformerInput {
+        horizontal_speed: f32,
+        gravity: f32,
+        jump_speed: f32,
+        max_fall_speed: f32,
+        ground_probe_distance: f32,
+        step_offset: f32,
+        coyote_time_seconds: f32,
+        jump_buffer_seconds: f32,
+    },
     Linear {
         vx: f32,
         vy: f32,
+    },
+    Oscillate {
+        origin_x: f32,
+        origin_y: f32,
+        amplitude_x: f32,
+        amplitude_y: f32,
+        phase_speed: f32,
     },
     MoveToPoint {
         x: f32,
@@ -1053,63 +1261,90 @@ mod tests {
     use super::*;
 
     #[test]
+    fn gameplay_faction_and_tag_ids_are_u32_mask_bounded() {
+        assert_eq!(GAMEPLAY_FACTION_MAX_ID, u32::BITS - 1);
+        assert_eq!(GAMEPLAY_TAG_MAX_ID, u32::BITS - 1);
+
+        let max_faction_mask = 1_u32 << GAMEPLAY_FACTION_MAX_ID;
+        let max_tag_mask = 1_u32 << GAMEPLAY_TAG_MAX_ID;
+        let max_faction = GameplayFaction::new(GAMEPLAY_FACTION_MAX_ID, max_faction_mask)
+            .expect("max faction id fits u32 mask storage");
+        let max_tag = GameplayTags::new(max_tag_mask).expect("max tag id fits u32 mask storage");
+
+        assert!(max_faction.can_damage(GameplayFaction::new(GAMEPLAY_FACTION_MAX_ID, 0).unwrap()));
+        assert_eq!(
+            gameplay_faction_mask(GAMEPLAY_FACTION_MAX_ID),
+            max_faction_mask
+        );
+        assert_eq!(gameplay_faction_mask(GAMEPLAY_FACTION_MAX_ID + 1), 0);
+        assert!(GameplayFaction::new(GAMEPLAY_FACTION_MAX_ID + 1, 0).is_none());
+
+        assert!(max_tag.contains(GAMEPLAY_TAG_MAX_ID));
+        assert!(!max_tag.contains(GAMEPLAY_TAG_MAX_ID + 1));
+        assert_eq!(gameplay_tag_mask(GAMEPLAY_TAG_MAX_ID), max_tag_mask);
+        assert_eq!(gameplay_tag_mask(GAMEPLAY_TAG_MAX_ID + 1), 0);
+        assert!(GameplayTags::new(0).is_none());
+
+        let mut relations = FactionRelationTable::default();
+        assert!(relations.set_relation(
+            GAMEPLAY_FACTION_MAX_ID,
+            GAMEPLAY_FACTION_MAX_ID,
+            FactionRelation::Hostile,
+        ));
+        assert_eq!(
+            relations.relation(GAMEPLAY_FACTION_MAX_ID, GAMEPLAY_FACTION_MAX_ID),
+            Some(FactionRelation::Hostile)
+        );
+        assert!(!relations.set_relation(
+            GAMEPLAY_FACTION_MAX_ID + 1,
+            GAMEPLAY_FACTION_MAX_ID,
+            FactionRelation::Hostile,
+        ));
+        assert!(!relations.set_relation(
+            GAMEPLAY_FACTION_MAX_ID,
+            GAMEPLAY_FACTION_MAX_ID + 1,
+            FactionRelation::Hostile,
+        ));
+        assert_eq!(
+            relations.relation(GAMEPLAY_FACTION_MAX_ID + 1, GAMEPLAY_FACTION_MAX_ID),
+            None
+        );
+    }
+
+    #[test]
     fn collision_reaction_set_is_bounded_and_ordered() {
         let mut set = CollisionReactionSet::default();
-        let reactions = [
-            CollisionReaction::Damage {
-                target: CollisionTarget::OtherEntity,
-            },
-            CollisionReaction::Pickup {
-                target: CollisionTarget::OtherEntity,
-            },
-            CollisionReaction::PlaySound {
-                sound_id: 7,
+        let reactions = (0..MAX_COLLISION_REACTIONS_PER_ENTITY)
+            .map(|index| CollisionReaction::PlaySound {
+                sound_id: index as u32 + 1,
                 volume: 0.8,
                 pitch: 1.1,
                 cooldown: Cooldown::ready(0.0),
                 replace_default: false,
                 trigger: CollisionReactionTrigger::Contact,
-            },
-            CollisionReaction::SpawnParticle {
-                preset_id: 3,
-                target: CollisionTarget::OtherEntity,
-                cooldown: Cooldown::ready(0.0),
-                replace_default: false,
-                trigger: CollisionReactionTrigger::Contact,
-            },
-            CollisionReaction::Knockback {
-                target: CollisionTarget::OtherEntity,
-                impulse: 32.0,
-            },
-            CollisionReaction::AreaDamage {
-                radius: 48.0,
-                target_layer: CollisionLayer::Enemy,
-            },
-            CollisionReaction::Despawn {
-                target: CollisionTarget::OtherEntity,
-            },
-            CollisionReaction::CameraShake {
-                cooldown: Cooldown::ready(0.0),
-                trigger: CollisionReactionTrigger::Contact,
-            },
-        ];
+            })
+            .collect::<Vec<_>>();
 
-        for reaction in reactions {
+        for reaction in reactions.iter().copied() {
             assert!(set.push(reaction));
         }
-        assert!(set.push(CollisionReaction::Damage {
-            target: CollisionTarget::OtherEntity,
+        assert!(set.push(CollisionReaction::PlaySound {
+            sound_id: 1,
+            volume: 0.8,
+            pitch: 1.1,
+            cooldown: Cooldown::ready(0.0),
+            replace_default: false,
+            trigger: CollisionReactionTrigger::Contact,
         }));
 
         assert_eq!(set.len(), MAX_COLLISION_REACTIONS_PER_ENTITY);
         assert_eq!(set.iter().collect::<Vec<_>>(), reactions);
-        assert!(!set.push(CollisionReaction::EmitEffect {
-            effect_id: 1,
-            effect_type: 1,
-            target: CollisionTarget::OtherEntity,
-            intensity: 1.0,
-            radius: 0.0,
+        assert!(!set.push(CollisionReaction::PlaySound {
+            sound_id: MAX_COLLISION_REACTIONS_PER_ENTITY as u32 + 1,
+            volume: 0.8,
+            pitch: 1.1,
             cooldown: Cooldown::ready(0.0),
+            replace_default: false,
             trigger: CollisionReactionTrigger::Contact,
         }));
     }
@@ -1154,39 +1389,48 @@ mod tests {
     #[test]
     fn action_binding_set_is_bounded_ordered_and_replaces_by_action_id() {
         let mut set = ActionBindingSet::default();
-        let bindings = [
-            ActionBinding::projectile(1, 0.1, 320.0, 1.0, 1.2),
-            ActionBinding::projectile(2, 0.2, 360.0, 2.0, 1.4),
-            ActionBinding::projectile(3, 0.3, 400.0, 3.0, 1.6),
-            ActionBinding::spawn_prefab(
-                4,
-                0.4,
-                11,
-                SpawnAnchor::SelfEntity,
-                SpawnPhase::PrePhysics,
-                8.0,
-                -4.0,
-            ),
-            ActionBinding::projectile(5, 0.5, 480.0, 5.0, 2.0),
-            ActionBinding::projectile(6, 0.6, 520.0, 6.0, 2.2),
-            ActionBinding::projectile(7, 0.7, 560.0, 7.0, 2.4),
-            ActionBinding::projectile(8, 0.8, 600.0, 8.0, 2.6),
-        ];
+        let bindings = (1..=MAX_ACTION_BINDINGS_PER_ENTITY as u32)
+            .map(|action_id| {
+                if action_id == 4 {
+                    ActionBinding::spawn_prefab(
+                        action_id,
+                        0.4,
+                        11,
+                        SpawnAnchor::SelfEntity,
+                        SpawnPhase::PrePhysics,
+                        8.0,
+                        -4.0,
+                    )
+                } else {
+                    let value = action_id as f32;
+                    ActionBinding::projectile(
+                        action_id,
+                        value * 0.1,
+                        280.0 + value * 40.0,
+                        value,
+                        1.0 + value * 0.2,
+                    )
+                }
+            })
+            .collect::<Vec<_>>();
 
-        for binding in bindings {
+        for binding in bindings.iter().copied() {
             assert!(set.upsert(binding));
         }
         let replacement = ActionBinding::projectile(2, 0.25, 380.0, 2.5, 1.5);
         assert!(set.upsert(replacement));
-        assert!(!set.upsert(ActionBinding::projectile(9, 0.9, 640.0, 9.0, 2.8)));
+        assert!(!set.upsert(ActionBinding::projectile(
+            MAX_ACTION_BINDINGS_PER_ENTITY as u32 + 1,
+            0.9,
+            640.0,
+            9.0,
+            2.8,
+        )));
 
         assert_eq!(set.len(), MAX_ACTION_BINDINGS_PER_ENTITY);
         let mut expected = bindings;
         expected[1] = replacement;
-        assert_eq!(
-            set.iter().collect::<Vec<_>>(),
-            expected.into_iter().collect::<Vec<_>>()
-        );
+        assert_eq!(set.iter().collect::<Vec<_>>(), expected);
     }
 
     #[test]

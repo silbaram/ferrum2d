@@ -103,6 +103,22 @@ export class WebGpuTextureStore {
     this.createTextureFromRgbaData(textureId, 1, 1, new Uint8Array([255, 255, 255, 255]));
   }
 
+  evictTexture(textureId: number): boolean {
+    this.assertAlive();
+    validateTextureId(textureId);
+    if (textureId === 0) {
+      return false;
+    }
+    const resource = this.texturesById.get(textureId);
+    if (resource === undefined) {
+      return false;
+    }
+    resource.texture.destroy();
+    this.textures.delete(resource.texture);
+    this.texturesById.delete(textureId);
+    return true;
+  }
+
   resource(textureId: number): WebGpuTextureResource {
     this.assertAlive();
     const resource = this.texturesById.get(textureId);

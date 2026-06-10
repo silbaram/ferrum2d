@@ -8,8 +8,8 @@ use crate::components::gameplay::{
     ActionAimSource, ActionBinding, ActionBindingSet, ActionPattern, BehaviorStateEnterAction,
     BehaviorStateEnterActionPhase, BehaviorStateMachine, BehaviorStateTransition,
     CollisionReaction, CollisionReactionSet, CollisionReactionTrigger, CollisionTarget, Cooldown,
-    GameplayFaction, GameplayTags, GameplayTimerTrigger, Interaction, MeleeTarget, MovementPattern,
-    MovementTarget, Pickup, ProjectileActionConfig, ProjectileCollisionTarget,
+    FactionRelation, GameplayFaction, GameplayTags, GameplayTimerTrigger, Interaction, MeleeTarget,
+    MovementPattern, MovementTarget, Pickup, ProjectileActionConfig, ProjectileCollisionTarget,
     ProjectileTileImpact, SpawnAnchor, SpawnPhase, SpawnPrefabProjectilePayload,
     GAMEPLAY_FACTION_MAX_ID, GAMEPLAY_PICKUP_ITEM_SCORE, GAMEPLAY_TAG_MAX_ID,
 };
@@ -334,6 +334,36 @@ impl Engine {
         true
     }
 
+    pub fn clear_gameplay_faction_relations(&mut self) {
+        self.world.gameplay_faction_relations.clear();
+    }
+
+    pub fn set_gameplay_faction_default_relation(&mut self, relation_code: u32) -> bool {
+        let Some(relation) = FactionRelation::from_code(relation_code) else {
+            return false;
+        };
+        self.world
+            .gameplay_faction_relations
+            .set_default_relation(relation);
+        true
+    }
+
+    pub fn set_gameplay_faction_relation(
+        &mut self,
+        source_faction_id: u32,
+        target_faction_id: u32,
+        relation_code: u32,
+    ) -> bool {
+        let Some(relation) = FactionRelation::from_code(relation_code) else {
+            return false;
+        };
+        self.world.gameplay_faction_relations.set_relation(
+            source_faction_id,
+            target_faction_id,
+            relation,
+        )
+    }
+
     pub fn set_gameplay_tags(
         &mut self,
         entity_id: u32,
@@ -568,7 +598,7 @@ impl Engine {
         };
         if action_id == 0
             || prefab_id == 0
-            || !self.scene.supports_spawn_prefab_id(prefab_id)
+            || !self.scenes.shooter.supports_spawn_prefab_id(prefab_id)
             || !Self::valid_non_negative(cooldown_seconds)
             || !offset_x.is_finite()
             || !offset_y.is_finite()
@@ -630,7 +660,7 @@ impl Engine {
         let Some(tile_impact) = ProjectileTileImpact::from_code(tile_impact_code) else {
             return false;
         };
-        if !self.scene.supports_projectile_prefab_id(prefab_id)
+        if !self.scenes.shooter.supports_projectile_prefab_id(prefab_id)
             || action_id == 0
             || prefab_id == 0
             || !Self::valid_non_negative(cooldown_seconds)
@@ -674,7 +704,8 @@ impl Engine {
 
     pub fn register_gameplay_enemy_prefab(&mut self, prefab_id: u32) -> bool {
         if !self
-            .scene
+            .scenes
+            .shooter
             .register_spawn_prefab_kind(prefab_id, ShooterPrefabKind::Enemy)
         {
             return false;
@@ -684,7 +715,8 @@ impl Engine {
 
     pub fn register_gameplay_bullet_prefab(&mut self, prefab_id: u32) -> bool {
         if !self
-            .scene
+            .scenes
+            .shooter
             .register_spawn_prefab_kind(prefab_id, ShooterPrefabKind::Bullet)
         {
             return false;
@@ -1341,7 +1373,7 @@ impl Engine {
     ) -> bool {
         if action_id == 0
             || prefab_id == 0
-            || !self.scene.supports_spawn_prefab_id(prefab_id)
+            || !self.scenes.shooter.supports_spawn_prefab_id(prefab_id)
             || !Self::valid_non_negative(cooldown_seconds)
             || !offset_x.is_finite()
             || !offset_y.is_finite()

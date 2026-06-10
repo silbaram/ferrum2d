@@ -11,7 +11,12 @@ const REPLAY_FIXTURE_FORMAT = "ferrum2d.consumer.gameplay-replay.fixture";
 const REPLAY_FIXTURE_VERSION = 1;
 const REPLAY_SCENARIO = "minimal-template-surface";
 const REPLAY_COVERAGE_TAGS_PATH = "public/gameplay-replay.coverage-tags.json";
-const REPLAY_COVERAGE_TAGS = Object.freeze(["starter-runtime-template", "template-weapon-authoring"]);
+const SCENE_AUTHORING_PATH = "public/scene-authoring.json";
+const REPLAY_COVERAGE_TAGS = Object.freeze([
+  "starter-runtime-template",
+  "template-weapon-authoring",
+  "template-scene-composition-authoring",
+]);
 
 try {
   if (command === "validate") {
@@ -75,6 +80,7 @@ async function printReport() {
     files: {
       main: result.hasMainSource,
       gameSpec: result.gameSpec?.file ?? null,
+      sceneAuthoring: result.sceneAuthoring?.file ?? null,
       publicAssets: result.publicAssets,
     },
     authoringSurface: result.authoringSurface,
@@ -82,6 +88,7 @@ async function printReport() {
       hasFerrumDependency: result.hasFerrumDependency,
       internalImports: result.internalImports,
       gameSpec: result.gameSpec ?? { ok: null, message: "not present" },
+      sceneAuthoring: result.sceneAuthoring ?? { ok: null, message: "not present" },
     },
     recommendedCommands: [
       "npm run ferrum:validate",
@@ -103,9 +110,10 @@ async function printAuthoringReport() {
     ok: diagnostics.length === 0,
     gameplayAuthoring: {
       packageName: result.packageJson.name,
-      status: authoringStatus(result),
+      status: diagnostics.length === 0 ? authoringStatus(result) : "invalid",
       authoringSurface: result.authoringSurface,
       gameSpec: result.gameSpec ?? { ok: null, message: "public/game.json not present" },
+      sceneAuthoring: result.sceneAuthoring ?? { ok: null, message: `${SCENE_AUTHORING_PATH} not present` },
       publicAssets: result.publicAssets,
       diagnostics,
       reports: diagnostics.map(reportFromDiagnostic),
@@ -223,6 +231,7 @@ async function inspectProject() {
   const mainPath = path.join(root, "src/main.ts");
   const hasMainSource = await exists(mainPath);
   const mainSource = hasMainSource ? await readFile(mainPath, "utf8") : "";
+  const sceneAuthoring = await inspectSceneAuthoring();
   const internalImports = [...mainSource.matchAll(/from\s+["'](@ferrum2d\/ferrum-web\/(?:dist|pkg|src)\/[^"']*)["']/g)]
     .map((match) => match[1]);
   return {
@@ -230,13 +239,14 @@ async function inspectProject() {
     hasFerrumDependency: packageJson.dependencies?.["@ferrum2d/ferrum-web"] !== undefined,
     hasMainSource,
     internalImports,
-    authoringSurface: inspectTemplateAuthoringSurface(mainSource),
+    authoringSurface: inspectTemplateAuthoringSurface(mainSource, sceneAuthoring),
     gameSpec: await inspectGameSpec(),
+    sceneAuthoring,
     publicAssets: await listPublicAssets(),
   };
 }
 
-function inspectTemplateAuthoringSurface(mainSource) {
+function inspectTemplateAuthoringSurface(mainSource, sceneAuthoring) {
   return {
     weaponProfiles: ["standard", "piercing", "bounce"].filter((profile) => (
       mainSource.includes(`"${profile}"`)
@@ -246,6 +256,10 @@ function inspectTemplateAuthoringSurface(mainSource) {
       compileWeaponProfiles: mainSource.includes("compileWeaponProfiles"),
       ProjectileDefinition: mainSource.includes("ProjectileDefinition"),
       WeaponDefinition: mainSource.includes("WeaponDefinition"),
+      applySceneBehaviorRecipes: sceneAuthoring?.publicApis?.applySceneBehaviorRecipes === true,
+      dryRunSceneBehaviorRecipes: sceneAuthoring?.publicApis?.dryRunSceneBehaviorRecipes === true,
+      resolveSceneCompositionSpec: sceneAuthoring?.publicApis?.resolveSceneCompositionSpec === true,
+      resolveBehaviorRecipeDocument: sceneAuthoring?.publicApis?.resolveBehaviorRecipeDocument === true,
     },
     runtimeHooks: {
       applyGameplayBehaviorCommands: mainSource.includes("applyGameplayBehaviorCommands"),
@@ -253,7 +267,145 @@ function inspectTemplateAuthoringSurface(mainSource) {
       setInputActionBinding: mainSource.includes("setInputActionBinding"),
       profileQueryParam: mainSource.includes('searchParams.get("profile")'),
     },
+    sceneComposition: sceneAuthoring === undefined
+      ? { configured: false }
+      : {
+        configured: true,
+        ok: sceneAuthoring.ok,
+        file: sceneAuthoring.file,
+        instanceCount: sceneAuthoring.summary?.instanceCount ?? 0,
+        behaviorCommandCount: sceneAuthoring.summary?.behaviorCommandCount ?? 0,
+        appliedCommandCount: sceneAuthoring.summary?.appliedCommandCount ?? 0,
+        runtimeEntities: sceneAuthoring.summary?.runtimeEntities ?? [],
+        runtimeEntityHandles: sceneAuthoring.summary?.runtimeEntityHandles ?? [],
+      },
   };
+}
+
+async function inspectSceneAuthoring() {
+  const file = path.join(root, SCENE_AUTHORING_PATH);
+  if (!await exists(file)) return undefined;
+  try {
+    const source = await readFile(file, "utf8");
+    const json = JSON.parse(source);
+    const {
+      applySceneBehaviorRecipes,
+      dryRunSceneBehaviorRecipes,
+      resolveBehaviorRecipeDocument,
+      resolveSceneAuthoringDocument,
+      resolveSceneCompositionSpec,
+    } = await import("@ferrum2d/ferrum-web");
+    const resolved = resolveSceneAuthoringDocument(json, {
+      path: "sceneAuthoring",
+      validateBindings: true,
+      missingBehavior: "error",
+    });
+    const composition = resolved.sceneComposition;
+    const recipes = resolved.behaviorRecipes;
+    const engine = createSceneAuthoringMockEngine();
+    const applied = applySceneBehaviorRecipes(engine, {
+      spawnSceneInstance: (instance) => {
+        if (instance.props.runtimeEntity !== "builtinShooterPlayer") {
+          throw sceneAuthoringError(
+            `sceneAuthoring.sceneComposition.instances.${instance.id}.props.runtimeEntity`,
+            "minimal template scene authoring supports builtinShooterPlayer runtime entity only",
+          );
+        }
+        return { entityId: 1, entityGeneration: 0 };
+      },
+    }, composition, recipes, {
+      path: "sceneAuthoring",
+      ids: resolved.ids,
+      missingBehavior: "error",
+    });
+    return {
+      ok: true,
+      file: SCENE_AUTHORING_PATH,
+      format: resolved.format,
+      version: resolved.version,
+      publicApis: {
+        applySceneBehaviorRecipes: typeof applySceneBehaviorRecipes === "function",
+        dryRunSceneBehaviorRecipes: typeof dryRunSceneBehaviorRecipes === "function",
+        resolveSceneCompositionSpec: typeof resolveSceneCompositionSpec === "function",
+        resolveBehaviorRecipeDocument: typeof resolveBehaviorRecipeDocument === "function",
+      },
+      summary: {
+        fragment: applied.plan.fragment,
+        instanceCount: applied.plan.instances.length,
+        behaviorCommandCount: applied.plan.commands.length,
+        appliedCommandCount: applied.behaviorApplyResult.results.length,
+        appliedCalls: engine.calls,
+        runtimeEntities: applied.plan.instances
+          .map((instance) => instance.props.runtimeEntity)
+          .filter((value) => typeof value === "string"),
+        runtimeEntityHandles: sceneRuntimeEntityHandles(applied),
+        behaviorProfiles: Object.keys(recipes.entities),
+      },
+    };
+  } catch (error) {
+    const { diagnosticReport } = await import("@ferrum2d/ferrum-web").catch(() => ({ diagnosticReport: undefined }));
+    const report = typeof diagnosticReport === "function" ? diagnosticReport(error) : undefined;
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      file: SCENE_AUTHORING_PATH,
+      path: sceneAuthoringErrorPath(error) ?? report?.context?.path ?? SCENE_AUTHORING_PATH,
+      message,
+      detail: report?.context?.detail ?? message,
+    };
+  }
+}
+
+function sceneRuntimeEntityHandles(applied) {
+  return applied.plan.instances.map((instance) => {
+    const handle = applied.entityHandles[instance.id];
+    return {
+      instanceId: instance.id,
+      runtimeEntity: typeof instance.props.runtimeEntity === "string" ? instance.props.runtimeEntity : null,
+      entityId: handle.entityId,
+      entityGeneration: handle.entityGeneration,
+    };
+  });
+}
+
+function createSceneAuthoringMockEngine() {
+  const calls = [];
+  return {
+    calls,
+    set_gameplay_action_projectile(
+      entityId,
+      entityGeneration,
+      actionId,
+      cooldownSeconds,
+      speed,
+      damage,
+      lifetimeSeconds,
+    ) {
+      calls.push([
+        "set_gameplay_action_projectile",
+        entityId,
+        entityGeneration,
+        actionId,
+        cooldownSeconds,
+        speed,
+        damage,
+        lifetimeSeconds,
+      ]);
+      return true;
+    },
+  };
+}
+
+function sceneAuthoringError(path, detail) {
+  const error = new Error(`Invalid Ferrum2D scene authoring data: path=${JSON.stringify(path)} detail=${JSON.stringify(detail)}.`);
+  error.sceneAuthoringPath = path;
+  return error;
+}
+
+function sceneAuthoringErrorPath(error) {
+  return error instanceof Error && typeof error.sceneAuthoringPath === "string"
+    ? error.sceneAuthoringPath
+    : undefined;
 }
 
 function validationDiagnostics(result, { requireGameSpec }) {
@@ -273,13 +425,16 @@ function validationDiagnostics(result, { requireGameSpec }) {
   if (result.gameSpec?.ok === false) {
     diagnostics.push(diagnostic(result.gameSpec.path, result.gameSpec.message));
   }
+  if (result.sceneAuthoring?.ok === false) {
+    diagnostics.push(diagnostic(result.sceneAuthoring.path, result.sceneAuthoring.detail ?? result.sceneAuthoring.message));
+  }
   return diagnostics;
 }
 
 function authoringStatus(result) {
-  if (result.gameSpec === undefined) return "not-configured";
-  if (result.gameSpec.ok === false) return "invalid";
-  return "validated";
+  if (result.gameSpec?.ok === false || result.sceneAuthoring?.ok === false) return "invalid";
+  if (result.gameSpec?.ok === true || result.sceneAuthoring?.ok === true) return "validated";
+  return "not-configured";
 }
 
 function diagnostic(path, detail) {
@@ -543,6 +698,7 @@ async function listPublicAssets() {
   return output
     .map((file) => path.relative(publicRoot, file).split(path.sep).join("/"))
     .filter((file) => file !== "game.json")
+    .filter((file) => !file.startsWith("assets/"))
     .sort();
 }
 

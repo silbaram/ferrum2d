@@ -5,7 +5,8 @@
   "description": "Generated platformer template surface replay contract. This fixture validates public replay helper hashing and template surface drift; it is not a browser frame runner.",
   "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json",
   "coverageTags": [
-    "platformer-template"
+    "platformer-template",
+    "platformer-scene-composition-authoring"
   ],
   "replay": {
     "format": "ferrum2d.gameplay-replay.run",
@@ -36,6 +37,37 @@
                 "scene": "builtin-platformer",
                 "hasFerrumDependency": true,
                 "hasMainSource": true,
+                "authoringSurface": {
+                  "publicApis": {
+                    "applySceneBehaviorRecipes": true,
+                    "dryRunSceneBehaviorRecipes": true,
+                    "resolveSceneCompositionSpec": true,
+                    "resolveBehaviorRecipeDocument": true
+                  },
+                  "runtimeHooks": {
+                    "usePlatformerGame": true,
+                    "builtInPlatformerPlayerHandle": false
+                  },
+                  "sceneComposition": {
+                    "configured": true,
+                    "ok": true,
+                    "file": "public/scene-authoring.json",
+                    "instanceCount": 1,
+                    "behaviorCommandCount": 1,
+                    "appliedCommandCount": 1,
+                    "runtimeEntities": [
+                      "builtinPlatformerPlayer"
+                    ],
+                    "runtimeEntityHandles": [
+                      {
+                        "instanceId": "player",
+                        "runtimeEntity": "builtinPlatformerPlayer",
+                        "entityId": 1,
+                        "entityGeneration": 0
+                      }
+                    ]
+                  }
+                },
                 "scripts": [
                   "ferrum:validate",
                   "ferrum:authoring-report",
@@ -45,9 +77,9 @@
               }
             }
           },
-          "snapshotHash": "55e2a5ca"
+          "snapshotHash": "4ce1dfc9"
         },
-        "replayHash": "55e2a5ca"
+        "replayHash": "4ce1dfc9"
       },
       {
         "frame": 1,
@@ -74,6 +106,37 @@
                 "scene": "builtin-platformer",
                 "hasFerrumDependency": true,
                 "hasMainSource": true,
+                "authoringSurface": {
+                  "publicApis": {
+                    "applySceneBehaviorRecipes": true,
+                    "dryRunSceneBehaviorRecipes": true,
+                    "resolveSceneCompositionSpec": true,
+                    "resolveBehaviorRecipeDocument": true
+                  },
+                  "runtimeHooks": {
+                    "usePlatformerGame": true,
+                    "builtInPlatformerPlayerHandle": false
+                  },
+                  "sceneComposition": {
+                    "configured": true,
+                    "ok": true,
+                    "file": "public/scene-authoring.json",
+                    "instanceCount": 1,
+                    "behaviorCommandCount": 1,
+                    "appliedCommandCount": 1,
+                    "runtimeEntities": [
+                      "builtinPlatformerPlayer"
+                    ],
+                    "runtimeEntityHandles": [
+                      {
+                        "instanceId": "player",
+                        "runtimeEntity": "builtinPlatformerPlayer",
+                        "entityId": 1,
+                        "entityGeneration": 0
+                      }
+                    ]
+                  }
+                },
                 "scripts": [
                   "ferrum:validate",
                   "ferrum:authoring-report",
@@ -83,11 +146,11 @@
               }
             }
           },
-          "snapshotHash": "cd795338"
+          "snapshotHash": "4a7deafb"
         },
-        "replayHash": "cd795338"
+        "replayHash": "4a7deafb"
       }
     ],
-    "replayHash": "fcf94dbe"
+    "replayHash": "f25494ba"
   }
 }

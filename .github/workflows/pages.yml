@@ -70,3 +70,40 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify deployed Pages routes
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PAGE_URL" ]; then
+            echo "Missing GitHub Pages deployment URL" >&2
+            exit 1
+          fi
+          base="${PAGE_URL%/}"
+          routes=(
+            "/"
+            "/docs/"
+            "/docs/engine/public-api.html"
+            "/starter-runtime/"
+            "/topdown-shooter/"
+            "/breakout/"
+            "/platformer/"
+          )
+          for route in "${routes[@]}"; do
+            url="${base}${route}"
+            echo "Checking ${url}"
+            route_ok=false
+            for attempt in 1 2 3 4 5; do
+              if curl --fail --silent --show-error --location --max-time 20 "$url" > /dev/null; then
+                route_ok=true
+                break
+              fi
+              echo "Route check failed for ${url}; retrying (${attempt}/5)"
+              sleep 5
+            done
+            if [ "$route_ok" != "true" ]; then
+              echo "Route check failed after retries: ${url}" >&2
+              exit 1
+            fi
+          done

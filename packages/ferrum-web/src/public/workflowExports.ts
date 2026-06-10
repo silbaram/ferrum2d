@@ -9,6 +9,11 @@ export {
   resolveSceneCompositionSpec,
 } from "../sceneComposition";
 export {
+  SCENE_AUTHORING_DOCUMENT_FORMAT,
+  SCENE_AUTHORING_DOCUMENT_VERSION,
+  resolveSceneAuthoringDocument,
+} from "../sceneAuthoringDocument";
+export {
   applyBehaviorRecipes,
   behaviorRecipeCommandsForEntity,
   resolveBehaviorRecipeDocument,
@@ -29,7 +34,9 @@ export {
 } from "../behaviorStateMachine";
 export {
   GAMEPLAY_BEHAVIOR_BINDING_PROP,
+  applyFactionRelationTable,
   applyGameplayBehaviorCommands,
+  applySceneBehaviorRecipes,
   bindSceneBehaviorRecipes,
   createGameplayBehaviorRuntimeTarget,
   dryRunSceneBehaviorRecipes,
@@ -73,6 +80,8 @@ export {
 } from "../projectileAuthoring";
 export {
   captureGameStateSnapshot,
+  DATA_SCENE_STATE_FORMAT,
+  DATA_SCENE_STATE_VERSION,
   GAME_STATE_SNAPSHOT_FORMAT,
   GAME_STATE_SNAPSHOT_VERSION,
   hashGameStateSnapshot,
@@ -82,6 +91,7 @@ export {
   restoreGameStateSnapshot,
   saveGameStateSnapshotToStorage,
   stringifyGameStateSnapshot,
+  validateDataSceneStateSnapshot,
   validateGameStateSnapshot,
 } from "../gameStateSnapshot";
 export {
@@ -131,6 +141,11 @@ export type {
   SceneCompositionTarget,
   SceneCompositionTransformSpec,
 } from "../sceneComposition";
+export type {
+  ResolvedSceneAuthoringDocument,
+  ResolveSceneAuthoringDocumentOptions,
+  SceneAuthoringDocumentSpec,
+} from "../sceneAuthoringDocument";
 export type {
   ApplyBehaviorRecipesOptions,
   BehaviorRecipeApplyResult,
@@ -264,21 +279,31 @@ export type {
   ResolvedBehaviorStateMachineTransitionPredicate,
 } from "../behaviorStateMachine";
 export type {
-  BoundBehaviorRecipeCommand,
+  ApplyFactionRelationTableOptions,
+  ApplyFactionRelationTableResult,
   ApplyGameplayBehaviorCommandsOptions,
+  ApplySceneBehaviorRecipesOptions,
+  BoundBehaviorRecipeCommand,
+  FactionRelation,
+  FactionRelationEntrySpec,
+  FactionRelationRuntimeEngine,
+  FactionRelationTableSpec,
   GameplayBehaviorBindingSpec,
   GameplayBehaviorRuntimeIds,
   GameplayEntityHandle,
   GameplayEntityHandleMap,
+  GameplayFactionReference,
   GameplayPrefabRegistration,
   GameplayPrefabRegistrationKind,
   MissingSceneBehaviorBinding,
   RegisterGameplayPrefabsOptions,
   RegisterGameplayPrefabsResult,
   ResolveGameplayBehaviorRuntimeIdsOptions,
+  SceneBehaviorApplyResult,
   SceneBehaviorBindingDryRunResult,
   SceneBehaviorBindingOptions,
   SceneBehaviorBindingPlan,
+  SceneBehaviorRuntimeTarget,
 } from "../gameplayAuthoring";
 export type {
   GameplayActionDiagnosticCode,
@@ -360,6 +385,7 @@ export type {
 } from "../presentationEffects";
 export type {
   CaptureGameStateSnapshotOptions,
+  DataSceneStateSnapshot,
   GameStateSceneSnapshot,
   GameStateSnapshot,
   GameStateSnapshotJsonValue,

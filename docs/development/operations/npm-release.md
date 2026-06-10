@@ -18,6 +18,7 @@
 
 - `package.json`
 - `README.md`
+- `LICENSE`
 - `dist/**`
 - `pkg/ferrum_core.js`
 - `pkg/ferrum_core.d.ts`
@@ -56,17 +57,20 @@ npm publish --access public --tag beta
 
 ## 배포 전 필수 검증
 
-저장소 루트에서 실행한다.
+publish 승인 전에는 `packages/ferrum-web/package.json`의 `private: true`를 유지한 상태로 저장소 루트에서 다음을 실행한다.
 
 ```bash
 pnpm lint
 pnpm test
 pnpm validate:game-spec
 pnpm smoke:headless
-pnpm package:check:ferrum-web
+pnpm package:check
 pnpm package:consumer-smoke
 pnpm build:web
+pnpm release:check
 ```
+
+`pnpm smoke:check`는 위 항목 중 다수의 자동 smoke와 `pnpm package:check`를 한 번에 실행하지만, 임시 consumer project에 로컬 tarball을 설치하는 `pnpm package:consumer-smoke`는 별도로 실행한다.
 
 브라우저가 설치된 로컬 환경에서는 WebGL2 black-frame 회귀 방지를 위해 다음도 실행한다.
 
@@ -89,12 +93,14 @@ cargo clippy --manifest-path crates/ferrum-core/Cargo.toml -- -D warnings
 pnpm release:check
 ```
 
-`ferrum-web-v*` tag push가 발생하면 CI가 같은 검증을 실행하고 package consumer smoke를 별도 job으로 gate한다. PR이나 일반 push에서는 무겁기 때문에 기본 실행하지 않으며, 수동 `workflow_dispatch`에서 `consumer_smoke` input을 켜면 같은 job을 opt-in으로 실행한다. tag 기반 검증에서는 다음 조건을 추가로 요구한다.
+`ferrum-web-v*` tag push가 발생하면 CI가 release metadata check를 실행하고 package consumer smoke를 별도 job으로 gate한다. PR이나 일반 push에서는 무겁기 때문에 기본 실행하지 않으며, 수동 `workflow_dispatch`에서 `consumer_smoke` input을 켜면 같은 job을 opt-in으로 실행한다. tag 기반 검증에서는 다음 조건을 추가로 요구한다.
 
 - `packages/ferrum-web/package.json` version이 `x.y.z-beta.N` 형식이다.
 - Git tag가 정확히 `ferrum-web-vx.y.z-beta.N` 형식이며 package version과 일치한다.
 - `CHANGELOG.md`에 `## x.y.z-beta.N - YYYY-MM-DD` release section이 있다.
 - publish 후보 metadata로 `private: false`가 설정되어 있다.
+
+tag CI의 validate job은 일반 `pnpm package:check` 대신 publish 후보용 `pnpm package:publish-check:ferrum-web`을 사용한다. `pnpm package:check`는 accidental publish 방지를 위해 `private: true`를 요구하고, `pnpm package:publish-check:ferrum-web`은 publish 직전 상태인 `private: false`를 요구하기 때문이다.
 
 실제 publish 직전에는 release metadata check와 package publish guard를 함께 실행한다.
 
@@ -134,7 +140,7 @@ pnpm package:consumer-smoke
 
 이 명령은 `@ferrum2d/ferrum-web`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 로컬 tarball로 pack하고, 임시 consumer project에서 tool package 설치, `create-game` template matrix 생성, agents dry-run, runtime tarball install, public import smoke, production build를 한 번에 확인한다. 기본값은 `packages/create-game/templates/*` 전체이며, 좁은 확인이 필요하면 `pnpm package:consumer-smoke -- --templates minimal`처럼 실행한다.
 
-CI에서 consumer smoke를 실행하면 성공/실패 모두 `artifacts/consumer-smoke`에 report, tarball, node_modules/dist를 제외한 tool/generated project snapshot을 남기고 `actions/upload-artifact`로 업로드한다. CI는 smoke 결과에 맞춰 `pnpm validate:consumer-smoke-report`도 실행해 `consumer-smoke-report.json` format/version/status, 템플릿별 checks/reports, tarball 존재, snapshot 정리 상태를 검증한다. `pnpm smoke:consumer-smoke-report`는 초기 실패/중간 실패/오염 snapshot synthetic artifact로 failed report validator를 별도 검증한다. 로컬에서도 같은 보존 정책을 쓰려면 다음을 실행한다.
+CI에서 consumer smoke를 실행하면 성공/실패 모두 `artifacts/consumer-smoke`에 report, tarball, node_modules/dist를 제외한 tool/generated project snapshot을 남기고 `actions/upload-artifact`로 업로드한다. CI는 smoke 결과에 맞춰 `pnpm validate:consumer-smoke-report`도 실행해 `consumer-smoke-report.json` format/version/status, tarball-installed `createGameCatalog`, `requestedTemplates`와 generated template matrix, 템플릿별 checks/reports, tarball 존재, snapshot 정리 상태를 검증한다. `pnpm smoke:consumer-smoke-report`는 초기 실패/중간 실패/오염 snapshot과 passed report의 catalog 누락/불일치 synthetic artifact로 report validator를 별도 검증한다. 로컬에서도 같은 보존 정책을 쓰려면 다음을 실행한다.
 
 ```bash
 pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke
@@ -145,8 +151,8 @@ pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke
 1. `CHANGELOG.md`의 `Unreleased` 내용을 베타 버전 섹션으로 정리한다.
 2. `packages/ferrum-web/package.json` version을 `0.1.0-beta.N`으로 올린다.
 3. `MIT OR Apache-2.0` license metadata와 package `LICENSE` 포함 상태를 확인한다.
-4. publish 승인 후에만 `private: false`로 바꾼다.
-5. 배포 전 필수 검증을 모두 통과시킨다.
+4. `private: true` 상태에서 배포 전 필수 검증을 모두 통과시킨다.
+5. publish 후보 승인 후에만 `private: false`로 바꾼다.
 6. release metadata와 publishable package guard를 함께 실행한다.
 
 ```bash

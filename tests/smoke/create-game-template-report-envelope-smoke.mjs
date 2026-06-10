@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const templatesRoot = path.join(repoRoot, "packages/create-game/templates");
+const sharedTemplateRoot = path.join(templatesRoot, "_shared");
 const templateManifestPath = path.join(templatesRoot, "manifest.json");
 const ferrumWebRoot = path.join(repoRoot, "packages/ferrum-web");
 const configuredCommandTimeoutMs = Number(process.env.FERRUM_TEMPLATE_REPORT_TIMEOUT_MS ?? 60000);
@@ -25,18 +26,33 @@ try {
   for (const template of templates) {
     const templateName = template.id;
     const projectRoot = path.join(tempRoot, templateName);
+    await cp(sharedTemplateRoot, projectRoot, { recursive: true });
     await cp(path.join(templatesRoot, templateName), projectRoot, { recursive: true });
     await normalizePackageJson(projectRoot, templateName);
-    if (await needsFerrumWebRuntime(projectRoot)) {
+    if (await needsFerrumWebRuntime(projectRoot) || await exists(path.join(projectRoot, "scripts/ferrum-assets.mjs"))) {
       await linkFerrumWeb(projectRoot);
     }
+
+    const assetReport = await runJsonReport(
+      projectRoot,
+      ["scripts/ferrum-assets.mjs", "report"],
+      "ferrum2d.consumer.asset-pipeline.report",
+    );
+    assertConsumerAssetReport(assetReport, template);
+
+    const assetValidateReport = await runJsonReport(
+      projectRoot,
+      ["scripts/ferrum-assets.mjs", "validate"],
+      "ferrum2d.consumer.asset-pipeline.report",
+    );
+    assertConsumerAssetValidateReport(assetValidateReport, template);
 
     const authoringReport = await runJsonReport(
       projectRoot,
       ["scripts/ferrum-harness.mjs", "authoring-report"],
       "ferrum2d.consumer.gameplay-authoring.report",
     );
-    assertConsumerAuthoringReport(authoringReport, templateName);
+    assertConsumerAuthoringReport(authoringReport, template);
 
     const replayReport = await runJsonReport(
       projectRoot,
@@ -44,6 +60,23 @@ try {
       "ferrum2d.consumer.gameplay-replay.report",
     );
     assertConsumerReplayReport(replayReport, template);
+
+    if (!template.gameplayReplay.configured) {
+      const replayUpdateReport = await runJsonReportAllowFailure(
+        projectRoot,
+        ["scripts/ferrum-harness.mjs", "update-replay-fixture"],
+        "ferrum2d.consumer.gameplay-replay.report",
+      );
+      assertConsumerReplayUpdateNotConfiguredReport(replayUpdateReport, templateName);
+      assert(
+        !await exists(path.join(projectRoot, "public/gameplay-replay.fixture.json")),
+        `${templateName} gameplay replay update must not create fixture while not configured`,
+      );
+      assert(
+        !await exists(path.join(projectRoot, "public/gameplay-replay.coverage-tags.json")),
+        `${templateName} gameplay replay update must not create coverage tags while not configured`,
+      );
+    }
 
     const runtimeReplayReport = await runJsonReport(
       projectRoot,
@@ -88,6 +121,8 @@ try {
     summaries.push({
       template: templateName,
       replayCatalogConfigured: template.gameplayReplay.configured,
+      assetStatus: assetReport.assetPipeline.textureAtlas.status,
+      assetValidated: assetValidateReport.assetPipeline.validation.validated,
       authoringStatus: authoringReport.gameplayAuthoring.status,
       replayStatus: replayReport.gameplayReplay.status,
       replayConfigured: replayReport.gameplayReplay.configured,
@@ -111,16 +146,46 @@ async function readTemplateCatalog() {
   assert.equal(manifest.version, 1, "template manifest version is invalid");
   assert(Array.isArray(manifest.templates), "template manifest templates must be an array");
   assert(manifest.templates.length > 0, "template manifest must include at least one template");
+  assert(await exists(path.join(sharedTemplateRoot, "scripts/ferrum-assets.mjs")), "_shared must include scripts/ferrum-assets.mjs");
+  assert(
+    await exists(path.join(sharedTemplateRoot, "public/assets/texture-atlas.input.json")),
+    "_shared must include public/assets/texture-atlas.input.json",
+  );
+  assert(
+    await exists(path.join(sharedTemplateRoot, "public/assets/audio.manifest.json")),
+    "_shared must include public/assets/audio.manifest.json",
+  );
+  assert(
+    await exists(path.join(sharedTemplateRoot, "public/assets/localization.manifest.json")),
+    "_shared must include public/assets/localization.manifest.json",
+  );
   for (const entry of manifest.templates) {
     const templateName = entry.id;
     assert.equal(typeof templateName, "string", "template id must be a string");
     assert(templateName.length > 0, "template id must not be empty");
+    assertTemplateSceneAuthoringCatalog(entry, templateName);
     assertTemplateReplayCatalog(entry, templateName);
     assertTemplateRuntimeReplayCatalog(entry, templateName);
     assert(await exists(path.join(templatesRoot, templateName, "scripts/ferrum-harness.mjs")), `${templateName} must include scripts/ferrum-harness.mjs`);
     assert(await exists(path.join(templatesRoot, templateName, "scripts/ferrum-runtime-replay.mjs")), `${templateName} must include scripts/ferrum-runtime-replay.mjs`);
   }
   return manifest.templates;
+}
+
+async function assertTemplateSceneAuthoringCatalog(template, templateName) {
+  assert.equal(typeof template.sceneAuthoring?.configured, "boolean", `${templateName} sceneAuthoring.configured must be a boolean`);
+  if (template.sceneAuthoring.configured) {
+    assert.equal(template.sceneAuthoring.fixturePath, "public/scene-authoring.json", `${templateName} scene authoring fixture path is invalid`);
+    assert.equal(
+      template.sceneAuthoring.format,
+      "ferrum2d.consumer.scene-authoring",
+      `${templateName} scene authoring format is invalid`,
+    );
+    assert(await exists(path.join(templatesRoot, templateName, template.sceneAuthoring.fixturePath)), `${templateName} must include ${template.sceneAuthoring.fixturePath}`);
+  } else {
+    assert.equal(typeof template.sceneAuthoring.reason, "string", `${templateName} scene authoring reason must be a string`);
+    assert(template.sceneAuthoring.reason.length > 0, `${templateName} scene authoring reason must not be empty`);
+  }
 }
 
 function assertTemplateRuntimeReplayCatalog(template, templateName) {
@@ -261,7 +326,58 @@ function findJsonObjectEnd(source, start) {
   return -1;
 }
 
-function assertConsumerAuthoringReport(report, templateName) {
+function assertConsumerAssetReport(report, template) {
+  const pipeline = assertConsumerAssetPipelineBase(report, template);
+  assert.equal(pipeline.validation?.validated, false, `${template.id} asset report must not mark validation as executed`);
+  assert.equal(pipeline.validation?.publicEntryPoint, undefined, `${template.id} asset report must not require public package imports`);
+}
+
+function assertConsumerAssetValidateReport(report, template) {
+  const pipeline = assertConsumerAssetPipelineBase(report, template);
+  assert.equal(pipeline.validation?.validated, true, `${template.id} asset validate report must mark validation as executed`);
+  assert.equal(
+    pipeline.validation?.publicEntryPoint,
+    "@ferrum2d/ferrum-web",
+    `${template.id} asset validate report public entrypoint is invalid`,
+  );
+}
+
+function assertConsumerAssetPipelineBase(report, template) {
+  const templateName = template.id;
+  assert.equal(report.format, "ferrum2d.consumer.asset-pipeline.report", `${templateName} asset report format is invalid`);
+  assert.equal(report.version, 1, `${templateName} asset report version is invalid`);
+  assert.equal(report.ok, true, `${templateName} asset report must be ok for generated templates`);
+  const pipeline = report.assetPipeline;
+  assert(pipeline !== null && typeof pipeline === "object" && !Array.isArray(pipeline), `${templateName} assetPipeline must be an object`);
+  assert.equal(pipeline.textureAtlas?.configured, true, `${templateName} texture atlas scaffold must be configured`);
+  assert.equal(pipeline.textureAtlas?.status, "scaffold", `${templateName} texture atlas scaffold status is invalid`);
+  assert.equal(pipeline.textureAtlas?.input, "public/assets/texture-atlas.input.json", `${templateName} texture atlas input path is invalid`);
+  assert.equal(pipeline.textureAtlas?.outputJson, "public/assets/atlas.json", `${templateName} texture atlas output path is invalid`);
+  assert.equal(pipeline.textureAtlas?.packed, false, `${templateName} asset report must not pack textures`);
+  assert.equal(pipeline.textureAtlas?.spriteCount, 0, `${templateName} texture atlas scaffold must start without sprites`);
+  assert.equal(pipeline.textureAtlas?.packedFrameCount, 0, `${templateName} texture atlas scaffold must start without packed frames`);
+  assert.equal(pipeline.audio?.configured, true, `${templateName} audio manifest scaffold must be configured`);
+  assert.equal(pipeline.audio?.status, "scaffold", `${templateName} audio manifest scaffold status is invalid`);
+  assert.equal(pipeline.audio?.input, "public/assets/audio.manifest.json", `${templateName} audio manifest path is invalid`);
+  assert.equal(pipeline.audio?.soundCount, 0, `${templateName} audio manifest scaffold must start without sounds`);
+  assert.deepEqual(pipeline.audio?.sounds, [], `${templateName} audio manifest scaffold sounds must be empty`);
+  assert.equal(pipeline.localization?.configured, true, `${templateName} localization manifest scaffold must be configured`);
+  assert.equal(pipeline.localization?.status, "scaffold", `${templateName} localization scaffold status is invalid`);
+  assert.equal(pipeline.localization?.input, "public/assets/localization.manifest.json", `${templateName} localization manifest path is invalid`);
+  assert.equal(pipeline.localization?.gameSpec, "public/game.json", `${templateName} localization gameSpec path is invalid`);
+  assert.equal(pipeline.localization?.source, "gameSpec.content.localization", `${templateName} localization source is invalid`);
+  assert.equal(pipeline.localization?.gameSpecContentPresent, false, `${templateName} localization scaffold must not include Game Spec content`);
+  assert.equal(pipeline.localization?.documentCount, 0, `${templateName} localization scaffold must start without documents`);
+  assert.deepEqual(pipeline.localization?.documents, [], `${templateName} localization scaffold documents must be empty`);
+  assert.equal(pipeline.gameSpec?.path, "public/game.json", `${templateName} Game Spec path is invalid`);
+  assert.equal(pipeline.gameSpec?.present, templateName === "topdown", `${templateName} Game Spec presence is invalid`);
+  assert.equal(pipeline.gameSpec?.localizationConfigured, false, `${templateName} Game Spec localization scaffold state is invalid`);
+  assert.deepEqual(pipeline.reports, [], `${templateName} asset scaffold reports must be empty`);
+  return pipeline;
+}
+
+function assertConsumerAuthoringReport(report, template) {
+  const templateName = template.id;
   assert.equal(report.format, "ferrum2d.consumer.gameplay-authoring.report", `${templateName} authoring report format is invalid`);
   assert.equal(report.version, 1, `${templateName} authoring report version is invalid`);
   assert.equal(report.ok, true, `${templateName} authoring report must be ok for a generated template`);
@@ -274,8 +390,37 @@ function assertConsumerAuthoringReport(report, templateName) {
     assert.equal(report.gameplayAuthoring.gameSpec?.ok, true, "topdown authoring report must include a valid Game Spec result");
     assert.equal(report.gameplayAuthoring.gameSpec?.file, "public/game.json", "topdown authoring report must identify public/game.json");
   } else {
-    assert.equal(report.gameplayAuthoring.status, "not-configured", `${templateName} authoring report must be not-configured`);
     assert.equal(report.gameplayAuthoring.gameSpec?.ok, null, `${templateName} authoring report must mark missing Game Spec as a structured skip`);
+  }
+  if (template.sceneAuthoring.configured) {
+    assert.equal(report.gameplayAuthoring.status, "validated", `${templateName} authoring report must validate scene authoring data`);
+    assert.equal(report.gameplayAuthoring.sceneAuthoring?.ok, true, `${templateName} authoring report scene authoring must be valid`);
+    assert.equal(report.gameplayAuthoring.sceneAuthoring?.file, template.sceneAuthoring.fixturePath, `${templateName} authoring report scene authoring file is invalid`);
+    assertSceneRuntimeEntityHandles(
+      report.gameplayAuthoring.sceneAuthoring?.summary?.runtimeEntityHandles,
+      `${templateName} authoring report sceneAuthoring.summary.runtimeEntityHandles`,
+    );
+    assertSceneRuntimeEntityHandles(
+      report.gameplayAuthoring.authoringSurface?.sceneComposition?.runtimeEntityHandles,
+      `${templateName} authoring report authoringSurface.sceneComposition.runtimeEntityHandles`,
+    );
+  } else if (templateName !== "topdown") {
+    assert.equal(report.gameplayAuthoring.status, "not-configured", `${templateName} authoring report must be not-configured`);
+  }
+}
+
+function assertSceneRuntimeEntityHandles(value, label) {
+  assert(Array.isArray(value), `${label} must be an array`);
+  assert(value.length > 0, `${label} must not be empty`);
+  const instanceIds = new Set();
+  for (const [index, entry] of value.entries()) {
+    assert(entry !== null && typeof entry === "object" && !Array.isArray(entry), `${label}[${index}] must be an object`);
+    assertNonEmptyString(entry.instanceId, `${label}[${index}].instanceId`);
+    assertNonEmptyString(entry.runtimeEntity, `${label}[${index}].runtimeEntity`);
+    assert(Number.isInteger(entry.entityId) && entry.entityId > 0, `${label}[${index}].entityId must be a positive integer`);
+    assert(Number.isInteger(entry.entityGeneration) && entry.entityGeneration >= 0, `${label}[${index}].entityGeneration must be a non-negative integer`);
+    assert(!instanceIds.has(entry.instanceId), `${label}[${index}].instanceId must be unique`);
+    instanceIds.add(entry.instanceId);
   }
 }
 
@@ -403,6 +548,23 @@ function assertConsumerRuntimeReplayUpdateNotConfiguredReport(report, templateNa
     report.runtimeGameplayReplay?.reports?.[0]?.code,
     "FERRUM_CONSUMER_RUNTIME_REPLAY_NOT_CONFIGURED",
     `${templateName} runtime replay update must include not-configured diagnostic code`,
+  );
+}
+
+function assertConsumerReplayUpdateNotConfiguredReport(report, templateName) {
+  assert.equal(report.format, "ferrum2d.consumer.gameplay-replay.report", `${templateName} replay update report format is invalid`);
+  assert.equal(report.version, 1, `${templateName} replay update report version is invalid`);
+  assert.equal(report.ok, false, `${templateName} replay update report must be ok=false while not configured`);
+  assert.equal(report.gameplayReplay?.packageName, templateName, `${templateName} replay update packageName is invalid`);
+  assert.equal(report.gameplayReplay?.configured, false, `${templateName} replay update must keep configured=false`);
+  assert.equal(report.gameplayReplay?.status, "not-configured", `${templateName} replay update status must be not-configured`);
+  assert.equal(report.gameplayReplay?.fixture, "public/gameplay-replay.fixture.json", `${templateName} replay update fixture path is invalid`);
+  assert.equal(report.gameplayReplay?.updateAttempted, true, `${templateName} replay update report must mark updateAttempted`);
+  assertMachineActionableReports(report.gameplayReplay?.reports, `${templateName} replay update reports`);
+  assert.equal(
+    report.gameplayReplay?.reports?.[0]?.code,
+    "FERRUM_CONSUMER_REPLAY_NOT_CONFIGURED",
+    `${templateName} replay update must include not-configured diagnostic code`,
   );
 }
 

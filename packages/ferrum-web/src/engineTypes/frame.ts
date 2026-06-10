@@ -1,4 +1,5 @@
 import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets } from "../assetLoader";
+import type { PlayBgmOptions, StopBgmOptions } from "../audioManager";
 import type { PostProcessStackInput } from "../cameraPostProcessing";
 import type { PhysicsDebugSpec, PhysicsMode } from "../physicsSpec.js";
 import type {
@@ -23,6 +24,8 @@ export interface AssetHost {
   hasSound?(soundId: number): boolean;
   playAudioEventBuffer?(events: AudioEventBufferView): void;
   playAudioEvents?(events: readonly AudioEventView[]): void;
+  playBgm?(soundId: number, options?: PlayBgmOptions): void;
+  stopBgm?(options?: StopBgmOptions): void;
   configureAudio?(config: AudioBusConfig): void;
   setPostProcess?(postProcess: PostProcessStackInput): void;
 }

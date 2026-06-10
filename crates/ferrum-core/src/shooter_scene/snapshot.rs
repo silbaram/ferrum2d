@@ -3,7 +3,8 @@ use crate::camera::Camera2D;
 use crate::components::gameplay::{
     ActionAimSource, ActionBinding, ActionPattern, Cooldown, GameplayFaction,
     ProjectileCollisionTarget, ProjectileTileImpact, SpawnAnchor, SpawnPhase,
-    SpawnPrefabProjectilePayload, GAMEPLAY_FACTION_MAX_ID, MAX_ACTION_BINDINGS_PER_ENTITY,
+    SpawnPrefabProjectilePayload, GAMEPLAY_FACTION_MAX_ID,
+    GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S, MAX_ACTION_BINDINGS_PER_ENTITY,
 };
 use crate::components::{CollisionLayer, Transform2D, Velocity};
 use crate::entity::Entity;
@@ -70,6 +71,8 @@ const SNAPSHOT_PREVIOUS_INPUT_A: usize = SNAPSHOT_PREVIOUS_INPUT_W + 1;
 const SNAPSHOT_PREVIOUS_INPUT_S: usize = SNAPSHOT_PREVIOUS_INPUT_W + 2;
 const SNAPSHOT_PREVIOUS_INPUT_D: usize = SNAPSHOT_PREVIOUS_INPUT_W + 3;
 const SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET: usize = SNAPSHOT_PREVIOUS_INPUT_D + 1;
+const SNAPSHOT_FACTION_RELATION_TABLE_U32_OFFSET: usize =
+    SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ShooterSceneSnapshot {
@@ -480,6 +483,11 @@ impl ShooterScene {
             &mut header_u32s[SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET
                 ..SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S],
         );
+        world.gameplay_faction_relations.write_snapshot(
+            &mut header_u32s[SNAPSHOT_FACTION_RELATION_TABLE_U32_OFFSET
+                ..SNAPSHOT_FACTION_RELATION_TABLE_U32_OFFSET
+                    + GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S],
+        );
 
         ShooterSceneSnapshot {
             header_floats: [
@@ -513,6 +521,15 @@ impl ShooterScene {
         ) {
             return false;
         }
+        let Some(faction_relations) =
+            crate::components::gameplay::FactionRelationTable::from_snapshot(
+                &snapshot.header_u32s[SNAPSHOT_FACTION_RELATION_TABLE_U32_OFFSET
+                    ..SNAPSHOT_FACTION_RELATION_TABLE_U32_OFFSET
+                        + GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S],
+            )
+        else {
+            return false;
+        };
         let Some(game_state) = game_state_from_code(snapshot.header_u32s[1]) else {
             return false;
         };
@@ -567,6 +584,7 @@ impl ShooterScene {
         audio_events.clear();
 
         *world = World::default();
+        world.gameplay_faction_relations = faction_relations;
         for entity in snapshot.entities.iter().copied() {
             self.restore_snapshot_entity(world, entity);
         }

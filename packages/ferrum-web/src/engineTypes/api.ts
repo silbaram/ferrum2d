@@ -20,7 +20,10 @@ import type {
 } from "../behaviorStateMachine.js";
 import type { ResolvedShooterGameSpec, ShooterGameSpec } from "../gameSpec";
 import type {
+  ApplyFactionRelationTableOptions,
+  ApplyFactionRelationTableResult,
   ApplyGameplayBehaviorCommandsOptions,
+  FactionRelationTableSpec,
   GameplayEntityHandle,
   GameplayEntityHandleMap,
   GameplayPrefabRegistration,
@@ -166,6 +169,7 @@ export interface FerrumSceneApi {
   builtInShooterPlayerHandle(): GameplayEntityHandle | undefined;
   captureShooterStateSnapshot(): BuiltInShooterStateSnapshot | undefined;
   restoreShooterStateSnapshot(snapshot: BuiltInShooterStateSnapshot): boolean;
+  useDataScene(): void;
   useBreakoutGame(): void;
   usePlatformerGame(): void;
   setViewportSize(width: number, height: number): void;
@@ -323,6 +327,10 @@ export interface FerrumGameplayAuthoringApi {
     entityHandles: GameplayEntityHandleMap,
     options?: ApplyGameplayBehaviorCommandsOptions,
   ): BehaviorRecipeApplyResult;
+  applyFactionRelationTable(
+    table: FactionRelationTableSpec,
+    options?: ApplyFactionRelationTableOptions,
+  ): ApplyFactionRelationTableResult;
   installBehaviorStateMachineRuntime(
     document: BehaviorStateMachineDocumentSpec | ResolvedBehaviorStateMachineDocument,
     machineId: string,

@@ -1,6 +1,6 @@
 ---
 name: ferrum-consumer-gameplay
-description: Use when implementing gameplay in a game that consumes @ferrum2d/ferrum-web: input-to-runtime integration, HUD updates, game-side state coordination, simple rules, scene flow, and public API orchestration.
+description: Use when implementing gameplay in a game that consumes @ferrum2d/ferrum-web: input-to-runtime integration, content runtime wiring, HUD updates, game-side state coordination, simple rules, scene flow, and public API orchestration.
 ---
 
 # Ferrum Consumer Gameplay

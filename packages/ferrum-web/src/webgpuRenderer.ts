@@ -198,6 +198,11 @@ export class WebGPURenderer implements Renderer {
     this.textureStore.updatePixelMaskTerrainTexture(textureId, patch, options);
   }
 
+  evictTexture(textureId: number): boolean {
+    this.assertAlive();
+    return this.textureStore.evictTexture(textureId);
+  }
+
   viewportSize(): { width: number; height: number } {
     return {
       width: this.logicalWidth,

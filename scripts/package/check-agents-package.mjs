@@ -128,6 +128,8 @@ assert(
 );
 assertConsumerProjectileWeaponAuthoringContract(packageReadmeSource, packageReadmeFile);
 assertConsumerRuntimeApplyContract(packageReadmeSource, packageReadmeFile);
+assertConsumerAssetPipelineContract(packageReadmeSource, packageReadmeFile);
+assertCreateGameTemplateCatalogDiscovery(packageReadmeSource, packageReadmeFile);
 assertForbiddenPublicImportBoundary(packageReadmeSource, packageReadmeFile);
 assertNoForbiddenImportExamples(packageReadmeSource, packageReadmeFile);
 await requireFile(path.join(packageRoot, "bin/ferrum2d-agents.mjs"), repoRoot);
@@ -177,6 +179,8 @@ async function checkTemplates() {
   );
   assertConsumerProjectileWeaponAuthoringContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertConsumerRuntimeApplyContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
+  assertConsumerAssetPipelineContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
+  assertCreateGameTemplateCatalogDiscovery(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertConsumerArchitectureContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertForbiddenPublicImportBoundary(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertNoForbiddenImportExamples(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
@@ -190,6 +194,9 @@ async function checkTemplates() {
     assertFrontmatterField(sharedSource, "name", skill, sharedFile);
     assertFrontmatterExists(sharedSource, "description", sharedFile);
     assert(sharedSource.includes("Do not use"), `${path.relative(repoRoot, sharedFile)} must define hard boundaries`);
+    if (skill === "ferrum-consumer-project") {
+      assertCreateGameTemplateCatalogDiscovery(sharedSource, sharedFile);
+    }
     if (skill === "ferrum-consumer-game-spec") {
       assertConsumerProjectileWeaponAuthoringContract(sharedSource, sharedFile);
       assert(
@@ -197,6 +204,11 @@ async function checkTemplates() {
           sharedSource.includes("npm run ferrum:replay-report"),
         `${path.relative(repoRoot, sharedFile)} must require authoring and replay report checks for data-driven gameplay`,
       );
+    }
+    if (skill === "ferrum-consumer-asset-pipeline") {
+      assertConsumerAssetPipelineContract(sharedSource, sharedFile);
+      assertForbiddenPublicImportBoundary(sharedSource, sharedFile);
+      assertNoForbiddenImportExamples(sharedSource, sharedFile);
     }
     if (skill === "ferrum-consumer-architecture") {
       assertConsumerArchitectureContract(sharedSource, sharedFile);
@@ -431,6 +443,31 @@ function assertConsumerRuntimeApplyContract(source, filePath) {
       source.includes("setInputActionBinding") &&
       source.includes("builtInShooterPlayerHandle"),
     `${path.relative(repoRoot, filePath)} must document public runtime apply helpers for compiled behavior commands`,
+  );
+}
+
+function assertConsumerAssetPipelineContract(source, filePath) {
+  assert(
+    source.includes("import -> validate -> Game Spec") &&
+      source.includes("packTextureAtlas") &&
+      source.includes("textureAtlasDocumentToShooterAtlas") &&
+      source.includes("importAsepriteAtlas") &&
+      source.includes("importTiledGameSpec") &&
+      source.includes("importLDtkGameSpec") &&
+      source.includes("AudioAssetLoader") &&
+      source.includes("LocalizationBundle") &&
+      source.includes("npm run ferrum:validate"),
+    `${path.relative(repoRoot, filePath)} must document consumer asset import, validation, and Game Spec update workflow`,
+  );
+}
+
+function assertCreateGameTemplateCatalogDiscovery(source, filePath) {
+  assert(
+    source.includes("npx @ferrum2d/create-game --list-templates --json") &&
+      source.includes("sceneAuthoring") &&
+      source.includes("gameplayReplay") &&
+      source.includes("runtimeGameplayReplay"),
+    `${path.relative(repoRoot, filePath)} must document machine-readable create-game template catalog discovery`,
   );
 }
 

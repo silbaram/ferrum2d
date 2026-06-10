@@ -1,6 +1,7 @@
 use crate::audio_event::AudioEvent;
 use crate::camera::{Camera2D, CameraPresetConfig};
 use crate::collision::{CircleQueryHit, CollisionPair, CollisionScratch};
+use crate::components::gameplay::GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S;
 use crate::components::{CollisionLayer, SpriteAnimation, SpriteFrame};
 use crate::entity::Entity;
 use crate::game_state::GameState;
@@ -33,16 +34,17 @@ pub(crate) const SHOOTER_PRIMARY_FIRE_ACTION_ID: u32 = 1;
 pub(crate) const SHOOTER_DASH_ACTION_ID: u32 = 2;
 pub(crate) const SHOOTER_MELEE_ACTION_ID: u32 = 3;
 const MAX_AUTHORED_COLLISION_CONTACTS: usize = 1024;
-pub const SHOOTER_SNAPSHOT_VERSION: u32 = 15;
+pub const SHOOTER_SNAPSHOT_VERSION: u32 = 17;
 pub const SHOOTER_SNAPSHOT_HEADER_FLOATS: usize = 8;
 pub(crate) const SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET: usize = 9;
 const SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S: usize = 4;
 pub const SHOOTER_SNAPSHOT_HEADER_U32S: usize = SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
     + INPUT_ACTION_REGISTRY_SNAPSHOT_U32S
     + SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S
-    + config::SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S;
-pub const SHOOTER_SNAPSHOT_ENTITY_FLOATS: usize = 75;
-pub const SHOOTER_SNAPSHOT_ENTITY_U32S: usize = 61;
+    + config::SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S
+    + GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S;
+pub const SHOOTER_SNAPSHOT_ENTITY_FLOATS: usize = 131;
+pub const SHOOTER_SNAPSHOT_ENTITY_U32S: usize = 117;
 pub const SHOOTER_SNAPSHOT_ENTITY_PLAYER: u32 = 0;
 pub const SHOOTER_SNAPSHOT_ENTITY_ENEMY: u32 = 1;
 pub const SHOOTER_SNAPSHOT_ENTITY_BULLET: u32 = 2;

@@ -188,6 +188,10 @@ test("resolveShooterGameSpec fills defaults and accepts overrides", () => {
     gameOverPitch: 0.9,
     postProcessing: [],
     physics: resolvePhysicsSpec(undefined),
+    content: {
+      dialogueGraphs: {},
+      cutscenes: {},
+    },
   });
 });
 

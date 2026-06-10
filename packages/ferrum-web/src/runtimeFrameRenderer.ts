@@ -8,6 +8,9 @@ import type {
   FerrumRuntimeFrame,
   FerrumRuntimeOptions,
   FerrumRuntimeRenderer,
+  FerrumRuntimeAnimationTimeline,
+  FerrumRuntimeCutscene,
+  FerrumRuntimeLevelStreaming,
   PostProcessProvider,
   SpriteMaterialProvider,
   UiOverlayStateProvider,
@@ -24,6 +27,9 @@ export interface RuntimeFrameRendererOptions {
   debugOverlay?: DebugOverlay;
   uiOverlay?: UiOverlay;
   uiState?: UiOverlayStateProvider;
+  animationTimeline?: FerrumRuntimeAnimationTimeline;
+  cutscene?: FerrumRuntimeCutscene;
+  levelStreaming?: FerrumRuntimeLevelStreaming;
   profiler?: RuntimeProfiler;
   gameStateLabel?: (code: number) => string;
   onFrame?: (frame: FerrumRuntimeFrame) => void;
@@ -143,6 +149,9 @@ export class RuntimeFrameRenderer {
       fps,
       renderTimeMs,
     };
+    this.options.animationTimeline?.update(runtimeFrame);
+    this.options.cutscene?.update(runtimeFrame);
+    this.options.levelStreaming?.update(runtimeFrame);
     if (this.options.uiOverlay && this.options.uiState) {
       this.options.uiOverlay.update(this.options.uiState(runtimeFrame));
     }

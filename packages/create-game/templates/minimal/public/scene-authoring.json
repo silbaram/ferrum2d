@@ -1,0 +1,49 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "sceneComposition": {
+    "initialFragment": "runtime",
+    "prefabs": {
+      "builtinPlayer": {
+        "props": {
+          "runtimeEntity": "builtinShooterPlayer",
+          "behaviorRecipes": "weapon.standard"
+        }
+      }
+    },
+    "fragments": {
+      "runtime": {
+        "instances": [
+          {
+            "id": "player",
+            "prefab": "builtinPlayer"
+          }
+        ]
+      }
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {
+      "weapon.standard": {
+        "recipes": [
+          {
+            "kind": "projectileAction",
+            "action": "standard",
+            "actionId": 1,
+            "cooldownSeconds": 0.08,
+            "speed": 720,
+            "damage": 1,
+            "lifetimeSeconds": 1.6,
+            "aim": "input",
+            "collisionTarget": "enemies"
+          }
+        ]
+      }
+    }
+  },
+  "ids": {
+    "actions": {
+      "standard": 1
+    }
+  }
+}

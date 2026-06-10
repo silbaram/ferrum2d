@@ -1,0 +1,357 @@
+{
+  "format": "ferrum2d.consumer.runtime-gameplay-replay.fixture",
+  "version": 1,
+  "scenario": "project-runtime",
+  "description": "Project-specific deterministic runtime gameplay replay fixture.",
+  "coverageTagDefinitionsPath": "public/gameplay-runtime-replay.coverage-tags.json",
+  "coverageTags": [
+    "project-runtime"
+  ],
+  "replay": {
+    "format": "ferrum2d.gameplay-replay.run",
+    "version": 1,
+    "snapshots": [
+      {
+        "frame": 0,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 0,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 0,
+            "entityCount": 55,
+            "spriteCount": 0,
+            "cameraX": 400,
+            "cameraY": 240
+          },
+          "custom": {
+            "template": "breakout",
+            "breakout": {
+              "scene": "built-in-breakout",
+              "controls": {
+                "moveLeft": "ArrowLeft",
+                "moveRight": "ArrowRight",
+                "start": "Enter"
+              }
+            },
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "breakout-project-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 8,
+                  "action": "press",
+                  "control": "ArrowLeft"
+                },
+                {
+                  "frame": 24,
+                  "action": "release",
+                  "control": "ArrowLeft"
+                }
+              ],
+              "captureFrames": [
+                0,
+                1,
+                12,
+                24,
+                40
+              ],
+              "viewport": {
+                "width": 800,
+                "height": 480
+              }
+            }
+          },
+          "snapshotHash": "f85bce8d"
+        },
+        "replayHash": "f85bce8d"
+      },
+      {
+        "frame": 1,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 1,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 55,
+            "spriteCount": 0,
+            "cameraX": 400,
+            "cameraY": 240
+          },
+          "custom": {
+            "template": "breakout",
+            "breakout": {
+              "scene": "built-in-breakout",
+              "controls": {
+                "moveLeft": "ArrowLeft",
+                "moveRight": "ArrowRight",
+                "start": "Enter"
+              }
+            },
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "breakout-project-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 8,
+                  "action": "press",
+                  "control": "ArrowLeft"
+                },
+                {
+                  "frame": 24,
+                  "action": "release",
+                  "control": "ArrowLeft"
+                }
+              ],
+              "captureFrames": [
+                0,
+                1,
+                12,
+                24,
+                40
+              ],
+              "viewport": {
+                "width": 800,
+                "height": 480
+              }
+            }
+          },
+          "snapshotHash": "37519e99"
+        },
+        "replayHash": "37519e99"
+      },
+      {
+        "frame": 12,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 12,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 55,
+            "spriteCount": 0,
+            "cameraX": 400,
+            "cameraY": 240
+          },
+          "custom": {
+            "template": "breakout",
+            "breakout": {
+              "scene": "built-in-breakout",
+              "controls": {
+                "moveLeft": "ArrowLeft",
+                "moveRight": "ArrowRight",
+                "start": "Enter"
+              }
+            },
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "breakout-project-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 8,
+                  "action": "press",
+                  "control": "ArrowLeft"
+                },
+                {
+                  "frame": 24,
+                  "action": "release",
+                  "control": "ArrowLeft"
+                }
+              ],
+              "captureFrames": [
+                0,
+                1,
+                12,
+                24,
+                40
+              ],
+              "viewport": {
+                "width": 800,
+                "height": 480
+              }
+            }
+          },
+          "snapshotHash": "0d668839"
+        },
+        "replayHash": "0d668839"
+      },
+      {
+        "frame": 24,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 24,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 55,
+            "spriteCount": 0,
+            "cameraX": 400,
+            "cameraY": 240
+          },
+          "custom": {
+            "template": "breakout",
+            "breakout": {
+              "scene": "built-in-breakout",
+              "controls": {
+                "moveLeft": "ArrowLeft",
+                "moveRight": "ArrowRight",
+                "start": "Enter"
+              }
+            },
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "breakout-project-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 8,
+                  "action": "press",
+                  "control": "ArrowLeft"
+                },
+                {
+                  "frame": 24,
+                  "action": "release",
+                  "control": "ArrowLeft"
+                }
+              ],
+              "captureFrames": [
+                0,
+                1,
+                12,
+                24,
+                40
+              ],
+              "viewport": {
+                "width": 800,
+                "height": 480
+              }
+            }
+          },
+          "snapshotHash": "87f087e8"
+        },
+        "replayHash": "87f087e8"
+      },
+      {
+        "frame": 40,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 40,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 55,
+            "spriteCount": 0,
+            "cameraX": 400,
+            "cameraY": 240
+          },
+          "custom": {
+            "template": "breakout",
+            "breakout": {
+              "scene": "built-in-breakout",
+              "controls": {
+                "moveLeft": "ArrowLeft",
+                "moveRight": "ArrowRight",
+                "start": "Enter"
+              }
+            },
+            "runtime": {
+              "mode": "headless-engine",
+              "seed": "breakout-project-runtime-seed",
+              "fixedDelta": 0.016666666666666666,
+              "inputSequence": [
+                {
+                  "frame": 1,
+                  "action": "press",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 2,
+                  "action": "release",
+                  "control": "Enter"
+                },
+                {
+                  "frame": 8,
+                  "action": "press",
+                  "control": "ArrowLeft"
+                },
+                {
+                  "frame": 24,
+                  "action": "release",
+                  "control": "ArrowLeft"
+                }
+              ],
+              "captureFrames": [
+                0,
+                1,
+                12,
+                24,
+                40
+              ],
+              "viewport": {
+                "width": 800,
+                "height": 480
+              }
+            }
+          },
+          "snapshotHash": "4f1e182e"
+        },
+        "replayHash": "4f1e182e"
+      }
+    ],
+    "replayHash": "954540ea"
+  }
+}

@@ -123,6 +123,18 @@ test("WebGpuTextureStore replaces texture ids and destroys stale textures", () =
   store.destroy();
 });
 
+test("WebGpuTextureStore evicts registered texture ids without touching placeholders", () => {
+  const { device, store } = createTextureStore();
+  store.createPlaceholderTextureForId(0);
+  store.createPixelMaskTerrainTexture(5, new PixelMaskTerrain({ width: 1, height: 1, data: [128] }));
+
+  equal(store.evictTexture(5), true);
+  equal(device.textures[1]?.destroyed, true);
+  equal(store.evictTexture(5), false);
+  equal(store.evictTexture(0), false);
+  equal(device.textures[0]?.destroyed, false);
+});
+
 test("WebGpuTextureStore destroy releases registered textures exactly once", () => {
   const { device, store } = createTextureStore();
   store.createPixelMaskTerrainTexture(1, new PixelMaskTerrain({ width: 1, height: 1, data: [128] }));

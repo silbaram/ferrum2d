@@ -1,4 +1,10 @@
 import {
+  BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY,
+  BUILT_IN_SHOOTER_STATE_HEADER_U32S,
+  BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY,
+  BUILT_IN_SHOOTER_STATE_VERSION,
+  DATA_SCENE_STATE_FORMAT,
+  DATA_SCENE_STATE_VERSION,
   GAME_STATE_SNAPSHOT_FORMAT,
   GAME_STATE_SNAPSHOT_VERSION,
   GAMEPLAY_EVENT_FLAG_TILE_IMPACT_BOUNCED,
@@ -18,12 +24,15 @@ import {
   RuntimeProfiler,
   ScreenFadeTransition,
   captureGameStateSnapshot,
+  createRuntimeLevelStreaming,
+  createLevelStreamingPixelMaskTerrainPhysicsOptions,
   decodeCollisionEvents,
   decodePhysicsDebugLines,
   deriveHd2dTileOccludersFromTilemapGrid,
   deriveTileOccludersFromTilemapGrid,
   equal,
   evaluateRuntimeProfilerBudget,
+  extractLevelStreamingTilemapChunkBoundaryChains,
   f32Bits,
   loadGameStateSnapshotFromStorage,
   parseGameStateSnapshot,
@@ -31,7 +40,9 @@ import {
   runtimeDiagnosticsFrameSample,
   saveGameStateSnapshotToStorage,
   stringifyGameStateSnapshot,
+  tilemapLayerForLevelStreamingChunk,
   test,
+  validateDataSceneStateSnapshot,
 } from "./publicApiTypes.shared.js";
 
 import type {
@@ -51,19 +62,44 @@ import type {
   FerrumGameplayAuthoringApi,
   FerrumInputActionApi,
   FerrumRuntime,
+  FerrumRuntimeAccessibility,
+  FerrumRuntimeAccessibilityOptions,
+  FerrumRuntimeAnimationTimeline,
+  FerrumRuntimeAnimationTimelineOptions,
+  FerrumRuntimeAnimationTimelineSignalProvider,
+  FerrumRuntimeCutscene,
+  FerrumRuntimeCutsceneDialogueOptions,
+  FerrumRuntimeCutsceneDialogueValues,
+  FerrumRuntimeCutsceneOptions,
+  FerrumRuntimeCutsceneTextMode,
   FerrumRuntimeEnvironment,
   FerrumRuntimeFrame,
+  FerrumRuntimeHud,
+  FerrumRuntimeHudComponentProvider,
+  FerrumRuntimeHudOptions,
+  FerrumRuntimeLevelStreaming,
+  FerrumRuntimeLevelStreamingChunkContext,
+  FerrumRuntimeLevelStreamingOptions,
+  FerrumRuntimeLevelStreamingPreloadOptions,
+  FerrumRuntimeLevelStreamingTarget,
+  FerrumRuntimeLevelStreamingUpdateResult,
+  FerrumRuntimeLevelStreamingViewportProvider,
+  FerrumRuntimeLocalization,
+  FerrumRuntimeLocalizationOptions,
   FerrumRuntimeOptions,
   FerrumRuntimeRenderer,
+  FerrumRuntimeSubtitleProvider,
   FixedTimestepOptions,
   FrameHandler,
   FrameState,
+  DataSceneStateSnapshot,
   GameStateSceneSnapshot,
   GameStateSnapshot,
   GameStateSnapshotJsonValue,
   GameStateSnapshotRestoreResult,
   GameStateSnapshotStorage,
   GlitchPostProcessPassInput,
+  HudComponentSpec,
   HudThemePresetName,
   Hd2dTileOccluderDefinition,
   Hd2dTileOccluderGridInput,
@@ -72,6 +108,9 @@ import type {
   InputManagerOptions,
   LightingScene2D,
   LightingSceneProvider,
+  LevelStreamingPixelMaskTerrainPhysicsOptions,
+  LevelStreamingTilemapChunkBoundaryOptions,
+  LevelStreamingViewport,
   LightingShadowOptions,
   PhysicsDebugLineBufferView,
   PhysicsDebugLineCamera,
@@ -252,6 +291,11 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
       results: registrations.map(() => true),
     }),
     applyGameplayBehaviorCommands: (commands) => ({ commands, results: [] }),
+    applyFactionRelationTable: (table) => ({
+      applied: true,
+      defaultRelation: table.defaultRelation ?? "neutral",
+      relationCount: table.relations.length,
+    }),
     installBehaviorStateMachineRuntime: () => ({
       plan: {
         machine: "enemyAi",
@@ -330,18 +374,44 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     cameraY: () => 7,
   };
   const gameStateCustom: GameStateSnapshotJsonValue = { checkpoint: "alpha" };
+  const dataSceneState: DataSceneStateSnapshot = {
+    format: DATA_SCENE_STATE_FORMAT,
+    version: DATA_SCENE_STATE_VERSION,
+    scene: {
+      score: 0,
+      gameState: 1,
+      entityCount: 0,
+      spriteCount: 0,
+      cameraX: 0,
+      cameraY: 0,
+    },
+    custom: gameStateCustom,
+  };
   const builtInShooterState: BuiltInShooterStateSnapshot = {
     format: "ferrum2d.builtin-shooter-state",
-    version: 15,
+    version: BUILT_IN_SHOOTER_STATE_VERSION,
     headerFloats: [0, 1, 0, 0, 400, 240, 0, 0],
-    headerU32s: [15, 1, 3, 0, 0, 0, 0, 0, 0, ...Array(76).fill(0)],
-    entityFloats: [400, 240, 0, 0, ...Array(71).fill(0)],
-    entityU32s: [0, ...Array(60).fill(0)],
+    headerU32s: [
+      BUILT_IN_SHOOTER_STATE_VERSION,
+      1,
+      3,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      ...Array(BUILT_IN_SHOOTER_STATE_HEADER_U32S - 9).fill(0),
+    ],
+    entityFloats: [400, 240, 0, 0, ...Array(BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY - 4).fill(0)],
+    entityU32s: [0, ...Array(BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY - 1).fill(0)],
     entityCount: 1,
-    floatsPerEntity: 75,
-    u32sPerEntity: 61,
+    floatsPerEntity: BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY,
+    u32sPerEntity: BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY,
   };
   const publicCaptureGameStateSnapshot: PublicApi["captureGameStateSnapshot"] = captureGameStateSnapshot;
+  const publicDataSceneStateFormat: PublicApi["DATA_SCENE_STATE_FORMAT"] = DATA_SCENE_STATE_FORMAT;
+  const publicDataSceneStateVersion: PublicApi["DATA_SCENE_STATE_VERSION"] = DATA_SCENE_STATE_VERSION;
   const publicGameStateSnapshotFormat: PublicApi["GAME_STATE_SNAPSHOT_FORMAT"] = GAME_STATE_SNAPSHOT_FORMAT;
   const publicGameStateSnapshotVersion: PublicApi["GAME_STATE_SNAPSHOT_VERSION"] = GAME_STATE_SNAPSHOT_VERSION;
   const publicStringifyGameStateSnapshot: PublicApi["stringifyGameStateSnapshot"] = stringifyGameStateSnapshot;
@@ -354,6 +424,10 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   const gameStateSnapshot: GameStateSnapshot = publicCaptureGameStateSnapshot(
     snapshotEngine as FerrumEngine,
     { customState: gameStateCustom },
+  );
+  const dataSceneGameStateSnapshot: GameStateSnapshot = publicCaptureGameStateSnapshot(
+    snapshotEngine as FerrumEngine,
+    { includeDataSceneState: true, dataSceneCustomState: gameStateCustom },
   );
   const gameStateScene: GameStateSceneSnapshot = gameStateSnapshot.scene;
   const gameStateStorage: GameStateSnapshotStorage = {
@@ -369,15 +443,19 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   equal(publicRuntimeDiagnosticsFrameSample(runtimeFrameSample).drawCalls, 1);
   equal(publicEvaluateRuntimeProfilerBudget(runtimeSnapshot, runtimeBudget).passed, true);
   equal(runtimeReport.passed, true);
+  validateDataSceneStateSnapshot(dataSceneState);
   equal(gameplayAuthoringApi.gameplayEntityExists({ entityId: 1, entityGeneration: 1 }), true);
   equal(gameplayAuthoringApi.gameplayBehaviorState({ entityId: 1, entityGeneration: 1 }), 1);
   equal(inputActionApi.setInputActionBinding(3, 0, inputActionBinding), true);
   equal(inputActionApi.clearInputActionBindings(3), true);
   inputActionApi.resetInputActionBindings();
   equal(runtimeViolation, undefined);
+  equal(publicDataSceneStateFormat, "ferrum2d.data-scene-state");
+  equal(publicDataSceneStateVersion, 1);
   equal(publicGameStateSnapshotFormat, "ferrum2d.game-state.snapshot");
   equal(publicGameStateSnapshotVersion, 1);
   equal(gameStateSnapshot.format, GAME_STATE_SNAPSHOT_FORMAT);
+  equal(dataSceneGameStateSnapshot.dataScene?.format, DATA_SCENE_STATE_FORMAT);
   equal(gameStateScene.score, 3);
   equal(publicParseGameStateSnapshot(publicStringifyGameStateSnapshot(gameStateSnapshot)).version, 1);
   publicSaveGameStateSnapshotToStorage(gameStateStorage, "slot", gameStateSnapshot);
@@ -483,7 +561,147 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     dialog: uiDialog,
   };
   const uiStateProvider: UiOverlayStateProvider = () => uiState;
+  const runtimeHudComponents: readonly HudComponentSpec[] = [
+    { type: "counter", id: "score", label: "Score", value: 100 },
+    { type: "message", id: "hint", text: "Runtime HUD" },
+  ];
+  const runtimeHudComponentProvider: FerrumRuntimeHudComponentProvider = (runtimeFrame) => [
+    ...runtimeHudComponents,
+    {
+      type: "counter",
+      id: "commands",
+      label: "Commands",
+      value: runtimeFrame.rendererStats.renderCommandCount,
+    },
+  ];
+  const runtimeHudOptions: FerrumRuntimeHudOptions = {
+    panelId: "runtime-hud",
+    title: "Runtime HUD",
+    region: "top-right",
+    components: runtimeHudComponentProvider,
+  };
+  const runtimeSubtitleProvider: FerrumRuntimeSubtitleProvider = (runtimeFrame) => ({
+    id: "runtime-subtitles",
+    speaker: "Guide",
+    text: `Score ${runtimeFrame.frame.score}`,
+    region: "bottom-left",
+  });
+  const runtimeAccessibilityOptions: FerrumRuntimeAccessibilityOptions = {
+    spec: {
+      subtitles: true,
+      contrastPalette: "high-contrast",
+      reducedMotion: false,
+    },
+    subtitle: runtimeSubtitleProvider,
+    title: "Subtitles",
+    applyUiTheme: true,
+  };
+  const runtimeAnimationTimelineSignals: FerrumRuntimeAnimationTimelineSignalProvider = (runtimeFrame) =>
+    runtimeFrame.frame.score > 0 ? ["move"] : [];
+  const runtimeAnimationTimelineOptions: FerrumRuntimeAnimationTimelineOptions = {
+    timeline: {
+      initialState: "idle",
+      states: {
+        idle: {
+          frames: ["idle.0", "idle.1"],
+          fps: 2,
+          transitions: [{ on: "move", to: "move" }],
+        },
+        move: {
+          frames: ["move.0", "move.1"],
+          fps: 4,
+          events: [{ frame: 1, id: "step" }],
+        },
+      },
+    },
+    signals: runtimeAnimationTimelineSignals,
+    maxEvents: 4,
+    onUpdate: (result, runtimeFrame, animationTimeline) => {
+      equal(result.snapshot.state, animationTimeline.snapshot().state);
+      equal(runtimeFrame.frame.frameTimeMs >= 0, true);
+    },
+  };
+  const runtimeLocalizationOptions: FerrumRuntimeLocalizationOptions = {
+    locale: "ko",
+    document: {
+      defaultLocale: "en",
+      fallbackLocale: "en",
+      locales: {
+        en: { strings: { "intro.ready": "Ready, {name}?" } },
+        ko: { strings: { "intro.ready": "준비됐나요, {name}?" } },
+      },
+    },
+  };
+  const cutsceneTextMode: FerrumRuntimeCutsceneTextMode = "localizationKey";
+  const cutsceneDialogueValues: FerrumRuntimeCutsceneDialogueValues = (_command, frame) => ({
+    name: frame.frame.score > 0 ? "Agent" : "Player",
+  });
+  const cutsceneDialogueOptions: FerrumRuntimeCutsceneDialogueOptions = {
+    title: "Intro",
+    textMode: cutsceneTextMode,
+    values: cutsceneDialogueValues,
+  };
+  const runtimeCutsceneOptions: FerrumRuntimeCutsceneOptions = {
+    sequence: {
+      id: "intro",
+      commands: [
+        { kind: "dialogue", speaker: "Guide", text: "intro.ready", durationSeconds: 1 },
+      ],
+    },
+    dialogue: cutsceneDialogueOptions,
+    onUpdate: (result, runtimeFrame, cutscene) => {
+      equal(result.snapshot.sequenceId, cutscene.snapshot().sequenceId);
+      equal(runtimeFrame.frame.frameTimeMs >= 0, true);
+    },
+  };
+  const runtimeLevelStreamingViewport: LevelStreamingViewport = { x: 0, y: 0, width: 128, height: 128 };
+  const runtimeLevelStreamingViewportProvider: FerrumRuntimeLevelStreamingViewportProvider = () =>
+    runtimeLevelStreamingViewport;
+  const runtimeLevelStreamingPreloadOptions: FerrumRuntimeLevelStreamingPreloadOptions = {
+    fetch: globalThis.fetch,
+  };
+  const levelStreamingPixelMaskPhysicsOptions: LevelStreamingPixelMaskTerrainPhysicsOptions = {
+    engine: {} as FerrumEngine,
+  };
+  const levelStreamingTilemapBoundaryOptions: LevelStreamingTilemapChunkBoundaryOptions = {
+    physicsLayer: "world",
+  };
+  const runtimeLevelStreamingTarget: FerrumRuntimeLevelStreamingTarget = {
+    applyChunk: (chunk, context: FerrumRuntimeLevelStreamingChunkContext) => {
+      equal(context.result.loadChunkIds.includes(chunk.id), true);
+    },
+    unloadChunk: (chunk, context) => {
+      equal(context.result.unloadChunkIds.includes(chunk.id), true);
+    },
+    rebuildColliders: (context) => {
+      equal(context.levelStreaming.snapshot().manifestId, context.result.snapshot.manifestId);
+    },
+  };
+  const runtimeLevelStreamingOptions: FerrumRuntimeLevelStreamingOptions = {
+    manifest: {
+      id: "runtime-level",
+      chunks: [{ id: "0,0", chunkX: 0, chunkY: 0 }],
+    },
+    viewport: runtimeLevelStreamingViewportProvider,
+    preload: runtimeLevelStreamingPreloadOptions,
+    target: runtimeLevelStreamingTarget,
+    onPlan: (result: FerrumRuntimeLevelStreamingUpdateResult, runtimeFrame, levelStreaming) => {
+      equal(result.snapshot.manifestId, levelStreaming.snapshot().manifestId);
+      equal(runtimeFrame.frame.frameTimeMs >= 0, true);
+    },
+  };
+  const publicCreateRuntimeLevelStreaming: PublicApi["createRuntimeLevelStreaming"] = createRuntimeLevelStreaming;
+  const publicCreateLevelStreamingPixelMaskPhysics:
+    PublicApi["createLevelStreamingPixelMaskTerrainPhysicsOptions"] =
+      createLevelStreamingPixelMaskTerrainPhysicsOptions;
+  const publicExtractLevelStreamingTilemapBoundary:
+    PublicApi["extractLevelStreamingTilemapChunkBoundaryChains"] =
+      extractLevelStreamingTilemapChunkBoundaryChains;
+  const publicTilemapLayerForLevelStreamingChunk:
+    PublicApi["tilemapLayerForLevelStreamingChunk"] =
+      tilemapLayerForLevelStreamingChunk;
   const runtimeEnvironment: FerrumRuntimeEnvironment = "production";
+  const runtimeEngineInstance = {} as FerrumEngine;
   const runtimeOptions: FerrumRuntimeOptions = {
     canvas: {} as HTMLCanvasElement,
     rendererPreference: "webgpu",
@@ -492,6 +710,12 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     inputOptions: inputManagerOptions,
     ui: uiOptions,
     uiState: uiStateProvider,
+    hud: runtimeHudOptions,
+    accessibility: runtimeAccessibilityOptions,
+    animationTimeline: runtimeAnimationTimelineOptions,
+    localization: runtimeLocalizationOptions,
+    cutscene: runtimeCutsceneOptions,
+    levelStreaming: runtimeLevelStreamingOptions,
     environment: runtimeEnvironment,
     debug: false,
     profiler: runtimeProfilerOptions,
@@ -499,17 +723,28 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     postProcess: postProcessProvider,
     physicsDebugLines: true,
     physicsMode: "arcade",
+    engine: options,
     onFrame: (runtimeFrame: FerrumRuntimeFrame) => {
       equal(runtimeFrame.rendererStats.drawCalls >= 0, true);
       equal(runtimeFrame.rendererStats.physicsDebugLineCount >= 0, true);
       equal(runtimeFrame.rendererStats.pointLightCount >= 0, true);
     },
   };
+  const runtimeInjectedEngineOptions: FerrumRuntimeOptions = {
+    canvas: {} as HTMLCanvasElement,
+    engineInstance: runtimeEngineInstance,
+  };
   const webGpuCreate: typeof WebGPURenderer.create = async () => {
     throw new Error("WebGPU compatibility shim");
   };
   const nullableCreatedRenderer: CreatedRenderer | undefined = undefined;
   const nullableRuntimeRenderer: FerrumRuntimeRenderer | undefined = undefined;
+  const nullableRuntimeHud: FerrumRuntimeHud | undefined = undefined;
+  const nullableRuntimeAccessibility: FerrumRuntimeAccessibility | undefined = undefined;
+  const nullableRuntimeAnimationTimeline: FerrumRuntimeAnimationTimeline | undefined = undefined;
+  const nullableRuntimeLocalization: FerrumRuntimeLocalization | undefined = undefined;
+  const nullableRuntimeCutscene: FerrumRuntimeCutscene | undefined = undefined;
+  const nullableRuntimeLevelStreaming: FerrumRuntimeLevelStreaming | undefined = undefined;
   const runtimeCreate: typeof createFerrumRuntime = async () => ({
     engine: {} as FerrumEngine,
     renderer: {} as FerrumRuntime["renderer"],
@@ -590,11 +825,31 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   });
   equal(rendererOptions.preferred, "webgpu");
   equal(runtimeOptions.rendererPreference, "webgpu");
+  equal(runtimeOptions.hud, runtimeHudOptions);
+  equal(runtimeOptions.accessibility, runtimeAccessibilityOptions);
+  equal(runtimeOptions.animationTimeline, runtimeAnimationTimelineOptions);
+  equal(runtimeOptions.localization, runtimeLocalizationOptions);
+  equal(runtimeOptions.cutscene, runtimeCutsceneOptions);
+  equal(runtimeOptions.levelStreaming, runtimeLevelStreamingOptions);
   equal(runtimeOptions.debug, false);
+  equal(runtimeOptions.engine, options);
+  equal(runtimeInjectedEngineOptions.engineInstance, runtimeEngineInstance);
   equal(runtimeOptions.uiState?.({} as FerrumRuntimeFrame).panels?.[0]?.id, "hud");
   equal(typeof webGpuCreate, "function");
   equal(nullableCreatedRenderer, undefined);
   equal(nullableRuntimeRenderer, undefined);
+  equal(typeof publicCreateLevelStreamingPixelMaskPhysics, "function");
+  equal(typeof publicExtractLevelStreamingTilemapBoundary, "function");
+  equal(typeof publicTilemapLayerForLevelStreamingChunk, "function");
+  equal(levelStreamingPixelMaskPhysicsOptions.engine, levelStreamingPixelMaskPhysicsOptions.engine);
+  equal(levelStreamingTilemapBoundaryOptions.physicsLayer, "world");
+  equal(nullableRuntimeHud, undefined);
+  equal(nullableRuntimeAccessibility, undefined);
+  equal(nullableRuntimeAnimationTimeline, undefined);
+  equal(nullableRuntimeLocalization, undefined);
+  equal(nullableRuntimeCutscene, undefined);
+  equal(nullableRuntimeLevelStreaming, undefined);
+  equal(typeof publicCreateRuntimeLevelStreaming, "function");
   equal(typeof runtimeCreate, "function");
   onFrame({
     timeSeconds: 0,

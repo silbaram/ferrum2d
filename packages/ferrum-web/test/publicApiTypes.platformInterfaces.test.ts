@@ -105,10 +105,17 @@ test("public API platform interface types", () => {
     postProcessPassCount: 0,
   };
   const renderer: Pick<Renderer, "stats"> = { stats: () => stats };
-  const assetHost: Pick<AssetHost, "textureId" | "hasSound"> = { textureId: () => 1, hasSound: () => true };
-  const browserPlatformHost: Pick<BrowserPlatformHost, "textureId" | "hasSound" | "destroy"> = {
+  const assetHost: Pick<AssetHost, "textureId" | "hasSound" | "playBgm" | "stopBgm"> = {
     textureId: () => 1,
     hasSound: () => true,
+    playBgm: () => undefined,
+    stopBgm: () => undefined,
+  };
+  const browserPlatformHost: Pick<BrowserPlatformHost, "textureId" | "hasSound" | "playBgm" | "stopBgm" | "destroy"> = {
+    textureId: () => 1,
+    hasSound: () => true,
+    playBgm: () => undefined,
+    stopBgm: () => undefined,
     destroy: () => undefined,
   };
   const audioAssetLoader: Pick<AudioAssetLoader, "load"> = {
@@ -122,7 +129,11 @@ test("public API platform interface types", () => {
   equal(renderer.stats().drawCalls, 0);
   equal(assetHost.textureId("player"), 1);
   equal(assetHost.hasSound?.(1), true);
+  assetHost.playBgm?.(2, { volume: 0.5, loop: true, fadeInSeconds: 0.1 });
+  assetHost.stopBgm?.({ fadeOutSeconds: 0.1 });
   equal(browserPlatformHost.textureId("player"), 1);
   equal(browserPlatformHost.hasSound(1), true);
+  browserPlatformHost.playBgm(2, { volume: 0.5, loop: true, fadeInSeconds: 0.1 });
+  browserPlatformHost.stopBgm({ fadeOutSeconds: 0.1 });
   equal(typeof audioAssetLoader.load, "function");
 });

@@ -3,14 +3,16 @@
   "version": 1,
   "coverageTagDefinitions": {
     "starter-runtime-template": "Consumer replay validates the generated Minimal Runtime template surface contract.",
-    "template-weapon-authoring": "Consumer replay validates the Minimal Runtime projectile/weapon authoring surface."
+    "template-weapon-authoring": "Consumer replay validates the Minimal Runtime projectile/weapon authoring surface.",
+    "template-scene-composition-authoring": "Consumer replay validates the Minimal Runtime SceneComposition and BehaviorRecipe authoring surface."
   },
   "coverageTagGroups": {
     "template-contracts": {
       "description": "Consumer template replay contracts generated with create-game.",
       "tags": [
         "starter-runtime-template",
-        "template-weapon-authoring"
+        "template-weapon-authoring",
+        "template-scene-composition-authoring"
       ]
     }
   },

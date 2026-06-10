@@ -1,6 +1,6 @@
-# 리팩토링 로드맵
+# 리팩토링 로드맵 템플릿
 
-이 문서는 아직 진행하지 않은 구조 리팩토링과 성능 개선 후보만 기록한다. 완료된 분리, 최적화, 테스트 정리는 planning에 남기지 않고 코드 구조와 `docs/development` 문서, 테스트 결과로 확인한다.
+이 문서는 아직 진행하지 않은 구조 리팩토링과 성능 개선 후보를 작성할 때 사용하는 템플릿이다. 실제 활성 작업 목록은 [활성 개발 로드맵](active-roadmap.md)을 기준으로 한다. 완료된 분리, 최적화, 테스트 정리는 planning에 남기지 않고 코드 구조와 `docs/development` 문서, 테스트 결과로 확인한다.
 
 ## 적용 원칙
 
@@ -12,9 +12,9 @@
 - Rust hot path는 allocation, string/object 생성, 동적 디스패치를 피하고 bulk buffer와 재사용 scratch storage를 우선한다.
 - TypeScript hot path는 작은 GC 압력도 누적 비용으로 본다. renderer upload 경로는 preallocated staging buffer와 offset/length API를 우선한다.
 
-## 현재 활성 리팩토링 후보
+## 템플릿 상태
 
-현재 planning 문서에 남겨둘 미완료 리팩토링 후보는 없다.
+현재 이 템플릿 파일에 남겨둘 미완료 리팩토링 후보는 없다.
 
 새 리팩토링 후보를 추가할 때는 아래 형식을 사용한다.
 

@@ -22,7 +22,7 @@ GitHub Pages deployment publishes one `dist-pages/` artifact containing:
 
 - Pages home
 - `docs/**/*.md` rendered to `dist-pages/docs/**/*.html`
-- `examples/minimal-game/dist`
+- `examples/starter-runtime/dist`
 - `examples/topdown-shooter/dist`
 - `examples/breakout/dist`
 - `examples/platformer/dist`
@@ -67,8 +67,8 @@ After `pnpm build:pages`, verify at minimum:
 - `dist-pages/docs/index.html`
 - `dist-pages/docs/engine/user-guide.html`
 - `dist-pages/docs/engine/public-api.html`
-- `dist-pages/docs/engine/topdown-shooter-game-spec.html`
-- `dist-pages/minimal-game/index.html`
+- `dist-pages/docs/examples/topdown-shooter/game-spec.html`
+- `dist-pages/starter-runtime/index.html`
 - `dist-pages/topdown-shooter/index.html`
 - `dist-pages/breakout/index.html`
 - `dist-pages/platformer/index.html`

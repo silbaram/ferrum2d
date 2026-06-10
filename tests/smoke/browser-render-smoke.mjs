@@ -4,7 +4,10 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { chromium } from "playwright-core";
-import { runtimeBudgetForSmokeMode } from "./runtime-budget-profiles.mjs";
+import {
+  runtimeBudgetForSmokeMode,
+  runtimeBudgetProfileIdForSmokeMode,
+} from "./runtime-budget-profiles.mjs";
 
 const DEFAULT_DIST_DIR = "examples/starter-runtime/dist";
 const DEFAULT_HOST = "127.0.0.1";
@@ -19,12 +22,14 @@ const CAMERA_POSTPROCESS_MODE = "camera-postprocess";
 const PARTICLE_VFX_MODE = "particle-vfx";
 const PRELOAD_MODE = "preload";
 const VIRTUAL_CONTROLS_MODE = "virtual-controls";
+const CONTENT_RUNTIME_MODE = "content-runtime";
 const TOPDOWN_EFFECTS_MODE = "topdown-effects";
 const TOPDOWN_MASS_OBJECTS_MODE = "topdown-mass-objects";
 const TOPDOWN_MASS_OBJECTS_PLAYING_STATE = 1;
 const TOPDOWN_MASS_OBJECTS_COLLISION_PAIR_BUDGET = 2_000;
 const TOPDOWN_SAVE_LOAD_MODE = "topdown-save-load";
 const TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_MODE = "topdown-authored-behavior-variant";
+const TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_PATH = "examples/topdown-shooter/public/authored-behavior.variant.json";
 const TOPDOWN_HD2D_MODE = "topdown-hd2d";
 const DESTRUCTIBLE_TERRAIN_MODE = "destructible-terrain";
 const BREAKOUT_EFFECTS_MODE = "breakout-effects";
@@ -55,6 +60,7 @@ const RUNTIME_BUDGET_FIELDS = Object.freeze([
   ["maxPhysicsTileCandidateChecks", "tile checks", "maxPhysicsTileCandidateChecks", "count"],
   ["maxCollisionPairCount", "collision pairs", "maxCollisionPairCount", "count"],
   ["maxAssetLoadElapsedMs", "asset load", "maxAssetLoadElapsedMs", "ms"],
+  ["maxJsHeapUsedBytes", "JS heap used", "maxJsHeapUsedBytes", "bytes"],
 ]);
 const TOPDOWN_EFFECT_SMOKE_SPEC = {
   world: { width: 800, height: 480 },
@@ -208,17 +214,16 @@ try {
   await page.goto(url, { waitUntil: "networkidle", timeout: timeoutMs });
   await waitForRuntime(page, timeoutMs);
   const modeReport = await smokeByMode(page, options.mode, timeoutMs);
+  const budgetProfileId = options.budget
+    ? runtimeBudgetProfileIdForSmokeMode(options.mode, options.budgetProfile)
+    : undefined;
   const budgetReport = options.budget
     ? await smokeRuntimeBudget(
         page,
         timeoutMs,
-        runtimeBudgetForSmokeMode(options.mode, options.budgetProfile),
+        runtimeBudgetForSmokeMode(options.mode, budgetProfileId),
       )
     : {};
-
-  if (browserErrors.length > 0) {
-    throw new Error(`browser console/page errors:\n${browserErrors.join("\n")}`);
-  }
 
   const screenshotReport = options.screenshot
     ? await captureScreenshotArtifact(page, { mode: options.mode, ...options.screenshot })
@@ -230,8 +235,28 @@ try {
     ...screenshotReport,
     mode: options.mode,
   };
+  const budgetArtifactReport = options.budget
+    ? await writeRuntimeBudgetArtifact({
+        url,
+        distDir,
+        mode: options.mode,
+        budgetProfile: budgetProfileId,
+        runtimeBudget: report.runtimeBudget,
+      })
+    : {};
+  if (report.runtimeBudget?.report?.passed === false) {
+    const artifactMessage = budgetArtifactReport.runtimeBudgetArtifact
+      ? `\nartifact: ${budgetArtifactReport.runtimeBudgetArtifact}`
+      : "";
+    throw new Error(
+      `runtime budget smoke failed:${artifactMessage}\n${JSON.stringify(report.runtimeBudget.report.violations, null, 2)}`,
+    );
+  }
+  if (browserErrors.length > 0) {
+    throw new Error(`browser console/page errors:\n${browserErrors.join("\n")}`);
+  }
   console.log(`${distDir}: browser render smoke ok`);
-  console.log(JSON.stringify({ url, ...report }, null, 2));
+  console.log(JSON.stringify({ url, ...report, ...budgetArtifactReport }, null, 2));
 } catch (error) {
   console.error(`${distDir}: browser render smoke failed`);
   console.error(error instanceof Error ? error.message : String(error));
@@ -358,6 +383,7 @@ function parseArgs(args) {
     PARTICLE_VFX_MODE,
     PRELOAD_MODE,
     VIRTUAL_CONTROLS_MODE,
+    CONTENT_RUNTIME_MODE,
     TOPDOWN_EFFECTS_MODE,
     TOPDOWN_MASS_OBJECTS_MODE,
     TOPDOWN_SAVE_LOAD_MODE,
@@ -409,6 +435,9 @@ function browserSmokeUrl(port, options) {
   }
   if (mode === VIRTUAL_CONTROLS_MODE) {
     params.set("virtualControlsSmoke", "true");
+  }
+  if (mode === CONTENT_RUNTIME_MODE) {
+    params.set("contentRuntimeSmoke", "true");
   }
   if (mode === TOPDOWN_EFFECTS_MODE) {
     params.set("effectSmoke", "true");
@@ -550,7 +579,7 @@ async function resolveRequestPath(root, rawUrl) {
 async function launchBrowser() {
   const launchOptions = {
     headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    args: ["--no-sandbox", "--disable-dev-shm-usage", "--enable-precise-memory-info"],
   };
   if (process.env.FERRUM_BROWSER_EXECUTABLE) {
     return await chromium.launch({
@@ -591,6 +620,14 @@ async function waitForPageFunction(page, description, predicate, timeoutMs, arg 
   }
 }
 
+async function readTopdownAuthoredBehaviorExpectedReplayHash() {
+  const variant = JSON.parse(await readFile(resolve(TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_PATH), "utf8"));
+  const replayHash = variant?.expected?.replayHash;
+  if (typeof replayHash !== "string" || replayHash.length === 0) {
+    throw new Error(`${TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_PATH} is missing expected.replayHash.`);
+  }
+  return replayHash;
+}
 
 async function smokeByMode(page, mode, timeoutMs) {
   switch (mode) {
@@ -610,6 +647,8 @@ async function smokeByMode(page, mode, timeoutMs) {
       return await smokePreload(page, timeoutMs);
     case VIRTUAL_CONTROLS_MODE:
       return await smokeVirtualControls(page, timeoutMs);
+    case CONTENT_RUNTIME_MODE:
+      return await smokeContentRuntime(page, timeoutMs);
     case TOPDOWN_EFFECTS_MODE:
       return await smokeTopdownEffects(page, timeoutMs);
     case TOPDOWN_MASS_OBJECTS_MODE:
@@ -617,7 +656,11 @@ async function smokeByMode(page, mode, timeoutMs) {
     case TOPDOWN_SAVE_LOAD_MODE:
       return await smokeTopdownSaveLoad(page, timeoutMs);
     case TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_MODE:
-      return await smokeTopdownAuthoredBehaviorVariant(page, timeoutMs);
+      return await smokeTopdownAuthoredBehaviorVariant(
+        page,
+        timeoutMs,
+        await readTopdownAuthoredBehaviorExpectedReplayHash(),
+      );
     case TOPDOWN_HD2D_MODE:
       return await smokeTopdownHd2d(page, timeoutMs);
     case DESTRUCTIBLE_TERRAIN_MODE:
@@ -889,12 +932,23 @@ async function smokeRuntimeBudget(page, timeoutMs, budget) {
       name: "budget-smoke",
       url: "memory://budget-smoke",
     });
-    return profiler.snapshot();
+    const snapshot = profiler.snapshot();
+    const memory = globalThis.performance?.memory;
+    if (memory && Number.isFinite(memory.usedJSHeapSize)) {
+      snapshot.jsHeapUsedBytes = memory.usedJSHeapSize;
+      snapshot.maxJsHeapUsedBytes = memory.usedJSHeapSize;
+      if (Number.isFinite(memory.totalJSHeapSize)) {
+        snapshot.jsHeapTotalBytes = memory.totalJSHeapSize;
+      }
+      if (Number.isFinite(memory.jsHeapSizeLimit)) {
+        snapshot.jsHeapLimitBytes = memory.jsHeapSizeLimit;
+      }
+    } else {
+      snapshot.jsHeapMetricUnavailable = true;
+    }
+    return snapshot;
   });
   const report = evaluateRuntimeBudgetSnapshot(snapshot, budget);
-  if (!report.passed) {
-    throw new Error(`runtime budget smoke failed:\n${JSON.stringify(report.violations, null, 2)}`);
-  }
   return {
     runtimeBudget: {
       budget,
@@ -902,6 +956,32 @@ async function smokeRuntimeBudget(page, timeoutMs, budget) {
       snapshot,
     },
   };
+}
+
+async function writeRuntimeBudgetArtifact({ url, distDir, mode, budgetProfile, runtimeBudget }) {
+  const artifactDir = process.env.FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR;
+  if (!artifactDir || runtimeBudget === undefined) {
+    return {};
+  }
+  await mkdir(artifactDir, { recursive: true });
+  const artifactName = `${safeArtifactSegment(mode)}-${safeArtifactSegment(budgetProfile ?? "default")}.json`;
+  const artifactPath = join(artifactDir, artifactName);
+  const payload = {
+    format: "ferrum2d.browser-smoke.runtime-budget-report",
+    version: 1,
+    recordedAt: new Date().toISOString(),
+    mode,
+    budgetProfile: budgetProfile ?? null,
+    distDir,
+    url,
+    runtimeBudget,
+  };
+  await writeFile(artifactPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  return { runtimeBudgetArtifact: artifactPath };
+}
+
+function safeArtifactSegment(value) {
+  return String(value).replace(/[^a-zA-Z0-9._-]+/gu, "-");
 }
 
 async function smokeLighting(page, timeoutMs) {
@@ -1139,12 +1219,72 @@ async function smokeVirtualControls(page, timeoutMs) {
   };
 }
 
+async function smokeContentRuntime(page, timeoutMs) {
+  const expectedBody = "Ferrum2D localized cutscene online for Minimal Game.";
+  const expectedHud = "Content runtime HUD connected through createFerrumRuntime.";
+  const expectedSubtitle = "Accessibility subtitles connected through createFerrumRuntime.";
+  await waitForPageFunction(
+    page,
+    "content runtime smoke did not expose localized cutscene dialog, HUD, and subtitles",
+    ({ expectedBody, expectedHud, expectedSubtitle }) => {
+      const frame = globalThis.ferrumContentRuntimeSmokeFrame;
+      const animation = globalThis.ferrumContentRuntimeAnimationFrame;
+      const dialog = document.querySelector("[data-ferrum-ui-dialog='minimal-content-cutscene']");
+      const hud = document.querySelector("[data-ferrum-ui-panel='minimal-content-hud']");
+      const subtitles = document.querySelector("[data-ferrum-ui-panel='minimal-content-subtitles']");
+      return Boolean(
+        frame
+        && frame.sequenceId === "minimal-content-runtime"
+        && frame.locale === "en"
+        && frame.dialogId === "minimal-content-cutscene"
+        && frame.title === "Runtime Cutscene"
+        && frame.body === expectedBody
+        && frame.dialogueEventObserved === true
+        && frame.renderCommandCount > 0
+        && frame.gameState === 1
+        && animation?.state === "runtime"
+        && animation?.eventObserved === true
+        && animation?.renderCommandCount > 0
+        && animation?.gameState === 1
+        && dialog?.textContent?.includes(expectedBody)
+        && hud?.textContent?.includes("Runtime HUD")
+        && hud?.textContent?.includes(expectedHud)
+        && hud?.textContent?.includes("State")
+        && subtitles?.textContent?.includes("Runtime Subtitles")
+        && subtitles?.textContent?.includes(expectedSubtitle)
+      );
+    },
+    timeoutMs,
+    { expectedBody, expectedHud, expectedSubtitle },
+  );
+  return await page.evaluate(() => ({
+    contentRuntimeSmoke: {
+      frame: globalThis.ferrumContentRuntimeSmokeFrame,
+      animation: globalThis.ferrumContentRuntimeAnimationFrame,
+      dialogText: document.querySelector("[data-ferrum-ui-dialog='minimal-content-cutscene']")?.textContent ?? "",
+      hudText: document.querySelector("[data-ferrum-ui-panel='minimal-content-hud']")?.textContent ?? "",
+      subtitleText: document.querySelector("[data-ferrum-ui-panel='minimal-content-subtitles']")?.textContent ?? "",
+    },
+  }));
+}
+
 function evaluateRuntimeBudgetSnapshot(snapshot, budget) {
   const violations = [];
   for (const [id, label, snapshotField, unit] of RUNTIME_BUDGET_FIELDS) {
     const limit = budget[id];
     const actual = snapshot[snapshotField];
-    if (limit !== undefined && actual !== undefined && actual > limit) {
+    if (limit === undefined) {
+      continue;
+    }
+    if (actual === undefined) {
+      violations.push({ id, label, actual: null, limit, unit, reason: "missingMetric" });
+      continue;
+    }
+    if (!Number.isFinite(actual)) {
+      violations.push({ id, label, actual: null, limit, unit, reason: "nonFiniteMetric" });
+      continue;
+    }
+    if (actual > limit) {
       violations.push({ id, label, actual, limit, unit });
     }
   }
@@ -1154,14 +1294,14 @@ function evaluateRuntimeBudgetSnapshot(snapshot, budget) {
   };
 }
 
-async function smokeTopdownAuthoredBehaviorVariant(page, timeoutMs) {
+async function smokeTopdownAuthoredBehaviorVariant(page, timeoutMs, expectedReplayHash) {
   await waitForPageFunction(
     page,
     "Top-down authored behavior variant smoke did not expose variant summary",
     () => globalThis.ferrumTopdownAuthoredBehaviorVariant?.replayScenario === "example-topdown-authored-behavior",
     timeoutMs,
   );
-  await page.evaluate(() => {
+  await page.evaluate(({ expectedReplayHash }) => {
     const summary = globalThis.ferrumTopdownAuthoredBehaviorVariant;
     if (!summary) {
       throw new Error("Top-down authored behavior variant summary is missing.");
@@ -1172,7 +1312,7 @@ async function smokeTopdownAuthoredBehaviorVariant(page, timeoutMs) {
     if (summary.instanceCount !== 8) {
       throw new Error(`Top-down authored behavior variant instance count mismatch: ${summary.instanceCount}`);
     }
-    if (summary.expectedReplayHash !== "c8b8f279") {
+    if (summary.expectedReplayHash !== expectedReplayHash) {
       throw new Error(`Top-down authored behavior variant replay hash mismatch: ${summary.expectedReplayHash}`);
     }
     if (
@@ -1247,7 +1387,7 @@ async function smokeTopdownAuthoredBehaviorVariant(page, timeoutMs) {
       throw new Error("Top-down authored behavior state command apply helper is missing.");
     }
     globalThis.ferrumTopdownAuthoredBehaviorStart();
-  });
+  }, { expectedReplayHash });
   await page.waitForTimeout(500);
   const firstRun = await page.evaluate(() => {
     const summary = globalThis.ferrumTopdownAuthoredBehaviorVariant;

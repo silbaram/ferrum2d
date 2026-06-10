@@ -9,6 +9,11 @@
       "description": "Small browser runtime starter with HUD, debug metrics, and public API imports.",
       "genre": "starter",
       "tags": ["runtime", "hud", "debug"],
+      "sceneAuthoring": {
+        "configured": true,
+        "fixturePath": "public/scene-authoring.json",
+        "format": "ferrum2d.consumer.scene-authoring"
+      },
       "gameplayReplay": {
         "configured": true,
         "scenario": "minimal-template-surface",
@@ -28,6 +33,11 @@
       "description": "Shooter starter using Game Spec, runtime HUD, and keyboard movement/fire controls.",
       "genre": "topdown-shooter",
       "tags": ["shooter", "game-spec", "desktop"],
+      "sceneAuthoring": {
+        "configured": true,
+        "fixturePath": "public/scene-authoring.json",
+        "format": "ferrum2d.consumer.scene-authoring"
+      },
       "gameplayReplay": {
         "configured": true,
         "scenario": "topdown-template-game-spec",
@@ -47,9 +57,38 @@
       "description": "Side-scroller starter using the built-in platformer scene and runtime HUD.",
       "genre": "platformer",
       "tags": ["platformer", "side-scroller", "starter"],
+      "sceneAuthoring": {
+        "configured": true,
+        "fixturePath": "public/scene-authoring.json",
+        "format": "ferrum2d.consumer.scene-authoring"
+      },
       "gameplayReplay": {
         "configured": true,
         "scenario": "platformer-template-surface",
+        "fixturePath": "public/gameplay-replay.fixture.json",
+        "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json"
+      },
+      "runtimeGameplayReplay": {
+        "configured": true,
+        "scenario": "project-runtime",
+        "fixturePath": "public/gameplay-runtime-replay.fixture.json",
+        "coverageTagDefinitionsPath": "public/gameplay-runtime-replay.coverage-tags.json"
+      }
+    },
+    {
+      "id": "breakout",
+      "name": "Breakout",
+      "description": "Arcade block breaker starter using the built-in Breakout scene and runtime metrics.",
+      "genre": "breakout",
+      "tags": ["breakout", "arcade", "starter"],
+      "sceneAuthoring": {
+        "configured": true,
+        "fixturePath": "public/scene-authoring.json",
+        "format": "ferrum2d.consumer.scene-authoring"
+      },
+      "gameplayReplay": {
+        "configured": true,
+        "scenario": "breakout-template-surface",
         "fixturePath": "public/gameplay-replay.fixture.json",
         "coverageTagDefinitionsPath": "public/gameplay-replay.coverage-tags.json"
       },

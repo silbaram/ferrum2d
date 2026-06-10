@@ -312,6 +312,69 @@
       }
     }
   },
+  "content": {
+    "localization": {
+      "defaultLocale": "en",
+      "fallbackLocale": "en",
+      "locales": {
+        "en": {
+          "strings": {
+            "intro.ready": "Ready to hold the arena?",
+            "intro.choice.start": "Start patrol",
+            "intro.done": "Keep moving and watch the corners."
+          }
+        },
+        "ko": {
+          "strings": {
+            "intro.ready": "아레나를 지킬 준비가 됐나요?",
+            "intro.choice.start": "순찰 시작",
+            "intro.done": "계속 움직이고 모서리를 살피세요."
+          }
+        }
+      }
+    },
+    "dialogue": {
+      "graphs": {
+        "intro": {
+          "initialNode": "start",
+          "nodes": {
+            "start": {
+              "speaker": "Guide",
+              "text": "intro.ready",
+              "choices": [
+                {
+                  "id": "start",
+                  "label": "intro.choice.start",
+                  "to": "done"
+                }
+              ]
+            },
+            "done": {
+              "text": "intro.done",
+              "end": true
+            }
+          }
+        }
+      }
+    },
+    "cutscenes": {
+      "intro": {
+        "id": "intro",
+        "commands": [
+          {
+            "kind": "dialogue",
+            "graphId": "intro",
+            "nodeId": "start",
+            "durationSeconds": 1.5
+          },
+          {
+            "kind": "wait",
+            "durationSeconds": 0.25
+          }
+        ]
+      }
+    }
+  },
   "physics": {
     "mode": "arcade",
     "solver": {

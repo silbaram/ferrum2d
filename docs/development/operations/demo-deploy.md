@@ -46,5 +46,6 @@ pnpm build:pages
 3. `pnpm build`로 Wasm package와 모든 예제를 빌드한다.
 4. `pnpm build:pages`로 demo dist와 docs HTML을 포함한 `dist-pages/` artifact를 만든다.
 5. `actions/upload-pages-artifact`와 `actions/deploy-pages`로 GitHub Pages에 배포한다.
+6. 배포 직후 `page_url` 기준 `/`, `/docs/`, `/docs/engine/public-api.html`, `/starter-runtime/`, `/topdown-shooter/`, `/breakout/`, `/platformer/` route를 `curl --fail`로 확인한다.
 
 이 workflow는 배포만 담당한다. PR 회귀 검증은 기존 `CI` workflow와 smoke 문서를 기준으로 유지한다.

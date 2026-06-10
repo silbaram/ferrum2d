@@ -25,27 +25,47 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     );
     world.set_gameplay_tags(a, GameplayTags::new(1 << 5).unwrap());
     world.set_gameplay_faction(a, GameplayFaction::new(5, 0).unwrap());
+    world
+        .gameplay_faction_relations
+        .set_default_relation(FactionRelation::Friendly);
+    assert!(world
+        .gameplay_faction_relations
+        .set_relation(5, 6, FactionRelation::Hostile));
+    assert!(world
+        .gameplay_faction_relations
+        .set_relation(5, 5, FactionRelation::Neutral));
     let mut state_machine = BehaviorStateMachine::new(1);
     assert!(state_machine.push_transition(BehaviorStateTransition::new(1, 2, 7)));
     assert!(world.set_behavior_state_machine(a, state_machine));
-    let state_enter_action =
-        BehaviorStateEnterAction::new(2, 11, BehaviorStateEnterActionPhase::NextFramePrePhysics);
-    assert!(world.add_behavior_state_enter_action(a, state_enter_action));
+    let expected_state_enter_actions = (0..17)
+        .map(|index| {
+            BehaviorStateEnterAction::new(
+                2,
+                11 + index as u32,
+                BehaviorStateEnterActionPhase::NextFramePrePhysics,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(expected_state_enter_actions.len() <= MAX_BEHAVIOR_STATE_ENTER_ACTIONS_PER_ENTITY);
+    for action in expected_state_enter_actions.iter().copied() {
+        assert!(world.add_behavior_state_enter_action(a, action));
+    }
     assert!(world.set_pickup(a, Pickup::new(GAMEPLAY_PICKUP_ITEM_SCORE, 3, true)));
     assert!(world.set_interaction(a, Interaction::new(7, 24.0, true)));
     assert!(world.set_gameplay_timer_trigger(a, GameplayTimerTrigger::new(9, 0.5)));
-    assert!(world.add_collision_reaction(
-        a,
-        CollisionReaction::Damage {
-            target: CollisionTarget::OtherEntity,
-        },
-    ));
-    assert!(world.add_collision_reaction(
-        a,
-        CollisionReaction::Despawn {
-            target: CollisionTarget::SelfEntity,
-        },
-    ));
+    let expected_collision_reactions = (0..9)
+        .map(|index| CollisionReaction::PlaySound {
+            sound_id: 100 + index,
+            volume: 0.8,
+            pitch: 1.1,
+            cooldown: Cooldown::ready(0.0),
+            replace_default: false,
+            trigger: CollisionReactionTrigger::Contact,
+        })
+        .collect::<Vec<_>>();
+    for reaction in expected_collision_reactions.iter().copied() {
+        assert!(world.add_collision_reaction(a, reaction));
+    }
     world.set_height_span(a, HeightSpan::on_default_floor(4.0, 16.0).unwrap());
     world.set_aabb_collider(
         a,
@@ -79,6 +99,7 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     world.clear_movement_pattern(a);
     world.clear_gameplay_tags(a);
     world.clear_gameplay_faction(a);
+    world.gameplay_faction_relations.clear();
     world.clear_behavior_state_machine(a);
     world.clear_behavior_state_enter_actions(a);
     world.clear_pickup(a);
@@ -123,6 +144,18 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     );
     assert_eq!(world.gameplay_tags(a), GameplayTags::new(1 << 5));
     assert_eq!(world.gameplay_faction(a), GameplayFaction::new(5, 0));
+    assert_eq!(
+        world.gameplay_faction_relations.default_relation(),
+        FactionRelation::Friendly
+    );
+    assert_eq!(
+        world.gameplay_faction_relations.relation(5, 6),
+        Some(FactionRelation::Hostile)
+    );
+    assert_eq!(
+        world.gameplay_faction_relations.relation(5, 5),
+        Some(FactionRelation::Neutral)
+    );
     assert_eq!(world.gameplay_tag_query_indices(5), &[a.id as usize]);
     assert_eq!(world.gameplay_faction_query_indices(5), &[a.id as usize]);
     assert_eq!(world.behavior_state_machine(a), Some(state_machine));
@@ -130,7 +163,7 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
         world
             .behavior_state_enter_actions(a)
             .map(|actions| actions.iter_for_state(2).collect::<Vec<_>>()),
-        Some(vec![state_enter_action])
+        Some(expected_state_enter_actions)
     );
     assert_eq!(
         world.pickup(a),
@@ -145,14 +178,7 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
         world
             .collision_reactions(a)
             .map(|reactions| reactions.iter().collect::<Vec<_>>()),
-        Some(vec![
-            CollisionReaction::Damage {
-                target: CollisionTarget::OtherEntity,
-            },
-            CollisionReaction::Despawn {
-                target: CollisionTarget::SelfEntity,
-            },
-        ])
+        Some(expected_collision_reactions)
     );
     assert_eq!(
         world.height_span(a),

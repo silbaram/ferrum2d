@@ -1,4 +1,7 @@
 import type { PostProcessStackInput, ResolvedPostProcessPass } from "./cameraPostProcessing.js";
+import type { CutsceneSequenceSpec, ResolvedCutsceneSequenceSpec } from "./cutsceneSequence.js";
+import type { DialogueGraphSpec, ResolvedDialogueGraph } from "./dialogueQuest.js";
+import type { LocalizationDocumentSpec, ResolvedLocalizationDocument } from "./localization.js";
 import type { PhysicsFloorId, PhysicsMode, PhysicsSpec, ResolvedPhysicsSpec } from "./physicsSpec.js";
 
 export interface ShooterGameSpec {
@@ -38,6 +41,7 @@ export interface ShooterGameSpec {
   postProcessing?: PostProcessStackInput;
   audio?: ShooterAudioSpec;
   physics?: PhysicsSpec;
+  content?: ShooterContentSpec;
 }
 
 export interface ShooterEnemyPresetSpec {
@@ -82,6 +86,22 @@ export interface ShooterAudioSpec {
 export interface ShooterAudioEventPolicySpec {
   volume?: number;
   pitch?: number;
+}
+
+export interface ShooterContentSpec {
+  localization?: LocalizationDocumentSpec;
+  dialogue?: ShooterDialogueContentSpec;
+  cutscenes?: Record<string, CutsceneSequenceSpec>;
+}
+
+export interface ShooterDialogueContentSpec {
+  graphs?: Record<string, DialogueGraphSpec>;
+}
+
+export interface ResolvedShooterContentSpec {
+  localization?: ResolvedLocalizationDocument;
+  dialogueGraphs: Readonly<Record<string, ResolvedDialogueGraph>>;
+  cutscenes: Readonly<Record<string, ResolvedCutsceneSequenceSpec>>;
 }
 
 export interface ShooterCameraSpec {
@@ -497,6 +517,7 @@ export interface ResolvedShooterGameSpec {
   gameOverPitch: number;
   postProcessing: readonly ResolvedPostProcessPass[];
   physics: ResolvedPhysicsSpec;
+  content: ResolvedShooterContentSpec;
 }
 
 export interface ResolvedShooterProjectileArcSpec {

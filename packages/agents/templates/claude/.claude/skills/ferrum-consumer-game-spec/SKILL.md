@@ -1,6 +1,6 @@
 ---
 name: ferrum-consumer-game-spec
-description: Use when authoring, tuning, validating, or reviewing Ferrum2D consumer game configuration such as game.json, prefab values, spawn waves, collider metadata, balance values, and schema-compatible game variants.
+description: Use when authoring, tuning, validating, or reviewing Ferrum2D consumer game configuration such as game.json, content localization/dialogue/cutscene data, prefab values, spawn waves, collider metadata, balance values, and schema-compatible game variants.
 ---
 
 # Ferrum Consumer Game Spec

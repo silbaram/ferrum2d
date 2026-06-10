@@ -5,10 +5,12 @@ import {
   animationTimelineFrameAt,
   applyBehaviorRecipes,
   applyCutsceneSequenceEvent,
+  applyFactionRelationTable,
   applyGameplayBehaviorCommands,
   applyBehaviorStateMachineStateCommands,
   applyGameplayEventActions,
   applySceneCompositionFragment,
+  applySceneBehaviorRecipes,
   behaviorRecipeCommandsForEntity,
   behaviorStateMachineBehaviorProfilesForState,
   behaviorStateMachineCommandsForState,
@@ -54,6 +56,9 @@ import {
   resolveGameplayBehaviorRuntimeIds,
   resolvePresentationEffectRegistry,
   runBehaviorStateMachineReplay,
+  SCENE_AUTHORING_DOCUMENT_FORMAT,
+  SCENE_AUTHORING_DOCUMENT_VERSION,
+  resolveSceneAuthoringDocument,
   resolveSceneCompositionSpec,
   unpackTileImpactLayerIndex,
   unpackTileImpactTileIndex,
@@ -73,8 +78,11 @@ import type {
   AnimationTimelineUpdateResult,
   ApplyBehaviorRecipesOptions,
   ApplyBehaviorStateMachineStateCommandsOptions,
+  ApplyFactionRelationTableOptions,
+  ApplyFactionRelationTableResult,
   ApplyGameplayBehaviorCommandsOptions,
   ApplySceneCompositionOptions,
+  ApplySceneBehaviorRecipesOptions,
   BehaviorRecipeApplyResult,
   BehaviorRecipeActionAim,
   BehaviorRecipeCommand,
@@ -176,6 +184,10 @@ import type {
   CollisionSoundBehaviorRecipeSpec,
   DamageBehaviorRecipeSpec,
   DashActionBehaviorRecipeSpec,
+  FactionRelation,
+  FactionRelationEntrySpec,
+  FactionRelationRuntimeEngine,
+  FactionRelationTableSpec,
   FactionBehaviorRecipeSpec,
   EffectCustomEventDispatch,
   EffectEventDispatch,
@@ -197,6 +209,7 @@ import type {
   GameplayBehaviorRuntimeIds,
   GameplayEntityHandle,
   GameplayEntityHandleMap,
+  GameplayFactionReference,
   ResolveGameplayBehaviorRuntimeIdsOptions,
   GameplayActionDiagnosticCode,
   GameplayActionDiagnosticReport,
@@ -261,6 +274,7 @@ import type {
   ResolveBehaviorRecipeDocumentOptions,
   ResolveBehaviorStateMachineDocumentOptions,
   ResolveCutsceneSequenceOptions,
+  ResolveSceneAuthoringDocumentOptions,
   ResolveSceneCompositionOptions,
   ResolvedAnimationTimelineEvent,
   ResolvedAnimationTimelineSpec,
@@ -313,9 +327,12 @@ import type {
   ResolvedSceneCompositionPrefabVariant,
   ResolvedSceneCompositionSpec,
   ResolvedSceneCompositionTransform,
+  ResolvedSceneAuthoringDocument,
   SceneBehaviorBindingDryRunResult,
   SceneBehaviorBindingOptions,
   SceneBehaviorBindingPlan,
+  SceneBehaviorApplyResult,
+  SceneBehaviorRuntimeTarget,
   SceneCompositionApplyResult,
   SceneCompositionFragmentIncludeSpec,
   SceneCompositionFragmentInstanceSpec,
@@ -327,6 +344,7 @@ import type {
   SceneCompositionSpec,
   SceneCompositionTarget,
   SceneCompositionTransformSpec,
+  SceneAuthoringDocumentSpec,
   ScoreRewardBehaviorRecipeSpec,
   TextDirection,
 } from "./publicApiTypes.shared.js";
@@ -434,6 +452,29 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   };
   const sceneCompositionApplyResult: SceneCompositionApplyResult =
     publicApplySceneCompositionFragment(sceneCompositionTarget, resolvedSceneComposition, applySceneCompositionOptions);
+  const sceneAuthoringDocument: SceneAuthoringDocumentSpec = {
+    format: SCENE_AUTHORING_DOCUMENT_FORMAT,
+    version: SCENE_AUTHORING_DOCUMENT_VERSION,
+    sceneComposition: sceneCompositionSpec,
+    behaviorRecipes: {
+      entities: {
+        enemy: {
+          recipes: [{ kind: "health", max: 2 }],
+        },
+      },
+    },
+  };
+  const sceneAuthoringOptions: ResolveSceneAuthoringDocumentOptions = {
+    path: "sceneAuthoring",
+    validateBindings: true,
+    missingBehavior: "ignore",
+  };
+  const publicResolveSceneAuthoringDocument: PublicApi["resolveSceneAuthoringDocument"] =
+    resolveSceneAuthoringDocument;
+  const resolvedSceneAuthoringDocument: ResolvedSceneAuthoringDocument =
+    publicResolveSceneAuthoringDocument(sceneAuthoringDocument, sceneAuthoringOptions);
+  equal(resolvedSceneAuthoringDocument.format, SCENE_AUTHORING_DOCUMENT_FORMAT);
+  equal(resolvedSceneAuthoringDocument.bindingPlan?.fragment, "room");
   const behaviorRecipeKind: BehaviorRecipeKind = "health";
   const behaviorRecipeZeroAction: BehaviorRecipeHealthZeroAction = "event";
   const behaviorRecipeDamageTarget: BehaviorRecipeDamageTarget = "other";
@@ -1015,6 +1056,8 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   const publicBindSceneBehaviorRecipes: PublicApi["bindSceneBehaviorRecipes"] = bindSceneBehaviorRecipes;
   const publicDryRunSceneBehaviorRecipes: PublicApi["dryRunSceneBehaviorRecipes"] = dryRunSceneBehaviorRecipes;
   const publicApplyGameplayBehaviorCommands: PublicApi["applyGameplayBehaviorCommands"] = applyGameplayBehaviorCommands;
+  const publicApplyFactionRelationTable: PublicApi["applyFactionRelationTable"] = applyFactionRelationTable;
+  const publicApplySceneBehaviorRecipes: PublicApi["applySceneBehaviorRecipes"] = applySceneBehaviorRecipes;
   const publicCreateGameplayBehaviorRuntimeTarget: PublicApi["createGameplayBehaviorRuntimeTarget"] =
     createGameplayBehaviorRuntimeTarget;
   const sceneBehaviorBindingPlan: SceneBehaviorBindingPlan =
@@ -1072,8 +1115,47 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     gameplayEntityHandleMap,
     applyGameplayBehaviorCommandsOptions,
   );
+  const factionRelation: FactionRelation = "hostile";
+  const factionReference: GameplayFactionReference = "player";
+  const factionRelationEntry: FactionRelationEntrySpec = {
+    source: factionReference,
+    target: "enemy",
+    relation: factionRelation,
+  };
+  const factionRelationTable: FactionRelationTableSpec = {
+    defaultRelation: "neutral",
+    relations: [factionRelationEntry],
+  };
+  const factionRelationRuntimeEngine: FactionRelationRuntimeEngine = {
+    clear_gameplay_faction_relations: () => {},
+    set_gameplay_faction_default_relation: () => true,
+    set_gameplay_faction_relation: () => true,
+  };
+  const applyFactionRelationTableOptions: ApplyFactionRelationTableOptions = {
+    path: "factions",
+  };
+  const factionRelationApplyResult: ApplyFactionRelationTableResult = publicApplyFactionRelationTable(
+    factionRelationRuntimeEngine,
+    factionRelationTable,
+    applyFactionRelationTableOptions,
+  );
   const gameplayBehaviorRuntimeTarget: BehaviorRecipeRuntimeTarget =
     publicCreateGameplayBehaviorRuntimeTarget(gameplayBehaviorRuntimeEngine, gameplayEntityHandleMap);
+  const sceneBehaviorRuntimeTarget: SceneBehaviorRuntimeTarget = {
+    spawnSceneInstance: () => gameplayEntityHandle,
+  };
+  const applySceneBehaviorRecipesOptions: ApplySceneBehaviorRecipesOptions = {
+    ...sceneBehaviorBindingOptions,
+    ids: gameplayBehaviorRuntimeIds,
+  };
+  const sceneBehaviorApplyResult: SceneBehaviorApplyResult =
+    publicApplySceneBehaviorRecipes(
+      gameplayBehaviorRuntimeEngine,
+      sceneBehaviorRuntimeTarget,
+      resolvedSceneComposition,
+      resolvedBehaviorRecipeDocument,
+      applySceneBehaviorRecipesOptions,
+    );
   const publicApplyBehaviorStateMachineStateCommands:
     PublicApi["applyBehaviorStateMachineStateCommands"] =
       applyBehaviorStateMachineStateCommands;
@@ -1687,7 +1769,7 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     "configureChase",
   );
   equal(typeof publicResolveBehaviorStateMachineDocument, "function");
-  equal(publicBehaviorStateMachineRuntimeMaxTransitions, 16);
+  equal(publicBehaviorStateMachineRuntimeMaxTransitions, 32);
   equal(behaviorStateMachineRuntimeInstallPlan.initial, "idle");
   equal(behaviorStateMachineRuntimeStateId.state.length > 0, true);
   equal(behaviorStateMachineRuntimeTransition.actionId, 2);
@@ -1713,9 +1795,12 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(sceneBehaviorDryRunCommandCount, 23);
   equal(gameplayBehaviorApplyResult.results[0], true);
   equal(gameplayBehaviorRuntimeTarget.applyBehaviorRecipeCommand(sceneBehaviorBindingPlan.commands[1]), true);
+  equal(sceneBehaviorApplyResult.behaviorApplyResult.results[0], true);
+  equal(sceneBehaviorApplyResult.spawnResults[0]?.entityId, 7);
   equal(typeof publicBindSceneBehaviorRecipes, "function");
   equal(typeof publicDryRunSceneBehaviorRecipes, "function");
   equal(typeof publicApplyGameplayBehaviorCommands, "function");
+  equal(typeof publicApplySceneBehaviorRecipes, "function");
   equal(typeof publicCreateGameplayBehaviorRuntimeTarget, "function");
   equal(gameplayInteractionEventAction.action, "inspect");
   equal(gameplayInteractionEventAction.prompt, "Inspect");

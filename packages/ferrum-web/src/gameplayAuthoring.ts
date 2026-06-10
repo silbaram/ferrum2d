@@ -30,10 +30,17 @@ const GAMEPLAY_PICKUP_ITEM_SCORE = 1;
 const MAX_PARTICLE_PRESETS = 256;
 const MAX_GAMEPLAY_FACTION_ID = 31;
 const MAX_GAMEPLAY_TAG_ID = 31;
+const GAMEPLAY_FACTION_ID_RANGE_LABEL = `0..${MAX_GAMEPLAY_FACTION_ID}`;
+const GAMEPLAY_TAG_ID_RANGE_LABEL = `0..${MAX_GAMEPLAY_TAG_ID}`;
 const GAMEPLAY_FACTION_CODES = Object.freeze({
   neutral: 0,
   player: 1,
   enemy: 2,
+} as const);
+const GAMEPLAY_FACTION_RELATION_CODES = Object.freeze({
+  neutral: 0,
+  friendly: 1,
+  hostile: 2,
 } as const);
 const GAMEPLAY_MOVEMENT_QUERY_LAYER_TARGET_PREFIX = "nearestLayer:" as const;
 const GAMEPLAY_MOVEMENT_QUERY_FACTION_TARGET_PREFIX = "nearestFaction:" as const;
@@ -45,7 +52,8 @@ const GAMEPLAY_MOVEMENT_QUERY_LAYER_CODES = Object.freeze({
   wall: 3,
   pickup: 4,
 } as const);
-type GameplayFactionReference = keyof typeof GAMEPLAY_FACTION_CODES | number;
+export type GameplayFactionReference = keyof typeof GAMEPLAY_FACTION_CODES | number;
+export type FactionRelation = keyof typeof GAMEPLAY_FACTION_RELATION_CODES;
 type GameplayMovementQueryLayer = keyof typeof GAMEPLAY_MOVEMENT_QUERY_LAYER_CODES;
 type GameplayMovementQueryFaction = keyof typeof GAMEPLAY_FACTION_CODES | number;
 
@@ -88,6 +96,40 @@ export interface RegisterGameplayPrefabsOptions {
 export interface RegisterGameplayPrefabsResult {
   registrations: readonly GameplayPrefabRegistration[];
   results: readonly boolean[];
+}
+
+export interface FactionRelationEntrySpec {
+  source: GameplayFactionReference;
+  target: GameplayFactionReference;
+  relation: FactionRelation;
+}
+
+export interface FactionRelationTableSpec {
+  defaultRelation?: FactionRelation;
+  relations: readonly FactionRelationEntrySpec[];
+}
+
+interface ResolvedFactionRelationEntrySpec {
+  source: number;
+  target: number;
+  relation: FactionRelation;
+  relationCode: number;
+}
+
+export interface ApplyFactionRelationTableOptions {
+  path?: string;
+}
+
+export interface ApplyFactionRelationTableResult {
+  applied: true;
+  defaultRelation: FactionRelation;
+  relationCount: number;
+}
+
+export interface FactionRelationRuntimeEngine {
+  clear_gameplay_faction_relations(): void;
+  set_gameplay_faction_default_relation(relationCode: number): boolean;
+  set_gameplay_faction_relation(sourceFactionId: number, targetFactionId: number, relationCode: number): boolean;
 }
 
 export interface GameplayEntityHandle {
@@ -451,9 +493,24 @@ export interface SceneBehaviorBindingPlan {
   commands: readonly BehaviorRecipeCommand[];
 }
 
+export interface SceneBehaviorRuntimeTarget {
+  spawnSceneInstance(instance: ResolvedSceneCompositionInstance): GameplayEntityHandle;
+}
+
 export interface ApplyGameplayBehaviorCommandsOptions {
   path?: string;
   ids?: GameplayBehaviorRuntimeIds;
+}
+
+export interface ApplySceneBehaviorRecipesOptions extends SceneBehaviorBindingOptions {
+  ids?: GameplayBehaviorRuntimeIds;
+}
+
+export interface SceneBehaviorApplyResult {
+  plan: SceneBehaviorBindingPlan;
+  entityHandles: Readonly<Record<string, GameplayEntityHandle>>;
+  spawnResults: readonly GameplayEntityHandle[];
+  behaviorApplyResult: BehaviorRecipeApplyResult;
 }
 
 export type SceneBehaviorBindingDryRunResult =
@@ -538,6 +595,44 @@ export function dryRunSceneBehaviorRecipes(
   }
 }
 
+export function applySceneBehaviorRecipes(
+  engine: GameplayBehaviorRuntimeEngine,
+  target: SceneBehaviorRuntimeTarget,
+  composition: SceneCompositionSpec | ResolvedSceneCompositionSpec,
+  recipes: BehaviorRecipeDocumentSpec | ResolvedBehaviorRecipeDocument,
+  options: ApplySceneBehaviorRecipesOptions = {},
+): SceneBehaviorApplyResult {
+  const path = options.path ?? "gameplayAuthoring";
+  if (target === null || typeof target !== "object" || typeof target.spawnSceneInstance !== "function") {
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.target`,
+      "must expose spawnSceneInstance(instance) returning an entity handle",
+    );
+  }
+
+  const plan = bindSceneBehaviorRecipes(composition, recipes, options);
+  const entityHandles: Record<string, GameplayEntityHandle> = {};
+  const spawnResults = plan.instances.map((instance, index) => {
+    const handle = gameplayEntityHandle(
+      target.spawnSceneInstance(instance),
+      `${path}.instances.${index}.handle`,
+    );
+    entityHandles[instance.id] = handle;
+    return handle;
+  });
+  const behaviorApplyResult = applyGameplayBehaviorCommands(engine, plan.commands, entityHandles, {
+    path,
+    ids: options.ids,
+  });
+
+  return {
+    plan,
+    entityHandles,
+    spawnResults,
+    behaviorApplyResult,
+  };
+}
+
 export function createGameplayBehaviorRuntimeTarget(
   engine: GameplayBehaviorRuntimeEngine,
   entityHandles: GameplayEntityHandleMap,
@@ -613,6 +708,54 @@ export function resolveGameplayBehaviorRuntimeIds(
     ...(Object.keys(timers).length === 0 ? {} : { timers }),
     ...(Object.keys(tags).length === 0 ? {} : { tags }),
     ...(Object.keys(effects).length === 0 ? {} : { effects }),
+  };
+}
+
+export function applyFactionRelationTable(
+  engine: FactionRelationRuntimeEngine,
+  table: FactionRelationTableSpec,
+  options: ApplyFactionRelationTableOptions = {},
+): ApplyFactionRelationTableResult {
+  const path = options.path ?? "factionRelationTable";
+  if (engine === null || typeof engine !== "object") {
+    throw gameplayAuthoringDiagnosticError(`${path}.engine`, "must be a faction relation runtime engine");
+  }
+  if (!isRecord(table)) {
+    throw gameplayAuthoringDiagnosticError(path, "must be an object");
+  }
+  if (!Array.isArray(table.relations)) {
+    throw gameplayAuthoringDiagnosticError(`${path}.relations`, "must be an array");
+  }
+  const defaultRelation = factionRelationValue(table.defaultRelation ?? "neutral", `${path}.defaultRelation`);
+  const relationEntries = table.relations.map((rawEntry, index): ResolvedFactionRelationEntrySpec => {
+    const entryPath = `${path}.relations.${index}`;
+    if (!isRecord(rawEntry)) {
+      throw gameplayAuthoringDiagnosticError(entryPath, "must be an object");
+    }
+    const entry = factionRelationEntrySpec(rawEntry, entryPath);
+    return {
+      ...entry,
+      relationCode: factionRelationCode(entry.relation),
+    };
+  });
+
+  engine.clear_gameplay_faction_relations();
+  if (!engine.set_gameplay_faction_default_relation(factionRelationCode(defaultRelation))) {
+    throw gameplayAuthoringDiagnosticError(`${path}.defaultRelation`, `runtime rejected default relation '${defaultRelation}'`);
+  }
+
+  relationEntries.forEach((entry, index) => {
+    const entryPath = `${path}.relations.${index}`;
+    const applied = engine.set_gameplay_faction_relation(entry.source, entry.target, entry.relationCode);
+    if (!applied) {
+      throw gameplayAuthoringDiagnosticError(entryPath, `runtime rejected relation '${entry.source}' -> '${entry.target}'`);
+    }
+  });
+
+  return {
+    applied: true,
+    defaultRelation,
+    relationCount: table.relations.length,
   };
 }
 
@@ -2471,7 +2614,7 @@ function movementNearestFactionTarget(target: string, path: string): GameplayMov
   }
   throw gameplayAuthoringDiagnosticError(
     path,
-    "nearestFaction target must be nearestFaction:neutral, nearestFaction:player, nearestFaction:enemy, or nearestFaction:<0..31>",
+    `nearestFaction target must be nearestFaction:neutral, nearestFaction:player, nearestFaction:enemy, or nearestFaction:<${GAMEPLAY_FACTION_ID_RANGE_LABEL}>`,
   );
 }
 
@@ -2537,7 +2680,7 @@ function gameplayTagId(
 
 function gameplayTagIdValue(value: unknown, path: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > MAX_GAMEPLAY_TAG_ID) {
-    throw gameplayAuthoringDiagnosticError(path, "must be an integer gameplay tag id between 0 and 31");
+    throw gameplayAuthoringDiagnosticError(path, `must be an integer gameplay tag id between ${GAMEPLAY_TAG_ID_RANGE_LABEL}`);
   }
   return value;
 }
@@ -2574,7 +2717,10 @@ function gameplayFactionCode(faction: GameplayFactionReference, path: string): n
       return code;
     }
   }
-  throw gameplayAuthoringDiagnosticError(path, "must be one of neutral, player, enemy, or an integer faction id between 0 and 31");
+  throw gameplayAuthoringDiagnosticError(
+    path,
+    `must be one of neutral, player, enemy, or an integer faction id between ${GAMEPLAY_FACTION_ID_RANGE_LABEL}`,
+  );
 }
 
 function gameplayFactionMask(factions: readonly GameplayFactionReference[], path: string): number {
@@ -2583,6 +2729,27 @@ function gameplayFactionMask(factions: readonly GameplayFactionReference[], path
     mask |= 1 << gameplayFactionCode(factions[index]!, `${path}.${index}`);
   }
   return mask >>> 0;
+}
+
+function factionRelationEntrySpec(value: Record<string, unknown>, path: string): Omit<ResolvedFactionRelationEntrySpec, "relationCode"> {
+  const source = gameplayFactionCode(value.source as GameplayFactionReference, `${path}.source`);
+  const target = gameplayFactionCode(value.target as GameplayFactionReference, `${path}.target`);
+  return {
+    source,
+    target,
+    relation: factionRelationValue(value.relation, `${path}.relation`),
+  };
+}
+
+function factionRelationValue(value: unknown, path: string): FactionRelation {
+  if (typeof value === "string" && GAMEPLAY_FACTION_RELATION_CODES[value as FactionRelation] !== undefined) {
+    return value as FactionRelation;
+  }
+  throw gameplayAuthoringDiagnosticError(path, "must be one of neutral, friendly, or hostile");
+}
+
+function factionRelationCode(relation: FactionRelation): number {
+  return GAMEPLAY_FACTION_RELATION_CODES[relation];
 }
 
 function collisionTriggerCode(trigger: "contact" | "enter"): number {

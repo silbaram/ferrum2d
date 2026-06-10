@@ -1,8 +1,8 @@
 use super::World;
 use crate::components::gameplay::{
     ActionBinding, ActionBindingSet, BehaviorStateEnterAction, BehaviorStateMachine,
-    BehaviorStateTransition, CollisionReaction, GameplayFaction, GameplayTags,
-    GameplayTimerTrigger, Interaction, MovementPattern, Pickup,
+    BehaviorStateTransition, CollisionReaction, CollisionReactionSet, GameplayFaction,
+    GameplayTags, GameplayTimerTrigger, Interaction, MovementPattern, Pickup,
 };
 use crate::components::{AngularVelocity, Rotation2D, Transform2D, Velocity};
 use crate::entity::Entity;
@@ -62,7 +62,6 @@ impl World {
         self.angular_velocities[i] = Some(angular_velocity);
     }
 
-    #[cfg(test)]
     pub(crate) fn movement_pattern(&self, entity: Entity) -> Option<MovementPattern> {
         let i = self.valid_index(entity)?;
         self.movement_patterns[i]
@@ -101,6 +100,16 @@ impl World {
         };
         let reactions = self.collision_reactions[i].get_or_insert_with(Default::default);
         reactions.push(reaction)
+    }
+
+    pub(crate) fn collision_reactions_mut(
+        &mut self,
+        entity: Entity,
+    ) -> Option<(usize, &mut CollisionReactionSet)> {
+        let i = self.valid_index(entity)?;
+        self.collision_reactions[i]
+            .as_mut()
+            .map(|reactions| (i, reactions))
     }
 
     pub(crate) fn clear_collision_reactions(&mut self, entity: Entity) {

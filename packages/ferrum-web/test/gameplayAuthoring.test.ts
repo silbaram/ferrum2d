@@ -3,7 +3,9 @@ import { test } from "node:test";
 
 import {
   GAMEPLAY_BEHAVIOR_BINDING_PROP,
+  applyFactionRelationTable,
   applyGameplayBehaviorCommands,
+  applySceneBehaviorRecipes,
   bindSceneBehaviorRecipes,
   createGameplayBehaviorRuntimeTarget,
   dryRunSceneBehaviorRecipes,
@@ -11,10 +13,14 @@ import {
   resolveGameplayBehaviorRuntimeIds,
 } from "../src/gameplayAuthoring.js";
 import type { BehaviorRecipeDocumentSpec, BehaviorRecipeCommand } from "../src/behaviorRecipes.js";
-import type { GameplayBehaviorRuntimeEngine, GameplayEntityHandle } from "../src/gameplayAuthoring.js";
+import type {
+  FactionRelationRuntimeEngine,
+  GameplayBehaviorRuntimeEngine,
+  GameplayEntityHandle,
+} from "../src/gameplayAuthoring.js";
 import type { SceneCompositionSpec } from "../src/sceneComposition.js";
 
-class MockGameplayEngine implements GameplayBehaviorRuntimeEngine {
+class MockGameplayEngine implements GameplayBehaviorRuntimeEngine, FactionRelationRuntimeEngine {
   readonly calls: unknown[][] = [];
   failNext = false;
 
@@ -65,6 +71,20 @@ class MockGameplayEngine implements GameplayBehaviorRuntimeEngine {
 
   clear_gameplay_faction(...args: [number, number]): boolean {
     this.calls.push(["clear_gameplay_faction", ...args]);
+    return this.consumeResult();
+  }
+
+  clear_gameplay_faction_relations(): void {
+    this.calls.push(["clear_gameplay_faction_relations"]);
+  }
+
+  set_gameplay_faction_default_relation(...args: [number]): boolean {
+    this.calls.push(["set_gameplay_faction_default_relation", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_faction_relation(...args: [number, number, number]): boolean {
+    this.calls.push(["set_gameplay_faction_relation", ...args]);
     return this.consumeResult();
   }
 
@@ -636,6 +656,75 @@ test("applyGameplayBehaviorCommands applies supported gameplay component command
   ]);
 });
 
+test("applySceneBehaviorRecipes spawns scene instances and applies bound behavior commands", () => {
+  const engine = new MockGameplayEngine();
+  const spawned: string[] = [];
+  const result = applySceneBehaviorRecipes(engine, {
+    spawnSceneInstance: (instance) => {
+      spawned.push(`${instance.id}:${instance.prefab}:${instance.x}`);
+      if (instance.id === "runner") {
+        return { entityId: 11, entityGeneration: 1 };
+      }
+      if (instance.id === "elite") {
+        return { entityId: 12, entityGeneration: 2 };
+      }
+      return { entityId: 13, entityGeneration: 3 };
+    },
+  }, sampleComposition(), sampleRecipes(), {
+    kinds: ["health", "damage", "lifetime", "scoreReward"],
+  });
+
+  deepEqual(spawned, [
+    "runner:enemy:4",
+    "elite:enemy:12",
+    "coin:pickup:0",
+  ]);
+  deepEqual(result.spawnResults, [
+    { entityId: 11, entityGeneration: 1 },
+    { entityId: 12, entityGeneration: 2 },
+    { entityId: 13, entityGeneration: 3 },
+  ]);
+  deepEqual(result.entityHandles, {
+    runner: { entityId: 11, entityGeneration: 1 },
+    elite: { entityId: 12, entityGeneration: 2 },
+    coin: { entityId: 13, entityGeneration: 3 },
+  });
+  deepEqual(result.behaviorApplyResult.results, [true, true, true, true, true, true]);
+  deepEqual(result.plan.commands.map((command) => `${command.entity}:${command.type}`), [
+    "runner:configureHealth",
+    "runner:configureLifetime",
+    "elite:configureHealth",
+    "elite:configureLifetime",
+    "elite:configureDamage",
+    "elite:configureScoreReward",
+  ]);
+  deepEqual(engine.calls, [
+    ["set_gameplay_health", 11, 1, 2],
+    ["set_gameplay_lifetime", 11, 1, 0.75],
+    ["set_gameplay_health", 12, 2, 2],
+    ["set_gameplay_lifetime", 12, 2, 0.75],
+    ["set_gameplay_damage_reaction", 12, 2, 2, 1],
+    ["set_gameplay_score_reward", 12, 2, 5],
+  ]);
+});
+
+test("applySceneBehaviorRecipes validates spawn target handles", () => {
+  const engine = new MockGameplayEngine();
+
+  expectDiagnostic(
+    () => applySceneBehaviorRecipes(engine, {} as Parameters<typeof applySceneBehaviorRecipes>[1], sampleComposition(), sampleRecipes()),
+    "gameplayAuthoring.target",
+  );
+  expectDiagnostic(
+    () => applySceneBehaviorRecipes(engine, {
+      spawnSceneInstance: () => ({ entityId: -1, entityGeneration: 0 }),
+    }, sampleComposition(), sampleRecipes(), {
+      kinds: ["health"],
+    }),
+    "gameplayAuthoring.instances.0.handle.entityId",
+  );
+});
+
 test("applyGameplayBehaviorCommands encodes gameplay tags as unsigned masks", () => {
   const engine = new MockGameplayEngine();
   const handles = {
@@ -656,6 +745,76 @@ test("applyGameplayBehaviorCommands encodes gameplay tags as unsigned masks", ()
   deepEqual(result.results, [true]);
   deepEqual(engine.calls, [
     ["set_gameplay_tags", 1, 10, 2 ** 5 + 2 ** 31],
+  ]);
+});
+
+test("applyGameplayBehaviorCommands accepts max u32-backed faction and tag ids", () => {
+  const engine = new MockGameplayEngine();
+  const handles = {
+    enemy: { entityId: 1, entityGeneration: 10 },
+  };
+
+  const result = applyGameplayBehaviorCommands(engine, [
+    {
+      entity: "enemy",
+      recipe: "max.faction",
+      tags: [],
+      type: "configureFaction",
+      faction: 31,
+      damages: [31],
+    },
+    {
+      entity: "enemy",
+      recipe: "max.tags",
+      tags: ["31"],
+      type: "configureTags",
+    },
+    {
+      entity: "enemy",
+      recipe: "max.chase.faction",
+      tags: [],
+      type: "configureChase",
+      target: "nearestFaction:31",
+      speed: 64,
+      stopDistance: 0,
+    },
+    {
+      entity: "enemy",
+      recipe: "max.chase.tag",
+      tags: [],
+      type: "configureChase",
+      target: "nearestTag:31",
+      speed: 62,
+      stopDistance: 0,
+    },
+    {
+      entity: "enemy",
+      recipe: "max.seek.faction",
+      tags: [],
+      type: "configureSeekTarget",
+      target: "nearestFaction:31",
+      speed: 160,
+      turnRate: 1.5,
+    },
+    {
+      entity: "enemy",
+      recipe: "max.seek.tag",
+      tags: [],
+      type: "configureSeekTarget",
+      target: "nearestTag:31",
+      speed: 150,
+      turnRate: 1.25,
+    },
+  ], handles);
+
+  deepEqual(result.results, [true, true, true, true, true, true]);
+  deepEqual(engine.calls, [
+    ["set_gameplay_faction", 1, 10, 31, 2 ** 31],
+    ["set_gameplay_tags", 1, 10, 2 ** 31],
+    ["set_gameplay_movement_chase_nearest_faction", 1, 10, 31, 64],
+    ["set_gameplay_movement_chase_nearest_tag", 1, 10, 31, 62],
+    ["set_gameplay_movement_seek_target_nearest_faction", 1, 10, 31, 160, 1.5],
+    ["set_gameplay_movement_seek_target_nearest_tag", 1, 10, 31, 150, 1.25],
   ]);
 });
 
@@ -2493,6 +2652,67 @@ test("applyGameplayBehaviorCommands reports missing handles and failed rust appl
   ok(/runtime rejected 'configureHealth' for entity 'enemy'/.test(detail));
   ok(/stale handles/.test(detail));
   ok(/capacity limits/.test(detail));
+});
+
+test("applyFactionRelationTable validates and applies directed relations", () => {
+  const engine = new MockGameplayEngine();
+
+  const result = applyFactionRelationTable(engine, {
+    defaultRelation: "friendly",
+    relations: [
+      { source: "player", target: "enemy", relation: "hostile" },
+      { source: 2, target: "player", relation: "neutral" },
+    ],
+  });
+
+  deepEqual(result, {
+    applied: true,
+    defaultRelation: "friendly",
+    relationCount: 2,
+  });
+  deepEqual(engine.calls, [
+    ["clear_gameplay_faction_relations"],
+    ["set_gameplay_faction_default_relation", 1],
+    ["set_gameplay_faction_relation", 1, 2, 2],
+    ["set_gameplay_faction_relation", 2, 1, 0],
+  ]);
+});
+
+test("applyFactionRelationTable reports invalid entries and runtime rejection", () => {
+  const engine = new MockGameplayEngine();
+
+  expectDiagnostic(() => applyFactionRelationTable(engine, {
+    relations: [
+      { source: "ally" as "player", target: "enemy", relation: "hostile" },
+    ],
+  }), "factionRelationTable.relations.0.source");
+  deepEqual(engine.calls, []);
+
+  expectDiagnostic(() => applyFactionRelationTable(engine, {
+    relations: [
+      { source: "player", target: "enemy", relation: "ally" as "hostile" },
+    ],
+  }), "factionRelationTable.relations.0.relation");
+  deepEqual(engine.calls, []);
+
+  expectDiagnostic(() => applyFactionRelationTable(engine, {
+    relations: [
+      { source: "player", target: "enemy", relation: "hostile" },
+      { source: "player", target: "ally" as "enemy", relation: "friendly" },
+    ],
+  }), "factionRelationTable.relations.1.target");
+  deepEqual(engine.calls, []);
+
+  const failingEngine = new MockGameplayEngine();
+  failingEngine.failNext = true;
+  expectDiagnostic(() => applyFactionRelationTable(failingEngine, {
+    defaultRelation: "hostile",
+    relations: [],
+  }), "factionRelationTable.defaultRelation");
+  deepEqual(failingEngine.calls, [
+    ["clear_gameplay_faction_relations"],
+    ["set_gameplay_faction_default_relation", 2],
+  ]);
 });
 
 function expectDiagnostic(fn: () => void, path: string): Error {

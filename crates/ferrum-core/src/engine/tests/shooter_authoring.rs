@@ -9,7 +9,7 @@ fn resolved_shooter_config_applies_all_values_with_one_call() {
         4, 12.0, 3, 9.0, 2, 18.0, 2, 2, 4.0, 2.0, 9, 220.0, 18.0,
     );
 
-    let config = engine.scene.config();
+    let config = engine.scenes.shooter.config();
     assert_eq!(config.world_width, 3200.0);
     assert_eq!(config.world_height, 1800.0);
     assert_eq!(config.player_speed, 240.0);
@@ -227,6 +227,113 @@ fn gameplay_component_authoring_sets_and_clears_scalar_components() {
     assert_eq!(engine.world.gameplay_tags(enemy), None);
     assert_eq!(engine.world.damages[bullet.id as usize], None);
     assert_eq!(engine.world.bullet_lifetimes[bullet.id as usize], None);
+}
+
+#[test]
+fn gameplay_component_authoring_accepts_max_u32_mask_faction_and_tag_ids() {
+    let mut engine = Engine::new();
+    let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
+    let max_faction_mask = 1_u32 << GAMEPLAY_FACTION_MAX_ID;
+    let max_tag_mask = 1_u32 << GAMEPLAY_TAG_MAX_ID;
+
+    assert!(engine.set_gameplay_faction(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_FACTION_MAX_ID,
+        max_faction_mask,
+    ));
+    assert_eq!(
+        engine.world.gameplay_faction(enemy),
+        GameplayFaction::new(GAMEPLAY_FACTION_MAX_ID, max_faction_mask)
+    );
+    assert!(!engine.set_gameplay_faction(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_FACTION_MAX_ID + 1,
+        0,
+    ));
+
+    assert!(engine.set_gameplay_faction_relation(
+        GAMEPLAY_FACTION_MAX_ID,
+        GAMEPLAY_FACTION_MAX_ID,
+        FactionRelation::Hostile.code(),
+    ));
+    assert_eq!(
+        engine
+            .world
+            .gameplay_faction_relations
+            .relation(GAMEPLAY_FACTION_MAX_ID, GAMEPLAY_FACTION_MAX_ID),
+        Some(FactionRelation::Hostile)
+    );
+    assert!(!engine.set_gameplay_faction_relation(
+        GAMEPLAY_FACTION_MAX_ID + 1,
+        GAMEPLAY_FACTION_MAX_ID,
+        FactionRelation::Hostile.code(),
+    ));
+    assert!(!engine.set_gameplay_faction_relation(
+        GAMEPLAY_FACTION_MAX_ID,
+        GAMEPLAY_FACTION_MAX_ID + 1,
+        FactionRelation::Hostile.code(),
+    ));
+
+    assert!(engine.set_gameplay_tags(enemy.id, enemy.generation, max_tag_mask));
+    assert_eq!(
+        engine.world.gameplay_tags(enemy),
+        GameplayTags::new(max_tag_mask)
+    );
+
+    assert!(engine.set_gameplay_movement_chase_nearest_faction(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_FACTION_MAX_ID,
+        50.0,
+    ));
+    assert!(engine.set_gameplay_movement_chase_nearest_tag(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_TAG_MAX_ID,
+        45.0,
+    ));
+    assert!(engine.set_gameplay_movement_seek_target_nearest_faction(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_FACTION_MAX_ID,
+        60.0,
+        0.5,
+    ));
+    assert!(engine.set_gameplay_movement_seek_target_nearest_tag(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_TAG_MAX_ID,
+        55.0,
+        0.5,
+    ));
+    assert!(!engine.set_gameplay_movement_chase_nearest_faction(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_FACTION_MAX_ID + 1,
+        50.0,
+    ));
+    assert!(!engine.set_gameplay_movement_chase_nearest_tag(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_TAG_MAX_ID + 1,
+        45.0,
+    ));
+    assert!(!engine.set_gameplay_movement_seek_target_nearest_faction(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_FACTION_MAX_ID + 1,
+        60.0,
+        0.5,
+    ));
+    assert!(!engine.set_gameplay_movement_seek_target_nearest_tag(
+        enemy.id,
+        enemy.generation,
+        GAMEPLAY_TAG_MAX_ID + 1,
+        55.0,
+        0.5,
+    ));
 }
 
 #[test]
@@ -469,17 +576,37 @@ fn gameplay_component_authoring_sets_behavior_state_machine() {
         Some(expected)
     );
 
-    assert!(engine.add_gameplay_behavior_state_enter_action(enemy.id, enemy.generation, 2, 11, 0,));
+    let expected_state_enter_actions = (0..MAX_BEHAVIOR_STATE_ENTER_ACTIONS_PER_ENTITY)
+        .map(|index| {
+            BehaviorStateEnterAction::new(
+                2,
+                11 + index as u32,
+                BehaviorStateEnterActionPhase::NextFramePrePhysics,
+            )
+        })
+        .collect::<Vec<_>>();
+    for action in expected_state_enter_actions.iter().copied() {
+        assert!(engine.add_gameplay_behavior_state_enter_action(
+            enemy.id,
+            enemy.generation,
+            action.state,
+            action.action_id,
+            0,
+        ));
+    }
+    assert!(!engine.add_gameplay_behavior_state_enter_action(
+        enemy.id,
+        enemy.generation,
+        2,
+        11 + MAX_BEHAVIOR_STATE_ENTER_ACTIONS_PER_ENTITY as u32,
+        0,
+    ));
     assert_eq!(
         engine.world.behavior_state_enter_actions[enemy.id as usize]
             .unwrap()
             .iter_for_state(2)
             .collect::<Vec<_>>(),
-        vec![BehaviorStateEnterAction::new(
-            2,
-            11,
-            BehaviorStateEnterActionPhase::NextFramePrePhysics,
-        )]
+        expected_state_enter_actions
     );
 
     assert!(engine.clear_gameplay_behavior_state_machine(enemy.id, enemy.generation));
@@ -1320,13 +1447,22 @@ fn gameplay_component_authoring_damage_reaction_failure_is_atomic() {
     assert!(engine.add_gameplay_collision_pickup(enemy.id, enemy.generation, 1));
     assert!(engine.add_gameplay_collision_knockback(enemy.id, enemy.generation, 0, 12.0));
     assert!(engine.add_gameplay_collision_knockback(enemy.id, enemy.generation, 1, 12.0));
+    for index in 0..(MAX_COLLISION_REACTIONS_PER_ENTITY - 8) {
+        assert!(engine.add_gameplay_collision_sound(
+            enemy.id,
+            enemy.generation,
+            100 + index as u32,
+            0.75,
+            1.25
+        ));
+    }
     let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
-    assert_eq!(reactions.len(), 8);
+    assert_eq!(reactions.len(), MAX_COLLISION_REACTIONS_PER_ENTITY);
 
     assert!(!engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, 3.0, 1));
     assert_eq!(engine.world.damages[enemy.id as usize], None);
     let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
-    assert_eq!(reactions.len(), 8);
+    assert_eq!(reactions.len(), MAX_COLLISION_REACTIONS_PER_ENTITY);
     assert!(!reactions
         .iter()
         .any(|reaction| matches!(reaction, CollisionReaction::Damage { .. })));
@@ -1635,7 +1771,7 @@ fn shooter_prefab_collider_api_updates_template_and_existing_entities() {
         0, 12.0, 14.0, 2.0, -3.0, false, false, true, 0.2, 0.8, 2.0, 0.0, 1.4, 0.7, 0.6, 0.5, 0.4,
     ));
 
-    let config = engine.scene.config();
+    let config = engine.scenes.shooter.config();
     assert_eq!(config.player_template.collider_half_width, 12.0);
     assert_eq!(config.player_template.collider_half_height, 14.0);
     assert_eq!(config.player_template.collider_offset_x, 2.0);
@@ -1701,7 +1837,7 @@ fn shooter_prefab_shape_collider_apis_update_templates_and_entities() {
         100.0,
         100.0,
         DEFAULT_TEXTURE_ID,
-        engine.scene.config().enemy_template,
+        engine.scenes.shooter.config().enemy_template,
         1.0,
         1,
     );
@@ -1745,7 +1881,7 @@ fn shooter_prefab_shape_collider_apis_update_templates_and_entities() {
         Velocity { vx: 0.0, vy: 0.0 },
         DEFAULT_TEXTURE_ID,
         1.0,
-        engine.scene.config().bullet_template,
+        engine.scenes.shooter.config().bullet_template,
         1.0,
     );
     let polygon = engine.world.convex_polygon_colliders[bullet.id as usize].unwrap();

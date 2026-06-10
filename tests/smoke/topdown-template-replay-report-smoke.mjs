@@ -9,6 +9,17 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const templateRoot = path.join(repoRoot, "packages/create-game/templates/topdown");
 const ferrumWebRoot = path.join(repoRoot, "packages/ferrum-web");
+const expectedCoverageTags = ["template-game-spec", "topdown-scene-composition-authoring"];
+const expectedCoverageTagDefinitions = {
+  "template-game-spec": "Consumer replay validates the generated Top-down template Game Spec contract.",
+  "topdown-scene-composition-authoring": "Consumer replay validates the Top-down SceneComposition and BehaviorRecipe authoring surface.",
+};
+const expectedCoverageTagGroups = {
+  "template-contracts": {
+    description: "Consumer template replay contracts generated with create-game.",
+    tags: expectedCoverageTags,
+  },
+};
 
 let tempRoot;
 
@@ -27,17 +38,9 @@ try {
     validatedReport.gameplayReplay?.coverageTagDefinitionsPath,
     "public/gameplay-replay.coverage-tags.json",
   );
-  assert.deepEqual(validatedReport.gameplayReplay?.coverageTags, ["template-game-spec"]);
-  assert.equal(
-    validatedReport.gameplayReplay?.coverageTagDefinitions?.["template-game-spec"],
-    "Consumer replay validates the generated Top-down template Game Spec contract.",
-  );
-  assert.deepEqual(validatedReport.gameplayReplay?.coverageTagGroups, {
-    "template-contracts": {
-      description: "Consumer template replay contracts generated with create-game.",
-      tags: ["template-game-spec"],
-    },
-  });
+  assert.deepEqual(validatedReport.gameplayReplay?.coverageTags, expectedCoverageTags);
+  assert.deepEqual(validatedReport.gameplayReplay?.coverageTagDefinitions, expectedCoverageTagDefinitions);
+  assert.deepEqual(validatedReport.gameplayReplay?.coverageTagGroups, expectedCoverageTagGroups);
   assert.deepEqual(validatedReport.gameplayReplay?.deprecatedCoverageTags, {});
   assert.equal(validatedReport.gameplayReplay?.replayFixturePatches, undefined);
 
@@ -54,24 +57,16 @@ try {
   assertMachineActionableReport(patch, "topdown replay fixture patch candidate");
   assert.equal(patch?.expected?.format, "ferrum2d.consumer.gameplay-replay.fixture");
   assert.equal(patch?.expected?.coverageTagDefinitionsPath, "public/gameplay-replay.coverage-tags.json");
-  assert.deepEqual(patch?.expected?.coverageTags, ["template-game-spec"]);
+  assert.deepEqual(patch?.expected?.coverageTags, expectedCoverageTags);
   assert.equal(patch?.expected?.replay?.replayHash, driftReport.gameplayReplay?.actualHash);
 
   const updateReport = await runJsonReport(projectRoot, ["scripts/ferrum-harness.mjs", "update-replay-fixture"]);
   assert.equal(updateReport.format, "ferrum2d.consumer.gameplay-replay.fixture-update-report");
   assert.equal(updateReport.ok, true);
   assert.equal(updateReport.gameplayReplayFixture?.coverageTagDefinitionsPath, "public/gameplay-replay.coverage-tags.json");
-  assert.deepEqual(updateReport.gameplayReplayFixture?.coverageTags, ["template-game-spec"]);
-  assert.equal(
-    updateReport.gameplayReplayFixture?.coverageTagDefinitions?.["template-game-spec"],
-    "Consumer replay validates the generated Top-down template Game Spec contract.",
-  );
-  assert.deepEqual(updateReport.gameplayReplayFixture?.coverageTagGroups, {
-    "template-contracts": {
-      description: "Consumer template replay contracts generated with create-game.",
-      tags: ["template-game-spec"],
-    },
-  });
+  assert.deepEqual(updateReport.gameplayReplayFixture?.coverageTags, expectedCoverageTags);
+  assert.deepEqual(updateReport.gameplayReplayFixture?.coverageTagDefinitions, expectedCoverageTagDefinitions);
+  assert.deepEqual(updateReport.gameplayReplayFixture?.coverageTagGroups, expectedCoverageTagGroups);
   assert.deepEqual(updateReport.gameplayReplayFixture?.deprecatedCoverageTags, {});
   assert.equal(updateReport.gameplayReplayFixture?.replayHash, driftReport.gameplayReplay?.actualHash);
 

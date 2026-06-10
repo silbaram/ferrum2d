@@ -108,6 +108,10 @@ export const DEFAULT_SHOOTER_GAME_SPEC: ResolvedShooterGameSpec = {
   gameOverPitch: 0.9,
   postProcessing: [],
   physics: resolvePhysicsSpec(undefined),
+  content: {
+    dialogueGraphs: {},
+    cutscenes: {},
+  },
 };
 export const TILE_SLOPE_MIN_HORIZONTAL_SPAN = 0.0001;
 export const MAX_ATLAS_ANIMATION_FRAMES = 32;

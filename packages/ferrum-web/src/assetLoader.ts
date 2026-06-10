@@ -5,6 +5,7 @@ import { TextureRegistry } from "./textureRegistry.js";
 
 export interface TextureAssetManager {
   loadTexture(textureId: number, url: string): Promise<unknown>;
+  evictTexture?(textureId: number): boolean;
 }
 
 export interface SoundAssetManager {

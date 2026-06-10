@@ -1,4 +1,9 @@
-export { applyShooterGameSpec, resolveShooterGameSpec } from "../gameSpec";
+export {
+  applyShooterGameSpec,
+  createShooterContentRuntimeOptions,
+  resolveShooterContentRuntimeSelection,
+  resolveShooterGameSpec,
+} from "../gameSpec";
 export { FerrumDiagnosticError, diagnosticReport, formatDiagnosticReport, isFerrumDiagnosticError } from "../diagnostics";
 export type { DiagnosticCode, DiagnosticContext, DiagnosticKind, DiagnosticReport } from "../diagnostics";
 export {
@@ -210,6 +215,11 @@ export type {
   ShooterAtlasSpec,
   ShooterCameraPreset,
   ShooterCameraSpec,
+  ShooterContentSpec,
+  ShooterContentRuntimeOptions,
+  ShooterContentRuntimeOptionSet,
+  ShooterContentRuntimeSelection,
+  ShooterDialogueContentSpec,
   ShooterEnemyBehaviorPreset,
   ShooterEnemyOrbitSpec,
   ShooterEnemyPresetSpec,
@@ -234,6 +244,7 @@ export type {
   ResolvedShooterTileRampDefinition,
   ResolvedShooterTileSlopeDefinition,
   ResolvedShooterTilemap,
+  ResolvedShooterContentSpec,
   ShooterWaveSpec,
   ResolvedShooterProjectileArcSpec,
 } from "../gameSpec";

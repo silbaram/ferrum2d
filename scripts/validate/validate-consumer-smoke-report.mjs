@@ -26,6 +26,7 @@ const errors = [];
 
 validateTopLevelReport(report, errors);
 validateTemplates(report, errors);
+validateTemplateMatrixConsistency(report, errors);
 if (options.validateArtifacts) {
   await validateArtifacts(report, errors);
 }
@@ -93,6 +94,7 @@ function validateTopLevelReport(value, reportErrors) {
   } else if (!value.requestedTemplates.every((template) => typeof template === "string" && template.length > 0)) {
     reportErrors.push("requestedTemplates entries must be non-empty strings");
   }
+  validateCreateGameCatalog(value.createGameCatalog, "createGameCatalog", value.status, reportErrors);
   if (!Array.isArray(value.templates)) {
     reportErrors.push("templates must be an array");
   }
@@ -103,6 +105,57 @@ function validateTopLevelReport(value, reportErrors) {
     reportErrors.push("failed report must include error");
   } else if (value.status === "failed") {
     validateErrorSummary(value.error, "error", reportErrors);
+  }
+}
+
+function validateCreateGameCatalog(value, label, reportStatus, reportErrors) {
+  if (!isRecord(value)) {
+    if (reportStatus === "passed") {
+      reportErrors.push(`${label} must be an object`);
+    }
+    return;
+  }
+  if (value.format !== "ferrum-create-game-template-list") {
+    reportErrors.push(`${label}.format must be ferrum-create-game-template-list`);
+  }
+  if (value.version !== 1) {
+    reportErrors.push(`${label}.version must be 1`);
+  }
+  if (typeof value.defaultTemplate !== "string" || value.defaultTemplate.length === 0) {
+    reportErrors.push(`${label}.defaultTemplate must be a non-empty string`);
+  }
+  if (!Number.isInteger(value.templateCount) || value.templateCount <= 0) {
+    reportErrors.push(`${label}.templateCount must be a positive integer`);
+  }
+  if (!Array.isArray(value.templates) || value.templates.length === 0) {
+    reportErrors.push(`${label}.templates must be a non-empty array`);
+    return;
+  }
+  if (Number.isInteger(value.templateCount) && value.templates.length !== value.templateCount) {
+    reportErrors.push(`${label}.templates length must match templateCount`);
+  }
+  const ids = new Set();
+  for (const [index, template] of value.templates.entries()) {
+    const templateLabel = `${label}.templates[${index}]`;
+    if (!isRecord(template)) {
+      reportErrors.push(`${templateLabel} must be an object`);
+      continue;
+    }
+    if (typeof template.id !== "string" || template.id.length === 0) {
+      reportErrors.push(`${templateLabel}.id must be a non-empty string`);
+    } else if (ids.has(template.id)) {
+      reportErrors.push(`${label}.templates must not include duplicate template id ${template.id}`);
+    } else {
+      ids.add(template.id);
+    }
+    for (const key of ["sceneAuthoringConfigured", "gameplayReplayConfigured", "runtimeGameplayReplayConfigured"]) {
+      if (typeof template[key] !== "boolean") {
+        reportErrors.push(`${templateLabel}.${key} must be a boolean`);
+      }
+    }
+  }
+  if (typeof value.defaultTemplate === "string" && value.defaultTemplate.length > 0 && !ids.has(value.defaultTemplate)) {
+    reportErrors.push(`${label}.defaultTemplate must be included in templates`);
   }
 }
 
@@ -137,6 +190,49 @@ function validateTemplates(value, reportErrors) {
     validateTemplateAgents(template, label, value.status, reportErrors);
     validateTemplateReports(template, label, value.status, reportErrors);
     validateTopdownMutationChecks(template, label, value.status, reportErrors);
+  }
+}
+
+function validateTemplateMatrixConsistency(value, reportErrors) {
+  if (value.status !== "passed") {
+    return;
+  }
+  if (
+    !Array.isArray(value.requestedTemplates) ||
+    !Array.isArray(value.templates) ||
+    !isRecord(value.createGameCatalog) ||
+    !Array.isArray(value.createGameCatalog.templates)
+  ) {
+    return;
+  }
+  const requested = new Set(value.requestedTemplates.filter((template) => typeof template === "string"));
+  const reported = new Set();
+  for (const template of value.templates) {
+    if (isRecord(template) && typeof template.template === "string") {
+      if (reported.has(template.template)) {
+        reportErrors.push(`passed report templates must not include duplicate template ${template.template}`);
+      }
+      reported.add(template.template);
+    }
+  }
+  const catalog = new Set();
+  for (const template of value.createGameCatalog.templates) {
+    if (isRecord(template) && typeof template.id === "string") {
+      catalog.add(template.id);
+    }
+  }
+  for (const template of requested) {
+    if (!reported.has(template)) {
+      reportErrors.push(`passed report templates must include requested template ${template}`);
+    }
+    if (!catalog.has(template)) {
+      reportErrors.push(`createGameCatalog.templates must include requested template ${template}`);
+    }
+  }
+  for (const template of reported) {
+    if (!requested.has(template)) {
+      reportErrors.push(`passed report templates must not include unrequested template ${template}`);
+    }
   }
 }
 
@@ -183,7 +279,7 @@ function validateTemplateReports(template, label, reportStatus, reportErrors) {
     return;
   }
   validateStatusString(template.reports.authoring?.status, `${label}.reports.authoring.status`, reportErrors);
-  validateConfiguredReplaySummary(template.reports.gameplayReplay, `${label}.reports.gameplayReplay`, reportErrors);
+  validateGameplayReplaySummary(template.reports.gameplayReplay, `${label}.reports.gameplayReplay`, reportErrors);
   validateRuntimeReplaySummary(template.reports.runtimeReplay, `${label}.reports.runtimeReplay`, reportErrors);
   validateRuntimeRecipeSummary(template.reports.runtimeReplayRecipe, `${label}.reports.runtimeReplayRecipe`, reportErrors);
   if (!isRecord(template.buildOutput)) {
@@ -198,29 +294,38 @@ function validateTemplateReports(template, label, reportStatus, reportErrors) {
   }
 }
 
-function validateConfiguredReplaySummary(value, label, reportErrors) {
+function validateGameplayReplaySummary(value, label, reportErrors) {
   if (!isRecord(value)) {
     reportErrors.push(`${label} must be an object`);
     return;
   }
   validateStatusString(value.status, `${label}.status`, reportErrors);
-  if (value.configured !== true) {
-    reportErrors.push(`${label}.configured must be true`);
+  if (typeof value.configured !== "boolean") {
+    reportErrors.push(`${label}.configured must be a boolean`);
   }
-  if (typeof value.scenario !== "string" || value.scenario.length === 0) {
-    reportErrors.push(`${label}.scenario must be a non-empty string`);
-  }
-  if (!Array.isArray(value.coverageTags) || value.coverageTags.length === 0) {
-    reportErrors.push(`${label}.coverageTags must be a non-empty array`);
-  }
-  if (typeof value.expectedHash !== "string" || value.expectedHash.length === 0) {
-    reportErrors.push(`${label}.expectedHash must be a non-empty string`);
-  }
-  if (typeof value.actualHash !== "string" || value.actualHash.length === 0) {
-    reportErrors.push(`${label}.actualHash must be a non-empty string`);
-  }
-  if (value.comparisonPassed !== true) {
-    reportErrors.push(`${label}.comparisonPassed must be true`);
+  if (value.configured === true) {
+    if (typeof value.scenario !== "string" || value.scenario.length === 0) {
+      reportErrors.push(`${label}.scenario must be a non-empty string when configured`);
+    }
+    if (!Array.isArray(value.coverageTags) || value.coverageTags.length === 0) {
+      reportErrors.push(`${label}.coverageTags must be a non-empty array when configured`);
+    }
+    if (typeof value.expectedHash !== "string" || value.expectedHash.length === 0) {
+      reportErrors.push(`${label}.expectedHash must be a non-empty string when configured`);
+    }
+    if (typeof value.actualHash !== "string" || value.actualHash.length === 0) {
+      reportErrors.push(`${label}.actualHash must be a non-empty string when configured`);
+    }
+    if (value.comparisonPassed !== true) {
+      reportErrors.push(`${label}.comparisonPassed must be true when configured`);
+    }
+  } else if (value.configured === false) {
+    if (value.status !== "not-configured") {
+      reportErrors.push(`${label}.status must be not-configured when configured is false`);
+    }
+    if (!Number.isFinite(value.reports) || value.reports <= 0) {
+      reportErrors.push(`${label}.reports must include at least one diagnostic when not configured`);
+    }
   }
 }
 

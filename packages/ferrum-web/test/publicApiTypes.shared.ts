@@ -9,6 +9,10 @@ export {
   importTiledTilemap,
 } from "../src/assetPipeline.js";
 export {
+  createShooterContentRuntimeOptions,
+  resolveShooterContentRuntimeSelection,
+} from "../src/gameSpec.js";
+export {
   AnimationTimelinePlayer,
   animationTimelineFrameAt,
   resolveAnimationTimelineSpec,
@@ -18,6 +22,11 @@ export {
   instantiateSceneFragment,
   resolveSceneCompositionSpec,
 } from "../src/sceneComposition.js";
+export {
+  SCENE_AUTHORING_DOCUMENT_FORMAT,
+  SCENE_AUTHORING_DOCUMENT_VERSION,
+  resolveSceneAuthoringDocument,
+} from "../src/sceneAuthoringDocument.js";
 export {
   applyBehaviorRecipes,
   behaviorRecipeCommandsForEntity,
@@ -39,7 +48,9 @@ export {
 } from "../src/behaviorStateMachine.js";
 export {
   GAMEPLAY_BEHAVIOR_BINDING_PROP,
+  applyFactionRelationTable,
   applyGameplayBehaviorCommands,
+  applySceneBehaviorRecipes,
   bindSceneBehaviorRecipes,
   createGameplayBehaviorRuntimeTarget,
   dryRunSceneBehaviorRecipes,
@@ -179,7 +190,15 @@ export {
   normalizeLightingScene,
 } from "../src/lighting.js";
 export {
+  BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY,
+  BUILT_IN_SHOOTER_STATE_HEADER_U32S,
+  BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY,
+  BUILT_IN_SHOOTER_STATE_VERSION,
+} from "../src/builtInShooterStateSnapshot.js";
+export {
   captureGameStateSnapshot,
+  DATA_SCENE_STATE_FORMAT,
+  DATA_SCENE_STATE_VERSION,
   GAME_STATE_SNAPSHOT_FORMAT,
   GAME_STATE_SNAPSHOT_VERSION,
   hashGameStateSnapshot,
@@ -188,6 +207,7 @@ export {
   restoreGameStateSnapshot,
   saveGameStateSnapshotToStorage,
   stringifyGameStateSnapshot,
+  validateDataSceneStateSnapshot,
 } from "../src/gameStateSnapshot.js";
 export {
   compareGameplayReplayRuns,
@@ -196,6 +216,11 @@ export {
   GAMEPLAY_REPLAY_RUN_VERSION,
   hashGameplayReplayRun,
 } from "../src/gameplayReplay.js";
+export {
+  createLevelStreamingPixelMaskTerrainPhysicsOptions,
+  extractLevelStreamingTilemapChunkBoundaryChains,
+  tilemapLayerForLevelStreamingChunk,
+} from "../src/levelStreamingPhysics.js";
 export { createPixelMaskTerrainRuntime } from "../src/pixelMaskTerrainRuntime.js";
 export {
   createPhysicsReplayInputStream,
@@ -254,6 +279,7 @@ export {
   resolveLocalizationDocument,
 } from "../src/localization.js";
 export {
+  createRuntimeLevelStreaming,
   LevelChunkStreamer,
   resolveLevelChunkManifest,
   resolveLevelStreamingPlan,
@@ -283,6 +309,7 @@ export {
 
 import type {
   BuiltInShooterStateSnapshot,
+  DataSceneStateSnapshot,
   GameStateSceneSnapshot,
   GameStateSnapshot,
   GameStateSnapshotRestoreResult,
@@ -319,6 +346,8 @@ export type {
   ApplyBehaviorStateMachineStateCommandsOptions,
   ApplyGameplayBehaviorCommandsOptions,
   ApplySceneCompositionOptions,
+  ApplySceneBehaviorRecipesOptions,
+  ResolveSceneAuthoringDocumentOptions,
   AudioAssetLoader,
   AudioBus,
   AudioBusConfig,
@@ -456,10 +485,26 @@ export type {
   BrowserPlatformHost,
   CreateEngineOptions,
   FerrumRuntime,
+  FerrumRuntimeAccessibility,
+  FerrumRuntimeAccessibilityOptions,
+  FerrumRuntimeAnimationTimeline,
+  FerrumRuntimeAnimationTimelineOptions,
+  FerrumRuntimeAnimationTimelineSignalProvider,
+  FerrumRuntimeCutscene,
+  FerrumRuntimeCutsceneDialogueOptions,
+  FerrumRuntimeCutsceneDialogueValues,
+  FerrumRuntimeCutsceneOptions,
+  FerrumRuntimeCutsceneTextMode,
   FerrumRuntimeEnvironment,
   FerrumRuntimeFrame,
+  FerrumRuntimeHud,
+  FerrumRuntimeHudComponentProvider,
+  FerrumRuntimeHudOptions,
+  FerrumRuntimeLocalization,
+  FerrumRuntimeLocalizationOptions,
   FerrumRuntimeOptions,
   FerrumRuntimeRenderer,
+  FerrumRuntimeSubtitleProvider,
   LightingSceneProvider,
   SpriteMaterialProvider,
   LoadingOverlayOptions,
@@ -507,6 +552,7 @@ export type {
   ResolvedProjectileActionBehaviorRecipe,
   ResolvedSpawnPrefabActionBehaviorRecipe,
   ResolvedTimerTriggerBehaviorRecipe,
+  DataSceneStateSnapshot,
   GameStateSceneSnapshot,
   GameStateSnapshot,
   GameStateSnapshotJsonValue,
@@ -516,7 +562,14 @@ export type {
   GameplayReplayFrameSnapshot,
   GameplayReplayRun,
   GameplayReplaySnapshotDiff,
+  ApplyFactionRelationTableOptions,
+  ApplyFactionRelationTableResult,
   GameplayBehaviorBindingSpec,
+  FactionRelation,
+  FactionRelationEntrySpec,
+  FactionRelationRuntimeEngine,
+  FactionRelationTableSpec,
+  GameplayFactionReference,
   GameplayActionDiagnosticCode,
   GameplayActionDiagnosticReport,
   GameplayActionDiagnosticReportOptions,
@@ -778,10 +831,13 @@ export type {
   ResolvedSceneCompositionPrefabVariant,
   ResolvedSceneCompositionSpec,
   ResolvedSceneCompositionTransform,
+  ResolvedSceneAuthoringDocument,
   ResolveSceneCompositionOptions,
   SceneBehaviorBindingDryRunResult,
   SceneBehaviorBindingOptions,
   SceneBehaviorBindingPlan,
+  SceneBehaviorApplyResult,
+  SceneBehaviorRuntimeTarget,
   SceneCompositionApplyResult,
   SceneCompositionFragmentIncludeSpec,
   SceneCompositionFragmentInstanceSpec,
@@ -793,6 +849,7 @@ export type {
   SceneCompositionSpec,
   SceneCompositionTarget,
   SceneCompositionTransformSpec,
+  SceneAuthoringDocumentSpec,
   InstantiateSceneFragmentOptions,
   PickupBehaviorRecipeSpec,
   CreateAssetPreloadCachePolicyOptions,
@@ -806,6 +863,7 @@ export type {
   LDtkTilesetFrameContext,
   ResolvedShooterAtlasAnimation,
   ResolvedShooterAtlasAnimationState,
+  ResolvedShooterContentSpec,
   ResolvedShooterPhysicsMaterial,
   ResolvedShooterPrefabColliderBase,
   ResolvedShooterPrefabCollider,
@@ -817,6 +875,11 @@ export type {
   ShooterAtlasAnimationStateSpec,
   ShooterCameraPreset,
   ShooterCameraSpec,
+  ShooterContentSpec,
+  ShooterContentRuntimeOptions,
+  ShooterContentRuntimeOptionSet,
+  ShooterContentRuntimeSelection,
+  ShooterDialogueContentSpec,
   ShooterEnemyOrbitSpec,
   ShooterEnemyPresetSpec,
   ShooterGameSpec,
@@ -936,14 +999,23 @@ export type {
   LevelChunkStreamerSnapshot,
   LevelStreamingAssetLifetimePolicy,
   LevelStreamingOrigin,
+  LevelStreamingPixelMaskTerrainPhysicsOptions,
   LevelStreamingPlan,
   LevelStreamingPlanOptions,
+  LevelStreamingTilemapChunkBoundaryOptions,
   LevelStreamingViewport,
   LevelTilemapChunkSpec,
   ResolveLevelChunkManifestOptions,
   ResolvedLevelChunk,
   ResolvedLevelChunkManifest,
   ResolvedLevelTilemapChunk,
+  FerrumRuntimeLevelStreaming,
+  FerrumRuntimeLevelStreamingChunkContext,
+  FerrumRuntimeLevelStreamingOptions,
+  FerrumRuntimeLevelStreamingPreloadOptions,
+  FerrumRuntimeLevelStreamingTarget,
+  FerrumRuntimeLevelStreamingUpdateResult,
+  FerrumRuntimeLevelStreamingViewportProvider,
   DialogueChoiceResult,
   DialogueChoiceSpec,
   DialogueGraphSpec,
@@ -1027,15 +1099,17 @@ export type IsReadonly<T, K extends keyof T> = IfEquals<
   true
 >;
 type _BuiltInShooterSnapshotEntityCountReadonly = AssertType<IsReadonly<BuiltInShooterStateSnapshot, "entityCount">>;
+type _DataSceneSnapshotSceneReadonly = AssertType<IsReadonly<DataSceneStateSnapshot, "scene">>;
 type _GameStateSceneSnapshotScoreReadonly = AssertType<IsReadonly<GameStateSceneSnapshot, "score">>;
 type _GameStateSnapshotSceneReadonly = AssertType<IsReadonly<GameStateSnapshot, "scene">>;
 type _GameStateSnapshotRestoreResultSceneAfterReadonly = AssertType<IsReadonly<GameStateSnapshotRestoreResult, "sceneAfter">>;
 export const readonlySnapshotTypeAssertions: [
   _BuiltInShooterSnapshotEntityCountReadonly,
+  _DataSceneSnapshotSceneReadonly,
   _GameStateSceneSnapshotScoreReadonly,
   _GameStateSnapshotSceneReadonly,
   _GameStateSnapshotRestoreResultSceneAfterReadonly,
-] = [true, true, true, true];
+] = [true, true, true, true, true];
 
 export function f32Bits(value: number): number {
   const damage = new Float32Array([value]);

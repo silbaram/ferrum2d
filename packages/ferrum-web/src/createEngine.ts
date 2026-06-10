@@ -8,6 +8,7 @@ import {
   preflightBehaviorStateMachineStateCommands as preflightBehaviorStateMachineStateCommandsToRuntime,
 } from "./behaviorStateMachine.js";
 import {
+  applyFactionRelationTable as applyFactionRelationTableToRuntime,
   applyGameplayBehaviorCommands as applyGameplayBehaviorCommandsToRuntime,
   registerGameplayPrefabs as registerGameplayPrefabsOnRuntime,
 } from "./gameplayAuthoring.js";
@@ -66,6 +67,9 @@ import type {
 } from "./behaviorStateMachine.js";
 import type {
   ApplyGameplayBehaviorCommandsOptions,
+  ApplyFactionRelationTableOptions,
+  ApplyFactionRelationTableResult,
+  FactionRelationTableSpec,
   GameplayEntityHandle,
   GameplayEntityHandleMap,
   GameplayPrefabRegistration,
@@ -411,6 +415,11 @@ export async function createEngineWithFramePipeline(
     rustEngine.use_breakout_scene();
   };
 
+  const useDataScene = (): void => {
+    requireAlive();
+    rustEngine.use_data_scene();
+  };
+
   const usePlatformerGame = (): void => {
     requireAlive();
     rustEngine.use_platformer_scene();
@@ -503,6 +512,7 @@ export async function createEngineWithFramePipeline(
     builtInShooterPlayerHandle,
     captureShooterStateSnapshot,
     restoreShooterStateSnapshot,
+    useDataScene,
     useBreakoutGame,
     usePlatformerGame,
     setViewportSize: (width, height) => {
@@ -608,6 +618,13 @@ export async function createEngineWithFramePipeline(
     ) => {
       requireAlive();
       return applyGameplayBehaviorCommandsToRuntime(rustEngine, commands, entityHandles, options);
+    },
+    applyFactionRelationTable: (
+      table: FactionRelationTableSpec,
+      options?: ApplyFactionRelationTableOptions,
+    ): ApplyFactionRelationTableResult => {
+      requireAlive();
+      return applyFactionRelationTableToRuntime(rustEngine, table, options);
     },
     installBehaviorStateMachineRuntime: (
       document: BehaviorStateMachineDocumentSpec | ResolvedBehaviorStateMachineDocument,

@@ -10,6 +10,7 @@ export const RUNTIME_BUDGET_PROFILES = Object.freeze({
     maxPhysicsTileCandidateChecks: 10_000,
     maxCollisionPairCount: 1_000,
     maxAssetLoadElapsedMs: 100,
+    maxJsHeapUsedBytes: 512 * 1024 * 1024,
   }),
   "minimal-lighting": freezeBudget({
     maxFrameTimeMs: 250,
@@ -22,6 +23,7 @@ export const RUNTIME_BUDGET_PROFILES = Object.freeze({
     maxPhysicsTileCandidateChecks: 10_000,
     maxCollisionPairCount: 1_000,
     maxAssetLoadElapsedMs: 100,
+    maxJsHeapUsedBytes: 512 * 1024 * 1024,
   }),
   "minimal-preload": freezeBudget({
     maxFrameTimeMs: 250,
@@ -34,6 +36,7 @@ export const RUNTIME_BUDGET_PROFILES = Object.freeze({
     maxPhysicsTileCandidateChecks: 10_000,
     maxCollisionPairCount: 1_000,
     maxAssetLoadElapsedMs: 250,
+    maxJsHeapUsedBytes: 512 * 1024 * 1024,
   }),
   topdown: freezeBudget({
     maxFrameTimeMs: 250,
@@ -46,6 +49,7 @@ export const RUNTIME_BUDGET_PROFILES = Object.freeze({
     maxPhysicsTileCandidateChecks: 20_000,
     maxCollisionPairCount: 2_000,
     maxAssetLoadElapsedMs: 150,
+    maxJsHeapUsedBytes: 512 * 1024 * 1024,
   }),
   "topdown-mass-objects": freezeBudget({
     maxFrameTimeMs: 250,
@@ -58,6 +62,7 @@ export const RUNTIME_BUDGET_PROFILES = Object.freeze({
     maxPhysicsTileCandidateChecks: 20_000,
     maxCollisionPairCount: 2_000,
     maxAssetLoadElapsedMs: 150,
+    maxJsHeapUsedBytes: 768 * 1024 * 1024,
   }),
   breakout: freezeBudget({
     maxFrameTimeMs: 250,
@@ -70,6 +75,7 @@ export const RUNTIME_BUDGET_PROFILES = Object.freeze({
     maxPhysicsTileCandidateChecks: 10_000,
     maxCollisionPairCount: 2_000,
     maxAssetLoadElapsedMs: 150,
+    maxJsHeapUsedBytes: 512 * 1024 * 1024,
   }),
   platformer: freezeBudget({
     maxFrameTimeMs: 250,
@@ -82,6 +88,7 @@ export const RUNTIME_BUDGET_PROFILES = Object.freeze({
     maxPhysicsTileCandidateChecks: 20_000,
     maxCollisionPairCount: 2_000,
     maxAssetLoadElapsedMs: 150,
+    maxJsHeapUsedBytes: 512 * 1024 * 1024,
   }),
   "physics-sandbox": freezeBudget({
     maxFrameTimeMs: 250,
@@ -94,6 +101,7 @@ export const RUNTIME_BUDGET_PROFILES = Object.freeze({
     maxPhysicsTileCandidateChecks: 25_000,
     maxCollisionPairCount: 5_000,
     maxAssetLoadElapsedMs: 150,
+    maxJsHeapUsedBytes: 768 * 1024 * 1024,
   }),
 });
 
@@ -123,6 +131,7 @@ const BUDGET_FIELDS = Object.freeze([
   "maxPhysicsTileCandidateChecks",
   "maxCollisionPairCount",
   "maxAssetLoadElapsedMs",
+  "maxJsHeapUsedBytes",
 ]);
 
 export function runtimeBudgetProfile(profileId) {
@@ -134,11 +143,15 @@ export function runtimeBudgetProfile(profileId) {
 }
 
 export function runtimeBudgetForSmokeMode(mode, explicitProfileId) {
+  return runtimeBudgetProfile(runtimeBudgetProfileIdForSmokeMode(mode, explicitProfileId));
+}
+
+export function runtimeBudgetProfileIdForSmokeMode(mode, explicitProfileId) {
   const profileId = explicitProfileId ?? BROWSER_SMOKE_BUDGET_PROFILE_BY_MODE[mode];
   if (profileId === undefined) {
     throw new Error(`no runtime budget profile mapped for browser smoke mode: ${mode}`);
   }
-  return runtimeBudgetProfile(profileId);
+  return profileId;
 }
 
 export function runtimeBudgetProfileIds() {

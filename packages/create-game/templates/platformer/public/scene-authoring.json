@@ -1,0 +1,39 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "sceneComposition": {
+    "initialFragment": "runtime",
+    "prefabs": {
+      "builtinPlayer": {
+        "props": {
+          "runtimeEntity": "builtinPlatformerPlayer",
+          "behaviorRecipes": "player.survivability"
+        }
+      }
+    },
+    "fragments": {
+      "runtime": {
+        "instances": [
+          {
+            "id": "player",
+            "prefab": "builtinPlayer"
+          }
+        ]
+      }
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {
+      "player.survivability": {
+        "recipes": [
+          {
+            "kind": "health",
+            "max": 3,
+            "start": 3,
+            "onZero": "despawn"
+          }
+        ]
+      }
+    }
+  }
+}

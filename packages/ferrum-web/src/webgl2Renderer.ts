@@ -130,6 +130,11 @@ export class WebGL2Renderer implements Renderer {
     this.textureManager.updatePixelMaskTerrainTexture(textureId, patch, options);
   }
 
+  evictTexture(textureId: number): boolean {
+    this.assertAlive();
+    return this.textureManager.evictTexture(textureId);
+  }
+
   stats(): RendererStats {
     return { ...this.currentStats };
   }

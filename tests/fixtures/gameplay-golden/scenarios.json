@@ -50,7 +50,7 @@
         ]
       },
       "expected": {
-        "replayHash": "b7df3223",
+        "replayHash": "d406eb0b",
         "finalScore": 1,
         "spawnDiagnostics": [
           {
@@ -256,7 +256,7 @@
         ]
       },
       "expected": {
-        "replayHash": "c8b8f279",
+        "replayHash": "c700fae4",
         "finalScore": 14,
         "eventFrame": 2,
         "eventKinds": [
@@ -342,7 +342,7 @@
         ]
       },
       "expected": {
-        "replayHash": "a8e2ac9c",
+        "replayHash": "8f608d0f",
         "finalScore": 0,
         "finalGameState": 2,
         "entityCountAfterSetup": 2,
@@ -419,7 +419,7 @@
         ]
       },
       "expected": {
-        "replayHash": "cf15ca10",
+        "replayHash": "e917a80d",
         "finalScore": 0,
         "eventFrame": 4,
         "eventKinds": [
@@ -505,7 +505,7 @@
         }
       },
       "expected": {
-        "replayHash": "9d1a9d22",
+        "replayHash": "6efec4d7",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -594,7 +594,7 @@
         }
       },
       "expected": {
-        "replayHash": "86918f46",
+        "replayHash": "a2c52d7e",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -679,7 +679,7 @@
         }
       },
       "expected": {
-        "replayHash": "dedb6c70",
+        "replayHash": "1e533bb8",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -770,7 +770,7 @@
         }
       },
       "expected": {
-        "replayHash": "b864645e",
+        "replayHash": "b43e69c1",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -874,7 +874,7 @@
         }
       },
       "expected": {
-        "replayHash": "f0e562c7",
+        "replayHash": "2a0af0dc",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -970,7 +970,7 @@
         }
       },
       "expected": {
-        "replayHash": "14d007e2",
+        "replayHash": "22452c29",
         "finalScore": 0,
         "eventFrame": 2,
         "eventKinds": [
@@ -1170,7 +1170,7 @@
         }
       },
       "expected": {
-        "replayHash": "4b0b00be",
+        "replayHash": "9d0f2327",
         "finalScore": 7,
         "movementFrame": 2,
         "eventFrame": 3,
@@ -1262,7 +1262,7 @@
         }
       },
       "expected": {
-        "replayHash": "d80d276d",
+        "replayHash": "597b3558",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -1344,7 +1344,7 @@
         }
       },
       "expected": {
-        "replayHash": "b4ab8f9c",
+        "replayHash": "0d12f569",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -1431,7 +1431,7 @@
         }
       },
       "expected": {
-        "replayHash": "620cb86c",
+        "replayHash": "fad439db",
         "finalScore": 1,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -1643,7 +1643,7 @@
         }
       },
       "expected": {
-        "replayHash": "e0521704",
+        "replayHash": "714b9fe4",
         "finalScore": 8,
         "movementFrame": 2,
         "eventFrame": 4,
@@ -1859,7 +1859,7 @@
         }
       },
       "expected": {
-        "replayHash": "51a0827e",
+        "replayHash": "34ffffe5",
         "finalScore": 8,
         "eventFrame": 2,
         "eventKinds": [

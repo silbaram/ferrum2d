@@ -1,0 +1,13 @@
+{
+  "format": "ferrum2d.consumer.texture-atlas-input",
+  "version": 1,
+  "texture": "atlas",
+  "image": "./assets/atlas.png",
+  "outputJson": "public/assets/atlas.json",
+  "gameSpec": "public/game.json",
+  "mergeGameSpec": true,
+  "padding": 2,
+  "maxSize": 4096,
+  "powerOfTwo": true,
+  "sprites": []
+}

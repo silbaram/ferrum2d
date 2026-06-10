@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,6 +18,7 @@ import {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const packageRoot = path.join(repoRoot, "packages/create-game");
 const packageJson = await readJson(path.join(packageRoot, "package.json"));
+const rootPackageJson = await readJson(path.join(repoRoot, "package.json"));
 const expectPublishable = process.argv.includes("--expect-publishable");
 const verifyPack = process.argv.includes("--verify-pack");
 const packageLabel = "@ferrum2d/create-game";
@@ -29,6 +30,12 @@ const commonRequiredTemplateFiles = [
   "scripts/ferrum-runtime-replay.mjs",
   "src/main.ts",
   "src/styles.css",
+];
+const sharedTemplateFiles = [
+  "_shared/public/assets/audio.manifest.json",
+  "_shared/public/assets/localization.manifest.json",
+  "_shared/public/assets/texture-atlas.input.json",
+  "_shared/scripts/ferrum-assets.mjs",
 ];
 const templateCatalog = await readJson(path.join(packageRoot, "templates/manifest.json"));
 const templateEntries = validateTemplateCatalog(templateCatalog);
@@ -42,6 +49,7 @@ const requiredPackageFiles = [
   "README.md",
   "bin/create-game.mjs",
   "templates/manifest.json",
+  ...sharedTemplateFiles.map((file) => `templates/${file}`),
   ...templateEntries.flatMap((template) => (
     requiredTemplateFilesForTemplate(template).map((file) => `templates/${template.id}/${file}`)
   )),
@@ -52,11 +60,13 @@ const requiredPackedFiles = [
   "package/README.md",
   "package/bin/create-game.mjs",
   "package/templates/manifest.json",
+  ...sharedTemplateFiles.map((file) => `package/templates/${file}`),
   ...templateEntries.flatMap((template) => (
     requiredTemplateFilesForTemplate(template).map((file) => `package/templates/${template.id}/${file}`)
   )),
 ];
-const requiredTemplateNames = ["minimal", "topdown", "platformer"];
+const requiredTemplateNames = ["minimal", "topdown", "platformer", "breakout"];
+let ferrumWebPublicEntrypointBuilt = false;
 
 assert(packageJson.name === packageLabel, "create-game package name must stay @ferrum2d/create-game");
 assert(
@@ -74,16 +84,33 @@ assert(packageJson.engines?.node === ">=18.17", "create-game Node engine must st
 assert(packageJson.publishConfig?.access === "public", "create-game publishConfig.access must be public");
 assert(packageJson.publishConfig?.tag === "beta", "create-game publishConfig.tag must be beta");
 assertFilesAllowlist(packageJson, expectedFiles, packageLabel);
+assert(
+  rootPackageJson.scripts?.["smoke:create-game-template-catalog"] === "node tests/smoke/create-game-template-catalog-smoke.mjs",
+  "root package.json must expose smoke:create-game-template-catalog",
+);
+assert(
+  rootPackageJson.scripts?.["smoke:check"]?.includes("pnpm smoke:create-game-template-catalog"),
+  "root smoke:check must include smoke:create-game-template-catalog",
+);
 
 for (const file of requiredPackageFiles) {
   await requireFile(path.join(packageRoot, file), repoRoot);
 }
+await assertCreateGameTemplateCatalogSmoke(path.join(repoRoot, "tests/smoke/create-game-template-catalog-smoke.mjs"));
 for (const template of templateEntries) {
+  if (template.sceneAuthoring.configured) {
+    await checkSceneAuthoringFixture(path.join(packageRoot, "templates", template.id), template);
+  }
   if (template.gameplayReplay.configured) {
     await checkReplayCoverageRegistry(path.join(packageRoot, "templates", template.id), template);
   }
 }
-await runNodeCheck(path.join(packageRoot, "bin/create-game.mjs"), repoRoot);
+const createGameCliPath = path.join(packageRoot, "bin/create-game.mjs");
+await runNodeCheck(createGameCliPath, repoRoot);
+await assertCreateGameCliManifestValidation(createGameCliPath);
+await assertCreateGameTemplateListJson(createGameCliPath, templateEntries);
+await assertCreateGameCliRejectsInvalidSceneAuthoringFixture();
+await buildFerrumWebPublicEntrypoint();
 for (const template of templateEntries) {
   await checkGeneratedProject(template);
 }
@@ -113,12 +140,38 @@ function validateTemplateCatalog(catalog) {
     assertNonEmptyString(template.description, `create-game template ${template.id} description`);
     assertNonEmptyString(template.genre, `create-game template ${template.id} genre`);
     assertStringArray(template.tags, `create-game template ${template.id} tags`);
+    validateTemplateSceneAuthoringCatalog(template);
     validateTemplateReplayCatalog(template);
     validateTemplateRuntimeReplayCatalog(template);
     ids.add(template.id);
   }
   assert(ids.has(catalog.defaultTemplate), "create-game template manifest defaultTemplate must reference a listed template id");
   return [...catalog.templates].sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function validateTemplateSceneAuthoringCatalog(template) {
+  const sceneAuthoring = template.sceneAuthoring;
+  assert(
+    sceneAuthoring !== null && typeof sceneAuthoring === "object" && !Array.isArray(sceneAuthoring),
+    `create-game template ${template.id} sceneAuthoring must be an object`,
+  );
+  assert(typeof sceneAuthoring.configured === "boolean", `create-game template ${template.id} sceneAuthoring.configured must be boolean`);
+  if (sceneAuthoring.configured) {
+    assertNonEmptyString(sceneAuthoring.fixturePath, `create-game template ${template.id} sceneAuthoring.fixturePath`);
+    assertNonEmptyString(sceneAuthoring.format, `create-game template ${template.id} sceneAuthoring.format`);
+    assert(
+      sceneAuthoring.fixturePath === "public/scene-authoring.json",
+      `create-game template ${template.id} sceneAuthoring.fixturePath must be public/scene-authoring.json`,
+    );
+    assert(
+      sceneAuthoring.format === "ferrum2d.consumer.scene-authoring",
+      `create-game template ${template.id} sceneAuthoring.format must be ferrum2d.consumer.scene-authoring`,
+    );
+  } else {
+    assertNonEmptyString(sceneAuthoring.reason, `create-game template ${template.id} sceneAuthoring.reason`);
+    assert(sceneAuthoring.fixturePath === undefined, `create-game template ${template.id} unconfigured scene authoring must not include fixturePath`);
+    assert(sceneAuthoring.format === undefined, `create-game template ${template.id} unconfigured scene authoring must not include format`);
+  }
 }
 
 function validateTemplateRuntimeReplayCatalog(template) {
@@ -197,6 +250,9 @@ function assertRuntimeReplayInputSequence(value, label) {
 }
 
 function requiredTemplateFilesForTemplate(template) {
+  const sceneAuthoringFiles = template.sceneAuthoring.configured
+    ? [template.sceneAuthoring.fixturePath]
+    : [];
   const replayFiles = template.gameplayReplay.configured
     ? [
         template.gameplayReplay.coverageTagDefinitionsPath,
@@ -214,20 +270,168 @@ function requiredTemplateFilesForTemplate(template) {
     return [
       ...commonRequiredTemplateFiles,
       "public/game.json",
+      ...sceneAuthoringFiles,
       ...replayFiles,
       ...runtimeReplayFiles,
     ];
   }
   return [
     ...commonRequiredTemplateFiles,
+    ...sceneAuthoringFiles,
     ...replayFiles,
     ...runtimeReplayFiles,
   ];
 }
 
+async function assertCreateGameCliManifestValidation(cliPath) {
+  const source = await readFile(cliPath, "utf8");
+  assert(
+    source.includes("validateTemplateSceneAuthoringCatalog") &&
+      source.includes("validateTemplateSceneAuthoringFixture") &&
+      source.includes("templateCatalogListReport") &&
+      source.includes("sceneAuthoring.fixturePath") &&
+      source.includes("scene authoring fixture sceneComposition") &&
+      source.includes("ferrum2d.consumer.scene-authoring") &&
+      source.includes("validateTemplateReplayCatalog") &&
+      source.includes("runtimeGameplayReplay"),
+    "create-game CLI must validate scene authoring and replay catalog entries before copying templates",
+  );
+  assert(
+    source.includes("sharedTemplateRoot") &&
+      source.includes("Shared create-game template scaffold is missing.") &&
+      source.includes("await copyTemplate(sharedTemplateRoot"),
+    "create-game CLI must apply the shared template scaffold before copying a genre template",
+  );
+}
+
+async function assertCreateGameTemplateCatalogSmoke(filePath) {
+  await requireFile(filePath, repoRoot);
+  const source = await readFile(filePath, "utf8");
+  assert(
+    source.includes("assertInvalidCatalogFailsBeforeJsonOutput") &&
+      source.includes("invalid.scene-authoring") &&
+      source.includes("invalid manifest must not emit a JSON catalog"),
+    "create-game template catalog smoke must reject invalid manifest data before emitting JSON",
+  );
+}
+
+async function assertCreateGameTemplateListJson(cliPath, templates) {
+  const result = await run(process.execPath, [cliPath, "--list-templates", "--json"], repoRoot);
+  assert(
+    result.code === 0,
+    `create-game --list-templates --json failed with exit code ${result.code}\n${result.stdout}\n${result.stderr}`.trim(),
+  );
+  let report;
+  try {
+    report = JSON.parse(result.stdout);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`create-game --list-templates --json must emit JSON: ${message}`);
+  }
+  assert(report.format === "ferrum-create-game-template-list", "create-game template list JSON format is invalid");
+  assert(report.version === 1, "create-game template list JSON version must be 1");
+  assert(report.defaultTemplate === templateCatalog.defaultTemplate, "create-game template list JSON defaultTemplate must match manifest");
+  assert(Array.isArray(report.templates), "create-game template list JSON templates must be an array");
+  assert(report.templates.length === templates.length, "create-game template list JSON template count must match manifest");
+  for (const template of templates) {
+    const listed = report.templates.find((candidate) => candidate.id === template.id);
+    assert(listed !== undefined, `create-game template list JSON must include ${template.id}`);
+    assert(listed.name === template.name, `${template.id} template list name must match manifest`);
+    assert(listed.description === template.description, `${template.id} template list description must match manifest`);
+    assert(listed.genre === template.genre, `${template.id} template list genre must match manifest`);
+    assert(JSON.stringify(listed.tags) === JSON.stringify(template.tags), `${template.id} template list tags must match manifest`);
+    assert(
+      JSON.stringify(listed.sceneAuthoring) === JSON.stringify(template.sceneAuthoring),
+      `${template.id} template list sceneAuthoring must match manifest`,
+    );
+    assert(
+      JSON.stringify(listed.gameplayReplay) === JSON.stringify(template.gameplayReplay),
+      `${template.id} template list gameplayReplay must match manifest`,
+    );
+    assert(
+      JSON.stringify(listed.runtimeGameplayReplay) === JSON.stringify(template.runtimeGameplayReplay),
+      `${template.id} template list runtimeGameplayReplay must match manifest`,
+    );
+  }
+
+  const textResult = await run(process.execPath, [cliPath, "--list-templates"], repoRoot);
+  assert(textResult.code === 0, "create-game --list-templates text output must still pass");
+  assert(!textResult.stdout.trim().startsWith("{"), "create-game --list-templates must keep human-readable output by default");
+
+  const misplacedJsonResult = await run(process.execPath, [cliPath, "--json", "sample-game"], repoRoot);
+  assert(misplacedJsonResult.code !== 0, "create-game --json must fail without --list-templates");
+  assert(
+    misplacedJsonResult.stderr.includes("--json can only be used with --list-templates"),
+    "create-game --json misuse error must explain the required --list-templates pairing",
+  );
+}
+
+async function checkSceneAuthoringFixture(templateRoot, template) {
+  const fixturePath = path.join(templateRoot, template.sceneAuthoring.fixturePath);
+  const fixture = await readJson(fixturePath);
+  assert(
+    fixture !== null && typeof fixture === "object" && !Array.isArray(fixture),
+    `${template.id} scene authoring fixture must be an object`,
+  );
+  assert(
+    fixture.format === template.sceneAuthoring.format,
+    `${template.id} scene authoring fixture format must match manifest`,
+  );
+  assert(fixture.version === 1, `${template.id} scene authoring fixture version must be 1`);
+  assert(
+    fixture.sceneComposition !== null && typeof fixture.sceneComposition === "object" && !Array.isArray(fixture.sceneComposition),
+    `${template.id} scene authoring fixture sceneComposition must be an object`,
+  );
+  assert(
+    fixture.behaviorRecipes !== null && typeof fixture.behaviorRecipes === "object" && !Array.isArray(fixture.behaviorRecipes),
+    `${template.id} scene authoring fixture behaviorRecipes must be an object`,
+  );
+  assert(
+    fixture.sceneComposition.prefabs !== null &&
+      typeof fixture.sceneComposition.prefabs === "object" &&
+      !Array.isArray(fixture.sceneComposition.prefabs) &&
+      Object.keys(fixture.sceneComposition.prefabs).length > 0,
+    `${template.id} scene authoring fixture sceneComposition.prefabs must not be empty`,
+  );
+  assert(
+    fixture.behaviorRecipes.entities !== null &&
+      typeof fixture.behaviorRecipes.entities === "object" &&
+      !Array.isArray(fixture.behaviorRecipes.entities) &&
+      Object.keys(fixture.behaviorRecipes.entities).length > 0,
+    `${template.id} scene authoring fixture behaviorRecipes.entities must not be empty`,
+  );
+}
+
+async function assertCreateGameCliRejectsInvalidSceneAuthoringFixture() {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "ferrum2d-create-game-invalid-scene-authoring-"));
+  try {
+    const copiedPackageRoot = path.join(tempDir, "create-game");
+    await cp(packageRoot, copiedPackageRoot, { recursive: true });
+    const fixturePath = path.join(copiedPackageRoot, "templates/minimal/public/scene-authoring.json");
+    const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
+    fixture.format = "invalid.scene-authoring";
+    await writeFile(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`);
+
+    const result = await run(process.execPath, [
+      path.join(copiedPackageRoot, "bin/create-game.mjs"),
+      "--list-templates",
+    ], repoRoot);
+    assert(result.code !== 0, "create-game CLI must reject an invalid scene authoring fixture before listing templates");
+    assert(
+      result.stderr.includes("scene authoring fixture format must be ferrum2d.consumer.scene-authoring"),
+      `create-game CLI invalid scene authoring fixture error is not specific enough\n${result.stdout}\n${result.stderr}`.trim(),
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function listTemplateDirectoryNames() {
   const entries = await readdir(path.join(packageRoot, "templates"), { withFileTypes: true });
-  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  return entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
+    .map((entry) => entry.name)
+    .sort();
 }
 
 async function checkGeneratedProject(template) {
@@ -258,20 +462,18 @@ async function checkGeneratedProject(template) {
     assert(generatedPackage.dependencies?.["@ferrum2d/ferrum-web"] === "0.0.0-test", "generated game must depend on @ferrum2d/ferrum-web");
     assert(generatedPackage.scripts?.dev === "vite", "generated game must include dev script");
     assert(generatedPackage.scripts?.build === "vite build --base=./", "generated game must include static-safe build script");
+    assert(generatedPackage.scripts?.["pack:textures"] === "node scripts/ferrum-assets.mjs pack-textures", "generated game must include pack:textures script");
     assert(generatedPackage.scripts?.["ferrum:validate"] === "node scripts/ferrum-harness.mjs validate", "generated game must include ferrum:validate script");
     assert(generatedPackage.scripts?.["ferrum:smoke"] === "node scripts/ferrum-harness.mjs smoke", "generated game must include ferrum:smoke script");
     assert(generatedPackage.scripts?.["ferrum:report"] === "node scripts/ferrum-harness.mjs report", "generated game must include ferrum:report script");
+    assert(generatedPackage.scripts?.["ferrum:asset-report"] === "node scripts/ferrum-assets.mjs report", "generated game must include ferrum:asset-report script");
+    assert(generatedPackage.scripts?.["ferrum:asset-validate"] === "node scripts/ferrum-assets.mjs validate", "generated game must include ferrum:asset-validate script");
     assert(generatedPackage.scripts?.["ferrum:authoring-report"] === "node scripts/ferrum-harness.mjs authoring-report", "generated game must include ferrum:authoring-report script");
     assert(generatedPackage.scripts?.["ferrum:replay-report"] === "node scripts/ferrum-harness.mjs replay-report", "generated game must include ferrum:replay-report script");
+    assert(generatedPackage.scripts?.["ferrum:update-replay-fixture"] === "node scripts/ferrum-harness.mjs update-replay-fixture", "generated game must include ferrum:update-replay-fixture script");
     assert(generatedPackage.scripts?.["ferrum:runtime-replay-report"] === "node scripts/ferrum-runtime-replay.mjs report", "generated game must include ferrum:runtime-replay-report script");
     assert(generatedPackage.scripts?.["ferrum:runtime-replay-recipe"] === "node scripts/ferrum-runtime-replay.mjs recipe", "generated game must include ferrum:runtime-replay-recipe script");
     assert(generatedPackage.scripts?.["ferrum:update-runtime-replay-fixture"] === "node scripts/ferrum-runtime-replay.mjs update-fixture", "generated game must include ferrum:update-runtime-replay-fixture script");
-    if (template.gameplayReplay.configured) {
-      assert(
-        generatedPackage.scripts?.["ferrum:update-replay-fixture"] === "node scripts/ferrum-harness.mjs update-replay-fixture",
-        `${templateName} generated game with replay fixture must include ferrum:update-replay-fixture script`,
-      );
-    }
     assert(generatedPackage.devDependencies?.vite !== undefined, "generated game must include vite devDependency");
 
     const mainSource = await readFile(path.join(targetRoot, "src/main.ts"), "utf8");
@@ -284,8 +486,29 @@ async function checkGeneratedProject(template) {
     }
 
     await requireFile(path.join(targetRoot, "index.html"), repoRoot);
+    const generatedAssetPipelinePath = path.join(targetRoot, "scripts/ferrum-assets.mjs");
+    await requireFile(generatedAssetPipelinePath, repoRoot);
+    await runNodeCheck(generatedAssetPipelinePath, repoRoot);
+    await assertAssetPipelineScaffold(generatedAssetPipelinePath, targetRoot, templateName);
+    await requireFile(path.join(targetRoot, "public/assets/audio.manifest.json"), repoRoot);
+    await requireFile(path.join(targetRoot, "public/assets/localization.manifest.json"), repoRoot);
+    await requireFile(path.join(targetRoot, "public/assets/texture-atlas.input.json"), repoRoot);
+    await assertAssetPipelineReport(targetRoot, templateName);
+    await linkWorkspaceFerrumWeb(targetRoot);
+    await assertAssetPipelineValidate(targetRoot, templateName);
     const generatedHarnessPath = path.join(targetRoot, "scripts/ferrum-harness.mjs");
     await requireFile(generatedHarnessPath, repoRoot);
+    if (template.sceneAuthoring.configured) {
+      const harnessSource = await readFile(generatedHarnessPath, "utf8");
+      assert(
+        harnessSource.includes("applySceneBehaviorRecipes") &&
+          harnessSource.includes("dryRunSceneBehaviorRecipes") &&
+          harnessSource.includes("resolveSceneCompositionSpec") &&
+          harnessSource.includes("runtimeEntityHandles") &&
+          harnessSource.includes("public/scene-authoring.json"),
+        `${templateName} template harness must validate SceneComposition behavior authoring through public APIs`,
+      );
+    }
     await runNodeCheck(generatedHarnessPath, repoRoot);
     const generatedRuntimeReplayPath = path.join(targetRoot, "scripts/ferrum-runtime-replay.mjs");
     await requireFile(generatedRuntimeReplayPath, repoRoot);
@@ -296,6 +519,7 @@ async function checkGeneratedProject(template) {
       await requireFile(path.join(targetRoot, template.runtimeGameplayReplay.coverageTagDefinitionsPath), repoRoot);
       await requireFile(path.join(targetRoot, template.runtimeGameplayReplay.fixturePath), repoRoot);
       await checkRuntimeReplayCoverageRegistry(targetRoot, template);
+      await assertRuntimeReplayConfiguredReport(targetRoot, templateName);
     } else {
       await assertRuntimeReplayNotConfiguredReport(targetRoot, templateName);
       await assertRuntimeReplayUpdateNotConfiguredReport(targetRoot, templateName);
@@ -313,11 +537,28 @@ async function checkGeneratedProject(template) {
       await requireFile(path.join(targetRoot, template.gameplayReplay.coverageTagDefinitionsPath), repoRoot);
       await requireFile(path.join(targetRoot, template.gameplayReplay.fixturePath), repoRoot);
       await checkReplayCoverageRegistry(targetRoot, template);
+      await assertGameplayReplayConfiguredReport(targetRoot, templateName);
+    } else {
+      await assertGameplayReplayNotConfiguredReport(targetRoot, templateName);
+      await assertGameplayReplayUpdateNotConfiguredReport(targetRoot, templateName);
+      assert(
+        !await exists(path.join(targetRoot, "public/gameplay-replay.fixture.json")),
+        `${templateName} generated game must not include a gameplay replay fixture while replay is not configured`,
+      );
+      assert(
+        !await exists(path.join(targetRoot, "public/gameplay-replay.coverage-tags.json")),
+        `${templateName} generated game must not include gameplay replay coverage tags while replay is not configured`,
+      );
     }
     if (templateName === "topdown") {
       await requireFile(path.join(targetRoot, "public/game.json"), repoRoot);
+      if (template.sceneAuthoring.configured) {
+        await requireFile(path.join(targetRoot, template.sceneAuthoring.fixturePath), repoRoot);
+      }
       assert(mainSource.includes("resolveShooterGameSpec"), "topdown template runtime must validate public/game.json");
       assert(mainSource.includes("./game.json"), "topdown template runtime must load public/game.json");
+    } else if (template.sceneAuthoring.configured) {
+      await requireFile(path.join(targetRoot, template.sceneAuthoring.fixturePath), repoRoot);
     }
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -347,6 +588,181 @@ function assertMinimalTemplateWeaponAuthoring(mainSource) {
       mainSource.includes('searchParams.get("profile")'),
     "minimal template must apply selected weapon profile through public runtime authoring APIs",
   );
+}
+
+async function assertAssetPipelineScaffold(filePath, projectRoot, templateName) {
+  const source = await readFile(filePath, "utf8");
+  assert(
+    source.includes('await import("@ferrum2d/ferrum-web")'),
+    `${templateName} asset pipeline scaffold must use the public @ferrum2d/ferrum-web entrypoint`,
+  );
+  assert(
+      source.includes("packTextureAtlas") &&
+      source.includes("textureAtlasDocumentToShooterAtlas") &&
+      source.includes("resolveShooterGameSpec") &&
+      source.includes("AudioAssetLoader") &&
+      source.includes("LocalizationBundle") &&
+      source.includes("ferrum2d.consumer.asset-pipeline.report") &&
+      source.includes("ferrum2d.consumer.texture-atlas-input") &&
+      source.includes("ferrum2d.consumer.audio-manifest") &&
+      source.includes("ferrum2d.consumer.localization-manifest"),
+    `${templateName} asset pipeline scaffold must expose public texture atlas import, Game Spec merge, and report contracts`,
+  );
+  assert(!source.includes("@ferrum2d/ferrum-web/dist/"), `${templateName} asset pipeline scaffold must not import dist internals`);
+  assert(!source.includes("@ferrum2d/ferrum-web/pkg/"), `${templateName} asset pipeline scaffold must not import wasm package internals`);
+  assert(!source.includes("@ferrum2d/ferrum-web/src/"), `${templateName} asset pipeline scaffold must not import source internals`);
+  const input = await readJson(path.join(projectRoot, "public/assets/texture-atlas.input.json"));
+  const audioManifest = await readJson(path.join(projectRoot, "public/assets/audio.manifest.json"));
+  const localizationManifest = await readJson(path.join(projectRoot, "public/assets/localization.manifest.json"));
+  assert(input.format === "ferrum2d.consumer.texture-atlas-input", `${templateName} asset pipeline input format is invalid`);
+  assert(input.version === 1, `${templateName} asset pipeline input version must be 1`);
+  assert(input.outputJson === "public/assets/atlas.json", `${templateName} asset pipeline outputJson is invalid`);
+  assert(input.gameSpec === "public/game.json", `${templateName} asset pipeline gameSpec path is invalid`);
+  assert(input.mergeGameSpec === true, `${templateName} asset pipeline mergeGameSpec must default to true`);
+  assert(Array.isArray(input.sprites), `${templateName} asset pipeline sprites must be an array`);
+  assert(audioManifest.format === "ferrum2d.consumer.audio-manifest", `${templateName} audio manifest format is invalid`);
+  assert(audioManifest.version === 1, `${templateName} audio manifest version must be 1`);
+  assert(audioManifest.sounds !== null && typeof audioManifest.sounds === "object" && !Array.isArray(audioManifest.sounds), `${templateName} audio manifest sounds must be an object`);
+  assert(localizationManifest.format === "ferrum2d.consumer.localization-manifest", `${templateName} localization manifest format is invalid`);
+  assert(localizationManifest.version === 1, `${templateName} localization manifest version must be 1`);
+  assert(localizationManifest.gameSpec === "public/game.json", `${templateName} localization manifest gameSpec path is invalid`);
+  assert(localizationManifest.source === "gameSpec.content.localization", `${templateName} localization manifest source is invalid`);
+  assert(localizationManifest.documents !== null && typeof localizationManifest.documents === "object" && !Array.isArray(localizationManifest.documents), `${templateName} localization manifest documents must be an object`);
+}
+
+async function assertAssetPipelineReport(projectRoot, templateName) {
+  const result = await run(process.execPath, ["scripts/ferrum-assets.mjs", "report"], projectRoot);
+  assert(
+    result.code === 0,
+    `${templateName} asset pipeline report command must pass\n${result.stdout}\n${result.stderr}`.trim(),
+  );
+  let report;
+  try {
+    report = JSON.parse(result.stdout);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`[package check] ${templateName} asset pipeline report must emit JSON: ${message}`);
+  }
+  assert(report.format === "ferrum2d.consumer.asset-pipeline.report", `${templateName} asset pipeline report format is invalid`);
+  assert(report.version === 1, `${templateName} asset pipeline report version must be 1`);
+  assert(report.ok === true, `${templateName} asset pipeline report must be ok`);
+  assert(report.assetPipeline?.textureAtlas?.configured === true, `${templateName} asset pipeline texture atlas must be configured`);
+  assert(report.assetPipeline?.textureAtlas?.status === "scaffold", `${templateName} asset pipeline texture atlas status must be scaffold`);
+  assert(report.assetPipeline?.textureAtlas?.input === "public/assets/texture-atlas.input.json", `${templateName} asset pipeline input path is invalid`);
+  assert(report.assetPipeline?.textureAtlas?.outputJson === "public/assets/atlas.json", `${templateName} asset pipeline output path is invalid`);
+  assert(report.assetPipeline?.textureAtlas?.spriteCount === 0, `${templateName} asset pipeline default sprite count must be 0`);
+  assert(report.assetPipeline?.audio?.configured === true, `${templateName} asset pipeline audio manifest must be configured`);
+  assert(report.assetPipeline?.audio?.status === "scaffold", `${templateName} asset pipeline audio status must be scaffold`);
+  assert(report.assetPipeline?.audio?.soundCount === 0, `${templateName} asset pipeline default sound count must be 0`);
+  assert(report.assetPipeline?.localization?.configured === true, `${templateName} asset pipeline localization manifest must be configured`);
+  assert(report.assetPipeline?.localization?.input === "public/assets/localization.manifest.json", `${templateName} asset pipeline localization input is invalid`);
+  assert(report.assetPipeline?.localization?.documentCount === 0, `${templateName} asset pipeline default localization document count must be 0`);
+  assert(report.assetPipeline?.gameSpec?.path === "public/game.json", `${templateName} asset pipeline Game Spec path is invalid`);
+  const expectedGameSpecPresent = templateName === "topdown";
+  assert(
+    report.assetPipeline?.gameSpec?.present === expectedGameSpecPresent,
+    `${templateName} asset pipeline Game Spec presence must match template surface`,
+  );
+}
+
+async function assertAssetPipelineValidate(projectRoot, templateName) {
+  const result = await run(process.execPath, ["scripts/ferrum-assets.mjs", "validate"], projectRoot);
+  assert(
+    result.code === 0,
+    `${templateName} asset pipeline validate command must pass\n${result.stdout}\n${result.stderr}`.trim(),
+  );
+  let report;
+  try {
+    report = JSON.parse(result.stdout);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`[package check] ${templateName} asset pipeline validate must emit JSON: ${message}`);
+  }
+  assert(report.format === "ferrum2d.consumer.asset-pipeline.report", `${templateName} asset pipeline validate format is invalid`);
+  assert(report.assetPipeline?.validation?.validated === true, `${templateName} asset pipeline validate must mark validated=true`);
+  assert(report.assetPipeline?.validation?.publicEntryPoint === "@ferrum2d/ferrum-web", `${templateName} asset pipeline validate must use the public package entrypoint`);
+  const expectedLocalizationStatus = templateName === "topdown" && report.assetPipeline?.gameSpec?.localizationConfigured
+    ? "configured"
+    : "scaffold";
+  assert(
+    report.assetPipeline?.localization?.status === expectedLocalizationStatus,
+    `${templateName} asset pipeline localization validate status must be ${expectedLocalizationStatus}`,
+  );
+}
+
+async function linkWorkspaceFerrumWeb(projectRoot) {
+  await buildFerrumWebPublicEntrypoint();
+  const packageScope = path.join(projectRoot, "node_modules/@ferrum2d");
+  const linkPath = path.join(packageScope, "ferrum-web");
+  await mkdir(packageScope, { recursive: true });
+  try {
+    await symlink(path.join(repoRoot, "packages/ferrum-web"), linkPath, "dir");
+  } catch (error) {
+    if (error?.code !== "EEXIST") {
+      throw error;
+    }
+  }
+}
+
+async function buildFerrumWebPublicEntrypoint() {
+  if (ferrumWebPublicEntrypointBuilt) return;
+  const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  const wasmResult = await run(pnpm, ["build:wasm"], repoRoot);
+  assert(
+    wasmResult.code === 0,
+    `create-game package check must build @ferrum2d/ferrum-web Wasm artifacts before runtime replay validation\n${wasmResult.stdout}\n${wasmResult.stderr}`.trim(),
+  );
+  const result = await run(pnpm, ["--filter", "@ferrum2d/ferrum-web", "build"], repoRoot);
+  assert(
+    result.code === 0,
+    `create-game package check must build @ferrum2d/ferrum-web before symlinked public-entrypoint validation\n${result.stdout}\n${result.stderr}`.trim(),
+  );
+  await requireFile(path.join(repoRoot, "packages/ferrum-web/pkg/ferrum_core.js"), repoRoot);
+  await requireFile(path.join(repoRoot, "packages/ferrum-web/pkg/ferrum_core_bg.wasm"), repoRoot);
+  await requireFile(path.join(repoRoot, "packages/ferrum-web/dist/index.js"), repoRoot);
+  await requireFile(path.join(repoRoot, "packages/ferrum-web/dist/index.d.ts"), repoRoot);
+  ferrumWebPublicEntrypointBuilt = true;
+}
+
+async function assertGameplayReplayConfiguredReport(projectRoot, templateName) {
+  const result = await run(process.execPath, ["scripts/ferrum-harness.mjs", "replay-report"], projectRoot);
+  assert(
+    result.code === 0,
+    `${templateName} configured gameplay replay report must pass\n${result.stdout}\n${result.stderr}`.trim(),
+  );
+  const report = parseJsonReport(result.stdout, `${templateName} gameplay replay report`);
+  assert(report.format === "ferrum2d.consumer.gameplay-replay.report", `${templateName} gameplay replay report format is invalid`);
+  assert(report.version === 1, `${templateName} gameplay replay report version must be 1`);
+  assert(report.ok === true, `${templateName} gameplay replay report must be ok`);
+  assert(report.gameplayReplay?.status === "validated", `${templateName} gameplay replay status must be validated`);
+  assert(report.gameplayReplay?.comparison?.passed === true, `${templateName} gameplay replay comparison must pass`);
+  assertMachineActionableReports(report.gameplayReplay?.reports, `${templateName} gameplay replay reports`);
+  assert(report.gameplayReplay.reports.length === 0, `${templateName} configured gameplay replay report must not include diagnostics`);
+}
+
+async function assertRuntimeReplayConfiguredReport(projectRoot, templateName) {
+  const result = await run(process.execPath, ["scripts/ferrum-runtime-replay.mjs", "report"], projectRoot);
+  assert(
+    result.code === 0,
+    `${templateName} configured runtime replay report must pass\n${result.stdout}\n${result.stderr}`.trim(),
+  );
+  const report = parseJsonReport(result.stdout, `${templateName} runtime replay report`);
+  assert(report.format === "ferrum2d.consumer.runtime-gameplay-replay.report", `${templateName} runtime replay report format is invalid`);
+  assert(report.version === 1, `${templateName} runtime replay report version must be 1`);
+  assert(report.ok === true, `${templateName} runtime replay report must be ok`);
+  assert(report.runtimeGameplayReplay?.status === "validated", `${templateName} runtime replay status must be validated`);
+  assert(report.runtimeGameplayReplay?.comparison?.passed === true, `${templateName} runtime replay comparison must pass`);
+  assertMachineActionableReports(report.runtimeGameplayReplay?.reports, `${templateName} runtime replay reports`);
+  assert(report.runtimeGameplayReplay.reports.length === 0, `${templateName} configured runtime replay report must not include diagnostics`);
+}
+
+function parseJsonReport(stdout, label) {
+  try {
+    return JSON.parse(stdout);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`[package check] ${label} must emit JSON: ${message}`);
+  }
 }
 
 async function assertRuntimeReplayScaffold(filePath, templateName) {
@@ -437,6 +853,65 @@ async function assertRuntimeReplayRecipe(projectRoot, templateName) {
       recipe.canonicalState.excluded.includes("DOM state") &&
       recipe.canonicalState.excluded.includes("wall-clock timings"),
     `${templateName} runtime replay recipe must exclude non-canonical runtime outputs`,
+  );
+}
+
+async function assertGameplayReplayUpdateNotConfiguredReport(projectRoot, templateName) {
+  const result = await run(process.execPath, ["scripts/ferrum-harness.mjs", "update-replay-fixture"], projectRoot);
+  assert(
+    result.code !== 0,
+    `${templateName} gameplay replay fixture update must fail while scaffold is not configured`,
+  );
+  let report;
+  try {
+    report = JSON.parse(result.stdout);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`[package check] ${templateName} gameplay replay update must emit JSON: ${message}`);
+  }
+  assert(report.format === "ferrum2d.consumer.gameplay-replay.report", `${templateName} gameplay replay update report format is invalid`);
+  assert(report.version === 1, `${templateName} gameplay replay update report version must be 1`);
+  assert(report.ok === false, `${templateName} gameplay replay update report must be ok=false while scaffold is not configured`);
+  assertNonEmptyString(report.gameplayReplay?.packageName, `${templateName} gameplay replay update packageName`);
+  assert(report.gameplayReplay?.configured === false, `${templateName} gameplay replay update report must keep configured=false`);
+  assert(report.gameplayReplay?.status === "not-configured", `${templateName} gameplay replay update status must be not-configured`);
+  assert(report.gameplayReplay?.fixture === "public/gameplay-replay.fixture.json", `${templateName} gameplay replay update fixture path is invalid`);
+  assert(report.gameplayReplay?.updateAttempted === true, `${templateName} gameplay replay update report must mark updateAttempted=true`);
+  assertMachineActionableReports(report.gameplayReplay?.reports, `${templateName} gameplay replay update reports`);
+  assert(
+    report.gameplayReplay?.reports?.[0]?.code === "FERRUM_CONSUMER_REPLAY_NOT_CONFIGURED",
+    `${templateName} gameplay replay update not-configured code is invalid`,
+  );
+}
+
+async function assertGameplayReplayNotConfiguredReport(projectRoot, templateName) {
+  const result = await run(process.execPath, ["scripts/ferrum-harness.mjs", "replay-report"], projectRoot);
+  assert(
+    result.code === 0,
+    `${templateName} gameplay replay report must pass while scaffold is not configured\n${result.stdout}\n${result.stderr}`.trim(),
+  );
+  let report;
+  try {
+    report = JSON.parse(result.stdout);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`[package check] ${templateName} gameplay replay report must emit JSON: ${message}`);
+  }
+  assert(report.format === "ferrum2d.consumer.gameplay-replay.report", `${templateName} gameplay replay report format is invalid`);
+  assert(report.version === 1, `${templateName} gameplay replay report version must be 1`);
+  assert(report.ok === true, `${templateName} gameplay replay report must be ok while scaffold is not configured`);
+  assertNonEmptyString(report.gameplayReplay?.packageName, `${templateName} gameplay replay packageName`);
+  assert(report.gameplayReplay?.configured === false, `${templateName} gameplay replay report must default configured=false`);
+  assert(report.gameplayReplay?.status === "not-configured", `${templateName} gameplay replay status must be not-configured`);
+  assert(report.gameplayReplay?.fixture === "public/gameplay-replay.fixture.json", `${templateName} gameplay replay fixture path is invalid`);
+  assert(
+    report.gameplayReplay?.reason === "This template does not include a deterministic gameplay replay manifest.",
+    `${templateName} gameplay replay reason is invalid`,
+  );
+  assertMachineActionableReports(report.gameplayReplay?.reports, `${templateName} gameplay replay reports`);
+  assert(
+    report.gameplayReplay?.reports?.[0]?.code === "FERRUM_CONSUMER_REPLAY_NOT_CONFIGURED",
+    `${templateName} gameplay replay not-configured code is invalid`,
   );
 }
 

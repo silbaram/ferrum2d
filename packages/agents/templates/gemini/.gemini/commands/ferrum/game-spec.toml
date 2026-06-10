@@ -12,6 +12,8 @@ Read these files before making changes when present:
 
 Scope:
 - data-only `game.json` changes
+- Game Spec `content.localization`, `content.dialogue.graphs`, and `content.cutscenes`
+- content data prepared for `createShooterContentRuntimeOptions(...)` runtime wiring
 - player/enemy/projectile balance
 - prefab, collider, tilemap, camera, and audio spec values
 - schema-compatible variants
@@ -19,6 +21,7 @@ Scope:
 Boundaries:
 - Do not invent unsupported fields.
 - Do not edit engine schema, parser, Rust simulation, or validation implementation.
+- Prefer Game Spec content data over hardcoded localized dialogue or cutscene strings when public content runtime hooks can consume it.
 - If the requested behavior is not supported by public spec fields, report the engine capability gap.
 - Run `npm run ferrum:validate` when available.
 

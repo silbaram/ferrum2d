@@ -13,6 +13,7 @@ Use it for:
 - Connecting UI actions, input transforms, runtime callbacks, and game-side presentation.
 - Implementing game-side menus, HUD, pause/resume, restart, score display, and scene shell behavior.
 - Coordinating data-driven gameplay through supported game spec fields.
+- Wiring Game Spec `content.localization`, `content.dialogue.graphs`, and `content.cutscenes` to `createFerrumRuntime(...)` with `resolveShooterGameSpec(...)` and `createShooterContentRuntimeOptions(...)`.
 - Applying compiled Behavior Recipe or projectile/weapon profile commands through public runtime APIs.
 
 Do not use it for:
@@ -29,13 +30,14 @@ Do not use it for:
 5. Use narrow adapters instead of scattering direct runtime calls across unrelated files.
 6. Preserve hot-path discipline: do not create per-entity JS/Wasm round trips in frame loops.
 7. For projectile/weapon profile changes, prefer public helpers such as `compileWeaponProfiles(...)`, `behaviorRecipeCommandsForEntity(...)`, `applyGameplayBehaviorCommands(...)`, `setInputActionBinding(...)`, and `builtInShooterPlayerHandle()` over bespoke simulation code.
-8. Keep smoke globals, runtime reports, replay diagnostics, and debug-only panels in `src/dev/` or equivalent test-only modules.
-9. For data-driven gameplay or behavior authoring, run `npm run ferrum:authoring-report` when the project provides it after authoring and before browser playtest.
-10. Treat authoring/replay reports as machine-readable evidence only after checking `format`, `version`, `ok`, and failure `reports[]` entries with `path`, `message`, and `suggestion`.
-11. After applying data-driven gameplay changes, run `npm run ferrum:replay-report` when the project provides it, or hand off to playtest for deterministic replay evidence.
-12. When the generated template-surface replay is not enough, use `.agents/harness/ferrum-runtime-replay.md` to add a project-specific deterministic runtime replay runner and fixture.
-13. If the project provides a local report artifact validator, run it after generating report artifacts. Do not require Ferrum2D engine workspace schema files in ordinary consumer projects.
-14. Validate with `npm run ferrum:smoke` when available, otherwise run build and, when possible, a browser smoke pass.
+8. For localized dialogue/cutscene runtime work, prefer `createShooterContentRuntimeOptions(...)` over manually constructing parallel localization/dialogue/cutscene objects from the same Game Spec.
+9. Keep smoke globals, runtime reports, replay diagnostics, and debug-only panels in `src/dev/` or equivalent test-only modules.
+10. For data-driven gameplay or behavior authoring, run `npm run ferrum:authoring-report` when the project provides it after authoring and before browser playtest.
+11. Treat authoring/replay reports as machine-readable evidence only after checking `format`, `version`, `ok`, and failure `reports[]` entries with `path`, `message`, and `suggestion`.
+12. After applying data-driven gameplay changes, run `npm run ferrum:replay-report` when the project provides it, or hand off to playtest for deterministic replay evidence.
+13. When the generated template-surface replay is not enough, use `.agents/harness/ferrum-runtime-replay.md` to add a project-specific deterministic runtime replay runner and fixture.
+14. If the project provides a local report artifact validator, run it after generating report artifacts. Do not require Ferrum2D engine workspace schema files in ordinary consumer projects.
+15. Validate with `npm run ferrum:smoke` when available, otherwise run build and, when possible, a browser smoke pass.
 
 ## Projectile/Weapon Runtime Apply
 
@@ -49,6 +51,27 @@ Generated templates may expose profile ids such as `standard`, `piercing`, or `b
 - Put profile catalogs and command compilation in `src/game/`, runtime apply functions in a narrow gameplay adapter, and UI controls in `src/ui/`.
 
 If a requested profile needs unsupported core behavior, report the missing Ferrum2D capability instead of moving collision, steering, or damage ownership into TypeScript.
+
+## Content Runtime Apply
+
+When a project stores `content.localization`, `content.dialogue.graphs`, or `content.cutscenes` in `public/game.json`, keep runtime wiring narrow and public-API-only:
+
+```ts
+import {
+  createFerrumRuntime,
+  createShooterContentRuntimeOptions,
+  resolveShooterGameSpec,
+} from "@ferrum2d/ferrum-web";
+
+const resolvedSpec = resolveShooterGameSpec(gameSpec);
+const contentRuntime = createShooterContentRuntimeOptions(resolvedSpec.content, {
+  locale: "en",
+  cutsceneId: "intro",
+});
+await createFerrumRuntime({ canvas, ...contentRuntime });
+```
+
+Use explicit `dialogueGraphId` or `cutsceneId` when a project has multiple candidates. Do not mirror Game Spec content into unrelated app state unless the UI genuinely owns additional presentation state.
 
 ## Runtime Replay Harness
 
