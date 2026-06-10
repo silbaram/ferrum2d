@@ -390,6 +390,15 @@ async function runGeneratedGameConsumer({
   templateSummary.checks.publicTypeSmoke = true;
   await runRequired(pnpm, ["run", "ferrum:validate"], generatedGameRoot);
   templateSummary.checks.validate = true;
+  const projectReport = await runJsonReport(
+    pnpm,
+    ["run", "ferrum:report"],
+    generatedGameRoot,
+    "ferrum2d.consumer.project.report",
+  );
+  assertConsumerProjectReport(projectReport, templateName);
+  templateSummary.checks.report = true;
+  templateSummary.reports.project = summarizeConsumerProjectReport(projectReport);
   const authoringReport = await runJsonReport(
     pnpm,
     ["run", "ferrum:authoring-report"],
@@ -539,7 +548,8 @@ async function runGeneratedGameConsumer({
     );
     assertConsumerReplayReport(replayReportAfterDriftUpdate, templateName);
   }
-  await runRequired(pnpm, ["run", "build"], generatedGameRoot);
+  await runRequired(pnpm, ["run", "ferrum:smoke"], generatedGameRoot);
+  templateSummary.checks.smoke = true;
   templateSummary.checks.build = true;
   await requireFile(
     path.join(generatedGameRoot, "dist/index.html"),
@@ -623,6 +633,8 @@ function createTemplateSummary(templateName) {
       publicImportSmoke: false,
       publicTypeSmoke: false,
       validate: false,
+      report: false,
+      smoke: false,
       build: false,
     },
     agents: undefined,
@@ -1607,6 +1619,42 @@ function assertConsumerAuthoringReport(report, templateName) {
   }
 }
 
+function assertConsumerProjectReport(report, templateName) {
+  assert(report.format === "ferrum2d.consumer.project.report", `${templateName} project report format is invalid`);
+  assert(report.version === 1, `${templateName} project report version is invalid`);
+  assert(report.ok === true, `${templateName} project report must be ok for a generated template`);
+  assert(report.project?.packageName === templateName, `${templateName} project report packageName is invalid`);
+  assert(report.project?.ferrumWeb !== undefined && report.project.ferrumWeb !== null, `${templateName} project report must include ferrum-web dependency`);
+  assert(report.project?.files?.main === true, `${templateName} project report must confirm src/main.ts`);
+  assert(Array.isArray(report.project?.checks?.internalImports), `${templateName} project report internalImports must be an array`);
+  assert(report.project.checks.internalImports.length === 0, `${templateName} project report must reject internal ferrum-web imports`);
+  assert(Array.isArray(report.recommendedCommands), `${templateName} project report must include recommended commands`);
+  for (const command of [
+    "npm run ferrum:report",
+    "npm run ferrum:validate",
+    "npm run ferrum:authoring-report",
+    "npm run ferrum:replay-report",
+    "npm run ferrum:runtime-replay-report",
+    "npm run ferrum:smoke",
+  ]) {
+    assert(report.recommendedCommands.includes(command), `${templateName} project report recommendedCommands must include ${command}`);
+  }
+  assert(Array.isArray(report.reports), `${templateName} project report reports must be an array`);
+  assert(report.reports.length === 0, `${templateName} project report must not include diagnostics for a generated template`);
+  assert(Array.isArray(report.errors), `${templateName} project report errors must be an array`);
+  assert(report.errors.length === 0, `${templateName} project report must not include errors for a generated template`);
+  if (templateName === "topdown") {
+    assert(report.project.files.gameSpec === "public/game.json", "topdown project report must identify public/game.json");
+    assert(report.project.checks.gameSpec?.ok === true, "topdown project report must validate Game Spec");
+  } else {
+    assert(report.project.checks.gameSpec?.ok === null, `${templateName} project report must mark absent Game Spec as a structured skip`);
+  }
+  if (templateCatalogById.get(templateName)?.sceneAuthoring?.configured === true) {
+    assert(report.project.files.sceneAuthoring === "public/scene-authoring.json", `${templateName} project report must identify scene authoring fixture`);
+    assert(report.project.checks.sceneAuthoring?.ok === true, `${templateName} project report must validate scene authoring fixture`);
+  }
+}
+
 function assertConsumerReplayReport(report, templateName) {
   const replayConfigured = templateCatalogById.get(templateName)?.gameplayReplay?.configured === true;
   assert(report.format === "ferrum2d.consumer.gameplay-replay.report", `${templateName} replay report format is invalid`);
@@ -2173,6 +2221,23 @@ function summarizeConsumerAuthoringReport(report) {
         runtimeHooks: report.gameplayAuthoring.authoringSurface.runtimeHooks,
         sceneComposition: report.gameplayAuthoring.authoringSurface.sceneComposition,
       },
+  };
+}
+
+function summarizeConsumerProjectReport(report) {
+  return {
+    status: report.ok === true ? "validated" : "invalid",
+    packageName: report.project?.packageName,
+    ferrumWeb: report.project?.ferrumWeb,
+    files: {
+      main: report.project?.files?.main,
+      gameSpec: report.project?.files?.gameSpec,
+      sceneAuthoring: report.project?.files?.sceneAuthoring,
+    },
+    internalImports: report.project?.checks?.internalImports?.length ?? 0,
+    recommendedCommands: report.recommendedCommands,
+    reports: report.reports?.length ?? 0,
+    errors: report.errors?.length ?? 0,
   };
 }
 

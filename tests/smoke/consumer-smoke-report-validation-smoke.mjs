@@ -167,6 +167,8 @@ async function writePartialFailedArtifact(artifactDir, { includeForbiddenSnapsho
           publicImportSmoke: true,
           publicTypeSmoke: false,
           validate: false,
+          report: false,
+          smoke: false,
           build: false,
         },
         agents: {
@@ -270,6 +272,8 @@ function createPassedReportWithNotConfiguredRuntime({ artifactDir }) {
           publicImportSmoke: true,
           publicTypeSmoke: true,
           validate: true,
+          report: true,
+          smoke: true,
           build: true,
         },
         agents: {
@@ -278,6 +282,7 @@ function createPassedReportWithNotConfiguredRuntime({ artifactDir }) {
           unsupportedGeminiWrappersAbsent: true,
         },
         reports: {
+          project: projectReportSummary("minimal"),
           authoring: {
             status: "not-configured",
             gameSpec: {
@@ -348,6 +353,8 @@ function createPassedReportWithNotConfiguredGameplayReplay({ artifactDir }) {
       publicImportSmoke: true,
       publicTypeSmoke: true,
       validate: true,
+      report: true,
+      smoke: true,
       build: true,
     },
     agents: {
@@ -356,6 +363,7 @@ function createPassedReportWithNotConfiguredGameplayReplay({ artifactDir }) {
       unsupportedGeminiWrappersAbsent: true,
     },
     reports: {
+      project: projectReportSummary("prototype"),
       authoring: {
         status: "not-configured",
         gameSpec: {
@@ -400,6 +408,30 @@ function createPassedReportWithNotConfiguredGameplayReplay({ artifactDir }) {
     },
   });
   return report;
+}
+
+function projectReportSummary(templateName) {
+  return {
+    status: "validated",
+    packageName: templateName,
+    ferrumWeb: "file:../tarballs/ferrum2d-ferrum-web-0.1.0.tgz",
+    files: {
+      main: true,
+      gameSpec: templateName === "topdown" ? "public/game.json" : null,
+      sceneAuthoring: "public/scene-authoring.json",
+    },
+    internalImports: 0,
+    recommendedCommands: [
+      "npm run ferrum:report",
+      "npm run ferrum:validate",
+      "npm run ferrum:authoring-report",
+      "npm run ferrum:replay-report",
+      "npm run ferrum:runtime-replay-report",
+      "npm run ferrum:smoke",
+    ],
+    reports: 0,
+    errors: 0,
+  };
 }
 
 async function runValidatorExpecting(expectedCode, args, label) {

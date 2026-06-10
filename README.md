@@ -342,6 +342,20 @@ pnpm package:consumer-smoke
 pnpm release:check
 ```
 
+consumer game의 기본 제품 흐름은 새 프로젝트 생성, agent 설치, machine-readable report 확인, 검증 순서로 고정한다.
+
+```bash
+npm create @ferrum2d/game my-game -- --template minimal
+cd my-game
+npm install
+npx @ferrum2d/agents init --tools codex,claude,gemini
+npm run ferrum:report
+npm run ferrum:validate
+npm run ferrum:smoke
+```
+
+`ferrum:report`는 `ferrum2d.consumer.project.report` JSON envelope로 package dependency, public import surface, template files를 요약하고 최상위 `recommendedCommands`를 제공한다. `ferrum:smoke`는 생성 프로젝트 안에서 validate/build 기준을 한 번에 확인하는 기본 gate다. `pnpm package:consumer-smoke`는 이 흐름을 local tarball로 생성한 실제 consumer project에서 검증한다.
+
 실제 publish 후보 전환 전 전체 release gate는 `docs/development/operations/npm-release.md`를 기준으로 한다.
 
 GitHub Pages demo/docs artifact 생성:

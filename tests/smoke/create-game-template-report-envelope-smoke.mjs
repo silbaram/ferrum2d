@@ -47,6 +47,13 @@ try {
     );
     assertConsumerAssetValidateReport(assetValidateReport, template);
 
+    const projectReport = await runJsonReport(
+      projectRoot,
+      ["scripts/ferrum-harness.mjs", "report"],
+      "ferrum2d.consumer.project.report",
+    );
+    assertConsumerProjectReport(projectReport, template);
+
     const authoringReport = await runJsonReport(
       projectRoot,
       ["scripts/ferrum-harness.mjs", "authoring-report"],
@@ -121,6 +128,7 @@ try {
     summaries.push({
       template: templateName,
       replayCatalogConfigured: template.gameplayReplay.configured,
+      projectStatus: projectReport.ok ? "validated" : "invalid",
       assetStatus: assetReport.assetPipeline.textureAtlas.status,
       assetValidated: assetValidateReport.assetPipeline.validation.validated,
       authoringStatus: authoringReport.gameplayAuthoring.status,
@@ -374,6 +382,40 @@ function assertConsumerAssetPipelineBase(report, template) {
   assert.equal(pipeline.gameSpec?.localizationConfigured, false, `${templateName} Game Spec localization scaffold state is invalid`);
   assert.deepEqual(pipeline.reports, [], `${templateName} asset scaffold reports must be empty`);
   return pipeline;
+}
+
+function assertConsumerProjectReport(report, template) {
+  const templateName = template.id;
+  assert.equal(report.format, "ferrum2d.consumer.project.report", `${templateName} project report format is invalid`);
+  assert.equal(report.version, 1, `${templateName} project report version is invalid`);
+  assert.equal(report.ok, true, `${templateName} project report must be ok for generated templates`);
+  assert.equal(report.project?.packageName, templateName, `${templateName} project report packageName is invalid`);
+  assert(report.project?.ferrumWeb !== undefined && report.project.ferrumWeb !== null, `${templateName} project report must include ferrum-web dependency`);
+  assert.equal(report.project?.files?.main, true, `${templateName} project report must confirm src/main.ts`);
+  assert(Array.isArray(report.project?.checks?.internalImports), `${templateName} project report internalImports must be an array`);
+  assert.equal(report.project.checks.internalImports.length, 0, `${templateName} project report must not include internal imports`);
+  if (templateName === "topdown") {
+    assert.equal(report.project.files.gameSpec, "public/game.json", "topdown project report must identify public/game.json");
+    assert.equal(report.project.checks.gameSpec?.ok, true, "topdown project report must validate Game Spec");
+  } else {
+    assert.equal(report.project.checks.gameSpec?.ok, null, `${templateName} project report must mark missing Game Spec as a structured skip`);
+  }
+  if (template.sceneAuthoring.configured) {
+    assert.equal(report.project.files.sceneAuthoring, template.sceneAuthoring.fixturePath, `${templateName} project report sceneAuthoring path is invalid`);
+    assert.equal(report.project.checks.sceneAuthoring?.ok, true, `${templateName} project report must validate scene authoring`);
+  }
+  for (const command of [
+    "npm run ferrum:report",
+    "npm run ferrum:validate",
+    "npm run ferrum:authoring-report",
+    "npm run ferrum:replay-report",
+    "npm run ferrum:runtime-replay-report",
+    "npm run ferrum:smoke",
+  ]) {
+    assert(report.recommendedCommands?.includes(command), `${templateName} project report recommendedCommands must include ${command}`);
+  }
+  assert.deepEqual(report.reports, [], `${templateName} project report reports must be empty`);
+  assert.deepEqual(report.errors, [], `${templateName} project report errors must be empty`);
 }
 
 function assertConsumerAuthoringReport(report, template) {

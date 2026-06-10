@@ -6,15 +6,14 @@
 
 | 문서 | 역할 |
 | --- | --- |
-| [활성 개발 로드맵](active-roadmap.md) | 수정할 것과 앞으로 신규 개발할 것의 단일 기준 문서 |
 | [신규 기능 후보 템플릿](feature-candidates.md) | 새 기능 후보 작성 형식 |
 | [리팩토링 로드맵 템플릿](refactor-roadmap.md) | 새 리팩토링 후보 작성 형식 |
 
-2026-06 검토 과정의 작업 메모와 세부 planning 문서는 `active-roadmap.md`로 흡수했다. 활성 작업 목록은 중복 관리하지 않는다.
+활성 작업 목록은 planning 문서에 중복 관리하지 않는다. 진행 중인 작업은 별도 task 또는 이슈로 범위와 검증 기준을 확정하고, 완료된 내용은 확정 문서에만 남긴다.
 
 ## 관리 규칙
 
 - 기능 후보는 사용자-facing 가치, Ferrum2D 제품 방향, 검증 가능성을 함께 기록한다.
 - 개발을 시작하려면 후보 항목을 별도 task 또는 이슈로 분리하고 범위/검증 기준을 확정한다.
-- 기능이 코드, 테스트, 문서까지 완료되면 `active-roadmap.md`에서 제거하고 사용법/public contract/검증 기준은 확정 문서에만 남긴다. 후속 계획을 설명하는 데 필요한 완료 slice 기록은 결정 로그로 유지할 수 있지만, 확정 문서와 충돌하면 확정 문서가 우선한다.
+- 기능이 코드, 테스트, 문서까지 완료되면 planning 문서에서 제거하고 사용법/public contract/검증 기준은 확정 문서에만 남긴다. 후속 계획을 설명하는 데 필요한 완료 slice 기록은 결정 로그로 유지할 수 있지만, 확정 문서와 충돌하면 확정 문서가 우선한다.
 - Wasm threads, full visual editor, multiplayer, scripting/plugin runtime, skeletal animation, complex physics, 3D rendering은 별도 설계/승인 전 production 코드로 구현하지 않는다.

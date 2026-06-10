@@ -73,32 +73,46 @@ async function validateProject() {
 
 async function printReport() {
   const result = await inspectProject();
+  const diagnostics = validationDiagnostics(result, { requireGameSpec: false });
+  const reports = diagnostics.map(reportFromDiagnostic);
   const report = {
-    packageName: result.packageJson.name,
-    ferrumWeb: result.packageJson.dependencies?.["@ferrum2d/ferrum-web"] ?? null,
-    scripts: result.packageJson.scripts ?? {},
-    files: {
-      main: result.hasMainSource,
-      gameSpec: result.gameSpec?.file ?? null,
-      sceneAuthoring: result.sceneAuthoring?.file ?? null,
-      publicAssets: result.publicAssets,
-    },
-    authoringSurface: result.authoringSurface,
-    checks: {
-      hasFerrumDependency: result.hasFerrumDependency,
-      internalImports: result.internalImports,
-      gameSpec: result.gameSpec ?? { ok: null, message: "not present" },
-      sceneAuthoring: result.sceneAuthoring ?? { ok: null, message: "not present" },
+    format: "ferrum2d.consumer.project.report",
+    version: 1,
+    ok: diagnostics.length === 0,
+    project: {
+      packageName: result.packageJson.name,
+      ferrumWeb: result.packageJson.dependencies?.["@ferrum2d/ferrum-web"] ?? null,
+      scripts: result.packageJson.scripts ?? {},
+      files: {
+        main: result.hasMainSource,
+        gameSpec: result.gameSpec?.file ?? null,
+        sceneAuthoring: result.sceneAuthoring?.file ?? null,
+        publicAssets: result.publicAssets,
+      },
+      authoringSurface: result.authoringSurface,
+      checks: {
+        hasFerrumDependency: result.hasFerrumDependency,
+        internalImports: result.internalImports,
+        gameSpec: result.gameSpec ?? { ok: null, message: "not present" },
+        sceneAuthoring: result.sceneAuthoring ?? { ok: null, message: "not present" },
+      },
     },
     recommendedCommands: [
+      "npm run ferrum:report",
       "npm run ferrum:validate",
       "npm run ferrum:authoring-report",
       "npm run ferrum:replay-report",
+      "npm run ferrum:runtime-replay-report",
       "npm run ferrum:smoke",
       "npm run dev",
     ],
+    reports,
+    errors: diagnostics.map((entry) => entry.message),
   };
   console.log(JSON.stringify(report, null, 2));
+  if (!report.ok) {
+    process.exitCode = 1;
+  }
 }
 
 async function printAuthoringReport() {

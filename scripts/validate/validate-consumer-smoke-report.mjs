@@ -16,6 +16,8 @@ const REQUIRED_TEMPLATE_CHECKS = Object.freeze([
   "publicImportSmoke",
   "publicTypeSmoke",
   "validate",
+  "report",
+  "smoke",
   "build",
 ]);
 const FORBIDDEN_SNAPSHOT_DIRS = Object.freeze(["node_modules", "dist", ".pnpm"]);
@@ -278,6 +280,7 @@ function validateTemplateReports(template, label, reportStatus, reportErrors) {
   if (reportStatus !== "passed") {
     return;
   }
+  validateProjectSummary(template.reports.project, `${label}.reports.project`, reportErrors);
   validateStatusString(template.reports.authoring?.status, `${label}.reports.authoring.status`, reportErrors);
   validateGameplayReplaySummary(template.reports.gameplayReplay, `${label}.reports.gameplayReplay`, reportErrors);
   validateRuntimeReplaySummary(template.reports.runtimeReplay, `${label}.reports.runtimeReplay`, reportErrors);
@@ -291,6 +294,54 @@ function validateTemplateReports(template, label, reportStatus, reportErrors) {
     if (template.buildOutput.preservedInArtifactSnapshot !== false) {
       reportErrors.push(`${label}.buildOutput.preservedInArtifactSnapshot must be false`);
     }
+  }
+}
+
+function validateProjectSummary(value, label, reportErrors) {
+  if (!isRecord(value)) {
+    reportErrors.push(`${label} must be an object`);
+    return;
+  }
+  if (value.status !== "validated") {
+    reportErrors.push(`${label}.status must be validated`);
+  }
+  if (typeof value.packageName !== "string" || value.packageName.length === 0) {
+    reportErrors.push(`${label}.packageName must be a non-empty string`);
+  }
+  if (typeof value.ferrumWeb !== "string" || value.ferrumWeb.length === 0) {
+    reportErrors.push(`${label}.ferrumWeb must be a non-empty string`);
+  }
+  if (!isRecord(value.files)) {
+    reportErrors.push(`${label}.files must be an object`);
+  } else {
+    if (value.files.main !== true) {
+      reportErrors.push(`${label}.files.main must be true`);
+    }
+  }
+  if (value.internalImports !== 0) {
+    reportErrors.push(`${label}.internalImports must be 0`);
+  }
+  if (!Array.isArray(value.recommendedCommands)) {
+    reportErrors.push(`${label}.recommendedCommands must be an array`);
+  } else {
+    for (const command of [
+      "npm run ferrum:report",
+      "npm run ferrum:validate",
+      "npm run ferrum:authoring-report",
+      "npm run ferrum:replay-report",
+      "npm run ferrum:runtime-replay-report",
+      "npm run ferrum:smoke",
+    ]) {
+      if (!value.recommendedCommands.includes(command)) {
+        reportErrors.push(`${label}.recommendedCommands must include ${command}`);
+      }
+    }
+  }
+  if (value.reports !== 0) {
+    reportErrors.push(`${label}.reports must be 0`);
+  }
+  if (value.errors !== 0) {
+    reportErrors.push(`${label}.errors must be 0`);
   }
 }
 

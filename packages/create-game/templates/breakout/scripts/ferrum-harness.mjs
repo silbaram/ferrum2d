@@ -100,24 +100,33 @@ async function validateProject() {
 
 async function printReport() {
   const result = await inspectProject();
+  const diagnostics = validationDiagnostics(result);
+  const reports = diagnostics.map(reportFromDiagnostic);
   console.log(JSON.stringify({
-    packageName: result.packageName,
-    ferrumWeb: result.packageJson.dependencies?.["@ferrum2d/ferrum-web"] ?? null,
-    scripts: result.packageJson.scripts ?? {},
-    files: {
-      main: result.hasMainSource,
-      gameSpec: null,
-      sceneAuthoring: result.sceneAuthoring?.file ?? null,
-      publicAssets: result.publicAssets,
-    },
-    authoringSurface: result.authoringSurface,
-    checks: {
-      hasFerrumDependency: result.hasFerrumDependency,
-      internalImports: result.internalImports,
-      usesPublicRuntime: result.usesPublicRuntime,
-      sceneAuthoring: result.sceneAuthoring ?? { ok: null, message: `${SCENE_AUTHORING_PATH} not present` },
+    format: "ferrum2d.consumer.project.report",
+    version: 1,
+    ok: diagnostics.length === 0,
+    project: {
+      packageName: result.packageName,
+      ferrumWeb: result.packageJson.dependencies?.["@ferrum2d/ferrum-web"] ?? null,
+      scripts: result.packageJson.scripts ?? {},
+      files: {
+        main: result.hasMainSource,
+        gameSpec: null,
+        sceneAuthoring: result.sceneAuthoring?.file ?? null,
+        publicAssets: result.publicAssets,
+      },
+      authoringSurface: result.authoringSurface,
+      checks: {
+        hasFerrumDependency: result.hasFerrumDependency,
+        internalImports: result.internalImports,
+        usesPublicRuntime: result.usesPublicRuntime,
+        gameSpec: { ok: null, message: "public/game.json not present" },
+        sceneAuthoring: result.sceneAuthoring ?? { ok: null, message: `${SCENE_AUTHORING_PATH} not present` },
+      },
     },
     recommendedCommands: [
+      "npm run ferrum:report",
       "npm run ferrum:validate",
       "npm run ferrum:authoring-report",
       "npm run ferrum:replay-report",
@@ -125,7 +134,12 @@ async function printReport() {
       "npm run ferrum:smoke",
       "npm run dev",
     ],
+    reports,
+    errors: diagnostics.map((entry) => entry.message),
   }, null, 2));
+  if (diagnostics.length > 0) {
+    process.exitCode = 1;
+  }
 }
 
 async function printAuthoringReport() {

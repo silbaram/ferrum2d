@@ -510,6 +510,7 @@ async function checkGeneratedProject(template) {
       );
     }
     await runNodeCheck(generatedHarnessPath, repoRoot);
+    await assertProjectReport(targetRoot, templateName, template);
     const generatedRuntimeReplayPath = path.join(targetRoot, "scripts/ferrum-runtime-replay.mjs");
     await requireFile(generatedRuntimeReplayPath, repoRoot);
     await runNodeCheck(generatedRuntimeReplayPath, repoRoot);
@@ -563,6 +564,47 @@ async function checkGeneratedProject(template) {
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
+}
+
+async function assertProjectReport(projectRoot, templateName, template) {
+  const result = await run(process.execPath, ["scripts/ferrum-harness.mjs", "report"], projectRoot);
+  assert(
+    result.code === 0,
+    `${templateName} project report command must pass\n${result.stdout}\n${result.stderr}`.trim(),
+  );
+  const report = parseJsonReport(result.stdout, `${templateName} project report`);
+  assert(report.format === "ferrum2d.consumer.project.report", `${templateName} project report format is invalid`);
+  assert(report.version === 1, `${templateName} project report version must be 1`);
+  assert(report.ok === true, `${templateName} project report must be ok`);
+  assert(report.project?.packageName === `sample-${templateName}-game`, `${templateName} project report packageName is invalid`);
+  assert(report.project?.ferrumWeb === "0.0.0-test", `${templateName} project report ferrum-web dependency is invalid`);
+  assert(report.project?.files?.main === true, `${templateName} project report must confirm src/main.ts`);
+  assert(Array.isArray(report.project?.checks?.internalImports), `${templateName} project report internalImports must be an array`);
+  assert(report.project.checks.internalImports.length === 0, `${templateName} project report must not include internal imports`);
+  if (templateName === "topdown") {
+    assert(report.project.files.gameSpec === "public/game.json", "topdown project report must identify public/game.json");
+    assert(report.project.checks.gameSpec?.ok === true, "topdown project report must validate Game Spec");
+  } else {
+    assert(report.project.checks.gameSpec?.ok === null, `${templateName} project report must mark missing Game Spec as a structured skip`);
+  }
+  if (template.sceneAuthoring.configured) {
+    assert(report.project.files.sceneAuthoring === template.sceneAuthoring.fixturePath, `${templateName} project report scene authoring path is invalid`);
+    assert(report.project.checks.sceneAuthoring?.ok === true, `${templateName} project report must validate scene authoring`);
+  }
+  for (const command of [
+    "npm run ferrum:report",
+    "npm run ferrum:validate",
+    "npm run ferrum:authoring-report",
+    "npm run ferrum:replay-report",
+    "npm run ferrum:runtime-replay-report",
+    "npm run ferrum:smoke",
+  ]) {
+    assert(report.recommendedCommands?.includes(command), `${templateName} project report must recommend ${command}`);
+  }
+  assert(Array.isArray(report.reports), `${templateName} project report reports must be an array`);
+  assert(report.reports.length === 0, `${templateName} project report must not include diagnostics`);
+  assert(Array.isArray(report.errors), `${templateName} project report errors must be an array`);
+  assert(report.errors.length === 0, `${templateName} project report must not include errors`);
 }
 
 function assertMinimalTemplateWeaponAuthoring(mainSource) {
