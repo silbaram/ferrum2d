@@ -8,6 +8,7 @@
 | --- | --- |
 | [신규 기능 후보 템플릿](feature-candidates.md) | 새 기능 후보 작성 형식 |
 | [리팩토링 로드맵 템플릿](refactor-roadmap.md) | 새 리팩토링 후보 작성 형식 |
+| [물리엔진 성능 개선 계획](physics-performance-improvement-plan.md) | 물리 runtime hot path 성능 개선 후보와 검증 기준 |
 
 활성 작업 목록은 planning 문서에 중복 관리하지 않는다. 진행 중인 작업은 별도 task 또는 이슈로 범위와 검증 기준을 확정하고, 완료된 내용은 확정 문서에만 남긴다.
 

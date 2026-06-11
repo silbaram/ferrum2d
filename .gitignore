@@ -12,4 +12,5 @@ docs/physics-v*
 docs/planning/*
 !docs/planning/README.md
 !docs/planning/feature-candidates.md
+!docs/planning/physics-performance-improvement-plan.md
 !docs/planning/refactor-roadmap.md
