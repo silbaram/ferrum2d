@@ -6,6 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { missingExpectedPublicEntryPoints } from "../../scripts/package/create-game-template-contracts.mjs";
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const templatesRoot = path.join(repoRoot, "packages/create-game/templates");
 const sharedTemplateRoot = path.join(templatesRoot, "_shared");
@@ -337,17 +339,14 @@ function findJsonObjectEnd(source, start) {
 function assertConsumerAssetReport(report, template) {
   const pipeline = assertConsumerAssetPipelineBase(report, template);
   assert.equal(pipeline.validation?.validated, false, `${template.id} asset report must not mark validation as executed`);
-  assert.equal(pipeline.validation?.publicEntryPoint, undefined, `${template.id} asset report must not require public package imports`);
+  assert.equal(pipeline.validation?.publicEntryPoints, undefined, `${template.id} asset report must not require public package imports`);
 }
 
 function assertConsumerAssetValidateReport(report, template) {
   const pipeline = assertConsumerAssetPipelineBase(report, template);
   assert.equal(pipeline.validation?.validated, true, `${template.id} asset validate report must mark validation as executed`);
-  assert.equal(
-    pipeline.validation?.publicEntryPoint,
-    "@ferrum2d/ferrum-web",
-    `${template.id} asset validate report public entrypoint is invalid`,
-  );
+  const missing = missingExpectedPublicEntryPoints(pipeline.validation?.publicEntryPoints);
+  assert.equal(missing.length, 0, `${template.id} asset validate report public entrypoints are invalid: missing ${missing.join(", ")}`);
 }
 
 function assertConsumerAssetPipelineBase(report, template) {

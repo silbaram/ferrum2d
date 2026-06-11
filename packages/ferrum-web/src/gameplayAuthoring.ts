@@ -21,6 +21,25 @@ import {
   type ResolvedSceneCompositionSpec,
   type SceneCompositionSpec,
 } from "./sceneComposition.js";
+import {
+  GAMEPLAY_FACTION_CODES,
+  GAMEPLAY_FACTION_ID_RANGE_LABEL,
+  gameplayFactionCode,
+  gameplayFactionMask,
+  MAX_GAMEPLAY_FACTION_ID,
+  type GameplayFactionReference,
+} from "./gameplayFactionRelations.js";
+
+export {
+  applyFactionRelationTable,
+  type ApplyFactionRelationTableOptions,
+  type ApplyFactionRelationTableResult,
+  type FactionRelation,
+  type FactionRelationEntrySpec,
+  type FactionRelationRuntimeEngine,
+  type FactionRelationTableSpec,
+  type GameplayFactionReference,
+} from "./gameplayFactionRelations.js";
 
 export const GAMEPLAY_BEHAVIOR_BINDING_PROP = "behaviorRecipes" as const;
 
@@ -28,20 +47,8 @@ export type GameplayBehaviorBindingSpec = string | readonly string[];
 export type MissingSceneBehaviorBinding = "ignore" | "error";
 const GAMEPLAY_PICKUP_ITEM_SCORE = 1;
 const MAX_PARTICLE_PRESETS = 256;
-const MAX_GAMEPLAY_FACTION_ID = 31;
 const MAX_GAMEPLAY_TAG_ID = 31;
-const GAMEPLAY_FACTION_ID_RANGE_LABEL = `0..${MAX_GAMEPLAY_FACTION_ID}`;
 const GAMEPLAY_TAG_ID_RANGE_LABEL = `0..${MAX_GAMEPLAY_TAG_ID}`;
-const GAMEPLAY_FACTION_CODES = Object.freeze({
-  neutral: 0,
-  player: 1,
-  enemy: 2,
-} as const);
-const GAMEPLAY_FACTION_RELATION_CODES = Object.freeze({
-  neutral: 0,
-  friendly: 1,
-  hostile: 2,
-} as const);
 const GAMEPLAY_MOVEMENT_QUERY_LAYER_TARGET_PREFIX = "nearestLayer:" as const;
 const GAMEPLAY_MOVEMENT_QUERY_FACTION_TARGET_PREFIX = "nearestFaction:" as const;
 const GAMEPLAY_MOVEMENT_QUERY_TAG_TARGET_PREFIX = "nearestTag:" as const;
@@ -52,10 +59,8 @@ const GAMEPLAY_MOVEMENT_QUERY_LAYER_CODES = Object.freeze({
   wall: 3,
   pickup: 4,
 } as const);
-export type GameplayFactionReference = keyof typeof GAMEPLAY_FACTION_CODES | number;
-export type FactionRelation = keyof typeof GAMEPLAY_FACTION_RELATION_CODES;
 type GameplayMovementQueryLayer = keyof typeof GAMEPLAY_MOVEMENT_QUERY_LAYER_CODES;
-type GameplayMovementQueryFaction = keyof typeof GAMEPLAY_FACTION_CODES | number;
+type GameplayMovementQueryFaction = GameplayFactionReference;
 
 export type GameplayEntityHandleMap =
   | Readonly<Record<string, GameplayEntityHandle>>
@@ -96,40 +101,6 @@ export interface RegisterGameplayPrefabsOptions {
 export interface RegisterGameplayPrefabsResult {
   registrations: readonly GameplayPrefabRegistration[];
   results: readonly boolean[];
-}
-
-export interface FactionRelationEntrySpec {
-  source: GameplayFactionReference;
-  target: GameplayFactionReference;
-  relation: FactionRelation;
-}
-
-export interface FactionRelationTableSpec {
-  defaultRelation?: FactionRelation;
-  relations: readonly FactionRelationEntrySpec[];
-}
-
-interface ResolvedFactionRelationEntrySpec {
-  source: number;
-  target: number;
-  relation: FactionRelation;
-  relationCode: number;
-}
-
-export interface ApplyFactionRelationTableOptions {
-  path?: string;
-}
-
-export interface ApplyFactionRelationTableResult {
-  applied: true;
-  defaultRelation: FactionRelation;
-  relationCount: number;
-}
-
-export interface FactionRelationRuntimeEngine {
-  clear_gameplay_faction_relations(): void;
-  set_gameplay_faction_default_relation(relationCode: number): boolean;
-  set_gameplay_faction_relation(sourceFactionId: number, targetFactionId: number, relationCode: number): boolean;
 }
 
 export interface GameplayEntityHandle {
@@ -711,54 +682,6 @@ export function resolveGameplayBehaviorRuntimeIds(
   };
 }
 
-export function applyFactionRelationTable(
-  engine: FactionRelationRuntimeEngine,
-  table: FactionRelationTableSpec,
-  options: ApplyFactionRelationTableOptions = {},
-): ApplyFactionRelationTableResult {
-  const path = options.path ?? "factionRelationTable";
-  if (engine === null || typeof engine !== "object") {
-    throw gameplayAuthoringDiagnosticError(`${path}.engine`, "must be a faction relation runtime engine");
-  }
-  if (!isRecord(table)) {
-    throw gameplayAuthoringDiagnosticError(path, "must be an object");
-  }
-  if (!Array.isArray(table.relations)) {
-    throw gameplayAuthoringDiagnosticError(`${path}.relations`, "must be an array");
-  }
-  const defaultRelation = factionRelationValue(table.defaultRelation ?? "neutral", `${path}.defaultRelation`);
-  const relationEntries = table.relations.map((rawEntry, index): ResolvedFactionRelationEntrySpec => {
-    const entryPath = `${path}.relations.${index}`;
-    if (!isRecord(rawEntry)) {
-      throw gameplayAuthoringDiagnosticError(entryPath, "must be an object");
-    }
-    const entry = factionRelationEntrySpec(rawEntry, entryPath);
-    return {
-      ...entry,
-      relationCode: factionRelationCode(entry.relation),
-    };
-  });
-
-  engine.clear_gameplay_faction_relations();
-  if (!engine.set_gameplay_faction_default_relation(factionRelationCode(defaultRelation))) {
-    throw gameplayAuthoringDiagnosticError(`${path}.defaultRelation`, `runtime rejected default relation '${defaultRelation}'`);
-  }
-
-  relationEntries.forEach((entry, index) => {
-    const entryPath = `${path}.relations.${index}`;
-    const applied = engine.set_gameplay_faction_relation(entry.source, entry.target, entry.relationCode);
-    if (!applied) {
-      throw gameplayAuthoringDiagnosticError(entryPath, `runtime rejected relation '${entry.source}' -> '${entry.target}'`);
-    }
-  });
-
-  return {
-    applied: true,
-    defaultRelation,
-    relationCount: table.relations.length,
-  };
-}
-
 function registerGameplayPrefab(
   engine: GameplayBehaviorRuntimeEngine,
   registration: GameplayPrefabRegistration,
@@ -768,13 +691,11 @@ function registerGameplayPrefab(
   const kind = gameplayPrefabRegistrationKind(registration.kind, `${path}.kind`);
   const prefabId = gameplayPrefabRegistrationId(registration, ids, path);
   if (kind === "enemy") {
-    const registerEnemyPrefab = engine.register_gameplay_enemy_prefab;
-    if (registerEnemyPrefab === undefined) {
-      throw gameplayAuthoringDiagnosticError(
-        `${path}.kind`,
-        "runtime engine must provide register_gameplay_enemy_prefab for enemy prefab registrations",
-      );
-    }
+    const registerEnemyPrefab = requireRuntimeMethod(
+      engine.register_gameplay_enemy_prefab,
+      `${path}.kind`,
+      "runtime engine must provide register_gameplay_enemy_prefab for enemy prefab registrations",
+    );
     const applied = registerEnemyPrefab.call(engine, prefabId);
     if (!applied) {
       const label = registration.prefab === undefined ? prefabId.toString() : registration.prefab;
@@ -783,13 +704,11 @@ function registerGameplayPrefab(
     return true;
   }
   if (kind === "bullet") {
-    const registerBulletPrefab = engine.register_gameplay_bullet_prefab;
-    if (registerBulletPrefab === undefined) {
-      throw gameplayAuthoringDiagnosticError(
-        `${path}.kind`,
-        "runtime engine must provide register_gameplay_bullet_prefab for bullet prefab registrations",
-      );
-    }
+    const registerBulletPrefab = requireRuntimeMethod(
+      engine.register_gameplay_bullet_prefab,
+      `${path}.kind`,
+      "runtime engine must provide register_gameplay_bullet_prefab for bullet prefab registrations",
+    );
     const applied = registerBulletPrefab.call(engine, prefabId);
     if (!applied) {
       const label = registration.prefab === undefined ? prefabId.toString() : registration.prefab;
@@ -809,1066 +728,1201 @@ function applyGameplayBehaviorCommand(
 ): boolean {
   const handle = gameplayEntityHandleForCommand(command.entity, entityHandles, `${path}.entity`);
   switch (command.type) {
-    case "configureTags": {
-      const setGameplayTags = engine.set_gameplay_tags;
-      if (setGameplayTags === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide set_gameplay_tags for configureTags commands",
-        );
-      }
-      return requireApplied(
-        setGameplayTags.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          gameplayTagMask(command.tags, ids, `${path}.tags`),
-        ),
-        path,
-        command,
-      );
-    }
+    case "configureTags":
+      return applyConfigureTagsCommand(engine, command, handle, path, ids);
     case "configureHealth":
-      assertSupportedHealthCommand(command, path);
-      return requireApplied(
-        engine.set_gameplay_health(handle.entityId, handle.entityGeneration, command.current),
-        path,
-        command,
-      );
+      return applyConfigureHealthCommand(engine, command, handle, path);
     case "configureDamage":
-      assertSupportedDamageCommand(command, path);
-      const setGameplayDamageReaction = engine.set_gameplay_damage_reaction;
-      if (setGameplayDamageReaction === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide set_gameplay_damage_reaction for configureDamage commands",
-        );
-      }
-      return requireApplied(
-        setGameplayDamageReaction.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          command.amount,
-          collisionTargetCode(command.target),
-        ),
-        path,
-        command,
-      );
-    case "configureFaction": {
-      assertSupportedFactionCommand(command, path);
-      const setGameplayFaction = engine.set_gameplay_faction;
-      if (setGameplayFaction === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide set_gameplay_faction for configureFaction commands",
-        );
-      }
-      return requireApplied(
-        setGameplayFaction.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          gameplayFactionCode(command.faction, `${path}.faction`),
-          gameplayFactionMask(command.damages, `${path}.damages`),
-        ),
-        path,
-        command,
-      );
-    }
+      return applyConfigureDamageCommand(engine, command, handle, path);
+    case "configureFaction":
+      return applyConfigureFactionCommand(engine, command, handle, path);
     case "configureLifetime":
-      assertSupportedLifetimeCommand(command, path);
-      return requireApplied(
-        engine.set_gameplay_lifetime(handle.entityId, handle.entityGeneration, command.seconds),
-        path,
-        command,
-      );
+      return applyConfigureLifetimeCommand(engine, command, handle, path);
     case "configureScoreReward":
-      assertSupportedScoreRewardCommand(command, path);
-      return requireApplied(
-        engine.set_gameplay_score_reward(handle.entityId, handle.entityGeneration, command.reward),
-        path,
-        command,
-      );
+      return applyConfigureScoreRewardCommand(engine, command, handle, path);
     case "configureChase":
-      assertSupportedChaseCommand(command, path);
-      if (command.target === "player") {
-        return requireApplied(
-          engine.set_gameplay_movement_chase_player(handle.entityId, handle.entityGeneration, command.speed),
-          path,
-          command,
-        );
-      }
-      if (command.target === "nearestPlayer") {
-        const setGameplayChaseNearestPlayer = engine.set_gameplay_movement_chase_nearest_player;
-        if (setGameplayChaseNearestPlayer === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_movement_chase_nearest_player for nearestPlayer configureChase commands",
-          );
-        }
-        return requireApplied(
-          setGameplayChaseNearestPlayer.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            command.speed,
-          ),
-          path,
-          command,
-        );
-      }
-      if (command.target === "nearestEnemy") {
-        const setGameplayChaseNearestEnemy = engine.set_gameplay_movement_chase_nearest_enemy;
-        if (setGameplayChaseNearestEnemy === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_movement_chase_nearest_enemy for nearestEnemy configureChase commands",
-          );
-        }
-        return requireApplied(
-          setGameplayChaseNearestEnemy.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            command.speed,
-          ),
-          path,
-          command,
-        );
-      }
-      const nearestLayer = movementNearestLayerTarget(command.target, `${path}.target`);
-      if (nearestLayer !== undefined) {
-        const setGameplayChaseNearestLayer = engine.set_gameplay_movement_chase_nearest_layer;
-        if (setGameplayChaseNearestLayer === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_movement_chase_nearest_layer for nearestLayer configureChase commands",
-          );
-        }
-        return requireApplied(
-          setGameplayChaseNearestLayer.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            gameplayMovementQueryLayerCode(nearestLayer),
-            command.speed,
-          ),
-          path,
-          command,
-        );
-      }
-      const nearestFaction = movementNearestFactionTarget(command.target, `${path}.target`);
-      if (nearestFaction !== undefined) {
-        const setGameplayChaseNearestFaction = engine.set_gameplay_movement_chase_nearest_faction;
-        if (setGameplayChaseNearestFaction === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_movement_chase_nearest_faction for nearestFaction configureChase commands",
-          );
-        }
-        return requireApplied(
-          setGameplayChaseNearestFaction.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            gameplayMovementQueryFactionCode(nearestFaction),
-            command.speed,
-          ),
-          path,
-          command,
-        );
-      }
-      const nearestTag = movementNearestTagTarget(command.target, ids, `${path}.target`);
-      if (nearestTag !== undefined) {
-        const setGameplayChaseNearestTag = engine.set_gameplay_movement_chase_nearest_tag;
-        if (setGameplayChaseNearestTag === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_movement_chase_nearest_tag for nearestTag configureChase commands",
-          );
-        }
-        return requireApplied(
-          setGameplayChaseNearestTag.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            nearestTag,
-            command.speed,
-          ),
-          path,
-          command,
-        );
-      }
-      {
-        const target = gameplayEntityHandleForCommand(command.target, entityHandles, `${path}.target`);
-        return requireApplied(
-          engine.set_gameplay_movement_chase_entity(
-            handle.entityId,
-            handle.entityGeneration,
-            target.entityId,
-            target.entityGeneration,
-            command.speed,
-          ),
-          path,
-          command,
-        );
-      }
-    case "configureSeekTarget": {
-      assertSupportedSeekTargetCommand(command, path);
-      if (command.target === "player") {
-        const setGamePlaySeekTargetPlayer = engine.set_gameplay_movement_seek_target_player;
-        if (setGamePlaySeekTargetPlayer === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_movement_seek_target_player for configureSeekTarget commands",
-          );
-        }
-        return requireApplied(
-          setGamePlaySeekTargetPlayer.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            command.speed,
-            command.turnRate,
-          ),
-          path,
-          command,
-        );
-      }
-      if (command.target === "nearestPlayer") {
-        const setGameplaySeekTargetNearestPlayer =
-          engine.set_gameplay_movement_seek_target_nearest_player;
-        if (setGameplaySeekTargetNearestPlayer === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_movement_seek_target_nearest_player for nearestPlayer configureSeekTarget commands",
-          );
-        }
-        return requireApplied(
-          setGameplaySeekTargetNearestPlayer.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            command.speed,
-            command.turnRate,
-          ),
-          path,
-          command,
-        );
-      }
-      if (command.target === "nearestEnemy") {
-        const setGameplaySeekTargetNearestEnemy =
-          engine.set_gameplay_movement_seek_target_nearest_enemy;
-        if (setGameplaySeekTargetNearestEnemy === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_movement_seek_target_nearest_enemy for nearestEnemy configureSeekTarget commands",
-          );
-        }
-        return requireApplied(
-          setGameplaySeekTargetNearestEnemy.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            command.speed,
-            command.turnRate,
-          ),
-          path,
-          command,
-        );
-      }
-      const nearestLayer = movementNearestLayerTarget(command.target, `${path}.target`);
-      if (nearestLayer !== undefined) {
-        const setGameplaySeekTargetNearestLayer =
-          engine.set_gameplay_movement_seek_target_nearest_layer;
-        if (setGameplaySeekTargetNearestLayer === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_movement_seek_target_nearest_layer for nearestLayer configureSeekTarget commands",
-          );
-        }
-        return requireApplied(
-          setGameplaySeekTargetNearestLayer.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            gameplayMovementQueryLayerCode(nearestLayer),
-            command.speed,
-            command.turnRate,
-          ),
-          path,
-          command,
-        );
-      }
-      const nearestFaction = movementNearestFactionTarget(command.target, `${path}.target`);
-      if (nearestFaction !== undefined) {
-        const setGameplaySeekTargetNearestFaction =
-          engine.set_gameplay_movement_seek_target_nearest_faction;
-        if (setGameplaySeekTargetNearestFaction === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_movement_seek_target_nearest_faction for nearestFaction configureSeekTarget commands",
-          );
-        }
-        return requireApplied(
-          setGameplaySeekTargetNearestFaction.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            gameplayMovementQueryFactionCode(nearestFaction),
-            command.speed,
-            command.turnRate,
-          ),
-          path,
-          command,
-        );
-      }
-      const nearestTag = movementNearestTagTarget(command.target, ids, `${path}.target`);
-      if (nearestTag !== undefined) {
-        const setGameplaySeekTargetNearestTag =
-          engine.set_gameplay_movement_seek_target_nearest_tag;
-        if (setGameplaySeekTargetNearestTag === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_movement_seek_target_nearest_tag for nearestTag configureSeekTarget commands",
-          );
-        }
-        return requireApplied(
-          setGameplaySeekTargetNearestTag.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            nearestTag,
-            command.speed,
-            command.turnRate,
-          ),
-          path,
-          command,
-        );
-      }
-      const target = gameplayEntityHandleForCommand(command.target, entityHandles, `${path}.target`);
-      const setGamePlaySeekTargetEntity = engine.set_gameplay_movement_seek_target_entity;
-      if (setGamePlaySeekTargetEntity === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide set_gameplay_movement_seek_target_entity for configureSeekTarget commands",
-        );
-      }
-      return requireApplied(
-        setGamePlaySeekTargetEntity.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          target.entityId,
-          target.entityGeneration,
-          command.speed,
-          command.turnRate,
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureAccelerate": {
-      assertSupportedAccelerateCommand(command, path);
-      const setGamePlayMovementAccelerate = engine.set_gameplay_movement_accelerate;
-      if (setGamePlayMovementAccelerate === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide set_gameplay_movement_accelerate for configureAccelerate commands",
-        );
-      }
-      return requireApplied(
-        setGamePlayMovementAccelerate.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          command.accelerationX,
-          command.accelerationY,
-          command.maxSpeed,
-        ),
-        path,
-        command,
-      );
-    }
-    case "configurePickup": {
-      assertSupportedPickupCommand(command, path);
-      const itemId = pickupItemId(command, ids, path);
-      return requireApplied(
-        engine.set_gameplay_pickup(
-          handle.entityId,
-          handle.entityGeneration,
-          itemId,
-          command.count,
-          command.despawn,
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureCollisionPickup": {
-      assertSupportedCollisionPickupCommand(command, path);
-      const addCollisionPickup = engine.add_gameplay_collision_pickup;
-      if (addCollisionPickup === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide add_gameplay_collision_pickup for configureCollisionPickup commands",
-        );
-      }
-      return requireApplied(
-        addCollisionPickup.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          collisionTargetCode(command.target),
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureCollisionAreaDamage": {
-      assertSupportedCollisionAreaDamageCommand(command, path);
-      const setGameplayAreaDamageReaction = engine.set_gameplay_area_damage_reaction;
-      if (setGameplayAreaDamageReaction === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide set_gameplay_area_damage_reaction for configureCollisionAreaDamage commands",
-        );
-      }
-      return requireApplied(
-        setGameplayAreaDamageReaction.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          command.amount,
-          command.radius,
-          gameplayCollisionLayerCode(command.targetLayer, `${path}.targetLayer`),
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureCollisionKnockback": {
-      assertSupportedCollisionKnockbackCommand(command, path);
-      const addCollisionKnockback = engine.add_gameplay_collision_knockback;
-      if (addCollisionKnockback === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide add_gameplay_collision_knockback for configureCollisionKnockback commands",
-        );
-      }
-      return requireApplied(
-        addCollisionKnockback.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          collisionTargetCode(command.target),
-          command.impulse,
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureCollisionEmitEffect": {
-      assertSupportedCollisionEmitEffectCommand(command, path);
-      const effectId = collisionEmitEffectId(command, ids, path);
-      const hasPayload = command.intensity !== undefined || command.radius !== undefined;
-      const intensity = command.intensity ?? 1;
-      const radius = command.radius ?? 0;
-      const addCollisionEmitEffectWithPayload = engine.add_gameplay_collision_emit_effect_with_payload;
-      if (addCollisionEmitEffectWithPayload !== undefined) {
-        return requireApplied(
-          addCollisionEmitEffectWithPayload.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            effectId,
-            command.effectType,
-            collisionTargetCode(command.target),
-            command.cooldownSeconds ?? 0,
-            collisionTriggerCode(command.trigger ?? "contact"),
-            intensity,
-            radius,
-          ),
-          path,
-          command,
-        );
-      }
-      if (hasPayload) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide add_gameplay_collision_emit_effect_with_payload for configureCollisionEmitEffect intensity/radius commands",
-        );
-      }
-      const addCollisionEmitEffect = engine.add_gameplay_collision_emit_effect;
-      if (addCollisionEmitEffect === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide add_gameplay_collision_emit_effect for configureCollisionEmitEffect commands",
-        );
-      }
-      return requireApplied(
-        addCollisionEmitEffect.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          effectId,
-          command.effectType,
-          collisionTargetCode(command.target),
-          command.cooldownSeconds ?? 0,
-          collisionTriggerCode(command.trigger ?? "contact"),
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureCollisionSpawnPrefab": {
-      assertSupportedCollisionSpawnPrefabCommand(command, path);
-      const addCollisionSpawnPrefab = engine.add_gameplay_collision_spawn_prefab;
-      if (addCollisionSpawnPrefab === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide add_gameplay_collision_spawn_prefab for configureCollisionSpawnPrefab commands",
-        );
-      }
-      const actionId = collisionSpawnPrefabActionId(command, ids, path);
-      const prefabId = collisionSpawnPrefabId(command, ids, path);
-      return requireApplied(
-        addCollisionSpawnPrefab.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          actionId,
-          prefabId,
-          collisionTargetCode(command.target),
-          command.cooldownSeconds ?? 0,
-          collisionTriggerCode(command.trigger ?? "contact"),
-          command.offsetX,
-          command.offsetY,
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureCollisionSound": {
-      assertSupportedCollisionSoundCommand(command, path);
-      const cooldownSeconds = command.cooldownSeconds ?? 0;
-      const replaceDefault = command.replaceDefault ?? false;
-      const trigger = command.trigger ?? "contact";
-      if (trigger === "enter") {
-        const addCollisionSoundWithTrigger = engine.add_gameplay_collision_sound_with_trigger;
-        if (addCollisionSoundWithTrigger === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide add_gameplay_collision_sound_with_trigger for configureCollisionSound enter trigger commands",
-          );
-        }
-        return requireApplied(
-          addCollisionSoundWithTrigger.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            command.soundId,
-            command.volume,
-            command.pitch,
-            cooldownSeconds,
-            replaceDefault,
-            collisionTriggerCode(trigger),
-          ),
-          path,
-          command,
-        );
-      }
-      if (replaceDefault) {
-        const addCollisionSoundWithPolicy = engine.add_gameplay_collision_sound_with_policy;
-        if (addCollisionSoundWithPolicy === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide add_gameplay_collision_sound_with_policy for configureCollisionSound replaceDefault commands",
-          );
-        }
-        return requireApplied(
-          addCollisionSoundWithPolicy.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            command.soundId,
-            command.volume,
-            command.pitch,
-            cooldownSeconds,
-            replaceDefault,
-          ),
-          path,
-          command,
-        );
-      }
-      if (cooldownSeconds > 0) {
-        const addCollisionSoundWithCooldown = engine.add_gameplay_collision_sound_with_cooldown;
-        if (addCollisionSoundWithCooldown === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide add_gameplay_collision_sound_with_cooldown for configureCollisionSound cooldown commands",
-          );
-        }
-        return requireApplied(
-          addCollisionSoundWithCooldown.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            command.soundId,
-            command.volume,
-            command.pitch,
-            cooldownSeconds,
-          ),
-          path,
-          command,
-        );
-      }
-      const addCollisionSound = engine.add_gameplay_collision_sound;
-      if (addCollisionSound === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide add_gameplay_collision_sound for configureCollisionSound commands",
-        );
-      }
-      return requireApplied(
-        addCollisionSound.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          command.soundId,
-          command.volume,
-          command.pitch,
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureCollisionShake": {
-      assertSupportedCollisionShakeCommand(command, path);
-      const cooldownSeconds = command.cooldownSeconds ?? 0;
-      const trigger = command.trigger ?? "contact";
-      if (trigger === "enter") {
-        const addCollisionShakeWithTrigger = engine.add_gameplay_collision_camera_shake_with_trigger;
-        if (addCollisionShakeWithTrigger === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide add_gameplay_collision_camera_shake_with_trigger for configureCollisionShake enter trigger commands",
-          );
-        }
-        return requireApplied(
-          addCollisionShakeWithTrigger.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            cooldownSeconds,
-            collisionTriggerCode(trigger),
-          ),
-          path,
-          command,
-        );
-      }
-      if (cooldownSeconds > 0) {
-        const addCollisionShakeWithCooldown = engine.add_gameplay_collision_camera_shake_with_cooldown;
-        if (addCollisionShakeWithCooldown === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide add_gameplay_collision_camera_shake_with_cooldown for configureCollisionShake cooldown commands",
-          );
-        }
-        return requireApplied(
-          addCollisionShakeWithCooldown.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            cooldownSeconds,
-          ),
-          path,
-          command,
-        );
-      }
-      const addCollisionShake = engine.add_gameplay_collision_camera_shake;
-      if (addCollisionShake === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide add_gameplay_collision_camera_shake for configureCollisionShake commands",
-        );
-      }
-      return requireApplied(
-        addCollisionShake.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureCollisionParticle": {
-      assertSupportedCollisionParticleCommand(command, path);
-      const cooldownSeconds = command.cooldownSeconds ?? 0;
-      const replaceDefault = command.replaceDefault ?? false;
-      const trigger = command.trigger ?? "contact";
-      if (trigger === "enter") {
-        const addCollisionParticleWithTrigger = engine.add_gameplay_collision_particle_with_trigger;
-        if (addCollisionParticleWithTrigger === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide add_gameplay_collision_particle_with_trigger for configureCollisionParticle enter trigger commands",
-          );
-        }
-        return requireApplied(
-          addCollisionParticleWithTrigger.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            command.presetId,
-            collisionTargetCode(command.target),
-            cooldownSeconds,
-            replaceDefault,
-            collisionTriggerCode(trigger),
-          ),
-          path,
-          command,
-        );
-      }
-      if (replaceDefault) {
-        const addCollisionParticleWithPolicy = engine.add_gameplay_collision_particle_with_policy;
-        if (addCollisionParticleWithPolicy === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide add_gameplay_collision_particle_with_policy for configureCollisionParticle replaceDefault commands",
-          );
-        }
-        return requireApplied(
-          addCollisionParticleWithPolicy.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            command.presetId,
-            collisionTargetCode(command.target),
-            cooldownSeconds,
-            replaceDefault,
-          ),
-          path,
-          command,
-        );
-      }
-      if (cooldownSeconds > 0) {
-        const addCollisionParticleWithCooldown = engine.add_gameplay_collision_particle_with_cooldown;
-        if (addCollisionParticleWithCooldown === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide add_gameplay_collision_particle_with_cooldown for configureCollisionParticle cooldown commands",
-          );
-        }
-        return requireApplied(
-          addCollisionParticleWithCooldown.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            command.presetId,
-            collisionTargetCode(command.target),
-            cooldownSeconds,
-          ),
-          path,
-          command,
-        );
-      }
-      const addCollisionParticle = engine.add_gameplay_collision_particle;
-      if (addCollisionParticle === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide add_gameplay_collision_particle for configureCollisionParticle commands",
-        );
-      }
-      return requireApplied(
-        addCollisionParticle.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          command.presetId,
-          collisionTargetCode(command.target),
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureCollisionDespawn": {
-      assertSupportedCollisionDespawnCommand(command, path);
-      const addCollisionDespawn = engine.add_gameplay_collision_despawn;
-      if (addCollisionDespawn === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide add_gameplay_collision_despawn for configureCollisionDespawn commands",
-        );
-      }
-      return requireApplied(
-        addCollisionDespawn.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          collisionTargetCode(command.target),
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureInteraction": {
-      assertSupportedInteractionCommand(command, path);
-      const actionId = interactionActionId(command, ids, path);
-      return requireApplied(
-        engine.set_gameplay_interaction(
-          handle.entityId,
-          handle.entityGeneration,
-          actionId,
-          command.radius,
-          command.once,
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureProjectileAction": {
-      assertSupportedProjectileActionCommand(command, path);
-      const actionId = projectileActionId(command, ids, path);
-      const aimCode = dashActionAimCode(command.aim, `${path}.aim`);
-      const collisionTargetCode = projectileCollisionTargetCode(command.collisionTarget, `${path}.collisionTarget`);
-      const tileImpactCode = projectileTileImpactCode(command.tileImpact, `${path}.tileImpact`);
-      if (aimCode !== 0 || collisionTargetCode !== 0 || tileImpactCode !== 0) {
-        const setProjectileActionWithTarget = engine.set_gameplay_action_projectile_with_target;
-        if (setProjectileActionWithTarget === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_action_projectile_with_target for targeted or non-default tileImpact configureProjectileAction commands",
-          );
-        }
-        return requireApplied(
-          setProjectileActionWithTarget.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            actionId,
-            command.cooldownSeconds,
-            command.speed,
-            command.damage,
-            command.lifetimeSeconds,
-            aimCode,
-            collisionTargetCode,
-            tileImpactCode,
-          ),
-          path,
-          command,
-        );
-      }
-      const setProjectileAction = engine.set_gameplay_action_projectile;
-      if (setProjectileAction === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide set_gameplay_action_projectile for configureProjectileAction commands",
-        );
-      }
-      return requireApplied(
-        setProjectileAction.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          actionId,
-          command.cooldownSeconds,
-          command.speed,
-          command.damage,
-          command.lifetimeSeconds,
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureDashAction": {
-      assertSupportedDashActionCommand(command, path);
-      const actionId = dashActionId(command, ids, path);
-      const aimCode = dashActionAimCode(command.aim, `${path}.aim`);
-      const setDashActionWithAim = engine.set_gameplay_action_dash_with_aim;
-      const setDashAction = engine.set_gameplay_action_dash;
-      if (aimCode !== 0) {
-        if (setDashActionWithAim === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_action_dash_with_aim for non-input configureDashAction commands",
-          );
-        }
-        return requireApplied(
-          setDashActionWithAim.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            actionId,
-            command.cooldownSeconds,
-            command.distance,
-            aimCode,
-          ),
-          path,
-          command,
-        );
-      }
-      if (setDashAction === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide set_gameplay_action_dash for configureDashAction commands",
-        );
-      }
-      return requireApplied(
-        setDashAction.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          actionId,
-          command.cooldownSeconds,
-          command.distance,
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureMeleeAction": {
-      assertSupportedMeleeActionCommand(command, path);
-      const actionId = meleeActionId(command, ids, path);
-      const targetCode = meleeTargetCode(command.target, `${path}.target`);
-      if (targetCode === 0) {
-        const setMeleeAction = engine.set_gameplay_action_melee;
-        if (setMeleeAction === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_action_melee for configureMeleeAction commands",
-          );
-        }
-        return requireApplied(
-          setMeleeAction.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            actionId,
-            command.cooldownSeconds,
-            command.range,
-            command.damage,
-          ),
-          path,
-          command,
-        );
-      }
-      const setMeleeAction = engine.set_gameplay_action_melee_with_target;
-      if (setMeleeAction === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide set_gameplay_action_melee_with_target for targeted configureMeleeAction commands",
-        );
-      }
-      return requireApplied(
-        setMeleeAction.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          actionId,
-          command.cooldownSeconds,
-          command.range,
-          command.damage,
-          targetCode,
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureSpawnPrefabAction": {
-      assertSupportedSpawnPrefabActionCommand(command, path);
-      const actionId = spawnPrefabActionId(command, ids, path);
-      const prefabId = spawnPrefabId(command, ids, path);
-      const projectile = command.projectile;
-      if (projectile !== undefined) {
-        const setSpawnProjectilePrefabAction = engine.set_gameplay_action_spawn_projectile_prefab;
-        if (setSpawnProjectilePrefabAction === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_action_spawn_projectile_prefab for projectile configureSpawnPrefabAction commands",
-          );
-        }
-        return requireApplied(
-          setSpawnProjectilePrefabAction.call(
-            engine,
-            handle.entityId,
-            handle.entityGeneration,
-            actionId,
-            command.cooldownSeconds,
-            prefabId,
-            spawnPrefabAnchorCode(command.anchor),
-            spawnPrefabPhaseCode(command.phase),
-            command.offsetX,
-            command.offsetY,
-            projectile.speed,
-            projectile.damage,
-            projectile.lifetimeSeconds,
-            dashActionAimCode(projectile.aim, `${path}.projectile.aim`),
-            projectileCollisionTargetCode(projectile.collisionTarget, `${path}.projectile.collisionTarget`),
-            projectileTileImpactCode(projectile.tileImpact, `${path}.projectile.tileImpact`),
-          ),
-          path,
-          command,
-        );
-      }
-      const setSpawnPrefabAction = engine.set_gameplay_action_spawn_prefab;
-      if (setSpawnPrefabAction === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide set_gameplay_action_spawn_prefab for configureSpawnPrefabAction commands",
-        );
-      }
-      return requireApplied(
-        setSpawnPrefabAction.call(
-          engine,
-          handle.entityId,
-          handle.entityGeneration,
-          actionId,
-          command.cooldownSeconds,
-          prefabId,
-          spawnPrefabAnchorCode(command.anchor),
-          spawnPrefabPhaseCode(command.phase),
-          command.offsetX,
-          command.offsetY,
-        ),
-        path,
-        command,
-      );
-    }
-    case "configureTimerTrigger": {
-      assertSupportedTimerTriggerCommand(command, path);
-      const timerId = timerTriggerId(command, ids, path);
-      const actionId = timerTriggerActionId(command, ids, path);
-      if (actionId !== undefined) {
-        const setTimerActionTrigger = engine.set_gameplay_timer_action_trigger;
-        if (setTimerActionTrigger === undefined) {
-          throw gameplayAuthoringDiagnosticError(
-            `${path}.type`,
-            "runtime engine must provide set_gameplay_timer_action_trigger for timer-triggered action commands",
-          );
-        }
-        return requireApplied(
-          setTimerActionTrigger.call(engine, handle.entityId, handle.entityGeneration, timerId, command.seconds, actionId),
-          path,
-          command,
-        );
-      }
-      const setTimerTrigger = engine.set_gameplay_timer_trigger;
-      if (setTimerTrigger === undefined) {
-        throw gameplayAuthoringDiagnosticError(
-          `${path}.type`,
-          "runtime engine must provide set_gameplay_timer_trigger for configureTimerTrigger commands",
-        );
-      }
-      return requireApplied(
-        setTimerTrigger.call(engine, handle.entityId, handle.entityGeneration, timerId, command.seconds),
-        path,
-        command,
-      );
-    }
+      return applyConfigureChaseCommand(engine, command, handle, entityHandles, path, ids);
+    case "configureSeekTarget":
+      return applyConfigureSeekTargetCommand(engine, command, handle, entityHandles, path, ids);
+    case "configureAccelerate":
+      return applyConfigureAccelerateCommand(engine, command, handle, path);
+    case "configurePickup":
+      return applyConfigurePickupCommand(engine, command, handle, path, ids);
+    case "configureCollisionPickup":
+      return applyConfigureCollisionPickupCommand(engine, command, handle, path);
+    case "configureCollisionAreaDamage":
+      return applyConfigureCollisionAreaDamageCommand(engine, command, handle, path);
+    case "configureCollisionKnockback":
+      return applyConfigureCollisionKnockbackCommand(engine, command, handle, path);
+    case "configureCollisionEmitEffect":
+      return applyConfigureCollisionEmitEffectCommand(engine, command, handle, path, ids);
+    case "configureCollisionSpawnPrefab":
+      return applyConfigureCollisionSpawnPrefabCommand(engine, command, handle, path, ids);
+    case "configureCollisionSound":
+      return applyConfigureCollisionSoundCommand(engine, command, handle, path);
+    case "configureCollisionShake":
+      return applyConfigureCollisionShakeCommand(engine, command, handle, path);
+    case "configureCollisionParticle":
+      return applyConfigureCollisionParticleCommand(engine, command, handle, path);
+    case "configureCollisionDespawn":
+      return applyConfigureCollisionDespawnCommand(engine, command, handle, path);
+    case "configureInteraction":
+      return applyConfigureInteractionCommand(engine, command, handle, path, ids);
+    case "configureProjectileAction":
+      return applyConfigureProjectileActionCommand(engine, command, handle, path, ids);
+    case "configureDashAction":
+      return applyConfigureDashActionCommand(engine, command, handle, path, ids);
+    case "configureMeleeAction":
+      return applyConfigureMeleeActionCommand(engine, command, handle, path, ids);
+    case "configureSpawnPrefabAction":
+      return applyConfigureSpawnPrefabActionCommand(engine, command, handle, path, ids);
+    case "configureTimerTrigger":
+      return applyConfigureTimerTriggerCommand(engine, command, handle, path, ids);
   }
+}
+
+function applyConfigureTagsCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureTags" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+): boolean {
+  const setGameplayTags = requireRuntimeMethod(
+    engine.set_gameplay_tags,
+    `${path}.type`,
+    "runtime engine must provide set_gameplay_tags for configureTags commands",
+  );
+  return requireApplied(
+    setGameplayTags.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      gameplayTagMask(command.tags, ids, `${path}.tags`),
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureHealthCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureHealth" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedHealthCommand(command, path);
+  return requireApplied(
+    engine.set_gameplay_health(handle.entityId, handle.entityGeneration, command.current),
+    path,
+    command,
+  );
+}
+
+function applyConfigureDamageCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureDamage" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedDamageCommand(command, path);
+  const setGameplayDamageReaction = requireRuntimeMethod(
+    engine.set_gameplay_damage_reaction,
+    `${path}.type`,
+    "runtime engine must provide set_gameplay_damage_reaction for configureDamage commands",
+  );
+  return requireApplied(
+    setGameplayDamageReaction.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      command.amount,
+      collisionTargetCode(command.target),
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureFactionCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureFaction" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedFactionCommand(command, path);
+  const setGameplayFaction = requireRuntimeMethod(
+    engine.set_gameplay_faction,
+    `${path}.type`,
+    "runtime engine must provide set_gameplay_faction for configureFaction commands",
+  );
+  return requireApplied(
+    setGameplayFaction.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      gameplayFactionCode(command.faction, `${path}.faction`),
+      gameplayFactionMask(command.damages, `${path}.damages`),
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureLifetimeCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureLifetime" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedLifetimeCommand(command, path);
+  return requireApplied(
+    engine.set_gameplay_lifetime(handle.entityId, handle.entityGeneration, command.seconds),
+    path,
+    command,
+  );
+}
+
+function applyConfigureScoreRewardCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureScoreReward" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedScoreRewardCommand(command, path);
+  return requireApplied(
+    engine.set_gameplay_score_reward(handle.entityId, handle.entityGeneration, command.reward),
+    path,
+    command,
+  );
+}
+
+function applyConfigureAccelerateCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureAccelerate" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedAccelerateCommand(command, path);
+  const setGamePlayMovementAccelerate = requireRuntimeMethod(
+    engine.set_gameplay_movement_accelerate,
+    `${path}.type`,
+    "runtime engine must provide set_gameplay_movement_accelerate for configureAccelerate commands",
+  );
+  return requireApplied(
+    setGamePlayMovementAccelerate.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      command.accelerationX,
+      command.accelerationY,
+      command.maxSpeed,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigurePickupCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configurePickup" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+): boolean {
+  assertSupportedPickupCommand(command, path);
+  const itemId = pickupItemId(command, ids, path);
+  return requireApplied(
+    engine.set_gameplay_pickup(
+      handle.entityId,
+      handle.entityGeneration,
+      itemId,
+      command.count,
+      command.despawn,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureInteractionCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureInteraction" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+): boolean {
+  assertSupportedInteractionCommand(command, path);
+  const actionId = interactionActionId(command, ids, path);
+  return requireApplied(
+    engine.set_gameplay_interaction(
+      handle.entityId,
+      handle.entityGeneration,
+      actionId,
+      command.radius,
+      command.once,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureChaseCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureChase" }>,
+  handle: GameplayEntityHandle,
+  entityHandles: GameplayEntityHandleMap,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+): boolean {
+  assertSupportedChaseCommand(command, path);
+  if (command.target === "player") {
+    return requireApplied(
+      engine.set_gameplay_movement_chase_player(handle.entityId, handle.entityGeneration, command.speed),
+      path,
+      command,
+    );
+  }
+  if (command.target === "nearestPlayer") {
+    const setGameplayChaseNearestPlayer = requireRuntimeMethod(
+      engine.set_gameplay_movement_chase_nearest_player,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_chase_nearest_player for nearestPlayer configureChase commands",
+    );
+    return requireApplied(
+      setGameplayChaseNearestPlayer.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.speed,
+      ),
+      path,
+      command,
+    );
+  }
+  if (command.target === "nearestEnemy") {
+    const setGameplayChaseNearestEnemy = requireRuntimeMethod(
+      engine.set_gameplay_movement_chase_nearest_enemy,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_chase_nearest_enemy for nearestEnemy configureChase commands",
+    );
+    return requireApplied(
+      setGameplayChaseNearestEnemy.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.speed,
+      ),
+      path,
+      command,
+    );
+  }
+  const nearestLayer = movementNearestLayerTarget(command.target, `${path}.target`);
+  if (nearestLayer !== undefined) {
+    const setGameplayChaseNearestLayer = requireRuntimeMethod(
+      engine.set_gameplay_movement_chase_nearest_layer,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_chase_nearest_layer for nearestLayer configureChase commands",
+    );
+    return requireApplied(
+      setGameplayChaseNearestLayer.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        gameplayMovementQueryLayerCode(nearestLayer),
+        command.speed,
+      ),
+      path,
+      command,
+    );
+  }
+  const nearestFaction = movementNearestFactionTarget(command.target, `${path}.target`);
+  if (nearestFaction !== undefined) {
+    const setGameplayChaseNearestFaction = requireRuntimeMethod(
+      engine.set_gameplay_movement_chase_nearest_faction,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_chase_nearest_faction for nearestFaction configureChase commands",
+    );
+    return requireApplied(
+      setGameplayChaseNearestFaction.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        gameplayMovementQueryFactionCode(nearestFaction),
+        command.speed,
+      ),
+      path,
+      command,
+    );
+  }
+  const nearestTag = movementNearestTagTarget(command.target, ids, `${path}.target`);
+  if (nearestTag !== undefined) {
+    const setGameplayChaseNearestTag = requireRuntimeMethod(
+      engine.set_gameplay_movement_chase_nearest_tag,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_chase_nearest_tag for nearestTag configureChase commands",
+    );
+    return requireApplied(
+      setGameplayChaseNearestTag.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        nearestTag,
+        command.speed,
+      ),
+      path,
+      command,
+    );
+  }
+  const target = gameplayEntityHandleForCommand(command.target, entityHandles, `${path}.target`);
+  return requireApplied(
+    engine.set_gameplay_movement_chase_entity(
+      handle.entityId,
+      handle.entityGeneration,
+      target.entityId,
+      target.entityGeneration,
+      command.speed,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureSeekTargetCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureSeekTarget" }>,
+  handle: GameplayEntityHandle,
+  entityHandles: GameplayEntityHandleMap,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+): boolean {
+  assertSupportedSeekTargetCommand(command, path);
+  if (command.target === "player") {
+    const setGamePlaySeekTargetPlayer = requireRuntimeMethod(
+      engine.set_gameplay_movement_seek_target_player,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_seek_target_player for configureSeekTarget commands",
+    );
+    return requireApplied(
+      setGamePlaySeekTargetPlayer.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.speed,
+        command.turnRate,
+      ),
+      path,
+      command,
+    );
+  }
+  if (command.target === "nearestPlayer") {
+    const setGameplaySeekTargetNearestPlayer = requireRuntimeMethod(
+      engine.set_gameplay_movement_seek_target_nearest_player,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_seek_target_nearest_player for nearestPlayer configureSeekTarget commands",
+    );
+    return requireApplied(
+      setGameplaySeekTargetNearestPlayer.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.speed,
+        command.turnRate,
+      ),
+      path,
+      command,
+    );
+  }
+  if (command.target === "nearestEnemy") {
+    const setGameplaySeekTargetNearestEnemy = requireRuntimeMethod(
+      engine.set_gameplay_movement_seek_target_nearest_enemy,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_seek_target_nearest_enemy for nearestEnemy configureSeekTarget commands",
+    );
+    return requireApplied(
+      setGameplaySeekTargetNearestEnemy.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.speed,
+        command.turnRate,
+      ),
+      path,
+      command,
+    );
+  }
+  const nearestLayer = movementNearestLayerTarget(command.target, `${path}.target`);
+  if (nearestLayer !== undefined) {
+    const setGameplaySeekTargetNearestLayer = requireRuntimeMethod(
+      engine.set_gameplay_movement_seek_target_nearest_layer,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_seek_target_nearest_layer for nearestLayer configureSeekTarget commands",
+    );
+    return requireApplied(
+      setGameplaySeekTargetNearestLayer.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        gameplayMovementQueryLayerCode(nearestLayer),
+        command.speed,
+        command.turnRate,
+      ),
+      path,
+      command,
+    );
+  }
+  const nearestFaction = movementNearestFactionTarget(command.target, `${path}.target`);
+  if (nearestFaction !== undefined) {
+    const setGameplaySeekTargetNearestFaction = requireRuntimeMethod(
+      engine.set_gameplay_movement_seek_target_nearest_faction,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_seek_target_nearest_faction for nearestFaction configureSeekTarget commands",
+    );
+    return requireApplied(
+      setGameplaySeekTargetNearestFaction.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        gameplayMovementQueryFactionCode(nearestFaction),
+        command.speed,
+        command.turnRate,
+      ),
+      path,
+      command,
+    );
+  }
+  const nearestTag = movementNearestTagTarget(command.target, ids, `${path}.target`);
+  if (nearestTag !== undefined) {
+    const setGameplaySeekTargetNearestTag = requireRuntimeMethod(
+      engine.set_gameplay_movement_seek_target_nearest_tag,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_seek_target_nearest_tag for nearestTag configureSeekTarget commands",
+    );
+    return requireApplied(
+      setGameplaySeekTargetNearestTag.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        nearestTag,
+        command.speed,
+        command.turnRate,
+      ),
+      path,
+      command,
+    );
+  }
+  const target = gameplayEntityHandleForCommand(command.target, entityHandles, `${path}.target`);
+  const setGamePlaySeekTargetEntity = requireRuntimeMethod(
+    engine.set_gameplay_movement_seek_target_entity,
+    `${path}.type`,
+    "runtime engine must provide set_gameplay_movement_seek_target_entity for configureSeekTarget commands",
+  );
+  return requireApplied(
+    setGamePlaySeekTargetEntity.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      target.entityId,
+      target.entityGeneration,
+      command.speed,
+      command.turnRate,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureCollisionPickupCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureCollisionPickup" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedCollisionPickupCommand(command, path);
+  const addCollisionPickup = requireRuntimeMethod(
+    engine.add_gameplay_collision_pickup,
+    `${path}.type`,
+    "runtime engine must provide add_gameplay_collision_pickup for configureCollisionPickup commands",
+  );
+  return requireApplied(
+    addCollisionPickup.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      collisionTargetCode(command.target),
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureCollisionAreaDamageCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureCollisionAreaDamage" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedCollisionAreaDamageCommand(command, path);
+  const setGameplayAreaDamageReaction = requireRuntimeMethod(
+    engine.set_gameplay_area_damage_reaction,
+    `${path}.type`,
+    "runtime engine must provide set_gameplay_area_damage_reaction for configureCollisionAreaDamage commands",
+  );
+  return requireApplied(
+    setGameplayAreaDamageReaction.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      command.amount,
+      command.radius,
+      gameplayCollisionLayerCode(command.targetLayer, `${path}.targetLayer`),
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureCollisionKnockbackCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureCollisionKnockback" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedCollisionKnockbackCommand(command, path);
+  const addCollisionKnockback = requireRuntimeMethod(
+    engine.add_gameplay_collision_knockback,
+    `${path}.type`,
+    "runtime engine must provide add_gameplay_collision_knockback for configureCollisionKnockback commands",
+  );
+  return requireApplied(
+    addCollisionKnockback.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      collisionTargetCode(command.target),
+      command.impulse,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureCollisionEmitEffectCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureCollisionEmitEffect" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+): boolean {
+  assertSupportedCollisionEmitEffectCommand(command, path);
+  const effectId = collisionEmitEffectId(command, ids, path);
+  const hasPayload = command.intensity !== undefined || command.radius !== undefined;
+  const intensity = command.intensity ?? 1;
+  const radius = command.radius ?? 0;
+  const addCollisionEmitEffectWithPayload = engine.add_gameplay_collision_emit_effect_with_payload;
+  if (addCollisionEmitEffectWithPayload !== undefined) {
+    return requireApplied(
+      addCollisionEmitEffectWithPayload.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        effectId,
+        command.effectType,
+        collisionTargetCode(command.target),
+        command.cooldownSeconds ?? 0,
+        collisionTriggerCode(command.trigger ?? "contact"),
+        intensity,
+        radius,
+      ),
+      path,
+      command,
+    );
+  }
+  if (hasPayload) {
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_emit_effect_with_payload for configureCollisionEmitEffect intensity/radius commands",
+    );
+  }
+  const addCollisionEmitEffect = requireRuntimeMethod(
+    engine.add_gameplay_collision_emit_effect,
+    `${path}.type`,
+    "runtime engine must provide add_gameplay_collision_emit_effect for configureCollisionEmitEffect commands",
+  );
+  return requireApplied(
+    addCollisionEmitEffect.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      effectId,
+      command.effectType,
+      collisionTargetCode(command.target),
+      command.cooldownSeconds ?? 0,
+      collisionTriggerCode(command.trigger ?? "contact"),
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureCollisionSpawnPrefabCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureCollisionSpawnPrefab" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+): boolean {
+  assertSupportedCollisionSpawnPrefabCommand(command, path);
+  const addCollisionSpawnPrefab = requireRuntimeMethod(
+    engine.add_gameplay_collision_spawn_prefab,
+    `${path}.type`,
+    "runtime engine must provide add_gameplay_collision_spawn_prefab for configureCollisionSpawnPrefab commands",
+  );
+  const actionId = collisionSpawnPrefabActionId(command, ids, path);
+  const prefabId = collisionSpawnPrefabId(command, ids, path);
+  return requireApplied(
+    addCollisionSpawnPrefab.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      actionId,
+      prefabId,
+      collisionTargetCode(command.target),
+      command.cooldownSeconds ?? 0,
+      collisionTriggerCode(command.trigger ?? "contact"),
+      command.offsetX,
+      command.offsetY,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureCollisionSoundCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureCollisionSound" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedCollisionSoundCommand(command, path);
+  const cooldownSeconds = command.cooldownSeconds ?? 0;
+  const replaceDefault = command.replaceDefault ?? false;
+  const trigger = command.trigger ?? "contact";
+  if (trigger === "enter") {
+    const addCollisionSoundWithTrigger = requireRuntimeMethod(
+      engine.add_gameplay_collision_sound_with_trigger,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_sound_with_trigger for configureCollisionSound enter trigger commands",
+    );
+    return requireApplied(
+      addCollisionSoundWithTrigger.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.soundId,
+        command.volume,
+        command.pitch,
+        cooldownSeconds,
+        replaceDefault,
+        collisionTriggerCode(trigger),
+      ),
+      path,
+      command,
+    );
+  }
+  if (replaceDefault) {
+    const addCollisionSoundWithPolicy = requireRuntimeMethod(
+      engine.add_gameplay_collision_sound_with_policy,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_sound_with_policy for configureCollisionSound replaceDefault commands",
+    );
+    return requireApplied(
+      addCollisionSoundWithPolicy.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.soundId,
+        command.volume,
+        command.pitch,
+        cooldownSeconds,
+        replaceDefault,
+      ),
+      path,
+      command,
+    );
+  }
+  if (cooldownSeconds > 0) {
+    const addCollisionSoundWithCooldown = requireRuntimeMethod(
+      engine.add_gameplay_collision_sound_with_cooldown,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_sound_with_cooldown for configureCollisionSound cooldown commands",
+    );
+    return requireApplied(
+      addCollisionSoundWithCooldown.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.soundId,
+        command.volume,
+        command.pitch,
+        cooldownSeconds,
+      ),
+      path,
+      command,
+    );
+  }
+  const addCollisionSound = requireRuntimeMethod(
+    engine.add_gameplay_collision_sound,
+    `${path}.type`,
+    "runtime engine must provide add_gameplay_collision_sound for configureCollisionSound commands",
+  );
+  return requireApplied(
+    addCollisionSound.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      command.soundId,
+      command.volume,
+      command.pitch,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureCollisionShakeCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureCollisionShake" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedCollisionShakeCommand(command, path);
+  const cooldownSeconds = command.cooldownSeconds ?? 0;
+  const trigger = command.trigger ?? "contact";
+  if (trigger === "enter") {
+    const addCollisionShakeWithTrigger = requireRuntimeMethod(
+      engine.add_gameplay_collision_camera_shake_with_trigger,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_camera_shake_with_trigger for configureCollisionShake enter trigger commands",
+    );
+    return requireApplied(
+      addCollisionShakeWithTrigger.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        cooldownSeconds,
+        collisionTriggerCode(trigger),
+      ),
+      path,
+      command,
+    );
+  }
+  if (cooldownSeconds > 0) {
+    const addCollisionShakeWithCooldown = requireRuntimeMethod(
+      engine.add_gameplay_collision_camera_shake_with_cooldown,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_camera_shake_with_cooldown for configureCollisionShake cooldown commands",
+    );
+    return requireApplied(
+      addCollisionShakeWithCooldown.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        cooldownSeconds,
+      ),
+      path,
+      command,
+    );
+  }
+  const addCollisionShake = requireRuntimeMethod(
+    engine.add_gameplay_collision_camera_shake,
+    `${path}.type`,
+    "runtime engine must provide add_gameplay_collision_camera_shake for configureCollisionShake commands",
+  );
+  return requireApplied(
+    addCollisionShake.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureCollisionParticleCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureCollisionParticle" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedCollisionParticleCommand(command, path);
+  const cooldownSeconds = command.cooldownSeconds ?? 0;
+  const replaceDefault = command.replaceDefault ?? false;
+  const trigger = command.trigger ?? "contact";
+  if (trigger === "enter") {
+    const addCollisionParticleWithTrigger = requireRuntimeMethod(
+      engine.add_gameplay_collision_particle_with_trigger,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_particle_with_trigger for configureCollisionParticle enter trigger commands",
+    );
+    return requireApplied(
+      addCollisionParticleWithTrigger.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.presetId,
+        collisionTargetCode(command.target),
+        cooldownSeconds,
+        replaceDefault,
+        collisionTriggerCode(trigger),
+      ),
+      path,
+      command,
+    );
+  }
+  if (replaceDefault) {
+    const addCollisionParticleWithPolicy = requireRuntimeMethod(
+      engine.add_gameplay_collision_particle_with_policy,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_particle_with_policy for configureCollisionParticle replaceDefault commands",
+    );
+    return requireApplied(
+      addCollisionParticleWithPolicy.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.presetId,
+        collisionTargetCode(command.target),
+        cooldownSeconds,
+        replaceDefault,
+      ),
+      path,
+      command,
+    );
+  }
+  if (cooldownSeconds > 0) {
+    const addCollisionParticleWithCooldown = requireRuntimeMethod(
+      engine.add_gameplay_collision_particle_with_cooldown,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_particle_with_cooldown for configureCollisionParticle cooldown commands",
+    );
+    return requireApplied(
+      addCollisionParticleWithCooldown.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.presetId,
+        collisionTargetCode(command.target),
+        cooldownSeconds,
+      ),
+      path,
+      command,
+    );
+  }
+  const addCollisionParticle = requireRuntimeMethod(
+    engine.add_gameplay_collision_particle,
+    `${path}.type`,
+    "runtime engine must provide add_gameplay_collision_particle for configureCollisionParticle commands",
+  );
+  return requireApplied(
+    addCollisionParticle.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      command.presetId,
+      collisionTargetCode(command.target),
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureCollisionDespawnCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureCollisionDespawn" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+): boolean {
+  assertSupportedCollisionDespawnCommand(command, path);
+  const addCollisionDespawn = requireRuntimeMethod(
+    engine.add_gameplay_collision_despawn,
+    `${path}.type`,
+    "runtime engine must provide add_gameplay_collision_despawn for configureCollisionDespawn commands",
+  );
+  return requireApplied(
+    addCollisionDespawn.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      collisionTargetCode(command.target),
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureProjectileActionCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureProjectileAction" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+): boolean {
+  assertSupportedProjectileActionCommand(command, path);
+  const actionId = projectileActionId(command, ids, path);
+  const aimCode = dashActionAimCode(command.aim, `${path}.aim`);
+  const collisionTarget = projectileCollisionTargetCode(command.collisionTarget, `${path}.collisionTarget`);
+  const tileImpactCode = projectileTileImpactCode(command.tileImpact, `${path}.tileImpact`);
+  if (aimCode !== 0 || collisionTarget !== 0 || tileImpactCode !== 0) {
+    const setProjectileActionWithTarget = requireRuntimeMethod(
+      engine.set_gameplay_action_projectile_with_target,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_action_projectile_with_target for targeted or non-default tileImpact configureProjectileAction commands",
+    );
+    return requireApplied(
+      setProjectileActionWithTarget.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        actionId,
+        command.cooldownSeconds,
+        command.speed,
+        command.damage,
+        command.lifetimeSeconds,
+        aimCode,
+        collisionTarget,
+        tileImpactCode,
+      ),
+      path,
+      command,
+    );
+  }
+  const setProjectileAction = requireRuntimeMethod(
+    engine.set_gameplay_action_projectile,
+    `${path}.type`,
+    "runtime engine must provide set_gameplay_action_projectile for configureProjectileAction commands",
+  );
+  return requireApplied(
+    setProjectileAction.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      actionId,
+      command.cooldownSeconds,
+      command.speed,
+      command.damage,
+      command.lifetimeSeconds,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureDashActionCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureDashAction" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+): boolean {
+  assertSupportedDashActionCommand(command, path);
+  const actionId = dashActionId(command, ids, path);
+  const aimCode = dashActionAimCode(command.aim, `${path}.aim`);
+  const setDashActionWithAim = engine.set_gameplay_action_dash_with_aim;
+  const setDashAction = engine.set_gameplay_action_dash;
+  if (aimCode !== 0) {
+    const requiredSetDashActionWithAim = requireRuntimeMethod(
+      setDashActionWithAim,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_action_dash_with_aim for non-input configureDashAction commands",
+    );
+    return requireApplied(
+      requiredSetDashActionWithAim.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        actionId,
+        command.cooldownSeconds,
+        command.distance,
+        aimCode,
+      ),
+      path,
+      command,
+    );
+  }
+  const requiredSetDashAction = requireRuntimeMethod(
+    setDashAction,
+    `${path}.type`,
+    "runtime engine must provide set_gameplay_action_dash for configureDashAction commands",
+  );
+  return requireApplied(
+    requiredSetDashAction.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      actionId,
+      command.cooldownSeconds,
+      command.distance,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureMeleeActionCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureMeleeAction" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+): boolean {
+  assertSupportedMeleeActionCommand(command, path);
+  const actionId = meleeActionId(command, ids, path);
+  const targetCode = meleeTargetCode(command.target, `${path}.target`);
+  if (targetCode === 0) {
+    const setMeleeAction = requireRuntimeMethod(
+      engine.set_gameplay_action_melee,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_action_melee for configureMeleeAction commands",
+    );
+    return requireApplied(
+      setMeleeAction.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        actionId,
+        command.cooldownSeconds,
+        command.range,
+        command.damage,
+      ),
+      path,
+      command,
+    );
+  }
+  const setMeleeAction = requireRuntimeMethod(
+    engine.set_gameplay_action_melee_with_target,
+    `${path}.type`,
+    "runtime engine must provide set_gameplay_action_melee_with_target for targeted configureMeleeAction commands",
+  );
+  return requireApplied(
+    setMeleeAction.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      actionId,
+      command.cooldownSeconds,
+      command.range,
+      command.damage,
+      targetCode,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureSpawnPrefabActionCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureSpawnPrefabAction" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+): boolean {
+  assertSupportedSpawnPrefabActionCommand(command, path);
+  const actionId = spawnPrefabActionId(command, ids, path);
+  const prefabId = spawnPrefabId(command, ids, path);
+  const projectile = command.projectile;
+  if (projectile !== undefined) {
+    const setSpawnProjectilePrefabAction = requireRuntimeMethod(
+      engine.set_gameplay_action_spawn_projectile_prefab,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_action_spawn_projectile_prefab for projectile configureSpawnPrefabAction commands",
+    );
+    return requireApplied(
+      setSpawnProjectilePrefabAction.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        actionId,
+        command.cooldownSeconds,
+        prefabId,
+        spawnPrefabAnchorCode(command.anchor),
+        spawnPrefabPhaseCode(command.phase),
+        command.offsetX,
+        command.offsetY,
+        projectile.speed,
+        projectile.damage,
+        projectile.lifetimeSeconds,
+        dashActionAimCode(projectile.aim, `${path}.projectile.aim`),
+        projectileCollisionTargetCode(projectile.collisionTarget, `${path}.projectile.collisionTarget`),
+        projectileTileImpactCode(projectile.tileImpact, `${path}.projectile.tileImpact`),
+      ),
+      path,
+      command,
+    );
+  }
+  const setSpawnPrefabAction = requireRuntimeMethod(
+    engine.set_gameplay_action_spawn_prefab,
+    `${path}.type`,
+    "runtime engine must provide set_gameplay_action_spawn_prefab for configureSpawnPrefabAction commands",
+  );
+  return requireApplied(
+    setSpawnPrefabAction.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      actionId,
+      command.cooldownSeconds,
+      prefabId,
+      spawnPrefabAnchorCode(command.anchor),
+      spawnPrefabPhaseCode(command.phase),
+      command.offsetX,
+      command.offsetY,
+    ),
+    path,
+    command,
+  );
+}
+
+function applyConfigureTimerTriggerCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureTimerTrigger" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+): boolean {
+  assertSupportedTimerTriggerCommand(command, path);
+  const timerId = timerTriggerId(command, ids, path);
+  const actionId = timerTriggerActionId(command, ids, path);
+  if (actionId !== undefined) {
+    const setTimerActionTrigger = requireRuntimeMethod(
+      engine.set_gameplay_timer_action_trigger,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_timer_action_trigger for timer-triggered action commands",
+    );
+    return requireApplied(
+      setTimerActionTrigger.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        timerId,
+        command.seconds,
+        actionId,
+      ),
+      path,
+      command,
+    );
+  }
+  const setTimerTrigger = requireRuntimeMethod(
+    engine.set_gameplay_timer_trigger,
+    `${path}.type`,
+    "runtime engine must provide set_gameplay_timer_trigger for configureTimerTrigger commands",
+  );
+  return requireApplied(
+    setTimerTrigger.call(engine, handle.entityId, handle.entityGeneration, timerId, command.seconds),
+    path,
+    command,
+  );
 }
 
 function behaviorBindingsForInstance(
@@ -2695,6 +2749,13 @@ function requireApplied(applied: boolean, path: string, command: BehaviorRecipeC
   return true;
 }
 
+function requireRuntimeMethod<T>(method: T | undefined, path: string, detail: string): T {
+  if (method === undefined) {
+    throw gameplayAuthoringDiagnosticError(path, detail);
+  }
+  return method;
+}
+
 function collisionTargetCode(target: "self" | "other"): number {
   return target === "self" ? 0 : 1;
 }
@@ -2705,51 +2766,6 @@ function gameplayCollisionLayerCode(layer: string, path: string): number {
     return code;
   }
   throw gameplayAuthoringDiagnosticError(path, "must be one of player, enemy, bullet, wall, or pickup");
-}
-
-function gameplayFactionCode(faction: GameplayFactionReference, path: string): number {
-  if (typeof faction === "number" && Number.isInteger(faction) && faction >= 0 && faction <= MAX_GAMEPLAY_FACTION_ID) {
-    return faction;
-  }
-  if (typeof faction === "string") {
-    const code = GAMEPLAY_FACTION_CODES[faction];
-    if (code !== undefined) {
-      return code;
-    }
-  }
-  throw gameplayAuthoringDiagnosticError(
-    path,
-    `must be one of neutral, player, enemy, or an integer faction id between ${GAMEPLAY_FACTION_ID_RANGE_LABEL}`,
-  );
-}
-
-function gameplayFactionMask(factions: readonly GameplayFactionReference[], path: string): number {
-  let mask = 0;
-  for (let index = 0; index < factions.length; index += 1) {
-    mask |= 1 << gameplayFactionCode(factions[index]!, `${path}.${index}`);
-  }
-  return mask >>> 0;
-}
-
-function factionRelationEntrySpec(value: Record<string, unknown>, path: string): Omit<ResolvedFactionRelationEntrySpec, "relationCode"> {
-  const source = gameplayFactionCode(value.source as GameplayFactionReference, `${path}.source`);
-  const target = gameplayFactionCode(value.target as GameplayFactionReference, `${path}.target`);
-  return {
-    source,
-    target,
-    relation: factionRelationValue(value.relation, `${path}.relation`),
-  };
-}
-
-function factionRelationValue(value: unknown, path: string): FactionRelation {
-  if (typeof value === "string" && GAMEPLAY_FACTION_RELATION_CODES[value as FactionRelation] !== undefined) {
-    return value as FactionRelation;
-  }
-  throw gameplayAuthoringDiagnosticError(path, "must be one of neutral, friendly, or hostile");
-}
-
-function factionRelationCode(relation: FactionRelation): number {
-  return GAMEPLAY_FACTION_RELATION_CODES[relation];
 }
 
 function collisionTriggerCode(trigger: "contact" | "enter"): number {

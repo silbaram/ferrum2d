@@ -14,6 +14,12 @@ import {
   run,
   runNodeCheck,
 } from "./package-check-helpers.mjs";
+import {
+  ASSET_PIPELINE_VALIDATION_PUBLIC_ENTRYPOINTS,
+  extractModuleSpecifiers,
+  hasModuleSpecifier,
+  missingExpectedPublicEntryPoints,
+} from "./create-game-template-contracts.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const packageRoot = path.join(repoRoot, "packages/create-game");
@@ -36,6 +42,10 @@ const sharedTemplateFiles = [
   "_shared/public/assets/localization.manifest.json",
   "_shared/public/assets/texture-atlas.input.json",
   "_shared/scripts/ferrum-assets.mjs",
+  "_shared/scripts/ferrum-harness-coverage.mjs",
+  "_shared/scripts/ferrum-harness-core.mjs",
+  "_shared/scripts/ferrum-harness-files.mjs",
+  "_shared/scripts/ferrum-runtime-replay-core.mjs",
 ];
 const templateCatalog = await readJson(path.join(packageRoot, "templates/manifest.json"));
 const templateEntries = validateTemplateCatalog(templateCatalog);
@@ -478,16 +488,15 @@ async function checkGeneratedProject(template) {
     assert(generatedPackage.devDependencies?.vite !== undefined, "generated game must include vite devDependency");
 
     const mainSource = await readFile(path.join(targetRoot, "src/main.ts"), "utf8");
+    const mainSpecifiers = extractModuleSpecifiers(mainSource);
     assert(
       ["/core", "/authoring", "/starter-scenes", "/labs", "/quality"].some((subpath) =>
-        mainSource.includes(`from "@ferrum2d/ferrum-web${subpath}"`)
+        mainSpecifiers.has(`@ferrum2d/ferrum-web${subpath}`)
       ),
       "generated game must import from package public subpath entrypoints",
     );
     assertNoFerrumRootAggregateImport(mainSource, "generated game main");
-    assert(!mainSource.includes("@ferrum2d/ferrum-web/dist/"), "generated game must not import dist internals");
-    assert(!mainSource.includes("@ferrum2d/ferrum-web/pkg/"), "generated game must not import wasm package internals");
-    assert(!mainSource.includes("@ferrum2d/ferrum-web/src/"), "generated game must not import source internals");
+    assertNoFerrumWebInternalImports(mainSource, "generated game main");
     if (templateName === "minimal") {
       assertMinimalTemplateWeaponAuthoring(mainSource);
     }
@@ -505,19 +514,24 @@ async function checkGeneratedProject(template) {
     await assertAssetPipelineValidate(targetRoot, templateName);
     const generatedHarnessPath = path.join(targetRoot, "scripts/ferrum-harness.mjs");
     await requireFile(generatedHarnessPath, repoRoot);
+    const generatedHarnessCorePath = path.join(targetRoot, "scripts/ferrum-harness-core.mjs");
+    await requireFile(generatedHarnessCorePath, repoRoot);
     const harnessSource = await readFile(generatedHarnessPath, "utf8");
-    assertHarnessScaffold(harnessSource, templateName);
+    const harnessCoreSource = await readFile(generatedHarnessCorePath, "utf8");
+    const combinedHarnessSource = `${harnessSource}\n${harnessCoreSource}`;
+    assertHarnessScaffold(combinedHarnessSource, templateName);
     if (template.sceneAuthoring.configured) {
       assert(
-        harnessSource.includes("applySceneBehaviorRecipes") &&
-          harnessSource.includes("dryRunSceneBehaviorRecipes") &&
-          harnessSource.includes("resolveSceneCompositionSpec") &&
-          harnessSource.includes("runtimeEntityHandles") &&
-          harnessSource.includes("public/scene-authoring.json"),
+        combinedHarnessSource.includes("applySceneBehaviorRecipes") &&
+          combinedHarnessSource.includes("dryRunSceneBehaviorRecipes") &&
+          combinedHarnessSource.includes("resolveSceneCompositionSpec") &&
+          combinedHarnessSource.includes("runtimeEntityHandles") &&
+          combinedHarnessSource.includes("public/scene-authoring.json"),
         `${templateName} template harness must validate SceneComposition behavior authoring through public APIs`,
       );
     }
     await runNodeCheck(generatedHarnessPath, repoRoot);
+    await runNodeCheck(generatedHarnessCorePath, repoRoot);
     await assertProjectReport(targetRoot, templateName, template);
     const generatedRuntimeReplayPath = path.join(targetRoot, "scripts/ferrum-runtime-replay.mjs");
     await requireFile(generatedRuntimeReplayPath, repoRoot);
@@ -642,16 +656,10 @@ function assertMinimalTemplateWeaponAuthoring(mainSource) {
 
 async function assertAssetPipelineScaffold(filePath, projectRoot, templateName) {
   const source = await readFile(filePath, "utf8");
-  assert(
-    source.includes('await import("@ferrum2d/ferrum-web/core")') &&
-      source.includes('await import("@ferrum2d/ferrum-web/authoring")') &&
-      source.includes('await import("@ferrum2d/ferrum-web/starter-scenes")') &&
-      source.includes('await import("@ferrum2d/ferrum-web/labs")'),
-    `${templateName} asset pipeline scaffold must use public @ferrum2d/ferrum-web subpath entrypoints`,
-  );
+  assertHasModuleSpecifiers(source, `${templateName} asset pipeline scaffold`, ASSET_PIPELINE_VALIDATION_PUBLIC_ENTRYPOINTS);
   assertNoFerrumRootAggregateImport(source, `${templateName} asset pipeline scaffold`);
   assert(
-      source.includes("packTextureAtlas") &&
+    source.includes("packTextureAtlas") &&
       source.includes("textureAtlasDocumentToShooterAtlas") &&
       source.includes("resolveShooterGameSpec") &&
       source.includes("AudioAssetLoader") &&
@@ -662,9 +670,7 @@ async function assertAssetPipelineScaffold(filePath, projectRoot, templateName) 
       source.includes("ferrum2d.consumer.localization-manifest"),
     `${templateName} asset pipeline scaffold must expose public texture atlas import, Game Spec merge, and report contracts`,
   );
-  assert(!source.includes("@ferrum2d/ferrum-web/dist/"), `${templateName} asset pipeline scaffold must not import dist internals`);
-  assert(!source.includes("@ferrum2d/ferrum-web/pkg/"), `${templateName} asset pipeline scaffold must not import wasm package internals`);
-  assert(!source.includes("@ferrum2d/ferrum-web/src/"), `${templateName} asset pipeline scaffold must not import source internals`);
+  assertNoFerrumWebInternalImports(source, `${templateName} asset pipeline scaffold`);
   const input = await readJson(path.join(projectRoot, "public/assets/texture-atlas.input.json"));
   const audioManifest = await readJson(path.join(projectRoot, "public/assets/audio.manifest.json"));
   const localizationManifest = await readJson(path.join(projectRoot, "public/assets/localization.manifest.json"));
@@ -685,22 +691,45 @@ async function assertAssetPipelineScaffold(filePath, projectRoot, templateName) 
 }
 
 function assertHarnessScaffold(source, templateName) {
-  assert(
-    source.includes('await import("@ferrum2d/ferrum-web/authoring")') &&
-      source.includes('await import("@ferrum2d/ferrum-web/quality")'),
-    `${templateName} template harness must use public @ferrum2d/ferrum-web subpath entrypoints`,
-  );
+  assertHasModuleSpecifiers(source, `${templateName} template harness`, [
+    "@ferrum2d/ferrum-web/authoring",
+    "@ferrum2d/ferrum-web/quality",
+  ]);
   assertNoFerrumRootAggregateImport(source, `${templateName} template harness`);
-  assert(!source.includes("@ferrum2d/ferrum-web/dist/"), `${templateName} template harness must not import dist internals`);
-  assert(!source.includes("@ferrum2d/ferrum-web/pkg/"), `${templateName} template harness must not import wasm package internals`);
-  assert(!source.includes("@ferrum2d/ferrum-web/src/"), `${templateName} template harness must not import source internals`);
-  assert(!source.includes("packages/ferrum-web"), `${templateName} template harness must not import engine workspace files`);
-  assert(!source.includes("ferrum_core"), `${templateName} template harness must not import generated wasm bindings`);
+  assertNoFerrumWebInternalImports(source, `${templateName} template harness`);
+  assertNoWorkspaceFerrumWebImports(source, `${templateName} template harness`);
 }
 
 function assertNoFerrumRootAggregateImport(source, label) {
-  const rootImportPattern = /\b(?:from\s*|import\s*(?:\(\s*)?|require\s*\(\s*)["']@ferrum2d\/ferrum-web["']/;
-  assert(!rootImportPattern.test(source), `${label} must not use the root aggregate entrypoint`);
+  assert(!hasModuleSpecifier(source, "@ferrum2d/ferrum-web"), `${label} must not use the root aggregate entrypoint`);
+}
+
+function assertHasModuleSpecifiers(source, label, expectedSpecifiers) {
+  const specifiers = extractModuleSpecifiers(source);
+  const missing = expectedSpecifiers.filter((specifier) => !specifiers.has(specifier));
+  assert(missing.length === 0, `${label} must import public package entrypoints: missing ${missing.join(", ")}`);
+}
+
+function assertNoFerrumWebInternalImports(source, label) {
+  const specifiers = extractModuleSpecifiers(source);
+  for (const specifier of specifiers) {
+    assert(!specifier.startsWith("@ferrum2d/ferrum-web/dist/"), `${label} must not import dist internals`);
+    assert(!specifier.startsWith("@ferrum2d/ferrum-web/pkg/"), `${label} must not import wasm package internals`);
+    assert(!specifier.startsWith("@ferrum2d/ferrum-web/src/"), `${label} must not import source internals`);
+  }
+}
+
+function assertNoWorkspaceFerrumWebImports(source, label) {
+  const specifiers = extractModuleSpecifiers(source);
+  for (const specifier of specifiers) {
+    assert(!specifier.includes("packages/ferrum-web"), `${label} must not import engine workspace files`);
+    assert(!specifier.includes("ferrum_core"), `${label} must not import generated wasm bindings`);
+  }
+}
+
+function assertExpectedAssetPipelinePublicEntryPoints(publicEntryPoints, label) {
+  const missing = missingExpectedPublicEntryPoints(publicEntryPoints);
+  assert(missing.length === 0, `${label} must use public package subpath entrypoints; missing ${missing.join(", ")}`);
 }
 
 function assertRootAggregateImportGuard() {
@@ -778,13 +807,9 @@ async function assertAssetPipelineValidate(projectRoot, templateName) {
   }
   assert(report.format === "ferrum2d.consumer.asset-pipeline.report", `${templateName} asset pipeline validate format is invalid`);
   assert(report.assetPipeline?.validation?.validated === true, `${templateName} asset pipeline validate must mark validated=true`);
-  assert(
-    Array.isArray(report.assetPipeline?.validation?.publicEntryPoints) &&
-      report.assetPipeline.validation.publicEntryPoints.includes("@ferrum2d/ferrum-web/core") &&
-      report.assetPipeline.validation.publicEntryPoints.includes("@ferrum2d/ferrum-web/authoring") &&
-      report.assetPipeline.validation.publicEntryPoints.includes("@ferrum2d/ferrum-web/starter-scenes") &&
-      report.assetPipeline.validation.publicEntryPoints.includes("@ferrum2d/ferrum-web/labs"),
-    `${templateName} asset pipeline validate must use public package subpath entrypoints`,
+  assertExpectedAssetPipelinePublicEntryPoints(
+    report.assetPipeline?.validation?.publicEntryPoints,
+    `${templateName} asset pipeline validate`,
   );
   const expectedLocalizationStatus = templateName === "topdown" && report.assetPipeline?.gameSpec?.localizationConfigured
     ? "configured"
@@ -872,26 +897,26 @@ function parseJsonReport(stdout, label) {
 
 async function assertRuntimeReplayScaffold(filePath, templateName) {
   const source = await readFile(filePath, "utf8");
-  assert(
-    source.includes('await import("@ferrum2d/ferrum-web/core")') &&
-      source.includes('await import("@ferrum2d/ferrum-web/quality")'),
-    `${templateName} runtime replay scaffold must use public @ferrum2d/ferrum-web subpath entrypoints`,
-  );
-  assertNoFerrumRootAggregateImport(source, `${templateName} runtime replay scaffold`);
-  assert(!source.includes("@ferrum2d/ferrum-web/dist/"), `${templateName} runtime replay scaffold must not import dist internals`);
-  assert(!source.includes("@ferrum2d/ferrum-web/pkg/"), `${templateName} runtime replay scaffold must not import wasm package internals`);
-  assert(!source.includes("@ferrum2d/ferrum-web/src/"), `${templateName} runtime replay scaffold must not import source internals`);
-  assert(!source.includes("packages/ferrum-web"), `${templateName} runtime replay scaffold must not import engine workspace files`);
-  assert(!source.includes("ferrum_core"), `${templateName} runtime replay scaffold must not import generated wasm bindings`);
+  const corePath = path.join(path.dirname(filePath), "ferrum-runtime-replay-core.mjs");
+  await requireFile(corePath, repoRoot);
+  const coreSource = await readFile(corePath, "utf8");
+  const combinedSource = `${source}\n${coreSource}`;
+  assertHasModuleSpecifiers(combinedSource, `${templateName} runtime replay scaffold`, [
+    "@ferrum2d/ferrum-web/core",
+    "@ferrum2d/ferrum-web/quality",
+  ]);
+  assertNoFerrumRootAggregateImport(combinedSource, `${templateName} runtime replay scaffold`);
+  assertNoFerrumWebInternalImports(combinedSource, `${templateName} runtime replay scaffold`);
+  assertNoWorkspaceFerrumWebImports(combinedSource, `${templateName} runtime replay scaffold`);
   if (runtimeReplayConfiguredTemplateNames.has(templateName)) {
     assert(
       source.includes("PROJECT_RUNTIME_REPLAY_CONFIGURED = true"),
       `${templateName} runtime replay must be configured for headless engine capture`,
     );
     assert(
-      source.includes("createEngine") &&
-        source.includes("captureGameStateSnapshot") &&
-        source.includes("requestAnimationFrame"),
+      combinedSource.includes("createEngine") &&
+        combinedSource.includes("captureGameStateSnapshot") &&
+        combinedSource.includes("requestAnimationFrame"),
       `${templateName} runtime replay must use public headless engine capture`,
     );
   } else {
@@ -901,17 +926,18 @@ async function assertRuntimeReplayScaffold(filePath, templateName) {
     );
   }
   assert(
-      source.includes("captureProjectRuntimeSnapshots") &&
-      source.includes("TEMPLATE_RUNTIME_REPLAY_RECIPE") &&
-      source.includes("createGameplayReplayRun") &&
-      source.includes("compareGameplayReplayRuns") &&
-      source.includes("hashGameStateSnapshot"),
+    combinedSource.includes("captureProjectRuntimeSnapshots") &&
+      combinedSource.includes("captureDeterministicRuntimeSnapshots") &&
+      combinedSource.includes("TEMPLATE_RUNTIME_REPLAY_RECIPE") &&
+      combinedSource.includes("createGameplayReplayRun") &&
+      combinedSource.includes("compareGameplayReplayRuns") &&
+      combinedSource.includes("hashGameStateSnapshot"),
     `${templateName} runtime replay scaffold must expose public replay helper workflow`,
   );
   assert(
-    source.includes("FERRUM_CONSUMER_RUNTIME_REPLAY_NOT_CONFIGURED") &&
-      source.includes("FERRUM_CONSUMER_RUNTIME_REPLAY_MISMATCH") &&
-      source.includes("FERRUM_CONSUMER_RUNTIME_REPLAY_FIXTURE_PATCH_CANDIDATE"),
+    combinedSource.includes("FERRUM_CONSUMER_RUNTIME_REPLAY_NOT_CONFIGURED") &&
+      combinedSource.includes("FERRUM_CONSUMER_RUNTIME_REPLAY_MISMATCH") &&
+      combinedSource.includes("FERRUM_CONSUMER_RUNTIME_REPLAY_FIXTURE_PATCH_CANDIDATE"),
     `${templateName} runtime replay scaffold must provide machine-actionable runtime replay diagnostics`,
   );
 }
