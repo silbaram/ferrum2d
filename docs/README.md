@@ -8,7 +8,7 @@ Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI a
 
 | 디렉터리 | 역할 | 주요 문서 |
 | --- | --- | --- |
-| `engine/` | 엔진 사용자와 AI agent가 읽는 게임엔진 설명, 사용법, public contract | [사용자 설명서](engine/user-guide.md), [Public API](engine/public-api.md), [Runtime Extensibility](engine/runtime-extensibility.md), [Physics Spec](engine/physics-spec.md) |
+| `engine/` | 엔진 사용자와 AI agent가 읽는 게임엔진 설명, 사용법, public contract | [개발자 퀵스타트](engine/developer-quickstart.md), [사용자 설명서](engine/user-guide.md), [Public API](engine/public-api.md), [Runtime Extensibility](engine/runtime-extensibility.md), [Physics Spec](engine/physics-spec.md) |
 | `examples/` | 공식 예제별 authoring contract와 예제 전용 설명 | [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md) |
 | `development/` | 엔진 개발, agent authoring 품질 검증, 배포 운영을 위한 내부 기준 | [아키텍처](development/architecture/architecture.md), [2D 물리엔진 기능 맵](development/architecture/physics-engine.md), [Smoke Check](development/quality/smoke-check.md), [npm 베타 패키징](development/operations/npm-release.md) |
 | `planning/` | 신규 기능 후보와 승인 필요 기능을 관리하는 planning 영역 | [Planning 문서](planning/README.md) |
@@ -23,7 +23,7 @@ Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI a
 
 ## 읽는 순서
 
-1. 엔진을 실행하거나 사용하는 경우: [사용자 설명서](engine/user-guide.md) -> [Public API](engine/public-api.md)
+1. 엔진을 처음 이해하고 새 프로젝트를 시작하는 경우: [개발자 퀵스타트](engine/developer-quickstart.md) -> [사용자 설명서](engine/user-guide.md) -> [Public API](engine/public-api.md)
 2. Top-down Shooter 예제 설정을 바꾸는 경우: [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md)
 3. projectile/weapon/prefab/motion/reaction/effect 같은 범용 runtime 확장 기능을 확인하는 경우: [Runtime Extensibility](engine/runtime-extensibility.md) -> [Public API](engine/public-api.md)
 4. 엔진 구조나 경계를 확인하는 경우: [아키텍처](development/architecture/architecture.md) -> [2D 물리엔진 기능 맵](development/architecture/physics-engine.md)

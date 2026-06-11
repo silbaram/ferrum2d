@@ -29,7 +29,7 @@ Ferrum2D는 **AI agent가 안전하게 게임을 만들고, 사람이 검증 가
 
 ## 구현된 기능
 
-세부 API 계약은 [Public API](docs/engine/public-api.md), 물리 범위는 [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md), Shooter authoring 계약은 [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)을 기준으로 한다.
+처음 Ferrum2D를 보는 개발자는 [개발자 퀵스타트](docs/engine/developer-quickstart.md)를 먼저 읽는다. 세부 API 계약은 [Public API](docs/engine/public-api.md), 물리 범위는 [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md), Shooter authoring 계약은 [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)을 기준으로 한다.
 
 ### Runtime / Wasm
 
@@ -402,7 +402,7 @@ scripts/                    저장소 보조 스크립트
 ## 상세 문서
 
 - [문서 지도](docs/README.md)
-- Engine: [사용자 설명서](docs/engine/user-guide.md), [Public API](docs/engine/public-api.md), [Physics Spec](docs/engine/physics-spec.md)
+- Engine: [개발자 퀵스타트](docs/engine/developer-quickstart.md), [사용자 설명서](docs/engine/user-guide.md), [Public API](docs/engine/public-api.md), [Physics Spec](docs/engine/physics-spec.md)
 - Examples: [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)
 - Development Architecture: [아키텍처](docs/development/architecture/architecture.md), [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md)
 - Development Quality: [코드 리뷰 기준](docs/development/quality/code-review.md), [Smoke Check](docs/development/quality/smoke-check.md)

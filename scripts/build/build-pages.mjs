@@ -100,6 +100,7 @@ function collectFiles(directory) {
 function compareDocs(a, b) {
   const priority = [
     "README.md",
+    "engine/developer-quickstart.md",
     "engine/user-guide.md",
     "engine/public-api.md",
     "examples/topdown-shooter/game-spec.md",
@@ -185,6 +186,10 @@ function pageHtml(items) {
           <a href="./docs/">Open index</a>
         </div>
         <div class="grid docs-grid">
+          <a class="tile" href="./docs/engine/developer-quickstart.html">
+            <span class="tile-title">Developer Quickstart</span>
+            <span class="tile-description">Understand the engine model, create a project, and follow the AI-first development loop.</span>
+          </a>
           <a class="tile" href="./docs/engine/user-guide.html">
             <span class="tile-title">User Guide</span>
             <span class="tile-description">Run examples, adjust Game Spec values, and validate changes.</span>
