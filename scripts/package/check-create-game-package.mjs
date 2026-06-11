@@ -92,6 +92,7 @@ assert(
   rootPackageJson.scripts?.["smoke:check"]?.includes("pnpm smoke:create-game-template-catalog"),
   "root smoke:check must include smoke:create-game-template-catalog",
 );
+assertRootAggregateImportGuard();
 
 for (const file of requiredPackageFiles) {
   await requireFile(path.join(packageRoot, file), repoRoot);
@@ -477,7 +478,13 @@ async function checkGeneratedProject(template) {
     assert(generatedPackage.devDependencies?.vite !== undefined, "generated game must include vite devDependency");
 
     const mainSource = await readFile(path.join(targetRoot, "src/main.ts"), "utf8");
-    assert(mainSource.includes('from "@ferrum2d/ferrum-web"'), "generated game must import from package public entrypoint");
+    assert(
+      ["/core", "/authoring", "/starter-scenes", "/labs", "/quality"].some((subpath) =>
+        mainSource.includes(`from "@ferrum2d/ferrum-web${subpath}"`)
+      ),
+      "generated game must import from package public subpath entrypoints",
+    );
+    assertNoFerrumRootAggregateImport(mainSource, "generated game main");
     assert(!mainSource.includes("@ferrum2d/ferrum-web/dist/"), "generated game must not import dist internals");
     assert(!mainSource.includes("@ferrum2d/ferrum-web/pkg/"), "generated game must not import wasm package internals");
     assert(!mainSource.includes("@ferrum2d/ferrum-web/src/"), "generated game must not import source internals");
@@ -498,8 +505,9 @@ async function checkGeneratedProject(template) {
     await assertAssetPipelineValidate(targetRoot, templateName);
     const generatedHarnessPath = path.join(targetRoot, "scripts/ferrum-harness.mjs");
     await requireFile(generatedHarnessPath, repoRoot);
+    const harnessSource = await readFile(generatedHarnessPath, "utf8");
+    assertHarnessScaffold(harnessSource, templateName);
     if (template.sceneAuthoring.configured) {
-      const harnessSource = await readFile(generatedHarnessPath, "utf8");
       assert(
         harnessSource.includes("applySceneBehaviorRecipes") &&
           harnessSource.includes("dryRunSceneBehaviorRecipes") &&
@@ -635,9 +643,13 @@ function assertMinimalTemplateWeaponAuthoring(mainSource) {
 async function assertAssetPipelineScaffold(filePath, projectRoot, templateName) {
   const source = await readFile(filePath, "utf8");
   assert(
-    source.includes('await import("@ferrum2d/ferrum-web")'),
-    `${templateName} asset pipeline scaffold must use the public @ferrum2d/ferrum-web entrypoint`,
+    source.includes('await import("@ferrum2d/ferrum-web/core")') &&
+      source.includes('await import("@ferrum2d/ferrum-web/authoring")') &&
+      source.includes('await import("@ferrum2d/ferrum-web/starter-scenes")') &&
+      source.includes('await import("@ferrum2d/ferrum-web/labs")'),
+    `${templateName} asset pipeline scaffold must use public @ferrum2d/ferrum-web subpath entrypoints`,
   );
+  assertNoFerrumRootAggregateImport(source, `${templateName} asset pipeline scaffold`);
   assert(
       source.includes("packTextureAtlas") &&
       source.includes("textureAtlasDocumentToShooterAtlas") &&
@@ -670,6 +682,50 @@ async function assertAssetPipelineScaffold(filePath, projectRoot, templateName) 
   assert(localizationManifest.gameSpec === "public/game.json", `${templateName} localization manifest gameSpec path is invalid`);
   assert(localizationManifest.source === "gameSpec.content.localization", `${templateName} localization manifest source is invalid`);
   assert(localizationManifest.documents !== null && typeof localizationManifest.documents === "object" && !Array.isArray(localizationManifest.documents), `${templateName} localization manifest documents must be an object`);
+}
+
+function assertHarnessScaffold(source, templateName) {
+  assert(
+    source.includes('await import("@ferrum2d/ferrum-web/authoring")') &&
+      source.includes('await import("@ferrum2d/ferrum-web/quality")'),
+    `${templateName} template harness must use public @ferrum2d/ferrum-web subpath entrypoints`,
+  );
+  assertNoFerrumRootAggregateImport(source, `${templateName} template harness`);
+  assert(!source.includes("@ferrum2d/ferrum-web/dist/"), `${templateName} template harness must not import dist internals`);
+  assert(!source.includes("@ferrum2d/ferrum-web/pkg/"), `${templateName} template harness must not import wasm package internals`);
+  assert(!source.includes("@ferrum2d/ferrum-web/src/"), `${templateName} template harness must not import source internals`);
+  assert(!source.includes("packages/ferrum-web"), `${templateName} template harness must not import engine workspace files`);
+  assert(!source.includes("ferrum_core"), `${templateName} template harness must not import generated wasm bindings`);
+}
+
+function assertNoFerrumRootAggregateImport(source, label) {
+  const rootImportPattern = /\b(?:from\s*|import\s*(?:\(\s*)?|require\s*\(\s*)["']@ferrum2d\/ferrum-web["']/;
+  assert(!rootImportPattern.test(source), `${label} must not use the root aggregate entrypoint`);
+}
+
+function assertRootAggregateImportGuard() {
+  const rejectedForms = [
+    'import "@ferrum2d/ferrum-web";',
+    'import { createFerrumRuntime } from "@ferrum2d/ferrum-web";',
+    'import type { FerrumRuntime } from "@ferrum2d/ferrum-web";',
+    'await import("@ferrum2d/ferrum-web");',
+    'export { createFerrumRuntime } from "@ferrum2d/ferrum-web";',
+    'export * from "@ferrum2d/ferrum-web";',
+    'require("@ferrum2d/ferrum-web");',
+  ];
+  for (const source of rejectedForms) {
+    let rejected = false;
+    try {
+      assertNoFerrumRootAggregateImport(source, "root aggregate import guard self-test");
+    } catch {
+      rejected = true;
+    }
+    assert(rejected, `root aggregate import guard must reject ${source}`);
+  }
+  assertNoFerrumRootAggregateImport(
+    'import { createFerrumRuntime } from "@ferrum2d/ferrum-web/core";',
+    "root aggregate import guard self-test",
+  );
 }
 
 async function assertAssetPipelineReport(projectRoot, templateName) {
@@ -722,7 +778,14 @@ async function assertAssetPipelineValidate(projectRoot, templateName) {
   }
   assert(report.format === "ferrum2d.consumer.asset-pipeline.report", `${templateName} asset pipeline validate format is invalid`);
   assert(report.assetPipeline?.validation?.validated === true, `${templateName} asset pipeline validate must mark validated=true`);
-  assert(report.assetPipeline?.validation?.publicEntryPoint === "@ferrum2d/ferrum-web", `${templateName} asset pipeline validate must use the public package entrypoint`);
+  assert(
+    Array.isArray(report.assetPipeline?.validation?.publicEntryPoints) &&
+      report.assetPipeline.validation.publicEntryPoints.includes("@ferrum2d/ferrum-web/core") &&
+      report.assetPipeline.validation.publicEntryPoints.includes("@ferrum2d/ferrum-web/authoring") &&
+      report.assetPipeline.validation.publicEntryPoints.includes("@ferrum2d/ferrum-web/starter-scenes") &&
+      report.assetPipeline.validation.publicEntryPoints.includes("@ferrum2d/ferrum-web/labs"),
+    `${templateName} asset pipeline validate must use public package subpath entrypoints`,
+  );
   const expectedLocalizationStatus = templateName === "topdown" && report.assetPipeline?.gameSpec?.localizationConfigured
     ? "configured"
     : "scaffold";
@@ -810,9 +873,11 @@ function parseJsonReport(stdout, label) {
 async function assertRuntimeReplayScaffold(filePath, templateName) {
   const source = await readFile(filePath, "utf8");
   assert(
-    source.includes('await import("@ferrum2d/ferrum-web")'),
-    `${templateName} runtime replay scaffold must use the public @ferrum2d/ferrum-web entrypoint`,
+    source.includes('await import("@ferrum2d/ferrum-web/core")') &&
+      source.includes('await import("@ferrum2d/ferrum-web/quality")'),
+    `${templateName} runtime replay scaffold must use public @ferrum2d/ferrum-web subpath entrypoints`,
   );
+  assertNoFerrumRootAggregateImport(source, `${templateName} runtime replay scaffold`);
   assert(!source.includes("@ferrum2d/ferrum-web/dist/"), `${templateName} runtime replay scaffold must not import dist internals`);
   assert(!source.includes("@ferrum2d/ferrum-web/pkg/"), `${templateName} runtime replay scaffold must not import wasm package internals`);
   assert(!source.includes("@ferrum2d/ferrum-web/src/"), `${templateName} runtime replay scaffold must not import source internals`);

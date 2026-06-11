@@ -1,10 +1,20 @@
 # Ferrum2D Public API
 
-이 문서는 `@ferrum2d/ferrum-web` package entrypoint에서 애플리케이션이 직접 import해도 되는 API 계약을 요약한다. 코드 기준은 `packages/ferrum-web/src/index.ts`다.
+이 문서는 `@ferrum2d/ferrum-web` package entrypoint에서 애플리케이션이 직접 import해도 되는 API 계약을 요약한다. 코드 기준은 `packages/ferrum-web/src/index.ts`와 목적별 subpath entrypoint(`core`, `authoring`, `starter-scenes`, `labs`, `quality`)다.
 
 ## Import 원칙
 
-애플리케이션과 예제 코드는 package entrypoint만 사용한다.
+애플리케이션과 예제 코드는 package entrypoint만 사용한다. 신규 코드는 목적별 subpath를 우선하고, root entrypoint는 기존 코드 호환을 위한 aggregate surface로 유지한다.
+
+```ts
+import { createFerrumRuntime } from "@ferrum2d/ferrum-web/core";
+import { resolveSceneCompositionSpec } from "@ferrum2d/ferrum-web/authoring";
+import { resolveShooterGameSpec } from "@ferrum2d/ferrum-web/starter-scenes";
+import { WebGPURenderer } from "@ferrum2d/ferrum-web/labs";
+import { RuntimeProfiler } from "@ferrum2d/ferrum-web/quality";
+```
+
+기존 root entrypoint도 public API이며 다음처럼 계속 사용할 수 있다.
 
 ```ts
 import {
@@ -189,18 +199,18 @@ import {
 
 ## 지원 수준과 안정성
 
-`@ferrum2d/ferrum-web`는 현재 root entrypoint 하나로 core runtime, starter scene, helper, smoke/report용 utility를 함께 export한다. 따라서 import 가능하다는 사실만으로 모든 API가 같은 1.0 안정 계약이라는 뜻은 아니다.
+`@ferrum2d/ferrum-web`는 root entrypoint와 목적별 subpath entrypoint를 함께 제공한다. import 가능하다는 사실만으로 모든 API가 같은 1.0 안정 계약이라는 뜻은 아니며, 신규 consumer project는 아래 지원 수준에 맞는 subpath를 우선 사용한다.
 
-| 수준 | 의미 | 예시 |
-| --- | --- | --- |
-| Core runtime | 1.0 제품 계약 후보. 게임 실행과 브라우저 runtime의 중심이다. | `createFerrumRuntime(...)`, `createEngine(...)`, `createRenderer(...)`, WebGL2 renderer, `InputManager`, `AudioManager`, asset loading, Physics Spec/API |
-| Authoring primitive | 장르 adapter나 template이 조합해 쓰는 데이터 기반 계약이다. | `resolveSceneCompositionSpec(...)`, `resolveBehaviorRecipeDocument(...)`, `compileWeaponProfiles(...)`, FSM install/replay, presentation effect registry |
-| Starter scene/template | 생성 프로젝트와 smoke에서 검증하는 시작점이다. 장르 전체를 범용으로 자동 제작하는 엔진 모드는 아니다. | `resolveShooterGameSpec(...)`, `applyShooterGameSpec(...)`, built-in Shooter snapshot, `useBreakoutGame()`, `usePlatformerGame()` |
-| Optional/lab/helper | opt-in 또는 capability-dependent 기능이다. 환경/renderer별 제약을 확인해야 한다. | WebGPU renderer, WebGPU fade-only post-process, HD-2D helper, PixelMaskTerrain, level streaming helper, texture atlas JSON helper |
-| Compatibility | 이전 API 이름 또는 fallback이다. 새 제품 기능의 기준으로 삼지 않는다. | worker clock shim, spatial audio fallback, deprecated compatibility helper |
-| Quality infrastructure | package/demo 품질을 검증하기 위한 API나 report helper다. 사용자-facing gameplay 기능과 분리해서 본다. | screenshot summary, runtime budget, diagnostic report, replay/report validator |
+| 수준 | 권장 entrypoint | 의미 | 예시 |
+| --- | --- | --- | --- |
+| Core runtime | `@ferrum2d/ferrum-web/core` | 1.0 제품 계약 후보. 게임 실행과 브라우저 runtime의 중심이다. | `createFerrumRuntime(...)`, `createEngine(...)`, `createRenderer(...)`, WebGL2 renderer, `InputManager`, `AudioManager`, asset loading, Physics Spec/API |
+| Authoring primitive | `@ferrum2d/ferrum-web/authoring` | 장르 adapter나 template이 조합해 쓰는 데이터 기반 계약이다. | `resolveSceneCompositionSpec(...)`, `resolveBehaviorRecipeDocument(...)`, `compileWeaponProfiles(...)`, FSM install/replay, presentation effect registry |
+| Starter scene/template | `@ferrum2d/ferrum-web/starter-scenes` | 생성 프로젝트와 smoke에서 검증하는 시작점이다. 장르 전체를 범용으로 자동 제작하는 엔진 모드는 아니다. | `resolveShooterGameSpec(...)`, `applyShooterGameSpec(...)`, built-in Shooter snapshot, starter input profiles |
+| Optional/lab/helper | `@ferrum2d/ferrum-web/labs` | opt-in 또는 capability-dependent 기능이다. 환경/renderer별 제약을 확인해야 한다. | WebGPU renderer, HD-2D helper, PixelMaskTerrain, texture atlas JSON helper, material/VFX presets |
+| Quality infrastructure | `@ferrum2d/ferrum-web/quality` | package/demo 품질을 검증하기 위한 API나 report helper다. 사용자-facing gameplay 기능과 분리해서 본다. | screenshot summary, runtime budget, diagnostic report, replay/report validator |
+| Compatibility | `@ferrum2d/ferrum-web` | 기존 API 이름과 root aggregate import를 유지한다. 새 제품 기능의 기준은 목적별 subpath다. | 기존 root import, fallback helper |
 
-1.0 전에는 starter scene API를 core runtime과 분리하거나 `starter-scenes`/`labs` 같은 별도 export surface로 옮기는 것을 검토한다. 그 전까지 consumer project는 root entrypoint만 import하되, 위 지원 수준을 기준으로 API 선택과 문서화를 맞춘다.
+1.0까지 root entrypoint는 호환 aggregate로 유지하되, public API 문서와 package check는 목적별 subpath를 함께 검증한다.
 
 ## 주요 엔트리포인트
 
@@ -1288,8 +1298,10 @@ Deprecated 항목을 제거하거나 동작을 바꿀 때는 README, 예제, rel
 import {
   BrowserPlatformHost,
   createFerrumRuntime,
+} from "@ferrum2d/ferrum-web/core";
+import {
   type ShooterGameSpec,
-} from "@ferrum2d/ferrum-web";
+} from "@ferrum2d/ferrum-web/starter-scenes";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 if (!canvas) throw new Error("missing #game canvas");

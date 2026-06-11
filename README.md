@@ -13,7 +13,7 @@ Ferrum2D는 **AI agent가 안전하게 게임을 만들고, 사람이 검증 가
 앞으로 기능을 고도화할 때는 다음 원칙을 유지한다.
 
 - **Agent-first, editor-second**: 기본 개발 흐름은 visual editor가 아니라 Game Spec, Physics Spec, template, skill, subagent, smoke, replay 기반이다. Visual editor는 필요할 때 별도 승인된 보조 도구로만 검토한다.
-- **Public API first**: consumer game은 `@ferrum2d/ferrum-web` public entrypoint만 사용한다. `dist/*`, `pkg/*`, `src/*` 내부 import가 필요하면 엔진 public API가 부족하다는 신호로 보고 API 승격을 검토한다.
+- **Public API first**: consumer game은 `@ferrum2d/ferrum-web` public entrypoint와 목적별 subpath만 사용한다. `dist/*`, `pkg/*`, `src/*` 내부 import가 필요하면 엔진 public API가 부족하다는 신호로 보고 API 승격을 검토한다.
 - **Data-driven gameplay**: 무기, 발사체, 적, 밸런스, 씬, prefab, physics metadata는 가능한 한 코드보다 spec/authoring data로 표현한다. 코드 변경은 spec과 public runtime primitive로 표현하기 어려운 경우에 제한한다.
 - **Performance budget by default**: 1000개 이상 객체를 전제로 설계한다. frame loop에서 entity별 JS/Wasm 왕복 호출, DOM 조작, 문자열/object hot-path 전달을 피하고 bulk buffer와 저빈도 adapter를 우선한다.
 - **Rust core / TypeScript platform 경계 유지**: Rust/Wasm은 simulation, entity, collision, render command 생성을 담당하고, TypeScript는 browser API, canvas, input, audio, asset loading, renderer 연결을 담당한다.
@@ -31,14 +31,14 @@ Ferrum2D는 **AI agent가 안전하게 게임을 만들고, 사람이 검증 가
 
 Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoint에 import 가능한 이름이 있더라도 모든 기능이 같은 성숙도의 제품 계약은 아니다.
 
-| 지원 수준 | 의미 | 대표 항목 |
-| --- | --- | --- |
-| Core runtime | 1.0 제품 계약 후보. 게임 실행과 public API의 중심이다. | `createFerrumRuntime(...)`, `createEngine(...)`, WebGL2 renderer, input/audio/asset loading, Physics Spec/API, snapshot/replay |
-| Authoring primitive | 장르와 템플릿이 조합해 쓰는 데이터 기반 primitive다. | Scene Composition, Behavior Recipe, projectile/weapon authoring, FSM install/replay, presentation effect registry |
-| Starter scene/template | 생성 프로젝트와 smoke에서 검증하는 시작점이다. 장르 전체를 자동 제작하는 범용 엔진 모드는 아니다. | `minimal`, `topdown`, `platformer`, `breakout`, built-in Shooter/Breakout/Platformer scene hook |
-| Optional/lab | 지원 환경이나 명시 opt-in에서 쓰는 확장 기능이다. 기능별 제약은 Public API와 smoke 문서를 따른다. | WebGPU renderer, WebGPU fade pass, HD-2D helper, PixelMaskTerrain, level streaming helper |
-| Compatibility/helper | 이전 API 또는 agent/tooling 보조 경로다. 새 제품 기능의 기준으로 삼지 않는다. | Worker clock shim, spatial audio fallback, deterministic texture atlas JSON helper |
-| Quality infrastructure | 제품 품질을 지키는 검증 인프라다. 사용자-facing 게임 기능과 분리해서 본다. | smoke, runtime budget, package QA, Pages build, report validator |
+| 지원 수준 | 권장 import | 의미 | 대표 항목 |
+| --- | --- | --- | --- |
+| Core runtime | `@ferrum2d/ferrum-web/core` | 1.0 제품 계약 후보. 게임 실행과 public API의 중심이다. | `createFerrumRuntime(...)`, `createEngine(...)`, WebGL2 renderer, input/audio/asset loading, Physics Spec/API, snapshot |
+| Authoring primitive | `@ferrum2d/ferrum-web/authoring` | 장르와 템플릿이 조합해 쓰는 데이터 기반 primitive다. | Scene Composition, Behavior Recipe, projectile/weapon authoring, FSM install/replay, presentation effect registry |
+| Starter scene/template | `@ferrum2d/ferrum-web/starter-scenes` | 생성 프로젝트와 smoke에서 검증하는 시작점이다. 장르 전체를 자동 제작하는 범용 엔진 모드는 아니다. | `minimal`, `topdown`, `platformer`, `breakout`, Shooter Game Spec, starter input profile |
+| Optional/lab | `@ferrum2d/ferrum-web/labs` | 지원 환경이나 명시 opt-in에서 쓰는 확장 기능이다. 기능별 제약은 Public API와 smoke 문서를 따른다. | WebGPU renderer, HD-2D helper, PixelMaskTerrain, material/VFX preset, texture atlas JSON helper |
+| Quality infrastructure | `@ferrum2d/ferrum-web/quality` | 제품 품질을 지키는 검증 인프라다. 사용자-facing 게임 기능과 분리해서 본다. | smoke helper, runtime budget, package QA, replay/report validator |
+| Compatibility/helper | `@ferrum2d/ferrum-web` | 기존 root aggregate import다. 새 제품 기능의 기준은 목적별 subpath다. | 기존 root import, Worker clock shim, spatial audio fallback |
 
 ## 구현된 기능
 

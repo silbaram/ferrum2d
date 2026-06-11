@@ -103,7 +103,7 @@ async function printRuntimeReplayReport() {
   try {
     fixture = await loadRuntimeReplayFixture();
     actualRun = await createProjectRuntimeReplayRun();
-    const { compareGameplayReplayRuns } = await import("@ferrum2d/ferrum-web");
+    const { compareGameplayReplayRuns } = await import("@ferrum2d/ferrum-web/quality");
     comparison = compareGameplayReplayRuns(fixture.replay, actualRun);
     if (!comparison.passed) {
       replayFixturePatches.push(runtimeReplayFixturePatchCandidate(actualRun, fixture));
@@ -186,7 +186,7 @@ async function createProjectRuntimeReplayRun() {
   const {
     createGameplayReplayRun,
     hashGameStateSnapshot,
-  } = await import("@ferrum2d/ferrum-web");
+  } = await import("@ferrum2d/ferrum-web/quality");
   const snapshots = await captureProjectRuntimeSnapshots({ hashGameStateSnapshot });
   return createGameplayReplayRun(snapshots, { path: "runtimeGameplayReplay" });
 }
@@ -199,7 +199,7 @@ async function captureProjectRuntimeSnapshots({ hashGameStateSnapshot }) {
     const {
       captureGameStateSnapshot,
       createEngine,
-    } = await import("@ferrum2d/ferrum-web");
+    } = await import("@ferrum2d/ferrum-web/core");
     runtimeClock = createDeterministicFrameClock();
     const inputProvider = createRecipeInputProvider(TEMPLATE_RUNTIME_REPLAY_RECIPE.deterministicRun.inputSequence);
     engine = await createEngine(

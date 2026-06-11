@@ -64,19 +64,17 @@ async function validateAssets() {
   const localizationManifest = await readOptionalLocalizationManifest();
   const gameSpecPath = config?.gameSpec ?? localizationManifest?.gameSpec ?? DEFAULT_GAME_SPEC;
   const gameSpec = await readOptionalJson(gameSpecPath);
-  const {
-    AudioAssetLoader,
-    LocalizationBundle,
-    resolveShooterGameSpec,
-  } = await import("@ferrum2d/ferrum-web");
+  const { AudioAssetLoader } = await import("@ferrum2d/ferrum-web/core");
+  const { LocalizationBundle } = await import("@ferrum2d/ferrum-web/authoring");
+  const { resolveShooterGameSpec } = await import("@ferrum2d/ferrum-web/starter-scenes");
   if (typeof AudioAssetLoader !== "function") {
-    throw new Error("AudioAssetLoader must be exported from @ferrum2d/ferrum-web.");
+    throw new Error("AudioAssetLoader must be exported from @ferrum2d/ferrum-web/core.");
   }
   if (typeof LocalizationBundle !== "function") {
-    throw new Error("LocalizationBundle must be exported from @ferrum2d/ferrum-web.");
+    throw new Error("LocalizationBundle must be exported from @ferrum2d/ferrum-web/authoring.");
   }
   if (typeof resolveShooterGameSpec !== "function") {
-    throw new Error("resolveShooterGameSpec must be exported from @ferrum2d/ferrum-web.");
+    throw new Error("resolveShooterGameSpec must be exported from @ferrum2d/ferrum-web/starter-scenes.");
   }
 
   let resolvedGameSpec;
@@ -110,9 +108,9 @@ async function packTextures() {
   const config = await readRequiredConfig();
   const {
     packTextureAtlas,
-    resolveShooterGameSpec,
     textureAtlasDocumentToShooterAtlas,
-  } = await import("@ferrum2d/ferrum-web");
+  } = await import("@ferrum2d/ferrum-web/labs");
+  const { resolveShooterGameSpec } = await import("@ferrum2d/ferrum-web/starter-scenes");
   const document = packTextureAtlas(config.sprites, {
     image: config.image,
     maxSize: config.maxSize,
@@ -228,7 +226,12 @@ function assetPipelineReport({
       },
       validation: {
         validated,
-        publicEntryPoint: validated ? "@ferrum2d/ferrum-web" : undefined,
+        publicEntryPoints: validated ? [
+          "@ferrum2d/ferrum-web/core",
+          "@ferrum2d/ferrum-web/authoring",
+          "@ferrum2d/ferrum-web/starter-scenes",
+          "@ferrum2d/ferrum-web/labs",
+        ] : undefined,
       },
       reports,
     },

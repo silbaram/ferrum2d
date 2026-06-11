@@ -1,13 +1,17 @@
 import {
   createFerrumRuntime,
+  type FerrumRuntime,
+  type UiOverlayState,
+} from "@ferrum2d/ferrum-web/core";
+import {
   createHudOverlayState,
   resolveAccessibilityHudTheme,
   resolveAccessibilityOptions,
+} from "@ferrum2d/ferrum-web/authoring";
+import {
   resolveShooterGameSpec,
-  type FerrumRuntime,
   type ShooterGameSpec,
-  type UiOverlayState,
-} from "@ferrum2d/ferrum-web";
+} from "@ferrum2d/ferrum-web/starter-scenes";
 
 import "./styles.css";
 

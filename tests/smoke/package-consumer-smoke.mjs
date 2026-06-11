@@ -807,8 +807,29 @@ async function writePublicImportSmoke(targetRoot) {
   textureAtlasDocumentToShooterAtlas,
 } from "@ferrum2d/ferrum-web";
 
+const coreEntrypoint = await import("@ferrum2d/ferrum-web/core");
+const authoringEntrypoint = await import("@ferrum2d/ferrum-web/authoring");
+const starterScenesEntrypoint = await import("@ferrum2d/ferrum-web/starter-scenes");
+const labsEntrypoint = await import("@ferrum2d/ferrum-web/labs");
+const qualityEntrypoint = await import("@ferrum2d/ferrum-web/quality");
+
 if (typeof createFerrumRuntime !== "function") {
   throw new Error("createFerrumRuntime must be exported from the public entrypoint.");
+}
+if (typeof coreEntrypoint.createFerrumRuntime !== "function") {
+  throw new Error("createFerrumRuntime must be exported from the core subpath.");
+}
+if (typeof authoringEntrypoint.resolveSceneCompositionSpec !== "function") {
+  throw new Error("resolveSceneCompositionSpec must be exported from the authoring subpath.");
+}
+if (typeof starterScenesEntrypoint.resolveShooterGameSpec !== "function") {
+  throw new Error("resolveShooterGameSpec must be exported from the starter-scenes subpath.");
+}
+if (typeof labsEntrypoint.resolveSpriteMaterialPreset !== "function") {
+  throw new Error("resolveSpriteMaterialPreset must be exported from the labs subpath.");
+}
+if (typeof qualityEntrypoint.RuntimeProfiler !== "function") {
+  throw new Error("RuntimeProfiler must be exported from the quality subpath.");
 }
 if (typeof resolveAnimationTimelineSpec !== "function") {
   throw new Error("resolveAnimationTimelineSpec must be exported from the public entrypoint.");
@@ -1366,6 +1387,44 @@ async function writePublicTypesSmoke(targetRoot) {
   type SpawnFrameDiagnostics,
   type WeaponDefinition,
 } from "@ferrum2d/ferrum-web";
+import {
+  createAssetPreloadCachePolicy as createCoreAssetPreloadCachePolicy,
+  createFerrumRuntime as createCoreFerrumRuntime,
+  type AssetPreloadCachePolicy as CoreAssetPreloadCachePolicy,
+  type CreateAssetPreloadCachePolicyOptions as CoreCreateAssetPreloadCachePolicyOptions,
+  type FerrumRuntime as CoreFerrumRuntime,
+  type PreloadAssetManifestOptions as CorePreloadAssetManifestOptions,
+} from "@ferrum2d/ferrum-web/core";
+import {
+  resolveFontLoadingPolicy as resolveAuthoringFontLoadingPolicy,
+  resolveLevelChunkManifest as resolveAuthoringLevelChunkManifest,
+  resolvePostProcessPasses as resolveAuthoringPostProcessPasses,
+  resolveSceneCompositionSpec as resolveAuthoringSceneCompositionSpec,
+  type FontLoadingPolicySpec as AuthoringFontLoadingPolicySpec,
+  type LevelChunkManifestSpec as AuthoringLevelChunkManifestSpec,
+  type PostProcessStackInput as AuthoringPostProcessStackInput,
+  type ResolvedFontLoadingPolicy as AuthoringResolvedFontLoadingPolicy,
+  type ResolvedLevelChunkManifest as AuthoringResolvedLevelChunkManifest,
+  type ResolvedPostProcessPass as AuthoringResolvedPostProcessPass,
+} from "@ferrum2d/ferrum-web/authoring";
+import {
+  importAsepriteAtlasFrames as importStarterAsepriteAtlasFrames,
+  resolveShooterGameSpec as resolveStarterShooterGameSpec,
+  type AsepriteAtlasImportOptions as StarterAsepriteAtlasImportOptions,
+  type ShooterGameSpec as StarterShooterGameSpec,
+} from "@ferrum2d/ferrum-web/starter-scenes";
+import {
+  resolveSpriteMaterialPreset as resolveLabSpriteMaterialPreset,
+} from "@ferrum2d/ferrum-web/labs";
+import {
+  RuntimeProfiler as QualityRuntimeProfiler,
+} from "@ferrum2d/ferrum-web/quality";
+// @ts-expect-error core must not expose starter scene-only types.
+import type { ShooterGameSpec as CoreShooterGameSpec } from "@ferrum2d/ferrum-web/core";
+// @ts-expect-error core must not expose quality infrastructure-only types.
+import type { RuntimeProfilerOptions as CoreRuntimeProfilerOptions } from "@ferrum2d/ferrum-web/core";
+// @ts-expect-error authoring must not expose starter scene-only types.
+import type { BuiltInShooterStateSnapshot as AuthoringBuiltInShooterStateSnapshot } from "@ferrum2d/ferrum-web/authoring";
 
 const spec: ShooterGameSpec = {
   world: { width: 960, height: 540 },
@@ -1480,7 +1539,42 @@ const spawnDiagnosticReport: GameplaySpawnDiagnosticReport | undefined = gamepla
 })[0];
 const spawnDiagnosticSuggestion: string = suggestionForSpawnDiagnosticMetric("projectileSpawns");
 const runtimeFactory: typeof createFerrumRuntime = createFerrumRuntime;
+const coreRuntimeFactory: typeof createCoreFerrumRuntime = createCoreFerrumRuntime;
+const coreAssetOptions: CoreCreateAssetPreloadCachePolicyOptions = {};
+const coreAssetPolicy: CoreAssetPreloadCachePolicy = createCoreAssetPreloadCachePolicy({ json: {} }, coreAssetOptions);
+const corePreloadOptions: CorePreloadAssetManifestOptions = { cachePolicy: coreAssetPolicy };
+const authoringScene = resolveAuthoringSceneCompositionSpec({
+  prefabs: {},
+  fragments: { main: { instances: [] } },
+});
+const authoringPostProcessInput: AuthoringPostProcessStackInput = {
+  passes: [{ kind: "fade", color: [0, 0, 0, 1], opacity: 0.5 }],
+};
+const authoringPostProcessPasses: readonly AuthoringResolvedPostProcessPass[] =
+  resolveAuthoringPostProcessPasses(authoringPostProcessInput);
+const authoringLevelManifest: AuthoringLevelChunkManifestSpec = { chunks: [] };
+const authoringResolvedLevelManifest: AuthoringResolvedLevelChunkManifest =
+  resolveAuthoringLevelChunkManifest(authoringLevelManifest);
+const authoringFontPolicy: AuthoringFontLoadingPolicySpec = {};
+const authoringResolvedFontPolicy: AuthoringResolvedFontLoadingPolicy =
+  resolveAuthoringFontLoadingPolicy(authoringFontPolicy);
+const starterSpec: StarterShooterGameSpec = { world: { width: 320, height: 180 } };
+const starterResolved = resolveStarterShooterGameSpec(starterSpec);
+const starterAsepriteOptions: StarterAsepriteAtlasImportOptions = { texture: "sprites" };
+const starterAsepriteFrames = importStarterAsepriteAtlasFrames({
+  frames: {
+    "player.idle.0.png": {
+      frame: { x: 0, y: 0, w: 16, h: 16 },
+      rotated: false,
+      sourceSize: { w: 16, h: 16 },
+    },
+  },
+  meta: { size: { w: 16, h: 16 } },
+}, starterAsepriteOptions);
+const labMaterial = resolveLabSpriteMaterialPreset("additive");
+const qualityProfilerConstructor: typeof QualityRuntimeProfiler = QualityRuntimeProfiler;
 declare const runtime: FerrumRuntime;
+declare const coreRuntime: CoreFerrumRuntime;
 runtime.engine.setGameSpec(spec);
 void policy;
 void resolved;
@@ -1493,6 +1587,17 @@ void actionDiagnosticSuggestion;
 void spawnDiagnosticReport;
 void spawnDiagnosticSuggestion;
 void runtimeFactory;
+void coreRuntimeFactory;
+void corePreloadOptions;
+void authoringScene;
+void authoringPostProcessPasses;
+void authoringResolvedLevelManifest;
+void authoringResolvedFontPolicy;
+void starterResolved;
+void starterAsepriteFrames;
+void labMaterial;
+void qualityProfilerConstructor;
+void coreRuntime;
 `);
 }
 

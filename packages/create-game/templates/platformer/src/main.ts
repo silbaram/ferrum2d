@@ -1,11 +1,13 @@
 import {
   createFerrumRuntime,
+  type FerrumRuntime,
+  type UiOverlayState,
+} from "@ferrum2d/ferrum-web/core";
+import {
   createHudOverlayState,
   resolveAccessibilityHudTheme,
   resolveAccessibilityOptions,
-  type FerrumRuntime,
-  type UiOverlayState,
-} from "@ferrum2d/ferrum-web";
+} from "@ferrum2d/ferrum-web/authoring";
 
 import "./styles.css";
 

@@ -178,7 +178,7 @@ async function printReplayReport() {
     try {
       fixture = await loadReplayFixture();
       actualRun = await createTemplateReplayRun(result);
-      const { compareGameplayReplayRuns } = await import("@ferrum2d/ferrum-web");
+      const { compareGameplayReplayRuns } = await import("@ferrum2d/ferrum-web/quality");
       comparison = compareGameplayReplayRuns(fixture.replay, actualRun);
       if (!comparison.passed) {
         replayFixturePatches.push(replayFixturePatchCandidate(actualRun, fixture));
@@ -290,7 +290,7 @@ async function inspectSceneAuthoring() {
       resolveBehaviorRecipeDocument,
       resolveSceneAuthoringDocument,
       resolveSceneCompositionSpec,
-    } = await import("@ferrum2d/ferrum-web");
+    } = await import("@ferrum2d/ferrum-web/authoring");
     const resolved = resolveSceneAuthoringDocument(json, {
       path: "sceneAuthoring",
       validateBindings: true,
@@ -341,7 +341,7 @@ async function inspectSceneAuthoring() {
       },
     };
   } catch (error) {
-    const { diagnosticReport } = await import("@ferrum2d/ferrum-web").catch(() => ({ diagnosticReport: undefined }));
+    const { diagnosticReport } = await import("@ferrum2d/ferrum-web/quality").catch(() => ({ diagnosticReport: undefined }));
     const report = typeof diagnosticReport === "function" ? diagnosticReport(error) : undefined;
     const message = error instanceof Error ? error.message : String(error);
     return {
@@ -516,7 +516,7 @@ async function createTemplateReplayRun(result) {
     GAME_STATE_SNAPSHOT_VERSION,
     createGameplayReplayRun,
     hashGameStateSnapshot,
-  } = await import("@ferrum2d/ferrum-web");
+  } = await import("@ferrum2d/ferrum-web/quality");
   const summary = templateSummary(result);
   const snapshots = [
     templateReplaySnapshot({

@@ -15,7 +15,7 @@ pnpm add @ferrum2d/ferrum-web@beta
 ## 기본 사용
 
 ```ts
-import { createFerrumRuntime } from "@ferrum2d/ferrum-web";
+import { createFerrumRuntime } from "@ferrum2d/ferrum-web/core";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 if (!canvas) {
@@ -32,6 +32,19 @@ runtime.engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });
 ```
 
 게임 규칙과 simulation state는 Rust/Wasm core가 소유한다. 앱 코드는 `createFerrumRuntime(...)`, `createEngine(...)`, `BrowserPlatformHost`, `InputManager`, `WebGL2Renderer`처럼 package entrypoint에서 export하는 API만 사용한다.
+
+## Public entrypoints
+
+신규 코드는 목적별 subpath를 우선 사용한다.
+
+| Entry point | 용도 |
+| --- | --- |
+| `@ferrum2d/ferrum-web/core` | runtime, renderer, input/audio/asset, Physics Spec/API |
+| `@ferrum2d/ferrum-web/authoring` | Scene Composition, Behavior Recipe, FSM, gameplay/physics authoring helper |
+| `@ferrum2d/ferrum-web/starter-scenes` | Shooter Game Spec, starter input profile, starter scene helper |
+| `@ferrum2d/ferrum-web/labs` | WebGPU, PixelMaskTerrain, lighting/material/VFX/atlas helper |
+| `@ferrum2d/ferrum-web/quality` | diagnostic, runtime budget, screenshot summary, replay/report helper |
+| `@ferrum2d/ferrum-web` | 기존 코드 호환용 aggregate entrypoint |
 
 `environment: "development"`에서는 DebugOverlay가 기본 활성화되고, `environment: "production"` 또는 생략 상태에서는 기본 비활성화된다. `debug: true` 또는 `debug: false`를 명시하면 environment 기본값보다 우선한다.
 

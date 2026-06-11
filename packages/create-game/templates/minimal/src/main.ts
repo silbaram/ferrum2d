@@ -1,17 +1,21 @@
 import {
-  behaviorRecipeCommandsForEntity,
-  compileWeaponProfiles,
   createFerrumRuntime,
-  diagnosticReport,
-  type DiagnosticContext,
-  type DiagnosticReport,
   type FerrumEngine,
   type FerrumRuntime,
   type InputSnapshot,
-  type ProjectileDefinition,
   type UiOverlayState,
+} from "@ferrum2d/ferrum-web/core";
+import {
+  behaviorRecipeCommandsForEntity,
+  compileWeaponProfiles,
+  type ProjectileDefinition,
   type WeaponDefinition,
-} from "@ferrum2d/ferrum-web";
+} from "@ferrum2d/ferrum-web/authoring";
+import {
+  diagnosticReport,
+  type DiagnosticContext,
+  type DiagnosticReport,
+} from "@ferrum2d/ferrum-web/quality";
 
 import "./styles.css";
 

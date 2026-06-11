@@ -24,12 +24,22 @@ const requiredWasmArtifacts = [
   "pkg/ferrum_core_bg.wasm.d.ts",
   "pkg/package.json",
 ];
+const publicEntrypoints = [
+  [".", "index"],
+  ["./core", "core"],
+  ["./authoring", "authoring"],
+  ["./starter-scenes", "starter-scenes"],
+  ["./labs", "labs"],
+  ["./quality", "quality"],
+];
 const requiredPackedFiles = [
   "package/package.json",
   "package/LICENSE",
   "package/README.md",
-  "package/dist/index.js",
-  "package/dist/index.d.ts",
+  ...publicEntrypoints.flatMap(([, distName]) => [
+    `package/dist/${distName}.js`,
+    `package/dist/${distName}.d.ts`,
+  ]),
   ...requiredWasmArtifacts.map((artifact) => `package/${artifact}`),
 ];
 const forbiddenPackedPrefixes = [
@@ -62,8 +72,9 @@ assert(packageJson.type === "module", "package type must be module");
 assert(packageJson.license === "MIT OR Apache-2.0", "package license must stay MIT OR Apache-2.0");
 assert(packageJson.main === "./dist/index.js", "main must point to ./dist/index.js");
 assert(packageJson.types === "./dist/index.d.ts", "types must point to ./dist/index.d.ts");
-assert(packageJson.exports?.["."]?.import === "./dist/index.js", "exports['.'].import must point to ./dist/index.js");
-assert(packageJson.exports?.["."]?.types === "./dist/index.d.ts", "exports['.'].types must point to ./dist/index.d.ts");
+for (const [exportPath, distName] of publicEntrypoints) {
+  assertPackageExport(exportPath, distName);
+}
 assert(packageJson.publishConfig?.access === "public", "publishConfig.access must be public for scoped beta releases");
 assert(packageJson.publishConfig?.tag === "beta", "publishConfig.tag must be beta so prereleases do not land on latest");
 assert(Array.isArray(packageJson.files), "package files must be an array");
@@ -76,12 +87,15 @@ for (const artifact of requiredWasmArtifacts) {
 
 await requireFile("README.md");
 await requireFile("LICENSE");
-await requireFile("src/index.ts");
-await requireFile("dist/index.js");
-await requireFile("dist/index.d.ts");
+for (const [, distName] of publicEntrypoints) {
+  await requireFile(`src/${distName}.ts`);
+  await requireFile(`dist/${distName}.js`);
+  await requireFile(`dist/${distName}.d.ts`);
+}
 await requireFile("dist/collisionEventDecoder.js");
 await requireFile("dist/collisionEventDecoder.d.ts");
 await checkDistModuleSpecifiers();
+await checkSubpathDeclarationTypeSurfaces();
 await checkWasmPkgArtifacts();
 if (verifyPack) {
   await checkPackedTarball();
@@ -90,6 +104,17 @@ if (verifyPack) {
 console.log("packages/ferrum-web package file check ok");
 if (warnings.length > 0) {
   console.log(JSON.stringify({ warnings }, null, 2));
+}
+
+function assertPackageExport(exportPath, distName) {
+  assert(
+    packageJson.exports?.[exportPath]?.import === `./dist/${distName}.js`,
+    `exports['${exportPath}'].import must point to ./dist/${distName}.js`,
+  );
+  assert(
+    packageJson.exports?.[exportPath]?.types === `./dist/${distName}.d.ts`,
+    `exports['${exportPath}'].types must point to ./dist/${distName}.d.ts`,
+  );
 }
 
 async function requireFile(relativePath) {
@@ -156,6 +181,21 @@ async function checkDistModuleSpecifiers() {
         );
       }
     }
+  }
+}
+
+async function checkSubpathDeclarationTypeSurfaces() {
+  for (const [exportPath, distName] of publicEntrypoints) {
+    if (exportPath === ".") continue;
+    const source = await readFile(path.join(packageRoot, "dist", `${distName}.d.ts`), "utf8");
+    assert(
+      !source.includes("export type *"),
+      `[package check] ${exportPath} declaration must use explicit type exports instead of export type *`,
+    );
+    assert(
+      !source.includes("export *"),
+      `[package check] ${exportPath} declaration must use explicit exports instead of export *`,
+    );
   }
 }
 

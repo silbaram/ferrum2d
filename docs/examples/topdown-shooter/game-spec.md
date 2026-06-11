@@ -457,7 +457,7 @@ TypeScript는 shape별 치수를 positive finite number로, `offset`, `rotationR
 Product Beta Asset pipeline v2의 첫 범위는 Aseprite JSON export를 `atlas.frames`로 변환하는 TypeScript authoring helper다. `importAsepriteAtlasFrames(...)`는 hash/array 형식의 Aseprite `frames`, `meta.size`, 각 frame rect를 읽어 normalized UV와 frame size를 만든다.
 
 ```ts
-import { importAsepriteAtlasFrames, type ShooterGameSpec } from "@ferrum2d/ferrum-web";
+import { importAsepriteAtlasFrames, type ShooterGameSpec } from "@ferrum2d/ferrum-web/starter-scenes";
 
 const loaded = await engine.loadAssets({
   textures: { sprites: "/assets/sprites.png" },
@@ -525,7 +525,7 @@ const spec: ShooterGameSpec = {
 `importTiledGameSpec(...)`는 Tiled finite orthogonal JSON map을 Game Spec `atlas`/`tilemap` 조각으로 변환한다. embedded tileset image metadata를 frame UV로 바꾸고, tile layer `data`의 global tile id를 그대로 Game Spec tile id로 사용한다. Map JSON의 `tilesets.*.source`가 external tileset을 가리키면 앱이 미리 로드한 tileset JSON/XML 변환 결과를 `externalTilesets[source]`로 전달한다.
 
 ```ts
-import { importTiledGameSpec } from "@ferrum2d/ferrum-web";
+import { importTiledGameSpec } from "@ferrum2d/ferrum-web/starter-scenes";
 
 const tiled = importTiledGameSpec(loaded.json.map, {
   collisionLayerNames: ["walls"],
@@ -568,7 +568,7 @@ const spec: ShooterGameSpec = {
 `importLDtkGameSpec(...)`는 LDtk project JSON의 embedded level 또는 `externalLevels` 옵션으로 전달한 external `.ldtkl` level을 Game Spec `atlas`/`tilemap` 조각으로 변환한다. LDtk tileset definition의 pixel metadata와 padding/spacing을 frame UV로 바꾸고, `Tiles`/`AutoLayer` layer의 tile instances를 row-major tile layer data로 변환한다. `importLDtkTilemap(...)` 결과에는 `Entities` layer의 entity 위치와 field metadata도 `entities` 배열로 포함된다.
 
 ```ts
-import { importLDtkGameSpec } from "@ferrum2d/ferrum-web";
+import { importLDtkGameSpec } from "@ferrum2d/ferrum-web/starter-scenes";
 
 const ldtk = importLDtkGameSpec(loaded.json.world, {
   levelIdentifier: "Level_0",
