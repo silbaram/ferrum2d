@@ -27,9 +27,22 @@ Ferrum2D는 **AI agent가 안전하게 게임을 만들고, 사람이 검증 가
 
 위 이미지는 Top-down Shooter 화면 구성을 보여주는 릴리스 preview다. 실제 브라우저 캡처를 갱신할 때는 [docs/development/quality/screenshots/README.md](docs/development/quality/screenshots/README.md)를 따른다.
 
+## 지원 수준
+
+Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoint에 import 가능한 이름이 있더라도 모든 기능이 같은 성숙도의 제품 계약은 아니다.
+
+| 지원 수준 | 의미 | 대표 항목 |
+| --- | --- | --- |
+| Core runtime | 1.0 제품 계약 후보. 게임 실행과 public API의 중심이다. | `createFerrumRuntime(...)`, `createEngine(...)`, WebGL2 renderer, input/audio/asset loading, Physics Spec/API, snapshot/replay |
+| Authoring primitive | 장르와 템플릿이 조합해 쓰는 데이터 기반 primitive다. | Scene Composition, Behavior Recipe, projectile/weapon authoring, FSM install/replay, presentation effect registry |
+| Starter scene/template | 생성 프로젝트와 smoke에서 검증하는 시작점이다. 장르 전체를 자동 제작하는 범용 엔진 모드는 아니다. | `minimal`, `topdown`, `platformer`, `breakout`, built-in Shooter/Breakout/Platformer scene hook |
+| Optional/lab | 지원 환경이나 명시 opt-in에서 쓰는 확장 기능이다. 기능별 제약은 Public API와 smoke 문서를 따른다. | WebGPU renderer, WebGPU fade pass, HD-2D helper, PixelMaskTerrain, level streaming helper |
+| Compatibility/helper | 이전 API 또는 agent/tooling 보조 경로다. 새 제품 기능의 기준으로 삼지 않는다. | Worker clock shim, spatial audio fallback, deterministic texture atlas JSON helper |
+| Quality infrastructure | 제품 품질을 지키는 검증 인프라다. 사용자-facing 게임 기능과 분리해서 본다. | smoke, runtime budget, package QA, Pages build, report validator |
+
 ## 구현된 기능
 
-처음 Ferrum2D를 보는 개발자는 [개발자 퀵스타트](docs/engine/developer-quickstart.md)를 먼저 읽는다. 세부 API 계약은 [Public API](docs/engine/public-api.md), 물리 범위는 [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md), Shooter authoring 계약은 [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)을 기준으로 한다.
+처음 Ferrum2D를 보는 개발자는 [개발자 퀵스타트](docs/engine/developer-quickstart.md)를 먼저 읽는다. 세부 API 계약과 지원 수준은 [Public API](docs/engine/public-api.md), 물리 범위는 [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md), Shooter authoring 계약은 [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)을 기준으로 한다.
 
 ### Runtime / Wasm
 
@@ -51,7 +64,7 @@ Ferrum2D는 **AI agent가 안전하게 게임을 만들고, 사람이 검증 가
 | 기능 | 짧은 설명 |
 | --- | --- |
 | WebGL2 renderer | 기본 2D sprite renderer다. |
-| WebGPU renderer | 지원 환경에서 선택 사용하고 실패하면 WebGL2로 fallback한다. |
+| WebGPU renderer | 지원 환경에서 선택 사용하고 실패하면 WebGL2로 fallback한다. WebGL2가 기준 renderer다. |
 | Render command buffer | Rust가 sprite draw command를 만들고 TS가 GPU로 그린다. |
 | Viewport render culling | 화면 밖 tile, sprite, particle command 생성을 줄인다. |
 | Camera preset | follow, dead-zone, look-ahead, shake 카메라를 Game Spec으로 설정한다. |
@@ -66,7 +79,7 @@ Ferrum2D는 **AI agent가 안전하게 게임을 만들고, 사람이 검증 가
 | Lighting pass | ambient, point light, tile occluder shadow를 platform renderer에서 처리한다. |
 | HD-2D lighting occluder helper | tile `blocksVision`과 `occluderHeight`를 lighting shadow occluder로 바꾼다. |
 | Post-processing | WebGL2 fade/bloom/CRT/vignette/glitch fullscreen pass를 지원한다. |
-| WebGPU fade pass | WebGPU 경로에서 fade post-process를 지원한다. |
+| WebGPU fade pass | WebGPU 경로에서는 fade post-process만 지원한다. |
 | Screen fade transition | `ScreenFadeTransition`으로 시간 기반 fade-in/out state와 post-process pass를 만든다. |
 | PixelMaskTerrain texture upload | 파괴 가능한 alpha mask texture와 dirty patch upload를 지원한다. |
 | Screenshot summary | smoke test용 canvas pixel summary와 baseline 비교를 만든다. |
@@ -80,9 +93,9 @@ Ferrum2D는 **AI agent가 안전하게 게임을 만들고, 사람이 검증 가
 | Virtual controls | 모바일용 joystick/button DOM control을 제공한다. |
 | AssetLoader | texture, sound, JSON asset을 로드한다. |
 | Asset preload plan | loading screen용 manifest, progress, cache version을 만든다. |
-| IndexedDB asset cache | opt-in JSON/binary body cache로 반복 fetch를 줄인다. |
+| IndexedDB asset cache | opt-in preload cache implementation을 주입했을 때 JSON/binary body cache로 반복 fetch를 줄인다. |
 | LoadingOverlay | asset load progress를 DOM UI로 표시한다. |
-| Texture atlas packer | PNG sprite를 atlas 이미지와 `game.json` frame metadata로 묶는다. |
+| Texture atlas packer | sprite 크기/source metadata를 deterministic atlas JSON과 `game.json` frame metadata로 묶는 authoring helper다. 실제 PNG 합성은 외부 도구가 담당한다. |
 | Atlas metadata helper | sprite name/size/source 목록을 deterministic atlas JSON으로 변환한다. |
 | Aseprite importer | Aseprite JSON frame metadata를 Game Spec atlas frame으로 바꾼다. |
 | Tiled importer | Tiled orthogonal map을 atlas/tilemap 설정으로 바꾼다. |
@@ -98,12 +111,12 @@ Ferrum2D는 **AI agent가 안전하게 게임을 만들고, 사람이 검증 가
 
 | 기능 | 짧은 설명 |
 | --- | --- |
-| Shooter Game Spec | Top-down Shooter를 JSON으로 설정한다. |
+| Shooter Game Spec | Top-down Shooter starter scene을 JSON으로 설정한다. |
 | Physics Spec | rigid body, collider, joint, material, layer를 JSON으로 정의한다. |
 | Physics HD-2D authoring | `physics.hd2d`, body floor/elevation/height, tile HD-2D metadata를 검증하고 runtime에 적용한다. |
 | Physics authoring compiler | tooling metadata를 제거하고 runtime Physics Spec만 추출한다. |
 | Scene composition | prefab, variant, reusable fragment를 flat instance로 만든다. |
-| Behavior recipe | health, damage, pickup, chase 같은 흔한 행동을 command로 변환한다. |
+| Behavior recipe | health, damage, pickup, chase 같은 흔한 행동을 command로 변환한다. 기본 Rust adapter의 실행 범위는 현재 Shooter/component capability를 따른다. |
 | Animation timeline | sprite frame, event, state transition을 데이터로 재생한다. |
 | Cutscene sequence | wait/camera/audio/dialogue command timeline을 실행한다. |
 | HUD toolkit | meter, counter, prompt, message를 `UiOverlayState`로 만든다. |
@@ -161,16 +174,16 @@ Ferrum2D는 **AI agent가 안전하게 게임을 만들고, 사람이 검증 가
 | Tile navigation | collision layer 기반 A* waypoint/path query와 HD-2D multi-floor path를 제공한다. |
 | Boundary chain export | tilemap collision layer를 Physics Spec chain body로 바꾼다. |
 | Starter Runtime | 가장 작은 `createFerrumRuntime(...)` 사용 예제다. |
-| Top-down Shooter | Game Spec, combat, enemy wave, audio/VFX, tilemap을 검증하는 예제다. |
-| Breakout | rigid/contact와 간단한 장르 scene 전환을 검증하는 예제다. |
-| Platformer | platformer controller, slope, jump, ground state를 검증하는 예제다. |
+| Top-down Shooter | Game Spec, combat, enemy wave, audio/VFX, tilemap을 검증하는 starter scene이다. |
+| Breakout | built-in Breakout scene hook과 arcade starter 흐름을 검증하는 template이다. |
+| Platformer | built-in platformer scene hook, controller, slope, jump, ground state를 검증하는 template이다. |
 | Physics Sandbox | Physics Spec authoring/debug 흐름을 검증하는 예제다. |
 | `@ferrum2d/ferrum-web` | 브라우저 게임 runtime npm package다. |
 | `@ferrum2d/create-game` | 새 Ferrum2D 게임 프로젝트 생성 CLI다. |
 | `@ferrum2d/agents` | consumer game 개발용 agent/skill/command 설치 CLI다. |
-| Package QA scripts | tarball, exports, Wasm artifact, consumer import를 검증한다. |
-| Pages build scripts | demo/docs GitHub Pages artifact를 생성한다. |
-| Smoke checks | headless/browser/spec/package/release 검증 스크립트를 제공한다. |
+| Package QA scripts | tarball, exports, Wasm artifact, consumer import를 검증하는 품질 인프라다. |
+| Pages build scripts | demo/docs GitHub Pages artifact를 생성하는 배포 인프라다. |
+| Smoke checks | headless/browser/spec/package/release 회귀를 검증하는 품질 인프라다. |
 
 ## 현재 제품 범위에서 하지 않는 것
 
