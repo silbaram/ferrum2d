@@ -87,6 +87,7 @@ const runtimeUnloads = [];
 const runtimeTargetLoads = [];
 const runtimeTargetUnloads = [];
 const runtimeColliderRebuilds = [];
+const runtimeReleasedAssets = [];
 const evictedTextureIds = [];
 const renderer = {
   evictTexture(textureId) {
@@ -117,8 +118,14 @@ const runtime = createRuntimeLevelStreaming({
       if (!context.result.unloadChunkIds.includes(chunk.id)) {
         throw new Error(`target unload should receive an unloaded chunk: ${chunk.id}`);
       }
-      for (const name of Object.keys(chunk.assets.textures ?? {})) {
-        const textureId = textureIdsByName.get(name);
+    },
+    releaseAssets: (assets, context) => {
+      runtimeReleasedAssets.push(assets.entries.map((entry) => `${entry.kind}:${entry.name}`));
+      if (context.result.releasedAssets !== assets) {
+        throw new Error("target releaseAssets should receive the update result release payload.");
+      }
+      for (const entry of assets.textures) {
+        const textureId = textureIdsByName.get(entry.name);
         if (textureId !== undefined) {
           renderer.evictTexture(textureId);
         }
@@ -165,6 +172,7 @@ if (
 if (
   runtimeTargetLoads.join(",") !== "0,0,1,1" ||
   runtimeTargetUnloads.join(",") !== "0,0" ||
+  runtimeReleasedAssets[0]?.join(",") !== "texture:terrain,json:0,0:tilemap" ||
   evictedTextureIds.join(",") !== "7" ||
   !runtimeColliderRebuilds.some((entry) => entry.unload.join(",") === "0,0") ||
   !runtimeColliderRebuilds.some((entry) => entry.load.join(",") === "1,1")
@@ -172,6 +180,7 @@ if (
   throw new Error(`runtime level streaming target mismatch: ${JSON.stringify({
     runtimeTargetLoads,
     runtimeTargetUnloads,
+    runtimeReleasedAssets,
     evictedTextureIds,
     runtimeColliderRebuilds,
   })}`);
@@ -200,6 +209,7 @@ console.log(JSON.stringify({
     runtimeUnloads,
     runtimeTargetLoads,
     runtimeTargetUnloads,
+    runtimeReleasedAssets,
     evictedTextureIds,
     runtimeColliderRebuilds,
     runtimeSnapshot: runtime.snapshot(),

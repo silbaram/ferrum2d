@@ -29,6 +29,22 @@ export interface FerrumRuntimeLevelStreamingPreloadOptions extends PreloadAssetM
   cachePolicy?: AssetPreloadCachePolicy;
 }
 
+export type FerrumRuntimeLevelStreamingReleasedAssetKind = "texture" | "sound" | "json";
+
+export interface FerrumRuntimeLevelStreamingReleasedAsset {
+  kind: FerrumRuntimeLevelStreamingReleasedAssetKind;
+  name: string;
+  url: string;
+}
+
+export interface FerrumRuntimeLevelStreamingReleasedAssets {
+  entries: readonly FerrumRuntimeLevelStreamingReleasedAsset[];
+  textures: readonly FerrumRuntimeLevelStreamingReleasedAsset[];
+  sounds: readonly FerrumRuntimeLevelStreamingReleasedAsset[];
+  json: readonly FerrumRuntimeLevelStreamingReleasedAsset[];
+  total: number;
+}
+
 export interface FerrumRuntimeLevelStreamingUpdateResult {
   plan: LevelStreamingPlan;
   snapshot: LevelChunkStreamerSnapshot;
@@ -36,6 +52,7 @@ export interface FerrumRuntimeLevelStreamingUpdateResult {
   unloadChunkIds: readonly string[];
   pendingChunkIds: readonly string[];
   preloaded?: PreloadedAssetManifest;
+  releasedAssets?: FerrumRuntimeLevelStreamingReleasedAssets;
 }
 
 export interface FerrumRuntimeLevelStreamingChunkContext {
@@ -51,6 +68,10 @@ export interface FerrumRuntimeLevelStreamingTarget {
   ) => void;
   unloadChunk?: (
     chunk: ResolvedLevelChunk,
+    context: FerrumRuntimeLevelStreamingChunkContext,
+  ) => void;
+  releaseAssets?: (
+    assets: FerrumRuntimeLevelStreamingReleasedAssets,
     context: FerrumRuntimeLevelStreamingChunkContext,
   ) => void;
   rebuildColliders?: (
@@ -172,12 +193,23 @@ export function createRuntimeLevelStreaming(
       }
       lastPlan = plan;
       const unloaded = applyUnloads(streamer, plan.unloadChunkIds);
+      const unloadedChunks = chunksForIds(plan.unloadChunks, unloaded);
+      const releasedAssets = releaseAssetsForUnloadedChunks(unloadedChunks, plan);
       if (unloaded.length > 0) {
         dirty = true;
+        const unloadResult = updateResult(
+          plan,
+          streamer.snapshot(),
+          pendingChunkIds,
+          [],
+          unloaded,
+          undefined,
+          releasedAssets,
+        );
         applyTargetUnloads(
           normalized.target,
-          plan.unloadChunks,
-          updateResult(plan, streamer.snapshot(), pendingChunkIds, [], unloaded),
+          unloadedChunks,
+          unloadResult,
           frame,
           levelStreaming,
         );
@@ -196,7 +228,15 @@ export function createRuntimeLevelStreaming(
           dirty = true;
         },
       );
-      const result = updateResult(plan, streamer.snapshot(), pendingChunkIds, startedLoadChunkIds, unloaded);
+      const result = updateResult(
+        plan,
+        streamer.snapshot(),
+        pendingChunkIds,
+        startedLoadChunkIds,
+        unloaded,
+        undefined,
+        releasedAssets,
+      );
       normalized.onPlan?.(result, frame, levelStreaming);
       if (unloaded.length > 0) {
         normalized.onUnload?.(result, frame, levelStreaming);
@@ -462,6 +502,9 @@ function applyTargetUnloads(
   for (const chunk of chunks) {
     target.unloadChunk?.(chunk, context);
   }
+  if (result.releasedAssets !== undefined) {
+    target.releaseAssets?.(result.releasedAssets, context);
+  }
   target.rebuildColliders?.(context);
 }
 
@@ -492,6 +535,7 @@ function updateResult(
   loadChunkIds: readonly string[],
   unloadChunkIds: readonly string[],
   preloaded?: PreloadedAssetManifest,
+  releasedAssets?: FerrumRuntimeLevelStreamingReleasedAssets,
 ): FerrumRuntimeLevelStreamingUpdateResult {
   return {
     plan,
@@ -500,7 +544,107 @@ function updateResult(
     unloadChunkIds: [...unloadChunkIds].sort(),
     pendingChunkIds: [...pendingChunkIds].sort(),
     ...(preloaded === undefined ? {} : { preloaded }),
+    ...(releasedAssets === undefined ? {} : { releasedAssets }),
   };
+}
+
+function releaseAssetsForUnloadedChunks(
+  unloadedChunks: readonly ResolvedLevelChunk[],
+  plan: LevelStreamingPlan,
+): FerrumRuntimeLevelStreamingReleasedAssets | undefined {
+  if (unloadedChunks.length === 0) {
+    return undefined;
+  }
+
+  const retainedAssetKeys = assetKeysForChunks([
+    ...plan.preloadChunks,
+    ...plan.retainChunks,
+  ]);
+  const releaseEntriesByKey = new Map<string, FerrumRuntimeLevelStreamingReleasedAsset>();
+  for (const entry of assetEntriesForChunks(unloadedChunks)) {
+    const key = assetEntryKey(entry);
+    if (!retainedAssetKeys.has(key) && !releaseEntriesByKey.has(key)) {
+      releaseEntriesByKey.set(key, entry);
+    }
+  }
+  const releaseEntries = [...releaseEntriesByKey.values()].sort(compareReleasedAssets);
+
+  if (releaseEntries.length === 0) {
+    return undefined;
+  }
+
+  return {
+    entries: releaseEntries,
+    textures: releaseEntries.filter((entry) => entry.kind === "texture"),
+    sounds: releaseEntries.filter((entry) => entry.kind === "sound"),
+    json: releaseEntries.filter((entry) => entry.kind === "json"),
+    total: releaseEntries.length,
+  };
+}
+
+function assetKeysForChunks(chunks: readonly ResolvedLevelChunk[]): Set<string> {
+  const keys = new Set<string>();
+  for (const entry of assetEntriesForChunks(chunks)) {
+    keys.add(assetEntryKey(entry));
+  }
+  return keys;
+}
+
+function assetEntriesForChunks(
+  chunks: readonly ResolvedLevelChunk[],
+): FerrumRuntimeLevelStreamingReleasedAsset[] {
+  const entries: FerrumRuntimeLevelStreamingReleasedAsset[] = [];
+  for (const chunk of chunks) {
+    if (chunk.tilemap?.url !== undefined) {
+      entries.push({
+        kind: "json",
+        name: `${chunk.id}:tilemap`,
+        url: chunk.tilemap.url,
+      });
+    }
+    appendAssetReleaseEntries(entries, "texture", chunk.assets.textures);
+    appendAssetReleaseEntries(entries, "sound", chunk.assets.sounds);
+    appendAssetReleaseEntries(entries, "json", chunk.assets.json);
+  }
+  return entries;
+}
+
+function appendAssetReleaseEntries(
+  entries: FerrumRuntimeLevelStreamingReleasedAsset[],
+  kind: FerrumRuntimeLevelStreamingReleasedAssetKind,
+  assets: Record<string, string> | undefined,
+): void {
+  if (assets === undefined) {
+    return;
+  }
+  for (const [name, url] of Object.entries(assets)) {
+    entries.push({ kind, name, url });
+  }
+}
+
+function assetEntryKey(entry: FerrumRuntimeLevelStreamingReleasedAsset): string {
+  return `${entry.kind}\0${entry.name}\0${entry.url}`;
+}
+
+function compareReleasedAssets(
+  a: FerrumRuntimeLevelStreamingReleasedAsset,
+  b: FerrumRuntimeLevelStreamingReleasedAsset,
+): number {
+  const kindDelta = releaseKindOrder(a.kind) - releaseKindOrder(b.kind);
+  if (kindDelta !== 0) {
+    return kindDelta;
+  }
+  const nameDelta = a.name.localeCompare(b.name);
+  if (nameDelta !== 0) {
+    return nameDelta;
+  }
+  return a.url.localeCompare(b.url);
+}
+
+function releaseKindOrder(kind: FerrumRuntimeLevelStreamingReleasedAssetKind): number {
+  if (kind === "texture") return 0;
+  if (kind === "sound") return 1;
+  return 2;
 }
 
 function filterPreloadedForChunks(

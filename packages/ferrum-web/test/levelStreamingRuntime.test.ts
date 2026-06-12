@@ -82,6 +82,82 @@ test("createRuntimeLevelStreaming preloads chunk assets and tracks unload candid
   equal(progress.some((entry) => entry.total > 0), true);
 });
 
+test("createRuntimeLevelStreaming reports unreferenced unloaded assets for target eviction", () => {
+  const releasedEntries: string[][] = [];
+  const releasedTextures: string[][] = [];
+  const releasedSounds: string[][] = [];
+  const releasedJson: string[][] = [];
+  let viewportX = 0;
+  const levelStreaming = createRuntimeLevelStreaming({
+    manifest: {
+      id: "runtime-map",
+      tileWidth: 16,
+      tileHeight: 16,
+      chunkColumns: 4,
+      chunkRows: 4,
+      chunks: [
+        {
+          id: "0,0",
+          chunkX: 0,
+          chunkY: 0,
+          tilemap: { url: "/chunks/0-0.json" },
+          assets: {
+            textures: { terrain: "/shared-terrain.png", local: "/local.png" },
+            sounds: { wind: "/wind.ogg" },
+            json: { spawn: "/spawn-0-0.json" },
+          },
+        },
+        {
+          id: "1,0",
+          chunkX: 1,
+          chunkY: 0,
+          tilemap: { url: "/chunks/1-0.json" },
+          assets: {
+            textures: { terrain: "/shared-terrain.png" },
+            json: { spawn: "/spawn-1-0.json" },
+          },
+        },
+      ],
+    },
+    assetLifetime: { preloadMarginChunks: 0, retainMarginChunks: 0 },
+    viewport: () => ({ x: viewportX, y: 0, width: 32, height: 32 }),
+    preload: false,
+    target: {
+      releaseAssets: (assets, context) => {
+        equal(context.result.releasedAssets, assets);
+        releasedEntries.push(assets.entries.map((entry) => `${entry.kind}:${entry.name}:${entry.url}`));
+        releasedTextures.push(assets.textures.map((entry) => `${entry.name}:${entry.url}`));
+        releasedSounds.push(assets.sounds.map((entry) => `${entry.name}:${entry.url}`));
+        releasedJson.push(assets.json.map((entry) => `${entry.name}:${entry.url}`));
+      },
+    },
+  }, () => ({ width: 32, height: 32 }));
+
+  const first = levelStreaming.update(runtimeFrame());
+  deepEqual(first?.loadChunkIds, ["0,0"]);
+  equal(first?.releasedAssets, undefined);
+
+  viewportX = 80;
+  const second = levelStreaming.update(runtimeFrame());
+
+  deepEqual(second?.loadChunkIds, ["1,0"]);
+  deepEqual(second?.unloadChunkIds, ["0,0"]);
+  deepEqual(releasedEntries, [[
+    "texture:local:/local.png",
+    "sound:wind:/wind.ogg",
+    "json:0,0:tilemap:/chunks/0-0.json",
+    "json:spawn:/spawn-0-0.json",
+  ]]);
+  deepEqual(releasedTextures, [["local:/local.png"]]);
+  deepEqual(releasedSounds, [["wind:/wind.ogg"]]);
+  deepEqual(releasedJson, [[
+    "0,0:tilemap:/chunks/0-0.json",
+    "spawn:/spawn-0-0.json",
+  ]]);
+  deepEqual(second?.releasedAssets?.textures.map((entry) => entry.name), ["local"]);
+  equal(second?.releasedAssets?.entries.some((entry) => entry.name === "terrain"), false);
+});
+
 test("createRuntimeLevelStreaming skips stale pending preload completion after viewport changes", async () => {
   const loaded: string[][] = [];
   const targetLoads: string[] = [];

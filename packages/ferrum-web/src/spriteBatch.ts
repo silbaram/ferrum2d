@@ -28,13 +28,27 @@ export interface SpriteBatchStats {
 const FLOATS_PER_COMMAND = SPRITE_RENDER_COMMAND_FLOATS;
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
 const COMMAND_STRIDE_BYTES = FLOATS_PER_COMMAND * BYTES_PER_F32;
+const QUAD_CORNER_STRIDE_BYTES = 2 * BYTES_PER_F32;
+const QUAD_VERTEX_DATA = new Float32Array([
+  0, 0,
+  1, 0,
+  0, 1,
+  1, 1,
+]);
+const QUAD_INDEX_DATA = new Uint16Array([
+  0, 1, 2,
+  2, 1, 3,
+]);
+const QUAD_INDEX_COUNT = QUAD_INDEX_DATA.length;
 const DEFAULT_SPRITE_MATERIAL_PASSES = spriteMaterialPasses(DEFAULT_SPRITE_MATERIAL_PRESET);
 const ZERO_SCREEN_OFFSET: readonly [number, number] = [0, 0];
 
 export class SpriteBatch {
   private readonly program: WebGLProgram;
   private readonly vao: WebGLVertexArrayObject;
-  private readonly vbo: WebGLBuffer;
+  private readonly quadVbo: WebGLBuffer;
+  private readonly instanceVbo: WebGLBuffer;
+  private readonly indexBuffer: WebGLBuffer;
   private readonly resolutionLocation: WebGLUniformLocation;
   private readonly screenOffsetLocation: WebGLUniformLocation;
   private readonly textureLocation: WebGLUniformLocation;
@@ -48,22 +62,34 @@ export class SpriteBatch {
   constructor(private readonly gl: WebGL2RenderingContext) {
     this.program = this.createProgram();
     const vao = this.gl.createVertexArray();
-    const vbo = this.gl.createBuffer();
-    if (!vao || !vbo) throw new Error("SpriteBatch 버퍼 생성 실패");
+    const quadVbo = this.gl.createBuffer();
+    const instanceVbo = this.gl.createBuffer();
+    const indexBuffer = this.gl.createBuffer();
+    if (!vao || !quadVbo || !instanceVbo || !indexBuffer) throw new Error("SpriteBatch 버퍼 생성 실패");
     this.vao = vao;
-    this.vbo = vbo;
+    this.quadVbo = quadVbo;
+    this.instanceVbo = instanceVbo;
+    this.indexBuffer = indexBuffer;
 
     this.gl.bindVertexArray(this.vao);
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vbo);
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.quadVbo);
+    this.gl.bufferData(this.gl.ARRAY_BUFFER, QUAD_VERTEX_DATA, this.gl.STATIC_DRAW);
     this.gl.enableVertexAttribArray(0);
-    this.gl.vertexAttribPointer(0, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 0);
-    this.gl.vertexAttribDivisor(0, 1);
+    this.gl.vertexAttribPointer(0, 2, this.gl.FLOAT, false, QUAD_CORNER_STRIDE_BYTES, 0);
+
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceVbo);
     this.gl.enableVertexAttribArray(1);
-    this.gl.vertexAttribPointer(1, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 4 * BYTES_PER_F32);
+    this.gl.vertexAttribPointer(1, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 0);
     this.gl.vertexAttribDivisor(1, 1);
     this.gl.enableVertexAttribArray(2);
-    this.gl.vertexAttribPointer(2, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 8 * BYTES_PER_F32);
+    this.gl.vertexAttribPointer(2, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 4 * BYTES_PER_F32);
     this.gl.vertexAttribDivisor(2, 1);
+    this.gl.enableVertexAttribArray(3);
+    this.gl.vertexAttribPointer(3, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 8 * BYTES_PER_F32);
+    this.gl.vertexAttribDivisor(3, 1);
+
+    this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+    this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, QUAD_INDEX_DATA, this.gl.STATIC_DRAW);
     this.gl.bindVertexArray(null);
 
     this.gl.enable(this.gl.BLEND);
@@ -174,14 +200,14 @@ export class SpriteBatch {
     }
 
     this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
-    this.gl.drawArraysInstanced(this.gl.TRIANGLES, 0, 6, commandCount);
+    this.gl.drawElementsInstanced(this.gl.TRIANGLES, QUAD_INDEX_COUNT, this.gl.UNSIGNED_SHORT, 0, commandCount);
     return 1;
   }
 
   private bindForDraw(resolution: [number, number], screenOffset: readonly [number, number]): void {
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vbo);
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceVbo);
     this.gl.uniform2f(this.resolutionLocation, resolution[0], resolution[1]);
     this.gl.uniform2f(this.screenOffsetLocation, screenOffset[0], screenOffset[1]);
     this.gl.activeTexture(this.gl.TEXTURE0);
@@ -258,7 +284,9 @@ export class SpriteBatch {
       return;
     }
     this.destroyed = true;
-    this.gl.deleteBuffer(this.vbo);
+    this.gl.deleteBuffer(this.quadVbo);
+    this.gl.deleteBuffer(this.instanceVbo);
+    this.gl.deleteBuffer(this.indexBuffer);
     this.gl.deleteVertexArray(this.vao);
     this.gl.deleteProgram(this.program);
     this.instanceCapacityFloats = 0;
@@ -273,10 +301,9 @@ export class SpriteBatch {
 
   private createProgram(): WebGLProgram { /* unchanged */
     const vert = this.compile(this.gl.VERTEX_SHADER, `#version 300 es
-      layout(location=0) in vec4 a_rect;layout(location=1) in vec4 a_uv_rect;layout(location=2) in vec4 a_color;
+      layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;
       uniform vec2 u_resolution;uniform vec2 u_screen_offset;out vec2 v_uv;out vec4 v_color;
-      vec2 cornerForVertex(int v){if(v==0)return vec2(0.0,0.0);if(v==1)return vec2(1.0,0.0);if(v==2)return vec2(0.0,1.0);if(v==3)return vec2(0.0,1.0);if(v==4)return vec2(1.0,0.0);return vec2(1.0,1.0);}
-      void main(){vec2 corner=cornerForVertex(gl_VertexID%6);vec2 position=a_rect.xy+u_screen_offset+(corner*a_rect.zw);vec2 z=position/u_resolution;vec2 c=(z*2.0)-1.0;gl_Position=vec4(c*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_color=a_color;}`);
+      void main(){vec2 corner=a_corner;vec2 position=a_rect.xy+u_screen_offset+(corner*a_rect.zw);vec2 z=position/u_resolution;vec2 c=(z*2.0)-1.0;gl_Position=vec4(c*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_color=a_color;}`);
     const frag = this.compile(this.gl.FRAGMENT_SHADER, `#version 300 es
       precision mediump float;in vec2 v_uv;in vec4 v_color;uniform sampler2D u_texture;out vec4 outColor;
       void main(){outColor=texture(u_texture,v_uv)*v_color;}`);

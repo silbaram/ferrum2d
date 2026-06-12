@@ -81,6 +81,9 @@ import type {
   FerrumRuntimeLevelStreamingChunkContext,
   FerrumRuntimeLevelStreamingOptions,
   FerrumRuntimeLevelStreamingPreloadOptions,
+  FerrumRuntimeLevelStreamingReleasedAsset,
+  FerrumRuntimeLevelStreamingReleasedAssetKind,
+  FerrumRuntimeLevelStreamingReleasedAssets,
   FerrumRuntimeLevelStreamingTarget,
   FerrumRuntimeLevelStreamingUpdateResult,
   FerrumRuntimeLevelStreamingViewportProvider,
@@ -666,12 +669,28 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   const levelStreamingTilemapBoundaryOptions: LevelStreamingTilemapChunkBoundaryOptions = {
     physicsLayer: "world",
   };
+  const runtimeReleasedAssetKind: FerrumRuntimeLevelStreamingReleasedAssetKind = "texture";
+  const runtimeReleasedAsset: FerrumRuntimeLevelStreamingReleasedAsset = {
+    kind: runtimeReleasedAssetKind,
+    name: "terrain",
+    url: "/terrain.png",
+  };
+  const runtimeReleasedAssets: FerrumRuntimeLevelStreamingReleasedAssets = {
+    entries: [runtimeReleasedAsset],
+    textures: [runtimeReleasedAsset],
+    sounds: [],
+    json: [],
+    total: 1,
+  };
   const runtimeLevelStreamingTarget: FerrumRuntimeLevelStreamingTarget = {
     applyChunk: (chunk, context: FerrumRuntimeLevelStreamingChunkContext) => {
       equal(context.result.loadChunkIds.includes(chunk.id), true);
     },
     unloadChunk: (chunk, context) => {
       equal(context.result.unloadChunkIds.includes(chunk.id), true);
+    },
+    releaseAssets: (assets) => {
+      equal(assets.total, runtimeReleasedAssets.total);
     },
     rebuildColliders: (context) => {
       equal(context.levelStreaming.snapshot().manifestId, context.result.snapshot.manifestId);

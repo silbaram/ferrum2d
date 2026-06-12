@@ -200,7 +200,7 @@ raw sprite folder에서 texture atlas와 Game Spec atlas metadata를 만들고, 
 pnpm smoke:asset-pipeline
 ```
 
-Level Streaming/Chunking의 chunk manifest, viewport 기반 load/unload plan, asset lifetime policy, runtime preload/load/unload adapter, target apply/unload, renderer texture eviction 경로가 public package build에서 동작하는지 확인하려면 다음을 실행한다.
+Level Streaming/Chunking의 chunk manifest, viewport 기반 load/unload plan, asset lifetime policy, runtime preload/load/unload adapter, target apply/unload/releaseAssets, renderer texture eviction 경로가 public package build에서 동작하는지 확인하려면 다음을 실행한다.
 
 ```bash
 pnpm smoke:level-streaming
@@ -393,7 +393,7 @@ pnpm smoke:headless
 - `pnpm smoke:physics-scene`은 public package build에서 `applyPhysicsSceneProfile(...)`의 runtime profile, auto rigid-body step option, clear 동작을 확인한다.
 - `pnpm smoke:texture-atlas`는 public package build에서 atlas packer를 빌드하고, CLI가 입력 순서와 무관한 deterministic atlas JSON, frame UV, placement metadata를 생성하는지 확인한다.
 - `pnpm smoke:asset-pipeline`은 raw sprite folder를 `pack-textures` CLI로 atlas PNG/JSON/Game Spec frame에 병합하고, public `importAsepriteAtlas(...)`, `resolveShooterGameSpec(...)`, `LocalizationBundle`, `AudioAssetLoader`가 같은 consumer asset import 경로에서 함께 동작하는지 확인한다.
-- `pnpm smoke:level-streaming`은 public package build에서 chunk manifest bounds, viewport active/preload selection, load/unload candidate, chunk asset manifest 생성과 `createRuntimeLevelStreaming(...)`의 preload/load/unload snapshot 갱신을 확인한다.
+- `pnpm smoke:level-streaming`은 public package build에서 chunk manifest bounds, viewport active/preload selection, load/unload candidate, chunk asset manifest 생성, `createRuntimeLevelStreaming(...)`의 preload/load/unload snapshot 갱신, unload 후 `target.releaseAssets` payload와 renderer texture eviction 연결을 확인한다.
 - `pnpm smoke:debug-gizmos`는 public package build에서 path/spawn/prefab/collider debug category가 metadata가 있는 line view와 physics debug line buffer로 변환되는지 확인한다.
 - `pnpm smoke:accessibility-options`는 public package build에서 reduced motion camera/fade adapter, subtitle panel helper, high-contrast HUD theme hook, input assist metadata 정규화를 확인한다.
 - `pnpm smoke:screenshot-capture`는 Minimal Game browser smoke에서 PNG와 `*.summary.json` artifact를 생성하고 screenshot summary threshold helper가 동작하는지 확인한다.

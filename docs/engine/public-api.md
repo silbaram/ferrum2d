@@ -1084,20 +1084,20 @@ Asset pipeline helper는 metadata 변환을 담당한다. Runtime asset fetch/ca
 
 ### Level Streaming API
 
-Level streaming helper는 큰 tilemap을 chunk manifest로 나누고, viewport와 asset lifetime policy에 따라 active/preload/retain/load/unload chunk를 결정한다. `createFerrumRuntime({ levelStreaming })` opt-in은 frame-end에서 viewport plan을 계산하고, load 대상 chunk의 tilemap/asset manifest를 `preloadAssetManifest(...)`로 미리 fetch한 뒤 loaded/unloaded snapshot을 갱신한다. 실제 chunk JSON apply, renderer texture eviction, tilemap/픽셀마스크 collider rebuild는 `target.applyChunk`/`target.unloadChunk`/`target.rebuildColliders`가 담당한다.
+Level streaming helper는 큰 tilemap을 chunk manifest로 나누고, viewport와 asset lifetime policy에 따라 active/preload/retain/load/unload chunk를 결정한다. `createFerrumRuntime({ levelStreaming })` opt-in은 frame-end에서 viewport plan을 계산하고, load 대상 chunk의 tilemap/asset manifest를 `preloadAssetManifest(...)`로 미리 fetch한 뒤 loaded/unloaded snapshot을 갱신한다. 실제 chunk JSON apply, renderer texture eviction, tilemap/픽셀마스크 collider rebuild는 `target.applyChunk`/`target.unloadChunk`/`target.releaseAssets`/`target.rebuildColliders`가 담당한다.
 
 | 타입/API | 역할 |
 | --- | --- |
 | `resolveLevelChunkManifest(...)` | tile size, chunk tile size, chunk grid 좌표, tilemap URL, chunk별 asset manifest를 검증하고 world bounds를 계산한다. |
 | `resolveLevelStreamingPlan(...)` | viewport와 `LevelStreamingAssetLifetimePolicy`로 active/preload/retain/load/unload chunk id, `unloadChunks`, preload용 `AssetManifest`를 만든다. |
 | `LevelChunkStreamer` | loaded chunk id set을 추적하고 다음 viewport plan과 snapshot을 반환한다. |
-| `createRuntimeLevelStreaming(...)` | `LevelChunkStreamer`를 runtime frame-end adapter로 감싸고 preload/cache progress, load/unload callback, target callback, pending chunk snapshot을 제공한다. |
+| `createRuntimeLevelStreaming(...)` | `LevelChunkStreamer`를 runtime frame-end adapter로 감싸고 preload/cache progress, load/unload callback, target callback, pending chunk snapshot, unload 후 미참조 asset release payload를 제공한다. |
 | `createLevelStreamingPixelMaskTerrainPhysicsOptions(...)` | `PixelMaskTerrainRuntime` physics chunk 크기와 boundary tile size/origin을 level streaming manifest와 정렬한다. |
 | `tilemapLayerForLevelStreamingChunk(...)`, `extractLevelStreamingTilemapChunkBoundaryChains(...)` | full tilemap layer를 `ResolvedLevelChunk` 단위로 자르고 chunk-local boundary chain body를 만든다. |
 | `createFerrumRuntime({ levelStreaming })` | renderer viewport 또는 custom viewport provider로 level streaming plan을 갱신하고 runtime handle을 `runtime.levelStreaming`에 노출한다. |
 | `LevelChunkManifestSpec`, `LevelStreamingPlan` | AI/tooling이 생성하고 smoke로 검증할 chunk manifest/streaming plan 계약 |
 
-주의: level streaming runtime adapter는 Rust simulation state를 직접 바꾸지 않는다. Chunk 단위 Game Spec apply, texture eviction, pixel mask terrain sync, Physics Spec collider rebuild는 target callback에서 낮은 빈도 작업으로 수행해야 한다. `preload.cache`와 `preload.cachePolicy`에 `IndexedDbAssetCache`를 전달하면 기존 asset preload cache layer를 그대로 사용한다.
+주의: level streaming runtime adapter는 Rust simulation state를 직접 바꾸지 않는다. Chunk 단위 Game Spec apply, texture eviction, pixel mask terrain sync, Physics Spec collider rebuild는 target callback에서 낮은 빈도 작업으로 수행해야 한다. `FerrumRuntimeLevelStreamingUpdateResult.releasedAssets`와 `target.releaseAssets`는 unload된 chunk asset 중 현재 preload/retain window에서 같은 `(kind, name, url)`로 더 이상 참조하지 않는 entry를 `entries`와 kind별 배열로 제공한다. `preload.cache`와 `preload.cachePolicy`에 `IndexedDbAssetCache`를 전달하면 기존 asset preload cache layer를 그대로 사용한다.
 
 ### Audio System API
 
