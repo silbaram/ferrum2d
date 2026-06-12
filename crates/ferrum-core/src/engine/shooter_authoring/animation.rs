@@ -56,6 +56,44 @@ impl Engine {
         );
     }
 
+    pub fn set_shooter_atlas_animation_clip(
+        &mut self,
+        prefab: u32,
+        clip_id: u32,
+        fps: f32,
+        looped: bool,
+        frames: Vec<f32>,
+    ) -> bool {
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.set_atlas_animation_clip(
+            &mut self.world,
+            prefab,
+            clip_id,
+            fps,
+            looped,
+            &frames,
+        )
+    }
+
+    pub fn add_shooter_animation_frame_event(
+        &mut self,
+        prefab: u32,
+        clip_id: u32,
+        frame: u32,
+        event_kind: u32,
+        token_id: u32,
+    ) -> bool {
+        self.activate_built_in_shooter_scene();
+        self.scenes.shooter.add_animation_frame_event(
+            &mut self.world,
+            prefab,
+            clip_id,
+            frame,
+            event_kind,
+            token_id,
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn set_shooter_animations(
         &mut self,

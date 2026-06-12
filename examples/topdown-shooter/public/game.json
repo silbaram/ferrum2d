@@ -83,6 +83,18 @@
           "move": {
             "frames": ["player.move.0", "player.move.1", "player.move.2", "player.move.3"],
             "fps": 8
+          },
+          "attack": {
+            "frames": ["player.move.1", "player.move.2"],
+            "fps": 12,
+            "loop": false,
+            "events": [
+              {
+                "frame": 1,
+                "kind": "hitbox",
+                "token": 1
+              }
+            ]
           }
         }
       }

@@ -24,6 +24,7 @@ import type { GameplayBehaviorRuntimeEngine } from "../src/gameplayAuthoring.js"
 import type {
   GameplayCollisionDamageEventAction,
   GameplayInteractionEventAction,
+  GameplayAnimationFrameEventAction,
   GameplayPickupCollectedEventAction,
   GameplayTileImpactEventAction,
   GameplayTimerEventAction,
@@ -218,6 +219,54 @@ test("createBehaviorStateMachineRuntimeInstallPlan maps authoring states to nume
     tokenId: 4,
     actionId: 4,
   }]);
+});
+
+test("animation frame gameplay events can drive FSM replay and runtime install plans", () => {
+  const animationFsm: BehaviorStateMachineDocumentSpec = {
+    machines: {
+      enemy: {
+        initial: "windup",
+        states: {
+          windup: {
+            transitions: [{
+              id: "hit",
+              to: "recover",
+              when: { type: "gameplayEvent", event: "animationFrame", animationToken: "attack-hit" },
+            }],
+          },
+          recover: {},
+        },
+      },
+    },
+  };
+  const ids = { animationEvents: { "attack-hit": 77 } };
+  const plan = createBehaviorStateMachineRuntimeInstallPlan(animationFsm, "enemy", {
+    behaviorRecipes: recipes,
+    ids,
+  });
+
+  deepEqual(plan.transitions, [{
+    id: "hit",
+    from: "windup",
+    to: "recover",
+    fromStateId: 2,
+    toStateId: 1,
+    event: "animationFrame",
+    eventKind: 12,
+    tokenId: 77,
+    actionId: 77,
+  }]);
+
+  const replay = runBehaviorStateMachineReplay(animationFsm, {
+    machine: "enemy",
+    entity: replayEntity,
+    frames: [{ frame: 0, events: [animationFrameAction(77)] }],
+  }, {
+    behaviorRecipes: recipes,
+    ids,
+  });
+  equal(replay.finalState, "recover");
+  equal(replay.steps[0]?.event?.animationTokenId, 77);
 });
 
 test("runtime FSM install and replay can resolve interaction actions through runtime id registry", () => {
@@ -2164,6 +2213,35 @@ function tileImpactAction(
       once: false,
       consumedThisFrame: false,
       targetRemoved,
+    },
+  };
+}
+
+function animationFrameAction(tokenId: number): GameplayAnimationFrameEventAction {
+  const payloadBits = (2 << 16) | 1;
+  return {
+    type: "animationFrame",
+    actor: { entityId: 2, entityGeneration: 0 },
+    source: { entityId: 2, entityGeneration: 0 },
+    tokenId,
+    eventKind: 1,
+    clipId: 2,
+    frame: 1,
+    flags: 1,
+    payloadBits,
+    event: {
+      kind: "animationFrame",
+      kindCode: 12,
+      actorId: 2,
+      actorGeneration: 0,
+      sourceId: 2,
+      sourceGeneration: 0,
+      tokenId,
+      flags: 1,
+      payloadBits,
+      once: false,
+      consumedThisFrame: false,
+      targetRemoved: false,
     },
   };
 }

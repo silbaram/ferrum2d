@@ -1,7 +1,9 @@
 import { MAX_ATLAS_ANIMATION_FRAMES } from "./gameSpecDefaults.js";
 import {
   atlasTexture,
+  booleanValue,
   gameSpecError,
+  nonNegativeInteger,
   normalizedNumber,
   optionalObject,
   positiveNumber,
@@ -9,9 +11,26 @@ import {
 } from "./gameSpecValidation.js";
 import type {
   ResolvedShooterAtlasAnimation,
+  ResolvedShooterAtlasAnimationClip,
+  ResolvedShooterAtlasAnimationFrameEvent,
   ResolvedShooterAtlasAnimationState,
   ResolvedShooterAtlasFrame,
+  ShooterAtlasAnimationFrameEventKind,
 } from "./gameSpecTypes.js";
+
+const ATLAS_ANIMATION_CLIP_IDS = {
+  idle: 0,
+  move: 1,
+  attack: 2,
+  die: 3,
+} as const;
+
+const ATLAS_ANIMATION_EVENT_KIND_CODES: Record<ShooterAtlasAnimationFrameEventKind, number> = {
+  hitbox: 1,
+  sound: 2,
+  effect: 3,
+  custom: 4,
+};
 
 export function atlasFrameMap(value: unknown, path: string): Record<string, ResolvedShooterAtlasFrame> {
   const atlas = optionalObject(value, path);
@@ -98,10 +117,32 @@ export function prefabAtlasAnimation(
   }
 
   const atlas = optionalObject(animation.atlas, `${path}.atlas`);
-  const idle = atlasAnimationState(atlas.idle, `${path}.atlas.idle`, atlasFrames);
-  const move = atlasAnimationState(atlas.move, `${path}.atlas.move`, atlasFrames, idle);
-  validateAtlasAnimationFrameGroup(idle.frames, `${path}.atlas`, idle.frames[0], 0);
-  validateAtlasAnimationFrameGroup(move.frames, `${path}.atlas`, idle.frames[0], idle.frames.length);
+  const idle = atlasAnimationState(
+    atlas.idle,
+    `${path}.atlas.idle`,
+    atlasFrames,
+    undefined,
+    true,
+  );
+  const move = atlasAnimationState(atlas.move, `${path}.atlas.move`, atlasFrames, idle, true);
+  const clips: ResolvedShooterAtlasAnimationClip[] = [
+    { ...idle, clipId: ATLAS_ANIMATION_CLIP_IDS.idle, name: "idle" },
+    { ...move, clipId: ATLAS_ANIMATION_CLIP_IDS.move, name: "move" },
+  ];
+  const attack = optionalAtlasAnimationState(
+    atlas.attack,
+    `${path}.atlas.attack`,
+    atlasFrames,
+    false,
+  );
+  if (attack) {
+    clips.push({ ...attack, clipId: ATLAS_ANIMATION_CLIP_IDS.attack, name: "attack" });
+  }
+  const die = optionalAtlasAnimationState(atlas.die, `${path}.atlas.die`, atlasFrames, false);
+  if (die) {
+    clips.push({ ...die, clipId: ATLAS_ANIMATION_CLIP_IDS.die, name: "die" });
+  }
+  validateAtlasAnimationTextures(clips, `${path}.atlas`, idle.frames[0]);
   const firstFrame = idle.frames[0];
   return {
     texture: firstFrame.texture,
@@ -109,6 +150,7 @@ export function prefabAtlasAnimation(
     height: firstFrame.height,
     idle,
     move,
+    clips,
   };
 }
 
@@ -117,6 +159,7 @@ function atlasAnimationState(
   path: string,
   atlasFrames: Record<string, ResolvedShooterAtlasFrame>,
   fallback?: ResolvedShooterAtlasAnimationState,
+  defaultLoop = true,
 ): ResolvedShooterAtlasAnimationState {
   if (value === undefined) {
     if (fallback) {
@@ -141,24 +184,80 @@ function atlasAnimationState(
       atlasFrameReference(frameName, `${path}.frames.${index}`, atlasFrames),
     ),
     fps: positiveNumber(state.fps, `${path}.fps`, 1),
+    loop: booleanValue(state.loop, `${path}.loop`, defaultLoop),
+    events: atlasAnimationFrameEvents(state.events, `${path}.events`, state.frames.length),
   };
 }
 
-function validateAtlasAnimationFrameGroup(
-  frames: readonly ResolvedShooterAtlasFrame[],
+function optionalAtlasAnimationState(
+  value: unknown,
+  path: string,
+  atlasFrames: Record<string, ResolvedShooterAtlasFrame>,
+  defaultLoop: boolean,
+): ResolvedShooterAtlasAnimationState | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return atlasAnimationState(value, path, atlasFrames, undefined, defaultLoop);
+}
+
+function validateAtlasAnimationTextures(
+  clips: readonly ResolvedShooterAtlasAnimationClip[],
   path: string,
   expected: ResolvedShooterAtlasFrame,
-  offset: number,
 ): void {
-  for (const [index, frame] of frames.entries()) {
-    const framePath = `${path}.frames.${offset + index}`;
-    if (frame.texture !== expected.texture) {
-      throw gameSpecError(framePath, "all atlas animation frames must use the same texture");
-    }
-    if (frame.width !== expected.width || frame.height !== expected.height) {
-      throw gameSpecError(framePath, "all atlas animation frames must use the same size");
+  for (const clip of clips) {
+    for (const [index, frame] of clip.frames.entries()) {
+      const framePath = `${path}.${clip.name}.frames.${index}`;
+      if (frame.texture !== expected.texture) {
+        throw gameSpecError(framePath, "all atlas animation frames must use the same texture");
+      }
     }
   }
+}
+
+function atlasAnimationFrameEvents(
+  value: unknown,
+  path: string,
+  frameCount: number,
+): ResolvedShooterAtlasAnimationFrameEvent[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw gameSpecError(path, "must be an array");
+  }
+  return value.map((eventValue, index) => {
+    const eventPath = `${path}.${index}`;
+    const event = optionalObject(eventValue, eventPath);
+    const frame = nonNegativeInteger(event.frame, `${eventPath}.frame`, 0);
+    if (frame >= frameCount) {
+      throw gameSpecError(`${eventPath}.frame`, "must reference a frame in the animation state");
+    }
+    const kind = atlasAnimationEventKind(event.kind, `${eventPath}.kind`);
+    const token = nonNegativeInteger(event.token, `${eventPath}.token`, index + 1);
+    if (token === 0) {
+      throw gameSpecError(`${eventPath}.token`, "must be greater than 0");
+    }
+    return {
+      frame,
+      eventKind: ATLAS_ANIMATION_EVENT_KIND_CODES[kind],
+      token,
+    };
+  });
+}
+
+function atlasAnimationEventKind(value: unknown, path: string): ShooterAtlasAnimationFrameEventKind {
+  if (value === undefined) {
+    return "custom";
+  }
+  if (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(ATLAS_ANIMATION_EVENT_KIND_CODES, value)
+  ) {
+    return value as ShooterAtlasAnimationFrameEventKind;
+  }
+  throw gameSpecError(path, "must be one of hitbox, sound, effect, or custom");
 }
 
 export function atlasFrameReference(

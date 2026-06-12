@@ -12,6 +12,7 @@ use crate::components::{
     SpringJoint, Sprite, SpriteAnimation, Transform2D, Velocity, WeldJoint,
 };
 use crate::entity::Entity;
+use crate::gameplay_event::GameplayEvent;
 use crate::physics::PhysicsSystem;
 
 pub const BULLET_LIFETIME: f32 = 1.8;
@@ -114,6 +115,7 @@ pub struct World {
     pub(crate) behavior_state_machines: Vec<Option<BehaviorStateMachine>>,
     pub(crate) behavior_state_enter_actions: Vec<Option<BehaviorStateEnterActionSet>>,
     pub(crate) gameplay_timer_triggers: Vec<Option<GameplayTimerTrigger>>,
+    pub(crate) sprite_animation_events: Vec<GameplayEvent>,
     pub(crate) player: Option<Entity>,
 }
 

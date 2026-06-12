@@ -203,6 +203,19 @@ export interface GameplayPresentationEffectEventAction {
   event: GameplayEventView;
 }
 
+export interface GameplayAnimationFrameEventAction {
+  type: "animationFrame";
+  actor: GameplayEntityHandle;
+  source: GameplayEntityHandle;
+  tokenId: number;
+  eventKind: number;
+  clipId: number;
+  frame: number;
+  flags: number;
+  payloadBits: number;
+  event: GameplayEventView;
+}
+
 export type GameplayEventAction =
   | GameplayInteractionEventAction
   | GameplayCollisionDamageEventAction
@@ -214,7 +227,8 @@ export type GameplayEventAction =
   | GameplayPickupCollectedEventAction
   | GameplayTileImpactEventAction
   | GameplayFactionDamageDeniedEventAction
-  | GameplayPresentationEffectEventAction;
+  | GameplayPresentationEffectEventAction
+  | GameplayAnimationFrameEventAction;
 
 export interface GameplayEventActionTarget {
   applyGameplayEventAction(action: GameplayEventAction): unknown;
@@ -318,6 +332,10 @@ export function gameplayActionsForEvents(
     }
     if (event.kind === "presentationEffect") {
       actions.push(presentationEffectActionForEvent(event, eventPath));
+      return;
+    }
+    if (event.kind === "animationFrame") {
+      actions.push(animationFrameActionForEvent(event, eventPath));
       return;
     }
     if (unknownEvent === "error") {
@@ -498,6 +516,25 @@ function presentationEffectActionForEvent(
     effectKind: gameplayPresentationEffectKind(event.payloadBits),
     flags: nonNegativeInteger(event.flags, `${path}.flags`),
     payloadBits: nonNegativeInteger(event.payloadBits, `${path}.payloadBits`),
+    event,
+  };
+}
+
+function animationFrameActionForEvent(
+  event: GameplayEventView,
+  path: string,
+): GameplayAnimationFrameEventAction {
+  const payloadBits = nonNegativeInteger(event.payloadBits, `${path}.payloadBits`);
+  return {
+    type: "animationFrame",
+    actor: entityHandleForEvent(event.actorId, event.actorGeneration, `${path}.actor`),
+    source: entityHandleForEvent(event.sourceId, event.sourceGeneration, `${path}.source`),
+    tokenId: positiveInteger(event.tokenId, `${path}.tokenId`),
+    eventKind: nonNegativeInteger(event.flags, `${path}.eventKind`),
+    clipId: (payloadBits >>> 16) & 0xffff,
+    frame: payloadBits & 0xffff,
+    flags: nonNegativeInteger(event.flags, `${path}.flags`),
+    payloadBits,
     event,
   };
 }

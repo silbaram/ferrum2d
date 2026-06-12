@@ -107,3 +107,55 @@ fn tilemap_render_commands_skip_layers_outside_camera_viewport() {
 
     assert!(commands.is_empty());
 }
+
+#[test]
+fn tilemap_render_cache_rebuilds_changed_chunks_only() {
+    let mut tilemap = Tilemap::default();
+    tilemap.set_tile_definition(1, 7, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+    tilemap.set_layer(0, 40, 1, 16.0, 16.0, 0.0, 0.0, false, vec![1; 40]);
+
+    assert_eq!(tilemap.render_cache_last_rebuilt_chunks(0), 3);
+    assert_eq!(tilemap.render_cache_total_rebuilt_chunks(0), 3);
+
+    assert!(tilemap.set_tile(0, 17, 0, 0));
+
+    assert_eq!(tilemap.render_cache_last_rebuilt_chunks(0), 1);
+    assert_eq!(tilemap.render_cache_total_rebuilt_chunks(0), 4);
+}
+
+#[test]
+fn tilemap_render_cache_refreshes_after_tile_definition_update() {
+    let mut tilemap = Tilemap::default();
+    tilemap.set_tile_definition(1, 7, 0.0, 0.0, 0.25, 0.25, 1.0, 1.0, 1.0, 1.0);
+    tilemap.set_layer(0, 1, 1, 16.0, 16.0, 0.0, 0.0, false, vec![1]);
+    tilemap.set_tile_definition(1, 8, 0.25, 0.0, 0.5, 0.25, 0.5, 1.0, 1.0, 1.0);
+    let camera = Camera2D::new(32.0, 16.0);
+    let mut commands = Vec::new();
+
+    tilemap.append_render_commands(&camera, &mut commands);
+
+    assert_eq!(commands.len(), 1);
+    assert_eq!(commands[0].texture_id, 8.0);
+    assert_eq!(commands[0].u0, 0.25);
+    assert_eq!(commands[0].r, 0.5);
+    assert_eq!(tilemap.render_cache_last_rebuilt_chunks(0), 1);
+}
+
+#[test]
+fn tilemap_render_cache_refreshes_only_chunks_using_changed_tile_definition() {
+    let mut tilemap = Tilemap::default();
+    tilemap.set_tile_definition(1, 7, 0.0, 0.0, 0.25, 0.25, 1.0, 1.0, 1.0, 1.0);
+    tilemap.set_tile_definition(2, 8, 0.25, 0.0, 0.5, 0.25, 1.0, 1.0, 1.0, 1.0);
+    let mut data = vec![2; 40];
+    data[0] = 1;
+    data[32] = 1;
+    tilemap.set_layer(0, 40, 1, 16.0, 16.0, 0.0, 0.0, false, data);
+
+    assert_eq!(tilemap.render_cache_last_rebuilt_chunks(0), 3);
+    assert_eq!(tilemap.render_cache_total_rebuilt_chunks(0), 3);
+
+    tilemap.set_tile_definition(1, 9, 0.5, 0.0, 0.75, 0.25, 0.5, 1.0, 1.0, 1.0);
+
+    assert_eq!(tilemap.render_cache_last_rebuilt_chunks(0), 2);
+    assert_eq!(tilemap.render_cache_total_rebuilt_chunks(0), 5);
+}

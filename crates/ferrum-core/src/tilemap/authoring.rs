@@ -3,6 +3,10 @@ use super::collision_cache::{
     chunk_range_for_tile_range, collision_chunk_count, tile_range_for_chunk, tile_range_from_rect,
 };
 use super::queries::{normalized_or_default, tile_slope_definition_from_values};
+use super::render_cache::{
+    build_render_chunk_cache_for_layer, rebuild_render_chunks_for_layer_range,
+    rebuild_render_chunks_for_layer_tile_id, render_chunk_count,
+};
 use super::{
     Hd2dBridgePortalDefinition, Hd2dRampAxis, Hd2dRampDefinition, Hd2dTileDefinition, Hd2dTileKind,
     TileDefinition, Tilemap, TilemapLayer,
@@ -20,6 +24,7 @@ impl Tilemap {
         self.layers.clear();
         self.collision_rects.clear();
         self.collision_rect_chunks.clear();
+        self.render_chunks.clear();
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -55,6 +60,7 @@ impl Tilemap {
             b: normalized_or_default(b, 1.0),
             a: normalized_or_default(a, 1.0),
         });
+        self.rebuild_render_chunks_for_tile_id(tile_id);
     }
 
     pub fn set_tile_slope_definition(
@@ -298,8 +304,12 @@ impl Tilemap {
         if index >= self.collision_rect_chunks.len() {
             self.collision_rect_chunks.resize_with(index + 1, || None);
         }
+        if index >= self.render_chunks.len() {
+            self.render_chunks.resize_with(index + 1, || None);
+        }
         self.layers[index] = Some(layer);
         self.rebuild_collision_rects_for_layer(index);
+        self.rebuild_render_chunks_for_layer(index);
     }
 
     pub fn set_tile(&mut self, layer_index: u32, column: u32, row: u32, tile_id: u32) -> bool {
@@ -325,6 +335,7 @@ impl Tilemap {
         if should_rebuild_collision {
             self.rebuild_collision_rect_chunks_for_layer(layer_index, column, row, 1, 1);
         }
+        self.rebuild_render_chunks_for_layer_rect(layer_index, column, row, 1, 1);
         true
     }
 
@@ -373,6 +384,9 @@ impl Tilemap {
 
         if should_rebuild_collision {
             self.rebuild_collision_rect_chunks_for_layer(layer_index, column, row, width, height);
+        }
+        if changed {
+            self.rebuild_render_chunks_for_layer_rect(layer_index, column, row, width, height);
         }
         changed
     }
@@ -439,6 +453,22 @@ impl Tilemap {
 
     pub fn collision_cache_total_rebuilt_chunks(&self, layer_index: u32) -> u32 {
         self.collision_rect_chunks
+            .get(layer_index as usize)
+            .and_then(Option::as_ref)
+            .map(|cache| cache.total_rebuilt_chunks)
+            .unwrap_or(0)
+    }
+
+    pub fn render_cache_last_rebuilt_chunks(&self, layer_index: u32) -> u32 {
+        self.render_chunks
+            .get(layer_index as usize)
+            .and_then(Option::as_ref)
+            .map(|cache| cache.last_rebuilt_chunks)
+            .unwrap_or(0)
+    }
+
+    pub fn render_cache_total_rebuilt_chunks(&self, layer_index: u32) -> u32 {
+        self.render_chunks
             .get(layer_index as usize)
             .and_then(Option::as_ref)
             .map(|cache| cache.total_rebuilt_chunks)
@@ -546,7 +576,6 @@ impl Tilemap {
         }
         cache.last_rebuilt_chunks = rebuilt_count;
         cache.total_rebuilt_chunks = cache.total_rebuilt_chunks.saturating_add(rebuilt_count);
-        self.collision_rects[index] = Some(cache.flattened_rects());
     }
 
     fn collision_rebuild_chunk_count_for_rect(
@@ -594,5 +623,83 @@ impl Tilemap {
         };
         cache.chunk_columns == collision_chunk_count(layer.columns)
             && cache.chunk_rows == collision_chunk_count(layer.rows)
+    }
+
+    fn rebuild_render_chunks_for_layer(&mut self, index: usize) {
+        if index >= self.render_chunks.len() {
+            self.render_chunks.resize_with(index + 1, || None);
+        }
+        let Some(layer) = self.layers.get(index).and_then(Option::as_ref) else {
+            self.render_chunks[index] = None;
+            return;
+        };
+        self.render_chunks[index] =
+            Some(build_render_chunk_cache_for_layer(layer, &self.definitions));
+    }
+
+    fn rebuild_render_chunks_for_tile_id(&mut self, tile_id: u32) {
+        let layer_count = self.layers.len();
+        if self.render_chunks.len() < layer_count {
+            self.render_chunks.resize_with(layer_count, || None);
+        }
+        for index in 0..layer_count {
+            self.rebuild_render_chunks_for_layer_tile_id(index, tile_id);
+        }
+    }
+
+    fn rebuild_render_chunks_for_layer_tile_id(&mut self, index: usize, tile_id: u32) {
+        if !self.render_chunk_cache_matches_layer(index) {
+            self.rebuild_render_chunks_for_layer(index);
+            return;
+        }
+
+        let Some(layer) = self.layers.get(index).and_then(Option::as_ref) else {
+            self.rebuild_render_chunks_for_layer(index);
+            return;
+        };
+        let Some(cache) = self.render_chunks.get_mut(index).and_then(Option::as_mut) else {
+            self.rebuild_render_chunks_for_layer(index);
+            return;
+        };
+        rebuild_render_chunks_for_layer_tile_id(layer, &self.definitions, tile_id, cache);
+    }
+
+    fn rebuild_render_chunks_for_layer_rect(
+        &mut self,
+        index: usize,
+        column: u32,
+        row: u32,
+        width: u32,
+        height: u32,
+    ) {
+        if !self.render_chunk_cache_matches_layer(index) {
+            self.rebuild_render_chunks_for_layer(index);
+            return;
+        }
+
+        let Some(layer) = self.layers.get(index).and_then(Option::as_ref) else {
+            self.rebuild_render_chunks_for_layer(index);
+            return;
+        };
+        let Some(changed_range) = tile_range_from_rect(layer, column, row, width, height) else {
+            self.rebuild_render_chunks_for_layer(index);
+            return;
+        };
+        let Some(cache) = self.render_chunks.get_mut(index).and_then(Option::as_mut) else {
+            self.rebuild_render_chunks_for_layer(index);
+            return;
+        };
+        rebuild_render_chunks_for_layer_range(layer, &self.definitions, changed_range, cache);
+    }
+
+    fn render_chunk_cache_matches_layer(&self, index: usize) -> bool {
+        let Some(layer) = self.layers.get(index).and_then(Option::as_ref) else {
+            return false;
+        };
+        let Some(cache) = self.render_chunks.get(index).and_then(Option::as_ref) else {
+            return false;
+        };
+        cache.chunk_columns == render_chunk_count(layer.columns)
+            && cache.chunk_rows == render_chunk_count(layer.rows)
     }
 }

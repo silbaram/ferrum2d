@@ -233,6 +233,15 @@ AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고
 | `prefabs.*.animation.atlas.idle.fps` | positive number | required | idle atlas animation playback speed |
 | `prefabs.*.animation.atlas.move.frames` | string array | idle frames | moving atlas animation frame names from `atlas.frames`; max 32 |
 | `prefabs.*.animation.atlas.move.fps` | positive number | idle fps | moving atlas animation playback speed |
+| `prefabs.*.animation.atlas.attack.frames` | string array | unset | attack atlas animation frame names from `atlas.frames`; max 32 |
+| `prefabs.*.animation.atlas.attack.fps` | positive number | required when attack is set | attack atlas animation playback speed |
+| `prefabs.*.animation.atlas.attack.loop` | boolean | `false` | whether the attack clip loops instead of returning to idle/move after it finishes |
+| `prefabs.*.animation.atlas.die.frames` | string array | unset | die atlas animation frame names from `atlas.frames`; max 32 |
+| `prefabs.*.animation.atlas.die.fps` | positive number | required when die is set | die atlas animation playback speed |
+| `prefabs.*.animation.atlas.die.loop` | boolean | `false` | whether the die clip loops |
+| `prefabs.*.animation.atlas.*.events.*.frame` | non-negative integer | `0` | frame index that emits this animation event |
+| `prefabs.*.animation.atlas.*.events.*.kind` | `hitbox`, `sound`, `effect`, `custom` | `custom` | numeric event kind copied into `animationFrame` action metadata |
+| `prefabs.*.animation.atlas.*.events.*.token` | positive integer | event index + 1 | runtime token for FSM predicate and frame-end adapter matching |
 | `prefabs.*.frame` | string | unset | `atlas.frames`에 정의된 frame name |
 | `atlas.frames.*.texture` | string or non-negative integer | required | texture manifest name 또는 numeric texture id |
 | `atlas.frames.*.uv.u0` | number `0..1` | required | normalized UV left |
@@ -275,7 +284,10 @@ AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고
 | `tilemap.layers.*.origin.y` | finite number | `tilemap.origin.y` | layer-specific world origin y |
 | `tilemap.layers.*.collision` | boolean | `false` | `true`이면 양수 tile id를 player/enemy가 통과할 수 없는 정적 AABB 장애물이자 chase enemy navigation 장애물로 사용 |
 | `tilemap.layers.*.collisionOnly` | boolean | `false` | 렌더 tile definition 없이 양수 solid id를 허용하는 collision-only layer |
-| `tilemap.layers.*.data` | non-negative integer array | required | row-major tile id list; `0` means empty |
+| `tilemap.layers.*.data` | non-negative integer array | required when `chunks` is omitted | row-major tile id list; `0` means empty |
+| `tilemap.layers.*.chunks.*.column/row` | non-negative integer | required when `chunks` is used | chunk origin in tile coordinates |
+| `tilemap.layers.*.chunks.*.columns/rows` | positive integer | required when `chunks` is used | chunk size in tile cells |
+| `tilemap.layers.*.chunks.*.data` | non-negative integer array | required when `chunks` is used | row-major chunk tile id list expanded into the layer buffer by TypeScript |
 | `camera.preset` | string enum | `"follow"` | camera movement preset |
 | `camera.deadZone.width` | non-negative number | `160` | dead-zone width in world units |
 | `camera.deadZone.height` | non-negative number | `96` | dead-zone height in world units |
@@ -307,7 +319,7 @@ Prefab animation supports three forms. The short form uses a single horizontal s
 
 The state form uses `columns`, `rows`, and `states`. Currently supported states are `idle` and `move`. `idle` is required when `states` is present; `move` is optional and falls back to `idle`. Rust selects `move` when the entity has velocity and otherwise selects `idle`; it then updates `Sprite.u0/u1/v0/v1` over time and TypeScript renders the resulting UV range from the existing render command buffer.
 
-The atlas form uses `animation.atlas.idle.frames` and optional `animation.atlas.move.frames` to reference named `atlas.frames`. TypeScript resolves frame names and sends packed UV buffers to Rust once at Game Spec application time. Rust owns per-frame animation state and writes UVs into the existing render command buffer. All frames in one atlas animation must use the same texture and size, and each state can contain at most 32 frames.
+The atlas form uses `animation.atlas.idle.frames`, optional `animation.atlas.move.frames`, and optional non-looping `attack`/`die` clips to reference named `atlas.frames`. TypeScript resolves frame names and sends packed UV buffers to Rust once at Game Spec application time. Rust owns per-frame animation state, writes UVs into the existing render command buffer, and emits authored frame events as `animationFrame` gameplay events. `frame: 0` events fire when a clip is entered, so a one-frame attack clip can still emit its hitbox timing. All frames in one atlas animation must use the same texture, and each state can contain at most 32 frames. The first idle frame still defines the prefab display size/collider default; per-frame size streaming is not part of this contract.
 
 ```json
 {
@@ -335,7 +347,13 @@ The atlas form uses `animation.atlas.idle.frames` and optional `animation.atlas.
       "animation": {
         "atlas": {
           "idle": { "frames": ["player.idle.0"], "fps": 1 },
-          "move": { "frames": ["player.move.0", "player.move.1"], "fps": 8 }
+          "move": { "frames": ["player.move.0", "player.move.1"], "fps": 8 },
+          "attack": {
+            "frames": ["player.move.1", "player.move.0"],
+            "fps": 12,
+            "loop": false,
+            "events": [{ "frame": 1, "kind": "hitbox", "token": 1 }]
+          }
         }
       }
     }
@@ -483,7 +501,7 @@ const spec: ShooterGameSpec = {
 
 ## Tilemap Runtime
 
-`tilemap`은 정적 tile layer를 렌더링하고 선택적으로 단순 AABB 장애물, HD-2D floor/elevation/height metadata, tile-local slope descriptor, one-way platform tile을 만들기 위한 설정이다. TypeScript는 positive tile id, atlas frame 참조, tint color, HD-2D height metadata, slope endpoint, one-way flag, layer 크기, `collision` boolean, row-major `data` 길이와 tile id 참조를 검증한다. Rust에는 tile id, texture id, UV, color, optional tile height span, slope endpoint, one-way tile id, layer dimension, tile size, origin, collision flag, `Uint32Array` tile data만 전달된다.
+`tilemap`은 정적 tile layer를 렌더링하고 선택적으로 단순 AABB 장애물, HD-2D floor/elevation/height metadata, tile-local slope descriptor, one-way platform tile을 만들기 위한 설정이다. TypeScript는 positive tile id, atlas frame 참조, tint color, HD-2D height metadata, slope endpoint, one-way flag, layer 크기, `collision` boolean, row-major `data` 또는 sparse `chunks`, tile id 참조를 검증한다. `chunks`는 authoring/import 편의를 위한 입력 형식이며 TypeScript resolver가 dense layer buffer로 확장한다. 런타임 resident chunk streaming은 별도 level streaming helper 계약을 사용한다. Rust에는 tile id, texture id, UV, color, optional tile height span, slope endpoint, one-way tile id, layer dimension, tile size, origin, collision flag, `Uint32Array` tile data만 전달된다.
 
 ```json
 {
@@ -505,14 +523,19 @@ const spec: ShooterGameSpec = {
       "3": { "frame": "tiles.floor", "oneWayPlatform": true }
     },
     "layers": [
-      { "name": "floor", "columns": 4, "rows": 2, "data": [1, 1, 0, 1, 1, 0, 1, 1] },
+      {
+        "name": "floor",
+        "columns": 4,
+        "rows": 2,
+        "chunks": [{ "column": 0, "row": 0, "columns": 4, "rows": 2, "data": [1, 1, 0, 1, 1, 0, 1, 1] }]
+      },
       { "name": "walls", "columns": 4, "rows": 2, "collision": true, "data": [0, 0, 3, 0, 0, 2, 0, 0] }
     ]
   }
 }
 ```
 
-`tilemap.tiles`의 key는 positive integer string이어야 한다. `0`은 빈 타일로 예약되어 layer data에서만 사용할 수 있다. 일반 layer의 양수 tile id는 `tilemap.tiles`에 존재해야 렌더링할 수 있다. `collisionOnly: true` layer는 반드시 `collision: true`여야 하며, 양수 tile id가 `tilemap.tiles`에 없어도 렌더링하지 않는 solid cell로 허용한다. 이 경로는 LDtk raw `IntGrid`처럼 충돌 그리드만 있는 데이터를 표현하기 위한 것이다. `collision: true` layer의 양수 tile은 player/enemy 이동을 막는 정적 AABB로 해석되고, Rust는 인접 solid tile run을 merged AABB obstacle로 캐시해 충돌 후보 검사를 줄인다. Height span이 다른 solid tile은 같은 run으로 병합하지 않아서 explicit tile query filter가 층/고도를 유지한다. 런타임 단일 cell 변경은 Game Spec 필드가 아니라 `FerrumEngine.setShooterTilemapTile(...)` API로 수행하며, collision layer 변경 시 Rust가 해당 cache를 즉시 refresh한다. Tile height span metadata는 `FerrumEngine.setShooterTileHeightSpan(...)` / `clearShooterTileHeightSpan(...)`로 낮은 빈도 runtime 변경이 가능하다. Rect edit은 `maxCollisionRebuildChunks` 옵션으로 dirty collision chunk budget을 넘는 변경을 거부할 수 있다. 단, `tilemap.tiles.*.slope`가 정의된 tile id는 Rust `TileSlopeDefinition`으로 등록되고 merged AABB solid에서는 제외된다. `tilemap.tiles.*.oneWayPlatform: true`가 정의된 tile id도 merged AABB solid에서는 제외되고, 위에서 내려오는 swept movement와 ground probe만 막는다. `slope`와 `oneWayPlatform: true`는 같은 tile definition에 함께 사용할 수 없다. slope endpoint는 tile-local normalized 좌표이며 `x1`은 `x0`와 달라야 한다. chase enemy는 같은 collision layer의 원본 tile grid를 4방향 navigation 장애물로 사용한다. 낮은 빈도 gameplay/tooling query는 `FerrumEngine.queryTilemapNavigationWaypoint(...)`와 `FerrumEngine.queryTilemapNavigationPath(...)`를 사용하고, 두 query는 optional `heightSpan`이 지정되면 해당 span과 겹치는 solid tile만 장애물로 취급한다. `toHeightSpan`을 함께 지정하면 bridge portal lower/upper floor edge를 포함한 multi-floor path를 반환하며 path point는 `x`, `y`, `heightSpan`을 포함한다. runtime terrain weight는 `FerrumEngine.setShooterTilemapNavigationCost(...)`로 walkable cell에 별도 설정한다. Path query는 전체 waypoint buffer와 debug line buffer를 함께 반환한다. `weapons.projectileArc`가 켜진 bullet과 bullet-tile 충돌은 height span과 `blocksProjectile`을 사용한다. authored projectile의 blocking tile impact는 Game Spec tile field가 아니라 `behaviorRecipes`의 `projectileAction.tileImpact`로 선언하며, 허용값은 기존 Shooter 의미와 같은 `"despawn"`, blocking tile hit를 완전히 무시하는 `"passThrough"`, contact normal로 projectile velocity를 반사하는 `"bounce"`이다. `passThrough`는 tile-side authored sound/particle/despawn reaction도 실행하지 않고 같은 frame의 entity collision phase로 진행한다. `despawn`과 `bounce` blocking hit는 `GameplayEvent.kind = "tileImpact"` telemetry를 남기며 decoded action은 projectile handle, tile impact policy, layer/tile index, normal direction, bounced/identityTruncated/targetRemoved flag를 제공한다. Behavior FSM은 `event: "tileImpact"` predicate로 이 telemetry를 projectile-scoped state transition에 사용할 수 있으며, predicate 값은 실제 telemetry를 emit하는 `despawn`/`bounce` 또는 code `0`/`2`로 제한된다. `passThrough`는 tile impact telemetry를 만들지 않으므로 FSM predicate로 설치하지 않는다. layer/tile identity가 8-u32 event payload의 layer 8비트 + tile index 24비트 범위를 넘으면 packed payload는 하위 비트만 담고 `identityTruncated`가 true가 된다. world/contact `x/y` impact position과 정확한 초대형 tile identity는 별도 detail buffer 설계 대상이다. `bounce`는 tile-side authored self reaction을 additive로 실행하되, 명시 `Despawn(self)`가 있으면 bounce보다 despawn이 우선한다. runtime animated tile, editor, per-tile script, navmesh, crowd simulation, 별도 multi-hitbox/hurtbox authoring DSL은 포함하지 않는다.
+`tilemap.tiles`의 key는 positive integer string이어야 한다. `0`은 빈 타일로 예약되어 layer data에서만 사용할 수 있다. 일반 layer의 양수 tile id는 `tilemap.tiles`에 존재해야 렌더링할 수 있다. `collisionOnly: true` layer는 반드시 `collision: true`여야 하며, 양수 tile id가 `tilemap.tiles`에 없어도 렌더링하지 않는 solid cell로 허용한다. 이 경로는 LDtk raw `IntGrid`처럼 충돌 그리드만 있는 데이터를 표현하기 위한 것이다. `collision: true` layer의 양수 tile은 player/enemy 이동을 막는 정적 AABB로 해석되고, Rust는 인접 solid tile run을 merged AABB obstacle로 캐시해 충돌 후보 검사를 줄인다. Height span이 다른 solid tile은 같은 run으로 병합하지 않아서 explicit tile query filter가 층/고도를 유지한다. 런타임 단일 cell 변경은 Game Spec 필드가 아니라 `FerrumEngine.setShooterTilemapTile(...)` API로 수행하며, collision layer 변경 시 Rust가 해당 cache를 즉시 refresh한다. Tile render command cache도 16x16 render chunk 단위로 유지되어 rect edit 시 dirty chunk만 재생성하고, tile definition 변경 시 해당 tile id를 포함하는 render chunk만 재생성한다. render append 시에는 카메라 visible bounds와 겹치는 chunk만 command buffer에 복사한다. Tile height span metadata는 `FerrumEngine.setShooterTileHeightSpan(...)` / `clearShooterTileHeightSpan(...)`로 낮은 빈도 runtime 변경이 가능하다. Rect edit은 `maxCollisionRebuildChunks` 옵션으로 dirty collision chunk budget을 넘는 변경을 거부할 수 있다. 단, `tilemap.tiles.*.slope`가 정의된 tile id는 Rust `TileSlopeDefinition`으로 등록되고 merged AABB solid에서는 제외된다. `tilemap.tiles.*.oneWayPlatform: true`가 정의된 tile id도 merged AABB solid에서는 제외되고, 위에서 내려오는 swept movement와 ground probe만 막는다. `slope`와 `oneWayPlatform: true`는 같은 tile definition에 함께 사용할 수 없다. slope endpoint는 tile-local normalized 좌표이며 `x1`은 `x0`와 달라야 한다. chase enemy는 같은 collision layer의 원본 tile grid를 4방향 navigation 장애물로 사용한다. 낮은 빈도 gameplay/tooling query는 `FerrumEngine.queryTilemapNavigationWaypoint(...)`와 `FerrumEngine.queryTilemapNavigationPath(...)`를 사용하고, 두 query는 optional `heightSpan`이 지정되면 해당 span과 겹치는 solid tile만 장애물로 취급한다. `toHeightSpan`을 함께 지정하면 bridge portal lower/upper floor edge를 포함한 multi-floor path를 반환하며 path point는 `x`, `y`, `heightSpan`을 포함한다. runtime terrain weight는 `FerrumEngine.setShooterTilemapNavigationCost(...)`로 walkable cell에 별도 설정한다. Path query는 전체 waypoint buffer와 debug line buffer를 함께 반환한다. `weapons.projectileArc`가 켜진 bullet과 bullet-tile 충돌은 height span과 `blocksProjectile`을 사용한다. authored projectile의 blocking tile impact는 Game Spec tile field가 아니라 `behaviorRecipes`의 `projectileAction.tileImpact`로 선언하며, 허용값은 기존 Shooter 의미와 같은 `"despawn"`, blocking tile hit를 완전히 무시하는 `"passThrough"`, contact normal로 projectile velocity를 반사하는 `"bounce"`이다. `passThrough`는 tile-side authored sound/particle/despawn reaction도 실행하지 않고 같은 frame의 entity collision phase로 진행한다. `despawn`과 `bounce` blocking hit는 `GameplayEvent.kind = "tileImpact"` telemetry를 남기며 decoded action은 projectile handle, tile impact policy, layer/tile index, normal direction, bounced/identityTruncated/targetRemoved flag를 제공한다. Behavior FSM은 `event: "tileImpact"` predicate로 이 telemetry를 projectile-scoped state transition에 사용할 수 있으며, predicate 값은 실제 telemetry를 emit하는 `despawn`/`bounce` 또는 code `0`/`2`로 제한된다. `passThrough`는 tile impact telemetry를 만들지 않으므로 FSM predicate로 설치하지 않는다. layer/tile identity가 8-u32 event payload의 layer 8비트 + tile index 24비트 범위를 넘으면 packed payload는 하위 비트만 담고 `identityTruncated`가 true가 된다. world/contact `x/y` impact position과 정확한 초대형 tile identity는 별도 detail buffer 설계 대상이다. `bounce`는 tile-side authored self reaction을 additive로 실행하되, 명시 `Despawn(self)`가 있으면 bounce보다 despawn이 우선한다. runtime animated tile, editor, per-tile script, navmesh, crowd simulation, 별도 multi-hitbox/hurtbox authoring DSL은 포함하지 않는다.
 
 `applyTileRules(...)`는 Game Spec 필드가 아니라 authoring helper다. row-major tile layer data와 ordered neighbor rule을 받아 새 layer data를 생성한다. `match`는 `number`, `number[]`, `"empty"`, `"filled"`, `"any"`를 지원하고 neighbor는 `n/e/s/w/ne/se/sw/nw` 방향에서 같은 조건 또는 `"same"`을 사용할 수 있다. 이 helper로 자동 타일링 결과를 미리 bake한 뒤 `tilemap.layers.*.data`에 넣는다.
 

@@ -1,3 +1,4 @@
+use super::render_cache::{render_chunk_count, render_chunk_range_for_tile_range};
 use super::{TileDefinition, TileRange, Tilemap, TilemapLayer};
 use crate::camera::Camera2D;
 use crate::components::HeightSpan;
@@ -11,8 +12,11 @@ impl Tilemap {
         camera: &Camera2D,
         render_commands: &mut Vec<SpriteRenderCommand>,
     ) {
-        for layer in self.layers.iter().flatten() {
-            self.append_layer_render_commands(layer, camera, render_commands);
+        for (layer_index, layer) in self.layers.iter().enumerate() {
+            let Some(layer) = layer else {
+                continue;
+            };
+            self.append_layer_render_commands(layer_index, layer, camera, render_commands);
         }
     }
 
@@ -36,6 +40,7 @@ impl Tilemap {
 
     fn append_layer_render_commands(
         &self,
+        layer_index: usize,
         layer: &TilemapLayer,
         camera: &Camera2D,
         render_commands: &mut Vec<SpriteRenderCommand>,
@@ -44,6 +49,66 @@ impl Tilemap {
             return;
         };
         let layer_command_start = render_commands.len();
+        if self.append_cached_layer_render_commands(
+            layer_index,
+            layer,
+            range,
+            camera,
+            render_commands,
+        ) {
+            bucket_layer_commands_by_texture(&mut render_commands[layer_command_start..]);
+            return;
+        }
+        self.append_uncached_layer_render_commands(layer, range, camera, render_commands);
+        bucket_layer_commands_by_texture(&mut render_commands[layer_command_start..]);
+    }
+
+    fn append_cached_layer_render_commands(
+        &self,
+        layer_index: usize,
+        layer: &TilemapLayer,
+        range: TileRange,
+        camera: &Camera2D,
+        render_commands: &mut Vec<SpriteRenderCommand>,
+    ) -> bool {
+        let Some(cache) = self.render_chunks.get(layer_index).and_then(Option::as_ref) else {
+            return false;
+        };
+        if cache.chunk_columns != render_chunk_count(layer.columns)
+            || cache.chunk_rows != render_chunk_count(layer.rows)
+        {
+            return false;
+        }
+
+        let visible_bounds = camera.visible_bounds();
+        let chunk_range = render_chunk_range_for_tile_range(range, cache);
+        for chunk_row in chunk_range.min_row..=chunk_range.max_row {
+            for chunk_column in chunk_range.min_column..=chunk_range.max_column {
+                let chunk_index = cache.chunk_index(chunk_column, chunk_row);
+                let Some(chunk) = cache.chunks.get(chunk_index) else {
+                    continue;
+                };
+                for command in &chunk.commands {
+                    if !sprite_command_intersects_bounds(command, visible_bounds) {
+                        continue;
+                    }
+                    let mut screen_command = *command;
+                    screen_command.x -= visible_bounds.min_x;
+                    screen_command.y -= visible_bounds.min_y;
+                    render_commands.push(screen_command);
+                }
+            }
+        }
+        true
+    }
+
+    fn append_uncached_layer_render_commands(
+        &self,
+        layer: &TilemapLayer,
+        range: TileRange,
+        camera: &Camera2D,
+        render_commands: &mut Vec<SpriteRenderCommand>,
+    ) {
         for row in range.min_row..=range.max_row {
             for column in range.min_column..=range.max_column {
                 let tile_index = layer.tile_index(column, row);
@@ -77,7 +142,6 @@ impl Tilemap {
                 });
             }
         }
-        bucket_layer_commands_by_texture(&mut render_commands[layer_command_start..]);
     }
 
     fn append_layer_render_items(
@@ -173,6 +237,16 @@ impl Tilemap {
 
 fn visible_tile_range(layer: &TilemapLayer, camera: &Camera2D) -> Option<TileRange> {
     layer.candidate_tile_range_for_bounds(camera.visible_bounds())
+}
+
+fn sprite_command_intersects_bounds(
+    command: &SpriteRenderCommand,
+    bounds: crate::collision::AabbBounds,
+) -> bool {
+    command.x + command.width >= bounds.min_x
+        && command.x <= bounds.max_x
+        && command.y + command.height >= bounds.min_y
+        && command.y <= bounds.max_y
 }
 
 fn bucket_layer_commands_by_texture(commands: &mut [SpriteRenderCommand]) {

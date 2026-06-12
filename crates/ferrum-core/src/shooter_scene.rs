@@ -498,6 +498,43 @@ impl ShooterScene {
         }
     }
 
+    pub fn set_atlas_animation_clip(
+        &mut self,
+        world: &mut World,
+        prefab_code: u32,
+        clip_id: u32,
+        fps: f32,
+        looped: bool,
+        frames: &[f32],
+    ) -> bool {
+        let Some(prefab) = ShooterPrefabKind::from_code(prefab_code) else {
+            return false;
+        };
+        let Some(frames) = sprite_frames_from_values(frames) else {
+            return false;
+        };
+        self.update_prefab_animation(world, prefab, |animation| {
+            animation.set_atlas_clip(clip_id, &frames, fps, looped)
+        })
+    }
+
+    pub fn add_animation_frame_event(
+        &mut self,
+        world: &mut World,
+        prefab_code: u32,
+        clip_id: u32,
+        frame: u32,
+        event_kind: u32,
+        token_id: u32,
+    ) -> bool {
+        let Some(prefab) = ShooterPrefabKind::from_code(prefab_code) else {
+            return false;
+        };
+        self.update_prefab_animation(world, prefab, |animation| {
+            animation.add_frame_event(clip_id, frame, event_kind, token_id)
+        })
+    }
+
     pub fn set_prefab_collider(
         &mut self,
         world: &mut World,
@@ -760,6 +797,45 @@ impl ShooterScene {
                 template,
             );
         }
+    }
+
+    fn update_prefab_animation(
+        &mut self,
+        world: &mut World,
+        prefab: ShooterPrefabKind,
+        update: impl FnOnce(&mut SpriteAnimation) -> bool,
+    ) -> bool {
+        let (layer, texture_id, mut template) = match prefab {
+            ShooterPrefabKind::Player => (
+                CollisionLayer::Player,
+                self.texture_ids.player,
+                self.config.player_template,
+            ),
+            ShooterPrefabKind::Enemy => (
+                CollisionLayer::Enemy,
+                self.texture_ids.enemy,
+                self.config.enemy_template,
+            ),
+            ShooterPrefabKind::Bullet => (
+                CollisionLayer::Bullet,
+                self.texture_ids.bullet,
+                self.config.bullet_template,
+            ),
+        };
+        let Some(mut animation) = template.animation else {
+            return false;
+        };
+        if !update(&mut animation) {
+            return false;
+        }
+        template.animation = Some(animation);
+        match prefab {
+            ShooterPrefabKind::Player => self.config.player_template = template,
+            ShooterPrefabKind::Enemy => self.config.enemy_template = template,
+            ShooterPrefabKind::Bullet => self.config.bullet_template = template,
+        }
+        self.apply_template_to_existing_layer(world, layer, texture_id, template);
+        true
     }
 }
 

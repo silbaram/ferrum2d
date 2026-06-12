@@ -232,7 +232,13 @@ function applyAtlasAnimation(
   application: ResolvedAtlasAnimationApplication,
 ): void {
   const { animation } = application;
-  engine.set_shooter_atlas_animation?.(
+  if (!engine.set_shooter_atlas_animation) {
+    throw gameSpecError(
+      `prefabs.${prefabName(application.prefab)}.animation.atlas`,
+      "runtime does not support atlas animation",
+    );
+  }
+  engine.set_shooter_atlas_animation(
     application.prefab,
     application.textureId,
     animation.width,
@@ -242,6 +248,60 @@ function applyAtlasAnimation(
     animation.move.fps,
     atlasFrameBuffer(animation.move.frames),
   );
+  for (const clip of animation.clips) {
+    if (clip.clipId > 1) {
+      if (!engine.set_shooter_atlas_animation_clip) {
+        throw gameSpecError(
+          `prefabs.${prefabName(application.prefab)}.animation.atlas.${clip.name}`,
+          "runtime does not support atlas animation clips",
+        );
+      }
+      const accepted = engine.set_shooter_atlas_animation_clip(
+        application.prefab,
+        clip.clipId,
+        clip.fps,
+        clip.loop,
+        atlasFrameBuffer(clip.frames),
+      );
+      if (accepted === false) {
+        throw gameSpecError(
+          `prefabs.${prefabName(application.prefab)}.animation.atlas.${clip.name}`,
+          "runtime rejected atlas animation clip",
+        );
+      }
+    }
+    for (const event of clip.events) {
+      if (!engine.add_shooter_animation_frame_event) {
+        throw gameSpecError(
+          `prefabs.${prefabName(application.prefab)}.animation.atlas.${clip.name}.events`,
+          "runtime does not support animation frame events",
+        );
+      }
+      const accepted = engine.add_shooter_animation_frame_event(
+        application.prefab,
+        clip.clipId,
+        event.frame,
+        event.eventKind,
+        event.token,
+      );
+      if (accepted === false) {
+        throw gameSpecError(
+          `prefabs.${prefabName(application.prefab)}.animation.atlas.${clip.name}.events`,
+          "runtime rejected animation frame event",
+        );
+      }
+    }
+  }
+}
+
+function prefabName(prefab: number): "player" | "enemy" | "bullet" {
+  if (prefab === 0) {
+    return "player";
+  }
+  if (prefab === 1) {
+    return "enemy";
+  }
+  return "bullet";
 }
 
 function applyPrefabCollider(

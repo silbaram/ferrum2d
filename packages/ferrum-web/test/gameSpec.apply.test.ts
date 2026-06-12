@@ -146,6 +146,16 @@ test("applyShooterGameSpec forwards atlas animation frame buffers to engine", ()
           uv: { u0: 0.25, v0: 0.5, u1: 0.5, v1: 1 },
           size: { width: 16, height: 24 },
         },
+        "player.attack.0": {
+          texture: "sprites",
+          uv: { u0: 0.5, v0: 0, u1: 0.75, v1: 0.5 },
+          size: { width: 20, height: 24 },
+        },
+        "player.attack.1": {
+          texture: "sprites",
+          uv: { u0: 0.75, v0: 0, u1: 1, v1: 0.5 },
+          size: { width: 18, height: 24 },
+        },
       },
     },
     prefabs: {
@@ -154,6 +164,12 @@ test("applyShooterGameSpec forwards atlas animation frame buffers to engine", ()
           atlas: {
             idle: { frames: ["player.idle.0"], fps: 1 },
             move: { frames: ["player.move.0", "player.move.1"], fps: 8 },
+            attack: {
+              frames: ["player.attack.0", "player.attack.1"],
+              fps: 12,
+              loop: false,
+              events: [{ frame: 1, kind: "hitbox", token: 77 }],
+            },
           },
         },
       },
@@ -169,6 +185,20 @@ test("applyShooterGameSpec forwards atlas animation frame buffers to engine", ()
     idleFrames: [0, 0, 0.25, 0.5],
     moveFps: 8,
     moveFrames: [0, 0.5, 0.25, 1, 0.25, 0.5, 0.5, 1],
+  }]);
+  deepEqual(engine.atlasAnimationClips, [{
+    prefab: 0,
+    clipId: 2,
+    fps: 12,
+    looped: false,
+    frames: [0.5, 0, 0.75, 0.5, 0.75, 0, 1, 0.5],
+  }]);
+  deepEqual(engine.animationFrameEvents, [{
+    prefab: 0,
+    clipId: 2,
+    frame: 1,
+    eventKind: 1,
+    tokenId: 77,
   }]);
 });
 

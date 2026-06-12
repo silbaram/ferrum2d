@@ -678,7 +678,7 @@
     "tilemapLayer": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["columns", "rows", "data"],
+      "required": ["columns", "rows"],
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "columns": { "type": "integer", "minimum": 1 },
@@ -691,9 +691,24 @@
         "data": {
           "type": "array",
           "items": { "type": "integer", "minimum": 0 }
+        },
+        "chunks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tilemapLayerChunk" }
         }
       },
       "allOf": [
+        {
+          "anyOf": [
+            { "required": ["data"] },
+            { "required": ["chunks"] }
+          ]
+        },
+        {
+          "not": {
+            "required": ["data", "chunks"]
+          }
+        },
         {
           "if": {
             "properties": { "collisionOnly": { "const": true } },
@@ -705,6 +720,21 @@
           }
         }
       ]
+    },
+    "tilemapLayerChunk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["column", "row", "columns", "rows", "data"],
+      "properties": {
+        "column": { "type": "integer", "minimum": 0 },
+        "row": { "type": "integer", "minimum": 0 },
+        "columns": { "type": "integer", "minimum": 1 },
+        "rows": { "type": "integer", "minimum": 1 },
+        "data": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        }
+      }
     },
     "prefab": {
       "type": "object",
@@ -1192,7 +1222,9 @@
       "required": ["idle"],
       "properties": {
         "idle": { "$ref": "#/$defs/atlasAnimationState" },
-        "move": { "$ref": "#/$defs/atlasAnimationState" }
+        "move": { "$ref": "#/$defs/atlasAnimationState" },
+        "attack": { "$ref": "#/$defs/atlasAnimationState" },
+        "die": { "$ref": "#/$defs/atlasAnimationState" }
       }
     },
     "atlasAnimationState": {
@@ -1206,7 +1238,24 @@
           "maxItems": 32,
           "items": { "type": "string", "minLength": 1 }
         },
-        "fps": { "type": "number", "exclusiveMinimum": 0 }
+        "fps": { "type": "number", "exclusiveMinimum": 0 },
+        "loop": { "type": "boolean" },
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/atlasAnimationFrameEvent" }
+        }
+      }
+    },
+    "atlasAnimationFrameEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "frame": { "type": "integer", "minimum": 0 },
+        "kind": {
+          "type": "string",
+          "enum": ["hitbox", "sound", "effect", "custom"]
+        },
+        "token": { "type": "integer", "minimum": 1 }
       }
     },
     "spriteAnimationState": {

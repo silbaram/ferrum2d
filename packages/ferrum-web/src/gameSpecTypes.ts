@@ -239,6 +239,15 @@ export interface ShooterTileLayerSpec {
   collision?: boolean;
   collisionOnly?: boolean;
   data?: number[];
+  chunks?: ShooterTileLayerChunkSpec[];
+}
+
+export interface ShooterTileLayerChunkSpec {
+  column?: number;
+  row?: number;
+  columns?: number;
+  rows?: number;
+  data?: number[];
 }
 
 export interface ShooterAtlasFrameSpec {
@@ -422,11 +431,23 @@ export interface ShooterSpriteAnimationStateSpec {
 export interface ShooterAtlasAnimationSpec {
   idle?: ShooterAtlasAnimationStateSpec;
   move?: ShooterAtlasAnimationStateSpec;
+  attack?: ShooterAtlasAnimationStateSpec;
+  die?: ShooterAtlasAnimationStateSpec;
 }
 
 export interface ShooterAtlasAnimationStateSpec {
   frames?: string[];
   fps?: number;
+  loop?: boolean;
+  events?: ShooterAtlasAnimationFrameEventSpec[];
+}
+
+export type ShooterAtlasAnimationFrameEventKind = "hitbox" | "sound" | "effect" | "custom";
+
+export interface ShooterAtlasAnimationFrameEventSpec {
+  frame?: number;
+  kind?: ShooterAtlasAnimationFrameEventKind;
+  token?: number;
 }
 
 export type ShooterEnemyBehaviorPreset = "chase" | "drift" | "static" | "orbit";
@@ -534,11 +555,25 @@ export interface ResolvedShooterAtlasAnimation {
   height: number;
   idle: ResolvedShooterAtlasAnimationState;
   move: ResolvedShooterAtlasAnimationState;
+  clips: ResolvedShooterAtlasAnimationClip[];
 }
 
 export interface ResolvedShooterAtlasAnimationState {
   frames: ResolvedShooterAtlasFrame[];
   fps: number;
+  loop: boolean;
+  events: ResolvedShooterAtlasAnimationFrameEvent[];
+}
+
+export interface ResolvedShooterAtlasAnimationClip extends ResolvedShooterAtlasAnimationState {
+  clipId: number;
+  name: "idle" | "move" | "attack" | "die";
+}
+
+export interface ResolvedShooterAtlasAnimationFrameEvent {
+  frame: number;
+  eventKind: number;
+  token: number;
 }
 
 export interface ShooterGameSpecTarget {
@@ -632,6 +667,20 @@ export interface ShooterGameSpecTarget {
     moveFps: number,
     moveFrames: Float32Array,
   ): void;
+  set_shooter_atlas_animation_clip?(
+    prefab: number,
+    clipId: number,
+    fps: number,
+    looped: boolean,
+    frames: Float32Array,
+  ): boolean;
+  add_shooter_animation_frame_event?(
+    prefab: number,
+    clipId: number,
+    frame: number,
+    eventKind: number,
+    tokenId: number,
+  ): boolean;
   set_shooter_prefab_collider?(
     prefab: number,
     halfWidth: number,

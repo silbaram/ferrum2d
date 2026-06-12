@@ -26,8 +26,12 @@ pub use material::PhysicsMaterial;
 pub use motion::{AngularVelocity, Rotation2D, Transform2D, Velocity};
 pub use rigid_body::{RigidBody, RigidBodyCcdDebugHit, RigidBodyType, RigidContactImpulse};
 pub use sprite::{
-    Sprite, SpriteAnimation, SpriteAnimationFrameSequence, SpriteAnimationKind,
-    SpriteAnimationState, SpriteFrame, MAX_SPRITE_ANIMATION_FRAMES,
+    Sprite, SpriteAnimation, SpriteAnimationClip, SpriteAnimationFrameEvent,
+    SpriteAnimationFrameSequence, SpriteAnimationKind, SpriteAnimationState, SpriteFrame,
+    MAX_SPRITE_ANIMATION_CLIPS, MAX_SPRITE_ANIMATION_FRAMES, MAX_SPRITE_ANIMATION_FRAME_EVENTS,
+    SPRITE_ANIMATION_CLIP_ATTACK, SPRITE_ANIMATION_CLIP_DIE, SPRITE_ANIMATION_CLIP_IDLE,
+    SPRITE_ANIMATION_CLIP_MOVE, SPRITE_ANIMATION_EVENT_CUSTOM, SPRITE_ANIMATION_EVENT_EFFECT,
+    SPRITE_ANIMATION_EVENT_HITBOX, SPRITE_ANIMATION_EVENT_SOUND,
 };
 
 #[cfg(test)]

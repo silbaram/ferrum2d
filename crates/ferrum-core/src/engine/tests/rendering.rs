@@ -181,6 +181,47 @@ fn atlas_animation_updates_prefab_uvs_in_rust() {
 }
 
 #[test]
+fn atlas_animation_frame_events_reach_gameplay_event_buffer() {
+    let mut engine = Engine::new();
+
+    engine.set_shooter_atlas_animation(
+        0,
+        9,
+        36.0,
+        36.0,
+        1.0,
+        vec![0.0, 0.0, 0.25, 0.5],
+        8.0,
+        vec![0.0, 0.5, 0.25, 1.0, 0.25, 0.5, 0.5, 1.0],
+    );
+    assert!(engine.add_shooter_animation_frame_event(
+        0,
+        crate::components::SPRITE_ANIMATION_CLIP_MOVE,
+        1,
+        crate::components::SPRITE_ANIMATION_EVENT_HITBOX,
+        99,
+    ));
+    engine.set_input(false, false, false, false, false, true, false, 0.0, 0.0);
+    engine.update_frame(0.016, false, false, false);
+    engine.set_input(false, false, false, true, false, false, false, 0.0, 0.0);
+    let player = engine.world.player.expect("player should exist");
+
+    engine.update_frame(0.125, false, false, false);
+
+    let event = engine
+        .gameplay_events
+        .iter()
+        .find(|event| event.kind == crate::gameplay_event::GAMEPLAY_EVENT_ANIMATION_FRAME)
+        .expect("animation frame event should be emitted");
+    assert_eq!(event.source_id, player.id);
+    assert_eq!(event.token_id, 99);
+    assert_eq!(
+        event.flags,
+        crate::components::SPRITE_ANIMATION_EVENT_HITBOX
+    );
+}
+
+#[test]
 fn tilemap_render_commands_are_emitted_before_entities() {
     let mut engine = Engine::new();
     engine.set_viewport_size(1600.0, 960.0);

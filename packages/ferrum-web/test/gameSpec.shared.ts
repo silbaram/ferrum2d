@@ -17,6 +17,20 @@ export class FakeEngine {
     moveFps: number;
     moveFrames: number[];
   }> = [];
+  atlasAnimationClips: Array<{
+    prefab: number;
+    clipId: number;
+    fps: number;
+    looped: boolean;
+    frames: number[];
+  }> = [];
+  animationFrameEvents: Array<{
+    prefab: number;
+    clipId: number;
+    frame: number;
+    eventKind: number;
+    tokenId: number;
+  }> = [];
   prefabColliders: Array<[
     number,
     number,
@@ -293,6 +307,40 @@ export class FakeEngine {
       moveFps,
       moveFrames: Array.from(moveFrames),
     });
+  }
+
+  set_shooter_atlas_animation_clip(
+    prefab: number,
+    clipId: number,
+    fps: number,
+    looped: boolean,
+    frames: Float32Array,
+  ): boolean {
+    this.atlasAnimationClips.push({
+      prefab,
+      clipId,
+      fps,
+      looped,
+      frames: Array.from(frames),
+    });
+    return true;
+  }
+
+  add_shooter_animation_frame_event(
+    prefab: number,
+    clipId: number,
+    frame: number,
+    eventKind: number,
+    tokenId: number,
+  ): boolean {
+    this.animationFrameEvents.push({
+      prefab,
+      clipId,
+      frame,
+      eventKind,
+      tokenId,
+    });
+    return true;
   }
 
   set_shooter_prefab_collider(

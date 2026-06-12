@@ -73,6 +73,7 @@ export interface GameplayBehaviorRuntimeIds {
   timers?: Readonly<Record<string, number>>;
   tags?: Readonly<Record<string, number>>;
   effects?: Readonly<Record<string, number>>;
+  animationEvents?: Readonly<Record<string, number>>;
 }
 
 export interface ResolveGameplayBehaviorRuntimeIdsOptions {

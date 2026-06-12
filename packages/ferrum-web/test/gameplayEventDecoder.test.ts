@@ -21,6 +21,7 @@ import {
   GAMEPLAY_EVENT_KIND_TILE_IMPACT,
   GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED,
   GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT,
+  GAMEPLAY_EVENT_KIND_ANIMATION_FRAME,
   GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
   GAMEPLAY_EVENT_FLAG_CONSUMED_THIS_FRAME,
   GAMEPLAY_EVENT_FLAG_ONCE,
@@ -46,6 +47,7 @@ test("gameplay event kind constants match the Rust ABI codes", () => {
     [GAMEPLAY_EVENT_KIND_TILE_IMPACT, gameplayEventKind(GAMEPLAY_EVENT_KIND_TILE_IMPACT)],
     [GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED, gameplayEventKind(GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED)],
     [GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT, gameplayEventKind(GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT)],
+    [GAMEPLAY_EVENT_KIND_ANIMATION_FRAME, gameplayEventKind(GAMEPLAY_EVENT_KIND_ANIMATION_FRAME)],
   ], [
     [1, "interaction"],
     [2, "collisionDamage"],
@@ -58,6 +60,7 @@ test("gameplay event kind constants match the Rust ABI codes", () => {
     [9, "tileImpact"],
     [10, "factionDamageDenied"],
     [11, "presentationEffect"],
+    [12, "animationFrame"],
   ]);
 });
 

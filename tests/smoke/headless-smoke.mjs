@@ -30,6 +30,8 @@ class SmokeEngine {
   audioConfig;
   atlasFrames = [];
   atlasAnimations = [];
+  atlasAnimationClips = [];
+  animationFrameEvents = [];
   tiles = [];
   tileLayers = [];
   waves = [];
@@ -98,6 +100,28 @@ class SmokeEngine {
       moveFrames: Array.from(moveFrames),
     });
   }
+
+  set_shooter_atlas_animation_clip(prefab, clipId, fps, looped, frames) {
+    this.atlasAnimationClips.push({
+      prefab,
+      clipId,
+      fps,
+      looped,
+      frames: Array.from(frames),
+    });
+    return true;
+  }
+
+  add_shooter_animation_frame_event(prefab, clipId, frame, eventKind, tokenId) {
+    this.animationFrameEvents.push({
+      prefab,
+      clipId,
+      frame,
+      eventKind,
+      tokenId,
+    });
+    return true;
+  }
 }
 
 function smokeResolvedSpec(resolved) {
@@ -157,6 +181,14 @@ function smokeAppliedEngine(engine, resolved) {
   assert(
     engine.atlasAnimations.some((animation) => animation.prefab === 0 && animation.textureId === textureId("player")),
     "player atlas animation must resolve named texture id",
+  );
+  assert(
+    engine.atlasAnimationClips.some((clip) => clip.prefab === 0 && clip.clipId === 2 && clip.looped === false),
+    "player attack atlas animation clip must be applied",
+  );
+  assert(
+    engine.animationFrameEvents.some((event) => event.prefab === 0 && event.clipId === 2 && event.eventKind === 1 && event.tokenId === 1),
+    "player attack animation frame event must be applied",
   );
   assert(engine.tileLayers.some((layer) => layer.collision && layer.data.some((tileId) => tileId > 0)), "applied collision layer must keep obstacle data");
 }

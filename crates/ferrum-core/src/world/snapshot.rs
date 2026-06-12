@@ -229,6 +229,7 @@ impl World {
         self.behavior_state_machines = snapshot.behavior_state_machines.clone();
         self.behavior_state_enter_actions = snapshot.behavior_state_enter_actions.clone();
         self.gameplay_timer_triggers = snapshot.gameplay_timer_triggers.clone();
+        self.sprite_animation_events.clear();
         self.player = snapshot.player;
         self.rebuild_gameplay_query_indices();
     }

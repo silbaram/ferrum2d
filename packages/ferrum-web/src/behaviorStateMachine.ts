@@ -16,6 +16,7 @@ import {
   type GameplayEntityHandle,
 } from "./gameplayAuthoring.js";
 import {
+  GAMEPLAY_EVENT_KIND_ANIMATION_FRAME,
   GAMEPLAY_EVENT_KIND_COLLISION_DAMAGE,
   GAMEPLAY_EVENT_KIND_COLLISION_DESPAWN,
   GAMEPLAY_EVENT_KIND_INTERACTION,
@@ -38,7 +39,8 @@ export type BehaviorStateMachineGameplayEventKind =
   | "collisionDespawn"
   | "timer"
   | "pickupCollected"
-  | "tileImpact";
+  | "tileImpact"
+  | "animationFrame";
 export type BehaviorStateMachineTileImpactPolicy = Exclude<GameplayTileImpactPolicy, "passThrough" | "unknown">;
 export type BehaviorStateMachineBehaviorBinding = string | readonly string[];
 
@@ -73,6 +75,8 @@ export interface BehaviorStateMachineTransitionPredicateSpec {
   itemId?: number;
   tileImpact?: BehaviorStateMachineTileImpactPolicy;
   tileImpactCode?: number;
+  animationToken?: string;
+  animationTokenId?: number;
 }
 
 export interface ResolveBehaviorStateMachineDocumentOptions {
@@ -210,6 +214,9 @@ export interface BehaviorStateMachineReplayEventMatch {
   count?: number;
   tileImpact?: GameplayTileImpactPolicy;
   tileImpactCode?: number;
+  animationTokenId?: number;
+  animationClipId?: number;
+  animationFrame?: number;
   layerIndex?: number;
   tileIndex?: number;
   normal?: GameplayTileImpactNormal;
@@ -282,6 +289,8 @@ export interface ResolvedBehaviorStateMachineTransitionPredicate {
   itemId?: number;
   tileImpact?: BehaviorStateMachineTileImpactPolicy;
   tileImpactCode?: number;
+  animationToken?: string;
+  animationTokenId?: number;
 }
 
 export function resolveBehaviorStateMachineDocument(
@@ -812,6 +821,8 @@ function transitionPredicate(value: unknown, path: string): ResolvedBehaviorStat
   const itemId = value.itemId === undefined ? undefined : positiveInteger(value.itemId, `${path}.itemId`);
   const tileImpact = value.tileImpact === undefined ? undefined : tileImpactPolicy(value.tileImpact, `${path}.tileImpact`);
   const tileImpactCode = value.tileImpactCode === undefined ? undefined : tileImpactPolicyCode(value.tileImpactCode, `${path}.tileImpactCode`);
+  const animationToken = value.animationToken === undefined ? undefined : nonEmptyString(value.animationToken, `${path}.animationToken`);
+  const animationTokenId = value.animationTokenId === undefined ? undefined : positiveInteger(value.animationTokenId, `${path}.animationTokenId`);
   if (event === "interaction" && action === undefined && actionId === undefined) {
     throw gameplayAuthoringDiagnosticError(path, "must declare action or actionId for interaction event predicates");
   }
@@ -844,6 +855,12 @@ function transitionPredicate(value: unknown, path: string): ResolvedBehaviorStat
   if (event !== "tileImpact" && (tileImpact !== undefined || tileImpactCode !== undefined)) {
     throw gameplayAuthoringDiagnosticError(path, "must not declare tileImpact or tileImpactCode for non-tileImpact event predicates");
   }
+  if (event === "animationFrame" && animationToken === undefined && animationTokenId === undefined) {
+    throw gameplayAuthoringDiagnosticError(path, "must declare animationToken or animationTokenId for animationFrame event predicates");
+  }
+  if (event !== "animationFrame" && (animationToken !== undefined || animationTokenId !== undefined)) {
+    throw gameplayAuthoringDiagnosticError(path, "must not declare animationToken or animationTokenId for non-animationFrame event predicates");
+  }
   return {
     type: "gameplayEvent",
     event,
@@ -855,6 +872,8 @@ function transitionPredicate(value: unknown, path: string): ResolvedBehaviorStat
     ...(itemId === undefined ? {} : { itemId }),
     ...(tileImpact === undefined ? {} : { tileImpact }),
     ...(tileImpactCode === undefined ? {} : { tileImpactCode }),
+    ...(animationToken === undefined ? {} : { animationToken }),
+    ...(animationTokenId === undefined ? {} : { animationTokenId }),
   };
 }
 
@@ -992,10 +1011,11 @@ function behaviorStateMachineEventKind(value: unknown, path: string): BehaviorSt
     || value === "timer"
     || value === "pickupCollected"
     || value === "tileImpact"
+    || value === "animationFrame"
   ) {
     return value;
   }
-  throw gameplayAuthoringDiagnosticError(path, "must be one of interaction, collisionDamage, collisionDespawn, timer, pickupCollected, or tileImpact");
+  throw gameplayAuthoringDiagnosticError(path, "must be one of interaction, collisionDamage, collisionDespawn, timer, pickupCollected, tileImpact, or animationFrame");
 }
 
 function runtimeEventKind(event: BehaviorStateMachineGameplayEventKind, path: string): number {
@@ -1012,6 +1032,8 @@ function runtimeEventKind(event: BehaviorStateMachineGameplayEventKind, path: st
       return GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED;
     case "tileImpact":
       return GAMEPLAY_EVENT_KIND_TILE_IMPACT;
+    case "animationFrame":
+      return GAMEPLAY_EVENT_KIND_ANIMATION_FRAME;
     default:
       throw gameplayAuthoringDiagnosticError(path, "must be a supported gameplay event kind");
   }
@@ -1037,6 +1059,19 @@ function runtimeEventTokenId(
         );
       }
       return positiveU32(itemId, `${path}.itemId`);
+    }
+    if (predicate.event === "animationFrame") {
+      const tokenId = predicate.animationTokenId
+        ?? (predicate.animationToken === undefined ? undefined : ids?.animationEvents?.[predicate.animationToken]);
+      if (tokenId === undefined) {
+        throw gameplayAuthoringDiagnosticError(
+          predicate.animationToken === undefined ? `${path}.animationTokenId` : `${path}.animationToken`,
+          predicate.animationToken === undefined
+            ? "must use animationTokenId for runtime behavior state machine installation"
+            : `must resolve animation event token '${predicate.animationToken}' to a runtime token id`,
+        );
+      }
+      return positiveU32(tokenId, `${path}.animationTokenId`);
     }
     if (predicate.event !== "timer") {
       return 0;
@@ -1448,6 +1483,14 @@ function transitionMatchesEvent(
     if (event.type === "tileImpact") {
       return tileImpactPredicateCode(predicate, path) === event.tileImpactCode;
     }
+    if (event.type === "animationFrame") {
+      const tokenId = predicate.animationTokenId
+        ?? (predicate.animationToken === undefined ? undefined : ids?.animationEvents?.[predicate.animationToken]);
+      if (tokenId !== undefined) {
+        return positiveU32(tokenId, `${path}.animationTokenId`) === event.tokenId;
+      }
+      return false;
+    }
     return true;
   }
   const actionId = predicate.actionId ?? (predicate.action === undefined ? undefined : ids?.actions?.[predicate.action]);
@@ -1485,6 +1528,11 @@ function replayEventMatch(event: GameplayEventAction): BehaviorStateMachineRepla
       bounced: event.bounced,
       identityTruncated: event.identityTruncated,
       targetRemoved: event.targetRemoved,
+    } : {}),
+    ...(event.type === "animationFrame" ? {
+      animationTokenId: event.tokenId,
+      animationClipId: event.clipId,
+      animationFrame: event.frame,
     } : {}),
     sourceEntityId: event.source.entityId,
     actorEntityId: event.actor.entityId,
@@ -1576,7 +1624,7 @@ function gameplayEvents(value: unknown, path: string): readonly GameplayEventAct
       positiveInteger(event.itemId, `${eventPath}.itemId`);
       positiveInteger(event.count, `${eventPath}.count`);
       booleanValue(event.targetRemoved, `${eventPath}.targetRemoved`);
-    } else {
+    } else if (type === "tileImpact") {
       tileImpactEventPolicyCode(event.tileImpactCode, `${eventPath}.tileImpactCode`);
       tileImpactEventPolicy(event.tileImpact, `${eventPath}.tileImpact`);
       nonNegativeInteger(event.layerIndex, `${eventPath}.layerIndex`);
@@ -1585,6 +1633,11 @@ function gameplayEvents(value: unknown, path: string): readonly GameplayEventAct
       booleanValue(event.bounced, `${eventPath}.bounced`);
       booleanValue(event.identityTruncated, `${eventPath}.identityTruncated`);
       booleanValue(event.targetRemoved, `${eventPath}.targetRemoved`);
+    } else if (type === "animationFrame") {
+      positiveInteger(event.tokenId, `${eventPath}.tokenId`);
+      nonNegativeInteger(event.eventKind, `${eventPath}.eventKind`);
+      nonNegativeInteger(event.clipId, `${eventPath}.clipId`);
+      nonNegativeInteger(event.frame, `${eventPath}.frame`);
     }
     gameplayEntityHandle(event.actor, `${eventPath}.actor`);
     gameplayEntityHandle(event.source, `${eventPath}.source`);

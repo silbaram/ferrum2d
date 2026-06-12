@@ -268,7 +268,9 @@ function tilemapLayers(
       originY: finiteNumber(origin.y, `${layerPath}.origin.y`, defaults.originY),
       collision,
       collisionOnly,
-      data: tilemapLayerData(layer.data, `${layerPath}.data`, {
+      data: tilemapLayerData(layer.data, layer.chunks, layerPath, {
+        columns,
+        rows,
         expectedLength: columns * rows,
         tileIds: defaults.tileIds,
         allowUndefinedTileIds: collisionOnly,
@@ -278,6 +280,73 @@ function tilemapLayers(
 }
 
 function tilemapLayerData(
+  dataValue: unknown,
+  chunkValue: unknown,
+  layerPath: string,
+  options: {
+    columns: number;
+    rows: number;
+    expectedLength: number;
+    tileIds: Set<number>;
+    allowUndefinedTileIds: boolean;
+  },
+): number[] {
+  if (dataValue !== undefined && chunkValue !== undefined) {
+    throw gameSpecError(`${layerPath}.chunks`, "cannot be combined with data");
+  }
+  if (chunkValue !== undefined) {
+    return tilemapLayerChunkData(chunkValue, `${layerPath}.chunks`, options);
+  }
+  return tilemapLayerFlatData(dataValue, `${layerPath}.data`, options);
+}
+
+function tilemapLayerChunkData(
+  value: unknown,
+  path: string,
+  options: {
+    columns: number;
+    rows: number;
+    expectedLength: number;
+    tileIds: Set<number>;
+    allowUndefinedTileIds: boolean;
+  },
+): number[] {
+  if (!Array.isArray(value)) {
+    throw gameSpecError(path, "must be an array");
+  }
+  const data = new Array<number>(options.expectedLength).fill(0);
+  for (const [index, chunkValue] of value.entries()) {
+    const chunkPath = `${path}.${index}`;
+    const chunk = optionalObject(chunkValue, chunkPath);
+    const column = nonNegativeInteger(chunk.column, `${chunkPath}.column`, 0);
+    const row = nonNegativeInteger(chunk.row, `${chunkPath}.row`, 0);
+    const columns = requiredPositiveInteger(chunk.columns, `${chunkPath}.columns`);
+    const rows = requiredPositiveInteger(chunk.rows, `${chunkPath}.rows`);
+    const endColumn = column + columns;
+    const endRow = row + rows;
+    if (endColumn > options.columns) {
+      throw gameSpecError(`${chunkPath}.columns`, "chunk exceeds layer columns");
+    }
+    if (endRow > options.rows) {
+      throw gameSpecError(`${chunkPath}.rows`, "chunk exceeds layer rows");
+    }
+    const chunkData = tilemapLayerFlatData(chunk.data, `${chunkPath}.data`, {
+      expectedLength: columns * rows,
+      tileIds: options.tileIds,
+      allowUndefinedTileIds: options.allowUndefinedTileIds,
+    });
+    for (let chunkRow = 0; chunkRow < rows; chunkRow += 1) {
+      for (let chunkColumn = 0; chunkColumn < columns; chunkColumn += 1) {
+        const sourceIndex = chunkRow * columns + chunkColumn;
+        const targetIndex = (row + chunkRow) * options.columns + column + chunkColumn;
+        data[targetIndex] = chunkData[sourceIndex];
+      }
+    }
+  }
+  return data;
+}
+
+function tilemapLayerFlatData(
   value: unknown,
   path: string,
   options: {

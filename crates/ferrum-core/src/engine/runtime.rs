@@ -92,6 +92,7 @@ impl Engine {
                 let input = self.fixed_step_input(step_index == 0);
                 self.tweens.update(&mut self.world, step_seconds);
                 self.update_scene(step_seconds, input);
+                self.drain_sprite_animation_events();
                 self.step_auto_rigid_bodies(step_seconds);
                 if step_index == 0 {
                     self.fixed_timestep_input_latch.clear();
@@ -109,6 +110,7 @@ impl Engine {
             self.last_fixed_update = FixedTimestepUpdate::default();
             self.tweens.update(&mut self.world, delta as f32);
             self.update_scene(delta as f32, self.input);
+            self.drain_sprite_animation_events();
             self.step_auto_rigid_bodies(delta as f32);
             self.record_collision_lifecycle_events();
             if !self.active_scene_ticks_gameplay_timers() {
@@ -251,6 +253,11 @@ impl Engine {
             .collision_trigger_pairs
             .saturating_add(pair_counts.trigger);
         self.collision_event_counts.add(counts);
+    }
+
+    fn drain_sprite_animation_events(&mut self) {
+        self.world
+            .drain_sprite_animation_events(&mut self.gameplay_events);
     }
 
     fn queue_behavior_state_enter_actions(&mut self, event_start: usize) {

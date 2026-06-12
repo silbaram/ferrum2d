@@ -10,16 +10,19 @@ mod hd2d_surface;
 mod layer;
 mod navigation;
 mod queries;
+mod render_cache;
 mod rendering;
 
 use collision_cache::{TileCollisionChunkCache, TileCollisionRect};
 pub(crate) use navigation::TilemapNavigationScratch;
+use render_cache::TileRenderChunkCache;
 
 const MAX_NAVIGATION_CELLS: usize = 4096;
 const DEFAULT_NAVIGATION_COST: u32 = 1;
 const MAX_TILE_COLLISION_RESOLUTION_STEPS: usize = 4;
 pub const MAX_TILEMAP_CONTACT_MANIFOLD_POINTS: usize = 2;
 const TILE_COLLISION_CHUNK_SIZE: u32 = 16;
+const TILE_RENDER_CHUNK_SIZE: u32 = 16;
 const TILE_SWEEP_EPSILON: f32 = 0.0001;
 const TILE_GROUND_NORMAL_Y_MIN: f32 = 0.5;
 const UNVISITED_CELL: usize = usize::MAX;
@@ -222,9 +225,10 @@ pub struct Tilemap {
     layers: Vec<Option<TilemapLayer>>,
     collision_rects: Vec<Option<Vec<TileCollisionRect>>>,
     collision_rect_chunks: Vec<Option<TileCollisionChunkCache>>,
+    render_chunks: Vec<Option<TileRenderChunkCache>>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct TileRange {
     min_column: u32,
     max_column: u32,

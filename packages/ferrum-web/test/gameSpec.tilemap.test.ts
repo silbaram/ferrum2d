@@ -192,6 +192,42 @@ test("resolveShooterGameSpec resolves HD-2D tile metadata", () => {
   ]);
 });
 
+test("resolveShooterGameSpec expands tilemap layer chunks into dense layer data", () => {
+  const spec = resolveShooterGameSpec({
+    atlas: {
+      frames: {
+        "terrain.floor": {
+          texture: 0,
+          uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+          size: { width: 16, height: 16 },
+        },
+      },
+    },
+    tilemap: {
+      tiles: {
+        "1": { frame: "terrain.floor" },
+        "2": { frame: "terrain.floor" },
+      },
+      layers: [
+        {
+          columns: 4,
+          rows: 3,
+          chunks: [
+            { column: 1, row: 0, columns: 2, rows: 2, data: [1, 2, 2, 1] },
+            { column: 0, row: 2, columns: 4, rows: 1, data: [2, 2, 1, 1] },
+          ],
+        },
+      ],
+    },
+  });
+
+  deepEqual(spec.tilemap?.layers[0]?.data, [
+    0, 1, 2, 0,
+    0, 2, 1, 0,
+    2, 2, 1, 1,
+  ]);
+});
+
 test("resolveShooterGameSpec rejects invalid HD-2D tile metadata", () => {
   try {
     resolveShooterGameSpec({

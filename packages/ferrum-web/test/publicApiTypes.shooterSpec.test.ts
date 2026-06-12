@@ -344,6 +344,8 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   const resolvedAtlasAnimationState: ResolvedShooterAtlasAnimationState = {
     frames: [resolvedTileDefinition.frame],
     fps: 1,
+    loop: true,
+    events: [],
   };
   const resolvedAtlasAnimation: ResolvedShooterAtlasAnimation = {
     texture: "bullet",
@@ -351,6 +353,11 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
     height: 8,
     idle: resolvedAtlasAnimationState,
     move: resolvedAtlasAnimationState,
+    clips: [{
+      ...resolvedAtlasAnimationState,
+      clipId: 0,
+      name: "idle",
+    }],
   };
   const resolvedContentSpec: ResolvedShooterContentSpec = {
     dialogueGraphs: {},

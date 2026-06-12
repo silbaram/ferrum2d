@@ -443,11 +443,33 @@ test("resolveShooterGameSpec resolves atlas animation bindings", () => {
     idle: {
       fps: 1,
       frames: [spec.atlasFrames["player.idle.0"]],
+      loop: true,
+      events: [],
     },
     move: {
       fps: 8,
       frames: [spec.atlasFrames["player.move.0"], spec.atlasFrames["player.move.1"]],
+      loop: true,
+      events: [],
     },
+    clips: [
+      {
+        clipId: 0,
+        name: "idle",
+        fps: 1,
+        frames: [spec.atlasFrames["player.idle.0"]],
+        loop: true,
+        events: [],
+      },
+      {
+        clipId: 1,
+        name: "move",
+        fps: 8,
+        frames: [spec.atlasFrames["player.move.0"], spec.atlasFrames["player.move.1"]],
+        loop: true,
+        events: [],
+      },
+    ],
   });
 });
 
@@ -482,7 +504,7 @@ test("resolveShooterGameSpec rejects atlas animation frames with mixed texture",
   } catch (error) {
     equal(
       error instanceof Error ? error.message : String(error),
-      "Invalid shooter game spec: kind=game-spec path='prefabs.player.animation.atlas.frames.1' detail='all atlas animation frames must use the same texture'.",
+      "Invalid shooter game spec: kind=game-spec path='prefabs.player.animation.atlas.move.frames.0' detail='all atlas animation frames must use the same texture'.",
     );
     return;
   }

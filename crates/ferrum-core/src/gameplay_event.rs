@@ -10,6 +10,7 @@ pub const GAMEPLAY_EVENT_TIMER: u32 = 7;
 pub const GAMEPLAY_EVENT_PICKUP_COLLECTED: u32 = 8;
 pub const GAMEPLAY_EVENT_TILE_IMPACT: u32 = 9;
 pub const GAMEPLAY_EVENT_FACTION_DAMAGE_DENIED: u32 = 10;
+pub const GAMEPLAY_EVENT_ANIMATION_FRAME: u32 = 12;
 pub const GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PREFAB: u32 = 1;
 pub const GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_ANCHOR: u32 = 2;
 pub const GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PHASE: u32 = 3;
@@ -165,6 +166,25 @@ impl GameplayEvent {
             token_id: next_state,
             flags: 0,
             payload_bits: previous_state,
+        }
+    }
+
+    pub fn animation_frame(
+        entity: Entity,
+        token_id: u32,
+        event_kind: u32,
+        clip_id: u32,
+        frame: u32,
+    ) -> Self {
+        Self {
+            kind: GAMEPLAY_EVENT_ANIMATION_FRAME,
+            actor_id: entity.id,
+            actor_generation: entity.generation,
+            source_id: entity.id,
+            source_generation: entity.generation,
+            token_id,
+            flags: event_kind,
+            payload_bits: ((clip_id & 0xffff) << 16) | (frame & 0xffff),
         }
     }
 

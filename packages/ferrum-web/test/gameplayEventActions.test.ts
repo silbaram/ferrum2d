@@ -216,6 +216,21 @@ const factionDamageDeniedEvent: GameplayEventView = {
   targetRemoved: false,
 };
 
+const animationFrameEvent: GameplayEventView = {
+  kind: "animationFrame",
+  kindCode: 12,
+  actorId: 15,
+  actorGeneration: 1,
+  sourceId: 15,
+  sourceGeneration: 1,
+  tokenId: 77,
+  flags: 1,
+  payloadBits: (2 << 16) | 3,
+  once: false,
+  consumedThisFrame: false,
+  targetRemoved: false,
+};
+
 test("gameplayActionsForEvents converts decoded interaction events to game-specific actions", () => {
   const actions = gameplayActionsForEvents([interactionEvent], {
     actionNames: {
@@ -491,6 +506,23 @@ test("gameplayActionsForEvents converts tile impact events to telemetry actions"
   equal(gameplayTileImpactNormalForFlags(tileImpactEvent.flags), "negativeX");
   equal(unpackTileImpactLayerIndex(tileImpactEvent.payloadBits), 1);
   equal(unpackTileImpactTileIndex(tileImpactEvent.payloadBits), 4);
+});
+
+test("gameplayActionsForEvents converts animation frame events to timeline actions", () => {
+  const actions = gameplayActionsForEvents([animationFrameEvent]);
+
+  deepEqual(actions, [{
+    type: "animationFrame",
+    actor: { entityId: 15, entityGeneration: 1 },
+    source: { entityId: 15, entityGeneration: 1 },
+    tokenId: 77,
+    eventKind: 1,
+    clipId: 2,
+    frame: 3,
+    flags: 1,
+    payloadBits: (2 << 16) | 3,
+    event: animationFrameEvent,
+  }]);
 });
 
 test("gameplayActionsForEvents converts faction damage denials to telemetry actions", () => {
