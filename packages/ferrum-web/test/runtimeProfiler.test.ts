@@ -14,17 +14,32 @@ test("RuntimeProfiler records frame samples and aggregate budget violations", ()
       maxFrameTimeMs: 16.7,
       maxRenderTimeMs: 4,
       maxDrawCalls: 2,
+      maxPhysicsCcdChecks: 4,
+      maxPhysicsDebugLineCount: 2,
       maxAssetLoadElapsedMs: 50,
     },
   });
 
-  equal(profiler.recordFrame(metrics({ frameTimeMs: 15, drawCalls: 2 })).passed, true);
-  const report = profiler.recordFrame(metrics({ frameTimeMs: 20, renderTimeMs: 5, drawCalls: 3 }));
+  equal(profiler.recordFrame(metrics({
+    frameTimeMs: 15,
+    drawCalls: 2,
+    physicsCcdChecks: 4,
+    physicsDebugLineCount: 2,
+  })).passed, true);
+  const report = profiler.recordFrame(metrics({
+    frameTimeMs: 20,
+    renderTimeMs: 5,
+    drawCalls: 3,
+    physicsCcdChecks: 5,
+    physicsDebugLineCount: 3,
+  }));
   equal(report.passed, false);
   deepEqual(report.violations.map((violation) => violation.id), [
     "maxFrameTimeMs",
     "maxRenderTimeMs",
     "maxDrawCalls",
+    "maxPhysicsCcdChecks",
+    "maxPhysicsDebugLineCount",
   ]);
 
   profiler.recordAssetProgress({ loaded: 1, total: 2, elapsedMs: 20, kind: "texture", name: "player" });
@@ -34,6 +49,8 @@ test("RuntimeProfiler records frame samples and aggregate budget violations", ()
   equal(snapshot.assetSampleCount, 2);
   equal(snapshot.averageFrameTimeMs, 17.5);
   equal(snapshot.maxFrameTimeMs, 20);
+  equal(snapshot.maxPhysicsCcdChecks, 5);
+  equal(snapshot.maxPhysicsDebugLineCount, 3);
   equal(snapshot.maxAssetLoadElapsedMs, 75);
   equal(snapshot.budgetReport?.passed, false);
   equal(snapshot.budgetReport?.violations.some((violation) => violation.id === "maxAssetLoadElapsedMs"), true);
@@ -66,12 +83,16 @@ test("runtime diagnostics helpers evaluate frame samples directly", () => {
     renderCommandCount: 12,
     textureSwitchCount: 4,
     physicsFixedSteps: 3,
+    physicsCcdChecks: 9,
+    physicsDebugLineCount: 6,
     collisionPairCount: 8,
   }));
   const report = evaluateRuntimeDiagnosticsSample(sample, {
     maxRenderCommandCount: 10,
     maxTextureSwitchCount: 4,
     maxPhysicsFixedSteps: 2,
+    maxPhysicsCcdChecks: 8,
+    maxPhysicsDebugLineCount: 5,
     maxCollisionPairCount: 8,
   });
 
@@ -79,8 +100,27 @@ test("runtime diagnostics helpers evaluate frame samples directly", () => {
   deepEqual(report.violations.map((violation) => violation.id), [
     "maxRenderCommandCount",
     "maxPhysicsFixedSteps",
+    "maxPhysicsCcdChecks",
+    "maxPhysicsDebugLineCount",
   ]);
   equal(evaluateRuntimeProfilerBudget(new RuntimeProfiler().snapshot(), { maxFrameTimeMs: 1 }).passed, true);
+});
+
+test("runtime diagnostics fail budgeted optional metrics when samples omit them", () => {
+  const profiler = new RuntimeProfiler({ budget: { maxPhysicsCcdChecks: 0 } });
+
+  const report = profiler.recordFrame(metrics());
+  const snapshot = profiler.snapshot();
+
+  equal(report.passed, false);
+  deepEqual(report.violations.map((violation) => [violation.id, violation.reason]), [
+    ["maxPhysicsCcdChecks", "missingMetric"],
+  ]);
+  equal(hasOwn(snapshot, "maxPhysicsCcdChecks"), false);
+  equal(snapshot.budgetReport?.passed, false);
+  deepEqual(snapshot.budgetReport?.violations.map((violation) => [violation.id, violation.reason]), [
+    ["maxPhysicsCcdChecks", "missingMetric"],
+  ]);
 });
 
 test("runtime diagnostics preserve optional field omission and zero values", () => {
@@ -105,6 +145,8 @@ test("runtime diagnostics preserve optional field omission and zero values", () 
     physicsBrokenJoints: 0,
   }));
   equal(hasOwn(zeroFrame, "renderCommandCount"), true);
+  equal(zeroFrame.physicsCcdChecks, 0);
+  equal(zeroFrame.physicsDebugLineCount, 0);
   equal(zeroFrame.physicsBrokenJoints, 0);
 
   const profiler = new RuntimeProfiler();

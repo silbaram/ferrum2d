@@ -38,6 +38,7 @@ fn rigid_body_convex_polygon_ccd_wakes_sleeping_polygon_target() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -98,6 +99,7 @@ fn rigid_body_oriented_box_ccd_wakes_sleeping_oriented_box_target() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -157,6 +159,7 @@ fn rigid_body_capsule_ccd_wakes_sleeping_capsule_target() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -231,6 +234,7 @@ fn rigid_body_ccd_repeats_for_remaining_step_time() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -289,6 +293,7 @@ fn rigid_body_circle_ccd_wakes_sleeping_circle_target() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 

@@ -167,9 +167,9 @@ declare module "../pkg/ferrum_core.js" {
     update(delta: number): void;
     update_frame(delta: number, render_commands: boolean, frame_telemetry: boolean, physics_debug_lines: boolean): void;
     configure_fixed_timestep(enabled:boolean,step_seconds:number,max_frame_seconds:number,max_steps_per_update:number): void;
-    configure_auto_rigid_body_step(enabled:boolean,gravity_x:number,gravity_y:number,velocity_iterations:number,position_iterations:number,position_correction_percent:number,position_correction_slop:number,restitution_velocity_threshold:number,contact_baumgarte_bias_factor:number,max_contact_baumgarte_bias_velocity:number,contact_split_impulse:boolean): void;
+    configure_auto_rigid_body_step(enabled:boolean,gravity_x:number,gravity_y:number,velocity_iterations:number,position_iterations:number,position_correction_percent:number,position_correction_slop:number,restitution_velocity_threshold:number,contact_baumgarte_bias_factor:number,max_contact_baumgarte_bias_velocity:number,contact_split_impulse:boolean,continuous:boolean): void;
     step_rigid_bodies(delta_seconds:number): void;
-    step_rigid_bodies_with_config(delta_seconds:number,gravity_x:number,gravity_y:number,velocity_iterations:number,position_iterations:number,position_correction_percent:number,position_correction_slop:number,restitution_velocity_threshold:number,contact_baumgarte_bias_factor:number,max_contact_baumgarte_bias_velocity:number,contact_split_impulse:boolean): void;
+    step_rigid_bodies_with_config(delta_seconds:number,gravity_x:number,gravity_y:number,velocity_iterations:number,position_iterations:number,position_correction_percent:number,position_correction_slop:number,restitution_velocity_threshold:number,contact_baumgarte_bias_factor:number,max_contact_baumgarte_bias_velocity:number,contact_split_impulse:boolean,continuous:boolean): void;
     fixed_timestep_enabled(): boolean;
     fixed_timestep_alpha(): number;
     fixed_timestep_consumed_seconds(): number;
@@ -468,6 +468,7 @@ declare module "../pkg/ferrum_core.js" {
     rigid_body_step_islands_put_to_sleep(): number;
     rigid_body_step_ccd_checks(): number;
     rigid_body_step_ccd_hits(): number;
+    rigid_body_step_position_contact_rebuilds(): number;
     rigid_body_step_position_corrections(): number;
     rigid_body_step_split_position_corrections(): number;
     rigid_body_step_constraint_velocity_corrections(): number;

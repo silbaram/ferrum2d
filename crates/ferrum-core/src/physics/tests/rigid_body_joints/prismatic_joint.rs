@@ -24,6 +24,7 @@ fn prismatic_joint_allows_axis_translation() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -64,6 +65,7 @@ fn prismatic_joint_break_distance_allows_axis_translation() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -98,6 +100,7 @@ fn prismatic_joint_allows_translation_inside_limits() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -130,6 +133,7 @@ fn prismatic_joint_clamps_upper_translation_limit() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -167,6 +171,7 @@ fn prismatic_joint_clamps_lower_translation_limit() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -210,6 +215,7 @@ fn prismatic_joint_translation_limit_uses_rotated_local_axis() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -246,6 +252,7 @@ fn prismatic_joint_corrects_perpendicular_drift() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -286,6 +293,7 @@ fn prismatic_joint_breaks_when_perpendicular_anchor_error_exceeds_break_distance
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -320,6 +328,7 @@ fn prismatic_joint_break_distance_allows_smaller_perpendicular_anchor_error() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -359,6 +368,7 @@ fn prismatic_joint_local_axis_rotates_with_entity_a() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -646,6 +656,7 @@ fn prismatic_joint_skips_despawned_entities() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 

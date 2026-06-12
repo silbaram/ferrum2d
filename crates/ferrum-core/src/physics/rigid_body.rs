@@ -20,6 +20,7 @@ pub struct RigidBodyStepConfig {
     pub contact_baumgarte_bias_factor: f32,
     pub max_contact_baumgarte_bias_velocity: f32,
     pub contact_split_impulse: bool,
+    pub continuous: bool,
 }
 
 impl Default for RigidBodyStepConfig {
@@ -37,6 +38,7 @@ impl Default for RigidBodyStepConfig {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         }
     }
 }
@@ -66,6 +68,7 @@ pub struct RigidBodyStepStats {
     pub islands_put_to_sleep: u32,
     pub ccd_checks: u32,
     pub ccd_hits: u32,
+    pub position_contact_rebuilds: u32,
     pub position_corrections: u32,
     pub split_position_corrections: u32,
     pub constraint_velocity_corrections: u32,

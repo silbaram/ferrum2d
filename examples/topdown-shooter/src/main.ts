@@ -1438,6 +1438,8 @@ async function bootstrap(): Promise<void> {
         physicsDebugLineCount: renderStats.physicsDebugLineCount,
         physicsFixedSteps: frame.physics.fixedSteps,
         physicsTileCandidateChecks: frame.physics.tileCandidateChecks,
+        physicsCcdChecks: frame.physics.ccdChecks,
+        physicsCcdHits: frame.physics.ccdHits,
         collisionPairCount: frame.physics.collisionPairs,
         collisionEventCount: frame.physics.collisionEventCount,
         audioEventsPerSecond,

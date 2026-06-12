@@ -1,4 +1,4 @@
-use super::broadphase::current_proxy_bounds;
+use super::broadphase::{current_proxy_bounds, current_proxy_bounds_with_scratch, PairFilter};
 use super::*;
 
 const CONTACT_DEBUG_COLOR: [f32; 4] = [1.0, 0.2, 0.1, 1.0];
@@ -45,11 +45,26 @@ impl CollisionSystem {
         normal_length: f32,
         lines: &mut Vec<PhysicsDebugLine>,
     ) {
+        let mut scratch = CollisionScratch::default();
+        Self::build_contact_debug_lines_with_scratch_into(
+            &mut scratch,
+            world,
+            normal_length,
+            lines,
+        );
+    }
+
+    pub(crate) fn build_contact_debug_lines_with_scratch_into(
+        scratch: &mut CollisionScratch,
+        world: &World,
+        normal_length: f32,
+        lines: &mut Vec<PhysicsDebugLine>,
+    ) {
         lines.clear();
         if !is_valid_debug_line_length(normal_length) {
             return;
         }
-        Self::append_contact_debug_lines_into(world, normal_length, lines);
+        Self::append_contact_debug_lines_with_scratch_into(scratch, world, normal_length, lines);
     }
 
     pub(crate) fn build_physics_debug_lines_into(
@@ -71,6 +86,23 @@ impl CollisionSystem {
         flags: u32,
         lines: &mut Vec<PhysicsDebugLine>,
     ) {
+        let mut scratch = CollisionScratch::default();
+        Self::build_physics_debug_lines_with_flags_and_scratch_into(
+            &mut scratch,
+            world,
+            normal_length,
+            flags,
+            lines,
+        );
+    }
+
+    pub(crate) fn build_physics_debug_lines_with_flags_and_scratch_into(
+        scratch: &mut CollisionScratch,
+        world: &World,
+        normal_length: f32,
+        flags: u32,
+        lines: &mut Vec<PhysicsDebugLine>,
+    ) {
         lines.clear();
         if flags & PHYSICS_DEBUG_COLLIDERS != 0 {
             Self::append_collider_debug_lines_into(
@@ -80,7 +112,7 @@ impl CollisionSystem {
             );
         }
         if flags & PHYSICS_DEBUG_BROADPHASE != 0 {
-            Self::append_broadphase_debug_lines_into(world, lines);
+            Self::append_broadphase_debug_lines_with_scratch_into(scratch, world, lines);
         }
         if flags & PHYSICS_DEBUG_JOINTS != 0 {
             Self::append_joint_debug_lines_into(world, lines);
@@ -89,16 +121,25 @@ impl CollisionSystem {
             Self::append_ccd_debug_lines_into(world, lines);
         }
         if flags & PHYSICS_DEBUG_CONTACTS != 0 && is_valid_debug_line_length(normal_length) {
-            Self::append_contact_debug_lines_into(world, normal_length, lines);
+            Self::append_contact_debug_lines_with_scratch_into(
+                scratch,
+                world,
+                normal_length,
+                lines,
+            );
         }
     }
 
-    pub(crate) fn append_contact_debug_lines_into(
+    pub(crate) fn append_contact_debug_lines_with_scratch_into(
+        scratch: &mut CollisionScratch,
         world: &World,
         normal_length: f32,
         lines: &mut Vec<PhysicsDebugLine>,
     ) {
-        for pair in Self::build_all_collider_pairs(world) {
+        for pair in Self::build_collider_pairs_with_scratch(scratch, world, PairFilter::All)
+            .iter()
+            .copied()
+        {
             let Some(contact) = contact_from_collider_pair(world, pair) else {
                 continue;
             };
@@ -142,6 +183,16 @@ impl CollisionSystem {
         lines: &mut Vec<PhysicsDebugLine>,
     ) {
         for bounds in current_proxy_bounds(world) {
+            append_bounds_debug_lines(bounds, BROADPHASE_DEBUG_COLOR, lines);
+        }
+    }
+
+    pub(crate) fn append_broadphase_debug_lines_with_scratch_into(
+        scratch: &mut CollisionScratch,
+        world: &World,
+        lines: &mut Vec<PhysicsDebugLine>,
+    ) {
+        for bounds in current_proxy_bounds_with_scratch(scratch, world) {
             append_bounds_debug_lines(bounds, BROADPHASE_DEBUG_COLOR, lines);
         }
     }

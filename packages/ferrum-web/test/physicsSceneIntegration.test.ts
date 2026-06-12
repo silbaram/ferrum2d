@@ -47,6 +47,7 @@ test("applyPhysicsSceneProfile applies Physics Spec and enables runtime auto-ste
     profile: "runtime",
     physics: {
       mode: "rigid",
+      continuous: false,
       gravity: [0, 900],
       solver: { stepSeconds: 1 / 120, velocityIterations: 4, positionIterations: 2 },
       bodies: {
@@ -61,6 +62,7 @@ test("applyPhysicsSceneProfile applies Physics Spec and enables runtime auto-ste
   equal(scene.bodyCount, 2);
   equal(scene.stepSeconds, 1 / 120);
   equal(fake.runtimeSpec?.mode, "rigid");
+  equal(fake.runtimeSpec?.continuous, false);
   equal(fake.bodies.length, 2);
   const autoStep = fake.autoStepOptions[fake.autoStepOptions.length - 1];
   if (typeof autoStep !== "object") {
@@ -68,6 +70,7 @@ test("applyPhysicsSceneProfile applies Physics Spec and enables runtime auto-ste
   }
   equal(autoStep.gravityY, 900);
   equal(autoStep.velocityIterations, 4);
+  equal(autoStep.continuous, false);
 
   scene.clear();
   equal(fake.autoStepOptions[fake.autoStepOptions.length - 1], false);

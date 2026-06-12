@@ -22,6 +22,7 @@ fn distance_joint_moves_dynamic_body_to_static_rest_length() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -55,6 +56,7 @@ fn distance_joint_splits_position_correction_by_inverse_mass() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -92,6 +94,7 @@ fn distance_joint_damping_reduces_axis_relative_velocity() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -123,6 +126,7 @@ fn distance_joint_breaks_when_error_exceeds_break_distance() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -154,6 +158,7 @@ fn broken_distance_joint_bucket_index_is_skipped_after_clear() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -185,6 +190,7 @@ fn distance_joint_break_distance_allows_smaller_error() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -216,6 +222,7 @@ fn distance_joint_skips_despawned_entities() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 

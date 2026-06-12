@@ -9,6 +9,7 @@
 | 스크립트 | 용도 |
 | --- | --- |
 | `browser-render-smoke.mjs` | built example `dist`를 로컬 서버와 Playwright Chromium으로 열어 canvas/render/UI/runtime budget을 검증 |
+| `level-streaming-browser-smoke.mjs` | built `ferrum-web` WebGL2 renderer에서 chunk 이동, asset release, draw call/texture switch/runtime budget을 검증 |
 | `headless-smoke.mjs` | Wasm Top-down Shooter render command와 scene state를 headless로 검증 |
 | `gameplay-replay-smoke.mjs` | committed gameplay golden replay fixture와 deterministic replay hash 검증 |
 | `runtime-budget-profiles.mjs` | browser smoke runtime budget profile 정의 |

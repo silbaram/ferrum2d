@@ -197,6 +197,7 @@ impl Engine {
         self.collision_event_counts.clear();
         self.physics_debug_lines.clear();
         self.world.clear_rigid_body_ccd_debug_hits();
+        self.clear_rigid_body_frame_stats();
     }
 
     pub(super) fn clear_physics_history(&mut self) {
@@ -215,18 +216,20 @@ impl Engine {
         self.last_fixed_update = FixedTimestepUpdate::default();
         self.fixed_timestep_input_latch.clear();
         self.previous_input_sample = self.input;
+        self.clear_rigid_body_frame_stats();
     }
 
     fn step_auto_rigid_bodies(&mut self, delta_seconds: f32) {
         if !self.auto_rigid_body_step_enabled {
             return;
         }
-        self.rigid_body_step_stats = PhysicsSystem::step_rigid_bodies_with_config_and_scratch(
+        let stats = PhysicsSystem::step_rigid_bodies_with_config_and_scratch(
             &mut self.world,
             delta_seconds,
             self.auto_rigid_body_step_config,
             &mut self.rigid_body_step_scratch,
         );
+        self.record_rigid_body_step_stats(stats);
     }
 
     fn record_collision_lifecycle_events(&mut self) {
@@ -320,7 +323,8 @@ impl Engine {
             self.physics_debug_lines.clear();
             return;
         }
-        CollisionSystem::build_physics_debug_lines_with_flags_into(
+        CollisionSystem::build_physics_debug_lines_with_flags_and_scratch_into(
+            &mut self.physics_debug_collision_scratch,
             &self.world,
             16.0,
             self.physics_debug_line_flags,

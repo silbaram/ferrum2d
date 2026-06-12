@@ -113,6 +113,7 @@ pub struct Engine {
     tilemap_navigation_path_points: Vec<f32>,
     tilemap_navigation_debug_lines: Vec<PhysicsDebugLine>,
     tilemap_navigation_scratch: TilemapNavigationScratch,
+    physics_debug_collision_scratch: CollisionScratch,
     physics_debug_lines_enabled: bool,
     collision_lifecycle_events_enabled: bool,
     physics_debug_line_flags: u32,
@@ -150,6 +151,7 @@ pub struct Engine {
     shooter_snapshot_entity_floats: Vec<f32>,
     shooter_snapshot_entity_u32s: Vec<u32>,
     rigid_body_step_stats: RigidBodyStepStats,
+    rigid_body_frame_stats: RigidBodyFrameStats,
     rigid_body_step_scratch: RigidBodyStepScratch,
     hd2d_kinematic_elevation_delta: f32,
     hd2d_kinematic_flags: u32,
@@ -193,6 +195,7 @@ impl Engine {
             tilemap_navigation_path_points: Vec::with_capacity(32),
             tilemap_navigation_debug_lines: Vec::with_capacity(16),
             tilemap_navigation_scratch: TilemapNavigationScratch::default(),
+            physics_debug_collision_scratch: CollisionScratch::default(),
             physics_debug_lines_enabled: false,
             collision_lifecycle_events_enabled: false,
             physics_debug_line_flags: PHYSICS_DEBUG_DEFAULT,
@@ -230,6 +233,7 @@ impl Engine {
             shooter_snapshot_entity_floats: Vec::with_capacity(SHOOTER_SNAPSHOT_ENTITY_FLOATS * 16),
             shooter_snapshot_entity_u32s: Vec::with_capacity(SHOOTER_SNAPSHOT_ENTITY_U32S * 16),
             rigid_body_step_stats: RigidBodyStepStats::default(),
+            rigid_body_frame_stats: RigidBodyFrameStats::default(),
             rigid_body_step_scratch: RigidBodyStepScratch::default(),
             hd2d_kinematic_elevation_delta: 0.0,
             hd2d_kinematic_flags: 0,
@@ -249,6 +253,34 @@ impl Engine {
 impl Default for Engine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct RigidBodyFrameStats {
+    ccd_checks: u32,
+    ccd_hits: u32,
+    sleeping_bodies: u32,
+    broken_joints: u32,
+}
+
+impl RigidBodyFrameStats {
+    fn record_step(&mut self, stats: RigidBodyStepStats) {
+        self.ccd_checks = self.ccd_checks.saturating_add(stats.ccd_checks);
+        self.ccd_hits = self.ccd_hits.saturating_add(stats.ccd_hits);
+        self.sleeping_bodies = self.sleeping_bodies.saturating_add(stats.sleeping_bodies);
+        self.broken_joints = self.broken_joints.saturating_add(stats.broken_joints);
+    }
+}
+
+impl Engine {
+    pub(in crate::engine) fn clear_rigid_body_frame_stats(&mut self) {
+        self.rigid_body_frame_stats = RigidBodyFrameStats::default();
+    }
+
+    pub(in crate::engine) fn record_rigid_body_step_stats(&mut self, stats: RigidBodyStepStats) {
+        self.rigid_body_step_stats = stats;
+        self.rigid_body_frame_stats.record_step(stats);
     }
 }
 

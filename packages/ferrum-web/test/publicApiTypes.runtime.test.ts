@@ -343,6 +343,10 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     resetInputActionBindings: () => undefined,
   };
   const runtimeBudget: RuntimeDiagnosticsBudget = { maxFrameTimeMs: 16.7, maxAssetLoadElapsedMs: 250 };
+  const physicsRuntimeBudget: RuntimeDiagnosticsBudget = {
+    maxPhysicsCcdChecks: 0,
+    maxPhysicsDebugLineCount: 0,
+  };
   const runtimeFrameSample: RuntimeDiagnosticsFrameSample = runtimeDiagnosticsFrameSample({
     fps: 60,
     frameTimeMs: 16,
@@ -352,6 +356,8 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     spriteCount: 1,
     drawCalls: 1,
     batchCount: 1,
+    physicsCcdChecks: 0,
+    physicsDebugLineCount: 0,
   });
   const runtimeReport: RuntimeDiagnosticsReport = runtimeProfiler.recordFrame(runtimeFrameSample);
   const runtimeSnapshot: RuntimeProfilerSnapshot = runtimeProfiler.snapshot();
@@ -445,6 +451,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   equal(typeof publicRuntimeProfiler, "function");
   equal(publicRuntimeDiagnosticsFrameSample(runtimeFrameSample).drawCalls, 1);
   equal(publicEvaluateRuntimeProfilerBudget(runtimeSnapshot, runtimeBudget).passed, true);
+  equal(publicEvaluateRuntimeProfilerBudget(runtimeSnapshot, physicsRuntimeBudget).passed, true);
   equal(runtimeReport.passed, true);
   validateDataSceneStateSnapshot(dataSceneState);
   equal(gameplayAuthoringApi.gameplayEntityExists({ entityId: 1, entityGeneration: 1 }), true);

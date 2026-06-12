@@ -61,7 +61,7 @@ use bounds::{
     aabb_bounds_vertices, aabb_corners, capsule_side_bounds, inflate_bounds,
     query_aabb_half_extents, query_shape_sweep_bounds,
 };
-pub(crate) use broadphase::CollisionScratch;
+pub(crate) use broadphase::{CollisionScratch, RigidBodyCcdCandidateQuery};
 use capsule_manifold::{
     capsule_capsule_contact_manifold_points, capsule_circle_contact_manifold_points,
 };
@@ -386,15 +386,6 @@ fn pair_from_indices(world: &World, a: usize, b: usize) -> CollisionPair {
 
 fn collider_pair_to_pair(world: &World, pair: ColliderPair) -> CollisionPair {
     pair_from_indices(world, pair.a.entity_index, pair.b.entity_index)
-}
-
-fn push_unique_pair(pairs: &mut Vec<CollisionPair>, pair: CollisionPair) {
-    if !pairs
-        .iter()
-        .any(|existing| existing.a == pair.a && existing.b == pair.b)
-    {
-        pairs.push(pair);
-    }
 }
 
 fn entity_from_index(world: &World, index: usize) -> Entity {

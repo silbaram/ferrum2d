@@ -1,6 +1,6 @@
 use crate::collision::{
     collider_shape, AabbBounds, ColliderKey, ColliderPair as CollisionColliderPair,
-    ColliderShapeRef, CollisionPair, CollisionSystem,
+    ColliderShapeRef, CollisionPair, CollisionScratch, CollisionSystem, RigidBodyCcdCandidateQuery,
 };
 use crate::components::{
     AabbCollider, CapsuleCollider, ConvexPolygonCollider, EdgeCollider, RigidBodyCcdDebugHit,
@@ -42,6 +42,11 @@ struct RigidBodyCcdQuery<'a> {
     integrated: &'a [bool],
 }
 
+pub(super) struct RigidBodyCcdScratch<'a> {
+    pub(super) collision: &'a mut CollisionScratch,
+    pub(super) candidate_indices: &'a mut Vec<usize>,
+}
+
 pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
     world: &mut World,
     index: usize,
@@ -49,6 +54,7 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
     config: RigidBodyStepConfig,
     integrated: &mut [bool],
     stats: &mut RigidBodyStepStats,
+    scratch: &mut RigidBodyCcdScratch<'_>,
 ) -> bool {
     let Some(mut current_start) = world.transforms.get(index).copied().flatten() else {
         return false;
@@ -81,6 +87,7 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
                 integrated,
             },
             stats,
+            scratch,
         ) else {
             break;
         };
@@ -210,9 +217,22 @@ fn earliest_rigid_body_ccd_hit(
     world: &World,
     query: RigidBodyCcdQuery<'_>,
     stats: &mut RigidBodyStepStats,
+    scratch: &mut RigidBodyCcdScratch<'_>,
 ) -> Option<RigidBodyCcdHit> {
     let mut best = None;
-    for &target_index in world.alive_indices() {
+    CollisionSystem::build_rigid_body_ccd_candidate_indices_into(
+        scratch.collision,
+        world,
+        RigidBodyCcdCandidateQuery {
+            moving_index: query.moving_index,
+            moving_start: query.start,
+            moving_shape: query.shape,
+            moving_velocity: query.velocity,
+            delta_seconds: query.delta_seconds,
+        },
+        scratch.candidate_indices,
+    );
+    for &target_index in scratch.candidate_indices.iter() {
         if !rigid_body_ccd_target_allows(world, query.moving_index, target_index, query.integrated)
         {
             continue;

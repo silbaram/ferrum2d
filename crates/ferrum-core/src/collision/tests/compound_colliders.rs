@@ -163,6 +163,55 @@ fn queries_return_entity_once_when_multiple_compound_colliders_match() {
 }
 
 #[test]
+fn build_pairs_dedupes_multiple_compound_collider_pairs_per_entity_pair() {
+    let mut world = World::default();
+    let first = spawn_custom_body(
+        &mut world,
+        0.0,
+        0.0,
+        CollisionMask::ENEMY,
+        CollisionMask::PLAYER,
+    );
+    let second = spawn_custom_body(
+        &mut world,
+        0.0,
+        0.0,
+        CollisionMask::PLAYER,
+        CollisionMask::ENEMY,
+    );
+    for entity in [first, second] {
+        assert_eq!(
+            world.add_compound_collider(
+                entity,
+                CompoundCollider::new(CompoundColliderShape::Circle(CircleCollider::new(
+                    6.0,
+                    true,
+                    CollisionLayer::Enemy,
+                )))
+                .with_filter(CollisionFilter::new(
+                    CollisionMask::ENEMY,
+                    CollisionMask::PLAYER
+                )),
+            ),
+            Some(1)
+        );
+    }
+
+    let collider_pairs = CollisionSystem::build_all_collider_pairs(&world);
+    assert!(
+        collider_pairs.len() > 1,
+        "fixture should generate duplicate collider-level pairs"
+    );
+    assert_eq!(
+        CollisionSystem::build_pairs(&world),
+        vec![CollisionPair {
+            a: first,
+            b: second,
+        }]
+    );
+}
+
+#[test]
 fn chain_collider_segments_participate_in_queries_contacts_and_debug_lines() {
     let mut world = World::default();
     let chain = spawn_custom_chain(

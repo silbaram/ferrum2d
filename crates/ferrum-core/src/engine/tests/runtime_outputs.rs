@@ -3,7 +3,8 @@ use super::super::telemetry::frame_stats::{
     FRAME_TELEMETRY_ACTION_LAST_PREPARED_TRIGGER_FAILURE_REASON_CODE,
     FRAME_TELEMETRY_ACTION_TRIGGER_ATTEMPTS, FRAME_TELEMETRY_ACTION_TRIGGER_COMMIT_SKIPS,
     FRAME_TELEMETRY_ACTION_TRIGGER_FAILURES, FRAME_TELEMETRY_ACTION_TRIGGER_FAILURE_EVENTS_PUSHED,
-    FRAME_TELEMETRY_F64S, FRAME_TELEMETRY_SPAWN_FLUSH_COMMANDS_DRAINED,
+    FRAME_TELEMETRY_CCD_CHECKS, FRAME_TELEMETRY_CCD_HITS, FRAME_TELEMETRY_F64S,
+    FRAME_TELEMETRY_SPAWN_FLUSH_COMMANDS_DRAINED,
     FRAME_TELEMETRY_SPAWN_FLUSH_PREFAB_SPAWNED_EVENTS_PUSHED,
     FRAME_TELEMETRY_SPAWN_FLUSH_PREFAB_SPAWNED_PAYLOADS, FRAME_TELEMETRY_SPAWN_FLUSH_PREFAB_SPAWNS,
     FRAME_TELEMETRY_SPAWN_FLUSH_PROJECTILE_ARCS_APPLIED,
@@ -47,6 +48,43 @@ fn update_frame_can_skip_unread_output_buffers() {
 
     assert!(engine.render_command_len() > 0);
     assert_eq!(telemetry_time(&engine), engine.time());
+}
+
+#[test]
+fn frame_telemetry_uses_frame_rigid_body_stats_without_overwriting_last_step_stats() {
+    let mut engine = Engine::new();
+    engine.world = World::default();
+    engine.clear_physics_history();
+
+    engine.record_rigid_body_step_stats(RigidBodyStepStats {
+        ccd_checks: 2,
+        ccd_hits: 1,
+        ..RigidBodyStepStats::default()
+    });
+    engine.record_rigid_body_step_stats(RigidBodyStepStats {
+        ccd_checks: 3,
+        ccd_hits: 2,
+        ..RigidBodyStepStats::default()
+    });
+    engine.write_frame_telemetry();
+
+    let telemetry =
+        unsafe { std::slice::from_raw_parts(engine.frame_telemetry_ptr(), FRAME_TELEMETRY_F64S) };
+    assert_eq!(telemetry[FRAME_TELEMETRY_CCD_CHECKS], 5.0);
+    assert_eq!(telemetry[FRAME_TELEMETRY_CCD_HITS], 3.0);
+    assert_eq!(engine.rigid_body_step_ccd_checks(), 3);
+    assert_eq!(engine.rigid_body_step_ccd_hits(), 2);
+
+    engine.configure_fixed_timestep(true, 1.0, 1.0, 4);
+    engine.update_frame(0.5, false, true, false);
+
+    let telemetry =
+        unsafe { std::slice::from_raw_parts(engine.frame_telemetry_ptr(), FRAME_TELEMETRY_F64S) };
+    assert_eq!(engine.physics_fixed_steps(), 0);
+    assert_eq!(telemetry[FRAME_TELEMETRY_CCD_CHECKS], 0.0);
+    assert_eq!(telemetry[FRAME_TELEMETRY_CCD_HITS], 0.0);
+    assert_eq!(engine.rigid_body_step_ccd_checks(), 3);
+    assert_eq!(engine.rigid_body_step_ccd_hits(), 2);
 }
 
 #[test]

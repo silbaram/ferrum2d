@@ -32,6 +32,7 @@ fn weld_joint_locks_local_anchor_and_relative_angle() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -79,6 +80,7 @@ fn weld_joint_breaks_on_linear_or_angular_error() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 

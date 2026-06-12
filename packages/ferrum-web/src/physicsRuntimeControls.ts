@@ -18,6 +18,7 @@ const DEFAULT_RIGID_BODY_POSITION_CORRECTION_SLOP = 0.01;
 const DEFAULT_RIGID_BODY_RESTITUTION_VELOCITY_THRESHOLD = 1;
 const DEFAULT_RIGID_BODY_CONTACT_BAUMGARTE_BIAS_FACTOR = 0.2;
 const DEFAULT_RIGID_BODY_MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY = 120;
+const DEFAULT_RIGID_BODY_CONTINUOUS = true;
 
 const PHYSICS_DEBUG_BROADPHASE = 1 << 0;
 const PHYSICS_DEBUG_CONTACTS = 1 << 1;
@@ -65,6 +66,7 @@ export function configureAutoRigidBodyStepOptions(
       "auto rigid body maxContactBaumgarteBiasVelocity",
     ),
     options?.contactSplitImpulse === true,
+    options?.continuous ?? DEFAULT_RIGID_BODY_CONTINUOUS,
   );
 }
 
@@ -111,6 +113,7 @@ export function stepRigidBodiesWithStats(
       "rigid body maxContactBaumgarteBiasVelocity",
     ),
     options.contactSplitImpulse === true,
+    options.continuous ?? DEFAULT_RIGID_BODY_CONTINUOUS,
   );
   return readRigidBodyStepStats(rustEngine);
 }
@@ -140,6 +143,7 @@ export function readRigidBodyStepStats(rustEngine: Engine): PhysicsRigidBodyStep
     islandsPutToSleep: rustEngine.rigid_body_step_islands_put_to_sleep(),
     ccdChecks: rustEngine.rigid_body_step_ccd_checks(),
     ccdHits: rustEngine.rigid_body_step_ccd_hits(),
+    positionContactRebuilds: rustEngine.rigid_body_step_position_contact_rebuilds(),
     positionCorrections: rustEngine.rigid_body_step_position_corrections(),
     splitPositionCorrections: rustEngine.rigid_body_step_split_position_corrections(),
     constraintVelocityCorrections: rustEngine.rigid_body_step_constraint_velocity_corrections(),

@@ -21,6 +21,7 @@ fn rigid_body_step_puts_idle_dynamic_body_to_sleep() {
         contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
         max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
         contact_split_impulse: false,
+        continuous: true,
     };
     let first = PhysicsSystem::step_rigid_bodies_with_config(&mut world, 0.25, config);
     let second = PhysicsSystem::step_rigid_bodies_with_config(&mut world, 0.25, config);
@@ -65,6 +66,7 @@ fn rigid_body_island_sleep_puts_connected_idle_bodies_to_sleep_together() {
         contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
         max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
         contact_split_impulse: false,
+        continuous: true,
     };
     let first = PhysicsSystem::step_rigid_bodies_with_config(&mut world, 0.25, config);
     let second = PhysicsSystem::step_rigid_bodies_with_config(&mut world, 0.25, config);
@@ -109,6 +111,7 @@ fn rigid_body_island_sleep_waits_for_connected_active_body() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -165,6 +168,7 @@ fn rigid_body_contact_wakes_sleeping_dynamic_body() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -202,6 +206,7 @@ fn rigid_body_island_wake_reaches_joint_connected_sleeping_bodies() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -239,6 +244,7 @@ fn rigid_body_island_wake_ignores_disabled_joints() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 

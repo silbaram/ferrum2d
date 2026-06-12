@@ -35,6 +35,7 @@ fn rigid_body_step_uses_ccd_for_fast_dynamic_dynamic_aabb() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -84,6 +85,7 @@ fn rigid_body_dynamic_dynamic_ccd_wakes_sleeping_target() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -135,6 +137,7 @@ fn rigid_body_step_uses_ccd_for_fast_dynamic_aabb() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -159,6 +162,123 @@ fn rigid_body_step_uses_ccd_for_fast_dynamic_aabb() {
     assert!(
         velocity.vx.abs() < 0.001,
         "normal velocity should be removed by the CCD impact, got {velocity:?}"
+    );
+    assert_eq!(world.transform(wall), Some(Transform2D { x: 50.0, y: 0.0 }));
+}
+
+#[test]
+fn rigid_body_ccd_prunes_static_targets_outside_swept_bounds() {
+    let mut world = World::default();
+    let mover = spawn_dynamic_body(&mut world, 0.0, 0.0, 1.0);
+    world.set_velocity(mover, Velocity { vx: 100.0, vy: 0.0 });
+    world.set_rigid_body(
+        mover,
+        RigidBody::dynamic(1.0).with_material(PhysicsMaterial::new(0.0, 0.0)),
+    );
+    let wall = spawn_kinematic_body_with_size(
+        &mut world,
+        50.0,
+        0.0,
+        CollisionLayer::Wall,
+        false,
+        5.0,
+        5.0,
+    );
+    world.set_rigid_body(
+        wall,
+        RigidBody::static_body().with_material(PhysicsMaterial::new(0.0, 0.0)),
+    );
+    for i in 0..128 {
+        let target = spawn_kinematic_body_with_size(
+            &mut world,
+            5.0 + i as f32,
+            50.0 + i as f32 * 2.0,
+            CollisionLayer::Wall,
+            false,
+            1.0,
+            1.0,
+        );
+        world.set_rigid_body(
+            target,
+            RigidBody::static_body().with_material(PhysicsMaterial::new(0.0, 0.0)),
+        );
+    }
+
+    let stats = PhysicsSystem::step_rigid_bodies_with_config(
+        &mut world,
+        1.0,
+        RigidBodyStepConfig {
+            gravity: Velocity::default(),
+            velocity_iterations: 1,
+            position_iterations: 1,
+            position_correction_percent: 1.0,
+            position_correction_slop: 0.0,
+            restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+            contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+            max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+            contact_split_impulse: false,
+            continuous: true,
+        },
+    );
+
+    assert_eq!(stats.ccd_hits, 1);
+    assert_eq!(
+        stats.ccd_checks, 1,
+        "CCD broadphase should only narrowphase-check the target overlapping the mover sweep"
+    );
+    assert_eq!(world.rigid_body_ccd_debug_hit_count(), 1);
+    assert_eq!(
+        world.rigid_body_ccd_debug_hit_at(0).unwrap().target_entity,
+        wall
+    );
+}
+
+#[test]
+fn rigid_body_step_skips_ccd_when_continuous_is_disabled() {
+    let mut world = World::default();
+    let mover = spawn_dynamic_body(&mut world, 0.0, 0.0, 1.0);
+    world.set_velocity(mover, Velocity { vx: 100.0, vy: 0.0 });
+    world.set_rigid_body(
+        mover,
+        RigidBody::dynamic(1.0).with_material(PhysicsMaterial::new(0.0, 0.0)),
+    );
+    let wall = spawn_kinematic_body_with_size(
+        &mut world,
+        50.0,
+        0.0,
+        CollisionLayer::Wall,
+        false,
+        5.0,
+        5.0,
+    );
+    world.set_rigid_body(
+        wall,
+        RigidBody::static_body().with_material(PhysicsMaterial::new(0.0, 0.0)),
+    );
+
+    let stats = PhysicsSystem::step_rigid_bodies_with_config(
+        &mut world,
+        1.0,
+        RigidBodyStepConfig {
+            gravity: Velocity::default(),
+            velocity_iterations: 1,
+            position_iterations: 1,
+            position_correction_percent: 1.0,
+            position_correction_slop: 0.0,
+            restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+            contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+            max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+            contact_split_impulse: false,
+            continuous: false,
+        },
+    );
+
+    assert_eq!(stats.ccd_checks, 0);
+    assert_eq!(stats.ccd_hits, 0);
+    assert_eq!(world.rigid_body_ccd_debug_hit_count(), 0);
+    assert_eq!(
+        world.transform(mover),
+        Some(Transform2D { x: 100.0, y: 0.0 })
     );
     assert_eq!(world.transform(wall), Some(Transform2D { x: 50.0, y: 0.0 }));
 }

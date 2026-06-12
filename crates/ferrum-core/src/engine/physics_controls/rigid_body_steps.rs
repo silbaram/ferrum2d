@@ -8,12 +8,13 @@ use super::super::Engine;
 #[wasm_bindgen]
 impl Engine {
     pub fn step_rigid_bodies(&mut self, delta_seconds: f32) {
-        self.rigid_body_step_stats = PhysicsSystem::step_rigid_bodies_with_config_and_scratch(
+        let stats = PhysicsSystem::step_rigid_bodies_with_config_and_scratch(
             &mut self.world,
             delta_seconds,
             RigidBodyStepConfig::default(),
             &mut self.rigid_body_step_scratch,
         );
+        self.record_rigid_body_step_stats(stats);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -30,6 +31,7 @@ impl Engine {
         contact_baumgarte_bias_factor: f32,
         max_contact_baumgarte_bias_velocity: f32,
         contact_split_impulse: bool,
+        continuous: bool,
     ) {
         self.auto_rigid_body_step_enabled = enabled;
         self.auto_rigid_body_step_config = RigidBodyStepConfig {
@@ -45,9 +47,11 @@ impl Engine {
             contact_baumgarte_bias_factor,
             max_contact_baumgarte_bias_velocity,
             contact_split_impulse,
+            continuous,
         };
         if !enabled {
             self.rigid_body_step_stats = RigidBodyStepStats::default();
+            self.clear_rigid_body_frame_stats();
         }
     }
 
@@ -65,8 +69,9 @@ impl Engine {
         contact_baumgarte_bias_factor: f32,
         max_contact_baumgarte_bias_velocity: f32,
         contact_split_impulse: bool,
+        continuous: bool,
     ) {
-        self.rigid_body_step_stats = PhysicsSystem::step_rigid_bodies_with_config_and_scratch(
+        let stats = PhysicsSystem::step_rigid_bodies_with_config_and_scratch(
             &mut self.world,
             delta_seconds,
             RigidBodyStepConfig {
@@ -82,8 +87,10 @@ impl Engine {
                 contact_baumgarte_bias_factor,
                 max_contact_baumgarte_bias_velocity,
                 contact_split_impulse,
+                continuous,
             },
             &mut self.rigid_body_step_scratch,
         );
+        self.record_rigid_body_step_stats(stats);
     }
 }

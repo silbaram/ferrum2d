@@ -31,6 +31,7 @@ fn angular_contact_response_uses_offset_contact_point() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -82,6 +83,7 @@ fn rigid_body_split_position_correction_uses_contact_point_inertia() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -129,16 +131,49 @@ fn rigid_body_position_phase_rebuilds_contacts_when_reusing_scratch() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
     let transform = world.transform(body).unwrap();
     assert_eq!(stats.position_corrections, 1);
+    assert_eq!(stats.position_contact_rebuilds, 2);
     assert!(
         (transform.x + 0.5).abs() < 0.001,
         "position contacts should be rebuilt after the first correction instead of reusing stale contacts, got {transform:?}"
     );
     assert_eq!(world.transform(wall), Some(Transform2D { x: 1.5, y: 0.0 }));
+}
+
+#[test]
+fn rigid_body_position_phase_exits_after_converged_iteration() {
+    let mut world = World::default();
+    let body = spawn_dynamic_body(&mut world, 0.0, 0.0, 1.0);
+    world.set_rigid_body(
+        body,
+        RigidBody::dynamic_box(1.0, 2.0, 2.0).with_material(PhysicsMaterial::new(0.0, 0.0)),
+    );
+
+    let stats = PhysicsSystem::step_rigid_bodies_with_config(
+        &mut world,
+        0.1,
+        RigidBodyStepConfig {
+            gravity: Velocity::default(),
+            velocity_iterations: 1,
+            position_iterations: 8,
+            position_correction_percent: 1.0,
+            position_correction_slop: 0.0,
+            restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+            contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+            max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+            contact_split_impulse: false,
+            continuous: true,
+        },
+    );
+
+    assert_eq!(stats.position_contact_rebuilds, 1);
+    assert_eq!(stats.position_corrections, 0);
+    assert_eq!(stats.constraint_position_corrections, 0);
 }
 
 #[test]
@@ -171,6 +206,7 @@ fn rigid_body_split_position_correction_respects_material_scale() {
             contact_baumgarte_bias_factor: 0.0,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -212,6 +248,7 @@ fn rigid_body_split_position_correction_uses_collider_material_scale() {
             contact_baumgarte_bias_factor: 0.0,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -250,6 +287,7 @@ fn rigid_body_split_position_correction_sanitizes_invalid_material_scale() {
             contact_baumgarte_bias_factor: 0.0,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -294,6 +332,7 @@ fn rigid_body_split_position_correction_respects_material_slop_scale() {
             contact_baumgarte_bias_factor: 0.0,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -336,6 +375,7 @@ fn rigid_body_split_position_correction_uses_collider_material_slop_scale() {
             contact_baumgarte_bias_factor: 0.0,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -376,6 +416,7 @@ fn rigid_body_split_position_correction_sanitizes_invalid_material_slop_scale() 
             contact_baumgarte_bias_factor: 0.0,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -413,6 +454,7 @@ fn rigid_body_step_warm_starts_persistent_contacts() {
         contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
         max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
         contact_split_impulse: false,
+        continuous: true,
     };
     let first = PhysicsSystem::step_rigid_bodies_with_config(&mut world, 0.1, config);
     let second = PhysicsSystem::step_rigid_bodies_with_config(&mut world, 0.1, config);
@@ -453,6 +495,7 @@ fn rigid_body_step_exposes_post_solve_contact_impulses() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 

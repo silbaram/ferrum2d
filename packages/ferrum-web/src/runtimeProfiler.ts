@@ -13,6 +13,8 @@ export interface RuntimeDiagnosticsBudget {
   maxAudioEventsPerSecond?: number;
   maxPhysicsFixedSteps?: number;
   maxPhysicsTileCandidateChecks?: number;
+  maxPhysicsCcdChecks?: number;
+  maxPhysicsDebugLineCount?: number;
   maxCollisionPairCount?: number;
   maxAssetLoadElapsedMs?: number;
 }
@@ -20,9 +22,10 @@ export interface RuntimeDiagnosticsBudget {
 export interface RuntimeDiagnosticsViolation {
   id: keyof RuntimeDiagnosticsBudget;
   label: string;
-  actual: number;
+  actual: number | null;
   limit: number;
   unit: RuntimeDiagnosticsUnit;
+  reason?: "missingMetric" | "nonFiniteMetric";
 }
 
 export interface RuntimeDiagnosticsReport {
@@ -88,6 +91,8 @@ export interface RuntimeProfilerSnapshot {
   maxAudioEventsPerSecond: number;
   maxPhysicsFixedSteps: number;
   maxPhysicsTileCandidateChecks: number;
+  maxPhysicsCcdChecks?: number;
+  maxPhysicsDebugLineCount?: number;
   maxCollisionPairCount: number;
   maxAssetLoadElapsedMs: number;
   budgetReport?: RuntimeDiagnosticsReport;
@@ -232,11 +237,11 @@ export function evaluateRuntimeDiagnosticsSample(
   addViolation(violations, "maxDrawCalls", "draw calls", sample.drawCalls, budget.maxDrawCalls, "count");
   addViolation(
     violations,
-      "maxRenderCommandCount",
-      "render commands",
-      sample.renderCommandCount,
-      budget.maxRenderCommandCount,
-      "count",
+    "maxRenderCommandCount",
+    "render commands",
+    sample.renderCommandCount,
+    budget.maxRenderCommandCount,
+    "count",
   );
   addViolation(
     violations,
@@ -272,6 +277,22 @@ export function evaluateRuntimeDiagnosticsSample(
   );
   addViolation(
     violations,
+    "maxPhysicsCcdChecks",
+    "ccd checks",
+    sample.physicsCcdChecks,
+    budget.maxPhysicsCcdChecks,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxPhysicsDebugLineCount",
+    "physics debug lines",
+    sample.physicsDebugLineCount,
+    budget.maxPhysicsDebugLineCount,
+    "count",
+  );
+  addViolation(
+    violations,
     "maxCollisionPairCount",
     "collision pairs",
     sample.collisionPairCount,
@@ -299,11 +320,11 @@ export function evaluateRuntimeProfilerBudget(
   addViolation(violations, "maxDrawCalls", "draw calls", snapshot.maxDrawCalls, budget.maxDrawCalls, "count");
   addViolation(
     violations,
-      "maxRenderCommandCount",
-      "render commands",
-      snapshot.maxRenderCommandCount,
-      budget.maxRenderCommandCount,
-      "count",
+    "maxRenderCommandCount",
+    "render commands",
+    snapshot.maxRenderCommandCount,
+    budget.maxRenderCommandCount,
+    "count",
   );
   addViolation(
     violations,
@@ -335,6 +356,22 @@ export function evaluateRuntimeProfilerBudget(
     "tile checks",
     snapshot.maxPhysicsTileCandidateChecks,
     budget.maxPhysicsTileCandidateChecks,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxPhysicsCcdChecks",
+    "ccd checks",
+    snapshot.maxPhysicsCcdChecks,
+    budget.maxPhysicsCcdChecks,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxPhysicsDebugLineCount",
+    "physics debug lines",
+    snapshot.maxPhysicsDebugLineCount,
+    budget.maxPhysicsDebugLineCount,
     "count",
   );
   addViolation(
@@ -372,6 +409,8 @@ function summarizeRuntimeProfiler(
   let maxAudioEventsPerSecond = 0;
   let maxPhysicsFixedSteps = 0;
   let maxPhysicsTileCandidateChecks = 0;
+  let maxPhysicsCcdChecks: number | undefined;
+  let maxPhysicsDebugLineCount: number | undefined;
   let maxCollisionPairCount = 0;
 
   for (let i = 0; i < frames.length; i += 1) {
@@ -397,6 +436,12 @@ function summarizeRuntimeProfiler(
       maxAudioEventsPerSecond = audioEventsPerSecond;
       maxPhysicsFixedSteps = physicsFixedSteps;
       maxPhysicsTileCandidateChecks = physicsTileCandidateChecks;
+      if (sample.physicsCcdChecks !== undefined) {
+        maxPhysicsCcdChecks = sample.physicsCcdChecks;
+      }
+      if (sample.physicsDebugLineCount !== undefined) {
+        maxPhysicsDebugLineCount = sample.physicsDebugLineCount;
+      }
       maxCollisionPairCount = collisionPairCount;
       continue;
     }
@@ -410,6 +455,16 @@ function summarizeRuntimeProfiler(
     maxAudioEventsPerSecond = Math.max(maxAudioEventsPerSecond, audioEventsPerSecond);
     maxPhysicsFixedSteps = Math.max(maxPhysicsFixedSteps, physicsFixedSteps);
     maxPhysicsTileCandidateChecks = Math.max(maxPhysicsTileCandidateChecks, physicsTileCandidateChecks);
+    if (sample.physicsCcdChecks !== undefined) {
+      maxPhysicsCcdChecks = maxPhysicsCcdChecks === undefined
+        ? sample.physicsCcdChecks
+        : Math.max(maxPhysicsCcdChecks, sample.physicsCcdChecks);
+    }
+    if (sample.physicsDebugLineCount !== undefined) {
+      maxPhysicsDebugLineCount = maxPhysicsDebugLineCount === undefined
+        ? sample.physicsDebugLineCount
+        : Math.max(maxPhysicsDebugLineCount, sample.physicsDebugLineCount);
+    }
     maxCollisionPairCount = Math.max(maxCollisionPairCount, collisionPairCount);
   }
 
@@ -443,6 +498,12 @@ function summarizeRuntimeProfiler(
   snapshot.maxAudioEventsPerSecond = maxAudioEventsPerSecond;
   snapshot.maxPhysicsFixedSteps = maxPhysicsFixedSteps;
   snapshot.maxPhysicsTileCandidateChecks = maxPhysicsTileCandidateChecks;
+  if (maxPhysicsCcdChecks !== undefined) {
+    snapshot.maxPhysicsCcdChecks = maxPhysicsCcdChecks;
+  }
+  if (maxPhysicsDebugLineCount !== undefined) {
+    snapshot.maxPhysicsDebugLineCount = maxPhysicsDebugLineCount;
+  }
   snapshot.maxCollisionPairCount = maxCollisionPairCount;
   snapshot.maxAssetLoadElapsedMs = maxAssetLoadElapsedMs;
   return snapshot;
@@ -463,7 +524,32 @@ function addViolation(
   limit: number | undefined,
   unit: RuntimeDiagnosticsUnit,
 ): void {
-  if (actual === undefined || limit === undefined || actual <= limit) {
+  if (limit === undefined) {
+    return;
+  }
+  if (actual === undefined) {
+    violations.push({
+      id,
+      label,
+      actual: null,
+      limit,
+      unit,
+      reason: "missingMetric",
+    });
+    return;
+  }
+  if (!Number.isFinite(actual)) {
+    violations.push({
+      id,
+      label,
+      actual: null,
+      limit,
+      unit,
+      reason: "nonFiniteMetric",
+    });
+    return;
+  }
+  if (actual <= limit) {
     return;
   }
   violations.push({

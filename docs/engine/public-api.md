@@ -983,12 +983,14 @@ await createFerrumRuntime({ canvas, lighting });
 | `RuntimeProfiler` | frame sample과 asset progress sample을 bounded window로 보관하고 aggregate snapshot을 만든다. |
 | `RuntimeProfilerOptions` | `budget`, `maxFrameSamples`, `maxAssetSamples`를 지정한다. |
 | `RuntimeDiagnosticsBudget` | frame/render/Rust update/draw call/render command/texture switch/physics/asset load elapsed limit를 지정한다. |
-| `RuntimeProfilerSnapshot` | 평균/최대 frame time, Rust update, render time, draw call, texture switch, physics count, asset load elapsed를 요약한다. |
+| `RuntimeProfilerSnapshot` | 평균/최대 frame time, Rust update, render time, draw call, texture switch, physics count, CCD check, physics debug line, asset load elapsed를 요약한다. |
 | `runtimeDiagnosticsFrameSample(...)` | `DebugOverlayMetrics`를 budget 검사용 numeric sample로 정규화한다. |
 | `evaluateRuntimeDiagnosticsSample(...)` | 단일 frame sample이 budget을 넘는지 검사한다. |
 | `evaluateRuntimeProfilerBudget(...)` | profiler aggregate snapshot 기준으로 budget 위반 목록을 만든다. |
 
 `AssetLoadProgress.elapsedMs`는 manifest load 시작 이후 경과 시간이다. `RuntimeProfiler.recordAssetProgress(progress)`로 asset load budget smoke에 같은 값을 사용할 수 있다.
+
+Physics budget field 중 `maxPhysicsCcdChecks`는 `DebugOverlayMetrics.physicsCcdChecks`의 snapshot 최대값을, `maxPhysicsDebugLineCount`는 `DebugOverlayMetrics.physicsDebugLineCount`의 snapshot 최대값을 검사한다. 이 두 snapshot field는 해당 metric을 포함한 frame sample이 한 번 이상 기록된 경우에만 존재한다. Budget에 지정된 optional metric이 frame sample이나 snapshot에 없으면 해당 budget 항목은 `reason: "missingMetric"` violation으로 실패한다. 새 browser budget profile에 이 field를 추가할 때는 같은 metric이 runtime frame sample에 실제로 기록되는지 함께 확인해야 한다.
 
 ## Game Spec API
 
@@ -1241,6 +1243,10 @@ Physics 구현 범위는 [2D 물리엔진 기능 맵](../development/architectur
 | Result buffers | `PhysicsBodyQueryHit`, `PhysicsRaycastBodyHit`, `PhysicsShapeCastBodyHit`, tile query hit types, `PhysicsRigidContactImpulseHit` |
 
 Rust crate의 low-level `World`, `PhysicsSystem`, collider/joint helper는 Web package entrypoint에서 직접 re-export하지 않는다.
+
+`PhysicsRigidBodyStepOptions.continuous`는 dynamic rigid body CCD 탐색 여부를 제어한다. 직접 `stepRigidBodies(...)`/`configureAutoRigidBodyStep(...)`에 options를 넘기지 않으면 기존 동작처럼 `true`가 기본이며, `createPhysicsWorldFromSpec(...)`가 반환하는 `stepOptions`는 Physics Spec의 resolved `continuous` 값을 그대로 포함한다.
+
+`PhysicsRigidBodyStepStats.positionContactRebuilds`는 rigid body position phase에서 contact list를 다시 만든 횟수다. contact correction과 joint position correction이 모두 없는 iteration 뒤에는 solver가 남은 position iteration을 조기 종료할 수 있으므로, 이 값은 `positionIterations`보다 작을 수 있다.
 
 `PhysicsJointSpawnOptions`의 공식 joint type은 `distance`, `rope`, `spring`, `pulley`, `revolute`, `prismatic`, `weld`, `gear`다. `pulley`는 두 world-space ground anchor와 body local anchor 사이의 가중 길이를 유지하며 `ratio`와 `breakDistance`를 지원한다. `weld`는 local anchor와 `referenceAngle`을 기준으로 두 rigid body의 상대 위치/회전을 고정하며, `breakDistance`와 `breakAngle`을 지원한다. `createVehicleRig(...)`는 새 core joint type을 추가하지 않고 `prismatic` guide joint와 `spring` suspension joint를 조합한다.
 

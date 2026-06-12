@@ -470,6 +470,9 @@ function validateStepOptions(value: unknown, path: string): void {
   if (options.contactSplitImpulse !== undefined) {
     booleanValue(options.contactSplitImpulse, `${path}.contactSplitImpulse`);
   }
+  if (options.continuous !== undefined) {
+    booleanValue(options.continuous, `${path}.continuous`);
+  }
 }
 
 function validateResolvedPhysicsSpecShape(value: unknown, path: string): Record<string, unknown> {

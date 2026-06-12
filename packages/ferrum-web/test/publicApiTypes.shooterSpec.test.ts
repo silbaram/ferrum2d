@@ -417,6 +417,7 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
     islandsPutToSleep: 0,
     ccdChecks: 0,
     ccdHits: 0,
+    positionContactRebuilds: 1,
     positionCorrections: 1,
     splitPositionCorrections: 0,
     constraintVelocityCorrections: 0,

@@ -2,6 +2,10 @@ use super::super::Engine;
 
 use crate::gameplay_event::GAMEPLAY_ACTION_FAILURE_MAX_REASON_CODE;
 
+#[cfg(test)]
+pub(crate) const FRAME_TELEMETRY_CCD_CHECKS: usize = 30;
+#[cfg(test)]
+pub(crate) const FRAME_TELEMETRY_CCD_HITS: usize = 31;
 pub(crate) const FRAME_TELEMETRY_ACTION_TRIGGER_ATTEMPTS: usize = 37;
 pub(crate) const FRAME_TELEMETRY_ACTION_TRIGGER_FAILURES: usize = 38;
 pub(crate) const FRAME_TELEMETRY_ACTION_TRIGGER_FAILURE_EVENTS_PUSHED: usize = 39;
@@ -85,10 +89,10 @@ impl FrameTelemetry {
             engine.collision_event_counts.trigger_enter as f64,
             engine.collision_event_counts.trigger_stay as f64,
             engine.collision_event_counts.trigger_exit as f64,
-            engine.rigid_body_step_stats.ccd_checks as f64,
-            engine.rigid_body_step_stats.ccd_hits as f64,
-            engine.rigid_body_step_stats.sleeping_bodies as f64,
-            engine.rigid_body_step_stats.broken_joints as f64,
+            engine.rigid_body_frame_stats.ccd_checks as f64,
+            engine.rigid_body_frame_stats.ccd_hits as f64,
+            engine.rigid_body_frame_stats.sleeping_bodies as f64,
+            engine.rigid_body_frame_stats.broken_joints as f64,
             player_height_span.map_or(f64::NAN, |span| span.floor.0 as f64),
             player_height_span.map_or(f64::NAN, |span| span.elevation as f64),
             player_height_span.map_or(f64::NAN, |span| span.height as f64),

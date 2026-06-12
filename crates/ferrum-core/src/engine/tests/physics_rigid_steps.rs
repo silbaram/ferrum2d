@@ -40,7 +40,9 @@ fn engine_step_rigid_bodies_with_config_uses_wasm_options() {
         .world
         .set_rigid_body(body, RigidBody::dynamic(1.0).with_sleeping_enabled(false));
 
-    engine.step_rigid_bodies_with_config(0.5, 10.0, 0.0, 1, 1, 0.8, 0.01, 1.0, 0.2, 120.0, false);
+    engine.step_rigid_bodies_with_config(
+        0.5, 10.0, 0.0, 1, 1, 0.8, 0.01, 1.0, 0.2, 120.0, false, true,
+    );
 
     let velocity = engine
         .world
@@ -62,7 +64,9 @@ fn engine_auto_rigid_body_step_runs_inside_update() {
         .world
         .set_rigid_body(body, RigidBody::dynamic(1.0).with_sleeping_enabled(false));
 
-    engine.configure_auto_rigid_body_step(true, 0.0, 20.0, 1, 1, 0.8, 0.01, 1.0, 0.2, 120.0, false);
+    engine.configure_auto_rigid_body_step(
+        true, 0.0, 20.0, 1, 1, 0.8, 0.01, 1.0, 0.2, 120.0, false, true,
+    );
     engine.update(0.5);
 
     let velocity = engine
@@ -73,7 +77,8 @@ fn engine_auto_rigid_body_step_runs_inside_update() {
     assert_eq!(engine.rigid_body_step_substeps(), 1);
     assert_eq!(engine.rigid_body_step_dynamic_bodies(), 1);
 
-    engine
-        .configure_auto_rigid_body_step(false, 0.0, 20.0, 1, 1, 0.8, 0.01, 1.0, 0.2, 120.0, false);
+    engine.configure_auto_rigid_body_step(
+        false, 0.0, 20.0, 1, 1, 0.8, 0.01, 1.0, 0.2, 120.0, false, true,
+    );
     assert_eq!(engine.rigid_body_step_dynamic_bodies(), 0);
 }

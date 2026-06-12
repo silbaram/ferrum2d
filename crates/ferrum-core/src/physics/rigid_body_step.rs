@@ -48,6 +48,8 @@ struct RigidBodyConstraintBatch {
 #[derive(Debug, Default)]
 pub(crate) struct RigidBodyStepScratch {
     integrated_bodies: Vec<bool>,
+    ccd_collision: CollisionScratch,
+    ccd_candidates: Vec<usize>,
     position_collision: CollisionScratch,
     position_contacts: Vec<ColliderCollisionContact>,
     contact_constraint_scratch: RigidContactConstraintScratch,
@@ -250,6 +252,8 @@ impl PhysicsSystem {
             config,
             stats,
             &mut scratch.integrated_bodies,
+            &mut scratch.ccd_collision,
+            &mut scratch.ccd_candidates,
         );
     }
 
@@ -390,11 +394,14 @@ impl PhysicsSystem {
         scratch: &mut RigidBodyStepScratch,
     ) {
         for _ in 0..config.position_iterations {
+            let position_corrections_before = stats.position_corrections;
+            let constraint_position_corrections_before = stats.constraint_position_corrections;
             CollisionSystem::build_rigid_collider_contacts_into(
                 &mut scratch.position_collision,
                 world,
                 &mut scratch.position_contacts,
             );
+            stats.position_contact_rebuilds = stats.position_contact_rebuilds.saturating_add(1);
             for island in constraints.island_schedule.islands() {
                 let island_root = island.root();
                 solve_prismatic_joint_position_constraints(
@@ -440,6 +447,11 @@ impl PhysicsSystem {
                     config,
                     stats,
                 );
+            }
+            if stats.position_corrections == position_corrections_before
+                && stats.constraint_position_corrections == constraint_position_corrections_before
+            {
+                break;
             }
         }
     }

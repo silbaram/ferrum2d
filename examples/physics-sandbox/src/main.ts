@@ -255,6 +255,7 @@ async function bootstrap(): Promise<void> {
     ? "production"
     : "development";
   const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
+  const profilerSmoke = searchParams.get("profilerSmoke") === "true";
   const initialDemo = demoById(searchParams.get("demo") ?? "sandbox").id;
   const debugOptions: PhysicsDebugOptions = {
     colliders: true,
@@ -339,6 +340,7 @@ async function bootstrap(): Promise<void> {
     debug: searchParams.get("debug") === "true",
     physicsDebugLines: debugOptions,
     physicsMode: "rigid",
+    profiler: profilerSmoke,
     environment,
     autostart: false,
     webgl2: { clearColor: [0.09, 0.1, 0.11, 1], preserveDrawingBuffer },

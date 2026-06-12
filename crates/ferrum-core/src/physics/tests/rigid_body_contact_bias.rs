@@ -28,6 +28,7 @@ fn rigid_body_contact_baumgarte_bias_separates_resting_overlap() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -69,6 +70,7 @@ fn rigid_body_contact_split_impulse_corrects_overlap_without_velocity_bias() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: true,
+            continuous: true,
         },
     );
 
@@ -115,6 +117,7 @@ fn rigid_body_contact_baumgarte_bias_respects_position_slop() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -152,6 +155,7 @@ fn rigid_body_contact_baumgarte_bias_can_be_disabled_per_step() {
             contact_baumgarte_bias_factor: 0.0,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -190,6 +194,7 @@ fn rigid_body_contact_baumgarte_bias_respects_material_scale() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -229,6 +234,7 @@ fn rigid_body_contact_baumgarte_bias_respects_material_max_velocity_scale() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -266,6 +272,7 @@ fn rigid_body_contact_baumgarte_bias_sanitizes_invalid_config() {
             contact_baumgarte_bias_factor: f32::NAN,
             max_contact_baumgarte_bias_velocity: f32::NAN,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 
@@ -311,6 +318,7 @@ fn rigid_body_contact_baumgarte_bias_sanitizes_invalid_material_scale() {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         },
     );
 

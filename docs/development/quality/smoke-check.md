@@ -21,21 +21,22 @@ pnpm smoke:check
 7. `pnpm smoke:physics`
 8. `pnpm smoke:topdown-authored-behavior-variant`
 9. `pnpm smoke:level-streaming`
-10. `pnpm smoke:asset-pipeline`
-11. `pnpm validate:gameplay-authoring:report`
-12. `pnpm smoke:gameplay-replay:report`
-13. `pnpm validate:gameplay-report-artifacts`
-14. `pnpm smoke:create-game-template-catalog`
-15. `pnpm smoke:create-game-template-reports`
-16. `pnpm smoke:topdown-template-replay-report`
-17. `pnpm smoke:topdown-authored-behavior-runtime`
-18. `pnpm smoke:topdown-mass-objects`
-19. `pnpm smoke:topdown-tilemap-budget`
-20. `pnpm smoke:starter-runtime`
-21. `pnpm smoke:content-runtime`
-22. `pnpm smoke:headless`
-23. `pnpm build`
-24. `pnpm package:check`
+10. `pnpm smoke:level-streaming-browser`
+11. `pnpm smoke:asset-pipeline`
+12. `pnpm validate:gameplay-authoring:report`
+13. `pnpm smoke:gameplay-replay:report`
+14. `pnpm validate:gameplay-report-artifacts`
+15. `pnpm smoke:create-game-template-catalog`
+16. `pnpm smoke:create-game-template-reports`
+17. `pnpm smoke:topdown-template-replay-report`
+18. `pnpm smoke:topdown-authored-behavior-runtime`
+19. `pnpm smoke:topdown-mass-objects`
+20. `pnpm smoke:topdown-tilemap-budget`
+21. `pnpm smoke:starter-runtime`
+22. `pnpm smoke:content-runtime`
+23. `pnpm smoke:headless`
+24. `pnpm build`
+25. `pnpm package:check`
 
 `pnpm smoke:check`는 Starter Runtime, Minimal Game content runtime showcase, Top-down authored behavior runtime의 browser smoke까지 포함하지만, 모든 장르의 WebGL2 화면, 키보드/마우스 입력, 브라우저 오디오 unlock 상태를 전부 확인하지는 않는다. 나머지 항목은 아래 browser render smoke check와 수동 smoke check에서 확인한다.
 
@@ -205,6 +206,14 @@ Level Streaming/Chunking의 chunk manifest, viewport 기반 load/unload plan, as
 ```bash
 pnpm smoke:level-streaming
 ```
+
+Level Streaming/Chunking이 실제 Chromium + WebGL2 renderer + `BrowserPlatformHost` asset release 경로에서 frame budget을 만족하는지 확인하려면 다음을 실행한다.
+
+```bash
+pnpm smoke:level-streaming-browser
+```
+
+이 browser smoke는 built `@ferrum2d/ferrum-web` 모듈을 정적 서버로 열고, 두 chunk를 순차 활성화한 뒤 256개 sprite render command, draw call 2회, texture switch 1회, `RuntimeProfiler` budget pass, 공유 텍스처 retain, 이전 chunk 전용 텍스처 eviction, canvas pixel readback을 함께 검증한다.
 
 In-game Debug Gizmos의 path/spawn/prefab/collider category가 physics debug line buffer로 변환되는지 확인하려면 다음을 실행한다.
 
@@ -394,6 +403,7 @@ pnpm smoke:headless
 - `pnpm smoke:texture-atlas`는 public package build에서 atlas packer를 빌드하고, CLI가 입력 순서와 무관한 deterministic atlas JSON, frame UV, placement metadata를 생성하는지 확인한다.
 - `pnpm smoke:asset-pipeline`은 raw sprite folder를 `pack-textures` CLI로 atlas PNG/JSON/Game Spec frame에 병합하고, public `importAsepriteAtlas(...)`, `resolveShooterGameSpec(...)`, `LocalizationBundle`, `AudioAssetLoader`가 같은 consumer asset import 경로에서 함께 동작하는지 확인한다.
 - `pnpm smoke:level-streaming`은 public package build에서 chunk manifest bounds, viewport active/preload selection, load/unload candidate, chunk asset manifest 생성, `createRuntimeLevelStreaming(...)`의 preload/load/unload snapshot 갱신, unload 후 `target.releaseAssets` payload와 renderer texture eviction 연결을 확인한다.
+- `pnpm smoke:level-streaming-browser`는 Chromium + WebGL2 renderer에서 runtime streaming chunk 이동 후 256개 render command, draw call 2회, texture switch 1회, `RuntimeProfiler` budget, shared texture retain, old chunk texture eviction, canvas pixel readback을 확인한다.
 - `pnpm smoke:debug-gizmos`는 public package build에서 path/spawn/prefab/collider debug category가 metadata가 있는 line view와 physics debug line buffer로 변환되는지 확인한다.
 - `pnpm smoke:accessibility-options`는 public package build에서 reduced motion camera/fade adapter, subtitle panel helper, high-contrast HUD theme hook, input assist metadata 정규화를 확인한다.
 - `pnpm smoke:screenshot-capture`는 Minimal Game browser smoke에서 PNG와 `*.summary.json` artifact를 생성하고 screenshot summary threshold helper가 동작하는지 확인한다.
@@ -402,7 +412,9 @@ pnpm smoke:headless
 - `pnpm smoke:tilemap-authoring`은 `applyTileRules(...)`, `bakeAnimatedTileLayer(...)`, Tiled import 결과 authoring, LDtk entity/tile layer fixture를 함께 확인한다.
 - browser console error와 page error가 발생하지 않는다.
 
-새 browser smoke에서 frame/render/physics budget을 검사할 때는 `RuntimeProfiler`를 우선 사용한다. `FerrumRuntimeOptions.profiler`를 켜면 runtime이 `DebugOverlayMetrics`를 profiler에 기록하고, smoke script는 `--budget` 모드에서 profiler snapshot의 frame time, Rust update, render time, draw call, render command, texture switch, physics count, asset load elapsed budget 위반을 구조화된 결과로 확인한다.
+새 browser smoke에서 frame/render/physics budget을 검사할 때는 `RuntimeProfiler`를 우선 사용한다. `FerrumRuntimeOptions.profiler`를 켜면 runtime이 `DebugOverlayMetrics`를 profiler에 기록하고, smoke script는 `--budget` 모드에서 profiler snapshot의 frame time, Rust update, render time, draw call, render command, texture switch, fixed step, tile candidate check, CCD check, physics debug line, collision pair, asset load elapsed budget 위반을 구조화된 결과로 확인한다.
+
+`tests/smoke/runtime-budget-profiles.mjs`에 budget field를 추가할 때는 `packages/ferrum-web/src/runtimeProfiler.ts`의 `RuntimeDiagnosticsBudget`, `RuntimeProfilerSnapshot`, 단일 frame evaluator, aggregate evaluator, 그리고 `tests/smoke/browser-render-smoke.mjs`의 `RUNTIME_BUDGET_FIELDS`를 함께 동기화한다. field가 profiler snapshot에 없으면 browser smoke는 `missingMetric` 위반으로 실패해야 한다.
 
 기본 브라우저 채널은 `chrome`이다. 환경에 따라 다음 환경 변수를 사용할 수 있다.
 
@@ -473,22 +485,23 @@ GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `fer
 4. `pnpm smoke:runtime-budgets`
 5. `pnpm smoke:mass-objects`
 6. `pnpm smoke:topdown-mass-objects`
-7. `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
-8. `pnpm lint`
-9. `pnpm test`
-10. `pnpm build`
-11. `pnpm package:check`
-12. `pnpm validate:gameplay-authoring:report`
-13. `pnpm smoke:gameplay-replay:report`
-14. `pnpm validate:gameplay-report-artifacts`
-15. `pnpm smoke:consumer-smoke-report`
-16. `pnpm smoke:asset-pipeline`
-17. `pnpm smoke:create-game-template-catalog`
-18. `pnpm smoke:create-game-template-reports`
-19. `pnpm smoke:topdown-template-replay-report`
-20. tag 또는 수동 opt-in일 때 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`
-21. consumer smoke 직후 `pnpm validate:consumer-smoke-report -- --expect-status passed` 또는 실패 시 `--expect-status failed`
-22. tag 또는 수동 opt-in일 때 extended browser smoke matrix: `smoke:preload`, `smoke:mobile-input`, `smoke:lighting(-webgpu)`, `smoke:material(-webgpu)`, `smoke:camera-postprocess`, `smoke:particle-vfx`, `smoke:topdown*`, `smoke:destructible-terrain-browser`, `smoke:breakout-*`, `smoke:platformer-*`, `smoke:physics-sandbox*`, `smoke:physics-demo-suite`
+7. `pnpm smoke:topdown-tilemap-budget`
+8. `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
+9. `pnpm lint`
+10. `pnpm test`
+11. `pnpm build`
+12. `pnpm package:check`
+13. `pnpm validate:gameplay-authoring:report`
+14. `pnpm smoke:gameplay-replay:report`
+15. `pnpm validate:gameplay-report-artifacts`
+16. `pnpm smoke:consumer-smoke-report`
+17. `pnpm smoke:asset-pipeline`
+18. `pnpm smoke:create-game-template-catalog`
+19. `pnpm smoke:create-game-template-reports`
+20. `pnpm smoke:topdown-template-replay-report`
+21. tag 또는 수동 opt-in일 때 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`
+22. consumer smoke 직후 `pnpm validate:consumer-smoke-report -- --expect-status passed` 또는 실패 시 `--expect-status failed`
+23. tag 또는 수동 opt-in일 때 extended browser smoke matrix: `smoke:preload`, `smoke:mobile-input`, `smoke:lighting(-webgpu)`, `smoke:material(-webgpu)`, `smoke:camera-postprocess`, `smoke:particle-vfx`, `smoke:topdown*`, `smoke:destructible-terrain-browser`, `smoke:breakout-*`, `smoke:platformer-*`, `smoke:physics-sandbox*`, `smoke:physics-demo-suite`
 
 extended browser smoke job은 matrix별 artifact 이름을 분리해 budget smoke의 `runtimeBudget` report를 `artifacts/browser-smoke-budgets`에 남긴다. browser budget profile은 frame/render/Rust update, draw/render command/texture switch, physics/collision, asset load budget을 평가한다. Chromium이 `performance.memory`를 제공하는 환경에서는 absolute JS heap used sample도 artifact에 포함하고 budget 위반 여부를 평가한다.
 

@@ -1,7 +1,8 @@
+use crate::collision::CollisionScratch;
 use crate::components::{RigidBodyType, Rotation2D, Velocity};
 use crate::world::World;
 
-use super::super::ccd::integrate_dynamic_rigid_body_position_with_ccd;
+use super::super::ccd::{integrate_dynamic_rigid_body_position_with_ccd, RigidBodyCcdScratch};
 use super::super::math::{finite_angular_velocity, finite_rotation, finite_velocity};
 use super::super::rigid_body::{RigidBodyStepConfig, RigidBodyStepStats};
 use super::super::rigid_body_properties::{
@@ -115,6 +116,8 @@ pub(super) fn integrate_rigid_body_positions(
     config: RigidBodyStepConfig,
     stats: &mut RigidBodyStepStats,
     integrated: &mut Vec<bool>,
+    ccd_collision: &mut CollisionScratch,
+    ccd_candidates: &mut Vec<usize>,
 ) {
     integrated.clear();
     integrated.resize(world.rigid_bodies.len(), false);
@@ -136,16 +139,21 @@ pub(super) fn integrate_rigid_body_positions(
         {
             continue;
         }
-        if body.body_type == RigidBodyType::Dynamic
-            && integrate_dynamic_rigid_body_position_with_ccd(
+        if config.continuous && body.body_type == RigidBodyType::Dynamic && {
+            let mut ccd_scratch = RigidBodyCcdScratch {
+                collision: &mut *ccd_collision,
+                candidate_indices: &mut *ccd_candidates,
+            };
+            integrate_dynamic_rigid_body_position_with_ccd(
                 world,
                 index,
                 delta_seconds,
                 config,
                 integrated,
                 stats,
+                &mut ccd_scratch,
             )
-        {
+        } {
             integrated[index] = true;
             continue;
         }

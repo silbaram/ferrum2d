@@ -19,6 +19,7 @@ pub(crate) struct CollisionScratch {
     pub(super) moving_proxies: Vec<CollisionProxy>,
     pub(super) target_proxies: Vec<CollisionProxy>,
     pub(super) collider_pairs: Vec<ColliderPair>,
+    pair_dedupe: Vec<CollisionPairDedupeEntry>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -27,6 +28,31 @@ pub(crate) struct CollisionScratchUsage {
     pub(crate) moving_proxies: usize,
     pub(crate) target_proxies: usize,
     pub(crate) collider_pairs: usize,
+    pub(crate) pair_dedupe: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct CollisionPairKey {
+    a_id: u32,
+    a_generation: u32,
+    b_id: u32,
+    b_generation: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CollisionPairDedupeEntry {
+    key: CollisionPairKey,
+    pair: CollisionPair,
+    first_order: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RigidBodyCcdCandidateQuery {
+    pub(crate) moving_index: usize,
+    pub(crate) moving_start: Transform2D,
+    pub(crate) moving_shape: ColliderShapeRef,
+    pub(crate) moving_velocity: Velocity,
+    pub(crate) delta_seconds: f32,
 }
 
 impl CollisionScratch {
@@ -36,6 +62,7 @@ impl CollisionScratch {
             moving_proxies: self.moving_proxies.len(),
             target_proxies: self.target_proxies.len(),
             collider_pairs: self.collider_pairs.len(),
+            pair_dedupe: self.pair_dedupe.len(),
         }
     }
 }
@@ -119,6 +146,7 @@ impl CollisionSystem {
             world,
             &scratch.current_proxies,
             &mut scratch.collider_pairs,
+            &mut scratch.pair_dedupe,
             pairs,
             PairFilter::All,
         );
@@ -133,6 +161,7 @@ impl CollisionSystem {
         scratch.collider_pairs
     }
 
+    #[cfg(test)]
     pub(super) fn build_all_collider_pairs(world: &World) -> Vec<ColliderPair> {
         Self::build_collider_pairs(world, PairFilter::All)
     }
@@ -166,6 +195,7 @@ impl CollisionSystem {
             world,
             &scratch.current_proxies,
             &mut scratch.collider_pairs,
+            &mut scratch.pair_dedupe,
             pairs,
             PairFilter::Layers(layer_a, layer_b),
         );
@@ -184,6 +214,7 @@ impl CollisionSystem {
             world,
             &scratch.current_proxies,
             &mut scratch.collider_pairs,
+            &mut scratch.pair_dedupe,
             pairs,
             PairFilter::Masks(category_a, category_b),
         );
@@ -266,12 +297,56 @@ impl CollisionSystem {
             }
         }
     }
+
+    pub(crate) fn build_rigid_body_ccd_candidate_indices_into(
+        scratch: &mut CollisionScratch,
+        world: &World,
+        query: RigidBodyCcdCandidateQuery,
+        candidates: &mut Vec<usize>,
+    ) {
+        let moving_bounds = swept_collider_bounds(
+            query.moving_start,
+            query.moving_shape,
+            finite_broadphase_velocity(query.moving_velocity),
+            query.delta_seconds,
+        );
+        fill_rigid_body_ccd_target_proxies(
+            world,
+            query.moving_index,
+            query.delta_seconds,
+            &mut scratch.target_proxies,
+        );
+        candidates.clear();
+
+        for target_proxy in scratch.target_proxies.iter().copied() {
+            if target_proxy.bounds.max_x < moving_bounds.min_x {
+                continue;
+            }
+            if target_proxy.bounds.min_x > moving_bounds.max_x {
+                break;
+            }
+            if target_proxy.bounds.overlaps(moving_bounds) {
+                candidates.push(target_proxy.key.entity_index);
+            }
+        }
+
+        candidates.sort_unstable();
+        candidates.dedup();
+    }
 }
 
 pub(super) fn current_proxy_bounds(world: &World) -> Vec<AabbBounds> {
     let mut proxies = Vec::new();
     fill_current_proxies(world, &mut proxies);
     proxies.into_iter().map(|proxy| proxy.bounds).collect()
+}
+
+pub(super) fn current_proxy_bounds_with_scratch<'a>(
+    scratch: &'a mut CollisionScratch,
+    world: &World,
+) -> impl Iterator<Item = AabbBounds> + 'a {
+    fill_current_proxies(world, &mut scratch.current_proxies);
+    scratch.current_proxies.iter().map(|proxy| proxy.bounds)
 }
 
 fn fill_current_proxies(world: &World, proxies: &mut Vec<CollisionProxy>) {
@@ -321,15 +396,48 @@ fn collect_current_pairs(
     world: &World,
     proxies: &[CollisionProxy],
     collider_pairs: &mut Vec<ColliderPair>,
+    pair_dedupe: &mut Vec<CollisionPairDedupeEntry>,
     pairs: &mut Vec<CollisionPair>,
     pair_filter: PairFilter,
 ) {
     collider_pairs.clear();
     collect_current_collider_pairs(world, proxies, collider_pairs, pair_filter);
     pairs.clear();
-    for pair in collider_pairs.iter().copied() {
-        push_unique_pair(pairs, collider_pair_to_pair(world, pair));
+    pair_dedupe.clear();
+    pair_dedupe.extend(collider_pairs.iter().copied().enumerate().map(
+        |(first_order, collider_pair)| {
+            let pair = collider_pair_to_pair(world, collider_pair);
+            CollisionPairDedupeEntry {
+                key: CollisionPairKey::from_pair(pair),
+                pair,
+                first_order,
+            }
+        },
+    ));
+    pair_dedupe.sort_unstable_by(collision_pair_dedupe_order);
+    pair_dedupe.dedup_by(|a, b| a.key == b.key);
+    pair_dedupe.sort_unstable_by(|a, b| a.first_order.cmp(&b.first_order));
+    pairs.extend(pair_dedupe.iter().map(|entry| entry.pair));
+}
+
+impl CollisionPairKey {
+    fn from_pair(pair: CollisionPair) -> Self {
+        Self {
+            a_id: pair.a.id,
+            a_generation: pair.a.generation,
+            b_id: pair.b.id,
+            b_generation: pair.b.generation,
+        }
     }
+}
+
+fn collision_pair_dedupe_order(
+    a: &CollisionPairDedupeEntry,
+    b: &CollisionPairDedupeEntry,
+) -> std::cmp::Ordering {
+    a.key
+        .cmp(&b.key)
+        .then_with(|| a.first_order.cmp(&b.first_order))
 }
 
 fn fill_swept_layer_proxies(
@@ -405,6 +513,86 @@ fn fill_swept_mask_proxies(
         });
     }
     proxies.sort_by(proxy_order);
+}
+
+fn fill_rigid_body_ccd_target_proxies(
+    world: &World,
+    moving_index: usize,
+    delta_seconds: f32,
+    proxies: &mut Vec<CollisionProxy>,
+) {
+    proxies.clear();
+    for &index in world.alive_indices() {
+        if index == moving_index || !filters_allow(world, moving_index, index) {
+            continue;
+        }
+        let Some(transform) = world.transforms[index] else {
+            continue;
+        };
+        let velocity = finite_broadphase_velocity(world.velocities[index].unwrap_or_default());
+        for collider_index in 0..world.compound_collider_count_at(index) {
+            for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
+                let Some(shape) =
+                    collider_shape_at_segment(world, index, collider_index, segment_index)
+                else {
+                    continue;
+                };
+                if shape.is_trigger() {
+                    continue;
+                }
+                proxies.push(CollisionProxy {
+                    key: ColliderKey {
+                        entity_index: index,
+                        collider_index,
+                        segment_index,
+                    },
+                    bounds: swept_collider_bounds(transform, shape, velocity, delta_seconds),
+                });
+            }
+        }
+    }
+    proxies.sort_by(proxy_order);
+}
+
+fn swept_collider_bounds(
+    start: Transform2D,
+    shape: ColliderShapeRef,
+    velocity: Velocity,
+    delta_seconds: f32,
+) -> AabbBounds {
+    let start_bounds = collider_bounds(start, shape);
+    if !is_valid_delta(delta_seconds) {
+        return start_bounds;
+    }
+    let end = Transform2D {
+        x: start.x + velocity.vx * delta_seconds,
+        y: start.y + velocity.vy * delta_seconds,
+    };
+    merge_bounds(start_bounds, collider_bounds(end, shape))
+}
+
+fn merge_bounds(a: AabbBounds, b: AabbBounds) -> AabbBounds {
+    AabbBounds {
+        min_x: a.min_x.min(b.min_x),
+        min_y: a.min_y.min(b.min_y),
+        max_x: a.max_x.max(b.max_x),
+        max_y: a.max_y.max(b.max_y),
+    }
+}
+
+fn finite_broadphase_velocity(velocity: Velocity) -> Velocity {
+    Velocity {
+        vx: if velocity.vx.is_finite() {
+            velocity.vx
+        } else {
+            0.0
+        },
+        vy: if velocity.vy.is_finite() {
+            velocity.vy
+        } else {
+            0.0
+        },
+    }
 }
 
 fn current_proxy(

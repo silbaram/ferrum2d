@@ -165,6 +165,7 @@ export interface PhysicsRigidBodyStepOptions {
   contactBaumgarteBiasFactor?: number;
   maxContactBaumgarteBiasVelocity?: number;
   contactSplitImpulse?: boolean;
+  continuous?: boolean;
 }
 
 export interface PhysicsRigidBodyStepStats {
@@ -191,6 +192,7 @@ export interface PhysicsRigidBodyStepStats {
   islandsPutToSleep: number;
   ccdChecks: number;
   ccdHits: number;
+  positionContactRebuilds: number;
   positionCorrections: number;
   splitPositionCorrections: number;
   constraintVelocityCorrections: number;
