@@ -39,7 +39,7 @@ pnpm build:pages
 
 ## GitHub Actions
 
-`.github/workflows/pages.yml`은 `main` push와 수동 실행에서 동작한다.
+`.github/workflows/pages.yml`은 수동 실행(`workflow_dispatch`)에서만 동작한다. 일반 `main` push는 `CI` workflow만 실행하며, Pages 배포가 필요한 시점에 Actions UI에서 `Pages` workflow를 명시적으로 실행한다.
 
 1. Rust stable과 `wasm32-unknown-unknown` target을 설정한다.
 2. `wasm-pack`과 pnpm dependencies를 설치한다.
