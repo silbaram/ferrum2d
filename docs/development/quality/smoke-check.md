@@ -30,11 +30,12 @@ pnpm smoke:check
 16. `pnpm smoke:topdown-template-replay-report`
 17. `pnpm smoke:topdown-authored-behavior-runtime`
 18. `pnpm smoke:topdown-mass-objects`
-19. `pnpm smoke:starter-runtime`
-20. `pnpm smoke:content-runtime`
-21. `pnpm smoke:headless`
-22. `pnpm build`
-23. `pnpm package:check`
+19. `pnpm smoke:topdown-tilemap-budget`
+20. `pnpm smoke:starter-runtime`
+21. `pnpm smoke:content-runtime`
+22. `pnpm smoke:headless`
+23. `pnpm build`
+24. `pnpm package:check`
 
 `pnpm smoke:check`는 Starter Runtime, Minimal Game content runtime showcase, Top-down authored behavior runtime의 browser smoke까지 포함하지만, 모든 장르의 WebGL2 화면, 키보드/마우스 입력, 브라우저 오디오 unlock 상태를 전부 확인하지는 않는다. 나머지 항목은 아래 browser render smoke check와 수동 smoke check에서 확인한다.
 
@@ -75,6 +76,7 @@ pnpm smoke:browser-budget
 pnpm smoke:runtime-budgets
 pnpm smoke:mass-objects
 pnpm smoke:topdown-mass-objects
+pnpm smoke:topdown-tilemap-budget
 pnpm smoke:topdown-budget
 pnpm smoke:breakout-budget
 pnpm smoke:platformer-budget
@@ -84,6 +86,8 @@ pnpm smoke:physics-sandbox-budget
 `pnpm smoke:mass-objects`는 Rust core 내부 `Engine` 테스트를 통해 1,000개 visible enemy와 512개 projectile lane이 한 frame에서 Shooter update/render command 경로를 통과하고, sparse horde 배치에서 collision pair가 폭증하지 않는지 확인한다. 또한 128개 overlapping enemy의 collision lifecycle total/trigger pair budget을 고정해 dense 배치에서 broadphase pair 수가 의도치 않게 바뀌는 회귀를 잡는다. 출력은 `format: "ferrum2d.mass-object-stress.smoke-report"` report와 scenario별 `enemyCount`, `projectileCount`, `entityCount`, `renderCommandCount`, `collisionPairCount`, `collisionSolidPairCount`, `collisionTriggerPairCount`, `shooterBulletEnemy*`, `shooterBulletPlayer*`, `shooterPlayerEnemy*`, `updateMicros` metric을 포함한다. `shooter*ProxyCount` metric은 Shooter 전용 collision/swept pair builder가 실제 대량 레이어 proxy를 통과했는지 고정한다. 이 smoke는 browser GPU frame time을 대체하지 않고, 대량 오브젝트 최적화 전후의 Rust-side 구조 회귀를 빠르게 고정하기 위한 기준이다.
 
 `pnpm smoke:topdown-mass-objects`는 Top-down Shooter production build를 browser에서 열고 smoke-only snapshot restore로 1,024개 enemy entity를 한 번에 복원한다. 이후 일반 frame loop가 Playing 상태에서 Rust render command buffer를 만들고 WebGL2 renderer가 이를 소비하는지 확인하며, `RuntimeProfiler` budget으로 render command count, draw call, texture switch, collision pair count, frame/render time 회귀를 함께 검증한다. 이 smoke는 public spawn API나 새 Wasm ABI를 추가하지 않고 `restoreShooterStateSnapshot()` setup 경로만 사용한다.
+
+`pnpm smoke:topdown-tilemap-budget`은 Top-down Shooter production build를 browser에서 열고 smoke-only 64x32 tilemap Game Spec을 주입한다. 이후 Playing 상태에서 2,048개 이상의 tile render command가 WebGL2 renderer로 소비되는지 확인하고, `RuntimeProfiler` budget으로 draw call, texture switch, render command count, frame/render time 회귀를 함께 검증한다. 이 smoke는 resident dense tile layer의 현재 render cache/batching 성능을 고정하며, 무제한 월드 streaming 검증을 대체하지 않는다.
 
 Minimal Game의 visual/input-ui 실험 표면은 별도 예제로 분리하지 않고 `Minimal Runtime Lab`으로 묶는다. `visual-runtime-lab`은 `smoke:lighting`, `smoke:lighting-webgpu`, `smoke:material`, `smoke:material-webgpu`, `smoke:camera-postprocess`, `smoke:particle-vfx`가 같은 `examples/minimal-game/dist`에 query flag를 켜서 확인한다. `input-ui-lab`은 `smoke:preload`, `smoke:mobile-input`, `smoke:content-runtime`이 LoadingOverlay, VirtualControls, UiOverlay/content runtime 연결을 확인한다. 이 lab profile은 smoke/manual QA용 명칭이며 public portfolio demo나 사용자-facing in-app profile switcher가 아니다.
 

@@ -27,6 +27,12 @@ const TOPDOWN_EFFECTS_MODE = "topdown-effects";
 const TOPDOWN_MASS_OBJECTS_MODE = "topdown-mass-objects";
 const TOPDOWN_MASS_OBJECTS_PLAYING_STATE = 1;
 const TOPDOWN_MASS_OBJECTS_COLLISION_PAIR_BUDGET = 2_000;
+const TOPDOWN_TILEMAP_BUDGET_MODE = "topdown-tilemap-budget";
+const TOPDOWN_TILEMAP_BUDGET_COLUMNS = 64;
+const TOPDOWN_TILEMAP_BUDGET_ROWS = 32;
+const TOPDOWN_TILEMAP_BUDGET_TILE_COUNT = TOPDOWN_TILEMAP_BUDGET_COLUMNS * TOPDOWN_TILEMAP_BUDGET_ROWS;
+const TOPDOWN_TILEMAP_BUDGET_MAX_DRAW_CALLS = 8;
+const TOPDOWN_TILEMAP_BUDGET_MAX_TEXTURE_SWITCHES = 8;
 const TOPDOWN_SAVE_LOAD_MODE = "topdown-save-load";
 const TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_MODE = "topdown-authored-behavior-variant";
 const TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_PATH = "examples/topdown-shooter/public/authored-behavior.variant.json";
@@ -82,6 +88,7 @@ const TOPDOWN_EFFECT_SMOKE_SPEC = {
   },
   camera: { preset: "follow" },
 };
+const TOPDOWN_TILEMAP_BUDGET_SMOKE_SPEC = createTopdownTilemapBudgetSmokeSpec();
 const TOPDOWN_HD2D_SMOKE_SPEC = {
   world: { width: 256, height: 128 },
   player: { speed: 120 },
@@ -166,6 +173,59 @@ const TOPDOWN_HD2D_SMOKE_SPEC = {
   },
   camera: { preset: "follow" },
 };
+
+function createTopdownTilemapBudgetSmokeSpec() {
+  return {
+    world: { width: TOPDOWN_TILEMAP_BUDGET_COLUMNS * 8, height: TOPDOWN_TILEMAP_BUDGET_ROWS * 8 },
+    player: { speed: 1 },
+    enemies: {
+      speed: 1,
+      spawnInterval: 999,
+      behavior: "static",
+      spawnPattern: "edge",
+      health: 1,
+      scoreReward: 1,
+      waves: [],
+    },
+    weapons: { bulletSpeed: 420, cooldown: 10, lifetime: 1, damage: 1 },
+    prefabs: {
+      player: { width: 16, height: 16 },
+      enemy: { width: 8, height: 8 },
+      bullet: { width: 6, height: 6 },
+    },
+    atlas: {
+      frames: {
+        "budget.floor": {
+          texture: 0,
+          uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+          size: { width: 8, height: 8 },
+        },
+        "budget.accent": {
+          texture: 0,
+          uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+          size: { width: 8, height: 8 },
+        },
+      },
+    },
+    tilemap: {
+      tileWidth: 8,
+      tileHeight: 8,
+      tiles: {
+        "1": { frame: "budget.floor", color: [0.16, 0.22, 0.2, 0.42] },
+        "2": { frame: "budget.accent", color: [0.28, 0.32, 0.42, 0.52] },
+      },
+      layers: [{
+        name: "budget-floor",
+        columns: TOPDOWN_TILEMAP_BUDGET_COLUMNS,
+        rows: TOPDOWN_TILEMAP_BUDGET_ROWS,
+        data: Array.from({ length: TOPDOWN_TILEMAP_BUDGET_TILE_COUNT }, (_, index) => (
+          index % 11 === 0 ? 2 : 1
+        )),
+      }],
+    },
+    camera: { preset: "follow" },
+  };
+}
 const MIME_TYPES = new Map([
   [".css", "text/css; charset=utf-8"],
   [".html", "text/html; charset=utf-8"],
@@ -386,6 +446,7 @@ function parseArgs(args) {
     CONTENT_RUNTIME_MODE,
     TOPDOWN_EFFECTS_MODE,
     TOPDOWN_MASS_OBJECTS_MODE,
+    TOPDOWN_TILEMAP_BUDGET_MODE,
     TOPDOWN_SAVE_LOAD_MODE,
     TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_MODE,
     TOPDOWN_HD2D_MODE,
@@ -444,6 +505,9 @@ function browserSmokeUrl(port, options) {
   }
   if (mode === TOPDOWN_MASS_OBJECTS_MODE) {
     params.set("massObjectsSmoke", "true");
+  }
+  if (mode === TOPDOWN_TILEMAP_BUDGET_MODE) {
+    params.set("effectSmoke", "true");
   }
   if (mode === TOPDOWN_SAVE_LOAD_MODE) {
     params.set("effectSmoke", "true");
@@ -653,6 +717,8 @@ async function smokeByMode(page, mode, timeoutMs) {
       return await smokeTopdownEffects(page, timeoutMs);
     case TOPDOWN_MASS_OBJECTS_MODE:
       return await smokeTopdownMassObjects(page, timeoutMs);
+    case TOPDOWN_TILEMAP_BUDGET_MODE:
+      return await smokeTopdownTilemapBudget(page, timeoutMs);
     case TOPDOWN_SAVE_LOAD_MODE:
       return await smokeTopdownSaveLoad(page, timeoutMs);
     case TOPDOWN_AUTHORED_BEHAVIOR_VARIANT_MODE:
@@ -1731,6 +1797,71 @@ async function smokeTopdownMassObjects(page, timeoutMs) {
     entityCountAfterMassObjects: globalThis.ferrumEngine?.entityCount?.() ?? 0,
     spriteCountAfterMassObjects: globalThis.ferrumEngine?.spriteCount?.() ?? 0,
   }));
+}
+
+async function smokeTopdownTilemapBudget(page, timeoutMs) {
+  await page.evaluate((spec) => {
+    const engine = globalThis.ferrumEngine;
+    if (!engine) {
+      throw new Error("Top-down tilemap budget smoke requires window.ferrumEngine.");
+    }
+    engine.setGameSpec(spec);
+    engine.clearParticles();
+    engine.resetGame();
+  }, TOPDOWN_TILEMAP_BUDGET_SMOKE_SPEC);
+
+  await page.evaluate(() => {
+    if (globalThis.ferrumTopdownSmokeStart) {
+      globalThis.ferrumTopdownSmokeStart();
+      return;
+    }
+    window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter", key: "Enter", bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent("keyup", { code: "Enter", key: "Enter", bubbles: true }));
+  });
+
+  await waitForPageFunction(
+    page,
+    "Top-down tilemap budget smoke did not render the dense tilemap within renderer budgets",
+    ({ expectedTileCount, maxDrawCalls, maxTextureSwitches }) => {
+      const engine = globalThis.ferrumEngine;
+      const stats = globalThis.ferrumRuntime?.renderer?.stats?.();
+      return Boolean(
+        engine?.gameState?.() === 1
+        && stats
+        && stats.renderCommandCount >= expectedTileCount
+        && stats.spriteCount >= expectedTileCount
+        && stats.drawCalls >= 1
+        && stats.drawCalls <= maxDrawCalls
+        && stats.textureSwitchCount <= maxTextureSwitches
+      );
+    },
+    timeoutMs,
+    {
+      expectedTileCount: TOPDOWN_TILEMAP_BUDGET_TILE_COUNT,
+      maxDrawCalls: TOPDOWN_TILEMAP_BUDGET_MAX_DRAW_CALLS,
+      maxTextureSwitches: TOPDOWN_TILEMAP_BUDGET_MAX_TEXTURE_SWITCHES,
+    },
+  );
+
+  return await page.evaluate((expectedTileCount) => {
+    const stats = globalThis.ferrumRuntime?.renderer?.stats?.();
+    const engine = globalThis.ferrumEngine;
+    return {
+      topdownTilemapBudgetSmoke: {
+        expectedTileCount,
+        gameState: engine?.gameState?.() ?? -1,
+        entityCount: engine?.entityCount?.() ?? 0,
+        engineSpriteCount: engine?.spriteCount?.() ?? 0,
+        renderCommandCount: stats?.renderCommandCount ?? 0,
+        spriteCount: stats?.spriteCount ?? 0,
+        drawCalls: stats?.drawCalls ?? 0,
+        batchCount: stats?.batchCount ?? 0,
+        textureBindCount: stats?.textureBindCount ?? 0,
+        textureSwitchCount: stats?.textureSwitchCount ?? 0,
+        rendererStats: stats,
+      },
+    };
+  }, TOPDOWN_TILEMAP_BUDGET_TILE_COUNT);
 }
 
 async function smokeTopdownSaveLoad(page, timeoutMs) {

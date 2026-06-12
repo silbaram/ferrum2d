@@ -70,6 +70,9 @@ jobs:
       - name: Top-down browser mass object smoke
         run: pnpm smoke:topdown-mass-objects
 
+      - name: Top-down browser tilemap budget smoke
+        run: pnpm smoke:topdown-tilemap-budget
+
       - name: Build wasm package
         run: wasm-pack build crates/ferrum-core --target web --out-dir
           ../../packages/ferrum-web/pkg
