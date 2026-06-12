@@ -154,6 +154,7 @@ export interface PhysicsFrameStats {
 export type PhysicsDebugOptions = PhysicsDebugSpec;
 
 export interface PhysicsRigidBodyStepOptions {
+  continuous?: boolean;
   gravityX?: number;
   gravityY?: number;
   velocityIterations?: number;
@@ -190,6 +191,9 @@ export interface PhysicsRigidBodyStepStats {
   islandsPutToSleep: number;
   ccdChecks: number;
   ccdHits: number;
+  positionContactRebuilds: number;
+  positionContactCountSum: number;
+  maxPositionContacts: number;
   positionCorrections: number;
   splitPositionCorrections: number;
   constraintVelocityCorrections: number;

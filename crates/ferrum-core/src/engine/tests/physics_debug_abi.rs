@@ -15,6 +15,20 @@ fn physics_debug_lines_are_opt_in_and_report_broadphase_and_contacts() {
     engine.update(0.016);
 
     assert_eq!(engine.physics_debug_line_len(), 11);
+    assert_eq!(
+        engine
+            .physics_debug_collision_scratch
+            .usage()
+            .current_proxies,
+        2
+    );
+    assert_eq!(
+        engine
+            .physics_debug_collision_scratch
+            .usage()
+            .collider_pairs,
+        1
+    );
     assert_eq!(engine.physics_debug_lines[0].x0, -5.0);
     assert_eq!(engine.physics_debug_lines[0].x1, 5.0);
     assert_eq!(engine.physics_debug_lines[8].x0, 5.0);
@@ -44,7 +58,8 @@ fn physics_debug_lines_report_ccd_hit_markers() {
     engine.set_physics_debug_line_flags(crate::collision::PHYSICS_DEBUG_CCD);
     engine.set_physics_debug_lines_enabled(true);
 
-    engine.step_rigid_bodies_with_config(1.0, 0.0, 0.0, 1, 1, 1.0, 0.0, 1.0, 0.2, 120.0, false);
+    engine
+        .step_rigid_bodies_with_config(1.0, 0.0, 0.0, 1, 1, 1.0, 0.0, 1.0, 0.2, 120.0, false, true);
     engine.build_physics_debug_lines();
 
     assert_eq!(engine.rigid_body_step_ccd_hits(), 1);

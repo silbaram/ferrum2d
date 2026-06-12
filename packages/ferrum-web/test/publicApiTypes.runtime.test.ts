@@ -339,7 +339,12 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     clearInputActionBindings: (actionId) => actionId === 3,
     resetInputActionBindings: () => undefined,
   };
-  const runtimeBudget: RuntimeDiagnosticsBudget = { maxFrameTimeMs: 16.7, maxAssetLoadElapsedMs: 250 };
+  const runtimeBudget: RuntimeDiagnosticsBudget = {
+    maxFrameTimeMs: 16.7,
+    maxPhysicsCcdChecks: 64,
+    maxPhysicsDebugLineCount: 128,
+    maxAssetLoadElapsedMs: 250,
+  };
   const runtimeFrameSample: RuntimeDiagnosticsFrameSample = runtimeDiagnosticsFrameSample({
     fps: 60,
     frameTimeMs: 16,

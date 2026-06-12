@@ -395,6 +395,7 @@ impl PhysicsSystem {
                 world,
                 &mut scratch.position_contacts,
             );
+            stats.record_position_contact_rebuild(scratch.position_contacts.len());
             for island in constraints.island_schedule.islands() {
                 let island_root = island.root();
                 solve_prismatic_joint_position_constraints(

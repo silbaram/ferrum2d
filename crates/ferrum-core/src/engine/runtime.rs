@@ -320,7 +320,8 @@ impl Engine {
             self.physics_debug_lines.clear();
             return;
         }
-        CollisionSystem::build_physics_debug_lines_with_flags_into(
+        CollisionSystem::build_physics_debug_lines_with_flags_and_scratch_into(
+            &mut self.physics_debug_collision_scratch,
             &self.world,
             16.0,
             self.physics_debug_line_flags,

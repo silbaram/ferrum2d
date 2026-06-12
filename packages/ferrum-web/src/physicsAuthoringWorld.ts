@@ -112,6 +112,7 @@ export function createPhysicsWorldFromSpec(
     warnings,
     stepSeconds: spec.solver.stepSeconds,
     stepOptions: {
+      continuous: spec.continuous,
       gravityX: spec.gravityX,
       gravityY: spec.gravityY,
       velocityIterations: spec.solver.velocityIterations,

@@ -163,6 +163,171 @@ fn queries_return_entity_once_when_multiple_compound_colliders_match() {
 }
 
 #[test]
+fn build_pairs_dedupes_compound_entity_pairs_without_losing_first_order() {
+    let mut world = World::default();
+    let first = spawn_custom_body(
+        &mut world,
+        0.0,
+        0.0,
+        CollisionMask::ENEMY,
+        CollisionMask::ENEMY,
+    );
+    world.set_aabb_collider(
+        first,
+        AabbCollider::new(10.0, 5.0, true, CollisionLayer::Enemy),
+    );
+    assert_eq!(
+        world.add_compound_collider(
+            first,
+            CompoundCollider::new(CompoundColliderShape::Aabb(
+                AabbCollider::new(5.0, 5.0, true, CollisionLayer::Enemy).with_offset(10.0, 0.0),
+            ))
+            .with_filter(CollisionFilter::new(
+                CollisionMask::ENEMY,
+                CollisionMask::ENEMY,
+            )),
+        ),
+        Some(1)
+    );
+
+    let second = spawn_custom_body(
+        &mut world,
+        0.0,
+        0.0,
+        CollisionMask::ENEMY,
+        CollisionMask::ENEMY,
+    );
+    world.set_aabb_collider(
+        second,
+        AabbCollider::new(5.0, 5.0, true, CollisionLayer::Enemy),
+    );
+    assert_eq!(
+        world.add_compound_collider(
+            second,
+            CompoundCollider::new(CompoundColliderShape::Aabb(
+                AabbCollider::new(5.0, 5.0, true, CollisionLayer::Enemy).with_offset(5.0, 0.0),
+            ))
+            .with_filter(CollisionFilter::new(
+                CollisionMask::ENEMY,
+                CollisionMask::ENEMY,
+            )),
+        ),
+        Some(1)
+    );
+
+    let mut scratch = CollisionScratch::default();
+    let mut pairs = Vec::new();
+    CollisionSystem::build_pairs_into(&mut scratch, &world, &mut pairs);
+
+    assert!(
+        scratch.collider_pairs.len() > pairs.len(),
+        "compound colliders should produce duplicate collider-level candidates"
+    );
+    assert_eq!(
+        scratch.entity_pair_candidates.len(),
+        1,
+        "entity pair dedupe should compact duplicate collider candidates"
+    );
+    assert_eq!(
+        pairs,
+        vec![CollisionPair {
+            a: first,
+            b: second
+        }]
+    );
+}
+
+#[test]
+fn layer_and_mask_pairs_keep_opposite_oriented_compound_entity_pairs() {
+    let mut world = World::default();
+    let player_enemy_mask = CollisionMask::PLAYER.union(CollisionMask::ENEMY);
+    let first = spawn_custom_body(
+        &mut world,
+        0.0,
+        0.0,
+        CollisionMask::PLAYER,
+        player_enemy_mask,
+    );
+    assert_eq!(
+        world.add_compound_collider(
+            first,
+            CompoundCollider::new(CompoundColliderShape::Aabb(AabbCollider::new(
+                5.0,
+                5.0,
+                true,
+                CollisionLayer::Enemy,
+            )))
+            .with_filter(CollisionFilter::new(
+                CollisionMask::ENEMY,
+                player_enemy_mask,
+            )),
+        ),
+        Some(1)
+    );
+
+    let second = spawn_custom_body(
+        &mut world,
+        0.0,
+        0.0,
+        CollisionMask::ENEMY,
+        player_enemy_mask,
+    );
+    world.set_aabb_collider(
+        second,
+        AabbCollider::new(5.0, 5.0, true, CollisionLayer::Enemy),
+    );
+    assert_eq!(
+        world.add_compound_collider(
+            second,
+            CompoundCollider::new(CompoundColliderShape::Aabb(AabbCollider::new(
+                5.0,
+                5.0,
+                true,
+                CollisionLayer::Player,
+            )))
+            .with_filter(CollisionFilter::new(
+                CollisionMask::PLAYER,
+                player_enemy_mask,
+            )),
+        ),
+        Some(1)
+    );
+
+    let expected = vec![
+        CollisionPair {
+            a: first,
+            b: second,
+        },
+        CollisionPair {
+            a: second,
+            b: first,
+        },
+    ];
+    let mut scratch = CollisionScratch::default();
+    let mut pairs = Vec::new();
+
+    CollisionSystem::build_layer_pairs_into(
+        &mut scratch,
+        &world,
+        CollisionLayer::Player,
+        CollisionLayer::Enemy,
+        &mut pairs,
+    );
+    assert_eq!(pairs, expected);
+    assert_eq!(scratch.entity_pair_candidates.len(), 2);
+
+    CollisionSystem::build_mask_pairs_into(
+        &mut scratch,
+        &world,
+        CollisionMask::PLAYER,
+        CollisionMask::ENEMY,
+        &mut pairs,
+    );
+    assert_eq!(pairs, expected);
+    assert_eq!(scratch.entity_pair_candidates.len(), 2);
+}
+
+#[test]
 fn chain_collider_segments_participate_in_queries_contacts_and_debug_lines() {
     let mut world = World::default();
     let chain = spawn_custom_chain(

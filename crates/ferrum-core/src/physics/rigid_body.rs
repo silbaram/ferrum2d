@@ -20,6 +20,7 @@ pub struct RigidBodyStepConfig {
     pub contact_baumgarte_bias_factor: f32,
     pub max_contact_baumgarte_bias_velocity: f32,
     pub contact_split_impulse: bool,
+    pub continuous: bool,
 }
 
 impl Default for RigidBodyStepConfig {
@@ -37,6 +38,7 @@ impl Default for RigidBodyStepConfig {
             contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
             max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
             contact_split_impulse: false,
+            continuous: true,
         }
     }
 }
@@ -66,11 +68,25 @@ pub struct RigidBodyStepStats {
     pub islands_put_to_sleep: u32,
     pub ccd_checks: u32,
     pub ccd_hits: u32,
+    pub position_contact_rebuilds: u32,
+    pub position_contact_count_sum: u32,
+    pub max_position_contacts: u32,
     pub position_corrections: u32,
     pub split_position_corrections: u32,
     pub constraint_velocity_corrections: u32,
     pub constraint_position_corrections: u32,
     pub broken_joints: u32,
+}
+
+impl RigidBodyStepStats {
+    pub(crate) fn record_position_contact_rebuild(&mut self, contact_count: usize) {
+        let contact_count = contact_count.min(u32::MAX as usize) as u32;
+        self.position_contact_rebuilds = self.position_contact_rebuilds.saturating_add(1);
+        self.position_contact_count_sum = self
+            .position_contact_count_sum
+            .saturating_add(contact_count);
+        self.max_position_contacts = self.max_position_contacts.max(contact_count);
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

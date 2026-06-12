@@ -356,7 +356,7 @@ pnpm smoke:headless
 - 기본 render 경로의 browser smoke는 canvas pixel readback에서 placeholder texture의 녹색 픽셀을 확인한다. mode-specific smoke는 아래 항목의 조건을 추가 또는 대체 pass 조건으로 사용한다.
 - `pnpm smoke:browser`는 Starter Runtime의 weapon profile panel, 실제 DOM profile/capture report 버튼 클릭, profile별 projectile visual texture/size/rate, snapshot/replay report hook도 함께 확인한다.
 - `pnpm smoke:runtime-budgets`는 `tests/smoke/runtime-budget-profiles.mjs`의 per-example profile과 browser smoke mode mapping을 CI-safe 방식으로 검증한다.
-- `pnpm smoke:browser-budget`은 Starter Runtime에서 `RuntimeProfiler`를 켜고 frame time, Rust update, render time, draw call, render command, texture switch, physics count, asset load elapsed budget을 구조화된 report로 검증한다.
+- `pnpm smoke:browser-budget`은 Starter Runtime에서 `RuntimeProfiler`를 켜고 frame time, Rust update, render time, draw call, render command, texture switch, physics fixed step/tile candidate/CCD/debug line/collision count, asset load elapsed budget을 구조화된 report로 검증한다.
 - `pnpm smoke:topdown-budget`, `pnpm smoke:breakout-budget`, `pnpm smoke:platformer-budget`, `pnpm smoke:physics-sandbox-budget`은 같은 browser budget harness를 각 예제 profile로 실행한다. 직접 `node tests/smoke/browser-render-smoke.mjs --budget --budget-profile=<profile>`을 사용할 수도 있다.
 - `pnpm smoke:preload`는 Minimal Game에서 `LoadingOverlay`를 켜고 data URL manifest를 두 번 preload해 첫 실행 fetch와 두 번째 IndexedDB JSON/texture body cache hit를 검증한다.
 - `pnpm smoke:mobile-input`은 Minimal Game에서 `VirtualControls` DOM preset을 켜고 joystick/button state가 `W/D/Space/mouseLeft` input으로 합성되고 release되는지 확인한다.
@@ -398,7 +398,7 @@ pnpm smoke:headless
 - `pnpm smoke:tilemap-authoring`은 `applyTileRules(...)`, `bakeAnimatedTileLayer(...)`, Tiled import 결과 authoring, LDtk entity/tile layer fixture를 함께 확인한다.
 - browser console error와 page error가 발생하지 않는다.
 
-새 browser smoke에서 frame/render/physics budget을 검사할 때는 `RuntimeProfiler`를 우선 사용한다. `FerrumRuntimeOptions.profiler`를 켜면 runtime이 `DebugOverlayMetrics`를 profiler에 기록하고, smoke script는 `--budget` 모드에서 profiler snapshot의 frame time, Rust update, render time, draw call, render command, texture switch, physics count, asset load elapsed budget 위반을 구조화된 결과로 확인한다.
+새 browser smoke에서 frame/render/physics budget을 검사할 때는 `RuntimeProfiler`를 우선 사용한다. `FerrumRuntimeOptions.profiler`를 켜면 runtime이 `DebugOverlayMetrics`를 profiler에 기록하고, smoke script는 `--budget` 모드에서 profiler snapshot의 frame time, Rust update, render time, draw call, render command, texture switch, physics fixed step/tile candidate/CCD/debug line/collision count, asset load elapsed budget 위반을 구조화된 결과로 확인한다. Physics 관련 budget field는 `maxPhysicsFixedSteps`, `maxPhysicsTileCandidateChecks`, `maxPhysicsCcdChecks`, `maxPhysicsDebugLineCount`, `maxCollisionPairCount`다.
 
 기본 브라우저 채널은 `chrome`이다. 환경에 따라 다음 환경 변수를 사용할 수 있다.
 
@@ -486,7 +486,7 @@ GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `fer
 21. consumer smoke 직후 `pnpm validate:consumer-smoke-report -- --expect-status passed` 또는 실패 시 `--expect-status failed`
 22. tag 또는 수동 opt-in일 때 extended browser smoke matrix: `smoke:preload`, `smoke:mobile-input`, `smoke:lighting(-webgpu)`, `smoke:material(-webgpu)`, `smoke:camera-postprocess`, `smoke:particle-vfx`, `smoke:topdown*`, `smoke:destructible-terrain-browser`, `smoke:breakout-*`, `smoke:platformer-*`, `smoke:physics-sandbox*`, `smoke:physics-demo-suite`
 
-extended browser smoke job은 matrix별 artifact 이름을 분리해 budget smoke의 `runtimeBudget` report를 `artifacts/browser-smoke-budgets`에 남긴다. browser budget profile은 frame/render/Rust update, draw/render command/texture switch, physics/collision, asset load budget을 평가한다. Chromium이 `performance.memory`를 제공하는 환경에서는 absolute JS heap used sample도 artifact에 포함하고 budget 위반 여부를 평가한다.
+extended browser smoke job은 matrix별 artifact 이름을 분리해 budget smoke의 `runtimeBudget` report를 `artifacts/browser-smoke-budgets`에 남긴다. browser budget profile은 frame/render/Rust update, draw/render command/texture switch, physics fixed step/tile candidate/CCD/debug line/collision count, asset load budget을 평가한다. Chromium이 `performance.memory`를 제공하는 환경에서는 absolute JS heap used sample도 artifact에 포함하고 budget 위반 여부를 평가한다.
 
 로컬 릴리스 후보 검증은 CI 명령에 더해 Game Spec 검증과 브라우저 수동 확인을 포함한다.
 
@@ -503,7 +503,7 @@ extended browser smoke job은 matrix별 artifact 이름을 분리해 budget smok
 - `pnpm smoke:topdown-mass-objects`로 Top-down Shooter browser path에서 Playing 상태의 1,024개 enemy entity restore, WebGL2 대량 sprite command budget, collision pair budget을 확인한다.
 - `pnpm smoke:topdown-save-load`로 built-in shooter save/load snapshot restore가 browser production build에서 재현되는지 확인한다.
 - `pnpm smoke:topdown-hd2d`로 bridge portal navigation, projectile arc, HD-2D render path가 Top-down Shooter browser production build에서 재현되는지 확인한다.
-- `pnpm smoke:runtime-budgets`로 CI에서 runtime budget profile 계약을 확인하고, 예제별 성능 회귀가 의심되면 해당 `smoke:*-budget` browser smoke를 추가로 실행한다. budget browser smoke는 frame/render/Rust update 지표를 report artifact로 남기고, Chromium이 heap API를 제공하면 heap sample도 함께 기록한다.
+- `pnpm smoke:runtime-budgets`로 CI에서 runtime budget profile 계약을 확인하고, 예제별 성능 회귀가 의심되면 해당 `smoke:*-budget` browser smoke를 추가로 실행한다. budget browser smoke는 frame/render/Rust update와 physics-specific 지표를 report artifact로 남기고, Chromium이 heap API를 제공하면 heap sample도 함께 기록한다.
 - `pnpm smoke:mass-objects`로 1,000개 이상 enemy/projectile Rust frame path와 collision pair budget 회귀를 확인한다.
 - `pnpm smoke:physics-demo-suite`로 Physics Sandbox fixture catalog 6개가 browser selector, Physics Spec apply, debug line render path를 통과하는지 확인한다.
 - `pnpm package:check`로 runtime package entrypoint, create-game scaffold, agents template, files allowlist, generated Wasm artifact, 실제 `pnpm pack` tarball 구성을 확인한다.

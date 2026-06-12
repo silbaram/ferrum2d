@@ -55,10 +55,23 @@ test("configureAutoRigidBodyStepOptions and stepRigidBodiesWithStats keep defaul
     contactSplitImpulse: true,
   });
 
-  deepEqual(engine.autoStepCalls, [[false, 0, 980, 6, 3, 0.8, 0.01, 1, 0.2, 120, false]]);
-  deepEqual(engine.stepConfigCalls, [[0.016, 0, 100, 6, 3, 0.8, 0.01, 1, 0.2, 120, true]]);
+  deepEqual(engine.autoStepCalls, [[false, 0, 980, 6, 3, 0.8, 0.01, 1, 0.2, 120, false, true]]);
+  deepEqual(engine.stepConfigCalls, [[0.016, 0, 100, 6, 3, 0.8, 0.01, 1, 0.2, 120, true, true]]);
   equal(stats.substeps, 1);
+  equal(stats.positionContactRebuilds, 24);
+  equal(stats.positionContactCountSum, 25);
+  equal(stats.maxPositionContacts, 26);
   equal(stats.brokenJoints, 29);
+});
+
+test("rigid body step options pass continuous opt-out to wasm", () => {
+  const engine = fakeRuntimeEngine();
+
+  configureAutoRigidBodyStepOptions(engine, { continuous: false });
+  stepRigidBodiesWithStats(engine, 0.016, { continuous: false });
+
+  deepEqual(engine.autoStepCalls, [[true, 0, 980, 6, 3, 0.8, 0.01, 1, 0.2, 120, false, false]]);
+  deepEqual(engine.stepConfigCalls, [[0.016, 0, 980, 6, 3, 0.8, 0.01, 1, 0.2, 120, false, false]]);
 });
 
 test("physicsDebugFlags preserves option priority and category bits", () => {
@@ -139,10 +152,13 @@ function fakeRuntimeEngine(): FakeRuntimeEngine {
     rigid_body_step_islands_put_to_sleep: () => 21,
     rigid_body_step_ccd_checks: () => 22,
     rigid_body_step_ccd_hits: () => 23,
-    rigid_body_step_position_corrections: () => 24,
-    rigid_body_step_split_position_corrections: () => 25,
-    rigid_body_step_constraint_velocity_corrections: () => 26,
-    rigid_body_step_constraint_position_corrections: () => 27,
+    rigid_body_step_position_contact_rebuilds: () => 24,
+    rigid_body_step_position_contact_count_sum: () => 25,
+    rigid_body_step_max_position_contacts: () => 26,
+    rigid_body_step_position_corrections: () => 27,
+    rigid_body_step_split_position_corrections: () => 28,
+    rigid_body_step_constraint_velocity_corrections: () => 29,
+    rigid_body_step_constraint_position_corrections: () => 30,
     rigid_body_step_broken_joints: () => 29,
   };
   return engine as unknown as FakeRuntimeEngine;

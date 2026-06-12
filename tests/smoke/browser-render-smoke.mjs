@@ -58,6 +58,8 @@ const RUNTIME_BUDGET_FIELDS = Object.freeze([
   ["maxTextureSwitchCount", "texture switches", "maxTextureSwitchCount", "count"],
   ["maxPhysicsFixedSteps", "fixed steps", "maxPhysicsFixedSteps", "count"],
   ["maxPhysicsTileCandidateChecks", "tile checks", "maxPhysicsTileCandidateChecks", "count"],
+  ["maxPhysicsCcdChecks", "ccd checks", "maxPhysicsCcdChecks", "count"],
+  ["maxPhysicsDebugLineCount", "physics debug lines", "maxPhysicsDebugLineCount", "count"],
   ["maxCollisionPairCount", "collision pairs", "maxCollisionPairCount", "count"],
   ["maxAssetLoadElapsedMs", "asset load", "maxAssetLoadElapsedMs", "ms"],
   ["maxJsHeapUsedBytes", "JS heap used", "maxJsHeapUsedBytes", "bytes"],

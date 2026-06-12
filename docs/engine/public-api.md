@@ -982,13 +982,15 @@ await createFerrumRuntime({ canvas, lighting });
 | --- | --- |
 | `RuntimeProfiler` | frame sample과 asset progress sample을 bounded window로 보관하고 aggregate snapshot을 만든다. |
 | `RuntimeProfilerOptions` | `budget`, `maxFrameSamples`, `maxAssetSamples`를 지정한다. |
-| `RuntimeDiagnosticsBudget` | frame/render/Rust update/draw call/render command/texture switch/physics/asset load elapsed limit를 지정한다. |
-| `RuntimeProfilerSnapshot` | 평균/최대 frame time, Rust update, render time, draw call, texture switch, physics count, asset load elapsed를 요약한다. |
+| `RuntimeDiagnosticsBudget` | frame/render/Rust update/draw call/render command/texture switch/physics fixed step/tile candidate/CCD/debug line/collision/asset load elapsed limit를 지정한다. |
+| `RuntimeProfilerSnapshot` | 평균/최대 frame time, Rust update, render time, draw call, texture switch, physics fixed step/tile candidate/CCD/debug line/collision count, asset load elapsed를 요약한다. |
 | `runtimeDiagnosticsFrameSample(...)` | `DebugOverlayMetrics`를 budget 검사용 numeric sample로 정규화한다. |
 | `evaluateRuntimeDiagnosticsSample(...)` | 단일 frame sample이 budget을 넘는지 검사한다. |
 | `evaluateRuntimeProfilerBudget(...)` | profiler aggregate snapshot 기준으로 budget 위반 목록을 만든다. |
 
 `AssetLoadProgress.elapsedMs`는 manifest load 시작 이후 경과 시간이다. `RuntimeProfiler.recordAssetProgress(progress)`로 asset load budget smoke에 같은 값을 사용할 수 있다.
+
+Physics budget field는 `maxPhysicsFixedSteps`, `maxPhysicsTileCandidateChecks`, `maxPhysicsCcdChecks`, `maxPhysicsDebugLineCount`, `maxCollisionPairCount`를 사용한다. 이 값들은 `FrameState.physics`와 renderer debug line stats에서 온 숫자형 sample이며, profiler가 Rust simulation state를 복제하지 않는다.
 
 ## Game Spec API
 
@@ -1221,6 +1223,10 @@ Screenshot capture helper는 browser smoke나 release tooling이 canvas pixel re
 ## Physics API
 
 Physics 구현 범위는 [2D 물리엔진 기능 맵](../development/architecture/physics-engine.md)을 기준으로 한다. Web public API는 낮은 빈도의 authoring/control/query 흐름을 대상으로 한다.
+
+`PhysicsRigidBodyStepOptions.continuous`는 dynamic rigid body CCD 실행 여부를 제어한다. 생략하면 기존 기본값인 `true`이며, `createPhysicsWorldFromSpec(...)`이 반환하는 `stepOptions`는 resolved Physics Spec의 `continuous` 값을 포함한다.
+
+`PhysicsRigidBodyStepStats`는 position solver의 contact rebuild 비용을 관측하기 위해 `positionContactRebuilds`, `positionContactCountSum`, `maxPositionContacts`를 포함한다. `ccdChecks`는 broadphase pruning 이후 실제 narrow CCD 후보 검사 수를 의미한다. 이 값들은 solver 구조와 fixture budget을 추적하기 위한 숫자형 통계이며, frame hot path에 entity별 JS/Wasm callback을 추가하지 않는다.
 
 | 그룹 | 대표 타입/API |
 | --- | --- |

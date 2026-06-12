@@ -6,6 +6,19 @@ pub(super) struct CollisionProxy {
     bounds: AabbBounds,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct CollisionEntityPairKey {
+    first_index: usize,
+    second_index: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct CollisionEntityPairCandidate {
+    key: CollisionEntityPairKey,
+    pair: CollisionPair,
+    first_order: usize,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(super) enum PairFilter {
     All,
@@ -19,6 +32,7 @@ pub(crate) struct CollisionScratch {
     pub(super) moving_proxies: Vec<CollisionProxy>,
     pub(super) target_proxies: Vec<CollisionProxy>,
     pub(super) collider_pairs: Vec<ColliderPair>,
+    pub(super) entity_pair_candidates: Vec<CollisionEntityPairCandidate>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -27,6 +41,7 @@ pub(crate) struct CollisionScratchUsage {
     pub(crate) moving_proxies: usize,
     pub(crate) target_proxies: usize,
     pub(crate) collider_pairs: usize,
+    pub(crate) entity_pair_candidates: usize,
 }
 
 impl CollisionScratch {
@@ -36,6 +51,7 @@ impl CollisionScratch {
             moving_proxies: self.moving_proxies.len(),
             target_proxies: self.target_proxies.len(),
             collider_pairs: self.collider_pairs.len(),
+            entity_pair_candidates: self.entity_pair_candidates.len(),
         }
     }
 }
@@ -119,6 +135,7 @@ impl CollisionSystem {
             world,
             &scratch.current_proxies,
             &mut scratch.collider_pairs,
+            &mut scratch.entity_pair_candidates,
             pairs,
             PairFilter::All,
         );
@@ -131,10 +148,6 @@ impl CollisionSystem {
         let mut scratch = CollisionScratch::default();
         Self::build_collider_pairs_with_scratch(&mut scratch, world, pair_filter);
         scratch.collider_pairs
-    }
-
-    pub(super) fn build_all_collider_pairs(world: &World) -> Vec<ColliderPair> {
-        Self::build_collider_pairs(world, PairFilter::All)
     }
 
     pub(super) fn build_collider_pairs_with_scratch<'a>(
@@ -166,6 +179,7 @@ impl CollisionSystem {
             world,
             &scratch.current_proxies,
             &mut scratch.collider_pairs,
+            &mut scratch.entity_pair_candidates,
             pairs,
             PairFilter::Layers(layer_a, layer_b),
         );
@@ -184,6 +198,7 @@ impl CollisionSystem {
             world,
             &scratch.current_proxies,
             &mut scratch.collider_pairs,
+            &mut scratch.entity_pair_candidates,
             pairs,
             PairFilter::Masks(category_a, category_b),
         );
@@ -268,10 +283,12 @@ impl CollisionSystem {
     }
 }
 
-pub(super) fn current_proxy_bounds(world: &World) -> Vec<AabbBounds> {
-    let mut proxies = Vec::new();
-    fill_current_proxies(world, &mut proxies);
-    proxies.into_iter().map(|proxy| proxy.bounds).collect()
+pub(super) fn current_proxy_bounds_with_scratch<'a>(
+    scratch: &'a mut CollisionScratch,
+    world: &World,
+) -> impl Iterator<Item = AabbBounds> + 'a {
+    fill_current_proxies(world, &mut scratch.current_proxies);
+    scratch.current_proxies.iter().map(|proxy| proxy.bounds)
 }
 
 fn fill_current_proxies(world: &World, proxies: &mut Vec<CollisionProxy>) {
@@ -321,15 +338,33 @@ fn collect_current_pairs(
     world: &World,
     proxies: &[CollisionProxy],
     collider_pairs: &mut Vec<ColliderPair>,
+    entity_pair_candidates: &mut Vec<CollisionEntityPairCandidate>,
     pairs: &mut Vec<CollisionPair>,
     pair_filter: PairFilter,
 ) {
     collider_pairs.clear();
     collect_current_collider_pairs(world, proxies, collider_pairs, pair_filter);
     pairs.clear();
-    for pair in collider_pairs.iter().copied() {
-        push_unique_pair(pairs, collider_pair_to_pair(world, pair));
+    entity_pair_candidates.clear();
+    for (first_order, pair) in collider_pairs.iter().copied().enumerate() {
+        entity_pair_candidates.push(CollisionEntityPairCandidate {
+            key: pair_filter.entity_pair_key(pair),
+            pair: collider_pair_to_pair(world, pair),
+            first_order,
+        });
     }
+    entity_pair_candidates.sort_unstable_by(|a, b| {
+        a.key
+            .cmp(&b.key)
+            .then_with(|| a.first_order.cmp(&b.first_order))
+    });
+    entity_pair_candidates.dedup_by_key(|candidate| candidate.key);
+    entity_pair_candidates.sort_unstable_by_key(|candidate| candidate.first_order);
+    pairs.extend(
+        entity_pair_candidates
+            .iter()
+            .map(|candidate| candidate.pair),
+    );
 }
 
 fn fill_swept_layer_proxies(
@@ -447,6 +482,38 @@ impl PairFilter {
             }
             Self::Masks(category_a, category_b) => {
                 orient_mask_pair(world, pair, category_a, category_b)
+            }
+        }
+    }
+
+    fn entity_pair_key(self, pair: ColliderPair) -> CollisionEntityPairKey {
+        match self {
+            Self::All => CollisionEntityPairKey::unordered(pair),
+            Self::Layers(_, _) | Self::Masks(_, _) => CollisionEntityPairKey::ordered(pair),
+        }
+    }
+}
+
+impl CollisionEntityPairKey {
+    fn ordered(pair: ColliderPair) -> Self {
+        Self {
+            first_index: pair.a.entity_index,
+            second_index: pair.b.entity_index,
+        }
+    }
+
+    fn unordered(pair: ColliderPair) -> Self {
+        let a = pair.a.entity_index;
+        let b = pair.b.entity_index;
+        if a <= b {
+            Self {
+                first_index: a,
+                second_index: b,
+            }
+        } else {
+            Self {
+                first_index: b,
+                second_index: a,
             }
         }
     }

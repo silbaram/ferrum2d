@@ -136,7 +136,8 @@ pub(super) fn integrate_rigid_body_positions(
         {
             continue;
         }
-        if body.body_type == RigidBodyType::Dynamic
+        if config.continuous
+            && body.body_type == RigidBodyType::Dynamic
             && integrate_dynamic_rigid_body_position_with_ccd(
                 world,
                 index,

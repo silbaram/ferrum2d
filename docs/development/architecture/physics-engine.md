@@ -41,7 +41,7 @@
 | Collision filter | layer pair, category/mask bitset, optional HD-2D floor/height span filter |
 | Broadphase | AABB proxy 기반 sweep-and-prune |
 | Narrowphase | overlap, contact normal/penetration, 대표 contact point, 일부 2점 manifold |
-| CCD/query | swept AABB, raycast/segment-cast, point/AABB/circle/oriented-box/capsule/convex-polygon query, edge raycast/segment-cast, shape cast |
+| CCD/query | continuous opt-in CCD, swept AABB pruning, raycast/segment-cast, point/AABB/circle/oriented-box/capsule/convex-polygon query, edge raycast/segment-cast, shape cast |
 | Kinematic movement | move-and-slide, tilemap obstacle, one-way platform, moving platform carry, HD-2D step/ramp/ledge/bridge-under movement |
 | Platformer support | ground probe, controller config/state, coyote time, jump buffering, step offset, slope snap |
 | Rigid body | static/kinematic/dynamic, mass/inertia, force/impulse/torque, gravity scale, damping, sleep/wake |
@@ -67,7 +67,7 @@
 
 `FerrumEngine`은 낮은 빈도의 physics authoring/control/query API를 제공한다.
 
-- runtime: `configureFixedTimestep(...)`, `setPhysicsDebugLinesEnabled(...)`, `stepRigidBodies(...)`
+- runtime: `configureFixedTimestep(...)`, `setPhysicsDebugLinesEnabled(...)`, `stepRigidBodies(...)`, `PhysicsRigidBodyStepOptions.continuous`
 - spec apply/helper: `createPhysicsWorldFromSpec(...)`, `createRigidBody(...)`, `createCollider(...)`, `createJoint(...)`, `createVehicleRig(...)`
 - body: `spawnRigidBody(...)`, `getPhysicsEntity(...)`, `despawnPhysicsEntity(...)`, `setPhysicsBodyPosition(...)`
 - body control: velocity, rotation, angular velocity, enabled, force/impulse, torque/angular impulse, optional `setPhysicsBodyHeightSpan(...)` / `clearPhysicsBodyHeightSpan(...)`, `moveHd2dKinematicBodyWithTilemap(...)`
@@ -111,7 +111,7 @@ Shooter Game Spec은 전용 prefab/tilemap metadata와 범용 `physics` namespac
 범용 [Physics Spec](../../engine/physics-spec.md)은 다음 계약을 제공한다.
 
 - `none` / `arcade` / `rigid` physics mode
-- gravity, fixed timestep, continuous, solver iteration 기본값
+- gravity, fixed timestep, continuous, solver iteration 기본값과 runtime step option 반영
 - material, layer, body, collider, joint metadata validation
 - material/layer/body/joint 참조 diagnostic
 - `CreateEngineOptions.physicsMode`, `FerrumRuntimeOptions.physicsMode` runtime override

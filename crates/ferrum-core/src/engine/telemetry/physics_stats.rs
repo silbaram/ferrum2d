@@ -97,6 +97,18 @@ impl Engine {
         self.rigid_body_step_stats.ccd_hits
     }
 
+    pub fn rigid_body_step_position_contact_rebuilds(&self) -> u32 {
+        self.rigid_body_step_stats.position_contact_rebuilds
+    }
+
+    pub fn rigid_body_step_position_contact_count_sum(&self) -> u32 {
+        self.rigid_body_step_stats.position_contact_count_sum
+    }
+
+    pub fn rigid_body_step_max_position_contacts(&self) -> u32 {
+        self.rigid_body_step_stats.max_position_contacts
+    }
+
     pub fn rigid_body_step_position_corrections(&self) -> u32 {
         self.rigid_body_step_stats.position_corrections
     }

@@ -40,6 +40,7 @@ pub(super) fn sanitize_rigid_body_step_config(config: RigidBodyStepConfig) -> Ri
             default.max_contact_baumgarte_bias_velocity
         },
         contact_split_impulse: config.contact_split_impulse,
+        continuous: config.continuous,
     }
 }
 

@@ -388,15 +388,6 @@ fn collider_pair_to_pair(world: &World, pair: ColliderPair) -> CollisionPair {
     pair_from_indices(world, pair.a.entity_index, pair.b.entity_index)
 }
 
-fn push_unique_pair(pairs: &mut Vec<CollisionPair>, pair: CollisionPair) {
-    if !pairs
-        .iter()
-        .any(|existing| existing.a == pair.a && existing.b == pair.b)
-    {
-        pairs.push(pair);
-    }
-}
-
 fn entity_from_index(world: &World, index: usize) -> Entity {
     Entity {
         id: index as u32,

@@ -149,6 +149,7 @@ Rust/TypeScript 공유 buffer는 `#[repr(C)]` Rust struct와 TypeScript decoder�
 | Gameplay event | `gameplay_event.rs` | `gameplayEventDecoder.ts`, `gameplayEventActions.ts`, `presentationEffects.ts`, `effectEventAdapters.ts`, `wasmBridge.ts` | Rust-owned gameplay action output, interaction/collision reaction/spawn success/action failure/timer/presentation telemetry와 frame-end adapter action/effect binding/dispatch 변환 |
 | Collision event | `collision_event.rs` | `collisionEventDecoder.ts`, `wasmBridge.ts` | enter/stay/exit/hit/trigger event |
 | Physics debug line | `collision.rs` | `physicsDebugLineDecoder.ts` | opt-in physics debug rendering |
+| Physics rigid-body step controls/stats | `engine/physics_controls.rs`, `engine/telemetry/physics_stats.rs`, `physics/rigid_body.rs` | `physicsRuntimeControls.ts`, `engineTypes/frame.ts` | 낮은 빈도 step option, `continuous` CCD 제어, numeric solver stats |
 | Physics query scalar getters | `engine/physics_queries.rs`, `engine/physics_bridge.rs`, `engine/telemetry.rs`, `collision.rs`, `tilemap.rs`, `tilemap/*.rs` | `createEngine.ts` | nearest body/tile query result fields |
 | Physics query hit buffers | `engine/physics_queries.rs`, `engine/physics_bridge.rs`, `engine/telemetry.rs`, `collision.rs`, `tilemap.rs`, `tilemap/*.rs` | `physicsQueryDecoder.ts`, `createEngine.ts` | body/tile query, shape cast, contact/manifold hit arrays |
 

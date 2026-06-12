@@ -30,6 +30,7 @@ impl Engine {
         contact_baumgarte_bias_factor: f32,
         max_contact_baumgarte_bias_velocity: f32,
         contact_split_impulse: bool,
+        continuous: bool,
     ) {
         self.auto_rigid_body_step_enabled = enabled;
         self.auto_rigid_body_step_config = RigidBodyStepConfig {
@@ -45,6 +46,7 @@ impl Engine {
             contact_baumgarte_bias_factor,
             max_contact_baumgarte_bias_velocity,
             contact_split_impulse,
+            continuous,
         };
         if !enabled {
             self.rigid_body_step_stats = RigidBodyStepStats::default();
@@ -65,6 +67,7 @@ impl Engine {
         contact_baumgarte_bias_factor: f32,
         max_contact_baumgarte_bias_velocity: f32,
         contact_split_impulse: bool,
+        continuous: bool,
     ) {
         self.rigid_body_step_stats = PhysicsSystem::step_rigid_bodies_with_config_and_scratch(
             &mut self.world,
@@ -82,6 +85,7 @@ impl Engine {
                 contact_baumgarte_bias_factor,
                 max_contact_baumgarte_bias_velocity,
                 contact_split_impulse,
+                continuous,
             },
             &mut self.rigid_body_step_scratch,
         );

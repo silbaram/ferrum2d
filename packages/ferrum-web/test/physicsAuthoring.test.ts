@@ -125,6 +125,7 @@ test("createPhysicsWorldFromSpec applies resolved bodies, layers, materials, wor
   const world = createPhysicsWorldFromSpec(engine, {
     mode: "rigid",
     gravity: [0, 900],
+    continuous: false,
     solver: {
       stepSeconds: 1 / 120,
       velocityIterations: 6,
@@ -195,6 +196,7 @@ test("createPhysicsWorldFromSpec applies resolved bodies, layers, materials, wor
   equal(fake.bodies.length, 3);
   equal(fake.joints.length, 3);
   equal(world.stepSeconds, 1 / 120);
+  equal(world.stepOptions.continuous, false);
   ok(fake.fixedTimestep);
   ok(fake.debugLines);
 

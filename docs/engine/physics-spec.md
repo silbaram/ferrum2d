@@ -21,6 +21,7 @@ Physics Spec은 Ferrum2D의 범용 physics authoring 계약이다. Top-down Shoo
 - material/layer/body/joint 참조 오류 diagnostic
 - `createPhysicsWorldFromSpec(...)` 기반 resolved body/joint runtime apply
 - `applyPhysicsSceneProfile(...)` 기반 `manual`/`runtime` scene profile apply와 Rust update loop 내부 auto rigid-body step
+- Physics Spec `continuous` 값의 runtime `stepOptions` 반영과 `continuous: false`일 때 dynamic body CCD skip
 - `createRigidBody(...)`, `createCollider(...)`, `createJoint(...)` authoring helper
 - `createVehicleRig(...)` 기반 chassis/wheel/suspension helper
 - distance/rope/spring/pulley/revolute/prismatic/weld/gear joint validation과 runtime apply
@@ -199,6 +200,8 @@ const scene = applyPhysicsSceneProfile(runtime.engine, {
 ```
 
 반환값은 body id -> `PhysicsEntityHandle`, joint id -> `PhysicsJointHandle`, body/joint count, warning, `stepOptions`, `clear()`를 포함한다. 같은 fixture를 다시 적용할 때는 `createPhysicsWorldFromSpec(engine, next, { replace: previousWorld })`를 사용한다.
+
+`stepOptions`에는 resolved Physics Spec의 gravity, solver iteration, `continuous` 값이 포함된다. `continuous: false`인 world를 `stepRigidBodies(...)` 또는 runtime scene profile에 적용하면 Rust rigid body solver는 dynamic body CCD 탐색을 건너뛰고 discrete integration 경로를 사용한다. 기본 `rigid` mode는 기존처럼 `continuous: true`다.
 
 `applyPhysicsSceneProfile(...)`은 같은 world apply 결과를 감싸고, `runtime` profile에서는 Rust `Engine.update()` 내부 auto rigid-body step을 켠다. `manual` profile은 body/joint만 적용하고 사용자가 `stepRigidBodies(...)`를 직접 호출하는 기존 경로를 유지한다. 이 통합은 scene 생성/교체 시점의 opt-in API이며 frame hot path에서 entity별 JS/Wasm 왕복을 만들지 않는다.
 

@@ -13,6 +13,8 @@ export interface RuntimeDiagnosticsBudget {
   maxAudioEventsPerSecond?: number;
   maxPhysicsFixedSteps?: number;
   maxPhysicsTileCandidateChecks?: number;
+  maxPhysicsCcdChecks?: number;
+  maxPhysicsDebugLineCount?: number;
   maxCollisionPairCount?: number;
   maxAssetLoadElapsedMs?: number;
 }
@@ -88,6 +90,8 @@ export interface RuntimeProfilerSnapshot {
   maxAudioEventsPerSecond: number;
   maxPhysicsFixedSteps: number;
   maxPhysicsTileCandidateChecks: number;
+  maxPhysicsCcdChecks: number;
+  maxPhysicsDebugLineCount: number;
   maxCollisionPairCount: number;
   maxAssetLoadElapsedMs: number;
   budgetReport?: RuntimeDiagnosticsReport;
@@ -272,6 +276,22 @@ export function evaluateRuntimeDiagnosticsSample(
   );
   addViolation(
     violations,
+    "maxPhysicsCcdChecks",
+    "ccd checks",
+    sample.physicsCcdChecks,
+    budget.maxPhysicsCcdChecks,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxPhysicsDebugLineCount",
+    "physics debug lines",
+    sample.physicsDebugLineCount,
+    budget.maxPhysicsDebugLineCount,
+    "count",
+  );
+  addViolation(
+    violations,
     "maxCollisionPairCount",
     "collision pairs",
     sample.collisionPairCount,
@@ -339,6 +359,22 @@ export function evaluateRuntimeProfilerBudget(
   );
   addViolation(
     violations,
+    "maxPhysicsCcdChecks",
+    "ccd checks",
+    snapshot.maxPhysicsCcdChecks,
+    budget.maxPhysicsCcdChecks,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxPhysicsDebugLineCount",
+    "physics debug lines",
+    snapshot.maxPhysicsDebugLineCount,
+    budget.maxPhysicsDebugLineCount,
+    "count",
+  );
+  addViolation(
+    violations,
     "maxCollisionPairCount",
     "collision pairs",
     snapshot.maxCollisionPairCount,
@@ -372,6 +408,8 @@ function summarizeRuntimeProfiler(
   let maxAudioEventsPerSecond = 0;
   let maxPhysicsFixedSteps = 0;
   let maxPhysicsTileCandidateChecks = 0;
+  let maxPhysicsCcdChecks = 0;
+  let maxPhysicsDebugLineCount = 0;
   let maxCollisionPairCount = 0;
 
   for (let i = 0; i < frames.length; i += 1) {
@@ -385,6 +423,8 @@ function summarizeRuntimeProfiler(
     const audioEventsPerSecond = sample.audioEventsPerSecond ?? 0;
     const physicsFixedSteps = sample.physicsFixedSteps ?? 0;
     const physicsTileCandidateChecks = sample.physicsTileCandidateChecks ?? 0;
+    const physicsCcdChecks = sample.physicsCcdChecks ?? 0;
+    const physicsDebugLineCount = sample.physicsDebugLineCount ?? 0;
     const collisionPairCount = sample.collisionPairCount ?? 0;
 
     if (i === 0) {
@@ -397,6 +437,8 @@ function summarizeRuntimeProfiler(
       maxAudioEventsPerSecond = audioEventsPerSecond;
       maxPhysicsFixedSteps = physicsFixedSteps;
       maxPhysicsTileCandidateChecks = physicsTileCandidateChecks;
+      maxPhysicsCcdChecks = physicsCcdChecks;
+      maxPhysicsDebugLineCount = physicsDebugLineCount;
       maxCollisionPairCount = collisionPairCount;
       continue;
     }
@@ -410,6 +452,8 @@ function summarizeRuntimeProfiler(
     maxAudioEventsPerSecond = Math.max(maxAudioEventsPerSecond, audioEventsPerSecond);
     maxPhysicsFixedSteps = Math.max(maxPhysicsFixedSteps, physicsFixedSteps);
     maxPhysicsTileCandidateChecks = Math.max(maxPhysicsTileCandidateChecks, physicsTileCandidateChecks);
+    maxPhysicsCcdChecks = Math.max(maxPhysicsCcdChecks, physicsCcdChecks);
+    maxPhysicsDebugLineCount = Math.max(maxPhysicsDebugLineCount, physicsDebugLineCount);
     maxCollisionPairCount = Math.max(maxCollisionPairCount, collisionPairCount);
   }
 
@@ -443,6 +487,8 @@ function summarizeRuntimeProfiler(
   snapshot.maxAudioEventsPerSecond = maxAudioEventsPerSecond;
   snapshot.maxPhysicsFixedSteps = maxPhysicsFixedSteps;
   snapshot.maxPhysicsTileCandidateChecks = maxPhysicsTileCandidateChecks;
+  snapshot.maxPhysicsCcdChecks = maxPhysicsCcdChecks;
+  snapshot.maxPhysicsDebugLineCount = maxPhysicsDebugLineCount;
   snapshot.maxCollisionPairCount = maxCollisionPairCount;
   snapshot.maxAssetLoadElapsedMs = maxAssetLoadElapsedMs;
   return snapshot;

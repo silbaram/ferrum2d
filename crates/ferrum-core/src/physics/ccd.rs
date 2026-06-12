@@ -1,6 +1,6 @@
 use crate::collision::{
-    collider_shape, AabbBounds, ColliderKey, ColliderPair as CollisionColliderPair,
-    ColliderShapeRef, CollisionPair, CollisionSystem,
+    collider_bounds, collider_shape, AabbBounds, ColliderKey,
+    ColliderPair as CollisionColliderPair, ColliderShapeRef, CollisionPair, CollisionSystem,
 };
 use crate::components::{
     AabbCollider, CapsuleCollider, ConvexPolygonCollider, EdgeCollider, RigidBodyCcdDebugHit,
@@ -212,6 +212,12 @@ fn earliest_rigid_body_ccd_hit(
     stats: &mut RigidBodyStepStats,
 ) -> Option<RigidBodyCcdHit> {
     let mut best = None;
+    let moving_swept_bounds = rigid_body_ccd_swept_bounds(
+        query.start,
+        query.velocity,
+        query.shape,
+        query.delta_seconds,
+    );
     for &target_index in world.alive_indices() {
         if !rigid_body_ccd_target_allows(world, query.moving_index, target_index, query.integrated)
         {
@@ -231,6 +237,14 @@ fn earliest_rigid_body_ccd_hit(
             continue;
         }
         let target_velocity = finite_velocity(world.velocities[target_index].unwrap_or_default());
+        if !moving_swept_bounds.overlaps(rigid_body_ccd_swept_bounds(
+            target_transform,
+            target_velocity,
+            target_shape,
+            query.delta_seconds,
+        )) {
+            continue;
+        }
         stats.ccd_checks = stats.ccd_checks.saturating_add(1);
         let Some(contact) = CollisionSystem::swept_shape_contact(
             query.start,
@@ -284,6 +298,26 @@ fn earliest_rigid_body_ccd_hit(
         update_rigid_body_ccd_hit(&mut best, hit);
     }
     best
+}
+
+fn rigid_body_ccd_swept_bounds(
+    start: Transform2D,
+    velocity: Velocity,
+    shape: ColliderShapeRef,
+    delta_seconds: f32,
+) -> AabbBounds {
+    let start_bounds = collider_bounds(start, shape);
+    let end = Transform2D {
+        x: start.x + velocity.vx * delta_seconds,
+        y: start.y + velocity.vy * delta_seconds,
+    };
+    let end_bounds = collider_bounds(end, shape);
+    AabbBounds {
+        min_x: start_bounds.min_x.min(end_bounds.min_x),
+        min_y: start_bounds.min_y.min(end_bounds.min_y),
+        max_x: start_bounds.max_x.max(end_bounds.max_x),
+        max_y: start_bounds.max_y.max(end_bounds.max_y),
+    }
 }
 
 fn rigid_body_ccd_target_allows(

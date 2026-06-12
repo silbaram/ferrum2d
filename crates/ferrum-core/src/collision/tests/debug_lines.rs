@@ -144,3 +144,36 @@ fn physics_debug_lines_include_broadphase_bounds_before_contacts() {
     assert_eq!(lines[9].x0, 25.0);
     assert_eq!(lines[10].y1, 13.0);
 }
+
+#[test]
+fn physics_debug_lines_with_scratch_reuses_collision_buffers() {
+    let mut world = World::default();
+    world.spawn_player(10.0, 10.0, 0);
+    world.spawn_enemy(12.0, 10.0, 0);
+    let mut scratch = CollisionScratch::default();
+    let mut lines = Vec::new();
+
+    CollisionSystem::build_physics_debug_lines_with_flags_and_scratch_into(
+        &mut scratch,
+        &world,
+        8.0,
+        PHYSICS_DEBUG_DEFAULT,
+        &mut lines,
+    );
+
+    assert_eq!(lines.len(), 11);
+    assert_eq!(scratch.usage().current_proxies, 2);
+    assert_eq!(scratch.usage().collider_pairs, 1);
+
+    CollisionSystem::build_physics_debug_lines_with_flags_and_scratch_into(
+        &mut scratch,
+        &World::default(),
+        8.0,
+        PHYSICS_DEBUG_DEFAULT,
+        &mut lines,
+    );
+
+    assert!(lines.is_empty());
+    assert_eq!(scratch.usage().current_proxies, 0);
+    assert_eq!(scratch.usage().collider_pairs, 0);
+}

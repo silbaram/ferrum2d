@@ -66,6 +66,7 @@ fn build_pairs_into_reuses_scratch_and_pair_buffers() {
         &mut pairs,
     );
     let proxy_capacity = scratch.current_proxies.capacity();
+    let entity_pair_candidate_capacity = scratch.entity_pair_candidates.capacity();
     let pair_capacity = pairs.capacity();
 
     CollisionSystem::build_layer_pairs_into(
@@ -78,6 +79,10 @@ fn build_pairs_into_reuses_scratch_and_pair_buffers() {
 
     assert!(pairs.is_empty());
     assert_eq!(scratch.current_proxies.capacity(), proxy_capacity);
+    assert_eq!(
+        scratch.entity_pair_candidates.capacity(),
+        entity_pair_candidate_capacity
+    );
     assert_eq!(pairs.capacity(), pair_capacity);
 }
 
