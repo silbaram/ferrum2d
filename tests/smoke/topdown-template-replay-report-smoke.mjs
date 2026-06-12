@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const sharedTemplateRoot = path.join(repoRoot, "packages/create-game/templates/_shared");
 const templateRoot = path.join(repoRoot, "packages/create-game/templates/topdown");
 const ferrumWebRoot = path.join(repoRoot, "packages/ferrum-web");
 const expectedCoverageTags = ["template-game-spec", "topdown-scene-composition-authoring"];
@@ -26,6 +27,7 @@ let tempRoot;
 try {
   tempRoot = await mkdtemp(path.join(os.tmpdir(), "ferrum-topdown-template-replay-report-"));
   const projectRoot = path.join(tempRoot, "topdown");
+  await cp(sharedTemplateRoot, projectRoot, { recursive: true });
   await cp(templateRoot, projectRoot, { recursive: true });
   await mkdir(path.join(projectRoot, "node_modules/@ferrum2d"), { recursive: true });
   await symlink(ferrumWebRoot, path.join(projectRoot, "node_modules/@ferrum2d/ferrum-web"), "dir");
