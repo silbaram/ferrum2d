@@ -1,4 +1,4 @@
-import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets } from "../assetLoader";
+import type { AssetLoadProgressCallback, AssetManifest, AssetReleasePayload, LoadedAssets } from "../assetLoader";
 import type { BuiltInShooterStateSnapshot } from "../builtInShooterStateSnapshot.js";
 import type {
   BehaviorRecipeApplyResult,
@@ -199,6 +199,7 @@ export interface FerrumSceneApi {
 
 export interface FerrumAssetApi {
   loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback): Promise<LoadedAssets>;
+  releaseAssets(assets: AssetReleasePayload): void;
   textureId(name: string): number;
   soundId(name: string): number;
   setTextureIds(textureIds: ShooterTextureIds): void;

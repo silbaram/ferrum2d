@@ -116,6 +116,18 @@ export class AudioManager {
     return this.buffersById.has(Math.trunc(soundId));
   }
 
+  evictSound(soundId: number): boolean {
+    this.assertAlive();
+    const normalizedSoundId = Math.trunc(soundId);
+    if (normalizedSoundId <= 0 || !this.buffersById.has(normalizedSoundId)) {
+      return false;
+    }
+    if (this.currentBgm?.soundId === normalizedSoundId) {
+      this.stopBgm();
+    }
+    return this.buffersById.delete(normalizedSoundId);
+  }
+
   setBusVolume(bus: AudioBus, volume: number): void {
     this.assertAlive();
     const gain = Math.max(0, volume);

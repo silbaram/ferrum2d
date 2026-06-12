@@ -41,6 +41,11 @@ export class SoundRegistry {
     return this.idsByName.get(name);
   }
 
+  tryEntry(name: string): SoundRegistryEntry | undefined {
+    const soundId = this.trySoundId(name);
+    return soundId === undefined ? undefined : this.entriesById.get(soundId);
+  }
+
   entries(): SoundRegistryEntry[] {
     return [...this.entriesById.values()];
   }

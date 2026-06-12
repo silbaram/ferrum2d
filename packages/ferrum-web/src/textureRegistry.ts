@@ -41,6 +41,11 @@ export class TextureRegistry {
     return this.idsByName.get(name);
   }
 
+  tryEntry(name: string): TextureRegistryEntry | undefined {
+    const textureId = this.tryTextureId(name);
+    return textureId === undefined ? undefined : this.entriesById.get(textureId);
+  }
+
   entries(): TextureRegistryEntry[] {
     return [...this.entriesById.values()];
   }

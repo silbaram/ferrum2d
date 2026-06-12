@@ -24,8 +24,9 @@ import { createRuntimeLevelStreaming } from "./levelStreamingRuntime.js";
 import type {
   FerrumRuntimeLevelStreaming,
   FerrumRuntimeLevelStreamingOptions,
+  FerrumRuntimeLevelStreamingTarget,
 } from "./levelStreamingRuntime.js";
-import type { LevelChunkStreamer } from "./levelStreamingStreamer.js";
+import { LevelChunkStreamer } from "./levelStreamingStreamer.js";
 import { createRenderer } from "./createRenderer.js";
 import type { CreatedRenderer } from "./createRenderer.js";
 import type { RendererStats } from "./renderer.js";
@@ -340,6 +341,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       options.levelStreaming,
       () => runtimeRenderer.viewportSize(),
       (progress) => profiler?.recordAssetProgress(progress),
+      assetHost,
     );
     const uiCutscene = runtimeCutsceneUsesUi(options.cutscene) ? cutscene : undefined;
     const runtimeUiState = createRuntimeUiStateProvider(options.uiState, hud, accessibility, dialogue, uiCutscene);
@@ -827,11 +829,37 @@ function createRuntimeLevelStreamingOption(
   options: FerrumRuntimeOptions["levelStreaming"],
   viewportSize: () => { width: number; height: number },
   onAssetProgress: Parameters<typeof createRuntimeLevelStreaming>[2],
+  assetHost: AssetHost,
 ): FerrumRuntimeLevelStreaming | undefined {
   if (options === undefined || options === false) {
     return undefined;
   }
-  return createRuntimeLevelStreaming(options, viewportSize, onAssetProgress);
+  if (options instanceof LevelChunkStreamer) {
+    return createRuntimeLevelStreaming({
+      streamer: options,
+      target: levelStreamingTargetWithAssetRelease(undefined, assetHost),
+    }, viewportSize, onAssetProgress);
+  }
+  return createRuntimeLevelStreaming({
+    ...options,
+    target: levelStreamingTargetWithAssetRelease(options.target, assetHost),
+  }, viewportSize, onAssetProgress);
+}
+
+function levelStreamingTargetWithAssetRelease(
+  target: FerrumRuntimeLevelStreamingTarget | undefined,
+  assetHost: AssetHost,
+): FerrumRuntimeLevelStreamingTarget | undefined {
+  if (assetHost.releaseAssets === undefined) {
+    return target;
+  }
+  return {
+    ...target,
+    releaseAssets: (assets, context) => {
+      target?.releaseAssets?.(assets, context);
+      assetHost.releaseAssets?.(assets);
+    },
+  };
 }
 
 function runtimeCutsceneUsesUi(options: FerrumRuntimeOptions["cutscene"]): boolean {

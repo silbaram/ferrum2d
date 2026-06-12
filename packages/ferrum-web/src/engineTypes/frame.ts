@@ -1,4 +1,4 @@
-import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets } from "../assetLoader";
+import type { AssetLoadProgressCallback, AssetManifest, AssetReleasePayload, LoadedAssets } from "../assetLoader";
 import type { PlayBgmOptions, StopBgmOptions } from "../audioManager";
 import type { PostProcessStackInput } from "../cameraPostProcessing";
 import type { PhysicsDebugSpec, PhysicsMode } from "../physicsSpec.js";
@@ -19,6 +19,7 @@ import type {
 
 export interface AssetHost {
   loadAssets(manifest: AssetManifest, onProgress?: AssetLoadProgressCallback): Promise<LoadedAssets>;
+  releaseAssets?(assets: AssetReleasePayload): void;
   textureId(name: string): number;
   soundId?(name: string): number;
   hasSound?(soundId: number): boolean;

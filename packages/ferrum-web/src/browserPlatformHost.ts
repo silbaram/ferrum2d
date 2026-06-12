@@ -1,5 +1,11 @@
 import { AssetLoader } from "./assetLoader.js";
-import type { AssetLoadProgressCallback, AssetManifest, LoadedAssets, TextureAssetManager } from "./assetLoader.js";
+import type {
+  AssetLoadProgressCallback,
+  AssetManifest,
+  AssetReleasePayload,
+  LoadedAssets,
+  TextureAssetManager,
+} from "./assetLoader.js";
 import { AudioManager } from "./audioManager.js";
 import type { AudioManagerConfig, PlayBgmOptions, StopBgmOptions } from "./audioManager.js";
 import type { AssetHost } from "./engineTypes.js";
@@ -25,6 +31,11 @@ export class BrowserPlatformHost implements AssetHost {
     const assets = await this.assetLoader.loadAssets(manifest, onProgress);
     this.assertAlive();
     return assets;
+  }
+
+  releaseAssets(assets: AssetReleasePayload): void {
+    this.assertAlive();
+    this.assetLoader.releaseAssets(assets);
   }
 
   textureId(name: string): number {

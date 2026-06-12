@@ -10,12 +10,29 @@ export interface TextureAssetManager {
 
 export interface SoundAssetManager {
   loadSound(soundId: number, url: string): Promise<AudioBuffer>;
+  evictSound?(soundId: number): boolean;
 }
 
 export interface AssetManifest {
   textures?: Record<string, string>;
   sounds?: Record<string, string>;
   json?: Record<string, string>;
+}
+
+export type AssetReleaseKind = "texture" | "sound" | "json";
+
+export interface AssetReleaseEntry {
+  kind: AssetReleaseKind;
+  name: string;
+  url: string;
+}
+
+export interface AssetReleasePayload {
+  entries: readonly AssetReleaseEntry[];
+  textures: readonly AssetReleaseEntry[];
+  sounds: readonly AssetReleaseEntry[];
+  json: readonly AssetReleaseEntry[];
+  total: number;
 }
 
 export interface AssetLoadProgress {
@@ -125,6 +142,21 @@ export class AssetLoader {
 
   soundIds(): SoundRegistry {
     return this.soundRegistry;
+  }
+
+  releaseAssets(assets: AssetReleasePayload): void {
+    for (const entry of assets.textures) {
+      const texture = entry.kind === "texture" ? this.textureRegistry.tryEntry(entry.name) : undefined;
+      if (texture?.url === entry.url) {
+        this.textureManager.evictTexture?.(texture.textureId);
+      }
+    }
+    for (const entry of assets.sounds) {
+      const sound = entry.kind === "sound" ? this.soundRegistry.tryEntry(entry.name) : undefined;
+      if (sound?.url === entry.url) {
+        this.audioManager?.evictSound?.(sound.soundId);
+      }
+    }
   }
 
   /** @deprecated IndexedDB asset cache는 현재 MVP 범위 밖입니다. 주입된 cache가 있을 때만 위임합니다. */

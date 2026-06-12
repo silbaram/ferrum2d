@@ -1,4 +1,9 @@
-import type { AssetManifest } from "./assetLoader.js";
+import type {
+  AssetManifest,
+  AssetReleaseEntry,
+  AssetReleaseKind,
+  AssetReleasePayload,
+} from "./assetLoader.js";
 import {
   preloadAssetManifest,
   resolveAssetPreloadPlan,
@@ -29,21 +34,11 @@ export interface FerrumRuntimeLevelStreamingPreloadOptions extends PreloadAssetM
   cachePolicy?: AssetPreloadCachePolicy;
 }
 
-export type FerrumRuntimeLevelStreamingReleasedAssetKind = "texture" | "sound" | "json";
+export type FerrumRuntimeLevelStreamingReleasedAssetKind = AssetReleaseKind;
 
-export interface FerrumRuntimeLevelStreamingReleasedAsset {
-  kind: FerrumRuntimeLevelStreamingReleasedAssetKind;
-  name: string;
-  url: string;
-}
+export type FerrumRuntimeLevelStreamingReleasedAsset = AssetReleaseEntry;
 
-export interface FerrumRuntimeLevelStreamingReleasedAssets {
-  entries: readonly FerrumRuntimeLevelStreamingReleasedAsset[];
-  textures: readonly FerrumRuntimeLevelStreamingReleasedAsset[];
-  sounds: readonly FerrumRuntimeLevelStreamingReleasedAsset[];
-  json: readonly FerrumRuntimeLevelStreamingReleasedAsset[];
-  total: number;
-}
+export interface FerrumRuntimeLevelStreamingReleasedAssets extends AssetReleasePayload {}
 
 export interface FerrumRuntimeLevelStreamingUpdateResult {
   plan: LevelStreamingPlan;

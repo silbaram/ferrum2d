@@ -9,7 +9,7 @@ import type {
 } from "../src/createFerrumRuntime.js";
 import type { AssetHost, FerrumEngine } from "../src/engineTypes.js";
 import type { InputManager } from "../src/inputManager.js";
-import type { LoadedAssets } from "../src/assetLoader.js";
+import type { AssetReleasePayload, LoadedAssets } from "../src/assetLoader.js";
 import type { PlayBgmOptions } from "../src/audioManager.js";
 import { emptyRendererStats } from "../src/renderer.js";
 
@@ -150,6 +150,85 @@ test("createFerrumRuntime forwards injected engine lifecycle without taking owne
   deepEqual(engineCalls, ["start", "pause", "resume", "stop"]);
 });
 
+test("createFerrumRuntime forwards level streaming released assets to target and asset host", async () => {
+  const engineCalls: string[] = [];
+  const releaseCalls: AssetReleasePayload[] = [];
+  const targetReleaseCalls: AssetReleasePayload[] = [];
+  let viewportX = 0;
+  const runtime = await createFerrumRuntime({
+    canvas: {} as HTMLCanvasElement,
+    engineInstance: fakeEngine(engineCalls),
+    renderer: fakeRuntimeRenderer(),
+    input: {} as InputManager,
+    assetHost: fakeAssetHost([], releaseCalls),
+    ui: false,
+    levelStreaming: {
+      manifest: {
+        id: "runtime-map",
+        tileWidth: 16,
+        tileHeight: 16,
+        chunkColumns: 4,
+        chunkRows: 4,
+        chunks: [
+          {
+            id: "0,0",
+            chunkX: 0,
+            chunkY: 0,
+            tilemap: { url: "/chunks/0-0.json" },
+            assets: {
+              textures: { local: "/textures/local.png", shared: "/textures/shared.png" },
+              sounds: { wind: "/sounds/wind.ogg" },
+            },
+          },
+          {
+            id: "1,0",
+            chunkX: 1,
+            chunkY: 0,
+            tilemap: { url: "/chunks/1-0.json" },
+            assets: {
+              textures: { shared: "/textures/shared.png" },
+            },
+          },
+        ],
+      },
+      assetLifetime: { preloadMarginChunks: 0, retainMarginChunks: 0 },
+      viewport: () => ({ x: viewportX, y: 0, width: 32, height: 32 }),
+      preload: false,
+      target: {
+        releaseAssets: (assets, context) => {
+          equal(context.result.releasedAssets, assets);
+          targetReleaseCalls.push(assets);
+        },
+      },
+    },
+  });
+
+  try {
+    const first = runtime.levelStreaming?.update(runtimeFrame());
+    deepEqual(first?.loadChunkIds, ["0,0"]);
+    equal(first?.releasedAssets, undefined);
+
+    viewportX = 80;
+    const second = runtime.levelStreaming?.update(runtimeFrame());
+    deepEqual(second?.unloadChunkIds, ["0,0"]);
+    deepEqual(second?.releasedAssets?.entries.map(releasedAssetLabel), [
+      "texture:local:/textures/local.png",
+      "sound:wind:/sounds/wind.ogg",
+      "json:0,0:tilemap:/chunks/0-0.json",
+    ]);
+    equal(second?.releasedAssets?.entries.some((entry) => entry.name === "shared"), false);
+    equal(targetReleaseCalls[0], releaseCalls[0]);
+    deepEqual(releaseCalls.map((assets) => assets.entries.map(releasedAssetLabel)), [[
+      "texture:local:/textures/local.png",
+      "sound:wind:/sounds/wind.ogg",
+      "json:0,0:tilemap:/chunks/0-0.json",
+    ]]);
+  } finally {
+    runtime.destroy();
+  }
+  deepEqual(engineCalls, []);
+});
+
 function fakeEngine(calls: string[]): FerrumEngine {
   return {
     start: () => {
@@ -196,6 +275,7 @@ function fakeRuntimeRenderer(): FerrumRuntimeRenderer {
 
 function fakeAssetHost(
   bgmCalls: Array<{ soundId: number; options?: PlayBgmOptions }>,
+  releaseCalls: AssetReleasePayload[] = [],
 ): AssetHost {
   return {
     loadAssets: async () => ({
@@ -208,7 +288,14 @@ function fakeAssetHost(
     soundId: (name) => name === "intro-bgm" ? 7 : 0,
     hasSound: (soundId) => soundId === 7,
     playBgm: (soundId, options) => bgmCalls.push({ soundId, options }),
+    releaseAssets: (assets) => {
+      releaseCalls.push(assets);
+    },
   };
+}
+
+function releasedAssetLabel(entry: AssetReleasePayload["entries"][number]): string {
+  return `${entry.kind}:${entry.name}:${entry.url}`;
 }
 
 function runtimeFrame(): FerrumRuntimeFrame {

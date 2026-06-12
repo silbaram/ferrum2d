@@ -157,6 +157,9 @@ test("AudioManager reports loaded sound ids for runtime validation", async () =>
     await manager.loadSound(7, "/assets/hit.wav");
     equal(manager.hasSound(7), true);
     equal(manager.hasSound(8), false);
+    equal(manager.evictSound(7), true);
+    equal(manager.hasSound(7), false);
+    equal(manager.evictSound(7), false);
   } finally {
     manager.destroy();
     globalWindow.window.AudioContext = previous;

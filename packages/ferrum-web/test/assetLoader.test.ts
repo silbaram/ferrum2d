@@ -4,19 +4,31 @@ import { AssetLoader, type SoundAssetManager, type TextureAssetManager } from ".
 
 class FakeTextureManager implements TextureAssetManager {
   readonly loaded: Array<{ textureId: number; url: string }> = [];
+  readonly evicted: number[] = [];
 
   async loadTexture(textureId: number, url: string): Promise<WebGLTexture> {
     this.loaded.push({ textureId, url });
     return { textureId, url } as unknown as WebGLTexture;
   }
+
+  evictTexture(textureId: number): boolean {
+    this.evicted.push(textureId);
+    return true;
+  }
 }
 
 class FakeAudioManager implements SoundAssetManager {
   readonly loaded: Array<{ soundId: number; url: string }> = [];
+  readonly evicted: number[] = [];
 
   async loadSound(soundId: number, url: string): Promise<AudioBuffer> {
     this.loaded.push({ soundId, url });
     return { soundId, url } as unknown as AudioBuffer;
+  }
+
+  evictSound(soundId: number): boolean {
+    this.evicted.push(soundId);
+    return true;
   }
 }
 
@@ -191,6 +203,60 @@ test("AssetLoader fetches JSON manifests directly for each load", async () => {
     deepEqual(first.json.game, { version: 1, source: "/game.json" });
     deepEqual(second.json.game, { version: 2, source: "/game.json" });
     deepEqual(fetchCalls, ["/game.json", "/game.json"]);
+  } finally {
+    (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
+  }
+});
+
+test("AssetLoader releases texture and sound resources only when registry URLs still match", async () => {
+  const previousFetch = globalThis.fetch;
+  const textureManager = new FakeTextureManager();
+  const audioManager = new FakeAudioManager();
+  (globalThis as unknown as { fetch: typeof fetch }).fetch = async (input) => jsonResponse({ source: String(input) });
+
+  try {
+    const loader = new AssetLoader(textureManager, audioManager);
+    await loader.loadAssets({
+      textures: {
+        player: "/assets/player.png",
+        enemy: "/assets/enemy.png",
+      },
+      sounds: {
+        shoot: "/assets/shoot.wav",
+      },
+      json: {
+        config: "/assets/config.json",
+      },
+    });
+
+    loader.releaseAssets({
+      entries: [
+        { kind: "texture", name: "player", url: "/assets/player.png" },
+        { kind: "texture", name: "enemy", url: "/assets/stale-enemy.png" },
+        { kind: "texture", name: "missing", url: "/assets/missing.png" },
+        { kind: "sound", name: "shoot", url: "/assets/shoot.wav" },
+        { kind: "sound", name: "missing", url: "/assets/missing.wav" },
+        { kind: "json", name: "config", url: "/assets/config.json" },
+      ],
+      textures: [
+        { kind: "texture", name: "player", url: "/assets/player.png" },
+        { kind: "texture", name: "enemy", url: "/assets/stale-enemy.png" },
+        { kind: "texture", name: "missing", url: "/assets/missing.png" },
+        { kind: "sound", name: "enemy", url: "/assets/enemy.png" },
+      ],
+      sounds: [
+        { kind: "sound", name: "shoot", url: "/assets/shoot.wav" },
+        { kind: "sound", name: "missing", url: "/assets/missing.wav" },
+        { kind: "texture", name: "shoot", url: "/assets/shoot.wav" },
+      ],
+      json: [
+        { kind: "json", name: "config", url: "/assets/config.json" },
+      ],
+      total: 6,
+    });
+
+    deepEqual(textureManager.evicted, [1]);
+    deepEqual(audioManager.evicted, [1]);
   } finally {
     (globalThis as unknown as { fetch: typeof fetch }).fetch = previousFetch;
   }

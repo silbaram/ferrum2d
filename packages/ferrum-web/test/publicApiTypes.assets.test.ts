@@ -32,6 +32,9 @@ import type {
   AsepriteAtlasImportOptions,
   AsepriteAtlasImportResult,
   AssetManifest,
+  AssetReleaseEntry,
+  AssetReleaseKind,
+  AssetReleasePayload,
   AssetPreloadCache,
   AssetPreloadCachePolicy,
   AssetPreloadEntry,
@@ -89,6 +92,7 @@ import type {
   TiledTilesetFrameContext,
   generateTextureAtlasLayout,
 } from "./publicApiTypes.shared.js";
+import type { AssetReleasePayload as CoreAssetReleasePayload } from "../src/core.js";
 
 test("public API asset, streaming, pipeline, texture atlas, and screenshot types", () => {
   const manifest: AssetManifest = {
@@ -96,6 +100,20 @@ test("public API asset, streaming, pipeline, texture atlas, and screenshot types
     sounds: { shoot: "/assets/shoot.wav" },
     json: { game: "/game.json" },
   };
+  const releaseKind: AssetReleaseKind = "texture";
+  const releaseEntry: AssetReleaseEntry = {
+    kind: releaseKind,
+    name: "player",
+    url: "/assets/player.png",
+  };
+  const releasePayload: AssetReleasePayload = {
+    entries: [releaseEntry],
+    textures: [releaseEntry],
+    sounds: [],
+    json: [],
+    total: 1,
+  };
+  const coreReleasePayload: CoreAssetReleasePayload = releasePayload;
   const publicResolveAssetPreloadPlan: PublicApi["resolveAssetPreloadPlan"] = resolveAssetPreloadPlan;
   const publicPreloadAssetManifest: PublicApi["preloadAssetManifest"] = preloadAssetManifest;
   const publicAssetManifestFingerprint: PublicApi["assetManifestFingerprint"] = assetManifestFingerprint;
@@ -181,6 +199,8 @@ test("public API asset, streaming, pipeline, texture atlas, and screenshot types
     detail: "Loading texture player (1/2)",
   };
   equal(typeof publicPreloadAssetManifest, "function");
+  equal(releasePayload.textures[0]?.name, "player");
+  equal(coreReleasePayload.total, 1);
   equal(assetPreloadPlan.total, 3);
   equal(firstAssetPreloadEntry?.kind, "texture");
   equal(publicAssetManifestFingerprint(manifest, "release").length > 0, true);

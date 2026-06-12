@@ -531,6 +531,10 @@ export async function createEngineWithFramePipeline(
       requireAlive();
       return await requireAssetHost().loadAssets(manifest, onProgress);
     },
+    releaseAssets: (assets) => {
+      requireAlive();
+      requireAssetHost().releaseAssets?.(assets);
+    },
     textureId: (name) => {
       requireAlive();
       return requireAssetHost().textureId(name);
