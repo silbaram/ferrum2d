@@ -67,22 +67,21 @@ impl PhysicsSystem {
         let alive_count = world.alive_indices().len();
         for alive_position in 0..alive_count {
             let i = world.alive_indices()[alive_position];
-            if let (Some(transform), Some(velocity)) =
-                (world.transforms[i].as_mut(), world.velocities[i])
-            {
-                transform.x += velocity.vx * delta;
-                transform.y += velocity.vy * delta;
-            }
+            let Some(velocity) = world.velocity_at_index(i) else {
+                continue;
+            };
+            let Some(transform) = world.transform_mut_at_index(i) else {
+                continue;
+            };
+            transform.x += velocity.vx * delta;
+            transform.y += velocity.vy * delta;
         }
     }
 }
 
 fn valid_world_entity_index(world: &World, entity: Entity) -> Option<usize> {
     let index = entity.id as usize;
-    (index < world.alive.len()
-        && world.alive[index]
-        && world.generations[index] == entity.generation)
-        .then_some(index)
+    world.is_current_entity(entity).then_some(index)
 }
 
 #[cfg(test)]

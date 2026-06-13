@@ -129,20 +129,8 @@ pub(in crate::physics) fn gear_joint_constraint_context(
         return None;
     }
 
-    let rotation_a = world
-        .rotations
-        .get(a_index)
-        .copied()
-        .flatten()
-        .map(finite_rotation)
-        .unwrap_or_default();
-    let rotation_b = world
-        .rotations
-        .get(b_index)
-        .copied()
-        .flatten()
-        .map(finite_rotation)
-        .unwrap_or_default();
+    let rotation_a = finite_rotation(world.rotation_at_index_or_default(a_index));
+    let rotation_b = finite_rotation(world.rotation_at_index_or_default(b_index));
     let reference_angle = sanitize_finite(joint.reference_angle);
     let error = rotation_b.radians + ratio * rotation_a.radians - reference_angle;
     if !error.is_finite() || (require_position_error && error.abs() <= KINEMATIC_EPSILON) {

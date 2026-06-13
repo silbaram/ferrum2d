@@ -16,9 +16,9 @@ pub(in crate::physics) struct RigidSplitImpulseState {
 impl RigidSplitImpulseState {
     pub(in crate::physics) fn reset_from_world(&mut self, world: &World) {
         self.linear_velocities
-            .resize(world.transforms.len(), Velocity::default());
+            .resize(world.entity_capacity(), Velocity::default());
         self.linear_velocities.fill(Velocity::default());
-        self.angular_velocities.resize(world.transforms.len(), 0.0);
+        self.angular_velocities.resize(world.entity_capacity(), 0.0);
         self.angular_velocities.fill(0.0);
     }
 
@@ -104,7 +104,7 @@ impl RigidSplitImpulseState {
             if velocity_len_squared(split_velocity)
                 > CONTACT_IMPULSE_EPSILON * CONTACT_IMPULSE_EPSILON
             {
-                if let Some(transform) = world.transforms.get_mut(index).and_then(Option::as_mut) {
+                if let Some(transform) = world.transform_mut_at_index(index) {
                     *transform = finite_transform(Transform2D {
                         x: transform.x + split_velocity.vx * delta_seconds,
                         y: transform.y + split_velocity.vy * delta_seconds,
@@ -115,11 +115,12 @@ impl RigidSplitImpulseState {
 
         for (index, split_angular_velocity) in self.angular_velocities.iter().copied().enumerate() {
             if split_angular_velocity.abs() > CONTACT_IMPULSE_EPSILON {
-                let rotation = world.rotations[index].get_or_insert_with(Rotation2D::default);
-                rotation.radians = finite_rotation(Rotation2D {
-                    radians: rotation.radians + split_angular_velocity * delta_seconds,
-                })
-                .radians;
+                if let Some(rotation) = world.rotation_mut_or_insert_default_at_index(index) {
+                    rotation.radians = finite_rotation(Rotation2D {
+                        radians: rotation.radians + split_angular_velocity * delta_seconds,
+                    })
+                    .radians;
+                }
             }
         }
     }

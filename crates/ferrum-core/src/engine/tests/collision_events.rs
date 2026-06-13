@@ -15,11 +15,17 @@ fn engine_collision_events_report_enter_stay_and_exit() {
     assert_eq!(engine.physics_collision_pairs(), 1);
     assert_eq!(engine.physics_collision_solid_pairs(), 1);
     assert_eq!(engine.physics_collision_trigger_pairs(), 0);
-    assert_eq!(engine.collision_events[0].kind, COLLISION_EVENT_ENTER);
+    assert_eq!(
+        engine.frame_buffers.collision_events[0].kind,
+        COLLISION_EVENT_ENTER
+    );
 
     engine.update(0.016);
     assert_eq!(engine.collision_stay_count(), 1);
-    assert_eq!(engine.collision_events[0].kind, COLLISION_EVENT_STAY);
+    assert_eq!(
+        engine.frame_buffers.collision_events[0].kind,
+        COLLISION_EVENT_STAY
+    );
 
     engine
         .world
@@ -29,8 +35,14 @@ fn engine_collision_events_report_enter_stay_and_exit() {
     assert_eq!(engine.physics_collision_pairs(), 0);
     assert_eq!(engine.physics_collision_solid_pairs(), 0);
     assert_eq!(engine.physics_collision_trigger_pairs(), 0);
-    assert_eq!(engine.collision_events[0].kind, COLLISION_EVENT_EXIT);
-    assert_eq!(engine.collision_events[0].a_id, a.id.min(b.id));
+    assert_eq!(
+        engine.frame_buffers.collision_events[0].kind,
+        COLLISION_EVENT_EXIT
+    );
+    assert_eq!(
+        engine.frame_buffers.collision_events[0].a_id,
+        a.id.min(b.id)
+    );
 }
 
 #[test]
@@ -50,7 +62,7 @@ fn engine_collision_events_report_trigger_lifecycle_counts() {
     assert_eq!(engine.physics_collision_solid_pairs(), 0);
     assert_eq!(engine.physics_collision_trigger_pairs(), 1);
     assert_eq!(
-        engine.collision_events[0].kind,
+        engine.frame_buffers.collision_events[0].kind,
         COLLISION_EVENT_TRIGGER_ENTER
     );
 
@@ -58,7 +70,7 @@ fn engine_collision_events_report_trigger_lifecycle_counts() {
     assert_eq!(engine.collision_stay_count(), 0);
     assert_eq!(engine.collision_trigger_stay_count(), 1);
     assert_eq!(
-        engine.collision_events[0].kind,
+        engine.frame_buffers.collision_events[0].kind,
         COLLISION_EVENT_TRIGGER_STAY
     );
 
@@ -72,10 +84,13 @@ fn engine_collision_events_report_trigger_lifecycle_counts() {
     assert_eq!(engine.physics_collision_solid_pairs(), 0);
     assert_eq!(engine.physics_collision_trigger_pairs(), 0);
     assert_eq!(
-        engine.collision_events[0].kind,
+        engine.frame_buffers.collision_events[0].kind,
         COLLISION_EVENT_TRIGGER_EXIT
     );
-    assert_eq!(engine.collision_events[0].a_id, sensor.id.min(actor.id));
+    assert_eq!(
+        engine.frame_buffers.collision_events[0].a_id,
+        sensor.id.min(actor.id)
+    );
 }
 
 #[test]
@@ -109,12 +124,13 @@ fn engine_collision_events_include_shooter_hit_before_despawn() {
     let bullet = engine
         .world
         .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-    engine.world.damages[bullet.id as usize] = Some(2.5);
+    engine.world.set_damage(bullet, 2.5);
 
     engine.update(0.016);
 
     assert_eq!(engine.collision_hit_count(), 1);
     let hit = engine
+        .frame_buffers
         .collision_events
         .iter()
         .find(|event| event.kind == COLLISION_EVENT_HIT)
@@ -138,18 +154,19 @@ fn shooter_hit_particle_preset_spawns_on_bullet_enemy_hit() {
     let bullet = engine
         .world
         .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-    engine.world.damages[bullet.id as usize] = Some(2.5);
+    engine.world.set_damage(bullet, 2.5);
 
     engine.update(0.016);
 
     assert_eq!(engine.collision_hit_count(), 1);
     assert_eq!(engine.particle_count(), 2);
     assert!(engine
+        .frame_buffers
         .render_commands
         .iter()
         .any(|command| command.texture_id == 88.0));
-    assert!(!engine.world.alive[bullet.id as usize]);
-    assert!(!engine.world.alive[enemy.id as usize]);
+    assert!(!engine.world.is_alive_index(bullet.id as usize));
+    assert!(!engine.world.is_alive_index(enemy.id as usize));
 }
 
 #[test]
@@ -163,13 +180,13 @@ fn shooter_hit_particles_require_scene_preset_binding() {
     let bullet = engine
         .world
         .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-    engine.world.damages[bullet.id as usize] = Some(2.5);
+    engine.world.set_damage(bullet, 2.5);
 
     engine.update(0.016);
 
     assert_eq!(engine.collision_hit_count(), 1);
     assert_eq!(engine.particle_count(), 0);
-    assert!(!engine.world.alive[enemy.id as usize]);
+    assert!(!engine.world.is_alive_index(enemy.id as usize));
 }
 
 #[test]
@@ -181,17 +198,17 @@ fn shooter_non_lethal_enemy_hit_starts_tint_tween() {
 
     let enemy = engine.world.spawn_enemy(500.0, 240.0, DEFAULT_TEXTURE_ID);
     let enemy_index = enemy.id as usize;
-    engine.world.healths[enemy_index] = Some(2.0);
-    let original = engine.world.sprites[enemy_index].unwrap();
+    engine.world.set_health(enemy, 2.0);
+    let original = engine.world.sprite_at_index(enemy_index).unwrap();
     let bullet = engine
         .world
         .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-    engine.world.damages[bullet.id as usize] = Some(1.0);
+    engine.world.set_damage(bullet, 1.0);
 
     engine.update(0.0);
 
-    let flashed = engine.world.sprites[enemy_index].unwrap();
-    assert!(engine.world.alive[enemy_index]);
+    let flashed = engine.world.sprite_at_index(enemy_index).unwrap();
+    assert!(engine.world.is_alive_index(enemy_index));
     assert_eq!(engine.tweens.tween_count(), 1);
     assert!(flashed.r >= original.r);
     assert!(flashed.g > original.g);
@@ -200,7 +217,7 @@ fn shooter_non_lethal_enemy_hit_starts_tint_tween() {
 
     engine.update(0.2);
 
-    let restored = engine.world.sprites[enemy_index].unwrap();
+    let restored = engine.world.sprite_at_index(enemy_index).unwrap();
     assert_eq!(restored.r, original.r);
     assert_eq!(restored.g, original.g);
     assert_eq!(restored.b, original.b);
@@ -217,15 +234,15 @@ fn shooter_lethal_enemy_hit_does_not_start_tint_tween() {
 
     let enemy = engine.world.spawn_enemy(500.0, 240.0, DEFAULT_TEXTURE_ID);
     let enemy_index = enemy.id as usize;
-    engine.world.healths[enemy_index] = Some(1.0);
+    engine.world.set_health(enemy, 1.0);
     let bullet = engine
         .world
         .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-    engine.world.damages[bullet.id as usize] = Some(1.0);
+    engine.world.set_damage(bullet, 1.0);
 
     engine.update(0.0);
 
-    assert!(!engine.world.alive[enemy_index]);
+    assert!(!engine.world.is_alive_index(enemy_index));
     assert_eq!(engine.tweens.tween_count(), 0);
 }
 

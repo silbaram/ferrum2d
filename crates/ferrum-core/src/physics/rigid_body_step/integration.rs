@@ -54,8 +54,8 @@ pub(super) fn integrate_rigid_body_velocities(
             continue;
         }
 
-        let mut velocity = world.velocities[index].unwrap_or_default();
-        let mut angular_velocity = world.angular_velocities[index].unwrap_or_default();
+        let mut velocity = world.velocity_at_index_or_default(index);
+        let mut angular_velocity = world.angular_velocity_at_index_or_default(index);
         let impulse = if accumulator_mode.apply_impulses {
             body.impulse
         } else {
@@ -100,8 +100,8 @@ pub(super) fn integrate_rigid_body_velocities(
             body.impulse = Velocity::default();
             body.angular_impulse = 0.0;
         }
-        world.velocities[index] = Some(finite_velocity(velocity));
-        world.angular_velocities[index] = Some(finite_angular_velocity(angular_velocity));
+        world.set_velocity_at_index(index, finite_velocity(velocity));
+        world.set_angular_velocity_at_index(index, finite_angular_velocity(angular_velocity));
         world.rigid_bodies[index] = Some(body);
         stats.dynamic_bodies = stats.dynamic_bodies.saturating_add(1);
         if inverse_inertia > 0.0 {
@@ -157,16 +157,18 @@ pub(super) fn integrate_rigid_body_positions(
             integrated[index] = true;
             continue;
         }
-        let Some(transform) = world.transforms[index].as_mut() else {
+        let velocity = finite_velocity(world.velocity_at_index_or_default(index));
+        let angular_velocity = world
+            .angular_velocity_at_index(index)
+            .map(finite_angular_velocity);
+        let Some(transform) = world.transform_mut_at_index(index) else {
             continue;
         };
-        let velocity = finite_velocity(world.velocities[index].unwrap_or_default());
         transform.x += velocity.vx * delta_seconds;
         transform.y += velocity.vy * delta_seconds;
-        if let (Some(rotation), Some(angular_velocity)) = (
-            world.rotations[index].as_mut(),
-            world.angular_velocities[index].map(finite_angular_velocity),
-        ) {
+        if let (Some(rotation), Some(angular_velocity)) =
+            (world.rotation_mut_at_index(index), angular_velocity)
+        {
             rotation.radians = finite_rotation(Rotation2D {
                 radians: rotation.radians + angular_velocity.radians_per_second * delta_seconds,
             })

@@ -9,27 +9,27 @@ impl ShooterScene {
         world: &mut World,
         mut events: Option<&mut GameplayEventSink<'_>>,
     ) {
-        let Some(player) = world.player else {
+        let Some(player) = world.player_entity() else {
             return;
         };
         let Some(player_transform) = world.transform(player) else {
             return;
         };
-        if !world.interactions.iter().any(Option::is_some) {
+        if !world.has_interactions() {
             return;
         }
 
-        for index in 0..world.interactions.len() {
-            let Some(interaction) = world.interactions[index] else {
+        for index in 0..world.entity_capacity() {
+            let Some(interaction) = world.interaction_at_index(index) else {
                 continue;
             };
             if interaction.once && interaction.consumed {
                 continue;
             }
-            if !world.alive.get(index).copied().unwrap_or(false) {
+            if !world.is_alive_index(index) {
                 continue;
             }
-            let Some(transform) = world.transforms[index] else {
+            let Some(transform) = world.transform_at_index(index) else {
                 continue;
             };
             let dx = transform.x - player_transform.x;
@@ -38,9 +38,8 @@ impl ShooterScene {
                 continue;
             }
 
-            let source = crate::entity::Entity {
-                id: index as u32,
-                generation: world.generations[index],
+            let Some(source) = world.entity_at_index(index) else {
+                continue;
             };
             let consumed_this_frame = interaction.once;
             if let Some(event_sink) = events.as_mut() {
@@ -53,7 +52,7 @@ impl ShooterScene {
                 );
             }
             if interaction.once {
-                if let Some(stored) = world.interactions[index].as_mut() {
+                if let Some(stored) = world.interaction_mut_at_index(index) {
                     stored.consumed = true;
                 }
             }

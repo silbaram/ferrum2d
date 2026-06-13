@@ -139,10 +139,12 @@ fn gameplay_component_authoring_sets_and_clears_scalar_components() {
         ProjectileTileImpact::Bounce.code()
     ));
 
-    assert_eq!(engine.world.healths[enemy.id as usize], Some(4.0));
-    assert_eq!(engine.world.score_rewards[enemy.id as usize], Some(9));
+    assert_eq!(engine.world.health(enemy), Some(4.0));
+    assert_eq!(engine.world.score_reward(enemy), Some(9));
     assert_eq!(
-        engine.world.action_bindings[enemy.id as usize]
+        engine
+            .world
+            .action_bindings(enemy)
             .unwrap()
             .iter()
             .collect::<Vec<_>>(),
@@ -162,7 +164,9 @@ fn gameplay_component_authoring_sets_and_clears_scalar_components() {
         ]
     );
     assert_eq!(
-        engine.world.action_bindings[bouncer.id as usize]
+        engine
+            .world
+            .action_bindings(bouncer)
             .unwrap()
             .iter()
             .collect::<Vec<_>>(),
@@ -180,11 +184,11 @@ fn gameplay_component_authoring_sets_and_clears_scalar_components() {
         )]
     );
     assert_eq!(
-        engine.world.pickups[enemy.id as usize],
+        engine.world.pickup(enemy),
         Some(Pickup::new(GAMEPLAY_PICKUP_ITEM_SCORE, 3, true))
     );
     assert_eq!(
-        engine.world.interactions[enemy.id as usize],
+        engine.world.interaction(enemy),
         Some(Interaction::new(5, 28.0, true))
     );
     assert_eq!(
@@ -196,14 +200,11 @@ fn gameplay_component_authoring_sets_and_clears_scalar_components() {
         Some(GameplayFaction::new(GAMEPLAY_FACTION_ENEMY, 1 << GAMEPLAY_FACTION_PLAYER).unwrap())
     );
     assert_eq!(engine.world.gameplay_tags(enemy), GameplayTags::new(1 << 5));
-    assert_eq!(engine.world.damages[bullet.id as usize], Some(2.0));
+    assert_eq!(engine.world.damage(bullet), Some(2.0));
+    assert_eq!(engine.world.gameplay_lifetime(bullet), Some(1.25));
     assert_eq!(
-        engine.world.bullet_lifetimes[bullet.id as usize],
-        Some(1.25)
-    );
-    assert_eq!(
-        engine.world.projectile_tile_impacts[bullet.id as usize],
-        Some(ProjectileTileImpact::Bounce)
+        engine.world.projectile_tile_impact_at(bullet.id as usize),
+        ProjectileTileImpact::Bounce
     );
 
     assert!(engine.clear_gameplay_health(enemy.id, enemy.generation));
@@ -217,16 +218,16 @@ fn gameplay_component_authoring_sets_and_clears_scalar_components() {
     assert!(engine.clear_gameplay_damage(bullet.id, bullet.generation));
     assert!(engine.clear_gameplay_lifetime(bullet.id, bullet.generation));
 
-    assert_eq!(engine.world.healths[enemy.id as usize], None);
-    assert_eq!(engine.world.score_rewards[enemy.id as usize], None);
-    assert_eq!(engine.world.action_bindings[enemy.id as usize], None);
-    assert_eq!(engine.world.pickups[enemy.id as usize], None);
-    assert_eq!(engine.world.interactions[enemy.id as usize], None);
+    assert_eq!(engine.world.health(enemy), None);
+    assert_eq!(engine.world.score_reward(enemy), None);
+    assert_eq!(engine.world.action_bindings(enemy), None);
+    assert_eq!(engine.world.pickup(enemy), None);
+    assert_eq!(engine.world.interaction(enemy), None);
     assert_eq!(engine.world.gameplay_timer_trigger(enemy), None);
     assert_eq!(engine.world.gameplay_faction(enemy), None);
     assert_eq!(engine.world.gameplay_tags(enemy), None);
-    assert_eq!(engine.world.damages[bullet.id as usize], None);
-    assert_eq!(engine.world.bullet_lifetimes[bullet.id as usize], None);
+    assert_eq!(engine.world.damage(bullet), None);
+    assert_eq!(engine.world.gameplay_lifetime(bullet), None);
 }
 
 #[test]
@@ -261,8 +262,7 @@ fn gameplay_component_authoring_accepts_max_u32_mask_faction_and_tag_ids() {
     assert_eq!(
         engine
             .world
-            .gameplay_faction_relations
-            .relation(GAMEPLAY_FACTION_MAX_ID, GAMEPLAY_FACTION_MAX_ID),
+            .gameplay_faction_relation(GAMEPLAY_FACTION_MAX_ID, GAMEPLAY_FACTION_MAX_ID),
         Some(FactionRelation::Hostile)
     );
     assert!(!engine.set_gameplay_faction_relation(
@@ -432,9 +432,14 @@ fn gameplay_authoring_snapshot_restores_supported_runtime_component_slots() {
     ));
 
     let index = enemy.id as usize;
-    engine.world.interactions[index].as_mut().unwrap().consumed = true;
-    let timer = engine.world.gameplay_timer_triggers[index]
-        .as_mut()
+    engine
+        .world
+        .interaction_mut_at_index(index)
+        .unwrap()
+        .consumed = true;
+    let timer = engine
+        .world
+        .gameplay_timer_trigger_mut_at_index(index)
         .unwrap();
     timer.remaining_seconds = 0.1;
     timer.fired = true;
@@ -442,11 +447,11 @@ fn gameplay_authoring_snapshot_restores_supported_runtime_component_slots() {
         .world
         .commit_action_cooldown_if_ready(enemy, 7)
         .is_some());
-    for reaction in engine.world.collision_reactions[index]
-        .as_mut()
-        .unwrap()
-        .iter_mut()
-    {
+    let (_, collision_reactions) = engine
+        .world
+        .collision_reactions_mut(enemy)
+        .expect("enemy has collision reactions");
+    for reaction in collision_reactions.iter_mut() {
         match reaction {
             CollisionReaction::PlaySound { cooldown, .. }
             | CollisionReaction::SpawnParticle { cooldown, .. }
@@ -463,18 +468,18 @@ fn gameplay_authoring_snapshot_restores_supported_runtime_component_slots() {
         }
     }
 
-    let expected_health = engine.world.healths[index];
-    let expected_damage = engine.world.damages[index];
-    let expected_lifetime = engine.world.bullet_lifetimes[index];
-    let expected_score_reward = engine.world.score_rewards[index];
-    let expected_faction = engine.world.gameplay_factions[index];
-    let expected_tags = engine.world.gameplay_tags[index];
-    let expected_pickup = engine.world.pickups[index];
-    let expected_interaction = engine.world.interactions[index];
-    let expected_timer = engine.world.gameplay_timer_triggers[index];
-    let expected_movement = engine.world.movement_patterns[index];
-    let expected_actions = engine.world.action_bindings[index];
-    let expected_collision_reactions = engine.world.collision_reactions[index];
+    let expected_health = engine.world.health_at_index(index);
+    let expected_damage = engine.world.damage_at_index(index);
+    let expected_lifetime = engine.world.gameplay_lifetime_at(index);
+    let expected_score_reward = engine.world.score_reward_at_index(index);
+    let expected_faction = engine.world.gameplay_faction(enemy);
+    let expected_tags = engine.world.gameplay_tags(enemy);
+    let expected_pickup = engine.world.pickup(enemy);
+    let expected_interaction = engine.world.interaction(enemy);
+    let expected_timer = engine.world.gameplay_timer_trigger(enemy);
+    let expected_movement = engine.world.movement_pattern(enemy);
+    let expected_actions = engine.world.action_bindings(enemy);
+    let expected_collision_reactions = engine.world.collision_reactions(enemy);
 
     assert!(engine.capture_gameplay_authoring_snapshot(enemy.id, enemy.generation));
     assert!(engine.clear_gameplay_health(enemy.id, enemy.generation));
@@ -491,12 +496,15 @@ fn gameplay_authoring_snapshot_restores_supported_runtime_component_slots() {
     assert!(engine.clear_gameplay_collision_reactions(enemy.id, enemy.generation));
 
     assert!(engine.restore_gameplay_authoring_snapshot(enemy.id, enemy.generation));
-    assert_eq!(engine.world.healths[index], expected_health);
-    assert_eq!(engine.world.damages[index], expected_damage);
-    assert_eq!(engine.world.bullet_lifetimes[index], expected_lifetime);
-    assert_eq!(engine.world.score_rewards[index], expected_score_reward);
-    assert_eq!(engine.world.gameplay_factions[index], expected_faction);
-    assert_eq!(engine.world.gameplay_tags[index], expected_tags);
+    assert_eq!(engine.world.health_at_index(index), expected_health);
+    assert_eq!(engine.world.damage_at_index(index), expected_damage);
+    assert_eq!(engine.world.gameplay_lifetime_at(index), expected_lifetime);
+    assert_eq!(
+        engine.world.score_reward_at_index(index),
+        expected_score_reward
+    );
+    assert_eq!(engine.world.gameplay_faction(enemy), expected_faction);
+    assert_eq!(engine.world.gameplay_tags(enemy), expected_tags);
     assert_eq!(
         engine
             .world
@@ -504,13 +512,13 @@ fn gameplay_authoring_snapshot_restores_supported_runtime_component_slots() {
         &[index]
     );
     assert_eq!(engine.world.gameplay_tag_query_indices(5), &[index]);
-    assert_eq!(engine.world.pickups[index], expected_pickup);
-    assert_eq!(engine.world.interactions[index], expected_interaction);
-    assert_eq!(engine.world.gameplay_timer_triggers[index], expected_timer);
-    assert_eq!(engine.world.movement_patterns[index], expected_movement);
-    assert_eq!(engine.world.action_bindings[index], expected_actions);
+    assert_eq!(engine.world.pickup(enemy), expected_pickup);
+    assert_eq!(engine.world.interaction(enemy), expected_interaction);
+    assert_eq!(engine.world.gameplay_timer_trigger(enemy), expected_timer);
+    assert_eq!(engine.world.movement_pattern(enemy), expected_movement);
+    assert_eq!(engine.world.action_bindings(enemy), expected_actions);
     assert_eq!(
-        engine.world.collision_reactions[index],
+        engine.world.collision_reactions(enemy),
         expected_collision_reactions
     );
 
@@ -541,7 +549,7 @@ fn gameplay_component_authoring_sets_behavior_state_machine() {
 
     assert!(engine.set_gameplay_behavior_state_machine(enemy.id, enemy.generation, 1));
     assert_eq!(
-        engine.world.behavior_state_machines[enemy.id as usize],
+        engine.world.behavior_state_machine(enemy),
         Some(BehaviorStateMachine::new(1))
     );
     assert_eq!(
@@ -552,10 +560,7 @@ fn gameplay_component_authoring_sets_behavior_state_machine() {
     assert!(engine.add_gameplay_behavior_transition(enemy.id, enemy.generation, 1, 2, 7));
     let mut expected = BehaviorStateMachine::new(1);
     assert!(expected.push_transition(BehaviorStateTransition::new(1, 2, 7)));
-    assert_eq!(
-        engine.world.behavior_state_machines[enemy.id as usize],
-        Some(expected)
-    );
+    assert_eq!(engine.world.behavior_state_machine(enemy), Some(expected));
 
     assert!(engine.add_gameplay_behavior_event_transition(
         enemy.id,
@@ -571,10 +576,7 @@ fn gameplay_component_authoring_sets_behavior_state_machine() {
         GAMEPLAY_EVENT_COLLISION_DAMAGE,
         0,
     )));
-    assert_eq!(
-        engine.world.behavior_state_machines[enemy.id as usize],
-        Some(expected)
-    );
+    assert_eq!(engine.world.behavior_state_machine(enemy), Some(expected));
 
     let expected_state_enter_actions = (0..MAX_BEHAVIOR_STATE_ENTER_ACTIONS_PER_ENTITY)
         .map(|index| {
@@ -602,7 +604,9 @@ fn gameplay_component_authoring_sets_behavior_state_machine() {
         0,
     ));
     assert_eq!(
-        engine.world.behavior_state_enter_actions[enemy.id as usize]
+        engine
+            .world
+            .behavior_state_enter_actions(enemy)
             .unwrap()
             .iter_for_state(2)
             .collect::<Vec<_>>(),
@@ -614,15 +618,9 @@ fn gameplay_component_authoring_sets_behavior_state_machine() {
         engine.gameplay_behavior_state(enemy.id, enemy.generation),
         0
     );
-    assert_eq!(
-        engine.world.behavior_state_machines[enemy.id as usize],
-        None
-    );
+    assert_eq!(engine.world.behavior_state_machine(enemy), None);
     assert!(engine.clear_gameplay_behavior_state_enter_actions(enemy.id, enemy.generation,));
-    assert_eq!(
-        engine.world.behavior_state_enter_actions[enemy.id as usize],
-        None
-    );
+    assert_eq!(engine.world.behavior_state_enter_actions(enemy), None);
 }
 
 #[test]
@@ -642,8 +640,8 @@ fn gameplay_component_authoring_rejects_invalid_values_and_stale_handles() {
     ));
     assert!(!engine.set_gameplay_projectile_tile_impact(enemy.id, enemy.generation, 99));
     assert_eq!(
-        engine.world.projectile_tile_impacts[enemy.id as usize],
-        Some(ProjectileTileImpact::Bounce)
+        engine.world.projectile_tile_impact_at(enemy.id as usize),
+        ProjectileTileImpact::Bounce
     );
     assert!(engine.set_gameplay_score_reward(enemy.id, enemy.generation, 0));
     assert!(!engine.set_gameplay_pickup(
@@ -962,19 +960,19 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
 
     assert!(engine.set_gameplay_movement_topdown_input(enemy.id, enemy.generation, 180.0));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::TopdownInput { speed: 180.0 })
     );
 
     assert!(engine.set_gameplay_movement_linear(enemy.id, enemy.generation, 1.0, -2.0));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::Linear { vx: 1.0, vy: -2.0 })
     );
 
     assert!(engine.set_gameplay_movement_to_point(enemy.id, enemy.generation, 320.0, 180.0, 90.0));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::MoveToPoint {
             x: 320.0,
             y: 180.0,
@@ -984,7 +982,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
 
     assert!(engine.set_gameplay_movement_chase_player(enemy.id, enemy.generation, 95.0));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::Chase {
             target: MovementTarget::Player,
             speed: 95.0,
@@ -993,7 +991,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
 
     assert!(engine.set_gameplay_movement_chase_nearest_player(enemy.id, enemy.generation, 85.0));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::Chase {
             target: MovementTarget::NearestPlayer,
             speed: 85.0,
@@ -1002,7 +1000,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
 
     assert!(engine.set_gameplay_movement_chase_nearest_enemy(enemy.id, enemy.generation, 65.0));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::Chase {
             target: MovementTarget::NearestEnemy,
             speed: 65.0,
@@ -1011,7 +1009,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
 
     assert!(engine.set_gameplay_movement_chase_nearest_layer(enemy.id, enemy.generation, 2, 55.0));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::Chase {
             target: MovementTarget::NearestLayer(CollisionLayer::Bullet),
             speed: 55.0,
@@ -1025,7 +1023,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         50.0,
     ));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::Chase {
             target: MovementTarget::NearestFaction(GAMEPLAY_FACTION_ENEMY),
             speed: 50.0,
@@ -1034,7 +1032,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
 
     assert!(engine.set_gameplay_movement_chase_nearest_tag(enemy.id, enemy.generation, 5, 45.0));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::Chase {
             target: MovementTarget::NearestTag(5),
             speed: 45.0,
@@ -1050,7 +1048,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         75.0
     ));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::Chase {
             target: MovementTarget::Entity(target),
             speed: 75.0,
@@ -1059,7 +1057,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
 
     assert!(engine.set_gameplay_movement_orbit_player(enemy.id, enemy.generation, 80.0, 48.0, 6.0));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::Orbit {
             target: MovementTarget::Player,
             speed: 80.0,
@@ -1069,7 +1067,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
     );
     assert!(engine.set_gameplay_movement_seek_target_player(enemy.id, enemy.generation, 90.0, 0.6,));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::SeekTarget {
             target: MovementTarget::Player,
             speed: 90.0,
@@ -1083,7 +1081,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         0.4,
     ));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::SeekTarget {
             target: MovementTarget::NearestPlayer,
             speed: 88.0,
@@ -1097,7 +1095,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         0.8,
     ));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::SeekTarget {
             target: MovementTarget::NearestEnemy,
             speed: 78.0,
@@ -1112,7 +1110,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         0.7,
     ));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::SeekTarget {
             target: MovementTarget::NearestLayer(CollisionLayer::Pickup),
             speed: 68.0,
@@ -1127,7 +1125,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         0.9,
     ));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::SeekTarget {
             target: MovementTarget::NearestFaction(GAMEPLAY_FACTION_PLAYER),
             speed: 58.0,
@@ -1142,7 +1140,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         0.95,
     ));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::SeekTarget {
             target: MovementTarget::NearestTag(6),
             speed: 52.0,
@@ -1165,7 +1163,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         1.0,
     ));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::SeekTarget {
             target: MovementTarget::Entity(target),
             speed: 95.0,
@@ -1174,7 +1172,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
     );
     assert!(engine.set_gameplay_movement_accelerate(enemy.id, enemy.generation, 2.0, 0.0, 12.0));
     assert_eq!(
-        engine.world.movement_patterns[enemy.id as usize],
+        engine.world.movement_pattern(enemy),
         Some(MovementPattern::Accelerate {
             acceleration_x: 2.0,
             acceleration_y: 0.0,
@@ -1207,7 +1205,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         6.0,
         -3.0,
     ));
-    let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
+    let reactions = engine.world.collision_reactions(enemy).unwrap();
     assert_eq!(
         reactions.iter().collect::<Vec<_>>(),
         vec![
@@ -1235,7 +1233,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
             },
         ]
     );
-    let pickup_reactions = engine.world.collision_reactions[pickup.id as usize].unwrap();
+    let pickup_reactions = engine.world.collision_reactions(pickup).unwrap();
     assert_eq!(
         pickup_reactions.iter().collect::<Vec<_>>(),
         vec![
@@ -1274,7 +1272,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         0.4,
         24.0,
     ));
-    let effect_reactions = engine.world.collision_reactions[effect_source.id as usize].unwrap();
+    let effect_reactions = engine.world.collision_reactions(effect_source).unwrap();
     assert_eq!(
         effect_reactions.iter().collect::<Vec<_>>(),
         vec![CollisionReaction::EmitEffect {
@@ -1306,7 +1304,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         0.3,
         true,
     ));
-    let policy_reactions = engine.world.collision_reactions[policy_enemy.id as usize].unwrap();
+    let policy_reactions = engine.world.collision_reactions(policy_enemy).unwrap();
     assert_eq!(
         policy_reactions.iter().collect::<Vec<_>>(),
         vec![
@@ -1367,7 +1365,7 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
         false,
         99,
     ));
-    let trigger_reactions = engine.world.collision_reactions[trigger_enemy.id as usize].unwrap();
+    let trigger_reactions = engine.world.collision_reactions(trigger_enemy).unwrap();
     assert_eq!(
         trigger_reactions.iter().collect::<Vec<_>>(),
         vec![
@@ -1394,17 +1392,11 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
     assert!(engine.clear_gameplay_collision_reactions(pickup.id, pickup.generation));
     assert!(engine.clear_gameplay_collision_reactions(policy_enemy.id, policy_enemy.generation));
     assert!(engine.clear_gameplay_collision_reactions(trigger_enemy.id, trigger_enemy.generation));
-    assert_eq!(engine.world.movement_patterns[enemy.id as usize], None);
-    assert_eq!(engine.world.collision_reactions[enemy.id as usize], None);
-    assert_eq!(engine.world.collision_reactions[pickup.id as usize], None);
-    assert_eq!(
-        engine.world.collision_reactions[policy_enemy.id as usize],
-        None
-    );
-    assert_eq!(
-        engine.world.collision_reactions[trigger_enemy.id as usize],
-        None
-    );
+    assert_eq!(engine.world.movement_pattern(enemy), None);
+    assert_eq!(engine.world.collision_reactions(enemy), None);
+    assert_eq!(engine.world.collision_reactions(pickup), None);
+    assert_eq!(engine.world.collision_reactions(policy_enemy), None);
+    assert_eq!(engine.world.collision_reactions(trigger_enemy), None);
 }
 
 #[test]
@@ -1413,8 +1405,8 @@ fn gameplay_component_authoring_sets_atomic_damage_reaction() {
     let enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
 
     assert!(engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, 2.5, 1));
-    assert_eq!(engine.world.damages[enemy.id as usize], Some(2.5));
-    let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
+    assert_eq!(engine.world.damage(enemy), Some(2.5));
+    let reactions = engine.world.collision_reactions(enemy).unwrap();
     assert_eq!(
         reactions.iter().collect::<Vec<_>>(),
         vec![CollisionReaction::Damage {
@@ -1423,8 +1415,8 @@ fn gameplay_component_authoring_sets_atomic_damage_reaction() {
     );
 
     assert!(engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, 3.5, 1));
-    assert_eq!(engine.world.damages[enemy.id as usize], Some(3.5));
-    let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
+    assert_eq!(engine.world.damage(enemy), Some(3.5));
+    let reactions = engine.world.collision_reactions(enemy).unwrap();
     assert_eq!(reactions.len(), 1);
     assert_eq!(
         reactions.iter().collect::<Vec<_>>(),
@@ -1456,12 +1448,12 @@ fn gameplay_component_authoring_damage_reaction_failure_is_atomic() {
             1.25
         ));
     }
-    let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
+    let reactions = engine.world.collision_reactions(enemy).unwrap();
     assert_eq!(reactions.len(), MAX_COLLISION_REACTIONS_PER_ENTITY);
 
     assert!(!engine.set_gameplay_damage_reaction(enemy.id, enemy.generation, 3.0, 1));
-    assert_eq!(engine.world.damages[enemy.id as usize], None);
-    let reactions = engine.world.collision_reactions[enemy.id as usize].unwrap();
+    assert_eq!(engine.world.damage(enemy), None);
+    let reactions = engine.world.collision_reactions(enemy).unwrap();
     assert_eq!(reactions.len(), MAX_COLLISION_REACTIONS_PER_ENTITY);
     assert!(!reactions
         .iter()
@@ -1476,8 +1468,8 @@ fn gameplay_component_authoring_sets_area_damage_reaction() {
         .spawn_bullet(100.0, 100.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
 
     assert!(engine.set_gameplay_area_damage_reaction(bullet.id, bullet.generation, 3.0, 48.0, 1,));
-    assert_eq!(engine.world.damages[bullet.id as usize], Some(3.0));
-    let reactions = engine.world.collision_reactions[bullet.id as usize].unwrap();
+    assert_eq!(engine.world.damage(bullet), Some(3.0));
+    let reactions = engine.world.collision_reactions(bullet).unwrap();
     assert_eq!(
         reactions.iter().collect::<Vec<_>>(),
         vec![CollisionReaction::AreaDamage {
@@ -1487,8 +1479,8 @@ fn gameplay_component_authoring_sets_area_damage_reaction() {
     );
 
     assert!(engine.set_gameplay_area_damage_reaction(bullet.id, bullet.generation, 4.0, 64.0, 1,));
-    assert_eq!(engine.world.damages[bullet.id as usize], Some(4.0));
-    let reactions = engine.world.collision_reactions[bullet.id as usize].unwrap();
+    assert_eq!(engine.world.damage(bullet), Some(4.0));
+    let reactions = engine.world.collision_reactions(bullet).unwrap();
     assert_eq!(reactions.len(), 1);
     assert_eq!(
         reactions.iter().collect::<Vec<_>>(),
@@ -1570,8 +1562,8 @@ fn gameplay_component_authoring_rejects_invalid_movement_and_collision_values() 
     assert!(!engine.set_gameplay_area_damage_reaction(enemy.id, enemy.generation, 0.0, 24.0, 1));
     assert!(!engine.set_gameplay_area_damage_reaction(enemy.id, enemy.generation, 1.0, 0.0, 1));
     assert!(!engine.set_gameplay_area_damage_reaction(enemy.id, enemy.generation, 1.0, 24.0, 99,));
-    assert_eq!(engine.world.damages[enemy.id as usize], None);
-    assert_eq!(engine.world.collision_reactions[enemy.id as usize], None);
+    assert_eq!(engine.world.damage(enemy), None);
+    assert_eq!(engine.world.collision_reactions(enemy), None);
     assert!(!engine.add_gameplay_collision_damage(enemy.id, enemy.generation, 99));
     assert!(!engine.add_gameplay_collision_area_damage(enemy.id, enemy.generation, 0.0, 1,));
     assert!(!engine.add_gameplay_collision_area_damage(
@@ -1778,8 +1770,8 @@ fn shooter_prefab_collider_api_updates_template_and_existing_entities() {
     assert_eq!(config.player_template.collider_offset_y, -3.0);
     assert!(!config.player_template.collider_enabled);
     assert!(!config.player_template.collider_is_trigger);
-    let player = engine.world.player.unwrap();
-    let collider = engine.world.colliders[player.id as usize].unwrap();
+    let player = engine.world.player_entity().unwrap();
+    let collider = engine.world.collider(player).unwrap();
     assert_eq!(collider.half_width, 12.0);
     assert_eq!(collider.offset_x, 2.0);
     assert!(!collider.enabled);
@@ -1820,8 +1812,8 @@ fn shooter_prefab_shape_collider_apis_update_templates_and_entities() {
     assert!(engine.set_shooter_prefab_circle_collider(
         0, 11.0, 1.0, -2.0, true, true, false, 0.0, 0.4, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
     ));
-    let player = engine.world.player.unwrap();
-    let player_collider = engine.world.circle_colliders[player.id as usize].unwrap();
+    let player = engine.world.player_entity().unwrap();
+    let player_collider = engine.world.circle_collider(player).unwrap();
     assert_eq!(player_collider.radius, 11.0);
     assert_eq!(player_collider.offset_x, 1.0);
     assert_eq!(
@@ -1841,18 +1833,13 @@ fn shooter_prefab_shape_collider_apis_update_templates_and_entities() {
         1.0,
         1,
     );
-    assert_eq!(
-        engine.world.capsule_colliders[enemy.id as usize]
-            .unwrap()
-            .radius,
-        3.0
-    );
+    assert_eq!(engine.world.capsule_collider(enemy).unwrap().radius, 3.0);
 
     assert!(engine.set_shooter_prefab_oriented_box_collider(
         1, 7.0, 4.0, 0.3, 1.0, 1.0, true, false, false, 0.0, 0.4, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0,
         1.0,
     ));
-    let enemy_collider = engine.world.oriented_box_colliders[enemy.id as usize].unwrap();
+    let enemy_collider = engine.world.oriented_box_collider(enemy).unwrap();
     assert_eq!(enemy_collider.half_width, 7.0);
     assert_eq!(enemy_collider.rotation_radians, 0.3);
     assert!(!enemy_collider.is_trigger);
@@ -1884,7 +1871,7 @@ fn shooter_prefab_shape_collider_apis_update_templates_and_entities() {
         engine.scenes.shooter.config().bullet_template,
         1.0,
     );
-    let polygon = engine.world.convex_polygon_colliders[bullet.id as usize].unwrap();
+    let polygon = engine.world.convex_polygon_collider(bullet).unwrap();
     assert_eq!(polygon.vertex_count, 3);
     assert_eq!(polygon.offset_x, -1.0);
     assert_eq!(polygon.rotation_radians, 0.1);

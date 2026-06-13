@@ -146,8 +146,7 @@ impl ShooterScene {
 
     fn source_is_fresh(world: &World, source: Entity) -> bool {
         let index = source.id as usize;
-        world.alive.get(index).copied().unwrap_or(false)
-            && world.generations.get(index).copied() == Some(source.generation)
+        world.is_alive_index(index) && world.generation_at_index(index) == Some(source.generation)
     }
 
     pub(in crate::shooter_scene) fn spawn_enemy_if_needed(&mut self, world: &mut World) {

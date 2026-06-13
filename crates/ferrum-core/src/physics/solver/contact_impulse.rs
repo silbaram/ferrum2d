@@ -65,18 +65,8 @@ pub(super) fn rigid_contact_mass_context(
     Some(RigidContactMassContext {
         a_index,
         b_index,
-        transform_a: world
-            .transforms
-            .get(a_index)
-            .copied()
-            .flatten()
-            .unwrap_or_default(),
-        transform_b: world
-            .transforms
-            .get(b_index)
-            .copied()
-            .flatten()
-            .unwrap_or_default(),
+        transform_a: world.transform_at_index(a_index).unwrap_or_default(),
+        transform_b: world.transform_at_index(b_index).unwrap_or_default(),
         inverse_mass_a,
         inverse_mass_b,
         inverse_inertia_a: rigid_body_inverse_inertia(world, a_index),
@@ -142,16 +132,10 @@ pub(super) fn relative_contact_velocity(
 }
 
 fn contact_point_velocity_at_radius(world: &World, index: usize, radius: Velocity) -> Velocity {
-    let linear_velocity = finite_velocity(world.velocities[index].unwrap_or_default());
-    let angular_velocity = finite_angular_velocity(
-        world
-            .angular_velocities
-            .get(index)
-            .copied()
-            .flatten()
-            .unwrap_or_default(),
-    )
-    .radians_per_second;
+    let linear_velocity = finite_velocity(world.velocity_at_index_or_default(index));
+    let angular_velocity =
+        finite_angular_velocity(world.angular_velocity_at_index_or_default(index))
+            .radians_per_second;
     let angular_velocity_at_point = cross_scalar_velocity(angular_velocity, radius);
     Velocity {
         vx: linear_velocity.vx + angular_velocity_at_point.vx,
@@ -190,16 +174,22 @@ pub(super) fn apply_contact_impulse_at_point(
     let radius_a = context.radius_a(point);
     let radius_b = context.radius_b(point);
     if context.inverse_inertia_a > 0.0 {
-        let mut angular_velocity = world.angular_velocities[context.a_index].unwrap_or_default();
+        let mut angular_velocity = world.angular_velocity_at_index_or_default(context.a_index);
         angular_velocity.radians_per_second -=
             cross_velocity(radius_a, impulse) * context.inverse_inertia_a;
-        world.angular_velocities[context.a_index] = Some(finite_angular_velocity(angular_velocity));
+        world.set_angular_velocity_at_index(
+            context.a_index,
+            finite_angular_velocity(angular_velocity),
+        );
     }
     if context.inverse_inertia_b > 0.0 {
-        let mut angular_velocity = world.angular_velocities[context.b_index].unwrap_or_default();
+        let mut angular_velocity = world.angular_velocity_at_index_or_default(context.b_index);
         angular_velocity.radians_per_second +=
             cross_velocity(radius_b, impulse) * context.inverse_inertia_b;
-        world.angular_velocities[context.b_index] = Some(finite_angular_velocity(angular_velocity));
+        world.set_angular_velocity_at_index(
+            context.b_index,
+            finite_angular_velocity(angular_velocity),
+        );
     }
 }
 
@@ -212,7 +202,7 @@ pub(super) fn apply_contact_position_impulse_at_point(
     let radius_a = context.radius_a(point);
     let radius_b = context.radius_b(point);
     if context.inverse_mass_a > 0.0 {
-        if let Some(transform) = world.transforms[context.a_index].as_mut() {
+        if let Some(transform) = world.transform_mut_at_index(context.a_index) {
             *transform = finite_transform(Transform2D {
                 x: transform.x - impulse.vx * context.inverse_mass_a,
                 y: transform.y - impulse.vy * context.inverse_mass_a,
@@ -220,7 +210,7 @@ pub(super) fn apply_contact_position_impulse_at_point(
         }
     }
     if context.inverse_mass_b > 0.0 {
-        if let Some(transform) = world.transforms[context.b_index].as_mut() {
+        if let Some(transform) = world.transform_mut_at_index(context.b_index) {
             *transform = finite_transform(Transform2D {
                 x: transform.x + impulse.vx * context.inverse_mass_b,
                 y: transform.y + impulse.vy * context.inverse_mass_b,
@@ -228,19 +218,21 @@ pub(super) fn apply_contact_position_impulse_at_point(
         }
     }
     if context.inverse_inertia_a > 0.0 {
-        let rotation = world.rotations[context.a_index].get_or_insert_with(Rotation2D::default);
-        rotation.radians = finite_rotation(Rotation2D {
-            radians: rotation.radians
-                - cross_velocity(radius_a, impulse) * context.inverse_inertia_a,
-        })
-        .radians;
+        if let Some(rotation) = world.rotation_mut_or_insert_default_at_index(context.a_index) {
+            rotation.radians = finite_rotation(Rotation2D {
+                radians: rotation.radians
+                    - cross_velocity(radius_a, impulse) * context.inverse_inertia_a,
+            })
+            .radians;
+        }
     }
     if context.inverse_inertia_b > 0.0 {
-        let rotation = world.rotations[context.b_index].get_or_insert_with(Rotation2D::default);
-        rotation.radians = finite_rotation(Rotation2D {
-            radians: rotation.radians
-                + cross_velocity(radius_b, impulse) * context.inverse_inertia_b,
-        })
-        .radians;
+        if let Some(rotation) = world.rotation_mut_or_insert_default_at_index(context.b_index) {
+            rotation.radians = finite_rotation(Rotation2D {
+                radians: rotation.radians
+                    + cross_velocity(radius_b, impulse) * context.inverse_inertia_b,
+            })
+            .radians;
+        }
     }
 }

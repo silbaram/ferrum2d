@@ -8,8 +8,7 @@ use super::Engine;
 
 impl Engine {
     pub(super) fn build_render_commands(&mut self) {
-        self.render_commands.clear();
-        self.render_items.clear();
+        self.frame_buffers.clear_render_work_buffers();
         let visible_bounds = self.camera.visible_bounds();
 
         if self.uses_hd2d_render_sort() {
@@ -21,32 +20,41 @@ impl Engine {
 
     fn build_layered_render_commands(&mut self, visible_bounds: AabbBounds) {
         self.tilemap
-            .append_render_commands(&self.camera, &mut self.render_commands);
+            .append_render_commands(&self.camera, &mut self.frame_buffers.render_commands);
         self.append_entity_render_commands(visible_bounds);
         self.particles
-            .append_render_commands(&self.camera, &mut self.render_commands);
+            .append_render_commands(&self.camera, &mut self.frame_buffers.render_commands);
     }
 
     fn build_hd2d_render_commands(&mut self, visible_bounds: AabbBounds) {
         self.tilemap
-            .append_render_items(&self.camera, &mut self.render_items);
+            .append_render_items(&self.camera, &mut self.frame_buffers.render_items);
         self.append_entity_render_items(visible_bounds);
         self.particles
-            .append_render_items(&self.camera, &mut self.render_items);
-        self.render_items
+            .append_render_items(&self.camera, &mut self.frame_buffers.render_items);
+        self.frame_buffers
+            .render_items
             .sort_unstable_by(|left, right| left.sort_key.cmp_draw_order(right.sort_key));
-        self.render_commands
-            .extend(self.render_items.iter().map(|item| item.command));
+        self.frame_buffers.render_commands.extend(
+            self.frame_buffers
+                .render_items
+                .iter()
+                .map(|item| item.command),
+        );
     }
 
     fn append_entity_render_commands(&mut self, visible_bounds: AabbBounds) {
         for &i in self.world.alive_indices() {
-            if let (Some(t), Some(s)) = (self.world.transforms[i], self.world.sprites[i]) {
-                if !sprite_intersects_viewport(t, s, visible_bounds) {
-                    continue;
-                }
-                let screen = self.camera.world_to_screen(t);
-                self.render_commands.push(SpriteRenderCommand {
+            let Some((t, s)) = self.world.renderable_sprite_at_index(i) else {
+                continue;
+            };
+            if !sprite_intersects_viewport(t, s, visible_bounds) {
+                continue;
+            }
+            let screen = self.camera.world_to_screen(t);
+            self.frame_buffers
+                .render_commands
+                .push(SpriteRenderCommand {
                     x: screen.x - s.width * 0.5,
                     y: screen.y - s.height * 0.5,
                     width: s.width,
@@ -62,41 +70,41 @@ impl Engine {
                     texture_id: s.texture_id as f32,
                     effect_flags: SPRITE_EFFECT_NONE,
                 });
-            }
         }
     }
 
     fn append_entity_render_items(&mut self, visible_bounds: AabbBounds) {
         for &i in self.world.alive_indices() {
-            if let (Some(t), Some(s)) = (self.world.transforms[i], self.world.sprites[i]) {
-                if !sprite_intersects_viewport(t, s, visible_bounds) {
-                    continue;
-                }
-                let screen = self.camera.world_to_screen(t);
-                self.render_items.push(SpriteRenderItem {
-                    command: SpriteRenderCommand {
-                        x: screen.x - s.width * 0.5,
-                        y: screen.y - s.height * 0.5,
-                        width: s.width,
-                        height: s.height,
-                        u0: s.u0,
-                        v0: s.v0,
-                        u1: s.u1,
-                        v1: s.v1,
-                        r: s.r,
-                        g: s.g,
-                        b: s.b,
-                        a: s.a,
-                        texture_id: s.texture_id as f32,
-                        effect_flags: SPRITE_EFFECT_NONE,
-                    },
-                    sort_key: entity_render_sort_key(
-                        self.world.height_spans[i],
-                        t.y + s.height * 0.5,
-                        i,
-                    ),
-                });
+            let Some((t, s)) = self.world.renderable_sprite_at_index(i) else {
+                continue;
+            };
+            if !sprite_intersects_viewport(t, s, visible_bounds) {
+                continue;
             }
+            let screen = self.camera.world_to_screen(t);
+            self.frame_buffers.render_items.push(SpriteRenderItem {
+                command: SpriteRenderCommand {
+                    x: screen.x - s.width * 0.5,
+                    y: screen.y - s.height * 0.5,
+                    width: s.width,
+                    height: s.height,
+                    u0: s.u0,
+                    v0: s.v0,
+                    u1: s.u1,
+                    v1: s.v1,
+                    r: s.r,
+                    g: s.g,
+                    b: s.b,
+                    a: s.a,
+                    texture_id: s.texture_id as f32,
+                    effect_flags: SPRITE_EFFECT_NONE,
+                },
+                sort_key: entity_render_sort_key(
+                    self.world.height_span_at(i),
+                    t.y + s.height * 0.5,
+                    i,
+                ),
+            });
         }
     }
 
@@ -106,7 +114,7 @@ impl Engine {
                 .world
                 .alive_indices()
                 .iter()
-                .any(|&index| self.world.height_spans[index].is_some())
+                .any(|&index| self.world.height_span_at(index).is_some())
     }
 }
 

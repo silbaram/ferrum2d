@@ -7,18 +7,18 @@ fn bullet_lifetime_despawns() {
 
     scene.update_bullets(&mut world, crate::world::BULLET_LIFETIME + 0.1);
 
-    assert!(!world.alive[b.id as usize]);
+    assert!(!world.is_alive_index(b.id as usize));
 }
 
 #[test]
 fn authored_non_bullet_lifetime_despawns() {
     let (mut scene, mut world, _, _) = playing_scene();
     let enemy = world.spawn_enemy(30.0, 30.0, DEFAULT_TEXTURE_ID);
-    world.bullet_lifetimes[enemy.id as usize] = Some(0.25);
+    world.set_gameplay_lifetime(enemy, 0.25);
 
     scene.update_bullets(&mut world, 0.26);
 
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(enemy.id as usize));
 }
 
 #[test]
@@ -29,7 +29,7 @@ fn projectile_movement_phase_preserves_velocity_without_authored_pattern() {
     scene.apply_projectile_movement_phase(&mut world);
 
     assert_eq!(
-        world.velocities[bullet.id as usize],
+        world.velocity(bullet),
         Some(Velocity { vx: 20.0, vy: -5.0 })
     );
 }
@@ -51,7 +51,7 @@ fn projectile_movement_phase_seek_target_overrides_velocity_toward_nearest_enemy
     scene.apply_projectile_movement_phase(&mut world);
 
     assert_eq!(
-        world.velocities[bullet.id as usize],
+        world.velocity(bullet),
         Some(Velocity { vx: 120.0, vy: 0.0 })
     );
 }
@@ -71,10 +71,7 @@ fn projectile_movement_phase_seek_target_without_target_stops_projectile() {
 
     scene.apply_projectile_movement_phase(&mut world);
 
-    assert_eq!(
-        world.velocities[bullet.id as usize],
-        Some(Velocity::default())
-    );
+    assert_eq!(world.velocity(bullet), Some(Velocity::default()));
 }
 
 #[test]
@@ -94,8 +91,8 @@ fn bullet_enemy_collision_increments_score() {
         None,
     );
 
-    assert!(!world.alive[b.id as usize]);
-    assert!(!world.alive[e.id as usize]);
+    assert!(!world.is_alive_index(b.id as usize));
+    assert!(!world.is_alive_index(e.id as usize));
     assert_eq!(scene.score(), 1);
 }
 
@@ -105,7 +102,7 @@ fn bullet_enemy_zero_reward_kill_does_not_flash_enemy_hit() {
     let mut tweens = TweenSystem::new();
     let bullet = world.spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
     let enemy = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
-    world.score_rewards[enemy.id as usize] = Some(0);
+    world.set_score_reward(enemy, 0);
 
     {
         let mut tween_sink = TweenSink::new(&mut tweens);
@@ -121,8 +118,8 @@ fn bullet_enemy_zero_reward_kill_does_not_flash_enemy_hit() {
         );
     }
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), 0);
     assert_eq!(tweens.tween_count(), 0);
 }
@@ -130,10 +127,10 @@ fn bullet_enemy_zero_reward_kill_does_not_flash_enemy_hit() {
 #[test]
 fn pending_melee_attacks_skip_enemy_marked_by_earlier_melee() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 16.0, player_t.y, DEFAULT_TEXTURE_ID);
-    world.healths[enemy.id as usize] = Some(1.0);
+    world.set_health(enemy, 1.0);
     let attack = crate::gameplay::MeleeAttackCoreData {
         attacker: player,
         center: player_t,
@@ -156,7 +153,7 @@ fn pending_melee_attacks_skip_enemy_marked_by_earlier_melee() {
         None,
     );
 
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), DEFAULT_SCORE_REWARD);
     assert!(scene.pending_melee_attacks.is_empty());
 }
@@ -165,11 +162,11 @@ fn pending_melee_attacks_skip_enemy_marked_by_earlier_melee() {
 fn pending_melee_enemy_hit_uses_custom_reward_and_damage_event_removed_flag() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 16.0, player_t.y, DEFAULT_TEXTURE_ID);
-    world.healths[enemy.id as usize] = Some(1.0);
-    world.score_rewards[enemy.id as usize] = Some(7);
+    world.set_health(enemy, 1.0);
+    world.set_score_reward(enemy, 7);
     scene.queue_melee_attack(crate::gameplay::MeleeAttackCoreData {
         attacker: player,
         center: player_t,
@@ -193,7 +190,7 @@ fn pending_melee_enemy_hit_uses_custom_reward_and_damage_event_removed_flag() {
         );
     }
 
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), 7);
     assert_eq!(gameplay_events.len(), 1);
     assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_COLLISION_DAMAGE);
@@ -237,9 +234,9 @@ fn pending_non_player_enemy_target_melee_damages_other_enemy_without_self_hit() 
         );
     }
 
-    assert!(world.alive[source.id as usize]);
-    assert!(!world.alive[target.id as usize]);
-    assert_eq!(world.healths[source.id as usize], Some(1.0));
+    assert!(world.is_alive_index(source.id as usize));
+    assert!(!world.is_alive_index(target.id as usize));
+    assert_eq!(world.health(source), Some(1.0));
     assert_eq!(scene.score(), 1);
     assert_eq!(gameplay_events.len(), 1);
     assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_COLLISION_DAMAGE);
@@ -294,9 +291,9 @@ fn pending_non_player_enemy_target_melee_faction_denial_reports_without_hit() {
         );
     }
 
-    assert!(world.alive[source.id as usize]);
-    assert!(world.alive[target.id as usize]);
-    assert_eq!(world.healths[target.id as usize], Some(1.0));
+    assert!(world.is_alive_index(source.id as usize));
+    assert!(world.is_alive_index(target.id as usize));
+    assert_eq!(world.health(target), Some(1.0));
     assert_eq!(scene.score(), 0);
     assert!(collision_events.is_empty());
     assert_eq!(collision_event_counts.hit, 0);
@@ -315,10 +312,10 @@ fn pending_non_player_enemy_target_melee_faction_denial_reports_without_hit() {
 #[test]
 fn pending_melee_enemy_hit_records_collision_hit_event() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 16.0, player_t.y, DEFAULT_TEXTURE_ID);
-    world.healths[enemy.id as usize] = Some(1.0);
+    world.set_health(enemy, 1.0);
     scene.queue_melee_attack(crate::gameplay::MeleeAttackCoreData {
         attacker: player,
         center: player_t,
@@ -365,10 +362,10 @@ fn pending_melee_enemy_hit_pushes_hit_audio_event() {
     scene.set_audio_policy(ShooterAudioPolicy::from_values(
         0.2, 1.2, 0.5, 1.25, 0.8, 0.7,
     ));
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 16.0, player_t.y, DEFAULT_TEXTURE_ID);
-    world.healths[enemy.id as usize] = Some(1.0);
+    world.set_health(enemy, 1.0);
     scene.queue_melee_attack(crate::gameplay::MeleeAttackCoreData {
         attacker: player,
         center: player_t,
@@ -389,7 +386,7 @@ fn pending_melee_enemy_hit_pushes_hit_audio_event() {
         None,
     );
 
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert_eq!(audio_events.len(), 1);
     assert_eq!(audio_events[0].sound_id as u32, 20);
     assert_eq!(audio_events[0].volume, 0.5);
@@ -400,10 +397,10 @@ fn pending_melee_enemy_hit_pushes_hit_audio_event() {
 #[test]
 fn pending_melee_enemy_hit_skips_default_sound_id_audio() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 16.0, player_t.y, DEFAULT_TEXTURE_ID);
-    world.healths[enemy.id as usize] = Some(1.0);
+    world.set_health(enemy, 1.0);
     scene.queue_melee_attack(crate::gameplay::MeleeAttackCoreData {
         attacker: player,
         center: player_t,
@@ -424,7 +421,7 @@ fn pending_melee_enemy_hit_skips_default_sound_id_audio() {
         None,
     );
 
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert!(audio_events.is_empty());
 }
 
@@ -432,11 +429,11 @@ fn pending_melee_enemy_hit_skips_default_sound_id_audio() {
 fn pending_melee_zero_reward_kill_does_not_flash_enemy_hit() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut tweens = TweenSystem::new();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 16.0, player_t.y, DEFAULT_TEXTURE_ID);
-    world.healths[enemy.id as usize] = Some(1.0);
-    world.score_rewards[enemy.id as usize] = Some(0);
+    world.set_health(enemy, 1.0);
+    world.set_score_reward(enemy, 0);
     scene.queue_melee_attack(crate::gameplay::MeleeAttackCoreData {
         attacker: player,
         center: player_t,
@@ -460,7 +457,7 @@ fn pending_melee_zero_reward_kill_does_not_flash_enemy_hit() {
         );
     }
 
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), 0);
     assert_eq!(tweens.tween_count(), 0);
 }
@@ -470,7 +467,7 @@ fn bullet_without_collision_target_metadata_defaults_to_enemy_target() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let b = world.spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
     let e = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
-    world.projectile_collision_targets[b.id as usize] = None;
+    world.clear_projectile_collision_target_at(b.id as usize);
 
     scene.handle_collisions(
         &mut world,
@@ -483,8 +480,8 @@ fn bullet_without_collision_target_metadata_defaults_to_enemy_target() {
         None,
     );
 
-    assert!(!world.alive[b.id as usize]);
-    assert!(!world.alive[e.id as usize]);
+    assert!(!world.is_alive_index(b.id as usize));
+    assert!(!world.is_alive_index(e.id as usize));
     assert_eq!(scene.score(), 1);
 }
 
@@ -514,9 +511,9 @@ fn default_bullet_enemy_damage_respects_gameplay_faction_damage_mask() {
         );
     }
 
-    assert!(world.alive[b.id as usize]);
-    assert!(world.alive[e.id as usize]);
-    assert_eq!(world.healths[e.id as usize], Some(1.0));
+    assert!(world.is_alive_index(b.id as usize));
+    assert!(world.is_alive_index(e.id as usize));
+    assert_eq!(world.health(e), Some(1.0));
     assert_eq!(scene.score(), 0);
     assert!(audio_events.is_empty());
     assert_eq!(gameplay_events.len(), 1);
@@ -570,9 +567,9 @@ fn default_bullet_enemy_damage_neutral_source_reports_denial() {
         );
     }
 
-    assert!(world.alive[bullet.id as usize]);
-    assert!(world.alive[enemy.id as usize]);
-    assert_eq!(world.healths[enemy.id as usize], Some(1.0));
+    assert!(world.is_alive_index(bullet.id as usize));
+    assert!(world.is_alive_index(enemy.id as usize));
+    assert_eq!(world.health(enemy), Some(1.0));
     assert_eq!(scene.score(), 0);
     assert!(collision_events.is_empty());
     assert_eq!(collision_event_counts.hit, 0);
@@ -621,7 +618,7 @@ fn player_target_projectile_causes_game_over_without_score() {
         None,
     );
 
-    assert!(!world.alive[bullet.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
     assert_eq!(scene.game_state(), GameState::GameOver);
     assert_eq!(scene.score(), 0);
 }
@@ -665,7 +662,7 @@ fn default_bullet_player_damage_respects_gameplay_faction_damage_mask() {
         );
     }
 
-    assert!(world.alive[bullet.id as usize]);
+    assert!(world.is_alive_index(bullet.id as usize));
     assert_eq!(scene.game_state(), GameState::Playing);
     assert_eq!(scene.score(), 0);
     assert!(audio_events.is_empty());
@@ -719,7 +716,7 @@ fn enemy_target_projectile_does_not_hit_player() {
         );
     }
 
-    assert!(world.alive[bullet.id as usize]);
+    assert!(world.is_alive_index(bullet.id as usize));
     assert_eq!(scene.game_state(), GameState::Playing);
     assert!(gameplay_events.is_empty());
 }
@@ -732,10 +729,10 @@ fn fast_bullet_enemy_collision_uses_swept_physics() {
 
     world.update(0.1);
     assert!(!CollisionSystem::overlaps(
-        world.transforms[b.id as usize].unwrap(),
-        world.colliders[b.id as usize].unwrap(),
-        world.transforms[e.id as usize].unwrap(),
-        world.colliders[e.id as usize].unwrap(),
+        world.transform(b).unwrap(),
+        world.collider(b).unwrap(),
+        world.transform(e).unwrap(),
+        world.collider(e).unwrap(),
     ));
 
     scene.handle_collisions(
@@ -749,8 +746,8 @@ fn fast_bullet_enemy_collision_uses_swept_physics() {
         None,
     );
 
-    assert!(!world.alive[b.id as usize]);
-    assert!(!world.alive[e.id as usize]);
+    assert!(!world.is_alive_index(b.id as usize));
+    assert!(!world.is_alive_index(e.id as usize));
     assert_eq!(scene.score(), 1);
 }
 
@@ -773,8 +770,8 @@ fn bullet_enemy_collision_requires_overlapping_height_span_when_authored() {
         None,
     );
 
-    assert!(world.alive[b.id as usize]);
-    assert!(world.alive[e.id as usize]);
+    assert!(world.is_alive_index(b.id as usize));
+    assert!(world.is_alive_index(e.id as usize));
     assert_eq!(scene.score(), 0);
 
     assert!(world.set_height_span(b, HeightSpan::new(PhysicsFloorId(1), 6.0, 2.0).unwrap(),));
@@ -789,8 +786,8 @@ fn bullet_enemy_collision_requires_overlapping_height_span_when_authored() {
         None,
     );
 
-    assert!(!world.alive[b.id as usize]);
-    assert!(!world.alive[e.id as usize]);
+    assert!(!world.is_alive_index(b.id as usize));
+    assert!(!world.is_alive_index(e.id as usize));
     assert_eq!(scene.score(), 1);
 }
 
@@ -821,8 +818,8 @@ fn projectile_arc_updates_bullet_height_span_before_combat() {
         None,
     );
 
-    assert!(!world.alive[b.id as usize]);
-    assert!(!world.alive[e.id as usize]);
+    assert!(!world.is_alive_index(b.id as usize));
+    assert!(!world.is_alive_index(e.id as usize));
     assert_eq!(scene.score(), 1);
 }
 
@@ -844,7 +841,7 @@ fn bullet_is_despawned_by_projectile_blocking_tile() {
         None,
     );
 
-    assert!(!world.alive[bullet.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
 }
 
 #[test]
@@ -874,9 +871,9 @@ fn tile_hit_marks_bullet_before_enemy_damage() {
         None,
     );
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(world.alive[enemy.id as usize]);
-    assert_eq!(world.healths[enemy.id as usize], Some(3.0));
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(world.is_alive_index(enemy.id as usize));
+    assert_eq!(world.health(enemy), Some(3.0));
     assert_eq!(scene.score(), 0);
 }
 
@@ -884,7 +881,7 @@ fn tile_hit_marks_bullet_before_enemy_damage() {
 fn pass_through_projectile_ignores_blocking_tile() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let bullet = world.spawn_bullet(40.0, 50.0, 200.0, 0.0, DEFAULT_TEXTURE_ID);
-    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::PassThrough);
+    world.set_projectile_tile_impact(bullet, ProjectileTileImpact::PassThrough);
     let tilemap = projectile_tilemap(true, None);
 
     world.update(0.1);
@@ -899,7 +896,7 @@ fn pass_through_projectile_ignores_blocking_tile() {
         None,
     );
 
-    assert!(world.alive[bullet.id as usize]);
+    assert!(world.is_alive_index(bullet.id as usize));
 }
 
 #[test]
@@ -907,7 +904,7 @@ fn pass_through_projectile_can_hit_enemy_after_blocking_tile() {
     let (mut scene, mut world, mut camera, mut audio_events) = playing_scene();
     scene.set_combat(&mut world, &mut camera, &mut audio_events, 3.0, 1.0, 5);
     let bullet = world.spawn_bullet(40.0, 50.0, 200.0, 0.0, DEFAULT_TEXTURE_ID);
-    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::PassThrough);
+    world.set_projectile_tile_impact(bullet, ProjectileTileImpact::PassThrough);
     let enemy = world.spawn_enemy_from_template(
         62.0,
         50.0,
@@ -930,9 +927,9 @@ fn pass_through_projectile_can_hit_enemy_after_blocking_tile() {
         None,
     );
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(world.alive[enemy.id as usize]);
-    assert_eq!(world.healths[enemy.id as usize], Some(2.0));
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(world.is_alive_index(enemy.id as usize));
+    assert_eq!(world.health(enemy), Some(2.0));
     assert_eq!(scene.score(), 0);
 }
 
@@ -940,7 +937,7 @@ fn pass_through_projectile_can_hit_enemy_after_blocking_tile() {
 fn pass_through_projectile_skips_tile_side_effect_reactions() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let bullet = world.spawn_bullet(60.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::PassThrough);
+    world.set_projectile_tile_impact(bullet, ProjectileTileImpact::PassThrough);
     assert!(world.add_collision_reaction(
         bullet,
         CollisionReaction::PlaySound {
@@ -975,7 +972,7 @@ fn pass_through_projectile_skips_tile_side_effect_reactions() {
         );
     }
 
-    assert!(world.alive[bullet.id as usize]);
+    assert!(world.is_alive_index(bullet.id as usize));
     assert!(audio_events.is_empty());
     assert!(gameplay_events.is_empty());
 }
@@ -984,7 +981,7 @@ fn pass_through_projectile_skips_tile_side_effect_reactions() {
 fn bounce_projectile_reflects_velocity_and_survives_blocking_tile() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let bullet = world.spawn_bullet(40.0, 50.0, 200.0, 0.0, DEFAULT_TEXTURE_ID);
-    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::Bounce);
+    world.set_projectile_tile_impact(bullet, ProjectileTileImpact::Bounce);
     let tilemap = projectile_tilemap(true, None);
     let mut gameplay_events = Vec::new();
 
@@ -1003,11 +1000,11 @@ fn bounce_projectile_reflects_velocity_and_survives_blocking_tile() {
         );
     }
 
-    assert!(world.alive[bullet.id as usize]);
-    let velocity = world.velocities[bullet.id as usize].unwrap();
+    assert!(world.is_alive_index(bullet.id as usize));
+    let velocity = world.velocity(bullet).unwrap();
     assert!(velocity.vx < 0.0);
     assert!(velocity.vy.abs() < 0.01);
-    let transform = world.transforms[bullet.id as usize].unwrap();
+    let transform = world.transform(bullet).unwrap();
     assert!(transform.x < 44.0);
     assert_eq!(gameplay_events.len(), 1);
     assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_TILE_IMPACT);
@@ -1030,7 +1027,7 @@ fn bounce_projectile_reflects_velocity_and_survives_blocking_tile() {
 fn despawn_projectile_emits_terminal_tile_impact_event() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let bullet = world.spawn_bullet(40.0, 50.0, 200.0, 0.0, DEFAULT_TEXTURE_ID);
-    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::Despawn);
+    world.set_projectile_tile_impact(bullet, ProjectileTileImpact::Despawn);
     let tilemap = projectile_tilemap(true, None);
     let mut gameplay_events = Vec::new();
 
@@ -1049,7 +1046,7 @@ fn despawn_projectile_emits_terminal_tile_impact_event() {
         );
     }
 
-    assert!(!world.alive[bullet.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
     assert_eq!(gameplay_events.len(), 1);
     assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_TILE_IMPACT);
     assert_eq!(gameplay_events[0].actor_id, bullet.id);
@@ -1072,7 +1069,7 @@ fn tile_area_damage_reaction_damages_enemies_at_impact_center() {
     let (mut scene, mut world, mut camera, mut audio_events) = playing_scene();
     scene.set_combat(&mut world, &mut camera, &mut audio_events, 3.0, 1.0, 5);
     let bullet = world.spawn_bullet(40.0, 50.0, 200.0, 0.0, DEFAULT_TEXTURE_ID);
-    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::Despawn);
+    world.set_projectile_tile_impact(bullet, ProjectileTileImpact::Despawn);
     assert!(world.add_collision_reaction(
         bullet,
         CollisionReaction::AreaDamage {
@@ -1114,10 +1111,10 @@ fn tile_area_damage_reaction_damages_enemies_at_impact_center() {
         );
     }
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(!world.alive[near_enemy.id as usize]);
-    assert!(world.alive[far_enemy.id as usize]);
-    assert_eq!(world.healths[far_enemy.id as usize], Some(3.0));
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(!world.is_alive_index(near_enemy.id as usize));
+    assert!(world.is_alive_index(far_enemy.id as usize));
+    assert_eq!(world.health(far_enemy), Some(3.0));
     assert_eq!(scene.score(), 8);
     assert_eq!(gameplay_events.len(), 2);
     assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_COLLISION_DAMAGE);
@@ -1145,7 +1142,7 @@ fn bounce_projectile_does_not_hit_enemy_behind_blocking_tile_in_same_frame() {
     let (mut scene, mut world, mut camera, mut audio_events) = playing_scene();
     scene.set_combat(&mut world, &mut camera, &mut audio_events, 3.0, 1.0, 5);
     let bullet = world.spawn_bullet(40.0, 50.0, 200.0, 0.0, DEFAULT_TEXTURE_ID);
-    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::Bounce);
+    world.set_projectile_tile_impact(bullet, ProjectileTileImpact::Bounce);
     let enemy = world.spawn_enemy_from_template(
         62.0,
         50.0,
@@ -1168,21 +1165,20 @@ fn bounce_projectile_does_not_hit_enemy_behind_blocking_tile_in_same_frame() {
         None,
     );
 
-    assert!(world.alive[bullet.id as usize]);
-    assert!(world.alive[enemy.id as usize]);
-    assert_eq!(world.healths[enemy.id as usize], Some(3.0));
+    assert!(world.is_alive_index(bullet.id as usize));
+    assert!(world.is_alive_index(enemy.id as usize));
+    assert_eq!(world.health(enemy), Some(3.0));
     assert_eq!(scene.score(), 0);
 }
 
 #[test]
 fn bounce_projectile_does_not_hit_player_behind_blocking_tile_in_same_frame() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
-    world.transforms[player.id as usize] = Some(Transform2D { x: 62.0, y: 50.0 });
+    let player = world.player_entity().unwrap();
+    world.set_transform(player, Transform2D { x: 62.0, y: 50.0 });
     let bullet = world.spawn_bullet(40.0, 50.0, 200.0, 0.0, DEFAULT_TEXTURE_ID);
-    world.projectile_collision_targets[bullet.id as usize] =
-        Some(ProjectileCollisionTarget::Player);
-    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::Bounce);
+    world.set_projectile_collision_target_at(bullet.id as usize, ProjectileCollisionTarget::Player);
+    world.set_projectile_tile_impact(bullet, ProjectileTileImpact::Bounce);
     let tilemap = projectile_tilemap(true, None);
 
     world.update(0.1);
@@ -1197,7 +1193,7 @@ fn bounce_projectile_does_not_hit_player_behind_blocking_tile_in_same_frame() {
         None,
     );
 
-    assert!(world.alive[bullet.id as usize]);
+    assert!(world.is_alive_index(bullet.id as usize));
     assert_eq!(scene.game_state(), GameState::Playing);
 }
 
@@ -1205,7 +1201,7 @@ fn bounce_projectile_does_not_hit_player_behind_blocking_tile_in_same_frame() {
 fn bounce_projectile_keeps_tile_side_effect_reactions_additive() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let bullet = world.spawn_bullet(40.0, 50.0, 200.0, 0.0, DEFAULT_TEXTURE_ID);
-    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::Bounce);
+    world.set_projectile_tile_impact(bullet, ProjectileTileImpact::Bounce);
     assert!(world.add_collision_reaction(
         bullet,
         CollisionReaction::PlaySound {
@@ -1231,7 +1227,7 @@ fn bounce_projectile_keeps_tile_side_effect_reactions_additive() {
         None,
     );
 
-    assert!(world.alive[bullet.id as usize]);
+    assert!(world.is_alive_index(bullet.id as usize));
     assert_eq!(audio_events.len(), 1);
     assert_eq!(audio_events[0].sound_id, 42.0);
 }
@@ -1254,7 +1250,7 @@ fn bullet_ignores_tiles_that_do_not_block_projectiles() {
         None,
     );
 
-    assert!(world.alive[bullet.id as usize]);
+    assert!(world.is_alive_index(bullet.id as usize));
 }
 
 #[test]
@@ -1277,7 +1273,7 @@ fn bullet_tile_collision_requires_overlapping_height_span_when_authored() {
         None,
         None,
     );
-    assert!(world.alive[bullet.id as usize]);
+    assert!(world.is_alive_index(bullet.id as usize));
 
     assert!(tilemap.set_tile_height_span_definition(1, 2, 0.0, 8.0));
     scene.handle_collisions(
@@ -1290,7 +1286,7 @@ fn bullet_tile_collision_requires_overlapping_height_span_when_authored() {
         None,
         None,
     );
-    assert!(!world.alive[bullet.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
 }
 
 #[test]
@@ -1347,7 +1343,7 @@ fn authored_bullet_tile_collision_reactions_can_despawn_and_emit_side_effects() 
         );
     }
 
-    assert!(!world.alive[bullet.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
     assert_eq!(audio_events.len(), 1);
     assert_eq!(audio_events[0].sound_id, 42.0);
     assert_eq!(audio_events[0].volume, 0.5);
@@ -1414,7 +1410,7 @@ fn authored_bullet_tile_collision_side_effects_keep_legacy_despawn() {
         None,
     );
 
-    assert!(!world.alive[bullet.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
     assert_eq!(audio_events.len(), 1);
     assert_eq!(audio_events[0].sound_id, 42.0);
 }
@@ -1460,7 +1456,7 @@ fn authored_bullet_tile_collision_ignores_entity_only_other_targets() {
         );
     }
 
-    assert!(!world.alive[bullet.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
     assert!(audio_events.is_empty());
     assert_eq!(particles.particle_count(), 0);
     assert_eq!(gameplay_events.len(), 1);
@@ -1502,9 +1498,9 @@ fn bullet_damage_reduces_enemy_health_before_death() {
         None,
     );
 
-    assert!(!world.alive[b.id as usize]);
-    assert!(world.alive[e.id as usize]);
-    assert_eq!(world.healths[e.id as usize], Some(2.0));
+    assert!(!world.is_alive_index(b.id as usize));
+    assert!(world.is_alive_index(e.id as usize));
+    assert_eq!(world.health(e), Some(2.0));
     assert_eq!(scene.score(), 0);
 }
 
@@ -1537,9 +1533,9 @@ fn nonlethal_bullet_enemy_hit_flashes_enemy_hit_tween() {
         );
     }
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(world.alive[enemy.id as usize]);
-    assert_eq!(world.healths[enemy.id as usize], Some(2.0));
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(world.is_alive_index(enemy.id as usize));
+    assert_eq!(world.health(enemy), Some(2.0));
     assert_eq!(tweens.tween_count(), 1);
 }
 
@@ -1576,8 +1572,8 @@ fn authored_collision_reactions_damage_enemy_and_despawn_bullet() {
         );
     }
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), 1);
     assert_eq!(gameplay_events.len(), 2);
     assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_COLLISION_DAMAGE);
@@ -1604,7 +1600,7 @@ fn authored_bullet_damage_faction_denial_skips_default_hit_presentation() {
     let mut particles = ParticleSystem::with_capacity(8);
     let bullet = world.spawn_bullet(50.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
     let enemy = world.spawn_enemy(52.0, 50.0, DEFAULT_TEXTURE_ID);
-    let original_enemy_health = world.healths[enemy.id as usize];
+    let original_enemy_health = world.health(enemy);
     world.set_gameplay_faction(
         bullet,
         GameplayFaction::new(GAMEPLAY_FACTION_PLAYER, 0).unwrap(),
@@ -1638,9 +1634,9 @@ fn authored_bullet_damage_faction_denial_skips_default_hit_presentation() {
         );
     }
 
-    assert!(world.alive[bullet.id as usize]);
-    assert!(world.alive[enemy.id as usize]);
-    assert_eq!(world.healths[enemy.id as usize], original_enemy_health);
+    assert!(world.is_alive_index(bullet.id as usize));
+    assert!(world.is_alive_index(enemy.id as usize));
+    assert_eq!(world.health(enemy), original_enemy_health);
     assert_eq!(scene.score(), 0);
     assert!(collision_events.is_empty());
     assert_eq!(collision_event_counts.hit, 0);
@@ -1680,9 +1676,9 @@ fn authored_collision_reaction_overrides_default_damage_when_damage_missing() {
         None,
     );
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(world.alive[enemy.id as usize]);
-    assert_eq!(world.healths[enemy.id as usize], Some(1.0));
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(world.is_alive_index(enemy.id as usize));
+    assert_eq!(world.health(enemy), Some(1.0));
     assert_eq!(scene.score(), 0);
 }
 
@@ -1730,9 +1726,9 @@ fn authored_collision_reaction_uses_source_damage_component() {
         None,
     );
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(world.alive[enemy.id as usize]);
-    assert_eq!(world.healths[enemy.id as usize], Some(1.0));
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(world.is_alive_index(enemy.id as usize));
+    assert_eq!(world.health(enemy), Some(1.0));
     assert_eq!(scene.score(), 0);
 }
 
@@ -1759,8 +1755,8 @@ fn authored_collision_reaction_despawn_other_without_score() {
         None,
     );
 
-    assert!(world.alive[bullet.id as usize]);
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(world.is_alive_index(bullet.id as usize));
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), 0);
 }
 
@@ -1769,10 +1765,10 @@ fn authored_player_enemy_collision_damage_player_sets_game_over_without_despawn(
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     scene.set_sound_ids(10, 20, 30);
     let mut gameplay_events = Vec::new();
-    let player = world.player.unwrap();
-    let player_transform = world.transforms[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
-    world.damages[enemy.id as usize] = Some(1.0);
+    world.set_damage(enemy, 1.0);
     assert!(world.add_collision_reaction(
         enemy,
         CollisionReaction::Damage {
@@ -1795,9 +1791,9 @@ fn authored_player_enemy_collision_damage_player_sets_game_over_without_despawn(
     }
 
     assert_eq!(scene.game_state(), GameState::GameOver);
-    assert!(world.alive[player.id as usize]);
-    assert_eq!(world.player, Some(player));
-    assert!(world.alive[enemy.id as usize]);
+    assert!(world.is_alive_index(player.id as usize));
+    assert_eq!(world.player_entity(), Some(player));
+    assert!(world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), 0);
     assert_eq!(gameplay_events.len(), 1);
     assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_COLLISION_DAMAGE);
@@ -1814,11 +1810,11 @@ fn authored_player_enemy_collision_damage_player_sets_game_over_without_despawn(
 #[test]
 fn authored_player_enemy_collision_nonlethal_damage_overrides_hardcoded_game_over() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
-    let player_transform = world.transforms[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
-    world.healths[player.id as usize] = Some(3.0);
-    world.damages[enemy.id as usize] = Some(1.0);
+    world.set_health(player, 3.0);
+    world.set_damage(enemy, 1.0);
     assert!(world.add_collision_reaction(
         enemy,
         CollisionReaction::Damage {
@@ -1838,8 +1834,8 @@ fn authored_player_enemy_collision_nonlethal_damage_overrides_hardcoded_game_ove
     );
 
     assert_eq!(scene.game_state(), GameState::Playing);
-    assert!(world.alive[player.id as usize]);
-    assert_eq!(world.healths[player.id as usize], Some(2.0));
+    assert!(world.is_alive_index(player.id as usize));
+    assert_eq!(world.health(player), Some(2.0));
     assert!(audio_events.is_empty());
 }
 
@@ -1847,11 +1843,11 @@ fn authored_player_enemy_collision_nonlethal_damage_overrides_hardcoded_game_ove
 fn authored_collision_damage_respects_gameplay_faction_damage_mask() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player.unwrap();
-    let player_transform = world.transforms[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
-    world.healths[player.id as usize] = Some(3.0);
-    world.damages[enemy.id as usize] = Some(1.0);
+    world.set_health(player, 3.0);
+    world.set_damage(enemy, 1.0);
     world.set_gameplay_faction(
         player,
         GameplayFaction::new(GAMEPLAY_FACTION_PLAYER, 1 << GAMEPLAY_FACTION_ENEMY).unwrap(),
@@ -1882,9 +1878,9 @@ fn authored_collision_damage_respects_gameplay_faction_damage_mask() {
     }
 
     assert_eq!(scene.game_state(), GameState::Playing);
-    assert_eq!(world.healths[player.id as usize], Some(3.0));
-    assert!(world.alive[player.id as usize]);
-    assert!(world.alive[enemy.id as usize]);
+    assert_eq!(world.health(player), Some(3.0));
+    assert!(world.is_alive_index(player.id as usize));
+    assert!(world.is_alive_index(enemy.id as usize));
     assert!(audio_events.is_empty());
     assert_eq!(gameplay_events.len(), 1);
     assert_eq!(
@@ -1901,10 +1897,10 @@ fn authored_collision_damage_respects_gameplay_faction_damage_mask() {
 fn authored_player_enemy_collision_replace_default_audio_suppresses_game_over_sound() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     scene.set_sound_ids(10, 20, 30);
-    let player = world.player.unwrap();
-    let player_transform = world.transforms[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
-    world.damages[enemy.id as usize] = Some(1.0);
+    world.set_damage(enemy, 1.0);
     assert!(world.add_collision_reaction(
         enemy,
         CollisionReaction::Damage {
@@ -1944,8 +1940,8 @@ fn authored_player_enemy_collision_sound_only_replace_default_suppresses_fallbac
 {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     scene.set_sound_ids(10, 20, 30);
-    let player = world.player.unwrap();
-    let player_transform = world.transforms[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     assert!(world.add_collision_reaction(
         enemy,
@@ -1979,11 +1975,11 @@ fn authored_player_enemy_collision_sound_only_replace_default_suppresses_fallbac
 fn authored_player_enemy_collision_emits_default_game_over_sound_once() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     scene.set_sound_ids(10, 20, 30);
-    let player = world.player.unwrap();
-    world.healths[player.id as usize] = Some(1.0);
-    let player_transform = world.transforms[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    world.set_health(player, 1.0);
+    let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
-    world.damages[enemy.id as usize] = Some(1.0);
+    world.set_damage(enemy, 1.0);
     assert!(world.add_collision_reaction(
         enemy,
         CollisionReaction::Damage {
@@ -2046,8 +2042,8 @@ fn authored_bullet_enemy_collision_sound_only_keeps_default_damage_and_despawn()
         None,
     );
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), 1);
     assert_eq!(audio_events.len(), 2);
     assert!(audio_events.iter().any(|event| event.sound_id == 42.0));
@@ -2082,8 +2078,8 @@ fn authored_bullet_enemy_collision_sound_can_replace_default_hit_audio() {
         None,
     );
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), 1);
     assert_eq!(audio_events.len(), 1);
     assert_eq!(audio_events[0].sound_id, 42.0);
@@ -2173,8 +2169,8 @@ fn authored_bullet_enemy_collision_particle_only_keeps_default_damage_and_despaw
         );
     }
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), 1);
     assert_eq!(particles.particle_count(), 5);
 }
@@ -2216,8 +2212,8 @@ fn authored_bullet_enemy_collision_particle_can_replace_default_hit_burst() {
         );
     }
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), 1);
     assert_eq!(particles.particle_count(), 2);
 }
@@ -2225,8 +2221,8 @@ fn authored_bullet_enemy_collision_particle_can_replace_default_hit_burst() {
 #[test]
 fn authored_collision_sound_reaction_pushes_audio_without_gameplay_callback() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
-    let player_transform = world.transforms[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     assert!(world.add_collision_reaction(
         enemy,
@@ -2258,8 +2254,8 @@ fn authored_collision_sound_reaction_pushes_audio_without_gameplay_callback() {
     );
 
     assert_eq!(scene.game_state(), GameState::Playing);
-    assert!(world.alive[player.id as usize]);
-    assert!(world.alive[enemy.id as usize]);
+    assert!(world.is_alive_index(player.id as usize));
+    assert!(world.is_alive_index(enemy.id as usize));
     assert_eq!(audio_events.len(), 1);
     assert_eq!(audio_events[0].sound_id, 42.0);
     assert_eq!(audio_events[0].volume, 0.5);
@@ -2269,8 +2265,8 @@ fn authored_collision_sound_reaction_pushes_audio_without_gameplay_callback() {
 #[test]
 fn authored_collision_sound_reaction_cooldown_limits_repeated_contact_audio() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
-    let player_transform = world.transforms[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     assert!(world.add_collision_reaction(
         enemy,
@@ -2340,11 +2336,11 @@ fn authored_collision_sound_reaction_cooldown_limits_repeated_contact_audio() {
 #[test]
 fn authored_collision_sound_enter_trigger_runs_once_per_continuous_contact() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
-    let player_transform = world.transforms[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
-    world.healths[player.id as usize] = Some(10.0);
-    world.damages[enemy.id as usize] = Some(1.0);
+    world.set_health(player, 10.0);
+    world.set_damage(enemy, 1.0);
     assert!(world.add_collision_reaction(
         enemy,
         CollisionReaction::Damage {
@@ -2385,7 +2381,7 @@ fn authored_collision_sound_enter_trigger_runs_once_per_continuous_contact() {
     );
 
     assert_eq!(scene.game_state(), GameState::Playing);
-    assert_eq!(world.healths[player.id as usize], Some(8.0));
+    assert_eq!(world.health(player), Some(8.0));
     assert_eq!(audio_events.len(), 1);
     assert_eq!(audio_events[0].sound_id, 42.0);
 }
@@ -2393,8 +2389,8 @@ fn authored_collision_sound_enter_trigger_runs_once_per_continuous_contact() {
 #[test]
 fn authored_collision_particle_reaction_spawns_registered_preset_burst() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
-    let player_transform = world.transforms[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     assert!(world.add_collision_reaction(
         enemy,
@@ -2439,8 +2435,8 @@ fn authored_collision_particle_reaction_spawns_registered_preset_burst() {
 #[test]
 fn authored_collision_particle_reaction_cooldown_limits_repeated_bursts() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
-    let player_transform = world.transforms[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     assert!(world.add_collision_reaction(
         enemy,
@@ -2514,11 +2510,11 @@ fn authored_collision_particle_reaction_cooldown_limits_repeated_bursts() {
 #[test]
 fn authored_collision_particle_enter_trigger_runs_once_per_continuous_contact() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
-    let player_transform = world.transforms[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
-    world.healths[player.id as usize] = Some(10.0);
-    world.damages[enemy.id as usize] = Some(1.0);
+    world.set_health(player, 10.0);
+    world.set_damage(enemy, 1.0);
     assert!(world.add_collision_reaction(
         enemy,
         CollisionReaction::Damage {
@@ -2570,7 +2566,7 @@ fn authored_collision_particle_enter_trigger_runs_once_per_continuous_contact() 
     }
 
     assert_eq!(scene.game_state(), GameState::Playing);
-    assert_eq!(world.healths[player.id as usize], Some(8.0));
+    assert_eq!(world.health(player), Some(8.0));
     assert_eq!(particles.particle_count(), 2);
     assert!(audio_events.is_empty());
 }
@@ -2579,7 +2575,7 @@ fn authored_collision_particle_enter_trigger_runs_once_per_continuous_contact() 
 fn player_pickup_collision_increments_score_once_and_despawns_pickup() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -2603,8 +2599,8 @@ fn player_pickup_collision_increments_score_once_and_despawns_pickup() {
         );
     }
 
-    assert!(world.alive[player.id as usize]);
-    assert!(!world.alive[pickup.id as usize]);
+    assert!(world.is_alive_index(player.id as usize));
+    assert!(!world.is_alive_index(pickup.id as usize));
     assert_eq!(scene.score(), 3);
     assert_eq!(gameplay_events.len(), 1);
     assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_PICKUP_COLLECTED);
@@ -2634,7 +2630,7 @@ fn player_pickup_collision_increments_score_once_and_despawns_pickup() {
 fn player_pickup_score_commit_saturates_at_u32_max() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     scene.score = u32::MAX - 1;
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -2662,7 +2658,7 @@ fn player_pickup_score_commit_saturates_at_u32_max() {
 fn authored_pickup_collision_sound_and_particle_keep_default_collection() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -2713,7 +2709,7 @@ fn authored_pickup_collision_sound_and_particle_keep_default_collection() {
         );
     }
 
-    assert!(!world.alive[pickup.id as usize]);
+    assert!(!world.is_alive_index(pickup.id as usize));
     assert_eq!(scene.score(), 3);
     assert_eq!(audio_events.len(), 1);
     assert_eq!(audio_events[0].sound_id, 9.0);
@@ -2742,7 +2738,7 @@ fn authored_pickup_collision_sound_and_particle_keep_default_collection() {
 fn collision_spawn_prefab_reaction_queues_prefab_and_commits_cooldown_after_collision() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -2783,7 +2779,7 @@ fn collision_spawn_prefab_reaction_queues_prefab_and_commits_cooldown_after_coll
         );
     }
 
-    assert!(world.pickups[pickup.id as usize].is_none());
+    assert_eq!(world.pickup(pickup), None);
     assert_eq!(scene.score(), 3);
     let pickup_event = gameplay_events
         .iter()
@@ -2804,10 +2800,11 @@ fn collision_spawn_prefab_reaction_queues_prefab_and_commits_cooldown_after_coll
         Some(CollisionLayer::Enemy)
     );
     assert_eq!(
-        world.transforms[spawned_index],
+        world.transform_at_index(spawned_index),
         Some(Transform2D { x: 56.0, y: 47.0 }),
     );
-    let reactions = world.collision_reactions[player.id as usize]
+    let reactions = world
+        .collision_reactions(player)
         .expect("player collision reaction should remain");
     let cooldown = reactions
         .iter()
@@ -2829,7 +2826,7 @@ fn collision_spawn_prefab_reaction_queues_prefab_and_commits_cooldown_after_coll
 fn collision_spawn_prefab_reaction_reports_unsupported_prefab_without_consuming_cooldown() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -2887,7 +2884,7 @@ fn collision_spawn_prefab_reaction_reports_unsupported_prefab_without_consuming_
 fn collision_spawn_prefab_reaction_reports_blocked_placement_without_consuming_cooldown() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -2947,7 +2944,7 @@ fn collision_spawn_prefab_reaction_reports_blocked_placement_without_consuming_c
 fn collision_spawn_prefab_reaction_reports_queue_full_without_consuming_cooldown() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -3007,7 +3004,7 @@ fn collision_spawn_prefab_tile_self_queues_prefab_and_commits_cooldown() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
     let bullet = world.spawn_bullet(60.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::Bounce);
+    world.set_projectile_tile_impact(bullet, ProjectileTileImpact::Bounce);
     assert!(world.add_collision_reaction(
         bullet,
         CollisionReaction::SpawnPrefab {
@@ -3041,7 +3038,7 @@ fn collision_spawn_prefab_tile_self_queues_prefab_and_commits_cooldown() {
         );
     }
 
-    assert!(world.alive[bullet.id as usize]);
+    assert!(world.is_alive_index(bullet.id as usize));
     let spawned_event = gameplay_events
         .iter()
         .find(|event| event.kind == GAMEPLAY_EVENT_PREFAB_SPAWNED)
@@ -3055,7 +3052,7 @@ fn collision_spawn_prefab_tile_self_queues_prefab_and_commits_cooldown() {
         Some(CollisionLayer::Enemy)
     );
     assert_eq!(
-        world.transforms[spawned_index],
+        world.transform_at_index(spawned_index),
         Some(Transform2D { x: 140.0, y: 46.0 }),
     );
     assert_eq!(
@@ -3072,7 +3069,7 @@ fn collision_spawn_prefab_tile_other_is_noop_without_consuming_cooldown() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
     let bullet = world.spawn_bullet(60.0, 50.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-    world.projectile_tile_impacts[bullet.id as usize] = Some(ProjectileTileImpact::Bounce);
+    world.set_projectile_tile_impact(bullet, ProjectileTileImpact::Bounce);
     assert!(world.add_collision_reaction(
         bullet,
         CollisionReaction::SpawnPrefab {
@@ -3106,7 +3103,7 @@ fn collision_spawn_prefab_tile_other_is_noop_without_consuming_cooldown() {
         );
     }
 
-    assert!(world.alive[bullet.id as usize]);
+    assert!(world.is_alive_index(bullet.id as usize));
     assert_eq!(count_layer(&world, CollisionLayer::Enemy), 0);
     assert!(gameplay_events
         .iter()
@@ -3124,7 +3121,7 @@ fn collision_spawn_prefab_tile_other_is_noop_without_consuming_cooldown() {
 fn authored_pickup_collision_reaction_collects_before_followup_despawn() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -3160,7 +3157,7 @@ fn authored_pickup_collision_reaction_collects_before_followup_despawn() {
         );
     }
 
-    assert!(!world.alive[pickup.id as usize]);
+    assert!(!world.is_alive_index(pickup.id as usize));
     assert_eq!(scene.score(), 3);
     assert_eq!(gameplay_events.len(), 1);
     assert_eq!(gameplay_events[0].kind, GAMEPLAY_EVENT_PICKUP_COLLECTED);
@@ -3173,7 +3170,7 @@ fn authored_pickup_collision_reaction_collects_before_followup_despawn() {
 fn authored_player_side_pickup_reaction_collects_other_pickup_once() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -3209,7 +3206,7 @@ fn authored_player_side_pickup_reaction_collects_other_pickup_once() {
         );
     }
 
-    assert!(!world.alive[pickup.id as usize]);
+    assert!(!world.is_alive_index(pickup.id as usize));
     assert_eq!(scene.score(), 5);
     assert_eq!(gameplay_events.len(), 1);
     assert_eq!(gameplay_events[0].actor_id, player.id);
@@ -3221,7 +3218,7 @@ fn authored_player_side_pickup_reaction_collects_other_pickup_once() {
 fn authored_pickup_reaction_suppresses_legacy_fallback_when_target_is_not_pickup() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -3251,7 +3248,7 @@ fn authored_pickup_reaction_suppresses_legacy_fallback_when_target_is_not_pickup
         );
     }
 
-    assert!(world.alive[pickup.id as usize]);
+    assert!(world.is_alive_index(pickup.id as usize));
     assert_eq!(scene.score(), 0);
     assert!(gameplay_events.is_empty());
 }
@@ -3259,7 +3256,7 @@ fn authored_pickup_reaction_suppresses_legacy_fallback_when_target_is_not_pickup
 #[test]
 fn player_pickup_collision_does_not_trigger_enemy_game_over() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -3316,8 +3313,8 @@ fn score_reward_is_added_when_enemy_dies() {
         None,
     );
 
-    assert!(!world.alive[b.id as usize]);
-    assert!(!world.alive[e.id as usize]);
+    assert!(!world.is_alive_index(b.id as usize));
+    assert!(!world.is_alive_index(e.id as usize));
     assert_eq!(scene.score(), 7);
 }
 
@@ -3347,9 +3344,9 @@ fn multiple_bullets_kill_one_enemy_once() {
         None,
     );
 
-    assert!(!world.alive[first_bullet.id as usize]);
-    assert!(world.alive[second_bullet.id as usize]);
-    assert!(!world.alive[enemy.id as usize]);
+    assert!(!world.is_alive_index(first_bullet.id as usize));
+    assert!(world.is_alive_index(second_bullet.id as usize));
+    assert!(!world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), 7);
 }
 
@@ -3371,14 +3368,15 @@ fn one_bullet_scores_once_when_overlapping_multiple_enemies() {
         None,
     );
 
-    assert!(!world.alive[bullet.id as usize]);
-    assert!(!world.alive[first_enemy.id as usize]);
-    assert!(world.alive[second_enemy.id as usize]);
+    assert!(!world.is_alive_index(bullet.id as usize));
+    assert!(!world.is_alive_index(first_enemy.id as usize));
+    assert!(world.is_alive_index(second_enemy.id as usize));
     assert_eq!(scene.score(), 1);
 }
 
 fn collision_spawn_prefab_cooldown(world: &World, entity: crate::entity::Entity) -> Cooldown {
-    let reactions = world.collision_reactions[entity.id as usize]
+    let reactions = world
+        .collision_reactions(entity)
         .expect("entity should keep collision reactions");
     let cooldown = reactions
         .iter()

@@ -93,10 +93,10 @@ fn gameplay_interaction_events_are_bulk_frame_outputs() {
     engine.scenes.shooter.reset_playing(
         &mut engine.world,
         &mut engine.camera,
-        &mut engine.audio_events,
+        &mut engine.frame_buffers.audio_events,
     );
     start_shooter_playing(&mut engine);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 100.0, y: 100.0 });
@@ -132,10 +132,10 @@ fn gameplay_pickup_collected_events_are_bulk_frame_outputs() {
     engine.scenes.shooter.reset_playing(
         &mut engine.world,
         &mut engine.camera,
-        &mut engine.audio_events,
+        &mut engine.frame_buffers.audio_events,
     );
     start_shooter_playing(&mut engine);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 100.0, y: 100.0 });
@@ -180,10 +180,10 @@ fn non_once_gameplay_interaction_is_deduped_across_fixed_substeps() {
     engine.scenes.shooter.reset_playing(
         &mut engine.world,
         &mut engine.camera,
-        &mut engine.audio_events,
+        &mut engine.frame_buffers.audio_events,
     );
     start_shooter_playing(&mut engine);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 100.0, y: 100.0 });
@@ -207,7 +207,7 @@ fn non_once_gameplay_interaction_is_deduped_across_fixed_substeps() {
 fn gameplay_action_projectile_setter_drives_player_primary_fire() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
 
     assert_eq!(engine.built_in_shooter_player_entity_id(), player.id);
     assert_eq!(
@@ -231,19 +231,18 @@ fn gameplay_action_projectile_setter_drives_player_primary_fire() {
     assert_eq!(count_layer(&engine, CollisionLayer::Bullet), 1);
     let bullet_index = engine
         .world
-        .alive
+        .alive_indices()
         .iter()
-        .enumerate()
-        .find(|(index, alive)| {
-            **alive && engine.world.collider_layer_at(*index) == Some(CollisionLayer::Bullet)
-        })
-        .map(|(index, _)| index)
+        .copied()
+        .find(|&index| engine.world.collider_layer_at(index) == Some(CollisionLayer::Bullet))
         .unwrap();
-    let velocity = engine.world.velocities[bullet_index].unwrap();
+    let velocity = engine.world.velocity_at_index(bullet_index).unwrap();
     let speed = (velocity.vx * velocity.vx + velocity.vy * velocity.vy).sqrt();
     assert!((speed - 900.0).abs() < 0.01);
-    assert_eq!(engine.world.damages[bullet_index], Some(3.0));
-    assert!((engine.world.bullet_lifetimes[bullet_index].unwrap() - (2.0 - 0.016)).abs() < 0.001);
+    assert_eq!(engine.world.damage_at_index(bullet_index), Some(3.0));
+    assert!(
+        (engine.world.gameplay_lifetime_at(bullet_index).unwrap() - (2.0 - 0.016)).abs() < 0.001
+    );
 
     engine.update_frame(0.016, false, false, false);
     assert_eq!(count_layer(&engine, CollisionLayer::Bullet), 1);
@@ -256,7 +255,7 @@ fn gameplay_action_projectile_setter_drives_player_primary_fire() {
 fn homing_projectile_seek_target_nearest_enemy_runs_through_shooter_frame_loop() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 400.0, y: 240.0 });
@@ -275,8 +274,8 @@ fn homing_projectile_seek_target_nearest_enemy_runs_through_shooter_frame_loop()
 
     engine.update_frame(0.25, false, false, false);
 
-    assert!(!engine.world.alive[bullet.id as usize]);
-    assert!(!engine.world.alive[enemy.id as usize]);
+    assert!(!engine.world.is_alive_index(bullet.id as usize));
+    assert!(!engine.world.is_alive_index(enemy.id as usize));
     assert_eq!(engine.score(), 1);
     assert_eq!(count_layer(&engine, CollisionLayer::Bullet), 0);
     assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 0);
@@ -286,7 +285,7 @@ fn homing_projectile_seek_target_nearest_enemy_runs_through_shooter_frame_loop()
 fn homing_projectile_seek_target_nearest_tag_runs_through_shooter_frame_loop() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 400.0, y: 240.0 });
@@ -311,9 +310,9 @@ fn homing_projectile_seek_target_nearest_tag_runs_through_shooter_frame_loop() {
 
     engine.update_frame(0.25, false, false, false);
 
-    assert!(!engine.world.alive[bullet.id as usize]);
-    assert!(engine.world.alive[near_untagged.id as usize]);
-    assert!(!engine.world.alive[tagged_enemy.id as usize]);
+    assert!(!engine.world.is_alive_index(bullet.id as usize));
+    assert!(engine.world.is_alive_index(near_untagged.id as usize));
+    assert!(!engine.world.is_alive_index(tagged_enemy.id as usize));
     assert_eq!(engine.score(), 1);
     assert_eq!(count_layer(&engine, CollisionLayer::Bullet), 0);
     assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 1);
@@ -360,7 +359,7 @@ fn collision_emit_effect_payload_reaches_effect_event_buffer() {
 fn input_action_binding_remaps_player_primary_fire_without_widening_input_state() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
 
     assert!(engine.set_gameplay_action_projectile(
         player.id,
@@ -392,12 +391,12 @@ fn input_action_binding_remaps_player_primary_fire_without_widening_input_state(
 fn input_action_binding_drives_player_melee_action() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     let player_t = engine.world.transform(player).unwrap();
     let enemy = engine
         .world
         .spawn_enemy(player_t.x + 72.0, player_t.y, DEFAULT_TEXTURE_ID);
-    engine.world.healths[enemy.id as usize] = Some(2.0);
+    engine.world.set_health(enemy, 2.0);
 
     assert!(engine.set_gameplay_action_melee(player.id, player.generation, 3, 0.5, 96.0, 2.0,));
     assert!(engine.set_input_action_binding(
@@ -410,7 +409,7 @@ fn input_action_binding_drives_player_melee_action() {
     engine.set_input(false, false, false, false, false, true, false, 800.0, 240.0);
     engine.update_frame(0.016, false, false, false);
 
-    assert!(!engine.world.alive[enemy.id as usize]);
+    assert!(!engine.world.is_alive_index(enemy.id as usize));
     assert_eq!(engine.score(), 1);
 }
 
@@ -420,10 +419,10 @@ fn gameplay_interaction_events_drive_rust_behavior_state_machine_once_per_frame(
     engine.scenes.shooter.reset_playing(
         &mut engine.world,
         &mut engine.camera,
-        &mut engine.audio_events,
+        &mut engine.frame_buffers.audio_events,
     );
     start_shooter_playing(&mut engine);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 100.0, y: 100.0 });
@@ -476,10 +475,10 @@ fn fixed_timestep_processes_behavior_state_machine_events_once_per_render_frame(
     engine.scenes.shooter.reset_playing(
         &mut engine.world,
         &mut engine.camera,
-        &mut engine.audio_events,
+        &mut engine.frame_buffers.audio_events,
     );
     start_shooter_playing(&mut engine);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 100.0, y: 100.0 });
@@ -922,7 +921,7 @@ fn behavior_state_enter_dash_action_runs_next_frame_pre_physics() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);
     let source = engine.world.spawn_entity();
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 400.0, y: 240.0 });
@@ -1030,8 +1029,8 @@ fn authored_collision_damage_events_drive_rust_behavior_state_machine_once_per_f
     let bullet = engine
         .world
         .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-    engine.world.healths[enemy.id as usize] = Some(3.0);
-    engine.world.damages[bullet.id as usize] = Some(1.0);
+    engine.world.set_health(enemy, 3.0);
+    engine.world.set_damage(bullet, 1.0);
     assert!(engine.add_gameplay_collision_damage(bullet.id, bullet.generation, 1));
     assert!(engine.set_gameplay_behavior_state_machine(bullet.id, bullet.generation, 1));
     assert!(engine.add_gameplay_behavior_event_transition(
@@ -1097,8 +1096,8 @@ fn fixed_timestep_collision_damage_events_drive_one_behavior_transition_per_rend
     let bullet = engine
         .world
         .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-    engine.world.healths[enemy.id as usize] = Some(4.0);
-    engine.world.damages[bullet.id as usize] = Some(1.0);
+    engine.world.set_health(enemy, 4.0);
+    engine.world.set_damage(bullet, 1.0);
     assert!(engine.add_gameplay_collision_damage(bullet.id, bullet.generation, 1));
     assert!(engine.set_gameplay_behavior_state_machine(bullet.id, bullet.generation, 1));
     assert!(engine.add_gameplay_behavior_event_transition(

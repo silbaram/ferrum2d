@@ -156,7 +156,7 @@ impl Engine {
         let restored = self.scenes.shooter.restore_snapshot(
             &mut self.world,
             &mut self.camera,
-            &mut self.audio_events,
+            &mut self.frame_buffers.audio_events,
             &snapshot,
         );
         if restored {

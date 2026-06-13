@@ -114,7 +114,7 @@ impl BreakoutScene {
             return;
         }
 
-        let speed = match world.movement_patterns.get(index).copied().flatten() {
+        let speed = match world.movement_pattern(paddle) {
             Some(MovementPattern::TopdownInput { speed }) => speed,
             _ => PADDLE_SPEED,
         };
@@ -214,7 +214,8 @@ impl BreakoutScene {
     ) {
         let pair = CollisionReactionPair::new(ball.id as usize, brick.id as usize, ball, brick);
         self.marked_for_despawn.clear();
-        self.marked_for_despawn.resize(world.alive.len(), false);
+        self.marked_for_despawn
+            .resize(world.entity_capacity(), false);
         self.pending_despawn.clear();
         self.area_damage_hits.clear();
         let Some(outcome) = apply_collision_reaction_sets_for_pair(
@@ -247,7 +248,8 @@ impl BreakoutScene {
         let brick_index = brick.id as usize;
         let pair = CollisionReactionPair::new(ball_index, brick_index, ball, brick);
         self.marked_for_despawn.clear();
-        self.marked_for_despawn.resize(world.alive.len(), false);
+        self.marked_for_despawn
+            .resize(world.entity_capacity(), false);
         self.pending_despawn.clear();
         let outcome = apply_collision_damage_reaction_for_pair(
             world,
@@ -379,6 +381,5 @@ fn action_pressed(input: InputState) -> bool {
 }
 
 pub(super) fn is_alive(world: &World, entity: Entity) -> bool {
-    let index = entity.id as usize;
-    index < world.alive.len() && world.alive[index] && world.generations[index] == entity.generation
+    world.is_current_entity(entity)
 }

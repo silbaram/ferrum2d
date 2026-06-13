@@ -702,13 +702,13 @@ impl ShooterScene {
     }
 
     pub fn update_camera_follow(&self, world: &World, camera: &mut Camera2D) {
-        let Some(player) = world.player else {
+        let Some(player) = world.player_entity() else {
             return;
         };
-        let Some(player_t) = world.transforms[player.id as usize] else {
+        let Some(player_t) = world.transform(player) else {
             return;
         };
-        let player_velocity = world.velocities[player.id as usize].unwrap_or_default();
+        let player_velocity = world.velocity(player).unwrap_or_default();
         camera.apply_preset(
             player_t,
             player_velocity,
@@ -726,7 +726,7 @@ impl ShooterScene {
             let Some(layer) = world.collider_layer_at(i) else {
                 continue;
             };
-            let Some(sprite) = world.sprites[i].as_mut() else {
+            let Some(sprite) = world.sprite_mut_at_index(i) else {
                 continue;
             };
             sprite.texture_id = match layer {
@@ -751,14 +751,10 @@ impl ShooterScene {
             if world.collider_layer_at(i) != Some(layer) {
                 continue;
             }
-            world.apply_template_to_entity(
-                Entity {
-                    id: i as u32,
-                    generation: world.generations[i],
-                },
-                texture_id,
-                template,
-            );
+            let Some(entity) = world.entity_at_index(i) else {
+                continue;
+            };
+            world.apply_template_to_entity(entity, texture_id, template);
         }
     }
 }

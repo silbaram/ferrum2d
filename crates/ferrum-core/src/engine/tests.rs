@@ -45,28 +45,20 @@ mod shooter_snapshots;
 fn count_layer(engine: &Engine, layer: CollisionLayer) -> usize {
     engine
         .world
-        .alive
+        .alive_indices()
         .iter()
-        .enumerate()
-        .filter(|(idx, alive)| {
-            **alive && engine.world.colliders[*idx].is_some_and(|c| c.layer == layer)
-        })
+        .filter(|&&idx| engine.world.collider_layer_at(idx) == Some(layer))
         .count()
 }
 
 fn find_layer(engine: &Engine, layer: CollisionLayer) -> crate::entity::Entity {
     engine
         .world
-        .alive
+        .alive_indices()
         .iter()
-        .enumerate()
-        .find_map(|(idx, alive)| {
-            if *alive && engine.world.colliders[idx].is_some_and(|collider| collider.layer == layer)
-            {
-                Some(crate::entity::Entity {
-                    id: idx as u32,
-                    generation: engine.world.generations[idx],
-                })
+        .find_map(|&idx| {
+            if engine.world.collider_layer_at(idx) == Some(layer) {
+                engine.world.entity_at_index(idx)
             } else {
                 None
             }
@@ -77,20 +69,12 @@ fn find_layer(engine: &Engine, layer: CollisionLayer) -> crate::entity::Entity {
 fn find_lowest_layer(engine: &Engine, layer: CollisionLayer) -> crate::entity::Entity {
     engine
         .world
-        .alive
+        .alive_indices()
         .iter()
-        .enumerate()
-        .filter_map(|(idx, alive)| {
-            let transform = engine.world.transforms[idx]?;
-            if *alive && engine.world.colliders[idx].is_some_and(|collider| collider.layer == layer)
-            {
-                Some((
-                    transform.y,
-                    crate::entity::Entity {
-                        id: idx as u32,
-                        generation: engine.world.generations[idx],
-                    },
-                ))
+        .filter_map(|&idx| {
+            let transform = engine.world.transform_at_index(idx)?;
+            if engine.world.collider_layer_at(idx) == Some(layer) {
+                Some((transform.y, engine.world.entity_at_index(idx)?))
             } else {
                 None
             }

@@ -15,8 +15,13 @@ fn entity_ids_increment_and_generation_changes_on_despawn() {
 
     world.despawn(first);
 
-    assert!(!world.alive[first.id as usize]);
-    assert_eq!(world.generations[first.id as usize], 1);
+    assert!(!world.is_alive_index(first.id as usize));
+    assert_eq!(
+        world
+            .generation_at_index(first.id as usize)
+            .expect("test entity index should exist"),
+        1
+    );
     assert_eq!(world.alive_count(), 1);
     assert_eq!(world.alive_indices(), &[1]);
 }
@@ -51,7 +56,7 @@ fn despawned_entity_slots_are_reused_with_new_generation() {
     assert_eq!(world.behavior_state_machine(reused), None);
     assert_eq!(world.behavior_state_enter_actions(reused), None);
     assert_eq!(world.collision_reactions(reused), None);
-    assert!(world.alive[reused.id as usize]);
+    assert!(world.is_alive_index(reused.id as usize));
     assert_eq!(world.alive_count(), 1);
     assert_eq!(world.alive_indices(), &[reused.id as usize]);
 }
@@ -66,9 +71,37 @@ fn invalid_despawn_does_not_change_alive_count() {
         generation: entity.generation + 1,
     });
 
-    assert!(world.alive[entity.id as usize]);
+    assert!(world.is_alive_index(entity.id as usize));
     assert_eq!(world.alive_count(), 1);
     assert_eq!(world.alive_indices(), &[entity.id as usize]);
+}
+
+#[test]
+fn entity_lifecycle_accessors_report_current_handles_only() {
+    let mut world = World::default();
+    let first = world.spawn_entity();
+    let second = world.spawn_entity();
+
+    assert_eq!(world.entity_capacity(), 2);
+    assert!(world.is_alive_index(first.id as usize));
+    assert_eq!(
+        world.generation_at_index(first.id as usize),
+        Some(first.generation)
+    );
+    assert_eq!(world.entity_at_index(first.id as usize), Some(first));
+    assert!(world.is_current_entity(first));
+
+    world.despawn(first);
+
+    assert_eq!(world.entity_capacity(), 2);
+    assert!(!world.is_alive_index(first.id as usize));
+    assert_eq!(
+        world.generation_at_index(first.id as usize),
+        Some(first.generation + 1)
+    );
+    assert_eq!(world.entity_at_index(first.id as usize), None);
+    assert!(!world.is_current_entity(first));
+    assert_eq!(world.entity_at_index(second.id as usize), Some(second));
 }
 
 #[test]
@@ -98,14 +131,13 @@ fn alive_indices_remain_dense_after_multiple_despawns() {
 fn transform_update_applies_velocity() {
     let mut world = World::default();
     let entity = world.spawn_entity();
-    let index = entity.id as usize;
-    world.transforms[index] = Some(Transform2D { x: 2.0, y: 4.0 });
-    world.velocities[index] = Some(Velocity { vx: 10.0, vy: -6.0 });
+    world.set_transform(entity, Transform2D { x: 2.0, y: 4.0 });
+    world.set_velocity(entity, Velocity { vx: 10.0, vy: -6.0 });
 
     world.update(0.5);
 
     assert_eq!(
-        world.transforms[index],
+        world.transform(entity),
         Some(Transform2D { x: 7.0, y: 1.0 })
     );
 }

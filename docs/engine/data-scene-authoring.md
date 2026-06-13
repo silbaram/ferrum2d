@@ -1,0 +1,42 @@
+# Data Scene Authoring Contract
+
+상태: P2 최소 계약
+
+이 문서는 Top-down Shooter, Breakout, Platformer 같은 built-in starter scene을 복사하지 않고도 작은 data-driven scene을 설명하기 위한 최소 authoring 계약을 정리한다. 확정 source of truth는 `packages/ferrum-web/src/sceneAuthoringDocument.ts`, `packages/ferrum-web/src/sceneComposition.ts`, `packages/ferrum-web/src/behaviorRecipes.ts`와 샘플 fixture다.
+
+## 최소 문서 형식
+
+Data Scene authoring 문서는 다음 envelope를 사용한다.
+
+| 필드 | 필수 | 역할 |
+| --- | --- | --- |
+| `format` | 예 | `ferrum2d.consumer.scene-authoring` |
+| `version` | 예 | 현재 `1` |
+| `sceneComposition` | 예 | prefab, fragment, instance 배치를 정의한다. |
+| `behaviorRecipes` | 예 | instance에 바인딩할 gameplay behavior profile을 정의한다. |
+| `ids` | 아니오 | action/item/timer 같은 이름을 runtime numeric id로 고정할 때 사용한다. |
+
+최소 scene은 `sceneComposition.prefabs`, `sceneComposition.fragments`, `behaviorRecipes.entities`만으로 검증 가능해야 한다. starter scene adapter가 쓰는 `runtimeEntity`, `builtinShooterPlayer`, `builtinBreakoutPaddle` 같은 binding은 create-game 템플릿용 확장이지 최소 Data Scene 계약이 아니다.
+
+## 최소 동작 계약
+
+- `sceneComposition.initialFragment`는 생성할 root fragment를 가리킨다.
+- 각 instance는 `prefab`을 참조하고, `id`가 없으면 resolver가 deterministic id를 만든다.
+- prefab/variant/instance `props.behaviorRecipes`는 `behaviorRecipes.entities`의 key를 참조한다.
+- `resolveSceneAuthoringDocument(..., { validateBindings: true, missingBehavior: "error" })`가 통과해야 한다.
+- `instantiateSceneFragment(...)` 결과는 최소 1개 instance를 가져야 한다.
+- 문서 안에 장르 전용 Game Spec 필드나 built-in starter runtime entity binding을 섞지 않는다.
+
+## 샘플
+
+검증 샘플은 `docs/engine/samples/data-scene-minimum.scene-authoring.json`이다. 이 샘플은 두 개의 generic `agent` instance와 `health`, `faction`, `seekTarget` behavior recipe만 사용한다.
+
+```bash
+pnpm validate:data-scene-authoring
+```
+
+이 명령은 ferrum-web public package를 빌드한 뒤 샘플을 resolver로 검증하고, starter scene 전용 runtime binding이 최소 계약에 들어오지 않았는지 확인한다.
+
+## create-game 연결
+
+`packages/create-game/templates/*/public/scene-authoring.json`은 같은 `ferrum2d.consumer.scene-authoring` envelope를 사용한다. 템플릿 파일은 built-in starter scene과 연결하기 위해 `runtimeEntity` 같은 adapter prop을 사용할 수 있지만, 이는 template surface contract이며 최소 Data Scene contract와 분리해서 다룬다.

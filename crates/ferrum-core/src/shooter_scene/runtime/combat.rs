@@ -94,7 +94,7 @@ impl ShooterScene {
         mut hit_particles: Option<&mut ParticleBurstSink<'_>>,
         mut hit_tweens: Option<&mut TweenSink<'_>>,
     ) {
-        self.prepare_collision_scratch(world.alive.len());
+        self.prepare_collision_scratch(world.entity_capacity());
         self.last_collision_pair_stats = Default::default();
         self.handle_pending_melee_attacks(
             world,
@@ -341,7 +341,7 @@ impl ShooterScene {
         collision_events: Option<&mut CollisionEventSink<'_>>,
         gameplay_events: Option<&mut GameplayEventSink<'_>>,
     ) -> PendingPlayerTargetMeleeResolutionResult {
-        let Some(player) = world.player else {
+        let Some(player) = world.player_entity() else {
             return PendingPlayerTargetMeleeResolutionResult::default();
         };
         if !melee_attack_target_can_receive_hit(
@@ -618,7 +618,7 @@ impl ShooterScene {
         mut collision_events: Option<&mut CollisionEventSink<'_>>,
         mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
     ) {
-        let Some(player) = world.player else {
+        let Some(player) = world.player_entity() else {
             return;
         };
         let player_index = player.id as usize;
@@ -727,10 +727,10 @@ impl ShooterScene {
             let Some(collider) = world.colliders[bullet_index] else {
                 continue;
             };
-            let Some(transform) = world.transforms[bullet_index] else {
+            let Some(transform) = world.transform_at_index(bullet_index) else {
                 continue;
             };
-            let velocity = world.velocities[bullet_index].unwrap_or_default();
+            let velocity = world.velocity_at_index_or_default(bullet_index);
             let start = if delta.is_finite() && delta > 0.0 {
                 crate::components::Transform2D {
                     x: transform.x - velocity.vx * delta,
@@ -744,17 +744,13 @@ impl ShooterScene {
                 velocity,
                 collider,
                 delta,
-                world.height_spans[bullet_index],
+                world.height_span_at(bullet_index),
             ) else {
                 continue;
             };
             let impact_center = tile_impact_center(start, velocity, delta, tile_hit);
             {
-                let reactions = world
-                    .collision_reactions
-                    .get(bullet_index)
-                    .copied()
-                    .flatten();
+                let reactions = world.collision_reactions_at_index(bullet_index);
                 let authored_self_despawn = if let Some(mut reactions) = reactions {
                     let outcome = apply_tile_collision_reaction_set(
                         world,
@@ -766,7 +762,7 @@ impl ShooterScene {
                         &mut self.pending_despawn,
                         Self::collision_damage_defaults,
                     );
-                    world.collision_reactions[bullet_index] = Some(reactions);
+                    world.replace_collision_reactions_at_index(bullet_index, Some(reactions));
 
                     let reaction_summary =
                         summarize_collision_reaction_set_outcome(outcome.reaction_outcome(), {
@@ -779,7 +775,7 @@ impl ShooterScene {
 
                     let projectile_entity = Entity {
                         id: bullet_index as u32,
-                        generation: world.generations.get(bullet_index).copied().unwrap_or(0),
+                        generation: world.generation_at_index(bullet_index).unwrap_or(0),
                     };
                     if let Some(events) = gameplay_events.as_mut() {
                         let context = CollisionReactionPair::new(
@@ -892,7 +888,7 @@ impl ShooterScene {
         mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
         mut hit_particles: Option<&mut ParticleBurstSink<'_>>,
     ) {
-        let Some(player) = world.player else {
+        let Some(player) = world.player_entity() else {
             return;
         };
         let player_index = player.id as usize;
@@ -1006,7 +1002,7 @@ impl ShooterScene {
         mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
         mut hit_particles: Option<&mut ParticleBurstSink<'_>>,
     ) {
-        let Some(player) = world.player else {
+        let Some(player) = world.player_entity() else {
             return;
         };
         let player_index = player.id as usize;
@@ -1015,7 +1011,7 @@ impl ShooterScene {
         {
             return;
         }
-        if !world.pickups.iter().any(Option::is_some) {
+        if !world.has_pickups() {
             return;
         }
 
@@ -1042,7 +1038,7 @@ impl ShooterScene {
                 continue;
             }
             let pickup_index = reaction_pair.other_index;
-            if world.pickups[pickup_index].is_none() {
+            if world.pickup_at_index(pickup_index).is_none() {
                 continue;
             }
             let pickup_entity = reaction_pair.other;
@@ -1152,8 +1148,7 @@ impl ShooterScene {
     }
 
     fn is_alive_layer(world: &World, index: usize, layer: CollisionLayer) -> bool {
-        world.alive.get(index).copied().unwrap_or(false)
-            && world.collider_layer_at(index) == Some(layer)
+        world.is_alive_index(index) && world.collider_layer_at(index) == Some(layer)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1473,13 +1468,7 @@ fn projectile_tile_impact(world: &World, index: usize) -> ProjectileTileImpact {
 }
 
 fn entity_at(world: &World, index: usize) -> Option<crate::entity::Entity> {
-    if !world.alive.get(index).copied().unwrap_or(false) {
-        return None;
-    }
-    Some(crate::entity::Entity {
-        id: index as u32,
-        generation: *world.generations.get(index)?,
-    })
+    world.entity_at_index(index)
 }
 
 fn effect_position_for(world: &World, actor: Entity, source: Entity) -> Transform2D {
@@ -1489,11 +1478,7 @@ fn effect_position_for(world: &World, actor: Entity, source: Entity) -> Transfor
 }
 
 fn transform_for_entity(world: &World, entity: Entity) -> Option<Transform2D> {
-    let index = entity.id as usize;
-    if entity_at(world, index) != Some(entity) {
-        return None;
-    }
-    world.transforms.get(index).copied().flatten()
+    world.transform(entity)
 }
 
 fn tile_impact_center(
@@ -1533,15 +1518,14 @@ fn bounce_projectile_off_tile(
     if !dot.is_finite() {
         return;
     }
-    world.velocities[bullet_index] = Some(Velocity {
-        vx: velocity.vx - 2.0 * dot * normal.vx,
-        vy: velocity.vy - 2.0 * dot * normal.vy,
-    });
-    if let Some(transform) = world
-        .transforms
-        .get_mut(bullet_index)
-        .and_then(Option::as_mut)
-    {
+    world.set_velocity_at_index(
+        bullet_index,
+        Velocity {
+            vx: velocity.vx - 2.0 * dot * normal.vx,
+            vy: velocity.vy - 2.0 * dot * normal.vy,
+        },
+    );
+    if let Some(transform) = world.transform_mut_at_index(bullet_index) {
         let travel = if delta.is_finite() && delta > 0.0 {
             delta * tile_hit.contact.time.clamp(0.0, 1.0)
         } else {
@@ -1676,9 +1660,9 @@ mod tests {
         let mut audio_events = Vec::new();
         let player = world.spawn_player(16.0, 24.0, 0);
         let enemy = world.spawn_enemy(32.0, 24.0, 0);
-        world.healths[enemy.id as usize] = Some(1.0);
-        world.score_rewards[enemy.id as usize] = Some(7);
-        scene.prepare_collision_scratch(world.alive.len());
+        world.set_health(enemy, 1.0);
+        world.set_score_reward(enemy, 7);
+        scene.prepare_collision_scratch(world.entity_capacity());
         let command = scene
             .queue_melee_attack(melee_core_data(player, 16.0))
             .queued;
@@ -1717,7 +1701,7 @@ mod tests {
         let player = world.spawn_player(16.0, 24.0, 0);
         let enemy = world.spawn_enemy(32.0, 24.0, 0);
         scene.set_sound_ids(0, 0, 9);
-        scene.prepare_collision_scratch(world.alive.len());
+        scene.prepare_collision_scratch(world.entity_capacity());
         let mut command = scene
             .queue_melee_attack(melee_core_data(enemy, 32.0))
             .queued;
@@ -1797,7 +1781,7 @@ mod tests {
             player,
             GameplayFaction::new(GAMEPLAY_FACTION_PLAYER, 1 << GAMEPLAY_FACTION_ENEMY).unwrap(),
         );
-        scene.prepare_collision_scratch(world.alive.len());
+        scene.prepare_collision_scratch(world.entity_capacity());
         let mut command = scene
             .queue_melee_attack(melee_core_data(enemy, 32.0))
             .queued;

@@ -38,10 +38,7 @@ fn enemy_behavior_static_stops_enemy_velocity() {
 
     scene.apply_enemy_movement_phase(&mut world, &Tilemap::default(), 0.0);
 
-    assert_eq!(
-        world.velocities[enemy.id as usize],
-        Some(Velocity::default())
-    );
+    assert_eq!(world.velocity(enemy), Some(Velocity::default()));
 }
 
 #[test]
@@ -54,15 +51,12 @@ fn enemy_without_transform_keeps_existing_velocity() {
         EnemyBehavior::Drift,
     );
     let enemy = world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
-    world.transforms[enemy.id as usize] = None;
-    world.velocities[enemy.id as usize] = Some(Velocity { vx: 3.0, vy: 4.0 });
+    assert!(world.clear_transform_for_test(enemy));
+    world.set_velocity(enemy, Velocity { vx: 3.0, vy: 4.0 });
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
-    assert_eq!(
-        world.velocities[enemy.id as usize],
-        Some(Velocity { vx: 3.0, vy: 4.0 })
-    );
+    assert_eq!(world.velocity(enemy), Some(Velocity { vx: 3.0, vy: 4.0 }));
 }
 
 #[test]
@@ -78,7 +72,7 @@ fn enemy_behavior_drift_moves_enemy_toward_world_center() {
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
-    let velocity = world.velocities[enemy.id as usize].unwrap();
+    let velocity = world.velocity(enemy).unwrap();
     assert!(velocity.vx > 0.0);
     assert!(velocity.vy.abs() < 0.01);
 }
@@ -92,13 +86,13 @@ fn enemy_behavior_orbit_moves_enemy_around_player() {
         &mut audio_events,
         EnemyBehavior::Orbit,
     );
-    let player = world.player.unwrap();
-    world.transforms[player.id as usize] = Some(Transform2D { x: 100.0, y: 100.0 });
+    let player = world.player_entity().unwrap();
+    world.set_transform(player, Transform2D { x: 100.0, y: 100.0 });
     let enemy = world.spawn_enemy(280.0, 100.0, DEFAULT_TEXTURE_ID);
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
-    let velocity = world.velocities[enemy.id as usize].unwrap();
+    let velocity = world.velocity(enemy).unwrap();
     assert!(velocity.vx.abs() < 0.01);
     assert!(velocity.vy > 0.0);
 }
@@ -114,13 +108,13 @@ fn enemy_behavior_orbit_uses_configured_radius() {
             .with_enemy_behavior(EnemyBehavior::Orbit)
             .with_orbit(220.0, 0.0),
     );
-    let player = world.player.unwrap();
-    world.transforms[player.id as usize] = Some(Transform2D { x: 100.0, y: 100.0 });
+    let player = world.player_entity().unwrap();
+    world.set_transform(player, Transform2D { x: 100.0, y: 100.0 });
     let enemy = world.spawn_enemy(280.0, 100.0, DEFAULT_TEXTURE_ID);
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
-    let velocity = world.velocities[enemy.id as usize].unwrap();
+    let velocity = world.velocity(enemy).unwrap();
     assert!(velocity.vx > 0.0);
     assert!(velocity.vy > 0.0);
 }
@@ -128,8 +122,8 @@ fn enemy_behavior_orbit_uses_configured_radius() {
 #[test]
 fn enemy_behavior_chase_uses_tilemap_navigation_waypoint() {
     let (mut scene, mut world, _, _) = playing_scene();
-    let player = world.player.unwrap();
-    world.transforms[player.id as usize] = Some(Transform2D { x: 25.0, y: 5.0 });
+    let player = world.player_entity().unwrap();
+    world.set_transform(player, Transform2D { x: 25.0, y: 5.0 });
     let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
     let mut tilemap = Tilemap::default();
     tilemap.set_layer(
@@ -146,7 +140,7 @@ fn enemy_behavior_chase_uses_tilemap_navigation_waypoint() {
 
     scene.update_enemy_velocity(&mut world, &tilemap, 0.0);
 
-    let velocity = world.velocities[enemy.id as usize].unwrap();
+    let velocity = world.velocity(enemy).unwrap();
     assert!(velocity.vx.abs() < 0.01);
     assert!(velocity.vy > 0.0);
 }
@@ -154,8 +148,8 @@ fn enemy_behavior_chase_uses_tilemap_navigation_waypoint() {
 #[test]
 fn enemy_behavior_chase_reuses_navigation_waypoint_until_repath_interval() {
     let (mut scene, mut world, _, _) = playing_scene();
-    let player = world.player.unwrap();
-    world.transforms[player.id as usize] = Some(Transform2D { x: 25.0, y: 5.0 });
+    let player = world.player_entity().unwrap();
+    world.set_transform(player, Transform2D { x: 25.0, y: 5.0 });
     let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
     let mut tilemap = Tilemap::default();
     tilemap.set_layer(
@@ -177,13 +171,13 @@ fn enemy_behavior_chase_reuses_navigation_waypoint_until_repath_interval() {
         NAVIGATION_REPATH_INTERVAL * 0.5,
     );
 
-    let cached_velocity = world.velocities[enemy.id as usize].unwrap();
+    let cached_velocity = world.velocity(enemy).unwrap();
     assert!(cached_velocity.vx.abs() < 0.01);
     assert!(cached_velocity.vy > 0.0);
 
     scene.apply_enemy_movement_phase(&mut world, &Tilemap::default(), NAVIGATION_REPATH_INTERVAL);
 
-    let repathed_velocity = world.velocities[enemy.id as usize].unwrap();
+    let repathed_velocity = world.velocity(enemy).unwrap();
     assert!(repathed_velocity.vx > 0.0);
     assert!(repathed_velocity.vy.abs() < 0.01);
 }
@@ -202,10 +196,7 @@ fn enemy_movement_pattern_static_overrides_scene_behavior() {
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
-    assert_eq!(
-        world.velocities[enemy.id as usize],
-        Some(Velocity::default())
-    );
+    assert_eq!(world.velocity(enemy), Some(Velocity::default()));
 }
 
 #[test]
@@ -225,14 +216,8 @@ fn enemy_movement_pattern_linear_and_move_to_point_drive_velocity() {
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
-    assert_eq!(
-        world.velocities[linear.id as usize],
-        Some(Velocity { vx: 3.0, vy: -4.0 })
-    );
-    assert_eq!(
-        world.velocities[move_to.id as usize],
-        Some(Velocity { vx: 5.0, vy: 0.0 })
-    );
+    assert_eq!(world.velocity(linear), Some(Velocity { vx: 3.0, vy: -4.0 }));
+    assert_eq!(world.velocity(move_to), Some(Velocity { vx: 5.0, vy: 0.0 }));
 }
 
 #[test]
@@ -244,8 +229,8 @@ fn enemy_movement_pattern_chase_player_reuses_navigation_waypoint() {
         &mut audio_events,
         EnemyBehavior::Static,
     );
-    let player = world.player.unwrap();
-    world.transforms[player.id as usize] = Some(Transform2D { x: 25.0, y: 5.0 });
+    let player = world.player_entity().unwrap();
+    world.set_transform(player, Transform2D { x: 25.0, y: 5.0 });
     let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
     world.set_movement_pattern(
         enemy,
@@ -269,7 +254,7 @@ fn enemy_movement_pattern_chase_player_reuses_navigation_waypoint() {
 
     scene.update_enemy_velocity(&mut world, &tilemap, 0.0);
 
-    let velocity = world.velocities[enemy.id as usize].unwrap();
+    let velocity = world.velocity(enemy).unwrap();
     assert!(velocity.vx.abs() < 0.01);
     assert!(velocity.vy > 0.0);
 }
@@ -277,8 +262,8 @@ fn enemy_movement_pattern_chase_player_reuses_navigation_waypoint() {
 #[test]
 fn enemy_movement_pattern_chase_player_reuses_navigation_cache() {
     let (mut scene, mut world, _, _) = playing_scene();
-    let player = world.player.unwrap();
-    world.transforms[player.id as usize] = Some(Transform2D { x: 25.0, y: 5.0 });
+    let player = world.player_entity().unwrap();
+    world.set_transform(player, Transform2D { x: 25.0, y: 5.0 });
     let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
     world.set_movement_pattern(
         enemy,
@@ -307,13 +292,13 @@ fn enemy_movement_pattern_chase_player_reuses_navigation_cache() {
         NAVIGATION_REPATH_INTERVAL * 0.5,
     );
 
-    let cached_velocity = world.velocities[enemy.id as usize].unwrap();
+    let cached_velocity = world.velocity(enemy).unwrap();
     assert!(cached_velocity.vx.abs() < 0.01);
     assert!(cached_velocity.vy > 0.0);
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), NAVIGATION_REPATH_INTERVAL);
 
-    let repathed_velocity = world.velocities[enemy.id as usize].unwrap();
+    let repathed_velocity = world.velocity(enemy).unwrap();
     assert!(repathed_velocity.vx > 0.0);
     assert!(repathed_velocity.vy.abs() < 0.01);
 }
@@ -321,7 +306,7 @@ fn enemy_movement_pattern_chase_player_reuses_navigation_cache() {
 #[test]
 fn enemy_movement_pattern_chase_player_ignores_stale_player_handle() {
     let (mut scene, mut world, _, _) = playing_scene();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
     world.set_movement_pattern(
         enemy,
@@ -331,16 +316,12 @@ fn enemy_movement_pattern_chase_player_ignores_stale_player_handle() {
         },
     );
     world.despawn(player);
-    world.player = Some(player);
-    assert!(world.player.is_some());
+    world.set_raw_player_entity_for_test(Some(player));
     assert!(world.player_entity().is_none());
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
-    assert_eq!(
-        world.velocities[enemy.id as usize],
-        Some(Velocity::default())
-    );
+    assert_eq!(world.velocity(enemy), Some(Velocity::default()));
     assert!(scene.navigation_targets.is_empty());
 }
 
@@ -371,7 +352,7 @@ fn enemy_movement_pattern_chase_entity_uses_tilemap_navigation_waypoint() {
 
     scene.update_enemy_velocity(&mut world, &tilemap, 0.0);
 
-    let velocity = world.velocities[enemy.id as usize].unwrap();
+    let velocity = world.velocity(enemy).unwrap();
     assert!(velocity.vx.abs() < 0.01);
     assert!(velocity.vy > 0.0);
 }
@@ -379,8 +360,8 @@ fn enemy_movement_pattern_chase_entity_uses_tilemap_navigation_waypoint() {
 #[test]
 fn enemy_movement_pattern_chase_entity_does_not_reuse_player_navigation_cache() {
     let (mut scene, mut world, _, _) = playing_scene();
-    let player = world.player.unwrap();
-    world.transforms[player.id as usize] = Some(Transform2D { x: 25.0, y: 5.0 });
+    let player = world.player_entity().unwrap();
+    world.set_transform(player, Transform2D { x: 25.0, y: 5.0 });
     let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
     let target = world.spawn_enemy(25.0, 5.0, DEFAULT_TEXTURE_ID);
     world.set_movement_pattern(
@@ -404,7 +385,7 @@ fn enemy_movement_pattern_chase_entity_does_not_reuse_player_navigation_cache() 
     );
 
     scene.update_enemy_velocity(&mut world, &tilemap, 0.0);
-    let player_target_velocity = world.velocities[enemy.id as usize].unwrap();
+    let player_target_velocity = world.velocity(enemy).unwrap();
     assert!(player_target_velocity.vx.abs() < 0.01);
     assert!(player_target_velocity.vy > 0.0);
 
@@ -421,7 +402,7 @@ fn enemy_movement_pattern_chase_entity_does_not_reuse_player_navigation_cache() 
         NAVIGATION_REPATH_INTERVAL * 0.5,
     );
 
-    let entity_target_velocity = world.velocities[enemy.id as usize].unwrap();
+    let entity_target_velocity = world.velocity(enemy).unwrap();
     assert!(entity_target_velocity.vx > 0.0);
     assert!(entity_target_velocity.vy.abs() < 0.01);
 }
@@ -442,17 +423,14 @@ fn enemy_movement_pattern_chase_entity_uses_generation_checked_target() {
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
-    assert_eq!(
-        world.velocities[enemy.id as usize],
-        Some(Velocity::default())
-    );
+    assert_eq!(world.velocity(enemy), Some(Velocity::default()));
 }
 
 #[test]
 fn enemy_movement_pattern_orbit_uses_pattern_radius() {
     let (mut scene, mut world, _, _) = playing_scene();
-    let player = world.player.unwrap();
-    world.transforms[player.id as usize] = Some(Transform2D { x: 100.0, y: 100.0 });
+    let player = world.player_entity().unwrap();
+    world.set_transform(player, Transform2D { x: 100.0, y: 100.0 });
     let enemy = world.spawn_enemy(280.0, 100.0, DEFAULT_TEXTURE_ID);
     world.set_movement_pattern(
         enemy,
@@ -466,7 +444,7 @@ fn enemy_movement_pattern_orbit_uses_pattern_radius() {
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
-    let velocity = world.velocities[enemy.id as usize].unwrap();
+    let velocity = world.velocity(enemy).unwrap();
     assert!(velocity.vx > 0.0);
     assert!(velocity.vy > 0.0);
 }
@@ -485,7 +463,7 @@ fn enemy_movement_pattern_topdown_input_falls_back_to_scene_behavior() {
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
-    let velocity = world.velocities[enemy.id as usize].unwrap();
+    let velocity = world.velocity(enemy).unwrap();
     assert!(velocity.vx > 0.0);
     assert!(velocity.vy.abs() < 0.01);
 }

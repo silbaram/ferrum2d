@@ -86,6 +86,34 @@ impl BuiltInSceneSlots {
             }
         }
     }
+
+    pub(super) fn reset_playing_active(&mut self, context: &mut SceneResetContext<'_>) {
+        match self.active {
+            ActiveScene::Shooter => {
+                BuiltInSceneRuntime::reset_playing(&mut self.shooter, context);
+            }
+            ActiveScene::Breakout => {
+                BuiltInSceneRuntime::reset_playing(&mut self.breakout, context);
+            }
+            ActiveScene::Platformer => {
+                BuiltInSceneRuntime::reset_playing(&mut self.platformer, context);
+            }
+        }
+    }
+
+    pub(super) fn reset_to_title_active(&mut self, context: &mut SceneResetContext<'_>) {
+        match self.active {
+            ActiveScene::Shooter => {
+                BuiltInSceneRuntime::reset_to_title(&mut self.shooter, context);
+            }
+            ActiveScene::Breakout => {
+                BuiltInSceneRuntime::reset_to_title(&mut self.breakout, context);
+            }
+            ActiveScene::Platformer => {
+                BuiltInSceneRuntime::reset_to_title(&mut self.platformer, context);
+            }
+        }
+    }
 }
 
 pub(super) struct DataSceneRuntime {
@@ -109,14 +137,14 @@ impl DataSceneRuntime {
         self.game_state
     }
 
-    pub(super) fn reset_playing(&mut self, world: &mut World) {
-        *world = World::default();
+    pub(super) fn reset_playing(&mut self, context: &mut SceneResetContext<'_>) {
+        *context.world = World::default();
         self.score = 0;
         self.game_state = GameState::Playing;
     }
 
-    pub(super) fn reset_to_title(&mut self, world: &mut World) {
-        self.reset_playing(world);
+    pub(super) fn reset_to_title(&mut self, context: &mut SceneResetContext<'_>) {
+        self.reset_playing(context);
     }
 
     pub(super) fn update(&mut self, context: &mut SceneUpdateContext<'_>, delta: f32) {
@@ -129,6 +157,52 @@ impl DataSceneRuntime {
         context
             .tilemap
             .resolve_dynamic_collisions_with_counters(context.world, context.physics_counters);
+    }
+}
+
+pub(super) struct SceneRuntimeDispatch<'a> {
+    mode: SceneMode,
+    built_in: &'a mut BuiltInSceneSlots,
+    data: &'a mut DataSceneRuntime,
+}
+
+impl<'a> SceneRuntimeDispatch<'a> {
+    pub(super) fn new(
+        mode: SceneMode,
+        built_in: &'a mut BuiltInSceneSlots,
+        data: &'a mut DataSceneRuntime,
+    ) -> Self {
+        Self {
+            mode,
+            built_in,
+            data,
+        }
+    }
+
+    pub(super) fn reset_playing(&mut self, context: &mut SceneResetContext<'_>) {
+        match self.mode {
+            SceneMode::BuiltIn => self.built_in.reset_playing_active(context),
+            SceneMode::Data => self.data.reset_playing(context),
+        }
+    }
+
+    pub(super) fn reset_to_title(&mut self, context: &mut SceneResetContext<'_>) {
+        match self.mode {
+            SceneMode::BuiltIn => self.built_in.reset_to_title_active(context),
+            SceneMode::Data => self.data.reset_to_title(context),
+        }
+    }
+
+    pub(super) fn update(
+        &mut self,
+        context: &mut SceneUpdateContext<'_>,
+        input: InputState,
+        delta: f32,
+    ) {
+        match self.mode {
+            SceneMode::BuiltIn => self.built_in.update_active(context, input, delta),
+            SceneMode::Data => self.data.update(context, delta),
+        }
     }
 }
 
@@ -299,7 +373,13 @@ impl Engine {
 
     pub(super) fn activate_data_scene(&mut self) {
         self.scene_mode = SceneMode::Data;
-        self.data_scene.reset_playing(&mut self.world);
+        let mut context = SceneResetContext {
+            world: &mut self.world,
+            camera: &mut self.camera,
+            audio_events: &mut self.frame_buffers.audio_events,
+        };
+        SceneRuntimeDispatch::new(self.scene_mode, &mut self.scenes, &mut self.data_scene)
+            .reset_playing(&mut context);
     }
 
     pub(super) fn active_scene_score(&self) -> u32 {
@@ -505,56 +585,32 @@ impl Engine {
     }
 
     pub(super) fn reset_active_scene_game(&mut self) {
-        if self.scene_mode == SceneMode::Data {
-            self.data_scene.reset_playing(&mut self.world);
-            return;
-        }
         let mut context = SceneResetContext {
             world: &mut self.world,
             camera: &mut self.camera,
-            audio_events: &mut self.audio_events,
+            audio_events: &mut self.frame_buffers.audio_events,
         };
-        match self.scenes.active() {
-            ActiveScene::Shooter => {
-                BuiltInSceneRuntime::reset_playing(&mut self.scenes.shooter, &mut context);
-            }
-            ActiveScene::Breakout => {
-                BuiltInSceneRuntime::reset_playing(&mut self.scenes.breakout, &mut context);
-            }
-            ActiveScene::Platformer => {
-                BuiltInSceneRuntime::reset_playing(&mut self.scenes.platformer, &mut context);
-            }
-        }
+        SceneRuntimeDispatch::new(self.scene_mode, &mut self.scenes, &mut self.data_scene)
+            .reset_playing(&mut context);
     }
 
     pub(super) fn reset_to_title(&mut self) {
-        if self.scene_mode == SceneMode::Data {
-            self.data_scene.reset_to_title(&mut self.world);
-            self.particles.clear();
-            self.tweens.clear();
-            self.clear_physics_history();
-            self.clear_scene_output_buffers();
-            return;
-        }
-        let mut context = SceneResetContext {
-            world: &mut self.world,
-            camera: &mut self.camera,
-            audio_events: &mut self.audio_events,
-        };
-        match self.scenes.active() {
-            ActiveScene::Shooter => {
-                BuiltInSceneRuntime::reset_to_title(&mut self.scenes.shooter, &mut context);
-            }
-            ActiveScene::Breakout => {
-                BuiltInSceneRuntime::reset_to_title(&mut self.scenes.breakout, &mut context);
-            }
-            ActiveScene::Platformer => {
-                BuiltInSceneRuntime::reset_to_title(&mut self.scenes.platformer, &mut context);
-            }
+        let scene_mode = self.scene_mode;
+        {
+            let mut context = SceneResetContext {
+                world: &mut self.world,
+                camera: &mut self.camera,
+                audio_events: &mut self.frame_buffers.audio_events,
+            };
+            SceneRuntimeDispatch::new(scene_mode, &mut self.scenes, &mut self.data_scene)
+                .reset_to_title(&mut context);
         }
         self.particles.clear();
         self.tweens.clear();
         self.clear_physics_history();
+        if scene_mode == SceneMode::Data {
+            self.clear_scene_output_buffers();
+        }
     }
 
     pub(super) fn update_scene(&mut self, delta: f32, input: InputState) {
@@ -562,21 +618,22 @@ impl Engine {
             world: &mut self.world,
             camera: &mut self.camera,
             input_actions: &self.input_actions,
-            audio_events: &mut self.audio_events,
+            audio_events: &mut self.frame_buffers.audio_events,
             tilemap: &self.tilemap,
             physics_counters: &mut self.physics_counters,
-            collision_events: &mut self.collision_events,
+            collision_events: &mut self.frame_buffers.collision_events,
             collision_event_counts: &mut self.collision_event_counts,
-            gameplay_events: &mut self.gameplay_events,
-            effect_events: &mut self.effect_events,
+            gameplay_events: &mut self.frame_buffers.gameplay_events,
+            effect_events: &mut self.frame_buffers.effect_events,
             particles: &mut self.particles,
             tweens: &mut self.tweens,
             particle_presets: &self.particle_presets,
             shooter_hit_particle_preset: self.shooter_hit_particle_preset,
         };
-        match self.scene_mode {
-            SceneMode::BuiltIn => self.scenes.update_active(&mut context, input, delta),
-            SceneMode::Data => self.data_scene.update(&mut context, delta),
-        }
+        SceneRuntimeDispatch::new(self.scene_mode, &mut self.scenes, &mut self.data_scene).update(
+            &mut context,
+            input,
+            delta,
+        );
     }
 }

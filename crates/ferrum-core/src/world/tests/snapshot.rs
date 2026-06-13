@@ -25,15 +25,9 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     );
     world.set_gameplay_tags(a, GameplayTags::new(1 << 5).unwrap());
     world.set_gameplay_faction(a, GameplayFaction::new(5, 0).unwrap());
-    world
-        .gameplay_faction_relations
-        .set_default_relation(FactionRelation::Friendly);
-    assert!(world
-        .gameplay_faction_relations
-        .set_relation(5, 6, FactionRelation::Hostile));
-    assert!(world
-        .gameplay_faction_relations
-        .set_relation(5, 5, FactionRelation::Neutral));
+    world.set_gameplay_faction_default_relation(FactionRelation::Friendly);
+    assert!(world.set_gameplay_faction_relation(5, 6, FactionRelation::Hostile));
+    assert!(world.set_gameplay_faction_relation(5, 5, FactionRelation::Neutral));
     let mut state_machine = BehaviorStateMachine::new(1);
     assert!(state_machine.push_transition(BehaviorStateTransition::new(1, 2, 7)));
     assert!(world.set_behavior_state_machine(a, state_machine));
@@ -79,7 +73,7 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     let body = world.rigid_bodies[a.id as usize].as_mut().unwrap();
     body.sleep_timer_seconds = 0.5;
     body.is_sleeping = true;
-    world.rigid_contact_impulses.push(RigidContactImpulse {
+    world.record_rigid_contact_impulse(RigidContactImpulse {
         entity_a: a,
         entity_b: b,
         point_x: 4.0,
@@ -99,7 +93,7 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     world.clear_movement_pattern(a);
     world.clear_gameplay_tags(a);
     world.clear_gameplay_faction(a);
-    world.gameplay_faction_relations.clear();
+    world.clear_gameplay_faction_relations();
     world.clear_behavior_state_machine(a);
     world.clear_behavior_state_enter_actions(a);
     world.clear_pickup(a);
@@ -107,7 +101,7 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     world.clear_gameplay_timer_trigger(a);
     world.clear_collision_reactions(a);
     world.clear_distance_joint(joint);
-    world.rigid_contact_impulses.clear();
+    world.clear_rigid_contact_impulses();
     world.despawn(a);
 
     assert_ne!(world.rigid_body(a), Some(expected_body));
@@ -145,15 +139,15 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     assert_eq!(world.gameplay_tags(a), GameplayTags::new(1 << 5));
     assert_eq!(world.gameplay_faction(a), GameplayFaction::new(5, 0));
     assert_eq!(
-        world.gameplay_faction_relations.default_relation(),
+        world.gameplay_faction_default_relation(),
         FactionRelation::Friendly
     );
     assert_eq!(
-        world.gameplay_faction_relations.relation(5, 6),
+        world.gameplay_faction_relation(5, 6),
         Some(FactionRelation::Hostile)
     );
     assert_eq!(
-        world.gameplay_faction_relations.relation(5, 5),
+        world.gameplay_faction_relation(5, 5),
         Some(FactionRelation::Neutral)
     );
     assert_eq!(world.gameplay_tag_query_indices(5), &[a.id as usize]);

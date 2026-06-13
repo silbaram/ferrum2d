@@ -56,8 +56,8 @@ pub(in crate::physics) fn solve_rope_joint_velocity_constraint(
         return false;
     };
 
-    let velocity_a = world.velocities[context.a_index].unwrap_or_default();
-    let velocity_b = world.velocities[context.b_index].unwrap_or_default();
+    let velocity_a = world.velocity_at_index_or_default(context.a_index);
+    let velocity_b = world.velocity_at_index_or_default(context.b_index);
     let relative_velocity = Velocity {
         vx: velocity_b.vx - velocity_a.vx,
         vy: velocity_b.vy - velocity_a.vy,
@@ -102,13 +102,13 @@ pub(in crate::physics) fn solve_rope_joint_position_constraint(
         return false;
     }
     if context.inverse_mass_a > 0.0 {
-        if let Some(transform) = world.transforms[context.a_index].as_mut() {
+        if let Some(transform) = world.transform_mut_at_index(context.a_index) {
             transform.x += context.normal.vx * correction_magnitude * context.inverse_mass_a;
             transform.y += context.normal.vy * correction_magnitude * context.inverse_mass_a;
         }
     }
     if context.inverse_mass_b > 0.0 {
-        if let Some(transform) = world.transforms[context.b_index].as_mut() {
+        if let Some(transform) = world.transform_mut_at_index(context.b_index) {
             transform.x -= context.normal.vx * correction_magnitude * context.inverse_mass_b;
             transform.y -= context.normal.vy * correction_magnitude * context.inverse_mass_b;
         }
@@ -126,8 +126,8 @@ pub(in crate::physics) fn rope_joint_constraint_context(
     }
     let a_index = valid_world_entity_index(world, joint.entity_a)?;
     let b_index = valid_world_entity_index(world, joint.entity_b)?;
-    let transform_a = world.transforms.get(a_index).copied().flatten()?;
-    let transform_b = world.transforms.get(b_index).copied().flatten()?;
+    let transform_a = world.transform_at_index(a_index)?;
+    let transform_b = world.transform_at_index(b_index)?;
     let inverse_mass_a = rigid_body_inverse_mass(world, a_index);
     let inverse_mass_b = rigid_body_inverse_mass(world, b_index);
     let inverse_mass_sum = inverse_mass_a + inverse_mass_b;

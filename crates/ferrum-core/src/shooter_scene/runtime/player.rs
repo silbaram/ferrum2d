@@ -98,7 +98,7 @@ impl ShooterScene {
         world: &mut World,
         input: FrameInputSnapshot,
     ) {
-        if let Some(player) = world.player {
+        if let Some(player) = world.player_entity() {
             apply_topdown_input_movement_phase(
                 world,
                 TopdownInputMovementPhaseConfig {
@@ -166,7 +166,7 @@ impl ShooterScene {
         tilemap: &Tilemap,
         mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
     ) {
-        let Some(player) = world.player else {
+        let Some(player) = world.player_entity() else {
             return;
         };
         let dir = Self::normalized_input_direction(input.current);
@@ -739,7 +739,7 @@ impl ShooterScene {
     }
 
     pub(in crate::shooter_scene) fn clamp_player_to_world(&self, world: &mut World) {
-        let Some(player) = world.player else {
+        let Some(player) = world.player_entity() else {
             return;
         };
         PhysicsSystem::clamp_entity_to_bounds(

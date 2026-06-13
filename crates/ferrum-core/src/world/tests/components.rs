@@ -91,6 +91,169 @@ fn generic_component_setters_update_entity_components() {
 }
 
 #[test]
+fn transform_and_velocity_index_helpers_are_liveness_checked() {
+    let mut world = World::default();
+    let entity = world.spawn_entity();
+    let index = entity.id as usize;
+    let inserted_rotation_entity = world.spawn_entity();
+    let inserted_rotation_index = inserted_rotation_entity.id as usize;
+    let transform = Transform2D { x: 4.0, y: 8.0 };
+    let updated_transform = Transform2D { x: -2.0, y: 6.0 };
+    let velocity = Velocity { vx: 2.0, vy: 3.0 };
+    let updated_velocity = Velocity { vx: -5.0, vy: 7.0 };
+    let rotation = Rotation2D { radians: 0.5 };
+    let angular_velocity = AngularVelocity {
+        radians_per_second: 1.5,
+    };
+    let updated_angular_velocity = AngularVelocity {
+        radians_per_second: -2.5,
+    };
+
+    world.set_transform(entity, transform);
+    world.set_velocity(entity, velocity);
+    world.set_rotation(entity, rotation);
+    world.set_angular_velocity(entity, angular_velocity);
+
+    assert_eq!(world.transform_at_index(index), Some(transform));
+    assert_eq!(world.velocity_at_index(index), Some(velocity));
+    assert_eq!(world.velocity_at_index_or_default(index), velocity);
+    assert_eq!(world.rotation_at_index(index), Some(rotation));
+    assert_eq!(world.rotation_at_index_or_default(index), rotation);
+    assert_eq!(
+        world.angular_velocity_at_index(index),
+        Some(angular_velocity)
+    );
+    assert_eq!(
+        world.angular_velocity_at_index_or_default(index),
+        angular_velocity
+    );
+    assert!(world.set_transform_at_index(index, updated_transform));
+    assert_eq!(world.transform(entity), Some(updated_transform));
+    assert!(world.clear_transform_for_test(entity));
+    assert_eq!(world.transform(entity), None);
+    assert!(world.set_transform_at_index(index, updated_transform));
+    assert!(world.set_velocity_at_index(index, updated_velocity));
+    assert!(world.set_angular_velocity_at_index(index, updated_angular_velocity));
+    assert_eq!(world.velocity(entity), Some(updated_velocity));
+    assert_eq!(
+        world.angular_velocity(entity),
+        Some(updated_angular_velocity)
+    );
+
+    let transform_slot = world.transform_mut_at_index(index).unwrap();
+    transform_slot.x = 12.0;
+    assert_eq!(world.transform(entity).map(|value| value.x), Some(12.0));
+
+    let rotation_slot = world.rotation_mut_at_index(index).unwrap();
+    rotation_slot.radians = 3.0;
+    assert_eq!(world.rotation(entity).map(|value| value.radians), Some(3.0));
+
+    let inserted_rotation = world
+        .rotation_mut_or_insert_default_at_index(inserted_rotation_index)
+        .unwrap();
+    assert_eq!(*inserted_rotation, Rotation2D::default());
+    inserted_rotation.radians = 1.25;
+    assert_eq!(
+        world.rotation(inserted_rotation_entity),
+        Some(Rotation2D { radians: 1.25 })
+    );
+
+    world.despawn(entity);
+    world.despawn(inserted_rotation_entity);
+
+    assert_eq!(world.transform_at_index(index), None);
+    assert_eq!(world.velocity_at_index(index), None);
+    assert_eq!(
+        world.velocity_at_index_or_default(index),
+        Velocity::default()
+    );
+    assert_eq!(world.rotation_at_index(index), None);
+    assert_eq!(
+        world.rotation_at_index_or_default(index),
+        Rotation2D::default()
+    );
+    assert_eq!(world.angular_velocity_at_index(index), None);
+    assert_eq!(
+        world.angular_velocity_at_index_or_default(index),
+        AngularVelocity::default()
+    );
+    assert!(world.transform_mut_at_index(index).is_none());
+    assert!(world.rotation_mut_at_index(index).is_none());
+    assert!(world
+        .rotation_mut_or_insert_default_at_index(inserted_rotation_index)
+        .is_none());
+    assert!(!world.clear_transform_for_test(entity));
+    assert!(!world.set_transform_at_index(index, updated_transform));
+    assert!(!world.set_velocity_at_index(index, updated_velocity));
+    assert!(!world.set_angular_velocity_at_index(index, updated_angular_velocity));
+}
+
+#[test]
+fn renderable_sprite_index_helper_requires_live_transform_and_sprite() {
+    let mut world = World::default();
+    let entity = world.spawn_enemy(0.0, 0.0, 0);
+    let index = entity.id as usize;
+    let missing_sprite = world.spawn_entity();
+    let missing_sprite_index = missing_sprite.id as usize;
+    let transform = Transform2D { x: 12.0, y: 24.0 };
+    let sprite = Sprite {
+        texture_id: 3,
+        width: 16.0,
+        height: 20.0,
+        u0: 0.0,
+        v0: 0.0,
+        u1: 1.0,
+        v1: 1.0,
+        r: 1.0,
+        g: 0.5,
+        b: 0.25,
+        a: 1.0,
+    };
+
+    world.set_transform(entity, transform);
+    *world
+        .sprite_mut_at_index(index)
+        .expect("spawned enemy should have a sprite") = sprite;
+    world.set_transform(missing_sprite, transform);
+
+    assert_eq!(
+        world.renderable_sprite_at_index(index),
+        Some((transform, sprite))
+    );
+    assert_eq!(world.renderable_sprite_at_index(missing_sprite_index), None);
+
+    world.despawn(entity);
+
+    assert_eq!(world.renderable_sprite_at_index(index), None);
+}
+
+#[test]
+fn sprite_mut_index_helper_requires_live_sprite() {
+    let mut world = World::default();
+    let entity = world.spawn_enemy(4.0, 8.0, 7);
+    let index = entity.id as usize;
+    let missing_sprite = world.spawn_entity();
+    let missing_sprite_index = missing_sprite.id as usize;
+
+    let sprite = world
+        .sprite_mut_at_index(index)
+        .expect("spawned enemy should have a sprite");
+    sprite.texture_id = 42;
+
+    assert_eq!(
+        world.sprite_at_index(index).map(|sprite| sprite.texture_id),
+        Some(42)
+    );
+    assert!(world.sprite_mut_at_index(missing_sprite_index).is_none());
+    assert!(world.sprite_at_index(missing_sprite_index).is_none());
+
+    world.despawn(entity);
+
+    assert!(world.sprite_mut_at_index(index).is_none());
+    assert!(world.sprite_at_index(index).is_none());
+}
+
+#[test]
 fn gameplay_component_setters_update_movement_and_collision_reactions() {
     let mut world = World::default();
     let entity = world.spawn_entity();

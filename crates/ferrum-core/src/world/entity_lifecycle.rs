@@ -1,4 +1,4 @@
-use super::{World, DEAD_ALIVE_POSITION};
+use super::{component_storage::WorldComponentStorage, World, DEAD_ALIVE_POSITION};
 use crate::entity::Entity;
 
 impl World {
@@ -18,43 +18,7 @@ impl World {
         self.alive.push(true);
         self.alive_positions.push(DEAD_ALIVE_POSITION);
         self.track_alive_index(id as usize);
-        self.transforms.push(None);
-        self.sprites.push(None);
-        self.sprite_animations.push(None);
-        self.velocities.push(None);
-        self.rotations.push(None);
-        self.angular_velocities.push(None);
-        self.height_spans.push(None);
-        self.projectile_arcs.push(None);
-        self.rigid_bodies.push(None);
-        self.colliders.push(None);
-        self.circle_colliders.push(None);
-        self.oriented_box_colliders.push(None);
-        self.capsule_colliders.push(None);
-        self.edge_colliders.push(None);
-        self.chain_colliders.push(None);
-        self.convex_polygon_colliders.push(None);
-        self.compound_colliders.push(Vec::new());
-        self.collider_materials.push(None);
-        self.collision_filters.push(None);
-        self.lifetimes.push(None);
-        self.projectile_policies.push(None);
-        self.bullet_lifetimes.push(None);
-        self.projectile_collision_targets.push(None);
-        self.projectile_tile_impacts.push(None);
-        self.healths.push(None);
-        self.damages.push(None);
-        self.score_rewards.push(None);
-        self.gameplay_factions.push(None);
-        self.gameplay_tags.push(None);
-        self.action_bindings.push(None);
-        self.pickups.push(None);
-        self.interactions.push(None);
-        self.movement_patterns.push(None);
-        self.collision_reactions.push(None);
-        self.behavior_state_machines.push(None);
-        self.behavior_state_enter_actions.push(None);
-        self.gameplay_timer_triggers.push(None);
+        WorldComponentStorage::push_empty_entity(self);
         Entity { id, generation: 0 }
     }
 
@@ -63,42 +27,7 @@ impl World {
         if i < self.alive.len() && self.alive[i] && self.generations[i] == entity.generation {
             self.alive[i] = false;
             self.generations[i] += 1;
-            self.transforms[i] = None;
-            self.sprites[i] = None;
-            self.sprite_animations[i] = None;
-            self.velocities[i] = None;
-            self.rotations[i] = None;
-            self.angular_velocities[i] = None;
-            self.height_spans[i] = None;
-            self.projectile_arcs[i] = None;
-            self.rigid_bodies[i] = None;
-            self.colliders[i] = None;
-            self.circle_colliders[i] = None;
-            self.oriented_box_colliders[i] = None;
-            self.capsule_colliders[i] = None;
-            self.edge_colliders[i] = None;
-            self.chain_colliders[i] = None;
-            self.convex_polygon_colliders[i] = None;
-            self.compound_colliders[i].clear();
-            self.collider_materials[i] = None;
-            self.collision_filters[i] = None;
-            self.lifetimes[i] = None;
-            self.projectile_policies[i] = None;
-            self.bullet_lifetimes[i] = None;
-            self.projectile_collision_targets[i] = None;
-            self.projectile_tile_impacts[i] = None;
-            self.healths[i] = None;
-            self.damages[i] = None;
-            self.score_rewards[i] = None;
-            self.clear_gameplay_query_indices_at_index(i);
-            self.action_bindings[i] = None;
-            self.pickups[i] = None;
-            self.interactions[i] = None;
-            self.movement_patterns[i] = None;
-            self.collision_reactions[i] = None;
-            self.behavior_state_machines[i] = None;
-            self.behavior_state_enter_actions[i] = None;
-            self.gameplay_timer_triggers[i] = None;
+            WorldComponentStorage::clear_entity(self, i);
             self.untrack_alive_index(i);
             if self.player == Some(entity) {
                 self.player = None;
@@ -111,8 +40,34 @@ impl World {
         self.alive_indices.len()
     }
 
+    pub(crate) fn entity_capacity(&self) -> usize {
+        self.alive.len()
+    }
+
     pub(crate) fn alive_indices(&self) -> &[usize] {
         &self.alive_indices
+    }
+
+    pub(crate) fn is_alive_index(&self, index: usize) -> bool {
+        self.alive.get(index).copied().unwrap_or(false)
+    }
+
+    pub(crate) fn generation_at_index(&self, index: usize) -> Option<u32> {
+        self.generations.get(index).copied()
+    }
+
+    pub(crate) fn entity_at_index(&self, index: usize) -> Option<Entity> {
+        if !self.is_alive_index(index) {
+            return None;
+        }
+        Some(Entity {
+            id: u32::try_from(index).ok()?,
+            generation: self.generation_at_index(index)?,
+        })
+    }
+
+    pub(crate) fn is_current_entity(&self, entity: Entity) -> bool {
+        self.valid_index(entity).is_some()
     }
 
     pub(super) fn valid_index(&self, entity: Entity) -> Option<usize> {

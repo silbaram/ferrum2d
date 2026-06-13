@@ -726,7 +726,8 @@ mod tests {
                 PlatformerControllerTuning::default()
             ))
         );
-        let reactions = world.collision_reactions[player.id as usize]
+        let reactions = world
+            .collision_reactions(player)
             .expect("player has authored landing reactions");
         assert_eq!(reactions.len(), 1);
         assert!(reactions.iter().any(|reaction| matches!(

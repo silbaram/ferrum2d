@@ -9,7 +9,7 @@ fn collision_layers_resolve_player_overlap() {
 
     tilemap.resolve_dynamic_collisions(&mut world);
 
-    let transform = world.transforms[player.id as usize].unwrap();
+    let transform = world.transform(player).unwrap();
     assert_eq!(transform.x, 50.0);
     assert_eq!(transform.y, 16.0);
 }
@@ -40,7 +40,7 @@ fn non_collision_layers_do_not_block_player() {
     tilemap.resolve_dynamic_collisions(&mut world);
 
     assert_eq!(
-        world.transforms[player.id as usize],
+        world.transform(player),
         Some(Transform2D { x: 20.0, y: 16.0 })
     );
 }
@@ -61,7 +61,7 @@ fn dynamic_resolution_preserves_flattened_tile_order_across_chunk_boundary() {
 
     tilemap.resolve_dynamic_collisions_with_counters(&mut world, &mut counters);
 
-    let transform = world.transforms[entity.id as usize].unwrap();
+    let transform = world.transform(entity).unwrap();
     assert_eq!(transform.x, 85.0);
     assert_eq!(transform.y, 30.0);
     assert_eq!(counters.tile_candidate_checks, 3);

@@ -27,7 +27,7 @@ fn fixed_timestep_waits_until_accumulator_reaches_step() {
 
     assert_eq!(engine.physics_fixed_steps(), 0);
     assert!((engine.fixed_timestep_alpha() - 0.5).abs() < 0.01);
-    assert!(engine.collision_events.is_empty());
+    assert!(engine.frame_buffers.collision_events.is_empty());
 }
 
 #[test]

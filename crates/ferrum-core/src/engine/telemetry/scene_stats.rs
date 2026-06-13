@@ -21,7 +21,7 @@ impl Engine {
     }
 
     pub fn sprite_count(&self) -> usize {
-        self.render_commands.len()
+        self.frame_buffers.render_commands.len()
     }
 
     pub fn camera_x(&self) -> f32 {

@@ -18,9 +18,7 @@ pub(in crate::physics::solver) fn cached_contact_impulse_for_point(
     point_y: f32,
 ) -> Option<(f32, f32)> {
     world
-        .rigid_contact_impulses
-        .iter()
-        .copied()
+        .rigid_contact_impulses()
         .find(|entry| {
             entry.entity_a == manifold.pair.a
                 && entry.entity_b == manifold.pair.b
@@ -68,14 +66,15 @@ pub(in crate::physics) fn store_rigid_contact_impulses(
     world: &mut World,
     constraints: &[RigidContactConstraint],
 ) -> u32 {
-    world.rigid_contact_impulses.clear();
+    world.clear_rigid_contact_impulses();
+    let mut stored_impulses = 0_u32;
     for constraint in constraints {
         if constraint.normal_impulse.abs() <= CONTACT_IMPULSE_EPSILON
             && constraint.tangent_impulse.abs() <= CONTACT_IMPULSE_EPSILON
         {
             continue;
         }
-        world.rigid_contact_impulses.push(RigidContactImpulse {
+        world.record_rigid_contact_impulse(RigidContactImpulse {
             entity_a: constraint.pair.a,
             entity_b: constraint.pair.b,
             point_x: constraint.point.x,
@@ -85,8 +84,9 @@ pub(in crate::physics) fn store_rigid_contact_impulses(
             normal_impulse: constraint.normal_impulse.max(0.0),
             tangent_impulse: constraint.tangent_impulse,
         });
+        stored_impulses = stored_impulses.saturating_add(1);
     }
-    world.rigid_contact_impulses.len() as u32
+    stored_impulses
 }
 
 fn contact_cache_point_matches(entry: RigidContactImpulse, point_x: f32, point_y: f32) -> bool {

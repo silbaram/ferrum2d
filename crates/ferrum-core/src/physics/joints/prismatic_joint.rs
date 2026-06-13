@@ -416,8 +416,8 @@ pub(in crate::physics) fn prismatic_joint_constraint_context(
     }
     let a_index = valid_world_entity_index(world, joint.entity_a)?;
     let b_index = valid_world_entity_index(world, joint.entity_b)?;
-    let transform_a = world.transforms.get(a_index).copied().flatten()?;
-    let transform_b = world.transforms.get(b_index).copied().flatten()?;
+    let transform_a = world.transform_at_index(a_index)?;
+    let transform_b = world.transform_at_index(b_index)?;
     let inverse_mass_a = rigid_body_inverse_mass(world, a_index);
     let inverse_mass_b = rigid_body_inverse_mass(world, b_index);
     let inverse_inertia_a = rigid_body_inverse_inertia(world, a_index);
@@ -458,20 +458,8 @@ pub(in crate::physics) fn prismatic_joint_constraint_context(
     };
     let translation = dot_velocity(error, axis);
     let linear_error = dot_velocity(error, perpendicular);
-    let rotation_a = world
-        .rotations
-        .get(a_index)
-        .copied()
-        .flatten()
-        .map(finite_rotation)
-        .unwrap_or_default();
-    let rotation_b = world
-        .rotations
-        .get(b_index)
-        .copied()
-        .flatten()
-        .map(finite_rotation)
-        .unwrap_or_default();
+    let rotation_a = finite_rotation(world.rotation_at_index_or_default(a_index));
+    let rotation_b = finite_rotation(world.rotation_at_index_or_default(b_index));
     let angular_error = normalize_angle_radians(
         rotation_b.radians - rotation_a.radians - sanitize_finite(joint.reference_angle),
     );

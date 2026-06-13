@@ -50,20 +50,20 @@ fn wave_config_applies_spawn_preset_values() {
     scene.spawn_enemy_if_needed(&mut world);
 
     let enemy = world
-        .colliders
+        .alive_indices()
         .iter()
-        .enumerate()
-        .find(|(_, collider)| collider.is_some_and(|c| c.layer == CollisionLayer::Enemy))
-        .map(|(index, _)| index)
+        .copied()
+        .find(|&index| world.collider_layer_at(index) == Some(CollisionLayer::Enemy))
         .unwrap();
-    assert_eq!(world.transforms[enemy].unwrap().x, 800.0);
-    assert_eq!(world.transforms[enemy].unwrap().y, 480.0);
-    assert_eq!(world.healths[enemy], Some(5.0));
-    assert_eq!(world.score_rewards[enemy], Some(11));
+    let transform = world.transform_at_index(enemy).unwrap();
+    assert_eq!(transform.x, 800.0);
+    assert_eq!(transform.y, 480.0);
+    assert_eq!(world.health_at_index(enemy), Some(5.0));
+    assert_eq!(world.score_reward_at_index(enemy), Some(11));
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
-    assert_eq!(world.velocities[enemy], Some(Velocity::default()));
+    assert_eq!(world.velocity_at_index(enemy), Some(Velocity::default()));
 }
 
 #[test]

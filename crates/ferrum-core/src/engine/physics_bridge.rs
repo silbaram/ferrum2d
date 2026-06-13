@@ -31,18 +31,11 @@ impl Engine {
         entity_id: u32,
         entity_generation: u32,
     ) -> Option<Entity> {
-        let index = entity_id as usize;
-        if index < self.world.alive.len()
-            && self.world.alive[index]
-            && self.world.generations[index] == entity_generation
-        {
-            Some(Entity {
-                id: entity_id,
-                generation: entity_generation,
-            })
-        } else {
-            None
-        }
+        let entity = Entity {
+            id: entity_id,
+            generation: entity_generation,
+        };
+        self.world.is_current_entity(entity).then_some(entity)
     }
 
     pub(super) fn physics_body_collider_snapshot(

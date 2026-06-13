@@ -6,13 +6,13 @@ use crate::world::World;
 impl PhysicsSystem {
     pub fn clamp_entity_to_bounds(world: &mut World, entity: Entity, bounds: PhysicsBounds) {
         let i = entity.id as usize;
-        if i >= world.alive.len() || !world.alive[i] || world.generations[i] != entity.generation {
+        if !world.is_current_entity(entity) {
             return;
         }
         let Some(shape) = collider_shape(world, i) else {
             return;
         };
-        if let Some(transform) = world.transforms[i].as_mut() {
+        if let Some(transform) = world.transform_mut_at_index(i) {
             let collider_bounds = collider_bounds(*transform, shape);
             let mut dx = 0.0;
             let mut dy = 0.0;

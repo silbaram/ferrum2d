@@ -51,7 +51,7 @@ impl FrameTelemetry {
     pub(crate) fn from_engine(engine: &Engine) -> Self {
         let player_height_span = engine
             .world
-            .player
+            .player_entity()
             .and_then(|player| engine.world.height_span(player));
         let mut values = [0.0; FRAME_TELEMETRY_F64S];
         values[..FRAME_TELEMETRY_BASE_F64S].copy_from_slice(&[
@@ -59,7 +59,7 @@ impl FrameTelemetry {
             engine.active_scene_score() as f64,
             engine.world.alive_count() as f64,
             engine.active_scene_game_state_code() as f64,
-            engine.render_commands.len() as f64,
+            engine.frame_buffers.render_commands.len() as f64,
             engine.camera.x as f64,
             engine.camera.y as f64,
             if engine.fixed_timestep_enabled {
@@ -136,7 +136,7 @@ impl FrameTelemetry {
 impl Engine {
     pub(in crate::engine) fn write_frame_telemetry(&mut self) {
         let telemetry = FrameTelemetry::from_engine(self);
-        self.frame_telemetry = telemetry;
+        self.frame_buffers.frame_telemetry = telemetry;
     }
 }
 

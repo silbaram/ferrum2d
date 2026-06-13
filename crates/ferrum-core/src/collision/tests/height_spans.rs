@@ -60,7 +60,7 @@ fn swept_pairs_respect_height_span_filter() {
     let mut world = World::default();
     let moving = world.spawn_enemy(0.0, 0.0, 0);
     let target = world.spawn_enemy(8.0, 0.0, 0);
-    world.velocities[moving.id as usize] = Some(Velocity { vx: 80.0, vy: 0.0 });
+    world.set_velocity(moving, Velocity { vx: 80.0, vy: 0.0 });
     world.set_height_span_parts(moving, 0, 0.0, 8.0);
     world.set_height_span_parts(target, 0, 16.0, 8.0);
 

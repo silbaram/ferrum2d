@@ -834,6 +834,7 @@ fn engine_set_shooter_tilemap_tiles_rect_refreshes_queries_and_render_commands()
     engine.build_render_commands();
     assert_eq!(
         engine
+            .frame_buffers
             .render_commands
             .iter()
             .filter(|command| command.texture_id == 9.0)
@@ -852,6 +853,7 @@ fn engine_set_shooter_tilemap_tiles_rect_refreshes_queries_and_render_commands()
     engine.build_render_commands();
     assert_eq!(
         engine
+            .frame_buffers
             .render_commands
             .iter()
             .filter(|command| command.texture_id == 9.0)

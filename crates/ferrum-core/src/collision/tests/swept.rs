@@ -208,7 +208,7 @@ fn swept_layer_pairs_detects_fast_bullet_enemy_pass_through() {
     let mut world = World::default();
     let bullet = world.spawn_bullet(100.0, 50.0, 1000.0, 0.0, 0);
     let enemy = world.spawn_enemy(150.0, 50.0, 0);
-    world.transforms[bullet.id as usize] = Some(Transform2D { x: 200.0, y: 50.0 });
+    world.set_transform(bullet, Transform2D { x: 200.0, y: 50.0 });
 
     let pairs = CollisionSystem::build_swept_layer_pairs(
         &world,

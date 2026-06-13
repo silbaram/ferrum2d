@@ -67,12 +67,12 @@ impl Engine {
         if physics_debug_lines {
             self.build_physics_debug_lines();
         } else {
-            self.physics_debug_lines.clear();
+            self.frame_buffers.clear_physics_debug_lines();
         }
         if render_commands {
             self.build_render_commands();
         } else {
-            self.render_commands.clear();
+            self.frame_buffers.clear_render_commands();
         }
         if frame_telemetry {
             self.write_frame_telemetry();
@@ -102,7 +102,7 @@ impl Engine {
                 tick_gameplay_timer_triggers(
                     &mut self.world,
                     update.consumed_seconds,
-                    &mut self.gameplay_events,
+                    &mut self.frame_buffers.gameplay_events,
                 );
             }
         } else {
@@ -115,12 +115,15 @@ impl Engine {
                 tick_gameplay_timer_triggers(
                     &mut self.world,
                     delta as f32,
-                    &mut self.gameplay_events,
+                    &mut self.frame_buffers.gameplay_events,
                 );
             }
         }
-        let behavior_event_start = self.gameplay_events.len();
-        apply_behavior_state_machine_events(&mut self.world, &mut self.gameplay_events);
+        let behavior_event_start = self.frame_buffers.gameplay_events.len();
+        apply_behavior_state_machine_events(
+            &mut self.world,
+            &mut self.frame_buffers.gameplay_events,
+        );
         self.queue_behavior_state_enter_actions(behavior_event_start);
         self.particles.update(delta as f32);
     }
@@ -153,15 +156,15 @@ impl Engine {
     }
 
     pub fn clear_audio_events(&mut self) {
-        self.audio_events.clear();
+        self.frame_buffers.clear_audio_events();
     }
 
     pub fn clear_gameplay_events(&mut self) {
-        self.gameplay_events.clear();
+        self.frame_buffers.clear_gameplay_events();
     }
 
     pub fn clear_effect_events(&mut self) {
-        self.effect_events.clear();
+        self.frame_buffers.clear_effect_events();
     }
 
     pub fn set_collision_lifecycle_events_enabled(&mut self, enabled: bool) {
@@ -184,29 +187,21 @@ impl Engine {
 
 impl Engine {
     pub(super) fn clear_scene_output_buffers(&mut self) {
-        self.render_commands.clear();
-        self.render_items.clear();
-        self.audio_events.clear();
+        self.frame_buffers.clear_scene_output();
     }
 
     fn clear_physics_frame(&mut self) {
         self.physics_counters.clear();
-        self.collision_events.clear();
-        self.gameplay_events.clear();
-        self.effect_events.clear();
+        self.frame_buffers.clear_physics_frame_output();
         self.collision_event_counts.clear();
-        self.physics_debug_lines.clear();
         self.world.clear_rigid_body_ccd_debug_hits();
         self.clear_rigid_body_frame_stats();
     }
 
     pub(super) fn clear_physics_history(&mut self) {
         self.collision_event_tracker.clear();
-        self.collision_events.clear();
-        self.gameplay_events.clear();
-        self.effect_events.clear();
+        self.frame_buffers.clear_physics_frame_output();
         self.collision_event_counts.clear();
-        self.physics_debug_lines.clear();
         self.world.clear_rigid_body_ccd_debug_hits();
         self.fixed_timestep.reset();
         self.rigid_body_step_stats = RigidBodyStepStats::default();
@@ -239,7 +234,7 @@ impl Engine {
         }
         let counts = self
             .collision_event_tracker
-            .update(&self.world, &mut self.collision_events);
+            .update(&self.world, &mut self.frame_buffers.collision_events);
         let pair_counts = self.collision_event_tracker.current_pair_counts();
         self.physics_counters.collision_pairs = self
             .physics_counters
@@ -259,48 +254,27 @@ impl Engine {
     fn queue_behavior_state_enter_actions(&mut self, event_start: usize) {
         if self.scene_mode != SceneMode::BuiltIn
             || self.scenes.active() != ActiveScene::Shooter
-            || event_start >= self.gameplay_events.len()
-            || !self
-                .world
-                .behavior_state_enter_actions
-                .iter()
-                .any(Option::is_some)
+            || event_start >= self.frame_buffers.gameplay_events.len()
+            || !self.world.has_behavior_state_enter_actions()
         {
             return;
         }
 
-        let event_end = self.gameplay_events.len();
+        let event_end = self.frame_buffers.gameplay_events.len();
         for event_index in event_start..event_end {
-            let event = self.gameplay_events[event_index];
+            let event = self.frame_buffers.gameplay_events[event_index];
             if event.kind != GAMEPLAY_EVENT_BEHAVIOR_STATE_CHANGED {
-                continue;
-            }
-            let Some(actions) = self
-                .world
-                .behavior_state_enter_actions
-                .get(event.source_id as usize)
-                .and_then(|actions| *actions)
-            else {
-                continue;
-            };
-            if self
-                .world
-                .generations
-                .get(event.source_id as usize)
-                .copied()
-                != Some(event.source_generation)
-                || !self
-                    .world
-                    .alive
-                    .get(event.source_id as usize)
-                    .copied()
-                    .unwrap_or(false)
-            {
                 continue;
             }
             let source = Entity {
                 id: event.source_id,
                 generation: event.source_generation,
+            };
+            if !self.world.is_current_entity(source) {
+                continue;
+            }
+            let Some(actions) = self.world.behavior_state_enter_actions(source) else {
+                continue;
             };
             for action in actions.iter_for_state(event.token_id) {
                 match action.phase {
@@ -309,7 +283,8 @@ impl Engine {
                             ActionTriggerCommand::behavior_state_enter(source, action.action_id);
                         if let Err(data) = self.scenes.shooter.queue_action_trigger_result(command)
                         {
-                            self.gameplay_events
+                            self.frame_buffers
+                                .gameplay_events
                                 .push(action_failure_gameplay_event(data));
                         }
                     }
@@ -320,7 +295,7 @@ impl Engine {
 
     pub(super) fn build_physics_debug_lines(&mut self) {
         if !self.physics_debug_lines_enabled || self.physics_debug_line_flags == 0 {
-            self.physics_debug_lines.clear();
+            self.frame_buffers.clear_physics_debug_lines();
             return;
         }
         CollisionSystem::build_physics_debug_lines_with_flags_and_scratch_into(
@@ -328,7 +303,7 @@ impl Engine {
             &self.world,
             16.0,
             self.physics_debug_line_flags,
-            &mut self.physics_debug_lines,
+            &mut self.frame_buffers.physics_debug_lines,
         );
     }
 

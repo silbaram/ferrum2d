@@ -337,8 +337,8 @@ pub(in crate::physics) fn revolute_joint_constraint_context(
     }
     let a_index = valid_world_entity_index(world, joint.entity_a)?;
     let b_index = valid_world_entity_index(world, joint.entity_b)?;
-    let transform_a = world.transforms.get(a_index).copied().flatten()?;
-    let transform_b = world.transforms.get(b_index).copied().flatten()?;
+    let transform_a = world.transform_at_index(a_index)?;
+    let transform_b = world.transform_at_index(b_index)?;
     let inverse_mass_a = rigid_body_inverse_mass(world, a_index);
     let inverse_mass_b = rigid_body_inverse_mass(world, b_index);
     let inverse_inertia_a = rigid_body_inverse_inertia(world, a_index);
@@ -371,20 +371,8 @@ pub(in crate::physics) fn revolute_joint_constraint_context(
         vx: anchor_b.x - anchor_a.x,
         vy: anchor_b.y - anchor_a.y,
     };
-    let rotation_a = world
-        .rotations
-        .get(a_index)
-        .copied()
-        .flatten()
-        .map(finite_rotation)
-        .unwrap_or_default();
-    let rotation_b = world
-        .rotations
-        .get(b_index)
-        .copied()
-        .flatten()
-        .map(finite_rotation)
-        .unwrap_or_default();
+    let rotation_a = finite_rotation(world.rotation_at_index_or_default(a_index));
+    let rotation_b = finite_rotation(world.rotation_at_index_or_default(b_index));
     let relative_angle = normalize_angle_radians(rotation_b.radians - rotation_a.radians);
     if !error.vx.is_finite() || !error.vy.is_finite() || !relative_angle.is_finite() {
         return None;

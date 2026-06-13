@@ -990,18 +990,14 @@ mod tests {
         let result = scene.spawn_projectile_now(&mut world, &mut audio_events, command);
 
         let bullet_index = world
-            .alive
+            .alive_indices()
             .iter()
-            .enumerate()
-            .find(|(index, alive)| {
-                **alive && world.collider_layer_at(*index) == Some(CollisionLayer::Bullet)
-            })
-            .map(|(index, _)| index)
+            .copied()
+            .find(|&index| world.collider_layer_at(index) == Some(CollisionLayer::Bullet))
             .unwrap();
-        let bullet = Entity {
-            id: bullet_index as u32,
-            generation: world.generations[bullet_index],
-        };
+        let bullet = world
+            .entity_at_index(bullet_index)
+            .expect("test bullet entity should exist");
         assert_eq!(
             result,
             ProjectileSpawnDispatchResult {
@@ -1034,7 +1030,9 @@ mod tests {
             ProjectileSpawnDispatchResult {
                 spawned: Entity {
                     id: spawned_index as u32,
-                    generation: world.generations[spawned_index],
+                    generation: world
+                        .generation_at_index(spawned_index)
+                        .expect("test entity index should exist"),
                 },
                 arc_applied: false,
                 shoot_audio_event_pushed: true,
@@ -1134,22 +1132,31 @@ mod tests {
                 spawned
             }
         );
-        assert_eq!(world.transforms[spawned_index], Some(command.transform));
         assert_eq!(
-            world.sprites[spawned_index].map(|sprite| sprite.texture_id),
+            world.transform_at_index(spawned_index),
+            Some(command.transform)
+        );
+        assert_eq!(
+            world
+                .sprite_at_index(spawned_index)
+                .map(|sprite| sprite.texture_id),
             Some(command.texture_id)
         );
         assert_eq!(
-            world.sprites[spawned_index].map(|sprite| sprite.width),
+            world
+                .sprite_at_index(spawned_index)
+                .map(|sprite| sprite.width),
             Some(command.template.sprite_width)
         );
         assert_eq!(
-            world.sprites[spawned_index].map(|sprite| sprite.height),
+            world
+                .sprite_at_index(spawned_index)
+                .map(|sprite| sprite.height),
             Some(command.template.sprite_height)
         );
-        assert_eq!(world.healths[spawned_index], Some(command.health));
+        assert_eq!(world.health_at_index(spawned_index), Some(command.health));
         assert_eq!(
-            world.score_rewards[spawned_index],
+            world.score_reward_at_index(spawned_index),
             Some(command.score_reward)
         );
         assert_eq!(
@@ -1175,7 +1182,9 @@ mod tests {
             SpawnCommandDispatchResult::Projectile(ProjectileSpawnDispatchResult {
                 spawned: Entity {
                     id: 0,
-                    generation: world.generations[0],
+                    generation: world
+                        .generation_at_index(0)
+                        .expect("test entity index should exist"),
                 },
                 arc_applied: false,
                 shoot_audio_event_pushed: true,
@@ -1184,12 +1193,9 @@ mod tests {
         assert_eq!(audio_events.len(), 1);
         assert_eq!(audio_events[0].sound_id as u32, command.sound_id);
         let bullet_count = world
-            .alive
+            .alive_indices()
             .iter()
-            .enumerate()
-            .filter(|(index, alive)| {
-                **alive && world.collider_layer_at(*index) == Some(CollisionLayer::Bullet)
-            })
+            .filter(|&&index| world.collider_layer_at(index) == Some(CollisionLayer::Bullet))
             .count();
         assert_eq!(bullet_count, 1);
     }
@@ -1231,7 +1237,7 @@ mod tests {
             Some(CollisionLayer::Enemy)
         );
         assert_eq!(
-            world.transforms[prefab_result.prefab_spawn.spawned.id as usize],
+            world.transform_at_index(prefab_result.prefab_spawn.spawned.id as usize),
             Some(command.transform)
         );
     }
@@ -1704,11 +1710,10 @@ mod tests {
         let mut world = World::default();
         let source = world.spawn_enemy(32.0, 48.0, DEFAULT_TEXTURE_ID);
         let player = world.spawn_player(132.0, 48.0, DEFAULT_TEXTURE_ID);
-        let source_half_extent = world.sprites[source.id as usize]
-            .unwrap()
-            .width
-            .max(world.sprites[source.id as usize].unwrap().height)
-            * 0.5;
+        let source_sprite = world
+            .sprite_at_index(source.id as usize)
+            .expect("spawned enemy should have a sprite");
+        let source_half_extent = source_sprite.width.max(source_sprite.height) * 0.5;
         let bullet_half_extent = scene
             .config
             .bullet_template
@@ -1728,7 +1733,7 @@ mod tests {
             .projectile_spawn_command_toward_player(&world, source, payload)
             .unwrap();
 
-        assert_eq!(world.player, Some(player));
+        assert_eq!(world.player_entity(), Some(player));
         assert!(
             (command.transform.x - (32.0 + source_half_extent + bullet_half_extent)).abs() < 0.001
         );
@@ -1890,7 +1895,7 @@ mod tests {
         let projectile = command
             .projectile
             .expect("bullet prefab command should carry projectile command data");
-        assert_eq!(world.player, Some(player));
+        assert_eq!(world.player_entity(), Some(player));
         assert_eq!(command.kind, ShooterPrefabKind::Bullet);
         assert_eq!(command.prefab_id, 9);
         assert_eq!(command.transform, Transform2D { x: 76.0, y: 72.0 });

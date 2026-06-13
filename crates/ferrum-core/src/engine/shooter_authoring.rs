@@ -103,7 +103,7 @@ impl Engine {
         self.scenes.shooter.set_config(
             &mut self.world,
             &mut self.camera,
-            &mut self.audio_events,
+            &mut self.frame_buffers.audio_events,
             ShooterConfig::from_values(
                 world_width,
                 world_height,
@@ -131,7 +131,7 @@ impl Engine {
         self.scenes.shooter.set_prefabs(
             &mut self.world,
             &mut self.camera,
-            &mut self.audio_events,
+            &mut self.frame_buffers.audio_events,
             player_width,
             player_height,
             enemy_width,
@@ -147,7 +147,7 @@ impl Engine {
         self.scenes.shooter.set_enemy_behavior(
             &mut self.world,
             &mut self.camera,
-            &mut self.audio_events,
+            &mut self.frame_buffers.audio_events,
             EnemyBehavior::from_code(enemy_behavior),
         );
         self.clear_physics_history();
@@ -158,7 +158,7 @@ impl Engine {
         self.scenes.shooter.set_enemy_spawn_pattern(
             &mut self.world,
             &mut self.camera,
-            &mut self.audio_events,
+            &mut self.frame_buffers.audio_events,
             EnemySpawnPattern::from_code(enemy_spawn_pattern),
         );
         self.clear_physics_history();
@@ -169,7 +169,7 @@ impl Engine {
         self.scenes.shooter.set_combat(
             &mut self.world,
             &mut self.camera,
-            &mut self.audio_events,
+            &mut self.frame_buffers.audio_events,
             enemy_health,
             bullet_damage,
             score_reward,
@@ -198,7 +198,7 @@ impl Engine {
         self.scenes.shooter.set_config(
             &mut self.world,
             &mut self.camera,
-            &mut self.audio_events,
+            &mut self.frame_buffers.audio_events,
             config,
         );
         self.clear_physics_history();
@@ -294,7 +294,7 @@ impl Engine {
         self.scenes.shooter.set_config(
             &mut self.world,
             &mut self.camera,
-            &mut self.audio_events,
+            &mut self.frame_buffers.audio_events,
             config,
         );
         self.clear_physics_history();

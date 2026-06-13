@@ -52,6 +52,9 @@ jobs:
       - name: Build Pages artifact
         run: pnpm build:pages
 
+      - name: Validate Pages artifact
+        run: pnpm validate:pages-artifact
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

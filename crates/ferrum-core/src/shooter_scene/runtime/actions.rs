@@ -1,3 +1,4 @@
+#[cfg(test)]
 use crate::entity::Entity;
 use crate::gameplay::{
     apply_dash_action_core_data, collect_action_triggers_for_phase, commit_prepared_action,
@@ -357,7 +358,7 @@ impl ShooterScene {
     ) {
         if delta_seconds <= 0.0
             || !delta_seconds.is_finite()
-            || !world.gameplay_timer_triggers.iter().any(Option::is_some)
+            || !world.has_gameplay_timer_triggers()
         {
             return;
         }
@@ -365,12 +366,11 @@ impl ShooterScene {
         let alive_count = world.alive_indices().len();
         for alive_position in 0..alive_count {
             let index = world.alive_indices()[alive_position];
-            let Some(timer) = world.gameplay_timer_triggers[index].as_mut() else {
+            let Some(source) = world.entity_at_index(index) else {
                 continue;
             };
-            let source = Entity {
-                id: index as u32,
-                generation: world.generations[index],
+            let Some(timer) = world.gameplay_timer_trigger_mut_at_index(index) else {
+                continue;
             };
             let Some(dispatch) =
                 tick_gameplay_timer_trigger_for_dispatch(source, timer, delta_seconds)
@@ -2031,7 +2031,7 @@ mod tests {
         let player = world.spawn_player(0.0, 0.0, 0);
         let source = world.spawn_entity();
         world.set_transform(source, Transform2D { x: 100.0, y: 0.0 });
-        world.transforms[player.id as usize] = None;
+        assert!(world.clear_transform_for_test(player));
         assert!(world.upsert_action_binding(
             source,
             ActionBinding::dash_with_aim(21, 0.5, 40.0, ActionAimSource::TargetPlayer,)
@@ -2177,11 +2177,12 @@ mod tests {
             .find(|index| world.collider_layer_at(*index) == Some(CollisionLayer::Bullet))
             .unwrap();
         assert_eq!(
-            world.projectile_collision_targets[bullet_index],
-            Some(ProjectileCollisionTarget::Player),
+            world.projectile_collision_target_at(bullet_index),
+            ProjectileCollisionTarget::Player,
         );
-        let source_sprite =
-            world.sprites[source.id as usize].expect("spawned enemy should have sprite");
+        let source_sprite = world
+            .sprite_at_index(source.id as usize)
+            .expect("spawned enemy should have sprite");
         let source_half_extent = source_sprite.width.max(source_sprite.height) * 0.5;
         let bullet_half_extent = scene
             .config
@@ -2189,14 +2190,14 @@ mod tests {
             .sprite_width
             .max(scene.config.bullet_template.sprite_height)
             * 0.5;
-        let bullet_transform = world.transforms[bullet_index].unwrap();
+        let bullet_transform = world.transform_at_index(bullet_index).unwrap();
         assert!(
             (bullet_transform.x - (source_transform.x - source_half_extent - bullet_half_extent))
                 .abs()
                 < 0.001
         );
         assert!((bullet_transform.y - source_transform.y).abs() < 0.001);
-        let velocity = world.velocities[bullet_index].unwrap();
+        let velocity = world.velocity_at_index(bullet_index).unwrap();
         assert!(velocity.vx < -119.0);
         assert!(velocity.vy.abs() < 0.001);
     }
@@ -2796,7 +2797,7 @@ mod tests {
         let mut world = World::default();
         let player = world.spawn_player(0.0, 0.0, 0);
         let source = world.spawn_enemy(100.0, 0.0, 0);
-        world.transforms[player.id as usize] = None;
+        assert!(world.clear_transform_for_test(player));
         assert!(world.upsert_action_binding(
             source,
             ActionBinding::projectile_with_target(

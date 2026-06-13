@@ -17,9 +17,14 @@ fn spawn_from_template_applies_sprite_and_collider_sizes() {
 
     let enemy = world.spawn_enemy_from_template(10.0, 20.0, 7, template, 3.0, 2);
 
-    assert_eq!(world.sprites[enemy.id as usize].unwrap().width, 48.0);
-    assert_eq!(world.sprites[enemy.id as usize].unwrap().height, 30.0);
-    let collider = world.colliders[enemy.id as usize].unwrap();
+    let sprite = world
+        .sprite_at_index(enemy.id as usize)
+        .expect("template-spawned enemy should have a sprite");
+    assert_eq!(sprite.width, 48.0);
+    assert_eq!(sprite.height, 30.0);
+    let collider = world
+        .collider(enemy)
+        .expect("template-spawned enemy should have an AABB collider");
     assert_eq!(collider.half_width, 10.0);
     assert_eq!(collider.half_height, 12.0);
     assert_eq!(collider.offset_x, 3.0);
@@ -27,8 +32,8 @@ fn spawn_from_template_applies_sprite_and_collider_sizes() {
     assert!(!collider.enabled);
     assert!(!collider.is_trigger);
     assert_eq!(world.collider_material(enemy), Some(material));
-    assert_eq!(world.healths[enemy.id as usize], Some(3.0));
-    assert_eq!(world.score_rewards[enemy.id as usize], Some(2));
+    assert_eq!(world.health(enemy), Some(3.0));
+    assert_eq!(world.score_reward(enemy), Some(2));
 }
 
 #[test]
@@ -55,8 +60,10 @@ fn spawn_from_template_applies_non_aabb_collider_shape() {
     let enemy = world.spawn_enemy_from_template(10.0, 20.0, 7, template, 3.0, 2);
     let index = enemy.id as usize;
 
-    assert!(world.colliders[index].is_none());
-    let collider = world.capsule_colliders[index].unwrap();
+    assert!(world.collider(enemy).is_none());
+    let collider = world
+        .capsule_collider(enemy)
+        .expect("template-spawned enemy should have a capsule collider");
     assert_eq!(collider.start_x, -6.0);
     assert_eq!(collider.end_x, 6.0);
     assert_eq!(collider.radius, 4.0);

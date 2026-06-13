@@ -201,16 +201,35 @@ import {
 
 `@ferrum2d/ferrum-web`는 root entrypoint와 목적별 subpath entrypoint를 함께 제공한다. import 가능하다는 사실만으로 모든 API가 같은 1.0 안정 계약이라는 뜻은 아니며, 신규 consumer project는 아래 지원 수준에 맞는 subpath를 우선 사용한다.
 
-| 수준 | 권장 entrypoint | 의미 | 예시 |
+Public API surface manifest는 `docs/engine/public-api-surface.json`이다. 이 manifest는 package export path, source entrypoint, stable/preview/compatibility tier, forbidden internal import allowlist를 기계적으로 검증하기 위한 기준이다.
+
+| tier | 권장 entrypoint | 의미 | 예시 |
 | --- | --- | --- | --- |
-| Core runtime | `@ferrum2d/ferrum-web/core` | 1.0 제품 계약 후보. 게임 실행과 브라우저 runtime의 중심이다. | `createFerrumRuntime(...)`, `createEngine(...)`, `createRenderer(...)`, WebGL2 renderer, `InputManager`, `AudioManager`, asset loading, Physics Spec/API |
-| Authoring primitive | `@ferrum2d/ferrum-web/authoring` | 장르 adapter나 template이 조합해 쓰는 데이터 기반 계약이다. | `resolveSceneCompositionSpec(...)`, `resolveBehaviorRecipeDocument(...)`, `compileWeaponProfiles(...)`, FSM install/replay, presentation effect registry |
-| Starter scene/template | `@ferrum2d/ferrum-web/starter-scenes` | 생성 프로젝트와 smoke에서 검증하는 시작점이다. 장르 전체를 범용으로 자동 제작하는 엔진 모드는 아니다. | `resolveShooterGameSpec(...)`, `applyShooterGameSpec(...)`, built-in Shooter snapshot, starter input profiles |
-| Optional/lab/helper | `@ferrum2d/ferrum-web/labs` | opt-in 또는 capability-dependent 기능이다. 환경/renderer별 제약을 확인해야 한다. | WebGPU renderer, HD-2D helper, PixelMaskTerrain, texture atlas JSON helper, material/VFX presets |
-| Quality infrastructure | `@ferrum2d/ferrum-web/quality` | package/demo 품질을 검증하기 위한 API나 report helper다. 사용자-facing gameplay 기능과 분리해서 본다. | screenshot summary, runtime budget, diagnostic report, replay/report validator |
-| Compatibility | `@ferrum2d/ferrum-web` | 기존 API 이름과 root aggregate import를 유지한다. 새 제품 기능의 기준은 목적별 subpath다. | 기존 root import, fallback helper |
+| stable | `@ferrum2d/ferrum-web/core` | 1.0 제품 계약 후보. 게임 실행과 브라우저 runtime의 중심이다. | `createFerrumRuntime(...)`, `createEngine(...)`, `createRenderer(...)`, WebGL2 renderer, `InputManager`, `AudioManager`, asset loading, Physics Spec/API |
+| preview | `@ferrum2d/ferrum-web/authoring` | 장르 adapter나 template이 조합해 쓰는 데이터 기반 계약이다. 1.0 전 breaking change 가능성을 release note에 기록한다. | `resolveSceneCompositionSpec(...)`, `resolveBehaviorRecipeDocument(...)`, `compileWeaponProfiles(...)`, FSM install/replay, presentation effect registry |
+| preview | `@ferrum2d/ferrum-web/starter-scenes` | 생성 프로젝트와 smoke에서 검증하는 시작점이다. 장르 전체를 범용으로 자동 제작하는 엔진 모드는 아니다. | `resolveShooterGameSpec(...)`, `applyShooterGameSpec(...)`, built-in Shooter snapshot, starter input profiles |
+| preview | `@ferrum2d/ferrum-web/labs` | opt-in 또는 capability-dependent 기능이다. 환경/renderer별 제약을 확인해야 한다. | WebGPU renderer, HD-2D helper, PixelMaskTerrain, texture atlas JSON helper, material/VFX presets |
+| preview | `@ferrum2d/ferrum-web/quality` | package/demo 품질을 검증하기 위한 API나 report helper다. 사용자-facing gameplay 기능과 분리해서 본다. | screenshot summary, runtime budget, diagnostic report, replay/report validator |
+| compatibility | `@ferrum2d/ferrum-web` | 기존 API 이름과 root aggregate import를 유지한다. 새 제품 기능의 기준은 목적별 subpath다. | 기존 root import, fallback helper |
 
 1.0까지 root entrypoint는 호환 aggregate로 유지하되, public API 문서와 package check는 목적별 subpath를 함께 검증한다.
+
+## Public Import Allowlist
+
+Consumer project와 template가 직접 import할 수 있는 package 경로는 아래로 제한한다.
+
+- `@ferrum2d/ferrum-web`
+- `@ferrum2d/ferrum-web/core`
+- `@ferrum2d/ferrum-web/authoring`
+- `@ferrum2d/ferrum-web/starter-scenes`
+- `@ferrum2d/ferrum-web/labs`
+- `@ferrum2d/ferrum-web/quality`
+
+`@ferrum2d/ferrum-web/dist/*`, `@ferrum2d/ferrum-web/pkg/*`, `@ferrum2d/ferrum-web/src/*`, `packages/ferrum-web/src/*`, generated wasm-bindgen files는 internal API다. 예제와 create-game template는 stable 또는 명시적인 preview/compatibility entrypoint만 사용해야 한다.
+
+## Deprecation Policy
+
+deprecation은 removal보다 먼저 문서화한다. stable API를 제거하거나 semantic 변경해야 하면 release note의 Breaking Changes에 migration을 적고, 가능한 경우 한 beta 기간 이상 compatibility shim을 유지한다. preview API는 1.0 전 breaking change가 가능하지만 Public API 문서, `public-api-surface.json`, package consumer smoke를 함께 갱신해야 한다. internal API는 consumer import 대상이 아니므로 package export에 추가하지 않는다.
 
 ## 주요 엔트리포인트
 
@@ -1327,7 +1346,7 @@ runtime.start();
 
 ## API 변경 규칙
 
-- Public export를 추가/삭제/rename하면 `packages/ferrum-web/src/index.ts`, 이 문서, README/예제를 함께 확인한다.
+- Public export를 추가/삭제/rename하면 `packages/ferrum-web/src/index.ts`, 목적별 subpath entrypoint, `docs/engine/public-api-surface.json`, 이 문서, README/예제를 함께 확인하고 `pnpm validate:public-api-surface`를 실행한다.
 - Wasm buffer layout이 바뀌면 Rust size function, TypeScript decoder, 관련 tests를 함께 수정한다.
 - Top-down Shooter Game Spec 필드가 바뀌면 [Top-down Shooter Game Spec](../examples/topdown-shooter/game-spec.md), schema, 예제 `game.json`, validation을 함께 갱신한다.
 - Architecture나 physics 책임 경계가 바뀌면 [아키텍처](../development/architecture/architecture.md), [2D 물리엔진 기능 맵](../development/architecture/physics-engine.md)을 함께 갱신한다.

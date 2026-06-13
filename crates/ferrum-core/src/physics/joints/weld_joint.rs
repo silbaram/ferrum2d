@@ -206,13 +206,13 @@ pub(in crate::physics) fn apply_weld_joint_anchor_position_correction(
     impulse: Velocity,
 ) {
     if context.inverse_mass_a > 0.0 {
-        if let Some(transform) = world.transforms[context.a_index].as_mut() {
+        if let Some(transform) = world.transform_mut_at_index(context.a_index) {
             transform.x -= impulse.vx * context.inverse_mass_a;
             transform.y -= impulse.vy * context.inverse_mass_a;
         }
     }
     if context.inverse_mass_b > 0.0 {
-        if let Some(transform) = world.transforms[context.b_index].as_mut() {
+        if let Some(transform) = world.transform_mut_at_index(context.b_index) {
             transform.x += impulse.vx * context.inverse_mass_b;
             transform.y += impulse.vy * context.inverse_mass_b;
         }

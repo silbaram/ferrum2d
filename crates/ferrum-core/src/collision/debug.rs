@@ -157,7 +157,7 @@ impl CollisionSystem {
         lines: &mut Vec<PhysicsDebugLine>,
     ) {
         for &index in world.alive_indices() {
-            let Some(transform) = world.transforms[index] else {
+            let Some(transform) = world.transform_at_index(index) else {
                 continue;
             };
             for collider_index in 0..world.compound_collider_count_at(index) {
@@ -291,16 +291,8 @@ fn contact_debug_line(
     contact: CollisionContact,
     normal_length: f32,
 ) -> Option<PhysicsDebugLine> {
-    let at = world
-        .transforms
-        .get(contact.pair.a.id as usize)
-        .copied()
-        .flatten()?;
-    let bt = world
-        .transforms
-        .get(contact.pair.b.id as usize)
-        .copied()
-        .flatten()?;
+    let at = world.transform(contact.pair.a)?;
+    let bt = world.transform(contact.pair.b)?;
     let x0 = if contact.point_x.is_finite() {
         contact.point_x
     } else {

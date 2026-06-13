@@ -1,0 +1,78 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "sceneComposition": {
+    "initialFragment": "main",
+    "prefabs": {
+      "agent": {
+        "props": {
+          "behaviorRecipes": "agent.base",
+          "components": {
+            "sprite": "agent",
+            "collider": "body"
+          }
+        },
+        "variants": {
+          "scout": {
+            "props": {
+              "behaviorRecipes": "agent.scout"
+            }
+          }
+        }
+      }
+    },
+    "fragments": {
+      "main": {
+        "instances": [
+          {
+            "id": "agent-1",
+            "prefab": "agent",
+            "x": 64,
+            "y": 96
+          },
+          {
+            "id": "agent-2",
+            "prefab": "agent",
+            "variant": "scout",
+            "x": 160,
+            "y": 96
+          }
+        ]
+      }
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {
+      "agent.base": {
+        "recipes": [
+          {
+            "kind": "health",
+            "max": 3,
+            "start": 3,
+            "onZero": "despawn"
+          },
+          {
+            "kind": "faction",
+            "faction": "neutral"
+          }
+        ]
+      },
+      "agent.scout": {
+        "recipes": [
+          {
+            "kind": "health",
+            "max": 1,
+            "start": 1,
+            "onZero": "despawn"
+          },
+          {
+            "kind": "seekTarget",
+            "target": "nearestTag:target",
+            "speed": 120,
+            "turnRate": 8
+          }
+        ]
+      }
+    }
+  }
+}

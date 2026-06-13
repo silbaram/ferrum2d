@@ -245,7 +245,7 @@ fn target_is_alive(world: &World, target: TweenTarget) -> bool {
 
 fn sprite_tint(world: &World, entity: Entity) -> Option<SpriteTint> {
     let index = valid_entity_index(world, entity)?;
-    world.sprites[index].map(|sprite| SpriteTint {
+    world.sprite_at_index(index).map(|sprite| SpriteTint {
         r: sprite.r,
         g: sprite.g,
         b: sprite.b,
@@ -257,7 +257,7 @@ fn apply_sprite_tint(world: &mut World, entity: Entity, tint: SpriteTint) -> boo
     let Some(index) = valid_entity_index(world, entity) else {
         return false;
     };
-    let Some(sprite) = world.sprites[index].as_mut() else {
+    let Some(sprite) = world.sprite_mut_at_index(index) else {
         return false;
     };
     sprite.r = tint.r;
@@ -269,10 +269,7 @@ fn apply_sprite_tint(world: &mut World, entity: Entity, tint: SpriteTint) -> boo
 
 fn valid_entity_index(world: &World, entity: Entity) -> Option<usize> {
     let index = entity.id as usize;
-    (index < world.alive.len()
-        && world.alive[index]
-        && world.generations[index] == entity.generation)
-        .then_some(index)
+    world.is_current_entity(entity).then_some(index)
 }
 
 fn lerp(start: f32, end: f32, amount: f32) -> f32 {
@@ -302,7 +299,7 @@ mod tests {
         assert!(tweens.start_sprite_tint(&mut world, entity, start, end, 1.0, TweenEasing::Linear));
         tweens.update(&mut world, 0.5);
 
-        let sprite = world.sprites[entity.id as usize].unwrap();
+        let sprite = world.sprite_at_index(entity.id as usize).unwrap();
         assert_eq!(sprite.r, 0.75);
         assert_eq!(sprite.g, 0.625);
         assert_eq!(sprite.b, 0.625);
@@ -311,7 +308,7 @@ mod tests {
 
         tweens.update(&mut world, 0.5);
 
-        let sprite = world.sprites[entity.id as usize].unwrap();
+        let sprite = world.sprite_at_index(entity.id as usize).unwrap();
         assert_eq!(sprite.r, end.r);
         assert_eq!(sprite.g, end.g);
         assert_eq!(sprite.b, end.b);

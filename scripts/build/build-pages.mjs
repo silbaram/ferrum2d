@@ -35,6 +35,38 @@ const examples = [
     description: "Kinematic controller example with one-way platforms, moving platforms, slopes, and physics stats.",
   },
 ];
+const documentationHighlights = [
+  {
+    href: "./docs/engine/developer-quickstart.html",
+    title: "Developer Quickstart",
+    description: "Start a project and follow the AI agent-first development loop.",
+  },
+  {
+    href: "./docs/engine/public-api.html",
+    title: "Public API",
+    description: "Supported imports, API support tiers, and compatibility policy.",
+  },
+  {
+    href: "./docs/engine/data-scene-authoring.html",
+    title: "Data Scene Authoring",
+    description: "Generic scene composition and behavior recipe contract for agent-authored content.",
+  },
+  {
+    href: "./docs/examples/topdown-shooter/game-spec.html",
+    title: "Top-down Shooter Spec",
+    description: "Official example Game Spec fields, defaults, and validation rules.",
+  },
+  {
+    href: "./docs/development/quality/smoke-check.html",
+    title: "Smoke & Runtime Budgets",
+    description: "Automatic, browser, and performance evidence gates for release candidates.",
+  },
+  {
+    href: "./docs/development/operations/npm-release.html",
+    title: "Release Readiness",
+    description: "Beta package, changelog, tag, tarball, and publish gate procedure.",
+  },
+];
 
 rmSync(outputDir, { recursive: true, force: true });
 mkdirSync(outputDir, { recursive: true });
@@ -103,6 +135,9 @@ function compareDocs(a, b) {
     "engine/developer-quickstart.md",
     "engine/user-guide.md",
     "engine/public-api.md",
+    "engine/runtime-extensibility.md",
+    "engine/data-scene-authoring.md",
+    "engine/physics-spec.md",
     "examples/topdown-shooter/game-spec.md",
     "development/architecture/architecture.md",
     "development/architecture/physics-engine.md",
@@ -110,8 +145,12 @@ function compareDocs(a, b) {
     "development/quality/topdown-shooter-smoke-checklist.md",
     "development/quality/code-review.md",
     "development/operations/demo-deploy.md",
+    "development/operations/npm-package-strategy.md",
     "development/operations/npm-release.md",
     "development/operations/release-notes-template.md",
+    "planning/README.md",
+    "planning/feature-candidates.md",
+    "planning/refactor-roadmap.md",
   ];
   const aIndex = priority.indexOf(a);
   const bIndex = priority.indexOf(b);
@@ -146,6 +185,11 @@ function stripInlineMarkdown(value) {
 function pageHtml(items) {
   const demoLinks = items.map((item) => `
           <a class="tile" href="./${escapeAttribute(item.id)}/">
+            <span class="tile-title">${escapeHtml(item.title)}</span>
+            <span class="tile-description">${escapeHtml(item.description)}</span>
+          </a>`).join("");
+  const docsLinks = documentationHighlights.map((item) => `
+          <a class="tile" href="${escapeAttribute(item.href)}">
             <span class="tile-title">${escapeHtml(item.title)}</span>
             <span class="tile-description">${escapeHtml(item.description)}</span>
           </a>`).join("");
@@ -186,22 +230,7 @@ function pageHtml(items) {
           <a href="./docs/">Open index</a>
         </div>
         <div class="grid docs-grid">
-          <a class="tile" href="./docs/engine/developer-quickstart.html">
-            <span class="tile-title">Developer Quickstart</span>
-            <span class="tile-description">Understand the engine model, create a project, and follow the AI-first development loop.</span>
-          </a>
-          <a class="tile" href="./docs/engine/user-guide.html">
-            <span class="tile-title">User Guide</span>
-            <span class="tile-description">Run examples, adjust Game Spec values, and validate changes.</span>
-          </a>
-          <a class="tile" href="./docs/engine/public-api.html">
-            <span class="tile-title">Public API</span>
-            <span class="tile-description">Supported imports, runtime contracts, and compatibility policy.</span>
-          </a>
-          <a class="tile" href="./docs/examples/topdown-shooter/game-spec.html">
-            <span class="tile-title">Top-down Shooter Spec</span>
-            <span class="tile-description">Top-down Shooter JSON schema, defaults, and validation rules.</span>
-          </a>
+${docsLinks}
         </div>
       </section>
     </main>

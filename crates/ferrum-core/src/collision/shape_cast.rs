@@ -124,7 +124,7 @@ fn visit_shape_cast_hits(
         if !query_height_span_allows(world, index, query_height_span) {
             continue;
         }
-        let Some(transform) = world.transforms[index] else {
+        let Some(transform) = world.transform_at_index(index) else {
             continue;
         };
         let entity = entity_from_index(world, index);

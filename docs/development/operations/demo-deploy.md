@@ -33,9 +33,26 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 ```bash
 pnpm build
 pnpm build:pages
+pnpm validate:pages-artifact
 ```
 
-`dist-pages/`는 generated artifact이므로 git에 포함하지 않는다.
+`pnpm validate:pages-artifact`는 Pages 홈, docs index, quickstart, public API, Data Scene Authoring, Top-down Shooter Game Spec, Smoke Check, npm release 문서와 demo route HTML이 생성되었는지 확인하고 generated HTML의 로컬 링크를 검사한다. `dist-pages/`는 generated artifact이므로 git에 포함하지 않는다.
+
+## Pages demo readiness checklist
+
+Pages 배포 전에는 source 문서와 production demo artifact가 같은 기준을 통과해야 한다. 원격 배포는 수동 승인 후에만 실행한다.
+
+| 항목 | 기준 | 확인 |
+| --- | --- | --- |
+| production build | Wasm package, packages, examples dist가 최신이다. | `pnpm build` |
+| Pages artifact | Pages home, docs HTML, four public demo routes가 생성된다. | `pnpm build:pages` |
+| route/link integrity | 주요 docs route와 generated HTML 로컬 링크가 깨지지 않는다. | `pnpm validate:pages-artifact` |
+| artifact hygiene | `dist-pages/`는 generated output으로만 남고 커밋 대상이 아니다. | `git status --short --ignored dist-pages` |
+| Starter Runtime route | `/starter-runtime/`가 WebGL2 기본 runtime demo를 제공한다. | `dist-pages/starter-runtime/index.html` |
+| Top-down route | `/topdown-shooter/`가 공식 Game Spec 기반 demo를 제공한다. | `dist-pages/topdown-shooter/index.html` |
+| Breakout route | `/breakout/`가 두 번째 장르 runtime/render path를 제공한다. | `dist-pages/breakout/index.html` |
+| Platformer route | `/platformer/`가 platformer controller demo를 제공한다. | `dist-pages/platformer/index.html` |
+| rendering-sensitive change | renderer/input/assets/audio/example behavior가 바뀐 경우 관련 browser smoke를 실행한다. | `pnpm smoke:browser`, `pnpm smoke:topdown`, `pnpm smoke:breakout`, `pnpm smoke:platformer` 중 변경 표면에 맞게 선택 |
 
 ## GitHub Actions
 

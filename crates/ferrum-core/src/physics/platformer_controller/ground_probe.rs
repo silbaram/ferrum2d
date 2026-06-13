@@ -43,7 +43,7 @@ pub(super) fn ground_probe_internal(
         {
             continue;
         }
-        let Some(target_transform) = world.transforms[target_index] else {
+        let Some(target_transform) = world.transform_at_index(target_index) else {
             continue;
         };
         let Some(contact) = CollisionSystem::swept_aabb_contact(
@@ -67,10 +67,7 @@ pub(super) fn ground_probe_internal(
         update_ground_probe_hit(
             &mut best,
             GroundProbeHit {
-                entity: Some(Entity {
-                    id: target_index as u32,
-                    generation: world.generations[target_index],
-                }),
+                entity: world.entity_at_index(target_index),
                 tile_layer_index: None,
                 tile_index: None,
                 distance: probe_distance * contact.time.clamp(0.0, 1.0),

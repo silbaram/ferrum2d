@@ -373,7 +373,7 @@ impl RigidBodyIsland {
 }
 
 fn rigid_body_island_candidate(world: &World, index: usize) -> Option<RigidBody> {
-    if !world.alive.get(index).copied().unwrap_or(false) {
+    if !world.is_alive_index(index) {
         return None;
     }
     let body = world.rigid_bodies.get(index).copied().flatten()?;

@@ -42,50 +42,52 @@ pub(super) struct GameplayAuthoringSnapshot {
 
 impl GameplayAuthoringSnapshot {
     fn capture(engine: &Engine, entity: Entity) -> Self {
-        let index = entity.id as usize;
         Self {
             entity,
-            health: engine.world.healths[index],
-            damage: engine.world.damages[index],
-            lifetime: engine.world.gameplay_lifetime_at(index),
-            score_reward: engine.world.score_rewards[index],
-            faction: engine.world.gameplay_factions[index],
-            tags: engine.world.gameplay_tags[index],
-            pickup: engine.world.pickups[index],
-            interaction: engine.world.interactions[index],
-            timer_trigger: engine.world.gameplay_timer_triggers[index],
-            movement: engine.world.movement_patterns[index],
-            actions: engine.world.action_bindings[index],
-            collision_reactions: engine.world.collision_reactions[index],
+            health: engine.world.health(entity),
+            damage: engine.world.damage(entity),
+            lifetime: engine.world.gameplay_lifetime(entity),
+            score_reward: engine.world.score_reward(entity),
+            faction: engine.world.gameplay_faction(entity),
+            tags: engine.world.gameplay_tags(entity),
+            pickup: engine.world.pickup(entity),
+            interaction: engine.world.interaction(entity),
+            timer_trigger: engine.world.gameplay_timer_trigger(entity),
+            movement: engine.world.movement_pattern(entity),
+            actions: engine.world.action_bindings(entity),
+            collision_reactions: engine.world.collision_reactions(entity),
         }
     }
 
     fn restore(self, engine: &mut Engine) {
-        let index = self.entity.id as usize;
-        engine.world.healths[index] = self.health;
-        engine.world.damages[index] = self.damage;
-        if let Some(lifetime) = self.lifetime {
-            engine.world.set_gameplay_lifetime_at(index, lifetime);
-        } else {
-            engine.world.clear_gameplay_lifetime_at(index);
-        }
-        engine.world.score_rewards[index] = self.score_reward;
-        if let Some(faction) = self.faction {
-            engine.world.set_gameplay_faction_at_index(index, faction);
-        } else {
-            engine.world.clear_gameplay_faction_at_index(index);
-        }
-        if let Some(tags) = self.tags {
-            engine.world.set_gameplay_tags_at_index(index, tags);
-        } else {
-            engine.world.clear_gameplay_tags_at_index(index);
-        }
-        engine.world.pickups[index] = self.pickup;
-        engine.world.interactions[index] = self.interaction;
-        engine.world.gameplay_timer_triggers[index] = self.timer_trigger;
-        engine.world.movement_patterns[index] = self.movement;
-        engine.world.action_bindings[index] = self.actions;
-        engine.world.collision_reactions[index] = self.collision_reactions;
+        engine.world.replace_health(self.entity, self.health);
+        engine.world.replace_damage(self.entity, self.damage);
+        engine
+            .world
+            .replace_gameplay_lifetime(self.entity, self.lifetime);
+        engine
+            .world
+            .replace_score_reward(self.entity, self.score_reward);
+        engine
+            .world
+            .replace_gameplay_faction(self.entity, self.faction);
+        engine.world.replace_gameplay_tags(self.entity, self.tags);
+        engine.world.replace_pickup(self.entity, self.pickup);
+        engine
+            .world
+            .replace_interaction(self.entity, self.interaction);
+        engine
+            .world
+            .replace_gameplay_timer_trigger(self.entity, self.timer_trigger);
+        engine
+            .world
+            .replace_movement_pattern(self.entity, self.movement);
+        engine
+            .world
+            .replace_action_bindings(self.entity, self.actions);
+        engine
+            .world
+            .replace_collision_reactions(self.entity, self.collision_reactions);
     }
 }
 
@@ -147,16 +149,14 @@ impl Engine {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
         };
-        self.world.healths[entity.id as usize] = Some(current);
-        true
+        self.world.set_health(entity, current)
     }
 
     pub fn clear_gameplay_health(&mut self, entity_id: u32, entity_generation: u32) -> bool {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
         };
-        self.world.healths[entity.id as usize] = None;
-        true
+        self.world.clear_health(entity)
     }
 
     pub fn set_gameplay_damage(
@@ -171,16 +171,14 @@ impl Engine {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
         };
-        self.world.damages[entity.id as usize] = Some(amount);
-        true
+        self.world.set_damage(entity, amount)
     }
 
     pub fn clear_gameplay_damage(&mut self, entity_id: u32, entity_generation: u32) -> bool {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
         };
-        self.world.damages[entity.id as usize] = None;
-        true
+        self.world.clear_damage(entity)
     }
 
     pub fn set_gameplay_damage_reaction(
@@ -200,15 +198,14 @@ impl Engine {
             return false;
         };
 
-        let index = entity.id as usize;
-        let mut reactions = self.world.collision_reactions[index].unwrap_or_default();
-        if !reactions.push(CollisionReaction::Damage { target }) {
+        if !self
+            .world
+            .add_collision_reaction(entity, CollisionReaction::Damage { target })
+        {
             return false;
         }
 
-        self.world.damages[index] = Some(amount);
-        self.world.collision_reactions[index] = Some(reactions);
-        true
+        self.world.set_damage(entity, amount)
     }
 
     pub fn set_gameplay_lifetime(
@@ -223,17 +220,14 @@ impl Engine {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
         };
-        self.world
-            .set_gameplay_lifetime_at(entity.id as usize, seconds);
-        true
+        self.world.set_gameplay_lifetime(entity, seconds)
     }
 
     pub fn clear_gameplay_lifetime(&mut self, entity_id: u32, entity_generation: u32) -> bool {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
         };
-        self.world.clear_gameplay_lifetime_at(entity.id as usize);
-        true
+        self.world.clear_gameplay_lifetime(entity)
     }
 
     pub fn set_gameplay_projectile_tile_impact(
@@ -248,9 +242,7 @@ impl Engine {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
         };
-        self.world
-            .set_projectile_tile_impact_at(entity.id as usize, tile_impact);
-        true
+        self.world.set_projectile_tile_impact(entity, tile_impact)
     }
 
     pub fn set_gameplay_score_reward(
@@ -262,16 +254,14 @@ impl Engine {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
         };
-        self.world.score_rewards[entity.id as usize] = Some(reward);
-        true
+        self.world.set_score_reward(entity, reward)
     }
 
     pub fn clear_gameplay_score_reward(&mut self, entity_id: u32, entity_generation: u32) -> bool {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return false;
         };
-        self.world.score_rewards[entity.id as usize] = None;
-        true
+        self.world.clear_score_reward(entity)
     }
 
     pub fn set_gameplay_area_damage_reaction(
@@ -292,18 +282,17 @@ impl Engine {
             return false;
         };
 
-        let index = entity.id as usize;
-        let mut reactions = self.world.collision_reactions[index].unwrap_or_default();
-        if !reactions.push(CollisionReaction::AreaDamage {
-            radius,
-            target_layer,
-        }) {
+        if !self.world.add_collision_reaction(
+            entity,
+            CollisionReaction::AreaDamage {
+                radius,
+                target_layer,
+            },
+        ) {
             return false;
         }
 
-        self.world.damages[index] = Some(amount);
-        self.world.collision_reactions[index] = Some(reactions);
-        true
+        self.world.set_damage(entity, amount)
     }
 
     pub fn set_gameplay_faction(
@@ -335,16 +324,14 @@ impl Engine {
     }
 
     pub fn clear_gameplay_faction_relations(&mut self) {
-        self.world.gameplay_faction_relations.clear();
+        self.world.clear_gameplay_faction_relations();
     }
 
     pub fn set_gameplay_faction_default_relation(&mut self, relation_code: u32) -> bool {
         let Some(relation) = FactionRelation::from_code(relation_code) else {
             return false;
         };
-        self.world
-            .gameplay_faction_relations
-            .set_default_relation(relation);
+        self.world.set_gameplay_faction_default_relation(relation);
         true
     }
 
@@ -357,11 +344,8 @@ impl Engine {
         let Some(relation) = FactionRelation::from_code(relation_code) else {
             return false;
         };
-        self.world.gameplay_faction_relations.set_relation(
-            source_faction_id,
-            target_faction_id,
-            relation,
-        )
+        self.world
+            .set_gameplay_faction_relation(source_faction_id, target_faction_id, relation)
     }
 
     pub fn set_gameplay_tags(
@@ -1747,7 +1731,8 @@ impl Engine {
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
             return 0;
         };
-        self.world.behavior_state_machines[entity.id as usize]
+        self.world
+            .behavior_state_machine(entity)
             .map(|machine| machine.current_state())
             .unwrap_or(0)
     }

@@ -55,14 +55,27 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/ferrum-web-v')
         run: pnpm release:check
 
+      - name: Release candidate metadata guard
+        if: ${{ !startsWith(github.ref, 'refs/tags/ferrum-web-v') }}
+        run: pnpm release:candidate-check
+
+      - name: Public API surface guard
+        run: pnpm validate:public-api-surface
+
       - name: Rust tests
         run: cargo test --manifest-path crates/ferrum-core/Cargo.toml
+
+      - name: Rust test harness guard
+        run: pnpm validate:rust-test-harness
 
       - name: Physics smoke tests
         run: pnpm smoke:physics
 
       - name: Runtime budget profile gate
         run: pnpm smoke:runtime-budgets
+
+      - name: Runtime budget productization guard
+        run: pnpm validate:runtime-budget-product
 
       - name: Mass object stress smoke
         run: pnpm smoke:mass-objects

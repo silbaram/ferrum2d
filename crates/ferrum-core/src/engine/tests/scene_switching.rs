@@ -10,7 +10,7 @@ fn reset_game_clears_score_and_recreates_player() {
             space: 1,
             ..InputState::default()
         },
-        &mut engine.audio_events,
+        &mut engine.frame_buffers.audio_events,
         &Tilemap::default(),
         0.016,
     );
@@ -19,7 +19,7 @@ fn reset_game_clears_score_and_recreates_player() {
     engine.reset_game();
 
     assert_eq!(engine.score(), 0);
-    assert!(engine.world.player.is_some());
+    assert!(engine.world.player_entity().is_some());
     assert_eq!(count_layer(&engine, CollisionLayer::Player), 1);
     assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 0);
 }
@@ -44,7 +44,10 @@ fn data_scene_mode_starts_blank_and_updates_generic_world_state() {
 
     engine.update_frame(0.5, false, false, false);
 
-    let transform = engine.world.transforms[entity.id as usize].expect("entity has transform");
+    let transform = engine
+        .world
+        .transform(entity)
+        .expect("entity has transform");
     assert_eq!(engine.entity_count(), 1);
     assert!((transform.x - 14.0).abs() < f32::EPSILON);
     assert!((transform.y - 18.0).abs() < f32::EPSILON);
@@ -117,28 +120,31 @@ fn data_scene_switch_and_reset_clear_stale_output_buffers() {
     let mut engine = Engine::new();
     engine.use_breakout_scene();
     engine.update(0.016);
-    engine.audio_events.push(test_audio_event());
-    engine.render_items.push(test_render_item());
+    engine.frame_buffers.audio_events.push(test_audio_event());
+    engine.frame_buffers.render_items.push(test_render_item());
 
     assert!(engine.render_command_len() > 0);
     assert_eq!(engine.audio_event_len(), 1);
-    assert_eq!(engine.render_items.len(), 1);
+    assert_eq!(engine.frame_buffers.render_items.len(), 1);
 
     engine.use_data_scene();
 
     assert_eq!(engine.render_command_len(), 0);
     assert_eq!(engine.audio_event_len(), 0);
-    assert!(engine.render_items.is_empty());
+    assert!(engine.frame_buffers.render_items.is_empty());
 
-    engine.render_commands.push(test_render_command());
-    engine.render_items.push(test_render_item());
-    engine.audio_events.push(test_audio_event());
+    engine
+        .frame_buffers
+        .render_commands
+        .push(test_render_command());
+    engine.frame_buffers.render_items.push(test_render_item());
+    engine.frame_buffers.audio_events.push(test_audio_event());
 
     engine.reset_game();
 
     assert_eq!(engine.render_command_len(), 0);
     assert_eq!(engine.audio_event_len(), 0);
-    assert!(engine.render_items.is_empty());
+    assert!(engine.frame_buffers.render_items.is_empty());
 }
 
 #[test]
@@ -180,25 +186,32 @@ fn breakout_brick_hit_spawns_default_particle_burst() {
     engine.reset_game();
     let ball = find_layer(&engine, CollisionLayer::Bullet);
     let brick = find_lowest_layer(&engine, CollisionLayer::Enemy);
-    let brick_transform = engine.world.transforms[brick.id as usize].expect("brick has transform");
-    let brick_collider = engine.world.colliders[brick.id as usize].expect("brick has collider");
-    let ball_collider = engine.world.colliders[ball.id as usize].expect("ball has collider");
-    engine.world.transforms[ball.id as usize] = Some(Transform2D {
-        x: brick_transform.x,
-        y: brick_transform.y + brick_collider.half_height + ball_collider.half_height + 1.0,
-    });
-    engine.world.velocities[ball.id as usize] = Some(crate::components::Velocity {
-        vx: 0.0,
-        vy: -285.0,
-    });
+    let brick_transform = engine.world.transform(brick).expect("brick has transform");
+    let brick_collider = engine.world.collider(brick).expect("brick has collider");
+    let ball_collider = engine.world.collider(ball).expect("ball has collider");
+    engine.world.set_transform(
+        ball,
+        Transform2D {
+            x: brick_transform.x,
+            y: brick_transform.y + brick_collider.half_height + ball_collider.half_height + 1.0,
+        },
+    );
+    engine.world.set_velocity(
+        ball,
+        crate::components::Velocity {
+            vx: 0.0,
+            vy: -285.0,
+        },
+    );
 
     engine.update(0.1);
 
     assert_eq!(engine.collision_hit_count(), 1);
     assert_eq!(engine.particle_count(), 10);
-    assert!(!engine.world.alive[brick.id as usize]);
-    assert!(engine.render_commands.len() > engine.entity_count());
+    assert!(!engine.world.is_alive_index(brick.id as usize));
+    assert!(engine.frame_buffers.render_commands.len() > engine.entity_count());
     assert!(engine
+        .frame_buffers
         .render_commands
         .iter()
         .any(|command| command.width < 10.0));
@@ -250,8 +263,9 @@ fn platformer_landing_spawns_default_dust_burst() {
     engine.update(0.1);
 
     assert_eq!(engine.particle_count(), 12);
-    assert!(engine.render_commands.len() > engine.entity_count());
+    assert!(engine.frame_buffers.render_commands.len() > engine.entity_count());
     assert!(engine
+        .frame_buffers
         .render_commands
         .iter()
         .any(|command| command.width < 9.0));

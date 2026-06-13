@@ -4,7 +4,7 @@ use super::*;
 fn particle_preset_api_spawns_and_emits_render_command() {
     let mut engine = Engine::new();
     engine.build_render_commands();
-    let entity_command_count = engine.render_commands.len();
+    let entity_command_count = engine.frame_buffers.render_commands.len();
 
     engine.set_particle_seed(7);
     engine.set_particle_preset(
@@ -17,8 +17,12 @@ fn particle_preset_api_spawns_and_emits_render_command() {
 
     assert_eq!(spawned, 1);
     assert_eq!(engine.particle_count(), 1);
-    assert_eq!(engine.render_commands.len(), entity_command_count + 1);
+    assert_eq!(
+        engine.frame_buffers.render_commands.len(),
+        entity_command_count + 1
+    );
     let command = engine
+        .frame_buffers
         .render_commands
         .iter()
         .find(|command| command.texture_id == 77.0)
@@ -45,6 +49,7 @@ fn offscreen_particles_do_not_emit_render_commands() {
     assert_eq!(spawned, 1);
     assert_eq!(engine.particle_count(), 1);
     assert!(!engine
+        .frame_buffers
         .render_commands
         .iter()
         .any(|command| command.texture_id == 77.0));

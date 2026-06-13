@@ -60,6 +60,20 @@ impl World {
         true
     }
 
+    pub(crate) fn update_projectile_arc_at(
+        &mut self,
+        index: usize,
+        delta_seconds: f32,
+    ) -> Option<HeightSpan> {
+        if !self.is_alive_index(index) {
+            return None;
+        }
+        let arc = self.projectile_arcs.get_mut(index)?.as_mut()?;
+        let height_span = arc.update(delta_seconds);
+        self.height_spans[index] = height_span;
+        height_span
+    }
+
     pub(crate) fn height_span_at(&self, index: usize) -> Option<HeightSpan> {
         if !self.alive.get(index).copied().unwrap_or(false) {
             return None;

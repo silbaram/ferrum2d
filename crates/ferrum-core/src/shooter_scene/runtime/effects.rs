@@ -865,7 +865,9 @@ mod tests {
         let mut world = World::default();
         let source = world.spawn_enemy(10.0, 10.0, DEFAULT_TEXTURE_ID);
         let target = world.spawn_enemy(20.0, 10.0, DEFAULT_TEXTURE_ID);
-        let source_tint = world.sprites[source.id as usize].unwrap();
+        let source_tint = world
+            .sprite_at_index(source.id as usize)
+            .expect("spawned enemy should have a sprite");
         let mut tweens = TweenSystem::new();
         let result;
         {
@@ -889,9 +891,12 @@ mod tests {
             }
         );
         assert_eq!(tweens.tween_count(), 1);
-        assert_eq!(world.sprites[source.id as usize].unwrap(), source_tint);
+        assert_eq!(world.sprite_at_index(source.id as usize), Some(source_tint));
         assert_eq!(
-            world.sprites[target.id as usize].unwrap().r,
+            world
+                .sprite_at_index(target.id as usize)
+                .expect("spawned enemy should have a sprite")
+                .r,
             ENEMY_HIT_FLASH_TINT.r,
         );
     }

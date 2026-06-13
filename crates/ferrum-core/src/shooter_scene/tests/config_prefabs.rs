@@ -21,9 +21,9 @@ fn config_changes_player_speed_and_world_bounds() {
         &mut audio_events,
     );
 
-    let player = world.player.unwrap();
-    assert_eq!(world.transforms[player.id as usize].unwrap().x, 1600.0);
-    assert_eq!(world.velocities[player.id as usize].unwrap().vx, 240.0);
+    let player = world.player_entity().unwrap();
+    assert_eq!(world.transform(player).unwrap().x, 1600.0);
+    assert_eq!(world.velocity(player).unwrap().vx, 240.0);
 }
 
 #[test]
@@ -36,7 +36,7 @@ fn config_changes_bullet_lifetime_and_speed() {
         &mut audio_events,
         ShooterConfig::from_values(1600.0, 960.0, 180.0, 72.0, 1.0, 500.0, 0.12, 0.25),
     );
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
 
     scene.fire_bullet_toward_mouse(
         &mut world,
@@ -51,15 +51,20 @@ fn config_changes_bullet_lifetime_and_speed() {
     );
 
     let bullet_index = world
-        .velocities
+        .alive_indices()
         .iter()
-        .position(|velocity| velocity.is_some_and(|v| v.vx != 0.0 || v.vy != 0.0))
+        .copied()
+        .find(|&index| {
+            world
+                .velocity_at_index(index)
+                .is_some_and(|velocity| velocity.vx != 0.0 || velocity.vy != 0.0)
+        })
         .unwrap();
-    assert!((world.velocities[bullet_index].unwrap().vx - 500.0).abs() < 0.01);
+    assert!((world.velocity_at_index(bullet_index).unwrap().vx - 500.0).abs() < 0.01);
 
     scene.update_bullets(&mut world, 0.26);
 
-    assert!(!world.alive[bullet_index]);
+    assert!(!world.is_alive_index(bullet_index));
 }
 
 #[test]
@@ -79,28 +84,24 @@ fn prefab_config_changes_spawned_sprite_and_collider_sizes() {
     scene.game_state = GameState::Playing;
     scene.enemy_spawn_timer = 0.0;
 
-    let player = world.player.unwrap();
-    assert_eq!(world.sprites[player.id as usize].unwrap().width, 48.0);
-    assert_eq!(world.sprites[player.id as usize].unwrap().height, 40.0);
-    assert_eq!(
-        world.colliders[player.id as usize].unwrap().half_width,
-        24.0
-    );
-    assert_eq!(
-        world.colliders[player.id as usize].unwrap().half_height,
-        20.0
-    );
+    let player = world.player_entity().unwrap();
+    let player_sprite = world.sprite_at_index(player.id as usize).unwrap();
+    assert_eq!(player_sprite.width, 48.0);
+    assert_eq!(player_sprite.height, 40.0);
+    let player_collider = world.collider(player).unwrap();
+    assert_eq!(player_collider.half_width, 24.0);
+    assert_eq!(player_collider.half_height, 20.0);
 
     scene.spawn_enemy_if_needed(&mut world);
     let enemy = world
-        .colliders
+        .alive_indices()
         .iter()
-        .enumerate()
-        .find(|(_, collider)| collider.is_some_and(|c| c.layer == CollisionLayer::Enemy))
-        .map(|(index, _)| index)
+        .copied()
+        .find(|&index| world.collider_layer_at(index) == Some(CollisionLayer::Enemy))
         .unwrap();
-    assert_eq!(world.sprites[enemy].unwrap().width, 30.0);
-    assert_eq!(world.sprites[enemy].unwrap().height, 28.0);
+    let enemy_sprite = world.sprite_at_index(enemy).unwrap();
+    assert_eq!(enemy_sprite.width, 30.0);
+    assert_eq!(enemy_sprite.height, 28.0);
 
     scene.fire_bullet_toward_mouse(
         &mut world,
@@ -114,16 +115,20 @@ fn prefab_config_changes_spawned_sprite_and_collider_sizes() {
         &mut audio_events,
     );
     let bullet = world
-        .colliders
+        .alive_indices()
         .iter()
-        .enumerate()
-        .find(|(_, collider)| collider.is_some_and(|c| c.layer == CollisionLayer::Bullet))
-        .map(|(index, _)| index)
+        .copied()
+        .find(|&index| world.collider_layer_at(index) == Some(CollisionLayer::Bullet))
         .unwrap();
-    assert_eq!(world.sprites[bullet].unwrap().width, 12.0);
-    assert_eq!(world.sprites[bullet].unwrap().height, 10.0);
-    assert_eq!(world.colliders[bullet].unwrap().half_width, 6.0);
-    assert_eq!(world.colliders[bullet].unwrap().half_height, 5.0);
+    let bullet_sprite = world.sprite_at_index(bullet).unwrap();
+    assert_eq!(bullet_sprite.width, 12.0);
+    assert_eq!(bullet_sprite.height, 10.0);
+    let bullet_entity = world
+        .entity_at_index(bullet)
+        .expect("test bullet entity should exist");
+    let bullet_collider = world.collider(bullet_entity).unwrap();
+    assert_eq!(bullet_collider.half_width, 6.0);
+    assert_eq!(bullet_collider.half_height, 5.0);
 }
 
 #[test]
@@ -138,8 +143,8 @@ fn prefab_collider_config_updates_spawned_and_existing_colliders() {
         EntityTemplateCollider::aabb(12.0, 14.0, 2.0, -3.0, false, false, Some(material)),
     ));
 
-    let player = world.player.unwrap();
-    let player_collider = world.colliders[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let player_collider = world.collider(player).unwrap();
     assert_eq!(player_collider.half_width, 12.0);
     assert_eq!(player_collider.half_height, 14.0);
     assert_eq!(player_collider.offset_x, 2.0);
@@ -157,21 +162,18 @@ fn prefab_collider_config_updates_spawned_and_existing_colliders() {
     scene.enemy_spawn_timer = 0.0;
     scene.spawn_enemy_if_needed(&mut world);
     let enemy = world
-        .colliders
+        .alive_indices()
         .iter()
-        .enumerate()
-        .find(|(_, collider)| collider.is_some_and(|c| c.layer == CollisionLayer::Enemy))
-        .map(|(index, _)| index)
+        .copied()
+        .find(|&index| world.collider_layer_at(index) == Some(CollisionLayer::Enemy))
         .unwrap();
-    assert_eq!(world.colliders[enemy].unwrap().half_width, 9.0);
-    assert_eq!(world.colliders[enemy].unwrap().offset_x, 1.0);
-    assert_eq!(
-        world.collider_material(Entity {
-            id: enemy as u32,
-            generation: 0
-        }),
-        None
-    );
+    let enemy_entity = world
+        .entity_at_index(enemy)
+        .expect("test enemy entity should exist");
+    let enemy_collider = world.collider(enemy_entity).unwrap();
+    assert_eq!(enemy_collider.half_width, 9.0);
+    assert_eq!(enemy_collider.offset_x, 1.0);
+    assert_eq!(world.collider_material(enemy_entity), None);
 
     assert!(scene.set_prefab_collider(
         &mut world,
@@ -190,28 +192,25 @@ fn prefab_collider_config_updates_spawned_and_existing_colliders() {
         &mut audio_events,
     );
     let bullet = world
-        .colliders
+        .alive_indices()
         .iter()
-        .enumerate()
-        .find(|(_, collider)| collider.is_some_and(|c| c.layer == CollisionLayer::Bullet))
-        .map(|(index, _)| index)
+        .copied()
+        .find(|&index| world.collider_layer_at(index) == Some(CollisionLayer::Bullet))
         .unwrap();
-    assert_eq!(world.colliders[bullet].unwrap().half_width, 3.0);
-    assert_eq!(world.colliders[bullet].unwrap().half_height, 5.0);
-    assert_eq!(world.colliders[bullet].unwrap().offset_x, -1.0);
-    assert_eq!(
-        world.collider_material(Entity {
-            id: bullet as u32,
-            generation: 0
-        }),
-        Some(material)
-    );
+    let bullet_entity = world
+        .entity_at_index(bullet)
+        .expect("test bullet entity should exist");
+    let bullet_collider = world.collider(bullet_entity).unwrap();
+    assert_eq!(bullet_collider.half_width, 3.0);
+    assert_eq!(bullet_collider.half_height, 5.0);
+    assert_eq!(bullet_collider.offset_x, -1.0);
+    assert_eq!(world.collider_material(bullet_entity), Some(material));
 }
 
 #[test]
 fn prefab_collider_config_supports_non_aabb_shapes() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
+    let player = world.player_entity().unwrap();
     assert!(scene.set_prefab_collider(
         &mut world,
         0,
@@ -226,7 +225,7 @@ fn prefab_collider_config_supports_non_aabb_shapes() {
             material: None,
         },
     ));
-    let player_collider = world.circle_colliders[player.id as usize].unwrap();
+    let player_collider = world.circle_collider(player).unwrap();
     assert_eq!(player_collider.radius, 13.0);
     assert_eq!(player_collider.offset_x, 2.0);
     assert_eq!(
@@ -257,10 +256,13 @@ fn prefab_collider_config_supports_non_aabb_shapes() {
     scene.game_state = GameState::Playing;
     scene.enemy_spawn_timer = 0.0;
     scene.spawn_enemy_if_needed(&mut world);
-    let enemy = (0..world.alive.len())
+    let enemy = (0..world.entity_capacity())
         .find(|index| world.collider_layer_at(*index) == Some(CollisionLayer::Enemy))
         .unwrap();
-    assert_eq!(world.capsule_colliders[enemy].unwrap().radius, 3.0);
+    let enemy_entity = world
+        .entity_at_index(enemy)
+        .expect("test enemy entity should exist");
+    assert_eq!(world.capsule_collider(enemy_entity).unwrap().radius, 3.0);
 
     assert!(scene.set_prefab_collider(
         &mut world,
@@ -280,7 +282,7 @@ fn prefab_collider_config_supports_non_aabb_shapes() {
             material: None,
         },
     ));
-    let enemy_box = world.oriented_box_colliders[enemy].unwrap();
+    let enemy_box = world.oriented_box_collider(enemy_entity).unwrap();
     assert_eq!(enemy_box.half_width, 7.0);
     assert_eq!(enemy_box.rotation_radians, 0.25);
     assert!(!enemy_box.is_trigger);
@@ -319,10 +321,13 @@ fn prefab_collider_config_supports_non_aabb_shapes() {
         player,
         &mut audio_events,
     );
-    let bullet = (0..world.alive.len())
+    let bullet = (0..world.entity_capacity())
         .find(|index| world.collider_layer_at(*index) == Some(CollisionLayer::Bullet))
         .unwrap();
-    let bullet_polygon = world.convex_polygon_colliders[bullet].unwrap();
+    let bullet_entity = world
+        .entity_at_index(bullet)
+        .expect("test bullet entity should exist");
+    let bullet_polygon = world.convex_polygon_collider(bullet_entity).unwrap();
     assert_eq!(bullet_polygon.vertex_count, 3);
     assert_eq!(bullet_polygon.offset_x, -1.0);
     assert_eq!(bullet_polygon.rotation_radians, 0.1);
@@ -331,8 +336,8 @@ fn prefab_collider_config_supports_non_aabb_shapes() {
 #[test]
 fn prefab_collider_config_falls_back_for_invalid_non_aabb_shapes() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player.unwrap();
-    let original_player_collider = world.colliders[player.id as usize].unwrap();
+    let player = world.player_entity().unwrap();
+    let original_player_collider = world.collider(player).unwrap();
 
     assert!(scene.set_prefab_collider(
         &mut world,
@@ -360,8 +365,8 @@ fn prefab_collider_config_falls_back_for_invalid_non_aabb_shapes() {
         }
         _ => panic!("invalid circle prefab collider should fall back to the default AABB shape"),
     }
-    assert!(world.circle_colliders[player.id as usize].is_none());
-    let player_collider = world.colliders[player.id as usize].unwrap();
+    assert!(world.circle_collider(player).is_none());
+    let player_collider = world.collider(player).unwrap();
     assert_eq!(player_collider.offset_x, original_player_collider.offset_x);
     assert_eq!(player_collider.offset_y, original_player_collider.offset_y);
 
@@ -403,11 +408,14 @@ fn prefab_collider_config_falls_back_for_invalid_non_aabb_shapes() {
         &mut audio_events,
     );
 
-    let bullet = (0..world.alive.len())
+    let bullet = (0..world.entity_capacity())
         .find(|index| world.collider_layer_at(*index) == Some(CollisionLayer::Bullet))
         .unwrap();
-    assert!(world.convex_polygon_colliders[bullet].is_none());
-    let bullet_collider = world.colliders[bullet].unwrap();
+    let bullet_entity = world
+        .entity_at_index(bullet)
+        .expect("test bullet entity should exist");
+    assert!(world.convex_polygon_collider(bullet_entity).is_none());
+    let bullet_collider = world.collider(bullet_entity).unwrap();
     assert_eq!(bullet_collider.half_width, 4.0);
     assert_eq!(bullet_collider.half_height, 4.0);
     assert_eq!(bullet_collider.offset_x, 0.0);
@@ -423,9 +431,9 @@ fn configured_texture_ids_are_written_to_existing_sprites() {
     scene.set_texture_ids(&mut world, 1, 2, 3);
 
     let texture_ids: Vec<u32> = world
-        .sprites
+        .alive_indices()
         .iter()
-        .flatten()
+        .filter_map(|&index| world.sprite_at_index(index))
         .map(|sprite| sprite.texture_id)
         .collect();
     assert!(texture_ids.contains(&1));

@@ -10,13 +10,7 @@ pub(super) fn revolute_joint_world_radius(
     local_anchor_x: f32,
     local_anchor_y: f32,
 ) -> Velocity {
-    let rotation = world
-        .rotations
-        .get(index)
-        .copied()
-        .flatten()
-        .map(finite_rotation)
-        .unwrap_or_default();
+    let rotation = finite_rotation(world.rotation_at_index_or_default(index));
     rotate_velocity(
         Velocity {
             vx: sanitize_finite(local_anchor_x),
@@ -33,13 +27,7 @@ pub(super) fn prismatic_joint_world_axis(
     local_axis_y: f32,
 ) -> Velocity {
     let local_axis = normalized_prismatic_joint_axis(local_axis_x, local_axis_y);
-    let rotation = world
-        .rotations
-        .get(index)
-        .copied()
-        .flatten()
-        .map(finite_rotation)
-        .unwrap_or_default();
+    let rotation = finite_rotation(world.rotation_at_index_or_default(index));
     let axis = rotate_velocity(local_axis, rotation.radians);
     normalized_prismatic_joint_axis(axis.vx, axis.vy)
 }

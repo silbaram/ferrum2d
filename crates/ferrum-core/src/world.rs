@@ -21,6 +21,7 @@ const GAMEPLAY_TAG_INDEX_BUCKETS: usize = GAMEPLAY_TAG_MAX_ID as usize + 1;
 
 mod colliders;
 mod component_access;
+mod component_storage;
 mod entity_lifecycle;
 mod gameplay_query_indices;
 mod hd2d;
@@ -43,9 +44,9 @@ pub use templates::{
 
 #[derive(Default)]
 pub struct World {
-    pub(crate) generations: Vec<u32>,
+    generations: Vec<u32>,
     free_list: Vec<u32>,
-    pub(crate) alive: Vec<bool>,
+    alive: Vec<bool>,
     alive_indices: Vec<usize>,
     alive_positions: Vec<usize>,
     pub(crate) transforms: Vec<Option<Transform2D>>,
@@ -54,11 +55,11 @@ pub struct World {
     pub(crate) velocities: Vec<Option<Velocity>>,
     pub(crate) rotations: Vec<Option<Rotation2D>>,
     pub(crate) angular_velocities: Vec<Option<AngularVelocity>>,
-    pub(crate) height_spans: Vec<Option<HeightSpan>>,
-    pub(crate) projectile_arcs: Vec<Option<ProjectileArc>>,
+    height_spans: Vec<Option<HeightSpan>>,
+    projectile_arcs: Vec<Option<ProjectileArc>>,
     pub(crate) rigid_bodies: Vec<Option<RigidBody>>,
-    pub(crate) rigid_contact_impulses: Vec<RigidContactImpulse>,
-    pub(crate) rigid_body_ccd_debug_hits: Vec<RigidBodyCcdDebugHit>,
+    rigid_contact_impulses: Vec<RigidContactImpulse>,
+    rigid_body_ccd_debug_hits: Vec<RigidBodyCcdDebugHit>,
     pub(crate) distance_joints: Vec<Option<DistanceJoint>>,
     pub(crate) distance_joint_generations: Vec<u32>,
     distance_joint_free_list: Vec<u32>,
@@ -93,28 +94,28 @@ pub struct World {
     pub(crate) compound_colliders: Vec<Vec<CompoundCollider>>,
     pub(crate) collider_materials: Vec<Option<PhysicsMaterial>>,
     pub(crate) collision_filters: Vec<Option<CollisionFilter>>,
-    pub(crate) lifetimes: Vec<Option<GameplayLifetime>>,
-    pub(crate) projectile_policies: Vec<Option<ProjectilePolicy>>,
-    pub(crate) bullet_lifetimes: Vec<Option<f32>>,
-    pub(crate) projectile_collision_targets: Vec<Option<ProjectileCollisionTarget>>,
-    pub(crate) projectile_tile_impacts: Vec<Option<ProjectileTileImpact>>,
-    pub(crate) healths: Vec<Option<f32>>,
-    pub(crate) damages: Vec<Option<f32>>,
-    pub(crate) score_rewards: Vec<Option<u32>>,
-    pub(crate) gameplay_factions: Vec<Option<GameplayFaction>>,
-    pub(crate) gameplay_faction_relations: FactionRelationTable,
-    pub(crate) gameplay_tags: Vec<Option<GameplayTags>>,
+    lifetimes: Vec<Option<GameplayLifetime>>,
+    projectile_policies: Vec<Option<ProjectilePolicy>>,
+    bullet_lifetimes: Vec<Option<f32>>,
+    projectile_collision_targets: Vec<Option<ProjectileCollisionTarget>>,
+    projectile_tile_impacts: Vec<Option<ProjectileTileImpact>>,
+    healths: Vec<Option<f32>>,
+    damages: Vec<Option<f32>>,
+    score_rewards: Vec<Option<u32>>,
+    gameplay_factions: Vec<Option<GameplayFaction>>,
+    gameplay_faction_relations: FactionRelationTable,
+    gameplay_tags: Vec<Option<GameplayTags>>,
     gameplay_faction_indices: [Vec<usize>; GAMEPLAY_FACTION_INDEX_BUCKETS],
     gameplay_tag_indices: [Vec<usize>; GAMEPLAY_TAG_INDEX_BUCKETS],
-    pub(crate) action_bindings: Vec<Option<ActionBindingSet>>,
-    pub(crate) pickups: Vec<Option<Pickup>>,
-    pub(crate) interactions: Vec<Option<Interaction>>,
-    pub(crate) movement_patterns: Vec<Option<MovementPattern>>,
-    pub(crate) collision_reactions: Vec<Option<CollisionReactionSet>>,
-    pub(crate) behavior_state_machines: Vec<Option<BehaviorStateMachine>>,
-    pub(crate) behavior_state_enter_actions: Vec<Option<BehaviorStateEnterActionSet>>,
-    pub(crate) gameplay_timer_triggers: Vec<Option<GameplayTimerTrigger>>,
-    pub(crate) player: Option<Entity>,
+    action_bindings: Vec<Option<ActionBindingSet>>,
+    pickups: Vec<Option<Pickup>>,
+    interactions: Vec<Option<Interaction>>,
+    movement_patterns: Vec<Option<MovementPattern>>,
+    collision_reactions: Vec<Option<CollisionReactionSet>>,
+    behavior_state_machines: Vec<Option<BehaviorStateMachine>>,
+    behavior_state_enter_actions: Vec<Option<BehaviorStateEnterActionSet>>,
+    gameplay_timer_triggers: Vec<Option<GameplayTimerTrigger>>,
+    player: Option<Entity>,
 }
 
 impl World {

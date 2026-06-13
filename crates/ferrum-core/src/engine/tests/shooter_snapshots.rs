@@ -14,32 +14,32 @@ fn engine_captures_and_restores_builtin_shooter_snapshot() {
     let bullet = engine
         .world
         .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
-    engine.world.damages[bullet.id as usize] = Some(1.0);
+    engine.world.set_damage(bullet, 1.0);
     engine.update(0.016);
     assert_eq!(engine.score(), 1);
-    assert!(!engine.world.alive[enemy.id as usize]);
+    assert!(!engine.world.is_alive_index(enemy.id as usize));
 
     let saved_enemy = engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
     let saved_bullet = engine
         .world
         .spawn_bullet(120.0, 100.0, 12.0, 0.0, DEFAULT_TEXTURE_ID);
-    engine.world.projectile_tile_impacts[saved_bullet.id as usize] =
-        Some(ProjectileTileImpact::PassThrough);
+    engine
+        .world
+        .set_projectile_tile_impact(saved_bullet, ProjectileTileImpact::PassThrough);
     let saved_bullet_faction =
         GameplayFaction::new(GAMEPLAY_FACTION_PLAYER, 1 << GAMEPLAY_FACTION_ENEMY).unwrap();
     engine
         .world
         .set_gameplay_faction(saved_bullet, saved_bullet_faction);
-    assert!(engine.world.alive[saved_enemy.id as usize]);
-    assert!(engine.world.alive[saved_bullet.id as usize]);
+    assert!(engine.world.is_alive_index(saved_enemy.id as usize));
+    assert!(engine.world.is_alive_index(saved_bullet.id as usize));
     let saved_entity_count = engine.entity_count();
     engine.camera.x = 320.0;
     engine.camera.y = 240.0;
     engine
         .world
-        .gameplay_faction_relations
-        .set_default_relation(FactionRelation::Friendly);
-    assert!(engine.world.gameplay_faction_relations.set_relation(
+        .set_gameplay_faction_default_relation(FactionRelation::Friendly);
+    assert!(engine.world.set_gameplay_faction_relation(
         GAMEPLAY_FACTION_PLAYER,
         GAMEPLAY_FACTION_ENEMY,
         FactionRelation::Hostile,
@@ -92,25 +92,23 @@ fn engine_captures_and_restores_builtin_shooter_snapshot() {
         .any(|velocity| (velocity.vx - 12.0).abs() < 0.001));
     assert!(engine
         .world
-        .projectile_tile_impacts
+        .alive_indices()
         .iter()
-        .flatten()
-        .any(|tile_impact| *tile_impact == ProjectileTileImpact::PassThrough));
+        .any(|&index| engine.world.projectile_tile_impact_at(index)
+            == ProjectileTileImpact::PassThrough));
     assert!(engine
         .world
-        .gameplay_factions
+        .alive_indices()
         .iter()
-        .flatten()
-        .any(|faction| *faction == saved_bullet_faction));
+        .any(|&index| engine.world.gameplay_faction_at_index(index) == Some(saved_bullet_faction)));
     assert_eq!(
-        engine.world.gameplay_faction_relations.default_relation(),
+        engine.world.gameplay_faction_default_relation(),
         FactionRelation::Friendly
     );
     assert_eq!(
         engine
             .world
-            .gameplay_faction_relations
-            .relation(GAMEPLAY_FACTION_PLAYER, GAMEPLAY_FACTION_ENEMY),
+            .gameplay_faction_relation(GAMEPLAY_FACTION_PLAYER, GAMEPLAY_FACTION_ENEMY),
         Some(FactionRelation::Hostile)
     );
 }
@@ -179,7 +177,7 @@ fn shooter_snapshot_restore_resume_keeps_held_pressed_action_deterministic() {
         false, false, false, false, false, false, false, 800.0, 240.0,
     );
     original.update(0.016);
-    let player = original.world.player.unwrap();
+    let player = original.world.player_entity().unwrap();
     assert!(original.set_gameplay_action_dash(player.id, player.generation, 2, 0.0, 64.0));
 
     original.set_input(false, false, false, false, false, true, false, 800.0, 240.0);
@@ -193,7 +191,9 @@ fn shooter_snapshot_restore_resume_keeps_held_pressed_action_deterministic() {
         entity_floats[player_snapshot_slot(&entity_u32s) * SHOOTER_SNAPSHOT_ENTITY_FLOATS];
 
     original.update_frame(0.016, false, false, false);
-    let original_player_x = original.world.transforms[original.world.player.unwrap().id as usize]
+    let original_player_x = original
+        .world
+        .transform(original.world.player_entity().unwrap())
         .unwrap()
         .x;
 
@@ -206,7 +206,9 @@ fn shooter_snapshot_restore_resume_keeps_held_pressed_action_deterministic() {
     ));
     restored.set_input(false, false, false, false, false, true, false, 800.0, 240.0);
     restored.update_frame(0.016, false, false, false);
-    let restored_player_x = restored.world.transforms[restored.world.player.unwrap().id as usize]
+    let restored_player_x = restored
+        .world
+        .transform(restored.world.player_entity().unwrap())
         .unwrap()
         .x;
 
@@ -219,8 +221,8 @@ fn shooter_snapshot_player_score_reward_does_not_pollute_projectile_policy_slot(
     let mut engine = Engine::new();
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
-    let player = engine.world.player.unwrap();
-    engine.world.score_rewards[player.id as usize] = Some(99);
+    let player = engine.world.player_entity().unwrap();
+    engine.world.set_score_reward(player, 99);
 
     assert!(engine.capture_shooter_snapshot());
     let header_floats = engine.shooter_snapshot_header_floats.clone();
@@ -247,7 +249,7 @@ fn shooter_snapshot_restores_authored_primary_fire_action_cooldown() {
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     assert!(engine.set_gameplay_action_projectile_with_target(
         player.id,
         player.generation,
@@ -323,7 +325,7 @@ fn shooter_snapshot_restores_authored_primary_fire_action_cooldown() {
         entity_u32s,
     ));
 
-    let restored_player = engine.world.player.unwrap();
+    let restored_player = engine.world.player_entity().unwrap();
     let restored_action = engine.world.action_binding(restored_player, 1).unwrap();
     assert_eq!(restored_action.action_id, 1);
     assert_eq!(restored_action.cooldown.duration_seconds, 0.5);
@@ -386,19 +388,16 @@ fn shooter_snapshot_restores_authored_primary_fire_action_cooldown() {
     assert_eq!(count_layer(&engine, CollisionLayer::Bullet), 1);
     let bullet_index = engine
         .world
-        .alive
+        .alive_indices()
         .iter()
-        .enumerate()
-        .find(|(index, alive)| {
-            **alive && engine.world.collider_layer_at(*index) == Some(CollisionLayer::Bullet)
-        })
-        .map(|(index, _)| index)
+        .copied()
+        .find(|&index| engine.world.collider_layer_at(index) == Some(CollisionLayer::Bullet))
         .unwrap();
-    let velocity = engine.world.velocities[bullet_index].unwrap();
+    let velocity = engine.world.velocity_at_index(bullet_index).unwrap();
     let speed = (velocity.vx * velocity.vx + velocity.vy * velocity.vy).sqrt();
     assert!((speed - 900.0).abs() < 0.01);
-    assert_eq!(engine.world.damages[bullet_index], Some(3.0));
-    assert!((engine.world.bullet_lifetimes[bullet_index].unwrap() - 1.5).abs() < 0.001);
+    assert_eq!(engine.world.damage_at_index(bullet_index), Some(3.0));
+    assert!((engine.world.gameplay_lifetime_at(bullet_index).unwrap() - 1.5).abs() < 0.001);
 }
 
 #[test]
@@ -407,7 +406,7 @@ fn shooter_snapshot_restores_multiple_spawn_prefab_action_bindings() {
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     assert!(engine.set_gameplay_action_projectile(
         player.id,
         player.generation,
@@ -489,7 +488,7 @@ fn shooter_snapshot_restores_multiple_spawn_prefab_action_bindings() {
         entity_u32s,
     ));
 
-    let restored_player = engine.world.player.unwrap();
+    let restored_player = engine.world.player_entity().unwrap();
     let restored_first = engine.world.action_binding(restored_player, 11).unwrap();
     assert_eq!(restored_first.action_id, 11);
     assert_eq!(restored_first.cooldown.duration_seconds, 0.4);
@@ -528,7 +527,7 @@ fn shooter_snapshot_restores_maximum_spawn_prefab_action_bindings() {
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     for slot in (0..MAX_ACTION_BINDINGS_PER_ENTITY).rev() {
         assert!(engine.set_gameplay_action_spawn_prefab(
             player.id,
@@ -567,7 +566,7 @@ fn shooter_snapshot_restores_maximum_spawn_prefab_action_bindings() {
         entity_u32s,
     ));
 
-    let restored_player = engine.world.player.unwrap();
+    let restored_player = engine.world.player_entity().unwrap();
     for slot in 0..MAX_ACTION_BINDINGS_PER_ENTITY {
         let action_id = 20 + slot as u32;
         let restored = engine
@@ -717,7 +716,7 @@ fn shooter_snapshot_restores_input_action_registry() {
     engine.set_input(false, false, false, false, true, false, false, 0.0, 0.0);
     engine.update(0.016);
     engine.set_input(false, false, false, false, false, false, false, 0.0, 0.0);
-    let player = engine.world.player.unwrap();
+    let player = engine.world.player_entity().unwrap();
     assert!(engine.set_gameplay_action_projectile(
         player.id,
         player.generation,

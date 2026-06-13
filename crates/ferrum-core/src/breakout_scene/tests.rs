@@ -27,20 +27,18 @@ fn title_level_spawns_breakout_bodies_without_launching_ball() {
     assert_eq!(scene.remaining_bricks(&world), 50);
     assert_eq!(world.alive_count(), 55);
     let ball = scene.ball.expect("title level creates ball");
-    assert_eq!(
-        world.velocities[ball.id as usize],
-        Some(Velocity::default())
-    );
+    assert_eq!(world.velocity(ball), Some(Velocity::default()));
     let paddle = scene.paddle.expect("title level creates paddle");
     assert_eq!(
         world.movement_pattern(paddle),
         Some(MovementPattern::TopdownInput { speed: 420.0 })
     );
-    assert_eq!(world.damages[ball.id as usize], Some(1.0));
+    assert_eq!(world.damage(ball), Some(1.0));
     let brick = *scene.bricks.first().expect("level has bricks");
-    assert_eq!(world.healths[brick.id as usize], Some(1.0));
-    assert_eq!(world.score_rewards[brick.id as usize], Some(BRICK_SCORE));
-    let reactions = world.collision_reactions[brick.id as usize]
+    assert_eq!(world.health(brick), Some(1.0));
+    assert_eq!(world.score_reward(brick), Some(BRICK_SCORE));
+    let reactions = world
+        .collision_reactions(brick)
         .expect("brick has authored collision reactions");
     assert_eq!(reactions.len(), 1);
     assert!(reactions.iter().any(|reaction| matches!(
@@ -71,7 +69,7 @@ fn action_starts_breakout_and_launches_ball() {
     );
 
     let ball = scene.ball.expect("playing level creates ball");
-    let velocity = world.velocities[ball.id as usize].expect("ball has velocity");
+    let velocity = world.velocity(ball).expect("ball has velocity");
     assert_eq!(scene.game_state(), GameState::Playing);
     assert!(velocity.vy < 0.0);
 }
@@ -86,15 +84,21 @@ fn ball_brick_hit_adds_score_and_records_hit_event() {
     scene.reset_playing(&mut world, &mut camera);
     let ball = scene.ball.expect("playing level creates ball");
     let brick = *scene.bricks.last().expect("level has bricks");
-    let brick_transform = world.transforms[brick.id as usize].expect("brick has transform");
-    world.transforms[ball.id as usize] = Some(Transform2D {
-        x: brick_transform.x,
-        y: brick_transform.y + BRICK_HEIGHT,
-    });
-    world.velocities[ball.id as usize] = Some(Velocity {
-        vx: 0.0,
-        vy: -BALL_SPEED,
-    });
+    let brick_transform = world.transform(brick).expect("brick has transform");
+    world.set_transform(
+        ball,
+        Transform2D {
+            x: brick_transform.x,
+            y: brick_transform.y + BRICK_HEIGHT,
+        },
+    );
+    world.set_velocity(
+        ball,
+        Velocity {
+            vx: 0.0,
+            vy: -BALL_SPEED,
+        },
+    );
 
     scene.update(
         &mut world,
@@ -125,15 +129,21 @@ fn ball_brick_hit_spawns_particle_burst_when_sink_is_bound() {
     scene.reset_playing(&mut world, &mut camera);
     let ball = scene.ball.expect("playing level creates ball");
     let brick = *scene.bricks.last().expect("level has bricks");
-    let brick_transform = world.transforms[brick.id as usize].expect("brick has transform");
-    world.transforms[ball.id as usize] = Some(Transform2D {
-        x: brick_transform.x,
-        y: brick_transform.y + BRICK_HEIGHT,
-    });
-    world.velocities[ball.id as usize] = Some(Velocity {
-        vx: 0.0,
-        vy: -BALL_SPEED,
-    });
+    let brick_transform = world.transform(brick).expect("brick has transform");
+    world.set_transform(
+        ball,
+        Transform2D {
+            x: brick_transform.x,
+            y: brick_transform.y + BRICK_HEIGHT,
+        },
+    );
+    world.set_velocity(
+        ball,
+        Velocity {
+            vx: 0.0,
+            vy: -BALL_SPEED,
+        },
+    );
 
     scene.update(
         &mut world,

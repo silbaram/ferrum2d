@@ -124,7 +124,7 @@ npx @ferrum2d/create-game my-breakout --template breakout
 | `src/main.ts` | browser runtime bootstrap. canvas, input, renderer, HUD, built-in scene 연결 |
 | `src/styles.css` | starter layout과 canvas 주변 UI |
 | `public/game.json` | `topdown` 템플릿의 Game Spec |
-| `public/scene-authoring.json` | Scene Composition과 Behavior Recipe fixture |
+| `public/scene-authoring.json` | [Data Scene Authoring](data-scene-authoring.md) envelope를 사용하는 Scene Composition과 Behavior Recipe fixture |
 | `public/gameplay-replay.fixture.json` | template surface replay fixture |
 | `public/gameplay-runtime-replay.fixture.json` | generated project runtime replay fixture |
 | `scripts/ferrum-harness.mjs` | report, validate, smoke, authoring/replay command harness |
@@ -140,7 +140,7 @@ npx @ferrum2d/create-game my-breakout --template breakout
 | 적 속도, spawn 간격, wave | `public/game.json.enemies` | `npm run ferrum:replay-report` |
 | 무기 속도, cooldown, damage | `public/game.json.weapons` 또는 behavior recipe | `npm run ferrum:authoring-report` |
 | prefab 크기와 collider | `public/game.json.prefabs` | `npm run ferrum:validate` |
-| runtime entity binding | `public/scene-authoring.json` | `npm run ferrum:authoring-report` |
+| scene composition, behavior recipe, runtime entity binding | `public/scene-authoring.json` | `npm run ferrum:authoring-report` |
 | HUD, input, runtime bootstrap | `src/main.ts` | `npm run ferrum:smoke` |
 | sprite/audio/localization scaffold | `public/assets/**` | `npm run ferrum:asset-report` |
 | replay baseline | `public/gameplay-replay.fixture.json` | `npm run ferrum:replay-report` |

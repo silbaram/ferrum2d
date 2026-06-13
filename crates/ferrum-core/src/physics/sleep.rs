@@ -111,15 +111,9 @@ fn update_rigid_body_sleep_timers(
             continue;
         }
 
-        let velocity = finite_velocity(world.velocities[index].unwrap_or_default());
-        let angular_velocity = finite_angular_velocity(
-            world
-                .angular_velocities
-                .get(index)
-                .copied()
-                .flatten()
-                .unwrap_or_default(),
-        );
+        let velocity = finite_velocity(world.velocity_at_index_or_default(index));
+        let angular_velocity =
+            finite_angular_velocity(world.angular_velocity_at_index_or_default(index));
         if rigid_body_is_below_sleep_thresholds(velocity, angular_velocity) {
             body.sleep_timer_seconds =
                 sanitize_non_negative(body.sleep_timer_seconds + delta_seconds)
@@ -201,8 +195,8 @@ fn put_rigid_body_to_sleep_at(world: &mut World, index: usize) -> bool {
     }
     body.is_sleeping = true;
     body.sleep_timer_seconds = DEFAULT_SLEEP_TIME_THRESHOLD_SECONDS;
-    world.velocities[index] = Some(Velocity::default());
-    world.angular_velocities[index] = Some(AngularVelocity::default());
+    world.set_velocity_at_index(index, Velocity::default());
+    world.set_angular_velocity_at_index(index, AngularVelocity::default());
     world.rigid_bodies[index] = Some(body);
     true
 }
@@ -223,7 +217,7 @@ fn count_sleeping_dynamic_rigid_bodies(world: &World) -> u32 {
         .rigid_bodies
         .iter()
         .enumerate()
-        .filter(|(index, _)| world.alive.get(*index).copied().unwrap_or(false))
+        .filter(|(index, _)| world.is_alive_index(*index))
         .filter(|(index, _)| is_sleeping_dynamic_rigid_body(world, *index))
         .count() as u32
 }
@@ -245,22 +239,9 @@ pub(super) fn is_rigid_body_wake_source(world: &World, index: usize) -> bool {
         RigidBodyType::Static => return false,
     }
 
-    let velocity = finite_velocity(
-        world
-            .velocities
-            .get(index)
-            .copied()
-            .flatten()
-            .unwrap_or_default(),
-    );
-    let angular_velocity = finite_angular_velocity(
-        world
-            .angular_velocities
-            .get(index)
-            .copied()
-            .flatten()
-            .unwrap_or_default(),
-    );
+    let velocity = finite_velocity(world.velocity_at_index_or_default(index));
+    let angular_velocity =
+        finite_angular_velocity(world.angular_velocity_at_index_or_default(index));
     !rigid_body_is_below_sleep_thresholds(velocity, angular_velocity)
 }
 
@@ -274,22 +255,9 @@ pub(super) fn rigid_body_is_ready_for_sleep(world: &World, index: usize, body: R
         return false;
     }
 
-    let velocity = finite_velocity(
-        world
-            .velocities
-            .get(index)
-            .copied()
-            .flatten()
-            .unwrap_or_default(),
-    );
-    let angular_velocity = finite_angular_velocity(
-        world
-            .angular_velocities
-            .get(index)
-            .copied()
-            .flatten()
-            .unwrap_or_default(),
-    );
+    let velocity = finite_velocity(world.velocity_at_index_or_default(index));
+    let angular_velocity =
+        finite_angular_velocity(world.angular_velocity_at_index_or_default(index));
     rigid_body_is_below_sleep_thresholds(velocity, angular_velocity)
 }
 

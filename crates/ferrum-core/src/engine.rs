@@ -1,22 +1,17 @@
 use wasm_bindgen::prelude::*;
 
-use crate::audio_event::AudioEvent;
 use crate::camera::Camera2D;
 use crate::collision::{
     AabbQueryHit, CircleQueryHit, CollisionContact, CollisionManifold, CollisionScratch,
-    PhysicsDebugLine, PointQueryHit, RaycastHit, ShapeCastHit, ShapeQueryHit,
-    PHYSICS_DEBUG_DEFAULT,
+    PointQueryHit, RaycastHit, ShapeCastHit, ShapeQueryHit, PHYSICS_DEBUG_DEFAULT,
 };
-use crate::collision_event::{CollisionEvent, CollisionEventCounts, CollisionEventTracker};
-use crate::effect_event::EffectEvent;
-use crate::gameplay_event::GameplayEvent;
+use crate::collision_event::{CollisionEventCounts, CollisionEventTracker};
 use crate::input::{InputActionRegistry, InputState};
 use crate::particles::{ParticlePreset, ParticleSystem};
 use crate::physics::{
     FixedTimestep, FixedTimestepUpdate, PhysicsCounters, RigidBodyStepConfig, RigidBodyStepScratch,
     RigidBodyStepStats,
 };
-use crate::render_command::{SpriteRenderCommand, SpriteRenderItem};
 use crate::shooter_scene::{
     SHOOTER_SNAPSHOT_ENTITY_FLOATS, SHOOTER_SNAPSHOT_ENTITY_U32S, SHOOTER_SNAPSHOT_HEADER_FLOATS,
     SHOOTER_SNAPSHOT_HEADER_U32S,
@@ -29,6 +24,7 @@ use crate::tweens::TweenSystem;
 use crate::world::World;
 
 mod fixed_step;
+mod frame_buffers;
 mod gameplay_authoring;
 mod input_actions;
 mod particle_controls;
@@ -49,6 +45,7 @@ mod telemetry;
 mod tilemap_api;
 mod viewport_controls;
 use fixed_step::FixedTimestepInputLatch;
+use frame_buffers::EngineFrameBuffers;
 use gameplay_authoring::GameplayAuthoringSnapshot;
 use physics_abi::{
     PHYSICS_BODY_SNAPSHOT_FLAG_BODY_ENABLED, PHYSICS_BODY_SNAPSHOT_FLAG_COLLIDER_ENABLED,
@@ -102,16 +99,7 @@ pub struct Engine {
     tweens: TweenSystem,
     particle_presets: Vec<Option<ParticlePreset>>,
     shooter_hit_particle_preset: Option<u32>,
-    render_commands: Vec<SpriteRenderCommand>,
-    render_items: Vec<SpriteRenderItem>,
-    audio_events: Vec<AudioEvent>,
-    effect_events: Vec<EffectEvent>,
-    collision_events: Vec<CollisionEvent>,
-    gameplay_events: Vec<GameplayEvent>,
-    frame_telemetry: FrameTelemetry,
-    physics_debug_lines: Vec<PhysicsDebugLine>,
-    tilemap_navigation_path_points: Vec<f32>,
-    tilemap_navigation_debug_lines: Vec<PhysicsDebugLine>,
+    frame_buffers: EngineFrameBuffers,
     tilemap_navigation_scratch: TilemapNavigationScratch,
     physics_debug_collision_scratch: CollisionScratch,
     physics_debug_lines_enabled: bool,
@@ -184,16 +172,7 @@ impl Engine {
             tweens: TweenSystem::new(),
             particle_presets: Vec::new(),
             shooter_hit_particle_preset: None,
-            render_commands: Vec::with_capacity(256),
-            render_items: Vec::with_capacity(256),
-            audio_events: Vec::with_capacity(16),
-            effect_events: Vec::with_capacity(16),
-            collision_events: Vec::with_capacity(128),
-            gameplay_events: Vec::with_capacity(32),
-            frame_telemetry: FrameTelemetry::default(),
-            physics_debug_lines: Vec::with_capacity(64),
-            tilemap_navigation_path_points: Vec::with_capacity(32),
-            tilemap_navigation_debug_lines: Vec::with_capacity(16),
+            frame_buffers: EngineFrameBuffers::new(),
             tilemap_navigation_scratch: TilemapNavigationScratch::default(),
             physics_debug_collision_scratch: CollisionScratch::default(),
             physics_debug_lines_enabled: false,

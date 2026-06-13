@@ -1,0 +1,115 @@
+{
+  "format": "ferrum2d.public-api.surface",
+  "version": 1,
+  "packageName": "@ferrum2d/ferrum-web",
+  "entrypoints": [
+    {
+      "exportPath": ".",
+      "importPath": "@ferrum2d/ferrum-web",
+      "source": "packages/ferrum-web/src/index.ts",
+      "tier": "compatibility",
+      "stability": "public compatibility aggregate; new consumer code should prefer purpose-specific subpaths",
+      "requiredExports": [
+        "createFerrumRuntime",
+        "createEngine",
+        "createRenderer",
+        "WebGL2Renderer",
+        "AudioManager",
+        "resolvePhysicsSpec",
+        "captureGameStateSnapshot",
+        "resolveSceneAuthoringDocument",
+        "resolveSceneCompositionSpec",
+        "resolveBehaviorRecipeDocument",
+        "compileWeaponProfiles",
+        "resolveShooterGameSpec",
+        "createShooterContentRuntimeOptions",
+        "WebGPURenderer",
+        "resolveSpriteMaterialPreset",
+        "RuntimeProfiler",
+        "evaluateRuntimeProfilerBudget",
+        "createGameplayReplayRun",
+        "diagnosticReport"
+      ]
+    },
+    {
+      "exportPath": "./core",
+      "importPath": "@ferrum2d/ferrum-web/core",
+      "source": "packages/ferrum-web/src/core.ts",
+      "tier": "stable",
+      "stability": "1.0 candidate runtime contract",
+      "requiredExports": [
+        "createFerrumRuntime",
+        "createEngine",
+        "createRenderer",
+        "WebGL2Renderer",
+        "AudioManager",
+        "resolvePhysicsSpec",
+        "captureGameStateSnapshot"
+      ]
+    },
+    {
+      "exportPath": "./authoring",
+      "importPath": "@ferrum2d/ferrum-web/authoring",
+      "source": "packages/ferrum-web/src/authoring.ts",
+      "tier": "preview",
+      "stability": "agent-first data authoring contract; semver-breaking changes remain possible before 1.0",
+      "requiredExports": [
+        "resolveSceneAuthoringDocument",
+        "resolveSceneCompositionSpec",
+        "resolveBehaviorRecipeDocument",
+        "compileWeaponProfiles",
+        "resolvePhysicsSpec"
+      ]
+    },
+    {
+      "exportPath": "./starter-scenes",
+      "importPath": "@ferrum2d/ferrum-web/starter-scenes",
+      "source": "packages/ferrum-web/src/starter-scenes.ts",
+      "tier": "preview",
+      "stability": "starter template and official example contract",
+      "requiredExports": [
+        "resolveShooterGameSpec",
+        "applyShooterGameSpec",
+        "createShooterContentRuntimeOptions"
+      ]
+    },
+    {
+      "exportPath": "./labs",
+      "importPath": "@ferrum2d/ferrum-web/labs",
+      "source": "packages/ferrum-web/src/labs.ts",
+      "tier": "preview",
+      "stability": "optional renderer, visual helper, and asset helper surface",
+      "requiredExports": [
+        "WebGPURenderer",
+        "resolveSpriteMaterialPreset",
+        "ParticleVfxEmitter",
+        "createPixelMaskTerrain"
+      ]
+    },
+    {
+      "exportPath": "./quality",
+      "importPath": "@ferrum2d/ferrum-web/quality",
+      "source": "packages/ferrum-web/src/quality.ts",
+      "tier": "preview",
+      "stability": "test, smoke, replay, diagnostic, and report helper surface",
+      "requiredExports": [
+        "RuntimeProfiler",
+        "evaluateRuntimeProfilerBudget",
+        "createGameplayReplayRun",
+        "diagnosticReport"
+      ]
+    }
+  ],
+  "forbiddenConsumerImports": [
+    "@ferrum2d/ferrum-web/dist/*",
+    "@ferrum2d/ferrum-web/pkg/*",
+    "@ferrum2d/ferrum-web/src/*",
+    "packages/ferrum-web/src/*",
+    "generated wasm-bindgen files"
+  ],
+  "consumerImportRoots": [
+    "examples",
+    "packages/create-game/templates",
+    "packages/agents/templates"
+  ]
+}

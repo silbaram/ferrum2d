@@ -93,6 +93,15 @@ cargo clippy --manifest-path crates/ferrum-core/Cargo.toml -- -D warnings
 pnpm release:check
 ```
 
+publish 승인 전 staged beta 후보를 검증할 때는 `private: true`를 유지한 채 다음을 실행한다.
+
+```bash
+pnpm release:candidate-check
+pnpm release:candidate-check -- --version x.y.z-beta.N --tag ferrum-web-vx.y.z-beta.N
+```
+
+`pnpm release:candidate-check`는 현재 root package와 `@ferrum2d/ferrum-web`의 base version, candidate beta semver, expected tag, `publishConfig.access: "public"`, `publishConfig.tag: "beta"`, `CHANGELOG.md`의 `Unreleased` staging section, release note template, `release:publish-check` strict gate 존재 여부를 확인한다. 이 명령은 `packages/ferrum-web/package.json`의 `private: true`를 유지해야 통과한다.
+
 `ferrum-web-v*` tag push가 발생하면 CI가 release metadata check를 실행하고 package consumer smoke를 별도 job으로 gate한다. PR이나 일반 push에서는 무겁기 때문에 기본 실행하지 않으며, 수동 `workflow_dispatch`에서 `consumer_smoke` input을 켜면 같은 job을 opt-in으로 실행한다. tag 기반 검증에서는 다음 조건을 추가로 요구한다.
 
 - `packages/ferrum-web/package.json` version이 `x.y.z-beta.N` 형식이다.
@@ -107,6 +116,8 @@ tag CI의 validate job은 일반 `pnpm package:check` 대신 publish 후보용 `
 ```bash
 pnpm release:publish-check
 ```
+
+이 publish 직전 명령은 승인된 release branch에서 `packages/ferrum-web/package.json`이 `x.y.z-beta.N`, `private: false`, `publishConfig.tag: "beta"` 상태이고 `CHANGELOG.md`에 `## x.y.z-beta.N - YYYY-MM-DD` 섹션이 있을 때만 통과한다. `private: false` 전환, npm publish, Git tag 생성/푸시는 모두 별도 명시 승인 후에만 수행한다.
 
 ## 로컬 pack 확인
 

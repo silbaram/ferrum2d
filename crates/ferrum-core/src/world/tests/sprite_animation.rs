@@ -6,13 +6,19 @@ fn sprite_animation_advances_horizontal_uv_frames() {
     let template = EntityTemplate::new(32.0, 32.0).with_animation(4, 8.0);
     let entity = world.spawn_enemy_from_template(10.0, 20.0, 7, template, 1.0, 1);
 
-    assert_eq!(world.sprites[entity.id as usize].unwrap().u0, 0.0);
-    assert_eq!(world.sprites[entity.id as usize].unwrap().u1, 0.25);
+    let sprite = world
+        .sprite_at_index(entity.id as usize)
+        .expect("template-spawned enemy should have a sprite");
+    assert_eq!(sprite.u0, 0.0);
+    assert_eq!(sprite.u1, 0.25);
 
     world.update(0.125);
 
-    assert_eq!(world.sprites[entity.id as usize].unwrap().u0, 0.25);
-    assert_eq!(world.sprites[entity.id as usize].unwrap().u1, 0.5);
+    let sprite = world
+        .sprite_at_index(entity.id as usize)
+        .expect("template-spawned enemy should keep its sprite");
+    assert_eq!(sprite.u0, 0.25);
+    assert_eq!(sprite.u1, 0.5);
 }
 
 #[test]
@@ -44,7 +50,9 @@ fn sprite_animation_switches_rows_for_moving_state() {
 
     world.update(0.125);
 
-    let sprite = world.sprites[entity.id as usize].unwrap();
+    let sprite = world
+        .sprite_at_index(entity.id as usize)
+        .expect("template-spawned bullet should keep its sprite");
     assert_eq!(sprite.u0, 0.25);
     assert_eq!(sprite.u1, 0.5);
     assert_eq!(sprite.v0, 0.5);
@@ -76,7 +84,9 @@ fn sprite_animation_advances_atlas_frame_sequence() {
 
     world.update(0.125);
 
-    let sprite = world.sprites[entity.id as usize].unwrap();
+    let sprite = world
+        .sprite_at_index(entity.id as usize)
+        .expect("template-spawned bullet should keep its sprite");
     assert_eq!(sprite.u0, 0.25);
     assert_eq!(sprite.u1, 0.5);
     assert_eq!(sprite.v0, 0.5);

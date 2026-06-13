@@ -34,14 +34,14 @@ impl ColliderPairContext {
         let b_index = pair.b.id as usize;
         Some(Self {
             pair,
-            at: world.transforms.get(a_index).copied().flatten()?,
+            at: world.transform_at_index(a_index)?,
             ac: collider_shape_at_segment(
                 world,
                 a_index,
                 collider_pair.a.collider_index,
                 collider_pair.a.segment_index,
             )?,
-            bt: world.transforms.get(b_index).copied().flatten()?,
+            bt: world.transform_at_index(b_index)?,
             bc: collider_shape_at_segment(
                 world,
                 b_index,

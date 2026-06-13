@@ -56,7 +56,7 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
     stats: &mut RigidBodyStepStats,
     scratch: &mut RigidBodyCcdScratch<'_>,
 ) -> bool {
-    let Some(mut current_start) = world.transforms.get(index).copied().flatten() else {
+    let Some(mut current_start) = world.transform_at_index(index) else {
         return false;
     };
     let Some(shape) = collider_shape(world, index) else {
@@ -72,7 +72,7 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
         if remaining_seconds <= KINEMATIC_EPSILON {
             break;
         }
-        let velocity = finite_velocity(world.velocities[index].unwrap_or_default());
+        let velocity = finite_velocity(world.velocity_at_index_or_default(index));
         if velocity_len_squared(velocity) <= KINEMATIC_EPSILON * KINEMATIC_EPSILON {
             break;
         }
@@ -103,15 +103,18 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
             x: current_start.x + velocity.vx * impact_seconds,
             y: current_start.y + velocity.vy * impact_seconds,
         };
-        world.transforms[index] = Some(current_start);
+        world.set_transform_at_index(index, current_start);
 
         if let Some(target) = dynamic_target {
             wake_rigid_body_for_ccd_impact(world, hit.target_index, stats);
             integrate_rigid_body_rotation(world, hit.target_index, impact_seconds);
-            world.transforms[hit.target_index] = Some(Transform2D {
-                x: target.start.x + target.velocity.vx * impact_seconds,
-                y: target.start.y + target.velocity.vy * impact_seconds,
-            });
+            world.set_transform_at_index(
+                hit.target_index,
+                Transform2D {
+                    x: target.start.x + target.velocity.vx * impact_seconds,
+                    y: target.start.y + target.velocity.vy * impact_seconds,
+                },
+            );
         }
 
         if apply_rigid_body_ccd_impact(world, index, hit, config) {
@@ -144,8 +147,8 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
         return false;
     }
 
-    let velocity_after_impact = finite_velocity(world.velocities[index].unwrap_or_default());
-    if let Some(transform) = world.transforms[index].as_mut() {
+    let velocity_after_impact = finite_velocity(world.velocity_at_index_or_default(index));
+    if let Some(transform) = world.transform_mut_at_index(index) {
         transform.x += velocity_after_impact.vx * remaining_seconds;
         transform.y += velocity_after_impact.vy * remaining_seconds;
     }
@@ -154,15 +157,8 @@ pub(super) fn integrate_dynamic_rigid_body_position_with_ccd(
 }
 
 fn rigid_body_ccd_dynamic_target(world: &World, index: usize) -> Option<RigidBodyCcdDynamicTarget> {
-    let start = world.transforms.get(index).copied().flatten()?;
-    let velocity = finite_velocity(
-        world
-            .velocities
-            .get(index)
-            .copied()
-            .flatten()
-            .unwrap_or_default(),
-    );
+    let start = world.transform_at_index(index)?;
+    let velocity = finite_velocity(world.velocity_at_index_or_default(index));
     Some(RigidBodyCcdDynamicTarget { start, velocity })
 }
 
@@ -172,8 +168,8 @@ fn integrate_rigid_body_ccd_dynamic_target_remainder(
     remaining_seconds: f32,
     integrated: &mut [bool],
 ) {
-    let target_velocity_after_impact = finite_velocity(world.velocities[index].unwrap_or_default());
-    if let Some(target_transform) = world.transforms[index].as_mut() {
+    let target_velocity_after_impact = finite_velocity(world.velocity_at_index_or_default(index));
+    if let Some(target_transform) = world.transform_mut_at_index(index) {
         target_transform.x += target_velocity_after_impact.vx * remaining_seconds;
         target_transform.y += target_velocity_after_impact.vy * remaining_seconds;
     }
@@ -202,10 +198,12 @@ fn integrate_rigid_body_rotation(world: &mut World, index: usize, delta_seconds:
     if delta_seconds <= 0.0 {
         return;
     }
-    if let (Some(rotation), Some(angular_velocity)) = (
-        world.rotations[index].as_mut(),
-        world.angular_velocities[index].map(finite_angular_velocity),
-    ) {
+    let angular_velocity = world
+        .angular_velocity_at_index(index)
+        .map(finite_angular_velocity);
+    if let (Some(rotation), Some(angular_velocity)) =
+        (world.rotation_mut_at_index(index), angular_velocity)
+    {
         rotation.radians = finite_rotation(Rotation2D {
             radians: rotation.radians + angular_velocity.radians_per_second * delta_seconds,
         })
@@ -243,14 +241,14 @@ fn earliest_rigid_body_ccd_hit(
         if target_shape.is_trigger() {
             continue;
         }
-        let Some(target_transform) = world.transforms[target_index] else {
+        let Some(target_transform) = world.transform_at_index(target_index) else {
             continue;
         };
         if CollisionSystem::shapes_overlap(query.start, query.shape, target_transform, target_shape)
         {
             continue;
         }
-        let target_velocity = finite_velocity(world.velocities[target_index].unwrap_or_default());
+        let target_velocity = finite_velocity(world.velocity_at_index_or_default(target_index));
         stats.ccd_checks = stats.ccd_checks.saturating_add(1);
         let Some(contact) = CollisionSystem::swept_shape_contact(
             query.start,
@@ -312,7 +310,7 @@ fn rigid_body_ccd_target_allows(
     target_index: usize,
     integrated: &[bool],
 ) -> bool {
-    if moving_index == target_index || !world.alive.get(target_index).copied().unwrap_or(false) {
+    if moving_index == target_index || !world.is_alive_index(target_index) {
         return false;
     }
     if has_disabled_rigid_body(world, moving_index) || has_disabled_rigid_body(world, target_index)
@@ -610,8 +608,7 @@ fn apply_rigid_body_ccd_impact(
 }
 
 fn entity_at_index(world: &World, index: usize) -> Entity {
-    Entity {
-        id: index as u32,
-        generation: world.generations[index],
-    }
+    world
+        .entity_at_index(index)
+        .expect("CCD hit indices are built from live world entities")
 }

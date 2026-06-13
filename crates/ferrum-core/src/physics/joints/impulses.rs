@@ -38,20 +38,10 @@ pub(super) fn revolute_joint_relative_angular_velocity(
     world: &World,
     context: RevoluteJointConstraintContext,
 ) -> f32 {
-    let angular_velocity_a = world
-        .angular_velocities
-        .get(context.a_index)
-        .copied()
-        .flatten()
-        .map(finite_angular_velocity)
-        .unwrap_or_default();
-    let angular_velocity_b = world
-        .angular_velocities
-        .get(context.b_index)
-        .copied()
-        .flatten()
-        .map(finite_angular_velocity)
-        .unwrap_or_default();
+    let angular_velocity_a =
+        finite_angular_velocity(world.angular_velocity_at_index_or_default(context.a_index));
+    let angular_velocity_b =
+        finite_angular_velocity(world.angular_velocity_at_index_or_default(context.b_index));
     angular_velocity_b.radians_per_second - angular_velocity_a.radians_per_second
 }
 
@@ -59,20 +49,10 @@ pub(super) fn prismatic_joint_relative_angular_velocity(
     world: &World,
     context: PrismaticJointConstraintContext,
 ) -> f32 {
-    let angular_velocity_a = world
-        .angular_velocities
-        .get(context.a_index)
-        .copied()
-        .flatten()
-        .map(finite_angular_velocity)
-        .unwrap_or_default();
-    let angular_velocity_b = world
-        .angular_velocities
-        .get(context.b_index)
-        .copied()
-        .flatten()
-        .map(finite_angular_velocity)
-        .unwrap_or_default();
+    let angular_velocity_a =
+        finite_angular_velocity(world.angular_velocity_at_index_or_default(context.a_index));
+    let angular_velocity_b =
+        finite_angular_velocity(world.angular_velocity_at_index_or_default(context.b_index));
     angular_velocity_b.radians_per_second - angular_velocity_a.radians_per_second
 }
 
@@ -80,20 +60,10 @@ pub(super) fn gear_joint_relative_angular_velocity(
     world: &World,
     context: GearJointConstraintContext,
 ) -> f32 {
-    let angular_velocity_a = world
-        .angular_velocities
-        .get(context.a_index)
-        .copied()
-        .flatten()
-        .map(finite_angular_velocity)
-        .unwrap_or_default();
-    let angular_velocity_b = world
-        .angular_velocities
-        .get(context.b_index)
-        .copied()
-        .flatten()
-        .map(finite_angular_velocity)
-        .unwrap_or_default();
+    let angular_velocity_a =
+        finite_angular_velocity(world.angular_velocity_at_index_or_default(context.a_index));
+    let angular_velocity_b =
+        finite_angular_velocity(world.angular_velocity_at_index_or_default(context.b_index));
     angular_velocity_b.radians_per_second + context.ratio * angular_velocity_a.radians_per_second
 }
 
@@ -168,10 +138,10 @@ pub(super) fn apply_single_body_anchor_impulse(
     inverse_inertia: f32,
 ) {
     if inverse_mass > 0.0 {
-        let mut velocity = world.velocities[index].unwrap_or_default();
+        let mut velocity = world.velocity_at_index_or_default(index);
         velocity.vx += impulse.vx * inverse_mass;
         velocity.vy += impulse.vy * inverse_mass;
-        world.velocities[index] = Some(finite_velocity(velocity));
+        world.set_velocity_at_index(index, finite_velocity(velocity));
     }
     apply_angular_impulse_delta(
         world,
@@ -332,7 +302,7 @@ pub(super) fn apply_single_body_anchor_position_correction(
     inverse_inertia: f32,
 ) {
     if inverse_mass > 0.0 {
-        if let Some(transform) = world.transforms[index].as_mut() {
+        if let Some(transform) = world.transform_mut_at_index(index) {
             *transform = finite_transform(Transform2D {
                 x: transform.x + impulse.vx * inverse_mass,
                 y: transform.y + impulse.vy * inverse_mass,
@@ -440,9 +410,9 @@ fn apply_angular_impulse_delta(
     if inverse_inertia <= 0.0 {
         return;
     }
-    let mut angular_velocity = world.angular_velocities[index].unwrap_or_default();
+    let mut angular_velocity = world.angular_velocity_at_index_or_default(index);
     angular_velocity.radians_per_second += delta_radians_per_second;
-    world.angular_velocities[index] = Some(finite_angular_velocity(angular_velocity));
+    world.set_angular_velocity_at_index(index, finite_angular_velocity(angular_velocity));
 }
 
 fn apply_pair_position_delta(
@@ -454,13 +424,13 @@ fn apply_pair_position_delta(
     inverse_mass_b: f32,
 ) {
     if inverse_mass_a > 0.0 {
-        if let Some(transform) = world.transforms[a_index].as_mut() {
+        if let Some(transform) = world.transform_mut_at_index(a_index) {
             transform.x -= impulse.vx * inverse_mass_a;
             transform.y -= impulse.vy * inverse_mass_a;
         }
     }
     if inverse_mass_b > 0.0 {
-        if let Some(transform) = world.transforms[b_index].as_mut() {
+        if let Some(transform) = world.transform_mut_at_index(b_index) {
             transform.x += impulse.vx * inverse_mass_b;
             transform.y += impulse.vy * inverse_mass_b;
         }
@@ -471,9 +441,10 @@ fn apply_rotation_delta(world: &mut World, index: usize, delta_radians: f32, inv
     if inverse_inertia <= 0.0 {
         return;
     }
-    let rotation = world.rotations[index].get_or_insert_with(Rotation2D::default);
-    rotation.radians = finite_rotation(Rotation2D {
-        radians: rotation.radians + delta_radians,
-    })
-    .radians;
+    if let Some(rotation) = world.rotation_mut_or_insert_default_at_index(index) {
+        rotation.radians = finite_rotation(Rotation2D {
+            radians: rotation.radians + delta_radians,
+        })
+        .radians;
+    }
 }

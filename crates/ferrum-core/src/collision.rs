@@ -389,10 +389,9 @@ fn collider_pair_to_pair(world: &World, pair: ColliderPair) -> CollisionPair {
 }
 
 fn entity_from_index(world: &World, index: usize) -> Entity {
-    Entity {
-        id: index as u32,
-        generation: world.generations[index],
-    }
+    world
+        .entity_at_index(index)
+        .expect("collision pair indices are built from live world entities")
 }
 
 fn swept_shape_contact_normal(
@@ -680,7 +679,7 @@ fn precise_swept_overlap(
     target_index: usize,
     delta: f32,
 ) -> bool {
-    let Some(moving_transform) = world.transforms[moving_index] else {
+    let Some(moving_transform) = world.transform_at_index(moving_index) else {
         return false;
     };
     let Some(moving_collider) = world.colliders[moving_index] else {
@@ -689,7 +688,7 @@ fn precise_swept_overlap(
     if !moving_collider.enabled {
         return false;
     }
-    let Some(target_transform) = world.transforms[target_index] else {
+    let Some(target_transform) = world.transform_at_index(target_index) else {
         return false;
     };
     let Some(target_collider) = world.colliders[target_index] else {
@@ -707,8 +706,8 @@ fn precise_swept_overlap(
         return true;
     }
 
-    let moving_velocity = world.velocities[moving_index].unwrap_or_default();
-    let target_velocity = world.velocities[target_index].unwrap_or_default();
+    let moving_velocity = world.velocity_at_index_or_default(moving_index);
+    let target_velocity = world.velocity_at_index_or_default(target_index);
     let moving_start = previous_transform(moving_transform, moving_velocity, delta);
     let target_start = previous_transform(target_transform, target_velocity, delta);
     CollisionSystem::swept_aabb_time(

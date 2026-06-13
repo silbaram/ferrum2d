@@ -88,7 +88,7 @@ impl Engine {
         self.scenes.shooter.set_animation_states(
             &mut self.world,
             &mut self.camera,
-            &mut self.audio_events,
+            &mut self.frame_buffers.audio_events,
             player_columns,
             player_rows,
             player_idle_row,

@@ -15,13 +15,13 @@ fn physics_debug_lines_are_opt_in_and_report_broadphase_and_contacts() {
     engine.update(0.016);
 
     assert_eq!(engine.physics_debug_line_len(), 11);
-    assert_eq!(engine.physics_debug_lines[0].x0, -5.0);
-    assert_eq!(engine.physics_debug_lines[0].x1, 5.0);
-    assert_eq!(engine.physics_debug_lines[8].x0, 5.0);
-    assert_eq!(engine.physics_debug_lines[8].x1, 21.0);
-    assert_eq!(engine.physics_debug_lines[9].y0, 0.0);
-    assert_eq!(engine.physics_debug_lines[10].x0, 5.0);
-    assert_eq!(engine.physics_debug_lines[10].y0, -3.0);
+    assert_eq!(engine.frame_buffers.physics_debug_lines[0].x0, -5.0);
+    assert_eq!(engine.frame_buffers.physics_debug_lines[0].x1, 5.0);
+    assert_eq!(engine.frame_buffers.physics_debug_lines[8].x0, 5.0);
+    assert_eq!(engine.frame_buffers.physics_debug_lines[8].x1, 21.0);
+    assert_eq!(engine.frame_buffers.physics_debug_lines[9].y0, 0.0);
+    assert_eq!(engine.frame_buffers.physics_debug_lines[10].x0, 5.0);
+    assert_eq!(engine.frame_buffers.physics_debug_lines[10].y0, -3.0);
 
     engine.set_physics_debug_lines_enabled(false);
     assert_eq!(engine.physics_debug_line_len(), 0);
@@ -73,13 +73,13 @@ fn physics_debug_lines_report_ccd_hit_markers() {
 
     assert_eq!(engine.rigid_body_step_ccd_hits(), 1);
     assert_eq!(engine.physics_debug_line_len(), 3);
-    assert!((engine.physics_debug_lines[0].x0 - 41.0).abs() < 0.001);
-    assert!((engine.physics_debug_lines[0].x1 - 49.0).abs() < 0.001);
-    assert_eq!(engine.physics_debug_lines[0].y0, 0.0);
-    assert!((engine.physics_debug_lines[1].y0 + 4.0).abs() < 0.001);
-    assert!((engine.physics_debug_lines[1].y1 - 4.0).abs() < 0.001);
-    assert!((engine.physics_debug_lines[2].x0 - 45.0).abs() < 0.001);
-    assert!((engine.physics_debug_lines[2].x1 - 57.0).abs() < 0.001);
+    assert!((engine.frame_buffers.physics_debug_lines[0].x0 - 41.0).abs() < 0.001);
+    assert!((engine.frame_buffers.physics_debug_lines[0].x1 - 49.0).abs() < 0.001);
+    assert_eq!(engine.frame_buffers.physics_debug_lines[0].y0, 0.0);
+    assert!((engine.frame_buffers.physics_debug_lines[1].y0 + 4.0).abs() < 0.001);
+    assert!((engine.frame_buffers.physics_debug_lines[1].y1 - 4.0).abs() < 0.001);
+    assert!((engine.frame_buffers.physics_debug_lines[2].x0 - 45.0).abs() < 0.001);
+    assert!((engine.frame_buffers.physics_debug_lines[2].x1 - 57.0).abs() < 0.001);
 }
 
 #[test]

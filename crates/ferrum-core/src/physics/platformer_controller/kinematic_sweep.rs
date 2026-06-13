@@ -54,7 +54,7 @@ pub(super) fn earliest_solid_hit(
         }
         if ignored_entity.is_some_and(|entity| {
             entity.id as usize == target_index
-                && world.generations[target_index] == entity.generation
+                && world.generation_at_index(target_index) == Some(entity.generation)
         }) {
             continue;
         }
@@ -79,7 +79,7 @@ pub(super) fn earliest_solid_hit(
             }
             continue;
         }
-        let Some(target_transform) = world.transforms[target_index] else {
+        let Some(target_transform) = world.transform_at_index(target_index) else {
             continue;
         };
         let Some(contact) = CollisionSystem::swept_aabb_contact(
@@ -120,10 +120,7 @@ pub(super) fn earliest_solid_hit(
         }
         if best.is_none_or(|hit| contact.time < hit.contact.time) {
             best = Some(KinematicHit {
-                entity: Some(Entity {
-                    id: target_index as u32,
-                    generation: world.generations[target_index],
-                }),
+                entity: world.entity_at_index(target_index),
                 contact,
             });
         }

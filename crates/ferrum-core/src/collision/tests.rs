@@ -99,18 +99,20 @@ fn spawn_custom_body(
     mask: CollisionMask,
 ) -> Entity {
     let entity = world.spawn_entity();
-    let index = entity.id as usize;
-    world.transforms[index] = Some(Transform2D { x, y });
-    world.colliders[index] = Some(AabbCollider {
-        half_width: 5.0,
-        half_height: 5.0,
-        offset_x: 0.0,
-        offset_y: 0.0,
-        enabled: true,
-        is_trigger: true,
-        layer: CollisionLayer::Player,
-    });
-    world.collision_filters[index] = Some(CollisionFilter::new(category, mask));
+    world.set_transform(entity, Transform2D { x, y });
+    world.set_aabb_collider(
+        entity,
+        AabbCollider {
+            half_width: 5.0,
+            half_height: 5.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            enabled: true,
+            is_trigger: true,
+            layer: CollisionLayer::Player,
+        },
+    );
+    world.set_collision_filter(entity, CollisionFilter::new(category, mask));
     entity
 }
 

@@ -65,22 +65,25 @@ fn integrate_applies_velocity_to_alive_entities() {
     let mut world = World::default();
     let moving = world.spawn_entity();
     let despawned = world.spawn_entity();
-    world.transforms[moving.id as usize] = Some(Transform2D { x: 2.0, y: 4.0 });
-    world.velocities[moving.id as usize] = Some(Velocity { vx: 10.0, vy: -6.0 });
-    world.transforms[despawned.id as usize] = Some(Transform2D { x: 1.0, y: 1.0 });
-    world.velocities[despawned.id as usize] = Some(Velocity {
-        vx: 100.0,
-        vy: 100.0,
-    });
+    world.set_transform(moving, Transform2D { x: 2.0, y: 4.0 });
+    world.set_velocity(moving, Velocity { vx: 10.0, vy: -6.0 });
+    world.set_transform(despawned, Transform2D { x: 1.0, y: 1.0 });
+    world.set_velocity(
+        despawned,
+        Velocity {
+            vx: 100.0,
+            vy: 100.0,
+        },
+    );
     world.despawn(despawned);
 
     PhysicsSystem::integrate(&mut world, 0.5);
 
     assert_eq!(
-        world.transforms[moving.id as usize],
+        world.transform(moving),
         Some(Transform2D { x: 7.0, y: 1.0 })
     );
-    assert_eq!(world.transforms[despawned.id as usize], None);
+    assert_eq!(world.transform(despawned), None);
 }
 
 #[test]
@@ -99,7 +102,9 @@ fn clamp_entity_to_bounds_uses_collider_extents() {
         },
     );
 
-    let transform = world.transforms[player.id as usize].unwrap();
+    let transform = world
+        .transform(player)
+        .expect("player should keep transform after bounds clamp");
     assert_eq!(transform.x, 18.0);
     assert_eq!(transform.y, 200.0);
 }
@@ -124,7 +129,9 @@ fn clamp_entity_to_bounds_respects_collider_offset() {
         },
     );
 
-    let transform = world.transforms[player.id as usize].unwrap();
+    let transform = world
+        .transform(player)
+        .expect("player should keep transform after bounds clamp");
     assert_eq!(transform.x, 5.0);
     assert_eq!(transform.y, 82.0);
 }
@@ -145,7 +152,9 @@ fn clamp_entity_to_small_bounds_uses_axis_center() {
         },
     );
 
-    let transform = world.transforms[player.id as usize].unwrap();
+    let transform = world
+        .transform(player)
+        .expect("player should keep transform after bounds clamp");
     assert_eq!(transform.x, 5.0);
     assert_eq!(transform.y, 6.0);
 }

@@ -7,7 +7,6 @@ use crate::components::gameplay::{
     GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S, MAX_ACTION_BINDINGS_PER_ENTITY,
 };
 use crate::components::{CollisionLayer, Transform2D, Velocity};
-use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::input::InputState;
 use crate::world::{ProjectileSpawnRequest, World};
@@ -348,10 +347,10 @@ impl ShooterScene {
             let Some(kind) = shooter_snapshot_entity_kind(world.collider_layer_at(index)) else {
                 continue;
             };
-            let Some(transform) = world.transforms[index] else {
+            let Some(transform) = world.transform_at_index(index) else {
                 continue;
             };
-            let velocity = world.velocities[index].unwrap_or_default();
+            let velocity = world.velocity_at_index_or_default(index);
             let mut entity = ShooterEntitySnapshot {
                 floats: [0.0; SHOOTER_SNAPSHOT_ENTITY_FLOATS],
                 u32s: [0; SHOOTER_SNAPSHOT_ENTITY_U32S],
@@ -360,28 +359,27 @@ impl ShooterScene {
             entity.floats[1] = transform.y;
             entity.floats[2] = velocity.vx;
             entity.floats[3] = velocity.vy;
-            entity.floats[4] = world.healths[index].unwrap_or(0.0);
-            entity.floats[5] = world.damages[index].unwrap_or(0.0);
+            entity.floats[4] = world.health_at_index(index).unwrap_or(0.0);
+            entity.floats[5] = world.damage_at_index(index).unwrap_or(0.0);
             entity.floats[6] = world.gameplay_lifetime_at(index).unwrap_or(0.0);
             entity.u32s[0] = kind;
             if kind == SHOOTER_SNAPSHOT_ENTITY_ENEMY {
-                entity.u32s[1] = world.score_rewards[index].unwrap_or(0);
+                entity.u32s[1] = world.score_reward_at_index(index).unwrap_or(0);
             }
             if kind == SHOOTER_SNAPSHOT_ENTITY_BULLET {
                 let collision_target = world.projectile_collision_target_at(index);
                 let tile_impact = world.projectile_tile_impact_at(index);
                 entity.u32s[SNAPSHOT_PROJECTILE_POLICY] =
                     pack_projectile_policy(collision_target, tile_impact);
-                if let Some(faction) = world.gameplay_factions.get(index).copied().flatten() {
+                if let Some(faction) = world.gameplay_faction_at_index(index) {
                     entity.u32s[SNAPSHOT_BULLET_FACTION_ID_PLUS_ONE] = faction.faction_id + 1;
                     entity.u32s[SNAPSHOT_BULLET_FACTION_DAMAGE_MASK] = faction.damage_mask;
                 }
             }
 
             if kind == SHOOTER_SNAPSHOT_ENTITY_PLAYER {
-                let player = Entity {
-                    id: index as u32,
-                    generation: world.generations[index],
+                let Some(player) = world.entity_at_index(index) else {
+                    continue;
                 };
                 if let Some(binding) = world.action_binding(player, SHOOTER_PRIMARY_FIRE_ACTION_ID)
                 {
@@ -483,7 +481,7 @@ impl ShooterScene {
             &mut header_u32s[SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET
                 ..SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S],
         );
-        world.gameplay_faction_relations.write_snapshot(
+        world.write_gameplay_faction_relations_snapshot(
             &mut header_u32s[SNAPSHOT_FACTION_RELATION_TABLE_U32_OFFSET
                 ..SNAPSHOT_FACTION_RELATION_TABLE_U32_OFFSET
                     + GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S],
@@ -584,7 +582,7 @@ impl ShooterScene {
         audio_events.clear();
 
         *world = World::default();
-        world.gameplay_faction_relations = faction_relations;
+        world.replace_gameplay_faction_relations(faction_relations);
         for entity in snapshot.entities.iter().copied() {
             self.restore_snapshot_entity(world, entity);
         }
@@ -610,7 +608,7 @@ impl ShooterScene {
                     self.texture_ids.player,
                     self.config.player_template,
                 );
-                world.velocities[entity.id as usize] = Some(velocity);
+                world.set_velocity_at_index(entity.id as usize, velocity);
                 if let Some(binding) = snapshot_primary_action_binding(snapshot) {
                     world.upsert_action_binding(entity, binding);
                 }
@@ -635,7 +633,7 @@ impl ShooterScene {
                     positive_or_default(snapshot.floats[4], self.config.enemy_health),
                     snapshot.u32s[1],
                 );
-                world.velocities[entity.id as usize] = Some(velocity);
+                world.set_velocity_at_index(entity.id as usize, velocity);
             }
             SHOOTER_SNAPSHOT_ENTITY_BULLET => {
                 let collision_target =

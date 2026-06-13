@@ -23,7 +23,7 @@ impl ShooterScene {
                 reached_distance_squared: 0.0,
             },
             |world, entity_index| {
-                let velocity = world.velocities[entity_index].unwrap_or_default();
+                let velocity = world.velocity_at_index_or_default(entity_index);
                 MovementPattern::Linear {
                     vx: velocity.vx,
                     vy: velocity.vy,
@@ -39,16 +39,14 @@ impl ShooterScene {
         let alive_count = world.alive_indices().len();
         for alive_position in 0..alive_count {
             let i = world.alive_indices()[alive_position];
-            if let Some(arc) = world.projectile_arcs[i].as_mut() {
-                world.height_spans[i] = arc.update(delta);
-            }
+            world.update_projectile_arc_at(i, delta);
             if world.collider_layer_at(i) != Some(CollisionLayer::Bullet) {
                 continue;
             }
             if has_expired_lifetime(world, i) {
                 continue;
             }
-            if let Some(t) = world.transforms[i] {
+            if let Some(t) = world.transform_at_index(i) {
                 if t.x < -20.0
                     || t.x > self.config.world_width + 20.0
                     || t.y < -20.0

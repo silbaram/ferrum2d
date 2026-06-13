@@ -991,9 +991,7 @@ pub(crate) fn melee_attack_attacker_can_resolve(
         return false;
     }
     match target {
-        MeleeTarget::Enemies | MeleeTarget::Player => {
-            world.alive.get(attacker_index).copied().unwrap_or(false)
-        }
+        MeleeTarget::Enemies | MeleeTarget::Player => world.is_alive_index(attacker_index),
     }
 }
 
@@ -2803,9 +2801,12 @@ where
             else {
                 return MovementPatternApplication::Unsupported;
             };
+            let Some(source_entity) = world.entity_at_index(entity_index) else {
+                return MovementPatternApplication::Unsupported;
+            };
             let source = MovementNavigationSource {
                 index: entity_index,
-                generation: world.generations[entity_index],
+                generation: source_entity.generation,
                 transform,
             };
             let target = resolve_movement_navigation_target(
@@ -2839,13 +2840,10 @@ where
     F: FnMut(Transform2D, Transform2D) -> Option<Transform2D>,
 {
     let entity_index = entity.id as usize;
-    let is_current = entity_index < world.alive.len()
-        && world.alive[entity_index]
-        && world.generations[entity_index] == entity.generation;
-    if !is_current {
+    if !world.is_current_entity(entity) {
         return MovementPatternApplication::Unsupported;
     }
-    let Some(pattern) = world.movement_patterns[entity_index] else {
+    let Some(pattern) = world.movement_pattern(entity) else {
         return MovementPatternApplication::Unsupported;
     };
     let mut resolve_waypoint = resolve_waypoint;
@@ -2874,13 +2872,10 @@ where
     F: FnMut(Transform2D, Transform2D) -> Option<Transform2D>,
 {
     let entity_index = entity.id as usize;
-    let is_current = entity_index < world.alive.len()
-        && world.alive[entity_index]
-        && world.generations[entity_index] == entity.generation;
-    if !is_current {
+    if !world.is_current_entity(entity) {
         return MovementPatternApplication::Unsupported;
     }
-    let authored_pattern = world.movement_patterns[entity_index];
+    let authored_pattern = world.movement_pattern(entity);
     let mut resolve_waypoint = resolve_waypoint;
     let application = if authored_pattern.is_some() {
         run_movement_pattern_with_navigation_system(
@@ -2939,20 +2934,20 @@ where
         if COLLECT_STATS {
             stats.candidates += 1;
         }
-        let mut application = if let Some(authored_pattern) = world.movement_patterns[entity_index]
-        {
-            apply_movement_pattern_with_navigation(
-                world,
-                entity_index,
-                player_transform,
-                authored_pattern,
-                caches,
-                navigation_policy,
-                &mut resolve_waypoint,
-            )
-        } else {
-            MovementPatternApplication::Unsupported
-        };
+        let mut application =
+            if let Some(authored_pattern) = world.movement_pattern_at_index(entity_index) {
+                apply_movement_pattern_with_navigation(
+                    world,
+                    entity_index,
+                    player_transform,
+                    authored_pattern,
+                    caches,
+                    navigation_policy,
+                    &mut resolve_waypoint,
+                )
+            } else {
+                MovementPatternApplication::Unsupported
+            };
         if application == MovementPatternApplication::Unsupported {
             let fallback_pattern = fallback_pattern(world, entity_index);
             application = apply_movement_pattern_with_navigation(
@@ -3115,12 +3110,12 @@ fn apply_topdown_input_movement(
     input: InputState,
     default_speed: f32,
 ) -> MovementPatternApplication {
-    let Some(slot) = world.velocities.get_mut(entity_index) else {
-        return MovementPatternApplication::Unsupported;
-    };
-    let speed = match world.movement_patterns.get(entity_index).copied().flatten() {
+    let speed = match world.movement_pattern_at_index(entity_index) {
         Some(MovementPattern::TopdownInput { speed }) => speed,
         _ => default_speed,
+    };
+    let Some(slot) = world.velocities.get_mut(entity_index) else {
+        return MovementPatternApplication::Unsupported;
     };
     *slot = Some(topdown_input_velocity(input, speed));
     MovementPatternApplication::Applied
@@ -3149,10 +3144,7 @@ pub(crate) fn apply_topdown_input_movement_phase(
 ) -> MovementPatternApplication {
     let entity = config.entity;
     let entity_index = entity.id as usize;
-    let is_current = entity_index < world.alive.len()
-        && world.alive[entity_index]
-        && world.generations[entity_index] == entity.generation;
-    if !is_current {
+    if !world.is_current_entity(entity) {
         return MovementPatternApplication::Unsupported;
     }
     apply_topdown_input_movement(
@@ -3256,7 +3248,7 @@ fn nearest_faction_transform(
     let mut nearest = None;
     let mut nearest_distance_squared = f32::INFINITY;
     for &index in world.gameplay_faction_indices(faction_id) {
-        let Some(faction) = world.gameplay_factions[index] else {
+        let Some(faction) = world.gameplay_faction_at_index(index) else {
             continue;
         };
         if faction.faction_id != faction_id {
@@ -3288,7 +3280,7 @@ fn nearest_tag_transform(
     let mut nearest = None;
     let mut nearest_distance_squared = f32::INFINITY;
     for &index in world.gameplay_tag_indices(tag_id) {
-        let Some(tags) = world.gameplay_tags[index] else {
+        let Some(tags) = world.gameplay_tags_at_index(index) else {
             continue;
         };
         if !tags.contains(tag_id) {
@@ -3474,9 +3466,7 @@ pub(crate) fn queue_marked_despawn(
 
 pub(crate) fn damage_at_or_default(world: &World, entity_index: usize, default_damage: f32) -> f32 {
     world
-        .damages
-        .get(entity_index)
-        .and_then(|damage| *damage)
+        .damage_at_index(entity_index)
         .unwrap_or(default_damage)
 }
 
@@ -3501,23 +3491,9 @@ pub(crate) fn faction_damage_denial(
     source_index: usize,
     target_index: usize,
 ) -> Option<FactionDamageDenial> {
-    let source_faction = world
-        .gameplay_factions
-        .get(source_index)
-        .copied()
-        .flatten()?;
-    let target_faction = world
-        .gameplay_factions
-        .get(target_index)
-        .copied()
-        .flatten()?;
-    let can_damage = if world.gameplay_faction_relations.enabled() {
-        world
-            .gameplay_faction_relations
-            .can_damage(source_faction.faction_id, target_faction.faction_id)
-    } else {
-        source_faction.can_damage(target_faction)
-    };
+    let source_faction = world.gameplay_faction_at_index(source_index)?;
+    let target_faction = world.gameplay_faction_at_index(target_index)?;
+    let can_damage = world.gameplay_factions_can_damage(source_faction, target_faction);
     if can_damage {
         return None;
     }
@@ -3662,7 +3638,7 @@ pub(crate) fn apply_collision_pickup_reaction_for_pair(
         return None;
     }
 
-    let pickup = world.pickups.get(pickup_index).and_then(|value| *value)?;
+    let pickup = world.pickup_at_index(pickup_index)?;
     if pickup.item_id != GAMEPLAY_PICKUP_ITEM_SCORE || !pickup.despawn_on_collect {
         return None;
     }
@@ -3952,12 +3928,11 @@ pub(crate) fn commit_collision_spawn_prefab_reaction_cooldown(
     world: &mut World,
     evaluation: CollisionSpawnPrefabEvaluation,
 ) -> bool {
-    let Some(Some(reactions)) = world
-        .collision_reactions
-        .get_mut(evaluation.reaction_owner_index)
+    let Some(mut reactions) = world.collision_reactions_at_index(evaluation.reaction_owner_index)
     else {
         return false;
     };
+    let mut committed = false;
     for reaction in reactions.iter_mut() {
         let CollisionReaction::SpawnPrefab {
             action_id,
@@ -3971,9 +3946,13 @@ pub(crate) fn commit_collision_spawn_prefab_reaction_cooldown(
             continue;
         }
         cooldown.commit();
-        return true;
+        committed = true;
+        break;
     }
-    false
+    if !committed {
+        return false;
+    }
+    world.replace_collision_reactions_at_index(evaluation.reaction_owner_index, Some(reactions))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4111,16 +4090,8 @@ pub(crate) fn apply_collision_reaction_sets_for_pair<F>(
 where
     F: Fn(&World, usize) -> CollisionDamageReactionDefaults + Copy,
 {
-    let first_reactions = world
-        .collision_reactions
-        .get(pair.source_index)
-        .copied()
-        .flatten();
-    let second_reactions = world
-        .collision_reactions
-        .get(pair.other_index)
-        .copied()
-        .flatten();
+    let first_reactions = world.collision_reactions_at_index(pair.source_index);
+    let second_reactions = world.collision_reactions_at_index(pair.other_index);
     if first_reactions.is_none() && second_reactions.is_none() {
         return None;
     }
@@ -4138,7 +4109,7 @@ where
             damage_defaults,
         );
         outcome.push(pair, reaction_outcome);
-        world.collision_reactions[pair.source_index] = Some(reactions);
+        world.replace_collision_reactions_at_index(pair.source_index, Some(reactions));
     }
     if let Some(mut reactions) = second_reactions {
         let reversed = pair.reversed();
@@ -4153,7 +4124,7 @@ where
             damage_defaults,
         );
         outcome.push(reversed, reaction_outcome);
-        world.collision_reactions[pair.other_index] = Some(reactions);
+        world.replace_collision_reactions_at_index(pair.other_index, Some(reactions));
     }
     Some(outcome)
 }
@@ -4163,16 +4134,10 @@ pub(crate) fn has_collision_reaction_sets_for_pair(
     pair: CollisionReactionPair,
 ) -> bool {
     world
-        .collision_reactions
-        .get(pair.source_index)
-        .copied()
-        .flatten()
+        .collision_reactions_at_index(pair.source_index)
         .is_some()
         || world
-            .collision_reactions
-            .get(pair.other_index)
-            .copied()
-            .flatten()
+            .collision_reactions_at_index(pair.other_index)
             .is_some()
 }
 
@@ -4448,7 +4413,7 @@ pub(crate) fn apply_tile_collision_reaction_set(
                 radius,
                 target_layer,
             } => {
-                let query_height_span = world.height_spans.get(source_index).copied().flatten();
+                let query_height_span = world.height_span_at(source_index);
                 let area_outcome = apply_collision_area_damage_reaction_at_center(
                     world,
                     source_index,
@@ -4576,16 +4541,8 @@ pub(crate) fn apply_pickup_collision_reaction_sets_for_pair(
     marked_for_despawn: &mut [bool],
     pending_despawn: &mut Vec<Entity>,
 ) -> Option<PickupCollisionReactionSetsForPairOutcome> {
-    let first_reactions = world
-        .collision_reactions
-        .get(pair.source_index)
-        .copied()
-        .flatten();
-    let second_reactions = world
-        .collision_reactions
-        .get(pair.other_index)
-        .copied()
-        .flatten();
+    let first_reactions = world.collision_reactions_at_index(pair.source_index);
+    let second_reactions = world.collision_reactions_at_index(pair.other_index);
     if first_reactions.is_none() && second_reactions.is_none() {
         return None;
     }
@@ -4601,7 +4558,7 @@ pub(crate) fn apply_pickup_collision_reaction_sets_for_pair(
             pending_despawn,
         );
         outcome.push(pair, reaction_outcome);
-        world.collision_reactions[pair.source_index] = Some(reactions);
+        world.replace_collision_reactions_at_index(pair.source_index, Some(reactions));
     }
     if let Some(mut reactions) = second_reactions {
         let reversed = pair.reversed();
@@ -4614,7 +4571,7 @@ pub(crate) fn apply_pickup_collision_reaction_sets_for_pair(
             pending_despawn,
         );
         outcome.push(reversed, reaction_outcome);
-        world.collision_reactions[pair.other_index] = Some(reactions);
+        world.replace_collision_reactions_at_index(pair.other_index, Some(reactions));
     }
 
     Some(outcome)
@@ -4630,7 +4587,7 @@ pub(crate) fn apply_collision_damage_reaction_for_pair(
 ) -> Option<CollisionDamageReactionOutcome> {
     let target_index = pair.target_index(target);
     let target_entity = pair.target_entity(target);
-    if !world.alive.get(target_index).copied().unwrap_or(false)
+    if !world.is_alive_index(target_index)
         || marked_for_despawn
             .get(target_index)
             .copied()
@@ -4680,11 +4637,8 @@ where
         return CollisionReactionSetOutcome::default();
     };
     let query_height_span = world
-        .height_spans
-        .get(pair.source_index)
-        .copied()
-        .flatten()
-        .or_else(|| world.height_spans.get(pair.other_index).copied().flatten());
+        .height_span_at(pair.source_index)
+        .or_else(|| world.height_span_at(pair.other_index));
     apply_collision_area_damage_reaction_at_center(
         world,
         pair.source_index,
@@ -4789,7 +4743,7 @@ pub(crate) fn apply_collision_knockback_reaction_for_pair(
         return None;
     }
     let target_index = pair.target_index(target);
-    if !world.alive.get(target_index).copied().unwrap_or(false)
+    if !world.is_alive_index(target_index)
         || marked_for_despawn
             .get(target_index)
             .copied()
@@ -4853,7 +4807,7 @@ pub(crate) fn collision_damage_reaction_faction_denial(
     marked_for_despawn: &[bool],
 ) -> Option<FactionDamageDenial> {
     let target_index = pair.target_index(target);
-    if !world.alive.get(target_index).copied().unwrap_or(false)
+    if !world.is_alive_index(target_index)
         || marked_for_despawn
             .get(target_index)
             .copied()
@@ -4871,14 +4825,14 @@ pub(crate) fn apply_damage_to_health(
     default_health: f32,
     default_score_reward: u32,
 ) -> DamageOutcome {
-    let remaining_health = {
-        let health = world.healths[entity_index].get_or_insert(default_health);
-        *health -= damage;
-        *health
-    };
+    let remaining_health = world
+        .apply_damage_to_health_at_index(entity_index, damage, default_health)
+        .unwrap_or(default_health);
     let killed = remaining_health <= 0.0;
     let score_reward = if killed {
-        world.score_rewards[entity_index].unwrap_or(default_score_reward)
+        world
+            .score_reward_at_index(entity_index)
+            .unwrap_or(default_score_reward)
     } else {
         0
     };
@@ -4893,7 +4847,7 @@ pub(crate) fn apply_behavior_state_machine_events(
     world: &mut World,
     events: &mut Vec<GameplayEvent>,
 ) {
-    if events.is_empty() || !world.behavior_state_machines.iter().any(Option::is_some) {
+    if events.is_empty() || !world.has_behavior_state_machines() {
         return;
     }
 
@@ -4901,12 +4855,11 @@ pub(crate) fn apply_behavior_state_machine_events(
     let alive_count = world.alive_indices().len();
     for alive_position in 0..alive_count {
         let index = world.alive_indices()[alive_position];
-        let Some(mut machine) = world.behavior_state_machines[index] else {
+        let Some(source) = world.entity_at_index(index) else {
             continue;
         };
-        let source = Entity {
-            id: index as u32,
-            generation: world.generations[index],
+        let Some(mut machine) = world.behavior_state_machine(source) else {
+            continue;
         };
         let previous_state = machine.current_state();
         let Some(next_state) = next_behavior_state(machine, source, &events[..input_event_count])
@@ -4914,7 +4867,7 @@ pub(crate) fn apply_behavior_state_machine_events(
             continue;
         };
         machine.set_current_state(next_state);
-        world.behavior_state_machines[index] = Some(machine);
+        world.set_behavior_state_machine(source, machine);
         events.push(GameplayEvent::behavior_state_changed(
             source,
             previous_state,
@@ -4964,22 +4917,18 @@ pub(crate) fn tick_gameplay_timer_triggers(
     delta_seconds: f32,
     events: &mut Vec<GameplayEvent>,
 ) {
-    if delta_seconds <= 0.0
-        || !delta_seconds.is_finite()
-        || !world.gameplay_timer_triggers.iter().any(Option::is_some)
-    {
+    if delta_seconds <= 0.0 || !delta_seconds.is_finite() || !world.has_gameplay_timer_triggers() {
         return;
     }
 
     let alive_count = world.alive_indices().len();
     for alive_position in 0..alive_count {
         let index = world.alive_indices()[alive_position];
-        let Some(timer) = world.gameplay_timer_triggers[index].as_mut() else {
+        let Some(source) = world.entity_at_index(index) else {
             continue;
         };
-        let source = Entity {
-            id: index as u32,
-            generation: world.generations[index],
+        let Some(timer) = world.gameplay_timer_trigger_mut_at_index(index) else {
+            continue;
         };
         let Some(dispatch) = tick_gameplay_timer_trigger_for_dispatch(source, timer, delta_seconds)
         else {
@@ -5024,14 +4973,7 @@ fn push_reaction_outcome<T: Copy>(
 }
 
 fn entity_at(world: &World, entity_index: usize) -> Option<Entity> {
-    if !world.alive.get(entity_index).copied().unwrap_or(false) {
-        return None;
-    }
-    let generation = *world.generations.get(entity_index)?;
-    Some(Entity {
-        id: entity_index as u32,
-        generation,
-    })
+    world.entity_at_index(entity_index)
 }
 
 fn collision_area_damage_center(world: &World, pair: CollisionReactionPair) -> Option<Transform2D> {
@@ -5044,8 +4986,7 @@ fn collision_area_damage_center(world: &World, pair: CollisionReactionPair) -> O
 }
 
 fn is_alive_layer(world: &World, index: usize, layer: CollisionLayer) -> bool {
-    world.alive.get(index).copied().unwrap_or(false)
-        && world.collider_layer_at(index) == Some(layer)
+    world.is_alive_index(index) && world.collider_layer_at(index) == Some(layer)
 }
 
 #[cfg(test)]
@@ -6399,7 +6340,9 @@ mod tests {
             ProjectileEntitySpawnResult {
                 spawned: Entity {
                     id: 0,
-                    generation: world.generations[0],
+                    generation: world
+                        .generation_at_index(0)
+                        .expect("test entity index should exist"),
                 },
                 arc_applied: true,
             }
@@ -6430,7 +6373,9 @@ mod tests {
             PrefabEnemyEntitySpawnResult {
                 spawned: Entity {
                     id: spawned_index as u32,
-                    generation: world.generations[spawned_index],
+                    generation: world
+                        .generation_at_index(spawned_index)
+                        .expect("test entity index should exist"),
                 },
             }
         );
@@ -6439,8 +6384,11 @@ mod tests {
             Some(CollisionLayer::Enemy)
         );
         assert_eq!(world.transforms[spawned_index], Some(data.transform));
-        assert_eq!(world.healths[spawned_index], Some(data.health));
-        assert_eq!(world.score_rewards[spawned_index], Some(data.score_reward));
+        assert_eq!(world.health_at_index(spawned_index), Some(data.health));
+        assert_eq!(
+            world.score_reward_at_index(spawned_index),
+            Some(data.score_reward)
+        );
     }
 
     #[test]
@@ -6691,7 +6639,7 @@ mod tests {
         let player = world.spawn_player(0.0, 0.0, 0);
         let enemy = world.spawn_enemy(16.0, 0.0, 0);
         let plain = world.spawn_entity();
-        let mut marked_for_despawn = vec![false; world.alive.len()];
+        let mut marked_for_despawn = vec![false; world.entity_capacity()];
 
         assert!(melee_attack_attacker_can_resolve(
             &world,
@@ -6746,7 +6694,7 @@ mod tests {
         ));
 
         let out_of_range = Entity {
-            id: world.alive.len() as u32,
+            id: world.entity_capacity() as u32,
             generation: 0,
         };
         assert!(!melee_attack_attacker_can_resolve(
@@ -7530,8 +7478,8 @@ mod tests {
         let mut world = World::default();
         let enemy = world.spawn_enemy(0.0, 0.0, 1);
         let enemy_index = enemy.id as usize;
-        world.healths[enemy_index] = Some(3.0);
-        world.score_rewards[enemy_index] = Some(7);
+        world.set_health(enemy, 3.0);
+        world.set_score_reward(enemy, 7);
 
         let first = apply_damage_to_health(&mut world, enemy_index, 1.0, 5.0, 1);
         assert_eq!(
@@ -7572,14 +7520,14 @@ mod tests {
         let enemy = world.spawn_enemy(0.0, 0.0, 1);
         let actor = world.spawn_entity();
         let persistent = world.spawn_entity();
-        world.bullet_lifetimes[enemy.id as usize] = Some(0.25);
-        world.bullet_lifetimes[actor.id as usize] = Some(0.5);
-        world.bullet_lifetimes[persistent.id as usize] = Some(1.0);
+        world.set_gameplay_lifetime(enemy, 0.25);
+        world.set_gameplay_lifetime(actor, 0.5);
+        world.set_gameplay_lifetime(persistent, 1.0);
 
         let mut pending = Vec::new();
         assert_eq!(run_lifetime_system(&mut world, 0.5, &mut pending), 2);
         assert_eq!(pending, vec![enemy, actor]);
-        assert_eq!(world.bullet_lifetimes[persistent.id as usize], Some(0.5));
+        assert_eq!(world.gameplay_lifetime(persistent), Some(0.5));
     }
 
     #[test]
@@ -7696,7 +7644,7 @@ mod tests {
             target.id as usize,
         ));
 
-        assert!(world.gameplay_faction_relations.set_relation(
+        assert!(world.set_gameplay_faction_relation(
             GAMEPLAY_FACTION_PLAYER,
             GAMEPLAY_FACTION_ENEMY,
             FactionRelation::Hostile,
@@ -7707,7 +7655,7 @@ mod tests {
             target.id as usize,
         ));
 
-        assert!(world.gameplay_faction_relations.set_relation(
+        assert!(world.set_gameplay_faction_relation(
             GAMEPLAY_FACTION_PLAYER,
             GAMEPLAY_FACTION_ENEMY,
             FactionRelation::Friendly,
@@ -7717,7 +7665,7 @@ mod tests {
         assert_eq!(friendly_denial.source_faction_id, GAMEPLAY_FACTION_PLAYER);
         assert_eq!(friendly_denial.target_faction_id, GAMEPLAY_FACTION_ENEMY);
 
-        assert!(world.gameplay_faction_relations.set_relation(
+        assert!(world.set_gameplay_faction_relation(
             GAMEPLAY_FACTION_PLAYER,
             GAMEPLAY_FACTION_ENEMY,
             FactionRelation::Neutral,
@@ -7753,10 +7701,8 @@ mod tests {
             enemy,
             GameplayFaction::new(GAMEPLAY_FACTION_ENEMY, 1 << GAMEPLAY_FACTION_PLAYER).unwrap(),
         );
-        world
-            .gameplay_faction_relations
-            .set_default_relation(FactionRelation::Neutral);
-        assert!(world.gameplay_faction_relations.set_relation(
+        world.set_gameplay_faction_default_relation(FactionRelation::Neutral);
+        assert!(world.set_gameplay_faction_relation(
             GAMEPLAY_FACTION_PLAYER,
             GAMEPLAY_FACTION_ENEMY,
             FactionRelation::Hostile,
@@ -7801,8 +7747,10 @@ mod tests {
             ProjectileCollisionTarget::Player,
         ));
 
-        world.projectile_collision_targets[projectile.id as usize] =
-            Some(ProjectileCollisionTarget::Player);
+        world.set_projectile_collision_target_at(
+            projectile.id as usize,
+            ProjectileCollisionTarget::Player,
+        );
         assert_eq!(
             projectile_collision_target_at(&world, projectile.id as usize),
             ProjectileCollisionTarget::Player,
@@ -7921,7 +7869,7 @@ mod tests {
             a: bullet,
             b: enemy,
         };
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
 
         assert_eq!(
             collision_reaction_pair_for_layer_pair(
@@ -7983,7 +7931,7 @@ mod tests {
         let target = world.spawn_entity();
         let pair =
             CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         assert_eq!(
@@ -8029,7 +7977,7 @@ mod tests {
             pickup,
             collector,
         );
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         assert_eq!(
@@ -8071,7 +8019,7 @@ mod tests {
         let enemy = world.spawn_enemy(4.0, 0.0, 1);
         let pair =
             CollisionReactionPair::new(enemy.id as usize, collector.id as usize, enemy, collector);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         assert_eq!(
@@ -8118,7 +8066,7 @@ mod tests {
         assert!(reactions.push(CollisionReaction::Despawn {
             target: CollisionTarget::OtherEntity,
         }));
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         let outcome = apply_pickup_collision_reaction_set_for_pair(
@@ -8183,7 +8131,7 @@ mod tests {
             replace_default: true,
             trigger: CollisionReactionTrigger::Enter,
         }));
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         let additive = apply_pickup_collision_reaction_set_for_pair(
@@ -8272,9 +8220,9 @@ mod tests {
         assert!(pickup_reactions.push(CollisionReaction::Pickup {
             target: CollisionTarget::SelfEntity,
         }));
-        world.collision_reactions[collector.id as usize] = Some(collector_reactions);
-        world.collision_reactions[pickup.id as usize] = Some(pickup_reactions);
-        let mut marked = vec![false; world.alive.len()];
+        world.replace_collision_reactions(collector, Some(collector_reactions));
+        world.replace_collision_reactions(pickup, Some(pickup_reactions));
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         assert!(has_collision_reaction_sets_for_pair(&world, pair));
@@ -8318,7 +8266,8 @@ mod tests {
         );
         assert_eq!(pending, vec![pickup]);
         assert_eq!(
-            world.collision_reactions[collector.id as usize]
+            world
+                .collision_reactions(collector)
                 .expect("collector reactions are written back")
                 .iter()
                 .collect::<Vec<_>>(),
@@ -8356,8 +8305,8 @@ mod tests {
         assert!(collector_reactions.push(CollisionReaction::Pickup {
             target: CollisionTarget::SelfEntity,
         }));
-        world.collision_reactions[collector.id as usize] = Some(collector_reactions);
-        let mut marked = vec![false; world.alive.len()];
+        world.replace_collision_reactions(collector, Some(collector_reactions));
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         let outcome = apply_pickup_collision_reaction_sets_for_pair(
@@ -8381,9 +8330,9 @@ mod tests {
         let mut world = World::default();
         let source = world.spawn_entity();
         let target = world.spawn_enemy(4.0, 0.0, 1);
-        world.damages[source.id as usize] = Some(2.0);
-        world.healths[target.id as usize] = Some(2.0);
-        world.score_rewards[target.id as usize] = Some(9);
+        world.set_damage(source, 2.0);
+        world.set_health(target, 2.0);
+        world.set_score_reward(target, 9);
         let mut reactions = CollisionReactionSet::default();
         assert!(reactions.push(CollisionReaction::Damage {
             target: CollisionTarget::OtherEntity,
@@ -8393,7 +8342,7 @@ mod tests {
         }));
         let pair =
             CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_damage_hits = Vec::new();
 
@@ -8449,7 +8398,7 @@ mod tests {
         }));
         let pair =
             CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_damage_hits = Vec::new();
 
@@ -8497,12 +8446,12 @@ mod tests {
             pickup,
             AabbCollider::new(4.0, 4.0, true, CollisionLayer::Pickup),
         );
-        world.damages[source.id as usize] = Some(2.0);
-        world.healths[direct.id as usize] = Some(2.0);
-        world.healths[splash.id as usize] = Some(3.0);
-        world.healths[far.id as usize] = Some(2.0);
-        world.score_rewards[direct.id as usize] = Some(7);
-        world.score_rewards[splash.id as usize] = Some(5);
+        world.set_damage(source, 2.0);
+        world.set_health(direct, 2.0);
+        world.set_health(splash, 3.0);
+        world.set_health(far, 2.0);
+        world.set_score_reward(direct, 7);
+        world.set_score_reward(splash, 5);
         let pair =
             CollisionReactionPair::new(source.id as usize, direct.id as usize, source, direct);
         let mut reactions = CollisionReactionSet::default();
@@ -8510,7 +8459,7 @@ mod tests {
             radius: 24.0,
             target_layer: CollisionLayer::Enemy,
         }));
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_damage_hits = Vec::new();
 
@@ -8551,9 +8500,9 @@ mod tests {
                 },
             ],
         );
-        assert_eq!(world.healths[splash.id as usize], Some(1.0));
-        assert_eq!(world.healths[far.id as usize], Some(2.0));
-        assert_eq!(world.healths[pickup.id as usize], None);
+        assert_eq!(world.health(splash), Some(1.0));
+        assert_eq!(world.health(far), Some(2.0));
+        assert_eq!(world.health(pickup), None);
         assert_eq!(pending, vec![direct]);
     }
 
@@ -8566,8 +8515,8 @@ mod tests {
         let mut world = World::default();
         let source = world.spawn_bullet(0.0, 0.0, 0.0, 0.0, 1);
         let blocked = world.spawn_enemy(4.0, 0.0, 1);
-        world.damages[source.id as usize] = Some(2.0);
-        world.healths[blocked.id as usize] = Some(2.0);
+        world.set_damage(source, 2.0);
+        world.set_health(blocked, 2.0);
         world.set_gameplay_faction(
             source,
             GameplayFaction::new(GAMEPLAY_FACTION_PLAYER, 0).unwrap(),
@@ -8583,7 +8532,7 @@ mod tests {
             radius: 24.0,
             target_layer: CollisionLayer::Enemy,
         }));
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_damage_hits = Vec::new();
 
@@ -8612,7 +8561,7 @@ mod tests {
                 target_faction_id: GAMEPLAY_FACTION_ENEMY,
             }],
         );
-        assert_eq!(world.healths[blocked.id as usize], Some(2.0));
+        assert_eq!(world.health(blocked), Some(2.0));
         assert!(pending.is_empty());
     }
 
@@ -8631,7 +8580,7 @@ mod tests {
             trigger: CollisionReactionTrigger::Contact,
         }));
         let pair = CollisionReactionPair::new(source.id as usize, other.id as usize, source, other);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_damage_hits = Vec::new();
 
@@ -8682,7 +8631,7 @@ mod tests {
         }));
         let pair = CollisionReactionPair::new(first.id as usize, second.id as usize, first, second)
             .reversed();
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_damage_hits = Vec::new();
 
@@ -8736,10 +8685,10 @@ mod tests {
             replace_default: false,
             trigger: CollisionReactionTrigger::Contact,
         }));
-        world.collision_reactions[first.id as usize] = Some(first_reactions);
-        world.collision_reactions[second.id as usize] = Some(second_reactions);
+        world.replace_collision_reactions(first, Some(first_reactions));
+        world.replace_collision_reactions(second, Some(second_reactions));
         let pair = CollisionReactionPair::new(first.id as usize, second.id as usize, first, second);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_damage_hits = Vec::new();
 
@@ -8816,9 +8765,9 @@ mod tests {
         let mut world = World::default();
         let source = world.spawn_entity();
         let enemy = world.spawn_enemy(4.0, 0.0, 1);
-        world.damages[source.id as usize] = Some(3.0);
-        world.healths[enemy.id as usize] = Some(3.0);
-        world.score_rewards[enemy.id as usize] = Some(5);
+        world.set_damage(source, 3.0);
+        world.set_health(enemy, 3.0);
+        world.set_score_reward(enemy, 5);
         let mut reactions = CollisionReactionSet::default();
         assert!(reactions.push(CollisionReaction::Damage {
             target: CollisionTarget::OtherEntity,
@@ -8835,7 +8784,7 @@ mod tests {
             trigger: CollisionReactionTrigger::Contact,
         }));
         let pair = CollisionReactionPair::new(source.id as usize, enemy.id as usize, source, enemy);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_damage_hits = Vec::new();
 
@@ -8882,10 +8831,10 @@ mod tests {
     fn collision_gameplay_event_payloads_preserve_outcome_order_and_sources() {
         let mut world = World::default();
         let source = world.spawn_player(0.0, 0.0, 1);
-        world.damages[source.id as usize] = Some(3.0);
+        world.set_damage(source, 3.0);
         let target = world.spawn_enemy(4.0, 0.0, 1);
-        world.healths[target.id as usize] = Some(3.0);
-        world.score_rewards[target.id as usize] = Some(5);
+        world.set_health(target, 3.0);
+        world.set_score_reward(target, 5);
         let mut reactions = CollisionReactionSet::default();
         assert!(reactions.push(CollisionReaction::Damage {
             target: CollisionTarget::OtherEntity,
@@ -8896,18 +8845,21 @@ mod tests {
         assert!(reactions.push(CollisionReaction::Despawn {
             target: CollisionTarget::SelfEntity,
         }));
-        world.pickups[target.id as usize] = Some(Pickup {
-            item_id: GAMEPLAY_PICKUP_ITEM_SCORE,
-            count: 2,
-            despawn_on_collect: true,
-        });
+        world.set_pickup(
+            target,
+            Pickup {
+                item_id: GAMEPLAY_PICKUP_ITEM_SCORE,
+                count: 2,
+                despawn_on_collect: true,
+            },
+        );
         world.set_aabb_collider(
             target,
             AabbCollider::new(4.0, 4.0, true, CollisionLayer::Pickup),
         );
         let pair =
             CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_damage_hits = Vec::new();
 
@@ -8975,7 +8927,7 @@ mod tests {
         }));
         let pair =
             CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_damage_hits = Vec::new();
 
@@ -9055,7 +9007,7 @@ mod tests {
         }));
         let pair =
             CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_damage_hits = Vec::new();
 
@@ -9220,9 +9172,9 @@ mod tests {
         let mut world = World::default();
         let source = world.spawn_entity();
         let target = world.spawn_enemy(4.0, 0.0, 1);
-        world.healths[target.id as usize] = Some(2.0);
-        world.score_rewards[target.id as usize] = Some(8);
-        let mut marked = vec![false; world.alive.len()];
+        world.set_health(target, 2.0);
+        world.set_score_reward(target, 8);
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         let outcome = apply_default_collision_damage_hit(
@@ -9278,9 +9230,9 @@ mod tests {
         let mut world = World::default();
         let source = world.spawn_player(0.0, 0.0, 1);
         let target = world.spawn_enemy(4.0, 0.0, 1);
-        world.healths[target.id as usize] = Some(1.0);
-        world.score_rewards[target.id as usize] = Some(5);
-        let mut marked = vec![false; world.alive.len()];
+        world.set_health(target, 1.0);
+        world.set_score_reward(target, 5);
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         let outcome = apply_default_collision_damage_hit(
@@ -9443,7 +9395,7 @@ mod tests {
         let mut world = World::default();
         let source = world.spawn_entity();
         let target = world.spawn_player(4.0, 0.0, 1);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         let outcome = apply_default_collision_game_over_hit(
@@ -9469,7 +9421,7 @@ mod tests {
             },
         );
         assert_eq!(pending, vec![source]);
-        assert_eq!(world.healths[target.id as usize], None);
+        assert_eq!(world.health(target), None);
 
         let repeated = apply_default_collision_game_over_hit(
             &world,
@@ -9707,7 +9659,8 @@ mod tests {
         let pair = CollisionReactionPair::new(source.id as usize, other.id as usize, source, other);
         let evaluation = collision_spawn_prefab_reaction_for_pair(
             pair,
-            world.collision_reactions[source.id as usize]
+            world
+                .collision_reactions(source)
                 .expect("source has reactions")
                 .iter()
                 .next()
@@ -9719,7 +9672,8 @@ mod tests {
         assert!(commit_collision_spawn_prefab_reaction_cooldown(
             &mut world, evaluation,
         ));
-        let mut reactions = world.collision_reactions[source.id as usize]
+        let mut reactions = world
+            .collision_reactions(source)
             .expect("source reactions are written back");
         let reaction = reactions.iter_mut().next().expect("spawn reaction remains");
         let CollisionReaction::SpawnPrefab { cooldown, .. } = reaction else {
@@ -9732,7 +9686,7 @@ mod tests {
                 remaining_seconds: 0.5,
             },
         );
-        world.collision_reactions[source.id as usize] = Some(reactions);
+        world.replace_collision_reactions(source, Some(reactions));
         assert!(!commit_collision_spawn_prefab_reaction_cooldown(
             &mut world, evaluation,
         ));
@@ -9998,7 +9952,7 @@ mod tests {
         assert!(reactions.push(CollisionReaction::Despawn {
             target: CollisionTarget::SelfEntity,
         }));
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_hits = Vec::new();
 
@@ -10055,7 +10009,7 @@ mod tests {
             replace_default: true,
             trigger: CollisionReactionTrigger::Contact,
         }));
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_hits = Vec::new();
 
@@ -10102,18 +10056,18 @@ mod tests {
         let direct = world.spawn_enemy(10.0, 0.0, 1);
         let splash = world.spawn_enemy(15.0, 0.0, 1);
         let far = world.spawn_enemy(40.0, 0.0, 1);
-        world.damages[bullet.id as usize] = Some(2.0);
-        world.healths[direct.id as usize] = Some(2.0);
-        world.healths[splash.id as usize] = Some(3.0);
-        world.healths[far.id as usize] = Some(2.0);
-        world.score_rewards[direct.id as usize] = Some(7);
-        world.score_rewards[splash.id as usize] = Some(11);
+        world.set_damage(bullet, 2.0);
+        world.set_health(direct, 2.0);
+        world.set_health(splash, 3.0);
+        world.set_health(far, 2.0);
+        world.set_score_reward(direct, 7);
+        world.set_score_reward(splash, 11);
         let mut reactions = CollisionReactionSet::default();
         assert!(reactions.push(CollisionReaction::AreaDamage {
             radius: 12.0,
             target_layer: CollisionLayer::Enemy,
         }));
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
         let mut area_hits = Vec::new();
 
@@ -10126,8 +10080,8 @@ mod tests {
             &mut marked,
             &mut pending,
             |world, target_index| CollisionDamageReactionDefaults {
-                health: world.healths[target_index].unwrap_or(1.0),
-                score_reward: world.score_rewards[target_index].unwrap_or(0),
+                health: world.health_at_index(target_index).unwrap_or(1.0),
+                score_reward: world.score_reward_at_index(target_index).unwrap_or(0),
                 despawn_on_kill: true,
             },
         );
@@ -10142,8 +10096,8 @@ mod tests {
         );
         assert!(marked[direct.id as usize]);
         assert_eq!(pending, vec![direct]);
-        assert_eq!(world.healths[splash.id as usize], Some(1.0));
-        assert_eq!(world.healths[far.id as usize], Some(2.0));
+        assert_eq!(world.health(splash), Some(1.0));
+        assert_eq!(world.health(far), Some(2.0));
     }
 
     #[test]
@@ -10151,12 +10105,12 @@ mod tests {
         let mut world = World::default();
         let source = world.spawn_entity();
         let target = world.spawn_enemy(0.0, 0.0, 1);
-        world.damages[source.id as usize] = Some(2.0);
-        world.healths[target.id as usize] = Some(2.0);
-        world.score_rewards[target.id as usize] = Some(7);
+        world.set_damage(source, 2.0);
+        world.set_health(target, 2.0);
+        world.set_score_reward(target, 7);
         let pair =
             CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         assert_eq!(
@@ -10181,7 +10135,7 @@ mod tests {
                 score_reward: 7,
             }),
         );
-        assert_eq!(world.healths[target.id as usize], Some(0.0));
+        assert_eq!(world.health(target), Some(0.0));
         assert_eq!(pending, vec![target]);
     }
 
@@ -10190,11 +10144,11 @@ mod tests {
         let mut world = World::default();
         let source = world.spawn_entity();
         let target = world.spawn_entity();
-        world.damages[source.id as usize] = Some(1.0);
-        world.healths[target.id as usize] = Some(1.0);
+        world.set_damage(source, 1.0);
+        world.set_health(target, 1.0);
         let pair =
             CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         let outcome = apply_collision_damage_reaction_for_pair(
@@ -10964,7 +10918,7 @@ mod tests {
         assert_eq!(caches.len(), cache_len);
 
         world.despawn(actor);
-        assert!(!world.alive[actor.id as usize]);
+        assert!(!world.is_alive_index(actor.id as usize));
         resolver_calls = 0;
         assert_eq!(
             run_movement_pattern_with_navigation_system(
@@ -11519,7 +11473,7 @@ mod tests {
         );
 
         world.despawn(player);
-        assert!(!world.alive[player.id as usize]);
+        assert!(!world.is_alive_index(player.id as usize));
         assert_eq!(
             run_topdown_input_movement_system(&mut world, player, input, 120.0),
             MovementPatternApplication::Unsupported,
@@ -11616,7 +11570,7 @@ mod tests {
     fn marked_despawn_queues_once() {
         let mut world = World::default();
         let entity = world.spawn_enemy(0.0, 0.0, 1);
-        let mut marked = vec![false; world.alive.len()];
+        let mut marked = vec![false; world.entity_capacity()];
         let mut pending = Vec::new();
 
         assert!(queue_marked_despawn(

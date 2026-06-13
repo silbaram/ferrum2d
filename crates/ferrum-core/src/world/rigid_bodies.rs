@@ -46,6 +46,14 @@ impl World {
         self.rigid_contact_impulses.iter().copied()
     }
 
+    pub(crate) fn clear_rigid_contact_impulses(&mut self) {
+        self.rigid_contact_impulses.clear();
+    }
+
+    pub(crate) fn record_rigid_contact_impulse(&mut self, impulse: RigidContactImpulse) {
+        self.rigid_contact_impulses.push(impulse);
+    }
+
     pub fn rigid_body_ccd_debug_hit_count(&self) -> usize {
         self.rigid_body_ccd_debug_hits.len()
     }

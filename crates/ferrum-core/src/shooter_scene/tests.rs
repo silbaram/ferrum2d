@@ -54,9 +54,8 @@ fn playing_scene() -> (ShooterScene, World, Camera2D, Vec<AudioEvent>) {
 
 fn count_layer(world: &World, layer: CollisionLayer) -> usize {
     world
-        .alive
+        .alive_indices()
         .iter()
-        .enumerate()
-        .filter(|(idx, alive)| **alive && world.collider_layer_at(*idx) == Some(layer))
+        .filter(|&&idx| world.collider_layer_at(idx) == Some(layer))
         .count()
 }

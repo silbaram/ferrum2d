@@ -25,7 +25,7 @@ fn point_query_respects_aabb_collider_offset() {
         CollisionMask::ENEMY,
         CollisionMask::ENEMY,
     );
-    world.colliders[enemy.id as usize] = Some(collider(2.0, 2.0).with_offset(10.0, 0.0));
+    world.set_aabb_collider(enemy, collider(2.0, 2.0).with_offset(10.0, 0.0));
 
     let hits = CollisionSystem::point_query(
         &world,

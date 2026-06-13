@@ -454,11 +454,11 @@ fn fill_swept_layer_proxies(
         if !collider.enabled || collider.layer != layer {
             continue;
         }
-        let Some(transform) = world.transforms[index] else {
+        let Some(transform) = world.transform_at_index(index) else {
             continue;
         };
         let bounds = if is_valid_delta(delta) {
-            let velocity = world.velocities[index].unwrap_or_default();
+            let velocity = world.velocity_at_index_or_default(index);
             let start = previous_transform(transform, velocity, delta);
             AabbBounds::swept(start, transform, collider)
         } else {
@@ -493,11 +493,11 @@ fn fill_swept_mask_proxies(
         if !collider.enabled {
             continue;
         }
-        let Some(transform) = world.transforms[index] else {
+        let Some(transform) = world.transform_at_index(index) else {
             continue;
         };
         let bounds = if is_valid_delta(delta) {
-            let velocity = world.velocities[index].unwrap_or_default();
+            let velocity = world.velocity_at_index_or_default(index);
             let start = previous_transform(transform, velocity, delta);
             AabbBounds::swept(start, transform, collider)
         } else {
@@ -526,10 +526,10 @@ fn fill_rigid_body_ccd_target_proxies(
         if index == moving_index || !filters_allow(world, moving_index, index) {
             continue;
         }
-        let Some(transform) = world.transforms[index] else {
+        let Some(transform) = world.transform_at_index(index) else {
             continue;
         };
-        let velocity = finite_broadphase_velocity(world.velocities[index].unwrap_or_default());
+        let velocity = finite_broadphase_velocity(world.velocity_at_index_or_default(index));
         for collider_index in 0..world.compound_collider_count_at(index) {
             for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
                 let Some(shape) =
@@ -601,10 +601,10 @@ fn current_proxy(
     collider_index: usize,
     segment_index: usize,
 ) -> Option<CollisionProxy> {
-    if !world.alive.get(index).copied().unwrap_or(false) {
+    if !world.is_alive_index(index) {
         return None;
     }
-    let transform = world.transforms[index]?;
+    let transform = world.transform_at_index(index)?;
     let shape = collider_shape_at_segment(world, index, collider_index, segment_index)?;
     Some(CollisionProxy {
         key: ColliderKey {

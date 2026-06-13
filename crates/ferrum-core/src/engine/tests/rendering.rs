@@ -5,7 +5,7 @@ fn player_render_command_uses_centered_transform() {
     let mut engine = Engine::new();
     engine.build_render_commands();
 
-    let command = engine.render_commands[0];
+    let command = engine.frame_buffers.render_commands[0];
     assert!((command.x - 382.0).abs() < 0.01);
     assert!((command.y - 222.0).abs() < 0.01);
 }
@@ -14,11 +14,14 @@ fn player_render_command_uses_centered_transform() {
 fn camera_follows_player_and_offsets_render_commands() {
     let mut engine = Engine::new();
     engine.set_viewport_size(400.0, 240.0);
-    let player = engine.world.player.unwrap();
-    engine.world.transforms[player.id as usize] = Some(Transform2D {
-        x: 1000.0,
-        y: 600.0,
-    });
+    let player = engine.world.player_entity().unwrap();
+    engine.world.set_transform(
+        player,
+        Transform2D {
+            x: 1000.0,
+            y: 600.0,
+        },
+    );
 
     engine
         .scenes
@@ -28,7 +31,7 @@ fn camera_follows_player_and_offsets_render_commands() {
 
     assert_eq!(engine.camera_x(), 1000.0);
     assert_eq!(engine.camera_y(), 600.0);
-    let command = engine.render_commands[0];
+    let command = engine.frame_buffers.render_commands[0];
     assert!((command.x - 182.0).abs() < 0.01);
     assert!((command.y - 102.0).abs() < 0.01);
 }
@@ -42,6 +45,7 @@ fn configured_texture_ids_are_written_to_render_commands() {
     engine.build_render_commands();
 
     let texture_ids: Vec<u32> = engine
+        .frame_buffers
         .render_commands
         .iter()
         .map(|command| command.texture_id as u32)
@@ -59,6 +63,7 @@ fn offscreen_entity_sprites_do_not_emit_render_commands() {
     engine.build_render_commands();
 
     assert!(!engine
+        .frame_buffers
         .render_commands
         .iter()
         .any(|command| command.texture_id == 99.0));
@@ -68,14 +73,18 @@ fn offscreen_entity_sprites_do_not_emit_render_commands() {
 fn non_finite_entity_position_does_not_emit_render_commands() {
     let mut engine = Engine::new();
     let enemy = engine.world.spawn_enemy(f32::NAN, 480.0, 99);
-    engine.world.transforms[enemy.id as usize] = Some(Transform2D {
-        x: f32::NAN,
-        y: 480.0,
-    });
+    engine.world.set_transform(
+        enemy,
+        Transform2D {
+            x: f32::NAN,
+            y: 480.0,
+        },
+    );
 
     engine.build_render_commands();
 
     assert!(!engine
+        .frame_buffers
         .render_commands
         .iter()
         .any(|command| command.texture_id == 99.0));
@@ -85,11 +94,14 @@ fn non_finite_entity_position_does_not_emit_render_commands() {
 fn camera_preset_applies_without_resetting_world() {
     let mut engine = Engine::new();
     engine.set_viewport_size(400.0, 240.0);
-    let player = engine.world.player.unwrap();
-    engine.world.transforms[player.id as usize] = Some(Transform2D {
-        x: 1000.0,
-        y: 600.0,
-    });
+    let player = engine.world.player_entity().unwrap();
+    engine.world.set_transform(
+        player,
+        Transform2D {
+            x: 1000.0,
+            y: 600.0,
+        },
+    );
     engine.world.spawn_enemy(100.0, 100.0, DEFAULT_TEXTURE_ID);
 
     engine.set_shooter_camera_preset(2, 160.0, 96.0, 80.0, 6.0, 8.0);
@@ -98,8 +110,9 @@ fn camera_preset_applies_without_resetting_world() {
     assert_eq!(engine.camera_x(), 1000.0);
     assert_eq!(engine.camera_y(), 600.0);
 
-    engine.world.velocities[player.id as usize] =
-        Some(crate::components::Velocity { vx: 1.0, vy: 0.0 });
+    engine
+        .world
+        .set_velocity(player, crate::components::Velocity { vx: 1.0, vy: 0.0 });
     engine
         .scenes
         .shooter
@@ -125,6 +138,7 @@ fn atlas_frame_updates_prefab_without_render_abi_change() {
     engine.build_render_commands();
 
     let command = engine
+        .frame_buffers
         .render_commands
         .iter()
         .find(|command| command.texture_id == 9.0)
@@ -168,6 +182,7 @@ fn atlas_animation_updates_prefab_uvs_in_rust() {
     engine.build_render_commands();
 
     let command = engine
+        .frame_buffers
         .render_commands
         .iter()
         .find(|command| command.texture_id == 9.0)
@@ -189,8 +204,8 @@ fn tilemap_render_commands_are_emitted_before_entities() {
 
     engine.build_render_commands();
 
-    assert_eq!(engine.render_commands.len(), 2);
-    let tile = engine.render_commands[0];
+    assert_eq!(engine.frame_buffers.render_commands.len(), 2);
+    let tile = engine.frame_buffers.render_commands[0];
     assert_eq!(tile.texture_id, 9.0);
     assert_eq!(tile.width, 32.0);
     assert_eq!(tile.height, 32.0);
@@ -199,7 +214,7 @@ fn tilemap_render_commands_are_emitted_before_entities() {
     assert!((tile.x - 0.0).abs() < 0.01);
     assert!((tile.y - 0.0).abs() < 0.01);
 
-    let player = engine.render_commands[1];
+    let player = engine.frame_buffers.render_commands[1];
     assert_eq!(player.texture_id, DEFAULT_TEXTURE_ID as f32);
 }
 
@@ -207,8 +222,10 @@ fn tilemap_render_commands_are_emitted_before_entities() {
 fn non_hd2d_render_commands_keep_layer_order_over_foot_y() {
     let mut engine = Engine::new();
     engine.set_viewport_size(1600.0, 960.0);
-    let player = engine.world.player.unwrap();
-    engine.world.transforms[player.id as usize] = Some(Transform2D { x: 16.0, y: 8.0 });
+    let player = engine.world.player_entity().unwrap();
+    engine
+        .world
+        .set_transform(player, Transform2D { x: 16.0, y: 8.0 });
     engine.set_shooter_tile(1, 9, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
     engine.set_shooter_tilemap_layer(0, 1, 1, 32.0, 32.0, 0.0, 240.0, false, vec![1]);
 
@@ -216,6 +233,7 @@ fn non_hd2d_render_commands_keep_layer_order_over_foot_y() {
 
     assert_eq!(
         engine
+            .frame_buffers
             .render_commands
             .iter()
             .map(|command| command.texture_id as u32)
@@ -235,7 +253,7 @@ fn non_hd2d_tilemap_rendering_preserves_texture_bucket_order() {
     engine.build_render_commands();
 
     assert_eq!(
-        engine.render_commands[..4]
+        engine.frame_buffers.render_commands[..4]
             .iter()
             .map(|command| command.texture_id as u32)
             .collect::<Vec<_>>(),
@@ -247,14 +265,24 @@ fn non_hd2d_tilemap_rendering_preserves_texture_bucket_order() {
 fn non_hd2d_particles_emit_after_entities_over_foot_y() {
     let mut engine = Engine::new();
     engine.set_viewport_size(1600.0, 960.0);
-    let player = engine.world.player.unwrap();
-    engine.world.transforms[player.id as usize] = Some(Transform2D { x: 800.0, y: 480.0 });
+    let player = engine.world.player_entity().unwrap();
+    engine
+        .world
+        .set_transform(player, Transform2D { x: 800.0, y: 480.0 });
     set_test_particle_preset(&mut engine, 0, 77, 1, 1.0);
 
     assert_eq!(engine.spawn_particle_burst(0, 16.0, 8.0), 1);
     engine.build_render_commands();
 
-    assert_eq!(engine.render_commands.last().unwrap().texture_id, 77.0);
+    assert_eq!(
+        engine
+            .frame_buffers
+            .render_commands
+            .last()
+            .unwrap()
+            .texture_id,
+        77.0
+    );
 }
 
 #[test]
@@ -267,9 +295,9 @@ fn clear_tilemap_removes_static_tile_render_commands() {
     engine.clear_shooter_tilemap();
     engine.build_render_commands();
 
-    assert_eq!(engine.render_commands.len(), 1);
+    assert_eq!(engine.frame_buffers.render_commands.len(), 1);
     assert_eq!(
-        engine.render_commands[0].texture_id,
+        engine.frame_buffers.render_commands[0].texture_id,
         DEFAULT_TEXTURE_ID as f32
     );
 }
@@ -278,10 +306,13 @@ fn clear_tilemap_removes_static_tile_render_commands() {
 fn render_commands_sort_entities_by_hd2d_floor_elevation_and_foot_y() {
     let mut engine = Engine::new();
     engine.set_viewport_size(1600.0, 960.0);
-    let player = engine.world.player.unwrap();
-    engine.world.transforms[player.id as usize] = Some(Transform2D { x: 100.0, y: 120.0 });
-    engine.world.sprites[player.id as usize]
-        .as_mut()
+    let player = engine.world.player_entity().unwrap();
+    engine
+        .world
+        .set_transform(player, Transform2D { x: 100.0, y: 120.0 });
+    engine
+        .world
+        .sprite_mut_at_index(player.id as usize)
         .unwrap()
         .texture_id = 1;
     assert!(engine.world.set_height_span(
@@ -304,6 +335,7 @@ fn render_commands_sort_entities_by_hd2d_floor_elevation_and_foot_y() {
 
     assert_eq!(
         engine
+            .frame_buffers
             .render_commands
             .iter()
             .map(|command| command.texture_id as u32)
@@ -316,10 +348,13 @@ fn render_commands_sort_entities_by_hd2d_floor_elevation_and_foot_y() {
 fn hd2d_render_commands_sort_tiles_and_entities_by_foot_y_without_render_abi_change() {
     let mut engine = Engine::new();
     engine.set_viewport_size(1600.0, 960.0);
-    let player = engine.world.player.unwrap();
-    engine.world.transforms[player.id as usize] = Some(Transform2D { x: 16.0, y: 8.0 });
-    engine.world.sprites[player.id as usize]
-        .as_mut()
+    let player = engine.world.player_entity().unwrap();
+    engine
+        .world
+        .set_transform(player, Transform2D { x: 16.0, y: 8.0 });
+    engine
+        .world
+        .sprite_mut_at_index(player.id as usize)
         .unwrap()
         .texture_id = 1;
     assert!(engine.world.set_height_span(
@@ -334,6 +369,7 @@ fn hd2d_render_commands_sort_tiles_and_entities_by_foot_y_without_render_abi_cha
 
     assert_eq!(
         engine
+            .frame_buffers
             .render_commands
             .iter()
             .map(|command| command.texture_id as u32)

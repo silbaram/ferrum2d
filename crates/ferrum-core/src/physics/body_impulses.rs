@@ -8,22 +8,11 @@ pub(in crate::physics) fn contact_point_velocity(
     index: usize,
     point: Transform2D,
 ) -> Velocity {
-    let linear_velocity = finite_velocity(world.velocities[index].unwrap_or_default());
-    let angular_velocity = finite_angular_velocity(
-        world
-            .angular_velocities
-            .get(index)
-            .copied()
-            .flatten()
-            .unwrap_or_default(),
-    )
-    .radians_per_second;
-    let transform = world
-        .transforms
-        .get(index)
-        .copied()
-        .flatten()
-        .unwrap_or_default();
+    let linear_velocity = finite_velocity(world.velocity_at_index_or_default(index));
+    let angular_velocity =
+        finite_angular_velocity(world.angular_velocity_at_index_or_default(index))
+            .radians_per_second;
+    let transform = world.transform_at_index(index).unwrap_or_default();
     let radius = Velocity {
         vx: point.x - transform.x,
         vy: point.y - transform.y,
@@ -44,15 +33,15 @@ pub(in crate::physics) fn apply_contact_impulse(
     inverse_mass_b: f32,
 ) {
     if inverse_mass_a > 0.0 {
-        let mut velocity = world.velocities[a_index].unwrap_or_default();
+        let mut velocity = world.velocity_at_index_or_default(a_index);
         velocity.vx -= impulse.vx * inverse_mass_a;
         velocity.vy -= impulse.vy * inverse_mass_a;
-        world.velocities[a_index] = Some(finite_velocity(velocity));
+        world.set_velocity_at_index(a_index, finite_velocity(velocity));
     }
     if inverse_mass_b > 0.0 {
-        let mut velocity = world.velocities[b_index].unwrap_or_default();
+        let mut velocity = world.velocity_at_index_or_default(b_index);
         velocity.vx += impulse.vx * inverse_mass_b;
         velocity.vy += impulse.vy * inverse_mass_b;
-        world.velocities[b_index] = Some(finite_velocity(velocity));
+        world.set_velocity_at_index(b_index, finite_velocity(velocity));
     }
 }

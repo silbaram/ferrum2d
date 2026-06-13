@@ -306,14 +306,13 @@ impl Engine {
             &mut self.tilemap_navigation_scratch,
         ) else {
             self.physics_query_result = PhysicsQueryResult::default();
-            self.tilemap_navigation_path_points.clear();
-            self.tilemap_navigation_debug_lines.clear();
+            self.frame_buffers.clear_tilemap_navigation_output();
             return false;
         };
 
         let (first, distance) = Self::store_tilemap_navigation_path(
-            &mut self.tilemap_navigation_path_points,
-            &mut self.tilemap_navigation_debug_lines,
+            &mut self.frame_buffers.tilemap_navigation_path_points,
+            &mut self.frame_buffers.tilemap_navigation_debug_lines,
             from,
             path,
         );
@@ -351,16 +350,14 @@ impl Engine {
             HeightSpan::new(PhysicsFloorId(from_floor_id), from_elevation, from_height)
         else {
             self.physics_query_result = PhysicsQueryResult::default();
-            self.tilemap_navigation_path_points.clear();
-            self.tilemap_navigation_debug_lines.clear();
+            self.frame_buffers.clear_tilemap_navigation_output();
             return false;
         };
         let Some(to_height_span) =
             HeightSpan::new(PhysicsFloorId(to_floor_id), to_elevation, to_height)
         else {
             self.physics_query_result = PhysicsQueryResult::default();
-            self.tilemap_navigation_path_points.clear();
-            self.tilemap_navigation_debug_lines.clear();
+            self.frame_buffers.clear_tilemap_navigation_output();
             return false;
         };
         let Some(path) = self.tilemap.navigation_path_between_height_spans_scratch(
@@ -371,14 +368,13 @@ impl Engine {
             &mut self.tilemap_navigation_scratch,
         ) else {
             self.physics_query_result = PhysicsQueryResult::default();
-            self.tilemap_navigation_path_points.clear();
-            self.tilemap_navigation_debug_lines.clear();
+            self.frame_buffers.clear_tilemap_navigation_output();
             return false;
         };
 
         let (first, distance) = Self::store_hd2d_tilemap_navigation_path(
-            &mut self.tilemap_navigation_path_points,
-            &mut self.tilemap_navigation_debug_lines,
+            &mut self.frame_buffers.tilemap_navigation_path_points,
+            &mut self.frame_buffers.tilemap_navigation_debug_lines,
             from,
             path,
         );
@@ -411,8 +407,7 @@ impl Engine {
         };
         let Some(height_span) = HeightSpan::new(PhysicsFloorId(floor_id), elevation, height) else {
             self.physics_query_result = PhysicsQueryResult::default();
-            self.tilemap_navigation_path_points.clear();
-            self.tilemap_navigation_debug_lines.clear();
+            self.frame_buffers.clear_tilemap_navigation_output();
             return false;
         };
         let Some(path) = self.tilemap.navigation_path_with_height_span_scratch(
@@ -422,14 +417,13 @@ impl Engine {
             &mut self.tilemap_navigation_scratch,
         ) else {
             self.physics_query_result = PhysicsQueryResult::default();
-            self.tilemap_navigation_path_points.clear();
-            self.tilemap_navigation_debug_lines.clear();
+            self.frame_buffers.clear_tilemap_navigation_output();
             return false;
         };
 
         let (first, distance) = Self::store_tilemap_navigation_path_with_height_span(
-            &mut self.tilemap_navigation_path_points,
-            &mut self.tilemap_navigation_debug_lines,
+            &mut self.frame_buffers.tilemap_navigation_path_points,
+            &mut self.frame_buffers.tilemap_navigation_debug_lines,
             from,
             path,
             height_span,
