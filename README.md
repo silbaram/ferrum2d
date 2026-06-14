@@ -300,10 +300,10 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 http://localhost:5173
 ```
 
-DebugOverlay를 숨기려면 URL에 `?debug=false`를 붙인다.
+DebugOverlay를 표시하려면 URL에 `?debug=true`를 붙인다.
 
 ```text
-http://localhost:5173?debug=false
+http://localhost:5173?debug=true
 ```
 
 ## 조작법

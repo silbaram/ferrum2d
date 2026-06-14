@@ -27,14 +27,14 @@
       },
       "bruiser": {
         "speed": 54,
-        "behavior": "drift",
+        "behavior": "chase",
         "spawnPattern": "corners",
         "health": 3,
         "scoreReward": 4
       },
       "orbiter": {
         "speed": 84,
-        "behavior": "orbit",
+        "behavior": "chase",
         "spawnPattern": "edge",
         "health": 2,
         "scoreReward": 3
@@ -247,7 +247,7 @@
       },
       "4": {
         "frame": "tiles.block",
-        "color": [0.42, 0.46, 0.5, 0.72]
+        "color": [0.68, 0.76, 0.86, 0.95]
       }
     },
     "layers": [
@@ -281,7 +281,7 @@
     ]
   },
   "camera": {
-    "preset": "look-ahead",
+    "preset": "follow",
     "lookAhead": {
       "distance": 96
     },

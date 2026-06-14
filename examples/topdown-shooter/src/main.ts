@@ -1310,7 +1310,25 @@ async function bootstrap(): Promise<void> {
     canvas.style.width = "800px";
     canvas.style.height = "480px";
     canvas.style.display = "block";
-    app.replaceChildren(title, hudEl, canvas);
+    const debugEnabled = searchParams.get("debug") === "true";
+    const gameColumn = document.createElement("section");
+    gameColumn.style.display = "flex";
+    gameColumn.style.flexDirection = "column";
+    gameColumn.style.alignItems = "flex-start";
+    gameColumn.append(title, hudEl, canvas);
+    const shell = document.createElement("div");
+    shell.style.display = "flex";
+    shell.style.alignItems = "flex-start";
+    shell.style.gap = "16px";
+    shell.style.flexWrap = "wrap";
+    shell.append(gameColumn);
+    const debugPanel = document.createElement("aside");
+    debugPanel.dataset.testid = "topdown-debug-panel";
+    debugPanel.setAttribute("aria-label", "Runtime debug metrics");
+    if (debugEnabled) {
+      shell.append(debugPanel);
+    }
+    app.replaceChildren(shell);
 
     const renderer = new WebGL2Renderer(canvas, { clearColor: [0.05, 0.08, 0.12, 1], preserveDrawingBuffer });
     cleanups.push(() => renderer.destroy());
@@ -1328,9 +1346,8 @@ async function bootstrap(): Promise<void> {
     cleanups.push(() => canvas.removeEventListener("pointerdown", unlockAudio));
     const input = new InputManager(canvas);
     cleanups.push(() => input.destroy());
-    const debugEnabled = searchParams.get("debug") !== "false";
     const physicsDebugLines = searchParams.get("physicsDebugLines") === "true";
-    const debugOverlay = new DebugOverlay(app, { enabled: debugEnabled });
+    const debugOverlay = new DebugOverlay(debugPanel, { enabled: debugEnabled, layout: "inline" });
     cleanups.push(() => debugOverlay.destroy());
     const runtimeProfiler = profilerSmokeEnabled ? new RuntimeProfiler() : undefined;
     const loadingOverlay = new LoadingOverlay(app, {

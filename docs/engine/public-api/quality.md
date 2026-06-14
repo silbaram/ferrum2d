@@ -54,7 +54,7 @@ Replay helper는 CI와 agent workflow의 evidence를 만들기 위한 API다. pu
 
 | API | 계약 |
 | --- | --- |
-| `DebugOverlay` | runtime metric과 debug 정보를 표시한다. |
+| `DebugOverlay` | runtime metric과 debug 정보를 표시한다. 기본은 fixed overlay이며, 예제/도구 화면에서는 `layout: "inline"`으로 canvas와 겹치지 않게 배치할 수 있다. |
 | `buildDebugGizmoLines(...)` | debug gizmo line spec을 runtime line buffer로 변환한다. |
 | `resolveScreenshotCaptureSpec(...)` | screenshot capture 옵션을 검증한다. |
 | `summarizeScreenshotPixels(...)` | screenshot pixel summary를 만든다. |

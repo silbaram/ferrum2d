@@ -25,8 +25,8 @@ AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고
     "orbit": { "radius": 180, "radialBand": 24 },
     "presets": {
       "runner": { "speed": 96, "behavior": "chase", "health": 1, "scoreReward": 1 },
-      "bruiser": { "speed": 54, "behavior": "drift", "spawnPattern": "corners", "health": 3, "scoreReward": 4 },
-      "orbiter": { "speed": 84, "behavior": "orbit", "health": 2, "scoreReward": 3 }
+      "bruiser": { "speed": 54, "behavior": "chase", "spawnPattern": "corners", "health": 3, "scoreReward": 4 },
+      "orbiter": { "speed": 84, "behavior": "chase", "health": 2, "scoreReward": 3 }
     },
     "waves": [
       { "enemy": "runner", "duration": 18, "spawnInterval": 0.85, "enemyCount": 18 },
@@ -81,7 +81,7 @@ AI agent는 가능한 한 이 파일을 수정해서 shooter 변형을 만들고
     ]
   },
   "camera": {
-    "preset": "look-ahead",
+    "preset": "follow",
     "lookAhead": { "distance": 96 },
     "deadZone": { "width": 160, "height": 96 },
     "shake": { "amplitude": 6, "frequency": 8 }
@@ -650,7 +650,7 @@ Camera preset은 TypeScript에서 검증한 뒤 `set_shooter_camera_preset(...)`
 - `"look-ahead"`: player velocity 방향으로 `camera.lookAhead.distance`만큼 앞을 본다.
 - `"shake"`: player-follow 위치에 시간 기반 sine/cosine offset을 더한다.
 
-`camera.deadZone`, `camera.lookAhead`, `camera.shake` 값은 해당 preset에서만 사용되지만, 같은 spec 안에 함께 둘 수 있다. 예제 기본 spec은 `"look-ahead"`를 사용한다.
+`camera.deadZone`, `camera.lookAhead`, `camera.shake` 값은 해당 preset에서만 사용되지만, 같은 spec 안에 함께 둘 수 있다. 예제 기본 spec은 이동 시작/정지/방향 전환 시 화면 점프를 줄이기 위해 `"follow"`를 사용한다.
 
 ## Audio Policy
 

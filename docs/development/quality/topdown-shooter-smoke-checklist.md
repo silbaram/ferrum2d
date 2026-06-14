@@ -40,9 +40,9 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 
 - [ ] 브라우저에서 Vite URL 진입 시 캔버스가 깨지지 않고 표시된다.
 - [ ] Title 화면이 표시되고 canvas가 비어 있지 않다.
-- [ ] DebugOverlay가 기본으로 표시되고 값이 갱신된다.
+- [ ] 기본 URL에서 DebugOverlay가 게임 화면을 가리지 않는다.
+- [ ] `?debug=true`로 접속하면 DebugOverlay가 표시되고 canvas와 겹치지 않은 상태로 값이 갱신된다.
 - [ ] DebugOverlay에 `fps`, `frame time`, `rust update`, `render`, `entities`, `sprites`, `draw calls`, `batches`, `render commands`, `texture binds`, `texture switches`, `audio events`, `fixed steps`, `kinematic hits`, `tile checks`, `collision events`, `physics debug lines`, `mouse`, `camera`, `state`, `score` label이 표시된다.
-- [ ] `?debug=false`로 다시 접속하면 DebugOverlay가 숨겨진다.
 - [ ] `?physicsDebugLines=true`로 접속하면 collider broadphase bounds와 overlap contact normal line이 sprite 위에 표시된다.
 
 ### B. 입력/플레이 전환

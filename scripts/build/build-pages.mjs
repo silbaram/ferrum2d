@@ -154,6 +154,8 @@ function compareDocs(a, b) {
     "development/operations/npm-release.md",
     "development/operations/release-notes-template.md",
     "planning/README.md",
+    "planning/demo-game-showcase-plan.md",
+    "planning/deployment-roadmap.md",
     "planning/feature-candidates.md",
     "planning/refactor-roadmap.md",
   ];

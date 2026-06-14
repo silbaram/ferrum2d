@@ -95,6 +95,7 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
 
 export interface DebugOverlayOptions {
   enabled?: boolean;
+  layout?: "fixed" | "inline";
 }
 
 export class DebugOverlay {
@@ -107,11 +108,20 @@ export class DebugOverlay {
       return;
     }
 
+    const layout = options.layout ?? "fixed";
     const root = document.createElement("div");
-    root.style.position = "fixed";
-    root.style.left = "12px";
-    root.style.top = "12px";
-    root.style.zIndex = "1000";
+    if (layout === "fixed") {
+      root.style.position = "fixed";
+      root.style.left = "12px";
+      root.style.top = "12px";
+      root.style.zIndex = "1000";
+    } else {
+      root.style.position = "static";
+      root.style.width = "260px";
+      root.style.maxHeight = "480px";
+      root.style.overflow = "auto";
+      root.style.boxSizing = "border-box";
+    }
     root.style.minWidth = "220px";
     root.style.padding = "8px 10px";
     root.style.border = "1px solid rgba(148, 163, 184, 0.35)";
@@ -119,7 +129,7 @@ export class DebugOverlay {
     root.style.color = "#e5e7eb";
     root.style.font = "12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
     root.style.whiteSpace = "pre";
-    root.style.pointerEvents = "none";
+    root.style.pointerEvents = layout === "fixed" ? "none" : "auto";
     root.style.borderRadius = "6px";
     root.textContent = "debug: waiting";
     parent.appendChild(root);

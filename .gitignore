@@ -12,6 +12,7 @@ docs/physics-v*
 docs/planning/*
 !docs/planning/README.md
 !docs/planning/demo-game-showcase-plan.md
+!docs/planning/deployment-roadmap.md
 !docs/planning/feature-candidates.md
 !docs/planning/product-hardening-roadmap.md
 !docs/planning/physics-performance-improvement-plan.md
