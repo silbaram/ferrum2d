@@ -1,0 +1,71 @@
+{
+  "mode": "rigid",
+  "gravity": [0, 820],
+  "continuous": true,
+  "solver": {
+    "fixedTimestep": true,
+    "stepSeconds": 0.0166666667,
+    "velocityIterations": 8,
+    "positionIterations": 7,
+    "sleep": true
+  },
+  "materials": {
+    "rubber": { "friction": 0.75, "restitution": 0.45, "density": 1 },
+    "wood": { "friction": 0.58, "restitution": 0.12, "density": 0.9 },
+    "platform": { "friction": 0.82, "restitution": 0, "density": 1 },
+    "sensor": { "friction": 0.1, "restitution": 0, "density": 0.1 }
+  },
+  "layers": {
+    "world": { "mask": ["dynamic"] },
+    "dynamic": { "mask": ["world", "dynamic", "sensor"] },
+    "sensor": { "mask": ["dynamic"] }
+  },
+  "bodies": {
+    "ground": {
+      "type": "static",
+      "position": [400, 454],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [760, 24] }
+    },
+    "sensorZone": {
+      "type": "static",
+      "position": [400, 284],
+      "material": "sensor",
+      "layer": "sensor",
+      "collider": { "shape": "circle", "radius": 82, "trigger": true }
+    },
+    "leftShelf": {
+      "type": "static",
+      "position": [250, 340],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "orientedBox", "size": [190, 18], "rotationRadians": 0.16 }
+    },
+    "rightShelf": {
+      "type": "static",
+      "position": [548, 340],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "orientedBox", "size": [190, 18], "rotationRadians": -0.16 }
+    },
+    "dropA": {
+      "type": "dynamic",
+      "position": [300, 84],
+      "velocity": [80, 0],
+      "material": "wood",
+      "layer": "dynamic",
+      "collider": { "shape": "box", "size": [40, 40] }
+    },
+    "dropB": {
+      "type": "dynamic",
+      "position": [505, 80],
+      "velocity": [-80, 0],
+      "material": "rubber",
+      "layer": "dynamic",
+      "collider": { "shape": "circle", "radius": 22 }
+    }
+  },
+  "joints": {},
+  "debug": { "colliders": true, "contacts": true, "manifolds": true, "sleeping": true, "layers": true }
+}

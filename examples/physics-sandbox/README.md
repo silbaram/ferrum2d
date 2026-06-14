@@ -1,16 +1,19 @@
-# Ferrum2D Physics Sandbox
+# Ferrum2D Physics Showcase Lab
 
-Ferrum2D generic Physics Spec fixtures를 브라우저에서 실행하는 예제다. 장르 demo라기보다 collider, rigid body, joint, projectile CCD, platformer physics authoring 데이터를 검증하는 sandbox다.
+Ferrum2D Physics Showcase Lab은 Physics Spec으로 작성한 rigid body, collider, contact, joint, CCD, platformer physics, scene query 동작을 브라우저에서 직접 확인하는 데모다.
+
+기존 Physics Sandbox가 fixture/regression 확인에 가까웠다면, 현재 데모는 사용자가 물리엔진 기능을 눈으로 이해하는 것을 우선한다. WebGL2 debug line은 보조 레이어로 유지하고, TypeScript overlay canvas가 bulk body snapshot, contact/manifold, joint metadata, raycast result를 시각화한다.
 
 ## 확인 기술
 
 | 기술 | 설명 |
 | --- | --- |
-| Physics Spec authoring | JSON fixture로 collider, material, layer, body, joint를 구성한다. |
-| Debug visualization | physics debug line/counter와 browser render smoke를 확인한다. |
-| Joint fixtures | distance, rope, spring, revolute, prismatic, gear, weld joint를 분리된 demo로 검증한다. |
-| Projectile CCD | 빠른 projectile과 얇은 collider 충돌을 smoke로 확인한다. |
-| Platformer physics fixture | capsule player, slope, moving platform, step block을 physics data로 검증한다. |
+| Physics Spec catalog | `public/catalog.json`이 scenario, 설명, focus body, action, smoke threshold를 관리한다. |
+| Body/collider overlay | `capturePhysicsBodyStateBuffer(...)` 결과와 resolved Physics Spec을 합쳐 body fill, collider shape, label을 표시한다. |
+| Contact visualization | `queryBodyContacts(...)`, `queryBodyManifolds(...)`, `queryRigidContactImpulses(...)`로 contact point, normal, impulse signal을 보여준다. |
+| Joint visualization | resolved joint metadata와 runtime body snapshot으로 anchor와 constraint line을 표시한다. |
+| Scene query demo | pointer 위치를 raycast target으로 사용하고 hit point/normal을 표시한다. |
+| Debug line fallback | Rust core가 생성한 physics debug line을 WebGL2 renderer가 계속 렌더링한다. |
 
 ## 실행
 
@@ -25,18 +28,25 @@ pnpm build:wasm
 pnpm --filter @ferrum2d/physics-sandbox dev
 ```
 
-## Fixture Catalog
+디버그 오버레이를 같이 보려면 다음 URL을 사용한다.
 
-브라우저 UI의 demo selector와 `pnpm smoke:physics-demo-suite`는 같은 catalog id를 사용한다. 새 fixture를 추가할 때는 JSON 파일, selector entry, smoke suite id를 함께 갱신한다.
+```text
+http://localhost:5173/?debug=true
+```
 
-| Demo id | Fixture | 검증 초점 | 현재 규모 |
-| --- | --- | --- | --- |
-| `sandbox` | `physics.json` | collider shape, material, layer, 기본 joint 혼합 샌드박스 | body 10, joint 6 |
-| `joint-playground` | `demos/joint-playground.json` | distance, rope, spring, revolute, prismatic, gear joint | body 9, joint 6 |
-| `projectile-ccd` | `demos/projectile-ccd.json` | 빠른 projectile과 얇은 collider의 CCD 경로 | body 5, joint 0 |
-| `platformer-physics` | `demos/platformer-physics.json` | capsule player, slope, moving platform, step block authoring | body 6, joint 1 |
-| `compound-collider` | `demos/compound-collider.json` | body-local compound collider와 trigger sensor | body 5, joint 1 |
-| `weld-joint` | `demos/weld-joint.json` | weld joint로 고정된 복합 rigid body fixture | body 4, joint 2 |
+## Scenario Catalog
+
+브라우저 UI와 `pnpm smoke:physics-demo-suite`는 같은 scenario id를 사용한다.
+
+| Scenario id | Fixture | 검증 초점 |
+| --- | --- | --- |
+| `rigid-materials` | `demos/rigid-materials.physics.json` | mass, friction, restitution, velocity, contact response |
+| `collider-gallery` | `demos/collider-gallery.physics.json` | box, circle, capsule, oriented box, convex polygon, chain, compound collider |
+| `contacts-sensors` | `demos/contacts-sensors.physics.json` | contact point/normal, trigger sensor, manifold/impulse signal |
+| `joints-lab` | `demos/joints-lab.physics.json` | distance, rope, spring, revolute, prismatic, gear, weld joint |
+| `ccd-tunnel-test` | `demos/ccd-tunnel-test.physics.json` | fast projectile, thin wall, CCD debug marker |
+| `platformer-physics` | `demos/platformer-physics.physics.json` | capsule body, slope, moving platform, step block, slippery surface |
+| `scene-queries` | `demos/scene-queries.physics.json` | pointer-driven raycast, hit point, hit normal |
 
 ## 검증
 
@@ -48,19 +58,18 @@ pnpm smoke:physics-sandbox-budget
 pnpm smoke:physics-demo-suite
 ```
 
-`pnpm smoke:physics-sandbox`는 production build를 `demo=sandbox&physicsDebugLines=true`로 열고 `window.ferrumPhysicsSandboxSmokeFrame`의 `demoId`, `bodyCount >= 2`, `physicsDebugLineCount > 0`, `frameCount > 1`을 확인한다. `pnpm smoke:physics-demo-suite`는 위 catalog의 6개 demo id를 `window.ferrumPhysicsSandboxLoadDemo(id)`로 순회하며 같은 조건을 demo별로 확인한다. Solver determinism, scenario hash, query/CCD 세부 assertion은 Node 기반 physics smoke/replay gate의 책임이며 세부 명령은 Smoke Check 문서에서 관리한다.
+`pnpm smoke:physics-sandbox`는 production build를 열고 `window.ferrumPhysicsSandboxSmokeFrame`의 `demoId`, `bodyCount`, `visibleBodyCount`, `physicsDebugLineCount`, `frameCount`를 확인한다. `pnpm smoke:physics-demo-suite`는 catalog의 핵심 scenario id를 순회한다.
 
-## Pages 노출
+## 구현 경계
 
-현재 `pnpm build:pages` 홈에는 직접 노출하지 않는다. Physics Sandbox는 public demo portfolio보다 Physics Spec authoring과 regression fixture 역할을 우선한다.
+- Rust core는 simulation, contact, query, debug line 생성을 담당한다.
+- TypeScript는 browser UI, overlay canvas, action button, pointer input, bulk snapshot 소비를 담당한다.
+- frame hot path에서 body별 JS/Wasm 왕복 호출을 늘리지 않는다. body state는 `capturePhysicsBodyStateBuffer(...)`로 묶어서 읽는다.
+- demo 설명 metadata는 `catalog.json`에 두고 Physics Spec runtime 계약을 오염시키지 않는다.
 
 ## 참고 문서
 
 - [Physics Spec](../../docs/engine/physics-spec.md)
 - [2D physics engine map](../../docs/development/architecture/physics-engine.md)
 - [Smoke Check](../../docs/development/quality/smoke-check.md)
-
-## 다음 단계
-
-- 새 fixture를 추가하면 JSON 파일, demo selector, `pnpm smoke:physics-demo-suite` id 목록, 이 catalog를 함께 갱신한다.
-- 장르 runtime에 승격할 fixture는 `examples/platformer` 또는 별도 scene API와 책임을 나눠 설계한다.
+- [Physics Sandbox 재작성 계획](../../docs/planning/physics-sandbox-redesign-plan.md)

@@ -1,18 +1,18 @@
 {
   "mode": "rigid",
-  "gravity": [0, 720],
+  "gravity": [0, 640],
   "continuous": true,
   "solver": {
     "fixedTimestep": true,
     "stepSeconds": 0.0166666667,
     "velocityIterations": 8,
-    "positionIterations": 6,
+    "positionIterations": 8,
     "sleep": true
   },
   "materials": {
-    "rubber": { "friction": 0.7, "restitution": 0.55, "density": 1 },
-    "metal": { "friction": 0.35, "restitution": 0.05, "density": 2.8 },
-    "platform": { "friction": 0.8, "restitution": 0, "density": 1 }
+    "rubber": { "friction": 0.68, "restitution": 0.42, "density": 1 },
+    "metal": { "friction": 0.36, "restitution": 0.06, "density": 2.2 },
+    "platform": { "friction": 0.82, "restitution": 0, "density": 1 }
   },
   "layers": {
     "world": { "mask": ["dynamic"] },
@@ -28,59 +28,76 @@
     },
     "distanceA": {
       "type": "dynamic",
-      "position": [150, 120],
+      "position": [118, 112],
       "material": "rubber",
       "layer": "dynamic",
       "collider": { "shape": "circle", "radius": 18 }
     },
     "distanceB": {
       "type": "dynamic",
-      "position": [230, 120],
+      "position": [198, 112],
       "material": "rubber",
       "layer": "dynamic",
       "collider": { "shape": "circle", "radius": 18 }
     },
     "springA": {
       "type": "dynamic",
-      "position": [330, 112],
+      "position": [300, 105],
       "material": "rubber",
       "layer": "dynamic",
-      "collider": { "shape": "box", "size": [34, 34] }
+      "collider": { "shape": "box", "size": [32, 32] }
     },
     "springB": {
       "type": "dynamic",
-      "position": [430, 112],
+      "position": [400, 105],
       "material": "rubber",
       "layer": "dynamic",
-      "collider": { "shape": "box", "size": [34, 34] }
+      "collider": { "shape": "box", "size": [32, 32] }
     },
     "hinge": {
       "type": "dynamic",
-      "position": [550, 130],
+      "position": [540, 128],
+      "rotationRadians": 0.2,
       "material": "metal",
       "layer": "dynamic",
-      "collider": { "shape": "orientedBox", "size": [70, 22], "rotationRadians": 0.2 }
+      "collider": { "shape": "orientedBox", "size": [74, 20], "rotationRadians": 0.05 }
     },
     "slider": {
       "type": "dynamic",
-      "position": [170, 280],
+      "position": [168, 284],
       "material": "metal",
       "layer": "dynamic",
-      "collider": { "shape": "box", "size": [42, 24] }
+      "collider": { "shape": "box", "size": [48, 24] }
     },
     "gearA": {
       "type": "dynamic",
-      "position": [510, 282],
+      "position": [492, 286],
       "material": "metal",
       "layer": "dynamic",
       "collider": { "shape": "circle", "radius": 24 }
     },
     "gearB": {
       "type": "dynamic",
-      "position": [590, 282],
+      "position": [574, 286],
       "material": "metal",
       "layer": "dynamic",
       "collider": { "shape": "circle", "radius": 18 }
+    },
+    "weldA": {
+      "type": "dynamic",
+      "position": [650, 200],
+      "rotationRadians": 0.04,
+      "material": "metal",
+      "layer": "dynamic",
+      "collider": { "shape": "box", "size": [64, 18] }
+    },
+    "weldB": {
+      "type": "dynamic",
+      "position": [714, 200],
+      "rotationRadians": -0.04,
+      "material": "metal",
+      "layer": "dynamic",
+      "collider": { "shape": "box", "size": [64, 18] }
     }
   },
   "joints": {
@@ -104,31 +121,41 @@
       "type": "spring",
       "bodyA": "springA",
       "bodyB": "springB",
-      "restLength": 92,
+      "restLength": 94,
       "stiffness": 0.35,
-      "damping": 0.35
+      "damping": 0.36
     },
     "revolute": {
       "type": "revolute",
       "bodyA": "world",
       "bodyB": "hinge",
-      "anchor": [550, 130],
-      "limit": { "enabled": true, "lower": -0.9, "upper": 0.9 }
+      "anchor": [540, 128],
+      "limit": { "enabled": true, "lower": -0.85, "upper": 0.85 }
     },
     "prismatic": {
       "type": "prismatic",
       "bodyA": "world",
       "bodyB": "slider",
-      "anchor": [170, 280],
+      "anchor": [168, 284],
       "localAxisA": [1, 0],
       "limit": { "enabled": true, "lower": -90, "upper": 90 },
-      "motor": { "enabled": true, "speed": 25, "maxForce": 45 }
+      "motor": { "enabled": true, "speed": 28, "maxForce": 50 }
     },
     "gear": {
       "type": "gear",
       "bodyA": "gearA",
       "bodyB": "gearB",
       "ratio": -1.3333333333
+    },
+    "weld": {
+      "type": "weld",
+      "bodyA": "weldA",
+      "bodyB": "weldB",
+      "localAnchorA": [32, 0],
+      "localAnchorB": [-32, 0],
+      "referenceAngle": -0.08,
+      "stiffness": 1,
+      "damping": 1
     }
   },
   "debug": { "colliders": true, "contacts": true, "joints": true, "sleeping": true }

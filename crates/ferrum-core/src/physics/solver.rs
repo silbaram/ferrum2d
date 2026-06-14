@@ -34,7 +34,9 @@ use contact_impulse::{
     relative_contact_velocity, rigid_contact_mass_context,
 };
 use contact_material::contact_material_for_collider;
-use restitution::{contact_restitution, contact_restitution_threshold_skipped};
+use restitution::{
+    contact_restitution, contact_restitution_coefficient, contact_restitution_threshold_skipped,
+};
 pub(super) use split_impulse::RigidSplitImpulseState;
 use surface_velocity::contact_surface_velocity;
 
@@ -229,7 +231,7 @@ fn solve_normal_contact_constraint(
 
     let material_a = contact_material_for_collider(world, constraint.collider_pair.a);
     let material_b = contact_material_for_collider(world, constraint.collider_pair.b);
-    let material_restitution = material_a.restitution.min(material_b.restitution);
+    let material_restitution = contact_restitution_coefficient(material_a, material_b);
     let restitution = contact_restitution(
         material_restitution,
         velocity_along_normal,
@@ -421,7 +423,7 @@ fn solve_velocity_contact_block(
     let velocity_b = dot_velocity(relative_contact_velocity(world, context, point_b), normal);
     let material_a = contact_material_for_collider(world, first.collider_pair.a);
     let material_b = contact_material_for_collider(world, first.collider_pair.b);
-    let restitution = material_a.restitution.min(material_b.restitution);
+    let restitution = contact_restitution_coefficient(material_a, material_b);
     let baumgarte_bias_a = contact_velocity_baumgarte_bias(
         first.penetration,
         config,

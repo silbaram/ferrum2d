@@ -1,0 +1,22 @@
+description = "Ferrum2D Game Spec and Physics authoring schema contract work."
+prompt = """
+# Ferrum2D Schema Command
+
+You are acting as the Ferrum2D schema contract specialist.
+
+Read these files before making changes:
+- `GEMINI.md`
+- `AGENTS.md`
+- `.agents/skills/web-game-engine-platform/SKILL.md`
+- `.agents/skills/ferrum-game-designer/SKILL.md` when Top-down Shooter Game Spec compatibility or gameplay data is involved.
+
+Scope:
+- `schemas/shooter-game-spec.schema.json`, `schemas/physics-authoring.schema.json`, validation behavior, `docs/engine/topdown-shooter-game-spec.md`, `docs/engine/physics-spec.md`, and compatibility notes.
+
+Boundaries:
+- Do not introduce Top-down Shooter-specific names into generic engine schema or public API surfaces.
+- Coordinate generic runtime/API/Wasm boundary decisions with engine review guidance.
+- Run `pnpm validate:game-spec` after Game Spec validation changes when available; run web tests if validation behavior changes.
+
+The user's raw command is appended below your instructions.
+"""

@@ -1,0 +1,94 @@
+{
+  "mode": "rigid",
+  "gravity": [0, 860],
+  "continuous": true,
+  "solver": {
+    "fixedTimestep": true,
+    "stepSeconds": 0.0166666667,
+    "velocityIterations": 8,
+    "positionIterations": 6,
+    "sleep": true
+  },
+  "materials": {
+    "wood": { "friction": 0.96, "restitution": 0.08, "density": 0.8 },
+    "rubber": { "friction": 0.72, "restitution": 0.92, "density": 1 },
+    "metal": { "friction": 0, "restitution": 0.02, "density": 3 },
+    "platform": { "friction": 0.92, "restitution": 0, "density": 1 }
+  },
+  "layers": {
+    "world": { "mask": ["dynamic"] },
+    "dynamic": { "mask": ["world", "dynamic"] }
+  },
+  "bodies": {
+    "ground": {
+      "type": "static",
+      "position": [400, 454],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [760, 24] }
+    },
+    "woodTrack": {
+      "type": "static",
+      "position": [400, 266],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [680, 18] }
+    },
+    "metalTrack": {
+      "type": "static",
+      "position": [400, 330],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [680, 18] }
+    },
+    "rubberPad": {
+      "type": "static",
+      "position": [610, 216],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [170, 18] }
+    },
+    "woodSlider": {
+      "type": "dynamic",
+      "position": [130, 242],
+      "velocity": [180, 0],
+      "material": "wood",
+      "layer": "dynamic",
+      "mass": 1.1,
+      "inertia": 50000,
+      "angularDamping": 4,
+      "collider": { "shape": "box", "size": [42, 30] }
+    },
+    "rubberBall": {
+      "type": "dynamic",
+      "position": [610, 92],
+      "velocity": [0, 300],
+      "material": "rubber",
+      "layer": "dynamic",
+      "collider": { "shape": "circle", "radius": 22 }
+    },
+    "metalSlider": {
+      "type": "dynamic",
+      "position": [130, 306],
+      "velocity": [180, 0],
+      "material": "metal",
+      "layer": "dynamic",
+      "mass": 2.6,
+      "inertia": 50000,
+      "angularDamping": 4,
+      "collider": { "shape": "box", "size": [42, 30] }
+    },
+    "restingBlock": {
+      "type": "dynamic",
+      "position": [520, 306],
+      "material": "wood",
+      "layer": "dynamic",
+      "mass": 1,
+      "gravityScale": 0,
+      "canSleep": true,
+      "collider": { "shape": "box", "size": [46, 30] }
+    }
+  },
+  "joints": {},
+  "debug": { "colliders": true, "contacts": true, "manifolds": true, "sleeping": true }
+}

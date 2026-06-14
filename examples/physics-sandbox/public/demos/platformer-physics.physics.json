@@ -10,7 +10,7 @@
     "sleep": true
   },
   "materials": {
-    "player": { "friction": 0.2, "restitution": 0, "density": 1 },
+    "player": { "friction": 0.22, "restitution": 0, "density": 1 },
     "platform": { "friction": 0.85, "restitution": 0, "density": 1 },
     "ice": { "friction": 0.03, "restitution": 0.05, "density": 1 }
   },

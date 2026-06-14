@@ -43,12 +43,13 @@ const PLATFORMER_EFFECTS_MODE = "platformer-effects";
 const PHYSICS_SANDBOX_MODE = "physics-sandbox";
 const PHYSICS_DEMO_SUITE_MODE = "physics-demo-suite";
 const PHYSICS_DEMO_SUITE = [
-  "sandbox",
-  "joint-playground",
-  "projectile-ccd",
+  "rigid-materials",
+  "collider-gallery",
+  "contacts-sensors",
+  "joints-lab",
+  "ccd-tunnel-test",
   "platformer-physics",
-  "compound-collider",
-  "weld-joint",
+  "scene-queries",
 ];
 const STARTER_RUNTIME_WEAPON_PROFILE_VISUALS = Object.freeze({
   standard: { label: "Tiny green pellet", textureId: 21, width: 6, height: 6, cooldownSeconds: 0.055 },
@@ -524,7 +525,7 @@ function browserSmokeUrl(port, options) {
     params.set("destructibleTerrainDemo", "true");
   }
   if (mode === PHYSICS_SANDBOX_MODE || mode === PHYSICS_DEMO_SUITE_MODE) {
-    params.set("demo", "sandbox");
+    params.set("demo", "rigid-materials");
     params.set("physicsDebugLines", "true");
   }
   return `http://${DEFAULT_HOST}:${port}/?${params.toString()}`;
@@ -746,7 +747,7 @@ async function smokeByMode(page, mode, timeoutMs) {
         minimumRenderCommandDelta: 1,
       });
     case PHYSICS_SANDBOX_MODE:
-      return await smokePhysicsSandbox(page, timeoutMs, "sandbox");
+      return await smokePhysicsSandbox(page, timeoutMs, "rigid-materials");
     case PHYSICS_DEMO_SUITE_MODE:
       return await smokePhysicsDemoSuite(page, timeoutMs);
     default:
@@ -2286,6 +2287,7 @@ async function smokePhysicsSandbox(page, timeoutMs, demoId) {
         frame
         && frame.demoId === expectedDemoId
         && frame.bodyCount >= 2
+        && frame.visibleBodyCount >= 2
         && frame.physicsDebugLineCount > 0
         && frame.frameCount > 1,
       );

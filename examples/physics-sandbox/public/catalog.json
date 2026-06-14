@@ -1,0 +1,200 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "rigid-materials",
+      "title": "Rigid Bodies & Materials",
+      "titleKo": "강체와 재질",
+      "category": "Rigid Bodies",
+      "categoryKo": "강체",
+      "summary": "Wood and metal sliders start with the same velocity, the rubber ball bounces, and a resting block demonstrates sleep state.",
+      "summaryKo": "나무/금속 슬라이더의 마찰 차이, 고무 공의 반발, 정지한 박스가 휴면 상태로 들어가는 과정을 함께 보는 강체 데모입니다.",
+      "physicsSpec": "demos/rigid-materials.physics.json",
+      "focus": ["wood slider loses speed", "rubber ball bounces", "metal slider keeps sliding", "resting block goes to sleep"],
+      "focusKo": ["나무 슬라이더는 높은 마찰 때문에 빠르게 감속합니다", "고무 공은 높은 반발값 때문에 바닥에서 다시 튑니다", "금속 슬라이더는 낮은 마찰 때문에 더 오래 미끄러집니다", "휴면 박스는 멈춘 뒤 파란 휴면 표시로 바뀝니다"],
+      "focusBodies": ["woodSlider", "rubberBall", "metalSlider", "restingBlock"],
+      "camera": { "x": 0, "y": 0, "width": 800, "height": 480 },
+      "defaultDebug": { "colliders": true, "contacts": true, "joints": false, "sleeping": true },
+      "bodyStyles": {
+        "woodSlider": { "fill": "rgba(180, 133, 82, 0.48)", "stroke": "#d8a05d", "label": "wood friction", "labelKo": "나무 마찰" },
+        "rubberBall": { "fill": "rgba(114, 220, 157, 0.45)", "stroke": "#72dc9d", "label": "rubber", "labelKo": "고무" },
+        "rubberPad": { "fill": "rgba(255, 255, 255, 0.18)", "stroke": "#dce7df", "label": "low bounce pad", "labelKo": "낮은 반발 패드" },
+        "metalSlider": { "fill": "rgba(120, 169, 255, 0.42)", "stroke": "#78a9ff", "label": "metal slide", "labelKo": "금속 슬라이드" },
+        "restingBlock": { "fill": "rgba(151, 214, 255, 0.3)", "stroke": "#9bd8ff", "label": "sleep block", "labelKo": "휴면 박스" }
+      },
+      "controls": {
+        "actions": [
+          { "id": "slide-wood", "label": "Slide wood", "labelKo": "나무 다시 밀기", "kind": "velocity", "body": "woodSlider", "position": [130, 242], "velocity": [180, 0] },
+          { "id": "slide-metal", "label": "Slide metal", "labelKo": "금속 다시 밀기", "kind": "velocity", "body": "metalSlider", "position": [130, 306], "velocity": [180, 0] },
+          { "id": "launch-ball", "label": "Drop rubber ball", "labelKo": "고무공 다시 떨어뜨리기", "kind": "velocity", "body": "rubberBall", "position": [610, 92], "velocity": [0, 300] },
+          { "id": "wake-resting-block", "label": "Wake sleep block", "labelKo": "휴면 박스 깨우기", "kind": "impulse", "body": "restingBlock", "impulse": [120, -80] }
+        ]
+      },
+      "smokeThresholds": { "minBodies": 8, "minDebugLines": 8, "minVisibleBodies": 8 }
+    },
+    {
+      "id": "collider-gallery",
+      "title": "Collider Gallery",
+      "titleKo": "충돌체 모양 모음",
+      "category": "Colliders",
+      "categoryKo": "충돌체",
+      "summary": "The same world shows box, circle, capsule, oriented box, convex polygon, chain, and compound colliders with explicit labels.",
+      "summaryKo": "박스, 원, 캡슐, 회전 박스, 다각형, 체인 지형, 복합 충돌체를 한 화면에서 비교하는 데모입니다.",
+      "physicsSpec": "demos/collider-gallery.physics.json",
+      "focus": ["every collider shape is visible", "compound colliders keep local offsets", "chain terrain is drawn as connected segments"],
+      "focusKo": ["각 물체의 외곽선이 서로 다른 충돌체 모양입니다", "복합 충돌체는 하나의 body에 여러 collider가 붙은 구조입니다", "체인 지형은 여러 선분이 연결된 static collider입니다"],
+      "focusBodies": ["boxBody", "circleBody", "capsuleBody", "compoundBody"],
+      "camera": { "x": 0, "y": 0, "width": 800, "height": 480 },
+      "defaultDebug": { "colliders": true, "contacts": true, "joints": false, "broadphase": false },
+      "bodyStyles": {
+        "boxBody": { "fill": "rgba(114, 220, 157, 0.4)", "stroke": "#72dc9d", "label": "box", "labelKo": "박스" },
+        "circleBody": { "fill": "rgba(240, 183, 95, 0.42)", "stroke": "#f0b75f", "label": "circle", "labelKo": "원" },
+        "capsuleBody": { "fill": "rgba(120, 169, 255, 0.42)", "stroke": "#78a9ff", "label": "capsule", "labelKo": "캡슐" },
+        "compoundBody": { "fill": "rgba(255, 155, 118, 0.36)", "stroke": "#ff9b76", "label": "compound", "labelKo": "복합" }
+      },
+      "controls": {
+        "actions": [
+          { "id": "nudge-compound", "label": "Nudge compound", "labelKo": "복합체 밀기", "kind": "impulse", "body": "compoundBody", "impulse": [-180, -90] }
+        ]
+      },
+      "smokeThresholds": { "minBodies": 8, "minDebugLines": 8, "minVisibleBodies": 8 }
+    },
+    {
+      "id": "contacts-sensors",
+      "title": "Contacts & Sensors",
+      "titleKo": "접촉과 센서",
+      "category": "Contacts",
+      "categoryKo": "접촉",
+      "summary": "Dynamic bodies enter a trigger zone and collide with platforms while contact points, normals, and sensor boundaries stay visible.",
+      "summaryKo": "동적 물체가 플랫폼과 부딪히고 파란 센서 영역을 통과할 때 접촉점, 법선, trigger 영역을 보여주는 데모입니다.",
+      "physicsSpec": "demos/contacts-sensors.physics.json",
+      "focus": ["orange points are contacts", "blue dashed circle is a trigger", "normal arrows show collision direction"],
+      "focusKo": ["주황 점은 실제 접촉점입니다", "파란 점선 원은 물체를 밀어내지 않는 센서입니다", "짧은 선은 충돌 법선 방향입니다"],
+      "focusBodies": ["sensorZone", "dropA", "dropB"],
+      "camera": { "x": 0, "y": 0, "width": 800, "height": 480 },
+      "defaultDebug": { "colliders": true, "contacts": true, "manifolds": true, "sleeping": true },
+      "bodyStyles": {
+        "sensorZone": { "fill": "rgba(120, 169, 255, 0.16)", "stroke": "#78a9ff", "label": "sensor", "labelKo": "센서" },
+        "dropA": { "fill": "rgba(114, 220, 157, 0.42)", "stroke": "#72dc9d", "label": "A" },
+        "dropB": { "fill": "rgba(240, 183, 95, 0.42)", "stroke": "#f0b75f", "label": "B" }
+      },
+      "controls": {
+        "actions": [
+          { "id": "reset-drop-a", "label": "Drop A", "labelKo": "A 다시 떨어뜨리기", "kind": "teleport", "body": "dropA", "position": [310, 90], "velocity": [95, 0] },
+          { "id": "reset-drop-b", "label": "Drop B", "labelKo": "B 다시 떨어뜨리기", "kind": "teleport", "body": "dropB", "position": [500, 80], "velocity": [-90, 0] }
+        ]
+      },
+      "smokeThresholds": { "minBodies": 5, "minDebugLines": 8, "minVisibleBodies": 5 }
+    },
+    {
+      "id": "joints-lab",
+      "title": "Joints Lab",
+      "titleKo": "조인트 실험실",
+      "category": "Joints",
+      "categoryKo": "조인트",
+      "summary": "Distance, rope, spring, revolute, prismatic, gear, and weld constraints are arranged in one readable lab scene.",
+      "summaryKo": "distance, rope, spring, revolute, prismatic, gear, weld 조인트를 한 화면에 배치해 제약이 어떻게 물체를 묶는지 보여주는 데모입니다.",
+      "physicsSpec": "demos/joints-lab.physics.json",
+      "focus": ["amber lines are joint constraints", "anchors show where constraints attach", "motors and limits are visible in motion"],
+      "focusKo": ["노란 선은 조인트 제약입니다", "작은 점은 조인트 앵커입니다", "모터와 제한이 있는 조인트는 시간이 지나며 움직임이 보입니다"],
+      "focusBodies": ["distanceA", "springB", "hinge", "slider"],
+      "camera": { "x": 0, "y": 0, "width": 800, "height": 480 },
+      "defaultDebug": { "colliders": true, "contacts": true, "joints": true, "sleeping": true },
+      "bodyStyles": {
+        "distanceA": { "label": "distance A", "labelKo": "거리 A" },
+        "springB": { "label": "spring B", "labelKo": "스프링 B" },
+        "hinge": { "fill": "rgba(120, 169, 255, 0.42)", "stroke": "#78a9ff", "label": "revolute", "labelKo": "힌지" },
+        "slider": { "fill": "rgba(240, 183, 95, 0.42)", "stroke": "#f0b75f", "label": "prismatic", "labelKo": "슬라이더" },
+        "weldA": { "fill": "rgba(255, 155, 118, 0.34)", "stroke": "#ff9b76", "label": "weld A", "labelKo": "용접 A" },
+        "weldB": { "fill": "rgba(255, 155, 118, 0.34)", "stroke": "#ff9b76", "label": "weld B", "labelKo": "용접 B" }
+      },
+      "controls": {
+        "actions": [
+          { "id": "push-slider", "label": "Push slider", "labelKo": "슬라이더 밀기", "kind": "impulse", "body": "slider", "impulse": [170, 0] },
+          { "id": "kick-hinge", "label": "Kick hinge", "labelKo": "힌지 차기", "kind": "impulse", "body": "hinge", "impulse": [0, -120] }
+        ]
+      },
+      "smokeThresholds": { "minBodies": 10, "minDebugLines": 10, "minVisibleBodies": 10 }
+    },
+    {
+      "id": "ccd-tunnel-test",
+      "title": "CCD Tunnel Test",
+      "titleKo": "CCD 관통 방지",
+      "category": "CCD",
+      "categoryKo": "CCD",
+      "summary": "A fast projectile repeatedly crosses a thin wall so CCD markers and collision normals can be inspected directly.",
+      "summaryKo": "매우 빠른 투사체가 얇은 벽을 지나갈 때 연속 충돌 감지 CCD가 관통을 막는지 확인하는 데모입니다.",
+      "physicsSpec": "demos/ccd-tunnel-test.physics.json",
+      "focus": ["fast projectile starts at the left", "thin wall should not be skipped", "CCD debug markers highlight sweep hits"],
+      "focusKo": ["투사체는 왼쪽에서 빠르게 출발합니다", "얇은 벽을 건너뛰면 CCD가 필요한 상황입니다", "CCD debug 표시가 sweep 충돌 위치를 보여줍니다"],
+      "focusBodies": ["projectile", "thinWall", "target"],
+      "camera": { "x": 0, "y": 0, "width": 800, "height": 480 },
+      "defaultDebug": { "colliders": true, "contacts": true, "broadphase": true, "ccd": true },
+      "bodyStyles": {
+        "projectile": { "fill": "rgba(114, 220, 157, 0.5)", "stroke": "#72dc9d", "label": "projectile", "labelKo": "투사체" },
+        "thinWall": { "fill": "rgba(255, 155, 118, 0.46)", "stroke": "#ff9b76", "label": "thin wall", "labelKo": "얇은 벽" },
+        "target": { "fill": "rgba(120, 169, 255, 0.42)", "stroke": "#78a9ff", "label": "target", "labelKo": "목표" }
+      },
+      "controls": {
+        "actions": [
+          { "id": "fire-projectile", "label": "Fire projectile", "labelKo": "투사체 발사", "kind": "velocity", "body": "projectile", "position": [86, 240], "velocity": [1240, 0] }
+        ]
+      },
+      "smokeThresholds": { "minBodies": 5, "minDebugLines": 6, "minVisibleBodies": 5 }
+    },
+    {
+      "id": "platformer-physics",
+      "title": "Platformer Physics",
+      "titleKo": "플랫폼 물리",
+      "category": "Platformer",
+      "categoryKo": "플랫폼",
+      "summary": "A capsule body, slope, moving platform, step block, and slippery surface are separated so platformer physics authoring is visible.",
+      "summaryKo": "캡슐 캐릭터, 경사면, 움직이는 플랫폼, 발판, 얼음 표면을 분리해서 플랫폼 게임용 물리 authoring을 보여주는 데모입니다.",
+      "physicsSpec": "demos/platformer-physics.physics.json",
+      "focus": ["capsule character shape", "slope and step contacts", "moving platform prismatic joint"],
+      "focusKo": ["캡슐은 캐릭터 충돌체로 많이 쓰입니다", "경사면과 발판 접촉을 확인합니다", "움직이는 플랫폼은 prismatic joint로 제한됩니다"],
+      "focusBodies": ["playerCapsule", "movingPlatform", "stepBlock"],
+      "camera": { "x": 0, "y": 0, "width": 800, "height": 480 },
+      "defaultDebug": { "colliders": true, "contacts": true, "joints": true, "sleeping": true },
+      "bodyStyles": {
+        "playerCapsule": { "fill": "rgba(114, 220, 157, 0.48)", "stroke": "#72dc9d", "label": "capsule", "labelKo": "캡슐" },
+        "movingPlatform": { "fill": "rgba(120, 169, 255, 0.4)", "stroke": "#78a9ff", "label": "moving", "labelKo": "이동 발판" },
+        "stepBlock": { "label": "step", "labelKo": "발판" },
+        "icePlatform": { "fill": "rgba(151, 214, 255, 0.24)", "stroke": "#9bd8ff", "label": "ice", "labelKo": "얼음" }
+      },
+      "controls": {
+        "actions": [
+          { "id": "hop-player", "label": "Hop capsule", "labelKo": "캡슐 점프", "kind": "impulse", "body": "playerCapsule", "impulse": [120, -260] }
+        ]
+      },
+      "smokeThresholds": { "minBodies": 6, "minDebugLines": 8, "minVisibleBodies": 6 }
+    },
+    {
+      "id": "scene-queries",
+      "title": "Scene Queries",
+      "titleKo": "장면 쿼리",
+      "category": "Queries",
+      "categoryKo": "쿼리",
+      "summary": "Move the pointer over the canvas to steer a raycast and inspect body hits, hit points, and normals.",
+      "summaryKo": "마우스를 움직이면 raycast 방향이 바뀌고, 맞은 물체의 hit point와 normal을 표시하는 데모입니다.",
+      "physicsSpec": "demos/scene-queries.physics.json",
+      "focus": ["blue ray follows the pointer", "white dot is the nearest hit", "click a body to inspect it"],
+      "focusKo": ["파란 선은 마우스를 따라가는 raycast입니다", "흰 점은 가장 가까운 hit point입니다", "물체를 클릭하면 우측 inspector에서 상태를 볼 수 있습니다"],
+      "focusBodies": ["queryBox", "queryCircle", "queryCapsule"],
+      "camera": { "x": 0, "y": 0, "width": 800, "height": 480 },
+      "defaultDebug": { "colliders": true, "contacts": true, "broadphase": false },
+      "query": { "origin": [88, 96], "target": [710, 340], "maxDistance": 860 },
+      "bodyStyles": {
+        "queryBox": { "fill": "rgba(114, 220, 157, 0.38)", "stroke": "#72dc9d", "label": "box", "labelKo": "박스" },
+        "queryCircle": { "fill": "rgba(240, 183, 95, 0.4)", "stroke": "#f0b75f", "label": "circle", "labelKo": "원" },
+        "queryCapsule": { "fill": "rgba(120, 169, 255, 0.38)", "stroke": "#78a9ff", "label": "capsule", "labelKo": "캡슐" }
+      },
+      "controls": {
+        "actions": [
+          { "id": "move-query-box", "label": "Move box", "labelKo": "박스 이동", "kind": "teleport", "body": "queryBox", "position": [430, 236], "velocity": [0, 0] }
+        ]
+      },
+      "smokeThresholds": { "minBodies": 6, "minDebugLines": 6, "minVisibleBodies": 6 }
+    }
+  ]
+}

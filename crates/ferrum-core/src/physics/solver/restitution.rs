@@ -1,5 +1,13 @@
+use crate::components::PhysicsMaterial;
 use crate::physics::math::sanitize_non_negative;
 use crate::physics::solver::CONTACT_IMPULSE_EPSILON;
+
+pub(super) fn contact_restitution_coefficient(
+    material_a: PhysicsMaterial,
+    material_b: PhysicsMaterial,
+) -> f32 {
+    material_a.restitution.max(material_b.restitution)
+}
 
 pub(super) fn contact_restitution(
     restitution: f32,

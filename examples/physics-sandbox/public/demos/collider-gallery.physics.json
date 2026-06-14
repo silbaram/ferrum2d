@@ -1,0 +1,94 @@
+{
+  "mode": "rigid",
+  "gravity": [0, 640],
+  "continuous": true,
+  "solver": {
+    "fixedTimestep": true,
+    "stepSeconds": 0.0166666667,
+    "velocityIterations": 8,
+    "positionIterations": 6,
+    "sleep": true
+  },
+  "materials": {
+    "rubber": { "friction": 0.72, "restitution": 0.5, "density": 1 },
+    "wood": { "friction": 0.55, "restitution": 0.18, "density": 0.9 },
+    "metal": { "friction": 0.32, "restitution": 0.06, "density": 2.4 },
+    "platform": { "friction": 0.8, "restitution": 0, "density": 1 }
+  },
+  "layers": {
+    "world": { "mask": ["dynamic"] },
+    "dynamic": { "mask": ["world", "dynamic"] }
+  },
+  "bodies": {
+    "ground": {
+      "type": "static",
+      "position": [400, 454],
+      "material": "platform",
+      "layer": "world",
+      "collider": { "shape": "box", "size": [760, 24] }
+    },
+    "chainTerrain": {
+      "type": "static",
+      "position": [400, 370],
+      "material": "platform",
+      "layer": "world",
+      "collider": {
+        "shape": "chain",
+        "vertices": [[-280, 10], [-170, -34], [-60, -8], [40, -42], [160, -12], [280, 8]]
+      }
+    },
+    "boxBody": {
+      "type": "dynamic",
+      "position": [145, 110],
+      "material": "wood",
+      "layer": "dynamic",
+      "collider": { "shape": "box", "size": [46, 36] }
+    },
+    "circleBody": {
+      "type": "dynamic",
+      "position": [250, 100],
+      "material": "rubber",
+      "layer": "dynamic",
+      "collider": { "shape": "circle", "radius": 22 }
+    },
+    "capsuleBody": {
+      "type": "dynamic",
+      "position": [365, 100],
+      "material": "rubber",
+      "layer": "dynamic",
+      "collider": { "shape": "capsule", "start": [-24, 0], "end": [24, 0], "radius": 12 }
+    },
+    "orientedBody": {
+      "type": "dynamic",
+      "position": [482, 110],
+      "rotationRadians": 0.24,
+      "material": "metal",
+      "layer": "dynamic",
+      "collider": { "shape": "orientedBox", "size": [58, 28], "rotationRadians": 0.42 }
+    },
+    "polyBody": {
+      "type": "dynamic",
+      "position": [602, 98],
+      "material": "wood",
+      "layer": "dynamic",
+      "collider": {
+        "shape": "convexPolygon",
+        "vertices": [[-24, -18], [20, -22], [32, 8], [0, 30], [-28, 12]]
+      }
+    },
+    "compoundBody": {
+      "type": "dynamic",
+      "position": [690, 100],
+      "material": "metal",
+      "layer": "dynamic",
+      "mass": 2,
+      "colliders": [
+        { "shape": "box", "size": [44, 26], "material": "metal" },
+        { "shape": "circle", "radius": 13, "offset": [-34, 0], "material": "rubber" },
+        { "shape": "circle", "radius": 13, "offset": [34, 0], "material": "rubber" }
+      ]
+    }
+  },
+  "joints": {},
+  "debug": { "colliders": true, "contacts": true, "broadphase": false, "sleeping": true }
+}

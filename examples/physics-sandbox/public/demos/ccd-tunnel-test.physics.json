@@ -10,8 +10,8 @@
     "sleep": false
   },
   "materials": {
-    "metal": { "friction": 0.2, "restitution": 0.15, "density": 3 },
-    "rubber": { "friction": 0.5, "restitution": 0.45, "density": 1 },
+    "metal": { "friction": 0.2, "restitution": 0.12, "density": 3 },
+    "rubber": { "friction": 0.45, "restitution": 0.48, "density": 1 },
     "platform": { "friction": 0.7, "restitution": 0, "density": 1 }
   },
   "layers": {
@@ -29,8 +29,8 @@
     },
     "projectile": {
       "type": "dynamic",
-      "position": [92, 240],
-      "velocity": [1120, 0],
+      "position": [86, 240],
+      "velocity": [1240, 0],
       "material": "metal",
       "layer": "projectile",
       "mass": 0.5,
@@ -38,10 +38,10 @@
     },
     "target": {
       "type": "dynamic",
-      "position": [620, 240],
+      "position": [635, 240],
       "material": "rubber",
       "layer": "dynamic",
-      "collider": { "shape": "box", "size": [42, 42] }
+      "collider": { "shape": "box", "size": [44, 44] }
     },
     "topRail": {
       "type": "static",

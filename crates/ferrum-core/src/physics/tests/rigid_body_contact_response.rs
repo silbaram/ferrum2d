@@ -57,6 +57,102 @@ fn rigid_body_step_resolves_dynamic_static_collision_with_restitution() {
 }
 
 #[test]
+fn rigid_body_contact_uses_more_elastic_material_for_restitution() {
+    let mut world = World::default();
+    let ball = spawn_dynamic_body(&mut world, 0.0, 4.0, 1.0);
+    world.set_velocity(ball, Velocity { vx: 0.0, vy: 20.0 });
+    world.set_rigid_body(
+        ball,
+        RigidBody::dynamic(1.0).with_material(PhysicsMaterial::new(0.85, 0.0)),
+    );
+    let ground = spawn_kinematic_body_with_size(
+        &mut world,
+        0.0,
+        10.0,
+        CollisionLayer::Wall,
+        false,
+        20.0,
+        1.0,
+    );
+    world.set_rigid_body(
+        ground,
+        RigidBody::static_body().with_material(PhysicsMaterial::new(0.0, 0.0)),
+    );
+
+    let stats = PhysicsSystem::step_rigid_bodies_with_config(
+        &mut world,
+        0.25,
+        RigidBodyStepConfig {
+            gravity: Velocity::default(),
+            velocity_iterations: 1,
+            position_iterations: 4,
+            position_correction_percent: 1.0,
+            position_correction_slop: 0.0,
+            restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+            contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+            max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+            contact_split_impulse: false,
+            continuous: true,
+        },
+    );
+
+    let velocity = world.velocity(ball).unwrap();
+    assert!(stats.velocity_impulses > 0);
+    assert!(
+        velocity.vy < -16.0,
+        "high-restitution body should bounce on a dull surface, got {velocity:?}"
+    );
+}
+
+#[test]
+fn rigid_body_tangent_friction_reflects_material_mix() {
+    let low_friction_vx = sliding_contact_velocity_after_step(0.0);
+    let high_friction_vx = sliding_contact_velocity_after_step(1.0);
+
+    assert!(
+        low_friction_vx > high_friction_vx + 0.5,
+        "high-friction material should slow tangent velocity more than low-friction material, low={low_friction_vx}, high={high_friction_vx}"
+    );
+}
+
+fn sliding_contact_velocity_after_step(dynamic_friction: f32) -> f32 {
+    let mut world = World::default();
+    let body = spawn_dynamic_body(&mut world, 0.0, 0.0, 1.0);
+    world.set_velocity(body, Velocity { vx: 20.0, vy: 0.0 });
+    world.set_rigid_body(
+        body,
+        RigidBody::dynamic_box(1.0, 2.0, 2.0)
+            .with_material(PhysicsMaterial::new(0.0, dynamic_friction)),
+    );
+    let ground =
+        spawn_kinematic_body_with_size(&mut world, 0.0, 2.0, CollisionLayer::Wall, false, 8.0, 1.0);
+    world.set_rigid_body(
+        ground,
+        RigidBody::static_body().with_material(PhysicsMaterial::new(0.0, 1.0)),
+    );
+
+    let stats = PhysicsSystem::step_rigid_bodies_with_config(
+        &mut world,
+        0.1,
+        RigidBodyStepConfig {
+            gravity: Velocity { vx: 0.0, vy: 20.0 },
+            velocity_iterations: 4,
+            position_iterations: 1,
+            position_correction_percent: 1.0,
+            position_correction_slop: 0.0,
+            restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+            contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+            max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+            contact_split_impulse: false,
+            continuous: true,
+        },
+    );
+
+    assert!(stats.velocity_impulses > 0);
+    world.velocity(body).unwrap().vx
+}
+
+#[test]
 fn rigid_body_step_resolves_dynamic_capsule_static_aabb_contact() {
     let mut world = World::default();
     let capsule = spawn_dynamic_capsule(
