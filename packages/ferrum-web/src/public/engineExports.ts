@@ -131,6 +131,8 @@ export type {
   PhysicsOrientedBoxBodyShapeCastQuery,
   ShooterTileBridgePortalMetadata,
   ShooterTileHd2dMetadata,
+  ShooterRuntimeAtlasFrame,
+  ShooterRuntimePrefab,
   ShooterSoundIds,
   ShooterTextureIds,
   TilemapNavigationPath,

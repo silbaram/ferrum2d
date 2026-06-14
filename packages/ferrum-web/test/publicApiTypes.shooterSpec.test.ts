@@ -79,6 +79,8 @@ import type {
   ResolvedShooterTileRampDefinition,
   ResolvedShooterTileSlopeDefinition,
   ResolvedShooterTilemap,
+  ShooterRuntimeAtlasFrame,
+  ShooterRuntimePrefab,
   ShooterAtlasAnimationSpec,
   ShooterAtlasAnimationStateSpec,
   ShooterAtlasFrameSpec,
@@ -249,6 +251,8 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   const physicsLayerSpec: PhysicsLayerSpec = physicsSpec.layers?.player ?? {};
   const physicsDebugSpec: PhysicsDebugSpec = typeof physicsSpec.debug === "object" ? physicsSpec.debug : {};
   const physicsDebugOptions: PhysicsDebugOptions = physicsDebugSpec;
+  const shooterRuntimePrefab: ShooterRuntimePrefab = "bullet";
+  const shooterRuntimeAtlasFrame: ShooterRuntimeAtlasFrame = { texture: 23, width: 18, height: 18 };
   const cameraPreset: ShooterCameraPreset = "look-ahead";
   const cameraSpec: ShooterCameraSpec = { preset: cameraPreset };
   const contentSpec: ShooterContentSpec = gameSpec.content ?? {};
@@ -655,7 +659,7 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   };
   const engine: Pick<
     FerrumEngine,
-    "setGameSpec" | "builtInShooterPlayerHandle" | "captureShooterStateSnapshot" | "restoreShooterStateSnapshot" |
+    "setGameSpec" | "setShooterAtlasFrame" | "builtInShooterPlayerHandle" | "captureShooterStateSnapshot" | "restoreShooterStateSnapshot" |
       "useDataScene" | "useBreakoutGame" | "configurePhysicsRuntime" | "configureFixedTimestep" |
       "configureAutoRigidBodyStep" | "stepRigidBodies" |
       "spawnRigidBody" | "addPhysicsBodyCollider" | "getPhysicsBodyColliderCount" |
@@ -770,6 +774,7 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
       physics: resolvePhysicsSpec(gameSpec.physics),
       content: resolvedContentSpec,
     }),
+    setShooterAtlasFrame: () => true,
     builtInShooterPlayerHandle: () => physicsEntityHandle,
     captureShooterStateSnapshot: () => builtInShooterState,
     restoreShooterStateSnapshot: () => true,
@@ -903,9 +908,12 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   equal(audioManagerState.uiVolume, 0.4);
   equal(diagnosticReport.context?.kind, "texture");
   equal(physicsMode, "rigid");
+  equal(shooterRuntimePrefab, "bullet");
+  equal(shooterRuntimeAtlasFrame.texture, 23);
   equal(physicsLayerSpec.mask?.[0], "world");
   equal(physicsDebugSpec.colliders, true);
   equal(engine.setGameSpec(gameSpec).enemyBehavior, "chase");
+  equal(engine.setShooterAtlasFrame(shooterRuntimePrefab, shooterRuntimeAtlasFrame), true);
   equal(engine.builtInShooterPlayerHandle()?.entityId, physicsEntityHandle.entityId);
   engine.useDataScene();
   engine.useBreakoutGame();

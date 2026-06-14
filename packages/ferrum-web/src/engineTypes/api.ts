@@ -174,6 +174,7 @@ export interface FerrumSceneApi {
   usePlatformerGame(): void;
   setViewportSize(width: number, height: number): void;
   setGameSpec(spec: ShooterGameSpec): ResolvedShooterGameSpec;
+  setShooterAtlasFrame(prefab: ShooterRuntimePrefab, frame: ShooterRuntimeAtlasFrame): boolean;
   setShooterTilemapTile(layerIndex: number, column: number, row: number, tileId: number): boolean;
   setShooterTilemapTilesRect(
     layerIndex: number,
@@ -195,6 +196,18 @@ export interface FerrumSceneApi {
   queryTilemapNavigationPath(query: TilemapNavigationPathQuery): TilemapNavigationPath | undefined;
   cameraX(): number;
   cameraY(): number;
+}
+
+export type ShooterRuntimePrefab = "player" | "enemy" | "bullet";
+
+export interface ShooterRuntimeAtlasFrame {
+  texture: number;
+  width: number;
+  height: number;
+  u0?: number;
+  v0?: number;
+  u1?: number;
+  v1?: number;
 }
 
 export interface FerrumAssetApi {

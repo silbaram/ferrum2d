@@ -182,6 +182,8 @@ export type {
   PhysicsTileHeightSpanQuery,
   ShooterTileBridgePortalMetadata,
   ShooterTileHd2dMetadata,
+  ShooterRuntimeAtlasFrame,
+  ShooterRuntimePrefab,
   ShooterSoundIds,
   ShooterTextureIds,
   TilemapNavigationPath,
@@ -326,6 +328,34 @@ export async function createEngineWithFramePipeline(
     });
     assetHost?.setPostProcess?.(resolved.postProcessing);
     return resolved;
+  };
+
+  const setShooterAtlasFrame = (
+    prefab: Parameters<FerrumSceneApi["setShooterAtlasFrame"]>[0],
+    frame: Parameters<FerrumSceneApi["setShooterAtlasFrame"]>[1],
+  ): boolean => {
+    requireAlive();
+    const texture = uint32Number(frame.texture, "shooterAtlasFrame.texture");
+    const width = positiveFiniteNumber(frame.width, "shooterAtlasFrame.width");
+    const height = positiveFiniteNumber(frame.height, "shooterAtlasFrame.height");
+    const u0 = unitUv(frame.u0, "shooterAtlasFrame.u0", 0);
+    const v0 = unitUv(frame.v0, "shooterAtlasFrame.v0", 0);
+    const u1 = unitUv(frame.u1, "shooterAtlasFrame.u1", 1);
+    const v1 = unitUv(frame.v1, "shooterAtlasFrame.v1", 1);
+    if (u1 <= u0 || v1 <= v0) {
+      throw new Error("shooterAtlasFrame UV max values must be greater than min values.");
+    }
+    rustEngine.set_shooter_atlas_frame(
+      shooterRuntimePrefabCode(prefab),
+      texture,
+      width,
+      height,
+      u0,
+      v0,
+      u1,
+      v1,
+    );
+    return true;
   };
 
   const configurePhysicsRuntime = (spec: ResolvedPhysicsSpec): ResolvedPhysicsSpec => {
@@ -521,6 +551,7 @@ export async function createEngineWithFramePipeline(
       framePipeline.viewportDirty = true;
     },
     setGameSpec,
+    setShooterAtlasFrame,
     ...tilemapSceneApi,
     cameraX: () => { requireAlive(); return rustEngine.camera_x(); },
     cameraY: () => { requireAlive(); return rustEngine.camera_y(); },
@@ -722,6 +753,34 @@ function positiveUint32Number(value: number, label: string): number {
     throw new Error(`${label} must be greater than 0.`);
   }
   return integer;
+}
+
+function positiveFiniteNumber(value: number, label: string): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} must be a positive finite number.`);
+  }
+  return value;
+}
+
+function unitUv(value: number | undefined, label: string, fallback: number): number {
+  const next = value ?? fallback;
+  if (!Number.isFinite(next) || next < 0 || next > 1) {
+    throw new Error(`${label} must be between 0 and 1.`);
+  }
+  return next;
+}
+
+function shooterRuntimePrefabCode(prefab: Parameters<FerrumSceneApi["setShooterAtlasFrame"]>[0]): number {
+  switch (prefab) {
+    case "player":
+      return 0;
+    case "enemy":
+      return 1;
+    case "bullet":
+      return 2;
+    default:
+      throw new Error("shooterAtlasFrame.prefab must be 'player', 'enemy', or 'bullet'.");
+  }
 }
 
 function inputActionControlCode(control: InputActionRuntimeControl): number {

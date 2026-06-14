@@ -15,7 +15,6 @@ import {
   type GameplayReplayComparison,
   type GameplayReplayRun,
   type ProjectileDefinition,
-  type ShooterGameSpec,
   type WeaponDefinition,
 } from "@ferrum2d/ferrum-web";
 
@@ -437,34 +436,11 @@ function applyStarterRuntimeWeaponProfile(runtime: FerrumRuntime, profile: Start
 
 function applyStarterRuntimeWeaponVisual(runtime: FerrumRuntime, profile: StarterWeaponProfileId): void {
   const visual = STARTER_WEAPON_PROFILE_CATALOG[profile].visual;
-  runtime.engine.setGameSpec(starterRuntimeWeaponVisualSpec(visual));
-}
-
-function starterRuntimeWeaponVisualSpec(visual: StarterProjectileVisual): ShooterGameSpec {
-  return {
-    atlas: {
-      frames: {
-        bullet: {
-          texture: visual.textureId,
-          size: {
-            width: visual.width,
-            height: visual.height,
-          },
-          uv: {
-            u0: 0,
-            v0: 0,
-            u1: 1,
-            v1: 1,
-          },
-        },
-      },
-    },
-    prefabs: {
-      bullet: {
-        frame: "bullet",
-      },
-    },
-  };
+  runtime.engine.setShooterAtlasFrame("bullet", {
+    texture: visual.textureId,
+    width: visual.width,
+    height: visual.height,
+  });
 }
 
 function switchStarterRuntimeWeaponProfile(

@@ -522,6 +522,8 @@ export type {
   FerrumEngine,
   FerrumGameplayAuthoringApi,
   FerrumInputActionApi,
+  ShooterRuntimeAtlasFrame,
+  ShooterRuntimePrefab,
   FixedTimestepOptions,
   FrameHandler,
   FrameState,

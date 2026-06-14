@@ -833,8 +833,9 @@ async function smokeStarterRuntime(page, timeoutMs) {
     };
   });
 
+  const populated = await waitForStarterRuntimePopulation(page, timeoutMs);
   await page.click("[data-starter-profile-button='piercing']", { timeout: timeoutMs });
-  const piercing = await waitForStarterRuntimeProfile(page, "piercing", "Piercing", timeoutMs);
+  const piercing = await waitForStarterRuntimeProfile(page, "piercing", "Piercing", timeoutMs, populated);
   await page.click("[data-starter-profile-button='bounce']", { timeout: timeoutMs });
   const switched = await waitForStarterRuntimeProfile(page, "bounce", "Bounce", timeoutMs);
   const projectile = await waitForStarterRuntimeProjectileVisual(page, timeoutMs);
@@ -844,6 +845,7 @@ async function smokeStarterRuntime(page, timeoutMs) {
   return {
     starterRuntime: {
       initial,
+      populated,
       piercing,
       switched,
       projectile,
@@ -852,17 +854,38 @@ async function smokeStarterRuntime(page, timeoutMs) {
   };
 }
 
-async function waitForStarterRuntimeProfile(page, profile, label, timeoutMs) {
+async function waitForStarterRuntimePopulation(page, timeoutMs) {
+  await waitForPageFunction(
+    page,
+    "starter runtime enemy population was not preserved for profile switching smoke",
+    () => (globalThis.ferrumRuntime?.engine?.entityCount?.() ?? 0) >= 2,
+    timeoutMs,
+  );
+  return await page.evaluate(() => ({
+    entityCount: globalThis.ferrumRuntime?.engine?.entityCount?.() ?? 0,
+    timeSeconds: globalThis.ferrumRuntime?.engine?.time?.() ?? 0,
+  }));
+}
+
+async function waitForStarterRuntimeProfile(page, profile, label, timeoutMs, beforeOverride) {
   const visual = STARTER_RUNTIME_WEAPON_PROFILE_VISUALS[profile];
+  const before = beforeOverride ?? await page.evaluate(() => ({
+    entityCount: globalThis.ferrumRuntime?.engine?.entityCount?.() ?? 0,
+    timeSeconds: globalThis.ferrumRuntime?.engine?.time?.() ?? 0,
+  }));
   await waitForPageFunction(
     page,
     `starter runtime ${label} button click was not reflected`,
-    ({ profile, label, visual }) => {
+    ({ profile, label, visual, before }) => {
       const panel = document.querySelector("[data-starter-runtime-profile-panel='true']");
       const button = document.querySelector(`[data-starter-profile-button='${profile}']`);
+      const runtime = globalThis.ferrumRuntime;
       const report = globalThis.ferrumStarterRuntimeReport;
       return Boolean(
         globalThis.ferrumStarterRuntimeWeaponProfile === profile
+        && (runtime?.engine?.gameState?.() ?? 0) === 1
+        && (runtime?.engine?.time?.() ?? 0) >= before.timeSeconds
+        && (runtime?.engine?.entityCount?.() ?? 0) >= before.entityCount
         && report?.weaponProfile === profile
         && report?.weaponProfileSummary?.length > 0
         && report?.projectileVisual === visual.label
@@ -879,7 +902,7 @@ async function waitForStarterRuntimeProfile(page, profile, label, timeoutMs) {
       );
     },
     timeoutMs,
-    { profile, label, visual },
+    { profile, label, visual, before },
   );
   return await page.evaluate((profile) => {
     const report = globalThis.ferrumStarterRuntimeReport;
@@ -900,6 +923,8 @@ async function waitForStarterRuntimeProfile(page, profile, label, timeoutMs) {
       fireCooldownSeconds: report.fireCooldownSeconds,
       replayHash: report.replayHash,
       comparisonPassed: report.comparison.passed,
+      entityCount: globalThis.ferrumRuntime?.engine?.entityCount?.() ?? 0,
+      timeSeconds: globalThis.ferrumRuntime?.engine?.time?.() ?? 0,
       activeButton: button?.textContent ?? "",
     };
   }, profile);

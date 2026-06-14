@@ -164,6 +164,8 @@ export type {
   PhysicsRigidBodyStepOptions,
   PhysicsRigidBodyStepStats,
   PhysicsRigidBodyType,
+  ShooterRuntimeAtlasFrame,
+  ShooterRuntimePrefab,
   SpawnFrameDiagnostics,
   ViewportProvider,
   ViewportSnapshot,

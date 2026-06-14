@@ -5,9 +5,11 @@ const repoRoot = process.cwd();
 const manifestPath = "docs/engine/public-api-surface.json";
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const packageJson = JSON.parse(readFileSync("packages/ferrum-web/package.json", "utf8"));
-const publicApiDoc = readFileSync("docs/engine/public-api.md", "utf8");
+const publicApiDocPaths = publicApiDocumentationPaths();
+const publicApiDoc = publicApiDocPaths.map((filePath) => readFileSync(filePath, "utf8")).join("\n");
 const createGamePackageCheck = readFileSync("scripts/package/check-create-game-package.mjs", "utf8");
 const packageConsumerSmoke = readFileSync("tests/smoke/package-consumer-smoke.mjs", "utf8");
+const publicApiDocMaxLineLength = 240;
 
 const allowedImportPaths = new Set(manifest.entrypoints.map((entrypoint) => entrypoint.importPath));
 const forbiddenPrefixes = [
@@ -127,10 +129,33 @@ function checkPublicApiDoc() {
   ];
   for (const snippet of requiredSnippets) {
     if (!publicApiDoc.includes(snippet)) {
-      errors.push(`docs/engine/public-api.md is missing '${snippet}'.`);
+      errors.push(`Public API documentation is missing '${snippet}'.`);
+    }
+  }
+  for (const filePath of publicApiDocPaths) {
+    const source = readFileSync(filePath, "utf8");
+    const displayPath = path.relative(repoRoot, filePath);
+    const lines = source.split(/\r?\n/u);
+    for (const [index, line] of lines.entries()) {
+      if (line.length > publicApiDocMaxLineLength) {
+        errors.push(
+          `${displayPath}:${index + 1} is ${line.length} chars; keep Public API docs below ${publicApiDocMaxLineLength} chars per line.`,
+        );
+      }
     }
   }
   return errors;
+}
+
+function publicApiDocumentationPaths() {
+  const docs = [path.join(repoRoot, "docs/engine/public-api.md")];
+  const referenceDir = path.join(repoRoot, "docs/engine/public-api");
+  docs.push(
+    ...collectFiles(referenceDir)
+      .filter((filePath) => filePath.endsWith(".md"))
+      .sort(),
+  );
+  return docs;
 }
 
 function checkSourceExports() {
