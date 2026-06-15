@@ -7,6 +7,7 @@
 | 문서 | 역할 |
 | --- | --- |
 | [데모 게임 포트폴리오 보강 계획](demo-game-showcase-plan.md) | Ferrum2D 사용자-facing 엔진 기능을 여러 focused demo와 Pages showcase hub로 노출하기 위한 계획 |
+| [오브젝트 배치 UI · 데이터 씬 authoring 보강 계획](object-placement-authoring-plan.md) | 사람은 위치를 배치하고 AI agent는 behavior를 붙이는 흐름을 위한 World/Scene 보강 순서 계획 |
 | [Physics Sandbox 재작성 계획](physics-sandbox-redesign-plan.md) | Physics Sandbox를 fixture viewer에서 물리엔진 쇼케이스 demo로 재작성하기 위한 단계별 계획 |
 | [배포 전략 초기 계획](deployment-roadmap.md) | 정적 웹 배포, 로컬 preview, Electron/Tauri desktop wrapper 후보를 정리한 초기 배포 planning |
 | [신규 기능 후보 템플릿](feature-candidates.md) | 새 기능 후보 작성 형식 |
