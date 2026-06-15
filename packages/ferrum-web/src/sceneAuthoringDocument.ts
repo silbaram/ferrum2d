@@ -7,7 +7,8 @@ import {
   type SceneBehaviorBindingOptions,
   type SceneBehaviorBindingPlan,
 } from "./gameplayAuthoring.js";
-import { resolveSceneCompositionSpec } from "./sceneComposition.js";
+import { resolveDataSceneInstanceComponents } from "./dataSceneComponents.js";
+import { instantiateSceneFragment, resolveSceneCompositionSpec } from "./sceneComposition.js";
 import type {
   BehaviorRecipeDocumentSpec,
   ResolvedBehaviorRecipeDocument,
@@ -39,13 +40,14 @@ export interface ResolvedSceneAuthoringDocument {
 
 export interface ResolveSceneAuthoringDocumentOptions extends SceneBehaviorBindingOptions {
   validateBindings?: boolean;
+  validateComponents?: boolean;
 }
 
 export function resolveSceneAuthoringDocument(
   document: unknown,
   options: ResolveSceneAuthoringDocumentOptions = {},
 ): ResolvedSceneAuthoringDocument {
-  const { validateBindings = false, path = "sceneAuthoring", ...bindingOptions } = options;
+  const { validateBindings = false, validateComponents = false, path = "sceneAuthoring", ...bindingOptions } = options;
   if (!isRecord(document)) {
     throw gameplayAuthoringDiagnosticError(path, "must be an object");
   }
@@ -79,6 +81,13 @@ export function resolveSceneAuthoringDocument(
         path,
       })
     : undefined;
+  if (validateComponents) {
+    instantiateSceneFragment(sceneComposition).forEach((instance, index) => {
+      resolveDataSceneInstanceComponents(instance, {
+        path: `${path}.sceneComposition.instances.${index}`,
+      });
+    });
+  }
 
   return {
     format: SCENE_AUTHORING_DOCUMENT_FORMAT,

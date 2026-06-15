@@ -19,6 +19,8 @@
         "captureGameStateSnapshot",
         "resolveSceneAuthoringDocument",
         "resolveSceneCompositionSpec",
+        "resolveDataSceneComponentsSpec",
+        "createDataSceneRuntimeTarget",
         "resolveBehaviorRecipeDocument",
         "compileWeaponProfiles",
         "resolveShooterGameSpec",
@@ -56,6 +58,8 @@
       "requiredExports": [
         "resolveSceneAuthoringDocument",
         "resolveSceneCompositionSpec",
+        "resolveDataSceneComponentsSpec",
+        "createDataSceneRuntimeTarget",
         "resolveBehaviorRecipeDocument",
         "compileWeaponProfiles",
         "resolvePhysicsSpec"

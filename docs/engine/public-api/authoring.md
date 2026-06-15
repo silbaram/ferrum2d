@@ -7,6 +7,8 @@ template이 scene, behavior, projectile/weapon, FSM, physics authoring data를 �
 ```ts
 import {
   resolveSceneCompositionSpec,
+  resolveDataSceneComponentsSpec,
+  createDataSceneRuntimeTarget,
   resolveBehaviorRecipeDocument,
   compileWeaponProfiles,
   applyGameplayBehaviorCommands,
@@ -21,6 +23,8 @@ import {
 | `resolveSceneAuthoringDocument(...)` | data scene authoring envelope를 검증한다. |
 | `resolveSceneCompositionSpec(...)` | prefab, fragment, instance 배치를 정규화한다. |
 | `instantiateSceneFragment(...)` | fragment를 deterministic instance list로 펼친다. |
+| `resolveDataSceneComponentsSpec(...)` | `props.components` v1 sprite/collider/layer/template descriptor를 검증하고 정규화한다. |
+| `createDataSceneRuntimeTarget(...)` | `FerrumEngine`을 Data Scene spawn target으로 감싸 `applySceneBehaviorRecipes(...)`에 넘길 수 있게 한다. |
 | `resolveBehaviorRecipeDocument(...)` | entity behavior recipe를 검증하고 정규화한다. |
 | `behaviorRecipeCommandsForEntity(...)` | 특정 entity에 적용할 `BehaviorRecipeCommand[]`를 만든다. |
 | `applyGameplayBehaviorCommands(...)` | command를 `FerrumEngine` gameplay facade로 낮은 빈도 적용한다. |
@@ -28,6 +32,12 @@ import {
 Behavior recipe는 health, damage, faction, pickup, interaction, projectile action,
 dash/melee/spawn action, timer, collision reaction, movement 같은 데이터를 표현한다.
 매 frame TypeScript callback을 등록하는 API가 아니다.
+
+`createDataSceneRuntimeTarget(engine)`은 기본적으로 `engine.useDataScene()`을 호출해 빈 Data Scene
+runtime을 활성화한 뒤, 각 `ResolvedSceneCompositionInstance.props.components` inline descriptor를
+raw Wasm `spawn_data_scene_entity(...)`로 컴파일한다. asset texture id는 `engine.textureId(name)` 또는
+`options.textureId(name)`으로 해석한다. consumer는 generated Wasm `pkg/*`, `dist/*`, `src/*` 내부 경로를
+직접 import하지 않는다.
 
 세부 primitive와 검증 기준은 [Runtime Extensibility](../runtime-extensibility.md)와
 [Data Scene Authoring](../data-scene-authoring.md)을 따른다.

@@ -25,6 +25,7 @@ import type { ParticlePresetConfig } from "./particlePreset";
 import { createPhysicsBodyApi } from "./physicsBodyApi.js";
 import { createPhysicsJointApi } from "./physicsJointApi.js";
 import { createPhysicsQueryApi } from "./physicsQueryApi.js";
+import { attachDataSceneRuntimeEngineAdapter } from "./dataSceneRuntimeTarget.js";
 import type {
   AssetHost,
   CreateEngineOptions,
@@ -726,7 +727,7 @@ export async function createEngineWithFramePipeline(
     },
   };
 
-  return {
+  const engine: FerrumEngine = {
     ...lifecycleApi,
     ...sceneApi,
     ...assetApi,
@@ -738,6 +739,55 @@ export async function createEngineWithFramePipeline(
     ...gameplayAuthoringApi,
     ...inputActionApi,
   };
+  return attachDataSceneRuntimeEngineAdapter(engine, {
+    useDataScene,
+    textureId: (name) => {
+      requireAlive();
+      return requireAssetHost().textureId(name);
+    },
+    spawnDataSceneEntity: (request) => {
+      requireAlive();
+      const ok = rustEngine.spawn_data_scene_entity(
+        request.x,
+        request.y,
+        uint32Number(request.textureId, "dataSceneRuntimeTarget.textureId"),
+        request.spriteWidth,
+        request.spriteHeight,
+        request.frameU0,
+        request.frameV0,
+        request.frameU1,
+        request.frameV1,
+        uint32Number(request.animationFrameCount, "dataSceneRuntimeTarget.animationFrameCount"),
+        request.animationFps,
+        uint32Number(request.layer, "dataSceneRuntimeTarget.layer"),
+        uint32Number(request.colliderType, "dataSceneRuntimeTarget.colliderType"),
+        request.colliderOffsetX,
+        request.colliderOffsetY,
+        request.colliderEnabled,
+        request.colliderIsTrigger,
+        request.colliderHalfWidth,
+        request.colliderHalfHeight,
+        request.colliderRadius,
+        request.colliderStartX,
+        request.colliderStartY,
+        request.colliderEndX,
+        request.colliderEndY,
+        request.colliderRotationRadians,
+        request.colliderVertices,
+      );
+      if (!ok) {
+        return undefined;
+      }
+      const entityId = rustEngine.data_scene_entity_id();
+      if (entityId === 0xffffffff) {
+        return undefined;
+      }
+      return {
+        entityId,
+        entityGeneration: rustEngine.data_scene_entity_generation(),
+      };
+    },
+  });
 }
 
 function gameplayAuthoringEntityHandle(entity: GameplayEntityHandle, label: string): GameplayEntityHandle {

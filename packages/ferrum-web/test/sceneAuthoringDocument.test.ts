@@ -23,6 +23,11 @@ function sampleDocument(): SceneAuthoringDocumentSpec {
         player: {
           props: {
             behaviorRecipes: "player.weapon",
+            components: {
+              sprite: { texture: "player", width: 24, height: 24 },
+              collider: { type: "aabb", halfWidth: 12, halfHeight: 12 },
+              layer: "player",
+            },
           },
         },
       },
@@ -52,6 +57,7 @@ function sampleDocument(): SceneAuthoringDocumentSpec {
 test("resolveSceneAuthoringDocument validates the envelope and optional binding plan", () => {
   const resolved = resolveSceneAuthoringDocument(sampleDocument(), {
     validateBindings: true,
+    validateComponents: true,
     missingBehavior: "error",
   });
 
@@ -62,6 +68,36 @@ test("resolveSceneAuthoringDocument validates the envelope and optional binding 
   equal(resolved.ids?.actions?.shoot, 1);
   equal(resolved.bindingPlan?.instances[0]?.id, "player");
   equal(resolved.bindingPlan?.commands.length, 1);
+});
+
+test("resolveSceneAuthoringDocument keeps component validation opt-in", () => {
+  const document: SceneAuthoringDocumentSpec = {
+    ...sampleDocument(),
+    sceneComposition: {
+      ...sampleDocument().sceneComposition,
+      prefabs: {
+        player: {
+          props: {
+            behaviorRecipes: "player.weapon",
+            components: {
+              sprite: { texture: "player", width: 24, height: 24 },
+              collider: { type: "circle" },
+              layer: "player",
+            },
+          },
+        },
+      },
+    },
+  };
+
+  const resolved = resolveSceneAuthoringDocument(document);
+  equal(resolved.bindingPlan, undefined);
+
+  expectMessage(() =>
+    resolveSceneAuthoringDocument(document, {
+      validateComponents: true,
+    }), /props\.components\.collider\.radius/,
+  );
 });
 
 test("resolveSceneAuthoringDocument keeps binding validation opt-in", () => {

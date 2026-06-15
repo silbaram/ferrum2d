@@ -54,6 +54,218 @@ fn data_scene_mode_starts_blank_and_updates_generic_world_state() {
 }
 
 #[test]
+fn data_scene_spawn_hook_installs_sprite_collider_and_handle() {
+    let mut engine = Engine::new();
+
+    engine.use_data_scene();
+
+    assert!(engine.spawn_data_scene_entity(
+        120.0,
+        80.0,
+        42,
+        24.0,
+        32.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        1,
+        0.0,
+        PHYSICS_LAYER_ENEMY,
+        PHYSICS_COLLIDER_TYPE_AABB,
+        2.0,
+        -3.0,
+        true,
+        false,
+        11.0,
+        13.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        Vec::new(),
+    ));
+
+    let entity_id = engine.data_scene_entity_id();
+    let entity_generation = engine.data_scene_entity_generation();
+    let entity = crate::entity::Entity {
+        id: entity_id,
+        generation: entity_generation,
+    };
+    let sprite = engine
+        .world
+        .sprite_at_index(entity_id as usize)
+        .expect("data-scene entity should have a sprite");
+    let collider = engine
+        .world
+        .collider(entity)
+        .expect("data-scene entity should have an AABB collider");
+    let transform = engine
+        .world
+        .transform(entity)
+        .expect("data-scene entity should have a transform");
+
+    assert!(engine.gameplay_entity_exists(entity_id, entity_generation));
+    assert_eq!(engine.entity_count(), 1);
+    assert_eq!(transform, Transform2D { x: 120.0, y: 80.0 });
+    assert_eq!(sprite.texture_id, 42);
+    assert_eq!(sprite.width, 24.0);
+    assert_eq!(sprite.height, 32.0);
+    assert_eq!(
+        (sprite.u0, sprite.v0, sprite.u1, sprite.v1),
+        (0.25, 0.5, 0.75, 1.0)
+    );
+    assert_eq!(collider.half_width, 11.0);
+    assert_eq!(collider.half_height, 13.0);
+    assert_eq!(collider.offset_x, 2.0);
+    assert_eq!(collider.offset_y, -3.0);
+    assert!(collider.enabled);
+    assert!(!collider.is_trigger);
+    assert_eq!(collider.layer, CollisionLayer::Enemy);
+
+    assert!(engine
+        .world
+        .renderable_sprite_at_index(entity_id as usize)
+        .is_some());
+}
+
+#[test]
+fn data_scene_spawn_hook_supports_none_and_convex_colliders() {
+    let mut engine = Engine::new();
+
+    engine.use_data_scene();
+    assert!(spawn_test_data_scene_entity(
+        &mut engine,
+        PHYSICS_COLLIDER_TYPE_NONE,
+        PHYSICS_LAYER_PICKUP,
+        Vec::new(),
+    ));
+    let sprite_only_entity = crate::entity::Entity {
+        id: engine.data_scene_entity_id(),
+        generation: engine.data_scene_entity_generation(),
+    };
+
+    assert!(engine.world.collider(sprite_only_entity).is_none());
+    assert!(engine.world.circle_collider(sprite_only_entity).is_none());
+    assert_eq!(
+        engine
+            .world
+            .collider_layer_at(sprite_only_entity.id as usize),
+        None
+    );
+
+    assert!(spawn_test_data_scene_entity(
+        &mut engine,
+        PHYSICS_COLLIDER_TYPE_CONVEX_POLYGON,
+        PHYSICS_LAYER_WALL,
+        vec![-4.0, -3.0, 4.0, -3.0, 0.0, 5.0],
+    ));
+    let polygon_entity = crate::entity::Entity {
+        id: engine.data_scene_entity_id(),
+        generation: engine.data_scene_entity_generation(),
+    };
+    let polygon = engine
+        .world
+        .convex_polygon_collider(polygon_entity)
+        .expect("data-scene entity should have a convex polygon collider");
+
+    assert_eq!(engine.entity_count(), 2);
+    assert_eq!(polygon.vertex_count, 3);
+    assert_eq!(polygon.vertices[0], Transform2D { x: -4.0, y: -3.0 });
+    assert_eq!(polygon.rotation_radians, 0.25);
+    assert_eq!(polygon.offset_x, 1.0);
+    assert_eq!(polygon.offset_y, 2.0);
+    assert_eq!(polygon.layer, CollisionLayer::Wall);
+}
+
+#[test]
+fn data_scene_spawn_hook_rejects_wrong_mode_and_invalid_descriptor() {
+    let mut engine = Engine::new();
+    let initial_count = engine.entity_count();
+
+    assert!(!spawn_test_data_scene_entity(
+        &mut engine,
+        PHYSICS_COLLIDER_TYPE_AABB,
+        PHYSICS_LAYER_PLAYER,
+        Vec::new(),
+    ));
+    assert_eq!(engine.entity_count(), initial_count);
+    assert_eq!(engine.data_scene_entity_id(), u32::MAX);
+    assert_eq!(engine.data_scene_entity_generation(), 0);
+
+    engine.use_data_scene();
+
+    assert!(!engine.spawn_data_scene_entity(
+        0.0,
+        0.0,
+        1,
+        0.0,
+        16.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        0,
+        0.0,
+        PHYSICS_LAYER_PLAYER,
+        PHYSICS_COLLIDER_TYPE_AABB,
+        0.0,
+        0.0,
+        true,
+        true,
+        8.0,
+        8.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        Vec::new(),
+    ));
+    assert_eq!(engine.entity_count(), 0);
+    assert_eq!(engine.data_scene_entity_id(), u32::MAX);
+}
+
+fn spawn_test_data_scene_entity(
+    engine: &mut Engine,
+    collider_type: u32,
+    layer: u32,
+    collider_vertices: Vec<f32>,
+) -> bool {
+    engine.spawn_data_scene_entity(
+        10.0,
+        20.0,
+        7,
+        16.0,
+        18.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        0,
+        0.0,
+        layer,
+        collider_type,
+        1.0,
+        2.0,
+        true,
+        true,
+        6.0,
+        7.0,
+        5.0,
+        -4.0,
+        0.0,
+        4.0,
+        0.0,
+        0.25,
+        collider_vertices,
+    )
+}
+
+#[test]
 fn data_scene_reset_keeps_data_mode_without_recreating_builtin_entities() {
     let mut engine = Engine::new();
     engine.use_breakout_scene();

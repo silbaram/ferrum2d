@@ -9,6 +9,16 @@ export {
   resolveSceneCompositionSpec,
 } from "../sceneComposition";
 export {
+  DATA_SCENE_COLLISION_LAYER_CODES,
+  DATA_SCENE_COMPONENTS_PROP,
+  DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES,
+  resolveDataSceneComponentsSpec,
+  resolveDataSceneInstanceComponents,
+} from "../dataSceneComponents";
+export {
+  createDataSceneRuntimeTarget,
+} from "../dataSceneRuntimeTarget";
+export {
   SCENE_AUTHORING_DOCUMENT_FORMAT,
   SCENE_AUTHORING_DOCUMENT_VERSION,
   resolveSceneAuthoringDocument,
@@ -146,6 +156,39 @@ export type {
   ResolveSceneAuthoringDocumentOptions,
   SceneAuthoringDocumentSpec,
 } from "../sceneAuthoringDocument";
+export type {
+  DataSceneAabbColliderSpec,
+  DataSceneCapsuleColliderSpec,
+  DataSceneCircleColliderSpec,
+  DataSceneColliderBaseSpec,
+  DataSceneColliderComponentSpec,
+  DataSceneCollisionLayerName,
+  DataSceneCollisionLayerSpec,
+  DataSceneComponentsSpec,
+  DataSceneConvexPolygonColliderSpec,
+  DataSceneConvexPolygonVertexSpec,
+  DataSceneNoneColliderSpec,
+  DataSceneOrientedBoxColliderSpec,
+  DataSceneSpriteAnimationSpec,
+  DataSceneSpriteComponentSpec,
+  DataSceneSpriteFrameSpec,
+  DataSceneTextureRefSpec,
+  ResolveDataSceneComponentsOptions,
+  ResolveDataSceneInstanceComponentsOptions,
+  ResolvedDataSceneColliderBase,
+  ResolvedDataSceneColliderComponent,
+  ResolvedDataSceneCollisionLayer,
+  ResolvedDataSceneComponents,
+  ResolvedDataSceneConvexPolygonVertex,
+  ResolvedDataSceneSpriteAnimation,
+  ResolvedDataSceneSpriteComponent,
+  ResolvedDataSceneSpriteFrame,
+  ResolvedDataSceneTextureRef,
+} from "../dataSceneComponents";
+export type {
+  CreateDataSceneRuntimeTargetOptions,
+  DataSceneRuntimeTextureIdResolver,
+} from "../dataSceneRuntimeTarget";
 export type {
   ApplyBehaviorRecipesOptions,
   BehaviorRecipeApplyResult,

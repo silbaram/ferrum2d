@@ -42,7 +42,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 4. 엔진 구조나 경계를 확인하는 경우: [아키텍처](development/architecture/architecture.md) -> [2D 물리엔진 기능 맵](development/architecture/physics-engine.md)
 5. 검증이나 릴리스 작업을 하는 경우: [Smoke Check](development/quality/smoke-check.md) -> [npm 베타 패키징](development/operations/npm-release.md) -> [릴리스 노트 템플릿](development/operations/release-notes-template.md)
 6. Physics Spec 계약을 확인하는 경우: [Physics Spec](engine/physics-spec.md) -> [Public API](engine/public-api.md)
-7. 신규 기능 후보와 승인 필요 항목을 확인하는 경우: [Planning 문서](planning/README.md) -> [신규 기능 후보](planning/feature-candidates.md)
+7. 신규 기능 후보와 승인 필요 항목을 확인하는 경우: [Planning 문서](planning/README.md)
 
 ## 기준 소스
 

@@ -156,8 +156,6 @@ function compareDocs(a, b) {
     "planning/README.md",
     "planning/demo-game-showcase-plan.md",
     "planning/deployment-roadmap.md",
-    "planning/feature-candidates.md",
-    "planning/refactor-roadmap.md",
   ];
   const aIndex = priority.indexOf(a);
   const bIndex = priority.indexOf(b);

@@ -16,6 +16,7 @@ import {
   behaviorStateMachineCommandsForState,
   bindPresentationEffectActions,
   bindSceneBehaviorRecipes,
+  createDataSceneRuntimeTarget,
   BYTES_PER_EFFECT_EVENT,
   compareBehaviorStateMachineReplay,
   compareGameplayReplayRuns,
@@ -25,6 +26,9 @@ import {
   createBehaviorStateMachineStateCommandPlan,
   createGameplayBehaviorRuntimeTarget,
   createGameplayReplayRun,
+  DATA_SCENE_COLLISION_LAYER_CODES,
+  DATA_SCENE_COMPONENTS_PROP,
+  DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES,
   decodeEffectEvents,
   dispatchEffectEvents,
   dispatchRuntimeEffectEvents,
@@ -53,6 +57,8 @@ import {
   resolveBehaviorRecipeDocument,
   resolveBehaviorStateMachineDocument,
   resolveCutsceneSequenceSpec,
+  resolveDataSceneComponentsSpec,
+  resolveDataSceneInstanceComponents,
   resolveGameplayBehaviorRuntimeIds,
   resolvePresentationEffectRegistry,
   runBehaviorStateMachineReplay,
@@ -157,6 +163,7 @@ import type {
   ConfigureSpawnPrefabActionBehaviorCommand,
   ConfigureTimerTriggerBehaviorCommand,
   ConfigureTagsBehaviorCommand,
+  CreateDataSceneRuntimeTargetOptions,
   CutsceneAudioAction,
   CutsceneAudioBus,
   CutsceneAudioCommandSpec,
@@ -173,6 +180,9 @@ import type {
   CutsceneSequenceUpdateOptions,
   CutsceneSequenceUpdateResult,
   CutsceneWaitCommandSpec,
+  DataSceneCollisionLayerName,
+  DataSceneComponentsSpec,
+  DataSceneRuntimeTextureIdResolver,
   CollisionAreaDamageBehaviorRecipeSpec,
   CollisionDespawnBehaviorRecipeSpec,
   CollisionEmitEffectBehaviorRecipeSpec,
@@ -274,6 +284,8 @@ import type {
   ResolveBehaviorRecipeDocumentOptions,
   ResolveBehaviorStateMachineDocumentOptions,
   ResolveCutsceneSequenceOptions,
+  ResolveDataSceneComponentsOptions,
+  ResolveDataSceneInstanceComponentsOptions,
   ResolveSceneAuthoringDocumentOptions,
   ResolveSceneCompositionOptions,
   ResolvedAnimationTimelineEvent,
@@ -306,6 +318,14 @@ import type {
   ResolvedCollisionShakeBehaviorRecipe,
   ResolvedCollisionSpawnPrefabBehaviorRecipe,
   ResolvedCollisionSoundBehaviorRecipe,
+  ResolvedDataSceneColliderBase,
+  ResolvedDataSceneColliderComponent,
+  ResolvedDataSceneCollisionLayer,
+  ResolvedDataSceneComponents,
+  ResolvedDataSceneSpriteAnimation,
+  ResolvedDataSceneSpriteComponent,
+  ResolvedDataSceneSpriteFrame,
+  ResolvedDataSceneTextureRef,
   ResolvedDamageBehaviorRecipe,
   ResolvedDashActionBehaviorRecipe,
   ResolvedFactionBehaviorRecipe,
@@ -383,10 +403,40 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   const animationSnapshot: AnimationTimelinePlayerSnapshot = animationPlayer.snapshot();
   const sceneCompositionJson: SceneCompositionJsonValue = { hp: 1 };
   const gameplayBehaviorBinding: GameplayBehaviorBindingSpec = "enemy";
+  const dataSceneLayerName: DataSceneCollisionLayerName = "enemy";
+  const dataSceneComponentsProp: typeof DATA_SCENE_COMPONENTS_PROP = DATA_SCENE_COMPONENTS_PROP;
+  const dataSceneLayerCodes: typeof DATA_SCENE_COLLISION_LAYER_CODES = DATA_SCENE_COLLISION_LAYER_CODES;
+  const dataSceneMaxConvexPolygonVertices: typeof DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES =
+    DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES;
+  const dataSceneComponents: DataSceneComponentsSpec = {
+    sprite: {
+      texture: "enemy",
+      width: 16,
+      height: 16,
+      frame: { u0: 0, v0: 0, u1: 1, v1: 1 },
+      animation: { frameCount: 2, fps: 8 },
+    },
+    collider: {
+      type: "aabb",
+      halfWidth: 8,
+      halfHeight: 8,
+    },
+    layer: dataSceneLayerName,
+  };
   const sceneCompositionProps: SceneCompositionProps = {
     kind: "enemy",
     stats: sceneCompositionJson,
     behaviorRecipes: gameplayBehaviorBinding,
+    [dataSceneComponentsProp]: {
+      sprite: {
+        texture: "enemy",
+        width: 16,
+        height: 16,
+        frame: { u0: 0, v0: 0, u1: 1, v1: 1 },
+      },
+      collider: { type: "aabb", halfWidth: 8, halfHeight: 8 },
+      layer: dataSceneLayerName,
+    },
   };
   const sceneCompositionTransform: SceneCompositionTransformSpec = { x: 4, y: 5, scale: 1 };
   const resolvedSceneCompositionTransform: ResolvedSceneCompositionTransform = {
@@ -447,6 +497,49 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   const resolvedSceneCompositionInstances: ResolvedSceneCompositionInstance[] =
     publicInstantiateSceneFragment(resolvedSceneComposition, instantiateSceneCompositionOptions);
   const resolvedSceneCompositionInstance: ResolvedSceneCompositionInstance = resolvedSceneCompositionInstances[0];
+  const dataSceneComponentsOptions: ResolveDataSceneComponentsOptions = { path: "props.components" };
+  const dataSceneInstanceComponentsOptions: ResolveDataSceneInstanceComponentsOptions = {
+    path: "scene.instances.0",
+  };
+  const publicResolveDataSceneComponentsSpec: PublicApi["resolveDataSceneComponentsSpec"] =
+    resolveDataSceneComponentsSpec;
+  const publicResolveDataSceneInstanceComponents: PublicApi["resolveDataSceneInstanceComponents"] =
+    resolveDataSceneInstanceComponents;
+  const publicCreateDataSceneRuntimeTarget: PublicApi["createDataSceneRuntimeTarget"] =
+    createDataSceneRuntimeTarget;
+  const dataSceneRuntimeTextureId: DataSceneRuntimeTextureIdResolver = (name) => name.length;
+  const dataSceneRuntimeTargetOptions: CreateDataSceneRuntimeTargetOptions = {
+    activateDataScene: false,
+    textureId: dataSceneRuntimeTextureId,
+  };
+  const resolvedDataSceneComponents: ResolvedDataSceneComponents =
+    publicResolveDataSceneComponentsSpec(dataSceneComponents, dataSceneComponentsOptions);
+  const resolvedDataSceneInstanceComponents: ResolvedDataSceneComponents =
+    publicResolveDataSceneInstanceComponents(resolvedSceneCompositionInstance, dataSceneInstanceComponentsOptions);
+  if (resolvedDataSceneComponents.mode !== "inline") {
+    throw new Error("expected inline data scene components");
+  }
+  const resolvedDataSceneSprite: ResolvedDataSceneSpriteComponent = resolvedDataSceneComponents.sprite;
+  const resolvedDataSceneTexture: ResolvedDataSceneTextureRef = resolvedDataSceneSprite.texture;
+  const resolvedDataSceneFrame: ResolvedDataSceneSpriteFrame = resolvedDataSceneSprite.frame;
+  const resolvedDataSceneAnimation: ResolvedDataSceneSpriteAnimation | undefined =
+    resolvedDataSceneSprite.animation;
+  const resolvedDataSceneCollider: ResolvedDataSceneColliderComponent = resolvedDataSceneComponents.collider;
+  if (resolvedDataSceneCollider.type !== "aabb") {
+    throw new Error("expected aabb data scene collider");
+  }
+  const resolvedDataSceneColliderBase: ResolvedDataSceneColliderBase = resolvedDataSceneCollider;
+  const resolvedDataSceneLayer: ResolvedDataSceneCollisionLayer = resolvedDataSceneComponents.layer;
+  equal(dataSceneLayerCodes.enemy, 1);
+  equal(dataSceneMaxConvexPolygonVertices, 16);
+  equal(resolvedDataSceneTexture.kind, "asset");
+  equal(resolvedDataSceneFrame.u1, 1);
+  equal(resolvedDataSceneAnimation?.frameCount, 2);
+  equal(resolvedDataSceneColliderBase.enabled, true);
+  equal(resolvedDataSceneLayer.code, 1);
+  equal(resolvedDataSceneInstanceComponents.mode, "inline");
+  equal(dataSceneRuntimeTargetOptions.activateDataScene, false);
+  equal(typeof publicCreateDataSceneRuntimeTarget, "function");
   const sceneCompositionTarget: SceneCompositionTarget = {
     spawnSceneInstance: (instance) => instance.id,
   };
@@ -467,6 +560,7 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   const sceneAuthoringOptions: ResolveSceneAuthoringDocumentOptions = {
     path: "sceneAuthoring",
     validateBindings: true,
+    validateComponents: true,
     missingBehavior: "ignore",
   };
   const publicResolveSceneAuthoringDocument: PublicApi["resolveSceneAuthoringDocument"] =

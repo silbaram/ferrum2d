@@ -357,21 +357,25 @@ impl BuiltInSceneRuntime for PlatformerScene {
 
 impl Engine {
     pub(super) fn activate_built_in_shooter_scene(&mut self) {
+        self.clear_data_scene_entity_handle();
         self.scene_mode = SceneMode::BuiltIn;
         self.scenes.use_shooter();
     }
 
     pub(super) fn activate_built_in_breakout_scene(&mut self) {
+        self.clear_data_scene_entity_handle();
         self.scene_mode = SceneMode::BuiltIn;
         self.scenes.use_breakout();
     }
 
     pub(super) fn activate_built_in_platformer_scene(&mut self) {
+        self.clear_data_scene_entity_handle();
         self.scene_mode = SceneMode::BuiltIn;
         self.scenes.use_platformer();
     }
 
     pub(super) fn activate_data_scene(&mut self) {
+        self.clear_data_scene_entity_handle();
         self.scene_mode = SceneMode::Data;
         let mut context = SceneResetContext {
             world: &mut self.world,
@@ -380,6 +384,7 @@ impl Engine {
         };
         SceneRuntimeDispatch::new(self.scene_mode, &mut self.scenes, &mut self.data_scene)
             .reset_playing(&mut context);
+        self.clear_data_scene_entity_handle();
     }
 
     pub(super) fn active_scene_score(&self) -> u32 {
@@ -592,6 +597,9 @@ impl Engine {
         };
         SceneRuntimeDispatch::new(self.scene_mode, &mut self.scenes, &mut self.data_scene)
             .reset_playing(&mut context);
+        if self.scene_mode == SceneMode::Data {
+            self.clear_data_scene_entity_handle();
+        }
     }
 
     pub(super) fn reset_to_title(&mut self) {
@@ -608,6 +616,7 @@ impl Engine {
         self.particles.clear();
         self.tweens.clear();
         self.clear_physics_history();
+        self.clear_data_scene_entity_handle();
         if scene_mode == SceneMode::Data {
             self.clear_scene_output_buffers();
         }

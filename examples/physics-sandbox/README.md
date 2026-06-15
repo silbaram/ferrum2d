@@ -72,4 +72,3 @@ pnpm smoke:physics-demo-suite
 - [Physics Spec](../../docs/engine/physics-spec.md)
 - [2D physics engine map](../../docs/development/architecture/physics-engine.md)
 - [Smoke Check](../../docs/development/quality/smoke-check.md)
-- [Physics Sandbox 재작성 계획](../../docs/planning/physics-sandbox-redesign-plan.md)

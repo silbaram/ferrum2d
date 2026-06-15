@@ -111,20 +111,27 @@ Electron에서 `file://`로 바로 로드하면 웹 배포와 비슷한 asset/MI
 
 ## 구현 Slice
 
-### Slice 0: 정적 웹 배포 기준 문서화
+현재 상태:
+
+- **Slice 0 완료**: GitHub Pages 데모/문서 배포 기준은 [GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md)로 확정했다. 이 planning 문서는 남은 로컬 preview, create-game 배포 안내, desktop wrapper 후보만 추적한다.
+- **Slice 1~4 미진행**: 로컬 preview 경로, create-game 배포 안내, desktop wrapper 비교/자동화 후보는 별도 task로 분리해 진행한다.
+
+### Slice 0: 정적 웹 배포 기준 문서화 (완료)
+
+확정 문서: [GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md)
 
 산출물:
 
-- `docs/development/operations`에 정적 웹 배포 가이드 작성
-- GitHub Pages/Cloudflare Pages/Netlify 중 최소 1개 기준 예시 작성
+- GitHub Pages 기준 데모/문서 배포 가이드 작성
 - `.wasm` MIME, base path, asset 경로 체크리스트 작성
+- Pages artifact 생성/검증 기준 문서화
 
 검증:
 
 - `pnpm build`
 - `pnpm build:pages`
 - `pnpm validate:pages-artifact`
-- Top-down 또는 generated game production build smoke
+- route/link integrity 검증
 
 ### Slice 1: 로컬 preview 경로 정리
 
@@ -211,8 +218,7 @@ Electron에서 `file://`로 바로 로드하면 웹 배포와 비슷한 asset/MI
 
 초기 구현 순서는 다음이 적절하다.
 
-1. 정적 웹 배포 문서와 검증을 먼저 안정화한다.
+1. 로컬 `dist/` preview smoke를 만든다.
 2. create-game template에 build/preview/deploy 안내를 넣는다.
-3. 로컬 `dist/` preview smoke를 만든다.
-4. Electron/Tauri 비교 spike를 별도 task로 분리한다.
-5. desktop wrapper는 실험 template로 시작하고, 안정화 전까지 Ferrum2D 기본 배포 모델로 선언하지 않는다.
+3. Electron/Tauri 비교 spike를 별도 task로 분리한다.
+4. desktop wrapper는 실험 template로 시작하고, 안정화 전까지 Ferrum2D 기본 배포 모델로 선언하지 않는다.

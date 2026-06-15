@@ -6,6 +6,7 @@ use crate::collision::{
     PointQueryHit, RaycastHit, ShapeCastHit, ShapeQueryHit, PHYSICS_DEBUG_DEFAULT,
 };
 use crate::collision_event::{CollisionEventCounts, CollisionEventTracker};
+use crate::entity::Entity;
 use crate::input::{InputActionRegistry, InputState};
 use crate::particles::{ParticlePreset, ParticleSystem};
 use crate::physics::{
@@ -23,6 +24,7 @@ use crate::tilemap::{
 use crate::tweens::TweenSystem;
 use crate::world::World;
 
+mod data_scene_spawning;
 mod fixed_step;
 mod frame_buffers;
 mod gameplay_authoring;
@@ -93,6 +95,7 @@ pub struct Engine {
     data_scene: DataSceneRuntime,
     camera: Camera2D,
     world: World,
+    data_scene_entity: Option<Entity>,
     gameplay_authoring_snapshot: Option<GameplayAuthoringSnapshot>,
     tilemap: Tilemap,
     particles: ParticleSystem,
@@ -166,6 +169,7 @@ impl Engine {
             data_scene: DataSceneRuntime::new(),
             camera: Camera2D::new(DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT),
             world: World::default(),
+            data_scene_entity: None,
             gameplay_authoring_snapshot: None,
             tilemap: Tilemap::default(),
             particles: ParticleSystem::new(),

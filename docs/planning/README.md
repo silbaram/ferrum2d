@@ -8,12 +8,15 @@
 | --- | --- |
 | [데모 게임 포트폴리오 보강 계획](demo-game-showcase-plan.md) | Ferrum2D 사용자-facing 엔진 기능을 여러 focused demo와 Pages showcase hub로 노출하기 위한 계획 |
 | [오브젝트 배치 UI · 데이터 씬 authoring 보강 계획](object-placement-authoring-plan.md) | 사람은 위치를 배치하고 AI agent는 behavior를 붙이는 흐름을 위한 World/Scene 보강 순서 계획 |
-| [Physics Sandbox 재작성 계획](physics-sandbox-redesign-plan.md) | Physics Sandbox를 fixture viewer에서 물리엔진 쇼케이스 demo로 재작성하기 위한 단계별 계획 |
 | [배포 전략 초기 계획](deployment-roadmap.md) | 정적 웹 배포, 로컬 preview, Electron/Tauri desktop wrapper 후보를 정리한 초기 배포 planning |
-| [신규 기능 후보 템플릿](feature-candidates.md) | 새 기능 후보 작성 형식 |
-| [리팩토링 로드맵 템플릿](refactor-roadmap.md) | 새 리팩토링 후보 작성 형식 |
 
 활성 작업 목록은 planning 문서에 중복 관리하지 않는다. 진행 중인 작업은 별도 task 또는 이슈로 범위와 검증 기준을 확정하고, 완료된 내용은 확정 문서에만 남긴다.
+
+## 완료되어 planning에서 제거한 항목
+
+| 항목 | 확정 문서/코드 |
+| --- | --- |
+| Physics Sandbox 재작성 계획 | 확정 구현: `examples/physics-sandbox`; 확정 문서: [Physics Engine](../development/architecture/physics-engine.md), [Smoke Check](../development/quality/smoke-check.md) |
 
 ## Pages 노출 원칙
 

@@ -8,8 +8,18 @@
         "props": {
           "behaviorRecipes": "agent.base",
           "components": {
-            "sprite": "agent",
-            "collider": "body"
+            "sprite": {
+              "texture": "agent",
+              "width": 24,
+              "height": 24
+            },
+            "collider": {
+              "type": "aabb",
+              "halfWidth": 12,
+              "halfHeight": 12,
+              "isTrigger": true
+            },
+            "layer": "enemy"
           }
         },
         "variants": {

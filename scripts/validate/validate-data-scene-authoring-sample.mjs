@@ -27,6 +27,7 @@ if (paths.length === 0) {
       const resolved = resolveSceneAuthoringDocument(document, {
         path: "dataSceneAuthoring",
         validateBindings: true,
+        validateComponents: true,
         missingBehavior: "error",
       });
       const instances = instantiateSceneFragment(resolved.sceneComposition);
