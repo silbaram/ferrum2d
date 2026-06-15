@@ -83,6 +83,14 @@ test("resolveDataSceneComponentsSpec supports catalog template references", () =
   });
 
   expectMessage(
+    () => resolveDataSceneComponentsSpec({ template: "agent.base" }, {
+      allowTemplate: false,
+      path: "components",
+    }),
+    /path='components\.template'/,
+  );
+
+  expectMessage(
     () => resolveDataSceneComponentsSpec({
       template: "agent.base",
       sprite: { texture: "agent", width: 16, height: 16 },

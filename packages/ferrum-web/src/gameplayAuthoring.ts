@@ -477,6 +477,16 @@ export interface ApplySceneBehaviorRecipesOptions extends SceneBehaviorBindingOp
   ids?: GameplayBehaviorRuntimeIds;
 }
 
+interface GameplayBehaviorCommandFacade {
+  applyGameplayBehaviorCommands(
+    commands: readonly BehaviorRecipeCommand[],
+    entityHandles: GameplayEntityHandleMap,
+    options?: ApplyGameplayBehaviorCommandsOptions,
+  ): BehaviorRecipeApplyResult;
+}
+
+type SceneBehaviorApplyEngine = GameplayBehaviorRuntimeEngine | GameplayBehaviorCommandFacade;
+
 export interface SceneBehaviorApplyResult {
   plan: SceneBehaviorBindingPlan;
   entityHandles: Readonly<Record<string, GameplayEntityHandle>>;
@@ -567,7 +577,7 @@ export function dryRunSceneBehaviorRecipes(
 }
 
 export function applySceneBehaviorRecipes(
-  engine: GameplayBehaviorRuntimeEngine,
+  engine: SceneBehaviorApplyEngine,
   target: SceneBehaviorRuntimeTarget,
   composition: SceneCompositionSpec | ResolvedSceneCompositionSpec,
   recipes: BehaviorRecipeDocumentSpec | ResolvedBehaviorRecipeDocument,
@@ -591,7 +601,7 @@ export function applySceneBehaviorRecipes(
     entityHandles[instance.id] = handle;
     return handle;
   });
-  const behaviorApplyResult = applyGameplayBehaviorCommands(engine, plan.commands, entityHandles, {
+  const behaviorApplyResult = applySceneBehaviorCommands(engine, plan.commands, entityHandles, {
     path,
     ids: options.ids,
   });
@@ -602,6 +612,22 @@ export function applySceneBehaviorRecipes(
     spawnResults,
     behaviorApplyResult,
   };
+}
+
+function applySceneBehaviorCommands(
+  engine: SceneBehaviorApplyEngine,
+  commands: readonly BehaviorRecipeCommand[],
+  entityHandles: GameplayEntityHandleMap,
+  options: ApplyGameplayBehaviorCommandsOptions,
+): BehaviorRecipeApplyResult {
+  if (isGameplayBehaviorCommandFacade(engine)) {
+    return engine.applyGameplayBehaviorCommands(commands, entityHandles, options);
+  }
+  return applyGameplayBehaviorCommands(engine, commands, entityHandles, options);
+}
+
+function isGameplayBehaviorCommandFacade(engine: SceneBehaviorApplyEngine): engine is GameplayBehaviorCommandFacade {
+  return typeof (engine as Partial<GameplayBehaviorCommandFacade>).applyGameplayBehaviorCommands === "function";
 }
 
 export function createGameplayBehaviorRuntimeTarget(

@@ -1,6 +1,11 @@
 {
   "format": "ferrum2d.consumer.scene-authoring",
   "version": 1,
+  "ids": {
+    "tags": {
+      "target": 1
+    }
+  },
   "sceneComposition": {
     "initialFragment": "main",
     "prefabs": {

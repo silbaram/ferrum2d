@@ -100,6 +100,37 @@ test("resolveSceneAuthoringDocument keeps component validation opt-in", () => {
   );
 });
 
+test("resolveSceneAuthoringDocument rejects component templates by default during component validation", () => {
+  const document: SceneAuthoringDocumentSpec = {
+    ...sampleDocument(),
+    sceneComposition: {
+      ...sampleDocument().sceneComposition,
+      prefabs: {
+        player: {
+          props: {
+            behaviorRecipes: "player.weapon",
+            components: {
+              template: "player.base",
+            },
+          },
+        },
+      },
+    },
+  };
+
+  expectMessage(() =>
+    resolveSceneAuthoringDocument(document, {
+      validateComponents: true,
+    }), /props\.components\.template/,
+  );
+
+  const resolved = resolveSceneAuthoringDocument(document, {
+    allowComponentTemplates: true,
+    validateComponents: true,
+  });
+  equal(resolved.format, SCENE_AUTHORING_DOCUMENT_FORMAT);
+});
+
 test("resolveSceneAuthoringDocument keeps binding validation opt-in", () => {
   const document: SceneAuthoringDocumentSpec = {
     ...sampleDocument(),

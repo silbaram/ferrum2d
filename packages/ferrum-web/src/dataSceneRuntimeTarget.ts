@@ -84,13 +84,20 @@ export function createDataSceneRuntimeTarget(
   const path = options.path ?? "dataSceneRuntimeTarget";
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
   const textureId = options.textureId ?? ((name: string) => adapter.textureId(name));
-  if (options.activateDataScene !== false) {
+  let dataSceneActivated = false;
+
+  const activateDataScene = (): void => {
+    if (options.activateDataScene === false || dataSceneActivated) {
+      return;
+    }
     adapter.useDataScene();
-  }
+    dataSceneActivated = true;
+  };
 
   return {
     spawnSceneInstance: (instance) => {
       const request = dataSceneRuntimeSpawnRequest(instance, textureId, `${path}.instances.${instance.id}`);
+      activateDataScene();
       const handle = adapter.spawnDataSceneEntity(request);
       if (handle === undefined) {
         throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`, "failed to spawn data-scene entity");
@@ -116,15 +123,34 @@ function dataSceneRuntimeSpawnRequest(
   textureId: DataSceneRuntimeTextureIdResolver,
   path: string,
 ): DataSceneRuntimeSpawnRequest {
-  const components = resolveDataSceneInstanceComponents(instance, { path });
+  const components = resolveDataSceneInstanceComponents(instance, {
+    allowTemplate: false,
+    path,
+  });
+  rejectUnsupportedRuntimeTransform(instance, path);
   if (components.mode === "template") {
     throw sceneCompositionDiagnosticError(
       `${path}.props.components.template`,
-      "catalog template spawn is not implemented by createDataSceneRuntimeTarget yet",
+      "is not supported by createDataSceneRuntimeTarget yet",
     );
   }
 
   return inlineDataSceneRuntimeSpawnRequest(instance, components, textureId);
+}
+
+function rejectUnsupportedRuntimeTransform(instance: ResolvedSceneCompositionInstance, path: string): void {
+  if (instance.rotationRadians !== 0) {
+    throw sceneCompositionDiagnosticError(
+      `${path}.rotationRadians`,
+      "is not supported by createDataSceneRuntimeTarget yet; keep instance rotation at 0 and use collider rotation descriptors where needed",
+    );
+  }
+  if (instance.layer !== 0) {
+    throw sceneCompositionDiagnosticError(
+      `${path}.layer`,
+      "is not supported by createDataSceneRuntimeTarget yet; use props.components.layer for collision layer",
+    );
+  }
 }
 
 function inlineDataSceneRuntimeSpawnRequest(

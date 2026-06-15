@@ -33,11 +33,17 @@ Behavior recipe는 health, damage, faction, pickup, interaction, projectile acti
 dash/melee/spawn action, timer, collision reaction, movement 같은 데이터를 표현한다.
 매 frame TypeScript callback을 등록하는 API가 아니다.
 
-`createDataSceneRuntimeTarget(engine)`은 기본적으로 `engine.useDataScene()`을 호출해 빈 Data Scene
-runtime을 활성화한 뒤, 각 `ResolvedSceneCompositionInstance.props.components` inline descriptor를
-raw Wasm `spawn_data_scene_entity(...)`로 컴파일한다. asset texture id는 `engine.textureId(name)` 또는
-`options.textureId(name)`으로 해석한다. consumer는 generated Wasm `pkg/*`, `dist/*`, `src/*` 내부 경로를
-직접 import하지 않는다.
+`createDataSceneRuntimeTarget(engine)`은 기본적으로 첫 번째 유효한 spawn 직전에 `engine.useDataScene()`을
+한 번 호출해 빈 Data Scene runtime을 활성화한 뒤, 각
+`ResolvedSceneCompositionInstance.props.components` inline descriptor를 raw Wasm
+`spawn_data_scene_entity(...)`로 컴파일한다. authoring validation 실패나 target 생성만으로 기존 scene을
+비우지 않는다. asset texture id는 `engine.textureId(name)` 또는 `options.textureId(name)`으로 해석한다.
+consumer는 generated Wasm `pkg/*`, `dist/*`, `src/*` 내부 경로를 직접 import하지 않는다.
+
+default target은 `components.sprite`/`collider`/`layer` inline descriptor만 spawn한다.
+`components.template` catalog reference, instance `rotationRadians`, instance `layer`는 아직 default runtime
+spawn 범위가 아니므로 diagnostic error로 거절된다. 회전 collider는
+`components.collider.rotationRadians`를 사용한다.
 
 세부 primitive와 검증 기준은 [Runtime Extensibility](../runtime-extensibility.md)와
 [Data Scene Authoring](../data-scene-authoring.md)을 따른다.

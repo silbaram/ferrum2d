@@ -209,6 +209,7 @@ import type {
   EffectEventRuntimeOptions,
   EffectEventBufferView,
   EffectEventView,
+  FerrumEngine,
   FrameState,
   MissingEffectEventHandlerPolicy,
   HealthBehaviorRecipeSpec,
@@ -497,8 +498,12 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   const resolvedSceneCompositionInstances: ResolvedSceneCompositionInstance[] =
     publicInstantiateSceneFragment(resolvedSceneComposition, instantiateSceneCompositionOptions);
   const resolvedSceneCompositionInstance: ResolvedSceneCompositionInstance = resolvedSceneCompositionInstances[0];
-  const dataSceneComponentsOptions: ResolveDataSceneComponentsOptions = { path: "props.components" };
+  const dataSceneComponentsOptions: ResolveDataSceneComponentsOptions = {
+    allowTemplate: true,
+    path: "props.components",
+  };
   const dataSceneInstanceComponentsOptions: ResolveDataSceneInstanceComponentsOptions = {
+    allowTemplate: false,
     path: "scene.instances.0",
   };
   const publicResolveDataSceneComponentsSpec: PublicApi["resolveDataSceneComponentsSpec"] =
@@ -558,6 +563,7 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     },
   };
   const sceneAuthoringOptions: ResolveSceneAuthoringDocumentOptions = {
+    allowComponentTemplates: false,
     path: "sceneAuthoring",
     validateBindings: true,
     validateComponents: true,
@@ -1250,6 +1256,14 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
       resolvedBehaviorRecipeDocument,
       applySceneBehaviorRecipesOptions,
     );
+  const publicApplySceneBehaviorRecipesWithFerrumEngine: (
+    engine: FerrumEngine,
+    target: SceneBehaviorRuntimeTarget,
+    composition: ResolvedSceneCompositionSpec,
+    recipes: ResolvedBehaviorRecipeDocument,
+    options?: ApplySceneBehaviorRecipesOptions,
+  ) => SceneBehaviorApplyResult = publicApplySceneBehaviorRecipes;
+  equal(typeof publicApplySceneBehaviorRecipesWithFerrumEngine, "function");
   const publicApplyBehaviorStateMachineStateCommands:
     PublicApi["applyBehaviorStateMachineStateCommands"] =
       applyBehaviorStateMachineStateCommands;

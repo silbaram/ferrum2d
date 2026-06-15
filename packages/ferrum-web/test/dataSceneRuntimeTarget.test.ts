@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   applySceneBehaviorRecipes,
   createDataSceneRuntimeTarget,
+  resolveSceneAuthoringDocument,
 } from "../src/authoring.js";
 import { createEngine } from "../src/core.js";
 import {
@@ -17,6 +18,7 @@ test("createDataSceneRuntimeTarget spawns resolved inline components through the
   const adapter = new MockDataSceneRuntimeAdapter();
   const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
   const target = createDataSceneRuntimeTarget(engine);
+  equal(adapter.useDataSceneCalls, 0);
   const result = applySceneBehaviorRecipes(
     {} as Parameters<typeof applySceneBehaviorRecipes>[0],
     target,
@@ -146,24 +148,75 @@ test("createDataSceneRuntimeTarget spawns through createEngine's Wasm adapter", 
   });
 });
 
-test("createDataSceneRuntimeTarget compiles rotated AABB and convex polygon colliders", () => {
+test("createDataSceneRuntimeTarget spawns the minimum data scene authoring sample", async () => {
+  await withNodeWasmFileFetch(async () => {
+    const document = await readJsonFileUrl(
+      new URL("../../../../docs/engine/samples/data-scene-minimum.scene-authoring.json", import.meta.url),
+    );
+    const resolved = resolveSceneAuthoringDocument(document, {
+      path: "dataSceneAuthoring",
+      validateBindings: true,
+      validateComponents: true,
+      missingBehavior: "error",
+    });
+    const engine = await createEngine(
+      undefined,
+      undefined,
+      undefined,
+      () => ({ width: 320, height: 180 }),
+    );
+    try {
+      const target = createDataSceneRuntimeTarget(engine, {
+        textureId: () => 3,
+      });
+      const result = applySceneBehaviorRecipes(
+        engine,
+        target,
+        resolved.sceneComposition,
+        resolved.behaviorRecipes,
+        { ids: resolved.ids, path: "dataSceneAuthoring", missingBehavior: "error" },
+      );
+
+      equal(result.spawnResults.length, 2);
+      equal(engine.entityCount(), 2);
+      equal(result.behaviorApplyResult.results.length, result.plan.commands.length);
+      ok(result.behaviorApplyResult.results.every(Boolean));
+      for (const handle of result.spawnResults) {
+        ok(Number.isSafeInteger(handle.entityId));
+        ok(handle.entityId < 0xffffffff);
+        ok(Number.isSafeInteger(handle.entityGeneration));
+      }
+    } finally {
+      engine.destroy();
+    }
+  });
+});
+
+test("createDataSceneRuntimeTarget compiles collider descriptor rotations", () => {
   const adapter = new MockDataSceneRuntimeAdapter();
   const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
   const target = createDataSceneRuntimeTarget(engine, { activateDataScene: false });
 
   target.spawnSceneInstance({
-    id: "rotated",
-    sourceId: "rotated",
+    id: "oriented-box",
+    sourceId: "oriented-box",
     prefab: "block",
     x: 0,
     y: 0,
-    rotationRadians: Math.PI / 2,
+    rotationRadians: 0,
     scale: 2,
     layer: 0,
     props: {
       components: {
         sprite: { texture: 1, width: 10, height: 10 },
-        collider: { type: "aabb", halfWidth: 3, halfHeight: 4, offsetX: 1, offsetY: 2 },
+        collider: {
+          type: "orientedBox",
+          halfWidth: 3,
+          halfHeight: 4,
+          offsetX: 1,
+          offsetY: 2,
+          rotationRadians: Math.PI / 2,
+        },
         layer: "wall",
       },
     },
@@ -174,7 +227,7 @@ test("createDataSceneRuntimeTarget compiles rotated AABB and convex polygon coll
     prefab: "block",
     x: 0,
     y: 0,
-    rotationRadians: 0.5,
+    rotationRadians: 0,
     scale: 2,
     layer: 0,
     props: {
@@ -194,10 +247,60 @@ test("createDataSceneRuntimeTarget compiles rotated AABB and convex polygon coll
   equal(adapter.requests[0].colliderHalfWidth, 6);
   equal(adapter.requests[0].colliderHalfHeight, 8);
   equal(adapter.requests[0].colliderRotationRadians, Math.PI / 2);
-  deepEqual([round(adapter.requests[0].colliderOffsetX), round(adapter.requests[0].colliderOffsetY)], [-4, 2]);
+  deepEqual([round(adapter.requests[0].colliderOffsetX), round(adapter.requests[0].colliderOffsetY)], [2, 4]);
   equal(adapter.requests[1].colliderType, 5);
-  equal(adapter.requests[1].colliderRotationRadians, 0.75);
+  equal(adapter.requests[1].colliderRotationRadians, 0.25);
   deepEqual(Array.from(adapter.requests[1].colliderVertices), [0, 0, 4, 0, 0, 2]);
+});
+
+test("createDataSceneRuntimeTarget rejects unsupported SceneComposition transform fields", () => {
+  const adapter = new MockDataSceneRuntimeAdapter();
+  const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
+  const target = createDataSceneRuntimeTarget(engine, { activateDataScene: false });
+
+  expectThrows(
+    () => target.spawnSceneInstance({
+      id: "rotated",
+      sourceId: "rotated",
+      prefab: "block",
+      x: 0,
+      y: 0,
+      rotationRadians: 0.25,
+      scale: 1,
+      layer: 0,
+      props: {
+        components: {
+          sprite: { texture: 1, width: 10, height: 10 },
+          collider: "none",
+          layer: "wall",
+        },
+      },
+    }),
+    /dataSceneRuntimeTarget\.instances\.rotated\.rotationRadians/,
+  );
+
+  expectThrows(
+    () => target.spawnSceneInstance({
+      id: "layered",
+      sourceId: "layered",
+      prefab: "block",
+      x: 0,
+      y: 0,
+      rotationRadians: 0,
+      scale: 1,
+      layer: 2,
+      props: {
+        components: {
+          sprite: { texture: 1, width: 10, height: 10 },
+          collider: "none",
+          layer: "wall",
+        },
+      },
+    }),
+    /dataSceneRuntimeTarget\.instances\.layered\.layer/,
+  );
+
+  equal(adapter.requests.length, 0);
 });
 
 test("createDataSceneRuntimeTarget reports missing adapters, template mode, and failed spawns", () => {
@@ -225,6 +328,7 @@ test("createDataSceneRuntimeTarget reports missing adapters, template mode, and 
     }),
     /dataSceneRuntimeTarget\.instances\.templated\.props\.components\.template/,
   );
+  equal(templateAdapter.useDataSceneCalls, 0);
 
   const failingAdapter = new MockDataSceneRuntimeAdapter();
   failingAdapter.failNext = true;
@@ -398,6 +502,10 @@ async function readNodeFileUrl(fileUrl: URL): Promise<Uint8Array> {
     importNodeModule("node:url") as Promise<NodeUrlModule>,
   ]);
   return fsPromisesModule.readFile(urlModule.fileURLToPath(fileUrl));
+}
+
+async function readJsonFileUrl(fileUrl: URL): Promise<unknown> {
+  return JSON.parse(new TextDecoder().decode(await readNodeFileUrl(fileUrl)));
 }
 
 function fileUrlFromFetchInput(input: Parameters<typeof fetch>[0]): URL | undefined {

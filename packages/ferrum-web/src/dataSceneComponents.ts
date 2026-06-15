@@ -191,10 +191,12 @@ export type ResolvedDataSceneComponents =
 
 export interface ResolveDataSceneComponentsOptions {
   path?: string;
+  allowTemplate?: boolean;
 }
 
 export interface ResolveDataSceneInstanceComponentsOptions {
   path?: string;
+  allowTemplate?: boolean;
 }
 
 export function resolveDataSceneComponentsSpec(
@@ -207,6 +209,12 @@ export function resolveDataSceneComponentsSpec(
 
   if (template !== undefined) {
     rejectTemplateMixedWithInlineFields(components, path);
+    if (options.allowTemplate === false) {
+      throw sceneCompositionDiagnosticError(
+        `${path}.template`,
+        "is not supported here; provide inline sprite, collider, and layer components",
+      );
+    }
     return {
       mode: "template",
       template,
@@ -227,6 +235,7 @@ export function resolveDataSceneInstanceComponents(
 ): ResolvedDataSceneComponents {
   const path = options.path ?? `sceneComposition.instances.${instance.id}`;
   return resolveDataSceneComponentsSpec(instance.props[DATA_SCENE_COMPONENTS_PROP], {
+    allowTemplate: options.allowTemplate,
     path: `${path}.props.${DATA_SCENE_COMPONENTS_PROP}`,
   });
 }

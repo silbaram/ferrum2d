@@ -41,13 +41,20 @@ export interface ResolvedSceneAuthoringDocument {
 export interface ResolveSceneAuthoringDocumentOptions extends SceneBehaviorBindingOptions {
   validateBindings?: boolean;
   validateComponents?: boolean;
+  allowComponentTemplates?: boolean;
 }
 
 export function resolveSceneAuthoringDocument(
   document: unknown,
   options: ResolveSceneAuthoringDocumentOptions = {},
 ): ResolvedSceneAuthoringDocument {
-  const { validateBindings = false, validateComponents = false, path = "sceneAuthoring", ...bindingOptions } = options;
+  const {
+    validateBindings = false,
+    validateComponents = false,
+    allowComponentTemplates = false,
+    path = "sceneAuthoring",
+    ...bindingOptions
+  } = options;
   if (!isRecord(document)) {
     throw gameplayAuthoringDiagnosticError(path, "must be an object");
   }
@@ -84,6 +91,7 @@ export function resolveSceneAuthoringDocument(
   if (validateComponents) {
     instantiateSceneFragment(sceneComposition).forEach((instance, index) => {
       resolveDataSceneInstanceComponents(instance, {
+        allowTemplate: allowComponentTemplates,
         path: `${path}.sceneComposition.instances.${index}`,
       });
     });

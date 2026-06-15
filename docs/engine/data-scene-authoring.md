@@ -43,12 +43,15 @@ Data Scene authoring 문서는 다음 envelope를 사용한다.
 | `template` | 아니오 | catalog template reference. 있으면 `sprite`/`collider`/`layer`와 함께 쓰지 않는다. |
 
 `components.template`은 catalog reference mode이고, `components.sprite`/`collider`/`layer`는 inline descriptor mode다. 두 mode를 섞으면 resolver가 diagnostic error를 낸다.
+기본 `createDataSceneRuntimeTarget(...)` v1은 inline descriptor mode만 spawn한다. `components.template`은 catalog workflow용으로 resolver가 보존하지만, runtime spawn 검증(`resolveSceneAuthoringDocument(..., { validateComponents: true })` 기본값 포함)에서는 `allowComponentTemplates: true`를 명시하지 않는 한 거절된다.
+
+`SceneComposition`의 instance `x`/`y`/`scale`은 default Data Scene runtime target이 반영한다. instance `rotationRadians`와 `layer`는 아직 render command/World transform 계약에 연결되지 않았으므로 `createDataSceneRuntimeTarget(...)`에서는 `0`만 허용한다. 회전된 충돌체가 필요하면 instance transform이 아니라 `components.collider.rotationRadians`를 사용한다. `components.layer`는 collision layer이며 render/sort layer가 아니다.
 
 ## Runtime Spawn Hook
 
 Rust/Wasm에는 낮은 빈도 scene load/apply 전용 raw hook인 `Engine::spawn_data_scene_entity(...)`가 있다. 이 hook은 Data Scene mode에서만 inline sprite, optional horizontal animation, collider shape, layer를 `World` entity로 설치하고, 성공 후 `data_scene_entity_id()`/`data_scene_entity_generation()`으로 최신 handle을 노출한다.
 
-package-facing default `spawnSceneInstance` target은 `createDataSceneRuntimeTarget(engine, options?)`가 제공한다. consumer 코드는 generated Wasm `pkg/*`나 `@ferrum2d/ferrum-web/src/*` 내부 경로를 직접 import하지 않는다.
+package-facing default `spawnSceneInstance` target은 `createDataSceneRuntimeTarget(engine, options?)`가 제공한다. 기본값은 첫 번째 유효한 spawn 직전에 한 번 `engine.useDataScene()`을 호출한다. authoring validation 실패나 target 생성만으로 기존 scene을 비우지 않으며, 이 자동 활성화가 싫으면 `activateDataScene: false`를 넘긴다. consumer 코드는 generated Wasm `pkg/*`나 `@ferrum2d/ferrum-web/src/*` 내부 경로를 직접 import하지 않는다.
 
 ## 샘플
 
@@ -58,7 +61,7 @@ package-facing default `spawnSceneInstance` target은 `createDataSceneRuntimeTar
 pnpm validate:data-scene-authoring
 ```
 
-이 명령은 ferrum-web public package를 빌드한 뒤 샘플을 resolver로 검증한다. 검증 범위는 envelope, fragment/behavior binding, `props.components` schema, starter scene 전용 runtime binding 금지를 포함한다.
+이 명령은 ferrum-web public package를 빌드한 뒤 샘플을 resolver로 검증한다. 검증 범위는 envelope, fragment/behavior binding, `props.components` schema, starter scene 전용 runtime binding 금지를 포함한다. 샘플은 ferrum-web test suite에서도 `createEngine(...)`, `createDataSceneRuntimeTarget(...)`, `applySceneBehaviorRecipes(...)`를 통해 실제 Data Scene entity spawn smoke로 검증한다.
 
 ## create-game 연결
 
