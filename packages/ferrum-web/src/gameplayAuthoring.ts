@@ -47,6 +47,7 @@ export const GAMEPLAY_BEHAVIOR_BINDING_PROP = "behaviorRecipes" as const;
 export type GameplayBehaviorBindingSpec = string | readonly string[];
 export type MissingSceneBehaviorBinding = "ignore" | "error";
 export type SceneInstanceAuthoringKind = "worldObject" | "actor";
+export type SceneInstanceEntityExists = (handle: GameplayEntityHandle) => boolean;
 
 export interface ClassifySceneInstanceOptions {
   behaviorProp?: string;
@@ -57,6 +58,244 @@ export interface SceneInstanceAuthoringClassification {
   kind: SceneInstanceAuthoringKind;
   hasDataSceneComponents: boolean;
   behaviorProfiles: readonly string[];
+}
+
+export interface SceneInstanceHandleRegistryOptions {
+  entityExists?: SceneInstanceEntityExists;
+}
+
+export interface SceneInstanceHandleLookupOptions {
+  validateLive?: boolean;
+  path?: string;
+}
+
+export interface SceneInstanceHandleRegistrySyncOptions {
+  removeMissing?: boolean;
+  pruneStale?: boolean;
+  path?: string;
+}
+
+export interface SceneInstanceHandleRegistryEntry {
+  instanceId: string;
+  handle: GameplayEntityHandle;
+}
+
+export interface SceneInstanceHandleRegistrySyncResult {
+  entries: readonly SceneInstanceHandleRegistryEntry[];
+  removedInstanceIds: readonly string[];
+  staleInstanceIds: readonly string[];
+}
+
+export class SceneInstanceHandleRegistry {
+  private readonly handlesByInstanceId = new Map<string, GameplayEntityHandle>();
+  private readonly instanceIdByHandleKey = new Map<string, string>();
+  private readonly entityExists?: SceneInstanceEntityExists;
+
+  constructor(options: SceneInstanceHandleRegistryOptions = {}) {
+    this.entityExists = options.entityExists;
+  }
+
+  get size(): number {
+    return this.handlesByInstanceId.size;
+  }
+
+  set(
+    instanceId: string,
+    handle: GameplayEntityHandle,
+    options: { path?: string } = {},
+  ): SceneInstanceHandleRegistryEntry {
+    const path = options.path ?? `sceneInstanceHandles.${instanceId}`;
+    const key = requiredBehaviorProp(instanceId, `${path}.instanceId`);
+    const nextHandle = gameplayEntityHandle(handle, `${path}.handle`);
+    const nextHandleKey = handleKey(nextHandle);
+    const previousHandle = this.handlesByInstanceId.get(key);
+    if (previousHandle !== undefined) {
+      this.instanceIdByHandleKey.delete(handleKey(previousHandle));
+    }
+    const previousInstanceId = this.instanceIdByHandleKey.get(nextHandleKey);
+    if (previousInstanceId !== undefined && previousInstanceId !== key) {
+      this.handlesByInstanceId.delete(previousInstanceId);
+    }
+    const storedHandle = copyGameplayEntityHandle(nextHandle);
+    this.handlesByInstanceId.set(key, storedHandle);
+    this.instanceIdByHandleKey.set(nextHandleKey, key);
+    return {
+      instanceId: key,
+      handle: copyGameplayEntityHandle(storedHandle),
+    };
+  }
+
+  get(instanceId: string, options: SceneInstanceHandleLookupOptions = {}): GameplayEntityHandle | undefined {
+    const key = requiredBehaviorProp(instanceId, `${options.path ?? "sceneInstanceHandles"}.instanceId`);
+    const handle = this.handlesByInstanceId.get(key);
+    if (handle === undefined) {
+      return undefined;
+    }
+    if ((options.validateLive ?? false) && !this.isLive(handle)) {
+      this.delete(key);
+      return undefined;
+    }
+    return copyGameplayEntityHandle(handle);
+  }
+
+  require(instanceId: string, options: SceneInstanceHandleLookupOptions = {}): GameplayEntityHandle {
+    const handle = this.get(instanceId, options);
+    if (handle === undefined) {
+      throw gameplayAuthoringDiagnosticError(
+        options.path ?? `sceneInstanceHandles.${instanceId}`,
+        `references unknown or stale scene instance '${instanceId}'`,
+      );
+    }
+    return handle;
+  }
+
+  has(instanceId: string, options: SceneInstanceHandleLookupOptions = {}): boolean {
+    return this.get(instanceId, options) !== undefined;
+  }
+
+  instanceIdForHandle(
+    handle: GameplayEntityHandle,
+    options: SceneInstanceHandleLookupOptions = {},
+  ): string | undefined {
+    const path = options.path ?? "sceneInstanceHandles.handle";
+    const checkedHandle = gameplayEntityHandle(handle, path);
+    const instanceId = this.instanceIdByHandleKey.get(handleKey(checkedHandle));
+    if (instanceId === undefined) {
+      return undefined;
+    }
+    if ((options.validateLive ?? false) && !this.isLive(checkedHandle)) {
+      this.delete(instanceId);
+      return undefined;
+    }
+    return instanceId;
+  }
+
+  delete(instanceId: string): boolean {
+    const handle = this.handlesByInstanceId.get(instanceId);
+    if (handle === undefined) {
+      return false;
+    }
+    this.handlesByInstanceId.delete(instanceId);
+    this.instanceIdByHandleKey.delete(handleKey(handle));
+    return true;
+  }
+
+  clear(): void {
+    this.handlesByInstanceId.clear();
+    this.instanceIdByHandleKey.clear();
+  }
+
+  entries(options: SceneInstanceHandleLookupOptions = {}): readonly SceneInstanceHandleRegistryEntry[] {
+    if (options.validateLive ?? false) {
+      this.pruneStale(options);
+    }
+    return Array.from(this.handlesByInstanceId.entries(), ([instanceId, handle]) => ({
+      instanceId,
+      handle: copyGameplayEntityHandle(handle),
+    }));
+  }
+
+  sync(
+    instances: readonly ResolvedSceneCompositionInstance[],
+    handles: readonly GameplayEntityHandle[],
+    options: SceneInstanceHandleRegistrySyncOptions = {},
+  ): SceneInstanceHandleRegistrySyncResult {
+    const path = options.path ?? "sceneInstanceHandles";
+    if (instances.length !== handles.length) {
+      throw gameplayAuthoringDiagnosticError(`${path}.handles`, "must match scene instance count");
+    }
+    const seen = new Set<string>();
+    const seenHandleIndexes = new Map<string, number>();
+    const nextEntries = instances.map((instance, index) => {
+      const instanceId = requiredBehaviorProp(instance.id, `${path}.instances.${index}.id`);
+      if (seen.has(instanceId)) {
+        throw gameplayAuthoringDiagnosticError(`${path}.instances.${index}.id`, "must be unique");
+      }
+      seen.add(instanceId);
+      const handle = gameplayEntityHandle(handles[index]!, `${path}.instances.${index}.handle`);
+      const nextHandleKey = handleKey(handle);
+      const previousHandleIndex = seenHandleIndexes.get(nextHandleKey);
+      if (previousHandleIndex !== undefined) {
+        throw gameplayAuthoringDiagnosticError(
+          `${path}.instances.${index}.handle`,
+          `must be unique; duplicates instances.${previousHandleIndex}.handle`,
+        );
+      }
+      seenHandleIndexes.set(nextHandleKey, index);
+      return {
+        instanceId,
+        handle: copyGameplayEntityHandle(handle),
+      };
+    });
+    const entries = nextEntries.map((entry, index) =>
+      this.set(entry.instanceId, entry.handle, {
+        path: `${path}.instances.${index}`,
+      }),
+    );
+    const removedInstanceIds: string[] = [];
+    if (options.removeMissing ?? true) {
+      for (const instanceId of Array.from(this.handlesByInstanceId.keys())) {
+        if (!seen.has(instanceId) && this.delete(instanceId)) {
+          removedInstanceIds.push(instanceId);
+        }
+      }
+    }
+    const staleInstanceIds = (options.pruneStale ?? true)
+      ? this.pruneStale({ path: `${path}.stale` })
+      : [];
+    const staleInstanceIdSet = new Set(staleInstanceIds);
+    const syncedEntries = entries.filter((entry) =>
+      !staleInstanceIdSet.has(entry.instanceId) && this.handlesByInstanceId.has(entry.instanceId),
+    );
+    this.reorderSyncedEntries(syncedEntries, seen);
+    return {
+      entries: syncedEntries,
+      removedInstanceIds,
+      staleInstanceIds,
+    };
+  }
+
+  pruneStale(_options: { path?: string } = {}): readonly string[] {
+    if (this.entityExists === undefined) {
+      return [];
+    }
+    const staleInstanceIds: string[] = [];
+    for (const [instanceId, handle] of Array.from(this.handlesByInstanceId.entries())) {
+      if (!this.isLive(handle)) {
+        this.delete(instanceId);
+        staleInstanceIds.push(instanceId);
+      }
+    }
+    return staleInstanceIds;
+  }
+
+  private isLive(handle: GameplayEntityHandle): boolean {
+    return this.entityExists?.(copyGameplayEntityHandle(handle)) ?? true;
+  }
+
+  private reorderSyncedEntries(
+    entries: readonly SceneInstanceHandleRegistryEntry[],
+    syncedInstanceIds: ReadonlySet<string>,
+  ): void {
+    const remainingEntries = Array.from(this.handlesByInstanceId.entries())
+      .filter(([instanceId]) => !syncedInstanceIds.has(instanceId))
+      .map(([instanceId, handle]) => ({
+        instanceId,
+        handle: copyGameplayEntityHandle(handle),
+      }));
+    this.clear();
+    for (const entry of [...entries, ...remainingEntries]) {
+      const handle = copyGameplayEntityHandle(entry.handle);
+      this.handlesByInstanceId.set(entry.instanceId, handle);
+      this.instanceIdByHandleKey.set(handleKey(handle), entry.instanceId);
+    }
+  }
+}
+
+export function createSceneInstanceHandleRegistry(
+  options: SceneInstanceHandleRegistryOptions = {},
+): SceneInstanceHandleRegistry {
+  return new SceneInstanceHandleRegistry(options);
 }
 
 const GAMEPLAY_PICKUP_ITEM_SCORE = 1;
@@ -462,6 +701,7 @@ export interface GameplayBehaviorRuntimeEngine {
 export interface SceneBehaviorBindingOptions extends InstantiateSceneFragmentOptions, BehaviorRecipeCommandOptions {
   behaviorProp?: string;
   missingBehavior?: MissingSceneBehaviorBinding;
+  requireExplicitInstanceIds?: boolean;
 }
 
 export interface BoundBehaviorRecipeCommand {
@@ -489,6 +729,7 @@ export interface ApplyGameplayBehaviorCommandsOptions {
 
 export interface ApplySceneBehaviorRecipesOptions extends SceneBehaviorBindingOptions {
   ids?: GameplayBehaviorRuntimeIds;
+  instanceHandleRegistry?: SceneInstanceHandleRegistry;
 }
 
 interface GameplayBehaviorCommandFacade {
@@ -505,6 +746,7 @@ export interface SceneBehaviorApplyResult {
   plan: SceneBehaviorBindingPlan;
   entityHandles: Readonly<Record<string, GameplayEntityHandle>>;
   spawnResults: readonly GameplayEntityHandle[];
+  instanceHandleSync?: SceneInstanceHandleRegistrySyncResult;
   behaviorApplyResult: BehaviorRecipeApplyResult;
 }
 
@@ -535,6 +777,14 @@ export function bindSceneBehaviorRecipes(
     ? recipes
     : resolveBehaviorRecipeDocument(recipes, { path: `${path}.behaviorRecipes` });
   const fragment = options.fragment ?? resolvedComposition.initialFragment;
+  if (options.requireExplicitInstanceIds === true) {
+    validateExplicitSceneInstanceIds(
+      resolvedComposition,
+      fragment,
+      `${path}.composition`,
+      options.maxDepth ?? 16,
+    );
+  }
   const instances = instantiateSceneFragment(resolvedComposition, { ...options, fragment, path: `${path}.composition` });
   const bindings: BoundBehaviorRecipeCommand[] = [];
 
@@ -637,6 +887,9 @@ export function applySceneBehaviorRecipes(
     entityHandles[instance.id] = handle;
     return handle;
   });
+  const instanceHandleSync = options.instanceHandleRegistry?.sync(plan.instances, spawnResults, {
+    path: `${path}.instanceHandleRegistry`,
+  });
   const behaviorApplyResult = applySceneBehaviorCommands(engine, plan.commands, entityHandles, {
     path,
     ids: options.ids,
@@ -646,6 +899,7 @@ export function applySceneBehaviorRecipes(
     plan,
     entityHandles,
     spawnResults,
+    ...(instanceHandleSync === undefined ? {} : { instanceHandleSync }),
     behaviorApplyResult,
   };
 }
@@ -2035,6 +2289,57 @@ function gameplayEntityHandle(value: unknown, path: string): GameplayEntityHandl
   const entityId = nonNegativeInteger(value.entityId, `${path}.entityId`);
   const entityGeneration = nonNegativeInteger(value.entityGeneration, `${path}.entityGeneration`);
   return { entityId, entityGeneration };
+}
+
+function copyGameplayEntityHandle(handle: GameplayEntityHandle): GameplayEntityHandle {
+  return {
+    entityId: handle.entityId,
+    entityGeneration: handle.entityGeneration,
+  };
+}
+
+function handleKey(handle: GameplayEntityHandle): string {
+  return `${handle.entityId}:${handle.entityGeneration}`;
+}
+
+function validateExplicitSceneInstanceIds(
+  composition: ResolvedSceneCompositionSpec,
+  fragmentId: string,
+  path: string,
+  maxDepth: number,
+  stack: readonly string[] = [],
+): void {
+  if (stack.length >= maxDepth) {
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.fragments.${fragmentId}`,
+      "fragment include depth exceeded maxDepth",
+    );
+  }
+  if (stack.includes(fragmentId)) {
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.fragments.${fragmentId}`,
+      "fragment includes must not contain cycles",
+    );
+  }
+  const fragment = composition.fragments[fragmentId];
+  if (fragment === undefined) {
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.fragments.${fragmentId}`,
+      `references unknown fragment '${fragmentId}'`,
+    );
+  }
+  fragment.instances.forEach((instance, index) => {
+    if (instance.id === undefined) {
+      throw gameplayAuthoringDiagnosticError(
+        `${path}.fragments.${fragmentId}.instances.${index}.id`,
+        "must be explicit for scene instance handle registry",
+      );
+    }
+  });
+  const nextStack = [...stack, fragmentId];
+  for (const include of fragment.include) {
+    validateExplicitSceneInstanceIds(composition, include.fragment, path, maxDepth, nextStack);
+  }
 }
 
 function assertSupportedHealthCommand(

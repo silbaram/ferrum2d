@@ -9,6 +9,7 @@ import {
   bindSceneBehaviorRecipes,
   classifySceneInstance,
   createGameplayBehaviorRuntimeTarget,
+  createSceneInstanceHandleRegistry,
   dryRunSceneBehaviorRecipes,
   registerGameplayPrefabs,
   resolveGameplayBehaviorRuntimeIds,
@@ -739,6 +740,128 @@ test("applySceneBehaviorRecipes spawns scene instances and applies bound behavio
     ["set_gameplay_damage_reaction", 12, 2, 2, 1],
     ["set_gameplay_score_reward", 12, 2, 5],
   ]);
+});
+
+test("SceneInstanceHandleRegistry tracks instance ids, reverse lookups, and stale handles", () => {
+  const liveHandles = new Set(["11:1", "13:3"]);
+  const registry = createSceneInstanceHandleRegistry({
+    entityExists: (handle) => liveHandles.has(`${handle.entityId}:${handle.entityGeneration}`),
+  });
+
+  registry.set("runner", { entityId: 11, entityGeneration: 1 });
+  registry.set("elite", { entityId: 12, entityGeneration: 2 });
+  registry.set("coin", { entityId: 13, entityGeneration: 3 });
+
+  equal(registry.size, 3);
+  deepEqual(registry.get("runner"), { entityId: 11, entityGeneration: 1 });
+  equal(registry.instanceIdForHandle({ entityId: 13, entityGeneration: 3 }), "coin");
+  deepEqual(registry.pruneStale(), ["elite"]);
+  equal(registry.get("elite"), undefined);
+  deepEqual(registry.entries(), [
+    { instanceId: "runner", handle: { entityId: 11, entityGeneration: 1 } },
+    { instanceId: "coin", handle: { entityId: 13, entityGeneration: 3 } },
+  ]);
+});
+
+test("applySceneBehaviorRecipes syncs instance handle registry on reapply and reorder", () => {
+  const registry = createSceneInstanceHandleRegistry();
+  const engine = new MockGameplayEngine();
+  const firstSpawn = new Map([
+    ["runner", { entityId: 11, entityGeneration: 1 }],
+    ["elite", { entityId: 12, entityGeneration: 2 }],
+    ["coin", { entityId: 13, entityGeneration: 3 }],
+  ]);
+  const first = applySceneBehaviorRecipes(engine, {
+    spawnSceneInstance: (instance) => firstSpawn.get(instance.id)!,
+  }, sampleComposition(), sampleRecipes(), {
+    instanceHandleRegistry: registry,
+    kinds: ["health"],
+    requireExplicitInstanceIds: true,
+  });
+
+  deepEqual(first.instanceHandleSync?.entries.map((entry) => entry.instanceId), ["runner", "elite", "coin"]);
+  equal(registry.instanceIdForHandle({ entityId: 12, entityGeneration: 2 }), "elite");
+  deepEqual(registry.get("runner"), { entityId: 11, entityGeneration: 1 });
+
+  const reappliedComposition: SceneCompositionSpec = {
+    initialFragment: "room",
+    prefabs: sampleComposition().prefabs,
+    fragments: {
+      room: {
+        instances: [
+          { id: "coin", prefab: "pickup" },
+          { id: "runner", prefab: "enemy", x: 32 },
+        ],
+      },
+    },
+  };
+  const secondSpawn = new Map([
+    ["coin", { entityId: 21, entityGeneration: 1 }],
+    ["runner", { entityId: 22, entityGeneration: 1 }],
+  ]);
+  const second = applySceneBehaviorRecipes(engine, {
+    spawnSceneInstance: (instance) => secondSpawn.get(instance.id)!,
+  }, reappliedComposition, sampleRecipes(), {
+    instanceHandleRegistry: registry,
+    kinds: ["health"],
+    requireExplicitInstanceIds: true,
+  });
+
+  deepEqual(second.instanceHandleSync?.entries.map((entry) => `${entry.instanceId}:${entry.handle.entityId}`), [
+    "coin:21",
+    "runner:22",
+  ]);
+  deepEqual(second.instanceHandleSync?.removedInstanceIds, ["elite"]);
+  deepEqual(registry.entries().map((entry) => `${entry.instanceId}:${entry.handle.entityId}`), [
+    "coin:21",
+    "runner:22",
+  ]);
+  equal(registry.instanceIdForHandle({ entityId: 12, entityGeneration: 2 }), undefined);
+});
+
+test("applySceneBehaviorRecipes rejects duplicate instance handles before registry mutation", () => {
+  const registry = createSceneInstanceHandleRegistry();
+  registry.set("preexisting", { entityId: 99, entityGeneration: 9 });
+  const beforeEntries = registry.entries();
+  const engine = new MockGameplayEngine();
+
+  expectDiagnostic(
+    () => applySceneBehaviorRecipes(engine, {
+      spawnSceneInstance: (instance) =>
+        instance.id === "coin"
+          ? { entityId: 13, entityGeneration: 3 }
+          : { entityId: 11, entityGeneration: 1 },
+    }, sampleComposition(), sampleRecipes(), {
+      instanceHandleRegistry: registry,
+      kinds: ["health"],
+      requireExplicitInstanceIds: true,
+    }),
+    "gameplayAuthoring.instanceHandleRegistry.instances.1.handle",
+  );
+
+  deepEqual(registry.entries(), beforeEntries);
+  deepEqual(engine.calls, []);
+});
+
+test("bindSceneBehaviorRecipes can require explicit instance ids for handle registries", () => {
+  expectDiagnostic(
+    () => bindSceneBehaviorRecipes({
+      initialFragment: "room",
+      prefabs: {
+        enemy: {
+          props: { behaviorRecipes: "enemy.runner" },
+        },
+      },
+      fragments: {
+        room: {
+          instances: [{ prefab: "enemy" }],
+        },
+      },
+    }, sampleRecipes(), {
+      requireExplicitInstanceIds: true,
+    }),
+    "gameplayAuthoring.composition.fragments.room.instances.0.id",
+  );
 });
 
 test("applySceneBehaviorRecipes validates spawn target handles", () => {

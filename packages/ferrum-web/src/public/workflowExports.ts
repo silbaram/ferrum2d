@@ -49,6 +49,7 @@ export {
   applySceneBehaviorRecipes,
   bindSceneBehaviorRecipes,
   classifySceneInstance,
+  createSceneInstanceHandleRegistry,
   createGameplayBehaviorRuntimeTarget,
   dryRunSceneBehaviorRecipes,
   registerGameplayPrefabs,
@@ -349,8 +350,15 @@ export type {
   SceneBehaviorBindingOptions,
   SceneBehaviorBindingPlan,
   SceneBehaviorRuntimeTarget,
+  SceneInstanceEntityExists,
   SceneInstanceAuthoringClassification,
   SceneInstanceAuthoringKind,
+  SceneInstanceHandleLookupOptions,
+  SceneInstanceHandleRegistry,
+  SceneInstanceHandleRegistryEntry,
+  SceneInstanceHandleRegistryOptions,
+  SceneInstanceHandleRegistrySyncOptions,
+  SceneInstanceHandleRegistrySyncResult,
 } from "../gameplayAuthoring";
 export type {
   GameplayActionDiagnosticCode,

@@ -18,6 +18,7 @@ import {
   bindSceneBehaviorRecipes,
   classifySceneInstance,
   createDataSceneRuntimeTarget,
+  createSceneInstanceHandleRegistry,
   BYTES_PER_EFFECT_EVENT,
   compareBehaviorStateMachineReplay,
   compareGameplayReplayRuns,
@@ -356,8 +357,15 @@ import type {
   SceneBehaviorBindingPlan,
   SceneBehaviorApplyResult,
   SceneBehaviorRuntimeTarget,
+  SceneInstanceEntityExists,
   SceneInstanceAuthoringClassification,
   SceneInstanceAuthoringKind,
+  SceneInstanceHandleLookupOptions,
+  SceneInstanceHandleRegistry,
+  SceneInstanceHandleRegistryEntry,
+  SceneInstanceHandleRegistryOptions,
+  SceneInstanceHandleRegistrySyncOptions,
+  SceneInstanceHandleRegistrySyncResult,
   SceneCompositionApplyResult,
   SceneCompositionFragmentIncludeSpec,
   SceneCompositionFragmentInstanceSpec,
@@ -1159,6 +1167,8 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   const publicGameplayBehaviorBindingProp: typeof GAMEPLAY_BEHAVIOR_BINDING_PROP = GAMEPLAY_BEHAVIOR_BINDING_PROP;
   const publicBindSceneBehaviorRecipes: PublicApi["bindSceneBehaviorRecipes"] = bindSceneBehaviorRecipes;
   const publicClassifySceneInstance: PublicApi["classifySceneInstance"] = classifySceneInstance;
+  const publicCreateSceneInstanceHandleRegistry: PublicApi["createSceneInstanceHandleRegistry"] =
+    createSceneInstanceHandleRegistry;
   const publicDryRunSceneBehaviorRecipes: PublicApi["dryRunSceneBehaviorRecipes"] = dryRunSceneBehaviorRecipes;
   const publicApplyGameplayBehaviorCommands: PublicApi["applyGameplayBehaviorCommands"] = applyGameplayBehaviorCommands;
   const publicApplyFactionRelationTable: PublicApi["applyFactionRelationTable"] = applyFactionRelationTable;
@@ -1182,6 +1192,31 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     : 0;
   const gameplayEntityHandle: GameplayEntityHandle = { entityId: 7, entityGeneration: 2 };
   const gameplayEntityHandleMap: GameplayEntityHandleMap = { "a.enemy": gameplayEntityHandle };
+  const sceneInstanceEntityExists: SceneInstanceEntityExists = (handle) => handle.entityId === 7;
+  const sceneInstanceHandleRegistryOptions: SceneInstanceHandleRegistryOptions = {
+    entityExists: sceneInstanceEntityExists,
+  };
+  const sceneInstanceHandleRegistry: SceneInstanceHandleRegistry =
+    publicCreateSceneInstanceHandleRegistry(sceneInstanceHandleRegistryOptions);
+  const sceneInstanceHandleLookupOptions: SceneInstanceHandleLookupOptions = {
+    validateLive: true,
+  };
+  const sceneInstanceHandleRegistryEntry: SceneInstanceHandleRegistryEntry =
+    sceneInstanceHandleRegistry.set("a.enemy", gameplayEntityHandle);
+  const sceneInstanceHandleRegistrySyncOptions: SceneInstanceHandleRegistrySyncOptions = {
+    pruneStale: true,
+    removeMissing: true,
+  };
+  const sceneInstanceHandleRegistrySync: SceneInstanceHandleRegistrySyncResult =
+    sceneInstanceHandleRegistry.sync(
+      [resolvedSceneCompositionInstance],
+      [gameplayEntityHandle],
+      sceneInstanceHandleRegistrySyncOptions,
+    );
+  equal(sceneInstanceHandleRegistryEntry.handle.entityId, gameplayEntityHandle.entityId);
+  equal(sceneInstanceHandleRegistry.get("a.enemy", sceneInstanceHandleLookupOptions)?.entityGeneration, 2);
+  equal(sceneInstanceHandleRegistry.instanceIdForHandle(gameplayEntityHandle), "a.enemy");
+  equal(sceneInstanceHandleRegistrySync.entries.length, 1);
   const gameplayBehaviorRuntimeEngine: Parameters<typeof publicApplyGameplayBehaviorCommands>[0] = {
     gameplay_entity_exists: () => true,
     set_gameplay_health: () => true,
@@ -1259,6 +1294,8 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   const applySceneBehaviorRecipesOptions: ApplySceneBehaviorRecipesOptions = {
     ...sceneBehaviorBindingOptions,
     ids: gameplayBehaviorRuntimeIds,
+    instanceHandleRegistry: sceneInstanceHandleRegistry,
+    requireExplicitInstanceIds: true,
   };
   const sceneBehaviorApplyResult: SceneBehaviorApplyResult =
     publicApplySceneBehaviorRecipes(
@@ -1276,6 +1313,7 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     options?: ApplySceneBehaviorRecipesOptions,
   ) => SceneBehaviorApplyResult = publicApplySceneBehaviorRecipes;
   equal(typeof publicApplySceneBehaviorRecipesWithFerrumEngine, "function");
+  equal(sceneBehaviorApplyResult.instanceHandleSync?.entries.length, 1);
   const publicApplyBehaviorStateMachineStateCommands:
     PublicApi["applyBehaviorStateMachineStateCommands"] =
       applyBehaviorStateMachineStateCommands;

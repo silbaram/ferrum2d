@@ -71,7 +71,7 @@ preview API는 1.0 전 breaking change가 가능하다. 그래도 `public-api-su
 | 문서 | 목적 |
 | --- | --- |
 | [Core Runtime](public-api/core.md) | runtime 생성, `FerrumEngine`, renderer, input, asset, physics, snapshot, buffer decoder |
-| [Authoring](public-api/authoring.md) | scene composition, Data Scene spawn/role, behavior recipe, gameplay command, FSM, physics authoring facade |
+| [Authoring](public-api/authoring.md) | scene composition, Data Scene spawn/role/handle registry, behavior recipe, gameplay command, FSM, physics authoring facade |
 | [Starter Scenes](public-api/starter-scenes.md) | official starter scene, Shooter Game Spec, runtime scene mutation helper |
 | [Labs](public-api/labs.md) | WebGPU, sprite material, particle/VFX, texture atlas, PixelMaskTerrain, HD-2D helper |
 | [Quality](public-api/quality.md) | profiler, diagnostics, replay, screenshot capture, debug gizmo, report helper |
