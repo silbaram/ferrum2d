@@ -34,7 +34,7 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 | 지원 수준 | 권장 import | 의미 | 대표 항목 |
 | --- | --- | --- | --- |
 | Core runtime | `@ferrum2d/ferrum-web/core` | 1.0 제품 계약 후보. 게임 실행과 public API의 중심이다. | `createFerrumRuntime(...)`, `createEngine(...)`, WebGL2 renderer, input/audio/asset loading, Physics Spec/API, snapshot |
-| Authoring primitive | `@ferrum2d/ferrum-web/authoring` | 장르와 템플릿이 조합해 쓰는 데이터 기반 primitive다. | Scene Composition, Behavior Recipe, projectile/weapon authoring, FSM install/replay, presentation effect registry |
+| Authoring primitive | `@ferrum2d/ferrum-web/authoring` | 장르와 템플릿이 조합해 쓰는 데이터 기반 primitive다. | Scene Composition, Data Scene spawn/role helper, Behavior Recipe, projectile/weapon authoring, FSM install/replay, presentation effect registry |
 | Starter scene/template | `@ferrum2d/ferrum-web/starter-scenes` | 생성 프로젝트와 smoke에서 검증하는 시작점이다. 장르 전체를 자동 제작하는 범용 엔진 모드는 아니다. | `minimal`, `topdown`, `platformer`, `breakout`, Shooter Game Spec, starter input profile |
 | Optional/lab | `@ferrum2d/ferrum-web/labs` | 지원 환경이나 명시 opt-in에서 쓰는 확장 기능이다. 기능별 제약은 Public API와 smoke 문서를 따른다. | WebGPU renderer, HD-2D helper, PixelMaskTerrain, material/VFX preset, texture atlas JSON helper |
 | Quality infrastructure | `@ferrum2d/ferrum-web/quality` | 제품 품질을 지키는 검증 인프라다. 사용자-facing 게임 기능과 분리해서 본다. | smoke helper, runtime budget, package QA, replay/report validator |

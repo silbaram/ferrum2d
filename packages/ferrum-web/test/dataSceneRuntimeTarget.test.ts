@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   applySceneBehaviorRecipes,
+  classifySceneInstance,
   createDataSceneRuntimeTarget,
   resolveSceneAuthoringDocument,
 } from "../src/authoring.js";
@@ -179,6 +180,7 @@ test("createDataSceneRuntimeTarget spawns the minimum data scene authoring sampl
 
       equal(result.spawnResults.length, 2);
       equal(engine.entityCount(), 2);
+      equal(result.plan.commands.length, 4);
       equal(result.behaviorApplyResult.results.length, result.plan.commands.length);
       ok(result.behaviorApplyResult.results.every(Boolean));
       for (const handle of result.spawnResults) {
@@ -186,6 +188,96 @@ test("createDataSceneRuntimeTarget spawns the minimum data scene authoring sampl
         ok(handle.entityId < 0xffffffff);
         ok(Number.isSafeInteger(handle.entityGeneration));
       }
+    } finally {
+      engine.destroy();
+    }
+  });
+});
+
+test("createDataSceneRuntimeTarget spawns passive world objects without behavior commands", async () => {
+  await withNodeWasmFileFetch(async () => {
+    const resolved = resolveSceneAuthoringDocument(
+      {
+        format: "ferrum2d.consumer.scene-authoring",
+        version: 1,
+        sceneComposition: {
+          initialFragment: "main",
+          prefabs: {
+            crate: {
+              props: {
+                components: {
+                  sprite: { texture: 1, width: 16, height: 16 },
+                  collider: { type: "aabb", halfWidth: 8, halfHeight: 8 },
+                  layer: "wall",
+                },
+              },
+            },
+            sentry: {
+              props: {
+                behaviorRecipes: "sentry.actor",
+                components: {
+                  sprite: { texture: 1, width: 16, height: 16 },
+                  collider: "none",
+                  layer: "enemy",
+                },
+              },
+            },
+          },
+          fragments: {
+            main: {
+              instances: [
+                { id: "crate-1", prefab: "crate", x: 24, y: 24 },
+                { id: "sentry-1", prefab: "sentry", x: 64, y: 24 },
+              ],
+            },
+          },
+        },
+        behaviorRecipes: {
+          entities: {
+            "sentry.actor": {
+              recipes: [{ kind: "health", max: 2, start: 2 }],
+            },
+          },
+        },
+      },
+      {
+        path: "passiveObjectAuthoring",
+        validateBindings: true,
+        validateComponents: true,
+        missingBehavior: "ignore",
+      },
+    );
+    const instances = resolved.bindingPlan?.instances ?? [];
+    deepEqual(instances.map((instance) => classifySceneInstance(instance).kind), [
+      "worldObject",
+      "actor",
+    ]);
+
+    const engine = await createEngine(
+      undefined,
+      undefined,
+      undefined,
+      () => ({ width: 320, height: 180 }),
+    );
+    try {
+      const target = createDataSceneRuntimeTarget(engine, {
+        textureId: () => 3,
+      });
+      const result = applySceneBehaviorRecipes(
+        engine,
+        target,
+        resolved.sceneComposition,
+        resolved.behaviorRecipes,
+        { path: "passiveObjectAuthoring", missingBehavior: "ignore" },
+      );
+
+      equal(result.spawnResults.length, 2);
+      equal(engine.entityCount(), 2);
+      equal(result.plan.commands.length, 1);
+      deepEqual(result.plan.commands.map((command) => `${command.entity}:${command.type}`), [
+        "sentry-1:configureHealth",
+      ]);
+      deepEqual(result.behaviorApplyResult.results, [true]);
     } finally {
       engine.destroy();
     }

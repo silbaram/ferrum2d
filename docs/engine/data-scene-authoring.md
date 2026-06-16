@@ -28,6 +28,19 @@ Data Scene authoring 문서는 다음 envelope를 사용한다.
 - `instantiateSceneFragment(...)` 결과는 최소 1개 instance를 가져야 한다.
 - 문서 안에 장르 전용 Game Spec 필드나 built-in starter runtime entity binding을 섞지 않는다.
 
+## Authoring Role
+
+Data Scene은 `Actor`/`GameObject` 같은 별도 runtime class나 저장 필드를 추가하지 않는다.
+authoring 도구가 구분이 필요할 때는 `classifySceneInstance(instance)`로 role을 파생한다.
+
+- `worldObject`: `props.behaviorRecipes` 바인딩이 없는 배치 객체다. `props.components`가 있으면
+  `createDataSceneRuntimeTarget(...)`으로 `World` entity는 spawn되지만 gameplay behavior command는
+  생성되지 않는다.
+- `actor`: `props.behaviorRecipes` 바인딩이 하나 이상 있는 객체다. spawn 뒤 해당 behavior recipe가
+  `applySceneBehaviorRecipes(...)`를 통해 gameplay component command로 적용된다.
+
+이 구분은 UI/agent 설명용 authoring helper이며 Rust `World`의 별도 저장소나 상속 구조가 아니다.
+
 ## `props.components` v1
 
 `props.components`는 `SceneCompositionProps` 안의 reserved key다. `SceneCompositionProps` 자체는 계속 JSON-compatible object지만, Data Scene runtime spawn 대상은 아래 contract를 따른다.

@@ -13,6 +13,7 @@ import {
   type BehaviorRecipeRuntimeTarget,
   type ResolvedBehaviorRecipeDocument,
 } from "./behaviorRecipes.js";
+import { DATA_SCENE_COMPONENTS_PROP } from "./dataSceneComponents.js";
 import {
   instantiateSceneFragment,
   resolveSceneCompositionSpec,
@@ -45,6 +46,19 @@ export const GAMEPLAY_BEHAVIOR_BINDING_PROP = "behaviorRecipes" as const;
 
 export type GameplayBehaviorBindingSpec = string | readonly string[];
 export type MissingSceneBehaviorBinding = "ignore" | "error";
+export type SceneInstanceAuthoringKind = "worldObject" | "actor";
+
+export interface ClassifySceneInstanceOptions {
+  behaviorProp?: string;
+  path?: string;
+}
+
+export interface SceneInstanceAuthoringClassification {
+  kind: SceneInstanceAuthoringKind;
+  hasDataSceneComponents: boolean;
+  behaviorProfiles: readonly string[];
+}
+
 const GAMEPLAY_PICKUP_ITEM_SCORE = 1;
 const MAX_PARTICLE_PRESETS = 256;
 const MAX_GAMEPLAY_TAG_ID = 31;
@@ -554,6 +568,28 @@ export function bindSceneBehaviorRecipes(
     instances,
     bindings,
     commands: bindings.map((binding) => binding.command),
+  };
+}
+
+export function classifySceneInstance(
+  instance: ResolvedSceneCompositionInstance,
+  options: ClassifySceneInstanceOptions = {},
+): SceneInstanceAuthoringClassification {
+  const path = options.path ?? `sceneComposition.instances.${instance.id}`;
+  const behaviorProp = requiredBehaviorProp(
+    options.behaviorProp ?? GAMEPLAY_BEHAVIOR_BINDING_PROP,
+    `${path}.behaviorProp`,
+  );
+  const behaviorProfiles = behaviorBindingsForInstance(
+    instance,
+    behaviorProp,
+    `${path}.props.${behaviorProp}`,
+    "ignore",
+  );
+  return {
+    kind: behaviorProfiles.length === 0 ? "worldObject" : "actor",
+    hasDataSceneComponents: instance.props[DATA_SCENE_COMPONENTS_PROP] !== undefined,
+    behaviorProfiles,
   };
 }
 

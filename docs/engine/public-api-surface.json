@@ -21,6 +21,7 @@
         "resolveSceneCompositionSpec",
         "resolveDataSceneComponentsSpec",
         "createDataSceneRuntimeTarget",
+        "classifySceneInstance",
         "resolveBehaviorRecipeDocument",
         "compileWeaponProfiles",
         "resolveShooterGameSpec",
@@ -60,6 +61,7 @@
         "resolveSceneCompositionSpec",
         "resolveDataSceneComponentsSpec",
         "createDataSceneRuntimeTarget",
+        "classifySceneInstance",
         "resolveBehaviorRecipeDocument",
         "compileWeaponProfiles",
         "resolvePhysicsSpec"

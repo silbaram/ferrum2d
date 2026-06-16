@@ -48,6 +48,7 @@ export {
   applyGameplayBehaviorCommands,
   applySceneBehaviorRecipes,
   bindSceneBehaviorRecipes,
+  classifySceneInstance,
   createGameplayBehaviorRuntimeTarget,
   dryRunSceneBehaviorRecipes,
   registerGameplayPrefabs,
@@ -327,6 +328,7 @@ export type {
   ApplyGameplayBehaviorCommandsOptions,
   ApplySceneBehaviorRecipesOptions,
   BoundBehaviorRecipeCommand,
+  ClassifySceneInstanceOptions,
   FactionRelation,
   FactionRelationEntrySpec,
   FactionRelationRuntimeEngine,
@@ -347,6 +349,8 @@ export type {
   SceneBehaviorBindingOptions,
   SceneBehaviorBindingPlan,
   SceneBehaviorRuntimeTarget,
+  SceneInstanceAuthoringClassification,
+  SceneInstanceAuthoringKind,
 } from "../gameplayAuthoring";
 export type {
   GameplayActionDiagnosticCode,

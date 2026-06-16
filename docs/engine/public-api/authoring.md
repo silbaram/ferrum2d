@@ -9,6 +9,7 @@ import {
   resolveSceneCompositionSpec,
   resolveDataSceneComponentsSpec,
   createDataSceneRuntimeTarget,
+  classifySceneInstance,
   resolveBehaviorRecipeDocument,
   compileWeaponProfiles,
   applyGameplayBehaviorCommands,
@@ -25,6 +26,7 @@ import {
 | `instantiateSceneFragment(...)` | fragment를 deterministic instance list로 펼친다. |
 | `resolveDataSceneComponentsSpec(...)` | `props.components` v1 sprite/collider/layer/template descriptor를 검증하고 정규화한다. |
 | `createDataSceneRuntimeTarget(...)` | `FerrumEngine`을 Data Scene spawn target으로 감싸 `applySceneBehaviorRecipes(...)`에 넘길 수 있게 한다. |
+| `classifySceneInstance(...)` | resolved instance를 저장 필드 없이 `worldObject` 또는 `actor` authoring role로 파생한다. |
 | `resolveBehaviorRecipeDocument(...)` | entity behavior recipe를 검증하고 정규화한다. |
 | `behaviorRecipeCommandsForEntity(...)` | 특정 entity에 적용할 `BehaviorRecipeCommand[]`를 만든다. |
 | `applyGameplayBehaviorCommands(...)` | command를 `FerrumEngine` gameplay facade로 낮은 빈도 적용한다. |
@@ -44,6 +46,12 @@ default target은 `components.sprite`/`collider`/`layer` inline descriptor만 sp
 `components.template` catalog reference, instance `rotationRadians`, instance `layer`는 아직 default runtime
 spawn 범위가 아니므로 diagnostic error로 거절된다. 회전 collider는
 `components.collider.rotationRadians`를 사용한다.
+
+`classifySceneInstance(instance)`는 `props.behaviorRecipes` 바인딩 존재 여부로 authoring role만
+파생한다. behavior binding이 없으면 `worldObject`, 하나 이상 있으면 `actor`다. 이 값은 저장되는
+schema 필드나 Rust runtime class가 아니며, UI/agent가 배치 객체와 기능 객체를 설명할 때 쓰는
+낮은 빈도 authoring helper다. `props.components`가 있는지 여부는 `hasDataSceneComponents`로
+함께 확인할 수 있다.
 
 세부 primitive와 검증 기준은 [Runtime Extensibility](../runtime-extensibility.md)와
 [Data Scene Authoring](../data-scene-authoring.md)을 따른다.

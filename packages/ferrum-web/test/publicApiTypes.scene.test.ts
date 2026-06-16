@@ -16,6 +16,7 @@ import {
   behaviorStateMachineCommandsForState,
   bindPresentationEffectActions,
   bindSceneBehaviorRecipes,
+  classifySceneInstance,
   createDataSceneRuntimeTarget,
   BYTES_PER_EFFECT_EVENT,
   compareBehaviorStateMachineReplay,
@@ -140,6 +141,7 @@ import type {
   BoundBehaviorRecipeCommand,
   CameraPoint,
   ChaseBehaviorRecipeSpec,
+  ClassifySceneInstanceOptions,
   ConfigureChaseBehaviorCommand,
   ConfigureCollisionAreaDamageBehaviorCommand,
   ConfigureCollisionDespawnBehaviorCommand,
@@ -354,6 +356,8 @@ import type {
   SceneBehaviorBindingPlan,
   SceneBehaviorApplyResult,
   SceneBehaviorRuntimeTarget,
+  SceneInstanceAuthoringClassification,
+  SceneInstanceAuthoringKind,
   SceneCompositionApplyResult,
   SceneCompositionFragmentIncludeSpec,
   SceneCompositionFragmentInstanceSpec,
@@ -1154,6 +1158,7 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   };
   const publicGameplayBehaviorBindingProp: typeof GAMEPLAY_BEHAVIOR_BINDING_PROP = GAMEPLAY_BEHAVIOR_BINDING_PROP;
   const publicBindSceneBehaviorRecipes: PublicApi["bindSceneBehaviorRecipes"] = bindSceneBehaviorRecipes;
+  const publicClassifySceneInstance: PublicApi["classifySceneInstance"] = classifySceneInstance;
   const publicDryRunSceneBehaviorRecipes: PublicApi["dryRunSceneBehaviorRecipes"] = dryRunSceneBehaviorRecipes;
   const publicApplyGameplayBehaviorCommands: PublicApi["applyGameplayBehaviorCommands"] = applyGameplayBehaviorCommands;
   const publicApplyFactionRelationTable: PublicApi["applyFactionRelationTable"] = applyFactionRelationTable;
@@ -1162,6 +1167,13 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     createGameplayBehaviorRuntimeTarget;
   const sceneBehaviorBindingPlan: SceneBehaviorBindingPlan =
     publicBindSceneBehaviorRecipes(resolvedSceneComposition, resolvedBehaviorRecipeDocument, sceneBehaviorBindingOptions);
+  const sceneInstanceAuthoringKind: SceneInstanceAuthoringKind = "actor";
+  const classifySceneInstanceOptions: ClassifySceneInstanceOptions = {
+    behaviorProp: publicGameplayBehaviorBindingProp,
+  };
+  const sceneInstanceAuthoringClassification: SceneInstanceAuthoringClassification =
+    publicClassifySceneInstance(resolvedSceneCompositionInstance, classifySceneInstanceOptions);
+  equal(sceneInstanceAuthoringClassification.kind, sceneInstanceAuthoringKind);
   const boundBehaviorRecipeCommand: BoundBehaviorRecipeCommand = sceneBehaviorBindingPlan.bindings[0];
   const sceneBehaviorBindingDryRun: SceneBehaviorBindingDryRunResult =
     publicDryRunSceneBehaviorRecipes(sceneCompositionSpec, behaviorRecipeDocument);

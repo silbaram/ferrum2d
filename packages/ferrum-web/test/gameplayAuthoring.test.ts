@@ -7,6 +7,7 @@ import {
   applyGameplayBehaviorCommands,
   applySceneBehaviorRecipes,
   bindSceneBehaviorRecipes,
+  classifySceneInstance,
   createGameplayBehaviorRuntimeTarget,
   dryRunSceneBehaviorRecipes,
   registerGameplayPrefabs,
@@ -592,6 +593,38 @@ test("dryRunSceneBehaviorRecipes returns a plan without mutating runtime targets
     equal(dryRun.plan.commands.length, 12);
     deepEqual(dryRun.diagnostics, []);
   }
+});
+
+test("classifySceneInstance derives world object and actor authoring roles", () => {
+  const plan = bindSceneBehaviorRecipes(sampleComposition(), sampleRecipes());
+
+  deepEqual(plan.instances.map((instance) => classifySceneInstance(instance).kind), [
+    "actor",
+    "actor",
+    "worldObject",
+  ]);
+  deepEqual(classifySceneInstance(plan.instances[1]!).behaviorProfiles, [
+    "enemy.runner",
+    "enemy.elite",
+  ]);
+  equal(classifySceneInstance({
+    ...plan.instances[2]!,
+    props: {
+      components: {
+        sprite: { texture: 1, width: 8, height: 8 },
+        collider: "none",
+        layer: "pickup",
+      },
+    },
+  }).hasDataSceneComponents, true);
+
+  expectDiagnostic(
+    () => classifySceneInstance({
+      ...plan.instances[2]!,
+      props: { behaviorRecipes: [1] },
+    }),
+    "sceneComposition.instances.coin.props.behaviorRecipes.0",
+  );
 });
 
 test("dryRunSceneBehaviorRecipes returns structured diagnostics for invalid bindings", () => {
