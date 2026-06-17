@@ -591,7 +591,7 @@ pnpm build:wasm
 pnpm --filter @ferrum2d/topdown-shooter dev
 ```
 
-브라우저에서 Vite URL에 접속한 뒤 [Top-down Shooter 수동 체크리스트](topdown-shooter-smoke-checklist.md)를 따른다. 이 문서는 자동/CI/수동 검증의 관계만 유지하고, 실제 브라우저 확인 항목은 체크리스트 문서를 기준으로 한다.
+브라우저에서 Vite URL에 접속한 뒤 `examples/topdown-shooter/SMOKE_CHECKLIST.md`를 따른다. 이 문서는 자동/CI/수동 검증의 관계만 유지하고, 실제 브라우저 확인 항목은 예제 체크리스트 문서를 기준으로 한다.
 
 ## Screenshot 갱신
 

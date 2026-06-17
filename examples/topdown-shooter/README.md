@@ -62,7 +62,7 @@ Top-down Shooter의 public demo surface는 기본 `game.json` 기반 Shooter run
 
 - [Top-down Shooter Game Spec](../../docs/examples/topdown-shooter/game-spec.md)
 - [Public API](../../docs/engine/public-api.md)
-- [Top-down Shooter smoke checklist](../../docs/development/quality/topdown-shooter-smoke-checklist.md)
+- [Top-down Shooter smoke checklist](SMOKE_CHECKLIST.md)
 - [Smoke Check](../../docs/development/quality/smoke-check.md)
 - [GitHub Pages 배포](../../docs/development/operations/demo-deploy.md)
 

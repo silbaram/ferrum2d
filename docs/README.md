@@ -31,13 +31,13 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 | 디렉터리 | 역할 | 주요 문서 |
 | --- | --- | --- |
 | `development/architecture/` | Rust core, Wasm boundary, Web platform layer, physics 구현 기준 | [아키텍처](development/architecture/architecture.md), [2D 물리엔진 기능 맵](development/architecture/physics-engine.md) |
-| `development/quality/` | 테스트, smoke check, 리뷰 기준, 스크린샷 갱신 | [Smoke Check](development/quality/smoke-check.md), [Top-down Shooter 수동 체크리스트](development/quality/topdown-shooter-smoke-checklist.md), [코드 리뷰 기준](development/quality/code-review.md), [스크린샷 README](development/quality/screenshots/README.md) |
+| `development/quality/` | 테스트, smoke check, 리뷰 기준, 스크린샷 갱신 | [Smoke Check](development/quality/smoke-check.md), [코드 리뷰 기준](development/quality/code-review.md), [스크린샷 README](development/quality/screenshots/README.md) |
 | `development/operations/` | 배포, 패키징, 릴리스 운영 절차 | [GitHub Pages 데모/문서 배포](development/operations/demo-deploy.md), [npm 패키지 구성 전략](development/operations/npm-package-strategy.md), [npm 베타 패키징](development/operations/npm-release.md), [릴리스 노트 템플릿](development/operations/release-notes-template.md) |
 
 ## 읽는 순서
 
 1. 엔진을 처음 이해하고 새 프로젝트를 시작하는 경우: [개발자 퀵스타트](engine/developer-quickstart.md) -> [사용자 설명서](engine/user-guide.md) -> [Public API](engine/public-api.md)
-2. Top-down Shooter 예제 설정을 바꾸는 경우: [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md)
+2. Top-down Shooter 예제 설정을 바꾸는 경우: [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md), 수동 QA는 `examples/topdown-shooter/SMOKE_CHECKLIST.md`
 3. projectile/weapon/prefab/motion/reaction/effect 같은 범용 runtime 확장 기능을 확인하는 경우: [Runtime Extensibility](engine/runtime-extensibility.md) -> [Data Scene Authoring](engine/data-scene-authoring.md) -> [Public API](engine/public-api.md)
 4. 엔진 구조나 경계를 확인하는 경우: [아키텍처](development/architecture/architecture.md) -> [2D 물리엔진 기능 맵](development/architecture/physics-engine.md)
 5. 검증이나 릴리스 작업을 하는 경우: [Smoke Check](development/quality/smoke-check.md) -> [npm 베타 패키징](development/operations/npm-release.md) -> [릴리스 노트 템플릿](development/operations/release-notes-template.md)
@@ -80,7 +80,7 @@ pnpm validate:pages-artifact
 ## 중복 방지 규칙
 
 - Top-down Shooter 예제 설정의 필드별 상세 설명은 [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md)에 둔다. 다른 문서는 예시와 링크만 유지한다.
-- 자동/CI 검증 정책은 [Smoke Check](development/quality/smoke-check.md)에 둔다. 브라우저 수동 점검 항목은 [Top-down Shooter 수동 체크리스트](development/quality/topdown-shooter-smoke-checklist.md)에 둔다.
+- 자동/CI 검증 정책은 [Smoke Check](development/quality/smoke-check.md)에 둔다. 브라우저 수동 점검 항목은 `examples/topdown-shooter/SMOKE_CHECKLIST.md`에 둔다.
 - public import 계약은 [Public API](engine/public-api.md)에 둔다. 목적별 세부 reference는 `engine/public-api/*.md`에 나누고, API tier와 import allowlist의 machine-readable 기준은 [Public API surface manifest](engine/public-api-surface.json)에 둔다. 아키텍처 문서는 책임 경계와 데이터 흐름만 설명한다.
 - projectile/weapon/prefab/motion/query/reaction/effect event 같은 런타임 확장성 기능의 제품 기준 요약은 [Runtime Extensibility](engine/runtime-extensibility.md)에 둔다. Data Scene 최소 authoring envelope와 generic fixture 기준은 [Data Scene Authoring](engine/data-scene-authoring.md)에 둔다. 세부 import/export 목록은 [Public API](engine/public-api.md)가 기준이다.
 - npm package 역할 분리는 [npm 패키지 구성 전략](development/operations/npm-package-strategy.md)에 둔다. `@ferrum2d/ferrum-web` beta package와 release tag 검증 절차는 [npm 베타 패키징](development/operations/npm-release.md)에 둔다. GitHub Release 본문 구조는 [릴리스 노트 템플릿](development/operations/release-notes-template.md)에 둔다. 다른 문서는 `pnpm package:check`, `pnpm release:check`, `pnpm release:candidate-check`와 링크만 유지한다.

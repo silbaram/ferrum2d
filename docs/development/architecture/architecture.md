@@ -215,4 +215,4 @@ Rust/TypeScript 공유 buffer는 `#[repr(C)]` Rust struct와 TypeScript decoder�
 - Rust core: `cargo fmt`, `cargo clippy`, `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
 - Wasm/API: `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`, `pnpm build`
 - Game Spec: `pnpm validate:game-spec`
-- 예제 회귀: [Smoke Check](../quality/smoke-check.md), [Top-down Shooter 수동 체크리스트](../quality/topdown-shooter-smoke-checklist.md)
+- 예제 회귀: [Smoke Check](../quality/smoke-check.md), `examples/topdown-shooter/SMOKE_CHECKLIST.md`

@@ -1,6 +1,6 @@
 # Top-down Shooter Manual Smoke Checklist
 
-이 문서는 Ferrum2D Top-down Shooter 예제(`examples/topdown-shooter`)를 브라우저에서 수동 점검할 때 사용하는 기준 체크리스트다. 자동/CI 검증과의 관계는 [Smoke Check](smoke-check.md)를 따른다.
+이 문서는 Ferrum2D Top-down Shooter 예제(`examples/topdown-shooter`)를 브라우저에서 수동 점검할 때 사용하는 기준 체크리스트다. 자동/CI 검증과의 관계는 [Smoke Check](../../docs/development/quality/smoke-check.md)를 따른다.
 
 ## 목적
 
@@ -89,7 +89,7 @@ pnpm --filter @ferrum2d/topdown-shooter dev
 
 - Title + DebugOverlay 화면을 `docs/development/quality/screenshots/topdown-shooter-title.png`로 갱신한다.
 - 필요 시 `topdown-shooter-gameover.png`, `topdown-shooter-score.png`를 추가한다.
-- 캡처 규칙은 `docs/development/quality/screenshots/README.md`를 따른다.
+- 캡처 규칙은 [screenshots README](../../docs/development/quality/screenshots/README.md)를 따른다.
 
 ## 실패 기록 템플릿
 

@@ -398,7 +398,7 @@ pnpm release:check
 pnpm build
 ```
 
-수동 smoke check 기준은 [Top-down Shooter 체크리스트](docs/development/quality/topdown-shooter-smoke-checklist.md)와 [Smoke Check 문서](docs/development/quality/smoke-check.md)를 따른다.
+수동 smoke check 기준은 [Top-down Shooter 체크리스트](examples/topdown-shooter/SMOKE_CHECKLIST.md)와 [Smoke Check 문서](docs/development/quality/smoke-check.md)를 따른다.
 
 ## 프로젝트 구조
 
