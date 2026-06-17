@@ -9,7 +9,7 @@
 | [데모 게임 포트폴리오 보강 계획](demo-game-showcase-plan.md) | Ferrum2D 사용자-facing 엔진 기능을 여러 focused demo와 Pages showcase hub로 노출하기 위한 계획 |
 | [오브젝트 배치 UI · 데이터 씬 authoring 보강 계획](object-placement-authoring-plan.md) | 사람은 위치를 배치하고 AI agent는 behavior를 붙이는 흐름을 위한 World/Scene 보강 순서 계획 |
 | [배포 전략 초기 계획](deployment-roadmap.md) | 정적 웹 배포, 로컬 preview, Electron/Tauri desktop wrapper 후보를 정리한 초기 배포 planning |
-| [물리 엔진 심층 검토 보고서](physics_review.md) | 물리 엔진 코드의 수학적 오류, 안정성, 성능, 고도화 후보를 정리한 리뷰 보고서 |
+| [물리 엔진 개선 개발계획](physics_review.md) | 물리 엔진 리뷰 후보를 재현 fixture, 성능 요구사항, 단계별 개발 slice로 정리한 planning 문서 |
 
 활성 작업 목록은 planning 문서에 중복 관리하지 않는다. 진행 중인 작업은 별도 task 또는 이슈로 범위와 검증 기준을 확정하고, 완료된 내용은 확정 문서에만 남긴다.
 
