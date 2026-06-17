@@ -19,12 +19,14 @@ pub(crate) const GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS: usize =
 pub(crate) const GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S: usize =
     2 + GAMEPLAY_FACTION_RELATION_TABLE_BUCKETS * 2;
 const GAMEPLAY_FACTION_RELATION_TABLE_FULL_MASK: u32 = u32::MAX;
+pub(crate) const GAMEPLAY_TAG_PRIMARY_ACTOR: u32 = 0;
+pub(crate) const GAMEPLAY_TAG_PRIMARY_ACTOR_MASK: u32 = 1_u32 << GAMEPLAY_TAG_PRIMARY_ACTOR;
 pub(crate) const GAMEPLAY_TAG_MAX_ID: u32 = 31;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MovementTarget {
-    Player,
-    NearestPlayer,
+    PrimaryActor,
+    NearestPrimaryActor,
     NearestEnemy,
     NearestLayer(CollisionLayer),
     NearestFaction(u32),
@@ -264,6 +266,22 @@ impl GameplayTags {
             return None;
         }
         Some(Self { mask })
+    }
+
+    pub(crate) const fn primary_actor_marker() -> Self {
+        Self {
+            mask: GAMEPLAY_TAG_PRIMARY_ACTOR_MASK,
+        }
+    }
+
+    pub(crate) const fn with_tag(self, tag_id: u32) -> Self {
+        Self {
+            mask: self.mask | gameplay_tag_mask(tag_id),
+        }
+    }
+
+    pub(crate) const fn without_tag(self, tag_id: u32) -> Option<Self> {
+        Self::new(self.mask & !gameplay_tag_mask(tag_id))
     }
 
     pub(crate) const fn contains(self, tag_id: u32) -> bool {

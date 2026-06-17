@@ -21,7 +21,7 @@ fn config_changes_player_speed_and_world_bounds() {
         &mut audio_events,
     );
 
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert_eq!(world.transform(player).unwrap().x, 1600.0);
     assert_eq!(world.velocity(player).unwrap().vx, 240.0);
 }
@@ -36,7 +36,7 @@ fn config_changes_bullet_lifetime_and_speed() {
         &mut audio_events,
         ShooterConfig::from_values(1600.0, 960.0, 180.0, 72.0, 1.0, 500.0, 0.12, 0.25),
     );
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
 
     scene.fire_bullet_toward_mouse(
         &mut world,
@@ -84,7 +84,7 @@ fn prefab_config_changes_spawned_sprite_and_collider_sizes() {
     scene.game_state = GameState::Playing;
     scene.enemy_spawn_timer = 0.0;
 
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_sprite = world.sprite_at_index(player.id as usize).unwrap();
     assert_eq!(player_sprite.width, 48.0);
     assert_eq!(player_sprite.height, 40.0);
@@ -143,7 +143,7 @@ fn prefab_collider_config_updates_spawned_and_existing_colliders() {
         EntityTemplateCollider::aabb(12.0, 14.0, 2.0, -3.0, false, false, Some(material)),
     ));
 
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_collider = world.collider(player).unwrap();
     assert_eq!(player_collider.half_width, 12.0);
     assert_eq!(player_collider.half_height, 14.0);
@@ -210,7 +210,7 @@ fn prefab_collider_config_updates_spawned_and_existing_colliders() {
 #[test]
 fn prefab_collider_config_supports_non_aabb_shapes() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(scene.set_prefab_collider(
         &mut world,
         0,
@@ -336,7 +336,7 @@ fn prefab_collider_config_supports_non_aabb_shapes() {
 #[test]
 fn prefab_collider_config_falls_back_for_invalid_non_aabb_shapes() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let original_player_collider = world.collider(player).unwrap();
 
     assert!(scene.set_prefab_collider(

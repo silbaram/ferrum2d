@@ -105,6 +105,46 @@ fn entity_lifecycle_accessors_report_current_handles_only() {
 }
 
 #[test]
+fn primary_actor_accessors_report_current_handles_only() {
+    let mut world = World::default();
+
+    assert_eq!(world.primary_actor_entity(), None);
+
+    let primary = world.spawn_player(10.0, 20.0, 3);
+    assert_eq!(world.primary_actor_entity(), Some(primary));
+    assert!(world
+        .gameplay_tags(primary)
+        .is_some_and(|tags| tags.contains(GAMEPLAY_TAG_PRIMARY_ACTOR)));
+    assert_eq!(
+        world.gameplay_tag_query_indices(GAMEPLAY_TAG_PRIMARY_ACTOR),
+        &[primary.id as usize]
+    );
+
+    world.despawn(primary);
+    assert_eq!(world.primary_actor_entity(), None);
+    assert_eq!(
+        world.gameplay_tag_query_indices(GAMEPLAY_TAG_PRIMARY_ACTOR),
+        &[]
+    );
+
+    let reused = world.spawn_entity();
+    assert_eq!(reused.id, primary.id);
+    assert_ne!(reused.generation, primary.generation);
+
+    world.set_raw_primary_actor_entity_for_test(Some(primary));
+    assert_eq!(world.primary_actor_entity(), None);
+
+    assert!(world.set_primary_actor_entity(reused));
+    assert_eq!(world.primary_actor_entity(), Some(reused));
+    assert!(world
+        .gameplay_tags(reused)
+        .is_some_and(|tags| tags.contains(GAMEPLAY_TAG_PRIMARY_ACTOR)));
+
+    assert!(!world.set_primary_actor_entity(primary));
+    assert_eq!(world.primary_actor_entity(), Some(reused));
+}
+
+#[test]
 fn alive_indices_remain_dense_after_multiple_despawns() {
     let mut world = World::default();
     let first = world.spawn_entity();

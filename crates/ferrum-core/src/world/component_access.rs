@@ -3,21 +3,66 @@ use crate::components::gameplay::{
     ActionBinding, ActionBindingSet, BehaviorStateEnterAction, BehaviorStateMachine,
     BehaviorStateTransition, CollisionReaction, CollisionReactionSet, FactionRelation,
     FactionRelationTable, GameplayFaction, GameplayTags, GameplayTimerTrigger, Interaction,
-    MovementPattern, Pickup,
+    MovementPattern, Pickup, GAMEPLAY_TAG_PRIMARY_ACTOR,
 };
 use crate::components::{AngularVelocity, Rotation2D, Sprite, Transform2D, Velocity};
 use crate::entity::Entity;
 
 impl World {
-    pub(crate) fn player_entity(&self) -> Option<Entity> {
-        let player = self.player?;
-        self.valid_index(player)?;
-        Some(player)
+    pub(crate) fn primary_actor_entity(&self) -> Option<Entity> {
+        let entity = self.primary_actor?;
+        self.valid_index(entity)?;
+        Some(entity)
+    }
+
+    pub(crate) fn set_primary_actor_entity(&mut self, entity: Entity) -> bool {
+        if self.valid_index(entity).is_none() {
+            return false;
+        }
+        if let Some(current) = self.primary_actor {
+            self.remove_primary_actor_marker(current);
+        }
+        self.primary_actor = Some(entity);
+        self.add_primary_actor_marker(entity);
+        true
+    }
+
+    pub(crate) fn clear_primary_actor_entity(&mut self, entity: Entity) {
+        if self.primary_actor == Some(entity) {
+            self.remove_primary_actor_marker(entity);
+            self.primary_actor = None;
+        }
+    }
+
+    pub(crate) fn is_primary_actor_entity(&self, entity: Entity) -> bool {
+        self.primary_actor == Some(entity) && self.valid_index(entity).is_some()
     }
 
     #[cfg(test)]
-    pub(crate) fn set_raw_player_entity_for_test(&mut self, player: Option<Entity>) {
-        self.player = player;
+    pub(crate) fn set_raw_primary_actor_entity_for_test(&mut self, entity: Option<Entity>) {
+        self.primary_actor = entity;
+    }
+
+    fn add_primary_actor_marker(&mut self, entity: Entity) {
+        let Some(index) = self.valid_index(entity) else {
+            return;
+        };
+        let tags = self.gameplay_tags[index].unwrap_or_else(GameplayTags::primary_actor_marker);
+        self.set_gameplay_tags_at_index(index, tags.with_tag(GAMEPLAY_TAG_PRIMARY_ACTOR));
+    }
+
+    fn remove_primary_actor_marker(&mut self, entity: Entity) {
+        let Some(index) = self.valid_index(entity) else {
+            return;
+        };
+        let Some(tags) = self.gameplay_tags[index] else {
+            return;
+        };
+        if let Some(tags) = tags.without_tag(GAMEPLAY_TAG_PRIMARY_ACTOR) {
+            self.set_gameplay_tags_at_index(index, tags);
+        } else {
+            self.clear_gameplay_tags_at_index(index);
+        }
     }
 
     pub fn transform(&self, entity: Entity) -> Option<Transform2D> {
@@ -541,6 +586,8 @@ impl World {
         };
         if let Some(tags) = tags {
             self.set_gameplay_tags_at_index(i, tags);
+        } else if self.is_primary_actor_entity(entity) {
+            self.set_gameplay_tags_at_index(i, GameplayTags::primary_actor_marker());
         } else {
             self.clear_gameplay_tags_at_index(i);
         }
@@ -551,7 +598,11 @@ impl World {
         let Some(i) = self.valid_index(entity) else {
             return;
         };
-        self.clear_gameplay_tags_at_index(i);
+        if self.is_primary_actor_entity(entity) {
+            self.set_gameplay_tags_at_index(i, GameplayTags::primary_actor_marker());
+        } else {
+            self.clear_gameplay_tags_at_index(i);
+        }
     }
 
     pub(crate) fn tick_collision_reaction_cooldowns(&mut self, delta: f32) {

@@ -56,9 +56,9 @@ authoring 도구가 구분이 필요할 때는 `classifySceneInstance(instance)`
 | `template` | 아니오 | catalog template reference. 있으면 `sprite`/`collider`/`layer`와 함께 쓰지 않는다. |
 
 `components.template`은 catalog reference mode이고, `components.sprite`/`collider`/`layer`는 inline descriptor mode다. 두 mode를 섞으면 resolver가 diagnostic error를 낸다.
-기본 `createDataSceneRuntimeTarget(...)` v1은 inline descriptor mode만 spawn한다. `components.template`은 catalog workflow용으로 resolver가 보존하지만, runtime spawn 검증(`resolveSceneAuthoringDocument(..., { validateComponents: true })` 기본값 포함)에서는 `allowComponentTemplates: true`를 명시하지 않는 한 거절된다.
+`createDataSceneRuntimeTarget(engine, { componentTemplates })`는 catalog template id를 inline component spec으로 해소해 spawn할 수 있다. catalog entry는 `sprite`/`collider`/`layer`를 가진 inline descriptor여야 하며, nested `components.template` reference는 runtime target에서 거절된다. `componentTemplates`를 제공하지 않으면 runtime spawn 검증(`resolveSceneAuthoringDocument(..., { validateComponents: true })` 기본값 포함)에서는 `allowComponentTemplates: true`를 명시하지 않는 한 template mode를 거절한다.
 
-`SceneComposition`의 instance `x`/`y`/`scale`은 default Data Scene runtime target이 반영한다. instance `rotationRadians`와 `layer`는 아직 render command/World transform 계약에 연결되지 않았으므로 `createDataSceneRuntimeTarget(...)`에서는 `0`만 허용한다. 회전된 충돌체가 필요하면 instance transform이 아니라 `components.collider.rotationRadians`를 사용한다. `components.layer`는 collision layer이며 render/sort layer가 아니다.
+`SceneComposition`의 instance `x`/`y`/`scale`/`rotationRadians`/`layer`는 default Data Scene runtime target이 반영한다. instance `rotationRadians`는 visible sprite rotation으로 `SpriteRenderCommand`에 기록되고 collider runtime geometry에도 합성된다. 예를 들어 rotated AABB는 oriented-box collider로 컴파일되고, collider offset/capsule endpoint는 instance rotation을 반영해 회전된다. instance `layer`는 Data Scene entity render band 안에서 `1000 + layer` sort key로 저장되어 같은 Data Scene entity끼리 render 순서를 정한다. `components.layer`는 collision layer이며 render/sort layer가 아니다.
 
 ## Runtime Spawn Hook
 

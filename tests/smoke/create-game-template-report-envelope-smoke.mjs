@@ -406,6 +406,7 @@ function assertConsumerProjectReport(report, template) {
   for (const command of [
     "npm run ferrum:report",
     "npm run ferrum:validate",
+    "npm run ferrum:placement-viewer",
     "npm run ferrum:authoring-report",
     "npm run ferrum:replay-report",
     "npm run ferrum:runtime-replay-report",
@@ -441,6 +442,10 @@ function assertConsumerAuthoringReport(report, template) {
       report.gameplayAuthoring.sceneAuthoring?.summary?.runtimeEntityHandles,
       `${templateName} authoring report sceneAuthoring.summary.runtimeEntityHandles`,
     );
+    assertScenePlacementAuthoringSummary(
+      report.gameplayAuthoring.sceneAuthoring?.summary?.placementAuthoring,
+      `${templateName} authoring report sceneAuthoring.summary.placementAuthoring`,
+    );
     assertSceneRuntimeEntityHandles(
       report.gameplayAuthoring.authoringSurface?.sceneComposition?.runtimeEntityHandles,
       `${templateName} authoring report authoringSurface.sceneComposition.runtimeEntityHandles`,
@@ -462,6 +467,33 @@ function assertSceneRuntimeEntityHandles(value, label) {
     assert(Number.isInteger(entry.entityGeneration) && entry.entityGeneration >= 0, `${label}[${index}].entityGeneration must be a non-negative integer`);
     assert(!instanceIds.has(entry.instanceId), `${label}[${index}].instanceId must be unique`);
     instanceIds.add(entry.instanceId);
+  }
+}
+
+function assertScenePlacementAuthoringSummary(value, label) {
+  assert(value !== null && typeof value === "object" && !Array.isArray(value), `${label} must be an object`);
+  assert.equal(value.workflow, "human-placement-agent-behavior", `${label}.workflow is invalid`);
+  assert.equal(value.placementOwner, "sceneComposition.fragments[].instances[]", `${label}.placementOwner is invalid`);
+  assert.equal(
+    value.behaviorOwner,
+    "sceneComposition.prefabs[].props.behaviorRecipes + behaviorRecipes.entities",
+    `${label}.behaviorOwner is invalid`,
+  );
+  assertNonEmptyString(value.fragment, `${label}.fragment`);
+  assert(Number.isInteger(value.instanceCount) && value.instanceCount > 0, `${label}.instanceCount must be positive`);
+  assert(Array.isArray(value.instances), `${label}.instances must be an array`);
+  assert.equal(value.instances.length, value.instanceCount, `${label}.instances length must match instanceCount`);
+  for (const [index, entry] of value.instances.entries()) {
+    assertNonEmptyString(entry.instanceId, `${label}.instances[${index}].instanceId`);
+    assertNonEmptyString(entry.prefab, `${label}.instances[${index}].prefab`);
+    assert(entry.role === "actor" || entry.role === "worldObject", `${label}.instances[${index}].role is invalid`);
+    assert(Array.isArray(entry.behaviorProfiles), `${label}.instances[${index}].behaviorProfiles must be an array`);
+    assert(Number.isInteger(entry.behaviorCommandCount), `${label}.instances[${index}].behaviorCommandCount must be an integer`);
+    assert(Array.isArray(entry.behaviorCommandTypes), `${label}.instances[${index}].behaviorCommandTypes must be an array`);
+    if (entry.entity !== null) {
+      assert(Number.isInteger(entry.entity?.entityId), `${label}.instances[${index}].entity.entityId must be an integer`);
+      assert(Number.isInteger(entry.entity?.entityGeneration), `${label}.instances[${index}].entity.entityGeneration must be an integer`);
+    }
   }
 }
 

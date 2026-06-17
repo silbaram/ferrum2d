@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::DEFAULT_SPRITE_RENDER_LAYER;
 
 #[test]
 fn collision_filter_defaults_to_spawn_layer_and_can_be_overridden() {
@@ -208,6 +209,8 @@ fn renderable_sprite_index_helper_requires_live_transform_and_sprite() {
         g: 0.5,
         b: 0.25,
         a: 1.0,
+        rotation_radians: 0.0,
+        render_layer: DEFAULT_SPRITE_RENDER_LAYER,
     };
 
     world.set_transform(entity, transform);
@@ -258,7 +261,7 @@ fn gameplay_component_setters_update_movement_and_collision_reactions() {
     let mut world = World::default();
     let entity = world.spawn_entity();
     let movement = MovementPattern::Chase {
-        target: MovementTarget::Player,
+        target: MovementTarget::PrimaryActor,
         speed: 90.0,
     };
     let action = ActionBinding::melee(7, 0.12, 32.0, 2.0);
@@ -370,6 +373,60 @@ fn gameplay_query_indices_follow_faction_and_tag_mutations() {
     assert_eq!(world.gameplay_faction_query_indices(6), &[]);
     assert_eq!(world.gameplay_tag_query_indices(6), &[]);
     assert_eq!(world.gameplay_tag_query_indices(7), &[]);
+}
+
+#[test]
+fn gameplay_tag_mutations_preserve_primary_actor_marker() {
+    let mut world = World::default();
+    let primary = world.spawn_player(4.0, 8.0, 1);
+    let primary_index = primary.id as usize;
+    let secondary = world.spawn_entity();
+    let secondary_index = secondary.id as usize;
+
+    assert!(world
+        .gameplay_tags(primary)
+        .is_some_and(|tags| tags.contains(GAMEPLAY_TAG_PRIMARY_ACTOR)));
+    assert_eq!(
+        world.gameplay_tag_query_indices(GAMEPLAY_TAG_PRIMARY_ACTOR),
+        &[primary_index]
+    );
+
+    world.set_gameplay_tags(primary, GameplayTags::new(1 << 5).unwrap());
+
+    let tags = world
+        .gameplay_tags(primary)
+        .expect("primary actor should keep engine marker tag");
+    assert!(tags.contains(GAMEPLAY_TAG_PRIMARY_ACTOR));
+    assert!(tags.contains(5));
+    assert_eq!(
+        world.gameplay_tag_query_indices(GAMEPLAY_TAG_PRIMARY_ACTOR),
+        &[primary_index]
+    );
+    assert_eq!(world.gameplay_tag_query_indices(5), &[primary_index]);
+
+    world.clear_gameplay_tags(primary);
+
+    let tags = world
+        .gameplay_tags(primary)
+        .expect("primary actor clear should preserve engine marker tag");
+    assert!(tags.contains(GAMEPLAY_TAG_PRIMARY_ACTOR));
+    assert!(!tags.contains(5));
+    assert_eq!(
+        world.gameplay_tag_query_indices(GAMEPLAY_TAG_PRIMARY_ACTOR),
+        &[primary_index]
+    );
+    assert_eq!(world.gameplay_tag_query_indices(5), &[]);
+
+    assert!(world.set_primary_actor_entity(secondary));
+
+    assert_eq!(world.gameplay_tags(primary), None);
+    assert_eq!(
+        world.gameplay_tag_query_indices(GAMEPLAY_TAG_PRIMARY_ACTOR),
+        &[secondary_index]
+    );
+    assert!(world
+        .gameplay_tags(secondary)
+        .is_some_and(|tags| tags.contains(GAMEPLAY_TAG_PRIMARY_ACTOR)));
 }
 
 #[test]

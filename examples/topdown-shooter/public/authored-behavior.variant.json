@@ -421,6 +421,64 @@
       "interaction-source": "triggered",
       "test-projectile": "spent",
       "timer-source": "awake"
-    }
+    },
+    "agentAttachment": [
+      {
+        "instanceId": "builtin-player",
+        "role": "actor",
+        "behaviorProfiles": ["player.primary"],
+        "commandCount": 3,
+        "commandTypes": ["configureProjectileAction", "configureDashAction", "configureSpawnPrefabAction"]
+      },
+      {
+        "instanceId": "score-pickup",
+        "role": "actor",
+        "behaviorProfiles": ["pickup.score"],
+        "commandCount": 1,
+        "commandTypes": ["configurePickup"]
+      },
+      {
+        "instanceId": "interaction-source",
+        "role": "actor",
+        "behaviorProfiles": ["interaction.source"],
+        "commandCount": 1,
+        "commandTypes": ["configureInteraction"]
+      },
+      {
+        "instanceId": "test-projectile",
+        "role": "actor",
+        "behaviorProfiles": ["projectile.test"],
+        "commandCount": 1,
+        "commandTypes": ["configureDamage"]
+      },
+      {
+        "instanceId": "rewarded-enemy",
+        "role": "actor",
+        "behaviorProfiles": ["enemy.rewarded"],
+        "commandCount": 2,
+        "commandTypes": ["configureHealth", "configureScoreReward"]
+      },
+      {
+        "instanceId": "neutral-projectile",
+        "role": "actor",
+        "behaviorProfiles": ["projectile.neutral"],
+        "commandCount": 3,
+        "commandTypes": ["configureDamage", "configureFaction", "configureLifetime"]
+      },
+      {
+        "instanceId": "neutral-enemy",
+        "role": "actor",
+        "behaviorProfiles": ["enemy.neutral-target"],
+        "commandCount": 2,
+        "commandTypes": ["configureHealth", "configureFaction"]
+      },
+      {
+        "instanceId": "timer-source",
+        "role": "actor",
+        "behaviorProfiles": ["timer.source"],
+        "commandCount": 2,
+        "commandTypes": ["configureSpawnPrefabAction", "configureTimerTrigger"]
+      }
+    ]
   }
 }

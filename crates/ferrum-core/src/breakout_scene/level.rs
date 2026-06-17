@@ -2,7 +2,7 @@ use crate::camera::Camera2D;
 use crate::components::gameplay::{
     CollisionReaction, CollisionReactionTrigger, CollisionTarget, Cooldown, MovementPattern,
 };
-use crate::components::{CollisionLayer, Transform2D, Velocity};
+use crate::components::{CollisionLayer, Transform2D, Velocity, DEFAULT_SPRITE_RENDER_LAYER};
 use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::world::{EntityTemplate, PrefabEntitySpawnRequest, PrefabSpriteTint, World};
@@ -63,7 +63,7 @@ impl BreakoutScene {
                 damage: None,
                 health: None,
                 score_reward: None,
-                player_marker: true,
+                primary_actor_marker: true,
             },
         );
         world.set_movement_pattern(
@@ -97,7 +97,7 @@ impl BreakoutScene {
                 damage: Some(1.0),
                 health: None,
                 score_reward: None,
-                player_marker: false,
+                primary_actor_marker: false,
             },
         ));
 
@@ -120,7 +120,7 @@ impl BreakoutScene {
                 damage: None,
                 health: None,
                 score_reward: None,
-                player_marker: false,
+                primary_actor_marker: false,
             },
         ));
         self.walls.push(spawn_body(
@@ -138,7 +138,7 @@ impl BreakoutScene {
                 damage: None,
                 health: None,
                 score_reward: None,
-                player_marker: false,
+                primary_actor_marker: false,
             },
         ));
         self.walls.push(spawn_body(
@@ -156,7 +156,7 @@ impl BreakoutScene {
                 damage: None,
                 health: None,
                 score_reward: None,
-                player_marker: false,
+                primary_actor_marker: false,
             },
         ));
     }
@@ -182,7 +182,7 @@ impl BreakoutScene {
                         damage: None,
                         health: Some(1.0),
                         score_reward: Some(BRICK_SCORE),
-                        player_marker: false,
+                        primary_actor_marker: false,
                     },
                 );
                 attach_brick_hit_reactions(world, entity);
@@ -203,7 +203,7 @@ struct BreakoutBodySpawnRequest {
     damage: Option<f32>,
     health: Option<f32>,
     score_reward: Option<u32>,
-    player_marker: bool,
+    primary_actor_marker: bool,
 }
 
 fn spawn_body(world: &mut World, request: BreakoutBodySpawnRequest) -> Entity {
@@ -213,6 +213,8 @@ fn spawn_body(world: &mut World, request: BreakoutBodySpawnRequest) -> Entity {
         texture_id: DEFAULT_TEXTURE_ID,
         template: EntityTemplate::new(request.width, request.height),
         layer: request.layer,
+        sprite_rotation_radians: 0.0,
+        render_layer: DEFAULT_SPRITE_RENDER_LAYER,
         sprite_tint: PrefabSpriteTint {
             r: request.color[0],
             g: request.color[1],
@@ -225,7 +227,7 @@ fn spawn_body(world: &mut World, request: BreakoutBodySpawnRequest) -> Entity {
         damage: request.damage,
         health: request.health,
         score_reward: request.score_reward,
-        player_marker: request.player_marker,
+        primary_actor_marker: request.primary_actor_marker,
     })
 }
 

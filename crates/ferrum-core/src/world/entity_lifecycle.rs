@@ -29,9 +29,7 @@ impl World {
             self.generations[i] += 1;
             WorldComponentStorage::clear_entity(self, i);
             self.untrack_alive_index(i);
-            if self.player == Some(entity) {
-                self.player = None;
-            }
+            self.clear_primary_actor_entity(entity);
             self.free_list.push(entity.id);
         }
     }

@@ -11,7 +11,7 @@ use crate::game_state::GameState;
 use crate::input::InputState;
 use crate::world::{ProjectileSpawnRequest, World};
 
-use super::config::SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S;
+use super::config::GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S;
 use super::{finite_or_default, non_negative_or_default, positive_or_default, ShooterScene};
 use super::{
     SHOOTER_DASH_ACTION_ID, SHOOTER_MELEE_ACTION_ID, SHOOTER_PRIMARY_FIRE_ACTION_ID,
@@ -71,7 +71,7 @@ const SNAPSHOT_PREVIOUS_INPUT_S: usize = SNAPSHOT_PREVIOUS_INPUT_W + 2;
 const SNAPSHOT_PREVIOUS_INPUT_D: usize = SNAPSHOT_PREVIOUS_INPUT_W + 3;
 const SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET: usize = SNAPSHOT_PREVIOUS_INPUT_D + 1;
 const SNAPSHOT_FACTION_RELATION_TABLE_U32_OFFSET: usize =
-    SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S;
+    SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET + GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ShooterSceneSnapshot {
@@ -479,7 +479,7 @@ impl ShooterScene {
         header_u32s[SNAPSHOT_PREVIOUS_INPUT_D] = self.previous_input.d as u32;
         self.config.write_prefab_registry_snapshot(
             &mut header_u32s[SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET
-                ..SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S],
+                ..SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET + GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S],
         );
         world.write_gameplay_faction_relations_snapshot(
             &mut header_u32s[SNAPSHOT_FACTION_RELATION_TABLE_U32_OFFSET
@@ -515,7 +515,7 @@ impl ShooterScene {
         }
         if !self.config.prefab_registry_snapshot_matches(
             &snapshot.header_u32s[SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET
-                ..SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S],
+                ..SNAPSHOT_PREFAB_REGISTRY_U32_OFFSET + GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S],
         ) {
             return false;
         }

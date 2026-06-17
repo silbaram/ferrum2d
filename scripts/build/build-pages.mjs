@@ -147,7 +147,6 @@ function compareDocs(a, b) {
     "development/architecture/architecture.md",
     "development/architecture/physics-engine.md",
     "development/quality/smoke-check.md",
-    "development/quality/topdown-shooter-smoke-checklist.md",
     "development/quality/code-review.md",
     "development/operations/demo-deploy.md",
     "development/operations/npm-package-strategy.md",

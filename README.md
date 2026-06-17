@@ -287,6 +287,12 @@ Physics Spec 기반 generic rigid body sandbox는 다음으로 실행한다.
 pnpm dev:physics-sandbox
 ```
 
+Data Scene 기반 오브젝트 배치 확인용 authoring viewer는 다음으로 실행한다.
+
+```bash
+pnpm dev:placement-viewer
+```
+
 Top-down Shooter 예제는 Rust core를 수정했거나 처음 실행하는 경우 Wasm package를 먼저 만든다.
 
 ```bash
@@ -392,7 +398,7 @@ pnpm release:check
 pnpm build
 ```
 
-수동 smoke check 기준은 [Top-down Shooter 체크리스트](docs/development/quality/topdown-shooter-smoke-checklist.md)와 [Smoke Check 문서](docs/development/quality/smoke-check.md)를 따른다.
+수동 smoke check 기준은 [Top-down Shooter 체크리스트](examples/topdown-shooter/SMOKE_CHECKLIST.md)와 [Smoke Check 문서](docs/development/quality/smoke-check.md)를 따른다.
 
 ## 프로젝트 구조
 
@@ -408,6 +414,7 @@ examples/breakout/          Breakout 장르 검증 예제
 examples/platformer/        Platformer controller 검증 예제
 examples/topdown-shooter/   Top-down Shooter 검증 예제
 examples/physics-sandbox/   Physics Spec authoring/debug 검증 예제
+examples/placement-viewer/  Data Scene placement authoring viewer and draft patch UI
 docs/                       engine 설명과 development 기준 문서
 scripts/                    저장소 보조 스크립트
 ```

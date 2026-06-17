@@ -24,7 +24,7 @@ impl Engine {
             return INVALID_ENTITY_ID;
         }
         self.world
-            .player_entity()
+            .primary_actor_entity()
             .map_or(INVALID_ENTITY_ID, |entity| entity.id)
     }
 
@@ -33,7 +33,7 @@ impl Engine {
             return 0;
         }
         self.world
-            .player_entity()
+            .primary_actor_entity()
             .map_or(0, |entity| entity.generation)
     }
 

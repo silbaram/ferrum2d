@@ -129,6 +129,7 @@ assert(
 assertConsumerProjectileWeaponAuthoringContract(packageReadmeSource, packageReadmeFile);
 assertConsumerRuntimeApplyContract(packageReadmeSource, packageReadmeFile);
 assertConsumerAssetPipelineContract(packageReadmeSource, packageReadmeFile);
+assertConsumerPlacementAuthoringContract(packageReadmeSource, packageReadmeFile);
 assertCreateGameTemplateCatalogDiscovery(packageReadmeSource, packageReadmeFile);
 assertForbiddenPublicImportBoundary(packageReadmeSource, packageReadmeFile);
 assertNoForbiddenImportExamples(packageReadmeSource, packageReadmeFile);
@@ -180,6 +181,7 @@ async function checkTemplates() {
   assertConsumerProjectileWeaponAuthoringContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertConsumerRuntimeApplyContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertConsumerAssetPipelineContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
+  assertConsumerPlacementAuthoringContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertCreateGameTemplateCatalogDiscovery(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertConsumerArchitectureContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertForbiddenPublicImportBoundary(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
@@ -228,6 +230,7 @@ async function checkTemplates() {
       );
       assertConsumerProjectileWeaponAuthoringContract(sharedSource, sharedFile);
       assertConsumerRuntimeApplyContract(sharedSource, sharedFile);
+      assertConsumerPlacementAuthoringContract(sharedSource, sharedFile);
       assertForbiddenPublicImportBoundary(sharedSource, sharedFile);
       assertNoForbiddenImportExamples(sharedSource, sharedFile);
     }
@@ -443,6 +446,16 @@ function assertConsumerRuntimeApplyContract(source, filePath) {
       source.includes("setInputActionBinding") &&
       source.includes("builtInShooterPlayerHandle"),
     `${path.relative(repoRoot, filePath)} must document public runtime apply helpers for compiled behavior commands`,
+  );
+}
+
+function assertConsumerPlacementAuthoringContract(source, filePath) {
+  assert(
+    source.includes("placementAuthoring") &&
+      source.includes("instanceId") &&
+      source.includes("previewScenePlacementBindingMigration") &&
+      source.includes("behaviorRecipes"),
+    `${path.relative(repoRoot, filePath)} must document placement-driven behavior authoring workflow`,
   );
 }
 

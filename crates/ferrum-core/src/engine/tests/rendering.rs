@@ -14,7 +14,7 @@ fn player_render_command_uses_centered_transform() {
 fn camera_follows_player_and_offsets_render_commands() {
     let mut engine = Engine::new();
     engine.set_viewport_size(400.0, 240.0);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine.world.set_transform(
         player,
         Transform2D {
@@ -56,6 +56,40 @@ fn configured_texture_ids_are_written_to_render_commands() {
 }
 
 #[test]
+fn entity_render_commands_include_sprite_rotation_and_layer_order() {
+    let mut engine = Engine::new();
+    let back = engine.world.spawn_enemy(820.0, 480.0, 11);
+    let front = engine.world.spawn_enemy(840.0, 480.0, 12);
+
+    let back_sprite = engine
+        .world
+        .sprite_mut_at_index(back.id as usize)
+        .expect("spawned back entity should have sprite");
+    back_sprite.rotation_radians = 0.5;
+    back_sprite.render_layer = crate::components::DEFAULT_SPRITE_RENDER_LAYER + 5;
+    let front_sprite = engine
+        .world
+        .sprite_mut_at_index(front.id as usize)
+        .expect("spawned front entity should have sprite");
+    front_sprite.rotation_radians = -0.25;
+    front_sprite.render_layer = crate::components::DEFAULT_SPRITE_RENDER_LAYER - 5;
+
+    engine.build_render_commands();
+
+    let commands: Vec<_> = engine
+        .frame_buffers
+        .render_commands
+        .iter()
+        .filter(|command| command.texture_id == 11.0 || command.texture_id == 12.0)
+        .collect();
+    assert_eq!(commands.len(), 2);
+    assert_eq!(commands[0].texture_id, 12.0);
+    assert_eq!(commands[0].rotation_radians, -0.25);
+    assert_eq!(commands[1].texture_id, 11.0);
+    assert_eq!(commands[1].rotation_radians, 0.5);
+}
+
+#[test]
 fn offscreen_entity_sprites_do_not_emit_render_commands() {
     let mut engine = Engine::new();
     engine.world.spawn_enemy(2_000.0, 2_000.0, 99);
@@ -94,7 +128,7 @@ fn non_finite_entity_position_does_not_emit_render_commands() {
 fn camera_preset_applies_without_resetting_world() {
     let mut engine = Engine::new();
     engine.set_viewport_size(400.0, 240.0);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine.world.set_transform(
         player,
         Transform2D {
@@ -153,7 +187,8 @@ fn atlas_frame_updates_prefab_without_render_abi_change() {
         command.effect_flags,
         crate::render_command::SPRITE_EFFECT_NONE
     );
-    assert_eq!(crate::sprite_render_command_floats(), 14);
+    assert_eq!(command.rotation_radians, 0.0);
+    assert_eq!(crate::sprite_render_command_floats(), 15);
 }
 
 #[test]
@@ -222,7 +257,7 @@ fn tilemap_render_commands_are_emitted_before_entities() {
 fn non_hd2d_render_commands_keep_layer_order_over_foot_y() {
     let mut engine = Engine::new();
     engine.set_viewport_size(1600.0, 960.0);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 16.0, y: 8.0 });
@@ -265,7 +300,7 @@ fn non_hd2d_tilemap_rendering_preserves_texture_bucket_order() {
 fn non_hd2d_particles_emit_after_entities_over_foot_y() {
     let mut engine = Engine::new();
     engine.set_viewport_size(1600.0, 960.0);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 800.0, y: 480.0 });
@@ -306,7 +341,7 @@ fn clear_tilemap_removes_static_tile_render_commands() {
 fn render_commands_sort_entities_by_hd2d_floor_elevation_and_foot_y() {
     let mut engine = Engine::new();
     engine.set_viewport_size(1600.0, 960.0);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 100.0, y: 120.0 });
@@ -348,7 +383,7 @@ fn render_commands_sort_entities_by_hd2d_floor_elevation_and_foot_y() {
 fn hd2d_render_commands_sort_tiles_and_entities_by_foot_y_without_render_abi_change() {
     let mut engine = Engine::new();
     engine.set_viewport_size(1600.0, 960.0);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 16.0, y: 8.0 });
@@ -376,5 +411,5 @@ fn hd2d_render_commands_sort_tiles_and_entities_by_foot_y_without_render_abi_cha
             .collect::<Vec<_>>(),
         vec![1, 9]
     );
-    assert_eq!(crate::sprite_render_command_floats(), 14);
+    assert_eq!(crate::sprite_render_command_floats(), 15);
 }

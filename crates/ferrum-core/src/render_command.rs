@@ -21,6 +21,7 @@ pub struct SpriteRenderCommand {
     pub a: f32,
     pub texture_id: f32,
     pub effect_flags: f32,
+    pub rotation_radians: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -87,6 +87,9 @@ export class SpriteBatch {
     this.gl.enableVertexAttribArray(3);
     this.gl.vertexAttribPointer(3, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 8 * BYTES_PER_F32);
     this.gl.vertexAttribDivisor(3, 1);
+    this.gl.enableVertexAttribArray(4);
+    this.gl.vertexAttribPointer(4, 1, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 14 * BYTES_PER_F32);
+    this.gl.vertexAttribDivisor(4, 1);
 
     this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
     this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, QUAD_INDEX_DATA, this.gl.STATIC_DRAW);
@@ -301,9 +304,9 @@ export class SpriteBatch {
 
   private createProgram(): WebGLProgram { /* unchanged */
     const vert = this.compile(this.gl.VERTEX_SHADER, `#version 300 es
-      layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;
+      layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;
       uniform vec2 u_resolution;uniform vec2 u_screen_offset;out vec2 v_uv;out vec4 v_color;
-      void main(){vec2 corner=a_corner;vec2 position=a_rect.xy+u_screen_offset+(corner*a_rect.zw);vec2 z=position/u_resolution;vec2 c=(z*2.0)-1.0;gl_Position=vec4(c*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_color=a_color;}`);
+      void main(){vec2 corner=a_corner;vec2 local=(corner-vec2(0.5))*a_rect.zw;float c=cos(a_rotation);float s=sin(a_rotation);vec2 rotated=vec2(local.x*c-local.y*s,local.x*s+local.y*c);vec2 position=a_rect.xy+u_screen_offset+a_rect.zw*0.5+rotated;vec2 z=position/u_resolution;vec2 clip=(z*2.0)-1.0;gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_color=a_color;}`);
     const frag = this.compile(this.gl.FRAGMENT_SHADER, `#version 300 es
       precision mediump float;in vec2 v_uv;in vec4 v_color;uniform sampler2D u_texture;out vec4 outColor;
       void main(){outColor=texture(u_texture,v_uv)*v_color;}`);

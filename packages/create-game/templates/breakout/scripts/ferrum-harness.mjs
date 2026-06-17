@@ -55,7 +55,9 @@ function inspectTemplateAuthoringSurface({ mainSource, sceneAuthoring }) {
   return {
     publicApis: {
       applySceneBehaviorRecipes: sceneAuthoring?.publicApis?.applySceneBehaviorRecipes === true,
+      classifySceneInstance: sceneAuthoring?.publicApis?.classifySceneInstance === true,
       dryRunSceneBehaviorRecipes: sceneAuthoring?.publicApis?.dryRunSceneBehaviorRecipes === true,
+      previewScenePlacementBindingMigration: sceneAuthoring?.publicApis?.previewScenePlacementBindingMigration === true,
       resolveSceneCompositionSpec: sceneAuthoring?.publicApis?.resolveSceneCompositionSpec === true,
       resolveBehaviorRecipeDocument: sceneAuthoring?.publicApis?.resolveBehaviorRecipeDocument === true,
     },
@@ -114,7 +116,7 @@ function templateSummary(result) {
     hasMainSource: result.hasMainSource,
     authoringSurface: result.authoringSurface,
     publicAssets: result.publicAssets,
-    scripts: ["ferrum:validate", "ferrum:authoring-report", "ferrum:replay-report", "ferrum:update-replay-fixture"],
+    scripts: ["ferrum:placement-viewer", "ferrum:validate", "ferrum:authoring-report", "ferrum:replay-report", "ferrum:update-replay-fixture"],
   };
 }
 

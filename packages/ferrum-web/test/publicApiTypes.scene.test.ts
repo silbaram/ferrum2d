@@ -28,6 +28,8 @@ import {
   createBehaviorStateMachineStateCommandPlan,
   createGameplayBehaviorRuntimeTarget,
   createGameplayReplayRun,
+  createScenePlacementPatchStore,
+  createScenePlacementViewport,
   DATA_SCENE_COLLISION_LAYER_CODES,
   DATA_SCENE_COMPONENTS_PROP,
   DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES,
@@ -66,10 +68,20 @@ import {
   runBehaviorStateMachineReplay,
   SCENE_AUTHORING_DOCUMENT_FORMAT,
   SCENE_AUTHORING_DOCUMENT_VERSION,
+  SCENE_PLACEMENT_PATCH_FORMAT,
+  SCENE_PLACEMENT_PATCH_VERSION,
+  createScenePlacementViewer,
+  mergeScenePlacementPatch,
+  saveScenePlacementPatch,
+  sceneBackbufferToScreen,
+  sceneScreenToBackbuffer,
+  screenToSceneWorld,
+  snapSceneWorldPoint,
   resolveSceneAuthoringDocument,
   resolveSceneCompositionSpec,
   unpackTileImpactLayerIndex,
   unpackTileImpactTileIndex,
+  worldToSceneScreen,
   test,
 } from "./publicApiTypes.shared.js";
 
@@ -185,6 +197,9 @@ import type {
   CutsceneWaitCommandSpec,
   DataSceneCollisionLayerName,
   DataSceneComponentsSpec,
+  DataSceneRuntimeComponentTemplateCatalog,
+  DataSceneRuntimeComponentTemplateResolver,
+  DataSceneRuntimeComponentTemplates,
   DataSceneRuntimeTextureIdResolver,
   CollisionAreaDamageBehaviorRecipeSpec,
   CollisionDespawnBehaviorRecipeSpec,
@@ -352,11 +367,39 @@ import type {
   ResolvedSceneCompositionSpec,
   ResolvedSceneCompositionTransform,
   ResolvedSceneAuthoringDocument,
+  CreateScenePlacementPatchStoreOptions,
+  CreateScenePlacementViewerOptions,
+  MergeScenePlacementPatchOptions,
   SceneBehaviorBindingDryRunResult,
   SceneBehaviorBindingOptions,
   SceneBehaviorBindingPlan,
   SceneBehaviorApplyResult,
   SceneBehaviorRuntimeTarget,
+  ScenePlacementAddInstanceOperation,
+  ScenePlacementPatch,
+  ScenePlacementPatchMergeResult,
+  ScenePlacementPatchOperation,
+  ScenePlacementPatchSaveResult,
+  ScenePlacementPatchStore,
+  ScenePlacementPatchStoreState,
+  SaveScenePlacementPatchOptions,
+  ScenePlacementPoint,
+  ScenePlacementRemoveInstanceOperation,
+  ScenePlacementRenameInstanceOperation,
+  ScenePlacementSaveAdapter,
+  ScenePlacementSaveAdapterRequest,
+  ScenePlacementSaveAdapterResult,
+  ScenePlacementSnapMode,
+  ScenePlacementSnapOptions,
+  ScenePlacementTransform,
+  ScenePlacementUpdateTransformOperation,
+  ScenePlacementViewport,
+  ScenePlacementViewportOptions,
+  ScenePlacementViewer,
+  ScenePlacementViewerComposition,
+  ScenePlacementViewerDocument,
+  ScenePlacementViewerInstance,
+  ScenePlacementViewerState,
   SceneInstanceEntityExists,
   SceneInstanceAuthoringClassification,
   SceneInstanceAuthoringKind,
@@ -524,11 +567,49 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     resolveDataSceneInstanceComponents;
   const publicCreateDataSceneRuntimeTarget: PublicApi["createDataSceneRuntimeTarget"] =
     createDataSceneRuntimeTarget;
+  const publicCreateScenePlacementViewport: PublicApi["createScenePlacementViewport"] =
+    createScenePlacementViewport;
+  const publicScreenToSceneWorld: PublicApi["screenToSceneWorld"] = screenToSceneWorld;
+  const publicWorldToSceneScreen: PublicApi["worldToSceneScreen"] = worldToSceneScreen;
+  const publicSceneScreenToBackbuffer: PublicApi["sceneScreenToBackbuffer"] = sceneScreenToBackbuffer;
+  const publicSceneBackbufferToScreen: PublicApi["sceneBackbufferToScreen"] = sceneBackbufferToScreen;
+  const publicSnapSceneWorldPoint: PublicApi["snapSceneWorldPoint"] = snapSceneWorldPoint;
   const dataSceneRuntimeTextureId: DataSceneRuntimeTextureIdResolver = (name) => name.length;
+  const dataSceneRuntimeComponentTemplateCatalog: DataSceneRuntimeComponentTemplateCatalog = {
+    "enemy.base": dataSceneComponents,
+  };
+  const dataSceneRuntimeComponentTemplateResolver: DataSceneRuntimeComponentTemplateResolver =
+    (template) => dataSceneRuntimeComponentTemplateCatalog[template];
+  const dataSceneRuntimeComponentTemplates: DataSceneRuntimeComponentTemplates =
+    dataSceneRuntimeComponentTemplateResolver;
   const dataSceneRuntimeTargetOptions: CreateDataSceneRuntimeTargetOptions = {
     activateDataScene: false,
     textureId: dataSceneRuntimeTextureId,
+    componentTemplates: dataSceneRuntimeComponentTemplates,
   };
+  const scenePlacementViewportOptions: ScenePlacementViewportOptions = {
+    cssWidth: 800,
+    cssHeight: 480,
+    dpr: 2,
+    zoom: 1,
+  };
+  const scenePlacementViewport: ScenePlacementViewport =
+    publicCreateScenePlacementViewport(scenePlacementViewportOptions);
+  const scenePlacementPoint: ScenePlacementPoint =
+    publicScreenToSceneWorld(scenePlacementViewport, { x: 40, y: 24 });
+  const scenePlacementScreenPoint: ScenePlacementPoint =
+    publicWorldToSceneScreen(scenePlacementViewport, scenePlacementPoint);
+  const scenePlacementBackbufferPoint: ScenePlacementPoint =
+    publicSceneScreenToBackbuffer(scenePlacementViewport, scenePlacementScreenPoint);
+  const scenePlacementCssPoint: ScenePlacementPoint =
+    publicSceneBackbufferToScreen(scenePlacementViewport, scenePlacementBackbufferPoint);
+  const scenePlacementSnapMode: ScenePlacementSnapMode = "nearest";
+  const scenePlacementSnapOptions: ScenePlacementSnapOptions = {
+    gridSize: 8,
+    mode: scenePlacementSnapMode,
+  };
+  const scenePlacementSnappedPoint: ScenePlacementPoint =
+    publicSnapSceneWorldPoint(scenePlacementPoint, scenePlacementSnapOptions);
   const resolvedDataSceneComponents: ResolvedDataSceneComponents =
     publicResolveDataSceneComponentsSpec(dataSceneComponents, dataSceneComponentsOptions);
   const resolvedDataSceneInstanceComponents: ResolvedDataSceneComponents =
@@ -556,7 +637,12 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(resolvedDataSceneLayer.code, 1);
   equal(resolvedDataSceneInstanceComponents.mode, "inline");
   equal(dataSceneRuntimeTargetOptions.activateDataScene, false);
+  equal(typeof dataSceneRuntimeTargetOptions.componentTemplates, "function");
   equal(typeof publicCreateDataSceneRuntimeTarget, "function");
+  equal(scenePlacementViewport.backbufferWidth, 1_600);
+  equal(scenePlacementScreenPoint.x, 40);
+  equal(scenePlacementCssPoint.y, 24);
+  equal(scenePlacementSnappedPoint.x, 40);
   const sceneCompositionTarget: SceneCompositionTarget = {
     spawnSceneInstance: (instance) => instance.id,
   };
@@ -683,7 +769,7 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     kind: "collisionDespawn",
     target: "self",
   };
-  const chaseBehaviorRecipe: ChaseBehaviorRecipeSpec = { kind: "chase", target: "player", speed: 80 };
+  const chaseBehaviorRecipe: ChaseBehaviorRecipeSpec = { kind: "chase", target: "primaryActor", speed: 80 };
   const interactionBehaviorRecipe: InteractionBehaviorRecipeSpec = {
     kind: "interaction",
     action: "inspect",
@@ -1217,6 +1303,130 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(sceneInstanceHandleRegistry.get("a.enemy", sceneInstanceHandleLookupOptions)?.entityGeneration, 2);
   equal(sceneInstanceHandleRegistry.instanceIdForHandle(gameplayEntityHandle), "a.enemy");
   equal(sceneInstanceHandleRegistrySync.entries.length, 1);
+  const publicScenePlacementPatchFormat: PublicApi["SCENE_PLACEMENT_PATCH_FORMAT"] =
+    SCENE_PLACEMENT_PATCH_FORMAT;
+  const publicScenePlacementPatchVersion: PublicApi["SCENE_PLACEMENT_PATCH_VERSION"] =
+    SCENE_PLACEMENT_PATCH_VERSION;
+  const publicCreateScenePlacementViewer: PublicApi["createScenePlacementViewer"] =
+    createScenePlacementViewer;
+  const publicCreateScenePlacementPatchStore: PublicApi["createScenePlacementPatchStore"] =
+    createScenePlacementPatchStore;
+  const publicMergeScenePlacementPatch: PublicApi["mergeScenePlacementPatch"] =
+    mergeScenePlacementPatch;
+  const publicSaveScenePlacementPatch: PublicApi["saveScenePlacementPatch"] =
+    saveScenePlacementPatch;
+  const scenePlacementViewerDocument: ScenePlacementViewerDocument = sceneAuthoringDocument;
+  const scenePlacementViewerComposition: ScenePlacementViewerComposition = resolvedSceneComposition;
+  const scenePlacementViewerOptions: CreateScenePlacementViewerOptions = {
+    document: scenePlacementViewerDocument,
+    viewport: scenePlacementViewportOptions,
+    fragment: "room",
+    selectedInstanceId: "a.enemy",
+    instanceHandleRegistry: sceneInstanceHandleRegistry,
+  };
+  const scenePlacementViewer: ScenePlacementViewer =
+    publicCreateScenePlacementViewer(scenePlacementViewerOptions);
+  const scenePlacementViewerState: ScenePlacementViewerState =
+    scenePlacementViewer.pointerAtScreen({ x: 40, y: 24 });
+  const scenePlacementPickedInstance: ScenePlacementViewerInstance | undefined =
+    scenePlacementViewer.pickInstanceAtScreen({ x: 6, y: 8 });
+  const scenePlacementHoverState: ScenePlacementViewerState =
+    scenePlacementViewer.hoverInstanceAtScreen({ x: 6, y: 8 });
+  const scenePlacementSelectState: ScenePlacementViewerState =
+    scenePlacementViewer.selectInstanceAtScreen({ x: 6, y: 8 });
+  const scenePlacementDraftState: ScenePlacementViewerState =
+    scenePlacementViewer.updateInstanceTransform("a.enemy", { x: 12 });
+  const scenePlacementViewerInstance: ScenePlacementViewerInstance =
+    scenePlacementViewerState.instances[0];
+  const scenePlacementViewerTransform: ScenePlacementTransform =
+    scenePlacementViewerInstance.transform;
+  const scenePlacementUpdateTransformOperation: ScenePlacementUpdateTransformOperation = {
+    kind: "updateTransform",
+    instanceId: "a.enemy",
+    transform: { x: 12 },
+  };
+  const scenePlacementRenameInstanceOperation: ScenePlacementRenameInstanceOperation = {
+    kind: "renameInstance",
+    instanceId: "a.enemy",
+    nextInstanceId: "enemy.left",
+  };
+  const scenePlacementAddInstanceOperation: ScenePlacementAddInstanceOperation = {
+    kind: "addInstance",
+    fragment: "room",
+    instance: sceneCompositionInstanceSpec,
+  };
+  const scenePlacementRemoveInstanceOperation: ScenePlacementRemoveInstanceOperation = {
+    kind: "removeInstance",
+    instanceId: "a.enemy",
+  };
+  const scenePlacementPatchOperation: ScenePlacementPatchOperation =
+    scenePlacementUpdateTransformOperation;
+  const scenePlacementPatch: ScenePlacementPatch = {
+    format: publicScenePlacementPatchFormat,
+    version: publicScenePlacementPatchVersion,
+    operations: [
+      scenePlacementPatchOperation,
+      scenePlacementRenameInstanceOperation,
+      scenePlacementAddInstanceOperation,
+      scenePlacementRemoveInstanceOperation,
+    ],
+  };
+  const scenePlacementPatchStoreOptions: CreateScenePlacementPatchStoreOptions = {
+    patch: scenePlacementPatch,
+  };
+  const scenePlacementPatchStore: ScenePlacementPatchStore =
+    publicCreateScenePlacementPatchStore(scenePlacementPatchStoreOptions);
+  const scenePlacementPatchStoreState: ScenePlacementPatchStoreState =
+    scenePlacementPatchStore.state();
+  const scenePlacementMergeOperation: ScenePlacementUpdateTransformOperation = {
+    kind: "updateTransform",
+    instanceId: "enemy",
+    transform: { x: 12 },
+  };
+  const scenePlacementMergeOptions: MergeScenePlacementPatchOptions = {
+    allowedFragments: ["spawn"],
+  };
+  const scenePlacementMergeResult: ScenePlacementPatchMergeResult =
+    publicMergeScenePlacementPatch(sceneAuthoringDocument, {
+      ...scenePlacementPatch,
+      operations: [scenePlacementMergeOperation],
+    }, scenePlacementMergeOptions);
+  const scenePlacementSaveAdapter: ScenePlacementSaveAdapter = {
+    id: "public-api-types",
+    saveScenePlacementPatch(request: ScenePlacementSaveAdapterRequest): ScenePlacementSaveAdapterResult {
+      return {
+        saved: request.operationCount === 1,
+        document: request.mergedDocument,
+      };
+    },
+  };
+  const scenePlacementSaveOptions: SaveScenePlacementPatchOptions = {
+    ...scenePlacementMergeOptions,
+    allowSave: true,
+    adapter: scenePlacementSaveAdapter,
+    allowedAdapterIds: ["public-api-types"],
+  };
+  const scenePlacementSaveResultPromise: Promise<ScenePlacementPatchSaveResult> =
+    publicSaveScenePlacementPatch(sceneAuthoringDocument, {
+      ...scenePlacementPatch,
+      operations: [scenePlacementMergeOperation],
+    }, scenePlacementSaveOptions);
+  equal(scenePlacementViewerComposition.initialFragment, "room");
+  equal(scenePlacementViewerState.selected?.entity?.entityId, 7);
+  equal(scenePlacementViewerState.pointerWorld?.x, 40);
+  equal(scenePlacementPickedInstance?.instanceId, "a.enemy");
+  equal(scenePlacementHoverState.hoveredInstanceId, "a.enemy");
+  equal(scenePlacementSelectState.selectedInstanceId, "a.enemy");
+  equal(scenePlacementDraftState.draftPatch?.operations.length, 1);
+  equal(scenePlacementViewer.exportPatch()?.operations[0]?.kind, "updateTransform");
+  equal(scenePlacementViewer.clearDraftPatch().draftPatch, undefined);
+  equal(scenePlacementViewerTransform.x, 6);
+  equal(scenePlacementPatch.operations.length, 4);
+  equal(scenePlacementPatchStoreState.operationCount, 4);
+  equal(scenePlacementMergeResult.changedInstanceIds[0], "enemy");
+  equal(scenePlacementPatchStore.exportPatch()?.format, publicScenePlacementPatchFormat);
+  equal(scenePlacementPatchStore.clear().dirty, false);
+  void scenePlacementSaveResultPromise;
   const gameplayBehaviorRuntimeEngine: Parameters<typeof publicApplyGameplayBehaviorCommands>[0] = {
     gameplay_entity_exists: () => true,
     set_gameplay_health: () => true,
@@ -1831,7 +2041,7 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(resolvedDamageBehaviorRecipe.amount, 2);
   equal(resolvedFactionBehaviorRecipe.faction, "enemy");
   equal(resolvedFactionBehaviorRecipe.damages[0], "player");
-  equal(resolvedChaseBehaviorRecipe.target, "player");
+  equal(resolvedChaseBehaviorRecipe.target, "primaryActor");
   equal(resolvedLifetimeBehaviorRecipe.seconds, 0.5);
   equal(resolvedScoreRewardBehaviorRecipe.reward, 2);
   equal(resolvedPickupBehaviorRecipe.item, "coin");

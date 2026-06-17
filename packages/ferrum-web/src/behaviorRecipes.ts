@@ -1125,7 +1125,7 @@ function resolveBehaviorRecipe(value: unknown, path: string, fallbackId: string)
       return {
         ...base,
         kind,
-        target: optionalMovementTarget(value.target, `${path}.target`, "player"),
+        target: optionalMovementTarget(value.target, `${path}.target`, "primaryActor"),
         speed: positiveNumber(value.speed ?? 80, `${path}.speed`),
         stopDistance: nonNegativeNumber(value.stopDistance ?? 12, `${path}.stopDistance`),
         ...(value.maxDistance === undefined ? {} : { maxDistance: positiveNumber(value.maxDistance, `${path}.maxDistance`) }),
@@ -1134,7 +1134,7 @@ function resolveBehaviorRecipe(value: unknown, path: string, fallbackId: string)
       return {
         ...base,
         kind,
-        target: optionalMovementTarget(value.target, `${path}.target`, "player"),
+        target: optionalMovementTarget(value.target, `${path}.target`, "primaryActor"),
         speed: positiveNumber(value.speed ?? 260, `${path}.speed`),
         turnRate: nonNegativeNumber(value.turnRate ?? 0, `${path}.turnRate`),
       };

@@ -5,6 +5,7 @@ use crate::components::gameplay::{
 };
 use crate::components::{
     CollisionLayer, HeightSpan, PhysicsFloorId, ProjectileArc, Transform2D, Velocity,
+    DEFAULT_SPRITE_RENDER_LAYER,
 };
 use crate::entity::Entity;
 use crate::gameplay::{
@@ -28,7 +29,7 @@ use crate::world::{
 };
 
 use super::super::{
-    ShooterPrefabKind, ShooterPrefabResolvedComponents, ShooterPrefabTextureSlot, ShooterScene,
+    GameplayPrefabResolvedComponents, ShooterPrefabKind, ShooterPrefabTextureSlot, ShooterScene,
 };
 use super::{push_audio_event, GameplayEventSink};
 
@@ -272,7 +273,7 @@ impl ShooterScene {
         world: &World,
         source: Entity,
         core_data: ProjectileSpawnCoreData,
-        components: ShooterPrefabResolvedComponents,
+        components: GameplayPrefabResolvedComponents,
     ) -> ProjectileSpawnCommand {
         ProjectileSpawnCommand {
             transform: core_data.transform,
@@ -301,7 +302,7 @@ impl ShooterScene {
             return Err(GAMEPLAY_ACTION_FAILURE_MISSING_SOURCE_TRANSFORM);
         };
         let target = world
-            .player_entity()
+            .primary_actor_entity()
             .and_then(|player| world.transform(player).map(|transform| (player, transform)));
         let source_half_extent = world
             .sprites
@@ -322,7 +323,7 @@ impl ShooterScene {
         Ok(self.projectile_spawn_command_from_core_data(world, source, command_data))
     }
 
-    fn projectile_spawn_components(&self) -> ShooterPrefabResolvedComponents {
+    fn projectile_spawn_components(&self) -> GameplayPrefabResolvedComponents {
         self.resolve_builtin_prefab_components(ShooterPrefabKind::Bullet)
     }
 
@@ -360,7 +361,7 @@ impl ShooterScene {
     fn prefab_spawn_command_from_core_data_with_components(
         &self,
         core_data: SpawnPrefabCoreData,
-        components: ShooterPrefabResolvedComponents,
+        components: GameplayPrefabResolvedComponents,
     ) -> PrefabSpawnCommand {
         PrefabSpawnCommand {
             kind: components.kind,
@@ -385,7 +386,7 @@ impl ShooterScene {
     fn prefab_spawn_components_for_prefab_id(
         &self,
         prefab_id: u32,
-    ) -> Option<ShooterPrefabResolvedComponents> {
+    ) -> Option<GameplayPrefabResolvedComponents> {
         let registration = self.resolve_spawn_prefab_registration(prefab_id)?;
         let mut components = self.resolve_spawn_prefab_components(registration);
         if components.layer != CollisionLayer::Enemy {
@@ -401,7 +402,7 @@ impl ShooterScene {
         world: &World,
         source: Entity,
         core_data: SpawnPrefabCoreData,
-        components: ShooterPrefabResolvedComponents,
+        components: GameplayPrefabResolvedComponents,
     ) -> Result<PrefabSpawnCommand, u32> {
         let Some(spawn_payload) = core_data.projectile else {
             return Err(GAMEPLAY_ACTION_FAILURE_UNSUPPORTED_PREFAB);
@@ -411,7 +412,7 @@ impl ShooterScene {
             return Err(GAMEPLAY_ACTION_FAILURE_MISSING_SOURCE_TRANSFORM);
         };
         let target = world
-            .player_entity()
+            .primary_actor_entity()
             .and_then(|player| world.transform(player).map(|transform| (player, transform)));
         let plan =
             plan_projectile_action_toward_target(projectile_payload, source, source_t, target, 0.0)
@@ -670,6 +671,8 @@ fn prefab_entity_spawn_request_from_command(
         texture_id: command.texture_id,
         template: command.template,
         layer: command.layer,
+        sprite_rotation_radians: 0.0,
+        render_layer: DEFAULT_SPRITE_RENDER_LAYER,
         sprite_tint,
         lifetime_seconds: None,
         projectile_policy: None,
@@ -677,7 +680,7 @@ fn prefab_entity_spawn_request_from_command(
         damage: None,
         health: Some(command.health),
         score_reward: Some(command.score_reward),
-        player_marker: command.layer == CollisionLayer::Player,
+        primary_actor_marker: command.layer == CollisionLayer::Player,
     }
 }
 
@@ -1733,7 +1736,7 @@ mod tests {
             .projectile_spawn_command_toward_player(&world, source, payload)
             .unwrap();
 
-        assert_eq!(world.player_entity(), Some(player));
+        assert_eq!(world.primary_actor_entity(), Some(player));
         assert!(
             (command.transform.x - (32.0 + source_half_extent + bullet_half_extent)).abs() < 0.001
         );
@@ -1895,7 +1898,7 @@ mod tests {
         let projectile = command
             .projectile
             .expect("bullet prefab command should carry projectile command data");
-        assert_eq!(world.player_entity(), Some(player));
+        assert_eq!(world.primary_actor_entity(), Some(player));
         assert_eq!(command.kind, ShooterPrefabKind::Bullet);
         assert_eq!(command.prefab_id, 9);
         assert_eq!(command.transform, Transform2D { x: 76.0, y: 72.0 });

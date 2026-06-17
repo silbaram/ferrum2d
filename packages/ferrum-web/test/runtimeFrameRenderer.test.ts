@@ -333,7 +333,7 @@ function renderFrameState(args: {
     renderCommandBuffer: {
       buffer: new Float32Array(0),
       commandCount: 2,
-      floatsPerCommand: 14,
+      floatsPerCommand: 15,
     } as never,
     ...(args.includePhysicsDebugLines
       ? {
@@ -410,7 +410,7 @@ function frameState(overrides: Partial<FrameState> = {}): FrameState {
     renderCommandBuffer: {
       buffer: new Float32Array(0),
       commandCount: 2,
-      floatsPerCommand: 14,
+      floatsPerCommand: 15,
     } as never,
     ...overrides,
   };

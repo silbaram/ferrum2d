@@ -39,7 +39,9 @@ function inspectTemplateAuthoringSurface({ sceneAuthoring }) {
   return {
     publicApis: {
       applySceneBehaviorRecipes: sceneAuthoring?.publicApis?.applySceneBehaviorRecipes === true,
+      classifySceneInstance: sceneAuthoring?.publicApis?.classifySceneInstance === true,
       dryRunSceneBehaviorRecipes: sceneAuthoring?.publicApis?.dryRunSceneBehaviorRecipes === true,
+      previewScenePlacementBindingMigration: sceneAuthoring?.publicApis?.previewScenePlacementBindingMigration === true,
       resolveSceneCompositionSpec: sceneAuthoring?.publicApis?.resolveSceneCompositionSpec === true,
       resolveBehaviorRecipeDocument: sceneAuthoring?.publicApis?.resolveBehaviorRecipeDocument === true,
     },

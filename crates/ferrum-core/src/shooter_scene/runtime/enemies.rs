@@ -34,7 +34,7 @@ impl ShooterScene {
     ) {
         tick_movement_navigation_targets(&mut self.navigation_targets, delta);
         let player_t = world
-            .player_entity()
+            .primary_actor_entity()
             .and_then(|player| world.transform(player));
         let speed = self.active_enemy_speed();
         let behavior = self.active_enemy_behavior();

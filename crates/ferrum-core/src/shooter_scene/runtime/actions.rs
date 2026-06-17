@@ -499,8 +499,12 @@ impl ShooterScene {
                 ..MeleeActionTriggerProcessResult::default()
             };
         };
-        let plan = match plan_melee_action(payload, trigger.source, source_t, world.player_entity())
-        {
+        let plan = match plan_melee_action(
+            payload,
+            trigger.source,
+            source_t,
+            world.primary_actor_entity(),
+        ) {
             Ok(plan) => plan,
             Err(error) => {
                 let reason_code = melee_action_plan_failure_reason(error);
@@ -616,7 +620,7 @@ impl ShooterScene {
             };
         };
         let target = world
-            .player_entity()
+            .primary_actor_entity()
             .and_then(|player| world.transform(player).map(|transform| (player, transform)));
         let planned_transform =
             match plan_dash_action_transform(payload, trigger.source, source_t, target) {
@@ -1722,7 +1726,7 @@ mod tests {
         let player = world.spawn_player(0.0, 0.0, 0);
         let source = world.spawn_entity();
         world.set_transform(source, Transform2D { x: 100.0, y: 0.0 });
-        assert_eq!(world.player_entity(), Some(player));
+        assert_eq!(world.primary_actor_entity(), Some(player));
         assert!(world.upsert_action_binding(
             source,
             ActionBinding::dash_with_aim(21, 0.5, 40.0, ActionAimSource::TargetPlayer,)
@@ -1776,7 +1780,7 @@ mod tests {
         world.set_transform(source, Transform2D { x: 100.0, y: 0.0 });
         let action = ActionBinding::dash_with_aim(21, 0.5, 40.0, ActionAimSource::TargetPlayer);
         assert!(world.upsert_action_binding(source, action));
-        assert_eq!(world.player_entity(), Some(player));
+        assert_eq!(world.primary_actor_entity(), Some(player));
         let prepared = PreparedAction::new(source, 21, ActionPatternKind::Dash, action);
 
         let result = scene.process_dash_trigger(

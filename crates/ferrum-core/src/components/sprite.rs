@@ -1,3 +1,5 @@
+pub const DEFAULT_SPRITE_RENDER_LAYER: i32 = 1_000;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Sprite {
     pub texture_id: u32,
@@ -11,6 +13,8 @@ pub struct Sprite {
     pub g: f32,
     pub b: f32,
     pub a: f32,
+    pub rotation_radians: f32,
+    pub render_layer: i32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

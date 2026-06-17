@@ -42,7 +42,7 @@ import type {
 } from "../src/wasmBridgeBufferViews.js";
 
 const layout: WasmBridgeAbiLayout = {
-  floatsPerCommand: 14,
+  floatsPerCommand: 15,
   f64sPerFrameTelemetry: 62,
   floatsPerAudioEvent: FLOATS_PER_AUDIO_EVENT,
   u32sPerCollisionEvent: U32S_PER_COLLISION_EVENT,

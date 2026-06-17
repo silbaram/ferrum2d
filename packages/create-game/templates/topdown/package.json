@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "ferrum:placement-viewer": "vite --host 127.0.0.1 --open /placement-viewer.html",
     "build": "vite build --base=./",
     "preview": "vite preview",
     "pack:textures": "node scripts/ferrum-assets.mjs pack-textures",

@@ -892,10 +892,19 @@ impl Engine {
         entity_generation: u32,
         speed: f32,
     ) -> bool {
+        self.set_gameplay_movement_chase_primary_actor(entity_id, entity_generation, speed)
+    }
+
+    pub fn set_gameplay_movement_chase_primary_actor(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        speed: f32,
+    ) -> bool {
         self.set_gameplay_movement_chase_target(
             entity_id,
             entity_generation,
-            MovementTarget::Player,
+            MovementTarget::PrimaryActor,
             speed,
         )
     }
@@ -906,10 +915,19 @@ impl Engine {
         entity_generation: u32,
         speed: f32,
     ) -> bool {
+        self.set_gameplay_movement_chase_nearest_primary_actor(entity_id, entity_generation, speed)
+    }
+
+    pub fn set_gameplay_movement_chase_nearest_primary_actor(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        speed: f32,
+    ) -> bool {
         self.set_gameplay_movement_chase_target(
             entity_id,
             entity_generation,
-            MovementTarget::NearestPlayer,
+            MovementTarget::NearestPrimaryActor,
             speed,
         )
     }
@@ -1009,10 +1027,27 @@ impl Engine {
         radius: f32,
         radial_band: f32,
     ) -> bool {
+        self.set_gameplay_movement_orbit_primary_actor(
+            entity_id,
+            entity_generation,
+            speed,
+            radius,
+            radial_band,
+        )
+    }
+
+    pub fn set_gameplay_movement_orbit_primary_actor(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        speed: f32,
+        radius: f32,
+        radial_band: f32,
+    ) -> bool {
         self.set_gameplay_movement_orbit_target(
             entity_id,
             entity_generation,
-            MovementTarget::Player,
+            MovementTarget::PrimaryActor,
             speed,
             radius,
             radial_band,
@@ -1026,10 +1061,25 @@ impl Engine {
         speed: f32,
         turn_rate: f32,
     ) -> bool {
+        self.set_gameplay_movement_seek_target_primary_actor(
+            entity_id,
+            entity_generation,
+            speed,
+            turn_rate,
+        )
+    }
+
+    pub fn set_gameplay_movement_seek_target_primary_actor(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        speed: f32,
+        turn_rate: f32,
+    ) -> bool {
         self.set_gameplay_movement_seek_target(
             entity_id,
             entity_generation,
-            MovementTarget::Player,
+            MovementTarget::PrimaryActor,
             speed,
             turn_rate,
         )
@@ -1042,10 +1092,25 @@ impl Engine {
         speed: f32,
         turn_rate: f32,
     ) -> bool {
+        self.set_gameplay_movement_seek_target_nearest_primary_actor(
+            entity_id,
+            entity_generation,
+            speed,
+            turn_rate,
+        )
+    }
+
+    pub fn set_gameplay_movement_seek_target_nearest_primary_actor(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        speed: f32,
+        turn_rate: f32,
+    ) -> bool {
         self.set_gameplay_movement_seek_target(
             entity_id,
             entity_generation,
-            MovementTarget::NearestPlayer,
+            MovementTarget::NearestPrimaryActor,
             speed,
             turn_rate,
         )

@@ -5,7 +5,9 @@ use crate::components::gameplay::{
     CollisionReaction, CollisionReactionTrigger, CollisionTarget, Cooldown, MovementPattern,
     MAX_COLLISION_REACTIONS_PER_ENTITY,
 };
-use crate::components::{CollisionLayer, CollisionMask, Transform2D, Velocity};
+use crate::components::{
+    CollisionLayer, CollisionMask, Transform2D, Velocity, DEFAULT_SPRITE_RENDER_LAYER,
+};
 use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::gameplay::{
@@ -627,7 +629,7 @@ fn spawn_player_body(world: &mut World, transform: Transform2D) -> Entity {
             layer: CollisionLayer::Player,
             velocity: Velocity::default(),
             color: [0.94, 0.26, 0.34, 1.0],
-            player_marker: true,
+            primary_actor_marker: true,
         },
     )
 }
@@ -650,7 +652,7 @@ fn spawn_body(
             layer,
             velocity,
             color,
-            player_marker: false,
+            primary_actor_marker: false,
         },
     )
 }
@@ -663,7 +665,7 @@ struct PlatformerBodySpawnRequest {
     layer: CollisionLayer,
     velocity: Velocity,
     color: [f32; 4],
-    player_marker: bool,
+    primary_actor_marker: bool,
 }
 
 fn spawn_body_from_request(world: &mut World, request: PlatformerBodySpawnRequest) -> Entity {
@@ -683,6 +685,8 @@ fn spawn_body_from_request(world: &mut World, request: PlatformerBodySpawnReques
             ),
         ),
         layer: request.layer,
+        sprite_rotation_radians: 0.0,
+        render_layer: DEFAULT_SPRITE_RENDER_LAYER,
         sprite_tint: PrefabSpriteTint {
             r: request.color[0],
             g: request.color[1],
@@ -695,7 +699,7 @@ fn spawn_body_from_request(world: &mut World, request: PlatformerBodySpawnReques
         damage: None,
         health: None,
         score_reward: None,
-        player_marker: request.player_marker,
+        primary_actor_marker: request.primary_actor_marker,
     })
 }
 
@@ -719,7 +723,7 @@ mod tests {
         assert_eq!(world.alive_count(), 8);
         let player = scene.player.expect("platformer player should exist");
         let moving_platform = scene.moving_platform.expect("moving platform should exist");
-        assert_eq!(world.player_entity(), Some(player));
+        assert_eq!(world.primary_actor_entity(), Some(player));
         assert_eq!(
             world.movement_pattern(player),
             Some(platformer_input_movement(

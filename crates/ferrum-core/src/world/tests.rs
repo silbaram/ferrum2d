@@ -5,7 +5,8 @@ use crate::components::gameplay::{
     Cooldown, FactionRelation, GameplayFaction, GameplayLifetime, GameplayTags,
     GameplayTimerTrigger, Interaction, MovementPattern, MovementTarget, Pickup,
     ProjectileCollisionTarget, ProjectilePolicy, ProjectileTileImpact, GAMEPLAY_FACTION_MAX_ID,
-    GAMEPLAY_PICKUP_ITEM_SCORE, GAMEPLAY_TAG_MAX_ID, MAX_BEHAVIOR_STATE_ENTER_ACTIONS_PER_ENTITY,
+    GAMEPLAY_PICKUP_ITEM_SCORE, GAMEPLAY_TAG_MAX_ID, GAMEPLAY_TAG_PRIMARY_ACTOR,
+    MAX_BEHAVIOR_STATE_ENTER_ACTIONS_PER_ENTITY,
 };
 use crate::components::{
     AngularVelocity, CircleCollider, CollisionFilter, CollisionLayer, CollisionMask, EdgeCollider,
