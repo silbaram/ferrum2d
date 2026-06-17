@@ -19,6 +19,7 @@ const FRAME_BUDGET = Object.freeze({
   maxRenderCommandCount: COMMAND_COUNT,
   maxTextureSwitchCount: 1,
   maxPhysicsFixedSteps: 0,
+  maxPhysicsSolidCandidateChecks: 0,
   maxPhysicsTileCandidateChecks: 0,
   maxCollisionPairCount: 0,
   maxAssetLoadElapsedMs: 1_000,
@@ -259,6 +260,7 @@ function renderStreamingFrame(renderer, profiler, localTextureId, sharedTextureI
     textureBindCount: stats.textureBindCount,
     textureSwitchCount: stats.textureSwitchCount,
     physicsFixedSteps: 0,
+    physicsSolidCandidateChecks: 0,
     physicsTileCandidateChecks: 0,
     collisionPairCount: 0,
   };

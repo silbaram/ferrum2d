@@ -57,6 +57,26 @@ fn ground_probe_detects_touching_solid_entity() {
 }
 
 #[test]
+fn ground_probe_remains_stable_around_touching_solid_entity() {
+    let mut world = World::default();
+    let mover = spawn_kinematic_body(&mut world, 0.0, 0.0, CollisionLayer::Player, true);
+    let ground = spawn_kinematic_body(&mut world, 0.0, 10.0, CollisionLayer::Enemy, false);
+
+    for (y, expected_distance) in [(0.0, 0.0), (-0.001, 0.001), (0.001, 0.0)] {
+        world.set_transform(mover, Transform2D { x: 0.0, y });
+        let hit = PhysicsSystem::ground_probe(&world, mover, 0.05, CollisionMask::ENEMY)
+            .expect("ground probe should not flicker around a touching contact");
+
+        assert_eq!(hit.entity, Some(ground));
+        assert!(
+            (hit.distance - expected_distance).abs() < 0.0001,
+            "ground probe should report stable distance near contact at y={y}, got {hit:?}"
+        );
+        assert_eq!(hit.normal_y, 1.0);
+    }
+}
+
+#[test]
 fn ground_probe_with_tilemap_detects_tile_obstacle() {
     let mut world = World::default();
     let mut tilemap = Tilemap::default();

@@ -196,6 +196,46 @@ fn hd2d_controller_passes_under_bridge_on_other_floor() {
 }
 
 #[test]
+fn hd2d_controller_current_bridge_pass_through_uses_fixed_samples() {
+    let mut world = World::default();
+    let mut tilemap = Tilemap::default();
+    tilemap.set_layer(0, 20, 1, 1.0, 10.0, 0.0, 0.0, true, {
+        let mut tiles = vec![0; 20];
+        tiles[3] = 1;
+        tiles
+    });
+    assert!(tilemap.set_tile_height_span_definition(1, 1, 16.0, 4.0));
+    assert!(tilemap.set_tile_hd2d_definition(
+        1,
+        Hd2dTileKind::Bridge.code(),
+        false,
+        false,
+        false,
+        4.0,
+        false,
+        0,
+        0.0,
+        0.0,
+    ));
+    let mover = spawn_hd2d_mover(&mut world, 0.0, 5.0, 0.0);
+
+    let result = PhysicsSystem::move_hd2d_kinematic_with_tilemap(
+        &mut world,
+        &tilemap,
+        mover,
+        Velocity { vx: 20.0, vy: 0.0 },
+        hd2d_config(),
+    );
+
+    assert!(!result.passed_under_bridge);
+    assert_eq!(
+        world.transform(mover),
+        Some(Transform2D { x: 20.0, y: 5.0 })
+    );
+    assert_eq!(world.height_span(mover).unwrap().elevation, 0.0);
+}
+
+#[test]
 fn hd2d_controller_ignores_solid_tile_on_other_floor() {
     let mut world = World::default();
     let mut tilemap = Tilemap::default();

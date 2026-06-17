@@ -4,6 +4,7 @@ use crate::tilemap::Tilemap;
 use crate::world::World;
 
 use super::ground_probe::ground_probe_internal;
+use super::kinematic_sweep::KinematicSweepScratch;
 use super::move_and_slide_internal;
 use crate::physics::{
     KinematicMoveResult, KinematicMoveSettings, PhysicsCounters, KINEMATIC_EPSILON,
@@ -15,6 +16,12 @@ pub(super) struct StepOffsetSettings {
     pub(super) offset: f32,
     pub(super) ground_probe_distance: f32,
     pub(super) solid_mask: CollisionMask,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct StepOffsetMoveSettings {
+    pub(super) movement: KinematicMoveSettings,
+    pub(super) step: StepOffsetSettings,
 }
 
 impl StepOffsetSettings {
@@ -41,8 +48,8 @@ pub(super) fn move_with_optional_step_offset(
     tilemap: Option<&Tilemap>,
     entity: Entity,
     displacement: Velocity,
-    settings: KinematicMoveSettings,
-    step: StepOffsetSettings,
+    settings: StepOffsetMoveSettings,
+    scratch: &mut KinematicSweepScratch,
     mut counters: Option<&mut PhysicsCounters>,
 ) -> KinematicMoveResult {
     let normal = move_and_slide_internal(
@@ -50,10 +57,20 @@ pub(super) fn move_with_optional_step_offset(
         tilemap,
         entity,
         displacement,
-        settings,
+        settings.movement,
+        scratch,
         counters.as_deref_mut(),
     );
-    if !step.should_attempt(normal, displacement) {
+    if !settings.step.should_attempt(normal, displacement) {
+        return normal;
+    }
+    if blocking_entity_exceeds_step_offset(
+        world,
+        entity,
+        normal.last_hit,
+        normal.start,
+        settings.step.offset,
+    ) {
         return normal;
     }
 
@@ -66,9 +83,10 @@ pub(super) fn move_with_optional_step_offset(
         entity,
         Velocity {
             vx: 0.0,
-            vy: -step.offset,
+            vy: -settings.step.offset,
         },
-        settings,
+        settings.movement,
+        scratch,
         counters.as_deref_mut(),
     );
     if step_up.blocked_y {
@@ -84,7 +102,8 @@ pub(super) fn move_with_optional_step_offset(
             vx: displacement.vx,
             vy: 0.0,
         },
-        settings,
+        settings.movement,
+        scratch,
         counters.as_deref_mut(),
     );
     if step_across.blocked_x {
@@ -98,17 +117,18 @@ pub(super) fn move_with_optional_step_offset(
         entity,
         Velocity {
             vx: 0.0,
-            vy: step.offset + step.ground_probe_distance,
+            vy: settings.step.offset + settings.step.ground_probe_distance,
         },
-        settings,
+        settings.movement,
+        scratch,
         counters,
     );
     if ground_probe_internal(
         world,
         tilemap,
         entity,
-        step.ground_probe_distance,
-        step.solid_mask,
+        settings.step.ground_probe_distance,
+        settings.step.solid_mask,
     )
     .is_none()
     {
@@ -133,4 +153,31 @@ pub(super) fn move_with_optional_step_offset(
             .or(step_across.last_hit)
             .or(step_up.last_hit),
     }
+}
+
+fn blocking_entity_exceeds_step_offset(
+    world: &World,
+    moving_entity: Entity,
+    blocking_entity: Option<Entity>,
+    moving_start: crate::components::Transform2D,
+    step_offset: f32,
+) -> bool {
+    let Some(blocking_entity) = blocking_entity else {
+        return false;
+    };
+    let Some(moving_collider) = world.collider(moving_entity) else {
+        return false;
+    };
+    let Some(blocking_transform) = world.transform(blocking_entity) else {
+        return false;
+    };
+    let Some(blocking_collider) = world.collider(blocking_entity) else {
+        return false;
+    };
+
+    let moving_bottom = moving_collider.center(moving_start).y + moving_collider.half_height;
+    let blocking_top =
+        blocking_collider.center(blocking_transform).y - blocking_collider.half_height;
+    let required_step = moving_bottom - blocking_top;
+    required_step > step_offset + KINEMATIC_EPSILON
 }

@@ -87,6 +87,36 @@ fn move_and_slide_with_one_way_platforms_ignores_from_below_and_sides() {
 }
 
 #[test]
+fn move_and_slide_with_one_way_platforms_keeps_partial_overlap_from_below_pass_through() {
+    let mut world = World::default();
+    let mover = spawn_kinematic_body_with_size(
+        &mut world,
+        0.0,
+        16.0,
+        CollisionLayer::Player,
+        true,
+        1.0,
+        1.0,
+    );
+    spawn_kinematic_body(&mut world, 0.0, 20.0, CollisionLayer::Wall, false);
+
+    let result = PhysicsSystem::move_and_slide_with_one_way_platforms(
+        &mut world,
+        mover,
+        Velocity { vx: 0.0, vy: 4.0 },
+        CollisionMask::WALL,
+        OneWayPlatformConfig::new(CollisionMask::WALL),
+        4,
+    );
+
+    assert_eq!(result.hit_count, 0);
+    assert_eq!(
+        world.transform(mover),
+        Some(Transform2D { x: 0.0, y: 20.0 })
+    );
+}
+
+#[test]
 fn move_and_slide_with_one_way_platforms_keeps_other_solids_two_way() {
     let mut world = World::default();
     let mover = spawn_kinematic_body(&mut world, 0.0, 32.0, CollisionLayer::Player, true);

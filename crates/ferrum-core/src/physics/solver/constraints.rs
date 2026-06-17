@@ -6,7 +6,7 @@ use crate::components::{Transform2D, Velocity};
 use crate::world::World;
 
 use super::super::math::sanitize_non_negative;
-use super::contact_cache::cached_contact_impulse_for_point;
+use super::contact_cache::{cached_contact_impulse_for_point, RigidContactImpulseCacheIndex};
 use super::should_solve_rigid_contact;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -25,6 +25,7 @@ pub(in crate::physics) struct RigidContactConstraint {
 pub(in crate::physics) struct RigidContactConstraintScratch {
     collision: CollisionScratch,
     collider_manifolds: Vec<ColliderCollisionManifold>,
+    contact_cache: RigidContactImpulseCacheIndex,
 }
 
 impl RigidContactConstraint {
@@ -75,6 +76,7 @@ pub(in crate::physics) fn build_rigid_contact_constraints_into(
         world,
         &mut scratch.collider_manifolds,
     );
+    scratch.contact_cache.rebuild_from_world(world);
     constraints.clear();
     constraints.reserve(scratch.collider_manifolds.len().saturating_mul(2));
     for collider_manifold in scratch.collider_manifolds.iter().copied() {
@@ -85,9 +87,13 @@ pub(in crate::physics) fn build_rigid_contact_constraints_into(
             continue;
         }
         for point in collider_manifold.points() {
-            let (normal_impulse, tangent_impulse) =
-                cached_contact_impulse_for_point(world, manifold, point.point_x, point.point_y)
-                    .unwrap_or_default();
+            let (normal_impulse, tangent_impulse) = cached_contact_impulse_for_point(
+                &scratch.contact_cache,
+                manifold,
+                point.point_x,
+                point.point_y,
+            )
+            .unwrap_or_default();
             constraints.push(RigidContactConstraint::new(
                 manifold.pair,
                 collider_manifold.collider_pair,

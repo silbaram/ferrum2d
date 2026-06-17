@@ -4,6 +4,7 @@ use crate::tilemap::{Tilemap, TilemapSlopeGroundHit};
 use crate::world::World;
 
 use super::config::is_slope_config_enabled;
+use super::kinematic_sweep::KinematicSweepScratch;
 use super::move_and_slide_internal;
 use crate::physics::{
     GroundProbeHit, KinematicMoveResult, KinematicMoveSettings, PhysicsCounters, SlopeConfig,
@@ -44,23 +45,29 @@ pub(super) struct SlopeSnapSettings<'a> {
     pub(super) direction: SlopeSnapDirection,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(super) struct SlopeSnapMoveSettings<'a> {
+    pub(super) movement: KinematicMoveSettings,
+    pub(super) slope_snap: SlopeSnapSettings<'a>,
+}
+
 pub(super) fn move_with_optional_slope_snap(
     world: &mut World,
     tilemap: Option<&Tilemap>,
     entity: Entity,
     movement: KinematicMoveResult,
-    settings: KinematicMoveSettings,
-    slope_snap: SlopeSnapSettings<'_>,
+    settings: SlopeSnapMoveSettings<'_>,
+    scratch: &mut KinematicSweepScratch,
     counters: Option<&mut PhysicsCounters>,
 ) -> KinematicMoveResult {
     let Some(hit) = slope_ground_hit(
         world,
         tilemap,
         entity,
-        slope_snap.slopes,
-        slope_snap.slope,
-        slope_snap.direction.allow_upward,
-        slope_snap.direction.allow_downward,
+        settings.slope_snap.slopes,
+        settings.slope_snap.slope,
+        settings.slope_snap.direction.allow_upward,
+        settings.slope_snap.direction.allow_downward,
     ) else {
         return movement;
     };
@@ -77,7 +84,8 @@ pub(super) fn move_with_optional_slope_snap(
             vx: 0.0,
             vy: hit.vertical_delta,
         },
-        settings,
+        settings.movement,
+        scratch,
         counters,
     );
     if hit.vertical_delta < -KINEMATIC_EPSILON && snap_movement.blocked_y {

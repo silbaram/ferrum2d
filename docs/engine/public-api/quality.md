@@ -16,7 +16,7 @@ import {
 
 | API | 계약 |
 | --- | --- |
-| `RuntimeProfiler` | frame time, render time, Rust update, draw call, entity count 같은 sample을 수집한다. |
+| `RuntimeProfiler` | frame time, render time, Rust update, draw call, entity count, physics candidate count 같은 sample을 수집한다. |
 | `evaluateRuntimeProfilerBudget(...)` | profiler snapshot을 runtime budget profile과 비교한다. |
 | `runtimeDiagnosticsFrameSample(...)` | debug overlay와 report에 쓰는 frame sample을 만든다. |
 | `evaluateRuntimeDiagnosticsSample(...)` | frame sample을 diagnostic budget과 비교한다. |

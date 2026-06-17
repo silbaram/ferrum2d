@@ -16,7 +16,7 @@ Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeS
 | Optional/lab/helper | WebGPU, WebGPU fade-only post-process, HD-2D helper, PixelMaskTerrain, level streaming, texture atlas JSON helper처럼 opt-in 또는 capability-dependent 표면 |
 | Compatibility/quality infrastructure | deprecated shim, smoke/report/runtime budget/package QA/Pages build처럼 제품 기능과 분리해 관리하는 보조 표면 |
 
-Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame/debug metric을 bounded sample로 모은 뒤 browser smoke가 profile별 상한을 평가한다. Physics 성능 gate는 fixed step, tile candidate, CCD check, physics debug line, collision pair처럼 Rust/Wasm frame에서 실제 기록된 구조적 metric만 사용한다.
+Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame/debug metric을 bounded sample로 모은 뒤 browser smoke가 profile별 상한을 평가한다. Physics 성능 gate는 fixed step, solid/tile candidate, CCD check, physics debug line, collision pair처럼 Rust/Wasm frame에서 실제 기록된 구조적 metric만 사용한다.
 
 Physics debug line 생성은 opt-in quality/debug path다. Runtime `Engine`은 debug 전용 collision scratch를 보관해 broadphase proxy와 contact collider pair scratch를 frame마다 재사용하며, public debug line buffer ABI와 renderer 경로는 그대로 유지한다.
 

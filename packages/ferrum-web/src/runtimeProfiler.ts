@@ -12,6 +12,7 @@ export interface RuntimeDiagnosticsBudget {
   maxTextureSwitchCount?: number;
   maxAudioEventsPerSecond?: number;
   maxPhysicsFixedSteps?: number;
+  maxPhysicsSolidCandidateChecks?: number;
   maxPhysicsTileCandidateChecks?: number;
   maxPhysicsCcdChecks?: number;
   maxPhysicsDebugLineCount?: number;
@@ -48,6 +49,7 @@ export interface RuntimeDiagnosticsFrameSample {
   audioEventsPerSecond?: number;
   physicsFixedSteps?: number;
   physicsKinematicHits?: number;
+  physicsSolidCandidateChecks?: number;
   physicsTileCandidateChecks?: number;
   collisionPairCount?: number;
   collisionEventCount?: number;
@@ -90,6 +92,7 @@ export interface RuntimeProfilerSnapshot {
   maxTextureSwitchCount: number;
   maxAudioEventsPerSecond: number;
   maxPhysicsFixedSteps: number;
+  maxPhysicsSolidCandidateChecks?: number;
   maxPhysicsTileCandidateChecks: number;
   maxPhysicsCcdChecks?: number;
   maxPhysicsDebugLineCount?: number;
@@ -189,6 +192,12 @@ export function runtimeDiagnosticsFrameSample(
   if (metrics.physicsKinematicHits !== undefined) {
     sample.physicsKinematicHits = nonNegativeInteger(metrics.physicsKinematicHits, "physicsKinematicHits");
   }
+  if (metrics.physicsSolidCandidateChecks !== undefined) {
+    sample.physicsSolidCandidateChecks = nonNegativeInteger(
+      metrics.physicsSolidCandidateChecks,
+      "physicsSolidCandidateChecks",
+    );
+  }
   if (metrics.physicsTileCandidateChecks !== undefined) {
     sample.physicsTileCandidateChecks = nonNegativeInteger(
       metrics.physicsTileCandidateChecks,
@@ -265,6 +274,14 @@ export function evaluateRuntimeDiagnosticsSample(
     "fixed steps",
     sample.physicsFixedSteps,
     budget.maxPhysicsFixedSteps,
+    "count",
+  );
+  addViolation(
+    violations,
+    "maxPhysicsSolidCandidateChecks",
+    "solid checks",
+    sample.physicsSolidCandidateChecks,
+    budget.maxPhysicsSolidCandidateChecks,
     "count",
   );
   addViolation(
@@ -352,6 +369,14 @@ export function evaluateRuntimeProfilerBudget(
   );
   addViolation(
     violations,
+    "maxPhysicsSolidCandidateChecks",
+    "solid checks",
+    snapshot.maxPhysicsSolidCandidateChecks,
+    budget.maxPhysicsSolidCandidateChecks,
+    "count",
+  );
+  addViolation(
+    violations,
     "maxPhysicsTileCandidateChecks",
     "tile checks",
     snapshot.maxPhysicsTileCandidateChecks,
@@ -408,6 +433,7 @@ function summarizeRuntimeProfiler(
   let maxTextureSwitchCount = 0;
   let maxAudioEventsPerSecond = 0;
   let maxPhysicsFixedSteps = 0;
+  let maxPhysicsSolidCandidateChecks: number | undefined;
   let maxPhysicsTileCandidateChecks = 0;
   let maxPhysicsCcdChecks: number | undefined;
   let maxPhysicsDebugLineCount: number | undefined;
@@ -423,6 +449,7 @@ function summarizeRuntimeProfiler(
     const textureSwitchCount = sample.textureSwitchCount ?? 0;
     const audioEventsPerSecond = sample.audioEventsPerSecond ?? 0;
     const physicsFixedSteps = sample.physicsFixedSteps ?? 0;
+    const physicsSolidCandidateChecks = sample.physicsSolidCandidateChecks;
     const physicsTileCandidateChecks = sample.physicsTileCandidateChecks ?? 0;
     const collisionPairCount = sample.collisionPairCount ?? 0;
 
@@ -435,6 +462,9 @@ function summarizeRuntimeProfiler(
       maxTextureSwitchCount = textureSwitchCount;
       maxAudioEventsPerSecond = audioEventsPerSecond;
       maxPhysicsFixedSteps = physicsFixedSteps;
+      if (physicsSolidCandidateChecks !== undefined) {
+        maxPhysicsSolidCandidateChecks = physicsSolidCandidateChecks;
+      }
       maxPhysicsTileCandidateChecks = physicsTileCandidateChecks;
       if (sample.physicsCcdChecks !== undefined) {
         maxPhysicsCcdChecks = sample.physicsCcdChecks;
@@ -454,6 +484,11 @@ function summarizeRuntimeProfiler(
     maxTextureSwitchCount = Math.max(maxTextureSwitchCount, textureSwitchCount);
     maxAudioEventsPerSecond = Math.max(maxAudioEventsPerSecond, audioEventsPerSecond);
     maxPhysicsFixedSteps = Math.max(maxPhysicsFixedSteps, physicsFixedSteps);
+    if (physicsSolidCandidateChecks !== undefined) {
+      maxPhysicsSolidCandidateChecks = maxPhysicsSolidCandidateChecks === undefined
+        ? physicsSolidCandidateChecks
+        : Math.max(maxPhysicsSolidCandidateChecks, physicsSolidCandidateChecks);
+    }
     maxPhysicsTileCandidateChecks = Math.max(maxPhysicsTileCandidateChecks, physicsTileCandidateChecks);
     if (sample.physicsCcdChecks !== undefined) {
       maxPhysicsCcdChecks = maxPhysicsCcdChecks === undefined
@@ -497,6 +532,9 @@ function summarizeRuntimeProfiler(
   snapshot.maxTextureSwitchCount = maxTextureSwitchCount;
   snapshot.maxAudioEventsPerSecond = maxAudioEventsPerSecond;
   snapshot.maxPhysicsFixedSteps = maxPhysicsFixedSteps;
+  if (maxPhysicsSolidCandidateChecks !== undefined) {
+    snapshot.maxPhysicsSolidCandidateChecks = maxPhysicsSolidCandidateChecks;
+  }
   snapshot.maxPhysicsTileCandidateChecks = maxPhysicsTileCandidateChecks;
   if (maxPhysicsCcdChecks !== undefined) {
     snapshot.maxPhysicsCcdChecks = maxPhysicsCcdChecks;

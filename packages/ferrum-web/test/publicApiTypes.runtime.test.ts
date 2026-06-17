@@ -344,6 +344,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   };
   const runtimeBudget: RuntimeDiagnosticsBudget = { maxFrameTimeMs: 16.7, maxAssetLoadElapsedMs: 250 };
   const physicsRuntimeBudget: RuntimeDiagnosticsBudget = {
+    maxPhysicsSolidCandidateChecks: 0,
     maxPhysicsCcdChecks: 0,
     maxPhysicsDebugLineCount: 0,
   };
@@ -356,6 +357,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     spriteCount: 1,
     drawCalls: 1,
     batchCount: 1,
+    physicsSolidCandidateChecks: 0,
     physicsCcdChecks: 0,
     physicsDebugLineCount: 0,
   });

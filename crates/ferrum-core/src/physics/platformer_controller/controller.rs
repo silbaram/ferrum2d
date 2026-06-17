@@ -13,11 +13,14 @@ use super::config::{
     subtract_timer,
 };
 use super::ground_probe::ground_probe_internal;
+use super::kinematic_sweep::KinematicSweepScratch;
 use super::slope_ground::{
     merge_slope_ground_hit, move_with_optional_slope_snap, slope_ground_hit, SlopeSnapDirection,
-    SlopeSnapSettings,
+    SlopeSnapMoveSettings, SlopeSnapSettings,
 };
-use super::step_offset::{move_with_optional_step_offset, StepOffsetSettings};
+use super::step_offset::{
+    move_with_optional_step_offset, StepOffsetMoveSettings, StepOffsetSettings,
+};
 
 #[derive(Default)]
 pub(super) struct PlatformerControllerRuntime<'a> {
@@ -120,6 +123,7 @@ pub(super) fn move_platformer_controller_internal(
         config.one_way_platforms,
         config.max_iterations,
     );
+    let mut movement_scratch = KinematicSweepScratch::default();
     let mut movement = move_with_optional_step_offset(
         world,
         tilemap,
@@ -128,17 +132,20 @@ pub(super) fn move_platformer_controller_internal(
             vx: velocity.vx * delta_seconds,
             vy: velocity.vy * delta_seconds,
         },
-        movement_settings,
-        if !jumped && ground_before.is_some() {
-            StepOffsetSettings {
-                enabled: true,
-                offset: config.step_offset,
-                ground_probe_distance: config.ground_probe_distance,
-                solid_mask: config.solid_mask,
-            }
-        } else {
-            StepOffsetSettings::disabled()
+        StepOffsetMoveSettings {
+            movement: movement_settings,
+            step: if !jumped && ground_before.is_some() {
+                StepOffsetSettings {
+                    enabled: true,
+                    offset: config.step_offset,
+                    ground_probe_distance: config.ground_probe_distance,
+                    solid_mask: config.solid_mask,
+                }
+            } else {
+                StepOffsetSettings::disabled()
+            },
         },
+        &mut movement_scratch,
         counters.as_deref_mut(),
     );
     if !jumped {
@@ -150,15 +157,18 @@ pub(super) fn move_platformer_controller_internal(
             tilemap,
             entity,
             movement,
-            movement_settings,
-            SlopeSnapSettings {
-                slopes,
-                slope: config.slope,
-                direction: SlopeSnapDirection {
-                    allow_upward: allow_upward_snap,
-                    allow_downward: allow_downward_snap,
+            SlopeSnapMoveSettings {
+                movement: movement_settings,
+                slope_snap: SlopeSnapSettings {
+                    slopes,
+                    slope: config.slope,
+                    direction: SlopeSnapDirection {
+                        allow_upward: allow_upward_snap,
+                        allow_downward: allow_downward_snap,
+                    },
                 },
             },
+            &mut movement_scratch,
             counters,
         );
     }

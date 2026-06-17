@@ -14,6 +14,7 @@ test("RuntimeProfiler records frame samples and aggregate budget violations", ()
       maxFrameTimeMs: 16.7,
       maxRenderTimeMs: 4,
       maxDrawCalls: 2,
+      maxPhysicsSolidCandidateChecks: 6,
       maxPhysicsCcdChecks: 4,
       maxPhysicsDebugLineCount: 2,
       maxAssetLoadElapsedMs: 50,
@@ -23,6 +24,7 @@ test("RuntimeProfiler records frame samples and aggregate budget violations", ()
   equal(profiler.recordFrame(metrics({
     frameTimeMs: 15,
     drawCalls: 2,
+    physicsSolidCandidateChecks: 6,
     physicsCcdChecks: 4,
     physicsDebugLineCount: 2,
   })).passed, true);
@@ -30,6 +32,7 @@ test("RuntimeProfiler records frame samples and aggregate budget violations", ()
     frameTimeMs: 20,
     renderTimeMs: 5,
     drawCalls: 3,
+    physicsSolidCandidateChecks: 7,
     physicsCcdChecks: 5,
     physicsDebugLineCount: 3,
   }));
@@ -38,6 +41,7 @@ test("RuntimeProfiler records frame samples and aggregate budget violations", ()
     "maxFrameTimeMs",
     "maxRenderTimeMs",
     "maxDrawCalls",
+    "maxPhysicsSolidCandidateChecks",
     "maxPhysicsCcdChecks",
     "maxPhysicsDebugLineCount",
   ]);
@@ -49,6 +53,7 @@ test("RuntimeProfiler records frame samples and aggregate budget violations", ()
   equal(snapshot.assetSampleCount, 2);
   equal(snapshot.averageFrameTimeMs, 17.5);
   equal(snapshot.maxFrameTimeMs, 20);
+  equal(snapshot.maxPhysicsSolidCandidateChecks, 7);
   equal(snapshot.maxPhysicsCcdChecks, 5);
   equal(snapshot.maxPhysicsDebugLineCount, 3);
   equal(snapshot.maxAssetLoadElapsedMs, 75);
@@ -83,6 +88,7 @@ test("runtime diagnostics helpers evaluate frame samples directly", () => {
     renderCommandCount: 12,
     textureSwitchCount: 4,
     physicsFixedSteps: 3,
+    physicsSolidCandidateChecks: 12,
     physicsCcdChecks: 9,
     physicsDebugLineCount: 6,
     collisionPairCount: 8,
@@ -91,6 +97,7 @@ test("runtime diagnostics helpers evaluate frame samples directly", () => {
     maxRenderCommandCount: 10,
     maxTextureSwitchCount: 4,
     maxPhysicsFixedSteps: 2,
+    maxPhysicsSolidCandidateChecks: 10,
     maxPhysicsCcdChecks: 8,
     maxPhysicsDebugLineCount: 5,
     maxCollisionPairCount: 8,
@@ -100,6 +107,7 @@ test("runtime diagnostics helpers evaluate frame samples directly", () => {
   deepEqual(report.violations.map((violation) => violation.id), [
     "maxRenderCommandCount",
     "maxPhysicsFixedSteps",
+    "maxPhysicsSolidCandidateChecks",
     "maxPhysicsCcdChecks",
     "maxPhysicsDebugLineCount",
   ]);
@@ -107,18 +115,26 @@ test("runtime diagnostics helpers evaluate frame samples directly", () => {
 });
 
 test("runtime diagnostics fail budgeted optional metrics when samples omit them", () => {
-  const profiler = new RuntimeProfiler({ budget: { maxPhysicsCcdChecks: 0 } });
+  const profiler = new RuntimeProfiler({
+    budget: {
+      maxPhysicsSolidCandidateChecks: 0,
+      maxPhysicsCcdChecks: 0,
+    },
+  });
 
   const report = profiler.recordFrame(metrics());
   const snapshot = profiler.snapshot();
 
   equal(report.passed, false);
   deepEqual(report.violations.map((violation) => [violation.id, violation.reason]), [
+    ["maxPhysicsSolidCandidateChecks", "missingMetric"],
     ["maxPhysicsCcdChecks", "missingMetric"],
   ]);
+  equal(hasOwn(snapshot, "maxPhysicsSolidCandidateChecks"), false);
   equal(hasOwn(snapshot, "maxPhysicsCcdChecks"), false);
   equal(snapshot.budgetReport?.passed, false);
   deepEqual(snapshot.budgetReport?.violations.map((violation) => [violation.id, violation.reason]), [
+    ["maxPhysicsSolidCandidateChecks", "missingMetric"],
     ["maxPhysicsCcdChecks", "missingMetric"],
   ]);
 });
@@ -135,6 +151,7 @@ test("runtime diagnostics preserve optional field omission and zero values", () 
     audioEventsPerSecond: 0,
     physicsFixedSteps: 0,
     physicsKinematicHits: 0,
+    physicsSolidCandidateChecks: 0,
     physicsTileCandidateChecks: 0,
     collisionPairCount: 0,
     collisionEventCount: 0,
@@ -145,6 +162,7 @@ test("runtime diagnostics preserve optional field omission and zero values", () 
     physicsBrokenJoints: 0,
   }));
   equal(hasOwn(zeroFrame, "renderCommandCount"), true);
+  equal(zeroFrame.physicsSolidCandidateChecks, 0);
   equal(zeroFrame.physicsCcdChecks, 0);
   equal(zeroFrame.physicsDebugLineCount, 0);
   equal(zeroFrame.physicsBrokenJoints, 0);

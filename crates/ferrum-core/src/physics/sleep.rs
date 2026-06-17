@@ -28,6 +28,11 @@ pub(super) fn wake_sleeping_rigid_body_islands(
     stats: &mut RigidBodyStepStats,
     scratch: &mut RigidBodySleepScratch,
 ) {
+    if !has_sleeping_dynamic_rigid_body(world) || !has_rigid_body_wake_source(world) {
+        scratch.clear_transient_results();
+        return;
+    }
+
     rebuild_sleep_island_graph(world, scratch);
     let islands_woken = scratch
         .graph
@@ -56,8 +61,11 @@ pub(super) fn update_rigid_body_sleep_states(
     stats: &mut RigidBodyStepStats,
     scratch: &mut RigidBodySleepScratch,
 ) {
-    update_rigid_body_sleep_timers(world, delta_seconds, stats);
-    put_ready_rigid_body_islands_to_sleep(world, stats, scratch);
+    if update_rigid_body_sleep_timers(world, delta_seconds, stats) {
+        put_ready_rigid_body_islands_to_sleep(world, stats, scratch);
+    } else {
+        scratch.clear_transient_results();
+    }
     stats.sleeping_bodies = stats
         .sleeping_bodies
         .saturating_add(count_sleeping_dynamic_rigid_bodies(world));
@@ -78,7 +86,8 @@ fn update_rigid_body_sleep_timers(
     world: &mut World,
     delta_seconds: f32,
     stats: &mut RigidBodyStepStats,
-) {
+) -> bool {
+    let mut has_ready_sleep_candidate = false;
     let alive_count = world.alive_indices().len();
     for alive_position in 0..alive_count {
         let index = world.alive_indices()[alive_position];
@@ -118,11 +127,14 @@ fn update_rigid_body_sleep_timers(
             body.sleep_timer_seconds =
                 sanitize_non_negative(body.sleep_timer_seconds + delta_seconds)
                     .min(DEFAULT_SLEEP_TIME_THRESHOLD_SECONDS);
+            has_ready_sleep_candidate |=
+                body.sleep_timer_seconds >= DEFAULT_SLEEP_TIME_THRESHOLD_SECONDS;
         } else {
             body.sleep_timer_seconds = 0.0;
         }
         world.rigid_bodies[index] = Some(body);
     }
+    has_ready_sleep_candidate
 }
 
 fn put_ready_rigid_body_islands_to_sleep(
@@ -222,6 +234,22 @@ fn count_sleeping_dynamic_rigid_bodies(world: &World) -> u32 {
         .count() as u32
 }
 
+fn has_sleeping_dynamic_rigid_body(world: &World) -> bool {
+    world
+        .alive_indices()
+        .iter()
+        .copied()
+        .any(|index| is_sleeping_dynamic_rigid_body(world, index))
+}
+
+fn has_rigid_body_wake_source(world: &World) -> bool {
+    world
+        .alive_indices()
+        .iter()
+        .copied()
+        .any(|index| is_rigid_body_wake_source(world, index))
+}
+
 pub(super) fn is_rigid_body_wake_source(world: &World, index: usize) -> bool {
     let Some(body) = world.rigid_bodies.get(index).copied().flatten() else {
         return false;
@@ -268,4 +296,85 @@ fn rigid_body_is_below_sleep_thresholds(
     velocity_len_squared(velocity)
         <= DEFAULT_SLEEP_LINEAR_THRESHOLD * DEFAULT_SLEEP_LINEAR_THRESHOLD
         && angular_velocity.radians_per_second.abs() <= DEFAULT_SLEEP_ANGULAR_THRESHOLD
+}
+
+impl RigidBodySleepScratch {
+    fn clear_transient_results(&mut self) {
+        self.manifolds.clear();
+        self.root_flags.clear();
+        self.secondary_root_flags.clear();
+        self.node_flags.clear();
+        self.seen_roots.clear();
+        self.body_indices.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::{
+        AabbCollider, CollisionFilter, CollisionLayer, CollisionMask, Transform2D,
+    };
+
+    #[test]
+    fn wake_sleeping_islands_skips_manifold_rebuild_without_sleeping_bodies() {
+        let mut world = World::default();
+        spawn_sleep_test_body(&mut world, 0.0, 0.0, RigidBody::dynamic(1.0));
+        spawn_sleep_test_body(&mut world, 0.5, 0.0, RigidBody::dynamic(1.0));
+        let mut scratch = RigidBodySleepScratch::default();
+        let mut stats = RigidBodyStepStats::default();
+
+        wake_sleeping_rigid_body_islands(&mut world, &mut stats, &mut scratch);
+
+        assert!(scratch.manifolds.is_empty());
+        assert_eq!(stats.bodies_woken, 0);
+        assert_eq!(stats.islands_woken, 0);
+    }
+
+    #[test]
+    fn update_sleep_states_skips_manifold_rebuild_without_ready_candidates() {
+        let mut world = World::default();
+        let left = spawn_sleep_test_body(
+            &mut world,
+            0.0,
+            0.0,
+            RigidBody::dynamic(1.0).with_sleeping_enabled(true),
+        );
+        spawn_sleep_test_body(
+            &mut world,
+            0.5,
+            0.0,
+            RigidBody::dynamic(1.0).with_sleeping_enabled(true),
+        );
+        world.set_velocity(left, Velocity { vx: 10.0, vy: 0.0 });
+        let mut scratch = RigidBodySleepScratch::default();
+        let mut stats = RigidBodyStepStats::default();
+
+        update_rigid_body_sleep_states(&mut world, 0.1, &mut stats, &mut scratch);
+
+        assert!(scratch.manifolds.is_empty());
+        assert_eq!(stats.bodies_put_to_sleep, 0);
+        assert_eq!(stats.islands_put_to_sleep, 0);
+        assert_eq!(stats.sleeping_bodies, 0);
+    }
+
+    fn spawn_sleep_test_body(
+        world: &mut World,
+        x: f32,
+        y: f32,
+        body: RigidBody,
+    ) -> crate::entity::Entity {
+        let entity = world.spawn_entity();
+        world.set_transform(entity, Transform2D { x, y });
+        world.set_aabb_collider(
+            entity,
+            AabbCollider::new(1.0, 1.0, false, CollisionLayer::Player),
+        );
+        world.set_collision_filter(
+            entity,
+            CollisionFilter::new(CollisionLayer::Player.mask(), CollisionMask::ALL),
+        );
+        world.set_rigid_body(entity, body);
+        entity
+    }
 }

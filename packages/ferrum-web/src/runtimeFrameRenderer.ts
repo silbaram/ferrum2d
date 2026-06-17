@@ -210,6 +210,7 @@ function buildDebugMetrics(
     physicsMode: frame.physics.mode,
     physicsFixedSteps: frame.physics.fixedSteps,
     physicsKinematicHits: frame.physics.kinematicHits,
+    physicsSolidCandidateChecks: frame.physics.solidCandidateChecks,
     physicsTileCandidateChecks: frame.physics.tileCandidateChecks,
     physicsHd2dFilteredEntityCandidates: frame.physics.hd2dFilteredEntityCandidates,
     physicsHd2dFilteredTileCandidates: frame.physics.hd2dFilteredTileCandidates,

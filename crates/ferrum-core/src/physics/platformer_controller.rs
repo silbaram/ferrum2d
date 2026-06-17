@@ -23,6 +23,7 @@ mod step_offset;
 
 use controller::{move_platformer_controller_internal, PlatformerControllerRuntime};
 use ground_probe::ground_probe_internal;
+pub(super) use kinematic_sweep::KinematicSweepScratch;
 use kinematic_sweep::{earliest_solid_hit, KinematicSweep};
 use moving_platform::carry_moving_platform_internal;
 
@@ -34,12 +35,14 @@ impl PhysicsSystem {
         solid_mask: CollisionMask,
         max_iterations: u32,
     ) -> KinematicMoveResult {
+        let mut scratch = KinematicSweepScratch::default();
         move_and_slide_internal(
             world,
             None,
             entity,
             displacement,
             KinematicMoveSettings::new(solid_mask, OneWayPlatformConfig::default(), max_iterations),
+            &mut scratch,
             None,
         )
     }
@@ -52,12 +55,14 @@ impl PhysicsSystem {
         solid_mask: CollisionMask,
         max_iterations: u32,
     ) -> KinematicMoveResult {
+        let mut scratch = KinematicSweepScratch::default();
         move_and_slide_internal(
             world,
             Some(tilemap),
             entity,
             displacement,
             KinematicMoveSettings::new(solid_mask, OneWayPlatformConfig::default(), max_iterations),
+            &mut scratch,
             None,
         )
     }
@@ -71,12 +76,14 @@ impl PhysicsSystem {
         max_iterations: u32,
         counters: &mut PhysicsCounters,
     ) -> KinematicMoveResult {
+        let mut scratch = KinematicSweepScratch::default();
         move_and_slide_internal(
             world,
             Some(tilemap),
             entity,
             displacement,
             KinematicMoveSettings::new(solid_mask, OneWayPlatformConfig::default(), max_iterations),
+            &mut scratch,
             Some(counters),
         )
     }
@@ -89,12 +96,14 @@ impl PhysicsSystem {
         one_way_platforms: OneWayPlatformConfig,
         max_iterations: u32,
     ) -> KinematicMoveResult {
+        let mut scratch = KinematicSweepScratch::default();
         move_and_slide_internal(
             world,
             None,
             entity,
             displacement,
             KinematicMoveSettings::new(solid_mask, one_way_platforms, max_iterations),
+            &mut scratch,
             None,
         )
     }
@@ -108,12 +117,14 @@ impl PhysicsSystem {
         one_way_platforms: OneWayPlatformConfig,
         max_iterations: u32,
     ) -> KinematicMoveResult {
+        let mut scratch = KinematicSweepScratch::default();
         move_and_slide_internal(
             world,
             Some(tilemap),
             entity,
             displacement,
             KinematicMoveSettings::new(solid_mask, one_way_platforms, max_iterations),
+            &mut scratch,
             None,
         )
     }
@@ -315,6 +326,7 @@ pub(super) fn move_and_slide_internal(
     entity: Entity,
     displacement: Velocity,
     settings: KinematicMoveSettings,
+    scratch: &mut KinematicSweepScratch,
     mut counters: Option<&mut PhysicsCounters>,
 ) -> KinematicMoveResult {
     if let Some(counters) = counters.as_deref_mut() {
@@ -399,6 +411,7 @@ pub(super) fn move_and_slide_internal(
                 ignored_entity: settings.ignored_entity,
                 height_span: settings.height_span,
             },
+            scratch,
             counters.as_deref_mut(),
         ) else {
             position.x += remaining.vx;

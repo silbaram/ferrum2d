@@ -3,6 +3,7 @@ use std::f32::consts::TAU;
 use crate::camera::Camera2D;
 use crate::collision::AabbBounds;
 use crate::components::{SpriteFrame, Transform2D};
+use crate::damping::damping_factor;
 use crate::render_command::{
     SpriteRenderCommand, SpriteRenderItem, SpriteRenderSortKey, SPRITE_EFFECT_NONE,
 };
@@ -223,9 +224,9 @@ impl ParticleSystem {
             particle.velocity_x += particle.acceleration_x * delta_seconds;
             particle.velocity_y += particle.acceleration_y * delta_seconds;
 
-            let damping_factor = (1.0 - particle.damping * delta_seconds).clamp(0.0, 1.0);
-            particle.velocity_x *= damping_factor;
-            particle.velocity_y *= damping_factor;
+            let factor = damping_factor(particle.damping, delta_seconds);
+            particle.velocity_x *= factor;
+            particle.velocity_y *= factor;
             particle.x += particle.velocity_x * delta_seconds;
             particle.y += particle.velocity_y * delta_seconds;
         }
@@ -449,6 +450,32 @@ mod tests {
 
         particles.update(0.25);
         assert_eq!(particles.particle_count(), 0);
+    }
+
+    #[test]
+    fn update_damping_uses_time_stable_exponential_decay() {
+        let mut preset = ParticlePreset::new(3);
+        preset.burst_count = 1;
+        preset.lifetime_seconds = ParticleRange::constant(2.0);
+        preset.speed = ParticleRange::constant(10.0);
+        preset.damping = 2.0;
+
+        let mut particles = ParticleSystem::with_capacity(8);
+        particles.set_seed(7);
+        assert_eq!(particles.spawn_burst(preset, 0.0, 0.0), 1);
+        let initial = particles.particles()[0];
+        let initial_speed = (initial.velocity_x * initial.velocity_x
+            + initial.velocity_y * initial.velocity_y)
+            .sqrt();
+
+        particles.update(1.0);
+
+        let particle = particles.particles()[0];
+        let damped_speed = (particle.velocity_x * particle.velocity_x
+            + particle.velocity_y * particle.velocity_y)
+            .sqrt();
+        assert!((damped_speed - initial_speed * (-2.0_f32).exp()).abs() < 0.001);
+        assert!(damped_speed > 1.0);
     }
 
     #[test]

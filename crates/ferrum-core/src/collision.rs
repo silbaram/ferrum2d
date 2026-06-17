@@ -61,7 +61,9 @@ use bounds::{
     aabb_bounds_vertices, aabb_corners, capsule_side_bounds, inflate_bounds,
     query_aabb_half_extents, query_shape_sweep_bounds,
 };
-pub(crate) use broadphase::{CollisionScratch, RigidBodyCcdCandidateQuery};
+pub(crate) use broadphase::{
+    CollisionScratch, KinematicSweepCandidateQuery, RigidBodyCcdCandidateQuery,
+};
 use capsule_manifold::{
     capsule_capsule_contact_manifold_points, capsule_circle_contact_manifold_points,
 };

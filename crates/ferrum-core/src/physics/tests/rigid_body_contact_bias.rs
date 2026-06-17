@@ -43,6 +43,49 @@ fn rigid_body_contact_baumgarte_bias_separates_resting_overlap() {
 }
 
 #[test]
+fn rigid_body_contact_approaching_overlap_uses_normal_impulse_without_baumgarte_bias() {
+    let mut world = World::default();
+    let body = spawn_dynamic_body(&mut world, 0.0, 0.0, 1.0);
+    world.set_velocity(body, Velocity { vx: 5.0, vy: 0.0 });
+    world.set_rigid_body(
+        body,
+        RigidBody::dynamic_box(1.0, 2.0, 2.0).with_material(PhysicsMaterial::new(0.0, 0.0)),
+    );
+    let wall =
+        spawn_kinematic_body_with_size(&mut world, 1.5, 0.0, CollisionLayer::Wall, false, 1.0, 1.0);
+    world.set_rigid_body(
+        wall,
+        RigidBody::static_body().with_material(PhysicsMaterial::new(0.0, 0.0)),
+    );
+
+    let stats = PhysicsSystem::step_rigid_bodies_with_config(
+        &mut world,
+        0.1,
+        RigidBodyStepConfig {
+            gravity: Velocity::default(),
+            velocity_iterations: 1,
+            position_iterations: 1,
+            position_correction_percent: 0.0,
+            position_correction_slop: 0.0,
+            restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+            contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+            max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+            contact_split_impulse: false,
+            continuous: true,
+        },
+    );
+
+    let velocity = world.velocity(body).unwrap();
+    assert!(stats.velocity_impulses > 0);
+    assert_eq!(stats.baumgarte_velocity_biases, 0);
+    assert_eq!(stats.position_corrections, 0);
+    assert!(
+        velocity.vx <= 0.001,
+        "approaching overlap should be handled by the normal impulse without Baumgarte bias, got {velocity:?}"
+    );
+}
+
+#[test]
 fn rigid_body_contact_split_impulse_corrects_overlap_without_velocity_bias() {
     let mut world = World::default();
     let body = spawn_dynamic_body(&mut world, 0.0, 0.0, 1.0);

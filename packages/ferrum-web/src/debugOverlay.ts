@@ -19,6 +19,7 @@ export interface DebugOverlayMetrics {
   physicsMode?: string;
   physicsFixedSteps?: number;
   physicsKinematicHits?: number;
+  physicsSolidCandidateChecks?: number;
   physicsTileCandidateChecks?: number;
   physicsHd2dFilteredEntityCandidates?: number;
   physicsHd2dFilteredTileCandidates?: number;
@@ -74,6 +75,7 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "physicsMode", label: "physics mode", unit: "mode", optional: true },
   { id: "physicsFixedSteps", label: "fixed steps", unit: "count", optional: true },
   { id: "physicsKinematicHits", label: "kinematic hits", unit: "count", optional: true },
+  { id: "physicsSolidCandidateChecks", label: "solid checks", unit: "count", optional: true },
   { id: "physicsTileCandidateChecks", label: "tile checks", unit: "count", optional: true },
   { id: "physicsHd2dFilteredEntityCandidates", label: "hd2d entity filters", unit: "count", optional: true },
   { id: "physicsHd2dFilteredTileCandidates", label: "hd2d tile filters", unit: "count", optional: true },
@@ -213,6 +215,9 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
   }
   if (metrics.physicsKinematicHits !== undefined) {
     lines.push(row("physicsKinematicHits", metrics.physicsKinematicHits));
+  }
+  if (metrics.physicsSolidCandidateChecks !== undefined) {
+    lines.push(row("physicsSolidCandidateChecks", metrics.physicsSolidCandidateChecks));
   }
   if (metrics.physicsTileCandidateChecks !== undefined) {
     lines.push(row("physicsTileCandidateChecks", metrics.physicsTileCandidateChecks));

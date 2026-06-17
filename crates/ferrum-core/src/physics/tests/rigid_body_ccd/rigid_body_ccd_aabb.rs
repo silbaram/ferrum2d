@@ -167,6 +167,84 @@ fn rigid_body_step_uses_ccd_for_fast_dynamic_aabb() {
 }
 
 #[test]
+fn rigid_body_ccd_zero_penetration_impact_is_independent_of_baumgarte_bias_config() {
+    let bias_disabled = ccd_zero_penetration_impact_snapshot(0.0, 0.0);
+    let bias_high = ccd_zero_penetration_impact_snapshot(100.0, 1_000.0);
+
+    for snapshot in [bias_disabled, bias_high] {
+        assert_eq!(snapshot.stats.ccd_hits, 1);
+        assert_eq!(snapshot.stats.baumgarte_velocity_biases, 0);
+        assert!(
+            (snapshot.transform.x - 44.0).abs() < 0.001,
+            "CCD impact should stop at the same time of impact, got {snapshot:?}"
+        );
+        assert!(
+            snapshot.velocity.vx.abs() < 0.001,
+            "CCD impact should remove normal velocity without Baumgarte bias, got {snapshot:?}"
+        );
+    }
+
+    assert!((bias_disabled.transform.x - bias_high.transform.x).abs() < 0.001);
+    assert!((bias_disabled.velocity.vx - bias_high.velocity.vx).abs() < 0.001);
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CcdZeroPenetrationImpactSnapshot {
+    stats: RigidBodyStepStats,
+    transform: Transform2D,
+    velocity: Velocity,
+}
+
+fn ccd_zero_penetration_impact_snapshot(
+    contact_baumgarte_bias_factor: f32,
+    max_contact_baumgarte_bias_velocity: f32,
+) -> CcdZeroPenetrationImpactSnapshot {
+    let mut world = World::default();
+    let mover = spawn_dynamic_body(&mut world, 0.0, 0.0, 1.0);
+    world.set_velocity(mover, Velocity { vx: 100.0, vy: 0.0 });
+    world.set_rigid_body(
+        mover,
+        RigidBody::dynamic(1.0).with_material(PhysicsMaterial::new(0.0, 0.0)),
+    );
+    let wall = spawn_kinematic_body_with_size(
+        &mut world,
+        50.0,
+        0.0,
+        CollisionLayer::Wall,
+        false,
+        5.0,
+        5.0,
+    );
+    world.set_rigid_body(
+        wall,
+        RigidBody::static_body().with_material(PhysicsMaterial::new(0.0, 0.0)),
+    );
+
+    let stats = PhysicsSystem::step_rigid_bodies_with_config(
+        &mut world,
+        1.0,
+        RigidBodyStepConfig {
+            gravity: Velocity::default(),
+            velocity_iterations: 1,
+            position_iterations: 1,
+            position_correction_percent: 1.0,
+            position_correction_slop: 0.0,
+            restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+            contact_baumgarte_bias_factor,
+            max_contact_baumgarte_bias_velocity,
+            contact_split_impulse: false,
+            continuous: true,
+        },
+    );
+
+    CcdZeroPenetrationImpactSnapshot {
+        stats,
+        transform: world.transform(mover).unwrap(),
+        velocity: world.velocity(mover).unwrap(),
+    }
+}
+
+#[test]
 fn rigid_body_ccd_prunes_static_targets_outside_swept_bounds() {
     let mut world = World::default();
     let mover = spawn_dynamic_body(&mut world, 0.0, 0.0, 1.0);

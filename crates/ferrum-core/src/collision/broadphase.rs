@@ -55,6 +55,15 @@ pub(crate) struct RigidBodyCcdCandidateQuery {
     pub(crate) delta_seconds: f32,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct KinematicSweepCandidateQuery {
+    pub(crate) moving_index: usize,
+    pub(crate) ignored_index: Option<usize>,
+    pub(crate) moving_start: Transform2D,
+    pub(crate) moving_collider: AabbCollider,
+    pub(crate) remaining: Velocity,
+}
+
 impl CollisionScratch {
     pub(crate) fn usage(&self) -> CollisionScratchUsage {
         CollisionScratchUsage {
@@ -333,6 +342,37 @@ impl CollisionSystem {
         candidates.sort_unstable();
         candidates.dedup();
     }
+
+    pub(crate) fn build_kinematic_sweep_candidate_indices_into(
+        scratch: &mut CollisionScratch,
+        world: &World,
+        query: KinematicSweepCandidateQuery,
+        candidates: &mut Vec<usize>,
+    ) {
+        let moving_end = Transform2D {
+            x: query.moving_start.x + query.remaining.vx,
+            y: query.moving_start.y + query.remaining.vy,
+        };
+        let moving_bounds =
+            AabbBounds::swept(query.moving_start, moving_end, query.moving_collider);
+        fill_kinematic_sweep_target_proxies(world, query, &mut scratch.target_proxies);
+        candidates.clear();
+
+        for target_proxy in scratch.target_proxies.iter().copied() {
+            if target_proxy.bounds.max_x < moving_bounds.min_x {
+                continue;
+            }
+            if target_proxy.bounds.min_x > moving_bounds.max_x {
+                break;
+            }
+            if target_proxy.bounds.overlaps(moving_bounds) {
+                candidates.push(target_proxy.key.entity_index);
+            }
+        }
+
+        candidates.sort_unstable();
+        candidates.dedup();
+    }
 }
 
 pub(super) fn current_proxy_bounds(world: &World) -> Vec<AabbBounds> {
@@ -550,6 +590,37 @@ fn fill_rigid_body_ccd_target_proxies(
                 });
             }
         }
+    }
+    proxies.sort_by(proxy_order);
+}
+
+fn fill_kinematic_sweep_target_proxies(
+    world: &World,
+    query: KinematicSweepCandidateQuery,
+    proxies: &mut Vec<CollisionProxy>,
+) {
+    proxies.clear();
+    for &index in world.alive_indices() {
+        if index == query.moving_index || query.ignored_index == Some(index) {
+            continue;
+        }
+        let Some(collider) = world.colliders[index] else {
+            continue;
+        };
+        if !collider.enabled {
+            continue;
+        }
+        let Some(transform) = world.transform_at_index(index) else {
+            continue;
+        };
+        proxies.push(CollisionProxy {
+            key: ColliderKey {
+                entity_index: index,
+                collider_index: 0,
+                segment_index: 0,
+            },
+            bounds: AabbBounds::from_transform(transform, collider),
+        });
     }
     proxies.sort_by(proxy_order);
 }

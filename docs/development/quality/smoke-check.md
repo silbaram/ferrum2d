@@ -454,7 +454,7 @@ pnpm smoke:headless
 - `pnpm smoke:tilemap-authoring`은 `applyTileRules(...)`, `bakeAnimatedTileLayer(...)`, Tiled import 결과 authoring, LDtk entity/tile layer fixture를 함께 확인한다.
 - browser console error와 page error가 발생하지 않는다.
 
-새 browser smoke에서 frame/render/physics budget을 검사할 때는 `RuntimeProfiler`를 우선 사용한다. `FerrumRuntimeOptions.profiler`를 켜면 runtime이 `DebugOverlayMetrics`를 profiler에 기록하고, smoke script는 `--budget` 모드에서 profiler snapshot의 frame time, Rust update, render time, draw call, render command, texture switch, fixed step, tile candidate check, CCD check, physics debug line, collision pair, asset load elapsed budget 위반을 구조화된 결과로 확인한다.
+새 browser smoke에서 frame/render/physics budget을 검사할 때는 `RuntimeProfiler`를 우선 사용한다. `FerrumRuntimeOptions.profiler`를 켜면 runtime이 `DebugOverlayMetrics`를 profiler에 기록하고, smoke script는 `--budget` 모드에서 profiler snapshot의 frame time, Rust update, render time, draw call, render command, texture switch, fixed step, solid/tile candidate check, CCD check, physics debug line, collision pair, asset load elapsed budget 위반을 구조화된 결과로 확인한다.
 
 `tests/smoke/runtime-budget-profiles.mjs`에 budget field를 추가할 때는 `packages/ferrum-web/src/runtimeProfiler.ts`의 `RuntimeDiagnosticsBudget`, `RuntimeProfilerSnapshot`, 단일 frame evaluator, aggregate evaluator, 그리고 `tests/smoke/browser-render-smoke.mjs`의 `RUNTIME_BUDGET_FIELDS`를 함께 동기화한다. field가 profiler snapshot에 없으면 browser smoke는 `missingMetric` 위반으로 실패해야 한다.
 

@@ -4,7 +4,7 @@ use crate::tilemap::{Hd2dTileKind, Tilemap, TilemapHd2dSurfaceHit};
 use crate::world::World;
 
 use super::math::finite_velocity;
-use super::platformer_controller::move_and_slide_internal;
+use super::platformer_controller::{move_and_slide_internal, KinematicSweepScratch};
 use super::{
     KinematicMoveResult, KinematicMoveSettings, OneWayPlatformConfig, PhysicsCounters,
     PhysicsSystem, KINEMATIC_EPSILON, MAX_KINEMATIC_ITERATIONS,
@@ -102,12 +102,14 @@ impl PhysicsSystem {
             config.max_iterations,
         )
         .with_height_span(start_height_span);
+        let mut movement_scratch = KinematicSweepScratch::default();
         let movement = move_and_slide_internal(
             world,
             Some(tilemap),
             entity,
             displacement,
             movement_settings,
+            &mut movement_scratch,
             counters,
         );
         let moved_transform = world.transform(entity).unwrap_or(movement.end);

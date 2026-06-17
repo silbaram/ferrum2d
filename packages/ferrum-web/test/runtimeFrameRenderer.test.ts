@@ -140,12 +140,16 @@ test("RuntimeFrameRenderer reports collision pair count when lifecycle tracking 
   const physics = {
     ...physicsFrameStats(),
     collisionLifecycleEventsEnabled: false,
+    solidCandidateChecks: 3,
+    tileCandidateChecks: 5,
     collisionPairs: 4,
     collisionEventCount: 7,
   };
 
   runtimeFrameRenderer.renderFrame(renderFrameState({ frameState: frameState({ physics }) }));
 
+  equal(debugMetrics?.physicsSolidCandidateChecks, 3);
+  equal(debugMetrics?.physicsTileCandidateChecks, 5);
   equal(debugMetrics?.collisionPairCount, 4);
   equal(debugMetrics?.collisionEventCount, undefined);
 });

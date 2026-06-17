@@ -6,6 +6,7 @@ pub mod camera;
 pub mod collision;
 pub mod collision_event;
 pub mod components;
+pub(crate) mod damping;
 pub mod effect_event;
 pub mod engine;
 pub mod entity;

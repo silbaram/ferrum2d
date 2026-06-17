@@ -4,6 +4,7 @@ use crate::tilemap::Tilemap;
 use crate::world::World;
 
 use super::ground_probe::ground_probe_internal;
+use super::kinematic_sweep::KinematicSweepScratch;
 use super::move_and_slide_internal;
 
 pub(super) fn carry_moving_platform_internal(
@@ -22,6 +23,7 @@ pub(super) fn carry_moving_platform_internal(
     if ground.entity != Some(config.platform) {
         return None;
     }
+    let mut scratch = KinematicSweepScratch::default();
 
     Some(move_and_slide_internal(
         world,
@@ -34,6 +36,7 @@ pub(super) fn carry_moving_platform_internal(
             config.max_iterations,
         )
         .ignoring_entity(config.platform),
+        &mut scratch,
         None,
     ))
 }

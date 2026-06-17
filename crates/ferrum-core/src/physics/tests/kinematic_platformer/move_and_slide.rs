@@ -120,6 +120,38 @@ fn move_and_slide_with_tilemap_and_counters_records_tile_hit() {
 }
 
 #[test]
+fn move_and_slide_counters_use_swept_entity_candidates() {
+    let mut world = World::default();
+    let tilemap = Tilemap::default();
+    let mover = spawn_kinematic_body(&mut world, 0.0, 0.0, CollisionLayer::Player, true);
+    let wall = spawn_kinematic_body(&mut world, 20.0, 0.0, CollisionLayer::Enemy, false);
+    for i in 0..64 {
+        spawn_kinematic_body(
+            &mut world,
+            1_000.0 + i as f32 * 20.0,
+            1_000.0,
+            CollisionLayer::Enemy,
+            false,
+        );
+    }
+    let mut counters = PhysicsCounters::default();
+
+    let result = PhysicsSystem::move_and_slide_with_tilemap_and_counters(
+        &mut world,
+        &tilemap,
+        mover,
+        Velocity { vx: 30.0, vy: 0.0 },
+        CollisionMask::ENEMY,
+        4,
+        &mut counters,
+    );
+
+    assert_eq!(result.last_hit, Some(wall));
+    assert_eq!(counters.kinematic_entity_hits, 1);
+    assert_eq!(counters.solid_candidate_checks, 1);
+}
+
+#[test]
 fn move_and_slide_preserves_tangent_motion() {
     let mut world = World::default();
     let mover = spawn_kinematic_body(&mut world, 0.0, 0.0, CollisionLayer::Player, true);

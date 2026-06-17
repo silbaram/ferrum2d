@@ -114,6 +114,47 @@ fn gear_joint_breaks_when_angle_error_exceeds_break_angle() {
 }
 
 #[test]
+fn gear_joint_break_angle_uses_wrapped_angle_error() {
+    let mut world = World::default();
+    let gear_a = world.spawn_entity();
+    world.set_transform(gear_a, Transform2D { x: 0.0, y: 0.0 });
+    world.set_rotation(
+        gear_a,
+        Rotation2D {
+            radians: std::f32::consts::PI * 2.0 - 0.01,
+        },
+    );
+    world.set_rigid_body(gear_a, RigidBody::static_body());
+    let gear_b = world.spawn_entity();
+    world.set_transform(gear_b, Transform2D { x: 0.0, y: 0.0 });
+    world.set_rotation(gear_b, Rotation2D { radians: 0.0 });
+    world.set_rigid_body(gear_b, RigidBody::dynamic(1.0).with_inertia(1.0));
+    world.add_gear_joint(GearJoint::new(gear_a, gear_b, 1.0).with_break_angle(0.1));
+
+    let stats = PhysicsSystem::step_rigid_bodies_with_config(
+        &mut world,
+        0.1,
+        RigidBodyStepConfig {
+            gravity: Velocity::default(),
+            velocity_iterations: 1,
+            position_iterations: 1,
+            position_correction_percent: 0.0,
+            position_correction_slop: 0.0,
+            restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+            contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+            max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+            contact_split_impulse: false,
+            continuous: true,
+        },
+    );
+
+    assert_eq!(stats.broken_joints, 0);
+    assert!(stats.constraint_velocity_corrections > 0);
+    assert!(stats.constraint_position_corrections > 0);
+    assert_eq!(world.gear_joint_count(), 1);
+}
+
+#[test]
 fn gear_joint_break_angle_allows_smaller_angle_error() {
     let mut world = World::default();
     let gear_a = world.spawn_entity();

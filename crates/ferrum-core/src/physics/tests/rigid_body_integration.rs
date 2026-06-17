@@ -31,11 +31,131 @@ fn rigid_body_step_integrates_force_impulse_gravity_and_damping() {
     );
 
     assert_eq!(stats.dynamic_bodies, 1);
-    assert_eq!(world.velocity(body), Some(Velocity { vx: 1.5, vy: 5.0 }));
-    assert_eq!(world.transform(body), Some(Transform2D { x: 1.5, y: 5.0 }));
+    let velocity = world.velocity(body).unwrap();
+    assert!((velocity.vx - 1.8195).abs() < 0.001);
+    assert!((velocity.vy - 6.0653).abs() < 0.001);
+    let transform = world.transform(body).unwrap();
+    assert!((transform.x - 1.8195).abs() < 0.001);
+    assert!((transform.y - 6.0653).abs() < 0.001);
     let body_component = world.rigid_body(body).unwrap();
     assert_eq!(body_component.force, Velocity::default());
     assert_eq!(body_component.impulse, Velocity::default());
+}
+
+#[test]
+fn rigid_body_damping_uses_time_stable_exponential_decay() {
+    let mut single_step_world = World::default();
+    let single_step_body = spawn_dynamic_body(&mut single_step_world, 0.0, 0.0, 2.0);
+    single_step_world.set_rigid_body(
+        single_step_body,
+        RigidBody::dynamic(1.0)
+            .with_linear_damping(0.5)
+            .with_angular_damping(0.5)
+            .with_sleeping_enabled(false),
+    );
+    single_step_world.set_rotation(single_step_body, Rotation2D { radians: 0.0 });
+    single_step_world.set_velocity(single_step_body, Velocity { vx: 8.0, vy: 0.0 });
+    single_step_world.set_angular_velocity(
+        single_step_body,
+        AngularVelocity {
+            radians_per_second: 8.0,
+        },
+    );
+
+    let mut substepped_world = World::default();
+    let substepped_body = spawn_dynamic_body(&mut substepped_world, 0.0, 0.0, 2.0);
+    substepped_world.set_rigid_body(
+        substepped_body,
+        RigidBody::dynamic(1.0)
+            .with_linear_damping(0.5)
+            .with_angular_damping(0.5)
+            .with_sleeping_enabled(false),
+    );
+    substepped_world.set_rotation(substepped_body, Rotation2D { radians: 0.0 });
+    substepped_world.set_velocity(substepped_body, Velocity { vx: 8.0, vy: 0.0 });
+    substepped_world.set_angular_velocity(
+        substepped_body,
+        AngularVelocity {
+            radians_per_second: 8.0,
+        },
+    );
+
+    let config = RigidBodyStepConfig {
+        gravity: Velocity::default(),
+        velocity_iterations: 1,
+        position_iterations: 1,
+        position_correction_percent: 0.0,
+        position_correction_slop: 0.0,
+        restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+        contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+        max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+        contact_split_impulse: false,
+        continuous: true,
+    };
+    PhysicsSystem::step_rigid_bodies_with_config(&mut single_step_world, 1.0, config);
+    PhysicsSystem::step_rigid_bodies_substepped_with_config(&mut substepped_world, 1.0, 4, config);
+
+    let single_velocity = single_step_world.velocity(single_step_body).unwrap();
+    let substepped_velocity = substepped_world.velocity(substepped_body).unwrap();
+    assert!((single_velocity.vx - 8.0 * (-0.5_f32).exp()).abs() < 0.001);
+    assert!((single_velocity.vx - substepped_velocity.vx).abs() < 0.001);
+
+    let single_angular_velocity = single_step_world
+        .angular_velocity(single_step_body)
+        .unwrap()
+        .radians_per_second;
+    let substepped_angular_velocity = substepped_world
+        .angular_velocity(substepped_body)
+        .unwrap()
+        .radians_per_second;
+    assert!((single_angular_velocity - 8.0 * (-0.5_f32).exp()).abs() < 0.001);
+    assert!((single_angular_velocity - substepped_angular_velocity).abs() < 0.001);
+}
+
+#[test]
+fn rigid_body_damping_does_not_zero_velocity_when_damping_exceeds_inverse_dt() {
+    let mut world = World::default();
+    let body = spawn_dynamic_body(&mut world, 0.0, 0.0, 2.0);
+    world.set_rigid_body(
+        body,
+        RigidBody::dynamic(1.0)
+            .with_linear_damping(2.0)
+            .with_angular_damping(2.0)
+            .with_sleeping_enabled(false),
+    );
+    world.set_rotation(body, Rotation2D { radians: 0.0 });
+    world.set_velocity(body, Velocity { vx: 10.0, vy: 0.0 });
+    world.set_angular_velocity(
+        body,
+        AngularVelocity {
+            radians_per_second: 10.0,
+        },
+    );
+
+    PhysicsSystem::step_rigid_bodies_with_config(
+        &mut world,
+        1.0,
+        RigidBodyStepConfig {
+            gravity: Velocity::default(),
+            velocity_iterations: 1,
+            position_iterations: 1,
+            position_correction_percent: 0.0,
+            position_correction_slop: 0.0,
+            restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+            contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+            max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+            contact_split_impulse: false,
+            continuous: true,
+        },
+    );
+
+    let velocity = world.velocity(body).unwrap();
+    assert!((velocity.vx - 10.0 * (-2.0_f32).exp()).abs() < 0.001);
+    assert!(velocity.vx > 1.0);
+
+    let angular_velocity = world.angular_velocity(body).unwrap().radians_per_second;
+    assert!((angular_velocity - 10.0 * (-2.0_f32).exp()).abs() < 0.001);
+    assert!(angular_velocity > 1.0);
 }
 
 #[test]
@@ -285,13 +405,10 @@ fn angular_body_step_integrates_torque_impulse_and_damping() {
 
     assert_eq!(stats.dynamic_bodies, 1);
     assert_eq!(stats.angular_bodies, 1);
-    assert_eq!(
-        world.angular_velocity(body),
-        Some(AngularVelocity {
-            radians_per_second: 1.5,
-        })
-    );
-    assert_eq!(world.rotation(body), Some(Rotation2D { radians: 1.5 }));
+    let angular_velocity = world.angular_velocity(body).unwrap().radians_per_second;
+    assert!((angular_velocity - 1.8195).abs() < 0.001);
+    let rotation = world.rotation(body).unwrap().radians;
+    assert!((rotation - 1.8195).abs() < 0.001);
     let body_component = world.rigid_body(body).unwrap();
     assert_eq!(body_component.torque, 0.0);
     assert_eq!(body_component.angular_impulse, 0.0);

@@ -1,4 +1,6 @@
-use crate::collision::{CollisionSystem, SweptAabbContactHit};
+use crate::collision::{
+    CollisionScratch, CollisionSystem, KinematicSweepCandidateQuery, SweptAabbContactHit,
+};
 use crate::components::{AabbCollider, CollisionMask, HeightSpan, Transform2D, Velocity};
 use crate::entity::Entity;
 use crate::tilemap::{Tilemap, TilemapSweepStats};
@@ -29,8 +31,15 @@ pub(super) struct KinematicSweep<'a> {
     pub(super) height_span: Option<HeightSpan>,
 }
 
+#[derive(Default)]
+pub(in crate::physics) struct KinematicSweepScratch {
+    collision: CollisionScratch,
+    candidates: Vec<usize>,
+}
+
 pub(super) fn earliest_solid_hit(
     sweep: KinematicSweep<'_>,
+    scratch: &mut KinematicSweepScratch,
     mut counters: Option<&mut PhysicsCounters>,
 ) -> Option<KinematicHit> {
     let KinematicSweep {
@@ -46,18 +55,25 @@ pub(super) fn earliest_solid_hit(
         height_span,
     } = sweep;
     let moving_index = entity.id as usize;
+    let ignored_index = ignored_entity
+        .filter(|entity| world.generation_at_index(entity.id as usize) == Some(entity.generation))
+        .map(|entity| entity.id as usize);
     let mut best: Option<KinematicHit> = None;
 
-    for &target_index in world.alive_indices() {
-        if target_index == moving_index {
-            continue;
-        }
-        if ignored_entity.is_some_and(|entity| {
-            entity.id as usize == target_index
-                && world.generation_at_index(target_index) == Some(entity.generation)
-        }) {
-            continue;
-        }
+    CollisionSystem::build_kinematic_sweep_candidate_indices_into(
+        &mut scratch.collision,
+        world,
+        KinematicSweepCandidateQuery {
+            moving_index,
+            ignored_index,
+            moving_start: position,
+            moving_collider: collider,
+            remaining,
+        },
+        &mut scratch.candidates,
+    );
+
+    for target_index in scratch.candidates.iter().copied() {
         let Some(target_collider) = world.colliders[target_index] else {
             continue;
         };

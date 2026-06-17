@@ -1,5 +1,6 @@
 use crate::collision::CollisionScratch;
 use crate::components::{RigidBodyType, Rotation2D, Velocity};
+use crate::damping::damping_factor;
 use crate::world::World;
 
 use super::super::ccd::{integrate_dynamic_rigid_body_position_with_ccd, RigidBodyCcdScratch};
@@ -81,15 +82,14 @@ pub(super) fn integrate_rigid_body_velocities(
 
         let damping = sanitized_linear_damping(body);
         if damping > 0.0 {
-            let damping_factor = (1.0 - damping * delta_seconds).clamp(0.0, 1.0);
-            velocity.vx *= damping_factor;
-            velocity.vy *= damping_factor;
+            let factor = damping_factor(damping, delta_seconds);
+            velocity.vx *= factor;
+            velocity.vy *= factor;
         }
 
         let angular_damping = sanitized_angular_damping(body);
         if angular_damping > 0.0 {
-            let damping_factor = (1.0 - angular_damping * delta_seconds).clamp(0.0, 1.0);
-            angular_velocity.radians_per_second *= damping_factor;
+            angular_velocity.radians_per_second *= damping_factor(angular_damping, delta_seconds);
         }
 
         if accumulator_mode.clear_forces {
