@@ -69,7 +69,96 @@ test("createPhysicsJointApi forwards every joint spawn type with stable defaults
     2,
     3,
     4,
+    0,
+    0,
+    0,
+    0,
     10,
+    1,
+    0,
+    Number.POSITIVE_INFINITY,
+    true,
+  ]);
+});
+
+test("createPhysicsJointApi forwards local anchors for linear joints", () => {
+  const context = fakeJointContext();
+  const api = createPhysicsJointApi(context);
+
+  api.spawnPhysicsJoint({
+    type: "distance",
+    entityA: ENTITY_A,
+    entityB: ENTITY_B,
+    localAnchorAX: -1,
+    localAnchorAY: 2,
+    localAnchorBX: 3,
+    localAnchorBY: -4,
+    restLength: 10,
+  });
+  api.spawnPhysicsJoint({
+    type: "rope",
+    entityA: ENTITY_A,
+    entityB: ENTITY_B,
+    localAnchorAX: -5,
+    localAnchorAY: 6,
+    localAnchorBX: 7,
+    localAnchorBY: -8,
+    maxLength: 11,
+  });
+  api.spawnPhysicsJoint({
+    type: "spring",
+    entityA: ENTITY_A,
+    entityB: ENTITY_B,
+    localAnchorAX: -9,
+    localAnchorAY: 10,
+    localAnchorBX: 11,
+    localAnchorBY: -12,
+    restLength: 12,
+  });
+
+  deepEqual(context.calls[1], [
+    "spawn_physics_distance_joint",
+    1,
+    2,
+    3,
+    4,
+    -1,
+    2,
+    3,
+    -4,
+    10,
+    1,
+    0,
+    Number.POSITIVE_INFINITY,
+    true,
+  ]);
+  deepEqual(context.calls[3], [
+    "spawn_physics_rope_joint",
+    1,
+    2,
+    3,
+    4,
+    -5,
+    6,
+    7,
+    -8,
+    11,
+    1,
+    0,
+    Number.POSITIVE_INFINITY,
+    true,
+  ]);
+  deepEqual(context.calls[5], [
+    "spawn_physics_spring_joint",
+    1,
+    2,
+    3,
+    4,
+    -9,
+    10,
+    11,
+    -12,
+    12,
     1,
     0,
     Number.POSITIVE_INFINITY,

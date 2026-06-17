@@ -40,8 +40,8 @@ pub(in crate::physics) fn solve_spring_joint_velocity_constraint(
         return false;
     };
 
-    let velocity_a = world.velocity_at_index_or_default(context.a_index);
-    let velocity_b = world.velocity_at_index_or_default(context.b_index);
+    let velocity_a = anchor_velocity(world, context.a_index, context.anchor_a);
+    let velocity_b = anchor_velocity(world, context.b_index, context.anchor_b);
     let relative_velocity = Velocity {
         vx: velocity_b.vx - velocity_a.vx,
         vy: velocity_b.vy - velocity_a.vy,
@@ -55,20 +55,26 @@ pub(in crate::physics) fn solve_spring_joint_velocity_constraint(
         return false;
     }
 
-    let impulse_magnitude = -correction_velocity / context.inverse_mass_sum;
+    let impulse_magnitude = -correction_velocity / context.denominator;
     if !impulse_magnitude.is_finite() || impulse_magnitude.abs() <= KINEMATIC_EPSILON {
         return false;
     }
-    apply_contact_impulse(
+    apply_pair_anchor_impulse(
         world,
-        context.a_index,
-        context.b_index,
+        PairAnchorConstraintContext {
+            a_index: context.a_index,
+            b_index: context.b_index,
+            radius_a: context.radius_a,
+            radius_b: context.radius_b,
+            inverse_mass_a: context.inverse_mass_a,
+            inverse_mass_b: context.inverse_mass_b,
+            inverse_inertia_a: context.inverse_inertia_a,
+            inverse_inertia_b: context.inverse_inertia_b,
+        },
         Velocity {
             vx: context.normal.vx * impulse_magnitude,
             vy: context.normal.vy * impulse_magnitude,
         },
-        context.inverse_mass_a,
-        context.inverse_mass_b,
     );
     true
 }
@@ -86,13 +92,35 @@ pub(in crate::physics) fn spring_joint_constraint_context(
     let transform_b = world.transform_at_index(b_index)?;
     let inverse_mass_a = rigid_body_inverse_mass(world, a_index);
     let inverse_mass_b = rigid_body_inverse_mass(world, b_index);
-    let inverse_mass_sum = inverse_mass_a + inverse_mass_b;
-    if inverse_mass_sum <= 0.0 {
+    let inverse_inertia_a = rigid_body_inverse_inertia(world, a_index);
+    let inverse_inertia_b = rigid_body_inverse_inertia(world, b_index);
+    if inverse_mass_a + inverse_mass_b + inverse_inertia_a + inverse_inertia_b <= 0.0 {
         return None;
     }
 
-    let dx = transform_b.x - transform_a.x;
-    let dy = transform_b.y - transform_a.y;
+    let radius_a = joint_world_radius(
+        world,
+        a_index,
+        joint.local_anchor_a_x,
+        joint.local_anchor_a_y,
+    );
+    let radius_b = joint_world_radius(
+        world,
+        b_index,
+        joint.local_anchor_b_x,
+        joint.local_anchor_b_y,
+    );
+    let anchor_a = Transform2D {
+        x: transform_a.x + radius_a.vx,
+        y: transform_a.y + radius_a.vy,
+    };
+    let anchor_b = Transform2D {
+        x: transform_b.x + radius_b.vx,
+        y: transform_b.y + radius_b.vy,
+    };
+
+    let dx = anchor_b.x - anchor_a.x;
+    let dy = anchor_b.y - anchor_a.y;
     let length = dx.hypot(dy);
     if !length.is_finite() {
         return None;
@@ -113,14 +141,32 @@ pub(in crate::physics) fn spring_joint_constraint_context(
     } else {
         return None;
     };
+    let denominator = joint_anchor_axis_denominator(
+        radius_a,
+        radius_b,
+        normal,
+        inverse_mass_a,
+        inverse_mass_b,
+        inverse_inertia_a,
+        inverse_inertia_b,
+    );
+    if denominator <= 0.0 {
+        return None;
+    }
 
     Some(SpringJointConstraintContext {
         a_index,
         b_index,
+        anchor_a,
+        anchor_b,
+        radius_a,
+        radius_b,
         normal,
         inverse_mass_a,
         inverse_mass_b,
-        inverse_mass_sum,
+        inverse_inertia_a,
+        inverse_inertia_b,
+        denominator,
         error,
     })
 }

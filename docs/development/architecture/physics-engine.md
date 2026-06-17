@@ -46,7 +46,7 @@
 | Platformer support | ground probe, controller config/state, coyote time, jump buffering, step offset, slope snap |
 | Rigid body | static/kinematic/dynamic, mass/inertia, force/impulse/torque, gravity scale, damping, sleep/wake |
 | Solver | substep, contact impulse, friction/restitution, Baumgarte tuning, split impulse, island metrics/scheduling |
-| Joints | distance, rope, spring, pulley, revolute, prismatic, weld, gear |
+| Joints | distance, rope, spring, pulley, revolute, prismatic, weld, gear. Distance/Rope/Spring도 optional local anchor와 회전 관성 effective mass를 지원 |
 | Tilemap physics | merged AABB obstacle cache, dirty chunk 기반 runtime cell/rect refresh, one-way tile, slope definition, tile floor/elevation/height span metadata, HD-2D tile kind/ramp/blocking metadata, collision layer -> chain boundary extraction |
 | Pixel mask terrain | alpha mask edit, dirty patch extraction, WebGL2 texture create/update, chunk 단위 Physics Spec chain collider rebuild |
 | Events/stats | collision enter/stay/exit/hit, trigger lifecycle, physics frame stats, rigid body step stats |
@@ -131,7 +131,7 @@ Shooter 전용 Game Spec은 다음 physics metadata를 지원한다.
 - Top-down projectile arc와 bullet/tile `blocksProjectile` height filter
 - Tiled/LDtk import helper를 통한 atlas/tilemap metadata 변환
 
-Generic rigid body/joint authoring metadata는 `physics` namespace에서 검증되고, `createPhysicsWorldFromSpec(...)`를 통해 runtime world에 opt-in 적용할 수 있다. 현재 apply 경로는 body당 1개 이상의 collider, AABB/box/circle/capsule/oriented-box/convex-polygon/edge/chain collider, distance/rope/spring/pulley/revolute/prismatic/weld/gear joint를 지원한다. 첫 collider는 primary collider(index `0`)로 기존 단일 collider API와 호환되고, secondary collider는 `addPhysicsBodyCollider(...)` 경로로 같은 body에 추가된다. `"world"` joint endpoint는 helper가 collision-disabled static anchor body로 변환한다. `chain`은 Rust core에서 dedicated storage로 보존되고, 내부 collision/query/debug 경로에서 segment를 순회한다.
+Generic rigid body/joint authoring metadata는 `physics` namespace에서 검증되고, `createPhysicsWorldFromSpec(...)`를 통해 runtime world에 opt-in 적용할 수 있다. 현재 apply 경로는 body당 1개 이상의 collider, AABB/box/circle/capsule/oriented-box/convex-polygon/edge/chain collider, distance/rope/spring/pulley/revolute/prismatic/weld/gear joint를 지원한다. distance/rope/spring/pulley/revolute/prismatic/weld의 `localAnchorA`/`localAnchorB`는 생략 시 body center로 resolve된다. 첫 collider는 primary collider(index `0`)로 기존 단일 collider API와 호환되고, secondary collider는 `addPhysicsBodyCollider(...)` 경로로 같은 body에 추가된다. `"world"` joint endpoint는 helper가 collision-disabled static anchor body로 변환한다. `chain`은 Rust core에서 dedicated storage로 보존되고, 내부 collision/query/debug 경로에서 segment를 순회한다.
 
 ## 현재 제외 또는 제한
 

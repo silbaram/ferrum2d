@@ -87,6 +87,10 @@ Core subpath는 Physics Spec resolver와 imperative Physics API를 함께 노출
 
 Physics authoring 세부 계약은 [Physics Spec](../physics-spec.md)을 기준으로 한다.
 
+`spawnPhysicsJoint(...)`의 `distance`/`rope`/`spring` 옵션은 `localAnchorAX/Y`,
+`localAnchorBX/Y`를 선택값으로 받을 수 있다. 생략하면 각 body center(`0, 0`)에
+연결되며, off-center anchor는 Rust solver에서 회전 관성까지 반영된다.
+
 ## Snapshot And Buffer Decoder
 
 | API | 계약 |

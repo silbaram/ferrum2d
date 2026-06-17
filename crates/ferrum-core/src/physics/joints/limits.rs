@@ -142,12 +142,15 @@ pub(super) fn revolute_joint_axis_denominator(
     context: &RevoluteJointConstraintContext,
     axis: Velocity,
 ) -> f32 {
-    let radius_a_cross_axis = cross_velocity(context.radius_a, axis);
-    let radius_b_cross_axis = cross_velocity(context.radius_b, axis);
-    context.inverse_mass_a
-        + context.inverse_mass_b
-        + context.inverse_inertia_a * radius_a_cross_axis * radius_a_cross_axis
-        + context.inverse_inertia_b * radius_b_cross_axis * radius_b_cross_axis
+    joint_anchor_axis_denominator(
+        context.radius_a,
+        context.radius_b,
+        axis,
+        context.inverse_mass_a,
+        context.inverse_mass_b,
+        context.inverse_inertia_a,
+        context.inverse_inertia_b,
+    )
 }
 
 pub(super) fn revolute_joint_angular_denominator(context: &RevoluteJointConstraintContext) -> f32 {
@@ -158,12 +161,32 @@ pub(super) fn prismatic_joint_axis_denominator(
     context: &PrismaticJointConstraintContext,
     axis: Velocity,
 ) -> f32 {
-    let radius_a_cross_axis = cross_velocity(context.radius_a, axis);
-    let radius_b_cross_axis = cross_velocity(context.radius_b, axis);
-    context.inverse_mass_a
-        + context.inverse_mass_b
-        + context.inverse_inertia_a * radius_a_cross_axis * radius_a_cross_axis
-        + context.inverse_inertia_b * radius_b_cross_axis * radius_b_cross_axis
+    joint_anchor_axis_denominator(
+        context.radius_a,
+        context.radius_b,
+        axis,
+        context.inverse_mass_a,
+        context.inverse_mass_b,
+        context.inverse_inertia_a,
+        context.inverse_inertia_b,
+    )
+}
+
+pub(super) fn joint_anchor_axis_denominator(
+    radius_a: Velocity,
+    radius_b: Velocity,
+    axis: Velocity,
+    inverse_mass_a: f32,
+    inverse_mass_b: f32,
+    inverse_inertia_a: f32,
+    inverse_inertia_b: f32,
+) -> f32 {
+    let radius_a_cross_axis = cross_velocity(radius_a, axis);
+    let radius_b_cross_axis = cross_velocity(radius_b, axis);
+    inverse_mass_a
+        + inverse_mass_b
+        + inverse_inertia_a * radius_a_cross_axis * radius_a_cross_axis
+        + inverse_inertia_b * radius_b_cross_axis * radius_b_cross_axis
 }
 
 pub(super) fn gear_joint_angular_denominator(context: GearJointConstraintContext) -> f32 {

@@ -10,6 +10,10 @@ pub struct DistanceJointId {
 pub struct DistanceJoint {
     pub entity_a: Entity,
     pub entity_b: Entity,
+    pub local_anchor_a_x: f32,
+    pub local_anchor_a_y: f32,
+    pub local_anchor_b_x: f32,
+    pub local_anchor_b_y: f32,
     pub rest_length: f32,
     pub break_distance: f32,
     pub stiffness: f32,
@@ -25,6 +29,10 @@ impl DistanceJoint {
         Self {
             entity_a,
             entity_b,
+            local_anchor_a_x: 0.0,
+            local_anchor_a_y: 0.0,
+            local_anchor_b_x: 0.0,
+            local_anchor_b_y: 0.0,
             rest_length: if rest_length.is_finite() && rest_length >= 0.0 {
                 rest_length
             } else {
@@ -35,6 +43,18 @@ impl DistanceJoint {
             damping: Self::DEFAULT_DAMPING,
             enabled: true,
         }
+    }
+
+    pub const fn with_local_anchor_a(mut self, x: f32, y: f32) -> Self {
+        self.local_anchor_a_x = x;
+        self.local_anchor_a_y = y;
+        self
+    }
+
+    pub const fn with_local_anchor_b(mut self, x: f32, y: f32) -> Self {
+        self.local_anchor_b_x = x;
+        self.local_anchor_b_y = y;
+        self
     }
 
     pub const fn with_break_distance(mut self, break_distance: f32) -> Self {
@@ -73,6 +93,10 @@ pub struct RopeJointId {
 pub struct RopeJoint {
     pub entity_a: Entity,
     pub entity_b: Entity,
+    pub local_anchor_a_x: f32,
+    pub local_anchor_a_y: f32,
+    pub local_anchor_b_x: f32,
+    pub local_anchor_b_y: f32,
     pub max_length: f32,
     pub break_distance: f32,
     pub stiffness: f32,
@@ -88,6 +112,10 @@ impl RopeJoint {
         Self {
             entity_a,
             entity_b,
+            local_anchor_a_x: 0.0,
+            local_anchor_a_y: 0.0,
+            local_anchor_b_x: 0.0,
+            local_anchor_b_y: 0.0,
             max_length: if max_length.is_finite() && max_length >= 0.0 {
                 max_length
             } else {
@@ -98,6 +126,18 @@ impl RopeJoint {
             damping: Self::DEFAULT_DAMPING,
             enabled: true,
         }
+    }
+
+    pub const fn with_local_anchor_a(mut self, x: f32, y: f32) -> Self {
+        self.local_anchor_a_x = x;
+        self.local_anchor_a_y = y;
+        self
+    }
+
+    pub const fn with_local_anchor_b(mut self, x: f32, y: f32) -> Self {
+        self.local_anchor_b_x = x;
+        self.local_anchor_b_y = y;
+        self
     }
 
     pub const fn with_break_distance(mut self, break_distance: f32) -> Self {
@@ -136,6 +176,10 @@ pub struct SpringJointId {
 pub struct SpringJoint {
     pub entity_a: Entity,
     pub entity_b: Entity,
+    pub local_anchor_a_x: f32,
+    pub local_anchor_a_y: f32,
+    pub local_anchor_b_x: f32,
+    pub local_anchor_b_y: f32,
     pub rest_length: f32,
     pub break_distance: f32,
     pub stiffness: f32,
@@ -151,6 +195,10 @@ impl SpringJoint {
         Self {
             entity_a,
             entity_b,
+            local_anchor_a_x: 0.0,
+            local_anchor_a_y: 0.0,
+            local_anchor_b_x: 0.0,
+            local_anchor_b_y: 0.0,
             rest_length: if rest_length.is_finite() && rest_length >= 0.0 {
                 rest_length
             } else {
@@ -161,6 +209,18 @@ impl SpringJoint {
             damping: Self::DEFAULT_DAMPING,
             enabled: true,
         }
+    }
+
+    pub const fn with_local_anchor_a(mut self, x: f32, y: f32) -> Self {
+        self.local_anchor_a_x = x;
+        self.local_anchor_a_y = y;
+        self
+    }
+
+    pub const fn with_local_anchor_b(mut self, x: f32, y: f32) -> Self {
+        self.local_anchor_b_x = x;
+        self.local_anchor_b_y = y;
+        self
     }
 
     pub const fn with_break_distance(mut self, break_distance: f32) -> Self {

@@ -250,14 +250,16 @@ runtime.carveCircle(48, 24, 8);
 
 | type | 주요 필드 | runtime apply |
 | --- | --- | --- |
-| `distance` | `restLength`, `stiffness`, `damping`, `breakDistance` | 지원 |
-| `rope` | `maxLength`, `stiffness`, `damping`, `breakDistance` | 지원 |
-| `spring` | `restLength`, `stiffness`, `damping`, `breakDistance` | 지원 |
+| `distance` | local anchor, `restLength`, `stiffness`, `damping`, `breakDistance` | 지원 |
+| `rope` | local anchor, `maxLength`, `stiffness`, `damping`, `breakDistance` | 지원 |
+| `spring` | local anchor, `restLength`, `stiffness`, `damping`, `breakDistance` | 지원 |
 | `pulley` | `groundAnchorA`, `groundAnchorB`, local anchor, `restLength`, `ratio`, `breakDistance` | 지원 |
 | `revolute` | `anchor` 또는 local anchor, `limit`, `motor`, `breakDistance` | 지원 |
 | `prismatic` | local anchor, `localAxisA`, `referenceAngle`, `limit`, `motor`, `breakDistance` | 지원 |
 | `weld` | local anchor, `referenceAngle`, `stiffness`, `damping`, `breakDistance`, `breakAngle` | 지원 |
 | `gear` | `ratio`, `referenceAngle`, `breakAngle` | 지원 |
+
+`distance`/`rope`/`spring`의 `localAnchorA`/`localAnchorB`는 각 body local 좌표의 연결점을 지정한다. 생략하면 `{ x: 0, y: 0 }`으로 해석되어 기존 center-to-center 동작과 같다. off-center anchor는 Rust solver에서 anchor point velocity와 회전 관성까지 함께 반영되므로 차량 suspension, hanging object, rope endpoint처럼 body center가 아닌 지점에 힘을 전달하는 authoring에 사용한다.
 
 `pulley`는 두 body anchor와 두 world-space ground anchor 사이의 총 길이 `lengthA + ratio * lengthB = restLength`를 유지한다. `groundAnchorA`/`groundAnchorB`는 world 좌표이고, `localAnchorA`/`localAnchorB`는 각 body local 좌표다. `ratio`는 양수만 허용하며, `breakDistance`는 가중 길이 오차가 지정값을 넘으면 joint를 제거한다.
 

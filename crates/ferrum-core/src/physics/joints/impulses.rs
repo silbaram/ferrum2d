@@ -10,6 +10,18 @@ use super::{
     RevoluteJointConstraintContext,
 };
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct PairAnchorConstraintContext {
+    pub(super) a_index: usize,
+    pub(super) b_index: usize,
+    pub(super) radius_a: Velocity,
+    pub(super) radius_b: Velocity,
+    pub(super) inverse_mass_a: f32,
+    pub(super) inverse_mass_b: f32,
+    pub(super) inverse_inertia_a: f32,
+    pub(super) inverse_inertia_b: f32,
+}
+
 pub(super) fn relative_anchor_velocity(
     world: &World,
     context: RevoluteJointConstraintContext,
@@ -76,26 +88,7 @@ pub(super) fn apply_revolute_joint_anchor_impulse(
     context: RevoluteJointConstraintContext,
     impulse: Velocity,
 ) {
-    apply_contact_impulse(
-        world,
-        context.a_index,
-        context.b_index,
-        impulse,
-        context.inverse_mass_a,
-        context.inverse_mass_b,
-    );
-    apply_angular_impulse_delta(
-        world,
-        context.a_index,
-        -cross_velocity(context.radius_a, impulse) * context.inverse_inertia_a,
-        context.inverse_inertia_a,
-    );
-    apply_angular_impulse_delta(
-        world,
-        context.b_index,
-        cross_velocity(context.radius_b, impulse) * context.inverse_inertia_b,
-        context.inverse_inertia_b,
-    );
+    apply_pair_anchor_impulse(world, pair_anchor_context_from_revolute(context), impulse);
 }
 
 pub(super) fn apply_pulley_joint_anchor_impulse(
@@ -175,6 +168,14 @@ pub(super) fn apply_prismatic_joint_anchor_impulse(
     context: PrismaticJointConstraintContext,
     impulse: Velocity,
 ) {
+    apply_pair_anchor_impulse(world, pair_anchor_context_from_prismatic(context), impulse);
+}
+
+pub(super) fn apply_pair_anchor_impulse(
+    world: &mut World,
+    context: PairAnchorConstraintContext,
+    impulse: Velocity,
+) {
     apply_contact_impulse(
         world,
         context.a_index,
@@ -240,25 +241,10 @@ pub(super) fn apply_revolute_joint_anchor_position_correction(
     context: RevoluteJointConstraintContext,
     impulse: Velocity,
 ) {
-    apply_pair_position_delta(
+    apply_pair_anchor_position_correction(
         world,
-        context.a_index,
-        context.b_index,
+        pair_anchor_context_from_revolute(context),
         impulse,
-        context.inverse_mass_a,
-        context.inverse_mass_b,
-    );
-    apply_rotation_delta(
-        world,
-        context.a_index,
-        -cross_velocity(context.radius_a, impulse) * context.inverse_inertia_a,
-        context.inverse_inertia_a,
-    );
-    apply_rotation_delta(
-        world,
-        context.b_index,
-        cross_velocity(context.radius_b, impulse) * context.inverse_inertia_b,
-        context.inverse_inertia_b,
     );
 }
 
@@ -341,6 +327,18 @@ pub(super) fn apply_prismatic_joint_anchor_position_correction(
     context: PrismaticJointConstraintContext,
     impulse: Velocity,
 ) {
+    apply_pair_anchor_position_correction(
+        world,
+        pair_anchor_context_from_prismatic(context),
+        impulse,
+    );
+}
+
+pub(super) fn apply_pair_anchor_position_correction(
+    world: &mut World,
+    context: PairAnchorConstraintContext,
+    impulse: Velocity,
+) {
     apply_pair_position_delta(
         world,
         context.a_index,
@@ -361,6 +359,36 @@ pub(super) fn apply_prismatic_joint_anchor_position_correction(
         cross_velocity(context.radius_b, impulse) * context.inverse_inertia_b,
         context.inverse_inertia_b,
     );
+}
+
+const fn pair_anchor_context_from_revolute(
+    context: RevoluteJointConstraintContext,
+) -> PairAnchorConstraintContext {
+    PairAnchorConstraintContext {
+        a_index: context.a_index,
+        b_index: context.b_index,
+        radius_a: context.radius_a,
+        radius_b: context.radius_b,
+        inverse_mass_a: context.inverse_mass_a,
+        inverse_mass_b: context.inverse_mass_b,
+        inverse_inertia_a: context.inverse_inertia_a,
+        inverse_inertia_b: context.inverse_inertia_b,
+    }
+}
+
+const fn pair_anchor_context_from_prismatic(
+    context: PrismaticJointConstraintContext,
+) -> PairAnchorConstraintContext {
+    PairAnchorConstraintContext {
+        a_index: context.a_index,
+        b_index: context.b_index,
+        radius_a: context.radius_a,
+        radius_b: context.radius_b,
+        inverse_mass_a: context.inverse_mass_a,
+        inverse_mass_b: context.inverse_mass_b,
+        inverse_inertia_a: context.inverse_inertia_a,
+        inverse_inertia_b: context.inverse_inertia_b,
+    }
 }
 
 pub(super) fn apply_prismatic_joint_angular_position_correction(

@@ -9,8 +9,8 @@ use super::math::{
     cross_velocity, dot_velocity, finite_rotation, sanitize_finite, velocity_len_squared,
 };
 use super::{
-    apply_contact_impulse, rigid_body_inverse_inertia, rigid_body_inverse_mass,
-    valid_world_entity_index, RigidBodyStepStats, KINEMATIC_EPSILON,
+    rigid_body_inverse_inertia, rigid_body_inverse_mass, valid_world_entity_index,
+    RigidBodyStepStats, KINEMATIC_EPSILON,
 };
 
 mod contexts;

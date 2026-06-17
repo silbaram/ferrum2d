@@ -312,6 +312,8 @@ test("clearPhysicsWorld delegates to idempotent world cleanup", () => {
         bodyA: "world",
         bodyB: "crate",
         anchor: [0, 0],
+        localAnchorA: [0, 0],
+        localAnchorB: [4, -6],
         restLength: 12,
       },
     },
@@ -325,6 +327,14 @@ test("clearPhysicsWorld delegates to idempotent world cleanup", () => {
   equal(Object.isFrozen(world.joints.hinge), true);
   equal(Object.isFrozen(world.worldAnchors), true);
   equal(Object.isFrozen(publicAnchor), true);
+  const hinge = fake.joints[0];
+  equal(hinge.type, "distance");
+  if (hinge.type === "distance") {
+    equal(hinge.localAnchorAX, 0);
+    equal(hinge.localAnchorAY, 0);
+    equal(hinge.localAnchorBX, 4);
+    equal(hinge.localAnchorBY, -6);
+  }
 
   ignoreReadonlyMutation(() => {
     (world.bodies as Record<string, PhysicsEntityHandle>).crate = { entityId: 999, entityGeneration: 1 };
@@ -470,6 +480,10 @@ test("createVehicleRig composes chassis, wheels, guide joints, and suspension sp
   const spring = fake.joints[1];
   equal(spring.type, "spring");
   if (spring.type === "spring") {
+    equal(spring.localAnchorAX, -30);
+    equal(spring.localAnchorAY, 18);
+    equal(spring.localAnchorBX, 0);
+    equal(spring.localAnchorBY, 0);
     equal(spring.restLength, Math.hypot(-30, 18));
     equal(spring.stiffness, 0.7);
     equal(spring.damping, 0.35);

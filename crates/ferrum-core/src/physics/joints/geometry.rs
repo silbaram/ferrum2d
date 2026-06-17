@@ -10,6 +10,15 @@ pub(super) fn revolute_joint_world_radius(
     local_anchor_x: f32,
     local_anchor_y: f32,
 ) -> Velocity {
+    joint_world_radius(world, index, local_anchor_x, local_anchor_y)
+}
+
+pub(super) fn joint_world_radius(
+    world: &World,
+    index: usize,
+    local_anchor_x: f32,
+    local_anchor_y: f32,
+) -> Velocity {
     let rotation = finite_rotation(world.rotation_at_index_or_default(index));
     rotate_velocity(
         Velocity {

@@ -105,6 +105,47 @@ fn distance_joint_damping_reduces_axis_relative_velocity() {
 }
 
 #[test]
+fn distance_joint_damping_applies_angular_impulse_at_local_anchor() {
+    let mut world = World::default();
+    let anchor = world.spawn_entity();
+    world.set_transform(anchor, Transform2D { x: 0.0, y: 0.0 });
+    world.set_rigid_body(anchor, RigidBody::static_body());
+    let body = world.spawn_entity();
+    world.set_transform(body, Transform2D { x: 4.0, y: 0.0 });
+    world.set_velocity(body, Velocity { vx: 10.0, vy: 0.0 });
+    world.set_rigid_body(body, RigidBody::dynamic(1.0));
+    world.add_distance_joint(
+        DistanceJoint::new(anchor, body, (20.0_f32).sqrt())
+            .with_local_anchor_b(0.0, 2.0)
+            .with_damping(1.0),
+    );
+
+    let stats = PhysicsSystem::step_rigid_bodies_with_config(
+        &mut world,
+        0.1,
+        RigidBodyStepConfig {
+            gravity: Velocity::default(),
+            velocity_iterations: 1,
+            position_iterations: 1,
+            position_correction_percent: 0.0,
+            position_correction_slop: 0.0,
+            restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+            contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+            max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+            contact_split_impulse: false,
+            continuous: true,
+        },
+    );
+
+    let angular_velocity = world.angular_velocity(body).unwrap();
+    assert_eq!(stats.constraint_velocity_corrections, 1);
+    assert!(
+        angular_velocity.radians_per_second > 0.001,
+        "off-center distance anchor should transfer impulse into rotation, got {angular_velocity:?}"
+    );
+}
+
+#[test]
 fn distance_joint_breaks_when_error_exceeds_break_distance() {
     let mut world = World::default();
     let anchor = spawn_kinematic_body(&mut world, 0.0, 0.0, CollisionLayer::Wall, false);

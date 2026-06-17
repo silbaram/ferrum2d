@@ -48,6 +48,10 @@ fn engine_spawn_physics_joints_and_controls_for_wasm() {
         entity_a_generation,
         entity_b_id,
         entity_b_generation,
+        -1.0,
+        0.5,
+        1.0,
+        -0.5,
         10.0,
         1.0,
         0.25,
@@ -59,6 +63,10 @@ fn engine_spawn_physics_joints_and_controls_for_wasm() {
     assert_eq!(engine.physics_joint_type(), PHYSICS_JOINT_DISTANCE);
     assert_eq!(engine.physics_joint_entity_a_id(), entity_a_id);
     assert_eq!(engine.physics_joint_entity_b_id(), entity_b_id);
+    assert_eq!(engine.physics_joint_local_anchor_a_x(), -1.0);
+    assert_eq!(engine.physics_joint_local_anchor_a_y(), 0.5);
+    assert_eq!(engine.physics_joint_local_anchor_b_x(), 1.0);
+    assert_eq!(engine.physics_joint_local_anchor_b_y(), -0.5);
     assert_eq!(engine.physics_joint_rest_length(), 10.0);
     assert_eq!(engine.physics_joint_damping(), 0.25);
     assert!(engine.physics_joint_enabled());
@@ -85,6 +93,10 @@ fn engine_spawn_physics_joints_and_controls_for_wasm() {
         entity_a_generation,
         entity_b_id,
         entity_b_generation,
+        -0.5,
+        0.25,
+        0.5,
+        -0.25,
         12.0,
         0.5,
         0.1,
@@ -92,6 +104,8 @@ fn engine_spawn_physics_joints_and_controls_for_wasm() {
         true,
     ));
     assert_eq!(engine.physics_joint_type(), PHYSICS_JOINT_ROPE);
+    assert_eq!(engine.physics_joint_local_anchor_a_x(), -0.5);
+    assert_eq!(engine.physics_joint_local_anchor_b_y(), -0.25);
     assert_eq!(engine.physics_joint_max_length(), 12.0);
     assert_eq!(engine.physics_joint_break_distance(), 4.0);
 
@@ -100,6 +114,10 @@ fn engine_spawn_physics_joints_and_controls_for_wasm() {
         entity_a_generation,
         entity_b_id,
         entity_b_generation,
+        -0.25,
+        0.75,
+        0.25,
+        -0.75,
         8.0,
         0.75,
         0.5,
@@ -107,6 +125,8 @@ fn engine_spawn_physics_joints_and_controls_for_wasm() {
         true,
     ));
     assert_eq!(engine.physics_joint_type(), PHYSICS_JOINT_SPRING);
+    assert_eq!(engine.physics_joint_local_anchor_a_y(), 0.75);
+    assert_eq!(engine.physics_joint_local_anchor_b_x(), 0.25);
     assert_eq!(engine.physics_joint_rest_length(), 8.0);
     assert_eq!(engine.physics_joint_stiffness(), 0.75);
 
@@ -226,6 +246,10 @@ fn engine_spawn_physics_joints_and_controls_for_wasm() {
         entity_a_generation,
         999,
         0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
         10.0,
         1.0,
         0.0,

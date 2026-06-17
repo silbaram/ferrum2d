@@ -27,16 +27,28 @@ export interface PhysicsJointBaseOptions {
 export type PhysicsJointSpawnOptions =
   | (PhysicsJointBaseOptions & {
       type: "distance";
+      localAnchorAX?: number;
+      localAnchorAY?: number;
+      localAnchorBX?: number;
+      localAnchorBY?: number;
       restLength: number;
       breakDistance?: number;
     })
   | (PhysicsJointBaseOptions & {
       type: "rope";
+      localAnchorAX?: number;
+      localAnchorAY?: number;
+      localAnchorBX?: number;
+      localAnchorBY?: number;
       maxLength: number;
       breakDistance?: number;
     })
   | (PhysicsJointBaseOptions & {
       type: "spring";
+      localAnchorAX?: number;
+      localAnchorAY?: number;
+      localAnchorBX?: number;
+      localAnchorBY?: number;
       restLength: number;
       breakDistance?: number;
     })

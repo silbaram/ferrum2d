@@ -169,6 +169,10 @@ function jointOptionsFromResolved(
       return {
         ...base,
         type: "distance",
+        localAnchorAX: joint.localAnchorAX,
+        localAnchorAY: joint.localAnchorAY,
+        localAnchorBX: joint.localAnchorBX,
+        localAnchorBY: joint.localAnchorBY,
         restLength: joint.restLength,
         ...(joint.breakDistance > 0 ? { breakDistance: joint.breakDistance } : {}),
       };
@@ -176,6 +180,10 @@ function jointOptionsFromResolved(
       return {
         ...base,
         type: "rope",
+        localAnchorAX: joint.localAnchorAX,
+        localAnchorAY: joint.localAnchorAY,
+        localAnchorBX: joint.localAnchorBX,
+        localAnchorBY: joint.localAnchorBY,
         maxLength: joint.maxLength,
         ...(joint.breakDistance > 0 ? { breakDistance: joint.breakDistance } : {}),
       };
@@ -183,6 +191,10 @@ function jointOptionsFromResolved(
       return {
         ...base,
         type: "spring",
+        localAnchorAX: joint.localAnchorAX,
+        localAnchorAY: joint.localAnchorAY,
+        localAnchorBX: joint.localAnchorBX,
+        localAnchorBY: joint.localAnchorBY,
         restLength: joint.restLength,
         ...(joint.breakDistance > 0 ? { breakDistance: joint.breakDistance } : {}),
       };
@@ -284,6 +296,10 @@ function jointOptionsFromAuthoring(
       return {
         ...base,
         type: "distance",
+        localAnchorAX: localAnchorA.x,
+        localAnchorAY: localAnchorA.y,
+        localAnchorBX: localAnchorB.x,
+        localAnchorBY: localAnchorB.y,
         restLength: nonNegativeNumber(options.restLength, `${path}.restLength`),
         ...(options.breakDistance === undefined ? {} : { breakDistance: nonNegativeNumber(options.breakDistance, `${path}.breakDistance`) }),
       };
@@ -291,6 +307,10 @@ function jointOptionsFromAuthoring(
       return {
         ...base,
         type: "rope",
+        localAnchorAX: localAnchorA.x,
+        localAnchorAY: localAnchorA.y,
+        localAnchorBX: localAnchorB.x,
+        localAnchorBY: localAnchorB.y,
         maxLength: nonNegativeNumber(options.maxLength, `${path}.maxLength`),
         ...(options.breakDistance === undefined ? {} : { breakDistance: nonNegativeNumber(options.breakDistance, `${path}.breakDistance`) }),
       };
@@ -298,6 +318,10 @@ function jointOptionsFromAuthoring(
       return {
         ...base,
         type: "spring",
+        localAnchorAX: localAnchorA.x,
+        localAnchorAY: localAnchorA.y,
+        localAnchorBX: localAnchorB.x,
+        localAnchorBY: localAnchorB.y,
         restLength: nonNegativeNumber(options.restLength, `${path}.restLength`),
         ...(options.breakDistance === undefined ? {} : { breakDistance: nonNegativeNumber(options.breakDistance, `${path}.breakDistance`) }),
       };

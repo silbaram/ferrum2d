@@ -44,6 +44,10 @@ impl Engine {
             break_distance: joint.break_distance,
             stiffness: joint.stiffness,
             damping: joint.damping,
+            local_anchor_a_x: joint.local_anchor_a_x,
+            local_anchor_a_y: joint.local_anchor_a_y,
+            local_anchor_b_x: joint.local_anchor_b_x,
+            local_anchor_b_y: joint.local_anchor_b_y,
             ..Self::joint_snapshot_base(
                 PHYSICS_JOINT_DISTANCE,
                 id.index,
@@ -66,6 +70,10 @@ impl Engine {
             break_distance: joint.break_distance,
             stiffness: joint.stiffness,
             damping: joint.damping,
+            local_anchor_a_x: joint.local_anchor_a_x,
+            local_anchor_a_y: joint.local_anchor_a_y,
+            local_anchor_b_x: joint.local_anchor_b_x,
+            local_anchor_b_y: joint.local_anchor_b_y,
             ..Self::joint_snapshot_base(
                 PHYSICS_JOINT_ROPE,
                 id.index,
@@ -88,6 +96,10 @@ impl Engine {
             break_distance: joint.break_distance,
             stiffness: joint.stiffness,
             damping: joint.damping,
+            local_anchor_a_x: joint.local_anchor_a_x,
+            local_anchor_a_y: joint.local_anchor_a_y,
+            local_anchor_b_x: joint.local_anchor_b_x,
+            local_anchor_b_y: joint.local_anchor_b_y,
             ..Self::joint_snapshot_base(
                 PHYSICS_JOINT_SPRING,
                 id.index,

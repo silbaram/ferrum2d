@@ -4,10 +4,16 @@ use crate::components::{Transform2D, Velocity};
 pub(in crate::physics) struct DistanceJointConstraintContext {
     pub(in crate::physics::joints) a_index: usize,
     pub(in crate::physics::joints) b_index: usize,
+    pub(in crate::physics::joints) anchor_a: Transform2D,
+    pub(in crate::physics::joints) anchor_b: Transform2D,
+    pub(in crate::physics::joints) radius_a: Velocity,
+    pub(in crate::physics::joints) radius_b: Velocity,
     pub(in crate::physics::joints) normal: Velocity,
     pub(in crate::physics::joints) inverse_mass_a: f32,
     pub(in crate::physics::joints) inverse_mass_b: f32,
-    pub(in crate::physics::joints) inverse_mass_sum: f32,
+    pub(in crate::physics::joints) inverse_inertia_a: f32,
+    pub(in crate::physics::joints) inverse_inertia_b: f32,
+    pub(in crate::physics::joints) denominator: f32,
     pub(in crate::physics::joints) error: f32,
 }
 
@@ -15,10 +21,16 @@ pub(in crate::physics) struct DistanceJointConstraintContext {
 pub(in crate::physics) struct RopeJointConstraintContext {
     pub(in crate::physics::joints) a_index: usize,
     pub(in crate::physics::joints) b_index: usize,
+    pub(in crate::physics::joints) anchor_a: Transform2D,
+    pub(in crate::physics::joints) anchor_b: Transform2D,
+    pub(in crate::physics::joints) radius_a: Velocity,
+    pub(in crate::physics::joints) radius_b: Velocity,
     pub(in crate::physics::joints) normal: Velocity,
     pub(in crate::physics::joints) inverse_mass_a: f32,
     pub(in crate::physics::joints) inverse_mass_b: f32,
-    pub(in crate::physics::joints) inverse_mass_sum: f32,
+    pub(in crate::physics::joints) inverse_inertia_a: f32,
+    pub(in crate::physics::joints) inverse_inertia_b: f32,
+    pub(in crate::physics::joints) denominator: f32,
     pub(in crate::physics::joints) error: f32,
 }
 
@@ -26,10 +38,16 @@ pub(in crate::physics) struct RopeJointConstraintContext {
 pub(in crate::physics) struct SpringJointConstraintContext {
     pub(in crate::physics::joints) a_index: usize,
     pub(in crate::physics::joints) b_index: usize,
+    pub(in crate::physics::joints) anchor_a: Transform2D,
+    pub(in crate::physics::joints) anchor_b: Transform2D,
+    pub(in crate::physics::joints) radius_a: Velocity,
+    pub(in crate::physics::joints) radius_b: Velocity,
     pub(in crate::physics::joints) normal: Velocity,
     pub(in crate::physics::joints) inverse_mass_a: f32,
     pub(in crate::physics::joints) inverse_mass_b: f32,
-    pub(in crate::physics::joints) inverse_mass_sum: f32,
+    pub(in crate::physics::joints) inverse_inertia_a: f32,
+    pub(in crate::physics::joints) inverse_inertia_b: f32,
+    pub(in crate::physics::joints) denominator: f32,
     pub(in crate::physics::joints) error: f32,
 }
 

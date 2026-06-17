@@ -22,13 +22,19 @@ impl Engine {
         entity_a_generation: u32,
         entity_b_id: u32,
         entity_b_generation: u32,
+        local_anchor_a_x: f32,
+        local_anchor_a_y: f32,
+        local_anchor_b_x: f32,
+        local_anchor_b_y: f32,
         rest_length: f32,
         stiffness: f32,
         damping: f32,
         break_distance: f32,
         enabled: bool,
     ) -> bool {
-        if !Self::valid_non_negative(rest_length)
+        if !Self::valid_transform(local_anchor_a_x, local_anchor_a_y)
+            || !Self::valid_transform(local_anchor_b_x, local_anchor_b_y)
+            || !Self::valid_non_negative(rest_length)
             || !Self::valid_unit_interval(stiffness)
             || !Self::valid_unit_interval(damping)
             || !Self::valid_break_limit(break_distance)
@@ -45,6 +51,8 @@ impl Engine {
             return false;
         };
         let joint = DistanceJoint::new(entity_a, entity_b, rest_length)
+            .with_local_anchor_a(local_anchor_a_x, local_anchor_a_y)
+            .with_local_anchor_b(local_anchor_b_x, local_anchor_b_y)
             .with_stiffness(stiffness)
             .with_damping(damping)
             .with_break_distance(break_distance)
@@ -60,13 +68,19 @@ impl Engine {
         entity_a_generation: u32,
         entity_b_id: u32,
         entity_b_generation: u32,
+        local_anchor_a_x: f32,
+        local_anchor_a_y: f32,
+        local_anchor_b_x: f32,
+        local_anchor_b_y: f32,
         max_length: f32,
         stiffness: f32,
         damping: f32,
         break_distance: f32,
         enabled: bool,
     ) -> bool {
-        if !Self::valid_non_negative(max_length)
+        if !Self::valid_transform(local_anchor_a_x, local_anchor_a_y)
+            || !Self::valid_transform(local_anchor_b_x, local_anchor_b_y)
+            || !Self::valid_non_negative(max_length)
             || !Self::valid_unit_interval(stiffness)
             || !Self::valid_unit_interval(damping)
             || !Self::valid_break_limit(break_distance)
@@ -83,6 +97,8 @@ impl Engine {
             return false;
         };
         let joint = RopeJoint::new(entity_a, entity_b, max_length)
+            .with_local_anchor_a(local_anchor_a_x, local_anchor_a_y)
+            .with_local_anchor_b(local_anchor_b_x, local_anchor_b_y)
             .with_stiffness(stiffness)
             .with_damping(damping)
             .with_break_distance(break_distance)
@@ -98,13 +114,19 @@ impl Engine {
         entity_a_generation: u32,
         entity_b_id: u32,
         entity_b_generation: u32,
+        local_anchor_a_x: f32,
+        local_anchor_a_y: f32,
+        local_anchor_b_x: f32,
+        local_anchor_b_y: f32,
         rest_length: f32,
         stiffness: f32,
         damping: f32,
         break_distance: f32,
         enabled: bool,
     ) -> bool {
-        if !Self::valid_non_negative(rest_length)
+        if !Self::valid_transform(local_anchor_a_x, local_anchor_a_y)
+            || !Self::valid_transform(local_anchor_b_x, local_anchor_b_y)
+            || !Self::valid_non_negative(rest_length)
             || !Self::valid_unit_interval(stiffness)
             || !Self::valid_unit_interval(damping)
             || !Self::valid_break_limit(break_distance)
@@ -121,6 +143,8 @@ impl Engine {
             return false;
         };
         let joint = SpringJoint::new(entity_a, entity_b, rest_length)
+            .with_local_anchor_a(local_anchor_a_x, local_anchor_a_y)
+            .with_local_anchor_b(local_anchor_b_x, local_anchor_b_y)
             .with_stiffness(stiffness)
             .with_damping(damping)
             .with_break_distance(break_distance)
