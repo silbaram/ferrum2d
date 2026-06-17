@@ -15,7 +15,7 @@ declare module "../pkg/ferrum_core.js" {
     built_in_shooter_player_entity_id(): number;
     built_in_shooter_player_entity_generation(): number;
     use_data_scene(): void;
-    spawn_data_scene_entity(x:number,y:number,texture_id:number,sprite_width:number,sprite_height:number,frame_u0:number,frame_v0:number,frame_u1:number,frame_v1:number,animation_frame_count:number,animation_fps:number,layer:number,collider_type:number,collider_offset_x:number,collider_offset_y:number,collider_enabled:boolean,collider_is_trigger:boolean,collider_half_width:number,collider_half_height:number,collider_radius:number,collider_start_x:number,collider_start_y:number,collider_end_x:number,collider_end_y:number,collider_rotation_radians:number,collider_vertices:Float32Array): boolean;
+    spawn_data_scene_entity(x:number,y:number,rotation_radians:number,render_layer:number,texture_id:number,sprite_width:number,sprite_height:number,frame_u0:number,frame_v0:number,frame_u1:number,frame_v1:number,animation_frame_count:number,animation_fps:number,layer:number,collider_type:number,collider_offset_x:number,collider_offset_y:number,collider_enabled:boolean,collider_is_trigger:boolean,collider_half_width:number,collider_half_height:number,collider_radius:number,collider_start_x:number,collider_start_y:number,collider_end_x:number,collider_end_y:number,collider_rotation_radians:number,collider_vertices:Float32Array): boolean;
     data_scene_entity_id(): number;
     data_scene_entity_generation(): number;
     use_breakout_scene(): void;
@@ -103,14 +103,18 @@ declare module "../pkg/ferrum_core.js" {
     set_gameplay_movement_linear(entity_id:number,entity_generation:number,vx:number,vy:number): boolean;
     set_gameplay_movement_to_point(entity_id:number,entity_generation:number,x:number,y:number,speed:number): boolean;
     set_gameplay_movement_chase_player(entity_id:number,entity_generation:number,speed:number): boolean;
+    set_gameplay_movement_chase_primary_actor(entity_id:number,entity_generation:number,speed:number): boolean;
     set_gameplay_movement_chase_nearest_player(entity_id:number,entity_generation:number,speed:number): boolean;
+    set_gameplay_movement_chase_nearest_primary_actor(entity_id:number,entity_generation:number,speed:number): boolean;
     set_gameplay_movement_chase_nearest_enemy(entity_id:number,entity_generation:number,speed:number): boolean;
     set_gameplay_movement_chase_nearest_layer(entity_id:number,entity_generation:number,layer_code:number,speed:number): boolean;
     set_gameplay_movement_chase_nearest_faction(entity_id:number,entity_generation:number,faction_id:number,speed:number): boolean;
     set_gameplay_movement_chase_nearest_tag(entity_id:number,entity_generation:number,tag_id:number,speed:number): boolean;
     set_gameplay_movement_chase_entity(entity_id:number,entity_generation:number,target_id:number,target_generation:number,speed:number): boolean;
     set_gameplay_movement_seek_target_player(entity_id:number,entity_generation:number,speed:number,turn_rate:number): boolean;
+    set_gameplay_movement_seek_target_primary_actor(entity_id:number,entity_generation:number,speed:number,turn_rate:number): boolean;
     set_gameplay_movement_seek_target_nearest_player(entity_id:number,entity_generation:number,speed:number,turn_rate:number): boolean;
+    set_gameplay_movement_seek_target_nearest_primary_actor(entity_id:number,entity_generation:number,speed:number,turn_rate:number): boolean;
     set_gameplay_movement_seek_target_nearest_enemy(entity_id:number,entity_generation:number,speed:number,turn_rate:number): boolean;
     set_gameplay_movement_seek_target_nearest_layer(entity_id:number,entity_generation:number,layer_code:number,speed:number,turn_rate:number): boolean;
     set_gameplay_movement_seek_target_nearest_faction(entity_id:number,entity_generation:number,faction_id:number,speed:number,turn_rate:number): boolean;
@@ -118,6 +122,7 @@ declare module "../pkg/ferrum_core.js" {
     set_gameplay_movement_seek_target_entity(entity_id:number,entity_generation:number,target_id:number,target_generation:number,speed:number,turn_rate:number): boolean;
     set_gameplay_movement_accelerate(entity_id:number,entity_generation:number,acceleration_x:number,acceleration_y:number,max_speed:number): boolean;
     set_gameplay_movement_orbit_player(entity_id:number,entity_generation:number,speed:number,radius:number,radial_band:number): boolean;
+    set_gameplay_movement_orbit_primary_actor(entity_id:number,entity_generation:number,speed:number,radius:number,radial_band:number): boolean;
     set_gameplay_movement_orbit_entity(entity_id:number,entity_generation:number,target_id:number,target_generation:number,speed:number,radius:number,radial_band:number): boolean;
     clear_gameplay_movement(entity_id:number,entity_generation:number): boolean;
     clear_gameplay_collision_reactions(entity_id:number,entity_generation:number): boolean;

@@ -115,7 +115,7 @@ pub struct World {
     behavior_state_machines: Vec<Option<BehaviorStateMachine>>,
     behavior_state_enter_actions: Vec<Option<BehaviorStateEnterActionSet>>,
     gameplay_timer_triggers: Vec<Option<GameplayTimerTrigger>>,
-    player: Option<Entity>,
+    primary_actor: Option<Entity>,
 }
 
 impl World {

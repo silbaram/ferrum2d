@@ -42,6 +42,7 @@ const BREAKOUT_EFFECTS_MODE = "breakout-effects";
 const PLATFORMER_EFFECTS_MODE = "platformer-effects";
 const PHYSICS_SANDBOX_MODE = "physics-sandbox";
 const PHYSICS_DEMO_SUITE_MODE = "physics-demo-suite";
+const PLACEMENT_VIEWER_MODE = "placement-viewer";
 const PHYSICS_DEMO_SUITE = [
   "rigid-materials",
   "collider-gallery",
@@ -458,6 +459,7 @@ function parseArgs(args) {
     PLATFORMER_EFFECTS_MODE,
     PHYSICS_SANDBOX_MODE,
     PHYSICS_DEMO_SUITE_MODE,
+    PLACEMENT_VIEWER_MODE,
   ].includes(mode)) {
     throw new Error(`unsupported browser smoke mode: ${mode}`);
   }
@@ -750,6 +752,8 @@ async function smokeByMode(page, mode, timeoutMs) {
       return await smokePhysicsSandbox(page, timeoutMs, "rigid-materials");
     case PHYSICS_DEMO_SUITE_MODE:
       return await smokePhysicsDemoSuite(page, timeoutMs);
+    case PLACEMENT_VIEWER_MODE:
+      return await smokePlacementViewer(page, timeoutMs);
     default:
       return await smokeDefaultRender(page, timeoutMs);
   }
@@ -789,6 +793,393 @@ async function smokeDefaultRender(page, timeoutMs) {
     return await smokeStarterRuntime(page, timeoutMs);
   }
   return {};
+}
+
+async function smokePlacementViewer(page, timeoutMs) {
+  await waitForPageFunction(
+    page,
+    "placement viewer did not expose runtime, viewer state, and rendered scene metrics",
+    () => {
+      const state = globalThis.ferrumPlacementViewerState;
+      const frame = globalThis.ferrumPlacementViewerRuntimeFrame;
+      return Boolean(
+        globalThis.__ferrumPlacementViewer
+        && state
+        && state.instances?.length === 6
+        && state.selectedInstanceId === "turret_left"
+        && frame?.entityCount === 6
+        && frame?.renderCommandCount >= 6
+        && frame?.drawCalls >= 1
+      );
+    },
+    timeoutMs,
+  );
+
+  const saveGate = await page.evaluate(async () => ({
+    enabled: globalThis.ferrumPlacementViewerSaveEnabled,
+    result: await globalThis.ferrumPlacementViewerSaveDraft?.(),
+  }));
+  if (saveGate.enabled !== false || saveGate.result !== undefined) {
+    throw new Error(`placement viewer save gate should be disabled by default: ${JSON.stringify(saveGate)}`);
+  }
+
+  const cratePoint = await page.evaluate(() => {
+    const viewer = globalThis.__ferrumPlacementViewer;
+    const canvas = document.querySelector("canvas");
+    if (!viewer || !(canvas instanceof HTMLCanvasElement)) {
+      throw new Error("placement viewer smoke requires the viewer hook and canvas.");
+    }
+    const state = viewer.state();
+    const crate = state.instances.find((instance) => instance.instanceId === "crate_left");
+    if (!crate) {
+      throw new Error(`placement viewer smoke could not find crate_left: ${JSON.stringify(state.instances)}`);
+    }
+    const screenX = (crate.transform.x - state.viewport.worldMinX) * state.viewport.zoom;
+    const screenY = (crate.transform.y - state.viewport.worldMinY) * state.viewport.zoom;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: rect.left + screenX,
+      y: rect.top + screenY,
+      screenX,
+      screenY,
+      worldX: crate.transform.x,
+      worldY: crate.transform.y,
+    };
+  });
+
+  await page.mouse.move(cratePoint.x, cratePoint.y);
+  await waitForPageFunction(
+    page,
+    "placement viewer pointer move did not update hovered instance",
+    () => {
+      const state = globalThis.ferrumPlacementViewerState;
+      return Boolean(
+        state?.hoveredInstanceId === "crate_left"
+        && Math.abs((state.pointerWorld?.x ?? Number.NaN) - 692) < 0.1
+        && Math.abs((state.pointerWorld?.y ?? Number.NaN) - 478) < 0.1
+      );
+    },
+    timeoutMs,
+  );
+
+  await page.mouse.click(cratePoint.x, cratePoint.y);
+  await waitForPageFunction(
+    page,
+    "placement viewer click did not update selected instance",
+    () => {
+      const state = globalThis.ferrumPlacementViewerState;
+      const selectedButton = document.querySelector("button[data-instance-id='crate_left']");
+      return Boolean(
+        state?.selectedInstanceId === "crate_left"
+        && state?.selected?.role === "worldObject"
+        && selectedButton?.getAttribute("data-selected") === "true"
+      );
+    },
+    timeoutMs,
+  );
+
+  await page.click("input[data-placement-snap-toggle='true']", { timeout: timeoutMs });
+  await page.fill("input[data-placement-transform-field='x']", "755", { timeout: timeoutMs });
+  await page.fill("input[data-placement-transform-field='y']", "501", { timeout: timeoutMs });
+  await waitForPageFunction(
+    page,
+    "placement viewer numeric inputs did not apply snapped draft coordinates",
+    () => {
+      const state = globalThis.ferrumPlacementViewerState;
+      return Boolean(
+        globalThis.ferrumPlacementViewerInteraction?.enabled === true
+        && globalThis.ferrumPlacementViewerInteraction?.gridSize === 16
+        && state?.selected?.transform.x === 752
+        && state.selected.transform.y === 496
+      );
+    },
+    timeoutMs,
+  );
+
+  await page.focus("canvas");
+  await page.keyboard.press("ArrowRight");
+  await waitForPageFunction(
+    page,
+    "placement viewer arrow-key nudge did not update selected draft coordinates",
+    () => {
+      const state = globalThis.ferrumPlacementViewerState;
+      return Boolean(
+        state?.selected?.transform.x === 768
+        && state.selected.transform.y === 496
+      );
+    },
+    timeoutMs,
+  );
+
+  const dragPoints = await page.evaluate(() => {
+    const viewer = globalThis.__ferrumPlacementViewer;
+    const canvas = document.querySelector("canvas");
+    if (!viewer || !(canvas instanceof HTMLCanvasElement)) {
+      throw new Error("placement viewer drag smoke requires viewer and canvas.");
+    }
+    const state = viewer.state();
+    const crate = state.instances.find((instance) => instance.instanceId === "crate_left");
+    if (!crate) {
+      throw new Error(`placement viewer drag smoke could not find crate_left: ${JSON.stringify(state.instances)}`);
+    }
+    const rect = canvas.getBoundingClientRect();
+    const screenForWorld = (point) => ({
+      x: rect.left + ((point.x - state.viewport.worldMinX) * state.viewport.zoom),
+      y: rect.top + ((point.y - state.viewport.worldMinY) * state.viewport.zoom),
+    });
+    return {
+      from: screenForWorld(crate.transform),
+      to: screenForWorld({ x: 789, y: 513 }),
+    };
+  });
+
+  await page.mouse.move(dragPoints.from.x, dragPoints.from.y);
+  await page.mouse.down();
+  await page.mouse.move(dragPoints.to.x, dragPoints.to.y, { steps: 4 });
+  await page.mouse.up();
+
+  const movedCratePoint = await page.evaluate(() => {
+    const viewer = globalThis.__ferrumPlacementViewer;
+    const canvas = document.querySelector("canvas");
+    if (!viewer || !(canvas instanceof HTMLCanvasElement)) {
+      throw new Error("placement viewer draft smoke requires viewer and canvas.");
+    }
+    const state = viewer.state();
+    const crate = state.instances.find((instance) => instance.instanceId === "crate_left");
+    if (!crate) {
+      throw new Error(`placement viewer draft smoke could not find crate_left: ${JSON.stringify(state.instances)}`);
+    }
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: rect.left + ((crate.transform.x - state.viewport.worldMinX) * state.viewport.zoom),
+      y: rect.top + ((crate.transform.y - state.viewport.worldMinY) * state.viewport.zoom),
+      worldX: crate.transform.x,
+      worldY: crate.transform.y,
+      patch: globalThis.ferrumPlacementViewerExportPatch?.(),
+    };
+  });
+
+  await waitForPageFunction(
+    page,
+    "placement viewer drag did not publish an exportable snapped patch",
+    () => {
+      const state = globalThis.ferrumPlacementViewerState;
+      const patch = globalThis.ferrumPlacementViewerExportPatch?.();
+      const operation = patch?.operations?.[0];
+      return Boolean(
+        globalThis.ferrumPlacementViewerInteraction?.enabled === true
+        && globalThis.ferrumPlacementViewerInteraction?.dragging === false
+        && state?.selected?.transform.x === 784
+        && state.selected.transform.y === 512
+        && state.draftPatch?.operations?.length === 1
+        && patch?.format === "ferrum2d.scene-placement.patch"
+        && operation?.kind === "updateTransform"
+        && operation.instanceId === "crate_left"
+        && operation.transform?.x === 784
+        && operation.transform?.y === 512
+      );
+    },
+    timeoutMs,
+  );
+
+  await page.mouse.move(cratePoint.x, cratePoint.y);
+  await waitForPageFunction(
+    page,
+    "placement viewer old bounds still picked moved draft instance",
+    () => globalThis.ferrumPlacementViewerState?.hoveredInstanceId !== "crate_left",
+    timeoutMs,
+  );
+  await page.mouse.move(movedCratePoint.x, movedCratePoint.y);
+  await waitForPageFunction(
+    page,
+    "placement viewer moved draft bounds did not pick the instance",
+    () => globalThis.ferrumPlacementViewerState?.hoveredInstanceId === "crate_left",
+    timeoutMs,
+  );
+
+  const report = await page.evaluate(() => {
+    const state = globalThis.ferrumPlacementViewerState;
+    const frame = globalThis.ferrumPlacementViewerRuntimeFrame;
+    const selectedButton = document.querySelector("button[data-instance-id='crate_left']");
+    const details = inspectorDetails();
+    const pixels = placementCanvasPixels();
+    const patch = globalThis.ferrumPlacementViewerExportPatch?.();
+    if (state?.selectedInstanceId !== "crate_left") {
+      throw new Error(`placement viewer selected instance mismatch: ${JSON.stringify(state)}`);
+    }
+    if (state.hoveredInstanceId !== "crate_left") {
+      throw new Error(`placement viewer hovered instance mismatch: ${JSON.stringify(state)}`);
+    }
+    if (state.selected?.role !== "worldObject") {
+      throw new Error(`placement viewer selected role mismatch: ${JSON.stringify(state.selected)}`);
+    }
+    if (state.instances.length !== 6) {
+      throw new Error(`placement viewer instance count mismatch: ${state.instances.length}`);
+    }
+    if (frame?.entityCount !== 6 || frame.renderCommandCount < 6 || frame.drawCalls < 1) {
+      throw new Error(`placement viewer runtime frame mismatch: ${JSON.stringify(frame)}`);
+    }
+    if (pixels.differentFromFirstPixelCount <= 0 || pixels.nonTransparentPixelCount <= 0) {
+      throw new Error(`placement viewer canvas readback was blank: ${JSON.stringify(pixels)}`);
+    }
+    if (details.selected !== "crate_left" || details.hovered !== "crate_left") {
+      throw new Error(`placement viewer inspector mismatch: ${JSON.stringify(details)}`);
+    }
+    if (details.transform !== "784, 512") {
+      throw new Error(`placement viewer transform controls mismatch: ${JSON.stringify(details)}`);
+    }
+    if (details.draft !== "1" || patch?.operations?.length !== 1) {
+      throw new Error(`placement viewer draft patch mismatch: ${JSON.stringify({ details, patch })}`);
+    }
+    if (selectedButton?.getAttribute("data-selected") !== "true") {
+      throw new Error("placement viewer selected list button was not active.");
+    }
+    return {
+      state: {
+        fragment: state.fragment,
+        instanceCount: state.instances.length,
+        selectedInstanceId: state.selectedInstanceId,
+        hoveredInstanceId: state.hoveredInstanceId,
+        selectedRole: state.selected.role,
+        pointerWorld: state.pointerWorld,
+        draftPatch: state.draftPatch,
+      },
+      frame,
+      details,
+      interaction: globalThis.ferrumPlacementViewerInteraction,
+      pixels,
+      patch,
+      selectedButtonText: selectedButton.textContent,
+    };
+
+    function inspectorDetails() {
+      const rows = {};
+      for (const term of document.querySelectorAll(".placement-details dt")) {
+        rows[term.textContent ?? ""] = term.nextElementSibling?.textContent ?? "";
+      }
+      return rows;
+    }
+
+    function placementCanvasPixels() {
+      const canvas = document.querySelector("canvas");
+      if (!(canvas instanceof HTMLCanvasElement)) {
+        throw new Error("placement viewer smoke could not locate a canvas.");
+      }
+      const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
+      if (!gl) {
+        throw new Error("placement viewer smoke requires a WebGL2 context.");
+      }
+      const width = gl.drawingBufferWidth;
+      const height = gl.drawingBufferHeight;
+      const pixels = new Uint8Array(width * height * 4);
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      const firstRed = pixels[0];
+      const firstGreen = pixels[1];
+      const firstBlue = pixels[2];
+      const firstAlpha = pixels[3];
+      let nonTransparentPixelCount = 0;
+      let differentFromFirstPixelCount = 0;
+      for (let index = 0; index < pixels.length; index += 4) {
+        const red = pixels[index];
+        const green = pixels[index + 1];
+        const blue = pixels[index + 2];
+        const alpha = pixels[index + 3];
+        if (alpha > 0) {
+          nonTransparentPixelCount += 1;
+        }
+        if (red !== firstRed || green !== firstGreen || blue !== firstBlue || alpha !== firstAlpha) {
+          differentFromFirstPixelCount += 1;
+        }
+      }
+      return {
+        width,
+        height,
+        nonTransparentPixelCount,
+        differentFromFirstPixelCount,
+      };
+    }
+  });
+
+  await page.evaluate(() => globalThis.ferrumPlacementViewerClearDraft?.());
+  await page.evaluate(() => globalThis.ferrumPlacementViewerSelect?.("turret_left"));
+  await page.fill("input[data-placement-rename-id='true']", "turret_renamed", { timeout: timeoutMs });
+  await page.click("button[data-placement-action='rename-selected']", { timeout: timeoutMs });
+  await waitForPageFunction(
+    page,
+    "placement viewer rename UI did not publish a rename patch",
+    () => {
+      const state = globalThis.ferrumPlacementViewerState;
+      const patch = globalThis.ferrumPlacementViewerExportPatch?.();
+      const operation = patch?.operations?.[0];
+      const selectedButton = document.querySelector("button[data-instance-id='turret_renamed']");
+      return Boolean(
+        state?.selectedInstanceId === "turret_renamed"
+        && state?.instances?.length === 6
+        && selectedButton?.getAttribute("data-selected") === "true"
+        && operation?.kind === "renameInstance"
+        && operation.instanceId === "turret_left"
+        && operation.nextInstanceId === "turret_renamed"
+        && globalThis.ferrumPlacementViewerMigrationPreview?.renamedInstanceIds?.[0]?.nextInstanceId === "turret_renamed"
+      );
+    },
+    timeoutMs,
+  );
+  await page.click("button[data-placement-action='add-crate']", { timeout: timeoutMs });
+  await waitForPageFunction(
+    page,
+    "placement viewer add UI did not publish an add patch",
+    () => {
+      const state = globalThis.ferrumPlacementViewerState;
+      const patch = globalThis.ferrumPlacementViewerExportPatch?.();
+      return Boolean(
+        state?.selectedInstanceId === "crate_1"
+        && state?.instances?.length === 7
+        && patch?.operations?.some((operation) =>
+          operation.kind === "addInstance"
+          && operation.instance.id === "crate_1"
+          && operation.instance.prefab === "crate"
+        )
+      );
+    },
+    timeoutMs,
+  );
+  await page.click("button[data-placement-action='remove-selected']", { timeout: timeoutMs });
+  await waitForPageFunction(
+    page,
+    "placement viewer remove UI did not cancel the draft add",
+    () => {
+      const state = globalThis.ferrumPlacementViewerState;
+      const patch = globalThis.ferrumPlacementViewerExportPatch?.();
+      return Boolean(
+        state?.instances?.length === 6
+        && !state.instances.some((instance) => instance.instanceId === "crate_1")
+        && patch?.operations?.length === 1
+        && patch.operations[0]?.kind === "renameInstance"
+      );
+    },
+    timeoutMs,
+  );
+  const editReport = await page.evaluate(() => {
+    const details = inspectorDetails();
+    const patch = globalThis.ferrumPlacementViewerExportPatch?.();
+    return {
+      selectedInstanceId: globalThis.ferrumPlacementViewerState?.selectedInstanceId,
+      instanceCount: globalThis.ferrumPlacementViewerState?.instances?.length,
+      draftPatch: patch,
+      migrationPreview: globalThis.ferrumPlacementViewerMigrationPreview,
+      details,
+    };
+
+    function inspectorDetails() {
+      const rows = {};
+      for (const term of document.querySelectorAll(".placement-details dt")) {
+        rows[term.textContent ?? ""] = term.nextElementSibling?.textContent ?? "";
+      }
+      return rows;
+    }
+  });
+
+  return { placementViewerSmoke: { target: cratePoint, movedTarget: movedCratePoint, ...report, editReport } };
 }
 
 async function smokeStarterRuntime(page, timeoutMs) {

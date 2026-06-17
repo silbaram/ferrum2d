@@ -228,16 +228,16 @@ impl ShooterPrefabKind {
     }
 }
 
-const MAX_SHOOTER_PREFAB_REGISTRATIONS: usize = 8;
-const SHOOTER_PREFAB_REGISTRY_SNAPSHOT_STRIDE: usize = 6;
-pub(crate) const SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S: usize =
-    MAX_SHOOTER_PREFAB_REGISTRATIONS * SHOOTER_PREFAB_REGISTRY_SNAPSHOT_STRIDE;
-const SHOOTER_PREFAB_REGISTRY_SNAPSHOT_PREFAB_ID_FIELD: usize = 0;
-const SHOOTER_PREFAB_REGISTRY_SNAPSHOT_KIND_FIELD: usize = 1;
-const SHOOTER_PREFAB_REGISTRY_SNAPSHOT_LAYER_FIELD: usize = 2;
-const SHOOTER_PREFAB_REGISTRY_SNAPSHOT_TEMPLATE_FIELD: usize = 3;
-const SHOOTER_PREFAB_REGISTRY_SNAPSHOT_TEXTURE_FIELD: usize = 4;
-const SHOOTER_PREFAB_REGISTRY_SNAPSHOT_GAMEPLAY_FIELD: usize = 5;
+const MAX_GAMEPLAY_PREFAB_REGISTRATIONS: usize = 8;
+const GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_STRIDE: usize = 6;
+pub(crate) const GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S: usize =
+    MAX_GAMEPLAY_PREFAB_REGISTRATIONS * GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_STRIDE;
+const GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_PREFAB_ID_FIELD: usize = 0;
+const GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_KIND_FIELD: usize = 1;
+const GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_LAYER_FIELD: usize = 2;
+const GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_TEMPLATE_FIELD: usize = 3;
+const GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_TEXTURE_FIELD: usize = 4;
+const GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_GAMEPLAY_FIELD: usize = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ShooterPrefabLayerSlot {
@@ -343,14 +343,14 @@ impl ShooterPrefabComponentBucket {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ShooterPrefabRegistration {
+pub(crate) struct GameplayPrefabRegistration {
     pub(crate) prefab_id: u32,
     pub(crate) kind: ShooterPrefabKind,
     pub(crate) components: ShooterPrefabComponentBucket,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ShooterPrefabResolvedComponents {
+pub(crate) struct GameplayPrefabResolvedComponents {
     pub(crate) kind: ShooterPrefabKind,
     pub(crate) layer: CollisionLayer,
     pub(crate) texture: ShooterPrefabTextureSlot,
@@ -360,21 +360,21 @@ pub(crate) struct ShooterPrefabResolvedComponents {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct ShooterPrefabRegistry {
-    registrations: [Option<ShooterPrefabRegistration>; MAX_SHOOTER_PREFAB_REGISTRATIONS],
+pub(crate) struct GameplayPrefabRegistry {
+    registrations: [Option<GameplayPrefabRegistration>; MAX_GAMEPLAY_PREFAB_REGISTRATIONS],
 }
 
-impl Default for ShooterPrefabRegistry {
+impl Default for GameplayPrefabRegistry {
     fn default() -> Self {
         let mut registry = Self {
-            registrations: [None; MAX_SHOOTER_PREFAB_REGISTRATIONS],
+            registrations: [None; MAX_GAMEPLAY_PREFAB_REGISTRATIONS],
         };
         registry.register(ShooterPrefabKind::Enemy.code(), ShooterPrefabKind::Enemy);
         registry
     }
 }
 
-impl ShooterPrefabRegistry {
+impl GameplayPrefabRegistry {
     pub(crate) fn register(&mut self, prefab_id: u32, kind: ShooterPrefabKind) -> bool {
         self.register_with_components(prefab_id, kind, kind.default_component_bucket())
     }
@@ -393,7 +393,7 @@ impl ShooterPrefabRegistry {
                 return false;
             }
         }
-        let registration = ShooterPrefabRegistration {
+        let registration = GameplayPrefabRegistration {
             prefab_id,
             kind,
             components,
@@ -426,7 +426,7 @@ impl ShooterPrefabRegistry {
         }
     }
 
-    pub(crate) fn resolve(&self, prefab_id: u32) -> Option<ShooterPrefabRegistration> {
+    pub(crate) fn resolve(&self, prefab_id: u32) -> Option<GameplayPrefabRegistration> {
         self.registrations
             .iter()
             .filter_map(|registration| *registration)
@@ -434,37 +434,37 @@ impl ShooterPrefabRegistry {
     }
 
     pub(crate) fn write_snapshot(&self, output: &mut [u32]) -> bool {
-        if output.len() < SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S {
+        if output.len() < GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S {
             return false;
         }
-        output[..SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S].fill(0);
+        output[..GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S].fill(0);
         for (slot, registration) in self.registrations.iter().copied().enumerate() {
             let Some(registration) = registration else {
                 continue;
             };
-            let base = slot * SHOOTER_PREFAB_REGISTRY_SNAPSHOT_STRIDE;
-            output[base + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_PREFAB_ID_FIELD] =
+            let base = slot * GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_STRIDE;
+            output[base + GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_PREFAB_ID_FIELD] =
                 registration.prefab_id;
-            output[base + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_KIND_FIELD] = registration.kind.code();
-            output[base + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_LAYER_FIELD] =
+            output[base + GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_KIND_FIELD] = registration.kind.code();
+            output[base + GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_LAYER_FIELD] =
                 registration.components.layer.code();
-            output[base + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_TEMPLATE_FIELD] =
+            output[base + GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_TEMPLATE_FIELD] =
                 registration.components.template.code();
-            output[base + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_TEXTURE_FIELD] =
+            output[base + GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_TEXTURE_FIELD] =
                 registration.components.texture.code();
-            output[base + SHOOTER_PREFAB_REGISTRY_SNAPSHOT_GAMEPLAY_FIELD] =
+            output[base + GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_GAMEPLAY_FIELD] =
                 registration.components.gameplay.code();
         }
         true
     }
 
     pub(crate) fn matches_snapshot(&self, snapshot: &[u32]) -> bool {
-        if snapshot.len() < SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S {
+        if snapshot.len() < GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S {
             return false;
         }
-        let mut expected = [0; SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S];
+        let mut expected = [0; GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S];
         self.write_snapshot(&mut expected)
-            && expected == snapshot[..SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S]
+            && expected == snapshot[..GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S]
     }
 }
 
@@ -491,7 +491,7 @@ pub(crate) struct ShooterConfig {
     pub projectile_arc: ShooterProjectileArcConfig,
     pub camera: CameraPresetConfig,
     pub audio_policy: ShooterAudioPolicy,
-    pub prefab_registry: ShooterPrefabRegistry,
+    pub prefab_registry: GameplayPrefabRegistry,
 }
 
 impl Default for ShooterConfig {
@@ -518,7 +518,7 @@ impl Default for ShooterConfig {
             projectile_arc: ShooterProjectileArcConfig::default(),
             camera: CameraPresetConfig::default(),
             audio_policy: ShooterAudioPolicy::default(),
-            prefab_registry: ShooterPrefabRegistry::default(),
+            prefab_registry: GameplayPrefabRegistry::default(),
         }
     }
 }
@@ -695,7 +695,10 @@ impl ShooterConfig {
         self.prefab_registry.register(prefab_id, kind)
     }
 
-    pub(crate) fn resolve_spawn_prefab(&self, prefab_id: u32) -> Option<ShooterPrefabRegistration> {
+    pub(crate) fn resolve_spawn_prefab(
+        &self,
+        prefab_id: u32,
+    ) -> Option<GameplayPrefabRegistration> {
         self.prefab_registry.resolve(prefab_id)
     }
 
@@ -710,8 +713,8 @@ impl ShooterConfig {
     pub(crate) fn resolve_builtin_prefab_components(
         &self,
         kind: ShooterPrefabKind,
-    ) -> ShooterPrefabResolvedComponents {
-        self.resolve_spawn_prefab_components(ShooterPrefabRegistration {
+    ) -> GameplayPrefabResolvedComponents {
+        self.resolve_spawn_prefab_components(GameplayPrefabRegistration {
             prefab_id: kind.code(),
             kind,
             components: kind.default_component_bucket(),
@@ -720,8 +723,8 @@ impl ShooterConfig {
 
     pub(crate) fn resolve_spawn_prefab_components(
         &self,
-        registration: ShooterPrefabRegistration,
-    ) -> ShooterPrefabResolvedComponents {
+        registration: GameplayPrefabRegistration,
+    ) -> GameplayPrefabResolvedComponents {
         let bucket = registration.components;
         let (health, score_reward) = match bucket.gameplay {
             ShooterPrefabGameplaySlot::None => (None, None),
@@ -729,7 +732,7 @@ impl ShooterConfig {
                 (Some(self.enemy_health), Some(self.score_reward))
             }
         };
-        ShooterPrefabResolvedComponents {
+        GameplayPrefabResolvedComponents {
             kind: registration.kind,
             layer: self.prefab_layer_for_slot(bucket.layer),
             texture: bucket.texture,
@@ -828,7 +831,7 @@ mod prefab_registry_tests {
 
     #[test]
     fn rejects_reserved_prefab_id_kind_mismatches() {
-        let mut registry = ShooterPrefabRegistry::default();
+        let mut registry = GameplayPrefabRegistry::default();
 
         assert!(!registry.register(ShooterPrefabKind::Enemy.code(), ShooterPrefabKind::Bullet));
         assert_eq!(
@@ -844,7 +847,7 @@ mod prefab_registry_tests {
 
     #[test]
     fn rejects_existing_prefab_id_kind_changes() {
-        let mut registry = ShooterPrefabRegistry::default();
+        let mut registry = GameplayPrefabRegistry::default();
 
         assert!(registry.register(7, ShooterPrefabKind::Enemy));
         assert!(!registry.register(7, ShooterPrefabKind::Bullet));

@@ -1,7 +1,9 @@
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 import type { FerrumEngine } from "./engineTypes.js";
 import {
+  resolveDataSceneComponentsSpec,
   resolveDataSceneInstanceComponents,
+  type DataSceneComponentsSpec,
   type ResolvedDataSceneColliderComponent,
   type ResolvedDataSceneComponents,
   type ResolvedDataSceneSpriteComponent,
@@ -19,16 +21,24 @@ const DATA_SCENE_COLLIDER_TYPE_ORIENTED_BOX = 4;
 const DATA_SCENE_COLLIDER_TYPE_CONVEX_POLYGON = 5;
 
 export type DataSceneRuntimeTextureIdResolver = (name: string) => number;
+export type DataSceneRuntimeComponentTemplateCatalog = Readonly<Record<string, DataSceneComponentsSpec>>;
+export type DataSceneRuntimeComponentTemplateResolver = (template: string) => DataSceneComponentsSpec | undefined;
+export type DataSceneRuntimeComponentTemplates =
+  | DataSceneRuntimeComponentTemplateCatalog
+  | DataSceneRuntimeComponentTemplateResolver;
 
 export interface CreateDataSceneRuntimeTargetOptions {
   path?: string;
   activateDataScene?: boolean;
   textureId?: DataSceneRuntimeTextureIdResolver;
+  componentTemplates?: DataSceneRuntimeComponentTemplates;
 }
 
 export interface DataSceneRuntimeSpawnRequest {
   x: number;
   y: number;
+  rotationRadians: number;
+  renderLayer: number;
   textureId: number;
   spriteWidth: number;
   spriteHeight: number;
@@ -96,7 +106,12 @@ export function createDataSceneRuntimeTarget(
 
   return {
     spawnSceneInstance: (instance) => {
-      const request = dataSceneRuntimeSpawnRequest(instance, textureId, `${path}.instances.${instance.id}`);
+      const request = dataSceneRuntimeSpawnRequest(
+        instance,
+        textureId,
+        options.componentTemplates,
+        `${path}.instances.${instance.id}`,
+      );
       activateDataScene();
       const handle = adapter.spawnDataSceneEntity(request);
       if (handle === undefined) {
@@ -121,36 +136,64 @@ function dataSceneRuntimeEngineAdapter(engine: FerrumEngine, path: string): Data
 function dataSceneRuntimeSpawnRequest(
   instance: ResolvedSceneCompositionInstance,
   textureId: DataSceneRuntimeTextureIdResolver,
+  componentTemplates: DataSceneRuntimeComponentTemplates | undefined,
   path: string,
 ): DataSceneRuntimeSpawnRequest {
   const components = resolveDataSceneInstanceComponents(instance, {
-    allowTemplate: false,
+    allowTemplate: true,
     path,
   });
-  rejectUnsupportedRuntimeTransform(instance, path);
-  if (components.mode === "template") {
-    throw sceneCompositionDiagnosticError(
-      `${path}.props.components.template`,
-      "is not supported by createDataSceneRuntimeTarget yet",
-    );
-  }
+  const inlineComponents = dataSceneRuntimeInlineComponents(components, componentTemplates, path);
 
-  return inlineDataSceneRuntimeSpawnRequest(instance, components, textureId);
+  return inlineDataSceneRuntimeSpawnRequest(instance, inlineComponents, textureId);
 }
 
-function rejectUnsupportedRuntimeTransform(instance: ResolvedSceneCompositionInstance, path: string): void {
-  if (instance.rotationRadians !== 0) {
+function dataSceneRuntimeInlineComponents(
+  components: ResolvedDataSceneComponents,
+  componentTemplates: DataSceneRuntimeComponentTemplates | undefined,
+  path: string,
+): Extract<ResolvedDataSceneComponents, { mode: "inline" }> {
+  if (components.mode === "inline") {
+    return components;
+  }
+  const templatePath = `${path}.props.components.template`;
+  if (componentTemplates === undefined) {
     throw sceneCompositionDiagnosticError(
-      `${path}.rotationRadians`,
-      "is not supported by createDataSceneRuntimeTarget yet; keep instance rotation at 0 and use collider rotation descriptors where needed",
+      templatePath,
+      "requires createDataSceneRuntimeTarget(..., { componentTemplates }) to spawn catalog templates",
     );
   }
-  if (instance.layer !== 0) {
+  const spec = dataSceneRuntimeComponentTemplateSpec(componentTemplates, components.template);
+  if (spec === undefined) {
     throw sceneCompositionDiagnosticError(
-      `${path}.layer`,
-      "is not supported by createDataSceneRuntimeTarget yet; use props.components.layer for collision layer",
+      templatePath,
+      `must resolve to a component template catalog entry: ${components.template}`,
     );
   }
+  const resolved = resolveDataSceneComponentsSpec(spec, {
+    allowTemplate: false,
+    path: `${templatePath}(${components.template})`,
+  });
+  if (resolved.mode === "template") {
+    throw sceneCompositionDiagnosticError(
+      templatePath,
+      "must resolve to inline sprite, collider, and layer components",
+    );
+  }
+  return resolved;
+}
+
+function dataSceneRuntimeComponentTemplateSpec(
+  componentTemplates: DataSceneRuntimeComponentTemplates,
+  template: string,
+): DataSceneComponentsSpec | undefined {
+  if (typeof componentTemplates === "function") {
+    return componentTemplates(template);
+  }
+  if (!Object.prototype.hasOwnProperty.call(componentTemplates, template)) {
+    return undefined;
+  }
+  return componentTemplates[template];
 }
 
 function inlineDataSceneRuntimeSpawnRequest(
@@ -165,6 +208,8 @@ function inlineDataSceneRuntimeSpawnRequest(
   return {
     x: instance.x,
     y: instance.y,
+    rotationRadians: instance.rotationRadians,
+    renderLayer: instance.layer,
     textureId: dataSceneTextureId(sprite, textureId),
     spriteWidth: sprite.width * scale,
     spriteHeight: sprite.height * scale,

@@ -39,7 +39,7 @@ import {
   U32S_PER_PHYSICS_QUERY_HIT,
 } from "./physicsQueryDecoder";
 
-const FLOATS_PER_COMMAND = 14;
+const FLOATS_PER_COMMAND = 15;
 export const F64S_PER_FRAME_TELEMETRY = 62;
 const FLOATS_PER_PHYSICS_BODY_STATE = 31;
 const U32S_PER_PHYSICS_BODY_STATE = 5;

@@ -37,6 +37,8 @@ test("createDataSceneRuntimeTarget spawns resolved inline components through the
   deepEqual(requestSummary(adapter.requests[0]), {
     x: 64,
     y: 96,
+    rotationRadians: 0,
+    renderLayer: 0,
     textureId: 77,
     spriteWidth: 48,
     spriteHeight: 32,
@@ -52,6 +54,8 @@ test("createDataSceneRuntimeTarget spawns resolved inline components through the
   deepEqual(requestSummary(adapter.requests[1]), {
     x: 160,
     y: 96,
+    rotationRadians: 0,
+    renderLayer: 0,
     textureId: 77,
     spriteWidth: 24,
     spriteHeight: 16,
@@ -95,6 +99,8 @@ test("createDataSceneRuntimeTarget supports activation opt-out and numeric textu
   deepEqual(requestSummary(adapter.requests[0]), {
     x: 5,
     y: 7,
+    rotationRadians: 0,
+    renderLayer: 0,
     textureId: 9,
     spriteWidth: 8,
     spriteHeight: 8,
@@ -104,6 +110,53 @@ test("createDataSceneRuntimeTarget supports activation opt-out and numeric textu
     colliderType: 0,
     colliderOffset: [0, 0],
     colliderSize: [0, 0],
+    radius: 0,
+    vertices: [],
+  });
+});
+
+test("createDataSceneRuntimeTarget resolves catalog component templates", () => {
+  const adapter = new MockDataSceneRuntimeAdapter();
+  const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
+  const target = createDataSceneRuntimeTarget(engine, {
+    activateDataScene: false,
+    componentTemplates: {
+      "crate.base": {
+        sprite: { texture: "crate", width: 12, height: 8 },
+        collider: { type: "aabb", halfWidth: 5, halfHeight: 3, offsetX: 1 },
+        layer: "wall",
+      },
+    },
+  });
+
+  const handle = target.spawnSceneInstance({
+    id: "crate",
+    sourceId: "crate",
+    prefab: "crate",
+    x: 10,
+    y: 20,
+    rotationRadians: 0,
+    scale: 2,
+    layer: 0,
+    props: { components: { template: "crate.base" } },
+  });
+
+  deepEqual(handle, { entityId: 101, entityGeneration: 1 });
+  deepEqual(adapter.textureNames, ["crate"]);
+  deepEqual(requestSummary(adapter.requests[0]), {
+    x: 10,
+    y: 20,
+    rotationRadians: 0,
+    renderLayer: 0,
+    textureId: 77,
+    spriteWidth: 24,
+    spriteHeight: 16,
+    frame: [0, 0, 1, 1],
+    animation: [0, 0],
+    layer: 3,
+    colliderType: 1,
+    colliderOffset: [2, 0],
+    colliderSize: [10, 6],
     radius: 0,
     vertices: [],
   });
@@ -284,7 +337,7 @@ test("createDataSceneRuntimeTarget spawns passive world objects without behavior
   });
 });
 
-test("createDataSceneRuntimeTarget compiles collider descriptor rotations", () => {
+test("createDataSceneRuntimeTarget compiles collider descriptor and instance rotations", () => {
   const adapter = new MockDataSceneRuntimeAdapter();
   const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
   const target = createDataSceneRuntimeTarget(engine, { activateDataScene: false });
@@ -334,6 +387,29 @@ test("createDataSceneRuntimeTarget compiles collider descriptor rotations", () =
       },
     },
   });
+  target.spawnSceneInstance({
+    id: "rotated-aabb",
+    sourceId: "rotated-aabb",
+    prefab: "block",
+    x: 0,
+    y: 0,
+    rotationRadians: Math.PI / 2,
+    scale: 2,
+    layer: 0,
+    props: {
+      components: {
+        sprite: { texture: 1, width: 10, height: 10 },
+        collider: {
+          type: "aabb",
+          halfWidth: 3,
+          halfHeight: 4,
+          offsetX: 1,
+          offsetY: 2,
+        },
+        layer: "wall",
+      },
+    },
+  });
 
   equal(adapter.requests[0].colliderType, 4);
   equal(adapter.requests[0].colliderHalfWidth, 6);
@@ -343,56 +419,38 @@ test("createDataSceneRuntimeTarget compiles collider descriptor rotations", () =
   equal(adapter.requests[1].colliderType, 5);
   equal(adapter.requests[1].colliderRotationRadians, 0.25);
   deepEqual(Array.from(adapter.requests[1].colliderVertices), [0, 0, 4, 0, 0, 2]);
+  equal(adapter.requests[2].colliderType, 4);
+  equal(adapter.requests[2].colliderRotationRadians, Math.PI / 2);
+  deepEqual([round(adapter.requests[2].colliderOffsetX), round(adapter.requests[2].colliderOffsetY)], [-4, 2]);
 });
 
-test("createDataSceneRuntimeTarget rejects unsupported SceneComposition transform fields", () => {
+test("createDataSceneRuntimeTarget forwards SceneComposition instance layer as render layer", () => {
   const adapter = new MockDataSceneRuntimeAdapter();
   const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
   const target = createDataSceneRuntimeTarget(engine, { activateDataScene: false });
 
-  expectThrows(
-    () => target.spawnSceneInstance({
-      id: "rotated",
-      sourceId: "rotated",
-      prefab: "block",
-      x: 0,
-      y: 0,
-      rotationRadians: 0.25,
-      scale: 1,
-      layer: 0,
-      props: {
-        components: {
-          sprite: { texture: 1, width: 10, height: 10 },
-          collider: "none",
-          layer: "wall",
-        },
+  target.spawnSceneInstance({
+    id: "layered",
+    sourceId: "layered",
+    prefab: "block",
+    x: 0,
+    y: 0,
+    rotationRadians: 0.5,
+    scale: 1,
+    layer: 2,
+    props: {
+      components: {
+        sprite: { texture: 1, width: 10, height: 10 },
+        collider: "none",
+        layer: "wall",
       },
-    }),
-    /dataSceneRuntimeTarget\.instances\.rotated\.rotationRadians/,
-  );
+    },
+  });
 
-  expectThrows(
-    () => target.spawnSceneInstance({
-      id: "layered",
-      sourceId: "layered",
-      prefab: "block",
-      x: 0,
-      y: 0,
-      rotationRadians: 0,
-      scale: 1,
-      layer: 2,
-      props: {
-        components: {
-          sprite: { texture: 1, width: 10, height: 10 },
-          collider: "none",
-          layer: "wall",
-        },
-      },
-    }),
-    /dataSceneRuntimeTarget\.instances\.layered\.layer/,
-  );
-
-  equal(adapter.requests.length, 0);
+  equal(adapter.requests.length, 1);
+  equal(adapter.requests[0].renderLayer, 2);
+  equal(adapter.requests[0].rotationRadians, 0.5);
+  equal(adapter.requests[0].layer, 3);
 });
 
 test("createDataSceneRuntimeTarget reports missing adapters, template mode, and failed spawns", () => {
@@ -421,6 +479,27 @@ test("createDataSceneRuntimeTarget reports missing adapters, template mode, and 
     /dataSceneRuntimeTarget\.instances\.templated\.props\.components\.template/,
   );
   equal(templateAdapter.useDataSceneCalls, 0);
+
+  const missingTemplateAdapter = new MockDataSceneRuntimeAdapter();
+  const missingTemplateTarget = createDataSceneRuntimeTarget(
+    attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, missingTemplateAdapter),
+    { activateDataScene: false, componentTemplates: {} },
+  );
+  expectThrows(
+    () => missingTemplateTarget.spawnSceneInstance({
+      id: "templated",
+      sourceId: "templated",
+      prefab: "agent",
+      x: 0,
+      y: 0,
+      rotationRadians: 0,
+      scale: 1,
+      layer: 0,
+      props: { components: { template: "agent.base" } },
+    }),
+    /dataSceneRuntimeTarget\.instances\.templated\.props\.components\.template/,
+  );
+  equal(missingTemplateAdapter.useDataSceneCalls, 0);
 
   const failingAdapter = new MockDataSceneRuntimeAdapter();
   failingAdapter.failNext = true;
@@ -519,6 +598,8 @@ function requestSummary(request: DataSceneRuntimeSpawnRequest) {
   return {
     x: request.x,
     y: request.y,
+    rotationRadians: request.rotationRadians,
+    renderLayer: request.renderLayer,
     textureId: request.textureId,
     spriteWidth: request.spriteWidth,
     spriteHeight: request.spriteHeight,

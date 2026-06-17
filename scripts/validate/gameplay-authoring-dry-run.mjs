@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   createBehaviorStateMachineRuntimeInstallPlan,
   createBehaviorStateMachineStateCommandPlan,
+  classifySceneInstance,
   dryRunSceneBehaviorRecipes,
   instantiateSceneFragment,
   preflightBehaviorStateMachineStateCommands,
@@ -149,6 +150,7 @@ async function runGameplayAuthoringDryRun(options, diagnostics, reports) {
   reports.push(...dryRun.diagnostics.map(reportFromDiagnostic));
   const instances = dryRun.ok ? dryRun.plan.instances : instantiateSceneFragment(composition);
   const commands = dryRun.ok ? dryRun.plan.commands : [];
+  const bindings = dryRun.ok ? dryRun.plan.bindings : [];
   const machines = resolveBehaviorStateMachineDocument(variant.behaviorStateMachines, {
     path: "gameplayAuthoring.variant.behaviorStateMachines",
     behaviorRecipes: recipes,
@@ -193,6 +195,8 @@ async function runGameplayAuthoringDryRun(options, diagnostics, reports) {
 
   const replay = await validateReplayManifestLink(variant, replayManifestPath, diagnostics, reports);
   const commandsByType = countBy(commands.map((command) => command.type));
+  const agentAttachment = createAgentAttachmentSummary(instances, bindings);
+  validateExpectedAgentAttachment(variant.expected?.agentAttachment, agentAttachment, diagnostics, reports);
   return {
     variantPath,
     baseGameSpecPath,
@@ -214,6 +218,7 @@ async function runGameplayAuthoringDryRun(options, diagnostics, reports) {
     })),
     commandCount: commands.length,
     commandsByType,
+    agentAttachment,
     commands: commands.map((command) => ({
       entity: command.entity,
       type: command.type,
@@ -225,6 +230,49 @@ async function runGameplayAuthoringDryRun(options, diagnostics, reports) {
     diagnostics,
     reports,
   };
+}
+
+function createAgentAttachmentSummary(instances, bindings) {
+  const entries = new Map(instances.map((instance) => [instance.id, {
+    instance,
+    behaviorProfiles: [],
+    commandTypes: [],
+  }]));
+  for (const binding of bindings) {
+    const entry = entries.get(binding.instance.id);
+    if (entry === undefined) {
+      continue;
+    }
+    if (!entry.behaviorProfiles.includes(binding.behaviorEntity)) {
+      entry.behaviorProfiles.push(binding.behaviorEntity);
+    }
+    entry.commandTypes.push(binding.command.type);
+  }
+  return instances.map((instance) => {
+    const entry = entries.get(instance.id);
+    const role = classifySceneInstance(instance).kind;
+    const commandTypes = entry?.commandTypes ?? [];
+    return {
+      instanceId: instance.id,
+      role,
+      behaviorProfiles: entry?.behaviorProfiles ?? [],
+      commandCount: commandTypes.length,
+      commandTypes,
+    };
+  });
+}
+
+function validateExpectedAgentAttachment(expected, actual, diagnostics, reports) {
+  if (expected === undefined) {
+    return;
+  }
+  compareReplayExpected(
+    actual,
+    expected,
+    "gameplayAuthoring.variant.expected.agentAttachment",
+    diagnostics,
+    reports,
+  );
 }
 
 function createStateCommandPreflightSummary(

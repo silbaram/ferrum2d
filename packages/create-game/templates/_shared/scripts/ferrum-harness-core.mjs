@@ -361,7 +361,9 @@ async function inspectSceneAuthoring(config) {
     const json = JSON.parse(source);
     const {
       applySceneBehaviorRecipes,
+      classifySceneInstance,
       dryRunSceneBehaviorRecipes,
+      previewScenePlacementBindingMigration,
       resolveBehaviorRecipeDocument,
       resolveSceneAuthoringDocument,
       resolveSceneCompositionSpec,
@@ -386,7 +388,9 @@ async function inspectSceneAuthoring(config) {
       version: resolved.version,
       publicApis: {
         applySceneBehaviorRecipes: typeof applySceneBehaviorRecipes === "function",
+        classifySceneInstance: typeof classifySceneInstance === "function",
         dryRunSceneBehaviorRecipes: typeof dryRunSceneBehaviorRecipes === "function",
+        previewScenePlacementBindingMigration: typeof previewScenePlacementBindingMigration === "function",
         resolveSceneCompositionSpec: typeof resolveSceneCompositionSpec === "function",
         resolveBehaviorRecipeDocument: typeof resolveBehaviorRecipeDocument === "function",
       },
@@ -400,6 +404,7 @@ async function inspectSceneAuthoring(config) {
           .map((instance) => instance.props.runtimeEntity)
           .filter((value) => typeof value === "string"),
         runtimeEntityHandles: sceneRuntimeEntityHandles(applied),
+        placementAuthoring: scenePlacementAuthoringSummary(applied, classifySceneInstance),
         behaviorProfiles: Object.keys(resolved.behaviorRecipes.entities),
       },
     };
@@ -566,6 +571,7 @@ function recommendedCommands() {
   return [
     "npm run ferrum:report",
     "npm run ferrum:validate",
+    "npm run ferrum:placement-viewer",
     "npm run ferrum:authoring-report",
     "npm run ferrum:replay-report",
     "npm run ferrum:runtime-replay-report",
@@ -584,6 +590,53 @@ function sceneRuntimeEntityHandles(applied) {
       entityGeneration: handle.entityGeneration,
     };
   });
+}
+
+function scenePlacementAuthoringSummary(applied, classifySceneInstance) {
+  const bindingsByInstanceId = new Map();
+  for (const binding of applied.plan.bindings) {
+    const instanceBindings = bindingsByInstanceId.get(binding.instance.id);
+    if (instanceBindings === undefined) {
+      bindingsByInstanceId.set(binding.instance.id, [binding]);
+    } else {
+      instanceBindings.push(binding);
+    }
+  }
+
+  return {
+    workflow: "human-placement-agent-behavior",
+    placementOwner: "sceneComposition.fragments[].instances[]",
+    behaviorOwner: "sceneComposition.prefabs[].props.behaviorRecipes + behaviorRecipes.entities",
+    fragment: applied.plan.fragment,
+    instanceCount: applied.plan.instances.length,
+    instances: applied.plan.instances.map((instance) => {
+      const classification = classifySceneInstance(instance, {
+        path: `sceneAuthoring.placement.instances.${instance.id}`,
+      });
+      const bindings = bindingsByInstanceId.get(instance.id) ?? [];
+      const handle = applied.entityHandles[instance.id];
+      return {
+        instanceId: instance.id,
+        prefab: instance.prefab,
+        ...(instance.variant === undefined ? {} : { variant: instance.variant }),
+        role: classification.kind,
+        runtimeEntity: typeof instance.props.runtimeEntity === "string" ? instance.props.runtimeEntity : null,
+        behaviorProfiles: [...classification.behaviorProfiles],
+        behaviorCommandCount: bindings.length,
+        behaviorCommandTypes: uniqueSorted(bindings.map((binding) => binding.command.type)),
+        entity: handle === undefined
+          ? null
+          : {
+            entityId: handle.entityId,
+            entityGeneration: handle.entityGeneration,
+          },
+      };
+    }),
+  };
+}
+
+function uniqueSorted(values) {
+  return [...new Set(values)].sort();
 }
 
 function sceneAuthoringErrorPath(error) {

@@ -496,7 +496,17 @@ export interface GameplayBehaviorRuntimeEngine {
   ): boolean;
   clear_gameplay_actions?(entityId: number, entityGeneration: number): boolean;
   set_gameplay_movement_chase_player(entityId: number, entityGeneration: number, speed: number): boolean;
+  set_gameplay_movement_chase_primary_actor?(
+    entityId: number,
+    entityGeneration: number,
+    speed: number,
+  ): boolean;
   set_gameplay_movement_chase_nearest_player?(
+    entityId: number,
+    entityGeneration: number,
+    speed: number,
+  ): boolean;
+  set_gameplay_movement_chase_nearest_primary_actor?(
     entityId: number,
     entityGeneration: number,
     speed: number,
@@ -537,7 +547,19 @@ export interface GameplayBehaviorRuntimeEngine {
     speed: number,
     turnRate: number,
   ): boolean;
+  set_gameplay_movement_seek_target_primary_actor?(
+    entityId: number,
+    entityGeneration: number,
+    speed: number,
+    turnRate: number,
+  ): boolean;
   set_gameplay_movement_seek_target_nearest_player?(
+    entityId: number,
+    entityGeneration: number,
+    speed: number,
+    turnRate: number,
+  ): boolean;
+  set_gameplay_movement_seek_target_nearest_primary_actor?(
     entityId: number,
     entityGeneration: number,
     speed: number,
@@ -1299,6 +1321,20 @@ function applyConfigureChaseCommand(
       command,
     );
   }
+  if (command.target === "primaryActor") {
+    const setGameplayChasePrimaryActor =
+      engine.set_gameplay_movement_chase_primary_actor ?? engine.set_gameplay_movement_chase_player;
+    return requireApplied(
+      setGameplayChasePrimaryActor.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.speed,
+      ),
+      path,
+      command,
+    );
+  }
   if (command.target === "nearestPlayer") {
     const setGameplayChaseNearestPlayer = requireRuntimeMethod(
       engine.set_gameplay_movement_chase_nearest_player,
@@ -1307,6 +1343,24 @@ function applyConfigureChaseCommand(
     );
     return requireApplied(
       setGameplayChaseNearestPlayer.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.speed,
+      ),
+      path,
+      command,
+    );
+  }
+  if (command.target === "nearestPrimaryActor") {
+    const setGameplayChaseNearestPrimaryActor = requireRuntimeMethod(
+      engine.set_gameplay_movement_chase_nearest_primary_actor
+        ?? engine.set_gameplay_movement_chase_nearest_player,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_chase_nearest_primary_actor or set_gameplay_movement_chase_nearest_player for nearestPrimaryActor configureChase commands",
+    );
+    return requireApplied(
+      setGameplayChaseNearestPrimaryActor.call(
         engine,
         handle.entityId,
         handle.entityGeneration,
@@ -1431,6 +1485,25 @@ function applyConfigureSeekTargetCommand(
       command,
     );
   }
+  if (command.target === "primaryActor") {
+    const setGamePlaySeekTargetPrimaryActor = requireRuntimeMethod(
+      engine.set_gameplay_movement_seek_target_primary_actor
+        ?? engine.set_gameplay_movement_seek_target_player,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_seek_target_primary_actor or set_gameplay_movement_seek_target_player for primaryActor configureSeekTarget commands",
+    );
+    return requireApplied(
+      setGamePlaySeekTargetPrimaryActor.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.speed,
+        command.turnRate,
+      ),
+      path,
+      command,
+    );
+  }
   if (command.target === "nearestPlayer") {
     const setGameplaySeekTargetNearestPlayer = requireRuntimeMethod(
       engine.set_gameplay_movement_seek_target_nearest_player,
@@ -1439,6 +1512,25 @@ function applyConfigureSeekTargetCommand(
     );
     return requireApplied(
       setGameplaySeekTargetNearestPlayer.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.speed,
+        command.turnRate,
+      ),
+      path,
+      command,
+    );
+  }
+  if (command.target === "nearestPrimaryActor") {
+    const setGameplaySeekTargetNearestPrimaryActor = requireRuntimeMethod(
+      engine.set_gameplay_movement_seek_target_nearest_primary_actor
+        ?? engine.set_gameplay_movement_seek_target_nearest_player,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_movement_seek_target_nearest_primary_actor or set_gameplay_movement_seek_target_nearest_player for nearestPrimaryActor configureSeekTarget commands",
+    );
+    return requireApplied(
+      setGameplaySeekTargetNearestPrimaryActor.call(
         engine,
         handle.entityId,
         handle.entityGeneration,

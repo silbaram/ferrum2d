@@ -341,7 +341,7 @@ impl ShooterScene {
         collision_events: Option<&mut CollisionEventSink<'_>>,
         gameplay_events: Option<&mut GameplayEventSink<'_>>,
     ) -> PendingPlayerTargetMeleeResolutionResult {
-        let Some(player) = world.player_entity() else {
+        let Some(player) = world.primary_actor_entity() else {
             return PendingPlayerTargetMeleeResolutionResult::default();
         };
         if !melee_attack_target_can_receive_hit(
@@ -618,7 +618,7 @@ impl ShooterScene {
         mut collision_events: Option<&mut CollisionEventSink<'_>>,
         mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
     ) {
-        let Some(player) = world.player_entity() else {
+        let Some(player) = world.primary_actor_entity() else {
             return;
         };
         let player_index = player.id as usize;
@@ -888,7 +888,7 @@ impl ShooterScene {
         mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
         mut hit_particles: Option<&mut ParticleBurstSink<'_>>,
     ) {
-        let Some(player) = world.player_entity() else {
+        let Some(player) = world.primary_actor_entity() else {
             return;
         };
         let player_index = player.id as usize;
@@ -1002,7 +1002,7 @@ impl ShooterScene {
         mut gameplay_events: Option<&mut GameplayEventSink<'_>>,
         mut hit_particles: Option<&mut ParticleBurstSink<'_>>,
     ) {
-        let Some(player) = world.player_entity() else {
+        let Some(player) = world.primary_actor_entity() else {
             return;
         };
         let player_index = player.id as usize;

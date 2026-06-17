@@ -9,7 +9,7 @@ impl ShooterScene {
         world: &mut World,
         mut events: Option<&mut GameplayEventSink<'_>>,
     ) {
-        let Some(player) = world.player_entity() else {
+        let Some(player) = world.primary_actor_entity() else {
             return;
         };
         let Some(player_transform) = world.transform(player) else {

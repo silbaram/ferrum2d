@@ -40,7 +40,9 @@
                 "authoringSurface": {
                   "publicApis": {
                     "applySceneBehaviorRecipes": true,
+                    "classifySceneInstance": true,
                     "dryRunSceneBehaviorRecipes": true,
+                    "previewScenePlacementBindingMigration": true,
                     "resolveSceneCompositionSpec": true,
                     "resolveBehaviorRecipeDocument": true
                   },
@@ -84,6 +86,7 @@
                   "scene-authoring.json"
                 ],
                 "scripts": [
+                  "ferrum:placement-viewer",
                   "ferrum:validate",
                   "ferrum:authoring-report",
                   "ferrum:replay-report",
@@ -92,9 +95,9 @@
               }
             }
           },
-          "snapshotHash": "34f427e5"
+          "snapshotHash": "0794eb97"
         },
-        "replayHash": "34f427e5"
+        "replayHash": "0794eb97"
       },
       {
         "frame": 1,
@@ -124,7 +127,9 @@
                 "authoringSurface": {
                   "publicApis": {
                     "applySceneBehaviorRecipes": true,
+                    "classifySceneInstance": true,
                     "dryRunSceneBehaviorRecipes": true,
+                    "previewScenePlacementBindingMigration": true,
                     "resolveSceneCompositionSpec": true,
                     "resolveBehaviorRecipeDocument": true
                   },
@@ -168,6 +173,7 @@
                   "scene-authoring.json"
                 ],
                 "scripts": [
+                  "ferrum:placement-viewer",
                   "ferrum:validate",
                   "ferrum:authoring-report",
                   "ferrum:replay-report",
@@ -176,11 +182,11 @@
               }
             }
           },
-          "snapshotHash": "f640d6ac"
+          "snapshotHash": "ee0b6b5e"
         },
-        "replayHash": "f640d6ac"
+        "replayHash": "ee0b6b5e"
       }
     ],
-    "replayHash": "06284dd3"
+    "replayHash": "b8eeb3c8"
   }
 }

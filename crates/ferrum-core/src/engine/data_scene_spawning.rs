@@ -1,6 +1,8 @@
 use wasm_bindgen::prelude::*;
 
-use crate::components::{CollisionLayer, SpriteAnimation, SpriteFrame, Transform2D};
+use crate::components::{
+    CollisionLayer, SpriteAnimation, SpriteFrame, Transform2D, DEFAULT_SPRITE_RENDER_LAYER,
+};
 use crate::entity::Entity;
 use crate::world::{
     EntityTemplate, EntityTemplateCollider, EntityTemplateColliderShape, PrefabEntitySpawnRequest,
@@ -21,6 +23,8 @@ impl Engine {
         &mut self,
         x: f32,
         y: f32,
+        rotation_radians: f32,
+        render_layer: i32,
         texture_id: u32,
         sprite_width: f32,
         sprite_height: f32,
@@ -30,7 +34,7 @@ impl Engine {
         frame_v1: f32,
         animation_frame_count: u32,
         animation_fps: f32,
-        layer: u32,
+        collision_layer_code: u32,
         collider_type: u32,
         collider_offset_x: f32,
         collider_offset_y: f32,
@@ -48,6 +52,7 @@ impl Engine {
     ) -> bool {
         if self.scene_mode != SceneMode::Data
             || !Self::valid_transform(x, y)
+            || !rotation_radians.is_finite()
             || !Self::valid_positive(sprite_width)
             || !Self::valid_positive(sprite_height)
         {
@@ -65,7 +70,9 @@ impl Engine {
             self.clear_data_scene_entity_handle();
             return false;
         };
-        let Some(collision_layer) = Self::data_scene_collision_layer_from_code(layer) else {
+        let Some(collision_layer) =
+            Self::data_scene_collision_layer_from_code(collision_layer_code)
+        else {
             self.clear_data_scene_entity_handle();
             return false;
         };
@@ -116,6 +123,8 @@ impl Engine {
                 texture_id,
                 template,
                 layer: collision_layer,
+                sprite_rotation_radians: rotation_radians,
+                render_layer: render_layer.saturating_add(DEFAULT_SPRITE_RENDER_LAYER),
                 sprite_tint: PrefabSpriteTint::PLAYER,
                 lifetime_seconds: None,
                 projectile_policy: None,
@@ -123,7 +132,7 @@ impl Engine {
                 damage: None,
                 health: None,
                 score_reward: None,
-                player_marker: false,
+                primary_actor_marker: false,
             });
         if collider_type == PHYSICS_COLLIDER_TYPE_NONE {
             self.world.clear_collider(entity);

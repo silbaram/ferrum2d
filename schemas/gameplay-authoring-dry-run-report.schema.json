@@ -45,6 +45,12 @@
           "type": "integer",
           "minimum": 1
         },
+        "agentAttachment": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/agentAttachmentEntry"
+          }
+        },
         "instanceCount": {
           "type": "integer",
           "minimum": 1
@@ -190,6 +196,47 @@
         "suggestion": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "agentAttachmentEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "instanceId",
+        "role",
+        "behaviorProfiles",
+        "commandCount",
+        "commandTypes"
+      ],
+      "properties": {
+        "instanceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "enum": [
+            "worldObject",
+            "actor"
+          ]
+        },
+        "behaviorProfiles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "commandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "commandTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },

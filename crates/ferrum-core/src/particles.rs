@@ -273,6 +273,7 @@ impl ParticleSystem {
                 a: color[3],
                 texture_id: particle.texture_id as f32,
                 effect_flags: SPRITE_EFFECT_NONE,
+                rotation_radians: 0.0,
             });
         }
     }
@@ -317,6 +318,7 @@ impl ParticleSystem {
                     a: color[3],
                     texture_id: particle.texture_id as f32,
                     effect_flags: SPRITE_EFFECT_NONE,
+                    rotation_radians: 0.0,
                 },
                 sort_key: SpriteRenderSortKey {
                     floor_id: 0,

@@ -38,6 +38,8 @@ const commonRequiredTemplateFiles = [
   "src/styles.css",
 ];
 const sharedTemplateFiles = [
+  "_shared/placement-viewer.html",
+  "_shared/vite.config.ts",
   "_shared/public/assets/audio.manifest.json",
   "_shared/public/assets/localization.manifest.json",
   "_shared/public/assets/texture-atlas.input.json",
@@ -46,6 +48,8 @@ const sharedTemplateFiles = [
   "_shared/scripts/ferrum-harness-core.mjs",
   "_shared/scripts/ferrum-harness-files.mjs",
   "_shared/scripts/ferrum-runtime-replay-core.mjs",
+  "_shared/src/ferrum-placement-viewer.css",
+  "_shared/src/ferrum-placement-viewer.ts",
 ];
 const templateCatalog = await readJson(path.join(packageRoot, "templates/manifest.json"));
 const templateEntries = validateTemplateCatalog(templateCatalog);
@@ -472,6 +476,7 @@ async function checkGeneratedProject(template) {
     assert(generatedPackage.private === true, "generated game project must be private by default");
     assert(generatedPackage.dependencies?.["@ferrum2d/ferrum-web"] === "0.0.0-test", "generated game must depend on @ferrum2d/ferrum-web");
     assert(generatedPackage.scripts?.dev === "vite", "generated game must include dev script");
+    assert(generatedPackage.scripts?.["ferrum:placement-viewer"] === "vite --host 127.0.0.1 --open /placement-viewer.html", "generated game must include ferrum:placement-viewer script");
     assert(generatedPackage.scripts?.build === "vite build --base=./", "generated game must include static-safe build script");
     assert(generatedPackage.scripts?.["pack:textures"] === "node scripts/ferrum-assets.mjs pack-textures", "generated game must include pack:textures script");
     assert(generatedPackage.scripts?.["ferrum:validate"] === "node scripts/ferrum-harness.mjs validate", "generated game must include ferrum:validate script");
@@ -502,6 +507,7 @@ async function checkGeneratedProject(template) {
     }
 
     await requireFile(path.join(targetRoot, "index.html"), repoRoot);
+    await assertGeneratedPlacementViewerScaffold(targetRoot, templateName);
     const generatedAssetPipelinePath = path.join(targetRoot, "scripts/ferrum-assets.mjs");
     await requireFile(generatedAssetPipelinePath, repoRoot);
     await runNodeCheck(generatedAssetPipelinePath, repoRoot);
@@ -523,9 +529,12 @@ async function checkGeneratedProject(template) {
     if (template.sceneAuthoring.configured) {
       assert(
         combinedHarnessSource.includes("applySceneBehaviorRecipes") &&
+          combinedHarnessSource.includes("classifySceneInstance") &&
           combinedHarnessSource.includes("dryRunSceneBehaviorRecipes") &&
+          combinedHarnessSource.includes("previewScenePlacementBindingMigration") &&
           combinedHarnessSource.includes("resolveSceneCompositionSpec") &&
           combinedHarnessSource.includes("runtimeEntityHandles") &&
+          combinedHarnessSource.includes("placementAuthoring") &&
           combinedHarnessSource.includes("public/scene-authoring.json"),
         `${templateName} template harness must validate SceneComposition behavior authoring through public APIs`,
       );
@@ -616,6 +625,7 @@ async function assertProjectReport(projectRoot, templateName, template) {
   for (const command of [
     "npm run ferrum:report",
     "npm run ferrum:validate",
+    "npm run ferrum:placement-viewer",
     "npm run ferrum:authoring-report",
     "npm run ferrum:replay-report",
     "npm run ferrum:runtime-replay-report",
@@ -651,6 +661,39 @@ function assertMinimalTemplateWeaponAuthoring(mainSource) {
       mainSource.includes("setInputActionBinding") &&
       mainSource.includes('searchParams.get("profile")'),
     "minimal template must apply selected weapon profile through public runtime authoring APIs",
+  );
+}
+
+async function assertGeneratedPlacementViewerScaffold(projectRoot, templateName) {
+  await requireFile(path.join(projectRoot, "placement-viewer.html"), repoRoot);
+  const viteConfigPath = path.join(projectRoot, "vite.config.ts");
+  await requireFile(viteConfigPath, repoRoot);
+  const viteConfigSource = await readFile(viteConfigPath, "utf8");
+  assert(
+    viteConfigSource.includes("placement-viewer.html") &&
+      viteConfigSource.includes("rollupOptions") &&
+      viteConfigSource.includes("input"),
+    `${templateName} generated game must build the placement viewer page through Vite`,
+  );
+
+  const viewerSourcePath = path.join(projectRoot, "src/ferrum-placement-viewer.ts");
+  await requireFile(viewerSourcePath, repoRoot);
+  await requireFile(path.join(projectRoot, "src/ferrum-placement-viewer.css"), repoRoot);
+  const viewerSource = await readFile(viewerSourcePath, "utf8");
+  assertHasModuleSpecifiers(viewerSource, `${templateName} placement viewer scaffold`, [
+    "@ferrum2d/ferrum-web/authoring",
+    "@ferrum2d/ferrum-web/quality",
+  ]);
+  assertNoFerrumRootAggregateImport(viewerSource, `${templateName} placement viewer scaffold`);
+  assertNoFerrumWebInternalImports(viewerSource, `${templateName} placement viewer scaffold`);
+  assert(
+    viewerSource.includes("createScenePlacementViewer") &&
+      viewerSource.includes("previewScenePlacementBindingMigration") &&
+      viewerSource.includes("saveScenePlacementPatch") &&
+      viewerSource.includes("scene-authoring.json") &&
+      viewerSource.includes("human-placement-agent-behavior") &&
+      viewerSource.includes("__ferrumConsumerPlacementViewer"),
+    `${templateName} placement viewer scaffold must expose placement patch and agent handoff workflow`,
   );
 }
 

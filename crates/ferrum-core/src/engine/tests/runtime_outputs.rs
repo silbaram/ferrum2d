@@ -96,7 +96,7 @@ fn gameplay_interaction_events_are_bulk_frame_outputs() {
         &mut engine.frame_buffers.audio_events,
     );
     start_shooter_playing(&mut engine);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 100.0, y: 100.0 });
@@ -135,7 +135,7 @@ fn gameplay_pickup_collected_events_are_bulk_frame_outputs() {
         &mut engine.frame_buffers.audio_events,
     );
     start_shooter_playing(&mut engine);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 100.0, y: 100.0 });
@@ -183,7 +183,7 @@ fn non_once_gameplay_interaction_is_deduped_across_fixed_substeps() {
         &mut engine.frame_buffers.audio_events,
     );
     start_shooter_playing(&mut engine);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 100.0, y: 100.0 });
@@ -207,7 +207,7 @@ fn non_once_gameplay_interaction_is_deduped_across_fixed_substeps() {
 fn gameplay_action_projectile_setter_drives_player_primary_fire() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
 
     assert_eq!(engine.built_in_shooter_player_entity_id(), player.id);
     assert_eq!(
@@ -255,7 +255,7 @@ fn gameplay_action_projectile_setter_drives_player_primary_fire() {
 fn homing_projectile_seek_target_nearest_enemy_runs_through_shooter_frame_loop() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 400.0, y: 240.0 });
@@ -285,7 +285,7 @@ fn homing_projectile_seek_target_nearest_enemy_runs_through_shooter_frame_loop()
 fn homing_projectile_seek_target_nearest_tag_runs_through_shooter_frame_loop() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 400.0, y: 240.0 });
@@ -359,7 +359,7 @@ fn collision_emit_effect_payload_reaches_effect_event_buffer() {
 fn input_action_binding_remaps_player_primary_fire_without_widening_input_state() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
 
     assert!(engine.set_gameplay_action_projectile(
         player.id,
@@ -391,7 +391,7 @@ fn input_action_binding_remaps_player_primary_fire_without_widening_input_state(
 fn input_action_binding_drives_player_melee_action() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     let player_t = engine.world.transform(player).unwrap();
     let enemy = engine
         .world
@@ -422,7 +422,7 @@ fn gameplay_interaction_events_drive_rust_behavior_state_machine_once_per_frame(
         &mut engine.frame_buffers.audio_events,
     );
     start_shooter_playing(&mut engine);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 100.0, y: 100.0 });
@@ -478,7 +478,7 @@ fn fixed_timestep_processes_behavior_state_machine_events_once_per_render_frame(
         &mut engine.frame_buffers.audio_events,
     );
     start_shooter_playing(&mut engine);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 100.0, y: 100.0 });
@@ -921,7 +921,7 @@ fn behavior_state_enter_dash_action_runs_next_frame_pre_physics() {
     let mut engine = Engine::new();
     start_shooter_playing(&mut engine);
     let source = engine.world.spawn_entity();
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     engine
         .world
         .set_transform(player, Transform2D { x: 400.0, y: 240.0 });

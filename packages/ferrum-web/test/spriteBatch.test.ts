@@ -39,6 +39,14 @@ class FakeWebGL2Context {
     instanceCount: number;
   }> = [];
   readonly drawArraysInstancedCalls: Array<unknown[]> = [];
+  readonly vertexAttribPointerCalls: Array<{
+    index: number;
+    size: number;
+    type: number;
+    normalized: boolean;
+    stride: number;
+    offset: number;
+  }> = [];
   readonly vertexAttribDivisorCalls: Array<{ index: number; divisor: number }> = [];
 
   private nextId = 1;
@@ -101,7 +109,16 @@ class FakeWebGL2Context {
 
   enableVertexAttribArray(): void {}
 
-  vertexAttribPointer(): void {}
+  vertexAttribPointer(
+    index: number,
+    size: number,
+    type: number,
+    normalized: boolean,
+    stride: number,
+    offset: number,
+  ): void {
+    this.vertexAttribPointerCalls.push({ index, size, type, normalized, stride, offset });
+  }
 
   vertexAttribDivisor(index: number, divisor: number): void {
     this.vertexAttribDivisorCalls.push({ index, divisor });
@@ -182,6 +199,13 @@ test("SpriteBatch uses static quad buffers with indexed instancing", () => {
     { index: 1, divisor: 1 },
     { index: 2, divisor: 1 },
     { index: 3, divisor: 1 },
+    { index: 4, divisor: 1 },
+  ]);
+  deepEqual(gl.vertexAttribPointerCalls.filter((call) => call.index > 0), [
+    { index: 1, size: 4, type: gl.FLOAT, normalized: false, stride: SPRITE_RENDER_COMMAND_FLOATS * 4, offset: 0 },
+    { index: 2, size: 4, type: gl.FLOAT, normalized: false, stride: SPRITE_RENDER_COMMAND_FLOATS * 4, offset: 16 },
+    { index: 3, size: 4, type: gl.FLOAT, normalized: false, stride: SPRITE_RENDER_COMMAND_FLOATS * 4, offset: 32 },
+    { index: 4, size: 1, type: gl.FLOAT, normalized: false, stride: SPRITE_RENDER_COMMAND_FLOATS * 4, offset: 56 },
   ]);
 
   const stats = batch.drawBatches(
@@ -221,6 +245,10 @@ test("SpriteBatch draws texture ranges as indexed instanced batches", () => {
     gl.bufferSubDataCalls.map((call) => call.values[0]),
     [10, 20, 30],
   );
+  deepEqual(
+    gl.bufferSubDataCalls.map((call) => call.values[14]),
+    [0.25, 0.5, 0.75],
+  );
 });
 
 function commandBuffer(textureIds: number[]): RenderCommandBufferView {
@@ -240,6 +268,8 @@ function commandBuffer(textureIds: number[]): RenderCommandBufferView {
     buffer[offset + 10] = 1;
     buffer[offset + 11] = 1;
     buffer[offset + 12] = textureIds[index];
+    buffer[offset + 13] = 0;
+    buffer[offset + 14] = 0.25 + index * 0.25;
   }
   return {
     buffer,

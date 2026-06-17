@@ -1,0 +1,97 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "sceneComposition": {
+    "initialFragment": "main",
+    "prefabs": {
+      "floor-tile": {
+        "props": {
+          "components": {
+            "sprite": {
+              "texture": "floor",
+              "width": 96,
+              "height": 64
+            },
+            "collider": "none",
+            "layer": "wall"
+          }
+        }
+      },
+      "crate": {
+        "props": {
+          "components": {
+            "sprite": {
+              "texture": "crate",
+              "width": 40,
+              "height": 40
+            },
+            "collider": {
+              "type": "aabb",
+              "halfWidth": 20,
+              "halfHeight": 20
+            },
+            "layer": "wall"
+          }
+        }
+      },
+      "turret": {
+        "props": {
+          "behaviorRecipes": "turret.actor",
+          "components": {
+            "sprite": {
+              "texture": "turret",
+              "width": 34,
+              "height": 42
+            },
+            "collider": {
+              "type": "aabb",
+              "halfWidth": 17,
+              "halfHeight": 21
+            },
+            "layer": "enemy"
+          }
+        }
+      },
+      "agent-marker": {
+        "props": {
+          "behaviorRecipes": "agent.actor",
+          "components": {
+            "sprite": {
+              "texture": "agent",
+              "width": 28,
+              "height": 28
+            },
+            "collider": "none",
+            "layer": "player"
+          }
+        }
+      }
+    },
+    "fragments": {
+      "main": {
+        "instances": [
+          { "id": "floor_north", "prefab": "floor-tile", "x": 760, "y": 392 },
+          { "id": "floor_south", "prefab": "floor-tile", "x": 760, "y": 520 },
+          { "id": "crate_left", "prefab": "crate", "x": 692, "y": 478 },
+          { "id": "crate_right", "prefab": "crate", "x": 868, "y": 478 },
+          { "id": "turret_left", "prefab": "turret", "x": 696, "y": 388 },
+          { "id": "agent_spawn", "prefab": "agent-marker", "x": 844, "y": 556 }
+        ]
+      }
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {
+      "turret.actor": {
+        "recipes": [
+          { "kind": "health", "max": 3, "start": 3 }
+        ]
+      },
+      "agent.actor": {
+        "recipes": [
+          { "kind": "health", "max": 5, "start": 5 }
+        ]
+      }
+    }
+  }
+}

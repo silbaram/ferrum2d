@@ -51,7 +51,7 @@ impl FrameTelemetry {
     pub(crate) fn from_engine(engine: &Engine) -> Self {
         let player_height_span = engine
             .world
-            .player_entity()
+            .primary_actor_entity()
             .and_then(|player| engine.world.height_span(player));
         let mut values = [0.0; FRAME_TELEMETRY_F64S];
         values[..FRAME_TELEMETRY_BASE_F64S].copy_from_slice(&[

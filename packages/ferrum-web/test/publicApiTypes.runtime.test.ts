@@ -928,7 +928,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     renderCommandBuffer: {
       buffer: new Float32Array(0),
       commandCount: 0,
-      floatsPerCommand: 14,
+      floatsPerCommand: 15,
     },
   });
 });

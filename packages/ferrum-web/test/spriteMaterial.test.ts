@@ -15,10 +15,10 @@ function commandBuffer(): RenderCommandBufferView {
       10, 20, 8, 8,
       0, 0, 1, 1,
       0.2, 0.4, 0.6, 0.75,
-      3, 0,
+      3, 0, 0.125,
     ]),
     commandCount: 1,
-    floatsPerCommand: 14,
+    floatsPerCommand: SPRITE_RENDER_COMMAND_FLOATS,
   };
 }
 
@@ -50,20 +50,33 @@ test("spriteMaterialPasses builds outline passes before the base sprite pass", (
 test("writeSpriteMaterialPassCommands offsets and recolors a command copy", () => {
   const pass = spriteMaterialPasses(resolveSpriteMaterialPreset("outline"))[0];
   equal(spriteMaterialPassRequiresCommandCopy(pass), true);
-  const written = writeSpriteMaterialPassCommands(commandBuffer(), 0, 1, pass, new Float32Array(14));
+  const written = writeSpriteMaterialPassCommands(
+    commandBuffer(),
+    0,
+    1,
+    pass,
+    new Float32Array(SPRITE_RENDER_COMMAND_FLOATS),
+  );
   equal(written[0], 8);
   equal(written[1], 20);
   deepEqual(Array.from(written.slice(8, 11)), [0, 0, 0]);
   ok(Math.abs(written[11] - 0.9) < 0.00001);
   equal(written[12], 3);
   equal(written[13], 0);
+  equal(written[14], 0.125);
 });
 
 test("writeSpriteMaterialPassCommands can mix flash color while preserving alpha", () => {
   const pass = spriteMaterialPasses(resolveSpriteMaterialPreset({
     colorMix: { color: [1, 1, 1, 1], amount: 0.5, preserveAlpha: true },
   }))[0];
-  const written = writeSpriteMaterialPassCommands(commandBuffer(), 0, 1, pass, new Float32Array(14));
+  const written = writeSpriteMaterialPassCommands(
+    commandBuffer(),
+    0,
+    1,
+    pass,
+    new Float32Array(SPRITE_RENDER_COMMAND_FLOATS),
+  );
   ok(Math.abs(written[8] - 0.6) < 0.00001);
   ok(Math.abs(written[9] - 0.7) < 0.00001);
   ok(Math.abs(written[10] - 0.8) < 0.00001);
@@ -102,7 +115,7 @@ test("writeSpriteMaterialPassCommands normalizes legacy 13-float commands for GP
       10, 20, 8, 8,
       0, 0, 1, 1,
       0.2, 0.4, 0.6, 0.75,
-      3, 0,
+      3, 0, 0,
     ])),
   );
   deepEqual(
@@ -111,7 +124,7 @@ test("writeSpriteMaterialPassCommands normalizes legacy 13-float commands for GP
       -4, -5, 6, 7,
       0.1, 0.2, 0.3, 0.4,
       1, 0.9, 0.8, 0.7,
-      9, 0,
+      9, 0, 0,
     ])),
   );
 });

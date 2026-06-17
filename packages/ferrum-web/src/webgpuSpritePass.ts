@@ -103,6 +103,7 @@ export class WebGpuSpritePass {
           @location(0) rect: vec4f,
           @location(1) uvRect: vec4f,
           @location(2) color: vec4f,
+          @location(3) rotation: f32,
           @builtin(vertex_index) vertexIndex: u32,
         };
 
@@ -124,7 +125,14 @@ export class WebGpuSpritePass {
         @vertex
         fn vs_main(input: VertexInput) -> VertexOutput {
           let corner = cornerForVertex(input.vertexIndex % 6u);
-          let pixelPosition = input.rect.xy + corner * input.rect.zw;
+          let local = (corner - vec2f(0.5, 0.5)) * input.rect.zw;
+          let rotationCos = cos(input.rotation);
+          let rotationSin = sin(input.rotation);
+          let rotated = vec2f(
+            local.x * rotationCos - local.y * rotationSin,
+            local.x * rotationSin + local.y * rotationCos,
+          );
+          let pixelPosition = input.rect.xy + input.rect.zw * 0.5 + rotated;
           let zeroToOne = pixelPosition / resolution.size;
           let clip = zeroToOne * 2.0 - vec2f(1.0, 1.0);
           var output: VertexOutput;
@@ -153,6 +161,7 @@ export class WebGpuSpritePass {
             { shaderLocation: 0, offset: 0, format: "float32x4" },
             { shaderLocation: 1, offset: 4 * BYTES_PER_F32, format: "float32x4" },
             { shaderLocation: 2, offset: 8 * BYTES_PER_F32, format: "float32x4" },
+            { shaderLocation: 3, offset: 14 * BYTES_PER_F32, format: "float32" },
           ],
         }],
       },

@@ -750,6 +750,8 @@ export async function createEngineWithFramePipeline(
       const ok = rustEngine.spawn_data_scene_entity(
         request.x,
         request.y,
+        finiteNumber(request.rotationRadians, "dataSceneRuntimeTarget.rotationRadians"),
+        int32Number(request.renderLayer, "dataSceneRuntimeTarget.renderLayer"),
         uint32Number(request.textureId, "dataSceneRuntimeTarget.textureId"),
         request.spriteWidth,
         request.spriteHeight,
@@ -803,6 +805,13 @@ function positiveUint32Number(value: number, label: string): number {
     throw new Error(`${label} must be greater than 0.`);
   }
   return integer;
+}
+
+function int32Number(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < -0x80000000 || value > 0x7fffffff) {
+    throw new Error(`${label} must be an integer between -2147483648 and 2147483647.`);
+  }
+  return value;
 }
 
 function positiveFiniteNumber(value: number, label: string): number {

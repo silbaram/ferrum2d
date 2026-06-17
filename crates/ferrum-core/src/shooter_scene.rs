@@ -41,7 +41,7 @@ const SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S: usize = 4;
 pub const SHOOTER_SNAPSHOT_HEADER_U32S: usize = SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
     + INPUT_ACTION_REGISTRY_SNAPSHOT_U32S
     + SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S
-    + config::SHOOTER_PREFAB_REGISTRY_SNAPSHOT_U32S
+    + config::GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S
     + GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S;
 pub const SHOOTER_SNAPSHOT_ENTITY_FLOATS: usize = 131;
 pub const SHOOTER_SNAPSHOT_ENTITY_U32S: usize = 117;
@@ -62,8 +62,8 @@ use config::{
     SoundIds, TextureIds,
 };
 pub(crate) use config::{
-    EnemyBehavior, EnemySpawnPattern, ShooterAudioPolicy, ShooterConfig, ShooterPrefabKind,
-    ShooterPrefabRegistration, ShooterPrefabResolvedComponents, ShooterPrefabTextureSlot,
+    EnemyBehavior, EnemySpawnPattern, GameplayPrefabRegistration, GameplayPrefabResolvedComponents,
+    ShooterAudioPolicy, ShooterConfig, ShooterPrefabKind, ShooterPrefabTextureSlot,
     ShooterProjectileArcConfig, ShooterWaveConfig,
 };
 pub(crate) use runtime::{ActionTriggerCommand, ParticleBurstSink, TweenSink};
@@ -300,21 +300,21 @@ impl ShooterScene {
     pub(crate) fn resolve_spawn_prefab_registration(
         &self,
         prefab_id: u32,
-    ) -> Option<ShooterPrefabRegistration> {
+    ) -> Option<GameplayPrefabRegistration> {
         self.config.resolve_spawn_prefab(prefab_id)
     }
 
     pub(crate) fn resolve_spawn_prefab_components(
         &self,
-        registration: ShooterPrefabRegistration,
-    ) -> ShooterPrefabResolvedComponents {
+        registration: GameplayPrefabRegistration,
+    ) -> GameplayPrefabResolvedComponents {
         self.config.resolve_spawn_prefab_components(registration)
     }
 
     pub(crate) fn resolve_builtin_prefab_components(
         &self,
         kind: ShooterPrefabKind,
-    ) -> ShooterPrefabResolvedComponents {
+    ) -> GameplayPrefabResolvedComponents {
         self.config.resolve_builtin_prefab_components(kind)
     }
 
@@ -702,7 +702,7 @@ impl ShooterScene {
     }
 
     pub fn update_camera_follow(&self, world: &World, camera: &mut Camera2D) {
-        let Some(player) = world.player_entity() else {
+        let Some(player) = world.primary_actor_entity() else {
             return;
         };
         let Some(player_t) = world.transform(player) else {

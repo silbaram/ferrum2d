@@ -1,5 +1,7 @@
 use super::World;
-use crate::components::gameplay::{GameplayFaction, GameplayTags, GAMEPLAY_TAG_MAX_ID};
+use crate::components::gameplay::{
+    GameplayFaction, GameplayTags, GAMEPLAY_TAG_MAX_ID, GAMEPLAY_TAG_PRIMARY_ACTOR,
+};
 
 impl World {
     pub(crate) fn gameplay_faction_indices(&self, faction_id: u32) -> &[usize] {
@@ -35,6 +37,7 @@ impl World {
 
     pub(crate) fn set_gameplay_tags_at_index(&mut self, index: usize, tags: GameplayTags) {
         self.clear_gameplay_tags_at_index(index);
+        let tags = self.with_engine_gameplay_markers_at_index(index, tags);
         self.gameplay_tags[index] = Some(tags);
         for tag_id in 0..=GAMEPLAY_TAG_MAX_ID {
             if tags.contains(tag_id) {
@@ -90,6 +93,22 @@ impl World {
     #[cfg(test)]
     pub(crate) fn gameplay_tag_query_indices(&self, tag_id: u32) -> &[usize] {
         self.gameplay_tag_indices(tag_id)
+    }
+}
+
+impl World {
+    fn with_engine_gameplay_markers_at_index(
+        &self,
+        index: usize,
+        tags: GameplayTags,
+    ) -> GameplayTags {
+        let Some(primary_actor) = self.primary_actor else {
+            return tags;
+        };
+        if primary_actor.id as usize == index && self.is_current_entity(primary_actor) {
+            return tags.with_tag(GAMEPLAY_TAG_PRIMARY_ACTOR);
+        }
+        tags
     }
 }
 

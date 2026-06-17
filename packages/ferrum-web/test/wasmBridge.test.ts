@@ -8,14 +8,14 @@ test("decodeRenderCommands parses packed sprite command floats", () => {
       10, 20, 30, 40,
       0, 0.25, 0.5, 1,
       0.125, 0.25, 0.5, 1,
-      7, 1,
+      7, 1, 0.25,
       -1, -2, 3, 4,
       0.5, 0.5, 1, 1,
       1, 0.875, 0.75, 0.625,
-      3, 2,
+      3, 2, -0.5,
     ]),
     commandCount: 2,
-    floatsPerCommand: 14,
+    floatsPerCommand: 15,
   };
 
   const commands = decodeRenderCommands(view);
@@ -30,6 +30,7 @@ test("decodeRenderCommands parses packed sprite command floats", () => {
     color: [0.125, 0.25, 0.5, 1],
     textureId: 7,
     effectFlags: 1,
+    rotationRadians: 0.25,
   });
   deepEqual(commands[1], {
     x: -1,
@@ -40,10 +41,11 @@ test("decodeRenderCommands parses packed sprite command floats", () => {
     color: [1, 0.875, 0.75, 0.625],
     textureId: 3,
     effectFlags: 2,
+    rotationRadians: -0.5,
   });
 });
 
-test("decodeRenderCommands defaults effectFlags for legacy 13-float commands", () => {
+test("decodeRenderCommands defaults effectFlags and rotation for legacy 13-float commands", () => {
   const view: RenderCommandBufferView = {
     buffer: new Float32Array([
       10, 20, 30, 40,
@@ -63,4 +65,24 @@ test("decodeRenderCommands defaults effectFlags for legacy 13-float commands", (
 
   equal(commands[0]?.effectFlags, 0);
   equal(commands[1]?.effectFlags, 0);
+  equal(commands[0]?.rotationRadians, 0);
+  equal(commands[1]?.rotationRadians, 0);
+});
+
+test("decodeRenderCommands defaults rotation for legacy 14-float commands", () => {
+  const view: RenderCommandBufferView = {
+    buffer: new Float32Array([
+      10, 20, 30, 40,
+      0, 0.25, 0.5, 1,
+      0.125, 0.25, 0.5, 1,
+      7, 1,
+    ]),
+    commandCount: 1,
+    floatsPerCommand: 14,
+  };
+
+  const commands = decodeRenderCommands(view);
+
+  equal(commands[0]?.effectFlags, 1);
+  equal(commands[0]?.rotationRadians, 0);
 });

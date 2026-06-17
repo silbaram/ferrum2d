@@ -27,7 +27,7 @@ pub use motion::{AngularVelocity, Rotation2D, Transform2D, Velocity};
 pub use rigid_body::{RigidBody, RigidBodyCcdDebugHit, RigidBodyType, RigidContactImpulse};
 pub use sprite::{
     Sprite, SpriteAnimation, SpriteAnimationFrameSequence, SpriteAnimationKind,
-    SpriteAnimationState, SpriteFrame, MAX_SPRITE_ANIMATION_FRAMES,
+    SpriteAnimationState, SpriteFrame, DEFAULT_SPRITE_RENDER_LAYER, MAX_SPRITE_ANIMATION_FRAMES,
 };
 
 #[cfg(test)]

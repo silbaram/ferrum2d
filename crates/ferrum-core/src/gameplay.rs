@@ -2326,8 +2326,8 @@ pub(crate) struct MovementNavigationSource {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum MovementNavigationTargetIdentity {
-    Player,
-    NearestPlayer,
+    PrimaryActor,
+    NearestPrimaryActor,
     NearestEnemy,
     NearestLayer(CollisionLayer),
     NearestFaction(u32),
@@ -2403,8 +2403,10 @@ pub(crate) fn movement_navigation_target_identity(
     target: MovementTarget,
 ) -> MovementNavigationTargetIdentity {
     match target {
-        MovementTarget::Player => MovementNavigationTargetIdentity::Player,
-        MovementTarget::NearestPlayer => MovementNavigationTargetIdentity::NearestPlayer,
+        MovementTarget::PrimaryActor => MovementNavigationTargetIdentity::PrimaryActor,
+        MovementTarget::NearestPrimaryActor => {
+            MovementNavigationTargetIdentity::NearestPrimaryActor
+        }
         MovementTarget::NearestEnemy => MovementNavigationTargetIdentity::NearestEnemy,
         MovementTarget::NearestLayer(layer) => {
             MovementNavigationTargetIdentity::NearestLayer(layer)
@@ -2748,7 +2750,7 @@ pub(crate) struct DefaultMovementPatternConfig {
 pub(crate) fn default_movement_pattern(config: DefaultMovementPatternConfig) -> MovementPattern {
     match config.kind {
         DefaultMovementPatternKind::ChasePlayer => MovementPattern::Chase {
-            target: MovementTarget::Player,
+            target: MovementTarget::PrimaryActor,
             speed: config.speed,
         },
         DefaultMovementPatternKind::MoveToWorldCenter => MovementPattern::MoveToPoint {
@@ -2758,7 +2760,7 @@ pub(crate) fn default_movement_pattern(config: DefaultMovementPatternConfig) -> 
         },
         DefaultMovementPatternKind::Static => MovementPattern::Static,
         DefaultMovementPatternKind::OrbitPlayer => MovementPattern::Orbit {
-            target: MovementTarget::Player,
+            target: MovementTarget::PrimaryActor,
             speed: config.speed,
             radius: config.orbit_radius,
             radial_band: config.orbit_radial_band,
@@ -3191,12 +3193,14 @@ pub(crate) fn topdown_input_velocity(input: InputState, speed: f32) -> Velocity 
 
 fn movement_target_transform_from(
     world: &World,
-    player_transform: Option<Transform2D>,
+    primary_actor_transform: Option<Transform2D>,
     source_transform: Transform2D,
     target: MovementTarget,
 ) -> Option<Transform2D> {
     match target {
-        MovementTarget::Player | MovementTarget::NearestPlayer => player_transform,
+        MovementTarget::PrimaryActor | MovementTarget::NearestPrimaryActor => {
+            primary_actor_transform
+        }
         MovementTarget::NearestEnemy => {
             nearest_layer_transform(world, source_transform, CollisionLayer::Enemy)
         }
@@ -10270,7 +10274,7 @@ mod tests {
         assert_eq!(
             default_movement_pattern(base),
             MovementPattern::Chase {
-                target: MovementTarget::Player,
+                target: MovementTarget::PrimaryActor,
                 speed: 7.0,
             },
         );
@@ -10298,7 +10302,7 @@ mod tests {
                 ..base
             }),
             MovementPattern::Orbit {
-                target: MovementTarget::Player,
+                target: MovementTarget::PrimaryActor,
                 speed: 7.0,
                 radius: 32.0,
                 radial_band: 6.0,
@@ -10335,7 +10339,7 @@ mod tests {
                 player_transform,
                 navigation_policy,
                 fallback_pattern: MovementPattern::Orbit {
-                    target: MovementTarget::Player,
+                    target: MovementTarget::PrimaryActor,
                     speed: 7.0,
                     radius: 32.0,
                     radial_band: 6.0,
@@ -10378,12 +10382,12 @@ mod tests {
                 transform,
                 None,
                 MovementPattern::Chase {
-                    target: MovementTarget::NearestPlayer,
+                    target: MovementTarget::NearestPrimaryActor,
                     speed: 9.0,
                 },
             ),
             Some(MovementPatternEvaluation::Chase {
-                target: MovementTarget::NearestPlayer,
+                target: MovementTarget::NearestPrimaryActor,
                 target_transform: Transform2D { x: 30.0, y: 8.0 },
                 speed: 9.0,
             }),
@@ -10567,7 +10571,7 @@ mod tests {
             resolve_movement_navigation_target(
                 &mut caches,
                 source,
-                MovementNavigationTargetIdentity::Player,
+                MovementNavigationTargetIdentity::PrimaryActor,
                 target,
                 0.25,
                 4.0,
@@ -10583,7 +10587,7 @@ mod tests {
             resolve_movement_navigation_target(
                 &mut caches,
                 source,
-                MovementNavigationTargetIdentity::Player,
+                MovementNavigationTargetIdentity::PrimaryActor,
                 target,
                 0.25,
                 4.0,
@@ -10601,7 +10605,7 @@ mod tests {
             resolve_movement_navigation_target(
                 &mut caches,
                 source,
-                MovementNavigationTargetIdentity::Player,
+                MovementNavigationTargetIdentity::PrimaryActor,
                 target,
                 0.25,
                 4.0,
@@ -10627,7 +10631,7 @@ mod tests {
         let mut caches = vec![None; 2];
         caches[1] = Some(MovementNavigationTargetCache {
             generation: 3,
-            target_identity: MovementNavigationTargetIdentity::Player,
+            target_identity: MovementNavigationTargetIdentity::PrimaryActor,
             target: waypoint,
             remaining_seconds: 0.25,
         });
@@ -10650,7 +10654,7 @@ mod tests {
 
         caches[1] = Some(MovementNavigationTargetCache {
             generation: 99,
-            target_identity: MovementNavigationTargetIdentity::Player,
+            target_identity: MovementNavigationTargetIdentity::PrimaryActor,
             target: waypoint,
             remaining_seconds: 0.25,
         });
@@ -10658,7 +10662,7 @@ mod tests {
             resolve_movement_navigation_target(
                 &mut caches,
                 source,
-                MovementNavigationTargetIdentity::Player,
+                MovementNavigationTargetIdentity::PrimaryActor,
                 target,
                 0.25,
                 4.0,
@@ -10669,7 +10673,7 @@ mod tests {
 
         caches[1] = Some(MovementNavigationTargetCache {
             generation: 3,
-            target_identity: MovementNavigationTargetIdentity::Player,
+            target_identity: MovementNavigationTargetIdentity::PrimaryActor,
             target: Transform2D { x: 1.0, y: 1.0 },
             remaining_seconds: 0.25,
         });
@@ -10677,7 +10681,7 @@ mod tests {
             resolve_movement_navigation_target(
                 &mut caches,
                 source,
-                MovementNavigationTargetIdentity::Player,
+                MovementNavigationTargetIdentity::PrimaryActor,
                 target,
                 0.25,
                 4.0,
@@ -11332,7 +11336,7 @@ mod tests {
                 reached_distance_squared: 0.01,
             },
             fallback_pattern: MovementPattern::Chase {
-                target: MovementTarget::Player,
+                target: MovementTarget::PrimaryActor,
                 speed: 10.0,
             },
         };

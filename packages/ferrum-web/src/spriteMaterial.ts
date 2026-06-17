@@ -1,6 +1,6 @@
 import type { RenderCommandBufferView } from "./renderCommandDecoder";
 
-export const SPRITE_RENDER_COMMAND_FLOATS = 14;
+export const SPRITE_RENDER_COMMAND_FLOATS = 15;
 const LEGACY_SPRITE_RENDER_COMMAND_FLOATS = 13;
 
 export type SpriteMaterialPresetName = "unlit" | "flash" | "additive" | "outline";
@@ -234,6 +234,9 @@ function writeCanonicalSpriteCommand(
   target[targetOffset + 12] = source[sourceOffset + 12];
   target[targetOffset + 13] = sourceFloatsPerCommand > LEGACY_SPRITE_RENDER_COMMAND_FLOATS
     ? source[sourceOffset + 13]
+    : 0;
+  target[targetOffset + 14] = sourceFloatsPerCommand > 14
+    ? source[sourceOffset + 14]
     : 0;
 }
 

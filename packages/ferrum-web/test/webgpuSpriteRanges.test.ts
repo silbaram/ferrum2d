@@ -4,7 +4,7 @@ import type { RenderCommandBufferView } from "../src/renderCommandDecoder.js";
 import { spriteRanges } from "../src/webgpuSpriteRanges.js";
 import type { WebGpuSpriteRange } from "../src/webgpuSpriteRanges.js";
 
-const FLOATS_PER_COMMAND = 14;
+const FLOATS_PER_COMMAND = 15;
 const LEGACY_FLOATS_PER_COMMAND = 13;
 const SPRITE_TEXTURE_ID_FIELD = 12;
 

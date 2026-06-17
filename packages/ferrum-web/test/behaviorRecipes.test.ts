@@ -26,14 +26,14 @@ function sampleRecipes(): BehaviorRecipeDocumentSpec {
           "enemyFaction",
           "shortLived",
           "killReward",
-          { kind: "chase", target: "player", speed: 96, stopDistance: 18 },
-          { kind: "chase", target: "nearestPlayer", speed: 84, stopDistance: 0 },
+          { kind: "chase", target: "primaryActor", speed: 96, stopDistance: 18 },
+          { kind: "chase", target: "nearestPrimaryActor", speed: 84, stopDistance: 0 },
           { kind: "chase", target: "nearestEnemy", speed: 72, stopDistance: 0 },
           { kind: "chase", target: "nearestLayer:bullet", speed: 60, stopDistance: 0 },
           { kind: "chase", target: "nearestFaction:enemy", speed: 54, stopDistance: 0 },
           { kind: "chase", target: "nearestTag:hostile", speed: 52, stopDistance: 0 },
-          { kind: "seekTarget", target: "player", speed: 220, turnRate: 4 },
-          { kind: "seekTarget", target: "nearestPlayer", speed: 200, turnRate: 3 },
+          { kind: "seekTarget", target: "primaryActor", speed: 220, turnRate: 4 },
+          { kind: "seekTarget", target: "nearestPrimaryActor", speed: 200, turnRate: 3 },
           { kind: "seekTarget", target: "nearestEnemy", speed: 180, turnRate: 2 },
           { kind: "seekTarget", target: "nearestLayer:pickup", speed: 160, turnRate: 1.5 },
           { kind: "seekTarget", target: "nearestFaction:7", speed: 150, turnRate: 1.25 },
@@ -105,12 +105,17 @@ test("behaviorRecipeCommandsForEntity emits runtime adapter commands", () => {
   }
   const chase = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["chase"] })[0];
   equal(chase.type, "configureChase");
-  const chaseNearestPlayer = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["chase"] })[1];
-  equal(chaseNearestPlayer.type, "configureChase");
-  if (chaseNearestPlayer.type === "configureChase") {
-    equal(chaseNearestPlayer.target, "nearestPlayer");
-    equal(chaseNearestPlayer.speed, 84);
-    equal(chaseNearestPlayer.stopDistance, 0);
+  if (chase.type === "configureChase") {
+    equal(chase.target, "primaryActor");
+    equal(chase.speed, 96);
+    equal(chase.stopDistance, 18);
+  }
+  const chaseNearestPrimaryActor = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["chase"] })[1];
+  equal(chaseNearestPrimaryActor.type, "configureChase");
+  if (chaseNearestPrimaryActor.type === "configureChase") {
+    equal(chaseNearestPrimaryActor.target, "nearestPrimaryActor");
+    equal(chaseNearestPrimaryActor.speed, 84);
+    equal(chaseNearestPrimaryActor.stopDistance, 0);
   }
   const chaseQueryPreset = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["chase"] })[2];
   equal(chaseQueryPreset.type, "configureChase");
@@ -143,16 +148,16 @@ test("behaviorRecipeCommandsForEntity emits runtime adapter commands", () => {
   const seekTarget = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["seekTarget"] })[0];
   equal(seekTarget.type, "configureSeekTarget");
   if (seekTarget.type === "configureSeekTarget") {
-    equal(seekTarget.target, "player");
+    equal(seekTarget.target, "primaryActor");
     equal(seekTarget.speed, 220);
     equal(seekTarget.turnRate, 4);
   }
-  const seekTargetNearestPlayer = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["seekTarget"] })[1];
-  equal(seekTargetNearestPlayer.type, "configureSeekTarget");
-  if (seekTargetNearestPlayer.type === "configureSeekTarget") {
-    equal(seekTargetNearestPlayer.target, "nearestPlayer");
-    equal(seekTargetNearestPlayer.speed, 200);
-    equal(seekTargetNearestPlayer.turnRate, 3);
+  const seekTargetNearestPrimaryActor = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["seekTarget"] })[1];
+  equal(seekTargetNearestPrimaryActor.type, "configureSeekTarget");
+  if (seekTargetNearestPrimaryActor.type === "configureSeekTarget") {
+    equal(seekTargetNearestPrimaryActor.target, "nearestPrimaryActor");
+    equal(seekTargetNearestPrimaryActor.speed, 200);
+    equal(seekTargetNearestPrimaryActor.turnRate, 3);
   }
   const seekTargetQueryPreset = behaviorRecipeCommandsForEntity(sampleRecipes(), "enemy", { kinds: ["seekTarget"] })[2];
   equal(seekTargetQueryPreset.type, "configureSeekTarget");
@@ -357,6 +362,60 @@ test("behaviorRecipeCommandsForEntity emits runtime adapter commands", () => {
   if (timer.type === "configureTimerTrigger") {
     equal(timer.timerId, 6);
     equal(timer.seconds, 0.5);
+  }
+});
+
+test("movement recipes default to the primary actor target", () => {
+  const commands = behaviorRecipeCommandsForEntity({
+    entities: {
+      enemy: {
+        recipes: [
+          { kind: "chase" },
+          { kind: "seekTarget" },
+        ],
+      },
+    },
+  }, "enemy");
+
+  equal(commands[0]?.type, "configureChase");
+  if (commands[0]?.type === "configureChase") {
+    equal(commands[0].target, "primaryActor");
+  }
+  equal(commands[1]?.type, "configureSeekTarget");
+  if (commands[1]?.type === "configureSeekTarget") {
+    equal(commands[1].target, "primaryActor");
+  }
+});
+
+test("movement recipes keep legacy player target aliases", () => {
+  const commands = behaviorRecipeCommandsForEntity({
+    entities: {
+      enemy: {
+        recipes: [
+          { kind: "chase", target: "player" },
+          { kind: "chase", target: "nearestPlayer" },
+          { kind: "seekTarget", target: "player" },
+          { kind: "seekTarget", target: "nearestPlayer" },
+        ],
+      },
+    },
+  }, "enemy");
+
+  equal(commands[0]?.type, "configureChase");
+  if (commands[0]?.type === "configureChase") {
+    equal(commands[0].target, "player");
+  }
+  equal(commands[1]?.type, "configureChase");
+  if (commands[1]?.type === "configureChase") {
+    equal(commands[1].target, "nearestPlayer");
+  }
+  equal(commands[2]?.type, "configureSeekTarget");
+  if (commands[2]?.type === "configureSeekTarget") {
+    equal(commands[2].target, "player");
+  }
+  equal(commands[3]?.type, "configureSeekTarget");
+  if (commands[3]?.type === "configureSeekTarget") {
+    equal(commands[3].target, "nearestPlayer");
   }
 });
 

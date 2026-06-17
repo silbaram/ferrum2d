@@ -64,7 +64,9 @@
               "authoringSurface": {
                 "publicApis": {
                   "applySceneBehaviorRecipes": true,
+                  "classifySceneInstance": true,
                   "dryRunSceneBehaviorRecipes": true,
+                  "previewScenePlacementBindingMigration": true,
                   "resolveSceneCompositionSpec": true,
                   "resolveBehaviorRecipeDocument": true
                 },
@@ -94,9 +96,9 @@
               }
             }
           },
-          "snapshotHash": "69cd092f"
+          "snapshotHash": "a5e62fc8"
         },
-        "replayHash": "69cd092f"
+        "replayHash": "a5e62fc8"
       },
       {
         "frame": 1,
@@ -150,7 +152,9 @@
               "authoringSurface": {
                 "publicApis": {
                   "applySceneBehaviorRecipes": true,
+                  "classifySceneInstance": true,
                   "dryRunSceneBehaviorRecipes": true,
+                  "previewScenePlacementBindingMigration": true,
                   "resolveSceneCompositionSpec": true,
                   "resolveBehaviorRecipeDocument": true
                 },
@@ -180,11 +184,11 @@
               }
             }
           },
-          "snapshotHash": "80351575"
+          "snapshotHash": "0179c48e"
         },
-        "replayHash": "80351575"
+        "replayHash": "0179c48e"
       }
     ],
-    "replayHash": "f59df8f2"
+    "replayHash": "41b34270"
   }
 }

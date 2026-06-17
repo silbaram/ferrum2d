@@ -8,7 +8,7 @@ use crate::components::gameplay::{
 };
 use crate::components::{
     AabbCollider, CapsuleCollider, CircleCollider, CollisionLayer, ConvexPolygonCollider,
-    EdgeCollider, OrientedBoxCollider, Sprite, Transform2D, Velocity,
+    EdgeCollider, OrientedBoxCollider, Sprite, Transform2D, Velocity, DEFAULT_SPRITE_RENDER_LAYER,
 };
 use crate::entity::Entity;
 
@@ -48,6 +48,8 @@ pub(crate) struct PrefabEntitySpawnRequest {
     pub(crate) texture_id: u32,
     pub(crate) template: EntityTemplate,
     pub(crate) layer: CollisionLayer,
+    pub(crate) sprite_rotation_radians: f32,
+    pub(crate) render_layer: i32,
     pub(crate) sprite_tint: PrefabSpriteTint,
     pub(crate) lifetime_seconds: Option<f32>,
     pub(crate) projectile_policy: Option<ProjectilePolicy>,
@@ -55,7 +57,7 @@ pub(crate) struct PrefabEntitySpawnRequest {
     pub(crate) damage: Option<f32>,
     pub(crate) health: Option<f32>,
     pub(crate) score_reward: Option<u32>,
-    pub(crate) player_marker: bool,
+    pub(crate) primary_actor_marker: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -92,6 +94,8 @@ impl World {
                 texture_id,
                 template,
                 layer: CollisionLayer::Player,
+                sprite_rotation_radians: 0.0,
+                render_layer: DEFAULT_SPRITE_RENDER_LAYER,
                 sprite_tint: PrefabSpriteTint::PLAYER,
                 lifetime_seconds: None,
                 projectile_policy: None,
@@ -99,7 +103,7 @@ impl World {
                 damage: None,
                 health: None,
                 score_reward: None,
-                player_marker: true,
+                primary_actor_marker: true,
             },
         );
         e
@@ -127,6 +131,8 @@ impl World {
                 texture_id,
                 template,
                 layer: CollisionLayer::Enemy,
+                sprite_rotation_radians: 0.0,
+                render_layer: DEFAULT_SPRITE_RENDER_LAYER,
                 sprite_tint: PrefabSpriteTint::ENEMY,
                 lifetime_seconds: None,
                 projectile_policy: None,
@@ -134,7 +140,7 @@ impl World {
                 damage: None,
                 health: Some(health),
                 score_reward: Some(score_reward),
-                player_marker: false,
+                primary_actor_marker: false,
             },
         );
         e
@@ -198,6 +204,8 @@ impl World {
                 texture_id: request.texture_id,
                 template: request.template,
                 layer: CollisionLayer::Bullet,
+                sprite_rotation_radians: 0.0,
+                render_layer: DEFAULT_SPRITE_RENDER_LAYER,
                 sprite_tint: PrefabSpriteTint::PROJECTILE,
                 lifetime_seconds: Some(request.lifetime),
                 projectile_policy: Some(ProjectilePolicy::new(
@@ -208,7 +216,7 @@ impl World {
                 damage: Some(request.damage),
                 health: None,
                 score_reward: None,
-                player_marker: false,
+                primary_actor_marker: false,
             },
         );
         e
@@ -246,6 +254,8 @@ impl World {
             g: request.sprite_tint.g,
             b: request.sprite_tint.b,
             a: request.sprite_tint.a,
+            rotation_radians: request.sprite_rotation_radians,
+            render_layer: request.render_layer,
         });
         self.sprite_animations[i] = request.template.animation;
         self.velocities[i] = request.velocity;
@@ -264,8 +274,8 @@ impl World {
         self.damages[i] = request.damage;
         self.healths[i] = request.health;
         self.score_rewards[i] = request.score_reward;
-        if request.player_marker {
-            self.player = Some(entity);
+        if request.primary_actor_marker {
+            self.set_primary_actor_entity(entity);
         }
     }
 

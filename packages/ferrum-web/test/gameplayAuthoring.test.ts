@@ -205,8 +205,18 @@ class MockGameplayEngine implements GameplayBehaviorRuntimeEngine, FactionRelati
     return this.consumeResult();
   }
 
+  set_gameplay_movement_chase_primary_actor(...args: [number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_chase_primary_actor", ...args]);
+    return this.consumeResult();
+  }
+
   set_gameplay_movement_chase_nearest_player(...args: [number, number, number]): boolean {
     this.calls.push(["set_gameplay_movement_chase_nearest_player", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_chase_nearest_primary_actor(...args: [number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_chase_nearest_primary_actor", ...args]);
     return this.consumeResult();
   }
 
@@ -240,8 +250,18 @@ class MockGameplayEngine implements GameplayBehaviorRuntimeEngine, FactionRelati
     return this.consumeResult();
   }
 
+  set_gameplay_movement_seek_target_primary_actor(...args: [number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_seek_target_primary_actor", ...args]);
+    return this.consumeResult();
+  }
+
   set_gameplay_movement_seek_target_nearest_player(...args: [number, number, number, number]): boolean {
     this.calls.push(["set_gameplay_movement_seek_target_nearest_player", ...args]);
+    return this.consumeResult();
+  }
+
+  set_gameplay_movement_seek_target_nearest_primary_actor(...args: [number, number, number, number]): boolean {
+    this.calls.push(["set_gameplay_movement_seek_target_nearest_primary_actor", ...args]);
     return this.consumeResult();
   }
 
@@ -528,7 +548,7 @@ function sampleRecipes(): BehaviorRecipeDocumentSpec {
         recipes: [
           "living",
           "bulletTtl",
-          { kind: "chase", target: "player", speed: 80, stopDistance: 0 },
+          { kind: "chase", target: "primaryActor", speed: 80, stopDistance: 0 },
           { kind: "projectileAction", action: "primary", cooldownSeconds: 0.12, speed: 420, damage: 2, lifetimeSeconds: 1.4 },
           { kind: "meleeAction", action: "slash", cooldownSeconds: 0.35, range: 36, damage: 3 },
         ],
@@ -628,6 +648,105 @@ test("classifySceneInstance derives world object and actor authoring roles", () 
   );
 });
 
+test("agent-attached behavior recipes stay targeted to selected placed instance ids", () => {
+  const baseComposition: SceneCompositionSpec = {
+    initialFragment: "main",
+    prefabs: {
+      turret: {
+        props: {
+          kind: "placement",
+        },
+      },
+      crate: {
+        props: {
+          kind: "placement",
+        },
+      },
+    },
+    fragments: {
+      main: {
+        instances: [
+          { id: "turret_left", prefab: "turret", x: 96, y: 128 },
+          { id: "crate_right", prefab: "crate", x: 192, y: 128 },
+        ],
+      },
+    },
+  };
+  const agentAttachedComposition: SceneCompositionSpec = {
+    ...baseComposition,
+    prefabs: {
+      ...baseComposition.prefabs,
+      turret: {
+        props: {
+          ...baseComposition.prefabs.turret?.props,
+          behaviorRecipes: "turret.autofire",
+        },
+      },
+    },
+  };
+  const agentRecipes: BehaviorRecipeDocumentSpec = {
+    entities: {
+      "turret.autofire": {
+        recipes: [
+          { kind: "health", max: 3 },
+          {
+            kind: "projectileAction",
+            action: "primary",
+            actionId: 1,
+            cooldownSeconds: 0.25,
+            speed: 320,
+            damage: 1,
+            lifetimeSeconds: 1,
+          },
+        ],
+      },
+    },
+  };
+
+  const dryRun = dryRunSceneBehaviorRecipes(agentAttachedComposition, agentRecipes, {
+    missingBehavior: "ignore",
+    requireExplicitInstanceIds: true,
+  });
+
+  equal(dryRun.ok, true);
+  if (dryRun.ok) {
+    deepEqual(dryRun.plan.instances.map((instance) => `${instance.id}:${classifySceneInstance(instance).kind}`), [
+      "turret_left:actor",
+      "crate_right:worldObject",
+    ]);
+    deepEqual(classifySceneInstance(dryRun.plan.instances[0]!).behaviorProfiles, ["turret.autofire"]);
+    deepEqual(dryRun.plan.commands.map((command) => `${command.entity}:${command.type}`), [
+      "turret_left:configureHealth",
+      "turret_left:configureProjectileAction",
+    ]);
+  }
+  equal(baseComposition.prefabs.turret?.props?.behaviorRecipes, undefined);
+
+  const engine = new MockGameplayEngine();
+  const registry = createSceneInstanceHandleRegistry();
+  const result = applySceneBehaviorRecipes(engine, {
+    spawnSceneInstance(instance) {
+      return {
+        entityId: instance.id === "turret_left" ? 8 : 9,
+        entityGeneration: 0,
+      };
+    },
+  }, agentAttachedComposition, agentRecipes, {
+    instanceHandleRegistry: registry,
+    missingBehavior: "ignore",
+    requireExplicitInstanceIds: true,
+  });
+
+  equal(result.entityHandles.turret_left?.entityId, 8);
+  equal(result.entityHandles.crate_right?.entityId, 9);
+  equal(registry.require("turret_left").entityId, 8);
+  equal(registry.require("crate_right").entityId, 9);
+  deepEqual(engine.calls, [
+    ["set_gameplay_health", 8, 0, 3],
+    ["set_gameplay_action_projectile", 8, 0, 1, 0.25, 320, 1, 1],
+  ]);
+});
+
 test("dryRunSceneBehaviorRecipes returns structured diagnostics for invalid bindings", () => {
   const unknownProfile = dryRunSceneBehaviorRecipes({
     prefabs: {
@@ -677,12 +796,12 @@ test("applyGameplayBehaviorCommands applies supported gameplay component command
   deepEqual(engine.calls, [
     ["set_gameplay_health", 1, 10, 2],
     ["set_gameplay_lifetime", 1, 10, 0.75],
-    ["set_gameplay_movement_chase_player", 1, 10, 80],
+    ["set_gameplay_movement_chase_primary_actor", 1, 10, 80],
     ["set_gameplay_action_projectile", 1, 10, 1, 0.12, 420, 2, 1.4],
     ["set_gameplay_action_melee", 1, 10, 3, 0.35, 36, 3],
     ["set_gameplay_health", 2, 20, 2],
     ["set_gameplay_lifetime", 2, 20, 0.75],
-    ["set_gameplay_movement_chase_player", 2, 20, 80],
+    ["set_gameplay_movement_chase_primary_actor", 2, 20, 80],
     ["set_gameplay_action_projectile", 2, 20, 1, 0.12, 420, 2, 1.4],
     ["set_gameplay_action_melee", 2, 20, 3, 0.35, 36, 3],
     ["set_gameplay_damage_reaction", 2, 20, 2, 1],
@@ -984,11 +1103,29 @@ test("applyGameplayBehaviorCommands supports chase entity targets and self damag
   const result = applyGameplayBehaviorCommands(engine, [
     {
       entity: "enemy",
+      recipe: "followPrimaryActor",
+      tags: [],
+      type: "configureChase",
+      target: "primaryActor",
+      speed: 76,
+      stopDistance: 0,
+    },
+    {
+      entity: "enemy",
       recipe: "followNearestPlayer",
       tags: [],
       type: "configureChase",
       target: "nearestPlayer",
       speed: 72,
+      stopDistance: 0,
+    },
+    {
+      entity: "enemy",
+      recipe: "followNearestPrimaryActor",
+      tags: [],
+      type: "configureChase",
+      target: "nearestPrimaryActor",
+      speed: 68,
       stopDistance: 0,
     },
     {
@@ -1049,9 +1186,11 @@ test("applyGameplayBehaviorCommands supports chase entity targets and self damag
     ids: { tags: { hostile: 5 } },
   });
 
-  deepEqual(result.results, [true, true, true, true, true, true, true]);
+  deepEqual(result.results, [true, true, true, true, true, true, true, true, true]);
   deepEqual(engine.calls, [
+    ["set_gameplay_movement_chase_primary_actor", 1, 10, 76],
     ["set_gameplay_movement_chase_nearest_player", 1, 10, 72],
+    ["set_gameplay_movement_chase_nearest_primary_actor", 1, 10, 68],
     ["set_gameplay_movement_chase_nearest_enemy", 1, 10, 48],
     ["set_gameplay_movement_chase_nearest_layer", 1, 10, 2, 44],
     ["set_gameplay_movement_chase_nearest_faction", 1, 10, 2, 40],
@@ -1089,12 +1228,30 @@ test("applyGameplayBehaviorCommands supports seekTarget and accelerate movement 
     },
     {
       entity: "enemy",
+      recipe: "seekPrimaryActor",
+      tags: [],
+      type: "configureSeekTarget",
+      target: "primaryActor",
+      speed: 210,
+      turnRate: 3.5,
+    },
+    {
+      entity: "enemy",
       recipe: "seekNearestPlayer",
       tags: [],
       type: "configureSeekTarget",
       target: "nearestPlayer",
       speed: 200,
       turnRate: 3,
+    },
+    {
+      entity: "enemy",
+      recipe: "seekNearestPrimaryActor",
+      tags: [],
+      type: "configureSeekTarget",
+      target: "nearestPrimaryActor",
+      speed: 190,
+      turnRate: 2.5,
     },
     {
       entity: "enemy",
@@ -1145,11 +1302,13 @@ test("applyGameplayBehaviorCommands supports seekTarget and accelerate movement 
     ids: { tags: { hostile: 5 } },
   });
 
-  deepEqual(result.results, [true, true, true, true, true, true, true, true]);
+  deepEqual(result.results, [true, true, true, true, true, true, true, true, true, true]);
   deepEqual(engine.calls, [
     ["set_gameplay_movement_seek_target_player", 1, 10, 220, 4],
     ["set_gameplay_movement_seek_target_entity", 1, 10, 2, 20, 220, 4],
+    ["set_gameplay_movement_seek_target_primary_actor", 1, 10, 210, 3.5],
     ["set_gameplay_movement_seek_target_nearest_player", 1, 10, 200, 3],
+    ["set_gameplay_movement_seek_target_nearest_primary_actor", 1, 10, 190, 2.5],
     ["set_gameplay_movement_seek_target_nearest_enemy", 1, 10, 180, 2],
     ["set_gameplay_movement_seek_target_nearest_layer", 1, 10, 4, 160, 1.5],
     ["set_gameplay_movement_seek_target_nearest_faction", 1, 10, 7, 150, 1.25],

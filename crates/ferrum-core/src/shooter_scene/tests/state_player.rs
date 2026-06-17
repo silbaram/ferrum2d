@@ -11,7 +11,7 @@ fn diagonal_movement_is_normalized() {
 
     scene.apply_player_input(&mut world, &camera, input, &mut audio_events);
 
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let v = world.velocity(player).unwrap();
     let speed = (v.vx * v.vx + v.vy * v.vy).sqrt();
     assert!((speed - DEFAULT_PLAYER_SPEED).abs() < 0.01);
@@ -20,7 +20,7 @@ fn diagonal_movement_is_normalized() {
 #[test]
 fn player_topdown_input_movement_pattern_overrides_config_speed() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_movement_pattern(player, MovementPattern::TopdownInput { speed: 96.0 });
 
     scene.apply_player_input(
@@ -39,7 +39,7 @@ fn player_topdown_input_movement_pattern_overrides_config_speed() {
 #[test]
 fn player_movement_phase_is_separate_from_action_phase() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_velocity(player, Velocity { vx: 1.0, vy: 2.0 });
     let input = InputState {
         d: 1,
@@ -150,13 +150,13 @@ fn game_over_restarts_with_space() {
 
     assert_eq!(scene.game_state(), GameState::Playing);
     assert_eq!(scene.score(), 0);
-    assert!(world.player_entity().is_some());
+    assert!(world.primary_actor_entity().is_some());
 }
 
 #[test]
 fn player_enemy_collision_sets_game_over() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let pt = world.transform(player).unwrap();
     world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
 
@@ -177,7 +177,7 @@ fn player_enemy_collision_sets_game_over() {
 #[test]
 fn player_is_clamped_inside_world_bounds() {
     let (scene, mut world, _, _) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(
         player,
         Transform2D {
@@ -197,7 +197,7 @@ fn player_is_clamped_inside_world_bounds() {
 fn firing_uses_camera_adjusted_mouse_world_position() {
     let (scene, mut world, mut camera, mut audio_events) = playing_scene();
     camera.set_viewport_size(400.0, 240.0);
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(
         player,
         Transform2D {
@@ -311,7 +311,7 @@ fn update_records_spawn_flush_frame_diagnostics_for_projectile() {
 #[test]
 fn authored_projectile_action_overrides_player_fire_config_and_uses_cooldown() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_faction =
         GameplayFaction::new(GAMEPLAY_FACTION_PLAYER, 1 << GAMEPLAY_FACTION_ENEMY).unwrap();
     world.set_gameplay_faction(player, player_faction);
@@ -363,7 +363,7 @@ fn authored_projectile_action_overrides_player_fire_config_and_uses_cooldown() {
 #[test]
 fn authored_spawn_prefab_action_queues_enemy_prephysics_and_uses_cooldown() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let start = world.transform(player).unwrap();
     assert!(world.upsert_action_binding(
         player,
@@ -482,7 +482,7 @@ fn authored_spawn_prefab_action_queues_enemy_prephysics_and_uses_cooldown() {
 #[test]
 fn invalid_authored_spawn_prefab_action_does_not_consume_cooldown() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(
         player,
         ActionBinding::spawn_prefab(
@@ -544,7 +544,7 @@ fn invalid_authored_spawn_prefab_action_does_not_consume_cooldown() {
 #[test]
 fn authored_spawn_prefab_action_reports_queue_full_without_consuming_cooldown() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(
         player,
         ActionBinding::spawn_prefab(
@@ -604,7 +604,7 @@ fn authored_spawn_prefab_action_reports_queue_full_without_consuming_cooldown() 
 #[test]
 fn authored_spawn_prefab_action_reports_blocked_placement_without_consuming_cooldown() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     assert!(world.upsert_action_binding(
         player,
@@ -677,7 +677,7 @@ fn authored_spawn_prefab_action_reports_blocked_placement_without_consuming_cool
 #[test]
 fn authored_spawn_prefab_action_queue_full_takes_precedence_over_blocked_placement() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     assert!(world.upsert_action_binding(
         player,
@@ -751,7 +751,7 @@ fn authored_spawn_prefab_action_queue_full_takes_precedence_over_blocked_placeme
 #[test]
 fn authored_spawn_prefab_action_ignores_non_collision_tilemap_layer() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     assert!(world.upsert_action_binding(
         player,
@@ -824,7 +824,7 @@ fn blocked_spawn_prefab_uses_prefab_collider_offset() {
             .with_collider(crate::world::EntityTemplateCollider::aabb(
                 12.0, 12.0, 40.0, 0.0, true, true, None,
             ));
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     assert!(world.upsert_action_binding(
         player,
@@ -894,7 +894,7 @@ fn blocked_spawn_prefab_uses_prefab_collider_offset() {
 #[test]
 fn authored_dash_action_moves_player_and_uses_cooldown() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let start = world.transform(player).unwrap();
     assert!(world.upsert_action_binding(player, ActionBinding::dash(2, 0.5, 96.0)));
     let input = InputState {
@@ -939,7 +939,7 @@ fn authored_dash_action_moves_player_and_uses_cooldown() {
 #[test]
 fn non_projectile_primary_action_does_not_consume_cooldown() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(player, ActionBinding::dash(1, 0.5, 96.0)));
     let input = InputState {
         mouse_left: 1,
@@ -958,7 +958,7 @@ fn non_projectile_primary_action_does_not_consume_cooldown() {
 #[test]
 fn authored_projectile_action_reports_pattern_mismatch() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(player, ActionBinding::dash(1, 0.5, 96.0)));
     let input = InputState {
         mouse_left: 1,
@@ -1001,7 +1001,7 @@ fn authored_projectile_action_reports_pattern_mismatch() {
 #[test]
 fn authored_projectile_action_reports_unsupported_aim_without_consuming_cooldown() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(
         player,
         ActionBinding::projectile_with_target(
@@ -1058,7 +1058,7 @@ fn authored_projectile_action_reports_unsupported_aim_without_consuming_cooldown
 #[test]
 fn authored_projectile_action_unsupported_aim_takes_precedence_over_missing_source_transform() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.clear_transform_for_test(player));
     assert!(world.upsert_action_binding(
         player,
@@ -1116,7 +1116,7 @@ fn authored_projectile_action_unsupported_aim_takes_precedence_over_missing_sour
 #[test]
 fn authored_projectile_action_reports_unsupported_collision_target_without_consuming_cooldown() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(
         player,
         ActionBinding::projectile_with_target(
@@ -1173,7 +1173,7 @@ fn authored_projectile_action_reports_unsupported_collision_target_without_consu
 #[test]
 fn authored_projectile_action_reports_missing_source_transform_without_consuming_cooldown() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.clear_transform_for_test(player));
     assert!(
         world.upsert_action_binding(player, ActionBinding::projectile(1, 0.5, 900.0, 3.0, 0.25),)
@@ -1219,7 +1219,7 @@ fn authored_projectile_action_reports_missing_source_transform_without_consuming
 #[test]
 fn spawn_prefab_action_can_use_primary_action_id_without_false_pattern_mismatch() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(
         player,
         ActionBinding::spawn_prefab(
@@ -1271,7 +1271,7 @@ fn spawn_prefab_action_can_use_primary_action_id_without_false_pattern_mismatch(
 #[test]
 fn spawn_prefab_action_can_use_dash_action_id_without_false_pattern_mismatch() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(
         player,
         ActionBinding::spawn_prefab(
@@ -1320,7 +1320,7 @@ fn spawn_prefab_action_can_use_dash_action_id_without_false_pattern_mismatch() {
 #[test]
 fn spawn_prefab_action_can_use_melee_action_id_without_false_pattern_mismatch() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(
         player,
         ActionBinding::spawn_prefab(
@@ -1376,7 +1376,7 @@ fn spawn_prefab_action_can_use_melee_action_id_without_false_pattern_mismatch() 
 #[test]
 fn authored_projectile_action_reports_queue_full_without_consuming_cooldown() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(
         world.upsert_action_binding(player, ActionBinding::projectile(1, 0.5, 900.0, 3.0, 0.25),)
     );
@@ -1422,7 +1422,7 @@ fn authored_projectile_action_reports_queue_full_without_consuming_cooldown() {
 #[test]
 fn cooling_down_authored_projectile_action_does_not_emit_failure() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(
         world.upsert_action_binding(player, ActionBinding::projectile(1, 0.5, 900.0, 3.0, 0.25),)
     );
@@ -1457,7 +1457,7 @@ fn cooling_down_authored_projectile_action_does_not_emit_failure() {
 #[test]
 fn authored_dash_action_reports_missing_source_transform() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(player, ActionBinding::dash(2, 0.5, 96.0)));
     assert!(world.clear_transform_for_test(player));
     let input = InputState {
@@ -1498,7 +1498,7 @@ fn authored_dash_action_reports_missing_source_transform() {
 #[test]
 fn authored_dash_action_reports_unsupported_aim_without_consuming_cooldown() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(
         player,
         ActionBinding::dash_with_aim(2, 0.5, 96.0, ActionAimSource::TargetPlayer,)
@@ -1543,7 +1543,7 @@ fn authored_dash_action_reports_unsupported_aim_without_consuming_cooldown() {
 #[test]
 fn authored_dash_action_missing_source_transform_takes_precedence_over_unsupported_aim() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.clear_transform_for_test(player));
     assert!(world.upsert_action_binding(
         player,
@@ -1589,7 +1589,7 @@ fn authored_dash_action_missing_source_transform_takes_precedence_over_unsupport
 #[test]
 fn authored_melee_action_damages_enemy_in_range_and_uses_cooldown() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let player_height_span = HeightSpan::new(PhysicsFloorId(3), 1.0, 3.0).unwrap();
     assert!(world.set_height_span(player, player_height_span));
@@ -1682,7 +1682,7 @@ fn authored_melee_action_damages_enemy_in_range_and_uses_cooldown() {
 fn authored_melee_action_respects_faction_gate_without_score() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 48.0, player_t.y, DEFAULT_TEXTURE_ID);
     world.set_health(enemy, 2.0);
@@ -1757,7 +1757,7 @@ fn authored_melee_action_respects_faction_gate_without_score() {
 #[test]
 fn authored_melee_action_whiff_consumes_cooldown_without_score() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(player, ActionBinding::melee(3, 0.5, 32.0, 2.0)));
     let mut input_actions = InputActionRegistry::default();
     assert!(input_actions.set_binding(
@@ -1805,7 +1805,7 @@ fn authored_melee_action_whiff_consumes_cooldown_without_score() {
 #[test]
 fn authored_melee_action_reports_unsupported_target_without_consuming_cooldown() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.upsert_action_binding(
         player,
         ActionBinding::melee_with_target(3, 0.5, 96.0, 2.0, MeleeTarget::Player,)
@@ -1855,7 +1855,7 @@ fn authored_melee_action_reports_unsupported_target_without_consuming_cooldown()
 #[test]
 fn authored_melee_action_missing_source_transform_takes_precedence_over_unsupported_target() {
     let (mut scene, mut world, camera, _audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(world.clear_transform_for_test(player));
     assert!(world.upsert_action_binding(
         player,
@@ -1906,7 +1906,7 @@ fn authored_melee_action_missing_source_transform_takes_precedence_over_unsuppor
 #[test]
 fn queued_projectile_spawns_are_cleared_by_reset_and_snapshot_restore() {
     let (mut scene, mut world, mut camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(
         world.upsert_action_binding(player, ActionBinding::projectile(1, 0.5, 900.0, 3.0, 0.25),)
     );
@@ -1932,7 +1932,7 @@ fn queued_projectile_spawns_are_cleared_by_reset_and_snapshot_restore() {
 #[test]
 fn queued_action_triggers_are_cleared_by_reset_and_snapshot_restore() {
     let (mut scene, mut world, mut camera, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let snapshot = scene.snapshot(&world, &camera);
 
     assert!(scene.queue_action_trigger(runtime::ActionTriggerCommand::timer(player, 11)));
@@ -1940,7 +1940,7 @@ fn queued_action_triggers_are_cleared_by_reset_and_snapshot_restore() {
     assert!(scene.restore_snapshot(&mut world, &mut camera, &mut audio_events, &snapshot));
     assert_eq!(scene.action_triggers.pending_len(), 0);
 
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     assert!(scene.queue_action_trigger(runtime::ActionTriggerCommand::timer(player, 11)));
     assert_eq!(scene.action_triggers.pending_len(), 1);
     scene.reset_playing(&mut world, &mut camera, &mut audio_events);
@@ -1951,14 +1951,14 @@ fn queued_action_triggers_are_cleared_by_reset_and_snapshot_restore() {
 fn reset_game_clears_score_and_recreates_player() {
     let (mut scene, mut world, mut camera, mut audio_events) = playing_scene();
     scene.score = 42;
-    if let Some(player) = world.player_entity() {
+    if let Some(player) = world.primary_actor_entity() {
         world.despawn(player);
     }
 
     scene.reset_playing(&mut world, &mut camera, &mut audio_events);
 
     assert_eq!(scene.score(), 0);
-    assert!(world.player_entity().is_some());
+    assert!(world.primary_actor_entity().is_some());
     assert_eq!(count_layer(&world, CollisionLayer::Player), 1);
     assert_eq!(count_layer(&world, CollisionLayer::Enemy), 0);
 }

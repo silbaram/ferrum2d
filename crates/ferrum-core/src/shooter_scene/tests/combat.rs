@@ -127,7 +127,7 @@ fn bullet_enemy_zero_reward_kill_does_not_flash_enemy_hit() {
 #[test]
 fn pending_melee_attacks_skip_enemy_marked_by_earlier_melee() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 16.0, player_t.y, DEFAULT_TEXTURE_ID);
     world.set_health(enemy, 1.0);
@@ -162,7 +162,7 @@ fn pending_melee_attacks_skip_enemy_marked_by_earlier_melee() {
 fn pending_melee_enemy_hit_uses_custom_reward_and_damage_event_removed_flag() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 16.0, player_t.y, DEFAULT_TEXTURE_ID);
     world.set_health(enemy, 1.0);
@@ -312,7 +312,7 @@ fn pending_non_player_enemy_target_melee_faction_denial_reports_without_hit() {
 #[test]
 fn pending_melee_enemy_hit_records_collision_hit_event() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 16.0, player_t.y, DEFAULT_TEXTURE_ID);
     world.set_health(enemy, 1.0);
@@ -362,7 +362,7 @@ fn pending_melee_enemy_hit_pushes_hit_audio_event() {
     scene.set_audio_policy(ShooterAudioPolicy::from_values(
         0.2, 1.2, 0.5, 1.25, 0.8, 0.7,
     ));
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 16.0, player_t.y, DEFAULT_TEXTURE_ID);
     world.set_health(enemy, 1.0);
@@ -397,7 +397,7 @@ fn pending_melee_enemy_hit_pushes_hit_audio_event() {
 #[test]
 fn pending_melee_enemy_hit_skips_default_sound_id_audio() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 16.0, player_t.y, DEFAULT_TEXTURE_ID);
     world.set_health(enemy, 1.0);
@@ -429,7 +429,7 @@ fn pending_melee_enemy_hit_skips_default_sound_id_audio() {
 fn pending_melee_zero_reward_kill_does_not_flash_enemy_hit() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut tweens = TweenSystem::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_t.x + 16.0, player_t.y, DEFAULT_TEXTURE_ID);
     world.set_health(enemy, 1.0);
@@ -590,7 +590,7 @@ fn default_bullet_enemy_damage_neutral_source_reports_denial() {
 #[test]
 fn player_target_projectile_causes_game_over_without_score() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let bullet = world.spawn_projectile_from_request(crate::world::ProjectileSpawnRequest {
         transform: Transform2D {
@@ -627,7 +627,7 @@ fn player_target_projectile_causes_game_over_without_score() {
 fn default_bullet_player_damage_respects_gameplay_faction_damage_mask() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let bullet = world.spawn_projectile_from_request(crate::world::ProjectileSpawnRequest {
         transform: Transform2D {
@@ -681,7 +681,7 @@ fn default_bullet_player_damage_respects_gameplay_faction_damage_mask() {
 fn enemy_target_projectile_does_not_hit_player() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_t = world.transform(player).unwrap();
     let bullet = world.spawn_projectile_from_request(crate::world::ProjectileSpawnRequest {
         transform: Transform2D {
@@ -1174,7 +1174,7 @@ fn bounce_projectile_does_not_hit_enemy_behind_blocking_tile_in_same_frame() {
 #[test]
 fn bounce_projectile_does_not_hit_player_behind_blocking_tile_in_same_frame() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 62.0, y: 50.0 });
     let bullet = world.spawn_bullet(40.0, 50.0, 200.0, 0.0, DEFAULT_TEXTURE_ID);
     world.set_projectile_collision_target_at(bullet.id as usize, ProjectileCollisionTarget::Player);
@@ -1765,7 +1765,7 @@ fn authored_player_enemy_collision_damage_player_sets_game_over_without_despawn(
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     scene.set_sound_ids(10, 20, 30);
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     world.set_damage(enemy, 1.0);
@@ -1792,7 +1792,7 @@ fn authored_player_enemy_collision_damage_player_sets_game_over_without_despawn(
 
     assert_eq!(scene.game_state(), GameState::GameOver);
     assert!(world.is_alive_index(player.id as usize));
-    assert_eq!(world.player_entity(), Some(player));
+    assert_eq!(world.primary_actor_entity(), Some(player));
     assert!(world.is_alive_index(enemy.id as usize));
     assert_eq!(scene.score(), 0);
     assert_eq!(gameplay_events.len(), 1);
@@ -1810,7 +1810,7 @@ fn authored_player_enemy_collision_damage_player_sets_game_over_without_despawn(
 #[test]
 fn authored_player_enemy_collision_nonlethal_damage_overrides_hardcoded_game_over() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     world.set_health(player, 3.0);
@@ -1843,7 +1843,7 @@ fn authored_player_enemy_collision_nonlethal_damage_overrides_hardcoded_game_ove
 fn authored_collision_damage_respects_gameplay_faction_damage_mask() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     world.set_health(player, 3.0);
@@ -1897,7 +1897,7 @@ fn authored_collision_damage_respects_gameplay_faction_damage_mask() {
 fn authored_player_enemy_collision_replace_default_audio_suppresses_game_over_sound() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     scene.set_sound_ids(10, 20, 30);
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     world.set_damage(enemy, 1.0);
@@ -1940,7 +1940,7 @@ fn authored_player_enemy_collision_sound_only_replace_default_suppresses_fallbac
 {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     scene.set_sound_ids(10, 20, 30);
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     assert!(world.add_collision_reaction(
@@ -1975,7 +1975,7 @@ fn authored_player_enemy_collision_sound_only_replace_default_suppresses_fallbac
 fn authored_player_enemy_collision_emits_default_game_over_sound_once() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     scene.set_sound_ids(10, 20, 30);
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_health(player, 1.0);
     let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
@@ -2221,7 +2221,7 @@ fn authored_bullet_enemy_collision_particle_can_replace_default_hit_burst() {
 #[test]
 fn authored_collision_sound_reaction_pushes_audio_without_gameplay_callback() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     assert!(world.add_collision_reaction(
@@ -2265,7 +2265,7 @@ fn authored_collision_sound_reaction_pushes_audio_without_gameplay_callback() {
 #[test]
 fn authored_collision_sound_reaction_cooldown_limits_repeated_contact_audio() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     assert!(world.add_collision_reaction(
@@ -2336,7 +2336,7 @@ fn authored_collision_sound_reaction_cooldown_limits_repeated_contact_audio() {
 #[test]
 fn authored_collision_sound_enter_trigger_runs_once_per_continuous_contact() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     world.set_health(player, 10.0);
@@ -2389,7 +2389,7 @@ fn authored_collision_sound_enter_trigger_runs_once_per_continuous_contact() {
 #[test]
 fn authored_collision_particle_reaction_spawns_registered_preset_burst() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     assert!(world.add_collision_reaction(
@@ -2435,7 +2435,7 @@ fn authored_collision_particle_reaction_spawns_registered_preset_burst() {
 #[test]
 fn authored_collision_particle_reaction_cooldown_limits_repeated_bursts() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     assert!(world.add_collision_reaction(
@@ -2510,7 +2510,7 @@ fn authored_collision_particle_reaction_cooldown_limits_repeated_bursts() {
 #[test]
 fn authored_collision_particle_enter_trigger_runs_once_per_continuous_contact() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let player_transform = world.transform(player).unwrap();
     let enemy = world.spawn_enemy(player_transform.x, player_transform.y, DEFAULT_TEXTURE_ID);
     world.set_health(player, 10.0);
@@ -2575,7 +2575,7 @@ fn authored_collision_particle_enter_trigger_runs_once_per_continuous_contact() 
 fn player_pickup_collision_increments_score_once_and_despawns_pickup() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -2630,7 +2630,7 @@ fn player_pickup_collision_increments_score_once_and_despawns_pickup() {
 fn player_pickup_score_commit_saturates_at_u32_max() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     scene.score = u32::MAX - 1;
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -2658,7 +2658,7 @@ fn player_pickup_score_commit_saturates_at_u32_max() {
 fn authored_pickup_collision_sound_and_particle_keep_default_collection() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -2738,7 +2738,7 @@ fn authored_pickup_collision_sound_and_particle_keep_default_collection() {
 fn collision_spawn_prefab_reaction_queues_prefab_and_commits_cooldown_after_collision() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -2826,7 +2826,7 @@ fn collision_spawn_prefab_reaction_queues_prefab_and_commits_cooldown_after_coll
 fn collision_spawn_prefab_reaction_reports_unsupported_prefab_without_consuming_cooldown() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -2884,7 +2884,7 @@ fn collision_spawn_prefab_reaction_reports_unsupported_prefab_without_consuming_
 fn collision_spawn_prefab_reaction_reports_blocked_placement_without_consuming_cooldown() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -2944,7 +2944,7 @@ fn collision_spawn_prefab_reaction_reports_blocked_placement_without_consuming_c
 fn collision_spawn_prefab_reaction_reports_queue_full_without_consuming_cooldown() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -3121,7 +3121,7 @@ fn collision_spawn_prefab_tile_other_is_noop_without_consuming_cooldown() {
 fn authored_pickup_collision_reaction_collects_before_followup_despawn() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -3170,7 +3170,7 @@ fn authored_pickup_collision_reaction_collects_before_followup_despawn() {
 fn authored_player_side_pickup_reaction_collects_other_pickup_once() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -3218,7 +3218,7 @@ fn authored_player_side_pickup_reaction_collects_other_pickup_once() {
 fn authored_pickup_reaction_suppresses_legacy_fallback_when_target_is_not_pickup() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     let mut gameplay_events = Vec::new();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });
@@ -3256,7 +3256,7 @@ fn authored_pickup_reaction_suppresses_legacy_fallback_when_target_is_not_pickup
 #[test]
 fn player_pickup_collision_does_not_trigger_enemy_game_over() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 50.0, y: 50.0 });
     let pickup = world.spawn_entity();
     world.set_transform(pickup, Transform2D { x: 50.0, y: 50.0 });

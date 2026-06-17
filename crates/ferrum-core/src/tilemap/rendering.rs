@@ -74,6 +74,7 @@ impl Tilemap {
                     a: definition.a,
                     texture_id: definition.texture_id as f32,
                     effect_flags: SPRITE_EFFECT_NONE,
+                    rotation_radians: 0.0,
                 });
             }
         }
@@ -121,6 +122,7 @@ impl Tilemap {
                         a: definition.a,
                         texture_id: definition.texture_id as f32,
                         effect_flags: SPRITE_EFFECT_NONE,
+                        rotation_radians: 0.0,
                     },
                     sort_key: self.tile_render_sort_key(
                         tile_id,

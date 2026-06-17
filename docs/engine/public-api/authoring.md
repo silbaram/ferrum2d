@@ -10,6 +10,17 @@ import {
   resolveDataSceneComponentsSpec,
   createDataSceneRuntimeTarget,
   createSceneInstanceHandleRegistry,
+  createScenePlacementViewport,
+  createScenePlacementViewer,
+  createScenePlacementPatchStore,
+  mergeScenePlacementPatch,
+  previewScenePlacementBindingMigration,
+  saveScenePlacementPatch,
+  screenToSceneWorld,
+  worldToSceneScreen,
+  sceneScreenToBackbuffer,
+  sceneBackbufferToScreen,
+  snapSceneWorldPoint,
   classifySceneInstance,
   resolveBehaviorRecipeDocument,
   compileWeaponProfiles,
@@ -28,6 +39,14 @@ import {
 | `resolveDataSceneComponentsSpec(...)` | `props.components` v1 sprite/collider/layer/template descriptor를 검증하고 정규화한다. |
 | `createDataSceneRuntimeTarget(...)` | `FerrumEngine`을 Data Scene spawn target으로 감싸 `applySceneBehaviorRecipes(...)`에 넘길 수 있게 한다. |
 | `createSceneInstanceHandleRegistry(...)` | scene apply/reload 뒤 `instance.id`와 live entity handle을 양방향으로 조회한다. |
+| `createScenePlacementViewport(...)` | Scene Placement Authoring Viewer의 CSS/backbuffer/camera/zoom 좌표계를 만든다. |
+| `createScenePlacementViewer(...)` | scene-authoring 문서를 read-only viewer state로 감싸 선택/호버 객체, role, entity handle, pointer world 좌표와 screen-coordinate picking method를 노출한다. |
+| `createScenePlacementPatchStore(...)` | viewer가 만든 `ScenePlacementPatch`를 export-only 상태로 보관한다. |
+| `mergeScenePlacementPatch(...)` | placement patch를 scene-authoring document clone에 병합하고 원본 문서는 수정하지 않는다. |
+| `previewScenePlacementBindingMigration(...)` | rename/remove patch가 agent-owned behavior recipe 참조에 미칠 수 있는 migration 후보를 보고한다. |
+| `saveScenePlacementPatch(...)` | host가 명시적으로 허용한 save adapter로 placement patch merge 결과를 전달한다. |
+| `screenToSceneWorld(...)`, `worldToSceneScreen(...)` | pointer/screen 좌표와 scene world 좌표를 상호 변환한다. |
+| `snapSceneWorldPoint(...)` | grid origin과 snap mode에 맞춰 world 좌표를 정렬한다. |
 | `classifySceneInstance(...)` | resolved instance를 저장 필드 없이 `worldObject` 또는 `actor` authoring role로 파생한다. |
 | `resolveBehaviorRecipeDocument(...)` | entity behavior recipe를 검증하고 정규화한다. |
 | `behaviorRecipeCommandsForEntity(...)` | 특정 entity에 적용할 `BehaviorRecipeCommand[]`를 만든다. |
@@ -36,6 +55,9 @@ import {
 Behavior recipe는 health, damage, faction, pickup, interaction, projectile action,
 dash/melee/spawn action, timer, collision reaction, movement 같은 데이터를 표현한다.
 매 frame TypeScript callback을 등록하는 API가 아니다.
+movement recipe의 새 target canonical 값은 `primaryActor` / `nearestPrimaryActor`다.
+`chase`와 `seekTarget`에서 `target`을 생략하면 `primaryActor`로 정규화된다. `player` /
+`nearestPlayer`는 기존 authoring data 호환 alias로만 유지한다.
 
 `createDataSceneRuntimeTarget(engine)`은 기본적으로 첫 번째 유효한 spawn 직전에 `engine.useDataScene()`을
 한 번 호출해 빈 Data Scene runtime을 활성화한 뒤, 각
@@ -44,10 +66,12 @@ dash/melee/spawn action, timer, collision reaction, movement 같은 데이터를
 비우지 않는다. asset texture id는 `engine.textureId(name)` 또는 `options.textureId(name)`으로 해석한다.
 consumer는 generated Wasm `pkg/*`, `dist/*`, `src/*` 내부 경로를 직접 import하지 않는다.
 
-default target은 `components.sprite`/`collider`/`layer` inline descriptor만 spawn한다.
-`components.template` catalog reference, instance `rotationRadians`, instance `layer`는 아직 default runtime
-spawn 범위가 아니므로 diagnostic error로 거절된다. 회전 collider는
-`components.collider.rotationRadians`를 사용한다.
+default target은 `components.sprite`/`collider`/`layer` inline descriptor를 spawn한다.
+`options.componentTemplates`를 제공하면 `components.template` catalog reference도 inline descriptor로 해소해
+spawn한다. catalog entry는 다시 template을 가리킬 수 없고, 최종적으로 `sprite`/`collider`/`layer`를
+제공해야 한다. instance `rotationRadians`는 visible sprite rotation과 collider geometry/offset에 반영된다.
+instance `layer`는 Data Scene entity render band의 sort layer로 전달된다. 이 값은 render/sort layer이며,
+`components.layer` collision layer와 별도다.
 
 `classifySceneInstance(instance)`는 `props.behaviorRecipes` 바인딩 존재 여부로 authoring role만
 파생한다. behavior binding이 없으면 `worldObject`, 하나 이상 있으면 `actor`다. 이 값은 저장되는
@@ -63,6 +87,54 @@ scene apply 결과의 `ResolvedSceneCompositionInstance.id`와
 handle을 제거한다. 이 registry는 scene load, reload, reapply, agent patch 같은 낮은 빈도 경로용이며,
 frame loop에서 entity별 JS/Wasm 호출을 추가하지 않는다. 배치 UI나 agent 타겟팅처럼 안정 id가 필요한
 경로는 `requireExplicitInstanceIds: true`로 fallback id 의존을 막을 수 있다.
+
+Scene Placement Authoring Viewer의 viewport helper는 TypeScript authoring layer의 순수 좌표 변환
+도구다. `createScenePlacementViewport(...)`는 CSS logical canvas 크기, optional DPR/backbuffer
+크기, camera center, zoom을 정규화한다. `screenToSceneWorld(...)`는 pointer 좌표를 Rust camera와
+같은 center-based world 좌표로 바꾸고, `worldToSceneScreen(...)`은 overlay 위치 계산에 사용한다.
+`sceneScreenToBackbuffer(...)`와 `sceneBackbufferToScreen(...)`은 WebGL backbuffer smoke나 DPR
+검증에서만 필요한 변환이다. 이 helper들은 picking/selection의 낮은 빈도 authoring 경로용이며,
+frame hot path에 Wasm entity query를 추가하지 않는다.
+
+`createScenePlacementViewer(...)`는 resolved scene instance 목록, 선택/호버 id, pointer world 좌표,
+`classifySceneInstance(...)` role, optional `SceneInstanceHandleRegistry` entity handle을 하나의
+read-only state로 노출한다. `validateLiveHandles` 기본값은 `false`라 `state()` 호출만으로 stale
+handle 검증용 entity query가 돌지 않는다. `pointerAtScreen(point)`는 pointer world 좌표만 갱신하고,
+`pickInstanceAtScreen(point)`, `hoverInstanceAtScreen(point)`, `selectInstanceAtScreen(point)`는
+viewer 생성 시 계산한 instance bounds cache로 screen coordinate 기반 instance id를 찾는다. 이 picking
+경로는 pointer/click 같은 낮은 빈도 authoring interaction용이며 frame loop에 entity별 Wasm query를
+추가하지 않는다.
+
+`updateInstanceTransform(instanceId, transform)`, `renameInstance(instanceId, nextInstanceId)`,
+`addInstance(fragment, instance)`, `removeInstance(instanceId)`는 원본 scene-authoring 문서를 직접
+수정하지 않고 viewer 내부 draft overlay만 갱신한다. `state().instances`, `state().selected`,
+screen-coordinate picking bounds, `state().draftPatch`, `exportPatch()`는 이 draft를 반영한다.
+transform draft가 원본 transform과 같아지면 해당 operation은 자동 제거된다. `clearDraftPatch()`는
+draft를 모두 버린다. `createScenePlacementPatchStore(...)`는 이 patch를 JSON export용으로 보관하는
+export-only store다.
+
+공식 `examples/placement-viewer` host는 이 public surface 위에 numeric x/y/scale/rotation/layer input,
+snap toggle/grid, arrow-key nudge, pointer drag, draft revert를 붙인다. 이 조작은 모두
+`updateInstanceTransform(...)`으로 draft patch를 만들며 Rust runtime entity transform을 직접 수정하지
+않는다. 따라서 authoring preview/picking/export 경로는 낮은 빈도 TS tooling state에 머물고, runtime frame
+loop나 Wasm ABI에는 새 per-entity mutation 경로를 추가하지 않는다.
+
+`mergeScenePlacementPatch(document, patch, options?)`는 `ScenePlacementPatch`의
+`updateTransform`, `renameInstance`, `addInstance`, `removeInstance` operation을 scene-authoring
+document clone에 적용한다. 원본 문서는 수정하지 않고, `behaviorRecipes`, prefab catalog 같은
+agent-owned 영역은 그대로 보존한다. `allowedFragments`를 넘기면 host가 허용한 fragment 외의 수정도
+거절한다.
+
+`previewScenePlacementBindingMigration(document, patch)`는 `renameInstance`와 `removeInstance`가
+`behaviorRecipes` 내부 string value 또는 object key와 정확히 일치하는 경우를 agent-owned migration
+후보로 보고한다. viewer/save helper가 behavior recipe 본문을 직접 수정하지 않도록 분리한 preview이며,
+agent는 이 결과를 보고 필요한 behavior target/profile rename을 별도 patch로 처리한다.
+
+`saveScenePlacementPatch(document, patch, options)`는 engine package가 직접 파일 시스템 권한을 갖는 API가
+아니다. 저장은 `allowSave: true`, host-owned `ScenePlacementSaveAdapter`, optional
+`allowedAdapterIds` allowlist가 모두 통과한 낮은 빈도 authoring 경로에서만 실행된다. 공식 placement
+viewer host는 `VITE_FERRUM_PLACEMENT_VIEWER_SAVE=true`일 때만 memory save hook을 활성화하며, 기본 실행은
+patch export와 disabled save gate만 제공한다.
 
 세부 primitive와 검증 기준은 [Runtime Extensibility](../runtime-extensibility.md)와
 [Data Scene Authoring](../data-scene-authoring.md)을 따른다.

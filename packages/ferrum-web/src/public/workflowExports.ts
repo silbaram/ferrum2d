@@ -24,6 +24,27 @@ export {
   resolveSceneAuthoringDocument,
 } from "../sceneAuthoringDocument";
 export {
+  createScenePlacementViewport,
+  sceneBackbufferToScreen,
+  sceneScreenToBackbuffer,
+  screenToSceneWorld,
+  snapSceneWorldPoint,
+  worldToSceneScreen,
+} from "../scenePlacementViewport";
+export {
+  SCENE_PLACEMENT_PATCH_FORMAT,
+  SCENE_PLACEMENT_PATCH_VERSION,
+  createScenePlacementPatchStore,
+  createScenePlacementViewer,
+} from "../scenePlacementViewer";
+export {
+  SCENE_PLACEMENT_BINDING_MIGRATION_PREVIEW_FORMAT,
+  SCENE_PLACEMENT_BINDING_MIGRATION_PREVIEW_VERSION,
+  mergeScenePlacementPatch,
+  previewScenePlacementBindingMigration,
+  saveScenePlacementPatch,
+} from "../scenePlacementPatch";
+export {
   applyBehaviorRecipes,
   behaviorRecipeCommandsForEntity,
   resolveBehaviorRecipeDocument,
@@ -159,6 +180,45 @@ export type {
   SceneAuthoringDocumentSpec,
 } from "../sceneAuthoringDocument";
 export type {
+  ScenePlacementPoint,
+  ScenePlacementSnapMode,
+  ScenePlacementSnapOptions,
+  ScenePlacementViewport,
+  ScenePlacementViewportOptions,
+} from "../scenePlacementViewport";
+export type {
+  CreateScenePlacementPatchStoreOptions,
+  CreateScenePlacementViewerOptions,
+  ScenePlacementAddInstanceOperation,
+  ScenePlacementPatch,
+  ScenePlacementPatchOperation,
+  ScenePlacementPatchStore,
+  ScenePlacementPatchStoreState,
+  ScenePlacementRemoveInstanceOperation,
+  ScenePlacementRenameInstanceOperation,
+  ScenePlacementTransform,
+  ScenePlacementUpdateTransformOperation,
+  ScenePlacementViewer,
+  ScenePlacementViewerComposition,
+  ScenePlacementViewerDocument,
+  ScenePlacementViewerInstance,
+  ScenePlacementViewerState,
+} from "../scenePlacementViewer";
+export type {
+  MergeScenePlacementPatchOptions,
+  SaveScenePlacementPatchOptions,
+  ScenePlacementBindingMigrationOperationKind,
+  ScenePlacementBindingMigrationPreview,
+  ScenePlacementBindingMigrationReference,
+  ScenePlacementBindingMigrationReferenceKind,
+  ScenePlacementBindingMigrationRename,
+  ScenePlacementPatchMergeResult,
+  ScenePlacementPatchSaveResult,
+  ScenePlacementSaveAdapter,
+  ScenePlacementSaveAdapterRequest,
+  ScenePlacementSaveAdapterResult,
+} from "../scenePlacementPatch";
+export type {
   DataSceneAabbColliderSpec,
   DataSceneCapsuleColliderSpec,
   DataSceneCircleColliderSpec,
@@ -189,6 +249,9 @@ export type {
 } from "../dataSceneComponents";
 export type {
   CreateDataSceneRuntimeTargetOptions,
+  DataSceneRuntimeComponentTemplateCatalog,
+  DataSceneRuntimeComponentTemplateResolver,
+  DataSceneRuntimeComponentTemplates,
   DataSceneRuntimeTextureIdResolver,
 } from "../dataSceneRuntimeTarget";
 export type {

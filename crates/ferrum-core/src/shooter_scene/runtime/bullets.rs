@@ -11,7 +11,7 @@ use super::super::ShooterScene;
 impl ShooterScene {
     pub(in crate::shooter_scene) fn apply_projectile_movement_phase(&mut self, world: &mut World) {
         let player_transform = world
-            .player_entity()
+            .primary_actor_entity()
             .and_then(|player| world.transform(player));
         apply_layer_movement_pattern_with_navigation_batch_system(
             world,

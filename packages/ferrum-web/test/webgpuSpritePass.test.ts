@@ -11,7 +11,7 @@ import type { RenderCommandBufferView } from "../src/wasmBridge.js";
 test("webGpuSpriteStagingCapacity grows material staging buffers by powers of two", () => {
   equal(webGpuSpriteStagingCapacity(0), 1);
   equal(webGpuSpriteStagingCapacity(1), 1);
-  equal(webGpuSpriteStagingCapacity(14), 16);
+  equal(webGpuSpriteStagingCapacity(15), 16);
   equal(webGpuSpriteStagingCapacity(16), 16);
   equal(webGpuSpriteStagingCapacity(17), 32);
 });
@@ -41,6 +41,14 @@ test("WebGpuSpritePass uploads one command segment and draws texture ranges from
   equal(device.queue.writeBufferCalls.length, 1);
   equal(device.queue.writeBufferCalls[0]?.bufferOffset, 0);
   equal(device.queue.writeBufferCalls[0]?.size, commands.commandCount * spriteCommandBytes());
+  deepEqual(
+    [
+      device.queue.writeBufferCalls[0]?.values[14],
+      device.queue.writeBufferCalls[0]?.values[29],
+      device.queue.writeBufferCalls[0]?.values[44],
+    ],
+    [0.25, 0.5, 0.75],
+  );
   deepEqual(renderPass.textureBindGroupIds(), [1, 2, 1]);
   deepEqual(renderPass.vertexBufferOffsets(), [
     0,
@@ -84,6 +92,7 @@ test("WebGpuSpritePass stores material passes in separate buffer segments", () =
   ]);
   equal(device.queue.writeBufferCalls[0]?.values[0], 8);
   equal(device.queue.writeBufferCalls[1]?.values[0], 12);
+  equal(device.queue.writeBufferCalls[0]?.values[14], 0.25);
 });
 
 test("WebGpuSpritePass canonicalizes legacy command buffers before range draws", () => {
@@ -111,7 +120,9 @@ test("WebGpuSpritePass canonicalizes legacy command buffers before range draws",
   equal(device.queue.writeBufferCalls[0]?.size, commands.commandCount * spriteCommandBytes());
   equal(device.queue.writeBufferCalls[0]?.values.length, commands.commandCount * SPRITE_RENDER_COMMAND_FLOATS);
   equal(device.queue.writeBufferCalls[0]?.values[13], 0);
-  equal(device.queue.writeBufferCalls[0]?.values[27], 0);
+  equal(device.queue.writeBufferCalls[0]?.values[14], 0);
+  equal(device.queue.writeBufferCalls[0]?.values[28], 0);
+  equal(device.queue.writeBufferCalls[0]?.values[29], 0);
   deepEqual(renderPass.vertexBufferOffsets(), [0, spriteCommandBytes()]);
 });
 
@@ -154,6 +165,7 @@ class FakeGpuQueue {
 
 class FakeGpuDevice {
   readonly queue = new FakeGpuQueue();
+  readonly renderPipelineDescriptors: GPURenderPipelineDescriptor[] = [];
 
   createBuffer(descriptor: GPUBufferDescriptor): GPUBuffer {
     return new FakeGpuBuffer(descriptor.size) as unknown as GPUBuffer;
@@ -167,7 +179,8 @@ class FakeGpuDevice {
     return {} as GPUShaderModule;
   }
 
-  createRenderPipeline(): GPURenderPipeline {
+  createRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipeline {
+    this.renderPipelineDescriptors.push(descriptor);
     return {} as GPURenderPipeline;
   }
 }
@@ -225,6 +238,8 @@ function commandBuffer(textureIds: number[]): RenderCommandBufferView {
     buffer[offset + 10] = 0.3;
     buffer[offset + 11] = 0.4;
     buffer[offset + 12] = textureIds[index];
+    buffer[offset + 13] = 0;
+    buffer[offset + 14] = 0.25 + index * 0.25;
   }
   return {
     buffer,

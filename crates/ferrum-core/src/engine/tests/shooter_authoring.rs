@@ -984,8 +984,17 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
     assert_eq!(
         engine.world.movement_pattern(enemy),
         Some(MovementPattern::Chase {
-            target: MovementTarget::Player,
+            target: MovementTarget::PrimaryActor,
             speed: 95.0,
+        })
+    );
+
+    assert!(engine.set_gameplay_movement_chase_primary_actor(enemy.id, enemy.generation, 90.0));
+    assert_eq!(
+        engine.world.movement_pattern(enemy),
+        Some(MovementPattern::Chase {
+            target: MovementTarget::PrimaryActor,
+            speed: 90.0,
         })
     );
 
@@ -993,8 +1002,21 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
     assert_eq!(
         engine.world.movement_pattern(enemy),
         Some(MovementPattern::Chase {
-            target: MovementTarget::NearestPlayer,
+            target: MovementTarget::NearestPrimaryActor,
             speed: 85.0,
+        })
+    );
+
+    assert!(engine.set_gameplay_movement_chase_nearest_primary_actor(
+        enemy.id,
+        enemy.generation,
+        82.0
+    ));
+    assert_eq!(
+        engine.world.movement_pattern(enemy),
+        Some(MovementPattern::Chase {
+            target: MovementTarget::NearestPrimaryActor,
+            speed: 82.0,
         })
     );
 
@@ -1059,19 +1081,49 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
     assert_eq!(
         engine.world.movement_pattern(enemy),
         Some(MovementPattern::Orbit {
-            target: MovementTarget::Player,
+            target: MovementTarget::PrimaryActor,
             speed: 80.0,
             radius: 48.0,
             radial_band: 6.0,
+        })
+    );
+    assert!(engine.set_gameplay_movement_orbit_primary_actor(
+        enemy.id,
+        enemy.generation,
+        78.0,
+        46.0,
+        5.0
+    ));
+    assert_eq!(
+        engine.world.movement_pattern(enemy),
+        Some(MovementPattern::Orbit {
+            target: MovementTarget::PrimaryActor,
+            speed: 78.0,
+            radius: 46.0,
+            radial_band: 5.0,
         })
     );
     assert!(engine.set_gameplay_movement_seek_target_player(enemy.id, enemy.generation, 90.0, 0.6,));
     assert_eq!(
         engine.world.movement_pattern(enemy),
         Some(MovementPattern::SeekTarget {
-            target: MovementTarget::Player,
+            target: MovementTarget::PrimaryActor,
             speed: 90.0,
             turn_rate: 0.6,
+        })
+    );
+    assert!(engine.set_gameplay_movement_seek_target_primary_actor(
+        enemy.id,
+        enemy.generation,
+        89.0,
+        0.5,
+    ));
+    assert_eq!(
+        engine.world.movement_pattern(enemy),
+        Some(MovementPattern::SeekTarget {
+            target: MovementTarget::PrimaryActor,
+            speed: 89.0,
+            turn_rate: 0.5,
         })
     );
     assert!(engine.set_gameplay_movement_seek_target_nearest_player(
@@ -1083,9 +1135,25 @@ fn gameplay_component_authoring_sets_movement_and_collision_reactions() {
     assert_eq!(
         engine.world.movement_pattern(enemy),
         Some(MovementPattern::SeekTarget {
-            target: MovementTarget::NearestPlayer,
+            target: MovementTarget::NearestPrimaryActor,
             speed: 88.0,
             turn_rate: 0.4,
+        })
+    );
+    assert!(
+        engine.set_gameplay_movement_seek_target_nearest_primary_actor(
+            enemy.id,
+            enemy.generation,
+            87.0,
+            0.35,
+        )
+    );
+    assert_eq!(
+        engine.world.movement_pattern(enemy),
+        Some(MovementPattern::SeekTarget {
+            target: MovementTarget::NearestPrimaryActor,
+            speed: 87.0,
+            turn_rate: 0.35,
         })
     );
     assert!(engine.set_gameplay_movement_seek_target_nearest_enemy(
@@ -1770,7 +1838,7 @@ fn shooter_prefab_collider_api_updates_template_and_existing_entities() {
     assert_eq!(config.player_template.collider_offset_y, -3.0);
     assert!(!config.player_template.collider_enabled);
     assert!(!config.player_template.collider_is_trigger);
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     let collider = engine.world.collider(player).unwrap();
     assert_eq!(collider.half_width, 12.0);
     assert_eq!(collider.offset_x, 2.0);
@@ -1812,7 +1880,7 @@ fn shooter_prefab_shape_collider_apis_update_templates_and_entities() {
     assert!(engine.set_shooter_prefab_circle_collider(
         0, 11.0, 1.0, -2.0, true, true, false, 0.0, 0.4, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
     ));
-    let player = engine.world.player_entity().unwrap();
+    let player = engine.world.primary_actor_entity().unwrap();
     let player_collider = engine.world.circle_collider(player).unwrap();
     assert_eq!(player_collider.radius, 11.0);
     assert_eq!(player_collider.offset_x, 1.0);

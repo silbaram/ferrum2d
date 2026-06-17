@@ -17,7 +17,7 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     world.set_movement_pattern(
         a,
         MovementPattern::Orbit {
-            target: MovementTarget::Player,
+            target: MovementTarget::PrimaryActor,
             speed: 80.0,
             radius: 24.0,
             radial_band: 4.0,
@@ -28,6 +28,7 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     world.set_gameplay_faction_default_relation(FactionRelation::Friendly);
     assert!(world.set_gameplay_faction_relation(5, 6, FactionRelation::Hostile));
     assert!(world.set_gameplay_faction_relation(5, 5, FactionRelation::Neutral));
+    assert!(world.set_primary_actor_entity(a));
     let mut state_machine = BehaviorStateMachine::new(1);
     assert!(state_machine.push_transition(BehaviorStateTransition::new(1, 2, 7)));
     assert!(world.set_behavior_state_machine(a, state_machine));
@@ -110,6 +111,10 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
 
     assert_eq!(world.alive_count(), 2);
     assert_eq!(world.alive_indices(), &[0, 1]);
+    assert_eq!(world.primary_actor_entity(), Some(a));
+    assert!(world
+        .gameplay_tags(a)
+        .is_some_and(|tags| tags.contains(GAMEPLAY_TAG_PRIMARY_ACTOR)));
     assert_eq!(world.transform(a), Some(Transform2D { x: 2.0, y: 3.0 }));
     assert_eq!(world.transform(b), Some(Transform2D { x: 8.0, y: 13.0 }));
     assert_eq!(world.velocity(a), Some(Velocity { vx: 1.0, vy: -2.0 }));
@@ -130,13 +135,17 @@ fn world_snapshot_restores_physics_state_and_storage_generations() {
     assert_eq!(
         world.movement_pattern(a),
         Some(MovementPattern::Orbit {
-            target: MovementTarget::Player,
+            target: MovementTarget::PrimaryActor,
             speed: 80.0,
             radius: 24.0,
             radial_band: 4.0,
         })
     );
-    assert_eq!(world.gameplay_tags(a), GameplayTags::new(1 << 5));
+    let restored_tags = world
+        .gameplay_tags(a)
+        .expect("snapshot should restore gameplay tags");
+    assert!(restored_tags.contains(GAMEPLAY_TAG_PRIMARY_ACTOR));
+    assert!(restored_tags.contains(5));
     assert_eq!(world.gameplay_faction(a), GameplayFaction::new(5, 0));
     assert_eq!(
         world.gameplay_faction_default_relation(),

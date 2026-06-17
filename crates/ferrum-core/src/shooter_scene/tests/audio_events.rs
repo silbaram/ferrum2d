@@ -7,7 +7,7 @@ fn audio_policy_controls_event_volume_and_pitch() {
         0.2, 1.2, 0.5, 0.9, 0.8, 0.7,
     ));
     scene.set_sound_ids(10, 20, 30);
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
 
     scene.fire_bullet_toward_mouse(
         &mut world,
@@ -31,7 +31,7 @@ fn audio_policy_controls_event_volume_and_pitch() {
 fn firing_bullet_pushes_shoot_audio_event() {
     let (mut scene, mut world, camera, mut audio_events) = playing_scene();
     scene.set_sound_ids(10, 20, 30);
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
 
     scene.fire_bullet_toward_mouse(
         &mut world,
@@ -76,7 +76,7 @@ fn bullet_enemy_collision_pushes_hit_audio_event() {
 fn game_over_pushes_event_once_and_clear_events_removes_it() {
     let (mut scene, mut world, _, mut audio_events) = playing_scene();
     scene.set_sound_ids(10, 20, 30);
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let pt = world.transform(player).unwrap();
     world.spawn_enemy(pt.x, pt.y, DEFAULT_TEXTURE_ID);
 

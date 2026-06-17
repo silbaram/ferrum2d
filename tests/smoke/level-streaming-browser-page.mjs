@@ -5,7 +5,7 @@ import {
   WebGL2Renderer,
 } from "/packages/ferrum-web/dist/index.js";
 
-const SPRITE_RENDER_COMMAND_FLOATS = 14;
+const SPRITE_RENDER_COMMAND_FLOATS = 15;
 const COMMAND_COUNT = 256;
 const TILE_SIZE = 8;
 const TEXTURE_LOCAL_A = "/assets/streaming-local-a.png";
@@ -294,6 +294,7 @@ function commandBuffer(localTextureId, sharedTextureId) {
     buffer[offset + 11] = 1;
     buffer[offset + 12] = textureId;
     buffer[offset + 13] = 0;
+    buffer[offset + 14] = 0;
   }
   return {
     buffer,

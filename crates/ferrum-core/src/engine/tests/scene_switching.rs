@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::DEFAULT_SPRITE_RENDER_LAYER;
 
 #[test]
 fn reset_game_clears_score_and_recreates_player() {
@@ -19,7 +20,7 @@ fn reset_game_clears_score_and_recreates_player() {
     engine.reset_game();
 
     assert_eq!(engine.score(), 0);
-    assert!(engine.world.player_entity().is_some());
+    assert!(engine.world.primary_actor_entity().is_some());
     assert_eq!(count_layer(&engine, CollisionLayer::Player), 1);
     assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 0);
 }
@@ -62,6 +63,8 @@ fn data_scene_spawn_hook_installs_sprite_collider_and_handle() {
     assert!(engine.spawn_data_scene_entity(
         120.0,
         80.0,
+        0.25,
+        3,
         42,
         24.0,
         32.0,
@@ -113,6 +116,8 @@ fn data_scene_spawn_hook_installs_sprite_collider_and_handle() {
     assert_eq!(sprite.texture_id, 42);
     assert_eq!(sprite.width, 24.0);
     assert_eq!(sprite.height, 32.0);
+    assert_eq!(sprite.rotation_radians, 0.25);
+    assert_eq!(sprite.render_layer, DEFAULT_SPRITE_RENDER_LAYER + 3);
     assert_eq!(
         (sprite.u0, sprite.v0, sprite.u1, sprite.v1),
         (0.25, 0.5, 0.75, 1.0)
@@ -200,6 +205,8 @@ fn data_scene_spawn_hook_rejects_wrong_mode_and_invalid_descriptor() {
     assert!(!engine.spawn_data_scene_entity(
         0.0,
         0.0,
+        0.0,
+        0,
         1,
         0.0,
         16.0,
@@ -238,6 +245,8 @@ fn spawn_test_data_scene_entity(
     engine.spawn_data_scene_entity(
         10.0,
         20.0,
+        0.0,
+        0,
         7,
         16.0,
         18.0,
@@ -304,6 +313,7 @@ fn data_scene_switch_and_reset_clear_stale_output_buffers() {
             a: 1.0,
             texture_id: 0.0,
             effect_flags: 0.0,
+            rotation_radians: 0.0,
         }
     }
 
@@ -442,7 +452,7 @@ fn engine_can_switch_to_platformer_scene() {
     assert_eq!(engine.sprite_count(), 7);
     assert_eq!(count_layer(&engine, CollisionLayer::Wall), 6);
     assert_eq!(count_layer(&engine, CollisionLayer::Enemy), 1);
-    assert!(engine.world.player_entity().is_some());
+    assert!(engine.world.primary_actor_entity().is_some());
     assert_eq!(engine.built_in_shooter_player_entity_id(), u32::MAX);
     assert_eq!(engine.built_in_shooter_player_entity_generation(), 0);
 

@@ -49,7 +49,9 @@
                     "ProjectileDefinition": true,
                     "WeaponDefinition": true,
                     "applySceneBehaviorRecipes": true,
+                    "classifySceneInstance": true,
                     "dryRunSceneBehaviorRecipes": true,
+                    "previewScenePlacementBindingMigration": true,
                     "resolveSceneCompositionSpec": true,
                     "resolveBehaviorRecipeDocument": true
                   },
@@ -87,6 +89,7 @@
                   "scene-authoring.json"
                 ],
                 "scripts": [
+                  "ferrum:placement-viewer",
                   "ferrum:validate",
                   "ferrum:authoring-report",
                   "ferrum:replay-report",
@@ -95,9 +98,9 @@
               }
             }
           },
-          "snapshotHash": "a0a1a566"
+          "snapshotHash": "89407cb0"
         },
-        "replayHash": "a0a1a566"
+        "replayHash": "89407cb0"
       },
       {
         "frame": 1,
@@ -135,7 +138,9 @@
                     "ProjectileDefinition": true,
                     "WeaponDefinition": true,
                     "applySceneBehaviorRecipes": true,
+                    "classifySceneInstance": true,
                     "dryRunSceneBehaviorRecipes": true,
+                    "previewScenePlacementBindingMigration": true,
                     "resolveSceneCompositionSpec": true,
                     "resolveBehaviorRecipeDocument": true
                   },
@@ -173,6 +178,7 @@
                   "scene-authoring.json"
                 ],
                 "scripts": [
+                  "ferrum:placement-viewer",
                   "ferrum:validate",
                   "ferrum:authoring-report",
                   "ferrum:replay-report",
@@ -181,11 +187,11 @@
               }
             }
           },
-          "snapshotHash": "290c2612"
+          "snapshotHash": "92373a6c"
         },
-        "replayHash": "290c2612"
+        "replayHash": "92373a6c"
       }
     ],
-    "replayHash": "2eb8afaf"
+    "replayHash": "c101a894"
   }
 }

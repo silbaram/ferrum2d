@@ -240,6 +240,7 @@ mod tests {
             a: 1.0,
             texture_id: 0.0,
             effect_flags: 0.0,
+            rotation_radians: 0.0,
         }
     }
 

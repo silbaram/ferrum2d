@@ -86,7 +86,7 @@ fn enemy_behavior_orbit_moves_enemy_around_player() {
         &mut audio_events,
         EnemyBehavior::Orbit,
     );
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 100.0, y: 100.0 });
     let enemy = world.spawn_enemy(280.0, 100.0, DEFAULT_TEXTURE_ID);
 
@@ -108,7 +108,7 @@ fn enemy_behavior_orbit_uses_configured_radius() {
             .with_enemy_behavior(EnemyBehavior::Orbit)
             .with_orbit(220.0, 0.0),
     );
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 100.0, y: 100.0 });
     let enemy = world.spawn_enemy(280.0, 100.0, DEFAULT_TEXTURE_ID);
 
@@ -122,7 +122,7 @@ fn enemy_behavior_orbit_uses_configured_radius() {
 #[test]
 fn enemy_behavior_chase_uses_tilemap_navigation_waypoint() {
     let (mut scene, mut world, _, _) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 25.0, y: 5.0 });
     let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
     let mut tilemap = Tilemap::default();
@@ -148,7 +148,7 @@ fn enemy_behavior_chase_uses_tilemap_navigation_waypoint() {
 #[test]
 fn enemy_behavior_chase_reuses_navigation_waypoint_until_repath_interval() {
     let (mut scene, mut world, _, _) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 25.0, y: 5.0 });
     let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
     let mut tilemap = Tilemap::default();
@@ -229,13 +229,13 @@ fn enemy_movement_pattern_chase_player_reuses_navigation_waypoint() {
         &mut audio_events,
         EnemyBehavior::Static,
     );
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 25.0, y: 5.0 });
     let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
     world.set_movement_pattern(
         enemy,
         MovementPattern::Chase {
-            target: MovementTarget::Player,
+            target: MovementTarget::PrimaryActor,
             speed: DEFAULT_ENEMY_SPEED,
         },
     );
@@ -262,13 +262,13 @@ fn enemy_movement_pattern_chase_player_reuses_navigation_waypoint() {
 #[test]
 fn enemy_movement_pattern_chase_player_reuses_navigation_cache() {
     let (mut scene, mut world, _, _) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 25.0, y: 5.0 });
     let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
     world.set_movement_pattern(
         enemy,
         MovementPattern::Chase {
-            target: MovementTarget::Player,
+            target: MovementTarget::PrimaryActor,
             speed: DEFAULT_ENEMY_SPEED,
         },
     );
@@ -306,18 +306,18 @@ fn enemy_movement_pattern_chase_player_reuses_navigation_cache() {
 #[test]
 fn enemy_movement_pattern_chase_player_ignores_stale_player_handle() {
     let (mut scene, mut world, _, _) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
     world.set_movement_pattern(
         enemy,
         MovementPattern::Chase {
-            target: MovementTarget::Player,
+            target: MovementTarget::PrimaryActor,
             speed: DEFAULT_ENEMY_SPEED,
         },
     );
     world.despawn(player);
-    world.set_raw_player_entity_for_test(Some(player));
-    assert!(world.player_entity().is_none());
+    world.set_raw_primary_actor_entity_for_test(Some(player));
+    assert!(world.primary_actor_entity().is_none());
 
     scene.update_enemy_velocity(&mut world, &Tilemap::default(), 0.0);
 
@@ -360,14 +360,14 @@ fn enemy_movement_pattern_chase_entity_uses_tilemap_navigation_waypoint() {
 #[test]
 fn enemy_movement_pattern_chase_entity_does_not_reuse_player_navigation_cache() {
     let (mut scene, mut world, _, _) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 25.0, y: 5.0 });
     let enemy = world.spawn_enemy(5.0, 5.0, DEFAULT_TEXTURE_ID);
     let target = world.spawn_enemy(25.0, 5.0, DEFAULT_TEXTURE_ID);
     world.set_movement_pattern(
         enemy,
         MovementPattern::Chase {
-            target: MovementTarget::Player,
+            target: MovementTarget::PrimaryActor,
             speed: DEFAULT_ENEMY_SPEED,
         },
     );
@@ -429,13 +429,13 @@ fn enemy_movement_pattern_chase_entity_uses_generation_checked_target() {
 #[test]
 fn enemy_movement_pattern_orbit_uses_pattern_radius() {
     let (mut scene, mut world, _, _) = playing_scene();
-    let player = world.player_entity().unwrap();
+    let player = world.primary_actor_entity().unwrap();
     world.set_transform(player, Transform2D { x: 100.0, y: 100.0 });
     let enemy = world.spawn_enemy(280.0, 100.0, DEFAULT_TEXTURE_ID);
     world.set_movement_pattern(
         enemy,
         MovementPattern::Orbit {
-            target: MovementTarget::Player,
+            target: MovementTarget::PrimaryActor,
             speed: 80.0,
             radius: 220.0,
             radial_band: 0.0,

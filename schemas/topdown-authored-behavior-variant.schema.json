@@ -287,11 +287,59 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "agentAttachment": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/agentAttachmentEntry"
+          }
         }
       }
     }
   },
   "definitions": {
+    "agentAttachmentEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instanceId",
+        "role",
+        "behaviorProfiles",
+        "commandCount",
+        "commandTypes"
+      ],
+      "properties": {
+        "instanceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "enum": [
+            "worldObject",
+            "actor"
+          ]
+        },
+        "behaviorProfiles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "commandCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "commandTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     "behaviorRecipeReference": {
       "type": "object",
       "additionalProperties": true,
