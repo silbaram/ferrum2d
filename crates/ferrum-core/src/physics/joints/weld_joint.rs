@@ -1,7 +1,9 @@
 use super::prismatic_joint::{
     prismatic_joint_constraint_context, solve_prismatic_joint_angular_position_constraint,
     solve_prismatic_joint_angular_velocity_constraint,
+    solve_prismatic_joint_limit_position_constraint,
     solve_prismatic_joint_limit_velocity_constraint,
+    solve_prismatic_joint_linear_position_constraint,
     solve_prismatic_joint_linear_velocity_constraint,
 };
 use super::*;
@@ -121,13 +123,41 @@ pub(in crate::physics) fn solve_weld_joint_position_constraint(
     );
 
     let mut applied = false;
-    if angular_stiffness > 0.0
-        && solve_prismatic_joint_angular_position_constraint(world, prismatic, angular_stiffness)
-    {
-        applied = true;
-    }
-    if stiffness > 0.0 && solve_weld_joint_anchor_position_constraint(world, prismatic, stiffness) {
-        applied = true;
+    if stiffness > 0.0 && angular_stiffness > 0.0 {
+        if solve_weld_joint_coupled_position_constraint(
+            world,
+            prismatic,
+            stiffness,
+            angular_stiffness,
+        ) {
+            applied = true;
+        } else {
+            if solve_weld_joint_anchor_position_constraint(world, prismatic, stiffness) {
+                applied = true;
+            }
+            if solve_prismatic_joint_angular_position_constraint(
+                world,
+                prismatic,
+                angular_stiffness,
+            ) {
+                applied = true;
+            }
+        }
+    } else {
+        if stiffness > 0.0
+            && solve_weld_joint_anchor_position_constraint(world, prismatic, stiffness)
+        {
+            applied = true;
+        }
+        if angular_stiffness > 0.0
+            && solve_prismatic_joint_angular_position_constraint(
+                world,
+                prismatic,
+                angular_stiffness,
+            )
+        {
+            applied = true;
+        }
     }
 
     applied
@@ -170,6 +200,22 @@ pub(in crate::physics) fn solve_weld_joint_anchor_position_constraint(
     joint: PrismaticJoint,
     stiffness: f32,
 ) -> bool {
+    let mut applied = false;
+    if solve_prismatic_joint_linear_position_constraint(world, joint, stiffness) {
+        applied = true;
+    }
+    if solve_prismatic_joint_limit_position_constraint(world, joint, stiffness) {
+        applied = true;
+    }
+    applied
+}
+
+pub(in crate::physics) fn solve_weld_joint_coupled_position_constraint(
+    world: &mut World,
+    joint: PrismaticJoint,
+    stiffness: f32,
+    angular_stiffness: f32,
+) -> bool {
     let Some(context) = prismatic_joint_constraint_context(world, joint) else {
         return false;
     };
@@ -177,46 +223,113 @@ pub(in crate::physics) fn solve_weld_joint_anchor_position_constraint(
         vx: context.anchor_b.x - context.anchor_a.x,
         vy: context.anchor_b.y - context.anchor_a.y,
     };
-    if velocity_len_squared(error) <= KINEMATIC_EPSILON * KINEMATIC_EPSILON {
-        return false;
-    }
-    let denominator = context.inverse_mass_a + context.inverse_mass_b;
-    if denominator <= 0.0 {
+    let linear_error = velocity_len_squared(error) > KINEMATIC_EPSILON * KINEMATIC_EPSILON;
+    let angular_error = context.angular_error.abs() > KINEMATIC_EPSILON;
+    if !linear_error && !angular_error {
         return false;
     }
 
-    let impulse = Velocity {
-        vx: -error.vx * stiffness / denominator,
-        vy: -error.vy * stiffness / denominator,
+    let radius_a_perpendicular = Velocity {
+        vx: -context.radius_a.vy,
+        vy: context.radius_a.vx,
     };
-    if !impulse.vx.is_finite()
-        || !impulse.vy.is_finite()
-        || velocity_len_squared(impulse) <= KINEMATIC_EPSILON * KINEMATIC_EPSILON
+    let radius_b_perpendicular = Velocity {
+        vx: -context.radius_b.vy,
+        vy: context.radius_b.vx,
+    };
+    let inverse_mass_sum = context.inverse_mass_a + context.inverse_mass_b;
+    let mass = WeldPositionMass {
+        k11: inverse_mass_sum
+            + context.inverse_inertia_a * radius_a_perpendicular.vx * radius_a_perpendicular.vx
+            + context.inverse_inertia_b * radius_b_perpendicular.vx * radius_b_perpendicular.vx,
+        k12: context.inverse_inertia_a * radius_a_perpendicular.vx * radius_a_perpendicular.vy
+            + context.inverse_inertia_b * radius_b_perpendicular.vx * radius_b_perpendicular.vy,
+        k13: context.inverse_inertia_a * radius_a_perpendicular.vx
+            + context.inverse_inertia_b * radius_b_perpendicular.vx,
+        k22: inverse_mass_sum
+            + context.inverse_inertia_a * radius_a_perpendicular.vy * radius_a_perpendicular.vy
+            + context.inverse_inertia_b * radius_b_perpendicular.vy * radius_b_perpendicular.vy,
+        k23: context.inverse_inertia_a * radius_a_perpendicular.vy
+            + context.inverse_inertia_b * radius_b_perpendicular.vy,
+        k33: context.inverse_inertia_a + context.inverse_inertia_b,
+    };
+    let rhs = WeldPositionRhs {
+        x: -error.vx * stiffness,
+        y: -error.vy * stiffness,
+        angle: -context.angular_error * angular_stiffness,
+    };
+
+    let Some(correction) = solve_weld_joint_position_system(mass, rhs) else {
+        return false;
+    };
+    if velocity_len_squared(correction.impulse) <= KINEMATIC_EPSILON * KINEMATIC_EPSILON
+        && correction.angular_impulse.abs() <= KINEMATIC_EPSILON
     {
         return false;
     }
 
-    apply_weld_joint_anchor_position_correction(world, context, impulse);
+    apply_prismatic_joint_anchor_position_correction(world, context, correction.impulse);
+    apply_prismatic_joint_angular_position_correction(world, context, correction.angular_impulse);
     true
 }
 
-pub(in crate::physics) fn apply_weld_joint_anchor_position_correction(
-    world: &mut World,
-    context: PrismaticJointConstraintContext,
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WeldPositionMass {
+    k11: f32,
+    k12: f32,
+    k13: f32,
+    k22: f32,
+    k23: f32,
+    k33: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WeldPositionRhs {
+    x: f32,
+    y: f32,
+    angle: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WeldPositionCorrection {
     impulse: Velocity,
-) {
-    if context.inverse_mass_a > 0.0 {
-        if let Some(transform) = world.transform_mut_at_index(context.a_index) {
-            transform.x -= impulse.vx * context.inverse_mass_a;
-            transform.y -= impulse.vy * context.inverse_mass_a;
-        }
+    angular_impulse: f32,
+}
+
+fn solve_weld_joint_position_system(
+    mass: WeldPositionMass,
+    rhs: WeldPositionRhs,
+) -> Option<WeldPositionCorrection> {
+    let determinant = mass.k11 * (mass.k22 * mass.k33 - mass.k23 * mass.k23)
+        - mass.k12 * (mass.k12 * mass.k33 - mass.k23 * mass.k13)
+        + mass.k13 * (mass.k12 * mass.k23 - mass.k22 * mass.k13);
+    if !determinant.is_finite() || determinant.abs() <= KINEMATIC_EPSILON {
+        return None;
     }
-    if context.inverse_mass_b > 0.0 {
-        if let Some(transform) = world.transform_mut_at_index(context.b_index) {
-            transform.x += impulse.vx * context.inverse_mass_b;
-            transform.y += impulse.vy * context.inverse_mass_b;
-        }
+
+    let impulse_x = (rhs.x * (mass.k22 * mass.k33 - mass.k23 * mass.k23)
+        - mass.k12 * (rhs.y * mass.k33 - mass.k23 * rhs.angle)
+        + mass.k13 * (rhs.y * mass.k23 - mass.k22 * rhs.angle))
+        / determinant;
+    let impulse_y = (mass.k11 * (rhs.y * mass.k33 - mass.k23 * rhs.angle)
+        - rhs.x * (mass.k12 * mass.k33 - mass.k23 * mass.k13)
+        + mass.k13 * (mass.k12 * rhs.angle - rhs.y * mass.k13))
+        / determinant;
+    let angular_impulse = (mass.k11 * (mass.k22 * rhs.angle - rhs.y * mass.k23)
+        - mass.k12 * (mass.k12 * rhs.angle - rhs.y * mass.k13)
+        + rhs.x * (mass.k12 * mass.k23 - mass.k22 * mass.k13))
+        / determinant;
+
+    if !impulse_x.is_finite() || !impulse_y.is_finite() || !angular_impulse.is_finite() {
+        return None;
     }
+    Some(WeldPositionCorrection {
+        impulse: Velocity {
+            vx: impulse_x,
+            vy: impulse_y,
+        },
+        angular_impulse,
+    })
 }
 
 pub(in crate::physics) fn clear_weld_joint_at_index(world: &mut World, index: usize) -> bool {

@@ -44,6 +44,10 @@ impl Engine {
         self.physics_joint_snapshot.ratio
     }
 
+    pub fn physics_joint_slack(&self) -> bool {
+        self.physics_joint_snapshot.slack
+    }
+
     pub fn physics_joint_reference_angle(&self) -> f32 {
         self.physics_joint_snapshot.reference_angle
     }
@@ -114,6 +118,10 @@ impl Engine {
 
     pub fn physics_joint_limit_enabled(&self) -> bool {
         self.physics_joint_snapshot.limit_enabled
+    }
+
+    pub fn physics_joint_continuous_limit(&self) -> bool {
+        self.physics_joint_snapshot.continuous_limit
     }
 
     pub fn physics_joint_lower_angle(&self) -> f32 {

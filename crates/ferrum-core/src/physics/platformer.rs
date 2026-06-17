@@ -265,6 +265,21 @@ impl MovingPlatformCarryConfig {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MovingPlatformRotationCarryConfig {
+    pub origin: Transform2D,
+    pub delta_radians: f32,
+}
+
+impl MovingPlatformRotationCarryConfig {
+    pub const fn new(origin: Transform2D, delta_radians: f32) -> Self {
+        Self {
+            origin,
+            delta_radians,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PlatformerControllerInput {
     pub horizontal_axis: f32,
     pub jump_pressed: bool,

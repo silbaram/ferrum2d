@@ -136,6 +136,7 @@ export function createPhysicsJointApi({
               options.breakDistance ?? Number.POSITIVE_INFINITY,
               "physics pulley joint breakDistance",
             ),
+            options.slack === true,
             enabled,
           );
           break;
@@ -156,6 +157,7 @@ export function createPhysicsJointApi({
               "physics revolute joint breakDistance",
             ),
             options.limitEnabled === true,
+            options.continuousLimit === true,
             finiteNumber(options.lowerAngle ?? 0, "physics revolute joint lowerAngle"),
             finiteNumber(options.upperAngle ?? 0, "physics revolute joint upperAngle"),
             options.motorEnabled === true,
@@ -340,6 +342,7 @@ function readPhysicsJointSnapshot(rustEngine: Engine): PhysicsJointSnapshot {
     restLength: rustEngine.physics_joint_rest_length(),
     maxLength: rustEngine.physics_joint_max_length(),
     ratio: rustEngine.physics_joint_ratio(),
+    slack: rustEngine.physics_joint_slack(),
     referenceAngle: rustEngine.physics_joint_reference_angle(),
     breakDistance: rustEngine.physics_joint_break_distance(),
     breakAngle: rustEngine.physics_joint_break_angle(),
@@ -358,6 +361,7 @@ function readPhysicsJointSnapshot(rustEngine: Engine): PhysicsJointSnapshot {
     groundAnchorBX: rustEngine.physics_joint_ground_anchor_b_x(),
     groundAnchorBY: rustEngine.physics_joint_ground_anchor_b_y(),
     limitEnabled: rustEngine.physics_joint_limit_enabled(),
+    continuousLimit: rustEngine.physics_joint_continuous_limit(),
     lowerAngle: rustEngine.physics_joint_lower_angle(),
     upperAngle: rustEngine.physics_joint_upper_angle(),
     lowerTranslation: rustEngine.physics_joint_lower_translation(),

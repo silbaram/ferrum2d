@@ -161,6 +161,7 @@ export interface PhysicsJointSpec {
   limit?: PhysicsJointLimitSpec;
   motor?: PhysicsJointMotorSpec;
   ratio?: number;
+  slack?: boolean;
   referenceAngle?: number;
   breakDistance?: number;
   breakAngle?: number;
@@ -170,6 +171,7 @@ export interface PhysicsJointLimitSpec {
   enabled?: boolean;
   lower?: number;
   upper?: number;
+  continuous?: boolean;
 }
 
 export interface PhysicsJointMotorSpec {
@@ -350,6 +352,7 @@ export interface ResolvedPhysicsJointSpec {
   damping: number;
   enabled: boolean;
   limitEnabled: boolean;
+  continuousLimit: boolean;
   lowerLimit: number;
   upperLimit: number;
   motorEnabled: boolean;
@@ -357,6 +360,7 @@ export interface ResolvedPhysicsJointSpec {
   maxMotorForce: number;
   maxMotorTorque: number;
   ratio: number;
+  slack: boolean;
   referenceAngle: number;
   breakDistance: number;
   breakAngle: number;

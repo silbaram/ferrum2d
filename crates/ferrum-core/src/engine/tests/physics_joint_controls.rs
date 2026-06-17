@@ -149,10 +149,12 @@ fn engine_spawn_physics_joints_and_controls_for_wasm() {
         0.25,
         5.0,
         true,
+        true,
     ));
     assert_eq!(engine.physics_joint_type(), PHYSICS_JOINT_PULLEY);
     assert_eq!(engine.physics_joint_rest_length(), 30.0);
     assert_eq!(engine.physics_joint_ratio(), 2.0);
+    assert!(engine.physics_joint_slack());
     assert_eq!(engine.physics_joint_ground_anchor_a_x(), -4.0);
     assert_eq!(engine.physics_joint_ground_anchor_b_y(), 10.0);
     assert_eq!(engine.physics_joint_break_distance(), 5.0);
@@ -170,6 +172,7 @@ fn engine_spawn_physics_joints_and_controls_for_wasm() {
         0.6,
         5.0,
         true,
+        true,
         -0.5,
         0.5,
         true,
@@ -180,6 +183,7 @@ fn engine_spawn_physics_joints_and_controls_for_wasm() {
     assert_eq!(engine.physics_joint_type(), PHYSICS_JOINT_REVOLUTE);
     assert_eq!(engine.physics_joint_local_anchor_a_x(), -1.0);
     assert!(engine.physics_joint_limit_enabled());
+    assert!(engine.physics_joint_continuous_limit());
     assert!(engine.physics_joint_motor_enabled());
     assert_eq!(engine.physics_joint_max_motor_torque(), 3.0);
 

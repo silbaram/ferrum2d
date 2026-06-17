@@ -176,7 +176,7 @@ pub(in crate::physics) fn pulley_joint_constraint_context(
     }
     let ratio = sanitize_pulley_joint_ratio(joint.ratio);
     let rest_length = sanitize_pulley_joint_rest_length(joint.rest_length);
-    let error = length_a + ratio * length_b - rest_length;
+    let error = pulley_joint_constraint_error(joint, length_a + ratio * length_b - rest_length)?;
     if !error.is_finite() || (require_position_error && error.abs() <= KINEMATIC_EPSILON) {
         return None;
     }
@@ -240,6 +240,16 @@ pub(in crate::physics) fn pulley_joint_should_break(world: &World, joint: Pulley
         return false;
     };
     context.error.abs() > break_distance + KINEMATIC_EPSILON
+}
+
+fn pulley_joint_constraint_error(joint: PulleyJoint, error: f32) -> Option<f32> {
+    if !error.is_finite() {
+        return None;
+    }
+    if joint.slack && error <= KINEMATIC_EPSILON {
+        return None;
+    }
+    Some(error)
 }
 
 pub(in crate::physics) fn sanitize_pulley_joint_break_distance(break_distance: f32) -> Option<f32> {

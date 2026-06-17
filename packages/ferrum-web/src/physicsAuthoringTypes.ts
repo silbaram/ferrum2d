@@ -168,12 +168,13 @@ export type PhysicsJointAuthoringOptions =
       groundAnchorB: PhysicsSpecVector2;
       restLength: number;
       ratio?: number;
+      slack?: boolean;
       breakDistance?: number;
     })
   | (PhysicsJointAuthoringBase & {
       type: "revolute";
       breakDistance?: number;
-      limit?: { enabled?: boolean; lower?: number; upper?: number };
+      limit?: { enabled?: boolean; lower?: number; upper?: number; continuous?: boolean };
       motor?: { enabled?: boolean; speed?: number; maxTorque?: number };
     })
   | (PhysicsJointAuthoringBase & {

@@ -282,8 +282,8 @@ declare module "../pkg/ferrum_core.js" {
     spawn_physics_distance_joint(entity_a_id:number,entity_a_generation:number,entity_b_id:number,entity_b_generation:number,local_anchor_a_x:number,local_anchor_a_y:number,local_anchor_b_x:number,local_anchor_b_y:number,rest_length:number,stiffness:number,damping:number,break_distance:number,enabled:boolean): boolean;
     spawn_physics_rope_joint(entity_a_id:number,entity_a_generation:number,entity_b_id:number,entity_b_generation:number,local_anchor_a_x:number,local_anchor_a_y:number,local_anchor_b_x:number,local_anchor_b_y:number,max_length:number,stiffness:number,damping:number,break_distance:number,enabled:boolean): boolean;
     spawn_physics_spring_joint(entity_a_id:number,entity_a_generation:number,entity_b_id:number,entity_b_generation:number,local_anchor_a_x:number,local_anchor_a_y:number,local_anchor_b_x:number,local_anchor_b_y:number,rest_length:number,stiffness:number,damping:number,break_distance:number,enabled:boolean): boolean;
-    spawn_physics_pulley_joint(entity_a_id:number,entity_a_generation:number,entity_b_id:number,entity_b_generation:number,ground_anchor_a_x:number,ground_anchor_a_y:number,ground_anchor_b_x:number,ground_anchor_b_y:number,local_anchor_a_x:number,local_anchor_a_y:number,local_anchor_b_x:number,local_anchor_b_y:number,rest_length:number,ratio:number,stiffness:number,damping:number,break_distance:number,enabled:boolean): boolean;
-    spawn_physics_revolute_joint(entity_a_id:number,entity_a_generation:number,entity_b_id:number,entity_b_generation:number,local_anchor_a_x:number,local_anchor_a_y:number,local_anchor_b_x:number,local_anchor_b_y:number,stiffness:number,damping:number,break_distance:number,limit_enabled:boolean,lower_angle:number,upper_angle:number,motor_enabled:boolean,motor_speed:number,max_motor_torque:number,enabled:boolean): boolean;
+    spawn_physics_pulley_joint(entity_a_id:number,entity_a_generation:number,entity_b_id:number,entity_b_generation:number,ground_anchor_a_x:number,ground_anchor_a_y:number,ground_anchor_b_x:number,ground_anchor_b_y:number,local_anchor_a_x:number,local_anchor_a_y:number,local_anchor_b_x:number,local_anchor_b_y:number,rest_length:number,ratio:number,stiffness:number,damping:number,break_distance:number,slack:boolean,enabled:boolean): boolean;
+    spawn_physics_revolute_joint(entity_a_id:number,entity_a_generation:number,entity_b_id:number,entity_b_generation:number,local_anchor_a_x:number,local_anchor_a_y:number,local_anchor_b_x:number,local_anchor_b_y:number,stiffness:number,damping:number,break_distance:number,limit_enabled:boolean,continuous_limit:boolean,lower_angle:number,upper_angle:number,motor_enabled:boolean,motor_speed:number,max_motor_torque:number,enabled:boolean): boolean;
     spawn_physics_prismatic_joint(entity_a_id:number,entity_a_generation:number,entity_b_id:number,entity_b_generation:number,local_anchor_a_x:number,local_anchor_a_y:number,local_anchor_b_x:number,local_anchor_b_y:number,local_axis_a_x:number,local_axis_a_y:number,reference_angle:number,stiffness:number,damping:number,angular_stiffness:number,angular_damping:number,break_distance:number,limit_enabled:boolean,lower_translation:number,upper_translation:number,motor_enabled:boolean,motor_speed:number,max_motor_force:number,enabled:boolean): boolean;
     spawn_physics_weld_joint(entity_a_id:number,entity_a_generation:number,entity_b_id:number,entity_b_generation:number,local_anchor_a_x:number,local_anchor_a_y:number,local_anchor_b_x:number,local_anchor_b_y:number,reference_angle:number,stiffness:number,damping:number,angular_stiffness:number,angular_damping:number,break_distance:number,break_angle:number,enabled:boolean): boolean;
     spawn_physics_gear_joint(entity_a_id:number,entity_a_generation:number,entity_b_id:number,entity_b_generation:number,ratio:number,reference_angle:number,stiffness:number,damping:number,break_angle:number,enabled:boolean): boolean;
@@ -421,6 +421,7 @@ declare module "../pkg/ferrum_core.js" {
     physics_joint_rest_length(): number;
     physics_joint_max_length(): number;
     physics_joint_ratio(): number;
+    physics_joint_slack(): boolean;
     physics_joint_reference_angle(): number;
     physics_joint_break_distance(): number;
     physics_joint_break_angle(): number;
@@ -439,6 +440,7 @@ declare module "../pkg/ferrum_core.js" {
     physics_joint_ground_anchor_b_x(): number;
     physics_joint_ground_anchor_b_y(): number;
     physics_joint_limit_enabled(): boolean;
+    physics_joint_continuous_limit(): boolean;
     physics_joint_lower_angle(): number;
     physics_joint_upper_angle(): number;
     physics_joint_lower_translation(): number;

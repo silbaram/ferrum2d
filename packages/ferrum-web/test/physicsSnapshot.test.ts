@@ -369,6 +369,7 @@ class FakeSnapshotEngine {
       restLength: "restLength" in options ? options.restLength : 0,
       maxLength: "maxLength" in options ? options.maxLength : 0,
       ratio: "ratio" in options ? options.ratio ?? 1 : 1,
+      slack: "slack" in options ? options.slack === true : false,
       referenceAngle: "referenceAngle" in options ? options.referenceAngle ?? 0 : 0,
       breakDistance: "breakDistance" in options ? options.breakDistance ?? 0 : 0,
       breakAngle: "breakAngle" in options ? options.breakAngle ?? 0 : 0,
@@ -387,6 +388,9 @@ class FakeSnapshotEngine {
       groundAnchorBX: "groundAnchorBX" in options ? options.groundAnchorBX : 0,
       groundAnchorBY: "groundAnchorBY" in options ? options.groundAnchorBY : 0,
       limitEnabled: "limitEnabled" in options ? options.limitEnabled === true : false,
+      continuousLimit: "continuousLimit" in options
+        ? options.continuousLimit === true
+        : false,
       lowerAngle: "lowerAngle" in options ? options.lowerAngle ?? 0 : 0,
       upperAngle: "upperAngle" in options ? options.upperAngle ?? 0 : 0,
       lowerTranslation: "lowerTranslation" in options ? options.lowerTranslation ?? 0 : 0,
@@ -460,6 +464,52 @@ test("physics world snapshot captures versioned state and restores via Physics S
   equal(hashPhysicsWorldSnapshot(snapshot), snapshot.replayHash);
   equal(fake.bulkCaptureCount, 1);
   equal(fake.bulkRestoreCount, 1);
+});
+
+test("physics world snapshot accepts legacy v1 joint snapshots without newer boolean fields", () => {
+  const fake = new FakeSnapshotEngine();
+  const engine = fake as unknown as FerrumEngine;
+  const world = createPhysicsWorldFromSpec(engine, {
+    mode: "rigid",
+    solver: { stepSeconds: 0.25 },
+    bodies: {
+      anchor: { type: "static", collider: { shape: "box", size: [10, 10] } },
+      crate: { type: "dynamic", collider: { shape: "box", size: [20, 20] } },
+    },
+    joints: {
+      rope: {
+        type: "pulley",
+        bodyA: "anchor",
+        bodyB: "crate",
+        groundAnchorA: [0, 0],
+        groundAnchorB: [20, 0],
+        restLength: 40,
+        ratio: 1,
+      },
+      hinge: {
+        type: "revolute",
+        bodyA: "anchor",
+        bodyB: "crate",
+        limit: { enabled: true, lower: -1, upper: 1 },
+      },
+    },
+  });
+  const snapshot = capturePhysicsWorldSnapshot(engine, world, { frame: 3 });
+  const legacy = jsonClone(snapshot);
+  delete (legacy.joints.rope.state as Partial<PhysicsJointSnapshot>).slack;
+  delete (legacy.joints.rope.state as Partial<PhysicsJointSnapshot>).continuousLimit;
+  delete (legacy.joints.hinge.state as Partial<PhysicsJointSnapshot>).slack;
+  delete (legacy.joints.hinge.state as Partial<PhysicsJointSnapshot>).continuousLimit;
+  delete (legacy.spec.joints.rope as { slack?: boolean }).slack;
+  delete (legacy.spec.joints.rope as { continuousLimit?: boolean }).continuousLimit;
+  delete (legacy.spec.joints.hinge as { slack?: boolean }).slack;
+  delete (legacy.spec.joints.hinge as { continuousLimit?: boolean }).continuousLimit;
+  legacy.replayHash = hashPhysicsWorldSnapshot(legacy);
+
+  const restored = restorePhysicsWorldSnapshot(engine, legacy, { replace: world });
+
+  equal(restored.restoredJointCount, 2);
+  equal(restored.sourceSnapshot.replayHash, legacy.replayHash);
 });
 
 test("physics world snapshot preserves HD-2D height spans outside bulk body ABI", () => {

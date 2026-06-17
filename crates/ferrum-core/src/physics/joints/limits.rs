@@ -26,8 +26,16 @@ pub(super) fn revolute_joint_angle_limits(joint: RevoluteJoint) -> Option<(f32, 
         return None;
     }
 
-    let lower_angle = normalize_angle_radians(joint.lower_angle);
-    let upper_angle = normalize_angle_radians(joint.upper_angle);
+    let lower_angle = if joint.continuous_limit {
+        sanitize_finite(joint.lower_angle)
+    } else {
+        normalize_angle_radians(joint.lower_angle)
+    };
+    let upper_angle = if joint.continuous_limit {
+        sanitize_finite(joint.upper_angle)
+    } else {
+        normalize_angle_radians(joint.upper_angle)
+    };
     if lower_angle <= upper_angle {
         Some((lower_angle, upper_angle))
     } else {
@@ -40,10 +48,15 @@ pub(super) fn revolute_joint_limit_error(
     joint: RevoluteJoint,
 ) -> Option<f32> {
     let (lower_angle, upper_angle) = revolute_joint_angle_limits(joint)?;
-    if context.relative_angle < lower_angle {
-        Some(context.relative_angle - lower_angle)
-    } else if context.relative_angle > upper_angle {
-        Some(context.relative_angle - upper_angle)
+    let relative_angle = if joint.continuous_limit {
+        context.continuous_relative_angle
+    } else {
+        context.relative_angle
+    };
+    if relative_angle < lower_angle {
+        Some(relative_angle - lower_angle)
+    } else if relative_angle > upper_angle {
+        Some(relative_angle - upper_angle)
     } else {
         None
     }
@@ -77,10 +90,15 @@ pub(super) fn revolute_joint_motor_allows_velocity(
     let Some((lower_angle, upper_angle)) = revolute_joint_angle_limits(joint) else {
         return true;
     };
-    if motor_speed > 0.0 && context.relative_angle >= upper_angle - KINEMATIC_EPSILON {
+    let relative_angle = if joint.continuous_limit {
+        context.continuous_relative_angle
+    } else {
+        context.relative_angle
+    };
+    if motor_speed > 0.0 && relative_angle >= upper_angle - KINEMATIC_EPSILON {
         return false;
     }
-    if motor_speed < 0.0 && context.relative_angle <= lower_angle + KINEMATIC_EPSILON {
+    if motor_speed < 0.0 && relative_angle <= lower_angle + KINEMATIC_EPSILON {
         return false;
     }
     true

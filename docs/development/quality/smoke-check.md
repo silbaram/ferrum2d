@@ -320,7 +320,7 @@ Web public API의 `PhysicsReplayInputStream`은 frame/seed/fixed step/body event
 - `physics:joint-chain`: rope/spring/revolute/prismatic/weld joint constraint
 - `physics:fast-projectile-ccd`: fast dynamic body CCD matrix
 - `physics:tile-edge-snagging`: edge collider pair/contact/cast 회귀
-- `physics:moving-platform-character`: moving platform carry와 platformer controller
+- `physics:moving-platform-character`: moving platform linear/rotation carry와 platformer controller
 - `physics:query-cast-matrix`: overlap/raycast/shape-cast matrix
 - `physics:hd2d-navigation-combat`: bridge portal multi-floor navigation, projectile arc height span, projectile/tile height filter, render sort
 
@@ -370,6 +370,14 @@ Platformer 예제의 controller/runtime/render path를 확인하려면 다음을
 ```bash
 pnpm smoke:platformer
 pnpm smoke:platformer-effects
+```
+
+KCC 정책이나 controller 이동감이 바뀌는 변경은 Rust fixture만으로 완료하지 않는다. `ground_probe_distance`, one-way platform 판정, jump 중 step offset, slope snap, HD-2D bridge pass-through를 건드리면 최소한 다음 smoke를 함께 확인한다.
+
+```bash
+pnpm smoke:platformer
+pnpm smoke:platformer-budget
+pnpm smoke:topdown-hd2d
 ```
 
 Physics Spec 기반 generic rigid body sandbox와 demo fixture suite를 브라우저에서 확인하려면 다음을 실행한다.

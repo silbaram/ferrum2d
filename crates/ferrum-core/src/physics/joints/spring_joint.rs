@@ -47,15 +47,16 @@ pub(in crate::physics) fn solve_spring_joint_velocity_constraint(
         vy: velocity_b.vy - velocity_a.vy,
     };
     let velocity_along_axis = dot_velocity(relative_velocity, context.normal);
-    let iteration_count = velocity_iterations.max(1) as f32;
-    let spring_velocity = context.error * stiffness / (delta_seconds * iteration_count);
-    let damping_velocity = velocity_along_axis * damping;
-    let correction_velocity = spring_velocity + damping_velocity;
-    if !correction_velocity.is_finite() || correction_velocity.abs() <= KINEMATIC_EPSILON {
+    let Some(impulse_magnitude) = spring_joint_soft_velocity_impulse(
+        context,
+        stiffness,
+        damping,
+        delta_seconds,
+        velocity_iterations,
+        velocity_along_axis,
+    ) else {
         return false;
-    }
-
-    let impulse_magnitude = -correction_velocity / context.denominator;
+    };
     if !impulse_magnitude.is_finite() || impulse_magnitude.abs() <= KINEMATIC_EPSILON {
         return false;
     }
@@ -77,6 +78,38 @@ pub(in crate::physics) fn solve_spring_joint_velocity_constraint(
         },
     );
     true
+}
+
+fn spring_joint_soft_velocity_impulse(
+    context: SpringJointConstraintContext,
+    stiffness: f32,
+    damping: f32,
+    delta_seconds: f32,
+    velocity_iterations: u32,
+    velocity_along_axis: f32,
+) -> Option<f32> {
+    let spring_denominator = if stiffness > 0.0 {
+        context.denominator / stiffness
+    } else {
+        context.denominator
+    };
+    if !spring_denominator.is_finite() || spring_denominator <= 0.0 {
+        return None;
+    }
+
+    let iteration_count = velocity_iterations.max(1) as f32;
+    let spring_velocity = if stiffness > 0.0 && delta_seconds > 0.0 {
+        context.error / (delta_seconds * iteration_count)
+    } else {
+        0.0
+    };
+    let damping_velocity = velocity_along_axis * damping;
+    let correction_velocity = spring_velocity + damping_velocity;
+    if !correction_velocity.is_finite() || correction_velocity.abs() <= KINEMATIC_EPSILON {
+        return None;
+    }
+
+    Some(-correction_velocity / spring_denominator)
 }
 
 pub(in crate::physics) fn spring_joint_constraint_context(

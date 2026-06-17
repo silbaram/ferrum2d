@@ -196,7 +196,7 @@ fn hd2d_controller_passes_under_bridge_on_other_floor() {
 }
 
 #[test]
-fn hd2d_controller_current_bridge_pass_through_uses_fixed_samples() {
+fn hd2d_controller_detects_high_speed_bridge_pass_through_with_tile_traversal() {
     let mut world = World::default();
     let mut tilemap = Tilemap::default();
     tilemap.set_layer(0, 20, 1, 1.0, 10.0, 0.0, 0.0, true, {
@@ -227,7 +227,7 @@ fn hd2d_controller_current_bridge_pass_through_uses_fixed_samples() {
         hd2d_config(),
     );
 
-    assert!(!result.passed_under_bridge);
+    assert!(result.passed_under_bridge);
     assert_eq!(
         world.transform(mover),
         Some(Transform2D { x: 20.0, y: 5.0 })

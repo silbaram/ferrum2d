@@ -64,6 +64,7 @@ export type PhysicsJointSpawnOptions =
       localAnchorBY?: number;
       restLength: number;
       ratio?: number;
+      slack?: boolean;
       breakDistance?: number;
     })
   | (PhysicsJointBaseOptions & {
@@ -74,6 +75,7 @@ export type PhysicsJointSpawnOptions =
       localAnchorBY?: number;
       breakDistance?: number;
       limitEnabled?: boolean;
+      continuousLimit?: boolean;
       lowerAngle?: number;
       upperAngle?: number;
       motorEnabled?: boolean;
@@ -125,6 +127,7 @@ export interface PhysicsJointSnapshot extends PhysicsJointHandle {
   restLength: number;
   maxLength: number;
   ratio: number;
+  slack: boolean;
   referenceAngle: number;
   breakDistance: number;
   breakAngle: number;
@@ -143,6 +146,7 @@ export interface PhysicsJointSnapshot extends PhysicsJointHandle {
   groundAnchorBX: number;
   groundAnchorBY: number;
   limitEnabled: boolean;
+  continuousLimit: boolean;
   lowerAngle: number;
   upperAngle: number;
   lowerTranslation: number;

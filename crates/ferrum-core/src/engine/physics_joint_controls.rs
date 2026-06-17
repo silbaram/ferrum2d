@@ -173,6 +173,7 @@ impl Engine {
         stiffness: f32,
         damping: f32,
         break_distance: f32,
+        slack: bool,
         enabled: bool,
     ) -> bool {
         if !Self::valid_transform(ground_anchor_a_x, ground_anchor_a_y)
@@ -205,6 +206,7 @@ impl Engine {
             .with_stiffness(stiffness)
             .with_damping(damping)
             .with_break_distance(break_distance)
+            .with_slack(slack)
             .with_enabled(enabled);
         let id = self.world.add_pulley_joint(joint);
         self.store_pulley_joint_snapshot(id, joint)
@@ -225,6 +227,7 @@ impl Engine {
         damping: f32,
         break_distance: f32,
         limit_enabled: bool,
+        continuous_limit: bool,
         lower_angle: f32,
         upper_angle: f32,
         motor_enabled: bool,
@@ -261,6 +264,7 @@ impl Engine {
             .with_break_distance(break_distance)
             .with_angle_limits(lower_angle, upper_angle)
             .with_angle_limit_enabled(limit_enabled)
+            .with_continuous_limit(continuous_limit)
             .with_motor(motor_speed, max_motor_torque)
             .with_motor_enabled(motor_enabled)
             .with_enabled(enabled);

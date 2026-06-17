@@ -71,6 +71,9 @@ export function physicsJoints(
       damping: unitIntervalNumber(object.damping, `${jointPath}.damping`, 0),
       enabled: booleanValue(object.enabled, `${jointPath}.enabled`, true),
       limitEnabled: booleanValue(limit.enabled, `${jointPath}.limit.enabled`, false),
+      continuousLimit: type === "revolute"
+        ? booleanValue(limit.continuous, `${jointPath}.limit.continuous`, false)
+        : false,
       lowerLimit: finiteNumber(limit.lower, `${jointPath}.limit.lower`, 0),
       upperLimit: finiteNumber(limit.upper, `${jointPath}.limit.upper`, 0),
       motorEnabled: booleanValue(motor.enabled, `${jointPath}.motor.enabled`, false),
@@ -80,6 +83,7 @@ export function physicsJoints(
       ratio: type === "pulley"
         ? positiveNumber(object.ratio, `${jointPath}.ratio`, 1)
         : finiteNumber(object.ratio, `${jointPath}.ratio`, 1),
+      slack: booleanValue(object.slack, `${jointPath}.slack`, false),
       referenceAngle: finiteNumber(object.referenceAngle, `${jointPath}.referenceAngle`, 0),
       breakDistance: nonNegativeNumber(object.breakDistance, `${jointPath}.breakDistance`, 0),
       breakAngle: nonNegativeNumber(object.breakAngle, `${jointPath}.breakAngle`, 0),

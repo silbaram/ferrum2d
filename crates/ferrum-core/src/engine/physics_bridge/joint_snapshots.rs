@@ -120,6 +120,7 @@ impl Engine {
         self.physics_joint_snapshot = PhysicsJointSnapshot {
             rest_length: joint.rest_length,
             ratio: joint.ratio,
+            slack: joint.slack,
             break_distance: joint.break_distance,
             stiffness: joint.stiffness,
             damping: joint.damping,
@@ -157,6 +158,7 @@ impl Engine {
             local_anchor_b_x: joint.local_anchor_b_x,
             local_anchor_b_y: joint.local_anchor_b_y,
             limit_enabled: joint.limit_enabled,
+            continuous_limit: joint.continuous_limit,
             lower_angle: joint.lower_angle,
             upper_angle: joint.upper_angle,
             motor_enabled: joint.motor_enabled,

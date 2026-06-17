@@ -163,7 +163,7 @@ test("createPhysicsWorldFromSpec applies resolved bodies, layers, materials, wor
         bodyB: "crate",
         anchor: [320, 80],
         localAnchorB: [0, -16],
-        limit: { enabled: true, lower: -0.5, upper: 0.5 },
+        limit: { enabled: true, continuous: true, lower: -0.5, upper: 0.5 },
       },
       brace: {
         type: "weld",
@@ -184,6 +184,7 @@ test("createPhysicsWorldFromSpec applies resolved bodies, layers, materials, wor
         localAnchorB: [0, -16],
         restLength: 220,
         ratio: 1.5,
+        slack: true,
         breakDistance: 64,
       },
     },
@@ -227,6 +228,7 @@ test("createPhysicsWorldFromSpec applies resolved bodies, layers, materials, wor
   equal(joint.entityB.entityId, 2);
   if (joint.type === "revolute") {
     equal(joint.limitEnabled, true);
+    equal(joint.continuousLimit, true);
     equal(joint.lowerAngle, -0.5);
     equal(joint.upperAngle, 0.5);
   }
@@ -246,6 +248,7 @@ test("createPhysicsWorldFromSpec applies resolved bodies, layers, materials, wor
     equal(pulley.localAnchorBY, -16);
     equal(pulley.restLength, 220);
     equal(pulley.ratio, 1.5);
+    equal(pulley.slack, true);
     equal(pulley.breakDistance, 64);
   }
 
@@ -642,6 +645,37 @@ test("createJoint rolls back generated world anchors when joint spawn fails", ()
   equal(fake.joints.length, 0);
   equal(fake.despawnedBodies.length, 1);
   equal(fake.despawnedBodies[0].entityId, 1);
+});
+
+test("createJoint validates pulley slack and revolute continuous limit booleans", () => {
+  const fake = new FakePhysicsEngine();
+  const engine = fake as unknown as FerrumEngine;
+  const bodyA = { entityId: 1, entityGeneration: 1 };
+  const bodyB = { entityId: 2, entityGeneration: 1 };
+
+  expectThrow(() => createJoint(engine, {
+    type: "pulley",
+    bodyA,
+    bodyB,
+    groundAnchorA: [0, 0],
+    groundAnchorB: [10, 0],
+    restLength: 20,
+    slack: "true" as unknown as boolean,
+  }), /physics\.joint\.slack.*boolean/);
+
+  expectThrow(() => createJoint(engine, {
+    type: "revolute",
+    bodyA,
+    bodyB,
+    limit: {
+      enabled: true,
+      continuous: "true" as unknown as boolean,
+      lower: -1,
+      upper: 1,
+    },
+  }), /physics\.joint\.limit\.continuous.*boolean/);
+
+  equal(fake.joints.length, 0);
 });
 
 test("createPhysicsWorldFromSpec rolls back bodies and world anchors when joint spawn fails", () => {

@@ -259,6 +259,62 @@ fn revolute_joint_clamps_lower_angle_limit() {
 }
 
 #[test]
+fn revolute_joint_normalized_limit_keeps_wrapped_default_behavior() {
+    let mut world = World::default();
+    let anchor = world.spawn_entity();
+    world.set_transform(anchor, Transform2D { x: 0.0, y: 0.0 });
+    world.set_rotation(anchor, Rotation2D { radians: 0.0 });
+    world.set_rigid_body(anchor, RigidBody::static_body());
+    let body = world.spawn_entity();
+    world.set_transform(body, Transform2D { x: 0.0, y: 0.0 });
+    world.set_rotation(
+        body,
+        Rotation2D {
+            radians: std::f32::consts::TAU + 0.25,
+        },
+    );
+    world.set_rigid_body(body, RigidBody::dynamic(1.0).with_inertia(1.0));
+    let joint = RevoluteJoint::new(anchor, body).with_angle_limits(-0.5, 0.5);
+
+    assert!(!solve_revolute_joint_position_constraint(&mut world, joint));
+
+    let rotation = world.rotation(body).unwrap();
+    assert!(
+        (rotation.radians - (std::f32::consts::TAU + 0.25)).abs() < 0.001,
+        "default normalized limit should preserve wrapped in-range angle, got {rotation:?}"
+    );
+}
+
+#[test]
+fn revolute_joint_continuous_limit_clamps_multi_turn_angle() {
+    let mut world = World::default();
+    let anchor = world.spawn_entity();
+    world.set_transform(anchor, Transform2D { x: 0.0, y: 0.0 });
+    world.set_rotation(anchor, Rotation2D { radians: 0.0 });
+    world.set_rigid_body(anchor, RigidBody::static_body());
+    let body = world.spawn_entity();
+    world.set_transform(body, Transform2D { x: 0.0, y: 0.0 });
+    world.set_rotation(
+        body,
+        Rotation2D {
+            radians: std::f32::consts::TAU + 0.75,
+        },
+    );
+    world.set_rigid_body(body, RigidBody::dynamic(1.0).with_inertia(1.0));
+    let joint = RevoluteJoint::new(anchor, body)
+        .with_angle_limits(-0.5, 0.5)
+        .with_continuous_limit(true);
+
+    assert!(solve_revolute_joint_position_constraint(&mut world, joint));
+
+    let rotation = world.rotation(body).unwrap();
+    assert!(
+        (rotation.radians - 0.5).abs() < 0.001,
+        "continuous limit should clamp against raw accumulated relative angle, got {rotation:?}"
+    );
+}
+
+#[test]
 fn revolute_joint_angle_limit_damping_reduces_outward_angular_velocity() {
     let mut world = World::default();
     let anchor = world.spawn_entity();

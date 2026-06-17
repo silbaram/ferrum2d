@@ -16,6 +16,7 @@ pub struct RevoluteJoint {
     pub local_anchor_b_y: f32,
     pub break_distance: f32,
     pub limit_enabled: bool,
+    pub continuous_limit: bool,
     pub lower_angle: f32,
     pub upper_angle: f32,
     pub motor_enabled: bool,
@@ -40,6 +41,7 @@ impl RevoluteJoint {
             local_anchor_b_y: 0.0,
             break_distance: f32::INFINITY,
             limit_enabled: false,
+            continuous_limit: false,
             lower_angle: 0.0,
             upper_angle: 0.0,
             motor_enabled: false,
@@ -82,6 +84,11 @@ impl RevoluteJoint {
 
     pub const fn with_angle_limit_enabled(mut self, limit_enabled: bool) -> Self {
         self.limit_enabled = limit_enabled;
+        self
+    }
+
+    pub const fn with_continuous_limit(mut self, continuous_limit: bool) -> Self {
+        self.continuous_limit = continuous_limit;
         self
     }
 

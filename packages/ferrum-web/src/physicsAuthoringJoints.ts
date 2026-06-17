@@ -18,6 +18,7 @@ import type {
 } from "./physicsAuthoringTypes.js";
 import type { ResolvedPhysicsJointSpec, ResolvedPhysicsVector2 } from "./physicsSpec.js";
 import {
+  booleanValue,
   finiteNumber,
   nonNegativeNumber,
   positiveNumber,
@@ -212,6 +213,7 @@ function jointOptionsFromResolved(
         localAnchorBY: joint.localAnchorBY,
         restLength: joint.restLength,
         ratio: joint.ratio,
+        ...(joint.slack ? { slack: true } : {}),
         ...(joint.breakDistance > 0 ? { breakDistance: joint.breakDistance } : {}),
       };
     case "revolute":
@@ -224,6 +226,7 @@ function jointOptionsFromResolved(
         localAnchorBY: joint.localAnchorBY,
         ...(joint.breakDistance > 0 ? { breakDistance: joint.breakDistance } : {}),
         limitEnabled: joint.limitEnabled,
+        ...(joint.continuousLimit ? { continuousLimit: true } : {}),
         lowerAngle: joint.lowerLimit,
         upperAngle: joint.upperLimit,
         motorEnabled: joint.motorEnabled,
@@ -341,6 +344,7 @@ function jointOptionsFromAuthoring(
         localAnchorBY: localAnchorB.y,
         restLength: nonNegativeNumber(options.restLength, `${path}.restLength`),
         ratio: positiveNumber(options.ratio ?? 1, `${path}.ratio`),
+        ...(options.slack === undefined ? {} : { slack: booleanValue(options.slack, `${path}.slack`) }),
         ...(options.breakDistance === undefined ? {} : { breakDistance: nonNegativeNumber(options.breakDistance, `${path}.breakDistance`) }),
       };
     }
@@ -354,6 +358,9 @@ function jointOptionsFromAuthoring(
         localAnchorBY: localAnchorB.y,
         ...(options.breakDistance === undefined ? {} : { breakDistance: nonNegativeNumber(options.breakDistance, `${path}.breakDistance`) }),
         limitEnabled: options.limit?.enabled === true,
+        continuousLimit: options.limit?.continuous === undefined
+          ? false
+          : booleanValue(options.limit.continuous, `${path}.limit.continuous`),
         lowerAngle: finiteNumber(options.limit?.lower ?? 0, `${path}.limit.lower`),
         upperAngle: finiteNumber(options.limit?.upper ?? 0, `${path}.limit.upper`),
         motorEnabled: options.motor?.enabled === true,

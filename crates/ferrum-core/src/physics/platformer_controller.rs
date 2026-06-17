@@ -6,9 +6,9 @@ use crate::world::World;
 use super::math::{finite_velocity, velocity_len_squared};
 use super::{
     GroundProbeHit, KinematicMoveResult, KinematicMoveSettings, MovingPlatformCarryConfig,
-    OneWayPlatformConfig, PhysicsCounters, PhysicsSystem, PlatformerControllerConfig,
-    PlatformerControllerInput, PlatformerControllerResult, PlatformerControllerState, SlopeSegment,
-    KINEMATIC_EPSILON, MAX_KINEMATIC_ITERATIONS,
+    MovingPlatformRotationCarryConfig, OneWayPlatformConfig, PhysicsCounters, PhysicsSystem,
+    PlatformerControllerConfig, PlatformerControllerInput, PlatformerControllerResult,
+    PlatformerControllerState, SlopeSegment, KINEMATIC_EPSILON, MAX_KINEMATIC_ITERATIONS,
 };
 
 mod bounds;
@@ -153,7 +153,16 @@ impl PhysicsSystem {
         rider: Entity,
         config: MovingPlatformCarryConfig,
     ) -> Option<KinematicMoveResult> {
-        carry_moving_platform_internal(world, None, rider, config)
+        carry_moving_platform_internal(world, None, rider, config, None)
+    }
+
+    pub fn carry_moving_platform_with_rotation_carry(
+        world: &mut World,
+        rider: Entity,
+        config: MovingPlatformCarryConfig,
+        rotation_carry: MovingPlatformRotationCarryConfig,
+    ) -> Option<KinematicMoveResult> {
+        carry_moving_platform_internal(world, None, rider, config, Some(rotation_carry))
     }
 
     pub fn carry_moving_platform_with_tilemap(
@@ -162,7 +171,17 @@ impl PhysicsSystem {
         rider: Entity,
         config: MovingPlatformCarryConfig,
     ) -> Option<KinematicMoveResult> {
-        carry_moving_platform_internal(world, Some(tilemap), rider, config)
+        carry_moving_platform_internal(world, Some(tilemap), rider, config, None)
+    }
+
+    pub fn carry_moving_platform_with_tilemap_and_rotation_carry(
+        world: &mut World,
+        tilemap: &Tilemap,
+        rider: Entity,
+        config: MovingPlatformCarryConfig,
+        rotation_carry: MovingPlatformRotationCarryConfig,
+    ) -> Option<KinematicMoveResult> {
+        carry_moving_platform_internal(world, Some(tilemap), rider, config, Some(rotation_carry))
     }
 
     pub fn move_platformer_controller(

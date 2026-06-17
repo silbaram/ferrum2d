@@ -58,11 +58,12 @@ export const JOINT_KEYS = new Set([
   "limit",
   "motor",
   "ratio",
+  "slack",
   "referenceAngle",
   "breakDistance",
   "breakAngle",
 ]);
 
-export const LIMIT_KEYS = new Set(["enabled", "lower", "upper"]);
+export const LIMIT_KEYS = new Set(["enabled", "lower", "upper", "continuous"]);
 export const MOTOR_KEYS = new Set(["enabled", "speed", "maxForce", "maxTorque"]);
 export const DEBUG_KEYS = new Set(["colliders", "contacts", "manifolds", "broadphase", "joints", "sleeping", "layers", "ccd"]);

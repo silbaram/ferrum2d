@@ -42,11 +42,11 @@
 | Broadphase | AABB proxy 기반 sweep-and-prune |
 | Narrowphase | overlap, contact normal/penetration, 대표 contact point, 일부 2점 manifold |
 | CCD/query | swept AABB, raycast/segment-cast, point/AABB/circle/oriented-box/capsule/convex-polygon query, edge raycast/segment-cast, shape cast |
-| Kinematic movement | move-and-slide, tilemap obstacle, one-way platform, moving platform carry, HD-2D step/ramp/ledge/bridge-under movement |
+| Kinematic movement | move-and-slide, tilemap obstacle, one-way platform, moving platform linear carry, opt-in moving platform rotation carry, HD-2D step/ramp/ledge/bridge-under movement |
 | Platformer support | ground probe, controller config/state, coyote time, jump buffering, step offset, slope snap |
 | Rigid body | static/kinematic/dynamic, mass/inertia, force/impulse/torque, gravity scale, damping, sleep/wake |
 | Solver | substep, contact impulse, friction/restitution, Baumgarte tuning, split impulse, island metrics/scheduling |
-| Joints | distance, rope, spring, pulley, revolute, prismatic, weld, gear. Distance/Rope/Spring도 optional local anchor와 회전 관성 effective mass를 지원 |
+| Joints | distance, rope, spring, pulley, revolute, prismatic, weld, gear. Distance/Rope/Spring은 optional local anchor와 회전 관성 effective mass를 지원하고, Spring partial stiffness는 soft denominator로 velocity solve에 적용한다. Pulley는 기본 equality constraint와 opt-in slack inequality를 지원한다. Revolute limit은 기본 normalized 상대각과 opt-in continuous multi-turn 상대각을 지원한다. Weld는 off-center anchor position correction을 relative angle correction과 coupled solve로 처리 |
 | Tilemap physics | merged AABB obstacle cache, dirty chunk 기반 runtime cell/rect refresh, one-way tile, slope definition, tile floor/elevation/height span metadata, HD-2D tile kind/ramp/blocking metadata, collision layer -> chain boundary extraction |
 | Pixel mask terrain | alpha mask edit, dirty patch extraction, WebGL2 texture create/update, chunk 단위 Physics Spec chain collider rebuild |
 | Events/stats | collision enter/stay/exit/hit, trigger lifecycle, physics frame stats, rigid body step stats |
@@ -62,6 +62,16 @@
 - Shooter: bullet/enemy swept collision, player/enemy collision, score/game over, Game Spec 기반 prefab/tilemap/audio/camera 설정
 - Breakout: paddle/ball/brick/wall collision과 event buffer 회귀
 - Platformer: kinematic controller, one-way/moving platform, slope/tilemap 경로 검증
+
+### Platformer/KCC 기본 정책
+
+Platformer KCC는 물리적 보편 해답보다 예제 게임감과 기존 fixture 호환성을 우선한다. 기본 controller에는 별도 skin/shell margin을 추가하지 않고, `ground_probe_distance`와 기존 sweep epsilon 계약을 유지한다.
+
+- One-way platform은 frame history 없이 per-sweep stateless 판정이 기본이다. apex 전환 stuck 같은 재현 fixture가 생길 때만 Rust controller 내부 state나 pass-through grace를 검토하고, public runtime state로 노출하지 않는다.
+- Jump가 발생한 frame에는 step offset을 적용하지 않는다. 상승 중 step-up 허용은 ceiling/corner snap fixture가 있는 opt-in config로만 검토한다.
+- Slope snap은 수평 속도를 보존하면서 vertical snap을 더하는 arcade platformer 정책을 기본으로 둔다. tangent projection은 기본값 변경이 아니라 별도 config 후보로 남긴다.
+- Moving platform carry는 기본적으로 platform displacement만 rider에 상속한다. 회전 플랫폼의 각운동 이동량은 `PhysicsSystem::carry_moving_platform_with_rotation_carry(...)`에 `MovingPlatformRotationCarryConfig`를 넘긴 경우에만 platform rotation origin/delta 기준으로 추가한다.
+- HD-2D bridge under-pass는 swept segment/tile traversal로 bridge tile 후보를 찾는다. 고속 이동에서도 작은 bridge tile을 건너뛰지 않는 fixture를 유지하고, Top-down HD-2D browser smoke로 예제 계약을 확인한다.
 
 ### Generic physics API
 

@@ -83,10 +83,11 @@ pub use particles::{Particle, ParticlePreset, ParticleRange, ParticleSystem};
 pub use physics::{
     FixedTimestep, FixedTimestepConfig, FixedTimestepUpdate, GroundProbeHit,
     Hd2dKinematicControllerConfig, Hd2dKinematicMoveResult, KinematicMoveResult,
-    MovingPlatformCarryConfig, OneWayPlatformConfig, PhysicsBounds, PhysicsCounters, PhysicsSystem,
-    PlatformerControllerConfig, PlatformerControllerInput, PlatformerControllerResult,
-    PlatformerControllerState, RigidBodyIslandStats, RigidBodyStepConfig, RigidBodyStepStats,
-    SlopeConfig, SlopeSegment, SlopeSurfaceHit,
+    MovingPlatformCarryConfig, MovingPlatformRotationCarryConfig, OneWayPlatformConfig,
+    PhysicsBounds, PhysicsCounters, PhysicsSystem, PlatformerControllerConfig,
+    PlatformerControllerInput, PlatformerControllerResult, PlatformerControllerState,
+    RigidBodyIslandStats, RigidBodyStepConfig, RigidBodyStepStats, SlopeConfig, SlopeSegment,
+    SlopeSurfaceHit,
 };
 pub use render_command::SpriteRenderCommand;
 pub use tilemap::{

@@ -32,10 +32,10 @@ pub(in crate::physics) use islands::{
 use joints::*;
 use platformer::KinematicMoveSettings;
 pub use platformer::{
-    GroundProbeHit, KinematicMoveResult, MovingPlatformCarryConfig, OneWayPlatformConfig,
-    PhysicsBounds, PlatformerControllerConfig, PlatformerControllerInput,
-    PlatformerControllerResult, PlatformerControllerState, SlopeConfig, SlopeSegment,
-    SlopeSurfaceHit,
+    GroundProbeHit, KinematicMoveResult, MovingPlatformCarryConfig,
+    MovingPlatformRotationCarryConfig, OneWayPlatformConfig, PhysicsBounds,
+    PlatformerControllerConfig, PlatformerControllerInput, PlatformerControllerResult,
+    PlatformerControllerState, SlopeConfig, SlopeSegment, SlopeSurfaceHit,
 };
 pub use rigid_body::{RigidBodyIslandStats, RigidBodyStepConfig, RigidBodyStepStats};
 #[cfg(test)]

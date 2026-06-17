@@ -160,6 +160,11 @@ const JOINT_STATE_BOOLEAN_FIELDS: readonly (keyof PhysicsJointSnapshot)[] = [
   "motorEnabled",
 ];
 
+const LEGACY_OPTIONAL_JOINT_STATE_BOOLEAN_FIELDS: readonly (keyof PhysicsJointSnapshot)[] = [
+  "slack",
+  "continuousLimit",
+];
+
 export function validatePhysicsWorldSnapshot(
   snapshot: unknown,
   path: string,
@@ -434,6 +439,11 @@ function validateJointState(value: unknown, path: string): PhysicsJointSnapshot 
   }
   for (const field of JOINT_STATE_BOOLEAN_FIELDS) {
     booleanValue(state[field], `${path}.${String(field)}`);
+  }
+  for (const field of LEGACY_OPTIONAL_JOINT_STATE_BOOLEAN_FIELDS) {
+    if (state[field] !== undefined) {
+      booleanValue(state[field], `${path}.${String(field)}`);
+    }
   }
   return state as unknown as PhysicsJointSnapshot;
 }

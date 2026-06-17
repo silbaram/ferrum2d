@@ -23,6 +23,7 @@ pub struct PulleyJoint {
     pub break_distance: f32,
     pub stiffness: f32,
     pub damping: f32,
+    pub slack: bool,
     pub enabled: bool,
 }
 
@@ -52,6 +53,7 @@ impl PulleyJoint {
             break_distance: f32::INFINITY,
             stiffness: Self::DEFAULT_STIFFNESS,
             damping: Self::DEFAULT_DAMPING,
+            slack: false,
             enabled: true,
         }
     }
@@ -102,6 +104,11 @@ impl PulleyJoint {
 
     pub const fn with_damping(mut self, damping: f32) -> Self {
         self.damping = damping;
+        self
+    }
+
+    pub const fn with_slack(mut self, slack: bool) -> Self {
+        self.slack = slack;
         self
     }
 

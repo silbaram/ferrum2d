@@ -75,6 +75,13 @@ export function finiteNumber(value: unknown, path: string): number {
   throw physicsSpecDiagnosticError(path, "must be a finite number");
 }
 
+export function booleanValue(value: unknown, path: string): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  throw physicsSpecDiagnosticError(path, "must be a boolean");
+}
+
 export function positiveNumber(value: unknown, path: string): number {
   const resolved = finiteNumber(value, path);
   if (resolved <= 0) {

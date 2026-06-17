@@ -1047,6 +1047,7 @@
         "limit": { "$ref": "#/$defs/physicsJointLimit" },
         "motor": { "$ref": "#/$defs/physicsJointMotor" },
         "ratio": { "type": "number" },
+        "slack": { "type": "boolean" },
         "referenceAngle": { "type": "number" },
         "breakDistance": { "type": "number", "minimum": 0 },
         "breakAngle": { "type": "number", "minimum": 0 }
@@ -1057,6 +1058,7 @@
       "additionalProperties": false,
       "properties": {
         "enabled": { "type": "boolean" },
+        "continuous": { "type": "boolean" },
         "lower": { "type": "number" },
         "upper": { "type": "number" }
       }

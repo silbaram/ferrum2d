@@ -373,8 +373,13 @@ pub(in crate::physics) fn revolute_joint_constraint_context(
     };
     let rotation_a = finite_rotation(world.rotation_at_index_or_default(a_index));
     let rotation_b = finite_rotation(world.rotation_at_index_or_default(b_index));
-    let relative_angle = normalize_angle_radians(rotation_b.radians - rotation_a.radians);
-    if !error.vx.is_finite() || !error.vy.is_finite() || !relative_angle.is_finite() {
+    let continuous_relative_angle = rotation_b.radians - rotation_a.radians;
+    let relative_angle = normalize_angle_radians(continuous_relative_angle);
+    if !error.vx.is_finite()
+        || !error.vy.is_finite()
+        || !relative_angle.is_finite()
+        || !continuous_relative_angle.is_finite()
+    {
         return None;
     }
 
@@ -390,6 +395,7 @@ pub(in crate::physics) fn revolute_joint_constraint_context(
         inverse_inertia_a,
         inverse_inertia_b,
         relative_angle,
+        continuous_relative_angle,
         error,
     })
 }

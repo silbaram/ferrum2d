@@ -280,22 +280,7 @@ fn hd2d_bridge_pass_through_surface(
     reference: Option<(crate::components::PhysicsFloorId, f32)>,
 ) -> Option<TilemapHd2dSurfaceHit> {
     let (reference_floor, _) = reference?;
-    for t in [0.0_f32, 0.25, 0.5, 0.75, 1.0] {
-        let point = Transform2D {
-            x: start_point.x + (end_point.x - start_point.x) * t,
-            y: start_point.y + (end_point.y - start_point.y) * t,
-        };
-        let Some(surface) = tilemap.hd2d_surface_at_any_floor(point) else {
-            continue;
-        };
-        if surface.kind == Hd2dTileKind::Bridge
-            && !surface.blocks_movement
-            && surface.floor != reference_floor
-        {
-            return Some(surface);
-        }
-    }
-    None
+    tilemap.hd2d_bridge_surface_along_segment(start_point, end_point, reference_floor)
 }
 
 fn validate_hd2d_surface_transition(

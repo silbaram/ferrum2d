@@ -82,6 +82,7 @@ pub(in crate::physics) struct RevoluteJointConstraintContext {
     pub(in crate::physics::joints) inverse_inertia_a: f32,
     pub(in crate::physics::joints) inverse_inertia_b: f32,
     pub(in crate::physics::joints) relative_angle: f32,
+    pub(in crate::physics::joints) continuous_relative_angle: f32,
     pub(in crate::physics) error: Velocity,
 }
 

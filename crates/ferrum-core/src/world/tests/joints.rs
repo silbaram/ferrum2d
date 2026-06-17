@@ -239,6 +239,7 @@ fn revolute_joint_handles_add_update_clear_and_reuse_storage() {
             .with_local_anchor_b(3.0, 4.0)
             .with_break_distance(9.0)
             .with_angle_limits(-0.5, 0.75)
+            .with_continuous_limit(true)
             .with_motor(2.0, 8.0),
     );
 
@@ -261,10 +262,11 @@ fn revolute_joint_handles_add_update_clear_and_reuse_storage() {
     assert_eq!(
         world.revolute_joint(first).map(|joint| (
             joint.limit_enabled,
+            joint.continuous_limit,
             joint.lower_angle,
             joint.upper_angle,
         )),
-        Some((true, -0.5, 0.75))
+        Some((true, true, -0.5, 0.75))
     );
     assert_eq!(
         world.revolute_joint(first).map(|joint| (
@@ -283,6 +285,7 @@ fn revolute_joint_handles_add_update_clear_and_reuse_storage() {
             .without_break_distance()
             .with_angle_limits(-1.0, 1.0)
             .with_angle_limit_enabled(false)
+            .with_continuous_limit(false)
             .with_motor(-3.0, 5.0)
             .with_motor_enabled(false)
             .with_damping(0.5),
@@ -307,10 +310,11 @@ fn revolute_joint_handles_add_update_clear_and_reuse_storage() {
     assert_eq!(
         world.revolute_joint(first).map(|joint| (
             joint.limit_enabled,
+            joint.continuous_limit,
             joint.lower_angle,
             joint.upper_angle,
         )),
-        Some((false, -1.0, 1.0))
+        Some((false, false, -1.0, 1.0))
     );
     assert_eq!(
         world.revolute_joint(first).map(|joint| (
