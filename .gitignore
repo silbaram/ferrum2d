@@ -3,6 +3,7 @@ node_modules/
 packages/*/dist/
 packages/*/dist-test/
 examples/*/dist/
+examples/placement-viewer/.ferrum-placement-handoff.json
 .antigravitycli/
 dist-pages/
 artifacts/
@@ -13,6 +14,7 @@ docs/planning/*
 !docs/planning/README.md
 !docs/planning/demo-game-showcase-plan.md
 !docs/planning/deployment-roadmap.md
+!docs/planning/object-authoring-tool-plan.md
 !docs/planning/feature-candidates.md
 !docs/planning/physics-sandbox-redesign-plan.md
 !docs/planning/product-hardening-roadmap.md

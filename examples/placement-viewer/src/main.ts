@@ -25,6 +25,7 @@ import {
   type ScenePlacementPoint,
   type ScenePlacementTransform,
   type ScenePlacementViewer,
+  type ScenePlacementViewerInstance,
   type ScenePlacementViewerState,
 } from "@ferrum2d/ferrum-web/authoring";
 
@@ -36,6 +37,7 @@ import "../../shared/runtimeDemoShell.css";
 import "./styles.css";
 
 const SCENE_DOCUMENT_URL = "./placement.scene-authoring.json";
+const SCENE_DOCUMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
 const DEFAULT_SNAP_GRID_SIZE = 16;
 const KEYBOARD_NUDGE_STEP = 1;
 const KEYBOARD_FAST_MULTIPLIER = 10;
@@ -49,6 +51,7 @@ const VIEWER_TEXTURES = {
 interface PlacementViewerWindow extends Window {
   __ferrumPlacementViewer?: ScenePlacementViewer;
   ferrumPlacementViewerState?: ScenePlacementViewerState;
+  ferrumPlacementViewerAgentHandoff?: PlacementViewerAgentHandoff;
   ferrumPlacementViewerSelect?: (instanceId?: string) => ScenePlacementViewerState;
   ferrumPlacementViewerUpdateTransform?: (
     instanceId: string,
@@ -90,6 +93,18 @@ interface PlacementInteractionState extends PlacementSnapOptions {
   dragging: boolean;
 }
 
+interface PlacementViewerAgentHandoff {
+  format: "ferrum2d.placement-viewer.agent-handoff";
+  version: 1;
+  sourceDocument: string;
+  selectedInstanceId?: string;
+  hoveredInstanceId?: string;
+  selected?: ScenePlacementViewerState["selected"];
+  pointerWorld?: ScenePlacementViewerState["pointerWorld"];
+  draftPatch?: ScenePlacementPatch;
+  migrationPreview?: ScenePlacementBindingMigrationPreview;
+}
+
 interface PlacementInspector {
   element: HTMLElement;
   setState(state: ScenePlacementViewerState, migrationPreview?: ScenePlacementBindingMigrationPreview): void;
@@ -98,6 +113,14 @@ interface PlacementInspector {
 interface PlacementOverlay {
   element: HTMLElement;
   setState(state: ScenePlacementViewerState): void;
+}
+
+interface PlacementSaveControls {
+  saveDraft(): Promise<void>;
+}
+
+interface PlacementInspectorOptions {
+  saveEnabled: boolean;
 }
 
 async function bootstrap(): Promise<void> {
@@ -117,20 +140,20 @@ async function bootstrap(): Promise<void> {
     });
     const boundsById = placementBoundsById(resolved);
     const selectedInstanceId = firstActorInstance(resolved) ?? resolved.bindingPlan?.instances[0]?.id;
-    const overlay = createPlacementOverlay(shell.stage, boundsById);
-    const inspector = createPlacementInspector(resolved);
-    const interaction = createPlacementInteractionState();
     const saveEnabled = placementViewerSaveEnabled();
+    const overlay = createPlacementOverlay(shell.stage, boundsById);
+    const inspector = createPlacementInspector(resolved, { saveEnabled });
+    const interaction = createPlacementInteractionState();
     let savedDocument = document;
     const saveAdapter: ScenePlacementSaveAdapter = {
       id: "placement-viewer-memory",
-      saveScenePlacementPatch(request) {
-        savedDocument = request.mergedDocument;
-        publishPlacementSavedDocument(savedDocument);
-        return {
-          saved: true,
-          document: savedDocument,
-        };
+      async saveScenePlacementPatch(request) {
+        const result = await savePlacementSceneDocument(request.mergedDocument);
+        if (result.document !== undefined) {
+          savedDocument = result.document;
+          publishPlacementSavedDocument(savedDocument);
+        }
+        return result;
       },
     };
 
@@ -183,6 +206,7 @@ async function bootstrap(): Promise<void> {
       publishPlacementState(state);
       publishPlacementMigrationPreview(migrationPreview);
       publishPlacementInteraction(interaction);
+      publishPlacementAgentHandoff(state, migrationPreview);
       return state;
     };
     installPlacementHooks(viewer, interaction, setState, {
@@ -199,11 +223,18 @@ async function bootstrap(): Promise<void> {
           path: "placementViewer.save",
         });
         publishPlacementSaveResult(result);
+        if (result.saved) {
+          window.setTimeout(() => window.location.reload(), 0);
+        }
         return result;
       },
     });
     installPlacementSelection(inspector.element, viewer, setState);
-    installPlacementTransformControls(inspector.element, viewer, interaction, setState);
+    installPlacementTransformControls(inspector.element, viewer, interaction, setState, {
+      saveDraft: async () => {
+        await (window as PlacementViewerWindow).ferrumPlacementViewerSaveDraft?.();
+      },
+    });
     installPlacementEditControls(inspector.element, viewer, setState);
     installPlacementPointer(shell.canvas, viewer, interaction, setState);
     installPlacementKeyboard(shell.canvas, viewer, interaction, setState);
@@ -225,18 +256,21 @@ function createPlacementOverlay(
   boundsById: ReadonlyMap<string, PlacementInstanceBounds>,
 ): PlacementOverlay {
   const element = document.createElement("div");
+  const draftLayer = document.createElement("div");
   const selection = document.createElement("div");
   const label = document.createElement("div");
   element.className = "placement-overlay";
+  draftLayer.className = "placement-draft-layer";
   selection.className = "placement-selection";
   label.className = "placement-label";
   selection.append(label);
-  element.append(selection);
+  element.append(draftLayer, selection);
   stage.append(element);
 
   return {
     element,
     setState(state) {
+      renderPlacementDraftMarkers(draftLayer, state, boundsById);
       const selected = state.selected;
       if (selected === undefined) {
         selection.dataset.visible = "false";
@@ -260,14 +294,85 @@ function createPlacementOverlay(
   };
 }
 
+function renderPlacementDraftMarkers(
+  layer: HTMLElement,
+  state: ScenePlacementViewerState,
+  boundsById: ReadonlyMap<string, PlacementInstanceBounds>,
+): void {
+  const draftIds = placementDraftVisibleInstanceIds(state);
+  if (draftIds.size === 0) {
+    layer.replaceChildren();
+    return;
+  }
+  const markers: HTMLElement[] = [];
+  for (const instance of state.instances) {
+    if (!draftIds.has(instance.instanceId)) {
+      continue;
+    }
+    const marker = createPlacementDraftMarker(instance, state, boundsById);
+    if (marker !== undefined) {
+      markers.push(marker);
+    }
+  }
+  layer.replaceChildren(...markers);
+}
+
+function placementDraftVisibleInstanceIds(state: ScenePlacementViewerState): Set<string> {
+  const result = new Set<string>();
+  for (const operation of state.draftPatch?.operations ?? []) {
+    switch (operation.kind) {
+      case "updateTransform":
+        result.add(operation.instanceId);
+        break;
+      case "renameInstance":
+        result.add(operation.nextInstanceId);
+        break;
+      case "addInstance":
+        result.add(operation.instance.id ?? "");
+        break;
+      case "removeInstance":
+        break;
+    }
+  }
+  result.delete("");
+  return result;
+}
+
+function createPlacementDraftMarker(
+  instance: ScenePlacementViewerInstance,
+  state: ScenePlacementViewerState,
+  boundsById: ReadonlyMap<string, PlacementInstanceBounds>,
+): HTMLElement | undefined {
+  const bounds = boundsById.get(instance.sourceId ?? instance.instanceId)
+    ?? boundsById.get(instance.instanceId);
+  if (bounds === undefined) {
+    return undefined;
+  }
+  const topLeft = worldToSceneScreen(state.viewport, {
+    x: instance.transform.x - bounds.width * instance.transform.scale * 0.5,
+    y: instance.transform.y - bounds.height * instance.transform.scale * 0.5,
+  });
+  const marker = document.createElement("div");
+  const label = document.createElement("div");
+  marker.className = "placement-draft-marker";
+  label.className = "placement-draft-label";
+  label.textContent = `${instance.instanceId} draft`;
+  marker.style.transform = `translate(${topLeft.x.toFixed(2)}px, ${topLeft.y.toFixed(2)}px)`;
+  marker.style.width = `${(bounds.width * instance.transform.scale * state.viewport.zoom).toFixed(2)}px`;
+  marker.style.height = `${(bounds.height * instance.transform.scale * state.viewport.zoom).toFixed(2)}px`;
+  marker.append(label);
+  return marker;
+}
+
 function createPlacementInspector(
   resolved: ResolvedSceneAuthoringDocument,
+  options: PlacementInspectorOptions,
 ): PlacementInspector {
   const element = document.createElement("section");
   const title = document.createElement("h2");
   const list = document.createElement("div");
   const details = document.createElement("dl");
-  const controls = createPlacementTransformControls();
+  const controls = createPlacementTransformControls({ saveEnabled: options.saveEnabled });
   const editControls = createPlacementEditControls();
   const rows = {
     selected: appendRow(details, "selected"),
@@ -355,7 +460,7 @@ function syncPlacementInstanceList(list: HTMLElement, state: ScenePlacementViewe
   }));
 }
 
-function createPlacementTransformControls(): {
+function createPlacementTransformControls(options: PlacementInspectorOptions): {
   element: HTMLFormElement;
   setState(state: ScenePlacementViewerState): void;
 } {
@@ -371,17 +476,21 @@ function createPlacementTransformControls(): {
   };
   appendCheckboxControl(snapRow, "snap", "snap");
   const grid = appendNumberControl(snapRow, "grid", "snapGrid", "1", "1");
+  const save = document.createElement("button");
   const clear = document.createElement("button");
 
   form.className = "placement-controls";
   row.className = "placement-control-grid";
   snapRow.className = "placement-control-grid placement-control-grid-secondary";
+  save.type = "button";
+  save.textContent = "Save";
+  save.dataset.placementAction = "save-draft";
   clear.type = "button";
   clear.textContent = "Revert";
   clear.dataset.placementAction = "clear-draft";
   grid.value = String(DEFAULT_SNAP_GRID_SIZE);
   grid.dataset.placementSnapGrid = "true";
-  snapRow.append(clear);
+  snapRow.append(save, clear);
   form.append(row, snapRow);
   form.addEventListener("submit", (event) => event.preventDefault());
 
@@ -393,7 +502,9 @@ function createPlacementTransformControls(): {
       for (const input of Object.values(fields)) {
         input.disabled = disabled;
       }
-      clear.disabled = state.draftPatch === undefined;
+      const clean = state.draftPatch === undefined;
+      save.disabled = clean || !options.saveEnabled;
+      clear.disabled = clean;
       if (selected === undefined) {
         for (const input of Object.values(fields)) {
           input.value = "";
@@ -472,6 +583,7 @@ function installPlacementTransformControls(
   viewer: ScenePlacementViewer,
   interaction: PlacementInteractionState,
   setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
+  save: PlacementSaveControls,
 ): void {
   root.addEventListener("input", (event) => {
     const target = event.target;
@@ -505,10 +617,16 @@ function installPlacementTransformControls(
 
   root.addEventListener("click", (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLButtonElement) || target.dataset.placementAction !== "clear-draft") {
+    if (!(target instanceof HTMLButtonElement)) {
       return;
     }
-    setState(viewer.clearDraftPatch());
+    if (target.dataset.placementAction === "clear-draft") {
+      setState(viewer.clearDraftPatch());
+      return;
+    }
+    if (target.dataset.placementAction === "save-draft") {
+      void save.saveDraft();
+    }
   });
 }
 
@@ -891,6 +1009,49 @@ function publishPlacementState(state: ScenePlacementViewerState): void {
   (window as PlacementViewerWindow).ferrumPlacementViewerState = state;
 }
 
+let placementAgentHandoffTimer: number | undefined;
+
+function publishPlacementAgentHandoff(
+  state: ScenePlacementViewerState,
+  migrationPreview: ScenePlacementBindingMigrationPreview | undefined,
+): void {
+  const handoff = placementAgentHandoff(state, migrationPreview);
+  (window as PlacementViewerWindow).ferrumPlacementViewerAgentHandoff = handoff;
+  if (!import.meta.env.DEV) {
+    return;
+  }
+  if (placementAgentHandoffTimer !== undefined) {
+    window.clearTimeout(placementAgentHandoffTimer);
+  }
+  placementAgentHandoffTimer = window.setTimeout(() => {
+    placementAgentHandoffTimer = undefined;
+    void fetch("/__ferrum-placement-handoff", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(handoff),
+    }).catch(() => {
+      // The handoff endpoint exists only in the official dev host.
+    });
+  }, 120);
+}
+
+function placementAgentHandoff(
+  state: ScenePlacementViewerState,
+  migrationPreview: ScenePlacementBindingMigrationPreview | undefined,
+): PlacementViewerAgentHandoff {
+  return {
+    format: "ferrum2d.placement-viewer.agent-handoff",
+    version: 1,
+    sourceDocument: SCENE_DOCUMENT_URL,
+    ...(state.selectedInstanceId === undefined ? {} : { selectedInstanceId: state.selectedInstanceId }),
+    ...(state.hoveredInstanceId === undefined ? {} : { hoveredInstanceId: state.hoveredInstanceId }),
+    ...(state.selected === undefined ? {} : { selected: state.selected }),
+    ...(state.pointerWorld === undefined ? {} : { pointerWorld: state.pointerWorld }),
+    ...(state.draftPatch === undefined ? {} : { draftPatch: state.draftPatch }),
+    ...(migrationPreview === undefined ? {} : { migrationPreview }),
+  };
+}
+
 function publishPlacementSavedDocument(document: SceneAuthoringDocumentSpec): void {
   (window as PlacementViewerWindow).ferrumPlacementViewerSavedDocument = document;
 }
@@ -906,6 +1067,31 @@ function publishPlacementMigrationPreview(preview: ScenePlacementBindingMigratio
 
 function publishPlacementSaveResult(result: ScenePlacementPatchSaveResult): void {
   (window as PlacementViewerWindow).ferrumPlacementViewerLastSave = result;
+}
+
+async function savePlacementSceneDocument(
+  document: SceneAuthoringDocumentSpec,
+): Promise<{ saved: true; document: SceneAuthoringDocumentSpec }> {
+  const response = await fetch(SCENE_DOCUMENT_SAVE_ENDPOINT, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(document),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to save placement scene document: ${response.status} ${response.statusText}`);
+  }
+  const json = await response.json() as unknown;
+  if (!isPlacementSaveResponse(json)) {
+    throw new Error("Failed to save placement scene document: invalid save response");
+  }
+  return json;
+}
+
+function isPlacementSaveResponse(value: unknown): value is { saved: true; document: SceneAuthoringDocumentSpec } {
+  return typeof value === "object"
+    && value !== null
+    && (value as { saved?: unknown }).saved === true
+    && typeof (value as { document?: { format?: unknown } }).document?.format === "string";
 }
 
 function publishPlacementInteraction(interaction: PlacementInteractionState): void {
@@ -952,7 +1138,7 @@ function placementViewerSaveEnabled(): boolean {
   const meta = import.meta as ImportMeta & {
     env?: Readonly<Record<string, string | boolean | undefined>>;
   };
-  return meta.env?.VITE_FERRUM_PLACEMENT_VIEWER_SAVE === "true";
+  return import.meta.env.DEV || meta.env?.VITE_FERRUM_PLACEMENT_VIEWER_SAVE === "true";
 }
 
 function placementBoundsById(

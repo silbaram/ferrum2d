@@ -70,12 +70,42 @@
     "fragments": {
       "main": {
         "instances": [
-          { "id": "floor_north", "prefab": "floor-tile", "x": 760, "y": 392 },
-          { "id": "floor_south", "prefab": "floor-tile", "x": 760, "y": 520 },
-          { "id": "crate_left", "prefab": "crate", "x": 692, "y": 478 },
-          { "id": "crate_right", "prefab": "crate", "x": 868, "y": 478 },
-          { "id": "turret_left", "prefab": "turret", "x": 696, "y": 388 },
-          { "id": "agent_spawn", "prefab": "agent-marker", "x": 844, "y": 556 }
+          {
+            "id": "floor_north",
+            "prefab": "floor-tile",
+            "x": 760,
+            "y": 392
+          },
+          {
+            "id": "floor_south",
+            "prefab": "floor-tile",
+            "x": 760,
+            "y": 520
+          },
+          {
+            "id": "crate_left",
+            "prefab": "crate",
+            "x": 692,
+            "y": 478
+          },
+          {
+            "id": "crate_right",
+            "prefab": "crate",
+            "x": 868,
+            "y": 478
+          },
+          {
+            "id": "turret_left",
+            "prefab": "turret",
+            "x": 644.4375,
+            "y": 477.40625
+          },
+          {
+            "id": "agent_spawn",
+            "prefab": "agent-marker",
+            "x": 844,
+            "y": 556
+          }
         ]
       }
     }
@@ -84,12 +114,20 @@
     "entities": {
       "turret.actor": {
         "recipes": [
-          { "kind": "health", "max": 3, "start": 3 }
+          {
+            "kind": "health",
+            "max": 3,
+            "start": 3
+          }
         ]
       },
       "agent.actor": {
         "recipes": [
-          { "kind": "health", "max": 5, "start": 5 }
+          {
+            "kind": "health",
+            "max": 5,
+            "start": 5
+          }
         ]
       }
     }

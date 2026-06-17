@@ -998,6 +998,29 @@ async function smokePlacementViewer(page, timeoutMs) {
     timeoutMs,
   );
 
+  await page.evaluate(() => globalThis.ferrumPlacementViewerSelect?.("crate_right"));
+  await waitForPageFunction(
+    page,
+    "placement viewer moved draft marker disappeared after selecting another instance",
+    () => {
+      const state = globalThis.ferrumPlacementViewerState;
+      const draftMarkers = Array.from(document.querySelectorAll(".placement-draft-marker"));
+      return Boolean(
+        state?.selectedInstanceId === "crate_right"
+        && draftMarkers.some((marker) => marker.textContent?.includes("crate_left draft"))
+      );
+    },
+    timeoutMs,
+  );
+  await page.evaluate(() => globalThis.ferrumPlacementViewerSelect?.("crate_left"));
+  await page.mouse.move(movedCratePoint.x, movedCratePoint.y);
+  await waitForPageFunction(
+    page,
+    "placement viewer moved draft instance was not selectable after marker persistence check",
+    () => globalThis.ferrumPlacementViewerState?.hoveredInstanceId === "crate_left",
+    timeoutMs,
+  );
+
   const report = await page.evaluate(() => {
     const state = globalThis.ferrumPlacementViewerState;
     const frame = globalThis.ferrumPlacementViewerRuntimeFrame;

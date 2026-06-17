@@ -12,6 +12,35 @@
   pointer-events: none;
 }
 
+.placement-draft-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.placement-draft-marker {
+  position: absolute;
+  border: 2px dashed #d6a64a;
+  background: rgba(214, 166, 74, 0.08);
+  box-shadow: 0 0 0 1px rgba(11, 16, 14, 0.75);
+}
+
+.placement-draft-label {
+  position: absolute;
+  left: 0;
+  bottom: -26px;
+  max-width: 220px;
+  padding: 3px 7px;
+  overflow: hidden;
+  border: 1px solid #735f35;
+  border-radius: 4px;
+  background: #1a1710;
+  color: #ffe4a8;
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .placement-selection {
   position: absolute;
   display: none;
@@ -89,7 +118,7 @@
 }
 
 .placement-control-grid-secondary {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
   align-items: end;
 }
 
