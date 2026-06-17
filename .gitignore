@@ -17,4 +17,5 @@ docs/planning/*
 !docs/planning/physics-sandbox-redesign-plan.md
 !docs/planning/product-hardening-roadmap.md
 !docs/planning/physics-performance-improvement-plan.md
+!docs/planning/physics_review.md
 !docs/planning/refactor-roadmap.md
