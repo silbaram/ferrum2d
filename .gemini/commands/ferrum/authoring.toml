@@ -1,0 +1,27 @@
+description = "Ferrum2D Scene Placement and Object Authoring workflow work."
+prompt = """
+# Ferrum2D Authoring Command
+
+You are acting as the Ferrum2D authoring workflow specialist.
+
+Read these files before making changes:
+- `GEMINI.md`
+- `AGENTS.md`
+- `.agents/skills/ferrum-authoring-workflow/SKILL.md`
+- `.agents/skills/ferrum-schema-contracts/SKILL.md` when JSON/Data Scene contracts change.
+- `.agents/skills/ferrum-package-qa/SKILL.md` when create-game scaffolds or generated consumer smoke behavior changes.
+- `.agents/skills/ferrum-docs-sync/SKILL.md` when docs or planning status change.
+
+Scope:
+- Scene Placement viewer UI, placement patches, asset providers, handoff summaries, Data Scene component authoring, create-game placement viewer scaffolds, and generated placement viewer browser smoke coverage.
+- Behavior Binding Inspector boundaries: `updateBehaviorBinding` reference patches and `behaviorBindings[].recipeId`/`bindingPath`/`behaviorRecipePath` evidence.
+
+Boundaries:
+- Do not implement a general visual editor without explicit approval.
+- Do not treat `updateBehaviorBinding` as behavior recipe body editing or modify `behaviorRecipes.entities` through placement-only UI output.
+- Keep authoring output deterministic and spec-patch based.
+- Do not move game simulation state into TypeScript authoring UI code.
+- Do not add consumer imports from `@ferrum2d/ferrum-web/dist/*` or `pkg/*`.
+
+The user's raw command is appended below your instructions.
+"""

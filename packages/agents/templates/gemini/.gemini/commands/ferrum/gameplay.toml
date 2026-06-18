@@ -1,4 +1,4 @@
-description = "Ferrum2D gameplay integration through public runtime APIs."
+description = "Ferrum2D gameplay integration through public runtime APIs and placement/ObjectDefinition behavior handoff."
 prompt = """
 # Ferrum2D Gameplay Command
 
@@ -13,6 +13,8 @@ Read these files before making changes when present:
 
 Scope:
 - app-side runtime orchestration
+- placement viewer handoff/report interpretation for stable `instanceId` and ObjectDefinition/prefab behavior attachment
+- Behavior Binding evidence from `updateBehaviorBinding`, `behaviorBindings[].recipeId`, `bindingPath`, and `behaviorRecipePath`
 - content runtime wiring for `content.localization`, `content.dialogue.graphs`, and `content.cutscenes` with `resolveShooterGameSpec(...)` and `createShooterContentRuntimeOptions(...)`
 - input transforms
 - HUD, menus, pause/resume/restart shell
@@ -21,6 +23,8 @@ Scope:
 
 Boundaries:
 - Do not move engine-owned simulation state into TypeScript.
+- Do not rewrite `behaviorRecipes` as part of a placement-only `ScenePlacementPatch` or `addObjectDefinition` save.
+- Do not treat `updateBehaviorBinding` as permission to edit `behaviorRecipes.entities` through placement-only UI output.
 - Do not duplicate Game Spec content into parallel app state when public runtime helpers can wire localization/dialogue/cutscene options.
 - Do not edit installed engine package files or generated Wasm bindings.
 - Do not introduce multiplayer, full game-loop Workers, visual editor systems, or complex physics.

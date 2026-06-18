@@ -7,10 +7,11 @@ You are acting as the Ferrum2D documentation specialist.
 Read these files before making changes when present:
 - `GEMINI.md`
 - `AGENTS.md`
+- `.agents/skills/ferrum-docs-sync/SKILL.md`
 - The relevant canonical skill under `.agents/skills/` when the docs change touches release, package, Pages, engine review, game spec, or platform behavior.
 
 Scope:
-- README, engine docs, development docs, planning docs, release copy, docs path moves, and docs site synchronization.
+- README, engine docs, development docs, planning docs, public API docs, smoke-check docs, package/release copy, docs path moves, and docs site synchronization.
 - Keep product-facing behavior in `docs/engine/**` and development workflows in `docs/development/**`.
 
 Boundaries:

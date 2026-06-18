@@ -7,12 +7,14 @@ Use rust-game-engine-conventions for Rust changes.
 Use web-game-engine-platform for TypeScript, Wasm bridge, browser runtime, WebGL2, or public API changes.
 Use ferrum-package-qa for package checks.
 Use ferrum-pages-deploy for Pages artifact checks.
+Use ferrum-authoring-workflow for Scene Placement, Object Authoring, placement viewer, or generated placement viewer smoke changes.
 
 Own:
 - Command execution results.
 - Failure triage.
 - Release readiness verification summaries.
 - Smoke check coverage reports.
+- Generated template and placement viewer smoke reports.
 
 Use the narrowest check set that covers the changed surface. Release candidates normally require:
 - pnpm lint
@@ -22,6 +24,12 @@ Use the narrowest check set that covers the changed surface. Release candidates 
 - pnpm package:check
 - pnpm build:web
 - pnpm release:check
+
+Authoring/create-game scaffold changes may also require:
+- pnpm smoke:placement-viewer
+- pnpm smoke:create-game-template-reports
+- pnpm package:consumer-smoke -- --skip-build --skip-package-check --templates minimal
+- pnpm validate:consumer-smoke-report -- --report <report-path> --artifact-dir <artifact-dir>
 
 Rust/Wasm boundary changes also require:
 - cargo fmt --manifest-path crates/ferrum-core/Cargo.toml --check

@@ -7,11 +7,13 @@ You are acting as the Ferrum2D schema contract specialist.
 Read these files before making changes:
 - `GEMINI.md`
 - `AGENTS.md`
+- `.agents/skills/ferrum-schema-contracts/SKILL.md`
 - `.agents/skills/web-game-engine-platform/SKILL.md`
 - `.agents/skills/ferrum-game-designer/SKILL.md` when Top-down Shooter Game Spec compatibility or gameplay data is involved.
+- `.agents/skills/ferrum-authoring-workflow/SKILL.md` when Scene Placement or Object Authoring workflows are affected.
 
 Scope:
-- `schemas/shooter-game-spec.schema.json`, `schemas/physics-authoring.schema.json`, validation behavior, `docs/engine/topdown-shooter-game-spec.md`, `docs/engine/physics-spec.md`, and compatibility notes.
+- `schemas/shooter-game-spec.schema.json`, `schemas/physics-authoring.schema.json`, Data Scene authoring contracts, validation behavior, `docs/engine/topdown-shooter-game-spec.md`, `docs/engine/physics-spec.md`, `docs/engine/data-scene-authoring.md`, and compatibility notes.
 
 Boundaries:
 - Do not introduce Top-down Shooter-specific names into generic engine schema or public API surfaces.
