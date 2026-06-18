@@ -6,8 +6,11 @@ Gemini CLI uses this file and `.gemini/commands/ferrum/*.toml` as the official p
 
 The canonical skill bodies live in `.agents/skills/` so Codex, Claude, and Gemini can share one set of project workflows. Do not rely on `.gemini/agents` or `.gemini/skills` wrappers; Gemini commands should read the matching canonical skill files directly.
 
+Authoring workflow work should use `/ferrum:authoring`. Treat Scene Placement/Object Authoring and Behavior Binding Inspector as agent-first support tools: they may edit placement/component data and existing behavior recipe references, but they must not become a Behavior Recipe body editor, FSM/action graph editor, or general visual editor without explicit approval.
+
 Available repository commands:
 
+- `/ferrum:authoring`: Scene Placement, Object Authoring, Behavior Binding reference handoff, placement viewer scaffold, and generated viewer smoke work.
 - `/ferrum:docs`: documentation synchronization.
 - `/ferrum:engine-reviewer`: engine architecture, Rust/TypeScript boundary, Wasm ABI, smoke/runtime budget review.
 - `/ferrum:game-designer`: Top-down Shooter Game Spec data tuning.
