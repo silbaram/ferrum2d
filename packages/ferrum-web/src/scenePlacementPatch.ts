@@ -1,4 +1,6 @@
 import { gameplayAuthoringDiagnosticError } from "./diagnostics.js";
+import { resolveDataSceneComponentsSpec } from "./dataSceneComponents.js";
+import { GAMEPLAY_BEHAVIOR_BINDING_PROP } from "./gameplayAuthoring.js";
 import {
   SCENE_AUTHORING_DOCUMENT_FORMAT,
   SCENE_AUTHORING_DOCUMENT_VERSION,
@@ -7,6 +9,8 @@ import {
 import type {
   SceneCompositionFragmentInstanceSpec,
   SceneCompositionFragmentSpec,
+  SceneCompositionJsonValue,
+  SceneCompositionPrefabSpec,
   SceneCompositionSpec,
 } from "./sceneComposition.js";
 import {
@@ -14,6 +18,8 @@ import {
   SCENE_PLACEMENT_PATCH_VERSION,
   type ScenePlacementPatch,
   type ScenePlacementPatchOperation,
+  type ScenePlacementBehaviorBindingPatch,
+  type ScenePlacementBehaviorBindingTarget,
   type ScenePlacementTransform,
 } from "./scenePlacementViewer.js";
 
@@ -97,7 +103,8 @@ type MutableSceneCompositionFragmentSpec = Omit<SceneCompositionFragmentSpec, "i
   instances?: SceneCompositionFragmentInstanceSpec[];
 };
 
-type MutableSceneCompositionSpec = Omit<SceneCompositionSpec, "fragments"> & {
+type MutableSceneCompositionSpec = Omit<SceneCompositionSpec, "fragments" | "prefabs"> & {
+  prefabs: Record<string, SceneCompositionPrefabSpec>;
   fragments?: Record<string, MutableSceneCompositionFragmentSpec>;
 };
 
@@ -135,6 +142,43 @@ export function mergeScenePlacementPatch(
         pushUnique(changedInstanceIds, operation.instanceId);
         break;
       }
+      case "updateComponents": {
+        const ref = findUniqueInstanceRef(fragments, operation.instanceId, operationPath);
+        assertAllowedFragment(ref.fragmentId, options.allowedFragments, `${operationPath}.fragment`);
+        const components = validatedComponentsPatch(operation.components, `${operationPath}.components`);
+        ref.instances[ref.index] = {
+          ...ref.instance,
+          props: {
+            ...(ref.instance.props ?? {}),
+            components,
+          },
+        };
+        pushUnique(changedInstanceIds, operation.instanceId);
+        break;
+      }
+      case "updateBehaviorBinding": {
+        const target = validatedBehaviorBindingTarget(operation.target, `${operationPath}.target`);
+        const behaviorRecipes = validatedBehaviorBindingPatch(
+          operation.behaviorRecipes,
+          `${operationPath}.behaviorRecipes`,
+        );
+        if (target.kind === "instance") {
+          const ref = findUniqueInstanceRef(fragments, target.instanceId, `${operationPath}.target.instanceId`);
+          assertAllowedFragment(ref.fragmentId, options.allowedFragments, `${operationPath}.fragment`);
+          ref.instances[ref.index] = instanceWithBehaviorBinding(ref.instance, behaviorRecipes);
+          pushUnique(changedInstanceIds, target.instanceId);
+          break;
+        }
+        const definition = composition.prefabs[target.id];
+        if (definition === undefined) {
+          throw gameplayAuthoringDiagnosticError(
+            `${operationPath}.target.id`,
+            `references unknown object definition '${target.id}'`,
+          );
+        }
+        composition.prefabs[target.id] = objectDefinitionWithBehaviorBinding(definition, behaviorRecipes);
+        break;
+      }
       case "renameInstance": {
         const ref = findUniqueInstanceRef(fragments, operation.instanceId, operationPath);
         assertAllowedFragment(ref.fragmentId, options.allowedFragments, `${operationPath}.fragment`);
@@ -148,6 +192,14 @@ export function mergeScenePlacementPatch(
           pushUnique(changedInstanceIds, operation.instanceId);
           pushUnique(changedInstanceIds, nextInstanceId);
         }
+        break;
+      }
+      case "addObjectDefinition": {
+        const id = requiredPlacementId(operation.id, `${operationPath}.id`);
+        if (composition.prefabs[id] !== undefined) {
+          throw gameplayAuthoringDiagnosticError(`${operationPath}.id`, `object definition '${id}' already exists`);
+        }
+        composition.prefabs[id] = validateAddObjectDefinition(operation.definition, `${operationPath}.definition`);
         break;
       }
       case "addInstance": {
@@ -364,6 +416,7 @@ function validateAddInstance(
   const copy = copySceneCompositionFragmentInstance(instance);
   const instanceId = requiredPlacementId(copy.id, `${path}.id`);
   const prefabId = requiredPlacementId(copy.prefab, `${path}.prefab`);
+  validatePlacementInstanceProps(copy.props, `${path}.props`);
   const prefab = composition.prefabs[prefabId];
   if (prefab === undefined) {
     throw gameplayAuthoringDiagnosticError(`${path}.prefab`, `references unknown prefab '${prefabId}'`);
@@ -384,6 +437,54 @@ function validateAddInstance(
     prefab: prefabId,
     ...transform,
   };
+}
+
+function validateAddObjectDefinition(
+  definition: SceneCompositionPrefabSpec,
+  path: string,
+): SceneCompositionPrefabSpec {
+  const copy = copySceneCompositionPrefabSpec(definition);
+  validatePlacementDefinitionProps(copy.props, `${path}.props`);
+  const variants = copy.variants ?? {};
+  for (const [variantId, variant] of Object.entries(variants)) {
+    requiredPlacementId(variantId, `${path}.variants.${variantId}`);
+    if (variant.extends !== undefined) {
+      requiredPlacementId(variant.extends, `${path}.variants.${variantId}.extends`);
+    }
+    validatePlacementDefinitionProps(variant.props, `${path}.variants.${variantId}.props`);
+  }
+  return copy;
+}
+
+function validatePlacementInstanceProps(
+  props: Readonly<Record<string, SceneCompositionJsonValue>> | undefined,
+  path: string,
+): void {
+  if (props === undefined) {
+    return;
+  }
+  for (const key of Object.keys(props)) {
+    if (key !== "components") {
+      throw gameplayAuthoringDiagnosticError(
+        `${path}.${key}`,
+        "placement patches may only write UI-owned props.components",
+      );
+    }
+  }
+}
+
+function validatePlacementDefinitionProps(
+  props: Readonly<Record<string, SceneCompositionJsonValue>> | undefined,
+  path: string,
+): void {
+  if (props === undefined) {
+    return;
+  }
+  validatePlacementInstanceProps(props, path);
+  const components = props.components;
+  if (components !== undefined) {
+    validatedComponentsPatch(components, `${path}.components`);
+  }
 }
 
 function requiredPlacementId(value: unknown, path: string): string {
@@ -502,6 +603,103 @@ function positiveTransformNumber(value: number, path: string): number {
   return value;
 }
 
+function validatedComponentsPatch(
+  components: SceneCompositionJsonValue,
+  path: string,
+): SceneCompositionJsonValue {
+  const copy = cloneValue(components);
+  try {
+    resolveDataSceneComponentsSpec(copy, {
+      allowTemplate: false,
+      path,
+    });
+  } catch (error) {
+    throw gameplayAuthoringDiagnosticError(path, error instanceof Error ? error.message : String(error));
+  }
+  return copy;
+}
+
+function validatedBehaviorBindingTarget(
+  target: ScenePlacementBehaviorBindingTarget,
+  path: string,
+): ScenePlacementBehaviorBindingTarget {
+  if (target?.kind === "instance") {
+    return {
+      kind: "instance",
+      instanceId: requiredPlacementId(target.instanceId, `${path}.instanceId`),
+    };
+  }
+  if (target?.kind === "objectDefinition") {
+    return {
+      kind: "objectDefinition",
+      id: requiredPlacementId(target.id, `${path}.id`),
+    };
+  }
+  throw gameplayAuthoringDiagnosticError(`${path}.kind`, "must be instance or objectDefinition");
+}
+
+function validatedBehaviorBindingPatch(
+  behaviorRecipes: ScenePlacementBehaviorBindingPatch,
+  path: string,
+): ScenePlacementBehaviorBindingPatch {
+  if (behaviorRecipes === null) {
+    return null;
+  }
+  if (typeof behaviorRecipes === "string") {
+    if (behaviorRecipes.length === 0) {
+      throw gameplayAuthoringDiagnosticError(path, "must be a non-empty behavior profile string");
+    }
+    return behaviorRecipes;
+  }
+  if (Array.isArray(behaviorRecipes)) {
+    return behaviorRecipes.map((entry, index) => {
+      if (typeof entry !== "string" || entry.length === 0) {
+        throw gameplayAuthoringDiagnosticError(`${path}.${index}`, "must be a non-empty behavior profile string");
+      }
+      return entry;
+    });
+  }
+  throw gameplayAuthoringDiagnosticError(path, "must be null, a behavior profile string, or a string array");
+}
+
+function behaviorBindingPropsValue(
+  behaviorRecipes: ScenePlacementBehaviorBindingPatch,
+): SceneCompositionJsonValue {
+  if (behaviorRecipes === null) {
+    return [];
+  }
+  return typeof behaviorRecipes === "string" ? behaviorRecipes : [...behaviorRecipes];
+}
+
+function instanceWithBehaviorBinding(
+  instance: SceneCompositionFragmentInstanceSpec,
+  behaviorRecipes: ScenePlacementBehaviorBindingPatch,
+): SceneCompositionFragmentInstanceSpec {
+  return {
+    ...instance,
+    props: {
+      ...(instance.props ?? {}),
+      [GAMEPLAY_BEHAVIOR_BINDING_PROP]: behaviorBindingPropsValue(behaviorRecipes),
+    },
+  };
+}
+
+function objectDefinitionWithBehaviorBinding(
+  definition: SceneCompositionPrefabSpec,
+  behaviorRecipes: ScenePlacementBehaviorBindingPatch,
+): SceneCompositionPrefabSpec {
+  const props = { ...(definition.props ?? {}) };
+  if (behaviorRecipes === null) {
+    delete props[GAMEPLAY_BEHAVIOR_BINDING_PROP];
+  } else {
+    props[GAMEPLAY_BEHAVIOR_BINDING_PROP] = behaviorBindingPropsValue(behaviorRecipes);
+  }
+  return {
+    ...definition,
+    props,
+  };
+}
+
 function cloneValue<T>(value: T): T {
   return cloneUnknown(value) as T;
 }
@@ -510,6 +708,12 @@ function copySceneCompositionFragmentInstance(
   instance: SceneCompositionFragmentInstanceSpec,
 ): SceneCompositionFragmentInstanceSpec {
   return cloneValue(instance);
+}
+
+function copySceneCompositionPrefabSpec(
+  definition: SceneCompositionPrefabSpec,
+): SceneCompositionPrefabSpec {
+  return cloneValue(definition);
 }
 
 function cloneUnknown(value: unknown): unknown {

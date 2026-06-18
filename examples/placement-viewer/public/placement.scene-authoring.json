@@ -4,6 +4,9 @@
   "sceneComposition": {
     "initialFragment": "main",
     "prefabs": {
+      "object": {
+        "props": {}
+      },
       "floor-tile": {
         "props": {
           "components": {

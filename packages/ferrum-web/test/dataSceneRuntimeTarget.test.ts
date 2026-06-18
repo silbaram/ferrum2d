@@ -5,6 +5,7 @@ import {
   applySceneBehaviorRecipes,
   classifySceneInstance,
   createDataSceneRuntimeTarget,
+  DATA_SCENE_PRIMITIVE_TEXTURES,
   resolveSceneAuthoringDocument,
 } from "../src/authoring.js";
 import { createEngine } from "../src/core.js";
@@ -65,6 +66,50 @@ test("createDataSceneRuntimeTarget spawns resolved inline components through the
     colliderType: 1,
     colliderOffset: [1, -2],
     colliderSize: [10, 6],
+    radius: 0,
+    vertices: [],
+  });
+});
+
+test("createDataSceneRuntimeTarget compiles primitive visual descriptors to debug runtime sprites", () => {
+  const adapter = new MockDataSceneRuntimeAdapter();
+  const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
+  const target = createDataSceneRuntimeTarget(engine, { activateDataScene: false });
+
+  const handle = target.spawnSceneInstance({
+    id: "rect_1",
+    sourceId: "rect_1",
+    prefab: "primitive",
+    x: 32,
+    y: 48,
+    rotationRadians: 0,
+    scale: 2,
+    layer: 3,
+    props: {
+      components: {
+        visual: { kind: "primitive", shape: "rect", width: 20, height: 10, color: "#7ddc9d" },
+        collider: { type: "aabb", halfWidth: 10, halfHeight: 5 },
+        layer: "wall",
+      },
+    },
+  });
+
+  deepEqual(handle, { entityId: 101, entityGeneration: 1 });
+  deepEqual(adapter.textureNames, [DATA_SCENE_PRIMITIVE_TEXTURES.rect]);
+  deepEqual(requestSummary(adapter.requests[0]), {
+    x: 32,
+    y: 48,
+    rotationRadians: 0,
+    renderLayer: 3,
+    textureId: 77,
+    spriteWidth: 40,
+    spriteHeight: 20,
+    frame: [0, 0, 1, 1],
+    animation: [0, 0],
+    layer: 3,
+    colliderType: 1,
+    colliderOffset: [0, 0],
+    colliderSize: [20, 10],
     radius: 0,
     vertices: [],
   });

@@ -1,0 +1,23 @@
+{
+  "format": "ferrum2d.placement-viewer.agent-handoff",
+  "version": 1,
+  "workflow": "human-placement-agent-behavior",
+  "placementOwner": "sceneComposition.fragments[].instances[]",
+  "behaviorOwner": "sceneComposition.prefabs[].props.behaviorRecipes + behaviorRecipes.entities",
+  "sourceDocument": "examples/topdown-shooter/public/authored-behavior.variant.json#sceneComposition",
+  "selectedInstanceId": "score-pickup",
+  "selected": {
+    "instanceId": "score-pickup",
+    "sourceId": "score-pickup",
+    "prefabId": "pickup.score",
+    "role": "actor",
+    "transform": {
+      "x": 400,
+      "y": 240,
+      "rotation": 0,
+      "scaleX": 1,
+      "scaleY": 1
+    }
+  },
+  "assetDiagnostics": []
+}

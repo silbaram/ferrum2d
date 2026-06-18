@@ -1,11 +1,19 @@
 import { gameplayAuthoringDiagnosticError } from "./diagnostics.js";
 import {
   DATA_SCENE_COMPONENTS_PROP,
+  dataSceneObjectVisualBounds,
+  resolveDataSceneComponentsSpec,
   resolveDataSceneInstanceComponents,
+  type ResolvedDataSceneColliderComponent,
+  type ResolvedDataSceneCollisionLayer,
+  type ResolvedDataSceneComponents,
+  type ResolvedDataSceneObjectVisual,
 } from "./dataSceneComponents.js";
 import {
+  GAMEPLAY_BEHAVIOR_BINDING_PROP,
   classifySceneInstance,
   type GameplayEntityHandle,
+  type GameplayBehaviorBindingSpec,
   type SceneInstanceAuthoringKind,
   type SceneInstanceHandleRegistry,
 } from "./gameplayAuthoring.js";
@@ -26,8 +34,11 @@ import type { ResolvedSceneAuthoringDocument } from "./sceneAuthoringDocument.js
 import type {
   ResolvedSceneCompositionInstance,
   ResolvedSceneCompositionSpec,
+  ResolvedSceneCompositionPrefab,
   SceneCompositionFragmentInstanceSpec,
   SceneCompositionJsonValue,
+  SceneCompositionPrefabSpec,
+  SceneCompositionPrefabVariantSpec,
   SceneCompositionProps,
   SceneCompositionSpec,
 } from "./sceneComposition.js";
@@ -70,14 +81,28 @@ export interface ScenePlacementViewerInstance {
   variant?: string;
   role: SceneInstanceAuthoringKind;
   hasDataSceneComponents: boolean;
+  visual?: ResolvedDataSceneObjectVisual;
+  collider?: ResolvedDataSceneColliderComponent;
+  componentLayer?: ResolvedDataSceneCollisionLayer;
   behaviorProfiles: readonly string[];
   entity?: GameplayEntityHandle;
   transform: ScenePlacementTransform;
 }
 
+export interface ScenePlacementObjectDefinitionSummary {
+  id: string;
+  variants: readonly string[];
+  hasDataSceneComponents: boolean;
+  visual?: ResolvedDataSceneObjectVisual;
+  collider?: ResolvedDataSceneColliderComponent;
+  componentLayer?: ResolvedDataSceneCollisionLayer;
+  behaviorProfiles: readonly string[];
+}
+
 export interface ScenePlacementViewerState {
   fragment: string;
   viewport: ScenePlacementViewport;
+  objectDefinitions: readonly ScenePlacementObjectDefinitionSummary[];
   instances: readonly ScenePlacementViewerInstance[];
   selectedInstanceId?: string;
   hoveredInstanceId?: string;
@@ -88,7 +113,10 @@ export interface ScenePlacementViewerState {
 
 export type ScenePlacementPatchOperation =
   | ScenePlacementUpdateTransformOperation
+  | ScenePlacementUpdateComponentsOperation
+  | ScenePlacementUpdateBehaviorBindingOperation
   | ScenePlacementRenameInstanceOperation
+  | ScenePlacementAddObjectDefinitionOperation
   | ScenePlacementAddInstanceOperation
   | ScenePlacementRemoveInstanceOperation;
 
@@ -98,10 +126,34 @@ export interface ScenePlacementUpdateTransformOperation {
   transform: Partial<ScenePlacementTransform>;
 }
 
+export interface ScenePlacementUpdateComponentsOperation {
+  kind: "updateComponents";
+  instanceId: string;
+  components: SceneCompositionJsonValue;
+}
+
+export type ScenePlacementBehaviorBindingPatch = GameplayBehaviorBindingSpec | null;
+
+export type ScenePlacementBehaviorBindingTarget =
+  | { kind: "instance"; instanceId: string }
+  | { kind: "objectDefinition"; id: string };
+
+export interface ScenePlacementUpdateBehaviorBindingOperation {
+  kind: "updateBehaviorBinding";
+  target: ScenePlacementBehaviorBindingTarget;
+  behaviorRecipes: ScenePlacementBehaviorBindingPatch;
+}
+
 export interface ScenePlacementRenameInstanceOperation {
   kind: "renameInstance";
   instanceId: string;
   nextInstanceId: string;
+}
+
+export interface ScenePlacementAddObjectDefinitionOperation {
+  kind: "addObjectDefinition";
+  id: string;
+  definition: SceneCompositionPrefabSpec;
 }
 
 export interface ScenePlacementAddInstanceOperation {
@@ -150,7 +202,16 @@ export interface ScenePlacementViewer {
     instanceId: string,
     transform: Partial<ScenePlacementTransform>,
   ): ScenePlacementViewerState;
+  updateInstanceComponents(
+    instanceId: string,
+    components: SceneCompositionJsonValue,
+  ): ScenePlacementViewerState;
+  updateBehaviorBinding(
+    target: ScenePlacementBehaviorBindingTarget,
+    behaviorRecipes: ScenePlacementBehaviorBindingPatch,
+  ): ScenePlacementViewerState;
   renameInstance(instanceId: string, nextInstanceId: string): ScenePlacementViewerState;
+  addObjectDefinition(id: string, definition: SceneCompositionPrefabSpec): ScenePlacementViewerState;
   addInstance(fragment: string, instance: SceneCompositionFragmentInstanceSpec): ScenePlacementViewerState;
   removeInstance(instanceId: string): ScenePlacementViewerState;
   clearDraftPatch(): ScenePlacementViewerState;
@@ -177,8 +238,12 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
   private readonly sourceInstances: readonly ResolvedSceneCompositionInstance[];
   private readonly instancesById = new Map<string, ResolvedSceneCompositionInstance>();
   private readonly draftTransforms = new Map<string, ScenePlacementTransform>();
+  private readonly draftComponents = new Map<string, SceneCompositionJsonValue>();
+  private readonly draftInstanceBehaviorBindings = new Map<string, ScenePlacementBehaviorBindingPatch>();
+  private readonly draftObjectDefinitionBehaviorBindings = new Map<string, ScenePlacementBehaviorBindingPatch>();
   private readonly draftRenames = new Map<string, string>();
   private readonly draftRemovedInstanceIds = new Set<string>();
+  private readonly draftObjectDefinitions = new Map<string, SceneCompositionPrefabSpec>();
   private readonly draftAddedInstances: ScenePlacementDraftAddedInstance[] = [];
   private readonly instanceHandleRegistry?: SceneInstanceHandleRegistry;
   private readonly validateLiveHandles: boolean;
@@ -230,6 +295,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     return {
       fragment: this.fragment,
       viewport: { ...this.viewport },
+      objectDefinitions: this.objectDefinitions(),
       instances,
       ...(this.selectedInstanceId === undefined ? {} : { selectedInstanceId: this.selectedInstanceId }),
       ...(this.hoveredInstanceId === undefined ? {} : { hoveredInstanceId: this.hoveredInstanceId }),
@@ -302,6 +368,77 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     return this.state();
   }
 
+  updateInstanceComponents(
+    instanceId: string,
+    components: SceneCompositionJsonValue,
+  ): ScenePlacementViewerState {
+    const ref = this.knownInstanceRef(instanceId, "scenePlacementViewer.updateInstanceComponents.instanceId");
+    const patch = validatedComponentsPatch(components, "scenePlacementViewer.updateInstanceComponents.components");
+    if (ref.kind === "added") {
+      ref.draft.instance = {
+        ...ref.draft.instance,
+        props: {
+          ...(ref.draft.instance.props ?? {}),
+          [DATA_SCENE_COMPONENTS_PROP]: patch,
+        },
+      };
+    } else if (sameSceneCompositionJsonValue(ref.instance.props[DATA_SCENE_COMPONENTS_PROP], patch)) {
+      this.draftComponents.delete(ref.instance.id);
+    } else {
+      this.draftComponents.set(ref.instance.id, patch);
+    }
+    this.pickBounds = this.createPickBounds(this.path);
+    return this.state();
+  }
+
+  updateBehaviorBinding(
+    target: ScenePlacementBehaviorBindingTarget,
+    behaviorRecipes: ScenePlacementBehaviorBindingPatch,
+  ): ScenePlacementViewerState {
+    const patch = validatedBehaviorBindingPatch(
+      behaviorRecipes,
+      "scenePlacementViewer.updateBehaviorBinding.behaviorRecipes",
+    );
+    const behaviorProp = this.behaviorBindingProp();
+    if (target.kind === "instance") {
+      const ref = this.knownInstanceRef(target.instanceId, "scenePlacementViewer.updateBehaviorBinding.target.instanceId");
+      if (ref.kind === "added") {
+        ref.draft.instance = instanceWithBehaviorBinding(
+          ref.draft.instance,
+          patch,
+          behaviorProp,
+        );
+      } else if (sameBehaviorBindingPatch(ref.instance.props[behaviorProp], patch)) {
+        this.draftInstanceBehaviorBindings.delete(ref.instance.id);
+      } else {
+        this.draftInstanceBehaviorBindings.set(ref.instance.id, patch);
+      }
+      this.pickBounds = this.createPickBounds(this.path);
+      return this.state();
+    }
+
+    const id = requiredPlacementInstanceId(target.id, "scenePlacementViewer.updateBehaviorBinding.target.id");
+    const draftDefinition = this.draftObjectDefinitions.get(id);
+    if (draftDefinition !== undefined) {
+      this.draftObjectDefinitions.set(id, objectDefinitionWithBehaviorBinding(draftDefinition, patch, behaviorProp));
+      return this.state();
+    }
+    const prefab = this.composition.prefabs[id];
+    if (prefab === undefined) {
+      throw gameplayAuthoringDiagnosticError(
+        "scenePlacementViewer.updateBehaviorBinding.target.id",
+        `references unknown object definition '${id}'`,
+      );
+    }
+    if (sameBehaviorBindingPatch(prefab.props[behaviorProp], patch)) {
+      this.draftObjectDefinitionBehaviorBindings.delete(id);
+    } else {
+      this.draftObjectDefinitionBehaviorBindings.set(id, patch);
+    }
+    this.pickBounds = this.createPickBounds(this.path);
+    return this.state();
+  }
+
   renameInstance(instanceId: string, nextInstanceId: string): ScenePlacementViewerState {
     const ref = this.knownInstanceRef(instanceId, "scenePlacementViewer.renameInstance.instanceId");
     const next = requiredPlacementInstanceId(nextInstanceId, "scenePlacementViewer.renameInstance.nextInstanceId");
@@ -342,7 +479,11 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     }
     const checkedInstance = copySceneCompositionFragmentInstance(instance);
     const instanceId = requiredPlacementInstanceId(checkedInstance.id, "scenePlacementViewer.addInstance.instance.id");
-    validateDraftInstancePrefab(this.composition, checkedInstance, "scenePlacementViewer.addInstance.instance");
+    validateDraftInstancePrefab(
+      (prefabId) => this.prefabForId(prefabId),
+      checkedInstance,
+      "scenePlacementViewer.addInstance.instance",
+    );
     if (this.instanceRefForId(instanceId) !== undefined) {
       throw gameplayAuthoringDiagnosticError(
         "scenePlacementViewer.addInstance.instance.id",
@@ -358,6 +499,21 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     return this.state();
   }
 
+  addObjectDefinition(id: string, definition: SceneCompositionPrefabSpec): ScenePlacementViewerState {
+    const checkedId = requiredPlacementInstanceId(id, "scenePlacementViewer.addObjectDefinition.id");
+    if (this.prefabForId(checkedId) !== undefined || this.draftObjectDefinitions.has(checkedId)) {
+      throw gameplayAuthoringDiagnosticError(
+        "scenePlacementViewer.addObjectDefinition.id",
+        `object definition '${checkedId}' already exists`,
+      );
+    }
+    this.draftObjectDefinitions.set(
+      checkedId,
+      validatedObjectDefinitionPatch(definition, "scenePlacementViewer.addObjectDefinition.definition"),
+    );
+    return this.state();
+  }
+
   removeInstance(instanceId: string): ScenePlacementViewerState {
     const ref = this.knownInstanceRef(instanceId, "scenePlacementViewer.removeInstance.instanceId");
     if (ref.kind === "added") {
@@ -365,6 +521,8 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     } else {
       this.draftRemovedInstanceIds.add(ref.instance.id);
       this.draftTransforms.delete(ref.instance.id);
+      this.draftComponents.delete(ref.instance.id);
+      this.draftInstanceBehaviorBindings.delete(ref.instance.id);
       this.draftRenames.delete(ref.instance.id);
     }
     this.clearSelectedAndHovered(instanceId);
@@ -374,8 +532,12 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
 
   clearDraftPatch(): ScenePlacementViewerState {
     this.draftTransforms.clear();
+    this.draftComponents.clear();
+    this.draftInstanceBehaviorBindings.clear();
+    this.draftObjectDefinitionBehaviorBindings.clear();
     this.draftRenames.clear();
     this.draftRemovedInstanceIds.clear();
+    this.draftObjectDefinitions.clear();
     this.draftAddedInstances.splice(0);
     this.selectedInstanceId = this.retainedKnownInstanceId(this.selectedInstanceId);
     this.hoveredInstanceId = this.retainedKnownInstanceId(this.hoveredInstanceId);
@@ -407,24 +569,82 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         });
       }
       const draft = this.draftTransforms.get(instance.id);
-      if (draft === undefined) {
-        continue;
+      if (draft !== undefined) {
+        const transform = transformDiff(sourceTransform(instance), draft);
+        if (hasTransformPatch(transform)) {
+          operations.push({
+            kind: "updateTransform",
+            instanceId: currentId,
+            transform,
+          });
+        }
       }
-      const transform = transformDiff(sourceTransform(instance), draft);
-      if (hasTransformPatch(transform)) {
+      const components = this.draftComponents.get(instance.id);
+      if (components !== undefined) {
         operations.push({
-          kind: "updateTransform",
+          kind: "updateComponents",
           instanceId: currentId,
-          transform,
+          components: copySceneCompositionJsonValue(components),
+        });
+      }
+      if (this.draftInstanceBehaviorBindings.has(instance.id)) {
+        operations.push({
+          kind: "updateBehaviorBinding",
+          target: {
+            kind: "instance",
+            instanceId: currentId,
+          },
+          behaviorRecipes: copyBehaviorBindingPatch(
+            this.draftInstanceBehaviorBindings.get(instance.id) as ScenePlacementBehaviorBindingPatch,
+          ),
+        });
+      }
+    }
+    for (const [id, behaviorRecipes] of this.draftObjectDefinitionBehaviorBindings) {
+      operations.push({
+        kind: "updateBehaviorBinding",
+        target: {
+          kind: "objectDefinition",
+          id,
+        },
+        behaviorRecipes: copyBehaviorBindingPatch(behaviorRecipes),
+      });
+    }
+    for (const [id, definition] of this.draftObjectDefinitions) {
+      const behaviorRecipes = behaviorBindingPatchFromProps(definition.props, this.behaviorBindingProp());
+      operations.push({
+        kind: "addObjectDefinition",
+        id,
+        definition: copyObjectDefinitionWithoutBehaviorBinding(definition, this.behaviorBindingProp()),
+      });
+      if (behaviorRecipes !== undefined) {
+        operations.push({
+          kind: "updateBehaviorBinding",
+          target: {
+            kind: "objectDefinition",
+            id,
+          },
+          behaviorRecipes,
         });
       }
     }
     for (const draft of this.draftAddedInstances) {
+      const behaviorRecipes = behaviorBindingPatchFromProps(draft.instance.props, this.behaviorBindingProp());
       operations.push({
         kind: "addInstance",
         fragment: draft.fragment,
-        instance: copySceneCompositionFragmentInstance(draft.instance),
+        instance: copyInstanceWithoutBehaviorBinding(draft.instance, this.behaviorBindingProp()),
       });
+      if (behaviorRecipes !== undefined) {
+        operations.push({
+          kind: "updateBehaviorBinding",
+          target: {
+            kind: "instance",
+            instanceId: requiredPlacementInstanceId(draft.instance.id, "scenePlacementViewer.draftAddedInstances.id"),
+          },
+          behaviorRecipes,
+        });
+      }
     }
     if (operations.length === 0) {
       return undefined;
@@ -448,6 +668,10 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       path: `scenePlacementViewer.instances.${instance.id}.entity`,
     });
     const transform = this.transformFor(instance);
+    const components = this.inlineComponentsForInstance(
+      instance,
+      `scenePlacementViewer.instances.${instance.id}`,
+    );
     return {
       instanceId: instance.id,
       sourceId: instance.sourceId,
@@ -455,6 +679,11 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       ...(instance.variant === undefined ? {} : { variant: instance.variant }),
       role: classification.kind,
       hasDataSceneComponents: classification.hasDataSceneComponents,
+      ...(components === undefined ? {} : {
+        visual: copyResolvedDataSceneObjectVisual(components.visual),
+        collider: copyResolvedDataSceneCollider(components.collider),
+        componentLayer: { ...components.layer },
+      }),
       behaviorProfiles: [...classification.behaviorProfiles],
       ...(entity === undefined ? {} : { entity: copyGameplayEntityHandle(entity) }),
       transform: {
@@ -465,6 +694,40 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         layer: transform.layer,
       },
     };
+  }
+
+  private objectDefinitions(): readonly ScenePlacementObjectDefinitionSummary[] {
+    const prefabs = [
+      ...Object.values(this.composition.prefabs).map((prefab) =>
+        prefabWithBehaviorBindingDraft(
+          prefab,
+          this.draftObjectDefinitionBehaviorBindings.get(prefab.id),
+          this.behaviorBindingProp(),
+        )),
+      ...Array.from(this.draftObjectDefinitions, ([id, definition]) =>
+        resolvedDraftObjectDefinition(id, definition, "scenePlacementViewer.draftObjectDefinitions")),
+    ];
+    return prefabs.map((prefab) => {
+      const components = this.inlineComponentsForProps(
+        prefab.props,
+        `scenePlacementViewer.objectDefinitions.${prefab.id}`,
+      );
+      return {
+        id: prefab.id,
+        variants: Object.keys(prefab.variants),
+        hasDataSceneComponents: components !== undefined,
+        ...(components === undefined ? {} : {
+          visual: copyResolvedDataSceneObjectVisual(components.visual),
+          collider: copyResolvedDataSceneCollider(components.collider),
+          componentLayer: { ...components.layer },
+        }),
+        behaviorProfiles: behaviorProfilesForProps(
+          prefab.props,
+          this.behaviorBindingProp(),
+          `scenePlacementViewer.objectDefinitions.${prefab.id}.props`,
+        ),
+      };
+    });
   }
 
   private transformFor(instance: ResolvedSceneCompositionInstance): ScenePlacementTransform {
@@ -479,19 +742,14 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     const bounds: ScenePlacementPickBounds[] = [];
     for (const ref of this.visibleInstanceRefs()) {
       const instance = this.resolvedInstanceForRef(ref);
-      if (instance.props[DATA_SCENE_COMPONENTS_PROP] === undefined) {
-        continue;
-      }
-      const components = resolveDataSceneInstanceComponents(instance, {
-        allowTemplate: false,
-        path: `${path}.instances.${instance.id}`,
-      });
-      if (components.mode !== "inline") {
+      const components = this.inlineComponentsForInstance(instance, `${path}.instances.${instance.id}`);
+      if (components === undefined) {
         continue;
       }
       const transform = this.transformFor(instance);
-      const halfWidth = components.sprite.width * transform.scale * 0.5;
-      const halfHeight = components.sprite.height * transform.scale * 0.5;
+      const visualBounds = dataSceneObjectVisualBounds(components);
+      const halfWidth = visualBounds.width * transform.scale * 0.5;
+      const halfHeight = visualBounds.height * transform.scale * 0.5;
       bounds.push({
         instanceId: instance.id,
         minX: transform.x - halfWidth,
@@ -501,6 +759,49 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       });
     }
     return bounds;
+  }
+
+  private inlineComponentsForInstance(
+    instance: ResolvedSceneCompositionInstance,
+    path: string,
+  ): Extract<ResolvedDataSceneComponents, { mode: "inline" }> | undefined {
+    if (instance.props[DATA_SCENE_COMPONENTS_PROP] === undefined) {
+      return undefined;
+    }
+    const components = resolveDataSceneInstanceComponents(instance, {
+      allowTemplate: false,
+      path,
+    });
+    return components.mode === "inline" ? components : undefined;
+  }
+
+  private inlineComponentsForProps(
+    props: SceneCompositionProps,
+    path: string,
+  ): Extract<ResolvedDataSceneComponents, { mode: "inline" }> | undefined {
+    if (props[DATA_SCENE_COMPONENTS_PROP] === undefined) {
+      return undefined;
+    }
+    const components = resolveDataSceneComponentsSpec(props[DATA_SCENE_COMPONENTS_PROP], {
+      allowTemplate: false,
+      path: `${path}.props.${DATA_SCENE_COMPONENTS_PROP}`,
+    });
+    return components.mode === "inline" ? components : undefined;
+  }
+
+  private prefabForId(id: string): ResolvedSceneCompositionPrefab | undefined {
+    const source = this.composition.prefabs[id];
+    if (source !== undefined) {
+      return prefabWithBehaviorBindingDraft(
+        source,
+        this.draftObjectDefinitionBehaviorBindings.get(id),
+        this.behaviorBindingProp(),
+      );
+    }
+    const draft = this.draftObjectDefinitions.get(id);
+    return draft === undefined
+      ? undefined
+      : resolvedDraftObjectDefinition(id, draft, "scenePlacementViewer.draftObjectDefinitions");
   }
 
   private pickInstanceIdAtWorld(point: ScenePlacementPoint): string | undefined {
@@ -569,13 +870,27 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     if (ref.kind === "source") {
       const currentId = this.currentInstanceId(ref.instance.id);
       const transform = this.draftTransforms.get(ref.instance.id) ?? sourceTransform(ref.instance);
+      const props: Record<string, SceneCompositionJsonValue> = { ...ref.instance.props };
+      if (this.draftComponents.has(ref.instance.id)) {
+        props[DATA_SCENE_COMPONENTS_PROP] = this.draftComponents.get(ref.instance.id) as SceneCompositionJsonValue;
+      }
+      if (this.draftInstanceBehaviorBindings.has(ref.instance.id)) {
+        props[this.behaviorBindingProp()] = behaviorBindingPropsValue(
+          this.draftInstanceBehaviorBindings.get(ref.instance.id) as ScenePlacementBehaviorBindingPatch,
+        );
+      }
       return {
         ...ref.instance,
         id: currentId,
         ...transform,
+        props,
       };
     }
-    return resolveDraftAddedInstance(this.composition, ref.draft.instance, "scenePlacementViewer.addedInstances");
+    return resolveDraftAddedInstance(
+      (prefabId) => this.prefabForId(prefabId),
+      ref.draft.instance,
+      "scenePlacementViewer.addedInstances",
+    );
   }
 
   private currentInstanceId(sourceInstanceId: string): string {
@@ -605,6 +920,10 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       ? undefined
       : instanceId;
   }
+
+  private behaviorBindingProp(): string {
+    return this.behaviorProp ?? GAMEPLAY_BEHAVIOR_BINDING_PROP;
+  }
 }
 
 interface ScenePlacementDraftAddedInstance {
@@ -633,13 +952,13 @@ function sameInstanceRef(
 }
 
 function resolveDraftAddedInstance(
-  composition: ResolvedSceneCompositionSpec,
+  prefabForId: (prefabId: string) => ResolvedSceneCompositionPrefab | undefined,
   instance: SceneCompositionFragmentInstanceSpec,
   path: string,
 ): ResolvedSceneCompositionInstance {
   const id = requiredPlacementInstanceId(instance.id, `${path}.id`);
   const prefabId = requiredPlacementInstanceId(instance.prefab, `${path}.prefab`);
-  const prefab = composition.prefabs[prefabId];
+  const prefab = prefabForId(prefabId);
   if (prefab === undefined) {
     throw gameplayAuthoringDiagnosticError(`${path}.prefab`, `references unknown prefab '${prefabId}'`);
   }
@@ -664,11 +983,12 @@ function resolveDraftAddedInstance(
 }
 
 function validateDraftInstancePrefab(
-  composition: ResolvedSceneCompositionSpec,
+  prefabForId: (prefabId: string) => ResolvedSceneCompositionPrefab | undefined,
   instance: SceneCompositionFragmentInstanceSpec,
   path: string,
 ): void {
-  resolveDraftAddedInstance(composition, instance, path);
+  validatePlacementInstanceProps(instance.props, `${path}.props`);
+  resolveDraftAddedInstance(prefabForId, instance, path);
 }
 
 function resolvedDraftTransform(
@@ -691,6 +1011,23 @@ function requiredPlacementInstanceId(value: unknown, path: string): string {
   return value;
 }
 
+function validatePlacementInstanceProps(
+  props: SceneCompositionProps | undefined,
+  path: string,
+): void {
+  if (props === undefined) {
+    return;
+  }
+  for (const key of Object.keys(props)) {
+    if (key !== DATA_SCENE_COMPONENTS_PROP) {
+      throw gameplayAuthoringDiagnosticError(
+        `${path}.${key}`,
+        "placement patches may only write UI-owned props.components",
+      );
+    }
+  }
+}
+
 function mergeScenePlacementProps(
   base: SceneCompositionProps,
   override: SceneCompositionProps,
@@ -701,7 +1038,9 @@ function mergeScenePlacementProps(
   }
   for (const [key, value] of Object.entries(override)) {
     const previous = result[key];
-    result[key] = isScenePlacementJsonObject(previous) && isScenePlacementJsonObject(value)
+    result[key] = key !== DATA_SCENE_COMPONENTS_PROP
+      && isScenePlacementJsonObject(previous)
+      && isScenePlacementJsonObject(value)
       ? mergeScenePlacementProps(previous, value)
       : copySceneCompositionJsonValue(value);
   }
@@ -801,6 +1140,56 @@ function copyGameplayEntityHandle(handle: GameplayEntityHandle): GameplayEntityH
   };
 }
 
+function copyResolvedDataSceneObjectVisual(
+  visual: ResolvedDataSceneObjectVisual,
+): ResolvedDataSceneObjectVisual {
+  if (visual.kind === "primitive") {
+    return {
+      kind: "primitive",
+      shape: visual.shape,
+      ...(visual.color === undefined ? {} : { color: visual.color }),
+      width: visual.width,
+      height: visual.height,
+      ...(visual.radius === undefined ? {} : { radius: visual.radius }),
+      bounds: { ...visual.bounds },
+    };
+  }
+  return {
+    kind: "sprite",
+    texture: { ...visual.texture },
+    width: visual.width,
+    height: visual.height,
+    frame: { ...visual.frame },
+    ...(visual.animation === undefined ? {} : { animation: { ...visual.animation } }),
+    originX: visual.originX,
+    originY: visual.originY,
+    ...(visual.layer === undefined ? {} : { layer: visual.layer }),
+    ...(visual.sortOrder === undefined ? {} : { sortOrder: visual.sortOrder }),
+    ...(visual.tint === undefined ? {} : { tint: visual.tint }),
+    ...(visual.color === undefined ? {} : { color: visual.color }),
+    bounds: { ...visual.bounds },
+  };
+}
+
+function copyResolvedDataSceneCollider(
+  collider: ResolvedDataSceneColliderComponent,
+): ResolvedDataSceneColliderComponent {
+  switch (collider.type) {
+    case "none":
+      return { type: "none" };
+    case "aabb":
+    case "circle":
+    case "capsule":
+    case "orientedBox":
+      return { ...collider };
+    case "convexPolygon":
+      return {
+        ...collider,
+        vertices: collider.vertices.map((vertex) => ({ ...vertex })),
+      };
+  }
+}
+
 function sourceTransform(instance: ResolvedSceneCompositionInstance): ScenePlacementTransform {
   return {
     x: instance.x,
@@ -846,6 +1235,22 @@ function positiveTransformNumber(value: number, path: string): number {
     throw gameplayAuthoringDiagnosticError(path, "must be a positive finite number");
   }
   return value;
+}
+
+function validatedComponentsPatch(
+  components: SceneCompositionJsonValue,
+  path: string,
+): SceneCompositionJsonValue {
+  const copy = copySceneCompositionJsonValue(components);
+  try {
+    resolveDataSceneComponentsSpec(copy, {
+      allowTemplate: false,
+      path,
+    });
+  } catch (error) {
+    throw gameplayAuthoringDiagnosticError(path, error instanceof Error ? error.message : String(error));
+  }
+  return copy;
 }
 
 function sameTransform(left: ScenePlacementTransform, right: ScenePlacementTransform): boolean {
@@ -898,11 +1303,29 @@ function copyScenePlacementPatchOperation(
         instanceId: operation.instanceId,
         transform: copyTransformPatch(operation.transform),
       };
+    case "updateComponents":
+      return {
+        kind: "updateComponents",
+        instanceId: operation.instanceId,
+        components: copySceneCompositionJsonValue(operation.components),
+      };
+    case "updateBehaviorBinding":
+      return {
+        kind: "updateBehaviorBinding",
+        target: copyBehaviorBindingTarget(operation.target),
+        behaviorRecipes: copyBehaviorBindingPatch(operation.behaviorRecipes),
+      };
     case "renameInstance":
       return {
         kind: "renameInstance",
         instanceId: operation.instanceId,
         nextInstanceId: operation.nextInstanceId,
+      };
+    case "addObjectDefinition":
+      return {
+        kind: "addObjectDefinition",
+        id: operation.id,
+        definition: copySceneCompositionPrefabSpec(operation.definition),
       };
     case "addInstance":
       return {
@@ -916,6 +1339,23 @@ function copyScenePlacementPatchOperation(
         instanceId: operation.instanceId,
       };
   }
+}
+
+function copySceneCompositionPrefabSpec(
+  definition: SceneCompositionPrefabSpec,
+): SceneCompositionPrefabSpec {
+  const variants = definition.variants ?? {};
+  const copiedVariants: Record<string, SceneCompositionPrefabVariantSpec> = {};
+  for (const [variantId, variant] of Object.entries(variants)) {
+    copiedVariants[variantId] = {
+      ...(variant.extends === undefined ? {} : { extends: variant.extends }),
+      ...(variant.props === undefined ? {} : { props: copySceneCompositionProps(variant.props) }),
+    };
+  }
+  return {
+    ...(definition.props === undefined ? {} : { props: copySceneCompositionProps(definition.props) }),
+    ...(Object.keys(copiedVariants).length === 0 ? {} : { variants: copiedVariants }),
+  };
 }
 
 function copySceneCompositionFragmentInstance(
@@ -952,6 +1392,253 @@ function copySceneCompositionJsonValue(value: SceneCompositionJsonValue): SceneC
     return (value as readonly SceneCompositionJsonValue[]).map(copySceneCompositionJsonValue);
   }
   return copySceneCompositionProps(value as Readonly<Record<string, SceneCompositionJsonValue>>);
+}
+
+function validatedBehaviorBindingPatch(
+  behaviorRecipes: ScenePlacementBehaviorBindingPatch,
+  path: string,
+): ScenePlacementBehaviorBindingPatch {
+  if (behaviorRecipes === null) {
+    return null;
+  }
+  if (typeof behaviorRecipes === "string") {
+    if (behaviorRecipes.length === 0) {
+      throw gameplayAuthoringDiagnosticError(path, "must be a non-empty behavior profile string");
+    }
+    return behaviorRecipes;
+  }
+  if (Array.isArray(behaviorRecipes)) {
+    return behaviorRecipes.map((entry, index) => {
+      if (typeof entry !== "string" || entry.length === 0) {
+        throw gameplayAuthoringDiagnosticError(`${path}.${index}`, "must be a non-empty behavior profile string");
+      }
+      return entry;
+    });
+  }
+  throw gameplayAuthoringDiagnosticError(path, "must be null, a behavior profile string, or a string array");
+}
+
+function behaviorBindingPropsValue(
+  behaviorRecipes: ScenePlacementBehaviorBindingPatch,
+): SceneCompositionJsonValue {
+  if (behaviorRecipes === null) {
+    return [];
+  }
+  return copyBehaviorBindingPatch(behaviorRecipes) as SceneCompositionJsonValue;
+}
+
+function behaviorProfilesForProps(
+  props: SceneCompositionProps,
+  behaviorProp: string,
+  path: string,
+): readonly string[] {
+  const value = props[behaviorProp];
+  if (value === undefined) {
+    return [];
+  }
+  const binding = validatedBehaviorBindingPatch(
+    value as ScenePlacementBehaviorBindingPatch,
+    `${path}.${behaviorProp}`,
+  );
+  if (binding === null) {
+    return [];
+  }
+  return typeof binding === "string" ? [binding] : [...binding];
+}
+
+function behaviorBindingPatchFromProps(
+  props: SceneCompositionProps | undefined,
+  behaviorProp: string,
+): ScenePlacementBehaviorBindingPatch | undefined {
+  const value = props?.[behaviorProp];
+  if (value === undefined) {
+    return undefined;
+  }
+  return validatedBehaviorBindingPatch(
+    value as ScenePlacementBehaviorBindingPatch,
+    `scenePlacementViewer.behaviorBindingPatch.${behaviorProp}`,
+  );
+}
+
+function sameBehaviorBindingPatch(
+  source: SceneCompositionJsonValue | undefined,
+  patch: ScenePlacementBehaviorBindingPatch,
+): boolean {
+  if (source === undefined && patch === null) {
+    return true;
+  }
+  if (source === undefined) {
+    return false;
+  }
+  const sourceBinding = validatedBehaviorBindingPatch(
+    source as ScenePlacementBehaviorBindingPatch,
+    "scenePlacementViewer.behaviorBinding",
+  );
+  if (sourceBinding === null || patch === null) {
+    return sourceBinding === patch;
+  }
+  return JSON.stringify(sourceBinding) === JSON.stringify(patch);
+}
+
+function copyBehaviorBindingPatch(
+  behaviorRecipes: ScenePlacementBehaviorBindingPatch,
+): ScenePlacementBehaviorBindingPatch {
+  if (behaviorRecipes === null || typeof behaviorRecipes === "string") {
+    return behaviorRecipes;
+  }
+  return [...behaviorRecipes];
+}
+
+function copyBehaviorBindingTarget(
+  target: ScenePlacementBehaviorBindingTarget,
+): ScenePlacementBehaviorBindingTarget {
+  return target.kind === "instance"
+    ? { kind: "instance", instanceId: target.instanceId }
+    : { kind: "objectDefinition", id: target.id };
+}
+
+function validatedObjectDefinitionPatch(
+  definition: SceneCompositionPrefabSpec,
+  path: string,
+): SceneCompositionPrefabSpec {
+  const copy = copySceneCompositionPrefabSpec(definition);
+  validatePlacementDefinitionProps(copy.props, `${path}.props`);
+  const variants = copy.variants ?? {};
+  for (const [variantId, variant] of Object.entries(variants)) {
+    requiredPlacementInstanceId(variantId, `${path}.variants.${variantId}`);
+    if (variant.extends !== undefined) {
+      requiredPlacementInstanceId(variant.extends, `${path}.variants.${variantId}.extends`);
+    }
+    validatePlacementDefinitionProps(variant.props, `${path}.variants.${variantId}.props`);
+  }
+  return copy;
+}
+
+function validatePlacementDefinitionProps(
+  props: SceneCompositionProps | undefined,
+  path: string,
+): void {
+  if (props === undefined) {
+    return;
+  }
+  validatePlacementInstanceProps(props, path);
+  const components = props[DATA_SCENE_COMPONENTS_PROP];
+  if (components !== undefined) {
+    validatedComponentsPatch(components, `${path}.${DATA_SCENE_COMPONENTS_PROP}`);
+  }
+}
+
+function resolvedDraftObjectDefinition(
+  id: string,
+  definition: SceneCompositionPrefabSpec,
+  path: string,
+): ResolvedSceneCompositionPrefab {
+  const variants = definition.variants ?? {};
+  const resolvedVariants: Record<string, ResolvedSceneCompositionPrefab["variants"][string]> = {};
+  for (const [variantId, variant] of Object.entries(variants)) {
+    resolvedVariants[variantId] = {
+      id: variantId,
+      ...(variant.extends === undefined ? {} : { extends: variant.extends }),
+      props: copySceneCompositionProps(variant.props ?? {}),
+    };
+  }
+  return {
+    id,
+    props: copySceneCompositionProps(definition.props ?? {}),
+    variants: resolvedVariants,
+  };
+}
+
+function instanceWithBehaviorBinding(
+  instance: SceneCompositionFragmentInstanceSpec,
+  behaviorRecipes: ScenePlacementBehaviorBindingPatch,
+  behaviorProp: string,
+): SceneCompositionFragmentInstanceSpec {
+  return {
+    ...instance,
+    props: {
+      ...(instance.props ?? {}),
+      [behaviorProp]: behaviorBindingPropsValue(behaviorRecipes),
+    },
+  };
+}
+
+function objectDefinitionWithBehaviorBinding(
+  definition: SceneCompositionPrefabSpec,
+  behaviorRecipes: ScenePlacementBehaviorBindingPatch,
+  behaviorProp: string,
+): SceneCompositionPrefabSpec {
+  const props = { ...(definition.props ?? {}) };
+  if (behaviorRecipes === null) {
+    delete props[behaviorProp];
+  } else {
+    props[behaviorProp] = behaviorBindingPropsValue(behaviorRecipes);
+  }
+  return {
+    ...definition,
+    props,
+  };
+}
+
+function prefabWithBehaviorBindingDraft(
+  prefab: ResolvedSceneCompositionPrefab,
+  behaviorRecipes: ScenePlacementBehaviorBindingPatch | undefined,
+  behaviorProp: string,
+): ResolvedSceneCompositionPrefab {
+  if (behaviorRecipes === undefined) {
+    return prefab;
+  }
+  const props = { ...prefab.props };
+  if (behaviorRecipes === null) {
+    delete props[behaviorProp];
+  } else {
+    props[behaviorProp] = behaviorBindingPropsValue(behaviorRecipes);
+  }
+  return {
+    ...prefab,
+    props,
+  };
+}
+
+function copyObjectDefinitionWithoutBehaviorBinding(
+  definition: SceneCompositionPrefabSpec,
+  behaviorProp: string,
+): SceneCompositionPrefabSpec {
+  const copy = copySceneCompositionPrefabSpec(definition);
+  if (copy.props !== undefined) {
+    const props = { ...copy.props };
+    delete props[behaviorProp];
+    if (Object.keys(props).length === 0) {
+      delete copy.props;
+    } else {
+      copy.props = props;
+    }
+  }
+  return copy;
+}
+
+function copyInstanceWithoutBehaviorBinding(
+  instance: SceneCompositionFragmentInstanceSpec,
+  behaviorProp: string,
+): SceneCompositionFragmentInstanceSpec {
+  const copy = copySceneCompositionFragmentInstance(instance);
+  if (copy.props !== undefined) {
+    const props = { ...copy.props };
+    delete props[behaviorProp];
+    if (Object.keys(props).length === 0) {
+      delete copy.props;
+    } else {
+      copy.props = props;
+    }
+  }
+  return copy;
+}
+
+function sameSceneCompositionJsonValue(
+  left: SceneCompositionJsonValue | undefined,
+  right: SceneCompositionJsonValue,
+): boolean {
+  return left !== undefined && JSON.stringify(left) === JSON.stringify(right);
 }
 
 function copyTransformPatch(transform: Partial<ScenePlacementTransform>): Partial<ScenePlacementTransform> {

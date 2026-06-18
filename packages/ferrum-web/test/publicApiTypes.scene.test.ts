@@ -28,11 +28,18 @@ import {
   createBehaviorStateMachineStateCommandPlan,
   createGameplayBehaviorRuntimeTarget,
   createGameplayReplayRun,
+  createScenePlacementAgentHandoff,
+  createScenePlacementAssetProvider,
+  createScenePlacementAssetProviderFromProjectAssets,
   createScenePlacementPatchStore,
   createScenePlacementViewport,
   DATA_SCENE_COLLISION_LAYER_CODES,
   DATA_SCENE_COMPONENTS_PROP,
+  DATA_SCENE_DEFAULT_POINT_SIZE,
+  DATA_SCENE_DEFAULT_PRIMITIVE_SIZE,
   DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES,
+  DATA_SCENE_PRIMITIVE_TEXTURES,
+  dataSceneObjectVisualBounds,
   decodeEffectEvents,
   dispatchEffectEvents,
   dispatchRuntimeEffectEvents,
@@ -68,6 +75,8 @@ import {
   runBehaviorStateMachineReplay,
   SCENE_AUTHORING_DOCUMENT_FORMAT,
   SCENE_AUTHORING_DOCUMENT_VERSION,
+  SCENE_PLACEMENT_AGENT_HANDOFF_FORMAT,
+  SCENE_PLACEMENT_AGENT_HANDOFF_VERSION,
   SCENE_PLACEMENT_PATCH_FORMAT,
   SCENE_PLACEMENT_PATCH_VERSION,
   createScenePlacementViewer,
@@ -197,10 +206,14 @@ import type {
   CutsceneWaitCommandSpec,
   DataSceneCollisionLayerName,
   DataSceneComponentsSpec,
+  DataSceneObjectVisualSpec,
+  DataScenePrimitiveVisualShape,
+  DataScenePrimitiveVisualSpec,
   DataSceneRuntimeComponentTemplateCatalog,
   DataSceneRuntimeComponentTemplateResolver,
   DataSceneRuntimeComponentTemplates,
   DataSceneRuntimeTextureIdResolver,
+  DataSceneSpriteVisualSpec,
   CollisionAreaDamageBehaviorRecipeSpec,
   CollisionDespawnBehaviorRecipeSpec,
   CollisionEmitEffectBehaviorRecipeSpec,
@@ -341,6 +354,8 @@ import type {
   ResolvedDataSceneColliderComponent,
   ResolvedDataSceneCollisionLayer,
   ResolvedDataSceneComponents,
+  ResolvedDataSceneObjectVisual,
+  ResolvedDataSceneObjectVisualBounds,
   ResolvedDataSceneSpriteAnimation,
   ResolvedDataSceneSpriteComponent,
   ResolvedDataSceneSpriteFrame,
@@ -367,6 +382,9 @@ import type {
   ResolvedSceneCompositionSpec,
   ResolvedSceneCompositionTransform,
   ResolvedSceneAuthoringDocument,
+  CreateScenePlacementAssetProviderOptions,
+  CreateScenePlacementProjectAssetProviderOptions,
+  CreateScenePlacementAgentHandoffOptions,
   CreateScenePlacementPatchStoreOptions,
   CreateScenePlacementViewerOptions,
   MergeScenePlacementPatchOptions,
@@ -382,6 +400,19 @@ import type {
   ScenePlacementPatchSaveResult,
   ScenePlacementPatchStore,
   ScenePlacementPatchStoreState,
+  ScenePlacementObjectDefinitionSummary,
+  ScenePlacementAssetProvider,
+  ScenePlacementAssetDiagnostic,
+  ScenePlacementAssetDiagnosticCode,
+  ScenePlacementProjectAtlasFrameContext,
+  ScenePlacementProjectTextureEntry,
+  ScenePlacementProjectTextureMetadata,
+  ScenePlacementProjectTextureRegistry,
+  ScenePlacementAgentHandoff,
+  ScenePlacementSpriteAsset,
+  ScenePlacementSpriteAssetReference,
+  ScenePlacementSpriteFrameAsset,
+  ScenePlacementSpriteFrameRect,
   SaveScenePlacementPatchOptions,
   ScenePlacementPoint,
   ScenePlacementRemoveInstanceOperation,
@@ -392,6 +423,7 @@ import type {
   ScenePlacementSnapMode,
   ScenePlacementSnapOptions,
   ScenePlacementTransform,
+  ScenePlacementUpdateComponentsOperation,
   ScenePlacementUpdateTransformOperation,
   ScenePlacementViewport,
   ScenePlacementViewportOptions,
@@ -464,6 +496,27 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   const dataSceneLayerCodes: typeof DATA_SCENE_COLLISION_LAYER_CODES = DATA_SCENE_COLLISION_LAYER_CODES;
   const dataSceneMaxConvexPolygonVertices: typeof DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES =
     DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES;
+  const dataSceneDefaultPrimitiveSize: typeof DATA_SCENE_DEFAULT_PRIMITIVE_SIZE = DATA_SCENE_DEFAULT_PRIMITIVE_SIZE;
+  const dataSceneDefaultPointSize: typeof DATA_SCENE_DEFAULT_POINT_SIZE = DATA_SCENE_DEFAULT_POINT_SIZE;
+  const dataScenePrimitiveTextures: typeof DATA_SCENE_PRIMITIVE_TEXTURES = DATA_SCENE_PRIMITIVE_TEXTURES;
+  const dataScenePrimitiveShape: DataScenePrimitiveVisualShape = "rect";
+  const dataScenePrimitiveVisual: DataScenePrimitiveVisualSpec = {
+    kind: "primitive",
+    shape: dataScenePrimitiveShape,
+    width: dataSceneDefaultPrimitiveSize,
+    height: dataSceneDefaultPointSize,
+    color: "#7ddc9d",
+  };
+  const dataSceneSpriteVisual: DataSceneSpriteVisualSpec = {
+    kind: "sprite",
+    asset: "enemy",
+    width: 16,
+    height: 16,
+    originX: 0.5,
+    originY: 0.5,
+    sortOrder: 1,
+  };
+  const dataSceneObjectVisual: DataSceneObjectVisualSpec = dataScenePrimitiveVisual;
   const dataSceneComponents: DataSceneComponentsSpec = {
     sprite: {
       texture: "enemy",
@@ -477,6 +530,11 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
       halfWidth: 8,
       halfHeight: 8,
     },
+    layer: dataSceneLayerName,
+  };
+  const dataScenePrimitiveComponents: DataSceneComponentsSpec = {
+    visual: dataSceneObjectVisual,
+    collider: { type: "aabb", halfWidth: 8, halfHeight: 8 },
     layer: dataSceneLayerName,
   };
   const sceneCompositionProps: SceneCompositionProps = {
@@ -612,12 +670,29 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     publicSnapSceneWorldPoint(scenePlacementPoint, scenePlacementSnapOptions);
   const resolvedDataSceneComponents: ResolvedDataSceneComponents =
     publicResolveDataSceneComponentsSpec(dataSceneComponents, dataSceneComponentsOptions);
+  const resolvedPrimitiveDataSceneComponents: ResolvedDataSceneComponents =
+    publicResolveDataSceneComponentsSpec(dataScenePrimitiveComponents, dataSceneComponentsOptions);
+  const resolvedSpriteVisualDataSceneComponents: ResolvedDataSceneComponents =
+    publicResolveDataSceneComponentsSpec({
+      visual: dataSceneSpriteVisual,
+      collider: "none",
+      layer: dataSceneLayerName,
+    }, dataSceneComponentsOptions);
   const resolvedDataSceneInstanceComponents: ResolvedDataSceneComponents =
     publicResolveDataSceneInstanceComponents(resolvedSceneCompositionInstance, dataSceneInstanceComponentsOptions);
   if (resolvedDataSceneComponents.mode !== "inline") {
     throw new Error("expected inline data scene components");
   }
+  if (resolvedPrimitiveDataSceneComponents.mode !== "inline") {
+    throw new Error("expected inline primitive data scene components");
+  }
+  if (resolvedSpriteVisualDataSceneComponents.mode !== "inline") {
+    throw new Error("expected inline sprite visual data scene components");
+  }
   const resolvedDataSceneSprite: ResolvedDataSceneSpriteComponent = resolvedDataSceneComponents.sprite;
+  const resolvedPrimitiveDataSceneVisual: ResolvedDataSceneObjectVisual = resolvedPrimitiveDataSceneComponents.visual;
+  const resolvedPrimitiveVisualBounds: ResolvedDataSceneObjectVisualBounds =
+    dataSceneObjectVisualBounds(resolvedPrimitiveDataSceneComponents);
   const resolvedDataSceneTexture: ResolvedDataSceneTextureRef = resolvedDataSceneSprite.texture;
   const resolvedDataSceneFrame: ResolvedDataSceneSpriteFrame = resolvedDataSceneSprite.frame;
   const resolvedDataSceneAnimation: ResolvedDataSceneSpriteAnimation | undefined =
@@ -630,7 +705,13 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   const resolvedDataSceneLayer: ResolvedDataSceneCollisionLayer = resolvedDataSceneComponents.layer;
   equal(dataSceneLayerCodes.enemy, 1);
   equal(dataSceneMaxConvexPolygonVertices, 16);
+  equal(dataScenePrimitiveTextures.rect, "__ferrum2d.primitive.rect");
   equal(resolvedDataSceneTexture.kind, "asset");
+  equal(resolvedPrimitiveDataSceneVisual.kind, "primitive");
+  equal(resolvedPrimitiveVisualBounds.width, dataSceneDefaultPrimitiveSize);
+  equal(resolvedPrimitiveVisualBounds.height, dataSceneDefaultPointSize);
+  equal(resolvedPrimitiveDataSceneComponents.sprite.texture.name, dataScenePrimitiveTextures.rect);
+  equal(resolvedSpriteVisualDataSceneComponents.sprite.texture.name, "enemy");
   equal(resolvedDataSceneFrame.u1, 1);
   equal(resolvedDataSceneAnimation?.frameCount, 2);
   equal(resolvedDataSceneColliderBase.enabled, true);
@@ -1311,12 +1392,89 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     createScenePlacementViewer;
   const publicCreateScenePlacementPatchStore: PublicApi["createScenePlacementPatchStore"] =
     createScenePlacementPatchStore;
+  const publicCreateScenePlacementAssetProvider: PublicApi["createScenePlacementAssetProvider"] =
+    createScenePlacementAssetProvider;
+  const publicCreateScenePlacementAssetProviderFromProjectAssets:
+    PublicApi["createScenePlacementAssetProviderFromProjectAssets"] =
+      createScenePlacementAssetProviderFromProjectAssets;
+  const publicCreateScenePlacementAgentHandoff: PublicApi["createScenePlacementAgentHandoff"] =
+    createScenePlacementAgentHandoff;
   const publicMergeScenePlacementPatch: PublicApi["mergeScenePlacementPatch"] =
     mergeScenePlacementPatch;
   const publicSaveScenePlacementPatch: PublicApi["saveScenePlacementPatch"] =
     saveScenePlacementPatch;
   const scenePlacementViewerDocument: ScenePlacementViewerDocument = sceneAuthoringDocument;
   const scenePlacementViewerComposition: ScenePlacementViewerComposition = resolvedSceneComposition;
+  const scenePlacementSpriteAsset: ScenePlacementSpriteAsset = {
+    id: "crate",
+    label: "Crate",
+    width: 40,
+    height: 40,
+    thumbnailUrl: "crate.png",
+    frames: [{
+      id: "idle",
+      label: "Idle",
+      width: 20,
+      height: 20,
+      frame: { u0: 0, v0: 0, u1: 0.5, v1: 0.5 },
+    }],
+  };
+  const scenePlacementSpriteFrameRect: ScenePlacementSpriteFrameRect = { u0: 0, v0: 0, u1: 1, v1: 1 };
+  const scenePlacementSpriteFrameAsset: ScenePlacementSpriteFrameAsset = {
+    id: "full",
+    frame: scenePlacementSpriteFrameRect,
+  };
+  const scenePlacementSpriteAssetReference: ScenePlacementSpriteAssetReference = {
+    asset: "crate",
+    frame: "idle",
+    path: "publicApi.scenePlacementSprite",
+  };
+  const scenePlacementAssetOptions: CreateScenePlacementAssetProviderOptions = {
+    path: "publicApi.scenePlacementAssets",
+  };
+  const scenePlacementProjectTextureEntry: ScenePlacementProjectTextureEntry = {
+    name: "atlas",
+    textureId: 1,
+    url: "atlas.png",
+  };
+  const scenePlacementProjectTextureRegistry: ScenePlacementProjectTextureRegistry = {
+    entries: () => [scenePlacementProjectTextureEntry],
+  };
+  const scenePlacementProjectTextureMetadata: ScenePlacementProjectTextureMetadata = {
+    label: "Atlas",
+  };
+  const scenePlacementProjectAtlasFrameContext: ScenePlacementProjectAtlasFrameContext = {
+    frameName: "atlas.crate",
+    textureId: "atlas",
+    frame: {
+      texture: "atlas",
+      uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+      size: { width: 40, height: 40 },
+    },
+  };
+  const scenePlacementProjectAssetOptions: CreateScenePlacementProjectAssetProviderOptions = {
+    textureRegistry: scenePlacementProjectTextureRegistry,
+    atlas: { frames: { [scenePlacementProjectAtlasFrameContext.frameName]: scenePlacementProjectAtlasFrameContext.frame } },
+    textureMetadata: { atlas: scenePlacementProjectTextureMetadata },
+    frameId: ({ frameName }) => frameName,
+  };
+  const scenePlacementAssetProvider: ScenePlacementAssetProvider =
+    publicCreateScenePlacementAssetProvider([scenePlacementSpriteAsset], scenePlacementAssetOptions);
+  const scenePlacementProjectAssetProvider: ScenePlacementAssetProvider =
+    publicCreateScenePlacementAssetProviderFromProjectAssets(scenePlacementProjectAssetOptions);
+  equal(scenePlacementAssetProvider.resolveSpriteAsset("crate")?.width, 40);
+  equal(scenePlacementAssetProvider.resolveSpriteFrame("crate", "idle")?.width, 20);
+  equal(scenePlacementProjectAssetProvider.resolveSpriteFrame("atlas", "atlas.crate")?.height, 40);
+  const scenePlacementAssetDiagnosticCode: ScenePlacementAssetDiagnosticCode = "missingSpriteAsset";
+  const scenePlacementAssetDiagnostic: ScenePlacementAssetDiagnostic = {
+    severity: "error",
+    code: scenePlacementAssetDiagnosticCode,
+    path: "publicApi.scenePlacementSprite",
+    assetId: "missing",
+    message: "missing",
+  };
+  equal(scenePlacementAssetProvider.diagnoseSpriteAssetReference(scenePlacementSpriteAssetReference).length, 0);
+  equal(scenePlacementSpriteFrameAsset.frame?.u1, 1);
   const scenePlacementViewerOptions: CreateScenePlacementViewerOptions = {
     document: scenePlacementViewerDocument,
     viewport: scenePlacementViewportOptions,
@@ -1328,6 +1486,22 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     publicCreateScenePlacementViewer(scenePlacementViewerOptions);
   const scenePlacementViewerState: ScenePlacementViewerState =
     scenePlacementViewer.pointerAtScreen({ x: 40, y: 24 });
+  const scenePlacementObjectDefinition: ScenePlacementObjectDefinitionSummary | undefined =
+    scenePlacementViewerState.objectDefinitions[0];
+  if (scenePlacementObjectDefinition === undefined) {
+    throw new Error("expected scene placement object definition summary");
+  }
+  equal(scenePlacementObjectDefinition.hasDataSceneComponents, true);
+  const scenePlacementHandoffOptions: CreateScenePlacementAgentHandoffOptions = {
+    document: scenePlacementViewerDocument,
+    state: scenePlacementViewerState,
+    sourceDocument: "scene-authoring.json",
+    assetDiagnostics: [scenePlacementAssetDiagnostic],
+  };
+  const scenePlacementAgentHandoff: ScenePlacementAgentHandoff =
+    publicCreateScenePlacementAgentHandoff(scenePlacementHandoffOptions);
+  equal(SCENE_PLACEMENT_AGENT_HANDOFF_FORMAT, scenePlacementAgentHandoff.format);
+  equal(SCENE_PLACEMENT_AGENT_HANDOFF_VERSION, scenePlacementAgentHandoff.version);
   const scenePlacementPickedInstance: ScenePlacementViewerInstance | undefined =
     scenePlacementViewer.pickInstanceAtScreen({ x: 6, y: 8 });
   const scenePlacementHoverState: ScenePlacementViewerState =
@@ -1345,6 +1519,21 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     instanceId: "a.enemy",
     transform: { x: 12 },
   };
+  const scenePlacementUpdateComponentsOperation: ScenePlacementUpdateComponentsOperation = {
+    kind: "updateComponents",
+    instanceId: "a.enemy",
+    components: {
+      visual: {
+        kind: "primitive",
+        shape: "rect",
+        width: 24,
+        height: 16,
+        color: "#7ddc9d",
+      },
+      collider: { type: "aabb", halfWidth: 8, halfHeight: 8 },
+      layer: dataSceneLayerName,
+    },
+  };
   const scenePlacementRenameInstanceOperation: ScenePlacementRenameInstanceOperation = {
     kind: "renameInstance",
     instanceId: "a.enemy",
@@ -1360,11 +1549,12 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     instanceId: "a.enemy",
   };
   const scenePlacementPatchOperation: ScenePlacementPatchOperation =
-    scenePlacementUpdateTransformOperation;
+    scenePlacementUpdateComponentsOperation;
   const scenePlacementPatch: ScenePlacementPatch = {
     format: publicScenePlacementPatchFormat,
     version: publicScenePlacementPatchVersion,
     operations: [
+      scenePlacementUpdateTransformOperation,
       scenePlacementPatchOperation,
       scenePlacementRenameInstanceOperation,
       scenePlacementAddInstanceOperation,
@@ -1421,8 +1611,8 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(scenePlacementViewer.exportPatch()?.operations[0]?.kind, "updateTransform");
   equal(scenePlacementViewer.clearDraftPatch().draftPatch, undefined);
   equal(scenePlacementViewerTransform.x, 6);
-  equal(scenePlacementPatch.operations.length, 4);
-  equal(scenePlacementPatchStoreState.operationCount, 4);
+  equal(scenePlacementPatch.operations.length, 5);
+  equal(scenePlacementPatchStoreState.operationCount, 5);
   equal(scenePlacementMergeResult.changedInstanceIds[0], "enemy");
   equal(scenePlacementPatchStore.exportPatch()?.format, publicScenePlacementPatchFormat);
   equal(scenePlacementPatchStore.clear().dirty, false);

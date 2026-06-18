@@ -23,6 +23,8 @@ import {
 
 const REPORT_FORMAT = "ferrum2d.gameplay-authoring.dry-run-report";
 const REPORT_VERSION = 1;
+const PLACEMENT_HANDOFF_FORMAT = "ferrum2d.placement-viewer.agent-handoff";
+const PLACEMENT_HANDOFF_VERSION = 1;
 const VARIANT_FORMAT = "ferrum2d.topdown-shooter.authored-behavior-variant";
 const VARIANT_VERSION = 1;
 const REPLAY_MANIFEST_FORMAT = "ferrum2d.gameplay-replay.scenarios";
@@ -32,6 +34,7 @@ const REPLAY_COVERAGE_TAGS_VERSION = 1;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DEFAULT_VARIANT_PATH = "examples/topdown-shooter/public/authored-behavior.variant.json";
 const DEFAULT_REPLAY_MANIFEST_PATH = "tests/fixtures/gameplay-golden/scenarios.json";
+const DEFAULT_PLACEMENT_HANDOFF_PATH = "tests/fixtures/gameplay-authoring/placement-agent-handoff.json";
 const DEFAULT_ARTIFACT_REPORT_NAME = "gameplay-authoring-dry-run-report.json";
 const REPORT_SCHEMA_PATH = resolve(REPO_ROOT, "schemas/gameplay-authoring-dry-run-report.schema.json");
 
@@ -197,6 +200,9 @@ async function runGameplayAuthoringDryRun(options, diagnostics, reports) {
   const commandsByType = countBy(commands.map((command) => command.type));
   const agentAttachment = createAgentAttachmentSummary(instances, bindings);
   validateExpectedAgentAttachment(variant.expected?.agentAttachment, agentAttachment, diagnostics, reports);
+  const placementHandoff = options.placementHandoffPath === undefined
+    ? undefined
+    : await createPlacementHandoffDryRunSummary(options.placementHandoffPath, agentAttachment, diagnostics, reports);
   return {
     variantPath,
     baseGameSpecPath,
@@ -219,6 +225,7 @@ async function runGameplayAuthoringDryRun(options, diagnostics, reports) {
     commandCount: commands.length,
     commandsByType,
     agentAttachment,
+    ...(placementHandoff === undefined ? {} : { placementHandoff }),
     commands: commands.map((command) => ({
       entity: command.entity,
       type: command.type,
@@ -272,6 +279,152 @@ function validateExpectedAgentAttachment(expected, actual, diagnostics, reports)
     "gameplayAuthoring.variant.expected.agentAttachment",
     diagnostics,
     reports,
+  );
+}
+
+async function createPlacementHandoffDryRunSummary(handoffPath, agentAttachment, diagnostics, reports) {
+  const handoff = await readJson(handoffPath);
+  validatePlacementHandoffEnvelope(handoff, handoffPath, diagnostics, reports);
+  const selectedInstanceId = optionalString(handoff.selectedInstanceId);
+  const selectedSummaryId = isPlainRecord(handoff.selected)
+    ? optionalString(handoff.selected.instanceId)
+    : undefined;
+  if (selectedInstanceId === undefined) {
+    pushGameplayAuthoringReport(
+      diagnostics,
+      reports,
+      `${handoffPath}.selectedInstanceId`,
+      "must select an instance for agent behavior attachment dry-run",
+      "non-empty scene instance id",
+      handoff.selectedInstanceId,
+      "Export placement handoff after selecting the object that should receive behavior.",
+    );
+  }
+  if (selectedInstanceId !== undefined && selectedSummaryId !== undefined && selectedSummaryId !== selectedInstanceId) {
+    pushGameplayAuthoringReport(
+      diagnostics,
+      reports,
+      `${handoffPath}.selected.instanceId`,
+      "must match selectedInstanceId",
+      selectedInstanceId,
+      selectedSummaryId,
+      "Regenerate the placement handoff from a single viewer state snapshot.",
+    );
+  }
+
+  const attachment = selectedInstanceId === undefined
+    ? undefined
+    : agentAttachment.find((entry) => entry.instanceId === selectedInstanceId);
+  if (selectedInstanceId !== undefined && attachment === undefined) {
+    pushGameplayAuthoringReport(
+      diagnostics,
+      reports,
+      `${handoffPath}.selectedInstanceId`,
+      "must reference a scene instance in the behavior dry-run variant",
+      agentAttachment.map((entry) => entry.instanceId),
+      selectedInstanceId,
+      "Use a handoff exported from the same SceneComposition document as the behavior authoring dry-run variant.",
+    );
+  }
+  if (attachment !== undefined && (attachment.commandCount <= 0 || attachment.behaviorProfiles.length === 0)) {
+    pushGameplayAuthoringReport(
+      diagnostics,
+      reports,
+      `${handoffPath}.selectedInstanceId`,
+      "must resolve to at least one behavior command",
+      "selected instance with bound behavior profile and command",
+      attachment,
+      "Attach a behaviorRecipes profile to the selected prefab or instance before running agent dry-run validation.",
+    );
+  }
+
+  return {
+    handoffPath,
+    selectedInstanceId,
+    selectedSummaryId,
+    selectedAttached: attachment !== undefined
+      && attachment.commandCount > 0
+      && attachment.behaviorProfiles.length > 0,
+    ...(attachment === undefined ? {} : { attachment }),
+    draftPatchOperationCount: Array.isArray(handoff.draftPatch?.operations)
+      ? handoff.draftPatch.operations.length
+      : 0,
+    migrationReferenceCount: Array.isArray(handoff.migrationPreview?.references)
+      ? handoff.migrationPreview.references.length
+      : 0,
+    assetDiagnosticCount: Array.isArray(handoff.assetDiagnostics)
+      ? handoff.assetDiagnostics.length
+      : 0,
+    sourceDocument: optionalString(handoff.sourceDocument),
+  };
+}
+
+function validatePlacementHandoffEnvelope(handoff, handoffPath, diagnostics, reports) {
+  if (!isPlainRecord(handoff)) {
+    pushGameplayAuthoringReport(
+      diagnostics,
+      reports,
+      handoffPath,
+      "must be a placement agent handoff object",
+      "placement handoff envelope",
+      handoff,
+      "Export handoff JSON with createScenePlacementAgentHandoff(...).",
+    );
+    return;
+  }
+  comparePlacementHandoffField(handoff.format, PLACEMENT_HANDOFF_FORMAT, `${handoffPath}.format`, diagnostics, reports);
+  comparePlacementHandoffField(handoff.version, PLACEMENT_HANDOFF_VERSION, `${handoffPath}.version`, diagnostics, reports);
+  comparePlacementHandoffField(handoff.workflow, "human-placement-agent-behavior", `${handoffPath}.workflow`, diagnostics, reports);
+  comparePlacementHandoffField(
+    handoff.placementOwner,
+    "sceneComposition.fragments[].instances[]",
+    `${handoffPath}.placementOwner`,
+    diagnostics,
+    reports,
+  );
+  comparePlacementHandoffField(
+    handoff.behaviorOwner,
+    "sceneComposition.prefabs[].props.behaviorRecipes + behaviorRecipes.entities",
+    `${handoffPath}.behaviorOwner`,
+    diagnostics,
+    reports,
+  );
+  if (!Array.isArray(handoff.assetDiagnostics)) {
+    pushGameplayAuthoringReport(
+      diagnostics,
+      reports,
+      `${handoffPath}.assetDiagnostics`,
+      "must be an array",
+      [],
+      handoff.assetDiagnostics,
+      "Include assetDiagnostics from createScenePlacementAgentHandoff(...), even when there are no diagnostics.",
+    );
+  }
+  if (handoff.draftPatch !== undefined && !Array.isArray(handoff.draftPatch?.operations)) {
+    pushGameplayAuthoringReport(
+      diagnostics,
+      reports,
+      `${handoffPath}.draftPatch.operations`,
+      "must be an array when draftPatch is present",
+      "ScenePlacementPatch operations array",
+      handoff.draftPatch?.operations,
+      "Export the draft patch from ScenePlacementViewer.exportPatch().",
+    );
+  }
+}
+
+function comparePlacementHandoffField(actual, expected, path, diagnostics, reports) {
+  if (actual === expected) {
+    return;
+  }
+  pushGameplayAuthoringReport(
+    diagnostics,
+    reports,
+    path,
+    "must match placement handoff contract",
+    expected,
+    actual,
+    "Regenerate the handoff with the current Ferrum2D placement viewer public API.",
   );
 }
 
@@ -952,6 +1105,8 @@ async function validateReportSchema(report) {
 function parseArgs(args) {
   let variantPath;
   let replayManifestPath;
+  let placementHandoffPath = optionalEnvPath(process.env.FERRUM_GAMEPLAY_AUTHORING_PLACEMENT_HANDOFF);
+  let placementHandoffDisabled = false;
   let artifactDir = optionalEnvPath(process.env.FERRUM_GAMEPLAY_AUTHORING_ARTIFACT_DIR);
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -976,6 +1131,22 @@ function parseArgs(args) {
       replayManifestPath = requiredArg(args, ++index, arg);
       continue;
     }
+    if (arg.startsWith("--placement-handoff=")) {
+      placementHandoffPath = arg.slice("--placement-handoff=".length);
+      placementHandoffDisabled = false;
+      assertNonEmptyString(placementHandoffPath, "--placement-handoff");
+      continue;
+    }
+    if (arg === "--placement-handoff") {
+      placementHandoffPath = requiredArg(args, ++index, arg);
+      placementHandoffDisabled = false;
+      continue;
+    }
+    if (arg === "--no-placement-handoff") {
+      placementHandoffPath = undefined;
+      placementHandoffDisabled = true;
+      continue;
+    }
     if (arg.startsWith("--artifact-dir=")) {
       artifactDir = arg.slice("--artifact-dir=".length);
       assertNonEmptyString(artifactDir, "--artifact-dir");
@@ -987,9 +1158,16 @@ function parseArgs(args) {
     }
     throw new Error(`unsupported gameplay authoring dry-run option: ${arg}`);
   }
+  const defaultPlacementHandoffPath = variantPath === undefined && !placementHandoffDisabled
+    ? DEFAULT_PLACEMENT_HANDOFF_PATH
+    : undefined;
+  const effectivePlacementHandoffPath = placementHandoffPath ?? defaultPlacementHandoffPath;
   return {
     variantPath: variantPath === undefined ? undefined : resolve(REPO_ROOT, variantPath),
     replayManifestPath: replayManifestPath === undefined ? undefined : resolve(REPO_ROOT, replayManifestPath),
+    placementHandoffPath: effectivePlacementHandoffPath === undefined
+      ? undefined
+      : resolve(REPO_ROOT, effectivePlacementHandoffPath),
     artifactDir: artifactDir === undefined ? undefined : resolve(REPO_ROOT, artifactDir),
   };
 }

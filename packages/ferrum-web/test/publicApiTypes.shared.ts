@@ -25,7 +25,11 @@ export {
 export {
   DATA_SCENE_COLLISION_LAYER_CODES,
   DATA_SCENE_COMPONENTS_PROP,
+  DATA_SCENE_DEFAULT_POINT_SIZE,
+  DATA_SCENE_DEFAULT_PRIMITIVE_SIZE,
   DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES,
+  DATA_SCENE_PRIMITIVE_TEXTURES,
+  dataSceneObjectVisualBounds,
   resolveDataSceneComponentsSpec,
   resolveDataSceneInstanceComponents,
 } from "../src/dataSceneComponents.js";
@@ -56,6 +60,34 @@ export {
   previewScenePlacementBindingMigration,
   saveScenePlacementPatch,
 } from "../src/scenePlacementPatch.js";
+export {
+  createScenePlacementAssetProvider,
+  createScenePlacementAssetProviderFromProjectAssets,
+} from "../src/scenePlacementAssets.js";
+export {
+  SCENE_PLACEMENT_AGENT_HANDOFF_FORMAT,
+  SCENE_PLACEMENT_AGENT_HANDOFF_VERSION,
+  createScenePlacementAgentHandoff,
+} from "../src/scenePlacementHandoff.js";
+export type {
+  CreateScenePlacementAssetProviderOptions,
+  CreateScenePlacementProjectAssetProviderOptions,
+  ScenePlacementAssetDiagnostic,
+  ScenePlacementAssetDiagnosticCode,
+  ScenePlacementAssetProvider,
+  ScenePlacementProjectAtlasFrameContext,
+  ScenePlacementProjectTextureEntry,
+  ScenePlacementProjectTextureMetadata,
+  ScenePlacementProjectTextureRegistry,
+  ScenePlacementSpriteAsset,
+  ScenePlacementSpriteAssetReference,
+  ScenePlacementSpriteFrameAsset,
+  ScenePlacementSpriteFrameRect,
+} from "../src/scenePlacementAssets.js";
+export type {
+  CreateScenePlacementAgentHandoffOptions,
+  ScenePlacementAgentHandoff,
+} from "../src/scenePlacementHandoff.js";
 export {
   applyBehaviorRecipes,
   behaviorRecipeCommandsForEntity,
@@ -494,7 +526,10 @@ export type {
   DataSceneConvexPolygonColliderSpec,
   DataSceneConvexPolygonVertexSpec,
   DataSceneNoneColliderSpec,
+  DataSceneObjectVisualSpec,
   DataSceneOrientedBoxColliderSpec,
+  DataScenePrimitiveVisualShape,
+  DataScenePrimitiveVisualSpec,
   CreateDataSceneRuntimeTargetOptions,
   DataSceneRuntimeComponentTemplateCatalog,
   DataSceneRuntimeComponentTemplateResolver,
@@ -503,6 +538,7 @@ export type {
   DataSceneSpriteAnimationSpec,
   DataSceneSpriteComponentSpec,
   DataSceneSpriteFrameSpec,
+  DataSceneSpriteVisualSpec,
   DamageBehaviorRecipeSpec,
   DashActionBehaviorRecipeSpec,
   DataSceneTextureRefSpec,
@@ -879,6 +915,8 @@ export type {
   ResolvedDataSceneCollisionLayer,
   ResolvedDataSceneComponents,
   ResolvedDataSceneConvexPolygonVertex,
+  ResolvedDataSceneObjectVisual,
+  ResolvedDataSceneObjectVisualBounds,
   ResolvedDataSceneSpriteAnimation,
   ResolvedDataSceneSpriteComponent,
   ResolvedDataSceneSpriteFrame,
@@ -922,6 +960,7 @@ export type {
   ScenePlacementPatchSaveResult,
   ScenePlacementPatchStore,
   ScenePlacementPatchStoreState,
+  ScenePlacementObjectDefinitionSummary,
   SaveScenePlacementPatchOptions,
   ScenePlacementPoint,
   ScenePlacementRemoveInstanceOperation,
@@ -932,6 +971,7 @@ export type {
   ScenePlacementSnapMode,
   ScenePlacementSnapOptions,
   ScenePlacementTransform,
+  ScenePlacementUpdateComponentsOperation,
   ScenePlacementUpdateTransformOperation,
   ScenePlacementViewport,
   ScenePlacementViewportOptions,
