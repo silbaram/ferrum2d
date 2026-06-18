@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { createReadStream } from "node:fs";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { chromium } from "playwright-core";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const packageRoots = {
+  authoringViewer: path.join(repoRoot, "packages/ferrum-authoring-viewer"),
   ferrumWeb: path.join(repoRoot, "packages/ferrum-web"),
   createGame: path.join(repoRoot, "packages/create-game"),
   agents: path.join(repoRoot, "packages/agents"),
@@ -14,8 +18,19 @@ const packageRoots = {
 const repoPackageJson = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8"));
 const packageManager = repoPackageJson.packageManager ?? "pnpm@10.8.0";
 const DEFAULT_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
+const BROWSER_SMOKE_HOST = "127.0.0.1";
+const GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS = 15_000;
 const CONSUMER_SMOKE_REPORT_FORMAT = "ferrum2d.package.consumer-smoke.report";
 const CONSUMER_SMOKE_REPORT_VERSION = 1;
+const STATIC_MIME_TYPES = new Map([
+  [".css", "text/css; charset=utf-8"],
+  [".html", "text/html; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".wasm", "application/wasm"],
+]);
 const AGENT_INSTALL_EXPECTED_FILES = Object.freeze([
   "AGENTS.md",
   "CLAUDE.md",
@@ -73,6 +88,7 @@ const installArgs = [
 ];
 
 let tempRoot;
+let authoringViewerTarball;
 let ferrumWebTarball;
 let createGameTarball;
 let agentsTarball;
@@ -95,6 +111,7 @@ try {
 
   if (!options.skipBuild) {
     await runRequired(pnpm, ["build:wasm"], repoRoot);
+    await runRequired(pnpm, ["--filter", "@ferrum2d/authoring-viewer", "build"], repoRoot);
     await runRequired(pnpm, ["--filter", "@ferrum2d/ferrum-web", "build"], repoRoot);
   }
 
@@ -115,6 +132,7 @@ try {
   }
 
   await mkdir(tarballRoot, { recursive: true });
+  authoringViewerTarball = await packPackage(packageRoots.authoringViewer, tarballRoot);
   ferrumWebTarball = await packPackage(packageRoots.ferrumWeb, tarballRoot);
   createGameTarball = await packPackage(packageRoots.createGame, tarballRoot);
   agentsTarball = await packPackage(packageRoots.agents, tarballRoot);
@@ -131,6 +149,7 @@ try {
     templateSummaries.push(templateSummary);
     try {
       await runGeneratedGameConsumer({
+        authoringViewerTarball,
         ferrumWebTarball,
         generatedGamesRoot,
         templateName,
@@ -314,6 +333,7 @@ async function listCreateGameTemplateDirectories() {
 }
 
 async function runGeneratedGameConsumer({
+  authoringViewerTarball,
   ferrumWebTarball,
   generatedGamesRoot,
   templateName,
@@ -330,6 +350,8 @@ async function runGeneratedGameConsumer({
     templateName,
     "--ferrum-version",
     fileDependency(ferrumWebTarball),
+    "--authoring-viewer-version",
+    fileDependency(authoringViewerTarball),
   ], toolConsumerRoot);
   templateSummary.checks.createGame = true;
   await pinGeneratedPackageManager(generatedGameRoot);
@@ -555,8 +577,322 @@ async function runGeneratedGameConsumer({
     path.join(generatedGameRoot, "dist/index.html"),
     `generated ${templateName} game build must emit dist/index.html`,
   );
+  await requireFile(
+    path.join(generatedGameRoot, "dist/placement-viewer.html"),
+    `generated ${templateName} game build must emit dist/placement-viewer.html`,
+  );
+  templateSummary.reports.placementViewer = await smokeGeneratedPlacementViewer(generatedGameRoot, templateName);
+  templateSummary.checks.placementViewerSmoke = true;
   templateSummary.buildOutput.distIndexHtml = path.join(templateSummary.generatedProject, "dist/index.html");
+  templateSummary.buildOutput.distPlacementViewerHtml = path.join(templateSummary.generatedProject, "dist/placement-viewer.html");
   templateSummary.buildOutput.preservedInArtifactSnapshot = false;
+}
+
+async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
+  const distRoot = path.join(generatedGameRoot, "dist");
+  let server;
+  let browser;
+  try {
+    server = await serveStaticDirectory(distRoot);
+    const address = server.address();
+    assert(address && typeof address !== "string", `${templateName} placement viewer smoke server must bind to a TCP port`);
+    browser = await launchConsumerSmokeBrowser();
+    const page = await browser.newPage({ viewport: { width: 960, height: 720 }, deviceScaleFactor: 1 });
+    const browserErrors = [];
+    page.on("pageerror", (error) => {
+      browserErrors.push(error.message);
+    });
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        if (message.text() === "Failed to load resource: the server responded with a status of 404 (Not Found)") {
+          return;
+        }
+        browserErrors.push(message.text());
+      }
+    });
+
+    await page.goto(`http://${BROWSER_SMOKE_HOST}:${address.port}/placement-viewer.html`, {
+      waitUntil: "networkidle",
+      timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS,
+    });
+    await waitForGeneratedPlacementViewerReady(page, templateName);
+    const behaviorBindingReport = await smokeGeneratedPlacementViewerBehaviorBinding(page, templateName);
+    await page.click(".placement-asset-card[data-asset-id='atlas'] .placement-asset-add", {
+      timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS,
+    });
+    await waitForGeneratedPlacementViewerSpriteDraft(page, templateName);
+    const definitionId = `consumer-${templateName}-definition`;
+    await page.fill("input[data-placement-definition-id='true']", definitionId, {
+      timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS,
+    });
+    await page.click("button[data-placement-action='create-object-definition']", {
+      timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS,
+    });
+    await waitForGeneratedPlacementViewerDefinitionDraft(page, templateName, definitionId);
+    await page.click(`.placement-definition-card[data-definition-id="${definitionId}"] .placement-definition-add`, {
+      timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS,
+    });
+    await waitForGeneratedPlacementViewerDefinitionInstanceDraft(page, templateName, definitionId);
+    if (browserErrors.length > 0) {
+      throw new Error(`${templateName} placement viewer browser errors:\n${browserErrors.join("\n")}`);
+    }
+    return await page.evaluate(({ definitionId, behaviorBindingReport }) => {
+      const state = globalThis.ferrumConsumerPlacementViewerState;
+      const patch = globalThis.__ferrumConsumerPlacementViewer?.exportPatch?.()
+        ?? globalThis.ferrumConsumerPlacementViewerPatch;
+      const operation = patch?.operations?.find((candidate) =>
+        candidate.kind === "addInstance"
+        && candidate.instance?.prefab === "object"
+        && candidate.instance?.props?.components?.visual?.kind === "sprite"
+        && candidate.instance.props.components.visual.asset === "atlas"
+      );
+      const definitionOperation = patch?.operations?.find((candidate) =>
+        candidate.kind === "addObjectDefinition"
+        && candidate.id === definitionId
+        && candidate.definition?.props?.components?.visual?.kind === "sprite"
+        && candidate.definition.props.components.visual.asset === "atlas"
+      );
+      const definitionInstanceOperation = patch?.operations?.find((candidate) =>
+        candidate.kind === "addInstance"
+        && candidate.instance?.prefab === definitionId
+      );
+      return {
+        status: "validated",
+        projectAssets: [...(globalThis.ferrumConsumerPlacementViewerProjectAssets ?? [])],
+        instanceCount: state?.instances?.length ?? 0,
+        objectDefinitionCount: state?.objectDefinitions?.length ?? 0,
+        selectedInstanceId: state?.selectedInstanceId,
+        draftOperationCount: patch?.operations?.length ?? 0,
+        addedInstanceId: operation?.instance?.id,
+        addedPrefab: operation?.instance?.prefab,
+        addedAsset: operation?.instance?.props?.components?.visual?.asset,
+        objectDefinitionId: definitionOperation?.id,
+        objectDefinitionVisualKind: definitionOperation?.definition?.props?.components?.visual?.kind,
+        objectDefinitionInstanceId: definitionInstanceOperation?.instance?.id,
+        objectDefinitionInstancePrefab: definitionInstanceOperation?.instance?.prefab,
+        behaviorBinding: behaviorBindingReport,
+      };
+    }, { definitionId, behaviorBindingReport });
+  } finally {
+    await browser?.close().catch(() => undefined);
+    await closeServer(server).catch(() => undefined);
+  }
+}
+
+async function smokeGeneratedPlacementViewerBehaviorBinding(page, templateName) {
+  try {
+    return await page.evaluate(() => {
+      const api = globalThis.__ferrumConsumerPlacementViewer;
+      if (api === undefined) {
+        throw new Error("missing placement viewer API");
+      }
+      const state = api.state();
+      const target = state.instances?.find((instance) => instance.role === "worldObject")
+        ?? state.instances?.[0];
+      if (target === undefined) {
+        throw new Error("expected a scene instance for behavior binding smoke");
+      }
+      const recipeSelect = document.querySelector("select[data-placement-behavior-recipe='true']");
+      if (!(recipeSelect instanceof HTMLSelectElement)) {
+        throw new Error("missing behavior recipe select");
+      }
+      const recipeId = Array.from(recipeSelect.options)
+        .map((option) => option.value.trim())
+        .find((value) => value.length > 0);
+      if (recipeId === undefined) {
+        throw new Error("expected at least one behavior recipe id");
+      }
+      const originalRecipeId = target.behaviorProfiles?.[0];
+      api.selectInstance(target.instanceId);
+
+      if (originalRecipeId === undefined) {
+        const attached = api.updateBehaviorBinding(
+          { kind: "instance", instanceId: target.instanceId },
+          recipeId,
+        );
+        globalThis.ferrumConsumerPlacementViewerState = attached;
+        globalThis.ferrumConsumerPlacementViewerPatch = attached.draftPatch;
+        const attachOperation = api.exportPatch()?.operations?.find((operation) =>
+          operation.kind === "updateBehaviorBinding"
+          && operation.target?.kind === "instance"
+          && operation.target.instanceId === target.instanceId
+          && operation.behaviorRecipes === recipeId
+        );
+        const selected = attached.instances.find((instance) => instance.instanceId === target.instanceId);
+        if (attachOperation === undefined || selected?.behaviorProfiles?.[0] !== recipeId) {
+          throw new Error("behavior binding attach did not update state and patch");
+        }
+        const detached = api.updateBehaviorBinding(
+          { kind: "instance", instanceId: target.instanceId },
+          null,
+        );
+        globalThis.ferrumConsumerPlacementViewerState = detached;
+        globalThis.ferrumConsumerPlacementViewerPatch = detached.draftPatch;
+        if (api.exportPatch() !== undefined) {
+          throw new Error("behavior binding detach did not clear the attach draft");
+        }
+      } else {
+        const detached = api.updateBehaviorBinding(
+          { kind: "instance", instanceId: target.instanceId },
+          null,
+        );
+        globalThis.ferrumConsumerPlacementViewerState = detached;
+        globalThis.ferrumConsumerPlacementViewerPatch = detached.draftPatch;
+        const detachOperation = api.exportPatch()?.operations?.find((operation) =>
+          operation.kind === "updateBehaviorBinding"
+          && operation.target?.kind === "instance"
+          && operation.target.instanceId === target.instanceId
+          && operation.behaviorRecipes === null
+        );
+        const detachedSelected = detached.instances.find((instance) => instance.instanceId === target.instanceId);
+        if (detachOperation === undefined || detachedSelected?.behaviorProfiles?.length !== 0) {
+          throw new Error("behavior binding detach did not update state and patch");
+        }
+        const restored = api.updateBehaviorBinding(
+          { kind: "instance", instanceId: target.instanceId },
+          originalRecipeId,
+        );
+        globalThis.ferrumConsumerPlacementViewerState = restored;
+        globalThis.ferrumConsumerPlacementViewerPatch = restored.draftPatch;
+        if (api.exportPatch() !== undefined) {
+          throw new Error("behavior binding reattach did not clear the detach draft");
+        }
+      }
+      return {
+        targetInstanceId: target.instanceId,
+        recipeId: originalRecipeId ?? recipeId,
+        mode: originalRecipeId === undefined ? "attach-detach" : "detach-reattach",
+        attachOperationKind: "updateBehaviorBinding",
+        cleared: true,
+      };
+    });
+  } catch (error) {
+    throw new Error(`${templateName} placement viewer did not handle behavior binding attach/detach: ${errorMessage(error)}`);
+  }
+}
+
+async function waitForGeneratedPlacementViewerReady(page, templateName) {
+  try {
+    await page.waitForFunction(
+      () => {
+        const state = globalThis.ferrumConsumerPlacementViewerState;
+        const projectAssets = globalThis.ferrumConsumerPlacementViewerProjectAssets;
+        const addButton = document.querySelector(".placement-asset-card[data-asset-id='atlas'] .placement-asset-add");
+        return Boolean(
+          globalThis.__ferrumConsumerPlacementViewer
+          && state?.instances?.length >= 1
+          && Array.isArray(projectAssets)
+          && projectAssets.includes("atlas")
+          && addButton instanceof HTMLButtonElement
+          && addButton.disabled === false
+        );
+      },
+      null,
+      { timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS },
+    );
+  } catch (error) {
+    throw new Error(`${templateName} placement viewer did not expose an addable project asset: ${errorMessage(error)}`);
+  }
+}
+
+async function waitForGeneratedPlacementViewerSpriteDraft(page, templateName) {
+  try {
+    await page.waitForFunction(
+      () => {
+        const state = globalThis.ferrumConsumerPlacementViewerState;
+        const patch = globalThis.__ferrumConsumerPlacementViewer?.exportPatch?.()
+          ?? globalThis.ferrumConsumerPlacementViewerPatch;
+        const operation = patch?.operations?.find((candidate) =>
+          candidate.kind === "addInstance"
+          && candidate.instance?.prefab === "object"
+          && candidate.instance?.props?.components?.visual?.kind === "sprite"
+          && candidate.instance.props.components.visual.asset === "atlas"
+          && candidate.instance.props.components.collider?.type === "aabb"
+        );
+        const addedId = operation?.instance?.id;
+        const added = state?.instances?.find((instance) => instance.instanceId === addedId);
+        return Boolean(
+          addedId
+          && state?.selectedInstanceId === addedId
+          && added?.prefab === "object"
+          && added.visual?.kind === "sprite"
+          && added.visual.texture?.kind === "asset"
+          && added.visual.texture.name === "atlas"
+        );
+      },
+      null,
+      { timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS },
+    );
+  } catch (error) {
+    throw new Error(`${templateName} placement viewer did not create a sprite draft patch: ${errorMessage(error)}`);
+  }
+}
+
+async function waitForGeneratedPlacementViewerDefinitionDraft(page, templateName, definitionId) {
+  try {
+    await page.waitForFunction(
+      (definitionId) => {
+        const state = globalThis.ferrumConsumerPlacementViewerState;
+        const patch = globalThis.__ferrumConsumerPlacementViewer?.exportPatch?.()
+          ?? globalThis.ferrumConsumerPlacementViewerPatch;
+        const operation = patch?.operations?.find((candidate) =>
+          candidate.kind === "addObjectDefinition"
+          && candidate.id === definitionId
+          && candidate.definition?.props?.components?.visual?.kind === "sprite"
+          && candidate.definition.props.components.visual.asset === "atlas"
+          && candidate.definition.props.components.collider?.type === "aabb"
+        );
+        const definition = state?.objectDefinitions?.find((candidate) => candidate.id === definitionId);
+        const card = Array.from(document.querySelectorAll(".placement-definition-card"))
+          .find((candidate) => candidate instanceof HTMLElement && candidate.dataset.definitionId === definitionId);
+        const addButton = card?.querySelector(".placement-definition-add");
+        return Boolean(
+          operation
+          && definition?.visual?.kind === "sprite"
+          && definition.visual.texture?.kind === "asset"
+          && definition.visual.texture.name === "atlas"
+          && definition.collider?.type === "aabb"
+          && addButton instanceof HTMLButtonElement
+          && addButton.disabled === false
+        );
+      },
+      definitionId,
+      { timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS },
+    );
+  } catch (error) {
+    throw new Error(`${templateName} placement viewer did not create an ObjectDefinition draft: ${errorMessage(error)}`);
+  }
+}
+
+async function waitForGeneratedPlacementViewerDefinitionInstanceDraft(page, templateName, definitionId) {
+  try {
+    await page.waitForFunction(
+      (definitionId) => {
+        const state = globalThis.ferrumConsumerPlacementViewerState;
+        const patch = globalThis.__ferrumConsumerPlacementViewer?.exportPatch?.()
+          ?? globalThis.ferrumConsumerPlacementViewerPatch;
+        const operation = patch?.operations?.find((candidate) =>
+          candidate.kind === "addInstance"
+          && candidate.instance?.prefab === definitionId
+        );
+        const addedId = operation?.instance?.id;
+        const added = state?.instances?.find((instance) => instance.instanceId === addedId);
+        return Boolean(
+          addedId
+          && state?.selectedInstanceId === addedId
+          && added?.prefab === definitionId
+          && added.visual?.kind === "sprite"
+          && added.visual.texture?.kind === "asset"
+          && added.visual.texture.name === "atlas"
+          && added.collider?.type === "aabb"
+        );
+      },
+      definitionId,
+      { timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS },
+    );
+  } catch (error) {
+    throw new Error(`${templateName} placement viewer did not create an ObjectDefinition-backed instance draft: ${errorMessage(error)}`);
+  }
 }
 
 async function assertInstalledCreateGameTemplateCatalog(toolConsumerRoot) {
@@ -1609,6 +1945,108 @@ function fileDependency(filePath) {
   return `file:${filePath}`;
 }
 
+async function serveStaticDirectory(root) {
+  const absoluteRoot = path.resolve(root);
+  const server = createServer(async (request, response) => {
+    try {
+      const filePath = await resolveStaticRequestPath(absoluteRoot, request.url ?? "/");
+      response.writeHead(200, {
+        "Cache-Control": "no-cache",
+        "Content-Type": STATIC_MIME_TYPES.get(path.extname(filePath)) ?? "application/octet-stream",
+      });
+      createReadStream(filePath).pipe(response);
+    } catch (error) {
+      const status = Number.isInteger(error?.status) ? error.status : 500;
+      response.writeHead(status, {
+        "Cache-Control": "no-cache",
+        "Content-Type": "text/plain; charset=utf-8",
+      });
+      response.end(status === 404 ? "not found" : errorMessage(error));
+    }
+  });
+  await new Promise((resolveListen, rejectListen) => {
+    server.once("error", rejectListen);
+    server.listen(0, BROWSER_SMOKE_HOST, () => {
+      server.off("error", rejectListen);
+      resolveListen();
+    });
+  });
+  return server;
+}
+
+async function resolveStaticRequestPath(root, rawUrl) {
+  const pathname = new URL(rawUrl, `http://${BROWSER_SMOKE_HOST}`).pathname;
+  const relativePath = decodeURIComponent(pathname === "/" ? "/index.html" : pathname).replace(/^\/+/, "");
+  const filePath = path.resolve(root, relativePath);
+  if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
+    const error = new Error("static request escaped the served directory");
+    error.status = 403;
+    throw error;
+  }
+  try {
+    const info = await stat(filePath);
+    if (!info.isFile()) {
+      const error = new Error("static request did not resolve to a file");
+      error.status = 404;
+      throw error;
+    }
+  } catch (error) {
+    if (error?.status !== undefined) {
+      throw error;
+    }
+    if (error?.code === "ENOENT") {
+      const notFound = new Error("static file not found");
+      notFound.status = 404;
+      throw notFound;
+    }
+    throw error;
+  }
+  return filePath;
+}
+
+async function launchConsumerSmokeBrowser() {
+  const launchOptions = {
+    headless: true,
+    args: ["--no-sandbox", "--disable-dev-shm-usage"],
+  };
+  if (process.env.FERRUM_BROWSER_EXECUTABLE) {
+    return await chromium.launch({
+      ...launchOptions,
+      executablePath: process.env.FERRUM_BROWSER_EXECUTABLE,
+    });
+  }
+
+  const channel = process.env.FERRUM_BROWSER_CHANNEL ?? "chrome";
+  try {
+    return await chromium.launch({ ...launchOptions, channel });
+  } catch (channelError) {
+    try {
+      return await chromium.launch(launchOptions);
+    } catch (bundledError) {
+      throw new Error(
+        "Unable to launch a browser for generated placement viewer smoke. " +
+          "Set FERRUM_BROWSER_CHANNEL or FERRUM_BROWSER_EXECUTABLE. " +
+          `channel error: ${errorMessage(channelError)} bundled error: ${errorMessage(bundledError)}`,
+      );
+    }
+  }
+}
+
+function closeServer(server) {
+  if (!server) {
+    return Promise.resolve();
+  }
+  return new Promise((resolveClose, rejectClose) => {
+    server.close((error) => {
+      if (error) {
+        rejectClose(error);
+      } else {
+        resolveClose();
+      }
+    });
+  });
+}
+
 async function runRequired(command, args, cwd) {
   console.log(`$ ${formatCommand(command, args)} (${path.relative(repoRoot, cwd) || "."})`);
   const result = await run(command, args, cwd, options.commandTimeoutMs);
@@ -1710,6 +2148,10 @@ function assertConsumerAuthoringReport(report, templateName) {
     assert(report.gameplayAuthoring.status === "validated", `${templateName} authoring report must validate scene authoring data`);
     assert(report.gameplayAuthoring.sceneAuthoring?.ok === true, `${templateName} authoring report must include valid scene authoring data`);
     assert(report.gameplayAuthoring.sceneAuthoring?.file === template.sceneAuthoring.fixturePath, `${templateName} authoring report scene authoring file is invalid`);
+    assertPlacementAuthoringBehaviorBindings(
+      report.gameplayAuthoring.sceneAuthoring?.summary?.placementAuthoring,
+      `${templateName} authoring report sceneAuthoring.summary.placementAuthoring`,
+    );
   } else if (templateName !== "topdown") {
     assert(report.gameplayAuthoring.status === "not-configured", `${templateName} authoring report must be not-configured`);
   }
@@ -1724,11 +2166,43 @@ function assertConsumerAuthoringReport(report, templateName) {
   }
 }
 
+function assertPlacementAuthoringBehaviorBindings(value, label) {
+  assert(value !== null && typeof value === "object" && !Array.isArray(value), `${label} must be an object`);
+  assert(Array.isArray(value.instances), `${label}.instances must be an array`);
+  assert(value.instances.length > 0, `${label}.instances must not be empty`);
+  let bindingCount = 0;
+  for (const [index, entry] of value.instances.entries()) {
+    assert(Array.isArray(entry.behaviorProfiles), `${label}.instances[${index}].behaviorProfiles must be an array`);
+    assert(Number.isInteger(entry.behaviorBindingCount), `${label}.instances[${index}].behaviorBindingCount must be an integer`);
+    assert(Array.isArray(entry.behaviorBindings), `${label}.instances[${index}].behaviorBindings must be an array`);
+    assert(
+      entry.behaviorBindings.length === entry.behaviorBindingCount,
+      `${label}.instances[${index}].behaviorBindings length must match behaviorBindingCount`,
+    );
+    assertDeepEqual(
+      entry.behaviorBindings.map((binding) => binding.recipeId),
+      entry.behaviorProfiles,
+      `${label}.instances[${index}].behaviorBindings recipe ids must match behaviorProfiles`,
+    );
+    for (const [bindingIndex, binding] of entry.behaviorBindings.entries()) {
+      assert(typeof binding.recipeId === "string" && binding.recipeId.length > 0, `${label}.instances[${index}].behaviorBindings[${bindingIndex}].recipeId is invalid`);
+      assert(typeof binding.bindingPath === "string" && binding.bindingPath.length > 0, `${label}.instances[${index}].behaviorBindings[${bindingIndex}].bindingPath is invalid`);
+      assert(typeof binding.behaviorRecipePath === "string" && binding.behaviorRecipePath.length > 0, `${label}.instances[${index}].behaviorBindings[${bindingIndex}].behaviorRecipePath is invalid`);
+      assert(binding.target?.instanceId === entry.instanceId, `${label}.instances[${index}].behaviorBindings[${bindingIndex}].target.instanceId must match instanceId`);
+      assert(Number.isInteger(binding.commandCount), `${label}.instances[${index}].behaviorBindings[${bindingIndex}].commandCount must be an integer`);
+      assert(Array.isArray(binding.commandTypes), `${label}.instances[${index}].behaviorBindings[${bindingIndex}].commandTypes must be an array`);
+    }
+    bindingCount += entry.behaviorBindingCount;
+  }
+  assert(bindingCount > 0, `${label} must include at least one behavior binding`);
+}
+
 function assertConsumerProjectReport(report, templateName) {
   assert(report.format === "ferrum2d.consumer.project.report", `${templateName} project report format is invalid`);
   assert(report.version === 1, `${templateName} project report version is invalid`);
   assert(report.ok === true, `${templateName} project report must be ok for a generated template`);
   assert(report.project?.packageName === templateName, `${templateName} project report packageName is invalid`);
+  assert(report.project?.authoringViewer !== undefined && report.project.authoringViewer !== null, `${templateName} project report must include authoring-viewer dependency`);
   assert(report.project?.ferrumWeb !== undefined && report.project.ferrumWeb !== null, `${templateName} project report must include ferrum-web dependency`);
   assert(report.project?.files?.main === true, `${templateName} project report must confirm src/main.ts`);
   assert(Array.isArray(report.project?.checks?.internalImports), `${templateName} project report internalImports must be an array`);
@@ -2333,6 +2807,7 @@ function summarizeConsumerProjectReport(report) {
   return {
     status: report.ok === true ? "validated" : "invalid",
     packageName: report.project?.packageName,
+    authoringViewer: report.project?.authoringViewer,
     ferrumWeb: report.project?.ferrumWeb,
     files: {
       main: report.project?.files?.main,
@@ -2540,6 +3015,7 @@ function buildConsumerSmokeReport({ status, error }) {
       commandTimeoutMs: options.commandTimeoutMs,
     },
     tarballs: {
+      authoringViewer: authoringViewerTarball === undefined ? undefined : path.basename(authoringViewerTarball),
       ferrumWeb: ferrumWebTarball === undefined ? undefined : path.basename(ferrumWebTarball),
       createGame: createGameTarball === undefined ? undefined : path.basename(createGameTarball),
       agents: agentsTarball === undefined ? undefined : path.basename(agentsTarball),
@@ -2642,6 +3118,10 @@ function describeError(error) {
     };
   }
   return { message: String(error) };
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function formatCommand(command, args) {

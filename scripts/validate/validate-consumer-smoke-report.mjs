@@ -87,6 +87,7 @@ function validateTopLevelReport(value, reportErrors) {
   if (!isRecord(value.tarballs)) {
     reportErrors.push("tarballs must be an object");
   } else if (value.status === "passed") {
+    validateTarballName(value.tarballs.authoringViewer, "tarballs.authoringViewer", reportErrors);
     validateTarballName(value.tarballs.ferrumWeb, "tarballs.ferrumWeb", reportErrors);
     validateTarballName(value.tarballs.createGame, "tarballs.createGame", reportErrors);
     validateTarballName(value.tarballs.agents, "tarballs.agents", reportErrors);
@@ -308,6 +309,9 @@ function validateProjectSummary(value, label, reportErrors) {
   if (typeof value.packageName !== "string" || value.packageName.length === 0) {
     reportErrors.push(`${label}.packageName must be a non-empty string`);
   }
+  if (typeof value.authoringViewer !== "string" || value.authoringViewer.length === 0) {
+    reportErrors.push(`${label}.authoringViewer must be a non-empty string`);
+  }
   if (typeof value.ferrumWeb !== "string" || value.ferrumWeb.length === 0) {
     reportErrors.push(`${label}.ferrumWeb must be a non-empty string`);
   }
@@ -486,6 +490,7 @@ async function validateArtifacts(value, reportErrors) {
   await requireDirectory(options.artifactDir, reportErrors);
   await requireFile(options.reportPath, reportErrors);
   if (isRecord(value.tarballs)) {
+    await requireTarball(value.tarballs.authoringViewer, reportErrors);
     await requireTarball(value.tarballs.ferrumWeb, reportErrors);
     await requireTarball(value.tarballs.createGame, reportErrors);
     await requireTarball(value.tarballs.agents, reportErrors);

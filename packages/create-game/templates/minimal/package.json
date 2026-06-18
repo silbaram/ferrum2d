@@ -22,6 +22,7 @@
     "ferrum:update-runtime-replay-fixture": "node scripts/ferrum-runtime-replay.mjs update-fixture"
   },
   "dependencies": {
+    "@ferrum2d/authoring-viewer": "__FERRUM_AUTHORING_VIEWER_VERSION__",
     "@ferrum2d/ferrum-web": "__FERRUM_WEB_VERSION__"
   },
   "devDependencies": {

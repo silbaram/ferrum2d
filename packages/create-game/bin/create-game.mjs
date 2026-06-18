@@ -8,6 +8,7 @@ const templatesRoot = path.join(packageRoot, "templates");
 const sharedTemplateRoot = path.join(templatesRoot, "_shared");
 const defaultTemplate = "minimal";
 const defaultFerrumVersion = "^0.1.0";
+const defaultAuthoringViewerVersion = "^0.1.0";
 const SCENE_AUTHORING_FORMAT = "ferrum2d.consumer.scene-authoring";
 
 try {
@@ -41,6 +42,7 @@ try {
 
 function parseArgs(args) {
   const parsed = {
+    authoringViewerVersion: defaultAuthoringViewerVersion,
     ferrumVersion: defaultFerrumVersion,
     force: false,
     help: false,
@@ -86,6 +88,15 @@ function parseArgs(args) {
       parsed.ferrumVersion = arg.slice("--ferrum-version=".length);
       continue;
     }
+    if (arg === "--authoring-viewer-version") {
+      parsed.authoringViewerVersion = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--authoring-viewer-version=")) {
+      parsed.authoringViewerVersion = arg.slice("--authoring-viewer-version=".length);
+      continue;
+    }
     if (arg.startsWith("-")) {
       throw new Error(`Unknown option: ${arg}`);
     }
@@ -106,7 +117,7 @@ function requireValue(args, index, optionName) {
   return value;
 }
 
-async function createGameProject({ ferrumVersion, force, projectDir, template }) {
+async function createGameProject({ authoringViewerVersion, ferrumVersion, force, projectDir, template }) {
   const catalog = await loadTemplateCatalog();
   const templateIds = catalog.templates.map((entry) => entry.id);
   const templateEntry = catalog.templates.find((entry) => entry.id === template);
@@ -135,6 +146,7 @@ async function createGameProject({ ferrumVersion, force, projectDir, template })
     "Shared create-game template scaffold is missing.",
   );
   const replacements = {
+    __FERRUM_AUTHORING_VIEWER_VERSION__: authoringViewerVersion,
     __FERRUM_WEB_VERSION__: ferrumVersion,
     __PROJECT_NAME__: packageName,
     __PROJECT_TITLE__: projectTitle,
@@ -422,6 +434,8 @@ Options:
   --list-templates           Print available templates
   --json                     With --list-templates, print a machine-readable template catalog
   --ferrum-version <range>   @ferrum2d/ferrum-web dependency range. Default: ^0.1.0
+  --authoring-viewer-version <range>
+                             @ferrum2d/authoring-viewer dependency range. Default: ^0.1.0
   --force                    Allow writing into a non-empty target directory
   -h, --help                 Show this help
 `);

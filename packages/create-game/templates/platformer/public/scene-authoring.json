@@ -9,6 +9,9 @@
           "runtimeEntity": "builtinPlatformerPlayer",
           "behaviorRecipes": "player.survivability"
         }
+      },
+      "object": {
+        "props": {}
       }
     },
     "fragments": {

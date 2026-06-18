@@ -12,6 +12,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const templatesRoot = path.join(repoRoot, "packages/create-game/templates");
 const sharedTemplateRoot = path.join(templatesRoot, "_shared");
 const templateManifestPath = path.join(templatesRoot, "manifest.json");
+const authoringViewerRoot = path.join(repoRoot, "packages/ferrum-authoring-viewer");
 const ferrumWebRoot = path.join(repoRoot, "packages/ferrum-web");
 const configuredCommandTimeoutMs = Number(process.env.FERRUM_TEMPLATE_REPORT_TIMEOUT_MS ?? 60000);
 const commandTimeoutMs = Number.isFinite(configuredCommandTimeoutMs) && configuredCommandTimeoutMs > 0
@@ -220,6 +221,7 @@ async function normalizePackageJson(projectRoot, templateName) {
   packageJson.name = templateName;
   packageJson.dependencies = {
     ...(packageJson.dependencies ?? {}),
+    "@ferrum2d/authoring-viewer": "0.0.0-smoke",
     "@ferrum2d/ferrum-web": "0.0.0-smoke",
   };
   await writeFile(file, `${JSON.stringify(packageJson, null, 2)}\n`);
@@ -234,6 +236,7 @@ async function linkFerrumWeb(projectRoot) {
   const scopeRoot = path.join(projectRoot, "node_modules/@ferrum2d");
   await mkdir(scopeRoot, { recursive: true });
   const linkType = process.platform === "win32" ? "junction" : "dir";
+  await symlink(authoringViewerRoot, path.join(scopeRoot, "authoring-viewer"), linkType);
   await symlink(ferrumWebRoot, path.join(scopeRoot, "ferrum-web"), linkType);
 }
 
@@ -389,6 +392,7 @@ function assertConsumerProjectReport(report, template) {
   assert.equal(report.version, 1, `${templateName} project report version is invalid`);
   assert.equal(report.ok, true, `${templateName} project report must be ok for generated templates`);
   assert.equal(report.project?.packageName, templateName, `${templateName} project report packageName is invalid`);
+  assert(report.project?.authoringViewer !== undefined && report.project.authoringViewer !== null, `${templateName} project report must include authoring-viewer dependency`);
   assert(report.project?.ferrumWeb !== undefined && report.project.ferrumWeb !== null, `${templateName} project report must include ferrum-web dependency`);
   assert.equal(report.project?.files?.main, true, `${templateName} project report must confirm src/main.ts`);
   assert(Array.isArray(report.project?.checks?.internalImports), `${templateName} project report internalImports must be an array`);
@@ -488,6 +492,36 @@ function assertScenePlacementAuthoringSummary(value, label) {
     assertNonEmptyString(entry.prefab, `${label}.instances[${index}].prefab`);
     assert(entry.role === "actor" || entry.role === "worldObject", `${label}.instances[${index}].role is invalid`);
     assert(Array.isArray(entry.behaviorProfiles), `${label}.instances[${index}].behaviorProfiles must be an array`);
+    assert(Number.isInteger(entry.behaviorBindingCount), `${label}.instances[${index}].behaviorBindingCount must be an integer`);
+    assert(Array.isArray(entry.behaviorBindings), `${label}.instances[${index}].behaviorBindings must be an array`);
+    assert.equal(
+      entry.behaviorBindings.length,
+      entry.behaviorBindingCount,
+      `${label}.instances[${index}].behaviorBindings length must match behaviorBindingCount`,
+    );
+    assert.deepEqual(
+      entry.behaviorBindings.map((binding) => binding.recipeId),
+      entry.behaviorProfiles,
+      `${label}.instances[${index}].behaviorBindings recipe ids must match behaviorProfiles`,
+    );
+    for (const [bindingIndex, binding] of entry.behaviorBindings.entries()) {
+      assertNonEmptyString(binding.recipeId, `${label}.instances[${index}].behaviorBindings[${bindingIndex}].recipeId`);
+      assertNonEmptyString(binding.bindingPath, `${label}.instances[${index}].behaviorBindings[${bindingIndex}].bindingPath`);
+      assertNonEmptyString(binding.behaviorRecipePath, `${label}.instances[${index}].behaviorBindings[${bindingIndex}].behaviorRecipePath`);
+      assert.equal(binding.target?.kind, "instance", `${label}.instances[${index}].behaviorBindings[${bindingIndex}].target.kind is invalid`);
+      assert.equal(
+        binding.target?.instanceId,
+        entry.instanceId,
+        `${label}.instances[${index}].behaviorBindings[${bindingIndex}].target.instanceId must match the placement instance`,
+      );
+      assert.equal(
+        binding.target?.prefab,
+        entry.prefab,
+        `${label}.instances[${index}].behaviorBindings[${bindingIndex}].target.prefab must match the placement instance`,
+      );
+      assert(Number.isInteger(binding.commandCount), `${label}.instances[${index}].behaviorBindings[${bindingIndex}].commandCount must be an integer`);
+      assert(Array.isArray(binding.commandTypes), `${label}.instances[${index}].behaviorBindings[${bindingIndex}].commandTypes must be an array`);
+    }
     assert(Number.isInteger(entry.behaviorCommandCount), `${label}.instances[${index}].behaviorCommandCount must be an integer`);
     assert(Array.isArray(entry.behaviorCommandTypes), `${label}.instances[${index}].behaviorCommandTypes must be an array`);
     if (entry.entity !== null) {
