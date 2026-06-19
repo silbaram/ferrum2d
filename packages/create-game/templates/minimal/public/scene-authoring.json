@@ -9,6 +9,9 @@
           "runtimeEntity": "builtinShooterPlayer",
           "behaviorRecipes": "weapon.standard"
         }
+      },
+      "object": {
+        "props": {}
       }
     },
     "fragments": {

@@ -12,6 +12,7 @@ Ferrum2D는 Rust + WebAssembly 기반의 2D 웹 게임 엔진이다.
 - Ferrum2D는 비주얼 에디터 중심 엔진이 아니라 AI agent-first 2D game engine을 목표로 한다.
 - 게임 개발 흐름은 사람이 에디터 UI에서 모든 것을 조작하는 방식보다, AI agent가 Game Spec, Physics Spec, 프로젝트 템플릿, agent/skill, 검증 스크립트를 사용해 코드를 생성/수정/검증하는 방식을 우선한다.
 - Visual editor는 기본 제품 목표가 아니며, 필요하더라도 별도 승인된 보조 도구로만 검토한다.
+- Scene Placement/Object Authoring viewer는 허용된 authoring 보조 도구다. 범위는 위치, visual/collider/layer, ObjectDefinition catalog, asset reference, handoff/report evidence, 기존 Behavior Recipe id reference attach/detach까지이며 recipe 본문/FSM/action graph를 UI에서 편집하는 제품은 아니다.
 
 아키텍처 원칙:
 
@@ -26,8 +27,10 @@ Ferrum2D는 Rust + WebAssembly 기반의 2D 웹 게임 엔진이다.
 
 - `crates/ferrum-core`
 - `packages/ferrum-web`
+- `packages/ferrum-authoring-viewer`
 - `packages/create-game`
 - `packages/agents`
+- `examples/placement-viewer`
 - `examples/topdown-shooter`
 - `docs`
 - `scripts`
@@ -61,7 +64,8 @@ Claude skill wrapper는 workflow를 중복 작성하지 않고 `.agents/skills/*
 - `pages_deploy_agent` / `pages-deploy-agent`: GitHub Pages demo/docs artifact와 배포 상태 검증
 - `docs_agent` / `docs-agent`: README, engine docs, development docs, release copy 동기화
 - `game_designer` / `game-designer`: Top-down Shooter 예제 Game Spec 데이터 튜닝. 범용 엔진 runtime/API/schema 설계에는 사용하지 않는다.
-- `schema_agent` / `schema-agent`: Top-down Shooter 예제 Game Spec schema와 Physics authoring schema, validation behavior, spec 문서 계약 관리. 범용 엔진 schema/API/ABI 설계는 `engine_reviewer`와 조정한다.
+- `schema_agent` / `schema-agent`: Top-down Shooter 예제 Game Spec schema, Physics authoring schema, Data Scene authoring contract, validation behavior, spec 문서 계약 관리. 범용 엔진 schema/API/ABI 설계는 `engine_reviewer`와 조정한다.
+- `authoring_agent` / `authoring-agent`: Scene Placement/Object Authoring workflow, placement viewer, patch generation, asset provider, handoff summary, create-game placement viewer scaffold와 generated smoke 검증 관리. visual editor 제품화는 별도 승인 없이는 다루지 않는다.
 
 ## Wasm Boundary Rules
 
@@ -104,6 +108,7 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 - Game Spec 기반 밸런스/variant 조정
 - AI agent-first 게임 개발 흐름 고도화
 - consumer game development용 agent/skill/template 고도화
+- Scene Placement/Object Authoring viewer, Behavior Binding Inspector, authoring handoff/report evidence 고도화
 - debug overlay와 smoke 검증 보강
 - Product runtime/API/package 품질 개선
 - 문서 동기화
@@ -113,6 +118,7 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 
 - 별도 설계/승인 없는 전체 게임 루프 Worker 이전/Wasm threads
 - 별도 설계/승인 없는 visual editor
+- 별도 설계/승인 없는 Behavior Recipe Body Editor, FSM/action graph/timeline visual editor
 - 별도 설계/승인 없는 multiplayer
 - 별도 설계/승인 없는 complex physics
 
@@ -163,6 +169,8 @@ Rust/Wasm ↔ TypeScript 경계에서 다음 규칙을 반드시 지킨다.
 - `pnpm lint` (사용 가능한 경우)
 - `pnpm test` (사용 가능한 경우)
 - `pnpm build`
+- package 변경 시 `pnpm package:check:<package>` 또는 `pnpm package:check`
+- create-game/agents template 변경 시 필요한 범위의 `pnpm package:consumer-smoke`와 `pnpm validate:consumer-smoke-report`
 
 CI 정합 검증(GitHub Actions `main` push/PR):
 
@@ -176,6 +184,15 @@ Wasm 브리지 변경 후 추가:
 - `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`
 - `pnpm build`
 - 가능하면 예제 실행 검증
+
+Authoring/create-game/agents 변경 후 추가:
+
+- `pnpm smoke:placement-viewer` (공식 placement viewer behavior가 바뀐 경우)
+- `pnpm smoke:create-game-template-reports` (generated harness/report가 바뀐 경우)
+- `pnpm package:check:create-game` (create-game CLI/template/package surface가 바뀐 경우)
+- `pnpm package:check:agents` (consumer agent/skill/template가 바뀐 경우)
+- `pnpm package:consumer-smoke -- --skip-build --skip-package-check --templates minimal` 또는 full matrix (generated consumer project surface가 바뀐 경우)
+- `pnpm validate:consumer-smoke-report -- --report <report-path> --artifact-dir <artifact-dir>` (consumer smoke artifact를 남긴 경우)
 
 검증 명령 실행 원칙:
 

@@ -53,6 +53,9 @@ importers:
 
   examples/placement-viewer:
     dependencies:
+      '@ferrum2d/authoring-viewer':
+        specifier: workspace:*
+        version: link:../../packages/ferrum-authoring-viewer
       '@ferrum2d/ferrum-web':
         specifier: workspace:*
         version: link:../../packages/ferrum-web
@@ -106,6 +109,12 @@ importers:
   packages/agents: {}
 
   packages/create-game: {}
+
+  packages/ferrum-authoring-viewer:
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   packages/ferrum-web:
     devDependencies:

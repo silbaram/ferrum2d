@@ -476,7 +476,7 @@ function mergeJsonObjects(
   const result: Record<string, SceneCompositionJsonValue> = { ...base };
   for (const [key, value] of Object.entries(override)) {
     const previous = result[key];
-    result[key] = isJsonObject(previous) && isJsonObject(value)
+    result[key] = key !== "components" && isJsonObject(previous) && isJsonObject(value)
       ? mergeJsonObjects(previous, value)
       : cloneJsonValue(value, key);
   }

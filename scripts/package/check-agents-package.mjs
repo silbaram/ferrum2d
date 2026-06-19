@@ -130,6 +130,7 @@ assertConsumerProjectileWeaponAuthoringContract(packageReadmeSource, packageRead
 assertConsumerRuntimeApplyContract(packageReadmeSource, packageReadmeFile);
 assertConsumerAssetPipelineContract(packageReadmeSource, packageReadmeFile);
 assertConsumerPlacementAuthoringContract(packageReadmeSource, packageReadmeFile);
+assertConsumerBehaviorBindingHandoffContract(packageReadmeSource, packageReadmeFile);
 assertCreateGameTemplateCatalogDiscovery(packageReadmeSource, packageReadmeFile);
 assertForbiddenPublicImportBoundary(packageReadmeSource, packageReadmeFile);
 assertNoForbiddenImportExamples(packageReadmeSource, packageReadmeFile);
@@ -182,6 +183,7 @@ async function checkTemplates() {
   assertConsumerRuntimeApplyContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertConsumerAssetPipelineContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertConsumerPlacementAuthoringContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
+  assertConsumerBehaviorBindingHandoffContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertCreateGameTemplateCatalogDiscovery(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertConsumerArchitectureContract(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assertForbiddenPublicImportBoundary(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
@@ -231,6 +233,7 @@ async function checkTemplates() {
       assertConsumerProjectileWeaponAuthoringContract(sharedSource, sharedFile);
       assertConsumerRuntimeApplyContract(sharedSource, sharedFile);
       assertConsumerPlacementAuthoringContract(sharedSource, sharedFile);
+      assertConsumerBehaviorBindingHandoffContract(sharedSource, sharedFile);
       assertForbiddenPublicImportBoundary(sharedSource, sharedFile);
       assertNoForbiddenImportExamples(sharedSource, sharedFile);
     }
@@ -256,6 +259,9 @@ async function checkTemplates() {
     assert(/^developer_instructions\s*=\s*"""/m.test(codexSource), `${path.relative(repoRoot, codexFile)} must define Codex instructions`);
     assert(codexSource.includes(`Use the ${expectedSkill} skill.`), `${path.relative(repoRoot, codexFile)} must reference ${expectedSkill}`);
     assert(codexSource.includes("Do not"), `${path.relative(repoRoot, codexFile)} must include boundaries`);
+    if (agent === "consumer-gameplay-agent") {
+      assertConsumerBehaviorBindingAgentPrompt(codexSource, codexFile);
+    }
 
     const claudeFile = path.join(templatesRoot, `claude/.claude/agents/${agent}.md`);
     const claudeSource = await readFile(claudeFile, "utf8");
@@ -265,6 +271,9 @@ async function checkTemplates() {
     assert(skillRefs.length === 1, `${path.relative(repoRoot, claudeFile)} must reference exactly one skill`);
     assert(skills.includes(skillRefs[0]), `${path.relative(repoRoot, claudeFile)} references unknown skill ${skillRefs[0]}`);
     assert(skillRefs[0] === expectedSkill, `${path.relative(repoRoot, claudeFile)} must reference ${expectedSkill}`);
+    if (agent === "consumer-gameplay-agent") {
+      assertConsumerBehaviorBindingAgentPrompt(claudeSource, claudeFile);
+    }
 
   }
 
@@ -285,6 +294,9 @@ async function checkTemplates() {
       `${path.relative(repoRoot, geminiFile)} must reference canonical ${expectedSkill} skill`,
     );
     assert(geminiSource.includes(".agents/harness/ferrum-game-development.md"), `${path.relative(repoRoot, geminiFile)} must reference shared harness`);
+    if (command === "gameplay") {
+      assertConsumerBehaviorBindingAgentPrompt(geminiSource, geminiFile);
+    }
   }
 
   const geminiAgentsPath = path.join(templatesRoot, "gemini/.gemini/agents");
@@ -453,9 +465,36 @@ function assertConsumerPlacementAuthoringContract(source, filePath) {
   assert(
     source.includes("placementAuthoring") &&
       source.includes("instanceId") &&
+      source.includes("ObjectDefinition") &&
+      source.includes("addObjectDefinition") &&
+      source.includes("sceneComposition.prefabs[]") &&
       source.includes("previewScenePlacementBindingMigration") &&
       source.includes("behaviorRecipes"),
     `${path.relative(repoRoot, filePath)} must document placement-driven behavior authoring workflow`,
+  );
+}
+
+function assertConsumerBehaviorBindingHandoffContract(source, filePath) {
+  assert(
+    source.includes("Behavior Binding") &&
+      source.includes("updateBehaviorBinding") &&
+      source.includes("behaviorBindings[].recipeId") &&
+      source.includes("bindingPath") &&
+      source.includes("behaviorRecipePath") &&
+      source.includes("behaviorRecipes.entities") &&
+      source.includes("placement-only"),
+    `${path.relative(repoRoot, filePath)} must document Behavior Binding handoff evidence and placement-only separation`,
+  );
+}
+
+function assertConsumerBehaviorBindingAgentPrompt(source, filePath) {
+  assert(
+    source.includes("updateBehaviorBinding") &&
+      source.includes("behaviorBindings[].recipeId") &&
+      source.includes("bindingPath") &&
+      source.includes("behaviorRecipePath") &&
+      source.includes("placement-only"),
+    `${path.relative(repoRoot, filePath)} must preserve Behavior Binding evidence in gameplay agent instructions`,
   );
 }
 

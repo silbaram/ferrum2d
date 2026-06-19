@@ -11,7 +11,11 @@ export {
 export {
   DATA_SCENE_COLLISION_LAYER_CODES,
   DATA_SCENE_COMPONENTS_PROP,
+  DATA_SCENE_DEFAULT_POINT_SIZE,
+  DATA_SCENE_DEFAULT_PRIMITIVE_SIZE,
   DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES,
+  DATA_SCENE_PRIMITIVE_TEXTURES,
+  dataSceneObjectVisualBounds,
   resolveDataSceneComponentsSpec,
   resolveDataSceneInstanceComponents,
 } from "../dataSceneComponents";
@@ -44,6 +48,15 @@ export {
   previewScenePlacementBindingMigration,
   saveScenePlacementPatch,
 } from "../scenePlacementPatch";
+export {
+  createScenePlacementAssetProvider,
+  createScenePlacementAssetProviderFromProjectAssets,
+} from "../scenePlacementAssets";
+export {
+  SCENE_PLACEMENT_AGENT_HANDOFF_FORMAT,
+  SCENE_PLACEMENT_AGENT_HANDOFF_VERSION,
+  createScenePlacementAgentHandoff,
+} from "../scenePlacementHandoff";
 export {
   applyBehaviorRecipes,
   behaviorRecipeCommandsForEntity,
@@ -189,13 +202,19 @@ export type {
 export type {
   CreateScenePlacementPatchStoreOptions,
   CreateScenePlacementViewerOptions,
+  ScenePlacementAddObjectDefinitionOperation,
   ScenePlacementAddInstanceOperation,
+  ScenePlacementBehaviorBindingPatch,
+  ScenePlacementBehaviorBindingTarget,
   ScenePlacementPatch,
   ScenePlacementPatchOperation,
   ScenePlacementPatchStore,
   ScenePlacementPatchStoreState,
+  ScenePlacementObjectDefinitionSummary,
   ScenePlacementRemoveInstanceOperation,
   ScenePlacementRenameInstanceOperation,
+  ScenePlacementUpdateBehaviorBindingOperation,
+  ScenePlacementUpdateComponentsOperation,
   ScenePlacementTransform,
   ScenePlacementUpdateTransformOperation,
   ScenePlacementViewer,
@@ -219,6 +238,25 @@ export type {
   ScenePlacementSaveAdapterResult,
 } from "../scenePlacementPatch";
 export type {
+  CreateScenePlacementAssetProviderOptions,
+  CreateScenePlacementProjectAssetProviderOptions,
+  ScenePlacementAssetDiagnostic,
+  ScenePlacementAssetDiagnosticCode,
+  ScenePlacementAssetProvider,
+  ScenePlacementProjectAtlasFrameContext,
+  ScenePlacementProjectTextureEntry,
+  ScenePlacementProjectTextureMetadata,
+  ScenePlacementProjectTextureRegistry,
+  ScenePlacementSpriteAsset,
+  ScenePlacementSpriteAssetReference,
+  ScenePlacementSpriteFrameAsset,
+  ScenePlacementSpriteFrameRect,
+} from "../scenePlacementAssets";
+export type {
+  CreateScenePlacementAgentHandoffOptions,
+  ScenePlacementAgentHandoff,
+} from "../scenePlacementHandoff";
+export type {
   DataSceneAabbColliderSpec,
   DataSceneCapsuleColliderSpec,
   DataSceneCircleColliderSpec,
@@ -230,10 +268,14 @@ export type {
   DataSceneConvexPolygonColliderSpec,
   DataSceneConvexPolygonVertexSpec,
   DataSceneNoneColliderSpec,
+  DataSceneObjectVisualSpec,
   DataSceneOrientedBoxColliderSpec,
+  DataScenePrimitiveVisualShape,
+  DataScenePrimitiveVisualSpec,
   DataSceneSpriteAnimationSpec,
   DataSceneSpriteComponentSpec,
   DataSceneSpriteFrameSpec,
+  DataSceneSpriteVisualSpec,
   DataSceneTextureRefSpec,
   ResolveDataSceneComponentsOptions,
   ResolveDataSceneInstanceComponentsOptions,
@@ -242,6 +284,8 @@ export type {
   ResolvedDataSceneCollisionLayer,
   ResolvedDataSceneComponents,
   ResolvedDataSceneConvexPolygonVertex,
+  ResolvedDataSceneObjectVisual,
+  ResolvedDataSceneObjectVisualBounds,
   ResolvedDataSceneSpriteAnimation,
   ResolvedDataSceneSpriteComponent,
   ResolvedDataSceneSpriteFrame,

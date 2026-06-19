@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @ferrum2d/ferrum-web build && vite",
-    "build": "vite build --base=./",
+    "dev": "pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/authoring-viewer build && vite",
+    "build": "pnpm --filter @ferrum2d/authoring-viewer build && vite build --base=./",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ferrum2d/authoring-viewer": "workspace:*",
     "@ferrum2d/ferrum-web": "workspace:*"
   },
   "devDependencies": {

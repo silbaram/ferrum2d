@@ -51,6 +51,9 @@
             "$ref": "#/definitions/agentAttachmentEntry"
           }
         },
+        "placementHandoff": {
+          "$ref": "#/definitions/placementHandoffDryRun"
+        },
         "instanceCount": {
           "type": "integer",
           "minimum": 1
@@ -237,6 +240,53 @@
             "type": "string",
             "minLength": 1
           }
+        }
+      }
+    },
+    "placementHandoffDryRun": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "handoffPath",
+        "selectedAttached",
+        "draftPatchOperationCount",
+        "migrationReferenceCount",
+        "assetDiagnosticCount"
+      ],
+      "properties": {
+        "handoffPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectedInstanceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectedSummaryId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectedAttached": {
+          "type": "boolean"
+        },
+        "attachment": {
+          "$ref": "#/definitions/agentAttachmentEntry"
+        },
+        "draftPatchOperationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "migrationReferenceCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "assetDiagnosticCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceDocument": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

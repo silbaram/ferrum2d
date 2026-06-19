@@ -24,6 +24,9 @@ test("ScenePlacementViewer exposes read-only scene instances and selected entity
 
   const state = viewer.state();
   equal(state.fragment, "main");
+  deepEqual(state.objectDefinitions.map((definition) => definition.id), ["crate", "turret"]);
+  equal(state.objectDefinitions.find((definition) => definition.id === "turret")?.variants.length, 0);
+  equal(state.objectDefinitions.find((definition) => definition.id === "crate")?.visual?.kind, "sprite");
   equal(state.instances.length, 2);
   equal(state.pointerWorld?.x, 16);
   equal(state.pointerWorld?.y, 24);
@@ -90,6 +93,157 @@ test("ScenePlacementViewer picks scene instances from screen coordinates", () =>
   const clearedSelection = viewer.selectInstanceAtScreen({ x: 200, y: 120 });
   equal(clearedSelection.selectedInstanceId, undefined);
   equal(viewer.hoverInstanceAtScreen().pointerWorld, undefined);
+});
+
+test("ScenePlacementViewer exposes primitive visual summaries and picks from visual bounds", () => {
+  const viewer = createScenePlacementViewer({
+    sceneComposition: scenePlacementPrimitiveComposition(),
+    viewport: { cssWidth: 320, cssHeight: 180 },
+  });
+
+  const picked = viewer.pickInstanceAtScreen({ x: 80, y: 90 });
+  equal(picked?.instanceId, "rect_1");
+  equal(picked?.visual?.kind, "primitive");
+  if (picked?.visual?.kind !== "primitive") {
+    throw new Error("expected primitive visual");
+  }
+  equal(picked.visual.shape, "rect");
+  equal(picked.visual.bounds.width, 40);
+  equal(picked.visual.bounds.height, 24);
+  equal(picked.collider?.type, "aabb");
+  equal(picked.componentLayer?.name, "wall");
+  equal(viewer.pickInstanceAtScreen({ x: 101, y: 90 })?.instanceId, undefined);
+
+  const selected = viewer.selectInstanceAtScreen({ x: 60, y: 78 });
+  equal(selected.selected?.instanceId, "rect_1");
+  equal(selected.selected?.visual?.kind, "primitive");
+});
+
+test("ScenePlacementViewer drafts component patches and updates visual picking bounds", () => {
+  const viewer = createScenePlacementViewer({
+    sceneComposition: scenePlacementPrimitiveComposition(),
+    viewport: { cssWidth: 320, cssHeight: 180 },
+    selectedInstanceId: "rect_1",
+  });
+
+  const updated = viewer.updateInstanceComponents("rect_1", {
+    visual: {
+      kind: "primitive",
+      shape: "circle",
+      radius: 18,
+      color: "#60a5fa",
+    },
+    collider: {
+      type: "circle",
+      radius: 18,
+    },
+    layer: "enemy",
+  });
+
+  equal(updated.selected?.visual?.kind, "primitive");
+  if (updated.selected?.visual?.kind !== "primitive") {
+    throw new Error("expected primitive visual");
+  }
+  equal(updated.selected.visual.shape, "circle");
+  equal(updated.selected.visual.bounds.width, 36);
+  equal(updated.selected.collider?.type, "circle");
+  equal(updated.selected.componentLayer?.name, "enemy");
+  equal(viewer.pickInstanceAtScreen({ x: 98, y: 90 })?.instanceId, "rect_1");
+  equal(viewer.pickInstanceAtScreen({ x: 99, y: 90 })?.instanceId, undefined);
+  deepEqual(viewer.exportPatch(), {
+    format: "ferrum2d.scene-placement.patch",
+    version: 1,
+    operations: [
+      {
+        kind: "updateComponents",
+        instanceId: "rect_1",
+        components: {
+          visual: {
+            kind: "primitive",
+            shape: "circle",
+            radius: 18,
+            color: "#60a5fa",
+          },
+          collider: {
+            type: "circle",
+            radius: 18,
+          },
+          layer: "enemy",
+        },
+      },
+    ],
+  });
+
+  const reverted = viewer.updateInstanceComponents("rect_1", {
+    visual: {
+      kind: "primitive",
+      shape: "rect",
+      width: 40,
+      height: 24,
+      color: "#7ddc9d",
+    },
+    collider: { type: "aabb", halfWidth: 20, halfHeight: 12 },
+    layer: "wall",
+  });
+  equal(reverted.draftPatch, undefined);
+});
+
+test("ScenePlacementViewer drafts behavior binding patches without editing recipe bodies", () => {
+  const viewer = createScenePlacementViewer({
+    document: scenePlacementDocument(),
+    viewport: { cssWidth: 320, cssHeight: 180 },
+    selectedInstanceId: "crate_a",
+  });
+
+  const attached = viewer.updateBehaviorBinding(
+    { kind: "instance", instanceId: "crate_a" },
+    "turretBrain",
+  );
+  equal(attached.selected?.role, "actor");
+  deepEqual(attached.selected?.behaviorProfiles, ["turretBrain"]);
+  deepEqual(viewer.exportPatch(), {
+    format: "ferrum2d.scene-placement.patch",
+    version: 1,
+    operations: [
+      {
+        kind: "updateBehaviorBinding",
+        target: {
+          kind: "instance",
+          instanceId: "crate_a",
+        },
+        behaviorRecipes: "turretBrain",
+      },
+    ],
+  });
+
+  const reverted = viewer.updateBehaviorBinding(
+    { kind: "instance", instanceId: "crate_a" },
+    null,
+  );
+  equal(reverted.selected?.role, "worldObject");
+  equal(reverted.draftPatch, undefined);
+
+  viewer.selectInstance("turret_left");
+  const detachedInherited = viewer.updateBehaviorBinding(
+    { kind: "instance", instanceId: "turret_left" },
+    null,
+  );
+  equal(detachedInherited.selected?.role, "worldObject");
+  deepEqual(detachedInherited.selected?.behaviorProfiles, []);
+  deepEqual(viewer.exportPatch(), {
+    format: "ferrum2d.scene-placement.patch",
+    version: 1,
+    operations: [
+      {
+        kind: "updateBehaviorBinding",
+        target: {
+          kind: "instance",
+          instanceId: "turret_left",
+        },
+        behaviorRecipes: null,
+      },
+    ],
+  });
 });
 
 test("ScenePlacementViewer exports draft transform patches without mutating source instances", () => {
@@ -198,6 +352,247 @@ test("ScenePlacementViewer drafts rename, add, and remove operations without mut
   equal(cleared.instances.some((instance) => instance.instanceId === "turret_left"), true);
 });
 
+test("ScenePlacementViewer keeps add patches separate from behavior binding patches", () => {
+  const viewer = createScenePlacementViewer({
+    sceneComposition: scenePlacementPrimitiveComposition(),
+    viewport: { cssWidth: 320, cssHeight: 180 },
+  });
+
+  viewer.addObjectDefinition("actor_template", {
+    props: {
+      components: {
+        visual: {
+          kind: "primitive",
+          shape: "rect",
+          width: 32,
+          height: 32,
+          color: "#60a5fa",
+        },
+        collider: { type: "aabb", halfWidth: 16, halfHeight: 16 },
+        layer: "enemy",
+      },
+    },
+  });
+  const definitionBound = viewer.updateBehaviorBinding(
+    { kind: "objectDefinition", id: "actor_template" },
+    ["turretBrain"],
+  );
+  equal(
+    definitionBound.objectDefinitions.find((definition) => definition.id === "actor_template")
+      ?.behaviorProfiles[0],
+    "turretBrain",
+  );
+
+  viewer.addInstance("main", {
+    id: "actor_1",
+    prefab: "actor_template",
+    x: 112,
+    y: 96,
+  });
+  const instanceBound = viewer.updateBehaviorBinding(
+    { kind: "instance", instanceId: "actor_1" },
+    null,
+  );
+  equal(instanceBound.selected?.role, "worldObject");
+  deepEqual(viewer.exportPatch(), {
+    format: "ferrum2d.scene-placement.patch",
+    version: 1,
+    operations: [
+      {
+        kind: "addObjectDefinition",
+        id: "actor_template",
+        definition: {
+          props: {
+            components: {
+              visual: {
+                kind: "primitive",
+                shape: "rect",
+                width: 32,
+                height: 32,
+                color: "#60a5fa",
+              },
+              collider: { type: "aabb", halfWidth: 16, halfHeight: 16 },
+              layer: "enemy",
+            },
+          },
+        },
+      },
+      {
+        kind: "updateBehaviorBinding",
+        target: {
+          kind: "objectDefinition",
+          id: "actor_template",
+        },
+        behaviorRecipes: ["turretBrain"],
+      },
+      {
+        kind: "addInstance",
+        fragment: "main",
+        instance: {
+          id: "actor_1",
+          prefab: "actor_template",
+          x: 112,
+          y: 96,
+        },
+      },
+      {
+        kind: "updateBehaviorBinding",
+        target: {
+          kind: "instance",
+          instanceId: "actor_1",
+        },
+        behaviorRecipes: [],
+      },
+    ],
+  });
+});
+
+test("ScenePlacementViewer folds component edits for added instances into add patches", () => {
+  const viewer = createScenePlacementViewer({
+    sceneComposition: scenePlacementPrimitiveComposition(),
+    viewport: { cssWidth: 320, cssHeight: 180 },
+  });
+
+  viewer.addInstance("main", {
+    id: "rect_2",
+    prefab: "primitive",
+    x: 120,
+    y: 90,
+  });
+  const updated = viewer.updateInstanceComponents("rect_2", {
+    visual: {
+      kind: "primitive",
+      shape: "rect",
+      width: 64,
+      height: 28,
+      color: "#facc15",
+    },
+    collider: {
+      type: "aabb",
+      halfWidth: 32,
+      halfHeight: 14,
+    },
+    layer: "wall",
+  });
+
+  equal(updated.selected?.instanceId, "rect_2");
+  equal(updated.selected?.visual?.bounds.width, 64);
+  deepEqual(viewer.exportPatch(), {
+    format: "ferrum2d.scene-placement.patch",
+    version: 1,
+    operations: [
+      {
+        kind: "addInstance",
+        fragment: "main",
+        instance: {
+          id: "rect_2",
+          prefab: "primitive",
+          x: 120,
+          y: 90,
+          props: {
+            components: {
+              visual: {
+                kind: "primitive",
+                shape: "rect",
+                width: 64,
+                height: 28,
+                color: "#facc15",
+              },
+              collider: {
+                type: "aabb",
+                halfWidth: 32,
+                halfHeight: 14,
+              },
+              layer: "wall",
+            },
+          },
+        },
+      },
+    ],
+  });
+});
+
+test("ScenePlacementViewer drafts object definitions and allows draft prefab placement", () => {
+  const viewer = createScenePlacementViewer({
+    sceneComposition: scenePlacementPrimitiveComposition(),
+    viewport: { cssWidth: 320, cssHeight: 180 },
+    selectedInstanceId: "rect_1",
+  });
+
+  const state = viewer.addObjectDefinition("rect_template", {
+    props: {
+      components: {
+        visual: {
+          kind: "primitive",
+          shape: "circle",
+          radius: 18,
+          color: "#60a5fa",
+        },
+        collider: {
+          type: "circle",
+          radius: 18,
+        },
+        layer: "enemy",
+      },
+    },
+  });
+
+  equal(state.objectDefinitions.some((definition) => definition.id === "rect_template"), true);
+  equal(state.objectDefinitions.find((definition) => definition.id === "rect_template")?.visual?.kind, "primitive");
+  const added = viewer.addInstance("main", {
+    id: "rect_template_1",
+    prefab: "rect_template",
+    x: 144,
+    y: 96,
+  });
+
+  equal(added.selectedInstanceId, "rect_template_1");
+  equal(added.selected?.prefab, "rect_template");
+  equal(added.selected?.visual?.kind, "primitive");
+  deepEqual(viewer.exportPatch(), {
+    format: "ferrum2d.scene-placement.patch",
+    version: 1,
+    operations: [
+      {
+        kind: "addObjectDefinition",
+        id: "rect_template",
+        definition: {
+          props: {
+            components: {
+              visual: {
+                kind: "primitive",
+                shape: "circle",
+                radius: 18,
+                color: "#60a5fa",
+              },
+              collider: {
+                type: "circle",
+                radius: 18,
+              },
+              layer: "enemy",
+            },
+          },
+        },
+      },
+      {
+        kind: "addInstance",
+        fragment: "main",
+        instance: {
+          id: "rect_template_1",
+          prefab: "rect_template",
+          x: 144,
+          y: 96,
+        },
+      },
+    ],
+  });
+
+  throwsMatching(
+    () => viewer.addObjectDefinition("rect_template", { props: {} }),
+    /already exists/u,
+  );
+});
+
 test("ScenePlacementPatchStore keeps export-only patch state", () => {
   const patch = {
     format: "ferrum2d.scene-placement.patch" as const,
@@ -291,6 +686,19 @@ test("ScenePlacementViewer validates input surface", () => {
     }).updateInstanceTransform("crate_a", { scale: 0 }),
     /scale.*must be a positive finite number/u,
   );
+  throwsMatching(
+    () => createScenePlacementViewer({
+      sceneComposition: scenePlacementComposition(),
+      viewport: { cssWidth: 320, cssHeight: 180 },
+    }).addInstance("main", {
+      id: "agent_owned",
+      prefab: "crate",
+      props: {
+        behaviorRecipes: ["agentProfile"],
+      },
+    }),
+    /only write UI-owned props\.components/u,
+  );
 });
 
 function scenePlacementDocument(): SceneAuthoringDocumentSpec {
@@ -337,6 +745,36 @@ function scenePlacementComposition(): SceneCompositionSpec {
         instances: [
           { id: "crate_a", prefab: "crate", x: 10, y: 20 },
           { id: "turret_left", prefab: "turret", x: 30, y: 40 },
+        ],
+      },
+    },
+  };
+}
+
+function scenePlacementPrimitiveComposition(): SceneCompositionSpec {
+  return {
+    initialFragment: "main",
+    prefabs: {
+      primitive: {
+        props: {
+          components: {
+            visual: {
+              kind: "primitive",
+              shape: "rect",
+              width: 40,
+              height: 24,
+              color: "#7ddc9d",
+            },
+            collider: { type: "aabb", halfWidth: 20, halfHeight: 12 },
+            layer: "wall",
+          },
+        },
+      },
+    },
+    fragments: {
+      main: {
+        instances: [
+          { id: "rect_1", prefab: "primitive", x: 80, y: 90 },
         ],
       },
     },

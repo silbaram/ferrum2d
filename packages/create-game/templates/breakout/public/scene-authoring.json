@@ -15,6 +15,9 @@
           "runtimeEntity": "builtinBreakoutBall",
           "behaviorRecipes": "ball.sessionLifetime"
         }
+      },
+      "object": {
+        "props": {}
       }
     },
     "fragments": {

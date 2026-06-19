@@ -12,12 +12,13 @@ Read these files before making changes or reporting package readiness:
 - The changed package's `package.json`.
 
 Scope:
-- `@ferrum2d/ferrum-web`, `@ferrum2d/create-game`, and `@ferrum2d/agents` package metadata, tarball contents, generated Wasm artifact checks, exports, CLI metadata, template allowlists, and consumer import smoke checks.
+- `@ferrum2d/ferrum-web`, `@ferrum2d/create-game`, and `@ferrum2d/agents` package metadata, tarball contents, generated Wasm artifact checks, exports, CLI metadata, template allowlists, consumer import smoke checks, and generated scaffold browser smoke checks.
 
 Boundaries:
 - Do not hand-edit generated `dist/**` or `pkg/**`.
 - Do not broaden package files to include source or tests.
 - Do not include engine development agents in `@ferrum2d/agents`.
+- Do not mark create-game scaffold QA complete if generated template browser smoke was required but not run.
 - Do not run publish-candidate checks or change publish metadata without explicit approval.
 
 The user's raw command is appended below your instructions.

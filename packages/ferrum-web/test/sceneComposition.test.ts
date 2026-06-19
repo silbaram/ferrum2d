@@ -105,6 +105,56 @@ test("instantiateSceneFragment resolves variant props, include transforms, and u
   });
 });
 
+test("instantiateSceneFragment replaces component prop sets instead of deep-merging them", () => {
+  const [instance] = instantiateSceneFragment({
+    prefabs: {
+      object: {
+        props: {
+          components: {
+            sprite: { texture: "crate", width: 16, height: 16 },
+            collider: { type: "aabb", halfWidth: 8, halfHeight: 8 },
+            layer: "wall",
+          },
+          metadata: {
+            author: "prefab",
+            tags: ["base"],
+          },
+        },
+      },
+    },
+    fragments: {
+      main: {
+        instances: [{
+          id: "rect",
+          prefab: "object",
+          props: {
+            components: {
+              visual: { kind: "primitive", shape: "rect", width: 24, height: 12 },
+              collider: { type: "aabb", halfWidth: 12, halfHeight: 6 },
+              layer: "enemy",
+            },
+            metadata: {
+              tags: ["instance"],
+            },
+          },
+        }],
+      },
+    },
+  });
+
+  deepEqual(instance?.props, {
+    components: {
+      visual: { kind: "primitive", shape: "rect", width: 24, height: 12 },
+      collider: { type: "aabb", halfWidth: 12, halfHeight: 6 },
+      layer: "enemy",
+    },
+    metadata: {
+      author: "prefab",
+      tags: ["instance"],
+    },
+  });
+});
+
 test("applySceneCompositionFragment calls a target adapter with resolved instances", () => {
   const spawned: string[] = [];
   const result = applySceneCompositionFragment({

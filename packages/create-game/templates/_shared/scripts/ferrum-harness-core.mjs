@@ -1,6 +1,10 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  FERRUM_AUTHORING_VIEWER_OWNERSHIP,
+  createAuthoringViewerBehaviorBindingEvidence,
+} from "@ferrum2d/authoring-viewer";
+import {
   assertCoverageTagDefinitions,
   assertCoverageTagGroups,
   assertCoverageTags,
@@ -171,6 +175,7 @@ async function printReport(config) {
     ok: diagnostics.length === 0,
     project: {
       packageName: result.packageName,
+      authoringViewer: result.packageJson.dependencies?.["@ferrum2d/authoring-viewer"] ?? null,
       ferrumWeb: result.packageJson.dependencies?.["@ferrum2d/ferrum-web"] ?? null,
       scripts: result.packageJson.scripts ?? {},
       files: {
@@ -181,6 +186,7 @@ async function printReport(config) {
       },
       authoringSurface: result.authoringSurface,
       checks: {
+        hasAuthoringViewerDependency: result.hasAuthoringViewerDependency,
         hasFerrumDependency: result.hasFerrumDependency,
         internalImports: result.internalImports,
         ...(config.projectChecks?.(result) ?? {}),
@@ -337,6 +343,7 @@ async function inspectProject(config) {
   const result = {
     packageName: packageJson.name,
     packageJson,
+    hasAuthoringViewerDependency: packageJson.dependencies?.["@ferrum2d/authoring-viewer"] !== undefined,
     hasFerrumDependency: packageJson.dependencies?.["@ferrum2d/ferrum-web"] !== undefined,
     hasMainSource,
     internalImports: [...mainSource.matchAll(/from\s+["'](@ferrum2d\/ferrum-web\/(?:dist|pkg|src)\/[^"']*)["']/g)]
@@ -426,6 +433,9 @@ function validationDiagnostics(config, result, { requireGameSpec }) {
   const diagnostics = [];
   if (!result.hasFerrumDependency) {
     diagnostics.push(diagnostic("package.json.dependencies.@ferrum2d/ferrum-web", "package.json must depend on @ferrum2d/ferrum-web", config));
+  }
+  if (!result.hasAuthoringViewerDependency) {
+    diagnostics.push(diagnostic("package.json.dependencies.@ferrum2d/authoring-viewer", "package.json must depend on @ferrum2d/authoring-viewer", config));
   }
   if (!result.hasMainSource) {
     diagnostics.push(diagnostic("src/main.ts", "src/main.ts is required", config));
@@ -604,9 +614,7 @@ function scenePlacementAuthoringSummary(applied, classifySceneInstance) {
   }
 
   return {
-    workflow: "human-placement-agent-behavior",
-    placementOwner: "sceneComposition.fragments[].instances[]",
-    behaviorOwner: "sceneComposition.prefabs[].props.behaviorRecipes + behaviorRecipes.entities",
+    ...FERRUM_AUTHORING_VIEWER_OWNERSHIP,
     fragment: applied.plan.fragment,
     instanceCount: applied.plan.instances.length,
     instances: applied.plan.instances.map((instance) => {
@@ -622,6 +630,24 @@ function scenePlacementAuthoringSummary(applied, classifySceneInstance) {
         role: classification.kind,
         runtimeEntity: typeof instance.props.runtimeEntity === "string" ? instance.props.runtimeEntity : null,
         behaviorProfiles: [...classification.behaviorProfiles],
+        behaviorBindingCount: classification.behaviorProfiles.length,
+        behaviorBindings: classification.behaviorProfiles.map((recipeId) => {
+          const recipeBindings = bindings.filter((binding) => binding.behaviorEntity === recipeId);
+          return {
+            ...createAuthoringViewerBehaviorBindingEvidence({
+              instanceId: instance.id,
+              recipeId,
+              commandCount: recipeBindings.length,
+              commandTypes: uniqueSorted(recipeBindings.map((binding) => binding.command.type)),
+            }),
+            target: {
+              kind: "instance",
+              instanceId: instance.id,
+              prefab: instance.prefab,
+              ...(instance.variant === undefined ? {} : { variant: instance.variant }),
+            },
+          };
+        }),
         behaviorCommandCount: bindings.length,
         behaviorCommandTypes: uniqueSorted(bindings.map((binding) => binding.command.type)),
         entity: handle === undefined

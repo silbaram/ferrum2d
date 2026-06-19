@@ -7,6 +7,7 @@ skills:
   - web-game-engine-platform
   - ferrum-package-qa
   - ferrum-pages-deploy
+  - ferrum-authoring-workflow
 ---
 
 # qa-agent
@@ -23,6 +24,12 @@ Release candidates normally require:
 - `pnpm package:check`
 - `pnpm build:web`
 - `pnpm release:check`
+
+Authoring/create-game scaffold changes may also require:
+- `pnpm smoke:placement-viewer`
+- `pnpm smoke:create-game-template-reports`
+- `pnpm package:consumer-smoke -- --skip-build --skip-package-check --templates minimal`
+- `pnpm validate:consumer-smoke-report -- --report <report-path> --artifact-dir <artifact-dir>`
 
 Rust/Wasm boundary changes also require:
 - `cargo fmt --manifest-path crates/ferrum-core/Cargo.toml --check`

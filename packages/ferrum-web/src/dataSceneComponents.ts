@@ -3,6 +3,14 @@ import type { ResolvedSceneCompositionInstance } from "./sceneComposition.js";
 
 export const DATA_SCENE_COMPONENTS_PROP = "components" as const;
 export const DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES = 16 as const;
+export const DATA_SCENE_DEFAULT_PRIMITIVE_SIZE = 32 as const;
+export const DATA_SCENE_DEFAULT_POINT_SIZE = 12 as const;
+
+export const DATA_SCENE_PRIMITIVE_TEXTURES = Object.freeze({
+  rect: "__ferrum2d.primitive.rect",
+  circle: "__ferrum2d.primitive.circle",
+  point: "__ferrum2d.primitive.point",
+} as const);
 
 export const DATA_SCENE_COLLISION_LAYER_CODES = Object.freeze({
   player: 0,
@@ -23,6 +31,7 @@ const DATA_SCENE_COLLISION_LAYER_NAMES = Object.freeze([
 export type DataSceneCollisionLayerName = keyof typeof DATA_SCENE_COLLISION_LAYER_CODES;
 export type DataSceneCollisionLayerSpec = DataSceneCollisionLayerName | number;
 export type DataSceneTextureRefSpec = string | number;
+export type DataScenePrimitiveVisualShape = keyof typeof DATA_SCENE_PRIMITIVE_TEXTURES;
 
 export interface DataSceneSpriteFrameSpec {
   u0?: number;
@@ -43,6 +52,35 @@ export interface DataSceneSpriteComponentSpec {
   frame?: DataSceneSpriteFrameSpec;
   animation?: DataSceneSpriteAnimationSpec;
 }
+
+export interface DataScenePrimitiveVisualSpec {
+  kind: "primitive";
+  shape: DataScenePrimitiveVisualShape;
+  color?: string;
+  width?: number;
+  height?: number;
+  radius?: number;
+}
+
+export interface DataSceneSpriteVisualSpec {
+  kind: "sprite";
+  texture?: DataSceneTextureRefSpec;
+  asset?: DataSceneTextureRefSpec;
+  width: number;
+  height: number;
+  frame?: DataSceneSpriteFrameSpec;
+  animation?: DataSceneSpriteAnimationSpec;
+  originX?: number;
+  originY?: number;
+  layer?: number;
+  sortOrder?: number;
+  tint?: string;
+  color?: string;
+}
+
+export type DataSceneObjectVisualSpec =
+  | DataScenePrimitiveVisualSpec
+  | DataSceneSpriteVisualSpec;
 
 export interface DataSceneColliderBaseSpec {
   offsetX?: number;
@@ -104,6 +142,7 @@ export type DataSceneColliderComponentSpec =
 
 export interface DataSceneComponentsSpec {
   template?: string;
+  visual?: DataSceneObjectVisualSpec;
   sprite?: DataSceneSpriteComponentSpec;
   collider?: DataSceneColliderComponentSpec;
   layer?: DataSceneCollisionLayerSpec;
@@ -135,6 +174,37 @@ export interface ResolvedDataSceneSpriteComponent {
   frame: ResolvedDataSceneSpriteFrame;
   animation?: ResolvedDataSceneSpriteAnimation;
 }
+
+export interface ResolvedDataSceneObjectVisualBounds {
+  width: number;
+  height: number;
+}
+
+export type ResolvedDataSceneObjectVisual =
+  | {
+      kind: "primitive";
+      shape: DataScenePrimitiveVisualShape;
+      color?: string;
+      width: number;
+      height: number;
+      radius?: number;
+      bounds: ResolvedDataSceneObjectVisualBounds;
+    }
+  | {
+      kind: "sprite";
+      texture: ResolvedDataSceneTextureRef;
+      width: number;
+      height: number;
+      frame: ResolvedDataSceneSpriteFrame;
+      animation?: ResolvedDataSceneSpriteAnimation;
+      originX: number;
+      originY: number;
+      layer?: number;
+      sortOrder?: number;
+      tint?: string;
+      color?: string;
+      bounds: ResolvedDataSceneObjectVisualBounds;
+    };
 
 export interface ResolvedDataSceneCollisionLayer {
   name: DataSceneCollisionLayerName;
@@ -184,6 +254,7 @@ export type ResolvedDataSceneComponents =
     }
   | {
       mode: "inline";
+      visual: ResolvedDataSceneObjectVisual;
       sprite: ResolvedDataSceneSpriteComponent;
       collider: ResolvedDataSceneColliderComponent;
       layer: ResolvedDataSceneCollisionLayer;
@@ -223,9 +294,18 @@ export function resolveDataSceneComponentsSpec(
 
   return {
     mode: "inline",
-    sprite: resolveSpriteComponent(requiredProperty(components, "sprite", path), `${path}.sprite`),
+    ...resolveInlineVisualComponents(components, path),
     collider: resolveColliderComponent(requiredProperty(components, "collider", path), `${path}.collider`),
     layer: resolveCollisionLayer(requiredProperty(components, "layer", path), `${path}.layer`),
+  };
+}
+
+export function dataSceneObjectVisualBounds(
+  components: Extract<ResolvedDataSceneComponents, { mode: "inline" }>,
+): ResolvedDataSceneObjectVisualBounds {
+  return {
+    width: components.visual.bounds.width,
+    height: components.visual.bounds.height,
   };
 }
 
@@ -244,7 +324,7 @@ function rejectTemplateMixedWithInlineFields(
   components: Readonly<Record<string, unknown>>,
   path: string,
 ): void {
-  for (const key of ["sprite", "collider", "layer"] as const) {
+  for (const key of ["visual", "sprite", "collider", "layer"] as const) {
     if (components[key] !== undefined) {
       throw sceneCompositionDiagnosticError(
         `${path}.${key}`,
@@ -252,6 +332,158 @@ function rejectTemplateMixedWithInlineFields(
       );
     }
   }
+}
+
+function resolveInlineVisualComponents(
+  components: Readonly<Record<string, unknown>>,
+  path: string,
+): { visual: ResolvedDataSceneObjectVisual; sprite: ResolvedDataSceneSpriteComponent } {
+  if (components.visual !== undefined && components.sprite !== undefined) {
+    throw sceneCompositionDiagnosticError(
+      `${path}.visual`,
+      "must not be provided together with legacy components.sprite",
+    );
+  }
+  if (components.visual !== undefined) {
+    const visual = resolveObjectVisual(components.visual, `${path}.visual`);
+    return {
+      visual,
+      sprite: runtimeSpriteForVisual(visual),
+    };
+  }
+  const sprite = resolveSpriteComponent(requiredProperty(components, "sprite", path), `${path}.sprite`);
+  return {
+    visual: spriteVisualFromResolvedSprite(sprite),
+    sprite,
+  };
+}
+
+function resolveObjectVisual(value: unknown, path: string): ResolvedDataSceneObjectVisual {
+  const visual = requiredRecord(value, path);
+  const kind = requiredString(visual.kind, `${path}.kind`);
+  switch (kind) {
+    case "primitive":
+      return resolvePrimitiveVisual(visual, path);
+    case "sprite":
+      return resolveSpriteVisual(visual, path);
+    default:
+      throw sceneCompositionDiagnosticError(`${path}.kind`, "must be one of primitive or sprite");
+  }
+}
+
+function resolvePrimitiveVisual(
+  visual: Readonly<Record<string, unknown>>,
+  path: string,
+): Extract<ResolvedDataSceneObjectVisual, { kind: "primitive" }> {
+  const shape = requiredPrimitiveVisualShape(visual.shape, `${path}.shape`);
+  const color = optionalString(visual.color, `${path}.color`);
+  if (shape === "circle") {
+    const radius = positiveNumber(visual.radius ?? DATA_SCENE_DEFAULT_PRIMITIVE_SIZE * 0.5, `${path}.radius`);
+    const size = radius * 2;
+    return {
+      kind: "primitive",
+      shape,
+      ...(color === undefined ? {} : { color }),
+      width: size,
+      height: size,
+      radius,
+      bounds: { width: size, height: size },
+    };
+  }
+  if (shape === "point") {
+    const size = positiveNumber(visual.width ?? visual.height ?? DATA_SCENE_DEFAULT_POINT_SIZE, `${path}.width`);
+    return {
+      kind: "primitive",
+      shape,
+      ...(color === undefined ? {} : { color }),
+      width: size,
+      height: size,
+      bounds: { width: size, height: size },
+    };
+  }
+  const width = positiveNumber(visual.width ?? DATA_SCENE_DEFAULT_PRIMITIVE_SIZE, `${path}.width`);
+  const height = positiveNumber(visual.height ?? DATA_SCENE_DEFAULT_PRIMITIVE_SIZE, `${path}.height`);
+  return {
+    kind: "primitive",
+    shape,
+    ...(color === undefined ? {} : { color }),
+    width,
+    height,
+    bounds: { width, height },
+  };
+}
+
+function resolveSpriteVisual(
+  visual: Readonly<Record<string, unknown>>,
+  path: string,
+): Extract<ResolvedDataSceneObjectVisual, { kind: "sprite" }> {
+  const textureValue = visual.texture ?? visual.asset;
+  const sprite = resolveSpriteComponent({
+    texture: textureValue,
+    width: visual.width,
+    height: visual.height,
+    ...(visual.frame === undefined ? {} : { frame: visual.frame }),
+    ...(visual.animation === undefined ? {} : { animation: visual.animation }),
+  }, path);
+  const originX = finiteNumber(visual.originX ?? 0.5, `${path}.originX`);
+  const originY = finiteNumber(visual.originY ?? 0.5, `${path}.originY`);
+  const layer = visual.layer === undefined ? undefined : finiteNumber(visual.layer, `${path}.layer`);
+  const sortOrder = visual.sortOrder === undefined ? undefined : finiteNumber(visual.sortOrder, `${path}.sortOrder`);
+  const tint = optionalString(visual.tint, `${path}.tint`);
+  const color = optionalString(visual.color, `${path}.color`);
+  return {
+    kind: "sprite",
+    texture: sprite.texture,
+    width: sprite.width,
+    height: sprite.height,
+    frame: sprite.frame,
+    ...(sprite.animation === undefined ? {} : { animation: sprite.animation }),
+    originX,
+    originY,
+    ...(layer === undefined ? {} : { layer }),
+    ...(sortOrder === undefined ? {} : { sortOrder }),
+    ...(tint === undefined ? {} : { tint }),
+    ...(color === undefined ? {} : { color }),
+    bounds: { width: sprite.width, height: sprite.height },
+  };
+}
+
+function runtimeSpriteForVisual(visual: ResolvedDataSceneObjectVisual): ResolvedDataSceneSpriteComponent {
+  if (visual.kind === "sprite") {
+    return {
+      texture: visual.texture,
+      width: visual.width,
+      height: visual.height,
+      frame: visual.frame,
+      ...(visual.animation === undefined ? {} : { animation: visual.animation }),
+    };
+  }
+  return {
+    texture: {
+      kind: "asset",
+      value: DATA_SCENE_PRIMITIVE_TEXTURES[visual.shape],
+      name: DATA_SCENE_PRIMITIVE_TEXTURES[visual.shape],
+    },
+    width: visual.width,
+    height: visual.height,
+    frame: { u0: 0, v0: 0, u1: 1, v1: 1 },
+  };
+}
+
+function spriteVisualFromResolvedSprite(
+  sprite: ResolvedDataSceneSpriteComponent,
+): Extract<ResolvedDataSceneObjectVisual, { kind: "sprite" }> {
+  return {
+    kind: "sprite",
+    texture: sprite.texture,
+    width: sprite.width,
+    height: sprite.height,
+    frame: sprite.frame,
+    ...(sprite.animation === undefined ? {} : { animation: sprite.animation }),
+    originX: 0.5,
+    originY: 0.5,
+    bounds: { width: sprite.width, height: sprite.height },
+  };
 }
 
 function resolveSpriteComponent(value: unknown, path: string): ResolvedDataSceneSpriteComponent {
@@ -437,6 +669,16 @@ function requiredRecord(value: unknown, path: string): Record<string, unknown> {
     throw sceneCompositionDiagnosticError(path, "must be an object");
   }
   return value;
+}
+
+function requiredPrimitiveVisualShape(value: unknown, path: string): DataScenePrimitiveVisualShape {
+  if (
+    typeof value === "string"
+    && Object.prototype.hasOwnProperty.call(DATA_SCENE_PRIMITIVE_TEXTURES, value)
+  ) {
+    return value as DataScenePrimitiveVisualShape;
+  }
+  throw sceneCompositionDiagnosticError(path, "must be one of rect, circle, or point");
 }
 
 function requiredString(value: unknown, path: string): string {

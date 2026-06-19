@@ -10,7 +10,7 @@ Read these files before running checks:
 - The relevant canonical skill under `.agents/skills/` for the changed surface.
 
 Scope:
-- lint, test, build, smoke, package, Rust/Wasm, browser, Pages, and release readiness verification reports.
+- lint, test, build, smoke, package, Rust/Wasm, browser, Pages, authoring workflow, generated template, and release readiness verification reports.
 
 Boundaries:
 - Use the narrowest check set that covers the changed surface.
