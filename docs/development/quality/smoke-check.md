@@ -513,10 +513,10 @@ npm package 후보가 실제 사용자 프로젝트에서 설치되고 빌드되
 pnpm package:consumer-smoke
 ```
 
-이 명령은 세 package의 allowlist/pack 검증을 먼저 실행한 뒤 임시 consumer 환경에서 다음을 확인한다.
+이 명령은 네 package의 allowlist/pack 검증을 먼저 실행한 뒤 임시 consumer 환경에서 다음을 확인한다.
 
 - `@ferrum2d/create-game` tarball의 bin으로 starter project를 생성한다.
-- 생성 프로젝트가 `@ferrum2d/ferrum-web` tarball을 dependency로 설치한다.
+- 생성 프로젝트가 `@ferrum2d/ferrum-web`과 `@ferrum2d/authoring-viewer` tarball을 dependency로 설치한다.
 - public entrypoint import가 성공하고 `@ferrum2d/ferrum-web/dist/*` 내부 import가 package exports로 차단된다. gameplay authoring/replay helper와 `gameplayActionDiagnosticReports(...)` 같은 agent-facing diagnostic helper도 generated project import/type smoke에서 확인한다.
 - `@ferrum2d/agents` tarball의 bin이 생성 프로젝트에 대해 dry-run으로 파일을 쓰지 않는다.
 - 설치된 consumer agent/skill/command는 projectile/weapon authoring helper와 함께 Game Spec `content.localization`/`content.dialogue.graphs`/`content.cutscenes`, `createShooterContentRuntimeOptions(...)` 기반 content runtime authoring 루프를 문서화해야 한다.
@@ -529,6 +529,8 @@ create-game template catalog 계약만 빠르게 확인하려면 `pnpm smoke:cre
 전체 create-game template이 consumer agent가 읽을 수 있는 report envelope를 내는지만 빠르게 확인하려면 `pnpm smoke:create-game-template-reports`를 사용한다. 이 smoke는 `packages/create-game/templates/manifest.json`의 모든 template을 임시 폴더에 복사하고, `_shared` asset scaffold를 template overlay 전에 합친 뒤 `package.json` placeholder만 temp copy에서 정규화한다. 이후 `ferrum-assets.mjs report`, `ferrum-assets.mjs validate`, `ferrum-harness.mjs report`, `ferrum-harness.mjs authoring-report`와 `replay-report`, `update-replay-fixture`, `ferrum-runtime-replay.mjs report`, `ferrum-runtime-replay.mjs recipe`, `ferrum-runtime-replay.mjs update-fixture`를 직접 실행한다. `ferrum-harness.mjs report`는 `ferrum2d.consumer.project.report` envelope로 project status, package dependency, generated files, internal import count, 최상위 recommended command를 확인한다. `ferrum-harness.mjs authoring-report`는 `placementAuthoring.instances[].behaviorBindings[]`의 `recipeId`, `bindingPath`, `behaviorRecipePath`, target instance, command count/type까지 확인해 Behavior Binding inspector가 만든 reference patch를 agent가 report evidence로 추적할 수 있는지도 검증한다. manifest의 `sceneAuthoring`, `gameplayReplay`, `runtimeGameplayReplay` entry는 template별 deterministic fixture 제공 여부를 catalog로 고정하며, smoke는 각 harness의 configured 값이 catalog와 일치하는지도 확인한다. Workspace `@ferrum2d/ferrum-web` package를 symlink해 asset public entrypoint validate와 authoring/gameplay/runtime replay fixture를 검증한다. `topdown`은 Game Spec contract replay를, `minimal`/`platformer`/`breakout`은 template surface contract replay를 검증한다. runtime replay는 configured template의 headless runtime fixture/report/update path를 확인한다. 이 명령은 install, tarball pack, create-game CLI token replacement, production build를 검증하지 않는다.
 
 의존성 store가 준비된 CI 환경에서는 `pnpm package:consumer-smoke -- --offline`으로 registry resolution 없이 실행할 수 있다. 새 머신에서는 일반 실행으로 Vite/TypeScript 범위 의존성을 consumer install과 같은 방식으로 해석한다. offline 실행은 generated project의 direct dependency tarball(예: TypeScript)이 pnpm store에 없으면 `ERR_PNPM_NO_OFFLINE_TARBALL`로 실패한다. 성공/실패 report와 재현용 파일을 보존하려면 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`를 사용한다. 이 artifact는 `pnpm validate:consumer-smoke-report`로 `consumer-smoke-report.json`, tarball, tarball-installed `@ferrum2d/create-game --list-templates --json`에서 얻은 `createGameCatalog`, `requestedTemplates`와 generated template summary의 일치, `node_modules`/`dist` 없는 snapshot 계약을 검증한다. `pnpm smoke:consumer-smoke-report`는 tarball 생성 전 초기 실패처럼 snapshot이 아직 없을 수 있는 failed report를 허용하면서, passed report의 `createGameCatalog` 누락/불일치와 존재하는 snapshot의 `node_modules`/`dist`/`.pnpm` 오염은 계속 실패시키는지 확인한다.
+
+release 후보를 배포하지 않고 로컬에서 리허설할 때는 `pnpm release:local-check`를 사용한다. 이 명령은 `pnpm release:candidate-check`, `pnpm package:check`, `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke-release-local`, `pnpm validate:consumer-smoke-report -- --expect-status passed`를 순서대로 실행해 같은 후보 세트의 metadata, tarball, generated consumer project smoke를 묶어서 확인한다.
 
 ## CI와 로컬 검증 차이
 
@@ -583,6 +585,7 @@ extended browser smoke job은 matrix별 artifact 이름을 분리해 budget smok
 - `pnpm smoke:physics-demo-suite`로 Physics Sandbox fixture catalog 6개가 browser selector, Physics Spec apply, debug line render path를 통과하는지 확인한다.
 - `pnpm package:check`로 runtime package entrypoint, authoring-viewer contract/DOM shell/panel primitive helper package, create-game scaffold, agents template, files allowlist, generated Wasm artifact, 실제 `pnpm pack` tarball 구성을 확인한다.
 - `pnpm package:consumer-smoke`로 local tarball install, generated game build, generated placement viewer Project Assets Add Sprite browser smoke, authoring-viewer dependency, agents dry-run을 임시 consumer project에서 확인한다.
+- `pnpm release:local-check`로 네 package release 후보 metadata, tarball allowlist, local consumer smoke report validation을 배포 없이 한 번에 확인한다.
 - `pnpm release:check`로 changelog, beta version, release tag metadata 구조를 확인한다.
 - `pnpm build`로 Wasm package와 Top-down Shooter production build를 확인한다.
 - `pnpm build:pages`로 GitHub Pages demo/docs artifact 구성과 문서 HTML 생성을 확인한다.

@@ -1,18 +1,19 @@
 # npm 베타 패키징 절차
 
-이 문서는 `@ferrum2d/ferrum-web`를 npm 베타 패키지로 공개하기 전 확인해야 하는 기준을 고정한다. 현재 저장소는 accidental publish를 막기 위해 `packages/ferrum-web/package.json`의 `private: true`를 유지한다. npm package 역할 분리는 [npm 패키지 구성 전략](npm-package-strategy.md)을 따른다.
+이 문서는 `@ferrum2d/ferrum-web`를 npm 베타 패키지로 공개하기 전 확인해야 하는 기준을 고정한다. 동시에 `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 같은 base version 후보로 로컬 tarball install 검증하는 기준을 포함한다. 현재 저장소는 accidental publish를 막기 위해 네 package 모두 `private: true`를 유지한다. npm package 역할 분리는 [npm 패키지 구성 전략](npm-package-strategy.md)을 따른다.
 
 ## 목표
 
 - 사용자가 `pnpm add @ferrum2d/ferrum-web@beta`로 browser runtime을 설치할 수 있는 패키지 형태를 만든다.
 - Rust/Wasm generated package와 TypeScript dist가 같은 npm artifact 안에 들어가는지 검증한다.
+- authoring-viewer, create-game, agents package가 같은 release 후보 세트로 pack/install/smoke를 통과하는지 검증한다.
 - `beta` dist-tag와 prerelease semver를 사용해 안정 버전인 `latest`와 분리한다.
 - GitHub Release 본문은 [릴리스 노트 템플릿](release-notes-template.md)을 기준으로 작성한다.
 - 실제 `npm publish`는 별도 승인과 npm 권한 확인 이후에만 수행한다.
 
 ## 패키지 구성 기준
 
-`@ferrum2d/ferrum-web`는 런타임 엔진 package다. `@ferrum2d/create-game` 프로젝트 생성 CLI와 `@ferrum2d/agents` AI agent/skill 설치 CLI는 별도 package로 관리하며, `@ferrum2d/ferrum-web` artifact에 포함하지 않는다.
+`@ferrum2d/ferrum-web`는 런타임 엔진 package다. `@ferrum2d/authoring-viewer`는 generated placement viewer와 공식 viewer host가 공유하는 authoring viewer helper package다. `@ferrum2d/create-game` 프로젝트 생성 CLI와 `@ferrum2d/agents` AI agent/skill 설치 CLI는 별도 package로 관리하며, `@ferrum2d/ferrum-web` artifact에 포함하지 않는다.
 
 `@ferrum2d/ferrum-web` package artifact에는 다음 파일만 포함한다.
 
@@ -49,6 +50,8 @@
 
 배포 tag는 `beta`만 사용한다. `latest`는 안정화 기준을 별도로 충족하기 전까지 사용하지 않는다.
 
+첫 public beta 후보는 root package와 네 package가 같은 base version을 공유하는 lockstep 후보로 검증한다. 예를 들어 root, `@ferrum2d/ferrum-web`, `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, `@ferrum2d/agents`가 모두 `0.1.0` base이면 release 후보는 `0.1.0-beta.N` 계열이다. package별 독립 versioning은 별도 release policy가 생기기 전까지 사용하지 않는다.
+
 ```bash
 npm publish --access public --tag beta
 ```
@@ -66,11 +69,12 @@ pnpm validate:game-spec
 pnpm smoke:headless
 pnpm package:check
 pnpm package:consumer-smoke
+pnpm release:local-check
 pnpm build:web
 pnpm release:check
 ```
 
-`pnpm smoke:check`는 위 항목 중 다수의 자동 smoke와 `pnpm package:check`를 한 번에 실행하지만, 임시 consumer project에 로컬 tarball을 설치하는 `pnpm package:consumer-smoke`는 별도로 실행한다.
+`pnpm smoke:check`는 위 항목 중 다수의 자동 smoke와 `pnpm package:check`를 한 번에 실행하지만, 임시 consumer project에 로컬 tarball을 설치하는 `pnpm package:consumer-smoke`는 별도로 실행한다. release 후보 세트를 한 번에 리허설할 때는 `pnpm release:local-check`를 우선 사용한다. 이 명령은 `private: true` 상태에서 candidate metadata, package allowlist, local tarball consumer smoke, smoke report validation을 순서대로 실행하며 npm publish, Git tag, GitHub Release 같은 외부 상태를 바꾸지 않는다.
 
 브라우저가 설치된 로컬 환경에서는 WebGL2 black-frame 회귀 방지를 위해 다음도 실행한다.
 
@@ -98,9 +102,10 @@ publish 승인 전 staged beta 후보를 검증할 때는 `private: true`를 유
 ```bash
 pnpm release:candidate-check
 pnpm release:candidate-check -- --version x.y.z-beta.N --tag ferrum-web-vx.y.z-beta.N
+pnpm release:local-check
 ```
 
-`pnpm release:candidate-check`는 현재 root package와 `@ferrum2d/ferrum-web`의 base version, candidate beta semver, expected tag, `publishConfig.access: "public"`, `publishConfig.tag: "beta"`, `CHANGELOG.md`의 `Unreleased` staging section, release note template, `release:publish-check` strict gate 존재 여부를 확인한다. 이 명령은 `packages/ferrum-web/package.json`의 `private: true`를 유지해야 통과한다.
+`pnpm release:candidate-check`는 현재 root package와 네 release package의 base version, candidate beta semver, expected tag, `private: true`, `publishConfig.access: "public"`, `publishConfig.tag: "beta"`, `CHANGELOG.md`의 `Unreleased` staging section, release note template, `release:local-check`/`release:publish-check` gate 존재 여부를 확인한다. 이 명령은 네 package의 `private: true`를 유지해야 통과한다.
 
 `ferrum-web-v*` tag push가 발생하면 CI가 release metadata check를 실행하고 package consumer smoke를 별도 job으로 gate한다. PR이나 일반 push에서는 무겁기 때문에 기본 실행하지 않으며, 수동 `workflow_dispatch`에서 `consumer_smoke` input을 켜면 같은 job을 opt-in으로 실행한다. tag 기반 검증에서는 다음 조건을 추가로 요구한다.
 
@@ -109,7 +114,7 @@ pnpm release:candidate-check -- --version x.y.z-beta.N --tag ferrum-web-vx.y.z-b
 - `CHANGELOG.md`에 `## x.y.z-beta.N - YYYY-MM-DD` release section이 있다.
 - publish 후보 metadata로 `private: false`가 설정되어 있다.
 
-tag CI의 validate job은 일반 `pnpm package:check` 대신 publish 후보용 `pnpm package:publish-check:ferrum-web`을 사용한다. `pnpm package:check`는 accidental publish 방지를 위해 `private: true`를 요구하고, `pnpm package:publish-check:ferrum-web`은 publish 직전 상태인 `private: false`를 요구하기 때문이다.
+tag CI의 validate job은 일반 `pnpm package:check` 대신 publish 후보용 `pnpm package:publish-check:ferrum-web`과 companion package artifact check인 `pnpm package:check:authoring-viewer`, `pnpm package:check:create-game`, `pnpm package:check:agents`를 사용한다. `pnpm package:check`는 accidental publish 방지를 위해 `private: true`를 요구하고, `pnpm package:publish-check:ferrum-web`은 publish 직전 상태인 `private: false`를 요구하기 때문이다.
 
 실제 publish 직전에는 release metadata check와 package publish guard를 함께 실행한다.
 
@@ -143,19 +148,27 @@ import { createFerrumRuntime } from "@ferrum2d/ferrum-web";
 
 `@ferrum2d/ferrum-web/dist/*`, `@ferrum2d/ferrum-web/pkg/*`, generated wasm-bindgen API는 public import 경로가 아니다.
 
-세 package를 함께 검증할 때는 사람이 직접 임시 프로젝트를 만들기보다 다음 명령을 우선 사용한다.
+네 package를 함께 검증할 때는 사람이 직접 임시 프로젝트를 만들기보다 다음 명령을 우선 사용한다.
 
 ```bash
 pnpm package:consumer-smoke
 ```
 
-이 명령은 `@ferrum2d/ferrum-web`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 로컬 tarball로 pack하고, 임시 consumer project에서 tool package 설치, `create-game` template matrix 생성, agents dry-run, runtime tarball install, public import smoke, production build를 한 번에 확인한다. 기본값은 `packages/create-game/templates/*` 전체이며, 좁은 확인이 필요하면 `pnpm package:consumer-smoke -- --templates minimal`처럼 실행한다.
+이 명령은 `@ferrum2d/ferrum-web`, `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 로컬 tarball로 pack하고, 임시 consumer project에서 tool package 설치, `create-game` template matrix 생성, agents dry-run, runtime/authoring-viewer tarball install, public import smoke, generated placement viewer smoke, production build를 한 번에 확인한다. 기본값은 `packages/create-game/templates/*` 전체이며, 좁은 확인이 필요하면 `pnpm package:consumer-smoke -- --templates minimal`처럼 실행한다.
 
 CI에서 consumer smoke를 실행하면 성공/실패 모두 `artifacts/consumer-smoke`에 report, tarball, node_modules/dist를 제외한 tool/generated project snapshot을 남기고 `actions/upload-artifact`로 업로드한다. CI는 smoke 결과에 맞춰 `pnpm validate:consumer-smoke-report`도 실행해 `consumer-smoke-report.json` format/version/status, tarball-installed `createGameCatalog`, `requestedTemplates`와 generated template matrix, 템플릿별 checks/reports, tarball 존재, snapshot 정리 상태를 검증한다. `pnpm smoke:consumer-smoke-report`는 초기 실패/중간 실패/오염 snapshot과 passed report의 catalog 누락/불일치 synthetic artifact로 report validator를 별도 검증한다. 로컬에서도 같은 보존 정책을 쓰려면 다음을 실행한다.
 
 ```bash
 pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke
 ```
+
+release 리허설 artifact 경로를 고정하려면 다음 명령을 사용한다.
+
+```bash
+pnpm release:local-check
+```
+
+이 명령은 `artifacts/consumer-smoke-release-local/consumer-smoke-report.json`을 만들고 `pnpm validate:consumer-smoke-report -- --expect-status passed`로 검증한다. 실패하면 report와 snapshot을 보존해 어느 tarball/install/build/smoke 단계가 깨졌는지 확인한다.
 
 ## 실제 publish 절차
 
@@ -170,7 +183,7 @@ pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke
 pnpm release:publish-check
 ```
 
-이 명령은 `@ferrum2d/ferrum-web` 기준 changelog release section, Git tag 규칙, `private: false`, `0.1.0-beta.N` 형식 version, `beta` dist-tag 설정, 실제 pack artifact를 함께 확인한다. `@ferrum2d/create-game`, `@ferrum2d/agents` publish 후보는 각각 `pnpm package:publish-check:create-game`, `pnpm package:publish-check:agents`로 별도 확인한다.
+이 명령은 `@ferrum2d/ferrum-web` 기준 changelog release section, Git tag 규칙, `private: false`, `0.1.0-beta.N` 형식 version, `beta` dist-tag 설정, 실제 pack artifact를 함께 확인한다. `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, `@ferrum2d/agents` publish 후보는 각각 `pnpm package:publish-check:authoring-viewer`, `pnpm package:publish-check:create-game`, `pnpm package:publish-check:agents`로 별도 확인한다. companion package의 `private: false` 전환과 npm publish도 package별 명시 승인이 있어야만 진행한다.
 
 이후 절차:
 

@@ -12,8 +12,9 @@ Use this skill to verify Ferrum2D npm packages without leaking source/test files
 - npm package strategy: `docs/development/operations/npm-package-strategy.md`
 - npm package procedure: `docs/development/operations/npm-release.md`
 - Runtime package metadata: `packages/ferrum-web/package.json`
+- Authoring viewer package metadata: `packages/ferrum-authoring-viewer/package.json`
 - CLI package metadata: `packages/create-game/package.json`, `packages/agents/package.json`
-- Package check scripts: `scripts/package/check-package-files.mjs`, `scripts/package/check-create-game-package.mjs`, `scripts/package/check-agents-package.mjs`
+- Package check scripts: `scripts/package/check-package-files.mjs`, `scripts/package/check-authoring-viewer-package.mjs`, `scripts/package/check-create-game-package.mjs`, `scripts/package/check-agents-package.mjs`
 - Consumer smoke script: `tests/smoke/package-consumer-smoke.mjs`
 - Release readiness script: `scripts/package/check-release-readiness.mjs`
 - Public API contract: `docs/engine/public-api.md`
@@ -59,10 +60,17 @@ Normal package QA:
 pnpm package:check
 ```
 
+Release rehearsal package QA:
+
+```bash
+pnpm release:local-check
+```
+
 Narrow package QA:
 
 ```bash
 pnpm package:check:ferrum-web
+pnpm package:check:authoring-viewer
 pnpm package:check:create-game
 pnpm package:check:agents
 ```
@@ -71,6 +79,7 @@ Publish candidate package QA:
 
 ```bash
 pnpm package:publish-check:ferrum-web
+pnpm package:publish-check:authoring-viewer
 pnpm package:publish-check:create-game
 pnpm package:publish-check:agents
 ```

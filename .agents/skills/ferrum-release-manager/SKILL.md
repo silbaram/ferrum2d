@@ -5,13 +5,13 @@ description: Use when preparing, reviewing, or executing Ferrum2D npm beta relea
 
 # Ferrum Release Manager
 
-Use this skill for Ferrum2D release work. It coordinates release metadata, package publish readiness, approval gates, and post-release verification for `@ferrum2d/ferrum-web`.
+Use this skill for Ferrum2D release work. It coordinates release metadata, package publish readiness, local package-family rehearsal, approval gates, and post-release verification for `@ferrum2d/ferrum-web`.
 
 ## Source Of Truth
 
 - npm procedure: `docs/development/operations/npm-release.md`
 - Release notes template: `docs/development/operations/release-notes-template.md`
-- Package metadata: `packages/ferrum-web/package.json`
+- Package metadata: `packages/ferrum-web/package.json`, `packages/ferrum-authoring-viewer/package.json`, `packages/create-game/package.json`, `packages/agents/package.json`
 - Changelog: `CHANGELOG.md`
 - Release readiness script: `scripts/package/check-release-readiness.mjs`
 - Package artifact script: `scripts/package/check-package-files.mjs`
@@ -19,11 +19,12 @@ Use this skill for Ferrum2D release work. It coordinates release metadata, packa
 
 ## Release Scope
 
-This skill only covers npm beta releases and GitHub Release preparation for `@ferrum2d/ferrum-web`.
+This skill covers npm beta releases and GitHub Release preparation for `@ferrum2d/ferrum-web`, plus local release rehearsal for the companion package set `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, and `@ferrum2d/agents`.
 
 - Allowed npm tag: `beta`
 - Allowed release version format: `x.y.z-beta.N`
 - Required Git tag format: `ferrum-web-vx.y.z-beta.N`
+- Local rehearsal command: `pnpm release:local-check`
 - Stable `latest` releases are out of scope until a separate release policy exists.
 
 ## Workflow
@@ -36,10 +37,11 @@ This skill only covers npm beta releases and GitHub Release preparation for `@fe
 6. Keep `publishConfig.access` as `"public"` and `publishConfig.tag` as `"beta"`.
 7. Do not set `private: false` until the user explicitly approves a publish candidate.
 8. Run the required local checks from the npm release procedure.
-9. Run `pnpm release:check` for metadata validation.
-10. After publish approval and `private: false`, run `pnpm release:publish-check`.
-11. Only after all checks pass, request explicit approval for `npm publish --access public --tag beta`.
-12. After publish, verify the npm package and record the exact results in the response or release notes.
+9. Run `pnpm release:local-check` before treating the package set as locally rehearsed.
+10. Run `pnpm release:check` for publish metadata validation.
+11. After publish approval and `private: false`, run `pnpm release:publish-check`.
+12. Only after all checks pass, request explicit approval for `npm publish --access public --tag beta`.
+13. After publish, verify the npm package and record the exact results in the response or release notes.
 
 ## Required Checks
 
@@ -51,6 +53,7 @@ pnpm test
 pnpm validate:game-spec
 pnpm smoke:headless
 pnpm package:check
+pnpm release:local-check
 pnpm build:web
 pnpm release:check
 ```
@@ -73,6 +76,7 @@ pnpm release:publish-check
 Always stop and get explicit user approval immediately before these external-state actions:
 
 - Setting `packages/ferrum-web/package.json` `private` from `true` to `false`.
+- Setting any companion package `private` from `true` to `false`.
 - Running `npm publish --access public --tag beta`.
 - Creating or pushing a release Git tag.
 - Publishing or editing a GitHub Release.
