@@ -2,8 +2,9 @@ crates/ferrum-core/target/
 node_modules/
 packages/*/dist/
 packages/*/dist-test/
+apps/*/dist/
 examples/*/dist/
-examples/placement-viewer/.ferrum-placement-handoff.json
+apps/placement-viewer/.ferrum-placement-handoff.json
 .antigravitycli/
 dist-pages/
 artifacts/

@@ -1,6 +1,6 @@
 # Ferrum2D 사용자 설명서
 
-Ferrum2D는 브라우저에서 실행되는 2D 게임을 만들기 위한 Rust + WebAssembly 기반 게임 엔진이다. 현재 단계는 **MVP 개발 완료, 상용제품 기능 개발** 이며, `examples/starter-runtime`, `examples/topdown-shooter`, `examples/breakout`, `examples/platformer`, `examples/physics-sandbox`, `examples/placement-viewer` 예제를 기준으로 runtime, 입력, 충돌, 렌더링, 에셋, 효과음, 물리 authoring, 배치 authoring 표시와 위치 draft patch를 검증한다.
+Ferrum2D는 브라우저에서 실행되는 2D 게임을 만들기 위한 Rust + WebAssembly 기반 게임 엔진이다. 현재 단계는 **MVP 개발 완료, 상용제품 기능 개발** 이며, runtime 예제와 `apps/placement-viewer` 공식 authoring app을 기준으로 runtime, 입력, 충돌, 렌더링, 에셋, 효과음, 물리 authoring, 배치 authoring 표시와 위치 draft patch를 검증한다.
 
 이 문서는 실행과 간단한 게임 수정 흐름을 안내한다. Top-down Shooter 예제 설정의 전체 필드, 기본값, 검증 규칙은 [Top-down Shooter Game Spec](../examples/topdown-shooter/game-spec.md)을 기준으로 삼는다.
 
@@ -10,7 +10,7 @@ Ferrum2D는 브라우저에서 실행되는 2D 게임을 만들기 위한 Rust +
 - 브라우저에서 Breakout 예제를 실행해 shooter와 다른 장르 흐름을 확인한다.
 - 브라우저에서 Platformer 예제를 실행해 kinematic platformer controller, coyote/jump buffering, step offset, one-way/moving platform 경로를 확인한다.
 - `examples/starter-runtime`에서 `createFerrumRuntime()` 기반 starter 흐름과 `UiOverlay` HUD/dialog를 확인한다.
-- `examples/placement-viewer`에서 Data Scene 기반 오브젝트 배치, selected id/entity inspector, drag/numeric/snap 기반 위치 draft patch를 확인한다.
+- `apps/placement-viewer`에서 Data Scene 기반 오브젝트 배치, selected id/entity inspector, drag/numeric/snap 기반 위치 draft patch를 확인한다.
 - `examples/topdown-shooter/public/game.json`을 수정해 난이도, 적 등장 방식, 무기 성능, prefab 크기와 collider, camera, tilemap, audio policy를 조정한다.
 - Aseprite JSON metadata를 `importAsepriteAtlasFrames(...)`로 Game Spec `atlas.frames`에 연결한다.
 - Tiled orthogonal JSON map을 `importTiledGameSpec(...)`로 Game Spec `atlas`/`tilemap`에 연결한다.
@@ -46,12 +46,12 @@ pnpm dev:placement-viewer
 ```
 
 엔진 레포의 공식 placement viewer는 dev 실행 중 현재 선택 상태와 draft patch를
-`examples/placement-viewer/.ferrum-placement-handoff.json`에도 내보낸다. 이 파일은
+`apps/placement-viewer/.ferrum-placement-handoff.json`에도 내보낸다. 이 파일은
 agent가 "방금 이동한 instance 위치를 반영해" 같은 요청을 처리할 때 읽는 임시 handoff
 파일이며, 원본 `placement.scene-authoring.json`을 직접 저장하지 않는다.
 
 오브젝트를 이동하거나 좌표를 입력하면 먼저 draft 상태가 된다. `Save` 버튼을 누르면
-dev server가 draft patch를 `examples/placement-viewer/public/placement.scene-authoring.json`에
+dev server가 draft patch를 `apps/placement-viewer/public/placement.scene-authoring.json`에
 반영하고 페이지를 다시 로드한다. `Revert`는 저장 전 draft만 버린다.
 
 처음 실행하거나 Rust core를 수정한 뒤에는 Wasm package를 먼저 빌드한다.

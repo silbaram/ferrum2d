@@ -18,7 +18,7 @@
 ## 현재 상태
 
 - workspace-private 패키지로 시작한다.
-- 공식 `examples/placement-viewer` host가 이 패키지의 공통 title, behavior 표시, DOM control 헬퍼를 사용한다.
+- 공식 `apps/placement-viewer` host가 이 패키지의 공통 title, behavior 표시, DOM control 헬퍼를 사용한다.
 - `packages/create-game`의 generated viewer와 harness가 이 패키지의 공통 title, behavior 표시, DOM key-value/number control, viewer shell, panel primitive, workflow ownership, behavior binding evidence helper를 사용한다.
 - 실제 npm publish 전까지는 `private: true`를 유지하고, package/consumer smoke는 로컬 tarball dependency로 검증한다.
 

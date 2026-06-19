@@ -2,7 +2,7 @@
 
 Ferrum2D는 Rust core, WebAssembly, TypeScript 플랫폼 레이어, WebGL2 기본 렌더러, 선택 WebGPU 렌더러로 구성한 2D 웹 게임 엔진이다.
 
-현재 package version은 `0.1.0`이지만, 기능 상태는 **MVP 개발 완료, 상용제품 기능 개발** 단계다. `examples/starter-runtime`은 제품용 starter runtime 흐름을 보여주고, `examples/topdown-shooter`, `examples/breakout`, `examples/platformer`, `examples/physics-sandbox`, `examples/placement-viewer`는 같은 runtime/API가 여러 장르, 물리 authoring, scene/object authoring 흐름에서 동작하는지 검증한다.
+현재 package version은 `0.1.0`이지만, 기능 상태는 **MVP 개발 완료, 상용제품 기능 개발** 단계다. `examples/starter-runtime`은 제품용 starter runtime 흐름을 보여주고, `examples/topdown-shooter`, `examples/breakout`, `examples/platformer`, `examples/physics-sandbox`는 같은 runtime/API가 여러 장르와 물리 authoring 흐름에서 동작하는지 검증한다. `apps/placement-viewer`는 공식 Scene/Object authoring viewer app으로 scene/object authoring 흐름을 검증한다.
 
 Ferrum2D의 제품 목표는 기존 게임 엔진처럼 비주얼 에디터를 중심에 두는 것이 아니라, AI agent가 Game Spec, Physics Spec, 프로젝트 템플릿, 검증 스크립트를 사용해 게임을 생성하고 수정하는 **AI agent-first 2D game engine**을 만드는 것이다.
 
@@ -416,7 +416,7 @@ examples/breakout/          Breakout 장르 검증 예제
 examples/platformer/        Platformer controller 검증 예제
 examples/topdown-shooter/   Top-down Shooter 검증 예제
 examples/physics-sandbox/   Physics Spec authoring/debug 검증 예제
-examples/placement-viewer/  Data Scene placement authoring viewer and draft patch UI
+apps/placement-viewer/       Official Data Scene placement authoring viewer app
 docs/                       engine 설명과 development 기준 문서
 scripts/                    저장소 보조 스크립트
 ```

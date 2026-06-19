@@ -26,6 +26,7 @@ const examples = [
   },
   {
     id: "placement-viewer",
+    source: "apps/placement-viewer/dist",
     title: "Placement Viewer",
     description: "Agent-first scene/object authoring surface for placement patches, ObjectDefinition catalog, and handoff evidence.",
   },
@@ -88,7 +89,7 @@ mkdirSync(outputDir, { recursive: true });
 writeFileSync(path.join(outputDir, ".nojekyll"), "");
 
 for (const example of examples) {
-  const source = path.join("examples", example.id, "dist");
+  const source = example.source ?? path.join("examples", example.id, "dist");
   if (!existsSync(source)) {
     throw new Error(`Missing ${source}. Run pnpm build before pnpm build:pages.`);
   }

@@ -63,8 +63,8 @@ import {
 import {
   createRuntimeDemoShell,
   renderRuntimeDemoError,
-} from "../../shared/runtimeDemoShell";
-import "../../shared/runtimeDemoShell.css";
+} from "./runtimeDemoShell";
+import "./runtimeDemoShell.css";
 import "./styles.css";
 
 const SCENE_DOCUMENT_URL = "./placement.scene-authoring.json";

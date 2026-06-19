@@ -12,7 +12,7 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 | `/docs/` | `docs/**/*.md` 기반 HTML 문서 사이트 |
 | `/starter-runtime/` | `examples/starter-runtime/dist` |
 | `/topdown-shooter/` | `examples/topdown-shooter/dist` |
-| `/placement-viewer/` | `examples/placement-viewer/dist` |
+| `/placement-viewer/` | `apps/placement-viewer/dist` |
 | `/physics-sandbox/` | `examples/physics-sandbox/dist` |
 | `/breakout/` | `examples/breakout/dist` |
 | `/platformer/` | `examples/platformer/dist` |

@@ -19,7 +19,7 @@ Use this skill for Ferrum2D agent-first authoring surfaces. Keep the workflow sp
 
 - Core APIs: `packages/ferrum-web/src/scenePlacementViewer.ts`, `scenePlacementPatch.ts`, `scenePlacementAssets.ts`, `scenePlacementHandoff.ts`
 - Data Scene integration: `packages/ferrum-web/src/dataSceneComponents.ts`, `sceneComposition.ts`, `authoring.ts`
-- Example host: `examples/placement-viewer/**`
+- Official app host: `apps/placement-viewer/**`
 - Create-game viewer: `packages/create-game/templates/_shared/src/ferrum-placement-viewer.ts`, `.css`
 - Template authoring docs/data: `packages/create-game/templates/*/public/scene-authoring.json`
 - Smoke checks: `tests/smoke/package-consumer-smoke.mjs`, `tests/smoke/browser-render-smoke.mjs`

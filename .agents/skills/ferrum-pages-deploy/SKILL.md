@@ -24,7 +24,7 @@ GitHub Pages deployment publishes one `dist-pages/` artifact containing:
 - `docs/**/*.md` rendered to `dist-pages/docs/**/*.html`
 - `examples/starter-runtime/dist`
 - `examples/topdown-shooter/dist`
-- `examples/placement-viewer/dist`
+- `apps/placement-viewer/dist`
 - `examples/physics-sandbox/dist`
 - `examples/breakout/dist`
 - `examples/platformer/dist`

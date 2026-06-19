@@ -106,16 +106,17 @@ Track A의 목표는 사용자가 실제 게임 화면을 보면서 오브젝트
 
 ### A0. 공식 제품 경계 확정
 
-현재 `examples/placement-viewer`는 검증 host 역할을 한다. 공식화는 "예제에 코드가 있으니 임시"가 아니라 다음 경계로 정리한다.
+현재 `apps/placement-viewer`는 공식 실행 host와 smoke fixture 역할을 한다. 공식화는 "예제에 코드가 있으니 임시"가 아니라 다음 경계로 정리한다.
 
 | 영역 | 권장 위치 | 설명 |
 | --- | --- | --- |
 | public controller/API | `packages/ferrum-web/src/scenePlacementViewer.ts`, `authoring.ts` export | 제품 기능의 source of truth다. |
-| UI host | 현 단계는 `examples/placement-viewer`, 후속 승인 시 `packages/ferrum-authoring-viewer` 후보 | 실행 가능한 browser app이다. |
+| UI host | `apps/placement-viewer` | 실행 가능한 공식 browser app이다. |
+| 공통 viewer helper | `packages/ferrum-authoring-viewer` | 공식 app과 generated viewer가 공유하는 UI shell/control/evidence helper다. |
 | create-game 통합 | `packages/create-game` template | consumer project에서 `npm run ferrum:placement-viewer`로 실행한다. |
 | smoke fixture | `tests/smoke/browser-render-smoke.mjs` | 공식 동작을 회귀 검증한다. |
 
-새 workspace package 도입은 구조 변경이므로 이 문서를 근거로 별도 승인 후 진행한다. 단기적으로는 product API를 `packages/ferrum-web`에 두고, `examples/placement-viewer`는 공식 host/fixture로 유지한다.
+제품 API는 `packages/ferrum-web`에 두고, 공통 viewer helper는 `packages/ferrum-authoring-viewer`에 둔다. 실행 가능한 공식 host와 smoke fixture는 `apps/placement-viewer`로 유지한다.
 
 ### A1. 선택/이동/저장 안정화
 
@@ -140,7 +141,7 @@ UI에 새 오브젝트 추가 흐름을 넣는다.
 
 현재 상태(2026-06-17):
 
-- `examples/placement-viewer`에 `Rect`, `Circle`, `Point`, `Sprite`, `Prefab` palette 버튼을 추가했다.
+- `apps/placement-viewer`에 `Rect`, `Circle`, `Point`, `Sprite`, `Prefab` palette 버튼을 추가했다.
 - Rect/Circle/Point/Sprite는 `object` prefab instance에 inline `props.components.visual`/`collider`/`layer`를 저장한다.
 - Prefab은 기존 `crate` prefab reference를 추가한다.
 - 신규 id는 `{kind}_{index}` 규칙으로 자동 생성하고, `new id` 입력으로 명시 override할 수 있으며, 생성 직후 선택 상태가 된다.
@@ -211,7 +212,7 @@ v1 범위:
 - 공식 placement viewer의 frame select는 provider frame metadata를 사용하고 선택한 UV rect/size를 `visual.kind: "sprite"` add patch에 반영한다.
 - Add Sprite는 provider/frame size를 `visual.kind: "sprite"`와 기본 aabb collider에 반영한다.
 - `createScenePlacementAssetProviderFromProjectAssets(...)`를 추가해 project `AssetManifest.textures`, runtime `TextureRegistry.entries()`, Game Spec `atlas.frames`에서 placement asset provider를 자동 생성할 수 있게 했다.
-- `examples/placement-viewer`는 같은 adapter로 fixture sprite provider를 구성한다.
+- `apps/placement-viewer`는 같은 adapter로 fixture sprite provider를 구성한다.
 - create-game 공유 placement viewer는 optional `public/game.json` atlas와 `public/assets/texture-atlas.input.json`을 읽어 project asset catalog, Add Sprite draft action, handoff asset diagnostic을 노출한다.
 
 v1 범위:
@@ -274,7 +275,7 @@ Ferrum2D의 agent-first 철학을 유지하려면 placement viewer의 behavior U
 현재 상태(2026-06-18):
 
 - `ScenePlacementPatch`에 `updateBehaviorBinding` operation을 추가해 instance/ObjectDefinition의 `props.behaviorRecipes` reference만 attach/detach할 수 있게 했다.
-- 공식 `examples/placement-viewer`는 선택 instance에 대해 기존 recipe id 목록을 표시하고 attach/detach draft patch를 만든다.
+- 공식 `apps/placement-viewer`는 선택 instance에 대해 기존 recipe id 목록을 표시하고 attach/detach draft patch를 만든다.
 - generated create-game 공유 placement viewer도 같은 attach/detach reference patch와 smoke 검증을 제공한다.
 - `mergeScenePlacementPatch(...)`는 `behaviorRecipes.entities` 본문을 보존하고, binding reference만 scene composition props에 반영한다.
 - unit test와 `pnpm smoke:placement-viewer`가 binding attach/detach patch export와 inspector state를 검증한다.
@@ -315,10 +316,10 @@ handoff 파일은 저장 기능의 대체물이 아니라 agent가 현재 선택
 현재 상태(2026-06-18):
 
 - `packages/ferrum-web`에 official viewer controller/API 유지
-- `examples/placement-viewer`는 official host + smoke fixture로 유지
+- `apps/placement-viewer`는 official host + smoke fixture로 유지
 - create-game template에 consumer host 제공
 - `packages/ferrum-authoring-viewer` workspace-private 패키지를 추가해 viewer title, workflow owner, behavior binding path/evidence, DOM control/shell/panel primitive helper 같은 공통 viewer 계약을 분리했다.
-- 공식 `examples/placement-viewer`와 generated create-game viewer/harness가 새 패키지의 title, behavior profile 표시, key-value row/number control, generated viewer shell, panel primitive, ownership/evidence helper를 사용한다.
+- 공식 `apps/placement-viewer`와 generated create-game viewer/harness가 새 패키지의 title, behavior profile 표시, key-value row/number control, generated viewer shell, panel primitive, ownership/evidence helper를 사용한다.
 - generated create-game placement viewer는 ObjectDefinition, Project Assets, Selected detail 패널 렌더링을 `ferrum-placement-viewer-object-panels.ts` 모듈로 분리했고, Transform/actions 패널 렌더링과 memory save action은 `ferrum-placement-viewer-transform-panel.ts` 모듈로 분리했다. Stage/list 렌더링, viewport resize, pointer selection, session 생성은 `ferrum-placement-viewer-stage-session.ts` 모듈로 분리했고, smoke hook/window publish와 handoff/patch output 갱신은 `ferrum-placement-viewer-publish.ts` 모듈로 분리했다. Scene authoring document와 project asset provider loading은 `ferrum-placement-viewer-assets.ts` 모듈로 분리했고, startup error diagnostic/rendering은 `ferrum-placement-viewer-startup-error.ts` 모듈로 분리했다. package check가 이 shared template module들의 module-set drift, tarball 포함, public import 경계를 검증한다.
 - create-game CLI는 `--authoring-viewer-version`으로 generated project의 `@ferrum2d/authoring-viewer` dependency를 주입한다.
 - package check와 consumer smoke는 `@ferrum2d/authoring-viewer` tarball을 함께 검증한다.
@@ -377,7 +378,7 @@ handoff 파일은 저장 기능의 대체물이 아니라 agent가 현재 선택
   behavior binding smoke까지 통과하는 것이다.
 - 6번 Repo instruction and roadmap sync 묶음은 `AGENTS.md`, `GEMINI.md`, smoke-check 문서, 이 planning
   status가 현재 authoring/package/agent workflow 경계를 같은 말로 설명하는지를 완료 기준으로 본다.
-- 이 묶음의 acceptance는 repo instruction이 `packages/ferrum-authoring-viewer`, `examples/placement-viewer`,
+- 이 묶음의 acceptance는 repo instruction이 `packages/ferrum-authoring-viewer`, `apps/placement-viewer`,
   `authoring_agent`, Behavior Binding Inspector 허용 범위, Behavior Recipe Body Editor/FSM/action graph 금지 범위,
   create-game/agents template 검증 명령을 반영하고, `pnpm validate:docs-links`가 통과하는 것이다.
 
@@ -432,7 +433,7 @@ handoff 파일은 저장 기능의 대체물이 아니라 agent가 현재 선택
   묶음부터 진행한다.
 - 6번 Repo instruction and roadmap sync 묶음은 `AGENTS.md`, `GEMINI.md`,
   `docs/development/quality/smoke-check.md`, 이 planning 문서가 `packages/ferrum-authoring-viewer`,
-  `examples/placement-viewer`, `authoring_agent`, Behavior Binding Inspector 허용 범위,
+  `apps/placement-viewer`, `authoring_agent`, Behavior Binding Inspector 허용 범위,
   Behavior Recipe Body Editor/FSM/action graph 금지 범위, create-game/agents template 검증 명령을
   같은 경계로 설명하는지 확인했고 repo instruction sync keyword check, `pnpm validate:docs-links`,
   `git diff --check`를 통과했다. 이로써 1~6번 worktree 분할 후보의 커밋 준비 점검은 모두 완료 상태다.
@@ -595,7 +596,7 @@ UI가 직접 수정하지 않는 정보:
 
 - `docs/engine/user-guide.md`와 `docs/engine/data-scene-authoring.md`에 official placement viewer 섹션 추가
 - `docs/planning/object-placement-authoring-plan.md`에 현재 상태 반영
-- `examples/placement-viewer` README 또는 docs entry 추가
+- `apps/placement-viewer` README 또는 docs entry 추가
 - production save disabled gate 유지
 
 검증:
@@ -782,7 +783,7 @@ Track A와 Track B를 묶은 product-ready 기준은 다음이다.
 
 | 결정 | 추천 | 이유 |
 | --- | --- | --- |
-| 공식 viewer host 위치 | 단기 `examples/placement-viewer` + workspace-private `@ferrum2d/authoring-viewer`, 중기 reusable package 확장 | smoke/fixture와 제품 API를 분리하면서 공식/generated viewer가 공통 viewer 계약과 DOM control/shell/panel primitive helper를 공유한다. |
+| 공식 viewer host 위치 | 단기 `apps/placement-viewer` + workspace-private `@ferrum2d/authoring-viewer`, 중기 reusable package 확장 | smoke/fixture와 제품 API를 분리하면서 공식/generated viewer가 공통 viewer 계약과 DOM control/shell/panel primitive helper를 공유한다. |
 | primitive visual 구현 | v1은 debug/sprite fallback, v2는 material/shape command 검토 | render command ABI 변경을 피하면서 빠르게 authoring 가능하다. |
 | sprite asset picker | project manifest/texture registry provider interface | 브라우저 파일 시스템 권한과 asset pipeline을 분리한다. |
 | prefab 명명 | public 문서에는 `ObjectDefinition/Prefab` 병기 | 기존 SceneComposition 호환을 유지하면서 엔진 용어를 정리한다. |

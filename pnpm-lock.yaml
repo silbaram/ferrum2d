@@ -12,6 +12,22 @@ importers:
         specifier: ^1.60.0
         version: 1.60.0
 
+  apps/placement-viewer:
+    dependencies:
+      '@ferrum2d/authoring-viewer':
+        specifier: workspace:*
+        version: link:../../packages/ferrum-authoring-viewer
+      '@ferrum2d/ferrum-web':
+        specifier: workspace:*
+        version: link:../../packages/ferrum-web
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.19
+        version: 5.4.21
+
   examples/breakout:
     dependencies:
       '@ferrum2d/ferrum-web':
@@ -40,22 +56,6 @@ importers:
 
   examples/physics-sandbox:
     dependencies:
-      '@ferrum2d/ferrum-web':
-        specifier: workspace:*
-        version: link:../../packages/ferrum-web
-    devDependencies:
-      typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
-      vite:
-        specifier: ^5.4.19
-        version: 5.4.21
-
-  examples/placement-viewer:
-    dependencies:
-      '@ferrum2d/authoring-viewer':
-        specifier: workspace:*
-        version: link:../../packages/ferrum-authoring-viewer
       '@ferrum2d/ferrum-web':
         specifier: workspace:*
         version: link:../../packages/ferrum-web

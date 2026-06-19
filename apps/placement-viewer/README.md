@@ -1,8 +1,8 @@
 # Ferrum2D Placement Viewer
 
-Data Scene 기반 Scene Placement/Object Authoring viewer를 검증하는 공식 authoring demo다. 목적은 사람이 위치, visual, collider, layer, ObjectDefinition, 기존 behavior recipe id reference를 확인/수정하고, agent가 같은 scene-authoring JSON과 handoff report를 기준으로 후속 작업을 이어가는 흐름을 보여주는 것이다.
+Data Scene 기반 Scene Placement/Object Authoring viewer를 실행하는 공식 authoring app이다. 목적은 사람이 위치, visual, collider, layer, ObjectDefinition, 기존 behavior recipe id reference를 확인/수정하고, agent가 같은 scene-authoring JSON과 handoff report를 기준으로 후속 작업을 이어가는 흐름을 제공하는 것이다.
 
-이 demo는 full visual editor가 아니다. Behavior Recipe 본문, FSM/action graph, animation timeline, tile painting은 이 viewer에서 편집하지 않는다.
+이 app은 full visual editor가 아니다. Behavior Recipe 본문, FSM/action graph, animation timeline, tile painting은 이 viewer에서 편집하지 않는다.
 
 ## 확인 기술
 
