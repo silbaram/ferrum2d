@@ -1,28 +1,34 @@
 import {
   createFerrumRuntime,
-  deriveTileOccludersFromTilemapGrid,
-  diagnosticReport,
-  IndexedDbAssetCache,
   LoadingOverlay,
-  ParticleVfxEmitter,
-  particleVfxPreset,
   preloadAssetManifest,
-  type DiagnosticContext,
-  type DiagnosticReport,
-  type AnimationTimelineSpec,
   type AssetLoadProgress,
-  type CutsceneSequenceSpec,
-  type DialogueGraphSpec,
   type FerrumEngine,
   type FerrumRuntime,
   type FerrumRuntimeEnvironment,
   type InputSnapshot,
-  type LightingScene2D,
-  type LocalizationDocumentSpec,
-  type PostProcessStackInput,
   type UiOverlayState,
   VirtualControls,
-} from "@ferrum2d/ferrum-web";
+} from "@ferrum2d/ferrum-web/core";
+import {
+  type AnimationTimelineSpec,
+  type CutsceneSequenceSpec,
+  type DialogueGraphSpec,
+  type LocalizationDocumentSpec,
+  type PostProcessStackInput,
+} from "@ferrum2d/ferrum-web/authoring";
+import {
+  deriveTileOccludersFromTilemapGrid,
+  IndexedDbAssetCache,
+  ParticleVfxEmitter,
+  particleVfxPreset,
+  type LightingScene2D,
+} from "@ferrum2d/ferrum-web/labs";
+import {
+  diagnosticReport,
+  type DiagnosticContext,
+  type DiagnosticReport,
+} from "@ferrum2d/ferrum-web/quality";
 
 import "./styles.css";
 

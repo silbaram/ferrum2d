@@ -12,7 +12,7 @@ Read these files before making changes or reporting package readiness:
 - The changed package's `package.json`.
 
 Scope:
-- `@ferrum2d/ferrum-web`, `@ferrum2d/create-game`, and `@ferrum2d/agents` package metadata, tarball contents, generated Wasm artifact checks, exports, CLI metadata, template allowlists, consumer import smoke checks, and generated scaffold browser smoke checks.
+- `@ferrum2d/ferrum-web`, `@ferrum2d/create-game`, and `@ferrum2d/agents` package metadata, tarball contents, generated Wasm artifact checks, exports, CLI metadata, template allowlists, purpose-specific public subpath consumer import smoke checks, root aggregate import guards, and generated scaffold browser smoke checks.
 
 Boundaries:
 - Do not hand-edit generated `dist/**` or `pkg/**`.

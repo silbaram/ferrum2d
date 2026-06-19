@@ -397,6 +397,8 @@ function assertConsumerProjectReport(report, template) {
   assert.equal(report.project?.files?.main, true, `${templateName} project report must confirm src/main.ts`);
   assert(Array.isArray(report.project?.checks?.internalImports), `${templateName} project report internalImports must be an array`);
   assert.equal(report.project.checks.internalImports.length, 0, `${templateName} project report must not include internal imports`);
+  assert(Array.isArray(report.project?.checks?.rootAggregateImports), `${templateName} project report rootAggregateImports must be an array`);
+  assert.equal(report.project.checks.rootAggregateImports.length, 0, `${templateName} project report must not include root aggregate imports`);
   if (templateName === "topdown") {
     assert.equal(report.project.files.gameSpec, "public/game.json", "topdown project report must identify public/game.json");
     assert.equal(report.project.checks.gameSpec?.ok, true, "topdown project report must validate Game Spec");

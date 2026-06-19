@@ -1,6 +1,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
+import { extractModuleSpecifiers } from "../package/create-game-template-contracts.mjs";
+
 const repoRoot = process.cwd();
 const manifestPath = "docs/engine/public-api-surface.json";
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -10,6 +12,8 @@ const publicApiDoc = publicApiDocPaths.map((filePath) => readFileSync(filePath, 
 const createGamePackageCheck = readFileSync("scripts/package/check-create-game-package.mjs", "utf8");
 const packageConsumerSmoke = readFileSync("tests/smoke/package-consumer-smoke.mjs", "utf8");
 const publicApiDocMaxLineLength = 240;
+const rootAggregateImportPath = "@ferrum2d/ferrum-web";
+const rootAggregateImportRestrictedRoots = manifest.rootAggregateImportRestrictedRoots ?? [];
 
 const allowedImportPaths = new Set(manifest.entrypoints.map((entrypoint) => entrypoint.importPath));
 const forbiddenPrefixes = [
@@ -35,6 +39,7 @@ const errors = [
   ...checkSourceExports(),
   ...checkConsumerImports(),
   ...checkExistingPackageGuards(),
+  ...checkPackageSpecifierExtraction(),
 ];
 
 if (errors.length > 0) {
@@ -83,6 +88,19 @@ function checkManifestShape() {
   }
   if (!manifest.entrypoints?.some((entrypoint) => entrypoint.tier === "preview")) {
     errors.push(`${manifestPath} must declare at least one preview entrypoint.`);
+  }
+  for (const fieldName of ["consumerImportRoots", "rootAggregateImportRestrictedRoots"]) {
+    if (!Array.isArray(manifest[fieldName])) {
+      errors.push(`${manifestPath} ${fieldName} must be an array.`);
+      continue;
+    }
+    for (const root of manifest[fieldName]) {
+      if (typeof root !== "string" || root.length === 0) {
+        errors.push(`${manifestPath} ${fieldName} entries must be non-empty strings.`);
+      } else if (!existsSync(path.join(repoRoot, root))) {
+        errors.push(`${manifestPath} ${fieldName} entry is missing: ${root}.`);
+      }
+    }
   }
   return errors;
 }
@@ -189,9 +207,19 @@ function checkConsumerImports() {
       if (specifier.startsWith("@ferrum2d/ferrum-web") && !allowedImportPaths.has(specifier)) {
         errors.push(`${displayPath} imports undocumented @ferrum2d/ferrum-web path ${specifier}.`);
       }
+      if (specifier === rootAggregateImportPath && isRootAggregateRestrictedFile(filePath)) {
+        errors.push(
+          `${displayPath} must use purpose-specific public subpaths instead of compatibility root import ${rootAggregateImportPath}.`,
+        );
+      }
     }
   }
   return errors;
+}
+
+function isRootAggregateRestrictedFile(filePath) {
+  const relativePath = path.relative(repoRoot, filePath).replaceAll(path.sep, "/");
+  return rootAggregateImportRestrictedRoots.some((root) => relativePath === root || relativePath.startsWith(`${root}/`));
 }
 
 function checkExistingPackageGuards() {
@@ -217,6 +245,28 @@ function checkExistingPackageGuards() {
     if (!packageConsumerSmoke.includes(snippet)) {
       errors.push(`tests/smoke/package-consumer-smoke.mjs is missing '${snippet}'.`);
     }
+  }
+  return errors;
+}
+
+function checkPackageSpecifierExtraction() {
+  const errors = [];
+  const rejectedRootAggregateForms = [
+    'import "@ferrum2d/ferrum-web";',
+    'import { createFerrumRuntime } from "@ferrum2d/ferrum-web";',
+    'import type { FerrumRuntime } from "@ferrum2d/ferrum-web";',
+    'await import("@ferrum2d/ferrum-web");',
+    'export { createFerrumRuntime } from "@ferrum2d/ferrum-web";',
+    'export * from "@ferrum2d/ferrum-web";',
+    'require("@ferrum2d/ferrum-web");',
+  ];
+  for (const source of rejectedRootAggregateForms) {
+    if (!packageSpecifiers(source).includes(rootAggregateImportPath)) {
+      errors.push(`packageSpecifiers must detect root aggregate import form: ${source}`);
+    }
+  }
+  if (packageSpecifiers('import { createFerrumRuntime } from "@ferrum2d/ferrum-web/core";').includes(rootAggregateImportPath)) {
+    errors.push("packageSpecifiers must not treat @ferrum2d/ferrum-web/core as a root aggregate import.");
   }
   return errors;
 }
@@ -305,15 +355,6 @@ function collectFiles(directory) {
 }
 
 function packageSpecifiers(source) {
-  const specifiers = [];
-  const patterns = [
-    /\bfrom\s+["'](@ferrum2d\/ferrum-web[^"']*)["']/gu,
-    /\bimport\s*\(\s*["'](@ferrum2d\/ferrum-web[^"']*)["']\s*\)/gu,
-  ];
-  for (const pattern of patterns) {
-    for (const match of source.matchAll(pattern)) {
-      specifiers.push(match[1]);
-    }
-  }
-  return specifiers;
+  return [...extractModuleSpecifiers(source)]
+    .filter((specifier) => specifier.startsWith("@ferrum2d/ferrum-web"));
 }

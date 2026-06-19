@@ -1,22 +1,26 @@
 import {
   captureGameStateSnapshot,
-  compareGameplayReplayRuns,
-  behaviorRecipeCommandsForEntity,
   createFerrumRuntime,
-  createGameplayReplayRun,
-  diagnosticReport,
-  compileWeaponProfiles,
   hashGameStateSnapshot,
-  projectile,
-  weapon,
   type FerrumRuntime,
   type FerrumRuntimeEnvironment,
   type GameStateSnapshot,
-  type GameplayReplayComparison,
-  type GameplayReplayRun,
+} from "@ferrum2d/ferrum-web/core";
+import {
+  behaviorRecipeCommandsForEntity,
+  compileWeaponProfiles,
+  projectile,
+  weapon,
   type ProjectileDefinition,
   type WeaponDefinition,
-} from "@ferrum2d/ferrum-web";
+} from "@ferrum2d/ferrum-web/authoring";
+import {
+  compareGameplayReplayRuns,
+  createGameplayReplayRun,
+  diagnosticReport,
+  type GameplayReplayComparison,
+  type GameplayReplayRun,
+} from "@ferrum2d/ferrum-web/quality";
 
 import {
   createRuntimeDemoShell,

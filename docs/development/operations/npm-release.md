@@ -140,13 +140,13 @@ pnpm --filter @ferrum2d/ferrum-web pack --pack-destination ../../artifacts/npm
 pnpm add /path/to/ferrum2d-ferrum-web-0.1.0-beta.0.tgz
 ```
 
-소비자 코드는 package entrypoint만 import한다.
+신규 소비자 코드는 목적별 public subpath를 import한다.
 
 ```ts
-import { createFerrumRuntime } from "@ferrum2d/ferrum-web";
+import { createFerrumRuntime } from "@ferrum2d/ferrum-web/core";
 ```
 
-`@ferrum2d/ferrum-web/dist/*`, `@ferrum2d/ferrum-web/pkg/*`, generated wasm-bindgen API는 public import 경로가 아니다.
+`@ferrum2d/ferrum-web` root aggregate는 기존 코드 호환 shim이며 신규 예시는 목적별 subpath를 우선한다. `@ferrum2d/ferrum-web/dist/*`, `@ferrum2d/ferrum-web/pkg/*`, `@ferrum2d/ferrum-web/src/*`, generated wasm-bindgen API는 public import 경로가 아니다.
 
 네 package를 함께 검증할 때는 사람이 직접 임시 프로젝트를 만들기보다 다음 명령을 우선 사용한다.
 
@@ -154,7 +154,7 @@ import { createFerrumRuntime } from "@ferrum2d/ferrum-web";
 pnpm package:consumer-smoke
 ```
 
-이 명령은 `@ferrum2d/ferrum-web`, `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 로컬 tarball로 pack하고, 임시 consumer project에서 tool package 설치, `create-game` template matrix 생성, agents dry-run, runtime/authoring-viewer tarball install, public import smoke, generated placement viewer smoke, production build를 한 번에 확인한다. 기본값은 `packages/create-game/templates/*` 전체이며, 좁은 확인이 필요하면 `pnpm package:consumer-smoke -- --templates minimal`처럼 실행한다.
+이 명령은 `@ferrum2d/ferrum-web`, `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 로컬 tarball로 pack하고, 임시 consumer project에서 tool package 설치, `create-game` template matrix 생성, agents dry-run, runtime/authoring-viewer tarball install, 목적별 public subpath import smoke, generated placement viewer smoke, production build를 한 번에 확인한다. 기본값은 `packages/create-game/templates/*` 전체이며, 좁은 확인이 필요하면 `pnpm package:consumer-smoke -- --templates minimal`처럼 실행한다.
 
 CI에서 consumer smoke를 실행하면 성공/실패 모두 `artifacts/consumer-smoke`에 report, tarball, node_modules/dist를 제외한 tool/generated project snapshot을 남기고 `actions/upload-artifact`로 업로드한다. CI는 smoke 결과에 맞춰 `pnpm validate:consumer-smoke-report`도 실행해 `consumer-smoke-report.json` format/version/status, tarball-installed `createGameCatalog`, `requestedTemplates`와 generated template matrix, 템플릿별 checks/reports, tarball 존재, snapshot 정리 상태를 검증한다. `pnpm smoke:consumer-smoke-report`는 초기 실패/중간 실패/오염 snapshot과 passed report의 catalog 누락/불일치 synthetic artifact로 report validator를 별도 검증한다. 로컬에서도 같은 보존 정책을 쓰려면 다음을 실행한다.
 

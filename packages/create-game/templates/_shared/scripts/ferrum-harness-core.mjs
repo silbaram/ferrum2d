@@ -189,6 +189,7 @@ async function printReport(config) {
         hasAuthoringViewerDependency: result.hasAuthoringViewerDependency,
         hasFerrumDependency: result.hasFerrumDependency,
         internalImports: result.internalImports,
+        rootAggregateImports: result.rootAggregateImports,
         ...(config.projectChecks?.(result) ?? {}),
         gameSpec: result.gameSpec ?? missingGameSpecCheck(config),
         sceneAuthoring: result.sceneAuthoring ?? { ok: null, message: `${sceneAuthoringPath(config)} not present` },
@@ -348,6 +349,7 @@ async function inspectProject(config) {
     hasMainSource,
     internalImports: [...mainSource.matchAll(/from\s+["'](@ferrum2d\/ferrum-web\/(?:dist|pkg|src)\/[^"']*)["']/g)]
       .map((match) => match[1]),
+    rootAggregateImports: ferrumRootAggregateImports(mainSource),
     authoringSurface: config.inspectAuthoringSurface({ mainSource, sceneAuthoring }),
     gameSpec,
     sceneAuthoring,
@@ -443,6 +445,9 @@ function validationDiagnostics(config, result, { requireGameSpec }) {
   for (const importPath of result.internalImports) {
     diagnostics.push(diagnostic("src/main.ts", `Use the public package entrypoint instead of internal import: ${importPath}`, config));
   }
+  for (const importPath of result.rootAggregateImports) {
+    diagnostics.push(diagnostic("src/main.ts", `Use a purpose-specific public subpath instead of compatibility root import: ${importPath}`, config));
+  }
   if (requireGameSpec && result.gameSpec === undefined) {
     diagnostics.push(diagnostic("public/game.json", "public/game.json is required", config));
   }
@@ -454,6 +459,22 @@ function validationDiagnostics(config, result, { requireGameSpec }) {
   }
   diagnostics.push(...(config.extraDiagnostics?.(result, { diagnostic: (pathValue, detail) => diagnostic(pathValue, detail, config) }) ?? []));
   return diagnostics;
+}
+
+function ferrumRootAggregateImports(source) {
+  const specifiers = [];
+  const patterns = [
+    /\bimport\s+["'](@ferrum2d\/ferrum-web)["']/g,
+    /\bfrom\s+["'](@ferrum2d\/ferrum-web)["']/g,
+    /\bimport\s*\(\s*["'](@ferrum2d\/ferrum-web)["']\s*\)/g,
+    /\brequire\s*\(\s*["'](@ferrum2d\/ferrum-web)["']\s*\)/g,
+  ];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      specifiers.push(match[1]);
+    }
+  }
+  return specifiers;
 }
 
 async function loadReplayFixture(config) {

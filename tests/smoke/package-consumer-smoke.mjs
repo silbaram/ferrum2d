@@ -2211,6 +2211,8 @@ function assertConsumerProjectReport(report, templateName) {
   assert(report.project?.files?.main === true, `${templateName} project report must confirm src/main.ts`);
   assert(Array.isArray(report.project?.checks?.internalImports), `${templateName} project report internalImports must be an array`);
   assert(report.project.checks.internalImports.length === 0, `${templateName} project report must reject internal ferrum-web imports`);
+  assert(Array.isArray(report.project?.checks?.rootAggregateImports), `${templateName} project report rootAggregateImports must be an array`);
+  assert(report.project.checks.rootAggregateImports.length === 0, `${templateName} project report must reject ferrum-web root aggregate imports`);
   assert(Array.isArray(report.recommendedCommands), `${templateName} project report must include recommended commands`);
   for (const command of [
     "npm run ferrum:report",
@@ -2819,6 +2821,7 @@ function summarizeConsumerProjectReport(report) {
       sceneAuthoring: report.project?.files?.sceneAuthoring,
     },
     internalImports: report.project?.checks?.internalImports?.length ?? 0,
+    rootAggregateImports: report.project?.checks?.rootAggregateImports?.length ?? 0,
     recommendedCommands: report.recommendedCommands,
     reports: report.reports?.length ?? 0,
     errors: report.errors?.length ?? 0,

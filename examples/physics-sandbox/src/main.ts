@@ -1,10 +1,7 @@
 import {
   createFerrumRuntime,
   createPhysicsWorldFromSpec,
-  diagnosticReport,
   resolvePhysicsSpec,
-  type DiagnosticContext,
-  type DiagnosticReport,
   type FerrumEngine,
   type FerrumRuntime,
   type FerrumRuntimeEnvironment,
@@ -24,7 +21,12 @@ import {
   type ResolvedPhysicsJointSpec,
   type ResolvedPhysicsMaterialSpec,
   type ResolvedPhysicsSpec,
-} from "@ferrum2d/ferrum-web";
+} from "@ferrum2d/ferrum-web/core";
+import {
+  diagnosticReport,
+  type DiagnosticContext,
+  type DiagnosticReport,
+} from "@ferrum2d/ferrum-web/quality";
 
 import "./styles.css";
 

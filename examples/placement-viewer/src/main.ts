@@ -1,9 +1,11 @@
 import {
   createFerrumRuntime,
-  diagnosticReport,
   type FerrumRuntime,
   type FerrumRuntimeFrame,
-} from "@ferrum2d/ferrum-web";
+} from "@ferrum2d/ferrum-web/core";
+import {
+  diagnosticReport,
+} from "@ferrum2d/ferrum-web/quality";
 import {
   FERRUM_AUTHORING_VIEWER_TITLE,
   appendAuthoringViewerCheckboxControl,

@@ -50,7 +50,7 @@ The artifact must not include:
 4. For `create-game` template changes, verify generated scaffold files, shared template allowlists, and browser smoke coverage for generated surfaces such as `placement-viewer.html`.
 5. Run the narrow package check for the changed package, or `pnpm package:check` before merging package-surface changes.
 6. If preparing an actual publish candidate, run the package-specific `pnpm package:publish-check:*` command only after publish approval and `private: false`.
-7. For high-risk runtime or scaffold changes, install the generated tarball in a clean temporary consumer project and import the public entrypoint.
+7. For high-risk runtime or scaffold changes, install the generated tarball in a clean temporary consumer project and import the purpose-specific public subpaths.
 
 ## Required Checks
 
@@ -97,17 +97,22 @@ Run the full template matrix when shared create-game code changes. The consumer 
 
 ## Consumer Import Rule
 
-Consumer examples and smoke tests must import only the public entrypoint:
+Official examples, create-game templates, and generated consumer smoke projects must import purpose-specific public subpaths:
 
 ```ts
-import { createFerrumRuntime } from "@ferrum2d/ferrum-web";
+import { createFerrumRuntime } from "@ferrum2d/ferrum-web/core";
+import { resolveShooterGameSpec } from "@ferrum2d/ferrum-web/starter-scenes";
 ```
 
 Do not make consumers import from:
 
+- `@ferrum2d/ferrum-web` in official examples or create-game templates; it is a compatibility root aggregate for existing external code.
 - `@ferrum2d/ferrum-web/dist/*`
 - `@ferrum2d/ferrum-web/pkg/*`
+- `@ferrum2d/ferrum-web/src/*`
 - generated wasm-bindgen files
+
+Consumer smoke and generated project reports should keep both `internalImports` and `rootAggregateImports` at zero for generated templates.
 
 ## Hard Boundaries
 

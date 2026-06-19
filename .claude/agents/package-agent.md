@@ -18,7 +18,7 @@ Own verification for:
 - `packages/agents/package.json` package artifact fields.
 - npm tarball contents.
 - generated Wasm package artifacts.
-- public entrypoint import smoke checks.
+- purpose-specific public subpath import smoke checks.
 - generated create-game scaffold smoke checks.
 
 Run `pnpm package:check` for normal package QA. Run generated consumer smoke checks when create-game shared templates change. Run `pnpm package:publish-check` only for an approved publish candidate.

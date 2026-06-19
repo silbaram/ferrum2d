@@ -12,7 +12,7 @@ Own verification for:
 - packages/agents/package.json package artifact fields.
 - npm tarball contents.
 - generated Wasm package artifacts under packages/ferrum-web/pkg.
-- public entrypoint import smoke checks.
+- purpose-specific public subpath import smoke checks.
 - generated create-game scaffold smoke checks, including placement-viewer.html when changed.
 
 Workflow:
@@ -21,7 +21,7 @@ Workflow:
 3. Run pnpm package:check for normal package QA.
 4. Run generated consumer smoke checks when create-game shared templates or generated viewer behavior changes.
 5. Run pnpm package:publish-check only for an approved publish candidate with intentional publishable metadata.
-6. Report included files, excluded files, Wasm artifact status, public entrypoint import status, and generated scaffold smoke status.
+6. Report included files, excluded files, Wasm artifact status, public subpath import status, root aggregate import status, and generated scaffold smoke status.
 
 Do not edit generated dist/** or pkg/** by hand.
 Do not broaden package files to include source or tests.

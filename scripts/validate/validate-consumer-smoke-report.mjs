@@ -325,6 +325,9 @@ function validateProjectSummary(value, label, reportErrors) {
   if (value.internalImports !== 0) {
     reportErrors.push(`${label}.internalImports must be 0`);
   }
+  if (value.rootAggregateImports !== 0) {
+    reportErrors.push(`${label}.rootAggregateImports must be 0`);
+  }
   if (!Array.isArray(value.recommendedCommands)) {
     reportErrors.push(`${label}.recommendedCommands must be an array`);
   } else {

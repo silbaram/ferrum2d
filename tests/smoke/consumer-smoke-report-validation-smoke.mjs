@@ -425,6 +425,7 @@ function projectReportSummary(templateName) {
       sceneAuthoring: "public/scene-authoring.json",
     },
     internalImports: 0,
+    rootAggregateImports: 0,
     recommendedCommands: [
       "npm run ferrum:report",
       "npm run ferrum:validate",

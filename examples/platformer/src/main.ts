@@ -1,13 +1,15 @@
 import {
   createFerrumRuntime,
-  diagnosticReport,
-  type DiagnosticContext,
-  type DiagnosticReport,
   type FerrumEngine,
   type FerrumRuntime,
   type FerrumRuntimeEnvironment,
   type InputSnapshot,
-} from "@ferrum2d/ferrum-web";
+} from "@ferrum2d/ferrum-web/core";
+import {
+  diagnosticReport,
+  type DiagnosticContext,
+  type DiagnosticReport,
+} from "@ferrum2d/ferrum-web/quality";
 
 import "./styles.css";
 

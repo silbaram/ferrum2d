@@ -155,5 +155,9 @@
     "examples",
     "packages/create-game/templates",
     "packages/agents/templates"
+  ],
+  "rootAggregateImportRestrictedRoots": [
+    "examples",
+    "packages/create-game/templates"
   ]
 }

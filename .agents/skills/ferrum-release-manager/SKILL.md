@@ -89,13 +89,13 @@ After publish, verify:
 - `npm view @ferrum2d/ferrum-web@beta version dist-tags --json`
 - The published version equals `packages/ferrum-web/package.json` version.
 - The `beta` dist-tag points to the published version.
-- A clean consumer project can import only the public entrypoint:
+- A clean consumer project can import the purpose-specific public runtime subpath:
 
 ```ts
-import { createFerrumRuntime } from "@ferrum2d/ferrum-web";
+import { createFerrumRuntime } from "@ferrum2d/ferrum-web/core";
 ```
 
-Do not document internal imports from `dist/*`, `pkg/*`, or generated wasm-bindgen files as public API.
+Do not document internal imports from `dist/*`, `pkg/*`, `src/*`, or generated wasm-bindgen files as public API. Treat the root aggregate `@ferrum2d/ferrum-web` as a compatibility shim, not the preferred import path for new release examples.
 
 ## Failure And Recovery
 
