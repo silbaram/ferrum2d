@@ -8,7 +8,7 @@ Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI a
 
 | 디렉터리 | 역할 | 주요 문서 |
 | --- | --- | --- |
-| `engine/` | 엔진 사용자와 AI agent가 읽는 게임엔진 설명, 사용법, public contract | [Showcase Hub](engine/showcase-hub.md), [개발자 퀵스타트](engine/developer-quickstart.md), [사용자 설명서](engine/user-guide.md), [Public API](engine/public-api.md), [Runtime Extensibility](engine/runtime-extensibility.md), [Data Scene Authoring](engine/data-scene-authoring.md), [Physics Spec](engine/physics-spec.md) |
+| `engine/` | 엔진 사용자와 AI agent가 읽는 게임엔진 설명, 사용법, public contract | [Showcase Hub](engine/showcase-hub.md), [개발자 퀵스타트](engine/developer-quickstart.md), [사용자 설명서](engine/user-guide.md), [Public API](engine/public-api.md), [Public API Migration Guide](engine/public-api/migration-guide.md), [Runtime Extensibility](engine/runtime-extensibility.md), [Data Scene Authoring](engine/data-scene-authoring.md), [Physics Spec](engine/physics-spec.md) |
 | `examples/` | 공식 예제별 authoring contract와 예제 전용 설명 | [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md) |
 | `development/` | 엔진 개발, agent authoring 품질 검증, 배포 운영을 위한 내부 기준 | [아키텍처](development/architecture/architecture.md), [2D 물리엔진 기능 맵](development/architecture/physics-engine.md), [Smoke Check](development/quality/smoke-check.md), [npm 베타 패키징](development/operations/npm-release.md) |
 | `planning/` | 신규 기능 후보와 승인 필요 기능을 관리하는 planning 영역 | [Planning 문서](planning/README.md) |
@@ -21,7 +21,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 | --- | --- | --- |
 | Showcase | [Showcase Hub](engine/showcase-hub.md) | demo, 기능군, agent workflow, 검증 명령을 한 화면에서 확인 |
 | Quickstart | [개발자 퀵스타트](engine/developer-quickstart.md) | 새 프로젝트 생성과 agent-first 개발 루프 시작 |
-| Public API | [Public API](engine/public-api.md) | import 가능 API, 지원 수준, 목적별 reference 확인 |
+| Public API | [Public API](engine/public-api.md), [Migration Guide](engine/public-api/migration-guide.md) | import 가능 API, 지원 수준, 목적별 reference와 이전 절차 확인 |
 | Authoring | [Data Scene Authoring](engine/data-scene-authoring.md) | generic scene composition과 behavior recipe 계약 확인 |
 | Examples | [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md) | 공식 예제 Game Spec 필드와 검증 규칙 확인 |
 | Smoke/Budget | [Smoke Check](development/quality/smoke-check.md) | 자동, browser, runtime budget 검증 기준 확인 |
@@ -82,7 +82,7 @@ pnpm validate:pages-artifact
 
 - Top-down Shooter 예제 설정의 필드별 상세 설명은 [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md)에 둔다. 다른 문서는 예시와 링크만 유지한다.
 - 자동/CI 검증 정책은 [Smoke Check](development/quality/smoke-check.md)에 둔다. 브라우저 수동 점검 항목은 `examples/topdown-shooter/SMOKE_CHECKLIST.md`에 둔다.
-- public import 계약은 [Public API](engine/public-api.md)에 둔다. 목적별 세부 reference는 `engine/public-api/*.md`에 나누고, API tier와 import allowlist의 machine-readable 기준은 [Public API surface manifest](engine/public-api-surface.json)에 둔다. 아키텍처 문서는 책임 경계와 데이터 흐름만 설명한다.
+- public import 계약은 [Public API](engine/public-api.md)에 둔다. 목적별 세부 reference와 이전 절차는 `engine/public-api/*.md`에 나누고, API tier와 import allowlist의 machine-readable 기준은 [Public API surface manifest](engine/public-api-surface.json)에 둔다. 아키텍처 문서는 책임 경계와 데이터 흐름만 설명한다.
 - projectile/weapon/prefab/motion/query/reaction/effect event 같은 런타임 확장성 기능의 제품 기준 요약은 [Runtime Extensibility](engine/runtime-extensibility.md)에 둔다. Data Scene 최소 authoring envelope와 generic fixture 기준은 [Data Scene Authoring](engine/data-scene-authoring.md)에 둔다. 세부 import/export 목록은 [Public API](engine/public-api.md)가 기준이다.
 - npm package 역할 분리는 [npm 패키지 구성 전략](development/operations/npm-package-strategy.md)에 둔다. `@ferrum2d/ferrum-web` beta package와 release tag 검증 절차는 [npm 베타 패키징](development/operations/npm-release.md)에 둔다. GitHub Release 본문 구조는 [릴리스 노트 템플릿](development/operations/release-notes-template.md)에 둔다. 다른 문서는 `pnpm package:check`, `pnpm release:check`, `pnpm release:candidate-check`와 링크만 유지한다.
 - 완료 상태와 현재 기준은 [아키텍처](development/architecture/architecture.md), [Smoke Check](development/quality/smoke-check.md), 기능별 기준 문서 중 하나에만 상세하게 기록하고, 다른 문서는 링크로 연결한다.

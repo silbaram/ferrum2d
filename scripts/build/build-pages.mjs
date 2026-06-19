@@ -156,6 +156,7 @@ function compareDocs(a, b) {
     "engine/public-api/starter-scenes.md",
     "engine/public-api/labs.md",
     "engine/public-api/quality.md",
+    "engine/public-api/migration-guide.md",
     "engine/runtime-extensibility.md",
     "engine/data-scene-authoring.md",
     "engine/physics-spec.md",

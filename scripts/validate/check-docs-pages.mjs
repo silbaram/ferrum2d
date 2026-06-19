@@ -18,6 +18,7 @@ const requiredDistPages = [
   "docs/engine/public-api/starter-scenes.html",
   "docs/engine/public-api/labs.html",
   "docs/engine/public-api/quality.html",
+  "docs/engine/public-api/migration-guide.html",
   "docs/engine/data-scene-authoring.html",
   "docs/examples/topdown-shooter/game-spec.html",
   "docs/development/quality/smoke-check.html",

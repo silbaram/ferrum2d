@@ -42,7 +42,7 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 
 ## 구현된 기능
 
-처음 Ferrum2D를 보는 개발자는 [Showcase Hub](docs/engine/showcase-hub.md)에서 demo, 기능군, agent workflow, 검증 명령의 전체 지도를 본 뒤 [개발자 퀵스타트](docs/engine/developer-quickstart.md)를 읽는다. 세부 API 계약과 지원 수준은 [Public API](docs/engine/public-api.md), 물리 범위는 [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md), Shooter authoring 계약은 [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)을 기준으로 한다.
+처음 Ferrum2D를 보는 개발자는 [Showcase Hub](docs/engine/showcase-hub.md)에서 demo, 기능군, agent workflow, 검증 명령의 전체 지도를 본 뒤 [개발자 퀵스타트](docs/engine/developer-quickstart.md)를 읽는다. 세부 API 계약과 지원 수준은 [Public API](docs/engine/public-api.md), 기존 import 이전 절차는 [Public API Migration Guide](docs/engine/public-api/migration-guide.md), 물리 범위는 [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md), Shooter authoring 계약은 [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)을 기준으로 한다.
 
 ### Runtime / Wasm
 
@@ -424,7 +424,7 @@ scripts/                    저장소 보조 스크립트
 ## 상세 문서
 
 - [문서 지도](docs/README.md)
-- Engine: [개발자 퀵스타트](docs/engine/developer-quickstart.md), [사용자 설명서](docs/engine/user-guide.md), [Public API](docs/engine/public-api.md), [Physics Spec](docs/engine/physics-spec.md)
+- Engine: [개발자 퀵스타트](docs/engine/developer-quickstart.md), [사용자 설명서](docs/engine/user-guide.md), [Public API](docs/engine/public-api.md), [Public API Migration Guide](docs/engine/public-api/migration-guide.md), [Physics Spec](docs/engine/physics-spec.md)
 - Examples: [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)
 - Development Architecture: [아키텍처](docs/development/architecture/architecture.md), [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md)
 - Development Quality: [코드 리뷰 기준](docs/development/quality/code-review.md), [Smoke Check](docs/development/quality/smoke-check.md)

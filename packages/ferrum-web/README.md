@@ -48,6 +48,8 @@ runtime.engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });
 
 `environment: "development"`에서는 DebugOverlay가 기본 활성화되고, `environment: "production"` 또는 생략 상태에서는 기본 비활성화된다. `debug: true` 또는 `debug: false`를 명시하면 environment 기본값보다 우선한다.
 
+기존 root aggregate import나 내부 `dist/*`, `pkg/*`, `src/*` import를 쓰는 프로젝트는 [Public API migration guide](https://github.com/silbaram/ferrum2d/blob/main/docs/engine/public-api/migration-guide.md)를 따라 목적별 subpath로 옮긴다.
+
 ## 패키지 산출물
 
 npm package에는 다음 파일만 포함한다.

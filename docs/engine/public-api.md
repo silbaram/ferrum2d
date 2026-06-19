@@ -80,6 +80,7 @@ preview API는 1.0 전 breaking change가 가능하다. 그래도 `public-api-su
 | [Starter Scenes](public-api/starter-scenes.md) | official starter scene, Shooter Game Spec, runtime scene mutation helper |
 | [Labs](public-api/labs.md) | WebGPU, sprite material, particle/VFX, texture atlas, PixelMaskTerrain, HD-2D helper |
 | [Quality](public-api/quality.md) | profiler, diagnostics, replay, screenshot capture, debug gizmo, report helper |
+| [Migration Guide](public-api/migration-guide.md) | root aggregate/internal path import를 목적별 public subpath로 이전하는 절차 |
 | [Runtime Extensibility](runtime-extensibility.md) | projectile/weapon/prefab/reaction/effect event의 제품 기준 설명 |
 | [Data Scene Authoring](data-scene-authoring.md) | generic data scene 최소 authoring envelope |
 | [Physics Spec](physics-spec.md) | physics authoring, solver, query, snapshot/replay 계약 |
