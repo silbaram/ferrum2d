@@ -117,6 +117,10 @@ try {
 
   if (!options.skipPackageCheck) {
     await runRequired(process.execPath, [
+      path.join(repoRoot, "scripts/package/check-authoring-viewer-package.mjs"),
+      "--verify-pack",
+    ], repoRoot);
+    await runRequired(process.execPath, [
       path.join(repoRoot, "scripts/package/check-package-files.mjs"),
       "--require-wasm-pkg",
       "--verify-pack",
