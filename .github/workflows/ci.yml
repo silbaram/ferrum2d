@@ -102,7 +102,7 @@ jobs:
 
       - name: Publish package artifact check
         if: ${{ startsWith(github.ref, 'refs/tags/ferrum-web-v') }}
-        run: pnpm package:publish-check:ferrum-web && pnpm package:check:create-game && pnpm package:check:agents
+        run: pnpm package:publish-check:ferrum-web && pnpm package:check:authoring-viewer && pnpm package:check:create-game && pnpm package:check:agents
 
       - name: Gameplay authoring report
         run: pnpm validate:gameplay-authoring:report

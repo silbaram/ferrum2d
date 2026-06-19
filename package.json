@@ -116,6 +116,7 @@
     "build:pages": "node scripts/build/build-pages.mjs",
     "release:check": "node scripts/package/check-release-readiness.mjs",
     "release:candidate-check": "node scripts/package/check-release-candidate.mjs",
+    "release:local-check": "pnpm release:candidate-check && pnpm package:check && pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke-release-local && pnpm validate:consumer-smoke-report -- --report artifacts/consumer-smoke-release-local/consumer-smoke-report.json --artifact-dir artifacts/consumer-smoke-release-local --expect-status passed",
     "release:publish-check": "node scripts/package/check-release-readiness.mjs --expect-publishable && pnpm package:publish-check:ferrum-web"
   },
   "devDependencies": {
