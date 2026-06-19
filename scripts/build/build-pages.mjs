@@ -25,6 +25,16 @@ const examples = [
     description: "Game Spec driven shooter with atlas animation, tilemap collision, waves, audio, and debug overlay.",
   },
   {
+    id: "placement-viewer",
+    title: "Placement Viewer",
+    description: "Agent-first scene/object authoring surface for placement patches, ObjectDefinition catalog, and handoff evidence.",
+  },
+  {
+    id: "physics-sandbox",
+    title: "Physics Sandbox",
+    description: "Physics Spec catalog with rigid bodies, colliders, contacts, joints, CCD, queries, and debug overlays.",
+  },
+  {
     id: "breakout",
     title: "Breakout",
     description: "Second genre example using the same runtime API and collision events.",
@@ -36,6 +46,11 @@ const examples = [
   },
 ];
 const documentationHighlights = [
+  {
+    href: "./docs/engine/showcase-hub.html",
+    title: "Showcase Hub",
+    description: "Feature map that connects demos, docs, agent workflows, and verification commands.",
+  },
   {
     href: "./docs/engine/developer-quickstart.html",
     title: "Developer Quickstart",
@@ -132,6 +147,7 @@ function collectFiles(directory) {
 function compareDocs(a, b) {
   const priority = [
     "README.md",
+    "engine/showcase-hub.md",
     "engine/developer-quickstart.md",
     "engine/user-guide.md",
     "engine/public-api.md",

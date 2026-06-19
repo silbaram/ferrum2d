@@ -82,6 +82,8 @@ const pagesReadinessSnippets = [
   "dist-pages/",
   "/starter-runtime/",
   "/topdown-shooter/",
+  "/placement-viewer/",
+  "/physics-sandbox/",
   "/breakout/",
   "/platformer/",
 ];

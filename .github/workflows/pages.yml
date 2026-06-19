@@ -88,6 +88,8 @@ jobs:
             "/docs/engine/public-api.html"
             "/starter-runtime/"
             "/topdown-shooter/"
+            "/placement-viewer/"
+            "/physics-sandbox/"
             "/breakout/"
             "/platformer/"
           )

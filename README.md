@@ -2,7 +2,7 @@
 
 Ferrum2D는 Rust core, WebAssembly, TypeScript 플랫폼 레이어, WebGL2 기본 렌더러, 선택 WebGPU 렌더러로 구성한 2D 웹 게임 엔진이다.
 
-현재 package version은 `0.1.0`이지만, 기능 상태는 **MVP 개발 완료, 상용제품 기능 개발** 단계다. `examples/starter-runtime`은 제품용 starter runtime 흐름을 보여주고, `examples/topdown-shooter`, `examples/breakout`, `examples/platformer`, `examples/physics-sandbox`는 같은 runtime/API가 여러 장르와 물리 authoring 흐름에서 동작하는지 검증한다.
+현재 package version은 `0.1.0`이지만, 기능 상태는 **MVP 개발 완료, 상용제품 기능 개발** 단계다. `examples/starter-runtime`은 제품용 starter runtime 흐름을 보여주고, `examples/topdown-shooter`, `examples/breakout`, `examples/platformer`, `examples/physics-sandbox`, `examples/placement-viewer`는 같은 runtime/API가 여러 장르, 물리 authoring, scene/object authoring 흐름에서 동작하는지 검증한다.
 
 Ferrum2D의 제품 목표는 기존 게임 엔진처럼 비주얼 에디터를 중심에 두는 것이 아니라, AI agent가 Game Spec, Physics Spec, 프로젝트 템플릿, 검증 스크립트를 사용해 게임을 생성하고 수정하는 **AI agent-first 2D game engine**을 만드는 것이다.
 
@@ -42,7 +42,7 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 
 ## 구현된 기능
 
-처음 Ferrum2D를 보는 개발자는 [개발자 퀵스타트](docs/engine/developer-quickstart.md)를 먼저 읽는다. 세부 API 계약과 지원 수준은 [Public API](docs/engine/public-api.md), 물리 범위는 [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md), Shooter authoring 계약은 [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)을 기준으로 한다.
+처음 Ferrum2D를 보는 개발자는 [Showcase Hub](docs/engine/showcase-hub.md)에서 demo, 기능군, agent workflow, 검증 명령의 전체 지도를 본 뒤 [개발자 퀵스타트](docs/engine/developer-quickstart.md)를 읽는다. 세부 API 계약과 지원 수준은 [Public API](docs/engine/public-api.md), 물리 범위는 [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md), Shooter authoring 계약은 [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)을 기준으로 한다.
 
 ### Runtime / Wasm
 
@@ -384,6 +384,8 @@ pnpm build
 pnpm build:pages
 ```
 
+Pages home과 [Showcase Hub](docs/engine/showcase-hub.md)는 runtime demo, authoring workflow, physics, create-game/agent workflow, package/release readiness를 한 번에 찾는 진입점이다.
+
 상용제품 기능 개발 기본 검증:
 
 ```bash
@@ -453,7 +455,7 @@ scripts/                    저장소 보조 스크립트
 - `pnpm smoke:create-game-template-reports`
 - `pnpm smoke:topdown-template-replay-report`
 
-`ferrum-web-v*` tag push에서는 일반 `pnpm package:check` 대신 publish 후보용 `pnpm package:publish-check:ferrum-web`을 실행한다. `ferrum-web-v*` tag push 또는 수동 `consumer_smoke` opt-in에서는 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`와 `pnpm validate:consumer-smoke-report`도 실행한다. 로컬 릴리스 후보 검증에서는 CI 명령에 더해 `pnpm validate:game-spec`와 브라우저 수동 smoke check를 함께 실행하는 것을 권장한다. 실제 npm publish는 `private: true` 해제와 npm 권한 확인이 승인된 뒤 별도로 수행한다.
+`pnpm build:pages`는 `/starter-runtime/`, `/topdown-shooter/`, `/placement-viewer/`, `/physics-sandbox/`, `/breakout/`, `/platformer/` demo route와 `docs/**/*.md` 기반 문서 HTML을 만든다. `ferrum-web-v*` tag push에서는 일반 `pnpm package:check` 대신 publish 후보용 `pnpm package:publish-check:ferrum-web`을 실행한다. `ferrum-web-v*` tag push 또는 수동 `consumer_smoke` opt-in에서는 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`와 `pnpm validate:consumer-smoke-report`도 실행한다. 로컬 릴리스 후보 검증에서는 CI 명령에 더해 `pnpm validate:game-spec`와 브라우저 수동 smoke check를 함께 실행하는 것을 권장한다. 실제 npm publish는 `private: true` 해제와 npm 권한 확인이 승인된 뒤 별도로 수행한다.
 
 ## License
 

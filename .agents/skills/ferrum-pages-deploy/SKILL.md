@@ -24,6 +24,8 @@ GitHub Pages deployment publishes one `dist-pages/` artifact containing:
 - `docs/**/*.md` rendered to `dist-pages/docs/**/*.html`
 - `examples/starter-runtime/dist`
 - `examples/topdown-shooter/dist`
+- `examples/placement-viewer/dist`
+- `examples/physics-sandbox/dist`
 - `examples/breakout/dist`
 - `examples/platformer/dist`
 
@@ -53,6 +55,8 @@ For renderer, input, asset, audio, or example behavior changes, run the relevant
 ```bash
 pnpm smoke:browser
 pnpm smoke:topdown
+pnpm smoke:placement-viewer
+pnpm smoke:physics-sandbox
 pnpm smoke:breakout
 pnpm smoke:platformer
 ```
@@ -70,6 +74,8 @@ After `pnpm build:pages`, verify at minimum:
 - `dist-pages/docs/examples/topdown-shooter/game-spec.html`
 - `dist-pages/starter-runtime/index.html`
 - `dist-pages/topdown-shooter/index.html`
+- `dist-pages/placement-viewer/index.html`
+- `dist-pages/physics-sandbox/index.html`
 - `dist-pages/breakout/index.html`
 - `dist-pages/platformer/index.html`
 

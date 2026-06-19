@@ -190,6 +190,8 @@ Pages 기준 첫 진입은 개별 게임 하나가 아니라 demo gallery가 되
 
 다음 구현은 게임 내용을 수정하는 것이 아니라 P0 Showcase Hub부터 진행한다.
 
+2026-06-19 기준 P0 시작점으로 [Showcase Hub](../engine/showcase-hub.md)를 추가했다. 이 문서는 기존 demo, 기준 문서, agent workflow, 검증 명령을 한 곳에 묶는 제품 기능 지도이며, Pages home의 핵심 문서 카드와 docs navigation 상단에 노출한다. 이어서 Pages public demo route를 `starter-runtime`, `topdown-shooter`, `placement-viewer`, `physics-sandbox`, `breakout`, `platformer` 6개로 맞춰 P0/P1 대표 demo를 한 진입점에서 확인할 수 있게 했다.
+
 1. Pages/docs에 demo gallery 구조를 만든다.
 2. 기존 examples를 기능군별로 분류한다.
 3. 각 demo README에 "이 데모가 대표하는 엔진 기능"과 "검증 명령"을 정리한다.

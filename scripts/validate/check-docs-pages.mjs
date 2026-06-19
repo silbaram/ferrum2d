@@ -9,6 +9,7 @@ const shouldCheckDistPages = process.argv.includes("--dist-pages");
 const requiredDistPages = [
   "index.html",
   "docs/index.html",
+  "docs/engine/showcase-hub.html",
   "docs/engine/developer-quickstart.html",
   "docs/engine/user-guide.html",
   "docs/engine/public-api.html",
@@ -24,6 +25,8 @@ const requiredDistPages = [
   "docs/development/operations/demo-deploy.html",
   "starter-runtime/index.html",
   "topdown-shooter/index.html",
+  "placement-viewer/index.html",
+  "physics-sandbox/index.html",
   "breakout/index.html",
   "platformer/index.html",
 ];

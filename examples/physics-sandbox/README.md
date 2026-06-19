@@ -60,6 +60,10 @@ pnpm smoke:physics-demo-suite
 
 `pnpm smoke:physics-sandbox`는 production build를 열고 `window.ferrumPhysicsSandboxSmokeFrame`의 `demoId`, `bodyCount`, `visibleBodyCount`, `physicsDebugLineCount`, `frameCount`를 확인한다. `pnpm smoke:physics-demo-suite`는 catalog의 핵심 scenario id를 순회한다.
 
+## Pages 노출
+
+`pnpm build:pages`는 production build를 `dist-pages/physics-sandbox/`에 복사하고 Pages 홈의 Demos 목록에 노출한다.
+
 ## 구현 경계
 
 - Rust core는 simulation, contact, query, debug line 생성을 담당한다.

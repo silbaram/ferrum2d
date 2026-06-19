@@ -8,7 +8,7 @@ Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI a
 
 | 디렉터리 | 역할 | 주요 문서 |
 | --- | --- | --- |
-| `engine/` | 엔진 사용자와 AI agent가 읽는 게임엔진 설명, 사용법, public contract | [개발자 퀵스타트](engine/developer-quickstart.md), [사용자 설명서](engine/user-guide.md), [Public API](engine/public-api.md), [Runtime Extensibility](engine/runtime-extensibility.md), [Data Scene Authoring](engine/data-scene-authoring.md), [Physics Spec](engine/physics-spec.md) |
+| `engine/` | 엔진 사용자와 AI agent가 읽는 게임엔진 설명, 사용법, public contract | [Showcase Hub](engine/showcase-hub.md), [개발자 퀵스타트](engine/developer-quickstart.md), [사용자 설명서](engine/user-guide.md), [Public API](engine/public-api.md), [Runtime Extensibility](engine/runtime-extensibility.md), [Data Scene Authoring](engine/data-scene-authoring.md), [Physics Spec](engine/physics-spec.md) |
 | `examples/` | 공식 예제별 authoring contract와 예제 전용 설명 | [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md) |
 | `development/` | 엔진 개발, agent authoring 품질 검증, 배포 운영을 위한 내부 기준 | [아키텍처](development/architecture/architecture.md), [2D 물리엔진 기능 맵](development/architecture/physics-engine.md), [Smoke Check](development/quality/smoke-check.md), [npm 베타 패키징](development/operations/npm-release.md) |
 | `planning/` | 신규 기능 후보와 승인 필요 기능을 관리하는 planning 영역 | [Planning 문서](planning/README.md) |
@@ -19,6 +19,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 
 | 진입점 | 기준 문서 | 목적 |
 | --- | --- | --- |
+| Showcase | [Showcase Hub](engine/showcase-hub.md) | demo, 기능군, agent workflow, 검증 명령을 한 화면에서 확인 |
 | Quickstart | [개발자 퀵스타트](engine/developer-quickstart.md) | 새 프로젝트 생성과 agent-first 개발 루프 시작 |
 | Public API | [Public API](engine/public-api.md) | import 가능 API, 지원 수준, 목적별 reference 확인 |
 | Authoring | [Data Scene Authoring](engine/data-scene-authoring.md) | generic scene composition과 behavior recipe 계약 확인 |
@@ -36,7 +37,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 
 ## 읽는 순서
 
-1. 엔진을 처음 이해하고 새 프로젝트를 시작하는 경우: [개발자 퀵스타트](engine/developer-quickstart.md) -> [사용자 설명서](engine/user-guide.md) -> [Public API](engine/public-api.md)
+1. 엔진을 처음 이해하고 새 프로젝트를 시작하는 경우: [Showcase Hub](engine/showcase-hub.md) -> [개발자 퀵스타트](engine/developer-quickstart.md) -> [사용자 설명서](engine/user-guide.md) -> [Public API](engine/public-api.md)
 2. Top-down Shooter 예제 설정을 바꾸는 경우: [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md), 수동 QA는 `examples/topdown-shooter/SMOKE_CHECKLIST.md`
 3. projectile/weapon/prefab/motion/reaction/effect 같은 범용 runtime 확장 기능을 확인하는 경우: [Runtime Extensibility](engine/runtime-extensibility.md) -> [Data Scene Authoring](engine/data-scene-authoring.md) -> [Public API](engine/public-api.md)
 4. 엔진 구조나 경계를 확인하는 경우: [아키텍처](development/architecture/architecture.md) -> [2D 물리엔진 기능 맵](development/architecture/physics-engine.md)
@@ -58,7 +59,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 | 실제 Top-down Shooter 설정 | `examples/topdown-shooter/public/game.json` |
 | Rust/Wasm ABI | `crates/ferrum-core/src/render_command.rs`, `crates/ferrum-core/src/audio_event.rs`, `packages/ferrum-web/src/wasmBridge.ts` |
 | npm package 역할 분리 | `packages/ferrum-web/package.json`, `packages/create-game/package.json`, `packages/agents/package.json`, `docs/development/operations/npm-package-strategy.md` |
-| package/release artifact 검증 | `scripts/package/check-package-files.mjs`, `scripts/package/check-create-game-package.mjs`, `scripts/package/check-agents-package.mjs`, `scripts/package/check-release-readiness.mjs`, `scripts/package/check-release-candidate.mjs`, `packages/*/package.json`, `CHANGELOG.md`, `.github/release.yml` |
+| package/release artifact 검증 | `scripts/package/check-package-files.mjs`, `scripts/package/check-authoring-viewer-package.mjs`, `scripts/package/check-create-game-package.mjs`, `scripts/package/check-agents-package.mjs`, `scripts/package/check-release-readiness.mjs`, `scripts/package/check-release-candidate.mjs`, `packages/*/package.json`, `CHANGELOG.md`, `.github/release.yml` |
 | 검증/배포/문서 사이트 스크립트 | 루트 `package.json`, `scripts/build/build-pages.mjs`, `scripts/validate/**`, `tests/smoke/**`, `.github/workflows/ci.yml`, `.github/workflows/pages.yml` |
 | 문서 링크와 Pages 산출물 검증 | `scripts/validate/check-docs-pages.mjs`, `pnpm validate:docs-links`, `pnpm validate:pages-artifact` |
 | runtime budget 제품 기준 | `docs/development/quality/smoke-check.md`, `tests/smoke/runtime-budget-profiles.mjs`, `tests/smoke/browser-render-smoke.mjs`, `scripts/validate/check-runtime-budget-productization.mjs` |
@@ -75,7 +76,7 @@ pnpm build:pages
 pnpm validate:pages-artifact
 ```
 
-`pnpm validate:docs-links`는 `docs/**/*.md`의 내부 Markdown 링크와 heading anchor를 검사한다. `pnpm validate:pages-artifact`는 `dist-pages/` 생성 후 Pages 홈, docs index, quickstart, public API, authoring, examples, smoke, release, demo route HTML과 generated HTML의 로컬 링크를 검사한다. `dist-pages/`는 generated artifact이므로 git에 포함하지 않는다.
+`pnpm validate:docs-links`는 `docs/**/*.md`의 내부 Markdown 링크와 heading anchor를 검사한다. `pnpm validate:pages-artifact`는 `dist-pages/` 생성 후 Pages 홈, docs index, Showcase Hub, quickstart, public API, authoring, examples, smoke, release, demo route HTML과 generated HTML의 로컬 링크를 검사한다. `dist-pages/`는 generated artifact이므로 git에 포함하지 않는다.
 
 ## 중복 방지 규칙
 
