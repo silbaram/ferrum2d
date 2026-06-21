@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Dialog</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-0); display: grid; place-items: center; }
+  .dialog {
+    width: 100%; max-width: 440px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    box-shadow: 0 16px 40px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.04);
+    overflow: hidden;
+    font-family: var(--ff-ui);
+  }
+  .dialog .head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 16px 10px;
+  }
+  .dialog .head .ico {
+    width: 28px; height: 28px;
+    background: rgba(251,191,36,.15);
+    border-radius: 4px;
+    display: grid; place-items: center;
+    color: var(--yellow);
+  }
+  .dialog .head h3 { font-size: 14px; font-weight: 600; color: var(--fg-1); }
+  .dialog .body {
+    padding: 0 16px 16px;
+    font-size: 13px; color: var(--fg-2); line-height: 1.55;
+  }
+  .dialog .body code { background: var(--bg-3); color: var(--fg-1); border: 1px solid var(--border); padding: 1px 5px; border-radius: 2px; font-family: var(--ff-mono); font-size: 11px; }
+  .dialog .foot {
+    display: flex; justify-content: flex-end; gap: 8px;
+    padding: 12px 14px;
+    background: var(--bg-1);
+    border-top: 1px solid var(--border);
+  }
+  .dialog .foot button {
+    height: 28px; padding: 0 14px;
+    font-family: var(--ff-ui); font-size: 13px; font-weight: 500;
+    border-radius: 2px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .dialog .foot .ghost { background: transparent; color: var(--fg-2); border-color: var(--border-strong); }
+  .dialog .foot .danger { background: var(--red); color: #1a0000; border-color: #d4554f; }
+  .dialog .foot .primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent-press); }
+</style></head>
+<body>
+  <div class="dialog">
+    <div class="head">
+      <div class="ico">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+      </div>
+      <h3>Unsaved changes</h3>
+    </div>
+    <div class="body">
+      Unsaved changes in <code>level_03.scene</code>. Save before closing?
+    </div>
+    <div class="foot">
+      <button class="ghost">Cancel</button>
+      <button class="danger">Discard</button>
+      <button class="primary">Save</button>
+    </div>
+  </div>
+</body></html>

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Breadcrumb &amp; Path Bar</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: flex; flex-direction: column; gap: 14px; }
+  .lbl { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .08em; }
+
+  .crumb {
+    display: inline-flex; align-items: center; flex-wrap: wrap;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    height: 26px; padding: 0 6px;
+    font-family: var(--ff-mono); font-size: 11px;
+  }
+  .crumb .seg {
+    display: inline-flex; align-items: center;
+    height: 22px; padding: 0 6px;
+    color: var(--fg-3);
+    border-radius: 2px;
+    cursor: pointer;
+    gap: 5px;
+  }
+  .crumb .seg:hover { background: var(--bg-3); color: var(--fg-1); }
+  .crumb .seg.current { color: var(--fg-1); }
+  .crumb .sep { color: var(--fg-4); margin: 0 2px; font-size: 10px; }
+  .crumb .ico { display: inline-grid; place-items: center; }
+  .crumb .ico svg { width: 12px; height: 12px; }
+
+  .scene-crumb {
+    display: inline-flex; align-items: center; flex-wrap: wrap;
+    background: var(--bg-0);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    height: 26px; padding: 0 6px;
+    font-family: var(--ff-ui); font-size: 12px;
+  }
+  .scene-crumb .seg { display: inline-flex; align-items: center; gap: 6px; padding: 0 6px; height: 22px; color: var(--fg-2); cursor: pointer; border-radius: 2px; }
+  .scene-crumb .seg:hover { background: var(--bg-3); color: var(--fg-1); }
+  .scene-crumb .seg.current { color: var(--accent); }
+  .scene-crumb img { width: 12px; height: 12px; image-rendering: pixelated; }
+  .scene-crumb .sep { color: var(--fg-4); font-size: 10px; }
+</style></head>
+<body>
+  <div>
+    <div class="lbl" style="margin-bottom:8px;">File path</div>
+    <div class="crumb">
+      <span class="seg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>cosmic-jam</span>
+      <span class="sep">›</span>
+      <span class="seg">scripts</span>
+      <span class="sep">›</span>
+      <span class="seg">enemies</span>
+      <span class="sep">›</span>
+      <span class="seg current">slime.gd</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="lbl" style="margin-bottom:8px;">Scene tree path</div>
+    <div class="scene-crumb">
+      <span class="seg"><img src="../assets/node-icons/node2d.svg" style="filter:invert(70%)"/>World</span>
+      <span class="sep">›</span>
+      <span class="seg"><img src="../assets/node-icons/sprite.svg" style="filter:invert(75%) sepia(50%) saturate(700%) hue-rotate(355deg)"/>Player</span>
+      <span class="sep">›</span>
+      <span class="seg current"><img src="../assets/node-icons/collider.svg" style="filter:invert(60%) sepia(40%) saturate(500%) hue-rotate(85deg)"/>Body</span>
+    </div>
+  </div>
+</body></html>

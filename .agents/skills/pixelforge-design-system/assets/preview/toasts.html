@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Toasts &amp; Diagnostics</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 20px; background: var(--bg-0); display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .toast {
+    display: grid; grid-template-columns: 16px 1fr auto; gap: 10px;
+    align-items: center;
+    background: var(--bg-2);
+    border: 1px solid var(--border-strong);
+    border-left: 2px solid var(--accent);
+    border-radius: 3px;
+    padding: 8px 12px;
+    box-shadow: 0 6px 16px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.04);
+    font-family: var(--ff-ui); font-size: 13px;
+    color: var(--fg-1);
+  }
+  .toast.ok    { border-left-color: #6EE7B7; }
+  .toast.warn  { border-left-color: #FBBF24; }
+  .toast.err   { border-left-color: #FF6B6B; }
+  .toast .meta { font-family: var(--ff-mono); font-size: 11px; color: var(--fg-3); }
+  .toast .ico  { width: 16px; height: 16px; }
+  .toast .x    { color: var(--fg-3); font-size: 14px; cursor: pointer; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; }
+</style></head>
+<body>
+  <div class="toast ok">
+    <span class="dot" style="background:#6EE7B7"></span>
+    <span>Build finished in 2.4s · 0 errors</span>
+    <span class="x">×</span>
+  </div>
+  <div class="toast warn">
+    <span class="dot" style="background:#FBBF24"></span>
+    <span>Asset <code style="background:transparent;border:0;color:var(--fg-2);padding:0;font-size:12px;">hero.png</code> is not pixel-aligned.</span>
+    <span class="meta">2s</span>
+  </div>
+  <div class="toast err">
+    <span class="dot" style="background:#FF6B6B"></span>
+    <span>Build failed. 3 errors in <code style="background:transparent;border:0;color:var(--fg-1);padding:0;font-size:12px;">player.gd</code>.</span>
+    <span class="x">×</span>
+  </div>
+</body></html>

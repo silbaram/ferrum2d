@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Logo</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 24px; background: var(--bg-1); display: flex; align-items: center; gap: 32px; }
+  .specimens { display: flex; align-items: center; gap: 28px; }
+  .swatch { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .swatch .lbl { font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.08em; }
+  .light { background: #ffffff; padding: 12px; border-radius: 4px; border: 1px solid var(--border); }
+  .dark  { background: var(--bg-0); padding: 12px; border-radius: 4px; border: 1px solid var(--border); }
+  .mono-on-light { background: #ffffff; color: #0B1016; padding: 12px; border-radius: 4px; border: 1px solid var(--border); display: grid; place-items: center; }
+  .mono-on-dark  { background: var(--bg-0); color: #DCE5EE; padding: 12px; border-radius: 4px; border: 1px solid var(--border); display: grid; place-items: center; }
+  .mono-on-light svg, .mono-on-dark svg { display: block; }
+  img { display: block; }
+  .wordmark { background: var(--bg-0); padding: 14px 18px; border-radius: 4px; border: 1px solid var(--border); }
+</style></head>
+<body>
+  <div class="specimens">
+    <div class="swatch">
+      <div class="dark"><img src="../assets/logo.svg" width="56" height="56"/></div>
+      <span class="lbl">Color · Dark</span>
+    </div>
+    <div class="swatch">
+      <div class="light"><img src="../assets/logo.svg" width="56" height="56"/></div>
+      <span class="lbl">Color · Light</span>
+    </div>
+    <div class="swatch">
+      <div class="mono-on-dark" style="width:80px;height:80px;"><img src="../assets/logo-mono.svg" width="56" height="56" style="filter:invert(0);"/></div>
+      <span class="lbl">Mono · Dark</span>
+    </div>
+    <div class="swatch">
+      <div class="wordmark"><img src="../assets/wordmark.svg" height="40"/></div>
+      <span class="lbl">Wordmark</span>
+    </div>
+  </div>
+</body></html>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Neutral Spine</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 20px; background: var(--bg-1); }
+  .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .sw { aspect-ratio: 1.2 / 1; border: 1px solid var(--border); border-radius: 3px; display: flex; flex-direction: column; justify-content: space-between; padding: 8px; font-size: 10px; }
+  .sw .k { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-2); }
+  .sw .v { font-family: var(--ff-mono); font-size: 10px; }
+  .row-label { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 6px; }
+</style></head>
+<body>
+  <p class="row-label">Backgrounds</p>
+  <div class="grid">
+    <div class="sw" style="background:#080B0F;color:#DCE5EE"><span class="k">--bg-0</span><span class="v">#080B0F</span></div>
+    <div class="sw" style="background:#0B1016;color:#DCE5EE"><span class="k">--bg-1</span><span class="v">#0B1016</span></div>
+    <div class="sw" style="background:#111821;color:#DCE5EE"><span class="k">--bg-2</span><span class="v">#111821</span></div>
+    <div class="sw" style="background:#172130;color:#DCE5EE"><span class="k">--bg-3</span><span class="v">#172130</span></div>
+    <div class="sw" style="background:#202B3A;color:#DCE5EE"><span class="k">--bg-4</span><span class="v">#202B3A</span></div>
+  </div>
+  <p class="row-label" style="margin-top:14px;">Foregrounds</p>
+  <div class="grid">
+    <div class="sw" style="background:#F4F7FA;color:#0B1016"><span class="k">--fg-0</span><span class="v">#F4F7FA</span></div>
+    <div class="sw" style="background:#DCE5EE;color:#0B1016"><span class="k">--fg-1</span><span class="v">#DCE5EE</span></div>
+    <div class="sw" style="background:#AEB9C6;color:#0B1016"><span class="k">--fg-2</span><span class="v">#AEB9C6</span></div>
+    <div class="sw" style="background:#788596;color:#0B1016"><span class="k">--fg-3</span><span class="v">#788596</span></div>
+    <div class="sw" style="background:#525D6C;color:#DCE5EE"><span class="k">--fg-4</span><span class="v">#525D6C</span></div>
+  </div>
+</body></html>

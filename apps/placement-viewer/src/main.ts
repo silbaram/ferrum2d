@@ -14,6 +14,8 @@ import {
   appendAuthoringViewerSelectControl,
   appendAuthoringViewerTextControl,
   appendAuthoringViewerTextareaControl,
+  createAuthoringViewerAppChrome,
+  createAuthoringViewerDisclosureSection,
   formatAuthoringViewerNumber as formatNumber,
   formatAuthoringViewerBehaviorProfiles,
   readAuthoringViewerNumberInput as numberInputValue,
@@ -69,6 +71,9 @@ import "./styles.css";
 
 const SCENE_DOCUMENT_URL = "./placement.scene-authoring.json";
 const SCENE_DOCUMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
+const DESKTOP_LOAD_SCENE_DOCUMENT_COMMAND = "load_placement_scene_document";
+const DESKTOP_SAVE_SCENE_DOCUMENT_COMMAND = "save_placement_scene_document";
+const DESKTOP_SCENE_DOCUMENT_QUERY_PARAMS = ["sceneDocumentPath", "documentPath"] as const;
 const DEFAULT_SNAP_GRID_SIZE = 16;
 const KEYBOARD_NUDGE_STEP = 1;
 const KEYBOARD_FAST_MULTIPLIER = 10;
@@ -130,8 +135,10 @@ const PLACEMENT_ASSET_PROVIDER = createScenePlacementAssetProviderFromProjectAss
 });
 
 interface PlacementViewerWindow extends Window {
+  __TAURI__?: PlacementViewerDesktopBridge;
   __ferrumPlacementViewer?: ScenePlacementViewer;
   ferrumPlacementViewerState?: ScenePlacementViewerState;
+  ferrumPlacementViewerDesktop?: PlacementViewerDesktopState;
   ferrumPlacementViewerAgentHandoff?: PlacementViewerAgentHandoff;
   ferrumPlacementViewerSelect?: (instanceId?: string) => ScenePlacementViewerState;
   ferrumPlacementViewerUpdateTransform?: (
@@ -160,12 +167,46 @@ interface PlacementViewerWindow extends Window {
   ferrumPlacementViewerExportPatch?: () => ScenePlacementPatch | undefined;
   ferrumPlacementViewerMigrationPreview?: ScenePlacementBindingMigrationPreview;
   ferrumPlacementViewerSaveDraft?: () => Promise<ScenePlacementPatchSaveResult | undefined>;
+  ferrumPlacementViewerOpenSceneDocument?: (sceneDocumentPath?: string) => void;
+  ferrumPlacementViewerBrowseSceneDocument?: () => Promise<string | undefined>;
   ferrumPlacementViewerSaveEnabled?: boolean;
   ferrumPlacementViewerSavedDocument?: SceneAuthoringDocumentSpec;
   ferrumPlacementViewerLastSave?: ScenePlacementPatchSaveResult;
+  ferrumPlacementViewerLastSaveError?: string;
   ferrumPlacementViewerNudgeSelected?: (delta: Partial<ScenePlacementPoint>) => ScenePlacementViewerState | undefined;
   ferrumPlacementViewerSetSnap?: (options: Partial<PlacementSnapOptions>) => PlacementInteractionSnapshot;
   ferrumPlacementViewerInteraction?: PlacementInteractionSnapshot;
+}
+
+interface PlacementViewerDesktopBridge {
+  core?: {
+    invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
+  };
+  dialog?: {
+    open(options: PlacementDesktopOpenDialogOptions): Promise<unknown>;
+  };
+}
+
+interface PlacementViewerDesktopState {
+  enabled: boolean;
+  requestedSceneDocumentPath?: string;
+  sceneDocumentPath?: string;
+  lastSavePath?: string;
+}
+
+interface PlacementDesktopSceneDocumentResponse {
+  path: string;
+  document: SceneAuthoringDocumentSpec;
+}
+
+interface PlacementDesktopOpenDialogOptions {
+  multiple: boolean;
+  directory: boolean;
+  title?: string;
+  filters?: readonly {
+    name: string;
+    extensions: readonly string[];
+  }[];
 }
 
 interface PlacementInstanceBounds {
@@ -195,6 +236,17 @@ interface PlacementInspector {
   setState(state: ScenePlacementViewerState, migrationPreview?: ScenePlacementBindingMigrationPreview): void;
 }
 
+interface PlacementAppChrome {
+  setState(state: ScenePlacementViewerState, migrationPreview?: ScenePlacementBindingMigrationPreview): void;
+  setSaveResult(result: ScenePlacementPatchSaveResult): void;
+  setSaveError(error: unknown): void;
+}
+
+interface PlacementHandoffControls {
+  element: HTMLElement;
+  setState(state: ScenePlacementViewerState, migrationPreview?: ScenePlacementBindingMigrationPreview): void;
+}
+
 interface PlacementOverlay {
   element: HTMLElement;
   setState(state: ScenePlacementViewerState, interaction: PlacementInteractionState): void;
@@ -207,6 +259,7 @@ interface PlacementSaveControls {
 interface PlacementInspectorOptions {
   saveEnabled: boolean;
   assetProvider: ScenePlacementAssetProvider;
+  sourceDocument: string;
 }
 
 type PlacementAddAction =
@@ -242,13 +295,15 @@ async function bootstrap(): Promise<void> {
   let runtime: FerrumRuntime | undefined;
   try {
     const sceneDocumentUrl = placementSceneDocumentUrl();
-    const loadedDocument = await loadSceneAuthoringDocument(sceneDocumentUrl);
+    const requestedDesktopSceneDocumentPath = placementDesktopSceneDocumentPath();
+    const loadedDocument = await loadSceneAuthoringDocument(sceneDocumentUrl, requestedDesktopSceneDocumentPath);
     const document = placementMassAuthoringEnabled()
       ? createPlacementMassAuthoringDocument(loadedDocument)
       : loadedDocument;
+    const desktopSceneDocumentPath = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop?.sceneDocumentPath;
     const sourceDocument = placementMassAuthoringEnabled()
-      ? `${sceneDocumentUrl}?massAuthoring=true`
-      : sceneDocumentUrl;
+      ? `${desktopSceneDocumentPath ?? requestedDesktopSceneDocumentPath ?? sceneDocumentUrl}?massAuthoring=true`
+      : desktopSceneDocumentPath ?? requestedDesktopSceneDocumentPath ?? sceneDocumentUrl;
     const resolved = resolveSceneAuthoringDocument(document, {
       path: "placementViewer.document",
       validateBindings: true,
@@ -262,6 +317,11 @@ async function bootstrap(): Promise<void> {
     const inspector = createPlacementInspector(resolved, {
       saveEnabled,
       assetProvider: PLACEMENT_ASSET_PROVIDER,
+      sourceDocument,
+    });
+    const appChrome = createPlacementAppChrome(shell, {
+      saveEnabled,
+      sourceDocument,
     });
     const interaction = createPlacementInteractionState();
     let savedDocument = document;
@@ -323,6 +383,7 @@ async function bootstrap(): Promise<void> {
       const migrationPreview = placementMigrationPreview(savedDocument, state.draftPatch);
       overlay.setState(state, interaction);
       inspector.setState(state, migrationPreview);
+      appChrome.setState(state, migrationPreview);
       publishPlacementState(state);
       publishPlacementMigrationPreview(migrationPreview);
       publishPlacementInteraction(interaction);
@@ -342,17 +403,24 @@ async function bootstrap(): Promise<void> {
           publishPlacementAgentHandoff(savedDocument, viewer.state(), migrationPreview, PLACEMENT_ASSET_PROVIDER, sourceDocument);
           return undefined;
         }
-        const result = await saveScenePlacementPatch(savedDocument, patch, {
-          allowSave: saveEnabled,
-          adapter: saveAdapter,
-          allowedAdapterIds: ["placement-viewer-memory"],
-          path: "placementViewer.save",
-        });
-        publishPlacementSaveResult(result);
-        if (result.saved) {
-          window.setTimeout(() => window.location.reload(), 0);
+        try {
+          const result = await saveScenePlacementPatch(savedDocument, patch, {
+            allowSave: saveEnabled,
+            adapter: saveAdapter,
+            allowedAdapterIds: ["placement-viewer-memory"],
+            path: "placementViewer.save",
+          });
+          publishPlacementSaveResult(result);
+          appChrome.setSaveResult(result);
+          if (result.saved) {
+            window.setTimeout(() => window.location.reload(), 0);
+          }
+          return result;
+        } catch (error) {
+          publishPlacementSaveError(error);
+          appChrome.setSaveError(error);
+          return undefined;
         }
-        return result;
       },
     });
     installPlacementSelection(inspector.element, viewer, setState);
@@ -390,6 +458,17 @@ function placementSceneDocumentUrl(): string {
 
 function placementMassAuthoringEnabled(): boolean {
   return new URLSearchParams(window.location.search).get("massAuthoring") === "true";
+}
+
+function placementDesktopSceneDocumentPath(): string | undefined {
+  const params = new URLSearchParams(window.location.search);
+  for (const name of DESKTOP_SCENE_DOCUMENT_QUERY_PARAMS) {
+    const value = params.get(name)?.trim();
+    if (value !== undefined && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 function createPlacementMassAuthoringDocument(
@@ -697,31 +776,49 @@ function createPlacementInspector(
   const element = document.createElement("section");
   const title = document.createElement("h2");
   const list = document.createElement("div");
-  const details = document.createElement("dl");
+  const documentDetails = createPlacementDetailsList();
+  const identityDetails = createPlacementDetailsList();
+  const transformDetails = createPlacementDetailsList();
+  const visualDetails = createPlacementDetailsList();
+  const colliderDetails = createPlacementDetailsList();
+  const behaviorDetails = createPlacementDetailsList();
+  const handoffDetails = createPlacementDetailsList();
   const controls = createPlacementTransformControls({ saveEnabled: options.saveEnabled });
   const editControls = createPlacementEditControls(resolved, options.assetProvider);
   const behaviorControls = createPlacementBehaviorBindingControls(resolved);
-  const componentControls = createPlacementComponentControls();
+  const componentControls = createPlacementComponentControls({
+    visualDetails,
+    colliderDetails,
+  });
+  const documentControls = createPlacementDocumentControls(options.sourceDocument);
   const migrationReport = createPlacementMigrationReport();
+  const handoffControls = createPlacementHandoffControls({
+    saveEnabled: options.saveEnabled,
+    assetProvider: options.assetProvider,
+  });
   const rows = {
-    selected: appendRow(details, "selected"),
-    hovered: appendRow(details, "hovered"),
-    identity: appendRow(details, "identity"),
-    visual: appendRow(details, "visual"),
-    collider: appendRow(details, "collider"),
-    behavior: appendRow(details, "behavior"),
-    role: appendRow(details, "role"),
-    entity: appendRow(details, "entity"),
-    prefab: appendRow(details, "prefab"),
-    transform: appendRow(details, "transform"),
-    pointer: appendRow(details, "pointer"),
-    draft: appendRow(details, "draft"),
-    migration: appendRow(details, "migration"),
+    source: appendRow(documentDetails, "source"),
+    saveMode: appendRow(documentDetails, "save"),
+    selected: appendRow(identityDetails, "selected"),
+    hovered: appendRow(identityDetails, "hovered"),
+    identity: appendRow(identityDetails, "identity"),
+    role: appendRow(identityDetails, "role"),
+    entity: appendRow(identityDetails, "entity"),
+    prefab: appendRow(identityDetails, "prefab"),
+    transform: appendRow(transformDetails, "transform"),
+    pointer: appendRow(transformDetails, "pointer"),
+    draft: appendRow(transformDetails, "draft"),
+    visual: appendRow(visualDetails, "visual"),
+    collider: appendRow(colliderDetails, "collider"),
+    behavior: appendRow(behaviorDetails, "behavior"),
+    migration: appendRow(handoffDetails, "migration"),
+    patch: appendRow(handoffDetails, "patch"),
+    blockers: appendRow(handoffDetails, "blockers"),
+    assets: appendRow(handoffDetails, "assets"),
   };
 
   element.className = "placement-panel";
   list.className = "placement-list";
-  details.className = "placement-details";
   title.textContent = "Inspector";
 
   for (const instance of resolved.bindingPlan?.instances ?? []) {
@@ -736,12 +833,26 @@ function createPlacementInspector(
   detailPanel.className = "placement-inspector";
   detailPanel.append(
     title,
-    details,
-    migrationReport.element,
-    controls.element,
-    editControls.element,
-    behaviorControls.element,
+    createPlacementInspectorSection("Document", createPlacementInspectorSectionBody(
+      documentDetails,
+      documentControls.element,
+    )),
+    createPlacementInspectorSection("Identity", identityDetails),
+    createPlacementInspectorSection("Transform", createPlacementInspectorSectionBody(
+      transformDetails,
+      controls.element,
+    )),
+    createPlacementInspectorSection("Object", editControls.element),
     componentControls.element,
+    createPlacementInspectorSection("Behavior Binding", createPlacementInspectorSectionBody(
+      behaviorDetails,
+      behaviorControls.element,
+    )),
+    createPlacementInspectorSection("Handoff", createPlacementInspectorSectionBody(
+      handoffDetails,
+      migrationReport.element,
+      handoffControls.element,
+    )),
   );
   element.append(list, detailPanel);
 
@@ -753,6 +864,9 @@ function createPlacementInspector(
         button.dataset.selected = String(button.dataset.instanceId === state.selectedInstanceId);
       }
       const selected = state.selected;
+      rows.source.textContent = placementDocumentSourceLabel(options.sourceDocument);
+      rows.saveMode.textContent = placementSaveStatusLabel(options.saveEnabled);
+      documentControls.setState();
       rows.selected.textContent = selected?.instanceId ?? "-";
       rows.hovered.textContent = state.hoveredInstanceId ?? "-";
       rows.identity.textContent = selected === undefined
@@ -782,11 +896,116 @@ function createPlacementInspector(
       rows.migration.textContent = migrationPreview === undefined
         ? "-"
         : `${migrationPreview.references.length}`;
+      rows.patch.textContent = state.draftPatch === undefined
+        ? "clean"
+        : `${state.draftPatch.operations.length} operation${state.draftPatch.operations.length === 1 ? "" : "s"}`;
+      rows.blockers.textContent = `${migrationPreview?.references.length ?? 0}`;
+      rows.assets.textContent = `${placementAssetDiagnosticsForState(state, options.assetProvider).length}`;
       migrationReport.setPreview(migrationPreview);
       controls.setState(state, migrationPreview);
       editControls.setState(state);
       behaviorControls.setState(state);
       componentControls.setState(state);
+      handoffControls.setState(state, migrationPreview);
+    },
+  };
+}
+
+function createPlacementDetailsList(): HTMLDListElement {
+  const details = document.createElement("dl");
+  details.className = "placement-details";
+  return details;
+}
+
+function createPlacementInspectorSection(
+  title: string,
+  body: HTMLElement,
+  open = true,
+): HTMLDetailsElement {
+  return createAuthoringViewerDisclosureSection({
+    title,
+    body,
+    open,
+    className: "placement-inspector-section",
+    summaryClassName: "placement-inspector-section-title",
+    bodyClassName: "placement-inspector-section-body",
+  });
+}
+
+function createPlacementInspectorSectionBody(...children: readonly HTMLElement[]): HTMLElement {
+  const body = document.createElement("div");
+  body.className = "placement-inspector-section-content";
+  body.append(...children);
+  return body;
+}
+
+function createPlacementAppChrome(
+  shell: ReturnType<typeof createRuntimeDemoShell>,
+  options: Pick<PlacementInspectorOptions, "saveEnabled" | "sourceDocument">,
+): PlacementAppChrome {
+  const root = shell.stage.closest<HTMLElement>(".demo-shell");
+  const toolbar = root?.querySelector<HTMLElement>(".demo-toolbar");
+  if (root === null || toolbar === null) {
+    return {
+      setState: () => undefined,
+      setSaveResult: () => undefined,
+      setSaveError: () => undefined,
+    };
+  }
+
+  root.dataset.placementEngineShell = "true";
+  const chrome = createAuthoringViewerAppChrome({
+    root,
+    toolbar,
+    title: "Ferrum2D Placement",
+    insertBefore: toolbar.querySelector(".demo-actions"),
+    classNames: {
+      fileStrip: "placement-file-strip",
+      fileMeta: "placement-file-meta",
+      fileName: "placement-file-name",
+      filePath: "placement-file-path",
+      stateBadge: "placement-state-badge",
+      stateBadgeMuted: "placement-state-badge-muted",
+      statusBar: "placement-status-bar",
+      statusItem: "placement-status-item",
+      statusLabel: "placement-status-label",
+      statusValue: "placement-status-value",
+    },
+  });
+
+  const setSnapshot = (
+    state: ScenePlacementViewerState | undefined,
+    migrationPreview: ScenePlacementBindingMigrationPreview | undefined,
+  ): void => {
+    const selected = state?.selected;
+    const draftCount = state?.draftPatch?.operations.length ?? 0;
+    const referenceCount = migrationPreview?.references.length ?? 0;
+    chrome.setSnapshot({
+      source: placementDocumentSourceLabel(options.sourceDocument),
+      selected: selected?.instanceId,
+      prefab: selected === undefined
+        ? undefined
+        : selected.variant === undefined
+          ? selected.prefab
+          : `${selected.prefab}/${selected.variant}`,
+      draftCount,
+      referenceCount,
+      saveEnabled: options.saveEnabled,
+      saveTarget: placementSaveStatusLabel(options.saveEnabled),
+    });
+  };
+
+  setSnapshot(undefined, undefined);
+
+  return {
+    setState(state, migrationPreview) {
+      setSnapshot(state, migrationPreview);
+    },
+    setSaveResult(result) {
+      chrome.setSaveResult(result);
+    },
+    setSaveError(error) {
+      chrome.setSaveError(error);
     },
   };
 }
@@ -826,6 +1045,86 @@ function createPlacementMigrationReport(): {
   };
 }
 
+function createPlacementHandoffControls(options: {
+  saveEnabled: boolean;
+  assetProvider: ScenePlacementAssetProvider;
+}): PlacementHandoffControls {
+  const element = document.createElement("section");
+  const actions = document.createElement("div");
+  const copyPatch = document.createElement("button");
+  const copyHandoff = document.createElement("button");
+  const saveDraft = document.createElement("button");
+  const status = document.createElement("p");
+  let lastState: ScenePlacementViewerState | undefined;
+
+  element.className = "placement-handoff-controls";
+  actions.className = "placement-handoff-actions";
+  status.className = "placement-handoff-status";
+  status.dataset.status = "idle";
+  copyPatch.type = "button";
+  copyPatch.textContent = "Copy Patch";
+  copyPatch.dataset.placementAction = "copy-patch";
+  copyHandoff.type = "button";
+  copyHandoff.textContent = "Copy Handoff";
+  copyHandoff.dataset.placementAction = "copy-handoff";
+  saveDraft.type = "button";
+  saveDraft.textContent = "Save Draft";
+  saveDraft.dataset.placementAction = "save-draft";
+  actions.append(copyPatch, copyHandoff, saveDraft);
+  element.append(actions, status);
+
+  const setStatus = (message: string, kind: "idle" | "success" | "blocked" | "error"): void => {
+    status.textContent = message;
+    status.dataset.status = kind;
+  };
+  const copyJson = async (kind: "patch" | "handoff"): Promise<void> => {
+    const value = kind === "patch"
+      ? lastState?.draftPatch
+      : (window as PlacementViewerWindow).ferrumPlacementViewerAgentHandoff;
+    if (value === undefined) {
+      setStatus(kind === "patch" ? "No draft patch to copy" : "No handoff payload yet", "blocked");
+      return;
+    }
+    try {
+      await copyPlacementText(JSON.stringify(value, null, 2));
+      setStatus(kind === "patch" ? "Patch copied" : "Handoff copied", "success");
+    } catch (error) {
+      setStatus(placementErrorMessage(error), "error");
+    }
+  };
+
+  copyPatch.addEventListener("click", () => {
+    void copyJson("patch");
+  });
+  copyHandoff.addEventListener("click", () => {
+    void copyJson("handoff");
+  });
+
+  return {
+    element,
+    setState(state, migrationPreview) {
+      lastState = state;
+      const draftCount = state.draftPatch?.operations.length ?? 0;
+      const blockedCount = migrationPreview?.references.length ?? 0;
+      const assetDiagnosticCount = placementAssetDiagnosticsForState(state, options.assetProvider).length;
+      copyPatch.disabled = draftCount === 0;
+      copyHandoff.disabled = false;
+      saveDraft.disabled = draftCount === 0 || !options.saveEnabled || blockedCount > 0;
+      saveDraft.dataset.blockedByReferences = String(blockedCount > 0);
+      element.dataset.draftCount = String(draftCount);
+      element.dataset.blockedReferenceCount = String(blockedCount);
+      element.dataset.assetDiagnosticCount = String(assetDiagnosticCount);
+      if (blockedCount > 0) {
+        setStatus(`${blockedCount} blocked reference${blockedCount === 1 ? "" : "s"}`, "blocked");
+      } else if (draftCount > 0) {
+        setStatus(`${draftCount} patch operation${draftCount === 1 ? "" : "s"} ready`, "idle");
+      } else {
+        setStatus("No draft patch", "idle");
+      }
+    },
+  };
+}
+
 function placementMigrationReferenceLabel(
   reference: ScenePlacementBindingMigrationPreview["references"][number],
 ): string {
@@ -852,7 +1151,66 @@ function syncPlacementInstanceList(list: HTMLElement, state: ScenePlacementViewe
   }));
 }
 
-function createPlacementTransformControls(options: PlacementInspectorOptions): {
+function createPlacementDocumentControls(sourceDocument: string): {
+  element: HTMLFormElement;
+  setState(): void;
+} {
+  const form = document.createElement("form");
+  const row = document.createElement("div");
+  const path = appendTextControl(row, "document", "sceneDocumentPath");
+  const browse = document.createElement("button");
+  const openPath = document.createElement("button");
+  const sample = document.createElement("button");
+
+  form.className = "placement-controls placement-document-controls";
+  row.className = "placement-control-grid placement-document-grid";
+  path.value = sourceDocument;
+  path.placeholder = "/absolute/path/to/placement.scene-authoring.json";
+  browse.type = "button";
+  browse.textContent = "Browse";
+  browse.dataset.placementAction = "browse-scene-document";
+  openPath.type = "button";
+  openPath.textContent = "Open Path";
+  openPath.dataset.placementAction = "open-scene-document-path";
+  sample.type = "button";
+  sample.textContent = "Sample";
+  sample.dataset.placementAction = "open-sample-scene-document";
+  row.append(browse, openPath, sample);
+  form.append(row);
+  const syncControls = () => {
+    const currentSource = placementDocumentSourceLabel(sourceDocument);
+    if (document.activeElement !== path) {
+      path.value = currentSource;
+    }
+    const desktopEnabled = placementDesktopInvoke() !== undefined;
+    const dialogEnabled = placementDesktopOpenDialog() !== undefined;
+    path.disabled = !desktopEnabled;
+    browse.disabled = !dialogEnabled;
+    openPath.disabled = !desktopEnabled || path.value.trim().length === 0;
+    sample.disabled = !desktopEnabled;
+  };
+  form.addEventListener("submit", (event) => event.preventDefault());
+  path.addEventListener("input", syncControls);
+  browse.addEventListener("click", () => {
+    void browsePlacementSceneDocument();
+  });
+  openPath.addEventListener("click", () => {
+    const nextPath = path.value.trim();
+    if (nextPath.length > 0) {
+      openPlacementSceneDocument(nextPath);
+    }
+  });
+  sample.addEventListener("click", () => {
+    openPlacementSceneDocument();
+  });
+
+  return {
+    element: form,
+    setState: syncControls,
+  };
+}
+
+function createPlacementTransformControls(options: Pick<PlacementInspectorOptions, "saveEnabled">): {
   element: HTMLFormElement;
   setState(state: ScenePlacementViewerState, migrationPreview?: ScenePlacementBindingMigrationPreview): void;
 } {
@@ -1119,7 +1477,10 @@ function syncPlacementSpriteFrameOptions(
   select.value = frames[0]?.id ?? "";
 }
 
-function createPlacementComponentControls(): {
+function createPlacementComponentControls(summaries: {
+  visualDetails: HTMLDListElement;
+  colliderDetails: HTMLDListElement;
+}): {
   element: HTMLFormElement;
   setState(state: ScenePlacementViewerState): void;
 } {
@@ -1166,7 +1527,17 @@ function createPlacementComponentControls(): {
   apply.textContent = "Apply Components";
   apply.dataset.placementAction = "apply-components";
   actionRow.append(apply);
-  form.append(visualRow, colliderRow, actionRow);
+  form.append(
+    createPlacementInspectorSection("Visual", createPlacementInspectorSectionBody(
+      summaries.visualDetails,
+      visualRow,
+    )),
+    createPlacementInspectorSection("Collider", createPlacementInspectorSectionBody(
+      summaries.colliderDetails,
+      colliderRow,
+    )),
+    actionRow,
+  );
   form.addEventListener("submit", (event) => event.preventDefault());
   form.addEventListener("input", () => syncPlacementComponentFieldState(fields));
   form.addEventListener("change", () => syncPlacementComponentFieldState(fields));
@@ -3020,6 +3391,8 @@ function installPlacementHooks(
   target.ferrumPlacementViewerExportPatch = () => viewer.exportPatch();
   target.ferrumPlacementViewerSaveEnabled = save.saveEnabled;
   target.ferrumPlacementViewerSaveDraft = save.saveDraft;
+  target.ferrumPlacementViewerOpenSceneDocument = openPlacementSceneDocument;
+  target.ferrumPlacementViewerBrowseSceneDocument = browsePlacementSceneDocument;
   target.ferrumPlacementViewerNudgeSelected = (delta: Partial<ScenePlacementPoint>) => {
     return nudgeSelectedInstance(viewer, interaction, delta, setState);
   };
@@ -3110,12 +3483,149 @@ function publishPlacementMigrationPreview(preview: ScenePlacementBindingMigratio
 }
 
 function publishPlacementSaveResult(result: ScenePlacementPatchSaveResult): void {
-  (window as PlacementViewerWindow).ferrumPlacementViewerLastSave = result;
+  const target = window as PlacementViewerWindow;
+  target.ferrumPlacementViewerLastSave = result;
+  delete target.ferrumPlacementViewerLastSaveError;
+}
+
+function publishPlacementSaveError(error: unknown): void {
+  const target = window as PlacementViewerWindow;
+  target.ferrumPlacementViewerLastSaveError = placementErrorMessage(error);
+}
+
+async function copyPlacementText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText !== undefined) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const previousFocus = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : undefined;
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.readOnly = true;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  previousFocus?.focus();
+  if (!copied) {
+    throw new Error("Clipboard copy failed");
+  }
+}
+
+function placementErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  return "Unknown placement save error";
+}
+
+function placementDocumentSourceLabel(fallback: string): string {
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  if (desktop?.enabled === true) {
+    return desktop.sceneDocumentPath ?? desktop.requestedSceneDocumentPath ?? fallback;
+  }
+  return fallback;
+}
+
+function placementSaveStatusLabel(saveEnabled: boolean): string {
+  if (!saveEnabled) {
+    return "disabled";
+  }
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  if (desktop?.enabled === true) {
+    return desktop.lastSavePath === undefined
+      ? "desktop file"
+      : `saved ${desktop.lastSavePath}`;
+  }
+  return import.meta.env.DEV ? "dev endpoint" : "enabled";
+}
+
+async function browsePlacementSceneDocument(): Promise<string | undefined> {
+  const openDialog = placementDesktopOpenDialog();
+  if (openDialog === undefined) {
+    return undefined;
+  }
+  const selected = await openDialog({
+    title: "Open Ferrum2D scene-authoring JSON",
+    multiple: false,
+    directory: false,
+    filters: [
+      {
+        name: "Ferrum2D scene authoring",
+        extensions: ["json"],
+      },
+    ],
+  });
+  const sceneDocumentPath = placementDialogSelectedPath(selected);
+  if (sceneDocumentPath === undefined) {
+    return undefined;
+  }
+  openPlacementSceneDocument(sceneDocumentPath);
+  return sceneDocumentPath;
+}
+
+function openPlacementSceneDocument(sceneDocumentPath?: string): void {
+  if (!confirmPlacementDocumentSwitch()) {
+    return;
+  }
+  const url = new URL(window.location.href);
+  for (const name of DESKTOP_SCENE_DOCUMENT_QUERY_PARAMS) {
+    url.searchParams.delete(name);
+  }
+  if (sceneDocumentPath !== undefined) {
+    url.searchParams.set("sceneDocumentPath", sceneDocumentPath);
+  }
+  window.location.assign(url.toString());
+}
+
+function confirmPlacementDocumentSwitch(): boolean {
+  const state = (window as PlacementViewerWindow).ferrumPlacementViewerState;
+  if (state?.draftPatch === undefined) {
+    return true;
+  }
+  return window.confirm("Unsaved changes will be lost. Open another scene?");
+}
+
+function placementDialogSelectedPath(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.find((entry): entry is string => typeof entry === "string");
+  }
+  return undefined;
 }
 
 async function savePlacementSceneDocument(
   document: SceneAuthoringDocumentSpec,
 ): Promise<{ saved: true; document: SceneAuthoringDocumentSpec }> {
+  const desktopInvoke = placementDesktopInvoke();
+  if (desktopInvoke !== undefined) {
+    const sceneDocumentPath = (window as PlacementViewerWindow)
+      .ferrumPlacementViewerDesktop?.sceneDocumentPath;
+    const args: Record<string, unknown> = { document };
+    if (sceneDocumentPath !== undefined) {
+      args.sceneDocumentPath = sceneDocumentPath;
+    }
+    const result = await desktopInvoke<PlacementDesktopSceneDocumentResponse>(
+      DESKTOP_SAVE_SCENE_DOCUMENT_COMMAND,
+      args,
+    );
+    if (!isPlacementDesktopSceneDocumentResponse(result)) {
+      throw new Error("Failed to save placement scene document: invalid desktop save response");
+    }
+    publishPlacementDesktopState({ lastSavePath: result.path, sceneDocumentPath: result.path });
+    return { saved: true, document: result.document };
+  }
+
   const response = await fetch(SCENE_DOCUMENT_SAVE_ENDPOINT, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -3136,6 +3646,29 @@ function isPlacementSaveResponse(value: unknown): value is { saved: true; docume
     && value !== null
     && (value as { saved?: unknown }).saved === true
     && typeof (value as { document?: { format?: unknown } }).document?.format === "string";
+}
+
+function placementDesktopInvoke():
+  | (<T>(command: string, args?: Record<string, unknown>) => Promise<T>)
+  | undefined {
+  const core = (window as PlacementViewerWindow).__TAURI__?.core;
+  return typeof core?.invoke === "function" ? core.invoke.bind(core) : undefined;
+}
+
+function placementDesktopOpenDialog():
+  | ((options: PlacementDesktopOpenDialogOptions) => Promise<unknown>)
+  | undefined {
+  const dialog = (window as PlacementViewerWindow).__TAURI__?.dialog;
+  return typeof dialog?.open === "function" ? dialog.open.bind(dialog) : undefined;
+}
+
+function publishPlacementDesktopState(update: Partial<PlacementViewerDesktopState>): void {
+  const target = window as PlacementViewerWindow;
+  target.ferrumPlacementViewerDesktop = {
+    enabled: placementDesktopInvoke() !== undefined,
+    ...target.ferrumPlacementViewerDesktop,
+    ...update,
+  };
 }
 
 function publishPlacementInteraction(interaction: PlacementInteractionState): void {
@@ -3180,7 +3713,9 @@ function createPlacementInteractionState(): PlacementInteractionState {
 }
 
 function placementViewerSaveEnabled(): boolean {
-  return import.meta.env.DEV || import.meta.env.VITE_FERRUM_PLACEMENT_VIEWER_SAVE === "true";
+  return placementDesktopInvoke() !== undefined
+    || import.meta.env.DEV
+    || import.meta.env.VITE_FERRUM_PLACEMENT_VIEWER_SAVE === "true";
 }
 
 function placementBoundsById(
@@ -3284,12 +3819,38 @@ function pointerScreenPoint(canvas: HTMLCanvasElement, event: PointerEvent | Mou
   };
 }
 
-async function loadSceneAuthoringDocument(url: string): Promise<SceneAuthoringDocumentSpec> {
+async function loadSceneAuthoringDocument(
+  url: string,
+  sceneDocumentPath?: string,
+): Promise<SceneAuthoringDocumentSpec> {
+  const desktopInvoke = placementDesktopInvoke();
+  if (desktopInvoke !== undefined) {
+    const result = await desktopInvoke<PlacementDesktopSceneDocumentResponse>(
+      DESKTOP_LOAD_SCENE_DOCUMENT_COMMAND,
+      sceneDocumentPath === undefined ? undefined : { sceneDocumentPath },
+    );
+    if (!isPlacementDesktopSceneDocumentResponse(result)) {
+      throw new Error("Failed to load placement scene document: invalid desktop load response");
+    }
+    publishPlacementDesktopState({
+      requestedSceneDocumentPath: sceneDocumentPath,
+      sceneDocumentPath: result.path,
+    });
+    return result.document;
+  }
+
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to load ${url}: ${response.status} ${response.statusText}`.trim());
   }
   return await response.json() as SceneAuthoringDocumentSpec;
+}
+
+function isPlacementDesktopSceneDocumentResponse(value: unknown): value is PlacementDesktopSceneDocumentResponse {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as { path?: unknown }).path === "string"
+    && typeof (value as { document?: { format?: unknown } }).document?.format === "string";
 }
 
 function appendNumberControl(

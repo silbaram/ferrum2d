@@ -3,6 +3,8 @@ node_modules/
 packages/*/dist/
 packages/*/dist-test/
 apps/*/dist/
+apps/*/src-tauri/gen/
+apps/*/src-tauri/target/
 examples/*/dist/
 apps/placement-viewer/.ferrum-placement-handoff.json
 .antigravitycli/

@@ -266,11 +266,14 @@ export function createRuntimeDemoShell(options: RuntimeDemoShellOptions): Runtim
   };
 
   function appendMetric(parent: HTMLElement, label: string, key: MetricKey): void {
+    const item = document.createElement("div");
     const term = document.createElement("dt");
     const value = document.createElement("dd");
+    item.className = "demo-metric";
     term.textContent = label;
     value.textContent = "-";
-    parent.append(term, value);
+    item.append(term, value);
+    parent.append(item);
     metricValues[key] = value;
   }
 

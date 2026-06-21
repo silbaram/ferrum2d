@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Inspector Rows</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 18px; background: var(--bg-1); }
+  .panel {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    font-family: var(--ff-ui);
+  }
+  .section-h {
+    height: 26px;
+    background: var(--bg-2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 10px;
+    display: flex; align-items: center;
+    font-family: var(--ff-mono); font-size: 11px;
+    color: var(--fg-2);
+    text-transform: uppercase; letter-spacing: .08em;
+  }
+  .section-h::before { content: "▾"; color: var(--fg-3); margin-right: 6px; font-size: 9px; }
+  .row {
+    display: grid; grid-template-columns: 110px 1fr;
+    gap: 8px;
+    align-items: center;
+    height: 26px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--divider);
+    font-size: 12px;
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .k { color: var(--fg-3); font-family: var(--ff-mono); font-size: 11px; }
+  .row .v { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .num {
+    height: 20px; background: var(--bg-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    padding: 0 6px;
+    color: var(--fg-1);
+    font-family: var(--ff-mono); font-size: 11px;
+    display: flex; align-items: center;
+  }
+  .num .axis { color: var(--fg-3); margin-right: 4px; font-weight: 700; }
+  .num .axis.x { color: #FF6B6B; }
+  .num .axis.y { color: #6EE7B7; }
+  .swatch { width: 100%; height: 20px; border-radius: 2px; border: 1px solid var(--border-strong); }
+  .switch { width: 28px; height: 16px; background: var(--accent); border-radius: 999px; position: relative; }
+  .switch::after { content: ""; position: absolute; width: 12px; height: 12px; background: white; border-radius: 999px; top: 2px; right: 2px; }
+</style></head>
+<body>
+  <div class="panel">
+    <div class="section-h">Transform</div>
+    <div class="row">
+      <span class="k">Position</span>
+      <div class="v">
+        <span class="num"><span class="axis x">x</span>128.0</span>
+        <span class="num"><span class="axis y">y</span>64.5</span>
+      </div>
+    </div>
+    <div class="row">
+      <span class="k">Scale</span>
+      <div class="v">
+        <span class="num"><span class="axis x">x</span>1.0</span>
+        <span class="num"><span class="axis y">y</span>1.0</span>
+      </div>
+    </div>
+    <div class="row">
+      <span class="k">Rotation</span>
+      <span class="num" style="max-width:120px;"><span class="axis" style="color:var(--fg-3)">θ</span>0.00°</span>
+    </div>
+    <div class="row">
+      <span class="k">Visible</span>
+      <span class="switch"></span>
+    </div>
+    <div class="row">
+      <span class="k">Modulate</span>
+      <div class="swatch" style="background:#F5A742; max-width:120px;"></div>
+    </div>
+  </div>
+</body></html>

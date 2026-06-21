@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Buttons</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: flex; flex-direction: column; gap: 12px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button {
+    font-family: var(--ff-ui); font-size: 13px; font-weight: 500;
+    height: 28px; padding: 0 12px;
+    border-radius: 2px; border: 1px solid transparent;
+    background: var(--bg-3); color: var(--fg-1);
+    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent-press); }
+  button.secondary { background: var(--bg-3); color: var(--fg-1); border-color: var(--border-strong); }
+  button.ghost { background: transparent; color: var(--fg-1); border-color: var(--border-strong); }
+  button.danger { background: var(--red); color: #1a0000; border-color: #d4554f; }
+  button.hover.primary { background: var(--accent-hover); }
+  button.hover.secondary { background: var(--bg-4); }
+  button.press.primary { background: var(--accent-press); box-shadow: inset 0 -1px 0 rgba(0,0,0,.25); }
+  button.disabled { opacity: .4; cursor: not-allowed; }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .lbl { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-3); width: 60px; text-transform: uppercase; letter-spacing: .08em; }
+  svg { width: 14px; height: 14px; }
+</style></head>
+<body>
+  <div class="row">
+    <span class="lbl">Primary</span>
+    <button class="primary">Run Project</button>
+    <button class="primary hover">Hover</button>
+    <button class="primary press">Pressed</button>
+    <button class="primary disabled">Disabled</button>
+  </div>
+  <div class="row">
+    <span class="lbl">Secondary</span>
+    <button class="secondary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      New Node
+    </button>
+    <button class="secondary hover">Open</button>
+    <button class="ghost">Cancel</button>
+    <button class="danger">Delete</button>
+  </div>
+</body></html>

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Color Picker</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  .lbl { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .08em; }
+
+  /* Inline swatch in a property row */
+  .row { display: grid; grid-template-columns: 90px 1fr; gap: 8px; align-items: center; height: 26px; padding: 0 10px; }
+  .row .k { color: var(--fg-3); font-family: var(--ff-mono); font-size: 11px; }
+  .row .v { display: grid; grid-template-columns: 28px 1fr; gap: 6px; align-items: center; }
+  .chip {
+    height: 20px;
+    border-radius: 2px;
+    border: 1px solid var(--border-strong);
+    cursor: pointer;
+  }
+  .hex {
+    height: 20px; padding: 0 6px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    color: var(--fg-1);
+    font-family: var(--ff-mono); font-size: 11px;
+    display: flex; align-items: center;
+  }
+  .panel-card {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .panel-card .head {
+    display: flex; align-items: center; height: 26px; padding: 0 10px;
+    background: var(--bg-0); border-bottom: 1px solid var(--border);
+    font-family: var(--ff-mono); font-size: 10px; color: var(--fg-3);
+    text-transform: uppercase; letter-spacing: .08em;
+  }
+
+  /* Popover picker */
+  .pick {
+    width: 240px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    box-shadow: 0 16px 40px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.04);
+    padding: 10px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .sv {
+    height: 120px; border-radius: 2px; position: relative; cursor: crosshair;
+    background:
+      linear-gradient(to top, #000, transparent),
+      linear-gradient(to right, #fff, transparent),
+      #F5A742;
+    border: 1px solid var(--border);
+  }
+  .sv .pin {
+    position: absolute; left: 70%; top: 25%;
+    transform: translate(-50%, -50%);
+    width: 10px; height: 10px;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #000;
+    border-radius: 999px;
+  }
+  .hue {
+    height: 10px; border-radius: 999px; position: relative;
+    background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  }
+  .hue .pin {
+    position: absolute; top: 50%; left: 12%;
+    transform: translate(-50%, -50%);
+    width: 12px; height: 12px;
+    background: #F5A742;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #000;
+    border-radius: 999px;
+  }
+  .alpha {
+    height: 10px; border-radius: 999px; position: relative;
+    background:
+      linear-gradient(to right, transparent, #F5A742),
+      url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><rect width='4' height='4' fill='%23ddd'/><rect x='4' y='4' width='4' height='4' fill='%23ddd'/></svg>");
+    background-size: auto, 8px 8px;
+  }
+  .alpha .pin {
+    position: absolute; top: 50%; left: 100%;
+    transform: translate(-50%, -50%);
+    width: 12px; height: 12px;
+    background: #F5A742; border: 2px solid #fff;
+    box-shadow: 0 0 0 1px #000;
+    border-radius: 999px;
+  }
+  .fields { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr 1fr; gap: 4px; }
+  .fields .f {
+    background: var(--bg-3);
+    border: 1px solid var(--border);
+    height: 22px; padding: 0 4px;
+    font-family: var(--ff-mono); font-size: 10px;
+    color: var(--fg-1);
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 2px;
+  }
+  .fields .lab { background: transparent; border: 0; color: var(--fg-4); font-size: 9px; }
+  .recent {
+    display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px;
+  }
+  .recent span {
+    aspect-ratio: 1/1;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px; cursor: pointer;
+  }
+</style></head>
+<body>
+  <div class="panel-card">
+    <div class="head">Inline swatches</div>
+    <div class="row"><span class="k">Modulate</span><div class="v"><div class="chip" style="background:#F5A742"></div><div class="hex">#F5A742</div></div></div>
+    <div class="row"><span class="k">Bg color</span><div class="v"><div class="chip" style="background:#0B1016"></div><div class="hex">#0D1117</div></div></div>
+    <div class="row"><span class="k">Stroke</span><div class="v"><div class="chip" style="background:#FF6B6B"></div><div class="hex">#FF6B6B</div></div></div>
+    <div class="row"><span class="k">Glow</span><div class="v"><div class="chip" style="background:rgba(192,132,252,.6); position:relative;"></div><div class="hex">C084FC · 60%</div></div></div>
+  </div>
+
+  <div class="pick">
+    <div class="sv"><span class="pin"></span></div>
+    <div class="hue"><span class="pin"></span></div>
+    <div class="alpha"><span class="pin"></span></div>
+    <div class="fields">
+      <div class="f" style="background:#F5A742; color:#171006; grid-column: 1 / 2">F5A742</div>
+      <div class="f">255</div>
+      <div class="f">180</div>
+      <div class="f">84</div>
+      <div class="f">100</div>
+    </div>
+    <div class="fields">
+      <div class="f lab">HEX</div>
+      <div class="f lab">R</div>
+      <div class="f lab">G</div>
+      <div class="f lab">B</div>
+      <div class="f lab">A</div>
+    </div>
+    <div class="recent">
+      <span style="background:#F5A742"></span>
+      <span style="background:#D58A28"></span>
+      <span style="background:#FF6B6B"></span>
+      <span style="background:#FBBF24"></span>
+      <span style="background:#6EE7B7"></span>
+      <span style="background:#7AA2FF"></span>
+      <span style="background:#C084FC"></span>
+      <span style="background:#0B1016"></span>
+    </div>
+  </div>
+</body></html>

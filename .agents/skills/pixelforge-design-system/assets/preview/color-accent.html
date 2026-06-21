@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Forge Amber</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 24px; background: var(--bg-1); display: flex; flex-direction: column; gap: 14px; }
+  .row { display: flex; gap: 0; border-radius: 3px; overflow: hidden; border: 1px solid var(--border); }
+  .row .sw { flex: 1; height: 64px; display: flex; flex-direction: column; justify-content: flex-end; padding: 8px 10px; font-family: var(--ff-mono); font-size: 10px; }
+  .desc { display: flex; gap: 16px; align-items: center; font-size: 11px; color: var(--fg-3); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; }
+  .chip i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; border: 1px solid var(--border); }
+</style></head>
+<body>
+  <div class="row">
+    <div class="sw" style="background:#F5A742;color:#171006"><strong>--accent</strong>F5A742</div>
+    <div class="sw" style="background:#FFC46B;color:#171006"><strong>--accent-hover</strong>FFC46B</div>
+    <div class="sw" style="background:#D58A28;color:#171006"><strong>--accent-press</strong>D58A28</div>
+    <div class="sw" style="background:rgba(245,167,66,.18);color:#F5A742;backdrop-filter:none;"><strong>--accent-soft</strong>rgba(...18)</div>
+  </div>
+  <div class="desc">
+    <span class="chip"><i style="background:#F5A742"></i>Primary action</span>
+    <span class="chip"><i style="background:#F5A742"></i>Active selection</span>
+    <span class="chip"><i style="background:#F5A742"></i>Brand mark</span>
+    <span class="chip"><i style="background:#F5A742"></i>Focus ring</span>
+  </div>
+</body></html>

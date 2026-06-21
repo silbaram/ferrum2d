@@ -1100,6 +1100,7 @@ async function smokePlacementViewer(page, timeoutMs) {
     const frame = globalThis.ferrumPlacementViewerRuntimeFrame;
     const selectedButton = document.querySelector("button[data-instance-id='crate_left']");
     const details = inspectorDetails();
+    const handoffUi = placementHandoffUi();
     const pixels = placementCanvasPixels();
     const patch = globalThis.ferrumPlacementViewerExportPatch?.();
     if (state?.selectedInstanceId !== "crate_left") {
@@ -1129,6 +1130,15 @@ async function smokePlacementViewer(page, timeoutMs) {
     if (details.draft !== "1" || patch?.operations?.length !== 1) {
       throw new Error(`placement viewer draft patch mismatch: ${JSON.stringify({ details, patch })}`);
     }
+    if (
+      handoffUi.draftCount !== "1"
+      || handoffUi.blockedReferenceCount !== "0"
+      || handoffUi.copyPatchDisabled
+      || handoffUi.copyHandoffDisabled
+      || !handoffUi.saveDraftDisabled
+    ) {
+      throw new Error(`placement viewer handoff controls mismatch: ${JSON.stringify(handoffUi)}`);
+    }
     if (selectedButton?.getAttribute("data-selected") !== "true") {
       throw new Error("placement viewer selected list button was not active.");
     }
@@ -1147,6 +1157,7 @@ async function smokePlacementViewer(page, timeoutMs) {
       interaction: globalThis.ferrumPlacementViewerInteraction,
       pixels,
       patch,
+      handoffUi,
       selectedButtonText: selectedButton.textContent,
     };
 
@@ -1156,6 +1167,22 @@ async function smokePlacementViewer(page, timeoutMs) {
         rows[term.textContent ?? ""] = term.nextElementSibling?.textContent ?? "";
       }
       return rows;
+    }
+
+    function placementHandoffUi() {
+      const root = document.querySelector(".placement-handoff-controls");
+      return {
+        draftCount: root?.getAttribute("data-draft-count"),
+        blockedReferenceCount: root?.getAttribute("data-blocked-reference-count"),
+        assetDiagnosticCount: root?.getAttribute("data-asset-diagnostic-count"),
+        copyPatchDisabled: document.querySelector(".placement-handoff-controls button[data-placement-action='copy-patch']")
+          ?.hasAttribute("disabled") ?? true,
+        copyHandoffDisabled: document.querySelector(".placement-handoff-controls button[data-placement-action='copy-handoff']")
+          ?.hasAttribute("disabled") ?? true,
+        saveDraftDisabled: document.querySelector(".placement-handoff-controls button[data-placement-action='save-draft']")
+          ?.hasAttribute("disabled") ?? true,
+        status: document.querySelector(".placement-handoff-status")?.textContent ?? "",
+      };
     }
 
     function placementCanvasPixels() {

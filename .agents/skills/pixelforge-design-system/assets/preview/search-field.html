@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Search Field</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: flex; flex-direction: column; gap: 14px; }
+  .lbl { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .08em; }
+  .field {
+    display: flex; align-items: center; gap: 8px;
+    height: 28px; padding: 0 10px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    color: var(--fg-1);
+    font-family: var(--ff-ui); font-size: 13px;
+  }
+  .field.focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+  .field svg { width: 14px; height: 14px; color: var(--fg-3); }
+  .field input { flex: 1; background: transparent; border: 0; outline: 0; color: var(--fg-1); font: inherit; }
+  .field .kbd { font-family: var(--ff-mono); font-size: 10px; padding: 1px 5px; color: var(--fg-3); background: var(--bg-3); border: 1px solid var(--border); border-radius: 2px; }
+  .field .clear { color: var(--fg-3); cursor: pointer; }
+  .field .clear:hover { color: var(--fg-1); }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    height: 18px; padding: 0 6px;
+    border-radius: 2px;
+    font-family: var(--ff-mono); font-size: 10px;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .chip .x { color: var(--accent); opacity: .6; cursor: pointer; }
+
+  .row { display: grid; grid-template-columns: 100px 1fr; gap: 14px; align-items: center; }
+</style></head>
+<body>
+  <div class="row">
+    <span class="lbl">Default</span>
+    <div class="field">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+      <span style="color: var(--fg-4)">Search files…</span>
+      <span class="kbd">⌘P</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <span class="lbl">Focused</span>
+    <div class="field focus">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+      <span>player_jump</span>
+      <span style="color: var(--fg-3); margin-left:auto; font-family:var(--ff-mono); font-size:11px;">12 results</span>
+      <span class="clear">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </span>
+    </div>
+  </div>
+
+  <div class="row">
+    <span class="lbl">With filters</span>
+    <div class="field">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+      <span class="chip">type:Sprite<span class="x">×</span></span>
+      <span class="chip">in:scenes<span class="x">×</span></span>
+      <span style="color: var(--fg-4); flex:1">…</span>
+    </div>
+  </div>
+</body></html>

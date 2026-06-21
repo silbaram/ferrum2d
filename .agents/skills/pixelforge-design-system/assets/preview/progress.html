@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Progress &amp; Loaders</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: flex; flex-direction: column; gap: 18px; }
+  .lbl { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .08em; }
+
+  .bar { position: relative; height: 6px; background: var(--bg-3); border-radius: 999px; overflow: hidden; }
+  .bar .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 999px; }
+  .bar .fill.indet {
+    width: 30%;
+    animation: slide 1.4s linear infinite;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+  @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }
+
+  .row { display: grid; grid-template-columns: 120px 1fr auto; gap: 14px; align-items: center; }
+  .row .val { font-family: var(--ff-mono); font-size: 11px; color: var(--fg-2); min-width: 60px; text-align: right; }
+
+  /* spinner */
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--bg-3);
+    border-top-color: var(--accent);
+    border-radius: 999px;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* forge gear */
+  .gear {
+    width: 18px; height: 18px;
+    color: var(--accent);
+    animation: gear 1.4s linear infinite;
+  }
+  @keyframes gear { to { transform: rotate(360deg); } }
+
+  .skel {
+    height: 12px;
+    background: linear-gradient(90deg, var(--bg-2), var(--bg-3), var(--bg-2));
+    background-size: 200% 100%;
+    animation: shimmer 1.4s linear infinite;
+    border-radius: 2px;
+  }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+</style></head>
+<body>
+  <div>
+    <div class="lbl" style="margin-bottom:10px;">Progress</div>
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      <div class="row">
+        <span class="lbl" style="text-transform:none">Import assets</span>
+        <div class="bar"><div class="fill" style="width:38%"></div></div>
+        <span class="val">38% · 12/32</span>
+      </div>
+      <div class="row">
+        <span class="lbl" style="text-transform:none">Building</span>
+        <div class="bar"><div class="fill indet"></div></div>
+        <span class="val">indeterminate</span>
+      </div>
+      <div class="row">
+        <span class="lbl" style="text-transform:none">Export iOS</span>
+        <div class="bar"><div class="fill" style="width:92%; background: var(--green)"></div></div>
+        <span class="val">92%</span>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="lbl" style="margin-bottom:10px;">Loaders</div>
+    <div style="display:flex; align-items:center; gap:20px;">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="spinner"></span>
+        <span style="font-size:12px; color:var(--fg-2)">Loading project…</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <svg class="gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33 1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span style="font-size:12px; color:var(--fg-2)">Forging build…</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px; flex:1;">
+        <div class="skel" style="width:80%"></div>
+        <div class="skel" style="width:60%"></div>
+        <div class="skel" style="width:40%"></div>
+      </div>
+    </div>
+  </div>
+</body></html>

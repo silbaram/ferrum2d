@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Diff View</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 18px; background: var(--bg-1); }
+  .diff {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    font-family: var(--ff-mono); font-size: 12px;
+    line-height: 1.65;
+    color: var(--code-fg);
+  }
+  .diff .head {
+    display: flex; align-items: center; gap: 10px;
+    height: 28px; padding: 0 12px;
+    background: var(--bg-0);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--ff-ui); font-size: 12px;
+    color: var(--fg-2);
+  }
+  .diff .head .file { color: var(--accent); font-family: var(--ff-mono); font-size: 11px; }
+  .diff .head .stat { margin-left: auto; display:flex; gap:8px; font-family: var(--ff-mono); font-size: 11px; }
+  .diff .head .stat .add { color: #6EE7B7; }
+  .diff .head .stat .rem { color: #FF6B6B; }
+
+  .ln {
+    display: grid; grid-template-columns: 32px 32px 14px 1fr;
+    align-items: center;
+    min-height: 22px;
+    padding-right: 12px;
+  }
+  .ln .a, .ln .b { color: var(--code-gutter); text-align: right; padding-right: 6px; font-size: 11px; user-select: none; }
+  .ln .sign { text-align: center; color: var(--code-gutter); font-weight: 700; }
+
+  .ln.add { background: rgba(74, 222, 128, .08); }
+  .ln.add .sign { color: #6EE7B7; }
+  .ln.add .b { color: #6EE7B7; }
+  .ln.rem { background: rgba(248, 113, 113, .08); }
+  .ln.rem .sign { color: #FF6B6B; }
+  .ln.rem .a { color: #FF6B6B; }
+
+  .ln.hunk {
+    background: var(--bg-2);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    color: var(--fg-3);
+    font-size: 10px;
+    padding: 4px 12px;
+    display: block;
+  }
+
+  .k { color: var(--code-keyword); }
+  .s { color: var(--code-string); }
+  .n { color: var(--code-number); }
+  .f { color: var(--code-function); }
+  .c { color: var(--code-comment); font-style: italic; }
+</style></head>
+<body>
+  <div class="diff">
+    <div class="head">
+      <span class="file">scripts/player.gd</span>
+      <span>· modified</span>
+      <span class="stat"><span class="add">+4</span><span class="rem">−2</span></span>
+    </div>
+    <div class="ln hunk">@@ -38,7 +38,9 @@ func _physics_process(delta):</div>
+    <div class="ln"><span class="a">38</span><span class="b">38</span><span class="sign"> </span><span><span class="k">func</span> <span class="f">_physics_process</span>(delta):</span></div>
+    <div class="ln"><span class="a">39</span><span class="b">39</span><span class="sign"> </span><span>&nbsp;&nbsp;<span class="k">var</span> vel = velocity</span></div>
+    <div class="ln rem"><span class="a">40</span><span class="b"></span><span class="sign">−</span><span>&nbsp;&nbsp;<span class="k">if</span> Input.is_action_pressed(<span class="s">"left"</span>):</span></div>
+    <div class="ln add"><span class="a"></span><span class="b">40</span><span class="sign">+</span><span>&nbsp;&nbsp;<span class="k">if</span> Input.is_action_pressed(<span class="s">"move_left"</span>):</span></div>
+    <div class="ln"><span class="a">41</span><span class="b">41</span><span class="sign"> </span><span>&nbsp;&nbsp;&nbsp;&nbsp;vel.x -= <span class="n">SPEED</span></span></div>
+    <div class="ln rem"><span class="a">42</span><span class="b"></span><span class="sign">−</span><span>&nbsp;&nbsp;<span class="k">if</span> is_on_floor():</span></div>
+    <div class="ln add"><span class="a"></span><span class="b">42</span><span class="sign">+</span><span>&nbsp;&nbsp;<span class="k">if</span> is_on_floor() <span class="k">and</span> Input.is_action_just_pressed(<span class="s">"jump"</span>):</span></div>
+    <div class="ln add"><span class="a"></span><span class="b">43</span><span class="sign">+</span><span>&nbsp;&nbsp;&nbsp;&nbsp;vel.y = <span class="n">JUMP_SPEED</span></span></div>
+    <div class="ln add"><span class="a"></span><span class="b">44</span><span class="sign">+</span><span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="c"># play jump sound</span></span></div>
+    <div class="ln"><span class="a">43</span><span class="b">45</span><span class="sign"> </span><span>&nbsp;&nbsp;<span class="f">move_and_slide</span>(vel)</span></div>
+  </div>
+</body></html>

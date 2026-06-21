@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Dropdown / Select</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: flex; gap: 30px; align-items: flex-start; }
+  .col { display: flex; flex-direction: column; gap: 14px; flex: 1; }
+  .lbl { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .08em; }
+
+  .select {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 26px;
+    padding: 0 8px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    color: var(--fg-1);
+    font-family: var(--ff-mono); font-size: 11px;
+    cursor: pointer;
+    position: relative;
+    min-width: 200px;
+  }
+  .select .val { flex: 1; }
+  .select svg { width: 12px; height: 12px; color: var(--fg-3); }
+  .select.open { border-color: var(--accent); }
+
+  .menu {
+    position: absolute;
+    top: 30px; left: -1px; right: -1px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    padding: 4px 0;
+    box-shadow: 0 6px 16px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.04);
+    z-index: 5;
+    font-family: var(--ff-ui); font-size: 13px;
+  }
+  .menu .item {
+    display: grid; grid-template-columns: 14px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    padding: 5px 10px;
+    color: var(--fg-1);
+    cursor: pointer;
+  }
+  .menu .item:hover { background: var(--bg-3); }
+  .menu .item.selected { color: var(--accent); }
+  .menu .item.selected svg { color: var(--accent); }
+  .menu .item .check svg { width: 12px; height: 12px; }
+  .menu .item .meta { color: var(--fg-3); font-family: var(--ff-mono); font-size: 10px; }
+  .menu .sep { height: 1px; background: var(--divider); margin: 4px 0; }
+</style></head>
+<body>
+  <div class="col">
+    <div>
+      <div class="lbl" style="margin-bottom:6px;">Closed</div>
+      <div class="select">
+        <span class="val">Linear filter</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </div>
+
+    <div>
+      <div class="lbl" style="margin-bottom:6px;">Disabled</div>
+      <div class="select" style="opacity:.45; cursor:not-allowed;">
+        <span class="val">Inherit from parent</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="col" style="position:relative;">
+    <div class="lbl">Open</div>
+    <div class="select open" style="height:26px;">
+      <span class="val">Bilinear filter</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="6 9 12 15 18 9"/></svg>
+      <div class="menu">
+        <div class="item">
+          <span class="check"></span>
+          <span>Nearest</span>
+          <span class="meta">pixel art</span>
+        </div>
+        <div class="item selected">
+          <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <span>Bilinear</span>
+          <span class="meta">default</span>
+        </div>
+        <div class="item">
+          <span class="check"></span>
+          <span>Trilinear</span>
+          <span class="meta">mipmaps</span>
+        </div>
+        <div class="sep"></div>
+        <div class="item">
+          <span class="check"></span>
+          <span>Inherit from project</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body></html>

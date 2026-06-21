@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Code Palette</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 18px; background: var(--bg-1); display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; }
+  .editor {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px 12px;
+    font-family: var(--ff-mono);
+    font-size: 11px;
+    line-height: 1.65;
+    color: var(--code-fg);
+    overflow: hidden;
+  }
+  .editor .ln { display: grid; grid-template-columns: 22px 1fr; gap: 8px; }
+  .editor .ln span.g { color: var(--code-gutter); user-select: none; text-align: right; }
+  .current { background: var(--code-line); margin: 0 -12px; padding: 0 12px; }
+  .k { color: var(--code-keyword); }
+  .s { color: var(--code-string); }
+  .n { color: var(--code-number); }
+  .f { color: var(--code-function); }
+  .t { color: var(--code-type); }
+  .o { color: var(--code-operator); }
+  .c { color: var(--code-comment); font-style: italic; }
+  .legend { display: flex; flex-direction: column; gap: 4px; align-self: center; }
+  .legend .row { display: flex; gap: 8px; align-items: center; font-family: var(--ff-mono); font-size: 10px; color: var(--fg-2); }
+  .legend i { width: 10px; height: 10px; border-radius: 2px; }
+</style></head>
+<body>
+  <div class="editor">
+    <div class="ln"><span class="g">1</span><span><span class="k">func</span> <span class="f">_ready</span>():</span></div>
+    <div class="ln current"><span class="g">2</span><span>&nbsp;&nbsp;<span class="k">var</span> hp: <span class="t">int</span> <span class="o">=</span> <span class="n">100</span></span></div>
+    <div class="ln"><span class="g">3</span><span>&nbsp;&nbsp;<span class="k">var</span> name <span class="o">=</span> <span class="s">"Hero"</span></span></div>
+    <div class="ln"><span class="g">4</span><span>&nbsp;&nbsp;<span class="c"># spawn the player</span></span></div>
+    <div class="ln"><span class="g">5</span><span>&nbsp;&nbsp;<span class="f">spawn</span>(name, hp)</span></div>
+  </div>
+  <div class="legend">
+    <div class="row"><i style="background:#c792ea"></i>keyword</div>
+    <div class="row"><i style="background:#c3e88d"></i>string</div>
+    <div class="row"><i style="background:#f78c6c"></i>number</div>
+    <div class="row"><i style="background:#82aaff"></i>function</div>
+    <div class="row"><i style="background:#ffcb6b"></i>type</div>
+    <div class="row"><i style="background:#89ddff"></i>operator</div>
+    <div class="row"><i style="background:#5e6b7e"></i>comment</div>
+  </div>
+</body></html>

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Animation Timeline</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 18px; background: var(--bg-1); }
+  .tl {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    font-family: var(--ff-ui);
+  }
+  .tl .toolbar {
+    display: flex; align-items: center; gap: 4px;
+    height: 30px; padding: 0 8px;
+    background: var(--bg-0);
+    border-bottom: 1px solid var(--border);
+  }
+  .tl .toolbar button {
+    width: 22px; height: 22px;
+    display: inline-grid; place-items: center;
+    background: transparent; border: 0; color: var(--fg-2);
+    border-radius: 2px; cursor: pointer;
+  }
+  .tl .toolbar button:hover { background: var(--bg-3); color: var(--fg-1); }
+  .tl .toolbar button.run { color: var(--accent); }
+  .tl .toolbar .clip {
+    margin-left: 8px;
+    font-size: 12px; color: var(--fg-1);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .tl .toolbar .time {
+    margin-left: auto;
+    font-family: var(--ff-mono); font-size: 11px;
+    color: var(--fg-2);
+  }
+
+  .tl .ruler {
+    height: 22px;
+    background: var(--bg-0);
+    border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: 140px 1fr;
+  }
+  .tl .ruler .corner { border-right: 1px solid var(--border); }
+  .tl .ruler .ticks {
+    position: relative;
+    background-image: linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 100%;
+    color: var(--fg-4); font-family: var(--ff-mono); font-size: 9px;
+  }
+  .tl .ruler .ticks span { position: absolute; bottom: 4px; padding-left: 4px; }
+
+  .tl .track {
+    display: grid; grid-template-columns: 140px 1fr;
+    border-bottom: 1px solid var(--divider);
+    height: 28px;
+    align-items: center;
+  }
+  .tl .track .name {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 10px;
+    font-family: var(--ff-mono); font-size: 11px;
+    color: var(--fg-2);
+    border-right: 1px solid var(--border);
+    height: 100%;
+  }
+  .tl .track .name svg { width: 12px; height: 12px; color: var(--fg-3); }
+  .tl .track .strip {
+    position: relative;
+    height: 100%;
+    background-image: linear-gradient(90deg, var(--divider) 1px, transparent 1px);
+    background-size: 40px 100%;
+  }
+  .tl .key {
+    position: absolute; top: 50%; transform: translate(-50%, -50%) rotate(45deg);
+    width: 10px; height: 10px;
+    background: var(--accent);
+    border: 1px solid var(--accent-press);
+  }
+  .tl .key.sel { background: var(--fg-0); }
+  .tl .range {
+    position: absolute; top: 8px; height: 12px;
+    background: rgba(245,167,66,.22);
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+  }
+
+  .tl .playhead {
+    position: absolute; top: 0; bottom: -1000px; width: 1px;
+    background: var(--accent);
+  }
+  .tl .playhead::before {
+    content: ""; position: absolute; top: -22px;
+    transform: translateX(-4px);
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid var(--accent);
+  }
+</style></head>
+<body>
+  <div class="tl">
+    <div class="toolbar">
+      <button class="run"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg></button>
+      <button><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg></button>
+      <button><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg></button>
+      <span class="clip">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="6 9 12 15 18 9"/></svg>
+        run_cycle
+      </span>
+      <span class="time">0:14 / 1:00 · 24fps</span>
+    </div>
+    <div class="ruler">
+      <div class="corner"></div>
+      <div class="ticks">
+        <span style="left: 0px">0</span>
+        <span style="left: 80px">0:05</span>
+        <span style="left: 160px">0:10</span>
+        <span style="left: 240px">0:15</span>
+        <span style="left: 320px">0:20</span>
+        <span style="left: 400px">0:25</span>
+        <span style="left: 480px">0:30</span>
+      </div>
+    </div>
+
+    <div style="position: relative;">
+      <div class="track">
+        <span class="name">
+          <img src="../assets/node-icons/sprite.svg" style="width:12px; height:12px; image-rendering:pixelated; filter:invert(75%) sepia(50%) saturate(700%) hue-rotate(355deg)"/>
+          Player/Position
+        </span>
+        <div class="strip">
+          <span class="key" style="left: 20px;"></span>
+          <span class="key" style="left: 80px;"></span>
+          <span class="key sel" style="left: 160px;"></span>
+          <span class="key" style="left: 240px;"></span>
+          <span class="key" style="left: 320px;"></span>
+        </div>
+      </div>
+      <div class="track">
+        <span class="name">
+          <img src="../assets/node-icons/sprite.svg" style="width:12px; height:12px; image-rendering:pixelated; filter:invert(75%) sepia(50%) saturate(700%) hue-rotate(355deg)"/>
+          Player/Frame
+        </span>
+        <div class="strip">
+          <div class="range" style="left: 40px; width: 260px;"></div>
+        </div>
+      </div>
+      <div class="track">
+        <span class="name">
+          <img src="../assets/node-icons/audio.svg" style="width:12px; height:12px; image-rendering:pixelated; filter:invert(60%) sepia(60%) saturate(700%) hue-rotate(20deg)"/>
+          Footstep/Volume
+        </span>
+        <div class="strip">
+          <span class="key" style="left: 60px;"></span>
+          <span class="key" style="left: 140px;"></span>
+          <span class="key" style="left: 220px;"></span>
+          <span class="key" style="left: 300px;"></span>
+        </div>
+      </div>
+      <span class="playhead" style="left: calc(140px + 160px);"></span>
+    </div>
+  </div>
+</body></html>

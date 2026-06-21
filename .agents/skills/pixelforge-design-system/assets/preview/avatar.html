@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Avatar &amp; Presence</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: flex; flex-direction: column; gap: 16px; }
+  .lbl { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .08em; }
+  .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+  .av {
+    width: 28px; height: 28px;
+    border-radius: 999px;
+    display: grid; place-items: center;
+    font-family: var(--ff-ui); font-size: 11px; font-weight: 600;
+    color: var(--accent-fg);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .av.online::after, .av.away::after, .av.busy::after {
+    content: ""; position: absolute;
+    right: -2px; bottom: -2px;
+    width: 10px; height: 10px;
+    border-radius: 999px;
+    border: 2px solid var(--bg-1);
+  }
+  .av.online::after { background: #6EE7B7; }
+  .av.away::after   { background: #FBBF24; }
+  .av.busy::after   { background: #FF6B6B; }
+
+  /* stacked */
+  .stack { display: flex; }
+  .stack .av { margin-left: -8px; border: 2px solid var(--bg-1); }
+  .stack .av:first-child { margin-left: 0; }
+  .stack .more {
+    margin-left: -8px;
+    width: 28px; height: 28px; border-radius: 999px;
+    background: var(--bg-3);
+    color: var(--fg-2);
+    border: 2px solid var(--bg-1);
+    font-family: var(--ff-mono); font-size: 10px;
+    display: grid; place-items: center;
+  }
+
+  /* row entry: who is editing a file */
+  .pres-row {
+    display: grid; grid-template-columns: 16px 24px 1fr auto;
+    gap: 10px; align-items: center;
+    padding: 6px 10px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-size: 12px; color: var(--fg-1);
+  }
+  .pres-row .av { width: 22px; height: 22px; font-size: 10px; }
+  .pres-row .file { color: var(--accent); font-family: var(--ff-mono); font-size: 11px; }
+  .pres-row .meta { color: var(--fg-3); font-family: var(--ff-mono); font-size: 11px; }
+</style></head>
+<body>
+  <div>
+    <div class="lbl" style="margin-bottom:8px;">Status</div>
+    <div class="row">
+      <div class="av online" style="background:#F5A742">JK</div>
+      <div class="av away"   style="background:#7AA2FF">M</div>
+      <div class="av busy"   style="background:#C084FC">SY</div>
+      <div class="av"        style="background:#6EE7B7; color:#001a05">DH</div>
+      <div class="av"        style="background:var(--bg-4); color:var(--fg-2)">?</div>
+    </div>
+  </div>
+  <div>
+    <div class="lbl" style="margin-bottom:8px;">Stacked (collaborators)</div>
+    <div class="row">
+      <div class="stack">
+        <div class="av online" style="background:#F5A742">JK</div>
+        <div class="av online" style="background:#7AA2FF">MS</div>
+        <div class="av away"   style="background:#C084FC">SY</div>
+        <div class="more">+3</div>
+      </div>
+      <span style="font-family:var(--ff-mono); font-size:11px; color:var(--fg-3);">6 in this project</span>
+    </div>
+  </div>
+  <div>
+    <div class="lbl" style="margin-bottom:8px;">Editing right now</div>
+    <div style="display:flex; flex-direction:column; gap:6px;">
+      <div class="pres-row">
+        <span style="width:8px; height:8px; border-radius:999px; background:#6EE7B7;"></span>
+        <div class="av online" style="background:#F5A742; width:22px; height:22px; font-size:10px;">JK</div>
+        <span>Jin Kim · editing <span class="file">player.gd</span></span>
+        <span class="meta">just now</span>
+      </div>
+      <div class="pres-row">
+        <span style="width:8px; height:8px; border-radius:999px; background:#FBBF24;"></span>
+        <div class="av away" style="background:#7AA2FF; width:22px; height:22px; font-size:10px;">MS</div>
+        <span>Mia Sato · idle on <span class="file">level_03.scene</span></span>
+        <span class="meta">2m</span>
+      </div>
+    </div>
+  </div>
+</body></html>

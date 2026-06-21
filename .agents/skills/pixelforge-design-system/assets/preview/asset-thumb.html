@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Asset Thumbnails</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+  .asset {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 80ms ease-out;
+  }
+  .asset:hover { border-color: var(--border-strong); }
+  .asset.sel { border-color: var(--accent); }
+  .asset.sel::before { /* selection rail via outline */ }
+  .asset .thumb {
+    aspect-ratio: 1 / 1;
+    background-color: #0b0e13;
+    background-image:
+      linear-gradient(45deg,  #11161e 25%, transparent 25%),
+      linear-gradient(-45deg, #11161e 25%, transparent 25%),
+      linear-gradient(45deg,  transparent 75%, #11161e 75%),
+      linear-gradient(-45deg, transparent 75%, #11161e 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+    display: grid; place-items: center;
+    position: relative;
+  }
+  .asset .thumb img {
+    image-rendering: pixelated;
+    width: 64%;
+  }
+  .asset .thumb.audio {
+    background: var(--bg-3); background-image: none;
+    color: var(--fg-3);
+  }
+  .asset .thumb.script {
+    background: var(--bg-0); background-image: none;
+    padding: 14px 12px;
+    font-family: var(--ff-mono); font-size: 9px;
+    color: var(--code-fg);
+    text-align: left;
+    align-items: start;
+    display: block;
+    line-height: 1.4;
+    overflow: hidden;
+  }
+  .asset .thumb.script .k { color: var(--code-keyword); }
+  .asset .thumb.script .s { color: var(--code-string); }
+  .asset .thumb.script .c { color: var(--code-comment); }
+  .asset .thumb.script .f { color: var(--code-function); }
+
+  .asset .label {
+    padding: 6px 8px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 6px;
+  }
+  .asset .label .name {
+    font-family: var(--ff-mono); font-size: 11px;
+    color: var(--fg-1);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .asset .label .ext {
+    font-family: var(--ff-mono); font-size: 9px;
+    color: var(--fg-4);
+  }
+  .pill {
+    position: absolute;
+    bottom: 4px; right: 4px;
+    height: 14px; padding: 0 4px;
+    background: rgba(13,17,23,.85);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--fg-2);
+    font-family: var(--ff-mono); font-size: 9px;
+    display: inline-flex; align-items: center;
+  }
+</style></head>
+<body>
+  <div class="asset sel">
+    <div class="thumb"><img src="../assets/sample-sprites/hero.png"/><span class="pill">32×32</span></div>
+    <div class="label"><span class="name">hero</span><span class="ext">PNG</span></div>
+  </div>
+  <div class="asset">
+    <div class="thumb"><img src="../assets/sample-sprites/coin.png"/><span class="pill">16×16</span></div>
+    <div class="label"><span class="name">coin</span><span class="ext">PNG</span></div>
+  </div>
+  <div class="asset">
+    <div class="thumb">
+      <svg width="56" height="40" viewBox="0 0 56 40" shape-rendering="crispEdges">
+        <rect width="56" height="40" fill="#5586c2"/>
+        <rect y="28" width="56" height="12" fill="#6b4527"/>
+        <rect y="26" width="56" height="2" fill="#4caf50"/>
+      </svg>
+      <span class="pill">scene</span>
+    </div>
+    <div class="label"><span class="name">level_03</span><span class="ext">SCN</span></div>
+  </div>
+  <div class="asset">
+    <div class="thumb script">
+      <div><span class="k">func</span> <span class="f">_ready</span>():</div>
+      <div>&nbsp;<span class="k">var</span> hp = <span class="s">100</span></div>
+      <div><span class="c"># spawn</span></div>
+    </div>
+    <div class="label"><span class="name">player</span><span class="ext">GD</span></div>
+  </div>
+  <div class="asset">
+    <div class="thumb audio">
+      <svg width="48" height="32" viewBox="0 0 48 32" fill="none" stroke="currentColor" stroke-width="1.5">
+        <polyline points="2,16 6,16 8,8 12,24 14,16 18,16 20,12 24,20 26,16 30,16 32,10 36,22 38,16 46,16" stroke="#F5A742" stroke-linejoin="round"/>
+      </svg>
+      <span class="pill">0:02</span>
+    </div>
+    <div class="label"><span class="name">jump</span><span class="ext">WAV</span></div>
+  </div>
+</body></html>

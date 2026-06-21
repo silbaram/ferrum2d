@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Inputs</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .08em; }
+  .input, .select, .num {
+    height: 26px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    padding: 0 8px;
+    color: var(--fg-1);
+    font-family: var(--ff-mono); font-size: 12px;
+    display: flex; align-items: center;
+  }
+  .input.focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+  .input.error { border-color: var(--red); }
+  .err { font-size: 11px; color: var(--red); font-family: var(--ff-ui); }
+  .num { display: grid; grid-template-columns: 1fr 18px; padding-right: 0; }
+  .num .stepper { display: flex; flex-direction: column; border-left: 1px solid var(--border-strong); }
+  .num .stepper button {
+    background: var(--bg-3); border: 0; color: var(--fg-2); cursor: pointer;
+    height: 12px; font-size: 8px; padding: 0;
+  }
+  .check { display: flex; align-items: center; gap: 8px; font-family: var(--ff-ui); font-size: 13px; color: var(--fg-1); }
+  .check .b { width: 14px; height: 14px; background: var(--accent); border-radius: 2px; display: grid; place-items: center; }
+  .check .b svg { width: 10px; height: 10px; color: var(--accent-fg); }
+  .check .u { width: 14px; height: 14px; background: var(--bg-2); border: 1px solid var(--border-strong); border-radius: 2px; }
+  .switch { width: 28px; height: 16px; background: var(--accent); border-radius: 999px; position: relative; }
+  .switch::after { content: ""; position: absolute; width: 12px; height: 12px; background: white; border-radius: 999px; top: 2px; right: 2px; }
+  .switch.off { background: var(--bg-4); }
+  .switch.off::after { right: auto; left: 2px; }
+</style></head>
+<body>
+  <div class="field">
+    <label>Default</label>
+    <div class="input">player_one</div>
+  </div>
+  <div class="field">
+    <label>Focused</label>
+    <div class="input focus">level_03.scene<span style="margin-left:auto;color:var(--fg-3)">|</span></div>
+  </div>
+  <div class="field">
+    <label>Error</label>
+    <div class="input error">enemy.gd</div>
+    <span class="err">File already exists.</span>
+  </div>
+  <div class="field">
+    <label>Number (with stepper)</label>
+    <div class="num">
+      <span>128.0</span>
+      <div class="stepper">
+        <button>▲</button>
+        <button>▼</button>
+      </div>
+    </div>
+  </div>
+  <div class="field" style="grid-column: 1 / -1; flex-direction: row; gap: 18px; align-items: center;">
+    <div class="check"><span class="b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>Pixel snap</div>
+    <div class="check"><span class="u"></span>Show grid</div>
+    <div class="check"><span class="switch"></span>Auto-save</div>
+    <div class="check"><span class="switch off"></span>Telemetry</div>
+  </div>
+</body></html>

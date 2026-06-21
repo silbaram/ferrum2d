@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Code Editor Line</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 18px; background: var(--bg-1); }
+  .editor {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    font-family: var(--ff-mono); font-size: 12px;
+    line-height: 1.65;
+    color: var(--code-fg);
+  }
+  .ln {
+    display: grid; grid-template-columns: 14px 32px 1fr;
+    align-items: center;
+    height: 22px;
+    padding-right: 12px;
+  }
+  .ln .gutter-bp { display: grid; place-items: center; cursor: pointer; }
+  .ln .gutter-bp .dot { width: 8px; height: 8px; border-radius: 999px; background: transparent; }
+  .ln .gutter-bp.on .dot { background: var(--red); }
+  .ln .num {
+    color: var(--code-gutter);
+    text-align: right;
+    padding-right: 8px;
+    font-size: 11px;
+    user-select: none;
+  }
+  .ln.current {
+    background: var(--code-line);
+  }
+  .ln.current .num { color: var(--fg-1); }
+  .ln.error .num { color: var(--red); position: relative; }
+  .ln.error .num::after { content: ""; position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 4px; height: 4px; border-radius: 999px; background: var(--red); }
+  .ln .code .err { text-decoration: wavy underline; text-decoration-color: var(--red); text-decoration-skip-ink: none; }
+
+  /* execution arrow on current line */
+  .ln.current .num { position: relative; }
+  .ln.current .num::before {
+    content: "▶"; position: absolute; left: 2px; top: 50%; transform: translateY(-50%);
+    color: var(--accent); font-size: 8px;
+  }
+
+  /* selection highlight */
+  .sel-bg { background: var(--code-selection); }
+
+  .k { color: var(--code-keyword); }
+  .s { color: var(--code-string); }
+  .n { color: var(--code-number); }
+  .f { color: var(--code-function); }
+  .t { color: var(--code-type); }
+  .o { color: var(--code-operator); }
+  .c { color: var(--code-comment); font-style: italic; }
+  .v { color: var(--code-fg); }
+</style></head>
+<body>
+  <div class="editor">
+    <div class="ln"><span class="gutter-bp"><span class="dot"></span></span><span class="num">38</span><span class="code"><span class="k">func</span> <span class="f">_physics_process</span>(<span class="v">delta</span>: <span class="t">float</span>):</span></div>
+    <div class="ln"><span class="gutter-bp"><span class="dot"></span></span><span class="num">39</span><span class="code">&nbsp;&nbsp;<span class="k">var</span> <span class="v">vel</span> <span class="o">=</span> <span class="v">velocity</span></span></div>
+    <div class="ln"><span class="gutter-bp on"><span class="dot"></span></span><span class="num">40</span><span class="code">&nbsp;&nbsp;<span class="k">if</span> <span class="v">Input</span>.<span class="f">is_action_pressed</span>(<span class="s">"move_left"</span>):</span></div>
+    <div class="ln current"><span class="gutter-bp"><span class="dot"></span></span><span class="num">41</span><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;<span class="v">vel</span>.<span class="v">x</span> <span class="o">-=</span> <span class="sel-bg"><span class="n">SPEED</span></span></span></div>
+    <div class="ln"><span class="gutter-bp"><span class="dot"></span></span><span class="num">42</span><span class="code">&nbsp;&nbsp;<span class="k">if</span> <span class="v">is_on_floor</span>() <span class="k">and</span> <span class="v">Input</span>.<span class="f">is_action_just_pressed</span>(<span class="s">"jump"</span>):</span></div>
+    <div class="ln error"><span class="gutter-bp"><span class="dot"></span></span><span class="num">43</span><span class="code">&nbsp;&nbsp;&nbsp;&nbsp;<span class="v">vel</span>.<span class="v">y</span> <span class="o">=</span> <span class="err"><span class="v">jump_speed</span></span>&nbsp;&nbsp;<span class="c"># ← undefined</span></span></div>
+    <div class="ln"><span class="gutter-bp"><span class="dot"></span></span><span class="num">44</span><span class="code">&nbsp;&nbsp;<span class="f">move_and_slide</span>(<span class="v">vel</span>)</span></div>
+  </div>
+</body></html>

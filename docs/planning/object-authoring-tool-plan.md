@@ -252,10 +252,15 @@ Inspector는 오브젝트 구조를 그대로 보여줘야 한다.
 - `ScenePlacementViewerState.selected`가 resolved `visual`, `collider`, `componentLayer` summary를 노출한다.
 - `ScenePlacementViewerState.objectDefinitions`가 Prefab/ObjectDefinition catalog id, variants, 기본 visual/collider/layer summary를 노출한다.
 - 공식 placement viewer inspector가 `Identity`, `Visual`, `Collider`, `Behavior` 정보를 표시한다.
+- 공식 placement viewer inspector는 `Document`, `Identity`, `Transform`, `Object`, `Visual`, `Collider`, `Behavior Binding`, `Handoff`를 접힘 섹션으로 묶고, 기존 `placement-details` row와 control data attribute는 유지한다.
+- 공식 placement viewer shell은 엔진 authoring tool에서 익숙한 left object list, center viewport, right inspector, bottom runtime/status bar 구조를 사용한다.
+- top file strip은 scene-authoring 문서명/경로, saved/unsaved/blocked/read-only 상태, draft 변경 수를 표시한다.
 - Visual/Collider/Layer 직접 편집 control이 primitive/sprite visual, collider none/aabb/circle/capsule/orientedBox/convexPolygon, offset, trigger/layer 값을 `props.components` draft patch로 저장한다.
 - 공식 placement viewer overlay가 selected collider bounds를 visual selection bounds와 별도 표시한다.
 - Binding reference report가 rename/remove patch의 agent-owned reference를 표시하고, conflict가 있으면 save를 막는다.
 - `createScenePlacementAgentHandoff(...)` public helper가 selection, draft patch, migration preview, asset diagnostics를 agent handoff envelope로 묶는다.
+- Handoff 섹션은 patch operation 수, blocked reference 수, asset diagnostic 수를 표시하고 Copy Patch, Copy Handoff, Save Draft action 상태를 분리한다.
+- 문서 전환 전에 draft patch가 남아 있으면 unsaved change 확인을 거친다.
 - 남은 항목: behavior recipe 본문 생성 UI는 full visual editor 영역으로 분리하고, v1은 handoff JSON/API를 공식 계약으로 둔다.
 
 섹션:
@@ -311,15 +316,18 @@ Ferrum2D의 agent-first 철학을 유지하려면 placement viewer의 behavior U
 
 handoff 파일은 저장 기능의 대체물이 아니라 agent가 현재 선택/draft 상태를 읽는 보조 데이터다.
 
+현재 공식 viewer는 Handoff 섹션에서 draft patch JSON과 agent handoff JSON을 클립보드로 복사할 수 있게 하고, reference 충돌이 있으면 Save Draft action을 blocked 상태로 유지한다. 이 UI는 patch/handoff evidence를 사람이 agent에게 넘기는 보조 흐름이며, behavior recipe 본문 편집이나 visual scripting UI가 아니다.
+
 ### A7. 공식 packaging 판단
 
 현재 상태(2026-06-18):
 
 - `packages/ferrum-web`에 official viewer controller/API 유지
 - `apps/placement-viewer`는 official host + smoke fixture로 유지
+- `apps/placement-viewer-desktop` Tauri spike를 추가해 공식 viewer frontend를 Tauri window에서 열고, 기본 샘플, `FERRUM_PLACEMENT_SCENE_DOCUMENT`, 명시 경로 입력, 또는 Tauri native file dialog `Browse`로 선택한 `scene-authoring` JSON을 Rust command로 읽고 저장하는 1~3단계 확인을 완료했다. Inspector는 현재 문서 경로와 저장 모드를 표시한다. 이 app은 packaging/agent handoff/project folder picker 전 단계의 실험 host다.
 - create-game template에 consumer host 제공
-- `packages/ferrum-authoring-viewer` workspace-private 패키지를 추가해 viewer title, workflow owner, behavior binding path/evidence, DOM control/shell/panel primitive helper 같은 공통 viewer 계약을 분리했다.
-- 공식 `apps/placement-viewer`와 generated create-game viewer/harness가 새 패키지의 title, behavior profile 표시, key-value row/number control, generated viewer shell, panel primitive, ownership/evidence helper를 사용한다.
+- `packages/ferrum-authoring-viewer` workspace-private 패키지를 추가해 viewer title, app chrome, workflow owner, behavior binding path/evidence, DOM control/shell/panel primitive helper 같은 공통 viewer 계약을 분리했다.
+- 공식 `apps/placement-viewer`는 새 패키지의 app chrome helper로 top file strip/status bar를 만들고, generated create-game viewer/harness는 title, behavior profile 표시, key-value row/number control, generated viewer shell, panel primitive, ownership/evidence helper를 사용한다.
 - generated create-game placement viewer는 ObjectDefinition, Project Assets, Selected detail 패널 렌더링을 `ferrum-placement-viewer-object-panels.ts` 모듈로 분리했고, Transform/actions 패널 렌더링과 memory save action은 `ferrum-placement-viewer-transform-panel.ts` 모듈로 분리했다. Stage/list 렌더링, viewport resize, pointer selection, session 생성은 `ferrum-placement-viewer-stage-session.ts` 모듈로 분리했고, smoke hook/window publish와 handoff/patch output 갱신은 `ferrum-placement-viewer-publish.ts` 모듈로 분리했다. Scene authoring document와 project asset provider loading은 `ferrum-placement-viewer-assets.ts` 모듈로 분리했고, startup error diagnostic/rendering은 `ferrum-placement-viewer-startup-error.ts` 모듈로 분리했다. package check가 이 shared template module들의 module-set drift, tarball 포함, public import 경계를 검증한다.
 - create-game CLI는 `--authoring-viewer-version`으로 generated project의 `@ferrum2d/authoring-viewer` dependency를 주입한다.
 - package check와 consumer smoke는 `@ferrum2d/authoring-viewer` tarball을 함께 검증한다.
@@ -442,7 +450,7 @@ handoff 파일은 저장 기능의 대체물이 아니라 agent가 현재 선택
 
 - `packages/ferrum-authoring-viewer`: reusable DOM/control helper, generated viewer shell helper, generated viewer panel primitive helper는 시작 완료. create-game generated viewer는 ObjectDefinition/Project Assets/Selected detail 패널, Transform/actions 패널, stage/session controller, publish/output module, asset loading module, startup error module 분리까지 완료했고, 후속으로 독립 browser app package 확장 검토
 - 실제 npm publish 전 package별 release checklist와 beta version pin 결정
-- Tauri wrapper: 파일 저장/프로젝트 선택/desktop 배포 요구가 명확해진 뒤 spike
+- Tauri wrapper: `apps/placement-viewer-desktop`에서 window open, 기본 샘플/환경변수/직접 경로/native file dialog 기반 scene-authoring JSON load, Save action local write, Inspector source/save 상태 표시까지 spike 완료. 다음은 handoff 파일 쓰기와 project folder picker 판단이다.
 - Electron wrapper: 빠른 prototype 후보지만 보안/패키징 surface가 커서 기본값은 아님
 
 ## Track B: 오브젝트 모델 고도화
@@ -787,7 +795,7 @@ Track A와 Track B를 묶은 product-ready 기준은 다음이다.
 | primitive visual 구현 | v1은 debug/sprite fallback, v2는 material/shape command 검토 | render command ABI 변경을 피하면서 빠르게 authoring 가능하다. |
 | sprite asset picker | project manifest/texture registry provider interface | 브라우저 파일 시스템 권한과 asset pipeline을 분리한다. |
 | prefab 명명 | public 문서에는 `ObjectDefinition/Prefab` 병기 | 기존 SceneComposition 호환을 유지하면서 엔진 용어를 정리한다. |
-| desktop wrapper | Tauri 우선 spike, Electron은 빠른 prototype 후보 | 파일 권한과 보안 surface를 분리하기 위해 web-first가 안전하다. |
+| desktop wrapper | `apps/placement-viewer-desktop` Tauri spike 유지, Electron은 빠른 prototype 후보 | 웹 viewer를 유지하면서 로컬 파일 권한과 보안 surface를 desktop shell로 분리한다. |
 
 ## 후속 후보
 

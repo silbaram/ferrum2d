@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Type · Families</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: grid; gap: 14px; }
+  .row { display: grid; grid-template-columns: 130px 1fr; gap: 18px; align-items: baseline; padding-bottom: 12px; border-bottom: 1px solid var(--divider); }
+  .row:last-child { border: 0; padding-bottom: 0; }
+  .lbl { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-3); text-transform: uppercase; letter-spacing: .08em; line-height: 1.4; }
+  .lbl small { display: block; font-family: var(--ff-mono); text-transform: none; letter-spacing: 0; color: var(--fg-4); margin-top: 2px; }
+  .specimen { font-size: 22px; color: var(--fg-1); }
+  .specimen.ui    { font-family: var(--ff-ui);    font-weight: 500; letter-spacing: -0.01em; }
+  .specimen.mono  { font-family: var(--ff-mono); }
+  .specimen.brand { font-family: var(--ff-brand); font-size: 26px; letter-spacing: 0.04em; }
+</style></head>
+<body>
+  <div class="row">
+    <span class="lbl">UI<small>Geist · 500</small></span>
+    <span class="specimen ui">The quick brown fox jumps</span>
+  </div>
+  <div class="row">
+    <span class="lbl">Code<small>JetBrains Mono · 400</small></span>
+    <span class="specimen mono">func _ready() -&gt; void: pass</span>
+  </div>
+  <div class="row">
+    <span class="lbl">Brand<small>Silkscreen · only on wordmark</small></span>
+    <span class="specimen brand">PIXELFORGE</span>
+  </div>
+</body></html>

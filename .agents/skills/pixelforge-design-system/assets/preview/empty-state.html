@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Empty States</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .empty {
+    border: 1px dashed var(--border-strong);
+    border-radius: 4px;
+    padding: 24px 20px;
+    background: var(--bg-2);
+    display: flex; flex-direction: column; align-items: center;
+    gap: 12px;
+    text-align: center;
+    min-height: 180px;
+    justify-content: center;
+  }
+  .empty .ico {
+    width: 40px; height: 40px;
+    background: var(--bg-3);
+    border-radius: 4px;
+    display: grid; place-items: center;
+    color: var(--fg-3);
+  }
+  .empty .title {
+    font-family: var(--ff-ui); font-size: 13px; font-weight: 600;
+    color: var(--fg-1);
+  }
+  .empty .desc {
+    font-family: var(--ff-ui); font-size: 12px;
+    color: var(--fg-3); max-width: 240px;
+    line-height: 1.5;
+  }
+  .empty button {
+    margin-top: 4px;
+    height: 26px; padding: 0 12px;
+    font-family: var(--ff-ui); font-size: 12px; font-weight: 500;
+    background: var(--accent); color: var(--accent-fg);
+    border: 1px solid var(--accent-press);
+    border-radius: 2px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .empty .kbd { font-family: var(--ff-mono); font-size: 10px; padding: 1px 5px; background: var(--bg-3); border: 1px solid var(--border-strong); border-radius: 2px; color: var(--fg-2); }
+
+  .pixel-mark {
+    width: 36px; height: 36px;
+    image-rendering: pixelated;
+    opacity: .8;
+  }
+</style></head>
+<body>
+  <div class="empty">
+    <div class="ico" style="background:transparent;">
+      <img class="pixel-mark" src="../assets/logo.svg" style="width:48px; height:48px; opacity:.4;"/>
+    </div>
+    <div class="title">Empty scene</div>
+    <div class="desc">Nothing here yet. Add a node to start building your scene.</div>
+    <button>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      Add Node
+    </button>
+  </div>
+
+  <div class="empty">
+    <div class="ico">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+    </div>
+    <div class="title">No results</div>
+    <div class="desc">No files match <span style="color:var(--fg-1); font-family:var(--ff-mono);">"player_jump"</span> in this project.</div>
+    <div style="display:flex; gap:6px; align-items:center; font-family:var(--ff-mono); font-size:11px; color:var(--fg-3);">
+      Try <span class="kbd">⌘⇧F</span> Search everywhere
+    </div>
+  </div>
+</body></html>

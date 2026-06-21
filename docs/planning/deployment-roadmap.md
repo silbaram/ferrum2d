@@ -114,7 +114,8 @@ Electron에서 `file://`로 바로 로드하면 웹 배포와 비슷한 asset/MI
 현재 상태:
 
 - **Slice 0 완료**: GitHub Pages 데모/문서 배포 기준은 [GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md)로 확정했다. 이 planning 문서는 남은 로컬 preview, create-game 배포 안내, desktop wrapper 후보만 추적한다.
-- **Slice 1~4 미진행**: 로컬 preview 경로, create-game 배포 안내, desktop wrapper 비교/자동화 후보는 별도 task로 분리해 진행한다.
+- **Slice 1~2 미진행**: 로컬 preview 경로와 create-game 배포 안내는 별도 task로 분리해 진행한다.
+- **Slice 3 부분 진행**: `apps/placement-viewer-desktop` Tauri spike로 공식 placement viewer frontend를 desktop window에서 열고, 기본 샘플, `FERRUM_PLACEMENT_SCENE_DOCUMENT`, 직접 경로 입력, 또는 Tauri native file dialog `Browse`로 선택한 scene-authoring JSON을 Rust command로 읽고 저장하는 경로를 확인했다. Inspector는 현재 문서 경로와 저장 모드를 표시한다. Top-down Shooter wrapper 비교, packaging 자동화, Electron 비교는 아직 미진행이다.
 
 ### Slice 0: 정적 웹 배포 기준 문서화 (완료)
 

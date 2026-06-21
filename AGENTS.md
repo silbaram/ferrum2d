@@ -31,6 +31,7 @@ Ferrum2D는 Rust + WebAssembly 기반의 2D 웹 게임 엔진이다.
 - `packages/create-game`
 - `packages/agents`
 - `apps/placement-viewer`
+- `apps/placement-viewer-desktop`
 - `examples/topdown-shooter`
 - `docs`
 - `scripts`

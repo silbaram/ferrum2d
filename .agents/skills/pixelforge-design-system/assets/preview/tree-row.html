@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Tree Row</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 16px; background: var(--bg-1); }
+  .tree { background: var(--bg-1); border: 1px solid var(--border); border-radius: 3px; padding: 4px 0; }
+  .row {
+    display: grid; grid-template-columns: 12px 16px 1fr auto; gap: 6px;
+    align-items: center; height: 24px; padding: 0 8px 0 4px;
+    font-family: var(--ff-ui); font-size: 12px; color: var(--fg-1);
+    position: relative;
+  }
+  .row .chev { color: var(--fg-3); font-size: 9px; display: inline-flex; justify-content: center; }
+  .row .ico { width: 16px; height: 16px; }
+  .row.indent { padding-left: 20px; }
+  .row.indent2 { padding-left: 36px; }
+  .row.hover { background: var(--bg-3); }
+  .row.sel {
+    background: var(--accent-soft);
+    color: var(--fg-1);
+  }
+  .row.sel::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--accent);
+  }
+  .row .meta { color: var(--fg-4); font-family: var(--ff-mono); font-size: 10px; }
+</style></head>
+<body>
+  <div class="tree">
+    <div class="row">
+      <span class="chev">▾</span>
+      <img class="ico" src="../assets/node-icons/node2d.svg" style="filter:invert(70%) sepia(0) saturate(0%) hue-rotate(0)"/>
+      <span>World</span>
+      <span class="meta"></span>
+    </div>
+    <div class="row indent hover">
+      <span class="chev">▸</span>
+      <img class="ico" src="../assets/node-icons/tilemap.svg" style="filter:invert(70%)"/>
+      <span>Background</span>
+      <span class="meta">TileMap</span>
+    </div>
+    <div class="row indent sel">
+      <span class="chev">▾</span>
+      <img class="ico" src="../assets/node-icons/sprite.svg" style="filter:invert(75%) sepia(50%) saturate(700%) hue-rotate(355deg)"/>
+      <span>Player</span>
+      <span class="meta">Sprite</span>
+    </div>
+    <div class="row indent2">
+      <span class="chev">·</span>
+      <img class="ico" src="../assets/node-icons/collider.svg" style="filter:invert(70%)"/>
+      <span>Body</span>
+      <span class="meta">Collider2D</span>
+    </div>
+    <div class="row indent2">
+      <span class="chev">·</span>
+      <img class="ico" src="../assets/node-icons/script.svg" style="filter:invert(70%)"/>
+      <span>player.gd</span>
+      <span class="meta">Script</span>
+    </div>
+  </div>
+</body></html>

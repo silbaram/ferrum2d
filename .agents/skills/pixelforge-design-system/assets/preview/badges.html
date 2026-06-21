@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Badges &amp; Pills</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: flex; flex-direction: column; gap: 12px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 20px; padding: 0 8px; border-radius: 2px;
+    font-family: var(--ff-ui); font-size: 11px; font-weight: 500;
+  }
+  .badge i { width: 6px; height: 6px; border-radius: 999px; display: inline-block; }
+  .pill { border-radius: 999px; padding: 0 10px; height: 20px; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-family: var(--ff-mono); }
+  .kbd { font-family: var(--ff-mono); font-size: 11px; padding: 2px 6px; background: var(--bg-3); border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 2px; color: var(--fg-1); }
+  .lbl { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-3); width: 80px; text-transform: uppercase; letter-spacing: .08em; }
+</style></head>
+<body>
+  <div class="row">
+    <span class="lbl">Status</span>
+    <span class="badge" style="background:rgba(110,231,183,.15);color:#6EE7B7"><i style="background:#6EE7B7"></i>Running</span>
+    <span class="badge" style="background:rgba(255,107,107,.15);color:#FF6B6B"><i style="background:#FF6B6B"></i>3 errors</span>
+    <span class="badge" style="background:rgba(251,191,36,.15);color:#FBBF24"><i style="background:#FBBF24"></i>2 warnings</span>
+    <span class="badge" style="background:rgba(122,162,255,.15);color:#7AA2FF"><i style="background:#7AA2FF"></i>Info</span>
+    <span class="badge" style="background:rgba(192,132,252,.15);color:#C084FC"><i style="background:#C084FC"></i>Shader</span>
+  </div>
+  <div class="row">
+    <span class="lbl">Pill</span>
+    <span class="pill" style="background:var(--bg-3);color:var(--fg-2)">Main</span>
+    <span class="pill" style="background:var(--bg-3);color:var(--fg-2)">+12 commits</span>
+    <span class="pill" style="background:var(--accent-soft);color:var(--accent)">Modified</span>
+  </div>
+  <div class="row">
+    <span class="lbl">Keys</span>
+    <span class="kbd">⌘</span>
+    <span class="kbd">S</span>
+    <span style="color:var(--fg-3);font-family:var(--ff-mono);font-size:11px">Save scene</span>
+    &nbsp;
+    <span class="kbd">F5</span>
+    <span style="color:var(--fg-3);font-family:var(--ff-mono);font-size:11px">Run</span>
+  </div>
+</body></html>

@@ -1,0 +1,41 @@
+# Ferrum2D Placement Viewer Desktop Spike
+
+Tauri 기반 placement viewer desktop wrapper spike다. 이 app은 `apps/placement-viewer` production/dev frontend를 재사용하고, desktop shell은 `scene-authoring` JSON을 로컬 파일로 읽고 저장하는 최소 command를 제공한다.
+
+이 app은 full visual editor가 아니다. Behavior Recipe 본문, FSM/action graph, animation timeline, tile painting은 여전히 agent/spec 소유다.
+
+## 실행
+
+```bash
+pnpm dev:placement-viewer-desktop
+```
+
+이 명령은 Wasm을 빌드한 뒤 Tauri dev shell을 실행하고, Tauri `beforeDevCommand`가 `@ferrum2d/placement-viewer` Vite dev server를 띄운다.
+
+기본값은 `apps/placement-viewer/public/placement.scene-authoring.json` 샘플 문서다. 다른 로컬 문서를 열려면 절대 경로를 환경변수로 넘긴다.
+
+```bash
+FERRUM_PLACEMENT_SCENE_DOCUMENT=/absolute/path/to/placement.scene-authoring.json pnpm dev:placement-viewer-desktop
+```
+
+앱 내부 `Inspector`의 `source` 행은 현재 로드한 문서 경로를 보여준다. `save` 행은 desktop file/dev endpoint/save disabled 상태를 표시한다.
+`Browse` 버튼은 Tauri native file dialog를 열고, 선택한 JSON을 다시 로드한다. 경로를 직접 입력한 뒤 `Open Path`를 눌러도 같은 경로로 다시 로드한다.
+
+## 현재 spike 범위
+
+- Tauri window에서 `apps/placement-viewer` 화면을 연다.
+- 기본 샘플 문서 또는 `FERRUM_PLACEMENT_SCENE_DOCUMENT`로 지정한 scene-authoring JSON을 Rust command로 읽는다.
+- Tauri native file dialog `Browse` 버튼으로 로컬 scene-authoring JSON을 선택해 다시 로드한다.
+- viewer `Save` action이 Rust command로 병합된 scene-authoring JSON을 같은 로컬 파일에 저장한다.
+- frontend는 Tauri command에 명시 문서 경로를 넘길 수 있고, desktop shell은 빈 경로와 잘못된 authoring 문서를 거부한다.
+- 현재 문서 경로와 저장 모드를 Inspector에 표시한다.
+
+## 검증
+
+```bash
+pnpm --filter @ferrum2d/placement-viewer-desktop check
+pnpm --filter @ferrum2d/placement-viewer-desktop test
+pnpm --filter @ferrum2d/placement-viewer build
+```
+
+패키징은 아직 spike 범위 밖이다. 배포용 desktop bundle 검증은 별도 승인 후 `pnpm --filter @ferrum2d/placement-viewer-desktop tauri:build`로 다룬다.

@@ -103,6 +103,16 @@ export interface FerrumAuthoringViewerSummaryCardOptions {
   readonly children?: readonly HTMLElement[];
 }
 
+export interface FerrumAuthoringViewerDisclosureSectionOptions {
+  readonly title: string;
+  readonly body?: HTMLElement;
+  readonly open?: boolean;
+  readonly className?: string;
+  readonly summaryClassName?: string;
+  readonly bodyClassName?: string;
+  readonly dataset?: FerrumAuthoringViewerDataset;
+}
+
 export interface FerrumAuthoringViewerShellClassNames {
   readonly shell?: string;
   readonly toolbar?: string;
@@ -140,6 +150,106 @@ export interface FerrumAuthoringViewerShell {
   readonly panel: HTMLElement;
   readonly sections: Readonly<Record<string, HTMLElement>>;
 }
+
+export interface FerrumAuthoringViewerAppChromeClassNames {
+  readonly fileStrip?: string;
+  readonly fileMeta?: string;
+  readonly fileName?: string;
+  readonly filePath?: string;
+  readonly stateBadge?: string;
+  readonly stateBadgeMuted?: string;
+  readonly statusBar?: string;
+  readonly statusItem?: string;
+  readonly statusLabel?: string;
+  readonly statusValue?: string;
+}
+
+export interface FerrumAuthoringViewerAppChromeLabels {
+  readonly selected?: string;
+  readonly prefab?: string;
+  readonly draft?: string;
+  readonly refs?: string;
+  readonly save?: string;
+  readonly clean?: string;
+  readonly changeSingular?: string;
+  readonly changePlural?: string;
+  readonly noDocument?: string;
+  readonly readOnly?: string;
+  readonly saveFailed?: string;
+  readonly blocked?: string;
+  readonly unsaved?: string;
+  readonly saved?: string;
+}
+
+export interface FerrumAuthoringViewerAppChromeOptions {
+  readonly root: HTMLElement;
+  readonly toolbar: HTMLElement;
+  readonly title?: string;
+  readonly insertBefore?: Element | null;
+  readonly classNames?: FerrumAuthoringViewerAppChromeClassNames;
+  readonly labels?: FerrumAuthoringViewerAppChromeLabels;
+}
+
+export interface FerrumAuthoringViewerAppChromeSnapshot {
+  readonly source: string;
+  readonly selected?: string;
+  readonly prefab?: string;
+  readonly draftCount?: number;
+  readonly referenceCount?: number;
+  readonly saveEnabled: boolean;
+  readonly saveTarget: string;
+}
+
+export interface FerrumAuthoringViewerAppChromeSaveResult {
+  readonly saved?: boolean;
+}
+
+export interface FerrumAuthoringViewerAppChrome {
+  readonly fileStrip: HTMLElement;
+  readonly statusBar: HTMLElement;
+  setSnapshot(snapshot: FerrumAuthoringViewerAppChromeSnapshot): void;
+  setSaveResult(result: FerrumAuthoringViewerAppChromeSaveResult): void;
+  setSaveError(error: unknown): void;
+}
+
+interface FerrumAuthoringViewerAppChromeSaveStateOptions {
+  readonly saveEnabled: boolean;
+  readonly draftCount: number;
+  readonly referenceCount: number;
+  readonly lastSaveError?: string;
+  readonly lastSaveResult?: FerrumAuthoringViewerAppChromeSaveResult;
+  readonly labels: Required<FerrumAuthoringViewerAppChromeLabels>;
+}
+
+const DEFAULT_APP_CHROME_CLASS_NAMES: Required<FerrumAuthoringViewerAppChromeClassNames> = Object.freeze({
+  fileStrip: "ferrum-authoring-file-strip",
+  fileMeta: "ferrum-authoring-file-meta",
+  fileName: "ferrum-authoring-file-name",
+  filePath: "ferrum-authoring-file-path",
+  stateBadge: "ferrum-authoring-state-badge",
+  stateBadgeMuted: "ferrum-authoring-state-badge-muted",
+  statusBar: "ferrum-authoring-status-bar",
+  statusItem: "ferrum-authoring-status-item",
+  statusLabel: "ferrum-authoring-status-label",
+  statusValue: "ferrum-authoring-status-value",
+});
+
+const DEFAULT_APP_CHROME_LABELS: Required<FerrumAuthoringViewerAppChromeLabels> = Object.freeze({
+  selected: "Selected",
+  prefab: "Prefab",
+  draft: "Draft",
+  refs: "Refs",
+  save: "Save",
+  clean: "Clean",
+  changeSingular: "Change",
+  changePlural: "Changes",
+  noDocument: "No Document",
+  readOnly: "Read Only",
+  saveFailed: "Save Failed",
+  blocked: "Blocked",
+  unsaved: "Unsaved",
+  saved: "Saved",
+});
 
 export function formatAuthoringViewerBehaviorProfiles(
   profiles: readonly string[] | undefined,
@@ -301,6 +411,26 @@ export function createAuthoringViewerSummaryCard(
   return card;
 }
 
+export function createAuthoringViewerDisclosureSection(
+  options: FerrumAuthoringViewerDisclosureSectionOptions,
+): HTMLDetailsElement {
+  const section = document.createElement("details");
+  const summary = document.createElement("summary");
+  const title = document.createElement("span");
+  section.className = options.className ?? "";
+  section.open = options.open ?? true;
+  summary.className = options.summaryClassName ?? "";
+  title.textContent = options.title;
+  summary.append(title);
+  section.append(summary);
+  applyAuthoringViewerDataset(section, options.dataset);
+  if (options.body !== undefined) {
+    options.body.className = mergeClassName(options.body.className, options.bodyClassName);
+    section.append(options.body);
+  }
+  return section;
+}
+
 export function createAuthoringViewerSection(
   options: FerrumAuthoringViewerSectionOptions,
 ): HTMLElement {
@@ -362,6 +492,106 @@ export function createAuthoringViewerShell(
   };
 }
 
+export function createAuthoringViewerAppChrome(
+  options: FerrumAuthoringViewerAppChromeOptions,
+): FerrumAuthoringViewerAppChrome {
+  const classNames = {
+    ...DEFAULT_APP_CHROME_CLASS_NAMES,
+    ...options.classNames,
+  };
+  const labels = {
+    ...DEFAULT_APP_CHROME_LABELS,
+    ...options.labels,
+  };
+  const toolbarTitle = options.toolbar.querySelector("h1");
+  const fileStrip = document.createElement("section");
+  const fileMeta = document.createElement("div");
+  const fileLabel = document.createElement("span");
+  const filePath = document.createElement("span");
+  const saveBadge = document.createElement("span");
+  const draftBadge = document.createElement("span");
+  const statusBar = document.createElement("footer");
+  const selectedStatus = appendAuthoringViewerStatusItem(statusBar, labels.selected, classNames);
+  const prefabStatus = appendAuthoringViewerStatusItem(statusBar, labels.prefab, classNames);
+  const draftStatus = appendAuthoringViewerStatusItem(statusBar, labels.draft, classNames);
+  const referenceStatus = appendAuthoringViewerStatusItem(statusBar, labels.refs, classNames);
+  const saveTargetStatus = appendAuthoringViewerStatusItem(statusBar, labels.save, classNames);
+  let lastSnapshot: FerrumAuthoringViewerAppChromeSnapshot | undefined;
+  let lastSaveError: string | undefined;
+  let lastSaveResult: FerrumAuthoringViewerAppChromeSaveResult | undefined;
+
+  options.root.dataset.ferrumAuthoringViewerShell = "true";
+  if (toolbarTitle !== null && options.title !== undefined) {
+    toolbarTitle.textContent = options.title;
+  }
+
+  fileStrip.className = classNames.fileStrip;
+  fileMeta.className = classNames.fileMeta;
+  fileLabel.className = classNames.fileName;
+  filePath.className = classNames.filePath;
+  saveBadge.className = classNames.stateBadge;
+  draftBadge.className = `${classNames.stateBadge} ${classNames.stateBadgeMuted}`.trim();
+  statusBar.className = classNames.statusBar;
+
+  fileMeta.append(fileLabel, filePath);
+  fileStrip.append(fileMeta, saveBadge, draftBadge);
+  options.toolbar.insertBefore(fileStrip, options.insertBefore ?? null);
+  options.root.append(statusBar);
+
+  const render = (): void => {
+    const snapshot = lastSnapshot;
+    const source = snapshot?.source ?? "";
+    const draftCount = snapshot?.draftCount ?? 0;
+    const referenceCount = snapshot?.referenceCount ?? 0;
+    const saveState = appChromeSaveState({
+      saveEnabled: snapshot?.saveEnabled ?? false,
+      draftCount,
+      referenceCount,
+      lastSaveError,
+      lastSaveResult,
+      labels,
+    });
+    fileLabel.textContent = authoringViewerDocumentFileName(source, labels);
+    filePath.textContent = source;
+    filePath.title = source;
+    saveBadge.textContent = saveState.label;
+    saveBadge.dataset.status = saveState.status;
+    draftBadge.textContent = authoringViewerDraftLabel(draftCount, labels);
+    draftBadge.dataset.status = draftCount === 0 ? "clean" : "dirty";
+    selectedStatus.value.textContent = snapshot?.selected ?? "-";
+    prefabStatus.value.textContent = snapshot?.prefab ?? "-";
+    draftStatus.value.textContent = String(draftCount);
+    referenceStatus.value.textContent = String(referenceCount);
+    referenceStatus.element.dataset.status = referenceCount === 0 ? "clean" : "blocked";
+    saveTargetStatus.value.textContent = snapshot?.saveTarget ?? "-";
+  };
+
+  render();
+
+  return {
+    fileStrip,
+    statusBar,
+    setSnapshot(snapshot) {
+      lastSnapshot = snapshot;
+      if ((snapshot.draftCount ?? 0) > 0) {
+        lastSaveError = undefined;
+        lastSaveResult = undefined;
+      }
+      render();
+    },
+    setSaveResult(result) {
+      lastSaveResult = result;
+      lastSaveError = undefined;
+      render();
+    },
+    setSaveError(error) {
+      lastSaveError = authoringViewerErrorMessage(error);
+      lastSaveResult = undefined;
+      render();
+    },
+  };
+}
+
 export function readAuthoringViewerNumberInput(input: HTMLInputElement): number | undefined {
   const value = input.value.trim();
   if (value === "") {
@@ -406,6 +636,78 @@ function uniqueSortedStrings(values: readonly string[]): readonly string[] {
   return [...new Set(values)].sort();
 }
 
+function appendAuthoringViewerStatusItem(
+  parent: HTMLElement,
+  label: string,
+  classNames: Required<FerrumAuthoringViewerAppChromeClassNames>,
+): { element: HTMLElement; value: HTMLElement } {
+  const element = document.createElement("div");
+  const labelElement = document.createElement("span");
+  const value = document.createElement("span");
+  element.className = classNames.statusItem;
+  labelElement.className = classNames.statusLabel;
+  value.className = classNames.statusValue;
+  labelElement.textContent = label;
+  value.textContent = "-";
+  element.append(labelElement, value);
+  parent.append(element);
+  return { element, value };
+}
+
+function appChromeSaveState(
+  options: FerrumAuthoringViewerAppChromeSaveStateOptions,
+): { label: string; status: string } {
+  if (!options.saveEnabled) {
+    return { label: options.labels.readOnly, status: "readonly" };
+  }
+  if (options.lastSaveError !== undefined) {
+    return { label: options.labels.saveFailed, status: "error" };
+  }
+  if (options.referenceCount > 0) {
+    return { label: options.labels.blocked, status: "blocked" };
+  }
+  if (options.draftCount > 0) {
+    return { label: options.labels.unsaved, status: "dirty" };
+  }
+  if (options.lastSaveResult?.saved === true) {
+    return { label: options.labels.saved, status: "saved" };
+  }
+  return { label: options.labels.saved, status: "saved" };
+}
+
+function authoringViewerDocumentFileName(
+  source: string,
+  labels: Required<FerrumAuthoringViewerAppChromeLabels>,
+): string {
+  const normalized = source.trim();
+  if (normalized.length === 0) {
+    return labels.noDocument;
+  }
+  const withoutQuery = normalized.split(/[?#]/, 1)[0] ?? normalized;
+  const parts = withoutQuery.split(/[\\/]/).filter((part) => part.length > 0);
+  return parts.length > 0 ? parts[parts.length - 1] : withoutQuery;
+}
+
+function authoringViewerDraftLabel(
+  draftCount: number,
+  labels: Required<FerrumAuthoringViewerAppChromeLabels>,
+): string {
+  if (draftCount === 0) {
+    return labels.clean;
+  }
+  return `${draftCount} ${draftCount === 1 ? labels.changeSingular : labels.changePlural}`;
+}
+
+function authoringViewerErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  return "Unknown authoring viewer error";
+}
+
 function createAuthoringViewerInputControl(
   options: FerrumAuthoringViewerControlOptions,
 ): { label: HTMLLabelElement; input: HTMLInputElement } {
@@ -439,4 +741,14 @@ function applyAuthoringViewerDataset(
       element.dataset[key] = value;
     }
   }
+}
+
+function mergeClassName(current: string, next: string | undefined): string {
+  if (next === undefined || next.length === 0) {
+    return current;
+  }
+  if (current.length === 0) {
+    return next;
+  }
+  return `${current} ${next}`;
 }

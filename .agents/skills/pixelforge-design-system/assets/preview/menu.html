@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Context Menu</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-0); display: flex; gap: 24px; align-items: flex-start; }
+  .menu {
+    width: 240px;
+    background: var(--bg-2);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    padding: 4px 0;
+    box-shadow: 0 16px 40px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.04);
+    font-family: var(--ff-ui); font-size: 13px;
+  }
+  .menu .item {
+    height: 26px; display: grid; grid-template-columns: 16px 1fr auto; gap: 8px;
+    align-items: center; padding: 0 10px; color: var(--fg-1); cursor: pointer;
+  }
+  .menu .item.hover { background: var(--bg-4); }
+  .menu .item .meta { color: var(--fg-3); font-family: var(--ff-mono); font-size: 11px; }
+  .menu .item svg { width: 14px; height: 14px; color: var(--fg-2); }
+  .menu .sep { height: 1px; background: var(--divider); margin: 4px 0; }
+  .menu .sub::after { content: "›"; color: var(--fg-3); margin-left: auto; }
+</style></head>
+<body>
+  <div class="menu">
+    <div class="item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      Add Child Node
+      <span class="meta">⌘A</span>
+    </div>
+    <div class="item hover">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"/><polyline points="2 9 6 9 6 13"/></svg>
+      Duplicate
+      <span class="meta">⌘D</span>
+    </div>
+    <div class="item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
+      Delete
+      <span class="meta">⌫</span>
+    </div>
+    <div class="sep"></div>
+    <div class="item sub">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+      Change Type
+    </div>
+    <div class="item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      Rename
+      <span class="meta">F2</span>
+    </div>
+  </div>
+</body></html>

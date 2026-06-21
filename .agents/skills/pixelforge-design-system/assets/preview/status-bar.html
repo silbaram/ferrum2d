@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Status Bar</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 20px; background: var(--bg-1); display: flex; flex-direction: column; gap: 8px; }
+  .bar {
+    height: 24px;
+    background: var(--bg-0);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center;
+    font-family: var(--ff-mono); font-size: 11px;
+    color: var(--fg-2);
+  }
+  .seg {
+    height: 100%;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 0 10px;
+    border-right: 1px solid var(--divider);
+    cursor: default;
+  }
+  .seg.hover { background: var(--bg-3); }
+  .seg .accent { color: var(--accent); }
+  .seg i { width: 6px; height: 6px; border-radius: 999px; }
+  .spacer { flex: 1; }
+  .label { font-family: var(--ff-mono); font-size: 9px; color: var(--fg-4); text-transform: uppercase; letter-spacing: .08em; padding-left: 4px; }
+</style></head>
+<body>
+  <span class="label">Idle</span>
+  <div class="bar">
+    <div class="seg"><i style="background:#6EE7B7"></i>Ready</div>
+    <div class="seg">main · 12 ahead</div>
+    <div class="seg">UTF-8 · LF</div>
+    <div class="spacer"></div>
+    <div class="seg">Ln 42, Col 18</div>
+    <div class="seg">GDScript</div>
+    <div class="seg accent">FPS 60 · 12.3 KB</div>
+  </div>
+
+  <span class="label">Building</span>
+  <div class="bar">
+    <div class="seg" style="color:var(--accent)"><i style="background:#F5A742"></i>Building…  2.4s</div>
+    <div class="seg">main · 12 ahead</div>
+    <div class="spacer"></div>
+    <div class="seg">DRAW 124 · MEM 86MB</div>
+  </div>
+</body></html>

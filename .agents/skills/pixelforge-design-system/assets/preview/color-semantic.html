@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Semantic Colors</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+  .col { display: flex; flex-direction: column; gap: 6px; }
+  .swatch { height: 72px; border-radius: 3px; border: 1px solid var(--border); display: flex; flex-direction: column; justify-content: space-between; padding: 8px 10px; font-family: var(--ff-mono); font-size: 10px; }
+  .swatch .name { font-weight: 700; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-family: var(--ff-ui); padding: 4px 8px; border-radius: 2px; }
+  .badge i { width: 6px; height: 6px; border-radius: 999px; }
+</style></head>
+<body>
+  <div class="col">
+    <div class="swatch" style="background:#FF6B6B;color:#1a0000"><span class="name">--red</span><span>#FF6B6B</span></div>
+    <div class="badge" style="background:rgba(255,107,107,.15);color:#FF6B6B"><i style="background:#FF6B6B"></i>3 errors</div>
+  </div>
+  <div class="col">
+    <div class="swatch" style="background:#FBBF24;color:#171006"><span class="name">--yellow</span><span>#FBBF24</span></div>
+    <div class="badge" style="background:rgba(251,191,36,.15);color:#FBBF24"><i style="background:#FBBF24"></i>2 warnings</div>
+  </div>
+  <div class="col">
+    <div class="swatch" style="background:#6EE7B7;color:#001a10"><span class="name">--green</span><span>#6EE7B7</span></div>
+    <div class="badge" style="background:rgba(110,231,183,.15);color:#6EE7B7"><i style="background:#6EE7B7"></i>Runtime</div>
+  </div>
+  <div class="col">
+    <div class="swatch" style="background:#38D5E8;color:#00151a"><span class="name">--cyan</span><span>#38D5E8</span></div>
+    <div class="badge" style="background:rgba(56,213,232,.15);color:#38D5E8"><i style="background:#38D5E8"></i>Physics</div>
+  </div>
+  <div class="col">
+    <div class="swatch" style="background:#7AA2FF;color:#001735"><span class="name">--blue</span><span>#7AA2FF</span></div>
+    <div class="badge" style="background:rgba(122,162,255,.15);color:#7AA2FF"><i style="background:#7AA2FF"></i>Render</div>
+  </div>
+  <div class="col">
+    <div class="swatch" style="background:#C084FC;color:#18002b"><span class="name">--purple</span><span>#C084FC</span></div>
+    <div class="badge" style="background:rgba(192,132,252,.15);color:#C084FC"><i style="background:#C084FC"></i>Behavior</div>
+  </div>
+</body></html>

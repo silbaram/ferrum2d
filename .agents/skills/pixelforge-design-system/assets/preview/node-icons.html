@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Node Icons</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+  .cell {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px 4px;
+  }
+  .cell img {
+    width: 28px; height: 28px;
+    image-rendering: pixelated;
+  }
+  .cell .name { font-family: var(--ff-mono); font-size: 10px; color: var(--fg-2); }
+  /* tint each icon */
+  .i-node     { filter: invert(60%) sepia(0) saturate(0%); }
+  .i-sprite   { filter: invert(75%) sepia(50%) saturate(700%) hue-rotate(355deg); }
+  .i-body     { filter: invert(60%) sepia(60%) saturate(800%) hue-rotate(160deg); }
+  .i-coll     { filter: invert(60%) sepia(40%) saturate(500%) hue-rotate(85deg); }
+  .i-anim     { filter: invert(60%) sepia(60%) saturate(700%) hue-rotate(250deg); }
+  .i-cam      { filter: invert(70%); }
+  .i-tile     { filter: invert(70%); }
+  .i-script   { filter: invert(70%); }
+  .i-audio    { filter: invert(60%) sepia(60%) saturate(700%) hue-rotate(20deg); }
+  .i-part     { filter: invert(75%) sepia(50%) saturate(700%) hue-rotate(355deg); }
+</style></head>
+<body>
+  <div class="cell"><img class="i-node"   src="../assets/node-icons/node2d.svg"/>  <span class="name">Node2D</span></div>
+  <div class="cell"><img class="i-sprite" src="../assets/node-icons/sprite.svg"/>  <span class="name">Sprite</span></div>
+  <div class="cell"><img class="i-body"   src="../assets/node-icons/rigidbody.svg"/><span class="name">RigidBody</span></div>
+  <div class="cell"><img class="i-coll"   src="../assets/node-icons/collider.svg"/><span class="name">Collider</span></div>
+  <div class="cell"><img class="i-anim"   src="../assets/node-icons/animation.svg"/><span class="name">AnimPlayer</span></div>
+  <div class="cell"><img class="i-cam"    src="../assets/node-icons/camera.svg"/>  <span class="name">Camera2D</span></div>
+  <div class="cell"><img class="i-tile"   src="../assets/node-icons/tilemap.svg"/> <span class="name">TileMap</span></div>
+  <div class="cell"><img class="i-script" src="../assets/node-icons/script.svg"/>  <span class="name">Script</span></div>
+  <div class="cell"><img class="i-audio"  src="../assets/node-icons/audio.svg"/>   <span class="name">Audio</span></div>
+  <div class="cell"><img class="i-part"   src="../assets/node-icons/particles.svg"/><span class="name">Particles</span></div>
+</body></html>

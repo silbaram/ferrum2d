@@ -16,6 +16,7 @@ Available repository commands:
 - `/ferrum:game-designer`: Top-down Shooter Game Spec data tuning.
 - `/ferrum:package`: package artifact and consumer import QA.
 - `/ferrum:pages-deploy`: GitHub Pages demo/docs artifact verification.
+- `/ferrum:pixelforge-design`: Pixelforge Design System UI, token, mock, and branded authoring surface work.
 - `/ferrum:qa`: local verification command selection and reporting.
 - `/ferrum:release`: beta release coordination and publish gate checks.
 - `/ferrum:schema`: Game Spec and Physics authoring schema contract work.

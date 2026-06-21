@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/authoring-viewer build && vite",
+    "dev:desktop-host": "pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/authoring-viewer build && vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "pnpm --filter @ferrum2d/authoring-viewer build && vite build --base=./",
     "preview": "vite preview"
   },

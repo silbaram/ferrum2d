@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Brand · Forge the Fox</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body {
+    margin: 0; padding: 28px;
+    background:
+      radial-gradient(120% 100% at 80% 0%, rgba(245,167,66,.08), transparent 60%),
+      var(--bg-0);
+    display: flex; gap: 24px; align-items: stretch;
+    min-height: 200px;
+  }
+  /* main hero card */
+  .hero {
+    flex: 1.4;
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 24px 28px;
+    display: flex; align-items: center; gap: 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  /* faint repeating dot grid in the bg, behind everything */
+  .hero::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(rgba(255,255,255,.04) 1px, transparent 1px);
+    background-size: 12px 12px;
+    background-position: 0 0;
+    mask-image: radial-gradient(120% 80% at 10% 50%, black, transparent 80%);
+  }
+  .mascot {
+    width: 96px; height: 96px;
+    image-rendering: pixelated;
+    flex-shrink: 0;
+    filter: drop-shadow(0 4px 0 rgba(0,0,0,.4));
+    position: relative;
+    z-index: 1;
+  }
+  .copy {
+    display: flex; flex-direction: column; gap: 6px;
+    position: relative; z-index: 1;
+  }
+  .copy .name {
+    font-family: var(--ff-brand); font-size: 26px;
+    color: var(--fg-1); letter-spacing: 0.04em;
+    line-height: 1;
+  }
+  .copy .tag {
+    font-family: var(--ff-ui); font-size: 13px;
+    color: var(--fg-2);
+  }
+  .copy .who {
+    font-family: var(--ff-mono); font-size: 10px;
+    color: var(--fg-3);
+    text-transform: uppercase; letter-spacing: .08em;
+    margin-top: 6px;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .copy .who::before {
+    content: ""; width: 4px; height: 4px; background: var(--accent); border-radius: 999px;
+  }
+
+  /* right rail — variants */
+  .rail {
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    gap: 10px;
+    width: 220px;
+  }
+  .variant {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .variant.dark  { background: var(--bg-0); }
+  .variant.light { background: #ffffff; }
+  .variant img { width: 36px; height: 36px; image-rendering: pixelated; }
+  .variant .vlbl {
+    font-family: var(--ff-mono); font-size: 10px;
+    text-transform: uppercase; letter-spacing: .08em;
+  }
+  .variant.dark .vlbl  { color: var(--fg-3); }
+  .variant.light .vlbl { color: #656d76; }
+  .variant .vname { display: block; font-family: var(--ff-ui); font-size: 12px; margin-top: 2px; font-weight: 500; }
+  .variant.dark .vname  { color: var(--fg-1); }
+  .variant.light .vname { color: #1f2328; }
+
+  /* palette strip at bottom of hero */
+  .swatches {
+    display: flex; gap: 4px;
+    margin-top: 10px;
+  }
+  .swatches span {
+    width: 18px; height: 18px;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+  }
+</style></head>
+<body>
+  <div class="hero">
+    <img class="mascot" src="../assets/logo.svg" alt="Forge the Fox"/>
+    <div class="copy">
+      <span class="name">PIXELFORGE</span>
+      <span class="tag">The IDE for 2D game makers.</span>
+      <span class="who">Mascot · Forge the Fox</span>
+      <div class="swatches">
+        <span style="background:#F5A742"></span>
+        <span style="background:#FFC46B"></span>
+        <span style="background:#D58A28"></span>
+        <span style="background:#38D5E8"></span>
+        <span style="background:#0B1016"></span>
+        <span style="background:#DCE5EE"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="rail">
+    <div class="variant dark">
+      <img src="../assets/logo.svg" alt=""/>
+      <div>
+        <span class="vlbl">On dark</span>
+        <span class="vname">Color · primary</span>
+      </div>
+    </div>
+    <div class="variant light">
+      <img src="../assets/logo.svg" alt=""/>
+      <div>
+        <span class="vlbl">On light</span>
+        <span class="vname">Same artwork</span>
+      </div>
+    </div>
+  </div>
+</body></html>

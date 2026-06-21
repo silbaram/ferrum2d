@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Banners</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 22px; background: var(--bg-1); display: flex; flex-direction: column; gap: 10px; }
+  .banner {
+    display: grid; grid-template-columns: 20px 1fr auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-family: var(--ff-ui); font-size: 13px;
+    color: var(--fg-1);
+  }
+  .banner .ico {
+    display: grid; place-items: center;
+  }
+  .banner .ico svg { width: 16px; height: 16px; }
+  .banner .actions { display: flex; gap: 6px; }
+  .banner button {
+    height: 24px; padding: 0 10px;
+    font-family: var(--ff-ui); font-size: 12px; font-weight: 500;
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    color: var(--fg-1); cursor: pointer;
+  }
+  .banner .close {
+    width: 22px; height: 22px;
+    display: grid; place-items: center;
+    background: transparent; border: 0; color: var(--fg-3);
+    border-radius: 2px; cursor: pointer;
+  }
+  .banner .close:hover { background: var(--bg-3); color: var(--fg-1); }
+
+  .banner.info  { background: rgba(122,162,255,.08); border-color: rgba(122,162,255,.30); }
+  .banner.info  .ico  { color: #7AA2FF; }
+  .banner.warn  { background: rgba(251,191,36,.08); border-color: rgba(251,191,36,.30); }
+  .banner.warn  .ico  { color: #FBBF24; }
+  .banner.err   { background: rgba(255,107,107,.08); border-color: rgba(255,107,107,.30); }
+  .banner.err   .ico  { color: #FF6B6B; }
+  .banner.ok    { background: rgba(110,231,183,.08); border-color: rgba(110,231,183,.30); }
+  .banner.ok    .ico  { color: #6EE7B7; }
+  .banner.accent{ background: rgba(245,167,66,.08); border-color: rgba(245,167,66,.30); }
+  .banner.accent .ico { color: var(--accent); }
+
+  .banner code { background: var(--bg-2); border: 1px solid var(--border); padding: 1px 5px; border-radius: 2px; color: var(--fg-1); font-family: var(--ff-mono); font-size: 11px; }
+</style></head>
+<body>
+  <div class="banner info">
+    <span class="ico">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    </span>
+    <span>A new version of Pixelforge (4.2.1) is available.</span>
+    <div class="actions"><button>Release notes</button><button style="background:var(--accent); color:var(--accent-fg); border-color:var(--accent-press)">Update</button></div>
+    <button class="close">×</button>
+  </div>
+
+  <div class="banner warn">
+    <span class="ico">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </span>
+    <span>Your scene contains <code>3</code> unsaved sprites that are not pixel-aligned.</span>
+    <div class="actions"><button>Fix all</button></div>
+    <button class="close">×</button>
+  </div>
+
+  <div class="banner err">
+    <span class="ico">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="9"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+    </span>
+    <span>Build failed. 3 errors in <code>player.gd</code>.</span>
+    <div class="actions"><button>Go to first error</button></div>
+    <button class="close">×</button>
+  </div>
+
+  <div class="banner ok">
+    <span class="ico">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="20 6 9 17 4 12"/></svg>
+    </span>
+    <span>Build finished in 2.4s. 0 errors.</span>
+    <button class="close">×</button>
+  </div>
+
+  <div class="banner accent">
+    <span class="ico">
+      <img src="../assets/logo-mono.svg" style="width:16px; height:16px; image-rendering:pixelated;"/>
+    </span>
+    <span>Pixelforge Pro unlocks export to iOS, Android, and Steam.</span>
+    <div class="actions"><button style="background:var(--accent); color:var(--accent-fg); border-color:var(--accent-press)">Upgrade</button></div>
+    <button class="close">×</button>
+  </div>
+</body></html>

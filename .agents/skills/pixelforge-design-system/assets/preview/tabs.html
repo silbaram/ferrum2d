@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<title>Tabs</title>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  body { margin: 0; padding: 18px; background: var(--bg-1); }
+  .tabs {
+    display: flex; height: 32px;
+    background: var(--bg-0);
+    border-bottom: 1px solid var(--border);
+  }
+  .tab {
+    height: 32px; padding: 0 12px;
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--ff-ui); font-size: 12px; color: var(--fg-3);
+    border-right: 1px solid var(--border);
+    cursor: pointer; position: relative;
+  }
+  .tab .ico { width: 12px; height: 12px; }
+  .tab .x { width: 14px; height: 14px; display: grid; place-items: center; color: var(--fg-4); border-radius: 2px; font-size: 12px; }
+  .tab .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--accent); }
+  .tab.active {
+    background: var(--bg-1); color: var(--fg-1);
+  }
+  .tab.active::after {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--accent);
+  }
+  .tab.hover:not(.active) { background: var(--bg-2); color: var(--fg-2); }
+</style></head>
+<body>
+  <div class="tabs">
+    <div class="tab">
+      <img class="ico" src="../assets/node-icons/script.svg" style="filter:invert(60%)"/>
+      main.gd
+      <span class="x">×</span>
+    </div>
+    <div class="tab active">
+      <img class="ico" src="../assets/node-icons/script.svg" style="filter:invert(80%) sepia(50%) saturate(700%) hue-rotate(355deg)"/>
+      player.gd
+      <span class="dot"></span>
+      <span class="x">×</span>
+    </div>
+    <div class="tab hover">
+      <img class="ico" src="../assets/node-icons/sprite.svg" style="filter:invert(60%)"/>
+      level_03.scene
+      <span class="x">×</span>
+    </div>
+    <div class="tab">
+      <img class="ico" src="../assets/node-icons/audio.svg" style="filter:invert(60%)"/>
+      jump.wav
+      <span class="x">×</span>
+    </div>
+  </div>
+</body></html>

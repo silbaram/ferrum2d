@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Ferrum2D Placement Viewer",
+  "version": "0.1.0",
+  "identifier": "com.ferrum2d.placement-viewer.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm --filter @ferrum2d/placement-viewer dev:desktop-host",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeBuildCommand": "pnpm --filter @ferrum2d/placement-viewer build",
+    "frontendDist": "../../placement-viewer/dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Ferrum2D Placement Viewer",
+        "width": 1280,
+        "height": 840,
+        "minWidth": 960,
+        "minHeight": 640
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": "all",
+    "icon": []
+  }
+}

@@ -417,6 +417,7 @@ examples/platformer/        Platformer controller 검증 예제
 examples/topdown-shooter/   Top-down Shooter 검증 예제
 examples/physics-sandbox/   Physics Spec authoring/debug 검증 예제
 apps/placement-viewer/       Official Data Scene placement authoring viewer app
+apps/placement-viewer-desktop/ Tauri desktop wrapper spike for the placement viewer
 docs/                       engine 설명과 development 기준 문서
 scripts/                    저장소 보조 스크립트
 ```

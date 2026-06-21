@@ -17,6 +17,7 @@
     "dev:platformer": "pnpm pack:textures:if-present && pnpm build:wasm && pnpm --filter @ferrum2d/platformer dev",
     "dev:physics-sandbox": "pnpm pack:textures:if-present && pnpm build:wasm && pnpm --filter @ferrum2d/physics-sandbox dev",
     "dev:placement-viewer": "pnpm pack:textures:if-present && pnpm build:wasm && pnpm --filter @ferrum2d/placement-viewer dev",
+    "dev:placement-viewer-desktop": "pnpm pack:textures:if-present && pnpm build:wasm && pnpm --filter @ferrum2d/placement-viewer-desktop dev",
     "test:rust": "cargo test --manifest-path crates/ferrum-core/Cargo.toml",
     "test:web": "pnpm --filter @ferrum2d/ferrum-web test",
     "validate:game-spec": "pnpm --filter @ferrum2d/ferrum-web build && node scripts/validate/validate-game-spec.mjs examples/topdown-shooter/public/game.json",
