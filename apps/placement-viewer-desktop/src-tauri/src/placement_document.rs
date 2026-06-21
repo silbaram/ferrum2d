@@ -8,6 +8,12 @@ use serde_json::Value;
 
 type CommandResult<T> = Result<T, PlacementDesktopError>;
 
+const AGENT_HANDOFF_FORMAT: &str = "ferrum2d.placement-viewer.agent-handoff";
+const PROJECT_HANDOFF_FILE: &str = ".ferrum-placement-handoff.json";
+const PROJECT_SCENE_DOCUMENT_CANDIDATES: &[&str] = &[
+    "public/scene-authoring.json",
+    "public/placement.scene-authoring.json",
+];
 const SCENE_AUTHORING_FORMAT: &str = "ferrum2d.consumer.scene-authoring";
 const SCENE_DOCUMENT_ENV_VAR: &str = "FERRUM_PLACEMENT_SCENE_DOCUMENT";
 
@@ -16,6 +22,22 @@ const SCENE_DOCUMENT_ENV_VAR: &str = "FERRUM_PLACEMENT_SCENE_DOCUMENT";
 pub struct PlacementSceneDocumentResponse {
     path: String,
     document: Value,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlacementProjectDocumentResponse {
+    project_path: String,
+    scene_document_path: String,
+    handoff_path: String,
+    document: Value,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlacementAgentHandoffResponse {
+    path: String,
+    handoff: Value,
 }
 
 #[derive(Debug)]
@@ -30,6 +52,8 @@ pub enum PlacementDesktopError {
     },
     InvalidDocumentPath(String),
     InvalidDocument(String),
+    InvalidProjectPath(String),
+    InvalidHandoff(String),
 }
 
 impl fmt::Display for PlacementDesktopError {
@@ -45,6 +69,12 @@ impl fmt::Display for PlacementDesktopError {
             Self::InvalidDocument(detail) => {
                 write!(formatter, "invalid placement scene document: {detail}")
             }
+            Self::InvalidProjectPath(detail) => {
+                write!(formatter, "invalid placement project folder: {detail}")
+            }
+            Self::InvalidHandoff(detail) => {
+                write!(formatter, "invalid placement agent handoff: {detail}")
+            }
         }
     }
 }
@@ -56,6 +86,8 @@ impl std::error::Error for PlacementDesktopError {
             Self::Json { source, .. } => Some(source),
             Self::InvalidDocumentPath(_) => None,
             Self::InvalidDocument(_) => None,
+            Self::InvalidProjectPath(_) => None,
+            Self::InvalidHandoff(_) => None,
         }
     }
 }
@@ -67,6 +99,22 @@ impl Serialize for PlacementDesktopError {
     {
         serializer.serialize_str(&self.to_string())
     }
+}
+
+#[tauri::command]
+pub fn load_placement_project_folder(
+    project_path: String,
+) -> CommandResult<PlacementProjectDocumentResponse> {
+    let project_path = parse_project_path(&project_path)?;
+    let scene_document_path = project_scene_document_path(&project_path)?;
+    let document = read_scene_document(&scene_document_path)?;
+    let handoff_path = project_path.join(PROJECT_HANDOFF_FILE);
+    Ok(PlacementProjectDocumentResponse {
+        project_path: project_path.display().to_string(),
+        scene_document_path: scene_document_path.display().to_string(),
+        handoff_path: handoff_path.display().to_string(),
+        document,
+    })
 }
 
 #[tauri::command]
@@ -82,6 +130,19 @@ pub fn load_placement_scene_document(
 }
 
 #[tauri::command]
+pub fn save_placement_agent_handoff(
+    project_path: Option<String>,
+    scene_document_path: Option<String>,
+    handoff: Value,
+) -> CommandResult<PlacementAgentHandoffResponse> {
+    validate_agent_handoff(&handoff)?;
+    let project_path =
+        resolve_handoff_project_path(project_path.as_deref(), scene_document_path.as_deref())?;
+    let handoff_path = project_path.join(PROJECT_HANDOFF_FILE);
+    write_agent_handoff(&handoff_path, handoff)
+}
+
+#[tauri::command]
 pub fn save_placement_scene_document(
     scene_document_path: Option<String>,
     document: Value,
@@ -91,6 +152,25 @@ pub fn save_placement_scene_document(
     Ok(PlacementSceneDocumentResponse {
         path: path.display().to_string(),
         document,
+    })
+}
+
+fn write_agent_handoff(
+    path: &Path,
+    handoff: Value,
+) -> CommandResult<PlacementAgentHandoffResponse> {
+    let json =
+        serde_json::to_string_pretty(&handoff).map_err(|source| PlacementDesktopError::Json {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    fs::write(path, format!("{json}\n")).map_err(|source| PlacementDesktopError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    Ok(PlacementAgentHandoffResponse {
+        path: path.display().to_string(),
+        handoff,
     })
 }
 
@@ -122,6 +202,25 @@ fn write_scene_document(path: &Path, document: Value) -> CommandResult<Value> {
     Ok(document)
 }
 
+fn validate_agent_handoff(handoff: &Value) -> CommandResult<()> {
+    if handoff.get("format").and_then(Value::as_str) != Some(AGENT_HANDOFF_FORMAT) {
+        return Err(PlacementDesktopError::InvalidHandoff(
+            "format must be ferrum2d.placement-viewer.agent-handoff".to_string(),
+        ));
+    }
+    if handoff.get("version").and_then(Value::as_i64) != Some(1) {
+        return Err(PlacementDesktopError::InvalidHandoff(
+            "version must be 1".to_string(),
+        ));
+    }
+    if handoff.get("assetDiagnostics").is_some_and(Value::is_array) {
+        return Ok(());
+    }
+    Err(PlacementDesktopError::InvalidHandoff(
+        "assetDiagnostics must be an array".to_string(),
+    ))
+}
+
 fn validate_scene_document(document: &Value) -> CommandResult<()> {
     let format = document.get("format").and_then(Value::as_str);
     if format != Some(SCENE_AUTHORING_FORMAT) {
@@ -143,6 +242,20 @@ fn validate_scene_document(document: &Value) -> CommandResult<()> {
         ));
     }
     Ok(())
+}
+
+fn resolve_handoff_project_path(
+    project_path: Option<&str>,
+    scene_document_path: Option<&str>,
+) -> CommandResult<PathBuf> {
+    if let Some(project_path) = project_path {
+        return parse_project_path(project_path);
+    }
+    let scene_document_path = match scene_document_path {
+        Some(path) => parse_scene_document_path(path)?,
+        None => sample_scene_document_path(),
+    };
+    Ok(infer_project_path_from_scene_document(&scene_document_path))
 }
 
 fn resolve_scene_document_path(path: Option<&str>) -> CommandResult<PathBuf> {
@@ -173,6 +286,51 @@ fn parse_scene_document_path(path: &str) -> CommandResult<PathBuf> {
     Ok(PathBuf::from(path))
 }
 
+fn parse_project_path(path: &str) -> CommandResult<PathBuf> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err(PlacementDesktopError::InvalidProjectPath(
+            "path must not be empty".to_string(),
+        ));
+    }
+    let path = PathBuf::from(path);
+    let metadata = fs::metadata(&path).map_err(|source| PlacementDesktopError::Io {
+        path: path.clone(),
+        source,
+    })?;
+    if !metadata.is_dir() {
+        return Err(PlacementDesktopError::InvalidProjectPath(format!(
+            "{} is not a directory",
+            path.display()
+        )));
+    }
+    Ok(path)
+}
+
+fn project_scene_document_path(project_path: &Path) -> CommandResult<PathBuf> {
+    for candidate in PROJECT_SCENE_DOCUMENT_CANDIDATES {
+        let path = project_path.join(candidate);
+        if path.is_file() {
+            return Ok(path);
+        }
+    }
+    Err(PlacementDesktopError::InvalidProjectPath(format!(
+        "{} must contain public/scene-authoring.json",
+        project_path.display()
+    )))
+}
+
+fn infer_project_path_from_scene_document(path: &Path) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    if parent.file_name().and_then(|name| name.to_str()) == Some("public") {
+        return parent
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| parent.to_path_buf());
+    }
+    parent.to_path_buf()
+}
+
 fn sample_scene_document_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../placement-viewer/public/placement.scene-authoring.json")
@@ -181,6 +339,42 @@ fn sample_scene_document_path() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "ferrum-placement-viewer-desktop-{name}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
+    fn create_project_fixture(name: &str) -> (PathBuf, Value) {
+        let project_path = unique_temp_dir(name);
+        let public_path = project_path.join("public");
+        fs::create_dir_all(&public_path).expect("project public directory should be created");
+        let document = read_scene_document(&sample_scene_document_path())
+            .expect("sample scene document should load");
+        write_scene_document(&public_path.join("scene-authoring.json"), document.clone())
+            .expect("project scene document should be written");
+        (project_path, document)
+    }
+
+    fn sample_handoff() -> Value {
+        json!({
+            "format": AGENT_HANDOFF_FORMAT,
+            "version": 1,
+            "workflow": "human-placement-agent-behavior",
+            "placementOwner": "sceneComposition.fragments[].instances[]",
+            "behaviorOwner": "sceneComposition.prefabs[].props.behaviorRecipes + behaviorRecipes.entities",
+            "selectedInstanceId": "crate_left",
+            "assetDiagnostics": []
+        })
+    }
 
     #[test]
     fn loads_sample_scene_document() {
@@ -284,5 +478,113 @@ mod tests {
         assert_eq!(response.path, path.display().to_string());
         assert_eq!(response.document, source);
         assert_eq!(loaded, source);
+    }
+
+    #[test]
+    fn loads_scene_document_from_project_folder() {
+        let (project_path, source) = create_project_fixture("project-load");
+
+        let response = load_placement_project_folder(project_path.display().to_string())
+            .expect("project folder should load");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert_eq!(response.project_path, project_path.display().to_string());
+        assert_eq!(
+            response.scene_document_path,
+            project_path
+                .join("public/scene-authoring.json")
+                .display()
+                .to_string()
+        );
+        assert_eq!(
+            response.handoff_path,
+            project_path
+                .join(PROJECT_HANDOFF_FILE)
+                .display()
+                .to_string()
+        );
+        assert_eq!(response.document, source);
+    }
+
+    #[test]
+    fn rejects_project_folder_without_scene_document() {
+        let project_path = unique_temp_dir("project-missing-scene");
+        fs::create_dir_all(&project_path).expect("project directory should be created");
+
+        let error = load_placement_project_folder(project_path.display().to_string())
+            .expect_err("project folder without scene-authoring should be rejected");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert!(matches!(
+            error,
+            PlacementDesktopError::InvalidProjectPath(_)
+        ));
+    }
+
+    #[test]
+    fn writes_handoff_to_project_folder() {
+        let (project_path, _) = create_project_fixture("project-handoff");
+        let handoff = sample_handoff();
+
+        let response = save_placement_agent_handoff(
+            Some(project_path.display().to_string()),
+            None,
+            handoff.clone(),
+        )
+        .expect("handoff should save to project folder");
+        let loaded = fs::read_to_string(project_path.join(PROJECT_HANDOFF_FILE))
+            .expect("handoff file should be written");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert_eq!(
+            response.path,
+            project_path
+                .join(PROJECT_HANDOFF_FILE)
+                .display()
+                .to_string()
+        );
+        assert_eq!(response.handoff, handoff);
+        assert_eq!(
+            serde_json::from_str::<Value>(&loaded).expect("handoff json should parse"),
+            handoff
+        );
+    }
+
+    #[test]
+    fn writes_handoff_to_project_inferred_from_scene_document() {
+        let (project_path, _) = create_project_fixture("scene-inferred-handoff");
+        let scene_document_path = project_path.join("public/scene-authoring.json");
+        let handoff = sample_handoff();
+
+        let response = save_placement_agent_handoff(
+            None,
+            Some(scene_document_path.display().to_string()),
+            handoff.clone(),
+        )
+        .expect("handoff should save to inferred project folder");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert_eq!(
+            response.path,
+            project_path
+                .join(PROJECT_HANDOFF_FILE)
+                .display()
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_handoff() {
+        let (project_path, _) = create_project_fixture("invalid-handoff");
+
+        let error = save_placement_agent_handoff(
+            Some(project_path.display().to_string()),
+            None,
+            json!({ "format": "not-ferrum" }),
+        )
+        .expect_err("invalid handoff should be rejected");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert!(matches!(error, PlacementDesktopError::InvalidHandoff(_)));
     }
 }

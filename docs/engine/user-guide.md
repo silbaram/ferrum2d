@@ -50,6 +50,12 @@ pnpm dev:placement-viewer
 agent가 "방금 이동한 instance 위치를 반영해" 같은 요청을 처리할 때 읽는 임시 handoff
 파일이며, 원본 `placement.scene-authoring.json`을 직접 저장하지 않는다.
 
+Tauri desktop wrapper는 `project` 입력칸의 consumer project root를 `Open Project`로 열거나
+`Choose` directory dialog로 선택한 project의 `public/scene-authoring.json`을 자동 로드하고,
+Handoff 섹션의 `Save Handoff`로 프로젝트 루트의
+`.ferrum-placement-handoff.json`에 같은 handoff payload를 저장한다. 이 파일도 scene-authoring
+문서를 대체하지 않고, agent가 현재 선택/draft 상태를 읽기 위한 evidence로만 사용한다.
+
 오브젝트를 이동하거나 좌표를 입력하면 먼저 draft 상태가 된다. `Save` 버튼을 누르면
 dev server가 draft patch를 `apps/placement-viewer/public/placement.scene-authoring.json`에
 반영하고 페이지를 다시 로드한다. `Revert`는 저장 전 draft만 버린다.

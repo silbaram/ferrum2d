@@ -421,9 +421,20 @@
   align-items: end;
 }
 
-.placement-document-grid {
+.placement-document-project-grid {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+}
+
+.placement-document-scene-grid {
   grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: end;
+}
+
+.placement-document-project-grid button,
+.placement-document-scene-grid button {
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .placement-add-options {
@@ -483,7 +494,7 @@
 
 .placement-handoff-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -672,6 +683,8 @@
   .placement-control-grid-secondary,
   .placement-control-grid-edit,
   .placement-control-grid-definition,
+  .placement-document-project-grid,
+  .placement-document-scene-grid,
   .placement-component-grid,
   .placement-handoff-actions,
   .placement-add-options {

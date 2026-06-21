@@ -325,7 +325,7 @@ handoff 파일은 저장 기능의 대체물이 아니라 agent가 현재 선택
 
 - `packages/ferrum-web`에 official viewer controller/API 유지
 - `apps/placement-viewer`는 official host + smoke fixture로 유지
-- `apps/placement-viewer-desktop` Tauri spike를 추가해 공식 viewer frontend를 Tauri window에서 열고, 기본 샘플, `FERRUM_PLACEMENT_SCENE_DOCUMENT`, 명시 경로 입력, 또는 Tauri native file dialog `Browse`로 선택한 `scene-authoring` JSON을 Rust command로 읽고 저장하는 1~3단계 확인을 완료했다. Inspector는 현재 문서 경로와 저장 모드를 표시한다. 이 app은 packaging/agent handoff/project folder picker 전 단계의 실험 host다.
+- `apps/placement-viewer-desktop` Tauri spike를 추가해 공식 viewer frontend를 Tauri window에서 열고, 기본 샘플, `FERRUM_PLACEMENT_SCENE_DOCUMENT`, 명시 scene 문서 경로 입력, project root 직접 경로 입력, Tauri native file dialog `Browse`, 또는 `Choose` directory dialog로 선택한 consumer project의 `public/scene-authoring.json`을 Rust command로 읽고 저장하는 1~4단계 확인을 완료했다. Inspector는 현재 프로젝트 경로, 문서 경로, handoff 경로, 저장 모드를 표시한다. Handoff 섹션의 `Save Handoff`는 `.ferrum-placement-handoff.json`을 프로젝트 루트 또는 scene-authoring 경로에서 추론한 프로젝트 루트에 저장한다. 이 app은 packaging/자동 handoff sync/project asset folder 확장 전 단계의 실험 host다.
 - create-game template에 consumer host 제공
 - `packages/ferrum-authoring-viewer` workspace-private 패키지를 추가해 viewer title, app chrome, workflow owner, behavior binding path/evidence, DOM control/shell/panel primitive helper 같은 공통 viewer 계약을 분리했다.
 - 공식 `apps/placement-viewer`는 새 패키지의 app chrome helper로 top file strip/status bar를 만들고, generated create-game viewer/harness는 title, behavior profile 표시, key-value row/number control, generated viewer shell, panel primitive, ownership/evidence helper를 사용한다.
@@ -451,7 +451,7 @@ handoff 파일은 저장 기능의 대체물이 아니라 agent가 현재 선택
 
 - `packages/ferrum-authoring-viewer`: reusable DOM/control helper, generated viewer shell helper, generated viewer panel primitive helper는 시작 완료. create-game generated viewer는 ObjectDefinition/Project Assets/Selected detail 패널, Transform/actions 패널, stage/session controller, publish/output module, asset loading module, startup error module 분리까지 완료했고, 후속으로 독립 browser app package 확장 검토
 - 실제 npm publish 전 package별 release checklist와 beta version pin 결정
-- Tauri wrapper: `apps/placement-viewer-desktop`에서 window open, 기본 샘플/환경변수/직접 경로/native file dialog 기반 scene-authoring JSON load, Save action local write, Inspector source/save 상태 표시까지 spike 완료. 다음은 handoff 파일 쓰기와 project folder picker 판단이다.
+- Tauri wrapper: `apps/placement-viewer-desktop`에서 window open, 기본 샘플/환경변수/직접 scene 문서 경로/project root 직접 경로/native file dialog/project folder 기반 scene-authoring JSON load, Save action local write, `.ferrum-placement-handoff.json` 수동 저장, Inspector project/source/handoff/save 상태 표시까지 spike 완료. 다음은 자동 handoff sync, project asset folder picker, packaging 검증 판단이다.
 - Electron wrapper: 빠른 prototype 후보지만 보안/패키징 surface가 커서 기본값은 아님
 
 ## Track B: 오브젝트 모델 고도화

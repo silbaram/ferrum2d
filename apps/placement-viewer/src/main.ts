@@ -71,8 +71,11 @@ import "./styles.css";
 
 const SCENE_DOCUMENT_URL = "./placement.scene-authoring.json";
 const SCENE_DOCUMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
+const DESKTOP_LOAD_PROJECT_FOLDER_COMMAND = "load_placement_project_folder";
 const DESKTOP_LOAD_SCENE_DOCUMENT_COMMAND = "load_placement_scene_document";
+const DESKTOP_SAVE_AGENT_HANDOFF_COMMAND = "save_placement_agent_handoff";
 const DESKTOP_SAVE_SCENE_DOCUMENT_COMMAND = "save_placement_scene_document";
+const DESKTOP_PROJECT_QUERY_PARAMS = ["projectPath"] as const;
 const DESKTOP_SCENE_DOCUMENT_QUERY_PARAMS = ["sceneDocumentPath", "documentPath"] as const;
 const DEFAULT_SNAP_GRID_SIZE = 16;
 const KEYBOARD_NUDGE_STEP = 1;
@@ -169,6 +172,8 @@ interface PlacementViewerWindow extends Window {
   ferrumPlacementViewerSaveDraft?: () => Promise<ScenePlacementPatchSaveResult | undefined>;
   ferrumPlacementViewerOpenSceneDocument?: (sceneDocumentPath?: string) => void;
   ferrumPlacementViewerBrowseSceneDocument?: () => Promise<string | undefined>;
+  ferrumPlacementViewerBrowseProjectFolder?: () => Promise<string | undefined>;
+  ferrumPlacementViewerSaveHandoff?: () => Promise<string | undefined>;
   ferrumPlacementViewerSaveEnabled?: boolean;
   ferrumPlacementViewerSavedDocument?: SceneAuthoringDocumentSpec;
   ferrumPlacementViewerLastSave?: ScenePlacementPatchSaveResult;
@@ -189,14 +194,31 @@ interface PlacementViewerDesktopBridge {
 
 interface PlacementViewerDesktopState {
   enabled: boolean;
+  requestedProjectPath?: string;
   requestedSceneDocumentPath?: string;
+  projectPath?: string;
   sceneDocumentPath?: string;
+  handoffPath?: string;
   lastSavePath?: string;
+  lastHandoffPath?: string;
+  lastHandoffError?: string;
 }
 
 interface PlacementDesktopSceneDocumentResponse {
   path: string;
   document: SceneAuthoringDocumentSpec;
+}
+
+interface PlacementDesktopProjectDocumentResponse {
+  projectPath: string;
+  sceneDocumentPath: string;
+  handoffPath: string;
+  document: SceneAuthoringDocumentSpec;
+}
+
+interface PlacementDesktopHandoffResponse {
+  path: string;
+  handoff: PlacementViewerAgentHandoff;
 }
 
 interface PlacementDesktopOpenDialogOptions {
@@ -295,8 +317,13 @@ async function bootstrap(): Promise<void> {
   let runtime: FerrumRuntime | undefined;
   try {
     const sceneDocumentUrl = placementSceneDocumentUrl();
+    const requestedDesktopProjectPath = placementDesktopProjectPath();
     const requestedDesktopSceneDocumentPath = placementDesktopSceneDocumentPath();
-    const loadedDocument = await loadSceneAuthoringDocument(sceneDocumentUrl, requestedDesktopSceneDocumentPath);
+    const loadedDocument = await loadSceneAuthoringDocument(
+      sceneDocumentUrl,
+      requestedDesktopSceneDocumentPath,
+      requestedDesktopProjectPath,
+    );
     const document = placementMassAuthoringEnabled()
       ? createPlacementMassAuthoringDocument(loadedDocument)
       : loadedDocument;
@@ -458,6 +485,17 @@ function placementSceneDocumentUrl(): string {
 
 function placementMassAuthoringEnabled(): boolean {
   return new URLSearchParams(window.location.search).get("massAuthoring") === "true";
+}
+
+function placementDesktopProjectPath(): string | undefined {
+  const params = new URLSearchParams(window.location.search);
+  for (const name of DESKTOP_PROJECT_QUERY_PARAMS) {
+    const value = params.get(name)?.trim();
+    if (value !== undefined && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 function placementDesktopSceneDocumentPath(): string | undefined {
@@ -798,6 +836,8 @@ function createPlacementInspector(
   });
   const rows = {
     source: appendRow(documentDetails, "source"),
+    project: appendRow(documentDetails, "project"),
+    handoff: appendRow(documentDetails, "handoff"),
     saveMode: appendRow(documentDetails, "save"),
     selected: appendRow(identityDetails, "selected"),
     hovered: appendRow(identityDetails, "hovered"),
@@ -831,6 +871,14 @@ function createPlacementInspector(
 
   const detailPanel = document.createElement("section");
   detailPanel.className = "placement-inspector";
+  const syncDocumentRows = (): void => {
+    rows.source.textContent = placementDocumentSourceLabel(options.sourceDocument);
+    rows.project.textContent = placementProjectStatusLabel();
+    rows.handoff.textContent = placementHandoffStatusLabel();
+    rows.saveMode.textContent = placementSaveStatusLabel(options.saveEnabled);
+    documentControls.setState();
+  };
+  window.addEventListener("ferrum-placement-desktop-statechange", syncDocumentRows);
   detailPanel.append(
     title,
     createPlacementInspectorSection("Document", createPlacementInspectorSectionBody(
@@ -864,9 +912,7 @@ function createPlacementInspector(
         button.dataset.selected = String(button.dataset.instanceId === state.selectedInstanceId);
       }
       const selected = state.selected;
-      rows.source.textContent = placementDocumentSourceLabel(options.sourceDocument);
-      rows.saveMode.textContent = placementSaveStatusLabel(options.saveEnabled);
-      documentControls.setState();
+      syncDocumentRows();
       rows.selected.textContent = selected?.instanceId ?? "-";
       rows.hovered.textContent = state.hoveredInstanceId ?? "-";
       rows.identity.textContent = selected === undefined
@@ -1053,6 +1099,7 @@ function createPlacementHandoffControls(options: {
   const actions = document.createElement("div");
   const copyPatch = document.createElement("button");
   const copyHandoff = document.createElement("button");
+  const saveHandoff = document.createElement("button");
   const saveDraft = document.createElement("button");
   const status = document.createElement("p");
   let lastState: ScenePlacementViewerState | undefined;
@@ -1067,10 +1114,13 @@ function createPlacementHandoffControls(options: {
   copyHandoff.type = "button";
   copyHandoff.textContent = "Copy Handoff";
   copyHandoff.dataset.placementAction = "copy-handoff";
+  saveHandoff.type = "button";
+  saveHandoff.textContent = "Save Handoff";
+  saveHandoff.dataset.placementAction = "save-handoff";
   saveDraft.type = "button";
   saveDraft.textContent = "Save Draft";
   saveDraft.dataset.placementAction = "save-draft";
-  actions.append(copyPatch, copyHandoff, saveDraft);
+  actions.append(copyPatch, copyHandoff, saveHandoff, saveDraft);
   element.append(actions, status);
 
   const setStatus = (message: string, kind: "idle" | "success" | "blocked" | "error"): void => {
@@ -1099,6 +1149,18 @@ function createPlacementHandoffControls(options: {
   copyHandoff.addEventListener("click", () => {
     void copyJson("handoff");
   });
+  saveHandoff.addEventListener("click", () => {
+    void savePlacementAgentHandoffToDesktop().then((path) => {
+      if (path === undefined) {
+        setStatus("No handoff payload yet", "blocked");
+        return;
+      }
+      setStatus(`Handoff saved ${path}`, "success");
+    }).catch((error: unknown) => {
+      publishPlacementDesktopState({ lastHandoffError: placementErrorMessage(error) });
+      setStatus(placementErrorMessage(error), "error");
+    });
+  });
 
   return {
     element,
@@ -1109,6 +1171,7 @@ function createPlacementHandoffControls(options: {
       const assetDiagnosticCount = placementAssetDiagnosticsForState(state, options.assetProvider).length;
       copyPatch.disabled = draftCount === 0;
       copyHandoff.disabled = false;
+      saveHandoff.disabled = placementDesktopInvoke() === undefined;
       saveDraft.disabled = draftCount === 0 || !options.saveEnabled || blockedCount > 0;
       saveDraft.dataset.blockedByReferences = String(blockedCount > 0);
       element.dataset.draftCount = String(draftCount);
@@ -1156,16 +1219,29 @@ function createPlacementDocumentControls(sourceDocument: string): {
   setState(): void;
 } {
   const form = document.createElement("form");
-  const row = document.createElement("div");
-  const path = appendTextControl(row, "document", "sceneDocumentPath");
+  const projectRow = document.createElement("div");
+  const documentRow = document.createElement("div");
+  const projectPath = appendTextControl(projectRow, "project", "projectPath");
+  const path = appendTextControl(documentRow, "document", "sceneDocumentPath");
+  const openProject = document.createElement("button");
+  const chooseProject = document.createElement("button");
   const browse = document.createElement("button");
   const openPath = document.createElement("button");
   const sample = document.createElement("button");
 
   form.className = "placement-controls placement-document-controls";
-  row.className = "placement-control-grid placement-document-grid";
+  projectRow.className = "placement-control-grid placement-document-project-grid";
+  documentRow.className = "placement-control-grid placement-document-scene-grid";
+  projectPath.value = placementProjectInputValue();
+  projectPath.placeholder = "/absolute/path/to/project";
   path.value = sourceDocument;
   path.placeholder = "/absolute/path/to/placement.scene-authoring.json";
+  openProject.type = "button";
+  openProject.textContent = "Open Project";
+  openProject.dataset.placementAction = "open-project-path";
+  chooseProject.type = "button";
+  chooseProject.textContent = "Choose";
+  chooseProject.dataset.placementAction = "browse-project-folder";
   browse.type = "button";
   browse.textContent = "Browse";
   browse.dataset.placementAction = "browse-scene-document";
@@ -1175,22 +1251,40 @@ function createPlacementDocumentControls(sourceDocument: string): {
   sample.type = "button";
   sample.textContent = "Sample";
   sample.dataset.placementAction = "open-sample-scene-document";
-  row.append(browse, openPath, sample);
-  form.append(row);
+  projectRow.append(openProject, chooseProject);
+  documentRow.append(browse, openPath, sample);
+  form.append(projectRow, documentRow);
   const syncControls = () => {
+    const currentProject = placementProjectInputValue();
     const currentSource = placementDocumentSourceLabel(sourceDocument);
+    if (document.activeElement !== projectPath) {
+      projectPath.value = currentProject;
+    }
     if (document.activeElement !== path) {
       path.value = currentSource;
     }
     const desktopEnabled = placementDesktopInvoke() !== undefined;
     const dialogEnabled = placementDesktopOpenDialog() !== undefined;
+    projectPath.disabled = !desktopEnabled;
     path.disabled = !desktopEnabled;
+    openProject.disabled = !desktopEnabled || projectPath.value.trim().length === 0;
+    chooseProject.disabled = !dialogEnabled;
     browse.disabled = !dialogEnabled;
     openPath.disabled = !desktopEnabled || path.value.trim().length === 0;
     sample.disabled = !desktopEnabled;
   };
   form.addEventListener("submit", (event) => event.preventDefault());
+  projectPath.addEventListener("input", syncControls);
   path.addEventListener("input", syncControls);
+  openProject.addEventListener("click", () => {
+    const nextProjectPath = projectPath.value.trim();
+    if (nextProjectPath.length > 0) {
+      openPlacementProjectFolder(nextProjectPath);
+    }
+  });
+  chooseProject.addEventListener("click", () => {
+    void browsePlacementProjectFolder();
+  });
   browse.addEventListener("click", () => {
     void browsePlacementSceneDocument();
   });
@@ -3393,6 +3487,8 @@ function installPlacementHooks(
   target.ferrumPlacementViewerSaveDraft = save.saveDraft;
   target.ferrumPlacementViewerOpenSceneDocument = openPlacementSceneDocument;
   target.ferrumPlacementViewerBrowseSceneDocument = browsePlacementSceneDocument;
+  target.ferrumPlacementViewerBrowseProjectFolder = browsePlacementProjectFolder;
+  target.ferrumPlacementViewerSaveHandoff = savePlacementAgentHandoffToDesktop;
   target.ferrumPlacementViewerNudgeSelected = (delta: Partial<ScenePlacementPoint>) => {
     return nudgeSelectedInstance(viewer, interaction, delta, setState);
   };
@@ -3535,6 +3631,30 @@ function placementDocumentSourceLabel(fallback: string): string {
   return fallback;
 }
 
+function placementProjectInputValue(): string {
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  if (desktop?.enabled !== true) {
+    return "";
+  }
+  return desktop.projectPath ?? desktop.requestedProjectPath ?? "";
+}
+
+function placementProjectStatusLabel(): string {
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  if (desktop?.enabled !== true) {
+    return "browser";
+  }
+  return desktop.projectPath ?? desktop.requestedProjectPath ?? "-";
+}
+
+function placementHandoffStatusLabel(): string {
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  if (desktop?.enabled !== true) {
+    return "copy only";
+  }
+  return desktop.lastHandoffPath ?? desktop.handoffPath ?? "-";
+}
+
 function placementSaveStatusLabel(saveEnabled: boolean): string {
   if (!saveEnabled) {
     return "disabled";
@@ -3546,6 +3666,24 @@ function placementSaveStatusLabel(saveEnabled: boolean): string {
       : `saved ${desktop.lastSavePath}`;
   }
   return import.meta.env.DEV ? "dev endpoint" : "enabled";
+}
+
+async function browsePlacementProjectFolder(): Promise<string | undefined> {
+  const openDialog = placementDesktopOpenDialog();
+  if (openDialog === undefined) {
+    return undefined;
+  }
+  const selected = await openDialog({
+    title: "Open Ferrum2D project folder",
+    multiple: false,
+    directory: true,
+  });
+  const projectPath = placementDialogSelectedPath(selected);
+  if (projectPath === undefined) {
+    return undefined;
+  }
+  openPlacementProjectFolder(projectPath);
+  return projectPath;
 }
 
 async function browsePlacementSceneDocument(): Promise<string | undefined> {
@@ -3572,12 +3710,30 @@ async function browsePlacementSceneDocument(): Promise<string | undefined> {
   return sceneDocumentPath;
 }
 
+function openPlacementProjectFolder(projectPath: string): void {
+  if (!confirmPlacementDocumentSwitch()) {
+    return;
+  }
+  const url = new URL(window.location.href);
+  for (const name of DESKTOP_SCENE_DOCUMENT_QUERY_PARAMS) {
+    url.searchParams.delete(name);
+  }
+  for (const name of DESKTOP_PROJECT_QUERY_PARAMS) {
+    url.searchParams.delete(name);
+  }
+  url.searchParams.set("projectPath", projectPath);
+  window.location.assign(url.toString());
+}
+
 function openPlacementSceneDocument(sceneDocumentPath?: string): void {
   if (!confirmPlacementDocumentSwitch()) {
     return;
   }
   const url = new URL(window.location.href);
   for (const name of DESKTOP_SCENE_DOCUMENT_QUERY_PARAMS) {
+    url.searchParams.delete(name);
+  }
+  for (const name of DESKTOP_PROJECT_QUERY_PARAMS) {
     url.searchParams.delete(name);
   }
   if (sceneDocumentPath !== undefined) {
@@ -3602,6 +3758,38 @@ function placementDialogSelectedPath(value: unknown): string | undefined {
     return value.find((entry): entry is string => typeof entry === "string");
   }
   return undefined;
+}
+
+async function savePlacementAgentHandoffToDesktop(): Promise<string | undefined> {
+  const desktopInvoke = placementDesktopInvoke();
+  if (desktopInvoke === undefined) {
+    return undefined;
+  }
+  const handoff = (window as PlacementViewerWindow).ferrumPlacementViewerAgentHandoff;
+  if (handoff === undefined) {
+    return undefined;
+  }
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  const args: Record<string, unknown> = { handoff };
+  if (desktop?.projectPath !== undefined) {
+    args.projectPath = desktop.projectPath;
+  }
+  if (desktop?.sceneDocumentPath !== undefined) {
+    args.sceneDocumentPath = desktop.sceneDocumentPath;
+  }
+  const result = await desktopInvoke<PlacementDesktopHandoffResponse>(
+    DESKTOP_SAVE_AGENT_HANDOFF_COMMAND,
+    args,
+  );
+  if (!isPlacementDesktopHandoffResponse(result)) {
+    throw new Error("Failed to save placement handoff: invalid desktop handoff response");
+  }
+  publishPlacementDesktopState({
+    lastHandoffPath: result.path,
+    handoffPath: result.path,
+    lastHandoffError: undefined,
+  });
+  return result.path;
 }
 
 async function savePlacementSceneDocument(
@@ -3669,6 +3857,7 @@ function publishPlacementDesktopState(update: Partial<PlacementViewerDesktopStat
     ...target.ferrumPlacementViewerDesktop,
     ...update,
   };
+  window.dispatchEvent(new CustomEvent("ferrum-placement-desktop-statechange"));
 }
 
 function publishPlacementInteraction(interaction: PlacementInteractionState): void {
@@ -3822,9 +4011,26 @@ function pointerScreenPoint(canvas: HTMLCanvasElement, event: PointerEvent | Mou
 async function loadSceneAuthoringDocument(
   url: string,
   sceneDocumentPath?: string,
+  projectPath?: string,
 ): Promise<SceneAuthoringDocumentSpec> {
   const desktopInvoke = placementDesktopInvoke();
   if (desktopInvoke !== undefined) {
+    if (projectPath !== undefined) {
+      const result = await desktopInvoke<PlacementDesktopProjectDocumentResponse>(
+        DESKTOP_LOAD_PROJECT_FOLDER_COMMAND,
+        { projectPath },
+      );
+      if (!isPlacementDesktopProjectDocumentResponse(result)) {
+        throw new Error("Failed to load placement project folder: invalid desktop project response");
+      }
+      publishPlacementDesktopState({
+        requestedProjectPath: projectPath,
+        projectPath: result.projectPath,
+        sceneDocumentPath: result.sceneDocumentPath,
+        handoffPath: result.handoffPath,
+      });
+      return result.document;
+    }
     const result = await desktopInvoke<PlacementDesktopSceneDocumentResponse>(
       DESKTOP_LOAD_SCENE_DOCUMENT_COMMAND,
       sceneDocumentPath === undefined ? undefined : { sceneDocumentPath },
@@ -3834,6 +4040,7 @@ async function loadSceneAuthoringDocument(
     }
     publishPlacementDesktopState({
       requestedSceneDocumentPath: sceneDocumentPath,
+      projectPath: undefined,
       sceneDocumentPath: result.path,
     });
     return result.document;
@@ -3846,11 +4053,27 @@ async function loadSceneAuthoringDocument(
   return await response.json() as SceneAuthoringDocumentSpec;
 }
 
+function isPlacementDesktopProjectDocumentResponse(value: unknown): value is PlacementDesktopProjectDocumentResponse {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as { projectPath?: unknown }).projectPath === "string"
+    && typeof (value as { sceneDocumentPath?: unknown }).sceneDocumentPath === "string"
+    && typeof (value as { handoffPath?: unknown }).handoffPath === "string"
+    && typeof (value as { document?: { format?: unknown } }).document?.format === "string";
+}
+
 function isPlacementDesktopSceneDocumentResponse(value: unknown): value is PlacementDesktopSceneDocumentResponse {
   return typeof value === "object"
     && value !== null
     && typeof (value as { path?: unknown }).path === "string"
     && typeof (value as { document?: { format?: unknown } }).document?.format === "string";
+}
+
+function isPlacementDesktopHandoffResponse(value: unknown): value is PlacementDesktopHandoffResponse {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as { path?: unknown }).path === "string"
+    && typeof (value as { handoff?: { format?: unknown } }).handoff?.format === "string";
 }
 
 function appendNumberControl(
