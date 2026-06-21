@@ -190,6 +190,8 @@ textarea {
 
 .placement-list button[data-selected="true"] {
   border-color: #ffd166;
+  box-shadow: inset 3px 0 0 #ffd166;
+  background: rgba(255, 209, 102, 0.12);
 }
 
 .placement-muted {
@@ -355,6 +357,33 @@ textarea {
   margin: 0;
   color: #f7fafc;
   word-break: break-word;
+}
+
+.placement-selected-inspector {
+  display: grid;
+  gap: 8px;
+}
+
+.placement-detail-group {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid #2d3843;
+  border-radius: 6px;
+  background: #111820;
+}
+
+.placement-detail-group h3 {
+  margin: 0;
+  color: #c7d2dc;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.placement-kv-compact {
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 6px 8px;
+  font-size: 12px;
 }
 
 .placement-grid {

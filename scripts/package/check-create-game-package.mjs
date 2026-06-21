@@ -861,6 +861,7 @@ async function assertGeneratedPlacementViewerScaffold(projectRoot, templateName)
   const viewerStageSessionSource = await readFile(viewerStageSessionPath, "utf8");
   const viewerStartupErrorSource = await readFile(viewerStartupErrorPath, "utf8");
   const viewerTransformPanelSource = await readFile(viewerTransformPanelPath, "utf8");
+  const viewerCssSource = await readFile(path.join(projectRoot, "src/ferrum-placement-viewer.css"), "utf8");
   assertHasModuleSpecifiers(viewerSource, `${templateName} placement viewer scaffold`, [
     "@ferrum2d/authoring-viewer",
     "./ferrum-placement-viewer-assets",
@@ -924,9 +925,17 @@ async function assertGeneratedPlacementViewerScaffold(projectRoot, templateName)
       viewerWorkflowSource.includes("scene-authoring.json") &&
       viewerWorkflowSource.includes("copy-handoff") &&
       viewerWorkflowSource.includes("save-draft") &&
+      viewerWorkflowSource.includes("placementSelectedInspector") &&
+      viewerWorkflowSource.includes("placementInspectorGroup") &&
       (viewerWorkflowSource.includes("human-placement-agent-behavior") || usesAgentHandoffHelper) &&
       viewerWorkflowSource.includes("__ferrumConsumerPlacementViewer"),
     `${templateName} placement viewer scaffold must expose placement patch and agent handoff workflow`,
+  );
+  assert(
+    viewerCssSource.includes("placement-selected-inspector") &&
+      viewerCssSource.includes("placement-detail-group") &&
+      viewerCssSource.includes("placement-kv-compact"),
+    `${templateName} placement viewer scaffold must keep grouped selected inspector styles`,
   );
 }
 

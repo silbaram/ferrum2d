@@ -43,6 +43,12 @@ interface PlacementObjectPanelSession {
   readonly assetProvider: ScenePlacementAssetProvider;
 }
 
+interface PlacementDetailRow {
+  readonly key: string;
+  readonly label: string;
+  readonly value: string;
+}
+
 export function renderPlacementDetails(
   container: HTMLElement,
   state: ScenePlacementViewerState,
@@ -56,20 +62,62 @@ export function renderPlacementDetails(
     return;
   }
 
+  const inspector = document.createElement("div");
+  inspector.className = "placement-selected-inspector";
+  inspector.dataset.placementSelectedInspector = "true";
+  inspector.append(
+    createPlacementDetailGroup("Identity", "identity", [
+      { key: "id", label: "id", value: selected.instanceId },
+      { key: "prefab", label: "prefab", value: selected.prefab },
+      { key: "variant", label: "variant", value: selected.variant ?? "default" },
+      { key: "role", label: "role", value: selected.role },
+      {
+        key: "entity",
+        label: "entity",
+        value: selected.entity === undefined
+          ? "not resolved"
+          : `${selected.entity.entityId}:${selected.entity.entityGeneration}`,
+      },
+    ]),
+    createPlacementDetailGroup("Visual", "visual", [
+      { key: "visual", label: "visual", value: placementVisualLabel(selected) },
+      { key: "layer", label: "layer", value: selected.componentLayer?.name ?? String(selected.transform.layer) },
+    ]),
+    createPlacementDetailGroup("Collider", "collider", [
+      { key: "collider", label: "collider", value: placementColliderLabel(selected) },
+    ]),
+    createPlacementDetailGroup("Behavior", "behavior", [
+      {
+        key: "profiles",
+        label: "profiles",
+        value: formatAuthoringViewerBehaviorProfiles(selected.behaviorProfiles, {
+          emptyLabel: "none",
+        }),
+      },
+    ]),
+  );
+  container.replaceChildren(inspector);
+}
+
+function createPlacementDetailGroup(
+  title: string,
+  group: string,
+  rows: readonly PlacementDetailRow[],
+): HTMLElement {
+  const section = document.createElement("section");
+  const heading = document.createElement("h3");
   const list = document.createElement("dl");
-  list.className = "placement-kv";
-  appendAuthoringViewerKeyValueRow(list, "id", selected.instanceId);
-  appendAuthoringViewerKeyValueRow(list, "prefab", selected.prefab);
-  appendAuthoringViewerKeyValueRow(list, "role", selected.role);
-  appendAuthoringViewerKeyValueRow(list, "visual", placementVisualLabel(selected));
-  appendAuthoringViewerKeyValueRow(list, "collider", placementColliderLabel(selected));
-  appendAuthoringViewerKeyValueRow(list, "profiles", formatAuthoringViewerBehaviorProfiles(selected.behaviorProfiles, {
-    emptyLabel: "none",
-  }));
-  appendAuthoringViewerKeyValueRow(list, "entity", selected.entity === undefined
-    ? "not resolved"
-    : `${selected.entity.entityId}:${selected.entity.entityGeneration}`);
-  container.replaceChildren(list);
+
+  section.className = "placement-detail-group";
+  section.dataset.placementInspectorGroup = group;
+  heading.textContent = title;
+  list.className = "placement-kv placement-kv-compact";
+  for (const row of rows) {
+    const value = appendAuthoringViewerKeyValueRow(list, row.label, row.value);
+    value.dataset.placementDetail = row.key;
+  }
+  section.append(heading, list);
+  return section;
 }
 
 export function renderObjectDefinitions(

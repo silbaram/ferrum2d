@@ -637,6 +637,7 @@ async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
       timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS,
     });
     await waitForGeneratedPlacementViewerDefinitionInstanceDraft(page, templateName, definitionId);
+    await waitForGeneratedPlacementViewerInspectorUi(page, templateName);
     await waitForGeneratedPlacementViewerHandoffUi(page, templateName);
     if (browserErrors.length > 0) {
       throw new Error(`${templateName} placement viewer browser errors:\n${browserErrors.join("\n")}`);
@@ -674,6 +675,15 @@ async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
           ?.hasAttribute("disabled") ?? true,
         status: document.querySelector(".placement-handoff-status")?.textContent ?? "",
       };
+      const inspectorUi = {
+        groups: Array.from(document.querySelectorAll("[data-placement-inspector-group]"))
+          .map((element) => element.getAttribute("data-placement-inspector-group")),
+        selectedId: document.querySelector("[data-placement-detail='id']")?.textContent ?? "",
+        selectedPrefab: document.querySelector("[data-placement-detail='prefab']")?.textContent ?? "",
+        visual: document.querySelector("[data-placement-detail='visual']")?.textContent ?? "",
+        collider: document.querySelector("[data-placement-detail='collider']")?.textContent ?? "",
+        behaviorProfiles: document.querySelector("[data-placement-detail='profiles']")?.textContent ?? "",
+      };
       return {
         status: "validated",
         projectAssets: [...(globalThis.ferrumConsumerPlacementViewerProjectAssets ?? [])],
@@ -690,6 +700,7 @@ async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
         objectDefinitionInstancePrefab: definitionInstanceOperation?.instance?.prefab,
         behaviorBinding: behaviorBindingReport,
         handoffUi,
+        inspectorUi,
       };
     }, { definitionId, behaviorBindingReport });
   } finally {
@@ -734,6 +745,45 @@ async function waitForGeneratedPlacementViewerHandoffUi(page, templateName) {
     );
   } catch (error) {
     throw new Error(`${templateName} placement viewer did not expose synchronized handoff controls: ${errorMessage(error)}`);
+  }
+}
+
+async function waitForGeneratedPlacementViewerInspectorUi(page, templateName) {
+  try {
+    await page.waitForFunction(
+      () => {
+        const state = globalThis.ferrumConsumerPlacementViewerState;
+        const root = document.querySelector("[data-placement-selected-inspector='true']");
+        const groups = Array.from(document.querySelectorAll("[data-placement-inspector-group]"))
+          .map((element) => element.getAttribute("data-placement-inspector-group"));
+        const selectedId = document.querySelector("[data-placement-detail='id']")?.textContent?.trim();
+        const selectedPrefab = document.querySelector("[data-placement-detail='prefab']")?.textContent?.trim();
+        const visual = document.querySelector("[data-placement-detail='visual']")?.textContent?.trim();
+        const collider = document.querySelector("[data-placement-detail='collider']")?.textContent?.trim();
+        const behaviorProfiles = document.querySelector("[data-placement-detail='profiles']")?.textContent?.trim();
+        return Boolean(
+          root instanceof HTMLElement
+          && state?.selectedInstanceId !== undefined
+          && selectedId === state.selectedInstanceId
+          && typeof selectedPrefab === "string"
+          && selectedPrefab.length > 0
+          && typeof visual === "string"
+          && visual.length > 0
+          && typeof collider === "string"
+          && collider.length > 0
+          && typeof behaviorProfiles === "string"
+          && behaviorProfiles.length > 0
+          && groups.includes("identity")
+          && groups.includes("visual")
+          && groups.includes("collider")
+          && groups.includes("behavior")
+        );
+      },
+      null,
+      { timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS },
+    );
+  } catch (error) {
+    throw new Error(`${templateName} placement viewer did not expose grouped selected inspector details: ${errorMessage(error)}`);
   }
 }
 
