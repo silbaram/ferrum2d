@@ -49,6 +49,9 @@ import {
   type ScenePlacementBehaviorBindingTarget,
   type ScenePlacementBindingMigrationPreview,
   type ScenePlacementAgentHandoff,
+  type ScenePlacementAgentHandoffAssetFile,
+  type ScenePlacementAgentHandoffAssetFolder,
+  type ScenePlacementAgentHandoffAssetFolderDiagnostic,
   type ScenePlacementAssetDiagnostic,
   type ScenePlacementPatch,
   type ScenePlacementPatchSaveResult,
@@ -71,12 +74,14 @@ import "./styles.css";
 
 const SCENE_DOCUMENT_URL = "./placement.scene-authoring.json";
 const SCENE_DOCUMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
+const DESKTOP_INSPECT_ASSET_FOLDER_COMMAND = "inspect_placement_asset_folder";
 const DESKTOP_LOAD_PROJECT_FOLDER_COMMAND = "load_placement_project_folder";
 const DESKTOP_LOAD_SCENE_DOCUMENT_COMMAND = "load_placement_scene_document";
 const DESKTOP_SAVE_AGENT_HANDOFF_COMMAND = "save_placement_agent_handoff";
 const DESKTOP_SAVE_SCENE_DOCUMENT_COMMAND = "save_placement_scene_document";
 const DESKTOP_PROJECT_QUERY_PARAMS = ["projectPath"] as const;
 const DESKTOP_SCENE_DOCUMENT_QUERY_PARAMS = ["sceneDocumentPath", "documentPath"] as const;
+const DESKTOP_HANDOFF_SYNC_DEBOUNCE_MS = 500;
 const DEFAULT_SNAP_GRID_SIZE = 16;
 const KEYBOARD_NUDGE_STEP = 1;
 const KEYBOARD_FAST_MULTIPLIER = 10;
@@ -173,7 +178,10 @@ interface PlacementViewerWindow extends Window {
   ferrumPlacementViewerOpenSceneDocument?: (sceneDocumentPath?: string) => void;
   ferrumPlacementViewerBrowseSceneDocument?: () => Promise<string | undefined>;
   ferrumPlacementViewerBrowseProjectFolder?: () => Promise<string | undefined>;
+  ferrumPlacementViewerOpenAssetFolder?: (assetFolderPath: string) => Promise<string | undefined>;
+  ferrumPlacementViewerBrowseAssetFolder?: () => Promise<string | undefined>;
   ferrumPlacementViewerSaveHandoff?: () => Promise<string | undefined>;
+  ferrumPlacementViewerRefreshHandoff?: () => void;
   ferrumPlacementViewerSaveEnabled?: boolean;
   ferrumPlacementViewerSavedDocument?: SceneAuthoringDocumentSpec;
   ferrumPlacementViewerLastSave?: ScenePlacementPatchSaveResult;
@@ -199,6 +207,14 @@ interface PlacementViewerDesktopState {
   projectPath?: string;
   sceneDocumentPath?: string;
   handoffPath?: string;
+  assetFolderPath?: string;
+  assetFolderExists?: boolean;
+  assetFolderImageCount?: number;
+  assetFolderTextureAtlasInputPath?: string;
+  assetFolderImages?: readonly ScenePlacementAgentHandoffAssetFile[];
+  assetFolderDiagnostics?: readonly ScenePlacementAgentHandoffAssetFolderDiagnostic[];
+  lastAssetFolderError?: string;
+  handoffSyncStatus?: "idle" | "pending" | "saved" | "error";
   lastSavePath?: string;
   lastHandoffPath?: string;
   lastHandoffError?: string;
@@ -213,7 +229,17 @@ interface PlacementDesktopProjectDocumentResponse {
   projectPath: string;
   sceneDocumentPath: string;
   handoffPath: string;
+  assetFolder: PlacementDesktopAssetFolderResponse;
   document: SceneAuthoringDocumentSpec;
+}
+
+interface PlacementDesktopAssetFolderResponse {
+  assetFolderPath: string;
+  exists: boolean;
+  imageCount: number;
+  textureAtlasInputPath?: string;
+  images: readonly ScenePlacementAgentHandoffAssetFile[];
+  diagnostics: readonly ScenePlacementAgentHandoffAssetFolderDiagnostic[];
 }
 
 interface PlacementDesktopHandoffResponse {
@@ -406,6 +432,12 @@ async function bootstrap(): Promise<void> {
       selectedInstanceId,
       instanceHandleRegistry,
     });
+    const publishCurrentAgentHandoff = (
+      state: ScenePlacementViewerState,
+      migrationPreview: ScenePlacementBindingMigrationPreview | undefined,
+    ): void => {
+      publishPlacementAgentHandoff(savedDocument, state, migrationPreview, PLACEMENT_ASSET_PROVIDER, sourceDocument);
+    };
     const setState = (state: ScenePlacementViewerState): ScenePlacementViewerState => {
       const migrationPreview = placementMigrationPreview(savedDocument, state.draftPatch);
       overlay.setState(state, interaction);
@@ -414,8 +446,12 @@ async function bootstrap(): Promise<void> {
       publishPlacementState(state);
       publishPlacementMigrationPreview(migrationPreview);
       publishPlacementInteraction(interaction);
-      publishPlacementAgentHandoff(savedDocument, state, migrationPreview, PLACEMENT_ASSET_PROVIDER, sourceDocument);
+      publishCurrentAgentHandoff(state, migrationPreview);
       return state;
+    };
+    (window as PlacementViewerWindow).ferrumPlacementViewerRefreshHandoff = () => {
+      const state = viewer.state();
+      publishCurrentAgentHandoff(state, placementMigrationPreview(savedDocument, state.draftPatch));
     };
     installPlacementHooks(viewer, interaction, setState, {
       saveEnabled,
@@ -427,7 +463,7 @@ async function bootstrap(): Promise<void> {
         const migrationPreview = placementMigrationPreview(savedDocument, patch);
         if ((migrationPreview?.references.length ?? 0) > 0) {
           publishPlacementMigrationPreview(migrationPreview);
-          publishPlacementAgentHandoff(savedDocument, viewer.state(), migrationPreview, PLACEMENT_ASSET_PROVIDER, sourceDocument);
+          publishCurrentAgentHandoff(viewer.state(), migrationPreview);
           return undefined;
         }
         try {
@@ -838,6 +874,7 @@ function createPlacementInspector(
     source: appendRow(documentDetails, "source"),
     project: appendRow(documentDetails, "project"),
     handoff: appendRow(documentDetails, "handoff"),
+    assetFolder: appendRow(documentDetails, "asset folder"),
     saveMode: appendRow(documentDetails, "save"),
     selected: appendRow(identityDetails, "selected"),
     hovered: appendRow(identityDetails, "hovered"),
@@ -875,6 +912,7 @@ function createPlacementInspector(
     rows.source.textContent = placementDocumentSourceLabel(options.sourceDocument);
     rows.project.textContent = placementProjectStatusLabel();
     rows.handoff.textContent = placementHandoffStatusLabel();
+    rows.assetFolder.textContent = placementAssetFolderStatusLabel();
     rows.saveMode.textContent = placementSaveStatusLabel(options.saveEnabled);
     documentControls.setState();
   };
@@ -1127,6 +1165,46 @@ function createPlacementHandoffControls(options: {
     status.textContent = message;
     status.dataset.status = kind;
   };
+  const syncStatus = (): void => {
+    if (lastState === undefined) {
+      return;
+    }
+    const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+    const desktopInvoke = placementDesktopInvoke();
+    const autoSyncEnabled = placementDesktopHandoffAutoSyncEnabled();
+    const draftCount = lastState.draftPatch?.operations.length ?? 0;
+    const blockedCount = lastMigrationPreview?.references.length ?? 0;
+    const assetDiagnosticCount = placementAssetDiagnosticsForState(lastState, options.assetProvider).length;
+    copyPatch.disabled = draftCount === 0;
+    copyHandoff.disabled = false;
+    saveHandoff.disabled = desktopInvoke === undefined;
+    saveDraft.disabled = draftCount === 0 || !options.saveEnabled || blockedCount > 0;
+    saveDraft.dataset.blockedByReferences = String(blockedCount > 0);
+    element.dataset.draftCount = String(draftCount);
+    element.dataset.blockedReferenceCount = String(blockedCount);
+    element.dataset.assetDiagnosticCount = String(assetDiagnosticCount);
+    element.dataset.autoHandoffSync = desktopInvoke === undefined
+      ? "unavailable"
+      : autoSyncEnabled
+        ? desktop?.handoffSyncStatus ?? "idle"
+        : "disabled";
+    if (desktop?.lastHandoffError !== undefined) {
+      setStatus(`Handoff sync failed: ${desktop.lastHandoffError}`, "error");
+    } else if (autoSyncEnabled && desktop?.handoffSyncStatus === "pending") {
+      setStatus("Auto saving handoff", "idle");
+    } else if (blockedCount > 0) {
+      setStatus(`${blockedCount} blocked reference${blockedCount === 1 ? "" : "s"}`, "blocked");
+    } else if (draftCount > 0) {
+      setStatus(`${draftCount} patch operation${draftCount === 1 ? "" : "s"} ready`, "idle");
+    } else if (autoSyncEnabled && desktop?.handoffSyncStatus === "saved") {
+      setStatus("Handoff synced", "success");
+    } else if (desktop?.enabled === true && !autoSyncEnabled) {
+      setStatus("Open Project to auto sync handoff", "idle");
+    } else {
+      setStatus("No draft patch", "idle");
+    }
+  };
+  let lastMigrationPreview: ScenePlacementBindingMigrationPreview | undefined;
   const copyJson = async (kind: "patch" | "handoff"): Promise<void> => {
     const value = kind === "patch"
       ? lastState?.draftPatch
@@ -1161,29 +1239,14 @@ function createPlacementHandoffControls(options: {
       setStatus(placementErrorMessage(error), "error");
     });
   });
+  window.addEventListener("ferrum-placement-desktop-statechange", syncStatus);
 
   return {
     element,
     setState(state, migrationPreview) {
       lastState = state;
-      const draftCount = state.draftPatch?.operations.length ?? 0;
-      const blockedCount = migrationPreview?.references.length ?? 0;
-      const assetDiagnosticCount = placementAssetDiagnosticsForState(state, options.assetProvider).length;
-      copyPatch.disabled = draftCount === 0;
-      copyHandoff.disabled = false;
-      saveHandoff.disabled = placementDesktopInvoke() === undefined;
-      saveDraft.disabled = draftCount === 0 || !options.saveEnabled || blockedCount > 0;
-      saveDraft.dataset.blockedByReferences = String(blockedCount > 0);
-      element.dataset.draftCount = String(draftCount);
-      element.dataset.blockedReferenceCount = String(blockedCount);
-      element.dataset.assetDiagnosticCount = String(assetDiagnosticCount);
-      if (blockedCount > 0) {
-        setStatus(`${blockedCount} blocked reference${blockedCount === 1 ? "" : "s"}`, "blocked");
-      } else if (draftCount > 0) {
-        setStatus(`${draftCount} patch operation${draftCount === 1 ? "" : "s"} ready`, "idle");
-      } else {
-        setStatus("No draft patch", "idle");
-      }
+      lastMigrationPreview = migrationPreview;
+      syncStatus();
     },
   };
 }
@@ -1220,20 +1283,27 @@ function createPlacementDocumentControls(sourceDocument: string): {
 } {
   const form = document.createElement("form");
   const projectRow = document.createElement("div");
+  const assetRow = document.createElement("div");
   const documentRow = document.createElement("div");
   const projectPath = appendTextControl(projectRow, "project", "projectPath");
+  const assetFolderPath = appendTextControl(assetRow, "assets", "assetFolderPath");
   const path = appendTextControl(documentRow, "document", "sceneDocumentPath");
   const openProject = document.createElement("button");
   const chooseProject = document.createElement("button");
+  const useAssets = document.createElement("button");
+  const chooseAssets = document.createElement("button");
   const browse = document.createElement("button");
   const openPath = document.createElement("button");
   const sample = document.createElement("button");
 
   form.className = "placement-controls placement-document-controls";
   projectRow.className = "placement-control-grid placement-document-project-grid";
+  assetRow.className = "placement-control-grid placement-document-asset-grid";
   documentRow.className = "placement-control-grid placement-document-scene-grid";
   projectPath.value = placementProjectInputValue();
   projectPath.placeholder = "/absolute/path/to/project";
+  assetFolderPath.value = placementAssetFolderInputValue();
+  assetFolderPath.placeholder = "/absolute/path/to/project/public/assets";
   path.value = sourceDocument;
   path.placeholder = "/absolute/path/to/placement.scene-authoring.json";
   openProject.type = "button";
@@ -1242,6 +1312,12 @@ function createPlacementDocumentControls(sourceDocument: string): {
   chooseProject.type = "button";
   chooseProject.textContent = "Choose";
   chooseProject.dataset.placementAction = "browse-project-folder";
+  useAssets.type = "button";
+  useAssets.textContent = "Use Assets";
+  useAssets.dataset.placementAction = "open-asset-folder";
+  chooseAssets.type = "button";
+  chooseAssets.textContent = "Choose";
+  chooseAssets.dataset.placementAction = "browse-asset-folder";
   browse.type = "button";
   browse.textContent = "Browse";
   browse.dataset.placementAction = "browse-scene-document";
@@ -1252,13 +1328,18 @@ function createPlacementDocumentControls(sourceDocument: string): {
   sample.textContent = "Sample";
   sample.dataset.placementAction = "open-sample-scene-document";
   projectRow.append(openProject, chooseProject);
+  assetRow.append(useAssets, chooseAssets);
   documentRow.append(browse, openPath, sample);
-  form.append(projectRow, documentRow);
+  form.append(projectRow, assetRow, documentRow);
   const syncControls = () => {
     const currentProject = placementProjectInputValue();
+    const currentAssetFolder = placementAssetFolderInputValue();
     const currentSource = placementDocumentSourceLabel(sourceDocument);
     if (document.activeElement !== projectPath) {
       projectPath.value = currentProject;
+    }
+    if (document.activeElement !== assetFolderPath) {
+      assetFolderPath.value = currentAssetFolder;
     }
     if (document.activeElement !== path) {
       path.value = currentSource;
@@ -1266,15 +1347,19 @@ function createPlacementDocumentControls(sourceDocument: string): {
     const desktopEnabled = placementDesktopInvoke() !== undefined;
     const dialogEnabled = placementDesktopOpenDialog() !== undefined;
     projectPath.disabled = !desktopEnabled;
+    assetFolderPath.disabled = !desktopEnabled;
     path.disabled = !desktopEnabled;
     openProject.disabled = !desktopEnabled || projectPath.value.trim().length === 0;
     chooseProject.disabled = !dialogEnabled;
+    useAssets.disabled = !desktopEnabled || assetFolderPath.value.trim().length === 0;
+    chooseAssets.disabled = !dialogEnabled;
     browse.disabled = !dialogEnabled;
     openPath.disabled = !desktopEnabled || path.value.trim().length === 0;
     sample.disabled = !desktopEnabled;
   };
   form.addEventListener("submit", (event) => event.preventDefault());
   projectPath.addEventListener("input", syncControls);
+  assetFolderPath.addEventListener("input", syncControls);
   path.addEventListener("input", syncControls);
   openProject.addEventListener("click", () => {
     const nextProjectPath = projectPath.value.trim();
@@ -1284,6 +1369,15 @@ function createPlacementDocumentControls(sourceDocument: string): {
   });
   chooseProject.addEventListener("click", () => {
     void browsePlacementProjectFolder();
+  });
+  useAssets.addEventListener("click", () => {
+    const nextAssetFolderPath = assetFolderPath.value.trim();
+    if (nextAssetFolderPath.length > 0) {
+      void inspectPlacementAssetFolder(nextAssetFolderPath);
+    }
+  });
+  chooseAssets.addEventListener("click", () => {
+    void browsePlacementAssetFolder();
   });
   browse.addEventListener("click", () => {
     void browsePlacementSceneDocument();
@@ -3488,6 +3582,8 @@ function installPlacementHooks(
   target.ferrumPlacementViewerOpenSceneDocument = openPlacementSceneDocument;
   target.ferrumPlacementViewerBrowseSceneDocument = browsePlacementSceneDocument;
   target.ferrumPlacementViewerBrowseProjectFolder = browsePlacementProjectFolder;
+  target.ferrumPlacementViewerOpenAssetFolder = inspectPlacementAssetFolder;
+  target.ferrumPlacementViewerBrowseAssetFolder = browsePlacementAssetFolder;
   target.ferrumPlacementViewerSaveHandoff = savePlacementAgentHandoffToDesktop;
   target.ferrumPlacementViewerNudgeSelected = (delta: Partial<ScenePlacementPoint>) => {
     return nudgeSelectedInstance(viewer, interaction, delta, setState);
@@ -3510,6 +3606,9 @@ function publishPlacementState(state: ScenePlacementViewerState): void {
 }
 
 let placementAgentHandoffTimer: number | undefined;
+let placementDesktopHandoffSyncTimer: number | undefined;
+let placementDesktopPendingHandoffJson: string | undefined;
+let placementDesktopLastSyncedHandoffJson: string | undefined;
 
 function publishPlacementAgentHandoff(
   document: SceneAuthoringDocumentSpec,
@@ -3522,6 +3621,7 @@ function publishPlacementAgentHandoff(
     document,
     state,
     sourceDocument,
+    assetFolder: placementDesktopAssetFolderHandoff(),
     assetDiagnostics: placementAssetDiagnosticsForState(state, assetProvider),
     path: "placementViewer.agentHandoff",
   });
@@ -3529,6 +3629,7 @@ function publishPlacementAgentHandoff(
     ? handoff
     : { ...handoff, migrationPreview };
   (window as PlacementViewerWindow).ferrumPlacementViewerAgentHandoff = published;
+  schedulePlacementDesktopHandoffSync(published);
   if (!import.meta.env.DEV) {
     return;
   }
@@ -3545,6 +3646,54 @@ function publishPlacementAgentHandoff(
       // The handoff endpoint exists only in the official dev host.
     });
   }, 120);
+}
+
+function placementDesktopHandoffAutoSyncEnabled(): boolean {
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  if (desktop?.enabled !== true || placementDesktopInvoke() === undefined) {
+    return false;
+  }
+  return desktop.projectPath !== undefined
+    || desktop.requestedProjectPath !== undefined
+    || desktop.requestedSceneDocumentPath !== undefined;
+}
+
+function schedulePlacementDesktopHandoffSync(handoff: PlacementViewerAgentHandoff): void {
+  if (!placementDesktopHandoffAutoSyncEnabled()) {
+    return;
+  }
+  const nextHandoffJson = JSON.stringify(handoff);
+  if (nextHandoffJson === placementDesktopLastSyncedHandoffJson) {
+    return;
+  }
+  placementDesktopPendingHandoffJson = nextHandoffJson;
+  if (placementDesktopHandoffSyncTimer !== undefined) {
+    window.clearTimeout(placementDesktopHandoffSyncTimer);
+  }
+  publishPlacementDesktopState({
+    handoffSyncStatus: "pending",
+    lastHandoffError: undefined,
+  });
+  placementDesktopHandoffSyncTimer = window.setTimeout(() => {
+    placementDesktopHandoffSyncTimer = undefined;
+    const pendingHandoffJson = placementDesktopPendingHandoffJson;
+    void savePlacementAgentHandoffToDesktop().then((path) => {
+      if (path === undefined || pendingHandoffJson === undefined) {
+        publishPlacementDesktopState({ handoffSyncStatus: "idle" });
+        return;
+      }
+      placementDesktopLastSyncedHandoffJson = pendingHandoffJson;
+      publishPlacementDesktopState({
+        handoffSyncStatus: "saved",
+        lastHandoffError: undefined,
+      });
+    }).catch((error: unknown) => {
+      publishPlacementDesktopState({
+        handoffSyncStatus: "error",
+        lastHandoffError: placementErrorMessage(error),
+      });
+    });
+  }, DESKTOP_HANDOFF_SYNC_DEBOUNCE_MS);
 }
 
 function placementAssetDiagnosticsForState(
@@ -3639,12 +3788,42 @@ function placementProjectInputValue(): string {
   return desktop.projectPath ?? desktop.requestedProjectPath ?? "";
 }
 
+function placementAssetFolderInputValue(): string {
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  if (desktop?.enabled !== true) {
+    return "";
+  }
+  return desktop.assetFolderPath ?? placementDefaultAssetFolderPath(desktop.projectPath ?? desktop.requestedProjectPath) ?? "";
+}
+
 function placementProjectStatusLabel(): string {
   const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true) {
     return "browser";
   }
   return desktop.projectPath ?? desktop.requestedProjectPath ?? "-";
+}
+
+function placementAssetFolderStatusLabel(): string {
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  if (desktop?.enabled !== true) {
+    return "browser";
+  }
+  if (desktop.lastAssetFolderError !== undefined) {
+    return `error ${desktop.lastAssetFolderError}`;
+  }
+  const path = desktop.assetFolderPath ?? placementDefaultAssetFolderPath(desktop.projectPath ?? desktop.requestedProjectPath);
+  if (path === undefined) {
+    return "-";
+  }
+  if (desktop.assetFolderExists === false) {
+    return `missing ${path}`;
+  }
+  if (desktop.assetFolderExists === true) {
+    const count = desktop.assetFolderImageCount ?? 0;
+    return `${count} image${count === 1 ? "" : "s"} ${path}`;
+  }
+  return path;
 }
 
 function placementHandoffStatusLabel(): string {
@@ -3668,6 +3847,35 @@ function placementSaveStatusLabel(saveEnabled: boolean): string {
   return import.meta.env.DEV ? "dev endpoint" : "enabled";
 }
 
+function placementDefaultAssetFolderPath(projectPath: string | undefined): string | undefined {
+  if (projectPath === undefined || projectPath.length === 0) {
+    return undefined;
+  }
+  return `${projectPath.replace(/\/+$/, "")}/public/assets`;
+}
+
+function placementDesktopAssetFolderHandoff(): ScenePlacementAgentHandoffAssetFolder | undefined {
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  if (desktop?.enabled !== true || desktop.assetFolderPath === undefined) {
+    return undefined;
+  }
+  const diagnostics = desktop.assetFolderDiagnostics ?? [];
+  return {
+    path: desktop.assetFolderPath,
+    status: desktop.lastAssetFolderError !== undefined
+      ? "error"
+      : desktop.assetFolderExists === false
+        ? "missing"
+        : "ready",
+    imageCount: desktop.assetFolderImageCount ?? 0,
+    ...(desktop.assetFolderTextureAtlasInputPath === undefined
+      ? {}
+      : { textureAtlasInputPath: desktop.assetFolderTextureAtlasInputPath }),
+    images: desktop.assetFolderImages ?? [],
+    diagnostics,
+  };
+}
+
 async function browsePlacementProjectFolder(): Promise<string | undefined> {
   const openDialog = placementDesktopOpenDialog();
   if (openDialog === undefined) {
@@ -3684,6 +3892,23 @@ async function browsePlacementProjectFolder(): Promise<string | undefined> {
   }
   openPlacementProjectFolder(projectPath);
   return projectPath;
+}
+
+async function browsePlacementAssetFolder(): Promise<string | undefined> {
+  const openDialog = placementDesktopOpenDialog();
+  if (openDialog === undefined) {
+    return undefined;
+  }
+  const selected = await openDialog({
+    title: "Use Ferrum2D asset folder",
+    multiple: false,
+    directory: true,
+  });
+  const assetFolderPath = placementDialogSelectedPath(selected);
+  if (assetFolderPath === undefined) {
+    return undefined;
+  }
+  return await inspectPlacementAssetFolder(assetFolderPath);
 }
 
 async function browsePlacementSceneDocument(): Promise<string | undefined> {
@@ -3708,6 +3933,42 @@ async function browsePlacementSceneDocument(): Promise<string | undefined> {
   }
   openPlacementSceneDocument(sceneDocumentPath);
   return sceneDocumentPath;
+}
+
+async function inspectPlacementAssetFolder(assetFolderPath: string): Promise<string | undefined> {
+  const desktopInvoke = placementDesktopInvoke();
+  if (desktopInvoke === undefined) {
+    return undefined;
+  }
+  try {
+    const result = await desktopInvoke<PlacementDesktopAssetFolderResponse>(
+      DESKTOP_INSPECT_ASSET_FOLDER_COMMAND,
+      { assetFolderPath },
+    );
+    if (!isPlacementDesktopAssetFolderResponse(result)) {
+      throw new Error("Failed to inspect placement asset folder: invalid desktop asset folder response");
+    }
+    publishPlacementDesktopAssetFolder(result);
+    refreshPlacementAgentHandoff();
+    return result.assetFolderPath;
+  } catch (error: unknown) {
+    publishPlacementDesktopState({
+      assetFolderPath,
+      assetFolderExists: false,
+      assetFolderImageCount: 0,
+      assetFolderTextureAtlasInputPath: undefined,
+      assetFolderImages: [],
+      assetFolderDiagnostics: [{
+        severity: "error",
+        code: "notDirectoryAssetFolder",
+        path: "assetFolder",
+        message: placementErrorMessage(error),
+      }],
+      lastAssetFolderError: placementErrorMessage(error),
+    });
+    refreshPlacementAgentHandoff();
+    throw error;
+  }
 }
 
 function openPlacementProjectFolder(projectPath: string): void {
@@ -3858,6 +4119,22 @@ function publishPlacementDesktopState(update: Partial<PlacementViewerDesktopStat
     ...update,
   };
   window.dispatchEvent(new CustomEvent("ferrum-placement-desktop-statechange"));
+}
+
+function publishPlacementDesktopAssetFolder(result: PlacementDesktopAssetFolderResponse): void {
+  publishPlacementDesktopState({
+    assetFolderPath: result.assetFolderPath,
+    assetFolderExists: result.exists,
+    assetFolderImageCount: result.imageCount,
+    assetFolderTextureAtlasInputPath: result.textureAtlasInputPath,
+    assetFolderImages: result.images,
+    assetFolderDiagnostics: result.diagnostics,
+    lastAssetFolderError: undefined,
+  });
+}
+
+function refreshPlacementAgentHandoff(): void {
+  (window as PlacementViewerWindow).ferrumPlacementViewerRefreshHandoff?.();
 }
 
 function publishPlacementInteraction(interaction: PlacementInteractionState): void {
@@ -4028,6 +4305,13 @@ async function loadSceneAuthoringDocument(
         projectPath: result.projectPath,
         sceneDocumentPath: result.sceneDocumentPath,
         handoffPath: result.handoffPath,
+        assetFolderPath: result.assetFolder.assetFolderPath,
+        assetFolderExists: result.assetFolder.exists,
+        assetFolderImageCount: result.assetFolder.imageCount,
+        assetFolderTextureAtlasInputPath: result.assetFolder.textureAtlasInputPath,
+        assetFolderImages: result.assetFolder.images,
+        assetFolderDiagnostics: result.assetFolder.diagnostics,
+        lastAssetFolderError: undefined,
       });
       return result.document;
     }
@@ -4042,6 +4326,13 @@ async function loadSceneAuthoringDocument(
       requestedSceneDocumentPath: sceneDocumentPath,
       projectPath: undefined,
       sceneDocumentPath: result.path,
+      assetFolderPath: undefined,
+      assetFolderExists: undefined,
+      assetFolderImageCount: undefined,
+      assetFolderTextureAtlasInputPath: undefined,
+      assetFolderImages: undefined,
+      assetFolderDiagnostics: undefined,
+      lastAssetFolderError: undefined,
     });
     return result.document;
   }
@@ -4059,7 +4350,22 @@ function isPlacementDesktopProjectDocumentResponse(value: unknown): value is Pla
     && typeof (value as { projectPath?: unknown }).projectPath === "string"
     && typeof (value as { sceneDocumentPath?: unknown }).sceneDocumentPath === "string"
     && typeof (value as { handoffPath?: unknown }).handoffPath === "string"
+    && isPlacementDesktopAssetFolderResponse((value as { assetFolder?: unknown }).assetFolder)
     && typeof (value as { document?: { format?: unknown } }).document?.format === "string";
+}
+
+function isPlacementDesktopAssetFolderResponse(value: unknown): value is PlacementDesktopAssetFolderResponse {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as { assetFolderPath?: unknown }).assetFolderPath === "string"
+    && typeof (value as { exists?: unknown }).exists === "boolean"
+    && typeof (value as { imageCount?: unknown }).imageCount === "number"
+    && (
+      (value as { textureAtlasInputPath?: unknown }).textureAtlasInputPath === undefined
+      || typeof (value as { textureAtlasInputPath?: unknown }).textureAtlasInputPath === "string"
+    )
+    && Array.isArray((value as { images?: unknown }).images)
+    && Array.isArray((value as { diagnostics?: unknown }).diagnostics);
 }
 
 function isPlacementDesktopSceneDocumentResponse(value: unknown): value is PlacementDesktopSceneDocumentResponse {

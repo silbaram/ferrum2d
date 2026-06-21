@@ -52,9 +52,13 @@ agent가 "방금 이동한 instance 위치를 반영해" 같은 요청을 처리
 
 Tauri desktop wrapper는 `project` 입력칸의 consumer project root를 `Open Project`로 열거나
 `Choose` directory dialog로 선택한 project의 `public/scene-authoring.json`을 자동 로드하고,
-Handoff 섹션의 `Save Handoff`로 프로젝트 루트의
-`.ferrum-placement-handoff.json`에 같은 handoff payload를 저장한다. 이 파일도 scene-authoring
-문서를 대체하지 않고, agent가 현재 선택/draft 상태를 읽기 위한 evidence로만 사용한다.
+`<project>/public/assets`를 기본 asset folder로 inspect한다. `assets` 입력칸의 `Use Assets`
+또는 `Choose`로 다른 asset folder를 지정하면 이미지 파일 목록, `texture-atlas.input.json` 존재 여부,
+missing/not-directory diagnostic이 handoff evidence에 포함된다. 명시 프로젝트 또는 명시 문서 경로를
+연 상태에서 현재 선택/draft handoff payload는 debounce 후 프로젝트 루트의
+`.ferrum-placement-handoff.json`에 자동 sync된다. Handoff 섹션의 `Save Handoff`는 같은 payload를
+즉시 저장하는 수동 action이다. 이 파일도 scene-authoring 문서를 대체하지 않고, agent가 현재
+선택/draft/asset folder 상태를 읽기 위한 evidence로만 사용한다.
 
 오브젝트를 이동하거나 좌표를 입력하면 먼저 draft 상태가 된다. `Save` 버튼을 누르면
 dev server가 draft patch를 `apps/placement-viewer/public/placement.scene-authoring.json`에

@@ -421,7 +421,8 @@
   align-items: end;
 }
 
-.placement-document-project-grid {
+.placement-document-project-grid,
+.placement-document-asset-grid {
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: end;
 }
@@ -432,6 +433,7 @@
 }
 
 .placement-document-project-grid button,
+.placement-document-asset-grid button,
 .placement-document-scene-grid button {
   min-width: 0;
   white-space: nowrap;
@@ -684,6 +686,7 @@
   .placement-control-grid-edit,
   .placement-control-grid-definition,
   .placement-document-project-grid,
+  .placement-document-asset-grid,
   .placement-document-scene-grid,
   .placement-component-grid,
   .placement-handoff-actions,

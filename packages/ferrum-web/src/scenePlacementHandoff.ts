@@ -15,8 +15,31 @@ export interface CreateScenePlacementAgentHandoffOptions {
   readonly state: ScenePlacementViewerState;
   readonly patch?: ScenePlacementPatch;
   readonly sourceDocument?: string;
+  readonly assetFolder?: ScenePlacementAgentHandoffAssetFolder;
   readonly assetDiagnostics?: readonly ScenePlacementAssetDiagnostic[];
   readonly path?: string;
+}
+
+export interface ScenePlacementAgentHandoffAssetFolder {
+  readonly path: string;
+  readonly status: "ready" | "missing" | "error";
+  readonly imageCount: number;
+  readonly textureAtlasInputPath?: string;
+  readonly images?: readonly ScenePlacementAgentHandoffAssetFile[];
+  readonly diagnostics: readonly ScenePlacementAgentHandoffAssetFolderDiagnostic[];
+}
+
+export interface ScenePlacementAgentHandoffAssetFile {
+  readonly id: string;
+  readonly fileName: string;
+  readonly path: string;
+}
+
+export interface ScenePlacementAgentHandoffAssetFolderDiagnostic {
+  readonly severity: "error";
+  readonly code: "missingAssetFolder" | "notDirectoryAssetFolder";
+  readonly path: string;
+  readonly message: string;
 }
 
 export interface ScenePlacementAgentHandoff {
@@ -32,6 +55,7 @@ export interface ScenePlacementAgentHandoff {
   readonly pointerWorld?: ScenePlacementViewerState["pointerWorld"];
   readonly draftPatch?: ScenePlacementPatch;
   readonly migrationPreview?: ScenePlacementBindingMigrationPreview;
+  readonly assetFolder?: ScenePlacementAgentHandoffAssetFolder;
   readonly assetDiagnostics: readonly ScenePlacementAssetDiagnostic[];
 }
 
@@ -57,6 +81,7 @@ export function createScenePlacementAgentHandoff(
     ...(options.state.pointerWorld === undefined ? {} : { pointerWorld: options.state.pointerWorld }),
     ...(patch === undefined ? {} : { draftPatch: patch }),
     ...(migrationPreview === undefined ? {} : { migrationPreview }),
+    ...(options.assetFolder === undefined ? {} : { assetFolder: options.assetFolder }),
     assetDiagnostics: [...(options.assetDiagnostics ?? [])],
   };
 }

@@ -9,6 +9,7 @@ use serde_json::Value;
 type CommandResult<T> = Result<T, PlacementDesktopError>;
 
 const AGENT_HANDOFF_FORMAT: &str = "ferrum2d.placement-viewer.agent-handoff";
+const PROJECT_ASSET_FOLDER: &str = "public/assets";
 const PROJECT_HANDOFF_FILE: &str = ".ferrum-placement-handoff.json";
 const PROJECT_SCENE_DOCUMENT_CANDIDATES: &[&str] = &[
     "public/scene-authoring.json",
@@ -16,6 +17,8 @@ const PROJECT_SCENE_DOCUMENT_CANDIDATES: &[&str] = &[
 ];
 const SCENE_AUTHORING_FORMAT: &str = "ferrum2d.consumer.scene-authoring";
 const SCENE_DOCUMENT_ENV_VAR: &str = "FERRUM_PLACEMENT_SCENE_DOCUMENT";
+const SUPPORTED_IMAGE_EXTENSIONS: &[&str] = &["gif", "jpeg", "jpg", "png", "webp"];
+const TEXTURE_ATLAS_INPUT_FILE: &str = "texture-atlas.input.json";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +33,7 @@ pub struct PlacementProjectDocumentResponse {
     project_path: String,
     scene_document_path: String,
     handoff_path: String,
+    asset_folder: PlacementAssetFolderResponse,
     document: Value,
 }
 
@@ -38,6 +42,34 @@ pub struct PlacementProjectDocumentResponse {
 pub struct PlacementAgentHandoffResponse {
     path: String,
     handoff: Value,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlacementAssetFolderResponse {
+    asset_folder_path: String,
+    exists: bool,
+    image_count: usize,
+    texture_atlas_input_path: Option<String>,
+    images: Vec<PlacementAssetFolderImage>,
+    diagnostics: Vec<PlacementAssetFolderDiagnostic>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlacementAssetFolderImage {
+    id: String,
+    file_name: String,
+    path: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlacementAssetFolderDiagnostic {
+    severity: &'static str,
+    code: &'static str,
+    path: String,
+    message: String,
 }
 
 #[derive(Debug)]
@@ -52,6 +84,7 @@ pub enum PlacementDesktopError {
     },
     InvalidDocumentPath(String),
     InvalidDocument(String),
+    InvalidAssetFolderPath(String),
     InvalidProjectPath(String),
     InvalidHandoff(String),
 }
@@ -68,6 +101,9 @@ impl fmt::Display for PlacementDesktopError {
             }
             Self::InvalidDocument(detail) => {
                 write!(formatter, "invalid placement scene document: {detail}")
+            }
+            Self::InvalidAssetFolderPath(detail) => {
+                write!(formatter, "invalid placement asset folder path: {detail}")
             }
             Self::InvalidProjectPath(detail) => {
                 write!(formatter, "invalid placement project folder: {detail}")
@@ -86,6 +122,7 @@ impl std::error::Error for PlacementDesktopError {
             Self::Json { source, .. } => Some(source),
             Self::InvalidDocumentPath(_) => None,
             Self::InvalidDocument(_) => None,
+            Self::InvalidAssetFolderPath(_) => None,
             Self::InvalidProjectPath(_) => None,
             Self::InvalidHandoff(_) => None,
         }
@@ -109,12 +146,22 @@ pub fn load_placement_project_folder(
     let scene_document_path = project_scene_document_path(&project_path)?;
     let document = read_scene_document(&scene_document_path)?;
     let handoff_path = project_path.join(PROJECT_HANDOFF_FILE);
+    let asset_folder = inspect_asset_folder_path(&project_asset_folder_path(&project_path))?;
     Ok(PlacementProjectDocumentResponse {
         project_path: project_path.display().to_string(),
         scene_document_path: scene_document_path.display().to_string(),
         handoff_path: handoff_path.display().to_string(),
+        asset_folder,
         document,
     })
+}
+
+#[tauri::command]
+pub fn inspect_placement_asset_folder(
+    asset_folder_path: String,
+) -> CommandResult<PlacementAssetFolderResponse> {
+    let path = parse_asset_folder_path(&asset_folder_path)?;
+    inspect_asset_folder_path(&path)
 }
 
 #[tauri::command]
@@ -307,6 +354,16 @@ fn parse_project_path(path: &str) -> CommandResult<PathBuf> {
     Ok(path)
 }
 
+fn parse_asset_folder_path(path: &str) -> CommandResult<PathBuf> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err(PlacementDesktopError::InvalidAssetFolderPath(
+            "path must not be empty".to_string(),
+        ));
+    }
+    Ok(PathBuf::from(path))
+}
+
 fn project_scene_document_path(project_path: &Path) -> CommandResult<PathBuf> {
     for candidate in PROJECT_SCENE_DOCUMENT_CANDIDATES {
         let path = project_path.join(candidate);
@@ -318,6 +375,102 @@ fn project_scene_document_path(project_path: &Path) -> CommandResult<PathBuf> {
         "{} must contain public/scene-authoring.json",
         project_path.display()
     )))
+}
+
+fn project_asset_folder_path(project_path: &Path) -> PathBuf {
+    project_path.join(PROJECT_ASSET_FOLDER)
+}
+
+fn inspect_asset_folder_path(path: &Path) -> CommandResult<PlacementAssetFolderResponse> {
+    let metadata = match fs::metadata(path) {
+        Ok(metadata) => metadata,
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(PlacementAssetFolderResponse {
+                asset_folder_path: path.display().to_string(),
+                exists: false,
+                image_count: 0,
+                texture_atlas_input_path: None,
+                images: Vec::new(),
+                diagnostics: vec![PlacementAssetFolderDiagnostic {
+                    severity: "error",
+                    code: "missingAssetFolder",
+                    path: "assetFolder".to_string(),
+                    message: format!("{} does not exist", path.display()),
+                }],
+            });
+        }
+        Err(source) => {
+            return Err(PlacementDesktopError::Io {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    };
+    if !metadata.is_dir() {
+        return Ok(PlacementAssetFolderResponse {
+            asset_folder_path: path.display().to_string(),
+            exists: false,
+            image_count: 0,
+            texture_atlas_input_path: None,
+            images: Vec::new(),
+            diagnostics: vec![PlacementAssetFolderDiagnostic {
+                severity: "error",
+                code: "notDirectoryAssetFolder",
+                path: "assetFolder".to_string(),
+                message: format!("{} is not a directory", path.display()),
+            }],
+        });
+    }
+
+    let mut images = Vec::new();
+    for entry in fs::read_dir(path).map_err(|source| PlacementDesktopError::Io {
+        path: path.to_path_buf(),
+        source,
+    })? {
+        let entry = entry.map_err(|source| PlacementDesktopError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let entry_path = entry.path();
+        if !entry_path.is_file() || !is_supported_image_path(&entry_path) {
+            continue;
+        }
+        let file_name = entry
+            .file_name()
+            .to_string_lossy()
+            .to_string();
+        let id = entry_path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().to_string())
+            .unwrap_or_else(|| file_name.clone());
+        images.push(PlacementAssetFolderImage {
+            id,
+            file_name,
+            path: entry_path.display().to_string(),
+        });
+    }
+    images.sort_by(|left, right| left.file_name.cmp(&right.file_name));
+    let texture_atlas_input_path = path.join(TEXTURE_ATLAS_INPUT_FILE);
+    Ok(PlacementAssetFolderResponse {
+        asset_folder_path: path.display().to_string(),
+        exists: true,
+        image_count: images.len(),
+        texture_atlas_input_path: texture_atlas_input_path
+            .is_file()
+            .then(|| texture_atlas_input_path.display().to_string()),
+        images,
+        diagnostics: Vec::new(),
+    })
+}
+
+fn is_supported_image_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            SUPPORTED_IMAGE_EXTENSIONS
+                .iter()
+                .any(|supported| extension.eq_ignore_ascii_case(supported))
+        })
 }
 
 fn infer_project_path_from_scene_document(path: &Path) -> PathBuf {
@@ -362,6 +515,18 @@ mod tests {
         write_scene_document(&public_path.join("scene-authoring.json"), document.clone())
             .expect("project scene document should be written");
         (project_path, document)
+    }
+
+    fn create_project_asset_fixture(name: &str) -> PathBuf {
+        let project_path = unique_temp_dir(name);
+        let asset_path = project_path.join(PROJECT_ASSET_FOLDER);
+        fs::create_dir_all(&asset_path).expect("project asset directory should be created");
+        fs::write(asset_path.join("atlas.png"), b"png").expect("png fixture should be written");
+        fs::write(asset_path.join("ship.WEBP"), b"webp").expect("webp fixture should be written");
+        fs::write(asset_path.join("notes.txt"), b"ignore").expect("text fixture should be written");
+        fs::write(asset_path.join(TEXTURE_ATLAS_INPUT_FILE), b"{}")
+            .expect("atlas input fixture should be written");
+        project_path
     }
 
     fn sample_handoff() -> Value {
@@ -503,7 +668,61 @@ mod tests {
                 .display()
                 .to_string()
         );
+        assert_eq!(
+            response.asset_folder.asset_folder_path,
+            project_path
+                .join(PROJECT_ASSET_FOLDER)
+                .display()
+                .to_string()
+        );
+        assert!(!response.asset_folder.exists);
         assert_eq!(response.document, source);
+    }
+
+    #[test]
+    fn inspects_project_asset_folder() {
+        let project_path = create_project_asset_fixture("asset-folder");
+
+        let response =
+            inspect_asset_folder_path(&project_path.join(PROJECT_ASSET_FOLDER))
+                .expect("asset folder should inspect");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert!(response.exists);
+        assert_eq!(response.image_count, 2);
+        assert_eq!(
+            response
+                .texture_atlas_input_path
+                .as_deref()
+                .expect("atlas input path should be returned"),
+            project_path
+                .join(PROJECT_ASSET_FOLDER)
+                .join(TEXTURE_ATLAS_INPUT_FILE)
+                .display()
+                .to_string()
+        );
+        assert_eq!(
+            response
+                .images
+                .iter()
+                .map(|image| image.file_name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["atlas.png", "ship.WEBP"]
+        );
+    }
+
+    #[test]
+    fn reports_missing_asset_folder_as_diagnostic() {
+        let project_path = unique_temp_dir("missing-asset-folder");
+
+        let response =
+            inspect_asset_folder_path(&project_path.join(PROJECT_ASSET_FOLDER))
+                .expect("missing asset folder should return diagnostics");
+
+        assert!(!response.exists);
+        assert_eq!(response.image_count, 0);
+        assert_eq!(response.diagnostics.len(), 1);
+        assert_eq!(response.diagnostics[0].code, "missingAssetFolder");
     }
 
     #[test]

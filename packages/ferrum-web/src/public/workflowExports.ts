@@ -255,6 +255,9 @@ export type {
 export type {
   CreateScenePlacementAgentHandoffOptions,
   ScenePlacementAgentHandoff,
+  ScenePlacementAgentHandoffAssetFile,
+  ScenePlacementAgentHandoffAssetFolder,
+  ScenePlacementAgentHandoffAssetFolderDiagnostic,
 } from "../scenePlacementHandoff";
 export type {
   DataSceneAabbColliderSpec,
