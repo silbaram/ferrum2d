@@ -17,7 +17,7 @@
 | Breakout/Platformer browser budget | `pnpm smoke:breakout-budget`, `pnpm smoke:platformer-budget` | tag/manual opt-in | 장르별 production build render/runtime budget artifact |
 | Physics Sandbox browser budget | `pnpm smoke:physics-sandbox-budget` | tag/manual opt-in | Physics demo browser render path와 debug line/runtime budget artifact |
 | Gameplay canonical replay | `pnpm smoke:gameplay-replay`, `pnpm smoke:gameplay-replay:report` | CI는 report, 로컬 quick check는 basic smoke | committed golden fixture hash, machine-actionable replay report |
-| Package consumer smoke | `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`, `pnpm validate:consumer-smoke-report -- --expect-status passed` | tag/manual opt-in | local tarball install, generated template build, generated placement viewer Project Assets Add Sprite/ObjectDefinition/Behavior Binding browser smoke, agents dry-run/install, consumer report artifact |
+| Package consumer smoke | `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`, `pnpm validate:consumer-smoke-report -- --expect-status passed` | tag/manual opt-in | local tarball install, generated template build, generated placement viewer Handoff action state/Project Assets Add Sprite/ObjectDefinition/Behavior Binding browser smoke, agents dry-run/install, consumer report artifact |
 | Pages demo readiness | `pnpm build`, `pnpm build:pages`, `pnpm validate:pages-artifact` | Pages workflow, release candidate local check | Pages route/link validation과 ignored `dist-pages/` artifact |
 
 browser budget smoke에서 `FERRUM_BROWSER_SMOKE_BUDGET_ARTIFACT_DIR=artifacts/browser-smoke-budgets`를 설정하면 `tests/smoke/browser-render-smoke.mjs`가 `ferrum2d.browser-smoke.runtime-budget-report` JSON artifact를 저장한다. artifact는 `mode`, `budgetProfile`, `distDir`, `url`, `runtimeBudget.budget`, `runtimeBudget.report`, `runtimeBudget.snapshot`을 포함해야 한다. `runtimeBudget.report.passed`가 `false`이면 command는 실패하고, missing metric은 `missingMetric` budget violation으로 다룬다.
@@ -584,7 +584,7 @@ extended browser smoke job은 matrix별 artifact 이름을 분리해 budget smok
 - `pnpm smoke:mass-objects`로 1,000개 이상 enemy/projectile Rust frame path와 collision pair budget 회귀를 확인한다.
 - `pnpm smoke:physics-demo-suite`로 Physics Sandbox fixture catalog 6개가 browser selector, Physics Spec apply, debug line render path를 통과하는지 확인한다.
 - `pnpm package:check`로 runtime package entrypoint, authoring-viewer contract/DOM shell/panel primitive helper package, create-game scaffold, agents template, files allowlist, generated Wasm artifact, 실제 `pnpm pack` tarball 구성을 확인한다.
-- `pnpm package:consumer-smoke`로 local tarball install, generated game build, generated placement viewer Project Assets Add Sprite browser smoke, authoring-viewer dependency, agents dry-run을 임시 consumer project에서 확인한다.
+- `pnpm package:consumer-smoke`로 local tarball install, generated game build, generated placement viewer Handoff copy/save action state, Project Assets Add Sprite browser smoke, authoring-viewer dependency, agents dry-run을 임시 consumer project에서 확인한다.
 - `pnpm release:local-check`로 네 package release 후보 metadata, tarball allowlist, local consumer smoke report validation을 배포 없이 한 번에 확인한다.
 - `pnpm release:check`로 changelog, beta version, release tag metadata 구조를 확인한다.
 - `pnpm build`로 Wasm package와 Top-down Shooter production build를 확인한다.

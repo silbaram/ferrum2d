@@ -637,6 +637,7 @@ async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
       timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS,
     });
     await waitForGeneratedPlacementViewerDefinitionInstanceDraft(page, templateName, definitionId);
+    await waitForGeneratedPlacementViewerHandoffUi(page, templateName);
     if (browserErrors.length > 0) {
       throw new Error(`${templateName} placement viewer browser errors:\n${browserErrors.join("\n")}`);
     }
@@ -660,6 +661,19 @@ async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
         candidate.kind === "addInstance"
         && candidate.instance?.prefab === definitionId
       );
+      const handoffRoot = document.querySelector(".placement-handoff-controls");
+      const handoffUi = {
+        draftCount: handoffRoot?.getAttribute("data-draft-count"),
+        blockedReferenceCount: handoffRoot?.getAttribute("data-blocked-reference-count"),
+        assetDiagnosticCount: handoffRoot?.getAttribute("data-asset-diagnostic-count"),
+        copyPatchDisabled: document.querySelector(".placement-handoff-controls button[data-placement-action='copy-patch']")
+          ?.hasAttribute("disabled") ?? true,
+        copyHandoffDisabled: document.querySelector(".placement-handoff-controls button[data-placement-action='copy-handoff']")
+          ?.hasAttribute("disabled") ?? true,
+        saveDraftDisabled: document.querySelector(".placement-handoff-controls button[data-placement-action='save-draft']")
+          ?.hasAttribute("disabled") ?? true,
+        status: document.querySelector(".placement-handoff-status")?.textContent ?? "",
+      };
       return {
         status: "validated",
         projectAssets: [...(globalThis.ferrumConsumerPlacementViewerProjectAssets ?? [])],
@@ -675,11 +689,51 @@ async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
         objectDefinitionInstanceId: definitionInstanceOperation?.instance?.id,
         objectDefinitionInstancePrefab: definitionInstanceOperation?.instance?.prefab,
         behaviorBinding: behaviorBindingReport,
+        handoffUi,
       };
     }, { definitionId, behaviorBindingReport });
   } finally {
     await browser?.close().catch(() => undefined);
     await closeServer(server).catch(() => undefined);
+  }
+}
+
+async function waitForGeneratedPlacementViewerHandoffUi(page, templateName) {
+  try {
+    await page.waitForFunction(
+      () => {
+        const patch = globalThis.__ferrumConsumerPlacementViewer?.exportPatch?.()
+          ?? globalThis.ferrumConsumerPlacementViewerPatch;
+        const handoff = globalThis.ferrumConsumerPlacementViewerAgentHandoff;
+        const root = document.querySelector(".placement-handoff-controls");
+        const copyPatch = document.querySelector(".placement-handoff-controls button[data-placement-action='copy-patch']");
+        const copyHandoff = document.querySelector(".placement-handoff-controls button[data-placement-action='copy-handoff']");
+        const saveDraft = document.querySelector(".placement-handoff-controls button[data-placement-action='save-draft']");
+        const status = document.querySelector(".placement-handoff-status");
+        const draftCount = patch?.operations?.length ?? 0;
+        const blockedReferenceCount = handoff?.migrationPreview?.references?.length ?? 0;
+        const assetDiagnosticCount = handoff?.assetDiagnostics?.length ?? 0;
+        return Boolean(
+          root instanceof HTMLElement
+          && draftCount > 0
+          && root.dataset.draftCount === String(draftCount)
+          && root.dataset.blockedReferenceCount === String(blockedReferenceCount)
+          && root.dataset.assetDiagnosticCount === String(assetDiagnosticCount)
+          && copyPatch instanceof HTMLButtonElement
+          && copyPatch.disabled === false
+          && copyHandoff instanceof HTMLButtonElement
+          && copyHandoff.disabled === false
+          && saveDraft instanceof HTMLButtonElement
+          && saveDraft.disabled === (blockedReferenceCount > 0)
+          && status instanceof HTMLElement
+          && status.textContent?.includes("patch operation")
+        );
+      },
+      null,
+      { timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS },
+    );
+  } catch (error) {
+    throw new Error(`${templateName} placement viewer did not expose synchronized handoff controls: ${errorMessage(error)}`);
   }
 }
 

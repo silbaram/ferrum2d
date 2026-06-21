@@ -316,7 +316,7 @@ Ferrum2D의 agent-first 철학을 유지하려면 placement viewer의 behavior U
 
 handoff 파일은 저장 기능의 대체물이 아니라 agent가 현재 선택/draft 상태를 읽는 보조 데이터다.
 
-현재 공식 viewer는 Handoff 섹션에서 draft patch JSON과 agent handoff JSON을 클립보드로 복사할 수 있게 하고, reference 충돌이 있으면 Save Draft action을 blocked 상태로 유지한다. 이 UI는 patch/handoff evidence를 사람이 agent에게 넘기는 보조 흐름이며, behavior recipe 본문 편집이나 visual scripting UI가 아니다.
+현재 공식 viewer와 generated create-game viewer는 Handoff 섹션에서 draft patch JSON과 agent handoff JSON을 클립보드로 복사할 수 있게 하고, draft operation 수, blocked reference 수, asset diagnostic 수, Save Draft action 상태를 분리한다. reference 충돌이 있으면 Save Draft action은 blocked 상태로 유지한다. 이 UI는 patch/handoff evidence를 사람이 agent에게 넘기는 보조 흐름이며, behavior recipe 본문 편집이나 visual scripting UI가 아니다.
 
 ### A7. 공식 packaging 판단
 
@@ -328,7 +328,7 @@ handoff 파일은 저장 기능의 대체물이 아니라 agent가 현재 선택
 - create-game template에 consumer host 제공
 - `packages/ferrum-authoring-viewer` workspace-private 패키지를 추가해 viewer title, app chrome, workflow owner, behavior binding path/evidence, DOM control/shell/panel primitive helper 같은 공통 viewer 계약을 분리했다.
 - 공식 `apps/placement-viewer`는 새 패키지의 app chrome helper로 top file strip/status bar를 만들고, generated create-game viewer/harness는 title, behavior profile 표시, key-value row/number control, generated viewer shell, panel primitive, ownership/evidence helper를 사용한다.
-- generated create-game placement viewer는 ObjectDefinition, Project Assets, Selected detail 패널 렌더링을 `ferrum-placement-viewer-object-panels.ts` 모듈로 분리했고, Transform/actions 패널 렌더링과 memory save action은 `ferrum-placement-viewer-transform-panel.ts` 모듈로 분리했다. Stage/list 렌더링, viewport resize, pointer selection, session 생성은 `ferrum-placement-viewer-stage-session.ts` 모듈로 분리했고, smoke hook/window publish와 handoff/patch output 갱신은 `ferrum-placement-viewer-publish.ts` 모듈로 분리했다. Scene authoring document와 project asset provider loading은 `ferrum-placement-viewer-assets.ts` 모듈로 분리했고, startup error diagnostic/rendering은 `ferrum-placement-viewer-startup-error.ts` 모듈로 분리했다. package check가 이 shared template module들의 module-set drift, tarball 포함, public import 경계를 검증한다.
+- generated create-game placement viewer는 ObjectDefinition, Project Assets, Selected detail 패널 렌더링을 `ferrum-placement-viewer-object-panels.ts` 모듈로 분리했고, Transform/actions 패널 렌더링과 memory save action은 `ferrum-placement-viewer-transform-panel.ts` 모듈로 분리했다. Stage/list 렌더링, viewport resize, pointer selection, session 생성은 `ferrum-placement-viewer-stage-session.ts` 모듈로 분리했고, smoke hook/window publish와 handoff/patch output, Copy Patch, Copy Handoff, Save Draft action state 갱신은 `ferrum-placement-viewer-publish.ts` 모듈로 분리했다. Scene authoring document와 project asset provider loading은 `ferrum-placement-viewer-assets.ts` 모듈로 분리했고, startup error diagnostic/rendering은 `ferrum-placement-viewer-startup-error.ts` 모듈로 분리했다. package check가 이 shared template module들의 module-set drift, tarball 포함, public import 경계와 generated Handoff action state guard를 검증한다.
 - create-game CLI는 `--authoring-viewer-version`으로 generated project의 `@ferrum2d/authoring-viewer` dependency를 주입한다.
 - package check와 consumer smoke는 `@ferrum2d/authoring-viewer` tarball을 함께 검증한다.
 

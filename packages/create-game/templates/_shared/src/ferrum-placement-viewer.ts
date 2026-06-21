@@ -10,6 +10,7 @@ import {
 } from "./ferrum-placement-viewer-object-panels";
 import {
   renderPlacementTransformControls,
+  savePlacementDraftToMemory,
   type PlacementTransformPanelSettings,
 } from "./ferrum-placement-viewer-transform-panel";
 import {
@@ -22,10 +23,12 @@ import {
   type PlacementStageSessionSettings,
 } from "./ferrum-placement-viewer-stage-session";
 import {
+  createPlacementHandoffControls,
   publishPlacementSaveResult,
   publishPlacementState,
   publishPlacementViewer,
   renderPlacementAgentOutputs,
+  type PlacementHandoffControls,
 } from "./ferrum-placement-viewer-publish";
 import { loadPlacementViewerAssets, type PlacementViewerAssetUrls } from "./ferrum-placement-viewer-assets";
 import { renderPlacementStartupError } from "./ferrum-placement-viewer-startup-error";
@@ -69,6 +72,7 @@ interface PlacementShell {
   controls: HTMLElement;
   definitions: HTMLElement;
   assets: HTMLElement;
+  handoffControls: PlacementHandoffControls;
   handoff: HTMLTextAreaElement;
   patch: HTMLTextAreaElement;
 }
@@ -124,14 +128,20 @@ function createShell(root: HTMLElement): PlacementShell {
   const controls = document.createElement("div");
   const definitions = document.createElement("div");
   const assets = document.createElement("div");
+  const handoffPanel = document.createElement("div");
+  const handoffControls = createPlacementHandoffControls();
   const handoff = document.createElement("textarea");
   const patch = document.createElement("textarea");
 
   list.className = "placement-list";
   definitions.className = "placement-definitions";
   assets.className = "placement-assets";
+  handoffPanel.className = "placement-handoff-panel";
+  handoff.className = "placement-handoff-output";
+  patch.className = "placement-patch-output";
   handoff.readOnly = true;
   patch.readOnly = true;
+  handoffPanel.append(handoffControls.element, handoff);
 
   const shell = createAuthoringViewerShell({
     root,
@@ -151,7 +161,7 @@ function createShell(root: HTMLElement): PlacementShell {
       { id: "transform", title: "Transform", body: controls },
       { id: "objectDefinitions", title: "Object Definitions", body: definitions },
       { id: "projectAssets", title: "Project Assets", body: assets },
-      { id: "agentHandoff", title: "Agent Handoff", body: handoff },
+      { id: "agentHandoff", title: "Agent Handoff", body: handoffPanel },
       { id: "patch", title: "Patch", body: patch },
     ],
   });
@@ -164,6 +174,7 @@ function createShell(root: HTMLElement): PlacementShell {
     controls,
     definitions,
     assets,
+    handoffControls,
     handoff,
     patch,
   };
@@ -177,6 +188,25 @@ function renderPlacement(
 ): void {
   const state = session.viewer.state();
   const patch = session.viewer.exportPatch();
+  const onDocumentSaved = (document: Parameters<typeof createPlacementSession>[0]): void => {
+    setSession(createPlacementSession(
+      document,
+      shell.stage,
+      session.assetProvider,
+      STAGE_SESSION_SETTINGS,
+    ));
+  };
+  const onSaveDraft = async (): Promise<void> => {
+    const saved = await savePlacementDraftToMemory({
+      session,
+      settings: TRANSFORM_PANEL_SETTINGS,
+      onDocumentSaved,
+      onSaveResult: publishPlacementSaveResult,
+    });
+    if (saved) {
+      render();
+    }
+  };
   shell.status.textContent = `${state.instances.length} instances | ${patch?.operations.length ?? 0} draft operations`;
   renderPlacementStage(shell.stage, session, state, render, STAGE_SESSION_SETTINGS);
   renderPlacementInstanceList(shell.list, session, state, render);
@@ -186,14 +216,7 @@ function renderPlacement(
     session,
     settings: TRANSFORM_PANEL_SETTINGS,
     state,
-    onDocumentSaved: (document) => {
-      setSession(createPlacementSession(
-        document,
-        shell.stage,
-        session.assetProvider,
-        STAGE_SESSION_SETTINGS,
-      ));
-    },
+    onDocumentSaved,
     onSaveResult: publishPlacementSaveResult,
     render,
   });
@@ -202,10 +225,12 @@ function renderPlacement(
   renderPlacementAgentOutputs({
     handoff: shell.handoff,
     patchOutput: shell.patch,
+    handoffControls: shell.handoffControls,
     session,
     state,
     draftPatch: patch,
     sourceDocument: SCENE_AUTHORING_URL,
+    onSaveDraft,
   });
 }
 

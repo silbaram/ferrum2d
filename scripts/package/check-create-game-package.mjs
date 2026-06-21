@@ -535,7 +535,9 @@ async function assertSharedGeneratedPlacementViewerModuleContracts() {
     {
       file: "ferrum-placement-viewer-publish.ts",
       exports: [
+        "export interface PlacementHandoffControls",
         "export interface RenderPlacementAgentOutputsOptions",
+        "export function createPlacementHandoffControls",
         "export function publishPlacementViewer",
         "export function publishPlacementState",
         "export function publishPlacementSaveResult",
@@ -564,8 +566,11 @@ async function assertSharedGeneratedPlacementViewerModuleContracts() {
       file: "ferrum-placement-viewer-transform-panel.ts",
       exports: [
         "export interface PlacementTransformPanelSettings",
+        "export interface PlacementTransformPanelSession",
         "export interface RenderPlacementTransformControlsOptions",
+        "export interface SavePlacementDraftToMemoryOptions",
         "export function renderPlacementTransformControls",
+        "export async function savePlacementDraftToMemory",
       ],
     },
   ];
@@ -917,6 +922,8 @@ async function assertGeneratedPlacementViewerScaffold(projectRoot, templateName)
       viewerWorkflowSource.includes("saveScenePlacementPatch") &&
       viewerWorkflowSource.includes("updateBehaviorBinding") &&
       viewerWorkflowSource.includes("scene-authoring.json") &&
+      viewerWorkflowSource.includes("copy-handoff") &&
+      viewerWorkflowSource.includes("save-draft") &&
       (viewerWorkflowSource.includes("human-placement-agent-behavior") || usesAgentHandoffHelper) &&
       viewerWorkflowSource.includes("__ferrumConsumerPlacementViewer"),
     `${templateName} placement viewer scaffold must expose placement patch and agent handoff workflow`,

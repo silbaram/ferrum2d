@@ -20,7 +20,7 @@ export interface PlacementTransformPanelSettings {
   readonly snapGridSize: number;
 }
 
-interface PlacementTransformPanelSession {
+export interface PlacementTransformPanelSession {
   readonly document: SceneAuthoringDocumentSpec;
   readonly resolved: ResolvedSceneAuthoringDocument;
   readonly viewer: Pick<
@@ -43,6 +43,13 @@ export interface RenderPlacementTransformControlsOptions {
   readonly onDocumentSaved: (document: SceneAuthoringDocumentSpec) => void;
   readonly onSaveResult: (result: ScenePlacementPatchSaveResult) => void;
   readonly render: () => void;
+}
+
+export interface SavePlacementDraftToMemoryOptions {
+  readonly session: PlacementTransformPanelSession;
+  readonly settings: PlacementTransformPanelSettings;
+  readonly onDocumentSaved: (document: SceneAuthoringDocumentSpec) => void;
+  readonly onSaveResult: (result: ScenePlacementPatchSaveResult) => void;
 }
 
 export function renderPlacementTransformControls(
@@ -179,23 +186,15 @@ export function renderPlacementTransformControls(
     render();
   });
   saveButton.addEventListener("click", async () => {
-    const patch = session.viewer.exportPatch();
-    if (patch === undefined) return;
-    const result = await saveScenePlacementPatch(session.document, patch, {
-      allowSave: true,
-      adapter: {
-        id: settings.memorySaveAdapterId,
-        saveScenePlacementPatch: (request) => ({
-          saved: true,
-          document: request.mergedDocument,
-        }),
-      },
-      allowedAdapterIds: [settings.memorySaveAdapterId],
-      path: "placementViewer.memorySave",
+    const saved = await savePlacementDraftToMemory({
+      session,
+      settings,
+      onDocumentSaved,
+      onSaveResult,
     });
-    onSaveResult(result);
-    onDocumentSaved(result.document);
-    render();
+    if (saved) {
+      render();
+    }
   });
   clearButton.addEventListener("click", () => {
     session.viewer.clearDraftPatch();
@@ -203,6 +202,31 @@ export function renderPlacementTransformControls(
   });
 
   container.replaceChildren(grid, actions);
+}
+
+export async function savePlacementDraftToMemory(
+  options: SavePlacementDraftToMemoryOptions,
+): Promise<boolean> {
+  const { session, settings, onDocumentSaved, onSaveResult } = options;
+  const patch = session.viewer.exportPatch();
+  if (patch === undefined) {
+    return false;
+  }
+  const result = await saveScenePlacementPatch(session.document, patch, {
+    allowSave: true,
+    adapter: {
+      id: settings.memorySaveAdapterId,
+      saveScenePlacementPatch: (request) => ({
+        saved: true,
+        document: request.mergedDocument,
+      }),
+    },
+    allowedAdapterIds: [settings.memorySaveAdapterId],
+    path: "placementViewer.memorySave",
+  });
+  onSaveResult(result);
+  onDocumentSaved(result.document);
+  return true;
 }
 
 function numberField(labelText: string, value: number): { label: HTMLLabelElement; input: HTMLInputElement } {
