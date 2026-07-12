@@ -146,6 +146,13 @@
   background: var(--blue-soft);
 }
 
+.placement-sprite-preview-marker {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  image-rendering: pixelated;
+}
+
 .placement-draft-label {
   position: absolute;
   left: 0;

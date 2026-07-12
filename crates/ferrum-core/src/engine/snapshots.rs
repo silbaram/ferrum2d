@@ -88,11 +88,11 @@ impl Engine {
     }
 
     pub fn capture_shooter_snapshot(&mut self) -> bool {
-        if self.scene_mode != SceneMode::BuiltIn || self.scenes.active() != ActiveScene::Shooter {
+        if self.scene_mode != SceneMode::BuiltIn || !self.scenes.is_active(ActiveScene::Shooter) {
             self.clear_shooter_snapshot_buffers();
             return false;
         }
-        let mut snapshot = self.scenes.shooter.snapshot(&self.world, &self.camera);
+        let mut snapshot = self.scenes.shooter().snapshot(&self.world, &self.camera);
         if !self.input_actions.write_snapshot(
             &mut snapshot.header_u32s[SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
                 ..SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
@@ -153,7 +153,7 @@ impl Engine {
         ) else {
             return false;
         };
-        let restored = self.scenes.shooter.restore_snapshot(
+        let restored = self.scenes.shooter_mut().restore_snapshot(
             &mut self.world,
             &mut self.camera,
             &mut self.frame_buffers.audio_events,

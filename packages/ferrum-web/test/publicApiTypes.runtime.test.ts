@@ -72,6 +72,8 @@ import type {
   FerrumRuntimeCutsceneDialogueValues,
   FerrumRuntimeCutsceneOptions,
   FerrumRuntimeCutsceneTextMode,
+  FerrumRuntimeDataScene,
+  FerrumRuntimeDataSceneOptions,
   FerrumRuntimeEnvironment,
   FerrumRuntimeFrame,
   FerrumRuntimeHud,
@@ -396,6 +398,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
       cameraX: 0,
       cameraY: 0,
     },
+    authoringDocument: gameStateCustom,
     custom: gameStateCustom,
   };
   const builtInShooterState: BuiltInShooterStateSnapshot = {
@@ -438,7 +441,11 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   );
   const dataSceneGameStateSnapshot: GameStateSnapshot = publicCaptureGameStateSnapshot(
     snapshotEngine as FerrumEngine,
-    { includeDataSceneState: true, dataSceneCustomState: gameStateCustom },
+    {
+      includeDataSceneState: true,
+      dataSceneAuthoringDocument: gameStateCustom,
+      dataSceneCustomState: gameStateCustom,
+    },
   );
   const gameStateScene: GameStateSceneSnapshot = gameStateSnapshot.scene;
   const gameStateStorage: GameStateSnapshotStorage = {
@@ -468,6 +475,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   equal(publicGameStateSnapshotVersion, 1);
   equal(gameStateSnapshot.format, GAME_STATE_SNAPSHOT_FORMAT);
   equal(dataSceneGameStateSnapshot.dataScene?.format, DATA_SCENE_STATE_FORMAT);
+  equal(typeof dataSceneGameStateSnapshot.dataScene?.authoringDocument, "object");
   equal(gameStateScene.score, 3);
   equal(publicParseGameStateSnapshot(publicStringifyGameStateSnapshot(gameStateSnapshot)).version, 1);
   publicSaveGameStateSnapshotToStorage(gameStateStorage, "slot", gameStateSnapshot);
@@ -666,6 +674,34 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
       equal(runtimeFrame.frame.frameTimeMs >= 0, true);
     },
   };
+  const runtimeDataSceneOptions: FerrumRuntimeDataSceneOptions = {
+    document: {
+      format: "ferrum2d.consumer.scene-authoring",
+      version: 1,
+      sceneComposition: {
+        initialFragment: "main",
+        prefabs: {
+          crate: {
+            props: {
+              components: {
+                sprite: { texture: "crate", width: 16, height: 12 },
+                collider: "none",
+                layer: "enemy",
+              },
+            },
+          },
+        },
+        fragments: {
+          main: {
+            instances: [{ id: "crate-1", prefab: "crate", x: 32, y: 48 }],
+          },
+        },
+      },
+      behaviorRecipes: { entities: {} },
+    },
+    path: "runtimeDataScene",
+  };
+  const runtimeDataSceneHandle: FerrumRuntimeDataScene | undefined = undefined;
   const runtimeLevelStreamingViewport: LevelStreamingViewport = { x: 0, y: 0, width: 128, height: 128 };
   const runtimeLevelStreamingViewportProvider: FerrumRuntimeLevelStreamingViewportProvider = () =>
     runtimeLevelStreamingViewport;
@@ -743,6 +779,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     animationTimeline: runtimeAnimationTimelineOptions,
     localization: runtimeLocalizationOptions,
     cutscene: runtimeCutsceneOptions,
+    dataScene: runtimeDataSceneOptions,
     levelStreaming: runtimeLevelStreamingOptions,
     environment: runtimeEnvironment,
     debug: false,
@@ -858,6 +895,8 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   equal(runtimeOptions.animationTimeline, runtimeAnimationTimelineOptions);
   equal(runtimeOptions.localization, runtimeLocalizationOptions);
   equal(runtimeOptions.cutscene, runtimeCutsceneOptions);
+  equal(runtimeOptions.dataScene, runtimeDataSceneOptions);
+  equal(runtimeDataSceneHandle, undefined);
   equal(runtimeOptions.levelStreaming, runtimeLevelStreamingOptions);
   equal(runtimeOptions.debug, false);
   equal(runtimeOptions.engine, options);

@@ -18,6 +18,7 @@ docs/planning/*
 !docs/planning/demo-game-showcase-plan.md
 !docs/planning/deployment-roadmap.md
 !docs/planning/object-authoring-tool-plan.md
+!docs/planning/placement-runtime-texture-loading-plan.md
 !docs/planning/feature-candidates.md
 !docs/planning/physics-sandbox-redesign-plan.md
 !docs/planning/product-hardening-roadmap.md

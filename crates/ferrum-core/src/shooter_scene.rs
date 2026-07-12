@@ -66,7 +66,7 @@ pub(crate) use config::{
     ShooterAudioPolicy, ShooterConfig, ShooterPrefabKind, ShooterPrefabTextureSlot,
     ShooterProjectileArcConfig, ShooterWaveConfig,
 };
-pub(crate) use runtime::{ActionTriggerCommand, ParticleBurstSink, TweenSink};
+pub(crate) use runtime::{ParticleBurstSink, TweenSink};
 pub use snapshot::{ShooterEntitySnapshot, ShooterSceneSnapshot};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

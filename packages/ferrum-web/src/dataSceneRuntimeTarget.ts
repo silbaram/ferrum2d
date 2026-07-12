@@ -8,7 +8,15 @@ import {
   type ResolvedDataSceneComponents,
   type ResolvedDataSceneSpriteComponent,
 } from "./dataSceneComponents.js";
-import type { GameplayEntityHandle, SceneBehaviorRuntimeTarget } from "./gameplayAuthoring.js";
+import { applySceneBehaviorRecipes } from "./gameplayAuthoring.js";
+import { resolveSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
+import type {
+  ApplySceneBehaviorRecipesOptions,
+  GameplayEntityHandle,
+  SceneBehaviorApplyResult,
+  SceneBehaviorRuntimeTarget,
+} from "./gameplayAuthoring.js";
+import type { ResolvedSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
 import type { ResolvedSceneCompositionInstance } from "./sceneComposition.js";
 
 const DATA_SCENE_RUNTIME_ENGINE_ADAPTER = Symbol("ferrum2d.dataSceneRuntimeEngineAdapter");
@@ -32,6 +40,19 @@ export interface CreateDataSceneRuntimeTargetOptions {
   activateDataScene?: boolean;
   textureId?: DataSceneRuntimeTextureIdResolver;
   componentTemplates?: DataSceneRuntimeComponentTemplates;
+}
+
+export interface ApplyDataSceneAuthoringDocumentOptions
+  extends Omit<CreateDataSceneRuntimeTargetOptions, "path">,
+    Omit<ApplySceneBehaviorRecipesOptions, "path"> {
+  path?: string;
+  validateBindings?: boolean;
+  validateComponents?: boolean;
+  allowComponentTemplates?: boolean;
+}
+
+export interface ApplyDataSceneAuthoringDocumentResult extends SceneBehaviorApplyResult {
+  document: ResolvedSceneAuthoringDocument;
 }
 
 export interface DataSceneRuntimeSpawnRequest {
@@ -119,6 +140,58 @@ export function createDataSceneRuntimeTarget(
       }
       return handle;
     },
+  };
+}
+
+export function applyDataSceneAuthoringDocument(
+  engine: FerrumEngine,
+  document: unknown,
+  options: ApplyDataSceneAuthoringDocumentOptions = {},
+): ApplyDataSceneAuthoringDocumentResult {
+  const {
+    path: optionPath,
+    activateDataScene,
+    componentTemplates,
+    textureId,
+    validateBindings = true,
+    validateComponents = true,
+    allowComponentTemplates = componentTemplates !== undefined,
+    ...applyOptions
+  } = options;
+  const {
+    ids,
+    instanceHandleRegistry,
+    ...bindingOptions
+  } = applyOptions;
+  const path = optionPath ?? "dataSceneAuthoring";
+  const resolved = resolveSceneAuthoringDocument(document, {
+    ...bindingOptions,
+    path,
+    validateBindings,
+    validateComponents,
+    allowComponentTemplates,
+  });
+  const target = createDataSceneRuntimeTarget(engine, {
+    path: `${path}.runtimeTarget`,
+    activateDataScene,
+    textureId,
+    componentTemplates,
+  });
+  const result = applySceneBehaviorRecipes(
+    engine,
+    target,
+    resolved.sceneComposition,
+    resolved.behaviorRecipes,
+    {
+      ...bindingOptions,
+      path,
+      ids: ids ?? resolved.ids,
+      instanceHandleRegistry,
+    },
+  );
+  return {
+    document: resolved,
+    ...result,
   };
 }
 

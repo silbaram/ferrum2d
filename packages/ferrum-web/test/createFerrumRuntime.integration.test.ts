@@ -12,6 +12,10 @@ import type { InputManager } from "../src/inputManager.js";
 import type { AssetReleasePayload, LoadedAssets } from "../src/assetLoader.js";
 import type { PlayBgmOptions } from "../src/audioManager.js";
 import { emptyRendererStats } from "../src/renderer.js";
+import {
+  attachDataSceneRuntimeEngineAdapter,
+  type DataSceneRuntimeSpawnRequest,
+} from "../src/dataSceneRuntimeTarget.js";
 
 test("createFerrumRuntime wires opt-in content handles without DOM overlay ownership", async () => {
   const bgmCalls: Array<{ soundId: number; options?: PlayBgmOptions }> = [];
@@ -150,6 +154,45 @@ test("createFerrumRuntime forwards injected engine lifecycle without taking owne
   deepEqual(engineCalls, ["start", "pause", "resume", "stop"]);
 });
 
+test("createFerrumRuntime applies and reapplies data scene authoring documents", async () => {
+  const engineCalls: string[] = [];
+  const adapter = new RuntimeDataSceneAdapter();
+  const runtime = await createFerrumRuntime({
+    canvas: {} as HTMLCanvasElement,
+    engineInstance: attachDataSceneRuntimeEngineAdapter(fakeEngine(engineCalls), adapter),
+    renderer: fakeRuntimeRenderer(),
+    input: {} as InputManager,
+    assetHost: fakeAssetHost([]),
+    ui: false,
+    dataScene: {
+      document: runtimeDataSceneDocument("crate", 32, 48),
+      path: "runtimeDataScene",
+    },
+  });
+
+  try {
+    if (runtime.dataScene === undefined) {
+      throw new Error("Expected createFerrumRuntime to expose dataScene handle.");
+    }
+    equal(adapter.useDataSceneCalls, 1);
+    equal(runtime.dataScene.result.spawnResults.length, 1);
+    equal(runtime.dataScene.document().sceneComposition.fragments.main?.instances[0]?.id, "crate-1");
+    equal(adapter.requests[0].x, 32);
+    equal(adapter.requests[0].y, 48);
+    equal(adapter.requests[0].textureId, 77);
+
+    const nextResult = runtime.dataScene.reapply(runtimeDataSceneDocument("barrel", 96, 112));
+    equal(adapter.useDataSceneCalls, 2);
+    equal(nextResult.spawnResults[0]?.entityId, 102);
+    equal(runtime.dataScene.result.document.sceneComposition.fragments.main?.instances[0]?.id, "barrel-1");
+    equal(adapter.requests[1].x, 96);
+    equal(adapter.requests[1].y, 112);
+  } finally {
+    runtime.destroy();
+  }
+  deepEqual(engineCalls, []);
+});
+
 test("createFerrumRuntime forwards level streaming released assets to target and asset host", async () => {
   const engineCalls: string[] = [];
   const releaseCalls: AssetReleasePayload[] = [];
@@ -247,6 +290,54 @@ function fakeEngine(calls: string[]): FerrumEngine {
       calls.push("destroy");
     },
   } as unknown as FerrumEngine;
+}
+
+class RuntimeDataSceneAdapter {
+  readonly requests: DataSceneRuntimeSpawnRequest[] = [];
+  useDataSceneCalls = 0;
+
+  useDataScene(): void {
+    this.useDataSceneCalls += 1;
+  }
+
+  textureId(): number {
+    return 77;
+  }
+
+  spawnDataSceneEntity(request: DataSceneRuntimeSpawnRequest): { entityId: number; entityGeneration: number } {
+    this.requests.push(request);
+    return {
+      entityId: 100 + this.requests.length,
+      entityGeneration: 1,
+    };
+  }
+}
+
+function runtimeDataSceneDocument(prefabId: string, x: number, y: number) {
+  return {
+    format: "ferrum2d.consumer.scene-authoring",
+    version: 1,
+    sceneComposition: {
+      initialFragment: "main",
+      prefabs: {
+        [prefabId]: {
+          props: {
+            components: {
+              sprite: { texture: prefabId, width: 16, height: 12 },
+              collider: "none",
+              layer: "enemy",
+            },
+          },
+        },
+      },
+      fragments: {
+        main: {
+          instances: [{ id: `${prefabId}-1`, prefab: prefabId, x, y }],
+        },
+      },
+    },
+    behaviorRecipes: { entities: {} },
+  } as const;
 }
 
 function fakeRuntimeRenderer(): FerrumRuntimeRenderer {

@@ -17,7 +17,7 @@ impl Engine {
         v1: f32,
     ) {
         self.activate_built_in_shooter_scene();
-        self.scenes.shooter.set_atlas_frame(
+        self.scenes.shooter_mut().set_atlas_frame(
             &mut self.world,
             prefab,
             texture_id,
@@ -43,7 +43,7 @@ impl Engine {
         move_frames: Vec<f32>,
     ) {
         self.activate_built_in_shooter_scene();
-        self.scenes.shooter.set_atlas_animation(
+        self.scenes.shooter_mut().set_atlas_animation(
             &mut self.world,
             prefab,
             texture_id,
@@ -85,7 +85,7 @@ impl Engine {
         bullet_move_fps: f32,
     ) {
         self.activate_built_in_shooter_scene();
-        self.scenes.shooter.set_animation_states(
+        self.scenes.shooter_mut().set_animation_states(
             &mut self.world,
             &mut self.camera,
             &mut self.frame_buffers.audio_events,

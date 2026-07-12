@@ -20,6 +20,8 @@ export type {
   FerrumRuntimeCutsceneDialogueValues,
   FerrumRuntimeCutsceneOptions,
   FerrumRuntimeCutsceneTextMode,
+  FerrumRuntimeDataScene,
+  FerrumRuntimeDataSceneOptions,
   FerrumRuntimeDialogue,
   FerrumRuntimeDialogueOptions,
   FerrumRuntimeEnvironment,

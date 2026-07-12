@@ -13,13 +13,12 @@ use crate::input::InputState;
 use crate::physics::{
     FixedTimestep, FixedTimestepConfig, FixedTimestepUpdate, PhysicsSystem, RigidBodyStepStats,
 };
-use crate::shooter_scene::ActionTriggerCommand;
 use crate::tilemap::TilemapNavigationPathPoint;
 
 use super::physics_bridge::{
     PhysicsBodyColliderSnapshot, PhysicsEntitySnapshot, PhysicsJointSnapshot,
 };
-use super::scenes::{ActiveScene, SceneMode};
+use super::scenes::SceneMode;
 use super::{Engine, TILEMAP_NAVIGATION_DEBUG_COLOR, TILEMAP_NAVIGATION_PATH_POINT_FLOATS};
 
 #[wasm_bindgen]
@@ -253,7 +252,6 @@ impl Engine {
 
     fn queue_behavior_state_enter_actions(&mut self, event_start: usize) {
         if self.scene_mode != SceneMode::BuiltIn
-            || self.scenes.active() != ActiveScene::Shooter
             || event_start >= self.frame_buffers.gameplay_events.len()
             || !self.world.has_behavior_state_enter_actions()
         {
@@ -279,9 +277,10 @@ impl Engine {
             for action in actions.iter_for_state(event.token_id) {
                 match action.phase {
                     BehaviorStateEnterActionPhase::NextFramePrePhysics => {
-                        let command =
-                            ActionTriggerCommand::behavior_state_enter(source, action.action_id);
-                        if let Err(data) = self.scenes.shooter.queue_action_trigger_result(command)
+                        if let Some(Err(data)) = self
+                            .scenes
+                            .active_runtime_mut()
+                            .queue_behavior_state_enter_action(source, action.action_id)
                         {
                             self.frame_buffers
                                 .gameplay_events

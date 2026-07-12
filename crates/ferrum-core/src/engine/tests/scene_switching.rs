@@ -4,7 +4,7 @@ use crate::components::DEFAULT_SPRITE_RENDER_LAYER;
 #[test]
 fn reset_game_clears_score_and_recreates_player() {
     let mut engine = Engine::new();
-    engine.scenes.shooter.update(
+    engine.scenes.shooter_mut().update(
         &mut engine.world,
         &mut engine.camera,
         InputState {

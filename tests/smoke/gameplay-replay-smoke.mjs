@@ -13,7 +13,9 @@ import initWasm, {
 } from "../../packages/ferrum-web/pkg/ferrum_core.js";
 import { applyShooterGameSpec } from "../../packages/ferrum-web/dist/gameSpec.js";
 import {
+  applyDataSceneAuthoringDocument,
   createBehaviorStateMachineRuntimeInstallPlan,
+  createEngine,
   applyGameplayBehaviorCommands,
   bindSceneBehaviorRecipes,
   dryRunSceneBehaviorRecipes,
@@ -61,7 +63,11 @@ import {
   GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE,
   U32S_PER_GAMEPLAY_EVENT,
 } from "../../packages/ferrum-web/dist/gameplayEventDecoder.js";
-import { hashGameStateSnapshot } from "../../packages/ferrum-web/dist/gameStateSnapshot.js";
+import {
+  captureGameStateSnapshot,
+  hashGameStateSnapshot,
+  restoreGameStateSnapshot,
+} from "../../packages/ferrum-web/dist/gameStateSnapshot.js";
 import {
   buildActionFrameDiagnostics,
   buildSpawnFrameDiagnostics,
@@ -240,6 +246,11 @@ const SCENARIO_RUNNERS = Object.freeze({
     validateFixture: validateTopdownStateEnterMeleeActionFixture,
     validateOutcome: validateStateEnterMeleeActionScenarioOutcome,
   },
+  dataSceneAuthoringSnapshotRestore: {
+    run: runDataSceneAuthoringSnapshotRestoreReplay,
+    validateFixture: validateDataSceneAuthoringSnapshotRestoreFixture,
+    validateOutcome: validateDataSceneAuthoringSnapshotRestoreScenarioOutcome,
+  },
 });
 
 const options = parseArgs(process.argv.slice(2));
@@ -252,7 +263,7 @@ try {
   await initSmokeWasm();
   for (const scenarioDraft of scenariosToRun(options, scenarioManifest)) {
     const scenario = await materializeScenarioVariant(scenarioDraft);
-    const actual = runDeterministicScenario(scenario);
+    const actual = await runDeterministicScenario(scenario);
     const fixturePath = options.fixturePath ?? scenario.fixturePath;
     const runSummary = createScenarioRunSummary(actual, fixturePath, {
       phase: options.update ? "fixture-update" : "fixture-read",
@@ -335,12 +346,12 @@ async function initSmokeWasm() {
   assert.equal(frame_telemetry_bytes(), F64S_PER_FRAME_TELEMETRY * Float64Array.BYTES_PER_ELEMENT, "frame telemetry ABI byte stride must match TS decoder");
 }
 
-function runDeterministicScenario(scenario) {
-  const first = scenario.run(scenario);
+async function runDeterministicScenario(scenario) {
+  const first = await scenario.run(scenario);
   const firstWithScenarioMetadata = replayWithScenarioMetadata(first, scenario);
   scenario.validateOutcome(first, "actual replay");
   assertSpawnDiagnosticExpectations(first, "actual replay");
-  const second = scenario.run(scenario);
+  const second = await scenario.run(scenario);
   scenario.validateOutcome(second, "repeat actual replay");
   assertSpawnDiagnosticExpectations(second, "repeat actual replay");
   const comparison = compareGameplayReplayRuns(first.run, second.run);
@@ -982,6 +993,155 @@ function runTopdownStateEnterMeleeActionTriggerReplay(scenario) {
   } finally {
     engine.free();
   }
+}
+
+async function runDataSceneAuthoringSnapshotRestoreReplay(scenario) {
+  const authoringDocument = dataSceneAuthoringSnapshotRestoreDocument();
+  let bootSnapshot;
+  let bootCustomState;
+  const bootEngine = await createDataSceneSmokeEngine();
+  try {
+    const bootResult = applyDataSceneAuthoringDocument(bootEngine, authoringDocument, {
+      path: `${scenario.id}.boot`,
+      missingBehavior: "ignore",
+      textureId: dataSceneSmokeTextureId,
+    });
+    bootCustomState = dataSceneAuthoringSnapshotRestoreCustomState("boot", scenario, bootResult);
+    bootSnapshot = captureGameStateSnapshot(bootEngine, {
+      frame: 0,
+      includeDataSceneState: true,
+      dataSceneAuthoringDocument: authoringDocument,
+      dataSceneCustomState: bootCustomState,
+    });
+  } finally {
+    bootEngine.destroy();
+  }
+
+  const restoreEngine = await createDataSceneSmokeEngine();
+  try {
+    let restoredDataSceneCustom;
+    const restoreResult = restoreGameStateSnapshot(restoreEngine, bootSnapshot, {
+      path: `${scenario.id}.restore`,
+      dataSceneAuthoringApplyOptions: {
+        missingBehavior: "ignore",
+        textureId: dataSceneSmokeTextureId,
+      },
+      applyDataSceneCustomState: (customState) => {
+        restoredDataSceneCustom = customState;
+      },
+    });
+    const restoreSnapshot = captureGameStateSnapshot(restoreEngine, {
+      frame: scenario.frameCount,
+      includeDataSceneState: true,
+      dataSceneAuthoringDocument: authoringDocument,
+      dataSceneCustomState: {
+        phase: "restore",
+        scenario: scenario.id,
+        restoredDataSceneCustom,
+        restore: {
+          dataSceneStateApplied: restoreResult.dataSceneStateApplied,
+          dataSceneAuthoringDocumentApplied: restoreResult.dataSceneAuthoringDocumentApplied,
+          dataSceneCustomStateApplied: restoreResult.dataSceneCustomStateApplied,
+          sceneAfter: restoreResult.sceneAfter,
+        },
+      },
+    });
+
+    return {
+      format: GOLDEN_FIXTURE_FORMAT,
+      version: GOLDEN_FIXTURE_VERSION,
+      scenario: scenario.id,
+      input: {
+        frameCount: scenario.frameCount,
+        fixedDeltaSeconds: FIXED_DELTA_SECONDS,
+        captureFrames: scenario.captureFrames,
+        events: scenario.input.events,
+      },
+      run: createGameplayReplayRun([bootSnapshot, restoreSnapshot]),
+      actionDiagnostics: [],
+      spawnDiagnostics: [],
+    };
+  } finally {
+    restoreEngine.destroy();
+  }
+}
+
+async function createDataSceneSmokeEngine() {
+  const engine = await createEngine(
+    undefined,
+    undefined,
+    undefined,
+    () => ({ width: 320, height: 180 }),
+  );
+  engine.setViewportSize(320, 180);
+  return engine;
+}
+
+function dataSceneSmokeTextureId(name) {
+  const textureIds = {
+    crate: 101,
+    sentry: 102,
+  };
+  const textureId = textureIds[name];
+  assert.ok(textureId !== undefined, `data scene smoke texture '${name}' must have a deterministic id`);
+  return textureId;
+}
+
+function dataSceneAuthoringSnapshotRestoreCustomState(phase, scenario, applyResult) {
+  return {
+    phase,
+    scenario: scenario.id,
+    spawnCount: applyResult.spawnResults.length,
+    planCommandCount: applyResult.plan.commands.length,
+    commandSummary: applyResult.plan.commands.map((command) => `${command.entity}:${command.type}`),
+    behaviorResults: applyResult.behaviorApplyResult.results,
+  };
+}
+
+function dataSceneAuthoringSnapshotRestoreDocument() {
+  return {
+    format: "ferrum2d.consumer.scene-authoring",
+    version: 1,
+    sceneComposition: {
+      initialFragment: "main",
+      prefabs: {
+        crate: {
+          props: {
+            components: {
+              sprite: { texture: "crate", width: 16, height: 12 },
+              collider: { type: "aabb", halfWidth: 8, halfHeight: 6 },
+              layer: "wall",
+            },
+          },
+        },
+        sentry: {
+          props: {
+            behaviorRecipes: "sentry.actor",
+            components: {
+              sprite: { texture: "sentry", width: 14, height: 14 },
+              collider: "none",
+              layer: "enemy",
+            },
+          },
+        },
+      },
+      fragments: {
+        main: {
+          instances: [
+            { id: "crate-1", prefab: "crate", x: 32, y: 48 },
+            { id: "sentry-1", prefab: "sentry", x: 96, y: 64 },
+          ],
+        },
+      },
+    },
+    behaviorRecipes: {
+      entities: {
+        "sentry.actor": {
+          recipes: [{ kind: "health", max: 2, start: 2 }],
+        },
+      },
+    },
+  };
 }
 
 function authoringEventForFrame(scenario, frame, phase) {
@@ -2480,10 +2640,50 @@ function validateTopdownStateEnterMeleeActionFixture(fixture, fixturePath) {
   validateStateEnterMeleeActionScenarioOutcome.call(this, fixture, fixturePath);
 }
 
+function validateDataSceneAuthoringSnapshotRestoreFixture(fixture, fixturePath) {
+  validateGoldenFixtureCommon(
+    fixture,
+    fixturePath,
+    this,
+    this.frameCount,
+    this.captureFrames,
+    this.input.events,
+  );
+  validateDataSceneAuthoringSnapshotRestoreScenarioOutcome.call(this, fixture, fixturePath);
+}
+
 function validateBasicScenarioOutcome(fixture, label) {
   const finalSnapshot = fixture.run?.snapshots?.at(-1)?.snapshot;
   assert.equal(finalSnapshot?.frame, this.frameCount, `${label} final snapshot frame must match`);
   assert.equal(finalSnapshot?.scene?.score, this.expected.finalScore, `${label} must include score reward coverage`);
+}
+
+function validateDataSceneAuthoringSnapshotRestoreScenarioOutcome(fixture, label) {
+  const snapshots = fixture.run?.snapshots ?? [];
+  const bootSnapshot = snapshots.find((entry) => entry.frame === this.expected.bootFrame)?.snapshot;
+  const restoreSnapshot = snapshots.find((entry) => entry.frame === this.expected.restoreFrame)?.snapshot;
+  const finalSnapshot = snapshots.at(-1)?.snapshot;
+  assert.equal(finalSnapshot?.frame, this.frameCount, `${label} final snapshot frame must match`);
+  assert.equal(finalSnapshot?.scene?.score, this.expected.finalScore, `${label} final score must stay deterministic`);
+  assert.equal(bootSnapshot?.dataScene?.scene?.entityCount, this.expected.entityCount, `${label} boot data scene entity count must match`);
+  assert.equal(bootSnapshot?.dataScene?.scene?.spriteCount, this.expected.spriteCount, `${label} boot data scene sprite count must match`);
+  assert.equal(restoreSnapshot?.dataScene?.scene?.entityCount, this.expected.entityCount, `${label} restored data scene entity count must match`);
+  assert.equal(restoreSnapshot?.dataScene?.scene?.spriteCount, this.expected.spriteCount, `${label} restored data scene sprite count must match`);
+  assert.equal(bootSnapshot?.dataScene?.custom?.phase, "boot", `${label} boot custom state phase must be captured`);
+  assert.equal(bootSnapshot?.dataScene?.custom?.spawnCount, this.expected.spawnCount, `${label} boot spawn count must match`);
+  assert.equal(bootSnapshot?.dataScene?.custom?.planCommandCount, this.expected.planCommandCount, `${label} boot command count must match`);
+  assert.deepEqual(bootSnapshot?.dataScene?.custom?.commandSummary, this.expected.commandSummary, `${label} boot command summary must match`);
+  assert.deepEqual(bootSnapshot?.dataScene?.custom?.behaviorResults, this.expected.behaviorResults, `${label} boot behavior result summary must match`);
+  assert.equal(restoreSnapshot?.dataScene?.custom?.phase, "restore", `${label} restore custom state phase must be captured`);
+  assert.deepEqual(restoreSnapshot?.dataScene?.custom?.restoredDataSceneCustom, bootSnapshot?.dataScene?.custom, `${label} restore must apply captured data scene custom state`);
+  assert.equal(restoreSnapshot?.dataScene?.custom?.restore?.dataSceneStateApplied, true, `${label} restore must report data scene state applied`);
+  assert.equal(restoreSnapshot?.dataScene?.custom?.restore?.dataSceneAuthoringDocumentApplied, true, `${label} restore must report authoring document applied`);
+  assert.equal(restoreSnapshot?.dataScene?.custom?.restore?.dataSceneCustomStateApplied, true, `${label} restore must report custom state applied`);
+  assert.deepEqual(
+    restoreSnapshot?.dataScene?.authoringDocument,
+    bootSnapshot?.dataScene?.authoringDocument,
+    `${label} restored snapshot must preserve the authoring document in replay state`,
+  );
 }
 
 function validateAuthoredScenarioOutcome(fixture, label) {
@@ -3528,6 +3728,9 @@ function validateScenarioManifest(manifest, manifestPath) {
     if (scenario.runner === "fsmStateEnterMeleeAction") {
       assertStateEnterMeleeActionScenarioMetadata(scenario, label);
     }
+    if (scenario.runner === "dataSceneAuthoringSnapshotRestore") {
+      assertDataSceneAuthoringSnapshotRestoreScenarioMetadata(scenario, label);
+    }
   });
   for (const tag of Object.keys(manifest.coverageTagDefinitions)) {
     assert.ok(usedCoverageTags.has(tag), `${manifestPath}.coverageTagDefinitions.${tag} must be used by at least one scenario`);
@@ -4516,6 +4719,26 @@ function assertStateEnterMeleeActionScenarioMetadata(scenario, label) {
     assert.equal(scenario.stateEnterMeleeAction.meleeAction.targetCode, MELEE_TARGET_ENEMIES, `${label}.stateEnterMeleeAction.meleeAction.targetCode must be enemies for failure coverage`);
   }
   assertFiniteNumber(scenario.expected.fsmState, `${label}.expected.fsmState`);
+}
+
+function assertDataSceneAuthoringSnapshotRestoreScenarioMetadata(scenario, label) {
+  assert.deepEqual(scenario.input.events, [], `${label}.input.events must be empty for headless data scene replay`);
+  assert.equal(scenario.frameCount, 1, `${label}.frameCount must keep boot/restore replay compact`);
+  assert.deepEqual(scenario.captureFrames, [0, 1], `${label}.captureFrames must include boot and restore frames`);
+  assert.equal(scenario.expected.finalScore, 0, `${label}.expected.finalScore must remain zero for data scene replay`);
+  for (const field of ["bootFrame", "restoreFrame", "entityCount", "spriteCount", "spawnCount", "planCommandCount"]) {
+    assertFiniteNumber(scenario.expected[field], `${label}.expected.${field}`);
+  }
+  assert.equal(scenario.expected.bootFrame, 0, `${label}.expected.bootFrame must be frame 0`);
+  assert.equal(scenario.expected.restoreFrame, scenario.frameCount, `${label}.expected.restoreFrame must match frameCount`);
+  assert.ok(Array.isArray(scenario.expected.commandSummary), `${label}.expected.commandSummary must be an array`);
+  assert.deepEqual(
+    scenario.expected.commandSummary,
+    ["sentry-1:configureHealth"],
+    `${label}.expected.commandSummary must cover the Data Scene actor behavior binding`,
+  );
+  assert.ok(Array.isArray(scenario.expected.behaviorResults), `${label}.expected.behaviorResults must be an array`);
+  assert.deepEqual(scenario.expected.behaviorResults, [true], `${label}.expected.behaviorResults must stay exact`);
 }
 
 function f32Bits(value) {

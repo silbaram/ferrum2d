@@ -1,0 +1,268 @@
+{
+  "format": "ferrum2d.gameplay-replay.golden",
+  "version": 1,
+  "scenario": "data-scene-authoring-snapshot-restore",
+  "input": {
+    "frameCount": 1,
+    "fixedDeltaSeconds": 0.016666666666666666,
+    "captureFrames": [
+      0,
+      1
+    ],
+    "events": []
+  },
+  "run": {
+    "format": "ferrum2d.gameplay-replay.run",
+    "version": 1,
+    "snapshots": [
+      {
+        "frame": 0,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 0,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 2,
+            "spriteCount": 0,
+            "cameraX": 800,
+            "cameraY": 480
+          },
+          "dataScene": {
+            "format": "ferrum2d.data-scene-state",
+            "version": 1,
+            "scene": {
+              "score": 0,
+              "gameState": 1,
+              "entityCount": 2,
+              "spriteCount": 0,
+              "cameraX": 800,
+              "cameraY": 480
+            },
+            "authoringDocument": {
+              "format": "ferrum2d.consumer.scene-authoring",
+              "version": 1,
+              "sceneComposition": {
+                "initialFragment": "main",
+                "prefabs": {
+                  "crate": {
+                    "props": {
+                      "components": {
+                        "sprite": {
+                          "texture": "crate",
+                          "width": 16,
+                          "height": 12
+                        },
+                        "collider": {
+                          "type": "aabb",
+                          "halfWidth": 8,
+                          "halfHeight": 6
+                        },
+                        "layer": "wall"
+                      }
+                    }
+                  },
+                  "sentry": {
+                    "props": {
+                      "behaviorRecipes": "sentry.actor",
+                      "components": {
+                        "sprite": {
+                          "texture": "sentry",
+                          "width": 14,
+                          "height": 14
+                        },
+                        "collider": "none",
+                        "layer": "enemy"
+                      }
+                    }
+                  }
+                },
+                "fragments": {
+                  "main": {
+                    "instances": [
+                      {
+                        "id": "crate-1",
+                        "prefab": "crate",
+                        "x": 32,
+                        "y": 48
+                      },
+                      {
+                        "id": "sentry-1",
+                        "prefab": "sentry",
+                        "x": 96,
+                        "y": 64
+                      }
+                    ]
+                  }
+                }
+              },
+              "behaviorRecipes": {
+                "entities": {
+                  "sentry.actor": {
+                    "recipes": [
+                      {
+                        "kind": "health",
+                        "max": 2,
+                        "start": 2
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "custom": {
+              "phase": "boot",
+              "scenario": "data-scene-authoring-snapshot-restore",
+              "spawnCount": 2,
+              "planCommandCount": 1,
+              "commandSummary": [
+                "sentry-1:configureHealth"
+              ],
+              "behaviorResults": [
+                true
+              ]
+            }
+          },
+          "snapshotHash": "78ae50f1"
+        },
+        "replayHash": "78ae50f1"
+      },
+      {
+        "frame": 1,
+        "snapshot": {
+          "format": "ferrum2d.game-state.snapshot",
+          "version": 1,
+          "frame": 1,
+          "source": "ferrum-runtime",
+          "scene": {
+            "score": 0,
+            "gameState": 1,
+            "entityCount": 2,
+            "spriteCount": 0,
+            "cameraX": 800,
+            "cameraY": 480
+          },
+          "dataScene": {
+            "format": "ferrum2d.data-scene-state",
+            "version": 1,
+            "scene": {
+              "score": 0,
+              "gameState": 1,
+              "entityCount": 2,
+              "spriteCount": 0,
+              "cameraX": 800,
+              "cameraY": 480
+            },
+            "authoringDocument": {
+              "format": "ferrum2d.consumer.scene-authoring",
+              "version": 1,
+              "sceneComposition": {
+                "initialFragment": "main",
+                "prefabs": {
+                  "crate": {
+                    "props": {
+                      "components": {
+                        "sprite": {
+                          "texture": "crate",
+                          "width": 16,
+                          "height": 12
+                        },
+                        "collider": {
+                          "type": "aabb",
+                          "halfWidth": 8,
+                          "halfHeight": 6
+                        },
+                        "layer": "wall"
+                      }
+                    }
+                  },
+                  "sentry": {
+                    "props": {
+                      "behaviorRecipes": "sentry.actor",
+                      "components": {
+                        "sprite": {
+                          "texture": "sentry",
+                          "width": 14,
+                          "height": 14
+                        },
+                        "collider": "none",
+                        "layer": "enemy"
+                      }
+                    }
+                  }
+                },
+                "fragments": {
+                  "main": {
+                    "instances": [
+                      {
+                        "id": "crate-1",
+                        "prefab": "crate",
+                        "x": 32,
+                        "y": 48
+                      },
+                      {
+                        "id": "sentry-1",
+                        "prefab": "sentry",
+                        "x": 96,
+                        "y": 64
+                      }
+                    ]
+                  }
+                }
+              },
+              "behaviorRecipes": {
+                "entities": {
+                  "sentry.actor": {
+                    "recipes": [
+                      {
+                        "kind": "health",
+                        "max": 2,
+                        "start": 2
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "custom": {
+              "phase": "restore",
+              "scenario": "data-scene-authoring-snapshot-restore",
+              "restoredDataSceneCustom": {
+                "phase": "boot",
+                "scenario": "data-scene-authoring-snapshot-restore",
+                "spawnCount": 2,
+                "planCommandCount": 1,
+                "commandSummary": [
+                  "sentry-1:configureHealth"
+                ],
+                "behaviorResults": [
+                  true
+                ]
+              },
+              "restore": {
+                "dataSceneStateApplied": true,
+                "dataSceneAuthoringDocumentApplied": true,
+                "dataSceneCustomStateApplied": true,
+                "sceneAfter": {
+                  "score": 0,
+                  "gameState": 1,
+                  "entityCount": 2,
+                  "spriteCount": 0,
+                  "cameraX": 800,
+                  "cameraY": 480
+                }
+              }
+            }
+          },
+          "snapshotHash": "d9302a4c"
+        },
+        "replayHash": "d9302a4c"
+      }
+    ],
+    "replayHash": "2cdf648c"
+  },
+  "manifestPath": "tests/fixtures/gameplay-golden/scenarios.json",
+  "manifestIndex": 16
+}

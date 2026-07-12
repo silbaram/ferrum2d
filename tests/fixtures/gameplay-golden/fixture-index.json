@@ -273,6 +273,20 @@
       "replayHash": "34ffffe5",
       "frameCount": 3,
       "captureFrameCount": 4
+    },
+    {
+      "id": "data-scene-authoring-snapshot-restore",
+      "description": "Data Scene replay covering public createEngine boot, scene-authoring document application, snapshot authoring document capture, custom state callback, and restore into a fresh runtime.",
+      "coverageTags": [
+        "data-scene",
+        "authored-behavior",
+        "snapshot-restore"
+      ],
+      "runner": "dataSceneAuthoringSnapshotRestore",
+      "fixturePath": "tests/fixtures/gameplay-golden/data-scene-authoring-snapshot-restore-replay.json",
+      "replayHash": "2cdf648c",
+      "frameCount": 1,
+      "captureFrameCount": 2
     }
   ]
 }

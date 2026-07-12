@@ -23,7 +23,12 @@ import {
   saveGameStateSnapshotToStorage,
   stringifyGameStateSnapshot,
   type GameStateSnapshotStorage,
+  type GameStateSnapshotJsonValue,
 } from "../src/gameStateSnapshot.js";
+import {
+  attachDataSceneRuntimeEngineAdapter,
+  type DataSceneRuntimeSpawnRequest,
+} from "../src/dataSceneRuntimeTarget.js";
 
 test("game state snapshot captures runtime scene metrics and custom JSON", () => {
   const engine = fakeEngine({ score: 42, gameState: 1, entityCount: 8, spriteCount: 7, cameraX: 12, cameraY: -4 });
@@ -166,10 +171,56 @@ test("game state restore switches to data scene and applies data scene custom st
 
   equal(engine.dataSceneActivations(), 1);
   equal(result.dataSceneStateApplied, true);
+  equal(result.dataSceneAuthoringDocumentApplied, false);
   equal(result.dataSceneCustomStateApplied, true);
   equal(result.builtInShooterStateApplied, false);
   deepEqual(restoredDataCustom, { checkpoint: "data-start" });
   equal(result.sceneAfter.gameState, 1);
+});
+
+test("game state restore reapplies data scene authoring document before custom state", () => {
+  const authoringDocument = sampleDataSceneAuthoringDocument();
+  const snapshot = captureGameStateSnapshot(fakeEngine({ score: 0, gameState: 1, entityCount: 1, spriteCount: 1 }), {
+    includeDataSceneState: true,
+    dataSceneAuthoringDocument: authoringDocument,
+    dataSceneCustomState: { checkpoint: "data-start" },
+  });
+  deepEqual(snapshot.dataScene?.authoringDocument, authoringDocument);
+
+  const engine = fakeEngine({ score: 30, gameState: 2, entityCount: 4, spriteCount: 4, cameraX: 8, cameraY: 9 });
+  const adapter = new SnapshotDataSceneRuntimeAdapter(
+    () => engine.useDataScene(),
+    (_request, count) => {
+      engine.setScene({ entityCount: count, spriteCount: count });
+    },
+  );
+  const adaptedEngine = attachDataSceneRuntimeEngineAdapter(engine, adapter);
+  let restoredDataCustom: unknown;
+
+  const result = restoreGameStateSnapshot(adaptedEngine, snapshot, {
+    dataSceneAuthoringApplyOptions: {
+      textureId: (name) => name.length,
+    },
+    applyDataSceneCustomState: (customState) => {
+      restoredDataCustom = customState;
+    },
+  });
+
+  equal(adapter.useDataSceneCalls, 1);
+  equal(engine.dataSceneActivations(), 1);
+  equal(adapter.requests.length, 1);
+  equal(adapter.requests[0].x, 32);
+  equal(adapter.requests[0].y, 48);
+  equal(adapter.requests[0].textureId, "crate".length);
+  equal(adapter.requests[0].spriteWidth, 16);
+  equal(adapter.requests[0].spriteHeight, 12);
+  equal(adapter.requests[0].colliderType, 0);
+  equal(result.dataSceneStateApplied, true);
+  equal(result.dataSceneAuthoringDocumentApplied, true);
+  equal(result.dataSceneCustomStateApplied, true);
+  equal(result.sceneAfter.entityCount, 1);
+  equal(result.sceneAfter.spriteCount, 1);
+  deepEqual(restoredDataCustom, { checkpoint: "data-start" });
 });
 
 test("built-in shooter state validation rejects header version mismatch", () => {
@@ -297,6 +348,61 @@ interface FakeScene {
   shooterState: BuiltInShooterStateSnapshot;
   restoreShooterStateSnapshotResult: boolean;
   dataSceneActivations: number;
+}
+
+class SnapshotDataSceneRuntimeAdapter {
+  readonly requests: DataSceneRuntimeSpawnRequest[] = [];
+  useDataSceneCalls = 0;
+
+  constructor(
+    private readonly activate: () => void,
+    private readonly onSpawn?: (request: DataSceneRuntimeSpawnRequest, count: number) => void,
+  ) {}
+
+  useDataScene(): void {
+    this.useDataSceneCalls += 1;
+    this.activate();
+  }
+
+  textureId(name: string): number {
+    return name.length;
+  }
+
+  spawnDataSceneEntity(request: DataSceneRuntimeSpawnRequest): { entityId: number; entityGeneration: number } {
+    this.requests.push(request);
+    this.onSpawn?.(request, this.requests.length);
+    return {
+      entityId: 200 + this.requests.length,
+      entityGeneration: 1,
+    };
+  }
+}
+
+function sampleDataSceneAuthoringDocument(): GameStateSnapshotJsonValue {
+  return {
+    format: "ferrum2d.consumer.scene-authoring",
+    version: 1,
+    sceneComposition: {
+      initialFragment: "main",
+      prefabs: {
+        crate: {
+          props: {
+            components: {
+              sprite: { texture: "crate", width: 16, height: 12 },
+              collider: "none",
+              layer: "enemy",
+            },
+          },
+        },
+      },
+      fragments: {
+        main: {
+          instances: [{ id: "crate-1", prefab: "crate", x: 32, y: 48 }],
+        },
+      },
+    },
+    behaviorRecipes: { entities: {} },
+  };
 }
 
 function fakeShooterState(overrides: { score?: number } = {}): BuiltInShooterStateSnapshot {

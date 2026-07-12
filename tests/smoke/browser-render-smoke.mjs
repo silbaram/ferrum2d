@@ -45,6 +45,7 @@ const PHYSICS_DEMO_SUITE_MODE = "physics-demo-suite";
 const PLACEMENT_VIEWER_MODE = "placement-viewer";
 const PLACEMENT_VIEWER_SAVE_MODE = "placement-viewer-save";
 const PLACEMENT_VIEWER_MASS_AUTHORING_MODE = "placement-viewer-mass-authoring";
+const PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE = "placement-viewer-desktop-assets";
 const PLACEMENT_VIEWER_BASE_INSTANCE_COUNT = 6;
 const PLACEMENT_VIEWER_MASS_AUTHORING_COUNT = 1024;
 const PLACEMENT_VIEWER_MASS_AUTHORING_MIN_INSTANCE_COUNT =
@@ -52,6 +53,15 @@ const PLACEMENT_VIEWER_MASS_AUTHORING_MIN_INSTANCE_COUNT =
 const PLACEMENT_VIEWER_MASS_AUTHORING_MAX_DRAW_CALLS = 16;
 const PLACEMENT_VIEWER_MASS_AUTHORING_MAX_SELECTION_MS = 500;
 const PLACEMENT_VIEWER_MASS_AUTHORING_MAX_PATCH_MS = 500;
+const PLACEMENT_VIEWER_DESKTOP_ASSET_ID = "local_ship";
+const PLACEMENT_VIEWER_DESKTOP_ASSET_INSTANCE_ID = "local_ship_instance";
+const PLACEMENT_VIEWER_DESKTOP_ASSET_DRAFT_SIZE = 40;
+const PLACEMENT_VIEWER_DESKTOP_ASSET_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4b6DwHwAF0AJP0BPKNQAAAABJRU5ErkJggg==";
+const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID = "local_asteroid";
+const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_FOLDER =
+  "/tmp/ferrum-placement-viewer-desktop-assets-smoke/alternate-assets";
+const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL = PLACEMENT_VIEWER_DESKTOP_ASSET_DATA_URL;
 const PLACEMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
 const MAX_PLACEMENT_SAVE_BYTES = 512 * 1024;
 const PHYSICS_DEMO_SUITE = [
@@ -288,6 +298,9 @@ try {
       browserErrors.push(message.text());
     }
   });
+  if (options.mode === PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE) {
+    await installPlacementViewerDesktopAssetSmokeBridge(page);
+  }
 
   await page.goto(url, { waitUntil: "networkidle", timeout: timeoutMs });
   await waitForRuntime(page, timeoutMs);
@@ -476,6 +489,7 @@ function parseArgs(args) {
     PLACEMENT_VIEWER_MODE,
     PLACEMENT_VIEWER_SAVE_MODE,
     PLACEMENT_VIEWER_MASS_AUTHORING_MODE,
+    PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE,
   ].includes(mode)) {
     throw new Error(`unsupported browser smoke mode: ${mode}`);
   }
@@ -548,6 +562,9 @@ function browserSmokeUrl(port, options) {
   }
   if (mode === PLACEMENT_VIEWER_MASS_AUTHORING_MODE) {
     params.set("massAuthoring", "true");
+  }
+  if (mode === PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE) {
+    params.set("projectPath", "/tmp/ferrum-placement-viewer-desktop-assets-smoke");
   }
   return `http://${DEFAULT_HOST}:${port}/?${params.toString()}`;
 }
@@ -829,6 +846,8 @@ async function smokeByMode(page, mode, timeoutMs) {
       return await smokePlacementViewerSave(page, timeoutMs);
     case PLACEMENT_VIEWER_MASS_AUTHORING_MODE:
       return await smokePlacementViewerMassAuthoring(page, timeoutMs);
+    case PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE:
+      return await smokePlacementViewerDesktopAssets(page, timeoutMs);
     default:
       return await smokeDefaultRender(page, timeoutMs);
   }
@@ -2146,6 +2165,391 @@ async function smokePlacementViewerMassAuthoring(page, timeoutMs) {
       maxPatchMs: PLACEMENT_VIEWER_MASS_AUTHORING_MAX_PATCH_MS,
       actionReport,
     },
+  };
+}
+
+function createPlacementViewerDesktopAssetSmokeDocument() {
+  return {
+    format: "ferrum2d.consumer.scene-authoring",
+    version: 1,
+    sceneComposition: {
+      initialFragment: "main",
+      prefabs: {
+        object: {
+          props: {},
+        },
+        "local-ship": {
+          props: {
+            components: {
+              visual: {
+                kind: "sprite",
+                asset: PLACEMENT_VIEWER_DESKTOP_ASSET_ID,
+                width: 48,
+                height: 32,
+              },
+              collider: "none",
+              layer: "player",
+            },
+          },
+        },
+      },
+      fragments: {
+        main: {
+          instances: [
+            {
+              id: PLACEMENT_VIEWER_DESKTOP_ASSET_INSTANCE_ID,
+              prefab: "local-ship",
+              x: 760,
+              y: 480,
+            },
+          ],
+        },
+      },
+    },
+    behaviorRecipes: {
+      entities: {},
+    },
+  };
+}
+
+async function installPlacementViewerDesktopAssetSmokeBridge(page) {
+  const projectPath = "/tmp/ferrum-placement-viewer-desktop-assets-smoke";
+  const sceneDocumentPath = `${projectPath}/public/scene-authoring.json`;
+  const handoffPath = `${projectPath}/.ferrum-placement-handoff.json`;
+  const assetFolderPath = `${projectPath}/public/assets`;
+  const assetFilePath = `${assetFolderPath}/local_ship.png`;
+  const reloadAssetFolderPath = PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_FOLDER;
+  const reloadAssetFilePath = `${reloadAssetFolderPath}/local_asteroid.png`;
+  await page.addInitScript(
+    ({
+      assetFilePath,
+      assetFolderPath,
+      assetId,
+      dataUrl,
+      document,
+      handoffPath,
+      projectPath,
+      reloadAssetFilePath,
+      reloadAssetFolderPath,
+      reloadAssetId,
+      reloadDataUrl,
+      sceneDocumentPath,
+    }) => {
+      const initialAssetFolder = {
+        assetFolderPath,
+        exists: true,
+        imageCount: 1,
+        images: [
+          {
+            id: assetId,
+            fileName: "local_ship.png",
+            path: assetFilePath,
+            runtimeUrl: dataUrl,
+          },
+        ],
+        diagnostics: [],
+      };
+      const reloadAssetFolder = {
+        assetFolderPath: reloadAssetFolderPath,
+        exists: true,
+        imageCount: 1,
+        images: [
+          {
+            id: reloadAssetId,
+            fileName: "local_asteroid.png",
+            path: reloadAssetFilePath,
+            runtimeUrl: reloadDataUrl,
+          },
+        ],
+        diagnostics: [],
+      };
+      const assetFolderForPath = (path) =>
+        path === reloadAssetFolderPath ? reloadAssetFolder : initialAssetFolder;
+      globalThis.__TAURI__ = {
+        core: {
+          async invoke(command, args) {
+            if (command === "load_placement_project_folder") {
+              return {
+                projectPath: args?.projectPath ?? projectPath,
+                sceneDocumentPath,
+                handoffPath,
+                assetFolder: initialAssetFolder,
+                document,
+              };
+            }
+            if (command === "load_placement_scene_document") {
+              return {
+                path: args?.sceneDocumentPath ?? sceneDocumentPath,
+                document,
+              };
+            }
+            if (command === "inspect_placement_asset_folder") {
+              return assetFolderForPath(args?.assetFolderPath ?? assetFolderPath);
+            }
+            if (command === "save_placement_agent_handoff") {
+              return {
+                path: handoffPath,
+                handoff: args?.handoff,
+              };
+            }
+            if (command === "save_placement_scene_document") {
+              return {
+                path: sceneDocumentPath,
+                document: args?.document ?? document,
+              };
+            }
+            throw new Error(`unsupported desktop asset smoke command: ${command}`);
+          },
+        },
+      };
+    },
+    {
+      assetFilePath,
+      assetFolderPath,
+      assetId: PLACEMENT_VIEWER_DESKTOP_ASSET_ID,
+      dataUrl: PLACEMENT_VIEWER_DESKTOP_ASSET_DATA_URL,
+      document: createPlacementViewerDesktopAssetSmokeDocument(),
+      handoffPath,
+      projectPath,
+      reloadAssetFilePath,
+      reloadAssetFolderPath,
+      reloadAssetId: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID,
+      reloadDataUrl: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL,
+      sceneDocumentPath,
+    },
+  );
+}
+
+async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
+  await waitForPageFunction(
+    page,
+    "placement viewer desktop asset smoke did not register the local texture in runtime",
+    ({ assetId, dataUrl, instanceId }) => {
+      const state = globalThis.ferrumPlacementViewerState;
+      const frame = globalThis.ferrumPlacementViewerRuntimeFrame;
+      const runtimeAssets = globalThis.ferrumPlacementViewerRuntimeAssets;
+      const desktop = globalThis.ferrumPlacementViewerDesktop;
+      const handoff = globalThis.ferrumPlacementViewerAgentHandoff;
+      const instance = state?.instances?.find((candidate) => candidate.instanceId === instanceId);
+      return Boolean(
+        globalThis.__ferrumPlacementViewer
+        && state?.instances?.length === 1
+        && state.selectedInstanceId === instanceId
+        && instance?.visual?.kind === "sprite"
+        && instance.visual.texture?.name === assetId
+        && frame?.entityCount >= 1
+        && frame.renderCommandCount >= 1
+        && frame.drawCalls >= 1
+        && runtimeAssets?.textures?.[assetId] === dataUrl
+        && runtimeAssets.textureIds?.[assetId] > 0
+        && desktop?.assetFolderRuntimeStatus === "ready"
+        && desktop.assetFolderRuntimeTextureCount === 1
+        && handoff?.assetFolder?.status === "ready"
+        && handoff.assetFolder.images?.[0]?.id === assetId
+        && handoff.assetFolder.images[0].runtimeUrl === dataUrl
+      );
+    },
+    timeoutMs,
+    {
+      assetId: PLACEMENT_VIEWER_DESKTOP_ASSET_ID,
+      dataUrl: PLACEMENT_VIEWER_DESKTOP_ASSET_DATA_URL,
+      instanceId: PLACEMENT_VIEWER_DESKTOP_ASSET_INSTANCE_ID,
+    },
+  );
+
+  await page.evaluate((assetFolderPath) => {
+    const openAssetFolder = globalThis.ferrumPlacementViewerOpenAssetFolder;
+    if (typeof openAssetFolder !== "function") {
+      throw new Error("placement viewer desktop asset smoke requires the open asset folder hook.");
+    }
+    return openAssetFolder(assetFolderPath);
+  }, PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_FOLDER);
+  await waitForPageFunction(
+    page,
+    "placement viewer desktop asset smoke did not reload runtime textures after asset folder switch",
+    ({ assetId, dataUrl, oldAssetId }) => {
+      const runtimeAssets = globalThis.ferrumPlacementViewerRuntimeAssets;
+      const desktop = globalThis.ferrumPlacementViewerDesktop;
+      const handoff = globalThis.ferrumPlacementViewerAgentHandoff;
+      const option = document.querySelector(`select[data-placement-add-sprite='true'] option[value='${assetId}']`);
+      return Boolean(
+        desktop?.assetFolderRuntimeStatus === "ready"
+        && desktop.assetFolderRuntimeTextureCount === 1
+        && runtimeAssets?.textures?.[assetId] === dataUrl
+        && runtimeAssets.textures?.[oldAssetId] === undefined
+        && runtimeAssets.textureIds?.[assetId] > 0
+        && handoff?.assetFolder?.status === "ready"
+        && handoff.assetFolder.images?.[0]?.id === assetId
+        && handoff.assetFolder.images[0].runtimeUrl === dataUrl
+        && option
+      );
+    },
+    timeoutMs,
+    {
+      assetId: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID,
+      dataUrl: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL,
+      oldAssetId: PLACEMENT_VIEWER_DESKTOP_ASSET_ID,
+    },
+  );
+
+  await page.selectOption("select[data-placement-add-sprite='true']", PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID, {
+    timeout: timeoutMs,
+  });
+  await page.click("button[data-placement-action='add-sprite']", { timeout: timeoutMs });
+  const addPoint = await page.evaluate(() => {
+    const canvas = document.querySelector("canvas");
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      throw new Error("placement viewer desktop asset add smoke could not locate a canvas.");
+    }
+    canvas.scrollIntoView({ block: "center", inline: "center" });
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width * 0.58,
+      y: rect.top + rect.height * 0.52,
+    };
+  });
+  await page.mouse.move(addPoint.x, addPoint.y, { steps: 6 });
+  await waitForPageFunction(
+    page,
+    "placement viewer desktop asset pending sprite preview did not use the local texture",
+    ({ assetId, dataUrl, draftSize }) => {
+      const interaction = globalThis.ferrumPlacementViewerInteraction;
+      const marker = document.querySelector(`.placement-pending-add-marker[data-placement-asset-id='${assetId}']`);
+      return Boolean(
+        interaction?.pendingAdd === "add-sprite"
+        && interaction.pendingAddPreview?.assetId === assetId
+        && interaction.pendingAddPreview.thumbnailUrl === dataUrl
+        && interaction.pendingAddPreview.width === draftSize
+        && interaction.pendingAddPreview.height === draftSize
+        && marker?.getAttribute("data-placement-preview-width") === String(draftSize)
+        && marker.getAttribute("data-placement-preview-height") === String(draftSize)
+        && marker.style.backgroundImage.includes(dataUrl)
+      );
+    },
+    timeoutMs,
+    {
+      assetId: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID,
+      dataUrl: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL,
+      draftSize: PLACEMENT_VIEWER_DESKTOP_ASSET_DRAFT_SIZE,
+    },
+  );
+  await page.mouse.click(addPoint.x, addPoint.y);
+  await waitForPageFunction(
+    page,
+    "placement viewer desktop asset draft add did not keep the local sprite asset",
+    ({ assetId, dataUrl, draftSize }) => {
+      const state = globalThis.ferrumPlacementViewerState;
+      const handoff = globalThis.ferrumPlacementViewerAgentHandoff;
+      const runtimeAssets = globalThis.ferrumPlacementViewerRuntimeAssets;
+      const operation = state?.draftPatch?.operations?.find((candidate) =>
+        candidate.kind === "addInstance"
+        && candidate.instance?.props?.components?.visual?.kind === "sprite"
+        && candidate.instance.props.components.visual.asset === assetId
+      );
+      const addedId = operation?.instance?.id;
+      const added = state?.instances?.find((candidate) => candidate.instanceId === addedId);
+      const marker = document.querySelector(`.placement-draft-marker[data-placement-asset-id='${assetId}']`);
+      const handoffOperation = handoff?.draftPatch?.operations?.find((candidate) =>
+        candidate.kind === "addInstance"
+        && candidate.instance?.id === addedId
+      );
+      return Boolean(
+        addedId
+        && state?.instances?.length === 2
+        && state.selectedInstanceId === addedId
+        && added?.visual?.kind === "sprite"
+        && added.visual.texture?.name === assetId
+        && added.visual.bounds.width === draftSize
+        && added.visual.bounds.height === draftSize
+        && operation.instance.props.components.visual.width === draftSize
+        && operation.instance.props.components.visual.height === draftSize
+        && runtimeAssets?.textureIds?.[assetId] > 0
+        && marker?.style.backgroundImage.includes(dataUrl)
+        && handoffOperation?.instance?.props?.components?.visual?.asset === assetId
+        && handoff?.assetFolder?.images?.[0]?.runtimeUrl === dataUrl
+      );
+    },
+    timeoutMs,
+    {
+      assetId: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID,
+      dataUrl: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL,
+      draftSize: PLACEMENT_VIEWER_DESKTOP_ASSET_DRAFT_SIZE,
+    },
+  );
+
+  const report = await page.evaluate(({ assetId, dataUrl, initialAssetId, instanceId, reloadAssetFolderPath }) => {
+    const canvas = document.querySelector("canvas");
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      throw new Error("placement viewer desktop asset smoke could not locate a canvas.");
+    }
+    const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
+    if (!gl) {
+      throw new Error("placement viewer desktop asset smoke requires a WebGL2 context.");
+    }
+    const width = gl.drawingBufferWidth;
+    const height = gl.drawingBufferHeight;
+    const pixels = new Uint8Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    const firstRed = pixels[0];
+    const firstGreen = pixels[1];
+    const firstBlue = pixels[2];
+    const firstAlpha = pixels[3];
+    let nonTransparentPixelCount = 0;
+    let differentFromFirstPixelCount = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      const red = pixels[index];
+      const green = pixels[index + 1];
+      const blue = pixels[index + 2];
+      const alpha = pixels[index + 3];
+      if (alpha > 0) {
+        nonTransparentPixelCount += 1;
+      }
+      if (red !== firstRed || green !== firstGreen || blue !== firstBlue || alpha !== firstAlpha) {
+        differentFromFirstPixelCount += 1;
+      }
+    }
+    const state = globalThis.ferrumPlacementViewerState;
+    const initialInstance = state?.instances?.find((candidate) => candidate.instanceId === instanceId);
+    const addOperation = state?.draftPatch?.operations?.find((candidate) =>
+      candidate.kind === "addInstance"
+      && candidate.instance?.props?.components?.visual?.asset === assetId
+    );
+    const addedInstance = state?.instances?.find((candidate) => candidate.instanceId === addOperation?.instance?.id);
+    return {
+      assetId,
+      selectedInstanceId: state?.selectedInstanceId,
+      initialVisual: initialInstance?.visual,
+      addedInstanceId: addedInstance?.instanceId,
+      addedVisual: addedInstance?.visual,
+      draftPatch: state?.draftPatch,
+      frame: globalThis.ferrumPlacementViewerRuntimeFrame,
+      runtimeAssets: globalThis.ferrumPlacementViewerRuntimeAssets,
+      desktopState: globalThis.ferrumPlacementViewerDesktop,
+      handoffAssetFolder: globalThis.ferrumPlacementViewerAgentHandoff?.assetFolder,
+      handoffDraftPatch: globalThis.ferrumPlacementViewerAgentHandoff?.draftPatch,
+      initialAssetId,
+      expectedRuntimeUrl: dataUrl,
+      reloadAssetFolderPath,
+      pixels: {
+        width,
+        height,
+        nonTransparentPixelCount,
+        differentFromFirstPixelCount,
+      },
+    };
+  }, {
+    assetId: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID,
+    dataUrl: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL,
+    initialAssetId: PLACEMENT_VIEWER_DESKTOP_ASSET_ID,
+    instanceId: PLACEMENT_VIEWER_DESKTOP_ASSET_INSTANCE_ID,
+    reloadAssetFolderPath: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_FOLDER,
+  });
+  if (report.pixels.differentFromFirstPixelCount <= 0 || report.pixels.nonTransparentPixelCount <= 0) {
+    throw new Error(`placement viewer desktop asset canvas readback was blank: ${JSON.stringify(report.pixels)}`);
+  }
+
+  return {
+    placementViewerDesktopAssetSmoke: report,
   };
 }
 

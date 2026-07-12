@@ -2,6 +2,8 @@ import {
   validateBuiltInShooterStateSnapshot,
   type BuiltInShooterStateSnapshot,
 } from "./builtInShooterStateSnapshot.js";
+import { applyDataSceneAuthoringDocument } from "./dataSceneRuntimeTarget.js";
+import type { ApplyDataSceneAuthoringDocumentOptions } from "./dataSceneRuntimeTarget.js";
 import type { FerrumEngine } from "./engineTypes.js";
 import type { PhysicsWorldApplyResult } from "./physicsAuthoring.js";
 import {
@@ -39,6 +41,7 @@ export interface DataSceneStateSnapshot {
   readonly format: typeof DATA_SCENE_STATE_FORMAT;
   readonly version: typeof DATA_SCENE_STATE_VERSION;
   readonly scene: GameStateSceneSnapshot;
+  readonly authoringDocument?: GameStateSnapshotJsonValue;
   readonly custom?: GameStateSnapshotJsonValue;
 }
 
@@ -60,6 +63,7 @@ export interface CaptureGameStateSnapshotOptions {
   includeBuiltInShooterState?: boolean;
   includeDataSceneState?: boolean;
   physicsWorld?: PhysicsWorldApplyResult;
+  dataSceneAuthoringDocument?: GameStateSnapshotJsonValue;
   dataSceneCustomState?: GameStateSnapshotJsonValue;
   customState?: GameStateSnapshotJsonValue;
 }
@@ -69,6 +73,8 @@ export interface RestoreGameStateSnapshotOptions
   physicsReplace?: PhysicsWorldApplyResult;
   restoreBuiltInShooterState?: boolean;
   restoreDataSceneState?: boolean;
+  restoreDataSceneAuthoringDocument?: boolean;
+  dataSceneAuthoringApplyOptions?: ApplyDataSceneAuthoringDocumentOptions;
   applyDataSceneCustomState?: (customState: GameStateSnapshotJsonValue) => void;
   applyCustomState?: (customState: GameStateSnapshotJsonValue) => void;
 }
@@ -79,6 +85,7 @@ export interface GameStateSnapshotRestoreResult {
   readonly sceneAfter: GameStateSceneSnapshot;
   readonly builtInShooterStateApplied: boolean;
   readonly dataSceneStateApplied?: boolean;
+  readonly dataSceneAuthoringDocumentApplied?: boolean;
   readonly physicsWorld?: PhysicsWorldRestoreResult;
   readonly dataSceneCustomStateApplied?: boolean;
   readonly customStateApplied: boolean;
@@ -103,7 +110,7 @@ export function captureGameStateSnapshot(
     ? captureBuiltInShooterState(engine)
     : undefined;
   const dataScene = options.includeDataSceneState === true
-    ? captureDataSceneState(scene, options.dataSceneCustomState)
+    ? captureDataSceneState(scene, options.dataSceneAuthoringDocument, options.dataSceneCustomState)
     : undefined;
   const snapshot: Omit<GameStateSnapshot, "snapshotHash"> = {
     format: GAME_STATE_SNAPSHOT_FORMAT,
@@ -135,6 +142,7 @@ export function restoreGameStateSnapshot(
   const sceneBefore = captureGameStateSceneSnapshot(engine);
   let builtInShooterStateApplied = false;
   let dataSceneStateApplied = false;
+  let dataSceneAuthoringDocumentApplied = false;
   if (
     snapshot.builtInShooter !== undefined
     && options.restoreBuiltInShooterState !== false
@@ -146,7 +154,9 @@ export function restoreGameStateSnapshot(
         sceneBefore,
         sceneAfter: captureGameStateSceneSnapshot(engine),
         builtInShooterStateApplied,
-        ...(snapshot.dataScene === undefined ? {} : { dataSceneStateApplied }),
+        ...(snapshot.dataScene === undefined
+          ? {}
+          : { dataSceneStateApplied, dataSceneAuthoringDocumentApplied }),
         customStateApplied: false,
       };
     }
@@ -155,7 +165,22 @@ export function restoreGameStateSnapshot(
     snapshot.dataScene !== undefined
     && options.restoreDataSceneState !== false
   ) {
-    engine.useDataScene();
+    if (
+      snapshot.dataScene.authoringDocument !== undefined
+      && options.restoreDataSceneAuthoringDocument !== false
+    ) {
+      applyDataSceneAuthoringDocument(
+        engine,
+        snapshot.dataScene.authoringDocument,
+        {
+          path: `${options.path ?? "gameState.snapshot"}.dataScene.authoringDocument`,
+          ...options.dataSceneAuthoringApplyOptions,
+        },
+      );
+      dataSceneAuthoringDocumentApplied = true;
+    } else {
+      engine.useDataScene();
+    }
     dataSceneStateApplied = true;
   }
   const physicsWorld = snapshot.physics === undefined
@@ -188,7 +213,9 @@ export function restoreGameStateSnapshot(
     sceneBefore,
     sceneAfter: captureGameStateSceneSnapshot(engine),
     builtInShooterStateApplied,
-    ...(snapshot.dataScene === undefined ? {} : { dataSceneStateApplied, dataSceneCustomStateApplied }),
+    ...(snapshot.dataScene === undefined
+      ? {}
+      : { dataSceneStateApplied, dataSceneAuthoringDocumentApplied, dataSceneCustomStateApplied }),
     ...(physicsWorld === undefined ? {} : { physicsWorld }),
     customStateApplied,
   };
@@ -329,6 +356,12 @@ export function validateDataSceneStateSnapshot(
     throw new Error(`${path}.version must be ${DATA_SCENE_STATE_VERSION}.`);
   }
   validateSceneSnapshot(snapshot.scene, `${path}.scene`);
+  if (snapshot.authoringDocument !== undefined) {
+    cloneJsonValue(
+      snapshot.authoringDocument as GameStateSnapshotJsonValue,
+      `${path}.authoringDocument`,
+    );
+  }
   if (snapshot.custom !== undefined) {
     cloneJsonValue(snapshot.custom as GameStateSnapshotJsonValue, `${path}.custom`);
   }
@@ -347,12 +380,21 @@ function captureGameStateSceneSnapshot(engine: FerrumEngine): GameStateSceneSnap
 
 function captureDataSceneState(
   scene: GameStateSceneSnapshot,
+  authoringDocument: GameStateSnapshotJsonValue | undefined,
   customState: GameStateSnapshotJsonValue | undefined,
 ): DataSceneStateSnapshot {
   return {
     format: DATA_SCENE_STATE_FORMAT,
     version: DATA_SCENE_STATE_VERSION,
     scene: { ...scene },
+    ...(authoringDocument === undefined
+      ? {}
+      : {
+          authoringDocument: cloneJsonValue(
+            authoringDocument,
+            "data scene state authoringDocument",
+          ),
+        }),
     ...(customState === undefined
       ? {}
       : { custom: cloneJsonValue(customState, "data scene state customState") }),

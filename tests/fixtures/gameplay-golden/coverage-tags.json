@@ -8,6 +8,7 @@
     "authored-behavior": "Scenario installs gameplay authoring data instead of relying only on built-in config.",
     "baseline": "Scenario covers the default Top-down Shooter baseline.",
     "collision-damage": "Scenario covers authored or default collision damage outcomes.",
+    "data-scene": "Scenario covers Data Scene runtime authoring state instead of built-in scene-specific state.",
     "dash": "Scenario covers dash action behavior.",
     "enemy-target": "Scenario covers actions targeting enemy entities.",
     "faction": "Scenario covers gameplay faction damage-mask policy or denial telemetry.",
@@ -23,6 +24,7 @@
     "presentation-effect": "Scenario covers gameplay presentation effect telemetry from authored side effects.",
     "projectile": "Scenario covers projectile action or projectile collision behavior.",
     "score": "Scenario covers score mutation.",
+    "snapshot-restore": "Scenario covers committed game state snapshot restore behavior.",
     "spawn-diagnostics": "Scenario asserts deferred spawn telemetry metrics.",
     "spawn-prefab": "Scenario covers spawnPrefabAction behavior.",
     "state-enter": "Scenario covers FSM state-enter action trigger behavior.",
@@ -40,7 +42,15 @@
       "tags": [
         "baseline",
         "authored-behavior",
+        "data-scene",
         "variant"
+      ]
+    },
+    "runtime-state": {
+      "description": "Runtime state snapshot and restore behavior covered by replay.",
+      "tags": [
+        "data-scene",
+        "snapshot-restore"
       ]
     },
     "gameplay-events": {

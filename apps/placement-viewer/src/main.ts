@@ -101,6 +101,31 @@ const PLACEMENT_TEXTURES = {
   turret: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGOI2FL3HwAFfAKKSdpdewAAAABJRU5ErkJggg==",
   agent: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNIWHbnPwAGLgLidJoamwAAAABJRU5ErkJggg==",
 } as const;
+const PLACEMENT_TEXTURE_METADATA = {
+  crate: { label: "Crate", width: 40, height: 40 },
+  turret: { label: "Turret", width: 34, height: 42 },
+  agent: { label: "Agent", width: 28, height: 28 },
+  floor: { label: "Floor", width: 96, height: 64 },
+} as const;
+const PLACEMENT_ATLAS = {
+  frames: {
+    full: {
+      texture: "crate",
+      uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+      size: { width: 40, height: 40 },
+    },
+    base: {
+      texture: "turret",
+      uv: { u0: 0, v0: 0, u1: 0.5, v1: 1 },
+      size: { width: 34, height: 42 },
+    },
+    barrel: {
+      texture: "turret",
+      uv: { u0: 0.5, v0: 0, u1: 1, v1: 1 },
+      size: { width: 34, height: 42 },
+    },
+  },
+} as const;
 const VIEWER_TEXTURES = {
   ...PLACEMENT_TEXTURES,
   [DATA_SCENE_PRIMITIVE_TEXTURES.rect]: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNIWHbnPwAGLgLidJoamwAAAABJRU5ErkJggg==",
@@ -109,31 +134,8 @@ const VIEWER_TEXTURES = {
 } as const;
 const PLACEMENT_ASSET_PROVIDER = createScenePlacementAssetProviderFromProjectAssets({
   textures: PLACEMENT_TEXTURES,
-  atlas: {
-    frames: {
-      full: {
-        texture: "crate",
-        uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
-        size: { width: 40, height: 40 },
-      },
-      base: {
-        texture: "turret",
-        uv: { u0: 0, v0: 0, u1: 0.5, v1: 1 },
-        size: { width: 34, height: 42 },
-      },
-      barrel: {
-        texture: "turret",
-        uv: { u0: 0.5, v0: 0, u1: 1, v1: 1 },
-        size: { width: 34, height: 42 },
-      },
-    },
-  },
-  textureMetadata: {
-    crate: { label: "Crate", width: 40, height: 40 },
-    turret: { label: "Turret", width: 34, height: 42 },
-    agent: { label: "Agent", width: 28, height: 28 },
-    floor: { label: "Floor", width: 96, height: 64 },
-  },
+  atlas: PLACEMENT_ATLAS,
+  textureMetadata: PLACEMENT_TEXTURE_METADATA,
   frameLabel: ({ frameName }) => ({
     full: "Full",
     base: "Base",
@@ -147,6 +149,7 @@ interface PlacementViewerWindow extends Window {
   __ferrumPlacementViewer?: ScenePlacementViewer;
   ferrumPlacementViewerState?: ScenePlacementViewerState;
   ferrumPlacementViewerDesktop?: PlacementViewerDesktopState;
+  ferrumPlacementViewerRuntimeAssets?: PlacementViewerRuntimeAssetSnapshot;
   ferrumPlacementViewerAgentHandoff?: PlacementViewerAgentHandoff;
   ferrumPlacementViewerSelect?: (instanceId?: string) => ScenePlacementViewerState;
   ferrumPlacementViewerUpdateTransform?: (
@@ -191,6 +194,11 @@ interface PlacementViewerWindow extends Window {
   ferrumPlacementViewerInteraction?: PlacementInteractionSnapshot;
 }
 
+interface PlacementViewerRuntimeAssetSnapshot {
+  textures: Record<string, string>;
+  textureIds: Record<string, number>;
+}
+
 interface PlacementViewerDesktopBridge {
   core?: {
     invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
@@ -213,7 +221,10 @@ interface PlacementViewerDesktopState {
   assetFolderTextureAtlasInputPath?: string;
   assetFolderImages?: readonly ScenePlacementAgentHandoffAssetFile[];
   assetFolderDiagnostics?: readonly ScenePlacementAgentHandoffAssetFolderDiagnostic[];
+  assetFolderRuntimeStatus?: "loading" | "ready" | "error";
+  assetFolderRuntimeTextureCount?: number;
   lastAssetFolderError?: string;
+  lastAssetFolderRuntimeError?: string;
   handoffSyncStatus?: "idle" | "pending" | "saved" | "error";
   lastSavePath?: string;
   lastHandoffPath?: string;
@@ -270,11 +281,21 @@ interface PlacementSnapOptions {
 interface PlacementInteractionSnapshot extends PlacementSnapOptions {
   dragging: boolean;
   pendingAdd?: PlacementAddAction;
+  pendingAddPreview?: PlacementPendingAddPreview;
 }
 
 interface PlacementInteractionState extends PlacementSnapOptions {
   dragging: boolean;
   pendingAdd?: PlacementAddAction;
+  pendingAddPreview?: PlacementPendingAddPreview;
+}
+
+interface PlacementPendingAddPreview extends PlacementInstanceBounds {
+  action: PlacementAddAction;
+  label: string;
+  assetId?: string;
+  frameId?: string;
+  thumbnailUrl?: string;
 }
 
 type PlacementViewerAgentHandoff = ScenePlacementAgentHandoff;
@@ -306,9 +327,11 @@ interface PlacementSaveControls {
 
 interface PlacementInspectorOptions {
   saveEnabled: boolean;
-  assetProvider: ScenePlacementAssetProvider;
+  assetProvider: PlacementAssetProviderGetter;
   sourceDocument: string;
 }
+
+type PlacementAssetProviderGetter = () => ScenePlacementAssetProvider;
 
 type PlacementAddAction =
   | "add-rect"
@@ -366,10 +389,13 @@ async function bootstrap(): Promise<void> {
     const boundsById = placementBoundsById(resolved);
     const selectedInstanceId = firstActorInstance(resolved) ?? resolved.bindingPlan?.instances[0]?.id;
     const saveEnabled = placementViewerSaveEnabled();
-    const overlay = createPlacementOverlay(shell.stage, boundsById);
+    let previewAssetProvider = createPlacementPreviewAssetProvider();
+    let previewAssetSignature = placementPreviewAssetSignature();
+    const currentAssetProvider = (): ScenePlacementAssetProvider => previewAssetProvider;
+    const overlay = createPlacementOverlay(shell.stage, boundsById, currentAssetProvider);
     const inspector = createPlacementInspector(resolved, {
       saveEnabled,
-      assetProvider: PLACEMENT_ASSET_PROVIDER,
+      assetProvider: currentAssetProvider,
       sourceDocument,
     });
     const appChrome = createPlacementAppChrome(shell, {
@@ -407,7 +433,11 @@ async function bootstrap(): Promise<void> {
       },
     });
     shell.attachRuntime(runtime);
-    await runtime.engine.loadAssets({ textures: VIEWER_TEXTURES });
+    const runtimeTextures = placementRuntimeTextureManifest();
+    let runtimeAssetAttemptSignature = placementRuntimeAssetSignature(runtimeTextures);
+    await runtime.engine.loadAssets({ textures: runtimeTextures });
+    publishPlacementRuntimeAssets(runtimeTextures, runtime.engine);
+    publishPlacementRuntimeAssetStatus("ready");
 
     const instanceHandleRegistry = createSceneInstanceHandleRegistry({
       entityExists: (handle) => runtime?.engine.gameplayEntityExists(handle) ?? false,
@@ -436,7 +466,7 @@ async function bootstrap(): Promise<void> {
       state: ScenePlacementViewerState,
       migrationPreview: ScenePlacementBindingMigrationPreview | undefined,
     ): void => {
-      publishPlacementAgentHandoff(savedDocument, state, migrationPreview, PLACEMENT_ASSET_PROVIDER, sourceDocument);
+      publishPlacementAgentHandoff(savedDocument, state, migrationPreview, currentAssetProvider(), sourceDocument);
     };
     const setState = (state: ScenePlacementViewerState): ScenePlacementViewerState => {
       const migrationPreview = placementMigrationPreview(savedDocument, state.draftPatch);
@@ -453,6 +483,32 @@ async function bootstrap(): Promise<void> {
       const state = viewer.state();
       publishCurrentAgentHandoff(state, placementMigrationPreview(savedDocument, state.draftPatch));
     };
+    const reloadPlacementRuntimeAssets = async (): Promise<void> => {
+      const nextRuntimeTextures = placementRuntimeTextureManifest();
+      const nextRuntimeAssetSignature = placementRuntimeAssetSignature(nextRuntimeTextures);
+      if (nextRuntimeAssetSignature === runtimeAssetAttemptSignature) {
+        return;
+      }
+      runtimeAssetAttemptSignature = nextRuntimeAssetSignature;
+      publishPlacementRuntimeAssetStatus("loading");
+      try {
+        await runtime.engine.loadAssets({ textures: nextRuntimeTextures });
+        publishPlacementRuntimeAssets(nextRuntimeTextures, runtime.engine);
+        publishPlacementRuntimeAssetStatus("ready");
+      } catch (error: unknown) {
+        publishPlacementRuntimeAssetStatus("error", placementErrorMessage(error));
+      }
+      setState(viewer.state());
+    };
+    window.addEventListener("ferrum-placement-desktop-statechange", () => {
+      const nextAssetSignature = placementPreviewAssetSignature();
+      if (nextAssetSignature !== previewAssetSignature) {
+        previewAssetSignature = nextAssetSignature;
+        previewAssetProvider = createPlacementPreviewAssetProvider();
+        setState(viewer.state());
+      }
+      void reloadPlacementRuntimeAssets();
+    });
     installPlacementHooks(viewer, interaction, setState, {
       saveEnabled,
       saveDraft: async () => {
@@ -492,9 +548,9 @@ async function bootstrap(): Promise<void> {
         await (window as PlacementViewerWindow).ferrumPlacementViewerSaveDraft?.();
       },
     });
-    installPlacementEditControls(inspector.element, viewer, interaction, setState);
+    installPlacementEditControls(inspector.element, viewer, interaction, currentAssetProvider, setState);
     installPlacementComponentControls(inspector.element, viewer, setState);
-    installPlacementPointer(shell.canvas, inspector.element, viewer, interaction, setState);
+    installPlacementPointer(shell.canvas, inspector.element, viewer, interaction, currentAssetProvider, setState);
     installPlacementResizeHandle(overlay.element, shell.canvas, viewer, interaction, setState);
     installPlacementColliderOffsetHandle(overlay.element, shell.canvas, viewer, interaction, setState);
     installPlacementKeyboard(shell.canvas, viewer, interaction, setState);
@@ -585,6 +641,7 @@ function createPlacementMassAuthoringDocument(
 function createPlacementOverlay(
   stage: HTMLElement,
   boundsById: ReadonlyMap<string, PlacementInstanceBounds>,
+  assetProvider: PlacementAssetProviderGetter,
 ): PlacementOverlay {
   const element = document.createElement("div");
   const draftLayer = document.createElement("div");
@@ -614,7 +671,7 @@ function createPlacementOverlay(
   return {
     element,
     setState(state, interaction) {
-      renderPlacementDraftMarkers(draftLayer, state, boundsById, interaction);
+      renderPlacementDraftMarkers(draftLayer, state, boundsById, interaction, assetProvider());
       const selected = state.selected;
       if (selected === undefined) {
         selection.dataset.visible = "false";
@@ -746,6 +803,7 @@ function renderPlacementDraftMarkers(
   state: ScenePlacementViewerState,
   boundsById: ReadonlyMap<string, PlacementInstanceBounds>,
   interaction: PlacementInteractionState,
+  assetProvider: ScenePlacementAssetProvider,
 ): void {
   const draftIds = placementDraftVisibleInstanceIds(state);
   const pendingMarker = createPlacementPendingAddMarker(state, interaction);
@@ -758,7 +816,7 @@ function renderPlacementDraftMarkers(
     if (!draftIds.has(instance.instanceId)) {
       continue;
     }
-    const marker = createPlacementDraftMarker(instance, state, boundsById);
+    const marker = createPlacementDraftMarker(instance, state, boundsById, assetProvider);
     if (marker !== undefined) {
       markers.push(marker);
     }
@@ -797,6 +855,7 @@ function createPlacementDraftMarker(
   instance: ScenePlacementViewerInstance,
   state: ScenePlacementViewerState,
   boundsById: ReadonlyMap<string, PlacementInstanceBounds>,
+  assetProvider: ScenePlacementAssetProvider,
 ): HTMLElement | undefined {
   const bounds = placementBoundsForInstance(instance, boundsById);
   if (bounds === undefined) {
@@ -811,6 +870,7 @@ function createPlacementDraftMarker(
   marker.className = "placement-draft-marker";
   label.className = "placement-draft-label";
   label.textContent = `${instance.instanceId} draft`;
+  applyPlacementMarkerAssetPreview(marker, instance.visual, assetProvider);
   marker.style.transform = `translate(${topLeft.x.toFixed(2)}px, ${topLeft.y.toFixed(2)}px)`;
   marker.style.width = `${(bounds.width * instance.transform.scale * state.viewport.zoom).toFixed(2)}px`;
   marker.style.height = `${(bounds.height * instance.transform.scale * state.viewport.zoom).toFixed(2)}px`;
@@ -825,22 +885,64 @@ function createPlacementPendingAddMarker(
   if (interaction.pendingAdd === undefined || state.pointerWorld === undefined) {
     return undefined;
   }
-  const bounds = pendingPlacementBounds(interaction.pendingAdd);
+  const preview = interaction.pendingAddPreview?.action === interaction.pendingAdd
+    ? interaction.pendingAddPreview
+    : placementFallbackPendingAddPreview(interaction.pendingAdd);
   const topLeft = worldToSceneScreen(state.viewport, {
-    x: state.pointerWorld.x - bounds.width * 0.5,
-    y: state.pointerWorld.y - bounds.height * 0.5,
+    x: state.pointerWorld.x - preview.width * 0.5,
+    y: state.pointerWorld.y - preview.height * 0.5,
   });
   const marker = document.createElement("div");
   const label = document.createElement("div");
   marker.className = "placement-draft-marker placement-pending-add-marker";
   marker.dataset.placementPendingAdd = interaction.pendingAdd;
+  applyPlacementPendingMarkerPreview(marker, preview);
   label.className = "placement-draft-label";
-  label.textContent = `${placementAddLabel(interaction.pendingAdd)} preview`;
+  label.textContent = `${preview.label} preview`;
   marker.style.transform = `translate(${topLeft.x.toFixed(2)}px, ${topLeft.y.toFixed(2)}px)`;
-  marker.style.width = `${(bounds.width * state.viewport.zoom).toFixed(2)}px`;
-  marker.style.height = `${(bounds.height * state.viewport.zoom).toFixed(2)}px`;
+  marker.style.width = `${(preview.width * state.viewport.zoom).toFixed(2)}px`;
+  marker.style.height = `${(preview.height * state.viewport.zoom).toFixed(2)}px`;
   marker.append(label);
   return marker;
+}
+
+function applyPlacementMarkerAssetPreview(
+  marker: HTMLElement,
+  visual: ResolvedDataSceneObjectVisual | undefined,
+  assetProvider: ScenePlacementAssetProvider,
+): void {
+  if (visual?.kind !== "sprite" || visual.texture.kind !== "asset") {
+    return;
+  }
+  const assetId = visual.texture.name ?? String(visual.texture.value);
+  const asset = assetProvider.resolveSpriteAsset(assetId);
+  applyPlacementPendingMarkerPreview(marker, {
+    action: "add-sprite",
+    label: asset?.label ?? assetId,
+    assetId,
+    width: visual.bounds.width,
+    height: visual.bounds.height,
+    thumbnailUrl: asset?.thumbnailUrl,
+  });
+}
+
+function applyPlacementPendingMarkerPreview(
+  marker: HTMLElement,
+  preview: PlacementPendingAddPreview,
+): void {
+  marker.dataset.placementPreviewWidth = String(preview.width);
+  marker.dataset.placementPreviewHeight = String(preview.height);
+  if (preview.assetId !== undefined) {
+    marker.classList.add("placement-sprite-preview-marker");
+    marker.dataset.placementAssetId = preview.assetId;
+  }
+  if (preview.frameId !== undefined) {
+    marker.dataset.placementFrameId = preview.frameId;
+  }
+  if (preview.thumbnailUrl !== undefined) {
+    marker.dataset.placementHasThumbnail = "true";
+    marker.style.backgroundImage = `url("${preview.thumbnailUrl}")`;
+  }
 }
 
 function createPlacementInspector(
@@ -984,7 +1086,7 @@ function createPlacementInspector(
         ? "clean"
         : `${state.draftPatch.operations.length} operation${state.draftPatch.operations.length === 1 ? "" : "s"}`;
       rows.blockers.textContent = `${migrationPreview?.references.length ?? 0}`;
-      rows.assets.textContent = `${placementAssetDiagnosticsForState(state, options.assetProvider).length}`;
+      rows.assets.textContent = `${placementAssetDiagnosticsForState(state, options.assetProvider()).length}`;
       migrationReport.setPreview(migrationPreview);
       controls.setState(state, migrationPreview);
       editControls.setState(state);
@@ -1131,7 +1233,7 @@ function createPlacementMigrationReport(): {
 
 function createPlacementHandoffControls(options: {
   saveEnabled: boolean;
-  assetProvider: ScenePlacementAssetProvider;
+  assetProvider: PlacementAssetProviderGetter;
 }): PlacementHandoffControls {
   const element = document.createElement("section");
   const actions = document.createElement("div");
@@ -1174,7 +1276,7 @@ function createPlacementHandoffControls(options: {
     const autoSyncEnabled = placementDesktopHandoffAutoSyncEnabled();
     const draftCount = lastState.draftPatch?.operations.length ?? 0;
     const blockedCount = lastMigrationPreview?.references.length ?? 0;
-    const assetDiagnosticCount = placementAssetDiagnosticsForState(lastState, options.assetProvider).length;
+    const assetDiagnosticCount = placementAssetDiagnosticsForState(lastState, options.assetProvider()).length;
     copyPatch.disabled = draftCount === 0;
     copyHandoff.disabled = false;
     saveHandoff.disabled = desktopInvoke === undefined;
@@ -1462,7 +1564,7 @@ function createPlacementTransformControls(options: Pick<PlacementInspectorOption
 
 function createPlacementEditControls(
   resolved: ResolvedSceneAuthoringDocument,
-  assetProvider: ScenePlacementAssetProvider,
+  assetProvider: PlacementAssetProviderGetter,
 ): {
   element: HTMLFormElement;
   setState(state: ScenePlacementViewerState): void;
@@ -1475,7 +1577,7 @@ function createPlacementEditControls(
   const rename = appendTextControl(row, "id", "rename");
   const definitionId = appendTextControl(definitionRow, "definition id", "definitionId");
   const addId = appendTextControl(addOptions, "new id", "addId");
-  const sprite = appendSelectControl(addOptions, "sprite", "addSprite", placementSpriteAssetOptions(assetProvider));
+  const sprite = appendSelectControl(addOptions, "sprite", "addSprite", placementSpriteAssetOptions(assetProvider()));
   const spriteFrame = appendSelectControl(addOptions, "frame", "addSpriteFrame", []);
   const prefab = appendSelectControl(addOptions, "prefab", "addPrefab", placementPrefabOptions(resolved));
   const spritePreview = createPlacementSpriteAssetPreview();
@@ -1497,9 +1599,9 @@ function createPlacementEditControls(
   removeButton.textContent = "Remove";
   removeButton.dataset.placementAction = "remove-selected";
   addId.placeholder = "auto";
-  sprite.value = "crate";
-  syncPlacementSpriteFrameOptions(spriteFrame, assetProvider, sprite.value);
-  updatePlacementSpriteAssetPreview(spritePreview, assetProvider, sprite.value, spriteFrame.value);
+  sprite.value = defaultPlacementSpriteAsset(assetProvider());
+  syncPlacementSpriteFrameOptions(spriteFrame, assetProvider(), sprite.value);
+  updatePlacementSpriteAssetPreview(spritePreview, assetProvider(), sprite.value, spriteFrame.value);
   prefab.value = prefab.querySelector<HTMLOptionElement>("option[value='crate']") === null
     ? prefab.value
     : "crate";
@@ -1522,16 +1624,20 @@ function createPlacementEditControls(
   form.append(row, definitionRow, addOptions, palette);
   form.addEventListener("submit", (event) => event.preventDefault());
   sprite.addEventListener("change", () => {
-    syncPlacementSpriteFrameOptions(spriteFrame, assetProvider, sprite.value);
-    updatePlacementSpriteAssetPreview(spritePreview, assetProvider, sprite.value, spriteFrame.value);
+    syncPlacementSpriteFrameOptions(spriteFrame, assetProvider(), sprite.value);
+    updatePlacementSpriteAssetPreview(spritePreview, assetProvider(), sprite.value, spriteFrame.value);
   });
   spriteFrame.addEventListener("change", () => {
-    updatePlacementSpriteAssetPreview(spritePreview, assetProvider, sprite.value, spriteFrame.value);
+    updatePlacementSpriteAssetPreview(spritePreview, assetProvider(), sprite.value, spriteFrame.value);
   });
 
   return {
     element: form,
     setState(state) {
+      const currentAssetProvider = assetProvider();
+      syncPlacementSpriteAssetOptions(sprite, currentAssetProvider);
+      syncPlacementSpriteFrameOptions(spriteFrame, currentAssetProvider, sprite.value);
+      updatePlacementSpriteAssetPreview(spritePreview, currentAssetProvider, sprite.value, spriteFrame.value);
       const selected = state.selected;
       const disabled = selected === undefined;
       syncPlacementPrefabOptions(prefab, state);
@@ -1650,6 +1756,16 @@ function syncPlacementSpriteFrameOptions(
   assetId: string,
 ): void {
   const frames = assetProvider.listSpriteFrames(assetId);
+  const current = select.value;
+  const frameIds = frames.map((frame) => frame.id);
+  const previous = Array.from(select.options).map((option) => option.value);
+  const next = ["", ...frameIds];
+  if (
+    previous.length === next.length
+    && previous.every((id, index) => id === next[index])
+  ) {
+    return;
+  }
   const options: HTMLOptionElement[] = [];
   const defaultOption = document.createElement("option");
   defaultOption.value = "";
@@ -1662,7 +1778,9 @@ function syncPlacementSpriteFrameOptions(
     options.push(option);
   }
   select.replaceChildren(...options);
-  select.value = frames[0]?.id ?? "";
+  select.value = current.length > 0 && frameIds.includes(current)
+    ? current
+    : frames[0]?.id ?? "";
 }
 
 function createPlacementComponentControls(summaries: {
@@ -2001,6 +2119,7 @@ function installPlacementEditControls(
   root: HTMLElement,
   viewer: ScenePlacementViewer,
   interaction: PlacementInteractionState,
+  assetProvider: PlacementAssetProviderGetter,
   setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
 ): void {
   root.addEventListener("click", (event) => {
@@ -2070,7 +2189,9 @@ function installPlacementEditControls(
       || addAction === "add-sprite"
       || addAction === "add-prefab"
     ) {
+      const draftOptions = placementDraftOptionsFromControls(root, addAction);
       interaction.pendingAdd = addAction;
+      interaction.pendingAddPreview = placementPendingAddPreview(addAction, assetProvider(), draftOptions);
       publishPlacementInteraction(interaction);
       setState(viewer.state());
     }
@@ -2386,6 +2507,7 @@ function installPlacementPointer(
   controlsRoot: HTMLElement,
   viewer: ScenePlacementViewer,
   interaction: PlacementInteractionState,
+  assetProvider: PlacementAssetProviderGetter,
   setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
 ): void {
   let hoverQueued = false;
@@ -2410,11 +2532,17 @@ function installPlacementPointer(
       if (pointerState.pointerWorld !== undefined) {
         const placementPoint = snappedPlacementPoint(pointerState.pointerWorld, interaction);
         try {
-          const draft = createDraftPlacementInstance(pointerState, interaction.pendingAdd, {
-            ...placementDraftOptionsFromControls(controlsRoot, interaction.pendingAdd),
-            point: placementPoint,
-          });
+          const draft = createDraftPlacementInstance(
+            pointerState,
+            interaction.pendingAdd,
+            assetProvider(),
+            {
+              ...placementDraftOptionsFromControls(controlsRoot, interaction.pendingAdd),
+              point: placementPoint,
+            },
+          );
           interaction.pendingAdd = undefined;
+          interaction.pendingAddPreview = undefined;
           clearPlacementAddError(controlsRoot);
           publishPlacementInteraction(interaction);
           setState(viewer.addInstance(pointerState.fragment, draft));
@@ -3063,6 +3191,7 @@ function nudgeSelectedInstance(
 function createDraftPlacementInstance(
   state: ScenePlacementViewerState,
   action: PlacementAddAction,
+  assetProvider: ScenePlacementAssetProvider,
   options: PlacementDraftOptions = {},
 ): SceneCompositionFragmentInstanceSpec {
   switch (action) {
@@ -3073,7 +3202,7 @@ function createDraftPlacementInstance(
     case "add-point":
       return createDraftPrimitiveInstance(state, "point", options);
     case "add-sprite":
-      return createDraftSpriteInstance(state, options);
+      return createDraftSpriteInstance(state, assetProvider, options);
     case "add-prefab":
       return createDraftPrefabInstance(state, options);
   }
@@ -3103,12 +3232,13 @@ function createDraftPrefabInstance(
 
 function createDraftSpriteInstance(
   state: ScenePlacementViewerState,
+  assetProvider: ScenePlacementAssetProvider,
   options: PlacementDraftOptions,
 ): SceneCompositionFragmentInstanceSpec {
   const anchor = draftPlacementAnchor(state, options);
   const asset = options.spriteAsset ?? "crate";
-  const frame = selectedPlacementSpriteFrame(PLACEMENT_ASSET_PROVIDER, asset, options.spriteFrame);
-  const size = placementSpriteAssetSize(PLACEMENT_ASSET_PROVIDER, asset, frame);
+  const frame = selectedPlacementSpriteFrame(assetProvider, asset, options.spriteFrame);
+  const size = placementSpriteAssetSize(assetProvider, asset, frame);
   return {
     id: options.instanceId ?? nextPlacementInstanceId(state, asset),
     prefab: "object",
@@ -3258,6 +3388,37 @@ function placementSpriteAssetOptions(assetProvider: ScenePlacementAssetProvider)
   return ids.length === 0 ? ["crate"] : ids;
 }
 
+function defaultPlacementSpriteAsset(assetProvider: ScenePlacementAssetProvider): string {
+  const ids = placementSpriteAssetOptions(assetProvider);
+  return ids.includes("crate") ? "crate" : ids[0] ?? "crate";
+}
+
+function syncPlacementSpriteAssetOptions(
+  select: HTMLSelectElement,
+  assetProvider: ScenePlacementAssetProvider,
+): void {
+  const ids = placementSpriteAssetOptions(assetProvider);
+  const current = select.value;
+  const previous = Array.from(select.options).map((option) => option.value);
+  if (
+    previous.length === ids.length
+    && previous.every((id, index) => id === ids[index])
+  ) {
+    return;
+  }
+  select.replaceChildren(...ids.map((id) => {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = id;
+    return option;
+  }));
+  select.value = ids.includes(current)
+    ? current
+    : ids.includes("crate")
+      ? "crate"
+      : ids[0] ?? "crate";
+}
+
 function placementPrefabOptions(resolved: ResolvedSceneAuthoringDocument): readonly string[] {
   const ids = Object.keys(resolved.sceneComposition.prefabs).filter((id) => id !== "object");
   return ids.length === 0 ? ["object"] : ids;
@@ -3343,6 +3504,39 @@ function pendingPlacementBounds(action: PlacementAddAction): PlacementInstanceBo
     case "add-prefab":
       return { width: 40, height: 40 };
   }
+}
+
+function placementFallbackPendingAddPreview(action: PlacementAddAction): PlacementPendingAddPreview {
+  return {
+    action,
+    label: placementAddLabel(action),
+    ...pendingPlacementBounds(action),
+  };
+}
+
+function placementPendingAddPreview(
+  action: PlacementAddAction,
+  assetProvider: ScenePlacementAssetProvider,
+  options: Omit<PlacementDraftOptions, "point">,
+): PlacementPendingAddPreview {
+  if (action !== "add-sprite") {
+    return placementFallbackPendingAddPreview(action);
+  }
+  const assetId = options.spriteAsset ?? defaultPlacementSpriteAsset(assetProvider);
+  const frame = selectedPlacementSpriteFrame(assetProvider, assetId, options.spriteFrame);
+  const asset = assetProvider.resolveSpriteAsset(assetId);
+  const size = placementSpriteAssetSize(assetProvider, assetId, frame);
+  const frameLabel = frame === undefined ? "" : ` / ${frame.label ?? frame.id}`;
+  const thumbnailUrl = frame?.thumbnailUrl ?? asset?.thumbnailUrl;
+  return {
+    action,
+    label: `${asset?.label ?? assetId}${frameLabel}`,
+    assetId,
+    ...(frame?.id === undefined ? {} : { frameId: frame.id }),
+    width: size.width,
+    height: size.height,
+    ...(thumbnailUrl === undefined ? {} : { thumbnailUrl }),
+  };
 }
 
 function placementAddLabel(action: PlacementAddAction): string {
@@ -3821,9 +4015,24 @@ function placementAssetFolderStatusLabel(): string {
   }
   if (desktop.assetFolderExists === true) {
     const count = desktop.assetFolderImageCount ?? 0;
-    return `${count} image${count === 1 ? "" : "s"} ${path}`;
+    return `${count} image${count === 1 ? "" : "s"} ${path}${placementAssetFolderRuntimeStatusLabel(desktop)}`;
   }
   return path;
+}
+
+function placementAssetFolderRuntimeStatusLabel(desktop: PlacementViewerDesktopState): string {
+  switch (desktop.assetFolderRuntimeStatus) {
+    case "loading":
+      return " runtime loading";
+    case "ready":
+      return ` runtime ${desktop.assetFolderRuntimeTextureCount ?? 0}`;
+    case "error":
+      return desktop.lastAssetFolderRuntimeError === undefined
+        ? " runtime error"
+        : ` runtime error ${desktop.lastAssetFolderRuntimeError}`;
+    default:
+      return "";
+  }
 }
 
 function placementHandoffStatusLabel(): string {
@@ -3854,15 +4063,115 @@ function placementDefaultAssetFolderPath(projectPath: string | undefined): strin
   return `${projectPath.replace(/\/+$/, "")}/public/assets`;
 }
 
+function placementPreviewAssetSignature(): string {
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  if (desktop?.enabled !== true || desktop.assetFolderExists !== true) {
+    return "browser";
+  }
+  return (desktop.assetFolderImages ?? [])
+    .map((image) => `${image.id}:${image.runtimeUrl ?? ""}`)
+    .join("|");
+}
+
+function createPlacementPreviewAssetProvider(): ScenePlacementAssetProvider {
+  const desktopTextures = placementDesktopPreviewTextures();
+  if (desktopTextures === undefined) {
+    return PLACEMENT_ASSET_PROVIDER;
+  }
+  return createScenePlacementAssetProviderFromProjectAssets({
+    textures: {
+      ...PLACEMENT_TEXTURES,
+      ...desktopTextures.textures,
+    },
+    atlas: PLACEMENT_ATLAS,
+    textureMetadata: {
+      ...PLACEMENT_TEXTURE_METADATA,
+      ...desktopTextures.metadata,
+    },
+    frameLabel: ({ frameName }) => ({
+      full: "Full",
+      base: "Base",
+      barrel: "Barrel",
+    })[frameName],
+    path: "placementViewer.previewAssets",
+  });
+}
+
+function placementDesktopPreviewTextures(): {
+  textures: Record<string, string>;
+  metadata: Record<string, { label: string; thumbnailUrl: string }>;
+} | undefined {
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  if (desktop?.enabled !== true || desktop.assetFolderExists !== true) {
+    return undefined;
+  }
+  const textures: Record<string, string> = {};
+  const metadata: Record<string, { label: string; thumbnailUrl: string }> = {};
+  for (const image of desktop.assetFolderImages ?? []) {
+    if (image.runtimeUrl === undefined || image.runtimeUrl.length === 0) {
+      continue;
+    }
+    textures[image.id] = image.runtimeUrl;
+    metadata[image.id] = {
+      label: image.fileName,
+      thumbnailUrl: image.runtimeUrl,
+    };
+  }
+  return Object.keys(textures).length === 0
+    ? undefined
+    : { textures, metadata };
+}
+
+function placementRuntimeTextureManifest(): Record<string, string> {
+  const desktopTextures = placementDesktopPreviewTextures();
+  return desktopTextures === undefined
+    ? { ...VIEWER_TEXTURES }
+    : {
+        ...VIEWER_TEXTURES,
+        ...desktopTextures.textures,
+      };
+}
+
+function placementRuntimeAssetSignature(textures: Record<string, string>): string {
+  return Object.keys(textures)
+    .sort()
+    .map((name) => `${name}:${textures[name]}`)
+    .join("|");
+}
+
+function publishPlacementRuntimeAssetStatus(
+  status: NonNullable<PlacementViewerDesktopState["assetFolderRuntimeStatus"]>,
+  error?: string,
+): void {
+  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  if (desktop?.enabled !== true) {
+    return;
+  }
+  const localTextureCount = Object.keys(placementDesktopPreviewTextures()?.textures ?? {}).length;
+  publishPlacementDesktopState({
+    assetFolderRuntimeStatus: status,
+    assetFolderRuntimeTextureCount: localTextureCount,
+    lastAssetFolderRuntimeError: status === "error" ? error ?? "Failed to load runtime textures" : undefined,
+  });
+}
+
 function placementDesktopAssetFolderHandoff(): ScenePlacementAgentHandoffAssetFolder | undefined {
   const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true || desktop.assetFolderPath === undefined) {
     return undefined;
   }
-  const diagnostics = desktop.assetFolderDiagnostics ?? [];
+  const diagnostics = [...(desktop.assetFolderDiagnostics ?? [])];
+  if (desktop.lastAssetFolderRuntimeError !== undefined) {
+    diagnostics.push({
+      severity: "error",
+      code: "runtimeTextureLoadFailed",
+      path: "assetFolder.runtimeTextures",
+      message: desktop.lastAssetFolderRuntimeError,
+    });
+  }
   return {
     path: desktop.assetFolderPath,
-    status: desktop.lastAssetFolderError !== undefined
+    status: desktop.lastAssetFolderError !== undefined || desktop.lastAssetFolderRuntimeError !== undefined
       ? "error"
       : desktop.assetFolderExists === false
         ? "missing"
@@ -3965,6 +4274,9 @@ async function inspectPlacementAssetFolder(assetFolderPath: string): Promise<str
         message: placementErrorMessage(error),
       }],
       lastAssetFolderError: placementErrorMessage(error),
+      assetFolderRuntimeStatus: undefined,
+      assetFolderRuntimeTextureCount: undefined,
+      lastAssetFolderRuntimeError: undefined,
     });
     refreshPlacementAgentHandoff();
     throw error;
@@ -4130,6 +4442,9 @@ function publishPlacementDesktopAssetFolder(result: PlacementDesktopAssetFolderR
     assetFolderImages: result.images,
     assetFolderDiagnostics: result.diagnostics,
     lastAssetFolderError: undefined,
+    assetFolderRuntimeStatus: undefined,
+    assetFolderRuntimeTextureCount: undefined,
+    lastAssetFolderRuntimeError: undefined,
   });
 }
 
@@ -4147,6 +4462,9 @@ function placementInteractionSnapshot(interaction: PlacementInteractionState): P
     gridSize: interaction.gridSize,
     dragging: interaction.dragging,
     ...(interaction.pendingAdd === undefined ? {} : { pendingAdd: interaction.pendingAdd }),
+    ...(interaction.pendingAddPreview === undefined
+      ? {}
+      : { pendingAddPreview: { ...interaction.pendingAddPreview } }),
   };
 }
 
@@ -4167,6 +4485,20 @@ function publishFrameStats(frame: FerrumRuntimeFrame): void {
     entityCount: frame.frame.entityCount,
     renderCommandCount: frame.rendererStats.renderCommandCount,
     drawCalls: frame.rendererStats.drawCalls,
+  };
+}
+
+function publishPlacementRuntimeAssets(
+  textures: Record<string, string>,
+  engine: FerrumRuntime["engine"],
+): void {
+  const textureIds: Record<string, number> = {};
+  for (const name of Object.keys(textures)) {
+    textureIds[name] = engine.textureId(name);
+  }
+  (window as PlacementViewerWindow).ferrumPlacementViewerRuntimeAssets = {
+    textures: { ...textures },
+    textureIds,
   };
 }
 
@@ -4312,6 +4644,9 @@ async function loadSceneAuthoringDocument(
         assetFolderImages: result.assetFolder.images,
         assetFolderDiagnostics: result.assetFolder.diagnostics,
         lastAssetFolderError: undefined,
+        assetFolderRuntimeStatus: undefined,
+        assetFolderRuntimeTextureCount: undefined,
+        lastAssetFolderRuntimeError: undefined,
       });
       return result.document;
     }
@@ -4333,6 +4668,9 @@ async function loadSceneAuthoringDocument(
       assetFolderImages: undefined,
       assetFolderDiagnostics: undefined,
       lastAssetFolderError: undefined,
+      assetFolderRuntimeStatus: undefined,
+      assetFolderRuntimeTextureCount: undefined,
+      lastAssetFolderRuntimeError: undefined,
     });
     return result.document;
   }

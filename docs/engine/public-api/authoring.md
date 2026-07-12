@@ -10,6 +10,7 @@ import {
   resolveDataSceneComponentsSpec,
   DATA_SCENE_PRIMITIVE_TEXTURES,
   dataSceneObjectVisualBounds,
+  applyDataSceneAuthoringDocument,
   createDataSceneRuntimeTarget,
   createSceneInstanceHandleRegistry,
   createScenePlacementAssetProvider,
@@ -44,6 +45,7 @@ import {
 | `instantiateSceneFragment(...)` | fragment를 deterministic instance list로 펼친다. |
 | `resolveDataSceneComponentsSpec(...)` | `props.components` v1 `visual` 또는 legacy `sprite`, collider, layer, template descriptor를 검증하고 정규화한다. |
 | `DATA_SCENE_PRIMITIVE_TEXTURES`, `dataSceneObjectVisualBounds(...)` | primitive visual fallback texture id와 placement/picking용 resolved visual bounds를 노출한다. |
+| `applyDataSceneAuthoringDocument(...)` | scene-authoring envelope를 검증하고 Data Scene runtime target으로 spawn한 뒤 behavior recipe command를 적용한다. |
 | `createDataSceneRuntimeTarget(...)` | `FerrumEngine`을 Data Scene spawn target으로 감싸 `applySceneBehaviorRecipes(...)`에 넘길 수 있게 한다. |
 | `createSceneInstanceHandleRegistry(...)` | scene apply/reload 뒤 `instance.id`와 live entity handle을 양방향으로 조회한다. |
 | `createScenePlacementAssetProvider(...)` | placement viewer/agent용 sprite asset id, atlas frame, 기본 size, thumbnail, missing reference diagnostic provider를 만든다. |
@@ -67,7 +69,17 @@ dash/melee/spawn action, timer, collision reaction, movement 같은 데이터를
 매 frame TypeScript callback을 등록하는 API가 아니다.
 movement recipe의 새 target canonical 값은 `primaryActor` / `nearestPrimaryActor`다.
 `chase`와 `seekTarget`에서 `target`을 생략하면 `primaryActor`로 정규화된다. `player` /
-`nearestPlayer`는 기존 authoring data 호환 alias로만 유지한다.
+`nearestPlayer`는 1.x 동안 기존 authoring data 호환 alias로 유지하지만 신규 문서, 예제,
+agent-generated behavior data의 canonical target으로 쓰지 않는다. 이 정책은 movement target 이름에만
+적용되며 Shooter Game Spec의 `player` key, layer/faction `player`, texture id `player` 같은
+starter-scene 표면은 별도 호환 계약으로 유지한다.
+
+`applyDataSceneAuthoringDocument(engine, document, options?)`는 full `ferrum2d.consumer.scene-authoring`
+문서를 Data Scene runtime에 적용하는 package-facing 조립 경로다. 기본값은
+`validateBindings: true`, `validateComponents: true`이며, `componentTemplates`를 넘기면
+`allowComponentTemplates`도 기본 활성화된다. resolver/component validation은 runtime activation 전에
+끝나므로 검증 실패만으로 기존 scene을 비우지 않는다. 적용 시에는 문서의 `ids`를 behavior command id
+해석에 사용하고, `options.ids`가 있으면 caller override를 우선한다.
 
 `createDataSceneRuntimeTarget(engine)`은 기본적으로 첫 번째 유효한 spawn 직전에 `engine.useDataScene()`을
 한 번 호출해 빈 Data Scene runtime을 활성화한 뒤, 각
@@ -135,6 +147,14 @@ behavior binding draft는 `props.behaviorRecipes` 참조만 attach/detach하고 
 해제를 뜻한다. `clearDraftPatch()`는 draft를 모두 버린다.
 `createScenePlacementPatchStore(...)`는 이 patch를 JSON export용으로 보관하는 export-only store다.
 
+`addInstance(...)`는 명시 `instance.id`를 요구하고 invalid/duplicate id를 거절한다. Core viewer API는
+id를 자동 생성하지 않으며, 공식 host가 사용자 입력이 비어 있을 때 deterministic id를 채운 뒤 호출한다.
+`apps/placement-viewer`는 primitive/prefab/sprite prefix 기반 id를 만들고, generated create-game
+viewer는 `sprite-*`/`object-*` prefix helper를 사용한다. `renameInstance(...)`와
+`removeInstance(...)`는 behavior recipe 본문을 직접 갱신하지 않고 draft patch만 만든다. 저장 host는
+`previewScenePlacementBindingMigration(...)` reference report를 표시하고, agent-owned reference가 남아
+있으면 save를 막거나 handoff evidence로 넘긴다.
+
 `createScenePlacementAssetProvider(...)`는 sprite asset 목록을 정규화하고 `listSpriteAssets()`,
 `resolveSpriteAsset(id)`, `listSpriteFrames(assetId)`, `resolveSpriteFrame(assetId, frameId)`,
 `diagnoseSpriteAssetReference(...)`를 제공한다. frame metadata는 atlas picker가 선택한 UV rect와
@@ -154,7 +174,10 @@ Sprite draft patch를 생성한다.
 envelope에는 선택 instance, pointer world 좌표, draft patch, rename/remove binding migration preview,
 asset folder evidence, asset diagnostics가 포함된다. `assetFolder`는 desktop host가 지정한
 asset folder path, 이미지 파일 목록, `texture-atlas.input.json` 경로, missing/not-directory diagnostic을
-전달하는 선택 필드다. UI는 이 handoff를 agent가 behavior recipe 본문, prefab binding, schema
+전달하는 선택 필드다. desktop host가 local image를 viewer preview에 노출할 수 있으면
+`assetFolder.images[].runtimeUrl`에 `ferrum-asset://...` virtual URL을 함께 남긴다. 이 값은 WebView
+preview/custom protocol evidence이며, absolute file path 대신 runtime fetch URL을 agent가 확인할 수
+있게 하는 보조 필드다. UI는 이 handoff를 agent가 behavior recipe 본문, prefab binding, schema
 migration이나 asset reference를 수정할 때 참고하도록 노출하지만, handoff 생성 자체가 scene-authoring
 문서를 수정하지는 않는다.
 agent co-authoring 검증에서는 이 envelope의 `selectedInstanceId`를 기존 gameplay authoring dry-run report의
@@ -191,6 +214,16 @@ ObjectDefinition/Prefab `props.components`로 추출하고 `addObjectDefinition`
 `props.components.collider.offsetX/offsetY` patch로 기록한다. Behavior Binding inspector는
 이미 정의된 recipe id 목록을 선택 instance에 attach/detach하는 `updateBehaviorBinding` patch만
 만들며, recipe command/FSM/script 본문을 편집하지 않는다.
+Tauri desktop host가 제공하는 `ScenePlacementAgentHandoffAssetFile.runtimeUrl`은 Add Sprite thumbnail과
+handoff evidence에 쓰이며, project open 초기에는 같은 image list에서 파생한 texture manifest를
+`runtime.engine.loadAssets(...)`에 병합한다. 따라서 scene-authoring의 `visual.kind: "sprite"` asset
+reference가 local asset id를 가리키면 Rust/Wasm render command 생성 전 기존 TypeScript asset loader
+경로로 texture id가 등록된다. Add Sprite pending/draft marker와 draft handoff는 같은 local asset
+thumbnail/size/id를 사용하지만, 저장 전 원본 scene-authoring 문서를 자동 수정하지 않는다. app bootstrap
+이후 asset folder를 교체하면 official host는 새 image manifest를 낮은 빈도
+`runtime.engine.loadAssets(...)` refresh로 등록하고 handoff/Inspector 상태를 갱신한다. refresh 실패는
+`ScenePlacementAgentHandoffAssetFolderDiagnostic.code: "runtimeTextureLoadFailed"`로 남기며 frame loop는
+계속 유지한다.
 Transform 조작은 `updateInstanceTransform(...)`, Visual/Collider
 조작은 `updateInstanceComponents(...)`, behavior binding 조작은 `updateBehaviorBinding(...)`,
 palette 추가는 `addInstance(...)`, rename/remove는 각각

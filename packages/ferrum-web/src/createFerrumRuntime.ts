@@ -84,6 +84,15 @@ import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch.js";
 import type { PhysicsDebugLineBufferView, RenderCommandBufferView } from "./wasmBridge.js";
 import { RuntimeFrameRenderer } from "./runtimeFrameRenderer.js";
 import { playRuntimeCutsceneAudio } from "./runtimeCutsceneAudio.js";
+import {
+  applyDataSceneAuthoringDocument,
+  type ApplyDataSceneAuthoringDocumentOptions,
+  type ApplyDataSceneAuthoringDocumentResult,
+} from "./dataSceneRuntimeTarget.js";
+import type {
+  ResolvedSceneAuthoringDocument,
+  SceneAuthoringDocumentSpec,
+} from "./sceneAuthoringDocument.js";
 
 export type FerrumRuntimeRenderer = CreatedRenderer & TextureAssetManager & {
   renderCommands(commands: RenderCommandBufferView): RendererStats;
@@ -239,6 +248,19 @@ export interface FerrumRuntimeAnimationTimeline {
   paused(): boolean;
 }
 
+export interface FerrumRuntimeDataSceneOptions extends ApplyDataSceneAuthoringDocumentOptions {
+  document: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument;
+}
+
+export interface FerrumRuntimeDataScene {
+  readonly result: ApplyDataSceneAuthoringDocumentResult;
+  document(): ApplyDataSceneAuthoringDocumentResult["document"];
+  reapply(
+    document?: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument,
+    options?: ApplyDataSceneAuthoringDocumentOptions,
+  ): ApplyDataSceneAuthoringDocumentResult;
+}
+
 export interface FerrumRuntimeOptions {
   canvas: HTMLCanvasElement;
   webgl2?: WebGL2RendererOptions;
@@ -265,6 +287,7 @@ export interface FerrumRuntimeOptions {
   localization?: false | FerrumRuntimeLocalizationOptions | LocalizationBundle;
   dialogue?: false | FerrumRuntimeDialogueOptions;
   cutscene?: false | FerrumRuntimeCutsceneOptions;
+  dataScene?: false | SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument | FerrumRuntimeDataSceneOptions;
   levelStreaming?: false | FerrumRuntimeLevelStreamingOptions | LevelChunkStreamer;
   physicsDebugLines?: boolean | PhysicsDebugOptions;
   physicsMode?: PhysicsMode;
@@ -295,6 +318,7 @@ export interface FerrumRuntime {
   localization?: FerrumRuntimeLocalization;
   dialogue?: FerrumRuntimeDialogue;
   cutscene?: FerrumRuntimeCutscene;
+  dataScene?: FerrumRuntimeDataScene;
   levelStreaming?: FerrumRuntimeLevelStreaming;
   uiOverlay?: UiOverlay;
   debugOverlay?: DebugOverlay;
@@ -410,6 +434,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       needsPhysicsDebugLineBuffer: shouldRenderPhysicsDebugLines,
       onRenderFrame: (renderFrame) => runtimeFrameRenderer.renderFrame(renderFrame),
     }, inputProvider, runtimeAssetHost, () => runtimeRenderer.viewportSize(), engineOptions);
+    const dataScene = createRuntimeDataScene(engine, options.dataScene);
     let physicsScene: PhysicsSceneProfileApplyResult | undefined;
     if (options.physicsScene !== undefined && options.physicsScene !== false) {
       physicsScene = applyPhysicsSceneProfile(engine, options.physicsScene);
@@ -429,6 +454,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       ...(localization === undefined ? {} : { localization }),
       ...(dialogue === undefined ? {} : { dialogue }),
       ...(cutscene === undefined ? {} : { cutscene }),
+      ...(dataScene === undefined ? {} : { dataScene }),
       ...(levelStreaming === undefined ? {} : { levelStreaming }),
       uiOverlay,
       debugOverlay,
@@ -823,6 +849,55 @@ function createRuntimeCutscene(
     uiState: () => lastUiState,
   };
   return cutscene;
+}
+
+function createRuntimeDataScene(
+  engine: FerrumEngine,
+  option: FerrumRuntimeOptions["dataScene"],
+): FerrumRuntimeDataScene | undefined {
+  if (option === undefined || option === false) {
+    return undefined;
+  }
+  const runtimeOptions = normalizeRuntimeDataSceneOptions(option);
+  const {
+    document,
+    ...applyOptions
+  } = runtimeOptions;
+  const basePath = applyOptions.path ?? "dataScene";
+  let currentDocument: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument = document;
+  let result = applyDataSceneAuthoringDocument(engine, currentDocument, {
+    ...applyOptions,
+    path: basePath,
+  });
+
+  return {
+    get result() {
+      return result;
+    },
+    document: () => result.document,
+    reapply: (nextDocument = currentDocument, nextOptions = {}) => {
+      currentDocument = nextDocument;
+      result = applyDataSceneAuthoringDocument(engine, currentDocument, {
+        ...applyOptions,
+        ...nextOptions,
+        path: nextOptions.path ?? basePath,
+      });
+      return result;
+    },
+  };
+}
+
+function normalizeRuntimeDataSceneOptions(
+  option: Exclude<FerrumRuntimeOptions["dataScene"], false | undefined>,
+): FerrumRuntimeDataSceneOptions {
+  if (isRuntimeDataSceneOptions(option)) {
+    return option;
+  }
+  return { document: option };
+}
+
+function isRuntimeDataSceneOptions(value: unknown): value is FerrumRuntimeDataSceneOptions {
+  return isObject(value) && "document" in value;
 }
 
 function createRuntimeLevelStreamingOption(

@@ -90,7 +90,7 @@ fn frame_telemetry_uses_frame_rigid_body_stats_without_overwriting_last_step_sta
 #[test]
 fn gameplay_interaction_events_are_bulk_frame_outputs() {
     let mut engine = Engine::new();
-    engine.scenes.shooter.reset_playing(
+    engine.scenes.shooter_mut().reset_playing(
         &mut engine.world,
         &mut engine.camera,
         &mut engine.frame_buffers.audio_events,
@@ -129,7 +129,7 @@ fn gameplay_interaction_events_are_bulk_frame_outputs() {
 #[test]
 fn gameplay_pickup_collected_events_are_bulk_frame_outputs() {
     let mut engine = Engine::new();
-    engine.scenes.shooter.reset_playing(
+    engine.scenes.shooter_mut().reset_playing(
         &mut engine.world,
         &mut engine.camera,
         &mut engine.frame_buffers.audio_events,
@@ -157,7 +157,7 @@ fn gameplay_pickup_collected_events_are_bulk_frame_outputs() {
     ));
     engine.update_frame(0.016, false, false, false);
 
-    assert_eq!(engine.scenes.shooter.score(), 3);
+    assert_eq!(engine.scenes.shooter().score(), 3);
     assert_eq!(engine.gameplay_event_len(), 1);
     let event = unsafe { *engine.gameplay_event_ptr() };
     assert_eq!(event.kind, GAMEPLAY_EVENT_PICKUP_COLLECTED);
@@ -170,14 +170,14 @@ fn gameplay_pickup_collected_events_are_bulk_frame_outputs() {
     assert_eq!(event.payload_bits, 3);
 
     engine.update_frame(0.016, false, false, false);
-    assert_eq!(engine.scenes.shooter.score(), 3);
+    assert_eq!(engine.scenes.shooter().score(), 3);
     assert_eq!(engine.gameplay_event_len(), 0);
 }
 
 #[test]
 fn non_once_gameplay_interaction_is_deduped_across_fixed_substeps() {
     let mut engine = Engine::new();
-    engine.scenes.shooter.reset_playing(
+    engine.scenes.shooter_mut().reset_playing(
         &mut engine.world,
         &mut engine.camera,
         &mut engine.frame_buffers.audio_events,
@@ -416,7 +416,7 @@ fn input_action_binding_drives_player_melee_action() {
 #[test]
 fn gameplay_interaction_events_drive_rust_behavior_state_machine_once_per_frame() {
     let mut engine = Engine::new();
-    engine.scenes.shooter.reset_playing(
+    engine.scenes.shooter_mut().reset_playing(
         &mut engine.world,
         &mut engine.camera,
         &mut engine.frame_buffers.audio_events,
@@ -472,7 +472,7 @@ fn gameplay_interaction_events_drive_rust_behavior_state_machine_once_per_frame(
 #[test]
 fn fixed_timestep_processes_behavior_state_machine_events_once_per_render_frame() {
     let mut engine = Engine::new();
-    engine.scenes.shooter.reset_playing(
+    engine.scenes.shooter_mut().reset_playing(
         &mut engine.world,
         &mut engine.camera,
         &mut engine.frame_buffers.audio_events,

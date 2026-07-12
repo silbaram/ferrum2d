@@ -33,7 +33,10 @@ export {
   resolveDataSceneComponentsSpec,
   resolveDataSceneInstanceComponents,
 } from "../src/dataSceneComponents.js";
-export { createDataSceneRuntimeTarget } from "../src/dataSceneRuntimeTarget.js";
+export {
+  applyDataSceneAuthoringDocument,
+  createDataSceneRuntimeTarget,
+} from "../src/dataSceneRuntimeTarget.js";
 export {
   SCENE_AUTHORING_DOCUMENT_FORMAT,
   SCENE_AUTHORING_DOCUMENT_VERSION,
@@ -587,6 +590,8 @@ export type {
   FerrumRuntimeCutsceneDialogueValues,
   FerrumRuntimeCutsceneOptions,
   FerrumRuntimeCutsceneTextMode,
+  FerrumRuntimeDataScene,
+  FerrumRuntimeDataSceneOptions,
   FerrumRuntimeEnvironment,
   FerrumRuntimeFrame,
   FerrumRuntimeHud,
@@ -937,6 +942,8 @@ export type {
   ResolvedSceneCompositionSpec,
   ResolvedSceneCompositionTransform,
   ResolvedSceneAuthoringDocument,
+  ApplyDataSceneAuthoringDocumentOptions,
+  ApplyDataSceneAuthoringDocumentResult,
   CreateScenePlacementPatchStoreOptions,
   CreateScenePlacementViewerOptions,
   MergeScenePlacementPatchOptions,

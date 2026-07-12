@@ -25,7 +25,7 @@ fn camera_follows_player_and_offsets_render_commands() {
 
     engine
         .scenes
-        .shooter
+        .shooter()
         .update_camera_follow(&engine.world, &mut engine.camera);
     engine.build_render_commands();
 
@@ -149,7 +149,7 @@ fn camera_preset_applies_without_resetting_world() {
         .set_velocity(player, crate::components::Velocity { vx: 1.0, vy: 0.0 });
     engine
         .scenes
-        .shooter
+        .shooter()
         .update_camera_follow(&engine.world, &mut engine.camera);
 
     assert_eq!(engine.camera_x(), 1080.0);
@@ -166,7 +166,7 @@ fn atlas_frame_updates_prefab_without_render_abi_change() {
         crate::components::Velocity { vx: 0.0, vy: 0.0 },
         9,
         1.0,
-        engine.scenes.shooter.config().bullet_template,
+        engine.scenes.shooter().config().bullet_template,
         1.0,
     );
     engine.build_render_commands();
@@ -210,7 +210,7 @@ fn atlas_animation_updates_prefab_uvs_in_rust() {
         crate::components::Velocity { vx: 10.0, vy: 0.0 },
         9,
         1.0,
-        engine.scenes.shooter.config().bullet_template,
+        engine.scenes.shooter().config().bullet_template,
         1.0,
     );
     engine.world.update(0.125);

@@ -582,7 +582,7 @@ impl Engine {
         };
         if action_id == 0
             || prefab_id == 0
-            || !self.scenes.shooter.supports_spawn_prefab_id(prefab_id)
+            || !self.scenes.shooter().supports_spawn_prefab_id(prefab_id)
             || !Self::valid_non_negative(cooldown_seconds)
             || !offset_x.is_finite()
             || !offset_y.is_finite()
@@ -644,7 +644,10 @@ impl Engine {
         let Some(tile_impact) = ProjectileTileImpact::from_code(tile_impact_code) else {
             return false;
         };
-        if !self.scenes.shooter.supports_projectile_prefab_id(prefab_id)
+        if !self
+            .scenes
+            .shooter()
+            .supports_projectile_prefab_id(prefab_id)
             || action_id == 0
             || prefab_id == 0
             || !Self::valid_non_negative(cooldown_seconds)
@@ -689,7 +692,7 @@ impl Engine {
     pub fn register_gameplay_enemy_prefab(&mut self, prefab_id: u32) -> bool {
         if !self
             .scenes
-            .shooter
+            .shooter_mut()
             .register_spawn_prefab_kind(prefab_id, ShooterPrefabKind::Enemy)
         {
             return false;
@@ -700,7 +703,7 @@ impl Engine {
     pub fn register_gameplay_bullet_prefab(&mut self, prefab_id: u32) -> bool {
         if !self
             .scenes
-            .shooter
+            .shooter_mut()
             .register_spawn_prefab_kind(prefab_id, ShooterPrefabKind::Bullet)
         {
             return false;
@@ -1422,7 +1425,7 @@ impl Engine {
     ) -> bool {
         if action_id == 0
             || prefab_id == 0
-            || !self.scenes.shooter.supports_spawn_prefab_id(prefab_id)
+            || !self.scenes.shooter().supports_spawn_prefab_id(prefab_id)
             || !Self::valid_non_negative(cooldown_seconds)
             || !offset_x.is_finite()
             || !offset_y.is_finite()

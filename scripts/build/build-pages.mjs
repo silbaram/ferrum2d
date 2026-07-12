@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { githubHeadingId, stripInlineMarkdown } from "../lib/markdown-heading-ids.mjs";
 
 const outputDir = "dist-pages";
 const docsSourceDir = "docs";
@@ -197,13 +198,6 @@ function firstHeading(markdown) {
   return match ? stripInlineMarkdown(match[1].trim()) : "Ferrum2D Docs";
 }
 
-function stripInlineMarkdown(value) {
-  return value
-    .replace(/`([^`]+)`/gu, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/gu, "$1")
-    .replace(/[*_~]/gu, "");
-}
-
 function pageHtml(items) {
   const demoLinks = items.map((item) => `
           <a class="tile" href="./${escapeAttribute(item.id)}/">
@@ -305,6 +299,7 @@ ${content}
 function markdownToHtml(markdown, sourceRelativePath, outputRelativePath) {
   const lines = markdown.replace(/\r\n?/gu, "\n").split("\n");
   const blocks = [];
+  const headingSlugCounts = new Map();
   let index = 0;
   while (index < lines.length) {
     const line = lines[index];
@@ -334,7 +329,7 @@ function markdownToHtml(markdown, sourceRelativePath, outputRelativePath) {
     if (heading) {
       const level = heading[1].length;
       const title = heading[2].trim();
-      const id = slugify(stripInlineMarkdown(title));
+      const id = githubHeadingId(stripInlineMarkdown(title), headingSlugCounts);
       blocks.push(`<h${level} id="${escapeAttribute(id)}">${parseInline(title, sourceRelativePath, outputRelativePath)}</h${level}>`);
       index += 1;
       continue;
@@ -464,14 +459,6 @@ function relativeHref(fromDir, toPath) {
     href = path.posix.basename(toPath);
   }
   return href;
-}
-
-function slugify(value) {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/gu, "");
-  return slug || "section";
 }
 
 function siteCss() {

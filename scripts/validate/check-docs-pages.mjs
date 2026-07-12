@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { markdownHeadingIds } from "../lib/markdown-heading-ids.mjs";
 
 const repoRoot = process.cwd();
 const docsDir = path.join(repoRoot, "docs");
@@ -206,15 +207,6 @@ function resolveHtmlTarget(sourceDir, targetPath) {
   return resolved;
 }
 
-function markdownHeadingIds(source) {
-  const ids = new Set();
-  const headingPattern = /^(#{1,6})\s+(.+)$/gmu;
-  for (const match of source.matchAll(headingPattern)) {
-    ids.add(slugify(stripInlineMarkdown(match[2].trim())));
-  }
-  return ids;
-}
-
 function htmlIds(source) {
   const ids = new Set();
   const idPattern = /\bid="([^"]+)"/gu;
@@ -226,21 +218,6 @@ function htmlIds(source) {
 
 function stripFencedCode(source) {
   return source.replace(/```[\s\S]*?```/gu, "");
-}
-
-function stripInlineMarkdown(value) {
-  return value
-    .replace(/`([^`]+)`/gu, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/gu, "$1")
-    .replace(/[*_~]/gu, "");
-}
-
-function slugify(value) {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/^-+|-+$/gu, "");
-  return slug || "section";
 }
 
 function collectFiles(directory) {

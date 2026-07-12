@@ -60,7 +60,7 @@ impl Engine {
             )
         });
         self.activate_built_in_shooter_scene();
-        let applied = self.scenes.shooter.set_prefab_collider(
+        let applied = self.scenes.shooter_mut().set_prefab_collider(
             &mut self.world,
             prefab,
             EntityTemplateCollider::aabb(
@@ -373,7 +373,7 @@ impl Engine {
             )
         });
         self.activate_built_in_shooter_scene();
-        let applied = self.scenes.shooter.set_prefab_collider(
+        let applied = self.scenes.shooter_mut().set_prefab_collider(
             &mut self.world,
             prefab,
             EntityTemplateCollider {

@@ -2,6 +2,7 @@ import { deepEqual, equal, ok } from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  applyDataSceneAuthoringDocument,
   applySceneBehaviorRecipes,
   classifySceneInstance,
   createDataSceneRuntimeTarget,
@@ -69,6 +70,64 @@ test("createDataSceneRuntimeTarget spawns resolved inline components through the
     radius: 0,
     vertices: [],
   });
+});
+
+test("applyDataSceneAuthoringDocument resolves and spawns a scene-authoring document", () => {
+  const adapter = new MockDataSceneRuntimeAdapter();
+  const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
+  const result = applyDataSceneAuthoringDocument(
+    engine,
+    {
+      format: "ferrum2d.consumer.scene-authoring",
+      version: 1,
+      sceneComposition: sampleComposition(),
+      behaviorRecipes: { entities: {} },
+    },
+    {
+      path: "documentApply",
+    },
+  );
+
+  equal(adapter.useDataSceneCalls, 1);
+  equal(result.document.format, "ferrum2d.consumer.scene-authoring");
+  equal(result.plan.instances.length, 2);
+  equal(result.spawnResults.length, 2);
+  equal(result.behaviorApplyResult.results.length, 0);
+  deepEqual(adapter.textureNames, ["agent", "agent"]);
+});
+
+test("applyDataSceneAuthoringDocument validates components before runtime activation", () => {
+  const adapter = new MockDataSceneRuntimeAdapter();
+  const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
+  expectThrows(
+    () => applyDataSceneAuthoringDocument(
+      engine,
+      {
+        format: "ferrum2d.consumer.scene-authoring",
+        version: 1,
+        sceneComposition: {
+          initialFragment: "main",
+          prefabs: {
+            bad: {
+              props: {
+                components: { template: "missing.template" },
+              },
+            },
+          },
+          fragments: {
+            main: {
+              instances: [{ id: "bad-1", prefab: "bad" }],
+            },
+          },
+        },
+        behaviorRecipes: { entities: {} },
+      },
+      { path: "badDocumentApply" },
+    ),
+    /badDocumentApply\.sceneComposition\.instances\.0\.props\.components/,
+  );
+  equal(adapter.useDataSceneCalls, 0);
+  equal(adapter.requests.length, 0);
 });
 
 test("createDataSceneRuntimeTarget compiles primitive visual descriptors to debug runtime sprites", () => {
@@ -247,17 +306,11 @@ test("createDataSceneRuntimeTarget spawns through createEngine's Wasm adapter", 
   });
 });
 
-test("createDataSceneRuntimeTarget spawns the minimum data scene authoring sample", async () => {
+test("applyDataSceneAuthoringDocument spawns the minimum data scene authoring sample", async () => {
   await withNodeWasmFileFetch(async () => {
     const document = await readJsonFileUrl(
       new URL("../../../../docs/engine/samples/data-scene-minimum.scene-authoring.json", import.meta.url),
     );
-    const resolved = resolveSceneAuthoringDocument(document, {
-      path: "dataSceneAuthoring",
-      validateBindings: true,
-      validateComponents: true,
-      missingBehavior: "error",
-    });
     const engine = await createEngine(
       undefined,
       undefined,
@@ -265,15 +318,14 @@ test("createDataSceneRuntimeTarget spawns the minimum data scene authoring sampl
       () => ({ width: 320, height: 180 }),
     );
     try {
-      const target = createDataSceneRuntimeTarget(engine, {
-        textureId: () => 3,
-      });
-      const result = applySceneBehaviorRecipes(
+      const result = applyDataSceneAuthoringDocument(
         engine,
-        target,
-        resolved.sceneComposition,
-        resolved.behaviorRecipes,
-        { ids: resolved.ids, path: "dataSceneAuthoring", missingBehavior: "error" },
+        document,
+        {
+          path: "dataSceneAuthoring",
+          missingBehavior: "error",
+          textureId: () => 3,
+        },
       );
 
       equal(result.spawnResults.length, 2);

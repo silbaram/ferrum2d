@@ -33,11 +33,12 @@ export interface ScenePlacementAgentHandoffAssetFile {
   readonly id: string;
   readonly fileName: string;
   readonly path: string;
+  readonly runtimeUrl?: string;
 }
 
 export interface ScenePlacementAgentHandoffAssetFolderDiagnostic {
   readonly severity: "error";
-  readonly code: "missingAssetFolder" | "notDirectoryAssetFolder";
+  readonly code: "missingAssetFolder" | "notDirectoryAssetFolder" | "runtimeTextureLoadFailed";
   readonly path: string;
   readonly message: string;
 }

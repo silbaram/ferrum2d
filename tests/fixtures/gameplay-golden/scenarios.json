@@ -1885,6 +1885,41 @@
           "tile-blast-far:configureScoreReward"
         ]
       }
+    },
+    {
+      "id": "data-scene-authoring-snapshot-restore",
+      "description": "Data Scene replay covering public createEngine boot, scene-authoring document application, snapshot authoring document capture, custom state callback, and restore into a fresh runtime.",
+      "coverageTags": [
+        "data-scene",
+        "authored-behavior",
+        "snapshot-restore"
+      ],
+      "runner": "dataSceneAuthoringSnapshotRestore",
+      "fixturePath": "tests/fixtures/gameplay-golden/data-scene-authoring-snapshot-restore-replay.json",
+      "frameCount": 1,
+      "captureFrames": [
+        0,
+        1
+      ],
+      "input": {
+        "events": []
+      },
+      "expected": {
+        "replayHash": "2cdf648c",
+        "finalScore": 0,
+        "bootFrame": 0,
+        "restoreFrame": 1,
+        "entityCount": 2,
+        "spriteCount": 0,
+        "spawnCount": 2,
+        "planCommandCount": 1,
+        "commandSummary": [
+          "sentry-1:configureHealth"
+        ],
+        "behaviorResults": [
+          true
+        ]
+      }
     }
   ]
 }

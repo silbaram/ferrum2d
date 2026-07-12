@@ -9,7 +9,7 @@ fn resolved_shooter_config_applies_all_values_with_one_call() {
         4, 12.0, 3, 9.0, 2, 18.0, 2, 2, 4.0, 2.0, 9, 220.0, 18.0,
     );
 
-    let config = engine.scenes.shooter.config();
+    let config = engine.scenes.shooter().config();
     assert_eq!(config.world_width, 3200.0);
     assert_eq!(config.world_height, 1800.0);
     assert_eq!(config.player_speed, 240.0);
@@ -1831,7 +1831,7 @@ fn shooter_prefab_collider_api_updates_template_and_existing_entities() {
         0, 12.0, 14.0, 2.0, -3.0, false, false, true, 0.2, 0.8, 2.0, 0.0, 1.4, 0.7, 0.6, 0.5, 0.4,
     ));
 
-    let config = engine.scenes.shooter.config();
+    let config = engine.scenes.shooter().config();
     assert_eq!(config.player_template.collider_half_width, 12.0);
     assert_eq!(config.player_template.collider_half_height, 14.0);
     assert_eq!(config.player_template.collider_offset_x, 2.0);
@@ -1897,7 +1897,7 @@ fn shooter_prefab_shape_collider_apis_update_templates_and_entities() {
         100.0,
         100.0,
         DEFAULT_TEXTURE_ID,
-        engine.scenes.shooter.config().enemy_template,
+        engine.scenes.shooter().config().enemy_template,
         1.0,
         1,
     );
@@ -1936,7 +1936,7 @@ fn shooter_prefab_shape_collider_apis_update_templates_and_entities() {
         Velocity { vx: 0.0, vy: 0.0 },
         DEFAULT_TEXTURE_ID,
         1.0,
-        engine.scenes.shooter.config().bullet_template,
+        engine.scenes.shooter().config().bullet_template,
         1.0,
     );
     let polygon = engine.world.convex_polygon_collider(bullet).unwrap();

@@ -3,6 +3,10 @@ mod placement_document;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(placement_document::PlacementAssetRegistry::default())
+        .register_uri_scheme_protocol("ferrum-asset", |context, request| {
+            placement_document::placement_asset_protocol_response(context, request)
+        })
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             placement_document::inspect_placement_asset_folder,

@@ -5,7 +5,9 @@ use crate::breakout_scene::{
 use crate::camera::Camera2D;
 use crate::collision_event::{CollisionEvent, CollisionEventCounts};
 use crate::effect_event::EffectEvent;
+use crate::entity::Entity;
 use crate::game_state::GameState;
+use crate::gameplay::{ActionFailureEventData, ActionTriggerCommand};
 use crate::gameplay_event::GameplayEvent;
 use crate::input::{InputActionRegistry, InputState};
 use crate::particles::{ParticlePreset, ParticleSystem};
@@ -37,9 +39,9 @@ pub(super) enum ActiveScene {
 
 pub(super) struct BuiltInSceneSlots {
     active: ActiveScene,
-    pub(super) shooter: ShooterScene,
-    pub(super) breakout: BreakoutScene,
-    pub(super) platformer: PlatformerScene,
+    shooter: ShooterScene,
+    breakout: BreakoutScene,
+    platformer: PlatformerScene,
 }
 
 impl BuiltInSceneSlots {
@@ -52,8 +54,21 @@ impl BuiltInSceneSlots {
         }
     }
 
+    #[cfg(test)]
     pub(super) const fn active(&self) -> ActiveScene {
         self.active
+    }
+
+    pub(super) fn is_active(&self, scene: ActiveScene) -> bool {
+        self.active == scene
+    }
+
+    pub(super) const fn shooter(&self) -> &ShooterScene {
+        &self.shooter
+    }
+
+    pub(super) fn shooter_mut(&mut self) -> &mut ShooterScene {
+        &mut self.shooter
     }
 
     pub(super) fn use_shooter(&mut self) {
@@ -74,44 +89,34 @@ impl BuiltInSceneSlots {
         input: InputState,
         delta: f32,
     ) {
-        match self.active {
-            ActiveScene::Shooter => {
-                BuiltInSceneRuntime::update(&mut self.shooter, context, input, delta);
-            }
-            ActiveScene::Breakout => {
-                BuiltInSceneRuntime::update(&mut self.breakout, context, input, delta);
-            }
-            ActiveScene::Platformer => {
-                BuiltInSceneRuntime::update(&mut self.platformer, context, input, delta);
-            }
-        }
+        self.active_runtime_mut().update(context, input, delta);
     }
 
     pub(super) fn reset_playing_active(&mut self, context: &mut SceneResetContext<'_>) {
-        match self.active {
-            ActiveScene::Shooter => {
-                BuiltInSceneRuntime::reset_playing(&mut self.shooter, context);
-            }
-            ActiveScene::Breakout => {
-                BuiltInSceneRuntime::reset_playing(&mut self.breakout, context);
-            }
-            ActiveScene::Platformer => {
-                BuiltInSceneRuntime::reset_playing(&mut self.platformer, context);
-            }
-        }
+        self.active_runtime_mut().reset_playing(context);
     }
 
     pub(super) fn reset_to_title_active(&mut self, context: &mut SceneResetContext<'_>) {
+        self.active_runtime_mut().reset_to_title(context);
+    }
+
+    pub(super) fn update_active_camera(&self, world: &World, camera: &mut Camera2D) {
+        self.active_runtime().update_camera(world, camera);
+    }
+
+    pub(super) fn active_runtime(&self) -> &dyn BuiltInSceneRuntime {
         match self.active {
-            ActiveScene::Shooter => {
-                BuiltInSceneRuntime::reset_to_title(&mut self.shooter, context);
-            }
-            ActiveScene::Breakout => {
-                BuiltInSceneRuntime::reset_to_title(&mut self.breakout, context);
-            }
-            ActiveScene::Platformer => {
-                BuiltInSceneRuntime::reset_to_title(&mut self.platformer, context);
-            }
+            ActiveScene::Shooter => &self.shooter,
+            ActiveScene::Breakout => &self.breakout,
+            ActiveScene::Platformer => &self.platformer,
+        }
+    }
+
+    pub(super) fn active_runtime_mut(&mut self) -> &mut dyn BuiltInSceneRuntime {
+        match self.active {
+            ActiveScene::Shooter => &mut self.shooter,
+            ActiveScene::Breakout => &mut self.breakout,
+            ActiveScene::Platformer => &mut self.platformer,
         }
     }
 }
@@ -235,6 +240,74 @@ pub(super) trait BuiltInSceneRuntime {
     fn reset_playing(&mut self, context: &mut SceneResetContext<'_>);
     fn reset_to_title(&mut self, context: &mut SceneResetContext<'_>);
     fn update(&mut self, context: &mut SceneUpdateContext<'_>, input: InputState, delta: f32);
+
+    fn update_camera(&self, _world: &World, _camera: &mut Camera2D) {}
+
+    fn reset_action_trigger_frame_diagnostics(&mut self) {}
+
+    fn action_trigger_attempts(&self) -> usize {
+        0
+    }
+
+    fn action_trigger_failures(&self) -> usize {
+        0
+    }
+
+    fn action_trigger_failure_events_pushed(&self) -> usize {
+        0
+    }
+
+    fn action_trigger_commit_skips(&self) -> usize {
+        0
+    }
+
+    fn last_prepared_action_trigger_failure_reason_code(&self) -> u32 {
+        0
+    }
+
+    fn action_trigger_failure_count_for_reason(&self, _reason_code: u32) -> usize {
+        0
+    }
+
+    fn spawn_flush_commands_drained(&self) -> usize {
+        0
+    }
+
+    fn spawn_flush_projectile_spawns(&self) -> usize {
+        0
+    }
+
+    fn spawn_flush_projectile_arcs_applied(&self) -> usize {
+        0
+    }
+
+    fn spawn_flush_projectile_shoot_audio_events_pushed(&self) -> usize {
+        0
+    }
+
+    fn spawn_flush_prefab_spawns(&self) -> usize {
+        0
+    }
+
+    fn spawn_flush_prefab_spawned_payloads(&self) -> usize {
+        0
+    }
+
+    fn spawn_flush_prefab_spawned_events_pushed(&self) -> usize {
+        0
+    }
+
+    fn ticks_gameplay_timers(&self) -> bool {
+        false
+    }
+
+    fn queue_behavior_state_enter_action(
+        &mut self,
+        _source: Entity,
+        _action_id: u32,
+    ) -> Option<Result<(), ActionFailureEventData>> {
+        None
+    }
 }
 
 impl BuiltInSceneRuntime for ShooterScene {
@@ -286,6 +359,81 @@ impl BuiltInSceneRuntime for ShooterScene {
             hit_tweens,
         );
     }
+
+    fn update_camera(&self, world: &World, camera: &mut Camera2D) {
+        ShooterScene::update_camera_follow(self, world, camera);
+    }
+
+    fn reset_action_trigger_frame_diagnostics(&mut self) {
+        ShooterScene::reset_action_trigger_frame_diagnostics(self);
+    }
+
+    fn action_trigger_attempts(&self) -> usize {
+        ShooterScene::last_action_trigger_attempts(self)
+    }
+
+    fn action_trigger_failures(&self) -> usize {
+        ShooterScene::last_action_trigger_failures(self)
+    }
+
+    fn action_trigger_failure_events_pushed(&self) -> usize {
+        ShooterScene::last_action_trigger_failure_events_pushed(self)
+    }
+
+    fn action_trigger_commit_skips(&self) -> usize {
+        ShooterScene::last_action_trigger_commit_skips(self)
+    }
+
+    fn last_prepared_action_trigger_failure_reason_code(&self) -> u32 {
+        ShooterScene::last_prepared_action_trigger_failure_reason_code(self)
+    }
+
+    fn action_trigger_failure_count_for_reason(&self, reason_code: u32) -> usize {
+        ShooterScene::last_action_trigger_failure_count_for_reason(self, reason_code)
+    }
+
+    fn spawn_flush_commands_drained(&self) -> usize {
+        ShooterScene::last_spawn_flush_commands_drained(self)
+    }
+
+    fn spawn_flush_projectile_spawns(&self) -> usize {
+        ShooterScene::last_spawn_flush_projectile_spawns(self)
+    }
+
+    fn spawn_flush_projectile_arcs_applied(&self) -> usize {
+        ShooterScene::last_spawn_flush_projectile_arcs_applied(self)
+    }
+
+    fn spawn_flush_projectile_shoot_audio_events_pushed(&self) -> usize {
+        ShooterScene::last_spawn_flush_projectile_shoot_audio_events_pushed(self)
+    }
+
+    fn spawn_flush_prefab_spawns(&self) -> usize {
+        ShooterScene::last_spawn_flush_prefab_spawns(self)
+    }
+
+    fn spawn_flush_prefab_spawned_payloads(&self) -> usize {
+        ShooterScene::last_spawn_flush_prefab_spawned_payloads(self)
+    }
+
+    fn spawn_flush_prefab_spawned_events_pushed(&self) -> usize {
+        ShooterScene::last_spawn_flush_prefab_spawned_events_pushed(self)
+    }
+
+    fn ticks_gameplay_timers(&self) -> bool {
+        ShooterScene::game_state(self) == GameState::Playing
+    }
+
+    fn queue_behavior_state_enter_action(
+        &mut self,
+        source: Entity,
+        action_id: u32,
+    ) -> Option<Result<(), ActionFailureEventData>> {
+        Some(ShooterScene::queue_action_trigger_result(
+            self,
+            ActionTriggerCommand::behavior_state_enter(source, action_id),
+        ))
+    }
 }
 
 impl BuiltInSceneRuntime for BreakoutScene {
@@ -318,6 +466,10 @@ impl BuiltInSceneRuntime for BreakoutScene {
             context.collision_event_counts,
             Some(&mut hit_particles),
         );
+    }
+
+    fn update_camera(&self, _world: &World, camera: &mut Camera2D) {
+        BreakoutScene::update_camera(self, camera);
     }
 }
 
@@ -352,6 +504,10 @@ impl BuiltInSceneRuntime for PlatformerScene {
             context.physics_counters,
             Some(&mut landing_particles),
         );
+    }
+
+    fn update_camera(&self, world: &World, camera: &mut Camera2D) {
+        PlatformerScene::update_camera(self, world, camera);
     }
 }
 
@@ -391,22 +547,14 @@ impl Engine {
         if self.scene_mode == SceneMode::Data {
             return self.data_scene.score();
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => BuiltInSceneRuntime::score(&self.scenes.shooter),
-            ActiveScene::Breakout => BuiltInSceneRuntime::score(&self.scenes.breakout),
-            ActiveScene::Platformer => BuiltInSceneRuntime::score(&self.scenes.platformer),
-        }
+        self.scenes.active_runtime().score()
     }
 
     pub(super) fn active_scene_game_state(&self) -> GameState {
         if self.scene_mode == SceneMode::Data {
             return self.data_scene.game_state();
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => BuiltInSceneRuntime::game_state(&self.scenes.shooter),
-            ActiveScene::Breakout => BuiltInSceneRuntime::game_state(&self.scenes.breakout),
-            ActiveScene::Platformer => BuiltInSceneRuntime::game_state(&self.scenes.platformer),
-        }
+        self.scenes.active_runtime().game_state()
     }
 
     pub(super) fn active_scene_game_state_code(&self) -> u32 {
@@ -421,66 +569,48 @@ impl Engine {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self.scenes.shooter.last_action_trigger_attempts(),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes.active_runtime().action_trigger_attempts()
     }
 
     pub(super) fn reset_active_scene_action_trigger_frame_diagnostics(&mut self) {
         if self.scene_mode == SceneMode::Data {
             return;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self.scenes.shooter.reset_action_trigger_frame_diagnostics(),
-            ActiveScene::Breakout | ActiveScene::Platformer => {}
-        }
+        self.scenes
+            .active_runtime_mut()
+            .reset_action_trigger_frame_diagnostics();
     }
 
     pub(super) fn active_scene_action_trigger_failures(&self) -> usize {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self.scenes.shooter.last_action_trigger_failures(),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes.active_runtime().action_trigger_failures()
     }
 
     pub(super) fn active_scene_action_trigger_failure_events_pushed(&self) -> usize {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self
-                .scenes
-                .shooter
-                .last_action_trigger_failure_events_pushed(),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes
+            .active_runtime()
+            .action_trigger_failure_events_pushed()
     }
 
     pub(super) fn active_scene_action_trigger_commit_skips(&self) -> usize {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self.scenes.shooter.last_action_trigger_commit_skips(),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes.active_runtime().action_trigger_commit_skips()
     }
 
     pub(super) fn active_scene_last_prepared_action_trigger_failure_reason_code(&self) -> u32 {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self
-                .scenes
-                .shooter
-                .last_prepared_action_trigger_failure_reason_code(),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes
+            .active_runtime()
+            .last_prepared_action_trigger_failure_reason_code()
     }
 
     pub(super) fn active_scene_action_trigger_failure_count_for_reason(
@@ -490,103 +620,73 @@ impl Engine {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self
-                .scenes
-                .shooter
-                .last_action_trigger_failure_count_for_reason(reason_code),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes
+            .active_runtime()
+            .action_trigger_failure_count_for_reason(reason_code)
     }
 
     pub(super) fn active_scene_spawn_flush_commands_drained(&self) -> usize {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self.scenes.shooter.last_spawn_flush_commands_drained(),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes.active_runtime().spawn_flush_commands_drained()
     }
 
     pub(super) fn active_scene_spawn_flush_projectile_spawns(&self) -> usize {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self.scenes.shooter.last_spawn_flush_projectile_spawns(),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes.active_runtime().spawn_flush_projectile_spawns()
     }
 
     pub(super) fn active_scene_spawn_flush_projectile_arcs_applied(&self) -> usize {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self
-                .scenes
-                .shooter
-                .last_spawn_flush_projectile_arcs_applied(),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes
+            .active_runtime()
+            .spawn_flush_projectile_arcs_applied()
     }
 
     pub(super) fn active_scene_spawn_flush_projectile_shoot_audio_events_pushed(&self) -> usize {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self
-                .scenes
-                .shooter
-                .last_spawn_flush_projectile_shoot_audio_events_pushed(),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes
+            .active_runtime()
+            .spawn_flush_projectile_shoot_audio_events_pushed()
     }
 
     pub(super) fn active_scene_spawn_flush_prefab_spawns(&self) -> usize {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self.scenes.shooter.last_spawn_flush_prefab_spawns(),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes.active_runtime().spawn_flush_prefab_spawns()
     }
 
     pub(super) fn active_scene_spawn_flush_prefab_spawned_payloads(&self) -> usize {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self
-                .scenes
-                .shooter
-                .last_spawn_flush_prefab_spawned_payloads(),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes
+            .active_runtime()
+            .spawn_flush_prefab_spawned_payloads()
     }
 
     pub(super) fn active_scene_spawn_flush_prefab_spawned_events_pushed(&self) -> usize {
         if self.scene_mode == SceneMode::Data {
             return 0;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self
-                .scenes
-                .shooter
-                .last_spawn_flush_prefab_spawned_events_pushed(),
-            ActiveScene::Breakout | ActiveScene::Platformer => 0,
-        }
+        self.scenes
+            .active_runtime()
+            .spawn_flush_prefab_spawned_events_pushed()
     }
 
     pub(super) fn active_scene_ticks_gameplay_timers(&self) -> bool {
         if self.scene_mode == SceneMode::Data {
             return false;
         }
-        self.scenes.active() == ActiveScene::Shooter
-            && self.scenes.shooter.game_state() == GameState::Playing
+        self.scenes.active_runtime().ticks_gameplay_timers()
     }
 
     pub(super) fn reset_active_scene_game(&mut self) {

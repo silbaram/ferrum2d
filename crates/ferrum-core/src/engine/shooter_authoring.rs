@@ -15,7 +15,7 @@ mod colliders;
 impl Engine {
     pub fn clear_shooter_waves(&mut self) {
         self.activate_built_in_shooter_scene();
-        self.scenes.shooter.clear_wave_configs();
+        self.scenes.shooter_mut().clear_wave_configs();
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -32,7 +32,7 @@ impl Engine {
         score_reward: u32,
     ) {
         self.activate_built_in_shooter_scene();
-        self.scenes.shooter.set_wave_config(
+        self.scenes.shooter_mut().set_wave_config(
             index,
             ShooterWaveConfig::from_values(
                 duration,
@@ -59,9 +59,12 @@ impl Engine {
         else {
             return false;
         };
-        self.scenes
-            .shooter
-            .set_wave_action_trigger(&self.world, wave_index, source, action_id)
+        self.scenes.shooter_mut().set_wave_action_trigger(
+            &self.world,
+            wave_index,
+            source,
+            action_id,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -76,7 +79,7 @@ impl Engine {
     ) {
         self.activate_built_in_shooter_scene();
         self.scenes
-            .shooter
+            .shooter_mut()
             .set_audio_policy(ShooterAudioPolicy::from_values(
                 shoot_volume,
                 shoot_pitch,
@@ -100,7 +103,7 @@ impl Engine {
         bullet_lifetime: f32,
     ) {
         self.activate_built_in_shooter_scene();
-        self.scenes.shooter.set_config(
+        self.scenes.shooter_mut().set_config(
             &mut self.world,
             &mut self.camera,
             &mut self.frame_buffers.audio_events,
@@ -128,7 +131,7 @@ impl Engine {
         bullet_height: f32,
     ) {
         self.activate_built_in_shooter_scene();
-        self.scenes.shooter.set_prefabs(
+        self.scenes.shooter_mut().set_prefabs(
             &mut self.world,
             &mut self.camera,
             &mut self.frame_buffers.audio_events,
@@ -144,7 +147,7 @@ impl Engine {
 
     pub fn set_shooter_behavior(&mut self, enemy_behavior: u32) {
         self.activate_built_in_shooter_scene();
-        self.scenes.shooter.set_enemy_behavior(
+        self.scenes.shooter_mut().set_enemy_behavior(
             &mut self.world,
             &mut self.camera,
             &mut self.frame_buffers.audio_events,
@@ -155,7 +158,7 @@ impl Engine {
 
     pub fn set_shooter_spawn_pattern(&mut self, enemy_spawn_pattern: u32) {
         self.activate_built_in_shooter_scene();
-        self.scenes.shooter.set_enemy_spawn_pattern(
+        self.scenes.shooter_mut().set_enemy_spawn_pattern(
             &mut self.world,
             &mut self.camera,
             &mut self.frame_buffers.audio_events,
@@ -166,7 +169,7 @@ impl Engine {
 
     pub fn set_shooter_combat(&mut self, enemy_health: f32, bullet_damage: f32, score_reward: u32) {
         self.activate_built_in_shooter_scene();
-        self.scenes.shooter.set_combat(
+        self.scenes.shooter_mut().set_combat(
             &mut self.world,
             &mut self.camera,
             &mut self.frame_buffers.audio_events,
@@ -186,7 +189,7 @@ impl Engine {
         hit_height: f32,
     ) {
         self.activate_built_in_shooter_scene();
-        let config = self.scenes.shooter.config().with_projectile_arc(
+        let config = self.scenes.shooter().config().with_projectile_arc(
             ShooterProjectileArcConfig::from_values(
                 enabled,
                 launch_height,
@@ -195,7 +198,7 @@ impl Engine {
                 hit_height,
             ),
         );
-        self.scenes.shooter.set_config(
+        self.scenes.shooter_mut().set_config(
             &mut self.world,
             &mut self.camera,
             &mut self.frame_buffers.audio_events,
@@ -214,7 +217,7 @@ impl Engine {
         shake_frequency: f32,
     ) {
         self.activate_built_in_shooter_scene();
-        self.scenes.shooter.set_camera_preset(
+        self.scenes.shooter_mut().set_camera_preset(
             &self.world,
             &mut self.camera,
             CameraPresetConfig::from_values(
@@ -291,7 +294,7 @@ impl Engine {
         .with_combat(enemy_health, bullet_damage, score_reward)
         .with_orbit(orbit_radius, orbit_radial_band);
 
-        self.scenes.shooter.set_config(
+        self.scenes.shooter_mut().set_config(
             &mut self.world,
             &mut self.camera,
             &mut self.frame_buffers.audio_events,

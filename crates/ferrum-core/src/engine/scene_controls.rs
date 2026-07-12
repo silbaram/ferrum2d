@@ -10,17 +10,19 @@ impl Engine {
     pub fn set_texture_ids(&mut self, player: u32, enemy: u32, bullet: u32) {
         self.activate_built_in_shooter_scene();
         self.scenes
-            .shooter
+            .shooter_mut()
             .set_texture_ids(&mut self.world, player, enemy, bullet);
     }
 
     pub fn set_sound_ids(&mut self, shoot: u32, hit: u32, game_over: u32) {
         self.activate_built_in_shooter_scene();
-        self.scenes.shooter.set_sound_ids(shoot, hit, game_over);
+        self.scenes
+            .shooter_mut()
+            .set_sound_ids(shoot, hit, game_over);
     }
 
     pub fn built_in_shooter_player_entity_id(&self) -> u32 {
-        if self.scene_mode != SceneMode::BuiltIn || self.scenes.active() != ActiveScene::Shooter {
+        if self.scene_mode != SceneMode::BuiltIn || !self.scenes.is_active(ActiveScene::Shooter) {
             return INVALID_ENTITY_ID;
         }
         self.world
@@ -29,7 +31,7 @@ impl Engine {
     }
 
     pub fn built_in_shooter_player_entity_generation(&self) -> u32 {
-        if self.scene_mode != SceneMode::BuiltIn || self.scenes.active() != ActiveScene::Shooter {
+        if self.scene_mode != SceneMode::BuiltIn || !self.scenes.is_active(ActiveScene::Shooter) {
             return 0;
         }
         self.world
@@ -49,22 +51,12 @@ impl Engine {
     pub fn use_breakout_scene(&mut self) {
         self.activate_built_in_breakout_scene();
         self.tilemap.clear();
-        self.particles.clear();
-        self.tweens.clear();
-        self.scenes
-            .breakout
-            .reset_to_title(&mut self.world, &mut self.camera);
-        self.clear_physics_history();
+        self.reset_to_title();
     }
 
     pub fn use_platformer_scene(&mut self) {
         self.activate_built_in_platformer_scene();
         self.tilemap.clear();
-        self.particles.clear();
-        self.tweens.clear();
-        self.scenes
-            .platformer
-            .reset_to_title(&mut self.world, &mut self.camera);
-        self.clear_physics_history();
+        self.reset_to_title();
     }
 }

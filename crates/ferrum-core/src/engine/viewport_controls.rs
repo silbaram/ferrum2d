@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 
-use super::scenes::{ActiveScene, SceneMode};
+use super::scenes::SceneMode;
 use super::Engine;
 
 #[wasm_bindgen]
@@ -10,16 +10,7 @@ impl Engine {
         if self.scene_mode == SceneMode::Data {
             return;
         }
-        match self.scenes.active() {
-            ActiveScene::Shooter => self
-                .scenes
-                .shooter
-                .update_camera_follow(&self.world, &mut self.camera),
-            ActiveScene::Breakout => self.scenes.breakout.update_camera(&mut self.camera),
-            ActiveScene::Platformer => self
-                .scenes
-                .platformer
-                .update_camera(&self.world, &mut self.camera),
-        }
+        self.scenes
+            .update_active_camera(&self.world, &mut self.camera);
     }
 }

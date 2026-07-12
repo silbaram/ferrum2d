@@ -69,6 +69,25 @@ test("gameplay replay comparison formats bracket paths for non-identifier custom
   });
 });
 
+test("gameplay replay comparison includes data scene authoring document diffs", () => {
+  const expected = createGameplayReplayRun([
+    dataSceneSnapshotAt(0, dataSceneAuthoringDocument("crate")),
+  ]);
+  const actual = createGameplayReplayRun([
+    dataSceneSnapshotAt(0, dataSceneAuthoringDocument("barrel")),
+  ]);
+
+  const comparison = compareGameplayReplayRuns(expected, actual);
+
+  equal(comparison.passed, false);
+  equal(comparison.firstMismatchFrame, 0);
+  deepEqual(comparison.firstMismatch, {
+    path: "gameplayReplay.snapshots.0.snapshot.dataScene.authoringDocument.sceneComposition.fragments.main.instances.0.id",
+    expected: "crate-1",
+    actual: "barrel-1",
+  });
+});
+
 test("gameplay replay comparison passes for identical golden runs", () => {
   const run = createGameplayReplayRun([
     snapshotAt(0, { score: 0 }),
@@ -134,6 +153,45 @@ function snapshotAt(frame: number, scene: Partial<FakeScene & { customState: { r
     includeBuiltInShooterState: true,
     ...(scene.customState === undefined ? {} : { customState: scene.customState }),
   });
+}
+
+function dataSceneSnapshotAt(frame: number, authoringDocument: ReturnType<typeof dataSceneAuthoringDocument>) {
+  return captureGameStateSnapshot(fakeEngine({
+    gameState: 1,
+    entityCount: 1,
+    spriteCount: 1,
+  }), {
+    frame,
+    includeDataSceneState: true,
+    dataSceneAuthoringDocument: authoringDocument,
+  });
+}
+
+function dataSceneAuthoringDocument(prefabId: string) {
+  return {
+    format: "ferrum2d.consumer.scene-authoring",
+    version: 1,
+    sceneComposition: {
+      initialFragment: "main",
+      prefabs: {
+        [prefabId]: {
+          props: {
+            components: {
+              sprite: { texture: prefabId, width: 16, height: 12 },
+              collider: "none",
+              layer: "enemy",
+            },
+          },
+        },
+      },
+      fragments: {
+        main: {
+          instances: [{ id: `${prefabId}-1`, prefab: prefabId, x: 32, y: 48 }],
+        },
+      },
+    },
+    behaviorRecipes: { entities: {} },
+  } as const;
 }
 
 function fakeEngine(initial: Partial<FakeScene> = {}): FerrumEngine {

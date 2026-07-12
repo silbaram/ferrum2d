@@ -25,11 +25,11 @@ const releasePackages = [
 }));
 const runtimePackage = releasePackages[0];
 const runtimePackageJson = runtimePackage.packageJson;
-const changelog = readFileSync("CHANGELOG.md", "utf8");
-const npmReleaseDoc = readFileSync("docs/development/operations/npm-release.md", "utf8");
-const releaseNotesTemplate = readFileSync("docs/development/operations/release-notes-template.md", "utf8");
-const releaseReadinessScript = readFileSync("scripts/package/check-release-readiness.mjs", "utf8");
-const packageCheckScript = readFileSync("scripts/package/check-package-files.mjs", "utf8");
+const changelog = readTextFile("CHANGELOG.md");
+const npmReleaseDoc = readTextFile("docs/development/operations/npm-release.md");
+const releaseNotesTemplate = readTextFile("docs/development/operations/release-notes-template.md");
+const releaseReadinessScript = readTextFile("scripts/package/check-release-readiness.mjs");
+const packageCheckScript = readTextFile("scripts/package/check-package-files.mjs");
 
 const args = parseArgs(process.argv.slice(2));
 const betaVersionPattern = /^\d+\.\d+\.\d+-beta\.\d+$/;
@@ -214,6 +214,14 @@ function checkDocsAndScripts() {
 
 function baseVersionFromBeta(version) {
   return version.replace(/-beta\.\d+$/u, "");
+}
+
+function readTextFile(path) {
+  return normalizeLineEndings(readFileSync(path, "utf8"));
+}
+
+function normalizeLineEndings(value) {
+  return value.replace(/\r\n?/gu, "\n");
 }
 
 function assert(condition, message) {

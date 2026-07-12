@@ -5,6 +5,7 @@ import {
   animationTimelineFrameAt,
   applyBehaviorRecipes,
   applyCutsceneSequenceEvent,
+  applyDataSceneAuthoringDocument,
   applyFactionRelationTable,
   applyGameplayBehaviorCommands,
   applyBehaviorStateMachineStateCommands,
@@ -187,6 +188,8 @@ import type {
   ConfigureSpawnPrefabActionBehaviorCommand,
   ConfigureTimerTriggerBehaviorCommand,
   ConfigureTagsBehaviorCommand,
+  ApplyDataSceneAuthoringDocumentOptions,
+  ApplyDataSceneAuthoringDocumentResult,
   CreateDataSceneRuntimeTargetOptions,
   CutsceneAudioAction,
   CutsceneAudioBus,
@@ -623,6 +626,8 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     resolveDataSceneComponentsSpec;
   const publicResolveDataSceneInstanceComponents: PublicApi["resolveDataSceneInstanceComponents"] =
     resolveDataSceneInstanceComponents;
+  const publicApplyDataSceneAuthoringDocument: PublicApi["applyDataSceneAuthoringDocument"] =
+    applyDataSceneAuthoringDocument;
   const publicCreateDataSceneRuntimeTarget: PublicApi["createDataSceneRuntimeTarget"] =
     createDataSceneRuntimeTarget;
   const publicCreateScenePlacementViewport: PublicApi["createScenePlacementViewport"] =
@@ -645,6 +650,14 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     textureId: dataSceneRuntimeTextureId,
     componentTemplates: dataSceneRuntimeComponentTemplates,
   };
+  const dataSceneAuthoringApplyOptions: ApplyDataSceneAuthoringDocumentOptions = {
+    ...dataSceneRuntimeTargetOptions,
+    validateBindings: true,
+    validateComponents: true,
+    allowComponentTemplates: true,
+    missingBehavior: "error",
+  };
+  const dataSceneAuthoringApplyResult: ApplyDataSceneAuthoringDocumentResult | undefined = undefined;
   const scenePlacementViewportOptions: ScenePlacementViewportOptions = {
     cssWidth: 800,
     cssHeight: 480,
@@ -719,6 +732,9 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(resolvedDataSceneInstanceComponents.mode, "inline");
   equal(dataSceneRuntimeTargetOptions.activateDataScene, false);
   equal(typeof dataSceneRuntimeTargetOptions.componentTemplates, "function");
+  equal(dataSceneAuthoringApplyOptions.validateComponents, true);
+  equal(dataSceneAuthoringApplyResult, undefined);
+  equal(typeof publicApplyDataSceneAuthoringDocument, "function");
   equal(typeof publicCreateDataSceneRuntimeTarget, "function");
   equal(scenePlacementViewport.backbufferWidth, 1_600);
   equal(scenePlacementScreenPoint.x, 40);

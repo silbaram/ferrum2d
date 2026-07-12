@@ -14,7 +14,7 @@ if (args.help) {
 }
 
 const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
-const changelog = await readFile(changelogPath, "utf8");
+const changelog = await readTextFile(changelogPath);
 const stableVersionPattern = /^\d+\.\d+\.\d+$/;
 const betaVersionPattern = /^\d+\.\d+\.\d+-beta\.\d+$/;
 const envTag = releaseTagFromEnv();
@@ -157,6 +157,14 @@ function isValidIsoDate(value) {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function readTextFile(path) {
+  return normalizeLineEndings(await readFile(path, "utf8"));
+}
+
+function normalizeLineEndings(value) {
+  return value.replace(/\r\n?/gu, "\n");
 }
 
 function assert(condition, message) {

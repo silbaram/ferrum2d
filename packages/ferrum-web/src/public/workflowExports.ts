@@ -20,6 +20,7 @@ export {
   resolveDataSceneInstanceComponents,
 } from "../dataSceneComponents";
 export {
+  applyDataSceneAuthoringDocument,
   createDataSceneRuntimeTarget,
 } from "../dataSceneRuntimeTarget";
 export {
@@ -295,6 +296,8 @@ export type {
   ResolvedDataSceneTextureRef,
 } from "../dataSceneComponents";
 export type {
+  ApplyDataSceneAuthoringDocumentOptions,
+  ApplyDataSceneAuthoringDocumentResult,
   CreateDataSceneRuntimeTargetOptions,
   DataSceneRuntimeComponentTemplateCatalog,
   DataSceneRuntimeComponentTemplateResolver,
