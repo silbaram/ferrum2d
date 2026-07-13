@@ -21,6 +21,8 @@ pub struct CollisionEvent {
     pub damage_bits: u32,
 }
 
+const _: () = assert!(core::mem::size_of::<CollisionEvent>() == 24);
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CollisionEventCounts {
     pub enter: u32,

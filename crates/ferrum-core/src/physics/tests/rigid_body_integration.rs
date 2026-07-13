@@ -509,3 +509,72 @@ fn angular_body_step_ignores_static_and_invalid_inertia() {
     assert_eq!(invalid_rigid_body.torque, 0.0);
     assert_eq!(invalid_rigid_body.angular_impulse, 0.0);
 }
+
+#[test]
+fn rigid_body_replay_is_deterministic_for_identical_inputs() {
+    fn setup_world() -> (World, Entity, Entity) {
+        let mut world = World::default();
+        let falling = spawn_dynamic_body(&mut world, -1.0, -12.0, 1.0);
+        world.set_velocity(falling, Velocity { vx: 2.0, vy: 0.0 });
+        world.set_rigid_body(
+            falling,
+            RigidBody::dynamic(1.0)
+                .with_material(PhysicsMaterial::new(0.1, 0.4))
+                .with_sleeping_enabled(false),
+        );
+
+        let floor = spawn_kinematic_body_with_size(
+            &mut world,
+            0.0,
+            0.0,
+            CollisionLayer::Wall,
+            false,
+            8.0,
+            1.0,
+        );
+        world.set_rigid_body(floor, RigidBody::static_body());
+        (world, falling, floor)
+    }
+
+    fn replay(world: &mut World, body: Entity) -> Vec<(u32, u32, u32, u32)> {
+        let mut states = Vec::new();
+        for frame in 0..120 {
+            if frame == 12 {
+                world.apply_impulse(body, Velocity { vx: 0.5, vy: -1.0 });
+            }
+            PhysicsSystem::step_rigid_bodies_with_config(
+                world,
+                1.0 / 60.0,
+                RigidBodyStepConfig {
+                    gravity: Velocity { vx: 0.0, vy: 9.8 },
+                    velocity_iterations: 4,
+                    position_iterations: 2,
+                    position_correction_percent: 0.8,
+                    position_correction_slop: 0.01,
+                    restitution_velocity_threshold: DEFAULT_RESTITUTION_VELOCITY_THRESHOLD,
+                    contact_baumgarte_bias_factor: DEFAULT_CONTACT_BAUMGARTE_BIAS_FACTOR,
+                    max_contact_baumgarte_bias_velocity: MAX_CONTACT_BAUMGARTE_BIAS_VELOCITY,
+                    contact_split_impulse: true,
+                    continuous: true,
+                },
+            );
+            let transform = world.transform(body).unwrap();
+            let velocity = world.velocity(body).unwrap();
+            states.push((
+                transform.x.to_bits(),
+                transform.y.to_bits(),
+                velocity.vx.to_bits(),
+                velocity.vy.to_bits(),
+            ));
+        }
+        states
+    }
+
+    let (mut first_world, first_body, _) = setup_world();
+    let (mut second_world, second_body, _) = setup_world();
+
+    assert_eq!(
+        replay(&mut first_world, first_body),
+        replay(&mut second_world, second_body)
+    );
+}

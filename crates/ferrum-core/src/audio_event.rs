@@ -4,6 +4,8 @@ pub const AUDIO_CHANNEL_UI: f32 = 2.0;
 pub const AUDIO_EVENT_FLOATS: usize = 4;
 pub const AUDIO_EVENT_BYTES: usize = AUDIO_EVENT_FLOATS * std::mem::size_of::<f32>();
 
+const _: () = assert!(core::mem::size_of::<AudioEvent>() == AUDIO_EVENT_BYTES);
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AudioEvent {

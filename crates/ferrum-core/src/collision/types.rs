@@ -3,6 +3,8 @@ use crate::entity::Entity;
 
 use super::MAX_COLLISION_MANIFOLD_POINTS;
 
+const _: () = assert!(core::mem::size_of::<PhysicsDebugLine>() == 32);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CollisionPair {
     pub a: Entity,

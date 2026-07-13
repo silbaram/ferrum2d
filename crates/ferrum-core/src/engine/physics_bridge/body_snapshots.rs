@@ -279,3 +279,33 @@ impl Engine {
         self.store_physics_entity_snapshot(entity)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn body_snapshot_bulk_layout_counts_match_abi_constants() {
+        let mut floats = Vec::new();
+        let mut u32s = Vec::new();
+
+        Engine::append_physics_body_snapshot_bulk(
+            PhysicsEntitySnapshot {
+                entity_id: 7,
+                entity_generation: 3,
+                ..PhysicsEntitySnapshot::default()
+            },
+            &mut floats,
+            &mut u32s,
+        );
+
+        assert_eq!(
+            floats.len(),
+            crate::engine::PHYSICS_BODY_SNAPSHOT_FLOATS_PER_BODY
+        );
+        assert_eq!(
+            u32s.len(),
+            crate::engine::PHYSICS_BODY_SNAPSHOT_U32S_PER_BODY
+        );
+    }
+}

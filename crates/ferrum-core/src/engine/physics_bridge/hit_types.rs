@@ -3,6 +3,15 @@ use crate::components::RigidContactImpulse;
 use crate::entity::Entity;
 use crate::tilemap::{TilemapContactHit, TilemapContactManifoldHit, TilemapShapeCastHit};
 
+const _: () = assert!(core::mem::size_of::<PhysicsQueryEntityHit>() == 8);
+const _: () = assert!(core::mem::size_of::<PhysicsRaycastBodyHit>() == 28);
+const _: () = assert!(core::mem::size_of::<PhysicsTileShapeCastHit>() == 28);
+const _: () = assert!(core::mem::size_of::<PhysicsTileContactHit>() == 28);
+const _: () = assert!(core::mem::size_of::<PhysicsTileManifoldHit>() == 48);
+const _: () = assert!(core::mem::size_of::<PhysicsBodyContactHit>() == 36);
+const _: () = assert!(core::mem::size_of::<PhysicsBodyManifoldHit>() == 56);
+const _: () = assert!(core::mem::size_of::<PhysicsRigidContactImpulseHit>() == 40);
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PhysicsQueryEntityHit {
