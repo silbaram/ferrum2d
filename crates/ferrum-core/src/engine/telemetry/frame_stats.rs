@@ -33,6 +33,8 @@ const FRAME_TELEMETRY_SPAWN_FLUSH_COUNT: usize = 7;
 pub(crate) const FRAME_TELEMETRY_F64S: usize =
     FRAME_TELEMETRY_SPAWN_FLUSH_COMMANDS_DRAINED + FRAME_TELEMETRY_SPAWN_FLUSH_COUNT;
 
+const _: () = assert!(core::mem::size_of::<FrameTelemetry>() == FRAME_TELEMETRY_F64S * 8);
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FrameTelemetry {

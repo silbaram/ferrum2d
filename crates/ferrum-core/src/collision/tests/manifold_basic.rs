@@ -233,3 +233,78 @@ fn build_manifolds_reports_two_aabb_circle_face_points() {
         .iter()
         .any(|point| (point.point_y + 0.866).abs() < 0.001));
 }
+
+#[test]
+fn build_manifolds_reports_two_capsule_edge_side_points() {
+    let mut world = World::default();
+    let edge_entity = spawn_custom_edge(
+        &mut world,
+        0.0,
+        0.0,
+        edge(-6.0, 0.0, 6.0, 0.0),
+        CollisionMask::ENEMY,
+        CollisionMask::ENEMY,
+    );
+    let capsule_entity = spawn_custom_capsule(
+        &mut world,
+        0.0,
+        0.75,
+        capsule(-2.0, 0.0, 2.0, 0.0, 1.0),
+        CollisionMask::ENEMY,
+        CollisionMask::ENEMY,
+    );
+
+    let manifolds = CollisionSystem::build_manifolds(&world);
+
+    assert_eq!(manifolds.len(), 1);
+    let manifold = manifolds[0];
+    assert_eq!(
+        manifold.pair,
+        CollisionPair {
+            a: edge_entity,
+            b: capsule_entity,
+        }
+    );
+    assert_eq!(manifold.point_count, 2);
+    assert!(manifold.normal_y > 0.99);
+    assert!(manifold.penetration > 0.24);
+    assert_eq!(manifold.points().len(), 2);
+    assert!(manifold.points()[0].point_x < manifold.points()[1].point_x);
+}
+
+#[test]
+fn build_manifolds_reports_two_capsule_chain_side_points() {
+    let mut world = World::default();
+    let chain_entity = spawn_custom_chain(
+        &mut world,
+        0.0,
+        0.0,
+        chain(&[(-6.0, 0.0), (6.0, 0.0), (8.0, 2.0)], false),
+        CollisionMask::ENEMY,
+        CollisionMask::ENEMY,
+    );
+    let capsule_entity = spawn_custom_capsule(
+        &mut world,
+        0.0,
+        0.75,
+        capsule(-2.0, 0.0, 2.0, 0.0, 1.0),
+        CollisionMask::ENEMY,
+        CollisionMask::ENEMY,
+    );
+
+    let manifolds = CollisionSystem::build_manifolds(&world);
+
+    assert_eq!(manifolds.len(), 1);
+    let manifold = manifolds[0];
+    assert_eq!(
+        manifold.pair,
+        CollisionPair {
+            a: chain_entity,
+            b: capsule_entity,
+        }
+    );
+    assert_eq!(manifold.point_count, 2);
+    assert!(manifold.normal_y > 0.99);
+    assert!(manifold.penetration > 0.24);
+    assert_eq!(manifold.points().len(), 2);
+}

@@ -24,6 +24,8 @@ pub struct SpriteRenderCommand {
     pub rotation_radians: f32,
 }
 
+const _: () = assert!(core::mem::size_of::<SpriteRenderCommand>() == 60);
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SpriteRenderSortKey {
     pub floor_id: u32,
