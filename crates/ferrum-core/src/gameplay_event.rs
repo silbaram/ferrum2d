@@ -61,6 +61,8 @@ pub struct GameplayEvent {
     pub payload_bits: u32,
 }
 
+const _: () = assert!(core::mem::size_of::<GameplayEvent>() == 32);
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GameplayTileImpactEventPayload {
     pub projectile: Entity,
