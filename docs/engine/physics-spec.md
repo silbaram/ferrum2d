@@ -200,6 +200,8 @@ const scene = applyPhysicsSceneProfile(runtime.engine, {
 
 반환값은 body id -> `PhysicsEntityHandle`, joint id -> `PhysicsJointHandle`, body/joint count, warning, `stepOptions`, `clear()`를 포함한다. `stepOptions`에는 resolved `continuous` 값이 포함되며, `continuous: false`이면 rigid body step의 CCD 탐색을 건너뛴다. 같은 fixture를 다시 적용할 때는 `createPhysicsWorldFromSpec(engine, next, { replace: previousWorld })`를 사용한다.
 
+Imperative API에서 `despawnPhysicsEntity(bodyHandle)`이 성공하면 해당 body를 참조하는 모든 joint도 함께 제거된다. 이 cascade는 8종 joint의 양쪽 endpoint에 동일하게 적용되며, 기존 `PhysicsJointHandle`은 즉시 무효화된다. 따라서 body를 먼저 제거한 consumer가 연결 joint마다 `clearPhysicsJoint(...)`를 다시 호출할 필요는 없다. 이미 무효화된 body handle을 전달해 `false`가 반환되는 경우에는 joint 상태도 변경하지 않는다.
+
 `applyPhysicsSceneProfile(...)`은 같은 world apply 결과를 감싸고, `runtime` profile에서는 Rust `Engine.update()` 내부 auto rigid-body step을 켠다. `manual` profile은 body/joint만 적용하고 사용자가 `stepRigidBodies(...)`를 직접 호출하는 기존 경로를 유지한다. 이 통합은 scene 생성/교체 시점의 opt-in API이며 frame hot path에서 entity별 JS/Wasm 왕복을 만들지 않는다.
 
 Apply 정책:

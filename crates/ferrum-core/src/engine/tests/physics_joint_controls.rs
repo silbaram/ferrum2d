@@ -261,3 +261,72 @@ fn engine_spawn_physics_joints_and_controls_for_wasm() {
         true,
     ));
 }
+
+#[test]
+fn engine_despawn_physics_entity_cascades_connected_joint_cleanup() {
+    let mut engine = Engine::new();
+    engine.world = World::default();
+    engine.clear_physics_history();
+
+    assert!(engine.spawn_physics_aabb_body(
+        0.0,
+        0.0,
+        2.0,
+        2.0,
+        PHYSICS_BODY_TYPE_DYNAMIC,
+        1.0,
+        false,
+        PHYSICS_LAYER_PLAYER,
+        CollisionMask::PLAYER.bits,
+        CollisionMask::ALL.bits,
+        false,
+        true,
+        true,
+        false,
+    ));
+    let entity_a_id = engine.physics_entity_id();
+    let entity_a_generation = engine.physics_entity_generation();
+
+    assert!(engine.spawn_physics_aabb_body(
+        10.0,
+        0.0,
+        2.0,
+        2.0,
+        PHYSICS_BODY_TYPE_DYNAMIC,
+        1.0,
+        false,
+        PHYSICS_LAYER_ENEMY,
+        CollisionMask::ENEMY.bits,
+        CollisionMask::ALL.bits,
+        false,
+        true,
+        true,
+        false,
+    ));
+    let entity_b_id = engine.physics_entity_id();
+    let entity_b_generation = engine.physics_entity_generation();
+
+    assert!(engine.spawn_physics_distance_joint(
+        entity_a_id,
+        entity_a_generation,
+        entity_b_id,
+        entity_b_generation,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        10.0,
+        1.0,
+        0.0,
+        f32::INFINITY,
+        true,
+    ));
+    let joint_index = engine.physics_joint_index();
+    let joint_generation = engine.physics_joint_generation();
+
+    assert!(engine.despawn_physics_entity(entity_b_id, entity_b_generation));
+    assert!(engine.query_physics_entity(entity_a_id, entity_a_generation));
+    assert!(!engine.query_physics_joint(PHYSICS_JOINT_DISTANCE, joint_index, joint_generation));
+    assert!(!engine.clear_physics_joint(PHYSICS_JOINT_DISTANCE, joint_index, joint_generation));
+    assert!(!engine.despawn_physics_entity(entity_b_id, entity_b_generation));
+}

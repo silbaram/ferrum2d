@@ -19,6 +19,12 @@ const DEAD_ALIVE_POSITION: usize = usize::MAX;
 const GAMEPLAY_FACTION_INDEX_BUCKETS: usize = GAMEPLAY_FACTION_MAX_ID as usize + 1;
 const GAMEPLAY_TAG_INDEX_BUCKETS: usize = GAMEPLAY_TAG_MAX_ID as usize + 1;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct JointIncidentCount {
+    generation: u32,
+    count: u32,
+}
+
 mod colliders;
 mod component_access;
 mod component_storage;
@@ -84,6 +90,7 @@ pub struct World {
     pub(crate) gear_joints: Vec<Option<GearJoint>>,
     pub(crate) gear_joint_generations: Vec<u32>,
     gear_joint_free_list: Vec<u32>,
+    joint_incident_counts: Vec<JointIncidentCount>,
     pub(crate) colliders: Vec<Option<AabbCollider>>,
     pub(crate) circle_colliders: Vec<Option<CircleCollider>>,
     pub(crate) oriented_box_colliders: Vec<Option<OrientedBoxCollider>>,

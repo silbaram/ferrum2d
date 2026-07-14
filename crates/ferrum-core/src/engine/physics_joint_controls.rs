@@ -57,7 +57,10 @@ impl Engine {
             .with_damping(damping)
             .with_break_distance(break_distance)
             .with_enabled(enabled);
-        let id = self.world.add_distance_joint(joint);
+        let Some(id) = self.world.try_add_distance_joint(joint) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
         self.store_distance_joint_snapshot(id, joint)
     }
 
@@ -103,7 +106,10 @@ impl Engine {
             .with_damping(damping)
             .with_break_distance(break_distance)
             .with_enabled(enabled);
-        let id = self.world.add_rope_joint(joint);
+        let Some(id) = self.world.try_add_rope_joint(joint) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
         self.store_rope_joint_snapshot(id, joint)
     }
 
@@ -149,7 +155,10 @@ impl Engine {
             .with_damping(damping)
             .with_break_distance(break_distance)
             .with_enabled(enabled);
-        let id = self.world.add_spring_joint(joint);
+        let Some(id) = self.world.try_add_spring_joint(joint) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
         self.store_spring_joint_snapshot(id, joint)
     }
 
@@ -208,7 +217,10 @@ impl Engine {
             .with_break_distance(break_distance)
             .with_slack(slack)
             .with_enabled(enabled);
-        let id = self.world.add_pulley_joint(joint);
+        let Some(id) = self.world.try_add_pulley_joint(joint) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
         self.store_pulley_joint_snapshot(id, joint)
     }
 
@@ -268,7 +280,10 @@ impl Engine {
             .with_motor(motor_speed, max_motor_torque)
             .with_motor_enabled(motor_enabled)
             .with_enabled(enabled);
-        let id = self.world.add_revolute_joint(joint);
+        let Some(id) = self.world.try_add_revolute_joint(joint) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
         self.store_revolute_joint_snapshot(id, joint)
     }
 
@@ -339,7 +354,10 @@ impl Engine {
             .with_motor(motor_speed, max_motor_force)
             .with_motor_enabled(motor_enabled)
             .with_enabled(enabled);
-        let id = self.world.add_prismatic_joint(joint);
+        let Some(id) = self.world.try_add_prismatic_joint(joint) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
         self.store_prismatic_joint_snapshot(id, joint)
     }
 
@@ -395,7 +413,10 @@ impl Engine {
             .with_break_distance(break_distance)
             .with_break_angle(break_angle)
             .with_enabled(enabled);
-        let id = self.world.add_weld_joint(joint);
+        let Some(id) = self.world.try_add_weld_joint(joint) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
         self.store_weld_joint_snapshot(id, joint)
     }
 
@@ -436,7 +457,10 @@ impl Engine {
             .with_damping(damping)
             .with_break_angle(break_angle)
             .with_enabled(enabled);
-        let id = self.world.add_gear_joint(joint);
+        let Some(id) = self.world.try_add_gear_joint(joint) else {
+            self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+            return false;
+        };
         self.store_gear_joint_snapshot(id, joint)
     }
 
@@ -529,7 +553,10 @@ impl Engine {
                     return false;
                 };
                 joint.enabled = enabled;
-                self.world.set_distance_joint(id, joint);
+                if !self.world.try_set_distance_joint(id, joint) {
+                    self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+                    return false;
+                }
                 self.store_distance_joint_snapshot(id, joint)
             }
             PHYSICS_JOINT_ROPE => {
@@ -542,7 +569,10 @@ impl Engine {
                     return false;
                 };
                 joint.enabled = enabled;
-                self.world.set_rope_joint(id, joint);
+                if !self.world.try_set_rope_joint(id, joint) {
+                    self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+                    return false;
+                }
                 self.store_rope_joint_snapshot(id, joint)
             }
             PHYSICS_JOINT_SPRING => {
@@ -555,7 +585,10 @@ impl Engine {
                     return false;
                 };
                 joint.enabled = enabled;
-                self.world.set_spring_joint(id, joint);
+                if !self.world.try_set_spring_joint(id, joint) {
+                    self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+                    return false;
+                }
                 self.store_spring_joint_snapshot(id, joint)
             }
             PHYSICS_JOINT_PULLEY => {
@@ -568,7 +601,10 @@ impl Engine {
                     return false;
                 };
                 joint.enabled = enabled;
-                self.world.set_pulley_joint(id, joint);
+                if !self.world.try_set_pulley_joint(id, joint) {
+                    self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+                    return false;
+                }
                 self.store_pulley_joint_snapshot(id, joint)
             }
             PHYSICS_JOINT_REVOLUTE => {
@@ -581,7 +617,10 @@ impl Engine {
                     return false;
                 };
                 joint.enabled = enabled;
-                self.world.set_revolute_joint(id, joint);
+                if !self.world.try_set_revolute_joint(id, joint) {
+                    self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+                    return false;
+                }
                 self.store_revolute_joint_snapshot(id, joint)
             }
             PHYSICS_JOINT_PRISMATIC => {
@@ -594,7 +633,10 @@ impl Engine {
                     return false;
                 };
                 joint.enabled = enabled;
-                self.world.set_prismatic_joint(id, joint);
+                if !self.world.try_set_prismatic_joint(id, joint) {
+                    self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+                    return false;
+                }
                 self.store_prismatic_joint_snapshot(id, joint)
             }
             PHYSICS_JOINT_WELD => {
@@ -607,7 +649,10 @@ impl Engine {
                     return false;
                 };
                 joint.enabled = enabled;
-                self.world.set_weld_joint(id, joint);
+                if !self.world.try_set_weld_joint(id, joint) {
+                    self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+                    return false;
+                }
                 self.store_weld_joint_snapshot(id, joint)
             }
             PHYSICS_JOINT_GEAR => {
@@ -620,7 +665,10 @@ impl Engine {
                     return false;
                 };
                 joint.enabled = enabled;
-                self.world.set_gear_joint(id, joint);
+                if !self.world.try_set_gear_joint(id, joint) {
+                    self.physics_joint_snapshot = PhysicsJointSnapshot::default();
+                    return false;
+                }
                 self.store_gear_joint_snapshot(id, joint)
             }
             _ => {

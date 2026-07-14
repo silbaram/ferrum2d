@@ -231,7 +231,7 @@ fn gear_joint_break_angle_respects_reference_angle() {
 }
 
 #[test]
-fn gear_joint_skips_despawned_entities() {
+fn gear_joint_clears_despawned_entities() {
     let mut world = World::default();
     let gear_a = world.spawn_entity();
     world.set_transform(gear_a, Transform2D { x: 0.0, y: 0.0 });
@@ -241,8 +241,11 @@ fn gear_joint_skips_despawned_entities() {
     world.set_transform(gear_b, Transform2D { x: 0.0, y: 0.0 });
     world.set_rotation(gear_b, Rotation2D { radians: 1.0 });
     world.set_rigid_body(gear_b, RigidBody::dynamic(1.0).with_inertia(1.0));
-    world.add_gear_joint(GearJoint::new(gear_a, gear_b, 1.0));
+    let joint = world.add_gear_joint(GearJoint::new(gear_a, gear_b, 1.0));
     world.despawn(gear_b);
+
+    assert_eq!(world.gear_joint(joint), None);
+    assert_eq!(world.gear_joint_count(), 0);
 
     let stats = PhysicsSystem::step_rigid_bodies_with_config(
         &mut world,
@@ -263,5 +266,5 @@ fn gear_joint_skips_despawned_entities() {
 
     assert_eq!(stats.constraint_velocity_corrections, 0);
     assert_eq!(stats.constraint_position_corrections, 0);
-    assert_eq!(world.gear_joint_count(), 1);
+    assert_eq!(world.gear_joint_count(), 0);
 }

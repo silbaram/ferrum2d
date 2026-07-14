@@ -200,6 +200,7 @@ impl World {
         self.gear_joints = snapshot.gear_joints.clone();
         self.gear_joint_generations = snapshot.gear_joint_generations.clone();
         self.gear_joint_free_list = snapshot.gear_joint_free_list.clone();
+        self.rebuild_joint_runtime_state();
         self.colliders = snapshot.colliders.clone();
         self.circle_colliders = snapshot.circle_colliders.clone();
         self.oriented_box_colliders = snapshot.oriented_box_colliders.clone();
