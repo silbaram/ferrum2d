@@ -114,8 +114,10 @@ Electron에서 `file://`로 바로 로드하면 웹 배포와 비슷한 asset/MI
 현재 상태:
 
 - **Slice 0 완료**: GitHub Pages 데모/문서 배포 기준은 [GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md)로 확정했다. 이 planning 문서는 남은 로컬 preview, create-game 배포 안내, desktop wrapper 후보만 추적한다.
-- **Slice 1~2 미진행**: 로컬 preview 경로와 create-game 배포 안내는 별도 task로 분리해 진행한다.
-- **Slice 3 부분 진행**: `apps/placement-viewer-desktop` Tauri spike로 공식 placement viewer frontend를 desktop window에서 열고, 기본 샘플, `FERRUM_PLACEMENT_SCENE_DOCUMENT`, 직접 경로 입력, 또는 Tauri native file dialog `Browse`로 선택한 scene-authoring JSON을 Rust command로 읽고 저장하는 경로를 확인했다. Inspector는 현재 문서 경로와 저장 모드를 표시한다. Top-down Shooter wrapper 비교, packaging 자동화, Electron 비교는 아직 미진행이다.
+- **Slice 1 부분 완료**: 모든 create-game template은 `vite build --base=./` 기반 `build`와 `vite preview` 기반 `preview` script를 제공하고 `file://` 비권장 원칙도 이 문서에 정리했다. generated project 사용법과 실제 `dist/` 정적 서버 browser smoke, machine-readable asset/Wasm 실패 기준은 남아 있다.
+- **Slice 2 부분 완료**: generated project의 `ferrum:smoke`와 consumer smoke가 production build를 검증한다. 생성 프로젝트 README의 build/preview/deploy 안내, deploy checklist, consumer report의 deploy readiness 항목은 아직 확정하지 않았다.
+- **Slice 3 부분 완료**: `apps/placement-viewer-desktop` Tauri spike는 공식 placement viewer frontend를 desktop window에서 열고 project/scene document open·save, native file/folder dialog, asset folder inspect, `ferrum-asset://` custom protocol, runtime texture 등록·reload, handoff sync까지 구현했다. `pnpm smoke:placement-viewer-desktop-assets`가 browser-side desktop bridge 계약을 검증한다. 실제 packaged `.app`, Top-down Shooter wrapper, Electron 비교는 아직 진행하지 않았다.
+- **Slice 4 미진행·승인 필요**: desktop app packaging과 CI/release gate 편입은 외부 배포 범위를 확정한 뒤 진행한다.
 
 ### Slice 0: 정적 웹 배포 기준 문서화 (완료)
 
@@ -134,7 +136,7 @@ Electron에서 `file://`로 바로 로드하면 웹 배포와 비슷한 asset/MI
 - `pnpm validate:pages-artifact`
 - route/link integrity 검증
 
-### Slice 1: 로컬 preview 경로 정리
+### Slice 1: 로컬 preview 경로 정리 (부분 완료)
 
 산출물:
 
@@ -147,7 +149,7 @@ Electron에서 `file://`로 바로 로드하면 웹 배포와 비슷한 asset/MI
 - 정적 서버로 `dist/` 서빙 후 browser smoke
 - asset/Wasm 로딩 실패 시 machine-readable 오류를 남기는 smoke 보강
 
-### Slice 2: create-game 배포 안내
+### Slice 2: create-game 배포 안내 (부분 완료)
 
 산출물:
 
@@ -161,7 +163,7 @@ Electron에서 `file://`로 바로 로드하면 웹 배포와 비슷한 asset/MI
 - create-game template report smoke
 - generated game production build smoke
 
-### Slice 3: Desktop wrapper 비교 spike
+### Slice 3: Desktop wrapper 비교 spike (Tauri placement viewer 부분 완료)
 
 산출물:
 
@@ -208,18 +210,18 @@ Electron에서 `file://`로 바로 로드하면 웹 배포와 비슷한 asset/MI
 
 ## 열린 질문
 
-- 첫 desktop wrapper 후보는 Electron인가 Tauri인가?
-- desktop wrapper를 `examples/*`로 둘 것인가, `packages/create-game` optional template로 둘 것인가?
-- Electron/Tauri 내부 로딩은 custom protocol과 internal static server 중 어느 쪽이 Ferrum2D asset pipeline과 더 잘 맞는가?
+- placement viewer용 Tauri spike를 정식 desktop 배포 후보로 승격할 것인가?
+- desktop wrapper를 authoring tool에만 한정할 것인가, generated game optional template까지 확장할 것인가?
+- 실제 packaged `.app` GUI 검증을 수동 release gate로 둘 것인가, 자동 smoke로 승격할 것인가?
 - GitHub Pages 외에 공식 문서에서 우선 지원할 정적 호스팅은 무엇인가?
 - package consumer smoke가 deploy readiness까지 책임질 것인가, 별도 deploy smoke를 둘 것인가?
 - generated game의 base path 설정을 agent가 안전하게 조정하는 helper가 필요한가?
 
 ## 다음 작업 추천
 
-초기 구현 순서는 다음이 적절하다.
+다음 작업은 이미 있는 script와 Tauri spike를 기준으로 남은 계약을 좁힌다.
 
-1. 로컬 `dist/` preview smoke를 만든다.
-2. create-game template에 build/preview/deploy 안내를 넣는다.
-3. Electron/Tauri 비교 spike를 별도 task로 분리한다.
-4. desktop wrapper는 실험 template로 시작하고, 안정화 전까지 Ferrum2D 기본 배포 모델로 선언하지 않는다.
+1. generated project에 `build` → `preview` → 정적 호스팅 흐름과 `file://` 비권장 안내를 제공할 위치를 결정한다.
+2. production `dist/` browser smoke와 deploy readiness report를 consumer smoke에 포함할지 별도 task로 확정한다.
+3. Tauri placement viewer의 실제 GUI/package 검증을 release 범위에 넣을지 승인받는다.
+4. Electron 비교나 generated game desktop template은 Tauri 결과로 해결되지 않는 요구가 확인될 때만 별도 spike로 연다.

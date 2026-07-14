@@ -9,6 +9,13 @@
 
 중요한 전제: Ferrum2D는 full visual editor 중심 엔진이 아니다. UI는 사람이 모든 로직을 클릭으로 만드는 제품이 아니라, AI agent-first 개발 흐름에서 위치/시각/충돌 같은 authoring 데이터를 안전하게 편집하고 검증하는 공식 도구다.
 
+## 현재 계획 상태
+
+- **v1 완료**: primitive/sprite/prefab 배치, transform/visual/collider 편집, ObjectDefinition 생성, patch/save/handoff, Behavior Binding Inspector, Data Scene runtime 연결, official/generated viewer smoke가 product-ready 기준을 충족한다.
+- **완료 기록의 기준**: 이 문서의 Track A/B와 2026-06-18~19 worktree 기록은 결정 근거다. 실제 사용법과 public contract는 `docs/engine/**`, `docs/development/**`, package README가 우선한다.
+- **활성 후보**: `@ferrum2d/authoring-viewer` 독립 browser app 확장, image dimension metadata, npm release checklist/beta pin을 각각 별도 task로 판단한다.
+- **별도 승인**: Tauri package/GUI release, Behavior Recipe Body Editor, FSM/action graph, node hierarchy, tile/path/timeline editor는 v1 후속 작업으로 자동 착수하지 않는다.
+
 ## 조사 기준
 
 조사는 2026-06-17 기준 공식 문서를 우선했다.
@@ -333,14 +340,14 @@ handoff 파일은 저장 기능의 대체물이 아니라 agent가 현재 선택
 - create-game CLI는 `--authoring-viewer-version`으로 generated project의 `@ferrum2d/authoring-viewer` dependency를 주입한다.
 - package check와 consumer smoke는 `@ferrum2d/authoring-viewer` tarball을 함께 검증한다.
 
-정리/스테이징 기준:
+완료된 정리/스테이징 기준(결정 기록):
 
 - generated viewer 모듈화만 별도 변경으로 묶을 때는 `packages/create-game/templates/_shared/src/ferrum-placement-viewer*`, `packages/create-game/README.md`, `scripts/package/check-create-game-package.mjs`, 이 문서의 A7 상태만 포함한다.
 - 단, generated viewer가 `@ferrum2d/authoring-viewer`를 import하는 상태에서는 `packages/ferrum-authoring-viewer`, root workspace/package metadata, create-game CLI의 `--authoring-viewer-version`, template `package.json`, package QA script 변경도 같은 통합 범위에 포함하거나 선행 변경으로 먼저 병합해야 한다.
 - `packages/ferrum-web/src/scenePlacementAssets.ts`, `scenePlacementHandoff.ts`, 관련 public API/test/doc 변경은 placement asset provider와 handoff public API 범위다. generated viewer UI 모듈화 commit에 섞지 않고, public authoring API 변경으로 별도 검토한다.
 - agent/skill 파일 변경은 consumer/development workflow 범위다. viewer UI 모듈화와 함께 배포할 필요가 있는지 별도 release note 기준으로 판단한다.
 
-현재 worktree 분할 후보:
+완료된 worktree 분할 기록:
 
 | 순서 | 변경 묶음 | 포함 후보 | 대표 검증 |
 | --- | --- | --- | --- |
@@ -391,7 +398,7 @@ handoff 파일은 저장 기능의 대체물이 아니라 agent가 현재 선택
   `authoring_agent`, Behavior Binding Inspector 허용 범위, Behavior Recipe Body Editor/FSM/action graph 금지 범위,
   create-game/agents template 검증 명령을 반영하고, `pnpm validate:docs-links`가 통과하는 것이다.
 
-권장 순서는 1 -> 2 -> 3 -> 4 -> 5 -> 6이다. 4번은 2번과 3번이 준비된 뒤에 독립 검증 가능하다. 반대로 4번만 먼저 분리하면 generated viewer의 `@ferrum2d/authoring-viewer` import와 template dependency 주입이 빠져 consumer build가 깨질 수 있다.
+당시 적용 순서는 1 -> 2 -> 3 -> 4 -> 5 -> 6이었다. 4번은 2번과 3번이 준비된 뒤에 독립 검증 가능했고, 4번만 먼저 분리하면 generated viewer의 `@ferrum2d/authoring-viewer` import와 template dependency 주입이 빠져 consumer build가 깨지는 구조였다.
 
 스테이징/리뷰 체크리스트(2026-06-18):
 
@@ -773,6 +780,8 @@ Track A와 Track B를 묶은 product-ready 기준은 다음이다.
 - Data Scene runtime이 같은 scene-authoring 문서를 spawn한다.
 - browser smoke, unit validation, public API validation, docs link validation이 통과한다.
 
+현재 v1 product-ready 범위는 위 기준을 충족했다. 이후 변경은 아래 후속 후보 또는 별도 승인 범위에서 새 acceptance를 정한다.
+
 ## 보류 항목
 
 다음은 별도 승인 전 production 구현하지 않는다.
@@ -788,24 +797,22 @@ Track A와 Track B를 묶은 product-ready 기준은 다음이다.
 - Electron/Tauri desktop app packaging
 - runtime scripting/plugin editor
 
-## 오픈 결정
+## 결정 기준과 남은 판단
 
-| 결정 | 추천 | 이유 |
+| 결정 | 상태/추천 | 이유 |
 | --- | --- | --- |
-| 공식 viewer host 위치 | 단기 `apps/placement-viewer` + workspace-private `@ferrum2d/authoring-viewer`, 중기 reusable package 확장 | smoke/fixture와 제품 API를 분리하면서 공식/generated viewer가 공통 viewer 계약과 DOM control/shell/panel primitive helper를 공유한다. |
-| primitive visual 구현 | v1은 debug/sprite fallback, v2는 material/shape command 검토 | render command ABI 변경을 피하면서 빠르게 authoring 가능하다. |
-| sprite asset picker | project manifest/texture registry provider interface | 브라우저 파일 시스템 권한과 asset pipeline을 분리한다. |
-| prefab 명명 | public 문서에는 `ObjectDefinition/Prefab` 병기 | 기존 SceneComposition 호환을 유지하면서 엔진 용어를 정리한다. |
-| desktop wrapper | `apps/placement-viewer-desktop` Tauri spike 유지, Electron은 빠른 prototype 후보 | 웹 viewer를 유지하면서 로컬 파일 권한과 보안 surface를 desktop shell로 분리한다. |
+| 공식 viewer host 위치 | 완료: `apps/placement-viewer` + workspace-private `@ferrum2d/authoring-viewer`; 독립 package 확장은 후속 판단 | smoke/fixture와 제품 API를 분리하면서 공식/generated viewer가 공통 viewer 계약과 DOM control/shell/panel primitive helper를 공유한다. |
+| primitive visual 구현 | 완료: v1 debug/sprite fallback; v2 material/shape command는 요구 발생 시 검토 | render command ABI 변경을 피하면서 빠르게 authoring 가능하다. |
+| sprite asset picker | 완료: project asset provider/texture registry interface | 브라우저 파일 시스템 권한과 asset pipeline을 분리한다. |
+| prefab 명명 | 완료: public 문서에 `ObjectDefinition/Prefab` 병기 | 기존 SceneComposition 호환을 유지하면서 엔진 용어를 정리한다. |
+| desktop wrapper | 부분 완료: `apps/placement-viewer-desktop` Tauri spike 유지; package/GUI release는 승인 필요 | 웹 viewer를 유지하면서 로컬 파일 권한과 보안 surface를 desktop shell로 분리한다. |
 
 ## 후속 후보
 
-다음 항목은 v1 product-ready 완료 기준에서 제외하고 별도 승인 후 진행한다.
+v1 완료 항목은 위 상태와 완료 기록으로 관리한다. 실제로 남은 후보는 다음과 같다.
 
-1. direct drag resize handle과 collider offset drag handle: 완료
-2. capsule/orientedBox/polygon inspector patch 편집 UI: 완료
-3. selected instance 기반 ObjectDefinition 생성 action: 완료
-4. create-game 공유 placement viewer ObjectDefinition 생성/참조 동기화: 완료
-5. Behavior Binding Inspector: 공식 placement viewer와 generated create-game placement viewer 동기화 완료
-6. behavior recipe 본문을 UI에서 직접 작성하는 visual editor: 별도 승인 전 보류
-7. `packages/ferrum-authoring-viewer` UI 모듈 확장: workspace-private 공통 계약/헬퍼 패키지, create-game 템플릿 의존성 전환, key-value/control DOM helper, generated viewer shell helper, generated viewer panel primitive helper 추출 완료. create-game generated viewer의 ObjectDefinition/Project Assets/Selected detail 패널, Transform/actions 패널, stage/session controller, publish/output module, asset loading module, startup error module 분리 완료. 독립 browser app package 확장은 별도 제품 판단으로 진행
+1. `packages/ferrum-authoring-viewer`를 workspace-private helper에서 독립 browser app package로 확장할지 제품 판단한다.
+2. local image width/height metadata를 asset provider와 Add Sprite 기본 크기에 연결한다.
+3. 실제 npm publish 전 package별 release checklist와 beta version pin을 결정한다.
+4. Tauri packaged app과 실제 GUI 검증을 release 범위에 넣을지는 별도 승인한다.
+5. Behavior Recipe Body Editor, FSM/action graph, node hierarchy 등 visual-editor급 기능은 별도 승인 전 보류한다.
