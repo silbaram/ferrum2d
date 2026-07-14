@@ -520,3 +520,341 @@ fn gear_joint_handles_add_update_clear_and_reuse_storage() {
         Some(b)
     );
 }
+
+#[test]
+fn despawn_clears_all_connected_joint_types_and_reuses_their_handles() {
+    let mut world = World::default();
+    let removed = world.spawn_entity();
+    let connected = world.spawn_entity();
+    let unrelated_a = world.spawn_entity();
+    let unrelated_b = world.spawn_entity();
+    let unconnected = world.spawn_entity();
+
+    let distance = world.add_distance_joint(DistanceJoint::new(removed, connected, 8.0));
+    let rope = world.add_rope_joint(RopeJoint::new(connected, removed, 8.0));
+    let spring = world.add_spring_joint(SpringJoint::new(removed, connected, 8.0));
+    let pulley = world.add_pulley_joint(PulleyJoint::new(connected, removed, 8.0));
+    let revolute = world.add_revolute_joint(RevoluteJoint::new(removed, connected));
+    let prismatic = world.add_prismatic_joint(PrismaticJoint::new(connected, removed));
+    let weld = world.add_weld_joint(WeldJoint::new(removed, connected));
+    let gear = world.add_gear_joint(GearJoint::new(connected, removed, 1.0));
+    let unrelated_distance =
+        world.add_distance_joint(DistanceJoint::new(unrelated_a, unrelated_b, 4.0));
+
+    assert!(world.has_incident_joints(removed));
+    assert!(world.has_incident_joints(connected));
+    assert!(world.has_incident_joints(unrelated_a));
+    assert!(world.has_incident_joints(unrelated_b));
+    assert!(!world.has_incident_joints(unconnected));
+
+    world.despawn(unconnected);
+    assert!(world.distance_joint(distance).is_some());
+    assert!(world.gear_joint(gear).is_some());
+
+    world.despawn(Entity {
+        id: removed.id,
+        generation: removed.generation + 1,
+    });
+
+    assert!(world.distance_joint(distance).is_some());
+    assert!(world.rope_joint(rope).is_some());
+    assert!(world.spring_joint(spring).is_some());
+    assert!(world.pulley_joint(pulley).is_some());
+    assert!(world.revolute_joint(revolute).is_some());
+    assert!(world.prismatic_joint(prismatic).is_some());
+    assert!(world.weld_joint(weld).is_some());
+    assert!(world.gear_joint(gear).is_some());
+    assert!(world.has_incident_joints(removed));
+
+    world.despawn(removed);
+
+    assert_eq!(world.distance_joint(distance), None);
+    assert_eq!(world.rope_joint(rope), None);
+    assert_eq!(world.spring_joint(spring), None);
+    assert_eq!(world.pulley_joint(pulley), None);
+    assert_eq!(world.revolute_joint(revolute), None);
+    assert_eq!(world.prismatic_joint(prismatic), None);
+    assert_eq!(world.weld_joint(weld), None);
+    assert_eq!(world.gear_joint(gear), None);
+    assert!(world.distance_joint(unrelated_distance).is_some());
+    assert_eq!(world.distance_joint_count(), 1);
+    assert_eq!(world.rope_joint_count(), 0);
+    assert_eq!(world.spring_joint_count(), 0);
+    assert_eq!(world.pulley_joint_count(), 0);
+    assert_eq!(world.revolute_joint_count(), 0);
+    assert_eq!(world.prismatic_joint_count(), 0);
+    assert_eq!(world.weld_joint_count(), 0);
+    assert_eq!(world.gear_joint_count(), 0);
+    assert!(!world.has_incident_joints(removed));
+    assert!(!world.has_incident_joints(connected));
+    assert!(world.has_incident_joints(unrelated_a));
+    assert!(world.has_incident_joints(unrelated_b));
+
+    let replacement = world.spawn_entity();
+    assert_eq!(replacement.id, removed.id);
+    assert_ne!(replacement.generation, removed.generation);
+    assert!(!world.has_incident_joints(replacement));
+
+    let next_distance = world.add_distance_joint(DistanceJoint::new(replacement, connected, 6.0));
+    let next_rope = world.add_rope_joint(RopeJoint::new(replacement, connected, 6.0));
+    let next_spring = world.add_spring_joint(SpringJoint::new(replacement, connected, 6.0));
+    let next_pulley = world.add_pulley_joint(PulleyJoint::new(replacement, connected, 6.0));
+    let next_revolute = world.add_revolute_joint(RevoluteJoint::new(replacement, connected));
+    let next_prismatic = world.add_prismatic_joint(PrismaticJoint::new(replacement, connected));
+    let next_weld = world.add_weld_joint(WeldJoint::new(replacement, connected));
+    let next_gear = world.add_gear_joint(GearJoint::new(replacement, connected, 1.0));
+
+    assert!(world.has_incident_joints(replacement));
+    assert!(world.has_incident_joints(connected));
+
+    assert_eq!(next_distance.index, distance.index);
+    assert_ne!(next_distance.generation, distance.generation);
+    assert_eq!(next_rope.index, rope.index);
+    assert_ne!(next_rope.generation, rope.generation);
+    assert_eq!(next_spring.index, spring.index);
+    assert_ne!(next_spring.generation, spring.generation);
+    assert_eq!(next_pulley.index, pulley.index);
+    assert_ne!(next_pulley.generation, pulley.generation);
+    assert_eq!(next_revolute.index, revolute.index);
+    assert_ne!(next_revolute.generation, revolute.generation);
+    assert_eq!(next_prismatic.index, prismatic.index);
+    assert_ne!(next_prismatic.generation, prismatic.generation);
+    assert_eq!(next_weld.index, weld.index);
+    assert_ne!(next_weld.generation, weld.generation);
+    assert_eq!(next_gear.index, gear.index);
+    assert_ne!(next_gear.generation, gear.generation);
+}
+
+#[test]
+fn incident_joint_gate_tracks_endpoint_updates_snapshot_restore_and_clear_capacity() {
+    let mut world = World::default();
+    let a = world.spawn_entity();
+    let b = world.spawn_entity();
+    let unconnected = world.spawn_entity();
+
+    assert!(!world.has_incident_joints(a));
+    assert!(!world.has_incident_joints(b));
+    assert!(!world.has_incident_joints(unconnected));
+
+    let moved = world.add_distance_joint(DistanceJoint::new(a, b, 4.0));
+    assert!(world.has_incident_joints(a));
+    assert!(world.has_incident_joints(b));
+    assert!(world.try_set_distance_joint(moved, DistanceJoint::new(unconnected, b, 6.0)));
+    assert!(!world.has_incident_joints(a));
+    assert!(world.has_incident_joints(b));
+    assert!(world.has_incident_joints(unconnected));
+    assert!(world.clear_distance_joint(moved).is_some());
+    assert!(!world.has_incident_joints(a));
+    assert!(!world.has_incident_joints(b));
+    assert!(!world.has_incident_joints(unconnected));
+
+    world.add_distance_joint(DistanceJoint::new(a, b, 4.0));
+    world.add_rope_joint(RopeJoint::new(a, b, 4.0));
+    world.add_spring_joint(SpringJoint::new(a, b, 4.0));
+    world.add_pulley_joint(PulleyJoint::new(a, b, 4.0));
+    world.add_revolute_joint(RevoluteJoint::new(a, b));
+    world.add_prismatic_joint(PrismaticJoint::new(a, b));
+    world.add_weld_joint(WeldJoint::new(a, b));
+    world.add_gear_joint(GearJoint::new(a, b, 1.0));
+
+    assert!(world.has_incident_joints(a));
+    assert!(world.has_incident_joints(b));
+    assert!(!world.has_incident_joints(unconnected));
+    assert_joint_free_list_clear_capacity(&world);
+
+    let snapshot = world.snapshot();
+
+    world.despawn(unconnected);
+    assert_eq!(world.distance_joint_count(), 1);
+    assert_eq!(world.rope_joint_count(), 1);
+    assert_eq!(world.spring_joint_count(), 1);
+    assert_eq!(world.pulley_joint_count(), 1);
+    assert_eq!(world.revolute_joint_count(), 1);
+    assert_eq!(world.prismatic_joint_count(), 1);
+    assert_eq!(world.weld_joint_count(), 1);
+    assert_eq!(world.gear_joint_count(), 1);
+
+    world.clear_distance_joints();
+    world.clear_rope_joints();
+    world.clear_spring_joints();
+    world.clear_pulley_joints();
+    world.clear_revolute_joints();
+    world.clear_prismatic_joints();
+    world.clear_weld_joints();
+    world.clear_gear_joints();
+
+    assert!(!world.has_incident_joints(a));
+    assert!(!world.has_incident_joints(b));
+
+    world.restore_snapshot(&snapshot);
+
+    assert!(world.has_incident_joints(a));
+    assert!(world.has_incident_joints(b));
+    assert!(!world.has_incident_joints(unconnected));
+    assert_joint_free_list_clear_capacity(&world);
+}
+
+#[test]
+fn all_joint_setters_move_incident_membership_to_new_endpoints() {
+    let mut world = World::default();
+    let previous = world.spawn_entity();
+    let shared = world.spawn_entity();
+    let replacement = world.spawn_entity();
+
+    let distance = world.add_distance_joint(DistanceJoint::new(previous, shared, 4.0));
+    let rope = world.add_rope_joint(RopeJoint::new(previous, shared, 4.0));
+    let spring = world.add_spring_joint(SpringJoint::new(previous, shared, 4.0));
+    let pulley = world.add_pulley_joint(PulleyJoint::new(previous, shared, 4.0));
+    let revolute = world.add_revolute_joint(RevoluteJoint::new(previous, shared));
+    let prismatic = world.add_prismatic_joint(PrismaticJoint::new(previous, shared));
+    let weld = world.add_weld_joint(WeldJoint::new(previous, shared));
+    let gear = world.add_gear_joint(GearJoint::new(previous, shared, 1.0));
+
+    assert!(world.try_set_distance_joint(distance, DistanceJoint::new(replacement, shared, 6.0)));
+    assert!(world.try_set_rope_joint(rope, RopeJoint::new(replacement, shared, 6.0)));
+    assert!(world.try_set_spring_joint(spring, SpringJoint::new(replacement, shared, 6.0)));
+    assert!(world.try_set_pulley_joint(pulley, PulleyJoint::new(replacement, shared, 6.0)));
+    assert!(world.try_set_revolute_joint(revolute, RevoluteJoint::new(replacement, shared)));
+    assert!(world.try_set_prismatic_joint(prismatic, PrismaticJoint::new(replacement, shared)));
+    assert!(world.try_set_weld_joint(weld, WeldJoint::new(replacement, shared)));
+    assert!(world.try_set_gear_joint(gear, GearJoint::new(replacement, shared, 1.0)));
+
+    assert!(!world.has_incident_joints(previous));
+    assert!(world.has_incident_joints(shared));
+    assert!(world.has_incident_joints(replacement));
+
+    world.despawn(previous);
+
+    assert_eq!(world.distance_joint_count(), 1);
+    assert_eq!(world.rope_joint_count(), 1);
+    assert_eq!(world.spring_joint_count(), 1);
+    assert_eq!(world.pulley_joint_count(), 1);
+    assert_eq!(world.revolute_joint_count(), 1);
+    assert_eq!(world.prismatic_joint_count(), 1);
+    assert_eq!(world.weld_joint_count(), 1);
+    assert_eq!(world.gear_joint_count(), 1);
+
+    world.despawn(replacement);
+
+    assert_eq!(world.distance_joint_count(), 0);
+    assert_eq!(world.rope_joint_count(), 0);
+    assert_eq!(world.spring_joint_count(), 0);
+    assert_eq!(world.pulley_joint_count(), 0);
+    assert_eq!(world.revolute_joint_count(), 0);
+    assert_eq!(world.prismatic_joint_count(), 0);
+    assert_eq!(world.weld_joint_count(), 0);
+    assert_eq!(world.gear_joint_count(), 0);
+    assert!(!world.has_incident_joints(shared));
+}
+
+#[test]
+fn checked_joint_mutation_rejects_non_current_endpoints_without_storage_changes() {
+    let mut world = World::default();
+    let a = world.spawn_entity();
+    let b = world.spawn_entity();
+    let future = Entity {
+        id: 2,
+        generation: 0,
+    };
+
+    assert_eq!(
+        world.try_add_distance_joint(DistanceJoint::new(a, future, 4.0)),
+        None
+    );
+    assert_eq!(
+        world.try_add_rope_joint(RopeJoint::new(a, future, 4.0)),
+        None
+    );
+    assert_eq!(
+        world.try_add_spring_joint(SpringJoint::new(a, future, 4.0)),
+        None
+    );
+    assert_eq!(
+        world.try_add_pulley_joint(PulleyJoint::new(a, future, 4.0)),
+        None
+    );
+    assert_eq!(
+        world.try_add_revolute_joint(RevoluteJoint::new(a, future)),
+        None
+    );
+    assert_eq!(
+        world.try_add_prismatic_joint(PrismaticJoint::new(a, future)),
+        None
+    );
+    assert_eq!(world.try_add_weld_joint(WeldJoint::new(a, future)), None);
+    assert_eq!(
+        world.try_add_gear_joint(GearJoint::new(a, future, 1.0)),
+        None
+    );
+    assert_eq!(world.distance_joint_count(), 0);
+    assert_eq!(world.rope_joint_count(), 0);
+    assert_eq!(world.spring_joint_count(), 0);
+    assert_eq!(world.pulley_joint_count(), 0);
+    assert_eq!(world.revolute_joint_count(), 0);
+    assert_eq!(world.prismatic_joint_count(), 0);
+    assert_eq!(world.weld_joint_count(), 0);
+    assert_eq!(world.gear_joint_count(), 0);
+    assert!(!world.has_incident_joints(a));
+
+    let spawned_future = world.spawn_entity();
+    assert_eq!(spawned_future, future);
+    world.despawn(spawned_future);
+
+    let distance = world.add_distance_joint(DistanceJoint::new(a, b, 4.0));
+    let rope = world.add_rope_joint(RopeJoint::new(a, b, 4.0));
+    let spring = world.add_spring_joint(SpringJoint::new(a, b, 4.0));
+    let pulley = world.add_pulley_joint(PulleyJoint::new(a, b, 4.0));
+    let revolute = world.add_revolute_joint(RevoluteJoint::new(a, b));
+    let prismatic = world.add_prismatic_joint(PrismaticJoint::new(a, b));
+    let weld = world.add_weld_joint(WeldJoint::new(a, b));
+    let gear = world.add_gear_joint(GearJoint::new(a, b, 1.0));
+    let another_future = Entity {
+        id: 3,
+        generation: 0,
+    };
+
+    assert!(!world.try_set_distance_joint(distance, DistanceJoint::new(another_future, b, 6.0)));
+    assert!(!world.try_set_rope_joint(rope, RopeJoint::new(another_future, b, 6.0)));
+    assert!(!world.try_set_spring_joint(spring, SpringJoint::new(another_future, b, 6.0)));
+    assert!(!world.try_set_pulley_joint(pulley, PulleyJoint::new(another_future, b, 6.0)));
+    assert!(!world.try_set_revolute_joint(revolute, RevoluteJoint::new(another_future, b)));
+    assert!(!world.try_set_prismatic_joint(prismatic, PrismaticJoint::new(another_future, b)));
+    assert!(!world.try_set_weld_joint(weld, WeldJoint::new(another_future, b)));
+    assert!(!world.try_set_gear_joint(gear, GearJoint::new(another_future, b, 1.0)));
+    assert!(world.has_incident_joints(a));
+    assert!(world.has_incident_joints(b));
+    assert!(!world.has_incident_joints(another_future));
+
+    world.despawn(a);
+
+    assert_eq!(world.distance_joint_count(), 0);
+    assert_eq!(world.rope_joint_count(), 0);
+    assert_eq!(world.spring_joint_count(), 0);
+    assert_eq!(world.pulley_joint_count(), 0);
+    assert_eq!(world.revolute_joint_count(), 0);
+    assert_eq!(world.prismatic_joint_count(), 0);
+    assert_eq!(world.weld_joint_count(), 0);
+    assert_eq!(world.gear_joint_count(), 0);
+
+    assert_eq!(
+        world.try_add_distance_joint(DistanceJoint::new(spawned_future, b, 4.0)),
+        None
+    );
+    let panic_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        world.add_distance_joint(DistanceJoint::new(spawned_future, b, 4.0));
+    }));
+    assert!(panic_result.is_err());
+    assert_eq!(world.distance_joint_count(), 0);
+    assert!(!world.has_incident_joints(b));
+}
+
+fn assert_joint_free_list_clear_capacity(world: &World) {
+    assert!(world.distance_joint_free_list.capacity() >= world.distance_joints.len());
+    assert!(world.rope_joint_free_list.capacity() >= world.rope_joints.len());
+    assert!(world.spring_joint_free_list.capacity() >= world.spring_joints.len());
+    assert!(world.pulley_joint_free_list.capacity() >= world.pulley_joints.len());
+    assert!(world.revolute_joint_free_list.capacity() >= world.revolute_joints.len());
+    assert!(world.prismatic_joint_free_list.capacity() >= world.prismatic_joints.len());
+    assert!(world.weld_joint_free_list.capacity() >= world.weld_joints.len());
+    assert!(world.gear_joint_free_list.capacity() >= world.gear_joints.len());
+}

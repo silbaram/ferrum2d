@@ -248,7 +248,7 @@ fn rope_joint_break_distance_ignores_slack() {
 }
 
 #[test]
-fn rope_joint_skips_despawned_entities() {
+fn rope_joint_clears_despawned_entities() {
     let mut world = World::default();
     let anchor = world.spawn_entity();
     world.set_transform(anchor, Transform2D { x: 0.0, y: 0.0 });
@@ -256,8 +256,11 @@ fn rope_joint_skips_despawned_entities() {
     let body = world.spawn_entity();
     world.set_transform(body, Transform2D { x: 10.0, y: 0.0 });
     world.set_rigid_body(body, RigidBody::dynamic(1.0));
-    world.add_rope_joint(RopeJoint::new(anchor, body, 4.0));
+    let joint = world.add_rope_joint(RopeJoint::new(anchor, body, 4.0));
     world.despawn(body);
+
+    assert_eq!(world.rope_joint(joint), None);
+    assert_eq!(world.rope_joint_count(), 0);
 
     let stats = PhysicsSystem::step_rigid_bodies_with_config(
         &mut world,
@@ -278,5 +281,5 @@ fn rope_joint_skips_despawned_entities() {
 
     assert_eq!(stats.constraint_velocity_corrections, 0);
     assert_eq!(stats.constraint_position_corrections, 0);
-    assert_eq!(world.rope_joint_count(), 1);
+    assert_eq!(world.rope_joint_count(), 0);
 }

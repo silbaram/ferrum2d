@@ -242,13 +242,16 @@ fn distance_joint_break_distance_allows_smaller_error() {
 }
 
 #[test]
-fn distance_joint_skips_despawned_entities() {
+fn distance_joint_clears_despawned_entities() {
     let mut world = World::default();
     let anchor = spawn_kinematic_body(&mut world, 0.0, 0.0, CollisionLayer::Wall, false);
     world.set_rigid_body(anchor, RigidBody::static_body());
     let body = spawn_dynamic_body(&mut world, 10.0, 0.0, 1.0);
-    world.add_distance_joint(DistanceJoint::new(anchor, body, 4.0));
+    let joint = world.add_distance_joint(DistanceJoint::new(anchor, body, 4.0));
     world.despawn(body);
+
+    assert_eq!(world.distance_joint(joint), None);
+    assert_eq!(world.distance_joint_count(), 0);
 
     let stats = PhysicsSystem::step_rigid_bodies_with_config(
         &mut world,
@@ -269,5 +272,5 @@ fn distance_joint_skips_despawned_entities() {
 
     assert_eq!(stats.constraint_velocity_corrections, 0);
     assert_eq!(stats.constraint_position_corrections, 0);
-    assert_eq!(world.distance_joint_count(), 1);
+    assert_eq!(world.distance_joint_count(), 0);
 }

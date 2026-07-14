@@ -88,6 +88,8 @@ Platformer KCC는 물리적 보편 해답보다 예제 게임감과 기존 fixtu
 - editor/AI authoring: `compilePhysicsAuthoringDocument(...)`, `validatePhysicsAuthoringDocument(...)`, `physicsEditor` metadata schema
 - terrain authoring/runtime: `extractTilemapBoundaryChains(...)`, `PixelMaskTerrain`, `extractPixelMaskBoundaryChains(...)`, `createPixelMaskTerrainRuntime(...)`
 
+`despawnPhysicsEntity(...)`로 유효한 body를 제거하면 그 body를 어느 endpoint로든 참조하는 distance, rope, spring, pulley, revolute, prismatic, weld, gear joint도 같은 호출에서 제거된다. 제거된 joint handle은 generation이 증가해 즉시 무효화되므로 별도 `clearPhysicsJoint(...)` 호출이 필요하지 않다. World는 generation-aware per-entity incident joint count를 유지하므로 연결 joint가 없는 body의 despawn은 O(1) gate에서 8종 storage 순회를 건너뛴다. 연결 body의 cascade는 미리 capacity를 확보한 free-list에 제거 slot을 반환해 해당 경로에서 재할당하지 않는다.
+
 이 API는 editor나 runtime tooling처럼 호출 빈도가 낮은 흐름을 대상으로 한다. entity별 매 프레임 authoring stream 용도가 아니다.
 
 ### Rust-only helpers
@@ -95,7 +97,7 @@ Platformer KCC는 물리적 보편 해답보다 예제 게임감과 기존 fixtu
 일부 helper는 Rust crate API로만 제공된다.
 
 - `PhysicsSystem`의 low-level movement/query/solver helper
-- `World`의 collider/joint storage 접근자
+- `World`의 collider/joint storage 접근자. joint add의 recoverable endpoint 검증은 `try_add_*_joint(...) -> Option<JointId>`, joint handle/새 endpoint 검증을 포함한 update는 `try_set_*_joint(...) -> bool`을 사용한다. 기존 `add_*_joint(...)`는 current entity endpoint를 전제로 하는 convenience API이며 위반 시 저장 전에 panic하고, 기존 `set_*_joint(...)`는 invalid 입력을 무변경으로 처리한다.
 - collider shape별 mass/inertia helper
 - `Tilemap` obstacle/slope/one-way 설정 helper
 

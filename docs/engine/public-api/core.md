@@ -43,7 +43,7 @@ import {
 | Asset | `loadAssets`, `releaseAssets`, `textureId`, `soundId`, `setTextureIds`, `setSoundIds` |
 | Particle | `setParticlePreset`, `spawnParticleBurst`, `clearParticles`, `particleCount` |
 | Physics runtime | `configurePhysicsRuntime`, `configureFixedTimestep`, `stepRigidBodies` |
-| Physics body/joint | `spawnRigidBody`, `addPhysicsBodyCollider`, `spawnPhysicsJoint`, `clearPhysicsJoint` |
+| Physics body/joint | `spawnRigidBody`, `despawnPhysicsEntity`, `addPhysicsBodyCollider`, `spawnPhysicsJoint`, `clearPhysicsJoint` |
 | Physics query | body query, raycast, shape cast, tile obstacle query |
 | Gameplay authoring | 낮은 빈도 behavior command apply. 세부는 [Authoring](authoring.md)을 본다. |
 | Input action | `setInputActionBinding`, `clearInputActionBindings`, `resetInputActionBindings` |
@@ -92,6 +92,7 @@ Core subpath는 Physics Spec resolver와 imperative Physics API를 함께 노출
 | `resolvePhysicsSpec(...)` | JSON authoring 입력을 resolved physics spec으로 정규화한다. |
 | `configurePhysicsRuntime(...)` | resolved spec을 runtime physics 설정에 적용한다. |
 | `spawnRigidBody(...)` | 낮은 빈도 rigid body 생성용 imperative API다. |
+| `despawnPhysicsEntity(...)` | body와 그 body를 endpoint로 참조하는 모든 joint를 함께 제거하고 기존 joint handle을 무효화한다. |
 | `stepRigidBodies(...)` | manual stepping 또는 테스트 harness에서 사용한다. |
 | body/tile query | nearest, overlap, raycast, segment cast, shape cast query를 제공한다. |
 

@@ -632,7 +632,7 @@ fn prismatic_joint_angular_damping_reduces_relative_angular_velocity() {
 }
 
 #[test]
-fn prismatic_joint_skips_despawned_entities() {
+fn prismatic_joint_clears_despawned_entities() {
     let mut world = World::default();
     let anchor = world.spawn_entity();
     world.set_transform(anchor, Transform2D { x: 0.0, y: 0.0 });
@@ -640,8 +640,11 @@ fn prismatic_joint_skips_despawned_entities() {
     let body = world.spawn_entity();
     world.set_transform(body, Transform2D { x: 10.0, y: 5.0 });
     world.set_rigid_body(body, RigidBody::dynamic(1.0));
-    world.add_prismatic_joint(PrismaticJoint::new(anchor, body));
+    let joint = world.add_prismatic_joint(PrismaticJoint::new(anchor, body));
     world.despawn(body);
+
+    assert_eq!(world.prismatic_joint(joint), None);
+    assert_eq!(world.prismatic_joint_count(), 0);
 
     let stats = PhysicsSystem::step_rigid_bodies_with_config(
         &mut world,
@@ -662,5 +665,5 @@ fn prismatic_joint_skips_despawned_entities() {
 
     assert_eq!(stats.constraint_velocity_corrections, 0);
     assert_eq!(stats.constraint_position_corrections, 0);
-    assert_eq!(world.prismatic_joint_count(), 1);
+    assert_eq!(world.prismatic_joint_count(), 0);
 }

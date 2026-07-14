@@ -7,10 +7,12 @@ impl World {
             let i = id as usize;
             self.alive[i] = true;
             self.track_alive_index(i);
-            return Entity {
+            let entity = Entity {
                 id,
                 generation: self.generations[i],
             };
+            self.reset_joint_incident_count(entity);
+            return entity;
         }
 
         let id = self.generations.len() as u32;
@@ -19,12 +21,17 @@ impl World {
         self.alive_positions.push(DEAD_ALIVE_POSITION);
         self.track_alive_index(id as usize);
         WorldComponentStorage::push_empty_entity(self);
-        Entity { id, generation: 0 }
+        let entity = Entity { id, generation: 0 };
+        self.reset_joint_incident_count(entity);
+        entity
     }
 
     pub fn despawn(&mut self, entity: Entity) {
         let i = entity.id as usize;
         if i < self.alive.len() && self.alive[i] && self.generations[i] == entity.generation {
+            if self.has_incident_joints(entity) {
+                self.clear_joints_for_entity(entity);
+            }
             self.alive[i] = false;
             self.generations[i] += 1;
             WorldComponentStorage::clear_entity(self, i);
