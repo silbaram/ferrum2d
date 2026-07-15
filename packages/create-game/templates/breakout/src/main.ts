@@ -139,7 +139,9 @@ async function bootstrap(): Promise<void> {
     canvas: shell.canvas,
     debugParent: shell.debugRoot,
     environment: "development",
-    webgl2: { clearColor: [0.05, 0.06, 0.08, 1] },
+    webgl2: {
+      clearColor: [0.05, 0.06, 0.08, 1],
+    },
     inputTransform: (snapshot) => shell.inputSnapshot(snapshot),
     gameStateLabel,
     onFrame: ({ frame, rendererStats, fps }) => {

@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { DEPLOYMENT_RUNTIME_SAMPLE_FRAMES } from "./runtime-budget-profiles.mjs";
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const validatorPath = path.join(repoRoot, "scripts/validate/validate-consumer-smoke-report.mjs");
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), "ferrum2d-consumer-smoke-report-validation-"));
@@ -17,6 +19,11 @@ try {
   await assertPassedMissingCreateGameCatalogFails();
   await assertPassedCatalogMissingRequestedTemplateFails();
   await assertPassedTemplateMatrixMismatchFails();
+  await assertPassedDeploymentEvidenceMissingFails();
+  await assertPassedPlacementViewerEvidenceMissingFails();
+  await assertPassedDeploymentSamplingEvidenceInvalidFails();
+  await assertPassedDeploymentShortSamplingEvidenceFails();
+  await assertPassedDeploymentUnknownBudgetProfileFails();
   await assertDirtySnapshotFails();
   console.log("consumer smoke report validation smoke ok");
 } finally {
@@ -117,6 +124,96 @@ async function assertPassedTemplateMatrixMismatchFails() {
   );
 }
 
+async function assertPassedDeploymentEvidenceMissingFails() {
+  const artifactDir = path.join(tempRoot, "passed-deployment-evidence-missing");
+  await mkdir(artifactDir, { recursive: true });
+  const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  delete report.templates[0].reports.deployment.checks.smokeBasePath;
+  delete report.templates[0].reports.deploymentBrowser.runtime;
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  const result = await runValidator(["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"]);
+  assert(result.code !== 0, "passed report without deployment subpath/runtime evidence must fail validation");
+  assert(
+    result.stdout.includes("checks.smokeBasePath must be /__ferrum2d_deploy_smoke__/")
+      && result.stdout.includes("reports.deploymentBrowser.runtime must be an object"),
+    `missing deployment evidence validation must be reported\n${result.stdout}\n${result.stderr}`,
+  );
+}
+
+async function assertPassedPlacementViewerEvidenceMissingFails() {
+  const artifactDir = path.join(tempRoot, "passed-placement-viewer-evidence-missing");
+  await mkdir(artifactDir, { recursive: true });
+  const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  delete report.templates[0].checks.placementViewerSmoke;
+  delete report.templates[0].reports.placementViewer;
+  delete report.templates[0].buildOutput.distPlacementViewerHtml;
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  const result = await runValidator(["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"]);
+  assert(result.code !== 0, "passed report without placement viewer evidence must fail validation");
+  assert(
+    result.stdout.includes("checks.placementViewerSmoke must be a boolean")
+      && result.stdout.includes("reports.placementViewer must be an object")
+      && result.stdout.includes("buildOutput.distPlacementViewerHtml must point to dist/placement-viewer.html"),
+    `missing placement viewer evidence validation must be reported\n${result.stdout}\n${result.stderr}`,
+  );
+}
+
+async function assertPassedDeploymentSamplingEvidenceInvalidFails() {
+  const artifactDir = path.join(tempRoot, "passed-deployment-sampling-evidence-invalid");
+  await mkdir(artifactDir, { recursive: true });
+  const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  report.templates[0].reports.deploymentBrowser.runtime.sampledFrameCount = 1;
+  report.templates[0].reports.deploymentBrowser.runtime.statsSource = "renderCommands";
+  report.templates[0].reports.deploymentBrowser.budgets.sampleFrames = 1;
+  report.templates[0].reports.deploymentBrowser.budgets.maxDrawCalls = 64;
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  const result = await runValidator(["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"]);
+  assert(result.code !== 0, "passed report with single-frame or non-profile deployment budget evidence must fail validation");
+  assert(
+    result.stdout.includes(`runtime.sampledFrameCount must be ${DEPLOYMENT_RUNTIME_SAMPLE_FRAMES}`)
+      && result.stdout.includes("runtime.statsSource must be renderer.stats-after-frame")
+      && result.stdout.includes(`budgets.sampleFrames must be ${DEPLOYMENT_RUNTIME_SAMPLE_FRAMES}`)
+      && result.stdout.includes("budgets.maxDrawCalls must match runtime budget profile minimal (8)"),
+    `invalid deployment sampling evidence must be reported\n${result.stdout}\n${result.stderr}`,
+  );
+}
+
+async function assertPassedDeploymentShortSamplingEvidenceFails() {
+  const artifactDir = path.join(tempRoot, "passed-deployment-short-sampling-evidence");
+  await mkdir(artifactDir, { recursive: true });
+  const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  report.templates[0].reports.deploymentBrowser.runtime.sampledFrameCount = 8;
+  report.templates[0].reports.deploymentBrowser.budgets.sampleFrames = 8;
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  const result = await runValidator(["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"]);
+  assert(result.code !== 0, "passed report with fewer than the canonical deployment sample frames must fail validation");
+  assert(
+    result.stdout.includes(`runtime.sampledFrameCount must be ${DEPLOYMENT_RUNTIME_SAMPLE_FRAMES}`)
+      && result.stdout.includes(`budgets.sampleFrames must be ${DEPLOYMENT_RUNTIME_SAMPLE_FRAMES}`),
+    `short deployment sampling evidence must be reported\n${result.stdout}\n${result.stderr}`,
+  );
+}
+
+async function assertPassedDeploymentUnknownBudgetProfileFails() {
+  const artifactDir = path.join(tempRoot, "passed-deployment-unknown-budget-profile");
+  await mkdir(artifactDir, { recursive: true });
+  const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  const templateName = "unknown-template";
+  report.requestedTemplates = [templateName];
+  report.createGameCatalog.defaultTemplate = templateName;
+  report.createGameCatalog.templates[0].id = templateName;
+  report.templates[0].template = templateName;
+  report.templates[0].reports.deploymentBrowser.budgets.profileId = templateName;
+  report.templates[0].reports.deploymentBrowser.budgets.maxDrawCalls = 999;
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  const result = await runValidator(["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"]);
+  assert(result.code !== 0, "passed report with an unknown deployment runtime budget profile must fail validation");
+  assert(
+    result.stdout.includes(`budgets.profileId must reference known runtime budget profile ${templateName}`),
+    `unknown deployment budget profile must be reported\n${result.stdout}\n${result.stderr}`,
+  );
+}
+
 async function assertDirtySnapshotFails() {
   const artifactDir = path.join(tempRoot, "dirty-failed");
   await writePartialFailedArtifact(artifactDir, { includeForbiddenSnapshotDir: true });
@@ -172,6 +269,9 @@ async function writePartialFailedArtifact(artifactDir, { includeForbiddenSnapsho
           report: false,
           smoke: false,
           build: false,
+          deployReport: false,
+          deployBrowserSmoke: false,
+          placementViewerSmoke: false,
         },
         agents: {
           tools: ["codex", "claude", "gemini"],
@@ -278,6 +378,9 @@ function createPassedReportWithNotConfiguredRuntime({ artifactDir }) {
           report: true,
           smoke: true,
           build: true,
+          deployReport: true,
+          deployBrowserSmoke: true,
+          placementViewerSmoke: true,
         },
         agents: {
           tools: ["codex", "claude", "gemini"],
@@ -323,10 +426,16 @@ function createPassedReportWithNotConfiguredRuntime({ artifactDir }) {
             inputFrames: [1, 2],
             captureFrames: [0, 1, 2],
           },
+          deployment: deploymentReportSummary(),
+          deploymentBrowser: deploymentBrowserSummary("minimal"),
+          placementViewer: placementViewerSummary("minimal"),
         },
         mutationChecks: {},
         buildOutput: {
           distIndexHtml: "sample-games/minimal/dist/index.html",
+          distPlacementViewerHtml: "sample-games/minimal/dist/placement-viewer.html",
+          deployReady: true,
+          browserSmoke: true,
           preservedInArtifactSnapshot: false,
         },
       },
@@ -336,18 +445,19 @@ function createPassedReportWithNotConfiguredRuntime({ artifactDir }) {
 
 function createPassedReportWithNotConfiguredGameplayReplay({ artifactDir }) {
   const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  const templateName = "platformer";
   report.createGameCatalog.templateCount = 2;
   report.createGameCatalog.templates.push({
-    id: "prototype",
+    id: templateName,
     sceneAuthoringConfigured: false,
     gameplayReplayConfigured: false,
     runtimeGameplayReplayConfigured: false,
   });
-  report.requestedTemplates.push("prototype");
+  report.requestedTemplates.push(templateName);
   report.templates.push({
-    template: "prototype",
+    template: templateName,
     status: "passed",
-    generatedProject: "sample-games/prototype",
+    generatedProject: `sample-games/${templateName}`,
     checks: {
       createGame: true,
       agentsDryRun: true,
@@ -359,6 +469,9 @@ function createPassedReportWithNotConfiguredGameplayReplay({ artifactDir }) {
       report: true,
       smoke: true,
       build: true,
+      deployReport: true,
+      deployBrowserSmoke: true,
+      placementViewerSmoke: true,
     },
     agents: {
       tools: ["codex", "claude", "gemini"],
@@ -366,7 +479,7 @@ function createPassedReportWithNotConfiguredGameplayReplay({ artifactDir }) {
       unsupportedGeminiWrappersAbsent: true,
     },
     reports: {
-      project: projectReportSummary("prototype"),
+      project: projectReportSummary(templateName),
       authoring: {
         status: "not-configured",
         gameSpec: {
@@ -395,7 +508,7 @@ function createPassedReportWithNotConfiguredGameplayReplay({ artifactDir }) {
         reports: 1,
       },
       runtimeReplayRecipe: {
-        template: "prototype",
+        template: templateName,
         status: "scaffold",
         scenario: "project-runtime",
         coverageTags: ["project-runtime"],
@@ -403,10 +516,16 @@ function createPassedReportWithNotConfiguredGameplayReplay({ artifactDir }) {
         inputFrames: [1, 2],
         captureFrames: [0, 1, 2],
       },
+      deployment: deploymentReportSummary(),
+      deploymentBrowser: deploymentBrowserSummary(templateName),
+      placementViewer: placementViewerSummary(templateName),
     },
     mutationChecks: {},
     buildOutput: {
-      distIndexHtml: "sample-games/prototype/dist/index.html",
+      distIndexHtml: `sample-games/${templateName}/dist/index.html`,
+      distPlacementViewerHtml: `sample-games/${templateName}/dist/placement-viewer.html`,
+      deployReady: true,
+      browserSmoke: true,
       preservedInArtifactSnapshot: false,
     },
   });
@@ -426,6 +545,12 @@ function projectReportSummary(templateName) {
     },
     internalImports: 0,
     rootAggregateImports: 0,
+    deployment: {
+      target: "static-web",
+      outputDirectory: "dist",
+      basePath: "relative",
+      fileProtocolSupported: false,
+    },
     recommendedCommands: [
       "npm run ferrum:report",
       "npm run ferrum:validate",
@@ -433,9 +558,116 @@ function projectReportSummary(templateName) {
       "npm run ferrum:replay-report",
       "npm run ferrum:runtime-replay-report",
       "npm run ferrum:smoke",
+      "npm run ferrum:deploy-report",
+      "npm run build",
+      "npm run preview",
     ],
     reports: 0,
     errors: 0,
+  };
+}
+
+function deploymentReportSummary() {
+  return {
+    status: "ready",
+    target: "static-web",
+    outputDirectory: "dist",
+    basePath: "relative",
+    fileProtocolSupported: false,
+    recommendedProtocol: "http(s)",
+    checks: {
+      build: true,
+      indexHtml: true,
+      relativeAssetReferences: true,
+      referencedFiles: true,
+      httpServe: true,
+      previewHttp: true,
+      wasmMime: true,
+      smokeBasePath: "/__ferrum2d_deploy_smoke__/",
+      servedFileCount: 8,
+      wasmFileCount: 1,
+    },
+    reports: 0,
+    errors: 0,
+  };
+}
+
+function deploymentBrowserSummary(templateName) {
+  const maxDrawCalls = templateName === "minimal" ? 8 : 16;
+  return {
+    status: "validated",
+    basePath: "/__ferrum2d_consumer_smoke__/",
+    indexStatus: 200,
+    canvas: {
+      width: 960,
+      height: 540,
+      webgl2: true,
+      nonblank: true,
+      coloredPixelSamples: 64,
+      varyingPixelSamples: 16,
+      readbackSource: "same-raf-after-render",
+    },
+    runtime: {
+      gameState: 1,
+      entityCount: 8,
+      spriteCount: 8,
+      renderCommandCount: 8,
+      drawCalls: 1,
+      sampledFrameCount: DEPLOYMENT_RUNTIME_SAMPLE_FRAMES,
+      statsSource: "renderer.stats-after-frame",
+    },
+    budgets: {
+      profileId: templateName,
+      sampleFrames: DEPLOYMENT_RUNTIME_SAMPLE_FRAMES,
+      maxDrawCalls,
+    },
+    wasmLoaded: true,
+    wasmMimeValid: true,
+    wasmResponseCount: 1,
+    browserErrors: 0,
+  };
+}
+
+function placementViewerSummary(templateName) {
+  const definitionId = `consumer-${templateName}-definition`;
+  return {
+    status: "validated",
+    projectAssets: ["atlas"],
+    instanceCount: 4,
+    objectDefinitionCount: 1,
+    selectedInstanceId: `selected-${templateName}`,
+    draftOperationCount: 3,
+    addedInstanceId: `sprite-${templateName}`,
+    addedPrefab: "object",
+    addedAsset: "atlas",
+    objectDefinitionId: definitionId,
+    objectDefinitionVisualKind: "sprite",
+    objectDefinitionInstanceId: `definition-instance-${templateName}`,
+    objectDefinitionInstancePrefab: definitionId,
+    behaviorBinding: {
+      targetInstanceId: `target-${templateName}`,
+      recipeId: `recipe-${templateName}`,
+      mode: "attach-detach",
+      attachOperationKind: "updateBehaviorBinding",
+      cleared: true,
+    },
+    handoffUi: {
+      draftCount: "3",
+      blockedReferenceCount: "0",
+      assetDiagnosticCount: "0",
+      copyPatchDisabled: false,
+      copyHandoffDisabled: false,
+      saveDraftDisabled: false,
+      status: "3 patch operations ready",
+    },
+    inspectorUi: {
+      groups: ["identity", "visual", "collider", "behavior"],
+      selectedId: `selected-${templateName}`,
+      selectedPrefab: definitionId,
+      visual: "atlas 48x48",
+      collider: "aabb 48x48",
+      behaviorProfiles: "none",
+    },
   };
 }
 

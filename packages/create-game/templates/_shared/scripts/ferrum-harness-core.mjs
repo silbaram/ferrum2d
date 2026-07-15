@@ -185,6 +185,7 @@ async function printReport(config) {
         ...(config.includePublicAssetsInReport === true ? { publicAssets: result.publicAssets } : {}),
       },
       authoringSurface: result.authoringSurface,
+      deployment: deploymentSurface(result.packageJson),
       checks: {
         hasAuthoringViewerDependency: result.hasAuthoringViewerDependency,
         hasFerrumDependency: result.hasFerrumDependency,
@@ -607,8 +608,25 @@ function recommendedCommands() {
     "npm run ferrum:replay-report",
     "npm run ferrum:runtime-replay-report",
     "npm run ferrum:smoke",
+    "npm run ferrum:deploy-report",
+    "npm run build",
+    "npm run preview",
     "npm run dev",
   ];
+}
+
+function deploymentSurface(packageJson) {
+  return {
+    target: "static-web",
+    outputDirectory: "dist",
+    basePath: "relative",
+    fileProtocolSupported: false,
+    scripts: {
+      build: packageJson.scripts?.build ?? null,
+      preview: packageJson.scripts?.preview ?? null,
+      readiness: packageJson.scripts?.["ferrum:deploy-report"] ?? null,
+    },
+  };
 }
 
 function sceneRuntimeEntityHandles(applied) {

@@ -1,3 +1,5 @@
+export const DEPLOYMENT_RUNTIME_SAMPLE_FRAMES = 12;
+
 export const RUNTIME_BUDGET_PROFILES = Object.freeze({
   minimal: freezeBudget({
     maxFrameTimeMs: 250,

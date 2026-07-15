@@ -7,6 +7,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import {
+  DEPLOYMENT_RUNTIME_SAMPLE_FRAMES,
+  runtimeBudgetProfile,
+} from "./runtime-budget-profiles.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const packageRoots = {
@@ -20,6 +24,8 @@ const packageManager = repoPackageJson.packageManager ?? "pnpm@10.8.0";
 const DEFAULT_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
 const BROWSER_SMOKE_HOST = "127.0.0.1";
 const GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS = 15_000;
+const GENERATED_DEPLOYMENT_TIMEOUT_MS = 20_000;
+const GENERATED_DEPLOYMENT_BASE_PATH = "/__ferrum2d_consumer_smoke__/";
 const CONSUMER_SMOKE_REPORT_FORMAT = "ferrum2d.package.consumer-smoke.report";
 const CONSUMER_SMOKE_REPORT_VERSION = 1;
 const STATIC_MIME_TYPES = new Map([
@@ -585,11 +591,224 @@ async function runGeneratedGameConsumer({
     path.join(generatedGameRoot, "dist/placement-viewer.html"),
     `generated ${templateName} game build must emit dist/placement-viewer.html`,
   );
+  const deploymentReport = await runJsonReport(
+    pnpm,
+    ["run", "ferrum:deploy-report"],
+    generatedGameRoot,
+    "ferrum2d.consumer.deploy-readiness.report",
+  );
+  assertConsumerDeployReadinessReport(deploymentReport, templateName);
+  templateSummary.checks.deployReport = true;
+  templateSummary.reports.deployment = summarizeConsumerDeployReadinessReport(deploymentReport);
+  templateSummary.reports.deploymentBrowser = await smokeGeneratedGameDeployment(generatedGameRoot, templateName);
+  templateSummary.checks.deployBrowserSmoke = true;
   templateSummary.reports.placementViewer = await smokeGeneratedPlacementViewer(generatedGameRoot, templateName);
   templateSummary.checks.placementViewerSmoke = true;
   templateSummary.buildOutput.distIndexHtml = path.join(templateSummary.generatedProject, "dist/index.html");
   templateSummary.buildOutput.distPlacementViewerHtml = path.join(templateSummary.generatedProject, "dist/placement-viewer.html");
+  templateSummary.buildOutput.deployReady = true;
+  templateSummary.buildOutput.browserSmoke = true;
   templateSummary.buildOutput.preservedInArtifactSnapshot = false;
+}
+
+async function smokeGeneratedGameDeployment(generatedGameRoot, templateName) {
+  const distRoot = path.join(generatedGameRoot, "dist");
+  const budgetProfile = runtimeBudgetProfile(templateName);
+  let server;
+  let browser;
+  try {
+    server = await serveStaticDirectory(distRoot, { mountPath: GENERATED_DEPLOYMENT_BASE_PATH });
+    const address = server.address();
+    assert(address && typeof address !== "string", `${templateName} deployment smoke server must bind to a TCP port`);
+    browser = await launchConsumerSmokeBrowser();
+    const page = await browser.newPage({ viewport: { width: 960, height: 720 }, deviceScaleFactor: 1 });
+    const browserErrors = [];
+    const wasmResponses = [];
+    page.on("pageerror", (error) => {
+      browserErrors.push(error.message);
+    });
+    page.on("requestfailed", (request) => {
+      browserErrors.push(`${request.method()} ${request.url()}: ${request.failure()?.errorText ?? "request failed"}`);
+    });
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        if (message.text() === "Failed to load resource: the server responded with a status of 404 (Not Found)") return;
+        browserErrors.push(message.text());
+      }
+    });
+    page.on("response", (response) => {
+      if (!response.ok()) {
+        browserErrors.push(`${response.request().method()} ${response.url()}: HTTP ${response.status()}`);
+      }
+      if (new URL(response.url()).pathname.endsWith(".wasm")) {
+        wasmResponses.push({
+          status: response.status(),
+          contentType: response.headers()["content-type"] ?? "",
+          url: response.url(),
+        });
+      }
+    });
+
+    const pageUrl = `http://${BROWSER_SMOKE_HOST}:${address.port}${GENERATED_DEPLOYMENT_BASE_PATH}index.html`;
+    const mainResponse = await page.goto(pageUrl, {
+      waitUntil: "networkidle",
+      timeout: GENERATED_DEPLOYMENT_TIMEOUT_MS,
+    });
+    assert(mainResponse?.ok() === true, `${templateName} deployment index response must be successful`);
+    await page.waitForSelector("canvas.game-canvas", {
+      state: "attached",
+      timeout: GENERATED_DEPLOYMENT_TIMEOUT_MS,
+    });
+    try {
+      await page.waitForFunction(
+        () => Boolean(window.ferrumRuntime),
+        undefined,
+        { timeout: GENERATED_DEPLOYMENT_TIMEOUT_MS },
+      );
+    } catch (error) {
+      throw new Error(
+        `${templateName} deployment runtime did not become ready: ${errorMessage(error)}` +
+          (browserErrors.length > 0 ? `\n${browserErrors.join("\n")}` : ""),
+      );
+    }
+    const startButton = page.locator("button").filter({ hasText: /start|시작/iu }).first();
+    if (await startButton.count() > 0 && await startButton.isVisible()) {
+      await startButton.click({ timeout: GENERATED_DEPLOYMENT_TIMEOUT_MS });
+    }
+    await page.evaluate(({ sampleFrames }) => {
+      const runtime = globalThis.ferrumRuntime;
+      if (!runtime) throw new Error("Ferrum runtime is unavailable for deployment smoke instrumentation.");
+      const samples = [];
+      const readCanvasEvidence = () => {
+        const canvas = document.querySelector("canvas.game-canvas");
+        if (!(canvas instanceof HTMLCanvasElement)) {
+          return { width: 0, height: 0, webgl2: false, nonblank: false, coloredPixelSamples: 0, varyingPixelSamples: 0, readbackSource: "same-raf-after-render" };
+        }
+        const gl = canvas.getContext("webgl2");
+        if (!(gl instanceof WebGL2RenderingContext)) {
+          return { width: canvas.width, height: canvas.height, webgl2: false, nonblank: false, coloredPixelSamples: 0, varyingPixelSamples: 0, readbackSource: "same-raf-after-render" };
+        }
+        const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+        gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        let coloredPixelSamples = 0;
+        let varyingPixelSamples = 0;
+        let firstSample;
+        const stride = Math.max(4, Math.floor(pixels.length / 4096 / 4) * 4);
+        for (let index = 0; index < pixels.length; index += stride) {
+          const sample = [pixels[index], pixels[index + 1], pixels[index + 2], pixels[index + 3]];
+          if (sample[0] !== 0 || sample[1] !== 0 || sample[2] !== 0 || sample[3] !== 0) {
+            coloredPixelSamples += 1;
+          }
+          firstSample ??= sample;
+          if (sample.some((value, channel) => value !== firstSample[channel])) varyingPixelSamples += 1;
+        }
+        return {
+          width: canvas.width,
+          height: canvas.height,
+          webgl2: true,
+          nonblank: varyingPixelSamples > 0,
+          coloredPixelSamples,
+          varyingPixelSamples,
+          readbackSource: "same-raf-after-render",
+        };
+      };
+      const sampleCompletedFrame = () => {
+        const stats = runtime.renderer.stats();
+        const sample = {
+          gameState: runtime.engine.gameState(),
+          entityCount: runtime.engine.entityCount(),
+          spriteCount: runtime.engine.spriteCount(),
+          renderCommandCount: stats.renderCommandCount,
+          drawCalls: stats.drawCalls,
+        };
+        const valid = sample.gameState === 1
+          && sample.entityCount > 0
+          && sample.spriteCount > 0
+          && sample.renderCommandCount > 0
+          && sample.drawCalls > 0;
+        if (!valid) {
+          samples.length = 0;
+          requestAnimationFrame(sampleCompletedFrame);
+          return;
+        }
+        samples.push(sample);
+        if (samples.length < sampleFrames) {
+          requestAnimationFrame(sampleCompletedFrame);
+          return;
+        }
+        const latest = samples.at(-1);
+        globalThis.__ferrumDeploymentFrame = {
+          gameState: latest.gameState,
+          entityCount: Math.min(...samples.map((entry) => entry.entityCount)),
+          spriteCount: Math.min(...samples.map((entry) => entry.spriteCount)),
+          renderCommandCount: Math.min(...samples.map((entry) => entry.renderCommandCount)),
+          drawCalls: Math.max(...samples.map((entry) => entry.drawCalls)),
+          sampledFrameCount: samples.length,
+          statsSource: "renderer.stats-after-frame",
+        };
+        globalThis.__ferrumDeploymentCanvas = readCanvasEvidence();
+      };
+      requestAnimationFrame(sampleCompletedFrame);
+    }, { sampleFrames: DEPLOYMENT_RUNTIME_SAMPLE_FRAMES });
+    await page.waitForFunction(
+      ({ sampleFrames }) => {
+        const frame = globalThis.__ferrumDeploymentFrame;
+        return frame?.sampledFrameCount === sampleFrames;
+      },
+      { sampleFrames: DEPLOYMENT_RUNTIME_SAMPLE_FRAMES },
+      { timeout: GENERATED_DEPLOYMENT_TIMEOUT_MS },
+    );
+    const evidence = await page.evaluate(() => ({
+      runtime: globalThis.__ferrumDeploymentFrame,
+      canvas: globalThis.__ferrumDeploymentCanvas,
+    }));
+    const { runtime, canvas } = evidence;
+    assert(runtime?.gameState === 1, `${templateName} deployment runtime must enter Playing state`);
+    assert(runtime.entityCount > 0, `${templateName} deployment runtime must expose entities`);
+    assert(runtime.spriteCount > 0, `${templateName} deployment runtime must expose sprites`);
+    assert(runtime.renderCommandCount > 0, `${templateName} deployment runtime must render commands`);
+    assert(
+      runtime.sampledFrameCount === DEPLOYMENT_RUNTIME_SAMPLE_FRAMES &&
+        runtime.statsSource === "renderer.stats-after-frame",
+      `${templateName} deployment runtime must sample completed renderer frames`,
+    );
+    assert(
+      runtime.drawCalls > 0 && runtime.drawCalls <= budgetProfile.maxDrawCalls,
+      `${templateName} deployment draw calls must stay within budget`,
+    );
+    assert(canvas?.width > 0 && canvas.height > 0, `${templateName} deployment canvas dimensions must be positive`);
+    assert(canvas.webgl2 === true, `${templateName} deployment must create a WebGL2 context`);
+    assert(canvas.nonblank === true, `${templateName} deployment canvas must render nonblank pixels`);
+    assert(canvas.readbackSource === "same-raf-after-render", `${templateName} deployment canvas must be sampled after the renderer in the same RAF`);
+    assert(wasmResponses.length > 0, `${templateName} deployment browser smoke must load Wasm`);
+    assert(
+      wasmResponses.every((response) => response.status === 200 && response.contentType.startsWith("application/wasm")),
+      `${templateName} deployment browser smoke must load Wasm with application/wasm MIME`,
+    );
+    if (browserErrors.length > 0) {
+      throw new Error(`${templateName} deployment browser errors:\n${browserErrors.join("\n")}`);
+    }
+    return {
+      status: "validated",
+      url: pageUrl,
+      basePath: GENERATED_DEPLOYMENT_BASE_PATH,
+      indexStatus: mainResponse.status(),
+      canvas,
+      runtime,
+      budgets: {
+        profileId: templateName,
+        sampleFrames: DEPLOYMENT_RUNTIME_SAMPLE_FRAMES,
+        maxDrawCalls: budgetProfile.maxDrawCalls,
+      },
+      wasmLoaded: true,
+      wasmMimeValid: true,
+      wasmResponseCount: wasmResponses.length,
+      browserErrors: 0,
+    };
+  } finally {
+    await browser?.close().catch(() => undefined);
+    await closeServer(server).catch(() => undefined);
+  }
 }
 
 async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
@@ -1080,6 +1299,9 @@ function createTemplateSummary(templateName) {
       report: false,
       smoke: false,
       build: false,
+      deployReport: false,
+      deployBrowserSmoke: false,
+      placementViewerSmoke: false,
     },
     agents: undefined,
     reports: {},
@@ -2053,11 +2275,12 @@ function fileDependency(filePath) {
   return `file:${filePath}`;
 }
 
-async function serveStaticDirectory(root) {
+async function serveStaticDirectory(root, { mountPath = "/" } = {}) {
   const absoluteRoot = path.resolve(root);
+  const normalizedMountPath = normalizeStaticMountPath(mountPath);
   const server = createServer(async (request, response) => {
     try {
-      const filePath = await resolveStaticRequestPath(absoluteRoot, request.url ?? "/");
+      const filePath = await resolveStaticRequestPath(absoluteRoot, request.url ?? "/", normalizedMountPath);
       response.writeHead(200, {
         "Cache-Control": "no-cache",
         "Content-Type": STATIC_MIME_TYPES.get(path.extname(filePath)) ?? "application/octet-stream",
@@ -2082,9 +2305,15 @@ async function serveStaticDirectory(root) {
   return server;
 }
 
-async function resolveStaticRequestPath(root, rawUrl) {
+async function resolveStaticRequestPath(root, rawUrl, mountPath) {
   const pathname = new URL(rawUrl, `http://${BROWSER_SMOKE_HOST}`).pathname;
-  const relativePath = decodeURIComponent(pathname === "/" ? "/index.html" : pathname).replace(/^\/+/, "");
+  if (mountPath !== "/" && !pathname.startsWith(mountPath)) {
+    const error = new Error("static request is outside the configured mount path");
+    error.status = 404;
+    throw error;
+  }
+  const mountedPath = mountPath === "/" ? pathname : pathname.slice(mountPath.length);
+  const relativePath = decodeURIComponent(mountedPath.length === 0 ? "index.html" : mountedPath).replace(/^\/+/, "");
   const filePath = path.resolve(root, relativePath);
   if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
     const error = new Error("static request escaped the served directory");
@@ -2112,6 +2341,11 @@ async function resolveStaticRequestPath(root, rawUrl) {
   return filePath;
 }
 
+function normalizeStaticMountPath(mountPath) {
+  const withLeadingSlash = mountPath.startsWith("/") ? mountPath : `/${mountPath}`;
+  return withLeadingSlash.endsWith("/") ? withLeadingSlash : `${withLeadingSlash}/`;
+}
+
 async function launchConsumerSmokeBrowser() {
   const launchOptions = {
     headless: true,
@@ -2132,7 +2366,7 @@ async function launchConsumerSmokeBrowser() {
       return await chromium.launch(launchOptions);
     } catch (bundledError) {
       throw new Error(
-        "Unable to launch a browser for generated placement viewer smoke. " +
+        "Unable to launch a browser for generated consumer smoke. " +
           "Set FERRUM_BROWSER_CHANNEL or FERRUM_BROWSER_EXECUTABLE. " +
           `channel error: ${errorMessage(channelError)} bundled error: ${errorMessage(bundledError)}`,
       );
@@ -2317,6 +2551,11 @@ function assertConsumerProjectReport(report, templateName) {
   assert(report.project.checks.internalImports.length === 0, `${templateName} project report must reject internal ferrum-web imports`);
   assert(Array.isArray(report.project?.checks?.rootAggregateImports), `${templateName} project report rootAggregateImports must be an array`);
   assert(report.project.checks.rootAggregateImports.length === 0, `${templateName} project report must reject ferrum-web root aggregate imports`);
+  assert(report.project?.deployment?.target === "static-web", `${templateName} project report deployment target is invalid`);
+  assert(report.project?.deployment?.outputDirectory === "dist", `${templateName} project report deployment output is invalid`);
+  assert(report.project?.deployment?.basePath === "relative", `${templateName} project report deployment base path is invalid`);
+  assert(report.project?.deployment?.fileProtocolSupported === false, `${templateName} project report must reject file protocol deployment`);
+  assert(report.project?.deployment?.scripts?.readiness === "node scripts/ferrum-deploy.mjs report", `${templateName} project report deploy readiness script is invalid`);
   assert(Array.isArray(report.recommendedCommands), `${templateName} project report must include recommended commands`);
   for (const command of [
     "npm run ferrum:report",
@@ -2325,6 +2564,9 @@ function assertConsumerProjectReport(report, templateName) {
     "npm run ferrum:replay-report",
     "npm run ferrum:runtime-replay-report",
     "npm run ferrum:smoke",
+    "npm run ferrum:deploy-report",
+    "npm run build",
+    "npm run preview",
   ]) {
     assert(report.recommendedCommands.includes(command), `${templateName} project report recommendedCommands must include ${command}`);
   }
@@ -2342,6 +2584,33 @@ function assertConsumerProjectReport(report, templateName) {
     assert(report.project.files.sceneAuthoring === "public/scene-authoring.json", `${templateName} project report must identify scene authoring fixture`);
     assert(report.project.checks.sceneAuthoring?.ok === true, `${templateName} project report must validate scene authoring fixture`);
   }
+}
+
+function assertConsumerDeployReadinessReport(report, templateName) {
+  assert(report.format === "ferrum2d.consumer.deploy-readiness.report", `${templateName} deploy report format is invalid`);
+  assert(report.version === 1, `${templateName} deploy report version is invalid`);
+  assert(report.ok === true, `${templateName} deploy report must be ready`);
+  assert(report.deployment?.status === "ready", `${templateName} deploy status must be ready`);
+  assert(report.deployment?.target === "static-web", `${templateName} deploy target is invalid`);
+  assert(report.deployment?.outputDirectory === "dist", `${templateName} deploy output directory is invalid`);
+  assert(report.deployment?.basePath === "relative", `${templateName} deploy base path is invalid`);
+  assert(report.deployment?.fileProtocolSupported === false, `${templateName} deploy report must reject file protocol`);
+  assert(report.deployment?.recommendedProtocol === "http(s)", `${templateName} deploy protocol is invalid`);
+  for (const check of ["build", "indexHtml", "relativeAssetReferences", "referencedFiles", "httpServe", "previewHttp", "wasmMime"]) {
+    assert(report.deployment?.checks?.[check] === true, `${templateName} deploy check ${check} must pass`);
+  }
+  assert(Array.isArray(report.deployment?.checks?.htmlFiles), `${templateName} deploy report htmlFiles must be an array`);
+  assert(
+    report.deployment?.checks?.smokeBasePath === "/__ferrum2d_deploy_smoke__/",
+    `${templateName} deploy report must validate a non-root smoke base path`,
+  );
+  assert(report.deployment.checks.htmlFiles.includes("index.html"), `${templateName} deploy report must include index.html`);
+  assert(Array.isArray(report.deployment?.checks?.wasmFiles), `${templateName} deploy report wasmFiles must be an array`);
+  assert(report.deployment.checks.wasmFiles.length > 0, `${templateName} deploy report must include Wasm files`);
+  assert(report.deployment?.checks?.servedFileCount > 0, `${templateName} deploy report servedFileCount must be positive`);
+  assert(Array.isArray(report.deployment?.reports), `${templateName} deploy reports must be an array`);
+  assert(report.deployment.reports.length === 0, `${templateName} deploy report must not include diagnostics when ready`);
+  assert(Array.isArray(report.errors) && report.errors.length === 0, `${templateName} deploy report errors must be empty`);
 }
 
 function assertConsumerReplayReport(report, templateName) {
@@ -2926,8 +3195,34 @@ function summarizeConsumerProjectReport(report) {
     },
     internalImports: report.project?.checks?.internalImports?.length ?? 0,
     rootAggregateImports: report.project?.checks?.rootAggregateImports?.length ?? 0,
+    deployment: report.project?.deployment,
     recommendedCommands: report.recommendedCommands,
     reports: report.reports?.length ?? 0,
+    errors: report.errors?.length ?? 0,
+  };
+}
+
+function summarizeConsumerDeployReadinessReport(report) {
+  return {
+    status: report.deployment?.status,
+    target: report.deployment?.target,
+    outputDirectory: report.deployment?.outputDirectory,
+    basePath: report.deployment?.basePath,
+    fileProtocolSupported: report.deployment?.fileProtocolSupported,
+    recommendedProtocol: report.deployment?.recommendedProtocol,
+    checks: {
+      build: report.deployment?.checks?.build,
+      indexHtml: report.deployment?.checks?.indexHtml,
+      relativeAssetReferences: report.deployment?.checks?.relativeAssetReferences,
+      referencedFiles: report.deployment?.checks?.referencedFiles,
+      httpServe: report.deployment?.checks?.httpServe,
+      previewHttp: report.deployment?.checks?.previewHttp,
+      wasmMime: report.deployment?.checks?.wasmMime,
+      smokeBasePath: report.deployment?.checks?.smokeBasePath,
+      servedFileCount: report.deployment?.checks?.servedFileCount,
+      wasmFileCount: report.deployment?.checks?.wasmFiles?.length ?? 0,
+    },
+    reports: report.deployment?.reports?.length ?? 0,
     errors: report.errors?.length ?? 0,
   };
 }

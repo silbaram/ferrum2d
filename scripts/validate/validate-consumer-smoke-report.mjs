@@ -2,6 +2,10 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  DEPLOYMENT_RUNTIME_SAMPLE_FRAMES,
+  runtimeBudgetProfile,
+} from "../../tests/smoke/runtime-budget-profiles.mjs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DEFAULT_ARTIFACT_DIR = "artifacts/consumer-smoke";
@@ -19,6 +23,9 @@ const REQUIRED_TEMPLATE_CHECKS = Object.freeze([
   "report",
   "smoke",
   "build",
+  "deployReport",
+  "deployBrowserSmoke",
+  "placementViewerSmoke",
 ]);
 const FORBIDDEN_SNAPSHOT_DIRS = Object.freeze(["node_modules", "dist", ".pnpm"]);
 
@@ -286,14 +293,128 @@ function validateTemplateReports(template, label, reportStatus, reportErrors) {
   validateGameplayReplaySummary(template.reports.gameplayReplay, `${label}.reports.gameplayReplay`, reportErrors);
   validateRuntimeReplaySummary(template.reports.runtimeReplay, `${label}.reports.runtimeReplay`, reportErrors);
   validateRuntimeRecipeSummary(template.reports.runtimeReplayRecipe, `${label}.reports.runtimeReplayRecipe`, reportErrors);
+  validateDeploymentSummary(template.reports.deployment, `${label}.reports.deployment`, reportErrors);
+  validateDeploymentBrowserSummary(
+    template.reports.deploymentBrowser,
+    `${label}.reports.deploymentBrowser`,
+    reportErrors,
+    template.template,
+  );
+  validatePlacementViewerSummary(
+    template.reports.placementViewer,
+    `${label}.reports.placementViewer`,
+    reportErrors,
+  );
   if (!isRecord(template.buildOutput)) {
     reportErrors.push(`${label}.buildOutput must be an object`);
   } else {
     if (typeof template.buildOutput.distIndexHtml !== "string" || !template.buildOutput.distIndexHtml.endsWith("/dist/index.html")) {
       reportErrors.push(`${label}.buildOutput.distIndexHtml must point to dist/index.html`);
     }
+    if (
+      typeof template.buildOutput.distPlacementViewerHtml !== "string" ||
+      !template.buildOutput.distPlacementViewerHtml.endsWith("/dist/placement-viewer.html")
+    ) {
+      reportErrors.push(`${label}.buildOutput.distPlacementViewerHtml must point to dist/placement-viewer.html`);
+    }
     if (template.buildOutput.preservedInArtifactSnapshot !== false) {
       reportErrors.push(`${label}.buildOutput.preservedInArtifactSnapshot must be false`);
+    }
+    if (template.buildOutput.deployReady !== true) {
+      reportErrors.push(`${label}.buildOutput.deployReady must be true`);
+    }
+    if (template.buildOutput.browserSmoke !== true) {
+      reportErrors.push(`${label}.buildOutput.browserSmoke must be true`);
+    }
+  }
+}
+
+function validatePlacementViewerSummary(value, label, reportErrors) {
+  if (!isRecord(value)) {
+    reportErrors.push(`${label} must be an object`);
+    return;
+  }
+  if (value.status !== "validated") reportErrors.push(`${label}.status must be validated`);
+  if (!Array.isArray(value.projectAssets) || !value.projectAssets.includes("atlas")) {
+    reportErrors.push(`${label}.projectAssets must include atlas`);
+  }
+  for (const field of ["instanceCount", "objectDefinitionCount", "draftOperationCount"]) {
+    if (!Number.isInteger(value[field]) || value[field] <= 0) {
+      reportErrors.push(`${label}.${field} must be a positive integer`);
+    }
+  }
+  for (const field of [
+    "selectedInstanceId",
+    "addedInstanceId",
+    "objectDefinitionId",
+    "objectDefinitionInstanceId",
+  ]) {
+    if (typeof value[field] !== "string" || value[field].length === 0) {
+      reportErrors.push(`${label}.${field} must be a non-empty string`);
+    }
+  }
+  if (value.addedPrefab !== "object") reportErrors.push(`${label}.addedPrefab must be object`);
+  if (value.addedAsset !== "atlas") reportErrors.push(`${label}.addedAsset must be atlas`);
+  if (value.objectDefinitionVisualKind !== "sprite") {
+    reportErrors.push(`${label}.objectDefinitionVisualKind must be sprite`);
+  }
+  if (value.objectDefinitionInstancePrefab !== value.objectDefinitionId) {
+    reportErrors.push(`${label}.objectDefinitionInstancePrefab must match objectDefinitionId`);
+  }
+
+  const binding = value.behaviorBinding;
+  if (!isRecord(binding)) {
+    reportErrors.push(`${label}.behaviorBinding must be an object`);
+  } else {
+    for (const field of ["targetInstanceId", "recipeId"]) {
+      if (typeof binding[field] !== "string" || binding[field].length === 0) {
+        reportErrors.push(`${label}.behaviorBinding.${field} must be a non-empty string`);
+      }
+    }
+    if (!["attach-detach", "detach-reattach"].includes(binding.mode)) {
+      reportErrors.push(`${label}.behaviorBinding.mode must be attach-detach or detach-reattach`);
+    }
+    if (binding.attachOperationKind !== "updateBehaviorBinding") {
+      reportErrors.push(`${label}.behaviorBinding.attachOperationKind must be updateBehaviorBinding`);
+    }
+    if (binding.cleared !== true) reportErrors.push(`${label}.behaviorBinding.cleared must be true`);
+  }
+
+  const handoff = value.handoffUi;
+  if (!isRecord(handoff)) {
+    reportErrors.push(`${label}.handoffUi must be an object`);
+  } else {
+    if (handoff.draftCount !== String(value.draftOperationCount)) {
+      reportErrors.push(`${label}.handoffUi.draftCount must match draftOperationCount`);
+    }
+    if (handoff.blockedReferenceCount !== "0") {
+      reportErrors.push(`${label}.handoffUi.blockedReferenceCount must be 0`);
+    }
+    if (handoff.assetDiagnosticCount !== "0") {
+      reportErrors.push(`${label}.handoffUi.assetDiagnosticCount must be 0`);
+    }
+    for (const field of ["copyPatchDisabled", "copyHandoffDisabled", "saveDraftDisabled"]) {
+      if (handoff[field] !== false) reportErrors.push(`${label}.handoffUi.${field} must be false`);
+    }
+    if (typeof handoff.status !== "string" || handoff.status.length === 0) {
+      reportErrors.push(`${label}.handoffUi.status must be a non-empty string`);
+    }
+  }
+
+  const inspector = value.inspectorUi;
+  if (!isRecord(inspector)) {
+    reportErrors.push(`${label}.inspectorUi must be an object`);
+  } else {
+    if (!sameMembers(inspector.groups, ["identity", "visual", "collider", "behavior"])) {
+      reportErrors.push(`${label}.inspectorUi.groups must include identity, visual, collider, and behavior`);
+    }
+    for (const field of ["selectedId", "selectedPrefab", "visual", "collider", "behaviorProfiles"]) {
+      if (typeof inspector[field] !== "string" || inspector[field].length === 0) {
+        reportErrors.push(`${label}.inspectorUi.${field} must be a non-empty string`);
+      }
+    }
+    if (inspector.selectedId !== value.selectedInstanceId) {
+      reportErrors.push(`${label}.inspectorUi.selectedId must match selectedInstanceId`);
     }
   }
 }
@@ -328,6 +449,14 @@ function validateProjectSummary(value, label, reportErrors) {
   if (value.rootAggregateImports !== 0) {
     reportErrors.push(`${label}.rootAggregateImports must be 0`);
   }
+  if (!isRecord(value.deployment)) {
+    reportErrors.push(`${label}.deployment must be an object`);
+  } else {
+    if (value.deployment.target !== "static-web") reportErrors.push(`${label}.deployment.target must be static-web`);
+    if (value.deployment.outputDirectory !== "dist") reportErrors.push(`${label}.deployment.outputDirectory must be dist`);
+    if (value.deployment.basePath !== "relative") reportErrors.push(`${label}.deployment.basePath must be relative`);
+    if (value.deployment.fileProtocolSupported !== false) reportErrors.push(`${label}.deployment.fileProtocolSupported must be false`);
+  }
   if (!Array.isArray(value.recommendedCommands)) {
     reportErrors.push(`${label}.recommendedCommands must be an array`);
   } else {
@@ -338,6 +467,9 @@ function validateProjectSummary(value, label, reportErrors) {
       "npm run ferrum:replay-report",
       "npm run ferrum:runtime-replay-report",
       "npm run ferrum:smoke",
+      "npm run ferrum:deploy-report",
+      "npm run build",
+      "npm run preview",
     ]) {
       if (!value.recommendedCommands.includes(command)) {
         reportErrors.push(`${label}.recommendedCommands must include ${command}`);
@@ -349,6 +481,131 @@ function validateProjectSummary(value, label, reportErrors) {
   }
   if (value.errors !== 0) {
     reportErrors.push(`${label}.errors must be 0`);
+  }
+}
+
+function validateDeploymentSummary(value, label, reportErrors) {
+  if (!isRecord(value)) {
+    reportErrors.push(`${label} must be an object`);
+    return;
+  }
+  if (value.status !== "ready") reportErrors.push(`${label}.status must be ready`);
+  if (value.target !== "static-web") reportErrors.push(`${label}.target must be static-web`);
+  if (value.outputDirectory !== "dist") reportErrors.push(`${label}.outputDirectory must be dist`);
+  if (value.basePath !== "relative") reportErrors.push(`${label}.basePath must be relative`);
+  if (value.fileProtocolSupported !== false) reportErrors.push(`${label}.fileProtocolSupported must be false`);
+  if (value.recommendedProtocol !== "http(s)") reportErrors.push(`${label}.recommendedProtocol must be http(s)`);
+  if (!isRecord(value.checks)) {
+    reportErrors.push(`${label}.checks must be an object`);
+  } else {
+    for (const check of ["build", "indexHtml", "relativeAssetReferences", "referencedFiles", "httpServe", "previewHttp", "wasmMime"]) {
+      if (value.checks[check] !== true) reportErrors.push(`${label}.checks.${check} must be true`);
+    }
+    if (value.checks.smokeBasePath !== "/__ferrum2d_deploy_smoke__/") {
+      reportErrors.push(`${label}.checks.smokeBasePath must be /__ferrum2d_deploy_smoke__/`);
+    }
+    if (!Number.isInteger(value.checks.servedFileCount) || value.checks.servedFileCount <= 0) {
+      reportErrors.push(`${label}.checks.servedFileCount must be a positive integer`);
+    }
+    if (!Number.isInteger(value.checks.wasmFileCount) || value.checks.wasmFileCount <= 0) {
+      reportErrors.push(`${label}.checks.wasmFileCount must be a positive integer`);
+    }
+  }
+  if (value.reports !== 0) reportErrors.push(`${label}.reports must be 0`);
+  if (value.errors !== 0) reportErrors.push(`${label}.errors must be 0`);
+}
+
+function validateDeploymentBrowserSummary(value, label, reportErrors, templateName) {
+  if (!isRecord(value)) {
+    reportErrors.push(`${label} must be an object`);
+    return;
+  }
+  if (value.status !== "validated") reportErrors.push(`${label}.status must be validated`);
+  if (value.basePath !== "/__ferrum2d_consumer_smoke__/") {
+    reportErrors.push(`${label}.basePath must be /__ferrum2d_consumer_smoke__/`);
+  }
+  if (value.indexStatus !== 200) reportErrors.push(`${label}.indexStatus must be 200`);
+  if (!isRecord(value.canvas)) {
+    reportErrors.push(`${label}.canvas must be an object`);
+  } else {
+    if (value.canvas.webgl2 !== true) reportErrors.push(`${label}.canvas.webgl2 must be true`);
+    if (value.canvas.nonblank !== true) reportErrors.push(`${label}.canvas.nonblank must be true`);
+    if (value.canvas.readbackSource !== "same-raf-after-render") {
+      reportErrors.push(`${label}.canvas.readbackSource must be same-raf-after-render`);
+    }
+    if (!Number.isInteger(value.canvas.varyingPixelSamples) || value.canvas.varyingPixelSamples <= 0) {
+      reportErrors.push(`${label}.canvas.varyingPixelSamples must be a positive integer`);
+    }
+  }
+  if (!isRecord(value.runtime)) {
+    reportErrors.push(`${label}.runtime must be an object`);
+  } else {
+    if (value.runtime.gameState !== 1) reportErrors.push(`${label}.runtime.gameState must be Playing (1)`);
+    for (const field of ["entityCount", "spriteCount", "renderCommandCount", "drawCalls"]) {
+      if (!Number.isInteger(value.runtime[field]) || value.runtime[field] <= 0) {
+        reportErrors.push(`${label}.runtime.${field} must be a positive integer`);
+      }
+    }
+    if (
+      !Number.isInteger(value.runtime.sampledFrameCount) ||
+      value.runtime.sampledFrameCount !== DEPLOYMENT_RUNTIME_SAMPLE_FRAMES
+    ) {
+      reportErrors.push(
+        `${label}.runtime.sampledFrameCount must be ${DEPLOYMENT_RUNTIME_SAMPLE_FRAMES}`,
+      );
+    }
+    if (value.runtime.statsSource !== "renderer.stats-after-frame") {
+      reportErrors.push(`${label}.runtime.statsSource must be renderer.stats-after-frame`);
+    }
+  }
+  if (!isRecord(value.budgets)) {
+    reportErrors.push(`${label}.budgets must be an object`);
+  } else {
+    if (value.budgets.profileId !== templateName) {
+      reportErrors.push(`${label}.budgets.profileId must match template ${templateName}`);
+    }
+    if (
+      !Number.isInteger(value.budgets.sampleFrames) ||
+      value.budgets.sampleFrames !== DEPLOYMENT_RUNTIME_SAMPLE_FRAMES
+    ) {
+      reportErrors.push(
+        `${label}.budgets.sampleFrames must be ${DEPLOYMENT_RUNTIME_SAMPLE_FRAMES}`,
+      );
+    } else if (
+      isRecord(value.runtime) &&
+      value.runtime.sampledFrameCount !== value.budgets.sampleFrames
+    ) {
+      reportErrors.push(`${label}.runtime.sampledFrameCount must equal budgets.sampleFrames`);
+    }
+    const expectedBudget = deploymentRuntimeBudget(templateName, label, reportErrors);
+    if (!Number.isInteger(value.budgets.maxDrawCalls) || value.budgets.maxDrawCalls <= 0) {
+      reportErrors.push(`${label}.budgets.maxDrawCalls must be a positive integer`);
+    } else {
+      if (expectedBudget !== undefined && value.budgets.maxDrawCalls !== expectedBudget.maxDrawCalls) {
+        reportErrors.push(
+          `${label}.budgets.maxDrawCalls must match runtime budget profile ${templateName} (${expectedBudget.maxDrawCalls})`,
+        );
+      }
+      if (isRecord(value.runtime) && value.runtime.drawCalls > value.budgets.maxDrawCalls) {
+        reportErrors.push(`${label}.runtime.drawCalls must not exceed budgets.maxDrawCalls`);
+      }
+    }
+  }
+  if (value.wasmLoaded !== true) reportErrors.push(`${label}.wasmLoaded must be true`);
+  if (value.wasmMimeValid !== true) reportErrors.push(`${label}.wasmMimeValid must be true`);
+  if (!Number.isInteger(value.wasmResponseCount) || value.wasmResponseCount <= 0) {
+    reportErrors.push(`${label}.wasmResponseCount must be a positive integer`);
+  }
+  if (value.browserErrors !== 0) reportErrors.push(`${label}.browserErrors must be 0`);
+}
+
+function deploymentRuntimeBudget(templateName, label, reportErrors) {
+  if (typeof templateName !== "string" || templateName.length === 0) return undefined;
+  try {
+    return runtimeBudgetProfile(templateName);
+  } catch {
+    reportErrors.push(`${label}.budgets.profileId must reference known runtime budget profile ${templateName}`);
+    return undefined;
   }
 }
 

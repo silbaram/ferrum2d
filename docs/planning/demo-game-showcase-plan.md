@@ -4,15 +4,25 @@
 
 구현 착수 전 범위와 검증 기준을 정리하는 문서이며, 실제 public API와 운영 계약은 `docs/engine` 및 `docs/development` 문서가 우선한다.
 
+## 현재 계획 상태
+
+- **완료**: [Showcase Hub](../engine/showcase-hub.md), Pages build의 demo gallery, `starter-runtime`, `topdown-shooter`, `placement-viewer`, `physics-sandbox`, `breakout`, `platformer` 6개 public route가 build artifact에 구성돼 있다.
+- **완료**: Starter Runtime, Top-down Shooter, Breakout, Platformer, Physics Sandbox README가 각 예제의 대표 기능과 검증 명령을 설명한다.
+- **활성 후보**: smoke 중심인 Content/UX, Renderer/WebGPU, Level Streaming을 별도 public lab으로 승격할지 결정한다.
+- **활성 후보**: create-game/package/consumer report를 Agent Workflow report route로 노출할지 결정한다.
+- **별도 승인**: 새 시각 asset과 Pages 배포 실행은 asset 정책과 외부 상태 변경 승인을 따른다.
+
+운영 중인 demo route와 명령의 기준은 [Showcase Hub](../engine/showcase-hub.md)와 [GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md)다.
+
 ## 결론
 
-현재 데모 구성은 엔진 기능을 일부 잘 보여주지만, 제품 showcase 관점에서는 아직 완성된 구조가 아니다.
+현재 데모 구성은 P0/P1 portfolio 기반을 갖췄다. 남은 과제는 기존 route를 다시 만드는 것이 아니라 smoke/report 중심 기능을 어떤 사용자-facing route로 승격할지 결정하는 것이다.
 
 - `examples/topdown-shooter`는 Game Spec, wave, sprite/tilemap, audio, camera, replay 흐름을 보여주는 대표 데모로 적합하다.
-- `examples/starter-runtime`, `examples/breakout`, `examples/platformer`, `examples/physics-sandbox`는 각자 기능군을 검증하지만, Pages와 README에서 "어떤 엔진 기능을 어떤 데모가 대표하는지"가 한눈에 보이지 않는다.
+- `examples/starter-runtime`, `examples/breakout`, `examples/platformer`, `examples/physics-sandbox`는 각자 대표 기능과 검증 명령을 README와 Showcase Hub에 연결했다.
 - WebGPU/material, level streaming, mobile input, localization/dialogue/accessibility, package/template/agent workflow는 smoke 또는 report로는 검증되지만 사용자-facing demo portfolio에 충분히 연결되어 있지 않다.
 
-따라서 다음 방향은 Top-down Shooter 하나를 계속 키우는 것이 아니라, **Showcase Hub + 기능군별 데모 라인업**을 만드는 것이다.
+따라서 다음 방향은 **Showcase Hub + 기능군별 데모 라인업**을 유지하면서, smoke/report 중심 기능의 public 승격 여부를 개별 판단하는 것이다.
 
 ## 원칙
 
@@ -25,16 +35,16 @@
 
 ## 데모 포트폴리오 목표
 
-Pages 기준 첫 진입은 개별 게임 하나가 아니라 demo gallery가 되어야 한다. 사용자는 "이 엔진이 무엇을 할 수 있나"를 기능군별로 확인하고, 각 데모로 들어가 실제 플레이나 report를 볼 수 있어야 한다.
+Pages build의 첫 진입은 개별 게임 하나가 아니라 demo gallery로 구성돼 있다. 사용자는 "이 엔진이 무엇을 할 수 있나"를 기능군별로 확인하고, 각 데모로 들어가 실제 플레이나 report를 볼 수 있어야 한다.
 
 | 우선순위 | 데모/route | 담당 기능 | 현재 상태 | 보강 방향 |
 | --- | --- | --- | --- | --- |
-| P0 | Showcase Hub | 기능별 데모 지도, smoke/report 링크, Pages 진입점 | 부족 | Pages/docs에서 기능군별 demo card와 검증 명령을 노출 |
-| P0 | Starter Runtime Demo | engine boot, Rust/Wasm bridge, GameLoop, canvas resize, input, WebGL2 기본 렌더 | 있음 | "가장 작은 통합 예제"로 문서화 |
-| P0 | Top-down Shooter | Game Spec, wave, enemy behavior, sprite atlas, tilemap collision, camera, audio, replay, authored behavior variant | 있음 | 대표 gameplay demo로 유지하되 모든 기능을 넣지는 않음 |
-| P1 | Physics Sandbox | Physics Spec, solver, collision query, debug line, joints/contacts, replay Worker 경계 | 있음 | physics 기능 대표 demo로 명확히 분리 |
-| P1 | Platformer | tilemap 기반 이동, kinematic controller, slope/one-way/terrain 계열 기능 | 있음 | platform movement/terrain demo 역할 명시 |
-| P1 | Breakout | 간단한 scene loop, collision, score/effect, minimal gameplay template 감각 | 있음 | 작은 게임 template demo로 정리 |
+| P0 | Showcase Hub | 기능별 데모 지도, smoke/report 링크, Pages 진입점 | 완료 | 새 public route가 생길 때 기능/명령/문서 mapping 동기화 |
+| P0 | Starter Runtime Demo | engine boot, Rust/Wasm bridge, GameLoop, canvas resize, input, WebGL2 기본 렌더 | 완료 | 가장 작은 통합 예제 역할 유지 |
+| P0 | Top-down Shooter | Game Spec, wave, enemy behavior, sprite atlas, tilemap collision, camera, audio, replay, authored behavior variant | 완료 | 대표 gameplay demo로 유지하되 모든 기능을 넣지는 않음 |
+| P1 | Physics Sandbox | Physics Spec, solver, collision query, debug line, joints/contacts, replay Worker 경계 | 완료 | physics 기능 대표 demo 역할 유지 |
+| P1 | Platformer | tilemap 기반 이동, kinematic controller, slope/one-way/terrain 계열 기능 | 완료 | platform movement/terrain demo 역할 유지 |
+| P1 | Breakout | 간단한 scene loop, collision, score/effect, minimal gameplay template 감각 | 완료 | 작은 게임 template demo 역할 유지 |
 | P1 | Content/UX Demo | HUD, localization, dialogue/quest, cutscene, accessibility/reduced motion | smoke 중심 | 별도 demo 또는 `minimal-game` lab route로 분리 후보 |
 | P2 | Renderer Lab | WebGL2 material, lighting, post-process, texture atlas, optional WebGPU fallback | smoke/lab 중심 | 사용자-facing lab route와 fallback 상태 표시 |
 | P2 | Level Streaming Demo | chunk load/unload, large world readiness, asset lifetime, runtime budget | smoke 중심 | browser demo 또는 report route로 노출 |
@@ -62,19 +72,18 @@ Pages 기준 첫 진입은 개별 게임 하나가 아니라 demo gallery가 되
 | create-game/package/consumer agent workflow | Agent Workflow Demo | `pnpm smoke:create-game-template-reports`, `pnpm smoke:topdown-template-replay-report`, `pnpm package:consumer-smoke` |
 | Pages demo readiness | Showcase Hub | `pnpm build:pages`, `pnpm validate:pages-artifact` |
 
-## 부족한 부분
+## 남은 부족한 부분
 
-현재 가장 부족한 것은 런타임 기능 자체보다 **제품식 노출 구조**다.
+기존 예제의 ownership과 Pages portfolio 기반은 정리됐다. 현재 남은 공백은 **smoke/report 기능의 선택적 제품 노출**이다.
 
-- 기능별 demo ownership이 명확하지 않다.
-- Pages에서 여러 데모가 하나의 portfolio로 보이지 않는다.
-- smoke/report로만 존재하는 기능이 사용자-facing demo 설명과 연결되어 있지 않다.
-- Top-down Shooter가 대표 데모라는 이유로 너무 많은 기능을 떠안기 쉬운 구조다.
-- Content/UX, Renderer/WebGPU, Level Streaming, Agent Workflow는 전용 demo 또는 report route가 필요하다.
+- Content/UX, Renderer/WebGPU, Level Streaming, Agent Workflow는 검증 surface는 있으나 별도 public demo/report route가 없다.
+- 어떤 smoke profile을 public route로 승격할지 판단하는 공통 기준이 아직 없다.
+- Top-down Shooter가 대표 데모라는 이유로 새 기능을 계속 흡수하지 않도록 현재 ownership 경계를 유지해야 한다.
+- 새 route를 만들 경우 thumbnail, asset license/size, Pages artifact 검증 범위를 함께 정해야 한다.
 
 ## 구현 Slice
 
-### Slice 0: 문서 기준 정리
+### Slice 0: 문서 기준 정리 (완료)
 
 산출물:
 
@@ -87,7 +96,7 @@ Pages 기준 첫 진입은 개별 게임 하나가 아니라 demo gallery가 되
 - `pnpm validate:docs-links`
 - `git diff --check`
 
-### Slice 1: P0 Showcase Hub 설계
+### Slice 1: P0 Showcase Hub 설계 (완료)
 
 산출물:
 
@@ -100,7 +109,7 @@ Pages 기준 첫 진입은 개별 게임 하나가 아니라 demo gallery가 되
 - `pnpm build:pages`
 - `pnpm validate:pages-artifact`
 
-### Slice 2: P0 기존 데모 역할 정리
+### Slice 2: P0 기존 데모 역할 정리 (완료)
 
 산출물:
 
@@ -188,11 +197,9 @@ Pages 기준 첫 진입은 개별 게임 하나가 아니라 demo gallery가 되
 
 ## 다음 작업 추천
 
-다음 구현은 게임 내용을 수정하는 것이 아니라 P0 Showcase Hub부터 진행한다.
+P0/P1 기반은 완료됐다. 다음 작업은 아래 후보 중 하나를 별도 task로 분리해 제품 노출 범위와 smoke 기준을 먼저 확정한다.
 
-2026-06-19 기준 P0 시작점으로 [Showcase Hub](../engine/showcase-hub.md)를 추가했다. 이 문서는 기존 demo, 기준 문서, agent workflow, 검증 명령을 한 곳에 묶는 제품 기능 지도이며, Pages home의 핵심 문서 카드와 docs navigation 상단에 노출한다. 이어서 Pages public demo route를 `starter-runtime`, `topdown-shooter`, `placement-viewer`, `physics-sandbox`, `breakout`, `platformer` 6개로 맞춰 P0/P1 대표 demo를 한 진입점에서 확인할 수 있게 했다.
-
-1. Pages/docs에 demo gallery 구조를 만든다.
-2. 기존 examples를 기능군별로 분류한다.
-3. 각 demo README에 "이 데모가 대표하는 엔진 기능"과 "검증 명령"을 정리한다.
-4. smoke/report 중심 기능은 별도 lab/report route로 노출할지 결정한다.
+1. `minimal-game`의 Content/UX smoke profile을 public demo로 승격할지 결정한다.
+2. Renderer/WebGPU와 Level Streaming을 별도 lab route로 노출할지 결정한다.
+3. create-game/package consumer report를 Agent Workflow report route로 연결할지 결정한다.
+4. public route를 추가하는 경우에만 thumbnail/asset 정책과 Pages artifact 검증 범위를 함께 확정한다.
