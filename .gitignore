@@ -1,5 +1,6 @@
 crates/ferrum-core/target/
 node_modules/
+.pnpm-store/
 packages/*/dist/
 packages/*/dist-test/
 apps/*/dist/
