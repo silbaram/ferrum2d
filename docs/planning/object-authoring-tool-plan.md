@@ -13,7 +13,7 @@
 
 - **v1 완료**: primitive/sprite/prefab 배치, transform/visual/collider 편집, ObjectDefinition 생성, patch/save/handoff, Behavior Binding Inspector, Data Scene runtime 연결, official/generated viewer smoke가 product-ready 기준을 충족한다.
 - **완료 기록의 기준**: 이 문서의 Track A/B와 2026-06-18~19 worktree 기록은 결정 근거다. 실제 사용법과 public contract는 `docs/engine/**`, `docs/development/**`, package README가 우선한다.
-- **활성 후보**: `@ferrum2d/authoring-viewer` 독립 browser app 확장, image dimension metadata, npm release checklist/beta pin을 각각 별도 task로 판단한다.
+- **활성 후보**: `@ferrum2d/authoring-viewer` 독립 browser app 확장과 npm release checklist/beta pin을 각각 별도 task로 판단한다. local image dimension metadata는 완료됐다.
 - **별도 승인**: Tauri package/GUI release, Behavior Recipe Body Editor, FSM/action graph, node hierarchy, tile/path/timeline editor는 v1 후속 작업으로 자동 착수하지 않는다.
 
 ## 조사 기준
@@ -458,7 +458,7 @@ handoff 파일은 저장 기능의 대체물이 아니라 agent가 현재 선택
 
 - `packages/ferrum-authoring-viewer`: reusable DOM/control helper, generated viewer shell helper, generated viewer panel primitive helper는 시작 완료. create-game generated viewer는 ObjectDefinition/Project Assets/Selected detail 패널, Transform/actions 패널, stage/session controller, publish/output module, asset loading module, startup error module 분리까지 완료했고, 후속으로 독립 browser app package 확장 검토
 - 실제 npm publish 전 package별 release checklist와 beta version pin 결정
-- Tauri wrapper: `apps/placement-viewer-desktop`에서 window open, 기본 샘플/환경변수/직접 scene 문서 경로/project root 직접 경로/native file dialog/project folder 기반 scene-authoring JSON load, asset folder picker/inspect, Save action local write, `.ferrum-placement-handoff.json` 자동 sync/수동 저장, Inspector project/assets/source/handoff/save 상태 표시, `ferrum-asset://...` preview URL, Add Sprite local thumbnail preview, desktop project open 시 initial runtime texture registration, Add Sprite local draft preview/handoff 동기화, asset folder 변경 후 runtime texture reload와 `pnpm smoke:placement-viewer-desktop-assets` 검증까지 완료. 다음은 packaging/GUI 수동 검증과 image dimension metadata 고도화 판단이다.
+- Tauri wrapper: `apps/placement-viewer-desktop`에서 window open, 기본 샘플/환경변수/직접 scene 문서 경로/project root 직접 경로/native file dialog/project folder 기반 scene-authoring JSON load, asset folder picker/inspect, Save action local write, `.ferrum-placement-handoff.json` 자동 sync/수동 저장, Inspector project/assets/source/handoff/save 상태 표시, `ferrum-asset://...` preview URL, Add Sprite local thumbnail preview, desktop project open 시 initial runtime texture registration, Add Sprite local draft preview/handoff 동기화, asset folder 변경 후 runtime texture reload, local image width/height 기반 Add Sprite visual/AABB 크기와 `pnpm smoke:placement-viewer-desktop-assets` 검증까지 완료. 다음은 packaging/GUI 수동 검증 판단이다.
 - Electron wrapper: 빠른 prototype 후보지만 보안/패키징 surface가 커서 기본값은 아님
 
 ## Track B: 오브젝트 모델 고도화
@@ -812,7 +812,8 @@ Track A와 Track B를 묶은 product-ready 기준은 다음이다.
 v1 완료 항목은 위 상태와 완료 기록으로 관리한다. 실제로 남은 후보는 다음과 같다.
 
 1. `packages/ferrum-authoring-viewer`를 workspace-private helper에서 독립 browser app package로 확장할지 제품 판단한다.
-2. local image width/height metadata를 asset provider와 Add Sprite 기본 크기에 연결한다.
-3. 실제 npm publish 전 package별 release checklist와 beta version pin을 결정한다.
-4. Tauri packaged app과 실제 GUI 검증을 release 범위에 넣을지는 별도 승인한다.
-5. Behavior Recipe Body Editor, FSM/action graph, node hierarchy 등 visual-editor급 기능은 별도 승인 전 보류한다.
+2. 실제 npm publish 전 package별 release checklist와 beta version pin을 결정한다.
+3. Tauri packaged app과 실제 GUI 검증을 release 범위에 넣을지는 별도 승인한다.
+4. Behavior Recipe Body Editor, FSM/action graph, node hierarchy 등 visual-editor급 기능은 별도 승인 전 보류한다.
+
+완료 기록: local image width/height metadata는 2026-07-15에 preview asset provider, Add Sprite visual/AABB 기본 크기, handoff evidence, desktop asset smoke까지 연결했다.

@@ -21,6 +21,20 @@ test("createScenePlacementAgentHandoff exposes selected object, draft patch, mig
     document,
     state,
     sourceDocument: "scene-authoring.json",
+    assetFolder: {
+      path: "/project/public/assets",
+      status: "ready",
+      imageCount: 1,
+      images: [{
+        id: "crate",
+        fileName: "crate.png",
+        path: "/project/public/assets/crate.png",
+        runtimeUrl: "ferrum-asset://localhost/project/crate",
+        width: 32,
+        height: 24,
+      }],
+      diagnostics: [],
+    },
     assetDiagnostics: [{
       severity: "error",
       code: "missingSpriteAsset",
@@ -37,6 +51,8 @@ test("createScenePlacementAgentHandoff exposes selected object, draft patch, mig
   equal(handoff.selected?.instanceId, "crate_renamed");
   equal(handoff.draftPatch?.operations[0]?.kind, "renameInstance");
   equal(handoff.migrationPreview?.references[0]?.suggestedValue, "crate_renamed");
+  equal(handoff.assetFolder?.images?.[0]?.width, 32);
+  equal(handoff.assetFolder?.images?.[0]?.height, 24);
   equal(handoff.assetDiagnostics[0]?.code, "missingSpriteAsset");
 });
 

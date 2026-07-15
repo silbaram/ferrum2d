@@ -1,6 +1,6 @@
 # Placement Viewer Runtime Texture Loading 설계
 
-이 문서는 `apps/placement-viewer-desktop`가 local project asset folder의 이미지를 실제 placement viewer runtime에 연결하는 방법을 정리한다. 현재 완료된 단계는 asset folder inspect, handoff `assetFolder` evidence, `ferrum-asset://...` preview URL, Add Sprite local thumbnail preview, initial runtime texture registration, draft Add Sprite preview/handoff 동기화, asset folder 변경 후 runtime texture reload다. 다음 후보는 packaging/GUI 검증과 image dimension metadata 고도화다.
+이 문서는 `apps/placement-viewer-desktop`가 local project asset folder의 이미지를 실제 placement viewer runtime에 연결하는 방법을 정리한다. 현재 완료된 단계는 asset folder inspect, handoff `assetFolder` evidence, `ferrum-asset://...` preview URL, Add Sprite local thumbnail preview, initial runtime texture registration, draft Add Sprite preview/handoff 동기화, asset folder 변경 후 runtime texture reload, local image dimension metadata다. 다음 후보는 packaging/GUI 검증이다.
 
 ## 목표
 
@@ -150,10 +150,10 @@ await runtime.engine.loadAssets({ textures: desktopAssetTextures });
 
 - `pnpm smoke:placement-viewer-desktop-assets`가 initial local texture registration 이후 다른 fake asset folder를 열고, 새 local texture id/runtime manifest/handoff `runtimeUrl`/Add Sprite draft patch가 같은 asset id로 동기화되는지 확인한다.
 
-### 후속 후보. Packaging/GUI 검증과 metadata 고도화
+### 후속 후보. Packaging/GUI 검증과 metadata 완료 기록
 
 - **승인 필요**: 실제 Tauri GUI에서 native asset folder picker, custom protocol fetch, packaged `.app` 실행, handoff 자동 sync 상태를 확인하고 release gate 편입 여부를 결정한다.
-- **활성 후보**: local image의 실제 width/height metadata를 runtime/preview provider에 연결해 Add Sprite 기본 크기가 고정값에 덜 의존하도록 개선한다.
+- **완료 (2026-07-15)**: official viewer가 local image `runtimeUrl`을 저빈도 `createImageBitmap(...)` 경로로 decode해 실제 width/height를 preview asset provider와 handoff evidence에 연결한다. Add Sprite visual과 AABB collider는 이 크기를 사용하고 metadata가 없으면 기존 default size로 fallback한다. `pnpm smoke:placement-viewer-desktop-assets`는 initial/reload PNG의 실제 크기와 draft patch를 검증한다.
 
 ## 보안과 경계
 

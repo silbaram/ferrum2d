@@ -34,6 +34,8 @@ export interface ScenePlacementAgentHandoffAssetFile {
   readonly fileName: string;
   readonly path: string;
   readonly runtimeUrl?: string;
+  readonly width?: number;
+  readonly height?: number;
 }
 
 export interface ScenePlacementAgentHandoffAssetFolderDiagnostic {

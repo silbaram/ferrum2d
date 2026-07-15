@@ -4,14 +4,14 @@
 
 ## 현재 문서
 
-아래 상태는 2026-07-14 코드, 검증 스크립트, 확정 문서를 기준으로 한 planning 요약이다. `활성 후보`는 착수된 task가 아니라 다음 범위를 고를 때 사용할 후보이며, 실제 개발을 시작할 때 별도 task 또는 이슈로 검증 기준을 확정한다.
+아래 상태는 2026-07-15 코드, 검증 스크립트, 확정 문서를 기준으로 한 planning 요약이다. `활성 후보`는 착수된 task가 아니라 다음 범위를 고를 때 사용할 후보이며, 실제 개발을 시작할 때 별도 task 또는 이슈로 검증 기준을 확정한다.
 
 | 문서 | 현재 상태 | 활성 후보 |
 | --- | --- | --- |
 | [데모 게임 포트폴리오 보강 계획](demo-game-showcase-plan.md) | Showcase Hub, 6개 public demo route, 기존 예제 역할 문서화 완료 | Content/UX, Renderer/Streaming lab, Agent Workflow report의 사용자-facing 노출 결정 |
 | [오브젝트 배치 UI · 데이터 씬 authoring 보강 계획](object-placement-authoring-plan.md) | Slice 1~6과 공식/generated placement viewer 기반 완료 | fragment hierarchy v2, scene-specific compatibility API, desktop release 범위 결정 |
-| [오브젝트 Authoring 모델 · 공식 배치 툴 고도화 계획](object-authoring-tool-plan.md) | v1 product-ready 기준과 Behavior Binding Inspector 완료 | 독립 browser package, image dimension metadata, Tauri packaging/GUI release 판단 |
-| [Placement Viewer runtime texture loading 설계](placement-runtime-texture-loading-plan.md) | Slice 1~4와 desktop asset runtime reload smoke 완료 | 실제 GUI/package 검증과 image dimension metadata |
+| [오브젝트 Authoring 모델 · 공식 배치 툴 고도화 계획](object-authoring-tool-plan.md) | v1 product-ready 기준, Behavior Binding Inspector, local image dimension metadata 완료 | 독립 browser package, Tauri packaging/GUI release 판단 |
+| [Placement Viewer runtime texture loading 설계](placement-runtime-texture-loading-plan.md) | Slice 1~4, desktop asset runtime reload, local image dimension metadata 완료 | 실제 GUI/package 검증 |
 | [배포 전략 초기 계획](deployment-roadmap.md) | 정적 Pages와 create-game build/preview/deploy-readiness 완료, Tauri 경로 부분 완료 | 공식 hosting 확대 필요성 및 desktop packaging 승인 판단 |
 | [물리 엔진 개선 개발계획](physics_review.md) | Slice 0~5, joint despawn 정리, singular matrix 입력 방어 완료 | coupled solver fallback 중복 연산, 고차수 despawn profiling |
 

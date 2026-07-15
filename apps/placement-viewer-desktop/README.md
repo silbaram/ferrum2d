@@ -27,6 +27,7 @@ FERRUM_PLACEMENT_SCENE_DOCUMENT=/absolute/path/to/placement.scene-authoring.json
 - 기본 샘플 문서 또는 `FERRUM_PLACEMENT_SCENE_DOCUMENT`로 지정한 scene-authoring JSON을 Rust command로 읽는다.
 - `project` 직접 경로 입력 또는 Tauri native directory dialog `Choose` 버튼으로 consumer project folder를 선택하고 `public/scene-authoring.json`을 자동 탐색해 로드한다.
 - project 기본 `<project>/public/assets` 또는 명시 asset folder를 inspect해 이미지 파일 목록, `texture-atlas.input.json` 존재 여부, missing/not-directory diagnostic을 handoff evidence로 남긴다.
+- official viewer는 inspected image의 `ferrum-asset://...` URL을 저빈도 decode해 실제 pixel width/height를 asset provider와 handoff evidence에 연결하고, Add Sprite visual/AABB collider 기본 크기로 사용한다.
 - Tauri native file dialog `Browse` 버튼으로 로컬 scene-authoring JSON을 선택해 다시 로드한다.
 - viewer `Save` action이 Rust command로 병합된 scene-authoring JSON을 같은 로컬 파일에 저장한다.
 - 명시 프로젝트 또는 명시 scene-authoring 문서 경로를 연 상태에서 handoff payload를 debounce 후 `.ferrum-placement-handoff.json`에 자동 sync하고, Handoff 섹션의 `Save Handoff` action이 같은 payload를 수동 저장한다.

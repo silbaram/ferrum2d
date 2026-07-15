@@ -55,13 +55,19 @@ const PLACEMENT_VIEWER_MASS_AUTHORING_MAX_SELECTION_MS = 500;
 const PLACEMENT_VIEWER_MASS_AUTHORING_MAX_PATCH_MS = 500;
 const PLACEMENT_VIEWER_DESKTOP_ASSET_ID = "local_ship";
 const PLACEMENT_VIEWER_DESKTOP_ASSET_INSTANCE_ID = "local_ship_instance";
-const PLACEMENT_VIEWER_DESKTOP_ASSET_DRAFT_SIZE = 40;
-const PLACEMENT_VIEWER_DESKTOP_ASSET_DATA_URL =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4b6DwHwAF0AJP0BPKNQAAAABJRU5ErkJggg==";
+const PLACEMENT_VIEWER_DESKTOP_ASSET_WIDTH = 32;
+const PLACEMENT_VIEWER_DESKTOP_ASSET_HEIGHT = 32;
+const PLACEMENT_VIEWER_DESKTOP_ASSET_DATA_URL = `data:image/png;base64,${(
+  await readFile(new URL("../../examples/topdown-shooter/public/assets/player.png", import.meta.url))
+).toString("base64")}`;
 const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID = "local_asteroid";
 const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_FOLDER =
   "/tmp/ferrum-placement-viewer-desktop-assets-smoke/alternate-assets";
-const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL = PLACEMENT_VIEWER_DESKTOP_ASSET_DATA_URL;
+const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_WIDTH = 16;
+const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_HEIGHT = 16;
+const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL = `data:image/png;base64,${(
+  await readFile(new URL("../../examples/topdown-shooter/public/assets/bullet.png", import.meta.url))
+).toString("base64")}`;
 const PLACEMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
 const MAX_PLACEMENT_SAVE_BYTES = 512 * 1024;
 const PHYSICS_DEMO_SUITE = [
@@ -2324,7 +2330,7 @@ async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
   await waitForPageFunction(
     page,
     "placement viewer desktop asset smoke did not register the local texture in runtime",
-    ({ assetId, dataUrl, instanceId }) => {
+    ({ assetId, dataUrl, height, instanceId, width }) => {
       const state = globalThis.ferrumPlacementViewerState;
       const frame = globalThis.ferrumPlacementViewerRuntimeFrame;
       const runtimeAssets = globalThis.ferrumPlacementViewerRuntimeAssets;
@@ -2347,12 +2353,16 @@ async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
         && handoff?.assetFolder?.status === "ready"
         && handoff.assetFolder.images?.[0]?.id === assetId
         && handoff.assetFolder.images[0].runtimeUrl === dataUrl
+        && handoff.assetFolder.images[0].width === width
+        && handoff.assetFolder.images[0].height === height
       );
     },
     timeoutMs,
     {
       assetId: PLACEMENT_VIEWER_DESKTOP_ASSET_ID,
       dataUrl: PLACEMENT_VIEWER_DESKTOP_ASSET_DATA_URL,
+      width: PLACEMENT_VIEWER_DESKTOP_ASSET_WIDTH,
+      height: PLACEMENT_VIEWER_DESKTOP_ASSET_HEIGHT,
       instanceId: PLACEMENT_VIEWER_DESKTOP_ASSET_INSTANCE_ID,
     },
   );
@@ -2367,7 +2377,7 @@ async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
   await waitForPageFunction(
     page,
     "placement viewer desktop asset smoke did not reload runtime textures after asset folder switch",
-    ({ assetId, dataUrl, oldAssetId }) => {
+    ({ assetId, dataUrl, height, oldAssetId, width }) => {
       const runtimeAssets = globalThis.ferrumPlacementViewerRuntimeAssets;
       const desktop = globalThis.ferrumPlacementViewerDesktop;
       const handoff = globalThis.ferrumPlacementViewerAgentHandoff;
@@ -2381,6 +2391,8 @@ async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
         && handoff?.assetFolder?.status === "ready"
         && handoff.assetFolder.images?.[0]?.id === assetId
         && handoff.assetFolder.images[0].runtimeUrl === dataUrl
+        && handoff.assetFolder.images[0].width === width
+        && handoff.assetFolder.images[0].height === height
         && option
       );
     },
@@ -2388,6 +2400,8 @@ async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
     {
       assetId: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID,
       dataUrl: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL,
+      width: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_WIDTH,
+      height: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_HEIGHT,
       oldAssetId: PLACEMENT_VIEWER_DESKTOP_ASSET_ID,
     },
   );
@@ -2412,17 +2426,17 @@ async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
   await waitForPageFunction(
     page,
     "placement viewer desktop asset pending sprite preview did not use the local texture",
-    ({ assetId, dataUrl, draftSize }) => {
+    ({ assetId, dataUrl, draftHeight, draftWidth }) => {
       const interaction = globalThis.ferrumPlacementViewerInteraction;
       const marker = document.querySelector(`.placement-pending-add-marker[data-placement-asset-id='${assetId}']`);
       return Boolean(
         interaction?.pendingAdd === "add-sprite"
         && interaction.pendingAddPreview?.assetId === assetId
         && interaction.pendingAddPreview.thumbnailUrl === dataUrl
-        && interaction.pendingAddPreview.width === draftSize
-        && interaction.pendingAddPreview.height === draftSize
-        && marker?.getAttribute("data-placement-preview-width") === String(draftSize)
-        && marker.getAttribute("data-placement-preview-height") === String(draftSize)
+        && interaction.pendingAddPreview.width === draftWidth
+        && interaction.pendingAddPreview.height === draftHeight
+        && marker?.getAttribute("data-placement-preview-width") === String(draftWidth)
+        && marker.getAttribute("data-placement-preview-height") === String(draftHeight)
         && marker.style.backgroundImage.includes(dataUrl)
       );
     },
@@ -2430,14 +2444,15 @@ async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
     {
       assetId: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID,
       dataUrl: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL,
-      draftSize: PLACEMENT_VIEWER_DESKTOP_ASSET_DRAFT_SIZE,
+      draftWidth: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_WIDTH,
+      draftHeight: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_HEIGHT,
     },
   );
   await page.mouse.click(addPoint.x, addPoint.y);
   await waitForPageFunction(
     page,
     "placement viewer desktop asset draft add did not keep the local sprite asset",
-    ({ assetId, dataUrl, draftSize }) => {
+    ({ assetId, dataUrl, draftHeight, draftWidth }) => {
       const state = globalThis.ferrumPlacementViewerState;
       const handoff = globalThis.ferrumPlacementViewerAgentHandoff;
       const runtimeAssets = globalThis.ferrumPlacementViewerRuntimeAssets;
@@ -2459,21 +2474,26 @@ async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
         && state.selectedInstanceId === addedId
         && added?.visual?.kind === "sprite"
         && added.visual.texture?.name === assetId
-        && added.visual.bounds.width === draftSize
-        && added.visual.bounds.height === draftSize
-        && operation.instance.props.components.visual.width === draftSize
-        && operation.instance.props.components.visual.height === draftSize
+        && added.visual.bounds.width === draftWidth
+        && added.visual.bounds.height === draftHeight
+        && operation.instance.props.components.visual.width === draftWidth
+        && operation.instance.props.components.visual.height === draftHeight
+        && operation.instance.props.components.collider.halfWidth === draftWidth * 0.5
+        && operation.instance.props.components.collider.halfHeight === draftHeight * 0.5
         && runtimeAssets?.textureIds?.[assetId] > 0
         && marker?.style.backgroundImage.includes(dataUrl)
         && handoffOperation?.instance?.props?.components?.visual?.asset === assetId
         && handoff?.assetFolder?.images?.[0]?.runtimeUrl === dataUrl
+        && handoff.assetFolder.images[0].width === draftWidth
+        && handoff.assetFolder.images[0].height === draftHeight
       );
     },
     timeoutMs,
     {
       assetId: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID,
       dataUrl: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL,
-      draftSize: PLACEMENT_VIEWER_DESKTOP_ASSET_DRAFT_SIZE,
+      draftWidth: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_WIDTH,
+      draftHeight: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_HEIGHT,
     },
   );
 

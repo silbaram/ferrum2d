@@ -58,6 +58,7 @@ import {
   type ScenePlacementSaveAdapter,
   type ScenePlacementAssetProvider,
   type ScenePlacementPoint,
+  type ScenePlacementProjectTextureMetadata,
   type ScenePlacementSpriteFrameAsset,
   type ScenePlacementTransform,
   type ScenePlacementViewer,
@@ -82,6 +83,7 @@ const DESKTOP_SAVE_SCENE_DOCUMENT_COMMAND = "save_placement_scene_document";
 const DESKTOP_PROJECT_QUERY_PARAMS = ["projectPath"] as const;
 const DESKTOP_SCENE_DOCUMENT_QUERY_PARAMS = ["sceneDocumentPath", "documentPath"] as const;
 const DESKTOP_HANDOFF_SYNC_DEBOUNCE_MS = 500;
+const DESKTOP_ASSET_METADATA_BATCH_SIZE = 4;
 const DEFAULT_SNAP_GRID_SIZE = 16;
 const KEYBOARD_NUDGE_STEP = 1;
 const KEYBOARD_FAST_MULTIPLIER = 10;
@@ -4069,7 +4071,7 @@ function placementPreviewAssetSignature(): string {
     return "browser";
   }
   return (desktop.assetFolderImages ?? [])
-    .map((image) => `${image.id}:${image.runtimeUrl ?? ""}`)
+    .map((image) => `${image.id}:${image.runtimeUrl ?? ""}:${image.width ?? ""}x${image.height ?? ""}`)
     .join("|");
 }
 
@@ -4099,14 +4101,14 @@ function createPlacementPreviewAssetProvider(): ScenePlacementAssetProvider {
 
 function placementDesktopPreviewTextures(): {
   textures: Record<string, string>;
-  metadata: Record<string, { label: string; thumbnailUrl: string }>;
+  metadata: Record<string, ScenePlacementProjectTextureMetadata>;
 } | undefined {
   const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true || desktop.assetFolderExists !== true) {
     return undefined;
   }
   const textures: Record<string, string> = {};
-  const metadata: Record<string, { label: string; thumbnailUrl: string }> = {};
+  const metadata: Record<string, ScenePlacementProjectTextureMetadata> = {};
   for (const image of desktop.assetFolderImages ?? []) {
     if (image.runtimeUrl === undefined || image.runtimeUrl.length === 0) {
       continue;
@@ -4115,6 +4117,8 @@ function placementDesktopPreviewTextures(): {
     metadata[image.id] = {
       label: image.fileName,
       thumbnailUrl: image.runtimeUrl,
+      ...(image.width === undefined ? {} : { width: image.width }),
+      ...(image.height === undefined ? {} : { height: image.height }),
     };
   }
   return Object.keys(textures).length === 0
@@ -4257,9 +4261,10 @@ async function inspectPlacementAssetFolder(assetFolderPath: string): Promise<str
     if (!isPlacementDesktopAssetFolderResponse(result)) {
       throw new Error("Failed to inspect placement asset folder: invalid desktop asset folder response");
     }
-    publishPlacementDesktopAssetFolder(result);
+    const resolved = await resolvePlacementDesktopAssetFolderImageDimensions(result);
+    publishPlacementDesktopAssetFolder(resolved);
     refreshPlacementAgentHandoff();
-    return result.assetFolderPath;
+    return resolved.assetFolderPath;
   } catch (error: unknown) {
     publishPlacementDesktopState({
       assetFolderPath,
@@ -4448,6 +4453,53 @@ function publishPlacementDesktopAssetFolder(result: PlacementDesktopAssetFolderR
   });
 }
 
+async function resolvePlacementDesktopAssetFolderImageDimensions(
+  result: PlacementDesktopAssetFolderResponse,
+): Promise<PlacementDesktopAssetFolderResponse> {
+  const images: ScenePlacementAgentHandoffAssetFile[] = [];
+  for (let index = 0; index < result.images.length; index += DESKTOP_ASSET_METADATA_BATCH_SIZE) {
+    images.push(...await Promise.all(
+      result.images
+        .slice(index, index + DESKTOP_ASSET_METADATA_BATCH_SIZE)
+        .map(resolvePlacementDesktopAssetImageDimensions),
+    ));
+  }
+  return { ...result, images };
+}
+
+async function resolvePlacementDesktopAssetImageDimensions(
+  image: ScenePlacementAgentHandoffAssetFile,
+): Promise<ScenePlacementAgentHandoffAssetFile> {
+  if (
+    (image.width !== undefined && image.height !== undefined)
+    || image.runtimeUrl === undefined
+    || typeof createImageBitmap !== "function"
+  ) {
+    return image;
+  }
+
+  let bitmap: ImageBitmap | undefined;
+  try {
+    const response = await fetch(image.runtimeUrl);
+    if (!response.ok) {
+      return image;
+    }
+    bitmap = await createImageBitmap(await response.blob());
+    if (bitmap.width <= 0 || bitmap.height <= 0) {
+      return image;
+    }
+    return {
+      ...image,
+      width: image.width ?? bitmap.width,
+      height: image.height ?? bitmap.height,
+    };
+  } catch {
+    return image;
+  } finally {
+    bitmap?.close();
+  }
+}
+
 function refreshPlacementAgentHandoff(): void {
   (window as PlacementViewerWindow).ferrumPlacementViewerRefreshHandoff?.();
 }
@@ -4632,17 +4684,18 @@ async function loadSceneAuthoringDocument(
       if (!isPlacementDesktopProjectDocumentResponse(result)) {
         throw new Error("Failed to load placement project folder: invalid desktop project response");
       }
+      const assetFolder = await resolvePlacementDesktopAssetFolderImageDimensions(result.assetFolder);
       publishPlacementDesktopState({
         requestedProjectPath: projectPath,
         projectPath: result.projectPath,
         sceneDocumentPath: result.sceneDocumentPath,
         handoffPath: result.handoffPath,
-        assetFolderPath: result.assetFolder.assetFolderPath,
-        assetFolderExists: result.assetFolder.exists,
-        assetFolderImageCount: result.assetFolder.imageCount,
-        assetFolderTextureAtlasInputPath: result.assetFolder.textureAtlasInputPath,
-        assetFolderImages: result.assetFolder.images,
-        assetFolderDiagnostics: result.assetFolder.diagnostics,
+        assetFolderPath: assetFolder.assetFolderPath,
+        assetFolderExists: assetFolder.exists,
+        assetFolderImageCount: assetFolder.imageCount,
+        assetFolderTextureAtlasInputPath: assetFolder.textureAtlasInputPath,
+        assetFolderImages: assetFolder.images,
+        assetFolderDiagnostics: assetFolder.diagnostics,
         lastAssetFolderError: undefined,
         assetFolderRuntimeStatus: undefined,
         assetFolderRuntimeTextureCount: undefined,

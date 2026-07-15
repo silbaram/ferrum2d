@@ -59,8 +59,9 @@ missing/not-directory diagnostic이 handoff evidence에 포함된다. desktop ho
 project open 시 scene-authoring이 이미 참조하는 local asset id는 초기 runtime texture manifest에
 등록되어 canvas preview에도 반영된다. `Use Assets` 또는 `Choose`로 asset folder를 바꾸면 viewer는
 새 image manifest를 다시 runtime texture로 등록하고 handoff/Inspector 상태를 갱신한다. Add Sprite로
-local asset draft를 만들면 pending/draft marker,
-draft patch, handoff evidence도 같은 local asset id와 thumbnail을 사용한다. 명시 프로젝트 또는 명시 문서 경로를
+local asset draft를 만들면 image의 실제 pixel width/height가 visual 기본 크기와 AABB collider 크기에
+반영되고 pending/draft marker, draft patch, handoff evidence도 같은 local asset id, thumbnail, size를 사용한다.
+image metadata를 확인할 수 없으면 기존 default object size를 사용한다. 명시 프로젝트 또는 명시 문서 경로를
 연 상태에서 현재 선택/draft handoff payload는 debounce 후 프로젝트 루트의
 `.ferrum-placement-handoff.json`에 자동 sync된다. Handoff 섹션의 `Save Handoff`는 같은 payload를
 즉시 저장하는 수동 action이다. 이 파일도 scene-authoring 문서를 대체하지 않고, agent가 현재
