@@ -24,6 +24,7 @@ let tempRoot;
 try {
   const templates = await readTemplateCatalog();
   tempRoot = await mkdtemp(path.join(os.tmpdir(), "ferrum-create-game-template-reports-"));
+  await assertDeployReadinessReportContracts(tempRoot);
 
   const summaries = [];
   for (const template of templates) {
@@ -151,6 +152,209 @@ try {
   }
 }
 
+async function assertDeployReadinessReportContracts(root) {
+  const projectRoot = path.join(root, "deploy-readiness-contract");
+  const scriptPath = path.join(projectRoot, "scripts/ferrum-deploy.mjs");
+  const distRoot = path.join(projectRoot, "dist");
+  await mkdir(path.dirname(scriptPath), { recursive: true });
+  await mkdir(distRoot, { recursive: true });
+  await cp(path.join(sharedTemplateRoot, "scripts/ferrum-deploy.mjs"), scriptPath);
+  await writeFile(path.join(projectRoot, "scripts/preview-fixture.mjs"), previewFixtureSource());
+  await writeFile(path.join(projectRoot, "preview-mime.txt"), "application/wasm\n");
+  await writeFile(path.join(projectRoot, "preview-mode.txt"), "serve\n");
+  await writeFile(path.join(projectRoot, "package.json"), `${JSON.stringify({
+    name: "ferrum-deploy-readiness-contract",
+    private: true,
+    packageManager: "pnpm@10.8.0",
+    scripts: {
+      build: "node --version",
+      preview: "node scripts/preview-fixture.mjs",
+    },
+  }, null, 2)}\n`);
+  await writeFile(
+    path.join(distRoot, "index.html"),
+    '<!doctype html><link rel="stylesheet" href="./style.css"><a href="./client-route">Credits</a><script type="module" src="./app.js"></script>\n',
+  );
+  await writeFile(path.join(distRoot, "style.css"), "body { margin: 0; }\n");
+  await writeFile(path.join(distRoot, "game.json"), "{}\n");
+  await writeFile(path.join(distRoot, "engine.wasm"), new Uint8Array([0, 97, 115, 109]));
+  await writeFile(
+    path.join(distRoot, "app.js"),
+    'void fetch("./game.json");\nvoid new URL("./engine.wasm", import.meta.url);\nvoid new URL("./client-route.json", window.location.href);\n',
+  );
+
+  const ready = await runJsonReport(
+    projectRoot,
+    ["scripts/ferrum-deploy.mjs", "report"],
+    "ferrum2d.consumer.deploy-readiness.report",
+  );
+  assert.equal(ready.ok, true, "deploy readiness positive fixture must pass");
+  assert.equal(
+    ready.deployment?.checks?.smokeBasePath,
+    "/__ferrum2d_deploy_smoke__/",
+    "deploy readiness must serve the fixture from a non-root base path",
+  );
+  assert.equal(ready.deployment?.checks?.previewHttp, true, "deploy readiness must probe the configured preview server");
+
+  await writeFile(path.join(projectRoot, "preview-mime.txt"), "application/octet-stream\n");
+  const invalidMime = await runJsonReportAllowFailure(
+    projectRoot,
+    ["scripts/ferrum-deploy.mjs", "report"],
+    "ferrum2d.consumer.deploy-readiness.report",
+  );
+  assertDeployDiagnostic(invalidMime, "FERRUM_DEPLOY_MIME_MISMATCH");
+
+  await writeFile(path.join(projectRoot, "preview-mime.txt"), "application/wasm\n");
+  await writeFile(
+    path.join(distRoot, "app.js"),
+    'void fetch("/game.json");\nvoid new URL("./engine.wasm", import.meta.url);\n',
+  );
+  const absoluteRuntimeAsset = await runJsonReportAllowFailure(
+    projectRoot,
+    ["scripts/ferrum-deploy.mjs", "report"],
+    "ferrum2d.consumer.deploy-readiness.report",
+  );
+  assertDeployDiagnostic(absoluteRuntimeAsset, "FERRUM_DEPLOY_ABSOLUTE_ASSET_PATH");
+
+  await writeFile(
+    path.join(distRoot, "app.js"),
+    'void fetch("./game.json");\nvoid new URL("./engine.wasm", import.meta.url);\n',
+  );
+  await writeFile(
+    path.join(distRoot, "index.html"),
+    '<!doctype html><base href="/"><link rel="stylesheet" href="./style.css"><script type="module" src="./app.js"></script>\n',
+  );
+  const unsupportedHtmlBase = await runJsonReportAllowFailure(
+    projectRoot,
+    ["scripts/ferrum-deploy.mjs", "report"],
+    "ferrum2d.consumer.deploy-readiness.report",
+  );
+  assertDeployDiagnostic(unsupportedHtmlBase, "FERRUM_DEPLOY_HTML_BASE_UNSUPPORTED");
+
+  await writeFile(
+    path.join(distRoot, "index.html"),
+    '<!doctype html><link rel="stylesheet" href="./style.css"><a href="./client-route">Credits</a><script type="module" src="./app.js"></script>\n',
+  );
+  await mkdir(path.join(distRoot, "admin"), { recursive: true });
+  await writeFile(path.join(distRoot, "admin/index.html"), "<!doctype html><title>Admin</title>\n");
+  const ambiguousFetchBase = await runJsonReportAllowFailure(
+    projectRoot,
+    ["scripts/ferrum-deploy.mjs", "report"],
+    "ferrum2d.consumer.deploy-readiness.report",
+  );
+  assertDeployDiagnostic(ambiguousFetchBase, "FERRUM_DEPLOY_FETCH_BASE_AMBIGUOUS");
+  await rm(path.join(distRoot, "admin"), { recursive: true, force: true });
+
+  await writeFile(
+    path.join(distRoot, "app.js"),
+    'void fetch("./game.json");\nvoid new URL("./missing.wasm", import.meta.url);\nvoid new URL("./client-route.json", window.location.href);\n',
+  );
+  const missingModuleAsset = await runJsonReportAllowFailure(
+    projectRoot,
+    ["scripts/ferrum-deploy.mjs", "report"],
+    "ferrum2d.consumer.deploy-readiness.report",
+  );
+  assertDeployDiagnostic(missingModuleAsset, "FERRUM_DEPLOY_REFERENCED_ASSET_MISSING");
+
+  await writeFile(
+    path.join(distRoot, "app.js"),
+    'void fetch("./game.json");\nvoid new URL("./engine.wasm", import.meta.url);\n',
+  );
+  await writeFile(
+    path.join(distRoot, "index.html"),
+    '<!doctype html><link rel="stylesheet" href="./missing.css"><a href="./client-route">Credits</a><script type="module" src="./app.js"></script>\n',
+  );
+  const missingHtmlAsset = await runJsonReportAllowFailure(
+    projectRoot,
+    ["scripts/ferrum-deploy.mjs", "report"],
+    "ferrum2d.consumer.deploy-readiness.report",
+  );
+  assertDeployDiagnostic(missingHtmlAsset, "FERRUM_DEPLOY_REFERENCED_ASSET_MISSING");
+
+  await writeFile(
+    path.join(distRoot, "index.html"),
+    '<!doctype html><link rel="stylesheet" href="./style.css"><a href="./client-route">Credits</a><script type="module" src="./app.js"></script>\n',
+  );
+  await writeFile(path.join(projectRoot, "preview-mode.txt"), "hang-index\n");
+  const hangingIndex = await runJsonReportAllowFailure(
+    projectRoot,
+    ["scripts/ferrum-deploy.mjs", "report"],
+    "ferrum2d.consumer.deploy-readiness.report",
+    {
+      env: { FERRUM_DEPLOY_PREVIEW_TIMEOUT_MS: "250" },
+      timeoutMs: 5_000,
+    },
+  );
+  assertDeployDiagnostic(hangingIndex, "FERRUM_DEPLOY_PREVIEW_TIMEOUT");
+
+  await writeFile(path.join(projectRoot, "preview-mode.txt"), "hang-wasm\n");
+  const hangingWasm = await runJsonReportAllowFailure(
+    projectRoot,
+    ["scripts/ferrum-deploy.mjs", "report"],
+    "ferrum2d.consumer.deploy-readiness.report",
+    {
+      env: { FERRUM_DEPLOY_PREVIEW_TIMEOUT_MS: "250" },
+      timeoutMs: 5_000,
+    },
+  );
+  assertDeployDiagnostic(hangingWasm, "FERRUM_DEPLOY_PREVIEW_TIMEOUT");
+}
+
+function previewFixtureSource() {
+  return `import { readFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import path from "node:path";
+
+const argument = (name, fallback) => {
+  const index = process.argv.indexOf(name);
+  return index >= 0 ? process.argv[index + 1] : fallback;
+};
+if (process.argv.includes("--")) {
+  throw new Error("preview arguments must not include an extra script separator");
+}
+const host = argument("--host", "127.0.0.1");
+const port = Number(argument("--port", "4173"));
+const wasmMime = (await readFile("preview-mime.txt", "utf8")).trim();
+const mode = (await readFile("preview-mode.txt", "utf8")).trim();
+const distRoot = path.resolve("dist");
+
+createServer(async (request, response) => {
+  try {
+    const pathname = decodeURIComponent(new URL(request.url ?? "/", \`http://\${host}\`).pathname);
+    if ((mode === "hang-index" && pathname === "/") || (mode === "hang-wasm" && pathname.endsWith(".wasm"))) {
+      return;
+    }
+    const relative = pathname === "/" ? "index.html" : pathname.replace(/^\\/+/, "");
+    const filePath = path.resolve(distRoot, relative);
+    const inside = path.relative(distRoot, filePath);
+    if (inside.startsWith("..") || path.isAbsolute(inside)) {
+      response.writeHead(403).end("Forbidden");
+      return;
+    }
+    const body = await readFile(filePath);
+    const contentType = filePath.endsWith(".wasm")
+      ? wasmMime
+      : filePath.endsWith(".html")
+        ? "text/html; charset=utf-8"
+        : "application/octet-stream";
+    response.writeHead(200, { "Content-Type": contentType });
+    response.end(body);
+  } catch (error) {
+    response.writeHead(error?.code === "ENOENT" ? 404 : 500).end("Not Found");
+  }
+}).listen(port, host);
+`;
+}
+
+function assertDeployDiagnostic(report, code) {
+  assert.equal(report.ok, false, `${code} deploy readiness fixture must be invalid`);
+  assert.equal(report.deployment?.status, "invalid", `${code} deploy readiness status must be invalid`);
+  assert(
+    report.deployment?.reports?.some((entry) => entry.code === code),
+    `deploy readiness report must include ${code}`,
+  );
+}
+
 async function readTemplateCatalog() {
   const manifest = JSON.parse(await readFile(templateManifestPath, "utf8"));
   assert.equal(manifest.format, "ferrum-create-game-template-catalog", "template manifest format is invalid");
@@ -250,8 +454,8 @@ async function runJsonReport(projectRoot, args, expectedFormat) {
   return parseJsonReport(result.stdout, expectedFormat, formatCommand(process.execPath, args));
 }
 
-async function runJsonReportAllowFailure(projectRoot, args, expectedFormat) {
-  const result = await runHarness(projectRoot, args);
+async function runJsonReportAllowFailure(projectRoot, args, expectedFormat, options) {
+  const result = await runHarness(projectRoot, args, options);
   assert.notEqual(
     result.code,
     0,
@@ -260,19 +464,21 @@ async function runJsonReportAllowFailure(projectRoot, args, expectedFormat) {
   return parseJsonReport(result.stdout, expectedFormat, formatCommand(process.execPath, args));
 }
 
-function runHarness(projectRoot, args) {
+function runHarness(projectRoot, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
       cwd: projectRoot,
+      env: { ...process.env, ...(options.env ?? {}) },
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    const timeoutMs = options.timeoutMs ?? commandTimeoutMs;
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill("SIGTERM");
-    }, commandTimeoutMs);
+    }, timeoutMs);
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
@@ -285,7 +491,7 @@ function runHarness(projectRoot, args) {
     child.on("close", (code) => {
       clearTimeout(timer);
       if (timedOut) {
-        stderr += `\nCommand timed out after ${commandTimeoutMs}ms.`;
+        stderr += `\nCommand timed out after ${timeoutMs}ms.`;
       }
       if (stderr.trim().length > 0) {
         process.stderr.write(stderr);
@@ -399,6 +605,11 @@ function assertConsumerProjectReport(report, template) {
   assert.equal(report.project.checks.internalImports.length, 0, `${templateName} project report must not include internal imports`);
   assert(Array.isArray(report.project?.checks?.rootAggregateImports), `${templateName} project report rootAggregateImports must be an array`);
   assert.equal(report.project.checks.rootAggregateImports.length, 0, `${templateName} project report must not include root aggregate imports`);
+  assert.equal(report.project?.deployment?.target, "static-web", `${templateName} project report deployment target is invalid`);
+  assert.equal(report.project?.deployment?.outputDirectory, "dist", `${templateName} project report deployment output is invalid`);
+  assert.equal(report.project?.deployment?.basePath, "relative", `${templateName} project report deployment base path is invalid`);
+  assert.equal(report.project?.deployment?.fileProtocolSupported, false, `${templateName} project report must reject file protocol deployment`);
+  assert.equal(report.project?.deployment?.scripts?.readiness, "node scripts/ferrum-deploy.mjs report", `${templateName} project report deploy readiness script is invalid`);
   if (templateName === "topdown") {
     assert.equal(report.project.files.gameSpec, "public/game.json", "topdown project report must identify public/game.json");
     assert.equal(report.project.checks.gameSpec?.ok, true, "topdown project report must validate Game Spec");
@@ -417,6 +628,9 @@ function assertConsumerProjectReport(report, template) {
     "npm run ferrum:replay-report",
     "npm run ferrum:runtime-replay-report",
     "npm run ferrum:smoke",
+    "npm run ferrum:deploy-report",
+    "npm run build",
+    "npm run preview",
   ]) {
     assert(report.recommendedCommands?.includes(command), `${templateName} project report recommendedCommands must include ${command}`);
   }

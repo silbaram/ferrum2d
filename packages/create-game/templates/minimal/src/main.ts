@@ -285,7 +285,9 @@ async function bootstrap(): Promise<void> {
     canvas: shell.canvas,
     debugParent: shell.debugRoot,
     environment: "development",
-    webgl2: { clearColor: [0.07, 0.09, 0.11, 1] },
+    webgl2: {
+      clearColor: [0.07, 0.09, 0.11, 1],
+    },
     uiParent: shell.canvasFrame,
     ui: {
       onAction: (event) => {

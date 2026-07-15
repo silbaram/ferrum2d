@@ -114,8 +114,8 @@ Electron에서 `file://`로 바로 로드하면 웹 배포와 비슷한 asset/MI
 현재 상태:
 
 - **Slice 0 완료**: GitHub Pages 데모/문서 배포 기준은 [GitHub Pages 데모/문서 배포](../development/operations/demo-deploy.md)로 확정했다. 이 planning 문서는 남은 로컬 preview, create-game 배포 안내, desktop wrapper 후보만 추적한다.
-- **Slice 1 부분 완료**: 모든 create-game template은 `vite build --base=./` 기반 `build`와 `vite preview` 기반 `preview` script를 제공하고 `file://` 비권장 원칙도 이 문서에 정리했다. generated project 사용법과 실제 `dist/` 정적 서버 browser smoke, machine-readable asset/Wasm 실패 기준은 남아 있다.
-- **Slice 2 부분 완료**: generated project의 `ferrum:smoke`와 consumer smoke가 production build를 검증한다. 생성 프로젝트 README의 build/preview/deploy 안내, deploy checklist, consumer report의 deploy readiness 항목은 아직 확정하지 않았다.
+- **Slice 1 완료**: 모든 create-game template은 `vite build --base=./` 기반 `build`, `vite preview` 기반 `preview`, generated README의 `file://` 비지원 안내를 제공한다. `ferrum:deploy-report`는 HTML과 정적으로 판별 가능한 runtime/CSS asset 경로와 asset HTTP status를 가상 하위 경로에서 검사하고, 생성 프로젝트의 실제 `preview` 명령으로 index HTTP와 Wasm MIME을 machine-readable report로 검증한다. HTML `<base>`와 여러 디렉터리 HTML entry에서 기준 문서를 확정할 수 없는 상대 literal `fetch(...)`는 구조화된 진단으로 거부하며, preview MIME/절대 runtime path를 포함한 음성 fixture를 유지한다.
+- **Slice 2 완료**: generated project report는 `project.deployment`와 deploy recommended command를 제공한다. consumer smoke는 `ferrum:deploy-report`를 파싱하고 실제 `dist/index.html`을 Chromium 가상 하위 경로에서 열어 Wasm MIME, Playing 상태, 엔티티·sprite·render command 규모와 배경색 외 WebGL2 픽셀을 검증한다. draw call은 완료된 renderer frame 정확히 12개에서 최대값을 집계해 등록된 template runtime budget profile과 비교하며 physics debug와 post-process 비용도 포함한다. pixel readback은 production `preserveDrawingBuffer` 없이 12번째 frame 뒤 같은 RAF에서 수행한다.
 - **Slice 3 부분 완료**: `apps/placement-viewer-desktop` Tauri spike는 공식 placement viewer frontend를 desktop window에서 열고 project/scene document open·save, native file/folder dialog, asset folder inspect, `ferrum-asset://` custom protocol, runtime texture 등록·reload, handoff sync까지 구현했다. `pnpm smoke:placement-viewer-desktop-assets`가 browser-side desktop bridge 계약을 검증한다. 실제 packaged `.app`, Top-down Shooter wrapper, Electron 비교는 아직 진행하지 않았다.
 - **Slice 4 미진행·승인 필요**: desktop app packaging과 CI/release gate 편입은 외부 배포 범위를 확정한 뒤 진행한다.
 
@@ -136,7 +136,7 @@ Electron에서 `file://`로 바로 로드하면 웹 배포와 비슷한 asset/MI
 - `pnpm validate:pages-artifact`
 - route/link integrity 검증
 
-### Slice 1: 로컬 preview 경로 정리 (부분 완료)
+### Slice 1: 로컬 preview 경로 정리 (완료)
 
 산출물:
 
@@ -149,13 +149,13 @@ Electron에서 `file://`로 바로 로드하면 웹 배포와 비슷한 asset/MI
 - 정적 서버로 `dist/` 서빙 후 browser smoke
 - asset/Wasm 로딩 실패 시 machine-readable 오류를 남기는 smoke 보강
 
-### Slice 2: create-game 배포 안내 (부분 완료)
+### Slice 2: create-game 배포 안내 (완료)
 
 산출물:
 
 - 생성 프로젝트 README에 build/preview/deploy 흐름 추가
 - agent가 배포 전 확인할 checklist와 recommended commands 추가
-- consumer report에 build output과 deploy readiness 항목을 넣을지 검토
+- consumer report에 build output, deploy readiness, browser runtime sampling/budget evidence 포함
 
 검증:
 
@@ -214,14 +214,13 @@ Electron에서 `file://`로 바로 로드하면 웹 배포와 비슷한 asset/MI
 - desktop wrapper를 authoring tool에만 한정할 것인가, generated game optional template까지 확장할 것인가?
 - 실제 packaged `.app` GUI 검증을 수동 release gate로 둘 것인가, 자동 smoke로 승격할 것인가?
 - GitHub Pages 외에 공식 문서에서 우선 지원할 정적 호스팅은 무엇인가?
-- package consumer smoke가 deploy readiness까지 책임질 것인가, 별도 deploy smoke를 둘 것인가?
 - generated game의 base path 설정을 agent가 안전하게 조정하는 helper가 필요한가?
 
 ## 다음 작업 추천
 
-다음 작업은 이미 있는 script와 Tauri spike를 기준으로 남은 계약을 좁힌다.
+다음 작업은 완료된 정적 웹 배포 계약과 Tauri spike를 기준으로 남은 범위를 좁힌다.
 
-1. generated project에 `build` → `preview` → 정적 호스팅 흐름과 `file://` 비권장 안내를 제공할 위치를 결정한다.
-2. production `dist/` browser smoke와 deploy readiness report를 consumer smoke에 포함할지 별도 task로 확정한다.
-3. Tauri placement viewer의 실제 GUI/package 검증을 release 범위에 넣을지 승인받는다.
+1. Tauri placement viewer의 실제 GUI/package 검증을 release 범위에 넣을지 승인받는다.
+2. GitHub Pages 외에 공식 지원할 정적 호스팅이 필요하면 provider별 base path/헤더 차이만 별도 운영 문서로 확정한다.
+3. generated game의 비루트 base path 요구가 확인되면 기존 상대 경로 검증 위에 agent용 설정 helper를 추가할지 판단한다.
 4. Electron 비교나 generated game desktop template은 Tauri 결과로 해결되지 않는 요구가 확인될 때만 별도 spike로 연다.

@@ -9,7 +9,6 @@ import {
   resolveAccessibilityOptions,
 } from "@ferrum2d/ferrum-web/authoring";
 import {
-  resolveShooterGameSpec,
   type ShooterGameSpec,
 } from "@ferrum2d/ferrum-web/starter-scenes";
 
@@ -85,7 +84,7 @@ async function loadGameSpec(): Promise<ShooterGameSpec> {
   if (!response.ok) {
     throw new Error(`Failed to load public/game.json: ${response.status} ${response.statusText}`);
   }
-  return resolveShooterGameSpec(await response.json());
+  return await response.json() as ShooterGameSpec;
 }
 
 async function bootstrap(): Promise<void> {
@@ -98,7 +97,9 @@ async function bootstrap(): Promise<void> {
     ui: { theme: resolveAccessibilityHudTheme(accessibility) },
     uiState: ({ frame, fps }) => hud(frame, fps),
     inputTransform: (snapshot) => shell.consumeStart() ? { ...snapshot, enter: true } : snapshot,
-    webgl2: { clearColor: [0.06, 0.08, 0.09, 1] },
+    webgl2: {
+      clearColor: [0.06, 0.08, 0.09, 1],
+    },
   });
 
   runtime.engine.setGameSpec(gameSpec);

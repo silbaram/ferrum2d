@@ -85,7 +85,9 @@ async function bootstrap(): Promise<void> {
     ui: { theme: resolveAccessibilityHudTheme(accessibility) },
     uiState: ({ frame, fps }) => hud(frame, fps),
     inputTransform: (snapshot) => shell.consumeStart() ? { ...snapshot, enter: true } : snapshot,
-    webgl2: { clearColor: [0.08, 0.08, 0.1, 1] },
+    webgl2: {
+      clearColor: [0.08, 0.08, 0.1, 1],
+    },
   });
 
   runtime.engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });

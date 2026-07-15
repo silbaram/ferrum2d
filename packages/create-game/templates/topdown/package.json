@@ -11,6 +11,7 @@
     "pack:textures": "node scripts/ferrum-assets.mjs pack-textures",
     "ferrum:validate": "node scripts/ferrum-harness.mjs validate",
     "ferrum:smoke": "node scripts/ferrum-harness.mjs smoke",
+    "ferrum:deploy-report": "node scripts/ferrum-deploy.mjs report",
     "ferrum:report": "node scripts/ferrum-harness.mjs report",
     "ferrum:asset-report": "node scripts/ferrum-assets.mjs report",
     "ferrum:asset-validate": "node scripts/ferrum-assets.mjs validate",

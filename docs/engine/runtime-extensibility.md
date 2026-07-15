@@ -154,7 +154,7 @@ Breakout slice는 built-in Breakout scene의 public `useBreakoutGame()` API와 r
 | swept hit selection | 완료(내부 primitive) | ball의 earliest swept AABB hit는 scene-neutral swept kinematic helper로 계산하고, Breakout은 target role ordering만 제공한다. |
 | create-game 연결 | starter scaffold + authoring/replay fixtures | `packages/create-game/templates/breakout`이 public `useBreakoutGame()` starter, runtime metric/debug scaffold, scene authoring fixture, gameplay replay template-surface fixture, headless runtime replay fixture를 제공한다. |
 
-Breakout template 승격은 실제 package consumer smoke tarball 실행까지 검증했다. `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`는 `minimal`/`topdown`/`platformer`/`breakout` 4-template matrix에서 생성, agents 설치, public subpath import/type smoke, authoring/replay/runtime replay, production build를 확인하고, `pnpm validate:consumer-smoke-report`가 report artifact 계약을 검증한다. 후속 신규 템플릿은 같은 tarball consumer smoke matrix에 추가한다.
+Breakout template 승격은 실제 package consumer smoke tarball 실행까지 검증했다. `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`는 `minimal`/`topdown`/`platformer`/`breakout` 4-template matrix에서 생성, agents 설치, public subpath import/type smoke, authoring/replay/runtime replay, production build/deploy report와 가상 하위 경로 browser smoke를 확인한다. deploy report는 생성 프로젝트의 실제 `preview` 서버 HTTP/Wasm MIME을 검증한다. browser smoke는 Playing 상태에서 완료된 renderer frame 정확히 12개를 연속 샘플링하고 등록된 template runtime budget profile의 draw-call 상한을 적용하며, 같은 RAF에서 WebGL2 pixel을 읽는다. `pnpm validate:consumer-smoke-report`는 정확한 frame 수, 알려진 profile, sampling/pixel evidence까지 report artifact 계약으로 검증한다. 후속 신규 템플릿은 대응 runtime budget profile과 함께 같은 tarball consumer smoke matrix에 추가한다.
 
 ## Platformer Starter Convergence
 
@@ -184,10 +184,10 @@ AI agent가 consumer project에서 같은 범용 contract를 사용할 수 있�
 | `packages/create-game/templates/breakout` | public `useBreakoutGame()` starter scaffold, template catalog entry, scene authoring fixture, gameplay/runtime replay fixtures |
 | `packages/create-game/templates/platformer` | public `usePlatformerGame()` starter scaffold, template catalog entry, scene authoring fixture, gameplay/runtime replay fixtures |
 | `packages/agents/templates/**` | Codex/Claude/Gemini consumer agent/skill/command template에 projectile/weapon authoring loop와 검증 명령 반영 |
-| `pnpm package:consumer-smoke` | create-game tarball로 generated project 생성, agents init 실제 적용, public subpath import/type smoke, authoring/replay/runtime replay/build matrix 검증 |
-| `consumer-smoke-report.json` | success/failure status, tarball, template checks, agents install, configured/not-configured replay/runtime replay summary, topdown drift rejection 결과를 machine-readable JSON으로 기록 |
-| `pnpm validate:consumer-smoke-report` | CI artifact의 report/tarball/snapshot contract를 검증 |
-| `pnpm smoke:consumer-smoke-report` | early failure, partial failure, dirty snapshot synthetic artifact로 failed report validator를 검증 |
+| `pnpm package:consumer-smoke` | create-game tarball로 generated project 생성, agents init 실제 적용, public subpath import/type smoke, authoring/replay/runtime replay/build/deploy matrix와 generated browser smoke 검증 |
+| `consumer-smoke-report.json` | success/failure status, tarball, template checks, agents install, replay/runtime replay, deploy readiness, 최종 renderer frame sampling/budget, topdown drift rejection 결과를 machine-readable JSON으로 기록 |
+| `pnpm validate:consumer-smoke-report` | CI artifact의 report/tarball/snapshot과 deployment subpath/runtime sampling/budget contract를 검증 |
+| `pnpm smoke:consumer-smoke-report` | early failure, partial failure, dirty snapshot, missing/invalid deployment sampling evidence synthetic artifact로 validator를 검증 |
 
 CI consumer smoke는 성공/실패 모두 `artifacts/consumer-smoke`를 업로드하고, smoke outcome에 맞춰 report validator를 실행한다.
 
@@ -200,9 +200,9 @@ CI consumer smoke는 성공/실패 모두 `artifacts/consumer-smoke`를 업로�
 | `pnpm smoke:gameplay-replay` | homing missile, explosive projectile, tile impact area damage, Data Scene authoring snapshot/restore 등 committed gameplay replay fixture |
 | `pnpm smoke:create-game-template-reports` | create-game template authoring/replay/runtime-replay report envelope |
 | `pnpm smoke:topdown-template-replay-report` | generated topdown template replay drift/recovery contract |
-| `pnpm package:consumer-smoke` | local tarball install, generated project build, agents install, public subpath import/type smoke |
-| `pnpm validate:consumer-smoke-report` | consumer smoke artifact report contract |
-| `pnpm smoke:consumer-smoke-report` | failed report validator path |
+| `pnpm package:consumer-smoke` | local tarball install, generated project build/deploy/browser smoke, agents install, public subpath import/type smoke |
+| `pnpm validate:consumer-smoke-report` | consumer smoke artifact와 deployment runtime sampling/budget report contract |
+| `pnpm smoke:consumer-smoke-report` | failed report 및 invalid deployment evidence validator path |
 | `pnpm smoke:mass-objects` | 1,000개 이상 enemy/projectile Rust frame path와 collision pair budget 회귀 |
 | `pnpm smoke:topdown-mass-objects` | 1,024개 Top-down Shooter enemy snapshot restore와 WebGL2 render command budget |
 | `pnpm package:check` | package allowlist, tarball contents, generated Wasm artifact |

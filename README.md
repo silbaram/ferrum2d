@@ -371,9 +371,11 @@ npx @ferrum2d/agents init --tools codex,claude,gemini
 npm run ferrum:report
 npm run ferrum:validate
 npm run ferrum:smoke
+npm run ferrum:deploy-report
+npm run preview
 ```
 
-`ferrum:report`는 `ferrum2d.consumer.project.report` JSON envelope로 package dependency, public import surface, template files를 요약하고 최상위 `recommendedCommands`를 제공한다. `ferrum:smoke`는 생성 프로젝트 안에서 validate/build 기준을 한 번에 확인하는 기본 gate다. `pnpm package:consumer-smoke`는 이 흐름을 local tarball로 생성한 실제 consumer project에서 검증한다.
+`ferrum:report`는 `ferrum2d.consumer.project.report` JSON envelope로 package dependency, public import surface, template files와 정적 웹 배포 계약을 요약하고 최상위 `recommendedCommands`를 제공한다. `ferrum:smoke`는 생성 프로젝트 안에서 validate/build 기준을 한 번에 확인하는 기본 gate다. `ferrum:deploy-report`는 production build 뒤 `dist/`의 HTML 및 정적으로 판별 가능한 runtime/CSS asset 경로와 참조 파일을 가상 하위 HTTP 경로에서 검사하고, 생성 프로젝트의 실제 `preview` 명령이 Wasm을 `application/wasm`으로 제공하는지 확인해 `ferrum2d.consumer.deploy-readiness.report`를 출력한다. `file://` 직접 실행은 지원하지 않으며 로컬 확인은 `npm run preview`를 사용한다. `pnpm package:consumer-smoke`는 이 흐름을 local tarball로 생성한 실제 consumer project에서 검증하고, Chromium 가상 하위 경로에서 Playing 상태, 엔티티·sprite·render command 수, 완료된 renderer frame 12개의 template별 draw-call budget, 같은 RAF의 WebGL2 pixel readback 및 Wasm MIME까지 확인한다.
 
 실제 publish 후보 전환 전 전체 release gate는 `docs/development/operations/npm-release.md`를 기준으로 한다.
 

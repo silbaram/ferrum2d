@@ -48,12 +48,14 @@ const sharedGeneratedPlacementViewerFiles = [
   "_shared/src/ferrum-placement-viewer.ts",
 ];
 const sharedTemplateFiles = [
+  "_shared/README.md",
   "_shared/placement-viewer.html",
   "_shared/vite.config.ts",
   "_shared/public/assets/audio.manifest.json",
   "_shared/public/assets/localization.manifest.json",
   "_shared/public/assets/texture-atlas.input.json",
   "_shared/scripts/ferrum-assets.mjs",
+  "_shared/scripts/ferrum-deploy.mjs",
   "_shared/scripts/ferrum-harness-coverage.mjs",
   "_shared/scripts/ferrum-harness-core.mjs",
   "_shared/scripts/ferrum-harness-files.mjs",
@@ -638,6 +640,7 @@ async function checkGeneratedProject(template) {
     assert(generatedPackage.scripts?.["pack:textures"] === "node scripts/ferrum-assets.mjs pack-textures", "generated game must include pack:textures script");
     assert(generatedPackage.scripts?.["ferrum:validate"] === "node scripts/ferrum-harness.mjs validate", "generated game must include ferrum:validate script");
     assert(generatedPackage.scripts?.["ferrum:smoke"] === "node scripts/ferrum-harness.mjs smoke", "generated game must include ferrum:smoke script");
+    assert(generatedPackage.scripts?.["ferrum:deploy-report"] === "node scripts/ferrum-deploy.mjs report", "generated game must include ferrum:deploy-report script");
     assert(generatedPackage.scripts?.["ferrum:report"] === "node scripts/ferrum-harness.mjs report", "generated game must include ferrum:report script");
     assert(generatedPackage.scripts?.["ferrum:asset-report"] === "node scripts/ferrum-assets.mjs report", "generated game must include ferrum:asset-report script");
     assert(generatedPackage.scripts?.["ferrum:asset-validate"] === "node scripts/ferrum-assets.mjs validate", "generated game must include ferrum:asset-validate script");
@@ -663,6 +666,7 @@ async function checkGeneratedProject(template) {
       assertMinimalTemplateWeaponAuthoring(mainSource);
     }
 
+    await requireFile(path.join(targetRoot, "README.md"), repoRoot);
     await requireFile(path.join(targetRoot, "index.html"), repoRoot);
     await assertGeneratedPlacementViewerScaffold(targetRoot, templateName);
     const generatedAssetPipelinePath = path.join(targetRoot, "scripts/ferrum-assets.mjs");
@@ -673,6 +677,10 @@ async function checkGeneratedProject(template) {
     await requireFile(path.join(targetRoot, "public/assets/localization.manifest.json"), repoRoot);
     await requireFile(path.join(targetRoot, "public/assets/texture-atlas.input.json"), repoRoot);
     await assertAssetPipelineReport(targetRoot, templateName);
+    const generatedDeployPath = path.join(targetRoot, "scripts/ferrum-deploy.mjs");
+    await requireFile(generatedDeployPath, repoRoot);
+    await runNodeCheck(generatedDeployPath, repoRoot);
+    await assertDeployReadinessScaffold(generatedDeployPath, targetRoot, templateName);
     await linkWorkspaceFerrumWeb(targetRoot);
     await assertAssetPipelineValidate(targetRoot, templateName);
     const generatedHarnessPath = path.join(targetRoot, "scripts/ferrum-harness.mjs");
@@ -747,8 +755,11 @@ async function checkGeneratedProject(template) {
       if (template.sceneAuthoring.configured) {
         await requireFile(path.join(targetRoot, template.sceneAuthoring.fixturePath), repoRoot);
       }
-      assert(mainSource.includes("resolveShooterGameSpec"), "topdown template runtime must validate public/game.json");
       assert(mainSource.includes("./game.json"), "topdown template runtime must load public/game.json");
+      assert(
+        mainSource.includes("engine.setGameSpec(gameSpec)") && !mainSource.includes("resolveShooterGameSpec"),
+        "topdown template runtime must pass raw public/game.json to engine.setGameSpec exactly once",
+      );
     } else if (template.sceneAuthoring.configured) {
       await requireFile(path.join(targetRoot, template.sceneAuthoring.fixturePath), repoRoot);
     }
@@ -775,6 +786,11 @@ async function assertProjectReport(projectRoot, templateName, template) {
   assert(report.project.checks.internalImports.length === 0, `${templateName} project report must not include internal imports`);
   assert(Array.isArray(report.project?.checks?.rootAggregateImports), `${templateName} project report rootAggregateImports must be an array`);
   assert(report.project.checks.rootAggregateImports.length === 0, `${templateName} project report must not include root aggregate imports`);
+  assert(report.project?.deployment?.target === "static-web", `${templateName} project report deployment target is invalid`);
+  assert(report.project?.deployment?.outputDirectory === "dist", `${templateName} project report deployment output is invalid`);
+  assert(report.project?.deployment?.basePath === "relative", `${templateName} project report deployment base path is invalid`);
+  assert(report.project?.deployment?.fileProtocolSupported === false, `${templateName} project report must reject file protocol deployment`);
+  assert(report.project?.deployment?.scripts?.readiness === "node scripts/ferrum-deploy.mjs report", `${templateName} project report deploy readiness script is invalid`);
   if (templateName === "topdown") {
     assert(report.project.files.gameSpec === "public/game.json", "topdown project report must identify public/game.json");
     assert(report.project.checks.gameSpec?.ok === true, "topdown project report must validate Game Spec");
@@ -793,6 +809,9 @@ async function assertProjectReport(projectRoot, templateName, template) {
     "npm run ferrum:replay-report",
     "npm run ferrum:runtime-replay-report",
     "npm run ferrum:smoke",
+    "npm run ferrum:deploy-report",
+    "npm run build",
+    "npm run preview",
   ]) {
     assert(report.recommendedCommands?.includes(command), `${templateName} project report must recommend ${command}`);
   }
@@ -800,6 +819,34 @@ async function assertProjectReport(projectRoot, templateName, template) {
   assert(report.reports.length === 0, `${templateName} project report must not include diagnostics`);
   assert(Array.isArray(report.errors), `${templateName} project report errors must be an array`);
   assert(report.errors.length === 0, `${templateName} project report must not include errors`);
+}
+
+async function assertDeployReadinessScaffold(deployScriptPath, projectRoot, templateName) {
+  const source = await readFile(deployScriptPath, "utf8");
+  for (const expected of [
+    "ferrum2d.consumer.deploy-readiness.report",
+    "FERRUM_DEPLOY_ABSOLUTE_ASSET_PATH",
+    "FERRUM_DEPLOY_MIME_MISMATCH",
+    "DEPLOYMENT_SMOKE_BASE_PATH",
+    "REQUIRED_WASM_MIME",
+    "previewHttp",
+    "javascriptAssetReferences",
+    "AbortSignal.timeout",
+    "ref: false",
+    "application/wasm",
+    "fileProtocolSupported: false",
+    "recommendedProtocol: \"http(s)\"",
+  ]) {
+    assert(source.includes(expected), `${templateName} deploy readiness scaffold must include ${expected}`);
+  }
+  const readme = await readFile(path.join(projectRoot, "README.md"), "utf8");
+  assert(
+    readme.includes("npm run ferrum:deploy-report") &&
+      readme.includes("npm run preview") &&
+      readme.includes("file://") &&
+      readme.includes("application/wasm"),
+    `${templateName} generated README must document build/preview/deploy readiness and file protocol boundaries`,
+  );
 }
 
 function assertMinimalTemplateWeaponAuthoring(mainSource) {
