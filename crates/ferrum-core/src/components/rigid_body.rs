@@ -103,7 +103,7 @@ impl RigidBody {
     }
 
     pub fn dynamic(mass: f32) -> Self {
-        let mass = sanitize_positive_finite(mass, 1.0);
+        let mass = sanitize_positive_mass_property(mass, 1.0);
         Self {
             enabled: true,
             body_type: RigidBodyType::Dynamic,
@@ -283,7 +283,7 @@ impl RigidBody {
     }
 
     pub fn with_inertia(mut self, inertia: f32) -> Self {
-        if self.body_type == RigidBodyType::Dynamic && inertia.is_finite() && inertia > 0.0 {
+        if self.body_type == RigidBodyType::Dynamic && valid_positive_mass_property(inertia) {
             self.inertia = inertia;
             self.inverse_inertia = 1.0 / inertia;
         }
@@ -312,6 +312,18 @@ fn sanitize_positive_finite(value: f32, fallback: f32) -> f32 {
     } else {
         fallback
     }
+}
+
+fn sanitize_positive_mass_property(value: f32, fallback: f32) -> f32 {
+    if valid_positive_mass_property(value) {
+        value
+    } else {
+        fallback
+    }
+}
+
+pub(crate) fn valid_positive_mass_property(value: f32) -> bool {
+    value.is_finite() && value > 0.0 && (1.0 / value).is_finite()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

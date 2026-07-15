@@ -24,6 +24,7 @@ pub use joints::{
 pub use limits::{MAX_CHAIN_COLLIDER_VERTICES, MAX_CONVEX_POLYGON_VERTICES};
 pub use material::PhysicsMaterial;
 pub use motion::{AngularVelocity, Rotation2D, Transform2D, Velocity};
+pub(crate) use rigid_body::valid_positive_mass_property;
 pub use rigid_body::{RigidBody, RigidBodyCcdDebugHit, RigidBodyType, RigidContactImpulse};
 pub use sprite::{
     Sprite, SpriteAnimation, SpriteAnimationFrameSequence, SpriteAnimationKind,

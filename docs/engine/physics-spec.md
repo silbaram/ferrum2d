@@ -431,10 +431,12 @@ const layers = createPhysicsLayerMap({
 - `collider`와 `colliders`는 동시에 사용할 수 없다.
 - `layers`는 최대 31개까지 허용하며 resolver가 bit mask를 계산한다.
 - `convexPolygon`은 3-16개 convex vertex만 허용한다.
+- dynamic body의 명시적 `mass`/`inertia`는 양수·finite여야 하고 Rust `f32`에서 역수도 finite여야 한다. 역수가 표현되지 않는 극소 양수는 runtime apply에서 body 상태를 변경하지 않고 거부한다.
 
 진단은 `FerrumDiagnosticError`를 사용하며 Physics Spec 오류는 `FERRUM_PHYSICS_SPEC_INVALID`, `kind=physics-spec`으로 보고한다. 대표 예:
 
 - `physics.bodies.crate.mass`가 0 이하이면 positive number diagnostic
+- `physics.bodies.crate.mass` 또는 `inertia`의 역수가 Rust `f32`에서 finite가 아니면 runtime mass properties diagnostic
 - `physics.layers.player.mask`가 없는 layer를 참조하면 unknown layer diagnostic
 - `physics.bodies.wall.collider.vertices`가 concave polygon이면 convex polygon diagnostic
 - `physics.bodies.wall.collider.vertices`가 2개 미만이면 chain vertex count diagnostic

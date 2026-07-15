@@ -1,7 +1,8 @@
 use wasm_bindgen::prelude::*;
 
 use crate::components::{
-    AngularVelocity, HeightSpan, PhysicsFloorId, RigidBodyType, Rotation2D, Transform2D, Velocity,
+    valid_positive_mass_property, AngularVelocity, HeightSpan, PhysicsFloorId, RigidBodyType,
+    Rotation2D, Transform2D, Velocity,
 };
 
 use super::super::Engine;
@@ -227,7 +228,7 @@ impl Engine {
         mass: f32,
         inertia: f32,
     ) -> bool {
-        if !Self::valid_positive(mass) || !Self::valid_positive(inertia) {
+        if !valid_positive_mass_property(mass) || !valid_positive_mass_property(inertia) {
             return false;
         }
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {

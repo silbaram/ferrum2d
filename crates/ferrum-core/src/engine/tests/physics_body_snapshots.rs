@@ -209,6 +209,18 @@ fn engine_spawn_physics_body_shapes_and_controls_for_wasm() {
     assert!(engine.set_physics_body_tuning(circle_id, circle_generation, 0.5, 0.2, 0.3));
     assert!(engine.set_physics_body_mass_properties(circle_id, circle_generation, 2.5, 7.5,));
     assert!(!engine.set_physics_body_mass_properties(circle_id, circle_generation, 0.0, 7.5,));
+    assert!(!engine.set_physics_body_mass_properties(
+        circle_id,
+        circle_generation,
+        f32::from_bits(1),
+        7.5,
+    ));
+    assert!(!engine.set_physics_body_mass_properties(
+        circle_id,
+        circle_generation,
+        2.5,
+        f32::from_bits(1),
+    ));
     assert!(engine.query_physics_entity(circle_id, circle_generation));
     assert!((engine.physics_entity_mass() - 2.5).abs() < 0.0001);
     assert!((engine.physics_entity_inverse_mass() - 0.4).abs() < 0.0001);
@@ -531,6 +543,10 @@ fn engine_captures_and_restores_physics_body_snapshot_bulk() {
     );
     let floats = engine.physics_body_snapshot_floats.clone();
     let u32s = engine.physics_body_snapshot_u32s.clone();
+    let mut non_finite_inverse_mass_floats = floats.clone();
+    non_finite_inverse_mass_floats[6] = f32::from_bits(1);
+    let mut non_finite_inverse_inertia_floats = floats.clone();
+    non_finite_inverse_inertia_floats[7] = f32::from_bits(1);
 
     assert!(engine.set_physics_body_position(body_id, body_generation, 20.0, 30.0));
     assert!(engine.set_physics_body_velocity(body_id, body_generation, -8.0, 9.0));
@@ -540,6 +556,20 @@ fn engine_captures_and_restores_physics_body_snapshot_bulk() {
     assert!(engine.set_physics_body_tuning(body_id, body_generation, 0.25, 0.4, 0.5));
     assert!(engine.clear_physics_collider_material(body_id, body_generation));
     assert!(engine.set_physics_collider_offset(body_id, body_generation, -5.0, 6.0));
+
+    assert!(!engine.restore_physics_body_snapshot_bulk(
+        vec![body_id, body_generation],
+        non_finite_inverse_mass_floats,
+        u32s.clone(),
+    ));
+    assert!(!engine.restore_physics_body_snapshot_bulk(
+        vec![body_id, body_generation],
+        non_finite_inverse_inertia_floats,
+        u32s.clone(),
+    ));
+    assert!(engine.query_physics_entity(body_id, body_generation));
+    assert!((engine.physics_entity_mass() - 4.0).abs() < 0.0001);
+    assert!((engine.physics_entity_inertia() - 8.0).abs() < 0.0001);
 
     assert!(engine.restore_physics_body_snapshot_bulk(
         vec![body_id, body_generation],

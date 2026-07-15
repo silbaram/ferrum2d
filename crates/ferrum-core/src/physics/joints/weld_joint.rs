@@ -300,6 +300,13 @@ fn solve_weld_joint_position_system(
     mass: WeldPositionMass,
     rhs: WeldPositionRhs,
 ) -> Option<WeldPositionCorrection> {
+    let inputs = [
+        mass.k11, mass.k12, mass.k13, mass.k22, mass.k23, mass.k33, rhs.x, rhs.y, rhs.angle,
+    ];
+    if inputs.into_iter().any(|value| !value.is_finite()) {
+        return None;
+    }
+
     let determinant = mass.k11 * (mass.k22 * mass.k33 - mass.k23 * mass.k23)
         - mass.k12 * (mass.k12 * mass.k33 - mass.k23 * mass.k13)
         + mass.k13 * (mass.k12 * mass.k23 - mass.k22 * mass.k13);

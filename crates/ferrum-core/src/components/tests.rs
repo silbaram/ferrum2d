@@ -262,6 +262,22 @@ fn dynamic_density_helpers_sanitize_invalid_input() {
 }
 
 #[test]
+fn dynamic_mass_properties_keep_reciprocals_finite() {
+    let non_reciprocal_mass_property = f32::from_bits(1);
+    let body = RigidBody::dynamic(non_reciprocal_mass_property);
+    assert_eq!(body.mass, 1.0);
+    assert_eq!(body.inverse_mass, 1.0);
+    assert_eq!(body.inertia, 1.0);
+    assert_eq!(body.inverse_inertia, 1.0);
+
+    let body = RigidBody::dynamic(2.0).with_inertia(non_reciprocal_mass_property);
+    assert_eq!(body.mass, 2.0);
+    assert_eq!(body.inverse_mass, 0.5);
+    assert_eq!(body.inertia, 2.0);
+    assert_eq!(body.inverse_inertia, 0.5);
+}
+
+#[test]
 fn material_density_helpers_sanitize_invalid_density_for_mass() {
     let material = PhysicsMaterial::new(0.25, 0.75).with_density(f32::NAN);
     let body = RigidBody::dynamic_box_with_material(material, 4.0, 2.0);

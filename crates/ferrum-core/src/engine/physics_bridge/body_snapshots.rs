@@ -1,4 +1,6 @@
-use crate::components::{AngularVelocity, RigidBodyType, Rotation2D, Transform2D, Velocity};
+use crate::components::{
+    valid_positive_mass_property, AngularVelocity, RigidBodyType, Rotation2D, Transform2D, Velocity,
+};
 use crate::entity::Entity;
 
 use super::super::{
@@ -201,7 +203,8 @@ impl Engine {
             return false;
         }
         if body.body_type == RigidBodyType::Dynamic
-            && (!Self::valid_positive(floats[6]) || !Self::valid_positive(floats[7]))
+            && (!valid_positive_mass_property(floats[6])
+                || !valid_positive_mass_property(floats[7]))
         {
             return false;
         }

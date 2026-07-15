@@ -44,7 +44,7 @@
 | CCD/query | swept AABB, raycast/segment-cast, point/AABB/circle/oriented-box/capsule/convex-polygon query, edge raycast/segment-cast, shape cast |
 | Kinematic movement | move-and-slide, tilemap obstacle, one-way platform, moving platform linear carry, opt-in moving platform rotation carry, HD-2D step/ramp/ledge/bridge-under movement |
 | Platformer support | ground probe, controller config/state, coyote time, jump buffering, step offset, slope snap |
-| Rigid body | static/kinematic/dynamic, mass/inertia, force/impulse/torque, gravity scale, damping, sleep/wake |
+| Rigid body | static/kinematic/dynamic, finite-reciprocal mass/inertia gate, force/impulse/torque, gravity scale, damping, sleep/wake |
 | Solver | substep, contact impulse, friction/restitution, Baumgarte tuning, split impulse, island metrics/scheduling |
 | Joints | distance, rope, spring, pulley, revolute, prismatic, weld, gear. Distance/Rope/Spring은 optional local anchor와 회전 관성 effective mass를 지원하고, Spring partial stiffness는 soft denominator로 velocity solve에 적용한다. Pulley는 기본 equality constraint와 opt-in slack inequality를 지원한다. Revolute limit은 기본 normalized 상대각과 opt-in continuous multi-turn 상대각을 지원한다. Weld는 off-center anchor position correction을 relative angle correction과 coupled solve로 처리 |
 | Tilemap physics | merged AABB obstacle cache, dirty chunk 기반 runtime cell/rect refresh, one-way tile, slope definition, tile floor/elevation/height span metadata, HD-2D tile kind/ramp/blocking metadata, collision layer -> chain boundary extraction |
