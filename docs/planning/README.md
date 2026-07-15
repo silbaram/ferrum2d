@@ -13,7 +13,7 @@
 | [오브젝트 Authoring 모델 · 공식 배치 툴 고도화 계획](object-authoring-tool-plan.md) | v1 product-ready 기준, Behavior Binding Inspector, local image dimension metadata 완료 | 독립 browser package, Tauri packaging/GUI release 판단 |
 | [Placement Viewer runtime texture loading 설계](placement-runtime-texture-loading-plan.md) | Slice 1~4, desktop asset runtime reload, local image dimension metadata 완료 | 실제 GUI/package 검증 |
 | [배포 전략 초기 계획](deployment-roadmap.md) | 정적 Pages와 create-game build/preview/deploy-readiness 완료, Tauri 경로 부분 완료 | 공식 hosting 확대 필요성 및 desktop packaging 승인 판단 |
-| [물리 엔진 개선 개발계획](physics_review.md) | Slice 0~5, joint despawn 정리, singular matrix 입력 방어 완료 | coupled solver fallback 중복 연산, 고차수 despawn profiling |
+| [물리 엔진 개선 개발계획](physics_review.md) | Slice 0~5, joint despawn 정리, singular matrix 입력 방어, mutation-aware weld fallback context 재사용 완료 | 고차수 despawn profiling |
 
 활성 작업 목록은 planning 문서에 중복 관리하지 않는다. 진행 중인 작업은 별도 task 또는 이슈로 범위와 검증 기준을 확정하고, 완료된 사용법과 운영 계약은 확정 문서에만 남긴다.
 

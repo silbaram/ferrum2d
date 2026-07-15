@@ -1,9 +1,10 @@
 use super::prismatic_joint::{
-    prismatic_joint_constraint_context, solve_prismatic_joint_angular_position_constraint,
+    prismatic_joint_constraint_context,
+    solve_prismatic_joint_angular_position_constraint_with_context,
     solve_prismatic_joint_angular_velocity_constraint,
-    solve_prismatic_joint_limit_position_constraint,
+    solve_prismatic_joint_limit_position_constraint_with_context,
     solve_prismatic_joint_limit_velocity_constraint,
-    solve_prismatic_joint_linear_position_constraint,
+    solve_prismatic_joint_linear_position_constraint_with_context,
     solve_prismatic_joint_linear_velocity_constraint,
 };
 use super::*;
@@ -122,45 +123,31 @@ pub(in crate::physics) fn solve_weld_joint_position_constraint(
         WeldJoint::DEFAULT_ANGULAR_STIFFNESS,
     );
 
-    let mut applied = false;
-    if stiffness > 0.0 && angular_stiffness > 0.0 {
-        if solve_weld_joint_coupled_position_constraint(
+    if stiffness <= 0.0 && angular_stiffness <= 0.0 {
+        return false;
+    }
+    let Some(context) = prismatic_joint_constraint_context(world, prismatic) else {
+        return false;
+    };
+    if stiffness > 0.0
+        && angular_stiffness > 0.0
+        && solve_weld_joint_coupled_position_constraint(
             world,
-            prismatic,
+            &context,
             stiffness,
             angular_stiffness,
-        ) {
-            applied = true;
-        } else {
-            if solve_weld_joint_anchor_position_constraint(world, prismatic, stiffness) {
-                applied = true;
-            }
-            if solve_prismatic_joint_angular_position_constraint(
-                world,
-                prismatic,
-                angular_stiffness,
-            ) {
-                applied = true;
-            }
-        }
-    } else {
-        if stiffness > 0.0
-            && solve_weld_joint_anchor_position_constraint(world, prismatic, stiffness)
-        {
-            applied = true;
-        }
-        if angular_stiffness > 0.0
-            && solve_prismatic_joint_angular_position_constraint(
-                world,
-                prismatic,
-                angular_stiffness,
-            )
-        {
-            applied = true;
-        }
+        )
+    {
+        return true;
     }
 
-    applied
+    solve_weld_joint_decoupled_position_constraint(
+        world,
+        prismatic,
+        context,
+        stiffness,
+        angular_stiffness,
+    )
 }
 
 pub(in crate::physics) fn prismatic_joint_from_weld_joint(joint: WeldJoint) -> PrismaticJoint {
@@ -195,16 +182,45 @@ pub(in crate::physics) fn sanitize_weld_joint_break_limit(break_limit: f32) -> O
     (break_limit.is_finite() && break_limit >= 0.0).then_some(break_limit)
 }
 
-pub(in crate::physics) fn solve_weld_joint_anchor_position_constraint(
+fn solve_weld_joint_decoupled_position_constraint(
     world: &mut World,
     joint: PrismaticJoint,
+    mut context: PrismaticJointConstraintContext,
     stiffness: f32,
+    angular_stiffness: f32,
 ) -> bool {
     let mut applied = false;
-    if solve_prismatic_joint_linear_position_constraint(world, joint, stiffness) {
-        applied = true;
+    if stiffness > 0.0 {
+        if solve_prismatic_joint_linear_position_constraint_with_context(world, &context, stiffness)
+        {
+            applied = true;
+            // Anchor correction mutates body transforms and rotations, so later constraints need
+            // geometry rebuilt from the updated World state.
+            let Some(next_context) = prismatic_joint_constraint_context(world, joint) else {
+                return applied;
+            };
+            context = next_context;
+        }
+        if solve_prismatic_joint_limit_position_constraint_with_context(
+            world, joint, &context, stiffness,
+        ) {
+            applied = true;
+            if angular_stiffness > 0.0 {
+                // Limit correction can rotate off-center anchors before angular correction.
+                let Some(next_context) = prismatic_joint_constraint_context(world, joint) else {
+                    return applied;
+                };
+                context = next_context;
+            }
+        }
     }
-    if solve_prismatic_joint_limit_position_constraint(world, joint, stiffness) {
+    if angular_stiffness > 0.0
+        && solve_prismatic_joint_angular_position_constraint_with_context(
+            world,
+            &context,
+            angular_stiffness,
+        )
+    {
         applied = true;
     }
     applied
@@ -212,13 +228,10 @@ pub(in crate::physics) fn solve_weld_joint_anchor_position_constraint(
 
 pub(in crate::physics) fn solve_weld_joint_coupled_position_constraint(
     world: &mut World,
-    joint: PrismaticJoint,
+    context: &PrismaticJointConstraintContext,
     stiffness: f32,
     angular_stiffness: f32,
 ) -> bool {
-    let Some(context) = prismatic_joint_constraint_context(world, joint) else {
-        return false;
-    };
     let error = Velocity {
         vx: context.anchor_b.x - context.anchor_a.x,
         vy: context.anchor_b.y - context.anchor_a.y,
@@ -268,8 +281,8 @@ pub(in crate::physics) fn solve_weld_joint_coupled_position_constraint(
         return false;
     }
 
-    apply_prismatic_joint_anchor_position_correction(world, context, correction.impulse);
-    apply_prismatic_joint_angular_position_correction(world, context, correction.angular_impulse);
+    apply_prismatic_joint_anchor_position_correction(world, *context, correction.impulse);
+    apply_prismatic_joint_angular_position_correction(world, *context, correction.angular_impulse);
     true
 }
 

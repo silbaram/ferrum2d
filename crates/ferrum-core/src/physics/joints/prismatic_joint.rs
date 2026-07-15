@@ -1,5 +1,22 @@
 use super::*;
 
+#[cfg(test)]
+std::thread_local! {
+    static PRISMATIC_JOINT_CONTEXT_BUILD_COUNT: std::cell::Cell<usize> = const {
+        std::cell::Cell::new(0)
+    };
+}
+
+#[cfg(test)]
+pub(in crate::physics) fn reset_prismatic_joint_context_build_count() {
+    PRISMATIC_JOINT_CONTEXT_BUILD_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(in crate::physics) fn prismatic_joint_context_build_count() -> usize {
+    PRISMATIC_JOINT_CONTEXT_BUILD_COUNT.with(std::cell::Cell::get)
+}
+
 pub(in crate::physics) fn solve_prismatic_joint_velocity_constraints(
     world: &mut World,
     joint_indices: &[usize],
@@ -323,10 +340,18 @@ pub(in crate::physics) fn solve_prismatic_joint_linear_position_constraint(
     let Some(context) = prismatic_joint_constraint_context(world, joint) else {
         return false;
     };
+    solve_prismatic_joint_linear_position_constraint_with_context(world, &context, stiffness)
+}
+
+pub(super) fn solve_prismatic_joint_linear_position_constraint_with_context(
+    world: &mut World,
+    context: &PrismaticJointConstraintContext,
+    stiffness: f32,
+) -> bool {
     if context.linear_error.abs() <= KINEMATIC_EPSILON {
         return false;
     }
-    let denominator = prismatic_joint_axis_denominator(&context, context.perpendicular);
+    let denominator = prismatic_joint_axis_denominator(context, context.perpendicular);
     if denominator <= 0.0 {
         return false;
     }
@@ -338,7 +363,7 @@ pub(in crate::physics) fn solve_prismatic_joint_linear_position_constraint(
 
     apply_prismatic_joint_anchor_position_correction(
         world,
-        context,
+        *context,
         Velocity {
             vx: -context.perpendicular.vx * correction_magnitude,
             vy: -context.perpendicular.vy * correction_magnitude,
@@ -355,13 +380,22 @@ pub(in crate::physics) fn solve_prismatic_joint_limit_position_constraint(
     let Some(context) = prismatic_joint_constraint_context(world, joint) else {
         return false;
     };
-    let Some(limit_error) = prismatic_joint_limit_error(context, joint) else {
+    solve_prismatic_joint_limit_position_constraint_with_context(world, joint, &context, stiffness)
+}
+
+pub(super) fn solve_prismatic_joint_limit_position_constraint_with_context(
+    world: &mut World,
+    joint: PrismaticJoint,
+    context: &PrismaticJointConstraintContext,
+    stiffness: f32,
+) -> bool {
+    let Some(limit_error) = prismatic_joint_limit_error(*context, joint) else {
         return false;
     };
     if limit_error.abs() <= KINEMATIC_EPSILON {
         return false;
     }
-    let denominator = prismatic_joint_axis_denominator(&context, context.axis);
+    let denominator = prismatic_joint_axis_denominator(context, context.axis);
     if denominator <= 0.0 {
         return false;
     }
@@ -373,7 +407,7 @@ pub(in crate::physics) fn solve_prismatic_joint_limit_position_constraint(
 
     apply_prismatic_joint_anchor_position_correction(
         world,
-        context,
+        *context,
         Velocity {
             vx: -context.axis.vx * correction_magnitude,
             vy: -context.axis.vy * correction_magnitude,
@@ -390,6 +424,14 @@ pub(in crate::physics) fn solve_prismatic_joint_angular_position_constraint(
     let Some(context) = prismatic_joint_constraint_context(world, joint) else {
         return false;
     };
+    solve_prismatic_joint_angular_position_constraint_with_context(world, &context, stiffness)
+}
+
+pub(super) fn solve_prismatic_joint_angular_position_constraint_with_context(
+    world: &mut World,
+    context: &PrismaticJointConstraintContext,
+    stiffness: f32,
+) -> bool {
     if context.angular_error.abs() <= KINEMATIC_EPSILON {
         return false;
     }
@@ -403,7 +445,7 @@ pub(in crate::physics) fn solve_prismatic_joint_angular_position_constraint(
         return false;
     }
 
-    apply_prismatic_joint_angular_position_correction(world, context, -correction_magnitude);
+    apply_prismatic_joint_angular_position_correction(world, *context, -correction_magnitude);
     true
 }
 
@@ -411,6 +453,9 @@ pub(in crate::physics) fn prismatic_joint_constraint_context(
     world: &World,
     joint: PrismaticJoint,
 ) -> Option<PrismaticJointConstraintContext> {
+    #[cfg(test)]
+    PRISMATIC_JOINT_CONTEXT_BUILD_COUNT.with(|count| count.set(count.get().saturating_add(1)));
+
     if !joint.enabled || joint.entity_a == joint.entity_b {
         return None;
     }

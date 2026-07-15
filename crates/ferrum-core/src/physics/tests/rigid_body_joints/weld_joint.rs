@@ -250,3 +250,54 @@ fn weld_joint_non_finite_mass_matrix_uses_safe_fallback() {
     assert_eq!(transform, initial_transform);
     assert_eq!(rotation, initial_rotation);
 }
+
+#[test]
+fn weld_joint_aligned_position_solve_builds_constraint_context_once() {
+    let mut world = World::default();
+    let anchor = world.spawn_entity();
+    world.set_transform(anchor, Transform2D { x: 0.0, y: 0.0 });
+    world.set_rotation(anchor, Rotation2D { radians: 0.0 });
+    world.set_rigid_body(anchor, RigidBody::static_body());
+
+    let body = world.spawn_entity();
+    world.set_transform(body, Transform2D { x: 0.0, y: 0.0 });
+    world.set_rotation(body, Rotation2D { radians: 0.0 });
+    world.set_rigid_body(body, RigidBody::dynamic(1.0));
+
+    reset_prismatic_joint_context_build_count();
+    let applied = solve_weld_joint_position_constraint(&mut world, WeldJoint::new(anchor, body));
+
+    assert!(!applied);
+    assert_eq!(prismatic_joint_context_build_count(), 1);
+}
+
+#[test]
+fn weld_joint_singular_fallback_rebuilds_context_only_after_world_mutation() {
+    let mut world = World::default();
+    let anchor = world.spawn_entity();
+    world.set_transform(anchor, Transform2D { x: 0.0, y: 0.0 });
+    world.set_rotation(anchor, Rotation2D { radians: 0.0 });
+    world.set_rigid_body(anchor, RigidBody::static_body());
+
+    let body = world.spawn_entity();
+    world.set_transform(body, Transform2D { x: -2.0, y: 2.0 });
+    world.set_rotation(body, Rotation2D { radians: 0.0 });
+    world.set_rigid_body(
+        body,
+        RigidBody::dynamic(1_000_000.0).with_inertia(1_000_000.0),
+    );
+    let joint = WeldJoint::new(anchor, body)
+        .with_local_anchor_b(2.0, 0.0)
+        .with_stiffness(1.0)
+        .with_angular_stiffness(1.0);
+
+    reset_prismatic_joint_context_build_count();
+    let applied = solve_weld_joint_position_constraint(&mut world, joint);
+
+    let transform = world.transform(body).unwrap();
+    let rotation = world.rotation(body).unwrap_or_default();
+    assert!(applied);
+    assert!(transform.x.is_finite() && transform.y.is_finite());
+    assert!(rotation.radians.is_finite());
+    assert_eq!(prismatic_joint_context_build_count(), 3);
+}
