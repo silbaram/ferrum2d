@@ -24,6 +24,30 @@ jobs:
 
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install desktop Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Check Ferrum core Rust formatting
+        run: cargo fmt --manifest-path crates/ferrum-core/Cargo.toml --all -- --check
+
+      - name: Lint Ferrum core Rust
+        run: cargo clippy --manifest-path crates/ferrum-core/Cargo.toml --all-targets -- -D warnings
+
+      - name: Check placement viewer desktop Rust formatting
+        run: cargo fmt --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --all -- --check
+
+      - name: Lint placement viewer desktop Rust
+        run: cargo clippy --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
 
       - name: Add wasm32 target
         run: rustup target add wasm32-unknown-unknown

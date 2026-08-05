@@ -67,9 +67,148 @@ events/debug   -> opt-in collision/physics buffer ptr + len
 
 Game Spec, asset metadata, physics authoring, gameplay authoring 같은 낮은 빈도의 설정은 TypeScript에서 검증한 뒤 숫자형 값이나 bulk buffer 형태로 Rust에 전달한다. Game Spec `content.localization`/`content.dialogue.graphs`/`content.cutscenes`는 runtime adapter가 읽을 수 있는 authoring data로 정규화하고, `createShooterContentRuntimeOptions(...)`가 단일/명시 content id만 `createFerrumRuntime(...)` option fragment로 변환한다. `SceneComposition`/`BehaviorRecipe` 묶음은 `ShooterGameSpec` top-level로 승격하지 않고 `ferrum2d.consumer.scene-authoring` 별도 artifact로 유지하며, `resolveSceneAuthoringDocument(...)`가 format/version, scene composition, behavior recipe, optional binding plan을 검증한다. `classifySceneInstance(...)`는 이 resolved instance에서 `worldObject`/`actor` authoring role만 파생하며, Rust runtime class나 Wasm ABI를 추가하지 않는다. 이 경로는 Rust simulation이나 Wasm ABI를 자동 변경하지 않는다. Behavior recipe의 entity-level tags도 TypeScript가 `ids.tags`로 `0..31` numeric bitmask로 컴파일해 Rust `GameplayTags` component로 설치하며, frame loop에서는 문자열 tag를 해석하지 않는다.
 
-`engine.rs`는 Wasm `Engine` facade와 shared state를 유지한다. 현재 분리된 책임별 구현은 `engine/data_scene_spawning.rs`, `engine/gameplay_authoring.rs`, `engine/physics_authoring.rs`, `engine/physics_bridge.rs`, `engine/physics_controls.rs`, `engine/physics_collider_controls.rs`, `engine/physics_joint_controls.rs`, `engine/physics_queries.rs`, `engine/rendering.rs`, `engine/scenes.rs`, `engine/snapshots.rs`, `engine/telemetry.rs`, `engine/frame_buffers.rs`에 둔다. frame마다 재사용되는 render/audio/event/debug/navigation buffer와 frame telemetry storage는 crate 내부 `EngineFrameBuffers`가 소유하며, public pointer/len Wasm ABI는 기존 getter가 그대로 제공한다. `Engine`은 built-in scene 상태를 개별 `scene`/`breakout_scene`/`platformer_scene`/`active_scene` 필드가 아니라 crate 내부 `BuiltInSceneSlots` 단일 필드로 보관하고, built-in scene 활성 상태와 data scene 활성 상태는 `SceneMode`로 분리한다. data scene mode는 built-in `ActiveScene` enum variant가 아니라 별도 `DataSceneRuntime` storage이며, raw Wasm `use_data_scene()` bridge와 public `FerrumEngine.useDataScene()` facade로 빈 data runtime을 활성화한다. 낮은 빈도 authoring spawn은 package-facing `createDataSceneRuntimeTarget(engine, options?)`가 resolved inline `props.components`를 숫자형 인자로 컴파일하고 raw Wasm `spawn_data_scene_entity(...)`가 이를 `EntityTemplate`/`PrefabEntitySpawnRequest`로 낮추며, 성공 handle은 `data_scene_entity_id()`/`data_scene_entity_generation()`으로 읽는다. consumer는 generated `pkg/*`, `dist/*`, `src/*` 내부 경로를 직접 import하지 않는다. data scene save/replay 계약은 built-in Shooter snapshot buffer를 확장하지 않고 `GameStateSnapshot.dataScene`의 optional `DataSceneStateSnapshot` JSON payload에 둔다. 이 payload는 custom JSON과 optional `authoringDocument`를 포함할 수 있고, restore 경로는 authoring document가 있으면 `applyDataSceneAuthoringDocument(...)`로 Data Scene entity/behavior를 낮은 빈도 apply 단계에서 다시 조립한다. `engine/scenes.rs`는 `ActiveScene` dispatch, `BuiltInSceneSlots`, `DataSceneRuntime`, crate 내부 `BuiltInSceneRuntime` 계약을 소유하며, built-in scene의 score/game state/title reset/playing reset/update/camera update/frame telemetry/action-trigger hooks는 공통 reset/update context와 active runtime accessor를 통해 호출한다. concrete scene 필드는 `BuiltInSceneSlots` 내부 private state로 유지하고, shooter snapshot/authoring처럼 호환 ABI가 필요한 경로만 `shooter()`/`shooter_mut()` accessor로 명시한다. data scene update는 shooter/breakout/platformer 로직을 실행하지 않고 `World` cooldown tick, generic world update, tilemap dynamic collision resolve만 호출한다. 이 계약은 Rust 내부 구조 정리용이며 기존 snapshot/event/render buffer layout을 바꾸지 않고 frame hot path에 JS/Wasm callback이나 entity별 동적 dispatch를 추가하지 않는다. scene-level trait object dispatch는 active built-in scene당 frame update/reset/telemetry 호출 1회 단위로 제한한다. `engine/gameplay_authoring.rs`는 scene load/agent apply 같은 낮은 빈도 경로에서만 호출하는 generation-checked gameplay component setter를 담당하며, frame hot path의 behavior evaluation이나 entity별 JS callback을 담당하지 않는다. `World` storage는 `world.rs`에 두고 template, snapshot, entity lifecycle, collider, joint, tests 구현은 `world/*.rs`에 둔다. entity spawn/despawn 때 component slot push/clear 정책은 crate 내부 `WorldComponentStorage`가 담당해 lifecycle id/generation 관리와 component slot 초기화/정리를 분리한다. Rigid-body contact impulse cache와 CCD debug hit buffer도 `world` module private storage로 유지하고 solver/debug 경로는 `World` helper와 iterator로만 접근한다. Height span과 projectile arc slot도 `world` module private storage로 유지하며, 외부 runtime/render/collision 경로는 `World`의 entity/index-checked helper를 통해 파생 height span 동기화 정책에 접근한다. Gameplay health, damage, score reward, lifetime, projectile policy, projectile legacy mirror, faction, faction relation table, tag, pickup, interaction, movement pattern, collision reaction, FSM machine, action binding, FSM state-enter action, one-shot timer trigger slot과 player entity handle은 `world` module private storage로 유지하고 외부 runtime/authoring 경로는 entity/index-checked accessor와 replace helper를 통해서만 읽고 복원한다. `World`의 lifecycle liveness/generation storage는 `world` module private field로 유지하고, `World` 외부 production 경로는 entity liveness/generation vector를 직접 읽지 않고 `entity_capacity()`, `is_alive_index(...)`, `generation_at_index(...)`, `entity_at_index(...)`, `is_current_entity(...)` accessor를 통해 lifecycle storage 정책에 접근한다. Component public surface는 `components.rs` facade와 `components/{gameplay,motion,sprite,rigid_body,joints,collision_masks,limits,colliders,tests}.rs`로 나눈다. `components/gameplay.rs`는 crate-private `MovementPattern`, `ActionBindingSet`/`Cooldown`, `CollisionReactionSet`, `GameplayTimerTrigger` 같은 데이터 layout을 둔다. Shooter runtime은 현재 `ActionBindingSet`의 cooldown remaining state를 직접 tick/trigger해 primary projectile action을 실행하고, built-in Shooter snapshot은 player primary projectile action binding과 cooldown remaining state를 함께 보존한다. 공통 timer trigger는 entity별 one-shot component로 World snapshot/lifecycle에 포함되며, elapsed event를 기존 FSM event pass가 소비한다. 더 넓은 공통 action system으로 승격할 때는 authoring config와 runtime cache 분리를 다시 확정한다. joint public type은 `components/joints/*.rs` 기능군 모듈 뒤의 `components/joints.rs` facade로 다시 모은다. 기존 `crate::components::*`, crate 내부 `crate::components::joints::*`, crate root re-export 경로를 유지한다. Top-down Shooter scene은 `shooter_scene.rs` facade/storage와 `shooter_scene/{config,runtime,snapshot,tests}.rs` vertical slice로 나눈다. Breakout scene은 `breakout_scene.rs` facade/storage와 `breakout_scene/{config,effects,level,runtime,tests}.rs`로 나누며 기존 `crate::breakout_scene::{BreakoutScene, BreakoutParticleBurstSink, breakout_brick_hit_particle_preset}` 경로를 유지한다. `physics/solver.rs`는 rigid-body solver facade를 유지하고 contact constraint 생성/cache, split impulse state, material/restitution/surface velocity/baumgarte helper는 `physics/solver/*.rs`에 둔다. `physics/body_impulses.rs`는 joint/solver가 공유하는 rigid-body contact point velocity와 pair linear impulse 적용 helper를 담당한다. `physics/rigid_body_properties.rs`는 rigid-body enabled/mass/inertia/gravity-scale/damping 조회 helper를 담당한다. `physics/islands.rs`는 rigid-body island graph/schedule과 union helper를 담당하고, `physics/islands/joint_buckets.rs`는 solver iteration 안의 전체 joint store 반복 순회를 피하는 joint index bucket을 담당한다. `physics/joints.rs`는 joint solver facade/re-export를 유지하고, joint별 solver는 `physics/joints/*.rs`, shared context/limit/impulse helper는 `physics/joints/{contexts,limits,impulses}.rs`에 둔다. Distance/Rope/Spring local anchor는 TypeScript authoring/facade가 낮은 빈도 숫자 인자로 Wasm에 전달하고, Rust solver가 anchor point velocity와 회전 관성 effective mass를 계산한다. 이 경로는 frame hot path의 JS/Wasm 호출 수를 늘리지 않는다. `tilemap.rs`는 public type/storage와 authoring facade를 유지하고, collision cache, collision candidate traversal, collision/query facade, navigation, layer helper, rendering, tests는 `tilemap/*.rs`에 둔다. 이 분리는 Rust module 구조만 바꾸며 기존 render/audio/debug buffer layout을 유지한다.
+### Rust 내부 모듈 구조
+
+#### Engine facade와 frame storage
+
+| 영역 | 코드 기준 |
+| --- | --- |
+| Engine facade | `crates/ferrum-core/src/engine.rs` |
+| 책임별 구현 | `crates/ferrum-core/src/engine/*.rs` |
+| Frame buffer와 telemetry | `crates/ferrum-core/src/engine/frame_buffers.rs`, `crates/ferrum-core/src/engine/telemetry.rs` |
+
+`engine.rs`는 Wasm `Engine` facade와 shared state를 유지한다.
+현재 분리된 책임별 구현은 `engine/data_scene_spawning.rs`, `engine/gameplay_authoring.rs`, `engine/physics_authoring.rs`, `engine/physics_bridge.rs`, `engine/physics_controls.rs`, `engine/physics_collider_controls.rs`, `engine/physics_joint_controls.rs`, `engine/physics_queries.rs`, `engine/rendering.rs`, `engine/scenes.rs`, `engine/snapshots.rs`, `engine/telemetry.rs`, `engine/frame_buffers.rs`에 둔다.
+frame마다 재사용되는 render/audio/event/debug/navigation buffer와 frame telemetry storage는 crate 내부 `EngineFrameBuffers`가 소유하며, public pointer/len Wasm ABI는 기존 getter가 그대로 제공한다.
+
+#### Scene mode와 Data Scene 저장 계약
+
+| 영역 | 코드 기준 |
+| --- | --- |
+| Scene mode와 runtime slot | `crates/ferrum-core/src/engine/scenes.rs` |
+| Data Scene spawn bridge | `crates/ferrum-core/src/engine/data_scene_spawning.rs`, `packages/ferrum-web/src/dataSceneRuntimeTarget.ts` |
+| Built-in/physics snapshot bridge | `crates/ferrum-core/src/engine/snapshots.rs` |
+| Data Scene JSON snapshot | `packages/ferrum-web/src/gameStateSnapshot.ts` |
+
+`Engine`은 built-in scene 상태를 개별 `scene`/`breakout_scene`/`platformer_scene`/`active_scene` 필드가 아니라 crate 내부 `BuiltInSceneSlots` 단일 필드로 보관하고, built-in scene 활성 상태와 data scene 활성 상태는 `SceneMode`로 분리한다.
+data scene mode는 built-in `ActiveScene` enum variant가 아니라 별도 `DataSceneRuntime` storage이며, raw Wasm `use_data_scene()` bridge와 public `FerrumEngine.useDataScene()` facade로 빈 data runtime을 활성화한다.
+낮은 빈도 authoring spawn은 package-facing `createDataSceneRuntimeTarget(engine, options?)`가 resolved inline `props.components`를 숫자형 인자로 컴파일하고 raw Wasm `spawn_data_scene_entity(...)`가 이를 `EntityTemplate`/`PrefabEntitySpawnRequest`로 낮추며, 성공 handle은 `data_scene_entity_id()`/`data_scene_entity_generation()`으로 읽는다.
+consumer는 generated `pkg/*`, `dist/*`, `src/*` 내부 경로를 직접 import하지 않는다.
+data scene save/replay 계약은 built-in Shooter snapshot buffer를 확장하지 않고 `GameStateSnapshot.dataScene`의 optional `DataSceneStateSnapshot` JSON payload에 둔다.
+이 payload는 custom JSON과 optional `authoringDocument`를 포함할 수 있고, restore 경로는 authoring document가 있으면 `applyDataSceneAuthoringDocument(...)`로 Data Scene entity/behavior를 낮은 빈도 apply 단계에서 다시 조립한다.
+
+#### Scene dispatch와 gameplay authoring
+
+| 영역 | 코드 기준 |
+| --- | --- |
+| Built-in/Data Scene dispatch | `crates/ferrum-core/src/engine/scenes.rs` |
+| Frame update 통합 | `crates/ferrum-core/src/engine/runtime.rs` |
+| Gameplay authoring bridge | `crates/ferrum-core/src/engine/gameplay_authoring.rs` |
+
+`engine/scenes.rs`는 `ActiveScene` dispatch, `BuiltInSceneSlots`, `DataSceneRuntime`, crate 내부 `BuiltInSceneRuntime` 계약을 소유하며, built-in scene의 score/game state/title reset/playing reset/update/camera update/frame telemetry/action-trigger hooks는 공통 reset/update context와 active runtime accessor를 통해 호출한다.
+concrete scene 필드는 `BuiltInSceneSlots` 내부 private state로 유지하고, shooter snapshot/authoring처럼 호환 ABI가 필요한 경로만 `shooter()`/`shooter_mut()` accessor로 명시한다.
+data scene update는 shooter/breakout/platformer 로직을 실행하지 않고 `World` cooldown tick, generic world update, tilemap dynamic collision resolve만 호출한다.
+이 계약은 Rust 내부 구조 정리용이며 기존 snapshot/event/render buffer layout을 바꾸지 않고 frame hot path에 JS/Wasm callback이나 entity별 동적 dispatch를 추가하지 않는다.
+scene-level trait object dispatch는 active built-in scene당 frame update/reset/telemetry 호출 1회 단위로 제한한다.
+`engine/gameplay_authoring.rs`는 scene load/agent apply 같은 낮은 빈도 경로에서만 호출하는 generation-checked gameplay component setter를 담당하며, frame hot path의 behavior evaluation이나 entity별 JS callback을 담당하지 않는다.
+
+#### World storage와 lifecycle 접근 경계
+
+| 영역 | 코드 기준 |
+| --- | --- |
+| World facade와 component storage | `crates/ferrum-core/src/world.rs`, `crates/ferrum-core/src/world/component_storage.rs` |
+| Entity lifecycle | `crates/ferrum-core/src/world/entity_lifecycle.rs` |
+| Checked component access | `crates/ferrum-core/src/world/component_access.rs` |
+| Snapshot과 joint storage | `crates/ferrum-core/src/world/snapshot.rs`, `crates/ferrum-core/src/world/joints.rs` |
+
+`World` storage는 `world.rs`에 두고 template, snapshot, entity lifecycle, collider, joint, tests 구현은 `world/*.rs`에 둔다.
+entity spawn/despawn 때 component slot push/clear 정책은 crate 내부 `WorldComponentStorage`가 담당해 lifecycle id/generation 관리와 component slot 초기화/정리를 분리한다.
+Rigid-body contact impulse cache와 CCD debug hit buffer도 `world` module private storage로 유지하고 solver/debug 경로는 `World` helper와 iterator로만 접근한다.
+Height span과 projectile arc slot도 `world` module private storage로 유지하며, 외부 runtime/render/collision 경로는 `World`의 entity/index-checked helper를 통해 파생 height span 동기화 정책에 접근한다.
+Gameplay health, damage, score reward, lifetime, projectile policy, projectile legacy mirror, faction, faction relation table, tag, pickup, interaction, movement pattern, collision reaction, FSM machine, action binding, FSM state-enter action, one-shot timer trigger slot과 player entity handle은 `world` module private storage로 유지하고 외부 runtime/authoring 경로는 entity/index-checked accessor와 replace helper를 통해서만 읽고 복원한다.
+`World`의 lifecycle liveness/generation storage는 `world` module private field로 유지하고, `World` 외부 production 경로는 entity liveness/generation vector를 직접 읽지 않고 `entity_capacity()`, `is_alive_index(...)`, `generation_at_index(...)`, `entity_at_index(...)`, `is_current_entity(...)` accessor를 통해 lifecycle storage 정책에 접근한다.
+
+#### Component facade와 gameplay/FSM/collision reaction data
+
+| 영역 | 코드 기준 |
+| --- | --- |
+| Component facade | `crates/ferrum-core/src/components.rs`, `crates/ferrum-core/src/components/*.rs` |
+| Gameplay component data | `crates/ferrum-core/src/components/gameplay.rs` |
+| Gameplay 실행 로직 | `crates/ferrum-core/src/gameplay.rs`, `crates/ferrum-core/src/gameplay/**` |
+| Joint public type | `crates/ferrum-core/src/components/joints.rs`, `crates/ferrum-core/src/components/joints/*.rs` |
+
+Component public surface는 `components.rs` facade와 `components/{gameplay,motion,sprite,rigid_body,joints,collision_masks,limits,colliders,tests}.rs`로 나눈다.
+`components/gameplay.rs`는 crate-private `MovementPattern`, `ActionBindingSet`/`Cooldown`, `CollisionReactionSet`, `GameplayTimerTrigger` 같은 데이터 layout을 둔다.
+Shooter runtime은 현재 `ActionBindingSet`의 cooldown remaining state를 직접 tick/trigger해 primary projectile action을 실행하고, built-in Shooter snapshot은 player primary projectile action binding과 cooldown remaining state를 함께 보존한다.
+공통 timer trigger는 entity별 one-shot component로 World snapshot/lifecycle에 포함되며, elapsed event를 기존 FSM event pass가 소비한다.
+더 넓은 공통 action system으로 승격할 때는 authoring config와 runtime cache 분리를 다시 확정한다.
+joint public type은 `components/joints/*.rs` 기능군 모듈 뒤의 `components/joints.rs` facade로 다시 모은다.
+기존 `crate::components::*`, crate 내부 `crate::components::joints::*`, crate root re-export 경로를 유지한다.
+
+#### Built-in scene vertical slice
+
+| 영역 | 코드 기준 |
+| --- | --- |
+| Top-down Shooter | `crates/ferrum-core/src/shooter_scene.rs`, `crates/ferrum-core/src/shooter_scene/*.rs` |
+| Breakout | `crates/ferrum-core/src/breakout_scene.rs`, `crates/ferrum-core/src/breakout_scene/*.rs` |
+
+Top-down Shooter scene은 `shooter_scene.rs` facade/storage와 `shooter_scene/{config,runtime,snapshot,tests}.rs` vertical slice로 나눈다.
+Breakout scene은 `breakout_scene.rs` facade/storage와 `breakout_scene/{config,effects,level,runtime,tests}.rs`로 나누며 기존 `crate::breakout_scene::{BreakoutScene, BreakoutParticleBurstSink, breakout_brick_hit_particle_preset}` 경로를 유지한다.
+
+#### Physics solver와 joint schedule
+
+| 영역 | 코드 기준 |
+| --- | --- |
+| Contact solver | `crates/ferrum-core/src/physics/solver.rs`, `crates/ferrum-core/src/physics/solver/*.rs` |
+| Rigid-body helper | `crates/ferrum-core/src/physics/body_impulses.rs`, `crates/ferrum-core/src/physics/rigid_body_properties.rs` |
+| Island schedule | `crates/ferrum-core/src/physics/islands.rs`, `crates/ferrum-core/src/physics/islands/*.rs` |
+| Joint solver | `crates/ferrum-core/src/physics/joints.rs`, `crates/ferrum-core/src/physics/joints/*.rs` |
+
+`physics/solver.rs`는 rigid-body solver facade를 유지하고 contact constraint 생성/cache, split impulse state, material/restitution/surface velocity/baumgarte helper는 `physics/solver/*.rs`에 둔다.
+`physics/body_impulses.rs`는 joint/solver가 공유하는 rigid-body contact point velocity와 pair linear impulse 적용 helper를 담당한다.
+`physics/rigid_body_properties.rs`는 rigid-body enabled/mass/inertia/gravity-scale/damping 조회 helper를 담당한다.
+`physics/islands.rs`는 rigid-body island graph/schedule과 union helper를 담당하고, `physics/islands/joint_buckets.rs`는 solver iteration 안의 전체 joint store 반복 순회를 피하는 joint index bucket을 담당한다.
+`physics/joints.rs`는 joint solver facade/re-export를 유지하고, joint별 solver는 `physics/joints/*.rs`, shared context/limit/impulse helper는 `physics/joints/{contexts,limits,impulses}.rs`에 둔다.
+Distance/Rope/Spring local anchor는 TypeScript authoring/facade가 낮은 빈도 숫자 인자로 Wasm에 전달하고, Rust solver가 anchor point velocity와 회전 관성 effective mass를 계산한다.
+이 경로는 frame hot path의 JS/Wasm 호출 수를 늘리지 않는다.
+
+#### Tilemap facade와 내부 기능
+
+| 영역 | 코드 기준 |
+| --- | --- |
+| Tilemap facade | `crates/ferrum-core/src/tilemap.rs` |
+| Collision/navigation/rendering | `crates/ferrum-core/src/tilemap/*.rs` |
+
+`tilemap.rs`는 public type/storage와 authoring facade를 유지하고, collision cache, collision candidate traversal, collision/query facade, navigation, layer helper, rendering, tests는 `tilemap/*.rs`에 둔다.
+이 분리는 Rust module 구조만 바꾸며 기존 render/audio/debug buffer layout을 유지한다.
+
+#### Joint lifecycle과 handle 안정성
+
+| 영역 | 코드 기준 |
+| --- | --- |
+| Entity despawn cascade | `crates/ferrum-core/src/world/entity_lifecycle.rs`, `crates/ferrum-core/src/world/joints.rs` |
+| Checked joint mutation과 storage | `crates/ferrum-core/src/world/joints.rs` |
+| Snapshot runtime state rebuild | `crates/ferrum-core/src/world/snapshot.rs`, `crates/ferrum-core/src/world/joints.rs` |
 
 유효한 entity를 `World::despawn(...)`으로 제거하면 lifecycle generation을 갱신하기 전에 그 entity를 어느 endpoint로든 참조하는 distance, rope, spring, pulley, revolute, prismatic, weld, gear joint를 함께 제거한다. public `despawnPhysicsEntity(...)`도 이 경로를 사용한다. cascade로 제거된 joint는 generation 증가와 free-list 반환을 함께 수행하므로 기존 handle이 즉시 무효화되며, 유효하지 않은 entity handle은 World와 joint 상태를 변경하지 않는다. World의 public Rust joint mutation은 양 endpoint가 현재 alive/generation과 일치해야 한다. 복구 가능한 mutation은 `try_add_*_joint(...) -> Option<JointId>`와 `try_set_*_joint(...) -> bool`을 사용해 invalid endpoint를 저장소 변경 없이 거부한다. 기존 `add_*_joint(...)` convenience API는 이 precondition 위반을 programming error로 취급해 저장 전에 panic하고, 기존 `set_*_joint(...)` 시그니처는 호환성을 유지하면서 invalid 입력을 무변경으로 처리한다. Wasm `Engine` joint spawn/control은 checked 경로만 사용해 panic을 JS 경계로 전달하지 않는다. World는 generation-aware per-entity incident joint count를 derived runtime index로 유지해 joint와 무관한 entity의 despawn은 O(1) gate에서 8종 storage 순회를 생략한다. snapshot restore는 이 index를 active joint endpoint에서 재구축한다. joint free-list는 slot 생성과 snapshot restore 시 storage high-watermark까지 capacity를 확보해 despawn cascade의 free-list 반환이 재할당을 만들지 않게 한다.
+
+#### Gameplay movement runtime
+
+| 영역 | 코드 기준 |
+| --- | --- |
+| Common movement pattern과 navigation | `crates/ferrum-core/src/gameplay/movement/*.rs` |
+| Shooter enemy movement | `crates/ferrum-core/src/shooter_scene/runtime/enemies.rs` |
+| Shooter projectile movement | `crates/ferrum-core/src/shooter_scene/runtime/bullets.rs` |
+
+Shooter enemy movement compatibility path는 `MovementPattern::Chase(Player/Entity)`를 Rust-owned tilemap navigation waypoint/cache로 처리한다. cache key에는 player/entity/layer/faction/tag target identity가 포함되어 서로 다른 chase target의 waypoint가 repath interval 안에서 섞이지 않는다. `nearestFaction:*`/`nearestTag:*` target query는 `World`의 faction/tag별 derived index bucket을 먼저 순회하고, stale 방어를 위해 live component와 transform 존재를 재확인한 뒤 source 위치 기준 가장 가까운 transform을 선택한다. 이 bucket은 gameplay component setter, despawn, prefab/projectile spawn, World snapshot restore, gameplay authoring rollback restore에서 component 배열로부터 갱신되며 Wasm/public API에는 노출되지 않는다. Shooter projectile movement path는 Enemy movement phase 이후, physics integration 이전에 Bullet layer authored `MovementPattern`을 적용한다. movement component가 없거나 unsupported인 Bullet은 기존 velocity를 linear fallback으로 유지하며, target query가 해석되지 않는 authored `seekTarget`은 공통 movement 계약에 따라 velocity 0으로 정지한다.
+
+### Data Scene authoring apply와 instance registry
+
+| 영역 | 코드 기준 |
+| --- | --- |
+| Data Scene runtime target과 document apply | `packages/ferrum-web/src/dataSceneRuntimeTarget.ts` |
+| Instance handle registry와 binding guard | `packages/ferrum-web/src/gameplayAuthoring.ts` |
+| Runtime startup/reapply composition | `packages/ferrum-web/src/createFerrumRuntime.ts` |
 
 `applyDataSceneAuthoringDocument(engine, document, options?)`는 scene-authoring envelope를 검증한 뒤 Data Scene runtime target 생성과 behavior recipe apply를 한 번에 수행하는 package-facing 조립 경로다. 기본값은 binding/component validation을 runtime activation 전에 수행하므로 검증 실패만으로 기존 built-in/data scene state를 reset하지 않는다. 더 낮은 수준의 `createDataSceneRuntimeTarget(engine, options?)`는 첫 번째 유효한 spawn request 직전에만 lazy `useDataScene()` activation을 수행한다. `activateDataScene: false`는 이 자동 activation을 끄고, caller가 별도로 scene mode를 준비하는 경로다.
 
@@ -78,8 +217,6 @@ Game Spec, asset metadata, physics authoring, gameplay authoring 같은 낮은 �
 낮은 빈도 경로에서만 `gameplay_entity_exists(...)`로 stale handle을 검증하며, frame loop에 registry scan이나
 entity별 JS/Wasm callback을 추가하지 않는다. 배치 UI/agent 타겟팅처럼 안정 id가 필요한 경로는
 `requireExplicitInstanceIds: true`로 resolver fallback id 의존을 거절한다.
-
-Shooter enemy movement compatibility path는 `MovementPattern::Chase(Player/Entity)`를 Rust-owned tilemap navigation waypoint/cache로 처리한다. cache key에는 player/entity/layer/faction/tag target identity가 포함되어 서로 다른 chase target의 waypoint가 repath interval 안에서 섞이지 않는다. `nearestFaction:*`/`nearestTag:*` target query는 `World`의 faction/tag별 derived index bucket을 먼저 순회하고, stale 방어를 위해 live component와 transform 존재를 재확인한 뒤 source 위치 기준 가장 가까운 transform을 선택한다. 이 bucket은 gameplay component setter, despawn, prefab/projectile spawn, World snapshot restore, gameplay authoring rollback restore에서 component 배열로부터 갱신되며 Wasm/public API에는 노출되지 않는다. Shooter projectile movement path는 Enemy movement phase 이후, physics integration 이전에 Bullet layer authored `MovementPattern`을 적용한다. movement component가 없거나 unsupported인 Bullet은 기존 velocity를 linear fallback으로 유지하며, target query가 해석되지 않는 authored `seekTarget`은 공통 movement 계약에 따라 velocity 0으로 정지한다.
 
 ### TypeScript platform layer
 
