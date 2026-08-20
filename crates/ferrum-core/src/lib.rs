@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 pub mod audio_event;
+pub(crate) mod bitmap_text;
 pub(crate) mod breakout_scene;
 mod buffer_layout;
 pub mod camera;

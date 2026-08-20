@@ -1,11 +1,14 @@
 import { deepEqual, equal, ok } from "node:assert/strict";
 import { test } from "node:test";
 import {
+  BITMAP_FONT_ATLAS_FORMAT,
+  BITMAP_FONT_ATLAS_VERSION,
   LocalizationBundle,
   layoutLocalizedText,
   loadFontLoadingPolicy,
   localizationLocaleChain,
   resolveFontLoadingPolicy,
+  resolveBitmapFontAtlas,
   resolveLocalizationDocument,
 } from "../src/localization.js";
 
@@ -100,6 +103,89 @@ test("resolveFontLoadingPolicy builds CSS and preload policy", async () => {
   equal(result.failed.length, 0);
   equal(requested[0], "normal 700 16px \"Ferrum UI\"");
   ok(policy.webFonts[0].cssFontFace.includes("font-display: swap"));
+});
+
+test("resolveBitmapFontAtlas validates inline glyph metrics and kerning metadata", () => {
+  const atlas = resolveBitmapFontAtlas({
+    format: BITMAP_FONT_ATLAS_FORMAT,
+    version: BITMAP_FONT_ATLAS_VERSION,
+    lineHeight: 12,
+    fallback: "A",
+    glyphs: {
+      A: {
+        uv: { u0: 0, v0: 0, u1: 0.5, v1: 1 },
+        size: { width: 8, height: 10 },
+        offset: { x: 1, y: 2 },
+        advance: 9,
+      },
+      V: {
+        uv: { u0: 0.5, v0: 0, u1: 1, v1: 1 },
+        size: { width: 8, height: 10 },
+        advance: 9,
+      },
+    },
+    kernings: [{ left: "A", right: "V", amount: -1 }],
+  });
+
+  equal(atlas.glyphs.length, 2);
+  equal(atlas.glyphs[0].codePoint, "A".codePointAt(0));
+  equal(atlas.glyphs[0].offsetX, 1);
+  equal(atlas.fallbackCodePoint, "A".codePointAt(0));
+  equal(atlas.kernings[0].amount, -1);
+
+  const policy = resolveFontLoadingPolicy({
+    bitmapFonts: {
+      inline: {
+        image: "/fonts/inline.png",
+        data: {
+          format: BITMAP_FONT_ATLAS_FORMAT,
+          version: BITMAP_FONT_ATLAS_VERSION,
+          lineHeight: 12,
+          glyphs: {
+            A: {
+              uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+              size: { width: 8, height: 10 },
+              advance: 9,
+            },
+          },
+        },
+      },
+    },
+  });
+  deepEqual(policy.preloadUrls, ["/fonts/inline.png"]);
+  equal(typeof policy.bitmapFonts[0].data, "object");
+
+  expectThrows(
+    () => resolveBitmapFontAtlas({
+      format: BITMAP_FONT_ATLAS_FORMAT,
+      version: BITMAP_FONT_ATLAS_VERSION,
+      lineHeight: 12,
+      glyphs: {
+        AA: {
+          uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+          size: { width: 8, height: 10 },
+          advance: 9,
+        },
+      },
+    }),
+    /must be exactly one Unicode character/,
+  );
+
+  expectThrows(
+    () => resolveBitmapFontAtlas({
+      format: BITMAP_FONT_ATLAS_FORMAT,
+      version: BITMAP_FONT_ATLAS_VERSION,
+      lineHeight: 12,
+      glyphs: {
+        ["\ud800"]: {
+          uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+          size: { width: 8, height: 10 },
+          advance: 9,
+        },
+      },
+    }),
+    /must be a Unicode scalar value/,
+  );
 });
 
 function expectThrows(callback: () => void, pattern: RegExp): void {

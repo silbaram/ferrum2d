@@ -91,9 +91,79 @@ export interface WebFontPolicySpec {
   preload?: boolean;
 }
 
+export const BITMAP_FONT_ATLAS_FORMAT = "ferrum-bitmap-font" as const;
+export const BITMAP_FONT_ATLAS_VERSION = 1 as const;
+export const BITMAP_FONT_MAX_GLYPHS = 4_096;
+export const BITMAP_FONT_MAX_KERNING_PAIRS = 16_384;
+
+export interface BitmapFontGlyphSpec {
+  uv: {
+    u0: number;
+    v0: number;
+    u1: number;
+    v1: number;
+  };
+  size: {
+    width: number;
+    height: number;
+  };
+  offset?: {
+    x?: number;
+    y?: number;
+  };
+  advance: number;
+}
+
+export interface BitmapFontKerningSpec {
+  left: string;
+  right: string;
+  amount: number;
+}
+
+export interface BitmapFontAtlasSpec {
+  format: typeof BITMAP_FONT_ATLAS_FORMAT;
+  version: typeof BITMAP_FONT_ATLAS_VERSION;
+  lineHeight: number;
+  fallback?: string;
+  glyphs: Readonly<Record<string, BitmapFontGlyphSpec>>;
+  kernings?: readonly BitmapFontKerningSpec[];
+}
+
+export interface ResolvedBitmapFontGlyph {
+  character: string;
+  codePoint: number;
+  u0: number;
+  v0: number;
+  u1: number;
+  v1: number;
+  width: number;
+  height: number;
+  offsetX: number;
+  offsetY: number;
+  advance: number;
+}
+
+export interface ResolvedBitmapFontKerning {
+  left: string;
+  leftCodePoint: number;
+  right: string;
+  rightCodePoint: number;
+  amount: number;
+}
+
+export interface ResolvedBitmapFontAtlas {
+  format: typeof BITMAP_FONT_ATLAS_FORMAT;
+  version: typeof BITMAP_FONT_ATLAS_VERSION;
+  lineHeight: number;
+  fallback?: string;
+  fallbackCodePoint?: number;
+  glyphs: readonly ResolvedBitmapFontGlyph[];
+  kernings: readonly ResolvedBitmapFontKerning[];
+}
+
 export interface BitmapFontPolicySpec {
   image: string;
-  data: string;
+  data: string | BitmapFontAtlasSpec;
   family?: string;
   lineHeight?: number;
 }
@@ -121,7 +191,7 @@ export interface ResolvedBitmapFontPolicy {
   id: string;
   family: string;
   image: string;
-  data: string;
+  data: string | ResolvedBitmapFontAtlas;
   lineHeight?: number;
 }
 
@@ -146,6 +216,124 @@ export interface LoadFontPolicyResult {
 
 const DEFAULT_FALLBACK_FAMILIES = ["ui-sans-serif", "system-ui", "sans-serif"] as const;
 const PLACEHOLDER_PATTERN = /\{([a-zA-Z0-9_.-]+)\}/g;
+
+export function resolveBitmapFontAtlas(
+  value: unknown,
+  options: ResolveLocalizationOptions = {},
+): ResolvedBitmapFontAtlas {
+  const path = options.path ?? "bitmapFont";
+  if (!isRecord(value)) {
+    throw invalid(path, "must be an object");
+  }
+  if (value.format !== BITMAP_FONT_ATLAS_FORMAT) {
+    throw invalid(`${path}.format`, `must be '${BITMAP_FONT_ATLAS_FORMAT}'`);
+  }
+  if (value.version !== BITMAP_FONT_ATLAS_VERSION) {
+    throw invalid(`${path}.version`, `must be ${BITMAP_FONT_ATLAS_VERSION}`);
+  }
+  const lineHeight = positiveFinite(value.lineHeight as number, `${path}.lineHeight`);
+  if (!isRecord(value.glyphs)) {
+    throw invalid(`${path}.glyphs`, "must be an object");
+  }
+  const glyphEntries = Object.entries(value.glyphs);
+  if (glyphEntries.length === 0 || glyphEntries.length > BITMAP_FONT_MAX_GLYPHS) {
+    throw invalid(`${path}.glyphs`, `must contain between 1 and ${BITMAP_FONT_MAX_GLYPHS} glyphs`);
+  }
+
+  const glyphCharacters = new Set(glyphEntries.map(([character]) =>
+    bitmapFontCharacter(character, `${path}.glyphs key`)));
+  const glyphs = glyphEntries.map(([character, glyphValue]) => {
+    const glyphPath = `${path}.glyphs.${character}`;
+    if (!isRecord(glyphValue)) {
+      throw invalid(glyphPath, "must be an object");
+    }
+    if (!isRecord(glyphValue.uv)) {
+      throw invalid(`${glyphPath}.uv`, "must be an object");
+    }
+    if (!isRecord(glyphValue.size)) {
+      throw invalid(`${glyphPath}.size`, "must be an object");
+    }
+    const offset = glyphValue.offset === undefined ? {} : glyphValue.offset;
+    if (!isRecord(offset)) {
+      throw invalid(`${glyphPath}.offset`, "must be an object");
+    }
+    const width = nonNegativeFinite(glyphValue.size.width, `${glyphPath}.size.width`);
+    const height = nonNegativeFinite(glyphValue.size.height, `${glyphPath}.size.height`);
+    const u0 = unitFinite(glyphValue.uv.u0, `${glyphPath}.uv.u0`);
+    const v0 = unitFinite(glyphValue.uv.v0, `${glyphPath}.uv.v0`);
+    const u1 = unitFinite(glyphValue.uv.u1, `${glyphPath}.uv.u1`);
+    const v1 = unitFinite(glyphValue.uv.v1, `${glyphPath}.uv.v1`);
+    if (width > 0 && u1 <= u0) {
+      throw invalid(`${glyphPath}.uv.u1`, "must be greater than uv.u0 for a drawable glyph");
+    }
+    if (height > 0 && v1 <= v0) {
+      throw invalid(`${glyphPath}.uv.v1`, "must be greater than uv.v0 for a drawable glyph");
+    }
+    return {
+      character,
+      codePoint: character.codePointAt(0) as number,
+      u0,
+      v0,
+      u1,
+      v1,
+      width,
+      height,
+      offsetX: finiteOrDefault(offset.x, `${glyphPath}.offset.x`, 0),
+      offsetY: finiteOrDefault(offset.y, `${glyphPath}.offset.y`, 0),
+      advance: nonNegativeFinite(glyphValue.advance, `${glyphPath}.advance`),
+    };
+  }).sort((left, right) => left.codePoint - right.codePoint);
+
+  const fallback = value.fallback === undefined
+    ? undefined
+    : bitmapFontCharacter(value.fallback, `${path}.fallback`);
+  if (fallback !== undefined && !glyphCharacters.has(fallback)) {
+    throw invalid(`${path}.fallback`, "must reference a glyph key");
+  }
+
+  const kerningValues = value.kernings ?? [];
+  if (!Array.isArray(kerningValues)) {
+    throw invalid(`${path}.kernings`, "must be an array");
+  }
+  if (kerningValues.length > BITMAP_FONT_MAX_KERNING_PAIRS) {
+    throw invalid(`${path}.kernings`, `must contain at most ${BITMAP_FONT_MAX_KERNING_PAIRS} entries`);
+  }
+  const kerningKeys = new Set<string>();
+  const kernings = kerningValues.map((kerningValue, index) => {
+    const kerningPath = `${path}.kernings.${index}`;
+    if (!isRecord(kerningValue)) {
+      throw invalid(kerningPath, "must be an object");
+    }
+    const left = bitmapFontCharacter(kerningValue.left, `${kerningPath}.left`);
+    const right = bitmapFontCharacter(kerningValue.right, `${kerningPath}.right`);
+    if (!glyphCharacters.has(left) || !glyphCharacters.has(right)) {
+      throw invalid(kerningPath, "left and right must reference glyph keys");
+    }
+    const key = `${left}\u0000${right}`;
+    if (kerningKeys.has(key)) {
+      throw invalid(kerningPath, "must not duplicate a kerning pair");
+    }
+    kerningKeys.add(key);
+    return {
+      left,
+      leftCodePoint: left.codePointAt(0) as number,
+      right,
+      rightCodePoint: right.codePointAt(0) as number,
+      amount: finiteNumber(kerningValue.amount, `${kerningPath}.amount`),
+    };
+  });
+
+  return {
+    format: BITMAP_FONT_ATLAS_FORMAT,
+    version: BITMAP_FONT_ATLAS_VERSION,
+    lineHeight,
+    ...(fallback === undefined
+      ? {}
+      : { fallback, fallbackCodePoint: fallback.codePointAt(0) as number }),
+    glyphs,
+    kernings,
+  };
+}
 
 export function resolveLocalizationDocument(
   document: LocalizationDocumentSpec,
@@ -363,7 +551,9 @@ export function resolveFontLoadingPolicy(
   const bitmapFonts = resolveBitmapFonts(input.bitmapFonts, `${path}.bitmapFonts`);
   const preloadUrls = [
     ...webFonts.flatMap((font) => font.preload ? font.sources : []),
-    ...bitmapFonts.flatMap((font) => [font.image, font.data]),
+    ...bitmapFonts.flatMap((font) => typeof font.data === "string"
+      ? [font.image, font.data]
+      : [font.image]),
   ];
   return {
     defaultFamily,
@@ -489,7 +679,9 @@ function resolveBitmapFonts(
       id: stringKey(id, `${path} key`),
       family: optionalString(input.family, `${path}.${id}.family`) ?? id,
       image: stringKey(input.image, `${path}.${id}.image`),
-      data: stringKey(input.data, `${path}.${id}.data`),
+      data: typeof input.data === "string"
+        ? stringKey(input.data, `${path}.${id}.data`)
+        : resolveBitmapFontAtlas(input.data, { path: `${path}.${id}.data` }),
       ...(input.lineHeight === undefined
         ? {}
         : { lineHeight: positiveFinite(input.lineHeight, `${path}.${id}.lineHeight`) }),
@@ -627,6 +819,43 @@ function positiveInteger(value: number | undefined, path: string, fallback: numb
 function positiveFinite(value: number, path: string): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw invalid(path, "must be a positive finite number");
+  }
+  return value;
+}
+
+function nonNegativeFinite(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw invalid(path, "must be a non-negative finite number");
+  }
+  return value;
+}
+
+function finiteNumber(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw invalid(path, "must be a finite number");
+  }
+  return value;
+}
+
+function finiteOrDefault(value: unknown, path: string, fallback: number): number {
+  return value === undefined ? fallback : finiteNumber(value, path);
+}
+
+function unitFinite(value: unknown, path: string): number {
+  const next = finiteNumber(value, path);
+  if (next < 0 || next > 1) {
+    throw invalid(path, "must be between 0 and 1");
+  }
+  return next;
+}
+
+function bitmapFontCharacter(value: unknown, path: string): string {
+  if (typeof value !== "string" || Array.from(value).length !== 1) {
+    throw invalid(path, "must be exactly one Unicode character");
+  }
+  const codePoint = value.codePointAt(0) as number;
+  if (codePoint >= 0xd800 && codePoint <= 0xdfff) {
+    throw invalid(path, "must be a Unicode scalar value");
   }
   return value;
 }

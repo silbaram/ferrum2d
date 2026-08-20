@@ -66,6 +66,7 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 | WebGL2 renderer | 기본 2D sprite renderer다. |
 | WebGPU renderer | 지원 환경에서 선택 사용하고 실패하면 WebGL2로 fallback한다. WebGL2가 기준 renderer다. |
 | Render command buffer | Rust가 sprite draw command를 만들고 TS가 GPU로 그린다. |
+| Bitmap world text | font atlas glyph를 기존 sprite command로 cache 전개해 camera, culling, render layer, HD-2D sort에 함께 참여시킨다. |
 | Viewport render culling | 화면 밖 tile, sprite, particle command 생성을 줄인다. |
 | Camera preset | follow, dead-zone, look-ahead, shake 카메라를 Game Spec으로 설정한다. |
 | Camera rig | `CameraRigController`로 dead-zone, bounds, optional smoothing 기반 camera center를 계산한다. |

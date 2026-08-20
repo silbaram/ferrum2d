@@ -1,5 +1,6 @@
 use wasm_bindgen::prelude::*;
 
+use crate::bitmap_text::BitmapTextSystem;
 use crate::camera::Camera2D;
 use crate::collision::{
     AabbQueryHit, CircleQueryHit, CollisionContact, CollisionManifold, CollisionScratch,
@@ -24,6 +25,7 @@ use crate::tilemap::{
 use crate::tweens::TweenSystem;
 use crate::world::World;
 
+mod bitmap_text_controls;
 mod data_scene_spawning;
 mod fixed_step;
 mod frame_buffers;
@@ -99,6 +101,7 @@ pub struct Engine {
     gameplay_authoring_snapshot: Option<GameplayAuthoringSnapshot>,
     tilemap: Tilemap,
     particles: ParticleSystem,
+    bitmap_text: BitmapTextSystem,
     tweens: TweenSystem,
     particle_presets: Vec<Option<ParticlePreset>>,
     shooter_hit_particle_preset: Option<u32>,
@@ -173,6 +176,7 @@ impl Engine {
             gameplay_authoring_snapshot: None,
             tilemap: Tilemap::default(),
             particles: ParticleSystem::new(),
+            bitmap_text: BitmapTextSystem::default(),
             tweens: TweenSystem::new(),
             particle_presets: Vec::new(),
             shooter_hit_particle_preset: None,

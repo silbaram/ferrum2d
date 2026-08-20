@@ -77,11 +77,16 @@ export {
   resolveCutsceneSequenceSpec,
 } from "../cutsceneSequence";
 export {
+  BITMAP_FONT_ATLAS_FORMAT,
+  BITMAP_FONT_ATLAS_VERSION,
+  BITMAP_FONT_MAX_GLYPHS,
+  BITMAP_FONT_MAX_KERNING_PAIRS,
   LocalizationBundle,
   layoutLocalizedText,
   loadFontLoadingPolicy,
   localizationLocaleChain,
   resolveFontLoadingPolicy,
+  resolveBitmapFontAtlas,
   resolveLocalizationDocument,
 } from "../localization";
 export {
@@ -414,6 +419,9 @@ export type {
   ResolvedCutsceneWaitCommand,
 } from "../cutsceneSequence";
 export type {
+  BitmapFontAtlasSpec,
+  BitmapFontGlyphSpec,
+  BitmapFontKerningSpec,
   BitmapFontPolicySpec,
   FontDisplayPolicy,
   FontFaceSetLike,
@@ -428,6 +436,9 @@ export type {
   LocalizedTextResult,
   MissingLocalizationBehavior,
   ResolvedBitmapFontPolicy,
+  ResolvedBitmapFontAtlas,
+  ResolvedBitmapFontGlyph,
+  ResolvedBitmapFontKerning,
   ResolvedFontLoadingPolicy,
   ResolvedLocalizationDocument,
   ResolvedLocalizationLocale,

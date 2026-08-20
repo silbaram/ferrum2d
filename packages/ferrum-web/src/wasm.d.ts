@@ -12,6 +12,15 @@ declare module "../pkg/ferrum_core.js" {
     set_input(w:boolean,a:boolean,s:boolean,d:boolean,space:boolean,enter:boolean,mouse_left:boolean,mouse_x:number,mouse_y:number): void;
     set_texture_ids(player:number,enemy:number,bullet:number): void;
     set_sound_ids(shoot:number,hit:number,game_over:number): void;
+    register_bitmap_font(font_id:number,texture_id:number,line_height:number,fallback_code_point:number,glyph_code_points:Uint32Array,glyph_metrics:Float32Array,kerning_code_points:Uint32Array,kerning_amounts:Float32Array): boolean;
+    remove_bitmap_font(font_id:number): boolean;
+    clear_bitmap_fonts(): void;
+    set_world_text(text_id:number,font_id:number,text:string,x:number,y:number,scale:number,r:number,g:number,b:number,a:number,max_width:number,alignment_code:number,render_layer:number,floor_id:number,elevation:number,anchor_entity_id:number,anchor_entity_generation:number): boolean;
+    update_world_text(text_id:number,font_id:number,x:number,y:number,scale:number,r:number,g:number,b:number,a:number,max_width:number,alignment_code:number,render_layer:number,floor_id:number,elevation:number,anchor_entity_id:number,anchor_entity_generation:number): boolean;
+    remove_world_text(text_id:number): boolean;
+    clear_world_texts(): void;
+    world_text_count(): number;
+    world_text_glyph_count(): number;
     built_in_shooter_player_entity_id(): number;
     built_in_shooter_player_entity_generation(): number;
     use_data_scene(): void;

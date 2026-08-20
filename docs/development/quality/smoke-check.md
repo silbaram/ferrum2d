@@ -436,7 +436,7 @@ pnpm smoke:headless
 - `pnpm smoke:mobile-input`은 Minimal Game에서 `VirtualControls` DOM preset을 켜고 joystick/button state가 `W/D/Space/mouseLeft` input으로 합성되고 release되는지 확인한다.
 - Minimal Game의 `visual-runtime-lab`과 `input-ui-lab`은 같은 production build와 smoke-only query flag를 공유한다. 별도 app/package 분리는 public portfolio 승격이 필요할 때만 검토한다.
 - `pnpm smoke:topdown`은 Top-down Shooter production build에서 실제 asset manifest preload/cache/loading overlay를 거친 뒤 smoke 전용 URL parameter로 deterministic enemy hit를 만들고, particle count와 enemy tint flash render command가 관측되는지 확인한다.
-- `pnpm smoke:topdown-mass-objects`는 Top-down Shooter production build에서 Playing 상태의 1,024개 enemy snapshot restore, 1,000개 이상 Rust render command, WebGL2 batching stats, collision pair budget, runtime budget profile을 확인한다.
+- `pnpm smoke:topdown-mass-objects`는 Top-down Shooter production build에서 Playing 상태의 1,024개 enemy snapshot restore 뒤 `BitmapFontPolicySpec` image/inline atlas를 로드하고 entity-anchored bitmap world text를 같은 frame 경로에 추가한다. 이후 1,000개 이상 Rust render command, glyph count, WebGL2 batching stats, collision pair budget, runtime budget profile을 확인한다.
 - `pnpm smoke:topdown-save-load`는 Top-down Shooter production build에서 enemy/bullet이 포함된 built-in shooter snapshot을 캡처하고, `resetGame()` 이후 restore 및 재캡처 hash 일치를 확인한다. 또한 저장/복원 전후 `GameStateSnapshot`을 `createGameplayReplayRun(...)` / `compareGameplayReplayRuns(...)`로 비교해 첫 mismatch frame과 JSON path를 실패 report에 포함한다.
 - `pnpm smoke:gameplay-replay`는 Top-down Shooter raw Wasm runtime을 deterministic input stream으로 실행하고 committed golden fixture의 replay hash와 비교한다. 이 경로는 browser rendering smoke가 아니라 gameplay canonical state 회귀 gate다.
 - `pnpm smoke:topdown-hd2d`는 Top-down Shooter production build에 smoke 전용 HD-2D spec을 적용해 `weapons.projectileArc`, bridge `toHeightSpan` path, under-pass same-floor path, render command 생성을 확인한다.
@@ -458,7 +458,7 @@ pnpm smoke:headless
 - `pnpm smoke:camera-postprocess`는 Minimal Game browser runtime에서 renderer fullscreen post-processing pass stats와 camera/post-process public helper를 확인한다.
 - `pnpm smoke:cutscene-sequence`는 public package build에서 `CutsceneSequencePlayer`가 wait/camera/audio/dialogue command event를 순서대로 방출하고 target adapter hook과 `LocalizationBundle` 기반 dialogue text 변환을 호출하는지 확인한다.
 - `pnpm validate:game-spec`는 Top-down Shooter `game.json`의 `content` namespace가 localization/dialogue/cutscene resolver path를 통과하는지도 확인한다.
-- `pnpm smoke:localization`은 public package build에서 `LocalizationBundle` fallback/interpolation, text wrapping, web/bitmap font loading policy를 확인한다.
+- `pnpm smoke:localization`은 public package build에서 `LocalizationBundle` fallback/interpolation, text wrapping, web/bitmap font loading policy와 inline bitmap atlas glyph/kerning validation을 확인한다.
 - `pnpm smoke:dialogue-quest`는 public package build에서 `DialogueSession`, `QuestLog`, UI overlay hook, dialogue/quest snapshot restore를 확인한다.
 - `pnpm smoke:physics-scene`은 public package build에서 `applyPhysicsSceneProfile(...)`의 runtime profile, auto rigid-body step option, clear 동작을 확인한다.
 - `pnpm smoke:texture-atlas`는 public package build에서 atlas packer를 빌드하고, CLI가 입력 순서와 무관한 deterministic atlas JSON, frame UV, placement metadata를 생성하는지 확인한다.

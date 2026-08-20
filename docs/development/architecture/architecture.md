@@ -274,6 +274,8 @@ AI agent가 직접 다루는 주요 표면은 코드 내부 구현이 아니라 
 
 WebGL2 sprite renderer는 Rust render command buffer를 그대로 instance data로 업로드하고, static quad vertex buffer와 static index buffer를 재사용해 `drawElementsInstanced`로 texture-contiguous batch를 그린다. `SpriteRenderCommand`는 rect/uv/color/texture/effect와 visible `rotation_radians`를 숫자 슬롯으로 전달하며, shader는 rect 중심 기준으로 회전한다. 이 구조는 per-sprite draw call 없이 tilemap/sprite render command를 WebGL2 instancing path로 소비한다.
 
+비트맵 월드 텍스트는 새 render command ABI를 만들지 않는다. TypeScript `BitmapFontPolicySpec` loader/validator가 atlas glyph·kerning metadata를 저빈도 bulk typed-array 호출로 Rust `BitmapTextSystem`에 등록하고, `setWorldText(...)`는 문자열 내용이 바뀔 때만 문자열을 전달한다. 내용이 같은 속성 변경은 숫자 전용 update를 사용하며 좌표·sort metadata·anchor만 바뀌면 기존 glyph command cache도 유지한다. Rust는 정렬 전 월드 좌표 `SpriteRenderCommand` cache를 만들고 frame에서는 entity anchor resolve, camera transform, glyph 단위 viewport culling과 기존 layer/HD-2D sort만 수행한다. 따라서 문자열과 entity별 callback은 frame hot path를 건너지 않으며 WebGL2/WebGPU는 같은 15-float sprite ABI를 그대로 소비한다.
+
 ## 프레임 순서
 
 ```text
@@ -300,7 +302,7 @@ Rust/TypeScript 공유 buffer는 `#[repr(C)]` Rust struct와 TypeScript decoder�
 | Buffer | Rust 기준 | TypeScript 기준 | 용도 |
 | --- | --- | --- | --- |
 | Frame telemetry | `engine/telemetry/frame_stats.rs` | `engineFrameState.ts`, `wasmBridgeAbi.ts`, `wasmBridgeBufferViews.ts` | `FrameState` scalar metric/action/spawn diagnostic bulk snapshot |
-| Sprite render command | `render_command.rs` | `renderCommandDecoder.ts`, `spriteMaterial.ts`, `wasmBridgeAbi.ts` | WebGL2/WebGPU sprite batch 입력. 15-float layout이며 texture/effect offset 뒤 마지막 슬롯이 visible sprite rotation이다. |
+| Sprite render command | `render_command.rs`, `bitmap_text.rs` | `renderCommandDecoder.ts`, `spriteMaterial.ts`, `worldText.ts`, `wasmBridgeAbi.ts` | sprite/tile/particle/bitmap glyph의 WebGL2/WebGPU batch 입력. 15-float layout이며 texture/effect offset 뒤 마지막 슬롯이 visible sprite rotation이다. |
 | Audio event | `audio_event.rs` | `wasmBridge.ts`, `audioManager.ts` | frame 단위 sound playback |
 | Gameplay event | `gameplay_event.rs` | `gameplayEventDecoder.ts`, `gameplayEventActions.ts`, `presentationEffects.ts`, `effectEventAdapters.ts`, `wasmBridge.ts` | Rust-owned gameplay action output, interaction/collision reaction/spawn success/action failure/timer/presentation telemetry와 frame-end adapter action/effect binding/dispatch 변환 |
 | Collision event | `collision_event.rs` | `collisionEventDecoder.ts`, `wasmBridge.ts` | enter/stay/exit/hit/trigger event |

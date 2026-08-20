@@ -21,7 +21,7 @@ impl Engine {
     fn build_layered_render_commands(&mut self, visible_bounds: AabbBounds) {
         self.tilemap
             .append_render_commands(&self.camera, &mut self.frame_buffers.render_commands);
-        self.append_layered_entity_render_commands(visible_bounds);
+        self.append_layered_world_render_commands(visible_bounds);
         self.particles
             .append_render_commands(&self.camera, &mut self.frame_buffers.render_commands);
     }
@@ -30,6 +30,7 @@ impl Engine {
         self.tilemap
             .append_render_items(&self.camera, &mut self.frame_buffers.render_items);
         self.append_entity_render_items(visible_bounds);
+        self.append_bitmap_text_render_items(visible_bounds);
         self.particles
             .append_render_items(&self.camera, &mut self.frame_buffers.render_items);
         self.frame_buffers
@@ -43,8 +44,9 @@ impl Engine {
         );
     }
 
-    fn append_layered_entity_render_commands(&mut self, visible_bounds: AabbBounds) {
+    fn append_layered_world_render_commands(&mut self, visible_bounds: AabbBounds) {
         self.append_entity_render_items(visible_bounds);
+        self.append_bitmap_text_render_items(visible_bounds);
         if entity_render_items_need_layer_sort(&self.frame_buffers.render_items) {
             self.frame_buffers
                 .render_items
@@ -85,8 +87,18 @@ impl Engine {
         }
     }
 
+    fn append_bitmap_text_render_items(&mut self, visible_bounds: AabbBounds) {
+        self.bitmap_text.append_render_items(
+            &self.world,
+            &self.camera,
+            visible_bounds,
+            &mut self.frame_buffers.render_items,
+        );
+    }
+
     fn uses_hd2d_render_sort(&self) -> bool {
         self.tilemap.has_hd2d_render_metadata()
+            || self.bitmap_text.has_hd2d_metadata()
             || self
                 .world
                 .alive_indices()

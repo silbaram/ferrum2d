@@ -12,6 +12,7 @@ import {
   normalizeLightingScene,
   resolveDialogueGraph,
   resolveFontLoadingPolicy,
+  resolveBitmapFontAtlas,
   resolveLocalizationDocument,
   resolveQuestDocument,
   restoreDialogueQuestState,
@@ -19,6 +20,9 @@ import {
 } from "./publicApiTypes.shared.js";
 
 import type {
+  BitmapFontAtlasSpec,
+  BitmapFontGlyphSpec,
+  BitmapFontKerningSpec,
   BitmapFontPolicySpec,
   DialogueChoiceResult,
   DialogueChoiceSpec,
@@ -30,6 +34,7 @@ import type {
   FontDisplayPolicy,
   FontFaceSetLike,
   FontLoadingPolicySpec,
+  FerrumBitmapTextApi,
   LoadFontPolicyResult,
   LocalizationDocumentSpec,
   LocalizationLocaleSpec,
@@ -52,6 +57,9 @@ import type {
   ResolveDialogueQuestOptions,
   ResolveLocalizationOptions,
   ResolvedBitmapFontPolicy,
+  ResolvedBitmapFontAtlas,
+  ResolvedBitmapFontGlyph,
+  ResolvedBitmapFontKerning,
   ResolvedDialogueChoice,
   ResolvedDialogueGraph,
   ResolvedDialogueNode,
@@ -73,6 +81,9 @@ import type {
   TextLayoutResult,
   UiOverlayState,
   WebFontPolicySpec,
+  WorldTextAlignment,
+  WorldTextColor,
+  WorldTextSpec,
 } from "./publicApiTypes.shared.js";
 
 test("public API localization, font, dialogue, and quest types", () => {
@@ -128,6 +139,37 @@ test("public API localization, font, dialogue, and quest types", () => {
     image: "/fonts/pixel.png",
     data: "/fonts/pixel.json",
   };
+  const bitmapFontGlyphSpec: BitmapFontGlyphSpec = {
+    uv: { u0: 0, v0: 0, u1: 1, v1: 1 },
+    size: { width: 8, height: 10 },
+    advance: 9,
+  };
+  const bitmapFontKerningSpec: BitmapFontKerningSpec = { left: "A", right: "A", amount: -1 };
+  const bitmapFontAtlasSpec: BitmapFontAtlasSpec = {
+    format: "ferrum-bitmap-font",
+    version: 1,
+    lineHeight: 12,
+    glyphs: { A: bitmapFontGlyphSpec },
+    kernings: [bitmapFontKerningSpec],
+  };
+  const publicResolveBitmapFontAtlas: PublicApi["resolveBitmapFontAtlas"] = resolveBitmapFontAtlas;
+  const resolvedBitmapFontAtlas: ResolvedBitmapFontAtlas = publicResolveBitmapFontAtlas(bitmapFontAtlasSpec);
+  const resolvedBitmapFontGlyph: ResolvedBitmapFontGlyph = resolvedBitmapFontAtlas.glyphs[0];
+  const resolvedBitmapFontKerning: ResolvedBitmapFontKerning = resolvedBitmapFontAtlas.kernings[0];
+  void resolvedBitmapFontGlyph;
+  void resolvedBitmapFontKerning;
+  const worldTextAlignment: WorldTextAlignment = "center";
+  const worldTextColor: WorldTextColor = [1, 0.8, 0.2, 1];
+  const worldTextSpec: WorldTextSpec = {
+    fontId: 1,
+    text: "AAA",
+    x: 320,
+    y: 180,
+    alignment: worldTextAlignment,
+    color: worldTextColor,
+  };
+  const setWorldText: FerrumBitmapTextApi["setWorldText"] = (_textId, _spec) => true;
+  equal(setWorldText(1, worldTextSpec), true);
   const fontLoadingPolicySpec: FontLoadingPolicySpec = {
     defaultFamily: "Ferrum UI",
     webFonts: { ui: webFontPolicySpec },
