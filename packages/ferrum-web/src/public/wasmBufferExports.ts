@@ -1,4 +1,13 @@
 export type {
+  BuiltInShooterEntityKind,
+  BuiltInShooterGameState,
+  BuiltInShooterStateAccessor,
+  BuiltInShooterStateBuffers,
+  MutableBuiltInShooterStateBuffers,
+  MutableNumberBuffer,
+  RenderCommandAccessor,
+} from "../bufferAccessors.js";
+export type {
   AudioEventBufferView,
   AudioEventView,
   CollisionEventBufferView,

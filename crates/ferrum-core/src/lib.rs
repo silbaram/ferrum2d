@@ -2,6 +2,7 @@ use wasm_bindgen::prelude::*;
 
 pub mod audio_event;
 pub(crate) mod breakout_scene;
+mod buffer_layout;
 pub mod camera;
 pub mod collision;
 pub mod collision_event;
@@ -24,6 +25,13 @@ pub(crate) mod tweens;
 pub mod world;
 
 pub use audio_event::AudioEvent;
+pub use buffer_layout::{
+    shooter_snapshot_entity_float_offset, shooter_snapshot_entity_u32_offset,
+    shooter_snapshot_header_float_offset, shooter_snapshot_header_u32_offset,
+    sprite_render_command_float_offset, ShooterSnapshotEntityFloatField,
+    ShooterSnapshotEntityU32Field, ShooterSnapshotHeaderFloatField, ShooterSnapshotHeaderU32Field,
+    SpriteRenderCommandField,
+};
 pub use camera::{Camera2D, CameraPreset, CameraPresetConfig};
 pub use collision::{
     AabbBounds, AabbContact, AabbQueryHit, CircleQueryHit, CollisionContact, CollisionContactPoint,

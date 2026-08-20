@@ -128,6 +128,7 @@ export type {
   EngineLifecycleHooks,
   EngineLifecycleSnapshot,
   FerrumAssetApi,
+  FerrumBufferAccessorApi,
   FerrumEngine,
   FerrumGameplayAuthoringApi,
   FerrumInputActionApi,
@@ -236,6 +237,10 @@ export type {
 export type {
   AudioEventBufferView,
   AudioEventView,
+  BuiltInShooterEntityKind,
+  BuiltInShooterGameState,
+  BuiltInShooterStateAccessor,
+  BuiltInShooterStateBuffers,
   CollisionEventBufferView,
   CollisionEventKind,
   CollisionEventView,
@@ -267,6 +272,9 @@ export type {
   PhysicsTileRaycastHitBufferView,
   PhysicsTileShapeCastHit,
   PhysicsTileShapeCastHitBufferView,
+  MutableBuiltInShooterStateBuffers,
+  MutableNumberBuffer,
+  RenderCommandAccessor,
   RenderCommandBufferView,
   RenderCommandView,
 } from "./public/wasmBufferExports.js";

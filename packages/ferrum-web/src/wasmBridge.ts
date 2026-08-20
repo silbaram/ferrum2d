@@ -1,4 +1,12 @@
 import init, { Engine, version, wasm_memory } from "../pkg/ferrum_core.js";
+import {
+  createBuiltInShooterStateAccessor,
+  createRenderCommandAccessor,
+} from "./bufferAccessors.js";
+import type {
+  BuiltInShooterStateAccessor,
+  RenderCommandAccessor,
+} from "./bufferAccessors.js";
 import { decodeCollisionEvents } from "./collisionEventDecoder";
 import type { CollisionEventBufferView, CollisionEventView } from "./collisionEventDecoder";
 import { decodeEffectEvents } from "./effectEventDecoder";
@@ -107,6 +115,17 @@ export class WasmBridge {
 
   version(): string {
     return version();
+  }
+
+  createRenderCommandAccessor(): RenderCommandAccessor {
+    return createRenderCommandAccessor(
+      this.bufferContext.layout.renderCommandFieldOffsets,
+      this.bufferContext.layout.floatsPerCommand,
+    );
+  }
+
+  createBuiltInShooterStateAccessor(): BuiltInShooterStateAccessor {
+    return createBuiltInShooterStateAccessor(this.bufferContext.layout.builtInShooterState);
   }
 
   readRenderCommandBuffer(): RenderCommandBufferView {

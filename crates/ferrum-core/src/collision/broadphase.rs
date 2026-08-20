@@ -456,7 +456,7 @@ fn collect_current_pairs(
     ));
     pair_dedupe.sort_unstable_by(collision_pair_dedupe_order);
     pair_dedupe.dedup_by(|a, b| a.key == b.key);
-    pair_dedupe.sort_unstable_by(|a, b| a.first_order.cmp(&b.first_order));
+    pair_dedupe.sort_unstable_by_key(|pair| pair.first_order);
     pairs.extend(pair_dedupe.iter().map(|entry| entry.pair));
 }
 

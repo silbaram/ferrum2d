@@ -28,7 +28,7 @@ Physics debug line 생성은 opt-in quality/debug path다. Runtime `Engine`은 d
 | Engine/Wasm API | `crates/ferrum-core/src/engine.rs`, `crates/ferrum-core/src/engine/*.rs` |
 | World/component/physics | `crates/ferrum-core/src/world.rs`, `crates/ferrum-core/src/world/*.rs`, `components.rs`, `components/*.rs`, `collision.rs`, `collision/*.rs`, `physics.rs`, `physics/*.rs`, `tilemap.rs`, `tilemap/*.rs` |
 | Scene runtime | `crates/ferrum-core/src/shooter_scene.rs`, `crates/ferrum-core/src/shooter_scene/*.rs`, `breakout_scene.rs`, `breakout_scene/*.rs`, `platformer_scene.rs` |
-| Render/audio/event/ABI layout | `render_command.rs`, `audio_event.rs`, `collision_event.rs`, `gameplay_event.rs`, `packages/ferrum-web/src/wasmBridge.ts` |
+| Render/audio/event/ABI layout | `render_command.rs`, `buffer_layout.rs`, `audio_event.rs`, `collision_event.rs`, `gameplay_event.rs`, `packages/ferrum-web/src/wasmBridgeAbi.ts`, `packages/ferrum-web/src/bufferAccessors.ts`, `packages/ferrum-web/src/wasmBridge.ts` |
 | Web public entrypoint | `packages/ferrum-web/src/index.ts` |
 | Runtime/API wrapper | `packages/ferrum-web/src/createEngine.ts`, `engineTypes.ts`, `engineFramePipeline.ts`, `physicsRuntimeControls.ts`, `physicsBodyApi.ts`, `physicsBodyMaterials.ts`, `physicsBodySnapshots.ts`, `physicsJointApi.ts`, `physicsQueryApi.ts`, `physicsWasmInputs.ts`, `physicsAuthoringNumbers.ts`, `physicsHandles.ts`, `physicsAuthoring*.ts`, `cameraPostProcessing.ts`, `cameraPostProcessing/*.ts`, `createFerrumRuntime.ts` |
 | Renderer | `packages/ferrum-web/src/createRenderer.ts`, `webgl2Renderer.ts`, `renderer.ts` |
@@ -229,6 +229,7 @@ TypeScript는 브라우저와 package-facing API를 담당한다.
 - WebGL2/WebGPU texture path, audio registry, `AudioManager`, `UiOverlay`, `DebugOverlay`
 - `createFerrumRuntime(...)`의 opt-in dialogue/localization/cutscene/HUD/accessibility/animationTimeline/levelStreaming frame-end adapter
 - Wasm buffer를 typed array/DataView로 읽고 필요한 경우에만 object view로 decode
+- 저수준 render command와 Built-in Shooter snapshot buffer는 Rust-derived named-field accessor로 읽고 raw offset을 consumer에 노출하지 않음
 - Physics Spec snapshot/replay를 Web Worker에서 opt-in 실행하는 worker client
 
 TypeScript는 게임 규칙의 source of truth를 소유하지 않는다.

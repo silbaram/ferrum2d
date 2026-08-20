@@ -12,6 +12,8 @@
       "requiredExports": [
         "createFerrumRuntime",
         "createEngine",
+        "RenderCommandAccessor",
+        "BuiltInShooterStateAccessor",
         "createRenderer",
         "WebGL2Renderer",
         "AudioManager",
@@ -63,6 +65,8 @@
       "requiredExports": [
         "createFerrumRuntime",
         "createEngine",
+        "RenderCommandAccessor",
+        "BuiltInShooterStateAccessor",
         "createRenderer",
         "WebGL2Renderer",
         "AudioManager",

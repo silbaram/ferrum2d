@@ -21,25 +21,46 @@ use super::{
     SHOOTER_SNAPSHOT_VERSION,
 };
 
-const SNAPSHOT_ACTION_COOLDOWN_DURATION: usize = 7;
-const SNAPSHOT_ACTION_COOLDOWN_REMAINING: usize = 8;
-const SNAPSHOT_ACTION_PROJECTILE_SPEED: usize = 9;
-const SNAPSHOT_ACTION_PROJECTILE_DAMAGE: usize = 10;
-const SNAPSHOT_ACTION_PROJECTILE_LIFETIME: usize = 11;
-const SNAPSHOT_ACTION_ID: usize = 2;
-const SNAPSHOT_PROJECTILE_POLICY: usize = 1;
+pub(crate) const SNAPSHOT_HEADER_FIRE_COOLDOWN_SECONDS: usize = 0;
+pub(crate) const SNAPSHOT_HEADER_ENEMY_SPAWN_TIMER: usize = 1;
+pub(crate) const SNAPSHOT_HEADER_WAVE_ELAPSED_SECONDS: usize = 2;
+pub(crate) const SNAPSHOT_HEADER_CAMERA_ELAPSED_SECONDS: usize = 3;
+pub(crate) const SNAPSHOT_HEADER_CAMERA_X: usize = 4;
+pub(crate) const SNAPSHOT_HEADER_CAMERA_Y: usize = 5;
+pub(crate) const SNAPSHOT_HEADER_VERSION: usize = 0;
+pub(crate) const SNAPSHOT_HEADER_GAME_STATE: usize = 1;
+pub(crate) const SNAPSHOT_HEADER_SCORE: usize = 2;
+pub(crate) const SNAPSHOT_HEADER_SPAWN_INDEX: usize = 3;
+pub(crate) const SNAPSHOT_HEADER_ACTIVE_WAVE_INDEX: usize = 4;
+pub(crate) const SNAPSHOT_HEADER_WAVE_SPAWNED_COUNT: usize = 5;
+pub(crate) const SNAPSHOT_ENTITY_X: usize = 0;
+pub(crate) const SNAPSHOT_ENTITY_Y: usize = 1;
+pub(crate) const SNAPSHOT_ENTITY_VELOCITY_X: usize = 2;
+pub(crate) const SNAPSHOT_ENTITY_VELOCITY_Y: usize = 3;
+pub(crate) const SNAPSHOT_ENTITY_HEALTH: usize = 4;
+pub(crate) const SNAPSHOT_ENTITY_DAMAGE: usize = 5;
+pub(crate) const SNAPSHOT_ENTITY_LIFETIME_SECONDS: usize = 6;
+pub(crate) const SNAPSHOT_ENTITY_KIND: usize = 0;
+pub(crate) const SNAPSHOT_ENTITY_SECONDARY: usize = 1;
+pub(crate) const SNAPSHOT_ACTION_COOLDOWN_DURATION: usize = 7;
+pub(crate) const SNAPSHOT_ACTION_COOLDOWN_REMAINING: usize = 8;
+pub(crate) const SNAPSHOT_ACTION_PROJECTILE_SPEED: usize = 9;
+pub(crate) const SNAPSHOT_ACTION_PROJECTILE_DAMAGE: usize = 10;
+pub(crate) const SNAPSHOT_ACTION_PROJECTILE_LIFETIME: usize = 11;
+pub(crate) const SNAPSHOT_ACTION_ID: usize = 2;
+pub(crate) const SNAPSHOT_PROJECTILE_POLICY: usize = SNAPSHOT_ENTITY_SECONDARY;
 const SNAPSHOT_PROJECTILE_TILE_IMPACT_SHIFT: u32 = 8;
 const SNAPSHOT_BULLET_FACTION_ID_PLUS_ONE: usize = 6;
 const SNAPSHOT_BULLET_FACTION_DAMAGE_MASK: usize = 7;
-const SNAPSHOT_DASH_COOLDOWN_DURATION: usize = 12;
-const SNAPSHOT_DASH_COOLDOWN_REMAINING: usize = 13;
-const SNAPSHOT_DASH_DISTANCE: usize = 14;
-const SNAPSHOT_DASH_ACTION_ID: usize = 3;
-const SNAPSHOT_MELEE_COOLDOWN_DURATION: usize = 15;
-const SNAPSHOT_MELEE_COOLDOWN_REMAINING: usize = 16;
-const SNAPSHOT_MELEE_RANGE: usize = 17;
-const SNAPSHOT_MELEE_DAMAGE: usize = 18;
-const SNAPSHOT_MELEE_ACTION_ID: usize = 4;
+pub(crate) const SNAPSHOT_DASH_COOLDOWN_DURATION: usize = 12;
+pub(crate) const SNAPSHOT_DASH_COOLDOWN_REMAINING: usize = 13;
+pub(crate) const SNAPSHOT_DASH_DISTANCE: usize = 14;
+pub(crate) const SNAPSHOT_DASH_ACTION_ID: usize = 3;
+pub(crate) const SNAPSHOT_MELEE_COOLDOWN_DURATION: usize = 15;
+pub(crate) const SNAPSHOT_MELEE_COOLDOWN_REMAINING: usize = 16;
+pub(crate) const SNAPSHOT_MELEE_RANGE: usize = 17;
+pub(crate) const SNAPSHOT_MELEE_DAMAGE: usize = 18;
+pub(crate) const SNAPSHOT_MELEE_ACTION_ID: usize = 4;
 const SNAPSHOT_SPAWN_PREFAB_BINDINGS: usize = MAX_ACTION_BINDINGS_PER_ENTITY;
 const SNAPSHOT_SPAWN_PREFAB_FLOAT_BASE: usize = 19;
 const SNAPSHOT_SPAWN_PREFAB_FLOAT_STRIDE: usize = 7;
@@ -59,8 +80,8 @@ const SNAPSHOT_SPAWN_PREFAB_PHASE_FIELD: usize = 3;
 const SNAPSHOT_SPAWN_PREFAB_PROJECTILE_FLAG_FIELD: usize = 4;
 const SNAPSHOT_SPAWN_PREFAB_PROJECTILE_AIM_FIELD: usize = 5;
 const SNAPSHOT_SPAWN_PREFAB_PROJECTILE_POLICY_FIELD: usize = 6;
-const SNAPSHOT_PREVIOUS_INPUT_MOUSE_X: usize = 6;
-const SNAPSHOT_PREVIOUS_INPUT_MOUSE_Y: usize = 7;
+pub(crate) const SNAPSHOT_PREVIOUS_INPUT_MOUSE_X: usize = 6;
+pub(crate) const SNAPSHOT_PREVIOUS_INPUT_MOUSE_Y: usize = 7;
 const SNAPSHOT_PREVIOUS_INPUT_SPACE: usize = 6;
 const SNAPSHOT_PREVIOUS_INPUT_ENTER: usize = 7;
 const SNAPSHOT_PREVIOUS_INPUT_MOUSE_LEFT: usize = 8;
@@ -114,7 +135,7 @@ fn shooter_snapshot_entity_kind(layer: Option<CollisionLayer>) -> Option<u32> {
 
 fn valid_shooter_snapshot_entity(entity: ShooterEntitySnapshot) -> bool {
     matches!(
-        entity.u32s[0],
+        entity.u32s[SNAPSHOT_ENTITY_KIND],
         SHOOTER_SNAPSHOT_ENTITY_PLAYER
             | SHOOTER_SNAPSHOT_ENTITY_ENEMY
             | SHOOTER_SNAPSHOT_ENTITY_BULLET
@@ -129,7 +150,7 @@ fn valid_shooter_snapshot_entity(entity: ShooterEntitySnapshot) -> bool {
 }
 
 fn valid_snapshot_bullet_faction(entity: ShooterEntitySnapshot) -> bool {
-    if entity.u32s[0] != SHOOTER_SNAPSHOT_ENTITY_BULLET {
+    if entity.u32s[SNAPSHOT_ENTITY_KIND] != SHOOTER_SNAPSHOT_ENTITY_BULLET {
         return true;
     }
     let faction_id_plus_one = entity.u32s[SNAPSHOT_BULLET_FACTION_ID_PLUS_ONE];
@@ -169,7 +190,7 @@ fn snapshot_bullet_gameplay_faction(snapshot: ShooterEntitySnapshot) -> Option<G
 
 fn valid_snapshot_projectile_policy(entity: ShooterEntitySnapshot) -> bool {
     let policy = entity.u32s[SNAPSHOT_PROJECTILE_POLICY];
-    match entity.u32s[0] {
+    match entity.u32s[SNAPSHOT_ENTITY_KIND] {
         SHOOTER_SNAPSHOT_ENTITY_BULLET => {
             unpack_projectile_collision_target(policy).is_some()
                 && unpack_projectile_tile_impact(policy).is_some()
@@ -190,7 +211,7 @@ fn valid_snapshot_primary_action_binding(entity: ShooterEntitySnapshot) -> bool 
     if action_id == 0 {
         return true;
     }
-    entity.u32s[0] == SHOOTER_SNAPSHOT_ENTITY_PLAYER
+    entity.u32s[SNAPSHOT_ENTITY_KIND] == SHOOTER_SNAPSHOT_ENTITY_PLAYER
         && action_id == SHOOTER_PRIMARY_FIRE_ACTION_ID
         && entity.floats[SNAPSHOT_ACTION_COOLDOWN_DURATION] >= 0.0
         && entity.floats[SNAPSHOT_ACTION_COOLDOWN_REMAINING] >= 0.0
@@ -204,7 +225,7 @@ fn valid_snapshot_melee_action_binding(entity: ShooterEntitySnapshot) -> bool {
     if action_id == 0 {
         return true;
     }
-    entity.u32s[0] == SHOOTER_SNAPSHOT_ENTITY_PLAYER
+    entity.u32s[SNAPSHOT_ENTITY_KIND] == SHOOTER_SNAPSHOT_ENTITY_PLAYER
         && action_id == SHOOTER_MELEE_ACTION_ID
         && entity.floats[SNAPSHOT_MELEE_COOLDOWN_DURATION] >= 0.0
         && entity.floats[SNAPSHOT_MELEE_COOLDOWN_REMAINING] >= 0.0
@@ -217,7 +238,7 @@ fn valid_snapshot_dash_action_binding(entity: ShooterEntitySnapshot) -> bool {
     if action_id == 0 {
         return true;
     }
-    entity.u32s[0] == SHOOTER_SNAPSHOT_ENTITY_PLAYER
+    entity.u32s[SNAPSHOT_ENTITY_KIND] == SHOOTER_SNAPSHOT_ENTITY_PLAYER
         && action_id == SHOOTER_DASH_ACTION_ID
         && entity.floats[SNAPSHOT_DASH_COOLDOWN_DURATION] >= 0.0
         && entity.floats[SNAPSHOT_DASH_COOLDOWN_REMAINING] >= 0.0
@@ -238,7 +259,7 @@ fn valid_snapshot_spawn_prefab_action_binding(entity: ShooterEntitySnapshot) -> 
             return false;
         }
         previous_action_id = action_id;
-        entity.u32s[0] == SHOOTER_SNAPSHOT_ENTITY_PLAYER
+        entity.u32s[SNAPSHOT_ENTITY_KIND] == SHOOTER_SNAPSHOT_ENTITY_PLAYER
             && entity.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_ID_FIELD)] > 0
             && entity.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_ANCHOR_FIELD)] == 0
             && entity.u32s[spawn_prefab_u32_index(slot, SNAPSHOT_SPAWN_PREFAB_PHASE_FIELD)] == 0
@@ -355,16 +376,18 @@ impl ShooterScene {
                 floats: [0.0; SHOOTER_SNAPSHOT_ENTITY_FLOATS],
                 u32s: [0; SHOOTER_SNAPSHOT_ENTITY_U32S],
             };
-            entity.floats[0] = transform.x;
-            entity.floats[1] = transform.y;
-            entity.floats[2] = velocity.vx;
-            entity.floats[3] = velocity.vy;
-            entity.floats[4] = world.health_at_index(index).unwrap_or(0.0);
-            entity.floats[5] = world.damage_at_index(index).unwrap_or(0.0);
-            entity.floats[6] = world.gameplay_lifetime_at(index).unwrap_or(0.0);
-            entity.u32s[0] = kind;
+            entity.floats[SNAPSHOT_ENTITY_X] = transform.x;
+            entity.floats[SNAPSHOT_ENTITY_Y] = transform.y;
+            entity.floats[SNAPSHOT_ENTITY_VELOCITY_X] = velocity.vx;
+            entity.floats[SNAPSHOT_ENTITY_VELOCITY_Y] = velocity.vy;
+            entity.floats[SNAPSHOT_ENTITY_HEALTH] = world.health_at_index(index).unwrap_or(0.0);
+            entity.floats[SNAPSHOT_ENTITY_DAMAGE] = world.damage_at_index(index).unwrap_or(0.0);
+            entity.floats[SNAPSHOT_ENTITY_LIFETIME_SECONDS] =
+                world.gameplay_lifetime_at(index).unwrap_or(0.0);
+            entity.u32s[SNAPSHOT_ENTITY_KIND] = kind;
             if kind == SHOOTER_SNAPSHOT_ENTITY_ENEMY {
-                entity.u32s[1] = world.score_reward_at_index(index).unwrap_or(0);
+                entity.u32s[SNAPSHOT_ENTITY_SECONDARY] =
+                    world.score_reward_at_index(index).unwrap_or(0);
             }
             if kind == SHOOTER_SNAPSHOT_ENTITY_BULLET {
                 let collision_target = world.projectile_collision_target_at(index);
@@ -464,12 +487,12 @@ impl ShooterScene {
         }
 
         let mut header_u32s = [0; SHOOTER_SNAPSHOT_HEADER_U32S];
-        header_u32s[0] = SHOOTER_SNAPSHOT_VERSION;
-        header_u32s[1] = game_state_code(self.game_state);
-        header_u32s[2] = self.score;
-        header_u32s[3] = self.spawn_index;
-        header_u32s[4] = self.active_wave_index as u32;
-        header_u32s[5] = self.wave_spawned_count;
+        header_u32s[SNAPSHOT_HEADER_VERSION] = SHOOTER_SNAPSHOT_VERSION;
+        header_u32s[SNAPSHOT_HEADER_GAME_STATE] = game_state_code(self.game_state);
+        header_u32s[SNAPSHOT_HEADER_SCORE] = self.score;
+        header_u32s[SNAPSHOT_HEADER_SPAWN_INDEX] = self.spawn_index;
+        header_u32s[SNAPSHOT_HEADER_ACTIVE_WAVE_INDEX] = self.active_wave_index as u32;
+        header_u32s[SNAPSHOT_HEADER_WAVE_SPAWNED_COUNT] = self.wave_spawned_count;
         header_u32s[SNAPSHOT_PREVIOUS_INPUT_SPACE] = self.previous_input.space as u32;
         header_u32s[SNAPSHOT_PREVIOUS_INPUT_ENTER] = self.previous_input.enter as u32;
         header_u32s[SNAPSHOT_PREVIOUS_INPUT_MOUSE_LEFT] = self.previous_input.mouse_left as u32;
@@ -487,17 +510,18 @@ impl ShooterScene {
                     + GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S],
         );
 
+        let mut header_floats = [0.0; SHOOTER_SNAPSHOT_HEADER_FLOATS];
+        header_floats[SNAPSHOT_HEADER_FIRE_COOLDOWN_SECONDS] = self.fire_cooldown_seconds;
+        header_floats[SNAPSHOT_HEADER_ENEMY_SPAWN_TIMER] = self.enemy_spawn_timer;
+        header_floats[SNAPSHOT_HEADER_WAVE_ELAPSED_SECONDS] = self.wave_elapsed_seconds;
+        header_floats[SNAPSHOT_HEADER_CAMERA_ELAPSED_SECONDS] = self.camera_elapsed_seconds;
+        header_floats[SNAPSHOT_HEADER_CAMERA_X] = camera.x;
+        header_floats[SNAPSHOT_HEADER_CAMERA_Y] = camera.y;
+        header_floats[SNAPSHOT_PREVIOUS_INPUT_MOUSE_X] = self.previous_input.mouse_x;
+        header_floats[SNAPSHOT_PREVIOUS_INPUT_MOUSE_Y] = self.previous_input.mouse_y;
+
         ShooterSceneSnapshot {
-            header_floats: [
-                self.fire_cooldown_seconds,
-                self.enemy_spawn_timer,
-                self.wave_elapsed_seconds,
-                self.camera_elapsed_seconds,
-                camera.x,
-                camera.y,
-                self.previous_input.mouse_x,
-                self.previous_input.mouse_y,
-            ],
+            header_floats,
             header_u32s,
             entities,
         }
@@ -510,7 +534,7 @@ impl ShooterScene {
         audio_events: &mut Vec<AudioEvent>,
         snapshot: &ShooterSceneSnapshot,
     ) -> bool {
-        if snapshot.header_u32s[0] != SHOOTER_SNAPSHOT_VERSION {
+        if snapshot.header_u32s[SNAPSHOT_HEADER_VERSION] != SHOOTER_SNAPSHOT_VERSION {
             return false;
         }
         if !self.config.prefab_registry_snapshot_matches(
@@ -528,11 +552,13 @@ impl ShooterScene {
         else {
             return false;
         };
-        let Some(game_state) = game_state_from_code(snapshot.header_u32s[1]) else {
+        let Some(game_state) =
+            game_state_from_code(snapshot.header_u32s[SNAPSHOT_HEADER_GAME_STATE])
+        else {
             return false;
         };
         if !snapshot.entities.iter().any(|entity| {
-            entity.u32s[0] == SHOOTER_SNAPSHOT_ENTITY_PLAYER
+            entity.u32s[SNAPSHOT_ENTITY_KIND] == SHOOTER_SNAPSHOT_ENTITY_PLAYER
                 && entity.floats.iter().all(|value| value.is_finite())
         }) {
             return false;
@@ -548,24 +574,36 @@ impl ShooterScene {
             return false;
         }
 
-        self.score = snapshot.header_u32s[2];
-        self.fire_cooldown_seconds = non_negative_or_default(snapshot.header_floats[0], 0.0);
-        self.enemy_spawn_timer =
-            non_negative_or_default(snapshot.header_floats[1], self.active_spawn_interval());
+        self.score = snapshot.header_u32s[SNAPSHOT_HEADER_SCORE];
+        self.fire_cooldown_seconds = non_negative_or_default(
+            snapshot.header_floats[SNAPSHOT_HEADER_FIRE_COOLDOWN_SECONDS],
+            0.0,
+        );
+        self.enemy_spawn_timer = non_negative_or_default(
+            snapshot.header_floats[SNAPSHOT_HEADER_ENEMY_SPAWN_TIMER],
+            self.active_spawn_interval(),
+        );
         self.previous_input = previous_input_from_snapshot(snapshot);
         self.previous_space = self.previous_input.space;
         self.previous_enter = self.previous_input.enter;
         self.previous_mouse_left = self.previous_input.mouse_left;
         self.game_state = game_state;
-        self.spawn_index = snapshot.header_u32s[3];
+        self.spawn_index = snapshot.header_u32s[SNAPSHOT_HEADER_SPAWN_INDEX];
         self.active_wave_index = if self.waves.is_empty() {
             0
         } else {
-            (snapshot.header_u32s[4] as usize).min(self.waves.len() - 1)
+            (snapshot.header_u32s[SNAPSHOT_HEADER_ACTIVE_WAVE_INDEX] as usize)
+                .min(self.waves.len() - 1)
         };
-        self.wave_elapsed_seconds = non_negative_or_default(snapshot.header_floats[2], 0.0);
-        self.wave_spawned_count = snapshot.header_u32s[5];
-        self.camera_elapsed_seconds = non_negative_or_default(snapshot.header_floats[3], 0.0);
+        self.wave_elapsed_seconds = non_negative_or_default(
+            snapshot.header_floats[SNAPSHOT_HEADER_WAVE_ELAPSED_SECONDS],
+            0.0,
+        );
+        self.wave_spawned_count = snapshot.header_u32s[SNAPSHOT_HEADER_WAVE_SPAWNED_COUNT];
+        self.camera_elapsed_seconds = non_negative_or_default(
+            snapshot.header_floats[SNAPSHOT_HEADER_CAMERA_ELAPSED_SECONDS],
+            0.0,
+        );
         self.navigation_targets.clear();
         self.collision_pairs.clear();
         self.authored_collision_contacts.clear();
@@ -586,21 +624,21 @@ impl ShooterScene {
         for entity in snapshot.entities.iter().copied() {
             self.restore_snapshot_entity(world, entity);
         }
-        camera.x = finite_or_default(snapshot.header_floats[4], camera.x);
-        camera.y = finite_or_default(snapshot.header_floats[5], camera.y);
+        camera.x = finite_or_default(snapshot.header_floats[SNAPSHOT_HEADER_CAMERA_X], camera.x);
+        camera.y = finite_or_default(snapshot.header_floats[SNAPSHOT_HEADER_CAMERA_Y], camera.y);
         true
     }
 
     fn restore_snapshot_entity(&self, world: &mut World, snapshot: ShooterEntitySnapshot) {
         let transform = Transform2D {
-            x: snapshot.floats[0],
-            y: snapshot.floats[1],
+            x: snapshot.floats[SNAPSHOT_ENTITY_X],
+            y: snapshot.floats[SNAPSHOT_ENTITY_Y],
         };
         let velocity = Velocity {
-            vx: snapshot.floats[2],
-            vy: snapshot.floats[3],
+            vx: snapshot.floats[SNAPSHOT_ENTITY_VELOCITY_X],
+            vy: snapshot.floats[SNAPSHOT_ENTITY_VELOCITY_Y],
         };
-        match snapshot.u32s[0] {
+        match snapshot.u32s[SNAPSHOT_ENTITY_KIND] {
             SHOOTER_SNAPSHOT_ENTITY_PLAYER => {
                 let entity = world.spawn_player_from_template(
                     transform.x,
@@ -630,8 +668,11 @@ impl ShooterScene {
                     transform.y,
                     self.texture_ids.enemy,
                     self.config.enemy_template,
-                    positive_or_default(snapshot.floats[4], self.config.enemy_health),
-                    snapshot.u32s[1],
+                    positive_or_default(
+                        snapshot.floats[SNAPSHOT_ENTITY_HEALTH],
+                        self.config.enemy_health,
+                    ),
+                    snapshot.u32s[SNAPSHOT_ENTITY_SECONDARY],
                 );
                 world.set_velocity_at_index(entity.id as usize, velocity);
             }
@@ -646,9 +687,15 @@ impl ShooterScene {
                     transform,
                     velocity,
                     texture_id: self.texture_ids.bullet,
-                    lifetime: positive_or_default(snapshot.floats[6], self.config.bullet_lifetime),
+                    lifetime: positive_or_default(
+                        snapshot.floats[SNAPSHOT_ENTITY_LIFETIME_SECONDS],
+                        self.config.bullet_lifetime,
+                    ),
                     template: self.config.bullet_template,
-                    damage: positive_or_default(snapshot.floats[5], self.config.bullet_damage),
+                    damage: positive_or_default(
+                        snapshot.floats[SNAPSHOT_ENTITY_DAMAGE],
+                        self.config.bullet_damage,
+                    ),
                     collision_target,
                     tile_impact,
                     source_faction: snapshot_bullet_gameplay_faction(snapshot),
