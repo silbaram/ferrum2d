@@ -13,6 +13,7 @@ import {
   preloadAssetManifest,
   type AssetLoadProgress,
   type AssetManifest,
+  type BuiltInShooterStateAccessor,
   type FerrumEngine,
   type GameplayEntityHandle,
   type GameplayEventView,
@@ -20,6 +21,7 @@ import {
   type PhysicsCollisionLayer,
   type PhysicsEntityHandle,
   type RendererStats,
+  type RenderCommandAccessor,
 } from "@ferrum2d/ferrum-web/core";
 import {
   createBehaviorStateMachineRuntimeInstallPlan,
@@ -55,36 +57,10 @@ import {
 
 const TOPDOWN_HIT_PARTICLE_PRESET_ID = 0;
 const TOPDOWN_AUTHORED_RUNTIME_ENTITY_BUILTIN_PLAYER = "builtinShooterPlayer";
-const SHOOTER_SNAPSHOT_ENTITY_PLAYER = 0;
-const SHOOTER_SNAPSHOT_ENTITY_ENEMY = 1;
-const SHOOTER_SNAPSHOT_HEADER_ENEMY_SPAWN_TIMER_FLOAT_OFFSET = 1;
-const SHOOTER_SNAPSHOT_HEADER_GAME_STATE_U32_OFFSET = 1;
-const SHOOTER_SNAPSHOT_GAME_STATE_PLAYING = 1;
-const SHOOTER_SNAPSHOT_ENTITY_X_FLOAT_OFFSET = 0;
-const SHOOTER_SNAPSHOT_ENTITY_Y_FLOAT_OFFSET = 1;
-const SHOOTER_SNAPSHOT_ENTITY_HEALTH_FLOAT_OFFSET = 4;
-const SHOOTER_SNAPSHOT_ENTITY_KIND_U32_OFFSET = 0;
-const SHOOTER_SNAPSHOT_ENTITY_SCORE_REWARD_U32_OFFSET = 1;
-const SHOOTER_SNAPSHOT_ACTION_COOLDOWN_DURATION = 7;
-const SHOOTER_SNAPSHOT_ACTION_COOLDOWN_REMAINING = 8;
-const SHOOTER_SNAPSHOT_ACTION_PROJECTILE_SPEED = 9;
-const SHOOTER_SNAPSHOT_ACTION_PROJECTILE_DAMAGE = 10;
-const SHOOTER_SNAPSHOT_ACTION_PROJECTILE_LIFETIME = 11;
-const SHOOTER_SNAPSHOT_ACTION_ID = 2;
-const SHOOTER_SNAPSHOT_DASH_COOLDOWN_DURATION = 12;
-const SHOOTER_SNAPSHOT_DASH_COOLDOWN_REMAINING = 13;
-const SHOOTER_SNAPSHOT_DASH_DISTANCE = 14;
-const SHOOTER_SNAPSHOT_DASH_ACTION_ID = 3;
-const FLOATS_PER_RENDER_COMMAND = 14;
 const TOPDOWN_MASS_OBJECTS_SMOKE_COMMAND_COUNT = 1024;
 const TOPDOWN_MASS_OBJECTS_SMOKE_COLUMNS = 32;
 const TOPDOWN_MASS_OBJECTS_SMOKE_SPAWN_INTERVAL_SECONDS = 999;
 const TOPDOWN_MASS_OBJECTS_SMOKE_COLLISION_PAIR_BUDGET = 2_000;
-const COMMAND_COLOR_R_OFFSET = 8;
-const COMMAND_COLOR_G_OFFSET = 9;
-const COMMAND_COLOR_B_OFFSET = 10;
-const COMMAND_COLOR_A_OFFSET = 11;
-const COMMAND_TEXTURE_ID_OFFSET = 12;
 const TOPDOWN_ASSET_CACHE_SALT = "topdown-shooter-v1";
 const TOPDOWN_ASSET_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const TOPDOWN_CAMERA_SHAKE_DURATION_MS = 220;
@@ -614,26 +590,19 @@ function builtInShooterPlayerAction(engine: FerrumEngine): TopdownAuthoredBehavi
   if (snapshot === undefined) {
     return undefined;
   }
-  for (let entityIndex = 0; entityIndex < snapshot.entityCount; entityIndex += 1) {
-    const floatOffset = entityIndex * snapshot.floatsPerEntity;
-    const u32Offset = entityIndex * snapshot.u32sPerEntity;
-    if (snapshot.entityU32s[u32Offset] !== SHOOTER_SNAPSHOT_ENTITY_PLAYER) {
-      continue;
-    }
-    const actionId = snapshot.entityU32s[u32Offset + SHOOTER_SNAPSHOT_ACTION_ID] ?? 0;
-    if (actionId === 0) {
-      return undefined;
-    }
-    return {
-      actionId,
-      cooldownSeconds: snapshot.entityFloats[floatOffset + SHOOTER_SNAPSHOT_ACTION_COOLDOWN_DURATION] ?? 0,
-      remainingCooldownSeconds: snapshot.entityFloats[floatOffset + SHOOTER_SNAPSHOT_ACTION_COOLDOWN_REMAINING] ?? 0,
-      speed: snapshot.entityFloats[floatOffset + SHOOTER_SNAPSHOT_ACTION_PROJECTILE_SPEED] ?? 0,
-      damage: snapshot.entityFloats[floatOffset + SHOOTER_SNAPSHOT_ACTION_PROJECTILE_DAMAGE] ?? 0,
-      lifetimeSeconds: snapshot.entityFloats[floatOffset + SHOOTER_SNAPSHOT_ACTION_PROJECTILE_LIFETIME] ?? 0,
-    };
+  const accessor = engine.createBuiltInShooterStateAccessor();
+  accessor.bind(snapshot);
+  if (!accessor.selectFirst("player") || accessor.primaryActionId === 0) {
+    return undefined;
   }
-  return undefined;
+  return {
+    actionId: accessor.primaryActionId,
+    cooldownSeconds: accessor.primaryActionCooldownDuration,
+    remainingCooldownSeconds: accessor.primaryActionCooldownRemaining,
+    speed: accessor.primaryActionProjectileSpeed,
+    damage: accessor.primaryActionProjectileDamage,
+    lifetimeSeconds: accessor.primaryActionProjectileLifetime,
+  };
 }
 
 function builtInShooterPlayerDashAction(engine: FerrumEngine): TopdownAuthoredBehaviorPlayerDashActionSummary | undefined {
@@ -641,24 +610,17 @@ function builtInShooterPlayerDashAction(engine: FerrumEngine): TopdownAuthoredBe
   if (snapshot === undefined) {
     return undefined;
   }
-  for (let entityIndex = 0; entityIndex < snapshot.entityCount; entityIndex += 1) {
-    const floatOffset = entityIndex * snapshot.floatsPerEntity;
-    const u32Offset = entityIndex * snapshot.u32sPerEntity;
-    if (snapshot.entityU32s[u32Offset] !== SHOOTER_SNAPSHOT_ENTITY_PLAYER) {
-      continue;
-    }
-    const actionId = snapshot.entityU32s[u32Offset + SHOOTER_SNAPSHOT_DASH_ACTION_ID] ?? 0;
-    if (actionId === 0) {
-      return undefined;
-    }
-    return {
-      actionId,
-      cooldownSeconds: snapshot.entityFloats[floatOffset + SHOOTER_SNAPSHOT_DASH_COOLDOWN_DURATION] ?? 0,
-      remainingCooldownSeconds: snapshot.entityFloats[floatOffset + SHOOTER_SNAPSHOT_DASH_COOLDOWN_REMAINING] ?? 0,
-      distance: snapshot.entityFloats[floatOffset + SHOOTER_SNAPSHOT_DASH_DISTANCE] ?? 0,
-    };
+  const accessor = engine.createBuiltInShooterStateAccessor();
+  accessor.bind(snapshot);
+  if (!accessor.selectFirst("player") || accessor.dashActionId === 0) {
+    return undefined;
   }
-  return undefined;
+  return {
+    actionId: accessor.dashActionId,
+    cooldownSeconds: accessor.dashCooldownDuration,
+    remainingCooldownSeconds: accessor.dashCooldownRemaining,
+    distance: accessor.dashDistance,
+  };
 }
 
 function applyTopdownAuthoredBehaviorCurrentStateCommands(
@@ -1061,25 +1023,21 @@ function applyTopdownHitParticles(engine: FerrumEngine, bulletTextureId: number)
 
 function recordTopdownSmokeFrame(
   engine: FerrumEngine,
+  accessor: RenderCommandAccessor,
   renderCommandBuffer: { buffer: Float32Array; commandCount: number; floatsPerCommand: number },
   textureIds: TopdownTextureIds,
   gameState: number,
   score: number,
 ): void {
   let enemyFlashCommandCount = 0;
-  const floatsPerCommand = renderCommandBuffer.floatsPerCommand || FLOATS_PER_RENDER_COMMAND;
+  accessor.bind(renderCommandBuffer);
   for (let commandIndex = 0; commandIndex < renderCommandBuffer.commandCount; commandIndex += 1) {
-    const offset = commandIndex * floatsPerCommand;
-    const textureId = Math.trunc(renderCommandBuffer.buffer[offset + COMMAND_TEXTURE_ID_OFFSET]);
-    if (textureId !== textureIds.enemy) {
+    accessor.select(commandIndex);
+    if (accessor.textureId !== textureIds.enemy) {
       continue;
     }
 
-    const red = renderCommandBuffer.buffer[offset + COMMAND_COLOR_R_OFFSET];
-    const green = renderCommandBuffer.buffer[offset + COMMAND_COLOR_G_OFFSET];
-    const blue = renderCommandBuffer.buffer[offset + COMMAND_COLOR_B_OFFSET];
-    const alpha = renderCommandBuffer.buffer[offset + COMMAND_COLOR_A_OFFSET];
-    if (red >= 0.95 && green > 0.6 && blue > 0.32 && alpha >= 0.95) {
+    if (accessor.r >= 0.95 && accessor.g > 0.6 && accessor.b > 0.32 && accessor.a >= 0.95) {
       enemyFlashCommandCount += 1;
     }
   }
@@ -1102,16 +1060,18 @@ function recordTopdownSmokeFrame(
 
 function restoreTopdownMassObjectsSnapshot(
   engine: FerrumEngine,
+  accessor: BuiltInShooterStateAccessor,
   viewport: { width: number; height: number },
 ): TopdownMassObjectsSnapshotApplySummary {
   const baseSnapshot = engine.captureShooterStateSnapshot?.();
   if (baseSnapshot === undefined) {
     throw assetApplyError("json", "massObjectsSmoke", "Base shooter snapshot capture is unavailable.");
   }
-  const playerSlot = snapshotEntitySlot(baseSnapshot.entityU32s, baseSnapshot.u32sPerEntity, SHOOTER_SNAPSHOT_ENTITY_PLAYER);
-  if (playerSlot < 0) {
+  accessor.bind(baseSnapshot);
+  if (!accessor.selectFirst("player")) {
     throw assetApplyError("json", "massObjectsSmoke", "Base shooter snapshot does not include a player entity.");
   }
+  const playerSlot = accessor.entityIndex;
 
   const enemyCount = TOPDOWN_MASS_OBJECTS_SMOKE_COMMAND_COUNT;
   const entityCount = enemyCount + 1;
@@ -1121,9 +1081,17 @@ function restoreTopdownMassObjectsSnapshot(
   const headerU32s = [...baseSnapshot.headerU32s];
   const entityFloats = new Array(entityCount * floatsPerEntity).fill(0);
   const entityU32s = new Array(entityCount * u32sPerEntity).fill(0);
-  headerU32s[SHOOTER_SNAPSHOT_HEADER_GAME_STATE_U32_OFFSET] = SHOOTER_SNAPSHOT_GAME_STATE_PLAYING;
-  headerFloats[SHOOTER_SNAPSHOT_HEADER_ENEMY_SPAWN_TIMER_FLOAT_OFFSET] =
-    TOPDOWN_MASS_OBJECTS_SMOKE_SPAWN_INTERVAL_SECONDS;
+  accessor.bindMutable({
+    headerFloats,
+    headerU32s,
+    entityFloats,
+    entityU32s,
+    entityCount,
+    floatsPerEntity,
+    u32sPerEntity,
+  });
+  accessor.gameState = "playing";
+  accessor.enemySpawnTimer = TOPDOWN_MASS_OBJECTS_SMOKE_SPAWN_INTERVAL_SECONDS;
   copySnapshotEntity(
     baseSnapshot.entityFloats,
     entityFloats,
@@ -1141,12 +1109,9 @@ function restoreTopdownMassObjectsSnapshot(
 
   for (let enemyIndex = 0; enemyIndex < enemyCount; enemyIndex += 1) {
     writeTopdownMassObjectsEnemySnapshot(
-      entityFloats,
-      entityU32s,
+      accessor,
       enemyIndex + 1,
       enemyIndex,
-      floatsPerEntity,
-      u32sPerEntity,
       viewport,
     );
   }
@@ -1174,16 +1139,6 @@ function restoreTopdownMassObjectsSnapshot(
   };
 }
 
-function snapshotEntitySlot(entityU32s: readonly number[], u32sPerEntity: number, kind: number): number {
-  const entityCount = Math.floor(entityU32s.length / u32sPerEntity);
-  for (let slot = 0; slot < entityCount; slot += 1) {
-    if (entityU32s[slot * u32sPerEntity] === kind) {
-      return slot;
-    }
-  }
-  return -1;
-}
-
 function copySnapshotEntity(
   source: readonly number[],
   target: number[],
@@ -1199,12 +1154,9 @@ function copySnapshotEntity(
 }
 
 function writeTopdownMassObjectsEnemySnapshot(
-  entityFloats: number[],
-  entityU32s: number[],
+  accessor: BuiltInShooterStateAccessor,
   slot: number,
   enemyIndex: number,
-  floatsPerEntity: number,
-  u32sPerEntity: number,
   viewport: { width: number; height: number },
 ): void {
   const columns = TOPDOWN_MASS_OBJECTS_SMOKE_COLUMNS;
@@ -1213,13 +1165,12 @@ function writeTopdownMassObjectsEnemySnapshot(
   const cellHeight = Math.max(1, viewport.height / rows);
   const column = enemyIndex % columns;
   const row = Math.floor(enemyIndex / columns);
-  const floatBase = slot * floatsPerEntity;
-  const u32Base = slot * u32sPerEntity;
-  entityFloats[floatBase + SHOOTER_SNAPSHOT_ENTITY_X_FLOAT_OFFSET] = column * cellWidth + cellWidth * 0.5;
-  entityFloats[floatBase + SHOOTER_SNAPSHOT_ENTITY_Y_FLOAT_OFFSET] = row * cellHeight + cellHeight * 0.5;
-  entityFloats[floatBase + SHOOTER_SNAPSHOT_ENTITY_HEALTH_FLOAT_OFFSET] = 1;
-  entityU32s[u32Base + SHOOTER_SNAPSHOT_ENTITY_KIND_U32_OFFSET] = SHOOTER_SNAPSHOT_ENTITY_ENEMY;
-  entityU32s[u32Base + SHOOTER_SNAPSHOT_ENTITY_SCORE_REWARD_U32_OFFSET] = 1;
+  accessor.select(slot);
+  accessor.x = column * cellWidth + cellWidth * 0.5;
+  accessor.y = row * cellHeight + cellHeight * 0.5;
+  accessor.health = 1;
+  accessor.kind = "enemy";
+  accessor.scoreReward = 1;
 }
 
 function recordTopdownMassObjectsSmokeFrame(
@@ -1367,6 +1318,7 @@ async function bootstrap(): Promise<void> {
     let audioEventRateCount = 0;
     let audioEventsPerSecond = 0;
     let runtimeEngine: FerrumEngine | undefined;
+    let renderCommandAccessor: RenderCommandAccessor | undefined;
     let smokeTextureIds: TopdownTextureIds | undefined;
     let massObjectsSmokeApply: TopdownMassObjectsSnapshotApplySummary | undefined;
     let authoredBehaviorVariantSummary: TopdownAuthoredBehaviorVariantSummary | undefined;
@@ -1431,8 +1383,8 @@ async function bootstrap(): Promise<void> {
         hudEl.textContent = `Game Over - final score ${frame.score}. Press Space to restart.`;
       }
 
-      if (effectSmokeEnabled && runtimeEngine && smokeTextureIds) {
-        recordTopdownSmokeFrame(runtimeEngine, frame.renderCommandBuffer, smokeTextureIds, frame.gameState, frame.score);
+      if (effectSmokeEnabled && runtimeEngine && renderCommandAccessor && smokeTextureIds) {
+        recordTopdownSmokeFrame(runtimeEngine, renderCommandAccessor, frame.renderCommandBuffer, smokeTextureIds, frame.gameState, frame.score);
       }
       if (massObjectsSmokeEnabled && runtimeEngine && massObjectsSmokeApply) {
         recordTopdownMassObjectsSmokeFrame(
@@ -1460,6 +1412,7 @@ async function bootstrap(): Promise<void> {
         textureSwitchCount: renderStats.textureSwitchCount,
         physicsDebugLineCount: renderStats.physicsDebugLineCount,
         physicsFixedSteps: frame.physics.fixedSteps,
+        physicsSolidCandidateChecks: frame.physics.solidCandidateChecks,
         physicsTileCandidateChecks: frame.physics.tileCandidateChecks,
         physicsCcdChecks: frame.physics.ccdChecks,
         physicsCcdHits: frame.physics.ccdHits,
@@ -1479,6 +1432,7 @@ async function bootstrap(): Promise<void> {
       debugOverlay.update(debugMetrics);
     }, inputSnapshot, platformHost, () => renderer.viewportSize(), { enablePhysicsDebugLines: physicsDebugLines });
     runtimeEngine = engine;
+    renderCommandAccessor = engine.createRenderCommandAccessor();
     cleanups.push(() => engine.destroy());
 
     const manifest = topdownAssetManifest();
@@ -1500,7 +1454,11 @@ async function bootstrap(): Promise<void> {
     if (massObjectsSmokeEnabled) {
       engine.setGameSpec(TOPDOWN_MASS_OBJECTS_SMOKE_SPEC);
       engine.resetGame();
-      massObjectsSmokeApply = restoreTopdownMassObjectsSnapshot(engine, renderer.viewportSize());
+      massObjectsSmokeApply = restoreTopdownMassObjectsSnapshot(
+        engine,
+        engine.createBuiltInShooterStateAccessor(),
+        renderer.viewportSize(),
+      );
     }
     const authoredBehaviorVariant = assets.json.authoredBehaviorVariant;
     if (authoredBehaviorVariant === undefined) {

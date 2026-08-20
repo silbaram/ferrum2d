@@ -505,8 +505,81 @@ declare module "../pkg/ferrum_core.js" {
     free(): void;
   }
 
+  export enum SpriteRenderCommandField {
+    X = 0,
+    Y = 1,
+    Width = 2,
+    Height = 3,
+    U0 = 4,
+    V0 = 5,
+    U1 = 6,
+    V1 = 7,
+    R = 8,
+    G = 9,
+    B = 10,
+    A = 11,
+    TextureId = 12,
+    EffectFlags = 13,
+    RotationRadians = 14,
+  }
+
+  export enum ShooterSnapshotHeaderFloatField {
+    FireCooldownSeconds = 0,
+    EnemySpawnTimer = 1,
+    WaveElapsedSeconds = 2,
+    CameraElapsedSeconds = 3,
+    CameraX = 4,
+    CameraY = 5,
+    PreviousMouseX = 6,
+    PreviousMouseY = 7,
+  }
+
+  export enum ShooterSnapshotHeaderU32Field {
+    Version = 0,
+    GameState = 1,
+    Score = 2,
+    SpawnIndex = 3,
+    ActiveWaveIndex = 4,
+    WaveSpawnedCount = 5,
+  }
+
+  export enum ShooterSnapshotEntityFloatField {
+    X = 0,
+    Y = 1,
+    VelocityX = 2,
+    VelocityY = 3,
+    Health = 4,
+    Damage = 5,
+    LifetimeSeconds = 6,
+    PrimaryActionCooldownDuration = 7,
+    PrimaryActionCooldownRemaining = 8,
+    PrimaryActionProjectileSpeed = 9,
+    PrimaryActionProjectileDamage = 10,
+    PrimaryActionProjectileLifetime = 11,
+    DashCooldownDuration = 12,
+    DashCooldownRemaining = 13,
+    DashDistance = 14,
+    MeleeCooldownDuration = 15,
+    MeleeCooldownRemaining = 16,
+    MeleeRange = 17,
+    MeleeDamage = 18,
+  }
+
+  export enum ShooterSnapshotEntityU32Field {
+    Kind = 0,
+    ScoreRewardOrProjectilePolicy = 1,
+    PrimaryActionId = 2,
+    DashActionId = 3,
+    MeleeActionId = 4,
+  }
+
   export function sprite_render_command_floats(): number;
   export function sprite_render_command_bytes(): number;
+  export function sprite_render_command_float_offset(field: SpriteRenderCommandField): number;
+  export function shooter_snapshot_header_float_offset(field: ShooterSnapshotHeaderFloatField): number;
+  export function shooter_snapshot_header_u32_offset(field: ShooterSnapshotHeaderU32Field): number;
+  export function shooter_snapshot_entity_float_offset(field: ShooterSnapshotEntityFloatField): number;
+  export function shooter_snapshot_entity_u32_offset(field: ShooterSnapshotEntityU32Field): number;
   export function audio_event_floats(): number;
   export function audio_event_bytes(): number;
   export function collision_event_u32s(): number;

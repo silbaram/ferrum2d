@@ -1,5 +1,10 @@
 import type { Engine } from "../pkg/ferrum_core";
 import {
+  ShooterSnapshotEntityFloatField,
+  ShooterSnapshotEntityU32Field,
+  ShooterSnapshotHeaderFloatField,
+  ShooterSnapshotHeaderU32Field,
+  SpriteRenderCommandField,
   audio_event_bytes,
   audio_event_floats,
   collision_event_bytes,
@@ -20,9 +25,20 @@ import {
   physics_tile_contact_hit_bytes,
   physics_tile_manifold_hit_bytes,
   physics_tile_shape_cast_hit_bytes,
+  shooter_snapshot_entity_float_offset,
+  shooter_snapshot_entity_u32_offset,
+  shooter_snapshot_header_float_offset,
+  shooter_snapshot_header_u32_offset,
   sprite_render_command_bytes,
+  sprite_render_command_float_offset,
   sprite_render_command_floats,
 } from "../pkg/ferrum_core.js";
+import {
+  BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY,
+  BUILT_IN_SHOOTER_STATE_HEADER_FLOATS,
+  BUILT_IN_SHOOTER_STATE_HEADER_U32S,
+  BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY,
+} from "./builtInShooterStateSnapshot.js";
 import { FLOATS_PER_AUDIO_EVENT } from "./audioEventDecoder";
 import { U32S_PER_COLLISION_EVENT } from "./collisionEventDecoder";
 import { BYTES_PER_EFFECT_EVENT } from "./effectEventDecoder";
@@ -54,24 +70,101 @@ const BYTES_PER_GAMEPLAY_EVENT = U32S_PER_GAMEPLAY_EVENT * BYTES_PER_U32;
 const BYTES_PER_PHYSICS_DEBUG_LINE = FLOATS_PER_PHYSICS_DEBUG_LINE * BYTES_PER_F32;
 const BYTES_PER_PHYSICS_QUERY_HIT = U32S_PER_PHYSICS_QUERY_HIT * BYTES_PER_U32;
 
+export interface RenderCommandFieldOffsets {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly u0: number;
+  readonly v0: number;
+  readonly u1: number;
+  readonly v1: number;
+  readonly r: number;
+  readonly g: number;
+  readonly b: number;
+  readonly a: number;
+  readonly textureId: number;
+  readonly effectFlags: number;
+  readonly rotationRadians: number;
+}
+
+export interface BuiltInShooterStateFieldOffsets {
+  readonly headerFloats: {
+    readonly fireCooldownSeconds: number;
+    readonly enemySpawnTimer: number;
+    readonly waveElapsedSeconds: number;
+    readonly cameraElapsedSeconds: number;
+    readonly cameraX: number;
+    readonly cameraY: number;
+    readonly previousMouseX: number;
+    readonly previousMouseY: number;
+  };
+  readonly headerU32s: {
+    readonly version: number;
+    readonly gameState: number;
+    readonly score: number;
+    readonly spawnIndex: number;
+    readonly activeWaveIndex: number;
+    readonly waveSpawnedCount: number;
+  };
+  readonly entityFloats: {
+    readonly x: number;
+    readonly y: number;
+    readonly velocityX: number;
+    readonly velocityY: number;
+    readonly health: number;
+    readonly damage: number;
+    readonly lifetimeSeconds: number;
+    readonly primaryActionCooldownDuration: number;
+    readonly primaryActionCooldownRemaining: number;
+    readonly primaryActionProjectileSpeed: number;
+    readonly primaryActionProjectileDamage: number;
+    readonly primaryActionProjectileLifetime: number;
+    readonly dashCooldownDuration: number;
+    readonly dashCooldownRemaining: number;
+    readonly dashDistance: number;
+    readonly meleeCooldownDuration: number;
+    readonly meleeCooldownRemaining: number;
+    readonly meleeRange: number;
+    readonly meleeDamage: number;
+  };
+  readonly entityU32s: {
+    readonly kind: number;
+    readonly scoreRewardOrProjectilePolicy: number;
+    readonly primaryActionId: number;
+    readonly dashActionId: number;
+    readonly meleeActionId: number;
+  };
+}
+
+export interface BuiltInShooterStateLayout {
+  readonly headerFloats: number;
+  readonly headerU32s: number;
+  readonly floatsPerEntity: number;
+  readonly u32sPerEntity: number;
+  readonly fieldOffsets: BuiltInShooterStateFieldOffsets;
+}
+
 export interface WasmBridgeAbiLayout {
-  floatsPerCommand: number;
-  f64sPerFrameTelemetry: number;
-  floatsPerAudioEvent: number;
-  u32sPerCollisionEvent: number;
-  u32sPerGameplayEvent: number;
-  bytesPerEffectEvent: number;
-  floatsPerPhysicsDebugLine: number;
-  u32sPerPhysicsQueryHit: number;
-  bytesPerPhysicsRaycastHit: number;
-  bytesPerPhysicsTileShapeCastHit: number;
-  bytesPerPhysicsTileContactHit: number;
-  bytesPerPhysicsTileManifoldHit: number;
-  bytesPerPhysicsBodyContactHit: number;
-  bytesPerPhysicsBodyManifoldHit: number;
-  bytesPerPhysicsRigidContactImpulseHit: number;
-  floatsPerPhysicsBodyState: number;
-  u32sPerPhysicsBodyState: number;
+  readonly floatsPerCommand: number;
+  readonly renderCommandFieldOffsets: RenderCommandFieldOffsets;
+  readonly builtInShooterState: BuiltInShooterStateLayout;
+  readonly f64sPerFrameTelemetry: number;
+  readonly floatsPerAudioEvent: number;
+  readonly u32sPerCollisionEvent: number;
+  readonly u32sPerGameplayEvent: number;
+  readonly bytesPerEffectEvent: number;
+  readonly floatsPerPhysicsDebugLine: number;
+  readonly u32sPerPhysicsQueryHit: number;
+  readonly bytesPerPhysicsRaycastHit: number;
+  readonly bytesPerPhysicsTileShapeCastHit: number;
+  readonly bytesPerPhysicsTileContactHit: number;
+  readonly bytesPerPhysicsTileManifoldHit: number;
+  readonly bytesPerPhysicsBodyContactHit: number;
+  readonly bytesPerPhysicsBodyManifoldHit: number;
+  readonly bytesPerPhysicsRigidContactImpulseHit: number;
+  readonly floatsPerPhysicsBodyState: number;
+  readonly u32sPerPhysicsBodyState: number;
 }
 
 export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
@@ -89,6 +182,48 @@ export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
         "SpriteRenderCommand ABI 변경 시 Rust/TypeScript를 함께 수정하세요.",
     );
   }
+  const renderCommandFieldOffsets = readRenderCommandFieldOffsets();
+  verifyFieldOffsets(
+    "SpriteRenderCommand",
+    renderCommandFieldOffsets,
+    rustFloatsPerCommand,
+  );
+
+  const rustShooterHeaderFloats = engine.shooter_snapshot_header_floats();
+  const rustShooterHeaderU32s = engine.shooter_snapshot_header_u32s();
+  const rustShooterFloatsPerEntity = engine.shooter_snapshot_entity_floats();
+  const rustShooterU32sPerEntity = engine.shooter_snapshot_entity_u32s();
+  if (
+    rustShooterHeaderFloats !== BUILT_IN_SHOOTER_STATE_HEADER_FLOATS ||
+    rustShooterHeaderU32s !== BUILT_IN_SHOOTER_STATE_HEADER_U32S ||
+    rustShooterFloatsPerEntity !== BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY ||
+    rustShooterU32sPerEntity !== BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY
+  ) {
+    throw new Error(
+      "[Ferrum2D ABI mismatch] Rust built-in shooter snapshot strides do not match the TypeScript snapshot contract.",
+    );
+  }
+  const shooterStateFieldOffsets = readBuiltInShooterStateFieldOffsets();
+  verifyFieldOffsets(
+    "built-in shooter header floats",
+    shooterStateFieldOffsets.headerFloats,
+    rustShooterHeaderFloats,
+  );
+  verifyFieldOffsets(
+    "built-in shooter header u32s",
+    shooterStateFieldOffsets.headerU32s,
+    rustShooterHeaderU32s,
+  );
+  verifyFieldOffsets(
+    "built-in shooter entity floats",
+    shooterStateFieldOffsets.entityFloats,
+    rustShooterFloatsPerEntity,
+  );
+  verifyFieldOffsets(
+    "built-in shooter entity u32s",
+    shooterStateFieldOffsets.entityU32s,
+    rustShooterU32sPerEntity,
+  );
 
   const rustF64sPerFrameTelemetry = frame_telemetry_f64s();
   const rustBytesPerFrameTelemetry = frame_telemetry_bytes();
@@ -262,6 +397,14 @@ export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
 
   return {
     floatsPerCommand: rustFloatsPerCommand,
+    renderCommandFieldOffsets,
+    builtInShooterState: {
+      headerFloats: rustShooterHeaderFloats,
+      headerU32s: rustShooterHeaderU32s,
+      floatsPerEntity: rustShooterFloatsPerEntity,
+      u32sPerEntity: rustShooterU32sPerEntity,
+      fieldOffsets: shooterStateFieldOffsets,
+    },
     f64sPerFrameTelemetry: rustF64sPerFrameTelemetry,
     floatsPerAudioEvent: rustFloatsPerAudioEvent,
     u32sPerCollisionEvent: rustU32sPerCollisionEvent,
@@ -279,4 +422,154 @@ export function verifyWasmBridgeAbi(engine: Engine): WasmBridgeAbiLayout {
     floatsPerPhysicsBodyState: rustFloatsPerPhysicsBodyState,
     u32sPerPhysicsBodyState: rustU32sPerPhysicsBodyState,
   };
+}
+
+function readRenderCommandFieldOffsets(): RenderCommandFieldOffsets {
+  return Object.freeze({
+    x: sprite_render_command_float_offset(SpriteRenderCommandField.X),
+    y: sprite_render_command_float_offset(SpriteRenderCommandField.Y),
+    width: sprite_render_command_float_offset(SpriteRenderCommandField.Width),
+    height: sprite_render_command_float_offset(SpriteRenderCommandField.Height),
+    u0: sprite_render_command_float_offset(SpriteRenderCommandField.U0),
+    v0: sprite_render_command_float_offset(SpriteRenderCommandField.V0),
+    u1: sprite_render_command_float_offset(SpriteRenderCommandField.U1),
+    v1: sprite_render_command_float_offset(SpriteRenderCommandField.V1),
+    r: sprite_render_command_float_offset(SpriteRenderCommandField.R),
+    g: sprite_render_command_float_offset(SpriteRenderCommandField.G),
+    b: sprite_render_command_float_offset(SpriteRenderCommandField.B),
+    a: sprite_render_command_float_offset(SpriteRenderCommandField.A),
+    textureId: sprite_render_command_float_offset(SpriteRenderCommandField.TextureId),
+    effectFlags: sprite_render_command_float_offset(SpriteRenderCommandField.EffectFlags),
+    rotationRadians: sprite_render_command_float_offset(
+      SpriteRenderCommandField.RotationRadians,
+    ),
+  });
+}
+
+function readBuiltInShooterStateFieldOffsets(): BuiltInShooterStateFieldOffsets {
+  return Object.freeze({
+    headerFloats: Object.freeze({
+      fireCooldownSeconds: shooter_snapshot_header_float_offset(
+        ShooterSnapshotHeaderFloatField.FireCooldownSeconds,
+      ),
+      enemySpawnTimer: shooter_snapshot_header_float_offset(
+        ShooterSnapshotHeaderFloatField.EnemySpawnTimer,
+      ),
+      waveElapsedSeconds: shooter_snapshot_header_float_offset(
+        ShooterSnapshotHeaderFloatField.WaveElapsedSeconds,
+      ),
+      cameraElapsedSeconds: shooter_snapshot_header_float_offset(
+        ShooterSnapshotHeaderFloatField.CameraElapsedSeconds,
+      ),
+      cameraX: shooter_snapshot_header_float_offset(ShooterSnapshotHeaderFloatField.CameraX),
+      cameraY: shooter_snapshot_header_float_offset(ShooterSnapshotHeaderFloatField.CameraY),
+      previousMouseX: shooter_snapshot_header_float_offset(
+        ShooterSnapshotHeaderFloatField.PreviousMouseX,
+      ),
+      previousMouseY: shooter_snapshot_header_float_offset(
+        ShooterSnapshotHeaderFloatField.PreviousMouseY,
+      ),
+    }),
+    headerU32s: Object.freeze({
+      version: shooter_snapshot_header_u32_offset(ShooterSnapshotHeaderU32Field.Version),
+      gameState: shooter_snapshot_header_u32_offset(ShooterSnapshotHeaderU32Field.GameState),
+      score: shooter_snapshot_header_u32_offset(ShooterSnapshotHeaderU32Field.Score),
+      spawnIndex: shooter_snapshot_header_u32_offset(
+        ShooterSnapshotHeaderU32Field.SpawnIndex,
+      ),
+      activeWaveIndex: shooter_snapshot_header_u32_offset(
+        ShooterSnapshotHeaderU32Field.ActiveWaveIndex,
+      ),
+      waveSpawnedCount: shooter_snapshot_header_u32_offset(
+        ShooterSnapshotHeaderU32Field.WaveSpawnedCount,
+      ),
+    }),
+    entityFloats: Object.freeze({
+      x: shooter_snapshot_entity_float_offset(ShooterSnapshotEntityFloatField.X),
+      y: shooter_snapshot_entity_float_offset(ShooterSnapshotEntityFloatField.Y),
+      velocityX: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.VelocityX,
+      ),
+      velocityY: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.VelocityY,
+      ),
+      health: shooter_snapshot_entity_float_offset(ShooterSnapshotEntityFloatField.Health),
+      damage: shooter_snapshot_entity_float_offset(ShooterSnapshotEntityFloatField.Damage),
+      lifetimeSeconds: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.LifetimeSeconds,
+      ),
+      primaryActionCooldownDuration: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.PrimaryActionCooldownDuration,
+      ),
+      primaryActionCooldownRemaining: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.PrimaryActionCooldownRemaining,
+      ),
+      primaryActionProjectileSpeed: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.PrimaryActionProjectileSpeed,
+      ),
+      primaryActionProjectileDamage: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.PrimaryActionProjectileDamage,
+      ),
+      primaryActionProjectileLifetime: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.PrimaryActionProjectileLifetime,
+      ),
+      dashCooldownDuration: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.DashCooldownDuration,
+      ),
+      dashCooldownRemaining: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.DashCooldownRemaining,
+      ),
+      dashDistance: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.DashDistance,
+      ),
+      meleeCooldownDuration: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.MeleeCooldownDuration,
+      ),
+      meleeCooldownRemaining: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.MeleeCooldownRemaining,
+      ),
+      meleeRange: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.MeleeRange,
+      ),
+      meleeDamage: shooter_snapshot_entity_float_offset(
+        ShooterSnapshotEntityFloatField.MeleeDamage,
+      ),
+    }),
+    entityU32s: Object.freeze({
+      kind: shooter_snapshot_entity_u32_offset(ShooterSnapshotEntityU32Field.Kind),
+      scoreRewardOrProjectilePolicy: shooter_snapshot_entity_u32_offset(
+        ShooterSnapshotEntityU32Field.ScoreRewardOrProjectilePolicy,
+      ),
+      primaryActionId: shooter_snapshot_entity_u32_offset(
+        ShooterSnapshotEntityU32Field.PrimaryActionId,
+      ),
+      dashActionId: shooter_snapshot_entity_u32_offset(
+        ShooterSnapshotEntityU32Field.DashActionId,
+      ),
+      meleeActionId: shooter_snapshot_entity_u32_offset(
+        ShooterSnapshotEntityU32Field.MeleeActionId,
+      ),
+    }),
+  });
+}
+
+function verifyFieldOffsets<Offsets extends object>(
+  layoutName: string,
+  offsets: Offsets,
+  stride: number,
+): void {
+  const seenOffsets = new Set<number>();
+  for (const [fieldName, offset] of Object.entries(offsets)) {
+    if (!Number.isInteger(offset) || offset < 0 || offset >= stride) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] ${layoutName}.${fieldName} offset ${offset} is outside stride ${stride}.`,
+      );
+    }
+    if (seenOffsets.has(offset)) {
+      throw new Error(
+        `[Ferrum2D ABI mismatch] ${layoutName}.${fieldName} reuses field offset ${offset}.`,
+      );
+    }
+    seenOffsets.add(offset);
+  }
 }

@@ -123,6 +123,38 @@ mass/inertia에 같은 Rust 경계를 적용하고, 위반 시 `false`를 반환
 | `decodeRenderCommands(...)` | Rust render command buffer를 renderer 입력으로 decode한다. |
 | `decodeGameplayEvents(...)` | gameplay event buffer를 telemetry object로 decode한다. |
 | `decodeEffectEvents(...)` | presentation-only effect detail buffer를 decode한다. |
+| `createRenderCommandAccessor()` | Rust `SpriteRenderCommand` layout을 읽어 재사용 가능한 named-field accessor를 만든다. |
+| `createBuiltInShooterStateAccessor()` | Built-in Shooter snapshot layout을 읽어 재사용 가능한 named-field accessor를 만든다. |
+
+저수준 `createEngine(...)` 경로에서 raw offset을 직접 계산하지 않는다. accessor는
+engine 생성 시 Rust가 내보낸 field enum/offset으로 초기화되며, layout stride가
+일치하지 않으면 ABI mismatch로 즉시 실패한다.
+
+```ts
+const renderAccessor = engine.createRenderCommandAccessor();
+
+const onFrame = (frame) => {
+  renderAccessor.bind(frame.renderCommandBuffer);
+  for (let index = 0; index < frame.renderCommandBuffer.commandCount; index += 1) {
+    renderAccessor.select(index);
+    drawDebugLabel(renderAccessor.x, renderAccessor.y, renderAccessor.textureId);
+  }
+};
+```
+
+`RenderCommandAccessor.bind(...)`와 `select(...)`는 내부 buffer reference와 index만
+갱신한다. field getter는 scalar를 직접 반환하므로 accessor 자체가 frame마다 객체나
+배열을 만들지 않는다. Wasm memory view는 기존 계약대로 현재 frame 안에서만 소비한다.
+`bind(...)` 검증이 실패하면 이전 buffer와 선택을 지우고, `select(...)`가 실패하면
+이전 선택을 지운다. 따라서 오류 이후 getter가 오래된 frame을 계속 읽지 않는다.
+
+Shooter snapshot은 `bind(snapshot)` 후 `select(...)` 또는 `selectFirst(...)`로 읽는다.
+smoke fixture처럼 snapshot copy를 수정해야 하는 낮은 빈도 경로는
+`bindMutable(...)`을 사용한다. `gameState`, `enemySpawnTimer`, `kind`, `x`, `health`,
+primary action, dash, melee 같은 명명 필드를 제공하며, raw header/entity index에
+의존하지 않는다. `bind(...)`으로 연결한 read-only snapshot에 쓰려고 하면 실패한다.
+bind/select 검증 실패는 이전 snapshot 참조, mutable 쓰기 권한, entity 선택을 함께
+해제하므로 accessor를 다시 bind하기 전에는 읽거나 쓸 수 없다.
 
 `captureGameStateSnapshot(..., { includeDataSceneState: true })`는 optional
 `dataSceneAuthoringDocument`를 함께 받을 수 있다. 이 값은 JSON-compatible

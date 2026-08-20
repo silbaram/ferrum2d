@@ -56,6 +56,7 @@ export type {
   EffectEventAssetValidationPolicy,
   EffectEventRuntimeOptions,
   FerrumAssetApi,
+  FerrumBufferAccessorApi,
   FerrumEngine,
   FerrumGameplayAuthoringApi,
   FerrumInputActionApi,

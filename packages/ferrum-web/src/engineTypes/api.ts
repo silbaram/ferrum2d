@@ -1,6 +1,10 @@
 import type { AssetLoadProgressCallback, AssetManifest, AssetReleasePayload, LoadedAssets } from "../assetLoader";
 import type { BuiltInShooterStateSnapshot } from "../builtInShooterStateSnapshot.js";
 import type {
+  BuiltInShooterStateAccessor,
+  RenderCommandAccessor,
+} from "../bufferAccessors.js";
+import type {
   BehaviorRecipeApplyResult,
   BehaviorRecipeCommand,
   BehaviorRecipeDocumentSpec,
@@ -158,6 +162,13 @@ export interface FerrumLifecycleApi {
   destroy(): void;
   time(): number;
   version(): string;
+}
+
+export interface FerrumBufferAccessorApi {
+  /** Rust에서 읽은 layout을 고정해 frame마다 재사용할 render command accessor를 만듭니다. */
+  createRenderCommandAccessor(): RenderCommandAccessor;
+  /** Rust에서 읽은 layout을 고정해 snapshot마다 재사용할 Built-in Shooter accessor를 만듭니다. */
+  createBuiltInShooterStateAccessor(): BuiltInShooterStateAccessor;
 }
 
 export interface FerrumSceneApi {
@@ -387,6 +398,7 @@ export interface FerrumInputActionApi {
 
 export interface FerrumEngine
   extends FerrumLifecycleApi,
+    FerrumBufferAccessorApi,
     FerrumSceneApi,
     FerrumAssetApi,
     FerrumParticleApi,

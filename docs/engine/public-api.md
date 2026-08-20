@@ -93,6 +93,10 @@ Wasm loading, 낮은 빈도 authoring facade를 소유한다.
 
 핫패스에서 entity별 JS/Wasm 왕복 호출을 추가하지 않는다. frame output은 render,
 audio, gameplay, effect, physics debug 같은 bulk buffer나 telemetry로 전달한다.
+`createEngine(...)` 저수준 경로에서 bulk buffer 필드를 읽을 때는 Rust가 제공한
+layout으로 생성되는 `RenderCommandAccessor`와 `BuiltInShooterStateAccessor`를
+사용한다. consumer가 `#[repr(C)]` 필드 offset이나 snapshot array index를 직접
+하드코딩하지 않는다.
 
 raw Wasm setter와 generated wasm-bindgen files는 public API가 아니다. consumer는
 `FerrumEngine`, authoring resolver, package subpath export를 통해서만 엔진 상태를

@@ -31,6 +31,7 @@ import type {
   CreateEngineOptions,
   EngineLifecycleSnapshot,
   FerrumAssetApi,
+  FerrumBufferAccessorApi,
   FerrumEngine,
   FerrumGameplayAuthoringApi,
   FerrumInputActionApi,
@@ -107,6 +108,7 @@ export type {
   EngineLifecycleHooks,
   EngineLifecycleSnapshot,
   FerrumAssetApi,
+  FerrumBufferAccessorApi,
   FerrumEngine,
   FerrumGameplayAuthoringApi,
   FerrumInputActionApi,
@@ -558,6 +560,17 @@ export async function createEngineWithFramePipeline(
     cameraY: () => { requireAlive(); return rustEngine.camera_y(); },
   };
 
+  const bufferAccessorApi: FerrumBufferAccessorApi = {
+    createRenderCommandAccessor: () => {
+      requireAlive();
+      return bridge.createRenderCommandAccessor();
+    },
+    createBuiltInShooterStateAccessor: () => {
+      requireAlive();
+      return bridge.createBuiltInShooterStateAccessor();
+    },
+  };
+
   const assetApi: FerrumAssetApi = {
     loadAssets: async (manifest, onProgress) => {
       requireAlive();
@@ -729,6 +742,7 @@ export async function createEngineWithFramePipeline(
 
   const engine: FerrumEngine = {
     ...lifecycleApi,
+    ...bufferAccessorApi,
     ...sceneApi,
     ...assetApi,
     ...particleApi,

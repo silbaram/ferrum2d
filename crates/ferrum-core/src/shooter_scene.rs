@@ -55,7 +55,7 @@ const ENEMY_HIT_FLASH_SECONDS: f32 = 0.12;
 
 mod config;
 mod runtime;
-mod snapshot;
+pub(crate) mod snapshot;
 
 use config::{
     finite_or_default, non_negative_or_default, positive_or_default, sprite_frames_from_values,

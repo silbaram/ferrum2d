@@ -57,7 +57,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 | Game Spec 구조 보조 JSON Schema | `schemas/shooter-game-spec.schema.json` |
 | AI agent/skill 배포 템플릿과 showcase | `packages/agents/README.md`, `packages/agents/templates/**` |
 | 실제 Top-down Shooter 설정 | `examples/topdown-shooter/public/game.json` |
-| Rust/Wasm ABI | `crates/ferrum-core/src/render_command.rs`, `crates/ferrum-core/src/audio_event.rs`, `packages/ferrum-web/src/wasmBridge.ts` |
+| Rust/Wasm ABI | `crates/ferrum-core/src/render_command.rs`, `crates/ferrum-core/src/buffer_layout.rs`, `crates/ferrum-core/src/audio_event.rs`, `packages/ferrum-web/src/wasmBridgeAbi.ts`, `packages/ferrum-web/src/bufferAccessors.ts`, `packages/ferrum-web/src/wasmBridge.ts` |
 | npm package 역할 분리 | `packages/ferrum-web/package.json`, `packages/create-game/package.json`, `packages/agents/package.json`, `docs/development/operations/npm-package-strategy.md` |
 | package/release artifact 검증 | `scripts/package/check-package-files.mjs`, `scripts/package/check-authoring-viewer-package.mjs`, `scripts/package/check-create-game-package.mjs`, `scripts/package/check-agents-package.mjs`, `scripts/package/check-release-readiness.mjs`, `scripts/package/check-release-candidate.mjs`, `packages/*/package.json`, `CHANGELOG.md`, `.github/release.yml` |
 | 검증/배포/문서 사이트 스크립트 | 루트 `package.json`, `scripts/build/build-pages.mjs`, `scripts/validate/**`, `tests/smoke/**`, `.github/workflows/ci.yml`, `.github/workflows/pages.yml` |
