@@ -8,6 +8,14 @@ export {
 } from "../createEngine";
 export { createFerrumRuntime } from "../createFerrumRuntime";
 export { createRenderer } from "../createRenderer";
+export {
+  BITMAP_FONT_ATLAS_FORMAT,
+  BITMAP_FONT_ATLAS_VERSION,
+  BITMAP_FONT_MAX_GLYPHS,
+  BITMAP_FONT_MAX_KERNING_PAIRS,
+  resolveBitmapFontAtlas,
+} from "../localization.js";
+export { WORLD_TEXT_MAX_GLYPHS, WORLD_TEXT_MAX_ID } from "../worldText.js";
 export type {
   FerrumRuntime,
   FerrumRuntimeAccessibility,
@@ -46,6 +54,21 @@ export type {
   SpriteMaterialProvider,
 } from "../createFerrumRuntime";
 export type { UiOverlayStateProvider } from "../createFerrumRuntime";
+export type {
+  BitmapFontAtlasSpec,
+  BitmapFontGlyphSpec,
+  BitmapFontKerningSpec,
+  BitmapFontPolicySpec,
+  ResolvedBitmapFontAtlas,
+  ResolvedBitmapFontGlyph,
+  ResolvedBitmapFontKerning,
+} from "../localization.js";
+export type {
+  FerrumBitmapTextApi,
+  WorldTextAlignment,
+  WorldTextColor,
+  WorldTextSpec,
+} from "../worldText.js";
 export type {
   AssetHost,
   ActionFrameDiagnostics,

@@ -90,6 +90,7 @@ import { runFrame } from "./engineFramePipeline.js";
 import type { FramePipelineContext, RenderFrameHandler } from "./engineFramePipeline.js";
 import type { ShooterStateBufferView } from "./wasmBridge";
 import { WasmBridge } from "./wasmBridge";
+import { createBitmapTextApi } from "./worldText.js";
 
 export {
   PHYSICS_BODY_STATE_BUFFER_FORMAT,
@@ -615,6 +616,12 @@ export async function createEngineWithFramePipeline(
     particleCapacity: () => { requireAlive(); return rustEngine.particle_capacity(); },
   };
 
+  const bitmapTextApi = createBitmapTextApi({
+    rustEngine,
+    requireAlive,
+    requireAssetHost,
+  });
+
   const physicsRuntimeApi: FerrumPhysicsRuntimeApi = {
     configurePhysicsRuntime,
     configureFixedTimestep,
@@ -745,6 +752,7 @@ export async function createEngineWithFramePipeline(
     ...bufferAccessorApi,
     ...sceneApi,
     ...assetApi,
+    ...bitmapTextApi,
     ...particleApi,
     ...physicsRuntimeApi,
     ...physicsBodyApi,

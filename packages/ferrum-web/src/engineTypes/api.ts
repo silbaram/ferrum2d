@@ -37,6 +37,7 @@ import type {
 import type { InputSnapshot } from "../inputManager";
 import type { ParticlePresetConfig } from "../particlePreset";
 import type { EffectEventRuntimeOptions } from "../effectEventRuntime.js";
+import type { FerrumBitmapTextApi } from "../worldText.js";
 import type { PhysicsMode, ResolvedPhysicsSpec } from "../physicsSpec.js";
 import type { PhysicsBodyStateBufferSnapshot } from "../physicsBodyStateBuffer.js";
 import type {
@@ -401,6 +402,7 @@ export interface FerrumEngine
     FerrumBufferAccessorApi,
     FerrumSceneApi,
     FerrumAssetApi,
+    FerrumBitmapTextApi,
     FerrumParticleApi,
     FerrumPhysicsApi,
     FerrumGameplayAuthoringApi,

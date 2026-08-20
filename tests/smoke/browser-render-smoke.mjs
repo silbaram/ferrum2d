@@ -27,6 +27,29 @@ const TOPDOWN_EFFECTS_MODE = "topdown-effects";
 const TOPDOWN_MASS_OBJECTS_MODE = "topdown-mass-objects";
 const TOPDOWN_MASS_OBJECTS_PLAYING_STATE = 1;
 const TOPDOWN_MASS_OBJECTS_COLLISION_PAIR_BUDGET = 2_000;
+const TOPDOWN_MASS_OBJECTS_TEXT_GLYPH_COUNT = 4;
+const TOPDOWN_MASS_OBJECTS_BITMAP_FONT = Object.freeze({
+  format: "ferrum-bitmap-font",
+  version: 1,
+  lineHeight: 10,
+  glyphs: Object.freeze({
+    A: Object.freeze({
+      uv: Object.freeze({ u0: 0, v0: 0, u1: 1, v1: 1 }),
+      size: Object.freeze({ width: 8, height: 8 }),
+      advance: 9,
+    }),
+    M: Object.freeze({
+      uv: Object.freeze({ u0: 0, v0: 0, u1: 1, v1: 1 }),
+      size: Object.freeze({ width: 8, height: 8 }),
+      advance: 9,
+    }),
+    S: Object.freeze({
+      uv: Object.freeze({ u0: 0, v0: 0, u1: 1, v1: 1 }),
+      size: Object.freeze({ width: 8, height: 8 }),
+      advance: 9,
+    }),
+  }),
+});
 const TOPDOWN_TILEMAP_BUDGET_MODE = "topdown-tilemap-budget";
 const TOPDOWN_TILEMAP_BUDGET_COLUMNS = 64;
 const TOPDOWN_TILEMAP_BUDGET_ROWS = 32;
@@ -3601,11 +3624,62 @@ async function smokeTopdownMassObjects(page, timeoutMs) {
       collisionPairBudget: TOPDOWN_MASS_OBJECTS_COLLISION_PAIR_BUDGET,
     },
   );
+
+  await page.evaluate(async (atlas) => {
+    const engine = globalThis.ferrumEngine;
+    if (!engine) {
+      throw new Error("Top-down mass object bitmap text smoke requires window.ferrumEngine.");
+    }
+    const player = engine.builtInShooterPlayerHandle();
+    if (!player) {
+      throw new Error("Top-down mass object bitmap text smoke requires the player handle.");
+    }
+    const fontId = 31;
+    const textId = 31;
+    await engine.loadBitmapFont(fontId, {
+      image: "/assets/enemy.png",
+      data: atlas,
+    });
+    const textSpec = {
+      fontId,
+      text: "MASS",
+      x: -18,
+      y: -28,
+      alignment: "center",
+      renderLayer: 100,
+      anchor: player,
+    };
+    if (
+      !engine.setWorldText(textId, textSpec)
+      || !engine.setWorldText(textId, { ...textSpec, x: -17 })
+      || !engine.setWorldText(textId, textSpec)
+      || !engine.setWorldText(textId, textSpec)
+    ) {
+      throw new Error("Top-down mass object world text setup failed.");
+    }
+  }, TOPDOWN_MASS_OBJECTS_BITMAP_FONT);
+
+  await waitForPageFunction(
+    page,
+    "Top-down Shooter mass object bitmap text did not join the render budget scenario",
+    ({ glyphCount }) => {
+      const engine = globalThis.ferrumEngine;
+      const frame = globalThis.ferrumTopdownMassObjectsSmokeFrame;
+      return engine?.worldTextCount?.() === 1
+        && engine?.worldTextGlyphCount?.() === glyphCount
+        && frame !== undefined
+        && frame.renderCommandCount >= frame.entityCount + glyphCount - 1;
+    },
+    timeoutMs,
+    { glyphCount: TOPDOWN_MASS_OBJECTS_TEXT_GLYPH_COUNT },
+  );
   return await page.evaluate(() => ({
     topdownMassObjectsSmoke: globalThis.ferrumTopdownMassObjectsSmokeFrame,
     rendererStats: globalThis.ferrumRuntime?.renderer?.stats?.(),
     entityCountAfterMassObjects: globalThis.ferrumEngine?.entityCount?.() ?? 0,
     spriteCountAfterMassObjects: globalThis.ferrumEngine?.spriteCount?.() ?? 0,
+    worldTextCount: globalThis.ferrumEngine?.worldTextCount?.() ?? 0,
+    worldTextGlyphCount: globalThis.ferrumEngine?.worldTextGlyphCount?.() ?? 0,
   }));
 }
 

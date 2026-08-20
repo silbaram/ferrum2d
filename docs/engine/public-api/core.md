@@ -41,6 +41,7 @@ import {
 | Lifecycle | `start`, `pause`, `resume`, `stop`, `destroy`, `time`, `version` |
 | Scene | `resetGame`, `setViewportSize`, `setGameSpec`, `useDataScene`, `useBreakoutGame`, `usePlatformerGame` |
 | Asset | `loadAssets`, `releaseAssets`, `textureId`, `soundId`, `setTextureIds`, `setSoundIds` |
+| Bitmap text | `loadBitmapFont`, `registerBitmapFont`, `setWorldText`, `removeWorldText`, `worldTextGlyphCount` |
 | Particle | `setParticlePreset`, `spawnParticleBurst`, `clearParticles`, `particleCount` |
 | Physics runtime | `configurePhysicsRuntime`, `configureFixedTimestep`, `stepRigidBodies` |
 | Physics body/joint | `spawnRigidBody`, `despawnPhysicsEntity`, `addPhysicsBodyCollider`, `spawnPhysicsJoint`, `clearPhysicsJoint` |
@@ -62,6 +63,65 @@ Data Scene boot path다. 옵션이 문서 자체이면 기본 apply option을 �
 instance handle registry 같은 `applyDataSceneAuthoringDocument(...)` option을 함께
 전달한다. 이 경로는 낮은 빈도 scene load/apply 단계에서만 실행되며 frame마다
 TypeScript callback을 만들지 않는다.
+
+## 월드 공간 비트맵 텍스트
+
+`FerrumBitmapTextApi`는 시스템 폰트/Canvas `fillText` 대신 기존 sprite renderer를
+사용한다. `loadBitmapFont(fontId, policy)`는 `BitmapFontPolicySpec.image` texture와
+`data` atlas JSON을 기존 `AssetHost`로 로드하고 Rust cache에 등록한다. `data`는 기존
+URL string을 그대로 지원하며, `BitmapFontAtlasSpec` inline object도 선택할 수 있다.
+정책의 optional `lineHeight`는 atlas `lineHeight`를 override하므로 기존 URL 기반
+정책과 하위 호환된다.
+
+```ts
+const atlas = {
+  format: "ferrum-bitmap-font",
+  version: 1,
+  lineHeight: 12,
+  glyphs: {
+    A: {
+      uv: { u0: 0, v0: 0, u1: 0.5, v1: 1 },
+      size: { width: 8, height: 10 },
+      advance: 9,
+    },
+  },
+} as const;
+
+engine.registerBitmapFont(1, engine.textureId("font-atlas"), atlas);
+engine.setWorldText(10, {
+  fontId: 1,
+  text: "AAA",
+  x: 320,
+  y: 180,
+  alignment: "center",
+  color: [1, 0.85, 0.25, 1],
+  scale: 2,
+  renderLayer: 20,
+});
+```
+
+`WorldTextSpec`의 `alignment` 기본값은 `left`, `scale`은 `1`, `color`는 흰색,
+`maxWidth`/`renderLayer`/`floorId`/`elevation`은 `0`이다. `maxWidth > 0`이면 glyph
+advance 기준으로 줄을 나누고 명시적 `\n`도 지원한다. `anchor`에 generation을 포함한
+entity handle을 주면 `x/y`가 local offset이 되어 Rust transform을 따라간다. 따라서
+오브젝트 label을 위해 frame마다 위치나 문자열을 다시 전달할 필요가 없다.
+`x/y`는 첫 줄의 layout origin이며 `center`/`right` 정렬은 각 줄을 이 origin 기준으로
+왼쪽으로 이동한다.
+
+같은 `textId`와 같은 normalized spec을 다시 설정하면 TypeScript facade가 Wasm 호출을
+생략한다. 문자열 내용은 같고 좌표·색상 같은 속성만 바뀌면 숫자 전용 update 경로를
+사용한다. 좌표·render/HD-2D metadata·anchor만 바뀌는 update는 glyph command도 다시
+만들지 않는다. 변경된 문자열만 Wasm 문자열 경계를 지나 Rust에서 다시 glyph command로
+전개되며, 변경 없는 frame은 cache를 재사용해 camera 변환·glyph 단위 culling·기존
+sprite sort만 수행한다.
+텍스트 하나와 font 하나는 각각 최대 4,096 glyph, font는 최대 16,384 kerning pair를
+허용한다. 이 기능은 월드 공간 표현용이며 화면 고정 HUD/dialogue DOM overlay를
+대체하지 않는다.
+
+폰트와 텍스트 등록은 engine 수명에 속하며 `resetGame()`이나 scene 전환이 자동으로
+제거하지 않는다. scene 단위로 소유하는 label은 teardown에서 `removeWorldText(...)`나
+`clearWorldTexts()`를 호출한다. entity anchor는 해당 handle이 현재 world에서 resolve될
+때만 render command를 만든다.
 
 ## FrameState
 

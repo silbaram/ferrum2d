@@ -91,6 +91,12 @@ Rust core는 게임 상태, entity storage, collision, physics, scene rule, rend
 생성을 소유한다. TypeScript layer는 browser API, renderer, input, audio, asset loading,
 Wasm loading, 낮은 빈도 authoring facade를 소유한다.
 
+월드 공간 비트맵 텍스트도 이 경계를 따른다. `BitmapFontPolicySpec`의 image/data
+asset은 TypeScript가 로드·검증하고, glyph/kerning metadata는 한 번의 bulk typed-array
+호출로 Rust에 등록한다. `setWorldText(...)`는 텍스트가 실제로 바뀔 때만 문자열을
+전달하며 Rust가 glyph sprite cache, camera transform, viewport culling, render/HD-2D
+정렬을 소유한다. 기존 DOM HUD/localization overlay는 화면 고정 UI 경로로 유지한다.
+
 핫패스에서 entity별 JS/Wasm 왕복 호출을 추가하지 않는다. frame output은 render,
 audio, gameplay, effect, physics debug 같은 bulk buffer나 telemetry로 전달한다.
 `createEngine(...)` 저수준 경로에서 bulk buffer 필드를 읽을 때는 Rust가 제공한

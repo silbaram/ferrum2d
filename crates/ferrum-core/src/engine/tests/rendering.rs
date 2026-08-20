@@ -413,3 +413,226 @@ fn hd2d_render_commands_sort_tiles_and_entities_by_foot_y_without_render_abi_cha
     );
     assert_eq!(crate::sprite_render_command_floats(), 15);
 }
+
+#[test]
+fn bitmap_world_text_uses_cached_sprite_commands_camera_transform_and_entity_anchor() {
+    let mut engine = Engine::new();
+    register_test_bitmap_font(&mut engine, 7, 99);
+    let player = engine.world.primary_actor_entity().unwrap();
+    assert!(engine.set_world_text(
+        3,
+        7,
+        "AV\nA",
+        -20.0,
+        -30.0,
+        1.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        0.0,
+        0,
+        4,
+        0,
+        0.0,
+        player.id,
+        player.generation,
+    ));
+    let layout_revision = engine.bitmap_text.layout_revision();
+
+    engine.build_render_commands();
+    let first_commands = bitmap_text_commands(&engine, 99);
+    assert_eq!(first_commands.len(), 3);
+    assert_eq!(first_commands[0].x, 380.0);
+    assert_eq!(first_commands[1].x, 388.0);
+    assert_eq!(first_commands[2].x, 380.0);
+    assert_eq!(first_commands[2].y, 220.0);
+    assert_eq!(first_commands[0].r, 0.25);
+
+    assert!(engine.update_world_text(
+        3,
+        7,
+        -10.0,
+        -30.0,
+        1.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        0.0,
+        0,
+        4,
+        0,
+        0.0,
+        player.id,
+        player.generation,
+    ));
+    engine.build_render_commands();
+    assert_eq!(engine.bitmap_text.layout_revision(), layout_revision);
+    assert_eq!(bitmap_text_commands(&engine, 99)[0].x, 390.0);
+
+    engine
+        .world
+        .set_transform(player, Transform2D { x: 830.0, y: 500.0 });
+    engine.camera.x = 810.0;
+    engine.camera.y = 480.0;
+    engine.build_render_commands();
+    let moved_commands = bitmap_text_commands(&engine, 99);
+
+    assert_eq!(engine.bitmap_text.layout_revision(), layout_revision);
+    assert_eq!(moved_commands.len(), 3);
+    assert_eq!(moved_commands[0].x, 410.0);
+    assert_eq!(moved_commands[0].y, 230.0);
+    assert_eq!(engine.world_text_count(), 1);
+    assert_eq!(engine.world_text_glyph_count(), 3);
+}
+
+#[test]
+fn bitmap_world_text_participates_in_layer_sort_hd2d_sort_and_culling() {
+    let mut engine = Engine::new();
+    engine.set_viewport_size(1_600.0, 960.0);
+    register_test_bitmap_font(&mut engine, 7, 99);
+    let enemy = engine.world.spawn_enemy(200.0, 200.0, 98);
+    engine
+        .world
+        .sprite_mut_at_index(enemy.id as usize)
+        .expect("spawned enemy should have a sprite")
+        .render_layer = 5;
+
+    assert!(engine.set_world_text(
+        1,
+        7,
+        "A",
+        200.0,
+        190.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        0.0,
+        0,
+        4,
+        0,
+        0.0,
+        u32::MAX,
+        0,
+    ));
+    assert!(engine.set_world_text(
+        2,
+        7,
+        "A",
+        200.0,
+        190.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        0.0,
+        0,
+        6,
+        0,
+        0.0,
+        u32::MAX,
+        0,
+    ));
+    assert!(engine.set_world_text(
+        4,
+        7,
+        "A",
+        4_000.0,
+        4_000.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        0.0,
+        0,
+        6,
+        0,
+        0.0,
+        u32::MAX,
+        0,
+    ));
+
+    engine.build_render_commands();
+    let layered_texture_order: Vec<_> = engine
+        .frame_buffers
+        .render_commands
+        .iter()
+        .filter(|command| command.texture_id == 98.0 || command.texture_id == 99.0)
+        .map(|command| command.texture_id as u32)
+        .collect();
+    assert_eq!(layered_texture_order, vec![99, 98, 99]);
+
+    assert!(engine.set_world_text(
+        3,
+        7,
+        "A",
+        200.0,
+        190.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        0.0,
+        0,
+        0,
+        1,
+        0.0,
+        u32::MAX,
+        0,
+    ));
+    engine.build_render_commands();
+    let hd2d_texture_order: Vec<_> = engine
+        .frame_buffers
+        .render_commands
+        .iter()
+        .filter(|command| command.texture_id == 98.0 || command.texture_id == 99.0)
+        .map(|command| command.texture_id as u32)
+        .collect();
+
+    assert_eq!(hd2d_texture_order, vec![99, 99, 98, 99]);
+    assert_eq!(engine.world_text_glyph_count(), 4);
+    assert_eq!(
+        engine
+            .frame_buffers
+            .render_commands
+            .iter()
+            .filter(|command| command.texture_id == 99.0)
+            .count(),
+        3,
+    );
+}
+
+fn register_test_bitmap_font(engine: &mut Engine, font_id: u32, texture_id: u32) {
+    assert!(engine.register_bitmap_font(
+        font_id,
+        texture_id,
+        10.0,
+        u32::MAX,
+        &['A' as u32, 'V' as u32],
+        &[
+            0.0, 0.0, 0.5, 1.0, 8.0, 8.0, 0.0, 0.0, 10.0, 0.5, 0.0, 1.0, 1.0, 8.0, 8.0, 0.0, 0.0,
+            10.0,
+        ],
+        &['A' as u32, 'V' as u32],
+        &[-2.0],
+    ));
+}
+
+fn bitmap_text_commands(
+    engine: &Engine,
+    texture_id: u32,
+) -> Vec<crate::render_command::SpriteRenderCommand> {
+    engine
+        .frame_buffers
+        .render_commands
+        .iter()
+        .filter(|command| command.texture_id == texture_id as f32)
+        .copied()
+        .collect()
+}
