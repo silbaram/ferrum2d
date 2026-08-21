@@ -17,6 +17,11 @@ import type {
   ResolvedSceneCompositionSpec,
   SceneCompositionSpec,
 } from "./sceneComposition.js";
+import {
+  resolveDataSceneVariableDeclarations,
+  type DataSceneVariableDeclarationSpec,
+  type ResolvedDataSceneVariableDeclaration,
+} from "./dataSceneVariables.js";
 
 export const SCENE_AUTHORING_DOCUMENT_FORMAT = "ferrum2d.consumer.scene-authoring" as const;
 export const SCENE_AUTHORING_DOCUMENT_VERSION = 1 as const;
@@ -27,6 +32,7 @@ export interface SceneAuthoringDocumentSpec {
   sceneComposition: SceneCompositionSpec;
   behaviorRecipes: BehaviorRecipeDocumentSpec;
   ids?: GameplayBehaviorRuntimeIds;
+  variables?: readonly DataSceneVariableDeclarationSpec[];
 }
 
 export interface ResolvedSceneAuthoringDocument {
@@ -35,6 +41,7 @@ export interface ResolvedSceneAuthoringDocument {
   sceneComposition: ResolvedSceneCompositionSpec;
   behaviorRecipes: ResolvedBehaviorRecipeDocument;
   ids?: GameplayBehaviorRuntimeIds;
+  variables?: readonly ResolvedDataSceneVariableDeclaration[];
   bindingPlan?: SceneBehaviorBindingPlan;
 }
 
@@ -82,6 +89,9 @@ export function resolveSceneAuthoringDocument(
   const ids = document.ids === undefined
     ? undefined
     : resolveGameplayBehaviorRuntimeIds(document.ids, { path: `${path}.ids` });
+  const variables = resolveDataSceneVariableDeclarations(document.variables, {
+    path: `${path}.variables`,
+  });
   const bindingPlan = validateBindings
     ? bindSceneBehaviorRecipes(sceneComposition, behaviorRecipes, {
         ...bindingOptions,
@@ -103,6 +113,7 @@ export function resolveSceneAuthoringDocument(
     sceneComposition,
     behaviorRecipes,
     ...(ids === undefined ? {} : { ids }),
+    ...(document.variables === undefined ? {} : { variables }),
     ...(bindingPlan === undefined ? {} : { bindingPlan }),
   };
 }

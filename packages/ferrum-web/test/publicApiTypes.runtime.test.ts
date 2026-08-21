@@ -3,6 +3,7 @@ import {
   BUILT_IN_SHOOTER_STATE_HEADER_U32S,
   BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY,
   BUILT_IN_SHOOTER_STATE_VERSION,
+  DATA_SCENE_VARIABLES_SNAPSHOT_KEY,
   DATA_SCENE_STATE_FORMAT,
   DATA_SCENE_STATE_VERSION,
   GAME_STATE_SNAPSHOT_FORMAT,
@@ -98,6 +99,7 @@ import type {
   FrameHandler,
   FrameState,
   DataSceneStateSnapshot,
+  DataSceneVariableStore,
   GameStateSceneSnapshot,
   GameStateSnapshot,
   GameStateSnapshotJsonValue,
@@ -424,10 +426,13 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     u32sPerEntity: BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY,
   };
   const publicCaptureGameStateSnapshot: PublicApi["captureGameStateSnapshot"] = captureGameStateSnapshot;
+  const publicDataSceneVariablesSnapshotKey: PublicApi["DATA_SCENE_VARIABLES_SNAPSHOT_KEY"] =
+    DATA_SCENE_VARIABLES_SNAPSHOT_KEY;
   const publicDataSceneStateFormat: PublicApi["DATA_SCENE_STATE_FORMAT"] = DATA_SCENE_STATE_FORMAT;
   const publicDataSceneStateVersion: PublicApi["DATA_SCENE_STATE_VERSION"] = DATA_SCENE_STATE_VERSION;
   const publicGameStateSnapshotFormat: PublicApi["GAME_STATE_SNAPSHOT_FORMAT"] = GAME_STATE_SNAPSHOT_FORMAT;
   const publicGameStateSnapshotVersion: PublicApi["GAME_STATE_SNAPSHOT_VERSION"] = GAME_STATE_SNAPSHOT_VERSION;
+  equal(publicDataSceneVariablesSnapshotKey, "ferrum2d.variables");
   const publicStringifyGameStateSnapshot: PublicApi["stringifyGameStateSnapshot"] = stringifyGameStateSnapshot;
   const publicParseGameStateSnapshot: PublicApi["parseGameStateSnapshot"] = parseGameStateSnapshot;
   const publicRestoreGameStateSnapshot: PublicApi["restoreGameStateSnapshot"] = restoreGameStateSnapshot;
@@ -702,6 +707,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     path: "runtimeDataScene",
   };
   const runtimeDataSceneHandle: FerrumRuntimeDataScene | undefined = undefined;
+  const runtimeDataSceneVariables: DataSceneVariableStore | undefined = undefined;
   const runtimeLevelStreamingViewport: LevelStreamingViewport = { x: 0, y: 0, width: 128, height: 128 };
   const runtimeLevelStreamingViewportProvider: FerrumRuntimeLevelStreamingViewportProvider = () =>
     runtimeLevelStreamingViewport;
@@ -897,6 +903,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   equal(runtimeOptions.cutscene, runtimeCutsceneOptions);
   equal(runtimeOptions.dataScene, runtimeDataSceneOptions);
   equal(runtimeDataSceneHandle, undefined);
+  equal(runtimeDataSceneVariables, undefined);
   equal(runtimeOptions.levelStreaming, runtimeLevelStreamingOptions);
   equal(runtimeOptions.debug, false);
   equal(runtimeOptions.engine, options);

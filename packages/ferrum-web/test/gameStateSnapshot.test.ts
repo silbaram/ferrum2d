@@ -26,6 +26,10 @@ import {
   type GameStateSnapshotJsonValue,
 } from "../src/gameStateSnapshot.js";
 import {
+  DATA_SCENE_VARIABLES_SNAPSHOT_KEY,
+} from "../src/dataSceneVariables.js";
+import {
+  applyDataSceneAuthoringDocument,
   attachDataSceneRuntimeEngineAdapter,
   type DataSceneRuntimeSpawnRequest,
 } from "../src/dataSceneRuntimeTarget.js";
@@ -59,6 +63,171 @@ test("game state snapshot captures data scene state separately from built-in sho
   deepEqual(snapshot.dataScene?.custom, { sceneId: "blank-arena" });
   equal(snapshot.builtInShooter, undefined);
   equal(snapshot.snapshotHash, hashGameStateSnapshot(snapshot));
+});
+
+test("data scene variables map to custom snapshot namespaces and restore deterministically", () => {
+  const authoringDocument = sampleDataSceneAuthoringDocument();
+  const sourceEngine = fakeEngine({ score: 0, gameState: 1, entityCount: 0, spriteCount: 0 });
+  const sourceAdapter = new SnapshotDataSceneRuntimeAdapter(() => sourceEngine.useDataScene());
+  const adaptedSource = attachDataSceneRuntimeEngineAdapter(sourceEngine, sourceAdapter);
+  const applied = applyDataSceneAuthoringDocument(adaptedSource, authoringDocument);
+  applied.variables.set("campaign.coins", 7);
+  applied.variables.set("campaign.unlocked", true);
+  applied.variables.set("wave.index", 3);
+
+  const snapshotWithoutDataScene = captureGameStateSnapshot(adaptedSource, { frame: 8 });
+  equal(snapshotWithoutDataScene.custom, undefined);
+  equal(snapshotWithoutDataScene.dataScene, undefined);
+
+  const snapshot = captureGameStateSnapshot(adaptedSource, {
+    frame: 9,
+    includeDataSceneState: true,
+    dataSceneAuthoringDocument: authoringDocument,
+    customState: { checkpoint: "level-1" },
+    dataSceneCustomState: { sceneId: "level-1" },
+  });
+  deepEqual(snapshot.custom, {
+    checkpoint: "level-1",
+    [DATA_SCENE_VARIABLES_SNAPSHOT_KEY]: {
+      "campaign.coins": 7,
+      "campaign.unlocked": true,
+    },
+  });
+  deepEqual(snapshot.dataScene?.custom, {
+    sceneId: "level-1",
+    [DATA_SCENE_VARIABLES_SNAPSHOT_KEY]: { "wave.index": 3 },
+  });
+  const parsedSnapshot = parseGameStateSnapshot(stringifyGameStateSnapshot(snapshot));
+  equal(parsedSnapshot.snapshotHash, snapshot.snapshotHash);
+
+  applied.variables.set("campaign.unlocked", false);
+  applied.variables.set("campaign.coins", 0);
+  applied.variables.set("campaign.coins", 7);
+  applied.variables.set("campaign.unlocked", true);
+  equal(captureGameStateSnapshot(adaptedSource, {
+    frame: 9,
+    includeDataSceneState: true,
+    dataSceneAuthoringDocument: authoringDocument,
+    customState: { checkpoint: "level-1" },
+    dataSceneCustomState: { sceneId: "level-1" },
+  }).snapshotHash, snapshot.snapshotHash);
+
+  const restoredEngine = fakeEngine({ score: 10, gameState: 2, entityCount: 4, spriteCount: 4 });
+  const restoredAdapter = new SnapshotDataSceneRuntimeAdapter(() => restoredEngine.useDataScene());
+  const adaptedRestored = attachDataSceneRuntimeEngineAdapter(restoredEngine, restoredAdapter);
+  let restoredCustom: unknown;
+  let restoredDataSceneCustom: unknown;
+  const result = restoreGameStateSnapshot(
+    adaptedRestored,
+    parsedSnapshot,
+    {
+      applyCustomState: (customState) => {
+        restoredCustom = customState;
+      },
+      applyDataSceneCustomState: (customState) => {
+        restoredDataSceneCustom = customState;
+      },
+    },
+  );
+
+  equal(result.globalVariablesApplied, true);
+  equal(result.sceneVariablesApplied, true);
+  equal(result.dataSceneVariables?.get("campaign.coins"), 7);
+  equal(result.dataSceneVariables?.get("campaign.unlocked"), true);
+  equal(result.dataSceneVariables?.get("wave.index"), 3);
+  deepEqual(restoredCustom, { checkpoint: "level-1" });
+  deepEqual(restoredDataSceneCustom, { sceneId: "level-1" });
+
+  result.dataSceneVariables?.set("campaign.coins", 0);
+  result.dataSceneVariables?.set("wave.index", 9);
+  const globalScopeResult = restoreGameStateSnapshot(adaptedRestored, parsedSnapshot, {
+    restoreDataSceneState: false,
+  });
+  equal(globalScopeResult.globalVariablesApplied, true);
+  equal(globalScopeResult.sceneVariablesApplied, false);
+  equal(globalScopeResult.dataSceneVariables?.get("campaign.coins"), 7);
+  equal(globalScopeResult.dataSceneVariables?.get("wave.index"), 9);
+
+  const variablesOnlySnapshot = captureGameStateSnapshot(adaptedSource, {
+    frame: 10,
+    includeDataSceneState: true,
+    dataSceneAuthoringDocument: authoringDocument,
+  });
+  let consumerCustomCallbackCount = 0;
+  const variablesOnlyResult = restoreGameStateSnapshot(adaptedRestored, variablesOnlySnapshot, {
+    applyCustomState: () => {
+      consumerCustomCallbackCount += 1;
+    },
+    applyDataSceneCustomState: () => {
+      consumerCustomCallbackCount += 1;
+    },
+  });
+  equal(consumerCustomCallbackCount, 0);
+  equal(variablesOnlyResult.customStateApplied, false);
+  equal(variablesOnlyResult.dataSceneCustomStateApplied, false);
+
+  assertThrows(
+    () => captureGameStateSnapshot(adaptedSource, {
+      includeDataSceneState: true,
+      customState: { [DATA_SCENE_VARIABLES_SNAPSHOT_KEY]: {} },
+    }),
+    /reserved for declared Data Scene variables/,
+  );
+
+  const tamperedWithoutHash = {
+    ...snapshot,
+    custom: {
+      checkpoint: "level-1",
+      [DATA_SCENE_VARIABLES_SNAPSHOT_KEY]: {
+        "campaign.coins": 7,
+        "campaign.unlocked": true,
+        "campaign.unknown": 1,
+      },
+    },
+  };
+  const tampered = {
+    ...tamperedWithoutHash,
+    snapshotHash: hashGameStateSnapshot(tamperedWithoutHash),
+  };
+  const rejectedEngine = fakeEngine();
+  const rejectedAdapter = new SnapshotDataSceneRuntimeAdapter(() => rejectedEngine.useDataScene());
+  assertThrows(
+    () => restoreGameStateSnapshot(
+      attachDataSceneRuntimeEngineAdapter(rejectedEngine, rejectedAdapter),
+      tampered,
+    ),
+    /undeclared global variable/,
+  );
+  equal(rejectedAdapter.useDataSceneCalls, 0);
+  equal(rejectedAdapter.requests.length, 0);
+
+  const invalidIntegerWithoutHash = {
+    ...snapshot,
+    custom: {
+      checkpoint: "level-1",
+      [DATA_SCENE_VARIABLES_SNAPSHOT_KEY]: {
+        "campaign.coins": 7.5,
+        "campaign.unlocked": true,
+      },
+    },
+  };
+  const invalidIntegerSnapshot = {
+    ...invalidIntegerWithoutHash,
+    snapshotHash: hashGameStateSnapshot(invalidIntegerWithoutHash),
+  };
+  const invalidIntegerEngine = fakeEngine();
+  const invalidIntegerAdapter = new SnapshotDataSceneRuntimeAdapter(
+    () => invalidIntegerEngine.useDataScene(),
+  );
+  assertThrows(
+    () => restoreGameStateSnapshot(
+      attachDataSceneRuntimeEngineAdapter(invalidIntegerEngine, invalidIntegerAdapter),
+      invalidIntegerSnapshot,
+    ),
+    /must be a safe integer/,
+  );
+  equal(invalidIntegerAdapter.useDataSceneCalls, 0);
+  equal(invalidIntegerAdapter.requests.length, 0);
 });
 
 test("game state snapshot rejects mixed built-in shooter and data scene payloads", () => {
@@ -382,6 +551,11 @@ function sampleDataSceneAuthoringDocument(): GameStateSnapshotJsonValue {
   return {
     format: "ferrum2d.consumer.scene-authoring",
     version: 1,
+    variables: [
+      { name: "campaign.coins", scope: "global", type: "integer", default: 0 },
+      { name: "campaign.unlocked", scope: "global", type: "bool", default: false },
+      { name: "wave.index", scope: "scene", type: "integer", default: 1 },
+    ],
     sceneComposition: {
       initialFragment: "main",
       prefabs: {

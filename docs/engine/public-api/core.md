@@ -31,6 +31,9 @@ import {
 `createFerrumRuntime({ dataScene })`은 `ferrum2d.consumer.scene-authoring`
 문서를 startup 단계에서 `applyDataSceneAuthoringDocument(...)`로 적용하고,
 `runtime.dataScene` handle을 통해 적용 결과와 `reapply(...)` 경로를 제공한다.
+handle의 `variables`는 현재 문서에 선언된 Data Scene 변수만 읽고 쓸 수 있다. `reapply(...)`는
+동일 이름·동일 타입의 global 값을 유지하고 scene 값을 다음 문서의 default로 초기화한다. 검증 실패 시
+현재 document/result/variable store와 인자 없는 다음 reapply의 기준 문서는 마지막 성공 상태를 유지한다.
 
 ## FerrumEngine 그룹
 
@@ -223,6 +226,14 @@ bind/select 검증 실패는 이전 snapshot 참조, mutable 쓰기 권한, enti
 다시 적용한 뒤 `applyDataSceneCustomState` callback을 호출한다. 문서가 없거나
 `restoreDataSceneAuthoringDocument: false`이면 restore는 기존처럼 빈 Data Scene mode만
 활성화한다.
+
+선언 변수가 있는 Data Scene을 `includeDataSceneState: true`로 캡처하면 global 값은
+`snapshot.custom[DATA_SCENE_VARIABLES_SNAPSHOT_KEY]`, scene 값은
+`snapshot.dataScene.custom[DATA_SCENE_VARIABLES_SNAPSHOT_KEY]`에 기록된다. 일반/built-in snapshot에는
+이 저장소를 자동 주입하지 않는다. restore는 적용되거나 이미 연결된 authoring 선언과 두 스코프의
+값을 runtime activation 전에 대조하고, reserved payload를 제외한 consumer custom state만 callback에
+전달한다. 결과의
+`dataSceneVariables`/`globalVariablesApplied`/`sceneVariablesApplied`로 적용 여부를 보고한다.
 
 일반 consumer는 decoder를 직접 호출하기보다 `FerrumEngine`과 `FrameState`를 우선
 사용한다. decoder는 custom renderer, replay, smoke, diagnostic adapter에서 사용한다.

@@ -42,6 +42,7 @@ if (paths.length === 0) {
         prefabCount: Object.keys(resolved.sceneComposition.prefabs).length,
         instanceCount: instances.length,
         behaviorProfileCount: Object.keys(resolved.behaviorRecipes.entities).length,
+        variableCount: resolved.variables?.length ?? 0,
         commandCount: resolved.bindingPlan?.commands.length ?? 0,
       }, null, 2));
     } catch (error) {

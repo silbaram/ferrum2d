@@ -87,6 +87,7 @@ frame마다 재사용되는 render/audio/event/debug/navigation buffer와 frame 
 | --- | --- |
 | Scene mode와 runtime slot | `crates/ferrum-core/src/engine/scenes.rs` |
 | Data Scene spawn bridge | `crates/ferrum-core/src/engine/data_scene_spawning.rs`, `packages/ferrum-web/src/dataSceneRuntimeTarget.ts` |
+| Data Scene declared variables | `packages/ferrum-web/src/dataSceneVariables.ts` |
 | Built-in/physics snapshot bridge | `crates/ferrum-core/src/engine/snapshots.rs` |
 | Data Scene JSON snapshot | `packages/ferrum-web/src/gameStateSnapshot.ts` |
 
@@ -96,6 +97,13 @@ data scene mode는 built-in `ActiveScene` enum variant가 아니라 별도 `Data
 consumer는 generated `pkg/*`, `dist/*`, `src/*` 내부 경로를 직접 import하지 않는다.
 data scene save/replay 계약은 built-in Shooter snapshot buffer를 확장하지 않고 `GameStateSnapshot.dataScene`의 optional `DataSceneStateSnapshot` JSON payload에 둔다.
 이 payload는 custom JSON과 optional `authoringDocument`를 포함할 수 있고, restore 경로는 authoring document가 있으면 `applyDataSceneAuthoringDocument(...)`로 Data Scene entity/behavior를 낮은 빈도 apply 단계에서 다시 조립한다.
+optional authoring `variables`는 Rust `World`가 아니라 TypeScript `DataSceneVariableStore`가 소유한다.
+store는 선언된 정수/실수/불리언 이름만 허용하며 다음 document apply에서 동일 이름·동일 타입의
+global 값만 유지하고 scene 값은 default로 초기화한다. snapshot은 새 포맷을 추가하지 않고 기존
+`custom["ferrum2d.variables"]`와 `dataScene.custom["ferrum2d.variables"]` reserved payload를 사용하므로
+canonical hash 범위도 그대로 재사용한다. Data Scene snapshot opt-in에서만 이 저장소를 캡처하며 restore는
+선언·타입을 runtime activation 전에 preflight한다. behavior recipe/FSM의 hot-path 변수 접근은 이
+저장소에 포함하지 않는다.
 
 #### Scene dispatch와 gameplay authoring
 
@@ -210,7 +218,7 @@ Shooter enemy movement compatibility path는 `MovementPattern::Chase(Player/Enti
 | Instance handle registry와 binding guard | `packages/ferrum-web/src/gameplayAuthoring.ts` |
 | Runtime startup/reapply composition | `packages/ferrum-web/src/createFerrumRuntime.ts` |
 
-`applyDataSceneAuthoringDocument(engine, document, options?)`는 scene-authoring envelope를 검증한 뒤 Data Scene runtime target 생성과 behavior recipe apply를 한 번에 수행하는 package-facing 조립 경로다. 기본값은 binding/component validation을 runtime activation 전에 수행하므로 검증 실패만으로 기존 built-in/data scene state를 reset하지 않는다. 더 낮은 수준의 `createDataSceneRuntimeTarget(engine, options?)`는 첫 번째 유효한 spawn request 직전에만 lazy `useDataScene()` activation을 수행한다. `activateDataScene: false`는 이 자동 activation을 끄고, caller가 별도로 scene mode를 준비하는 경로다.
+`applyDataSceneAuthoringDocument(engine, document, options?)`는 scene-authoring envelope와 optional variable declaration을 검증한 뒤 Data Scene runtime target 생성과 behavior recipe apply를 한 번에 수행하는 package-facing 조립 경로다. apply 성공 뒤 엔진에 연결된 `DataSceneVariableStore`를 동기화하므로 validation/spawn 실패가 변수 저장소를 먼저 바꾸지 않는다. 기본값은 binding/component validation을 runtime activation 전에 수행하므로 검증 실패만으로 기존 built-in/data scene state를 reset하지 않는다. 더 낮은 수준의 `createDataSceneRuntimeTarget(engine, options?)`는 첫 번째 유효한 spawn request 직전에만 lazy `useDataScene()` activation을 수행한다. `activateDataScene: false`는 이 자동 activation을 끄고, caller가 별도로 scene mode를 준비하는 경로다.
 
 `createSceneInstanceHandleRegistry(...)`는 Data Scene apply/reload 뒤 `ResolvedSceneCompositionInstance.id`와
 `GameplayEntityHandle`을 동기화하는 TypeScript authoring cache다. scene load, reapply, agent patch 같은

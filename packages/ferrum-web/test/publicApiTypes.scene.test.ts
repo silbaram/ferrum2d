@@ -216,6 +216,12 @@ import type {
   DataSceneRuntimeComponentTemplateResolver,
   DataSceneRuntimeComponentTemplates,
   DataSceneRuntimeTextureIdResolver,
+  DataSceneVariableDeclarationSpec,
+  DataSceneVariableScope,
+  DataSceneVariableStore,
+  DataSceneVariableType,
+  DataSceneVariableValue,
+  DataSceneVariableValues,
   DataSceneSpriteVisualSpec,
   CollisionAreaDamageBehaviorRecipeSpec,
   CollisionDespawnBehaviorRecipeSpec,
@@ -363,6 +369,7 @@ import type {
   ResolvedDataSceneSpriteComponent,
   ResolvedDataSceneSpriteFrame,
   ResolvedDataSceneTextureRef,
+  ResolvedDataSceneVariableDeclaration,
   ResolvedDamageBehaviorRecipe,
   ResolvedDashActionBehaviorRecipe,
   ResolvedFactionBehaviorRecipe,
@@ -745,9 +752,19 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   };
   const sceneCompositionApplyResult: SceneCompositionApplyResult =
     publicApplySceneCompositionFragment(sceneCompositionTarget, resolvedSceneComposition, applySceneCompositionOptions);
+  const variableScope: DataSceneVariableScope = "global";
+  const variableType: DataSceneVariableType = "integer";
+  const variableDefault: DataSceneVariableValue = 0;
+  const variableDeclaration: DataSceneVariableDeclarationSpec = {
+    name: "campaign.coins",
+    scope: variableScope,
+    type: variableType,
+    default: variableDefault,
+  };
   const sceneAuthoringDocument: SceneAuthoringDocumentSpec = {
     format: SCENE_AUTHORING_DOCUMENT_FORMAT,
     version: SCENE_AUTHORING_DOCUMENT_VERSION,
+    variables: [variableDeclaration],
     sceneComposition: sceneCompositionSpec,
     behaviorRecipes: {
       entities: {
@@ -770,6 +787,13 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     publicResolveSceneAuthoringDocument(sceneAuthoringDocument, sceneAuthoringOptions);
   equal(resolvedSceneAuthoringDocument.format, SCENE_AUTHORING_DOCUMENT_FORMAT);
   equal(resolvedSceneAuthoringDocument.bindingPlan?.fragment, "room");
+  const resolvedVariableDeclaration: ResolvedDataSceneVariableDeclaration | undefined =
+    resolvedSceneAuthoringDocument.variables?.[0];
+  const variableStore: DataSceneVariableStore | undefined = undefined;
+  const variableValues: DataSceneVariableValues = { "campaign.coins": variableDefault };
+  equal(resolvedVariableDeclaration?.name, "campaign.coins");
+  equal(variableStore, undefined);
+  equal(variableValues["campaign.coins"], 0);
   const behaviorRecipeKind: BehaviorRecipeKind = "health";
   const behaviorRecipeZeroAction: BehaviorRecipeHealthZeroAction = "event";
   const behaviorRecipeDamageTarget: BehaviorRecipeDamageTarget = "other";

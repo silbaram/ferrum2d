@@ -93,6 +93,7 @@ import type {
   ResolvedSceneAuthoringDocument,
   SceneAuthoringDocumentSpec,
 } from "./sceneAuthoringDocument.js";
+import type { DataSceneVariableStore } from "./dataSceneVariables.js";
 
 export type FerrumRuntimeRenderer = CreatedRenderer & TextureAssetManager & {
   renderCommands(commands: RenderCommandBufferView): RendererStats;
@@ -254,6 +255,7 @@ export interface FerrumRuntimeDataSceneOptions extends ApplyDataSceneAuthoringDo
 
 export interface FerrumRuntimeDataScene {
   readonly result: ApplyDataSceneAuthoringDocumentResult;
+  readonly variables: DataSceneVariableStore;
   document(): ApplyDataSceneAuthoringDocumentResult["document"];
   reapply(
     document?: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument,
@@ -874,14 +876,16 @@ function createRuntimeDataScene(
     get result() {
       return result;
     },
+    variables: result.variables,
     document: () => result.document,
     reapply: (nextDocument = currentDocument, nextOptions = {}) => {
-      currentDocument = nextDocument;
-      result = applyDataSceneAuthoringDocument(engine, currentDocument, {
+      const nextResult = applyDataSceneAuthoringDocument(engine, nextDocument, {
         ...applyOptions,
         ...nextOptions,
         path: nextOptions.path ?? basePath,
       });
+      currentDocument = nextDocument;
+      result = nextResult;
       return result;
     },
   };

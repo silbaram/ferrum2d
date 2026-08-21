@@ -10,6 +10,7 @@ import {
 } from "./dataSceneComponents.js";
 import { applySceneBehaviorRecipes } from "./gameplayAuthoring.js";
 import { resolveSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
+import { synchronizeDataSceneVariableStore } from "./dataSceneVariables.js";
 import type {
   ApplySceneBehaviorRecipesOptions,
   GameplayEntityHandle,
@@ -18,6 +19,7 @@ import type {
 } from "./gameplayAuthoring.js";
 import type { ResolvedSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
 import type { ResolvedSceneCompositionInstance } from "./sceneComposition.js";
+import type { DataSceneVariableStore } from "./dataSceneVariables.js";
 
 const DATA_SCENE_RUNTIME_ENGINE_ADAPTER = Symbol("ferrum2d.dataSceneRuntimeEngineAdapter");
 
@@ -53,6 +55,7 @@ export interface ApplyDataSceneAuthoringDocumentOptions
 
 export interface ApplyDataSceneAuthoringDocumentResult extends SceneBehaviorApplyResult {
   document: ResolvedSceneAuthoringDocument;
+  variables: DataSceneVariableStore;
 }
 
 export interface DataSceneRuntimeSpawnRequest {
@@ -189,8 +192,14 @@ export function applyDataSceneAuthoringDocument(
       instanceHandleRegistry,
     },
   );
+  const variables = synchronizeDataSceneVariableStore(
+    engine,
+    resolved.variables ?? [],
+    `${path}.variables`,
+  );
   return {
     document: resolved,
+    variables,
     ...result,
   };
 }

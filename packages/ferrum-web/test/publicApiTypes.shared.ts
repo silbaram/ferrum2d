@@ -276,6 +276,9 @@ export {
   validateDataSceneStateSnapshot,
 } from "../src/gameStateSnapshot.js";
 export {
+  DATA_SCENE_VARIABLES_SNAPSHOT_KEY,
+} from "../src/dataSceneVariables.js";
+export {
   compareGameplayReplayRuns,
   createGameplayReplayRun,
   GAMEPLAY_REPLAY_RUN_FORMAT,
@@ -539,6 +542,12 @@ export type {
   DataSceneRuntimeComponentTemplateResolver,
   DataSceneRuntimeComponentTemplates,
   DataSceneRuntimeTextureIdResolver,
+  DataSceneVariableDeclarationSpec,
+  DataSceneVariableScope,
+  DataSceneVariableStore,
+  DataSceneVariableType,
+  DataSceneVariableValue,
+  DataSceneVariableValues,
   DataSceneSpriteAnimationSpec,
   DataSceneSpriteComponentSpec,
   DataSceneSpriteFrameSpec,
@@ -931,6 +940,7 @@ export type {
   ResolvedDataSceneSpriteComponent,
   ResolvedDataSceneSpriteFrame,
   ResolvedDataSceneTextureRef,
+  ResolvedDataSceneVariableDeclaration,
   ResolvedDamageBehaviorRecipe,
   ResolvedFactionBehaviorRecipe,
   ResolvedHealthBehaviorRecipe,
