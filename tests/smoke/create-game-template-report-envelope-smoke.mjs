@@ -57,6 +57,9 @@ try {
       "ferrum2d.consumer.project.report",
     );
     assertConsumerProjectReport(projectReport, template);
+    if (templateName === "minimal") {
+      await assertConsumerCheckFailureReport(projectRoot);
+    }
 
     const authoringReport = await runJsonReport(
       projectRoot,
@@ -431,6 +434,34 @@ async function normalizePackageJson(projectRoot, templateName) {
   await writeFile(file, `${JSON.stringify(packageJson, null, 2)}\n`);
 }
 
+async function assertConsumerCheckFailureReport(projectRoot) {
+  const packagePath = path.join(projectRoot, "package.json");
+  const original = await readFile(packagePath, "utf8");
+  const packageJson = JSON.parse(original);
+  delete packageJson.dependencies["@ferrum2d/ferrum-web"];
+  await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+  try {
+    const report = await runJsonReportAllowFailure(
+      projectRoot,
+      ["scripts/ferrum-check.mjs"],
+      "ferrum2d.consumer.check.report",
+    );
+    assert.equal(report.ok, false, "consumer check negative path must fail");
+    assert.equal(report.check?.status, "failed", "consumer check negative path status is invalid");
+    assert.equal(report.check?.failedStep, "validate", "consumer check must stop at the first failed step");
+    assert.equal(report.check?.completedStepCount, 0, "consumer check completed step count is invalid");
+    assert.equal(report.check?.totalStepCount, 6, "consumer check total step count is invalid");
+    assert.equal(report.check?.steps?.length, 1, "consumer check must not run steps after the first failure");
+    assert.equal(report.check?.nextCommand, "npm run ferrum:validate", "consumer check next command is invalid");
+    assert(
+      report.reports?.some((entry) => entry.code === "FERRUM_CONSUMER_CHECK_FAILED"),
+      "consumer check negative path must include a machine-actionable failure report",
+    );
+  } finally {
+    await writeFile(packagePath, original);
+  }
+}
+
 async function needsFerrumWebRuntime(projectRoot) {
   return await exists(path.join(projectRoot, "public/game.json"))
     || await exists(path.join(projectRoot, "public/gameplay-replay.fixture.json"));
@@ -610,6 +641,7 @@ function assertConsumerProjectReport(report, template) {
   assert.equal(report.project?.deployment?.basePath, "relative", `${templateName} project report deployment base path is invalid`);
   assert.equal(report.project?.deployment?.fileProtocolSupported, false, `${templateName} project report must reject file protocol deployment`);
   assert.equal(report.project?.deployment?.scripts?.readiness, "node scripts/ferrum-deploy.mjs report", `${templateName} project report deploy readiness script is invalid`);
+  assertRuntimeInputs(report.project?.runtimeInputs, templateName, `${templateName} project report runtimeInputs`);
   if (templateName === "topdown") {
     assert.equal(report.project.files.gameSpec, "public/game.json", "topdown project report must identify public/game.json");
     assert.equal(report.project.checks.gameSpec?.ok, true, "topdown project report must validate Game Spec");
@@ -621,6 +653,7 @@ function assertConsumerProjectReport(report, template) {
     assert.equal(report.project.checks.sceneAuthoring?.ok, true, `${templateName} project report must validate scene authoring`);
   }
   for (const command of [
+    "npm run ferrum:check",
     "npm run ferrum:report",
     "npm run ferrum:validate",
     "npm run ferrum:placement-viewer",
@@ -644,6 +677,7 @@ function assertConsumerAuthoringReport(report, template) {
   assert.equal(report.version, 1, `${templateName} authoring report version is invalid`);
   assert.equal(report.ok, true, `${templateName} authoring report must be ok for a generated template`);
   assert.equal(report.gameplayAuthoring?.packageName, templateName, `${templateName} authoring report packageName is invalid`);
+  assertRuntimeInputs(report.gameplayAuthoring?.runtimeInputs, templateName, `${templateName} authoring report runtimeInputs`);
   assert(Array.isArray(report.gameplayAuthoring?.diagnostics), `${templateName} authoring report diagnostics must be an array`);
   assert(Array.isArray(report.gameplayAuthoring?.reports), `${templateName} authoring report reports must be an array`);
   assertMachineActionableReports(report.gameplayAuthoring.reports, `${templateName} authoring report gameplayAuthoring.reports`);
@@ -673,6 +707,34 @@ function assertConsumerAuthoringReport(report, template) {
   } else if (templateName !== "topdown") {
     assert.equal(report.gameplayAuthoring.status, "not-configured", `${templateName} authoring report must be not-configured`);
   }
+}
+
+function assertRuntimeInputs(value, templateName, label) {
+  const expectedScene = templateName === "platformer"
+    ? "built-in-platformer"
+    : templateName === "breakout"
+      ? "built-in-breakout"
+      : "built-in-shooter";
+  assert.equal(value?.scene, expectedScene, `${label}.scene is invalid`);
+  assert.equal(
+    value?.gameplay?.source,
+    templateName === "topdown" ? "public/game.json" : "src/main.ts",
+    `${label}.gameplay.source is invalid`,
+  );
+  const expectedGameplayRole = templateName === "platformer" || templateName === "breakout"
+    ? "runtime-scene-selection"
+    : "runtime-gameplay-configuration";
+  assert.equal(value?.gameplay?.role, expectedGameplayRole, `${label}.gameplay.role is invalid`);
+  assert.equal(
+    value?.gameplay?.implementation,
+    "@ferrum2d/ferrum-web/starter-scenes",
+    `${label}.gameplay.implementation is invalid`,
+  );
+  assert.equal(value?.sceneAuthoring?.source, "public/scene-authoring.json", `${label}.sceneAuthoring.source is invalid`);
+  assert.equal(value?.sceneAuthoring?.role, "authoring-validation-and-handoff", `${label}.sceneAuthoring.role is invalid`);
+  assert.equal(value?.sceneAuthoring?.appliedByGameRuntime, false, `${label}.sceneAuthoring.appliedByGameRuntime must be false`);
+  assert.equal(value?.platform?.source, "src/main.ts", `${label}.platform.source is invalid`);
+  assert.equal(value?.platform?.role, "browser-bootstrap", `${label}.platform.role is invalid`);
 }
 
 function assertSceneRuntimeEntityHandles(value, label) {

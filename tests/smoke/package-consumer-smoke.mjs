@@ -487,6 +487,19 @@ async function runGeneratedGameConsumer({
   );
   assertConsumerRuntimeReplayRecipe(runtimeReplayRecipe, templateName);
   templateSummary.reports.runtimeReplayRecipe = summarizeConsumerRuntimeReplayRecipe(runtimeReplayRecipe);
+  const checkReport = await runJsonReport(
+    pnpm,
+    ["run", "ferrum:check"],
+    generatedGameRoot,
+    "ferrum2d.consumer.check.report",
+  );
+  assertConsumerCheckReport(checkReport, templateName);
+  templateSummary.checks.check = true;
+  templateSummary.reports.check = {
+    status: checkReport.check.status,
+    completedStepCount: checkReport.check.completedStepCount,
+    totalStepCount: checkReport.check.totalStepCount,
+  };
   const runtimeReplayTemplate = templateCatalogById.get(templateName);
   if (runtimeReplayTemplate?.runtimeGameplayReplay?.configured === true) {
     const runtimeReplayUpdateReport = await runJsonReport(
@@ -883,6 +896,7 @@ async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
       );
       const handoffRoot = document.querySelector(".placement-handoff-controls");
       const handoffUi = {
+        saveMode: handoffRoot?.getAttribute("data-save-mode"),
         draftCount: handoffRoot?.getAttribute("data-draft-count"),
         blockedReferenceCount: handoffRoot?.getAttribute("data-blocked-reference-count"),
         assetDiagnosticCount: handoffRoot?.getAttribute("data-asset-diagnostic-count"),
@@ -892,6 +906,8 @@ async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
           ?.hasAttribute("disabled") ?? true,
         saveDraftDisabled: document.querySelector(".placement-handoff-controls button[data-placement-action='save-draft']")
           ?.hasAttribute("disabled") ?? true,
+        saveButtonText: document.querySelector(".placement-handoff-controls button[data-placement-action='save-draft']")
+          ?.textContent ?? "",
         status: document.querySelector(".placement-handoff-status")?.textContent ?? "",
       };
       const inspectorUi = {
@@ -949,11 +965,13 @@ async function waitForGeneratedPlacementViewerHandoffUi(page, templateName) {
           && root.dataset.draftCount === String(draftCount)
           && root.dataset.blockedReferenceCount === String(blockedReferenceCount)
           && root.dataset.assetDiagnosticCount === String(assetDiagnosticCount)
+          && root.dataset.saveMode === "memory"
           && copyPatch instanceof HTMLButtonElement
           && copyPatch.disabled === false
           && copyHandoff instanceof HTMLButtonElement
           && copyHandoff.disabled === false
           && saveDraft instanceof HTMLButtonElement
+          && saveDraft.textContent === "Apply Memory"
           && saveDraft.disabled === (blockedReferenceCount > 0)
           && status instanceof HTMLElement
           && status.textContent?.includes("patch operation")
@@ -2481,6 +2499,7 @@ function assertConsumerAuthoringReport(report, templateName) {
   assert(report.version === 1, `${templateName} authoring report version is invalid`);
   assert(report.ok === true, `${templateName} authoring report must be ok for a generated template`);
   assert(report.gameplayAuthoring?.packageName === templateName, `${templateName} authoring report packageName is invalid`);
+  assertRuntimeInputs(report.gameplayAuthoring?.runtimeInputs, templateName, `${templateName} authoring report runtimeInputs`);
   assert(Array.isArray(report.gameplayAuthoring?.diagnostics), `${templateName} authoring report diagnostics must be an array`);
   assert(Array.isArray(report.gameplayAuthoring?.reports), `${templateName} authoring report reports must be an array`);
   assertMachineActionableReports(report.gameplayAuthoring.reports, `${templateName} authoring report gameplayAuthoring.reports`);
@@ -2561,8 +2580,10 @@ function assertConsumerProjectReport(report, templateName) {
   assert(report.project?.deployment?.basePath === "relative", `${templateName} project report deployment base path is invalid`);
   assert(report.project?.deployment?.fileProtocolSupported === false, `${templateName} project report must reject file protocol deployment`);
   assert(report.project?.deployment?.scripts?.readiness === "node scripts/ferrum-deploy.mjs report", `${templateName} project report deploy readiness script is invalid`);
+  assertRuntimeInputs(report.project?.runtimeInputs, templateName, `${templateName} project report runtimeInputs`);
   assert(Array.isArray(report.recommendedCommands), `${templateName} project report must include recommended commands`);
   for (const command of [
+    "npm run ferrum:check",
     "npm run ferrum:report",
     "npm run ferrum:validate",
     "npm run ferrum:authoring-report",
@@ -2589,6 +2610,55 @@ function assertConsumerProjectReport(report, templateName) {
     assert(report.project.files.sceneAuthoring === "public/scene-authoring.json", `${templateName} project report must identify scene authoring fixture`);
     assert(report.project.checks.sceneAuthoring?.ok === true, `${templateName} project report must validate scene authoring fixture`);
   }
+}
+
+function assertRuntimeInputs(value, templateName, label) {
+  const expectedScene = templateName === "platformer"
+    ? "built-in-platformer"
+    : templateName === "breakout"
+      ? "built-in-breakout"
+      : "built-in-shooter";
+  assert(value?.scene === expectedScene, `${label}.scene is invalid`);
+  assert(
+    value?.gameplay?.source === (templateName === "topdown" ? "public/game.json" : "src/main.ts"),
+    `${label}.gameplay.source is invalid`,
+  );
+  const expectedGameplayRole = templateName === "platformer" || templateName === "breakout"
+    ? "runtime-scene-selection"
+    : "runtime-gameplay-configuration";
+  assert(value?.gameplay?.role === expectedGameplayRole, `${label}.gameplay.role is invalid`);
+  assert(
+    value?.gameplay?.implementation === "@ferrum2d/ferrum-web/starter-scenes",
+    `${label}.gameplay.implementation is invalid`,
+  );
+  assert(value?.sceneAuthoring?.source === "public/scene-authoring.json", `${label}.sceneAuthoring.source is invalid`);
+  assert(value?.sceneAuthoring?.role === "authoring-validation-and-handoff", `${label}.sceneAuthoring.role is invalid`);
+  assert(value?.sceneAuthoring?.appliedByGameRuntime === false, `${label}.sceneAuthoring.appliedByGameRuntime must be false`);
+  assert(value?.platform?.source === "src/main.ts", `${label}.platform.source is invalid`);
+  assert(value?.platform?.role === "browser-bootstrap", `${label}.platform.role is invalid`);
+}
+
+function assertConsumerCheckReport(report, templateName) {
+  assert(report.format === "ferrum2d.consumer.check.report", `${templateName} check report format is invalid`);
+  assert(report.version === 1, `${templateName} check report version is invalid`);
+  assert(report.ok === true, `${templateName} check report must pass`);
+  assert(report.check?.status === "passed", `${templateName} check report status is invalid`);
+  assert(report.check?.completedStepCount === 6, `${templateName} check report completedStepCount is invalid`);
+  assert(report.check?.totalStepCount === 6, `${templateName} check report totalStepCount is invalid`);
+  assert(report.check?.failedStep === null, `${templateName} check report failedStep must be null`);
+  assert(report.check?.nextCommand === null, `${templateName} check report nextCommand must be null`);
+  assertDeepEqual(
+    report.check?.steps?.map((step) => [step.id, step.status]),
+    [
+      ["validate", "passed"],
+      ["assets", "passed"],
+      ["authoring", "passed"],
+      ["gameplayReplay", "passed"],
+      ["runtimeReplay", "passed"],
+      ["build", "passed"],
+    ],
+    `${templateName} check report steps are invalid`,
+  );
 }
 
 function assertConsumerDeployReadinessReport(report, templateName) {

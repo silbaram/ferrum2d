@@ -37,6 +37,7 @@ npx @ferrum2d/agents init --tools codex,claude,gemini
 생성 프로젝트가 `@ferrum2d/create-game` 최신 템플릿을 사용하면 AI 개발 하네스 명령도 함께 제공한다.
 
 ```bash
+npm run ferrum:check
 npm run ferrum:report
 npm run ferrum:validate
 npm run ferrum:smoke
@@ -44,7 +45,7 @@ npm run ferrum:deploy-report
 npm run preview
 ```
 
-`ferrum:report`는 `ferrum2d.consumer.project.report` JSON envelope로 package dependency, generated file, internal import, root aggregate import와 `project.deployment` 정적 웹 배포 계약을 요약하고 최상위 `recommendedCommands`를 제공한다. `ferrum:smoke`는 생성 프로젝트 안에서 validate/build를 실행하는 기본 소비자 검증 gate다. `ferrum:deploy-report`는 build 뒤 `dist/`의 HTML 및 정적으로 판별 가능한 runtime/CSS 상대 asset 참조와 참조 파일을 가상 하위 HTTP 경로에서 검사하고, 생성 프로젝트의 실제 `preview` 명령을 임시 localhost 포트에서 실행해 Wasm `application/wasm` 응답을 확인하는 별도 배포 gate다. 이 계약은 HTML `<base>`를 거부하고, 상대 literal `fetch(...)`가 있는 다중 HTML 디렉터리 산출물을 base ambiguity로 거부한다. 로컬 production 확인은 `file://` 대신 `preview`를 사용한다.
+`ferrum:check`는 validation, asset, authoring, gameplay/runtime replay, production build를 순서대로 실행하고 첫 실패 단계와 다음 명령을 `ferrum2d.consumer.check.report`로 요약한다. `ferrum:report`는 `ferrum2d.consumer.project.report` JSON envelope로 package dependency, generated file, internal import, root aggregate import, template별 `runtimeInputs`와 `project.deployment` 정적 웹 배포 계약을 요약하고 최상위 `recommendedCommands`를 제공한다. `ferrum:smoke`는 생성 프로젝트 안에서 validate/build를 실행하는 기본 소비자 검증 gate다. `ferrum:deploy-report`는 build 뒤 `dist/`의 HTML 및 정적으로 판별 가능한 runtime/CSS 상대 asset 참조와 참조 파일을 가상 하위 HTTP 경로에서 검사하고, 생성 프로젝트의 실제 `preview` 명령을 임시 localhost 포트에서 실행해 Wasm `application/wasm` 응답을 확인하는 별도 배포 gate다. 이 계약은 HTML `<base>`를 거부하고, 상대 literal `fetch(...)`가 있는 다중 HTML 디렉터리 산출물을 base ambiguity로 거부한다. 로컬 production 확인은 `file://` 대신 `preview`를 사용한다.
 
 Consumer smoke 계열 report의 `version: 1`은 internal QA artifact 계약이다. 기존 필드의 의미, 타입, 이름을 바꾸거나 제거하면 version을 올리고 validator와 synthetic smoke fixture를 함께 갱신한다. 반대로 `rootAggregateImports`처럼 package gate를 더 엄격하게 만드는 additive summary field는 같은 v1 안에서 추가할 수 있지만, 추가 즉시 `pnpm validate:consumer-smoke-report`와 `pnpm smoke:consumer-smoke-report`의 required field로 고정한다.
 

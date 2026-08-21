@@ -12,12 +12,26 @@ npm run dev
 ## 검증
 
 ```bash
-npm run ferrum:report
-npm run ferrum:validate
-npm run ferrum:smoke
+npm run ferrum:check
 ```
 
-`ferrum:smoke`는 프로젝트 계약을 검증하고 production build를 생성한다.
+`ferrum:check`는 project/spec validation, asset validation, Scene Authoring report, gameplay/runtime
+replay fixture와 production build를 순서대로 확인한다. 결과는
+`ferrum2d.consumer.check.report` JSON이며, 실패하면 첫 실패 단계와 다음 실행 명령을 알려준다.
+세부 진단이 필요하면 `npm run ferrum:report`, `npm run ferrum:validate`,
+`npm run ferrum:authoring-report`, `npm run ferrum:replay-report`,
+`npm run ferrum:runtime-replay-report`를 개별 실행한다.
+
+## Runtime 입력과 Scene Authoring
+
+`npm run ferrum:report`의 `project.runtimeInputs`가 이 템플릿의 gameplay 구성 source와
+`starter-scenes` runtime 구현, browser bootstrap, authoring fixture의 역할을 구분한다. `public/scene-authoring.json`은 Placement
+Viewer, validation, patch/handoff의 입력이며 built-in starter runtime에 자동 적용되지 않는다.
+Scene Authoring을 게임에 적용하려면 해당 scene의 entity/component 호환 계약을 가진 runtime adapter가
+필요하다.
+
+generated Placement Viewer의 `Apply Memory`는 draft를 현재 viewer session에만 적용한다. 프로젝트의
+`public/scene-authoring.json`을 쓰지 않으므로 파일 반영에는 `Copy Patch`/`Copy Handoff` 결과를 사용한다.
 
 ## 배포 준비 확인
 

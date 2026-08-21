@@ -185,6 +185,7 @@ async function printReport(config) {
         ...(config.includePublicAssetsInReport === true ? { publicAssets: result.publicAssets } : {}),
       },
       authoringSurface: result.authoringSurface,
+      runtimeInputs: config.runtimeInputs,
       deployment: deploymentSurface(result.packageJson),
       checks: {
         hasAuthoringViewerDependency: result.hasAuthoringViewerDependency,
@@ -220,6 +221,7 @@ async function printAuthoringReport(config) {
       packageName: result.packageName,
       status: diagnostics.length === 0 ? authoringStatus(config, result) : "invalid",
       authoringSurface: result.authoringSurface,
+      runtimeInputs: config.runtimeInputs,
       gameSpec: result.gameSpec ?? missingGameSpecCheck(config),
       sceneAuthoring: result.sceneAuthoring ?? { ok: null, message: `${sceneAuthoringPath(config)} not present` },
       ...(config.includePublicAssetsInAuthoringReport === true ? { publicAssets: result.publicAssets } : {}),
@@ -601,6 +603,7 @@ function missingGameSpecCheck(config) {
 
 function recommendedCommands() {
   return [
+    "npm run ferrum:check",
     "npm run ferrum:report",
     "npm run ferrum:validate",
     "npm run ferrum:placement-viewer",
