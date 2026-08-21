@@ -174,6 +174,7 @@ export type {
   PhysicsBodyColliderSnapshot,
   PhysicsBodyStateBufferSnapshot,
   PhysicsDebugOptions,
+  PhysicsDebugLineComposer,
   PhysicsEntityHandle,
   PhysicsEntitySnapshot,
   PhysicsFrameStats,

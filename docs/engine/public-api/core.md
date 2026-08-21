@@ -171,6 +171,12 @@ Typed-array view는 해당 frame에서 동기 소비한다. frame 밖에 보관�
 `FrameState`는 game simulation의 source of truth가 아니다. 장기 상태는 Rust core와
 snapshot/replay API를 기준으로 관리한다.
 
+`createFerrumRuntime(...)`의 `physicsDebugLineComposer`는 `physicsDebugLines`가 활성화된
+frame에서 Rust `PhysicsDebugLineBufferView`를 받아 renderer에 넘길 최종 buffer를 반환한다.
+`DebugGizmoLineBufferWriter`로 원본 buffer를 append한 뒤 line/polyline/arrow/circle을 추가하면
+WebGL2/WebGPU가 기존 8-float debug line ABI를 그대로 소비한다. 옵션이 비활성화되면 composer도
+호출되지 않는다. composer와 반환 buffer는 frame 안에서 동기 처리하고 보관하지 않는다.
+
 ## Physics Runtime
 
 Core subpath는 Physics Spec resolver와 imperative Physics API를 함께 노출한다.

@@ -57,6 +57,7 @@ export type {
   FerrumRuntimeSubtitleProvider,
   LightingSceneProvider,
   PostProcessProvider,
+  PhysicsDebugLineComposer,
   SpriteMaterialProvider,
 } from "../createFerrumRuntime";
 export type { UiOverlayStateProvider } from "../createFerrumRuntime";

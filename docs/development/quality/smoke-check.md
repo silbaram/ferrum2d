@@ -396,9 +396,11 @@ pnpm smoke:physics-sandbox
 pnpm smoke:physics-demo-suite
 ```
 
-`pnpm smoke:physics-sandbox`는 `examples/physics-sandbox/dist` production build를 `demo=sandbox&physicsDebugLines=true`로 열고 `window.ferrumPhysicsSandboxSmokeFrame`을 기다린다. pass 조건은 선택된 demo id가 유지되고, body가 2개 이상 적용되며, physics debug line이 1개 이상 렌더되고, frame이 2회 이상 진행되는 것이다.
+`pnpm smoke:physics-sandbox`는 `examples/physics-sandbox/dist` production build를 `demo=rigid-materials&physicsDebugLines=true`로 열고 `window.ferrumPhysicsSandboxSmokeFrame`을 기다린다. pass 조건은 선택된 demo id가 유지되고, body와 visible body가 각각 2개 이상 적용되며, Rust line을 포함한 전체 physics debug line과 TypeScript custom debug line, bitmap world text가 각각 1개 이상 렌더되고, frame이 2회 이상 진행되는 것이다.
 
-`pnpm smoke:physics-demo-suite`는 같은 browser smoke harness에서 `window.ferrumPhysicsSandboxLoadDemo(id)`를 호출해 `sandbox`, `joint-playground`, `projectile-ccd`, `platformer-physics`, `compound-collider`, `weld-joint` fixture를 순회한다. 이 suite는 fixture catalog가 browser selector, Physics Spec apply, debug line render path에 모두 연결됐는지 확인한다. Solver determinism, scenario hash, CCD/query 세부 assertion은 `pnpm smoke:physics`와 `pnpm smoke:physics-replay`가 담당하므로 demo suite에 같은 책임을 중복 배치하지 않는다.
+`pnpm smoke:physics-demo-suite`는 같은 browser smoke harness에서 `window.ferrumPhysicsSandboxLoadDemo(id)`를 호출해 `rigid-materials`, `collider-gallery`, `contacts-sensors`, `joints-lab`, `ccd-tunnel-test`, `platformer-physics`, `scene-queries` fixture를 순회한다. 이 suite는 fixture catalog가 browser selector, Physics Spec apply, engine debug primitive와 bitmap world text render path에 모두 연결됐는지 확인한다. Solver determinism, scenario hash, CCD/query 세부 assertion은 `pnpm smoke:physics`와 `pnpm smoke:physics-replay`가 담당하므로 demo suite에 같은 책임을 중복 배치하지 않는다.
+
+`pnpm smoke:physics-sandbox-budget`은 같은 production build를 `physicsDebugLines=false`로 열고 `physicsDebugLineCount`와 `customDebugLineCount`가 모두 `0`인지 확인한 뒤 physics-sandbox runtime budget을 평가한다. 따라서 opt-in debug primitive가 비활성 frame에 renderer pass나 composer 비용을 남기는 회귀를 차단한다. bitmap world text는 debug line flag와 독립적이므로 이 모드에서도 존재할 수 있다.
 
 ## Headless smoke check
 
@@ -442,8 +444,8 @@ pnpm smoke:headless
 - `pnpm smoke:topdown-hd2d`는 Top-down Shooter production build에 smoke 전용 HD-2D spec을 적용해 `weapons.projectileArc`, bridge `toHeightSpan` path, under-pass same-floor path, render command 생성을 확인한다.
 - `pnpm smoke:breakout-effects`는 `resetGame()` 이후 자연 ball/brick hit에서 scene-internal particle burst와 render command 증가가 관측되는지 확인한다.
 - `pnpm smoke:platformer-effects`는 `resetGame()` 이후 player landing transition에서 scene-internal dust burst와 render command 증가가 관측되는지 확인한다.
-- `pnpm smoke:physics-sandbox`는 기본 `sandbox` fixture가 body를 생성하고 physics debug line을 렌더링하며 frame이 진행되는지 확인한다.
-- `pnpm smoke:physics-demo-suite`는 sandbox, joint playground, projectile CCD, platformer physics, compound collider, weld joint fixture를 catalog 순서대로 로드해 demo id, body count, debug line, frame 진행 조건을 확인한다. CCD/query 세부 assertion은 Node physics smoke와 Rust unit test가 담당한다.
+- `pnpm smoke:physics-sandbox`는 기본 `rigid-materials` fixture가 body를 생성하고 Rust/custom debug line과 bitmap world text를 렌더링하며 frame이 진행되는지 확인한다.
+- `pnpm smoke:physics-demo-suite`는 Physics Showcase catalog의 7개 fixture를 순서대로 로드해 demo id, body count, Rust/custom debug line, bitmap world text, frame 진행 조건을 확인한다. CCD/query 세부 assertion은 Node physics smoke와 Rust unit test가 담당한다.
 - `pnpm smoke:destructible-terrain-browser`는 Top-down Shooter의 collision tile 하나를 제거하고 같은 frame 경로에서 query hit 제거와 render command 감소를 확인한다.
 - `pnpm smoke:lighting`은 Minimal Game에서 lighting smoke URL을 켜고 renderer stats의 lighting draw/point light/tile occluder/shadow count와 canvas warm pixel을 확인한다.
 - `pnpm smoke:lighting-webgpu`는 Minimal Game에서 `renderer=webgpu`와 lighting smoke URL을 켜고 WebGPU renderer stats의 lighting draw/point light/tile occluder/shadow count를 확인한다. WebGPU 미지원 또는 fallback 환경은 실패 대신 skip으로 보고한다.
@@ -587,7 +589,7 @@ extended browser smoke job은 matrix별 artifact 이름을 분리해 budget smok
 - `pnpm smoke:topdown-hd2d`로 bridge portal navigation, projectile arc, HD-2D render path가 Top-down Shooter browser production build에서 재현되는지 확인한다.
 - `pnpm smoke:runtime-budgets`로 CI에서 runtime budget profile 계약을 확인하고, 예제별 성능 회귀가 의심되면 해당 `smoke:*-budget` browser smoke를 추가로 실행한다. budget browser smoke는 frame/render/Rust update 지표를 report artifact로 남기고, Chromium이 heap API를 제공하면 heap sample도 함께 기록한다.
 - `pnpm smoke:mass-objects`로 1,000개 이상 enemy/projectile Rust frame path와 collision pair budget 회귀를 확인한다.
-- `pnpm smoke:physics-demo-suite`로 Physics Sandbox fixture catalog 6개가 browser selector, Physics Spec apply, debug line render path를 통과하는지 확인한다.
+- `pnpm smoke:physics-demo-suite`로 Physics Sandbox fixture catalog 7개가 browser selector, Physics Spec apply, engine debug primitive와 bitmap world text render path를 통과하는지 확인한다.
 - `pnpm package:check`로 runtime package entrypoint, authoring-viewer contract/DOM shell/panel primitive helper package, create-game scaffold, agents template, files allowlist, generated Wasm artifact, 실제 `pnpm pack` tarball 구성을 확인한다.
 - `pnpm package:consumer-smoke`로 local tarball install, generated game build, generated placement viewer Handoff copy/save action state, Project Assets Add Sprite browser smoke, authoring-viewer dependency, agents dry-run을 임시 consumer project에서 확인한다.
 - `pnpm release:local-check`로 네 package release 후보 metadata, tarball allowlist, local consumer smoke report validation을 배포 없이 한 번에 확인한다.

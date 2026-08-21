@@ -97,6 +97,11 @@ asset은 TypeScript가 로드·검증하고, glyph/kerning metadata는 한 번�
 전달하며 Rust가 glyph sprite cache, camera transform, viewport culling, render/HD-2D
 정렬을 소유한다. 기존 DOM HUD/localization overlay는 화면 고정 UI 경로로 유지한다.
 
+동적 debug primitive는 `DebugGizmoLineBufferWriter`가 기존 Rust physics debug line
+buffer에 line/polyline/arrow/circle을 append하고 `physicsDebugLineComposer`가 같은 frame의
+renderer 입력으로 돌려주는 방식이다. 이 helper는 기존 8-float ABI와 WebGL2/WebGPU
+renderer pass를 공유하며 debug line이 비활성화된 frame에서는 호출되지 않는다.
+
 핫패스에서 entity별 JS/Wasm 왕복 호출을 추가하지 않는다. frame output은 render,
 audio, gameplay, effect, physics debug 같은 bulk buffer나 telemetry로 전달한다.
 `createEngine(...)` 저수준 경로에서 bulk buffer 필드를 읽을 때는 Rust가 제공한

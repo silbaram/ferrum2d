@@ -109,6 +109,9 @@ test("RuntimeFrameRenderer render-only fast path does not require FrameState", (
   const runtimeFrameRenderer = new RuntimeFrameRenderer({
     renderer,
     shouldRenderPhysicsDebugLines: false,
+    physicsDebugLineComposer: () => {
+      throw new Error("disabled debug line composer should not run");
+    },
     needsRuntimeFrame: false,
     onFrame: () => {
       throw new Error("onFrame should not run in render-only mode");
@@ -122,6 +125,55 @@ test("RuntimeFrameRenderer render-only fast path does not require FrameState", (
     "render_commands",
     "post_process",
   ]);
+});
+
+test("RuntimeFrameRenderer composes physics debug lines before renderer stats are published", () => {
+  const order: string[] = [];
+  const baseRenderer = fakeRuntimeRenderer(order);
+  const composedStats = rendererStats({ drawCalls: 2, physicsDebugLineCount: 5 });
+  const renderer = {
+    ...baseRenderer,
+    renderPhysicsDebugLines: (lines: { lineCount: number }, camera: { x: number; y: number }) => {
+      order.push(`render_debug:${lines.lineCount}:${camera.x},${camera.y}`);
+      composedStats.physicsDebugLineCount = lines.lineCount;
+      return composedStats;
+    },
+    renderPostProcess: () => {
+      order.push("post_process");
+      return composedStats;
+    },
+  } as unknown as FerrumRuntimeRenderer;
+  let publishedLineCount = 0;
+  const runtimeFrameRenderer = new RuntimeFrameRenderer({
+    renderer,
+    shouldRenderPhysicsDebugLines: true,
+    physicsDebugLineComposer: (lines) => {
+      order.push(`compose_debug:${lines.lineCount}`);
+      return {
+        buffer: new Float32Array(5 * 8),
+        lineCount: 5,
+        floatsPerLine: 8,
+      };
+    },
+    needsRuntimeFrame: true,
+    onFrame: ({ rendererStats }) => {
+      publishedLineCount = rendererStats.physicsDebugLineCount;
+    },
+  });
+
+  runtimeFrameRenderer.renderFrame(renderFrameState({
+    frameState: frameState(),
+    includePhysicsDebugLines: true,
+  }));
+
+  deepEqual(order, [
+    "render",
+    "render_commands",
+    "compose_debug:3",
+    "render_debug:5:11,22",
+    "post_process",
+  ]);
+  equal(publishedLineCount, 5);
 });
 
 test("RuntimeFrameRenderer labels expanded lifecycle states", () => {

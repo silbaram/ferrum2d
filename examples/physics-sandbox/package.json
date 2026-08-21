@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "generate:debug-font": "node scripts/generate-debug-font.mjs",
     "dev": "pnpm --filter @ferrum2d/ferrum-web build && vite",
     "build": "vite build --base=./",
     "preview": "vite preview"

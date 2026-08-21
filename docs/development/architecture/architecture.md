@@ -300,6 +300,8 @@ WebGL2 sprite renderer는 Rust render command buffer를 그대로 instance data�
 
 비트맵 월드 텍스트는 새 render command ABI를 만들지 않는다. TypeScript `BitmapFontPolicySpec` loader/validator가 atlas glyph·kerning metadata를 저빈도 bulk typed-array 호출로 Rust `BitmapTextSystem`에 등록하고, `setWorldText(...)`는 문자열 내용이 바뀔 때만 문자열을 전달한다. 내용이 같은 속성 변경은 숫자 전용 update를 사용하며 좌표·sort metadata·anchor만 바뀌면 기존 glyph command cache도 유지한다. Rust는 정렬 전 월드 좌표 `SpriteRenderCommand` cache를 만들고 frame에서는 entity anchor resolve, camera transform, glyph 단위 viewport culling과 기존 layer/HD-2D sort만 수행한다. 따라서 문자열과 entity별 callback은 frame hot path를 건너지 않으며 WebGL2/WebGPU는 같은 15-float sprite ABI를 그대로 소비한다.
 
+동적 debug primitive도 새 ABI를 추가하지 않는다. Rust가 frame마다 bulk 생성한 `PhysicsDebugLineBufferView`를 TypeScript `physicsDebugLineComposer`가 필요할 때만 받아 `DebugGizmoLineBufferWriter`의 재사용 typed array에 append하고 line/polyline/arrow/circle을 추가한다. renderer는 합성된 기존 8-float physics debug line buffer 하나를 소비하므로 WebGL2/WebGPU 경로가 분기되지 않는다. `physicsDebugLines`가 비활성화되면 Rust debug buffer 생성, composer 호출, debug renderer pass를 모두 생략한다. 이 경로는 debug 표현 전용이며 TypeScript가 simulation state를 소유하지 않는다.
+
 ## 프레임 순서
 
 ```text
@@ -330,7 +332,7 @@ Rust/TypeScript 공유 buffer는 `#[repr(C)]` Rust struct와 TypeScript decoder�
 | Audio event | `audio_event.rs` | `wasmBridge.ts`, `audioManager.ts` | frame 단위 sound playback |
 | Gameplay event | `gameplay_event.rs` | `gameplayEventDecoder.ts`, `gameplayEventActions.ts`, `presentationEffects.ts`, `effectEventAdapters.ts`, `wasmBridge.ts` | Rust-owned gameplay action output, interaction/collision reaction/spawn success/action failure/timer/presentation telemetry와 frame-end adapter action/effect binding/dispatch 변환 |
 | Collision event | `collision_event.rs` | `collisionEventDecoder.ts`, `wasmBridge.ts` | enter/stay/exit/hit/trigger event |
-| Physics debug line | `collision.rs` | `physicsDebugLineDecoder.ts` | opt-in physics debug rendering |
+| Physics debug line | `collision.rs` | `physicsDebugLineDecoder.ts`, `debugGizmos.ts`, `runtimeFrameRenderer.ts` | opt-in Rust line과 TypeScript 동적 primitive를 하나의 8-float buffer로 렌더링 |
 | Physics query scalar getters | `engine/physics_queries.rs`, `engine/physics_bridge.rs`, `engine/telemetry.rs`, `collision.rs`, `tilemap.rs`, `tilemap/*.rs` | `createEngine.ts` | nearest body/tile query result fields |
 | Physics query hit buffers | `engine/physics_queries.rs`, `engine/physics_bridge.rs`, `engine/telemetry.rs`, `collision.rs`, `tilemap.rs`, `tilemap/*.rs` | `physicsQueryDecoder.ts`, `createEngine.ts` | body/tile query, shape cast, contact/manifold hit arrays |
 

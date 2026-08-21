@@ -304,6 +304,7 @@ const timeoutMs = positiveInteger(process.env.FERRUM_BROWSER_SMOKE_TIMEOUT_MS, D
 
 let server;
 let browser;
+const browserErrors = [];
 
 try {
   await assertDirectory(distDir);
@@ -318,7 +319,6 @@ try {
   const url = browserSmokeUrl(address.port, options);
   browser = await launchBrowser();
   const page = await browser.newPage({ viewport: { width: 960, height: 640 }, deviceScaleFactor: 1 });
-  const browserErrors = [];
   page.on("pageerror", (error) => {
     browserErrors.push(error.message);
   });
@@ -380,6 +380,9 @@ try {
 } catch (error) {
   console.error(`${distDir}: browser render smoke failed`);
   console.error(error instanceof Error ? error.message : String(error));
+  if (browserErrors.length > 0) {
+    console.error(`browser console/page errors:\n${browserErrors.join("\n")}`);
+  }
   process.exitCode = 1;
 } finally {
   await browser?.close().catch(() => undefined);
@@ -587,7 +590,7 @@ function browserSmokeUrl(port, options) {
   }
   if (mode === PHYSICS_SANDBOX_MODE || mode === PHYSICS_DEMO_SUITE_MODE) {
     params.set("demo", "rigid-materials");
-    params.set("physicsDebugLines", "true");
+    params.set("physicsDebugLines", options.budget ? "false" : "true");
   }
   if (mode === PLACEMENT_VIEWER_MASS_AUTHORING_MODE) {
     params.set("massAuthoring", "true");
@@ -4139,12 +4142,16 @@ async function smokePhysicsSandbox(page, timeoutMs, demoId) {
     `Physics sandbox did not render debug lines for ${demoId}`,
     (expectedDemoId) => {
       const frame = globalThis.ferrumPhysicsSandboxSmokeFrame;
+      const debugLinesEnabled = new URL(globalThis.location.href).searchParams.get("physicsDebugLines") !== "false";
       return Boolean(
         frame
         && frame.demoId === expectedDemoId
         && frame.bodyCount >= 2
         && frame.visibleBodyCount >= 2
-        && frame.physicsDebugLineCount > 0
+        && frame.worldTextCount > 0
+        && (debugLinesEnabled
+          ? frame.physicsDebugLineCount > 0 && frame.customDebugLineCount > 0
+          : frame.physicsDebugLineCount === 0 && frame.customDebugLineCount === 0)
         && frame.frameCount > 1,
       );
     },

@@ -2,18 +2,18 @@
 
 Ferrum2D Physics Showcase Lab은 Physics Spec으로 작성한 rigid body, collider, contact, joint, CCD, platformer physics, scene query 동작을 브라우저에서 직접 확인하는 데모다.
 
-기존 Physics Sandbox가 fixture/regression 확인에 가까웠다면, 현재 데모는 사용자가 물리엔진 기능을 눈으로 이해하는 것을 우선한다. WebGL2 debug line은 보조 레이어로 유지하고, TypeScript overlay canvas가 bulk body snapshot, contact/manifold, joint metadata, raycast result를 시각화한다.
+기존 Physics Sandbox가 fixture/regression 확인에 가까웠다면, 현재 데모는 사용자가 물리엔진 기능을 눈으로 이해하는 것을 우선한다. Rust가 생성한 physics debug line과 TypeScript `DebugGizmoLineBufferWriter`가 만든 동적 line/polyline/arrow/circle을 하나의 엔진 debug line buffer로 합쳐 WebGL2/WebGPU renderer에 전달한다. body label과 sleep 상태는 entity-anchored bitmap world text를 사용한다.
 
 ## 확인 기술
 
 | 기술 | 설명 |
 | --- | --- |
 | Physics Spec catalog | `public/catalog.json`이 scenario, 설명, focus body, action, smoke threshold를 관리한다. |
-| Body/collider overlay | `capturePhysicsBodyStateBuffer(...)` 결과와 resolved Physics Spec을 합쳐 body fill, collider shape, label을 표시한다. |
-| Contact visualization | `queryBodyContacts(...)`, `queryBodyManifolds(...)`, `queryRigidContactImpulses(...)`로 contact point, normal, impulse signal을 보여준다. |
-| Joint visualization | resolved joint metadata와 runtime body snapshot으로 anchor와 constraint line을 표시한다. |
-| Scene query demo | pointer 위치를 raycast target으로 사용하고 hit point/normal을 표시한다. |
-| Debug line fallback | Rust core가 생성한 physics debug line을 WebGL2 renderer가 계속 렌더링한다. |
+| Body/collider debug | Rust core physics debug line과 entity-anchored bitmap label로 body, collider, sleep 상태를 표시한다. |
+| Contact visualization | `queryBodyContacts(...)`, `queryBodyManifolds(...)`, `queryRigidContactImpulses(...)` 결과를 engine debug line primitive로 표시한다. |
+| Joint visualization | Rust core가 resolved joint의 anchor와 constraint를 같은 debug line buffer에 생성한다. |
+| Scene query demo | pointer 위치를 raycast target으로 사용하고 arrow, hit circle, hit normal을 표시한다. |
+| Renderer parity | 같은 8-float physics debug line buffer를 WebGL2와 WebGPU renderer가 소비한다. |
 
 ## 실행
 
@@ -58,7 +58,9 @@ pnpm smoke:physics-sandbox-budget
 pnpm smoke:physics-demo-suite
 ```
 
-`pnpm smoke:physics-sandbox`는 production build를 열고 `window.ferrumPhysicsSandboxSmokeFrame`의 `demoId`, `bodyCount`, `visibleBodyCount`, `physicsDebugLineCount`, `frameCount`를 확인한다. `pnpm smoke:physics-demo-suite`는 catalog의 핵심 scenario id를 순회한다.
+`pnpm smoke:physics-sandbox`는 production build를 열고 `window.ferrumPhysicsSandboxSmokeFrame`의 `demoId`, `bodyCount`, `visibleBodyCount`, `physicsDebugLineCount`, `customDebugLineCount`, `worldTextCount`, `frameCount`를 확인한다. `pnpm smoke:physics-demo-suite`는 catalog의 7개 scenario id를 순회한다. `pnpm smoke:physics-sandbox-budget`은 `physicsDebugLines=false`에서 두 debug line count가 모두 `0`인지 확인해 비활성 경로의 비용 회귀를 막는다.
+
+Canvas2D 우회 제거 전후의 정적 기준은 `src/main.ts` 1,910줄에서 1,652줄로 258줄 감소했고, Canvas drawing 함수 15개와 overlay canvas가 제거된 것이다. 디버그 비트맵 폰트 atlas를 갱신하려면 `pnpm --filter @ferrum2d/physics-sandbox generate:debug-font`를 실행한다.
 
 ## Pages 노출
 
@@ -66,9 +68,11 @@ pnpm smoke:physics-demo-suite
 
 ## 구현 경계
 
-- Rust core는 simulation, contact, query, debug line 생성을 담당한다.
-- TypeScript는 browser UI, overlay canvas, action button, pointer input, bulk snapshot 소비를 담당한다.
+- Rust core는 simulation, contact, query, collider/joint debug line 생성을 담당한다.
+- TypeScript는 browser UI, action button, pointer input, bulk snapshot 소비와 demo 전용 동적 debug line 조합을 담당한다.
+- runtime composer는 debug line이 활성화된 frame에서만 호출되며 Rust buffer를 재사용 가능한 writer에 append한다. Rust/TypeScript 공유 ABI는 바꾸지 않는다.
 - frame hot path에서 body별 JS/Wasm 왕복 호출을 늘리지 않는다. body state는 `capturePhysicsBodyStateBuffer(...)`로 묶어서 읽는다.
+- body label은 entity anchor를 사용하고 sleep label 문자열은 상태가 바뀔 때만 갱신한다.
 - demo 설명 metadata는 `catalog.json`에 두고 Physics Spec runtime 계약을 오염시키지 않는다.
 
 ## 참고 문서

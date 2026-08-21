@@ -8,6 +8,8 @@ export {
   DebugOverlay,
   SCREENSHOT_CAPTURE_SUMMARY_FORMAT,
   SCREENSHOT_CAPTURE_SUMMARY_VERSION,
+  DEBUG_GIZMO_MAX_LINES,
+  DebugGizmoLineBufferWriter,
   RuntimeProfiler,
   assertScreenshotCaptureSummary,
   buildDebugGizmoLineBuffer,
@@ -65,6 +67,7 @@ export type {
   PhysicsWorldSnapshot,
 } from "./public/physicsAuthoringExports.js";
 export type {
+  DebugGizmoArrowOptions,
   DebugGizmoLine,
   DebugGizmoLineBufferResult,
   DebugGizmoSceneSpec,
