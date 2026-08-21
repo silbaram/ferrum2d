@@ -80,6 +80,9 @@ test("applyDataSceneAuthoringDocument resolves and spawns a scene-authoring docu
     {
       format: "ferrum2d.consumer.scene-authoring",
       version: 1,
+      variables: [
+        { name: "campaign.coins", scope: "global", type: "integer", default: 0 },
+      ],
       sceneComposition: sampleComposition(),
       behaviorRecipes: { entities: {} },
     },
@@ -93,6 +96,7 @@ test("applyDataSceneAuthoringDocument resolves and spawns a scene-authoring docu
   equal(result.plan.instances.length, 2);
   equal(result.spawnResults.length, 2);
   equal(result.behaviorApplyResult.results.length, 0);
+  equal(result.variables.get("campaign.coins"), 0);
   deepEqual(adapter.textureNames, ["agent", "agent"]);
 });
 

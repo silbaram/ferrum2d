@@ -2,7 +2,11 @@
 
 상태: P2 최소 계약
 
-이 문서는 Top-down Shooter, Breakout, Platformer 같은 built-in starter scene을 복사하지 않고도 작은 data-driven scene을 설명하기 위한 최소 authoring 계약을 정리한다. 확정 source of truth는 `packages/ferrum-web/src/sceneAuthoringDocument.ts`, `packages/ferrum-web/src/sceneComposition.ts`, `packages/ferrum-web/src/dataSceneComponents.ts`, `packages/ferrum-web/src/behaviorRecipes.ts`와 샘플 fixture다.
+이 문서는 Top-down Shooter, Breakout, Platformer 같은 built-in starter scene을 복사하지 않고도
+작은 data-driven scene을 설명하기 위한 최소 authoring 계약을 정리한다. 확정 source of truth는
+`packages/ferrum-web/src/sceneAuthoringDocument.ts`, `packages/ferrum-web/src/dataSceneVariables.ts`,
+`packages/ferrum-web/src/sceneComposition.ts`, `packages/ferrum-web/src/dataSceneComponents.ts`,
+`packages/ferrum-web/src/behaviorRecipes.ts`와 샘플 fixture다.
 
 ## 최소 문서 형식
 
@@ -15,6 +19,7 @@ Data Scene authoring 문서는 다음 envelope를 사용한다.
 | `sceneComposition` | 예 | prefab, fragment, instance 배치를 정의한다. |
 | `behaviorRecipes` | 예 | instance에 바인딩할 gameplay behavior profile을 정의한다. |
 | `ids` | 아니오 | action/item/timer 같은 이름을 runtime numeric id로 고정할 때 사용한다. |
+| `variables` | 아니오 | 선언된 정수·실수·불리언 값을 `global` 또는 `scene` 생존 스코프로 정의한다. |
 
 최소 scene은 `sceneComposition.prefabs`, `sceneComposition.fragments`, `behaviorRecipes.entities`만으로 검증 가능해야 한다. starter scene adapter가 쓰는 `runtimeEntity`, `builtinShooterPlayer`, `builtinBreakoutPaddle` 같은 binding은 create-game 템플릿용 확장이지 최소 Data Scene 계약이 아니다.
 
@@ -52,6 +57,47 @@ authoring 도구가 구분이 필요할 때는 `classifySceneInstance(instance)`
   `applySceneBehaviorRecipes(...)`를 통해 gameplay component command로 적용된다.
 
 이 구분은 UI/agent 설명용 authoring helper이며 Rust `World`의 별도 저장소나 상속 구조가 아니다.
+
+## Variables v1
+
+`variables`는 optional 선언 배열이다. 배열이 없는 기존 v1 문서는 이전과 동일하게 통과한다.
+각 이름은 문서 전체에서 한 번만 선언할 수 있으며 runtime에서 선언되지 않은 이름을 생성하거나
+읽고 쓰는 것은 허용하지 않는다.
+
+```json
+{
+  "variables": [
+    { "name": "campaign.coins", "scope": "global", "type": "integer", "default": 0 },
+    { "name": "player.speed", "scope": "global", "type": "real", "default": 1.25 },
+    { "name": "wave.complete", "scope": "scene", "type": "bool", "default": false }
+  ]
+}
+```
+
+| 필드 | 값 | 계약 |
+| --- | --- | --- |
+| `name` | 비어 있지 않고 앞뒤 공백이 없는 문자열 | `global`/`scene`을 합쳐 유일해야 한다. |
+| `scope` | `global` 또는 `scene` | scene apply/reapply 경계에서의 생존 여부를 정한다. |
+| `type` | `integer`, `real`, `bool` | `integer`는 JavaScript safe integer, `real`은 finite number만 허용한다. |
+| `default` | 선언 타입과 일치하는 값 | 최초 apply와 reset 값이다. `NaN`/무한대는 허용하지 않는다. |
+
+`resolveSceneAuthoringDocument(...)`는 선언 배열, 필드, 기본값 타입, 중복 이름을 검증한다.
+`applyDataSceneAuthoringDocument(...)` 결과의 `variables`와
+`createFerrumRuntime(...).dataScene.variables`는 `has(name)`, `get(name)`, `set(name, value)`,
+`values(scope)`, `restore(scope, values)`를 제공한다. `get`/`set`/`restore`는 선언되지 않은 이름과
+타입이 맞지 않는 값을 diagnostic error로 거절하며 runtime 임의 변수 생성 API는 제공하지 않는다.
+
+생존 계약은 다음과 같다.
+
+- 최초 문서 apply에서는 모든 변수가 `default`로 시작한다.
+- `runtime.dataScene.reapply(...)`와 같은 다음 문서 apply에서 이름·타입이 같은 `global` 변수는 현재 값을 유지한다.
+- 모든 `scene` 변수는 다음 문서의 `default`로 초기화한다.
+- global 선언이 제거되거나 scope/type이 달라지면 이전 값은 유지하지 않고, 다음 선언이 있다면 그 `default`를 사용한다.
+- 다음 문서에서도 값을 읽으려면 그 문서에 같은 이름을 다시 선언해야 한다. 현재 문서에 없는 이름은 존재하지 않는다.
+
+이 규칙은 Issue #38의 scene/level 전환 생존 축과 공유하는 Y0 계약이다. 현재 범위에서
+behavior recipe/FSM이 값을 읽거나 쓰지는 않는다. 게임 코드는 낮은 빈도
+`DataSceneVariableStore` API로 값을 변경하며, gameplay simulation에서의 변수 접근은 별도 계약이다.
 
 ## `props.components` v1
 
@@ -94,7 +140,9 @@ package-facing default `spawnSceneInstance` target은 `createDataSceneRuntimeTar
 `dataScene` 값은 문서 자체이거나 `{ document, ...applyOptions }` object일 수 있다.
 runtime은 적용 결과를 `runtime.dataScene.result`로 노출하고, 같은 handle의 `reapply(document?, options?)`로
 낮은 빈도 scene reload를 수행할 수 있다. `reapply`도 새 Rust ABI를 열지 않고
-`applyDataSceneAuthoringDocument(...)`와 같은 validation/spawn/binding 경로를 사용한다.
+`applyDataSceneAuthoringDocument(...)`와 같은 validation/spawn/binding 경로를 사용한다. resolver 단계에서
+실패하면 현재 document/result/variable store를 교체하지 않으며, 이후 인자 없는 `reapply()`는 마지막으로
+성공한 문서를 다시 사용한다.
 
 ## Snapshot/Restore
 
@@ -109,6 +157,34 @@ runtime은 적용 결과를 `runtime.dataScene.result`로 노출하고, 같은 h
 그대로 유효하며, runtime 전체 `World` binary snapshot을 새로 추가하는 계약은 아니다.
 이 capture/restore 경로는 `pnpm smoke:gameplay-replay -- --scenario data-scene-authoring-snapshot-restore`의
 committed golden fixture로도 검증한다.
+
+선언 변수가 있는 Data Scene을 apply한 엔진에서
+`captureGameStateSnapshot(..., { includeDataSceneState: true })`를 호출하면 두 scope를 다음 custom slot에
+넣는다. Data Scene state를 opt-in하지 않은 일반/built-in snapshot에는 이전 Data Scene 변수 저장소를
+자동으로 주입하지 않는다.
+
+- `global`: `snapshot.custom["ferrum2d.variables"]`
+- `scene`: `snapshot.dataScene.custom["ferrum2d.variables"]`
+
+두 custom 슬롯은 기존 snapshot hash 범위이므로 snapshot version을 올리거나 별도 hash 경로를 만들지 않는다.
+같은 문서와 같은 최종 변수 값은 변수 설정 순서와 무관하게 같은 snapshot hash를 만든다.
+기존 custom state와 함께 캡처할 때는 custom state가 object여야 하며
+`"ferrum2d.variables"`는 consumer가 직접 쓰지 않는 reserved key이며 public
+`DATA_SCENE_VARIABLES_SNAPSHOT_KEY` 상수로도 노출한다. 변수가 없는 기존 문서는 custom payload와 hash
+형태가 바뀌지 않는다.
+
+restore는 authoring document와 변수 payload의 선언·타입 정합성을 runtime activation/spawn 전에
+검사하고, 문서를 재적용해 선언 저장소를 구성한 뒤 global/scene 값을 복원한다. snapshot에 선언되지
+않은 이름, 누락된 선언 값, 타입이 맞지 않는 값이 있으면 복원을 거절한다. reserved 변수 payload는
+엔진이 소비하며 `applyCustomState`/`applyDataSceneCustomState` callback에는 나머지 consumer custom
+payload만 전달한다.
+`GameStateSnapshotRestoreResult`는 `dataSceneVariables`, `globalVariablesApplied`,
+`sceneVariablesApplied`로 적용 결과를 보고한다.
+
+`restoreDataSceneState: false`이면 `scene` 변수 복원은 건너뛰지만, 별도 global slot의 `global` 변수는
+복원한다. authoring document를 적용하지 않는 snapshot이나 `restoreDataSceneAuthoringDocument: false`
+상태에서 변수 payload를 복원하려면 엔진에 같은 이름·scope·type의 호환 가능한 선언 저장소가 이미
+연결되어 있어야 한다.
 
 ## Instance Handle Registry
 
@@ -128,7 +204,7 @@ resolver fallback id(`fragment.index`) 의존을 거절할 수 있다.
 
 ## 샘플
 
-검증 샘플은 `docs/engine/samples/data-scene-minimum.scene-authoring.json`이다. 이 샘플은 두 개의 generic `agent` instance와 `health`, `faction`, `seekTarget` behavior recipe만 사용한다.
+검증 샘플은 `docs/engine/samples/data-scene-minimum.scene-authoring.json`이다. 이 샘플은 global/scene 변수 선언, 두 개의 generic `agent` instance와 `health`, `faction`, `seekTarget` behavior recipe만 사용한다.
 
 ```bash
 pnpm validate:data-scene-authoring

@@ -6,6 +6,20 @@
       "target": 1
     }
   },
+  "variables": [
+    {
+      "name": "campaign.coins",
+      "scope": "global",
+      "type": "integer",
+      "default": 0
+    },
+    {
+      "name": "wave.complete",
+      "scope": "scene",
+      "type": "bool",
+      "default": false
+    }
+  ],
   "sceneComposition": {
     "initialFragment": "main",
     "prefabs": {

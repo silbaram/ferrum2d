@@ -4,6 +4,16 @@ import {
 } from "./builtInShooterStateSnapshot.js";
 import { applyDataSceneAuthoringDocument } from "./dataSceneRuntimeTarget.js";
 import type { ApplyDataSceneAuthoringDocumentOptions } from "./dataSceneRuntimeTarget.js";
+import {
+  DATA_SCENE_VARIABLES_SNAPSHOT_KEY,
+  dataSceneVariableStoreForEngine,
+  resolveDataSceneVariableDeclarations,
+  validateDataSceneVariableValues,
+  type DataSceneVariableScope,
+  type DataSceneVariableStore,
+  type DataSceneVariableValue,
+  type DataSceneVariableValues,
+} from "./dataSceneVariables.js";
 import type { FerrumEngine } from "./engineTypes.js";
 import type { PhysicsWorldApplyResult } from "./physicsAuthoring.js";
 import {
@@ -87,6 +97,9 @@ export interface GameStateSnapshotRestoreResult {
   readonly dataSceneStateApplied?: boolean;
   readonly dataSceneAuthoringDocumentApplied?: boolean;
   readonly physicsWorld?: PhysicsWorldRestoreResult;
+  readonly dataSceneVariables?: DataSceneVariableStore;
+  readonly globalVariablesApplied?: boolean;
+  readonly sceneVariablesApplied?: boolean;
   readonly dataSceneCustomStateApplied?: boolean;
   readonly customStateApplied: boolean;
 }
@@ -109,8 +122,27 @@ export function captureGameStateSnapshot(
   const builtInShooter = options.includeBuiltInShooterState === true
     ? captureBuiltInShooterState(engine)
     : undefined;
+  const variables = options.includeDataSceneState === true
+    ? dataSceneVariableStoreForEngine(engine)
+    : undefined;
+  const globalVariableValues = variableValuesForSnapshot(variables, "global");
+  const sceneVariableValues = options.includeDataSceneState === true
+    ? variableValuesForSnapshot(variables, "scene")
+    : undefined;
+  const customState = customStateWithVariables(
+    options.customState,
+    globalVariableValues,
+    "game state snapshot customState",
+  );
+  const dataSceneCustomState = options.includeDataSceneState === true
+    ? customStateWithVariables(
+        options.dataSceneCustomState,
+        sceneVariableValues,
+        "data scene state customState",
+      )
+    : undefined;
   const dataScene = options.includeDataSceneState === true
-    ? captureDataSceneState(scene, options.dataSceneAuthoringDocument, options.dataSceneCustomState)
+    ? captureDataSceneState(scene, options.dataSceneAuthoringDocument, dataSceneCustomState)
     : undefined;
   const snapshot: Omit<GameStateSnapshot, "snapshotHash"> = {
     format: GAME_STATE_SNAPSHOT_FORMAT,
@@ -123,9 +155,9 @@ export function captureGameStateSnapshot(
     ...(options.physicsWorld === undefined
       ? {}
       : { physics: capturePhysicsWorldSnapshot(engine, options.physicsWorld, { frame }) }),
-    ...(options.customState === undefined
+    ...(customState === undefined
       ? {}
-      : { custom: cloneJsonValue(options.customState, "game state snapshot customState") }),
+      : { custom: cloneJsonValue(customState, "game state snapshot customState") }),
   };
   return {
     ...snapshot,
@@ -140,6 +172,23 @@ export function restoreGameStateSnapshot(
 ): GameStateSnapshotRestoreResult {
   validateGameStateSnapshot(snapshot);
   const sceneBefore = captureGameStateSceneSnapshot(engine);
+  const snapshotPath = options.path ?? "gameState.snapshot";
+  const globalVariableValues = snapshotVariableValues(
+    snapshot.custom,
+    `${snapshotPath}.custom`,
+  );
+  const sceneVariableValues = snapshotVariableValues(
+    snapshot.dataScene?.custom,
+    `${snapshotPath}.dataScene.custom`,
+  );
+  preflightDataSceneVariableRestore(
+    engine,
+    snapshot,
+    options,
+    globalVariableValues,
+    sceneVariableValues,
+    snapshotPath,
+  );
   let builtInShooterStateApplied = false;
   let dataSceneStateApplied = false;
   let dataSceneAuthoringDocumentApplied = false;
@@ -191,21 +240,38 @@ export function restoreGameStateSnapshot(
         unsafeUnitScaleThreshold: options.unsafeUnitScaleThreshold,
         onWarning: options.onWarning,
       });
+  const dataSceneVariables = dataSceneVariableStoreForEngine(engine);
+  let globalVariablesApplied = false;
+  if (globalVariableValues !== undefined) {
+    requireDataSceneVariableStore(dataSceneVariables, `${snapshotPath}.custom`)
+      .restore("global", globalVariableValues);
+    globalVariablesApplied = true;
+  }
+  let sceneVariablesApplied = false;
+  if (sceneVariableValues !== undefined && dataSceneStateApplied) {
+    requireDataSceneVariableStore(
+      dataSceneVariables,
+      `${snapshotPath}.dataScene.custom`,
+    ).restore("scene", sceneVariableValues);
+    sceneVariablesApplied = true;
+  }
+  const dataSceneCustomState = customStateWithoutVariables(snapshot.dataScene?.custom);
   let dataSceneCustomStateApplied = false;
   if (
-    snapshot.dataScene?.custom !== undefined
+    dataSceneCustomState !== undefined
     && dataSceneStateApplied
     && options.applyDataSceneCustomState !== undefined
   ) {
     options.applyDataSceneCustomState(cloneJsonValue(
-      snapshot.dataScene.custom,
+      dataSceneCustomState,
       "game state snapshot dataScene custom",
     ));
     dataSceneCustomStateApplied = true;
   }
+  const customState = customStateWithoutVariables(snapshot.custom);
   let customStateApplied = false;
-  if (snapshot.custom !== undefined && options.applyCustomState !== undefined) {
-    options.applyCustomState(cloneJsonValue(snapshot.custom, "game state snapshot custom"));
+  if (customState !== undefined && options.applyCustomState !== undefined) {
+    options.applyCustomState(cloneJsonValue(customState, "game state snapshot custom"));
     customStateApplied = true;
   }
   return {
@@ -215,7 +281,17 @@ export function restoreGameStateSnapshot(
     builtInShooterStateApplied,
     ...(snapshot.dataScene === undefined
       ? {}
-      : { dataSceneStateApplied, dataSceneAuthoringDocumentApplied, dataSceneCustomStateApplied }),
+      : {
+          dataSceneStateApplied,
+          dataSceneAuthoringDocumentApplied,
+          dataSceneCustomStateApplied,
+        }),
+    ...(dataSceneVariables === undefined
+        || (globalVariableValues === undefined && sceneVariableValues === undefined)
+      ? {}
+      : { dataSceneVariables }),
+    ...(globalVariableValues === undefined ? {} : { globalVariablesApplied }),
+    ...(sceneVariableValues === undefined ? {} : { sceneVariablesApplied }),
     ...(physicsWorld === undefined ? {} : { physicsWorld }),
     customStateApplied,
   };
@@ -332,6 +408,10 @@ export function validateGameStateSnapshot(
   }
   if (snapshot.custom !== undefined) {
     cloneJsonValue(snapshot.custom as GameStateSnapshotJsonValue, `${path}.custom`);
+    snapshotVariableValues(
+      snapshot.custom as GameStateSnapshotJsonValue,
+      `${path}.custom`,
+    );
   }
   if (typeof snapshot.snapshotHash !== "string" || snapshot.snapshotHash.length === 0) {
     throw new Error(`${path}.snapshotHash must be a non-empty string.`);
@@ -364,6 +444,7 @@ export function validateDataSceneStateSnapshot(
   }
   if (snapshot.custom !== undefined) {
     cloneJsonValue(snapshot.custom as GameStateSnapshotJsonValue, `${path}.custom`);
+    snapshotVariableValues(snapshot.custom as GameStateSnapshotJsonValue, `${path}.custom`);
   }
 }
 
@@ -399,6 +480,148 @@ function captureDataSceneState(
       ? {}
       : { custom: cloneJsonValue(customState, "data scene state customState") }),
   };
+}
+
+function variableValuesForSnapshot(
+  store: DataSceneVariableStore | undefined,
+  scope: DataSceneVariableScope,
+): DataSceneVariableValues | undefined {
+  if (store === undefined) {
+    return undefined;
+  }
+  const values = store.values(scope);
+  return Object.keys(values).length === 0 ? undefined : values;
+}
+
+function customStateWithVariables(
+  customState: GameStateSnapshotJsonValue | undefined,
+  variableValues: DataSceneVariableValues | undefined,
+  path: string,
+): GameStateSnapshotJsonValue | undefined {
+  if (isRecord(customState)
+    && Object.prototype.hasOwnProperty.call(customState, DATA_SCENE_VARIABLES_SNAPSHOT_KEY)) {
+    throw new Error(`${path}.${DATA_SCENE_VARIABLES_SNAPSHOT_KEY} is reserved for declared Data Scene variables.`);
+  }
+  if (variableValues === undefined) {
+    return customState;
+  }
+  if (customState === undefined) {
+    return { [DATA_SCENE_VARIABLES_SNAPSHOT_KEY]: variableValues };
+  }
+  if (!isRecord(customState)) {
+    throw new Error(`${path} must be an object when declared Data Scene variables are captured.`);
+  }
+  return {
+    ...customState,
+    [DATA_SCENE_VARIABLES_SNAPSHOT_KEY]: variableValues,
+  };
+}
+
+function snapshotVariableValues(
+  customState: GameStateSnapshotJsonValue | undefined,
+  path: string,
+): DataSceneVariableValues | undefined {
+  if (!isRecord(customState)
+    || !Object.prototype.hasOwnProperty.call(customState, DATA_SCENE_VARIABLES_SNAPSHOT_KEY)) {
+    return undefined;
+  }
+  const values = customState[DATA_SCENE_VARIABLES_SNAPSHOT_KEY];
+  if (!isRecord(values)) {
+    throw new Error(`${path}.${DATA_SCENE_VARIABLES_SNAPSHOT_KEY} must be an object.`);
+  }
+  const resolved: Array<[string, DataSceneVariableValue]> = [];
+  for (const [name, value] of Object.entries(values)) {
+    if (name.length === 0 || name.trim() !== name) {
+      throw new Error(
+        `${path}.${DATA_SCENE_VARIABLES_SNAPSHOT_KEY} variable names must be non-empty without surrounding whitespace.`,
+      );
+    }
+    if (typeof value === "boolean") {
+      resolved.push([name, value]);
+      continue;
+    }
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      throw new Error(`${path}.${DATA_SCENE_VARIABLES_SNAPSHOT_KEY}.${name} must be a finite number or boolean.`);
+    }
+    resolved.push([name, Object.is(value, -0) ? 0 : value]);
+  }
+  return Object.fromEntries(resolved);
+}
+
+function requireDataSceneVariableStore(
+  store: DataSceneVariableStore | undefined,
+  path: string,
+): DataSceneVariableStore {
+  if (store === undefined) {
+    throw new Error(`${path}.${DATA_SCENE_VARIABLES_SNAPSHOT_KEY} requires restored Data Scene variable declarations.`);
+  }
+  return store;
+}
+
+function preflightDataSceneVariableRestore(
+  engine: FerrumEngine,
+  snapshot: GameStateSnapshot,
+  options: RestoreGameStateSnapshotOptions,
+  globalValues: DataSceneVariableValues | undefined,
+  sceneValues: DataSceneVariableValues | undefined,
+  path: string,
+): void {
+  const restoreDataScene = snapshot.dataScene !== undefined
+    && options.restoreDataSceneState !== false;
+  if (globalValues === undefined && (sceneValues === undefined || !restoreDataScene)) {
+    return;
+  }
+
+  const authoringDocument = snapshot.dataScene?.authoringDocument;
+  let declarations: ReturnType<typeof resolveDataSceneVariableDeclarations>;
+  if (
+    restoreDataScene
+    && authoringDocument !== undefined
+    && options.restoreDataSceneAuthoringDocument !== false
+  ) {
+    if (!isRecord(authoringDocument)) {
+      return;
+    }
+    const authoringPath = options.dataSceneAuthoringApplyOptions?.path
+      ?? `${path}.dataScene.authoringDocument`;
+    declarations = resolveDataSceneVariableDeclarations(authoringDocument.variables, {
+      path: `${authoringPath}.variables`,
+    });
+  } else {
+    declarations = requireDataSceneVariableStore(
+      dataSceneVariableStoreForEngine(engine),
+      path,
+    ).declarations();
+  }
+
+  if (globalValues !== undefined) {
+    validateDataSceneVariableValues(
+      declarations,
+      "global",
+      globalValues,
+      `${path}.custom.${DATA_SCENE_VARIABLES_SNAPSHOT_KEY}`,
+    );
+  }
+  if (sceneValues !== undefined && restoreDataScene) {
+    validateDataSceneVariableValues(
+      declarations,
+      "scene",
+      sceneValues,
+      `${path}.dataScene.custom.${DATA_SCENE_VARIABLES_SNAPSHOT_KEY}`,
+    );
+  }
+}
+
+function customStateWithoutVariables(
+  customState: GameStateSnapshotJsonValue | undefined,
+): GameStateSnapshotJsonValue | undefined {
+  if (!isGameStateSnapshotJsonObject(customState)
+    || !Object.prototype.hasOwnProperty.call(customState, DATA_SCENE_VARIABLES_SNAPSHOT_KEY)) {
+    return customState;
+  }
+  const entries = Object.entries(customState)
+    .filter(([key]) => key !== DATA_SCENE_VARIABLES_SNAPSHOT_KEY);
+  return entries.length === 0 ? undefined : Object.fromEntries(entries);
 }
 
 function captureBuiltInShooterState(engine: FerrumEngine): BuiltInShooterStateSnapshot | undefined {
@@ -473,6 +696,12 @@ function finiteNumber(value: unknown, name: string): number {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isGameStateSnapshotJsonObject(
+  value: GameStateSnapshotJsonValue | undefined,
+): value is { readonly [key: string]: GameStateSnapshotJsonValue } {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

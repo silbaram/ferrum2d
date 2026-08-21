@@ -304,6 +304,18 @@ export type {
   DataSceneRuntimeComponentTemplates,
   DataSceneRuntimeTextureIdResolver,
 } from "../dataSceneRuntimeTarget";
+export {
+  DATA_SCENE_VARIABLES_SNAPSHOT_KEY,
+} from "../dataSceneVariables";
+export type {
+  DataSceneVariableDeclarationSpec,
+  DataSceneVariableScope,
+  DataSceneVariableStore,
+  DataSceneVariableType,
+  DataSceneVariableValue,
+  DataSceneVariableValues,
+  ResolvedDataSceneVariableDeclaration,
+} from "../dataSceneVariables";
 export type {
   ApplyBehaviorRecipesOptions,
   BehaviorRecipeApplyResult,

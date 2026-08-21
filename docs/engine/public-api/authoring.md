@@ -45,7 +45,7 @@ import {
 | `instantiateSceneFragment(...)` | fragment를 deterministic instance list로 펼친다. |
 | `resolveDataSceneComponentsSpec(...)` | `props.components` v1 `visual` 또는 legacy `sprite`, collider, layer, template descriptor를 검증하고 정규화한다. |
 | `DATA_SCENE_PRIMITIVE_TEXTURES`, `dataSceneObjectVisualBounds(...)` | primitive visual fallback texture id와 placement/picking용 resolved visual bounds를 노출한다. |
-| `applyDataSceneAuthoringDocument(...)` | scene-authoring envelope를 검증하고 Data Scene runtime target으로 spawn한 뒤 behavior recipe command를 적용한다. |
+| `applyDataSceneAuthoringDocument(...)` | scene-authoring envelope와 optional 변수 선언을 검증하고 Data Scene runtime target으로 spawn한 뒤 behavior recipe command를 적용한다. 결과의 `variables`로 선언된 값을 접근한다. |
 | `createDataSceneRuntimeTarget(...)` | `FerrumEngine`을 Data Scene spawn target으로 감싸 `applySceneBehaviorRecipes(...)`에 넘길 수 있게 한다. |
 | `createSceneInstanceHandleRegistry(...)` | scene apply/reload 뒤 `instance.id`와 live entity handle을 양방향으로 조회한다. |
 | `createScenePlacementAssetProvider(...)` | placement viewer/agent용 sprite asset id, atlas frame, 기본 size, thumbnail, missing reference diagnostic provider를 만든다. |
@@ -80,6 +80,13 @@ starter-scene 표면은 별도 호환 계약으로 유지한다.
 `allowComponentTemplates`도 기본 활성화된다. resolver/component validation은 runtime activation 전에
 끝나므로 검증 실패만으로 기존 scene을 비우지 않는다. 적용 시에는 문서의 `ids`를 behavior command id
 해석에 사용하고, `options.ids`가 있으면 caller override를 우선한다.
+
+optional `variables` 선언은 `name`, `scope: "global" | "scene"`,
+`type: "integer" | "real" | "bool"`, 타입에 맞는 `default`를 가진다.
+적용 결과의 `DataSceneVariableStore`는 선언된 이름만 `get`/`set`할 수 있다. 같은 엔진에 다음 문서를
+apply하면 동일 이름·동일 타입의 global 값만 유지하고 scene 값은 항상 다음 선언의 default로
+초기화한다. 이 저장소는 낮은 빈도 TypeScript authoring/runtime 상태이며 behavior recipe/FSM의
+frame simulation 변수 API는 아니다.
 
 `createDataSceneRuntimeTarget(engine)`은 기본적으로 첫 번째 유효한 spawn 직전에 `engine.useDataScene()`을
 한 번 호출해 빈 Data Scene runtime을 활성화한 뒤, 각

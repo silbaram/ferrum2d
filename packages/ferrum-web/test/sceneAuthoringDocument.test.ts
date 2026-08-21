@@ -68,6 +68,29 @@ test("resolveSceneAuthoringDocument validates the envelope and optional binding 
   equal(resolved.ids?.actions?.shoot, 1);
   equal(resolved.bindingPlan?.instances[0]?.id, "player");
   equal(resolved.bindingPlan?.commands.length, 1);
+  equal(resolved.variables, undefined);
+});
+
+test("resolveSceneAuthoringDocument validates optional variable declarations", () => {
+  const resolved = resolveSceneAuthoringDocument({
+    ...sampleDocument(),
+    variables: [
+      { name: "campaign.coins", scope: "global", type: "integer", default: 0 },
+      { name: "wave.complete", scope: "scene", type: "bool", default: false },
+    ],
+  });
+
+  equal(resolved.variables?.[0]?.name, "campaign.coins");
+  equal(resolved.variables?.[0]?.scope, "global");
+  equal(resolved.variables?.[1]?.default, false);
+
+  expectMessage(() => resolveSceneAuthoringDocument({
+    ...sampleDocument(),
+    variables: [
+      { name: "campaign.coins", scope: "global", type: "integer", default: 0 },
+      { name: "campaign.coins", scope: "scene", type: "integer", default: 0 },
+    ],
+  }), /variables\.1\.name.*duplicates variable/);
 });
 
 test("resolveSceneAuthoringDocument keeps component validation opt-in", () => {

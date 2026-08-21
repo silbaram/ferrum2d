@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert/strict";
+import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 import {
   createFerrumRuntime,
@@ -180,13 +180,40 @@ test("createFerrumRuntime applies and reapplies data scene authoring documents",
     equal(adapter.requests[0].x, 32);
     equal(adapter.requests[0].y, 48);
     equal(adapter.requests[0].textureId, 77);
+    equal(runtime.dataScene.variables.get("campaign.coins"), 0);
+    equal(runtime.dataScene.variables.get("wave.index"), 1);
+    runtime.dataScene.variables.set("campaign.coins", 12);
+    runtime.dataScene.variables.set("wave.index", 4);
 
-    const nextResult = runtime.dataScene.reapply(runtimeDataSceneDocument("barrel", 96, 112));
-    equal(adapter.useDataSceneCalls, 2);
-    equal(nextResult.spawnResults[0]?.entityId, 102);
+    throws(
+      () => runtime.dataScene?.reapply({
+        ...runtimeDataSceneDocument("invalid", 0, 0),
+        variables: [
+          { name: "campaign.coins", scope: "global", type: "integer", default: 0 },
+          { name: "campaign.coins", scope: "scene", type: "integer", default: 0 },
+        ],
+      }),
+      /duplicates variable/,
+    );
+    equal(adapter.useDataSceneCalls, 1);
+    equal(runtime.dataScene.variables.get("campaign.coins"), 12);
+    equal(runtime.dataScene.variables.get("wave.index"), 4);
+
+    const retriedResult = runtime.dataScene.reapply();
+    equal(retriedResult.variables, runtime.dataScene.variables);
+    equal(retriedResult.document.sceneComposition.fragments.main?.instances[0]?.id, "crate-1");
+    equal(runtime.dataScene.variables.get("campaign.coins"), 12);
+    equal(runtime.dataScene.variables.get("wave.index"), 1);
+
+    const nextResult = runtime.dataScene.reapply(runtimeDataSceneDocument("barrel", 96, 112, 100, 2));
+    equal(adapter.useDataSceneCalls, 3);
+    equal(nextResult.spawnResults[0]?.entityId, 103);
+    equal(nextResult.variables, runtime.dataScene.variables);
     equal(runtime.dataScene.result.document.sceneComposition.fragments.main?.instances[0]?.id, "barrel-1");
-    equal(adapter.requests[1].x, 96);
-    equal(adapter.requests[1].y, 112);
+    equal(adapter.requests[2].x, 96);
+    equal(adapter.requests[2].y, 112);
+    equal(runtime.dataScene.variables.get("campaign.coins"), 12);
+    equal(runtime.dataScene.variables.get("wave.index"), 2);
   } finally {
     runtime.destroy();
   }
@@ -313,10 +340,20 @@ class RuntimeDataSceneAdapter {
   }
 }
 
-function runtimeDataSceneDocument(prefabId: string, x: number, y: number) {
+function runtimeDataSceneDocument(
+  prefabId: string,
+  x: number,
+  y: number,
+  globalDefault = 0,
+  sceneDefault = 1,
+) {
   return {
     format: "ferrum2d.consumer.scene-authoring",
     version: 1,
+    variables: [
+      { name: "campaign.coins", scope: "global", type: "integer", default: globalDefault },
+      { name: "wave.index", scope: "scene", type: "integer", default: sceneDefault },
+    ],
     sceneComposition: {
       initialFragment: "main",
       prefabs: {

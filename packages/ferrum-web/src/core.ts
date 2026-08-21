@@ -58,6 +58,7 @@ export {
   resolvePhysicsSpec,
 } from "./public/physicsAuthoringExports.js";
 export {
+  DATA_SCENE_VARIABLES_SNAPSHOT_KEY,
   DATA_SCENE_STATE_FORMAT,
   DATA_SCENE_STATE_VERSION,
   GAME_STATE_SNAPSHOT_FORMAT,
@@ -338,6 +339,11 @@ export type {
 export type {
   CaptureGameStateSnapshotOptions,
   DataSceneStateSnapshot,
+  DataSceneVariableScope,
+  DataSceneVariableStore,
+  DataSceneVariableType,
+  DataSceneVariableValue,
+  DataSceneVariableValues,
   GameStateSceneSnapshot,
   GameStateSnapshot,
   GameStateSnapshotJsonValue,
