@@ -279,6 +279,15 @@ export {
   DATA_SCENE_VARIABLES_SNAPSHOT_KEY,
 } from "../src/dataSceneVariables.js";
 export {
+  GAME_STATE_CODE,
+  gameStateName,
+} from "../src/gameState.js";
+export type {
+  DataSceneGameState,
+  GameStateCode,
+  GameStateName,
+} from "../src/gameState.js";
+export {
   compareGameplayReplayRuns,
   createGameplayReplayRun,
   GAMEPLAY_REPLAY_RUN_FORMAT,

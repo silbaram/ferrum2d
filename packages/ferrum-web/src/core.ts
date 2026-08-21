@@ -11,9 +11,16 @@ export {
   createFerrumRuntime,
   createPhysicsBodyStateBufferSnapshot,
   createRenderer,
+  GAME_STATE_CODE,
+  gameStateName,
   resolveBitmapFontAtlas,
   WORLD_TEXT_MAX_GLYPHS,
   WORLD_TEXT_MAX_ID,
+} from "./public/engineExports.js";
+export type {
+  DataSceneGameState,
+  GameStateCode,
+  GameStateName,
 } from "./public/engineExports.js";
 export {
   AssetLoader,

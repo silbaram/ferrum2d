@@ -1418,6 +1418,8 @@ async function writePublicImportSmoke(targetRoot) {
   SCREENSHOT_CAPTURE_SUMMARY_FORMAT,
   TEXTURE_ATLAS_PACK_FORMAT,
   GAMEPLAY_BEHAVIOR_BINDING_PROP,
+  GAME_STATE_CODE,
+  GAME_STATE_SNAPSHOT_VERSION,
   PARTICLE_VFX_PRESETS,
   SPRITE_MATERIAL_PRESETS,
   assetManifestFingerprint,
@@ -1654,7 +1656,7 @@ if (
 }
 const gameplayReplaySnapshot = {
   format: "ferrum2d.game-state.snapshot",
-  version: 1,
+  version: GAME_STATE_SNAPSHOT_VERSION,
   frame: 0,
   source: "ferrum-runtime",
   scene: {
@@ -1668,6 +1670,9 @@ const gameplayReplaySnapshot = {
   snapshotHash: "",
   custom: { score: 0 },
 };
+if (GAME_STATE_CODE.paused !== 3 || GAME_STATE_CODE.levelComplete !== 4) {
+  throw new Error("public game-state lifecycle codes must remain stable.");
+}
 gameplayReplaySnapshot.snapshotHash = hashGameStateSnapshot(gameplayReplaySnapshot);
 const gameplayReplayRun = createGameplayReplayRun([gameplayReplaySnapshot]);
 if (!compareGameplayReplayRuns(gameplayReplayRun, gameplayReplayRun).passed) {

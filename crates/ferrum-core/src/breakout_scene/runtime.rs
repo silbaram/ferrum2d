@@ -68,6 +68,7 @@ impl BreakoutScene {
                     self.reset_playing(world, camera);
                 }
             }
+            GameState::Paused | GameState::LevelComplete => {}
         }
         self.update_camera(camera);
     }

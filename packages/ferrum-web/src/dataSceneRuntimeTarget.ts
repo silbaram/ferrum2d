@@ -192,6 +192,9 @@ export function applyDataSceneAuthoringDocument(
       instanceHandleRegistry,
     },
   );
+  if (activateDataScene !== false && result.spawnResults.length === 0) {
+    dataSceneRuntimeEngineAdapter(engine, `${path}.runtimeTarget.engine`).useDataScene();
+  }
   const variables = synchronizeDataSceneVariableStore(
     engine,
     resolved.variables ?? [],

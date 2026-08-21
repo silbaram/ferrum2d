@@ -208,6 +208,7 @@ impl PlatformerScene {
                     self.reset_playing(world, camera);
                 }
             }
+            GameState::Paused | GameState::LevelComplete => {}
         }
         self.jump_was_down = input.space == 1;
         self.update_camera(world, camera);

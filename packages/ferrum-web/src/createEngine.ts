@@ -91,6 +91,7 @@ import type { FramePipelineContext, RenderFrameHandler } from "./engineFramePipe
 import type { ShooterStateBufferView } from "./wasmBridge";
 import { WasmBridge } from "./wasmBridge";
 import { createBitmapTextApi } from "./worldText.js";
+import { resolveDataSceneGameState, resolveGameStateCode } from "./gameState.js";
 
 export {
   PHYSICS_BODY_STATE_BUFFER_FORMAT,
@@ -283,7 +284,7 @@ export async function createEngineWithFramePipeline(
     timeSeconds: rustEngine.time(),
     score: rustEngine.score(),
     entityCount: rustEngine.entity_count(),
-    gameState: rustEngine.game_state(),
+    gameState: resolveGameStateCode(rustEngine.game_state(), "rustEngine.gameState"),
     spriteCount: rustEngine.sprite_count(),
   });
 
@@ -454,6 +455,29 @@ export async function createEngineWithFramePipeline(
     rustEngine.use_data_scene();
   };
 
+  const dataSceneState: FerrumSceneApi["dataSceneState"] = () => {
+    requireAlive();
+    return resolveDataSceneGameState(
+      rustEngine.data_scene_game_state(),
+      "rustEngine.dataSceneGameState",
+    );
+  };
+
+  const pauseDataScene = (): boolean => {
+    requireAlive();
+    return rustEngine.pause_data_scene();
+  };
+
+  const resumeDataScene = (): boolean => {
+    requireAlive();
+    return rustEngine.resume_data_scene();
+  };
+
+  const completeDataScene = (): boolean => {
+    requireAlive();
+    return rustEngine.complete_data_scene();
+  };
+
   const usePlatformerGame = (): void => {
     requireAlive();
     rustEngine.use_platformer_scene();
@@ -540,9 +564,16 @@ export async function createEngineWithFramePipeline(
   const sceneApi: FerrumSceneApi = {
     score: () => { requireAlive(); return rustEngine.score(); },
     entityCount: () => { requireAlive(); return rustEngine.entity_count(); },
-    gameState: () => { requireAlive(); return rustEngine.game_state(); },
+    gameState: () => {
+      requireAlive();
+      return resolveGameStateCode(rustEngine.game_state(), "rustEngine.gameState");
+    },
     spriteCount: () => { requireAlive(); return rustEngine.sprite_count(); },
     resetGame: () => { requireAlive(); rustEngine.reset_game(); },
+    dataSceneState,
+    pauseDataScene,
+    resumeDataScene,
+    completeDataScene,
     builtInShooterPlayerHandle,
     captureShooterStateSnapshot,
     restoreShooterStateSnapshot,

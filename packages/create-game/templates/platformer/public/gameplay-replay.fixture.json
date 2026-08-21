@@ -16,7 +16,7 @@
         "frame": 0,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 0,
           "source": "ferrum-runtime",
           "scene": {
@@ -80,15 +80,15 @@
               }
             }
           },
-          "snapshotHash": "e3d51415"
+          "snapshotHash": "e3d2d57e"
         },
-        "replayHash": "e3d51415"
+        "replayHash": "e3d2d57e"
       },
       {
         "frame": 1,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 1,
           "source": "ferrum-runtime",
           "scene": {
@@ -152,11 +152,11 @@
               }
             }
           },
-          "snapshotHash": "d7e1315f"
+          "snapshotHash": "d7e98024"
         },
-        "replayHash": "d7e1315f"
+        "replayHash": "d7e98024"
       }
     ],
-    "replayHash": "8cb9ae7d"
+    "replayHash": "d155d825"
   }
 }

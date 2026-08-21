@@ -34,7 +34,7 @@ pub(crate) const SHOOTER_PRIMARY_FIRE_ACTION_ID: u32 = 1;
 pub(crate) const SHOOTER_DASH_ACTION_ID: u32 = 2;
 pub(crate) const SHOOTER_MELEE_ACTION_ID: u32 = 3;
 const MAX_AUTHORED_COLLISION_CONTACTS: usize = 1024;
-pub const SHOOTER_SNAPSHOT_VERSION: u32 = 17;
+pub const SHOOTER_SNAPSHOT_VERSION: u32 = 18;
 pub const SHOOTER_SNAPSHOT_HEADER_FLOATS: usize = 8;
 pub(crate) const SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET: usize = 9;
 const SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S: usize = 4;
@@ -211,6 +211,19 @@ impl ShooterScene {
         self.navigation_targets.clear();
         self.collision_pairs.clear();
         self.authored_collision_contacts.clear();
+        self.clear_deferred_runtime_state();
+        audio_events.clear();
+        *world = World::default();
+        world.spawn_player_from_template(
+            self.config.world_width * 0.5,
+            self.config.world_height * 0.5,
+            self.texture_ids.player,
+            self.config.player_template,
+        );
+        self.update_camera_follow(world, camera);
+    }
+
+    pub(crate) fn clear_deferred_runtime_state(&mut self) {
         self.last_action_trigger_phase_result = runtime::ActionTriggerPhaseProcessResult::default();
         self.last_spawn_flush_result = runtime::SpawnFlushResult::default();
         self.wave_action_triggers.clear();
@@ -223,15 +236,20 @@ impl ShooterScene {
         self.pending_despawn.clear();
         self.marked_for_despawn.clear();
         self.bounced_projectiles_this_frame.clear();
-        audio_events.clear();
-        *world = World::default();
-        world.spawn_player_from_template(
-            self.config.world_width * 0.5,
-            self.config.world_height * 0.5,
-            self.texture_ids.player,
-            self.config.player_template,
-        );
-        self.update_camera_follow(world, camera);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn seed_deferred_runtime_state_for_test(&mut self) {
+        self.fill_pending_spawns_for_test();
+        self.pending_despawn.push(Entity {
+            id: 1,
+            generation: 0,
+        });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn deferred_runtime_state_counts_for_test(&self) -> (usize, usize) {
+        (self.pending_spawns.len(), self.pending_despawn.len())
     }
 
     pub fn set_texture_ids(&mut self, world: &mut World, player: u32, enemy: u32, bullet: u32) {

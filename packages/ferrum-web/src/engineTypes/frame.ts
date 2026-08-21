@@ -1,6 +1,7 @@
 import type { AssetLoadProgressCallback, AssetManifest, AssetReleasePayload, LoadedAssets } from "../assetLoader";
 import type { PlayBgmOptions, StopBgmOptions } from "../audioManager";
 import type { PostProcessStackInput } from "../cameraPostProcessing";
+import type { GameStateCode } from "../gameState.js";
 import type { PhysicsDebugSpec, PhysicsMode } from "../physicsSpec.js";
 import type {
   AudioEventBufferView,
@@ -54,7 +55,7 @@ export interface FrameState {
   rustUpdateTimeMs: number;
   score: number;
   entityCount: number;
-  gameState: number;
+  gameState: GameStateCode;
   /** Rust-side culling 이후 현재 frame에서 보이는 sprite render command 수입니다. */
   spriteCount: number;
   mouseX: number;

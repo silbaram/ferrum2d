@@ -15,7 +15,7 @@
         "frame": 0,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 0,
           "source": "ferrum-runtime",
           "scene": {
@@ -75,15 +75,15 @@
               }
             }
           },
-          "snapshotHash": "f85bce8d"
+          "snapshotHash": "f8598ff6"
         },
-        "replayHash": "f85bce8d"
+        "replayHash": "f8598ff6"
       },
       {
         "frame": 1,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 1,
           "source": "ferrum-runtime",
           "scene": {
@@ -143,15 +143,15 @@
               }
             }
           },
-          "snapshotHash": "37519e99"
+          "snapshotHash": "374f6002"
         },
-        "replayHash": "37519e99"
+        "replayHash": "374f6002"
       },
       {
         "frame": 12,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 12,
           "source": "ferrum-runtime",
           "scene": {
@@ -211,15 +211,15 @@
               }
             }
           },
-          "snapshotHash": "0d668839"
+          "snapshotHash": "0d6449a2"
         },
-        "replayHash": "0d668839"
+        "replayHash": "0d6449a2"
       },
       {
         "frame": 24,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 24,
           "source": "ferrum-runtime",
           "scene": {
@@ -279,15 +279,15 @@
               }
             }
           },
-          "snapshotHash": "87f087e8"
+          "snapshotHash": "87e83923"
         },
-        "replayHash": "87f087e8"
+        "replayHash": "87e83923"
       },
       {
         "frame": 40,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 40,
           "source": "ferrum-runtime",
           "scene": {
@@ -347,11 +347,11 @@
               }
             }
           },
-          "snapshotHash": "4f1e182e"
+          "snapshotHash": "4f2056c5"
         },
-        "replayHash": "4f1e182e"
+        "replayHash": "4f2056c5"
       }
     ],
-    "replayHash": "954540ea"
+    "replayHash": "c257e1f2"
   }
 }

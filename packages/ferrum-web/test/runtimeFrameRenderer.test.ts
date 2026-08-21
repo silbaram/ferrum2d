@@ -4,6 +4,7 @@ import { RuntimeFrameRenderer } from "../src/runtimeFrameRenderer.js";
 import type { RenderFrameState } from "../src/engineFramePipeline.js";
 import type { FrameState, PhysicsFrameStats } from "../src/engineTypes.js";
 import type { FerrumRuntimeFrame, FerrumRuntimeRenderer } from "../src/createFerrumRuntime.js";
+import { GAME_STATE_CODE } from "../src/gameState.js";
 import { emptyRendererStats } from "../src/renderer.js";
 import type { RendererStats } from "../src/renderer.js";
 
@@ -121,6 +122,28 @@ test("RuntimeFrameRenderer render-only fast path does not require FrameState", (
     "render_commands",
     "post_process",
   ]);
+});
+
+test("RuntimeFrameRenderer labels expanded lifecycle states", () => {
+  const order: string[] = [];
+  let gameState: unknown;
+  const runtimeFrameRenderer = new RuntimeFrameRenderer({
+    renderer: fakeRuntimeRenderer(order),
+    shouldRenderPhysicsDebugLines: false,
+    needsRuntimeFrame: true,
+    debugOverlay: {
+      update: (metrics: { gameState: string }) => {
+        gameState = metrics.gameState;
+      },
+    } as never,
+    now: () => 0,
+  });
+
+  runtimeFrameRenderer.renderFrame(renderFrameState({
+    frameState: frameState({ gameState: GAME_STATE_CODE.levelComplete }),
+  }));
+
+  equal(gameState, "LevelComplete");
 });
 
 test("RuntimeFrameRenderer reports collision pair count when lifecycle tracking is disabled", () => {

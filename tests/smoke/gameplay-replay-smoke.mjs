@@ -65,6 +65,7 @@ import {
 } from "../../packages/ferrum-web/dist/gameplayEventDecoder.js";
 import {
   captureGameStateSnapshot,
+  GAME_STATE_SNAPSHOT_VERSION,
   hashGameStateSnapshot,
   restoreGameStateSnapshot,
 } from "../../packages/ferrum-web/dist/gameStateSnapshot.js";
@@ -1006,6 +1007,10 @@ async function runDataSceneAuthoringSnapshotRestoreReplay(scenario) {
       missingBehavior: "ignore",
       textureId: dataSceneSmokeTextureId,
     });
+    bootResult.variables.set("campaign.level", 2);
+    bootResult.variables.set("wave.index", 4);
+    assert.equal(bootEngine.pauseDataScene(), true, "Data Scene boot must enter paused state");
+    assert.equal(bootEngine.dataSceneState(), "paused", "Data Scene boot pause must be observable");
     bootCustomState = dataSceneAuthoringSnapshotRestoreCustomState("boot", scenario, bootResult);
     bootSnapshot = captureGameStateSnapshot(bootEngine, {
       frame: 0,
@@ -1028,8 +1033,14 @@ async function runDataSceneAuthoringSnapshotRestoreReplay(scenario) {
       },
       applyDataSceneCustomState: (customState) => {
         restoredDataSceneCustom = customState;
+        assert.equal(
+          restoreEngine.dataSceneState(),
+          "paused",
+          "Data Scene custom restore callback must observe the restored lifecycle state",
+        );
       },
     });
+    assert.equal(restoreEngine.dataSceneState(), "paused", "Data Scene lifecycle state must restore");
     const restoreSnapshot = captureGameStateSnapshot(restoreEngine, {
       frame: scenario.frameCount,
       includeDataSceneState: true,
@@ -1043,6 +1054,8 @@ async function runDataSceneAuthoringSnapshotRestoreReplay(scenario) {
           dataSceneAuthoringDocumentApplied: restoreResult.dataSceneAuthoringDocumentApplied,
           dataSceneCustomStateApplied: restoreResult.dataSceneCustomStateApplied,
           sceneAfter: restoreResult.sceneAfter,
+          globalLevel: restoreResult.dataSceneVariables?.get("campaign.level"),
+          sceneWave: restoreResult.dataSceneVariables?.get("wave.index"),
         },
       },
     });
@@ -1102,6 +1115,10 @@ function dataSceneAuthoringSnapshotRestoreDocument() {
   return {
     format: "ferrum2d.consumer.scene-authoring",
     version: 1,
+    variables: [
+      { name: "campaign.level", scope: "global", type: "integer", default: 1 },
+      { name: "wave.index", scope: "scene", type: "integer", default: 1 },
+    ],
     sceneComposition: {
       initialFragment: "main",
       prefabs: {
@@ -2292,7 +2309,7 @@ function appendSnapshot(engine, snapshots, frame, options = {}) {
   const builtInShooter = captureShooterStateSnapshot(engine);
   const snapshot = {
     format: "ferrum2d.game-state.snapshot",
-    version: 1,
+    version: GAME_STATE_SNAPSHOT_VERSION,
     frame,
     source: "ferrum-runtime",
     scene: {
@@ -2662,9 +2679,21 @@ function validateDataSceneAuthoringSnapshotRestoreScenarioOutcome(fixture, label
   const snapshots = fixture.run?.snapshots ?? [];
   const bootSnapshot = snapshots.find((entry) => entry.frame === this.expected.bootFrame)?.snapshot;
   const restoreSnapshot = snapshots.find((entry) => entry.frame === this.expected.restoreFrame)?.snapshot;
+  const {
+    ["ferrum2d.variables"]: _bootSceneVariables,
+    ...bootDataSceneCustomState
+  } = bootSnapshot?.dataScene?.custom ?? {};
   const finalSnapshot = snapshots.at(-1)?.snapshot;
   assert.equal(finalSnapshot?.frame, this.frameCount, `${label} final snapshot frame must match`);
   assert.equal(finalSnapshot?.scene?.score, this.expected.finalScore, `${label} final score must stay deterministic`);
+  assert.equal(bootSnapshot?.version, GAME_STATE_SNAPSHOT_VERSION, `${label} boot snapshot version must match`);
+  assert.equal(restoreSnapshot?.version, GAME_STATE_SNAPSHOT_VERSION, `${label} restored snapshot version must match`);
+  assert.equal(bootSnapshot?.dataScene?.version, 2, `${label} boot Data Scene state version must match`);
+  assert.equal(restoreSnapshot?.dataScene?.version, 2, `${label} restored Data Scene state version must match`);
+  assert.equal(bootSnapshot?.scene?.gameState, this.expected.gameState, `${label} boot lifecycle state must match`);
+  assert.equal(restoreSnapshot?.scene?.gameState, this.expected.gameState, `${label} restored lifecycle state must match`);
+  assert.equal(bootSnapshot?.custom?.["ferrum2d.variables"]?.["campaign.level"], this.expected.globalLevel, `${label} boot global variable must be captured`);
+  assert.equal(bootSnapshot?.dataScene?.custom?.["ferrum2d.variables"]?.["wave.index"], this.expected.sceneWave, `${label} boot scene variable must be captured`);
   assert.equal(bootSnapshot?.dataScene?.scene?.entityCount, this.expected.entityCount, `${label} boot data scene entity count must match`);
   assert.equal(bootSnapshot?.dataScene?.scene?.spriteCount, this.expected.spriteCount, `${label} boot data scene sprite count must match`);
   assert.equal(restoreSnapshot?.dataScene?.scene?.entityCount, this.expected.entityCount, `${label} restored data scene entity count must match`);
@@ -2675,10 +2704,12 @@ function validateDataSceneAuthoringSnapshotRestoreScenarioOutcome(fixture, label
   assert.deepEqual(bootSnapshot?.dataScene?.custom?.commandSummary, this.expected.commandSummary, `${label} boot command summary must match`);
   assert.deepEqual(bootSnapshot?.dataScene?.custom?.behaviorResults, this.expected.behaviorResults, `${label} boot behavior result summary must match`);
   assert.equal(restoreSnapshot?.dataScene?.custom?.phase, "restore", `${label} restore custom state phase must be captured`);
-  assert.deepEqual(restoreSnapshot?.dataScene?.custom?.restoredDataSceneCustom, bootSnapshot?.dataScene?.custom, `${label} restore must apply captured data scene custom state`);
+  assert.deepEqual(restoreSnapshot?.dataScene?.custom?.restoredDataSceneCustom, bootDataSceneCustomState, `${label} restore must apply captured data scene custom state`);
   assert.equal(restoreSnapshot?.dataScene?.custom?.restore?.dataSceneStateApplied, true, `${label} restore must report data scene state applied`);
   assert.equal(restoreSnapshot?.dataScene?.custom?.restore?.dataSceneAuthoringDocumentApplied, true, `${label} restore must report authoring document applied`);
   assert.equal(restoreSnapshot?.dataScene?.custom?.restore?.dataSceneCustomStateApplied, true, `${label} restore must report custom state applied`);
+  assert.equal(restoreSnapshot?.dataScene?.custom?.restore?.globalLevel, this.expected.globalLevel, `${label} restore must preserve global variable state`);
+  assert.equal(restoreSnapshot?.dataScene?.custom?.restore?.sceneWave, this.expected.sceneWave, `${label} restore must preserve scene variable state`);
   assert.deepEqual(
     restoreSnapshot?.dataScene?.authoringDocument,
     bootSnapshot?.dataScene?.authoringDocument,
@@ -4726,11 +4757,12 @@ function assertDataSceneAuthoringSnapshotRestoreScenarioMetadata(scenario, label
   assert.equal(scenario.frameCount, 1, `${label}.frameCount must keep boot/restore replay compact`);
   assert.deepEqual(scenario.captureFrames, [0, 1], `${label}.captureFrames must include boot and restore frames`);
   assert.equal(scenario.expected.finalScore, 0, `${label}.expected.finalScore must remain zero for data scene replay`);
-  for (const field of ["bootFrame", "restoreFrame", "entityCount", "spriteCount", "spawnCount", "planCommandCount"]) {
+  for (const field of ["bootFrame", "restoreFrame", "entityCount", "spriteCount", "spawnCount", "planCommandCount", "gameState", "globalLevel", "sceneWave"]) {
     assertFiniteNumber(scenario.expected[field], `${label}.expected.${field}`);
   }
   assert.equal(scenario.expected.bootFrame, 0, `${label}.expected.bootFrame must be frame 0`);
   assert.equal(scenario.expected.restoreFrame, scenario.frameCount, `${label}.expected.restoreFrame must match frameCount`);
+  assert.equal(scenario.expected.gameState, 3, `${label}.expected.gameState must be paused`);
   assert.ok(Array.isArray(scenario.expected.commandSummary), `${label}.expected.commandSummary must be an array`);
   assert.deepEqual(
     scenario.expected.commandSummary,

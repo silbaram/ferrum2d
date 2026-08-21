@@ -51,6 +51,7 @@ import {
   GAMEPLAY_BEHAVIOR_BINDING_PROP,
   GAMEPLAY_REPLAY_RUN_FORMAT,
   GAMEPLAY_REPLAY_RUN_VERSION,
+  GAME_STATE_SNAPSHOT_VERSION,
   GAMEPLAY_EVENT_KIND_PRESENTATION_EFFECT,
   GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
   gameplayActionDiagnosticReports,
@@ -2132,7 +2133,7 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   const gameplayReplayRunVersion: typeof GAMEPLAY_REPLAY_RUN_VERSION = GAMEPLAY_REPLAY_RUN_VERSION;
   const gameplayReplaySnapshotBase: Omit<GameStateSnapshot, "snapshotHash"> = {
     format: "ferrum2d.game-state.snapshot",
-    version: 1,
+    version: GAME_STATE_SNAPSHOT_VERSION,
     frame: 0,
     source: "ferrum-runtime",
     scene: {

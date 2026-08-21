@@ -11,6 +11,8 @@ import {
   createRenderer,
   WebGL2Renderer,
   AudioManager,
+  GAME_STATE_CODE,
+  gameStateName,
   resolvePhysicsSpec,
   captureGameStateSnapshot,
 } from "@ferrum2d/ferrum-web/core";
@@ -30,7 +32,7 @@ import {
 `createEngine(...)`으로 `FerrumEngine`을 직접 만들 수 있다.
 `createFerrumRuntime({ dataScene })`은 `ferrum2d.consumer.scene-authoring`
 문서를 startup 단계에서 `applyDataSceneAuthoringDocument(...)`로 적용하고,
-`runtime.dataScene` handle을 통해 적용 결과와 `reapply(...)` 경로를 제공한다.
+`runtime.dataScene` handle을 통해 적용 결과와 `transition(...)`/`reapply(...)` 경로를 제공한다.
 handle의 `variables`는 현재 문서에 선언된 Data Scene 변수만 읽고 쓸 수 있다. `reapply(...)`는
 동일 이름·동일 타입의 global 값을 유지하고 scene 값을 다음 문서의 default로 초기화한다. 검증 실패 시
 현재 document/result/variable store와 인자 없는 다음 reapply의 기준 문서는 마지막 성공 상태를 유지한다.
@@ -42,7 +44,7 @@ handle의 `variables`는 현재 문서에 선언된 Data Scene 변수만 읽고 
 | 그룹 | 주요 method |
 | --- | --- |
 | Lifecycle | `start`, `pause`, `resume`, `stop`, `destroy`, `time`, `version` |
-| Scene | `resetGame`, `setViewportSize`, `setGameSpec`, `useDataScene`, `useBreakoutGame`, `usePlatformerGame` |
+| Scene | `resetGame`, `setViewportSize`, `setGameSpec`, `useDataScene`, `dataSceneState`, `pauseDataScene`, `resumeDataScene`, `completeDataScene`, `useBreakoutGame`, `usePlatformerGame` |
 | Asset | `loadAssets`, `releaseAssets`, `textureId`, `soundId`, `setTextureIds`, `setSoundIds` |
 | Bitmap text | `loadBitmapFont`, `registerBitmapFont`, `setWorldText`, `removeWorldText`, `worldTextGlyphCount` |
 | Particle | `setParticlePreset`, `spawnParticleBurst`, `clearParticles`, `particleCount` |
@@ -66,6 +68,27 @@ Data Scene boot path다. 옵션이 문서 자체이면 기본 apply option을 �
 instance handle registry 같은 `applyDataSceneAuthoringDocument(...)` option을 함께
 전달한다. 이 경로는 낮은 빈도 scene load/apply 단계에서만 실행되며 frame마다
 TypeScript callback을 만들지 않는다.
+
+## Data Scene Flow
+
+`runtime.dataScene.transition(nextDocument, options?)`은 문서 A에서 B로 이동하는 명시적 scene/level
+전환이고, `reapply(document?, options?)`는 현재 문서를 다시 적용하는 reload다. `transition(...)`과 기본
+`reapply(...)`는 validation 성공 뒤 Rust Data Scene reset boundary를 통과하며 빈 instance 문서도 실제
+전환으로 처리한다. 기존 low-level 호환용 `reapply(..., { activateDataScene: false })`만 caller-prepared
+Data Scene에 reset 없이 적용되며 `transition(...)`은 activation opt-out을 허용하지 않는다.
+
+| API | 계약 |
+| --- | --- |
+| `runtime.dataScene.state()` | `playing`, `paused`, `levelComplete` 또는 Data Scene 외부의 `undefined`를 반환한다. |
+| `pause()` / `resume()` | `playing ↔ paused`의 허용된 방향에서만 `true`를 반환한다. |
+| `complete()` | `playing` 또는 `paused`를 `levelComplete`로 바꾼다. |
+| `transition(document)` | 새 문서를 적용하고 lifecycle을 `playing`으로 초기화한다. |
+| `GAME_STATE_CODE`, `gameStateName(...)` | stable numeric ABI `title=0`, `playing=1`, `gameOver=2`, `paused=3`, `levelComplete=4`를 해석한다. |
+
+`paused`와 `levelComplete`에서는 render는 계속되지만 Rust tween, rigid physics, gameplay timer/FSM,
+particle simulation은 진행하지 않는다. 전환 시 같은 이름·타입의 `global` 변수만 다음 문서에 생존하고
+`scene` 변수는 default로 돌아간다. World/tilemap/particle/tween, physics history/fixed-step/input latch,
+frame event/render/audio buffer, pending spawn/deferred despawn queue는 모두 정리된다.
 
 ## 월드 공간 비트맵 텍스트
 
@@ -130,6 +153,8 @@ sprite sort만 수행한다.
 
 `FrameState`는 한 frame에서 관측된 runtime output이다. render/audio/collision/gameplay,
 effect, physics debug, profiler용 snapshot을 포함할 수 있다.
+`gameState`는 `GameStateCode`이며 기본 debug label은 `Title`, `Playing`, `GameOver`, `Paused`,
+`LevelComplete`를 사용한다. 알 수 없는 telemetry code는 임의 숫자로 통과시키지 않고 frame 조립 시 거절한다.
 
 Typed-array view는 해당 frame에서 동기 소비한다. frame 밖에 보관하거나 `await` 이후
 읽어야 하면 먼저 복사한다.
@@ -234,6 +259,15 @@ bind/select 검증 실패는 이전 snapshot 참조, mutable 쓰기 권한, enti
 값을 runtime activation 전에 대조하고, reserved payload를 제외한 consumer custom state만 callback에
 전달한다. 결과의
 `dataSceneVariables`/`globalVariablesApplied`/`sceneVariablesApplied`로 적용 여부를 보고한다.
+
+현재 `GameStateSnapshot.version`과 `DataSceneStateSnapshot.version`은 `2`다. Data Scene lifecycle state는
+snapshot/replay hash에 포함되며 restore는 변수 복원 뒤 lifecycle을 복원한 다음 custom callback을 호출한다.
+따라서 `paused`와 `levelComplete` 저장은 fresh runtime에서도 같은 상태로 복원된다. version `1`은
+validation에서 거절하므로 저장 데이터가 필요한 consumer는 version `2` 재캡처 또는 명시적 migration이
+필요하다. Built-in Shooter state ABI는 lifecycle code 계약 변경과 함께 version `18`이다. Built-in snapshot은
+기존 `title|playing|gameOver`만 허용하고 Data Scene 전용 `paused|levelComplete` code는 복원에서 거절한다.
+`includeDataSceneState: true` capture는 active Data Scene에서만 허용되며 restore authoring option의
+`activateDataScene: false`는 mutation 전에 거절한다.
 
 일반 consumer는 decoder를 직접 호출하기보다 `FerrumEngine`과 `FrameState`를 우선
 사용한다. decoder는 custom renderer, replay, smoke, diagnostic adapter에서 사용한다.

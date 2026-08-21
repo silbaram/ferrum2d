@@ -230,6 +230,7 @@ impl ShooterScene {
                 );
                 self.emit_player_interactions(world, sinks.gameplay_events.as_mut());
             }
+            GameState::Paused | GameState::LevelComplete => {}
         }
 
         self.previous_space = input.space;

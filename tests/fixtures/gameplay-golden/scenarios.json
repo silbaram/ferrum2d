@@ -50,7 +50,7 @@
         ]
       },
       "expected": {
-        "replayHash": "d406eb0b",
+        "replayHash": "97e40394",
         "finalScore": 1,
         "spawnDiagnostics": [
           {
@@ -256,7 +256,7 @@
         ]
       },
       "expected": {
-        "replayHash": "c700fae4",
+        "replayHash": "1d2027a7",
         "finalScore": 14,
         "eventFrame": 2,
         "eventKinds": [
@@ -342,7 +342,7 @@
         ]
       },
       "expected": {
-        "replayHash": "8f608d0f",
+        "replayHash": "757a604d",
         "finalScore": 0,
         "finalGameState": 2,
         "entityCountAfterSetup": 2,
@@ -419,7 +419,7 @@
         ]
       },
       "expected": {
-        "replayHash": "e917a80d",
+        "replayHash": "4bf3aecd",
         "finalScore": 0,
         "eventFrame": 4,
         "eventKinds": [
@@ -505,7 +505,7 @@
         }
       },
       "expected": {
-        "replayHash": "6efec4d7",
+        "replayHash": "ad0ceb68",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -594,7 +594,7 @@
         }
       },
       "expected": {
-        "replayHash": "a2c52d7e",
+        "replayHash": "e04cab6b",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -679,7 +679,7 @@
         }
       },
       "expected": {
-        "replayHash": "1e533bb8",
+        "replayHash": "1f22152b",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -770,7 +770,7 @@
         }
       },
       "expected": {
-        "replayHash": "b43e69c1",
+        "replayHash": "cd10d58d",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -874,7 +874,7 @@
         }
       },
       "expected": {
-        "replayHash": "2a0af0dc",
+        "replayHash": "cf7b5c13",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -970,7 +970,7 @@
         }
       },
       "expected": {
-        "replayHash": "22452c29",
+        "replayHash": "cffbfbdb",
         "finalScore": 0,
         "eventFrame": 2,
         "eventKinds": [
@@ -1170,7 +1170,7 @@
         }
       },
       "expected": {
-        "replayHash": "9d0f2327",
+        "replayHash": "4691701a",
         "finalScore": 7,
         "movementFrame": 2,
         "eventFrame": 3,
@@ -1262,7 +1262,7 @@
         }
       },
       "expected": {
-        "replayHash": "597b3558",
+        "replayHash": "fa5a0691",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -1344,7 +1344,7 @@
         }
       },
       "expected": {
-        "replayHash": "0d12f569",
+        "replayHash": "7a79ab54",
         "finalScore": 0,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -1431,7 +1431,7 @@
         }
       },
       "expected": {
-        "replayHash": "fad439db",
+        "replayHash": "0f576965",
         "finalScore": 1,
         "transitionFrame": 3,
         "transitionEventKinds": [
@@ -1643,7 +1643,7 @@
         }
       },
       "expected": {
-        "replayHash": "714b9fe4",
+        "replayHash": "086a541b",
         "finalScore": 8,
         "movementFrame": 2,
         "eventFrame": 4,
@@ -1859,7 +1859,7 @@
         }
       },
       "expected": {
-        "replayHash": "34ffffe5",
+        "replayHash": "4fefd987",
         "finalScore": 8,
         "eventFrame": 2,
         "eventKinds": [
@@ -1888,7 +1888,7 @@
     },
     {
       "id": "data-scene-authoring-snapshot-restore",
-      "description": "Data Scene replay covering public createEngine boot, scene-authoring document application, snapshot authoring document capture, custom state callback, and restore into a fresh runtime.",
+      "description": "Data Scene replay covering public createEngine boot, pause state, scoped variables, scene-authoring document capture, custom state callback, and deterministic restore into a fresh runtime.",
       "coverageTags": [
         "data-scene",
         "authored-behavior",
@@ -1905,10 +1905,13 @@
         "events": []
       },
       "expected": {
-        "replayHash": "2cdf648c",
+        "replayHash": "4f95ccc8",
         "finalScore": 0,
         "bootFrame": 0,
         "restoreFrame": 1,
+        "gameState": 3,
+        "globalLevel": 2,
+        "sceneWave": 4,
         "entityCount": 2,
         "spriteCount": 0,
         "spawnCount": 2,

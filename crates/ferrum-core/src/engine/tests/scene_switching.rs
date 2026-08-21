@@ -1,5 +1,6 @@
 use super::*;
 use crate::components::DEFAULT_SPRITE_RENDER_LAYER;
+use crate::GameState;
 
 #[test]
 fn reset_game_clears_score_and_recreates_player() {
@@ -52,6 +53,57 @@ fn data_scene_mode_starts_blank_and_updates_generic_world_state() {
     assert_eq!(engine.entity_count(), 1);
     assert!((transform.x - 14.0).abs() < f32::EPSILON);
     assert!((transform.y - 18.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn data_scene_pause_resume_and_level_complete_freeze_until_explicit_transition() {
+    let mut engine = Engine::new();
+
+    assert_eq!(engine.data_scene_game_state(), u32::MAX);
+    assert!(!engine.pause_data_scene());
+    assert!(!engine.resume_data_scene());
+    assert!(!engine.complete_data_scene());
+
+    engine.use_data_scene();
+    let entity = engine.world.spawn_entity();
+    engine
+        .world
+        .set_transform(entity, Transform2D { x: 10.0, y: 20.0 });
+    engine
+        .world
+        .set_velocity(entity, Velocity { vx: 8.0, vy: -4.0 });
+
+    assert_eq!(engine.data_scene_game_state(), GameState::Playing.code());
+    assert!(engine.pause_data_scene());
+    assert!(!engine.pause_data_scene());
+    assert_eq!(engine.game_state(), GameState::Paused.code());
+    engine.update_frame(0.5, false, false, false);
+    assert_eq!(
+        engine.world.transform(entity),
+        Some(Transform2D { x: 10.0, y: 20.0 })
+    );
+
+    assert!(engine.resume_data_scene());
+    assert!(!engine.resume_data_scene());
+    engine.update_frame(0.5, false, false, false);
+    assert_eq!(
+        engine.world.transform(entity),
+        Some(Transform2D { x: 14.0, y: 18.0 })
+    );
+
+    assert!(engine.pause_data_scene());
+    assert!(engine.complete_data_scene());
+    assert!(!engine.complete_data_scene());
+    assert_eq!(engine.game_state(), GameState::LevelComplete.code());
+    engine.update_frame(0.5, false, false, false);
+    assert_eq!(
+        engine.world.transform(entity),
+        Some(Transform2D { x: 14.0, y: 18.0 })
+    );
+
+    engine.use_data_scene();
+    assert_eq!(engine.data_scene_game_state(), GameState::Playing.code());
+    assert_eq!(engine.entity_count(), 0);
 }
 
 #[test]
@@ -342,18 +394,51 @@ fn data_scene_switch_and_reset_clear_stale_output_buffers() {
     let mut engine = Engine::new();
     engine.use_breakout_scene();
     engine.update(0.016);
+    engine
+        .scenes
+        .shooter_mut()
+        .seed_deferred_runtime_state_for_test();
     engine.frame_buffers.audio_events.push(test_audio_event());
     engine.frame_buffers.render_items.push(test_render_item());
+    engine
+        .frame_buffers
+        .collision_events
+        .push(Default::default());
+    engine
+        .frame_buffers
+        .gameplay_events
+        .push(Default::default());
+    engine.frame_buffers.effect_events.push(Default::default());
 
     assert!(engine.render_command_len() > 0);
     assert_eq!(engine.audio_event_len(), 1);
     assert_eq!(engine.frame_buffers.render_items.len(), 1);
+    assert_eq!(engine.frame_buffers.collision_events.len(), 1);
+    assert_eq!(engine.frame_buffers.gameplay_events.len(), 1);
+    assert_eq!(engine.frame_buffers.effect_events.len(), 1);
+    assert_eq!(
+        engine
+            .scenes
+            .shooter()
+            .deferred_runtime_state_counts_for_test(),
+        (64, 1),
+    );
 
     engine.use_data_scene();
 
     assert_eq!(engine.render_command_len(), 0);
     assert_eq!(engine.audio_event_len(), 0);
     assert!(engine.frame_buffers.render_items.is_empty());
+    assert!(engine.frame_buffers.collision_events.is_empty());
+    assert!(engine.frame_buffers.gameplay_events.is_empty());
+    assert!(engine.frame_buffers.effect_events.is_empty());
+    assert_eq!(
+        engine
+            .scenes
+            .shooter()
+            .deferred_runtime_state_counts_for_test(),
+        (0, 0),
+    );
 
     engine
         .frame_buffers
@@ -361,12 +446,24 @@ fn data_scene_switch_and_reset_clear_stale_output_buffers() {
         .push(test_render_command());
     engine.frame_buffers.render_items.push(test_render_item());
     engine.frame_buffers.audio_events.push(test_audio_event());
+    engine
+        .frame_buffers
+        .collision_events
+        .push(Default::default());
+    engine
+        .frame_buffers
+        .gameplay_events
+        .push(Default::default());
+    engine.frame_buffers.effect_events.push(Default::default());
 
     engine.reset_game();
 
     assert_eq!(engine.render_command_len(), 0);
     assert_eq!(engine.audio_event_len(), 0);
     assert!(engine.frame_buffers.render_items.is_empty());
+    assert!(engine.frame_buffers.collision_events.is_empty());
+    assert!(engine.frame_buffers.gameplay_events.is_empty());
+    assert!(engine.frame_buffers.effect_events.is_empty());
 }
 
 #[test]

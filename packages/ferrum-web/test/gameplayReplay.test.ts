@@ -160,6 +160,7 @@ function dataSceneSnapshotAt(frame: number, authoringDocument: ReturnType<typeof
     gameState: 1,
     entityCount: 1,
     spriteCount: 1,
+    dataSceneActive: true,
   }), {
     frame,
     includeDataSceneState: true,
@@ -202,6 +203,7 @@ function fakeEngine(initial: Partial<FakeScene> = {}): FerrumEngine {
     spriteCount: initial.spriteCount ?? 1,
     cameraX: initial.cameraX ?? 0,
     cameraY: initial.cameraY ?? 0,
+    dataSceneActive: initial.dataSceneActive ?? false,
   };
   return {
     score: () => scene.score,
@@ -210,6 +212,7 @@ function fakeEngine(initial: Partial<FakeScene> = {}): FerrumEngine {
     spriteCount: () => scene.spriteCount,
     cameraX: () => scene.cameraX,
     cameraY: () => scene.cameraY,
+    dataSceneState: () => scene.dataSceneActive ? "playing" : undefined,
     captureShooterStateSnapshot: () => fakeShooterState(scene.score),
   } as FerrumEngine;
 }
@@ -221,6 +224,7 @@ interface FakeScene {
   spriteCount: number;
   cameraX: number;
   cameraY: number;
+  dataSceneActive: boolean;
 }
 
 function fakeShooterState(score: number): BuiltInShooterStateSnapshot {

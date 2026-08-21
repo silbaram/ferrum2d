@@ -19,12 +19,12 @@
         "frame": 0,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 0,
           "source": "ferrum-runtime",
           "scene": {
             "score": 0,
-            "gameState": 1,
+            "gameState": 3,
             "entityCount": 2,
             "spriteCount": 0,
             "cameraX": 800,
@@ -32,10 +32,10 @@
           },
           "dataScene": {
             "format": "ferrum2d.data-scene-state",
-            "version": 1,
+            "version": 2,
             "scene": {
               "score": 0,
-              "gameState": 1,
+              "gameState": 3,
               "entityCount": 2,
               "spriteCount": 0,
               "cameraX": 800,
@@ -44,6 +44,20 @@
             "authoringDocument": {
               "format": "ferrum2d.consumer.scene-authoring",
               "version": 1,
+              "variables": [
+                {
+                  "name": "campaign.level",
+                  "scope": "global",
+                  "type": "integer",
+                  "default": 1
+                },
+                {
+                  "name": "wave.index",
+                  "scope": "scene",
+                  "type": "integer",
+                  "default": 1
+                }
+              ],
               "sceneComposition": {
                 "initialFragment": "main",
                 "prefabs": {
@@ -122,23 +136,31 @@
               ],
               "behaviorResults": [
                 true
-              ]
+              ],
+              "ferrum2d.variables": {
+                "wave.index": 4
+              }
             }
           },
-          "snapshotHash": "78ae50f1"
+          "custom": {
+            "ferrum2d.variables": {
+              "campaign.level": 2
+            }
+          },
+          "snapshotHash": "aeb0d4b0"
         },
-        "replayHash": "78ae50f1"
+        "replayHash": "aeb0d4b0"
       },
       {
         "frame": 1,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 1,
           "source": "ferrum-runtime",
           "scene": {
             "score": 0,
-            "gameState": 1,
+            "gameState": 3,
             "entityCount": 2,
             "spriteCount": 0,
             "cameraX": 800,
@@ -146,10 +168,10 @@
           },
           "dataScene": {
             "format": "ferrum2d.data-scene-state",
-            "version": 1,
+            "version": 2,
             "scene": {
               "score": 0,
-              "gameState": 1,
+              "gameState": 3,
               "entityCount": 2,
               "spriteCount": 0,
               "cameraX": 800,
@@ -158,6 +180,20 @@
             "authoringDocument": {
               "format": "ferrum2d.consumer.scene-authoring",
               "version": 1,
+              "variables": [
+                {
+                  "name": "campaign.level",
+                  "scope": "global",
+                  "type": "integer",
+                  "default": 1
+                },
+                {
+                  "name": "wave.index",
+                  "scope": "scene",
+                  "type": "integer",
+                  "default": 1
+                }
+              ],
               "sceneComposition": {
                 "initialFragment": "main",
                 "prefabs": {
@@ -247,21 +283,31 @@
                 "dataSceneCustomStateApplied": true,
                 "sceneAfter": {
                   "score": 0,
-                  "gameState": 1,
+                  "gameState": 3,
                   "entityCount": 2,
                   "spriteCount": 0,
                   "cameraX": 800,
                   "cameraY": 480
-                }
+                },
+                "globalLevel": 2,
+                "sceneWave": 4
+              },
+              "ferrum2d.variables": {
+                "wave.index": 4
               }
             }
           },
-          "snapshotHash": "d9302a4c"
+          "custom": {
+            "ferrum2d.variables": {
+              "campaign.level": 2
+            }
+          },
+          "snapshotHash": "895d1e49"
         },
-        "replayHash": "d9302a4c"
+        "replayHash": "895d1e49"
       }
     ],
-    "replayHash": "2cdf648c"
+    "replayHash": "4f95ccc8"
   },
   "manifestPath": "tests/fixtures/gameplay-golden/scenarios.json",
   "manifestIndex": 16
