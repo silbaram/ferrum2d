@@ -18,11 +18,9 @@ docs/planning/*
 !docs/planning/README.md
 !docs/planning/demo-game-showcase-plan.md
 !docs/planning/deployment-roadmap.md
-!docs/planning/object-authoring-tool-plan.md
-!docs/planning/placement-runtime-texture-loading-plan.md
+!docs/planning/game-development-convenience-review.md
 !docs/planning/feature-candidates.md
 !docs/planning/physics-sandbox-redesign-plan.md
 !docs/planning/product-hardening-roadmap.md
 !docs/planning/physics-performance-improvement-plan.md
-!docs/planning/physics_review.md
 !docs/planning/refactor-roadmap.md
