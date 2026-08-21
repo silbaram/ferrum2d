@@ -13,7 +13,7 @@ tier, forbidden internal import allowlist를 기계적으로 검증하는 기준
 신규 consumer 코드는 목적별 subpath를 우선 사용한다.
 
 ```ts
-import { createFerrumRuntime } from "@ferrum2d/ferrum-web/core";
+import { bodyLocalToWorld2D, createFerrumRuntime } from "@ferrum2d/ferrum-web/core";
 import { resolveSceneCompositionSpec } from "@ferrum2d/ferrum-web/authoring";
 import { resolveShooterGameSpec } from "@ferrum2d/ferrum-web/starter-scenes";
 import { RuntimeProfiler } from "@ferrum2d/ferrum-web/quality";
@@ -84,12 +84,19 @@ preview API는 1.0 전 breaking change가 가능하다. 그래도 `public-api-su
 | [Runtime Extensibility](runtime-extensibility.md) | projectile/weapon/prefab/reaction/effect event의 제품 기준 설명 |
 | [Data Scene Authoring](data-scene-authoring.md) | generic data scene 최소 authoring envelope |
 | [Physics Spec](physics-spec.md) | physics authoring, solver, query, snapshot/replay 계약 |
+| [좌표계와 2D 기하 변환](coordinate-system.md) | world 축, 단위, anchor와 public point/collider transform 계약 |
 
 ## Public API 경계
 
 Rust core는 게임 상태, entity storage, collision, physics, scene rule, render command
 생성을 소유한다. TypeScript layer는 browser API, renderer, input, audio, asset loading,
 Wasm loading, 낮은 빈도 authoring facade를 소유한다.
+
+`rotatePoint2D(...)`, `bodyLocalToWorld2D(...)`,
+`writePhysicsColliderWorldReferencePoints(...)` 같은 기하 변환 helper는 Rust simulation
+state를 복제하지 않는 순수 TypeScript 계산이다. Rust collider query/debug 계산과 같은
+canonical vector를 양쪽 테스트에서 검증하며, Wasm 호출이나 공유 ABI를 추가하지 않는다.
+정확한 회전·offset 규칙은 [좌표계와 2D 기하 변환](coordinate-system.md)을 따른다.
 
 월드 공간 비트맵 텍스트도 이 경계를 따른다. `BitmapFontPolicySpec`의 image/data
 asset은 TypeScript가 로드·검증하고, glyph/kerning metadata는 한 번의 bulk typed-array

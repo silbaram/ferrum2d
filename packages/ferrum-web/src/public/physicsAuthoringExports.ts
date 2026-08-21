@@ -150,6 +150,24 @@ export type {
   TilemapBoundaryExtractionResult,
 } from "../tilemapPhysics";
 export { DEFAULT_PHYSICS_MODE, resolvePhysicsMode, resolvePhysicsSpec } from "../physicsSpec";
+export {
+  bodyLocalToWorld2D,
+  bodyWorldToLocal2D,
+  inverseTransformPoint2D,
+  physicsColliderWorldCenter2D,
+  physicsColliderWorldReferencePointCount,
+  rotatePoint2D,
+  transformPoint2D,
+  writePhysicsColliderWorldReferencePoints,
+} from "../geometry2D.js";
+export type {
+  MutablePoint2D,
+  MutablePointBuffer2D,
+  PhysicsBodyTransform2D,
+  PhysicsGeometryCollider2D,
+  Point2D,
+  Transform2DInput,
+} from "../geometry2D.js";
 export type {
   PhysicsBodySpec,
   PhysicsBoxColliderSpec,

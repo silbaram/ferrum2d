@@ -9,6 +9,7 @@ mod area_queries;
 mod compound_colliders;
 mod contact_builders;
 mod debug_lines;
+mod geometry_transform_conformance;
 mod height_spans;
 mod manifold_basic;
 mod manifold_capsule;

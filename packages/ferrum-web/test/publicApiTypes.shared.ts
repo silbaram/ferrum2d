@@ -210,6 +210,24 @@ export {
 } from "../src/physicsQueryDecoder.js";
 export { resolvePhysicsSpec } from "../src/physicsSpec.js";
 export {
+  bodyLocalToWorld2D,
+  bodyWorldToLocal2D,
+  inverseTransformPoint2D,
+  physicsColliderWorldCenter2D,
+  physicsColliderWorldReferencePointCount,
+  rotatePoint2D,
+  transformPoint2D,
+  writePhysicsColliderWorldReferencePoints,
+} from "../src/geometry2D.js";
+export type {
+  MutablePoint2D,
+  MutablePointBuffer2D,
+  PhysicsBodyTransform2D,
+  PhysicsGeometryCollider2D,
+  Point2D,
+  Transform2DInput,
+} from "../src/geometry2D.js";
+export {
   createCollider,
   createJoint,
   createPhysicsLayerMap,

@@ -51,6 +51,8 @@ export {
   PHYSICS_BUILTIN_COLLISION_LAYERS,
   PHYSICS_COMMON_LAYER_PATTERN,
   PHYSICS_MATERIAL_PRESETS,
+  bodyLocalToWorld2D,
+  bodyWorldToLocal2D,
   clearPhysicsWorld,
   createCollider,
   createJoint,
@@ -61,8 +63,14 @@ export {
   createVehicleRig,
   physicsLayerMaskBits,
   physicsMaterial,
+  inverseTransformPoint2D,
+  physicsColliderWorldCenter2D,
+  physicsColliderWorldReferencePointCount,
   resolvePhysicsMode,
   resolvePhysicsSpec,
+  rotatePoint2D,
+  transformPoint2D,
+  writePhysicsColliderWorldReferencePoints,
 } from "./public/physicsAuthoringExports.js";
 export {
   DATA_SCENE_VARIABLES_SNAPSHOT_KEY,
@@ -306,6 +314,10 @@ export type {
   RenderCommandView,
 } from "./public/wasmBufferExports.js";
 export type {
+  MutablePoint2D,
+  MutablePointBuffer2D,
+  PhysicsBodyTransform2D,
+  PhysicsGeometryCollider2D,
   PhysicsAuthoringContext,
   PhysicsAuthoringJointHandle,
   PhysicsBodySpec,
@@ -336,6 +348,7 @@ export type {
   PhysicsWorldApplyOptions,
   PhysicsWorldApplyResult,
   PhysicsWorldApplyWarning,
+  Point2D,
   ResolvedPhysicsBodySpec,
   ResolvedPhysicsColliderSpec,
   ResolvedPhysicsJointSpec,
@@ -343,6 +356,7 @@ export type {
   ResolvedPhysicsMaterialSpec,
   ResolvedPhysicsSpec,
   ResolvePhysicsSpecOptions,
+  Transform2DInput,
 } from "./public/physicsAuthoringExports.js";
 export type {
   CaptureGameStateSnapshotOptions,

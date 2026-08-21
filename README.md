@@ -33,7 +33,7 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 
 | 지원 수준 | 권장 import | 의미 | 대표 항목 |
 | --- | --- | --- | --- |
-| Core runtime | `@ferrum2d/ferrum-web/core` | 1.0 제품 계약 후보. 게임 실행과 public API의 중심이다. | `createFerrumRuntime(...)`, `createEngine(...)`, WebGL2 renderer, input/audio/asset loading, Physics Spec/API, snapshot |
+| Core runtime | `@ferrum2d/ferrum-web/core` | 1.0 제품 계약 후보. 게임 실행과 public API의 중심이다. | `createFerrumRuntime(...)`, `createEngine(...)`, WebGL2 renderer, input/audio/asset loading, Physics Spec/API, 2D 기하 변환, snapshot |
 | Authoring primitive | `@ferrum2d/ferrum-web/authoring` | 장르와 템플릿이 조합해 쓰는 데이터 기반 primitive다. | Scene Composition, 선언형 global/scene 변수, Data Scene spawn/role/handle registry helper, Behavior Recipe, projectile/weapon authoring, FSM install/replay, presentation effect registry |
 | Starter scene/template | `@ferrum2d/ferrum-web/starter-scenes` | 생성 프로젝트와 smoke에서 검증하는 시작점이다. 장르 전체를 자동 제작하는 범용 엔진 모드는 아니다. | `minimal`, `topdown`, `platformer`, `breakout`, Shooter Game Spec, starter input profile |
 | Optional/lab | `@ferrum2d/ferrum-web/labs` | 지원 환경이나 명시 opt-in에서 쓰는 확장 기능이다. 기능별 제약은 Public API와 smoke 문서를 따른다. | WebGPU renderer, HD-2D helper, PixelMaskTerrain, material/VFX preset, texture atlas JSON helper |
@@ -428,7 +428,7 @@ scripts/                    저장소 보조 스크립트
 ## 상세 문서
 
 - [문서 지도](docs/README.md)
-- Engine: [개발자 퀵스타트](docs/engine/developer-quickstart.md), [사용자 설명서](docs/engine/user-guide.md), [Public API](docs/engine/public-api.md), [Public API Migration Guide](docs/engine/public-api/migration-guide.md), [Physics Spec](docs/engine/physics-spec.md)
+- Engine: [개발자 퀵스타트](docs/engine/developer-quickstart.md), [사용자 설명서](docs/engine/user-guide.md), [Public API](docs/engine/public-api.md), [좌표계와 2D 기하 변환](docs/engine/coordinate-system.md), [Public API Migration Guide](docs/engine/public-api/migration-guide.md), [Physics Spec](docs/engine/physics-spec.md)
 - Examples: [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)
 - Development Architecture: [아키텍처](docs/development/architecture/architecture.md), [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md)
 - Development Quality: [코드 리뷰 기준](docs/development/quality/code-review.md), [Smoke Check](docs/development/quality/smoke-check.md)

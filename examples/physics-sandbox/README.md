@@ -74,9 +74,11 @@ Canvas2D 우회 제거 전후의 정적 기준은 `src/main.ts` 1,910줄에서 1
 - frame hot path에서 body별 JS/Wasm 왕복 호출을 늘리지 않는다. body state는 `capturePhysicsBodyStateBuffer(...)`로 묶어서 읽는다.
 - body label은 entity anchor를 사용하고 sleep label 문자열은 상태가 바뀔 때만 갱신한다.
 - demo 설명 metadata는 `catalog.json`에 두고 Physics Spec runtime 계약을 오염시키지 않는다.
+- Canvas2D overlay 제거 이후 demo 내부에는 collider local/world 변환이나 꼭짓점 생성 helper가 없다. consumer가 같은 계산이 필요하면 `@ferrum2d/ferrum-web/core`의 public 기하 변환 helper를 사용하며, demo는 Rust debug line을 계속 source of truth로 사용한다.
 
 ## 참고 문서
 
 - [Physics Spec](../../docs/engine/physics-spec.md)
+- [좌표계와 2D 기하 변환](../../docs/engine/coordinate-system.md)
 - [2D physics engine map](../../docs/development/architecture/physics-engine.md)
 - [Smoke Check](../../docs/development/quality/smoke-check.md)
