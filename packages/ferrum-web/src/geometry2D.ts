@@ -6,16 +6,19 @@ import type {
   ResolvedPhysicsOrientedBoxColliderSpec,
 } from "./physicsSpecTypes.js";
 
+/** 읽기 전용 2D 점입니다. 좌표 단위와 축은 Ferrum2D world 규약을 따릅니다. */
 export interface Point2D {
   readonly x: number;
   readonly y: number;
 }
 
+/** 결과 객체를 재사용하는 allocation-aware point helper용 mutable 2D 점입니다. */
 export interface MutablePoint2D {
   x: number;
   y: number;
 }
 
+/** Scale -> rotation -> translation 순서로 합성되는 2D 변환입니다. */
 export interface Transform2DInput {
   readonly x: number;
   readonly y: number;
@@ -24,12 +27,14 @@ export interface Transform2DInput {
   readonly scaleY?: number;
 }
 
+/** Physics body 원점의 world 위치와 회전입니다. */
 export interface PhysicsBodyTransform2D {
   readonly x: number;
   readonly y: number;
   readonly rotationRadians: number;
 }
 
+/** Public geometry helper가 지원하는 resolved Physics Spec collider입니다. */
 export type PhysicsGeometryCollider2D =
   | ResolvedPhysicsBoxColliderSpec
   | ResolvedPhysicsCircleColliderSpec
@@ -37,6 +42,7 @@ export type PhysicsGeometryCollider2D =
   | ResolvedPhysicsOrientedBoxColliderSpec
   | ResolvedPhysicsConvexPolygonColliderSpec;
 
+/** `Float32Array`, `Float64Array`, number array와 호환되는 mutable numeric buffer입니다. */
 export interface MutablePointBuffer2D {
   readonly length: number;
   [index: number]: number;
@@ -134,7 +140,6 @@ export function physicsColliderWorldCenter2D(
 ): MutablePoint2D {
   const originX = finite(body.x, "body.x") + finite(collider.offsetX, "collider.offsetX");
   const originY = finite(body.y, "body.y") + finite(collider.offsetY, "collider.offsetY");
-  finite(body.rotationRadians, "body.rotationRadians");
 
   if (collider.shape === "capsule") {
     return writePoint(
@@ -161,6 +166,9 @@ export function physicsColliderWorldCenter2D(
       totalColliderRotation(body, collider),
       out,
     );
+  }
+  if (collider.shape === "orientedBox") {
+    totalColliderRotation(body, collider);
   }
   return writePoint(out, originX, originY);
 }
@@ -204,7 +212,6 @@ export function writePhysicsColliderWorldReferencePoints(
 
   const originX = finite(body.x, "body.x") + finite(collider.offsetX, "collider.offsetX");
   const originY = finite(body.y, "body.y") + finite(collider.offsetY, "collider.offsetY");
-  finite(body.rotationRadians, "body.rotationRadians");
 
   switch (collider.shape) {
     case "aabb":
@@ -274,8 +281,11 @@ function totalColliderRotation(
   body: PhysicsBodyTransform2D,
   collider: ResolvedPhysicsOrientedBoxColliderSpec | ResolvedPhysicsConvexPolygonColliderSpec,
 ): number {
-  return finite(body.rotationRadians, "body.rotationRadians")
-    + finite(collider.rotationRadians, "collider.rotationRadians");
+  const bodyRotation = Number.isFinite(body.rotationRadians) ? body.rotationRadians : 0;
+  return finite(
+    bodyRotation + finite(collider.rotationRadians, "collider.rotationRadians"),
+    "body.rotationRadians + collider.rotationRadians",
+  );
 }
 
 function validateConvexVertices(collider: ResolvedPhysicsConvexPolygonColliderSpec): void {

@@ -44,6 +44,11 @@ geometry를 그대로 맞춘다. 두 규칙을 임의로 섞지 않는다.
 | Oriented box | offset은 world 축으로 더하고, 네 local 꼭짓점은 그 중심에서 `body.rotationRadians + collider.rotationRadians`만큼 회전한다. |
 | Convex polygon | offset은 world 축으로 더하고, authored vertex는 그 원점에서 `body.rotationRadians + collider.rotationRadians`만큼 회전한다. center는 변환된 vertex의 centroid다. |
 
+Resolved Physics Spec과 public body snapshot의 rotation은 finite다. 방어적으로 직접 만든
+입력에서 body rotation이 non-finite이면 collider helper는 Rust `collider_shape`와 같이
+body rotation만 `0`으로 대체한다. Oriented box/convex polygon 자체의 collider rotation이
+non-finite이거나 두 rotation의 합이 non-finite이면 유효한 geometry가 아니므로 거부한다.
+
 따라서 회전하는 capsule endpoint나 body rotation을 따르는 collider offset이 필요한
 consumer는 generic body transform으로 별도 geometry를 계산할 수 있지만, 그 결과를 현재
 Rust collider의 실제 query/debug shape라고 간주하면 안 된다.

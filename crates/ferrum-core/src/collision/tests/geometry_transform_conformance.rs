@@ -102,6 +102,60 @@ fn canonical_collider_reference_points_match_public_typescript_vectors() {
     );
 }
 
+#[test]
+fn non_finite_body_rotation_falls_back_to_zero_for_collider_geometry() {
+    let mut world = World::default();
+    let entity = world.spawn_entity();
+    world.set_transform(entity, BODY_TRANSFORM);
+    world.set_rotation(entity, Rotation2D { radians: f32::NAN });
+    world.set_oriented_box_collider(entity, oriented_box(4.0, 6.0, 0.0).with_offset(3.0, -2.0));
+
+    let ColliderShapeRef::OrientedBox(collider, total_rotation) =
+        collider_shape(&world, entity.id as usize).expect("canonical oriented box is valid")
+    else {
+        panic!("canonical collider must remain an oriented box");
+    };
+    assert_eq!(total_rotation, 0.0);
+    let geometry = oriented_box_geometry(
+        collider.center(BODY_TRANSFORM),
+        collider.half_width,
+        collider.half_height,
+        total_rotation,
+    )
+    .expect("fallback oriented box geometry is finite");
+    assert_points(
+        &oriented_box_vertices(geometry),
+        &[(9.0, 12.0), (17.0, 12.0), (17.0, 24.0), (9.0, 24.0)],
+    );
+
+    let mut vertices = [Transform2D::default(); MAX_CONVEX_POLYGON_VERTICES];
+    vertices[0] = Transform2D { x: -2.0, y: -1.0 };
+    vertices[1] = Transform2D { x: 3.0, y: -1.0 };
+    vertices[2] = Transform2D { x: 0.0, y: 4.0 };
+    let polygon = ConvexPolygonCollider::new(vertices, 3, false, CollisionLayer::Enemy)
+        .with_offset(3.0, -2.0)
+        .with_rotation(0.0);
+    let polygon_entity = world.spawn_entity();
+    world.set_transform(polygon_entity, BODY_TRANSFORM);
+    world.set_rotation(polygon_entity, Rotation2D { radians: f32::NAN });
+    world.set_convex_polygon_collider(polygon_entity, polygon);
+
+    let ColliderShapeRef::ConvexPolygon(polygon_collider, total_rotation) =
+        collider_shape(&world, polygon_entity.id as usize)
+            .expect("canonical convex polygon is valid")
+    else {
+        panic!("canonical collider must remain a convex polygon");
+    };
+    assert_eq!(total_rotation, 0.0);
+    let (world_vertices, vertex_count) =
+        convex_polygon_collider_vertices_slice(BODY_TRANSFORM, polygon_collider, total_rotation)
+            .expect("fallback convex polygon geometry is finite");
+    assert_points(
+        &world_vertices[..vertex_count],
+        &[(11.0, 17.0), (16.0, 17.0), (13.0, 22.0)],
+    );
+}
+
 fn assert_points(actual: &[Transform2D], expected: &[(f32, f32)]) {
     assert_eq!(actual.len(), expected.len());
     for (point, (x, y)) in actual.iter().zip(expected.iter().copied()) {
