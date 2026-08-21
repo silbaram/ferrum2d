@@ -1,5 +1,7 @@
 import {
   CameraRigController,
+  DEBUG_GIZMO_MAX_LINES,
+  DebugGizmoLineBufferWriter,
   SPRITE_MATERIAL_PRESETS,
   ScreenFadeTransition,
   buildDebugGizmoLineBuffer,
@@ -28,6 +30,7 @@ import type {
   CameraViewport,
   CrtPostProcessPassInput,
   DebugGizmoBoundsSpec,
+  DebugGizmoArrowOptions,
   DebugGizmoCategory,
   DebugGizmoColor,
   DebugGizmoLine,
@@ -233,6 +236,7 @@ test("public API sprite material, lighting, camera, post process, and debug gizm
     context: diagnosticContext,
   };
   const debugGizmoCategory: DebugGizmoCategory = "collider";
+  const debugGizmoArrowOptions: DebugGizmoArrowOptions = { headLength: 6, headAngleRadians: 0.4 };
   const debugGizmoColor: DebugGizmoColor = [1, 0, 0, 0.75];
   const resolvedDebugGizmoColor: ResolvedDebugGizmoColor = [1, 0, 0, 0.75];
   const debugGizmoPoint: DebugGizmoPoint = { x: 0, y: 0 };
@@ -253,12 +257,17 @@ test("public API sprite material, lighting, camera, post process, and debug gizm
   const publicDebugGizmoLinesToBuffer: PublicApi["debugGizmoLinesToBuffer"] = debugGizmoLinesToBuffer;
   const publicBuildDebugGizmoLineBuffer: PublicApi["buildDebugGizmoLineBuffer"] =
     buildDebugGizmoLineBuffer;
+  const publicDebugGizmoLineBufferWriter: PublicApi["DebugGizmoLineBufferWriter"] =
+    DebugGizmoLineBufferWriter;
   const debugGizmoLines: readonly DebugGizmoLine[] =
     publicBuildDebugGizmoLines(debugGizmoScene, debugGizmoOptions);
   const firstDebugGizmoLine: DebugGizmoLine = debugGizmoLines[0] as DebugGizmoLine;
   const debugGizmoLineBufferResult: DebugGizmoLineBufferResult =
     publicBuildDebugGizmoLineBuffer(debugGizmoScene);
   const debugGizmoLineBuffer = publicDebugGizmoLinesToBuffer(debugGizmoLines);
+  const dynamicDebugGizmoBuffer = new publicDebugGizmoLineBufferWriter()
+    .arrow({ x: 0, y: 0 }, { x: 8, y: 0 }, debugGizmoColor, debugGizmoArrowOptions)
+    .bufferView();
   equal(publicNormalizeLightingScene(lightingScene).pointLights.length, 1);
   equal(publicDeriveTileOccludersFromTilemapGrid(tileOccluderGrid).length, 1);
   equal(resolvedLightingScene.tileOccluders[0]?.width, 16);
@@ -275,4 +284,6 @@ test("public API sprite material, lighting, camera, post process, and debug gizm
   equal(resolvedDebugGizmoColor[3], 0.75);
   equal(debugGizmoLineBuffer.lineCount, debugGizmoLines.length);
   equal(debugGizmoLineBufferResult.bufferView.floatsPerLine, 8);
+  equal(dynamicDebugGizmoBuffer.lineCount, 3);
+  equal(DEBUG_GIZMO_MAX_LINES, 65_536);
 });

@@ -56,8 +56,9 @@ Replay helper는 CI와 agent workflow의 evidence를 만들기 위한 API다. pu
 | --- | --- |
 | `DebugOverlay` | runtime metric과 debug 정보를 표시한다. 기본은 fixed overlay이며, 예제/도구 화면에서는 `layout: "inline"`으로 canvas와 겹치지 않게 배치할 수 있다. |
 | `buildDebugGizmoLines(...)` | debug gizmo line spec을 runtime line buffer로 변환한다. |
+| `DebugGizmoLineBufferWriter` | 기존 physics debug line buffer에 동적 line/polyline/arrow/circle을 추가하는 재사용 writer다. `reset()` 후 frame 안에서 사용한다. |
 | `resolveScreenshotCaptureSpec(...)` | screenshot capture 옵션을 검증한다. |
 | `summarizeScreenshotPixels(...)` | screenshot pixel summary를 만든다. |
 | `compareScreenshotSummaries(...)` | visual smoke summary를 비교한다. |
 
-Screenshot과 debug gizmo helper는 smoke evidence용이다. visual editor를 의미하지 않는다.
+Screenshot과 debug gizmo helper는 smoke evidence와 저빈도 debug authoring 보조용이다. gameplay simulation이나 visual editor를 의미하지 않는다.

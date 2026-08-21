@@ -130,6 +130,10 @@ export type UiOverlayStateProvider = (frame: FerrumRuntimeFrame) => UiOverlaySta
 export type LightingSceneProvider = (frame: FrameState) => LightingScene2D | false | undefined;
 export type PostProcessProvider = (frame: FrameState) => PostProcessStackInput;
 export type SpriteMaterialProvider = (frame: FrameState) => SpriteMaterialPresetInput;
+/** Debug pass가 활성화된 프레임에서 Rust line buffer와 추가 gizmo line을 합성합니다. */
+export type PhysicsDebugLineComposer = (
+  lines: PhysicsDebugLineBufferView,
+) => PhysicsDebugLineBufferView;
 export type FerrumRuntimeHudComponentProvider =
   (frame: FerrumRuntimeFrame) => readonly HudComponentSpec[] | false | undefined;
 export type FerrumRuntimeSubtitleProvider =
@@ -301,6 +305,8 @@ export interface FerrumRuntimeOptions {
   dataScene?: false | SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument | FerrumRuntimeDataSceneOptions;
   levelStreaming?: false | FerrumRuntimeLevelStreamingOptions | LevelChunkStreamer;
   physicsDebugLines?: boolean | PhysicsDebugOptions;
+  /** `physicsDebugLines`가 활성화된 경우에만 호출되는 debug line buffer composer입니다. */
+  physicsDebugLineComposer?: PhysicsDebugLineComposer;
   physicsMode?: PhysicsMode;
   physicsScene?: PhysicsSceneProfileSpec | false;
   environment?: FerrumRuntimeEnvironment;
@@ -428,6 +434,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       postProcess: options.postProcess,
       spriteMaterial: options.spriteMaterial,
       shouldRenderPhysicsDebugLines,
+      physicsDebugLineComposer: options.physicsDebugLineComposer,
       needsRuntimeFrame,
       debugOverlay,
       uiOverlay,

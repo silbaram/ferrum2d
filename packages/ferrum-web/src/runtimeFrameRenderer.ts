@@ -24,6 +24,7 @@ export interface RuntimeFrameRendererOptions {
   postProcess?: FerrumRuntimeOptions["postProcess"];
   spriteMaterial?: FerrumRuntimeOptions["spriteMaterial"];
   shouldRenderPhysicsDebugLines: boolean;
+  physicsDebugLineComposer?: FerrumRuntimeOptions["physicsDebugLineComposer"];
   needsRuntimeFrame: boolean;
   debugOverlay?: DebugOverlay;
   uiOverlay?: UiOverlay;
@@ -59,7 +60,9 @@ export class RuntimeFrameRenderer {
     this.options.renderer.render();
     let rendererStats = this.options.renderer.renderCommands(renderFrame.renderCommandBuffer);
     if (this.options.shouldRenderPhysicsDebugLines && renderFrame.physicsDebugLineBuffer !== undefined) {
-      rendererStats = this.options.renderer.renderPhysicsDebugLines(renderFrame.physicsDebugLineBuffer, {
+      const physicsDebugLines = this.options.physicsDebugLineComposer?.(renderFrame.physicsDebugLineBuffer)
+        ?? renderFrame.physicsDebugLineBuffer;
+      rendererStats = this.options.renderer.renderPhysicsDebugLines(physicsDebugLines, {
         x: renderFrame.cameraX,
         y: renderFrame.cameraY,
       });

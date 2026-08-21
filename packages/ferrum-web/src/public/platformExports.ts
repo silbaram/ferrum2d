@@ -19,6 +19,8 @@ export type {
 export { AudioAssetLoader } from "../audioAssetLoader";
 export { AssetLoader } from "../assetLoader";
 export {
+  DEBUG_GIZMO_MAX_LINES,
+  DebugGizmoLineBufferWriter,
   buildDebugGizmoLineBuffer,
   buildDebugGizmoLines,
   debugGizmoLinesToBuffer,
@@ -242,6 +244,7 @@ export type {
   TileRuleSpec,
 } from "../tilemapAuthoring";
 export type {
+  DebugGizmoArrowOptions,
   DebugGizmoBoundsSpec,
   DebugGizmoCategory,
   DebugGizmoColor,

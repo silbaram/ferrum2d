@@ -211,21 +211,12 @@ ol {
   box-shadow: var(--shadow);
 }
 
-.physics-canvas,
-.physics-overlay {
+.physics-canvas {
   display: block;
   width: 100%;
   aspect-ratio: 5 / 3;
   height: auto;
-}
-
-.physics-canvas {
   background: #0f1513;
-}
-
-.physics-overlay {
-  position: absolute;
-  inset: 0;
   cursor: crosshair;
 }
 
@@ -594,12 +585,6 @@ ol {
     position: static;
     padding: 8px;
     background: #101614;
-  }
-
-  .physics-overlay {
-    top: 0;
-    bottom: 42px;
-    height: auto;
   }
 
   .canvas-hud-label {

@@ -2,11 +2,13 @@ import {
   createFerrumRuntime,
   createPhysicsWorldFromSpec,
   resolvePhysicsSpec,
+  type BitmapFontAtlasSpec,
   type FerrumEngine,
   type FerrumRuntime,
   type FerrumRuntimeEnvironment,
   type PhysicsBodyContactHit,
   type PhysicsBodyManifoldHit,
+  type PhysicsDebugLineBufferView,
   type PhysicsDebugOptions,
   type PhysicsEntityHandle,
   type PhysicsEntitySnapshot,
@@ -17,12 +19,11 @@ import {
   type PhysicsWorldApplyResult,
   type PhysicsWorldApplyWarning,
   type ResolvedPhysicsBodySpec,
-  type ResolvedPhysicsColliderSpec,
-  type ResolvedPhysicsJointSpec,
   type ResolvedPhysicsMaterialSpec,
   type ResolvedPhysicsSpec,
 } from "@ferrum2d/ferrum-web/core";
 import {
+  DebugGizmoLineBufferWriter,
   diagnosticReport,
   type DiagnosticContext,
   type DiagnosticReport,
@@ -122,6 +123,8 @@ interface PhysicsSandboxSmokeFrame {
   entityCount: number;
   renderCommandCount: number;
   physicsDebugLineCount: number;
+  customDebugLineCount: number;
+  worldTextCount: number;
   fixedStepSeconds: number;
   frameCount: number;
   visibleBodyCount: number;
@@ -137,6 +140,8 @@ interface SandboxRuntimeMetrics {
   bodyCount: number;
   jointCount: number;
   debugLineCount: number;
+  customDebugLineCount: number;
+  worldTextCount: number;
   fps: number;
   frameCount: number;
   entityCount: number;
@@ -179,7 +184,6 @@ interface SandboxWindow extends Window {
 
 interface SandboxShell {
   canvas: HTMLCanvasElement;
-  overlayCanvas: HTMLCanvasElement;
   debugRoot: HTMLElement;
   scenarioSelect: HTMLSelectElement;
   setPaused(paused: boolean): void;
@@ -209,28 +213,9 @@ interface FramePhysicsState {
   rayHits: readonly PhysicsRaycastBodyHit[];
 }
 
-interface DrawContext {
-  scenario: PhysicsScenarioEntry;
-  spec: ResolvedPhysicsSpec;
-  debugOptions: PhysicsDebugOptions;
-  frameState: FramePhysicsState;
-  selectedBodyId?: string;
-  queryTarget?: Point2;
-}
-
 interface Point2 {
   x: number;
   y: number;
-}
-
-interface ScreenMapper {
-  width: number;
-  height: number;
-  scaleX: number;
-  scaleY: number;
-  worldToScreen(point: Point2): Point2;
-  screenToWorld(point: Point2): Point2;
-  worldLength(value: number): number;
 }
 
 const CATALOG_PATH = "catalog.json";
@@ -271,6 +256,18 @@ const EMPTY_FRAME_PHYSICS_STATE: FramePhysicsState = Object.freeze({
   rayHits: Object.freeze([]),
 });
 const DEFAULT_CAMERA: PhysicsScenarioCamera = Object.freeze({ x: 0, y: 0, width: 800, height: 480 });
+const DEBUG_FONT_ID = 33;
+const BODY_LABEL_TEXT_ID_BASE = 1_000;
+const SLEEP_LABEL_TEXT_ID_BASE = 10_000;
+const DEBUG_FONT_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_./:>?";
+const DEBUG_FONT_COLUMNS = 16;
+const DEBUG_FONT_CELL_WIDTH = 12;
+const DEBUG_FONT_CELL_HEIGHT = 16;
+const DEBUG_FONT_ATLAS = createDebugFontAtlas();
+const QUERY_COLOR = [0.47, 0.66, 1, 0.96] as const;
+const QUERY_HIT_COLOR = [1, 1, 1, 1] as const;
+const VELOCITY_COLOR = [0.45, 0.86, 0.62, 1] as const;
+const SELECTION_COLOR = [0.94, 0.72, 0.37, 1] as const;
 const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
 const MATERIAL_LABELS: Record<string, string> = Object.freeze({
   metal: "금속",
@@ -282,6 +279,35 @@ const MATERIAL_CONTROL_RANGES: Record<MaterialControlField, { min: number; max: 
   friction: { min: 0, max: 1.2, step: 0.02 },
   restitution: { min: 0, max: 1, step: 0.01 },
 });
+
+function createDebugFontAtlas(): BitmapFontAtlasSpec {
+  const glyphs: Record<string, BitmapFontAtlasSpec["glyphs"][string]> = {};
+  for (const [index, character] of [...DEBUG_FONT_CHARACTERS].entries()) {
+    const column = index % DEBUG_FONT_COLUMNS;
+    const row = Math.floor(index / DEBUG_FONT_COLUMNS);
+    const isSpace = character === " ";
+    glyphs[character] = {
+      uv: {
+        u0: column / DEBUG_FONT_COLUMNS,
+        v0: row / 3,
+        u1: (column + 1) / DEBUG_FONT_COLUMNS,
+        v1: (row + 1) / 3,
+      },
+      size: {
+        width: isSpace ? 0 : DEBUG_FONT_CELL_WIDTH,
+        height: isSpace ? 0 : DEBUG_FONT_CELL_HEIGHT,
+      },
+      advance: DEBUG_FONT_CELL_WIDTH,
+    };
+  }
+  return {
+    format: "ferrum-bitmap-font",
+    version: 1,
+    lineHeight: DEBUG_FONT_CELL_HEIGHT,
+    fallback: "?",
+    glyphs,
+  };
+}
 
 function publicAssetUrl(path: string): string {
   return `${import.meta.env.BASE_URL}${path}`;
@@ -346,7 +372,6 @@ function createShell(
   const canvasPanel = document.createElement("section");
   const canvasStack = document.createElement("div");
   const canvas = document.createElement("canvas");
-  const overlayCanvas = document.createElement("canvas");
   const canvasHud = document.createElement("div");
   const canvasTitle = document.createElement("span");
   const canvasSignal = document.createElement("span");
@@ -409,7 +434,6 @@ function createShell(
   canvasPanel.className = "canvas-panel";
   canvasStack.className = "canvas-stack";
   canvas.className = "physics-canvas";
-  overlayCanvas.className = "physics-overlay";
   canvasHud.className = "canvas-hud";
   canvasTitle.className = "canvas-hud-label";
   canvasSignal.className = "canvas-hud-label";
@@ -440,8 +464,6 @@ function createShell(
   eventTitle.textContent = "물리 신호";
   canvas.width = 800;
   canvas.height = 480;
-  overlayCanvas.width = 800;
-  overlayCanvas.height = 480;
   canvasTitle.textContent = STATUS_LABELS.loading;
   canvasSignal.textContent = "접촉 0";
   errorBox.hidden = true;
@@ -508,7 +530,7 @@ function createShell(
   titleBlock.append(titleRow, summary);
   header.append(titleBlock, toolbar);
   canvasHud.append(canvasTitle, canvasSignal);
-  canvasStack.append(canvas, overlayCanvas, canvasHud);
+  canvasStack.append(canvas, canvasHud);
   canvasPanel.append(canvasStack, debugControls, materialPanel, actionPanel, selectedPanel);
   actionPanel.append(actionTitle, actionButtons);
   materialPanel.append(materialTitle, materialControls);
@@ -522,7 +544,6 @@ function createShell(
 
   return {
     canvas,
-    overlayCanvas,
     debugRoot,
     scenarioSelect,
     setPaused(paused) {
@@ -564,10 +585,10 @@ function createShell(
       jointValue.textContent = formatCount(metrics.jointCount);
       contactValue.textContent = formatCount(metrics.contactCount);
       queryValue.textContent = formatCount(metrics.queryHitCount);
-      lineValue.textContent = formatCount(metrics.debugLineCount);
+      lineValue.textContent = `${formatCount(metrics.debugLineCount)} (+${formatCount(metrics.customDebugLineCount)} gizmo)`;
       fpsValue.textContent = metrics.fps.toFixed(1);
       frameValue.textContent = formatCount(metrics.frameCount);
-      commandValue.textContent = formatCount(metrics.renderCommandCount);
+      commandValue.textContent = `${formatCount(metrics.renderCommandCount)} / text ${formatCount(metrics.worldTextCount)}`;
       canvasSignal.textContent = `접촉 ${formatCount(metrics.contactCount)} / 쿼리 ${formatCount(metrics.queryHitCount)}`;
     },
     setActions(actions) {
@@ -877,13 +898,16 @@ async function bootstrap(): Promise<void> {
     : "development";
   const preserveDrawingBuffer = searchParams.get("preserveDrawingBuffer") === "true";
   const profilerSmoke = searchParams.get("profilerSmoke") === "true";
+  const physicsDebugLinesEnabled = searchParams.get("physicsDebugLines") !== "false";
   const catalog = await loadCatalog();
   const initialScenario = scenarioById(catalog, searchParams.get("demo") ?? DEFAULT_SCENARIO_ID);
-  let debugOptions: PhysicsDebugOptions = {
-    ...DEFAULT_DEBUG_OPTIONS,
-    ...initialScenario.defaultDebug,
-    broadphase: searchParams.get("broadphase") === "true" || initialScenario.defaultDebug?.broadphase === true,
-  };
+  let debugOptions: PhysicsDebugOptions = physicsDebugLinesEnabled
+    ? {
+        ...DEFAULT_DEBUG_OPTIONS,
+        ...initialScenario.defaultDebug,
+        broadphase: searchParams.get("broadphase") === "true" || initialScenario.defaultDebug?.broadphase === true,
+      }
+    : {};
 
   let runtime: FerrumRuntime | undefined;
   let currentWorld: PhysicsWorldApplyResult | undefined;
@@ -895,6 +919,8 @@ async function bootstrap(): Promise<void> {
   let frameCount = 0;
   let selectedBodyId: string | undefined;
   let queryTarget: Point2 | undefined = queryTargetFromScenario(initialScenario);
+  const debugGizmoWriter = new DebugGizmoLineBufferWriter();
+  const sleepingLabels = new Map<string, string>();
 
   const shell = createShell(
     catalog.scenarios,
@@ -929,21 +955,37 @@ async function bootstrap(): Promise<void> {
     (options) => {
       debugOptions = { ...options };
       runtime?.engine.setPhysicsDebugLinesEnabled(debugOptions);
+      refreshWorldTextLabels();
     },
     debugOptions,
   );
 
-  shell.overlayCanvas.addEventListener("pointermove", (event) => {
-    queryTarget = screenEventToWorld(event, shell.overlayCanvas, cameraForScenario(currentScenario));
+  shell.canvas.addEventListener("pointermove", (event) => {
+    queryTarget = screenEventToWorld(event, shell.canvas, cameraForScenario(currentScenario));
   });
-  shell.overlayCanvas.addEventListener("click", (event) => {
-    const point = screenEventToWorld(event, shell.overlayCanvas, cameraForScenario(currentScenario));
+  shell.canvas.addEventListener("click", (event) => {
+    const point = screenEventToWorld(event, shell.canvas, cameraForScenario(currentScenario));
     const hit = runtime?.engine.queryNearestBody({ x: point.x, y: point.y, maxDistance: 54 });
     selectedBodyId = hit === undefined ? undefined : currentFramePhysicsState.bodyIdsByEntityKey.get(
       entityKey({ entityId: hit.entityId, entityGeneration: hit.entityGeneration }),
     );
+    refreshWorldTextLabels();
     shell.setSelectedBody(selectedBodyReport(currentScenario, currentSpec, currentFramePhysicsState, selectedBodyId));
   });
+
+  function refreshWorldTextLabels(): void {
+    if (!runtime || !currentWorld || !currentSpec) return;
+    syncScenarioWorldTexts(
+      runtime.engine,
+      currentScenario,
+      currentSpec,
+      currentWorld,
+      currentFramePhysicsState,
+      selectedBodyId,
+      debugOptions,
+      sleepingLabels,
+    );
+  }
 
   async function loadScenario(id: string): Promise<void> {
     const scenario = scenarioById(catalog, id);
@@ -968,12 +1010,15 @@ async function bootstrap(): Promise<void> {
         ?? Object.keys(currentWorld.bodies)[0];
       queryTarget = queryTargetFromScenario(scenario);
       frameCount = 0;
-      debugOptions = sanitizeDebugOptionsForScenario(
-        scenario,
-        resolved,
-        { ...DEFAULT_DEBUG_OPTIONS, ...scenario.defaultDebug },
-      );
+      debugOptions = physicsDebugLinesEnabled
+        ? sanitizeDebugOptionsForScenario(
+            scenario,
+            resolved,
+            { ...DEFAULT_DEBUG_OPTIONS, ...scenario.defaultDebug },
+          )
+        : {};
       runtime.engine.setPhysicsDebugLinesEnabled(debugOptions);
+      refreshWorldTextLabels();
       shell.setScenario(scenario, resolved, currentWorld, debugOptions);
       shell.setActions(scenario.controls?.actions ?? []);
       shell.setMaterialControls(materialControlEntries(resolved));
@@ -1041,15 +1086,26 @@ async function bootstrap(): Promise<void> {
     debug: searchParams.get("debug") === "true"
       ? { enabled: true, layout: "inline" }
       : false,
-    physicsDebugLines: debugOptions,
+    physicsDebugLines: physicsDebugLinesEnabled ? debugOptions : false,
+    physicsDebugLineComposer: physicsDebugLinesEnabled
+      ? (baseLines) => composePhysicsSandboxDebugLines(
+          debugGizmoWriter,
+          baseLines,
+          currentScenario,
+          currentFramePhysicsState,
+          selectedBodyId,
+          queryTarget,
+          debugOptions,
+        )
+      : undefined,
     physicsMode: "rigid",
     profiler: profilerSmoke,
     environment,
     autostart: false,
     webgl2: { clearColor: [0.05, 0.07, 0.06, 1], preserveDrawingBuffer },
     engine: {
-      enablePhysicsDebugLines: debugOptions,
-      includePhysicsDebugLines: true,
+      enablePhysicsDebugLines: physicsDebugLinesEnabled ? debugOptions : false,
+      includePhysicsDebugLines: physicsDebugLinesEnabled,
       physicsDebugOptions: debugOptions,
     },
     onFrame: ({ frame, rendererStats, fps }) => {
@@ -1069,22 +1125,29 @@ async function bootstrap(): Promise<void> {
         currentScenario,
         queryTarget,
       );
-      if (currentSpec) {
-        drawPhysicsShowcase(shell.overlayCanvas, {
-          scenario: currentScenario,
-          spec: currentSpec,
+      if (runtime && currentWorld && currentSpec) {
+        updateSleepingWorldTexts(
+          runtime.engine,
+          currentSpec,
+          currentWorld,
+          currentFramePhysicsState,
           debugOptions,
-          frameState: currentFramePhysicsState,
-          selectedBodyId,
-          queryTarget,
-        });
+          sleepingLabels,
+        );
       }
 
       const debugLineCount = rendererStats.physicsDebugLineCount || frame.physicsDebugLineBuffer.lineCount;
+      const customDebugLineCount = Math.max(
+        0,
+        debugGizmoWriter.bufferView().lineCount - frame.physicsDebugLineBuffer.lineCount,
+      );
+      const worldTextCount = runtime?.engine.worldTextCount() ?? 0;
       const metrics: SandboxRuntimeMetrics = {
         bodyCount: currentWorld?.bodyCount ?? 0,
         jointCount: currentWorld?.jointCount ?? 0,
         debugLineCount,
+        customDebugLineCount,
+        worldTextCount,
         fps,
         frameCount,
         entityCount: frame.entityCount,
@@ -1106,6 +1169,8 @@ async function bootstrap(): Promise<void> {
         entityCount: frame.entityCount,
         renderCommandCount: rendererStats.renderCommandCount,
         physicsDebugLineCount: debugLineCount,
+        customDebugLineCount,
+        worldTextCount,
         fixedStepSeconds: currentSpec?.solver.stepSeconds ?? 0,
         frameCount,
         visibleBodyCount: metrics.visibleBodyCount,
@@ -1122,6 +1187,11 @@ async function bootstrap(): Promise<void> {
   sandboxWindow.ferrumRuntime = runtime;
   sandboxWindow.ferrumPhysicsSandboxLoadDemo = loadScenario;
 
+  await runtime.engine.loadBitmapFont(DEBUG_FONT_ID, {
+    image: publicAssetUrl("assets/debug-font.png"),
+    data: DEBUG_FONT_ATLAS,
+    family: "Ferrum Debug",
+  });
   await loadScenario(initialScenario.id);
   runtime.start();
 
@@ -1178,426 +1248,171 @@ function resetBodyRotationFromSpec(
   engine.setPhysicsBodyAngularVelocity(handle, body.angularVelocityRadiansPerSecond);
 }
 
-function drawPhysicsShowcase(canvas: HTMLCanvasElement, context: DrawContext): void {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  const mapper = resizeOverlayCanvas(canvas, cameraForScenario(context.scenario));
-  ctx.clearRect(0, 0, mapper.width, mapper.height);
-  drawGrid(ctx, mapper);
-  drawQuery(ctx, mapper, context);
-  if (context.debugOptions.joints) {
-    drawJoints(ctx, mapper, context);
-  }
-  if (context.debugOptions.colliders) {
-    drawBodies(ctx, mapper, context);
-  }
-  if (context.debugOptions.sleeping) {
-    drawSleepingMarkers(ctx, mapper, context);
-  }
-  if (context.debugOptions.contacts || context.debugOptions.manifolds) {
-    drawContacts(ctx, mapper, context.frameState);
-  }
-}
+function composePhysicsSandboxDebugLines(
+  writer: DebugGizmoLineBufferWriter,
+  baseLines: PhysicsDebugLineBufferView,
+  scenario: PhysicsScenarioEntry,
+  frameState: FramePhysicsState,
+  selectedBodyId: string | undefined,
+  queryTarget: Point2 | undefined,
+  debugOptions: PhysicsDebugOptions,
+): PhysicsDebugLineBufferView {
+  writer.reset().appendBuffer(baseLines);
 
-function resizeOverlayCanvas(canvas: HTMLCanvasElement, camera: PhysicsScenarioCamera): ScreenMapper {
-  const width = Math.max(1, canvas.clientWidth || 800);
-  const height = Math.max(1, canvas.clientHeight || 480);
-  const dpr = window.devicePixelRatio || 1;
-  const targetWidth = Math.max(1, Math.floor(width * dpr));
-  const targetHeight = Math.max(1, Math.floor(height * dpr));
-  if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
-    canvas.width = targetWidth;
-    canvas.height = targetHeight;
+  if (scenario.query) {
+    const origin = { x: scenario.query.origin[0], y: scenario.query.origin[1] };
+    const target = queryTarget ?? { x: scenario.query.target[0], y: scenario.query.target[1] };
+    writer
+      .arrow(origin, target, QUERY_COLOR, { headLength: 14 })
+      .circle(origin, 5, QUERY_COLOR, 12);
+    for (const hit of frameState.rayHits.slice(0, 4)) {
+      const point = { x: hit.pointX, y: hit.pointY };
+      writer
+        .circle(point, 5, QUERY_HIT_COLOR, 12)
+        .arrow(point, {
+          x: point.x + hit.normalX * 24,
+          y: point.y + hit.normalY * 24,
+        }, QUERY_HIT_COLOR, { headLength: 6 });
+    }
   }
-  const ctx = canvas.getContext("2d");
-  ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const scaleX = width / camera.width;
-  const scaleY = height / camera.height;
-  return {
-    width,
-    height,
-    scaleX,
-    scaleY,
-    worldToScreen(point) {
-      return {
-        x: (point.x - camera.x) * scaleX,
-        y: (point.y - camera.y) * scaleY,
-      };
-    },
-    screenToWorld(point) {
-      return {
-        x: point.x / scaleX + camera.x,
-        y: point.y / scaleY + camera.y,
-      };
-    },
-    worldLength(value) {
-      return value * ((scaleX + scaleY) * 0.5);
-    },
-  };
-}
 
-function drawGrid(ctx: CanvasRenderingContext2D, mapper: ScreenMapper): void {
-  ctx.save();
-  ctx.fillStyle = "#0f1513";
-  ctx.fillRect(0, 0, mapper.width, mapper.height);
-  ctx.strokeStyle = "rgba(137, 166, 148, 0.12)";
-  ctx.lineWidth = 1;
-  for (let x = 0; x <= mapper.width; x += Math.max(20, mapper.worldLength(40))) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, mapper.height);
-    ctx.stroke();
-  }
-  for (let y = 0; y <= mapper.height; y += Math.max(20, mapper.worldLength(40))) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(mapper.width, y);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawBodies(ctx: CanvasRenderingContext2D, mapper: ScreenMapper, context: DrawContext): void {
-  const sortedBodies = Object.values(context.spec.bodies).sort((a, b) => bodySortWeight(a) - bodySortWeight(b));
-  for (const body of sortedBodies) {
-    const state = context.frameState.bodyStatesById.get(body.id);
-    if (!state) continue;
-    const style = bodyStyle(context.scenario, body);
-    const selected = context.selectedBodyId === body.id;
-    for (const [colliderIndex, collider] of body.colliders.entries()) {
-      drawCollider(ctx, mapper, body, collider, state, {
-        fill: collider.trigger ? "rgba(120, 169, 255, 0.16)" : style.fill,
-        stroke: selected ? "#ffffff" : collider.trigger ? "#78a9ff" : style.stroke,
-        lineWidth: selected ? 3 : collider.trigger ? 2 : 1.5,
-        dashed: collider.trigger,
-      });
-      if (selected && colliderIndex === 0) {
-        drawVelocity(ctx, mapper, state);
+  if (debugOptions.colliders) {
+    for (const [bodyId, state] of frameState.bodyStatesById) {
+      const isFocused = scenario.focusBodies?.includes(bodyId) === true;
+      const isSelected = bodyId === selectedBodyId;
+      if (state.bodyType !== "static" && (isFocused || isSelected)) {
+        const speed = Math.hypot(state.velocityX, state.velocityY);
+        if (speed >= 0.1) {
+          const scale = Math.min(0.18, 42 / speed);
+          writer.arrow(
+            { x: state.x, y: state.y },
+            {
+              x: state.x + state.velocityX * scale,
+              y: state.y + state.velocityY * scale,
+            },
+            VELOCITY_COLOR,
+          );
+        }
+      }
+      if (isSelected) {
+        writer.circle({ x: state.x, y: state.y }, 30, SELECTION_COLOR, 24);
       }
     }
-    if (shouldLabelBody(context.scenario, body, selected)) {
-      drawBodyLabel(ctx, mapper, body, state, style.label);
+  }
+
+  return writer.bufferView();
+}
+
+function syncScenarioWorldTexts(
+  engine: FerrumEngine,
+  scenario: PhysicsScenarioEntry,
+  spec: ResolvedPhysicsSpec,
+  world: PhysicsWorldApplyResult,
+  frameState: FramePhysicsState,
+  selectedBodyId: string | undefined,
+  debugOptions: PhysicsDebugOptions,
+  sleepingLabels: Map<string, string>,
+): void {
+  engine.clearWorldTexts();
+  sleepingLabels.clear();
+  for (const [index, body] of Object.values(spec.bodies).entries()) {
+    const handle = world.bodies[body.id];
+    if (!handle) continue;
+    const isSelected = body.id === selectedBodyId;
+    if (shouldLabelBody(scenario, body, isSelected)) {
+      engine.setWorldText(BODY_LABEL_TEXT_ID_BASE + index, {
+        fontId: DEBUG_FONT_ID,
+        text: debugBodyLabel(scenario, body, isSelected),
+        x: 0,
+        y: -36,
+        scale: 0.75,
+        color: debugBodyLabelColor(body, isSelected),
+        alignment: "center",
+        renderLayer: 100,
+        anchor: handle,
+      });
+    }
+    const state = frameState.bodyStatesById.get(body.id);
+    if (debugOptions.sleeping && body.type !== "static" && body.canSleep && state) {
+      setSleepingWorldText(engine, SLEEP_LABEL_TEXT_ID_BASE + index, body.id, handle, state, sleepingLabels);
     }
   }
 }
 
-function drawCollider(
-  ctx: CanvasRenderingContext2D,
-  mapper: ScreenMapper,
-  body: ResolvedPhysicsBodySpec,
-  collider: ResolvedPhysicsColliderSpec,
-  state: PhysicsEntitySnapshot,
-  style: { fill: string; stroke: string; lineWidth: number; dashed?: boolean },
+function updateSleepingWorldTexts(
+  engine: FerrumEngine,
+  spec: ResolvedPhysicsSpec,
+  world: PhysicsWorldApplyResult,
+  frameState: FramePhysicsState,
+  debugOptions: PhysicsDebugOptions,
+  sleepingLabels: Map<string, string>,
 ): void {
-  ctx.save();
-  ctx.fillStyle = style.fill;
-  ctx.strokeStyle = style.stroke;
-  ctx.lineWidth = style.lineWidth;
-  ctx.setLineDash(style.dashed ? [6, 4] : []);
-  switch (collider.shape) {
-    case "aabb":
-    case "box":
-      drawPolygon(ctx, mapper, boxVertices(state, collider, 0), true);
-      break;
-    case "orientedBox":
-      drawPolygon(ctx, mapper, boxVertices(state, collider, collider.rotationRadians), true);
-      break;
-    case "circle":
-      drawCircle(ctx, mapper, colliderCenter(state, collider), collider.radius);
-      break;
-    case "capsule":
-      drawCapsule(ctx, mapper, state, collider);
-      break;
-    case "convexPolygon":
-      drawPolygon(ctx, mapper, collider.vertices.map((vertex) => colliderLocalPoint(state, collider, vertex.x, vertex.y)), true);
-      break;
-    case "edge":
-      drawPolyline(ctx, mapper, [
-        colliderLocalPoint(state, collider, collider.startX, collider.startY),
-        colliderLocalPoint(state, collider, collider.endX, collider.endY),
-      ], false);
-      break;
-    case "chain":
-      drawPolyline(ctx, mapper, collider.vertices.map((vertex) => colliderLocalPoint(state, collider, vertex.x, vertex.y)), collider.loop);
-      break;
-  }
-  if (body.type === "static") {
-    ctx.globalAlpha = 0.5;
-  }
-  ctx.restore();
-}
-
-function drawPolygon(
-  ctx: CanvasRenderingContext2D,
-  mapper: ScreenMapper,
-  points: readonly Point2[],
-  close: boolean,
-): void {
-  if (points.length === 0) return;
-  ctx.beginPath();
-  const first = mapper.worldToScreen(points[0]);
-  ctx.moveTo(first.x, first.y);
-  for (const point of points.slice(1)) {
-    const screen = mapper.worldToScreen(point);
-    ctx.lineTo(screen.x, screen.y);
-  }
-  if (close) ctx.closePath();
-  if (close) ctx.fill();
-  ctx.stroke();
-}
-
-function drawPolyline(
-  ctx: CanvasRenderingContext2D,
-  mapper: ScreenMapper,
-  points: readonly Point2[],
-  close: boolean,
-): void {
-  ctx.save();
-  ctx.lineWidth = Math.max(2, ctx.lineWidth);
-  drawPolygon(ctx, mapper, points, close);
-  ctx.restore();
-}
-
-function drawCircle(ctx: CanvasRenderingContext2D, mapper: ScreenMapper, center: Point2, radius: number): void {
-  const screen = mapper.worldToScreen(center);
-  ctx.beginPath();
-  ctx.arc(screen.x, screen.y, Math.max(2, mapper.worldLength(radius)), 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-}
-
-function drawCapsule(
-  ctx: CanvasRenderingContext2D,
-  mapper: ScreenMapper,
-  state: PhysicsEntitySnapshot,
-  collider: Extract<ResolvedPhysicsColliderSpec, { shape: "capsule" }>,
-): void {
-  const start = colliderLocalPoint(state, collider, collider.startX, collider.startY);
-  const end = colliderLocalPoint(state, collider, collider.endX, collider.endY);
-  const startScreen = mapper.worldToScreen(start);
-  const endScreen = mapper.worldToScreen(end);
-  const radius = Math.max(2, mapper.worldLength(collider.radius));
-  const angle = Math.atan2(endScreen.y - startScreen.y, endScreen.x - startScreen.x);
-  const normal = { x: Math.cos(angle + Math.PI * 0.5) * radius, y: Math.sin(angle + Math.PI * 0.5) * radius };
-  ctx.beginPath();
-  ctx.moveTo(startScreen.x + normal.x, startScreen.y + normal.y);
-  ctx.lineTo(endScreen.x + normal.x, endScreen.y + normal.y);
-  ctx.arc(endScreen.x, endScreen.y, radius, angle + Math.PI * 0.5, angle - Math.PI * 0.5);
-  ctx.lineTo(startScreen.x - normal.x, startScreen.y - normal.y);
-  ctx.arc(startScreen.x, startScreen.y, radius, angle - Math.PI * 0.5, angle + Math.PI * 0.5);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-}
-
-function drawJoints(ctx: CanvasRenderingContext2D, mapper: ScreenMapper, context: DrawContext): void {
-  ctx.save();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = "rgba(240, 183, 95, 0.9)";
-  ctx.fillStyle = "#f0b75f";
-  for (const joint of Object.values(context.spec.joints)) {
-    const endpoints = jointEndpoints(joint, context.frameState);
-    if (!endpoints) continue;
-    const a = mapper.worldToScreen(endpoints.a);
-    const b = mapper.worldToScreen(endpoints.b);
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(a.x, a.y, 4, 0, Math.PI * 2);
-    ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
-    ctx.fill();
-    const mid = { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
-    ctx.fillStyle = "rgba(255, 244, 216, 0.92)";
-    ctx.font = "11px system-ui";
-    ctx.fillText(joint.type, mid.x + 6, mid.y - 6);
-    ctx.fillStyle = "#f0b75f";
-  }
-  ctx.restore();
-}
-
-function drawSleepingMarkers(ctx: CanvasRenderingContext2D, mapper: ScreenMapper, context: DrawContext): void {
-  ctx.save();
-  ctx.font = "11px system-ui";
-  ctx.textBaseline = "middle";
-  for (const body of Object.values(context.spec.bodies)) {
+  if (!debugOptions.sleeping) return;
+  for (const [index, body] of Object.values(spec.bodies).entries()) {
     if (body.type === "static" || !body.canSleep) continue;
-    const state = context.frameState.bodyStatesById.get(body.id);
-    if (!state) continue;
-    const center = mapper.worldToScreen({ x: state.x, y: state.y });
-    const status = sleepingMarkerStatus(state);
-    const text = status.label;
-    const width = ctx.measureText(text).width + 16;
-    const markerX = center.x + 12;
-    const markerY = center.y - 10;
-    ctx.fillStyle = status.fill;
-    ctx.strokeStyle = status.stroke;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.roundRect(markerX, markerY, width, 20, 5);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = status.text;
-    ctx.textAlign = "center";
-    ctx.fillText(text, markerX + width * 0.5, markerY + 10);
+    const handle = world.bodies[body.id];
+    const state = frameState.bodyStatesById.get(body.id);
+    if (!handle || !state) continue;
+    setSleepingWorldText(engine, SLEEP_LABEL_TEXT_ID_BASE + index, body.id, handle, state, sleepingLabels);
   }
-  ctx.restore();
 }
 
-function sleepingMarkerStatus(state: PhysicsEntitySnapshot): { label: string; fill: string; stroke: string; text: string } {
+function setSleepingWorldText(
+  engine: FerrumEngine,
+  textId: number,
+  bodyId: string,
+  handle: PhysicsEntityHandle,
+  state: PhysicsEntitySnapshot,
+  sleepingLabels: Map<string, string>,
+): void {
+  const status = sleepingWorldTextStatus(state);
+  if (sleepingLabels.get(bodyId) === status.text) return;
+  if (engine.setWorldText(textId, {
+    fontId: DEBUG_FONT_ID,
+    text: status.text,
+    x: 0,
+    y: 12,
+    scale: 0.65,
+    color: status.color,
+    alignment: "center",
+    renderLayer: 101,
+    anchor: handle,
+  })) {
+    sleepingLabels.set(bodyId, status.text);
+  }
+}
+
+function sleepingWorldTextStatus(
+  state: PhysicsEntitySnapshot,
+): { text: string; color: readonly [number, number, number, number] } {
   if (state.isSleeping) {
-    return {
-      label: "휴면",
-      fill: "rgba(120, 169, 255, 0.9)",
-      stroke: "rgba(255, 255, 255, 0.72)",
-      text: "#0f1513",
-    };
+    return { text: "SLEEP", color: [0.59, 0.84, 1, 1] };
   }
   const sleepReady = Math.hypot(state.velocityX, state.velocityY) <= 0.05
     && Math.abs(state.angularVelocityRadiansPerSecond) <= 0.05;
-  if (sleepReady) {
-    return {
-      label: "휴면 대기",
-      fill: "rgba(43, 64, 95, 0.88)",
-      stroke: "rgba(120, 169, 255, 0.82)",
-      text: "#e7efff",
-    };
-  }
-  return {
-    label: "활성",
-    fill: "rgba(15, 21, 19, 0.82)",
-    stroke: "rgba(240, 183, 95, 0.9)",
-    text: "#ffe3ad",
-  };
+  return sleepReady
+    ? { text: "READY", color: [0.47, 0.66, 1, 1] }
+    : { text: "ACTIVE", color: [0.94, 0.72, 0.37, 1] };
 }
 
-function drawContacts(ctx: CanvasRenderingContext2D, mapper: ScreenMapper, frameState: FramePhysicsState): void {
-  ctx.save();
-  for (const manifold of frameState.manifolds.slice(0, 24)) {
-    for (const point of manifold.points) {
-      const screen = mapper.worldToScreen({ x: point.pointX, y: point.pointY });
-      const normalEnd = {
-        x: screen.x + manifold.normalX * 28,
-        y: screen.y + manifold.normalY * 28,
-      };
-      ctx.strokeStyle = "rgba(255, 205, 154, 0.95)";
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.moveTo(screen.x, screen.y);
-      ctx.lineTo(normalEnd.x, normalEnd.y);
-      ctx.stroke();
-      drawArrowHead(ctx, screen, normalEnd, "#ffcd9a");
-      ctx.fillStyle = "#ff9b76";
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.82)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(screen.x, screen.y, 6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
-  }
-  ctx.restore();
-}
-
-function drawArrowHead(ctx: CanvasRenderingContext2D, start: Point2, end: Point2, color: string): void {
-  const angle = Math.atan2(end.y - start.y, end.x - start.x);
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.moveTo(end.x, end.y);
-  ctx.lineTo(end.x - Math.cos(angle - 0.45) * 8, end.y - Math.sin(angle - 0.45) * 8);
-  ctx.lineTo(end.x - Math.cos(angle + 0.45) * 8, end.y - Math.sin(angle + 0.45) * 8);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawQuery(ctx: CanvasRenderingContext2D, mapper: ScreenMapper, context: DrawContext): void {
-  const query = context.scenario.query;
-  if (!query) return;
-  const origin = { x: query.origin[0], y: query.origin[1] };
-  const target = context.queryTarget ?? { x: query.target[0], y: query.target[1] };
-  const originScreen = mapper.worldToScreen(origin);
-  const targetScreen = mapper.worldToScreen(target);
-  ctx.save();
-  ctx.strokeStyle = "rgba(120, 169, 255, 0.92)";
-  ctx.fillStyle = "#78a9ff";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(originScreen.x, originScreen.y);
-  ctx.lineTo(targetScreen.x, targetScreen.y);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(originScreen.x, originScreen.y, 5, 0, Math.PI * 2);
-  ctx.fill();
-  for (const hit of context.frameState.rayHits.slice(0, 4)) {
-    const point = mapper.worldToScreen({ x: hit.pointX, y: hit.pointY });
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.moveTo(point.x, point.y);
-    ctx.lineTo(point.x + hit.normalX * 24, point.y + hit.normalY * 24);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawVelocity(ctx: CanvasRenderingContext2D, mapper: ScreenMapper, state: PhysicsEntitySnapshot): void {
-  const speed = Math.hypot(state.velocityX, state.velocityY);
-  if (speed < 0.1) return;
-  const start = mapper.worldToScreen({ x: state.x, y: state.y });
-  const scale = Math.min(0.18, 42 / speed);
-  const end = mapper.worldToScreen({
-    x: state.x + state.velocityX * scale,
-    y: state.y + state.velocityY * scale,
-  });
-  ctx.save();
-  ctx.strokeStyle = "#72dc9d";
-  ctx.fillStyle = "#72dc9d";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(start.x, start.y);
-  ctx.lineTo(end.x, end.y);
-  ctx.stroke();
-  const angle = Math.atan2(end.y - start.y, end.x - start.x);
-  ctx.beginPath();
-  ctx.moveTo(end.x, end.y);
-  ctx.lineTo(end.x - Math.cos(angle - 0.45) * 8, end.y - Math.sin(angle - 0.45) * 8);
-  ctx.lineTo(end.x - Math.cos(angle + 0.45) * 8, end.y - Math.sin(angle + 0.45) * 8);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawBodyLabel(
-  ctx: CanvasRenderingContext2D,
-  mapper: ScreenMapper,
+function debugBodyLabel(
+  scenario: PhysicsScenarioEntry,
   body: ResolvedPhysicsBodySpec,
-  state: PhysicsEntitySnapshot,
-  label?: string,
-): void {
-  const screen = mapper.worldToScreen({ x: state.x, y: state.y });
-  const text = label ?? body.id;
-  ctx.save();
-  ctx.font = "12px system-ui";
-  const width = ctx.measureText(text).width + 12;
-  ctx.fillStyle = "rgba(8, 12, 10, 0.78)";
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.roundRect(screen.x - width * 0.5, screen.y - 34, width, 22, 5);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "#f3f7f2";
-  ctx.textAlign = "center";
-  ctx.fillText(text, screen.x, screen.y - 19);
-  ctx.restore();
+  selected: boolean,
+): string {
+  const label = scenario.bodyStyles?.[body.id]?.label ?? body.id;
+  return `${selected ? "> " : ""}${label}`.toUpperCase();
 }
 
+function debugBodyLabelColor(
+  body: ResolvedPhysicsBodySpec,
+  selected: boolean,
+): readonly [number, number, number, number] {
+  if (selected) return SELECTION_COLOR;
+  if (body.type === "static") return [0.8, 0.86, 0.82, 1];
+  if (body.type === "kinematic") return [0.47, 0.66, 1, 1];
+  return [0.45, 0.86, 0.62, 1];
+}
 function selectedBodyReport(
   scenario: PhysicsScenarioEntry,
   spec: ResolvedPhysicsSpec | undefined,
@@ -1644,64 +1459,6 @@ function frameEvents(scenario: PhysicsScenarioEntry, frameState: FramePhysicsSta
       : "레이캐스트: 맞은 물체 없음");
   }
   return events;
-}
-
-function boxVertices(
-  state: PhysicsEntitySnapshot,
-  collider: Extract<ResolvedPhysicsColliderSpec, { shape: "aabb" | "box" | "orientedBox" }>,
-  colliderRotation: number,
-): readonly Point2[] {
-  return [
-    colliderLocalPoint(state, collider, -collider.halfWidth, -collider.halfHeight, colliderRotation),
-    colliderLocalPoint(state, collider, collider.halfWidth, -collider.halfHeight, colliderRotation),
-    colliderLocalPoint(state, collider, collider.halfWidth, collider.halfHeight, colliderRotation),
-    colliderLocalPoint(state, collider, -collider.halfWidth, collider.halfHeight, colliderRotation),
-  ];
-}
-
-function colliderCenter(state: PhysicsEntitySnapshot, collider: ResolvedPhysicsColliderSpec): Point2 {
-  return localToWorld(state, collider.offsetX, collider.offsetY);
-}
-
-function colliderLocalPoint(
-  state: PhysicsEntitySnapshot,
-  collider: ResolvedPhysicsColliderSpec,
-  localX: number,
-  localY: number,
-  colliderRotation = collider.shape === "convexPolygon" ? collider.rotationRadians : 0,
-): Point2 {
-  const rotatedColliderPoint = rotatePoint(localX, localY, colliderRotation);
-  return localToWorld(
-    state,
-    collider.offsetX + rotatedColliderPoint.x,
-    collider.offsetY + rotatedColliderPoint.y,
-  );
-}
-
-function localToWorld(state: PhysicsEntitySnapshot, localX: number, localY: number): Point2 {
-  const rotated = rotatePoint(localX, localY, state.rotationRadians);
-  return { x: state.x + rotated.x, y: state.y + rotated.y };
-}
-
-function rotatePoint(x: number, y: number, radians: number): Point2 {
-  const cos = Math.cos(radians);
-  const sin = Math.sin(radians);
-  return { x: x * cos - y * sin, y: x * sin + y * cos };
-}
-
-function jointEndpoints(joint: ResolvedPhysicsJointSpec, frameState: FramePhysicsState): { a: Point2; b: Point2 } | undefined {
-  const stateA = frameState.bodyStatesById.get(joint.bodyA);
-  const stateB = frameState.bodyStatesById.get(joint.bodyB);
-  const a = stateA
-    ? localToWorld(stateA, joint.localAnchorAX, joint.localAnchorAY)
-    : { x: joint.anchorX || joint.groundAnchorAX, y: joint.anchorY || joint.groundAnchorAY };
-  const b = stateB
-    ? localToWorld(stateB, joint.localAnchorBX, joint.localAnchorBY)
-    : { x: joint.anchorX || joint.groundAnchorBX, y: joint.anchorY || joint.groundAnchorBY };
-  if (!Number.isFinite(a.x) || !Number.isFinite(a.y) || !Number.isFinite(b.x) || !Number.isFinite(b.y)) {
-    return undefined;
-  }
-  return { a, b };
 }
 
 function bodyStyle(
@@ -1757,34 +1514,19 @@ function queryTargetFromScenario(scenario: PhysicsScenarioEntry): Point2 | undef
   return scenario.query ? { x: scenario.query.target[0], y: scenario.query.target[1] } : undefined;
 }
 
-function screenEventToWorld(event: PointerEvent, canvas: HTMLCanvasElement, camera: PhysicsScenarioCamera): Point2 {
+function screenEventToWorld(
+  event: PointerEvent,
+  canvas: HTMLCanvasElement,
+  camera: PhysicsScenarioCamera,
+): Point2 {
   const rect = canvas.getBoundingClientRect();
-  const mapper = mapperForRect(rect, camera);
-  return mapper.screenToWorld({ x: event.clientX - rect.left, y: event.clientY - rect.top });
-}
-
-function mapperForRect(rect: DOMRect, camera: PhysicsScenarioCamera): ScreenMapper {
   const width = Math.max(1, rect.width);
   const height = Math.max(1, rect.height);
-  const scaleX = width / camera.width;
-  const scaleY = height / camera.height;
   return {
-    width,
-    height,
-    scaleX,
-    scaleY,
-    worldToScreen(point) {
-      return { x: (point.x - camera.x) * scaleX, y: (point.y - camera.y) * scaleY };
-    },
-    screenToWorld(point) {
-      return { x: point.x / scaleX + camera.x, y: point.y / scaleY + camera.y };
-    },
-    worldLength(value) {
-      return value * ((scaleX + scaleY) * 0.5);
-    },
+    x: ((event.clientX - rect.left) / width) * camera.width + camera.x,
+    y: ((event.clientY - rect.top) / height) * camera.height + camera.y,
   };
 }
-
 function entityKey(handle: Pick<PhysicsEntityHandle, "entityId" | "entityGeneration">): string {
   return `${handle.entityId}:${handle.entityGeneration}`;
 }

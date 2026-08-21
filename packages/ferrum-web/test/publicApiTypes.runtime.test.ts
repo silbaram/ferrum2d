@@ -95,6 +95,7 @@ import type {
   FerrumRuntimeLocalization,
   FerrumRuntimeLocalizationOptions,
   FerrumRuntimeOptions,
+  PhysicsDebugLineComposer,
   FerrumRuntimeRenderer,
   FerrumRuntimeSubtitleProvider,
   FixedTimestepOptions,
@@ -783,6 +784,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     PublicApi["tilemapLayerForLevelStreamingChunk"] =
       tilemapLayerForLevelStreamingChunk;
   const runtimeEnvironment: FerrumRuntimeEnvironment = "production";
+  const physicsDebugLineComposer: PhysicsDebugLineComposer = (lines) => lines;
   const runtimeEngineInstance = {} as FerrumEngine;
   const runtimeOptions: FerrumRuntimeOptions = {
     canvas: {} as HTMLCanvasElement,
@@ -805,6 +807,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     lighting: lightingSceneProvider,
     postProcess: postProcessProvider,
     physicsDebugLines: true,
+    physicsDebugLineComposer,
     physicsMode: "arcade",
     engine: options,
     onFrame: (runtimeFrame: FerrumRuntimeFrame) => {

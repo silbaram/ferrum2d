@@ -190,6 +190,8 @@ export {
 } from "../src/gameplayEventDecoder.js";
 export { decodePhysicsDebugLines } from "../src/physicsDebugLineDecoder.js";
 export {
+  DEBUG_GIZMO_MAX_LINES,
+  DebugGizmoLineBufferWriter,
   buildDebugGizmoLineBuffer,
   buildDebugGizmoLines,
   debugGizmoLinesToBuffer,
@@ -579,6 +581,7 @@ export type {
   AccessibilitySubtitlePanelOptions,
   AccessibilitySubtitleSpec,
   DebugGizmoBoundsSpec,
+  DebugGizmoArrowOptions,
   DebugGizmoCategory,
   DebugGizmoColor,
   DebugGizmoLine,
@@ -797,6 +800,7 @@ export type {
   PhysicsAabbTileObstacleManifoldQuery,
   PhysicsDebugLineCamera,
   PhysicsDebugOptions,
+  PhysicsDebugLineComposer,
   PhysicsDebugSpec,
   PhysicsFrameStats,
   PhysicsFloorId,
