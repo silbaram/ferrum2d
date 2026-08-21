@@ -39,7 +39,7 @@ runtime.engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });
 
 | Entry point | 용도 |
 | --- | --- |
-| `@ferrum2d/ferrum-web/core` | runtime, renderer, input/audio/asset, Physics Spec/API |
+| `@ferrum2d/ferrum-web/core` | runtime, renderer, input/audio/asset, Physics Spec/API, 순수 2D 기하 변환 helper |
 | `@ferrum2d/ferrum-web/authoring` | Scene Composition, Behavior Recipe, FSM, gameplay/physics authoring helper |
 | `@ferrum2d/ferrum-web/starter-scenes` | Shooter Game Spec, starter input profile, starter scene helper |
 | `@ferrum2d/ferrum-web/labs` | WebGPU, PixelMaskTerrain, lighting/material/VFX/atlas helper |
@@ -49,6 +49,10 @@ runtime.engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });
 `environment: "development"`에서는 DebugOverlay가 기본 활성화되고, `environment: "production"` 또는 생략 상태에서는 기본 비활성화된다. `debug: true` 또는 `debug: false`를 명시하면 environment 기본값보다 우선한다.
 
 기존 root aggregate import나 내부 `dist/*`, `pkg/*`, `src/*` import를 쓰는 프로젝트는 [Public API migration guide](https://github.com/silbaram/ferrum2d/blob/main/docs/engine/public-api/migration-guide.md)를 따라 목적별 subpath로 옮긴다.
+
+point/body local-world 변환과 collider reference point 계산은 `core`의
+`bodyLocalToWorld2D(...)`, `writePhysicsColliderWorldReferencePoints(...)` 등을 사용한다.
+좌표축과 collider별 회전 규칙은 [좌표계와 2D 기하 변환](https://github.com/silbaram/ferrum2d/blob/main/docs/engine/coordinate-system.md)을 따른다.
 
 ## 패키지 산출물
 

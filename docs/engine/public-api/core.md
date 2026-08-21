@@ -14,6 +14,8 @@ import {
   GAME_STATE_CODE,
   gameStateName,
   resolvePhysicsSpec,
+  bodyLocalToWorld2D,
+  writePhysicsColliderWorldReferencePoints,
   captureGameStateSnapshot,
 } from "@ferrum2d/ferrum-web/core";
 ```
@@ -206,6 +208,55 @@ Wasm 호출 전에 예외로 거부한다. TypeScript 검증을 통과했더라�
 변환 결과가 양수·finite가 아니거나 역수가 finite가 아니면 body 상태를 변경하지
 않고 `false`를 반환한다. bulk body snapshot restore도 dynamic body의
 mass/inertia에 같은 Rust 경계를 적용하고, 위반 시 `false`를 반환한다.
+
+## 2D 기하 변환
+
+Core subpath는 엔진 상태에 접근하지 않는 순수 기하 변환 helper를 제공한다.
+
+| API | 계약 |
+| --- | --- |
+| `rotatePoint2D(...)` | 원점 기준으로 점을 회전한다. |
+| `transformPoint2D(...)`, `inverseTransformPoint2D(...)` | scale → rotation → translation 합성과 그 역변환을 수행한다. |
+| `bodyLocalToWorld2D(...)`, `bodyWorldToLocal2D(...)` | body 원점 기준 local/world 점을 상호 변환한다. |
+| `physicsColliderWorldCenter2D(...)` | resolved AABB/box, circle, capsule, oriented box, convex polygon의 Rust 기준 world center를 계산한다. |
+| `physicsColliderWorldReferencePointCount(...)` | caller buffer에 필요한 point 개수를 반환한다. |
+| `writePhysicsColliderWorldReferencePoints(...)` | `[x0, y0, ...]` numeric buffer에 collider reference point를 기록한다. |
+
+```ts
+import {
+  bodyLocalToWorld2D,
+  physicsColliderWorldReferencePointCount,
+  writePhysicsColliderWorldReferencePoints,
+  type MutablePoint2D,
+  type PhysicsGeometryCollider2D,
+} from "@ferrum2d/ferrum-web/core";
+
+const body = { x: 320, y: 180, rotationRadians: Math.PI / 2 };
+const scratch: MutablePoint2D = { x: 0, y: 0 };
+bodyLocalToWorld2D({ x: 16, y: 0 }, body, scratch);
+
+const collider: PhysicsGeometryCollider2D = {
+  shape: "orientedBox",
+  halfWidth: 16,
+  halfHeight: 8,
+  rotationRadians: 0,
+  offsetX: 0,
+  offsetY: 0,
+  trigger: false,
+  enabled: true,
+};
+const points = new Float32Array(
+  physicsColliderWorldReferencePointCount(collider) * 2,
+);
+writePhysicsColliderWorldReferencePoints(collider, body, points);
+```
+
+단일 점 helper에 `out`을 넘기면 객체를 새로 만들지 않는다. collider helper는 caller가
+할당·재사용하는 buffer에 기록하며 point 객체 배열을 만들지 않는다. AABB/box는 world
+좌상단부터 시계 방향인 네 꼭짓점, oriented box는 local 좌상단부터 시계 방향인 꼭짓점을
+world로 변환한 순서, circle은 중심 한 점, capsule은 start/end, convex polygon은 authored
+vertex 순서를 반환한다. 좌표축, anchor, 회전 및 collider별 offset 규칙은
+[좌표계와 2D 기하 변환](../coordinate-system.md)을 기준으로 한다.
 
 ## Snapshot And Buffer Decoder
 

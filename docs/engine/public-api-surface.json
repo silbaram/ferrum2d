@@ -19,6 +19,8 @@
         "WebGL2Renderer",
         "AudioManager",
         "resolvePhysicsSpec",
+        "bodyLocalToWorld2D",
+        "writePhysicsColliderWorldReferencePoints",
         "captureGameStateSnapshot",
         "resolveSceneAuthoringDocument",
         "resolveSceneCompositionSpec",
@@ -73,6 +75,8 @@
         "WebGL2Renderer",
         "AudioManager",
         "resolvePhysicsSpec",
+        "bodyLocalToWorld2D",
+        "writePhysicsColliderWorldReferencePoints",
         "captureGameStateSnapshot"
       ]
     },
