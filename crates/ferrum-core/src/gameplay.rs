@@ -28,6 +28,7 @@ mod lifecycle;
 mod movement;
 mod reactions;
 mod timers;
+mod variables;
 
 pub(crate) use actions::*;
 pub(crate) use behavior::*;
@@ -35,6 +36,7 @@ pub(crate) use lifecycle::*;
 pub(crate) use movement::*;
 pub(crate) use reactions::*;
 pub(crate) use timers::*;
+pub(crate) use variables::*;
 
 #[cfg(test)]
 mod tests;

@@ -2350,7 +2350,12 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(resolvedBehaviorStateMachine.initial, "idle");
   equal(resolvedBehaviorStateMachineState.behaviorRecipes[0], "enemy");
   equal(resolvedBehaviorStateMachineTransition.to, "alert");
-  equal(resolvedBehaviorStateMachinePredicate.actionId, 2);
+  equal(
+    resolvedBehaviorStateMachinePredicate.type === "gameplayEvent"
+      ? resolvedBehaviorStateMachinePredicate.actionId
+      : undefined,
+    2,
+  );
   equal(behaviorStateMachineCollisionEventKind, "collisionDamage");
   equal(behaviorStateMachinePickupEventKind, "pickupCollected");
   equal(

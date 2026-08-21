@@ -2,6 +2,7 @@ import { gameplayAuthoringDiagnosticError } from "./diagnostics.js";
 import type { FerrumEngine } from "./engineTypes.js";
 
 export const DATA_SCENE_VARIABLES_SNAPSHOT_KEY = "ferrum2d.variables" as const;
+export const DATA_SCENE_RUNTIME_MAX_VARIABLES = 64 as const;
 
 export type DataSceneVariableScope = "global" | "scene";
 export type DataSceneVariableType = "integer" | "real" | "bool";
@@ -37,18 +38,45 @@ interface MutableDataSceneVariableStore extends DataSceneVariableStore {
   reapply(
     declarations: readonly ResolvedDataSceneVariableDeclaration[],
     path: string,
+    ids: Readonly<Record<string, number>>,
   ): void;
+  runtimeSnapshot(): DataSceneVariableRuntimeSnapshot;
+  restoreRuntimeSnapshot(snapshot: DataSceneVariableRuntimeSnapshot, path: string): void;
 }
 
 interface DataSceneVariableEntry {
   declaration: ResolvedDataSceneVariableDeclaration;
-  value: DataSceneVariableValue;
+  slot: number;
+}
+
+export interface DataSceneVariableRuntimeSnapshot {
+  readonly path: string;
+  readonly entries: readonly {
+    readonly declaration: ResolvedDataSceneVariableDeclaration;
+    readonly slot: number;
+    readonly value: DataSceneVariableValue;
+  }[];
 }
 
 const DATA_SCENE_VARIABLE_STORE = Symbol("ferrum2d.dataSceneVariableStore");
+const DATA_SCENE_VARIABLE_RUNTIME_ENGINE_ADAPTER = Symbol("ferrum2d.dataSceneVariableRuntimeEngineAdapter");
 
 interface DataSceneVariableEngine {
   [DATA_SCENE_VARIABLE_STORE]?: MutableDataSceneVariableStore;
+  [DATA_SCENE_VARIABLE_RUNTIME_ENGINE_ADAPTER]?: DataSceneVariableRuntimeEngineAdapter;
+}
+
+export interface DataSceneVariableRuntimeEngineAdapter {
+  clear(): void;
+  configure(
+    slot: number,
+    type: DataSceneVariableType,
+    scope: DataSceneVariableScope,
+    defaultValue: DataSceneVariableValue,
+    value: DataSceneVariableValue,
+  ): boolean;
+  get(slot: number): number;
+  set(slot: number, value: DataSceneVariableValue): boolean;
 }
 
 export function resolveDataSceneVariableDeclarations(
@@ -64,7 +92,7 @@ export function resolveDataSceneVariableDeclarations(
   }
 
   const seen = new Map<string, number>();
-  return input.map((entry, index) => {
+  const declarations = input.map((entry, index) => {
     const entryPath = `${path}.${index}`;
     if (!isRecord(entry)) {
       throw gameplayAuthoringDiagnosticError(entryPath, "must be an object");
@@ -83,27 +111,169 @@ export function resolveDataSceneVariableDeclarations(
     const type = variableType(entry.type, `${entryPath}.type`);
     return resolvedVariableDeclaration(name, scope, type, entry.default, `${entryPath}.default`);
   });
+  if (declarations.length > DATA_SCENE_RUNTIME_MAX_VARIABLES) {
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `must declare at most ${DATA_SCENE_RUNTIME_MAX_VARIABLES} variables`,
+    );
+  }
+  return declarations;
+}
+
+export function compileDataSceneVariableRuntimeIds(
+  declarations: readonly ResolvedDataSceneVariableDeclaration[],
+  ids?: Readonly<Record<string, number>>,
+  path = "sceneAuthoring.ids.variables",
+): Readonly<Record<string, number>> {
+  if (declarations.length > DATA_SCENE_RUNTIME_MAX_VARIABLES) {
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `must declare at most ${DATA_SCENE_RUNTIME_MAX_VARIABLES} variables`,
+    );
+  }
+  const declarationNames = new Set(declarations.map((declaration) => declaration.name));
+  if (ids === undefined) {
+    return Object.freeze(Object.fromEntries(
+      declarations.map((declaration, index) => [declaration.name, index + 1]),
+    ));
+  }
+  const resultEntries: [string, number][] = [];
+  const assignedNames = new Set<string>();
+  const usedSlots = new Map<number, string>();
+  for (const [name, rawSlot] of Object.entries(ids)) {
+    if (!declarationNames.has(name)) {
+      throw gameplayAuthoringDiagnosticError(`${path}.${name}`, `references undeclared variable '${name}'`);
+    }
+    const slot = variableRuntimeSlot(rawSlot, `${path}.${name}`);
+    const previous = usedSlots.get(slot);
+    if (previous !== undefined) {
+      throw gameplayAuthoringDiagnosticError(
+        `${path}.${name}`,
+        `duplicates variable slot ${slot} already assigned to '${previous}'`,
+      );
+    }
+    usedSlots.set(slot, name);
+    assignedNames.add(name);
+    resultEntries.push([name, slot]);
+  }
+  for (const declaration of declarations) {
+    if (!assignedNames.has(declaration.name)) {
+      throw gameplayAuthoringDiagnosticError(
+        `${path}.${declaration.name}`,
+        `must assign a runtime slot for declared variable '${declaration.name}'`,
+      );
+    }
+  }
+  return Object.freeze(Object.fromEntries(resultEntries));
+}
+
+export function attachDataSceneVariableRuntimeEngineAdapter(
+  engine: FerrumEngine,
+  adapter: DataSceneVariableRuntimeEngineAdapter,
+): FerrumEngine {
+  Object.defineProperty(engine, DATA_SCENE_VARIABLE_RUNTIME_ENGINE_ADAPTER, {
+    configurable: false,
+    enumerable: false,
+    value: adapter,
+  });
+  return engine;
+}
+
+export function preflightDataSceneVariableRuntime(
+  engine: FerrumEngine,
+  declarations: readonly ResolvedDataSceneVariableDeclaration[],
+  path = "dataScene.variables",
+): void {
+  if (
+    declarations.length > 0
+    && (engine as DataSceneVariableEngine)[DATA_SCENE_VARIABLE_RUNTIME_ENGINE_ADAPTER] === undefined
+  ) {
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.engine`,
+      "must be a FerrumEngine created by createEngine() from @ferrum2d/ferrum-web",
+    );
+  }
+}
+
+export function captureDataSceneVariableRuntimeSnapshot(
+  engine: FerrumEngine,
+): DataSceneVariableRuntimeSnapshot | undefined {
+  return (engine as DataSceneVariableEngine)[DATA_SCENE_VARIABLE_STORE]?.runtimeSnapshot();
+}
+
+export function restoreDataSceneVariableRuntimeSnapshot(
+  engine: FerrumEngine,
+  snapshot: DataSceneVariableRuntimeSnapshot | undefined,
+  path = "dataScene.variables",
+): void {
+  const target = engine as DataSceneVariableEngine;
+  const adapter = target[DATA_SCENE_VARIABLE_RUNTIME_ENGINE_ADAPTER];
+  if (snapshot === undefined) {
+    adapter?.clear();
+    delete target[DATA_SCENE_VARIABLE_STORE];
+    return;
+  }
+  if (adapter === undefined || target[DATA_SCENE_VARIABLE_STORE] === undefined) {
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.engine`,
+      "cannot restore the previous Rust variable store",
+    );
+  }
+  target[DATA_SCENE_VARIABLE_STORE].restoreRuntimeSnapshot(snapshot, path);
 }
 
 export function synchronizeDataSceneVariableStore(
   engine: FerrumEngine,
   declarations: readonly ResolvedDataSceneVariableDeclaration[],
   path = "dataScene.variables",
+  ids?: Readonly<Record<string, number>>,
 ): DataSceneVariableStore {
+  preflightDataSceneVariableRuntime(engine, declarations, path);
   const target = engine as DataSceneVariableEngine;
+  const adapter = target[DATA_SCENE_VARIABLE_RUNTIME_ENGINE_ADAPTER];
+  if (adapter === undefined) {
+    if (declarations.length === 0) {
+      return emptyDataSceneVariableStore(path);
+    }
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.engine`,
+      "must be a FerrumEngine created by createEngine() from @ferrum2d/ferrum-web",
+    );
+  }
+  const runtimeIds = compileDataSceneVariableRuntimeIds(declarations, ids, `${path}.ids`);
   const existing = target[DATA_SCENE_VARIABLE_STORE];
   if (existing !== undefined) {
-    existing.reapply(declarations, path);
+    existing.reapply(declarations, path, runtimeIds);
     return existing;
   }
 
-  const store = new DefaultDataSceneVariableStore(declarations, path);
+  const store = new DefaultDataSceneVariableStore(adapter, declarations, path, runtimeIds);
   Object.defineProperty(target, DATA_SCENE_VARIABLE_STORE, {
-    configurable: false,
+    configurable: true,
     enumerable: false,
     value: store,
   });
   return store;
+}
+
+function emptyDataSceneVariableStore(path: string): DataSceneVariableStore {
+  return {
+    declarations: () => [],
+    has: () => false,
+    get: (name) => {
+      throw gameplayAuthoringDiagnosticError(`${path}.${name}`, `references undeclared variable '${name}'`);
+    },
+    set: (name) => {
+      throw gameplayAuthoringDiagnosticError(`${path}.${name}`, `references undeclared variable '${name}'`);
+    },
+    values: (scope) => {
+      variableScope(scope, `${path}.scope`);
+      return {};
+    },
+    restore: (scope, values) => {
+      resolvedDataSceneVariableValues([], scope, values, `${path}.${scope}`);
+    },
+  };
 }
 
 export function dataSceneVariableStoreForEngine(
@@ -125,13 +295,17 @@ class DefaultDataSceneVariableStore implements MutableDataSceneVariableStore {
   private resolvedDeclarations: readonly ResolvedDataSceneVariableDeclaration[] = [];
   private entries = new Map<string, DataSceneVariableEntry>();
   private path: string;
+  private readonly adapter: DataSceneVariableRuntimeEngineAdapter;
 
   constructor(
+    adapter: DataSceneVariableRuntimeEngineAdapter,
     declarations: readonly ResolvedDataSceneVariableDeclaration[],
     path: string,
+    ids: Readonly<Record<string, number>>,
   ) {
+    this.adapter = adapter;
     this.path = path;
-    this.reapply(declarations, path);
+    this.reapply(declarations, path, ids);
   }
 
   declarations(): readonly ResolvedDataSceneVariableDeclaration[] {
@@ -143,12 +317,20 @@ class DefaultDataSceneVariableStore implements MutableDataSceneVariableStore {
   }
 
   get(name: string): DataSceneVariableValue {
-    return this.requireEntry(name).value;
+    const entry = this.requireEntry(name);
+    return runtimeVariableValue(
+      this.adapter.get(entry.slot),
+      entry.declaration.type,
+      `${this.path}.${name}`,
+    );
   }
 
   set(name: string, value: DataSceneVariableValue): void {
     const entry = this.requireEntry(name);
-    entry.value = variableValue(value, entry.declaration.type, `${this.path}.${name}`);
+    const resolved = variableValue(value, entry.declaration.type, `${this.path}.${name}`);
+    if (!this.adapter.set(entry.slot, resolved)) {
+      throw gameplayAuthoringDiagnosticError(`${this.path}.${name}`, "failed to update Rust variable slot");
+    }
   }
 
   values(scope: DataSceneVariableScope): DataSceneVariableValues {
@@ -156,7 +338,7 @@ class DefaultDataSceneVariableStore implements MutableDataSceneVariableStore {
     return Object.fromEntries(
       this.resolvedDeclarations
         .filter((declaration) => declaration.scope === scope)
-        .map((declaration) => [declaration.name, this.requireEntry(declaration.name).value]),
+        .map((declaration) => [declaration.name, this.get(declaration.name)]),
     );
   }
 
@@ -170,24 +352,94 @@ class DefaultDataSceneVariableStore implements MutableDataSceneVariableStore {
     );
 
     for (const [name, value] of restored) {
-      this.requireEntry(name).value = value;
+      this.set(name, value);
     }
+  }
+
+  runtimeSnapshot(): DataSceneVariableRuntimeSnapshot {
+    return {
+      path: this.path,
+      entries: Object.freeze(this.resolvedDeclarations.map((declaration) => {
+        const entry = this.entries.get(declaration.name);
+        if (entry === undefined) {
+          throw gameplayAuthoringDiagnosticError(
+            `${this.path}.${declaration.name}`,
+            "is missing its Rust variable slot",
+          );
+        }
+        return Object.freeze({
+          declaration,
+          slot: entry.slot,
+          value: this.get(declaration.name),
+        });
+      })),
+    };
+  }
+
+  restoreRuntimeSnapshot(snapshot: DataSceneVariableRuntimeSnapshot, path: string): void {
+    const next = new Map<string, DataSceneVariableEntry>();
+    this.adapter.clear();
+    for (const entry of snapshot.entries) {
+      if (!this.adapter.configure(
+        entry.slot,
+        entry.declaration.type,
+        entry.declaration.scope,
+        entry.declaration.default,
+        entry.value,
+      )) {
+        throw gameplayAuthoringDiagnosticError(
+          `${path}.${entry.declaration.name}`,
+          `failed to restore Rust variable slot ${entry.slot}`,
+        );
+      }
+      next.set(entry.declaration.name, {
+        declaration: entry.declaration,
+        slot: entry.slot,
+      });
+    }
+    this.path = snapshot.path;
+    this.resolvedDeclarations = Object.freeze(
+      snapshot.entries.map((entry) => entry.declaration),
+    );
+    this.entries = next;
   }
 
   reapply(
     declarations: readonly ResolvedDataSceneVariableDeclaration[],
     path: string,
+    ids: Readonly<Record<string, number>>,
   ): void {
     const previous = this.entries;
-    const next = new Map<string, DataSceneVariableEntry>();
+    const preservedGlobals = new Map<string, DataSceneVariableValue>();
     for (const declaration of declarations) {
       const previousEntry = previous.get(declaration.name);
-      const value = declaration.scope === "global"
-          && previousEntry?.declaration.scope === "global"
-          && previousEntry.declaration.type === declaration.type
-        ? previousEntry.value
-        : declaration.default;
-      next.set(declaration.name, { declaration, value });
+      if (
+        declaration.scope === "global"
+        && previousEntry?.declaration.scope === "global"
+        && previousEntry.declaration.type === declaration.type
+      ) {
+        preservedGlobals.set(
+          declaration.name,
+          runtimeVariableValue(
+            this.adapter.get(previousEntry.slot),
+            declaration.type,
+            `${path}.${declaration.name}`,
+          ),
+        );
+      }
+    }
+    const next = new Map<string, DataSceneVariableEntry>();
+    this.adapter.clear();
+    for (const declaration of declarations) {
+      const slot = variableRuntimeSlot(ids[declaration.name], `${path}.ids.${declaration.name}`);
+      const value = preservedGlobals.get(declaration.name) ?? declaration.default;
+      if (!this.adapter.configure(slot, declaration.type, declaration.scope, declaration.default, value)) {
+        throw gameplayAuthoringDiagnosticError(
+          `${path}.${declaration.name}`,
+          `failed to configure Rust variable slot ${slot}`,
+        );
+      }
+      next.set(declaration.name, { declaration, slot });
     }
     this.path = path;
     this.resolvedDeclarations = Object.freeze([...declarations]);
@@ -204,6 +456,23 @@ class DefaultDataSceneVariableStore implements MutableDataSceneVariableStore {
     }
     return entry;
   }
+}
+
+function runtimeVariableValue(
+  value: number,
+  type: DataSceneVariableType,
+  path: string,
+): DataSceneVariableValue {
+  if (!Number.isFinite(value)) {
+    throw gameplayAuthoringDiagnosticError(path, "references an unconfigured Rust variable slot");
+  }
+  if (type === "bool") {
+    if (value !== 0 && value !== 1) {
+      throw gameplayAuthoringDiagnosticError(path, "contains an invalid Rust bool variable value");
+    }
+    return value === 1;
+  }
+  return variableValue(value, type, path);
 }
 
 function resolvedDataSceneVariableValues(
@@ -312,6 +581,21 @@ function variableValue(
     throw gameplayAuthoringDiagnosticError(path, "must be a safe integer");
   }
   return Object.is(value, -0) ? 0 : value;
+}
+
+function variableRuntimeSlot(value: unknown, path: string): number {
+  if (
+    typeof value !== "number"
+    || !Number.isInteger(value)
+    || value < 1
+    || value > DATA_SCENE_RUNTIME_MAX_VARIABLES
+  ) {
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `must be an integer between 1 and ${DATA_SCENE_RUNTIME_MAX_VARIABLES}`,
+    );
+  }
+  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

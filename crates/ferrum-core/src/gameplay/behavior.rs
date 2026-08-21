@@ -4,7 +4,7 @@ pub(crate) fn apply_behavior_state_machine_events(
     world: &mut World,
     events: &mut Vec<GameplayEvent>,
 ) {
-    if events.is_empty() || !world.has_behavior_state_machines() {
+    if !world.has_behavior_state_machines() {
         return;
     }
 
@@ -15,16 +15,18 @@ pub(crate) fn apply_behavior_state_machine_events(
         let Some(source) = world.entity_at_index(index) else {
             continue;
         };
-        let Some(mut machine) = world.behavior_state_machine(source) else {
+        let Some(machine) = world.behavior_state_machine_ref(source) else {
             continue;
         };
         let previous_state = machine.current_state();
-        let Some(next_state) = next_behavior_state(machine, source, &events[..input_event_count])
+        let Some(next_state) =
+            next_behavior_state(world, machine, source, &events[..input_event_count])
         else {
             continue;
         };
-        machine.set_current_state(next_state);
-        world.set_behavior_state_machine(source, machine);
+        if !world.set_behavior_state_machine_current_state(source, next_state) {
+            continue;
+        }
         events.push(GameplayEvent::behavior_state_changed(
             source,
             previous_state,
@@ -34,7 +36,8 @@ pub(crate) fn apply_behavior_state_machine_events(
 }
 
 pub(in crate::gameplay) fn next_behavior_state(
-    machine: crate::components::gameplay::BehaviorStateMachine,
+    world: &World,
+    machine: &crate::components::gameplay::BehaviorStateMachine,
     source: Entity,
     events: &[GameplayEvent],
 ) -> Option<u32> {
@@ -42,19 +45,18 @@ pub(in crate::gameplay) fn next_behavior_state(
         .iter_transitions()
         .find(|transition| {
             transition.from_state == machine.current_state()
-                && events.iter().any(|event| {
-                    event.kind == transition.event_kind
-                        && event_subject_matches_entity(event, source)
-                        && event.token_id == transition.token_id
-                })
+                && world.gameplay_variable_comparison_matches(transition.guard)
+                && (transition.event_kind == 0
+                    || events.iter().any(|event| {
+                        event.kind == transition.event_kind
+                            && event_subject_matches_entity(event, source)
+                            && event.token_id == transition.token_id
+                    }))
         })
         .map(|transition| transition.to_state)
 }
 
-pub(in crate::gameplay) fn event_subject_matches_entity(
-    event: &GameplayEvent,
-    entity: Entity,
-) -> bool {
+pub(crate) fn event_subject_matches_entity(event: &GameplayEvent, entity: Entity) -> bool {
     if event.kind == crate::gameplay_event::GAMEPLAY_EVENT_PICKUP_COLLECTED {
         return event.actor_id == entity.id && event.actor_generation == entity.generation;
     }

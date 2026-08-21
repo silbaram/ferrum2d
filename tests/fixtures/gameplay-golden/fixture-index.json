@@ -15,7 +15,7 @@
       ],
       "runner": "exampleTopdownBasic",
       "fixturePath": "tests/fixtures/gameplay-golden/example-topdown-basic-replay.json",
-      "replayHash": "97e40394",
+      "replayHash": "e1ec72ca",
       "frameCount": 36,
       "captureFrameCount": 9
     },
@@ -37,7 +37,7 @@
       ],
       "runner": "exampleTopdownAuthoredBehavior",
       "fixturePath": "tests/fixtures/gameplay-golden/example-topdown-authored-behavior-replay.json",
-      "replayHash": "1d2027a7",
+      "replayHash": "b925b1d3",
       "frameCount": 5,
       "captureFrameCount": 6
     },
@@ -52,7 +52,7 @@
       ],
       "runner": "playerDamageCollision",
       "fixturePath": "tests/fixtures/gameplay-golden/collision-player-damage-game-over-replay.json",
-      "replayHash": "757a604d",
+      "replayHash": "93700a37",
       "frameCount": 3,
       "captureFrameCount": 4
     },
@@ -67,7 +67,7 @@
       ],
       "runner": "waveActionSpawnPrefab",
       "fixturePath": "tests/fixtures/gameplay-golden/wave-action-spawn-prefab-replay.json",
-      "replayHash": "4bf3aecd",
+      "replayHash": "1c90e7fd",
       "frameCount": 6,
       "captureFrameCount": 7
     },
@@ -83,7 +83,7 @@
       ],
       "runner": "fsmStateEnterSpawnPrefab",
       "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-spawn-prefab-replay.json",
-      "replayHash": "ad0ceb68",
+      "replayHash": "a724872b",
       "frameCount": 5,
       "captureFrameCount": 6
     },
@@ -99,7 +99,7 @@
       ],
       "runner": "fsmStateEnterDashAction",
       "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-dash-target-player-replay.json",
-      "replayHash": "e04cab6b",
+      "replayHash": "42d41448",
       "frameCount": 5,
       "captureFrameCount": 6
     },
@@ -116,7 +116,7 @@
       ],
       "runner": "fsmStateEnterDashAction",
       "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-dash-input-aim-failure-replay.json",
-      "replayHash": "1f22152b",
+      "replayHash": "ae052015",
       "frameCount": 5,
       "captureFrameCount": 6
     },
@@ -133,7 +133,7 @@
       ],
       "runner": "fsmStateEnterProjectileAction",
       "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-projectile-spawn-replay.json",
-      "replayHash": "cd10d58d",
+      "replayHash": "8079a83b",
       "frameCount": 5,
       "captureFrameCount": 6
     },
@@ -151,7 +151,7 @@
       ],
       "runner": "fsmStateEnterProjectileAction",
       "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-projectile-tile-impact-replay.json",
-      "replayHash": "cf7b5c13",
+      "replayHash": "91456547",
       "frameCount": 5,
       "captureFrameCount": 6
     },
@@ -166,7 +166,7 @@
       ],
       "runner": "projectileTileImpactFsmAuthored",
       "fixturePath": "tests/fixtures/gameplay-golden/projectile-tile-impact-fsm-authored-replay.json",
-      "replayHash": "cffbfbdb",
+      "replayHash": "a15cb427",
       "frameCount": 2,
       "captureFrameCount": 3
     },
@@ -185,7 +185,7 @@
       ],
       "runner": "projectileHomingNearestTag",
       "fixturePath": "tests/fixtures/gameplay-golden/projectile-homing-nearest-tag-replay.json",
-      "replayHash": "4691701a",
+      "replayHash": "ccc020d2",
       "frameCount": 6,
       "captureFrameCount": 6
     },
@@ -202,7 +202,7 @@
       ],
       "runner": "fsmStateEnterProjectileAction",
       "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-projectile-collision-target-failure-replay.json",
-      "replayHash": "fa5a0691",
+      "replayHash": "b1993014",
       "frameCount": 5,
       "captureFrameCount": 6
     },
@@ -219,7 +219,7 @@
       ],
       "runner": "fsmStateEnterMeleeAction",
       "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-melee-target-player-replay.json",
-      "replayHash": "7a79ab54",
+      "replayHash": "e102fd2e",
       "frameCount": 5,
       "captureFrameCount": 6
     },
@@ -236,7 +236,7 @@
       ],
       "runner": "fsmStateEnterMeleeAction",
       "fixturePath": "tests/fixtures/gameplay-golden/fsm-state-enter-melee-enemy-target-replay.json",
-      "replayHash": "0f576965",
+      "replayHash": "bd769f1e",
       "frameCount": 5,
       "captureFrameCount": 6
     },
@@ -253,7 +253,7 @@
       ],
       "runner": "projectileAreaDamageEntityImpact",
       "fixturePath": "tests/fixtures/gameplay-golden/projectile-area-damage-entity-impact-replay.json",
-      "replayHash": "086a541b",
+      "replayHash": "be579c24",
       "frameCount": 5,
       "captureFrameCount": 5
     },
@@ -270,7 +270,7 @@
       ],
       "runner": "projectileAreaDamageTileImpact",
       "fixturePath": "tests/fixtures/gameplay-golden/projectile-area-damage-tile-impact-replay.json",
-      "replayHash": "4fefd987",
+      "replayHash": "b6aa0926",
       "frameCount": 3,
       "captureFrameCount": 4
     },

@@ -37,7 +37,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 
 ## 읽는 순서
 
-1. 엔진을 처음 이해하고 새 프로젝트를 시작하는 경우: [Showcase Hub](engine/showcase-hub.md) -> [개발자 퀵스타트](engine/developer-quickstart.md) -> [사용자 설명서](engine/user-guide.md) -> [Public API](engine/public-api.md)
+1. 엔진을 처음 이해하고 새 프로젝트를 시작하는 경우: [Showcase Hub](engine/showcase-hub.md) -> [개발자 퀵스타트](engine/developer-quickstart.md) -> 생성 프로젝트의 `npm run ferrum:check` -> [사용자 설명서](engine/user-guide.md)
 2. Top-down Shooter 예제 설정을 바꾸는 경우: [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md), 수동 QA는 `examples/topdown-shooter/SMOKE_CHECKLIST.md`
 3. projectile/weapon/prefab/motion/reaction/effect 같은 범용 runtime 확장 기능을 확인하는 경우: [Runtime Extensibility](engine/runtime-extensibility.md) -> [Data Scene Authoring](engine/data-scene-authoring.md) -> [Public API](engine/public-api.md)
 4. 엔진 구조나 경계를 확인하는 경우: [아키텍처](development/architecture/architecture.md) -> [2D 물리엔진 기능 맵](development/architecture/physics-engine.md)
@@ -60,6 +60,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 | 실제 Top-down Shooter 설정 | `examples/topdown-shooter/public/game.json` |
 | Rust/Wasm ABI | `crates/ferrum-core/src/render_command.rs`, `crates/ferrum-core/src/buffer_layout.rs`, `crates/ferrum-core/src/audio_event.rs`, `packages/ferrum-web/src/wasmBridgeAbi.ts`, `packages/ferrum-web/src/bufferAccessors.ts`, `packages/ferrum-web/src/wasmBridge.ts` |
 | npm package 역할 분리 | `packages/ferrum-web/package.json`, `packages/create-game/package.json`, `packages/agents/package.json`, `docs/development/operations/npm-package-strategy.md` |
+| 생성 프로젝트의 입력 소유권과 기본 검증 | `ferrum:report`의 `project.runtimeInputs`, `ferrum:check`, `packages/create-game/README.md`, `docs/engine/developer-quickstart.md` |
 | package/release artifact 검증 | `scripts/package/check-package-files.mjs`, `scripts/package/check-authoring-viewer-package.mjs`, `scripts/package/check-create-game-package.mjs`, `scripts/package/check-agents-package.mjs`, `scripts/package/check-release-readiness.mjs`, `scripts/package/check-release-candidate.mjs`, `packages/*/package.json`, `CHANGELOG.md`, `.github/release.yml` |
 | 검증/배포/문서 사이트 스크립트 | 루트 `package.json`, `scripts/build/build-pages.mjs`, `scripts/validate/**`, `tests/smoke/**`, `.github/workflows/ci.yml`, `.github/workflows/pages.yml` |
 | 문서 링크와 Pages 산출물 검증 | `scripts/validate/check-docs-pages.mjs`, `pnpm validate:docs-links`, `pnpm validate:pages-artifact` |

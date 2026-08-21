@@ -378,3 +378,48 @@ fn pickup_collision_reaction_sets_for_pair_preserves_wrong_target_fallback_suppr
     assert!(applied[0].outcome.pickup_outcomes().next().is_none());
     assert!(pending.is_empty());
 }
+
+#[test]
+fn guarded_pickup_reaction_suppresses_fallback_while_guard_is_false() {
+    let mut world = World::default();
+    let collector = world.spawn_player(0.0, 0.0, 1);
+    let pickup = world.spawn_entity();
+    assert!(world.configure_gameplay_variable(
+        1,
+        crate::gameplay_variables::GameplayVariableType::Bool,
+        crate::gameplay_variables::GameplayVariableScope::Scene,
+        0.0,
+        0.0,
+    ));
+    let guard = crate::gameplay_variables::GameplayVariableComparison::new(
+        1,
+        crate::gameplay_variables::GameplayVariableComparisonOperator::Equal,
+        0,
+        1.0,
+    )
+    .unwrap();
+    let pair =
+        CollisionReactionPair::new(collector.id as usize, pickup.id as usize, collector, pickup);
+    let mut reactions = CollisionReactionSet::default();
+    assert!(reactions.push_guarded(
+        CollisionReaction::Pickup {
+            target: CollisionTarget::OtherEntity,
+        },
+        guard,
+    ));
+    let mut marked = vec![false; world.entity_capacity()];
+    let mut pending = Vec::new();
+
+    let outcome = apply_pickup_collision_reaction_set_for_pair(
+        &world,
+        pair,
+        &mut reactions,
+        true,
+        &mut marked,
+        &mut pending,
+    );
+
+    assert!(outcome.handled_pickup);
+    assert!(outcome.pickup_outcomes().next().is_none());
+    assert!(pending.is_empty());
+}

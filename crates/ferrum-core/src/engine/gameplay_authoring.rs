@@ -21,9 +21,10 @@ use crate::gameplay_event::{
     GAMEPLAY_PRESENTATION_EFFECT_TYPE_CAMERA_SHAKE, GAMEPLAY_PRESENTATION_EFFECT_TYPE_CUSTOM,
     GAMEPLAY_PRESENTATION_EFFECT_TYPE_PARTICLE, GAMEPLAY_PRESENTATION_EFFECT_TYPE_SOUND,
 };
+use crate::gameplay_variables::GameplayVariableMutationTriggerSet;
 use crate::shooter_scene::ShooterPrefabKind;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(super) struct GameplayAuthoringSnapshot {
     entity: Entity,
     health: Option<f32>,
@@ -38,6 +39,7 @@ pub(super) struct GameplayAuthoringSnapshot {
     movement: Option<MovementPattern>,
     actions: Option<ActionBindingSet>,
     collision_reactions: Option<CollisionReactionSet>,
+    variable_mutation_triggers: Option<GameplayVariableMutationTriggerSet>,
 }
 
 impl GameplayAuthoringSnapshot {
@@ -56,6 +58,7 @@ impl GameplayAuthoringSnapshot {
             movement: engine.world.movement_pattern(entity),
             actions: engine.world.action_bindings(entity),
             collision_reactions: engine.world.collision_reactions(entity),
+            variable_mutation_triggers: engine.world.gameplay_variable_mutation_triggers(entity),
         }
     }
 
@@ -88,6 +91,10 @@ impl GameplayAuthoringSnapshot {
         engine
             .world
             .replace_collision_reactions(self.entity, self.collision_reactions);
+        engine.world.replace_gameplay_variable_mutation_triggers(
+            self.entity,
+            self.variable_mutation_triggers,
+        );
     }
 }
 
@@ -116,7 +123,7 @@ impl Engine {
         entity_id: u32,
         entity_generation: u32,
     ) -> bool {
-        let Some(snapshot) = self.gameplay_authoring_snapshot else {
+        let Some(snapshot) = self.gameplay_authoring_snapshot.clone() else {
             return false;
         };
         if snapshot.entity.id != entity_id || snapshot.entity.generation != entity_generation {
@@ -1911,7 +1918,7 @@ impl Engine {
         )
     }
 
-    const fn movement_query_layer_from_code(code: u32) -> Option<CollisionLayer> {
+    pub(super) const fn movement_query_layer_from_code(code: u32) -> Option<CollisionLayer> {
         match code {
             PHYSICS_LAYER_PLAYER => Some(CollisionLayer::Player),
             PHYSICS_LAYER_ENEMY => Some(CollisionLayer::Enemy),
@@ -1935,7 +1942,7 @@ impl Engine {
         true
     }
 
-    fn add_gameplay_collision_reaction(
+    pub(super) fn add_gameplay_collision_reaction(
         &mut self,
         entity_id: u32,
         entity_generation: u32,
@@ -1949,9 +1956,23 @@ impl Engine {
         }
         true
     }
+
+    pub(super) fn add_gameplay_guarded_collision_reaction(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        reaction: CollisionReaction,
+        guard: crate::gameplay_variables::GameplayVariableComparison,
+    ) -> bool {
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return false;
+        };
+        self.world
+            .add_guarded_collision_reaction(entity, reaction, guard)
+    }
 }
 
-fn collision_target_from_code(code: u32) -> Option<CollisionTarget> {
+pub(super) fn collision_target_from_code(code: u32) -> Option<CollisionTarget> {
     match code {
         0 => Some(CollisionTarget::SelfEntity),
         1 => Some(CollisionTarget::OtherEntity),
@@ -1959,7 +1980,7 @@ fn collision_target_from_code(code: u32) -> Option<CollisionTarget> {
     }
 }
 
-fn collision_reaction_trigger_from_code(code: u32) -> Option<CollisionReactionTrigger> {
+pub(super) fn collision_reaction_trigger_from_code(code: u32) -> Option<CollisionReactionTrigger> {
     match code {
         0 => Some(CollisionReactionTrigger::Contact),
         1 => Some(CollisionReactionTrigger::Enter),

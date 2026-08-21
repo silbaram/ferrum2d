@@ -30,6 +30,7 @@ mod data_scene_spawning;
 mod fixed_step;
 mod frame_buffers;
 mod gameplay_authoring;
+mod gameplay_variables;
 mod input_actions;
 mod particle_controls;
 mod physics_abi;

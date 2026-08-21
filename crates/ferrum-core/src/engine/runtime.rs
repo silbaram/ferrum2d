@@ -6,7 +6,7 @@ use crate::components::{HeightSpan, PhysicsFloorId, Transform2D};
 use crate::entity::Entity;
 use crate::gameplay::{
     action_failure_gameplay_event, apply_behavior_state_machine_events,
-    tick_gameplay_timer_triggers,
+    apply_gameplay_variable_mutation_events, tick_gameplay_timer_triggers,
 };
 use crate::gameplay_event::GAMEPLAY_EVENT_BEHAVIOR_STATE_CHANGED;
 use crate::input::InputState;
@@ -81,6 +81,8 @@ impl Engine {
     fn advance_simulation(&mut self, delta: f64) {
         self.elapsed_seconds += delta;
         self.clear_physics_frame();
+        self.world
+            .clear_retired_gameplay_variable_mutation_triggers();
         self.reset_active_scene_action_trigger_frame_diagnostics();
         if self.active_scene_game_state().freezes_simulation() {
             self.last_fixed_update = FixedTimestepUpdate::default();
@@ -125,6 +127,10 @@ impl Engine {
             }
         }
         let behavior_event_start = self.frame_buffers.gameplay_events.len();
+        apply_gameplay_variable_mutation_events(
+            &mut self.world,
+            &self.frame_buffers.gameplay_events,
+        );
         apply_behavior_state_machine_events(
             &mut self.world,
             &mut self.frame_buffers.gameplay_events,

@@ -1,15 +1,19 @@
 import {
   behaviorRecipeCommandsForEntity,
+  resolveBehaviorRecipeVariableComparison,
   resolveBehaviorRecipeDocument,
   type BehaviorRecipeApplyResult,
   type BehaviorRecipeCommand,
   type BehaviorRecipeCommandOptions,
   type BehaviorRecipeDocumentSpec,
+  type BehaviorRecipeVariableComparisonSpec,
   type ResolvedBehaviorRecipeDocument,
+  type ResolvedBehaviorRecipeVariableComparison,
 } from "./behaviorRecipes.js";
 import { gameplayAuthoringDiagnosticError } from "./diagnostics.js";
 import {
   applyGameplayBehaviorCommands,
+  runtimeVariableComparison,
   type ApplyGameplayBehaviorCommandsOptions,
   type GameplayBehaviorRuntimeIds,
   type GameplayBehaviorRuntimeEngine,
@@ -31,7 +35,7 @@ import {
 
 export const BEHAVIOR_STATE_MACHINE_RUNTIME_MAX_TRANSITIONS = 32 as const;
 
-export type BehaviorStateMachineTriggerKind = "gameplayEvent";
+export type BehaviorStateMachineTriggerKind = "gameplayEvent" | "variableComparison";
 export type BehaviorStateMachineGameplayEventKind =
   | "interaction"
   | "collisionDamage"
@@ -62,7 +66,7 @@ export interface BehaviorStateMachineTransitionSpec {
   when: BehaviorStateMachineTransitionPredicateSpec;
 }
 
-export interface BehaviorStateMachineTransitionPredicateSpec {
+export interface BehaviorStateMachineGameplayEventPredicateSpec {
   type: BehaviorStateMachineTriggerKind;
   event: BehaviorStateMachineGameplayEventKind;
   action?: string;
@@ -74,6 +78,15 @@ export interface BehaviorStateMachineTransitionPredicateSpec {
   tileImpact?: BehaviorStateMachineTileImpactPolicy;
   tileImpactCode?: number;
 }
+
+export interface BehaviorStateMachineVariableComparisonPredicateSpec
+  extends BehaviorRecipeVariableComparisonSpec {
+  type: "variableComparison";
+}
+
+export type BehaviorStateMachineTransitionPredicateSpec =
+  | (BehaviorStateMachineGameplayEventPredicateSpec & { type: "gameplayEvent" })
+  | BehaviorStateMachineVariableComparisonPredicateSpec;
 
 export interface ResolveBehaviorStateMachineDocumentOptions {
   path?: string;
@@ -94,6 +107,7 @@ export interface BehaviorStateMachineReplayInput {
 export interface BehaviorStateMachineReplayFrame {
   frame: number;
   events?: readonly GameplayEventAction[];
+  variables?: Readonly<Record<string, number | boolean>>;
 }
 
 export interface BehaviorStateMachineReplayOptions {
@@ -125,6 +139,16 @@ export interface BehaviorStateMachineRuntimeEngine {
     eventKind: number,
     tokenId: number,
   ): boolean;
+  add_gameplay_behavior_variable_transition?(
+    entityId: number,
+    entityGeneration: number,
+    fromState: number,
+    toState: number,
+    leftSlot: number,
+    operator: number,
+    rightSlot: number,
+    rightLiteral: number,
+  ): boolean;
 }
 
 export interface BehaviorStateMachineRuntimeStateQueryEngine {
@@ -142,10 +166,13 @@ export interface BehaviorStateMachineRuntimeTransitionInstall {
   to: string;
   fromStateId: number;
   toStateId: number;
-  event: BehaviorStateMachineGameplayEventKind;
-  eventKind: number;
-  tokenId: number;
-  actionId: number;
+  type?: BehaviorStateMachineTriggerKind;
+  event?: BehaviorStateMachineGameplayEventKind;
+  eventKind?: number;
+  tokenId?: number;
+  actionId?: number;
+  comparison?: ResolvedBehaviorRecipeVariableComparison;
+  comparisonRuntime?: readonly [number, number, number, number];
 }
 
 export interface BehaviorStateMachineRuntimeInstallPlan {
@@ -271,7 +298,7 @@ export interface ResolvedBehaviorStateMachineTransition {
   when: ResolvedBehaviorStateMachineTransitionPredicate;
 }
 
-export interface ResolvedBehaviorStateMachineTransitionPredicate {
+export interface ResolvedBehaviorStateMachineGameplayEventPredicate {
   type: "gameplayEvent";
   event: BehaviorStateMachineGameplayEventKind;
   action?: string;
@@ -283,6 +310,15 @@ export interface ResolvedBehaviorStateMachineTransitionPredicate {
   tileImpact?: BehaviorStateMachineTileImpactPolicy;
   tileImpactCode?: number;
 }
+
+export interface ResolvedBehaviorStateMachineVariableComparisonPredicate
+  extends ResolvedBehaviorRecipeVariableComparison {
+  type: "variableComparison";
+}
+
+export type ResolvedBehaviorStateMachineTransitionPredicate =
+  | ResolvedBehaviorStateMachineGameplayEventPredicate
+  | ResolvedBehaviorStateMachineVariableComparisonPredicate;
 
 export function resolveBehaviorStateMachineDocument(
   document: BehaviorStateMachineDocumentSpec,
@@ -375,9 +411,7 @@ export function createBehaviorStateMachineRuntimeInstallPlan(
     .flatMap((state) =>
       state.transitions.map((transition, index) => {
         const transitionPath = `${path}.machines.${machine.id}.states.${state.id}.transitions.${index}`;
-        const eventKind = runtimeEventKind(transition.when.event, `${transitionPath}.when.event`);
-        const tokenId = runtimeEventTokenId(transition.when, `${transitionPath}.when`, options.ids);
-        return {
+        const base = {
           id: transition.id,
           from: state.id,
           to: transition.to,
@@ -387,6 +421,24 @@ export function createBehaviorStateMachineRuntimeInstallPlan(
             transition.to,
             `${path}.machines.${machine.id}.states.${state.id}.transitions.${index}.to`,
           ),
+        };
+        if (transition.when.type === "variableComparison") {
+          const { type: _type, ...comparison } = transition.when;
+          return {
+            ...base,
+            type: transition.when.type,
+            comparison,
+            comparisonRuntime: runtimeVariableComparison(
+              comparison,
+              options.ids,
+              `${transitionPath}.when`,
+            ),
+          };
+        }
+        const eventKind = runtimeEventKind(transition.when.event, `${transitionPath}.when.event`);
+        const tokenId = runtimeEventTokenId(transition.when, `${transitionPath}.when`, options.ids);
+        return {
+          ...base,
           event: transition.when.event,
           eventKind,
           tokenId,
@@ -650,8 +702,15 @@ export function runBehaviorStateMachineReplay(
     previousFrame = frame;
     const events = gameplayEvents(frameInput.events ?? [], `${framePath}.events`)
       .filter((event) => gameplayEventSubjectMatchesEntity(event, replayEntity));
+    const variables = gameplayVariableValues(frameInput.variables ?? {}, `${framePath}.variables`);
     const state = behaviorStateMachineState(machine, currentState, `${framePath}.state`);
-    const match = firstTransitionMatch(state.transitions, events, options.ids, `${framePath}.state.${state.id}`);
+    const match = firstTransitionMatch(
+      state.transitions,
+      events,
+      variables,
+      options.ids,
+      `${framePath}.state.${state.id}`,
+    );
     const step: BehaviorStateMachineReplayStep = {
       frame,
       from: currentState,
@@ -800,8 +859,14 @@ function transitionPredicate(value: unknown, path: string): ResolvedBehaviorStat
   if (!isRecord(value)) {
     throw gameplayAuthoringDiagnosticError(path, "must be an object");
   }
+  if (value.type === "variableComparison") {
+    return {
+      type: value.type,
+      ...resolveBehaviorRecipeVariableComparison(value, path),
+    };
+  }
   if (value.type !== "gameplayEvent") {
-    throw gameplayAuthoringDiagnosticError(`${path}.type`, "must be gameplayEvent");
+    throw gameplayAuthoringDiagnosticError(`${path}.type`, "must be gameplayEvent or variableComparison");
   }
   const event = behaviorStateMachineEventKind(value.event, `${path}.event`);
   const action = value.action === undefined ? undefined : nonEmptyString(value.action, `${path}.action`);
@@ -952,14 +1017,31 @@ function applyRuntimeTransition(
   handle: GameplayEntityHandle,
   transition: BehaviorStateMachineRuntimeTransitionInstall,
 ): boolean {
+  if (transition.type === "variableComparison") {
+    const addVariableTransition = engine.add_gameplay_behavior_variable_transition;
+    if (addVariableTransition === undefined || transition.comparisonRuntime === undefined) {
+      throw gameplayAuthoringDiagnosticError(
+        "behaviorStateMachines.transitions.when",
+        "runtime engine must provide add_gameplay_behavior_variable_transition for variableComparison predicates",
+      );
+    }
+    return addVariableTransition.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      transition.fromStateId,
+      transition.toStateId,
+      ...transition.comparisonRuntime,
+    );
+  }
   if (engine.add_gameplay_behavior_event_transition !== undefined) {
     return engine.add_gameplay_behavior_event_transition(
       handle.entityId,
       handle.entityGeneration,
       transition.fromStateId,
       transition.toStateId,
-      transition.eventKind,
-      transition.tokenId,
+      transition.eventKind!,
+      transition.tokenId!,
     );
   }
   if (transition.event !== "interaction") {
@@ -973,7 +1055,7 @@ function applyRuntimeTransition(
     handle.entityGeneration,
     transition.fromStateId,
     transition.toStateId,
-    transition.actionId,
+    transition.actionId!,
   );
 }
 
@@ -1018,7 +1100,7 @@ function runtimeEventKind(event: BehaviorStateMachineGameplayEventKind, path: st
 }
 
 function runtimeEventTokenId(
-  predicate: ResolvedBehaviorStateMachineTransitionPredicate,
+  predicate: ResolvedBehaviorStateMachineGameplayEventPredicate,
   path: string,
   ids: GameplayBehaviorRuntimeIds | undefined,
 ): number {
@@ -1065,7 +1147,7 @@ function runtimeEventTokenId(
 }
 
 function tileImpactPredicateCode(
-  predicate: ResolvedBehaviorStateMachineTransitionPredicate,
+  predicate: ResolvedBehaviorStateMachineGameplayEventPredicate,
   path: string,
 ): number {
   if (predicate.tileImpactCode !== undefined) {
@@ -1093,6 +1175,7 @@ function clearSupportedGameplayBehaviorComponents(
   const clearCollisionReactions = engine.clear_gameplay_collision_reactions!;
   const clearActions = engine.clear_gameplay_actions!;
   const clearTimerTrigger = engine.clear_gameplay_timer_trigger!;
+  const clearVariableMutationTriggers = engine.clear_gameplay_variable_mutation_triggers;
   const clearResults = [
     requireRuntimeApplied(
       engine.clear_gameplay_health(handle.entityId, handle.entityGeneration),
@@ -1162,6 +1245,15 @@ function clearSupportedGameplayBehaviorComponents(
       `${path}.collisionReactions`,
       "clear gameplay collision reactions",
     ),
+    ...(clearVariableMutationTriggers === undefined
+      ? []
+      : [
+          requireRuntimeApplied(
+            clearVariableMutationTriggers.call(engine, handle.entityId, handle.entityGeneration),
+            `${path}.variableMutationTriggers`,
+            "clear gameplay variable mutation triggers",
+          ),
+        ]),
   ];
   return clearResults;
 }
@@ -1187,6 +1279,7 @@ function replaceSupportedClearOperationNames(
     "actions",
     "movement",
     "collisionReactions",
+    ...(engine.clear_gameplay_variable_mutation_triggers === undefined ? [] : ["variableMutationTriggers"]),
   ];
 }
 
@@ -1257,6 +1350,9 @@ function gameplayBehaviorRuntimeCapabilityPreflightEngine(
     set_gameplay_pickup: entitySetter,
     clear_gameplay_pickup: () => true,
     set_gameplay_interaction: entitySetter,
+    ...(engine.set_gameplay_interaction_with_guard === undefined
+      ? {}
+      : { set_gameplay_interaction_with_guard: entitySetter }),
     clear_gameplay_interaction: () => true,
     ...(engine.set_gameplay_timer_trigger === undefined
       ? {}
@@ -1264,7 +1360,19 @@ function gameplayBehaviorRuntimeCapabilityPreflightEngine(
     ...(engine.set_gameplay_timer_action_trigger === undefined
       ? {}
       : { set_gameplay_timer_action_trigger: entitySetter }),
+    ...(engine.set_gameplay_timer_trigger_with_guard === undefined
+      ? {}
+      : { set_gameplay_timer_trigger_with_guard: entitySetter }),
+    ...(engine.set_gameplay_timer_action_trigger_with_guard === undefined
+      ? {}
+      : { set_gameplay_timer_action_trigger_with_guard: entitySetter }),
     ...(engine.clear_gameplay_timer_trigger === undefined ? {} : { clear_gameplay_timer_trigger: () => true }),
+    ...(engine.add_gameplay_variable_mutation_trigger === undefined
+      ? {}
+      : { add_gameplay_variable_mutation_trigger: entitySetter }),
+    ...(engine.clear_gameplay_variable_mutation_triggers === undefined
+      ? {}
+      : { clear_gameplay_variable_mutation_triggers: () => true }),
     ...(engine.set_gameplay_action_projectile === undefined
       ? {}
       : { set_gameplay_action_projectile: entitySetter }),
@@ -1328,18 +1436,36 @@ function gameplayBehaviorRuntimeCapabilityPreflightEngine(
     ...(engine.clear_gameplay_movement === undefined ? {} : { clear_gameplay_movement: () => true }),
     ...(engine.clear_gameplay_collision_reactions === undefined ? {} : { clear_gameplay_collision_reactions: () => true }),
     add_gameplay_collision_damage: entitySetter,
+    ...(engine.add_gameplay_collision_damage_with_guard === undefined
+      ? {}
+      : { add_gameplay_collision_damage_with_guard: entitySetter }),
+    ...(engine.add_gameplay_collision_area_damage_with_guard === undefined
+      ? {}
+      : { add_gameplay_collision_area_damage_with_guard: entitySetter }),
     ...(engine.add_gameplay_collision_knockback === undefined
       ? {}
       : { add_gameplay_collision_knockback: entitySetter }),
+    ...(engine.add_gameplay_collision_knockback_with_guard === undefined
+      ? {}
+      : { add_gameplay_collision_knockback_with_guard: entitySetter }),
     ...(engine.add_gameplay_collision_emit_effect === undefined
       ? {}
       : { add_gameplay_collision_emit_effect: entitySetter }),
+    ...(engine.add_gameplay_collision_emit_effect_with_guard === undefined
+      ? {}
+      : { add_gameplay_collision_emit_effect_with_guard: entitySetter }),
     ...(engine.add_gameplay_collision_spawn_prefab === undefined
       ? {}
       : { add_gameplay_collision_spawn_prefab: entitySetter }),
+    ...(engine.add_gameplay_collision_spawn_prefab_with_guard === undefined
+      ? {}
+      : { add_gameplay_collision_spawn_prefab_with_guard: entitySetter }),
     ...(engine.add_gameplay_collision_pickup === undefined
       ? {}
       : { add_gameplay_collision_pickup: entitySetter }),
+    ...(engine.add_gameplay_collision_pickup_with_guard === undefined
+      ? {}
+      : { add_gameplay_collision_pickup_with_guard: entitySetter }),
     ...(engine.add_gameplay_collision_sound === undefined
       ? {}
       : { add_gameplay_collision_sound: entitySetter }),
@@ -1352,6 +1478,12 @@ function gameplayBehaviorRuntimeCapabilityPreflightEngine(
     ...(engine.add_gameplay_collision_sound_with_trigger === undefined
       ? {}
       : { add_gameplay_collision_sound_with_trigger: entitySetter }),
+    ...(engine.add_gameplay_collision_sound_with_guard === undefined
+      ? {}
+      : { add_gameplay_collision_sound_with_guard: entitySetter }),
+    ...(engine.add_gameplay_collision_camera_shake_with_guard === undefined
+      ? {}
+      : { add_gameplay_collision_camera_shake_with_guard: entitySetter }),
     ...(engine.add_gameplay_collision_particle === undefined
       ? {}
       : { add_gameplay_collision_particle: entitySetter }),
@@ -1364,9 +1496,15 @@ function gameplayBehaviorRuntimeCapabilityPreflightEngine(
     ...(engine.add_gameplay_collision_particle_with_trigger === undefined
       ? {}
       : { add_gameplay_collision_particle_with_trigger: entitySetter }),
+    ...(engine.add_gameplay_collision_particle_with_guard === undefined
+      ? {}
+      : { add_gameplay_collision_particle_with_guard: entitySetter }),
     ...(engine.add_gameplay_collision_despawn === undefined
       ? {}
       : { add_gameplay_collision_despawn: entitySetter }),
+    ...(engine.add_gameplay_collision_despawn_with_guard === undefined
+      ? {}
+      : { add_gameplay_collision_despawn_with_guard: entitySetter }),
   };
 }
 
@@ -1404,12 +1542,23 @@ function retargetBehaviorRecipeCommands(
 function firstTransitionMatch(
   transitions: readonly ResolvedBehaviorStateMachineTransition[],
   events: readonly GameplayEventAction[],
+  variables: Readonly<Record<string, number | boolean>>,
   ids: GameplayBehaviorRuntimeIds | undefined,
   path: string,
-): { transition: ResolvedBehaviorStateMachineTransition; event: BehaviorStateMachineReplayEventMatch } | undefined {
+): {
+  transition: ResolvedBehaviorStateMachineTransition;
+  event?: BehaviorStateMachineReplayEventMatch;
+  } | undefined {
   for (const [index, transition] of transitions.entries()) {
+    const predicate = transition.when;
+    if (predicate.type === "variableComparison") {
+      if (transitionMatchesVariables(predicate, variables, ids, `${path}.transitions.${index}.when`)) {
+        return { transition };
+      }
+      continue;
+    }
     const event = events.find((candidate) =>
-      transitionMatchesEvent(transition.when, candidate, ids, `${path}.transitions.${index}.when`)
+      transitionMatchesEvent(predicate, candidate, ids, `${path}.transitions.${index}.when`)
     );
     if (event !== undefined) {
       return {
@@ -1422,12 +1571,12 @@ function firstTransitionMatch(
 }
 
 function transitionMatchesEvent(
-  predicate: ResolvedBehaviorStateMachineTransitionPredicate,
+  predicate: ResolvedBehaviorStateMachineGameplayEventPredicate,
   event: GameplayEventAction,
   ids: GameplayBehaviorRuntimeIds | undefined,
   path: string,
 ): boolean {
-  if (predicate.type !== "gameplayEvent" || predicate.event !== event.type) {
+  if (predicate.event !== event.type) {
     return false;
   }
   if (event.type !== "interaction") {
@@ -1455,6 +1604,71 @@ function transitionMatchesEvent(
     return positiveU32(actionId, `${path}.actionId`) === event.actionId;
   }
   return predicate.action === event.action;
+}
+
+function transitionMatchesVariables(
+  predicate: ResolvedBehaviorStateMachineVariableComparisonPredicate,
+  variables: Readonly<Record<string, number | boolean>>,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+  path: string,
+): boolean {
+  const left = replayVariableValue(
+    variables,
+    predicate.variable,
+    predicate.variableId,
+    ids,
+    `${path}.variable`,
+  );
+  const right = predicate.value === undefined
+    ? replayVariableValue(
+        variables,
+        predicate.otherVariable,
+        predicate.otherVariableId,
+        ids,
+        `${path}.otherVariable`,
+      )
+    : predicate.value;
+  const leftNumber = typeof left === "boolean" ? Number(left) : left;
+  const rightNumber = typeof right === "boolean" ? Number(right) : right;
+  switch (predicate.op) {
+    case "==":
+      return leftNumber === rightNumber;
+    case "!=":
+      return leftNumber !== rightNumber;
+    case "<":
+      return leftNumber < rightNumber;
+    case "<=":
+      return leftNumber <= rightNumber;
+    case ">":
+      return leftNumber > rightNumber;
+    case ">=":
+      return leftNumber >= rightNumber;
+  }
+}
+
+function replayVariableValue(
+  variables: Readonly<Record<string, number | boolean>>,
+  name: string | undefined,
+  explicitId: number | undefined,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+  path: string,
+): number | boolean {
+  const slot = explicitId ?? (name === undefined ? undefined : ids?.variables?.[name]);
+  const resolvedName = name ?? (
+    slot === undefined
+      ? undefined
+      : Object.entries(ids?.variables ?? {}).find(([, candidate]) => candidate === slot)?.[0]
+  );
+  const value = resolvedName === undefined
+    ? (slot === undefined ? undefined : variables[String(slot)])
+    : variables[resolvedName] ?? (slot === undefined ? undefined : variables[String(slot)]);
+  if (value === undefined) {
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `must provide the current replay value for variable '${resolvedName ?? slot ?? "unknown"}'`,
+    );
+  }
+  return value;
 }
 
 function gameplayEventSubjectMatchesEntity(event: GameplayEventAction, entity: GameplayEntityHandle): boolean {
@@ -1500,6 +1714,9 @@ function assertReplayPredicatesUseActionIds(
 ): void {
   Object.values(machine.states).forEach((state) => {
     state.transitions.forEach((transition, index) => {
+      if (transition.when.type === "variableComparison") {
+        return;
+      }
       if (transition.when.event === "timer") {
         if (
           transition.when.timerId !== undefined
@@ -1590,6 +1807,22 @@ function gameplayEvents(value: unknown, path: string): readonly GameplayEventAct
     gameplayEntityHandle(event.source, `${eventPath}.source`);
   });
   return value as readonly GameplayEventAction[];
+}
+
+function gameplayVariableValues(
+  value: unknown,
+  path: string,
+): Readonly<Record<string, number | boolean>> {
+  if (!isRecord(value)) {
+    throw gameplayAuthoringDiagnosticError(path, "must be an object");
+  }
+  const variables: Record<string, number | boolean> = {};
+  for (const [name, entry] of Object.entries(value)) {
+    variables[nonEmptyString(name, `${path}.${name}`)] = typeof entry === "boolean"
+      ? entry
+      : finiteNumber(entry, `${path}.${name}`);
+  }
+  return variables;
 }
 
 function gameplayEntityHandle(value: unknown, path: string): void {

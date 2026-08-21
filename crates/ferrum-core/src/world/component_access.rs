@@ -443,6 +443,19 @@ impl World {
         reactions.push(reaction)
     }
 
+    pub(crate) fn add_guarded_collision_reaction(
+        &mut self,
+        entity: Entity,
+        reaction: CollisionReaction,
+        guard: crate::gameplay_variables::GameplayVariableComparison,
+    ) -> bool {
+        let Some(i) = self.valid_index(entity) else {
+            return false;
+        };
+        let reactions = self.collision_reactions[i].get_or_insert_with(Default::default);
+        reactions.push_guarded(reaction, guard)
+    }
+
     pub(crate) fn collision_reactions_mut(
         &mut self,
         entity: Entity,
@@ -674,6 +687,14 @@ impl World {
         self.behavior_state_machines[i]
     }
 
+    pub(crate) fn behavior_state_machine_ref(
+        &self,
+        entity: Entity,
+    ) -> Option<&BehaviorStateMachine> {
+        let i = self.valid_index(entity)?;
+        self.behavior_state_machines[i].as_ref()
+    }
+
     pub(crate) fn has_behavior_state_machines(&self) -> bool {
         self.behavior_state_machines.iter().any(Option::is_some)
     }
@@ -687,6 +708,21 @@ impl World {
             return false;
         };
         self.behavior_state_machines[i] = Some(machine);
+        true
+    }
+
+    pub(crate) fn set_behavior_state_machine_current_state(
+        &mut self,
+        entity: Entity,
+        state: u32,
+    ) -> bool {
+        let Some(i) = self.valid_index(entity) else {
+            return false;
+        };
+        let Some(machine) = self.behavior_state_machines[i].as_mut() else {
+            return false;
+        };
+        machine.set_current_state(state);
         true
     }
 
@@ -751,6 +787,16 @@ impl World {
     pub(crate) fn gameplay_timer_trigger(&self, entity: Entity) -> Option<GameplayTimerTrigger> {
         let i = self.valid_index(entity)?;
         self.gameplay_timer_triggers[i]
+    }
+
+    pub(crate) fn gameplay_timer_trigger_at_index(
+        &self,
+        index: usize,
+    ) -> Option<GameplayTimerTrigger> {
+        if !self.is_alive_index(index) {
+            return None;
+        }
+        self.gameplay_timer_triggers.get(index).copied().flatten()
     }
 
     pub(crate) fn gameplay_timer_trigger_mut_at_index(

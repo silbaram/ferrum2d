@@ -234,7 +234,7 @@ impl PlatformerScene {
     }
 
     fn rebuild_level(&mut self, world: &mut World, camera: &mut Camera2D, game_state: GameState) {
-        *world = World::default();
+        world.reset_preserving_gameplay_variables();
         self.score = 0;
         self.elapsed_play_seconds = 0.0;
         self.player = None;
@@ -572,8 +572,12 @@ fn spawn_landing_reaction_particles(
     let mut evaluations: [Option<CollisionSideEffectEvaluation>;
         MAX_COLLISION_REACTIONS_PER_ENTITY] = [None; MAX_COLLISION_REACTIONS_PER_ENTITY];
     let mut evaluation_count = 0;
+    let gameplay_variables = world.gameplay_variable_slab().clone();
     if let Some((player_index, reactions)) = world.collision_reactions_mut(player) {
-        for reaction in reactions.iter_mut() {
+        for (reaction, guard) in reactions.iter_mut_with_guards() {
+            if !gameplay_variables.matches(guard) {
+                continue;
+            }
             if let Some(evaluation) =
                 commit_tile_collision_side_effect_reaction(player_index, reaction)
             {

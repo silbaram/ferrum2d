@@ -13,7 +13,7 @@ Use this skill to keep Ferrum2D authoring schemas, validation code, examples, an
 - Physics authoring docs/schema: `docs/engine/physics-spec.md`, `schemas/physics-authoring.schema.json`
 - Data Scene docs: `docs/engine/data-scene-authoring.md`
 - Public authoring docs: `docs/engine/public-api/authoring.md`
-- Planning context: `docs/planning/object-authoring-tool-plan.md`, `docs/planning/physics_review.md`
+- Planning context: `docs/planning/README.md`, `docs/planning/game-development-convenience-review.md`
 
 ## Owned Surface
 

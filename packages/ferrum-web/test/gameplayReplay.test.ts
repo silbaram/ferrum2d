@@ -30,6 +30,24 @@ test("gameplay replay run hashes canonical game state snapshot frames", () => {
   equal(run.snapshots[1].replayHash, run.snapshots[1].snapshot.snapshotHash);
 });
 
+test("gameplay replay hash includes the Rust gameplay variable slab", () => {
+  const expected = createGameplayReplayRun([
+    snapshotAt(0, { gameplayVariableValue: 1 }),
+  ]);
+  const actual = createGameplayReplayRun([
+    snapshotAt(0, { gameplayVariableValue: 2 }),
+  ]);
+
+  ok(expected.replayHash !== actual.replayHash);
+  const comparison = compareGameplayReplayRuns(expected, actual);
+  equal(comparison.passed, false);
+  deepEqual(comparison.firstMismatch, {
+    path: "gameplayReplay.snapshots.0.snapshot.builtInShooter.headerU32s.155",
+    expected: 0x3ff00000,
+    actual: 0x40000000,
+  });
+});
+
 test("gameplay replay comparison reports machine-actionable first snapshot diff", () => {
   const expected = createGameplayReplayRun([
     snapshotAt(0, { score: 0 }),
@@ -204,6 +222,7 @@ function fakeEngine(initial: Partial<FakeScene> = {}): FerrumEngine {
     cameraX: initial.cameraX ?? 0,
     cameraY: initial.cameraY ?? 0,
     dataSceneActive: initial.dataSceneActive ?? false,
+    gameplayVariableValue: initial.gameplayVariableValue,
   };
   return {
     score: () => scene.score,
@@ -213,7 +232,7 @@ function fakeEngine(initial: Partial<FakeScene> = {}): FerrumEngine {
     cameraX: () => scene.cameraX,
     cameraY: () => scene.cameraY,
     dataSceneState: () => scene.dataSceneActive ? "playing" : undefined,
-    captureShooterStateSnapshot: () => fakeShooterState(scene.score),
+    captureShooterStateSnapshot: () => fakeShooterState(scene.score, scene.gameplayVariableValue),
   } as FerrumEngine;
 }
 
@@ -225,29 +244,45 @@ interface FakeScene {
   cameraX: number;
   cameraY: number;
   dataSceneActive: boolean;
+  gameplayVariableValue?: number;
 }
 
-function fakeShooterState(score: number): BuiltInShooterStateSnapshot {
+function fakeShooterState(score: number, gameplayVariableValue?: number): BuiltInShooterStateSnapshot {
+  const headerU32s = [
+    BUILT_IN_SHOOTER_STATE_VERSION,
+    1,
+    score,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    ...Array(BUILT_IN_SHOOTER_STATE_HEADER_U32S - 9).fill(0),
+  ];
+  if (gameplayVariableValue !== undefined) {
+    const gameplayVariablesOffset = BUILT_IN_SHOOTER_STATE_HEADER_U32S - (64 * 5);
+    const [lowWord, highWord] = f64Words(gameplayVariableValue);
+    headerU32s[gameplayVariablesOffset] = 1 | (1 << 16);
+    headerU32s[gameplayVariablesOffset + 3] = lowWord;
+    headerU32s[gameplayVariablesOffset + 4] = highWord;
+  }
   return {
     format: "ferrum2d.builtin-shooter-state",
     version: BUILT_IN_SHOOTER_STATE_VERSION,
     headerFloats: [0, 1, 0, 0, 400, 240, 0, 0],
-    headerU32s: [
-      BUILT_IN_SHOOTER_STATE_VERSION,
-      1,
-      score,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      ...Array(BUILT_IN_SHOOTER_STATE_HEADER_U32S - 9).fill(0),
-    ],
+    headerU32s,
     entityFloats: [400, 240, 0, 0, 5, ...Array(BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY - 5).fill(0)],
     entityU32s: [0, ...Array(BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY - 1).fill(0)],
     entityCount: 1,
     floatsPerEntity: BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY,
     u32sPerEntity: BUILT_IN_SHOOTER_STATE_U32S_PER_ENTITY,
   };
+}
+
+function f64Words(value: number): readonly [number, number] {
+  const buffer = new ArrayBuffer(8);
+  const view = new DataView(buffer);
+  view.setFloat64(0, value, true);
+  return [view.getUint32(0, true), view.getUint32(4, true)];
 }

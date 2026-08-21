@@ -101,8 +101,10 @@ export function createPlacementHandoffControls(): PlacementHandoffControls {
   copyHandoff.textContent = "Copy Handoff";
   copyHandoff.dataset.placementAction = "copy-handoff";
   saveDraft.type = "button";
-  saveDraft.textContent = "Save Draft";
+  saveDraft.textContent = "Apply Memory";
+  saveDraft.title = "Apply the draft to this viewer session only. This does not write scene-authoring.json.";
   saveDraft.dataset.placementAction = "save-draft";
+  element.dataset.saveMode = "memory";
 
   actions.append(copyPatch, copyHandoff, saveDraft);
   element.append(actions, status);
@@ -137,9 +139,9 @@ export function createPlacementHandoffControls(): PlacementHandoffControls {
     }
     void (async () => {
       try {
-        setStatus("Saving draft", "idle");
+        setStatus("Applying draft in memory", "idle");
         await lastSaveDraft();
-        setStatus("Draft saved", "success");
+        setStatus("Draft applied in memory", "success");
       } catch (error) {
         setStatus(placementErrorMessage(error), "error");
       }

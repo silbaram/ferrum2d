@@ -41,6 +41,7 @@ impl WorldComponentStorage {
         world.behavior_state_machines.push(None);
         world.behavior_state_enter_actions.push(None);
         world.gameplay_timer_triggers.push(None);
+        world.gameplay_variable_mutation_triggers.push(None);
     }
 
     pub(super) fn clear_entity(world: &mut World, index: usize) {
@@ -80,6 +81,7 @@ impl WorldComponentStorage {
         world.behavior_state_machines[index] = None;
         world.behavior_state_enter_actions[index] = None;
         world.gameplay_timer_triggers[index] = None;
+        world.gameplay_variable_mutation_triggers[index] = None;
     }
 }
 
@@ -158,6 +160,7 @@ mod tests {
         assert_eq!(world.behavior_state_machines.len(), len);
         assert_eq!(world.behavior_state_enter_actions.len(), len);
         assert_eq!(world.gameplay_timer_triggers.len(), len);
+        assert_eq!(world.gameplay_variable_mutation_triggers.len(), len);
     }
 
     fn assert_component_slot_empty(world: &World, index: usize) {
@@ -198,5 +201,6 @@ mod tests {
         assert_eq!(world.behavior_state_machines[index], None);
         assert_eq!(world.behavior_state_enter_actions[index], None);
         assert_eq!(world.gameplay_timer_triggers[index], None);
+        assert_eq!(world.gameplay_variable_mutation_triggers[index], None);
     }
 }

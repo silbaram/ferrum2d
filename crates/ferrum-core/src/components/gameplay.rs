@@ -1,6 +1,7 @@
 use crate::components::CollisionLayer;
 use crate::entity::Entity;
 use crate::gameplay_event::GAMEPLAY_EVENT_INTERACTION;
+use crate::gameplay_variables::GameplayVariableComparison;
 
 pub(crate) const MAX_COLLISION_REACTIONS_PER_ENTITY: usize = 16;
 pub(crate) const MAX_BEHAVIOR_STATE_TRANSITIONS_PER_ENTITY: usize = 32;
@@ -468,6 +469,7 @@ pub(crate) struct GameplayTimerTrigger {
     pub(crate) remaining_seconds: f32,
     pub(crate) fired: bool,
     pub(crate) action_id: Option<u32>,
+    pub(crate) guard: GameplayVariableComparison,
 }
 
 impl GameplayTimerTrigger {
@@ -478,6 +480,7 @@ impl GameplayTimerTrigger {
             remaining_seconds: duration_seconds,
             fired: false,
             action_id: None,
+            guard: GameplayVariableComparison::always(),
         }
     }
 
@@ -488,7 +491,13 @@ impl GameplayTimerTrigger {
             remaining_seconds: duration_seconds,
             fired: false,
             action_id: Some(action_id),
+            guard: GameplayVariableComparison::always(),
         }
+    }
+
+    pub(crate) const fn guarded(mut self, guard: GameplayVariableComparison) -> Self {
+        self.guard = guard;
+        self
     }
 
     pub(crate) fn tick(&mut self, delta_seconds: f32) -> bool {
@@ -850,6 +859,7 @@ pub(crate) struct Interaction {
     pub(crate) radius: f32,
     pub(crate) once: bool,
     pub(crate) consumed: bool,
+    pub(crate) guard: GameplayVariableComparison,
 }
 
 impl Interaction {
@@ -859,13 +869,20 @@ impl Interaction {
             radius,
             once,
             consumed: false,
+            guard: GameplayVariableComparison::always(),
         }
+    }
+
+    pub(crate) const fn guarded(mut self, guard: GameplayVariableComparison) -> Self {
+        self.guard = guard;
+        self
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct CollisionReactionSet {
     reactions: [Option<CollisionReaction>; MAX_COLLISION_REACTIONS_PER_ENTITY],
+    guards: [GameplayVariableComparison; MAX_COLLISION_REACTIONS_PER_ENTITY],
     len: usize,
 }
 
@@ -875,12 +892,13 @@ pub(crate) struct ActionBindingSet {
     len: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct BehaviorStateTransition {
     pub(crate) from_state: u32,
     pub(crate) to_state: u32,
     pub(crate) event_kind: u32,
     pub(crate) token_id: u32,
+    pub(crate) guard: GameplayVariableComparison,
 }
 
 impl BehaviorStateTransition {
@@ -900,11 +918,26 @@ impl BehaviorStateTransition {
             to_state,
             event_kind,
             token_id,
+            guard: GameplayVariableComparison::always(),
+        }
+    }
+
+    pub(crate) const fn new_variable(
+        from_state: u32,
+        to_state: u32,
+        guard: GameplayVariableComparison,
+    ) -> Self {
+        Self {
+            from_state,
+            to_state,
+            event_kind: 0,
+            token_id: 0,
+            guard,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct BehaviorStateMachine {
     current_state: u32,
     transitions: [Option<BehaviorStateTransition>; MAX_BEHAVIOR_STATE_TRANSITIONS_PER_ENTITY],
@@ -1003,6 +1036,7 @@ impl Default for CollisionReactionSet {
     fn default() -> Self {
         Self {
             reactions: [None; MAX_COLLISION_REACTIONS_PER_ENTITY],
+            guards: [GameplayVariableComparison::always(); MAX_COLLISION_REACTIONS_PER_ENTITY],
             len: 0,
         }
     }
@@ -1139,18 +1173,27 @@ impl BehaviorStateEnterActionSet {
 
 impl CollisionReactionSet {
     pub(crate) fn push(&mut self, reaction: CollisionReaction) -> bool {
+        self.push_guarded(reaction, GameplayVariableComparison::always())
+    }
+
+    pub(crate) fn push_guarded(
+        &mut self,
+        reaction: CollisionReaction,
+        guard: GameplayVariableComparison,
+    ) -> bool {
         self.compact();
-        if let Some(slot) = self.reactions.iter_mut().take(self.len).find(|slot| {
-            slot.as_ref()
-                .is_some_and(|existing| collision_reaction_authoring_key_eq(*existing, reaction))
+        if let Some(index) = self.reactions.iter().take(self.len).position(|slot| {
+            slot.is_some_and(|existing| collision_reaction_authoring_key_eq(existing, reaction))
         }) {
-            *slot = Some(reaction);
+            self.reactions[index] = Some(reaction);
+            self.guards[index] = guard;
             return true;
         }
         let Some(slot) = self.reactions.get_mut(self.len) else {
             return false;
         };
         *slot = Some(reaction);
+        self.guards[self.len] = guard;
         self.len += 1;
         true
     }
@@ -1167,6 +1210,15 @@ impl CollisionReactionSet {
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut CollisionReaction> + '_ {
         self.reactions.iter_mut().filter_map(Option::as_mut)
+    }
+
+    pub(crate) fn iter_mut_with_guards(
+        &mut self,
+    ) -> impl Iterator<Item = (&mut CollisionReaction, GameplayVariableComparison)> + '_ {
+        self.reactions
+            .iter_mut()
+            .zip(self.guards.iter().copied())
+            .filter_map(|(reaction, guard)| reaction.as_mut().map(|reaction| (reaction, guard)))
     }
 
     pub(crate) fn tick_cooldowns(&mut self, delta: f32) {
@@ -1191,7 +1243,25 @@ impl CollisionReactionSet {
     }
 
     fn compact(&mut self) {
-        self.len = compact_option_slots(&mut self.reactions);
+        let mut reactions = [None; MAX_COLLISION_REACTIONS_PER_ENTITY];
+        let mut guards = [GameplayVariableComparison::always(); MAX_COLLISION_REACTIONS_PER_ENTITY];
+        let mut len = 0;
+        for (reaction, guard) in self
+            .reactions
+            .iter()
+            .copied()
+            .zip(self.guards.iter().copied())
+        {
+            let Some(reaction) = reaction else {
+                continue;
+            };
+            reactions[len] = Some(reaction);
+            guards[len] = guard;
+            len += 1;
+        }
+        self.reactions = reactions;
+        self.guards = guards;
+        self.len = len;
     }
 }
 

@@ -32,6 +32,7 @@ impl World {
             if self.has_incident_joints(entity) {
                 self.clear_joints_for_entity(entity);
             }
+            self.retire_gameplay_variable_mutation_triggers(entity, i);
             self.alive[i] = false;
             self.generations[i] += 1;
             WorldComponentStorage::clear_entity(self, i);

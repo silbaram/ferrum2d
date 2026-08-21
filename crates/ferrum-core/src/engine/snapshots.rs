@@ -1,10 +1,11 @@
 use wasm_bindgen::prelude::*;
 
+use crate::gameplay_variables::{GameplayVariableSlab, GAMEPLAY_VARIABLE_SNAPSHOT_U32S};
 use crate::input::INPUT_ACTION_REGISTRY_SNAPSHOT_U32S;
 use crate::shooter_scene::{
     ShooterEntitySnapshot, ShooterSceneSnapshot, SHOOTER_SNAPSHOT_ENTITY_FLOATS,
     SHOOTER_SNAPSHOT_ENTITY_U32S, SHOOTER_SNAPSHOT_HEADER_FLOATS, SHOOTER_SNAPSHOT_HEADER_U32S,
-    SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET,
+    SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET, SHOOTER_SNAPSHOT_VARIABLES_U32_OFFSET,
 };
 
 use super::scenes::{ActiveScene, SceneMode};
@@ -101,6 +102,13 @@ impl Engine {
             self.clear_shooter_snapshot_buffers();
             return false;
         }
+        if !self.world.gameplay_variable_slab().write_snapshot(
+            &mut snapshot.header_u32s[SHOOTER_SNAPSHOT_VARIABLES_U32_OFFSET
+                ..SHOOTER_SNAPSHOT_VARIABLES_U32_OFFSET + GAMEPLAY_VARIABLE_SNAPSHOT_U32S],
+        ) {
+            self.clear_shooter_snapshot_buffers();
+            return false;
+        }
         self.store_shooter_snapshot(&snapshot);
         true
     }
@@ -153,6 +161,12 @@ impl Engine {
         ) else {
             return false;
         };
+        let Some(gameplay_variables) = GameplayVariableSlab::from_snapshot(
+            &snapshot.header_u32s[SHOOTER_SNAPSHOT_VARIABLES_U32_OFFSET
+                ..SHOOTER_SNAPSHOT_VARIABLES_U32_OFFSET + GAMEPLAY_VARIABLE_SNAPSHOT_U32S],
+        ) else {
+            return false;
+        };
         let restored = self.scenes.shooter_mut().restore_snapshot(
             &mut self.world,
             &mut self.camera,
@@ -162,6 +176,8 @@ impl Engine {
         if restored {
             self.activate_built_in_shooter_scene();
             self.input_actions = input_actions;
+            self.world
+                .replace_gameplay_variable_slab(gameplay_variables);
             self.particles.clear();
             self.tweens.clear();
             self.clear_physics_history();

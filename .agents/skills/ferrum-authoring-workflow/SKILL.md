@@ -9,7 +9,7 @@ Use this skill for Ferrum2D agent-first authoring surfaces. Keep the workflow sp
 
 ## Source Of Truth
 
-- Planning status: `docs/planning/object-authoring-tool-plan.md`
+- Planning status: `docs/planning/README.md`, `docs/planning/game-development-convenience-review.md`
 - Public authoring API: `docs/engine/public-api/authoring.md`
 - Data Scene contract: `docs/engine/data-scene-authoring.md`
 - Smoke policy: `docs/development/quality/smoke-check.md`
@@ -27,7 +27,7 @@ Use this skill for Ferrum2D agent-first authoring surfaces. Keep the workflow sp
 
 ## Workflow
 
-1. Read the planning doc and the relevant engine docs before changing authoring behavior.
+1. Read the planning index and the relevant current planning/engine docs before changing authoring behavior.
 2. Keep authoring edits as JSON/spec patches that agents can inspect and replay.
 3. Preserve Rust/TypeScript boundaries: authoring UI and browser assets live in TypeScript; simulation and render command generation remain in Rust/core runtime.
 4. Keep patch generation deterministic. Prefer explicit diagnostics over silently dropping unsupported authoring data.

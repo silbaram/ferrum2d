@@ -88,3 +88,33 @@ fn timer_trigger_emits_once_and_can_drive_behavior_state_machine() {
     tick_gameplay_timer_triggers(&mut world, 1.0, &mut events);
     assert!(events.is_empty());
 }
+
+#[test]
+fn guarded_timer_pauses_until_its_variable_comparison_matches() {
+    let mut world = World::default();
+    let source = world.spawn_entity();
+    assert!(world.configure_gameplay_variable(
+        1,
+        crate::gameplay_variables::GameplayVariableType::Bool,
+        crate::gameplay_variables::GameplayVariableScope::Scene,
+        0.0,
+        0.0,
+    ));
+    let guard = crate::gameplay_variables::GameplayVariableComparison::new(
+        1,
+        crate::gameplay_variables::GameplayVariableComparisonOperator::Equal,
+        0,
+        1.0,
+    )
+    .unwrap();
+    assert!(world
+        .set_gameplay_timer_trigger(source, GameplayTimerTrigger::new(9, 0.25).guarded(guard),));
+    let mut events = Vec::new();
+
+    tick_gameplay_timer_triggers(&mut world, 1.0, &mut events);
+    assert!(events.is_empty());
+    assert!(world.set_gameplay_variable_value(1, 1.0));
+    tick_gameplay_timer_triggers(&mut world, 0.25, &mut events);
+
+    assert_eq!(events, vec![GameplayEvent::timer(source, 9, 0.25)]);
+}

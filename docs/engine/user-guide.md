@@ -288,10 +288,13 @@ Ferrum2D는 비주얼 에디터 중심 엔진이 아니라 AI agent-first 2D gam
 `@ferrum2d/create-game`으로 만든 프로젝트는 다음 하네스 명령을 제공한다.
 
 ```bash
-npm run ferrum:report
-npm run ferrum:validate
-npm run ferrum:smoke
+npm run ferrum:check
 ```
+
+`ferrum:check`는 validation, asset, Scene Authoring, gameplay/runtime replay와 production build를
+순서대로 실행하고 첫 실패 단계와 다음 명령을 JSON으로 알려준다. 세부 입력 역할은
+`npm run ferrum:report`의 `project.runtimeInputs`에서 확인한다. `public/scene-authoring.json`은
+기본적으로 authoring validation과 patch/handoff 입력이며 built-in starter runtime에 자동 적용되지 않는다.
 
 AI 도구별 개발 지침은 명시적으로 설치한다. Codex/Claude는 공식 subagent와 skill 경로를 사용하고, Gemini CLI는 공식 `GEMINI.md` context file과 `.gemini/commands/*.toml` custom command를 사용한다.
 

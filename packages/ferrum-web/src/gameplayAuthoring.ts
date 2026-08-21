@@ -11,6 +11,8 @@ import {
   type BehaviorRecipeCommandOptions,
   type BehaviorRecipeDocumentSpec,
   type BehaviorRecipeRuntimeTarget,
+  type ResolvedBehaviorRecipeEventPredicate,
+  type ResolvedBehaviorRecipeVariableComparison,
   type ResolvedBehaviorRecipeDocument,
 } from "./behaviorRecipes.js";
 import { DATA_SCENE_COMPONENTS_PROP } from "./dataSceneComponents.js";
@@ -30,6 +32,14 @@ import {
   MAX_GAMEPLAY_FACTION_ID,
   type GameplayFactionReference,
 } from "./gameplayFactionRelations.js";
+import {
+  GAMEPLAY_EVENT_KIND_COLLISION_DAMAGE,
+  GAMEPLAY_EVENT_KIND_COLLISION_DESPAWN,
+  GAMEPLAY_EVENT_KIND_INTERACTION,
+  GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED,
+  GAMEPLAY_EVENT_KIND_TILE_IMPACT,
+  GAMEPLAY_EVENT_KIND_TIMER,
+} from "./gameplayEventDecoder.js";
 
 export {
   applyFactionRelationTable,
@@ -326,6 +336,7 @@ export interface GameplayBehaviorRuntimeIds {
   timers?: Readonly<Record<string, number>>;
   tags?: Readonly<Record<string, number>>;
   effects?: Readonly<Record<string, number>>;
+  variables?: Readonly<Record<string, number>>;
 }
 
 export interface ResolveGameplayBehaviorRuntimeIdsOptions {
@@ -336,6 +347,7 @@ export interface ResolveGameplayBehaviorRuntimeIdsOptions {
   requiredTimers?: readonly string[];
   requiredTags?: readonly string[];
   requiredEffects?: readonly string[];
+  requiredVariables?: readonly string[];
 }
 
 export type GameplayPrefabRegistrationKind = "enemy" | "bullet";
@@ -403,6 +415,10 @@ export interface GameplayBehaviorRuntimeEngine {
     radius: number,
     once: boolean,
   ): boolean;
+  set_gameplay_interaction_with_guard?(
+    entityId: number, entityGeneration: number, actionId: number, radius: number, once: boolean,
+    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
+  ): boolean;
   clear_gameplay_interaction(entityId: number, entityGeneration: number): boolean;
   set_gameplay_timer_trigger?(entityId: number, entityGeneration: number, timerId: number, durationSeconds: number): boolean;
   set_gameplay_timer_action_trigger?(
@@ -412,7 +428,20 @@ export interface GameplayBehaviorRuntimeEngine {
     durationSeconds: number,
     actionId: number,
   ): boolean;
+  set_gameplay_timer_trigger_with_guard?(
+    entityId: number, entityGeneration: number, timerId: number, durationSeconds: number,
+    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
+  ): boolean;
+  set_gameplay_timer_action_trigger_with_guard?(
+    entityId: number, entityGeneration: number, timerId: number, durationSeconds: number,
+    actionId: number, leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
+  ): boolean;
   clear_gameplay_timer_trigger?(entityId: number, entityGeneration: number): boolean;
+  add_gameplay_variable_mutation_trigger?(
+    entityId: number, entityGeneration: number, eventKind: number, tokenId: number,
+    variableSlot: number, operation: number, value: number,
+  ): boolean;
+  clear_gameplay_variable_mutation_triggers?(entityId: number, entityGeneration: number): boolean;
   set_gameplay_action_projectile?(
     entityId: number,
     entityGeneration: number,
@@ -610,12 +639,24 @@ export interface GameplayBehaviorRuntimeEngine {
   clear_gameplay_movement?(entityId: number, entityGeneration: number): boolean;
   clear_gameplay_collision_reactions?(entityId: number, entityGeneration: number): boolean;
   add_gameplay_collision_damage(entityId: number, entityGeneration: number, target: number): boolean;
+  add_gameplay_collision_damage_with_guard?(
+    entityId: number, entityGeneration: number, amount: number, target: number,
+    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
+  ): boolean;
   add_gameplay_collision_area_damage?(entityId: number, entityGeneration: number, radius: number, targetLayerCode: number): boolean;
+  add_gameplay_collision_area_damage_with_guard?(
+    entityId: number, entityGeneration: number, amount: number, radius: number, targetLayerCode: number,
+    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
+  ): boolean;
   add_gameplay_collision_knockback?(
     entityId: number,
     entityGeneration: number,
     target: number,
     impulse: number,
+  ): boolean;
+  add_gameplay_collision_knockback_with_guard?(
+    entityId: number, entityGeneration: number, target: number, impulse: number,
+    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
   ): boolean;
   add_gameplay_collision_emit_effect?(
     entityId: number,
@@ -637,6 +678,11 @@ export interface GameplayBehaviorRuntimeEngine {
     intensity: number,
     radius: number,
   ): boolean;
+  add_gameplay_collision_emit_effect_with_guard?(
+    entityId: number, entityGeneration: number, effectId: number, effectType: number,
+    target: number, cooldownSeconds: number, trigger: number, intensity: number, radius: number,
+    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
+  ): boolean;
   add_gameplay_collision_spawn_prefab?(
     entityId: number,
     entityGeneration: number,
@@ -648,7 +694,16 @@ export interface GameplayBehaviorRuntimeEngine {
     offsetX: number,
     offsetY: number,
   ): boolean;
+  add_gameplay_collision_spawn_prefab_with_guard?(
+    entityId: number, entityGeneration: number, actionId: number, prefabId: number,
+    target: number, cooldownSeconds: number, trigger: number, offsetX: number, offsetY: number,
+    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
+  ): boolean;
   add_gameplay_collision_pickup?(entityId: number, entityGeneration: number, target: number): boolean;
+  add_gameplay_collision_pickup_with_guard?(
+    entityId: number, entityGeneration: number, target: number,
+    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
+  ): boolean;
   add_gameplay_collision_sound?(entityId: number, entityGeneration: number, soundId: number, volume: number, pitch: number): boolean;
   add_gameplay_collision_sound_with_cooldown?(
     entityId: number,
@@ -677,6 +732,11 @@ export interface GameplayBehaviorRuntimeEngine {
     replaceDefault: boolean,
     trigger: number,
   ): boolean;
+  add_gameplay_collision_sound_with_guard?(
+    entityId: number, entityGeneration: number, soundId: number, volume: number, pitch: number,
+    cooldownSeconds: number, replaceDefault: boolean, trigger: number,
+    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
+  ): boolean;
   add_gameplay_collision_camera_shake?(
     entityId: number,
     entityGeneration: number,
@@ -691,6 +751,10 @@ export interface GameplayBehaviorRuntimeEngine {
     entityGeneration: number,
     cooldownSeconds: number,
     trigger: number,
+  ): boolean;
+  add_gameplay_collision_camera_shake_with_guard?(
+    entityId: number, entityGeneration: number, cooldownSeconds: number, trigger: number,
+    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
   ): boolean;
   add_gameplay_collision_particle?(entityId: number, entityGeneration: number, presetId: number, target: number): boolean;
   add_gameplay_collision_particle_with_cooldown?(
@@ -717,7 +781,16 @@ export interface GameplayBehaviorRuntimeEngine {
     replaceDefault: boolean,
     trigger: number,
   ): boolean;
+  add_gameplay_collision_particle_with_guard?(
+    entityId: number, entityGeneration: number, presetId: number, target: number,
+    cooldownSeconds: number, replaceDefault: boolean, trigger: number,
+    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
+  ): boolean;
   add_gameplay_collision_despawn?(entityId: number, entityGeneration: number, target: number): boolean;
+  add_gameplay_collision_despawn_with_guard?(
+    entityId: number, entityGeneration: number, target: number,
+    leftSlot: number, operator: number, rightSlot: number, rightLiteral: number,
+  ): boolean;
 }
 
 export interface SceneBehaviorBindingOptions extends InstantiateSceneFragmentOptions, BehaviorRecipeCommandOptions {
@@ -1004,12 +1077,14 @@ export function resolveGameplayBehaviorRuntimeIds(
   const timers = runtimeIdNamespace(value.timers, `${path}.timers`);
   const tags = runtimeTagIdNamespace(value.tags, `${path}.tags`);
   const effects = runtimeIdNamespace(value.effects, `${path}.effects`);
+  const variables = runtimeIdNamespace(value.variables, `${path}.variables`);
   requireRuntimeIdNames(items, options.requiredItems ?? [], `${path}.items`);
   requireRuntimeIdNames(actions, options.requiredActions ?? [], `${path}.actions`);
   requireRuntimeIdNames(prefabs, options.requiredPrefabs ?? [], `${path}.prefabs`);
   requireRuntimeIdNames(timers, options.requiredTimers ?? [], `${path}.timers`);
   requireRuntimeIdNames(tags, options.requiredTags ?? [], `${path}.tags`);
   requireRuntimeIdNames(effects, options.requiredEffects ?? [], `${path}.effects`);
+  requireRuntimeIdNames(variables, options.requiredVariables ?? [], `${path}.variables`);
   return {
     ...(Object.keys(items).length === 0 ? {} : { items }),
     ...(Object.keys(actions).length === 0 ? {} : { actions }),
@@ -1017,6 +1092,7 @@ export function resolveGameplayBehaviorRuntimeIds(
     ...(Object.keys(timers).length === 0 ? {} : { timers }),
     ...(Object.keys(tags).length === 0 ? {} : { tags }),
     ...(Object.keys(effects).length === 0 ? {} : { effects }),
+    ...(Object.keys(variables).length === 0 ? {} : { variables }),
   };
 }
 
@@ -1071,7 +1147,7 @@ function applyGameplayBehaviorCommand(
     case "configureHealth":
       return applyConfigureHealthCommand(engine, command, handle, path);
     case "configureDamage":
-      return applyConfigureDamageCommand(engine, command, handle, path);
+      return applyConfigureDamageCommand(engine, command, handle, path, ids);
     case "configureFaction":
       return applyConfigureFactionCommand(engine, command, handle, path);
     case "configureLifetime":
@@ -1087,23 +1163,23 @@ function applyGameplayBehaviorCommand(
     case "configurePickup":
       return applyConfigurePickupCommand(engine, command, handle, path, ids);
     case "configureCollisionPickup":
-      return applyConfigureCollisionPickupCommand(engine, command, handle, path);
+      return applyConfigureCollisionPickupCommand(engine, command, handle, path, ids);
     case "configureCollisionAreaDamage":
-      return applyConfigureCollisionAreaDamageCommand(engine, command, handle, path);
+      return applyConfigureCollisionAreaDamageCommand(engine, command, handle, path, ids);
     case "configureCollisionKnockback":
-      return applyConfigureCollisionKnockbackCommand(engine, command, handle, path);
+      return applyConfigureCollisionKnockbackCommand(engine, command, handle, path, ids);
     case "configureCollisionEmitEffect":
       return applyConfigureCollisionEmitEffectCommand(engine, command, handle, path, ids);
     case "configureCollisionSpawnPrefab":
       return applyConfigureCollisionSpawnPrefabCommand(engine, command, handle, path, ids);
     case "configureCollisionSound":
-      return applyConfigureCollisionSoundCommand(engine, command, handle, path);
+      return applyConfigureCollisionSoundCommand(engine, command, handle, path, ids);
     case "configureCollisionShake":
-      return applyConfigureCollisionShakeCommand(engine, command, handle, path);
+      return applyConfigureCollisionShakeCommand(engine, command, handle, path, ids);
     case "configureCollisionParticle":
-      return applyConfigureCollisionParticleCommand(engine, command, handle, path);
+      return applyConfigureCollisionParticleCommand(engine, command, handle, path, ids);
     case "configureCollisionDespawn":
-      return applyConfigureCollisionDespawnCommand(engine, command, handle, path);
+      return applyConfigureCollisionDespawnCommand(engine, command, handle, path, ids);
     case "configureInteraction":
       return applyConfigureInteractionCommand(engine, command, handle, path, ids);
     case "configureProjectileAction":
@@ -1116,6 +1192,10 @@ function applyGameplayBehaviorCommand(
       return applyConfigureSpawnPrefabActionCommand(engine, command, handle, path, ids);
     case "configureTimerTrigger":
       return applyConfigureTimerTriggerCommand(engine, command, handle, path, ids);
+    case "configureSetVariable":
+      return applyConfigureVariableMutationCommand(engine, command, handle, path, ids, 0);
+    case "configureIncrementVariable":
+      return applyConfigureVariableMutationCommand(engine, command, handle, path, ids, 1);
   }
 }
 
@@ -1162,8 +1242,29 @@ function applyConfigureDamageCommand(
   command: Extract<BehaviorRecipeCommand, { type: "configureDamage" }>,
   handle: GameplayEntityHandle,
   path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedDamageCommand(command, path);
+  if (command.guard !== undefined) {
+    const addGuarded = requireRuntimeMethod(
+      engine.add_gameplay_collision_damage_with_guard,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_damage_with_guard for guarded damage commands",
+    );
+    const guard = runtimeVariableComparison(command.guard, ids, `${path}.guard`);
+    return requireApplied(
+      addGuarded.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.amount,
+        collisionTargetCode(command.target),
+        ...guard,
+      ),
+      path,
+      command,
+    );
+  }
   const setGameplayDamageReaction = requireRuntimeMethod(
     engine.set_gameplay_damage_reaction,
     `${path}.type`,
@@ -1292,6 +1393,26 @@ function applyConfigureInteractionCommand(
 ): boolean {
   assertSupportedInteractionCommand(command, path);
   const actionId = interactionActionId(command, ids, path);
+  if (command.guard !== undefined) {
+    const setGuarded = requireRuntimeMethod(
+      engine.set_gameplay_interaction_with_guard,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_interaction_with_guard for guarded interaction commands",
+    );
+    return requireApplied(
+      setGuarded.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        actionId,
+        command.radius,
+        command.once,
+        ...runtimeVariableComparison(command.guard, ids, `${path}.guard`),
+      ),
+      path,
+      command,
+    );
+  }
   return requireApplied(
     engine.set_gameplay_interaction(
       handle.entityId,
@@ -1645,8 +1766,27 @@ function applyConfigureCollisionPickupCommand(
   command: Extract<BehaviorRecipeCommand, { type: "configureCollisionPickup" }>,
   handle: GameplayEntityHandle,
   path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedCollisionPickupCommand(command, path);
+  if (command.guard !== undefined) {
+    const addGuarded = requireRuntimeMethod(
+      engine.add_gameplay_collision_pickup_with_guard,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_pickup_with_guard for guarded collision pickup commands",
+    );
+    return requireApplied(
+      addGuarded.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        collisionTargetCode(command.target),
+        ...runtimeVariableComparison(command.guard, ids, `${path}.guard`),
+      ),
+      path,
+      command,
+    );
+  }
   const addCollisionPickup = requireRuntimeMethod(
     engine.add_gameplay_collision_pickup,
     `${path}.type`,
@@ -1669,8 +1809,29 @@ function applyConfigureCollisionAreaDamageCommand(
   command: Extract<BehaviorRecipeCommand, { type: "configureCollisionAreaDamage" }>,
   handle: GameplayEntityHandle,
   path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedCollisionAreaDamageCommand(command, path);
+  if (command.guard !== undefined) {
+    const addGuarded = requireRuntimeMethod(
+      engine.add_gameplay_collision_area_damage_with_guard,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_area_damage_with_guard for guarded area damage commands",
+    );
+    return requireApplied(
+      addGuarded.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.amount,
+        command.radius,
+        gameplayCollisionLayerCode(command.targetLayer, `${path}.targetLayer`),
+        ...runtimeVariableComparison(command.guard, ids, `${path}.guard`),
+      ),
+      path,
+      command,
+    );
+  }
   const setGameplayAreaDamageReaction = requireRuntimeMethod(
     engine.set_gameplay_area_damage_reaction,
     `${path}.type`,
@@ -1695,8 +1856,28 @@ function applyConfigureCollisionKnockbackCommand(
   command: Extract<BehaviorRecipeCommand, { type: "configureCollisionKnockback" }>,
   handle: GameplayEntityHandle,
   path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedCollisionKnockbackCommand(command, path);
+  if (command.guard !== undefined) {
+    const addGuarded = requireRuntimeMethod(
+      engine.add_gameplay_collision_knockback_with_guard,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_knockback_with_guard for guarded collision knockback commands",
+    );
+    return requireApplied(
+      addGuarded.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        collisionTargetCode(command.target),
+        command.impulse,
+        ...runtimeVariableComparison(command.guard, ids, `${path}.guard`),
+      ),
+      path,
+      command,
+    );
+  }
   const addCollisionKnockback = requireRuntimeMethod(
     engine.add_gameplay_collision_knockback,
     `${path}.type`,
@@ -1727,6 +1908,30 @@ function applyConfigureCollisionEmitEffectCommand(
   const hasPayload = command.intensity !== undefined || command.radius !== undefined;
   const intensity = command.intensity ?? 1;
   const radius = command.radius ?? 0;
+  if (command.guard !== undefined) {
+    const addGuarded = requireRuntimeMethod(
+      engine.add_gameplay_collision_emit_effect_with_guard,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_emit_effect_with_guard for guarded collision effect commands",
+    );
+    return requireApplied(
+      addGuarded.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        effectId,
+        command.effectType,
+        collisionTargetCode(command.target),
+        command.cooldownSeconds ?? 0,
+        collisionTriggerCode(command.trigger ?? "contact"),
+        intensity,
+        radius,
+        ...runtimeVariableComparison(command.guard, ids, `${path}.guard`),
+      ),
+      path,
+      command,
+    );
+  }
   const addCollisionEmitEffectWithPayload = engine.add_gameplay_collision_emit_effect_with_payload;
   if (addCollisionEmitEffectWithPayload !== undefined) {
     return requireApplied(
@@ -1788,6 +1993,30 @@ function applyConfigureCollisionSpawnPrefabCommand(
   );
   const actionId = collisionSpawnPrefabActionId(command, ids, path);
   const prefabId = collisionSpawnPrefabId(command, ids, path);
+  if (command.guard !== undefined) {
+    const addGuarded = requireRuntimeMethod(
+      engine.add_gameplay_collision_spawn_prefab_with_guard,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_spawn_prefab_with_guard for guarded collision spawn commands",
+    );
+    return requireApplied(
+      addGuarded.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        actionId,
+        prefabId,
+        collisionTargetCode(command.target),
+        command.cooldownSeconds ?? 0,
+        collisionTriggerCode(command.trigger ?? "contact"),
+        command.offsetX,
+        command.offsetY,
+        ...runtimeVariableComparison(command.guard, ids, `${path}.guard`),
+      ),
+      path,
+      command,
+    );
+  }
   return requireApplied(
     addCollisionSpawnPrefab.call(
       engine,
@@ -1811,11 +2040,35 @@ function applyConfigureCollisionSoundCommand(
   command: Extract<BehaviorRecipeCommand, { type: "configureCollisionSound" }>,
   handle: GameplayEntityHandle,
   path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedCollisionSoundCommand(command, path);
   const cooldownSeconds = command.cooldownSeconds ?? 0;
   const replaceDefault = command.replaceDefault ?? false;
   const trigger = command.trigger ?? "contact";
+  if (command.guard !== undefined) {
+    const addGuarded = requireRuntimeMethod(
+      engine.add_gameplay_collision_sound_with_guard,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_sound_with_guard for guarded collision sound commands",
+    );
+    return requireApplied(
+      addGuarded.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.soundId,
+        command.volume,
+        command.pitch,
+        cooldownSeconds,
+        replaceDefault,
+        collisionTriggerCode(trigger),
+        ...runtimeVariableComparison(command.guard, ids, `${path}.guard`),
+      ),
+      path,
+      command,
+    );
+  }
   if (trigger === "enter") {
     const addCollisionSoundWithTrigger = requireRuntimeMethod(
       engine.add_gameplay_collision_sound_with_trigger,
@@ -1903,10 +2156,30 @@ function applyConfigureCollisionShakeCommand(
   command: Extract<BehaviorRecipeCommand, { type: "configureCollisionShake" }>,
   handle: GameplayEntityHandle,
   path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedCollisionShakeCommand(command, path);
   const cooldownSeconds = command.cooldownSeconds ?? 0;
   const trigger = command.trigger ?? "contact";
+  if (command.guard !== undefined) {
+    const addGuarded = requireRuntimeMethod(
+      engine.add_gameplay_collision_camera_shake_with_guard,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_camera_shake_with_guard for guarded collision shake commands",
+    );
+    return requireApplied(
+      addGuarded.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        cooldownSeconds,
+        collisionTriggerCode(trigger),
+        ...runtimeVariableComparison(command.guard, ids, `${path}.guard`),
+      ),
+      path,
+      command,
+    );
+  }
   if (trigger === "enter") {
     const addCollisionShakeWithTrigger = requireRuntimeMethod(
       engine.add_gameplay_collision_camera_shake_with_trigger,
@@ -1963,11 +2236,34 @@ function applyConfigureCollisionParticleCommand(
   command: Extract<BehaviorRecipeCommand, { type: "configureCollisionParticle" }>,
   handle: GameplayEntityHandle,
   path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedCollisionParticleCommand(command, path);
   const cooldownSeconds = command.cooldownSeconds ?? 0;
   const replaceDefault = command.replaceDefault ?? false;
   const trigger = command.trigger ?? "contact";
+  if (command.guard !== undefined) {
+    const addGuarded = requireRuntimeMethod(
+      engine.add_gameplay_collision_particle_with_guard,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_particle_with_guard for guarded collision particle commands",
+    );
+    return requireApplied(
+      addGuarded.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        command.presetId,
+        collisionTargetCode(command.target),
+        cooldownSeconds,
+        replaceDefault,
+        collisionTriggerCode(trigger),
+        ...runtimeVariableComparison(command.guard, ids, `${path}.guard`),
+      ),
+      path,
+      command,
+    );
+  }
   if (trigger === "enter") {
     const addCollisionParticleWithTrigger = requireRuntimeMethod(
       engine.add_gameplay_collision_particle_with_trigger,
@@ -2051,8 +2347,27 @@ function applyConfigureCollisionDespawnCommand(
   command: Extract<BehaviorRecipeCommand, { type: "configureCollisionDespawn" }>,
   handle: GameplayEntityHandle,
   path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedCollisionDespawnCommand(command, path);
+  if (command.guard !== undefined) {
+    const addGuarded = requireRuntimeMethod(
+      engine.add_gameplay_collision_despawn_with_guard,
+      `${path}.type`,
+      "runtime engine must provide add_gameplay_collision_despawn_with_guard for guarded collision despawn commands",
+    );
+    return requireApplied(
+      addGuarded.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        collisionTargetCode(command.target),
+        ...runtimeVariableComparison(command.guard, ids, `${path}.guard`),
+      ),
+      path,
+      command,
+    );
+  }
   const addCollisionDespawn = requireRuntimeMethod(
     engine.add_gameplay_collision_despawn,
     `${path}.type`,
@@ -2302,6 +2617,46 @@ function applyConfigureTimerTriggerCommand(
   assertSupportedTimerTriggerCommand(command, path);
   const timerId = timerTriggerId(command, ids, path);
   const actionId = timerTriggerActionId(command, ids, path);
+  if (command.guard !== undefined) {
+    const guard = runtimeVariableComparison(command.guard, ids, `${path}.guard`);
+    if (actionId === undefined) {
+      const setGuardedTimerTrigger = requireRuntimeMethod(
+        engine.set_gameplay_timer_trigger_with_guard,
+        `${path}.type`,
+        "runtime engine must provide set_gameplay_timer_trigger_with_guard for guarded timer commands",
+      );
+      return requireApplied(
+        setGuardedTimerTrigger.call(
+          engine,
+          handle.entityId,
+          handle.entityGeneration,
+          timerId,
+          command.seconds,
+          ...guard,
+        ),
+        path,
+        command,
+      );
+    }
+    const setGuardedTimerActionTrigger = requireRuntimeMethod(
+      engine.set_gameplay_timer_action_trigger_with_guard,
+      `${path}.type`,
+      "runtime engine must provide set_gameplay_timer_action_trigger_with_guard for guarded timer action commands",
+    );
+    return requireApplied(
+      setGuardedTimerActionTrigger.call(
+        engine,
+        handle.entityId,
+        handle.entityGeneration,
+        timerId,
+        command.seconds,
+        actionId,
+        ...guard,
+      ),
+      path,
+      command,
+    );
+  }
   if (actionId !== undefined) {
     const setTimerActionTrigger = requireRuntimeMethod(
       engine.set_gameplay_timer_action_trigger,
@@ -2328,6 +2683,41 @@ function applyConfigureTimerTriggerCommand(
   );
   return requireApplied(
     setTimerTrigger.call(engine, handle.entityId, handle.entityGeneration, timerId, command.seconds),
+    path,
+    command,
+  );
+}
+
+function applyConfigureVariableMutationCommand(
+  engine: GameplayBehaviorRuntimeEngine,
+  command: Extract<BehaviorRecipeCommand, { type: "configureSetVariable" | "configureIncrementVariable" }>,
+  handle: GameplayEntityHandle,
+  path: string,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+  operation: 0 | 1,
+): boolean {
+  const addTrigger = requireRuntimeMethod(
+    engine.add_gameplay_variable_mutation_trigger,
+    `${path}.type`,
+    "runtime engine must provide add_gameplay_variable_mutation_trigger for variable mutation commands",
+  );
+  const slot = runtimeVariableSlot(command.variable, command.variableId, ids, `${path}.variable`);
+  const eventKind = runtimeGameplayEventKind(command.when.event);
+  const tokenId = runtimeGameplayEventTokenId(command.when, ids, `${path}.when`);
+  const value = command.type === "configureSetVariable"
+    ? runtimeVariableLiteral(command.value)
+    : command.amount;
+  return requireApplied(
+    addTrigger.call(
+      engine,
+      handle.entityId,
+      handle.entityGeneration,
+      eventKind,
+      tokenId,
+      slot,
+      operation,
+      value,
+    ),
     path,
     command,
   );
@@ -3196,6 +3586,112 @@ function gameplayTagIdValue(value: unknown, path: string): number {
     throw gameplayAuthoringDiagnosticError(path, `must be an integer gameplay tag id between ${GAMEPLAY_TAG_ID_RANGE_LABEL}`);
   }
   return value;
+}
+
+export function runtimeVariableComparison(
+  comparison: ResolvedBehaviorRecipeVariableComparison,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+  path: string,
+): readonly [number, number, number, number] {
+  const leftSlot = runtimeVariableSlot(
+    comparison.variable,
+    comparison.variableId,
+    ids,
+    `${path}.variable`,
+  );
+  const operator = runtimeVariableComparisonOperator(comparison.op);
+  if (comparison.value !== undefined) {
+    return [leftSlot, operator, 0, runtimeVariableLiteral(comparison.value)];
+  }
+  return [
+    leftSlot,
+    operator,
+    runtimeVariableSlot(
+      comparison.otherVariable,
+      comparison.otherVariableId,
+      ids,
+      `${path}.otherVariable`,
+    ),
+    0,
+  ];
+}
+
+function runtimeVariableSlot(
+  name: string | undefined,
+  explicitId: number | undefined,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+  path: string,
+): number {
+  const namedId = name === undefined ? undefined : ids?.variables?.[name];
+  if (name !== undefined && namedId === undefined) {
+    throw gameplayAuthoringDiagnosticError(path, `must resolve variable '${name}' to a runtime slot`);
+  }
+  if (explicitId !== undefined && namedId !== undefined && explicitId !== namedId) {
+    throw gameplayAuthoringDiagnosticError(path, "variable and variableId must resolve to the same runtime slot");
+  }
+  const slot = explicitId ?? namedId;
+  if (!Number.isInteger(slot) || slot === undefined || slot < 1 || slot > 64) {
+    throw gameplayAuthoringDiagnosticError(path, "must resolve to a runtime variable slot between 1 and 64");
+  }
+  return slot;
+}
+
+function runtimeVariableComparisonOperator(op: ResolvedBehaviorRecipeVariableComparison["op"]): number {
+  if (op === "==") return 0;
+  if (op === "!=") return 1;
+  if (op === "<") return 2;
+  if (op === "<=") return 3;
+  if (op === ">") return 4;
+  return 5;
+}
+
+function runtimeVariableLiteral(value: number | boolean): number {
+  return typeof value === "boolean" ? (value ? 1 : 0) : value;
+}
+
+function runtimeGameplayEventKind(event: ResolvedBehaviorRecipeEventPredicate["event"]): number {
+  if (event === "interaction") return GAMEPLAY_EVENT_KIND_INTERACTION;
+  if (event === "collisionDamage") return GAMEPLAY_EVENT_KIND_COLLISION_DAMAGE;
+  if (event === "collisionDespawn") return GAMEPLAY_EVENT_KIND_COLLISION_DESPAWN;
+  if (event === "timer") return GAMEPLAY_EVENT_KIND_TIMER;
+  if (event === "pickupCollected") return GAMEPLAY_EVENT_KIND_PICKUP_COLLECTED;
+  return GAMEPLAY_EVENT_KIND_TILE_IMPACT;
+}
+
+function runtimeGameplayEventTokenId(
+  predicate: ResolvedBehaviorRecipeEventPredicate,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+  path: string,
+): number {
+  if (predicate.event === "interaction") {
+    return runtimeNamedEventToken(predicate.action, predicate.actionId, ids?.actions, `${path}.action`);
+  }
+  if (predicate.event === "timer") {
+    return runtimeNamedEventToken(predicate.timer, predicate.timerId, ids?.timers, `${path}.timer`);
+  }
+  if (predicate.event === "pickupCollected") {
+    return runtimeNamedEventToken(predicate.item, predicate.itemId, ids?.items, `${path}.item`);
+  }
+  if (predicate.event === "tileImpact") {
+    return predicate.tileImpactCode ?? (predicate.tileImpact === "bounce" ? 2 : 0);
+  }
+  return 0;
+}
+
+function runtimeNamedEventToken(
+  name: string | undefined,
+  explicitId: number | undefined,
+  ids: Readonly<Record<string, number>> | undefined,
+  path: string,
+): number {
+  const namedId = name === undefined ? undefined : ids?.[name];
+  if (name !== undefined && namedId === undefined) {
+    throw gameplayAuthoringDiagnosticError(path, `must resolve '${name}' to a runtime id`);
+  }
+  if (explicitId !== undefined && namedId !== undefined && explicitId !== namedId) {
+    throw gameplayAuthoringDiagnosticError(path, "name and explicit id must resolve to the same runtime id");
+  }
+  return positiveU32(explicitId ?? namedId, path);
 }
 
 function requireApplied(applied: boolean, path: string, command: BehaviorRecipeCommand): boolean {

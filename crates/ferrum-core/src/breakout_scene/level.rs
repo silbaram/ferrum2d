@@ -37,7 +37,7 @@ impl BreakoutScene {
         game_state: GameState,
         launch_ball: bool,
     ) {
-        *world = World::default();
+        world.reset_preserving_gameplay_variables();
         self.paddle = None;
         self.ball = None;
         self.bricks.clear();

@@ -10,7 +10,13 @@ import {
 } from "./dataSceneComponents.js";
 import { applySceneBehaviorRecipes } from "./gameplayAuthoring.js";
 import { resolveSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
-import { synchronizeDataSceneVariableStore } from "./dataSceneVariables.js";
+import {
+  captureDataSceneVariableRuntimeSnapshot,
+  compileDataSceneVariableRuntimeIds,
+  preflightDataSceneVariableRuntime,
+  restoreDataSceneVariableRuntimeSnapshot,
+  synchronizeDataSceneVariableStore,
+} from "./dataSceneVariables.js";
 import type {
   ApplySceneBehaviorRecipesOptions,
   GameplayEntityHandle,
@@ -174,37 +180,63 @@ export function applyDataSceneAuthoringDocument(
     validateComponents,
     allowComponentTemplates,
   });
-  const target = createDataSceneRuntimeTarget(engine, {
-    path: `${path}.runtimeTarget`,
-    activateDataScene,
-    textureId,
-    componentTemplates,
-  });
-  const result = applySceneBehaviorRecipes(
-    engine,
-    target,
-    resolved.sceneComposition,
-    resolved.behaviorRecipes,
-    {
-      ...bindingOptions,
-      path,
-      ids: ids ?? resolved.ids,
-      instanceHandleRegistry,
-    },
+  const resolvedVariables = resolved.variables ?? [];
+  const baseRuntimeIds = ids ?? resolved.ids;
+  const runtimeVariableIds = compileDataSceneVariableRuntimeIds(
+    resolvedVariables,
+    baseRuntimeIds?.variables,
+    `${path}.ids.variables`,
   );
-  if (activateDataScene !== false && result.spawnResults.length === 0) {
-    dataSceneRuntimeEngineAdapter(engine, `${path}.runtimeTarget.engine`).useDataScene();
+  const runtimeIds = baseRuntimeIds === undefined && resolvedVariables.length === 0
+    ? undefined
+    : {
+        ...baseRuntimeIds,
+        ...(resolvedVariables.length === 0 ? {} : { variables: runtimeVariableIds }),
+      };
+  const runtimeAdapter = dataSceneRuntimeEngineAdapter(engine, `${path}.runtimeTarget.engine`);
+  preflightDataSceneVariableRuntime(engine, resolvedVariables, `${path}.variables`);
+  const previousVariables = captureDataSceneVariableRuntimeSnapshot(engine);
+  try {
+    if (activateDataScene !== false) {
+      runtimeAdapter.useDataScene();
+    }
+    const variables = synchronizeDataSceneVariableStore(
+      engine,
+      resolvedVariables,
+      `${path}.variables`,
+      runtimeVariableIds,
+    );
+    const target = createDataSceneRuntimeTarget(engine, {
+      path: `${path}.runtimeTarget`,
+      activateDataScene: false,
+      textureId,
+      componentTemplates,
+    });
+    const result = applySceneBehaviorRecipes(
+      engine,
+      target,
+      resolved.sceneComposition,
+      resolved.behaviorRecipes,
+      {
+        ...bindingOptions,
+        path,
+        ids: runtimeIds,
+        instanceHandleRegistry,
+      },
+    );
+    return {
+      document: resolved,
+      variables,
+      ...result,
+    };
+  } catch (error) {
+    restoreDataSceneVariableRuntimeSnapshot(
+      engine,
+      previousVariables,
+      `${path}.variables`,
+    );
+    throw error;
   }
-  const variables = synchronizeDataSceneVariableStore(
-    engine,
-    resolved.variables ?? [],
-    `${path}.variables`,
-  );
-  return {
-    document: resolved,
-    variables,
-    ...result,
-  };
 }
 
 function dataSceneRuntimeEngineAdapter(engine: FerrumEngine, path: string): DataSceneRuntimeEngineAdapter {

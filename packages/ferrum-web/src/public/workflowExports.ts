@@ -305,12 +305,16 @@ export type {
   DataSceneRuntimeTextureIdResolver,
 } from "../dataSceneRuntimeTarget";
 export {
+  DATA_SCENE_RUNTIME_MAX_VARIABLES,
   DATA_SCENE_VARIABLES_SNAPSHOT_KEY,
+  attachDataSceneVariableRuntimeEngineAdapter,
+  compileDataSceneVariableRuntimeIds,
 } from "../dataSceneVariables";
 export type {
   DataSceneVariableDeclarationSpec,
   DataSceneVariableScope,
   DataSceneVariableStore,
+  DataSceneVariableRuntimeEngineAdapter,
   DataSceneVariableType,
   DataSceneVariableValue,
   DataSceneVariableValues,

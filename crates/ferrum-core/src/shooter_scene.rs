@@ -6,6 +6,7 @@ use crate::components::{CollisionLayer, SpriteAnimation, SpriteFrame};
 use crate::entity::Entity;
 use crate::game_state::GameState;
 use crate::gameplay::{ActionTriggerQueue, CollisionContactTracker, MovementNavigationTargetCache};
+use crate::gameplay_variables::GAMEPLAY_VARIABLE_SNAPSHOT_U32S;
 use crate::input::{InputState, INPUT_ACTION_REGISTRY_SNAPSHOT_U32S};
 use crate::tilemap::{TilemapContactHit, TilemapNavigationScratch};
 use crate::tweens::SpriteTint;
@@ -34,15 +35,18 @@ pub(crate) const SHOOTER_PRIMARY_FIRE_ACTION_ID: u32 = 1;
 pub(crate) const SHOOTER_DASH_ACTION_ID: u32 = 2;
 pub(crate) const SHOOTER_MELEE_ACTION_ID: u32 = 3;
 const MAX_AUTHORED_COLLISION_CONTACTS: usize = 1024;
-pub const SHOOTER_SNAPSHOT_VERSION: u32 = 18;
+pub const SHOOTER_SNAPSHOT_VERSION: u32 = 19;
 pub const SHOOTER_SNAPSHOT_HEADER_FLOATS: usize = 8;
 pub(crate) const SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET: usize = 9;
 const SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S: usize = 4;
-pub const SHOOTER_SNAPSHOT_HEADER_U32S: usize = SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
-    + INPUT_ACTION_REGISTRY_SNAPSHOT_U32S
-    + SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S
-    + config::GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S
-    + GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S;
+pub(crate) const SHOOTER_SNAPSHOT_VARIABLES_U32_OFFSET: usize =
+    SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET
+        + INPUT_ACTION_REGISTRY_SNAPSHOT_U32S
+        + SHOOTER_SNAPSHOT_PREVIOUS_INPUT_EXTRA_U32S
+        + config::GAMEPLAY_PREFAB_REGISTRY_SNAPSHOT_U32S
+        + GAMEPLAY_FACTION_RELATION_TABLE_SNAPSHOT_U32S;
+pub const SHOOTER_SNAPSHOT_HEADER_U32S: usize =
+    SHOOTER_SNAPSHOT_VARIABLES_U32_OFFSET + GAMEPLAY_VARIABLE_SNAPSHOT_U32S;
 pub const SHOOTER_SNAPSHOT_ENTITY_FLOATS: usize = 131;
 pub const SHOOTER_SNAPSHOT_ENTITY_U32S: usize = 117;
 pub const SHOOTER_SNAPSHOT_ENTITY_PLAYER: u32 = 0;
@@ -213,7 +217,7 @@ impl ShooterScene {
         self.authored_collision_contacts.clear();
         self.clear_deferred_runtime_state();
         audio_events.clear();
-        *world = World::default();
+        world.reset_preserving_gameplay_variables();
         world.spawn_player_from_template(
             self.config.world_width * 0.5,
             self.config.world_height * 0.5,

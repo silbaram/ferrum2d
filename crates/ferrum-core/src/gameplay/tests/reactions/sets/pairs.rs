@@ -58,6 +58,72 @@ fn collision_reaction_set_for_pair_applies_damage_and_despawn_outcomes() {
 }
 
 #[test]
+fn guarded_collision_reaction_is_suppressed_until_variable_matches() {
+    let mut world = World::default();
+    let source = world.spawn_entity();
+    let target = world.spawn_enemy(4.0, 0.0, 1);
+    world.set_damage(source, 1.0);
+    world.set_health(target, 3.0);
+    assert!(world.configure_gameplay_variable(
+        1,
+        crate::gameplay_variables::GameplayVariableType::Bool,
+        crate::gameplay_variables::GameplayVariableScope::Scene,
+        0.0,
+        0.0,
+    ));
+    let guard = crate::gameplay_variables::GameplayVariableComparison::new(
+        1,
+        crate::gameplay_variables::GameplayVariableComparisonOperator::Equal,
+        0,
+        1.0,
+    )
+    .unwrap();
+    let mut reactions = CollisionReactionSet::default();
+    assert!(reactions.push_guarded(
+        CollisionReaction::Damage {
+            target: CollisionTarget::OtherEntity,
+        },
+        guard,
+    ));
+    let pair = CollisionReactionPair::new(source.id as usize, target.id as usize, source, target);
+    let mut marked = vec![false; world.entity_capacity()];
+    let mut pending = Vec::new();
+    let mut area_damage_hits = Vec::new();
+    let defaults = |_: &World, _: usize| CollisionDamageReactionDefaults {
+        health: 3.0,
+        score_reward: 0,
+        despawn_on_kill: false,
+    };
+
+    let suppressed = apply_collision_reaction_set_for_pair(
+        &mut world,
+        pair,
+        &mut reactions,
+        true,
+        &mut area_damage_hits,
+        &mut marked,
+        &mut pending,
+        defaults,
+    );
+    assert!(suppressed.damage_outcomes().next().is_none());
+    assert!(suppressed.overrides_default_gameplay);
+
+    assert!(world.set_gameplay_variable_value(1, 1.0));
+    let applied = apply_collision_reaction_set_for_pair(
+        &mut world,
+        pair,
+        &mut reactions,
+        true,
+        &mut area_damage_hits,
+        &mut marked,
+        &mut pending,
+        defaults,
+    );
+    assert_eq!(applied.damage_outcomes().count(), 1);
+    assert!(applied.overrides_default_gameplay);
+}
+
+#[test]
 fn collision_reaction_set_for_pair_applies_knockback_without_overriding_gameplay() {
     let mut world = World::default();
     let source = world.spawn_entity();

@@ -82,6 +82,63 @@ test("behaviorStateMachine helpers expose state behavior profiles and recipe com
   equal(commands[0]?.entity, "enemy.chase");
 });
 
+test("variable comparison transitions compile to numeric slots and replay deterministically", () => {
+  const variableFsm = resolveBehaviorStateMachineDocument({
+    machines: {
+      boss: {
+        initial: "phaseOne",
+        states: {
+          phaseOne: {
+            transitions: [{
+              id: "after-three-hits",
+              to: "phaseTwo",
+              when: { type: "variableComparison", variable: "boss.hits", op: ">=", value: 3 },
+            }],
+          },
+          phaseTwo: {},
+        },
+      },
+    },
+  });
+  const ids = { variables: { "boss.hits": 4 } };
+  const plan = createBehaviorStateMachineRuntimeInstallPlan(variableFsm, "boss", { ids });
+
+  deepEqual(plan.transitions, [{
+    id: "after-three-hits",
+    from: "phaseOne",
+    to: "phaseTwo",
+    fromStateId: 1,
+    toStateId: 2,
+    type: "variableComparison",
+    comparison: { variable: "boss.hits", op: ">=", value: 3 },
+    comparisonRuntime: [4, 5, 0, 3],
+  }]);
+
+  const replay = runBehaviorStateMachineReplay(variableFsm, {
+    machine: "boss",
+    entity: replayEntity,
+    frames: [
+      { frame: 0, variables: { "boss.hits": 2 } },
+      { frame: 1, variables: { "boss.hits": 3 } },
+    ],
+  }, { ids });
+  equal(replay.finalState, "phaseTwo");
+  equal(replay.steps[1]?.event, undefined);
+
+  const calls: unknown[][] = [];
+  const engine: BehaviorStateMachineRuntimeEngine = {
+    clear_gameplay_behavior_state_machine: () => true,
+    set_gameplay_behavior_state_machine: () => true,
+    add_gameplay_behavior_transition: () => true,
+    add_gameplay_behavior_variable_transition: (...args) => {
+      calls.push(args);
+      return true;
+    },
+  };
+  installBehaviorStateMachineRuntime(engine, variableFsm, "boss", replayEntity, { ids });
+  deepEqual(calls, [[2, 0, 1, 2, 4, 5, 0, 3]]);
+});
+
 test("runBehaviorStateMachineReplay produces deterministic transition hashes and diffs", () => {
   const expected = runBehaviorStateMachineReplay(fsm, {
     machine: "enemy",

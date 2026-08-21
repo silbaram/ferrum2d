@@ -63,10 +63,11 @@ pnpm smoke:placement-viewer-mass-authoring
 - [Showcase Hub](../../docs/engine/showcase-hub.md)
 - [Data Scene Authoring](../../docs/engine/data-scene-authoring.md)
 - [Authoring public API](../../docs/engine/public-api/authoring.md)
-- [Object Authoring Tool Plan](../../docs/planning/object-authoring-tool-plan.md)
+- [완료된 Object Authoring 개발 기록](https://github.com/silbaram/ferrum2d/issues/46)
 - [Smoke Check](../../docs/development/quality/smoke-check.md)
 
 ## 다음 단계
 
 - generated consumer project viewer 동작은 `pnpm package:consumer-smoke`와 `pnpm smoke:create-game-template-reports`로 검증한다.
 - recipe 본문 편집, FSM/action graph, timeline UI가 필요하면 visual-editor급 별도 승인 범위로 다룬다.
+- 완료 planning 문서에서 이관한 후속 후보는 [GitHub 이슈 #47](https://github.com/silbaram/ferrum2d/issues/47)에서 추적한다.

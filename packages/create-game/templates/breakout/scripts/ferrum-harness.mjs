@@ -17,6 +17,20 @@ const REPLAY_COVERAGE_TAGS = Object.freeze([
 
 await runFerrumHarnessCli({
   root: process.cwd(),
+  runtimeInputs: {
+    scene: "built-in-breakout",
+    gameplay: {
+      source: "src/main.ts",
+      role: "runtime-scene-selection",
+      implementation: "@ferrum2d/ferrum-web/starter-scenes",
+    },
+    sceneAuthoring: {
+      source: "public/scene-authoring.json",
+      role: "authoring-validation-and-handoff",
+      appliedByGameRuntime: false,
+    },
+    platform: { source: "src/main.ts", role: "browser-bootstrap" },
+  },
   replayScenario: REPLAY_SCENARIO,
   replayCoverageTags: REPLAY_COVERAGE_TAGS,
   includePublicAssets: true,

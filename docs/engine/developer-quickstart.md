@@ -11,7 +11,7 @@ Ferrum2D는 Rust core, WebAssembly, TypeScript platform layer, WebGL2 renderer�
 | Ferrum2D는 어떤 엔진인가? | Rust/Wasm core와 TypeScript browser runtime을 분리한 AI agent-first 2D web game engine |
 | 어떻게 시작하나? | `@ferrum2d/create-game` 템플릿으로 새 프로젝트 생성 |
 | 어디를 수정하나? | 먼저 Game Spec, Scene Authoring, asset metadata를 수정하고 필요할 때만 runtime code 수정 |
-| 어떻게 검증하나? | `ferrum:report`, `ferrum:validate`, replay report, `ferrum:smoke`, `ferrum:deploy-report`로 확인 |
+| 어떻게 검증하나? | 기본은 `ferrum:check`, 상세 진단은 개별 report, 배포 확인은 `ferrum:deploy-report` 사용 |
 | 어디까지 지원하나? | Core runtime, data-driven authoring primitive, 검증된 starter scene/template. WebGPU와 일부 visual/asset helper는 optional/lab 성격 |
 
 ## 지원 수준 먼저 보기
@@ -42,17 +42,19 @@ npm install
 npm run dev
 ```
 
-### 3. 프로젝트 구조 확인
+### 3. 프로젝트와 build 검증
+
+```bash
+npm run ferrum:check
+```
+
+실패하면 JSON report의 `failedStep`, diagnostic code, `nextCommand`를 확인한다.
+
+### 4. 상세 설정 확인
 
 ```bash
 npm run ferrum:report
-```
-
-### 4. 설정과 빌드 검증
-
-```bash
 npm run ferrum:validate
-npm run ferrum:smoke
 ```
 
 ### 5. 배포 산출물 확인
@@ -138,9 +140,15 @@ npx @ferrum2d/create-game my-breakout --template breakout
 | `public/gameplay-runtime-replay.fixture.json` | generated project runtime replay fixture |
 | `scripts/ferrum-harness.mjs` | report, validate, smoke, authoring/replay command harness |
 | `scripts/ferrum-runtime-replay.mjs` | runtime replay report/update harness |
+| `scripts/ferrum-check.mjs` | validation, authoring/replay, production build를 묶은 기본 check harness |
 | `scripts/ferrum-deploy.mjs` | production build와 정적 웹 배포 준비 상태 report harness |
 
-처음에는 `src/main.ts`보다 `public/game.json`과 `public/scene-authoring.json`을 먼저 본다. `src/main.ts`는 브라우저 runtime 조립 코드이고, 게임 규칙과 밸런스는 가능한 한 spec과 authoring data로 표현하는 것이 Ferrum2D의 기본 방향이다.
+`ferrum:report`의 `project.runtimeInputs`를 먼저 확인한다. 이 필드는 local gameplay 구성 source와
+`@ferrum2d/ferrum-web/starter-scenes` runtime 구현을 구분한다. Top-down의 `public/game.json`은 실제
+gameplay 구성 입력이지만, starter의 `public/scene-authoring.json`은 Placement Viewer와 validation,
+patch/handoff를 위한 authoring 입력이며 built-in runtime에 자동 적용되지 않는다. `src/main.ts`는 브라우저
+runtime 조립 코드다. Scene Authoring을 실제 게임에 연결할 때는 해당 scene의 entity/component 호환
+계약을 가진 adapter를 명시적으로 작성한다.
 
 ## 무엇을 어디서 바꾸나
 
@@ -164,6 +172,7 @@ npx @ferrum2d/create-game my-breakout --template breakout
 | 명령 | 용도 |
 | --- | --- |
 | `npm run dev` | Vite dev server로 게임 실행 |
+| `npm run ferrum:check` | validation, asset, authoring, replay와 production build를 순서대로 실행하고 첫 실패 요약 |
 | `npm run ferrum:report` | 프로젝트 구조, package dependency, internal import, authoring surface 요약 |
 | `npm run ferrum:validate` | Game Spec과 generated project 기본 계약 검증 |
 | `npm run ferrum:asset-report` | asset scaffold와 atlas/audio/localization manifest 요약 |
@@ -178,11 +187,7 @@ npx @ferrum2d/create-game my-breakout --template breakout
 변경 후 기본 루프는 다음이면 충분하다.
 
 ```bash
-npm run ferrum:report
-npm run ferrum:validate
-npm run ferrum:authoring-report
-npm run ferrum:replay-report
-npm run ferrum:smoke
+npm run ferrum:check
 npm run ferrum:deploy-report
 ```
 

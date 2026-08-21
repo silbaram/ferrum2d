@@ -77,7 +77,10 @@ pub(crate) fn apply_tile_collision_reaction_set(
     mut damage_defaults_for: impl FnMut(&World, usize) -> CollisionDamageReactionDefaults,
 ) -> TileCollisionReactionSetOutcome {
     let mut outcome = TileCollisionReactionSetOutcome::default();
-    for reaction in reactions.iter_mut() {
+    for (reaction, guard) in reactions.iter_mut_with_guards() {
+        if !world.gameplay_variable_comparison_matches(guard) {
+            continue;
+        }
         match reaction {
             CollisionReaction::AreaDamage {
                 radius,
@@ -163,10 +166,13 @@ pub(crate) fn apply_pickup_collision_reaction_set_for_pair(
     pending_despawn: &mut Vec<Entity>,
 ) -> PickupCollisionReactionSetOutcome {
     let mut outcome = PickupCollisionReactionSetOutcome::default();
-    for reaction in reactions.iter_mut() {
+    for (reaction, guard) in reactions.iter_mut_with_guards() {
+        outcome.handled_pickup |= matches!(reaction, CollisionReaction::Pickup { .. });
+        if !world.gameplay_variable_comparison_matches(guard) {
+            continue;
+        }
         match reaction {
             CollisionReaction::Pickup { target } => {
-                outcome.handled_pickup = true;
                 let pickup_outcome = apply_collision_pickup_reaction_for_pair(
                     world,
                     pair,

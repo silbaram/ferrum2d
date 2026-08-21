@@ -167,7 +167,7 @@ impl DataSceneRuntime {
     }
 
     pub(super) fn reset_playing(&mut self, context: &mut SceneResetContext<'_>) {
-        *context.world = World::default();
+        context.world.reset_preserving_gameplay_variables();
         self.score = 0;
         self.game_state = GameState::Playing;
     }

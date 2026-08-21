@@ -21,7 +21,7 @@ Own:
 - Behavior Binding Inspector boundaries: `updateBehaviorBinding` reference patches and `behaviorBindings[].recipeId`/`bindingPath`/`behaviorRecipePath` evidence.
 
 Workflow:
-1. Read docs/planning/object-authoring-tool-plan.md.
+1. Read docs/planning/README.md and the relevant current planning document.
 2. Read docs/engine/public-api/authoring.md and docs/engine/data-scene-authoring.md before public authoring API or Data Scene changes.
 3. Keep authoring output as deterministic JSON/spec patches with explicit diagnostics.
 4. Coordinate schema compatibility with schema_agent when JSON contract fields change.

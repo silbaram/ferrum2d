@@ -4,16 +4,13 @@
 
 ## 현재 문서
 
-아래 상태는 2026-07-15 코드, 검증 스크립트, 확정 문서를 기준으로 한 planning 요약이다. `활성 후보`는 착수된 task가 아니라 다음 범위를 고를 때 사용할 후보이며, 실제 개발을 시작할 때 별도 task 또는 이슈로 검증 기준을 확정한다.
+아래 상태는 각 문서의 기준일과 2026-08-21 현재 코드·검증 기록을 함께 반영한 planning 요약이다. `활성 후보`는 착수된 task가 아니라 다음 범위를 고를 때 사용할 후보이며, 실제 개발을 시작할 때 별도 task 또는 이슈로 검증 기준을 확정한다.
 
 | 문서 | 현재 상태 | 활성 후보 |
 | --- | --- | --- |
-| [데모 게임 포트폴리오 보강 계획](demo-game-showcase-plan.md) | Showcase Hub, 6개 public demo route, 기존 예제 역할 문서화 완료 | Content/UX, Renderer/Streaming lab, Agent Workflow report의 사용자-facing 노출 결정 |
-| [오브젝트 배치 UI · 데이터 씬 authoring 보강 계획](object-placement-authoring-plan.md) | Slice 1~6과 공식/generated placement viewer 기반 완료 | fragment hierarchy v2, scene-specific compatibility API, desktop release 범위 결정 |
-| [오브젝트 Authoring 모델 · 공식 배치 툴 고도화 계획](object-authoring-tool-plan.md) | v1 product-ready 기준, Behavior Binding Inspector, local image dimension metadata 완료 | 독립 browser package, Tauri packaging/GUI release 판단 |
-| [Placement Viewer runtime texture loading 설계](placement-runtime-texture-loading-plan.md) | Slice 1~4, desktop asset runtime reload, local image dimension metadata 완료 | 실제 GUI/package 검증 |
-| [배포 전략 초기 계획](deployment-roadmap.md) | 정적 Pages와 create-game build/preview/deploy-readiness 완료, Tauri 경로 부분 완료 | 공식 hosting 확대 필요성 및 desktop packaging 승인 판단 |
-| [물리 엔진 개선 개발계획](physics_review.md) | Slice 0~5, joint despawn 정리, singular matrix 입력 방어, mutation-aware weld fallback context 재사용 완료 | 고차수 despawn profiling |
+| [데모 게임 포트폴리오 후속 계획](demo-game-showcase-plan.md) | Showcase Hub와 6개 public route 기반 완료 | Content/UX, Renderer/Streaming lab, Agent Workflow report의 사용자-facing 노출 결정 |
+| [게임 개발 편의성 실사용 검토](game-development-convenience-review.md) | 재검토 후 fixture, 입력 소유권 report, memory-save 표현, `ferrum:check`, minimal 코드 분리를 반영 | scene별 authoring-runtime adapter/file-save 설계, asset 반복 작업, read-only gameplay 진단 |
+| [배포 후속 계획](deployment-roadmap.md) | 정적 Pages와 create-game build/preview/deploy-readiness 완료, Tauri authoring spike 부분 완료 | Tauri packaged GUI 검증 승인과 추가 hosting 지원 필요성 판단 |
 
 활성 작업 목록은 planning 문서에 중복 관리하지 않는다. 진행 중인 작업은 별도 task 또는 이슈로 범위와 검증 기준을 확정하고, 완료된 사용법과 운영 계약은 확정 문서에만 남긴다.
 
@@ -22,6 +19,7 @@
 | 항목 | 확정 문서/코드 |
 | --- | --- |
 | Physics Sandbox 재작성 계획 | 확정 구현: `examples/physics-sandbox`; 확정 문서: [Physics Engine](../development/architecture/physics-engine.md), [Smoke Check](../development/quality/smoke-check.md) |
+| Object Placement, Object Authoring v1, runtime texture loading, 물리 개선 계획 | [GitHub 완료 기록 #46](https://github.com/silbaram/ferrum2d/issues/46); 남은 후보는 [추적 이슈 #47](https://github.com/silbaram/ferrum2d/issues/47) |
 
 ## Pages 노출 원칙
 

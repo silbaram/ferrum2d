@@ -13,6 +13,7 @@ use crate::components::{
     SpringJoint, Sprite, SpriteAnimation, Transform2D, Velocity, WeldJoint,
 };
 use crate::entity::Entity;
+use crate::gameplay_variables::{GameplayVariableMutationTriggerSet, GameplayVariableSlab};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorldSnapshot {
@@ -83,6 +84,8 @@ pub struct WorldSnapshot {
     behavior_state_machines: Vec<Option<BehaviorStateMachine>>,
     behavior_state_enter_actions: Vec<Option<BehaviorStateEnterActionSet>>,
     gameplay_timer_triggers: Vec<Option<GameplayTimerTrigger>>,
+    gameplay_variable_mutation_triggers: Vec<Option<GameplayVariableMutationTriggerSet>>,
+    gameplay_variables: GameplayVariableSlab,
     primary_actor: Option<Entity>,
 }
 
@@ -156,6 +159,8 @@ impl World {
             behavior_state_machines: self.behavior_state_machines.clone(),
             behavior_state_enter_actions: self.behavior_state_enter_actions.clone(),
             gameplay_timer_triggers: self.gameplay_timer_triggers.clone(),
+            gameplay_variable_mutation_triggers: self.gameplay_variable_mutation_triggers.clone(),
+            gameplay_variables: self.gameplay_variables.clone(),
             primary_actor: self.primary_actor,
         }
     }
@@ -230,6 +235,10 @@ impl World {
         self.behavior_state_machines = snapshot.behavior_state_machines.clone();
         self.behavior_state_enter_actions = snapshot.behavior_state_enter_actions.clone();
         self.gameplay_timer_triggers = snapshot.gameplay_timer_triggers.clone();
+        self.gameplay_variable_mutation_triggers =
+            snapshot.gameplay_variable_mutation_triggers.clone();
+        self.rebuild_retired_gameplay_variable_mutation_trigger_capacity();
+        self.gameplay_variables = snapshot.gameplay_variables.clone();
         self.primary_actor = snapshot.primary_actor;
         self.rebuild_gameplay_query_indices();
     }

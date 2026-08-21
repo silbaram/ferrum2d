@@ -462,7 +462,12 @@ function validateVariantSchemaContract(schema) {
     },
     behaviorStateMachines: {
       machines: {
-        sample: {},
+        sample: {
+          initial: "idle",
+          states: {
+            idle: {},
+          },
+        },
       },
     },
     expected: {
@@ -480,6 +485,78 @@ function validateVariantSchemaContract(schema) {
     },
   };
   validateJsonSchemaContract(schema, sample, "topdown-authored-behavior-variant.schema.customFaction31");
+  validateJsonSchemaContract(
+    schema,
+    {
+      ...sample,
+      behaviorRecipes: {
+        entities: {
+          custom: {
+            recipes: [
+              { kind: "collisionAreaDamage" },
+              { kind: "collisionKnockback" },
+              { kind: "collisionSpawnPrefab" },
+              { kind: "seekTarget" },
+              { kind: "accelerate" },
+            ],
+          },
+        },
+      },
+    },
+    "topdown-authored-behavior-variant.schema.completeRecipeKinds",
+  );
+  assert.throws(
+    () => validateJsonSchemaContract(
+      schema,
+      {
+        ...sample,
+        behaviorRecipes: {
+          entities: {
+            custom: {
+              recipes: [
+                {
+                  kind: "health",
+                  guard: { variableId: 1, op: "==", value: 1 },
+                },
+              ],
+            },
+          },
+        },
+      },
+      "topdown-authored-behavior-variant.schema.unsupportedGuard",
+    ),
+    /must be one of/,
+    "topdown authored behavior variant schema must reject guards on unsupported recipe kinds",
+  );
+  assert.throws(
+    () => validateJsonSchemaContract(
+      schema,
+      {
+        ...sample,
+        behaviorRecipes: {
+          entities: {
+            custom: {
+              recipes: [
+                {
+                  kind: "setVariable",
+                  variableId: 1,
+                  value: 1,
+                  when: {
+                    type: "gameplayEvent",
+                    event: "collisionDamage",
+                    expression: { op: "and" },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+      "topdown-authored-behavior-variant.schema.nestedEventExpression",
+    ),
+    /when\.expression is not allowed/,
+    "topdown authored behavior variant schema must reject nested event expressions",
+  );
   assert.throws(
     () => validateJsonSchemaContract(
       schema,
