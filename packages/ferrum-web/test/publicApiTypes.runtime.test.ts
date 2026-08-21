@@ -8,6 +8,7 @@ import {
   DATA_SCENE_STATE_VERSION,
   GAME_STATE_SNAPSHOT_FORMAT,
   GAME_STATE_SNAPSHOT_VERSION,
+  GAME_STATE_CODE,
   GAMEPLAY_EVENT_FLAG_TILE_IMPACT_BOUNCED,
   GAMEPLAY_EVENT_FLAG_TILE_IMPACT_IDENTITY_TRUNCATED,
   GAMEPLAY_EVENT_KIND_FACTION_DAMAGE_DENIED,
@@ -44,6 +45,7 @@ import {
   tilemapLayerForLevelStreamingChunk,
   test,
   validateDataSceneStateSnapshot,
+  gameStateName,
 } from "./publicApiTypes.shared.js";
 
 import type {
@@ -99,12 +101,15 @@ import type {
   FrameHandler,
   FrameState,
   DataSceneStateSnapshot,
+  DataSceneGameState,
   DataSceneVariableStore,
   GameStateSceneSnapshot,
   GameStateSnapshot,
   GameStateSnapshotJsonValue,
   GameStateSnapshotRestoreResult,
   GameStateSnapshotStorage,
+  GameStateCode,
+  GameStateName,
   GlitchPostProcessPassInput,
   HudComponentSpec,
   HudThemePresetName,
@@ -379,7 +384,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   equal(hd2dKinematicResult.body.bodyType, "kinematic");
   const snapshotEngine: Pick<
     FerrumEngine,
-    "score" | "gameState" | "entityCount" | "spriteCount" | "cameraX" | "cameraY"
+    "score" | "gameState" | "entityCount" | "spriteCount" | "cameraX" | "cameraY" | "dataSceneState"
   > = {
     score: () => 3,
     gameState: () => 1,
@@ -387,6 +392,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
     spriteCount: () => 5,
     cameraX: () => 6,
     cameraY: () => 7,
+    dataSceneState: () => "playing",
   };
   const gameStateCustom: GameStateSnapshotJsonValue = { checkpoint: "alpha" };
   const dataSceneState: DataSceneStateSnapshot = {
@@ -475,14 +481,20 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   inputActionApi.resetInputActionBindings();
   equal(runtimeViolation, undefined);
   equal(publicDataSceneStateFormat, "ferrum2d.data-scene-state");
-  equal(publicDataSceneStateVersion, 1);
+  const publicGameStateCode: PublicApi["GAME_STATE_CODE"] = GAME_STATE_CODE;
+  const publicGameStateName: PublicApi["gameStateName"] = gameStateName;
+  const gameStateCode: GameStateCode = publicGameStateCode.paused;
+  const gameStateNameValue: GameStateName = publicGameStateName(gameStateCode);
+  const dataSceneGameStateValue: DataSceneGameState = "paused";
+  equal(publicDataSceneStateVersion, 2);
   equal(publicGameStateSnapshotFormat, "ferrum2d.game-state.snapshot");
-  equal(publicGameStateSnapshotVersion, 1);
+  equal(publicGameStateSnapshotVersion, 2);
+  equal(gameStateNameValue, dataSceneGameStateValue);
   equal(gameStateSnapshot.format, GAME_STATE_SNAPSHOT_FORMAT);
   equal(dataSceneGameStateSnapshot.dataScene?.format, DATA_SCENE_STATE_FORMAT);
   equal(typeof dataSceneGameStateSnapshot.dataScene?.authoringDocument, "object");
   equal(gameStateScene.score, 3);
-  equal(publicParseGameStateSnapshot(publicStringifyGameStateSnapshot(gameStateSnapshot)).version, 1);
+  equal(publicParseGameStateSnapshot(publicStringifyGameStateSnapshot(gameStateSnapshot)).version, 2);
   publicSaveGameStateSnapshotToStorage(gameStateStorage, "slot", gameStateSnapshot);
   equal(publicLoadGameStateSnapshotFromStorage(gameStateStorage, "slot")?.snapshotHash, gameStateSnapshot.snapshotHash);
   equal(gameStateRestore.customStateApplied, false);

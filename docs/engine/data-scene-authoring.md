@@ -42,7 +42,8 @@ rename/remove 시에는 binding migration preview 또는 conflict diagnostic을 
 - prefab/variant/instance `props.behaviorRecipes`는 `behaviorRecipes.entities`의 key를 참조한다.
 - spawn 가능한 Data Scene fixture는 prefab/variant/instance merge 후 `props.components`를 가져야 하며, `resolveDataSceneComponentsSpec(...)`가 통과해야 한다.
 - `resolveSceneAuthoringDocument(..., { validateBindings: true, validateComponents: true, missingBehavior: "error" })`가 통과해야 한다.
-- `instantiateSceneFragment(...)` 결과는 최소 1개 instance를 가져야 한다.
+- instance가 있는 문서는 `instantiateSceneFragment(...)` 결과를 deterministic spawn list로 사용한다.
+- instance가 0개인 initial fragment도 유효하다. full document apply에서는 빈 scene 전환으로 취급해 기존 runtime state를 정리한다.
 - 문서 안에 장르 전용 Game Spec 필드나 built-in starter runtime entity binding을 섞지 않는다.
 
 ## Authoring Role
@@ -134,27 +135,75 @@ package-facing full document apply helper는 `applyDataSceneAuthoringDocument(en
 `allowComponentTemplates`도 기본 활성화된다. 검증 실패는 runtime activation 전에 발생하므로 기존
 built-in/data scene state를 reset하지 않는다.
 
-package-facing default `spawnSceneInstance` target은 `createDataSceneRuntimeTarget(engine, options?)`가 제공한다. 기본값은 첫 번째 유효한 spawn 직전에 한 번 `engine.useDataScene()`을 호출한다. authoring validation 실패나 target 생성만으로 기존 scene을 비우지 않으며, 이 자동 활성화가 싫으면 `activateDataScene: false`를 넘긴다. consumer 코드는 generated Wasm `pkg/*`나 `@ferrum2d/ferrum-web/src/*` 내부 경로를 직접 import하지 않는다.
+package-facing default `spawnSceneInstance` target은 `createDataSceneRuntimeTarget(engine, options?)`가 제공한다. 기본값은 첫 번째 유효한 spawn 직전에 한 번 `engine.useDataScene()`을 호출한다. full `applyDataSceneAuthoringDocument(...)`는 spawn 결과가 0개여도 validation 성공 뒤 `useDataScene()`을 호출하므로 빈 문서도 실제 cleanup/reset 전환이다. authoring validation 실패나 target 생성만으로 기존 scene을 비우지 않으며, 이 자동 활성화가 싫으면 `activateDataScene: false`를 넘긴다. consumer 코드는 generated Wasm `pkg/*`나 `@ferrum2d/ferrum-web/src/*` 내부 경로를 직접 import하지 않는다.
 
 `createFerrumRuntime({ dataScene })`은 같은 document apply helper를 startup 단계에 연결한다.
 `dataScene` 값은 문서 자체이거나 `{ document, ...applyOptions }` object일 수 있다.
-runtime은 적용 결과를 `runtime.dataScene.result`로 노출하고, 같은 handle의 `reapply(document?, options?)`로
-낮은 빈도 scene reload를 수행할 수 있다. `reapply`도 새 Rust ABI를 열지 않고
+runtime은 적용 결과를 `runtime.dataScene.result`로 노출한다. 같은 handle의 필수 문서 인자
+`transition(document, options?)`는 A→B scene/level 전환을, `reapply(document?, options?)`는 현재 문서의
+낮은 빈도 reload를 표현한다. `transition(...)`은 startup option이 `activateDataScene: false`였더라도
+activation/reset을 강제하며 per-call option에서는 `activateDataScene`을 받지 않는다. `reapply(...)`는
+기존 low-level opt-out 호환을 위해 이 option을 유지한다. 두 method 모두
 `applyDataSceneAuthoringDocument(...)`와 같은 validation/spawn/binding 경로를 사용한다. resolver 단계에서
 실패하면 현재 document/result/variable store를 교체하지 않으며, 이후 인자 없는 `reapply()`는 마지막으로
 성공한 문서를 다시 사용한다.
+
+## Scene/Level Flow v1
+
+Data Scene lifecycle은 Rust가 소유하는 고정 상태 집합이다. 임의 문자열 상태나 runtime scene graph를
+추가하지 않으며 public `GAME_STATE_CODE`와 `gameStateName(...)`으로 숫자 ABI를 해석한다.
+
+| 상태 | 코드 | 진행 계약 |
+| --- | ---: | --- |
+| `playing` | `1` | normal simulation을 진행한다. |
+| `paused` | `3` | render는 유지하고 tween, rigid physics, gameplay timer/FSM, particle simulation을 진행하지 않는다. |
+| `levelComplete` | `4` | 완료 화면/다음 문서 선택을 위해 `paused`와 같은 simulation freeze를 유지한다. |
+
+`runtime.dataScene.state()`, `pause()`, `resume()`, `complete()`가 상위 API이며 저수준
+`FerrumEngine`은 `dataSceneState()`, `pauseDataScene()`, `resumeDataScene()`,
+`completeDataScene()`을 제공한다. `pause`는 `playing → paused`, `resume`은 `paused → playing`,
+`complete`는 `playing|paused → levelComplete`에서만 `true`를 반환한다. Data Scene이 아니거나 허용되지
+않은 전이는 `false`이고 상태를 바꾸지 않는다. `transition(...)`, 기본 `reapply(...)`, `useDataScene()` 성공은
+새 Data Scene을 `playing`으로 시작한다. `reapply(..., { activateDataScene: false })`는 caller가 이미 준비한
+Data Scene에 문서를 적용하는 low-level 호환 경로이므로 전환/reset 계약으로 취급하지 않는다.
+
+문서 A에서 B로 전환할 때의 생존 계약은 다음과 같다.
+
+| 상태 | A→B 결과 |
+| --- | --- |
+| 같은 이름·타입의 `global` 변수 | 현재 값을 유지한다. B에도 같은 선언이 있어야 한다. |
+| `scene` 변수 | B 선언의 `default`로 초기화한다. |
+| World entity/component, tilemap, particle, tween | 제거하고 B에서 다시 구성한다. |
+| physics contact/history, fixed-step accumulator와 input latch | 제거한다. 첫 B frame은 A의 접촉/input edge를 상속하지 않는다. |
+| collision/gameplay/effect/render/audio event buffer | 제거한다. A의 frame event를 B에서 소비하지 않는다. |
+| pending spawn/deferred despawn queue | 제거한다. A에서 예약된 구조 변경을 B에 적용하지 않는다. |
+| lifecycle state | `playing`으로 초기화한다. |
+
+이 전환은 낮은 빈도 document apply 경계다. additive scene load, runtime scene graph, visual FSM/action graph,
+내장 3-slot save UI는 이 계약 범위가 아니다.
 
 ## Snapshot/Restore
 
 `GameStateSnapshot.dataScene`은 optional `authoringDocument` JSON payload를 가질 수 있다.
 `captureGameStateSnapshot(engine, { includeDataSceneState: true, dataSceneAuthoringDocument })`는
-이 문서를 clone해서 snapshot hash 범위에 포함한다.
+실제 Data Scene mode에서만 허용되며 이 문서를 clone해서 snapshot hash 범위에 포함한다. built-in scene에서
+Data Scene payload capture를 요청하면 자체 복원 불가능한 snapshot을 만들지 않고 즉시 거절한다.
+
+`GameStateSnapshot`과 `DataSceneStateSnapshot` 현재 version은 각각 `2`다. lifecycle state가
+snapshot/replay hash 범위에 들어가므로 같은 scene이라도 `playing`, `paused`, `levelComplete` snapshot은
+서로 다른 hash를 가진다. version `1` snapshot은 자동 추론하지 않고 validation에서 거절한다. 저장 데이터를
+유지해야 하는 consumer는 원래 authoring document와 custom/variable payload로 version `2` snapshot을 다시
+캡처하거나 명시적 migration을 수행해야 한다.
 
 `restoreGameStateSnapshot(...)`은 `DataSceneStateSnapshot.authoringDocument`가 있으면 기본적으로
 `applyDataSceneAuthoringDocument(...)`를 실행해 Data Scene entity와 behavior binding을 다시 조립한 뒤
-`applyDataSceneCustomState` callback을 호출한다. `restoreDataSceneAuthoringDocument: false`를 넘기면
+global/scene 변수와 `playing|paused|levelComplete` lifecycle을 복원하고
+`applyDataSceneCustomState` callback을 호출한다. 따라서 callback은 최종 lifecycle state를 관찰한다.
+restore의 `dataSceneAuthoringApplyOptions.activateDataScene: false`는 기존 World 위에 snapshot entity를
+겹칠 수 있으므로 mutation 전에 거절한다.
+`restoreDataSceneAuthoringDocument: false`를 넘기면
 문서를 재적용하지 않고 빈 Data Scene mode만 활성화한다. 이 필드는 optional이므로 기존 snapshot은
-그대로 유효하며, runtime 전체 `World` binary snapshot을 새로 추가하는 계약은 아니다.
+문서 payload 없이도 동작하며, runtime 전체 `World` binary snapshot을 새로 추가하는 계약은 아니다.
 이 capture/restore 경로는 `pnpm smoke:gameplay-replay -- --scenario data-scene-authoring-snapshot-restore`의
 committed golden fixture로도 검증한다.
 
@@ -166,12 +215,13 @@ committed golden fixture로도 검증한다.
 - `global`: `snapshot.custom["ferrum2d.variables"]`
 - `scene`: `snapshot.dataScene.custom["ferrum2d.variables"]`
 
-두 custom 슬롯은 기존 snapshot hash 범위이므로 snapshot version을 올리거나 별도 hash 경로를 만들지 않는다.
+두 custom 슬롯은 기존 snapshot hash 범위다. 변수 기능 자체는 별도 hash 경로를 만들지 않았지만,
+Scene/Level Flow v1 lifecycle 추가와 함께 상위 snapshot version은 `2`로 올렸다.
 같은 문서와 같은 최종 변수 값은 변수 설정 순서와 무관하게 같은 snapshot hash를 만든다.
 기존 custom state와 함께 캡처할 때는 custom state가 object여야 하며
 `"ferrum2d.variables"`는 consumer가 직접 쓰지 않는 reserved key이며 public
-`DATA_SCENE_VARIABLES_SNAPSHOT_KEY` 상수로도 노출한다. 변수가 없는 기존 문서는 custom payload와 hash
-형태가 바뀌지 않는다.
+`DATA_SCENE_VARIABLES_SNAPSHOT_KEY` 상수로도 노출한다. 변수가 없는 문서는 custom payload shape에
+변수 slot을 추가하지 않지만, 상위 lifecycle version `2` 전환으로 전체 snapshot hash는 갱신된다.
 
 restore는 authoring document와 변수 payload의 선언·타입 정합성을 runtime activation/spawn 전에
 검사하고, 문서를 재적용해 선언 저장소를 구성한 뒤 global/scene 값을 복원한다. snapshot에 선언되지

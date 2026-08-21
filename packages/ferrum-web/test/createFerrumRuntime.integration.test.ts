@@ -11,6 +11,7 @@ import type { AssetHost, FerrumEngine } from "../src/engineTypes.js";
 import type { InputManager } from "../src/inputManager.js";
 import type { AssetReleasePayload, LoadedAssets } from "../src/assetLoader.js";
 import type { PlayBgmOptions } from "../src/audioManager.js";
+import type { DataSceneGameState } from "../src/gameState.js";
 import { emptyRendererStats } from "../src/renderer.js";
 import {
   attachDataSceneRuntimeEngineAdapter,
@@ -156,10 +157,11 @@ test("createFerrumRuntime forwards injected engine lifecycle without taking owne
 
 test("createFerrumRuntime applies and reapplies data scene authoring documents", async () => {
   const engineCalls: string[] = [];
-  const adapter = new RuntimeDataSceneAdapter();
+  const flow: MutableDataSceneFlow = { state: "playing" };
+  const adapter = new RuntimeDataSceneAdapter(flow);
   const runtime = await createFerrumRuntime({
     canvas: {} as HTMLCanvasElement,
-    engineInstance: attachDataSceneRuntimeEngineAdapter(fakeEngine(engineCalls), adapter),
+    engineInstance: attachDataSceneRuntimeEngineAdapter(fakeEngine(engineCalls, flow), adapter),
     renderer: fakeRuntimeRenderer(),
     input: {} as InputManager,
     assetHost: fakeAssetHost([]),
@@ -182,6 +184,7 @@ test("createFerrumRuntime applies and reapplies data scene authoring documents",
     equal(adapter.requests[0].textureId, 77);
     equal(runtime.dataScene.variables.get("campaign.coins"), 0);
     equal(runtime.dataScene.variables.get("wave.index"), 1);
+    equal(runtime.dataScene.state(), "playing");
     runtime.dataScene.variables.set("campaign.coins", 12);
     runtime.dataScene.variables.set("wave.index", 4);
 
@@ -205,7 +208,16 @@ test("createFerrumRuntime applies and reapplies data scene authoring documents",
     equal(runtime.dataScene.variables.get("campaign.coins"), 12);
     equal(runtime.dataScene.variables.get("wave.index"), 1);
 
-    const nextResult = runtime.dataScene.reapply(runtimeDataSceneDocument("barrel", 96, 112, 100, 2));
+    equal(runtime.dataScene.pause(), true);
+    equal(runtime.dataScene.pause(), false);
+    equal(runtime.dataScene.state(), "paused");
+    equal(runtime.dataScene.resume(), true);
+    equal(runtime.dataScene.state(), "playing");
+    equal(runtime.dataScene.complete(), true);
+    equal(runtime.dataScene.complete(), false);
+    equal(runtime.dataScene.state(), "levelComplete");
+
+    const nextResult = runtime.dataScene.transition(runtimeDataSceneDocument("barrel", 96, 112, 100, 2));
     equal(adapter.useDataSceneCalls, 3);
     equal(nextResult.spawnResults[0]?.entityId, 103);
     equal(nextResult.variables, runtime.dataScene.variables);
@@ -214,10 +226,45 @@ test("createFerrumRuntime applies and reapplies data scene authoring documents",
     equal(adapter.requests[2].y, 112);
     equal(runtime.dataScene.variables.get("campaign.coins"), 12);
     equal(runtime.dataScene.variables.get("wave.index"), 2);
+    equal(runtime.dataScene.state(), "playing");
+    throws(
+      () => runtime.dataScene?.transition(
+        runtimeDataSceneDocument("blocked", 0, 0),
+        { activateDataScene: false } as never,
+      ),
+      /cannot disable Data Scene activation/,
+    );
+    equal(adapter.useDataSceneCalls, 3);
   } finally {
     runtime.destroy();
   }
   deepEqual(engineCalls, []);
+});
+
+test("createFerrumRuntime transition overrides startup activation opt-out", async () => {
+  const engineCalls: string[] = [];
+  const flow: MutableDataSceneFlow = { state: "playing" };
+  const adapter = new RuntimeDataSceneAdapter(flow);
+  const runtime = await createFerrumRuntime({
+    canvas: {} as HTMLCanvasElement,
+    engineInstance: attachDataSceneRuntimeEngineAdapter(fakeEngine(engineCalls, flow), adapter),
+    renderer: fakeRuntimeRenderer(),
+    input: {} as InputManager,
+    assetHost: fakeAssetHost([]),
+    ui: false,
+    dataScene: {
+      document: runtimeDataSceneDocument("prepared", 16, 16),
+      activateDataScene: false,
+    },
+  });
+
+  try {
+    equal(adapter.useDataSceneCalls, 0);
+    runtime.dataScene?.transition(runtimeDataSceneDocument("next", 32, 32));
+    equal(adapter.useDataSceneCalls, 1);
+  } finally {
+    runtime.destroy();
+  }
 });
 
 test("createFerrumRuntime forwards level streaming released assets to target and asset host", async () => {
@@ -299,7 +346,7 @@ test("createFerrumRuntime forwards level streaming released assets to target and
   deepEqual(engineCalls, []);
 });
 
-function fakeEngine(calls: string[]): FerrumEngine {
+function fakeEngine(calls: string[], flow?: MutableDataSceneFlow): FerrumEngine {
   return {
     start: () => {
       calls.push("start");
@@ -316,15 +363,46 @@ function fakeEngine(calls: string[]): FerrumEngine {
     destroy: () => {
       calls.push("destroy");
     },
+    dataSceneState: () => flow?.state,
+    pauseDataScene: () => {
+      if (flow?.state !== "playing") {
+        return false;
+      }
+      flow.state = "paused";
+      return true;
+    },
+    resumeDataScene: () => {
+      if (flow?.state !== "paused") {
+        return false;
+      }
+      flow.state = "playing";
+      return true;
+    },
+    completeDataScene: () => {
+      if (flow?.state !== "playing") {
+        return false;
+      }
+      flow.state = "levelComplete";
+      return true;
+    },
   } as unknown as FerrumEngine;
+}
+
+interface MutableDataSceneFlow {
+  state: DataSceneGameState;
 }
 
 class RuntimeDataSceneAdapter {
   readonly requests: DataSceneRuntimeSpawnRequest[] = [];
   useDataSceneCalls = 0;
 
+  constructor(private readonly flow?: MutableDataSceneFlow) {}
+
   useDataScene(): void {
     this.useDataSceneCalls += 1;
+    if (this.flow !== undefined) {
+      this.flow.state = "playing";
+    }
   }
 
   textureId(): number {

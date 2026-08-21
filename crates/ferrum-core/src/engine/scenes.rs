@@ -142,6 +142,30 @@ impl DataSceneRuntime {
         self.game_state
     }
 
+    pub(super) fn pause(&mut self) -> bool {
+        if self.game_state != GameState::Playing {
+            return false;
+        }
+        self.game_state = GameState::Paused;
+        true
+    }
+
+    pub(super) fn resume(&mut self) -> bool {
+        if self.game_state != GameState::Paused {
+            return false;
+        }
+        self.game_state = GameState::Playing;
+        true
+    }
+
+    pub(super) fn complete_level(&mut self) -> bool {
+        if !matches!(self.game_state, GameState::Playing | GameState::Paused) {
+            return false;
+        }
+        self.game_state = GameState::LevelComplete;
+        true
+    }
+
     pub(super) fn reset_playing(&mut self, context: &mut SceneResetContext<'_>) {
         *context.world = World::default();
         self.score = 0;
@@ -532,6 +556,7 @@ impl Engine {
 
     pub(super) fn activate_data_scene(&mut self) {
         self.clear_data_scene_entity_handle();
+        self.scenes.shooter_mut().clear_deferred_runtime_state();
         self.scene_mode = SceneMode::Data;
         let mut context = SceneResetContext {
             world: &mut self.world,
@@ -558,11 +583,7 @@ impl Engine {
     }
 
     pub(super) fn active_scene_game_state_code(&self) -> u32 {
-        match self.active_scene_game_state() {
-            GameState::Title => 0,
-            GameState::Playing => 1,
-            GameState::GameOver => 2,
-        }
+        self.active_scene_game_state().code()
     }
 
     pub(super) fn active_scene_action_trigger_attempts(&self) -> usize {

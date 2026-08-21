@@ -44,7 +44,7 @@
         "frame": 0,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 0,
           "source": "ferrum-runtime",
           "scene": {
@@ -57,7 +57,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0,
               0.05000000074505806,
@@ -69,7 +69,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               0,
               0,
               0,
@@ -477,15 +477,15 @@
             "floatsPerEntity": 131,
             "u32sPerEntity": 117
           },
-          "snapshotHash": "0b4bfcd5"
+          "snapshotHash": "8a42b1e2"
         },
-        "replayHash": "0b4bfcd5"
+        "replayHash": "8a42b1e2"
       },
       {
         "frame": 1,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 1,
           "source": "ferrum-runtime",
           "scene": {
@@ -498,7 +498,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0,
               0.05000000074505806,
@@ -510,7 +510,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               1,
               0,
               0,
@@ -918,15 +918,15 @@
             "floatsPerEntity": 131,
             "u32sPerEntity": 117
           },
-          "snapshotHash": "58171e8f"
+          "snapshotHash": "f314d858"
         },
-        "replayHash": "58171e8f"
+        "replayHash": "f314d858"
       },
       {
         "frame": 2,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 2,
           "source": "ferrum-runtime",
           "scene": {
@@ -939,7 +939,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0,
               0.03333333134651184,
@@ -951,7 +951,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               1,
               0,
               0,
@@ -1359,15 +1359,15 @@
             "floatsPerEntity": 131,
             "u32sPerEntity": 117
           },
-          "snapshotHash": "207df475"
+          "snapshotHash": "511b0c8a"
         },
-        "replayHash": "207df475"
+        "replayHash": "511b0c8a"
       },
       {
         "frame": 4,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 4,
           "source": "ferrum-runtime",
           "scene": {
@@ -1380,7 +1380,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0.5,
               0.05000000074505806,
@@ -1392,7 +1392,7 @@
               1
             ],
             "headerU32s": [
-              17,
+              18,
               1,
               0,
               1,
@@ -2296,15 +2296,15 @@
             "floatsPerEntity": 131,
             "u32sPerEntity": 117
           },
-          "snapshotHash": "db647d4a"
+          "snapshotHash": "a84fe34d"
         },
-        "replayHash": "db647d4a"
+        "replayHash": "a84fe34d"
       },
       {
         "frame": 8,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 8,
           "source": "ferrum-runtime",
           "scene": {
@@ -2317,7 +2317,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0.43333327770233154,
               0.05000000074505806,
@@ -2329,7 +2329,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               1,
               0,
               2,
@@ -3481,15 +3481,15 @@
             "floatsPerEntity": 131,
             "u32sPerEntity": 117
           },
-          "snapshotHash": "8eee5afc"
+          "snapshotHash": "680d0a2b"
         },
-        "replayHash": "8eee5afc"
+        "replayHash": "680d0a2b"
       },
       {
         "frame": 16,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 16,
           "source": "ferrum-runtime",
           "scene": {
@@ -3502,7 +3502,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0.29999983310699463,
               0.05000000074505806,
@@ -3514,7 +3514,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               1,
               0,
               4,
@@ -5162,15 +5162,15 @@
             "floatsPerEntity": 131,
             "u32sPerEntity": 117
           },
-          "snapshotHash": "c9b19c68"
+          "snapshotHash": "25de3fef"
         },
-        "replayHash": "c9b19c68"
+        "replayHash": "25de3fef"
       },
       {
         "frame": 24,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 24,
           "source": "ferrum-runtime",
           "scene": {
@@ -5183,7 +5183,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0.16666647791862488,
               0.05000000074505806,
@@ -5195,7 +5195,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               1,
               0,
               6,
@@ -7339,15 +7339,15 @@
             "floatsPerEntity": 131,
             "u32sPerEntity": 117
           },
-          "snapshotHash": "ea28c048"
+          "snapshotHash": "82d9cd87"
         },
-        "replayHash": "ea28c048"
+        "replayHash": "82d9cd87"
       },
       {
         "frame": 32,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 32,
           "source": "ferrum-runtime",
           "scene": {
@@ -7360,7 +7360,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0.033333152532577515,
               0.05000000074505806,
@@ -7372,7 +7372,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               1,
               1,
               8,
@@ -9516,15 +9516,15 @@
             "floatsPerEntity": 131,
             "u32sPerEntity": 117
           },
-          "snapshotHash": "8d0580cf"
+          "snapshotHash": "eb043670"
         },
-        "replayHash": "8d0580cf"
+        "replayHash": "eb043670"
       },
       {
         "frame": 36,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 36,
           "source": "ferrum-runtime",
           "scene": {
@@ -9537,7 +9537,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0,
               0.05000000074505806,
@@ -9549,7 +9549,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               1,
               1,
               9,
@@ -11941,12 +11941,12 @@
             "floatsPerEntity": 131,
             "u32sPerEntity": 117
           },
-          "snapshotHash": "4413658f"
+          "snapshotHash": "06195680"
         },
-        "replayHash": "4413658f"
+        "replayHash": "06195680"
       }
     ],
-    "replayHash": "d406eb0b"
+    "replayHash": "97e40394"
   },
   "manifestPath": "tests/fixtures/gameplay-golden/scenarios.json",
   "manifestIndex": 0

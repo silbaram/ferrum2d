@@ -15,7 +15,7 @@
         "frame": 0,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 0,
           "source": "ferrum-runtime",
           "scene": {
@@ -28,7 +28,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0,
               2.5,
@@ -40,7 +40,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               0,
               0,
               0,
@@ -648,15 +648,15 @@
               }
             }
           },
-          "snapshotHash": "8c6144dc"
+          "snapshotHash": "24f46f0b"
         },
-        "replayHash": "8c6144dc"
+        "replayHash": "24f46f0b"
       },
       {
         "frame": 1,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 1,
           "source": "ferrum-runtime",
           "scene": {
@@ -669,7 +669,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0,
               2.5,
@@ -681,7 +681,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               0,
               0,
               0,
@@ -1289,15 +1289,15 @@
               }
             }
           },
-          "snapshotHash": "1d4b37ba"
+          "snapshotHash": "92737b3d"
         },
-        "replayHash": "1d4b37ba"
+        "replayHash": "92737b3d"
       },
       {
         "frame": 8,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 8,
           "source": "ferrum-runtime",
           "scene": {
@@ -1310,7 +1310,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0,
               2.5,
@@ -1322,7 +1322,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               1,
               0,
               0,
@@ -1930,15 +1930,15 @@
               }
             }
           },
-          "snapshotHash": "f8efd360"
+          "snapshotHash": "9a0cac4f"
         },
-        "replayHash": "f8efd360"
+        "replayHash": "9a0cac4f"
       },
       {
         "frame": 16,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 16,
           "source": "ferrum-runtime",
           "scene": {
@@ -1951,7 +1951,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0.06333334743976593,
               2.366666793823242,
@@ -1963,7 +1963,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               1,
               0,
               0,
@@ -2819,15 +2819,15 @@
               }
             }
           },
-          "snapshotHash": "af8113d8"
+          "snapshotHash": "edd623c7"
         },
-        "replayHash": "af8113d8"
+        "replayHash": "edd623c7"
       },
       {
         "frame": 32,
         "snapshot": {
           "format": "ferrum2d.game-state.snapshot",
-          "version": 1,
+          "version": 2,
           "frame": 32,
           "source": "ferrum-runtime",
           "scene": {
@@ -2840,7 +2840,7 @@
           },
           "builtInShooter": {
             "format": "ferrum2d.builtin-shooter-state",
-            "version": 17,
+            "version": 18,
             "headerFloats": [
               0,
               2.1000003814697266,
@@ -2852,7 +2852,7 @@
               0
             ],
             "headerU32s": [
-              17,
+              18,
               1,
               0,
               0,
@@ -3708,11 +3708,11 @@
               }
             }
           },
-          "snapshotHash": "7dbd96c2"
+          "snapshotHash": "d07a6ca5"
         },
-        "replayHash": "7dbd96c2"
+        "replayHash": "d07a6ca5"
       }
     ],
-    "replayHash": "0859c7e3"
+    "replayHash": "da995790"
   }
 }

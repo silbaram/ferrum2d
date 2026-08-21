@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert/strict";
+import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { runFrame } from "../src/engineFramePipeline.js";
 import type { FramePipelineContext } from "../src/engineFramePipeline.js";
@@ -95,6 +95,7 @@ class FakeBridge {
     private readonly order: string[],
     private readonly audioEventCount = 1,
     private readonly effectEvents: readonly unknown[] = [],
+    private readonly gameState = 4,
   ) {}
 
   readAudioEventBuffer(): unknown {
@@ -128,7 +129,7 @@ class FakeBridge {
         1,
         2,
         3,
-        4,
+        this.gameState,
         5,
         6,
         7,
@@ -333,6 +334,17 @@ test("runFrame preserves input, viewport, update, audio, buffer, callback order"
     "decode_effect",
     "on_frame",
   ]);
+});
+
+test("runFrame rejects unknown lifecycle telemetry codes", () => {
+  const order: string[] = [];
+  const bridge = new FakeBridge(order, 1, [], 5);
+  const engine = new FakeEngine(order);
+
+  throws(
+    () => runFrame(framePipelineContext({ bridge, engine, order }), 0.016),
+    /frameTelemetry\.gameState must be a known game state code/,
+  );
 });
 
 test("runFrame skips frame buffer reads when no onFrame handler is registered", () => {

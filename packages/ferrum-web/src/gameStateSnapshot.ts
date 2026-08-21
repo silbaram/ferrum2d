@@ -15,6 +15,12 @@ import {
   type DataSceneVariableValues,
 } from "./dataSceneVariables.js";
 import type { FerrumEngine } from "./engineTypes.js";
+import {
+  GAME_STATE_CODE,
+  resolveGameStateCode,
+  type DataSceneGameState,
+  type GameStateCode,
+} from "./gameState.js";
 import type { PhysicsWorldApplyResult } from "./physicsAuthoring.js";
 import {
   capturePhysicsWorldSnapshot,
@@ -26,9 +32,9 @@ import {
 } from "./physicsSnapshot.js";
 
 export const GAME_STATE_SNAPSHOT_FORMAT = "ferrum2d.game-state.snapshot";
-export const GAME_STATE_SNAPSHOT_VERSION = 1;
+export const GAME_STATE_SNAPSHOT_VERSION = 2;
 export const DATA_SCENE_STATE_FORMAT = "ferrum2d.data-scene-state";
-export const DATA_SCENE_STATE_VERSION = 1;
+export const DATA_SCENE_STATE_VERSION = 2;
 
 export type GameStateSnapshotJsonValue =
   | null
@@ -40,7 +46,7 @@ export type GameStateSnapshotJsonValue =
 
 export interface GameStateSceneSnapshot {
   readonly score: number;
-  readonly gameState: number;
+  readonly gameState: GameStateCode;
   readonly entityCount: number;
   readonly spriteCount: number;
   readonly cameraX: number;
@@ -119,6 +125,9 @@ export function captureGameStateSnapshot(
   }
   const frame = nonNegativeInteger(options.frame ?? 0, "game state snapshot frame");
   const scene = captureGameStateSceneSnapshot(engine);
+  const dataSceneLifecycleState = options.includeDataSceneState === true
+    ? requireActiveDataSceneLifecycleState(engine, scene)
+    : undefined;
   const builtInShooter = options.includeBuiltInShooterState === true
     ? captureBuiltInShooterState(engine)
     : undefined;
@@ -141,8 +150,13 @@ export function captureGameStateSnapshot(
         "data scene state customState",
       )
     : undefined;
-  const dataScene = options.includeDataSceneState === true
-    ? captureDataSceneState(scene, options.dataSceneAuthoringDocument, dataSceneCustomState)
+  const dataScene = dataSceneLifecycleState !== undefined
+    ? captureDataSceneState(
+        scene,
+        dataSceneLifecycleState,
+        options.dataSceneAuthoringDocument,
+        dataSceneCustomState,
+      )
     : undefined;
   const snapshot: Omit<GameStateSnapshot, "snapshotHash"> = {
     format: GAME_STATE_SNAPSHOT_FORMAT,
@@ -173,6 +187,7 @@ export function restoreGameStateSnapshot(
   validateGameStateSnapshot(snapshot);
   const sceneBefore = captureGameStateSceneSnapshot(engine);
   const snapshotPath = options.path ?? "gameState.snapshot";
+  preflightDataSceneActivation(snapshot, options, snapshotPath);
   const globalVariableValues = snapshotVariableValues(
     snapshot.custom,
     `${snapshotPath}.custom`,
@@ -254,6 +269,13 @@ export function restoreGameStateSnapshot(
       `${snapshotPath}.dataScene.custom`,
     ).restore("scene", sceneVariableValues);
     sceneVariablesApplied = true;
+  }
+  if (dataSceneStateApplied && snapshot.dataScene !== undefined) {
+    restoreDataSceneLifecycleState(
+      engine,
+      snapshot.dataScene.scene.gameState,
+      `${snapshotPath}.dataScene.scene.gameState`,
+    );
   }
   const dataSceneCustomState = customStateWithoutVariables(snapshot.dataScene?.custom);
   let dataSceneCustomStateApplied = false;
@@ -436,6 +458,9 @@ export function validateDataSceneStateSnapshot(
     throw new Error(`${path}.version must be ${DATA_SCENE_STATE_VERSION}.`);
   }
   validateSceneSnapshot(snapshot.scene, `${path}.scene`);
+  if (!isDataSceneGameStateCode(snapshot.scene.gameState)) {
+    throw new Error(`${path}.scene.gameState must be playing (1), paused (3), or levelComplete (4).`);
+  }
   if (snapshot.authoringDocument !== undefined) {
     cloneJsonValue(
       snapshot.authoringDocument as GameStateSnapshotJsonValue,
@@ -451,7 +476,7 @@ export function validateDataSceneStateSnapshot(
 function captureGameStateSceneSnapshot(engine: FerrumEngine): GameStateSceneSnapshot {
   return {
     score: finiteNumber(engine.score(), "game state scene score"),
-    gameState: nonNegativeInteger(engine.gameState(), "game state scene gameState"),
+    gameState: resolveGameStateCode(engine.gameState(), "game state scene gameState"),
     entityCount: nonNegativeInteger(engine.entityCount(), "game state scene entityCount"),
     spriteCount: nonNegativeInteger(engine.spriteCount(), "game state scene spriteCount"),
     cameraX: finiteNumber(engine.cameraX(), "game state scene cameraX"),
@@ -461,9 +486,13 @@ function captureGameStateSceneSnapshot(engine: FerrumEngine): GameStateSceneSnap
 
 function captureDataSceneState(
   scene: GameStateSceneSnapshot,
+  lifecycleState: DataSceneGameState,
   authoringDocument: GameStateSnapshotJsonValue | undefined,
   customState: GameStateSnapshotJsonValue | undefined,
 ): DataSceneStateSnapshot {
+  if (scene.gameState !== GAME_STATE_CODE[lifecycleState]) {
+    throw new Error("data scene lifecycle state must match the captured scene gameState.");
+  }
   return {
     format: DATA_SCENE_STATE_FORMAT,
     version: DATA_SCENE_STATE_VERSION,
@@ -480,6 +509,38 @@ function captureDataSceneState(
       ? {}
       : { custom: cloneJsonValue(customState, "data scene state customState") }),
   };
+}
+
+function requireActiveDataSceneLifecycleState(
+  engine: FerrumEngine,
+  scene: GameStateSceneSnapshot,
+): DataSceneGameState {
+  const lifecycleState = engine.dataSceneState();
+  if (lifecycleState === undefined) {
+    throw new Error("includeDataSceneState requires an active Data Scene.");
+  }
+  if (scene.gameState !== GAME_STATE_CODE[lifecycleState]) {
+    throw new Error("active Data Scene lifecycle state must match scene.gameState.");
+  }
+  return lifecycleState;
+}
+
+function preflightDataSceneActivation(
+  snapshot: GameStateSnapshot,
+  options: RestoreGameStateSnapshotOptions,
+  path: string,
+): void {
+  if (
+    snapshot.dataScene !== undefined
+    && snapshot.dataScene.authoringDocument !== undefined
+    && options.restoreDataSceneState !== false
+    && options.restoreDataSceneAuthoringDocument !== false
+    && options.dataSceneAuthoringApplyOptions?.activateDataScene === false
+  ) {
+    throw new Error(
+      `${path}.dataScene restore cannot disable Data Scene activation.`,
+    );
+  }
 }
 
 function variableValuesForSnapshot(
@@ -632,16 +693,52 @@ function captureBuiltInShooterState(engine: FerrumEngine): BuiltInShooterStateSn
   return snapshot;
 }
 
-function validateSceneSnapshot(value: unknown, path: string): void {
+function validateSceneSnapshot(
+  value: unknown,
+  path: string,
+): asserts value is GameStateSceneSnapshot {
   if (!isRecord(value)) {
     throw new Error(`${path} must be an object.`);
   }
   finiteNumber(value.score, `${path}.score`);
-  nonNegativeInteger(value.gameState, `${path}.gameState`);
+  resolveGameStateCode(value.gameState, `${path}.gameState`);
   nonNegativeInteger(value.entityCount, `${path}.entityCount`);
   nonNegativeInteger(value.spriteCount, `${path}.spriteCount`);
   finiteNumber(value.cameraX, `${path}.cameraX`);
   finiteNumber(value.cameraY, `${path}.cameraY`);
+}
+
+function isDataSceneGameStateCode(value: unknown): boolean {
+  return value === GAME_STATE_CODE.playing
+    || value === GAME_STATE_CODE.paused
+    || value === GAME_STATE_CODE.levelComplete;
+}
+
+function restoreDataSceneLifecycleState(
+  engine: FerrumEngine,
+  state: GameStateCode,
+  path: string,
+): void {
+  switch (state) {
+    case GAME_STATE_CODE.playing:
+      if (engine.dataSceneState() !== "playing") {
+        throw new Error(`${path} could not restore playing Data Scene state.`);
+      }
+      return;
+    case GAME_STATE_CODE.paused:
+      if (!engine.pauseDataScene()) {
+        throw new Error(`${path} could not restore paused Data Scene state.`);
+      }
+      return;
+    case GAME_STATE_CODE.levelComplete:
+      if (!engine.completeDataScene()) {
+        throw new Error(`${path} could not restore levelComplete Data Scene state.`);
+      }
+      return;
+    case GAME_STATE_CODE.title:
+    case GAME_STATE_CODE.gameOver:
+      throw new Error(`${path} is not a Data Scene lifecycle state.`);
+  }
 }
 
 function sceneSnapshotsEqual(left: GameStateSceneSnapshot, right: GameStateSceneSnapshot): boolean {

@@ -4,6 +4,7 @@ use super::scenes::{ActiveScene, SceneMode};
 use super::Engine;
 
 const INVALID_ENTITY_ID: u32 = u32::MAX;
+const INVALID_GAME_STATE: u32 = u32::MAX;
 
 #[wasm_bindgen]
 impl Engine {
@@ -46,6 +47,25 @@ impl Engine {
         self.tweens.clear();
         self.clear_physics_history();
         self.clear_scene_output_buffers();
+    }
+
+    pub fn data_scene_game_state(&self) -> u32 {
+        if self.scene_mode != SceneMode::Data {
+            return INVALID_GAME_STATE;
+        }
+        self.data_scene.game_state().code()
+    }
+
+    pub fn pause_data_scene(&mut self) -> bool {
+        self.scene_mode == SceneMode::Data && self.data_scene.pause()
+    }
+
+    pub fn resume_data_scene(&mut self) -> bool {
+        self.scene_mode == SceneMode::Data && self.data_scene.resume()
+    }
+
+    pub fn complete_data_scene(&mut self) -> bool {
+        self.scene_mode == SceneMode::Data && self.data_scene.complete_level()
     }
 
     pub fn use_breakout_scene(&mut self) {

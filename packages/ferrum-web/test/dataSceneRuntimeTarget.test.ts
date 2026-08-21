@@ -100,6 +100,30 @@ test("applyDataSceneAuthoringDocument resolves and spawns a scene-authoring docu
   deepEqual(adapter.textureNames, ["agent", "agent"]);
 });
 
+test("applyDataSceneAuthoringDocument activates an empty document as a real scene transition", () => {
+  const adapter = new MockDataSceneRuntimeAdapter();
+  const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
+  const result = applyDataSceneAuthoringDocument(engine, {
+    format: "ferrum2d.consumer.scene-authoring",
+    version: 1,
+    variables: [
+      { name: "campaign.stage", scope: "global", type: "integer", default: 1 },
+      { name: "wave.index", scope: "scene", type: "integer", default: 0 },
+    ],
+    sceneComposition: {
+      initialFragment: "main",
+      prefabs: {},
+      fragments: { main: { instances: [] } },
+    },
+    behaviorRecipes: { entities: {} },
+  });
+
+  equal(adapter.useDataSceneCalls, 1);
+  equal(result.spawnResults.length, 0);
+  equal(result.variables.get("campaign.stage"), 1);
+  equal(result.variables.get("wave.index"), 0);
+});
+
 test("applyDataSceneAuthoringDocument validates components before runtime activation", () => {
   const adapter = new MockDataSceneRuntimeAdapter();
   const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);

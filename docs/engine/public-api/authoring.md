@@ -80,6 +80,9 @@ starter-scene 표면은 별도 호환 계약으로 유지한다.
 `allowComponentTemplates`도 기본 활성화된다. resolver/component validation은 runtime activation 전에
 끝나므로 검증 실패만으로 기존 scene을 비우지 않는다. 적용 시에는 문서의 `ids`를 behavior command id
 해석에 사용하고, `options.ids`가 있으면 caller override를 우선한다.
+validation이 성공한 full apply는 initial fragment의 instance가 0개여도 `useDataScene()`을 호출한다.
+따라서 빈 문서는 이전 scene의 runtime state를 정리하는 유효한 전환이며 `activateDataScene: false`에서만
+자동 activation을 생략한다.
 
 optional `variables` 선언은 `name`, `scope: "global" | "scene"`,
 `type: "integer" | "real" | "bool"`, 타입에 맞는 `default`를 가진다.
@@ -89,7 +92,7 @@ apply하면 동일 이름·동일 타입의 global 값만 유지하고 scene 값
 frame simulation 변수 API는 아니다.
 
 `createDataSceneRuntimeTarget(engine)`은 기본적으로 첫 번째 유효한 spawn 직전에 `engine.useDataScene()`을
-한 번 호출해 빈 Data Scene runtime을 활성화한 뒤, 각
+한 번 호출해 Data Scene runtime을 활성화한 뒤, 각
 `ResolvedSceneCompositionInstance.props.components` inline descriptor를 raw Wasm
 `spawn_data_scene_entity(...)`로 컴파일한다. authoring validation 실패나 target 생성만으로 기존 scene을
 비우지 않는다. asset texture id는 `engine.textureId(name)` 또는 `options.textureId(name)`으로 해석한다.

@@ -13,6 +13,7 @@ import {
   GAMEPLAY_ACTION_FAILURE_MAX_REASON_CODE,
 } from "./gameplayEventDecoder.js";
 import { EMPTY_EFFECT_EVENTS } from "./effectEventDecoder.js";
+import { resolveGameStateCode } from "./gameState.js";
 import { decodeRenderCommands } from "./renderCommandDecoder.js";
 import type {
   CollisionEventBufferView,
@@ -128,7 +129,10 @@ export function buildFrameState(input: FrameStateBuildInput): FrameState {
     rustUpdateTimeMs,
     score: telemetry[TELEMETRY_SCORE],
     entityCount: telemetry[TELEMETRY_ENTITY_COUNT],
-    gameState: telemetry[TELEMETRY_GAME_STATE],
+    gameState: resolveGameStateCode(
+      telemetry[TELEMETRY_GAME_STATE],
+      "frameTelemetry.gameState",
+    ),
     spriteCount: telemetry[TELEMETRY_SPRITE_COUNT],
     mouseX: input.input?.mouseX ?? 0,
     mouseY: input.input?.mouseY ?? 0,

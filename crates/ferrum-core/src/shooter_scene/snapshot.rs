@@ -108,19 +108,13 @@ pub struct ShooterEntitySnapshot {
 }
 
 fn game_state_code(game_state: GameState) -> u32 {
-    match game_state {
-        GameState::Title => 0,
-        GameState::Playing => 1,
-        GameState::GameOver => 2,
-    }
+    game_state.code()
 }
 
 fn game_state_from_code(code: u32) -> Option<GameState> {
-    match code {
-        0 => Some(GameState::Title),
-        1 => Some(GameState::Playing),
-        2 => Some(GameState::GameOver),
-        _ => None,
+    match GameState::from_code(code)? {
+        state @ (GameState::Title | GameState::Playing | GameState::GameOver) => Some(state),
+        GameState::Paused | GameState::LevelComplete => None,
     }
 }
 

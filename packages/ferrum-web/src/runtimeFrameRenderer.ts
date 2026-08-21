@@ -1,6 +1,7 @@
 import type { DebugOverlay } from "./debugOverlay.js";
 import type { DebugOverlayMetrics } from "./debugOverlay.js";
 import type { FrameState } from "./engineTypes.js";
+import { GAME_STATE_CODE, type GameStateCode } from "./gameState.js";
 import type { RenderFrameState } from "./engineFramePipeline.js";
 import type { RuntimeProfiler } from "./runtimeProfiler.js";
 import type { UiOverlay } from "./uiOverlay.js";
@@ -31,7 +32,7 @@ export interface RuntimeFrameRendererOptions {
   cutscene?: FerrumRuntimeCutscene;
   levelStreaming?: FerrumRuntimeLevelStreaming;
   profiler?: RuntimeProfiler;
-  gameStateLabel?: (code: number) => string;
+  gameStateLabel?: (code: GameStateCode) => string;
   onFrame?: (frame: FerrumRuntimeFrame) => void;
   now?: () => number;
 }
@@ -186,7 +187,7 @@ function buildDebugMetrics(
   fps: number,
   renderTimeMs: number,
   audioEventsPerSecond: number,
-  gameStateLabel: (code: number) => string,
+  gameStateLabel: (code: GameStateCode) => string,
 ): DebugOverlayMetrics {
   return {
     fps,
@@ -246,9 +247,17 @@ function collisionDebugMetrics(
   return metrics;
 }
 
-function defaultGameStateLabel(code: number): string {
-  if (code === 0) return "Title";
-  if (code === 1) return "Playing";
-  if (code === 2) return "GameOver";
-  return `State ${code}`;
+function defaultGameStateLabel(code: GameStateCode): string {
+  switch (code) {
+    case GAME_STATE_CODE.title:
+      return "Title";
+    case GAME_STATE_CODE.playing:
+      return "Playing";
+    case GAME_STATE_CODE.gameOver:
+      return "GameOver";
+    case GAME_STATE_CODE.paused:
+      return "Paused";
+    case GAME_STATE_CODE.levelComplete:
+      return "LevelComplete";
+  }
 }

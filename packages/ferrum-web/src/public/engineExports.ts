@@ -8,6 +8,12 @@ export {
 } from "../createEngine";
 export { createFerrumRuntime } from "../createFerrumRuntime";
 export { createRenderer } from "../createRenderer";
+export { GAME_STATE_CODE, gameStateName } from "../gameState.js";
+export type {
+  DataSceneGameState,
+  GameStateCode,
+  GameStateName,
+} from "../gameState.js";
 export {
   BITMAP_FONT_ATLAS_FORMAT,
   BITMAP_FONT_ATLAS_VERSION,

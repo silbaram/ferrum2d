@@ -29,6 +29,11 @@ import {
   DATA_SCENE_VARIABLES_SNAPSHOT_KEY,
 } from "../src/dataSceneVariables.js";
 import {
+  dataSceneGameStateFromCode,
+  GAME_STATE_CODE,
+  type GameStateCode,
+} from "../src/gameState.js";
+import {
   applyDataSceneAuthoringDocument,
   attachDataSceneRuntimeEngineAdapter,
   type DataSceneRuntimeSpawnRequest,
@@ -50,7 +55,15 @@ test("game state snapshot captures runtime scene metrics and custom JSON", () =>
 });
 
 test("game state snapshot captures data scene state separately from built-in shooter state", () => {
-  const engine = fakeEngine({ score: 0, gameState: 1, entityCount: 0, spriteCount: 0, cameraX: 24, cameraY: 12 });
+  const engine = fakeEngine({
+    score: 0,
+    gameState: 1,
+    entityCount: 0,
+    spriteCount: 0,
+    cameraX: 24,
+    cameraY: 12,
+    dataSceneActive: true,
+  });
   const snapshot = captureGameStateSnapshot(engine, {
     frame: 3,
     includeDataSceneState: true,
@@ -63,6 +76,53 @@ test("game state snapshot captures data scene state separately from built-in sho
   deepEqual(snapshot.dataScene?.custom, { sceneId: "blank-arena" });
   equal(snapshot.builtInShooter, undefined);
   equal(snapshot.snapshotHash, hashGameStateSnapshot(snapshot));
+});
+
+test("game state snapshot hashes and restores Data Scene lifecycle state", () => {
+  const source = fakeEngine({
+    gameState: GAME_STATE_CODE.playing,
+    entityCount: 1,
+    spriteCount: 1,
+    dataSceneActive: true,
+  });
+  const playing = captureGameStateSnapshot(source, {
+    frame: 5,
+    includeDataSceneState: true,
+  });
+  source.setScene({ gameState: GAME_STATE_CODE.paused });
+  const paused = captureGameStateSnapshot(source, {
+    frame: 5,
+    includeDataSceneState: true,
+  });
+  source.setScene({ gameState: GAME_STATE_CODE.levelComplete });
+  const levelComplete = captureGameStateSnapshot(source, {
+    frame: 5,
+    includeDataSceneState: true,
+  });
+
+  equal(playing.version, 2);
+  equal(playing.dataScene?.version, 2);
+  equal(playing.snapshotHash === paused.snapshotHash, false);
+  equal(paused.snapshotHash === levelComplete.snapshotHash, false);
+
+  const restored = fakeEngine({ gameState: GAME_STATE_CODE.gameOver });
+  const result = restoreGameStateSnapshot(restored, paused);
+  equal(restored.dataSceneState(), "paused");
+  equal(result.sceneAfter.gameState, GAME_STATE_CODE.paused);
+
+  const restoredComplete = fakeEngine({ gameState: GAME_STATE_CODE.gameOver });
+  const completeResult = restoreGameStateSnapshot(restoredComplete, levelComplete);
+  equal(restoredComplete.dataSceneState(), "levelComplete");
+  equal(completeResult.sceneAfter.gameState, GAME_STATE_CODE.levelComplete);
+});
+
+test("game state snapshot rejects Data Scene capture outside active Data Scene mode", () => {
+  assertThrows(
+    () => captureGameStateSnapshot(fakeEngine({ gameState: GAME_STATE_CODE.playing }), {
+      includeDataSceneState: true,
+    }),
+    /requires an active Data Scene/,
+  );
 });
 
 test("data scene variables map to custom snapshot namespaces and restore deterministically", () => {
@@ -251,6 +311,10 @@ test("game state snapshot stringify and parse validate deterministic hash", () =
     () => parseGameStateSnapshot(JSON.stringify(tampered)),
     /snapshotHash does not match snapshot contents/,
   );
+  assertThrows(
+    () => parseGameStateSnapshot(JSON.stringify({ ...snapshot, version: 1 })),
+    /version must be 2/,
+  );
 });
 
 test("game state snapshot storage helpers round-trip through localStorage compatible API", () => {
@@ -325,7 +389,13 @@ test("game state restore aborts side effects when built-in shooter restore fails
 });
 
 test("game state restore switches to data scene and applies data scene custom state", () => {
-  const snapshot = captureGameStateSnapshot(fakeEngine({ score: 0, gameState: 1, entityCount: 0, spriteCount: 0 }), {
+  const snapshot = captureGameStateSnapshot(fakeEngine({
+    score: 0,
+    gameState: 1,
+    entityCount: 0,
+    spriteCount: 0,
+    dataSceneActive: true,
+  }), {
     includeDataSceneState: true,
     dataSceneCustomState: { checkpoint: "data-start" },
   });
@@ -349,7 +419,13 @@ test("game state restore switches to data scene and applies data scene custom st
 
 test("game state restore reapplies data scene authoring document before custom state", () => {
   const authoringDocument = sampleDataSceneAuthoringDocument();
-  const snapshot = captureGameStateSnapshot(fakeEngine({ score: 0, gameState: 1, entityCount: 1, spriteCount: 1 }), {
+  const snapshot = captureGameStateSnapshot(fakeEngine({
+    score: 0,
+    gameState: 1,
+    entityCount: 1,
+    spriteCount: 1,
+    dataSceneActive: true,
+  }), {
     includeDataSceneState: true,
     dataSceneAuthoringDocument: authoringDocument,
     dataSceneCustomState: { checkpoint: "data-start" },
@@ -392,6 +468,34 @@ test("game state restore reapplies data scene authoring document before custom s
   deepEqual(restoredDataCustom, { checkpoint: "data-start" });
 });
 
+test("game state restore rejects authoring activation opt-out before mutating runtime", () => {
+  const authoringDocument = sampleDataSceneAuthoringDocument();
+  const snapshot = captureGameStateSnapshot(fakeEngine({
+    gameState: GAME_STATE_CODE.playing,
+    entityCount: 1,
+    spriteCount: 1,
+    dataSceneActive: true,
+  }), {
+    includeDataSceneState: true,
+    dataSceneAuthoringDocument: authoringDocument,
+  });
+  const engine = fakeEngine({ gameState: GAME_STATE_CODE.gameOver });
+  const adapter = new SnapshotDataSceneRuntimeAdapter(() => engine.useDataScene());
+
+  assertThrows(
+    () => restoreGameStateSnapshot(
+      attachDataSceneRuntimeEngineAdapter(engine, adapter),
+      snapshot,
+      { dataSceneAuthoringApplyOptions: { activateDataScene: false } },
+    ),
+    /restore cannot disable Data Scene activation/,
+  );
+  equal(adapter.useDataSceneCalls, 0);
+  equal(adapter.requests.length, 0);
+  equal(engine.dataSceneActivations(), 0);
+  equal(engine.gameState(), GAME_STATE_CODE.gameOver);
+});
+
 test("built-in shooter state validation rejects header version mismatch", () => {
   const shooterState = fakeShooterState();
 
@@ -405,19 +509,19 @@ test("built-in shooter state validation rejects header version mismatch", () => 
   );
 });
 
-test("built-in shooter state validation rejects legacy v16 snapshots", () => {
+test("built-in shooter state validation rejects legacy v17 snapshots", () => {
   const shooterState = fakeShooterState();
 
   assertThrows(
     () =>
       validateBuiltInShooterStateSnapshot({
         ...shooterState,
-        version: 16,
-        headerU32s: [16, ...shooterState.headerU32s.slice(1)],
+        version: 17,
+        headerU32s: [17, ...shooterState.headerU32s.slice(1)],
         floatsPerEntity: 75,
         u32sPerEntity: 61,
       } as unknown as BuiltInShooterStateSnapshot),
-    /version must be 17/,
+    /version must be 18/,
   );
 });
 
@@ -466,7 +570,7 @@ function fakeEngine(
 ): FerrumEngine & { setScene(scene: Partial<FakeScene>): void; dataSceneActivations(): number } {
   const scene: FakeScene = {
     score: initial.score ?? 0,
-    gameState: initial.gameState ?? 0,
+    gameState: initial.gameState ?? GAME_STATE_CODE.title,
     entityCount: initial.entityCount ?? 1,
     spriteCount: initial.spriteCount ?? 1,
     cameraX: initial.cameraX ?? 0,
@@ -474,6 +578,7 @@ function fakeEngine(
     shooterState: initial.shooterState ?? fakeShooterState(),
     restoreShooterStateSnapshotResult: initial.restoreShooterStateSnapshotResult ?? true,
     dataSceneActivations: initial.dataSceneActivations ?? 0,
+    dataSceneActive: initial.dataSceneActive ?? false,
   };
   return {
     score: () => scene.score,
@@ -493,12 +598,37 @@ function fakeEngine(
     },
     useDataScene: () => {
       scene.dataSceneActivations += 1;
+      scene.dataSceneActive = true;
       scene.score = 0;
-      scene.gameState = 1;
+      scene.gameState = GAME_STATE_CODE.playing;
       scene.entityCount = 0;
       scene.spriteCount = 0;
       scene.cameraX = 0;
       scene.cameraY = 0;
+    },
+    dataSceneState: () => scene.dataSceneActive
+      ? dataSceneGameStateFromCode(scene.gameState)
+      : undefined,
+    pauseDataScene: () => {
+      if (scene.gameState !== GAME_STATE_CODE.playing) {
+        return false;
+      }
+      scene.gameState = GAME_STATE_CODE.paused;
+      return true;
+    },
+    resumeDataScene: () => {
+      if (scene.gameState !== GAME_STATE_CODE.paused) {
+        return false;
+      }
+      scene.gameState = GAME_STATE_CODE.playing;
+      return true;
+    },
+    completeDataScene: () => {
+      if (scene.gameState !== GAME_STATE_CODE.playing) {
+        return false;
+      }
+      scene.gameState = GAME_STATE_CODE.levelComplete;
+      return true;
     },
     setScene: (nextScene) => {
       Object.assign(scene, nextScene);
@@ -509,7 +639,7 @@ function fakeEngine(
 
 interface FakeScene {
   score: number;
-  gameState: number;
+  gameState: GameStateCode;
   entityCount: number;
   spriteCount: number;
   cameraX: number;
@@ -517,6 +647,7 @@ interface FakeScene {
   shooterState: BuiltInShooterStateSnapshot;
   restoreShooterStateSnapshotResult: boolean;
   dataSceneActivations: number;
+  dataSceneActive: boolean;
 }
 
 class SnapshotDataSceneRuntimeAdapter {

@@ -63,7 +63,7 @@ Projectile spawn은 기존 bullet-specific storage에서 prefab/component 기반
 | `GameplayPrefabRegistry` | runtime prefab registration과 alias id를 관리한다. 현재 built-in adapter는 Player/Enemy/Bullet/Runtime component bucket을 사용한다. |
 | component bucket | transform, sprite/template/texture, collision layer, gameplay component source를 canonical payload로 묶는다. |
 | projectile spawn payload | speed, damage, lifetime, aim, collision target, tile impact를 prefab spawn command와 함께 보존한다. |
-| snapshot version 17 | prefab registry component bucket, projectile source faction metadata, session faction relation table, player spawnPrefab action binding 16-slot layout을 save/replay hash에 포함한다. |
+| snapshot version 18 | prefab registry component bucket, projectile source faction metadata, session faction relation table, player spawnPrefab action binding 16-slot layout과 stable built-in lifecycle state code를 save/replay hash에 포함한다. Data Scene 전용 pause/complete code는 받지 않는다. |
 
 spawn은 frame 중간에 즉시 `World` 구조를 바꾸지 않고 pending spawn queue를 통해 처리한다. unsupported prefab, blocked placement, capacity full은 cooldown을 소비하지 않는 실패로 보고된다.
 

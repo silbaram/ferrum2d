@@ -82,6 +82,12 @@ impl Engine {
         self.elapsed_seconds += delta;
         self.clear_physics_frame();
         self.reset_active_scene_action_trigger_frame_diagnostics();
+        if self.active_scene_game_state().freezes_simulation() {
+            self.last_fixed_update = FixedTimestepUpdate::default();
+            self.fixed_timestep_input_latch.clear();
+            self.previous_input_sample = self.input;
+            return;
+        }
         if self.fixed_timestep_enabled {
             let update = self.fixed_timestep.advance(delta as f32);
             self.last_fixed_update = update;

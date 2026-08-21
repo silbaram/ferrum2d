@@ -38,6 +38,7 @@ import type { InputSnapshot } from "../inputManager";
 import type { ParticlePresetConfig } from "../particlePreset";
 import type { EffectEventRuntimeOptions } from "../effectEventRuntime.js";
 import type { FerrumBitmapTextApi } from "../worldText.js";
+import type { DataSceneGameState, GameStateCode } from "../gameState.js";
 import type { PhysicsMode, ResolvedPhysicsSpec } from "../physicsSpec.js";
 import type { PhysicsBodyStateBufferSnapshot } from "../physicsBodyStateBuffer.js";
 import type {
@@ -115,7 +116,7 @@ export interface EngineLifecycleSnapshot {
   timeSeconds: number;
   score: number;
   entityCount: number;
-  gameState: number;
+  gameState: GameStateCode;
   spriteCount: number;
 }
 
@@ -175,9 +176,13 @@ export interface FerrumBufferAccessorApi {
 export interface FerrumSceneApi {
   score(): number;
   entityCount(): number;
-  gameState(): number;
+  gameState(): GameStateCode;
   spriteCount(): number;
   resetGame(): void;
+  dataSceneState(): DataSceneGameState | undefined;
+  pauseDataScene(): boolean;
+  resumeDataScene(): boolean;
+  completeDataScene(): boolean;
   builtInShooterPlayerHandle(): GameplayEntityHandle | undefined;
   captureShooterStateSnapshot(): BuiltInShooterStateSnapshot | undefined;
   restoreShooterStateSnapshot(snapshot: BuiltInShooterStateSnapshot): boolean;

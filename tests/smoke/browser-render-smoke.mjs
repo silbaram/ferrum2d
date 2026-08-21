@@ -3856,7 +3856,7 @@ async function smokeTopdownSaveLoad(page, timeoutMs) {
     function captureGameplaySnapshot(frame) {
       return {
         format: "ferrum2d.game-state.snapshot",
-        version: 1,
+        version: 2,
         frame,
         source: "ferrum-runtime",
         scene: {

@@ -94,6 +94,7 @@ import type {
   SceneAuthoringDocumentSpec,
 } from "./sceneAuthoringDocument.js";
 import type { DataSceneVariableStore } from "./dataSceneVariables.js";
+import type { DataSceneGameState, GameStateCode } from "./gameState.js";
 
 export type FerrumRuntimeRenderer = CreatedRenderer & TextureAssetManager & {
   renderCommands(commands: RenderCommandBufferView): RendererStats;
@@ -257,6 +258,14 @@ export interface FerrumRuntimeDataScene {
   readonly result: ApplyDataSceneAuthoringDocumentResult;
   readonly variables: DataSceneVariableStore;
   document(): ApplyDataSceneAuthoringDocumentResult["document"];
+  state(): DataSceneGameState | undefined;
+  pause(): boolean;
+  resume(): boolean;
+  complete(): boolean;
+  transition(
+    document: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument,
+    options?: Omit<ApplyDataSceneAuthoringDocumentOptions, "activateDataScene">,
+  ): ApplyDataSceneAuthoringDocumentResult;
   reapply(
     document?: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument,
     options?: ApplyDataSceneAuthoringDocumentOptions,
@@ -303,7 +312,7 @@ export interface FerrumRuntimeOptions {
   profiler?: boolean | RuntimeProfiler | RuntimeProfilerOptions;
   autostart?: boolean;
   inputTransform?: (snapshot: InputSnapshot) => InputSnapshot;
-  gameStateLabel?: (code: number) => string;
+  gameStateLabel?: (code: GameStateCode) => string;
   onFrame?: (frame: FerrumRuntimeFrame) => void;
 }
 
@@ -871,6 +880,19 @@ function createRuntimeDataScene(
     ...applyOptions,
     path: basePath,
   });
+  const applyNextDocument = (
+    nextDocument: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument,
+    nextOptions: ApplyDataSceneAuthoringDocumentOptions,
+  ): ApplyDataSceneAuthoringDocumentResult => {
+    const nextResult = applyDataSceneAuthoringDocument(engine, nextDocument, {
+      ...applyOptions,
+      ...nextOptions,
+      path: nextOptions.path ?? basePath,
+    });
+    currentDocument = nextDocument;
+    result = nextResult;
+    return result;
+  };
 
   return {
     get result() {
@@ -878,16 +900,21 @@ function createRuntimeDataScene(
     },
     variables: result.variables,
     document: () => result.document,
-    reapply: (nextDocument = currentDocument, nextOptions = {}) => {
-      const nextResult = applyDataSceneAuthoringDocument(engine, nextDocument, {
-        ...applyOptions,
+    state: () => engine.dataSceneState(),
+    pause: () => engine.pauseDataScene(),
+    resume: () => engine.resumeDataScene(),
+    complete: () => engine.completeDataScene(),
+    transition: (nextDocument, nextOptions = {}) => {
+      if ((nextOptions as ApplyDataSceneAuthoringDocumentOptions).activateDataScene === false) {
+        throw new Error("runtime.dataScene.transition cannot disable Data Scene activation.");
+      }
+      return applyNextDocument(nextDocument, {
         ...nextOptions,
-        path: nextOptions.path ?? basePath,
+        activateDataScene: true,
       });
-      currentDocument = nextDocument;
-      result = nextResult;
-      return result;
     },
+    reapply: (nextDocument = currentDocument, nextOptions = {}) =>
+      applyNextDocument(nextDocument, nextOptions),
   };
 }
 

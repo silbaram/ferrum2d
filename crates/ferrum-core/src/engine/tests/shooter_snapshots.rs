@@ -1,7 +1,9 @@
 use super::*;
 use crate::components::gameplay::MAX_ACTION_BINDINGS_PER_ENTITY;
 use crate::engine::scenes::ActiveScene;
+use crate::shooter_scene::snapshot::SNAPSHOT_HEADER_GAME_STATE;
 use crate::shooter_scene::SHOOTER_SNAPSHOT_INPUT_ACTION_REGISTRY_U32_OFFSET;
+use crate::GameState;
 
 #[test]
 fn engine_captures_and_restores_builtin_shooter_snapshot() {
@@ -111,6 +113,29 @@ fn engine_captures_and_restores_builtin_shooter_snapshot() {
             .gameplay_faction_relation(GAMEPLAY_FACTION_PLAYER, GAMEPLAY_FACTION_ENEMY),
         Some(FactionRelation::Hostile)
     );
+}
+
+#[test]
+fn builtin_shooter_snapshot_rejects_data_scene_only_lifecycle_states() {
+    let mut engine = Engine::new();
+    assert!(engine.capture_shooter_snapshot());
+
+    let header_floats = engine.shooter_snapshot_header_floats.clone();
+    let entity_floats = engine.shooter_snapshot_entity_floats.clone();
+    let entity_u32s = engine.shooter_snapshot_entity_u32s.clone();
+
+    for state in [GameState::Paused, GameState::LevelComplete] {
+        let mut header_u32s = engine.shooter_snapshot_header_u32s.clone();
+        header_u32s[SNAPSHOT_HEADER_GAME_STATE] = state.code();
+        assert!(!engine.restore_shooter_snapshot(
+            header_floats.clone(),
+            header_u32s,
+            entity_floats.clone(),
+            entity_u32s.clone(),
+        ));
+    }
+
+    assert_eq!(engine.game_state(), GameState::Title.code());
 }
 
 #[test]
