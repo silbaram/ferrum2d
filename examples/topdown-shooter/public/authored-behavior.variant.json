@@ -409,7 +409,7 @@
     }
   },
   "expected": {
-    "replayHash": "1d2027a7",
+    "replayHash": "b925b1d3",
     "finalScore": 14,
     "eventFrame": 2,
     "eventKinds": ["collisionDamage", "factionDamageDenied", "pickupCollected", "interaction", "behaviorStateChanged", "behaviorStateChanged"],

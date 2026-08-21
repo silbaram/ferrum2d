@@ -369,6 +369,12 @@ impl ShooterScene {
             let Some(source) = world.entity_at_index(index) else {
                 continue;
             };
+            let Some(timer_snapshot) = world.gameplay_timer_trigger_at_index(index) else {
+                continue;
+            };
+            if !world.gameplay_variable_comparison_matches(timer_snapshot.guard) {
+                continue;
+            }
             let Some(timer) = world.gameplay_timer_trigger_mut_at_index(index) else {
                 continue;
             };

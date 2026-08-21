@@ -26,6 +26,9 @@ impl ShooterScene {
             if interaction.once && interaction.consumed {
                 continue;
             }
+            if !world.gameplay_variable_comparison_matches(interaction.guard) {
+                continue;
+            }
             if !world.is_alive_index(index) {
                 continue;
             }

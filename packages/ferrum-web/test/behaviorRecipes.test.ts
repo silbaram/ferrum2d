@@ -755,6 +755,103 @@ test("collisionEmitEffect recipes can reference named presentation effects", () 
   });
 });
 
+test("variable mutation recipes and guards compile to bounded runtime commands", () => {
+  const document = resolveBehaviorRecipeDocument({
+    entities: {
+      boss: {
+        recipes: [
+          {
+            kind: "damage",
+            amount: 2,
+            guard: { variable: "boss.phase", op: ">=", value: 2 },
+          },
+          {
+            kind: "incrementVariable",
+            variable: "boss.hits",
+            amount: 1,
+            when: { type: "gameplayEvent", event: "collisionDamage" },
+          },
+          {
+            kind: "setVariable",
+            variable: "door.open",
+            value: true,
+            when: { type: "gameplayEvent", event: "interaction", action: "unlock" },
+          },
+        ],
+      },
+    },
+  });
+
+  const commands = behaviorRecipeCommandsForEntity(document, "boss");
+  deepEqual(commands[0]?.guard, { variable: "boss.phase", op: ">=", value: 2 });
+  deepEqual(commands[1], {
+    entity: "boss",
+    recipe: "boss.1",
+    tags: [],
+    type: "configureIncrementVariable",
+    variable: "boss.hits",
+    amount: 1,
+    when: { type: "gameplayEvent", event: "collisionDamage" },
+  });
+  deepEqual(commands[2], {
+    entity: "boss",
+    recipe: "boss.2",
+    tags: [],
+    type: "configureSetVariable",
+    variable: "door.open",
+    value: true,
+    when: { type: "gameplayEvent", event: "interaction", action: "unlock" },
+  });
+});
+
+test("variable comparisons reject expressions and logical nesting", () => {
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      door: {
+        recipes: [{
+          kind: "interaction",
+          action: "open",
+          guard: { variable: "hasKey", op: "==", value: true, otherVariable: "door.unlocked" },
+        }],
+      },
+    },
+  }), /exactly one of value or otherVariable/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      door: {
+        recipes: [{
+          kind: "interaction",
+          action: "open",
+          guard: {
+            variable: "hasKey",
+            op: "==",
+            value: true,
+            and: [{ variable: "door.ready", op: "==", value: true }],
+          },
+        }],
+      },
+    },
+  } as unknown as BehaviorRecipeDocumentSpec), /unsupported field/);
+
+  expectMessage(() => resolveBehaviorRecipeDocument({
+    entities: {
+      door: {
+        recipes: [{
+          kind: "interaction",
+          action: "open",
+          guard: {
+            type: "expression",
+            variable: "hasKey",
+            op: "==",
+            value: true,
+          },
+        }],
+      },
+    },
+  } as unknown as BehaviorRecipeDocumentSpec), /must be variableComparison/);
+});
+
 function expectMessage(fn: () => void, pattern: RegExp): void {
   try {
     fn();

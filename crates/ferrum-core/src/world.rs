@@ -12,6 +12,7 @@ use crate::components::{
     SpringJoint, Sprite, SpriteAnimation, Transform2D, Velocity, WeldJoint,
 };
 use crate::entity::Entity;
+use crate::gameplay_variables::{GameplayVariableMutationTriggerSet, GameplayVariableSlab};
 use crate::physics::PhysicsSystem;
 
 pub const BULLET_LIFETIME: f32 = 1.8;
@@ -30,6 +31,7 @@ mod component_access;
 mod component_storage;
 mod entity_lifecycle;
 mod gameplay_query_indices;
+mod gameplay_variables;
 mod hd2d;
 mod joints;
 mod projectiles;
@@ -122,6 +124,9 @@ pub struct World {
     behavior_state_machines: Vec<Option<BehaviorStateMachine>>,
     behavior_state_enter_actions: Vec<Option<BehaviorStateEnterActionSet>>,
     gameplay_timer_triggers: Vec<Option<GameplayTimerTrigger>>,
+    gameplay_variable_mutation_triggers: Vec<Option<GameplayVariableMutationTriggerSet>>,
+    retired_gameplay_variable_mutation_triggers: Vec<(Entity, GameplayVariableMutationTriggerSet)>,
+    gameplay_variables: GameplayVariableSlab,
     primary_actor: Option<Entity>,
 }
 

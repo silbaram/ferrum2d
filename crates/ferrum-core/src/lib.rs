@@ -15,6 +15,7 @@ pub mod entity;
 pub mod game_state;
 pub(crate) mod gameplay;
 pub mod gameplay_event;
+pub(crate) mod gameplay_variables;
 pub mod input;
 pub mod particles;
 pub mod physics;

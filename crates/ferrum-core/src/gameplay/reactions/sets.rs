@@ -18,10 +18,19 @@ where
     F: FnMut(&World, usize) -> CollisionDamageReactionDefaults,
 {
     let mut outcome = CollisionReactionSetOutcome::default();
-    for reaction in reactions.iter_mut() {
+    for (reaction, guard) in reactions.iter_mut_with_guards() {
+        outcome.overrides_default_gameplay |= matches!(
+            reaction,
+            CollisionReaction::Damage { .. }
+                | CollisionReaction::AreaDamage { .. }
+                | CollisionReaction::Pickup { .. }
+                | CollisionReaction::Despawn { .. }
+        );
+        if !world.gameplay_variable_comparison_matches(guard) {
+            continue;
+        }
         match reaction {
             CollisionReaction::Damage { target } => {
-                outcome.overrides_default_gameplay = true;
                 let target_index = pair.target_index(*target);
                 let damage_outcome = apply_collision_damage_reaction_for_pair(
                     world,
@@ -46,7 +55,6 @@ where
                 radius,
                 target_layer,
             } => {
-                outcome.overrides_default_gameplay = true;
                 let area_outcome = apply_collision_area_damage_reaction_for_pair(
                     world,
                     pair,
@@ -65,7 +73,6 @@ where
                 }
             }
             CollisionReaction::Pickup { target } => {
-                outcome.overrides_default_gameplay = true;
                 let pickup_outcome = apply_collision_pickup_reaction_for_pair(
                     world,
                     pair,
@@ -90,7 +97,6 @@ where
                 }
             }
             CollisionReaction::Despawn { target } => {
-                outcome.overrides_default_gameplay = true;
                 let despawn_outcome = apply_collision_despawn_reaction_for_pair(
                     world,
                     pair,

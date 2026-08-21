@@ -17,6 +17,7 @@ import {
   attachDataSceneRuntimeEngineAdapter,
   type DataSceneRuntimeSpawnRequest,
 } from "../src/dataSceneRuntimeTarget.js";
+import { attachMemoryDataSceneVariableRuntime } from "./dataSceneVariableRuntimeTestAdapter.js";
 
 test("createFerrumRuntime wires opt-in content handles without DOM overlay ownership", async () => {
   const bgmCalls: Array<{ soundId: number; options?: PlayBgmOptions }> = [];
@@ -161,7 +162,9 @@ test("createFerrumRuntime applies and reapplies data scene authoring documents",
   const adapter = new RuntimeDataSceneAdapter(flow);
   const runtime = await createFerrumRuntime({
     canvas: {} as HTMLCanvasElement,
-    engineInstance: attachDataSceneRuntimeEngineAdapter(fakeEngine(engineCalls, flow), adapter),
+    engineInstance: attachMemoryDataSceneVariableRuntime(
+      attachDataSceneRuntimeEngineAdapter(fakeEngine(engineCalls, flow), adapter),
+    ),
     renderer: fakeRuntimeRenderer(),
     input: {} as InputManager,
     assetHost: fakeAssetHost([]),
@@ -247,7 +250,9 @@ test("createFerrumRuntime transition overrides startup activation opt-out", asyn
   const adapter = new RuntimeDataSceneAdapter(flow);
   const runtime = await createFerrumRuntime({
     canvas: {} as HTMLCanvasElement,
-    engineInstance: attachDataSceneRuntimeEngineAdapter(fakeEngine(engineCalls, flow), adapter),
+    engineInstance: attachMemoryDataSceneVariableRuntime(
+      attachDataSceneRuntimeEngineAdapter(fakeEngine(engineCalls, flow), adapter),
+    ),
     renderer: fakeRuntimeRenderer(),
     input: {} as InputManager,
     assetHost: fakeAssetHost([]),

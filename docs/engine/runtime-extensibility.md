@@ -8,8 +8,8 @@
 
 | 층 | 추가된 기능 | 역할 |
 | --- | --- | --- |
-| Rust core | prefab/component registry, projectile motion/query, collision reaction, effect event buffer | 실제 frame update와 game state mutation을 실행한다. |
-| TypeScript authoring | projectile/weapon builder, Behavior Recipe command, presentation effect registry | 게임 규칙을 serializable data와 numeric command로 컴파일한다. |
+| Rust core | prefab/component registry, gameplay variable slab, projectile motion/query, collision reaction, effect event buffer | 실제 frame update와 game state mutation을 실행한다. |
+| TypeScript authoring | projectile/weapon builder, variable/guard/FSM compiler, Behavior Recipe command, presentation effect registry | 게임 규칙을 serializable data와 numeric command로 컴파일한다. |
 | Template/agent | create-game template, consumer agent/skill, generated project reports | AI agent가 새 게임 프로젝트에서 같은 contract를 수정/검증하게 한다. |
 | 검증 | gameplay replay, template report smoke, package consumer smoke, CI report validator | 변경이 deterministic하고 package consumer에서 동작하는지 확인한다. |
 
@@ -63,7 +63,7 @@ Projectile spawn은 기존 bullet-specific storage에서 prefab/component 기반
 | `GameplayPrefabRegistry` | runtime prefab registration과 alias id를 관리한다. 현재 built-in adapter는 Player/Enemy/Bullet/Runtime component bucket을 사용한다. |
 | component bucket | transform, sprite/template/texture, collision layer, gameplay component source를 canonical payload로 묶는다. |
 | projectile spawn payload | speed, damage, lifetime, aim, collision target, tile impact를 prefab spawn command와 함께 보존한다. |
-| snapshot version 18 | prefab registry component bucket, projectile source faction metadata, session faction relation table, player spawnPrefab action binding 16-slot layout과 stable built-in lifecycle state code를 save/replay hash에 포함한다. Data Scene 전용 pause/complete code는 받지 않는다. |
+| snapshot version 19 | version 18 상태에 gameplay variable slab의 선언 타입·scope·default·현재 값을 exact `f64` bit로 추가해 save/replay hash에 포함한다. Data Scene 전용 pause/complete code는 받지 않는다. |
 
 spawn은 frame 중간에 즉시 `World` 구조를 바꾸지 않고 pending spawn queue를 통해 처리한다. unsupported prefab, blocked placement, capacity full은 cooldown을 소비하지 않는 실패로 보고된다.
 
@@ -121,6 +121,35 @@ gameplay authoring setter는 scene load, agent apply, FSM state command apply �
 고정 배열 기반 gameplay collection은 runtime heap allocation을 피하기 위해 계속 bounded storage를 사용한다. 현재 collision reaction slot은 entity당 16개, FSM transition slot은 entity당 32개, state-enter action slot은 entity당 32개다. authoring insert/upsert는 전체 `Option` slot을 compact한 뒤 중복과 가용 slot을 확인하므로 snapshot/rollback 경로에서 sparse slot이 생겨도 다음 authoring 변경에서 조밀한 순서를 회복한다.
 
 TypeScript `applyGameplayBehaviorCommands(...)` facade는 raw Wasm setter가 `false`를 반환하면 JSON path가 포함된 gameplay authoring diagnostic을 throw한다. 메시지는 command type, entity key, stale handle, invalid runtime id/value, unsupported prefab, capacity limit 같은 주요 원인 후보를 포함한다.
+
+## Gameplay Variables, Guards, And FSM Comparisons
+
+Data Scene `variables` 선언은 load/apply 시 declaration order 또는 `ids.variables`의 명시적 값으로 `1..64` runtime slot에 컴파일된다. 이름은 TypeScript authoring 경계에만 남고 Rust `World`가 고정 64-slot slab의 타입(`integer|real|bool`), scope(`global|scene`), default와 현재 값을 소유한다. frame loop는 문자열 lookup이나 entity별 JS/Wasm 왕복 없이 숫자 slot만 읽고 쓴다.
+
+`setVariable`과 `incrementVariable` Behavior Recipe는 반드시 하나의 `gameplayEvent` predicate를 가진다. 지원 event는 `interaction`, `collisionDamage`, `collisionDespawn`, `timer`, `pickupCollected`, `tileImpact`이며 event kind/token과 대상 slot은 apply 시 숫자로 컴파일된다. `incrementVariable`은 bool에 사용할 수 없고 integer 대상의 amount는 safe integer여야 한다.
+
+mutation recipe를 소유한 entity가 gameplay event의 `actor` 또는 `source`와 generation까지 일치하면 trigger가 발화한다. 따라서 damage source에 붙인 명중 횟수와 damage actor에 붙인 피격 횟수를 모두 표현할 수 있고, `pickupCollected`는 collector와 pickup 어느 쪽에 붙인 recipe도 처리한다. actor와 source가 같은 event는 한 번만 적용한다.
+
+```json
+{
+  "kind": "incrementVariable",
+  "variable": "boss.hits",
+  "amount": 1,
+  "when": { "type": "gameplayEvent", "event": "collisionDamage" }
+}
+```
+
+collision reaction, `interaction`, `timerTrigger`는 optional `guard`를 받으며 FSM transition은 `when.type: "variableComparison"`을 받는다. 비교 문법은 `variable op literal` 또는 `variable op otherVariable` 한 단계만 허용하고 연산자는 `==`, `!=`, `<`, `<=`, `>`, `>=`로 고정한다. 함수 호출, 산술식, `and`/`or` nesting은 허용하지 않는다. bool은 load-time Scene Authoring 검증에서 `==`/`!=`만 허용한다.
+
+```json
+{
+  "kind": "interaction",
+  "action": "open-door",
+  "guard": { "variable": "inventory.hasKey", "op": "==", "value": true }
+}
+```
+
+같은 frame의 gameplay event는 먼저 Rust variable mutation trigger를 적용한 다음 variable FSM transition을 평가한다. 따라서 세 번째 피격으로 `boss.hits`가 3이 되는 frame에 `boss.hits >= 3` transition이 바로 발생한다. 이벤트를 만든 projectile 등이 같은 collision phase에서 despawn되어도 해당 frame의 numeric mutation trigger는 보존해서 적용한다. collision/interaction guard가 false이면 reaction/event를 만들지 않으며, authored damage/pickup/despawn guard가 false인 경우에도 built-in 기본 gameplay fallback을 다시 실행하지 않는다. timer guard가 false이면 남은 시간이 감소하지 않는다. `replaceSupported` FSM state command 적용은 variable mutation trigger도 지원 범위에 포함해 이전 state trigger가 누적되지 않게 clear한다.
 
 ## Effect Event Pipeline
 

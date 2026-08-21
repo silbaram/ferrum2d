@@ -11,6 +11,8 @@ import {
   DATA_SCENE_PRIMITIVE_TEXTURES,
   dataSceneObjectVisualBounds,
   applyDataSceneAuthoringDocument,
+  attachDataSceneVariableRuntimeEngineAdapter,
+  compileDataSceneVariableRuntimeIds,
   createDataSceneRuntimeTarget,
   createSceneInstanceHandleRegistry,
   createScenePlacementAssetProvider,
@@ -47,6 +49,9 @@ import {
 | `DATA_SCENE_PRIMITIVE_TEXTURES`, `dataSceneObjectVisualBounds(...)` | primitive visual fallback texture id와 placement/picking용 resolved visual bounds를 노출한다. |
 | `applyDataSceneAuthoringDocument(...)` | scene-authoring envelope와 optional 변수 선언을 검증하고 Data Scene runtime target으로 spawn한 뒤 behavior recipe command를 적용한다. 결과의 `variables`로 선언된 값을 접근한다. |
 | `createDataSceneRuntimeTarget(...)` | `FerrumEngine`을 Data Scene spawn target으로 감싸 `applySceneBehaviorRecipes(...)`에 넘길 수 있게 한다. |
+| `compileDataSceneVariableRuntimeIds(...)` | 선언 이름을 고유한 `1..64` numeric slot으로 컴파일한다. 명시적 `ids.variables`도 같은 범위와 완전성을 검증한다. |
+| `attachDataSceneVariableRuntimeEngineAdapter(...)` | custom `FerrumEngine` host에 낮은 빈도 Rust variable slab `clear/configure/get/set` adapter를 연결한다. `createEngine(...)` 결과에는 이미 연결돼 있다. |
+| `DATA_SCENE_RUNTIME_MAX_VARIABLES` | Rust gameplay variable slab과 authoring compiler가 공유하는 최대 slot 수 `64`를 노출한다. |
 | `createSceneInstanceHandleRegistry(...)` | scene apply/reload 뒤 `instance.id`와 live entity handle을 양방향으로 조회한다. |
 | `createScenePlacementAssetProvider(...)` | placement viewer/agent용 sprite asset id, atlas frame, 기본 size, thumbnail, missing reference diagnostic provider를 만든다. |
 | `createScenePlacementAssetProviderFromProjectAssets(...)` | project `AssetManifest.textures`, loaded `TextureRegistry.entries()`, Game Spec `atlas.frames`를 placement asset provider로 변환한다. |
@@ -88,8 +93,10 @@ optional `variables` 선언은 `name`, `scope: "global" | "scene"`,
 `type: "integer" | "real" | "bool"`, 타입에 맞는 `default`를 가진다.
 적용 결과의 `DataSceneVariableStore`는 선언된 이름만 `get`/`set`할 수 있다. 같은 엔진에 다음 문서를
 apply하면 동일 이름·동일 타입의 global 값만 유지하고 scene 값은 항상 다음 선언의 default로
-초기화한다. 이 저장소는 낮은 빈도 TypeScript authoring/runtime 상태이며 behavior recipe/FSM의
-frame simulation 변수 API는 아니다.
+초기화한다. 이름과 declaration metadata는 낮은 빈도 TypeScript authoring 경계에 남고 실제 값은
+Rust `World`의 고정 64-slot slab에 저장된다. `setVariable`/`incrementVariable` recipe, collision·interaction·timer
+guard, FSM `variableComparison`은 load 시 컴파일된 numeric slot만 Rust frame 안에서 읽고 쓰며
+entity별 TypeScript callback이나 frame hot-path 문자열 조회를 추가하지 않는다.
 
 `createDataSceneRuntimeTarget(engine)`은 기본적으로 첫 번째 유효한 spawn 직전에 `engine.useDataScene()`을
 한 번 호출해 Data Scene runtime을 활성화한 뒤, 각

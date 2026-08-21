@@ -49,7 +49,9 @@ export type BehaviorRecipeKind =
   | "dashAction"
   | "meleeAction"
   | "spawnPrefabAction"
-  | "timerTrigger";
+  | "timerTrigger"
+  | "setVariable"
+  | "incrementVariable";
 export type BehaviorRecipeHealthZeroAction = "none" | "despawn" | "event";
 export type BehaviorRecipeDamageTarget = "other" | "self";
 export type BehaviorRecipeFaction = "neutral" | "player" | "enemy" | number;
@@ -60,6 +62,40 @@ export type BehaviorRecipeMeleeTarget = "enemies" | "player";
 export type BehaviorRecipeCollisionTrigger = "contact" | "enter";
 export type BehaviorRecipeCollisionLayer = keyof typeof MOVEMENT_QUERY_LAYERS;
 export type BehaviorRecipePresentationEffectKind = keyof typeof PRESENTATION_EFFECT_TYPE_CODES;
+export type BehaviorRecipeVariableComparisonOperator = "==" | "!=" | "<" | "<=" | ">" | ">=";
+export type BehaviorRecipeGameplayEventKind =
+  | "interaction"
+  | "collisionDamage"
+  | "collisionDespawn"
+  | "timer"
+  | "pickupCollected"
+  | "tileImpact";
+
+export interface BehaviorRecipeVariableComparisonSpec {
+  variable?: string;
+  variableId?: number;
+  op: BehaviorRecipeVariableComparisonOperator;
+  value?: number | boolean;
+  otherVariable?: string;
+  otherVariableId?: number;
+}
+
+export interface BehaviorRecipeEventPredicateSpec {
+  type: "gameplayEvent";
+  event: BehaviorRecipeGameplayEventKind;
+  action?: string;
+  actionId?: number;
+  timer?: string;
+  timerId?: number;
+  item?: string;
+  itemId?: number;
+  tileImpact?: "despawn" | "bounce";
+  tileImpactCode?: number;
+}
+
+interface BehaviorRecipeGuardedSpec {
+  guard?: BehaviorRecipeVariableComparisonSpec;
+}
 
 export interface BehaviorRecipeBaseSpec {
   id?: string;
@@ -76,7 +112,7 @@ export interface HealthBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
   event?: string;
 }
 
-export interface DamageBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+export interface DamageBehaviorRecipeSpec extends BehaviorRecipeBaseSpec, BehaviorRecipeGuardedSpec {
   kind: "damage";
   amount?: number;
   target?: BehaviorRecipeDamageTarget;
@@ -107,25 +143,25 @@ export interface PickupBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
   despawn?: boolean;
 }
 
-export interface CollisionPickupBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+export interface CollisionPickupBehaviorRecipeSpec extends BehaviorRecipeBaseSpec, BehaviorRecipeGuardedSpec {
   kind: "collisionPickup";
   target?: BehaviorRecipeDamageTarget;
 }
 
-export interface CollisionAreaDamageBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+export interface CollisionAreaDamageBehaviorRecipeSpec extends BehaviorRecipeBaseSpec, BehaviorRecipeGuardedSpec {
   kind: "collisionAreaDamage";
   amount?: number;
   radius?: number;
   targetLayer?: BehaviorRecipeCollisionLayer;
 }
 
-export interface CollisionKnockbackBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+export interface CollisionKnockbackBehaviorRecipeSpec extends BehaviorRecipeBaseSpec, BehaviorRecipeGuardedSpec {
   kind: "collisionKnockback";
   target?: BehaviorRecipeDamageTarget;
   impulse?: number;
 }
 
-export interface CollisionEmitEffectBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+export interface CollisionEmitEffectBehaviorRecipeSpec extends BehaviorRecipeBaseSpec, BehaviorRecipeGuardedSpec {
   kind: "collisionEmitEffect";
   effect?: string;
   effectId?: number;
@@ -137,7 +173,7 @@ export interface CollisionEmitEffectBehaviorRecipeSpec extends BehaviorRecipeBas
   trigger?: BehaviorRecipeCollisionTrigger;
 }
 
-export interface CollisionSpawnPrefabBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+export interface CollisionSpawnPrefabBehaviorRecipeSpec extends BehaviorRecipeBaseSpec, BehaviorRecipeGuardedSpec {
   kind: "collisionSpawnPrefab";
   action: string;
   actionId?: number;
@@ -150,7 +186,7 @@ export interface CollisionSpawnPrefabBehaviorRecipeSpec extends BehaviorRecipeBa
   offsetY?: number;
 }
 
-export interface CollisionSoundBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+export interface CollisionSoundBehaviorRecipeSpec extends BehaviorRecipeBaseSpec, BehaviorRecipeGuardedSpec {
   kind: "collisionSound";
   soundId: number;
   volume?: number;
@@ -160,7 +196,7 @@ export interface CollisionSoundBehaviorRecipeSpec extends BehaviorRecipeBaseSpec
   trigger?: BehaviorRecipeCollisionTrigger;
 }
 
-export interface CollisionParticleBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+export interface CollisionParticleBehaviorRecipeSpec extends BehaviorRecipeBaseSpec, BehaviorRecipeGuardedSpec {
   kind: "collisionParticle";
   presetId: number;
   target?: BehaviorRecipeDamageTarget;
@@ -169,13 +205,13 @@ export interface CollisionParticleBehaviorRecipeSpec extends BehaviorRecipeBaseS
   trigger?: BehaviorRecipeCollisionTrigger;
 }
 
-export interface CollisionShakeBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+export interface CollisionShakeBehaviorRecipeSpec extends BehaviorRecipeBaseSpec, BehaviorRecipeGuardedSpec {
   kind: "collisionShake";
   cooldownSeconds?: number;
   trigger?: BehaviorRecipeCollisionTrigger;
 }
 
-export interface CollisionDespawnBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+export interface CollisionDespawnBehaviorRecipeSpec extends BehaviorRecipeBaseSpec, BehaviorRecipeGuardedSpec {
   kind: "collisionDespawn";
   target?: BehaviorRecipeDamageTarget;
 }
@@ -202,7 +238,7 @@ export interface AccelerateBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
   maxSpeed?: number;
 }
 
-export interface InteractionBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+export interface InteractionBehaviorRecipeSpec extends BehaviorRecipeBaseSpec, BehaviorRecipeGuardedSpec {
   kind: "interaction";
   action: string;
   actionId?: number;
@@ -266,13 +302,29 @@ export interface SpawnPrefabActionBehaviorRecipeSpec extends BehaviorRecipeBaseS
   projectile?: SpawnPrefabProjectilePayloadSpec;
 }
 
-export interface TimerTriggerBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+export interface TimerTriggerBehaviorRecipeSpec extends BehaviorRecipeBaseSpec, BehaviorRecipeGuardedSpec {
   kind: "timerTrigger";
   timer: string;
   timerId?: number;
   action?: string;
   actionId?: number;
   seconds?: number;
+}
+
+export interface SetVariableBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+  kind: "setVariable";
+  variable?: string;
+  variableId?: number;
+  value: number | boolean;
+  when: BehaviorRecipeEventPredicateSpec;
+}
+
+export interface IncrementVariableBehaviorRecipeSpec extends BehaviorRecipeBaseSpec {
+  kind: "incrementVariable";
+  variable?: string;
+  variableId?: number;
+  amount?: number;
+  when: BehaviorRecipeEventPredicateSpec;
 }
 
 export type BehaviorRecipeSpec =
@@ -299,7 +351,9 @@ export type BehaviorRecipeSpec =
   | DashActionBehaviorRecipeSpec
   | MeleeActionBehaviorRecipeSpec
   | SpawnPrefabActionBehaviorRecipeSpec
-  | TimerTriggerBehaviorRecipeSpec;
+  | TimerTriggerBehaviorRecipeSpec
+  | SetVariableBehaviorRecipeSpec
+  | IncrementVariableBehaviorRecipeSpec;
 
 export type BehaviorRecipeEntrySpec = string | BehaviorRecipeSpec | BehaviorRecipeReferenceSpec;
 
@@ -338,7 +392,19 @@ export interface ResolvedBehaviorRecipeBase {
   kind: BehaviorRecipeKind;
   enabled: boolean;
   tags: readonly string[];
+  guard?: ResolvedBehaviorRecipeVariableComparison;
 }
+
+export interface ResolvedBehaviorRecipeVariableComparison {
+  variable?: string;
+  variableId?: number;
+  op: BehaviorRecipeVariableComparisonOperator;
+  value?: number | boolean;
+  otherVariable?: string;
+  otherVariableId?: number;
+}
+
+export type ResolvedBehaviorRecipeEventPredicate = BehaviorRecipeEventPredicateSpec;
 
 export interface ResolvedHealthBehaviorRecipe extends ResolvedBehaviorRecipeBase {
   kind: "health";
@@ -548,6 +614,22 @@ export interface ResolvedTimerTriggerBehaviorRecipe extends ResolvedBehaviorReci
   seconds: number;
 }
 
+export interface ResolvedSetVariableBehaviorRecipe extends ResolvedBehaviorRecipeBase {
+  kind: "setVariable";
+  variable?: string;
+  variableId?: number;
+  value: number | boolean;
+  when: ResolvedBehaviorRecipeEventPredicate;
+}
+
+export interface ResolvedIncrementVariableBehaviorRecipe extends ResolvedBehaviorRecipeBase {
+  kind: "incrementVariable";
+  variable?: string;
+  variableId?: number;
+  amount: number;
+  when: ResolvedBehaviorRecipeEventPredicate;
+}
+
 export type ResolvedBehaviorRecipe =
   | ResolvedHealthBehaviorRecipe
   | ResolvedDamageBehaviorRecipe
@@ -572,7 +654,9 @@ export type ResolvedBehaviorRecipe =
   | ResolvedDashActionBehaviorRecipe
   | ResolvedMeleeActionBehaviorRecipe
   | ResolvedSpawnPrefabActionBehaviorRecipe
-  | ResolvedTimerTriggerBehaviorRecipe;
+  | ResolvedTimerTriggerBehaviorRecipe
+  | ResolvedSetVariableBehaviorRecipe
+  | ResolvedIncrementVariableBehaviorRecipe;
 
 export interface ResolvedBehaviorRecipeEntity {
   id: string;
@@ -610,12 +694,15 @@ export type BehaviorRecipeCommand =
   | ConfigureDashActionBehaviorCommand
   | ConfigureMeleeActionBehaviorCommand
   | ConfigureSpawnPrefabActionBehaviorCommand
-  | ConfigureTimerTriggerBehaviorCommand;
+  | ConfigureTimerTriggerBehaviorCommand
+  | ConfigureSetVariableBehaviorCommand
+  | ConfigureIncrementVariableBehaviorCommand;
 
 export interface BehaviorRecipeCommandBase {
   entity: string;
   recipe: string;
   tags: readonly string[];
+  guard?: ResolvedBehaviorRecipeVariableComparison;
 }
 
 export interface ConfigureTagsBehaviorCommand extends BehaviorRecipeCommandBase {
@@ -821,6 +908,22 @@ export interface ConfigureTimerTriggerBehaviorCommand extends BehaviorRecipeComm
   seconds: number;
 }
 
+export interface ConfigureSetVariableBehaviorCommand extends BehaviorRecipeCommandBase {
+  type: "configureSetVariable";
+  variable?: string;
+  variableId?: number;
+  value: number | boolean;
+  when: ResolvedBehaviorRecipeEventPredicate;
+}
+
+export interface ConfigureIncrementVariableBehaviorCommand extends BehaviorRecipeCommandBase {
+  type: "configureIncrementVariable";
+  variable?: string;
+  variableId?: number;
+  amount: number;
+  when: ResolvedBehaviorRecipeEventPredicate;
+}
+
 export interface BehaviorRecipeRuntimeTarget {
   applyBehaviorRecipeCommand(command: BehaviorRecipeCommand): unknown;
 }
@@ -975,10 +1078,20 @@ function resolveBehaviorRecipe(value: unknown, path: string, fallbackId: string)
     throw behaviorRecipeDiagnosticError(path, "must be an object");
   }
   const kind = behaviorRecipeKind(value.kind, `${path}.kind`);
+  const guard = value.guard === undefined
+    ? undefined
+    : resolveBehaviorRecipeVariableComparison(value.guard, `${path}.guard`);
+  if (guard !== undefined && !behaviorRecipeKindSupportsGuard(kind)) {
+    throw behaviorRecipeDiagnosticError(
+      `${path}.guard`,
+      "is supported only by collision reactions, interaction, and timerTrigger recipes",
+    );
+  }
   const base = {
     id: optionalString(value.id, `${path}.id`, fallbackId),
     enabled: optionalBoolean(value.enabled, `${path}.enabled`, true),
     tags: stringArray(value.tags ?? [], `${path}.tags`),
+    ...(guard === undefined ? {} : { guard }),
   };
   switch (kind) {
     case "health": {
@@ -1241,6 +1354,22 @@ function resolveBehaviorRecipe(value: unknown, path: string, fallbackId: string)
         ...(value.actionId === undefined ? {} : { actionId: positiveInteger(value.actionId, `${path}.actionId`) }),
         seconds: positiveNumber(value.seconds ?? 1, `${path}.seconds`),
       };
+    case "setVariable":
+      return {
+        ...base,
+        kind,
+        ...variableReference(value, path),
+        value: variableLiteral(value.value, `${path}.value`),
+        when: resolveBehaviorRecipeEventPredicate(value.when, `${path}.when`),
+      };
+    case "incrementVariable":
+      return {
+        ...base,
+        kind,
+        ...variableReference(value, path),
+        amount: finiteNumber(value.amount ?? 1, `${path}.amount`),
+        when: resolveBehaviorRecipeEventPredicate(value.when, `${path}.when`),
+      };
   }
 }
 
@@ -1249,6 +1378,7 @@ function commandForRecipe(entity: string, recipe: ResolvedBehaviorRecipe): Behav
     entity,
     recipe: recipe.id,
     tags: recipe.tags,
+    ...(recipe.guard === undefined ? {} : { guard: recipe.guard }),
   };
   switch (recipe.kind) {
     case "health":
@@ -1474,6 +1604,24 @@ function commandForRecipe(entity: string, recipe: ResolvedBehaviorRecipe): Behav
         ...(recipe.actionId === undefined ? {} : { actionId: recipe.actionId }),
         seconds: recipe.seconds,
       };
+    case "setVariable":
+      return {
+        ...base,
+        type: "configureSetVariable",
+        ...(recipe.variable === undefined ? {} : { variable: recipe.variable }),
+        ...(recipe.variableId === undefined ? {} : { variableId: recipe.variableId }),
+        value: recipe.value,
+        when: recipe.when,
+      };
+    case "incrementVariable":
+      return {
+        ...base,
+        type: "configureIncrementVariable",
+        ...(recipe.variable === undefined ? {} : { variable: recipe.variable }),
+        ...(recipe.variableId === undefined ? {} : { variableId: recipe.variableId }),
+        amount: recipe.amount,
+        when: recipe.when,
+      };
   }
 }
 
@@ -1529,10 +1677,223 @@ function behaviorRecipeKind(value: unknown, path: string): BehaviorRecipeKind {
     || value === "meleeAction"
     || value === "spawnPrefabAction"
     || value === "timerTrigger"
+    || value === "setVariable"
+    || value === "incrementVariable"
   ) {
     return value;
   }
-  throw behaviorRecipeDiagnosticError(path, "must be one of health, damage, faction, lifetime, scoreReward, pickup, collisionPickup, collisionAreaDamage, collisionKnockback, collisionEmitEffect, collisionSpawnPrefab, collisionSound, collisionParticle, collisionShake, collisionDespawn, chase, seekTarget, accelerate, interaction, projectileAction, dashAction, meleeAction, spawnPrefabAction, or timerTrigger");
+  throw behaviorRecipeDiagnosticError(path, "must be one of health, damage, faction, lifetime, scoreReward, pickup, collisionPickup, collisionAreaDamage, collisionKnockback, collisionEmitEffect, collisionSpawnPrefab, collisionSound, collisionParticle, collisionShake, collisionDespawn, chase, seekTarget, accelerate, interaction, projectileAction, dashAction, meleeAction, spawnPrefabAction, timerTrigger, setVariable, or incrementVariable");
+}
+
+function behaviorRecipeKindSupportsGuard(kind: BehaviorRecipeKind): boolean {
+  return kind === "damage"
+    || kind === "collisionPickup"
+    || kind === "collisionAreaDamage"
+    || kind === "collisionKnockback"
+    || kind === "collisionEmitEffect"
+    || kind === "collisionSpawnPrefab"
+    || kind === "collisionSound"
+    || kind === "collisionParticle"
+    || kind === "collisionShake"
+    || kind === "collisionDespawn"
+    || kind === "interaction"
+    || kind === "timerTrigger";
+}
+
+export function resolveBehaviorRecipeVariableComparison(
+  input: unknown,
+  path: string,
+): ResolvedBehaviorRecipeVariableComparison {
+  if (!isRecord(input)) {
+    throw behaviorRecipeDiagnosticError(path, "must be an object");
+  }
+  assertOnlyFields(
+    input,
+    ["type", "variable", "variableId", "op", "value", "otherVariable", "otherVariableId"],
+    path,
+  );
+  if (input.type !== undefined && input.type !== "variableComparison") {
+    throw behaviorRecipeDiagnosticError(`${path}.type`, "must be variableComparison when provided");
+  }
+  const left = variableReference(input, path);
+  const op = variableComparisonOperator(input.op, `${path}.op`);
+  const hasLiteral = Object.prototype.hasOwnProperty.call(input, "value");
+  const hasOtherVariable = input.otherVariable !== undefined || input.otherVariableId !== undefined;
+  if (hasLiteral === hasOtherVariable) {
+    throw behaviorRecipeDiagnosticError(
+      path,
+      "must declare exactly one of value or otherVariable/otherVariableId",
+    );
+  }
+  if (hasLiteral) {
+    return {
+      ...left,
+      op,
+      value: variableLiteral(input.value, `${path}.value`),
+    };
+  }
+  const otherVariable = input.otherVariable === undefined
+    ? undefined
+    : requiredString(input.otherVariable, `${path}.otherVariable`);
+  const otherVariableId = input.otherVariableId === undefined
+    ? undefined
+    : positiveInteger(input.otherVariableId, `${path}.otherVariableId`);
+  if (otherVariable === undefined && otherVariableId === undefined) {
+    throw behaviorRecipeDiagnosticError(path, "must declare otherVariable or otherVariableId");
+  }
+  return {
+    ...left,
+    op,
+    ...(otherVariable === undefined ? {} : { otherVariable }),
+    ...(otherVariableId === undefined ? {} : { otherVariableId }),
+  };
+}
+
+function variableReference(
+  input: Readonly<Record<string, unknown>>,
+  path: string,
+): Pick<ResolvedBehaviorRecipeVariableComparison, "variable" | "variableId"> {
+  const variable = input.variable === undefined
+    ? undefined
+    : requiredString(input.variable, `${path}.variable`);
+  const variableId = input.variableId === undefined
+    ? undefined
+    : positiveInteger(input.variableId, `${path}.variableId`);
+  if (variable === undefined && variableId === undefined) {
+    throw behaviorRecipeDiagnosticError(path, "must declare variable or variableId");
+  }
+  return {
+    ...(variable === undefined ? {} : { variable }),
+    ...(variableId === undefined ? {} : { variableId }),
+  };
+}
+
+function variableComparisonOperator(
+  value: unknown,
+  path: string,
+): BehaviorRecipeVariableComparisonOperator {
+  if (value === "==" || value === "!=" || value === "<" || value === "<=" || value === ">" || value === ">=") {
+    return value;
+  }
+  throw behaviorRecipeDiagnosticError(path, "must be one of ==, !=, <, <=, >, or >=");
+}
+
+function variableLiteral(value: unknown, path: string): number | boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  return finiteNumber(value, path);
+}
+
+function resolveBehaviorRecipeEventPredicate(
+  input: unknown,
+  path: string,
+): ResolvedBehaviorRecipeEventPredicate {
+  if (!isRecord(input) || input.type !== "gameplayEvent") {
+    throw behaviorRecipeDiagnosticError(path, "must be a gameplayEvent predicate object");
+  }
+  assertOnlyFields(
+    input,
+    ["type", "event", "action", "actionId", "timer", "timerId", "item", "itemId", "tileImpact", "tileImpactCode"],
+    path,
+  );
+  const event = behaviorRecipeGameplayEventKind(input.event, `${path}.event`);
+  const action = input.action === undefined ? undefined : requiredString(input.action, `${path}.action`);
+  const actionId = input.actionId === undefined ? undefined : positiveInteger(input.actionId, `${path}.actionId`);
+  const timer = input.timer === undefined ? undefined : requiredString(input.timer, `${path}.timer`);
+  const timerId = input.timerId === undefined ? undefined : positiveInteger(input.timerId, `${path}.timerId`);
+  const item = input.item === undefined ? undefined : requiredString(input.item, `${path}.item`);
+  const itemId = input.itemId === undefined ? undefined : positiveInteger(input.itemId, `${path}.itemId`);
+  const tileImpact = input.tileImpact === undefined
+    ? undefined
+    : behaviorRecipeTileImpact(input.tileImpact, `${path}.tileImpact`);
+  const tileImpactCode = input.tileImpactCode === undefined
+    ? undefined
+    : behaviorRecipeTileImpactCode(input.tileImpactCode, `${path}.tileImpactCode`);
+  if (event === "interaction" && action === undefined && actionId === undefined) {
+    throw behaviorRecipeDiagnosticError(path, "must declare action or actionId for interaction predicates");
+  }
+  if (event !== "interaction" && (action !== undefined || actionId !== undefined)) {
+    throw behaviorRecipeDiagnosticError(path, "must not declare action or actionId for this event");
+  }
+  if (event === "timer" && timer === undefined && timerId === undefined) {
+    throw behaviorRecipeDiagnosticError(path, "must declare timer or timerId for timer predicates");
+  }
+  if (event !== "timer" && (timer !== undefined || timerId !== undefined)) {
+    throw behaviorRecipeDiagnosticError(path, "must not declare timer or timerId for this event");
+  }
+  if (event === "pickupCollected" && item === undefined && itemId === undefined) {
+    throw behaviorRecipeDiagnosticError(path, "must declare item or itemId for pickupCollected predicates");
+  }
+  if (event !== "pickupCollected" && (item !== undefined || itemId !== undefined)) {
+    throw behaviorRecipeDiagnosticError(path, "must not declare item or itemId for this event");
+  }
+  if (event === "tileImpact" && tileImpact === undefined && tileImpactCode === undefined) {
+    throw behaviorRecipeDiagnosticError(path, "must declare tileImpact or tileImpactCode for tileImpact predicates");
+  }
+  if (event !== "tileImpact" && (tileImpact !== undefined || tileImpactCode !== undefined)) {
+    throw behaviorRecipeDiagnosticError(path, "must not declare tileImpact or tileImpactCode for this event");
+  }
+  if (
+    tileImpact !== undefined
+    && tileImpactCode !== undefined
+    && (tileImpact === "despawn" ? 0 : 2) !== tileImpactCode
+  ) {
+    throw behaviorRecipeDiagnosticError(path, "tileImpact and tileImpactCode must match");
+  }
+  return {
+    type: "gameplayEvent",
+    event,
+    ...(action === undefined ? {} : { action }),
+    ...(actionId === undefined ? {} : { actionId }),
+    ...(timer === undefined ? {} : { timer }),
+    ...(timerId === undefined ? {} : { timerId }),
+    ...(item === undefined ? {} : { item }),
+    ...(itemId === undefined ? {} : { itemId }),
+    ...(tileImpact === undefined ? {} : { tileImpact }),
+    ...(tileImpactCode === undefined ? {} : { tileImpactCode }),
+  };
+}
+
+function assertOnlyFields(
+  input: Readonly<Record<string, unknown>>,
+  allowed: readonly string[],
+  path: string,
+): void {
+  const allowedFields = new Set(allowed);
+  const unsupported = Object.keys(input).find((field) => !allowedFields.has(field));
+  if (unsupported !== undefined) {
+    throw behaviorRecipeDiagnosticError(path, `contains unsupported field '${unsupported}'`);
+  }
+}
+
+function behaviorRecipeGameplayEventKind(value: unknown, path: string): BehaviorRecipeGameplayEventKind {
+  if (
+    value === "interaction"
+    || value === "collisionDamage"
+    || value === "collisionDespawn"
+    || value === "timer"
+    || value === "pickupCollected"
+    || value === "tileImpact"
+  ) {
+    return value;
+  }
+  throw behaviorRecipeDiagnosticError(path, "must be a supported gameplay event kind");
+}
+
+function behaviorRecipeTileImpact(value: unknown, path: string): "despawn" | "bounce" {
+  if (value === "despawn" || value === "bounce") {
+    return value;
+  }
+  throw behaviorRecipeDiagnosticError(path, "must be despawn or bounce");
+}
+
+function behaviorRecipeTileImpactCode(value: unknown, path: string): number {
+  const code = nonNegativeInteger(value, path);
+  if (code !== 0 && code !== 2) {
+    throw behaviorRecipeDiagnosticError(path, "must be 0 (despawn) or 2 (bounce)");
+  }
+  return code;
 }
 
 function spawnPrefabAnchor(value: unknown, path: string): "self" {

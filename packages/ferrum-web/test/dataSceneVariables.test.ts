@@ -2,11 +2,13 @@ import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  compileDataSceneVariableRuntimeIds,
   resolveDataSceneVariableDeclarations,
   synchronizeDataSceneVariableStore,
 } from "../src/dataSceneVariables.js";
 import type { FerrumEngine } from "../src/engineTypes.js";
 import { FerrumDiagnosticError } from "../src/diagnostics.js";
+import { attachMemoryDataSceneVariableRuntime } from "./dataSceneVariableRuntimeTestAdapter.js";
 
 test("data scene variable declarations resolve integer, real, and bool defaults", () => {
   const resolved = resolveDataSceneVariableDeclarations([
@@ -72,9 +74,21 @@ test("data scene variable resolver reports a gameplay-authoring diagnostic path"
   equal(error.context.path, "document.variables.0.default");
 });
 
+test("runtime id compilation preserves special variable names as own properties", () => {
+  const declarations = resolveDataSceneVariableDeclarations([
+    { name: "__proto__", scope: "scene", type: "integer", default: 0 },
+  ]);
+  const explicitIds = Object.fromEntries([["__proto__", 7]]);
+
+  const ids = compileDataSceneVariableRuntimeIds(declarations, explicitIds);
+
+  equal(Object.prototype.hasOwnProperty.call(ids, "__proto__"), true);
+  equal(ids.__proto__, 7);
+});
+
 test("data scene variable store rejects undeclared and type-invalid access", () => {
   const store = synchronizeDataSceneVariableStore(
-    {} as FerrumEngine,
+    attachMemoryDataSceneVariableRuntime({} as FerrumEngine),
     resolveDataSceneVariableDeclarations([
       { name: "coins", scope: "global", type: "integer", default: 1 },
       { name: "ready", scope: "scene", type: "bool", default: false },
@@ -93,7 +107,7 @@ test("data scene variable store rejects undeclared and type-invalid access", () 
 });
 
 test("data scene reapply preserves compatible global values and resets scene values", () => {
-  const engine = {} as FerrumEngine;
+  const engine = attachMemoryDataSceneVariableRuntime({} as FerrumEngine);
   const first = synchronizeDataSceneVariableStore(
     engine,
     resolveDataSceneVariableDeclarations([
@@ -125,7 +139,7 @@ test("data scene reapply preserves compatible global values and resets scene val
 
 test("data scene variable restore is strict and transactional", () => {
   const store = synchronizeDataSceneVariableStore(
-    {} as FerrumEngine,
+    attachMemoryDataSceneVariableRuntime({} as FerrumEngine),
     resolveDataSceneVariableDeclarations([
       { name: "coins", scope: "global", type: "integer", default: 1 },
       { name: "ready", scope: "global", type: "bool", default: false },

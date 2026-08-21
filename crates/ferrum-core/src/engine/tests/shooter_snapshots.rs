@@ -116,6 +116,30 @@ fn engine_captures_and_restores_builtin_shooter_snapshot() {
 }
 
 #[test]
+fn builtin_shooter_snapshot_restores_gameplay_variable_slots() {
+    let mut engine = Engine::new();
+    assert!(engine.configure_gameplay_variable(1, 0, 0, 2.0, 7.0));
+    assert!(engine.configure_gameplay_variable(2, 2, 1, 0.0, 1.0));
+    assert!(engine.capture_shooter_snapshot());
+    let header_floats = engine.shooter_snapshot_header_floats.clone();
+    let header_u32s = engine.shooter_snapshot_header_u32s.clone();
+    let entity_floats = engine.shooter_snapshot_entity_floats.clone();
+    let entity_u32s = engine.shooter_snapshot_entity_u32s.clone();
+
+    assert!(engine.set_gameplay_variable_value(1, 99.0));
+    assert!(engine.set_gameplay_variable_value(2, 0.0));
+    assert!(engine.restore_shooter_snapshot(
+        header_floats,
+        header_u32s,
+        entity_floats,
+        entity_u32s,
+    ));
+
+    assert_eq!(engine.gameplay_variable_value(1), 7.0);
+    assert_eq!(engine.gameplay_variable_value(2), 1.0);
+}
+
+#[test]
 fn builtin_shooter_snapshot_rejects_data_scene_only_lifecycle_states() {
     let mut engine = Engine::new();
     assert!(engine.capture_shooter_snapshot());

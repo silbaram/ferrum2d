@@ -2969,6 +2969,68 @@ test("applyGameplayBehaviorCommands reports missing handles and failed rust appl
   ok(/capacity limits/.test(detail));
 });
 
+test("applyGameplayBehaviorCommands sends variable writes and guards as numeric Rust slots", () => {
+  const calls: unknown[][] = [];
+  const engine = {
+    add_gameplay_variable_mutation_trigger: (...args: number[]) => {
+      calls.push(["mutation", ...args]);
+      return true;
+    },
+    set_gameplay_interaction_with_guard: (...args: Array<number | boolean>) => {
+      calls.push(["interactionGuard", ...args]);
+      return true;
+    },
+  } as unknown as GameplayBehaviorRuntimeEngine;
+  const commands: BehaviorRecipeCommand[] = [
+    {
+      entity: "boss",
+      recipe: "hit-count",
+      tags: [],
+      type: "configureIncrementVariable",
+      variable: "boss.hits",
+      amount: 1,
+      when: { type: "gameplayEvent", event: "collisionDamage" },
+    },
+    {
+      entity: "boss",
+      recipe: "unlock",
+      tags: [],
+      type: "configureSetVariable",
+      variable: "door.open",
+      value: true,
+      when: { type: "gameplayEvent", event: "interaction", action: "unlock" },
+    },
+    {
+      entity: "boss",
+      recipe: "guarded-door",
+      tags: [],
+      type: "configureInteraction",
+      action: "open",
+      radius: 24,
+      once: false,
+      guard: { variable: "door.open", op: "==", value: true },
+    },
+  ];
+
+  applyGameplayBehaviorCommands(
+    engine,
+    commands,
+    { boss: { entityId: 7, entityGeneration: 3 } },
+    {
+      ids: {
+        variables: { "boss.hits": 1, "door.open": 2 },
+        actions: { unlock: 9, open: 10 },
+      },
+    },
+  );
+
+  deepEqual(calls, [
+    ["mutation", 7, 3, 2, 0, 1, 1, 1],
+    ["mutation", 7, 3, 1, 9, 2, 0, 1],
+    ["interactionGuard", 7, 3, 10, 24, false, 2, 0, 0, 1],
+  ]);
+});
+
 test("applyFactionRelationTable validates and applies directed relations", () => {
   const engine = new MockGameplayEngine();
 

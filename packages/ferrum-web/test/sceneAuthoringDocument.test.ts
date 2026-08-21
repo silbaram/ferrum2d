@@ -83,6 +83,8 @@ test("resolveSceneAuthoringDocument validates optional variable declarations", (
   equal(resolved.variables?.[0]?.name, "campaign.coins");
   equal(resolved.variables?.[0]?.scope, "global");
   equal(resolved.variables?.[1]?.default, false);
+  equal(resolved.ids?.variables?.["campaign.coins"], 1);
+  equal(resolved.ids?.variables?.["wave.complete"], 2);
 
   expectMessage(() => resolveSceneAuthoringDocument({
     ...sampleDocument(),
@@ -91,6 +93,60 @@ test("resolveSceneAuthoringDocument validates optional variable declarations", (
       { name: "campaign.coins", scope: "scene", type: "integer", default: 0 },
     ],
   }), /variables\.1\.name.*duplicates variable/);
+});
+
+test("resolveSceneAuthoringDocument validates recipe variable types and references at load", () => {
+  const base = sampleDocument();
+  const resolved = resolveSceneAuthoringDocument({
+    ...base,
+    variables: [
+      { name: "boss.hits", scope: "scene", type: "integer", default: 0 },
+      { name: "door.open", scope: "scene", type: "bool", default: false },
+    ],
+    behaviorRecipes: {
+      entities: {
+        boss: {
+          recipes: [{
+            kind: "incrementVariable",
+            variable: "boss.hits",
+            when: { type: "gameplayEvent", event: "collisionDamage" },
+          }],
+        },
+      },
+    },
+  });
+  equal(resolved.ids?.variables?.["boss.hits"], 1);
+
+  expectMessage(() => resolveSceneAuthoringDocument({
+    ...base,
+    variables: [{ name: "door.open", scope: "scene", type: "bool", default: false }],
+    behaviorRecipes: {
+      entities: {
+        door: {
+          recipes: [{
+            kind: "incrementVariable",
+            variable: "door.open",
+            when: { type: "gameplayEvent", event: "interaction", actionId: 1 },
+          }],
+        },
+      },
+    },
+  }), /cannot target a bool variable/);
+
+  expectMessage(() => resolveSceneAuthoringDocument({
+    ...base,
+    variables: [{ name: "boss.hits", scope: "scene", type: "integer", default: 0 }],
+    behaviorRecipes: {
+      entities: {
+        boss: {
+          recipes: [{
+            kind: "damage",
+            guard: { variable: "boss.missing", op: ">=", value: 3 },
+          }],
+        },
+      },
+    },
+  }), /undeclared variable/);
 });
 
 test("resolveSceneAuthoringDocument keeps component validation opt-in", () => {

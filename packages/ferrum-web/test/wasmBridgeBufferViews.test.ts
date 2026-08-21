@@ -62,7 +62,7 @@ const layout: WasmBridgeAbiLayout = {
   },
   builtInShooterState: {
     headerFloats: 8,
-    headerU32s: 151,
+    headerU32s: 471,
     floatsPerEntity: 131,
     u32sPerEntity: 117,
     fieldOffsets: {

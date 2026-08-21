@@ -92,6 +92,7 @@ import type { ShooterStateBufferView } from "./wasmBridge";
 import { WasmBridge } from "./wasmBridge";
 import { createBitmapTextApi } from "./worldText.js";
 import { resolveDataSceneGameState, resolveGameStateCode } from "./gameState.js";
+import { attachDataSceneVariableRuntimeEngineAdapter } from "./dataSceneVariables.js";
 
 export {
   PHYSICS_BODY_STATE_BUFFER_FORMAT,
@@ -792,6 +793,30 @@ export async function createEngineWithFramePipeline(
     ...gameplayAuthoringApi,
     ...inputActionApi,
   };
+  attachDataSceneVariableRuntimeEngineAdapter(engine, {
+    clear: () => {
+      requireAlive();
+      rustEngine.clear_gameplay_variables();
+    },
+    configure: (slot, type, scope, defaultValue, value) => {
+      requireAlive();
+      return rustEngine.configure_gameplay_variable(
+        slot,
+        dataSceneVariableTypeCode(type),
+        dataSceneVariableScopeCode(scope),
+        dataSceneVariableNumber(defaultValue),
+        dataSceneVariableNumber(value),
+      );
+    },
+    get: (slot) => {
+      requireAlive();
+      return rustEngine.gameplay_variable_value(slot);
+    },
+    set: (slot, value) => {
+      requireAlive();
+      return rustEngine.set_gameplay_variable_value(slot, dataSceneVariableNumber(value));
+    },
+  });
   return attachDataSceneRuntimeEngineAdapter(engine, {
     useDataScene,
     textureId: (name) => {
@@ -843,6 +868,20 @@ export async function createEngineWithFramePipeline(
       };
     },
   });
+}
+
+function dataSceneVariableNumber(value: number | boolean): number {
+  return typeof value === "boolean" ? (value ? 1 : 0) : value;
+}
+
+function dataSceneVariableTypeCode(type: "integer" | "real" | "bool"): number {
+  if (type === "integer") return 0;
+  if (type === "real") return 1;
+  return 2;
+}
+
+function dataSceneVariableScopeCode(scope: "global" | "scene"): number {
+  return scope === "global" ? 0 : 1;
 }
 
 function gameplayAuthoringEntityHandle(entity: GameplayEntityHandle, label: string): GameplayEntityHandle {

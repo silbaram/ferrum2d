@@ -15,11 +15,18 @@ import {
   type DataSceneRuntimeSpawnRequest,
 } from "../src/dataSceneRuntimeTarget.js";
 import type { FerrumEngine } from "../src/engineTypes.js";
+import { attachMemoryDataSceneVariableRuntime } from "./dataSceneVariableRuntimeTestAdapter.js";
+import {
+  resolveDataSceneVariableDeclarations,
+  synchronizeDataSceneVariableStore,
+} from "../src/dataSceneVariables.js";
 import type { GameplayEntityHandle } from "../src/gameplayAuthoring.js";
 
 test("createDataSceneRuntimeTarget spawns resolved inline components through the engine adapter", () => {
   const adapter = new MockDataSceneRuntimeAdapter();
-  const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
+  const engine = attachMemoryDataSceneVariableRuntime(
+    attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter),
+  );
   const target = createDataSceneRuntimeTarget(engine);
   equal(adapter.useDataSceneCalls, 0);
   const result = applySceneBehaviorRecipes(
@@ -74,7 +81,9 @@ test("createDataSceneRuntimeTarget spawns resolved inline components through the
 
 test("applyDataSceneAuthoringDocument resolves and spawns a scene-authoring document", () => {
   const adapter = new MockDataSceneRuntimeAdapter();
-  const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
+  const engine = attachMemoryDataSceneVariableRuntime(
+    attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter),
+  );
   const result = applyDataSceneAuthoringDocument(
     engine,
     {
@@ -102,7 +111,9 @@ test("applyDataSceneAuthoringDocument resolves and spawns a scene-authoring docu
 
 test("applyDataSceneAuthoringDocument activates an empty document as a real scene transition", () => {
   const adapter = new MockDataSceneRuntimeAdapter();
-  const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
+  const engine = attachMemoryDataSceneVariableRuntime(
+    attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter),
+  );
   const result = applyDataSceneAuthoringDocument(engine, {
     format: "ferrum2d.consumer.scene-authoring",
     version: 1,
@@ -122,6 +133,92 @@ test("applyDataSceneAuthoringDocument activates an empty document as a real scen
   equal(result.spawnResults.length, 0);
   equal(result.variables.get("campaign.stage"), 1);
   equal(result.variables.get("wave.index"), 0);
+});
+
+test("applyDataSceneAuthoringDocument validates variable id overrides before runtime activation", () => {
+  const adapter = new MockDataSceneRuntimeAdapter();
+  const engine = attachMemoryDataSceneVariableRuntime(
+    attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter),
+  );
+
+  expectThrows(
+    () => applyDataSceneAuthoringDocument(
+      engine,
+      {
+        format: "ferrum2d.consumer.scene-authoring",
+        version: 1,
+        variables: [
+          { name: "campaign.coins", scope: "global", type: "integer", default: 0 },
+        ],
+        sceneComposition: {
+          initialFragment: "main",
+          prefabs: {},
+          fragments: { main: { instances: [] } },
+        },
+        behaviorRecipes: { entities: {} },
+      },
+      {
+        path: "overrideApply",
+        ids: { variables: { undeclared: 7 } },
+      },
+    ),
+    /overrideApply\.ids\.variables\.undeclared.*references undeclared variable/,
+  );
+  equal(adapter.useDataSceneCalls, 0);
+});
+
+test("applyDataSceneAuthoringDocument preflights the variable runtime before scene activation", () => {
+  const adapter = new MockDataSceneRuntimeAdapter();
+  const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter);
+
+  expectThrows(
+    () => applyDataSceneAuthoringDocument(engine, {
+      format: "ferrum2d.consumer.scene-authoring",
+      version: 1,
+      variables: [
+        { name: "wave.ready", scope: "scene", type: "bool", default: false },
+      ],
+      sceneComposition: {
+        initialFragment: "main",
+        prefabs: {},
+        fragments: { main: { instances: [] } },
+      },
+      behaviorRecipes: { entities: {} },
+    }),
+    /variables\.engine.*must be a FerrumEngine created by createEngine/,
+  );
+  equal(adapter.useDataSceneCalls, 0);
+});
+
+test("applyDataSceneAuthoringDocument rolls back variables after a runtime apply failure", () => {
+  const adapter = new MockDataSceneRuntimeAdapter();
+  const engine = attachMemoryDataSceneVariableRuntime(
+    attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter),
+  );
+  const previous = synchronizeDataSceneVariableStore(
+    engine,
+    resolveDataSceneVariableDeclarations([
+      { name: "campaign.coins", scope: "global", type: "integer", default: 1 },
+    ]),
+  );
+  previous.set("campaign.coins", 9);
+  adapter.failNext = true;
+
+  expectThrows(
+    () => applyDataSceneAuthoringDocument(engine, {
+      format: "ferrum2d.consumer.scene-authoring",
+      version: 1,
+      variables: [
+        { name: "wave.ready", scope: "scene", type: "bool", default: false },
+      ],
+      sceneComposition: sampleComposition(),
+      behaviorRecipes: { entities: {} },
+    }),
+    /failed to spawn data-scene entity/,
+  );
+
+  equal(previous.get("campaign.coins"), 9);
+  equal(previous.has("wave.ready"), false);
 });
 
 test("applyDataSceneAuthoringDocument validates components before runtime activation", () => {
@@ -366,6 +463,62 @@ test("applyDataSceneAuthoringDocument spawns the minimum data scene authoring sa
         ok(handle.entityId < 0xffffffff);
         ok(Number.isSafeInteger(handle.entityGeneration));
       }
+    } finally {
+      engine.destroy();
+    }
+  });
+});
+
+test("applyDataSceneAuthoringDocument configures Rust variables before guarded recipes", async () => {
+  await withNodeWasmFileFetch(async () => {
+    const engine = await createEngine(
+      undefined,
+      undefined,
+      undefined,
+      () => ({ width: 320, height: 180 }),
+    );
+    try {
+      const result = applyDataSceneAuthoringDocument(engine, {
+        format: "ferrum2d.consumer.scene-authoring",
+        version: 1,
+        variables: [
+          { name: "combat.enabled", scope: "scene", type: "bool", default: false },
+        ],
+        sceneComposition: {
+          initialFragment: "main",
+          prefabs: {
+            source: {
+              props: {
+                behaviorRecipes: "source.guarded",
+                components: {
+                  sprite: { texture: 1, width: 8, height: 8 },
+                  collider: "none",
+                  layer: "enemy",
+                },
+              },
+            },
+          },
+          fragments: {
+            main: {
+              instances: [{ id: "source-1", prefab: "source" }],
+            },
+          },
+        },
+        behaviorRecipes: {
+          entities: {
+            "source.guarded": {
+              recipes: [{
+                kind: "damage",
+                amount: 1,
+                guard: { variable: "combat.enabled", op: "==", value: true },
+              }],
+            },
+          },
+        },
+      });
+
+      deepEqual(result.behaviorApplyResult.results, [true]);
+      equal(result.variables.get("combat.enabled"), false);
     } finally {
       engine.destroy();
     }

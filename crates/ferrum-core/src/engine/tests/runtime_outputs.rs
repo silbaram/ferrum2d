@@ -127,6 +127,130 @@ fn gameplay_interaction_events_are_bulk_frame_outputs() {
 }
 
 #[test]
+fn gameplay_interaction_guard_is_evaluated_inside_rust_runtime() {
+    let mut engine = Engine::new();
+    engine.scenes.shooter_mut().reset_playing(
+        &mut engine.world,
+        &mut engine.camera,
+        &mut engine.frame_buffers.audio_events,
+    );
+    start_shooter_playing(&mut engine);
+    let player = engine.world.primary_actor_entity().unwrap();
+    engine
+        .world
+        .set_transform(player, Transform2D { x: 100.0, y: 100.0 });
+    let source = engine.world.spawn_entity();
+    engine
+        .world
+        .set_transform(source, Transform2D { x: 112.0, y: 100.0 });
+    assert!(engine.configure_gameplay_variable(1, 2, 1, 0.0, 0.0));
+    assert!(engine.set_gameplay_interaction_with_guard(
+        source.id,
+        source.generation,
+        7,
+        16.0,
+        false,
+        1,
+        0,
+        0,
+        1.0,
+    ));
+
+    engine.update_frame(0.016, false, false, false);
+    assert_eq!(engine.gameplay_event_len(), 0);
+
+    assert!(engine.set_gameplay_variable_value(1, 1.0));
+    engine.update_frame(0.016, false, false, false);
+    assert_eq!(engine.gameplay_event_len(), 1);
+    assert_eq!(
+        unsafe { *engine.gameplay_event_ptr() }.kind,
+        GAMEPLAY_EVENT_INTERACTION
+    );
+}
+
+#[test]
+fn gameplay_variable_runtime_commands_reject_unconfigured_or_incompatible_slots() {
+    let mut engine = Engine::new();
+    let source = engine.world.spawn_entity();
+
+    assert!(!engine.set_gameplay_interaction_with_guard(
+        source.id,
+        source.generation,
+        7,
+        16.0,
+        false,
+        1,
+        0,
+        0,
+        1.0,
+    ));
+    assert!(!engine.add_gameplay_variable_mutation_trigger(
+        source.id,
+        source.generation,
+        crate::gameplay_event::GAMEPLAY_EVENT_COLLISION_DAMAGE,
+        0,
+        1,
+        0,
+        1.0,
+    ));
+
+    assert!(engine.configure_gameplay_variable(1, 2, 1, 0.0, 0.0));
+    assert!(!engine.set_gameplay_interaction_with_guard(
+        source.id,
+        source.generation,
+        7,
+        16.0,
+        false,
+        1,
+        4,
+        0,
+        0.0,
+    ));
+    assert!(!engine.add_gameplay_variable_mutation_trigger(
+        source.id,
+        source.generation,
+        crate::gameplay_event::GAMEPLAY_EVENT_COLLISION_DAMAGE,
+        0,
+        1,
+        1,
+        1.0,
+    ));
+}
+
+#[test]
+fn shooter_gameplay_timer_guard_pauses_until_its_variable_matches() {
+    let mut engine = Engine::new();
+    start_shooter_playing(&mut engine);
+    let source = engine.world.spawn_entity();
+    assert!(engine.configure_gameplay_variable(1, 2, 1, 0.0, 0.0));
+    assert!(engine.set_gameplay_timer_trigger_with_guard(
+        source.id,
+        source.generation,
+        9,
+        0.25,
+        1,
+        0,
+        0,
+        1.0,
+    ));
+
+    engine.update_frame(1.0, false, false, false);
+    assert_eq!(engine.gameplay_event_len(), 0);
+
+    assert!(engine.set_gameplay_variable_value(1, 1.0));
+    engine.update_frame(0.25, false, false, false);
+
+    let events = unsafe {
+        std::slice::from_raw_parts(engine.gameplay_event_ptr(), engine.gameplay_event_len())
+    };
+    assert!(events.iter().any(|event| {
+        event.kind == crate::gameplay_event::GAMEPLAY_EVENT_TIMER
+            && event.source_id == source.id
+            && event.token_id == 9
+    }));
+}
+
+#[test]
 fn gameplay_pickup_collected_events_are_bulk_frame_outputs() {
     let mut engine = Engine::new();
     engine.scenes.shooter_mut().reset_playing(
@@ -1083,6 +1207,116 @@ fn authored_collision_damage_events_drive_rust_behavior_state_machine_once_per_f
         engine.gameplay_behavior_state(bullet.id, bullet.generation),
         3
     );
+}
+
+#[test]
+fn false_authored_collision_damage_guard_suppresses_default_shooter_damage() {
+    let mut engine = Engine::new();
+    start_shooter_playing(&mut engine);
+    let enemy = engine.world.spawn_enemy(500.0, 240.0, DEFAULT_TEXTURE_ID);
+    let bullet = engine
+        .world
+        .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+    engine.world.set_health(enemy, 3.0);
+    assert!(engine.configure_gameplay_variable(1, 2, 1, 0.0, 0.0));
+    assert!(engine.add_gameplay_collision_damage_with_guard(
+        bullet.id,
+        bullet.generation,
+        1.0,
+        1,
+        1,
+        0,
+        0,
+        1.0,
+    ));
+
+    engine.update_frame(0.016, false, false, false);
+
+    assert_eq!(engine.world.health(enemy), Some(3.0));
+    let events = unsafe {
+        std::slice::from_raw_parts(engine.gameplay_event_ptr(), engine.gameplay_event_len())
+    };
+    assert!(events
+        .iter()
+        .all(|event| event.kind != crate::gameplay_event::GAMEPLAY_EVENT_COLLISION_DAMAGE));
+}
+
+#[test]
+fn authored_collision_event_mutates_variable_after_projectile_despawns() {
+    let mut engine = Engine::new();
+    start_shooter_playing(&mut engine);
+    let enemy = engine.world.spawn_enemy(500.0, 240.0, DEFAULT_TEXTURE_ID);
+    let bullet = engine
+        .world
+        .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+    engine.world.set_health(enemy, 3.0);
+    engine.world.set_damage(bullet, 1.0);
+    assert!(engine.configure_gameplay_variable(1, 0, 1, 0.0, 0.0));
+    assert!(engine.add_gameplay_collision_damage(bullet.id, bullet.generation, 1));
+    assert!(engine.add_gameplay_collision_despawn(bullet.id, bullet.generation, 0));
+    assert!(engine.add_gameplay_variable_mutation_trigger(
+        bullet.id,
+        bullet.generation,
+        crate::gameplay_event::GAMEPLAY_EVENT_COLLISION_DAMAGE,
+        0,
+        1,
+        1,
+        1.0,
+    ));
+
+    engine.update_frame(0.016, false, false, false);
+
+    assert_eq!(engine.gameplay_variable_value(1), 1.0);
+    assert!(!engine.world.is_current_entity(bullet));
+}
+
+#[test]
+fn damaged_actor_variable_mutation_drives_its_fsm_in_the_same_frame() {
+    let mut engine = Engine::new();
+    start_shooter_playing(&mut engine);
+    let enemy = engine.world.spawn_enemy(500.0, 240.0, DEFAULT_TEXTURE_ID);
+    let bullet = engine
+        .world
+        .spawn_bullet(500.0, 240.0, 0.0, 0.0, DEFAULT_TEXTURE_ID);
+    engine.world.set_health(enemy, 3.0);
+    engine.world.set_damage(bullet, 1.0);
+    assert!(engine.configure_gameplay_variable(1, 0, 1, 0.0, 0.0));
+    assert!(engine.add_gameplay_collision_damage(bullet.id, bullet.generation, 1));
+    assert!(engine.add_gameplay_variable_mutation_trigger(
+        enemy.id,
+        enemy.generation,
+        crate::gameplay_event::GAMEPLAY_EVENT_COLLISION_DAMAGE,
+        0,
+        1,
+        1,
+        1.0,
+    ));
+    assert!(engine.set_gameplay_behavior_state_machine(enemy.id, enemy.generation, 1));
+    assert!(engine.add_gameplay_behavior_variable_transition(
+        enemy.id,
+        enemy.generation,
+        1,
+        2,
+        1,
+        5,
+        0,
+        1.0,
+    ));
+
+    engine.update_frame(0.016, false, false, false);
+
+    assert_eq!(engine.gameplay_variable_value(1), 1.0);
+    assert_eq!(
+        engine.gameplay_behavior_state(enemy.id, enemy.generation),
+        2
+    );
+    let events = unsafe {
+        std::slice::from_raw_parts(engine.gameplay_event_ptr(), engine.gameplay_event_len())
+    };
+    assert!(events
+        .iter()
+        .any(|event| event.kind == GAMEPLAY_EVENT_BEHAVIOR_STATE_CHANGED
+            && event.actor_id == enemy.id));
 }
 
 #[test]

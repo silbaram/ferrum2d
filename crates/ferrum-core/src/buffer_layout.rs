@@ -329,7 +329,7 @@ mod tests {
         );
         assert_eq!(entity_u32_offsets, [0, 1, 2, 3, 4]);
         assert_eq!(crate::shooter_scene::SHOOTER_SNAPSHOT_HEADER_FLOATS, 8);
-        assert_eq!(crate::shooter_scene::SHOOTER_SNAPSHOT_HEADER_U32S, 151);
+        assert_eq!(crate::shooter_scene::SHOOTER_SNAPSHOT_HEADER_U32S, 471);
         assert_eq!(crate::shooter_scene::SHOOTER_SNAPSHOT_ENTITY_FLOATS, 131);
         assert_eq!(crate::shooter_scene::SHOOTER_SNAPSHOT_ENTITY_U32S, 117);
     }

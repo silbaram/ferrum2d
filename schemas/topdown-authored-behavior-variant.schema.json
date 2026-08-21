@@ -137,7 +137,22 @@
               "const": 13
             }
           }
+        },
+        "variables": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          }
         }
+      }
+    },
+    "variables": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/definitions/gameplayVariableDeclaration"
       }
     },
     "sceneComposition": {
@@ -211,7 +226,10 @@
       "properties": {
         "machines": {
           "type": "object",
-          "minProperties": 1
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/definitions/behaviorStateMachine"
+          }
         }
       }
     },
@@ -380,20 +398,51 @@
             "lifetime",
             "scoreReward",
             "pickup",
-        "collisionPickup",
-        "collisionEmitEffect",
-        "collisionSound",
-        "collisionParticle",
-        "collisionShake",
-        "collisionDespawn",
-        "chase",
+            "collisionPickup",
+            "collisionAreaDamage",
+            "collisionKnockback",
+            "collisionEmitEffect",
+            "collisionSpawnPrefab",
+            "collisionSound",
+            "collisionParticle",
+            "collisionShake",
+            "collisionDespawn",
+            "chase",
+            "seekTarget",
+            "accelerate",
             "interaction",
             "projectileAction",
             "dashAction",
             "meleeAction",
             "spawnPrefabAction",
-            "timerTrigger"
+            "timerTrigger",
+            "setVariable",
+            "incrementVariable"
           ]
+        },
+        "guard": {
+          "$ref": "#/definitions/gameplayVariableComparison"
+        },
+        "when": {
+          "$ref": "#/definitions/gameplayEventPredicate"
+        },
+        "variable": {
+          "type": "string",
+          "minLength": 1
+        },
+        "variableId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "value": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "amount": {
+          "type": "number"
         },
         "faction": {
           "$ref": "#/definitions/behaviorRecipeFaction"
@@ -442,6 +491,82 @@
             "required": [
               "faction"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "setVariable",
+                  "incrementVariable"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "when"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "variable"
+                ]
+              },
+              {
+                "required": [
+                  "variableId"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "setVariable"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "guard"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "damage",
+                  "collisionPickup",
+                  "collisionAreaDamage",
+                  "collisionKnockback",
+                  "collisionEmitEffect",
+                  "collisionSpawnPrefab",
+                  "collisionSound",
+                  "collisionParticle",
+                  "collisionShake",
+                  "collisionDespawn",
+                  "interaction",
+                  "timerTrigger"
+                ]
+              }
+            }
           }
         }
       ]
@@ -497,6 +622,297 @@
           "maximum": 31
         }
       ]
+    },
+    "gameplayVariableDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "scope",
+        "type",
+        "default"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "enum": [
+            "global",
+            "scene"
+          ]
+        },
+        "type": {
+          "enum": [
+            "integer",
+            "real",
+            "bool"
+          ]
+        },
+        "default": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        }
+      }
+    },
+    "gameplayVariableComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "op"
+      ],
+      "properties": {
+        "type": {
+          "const": "variableComparison"
+        },
+        "variable": {
+          "type": "string",
+          "minLength": 1
+        },
+        "variableId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "op": {
+          "enum": [
+            "==",
+            "!=",
+            "<",
+            "<=",
+            ">",
+            ">="
+          ]
+        },
+        "value": {
+          "type": [
+            "number",
+            "boolean"
+          ]
+        },
+        "otherVariable": {
+          "type": "string",
+          "minLength": 1
+        },
+        "otherVariableId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        }
+      },
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": [
+                "variable"
+              ]
+            },
+            {
+              "required": [
+                "variableId"
+              ]
+            }
+          ]
+        },
+        {
+          "oneOf": [
+            {
+              "required": [
+                "value"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "otherVariable"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "otherVariableId"
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "anyOf": [
+                {
+                  "required": [
+                    "otherVariable"
+                  ]
+                },
+                {
+                  "required": [
+                    "otherVariableId"
+                  ]
+                }
+              ],
+              "not": {
+                "required": [
+                  "value"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "gameplayEventPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "event"
+      ],
+      "properties": {
+        "type": {
+          "const": "gameplayEvent"
+        },
+        "event": {
+          "enum": [
+            "interaction",
+            "collisionDamage",
+            "collisionDespawn",
+            "timer",
+            "pickupCollected",
+            "tileImpact"
+          ]
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actionId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "timer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timerId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "item": {
+          "type": "string",
+          "minLength": 1
+        },
+        "itemId": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "tileImpact": {
+          "enum": [
+            "despawn",
+            "bounce"
+          ]
+        },
+        "tileImpactCode": {
+          "enum": [
+            0,
+            2
+          ]
+        }
+      }
+    },
+    "behaviorStateMachine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "initial",
+        "states"
+      ],
+      "properties": {
+        "initial": {
+          "type": "string",
+          "minLength": 1
+        },
+        "states": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/definitions/behaviorStateMachineState"
+          }
+        }
+      }
+    },
+    "behaviorStateMachineState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "behaviorRecipes": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          ]
+        },
+        "transitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/behaviorStateMachineTransition"
+          }
+        }
+      }
+    },
+    "behaviorStateMachineTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "to",
+        "when"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "when": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/gameplayEventPredicate"
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/gameplayVariableComparison"
+                },
+                {
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "type": {
+                      "const": "variableComparison"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
     }
   }
 }

@@ -82,7 +82,7 @@ authoring 도구가 구분이 필요할 때는 `classifySceneInstance(instance)`
 | `type` | `integer`, `real`, `bool` | `integer`는 JavaScript safe integer, `real`은 finite number만 허용한다. |
 | `default` | 선언 타입과 일치하는 값 | 최초 apply와 reset 값이다. `NaN`/무한대는 허용하지 않는다. |
 
-`resolveSceneAuthoringDocument(...)`는 선언 배열, 필드, 기본값 타입, 중복 이름을 검증한다.
+`resolveSceneAuthoringDocument(...)`는 선언 배열, 필드, 기본값 타입, 중복 이름을 검증하고 선언 순서대로 `1..64` runtime slot을 만든다. `ids.variables`를 명시하면 모든 선언 이름에 고유한 `1..64` slot을 제공해야 한다.
 `applyDataSceneAuthoringDocument(...)` 결과의 `variables`와
 `createFerrumRuntime(...).dataScene.variables`는 `has(name)`, `get(name)`, `set(name, value)`,
 `values(scope)`, `restore(scope, values)`를 제공한다. `get`/`set`/`restore`는 선언되지 않은 이름과
@@ -96,9 +96,9 @@ authoring 도구가 구분이 필요할 때는 `classifySceneInstance(instance)`
 - global 선언이 제거되거나 scope/type이 달라지면 이전 값은 유지하지 않고, 다음 선언이 있다면 그 `default`를 사용한다.
 - 다음 문서에서도 값을 읽으려면 그 문서에 같은 이름을 다시 선언해야 한다. 현재 문서에 없는 이름은 존재하지 않는다.
 
-이 규칙은 Issue #38의 scene/level 전환 생존 축과 공유하는 Y0 계약이다. 현재 범위에서
-behavior recipe/FSM이 값을 읽거나 쓰지는 않는다. 게임 코드는 낮은 빈도
-`DataSceneVariableStore` API로 값을 변경하며, gameplay simulation에서의 변수 접근은 별도 계약이다.
+이 규칙은 Issue #38의 scene/level 전환 생존 축과 공유하는 Y0 계약이다. 현재 runtime 값은 TypeScript `Map`이 아니라 Rust `World`의 고정 64-slot slab에 저장된다. `DataSceneVariableStore`는 낮은 빈도 facade로 같은 Rust slot을 읽고 쓰며, custom `FerrumEngine`을 주입하는 host는 `attachDataSceneVariableRuntimeEngineAdapter(...)`로 `clear/configure/get/set` adapter를 연결해야 한다. 변수 선언이 없는 기존 custom runtime은 adapter 없이도 호환된다.
+
+Behavior Recipe의 `setVariable`/`incrementVariable`은 gameplay event에 반응해 Rust frame 안에서 값을 바꾼다. recipe 소유 entity가 event의 `actor` 또는 `source`와 generation까지 일치하면 trigger가 발화하므로 damage source의 명중 횟수, damage actor의 피격 횟수, collector 또는 pickup에 붙인 수집 상태를 모두 표현할 수 있다. actor와 source가 같은 event는 한 번만 적용한다. collision reaction, `interaction`, `timerTrigger`의 `guard`와 FSM의 `variableComparison` transition도 같은 numeric slot을 사용한다. 비교식은 한 개의 literal 또는 다른 변수만 RHS로 받을 수 있으며 논리식/산술식 nesting은 거절된다. Scene Authoring resolver는 변수 이름/slot 존재 여부, bool increment, literal 타입, bool ordering 비교를 runtime activation 전에 검사한다.
 
 ## `props.components` v1
 
@@ -135,7 +135,7 @@ package-facing full document apply helper는 `applyDataSceneAuthoringDocument(en
 `allowComponentTemplates`도 기본 활성화된다. 검증 실패는 runtime activation 전에 발생하므로 기존
 built-in/data scene state를 reset하지 않는다.
 
-package-facing default `spawnSceneInstance` target은 `createDataSceneRuntimeTarget(engine, options?)`가 제공한다. 기본값은 첫 번째 유효한 spawn 직전에 한 번 `engine.useDataScene()`을 호출한다. full `applyDataSceneAuthoringDocument(...)`는 spawn 결과가 0개여도 validation 성공 뒤 `useDataScene()`을 호출하므로 빈 문서도 실제 cleanup/reset 전환이다. authoring validation 실패나 target 생성만으로 기존 scene을 비우지 않으며, 이 자동 활성화가 싫으면 `activateDataScene: false`를 넘긴다. consumer 코드는 generated Wasm `pkg/*`나 `@ferrum2d/ferrum-web/src/*` 내부 경로를 직접 import하지 않는다.
+package-facing default `spawnSceneInstance` target은 `createDataSceneRuntimeTarget(engine, options?)`가 제공한다. 기본값은 첫 번째 유효한 spawn 직전에 한 번 `engine.useDataScene()`을 호출한다. full `applyDataSceneAuthoringDocument(...)`는 spawn 결과가 0개여도 validation 성공 뒤 `useDataScene()`을 호출하므로 빈 문서도 실제 cleanup/reset 전환이다. full apply는 Rust variable slot을 guarded recipe보다 먼저 구성하며, 이후 spawn/recipe apply가 실패하면 이전 변수 declaration/slot/current value를 복원한다. authoring validation 실패나 target 생성만으로 기존 scene을 비우지 않으며, 이 자동 활성화가 싫으면 `activateDataScene: false`를 넘긴다. consumer 코드는 generated Wasm `pkg/*`나 `@ferrum2d/ferrum-web/src/*` 내부 경로를 직접 import하지 않는다.
 
 `createFerrumRuntime({ dataScene })`은 같은 document apply helper를 startup 단계에 연결한다.
 `dataScene` 값은 문서 자체이거나 `{ document, ...applyOptions }` object일 수 있다.
@@ -215,8 +215,8 @@ committed golden fixture로도 검증한다.
 - `global`: `snapshot.custom["ferrum2d.variables"]`
 - `scene`: `snapshot.dataScene.custom["ferrum2d.variables"]`
 
-두 custom 슬롯은 기존 snapshot hash 범위다. 변수 기능 자체는 별도 hash 경로를 만들지 않았지만,
-Scene/Level Flow v1 lifecycle 추가와 함께 상위 snapshot version은 `2`로 올렸다.
+두 custom 슬롯은 기존 Data Scene snapshot hash 범위다. Built-in Shooter snapshot version `19`는 같은 Rust slab을 header에 exact bit로 포함하므로 gameplay replay hash에도 직접 반영된다.
+Scene/Level Flow v1 lifecycle 추가와 함께 상위 Data Scene snapshot version은 계속 `2`이며,
 같은 문서와 같은 최종 변수 값은 변수 설정 순서와 무관하게 같은 snapshot hash를 만든다.
 기존 custom state와 함께 캡처할 때는 custom state가 object여야 하며
 `"ferrum2d.variables"`는 consumer가 직접 쓰지 않는 reserved key이며 public

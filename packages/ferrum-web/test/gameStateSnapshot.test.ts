@@ -38,6 +38,7 @@ import {
   attachDataSceneRuntimeEngineAdapter,
   type DataSceneRuntimeSpawnRequest,
 } from "../src/dataSceneRuntimeTarget.js";
+import { attachMemoryDataSceneVariableRuntime } from "./dataSceneVariableRuntimeTestAdapter.js";
 
 test("game state snapshot captures runtime scene metrics and custom JSON", () => {
   const engine = fakeEngine({ score: 42, gameState: 1, entityCount: 8, spriteCount: 7, cameraX: 12, cameraY: -4 });
@@ -129,7 +130,9 @@ test("data scene variables map to custom snapshot namespaces and restore determi
   const authoringDocument = sampleDataSceneAuthoringDocument();
   const sourceEngine = fakeEngine({ score: 0, gameState: 1, entityCount: 0, spriteCount: 0 });
   const sourceAdapter = new SnapshotDataSceneRuntimeAdapter(() => sourceEngine.useDataScene());
-  const adaptedSource = attachDataSceneRuntimeEngineAdapter(sourceEngine, sourceAdapter);
+  const adaptedSource = attachMemoryDataSceneVariableRuntime(
+    attachDataSceneRuntimeEngineAdapter(sourceEngine, sourceAdapter),
+  );
   const applied = applyDataSceneAuthoringDocument(adaptedSource, authoringDocument);
   applied.variables.set("campaign.coins", 7);
   applied.variables.set("campaign.unlocked", true);
@@ -174,7 +177,9 @@ test("data scene variables map to custom snapshot namespaces and restore determi
 
   const restoredEngine = fakeEngine({ score: 10, gameState: 2, entityCount: 4, spriteCount: 4 });
   const restoredAdapter = new SnapshotDataSceneRuntimeAdapter(() => restoredEngine.useDataScene());
-  const adaptedRestored = attachDataSceneRuntimeEngineAdapter(restoredEngine, restoredAdapter);
+  const adaptedRestored = attachMemoryDataSceneVariableRuntime(
+    attachDataSceneRuntimeEngineAdapter(restoredEngine, restoredAdapter),
+  );
   let restoredCustom: unknown;
   let restoredDataSceneCustom: unknown;
   const result = restoreGameStateSnapshot(
@@ -439,7 +444,9 @@ test("game state restore reapplies data scene authoring document before custom s
       engine.setScene({ entityCount: count, spriteCount: count });
     },
   );
-  const adaptedEngine = attachDataSceneRuntimeEngineAdapter(engine, adapter);
+  const adaptedEngine = attachMemoryDataSceneVariableRuntime(
+    attachDataSceneRuntimeEngineAdapter(engine, adapter),
+  );
   let restoredDataCustom: unknown;
 
   const result = restoreGameStateSnapshot(adaptedEngine, snapshot, {
@@ -521,7 +528,7 @@ test("built-in shooter state validation rejects legacy v17 snapshots", () => {
         floatsPerEntity: 75,
         u32sPerEntity: 61,
       } as unknown as BuiltInShooterStateSnapshot),
-    /version must be 18/,
+    /version must be 19/,
   );
 });
 
@@ -542,7 +549,7 @@ test("built-in shooter state validation rejects legacy v11 layout sizes", () => 
         ...shooterState,
         headerU32s: shooterState.headerU32s.slice(0, 9),
       }),
-    /headerU32s length must be 151/,
+    /headerU32s length must be 471/,
   );
 });
 
