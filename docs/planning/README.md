@@ -9,8 +9,8 @@
 | 문서 | 현재 상태 | 활성 후보 |
 | --- | --- | --- |
 | [데모 게임 포트폴리오 후속 계획](demo-game-showcase-plan.md) | Showcase Hub와 6개 public route 기반 완료 | Content/UX, Renderer/Streaming lab, Agent Workflow report의 사용자-facing 노출 결정 |
-| [게임 개발 편의성 실사용 검토](game-development-convenience-review.md) | 재검토 후 fixture, 입력 소유권 report, memory-save 표현, `ferrum:check`, minimal 코드 분리를 반영 | scene별 authoring-runtime adapter/file-save 설계, asset 반복 작업, read-only gameplay 진단 |
-| [배포 후속 계획](deployment-roadmap.md) | 정적 Pages와 create-game build/preview/deploy-readiness 완료, Tauri authoring spike 부분 완료 | Tauri packaged GUI 검증 승인과 추가 hosting 지원 필요성 판단 |
+| [게임 개발 편의성 실사용 검토](game-development-convenience-review.md) | built-in Scene Authoring 위치/Behavior runtime 적용, Tauri allowlisted save, 기존 report/check 개선 반영 | asset 반복 작업, read-only gameplay 진단 |
+| [배포 후속 계획](deployment-roadmap.md) | 정적 Pages, Tauri authoring host, 로컬 Linux package smoke 구현 | 수동 GUI evidence, CI 편입, generated game wrapper와 macOS/Windows release matrix 필요성 판단 |
 
 활성 작업 목록은 planning 문서에 중복 관리하지 않는다. 진행 중인 작업은 별도 task 또는 이슈로 범위와 검증 기준을 확정하고, 완료된 사용법과 운영 계약은 확정 문서에만 남긴다.
 

@@ -71,6 +71,14 @@ impl BuiltInSceneSlots {
         &mut self.shooter
     }
 
+    pub(super) const fn breakout(&self) -> &BreakoutScene {
+        &self.breakout
+    }
+
+    pub(super) const fn platformer(&self) -> &PlatformerScene {
+        &self.platformer
+    }
+
     pub(super) fn use_shooter(&mut self) {
         self.active = ActiveScene::Shooter;
     }

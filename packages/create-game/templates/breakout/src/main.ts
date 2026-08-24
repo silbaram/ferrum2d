@@ -7,6 +7,11 @@ import {
 import {
   diagnosticReport,
 } from "@ferrum2d/ferrum-web/quality";
+import {
+  createBuiltInSceneAuthoringSession,
+  loadBuiltInSceneAuthoringDocument,
+  type BuiltInSceneAuthoringSession,
+} from "./ferrum-built-in-scene-authoring";
 
 import "./styles.css";
 
@@ -25,7 +30,7 @@ function createButton(label: string, onClick: () => void): HTMLButtonElement {
   return button;
 }
 
-function createShell(): {
+function createShell(onSceneReset: () => void): {
   canvas: HTMLCanvasElement;
   debugRoot: HTMLElement;
   stateValue: HTMLElement;
@@ -74,6 +79,7 @@ function createShell(): {
     }),
     createButton("Reset", () => {
       engine?.resetGame();
+      onSceneReset();
       startQueued = true;
     }),
   );
@@ -134,7 +140,9 @@ function renderBootstrapError(error: unknown): void {
 }
 
 async function bootstrap(): Promise<void> {
-  const shell = createShell();
+  const sceneAuthoringDocument = await loadBuiltInSceneAuthoringDocument();
+  let authoringSession: BuiltInSceneAuthoringSession | undefined;
+  const shell = createShell(() => authoringSession?.invalidate());
   const runtime = await createFerrumRuntime({
     canvas: shell.canvas,
     debugParent: shell.debugRoot,
@@ -145,6 +153,7 @@ async function bootstrap(): Promise<void> {
     inputTransform: (snapshot) => shell.inputSnapshot(snapshot),
     gameStateLabel,
     onFrame: ({ frame, rendererStats, fps }) => {
+      authoringSession?.sync(frame.gameState);
       shell.stateValue.textContent = gameStateLabel(frame.gameState);
       shell.scoreValue.textContent = String(frame.score);
       shell.entityValue.textContent = String(frame.entityCount);
@@ -154,6 +163,11 @@ async function bootstrap(): Promise<void> {
   });
 
   runtime.engine.useBreakoutGame();
+  authoringSession = createBuiltInSceneAuthoringSession(
+    runtime.engine,
+    "breakout",
+    sceneAuthoringDocument,
+  );
   shell.setEngine(runtime.engine);
   runtime.start();
   shell.queueStart();

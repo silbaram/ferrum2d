@@ -37,6 +37,7 @@ export {
   applyDataSceneAuthoringDocument,
   createDataSceneRuntimeTarget,
 } from "../src/dataSceneRuntimeTarget.js";
+export { applyBuiltInSceneAuthoringDocument } from "../src/builtInSceneAuthoring.js";
 export {
   SCENE_AUTHORING_DOCUMENT_FORMAT,
   SCENE_AUTHORING_DOCUMENT_VERSION,

@@ -14,7 +14,7 @@ tier, forbidden internal import allowlist를 기계적으로 검증하는 기준
 
 ```ts
 import { bodyLocalToWorld2D, createFerrumRuntime } from "@ferrum2d/ferrum-web/core";
-import { resolveSceneCompositionSpec } from "@ferrum2d/ferrum-web/authoring";
+import { applyBuiltInSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring";
 import { resolveShooterGameSpec } from "@ferrum2d/ferrum-web/starter-scenes";
 import { RuntimeProfiler } from "@ferrum2d/ferrum-web/quality";
 ```
@@ -119,6 +119,13 @@ layout으로 생성되는 `RenderCommandAccessor`와 `BuiltInShooterStateAccesso
 raw Wasm setter와 generated wasm-bindgen files는 public API가 아니다. consumer는
 `FerrumEngine`, authoring resolver, package subpath export를 통해서만 엔진 상태를
 변경한다.
+
+Built-in starter의 Scene Authoring 적용은 preview authoring facade인
+`applyBuiltInSceneAuthoringDocument(...)`를 사용한다. 이 helper는 활성 Shooter/Platformer/Breakout
+scene의 generation-safe handle에 위치와 Behavior Recipe를 저빈도로 적용하며 generic Data Scene spawn
+경로와 분리된다. built-in visual/collider, 회전, scale, render layer를 조용히 무시하지 않고 명시적
+diagnostic으로 거부한다. scene-owned player/paddle/ball의 수명을 깨뜨릴 수 있는 health/lifetime/
+pickup-despawn/collision-despawn command도 mutation 전 거부한다.
 
 ## API 변경 규칙
 

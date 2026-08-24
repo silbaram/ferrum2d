@@ -54,7 +54,7 @@ pnpm smoke:placement-viewer-mass-authoring
 
 `pnpm build:pages`는 production build를 `dist-pages/placement-viewer/`에 복사하고 Pages 홈의 Demos 목록에 노출한다.
 
-## Desktop spike
+## Desktop host
 
 `apps/placement-viewer-desktop`는 이 app의 production/dev frontend를 Tauri window에서 열고, Tauri command가 있을 때 샘플 `placement.scene-authoring.json`을 로컬 파일로 읽고 저장한다. Tauri가 없는 일반 브라우저와 Pages에서는 기존 fetch/Vite dev endpoint 흐름을 유지한다. 문서 전환 전에 draft patch가 남아 있으면 기존 변경을 버릴지 확인한다.
 

@@ -39,6 +39,97 @@ test("mergeScenePlacementPatch updates transform keys without mutating source do
   equal(document.sceneComposition.fragments?.main?.instances?.[0]?.x, 10);
 });
 
+test("mergeScenePlacementPatch preserves v1 transform patch compatibility", () => {
+  const result = mergeScenePlacementPatch(scenePlacementDocument(), {
+    format: SCENE_PLACEMENT_PATCH_FORMAT,
+    version: 1,
+    operations: [{ kind: "updateTransform", instanceId: "crate_a", transform: { x: 96 } }],
+  });
+
+  equal(result.document.sceneComposition.fragments?.main?.instances?.[0]?.x, 96);
+});
+
+test("mergeScenePlacementPatch stores included transforms on one include occurrence", () => {
+  const document = nestedScenePlacementDocument();
+  const result = mergeScenePlacementPatch(document, {
+    format: SCENE_PLACEMENT_PATCH_FORMAT,
+    version: SCENE_PLACEMENT_PATCH_VERSION,
+    operations: [{
+      kind: "updateResolvedTransform",
+      instanceId: "left.crate",
+      target: {
+        kind: "fragmentIncludeInstance",
+        fragment: "main",
+        includeIndex: 0,
+        includedFragment: "room",
+        instanceId: "crate",
+      },
+      transform: {
+        x: 15,
+        y: -10,
+        rotationRadians: 1.2 - Math.PI / 2,
+        scale: 2,
+        layer: 4,
+      },
+    }],
+  }, { allowedFragments: ["main"] });
+
+  deepEqual(result.changedInstanceIds, ["left.crate"]);
+  deepEqual(result.document.sceneComposition.fragments?.main?.include?.[0]?.instanceTransforms, {
+    crate: {
+      x: 15,
+      y: -10,
+      rotationRadians: 1.2 - Math.PI / 2,
+      scale: 2,
+      layer: 4,
+    },
+  });
+  equal(result.document.sceneComposition.fragments?.main?.include?.[1]?.instanceTransforms, undefined);
+  equal(document.sceneComposition.fragments?.main?.include?.[0]?.instanceTransforms, undefined);
+
+  const instances = instantiateSceneFragment(result.document.sceneComposition);
+  const left = instances.find((instance) => instance.id === "left.crate");
+  const right = instances.find((instance) => instance.id === "right.crate");
+  if (left === undefined || right === undefined) {
+    throw new Error("expected both repeated fragment instances to resolve");
+  }
+  ok(Math.abs(left.x - 120) < 1e-9);
+  ok(Math.abs(left.y - 80) < 1e-9);
+  ok(Math.abs(left.rotationRadians - 1.2) < 1e-9);
+  equal(left.scale, 4);
+  equal(left.layer, 9);
+  equal(right.x, -96);
+  equal(right.y, 6);
+});
+
+test("mergeScenePlacementPatch rejects resolved transform targets whose public instance id does not match", () => {
+  expectThrows(
+    () => mergeScenePlacementPatch(nestedScenePlacementDocument(), {
+      format: SCENE_PLACEMENT_PATCH_FORMAT,
+      version: SCENE_PLACEMENT_PATCH_VERSION,
+      operations: [{
+        kind: "updateResolvedTransform",
+        instanceId: "right.crate",
+        target: {
+          kind: "fragmentIncludeInstance",
+          fragment: "main",
+          includeIndex: 0,
+          includedFragment: "room",
+          instanceId: "crate",
+        },
+        transform: {
+          x: 15,
+          y: -10,
+          rotationRadians: 0,
+          scale: 1,
+          layer: 0,
+        },
+      }],
+    }),
+    /instanceId.*must match resolved target instance.*left\.crate/u,
+  );
+});
+
 test("mergeScenePlacementPatch updates instance components for reload", () => {
   const document = scenePlacementDocument();
   const result = mergeScenePlacementPatch(document, {
@@ -576,6 +667,37 @@ function scenePlacementDocumentWithObjectPrefab(): SceneAuthoringDocumentSpec {
         ...document.sceneComposition.prefabs,
       },
     },
+  };
+}
+
+function nestedScenePlacementDocument(): SceneAuthoringDocumentSpec {
+  return {
+    format: SCENE_AUTHORING_DOCUMENT_FORMAT,
+    version: SCENE_AUTHORING_DOCUMENT_VERSION,
+    sceneComposition: {
+      initialFragment: "main",
+      prefabs: { crate: {} },
+      fragments: {
+        main: {
+          include: [
+            {
+              fragment: "room",
+              idPrefix: "left.",
+              x: 100,
+              y: 50,
+              rotationRadians: Math.PI / 2,
+              scale: 2,
+              layer: 5,
+            },
+            { fragment: "room", idPrefix: "right.", x: -100 },
+          ],
+        },
+        room: {
+          instances: [{ id: "crate", prefab: "crate", x: 4, y: 6 }],
+        },
+      },
+    },
+    behaviorRecipes: { entities: {} },
   };
 }
 

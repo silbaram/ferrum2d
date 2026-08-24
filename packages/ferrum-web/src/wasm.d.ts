@@ -23,6 +23,13 @@ declare module "../pkg/ferrum_core.js" {
     world_text_glyph_count(): number;
     built_in_shooter_player_entity_id(): number;
     built_in_shooter_player_entity_generation(): number;
+    built_in_platformer_player_entity_id(): number;
+    built_in_platformer_player_entity_generation(): number;
+    built_in_breakout_paddle_entity_id(): number;
+    built_in_breakout_paddle_entity_generation(): number;
+    built_in_breakout_ball_entity_id(): number;
+    built_in_breakout_ball_entity_generation(): number;
+    set_built_in_scene_entity_position(entity_id:number,entity_generation:number,x:number,y:number): boolean;
     use_data_scene(): void;
     data_scene_game_state(): number;
     pause_data_scene(): boolean;

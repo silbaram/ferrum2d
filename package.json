@@ -63,6 +63,7 @@
     "smoke:placement-viewer-save": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && VITE_FERRUM_PLACEMENT_VIEWER_SAVE=true pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer-save apps/placement-viewer/dist",
     "smoke:placement-viewer-mass-authoring": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer-mass-authoring apps/placement-viewer/dist",
     "smoke:placement-viewer-desktop-assets": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/placement-viewer build && node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer-desktop-assets apps/placement-viewer/dist",
+    "smoke:placement-viewer-desktop-package": "node scripts/package/placement-viewer-desktop-package-smoke.mjs",
     "smoke:browser": "pnpm smoke:starter-runtime",
     "smoke:browser-budget": "pnpm smoke:starter-runtime-budget",
     "smoke:preload": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/minimal-game build && node tests/smoke/browser-render-smoke.mjs --mode=preload examples/minimal-game/dist",

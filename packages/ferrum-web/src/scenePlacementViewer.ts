@@ -26,7 +26,7 @@ import {
 } from "./scenePlacementViewport.js";
 import { resolveSceneAuthoringDocument, type SceneAuthoringDocumentSpec } from "./sceneAuthoringDocument.js";
 import {
-  instantiateSceneFragment,
+  instantiateSceneFragmentPlacements,
   resolveSceneCompositionSpec,
   type InstantiateSceneFragmentOptions,
 } from "./sceneComposition.js";
@@ -35,6 +35,7 @@ import type {
   ResolvedSceneCompositionInstance,
   ResolvedSceneCompositionSpec,
   ResolvedSceneCompositionPrefab,
+  SceneCompositionInstancePlacement,
   SceneCompositionFragmentInstanceSpec,
   SceneCompositionJsonValue,
   SceneCompositionPrefabSpec,
@@ -44,7 +45,8 @@ import type {
 } from "./sceneComposition.js";
 
 export const SCENE_PLACEMENT_PATCH_FORMAT = "ferrum2d.scene-placement.patch" as const;
-export const SCENE_PLACEMENT_PATCH_VERSION = 1 as const;
+export const SCENE_PLACEMENT_PATCH_LEGACY_VERSION = 1 as const;
+export const SCENE_PLACEMENT_PATCH_VERSION = 2 as const;
 
 export type ScenePlacementViewerDocument =
   | SceneAuthoringDocumentSpec
@@ -113,6 +115,7 @@ export interface ScenePlacementViewerState {
 
 export type ScenePlacementPatchOperation =
   | ScenePlacementUpdateTransformOperation
+  | ScenePlacementUpdateResolvedTransformOperation
   | ScenePlacementUpdateComponentsOperation
   | ScenePlacementUpdateBehaviorBindingOperation
   | ScenePlacementRenameInstanceOperation
@@ -124,6 +127,31 @@ export interface ScenePlacementUpdateTransformOperation {
   kind: "updateTransform";
   instanceId: string;
   transform: Partial<ScenePlacementTransform>;
+}
+
+export type ScenePlacementResolvedTransformTarget =
+  | ScenePlacementFragmentInstanceTransformTarget
+  | ScenePlacementFragmentIncludeInstanceTransformTarget;
+
+export interface ScenePlacementFragmentInstanceTransformTarget {
+  kind: "fragmentInstance";
+  fragment: string;
+  instanceId: string;
+}
+
+export interface ScenePlacementFragmentIncludeInstanceTransformTarget {
+  kind: "fragmentIncludeInstance";
+  fragment: string;
+  includeIndex: number;
+  includedFragment: string;
+  instanceId: string;
+}
+
+export interface ScenePlacementUpdateResolvedTransformOperation {
+  kind: "updateResolvedTransform";
+  instanceId: string;
+  target: ScenePlacementResolvedTransformTarget;
+  transform: ScenePlacementTransform;
 }
 
 export interface ScenePlacementUpdateComponentsOperation {
@@ -169,7 +197,7 @@ export interface ScenePlacementRemoveInstanceOperation {
 
 export interface ScenePlacementPatch {
   format: typeof SCENE_PLACEMENT_PATCH_FORMAT;
-  version: typeof SCENE_PLACEMENT_PATCH_VERSION;
+  version: typeof SCENE_PLACEMENT_PATCH_LEGACY_VERSION | typeof SCENE_PLACEMENT_PATCH_VERSION;
   operations: readonly ScenePlacementPatchOperation[];
 }
 
@@ -237,6 +265,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
   private readonly composition: ResolvedSceneCompositionSpec;
   private readonly sourceInstances: readonly ResolvedSceneCompositionInstance[];
   private readonly instancesById = new Map<string, ResolvedSceneCompositionInstance>();
+  private readonly placementsById = new Map<string, SceneCompositionInstancePlacement>();
   private readonly draftTransforms = new Map<string, ScenePlacementTransform>();
   private readonly draftComponents = new Map<string, SceneCompositionJsonValue>();
   private readonly draftInstanceBehaviorBindings = new Map<string, ScenePlacementBehaviorBindingPatch>();
@@ -260,11 +289,15 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     const composition = viewerComposition(options, path);
     this.composition = composition;
     this.fragment = options.fragment ?? composition.initialFragment;
-    this.sourceInstances = instantiateSceneFragment(composition, {
+    const placements = instantiateSceneFragmentPlacements(composition, {
       ...options,
       fragment: this.fragment,
       path: `${path}.sceneComposition`,
     });
+    this.sourceInstances = placements.map((placement) => placement.instance);
+    for (const placement of placements) {
+      this.placementsById.set(placement.instance.id, placement.placement);
+    }
     for (const instance of this.sourceInstances) {
       this.instancesById.set(instance.id, instance);
     }
@@ -383,8 +416,10 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         },
       };
     } else if (sameSceneCompositionJsonValue(ref.instance.props[DATA_SCENE_COMPONENTS_PROP], patch)) {
+      this.assertFlatInstancePatch(ref.instance, "scenePlacementViewer.updateInstanceComponents.instanceId");
       this.draftComponents.delete(ref.instance.id);
     } else {
+      this.assertFlatInstancePatch(ref.instance, "scenePlacementViewer.updateInstanceComponents.instanceId");
       this.draftComponents.set(ref.instance.id, patch);
     }
     this.pickBounds = this.createPickBounds(this.path);
@@ -409,8 +444,10 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
           behaviorProp,
         );
       } else if (sameBehaviorBindingPatch(ref.instance.props[behaviorProp], patch)) {
+        this.assertFlatInstancePatch(ref.instance, "scenePlacementViewer.updateBehaviorBinding.target.instanceId");
         this.draftInstanceBehaviorBindings.delete(ref.instance.id);
       } else {
+        this.assertFlatInstancePatch(ref.instance, "scenePlacementViewer.updateBehaviorBinding.target.instanceId");
         this.draftInstanceBehaviorBindings.set(ref.instance.id, patch);
       }
       this.pickBounds = this.createPickBounds(this.path);
@@ -454,8 +491,10 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         id: next,
       };
     } else if (next === ref.instance.id) {
+      this.assertFlatInstancePatch(ref.instance, "scenePlacementViewer.renameInstance.instanceId");
       this.draftRenames.delete(ref.instance.id);
     } else {
+      this.assertFlatInstancePatch(ref.instance, "scenePlacementViewer.renameInstance.instanceId");
       this.draftRenames.set(ref.instance.id, next);
     }
     this.retargetSelectedAndHovered(instanceId, next);
@@ -519,6 +558,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     if (ref.kind === "added") {
       this.draftAddedInstances.splice(ref.index, 1);
     } else {
+      this.assertFlatInstancePatch(ref.instance, "scenePlacementViewer.removeInstance.instanceId");
       this.draftRemovedInstanceIds.add(ref.instance.id);
       this.draftTransforms.delete(ref.instance.id);
       this.draftComponents.delete(ref.instance.id);
@@ -572,11 +612,21 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       if (draft !== undefined) {
         const transform = transformDiff(sourceTransform(instance), draft);
         if (hasTransformPatch(transform)) {
-          operations.push({
-            kind: "updateTransform",
-            instanceId: currentId,
-            transform,
-          });
+          const placement = this.placementsById.get(instance.id);
+          if (placement === undefined || isFlatPlacement(instance, placement)) {
+            operations.push({
+              kind: "updateTransform",
+              instanceId: currentId,
+              transform,
+            });
+          } else {
+            operations.push({
+              kind: "updateResolvedTransform",
+              instanceId: currentId,
+              target: placementTransformTarget(placement),
+              transform: inversePlacementTransform(placement.parentTransform, draft),
+            });
+          }
         }
       }
       const components = this.draftComponents.get(instance.id);
@@ -924,6 +974,16 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
   private behaviorBindingProp(): string {
     return this.behaviorProp ?? GAMEPLAY_BEHAVIOR_BINDING_PROP;
   }
+
+  private assertFlatInstancePatch(instance: ResolvedSceneCompositionInstance, path: string): void {
+    const placement = this.placementsById.get(instance.id);
+    if (placement !== undefined && !isFlatPlacement(instance, placement)) {
+      throw gameplayAuthoringDiagnosticError(
+        path,
+        "included scene instances currently support transform patches only",
+      );
+    }
+  }
 }
 
 interface ScenePlacementDraftAddedInstance {
@@ -1200,6 +1260,55 @@ function sourceTransform(instance: ResolvedSceneCompositionInstance): ScenePlace
   };
 }
 
+function isFlatPlacement(
+  instance: ResolvedSceneCompositionInstance,
+  placement: SceneCompositionInstancePlacement,
+): boolean {
+  return placement.kind === "fragmentInstance"
+    && placement.instanceId === instance.id
+    && placement.parentTransform.x === 0
+    && placement.parentTransform.y === 0
+    && placement.parentTransform.rotationRadians === 0
+    && placement.parentTransform.scale === 1
+    && placement.parentTransform.layer === 0;
+}
+
+function placementTransformTarget(
+  placement: SceneCompositionInstancePlacement,
+): ScenePlacementResolvedTransformTarget {
+  if (placement.kind === "fragmentInstance") {
+    return {
+      kind: placement.kind,
+      fragment: placement.fragment,
+      instanceId: placement.instanceId,
+    };
+  }
+  return {
+    kind: placement.kind,
+    fragment: placement.fragment,
+    includeIndex: placement.includeIndex,
+    includedFragment: placement.includedFragment,
+    instanceId: placement.instanceId,
+  };
+}
+
+function inversePlacementTransform(
+  parent: ScenePlacementTransform,
+  world: ScenePlacementTransform,
+): ScenePlacementTransform {
+  const deltaX = world.x - parent.x;
+  const deltaY = world.y - parent.y;
+  const cos = Math.cos(parent.rotationRadians);
+  const sin = Math.sin(parent.rotationRadians);
+  return {
+    x: (deltaX * cos + deltaY * sin) / parent.scale,
+    y: (-deltaX * sin + deltaY * cos) / parent.scale,
+    rotationRadians: world.rotationRadians - parent.rotationRadians,
+    scale: world.scale / parent.scale,
+    layer: world.layer - parent.layer,
+  };
+}
+
 function validatedTransformPatch(
   transform: Partial<ScenePlacementTransform>,
   path: string,
@@ -1302,6 +1411,13 @@ function copyScenePlacementPatchOperation(
         kind: "updateTransform",
         instanceId: operation.instanceId,
         transform: copyTransformPatch(operation.transform),
+      };
+    case "updateResolvedTransform":
+      return {
+        kind: "updateResolvedTransform",
+        instanceId: operation.instanceId,
+        target: { ...operation.target },
+        transform: { ...operation.transform },
       };
     case "updateComponents":
       return {

@@ -184,6 +184,11 @@ export interface FerrumSceneApi {
   resumeDataScene(): boolean;
   completeDataScene(): boolean;
   builtInShooterPlayerHandle(): GameplayEntityHandle | undefined;
+  builtInPlatformerPlayerHandle(): GameplayEntityHandle | undefined;
+  builtInBreakoutPaddleHandle(): GameplayEntityHandle | undefined;
+  builtInBreakoutBallHandle(): GameplayEntityHandle | undefined;
+  /** Low-frequency authoring hook for an existing generation-safe scene entity. */
+  setBuiltInSceneEntityPosition(handle: GameplayEntityHandle, x: number, y: number): boolean;
   captureShooterStateSnapshot(): BuiltInShooterStateSnapshot | undefined;
   restoreShooterStateSnapshot(snapshot: BuiltInShooterStateSnapshot): boolean;
   useDataScene(): void;

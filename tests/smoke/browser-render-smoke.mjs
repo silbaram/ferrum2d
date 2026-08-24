@@ -1249,6 +1249,7 @@ async function smokePlacementViewer(page, timeoutMs) {
       }
       const width = gl.drawingBufferWidth;
       const height = gl.drawingBufferHeight;
+      const rect = canvas.getBoundingClientRect();
       const pixels = new Uint8Array(width * height * 4);
       gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
       const firstRed = pixels[0];
@@ -1272,6 +1273,13 @@ async function smokePlacementViewer(page, timeoutMs) {
       return {
         width,
         height,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        clientWidth: canvas.clientWidth,
+        clientHeight: canvas.clientHeight,
+        rectWidth: rect.width,
+        rectHeight: rect.height,
+        contextLost: gl.isContextLost(),
         nonTransparentPixelCount,
         differentFromFirstPixelCount,
       };

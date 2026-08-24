@@ -22,11 +22,19 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "base-uri": "'none'",
+        "object-src": "'none'",
+        "connect-src": "'self' ipc: http://ipc.localhost ferrum-asset: http://ferrum-asset.localhost https://ferrum-asset.localhost",
+        "img-src": "'self' data: blob: ferrum-asset: http://ferrum-asset.localhost https://ferrum-asset.localhost",
+        "script-src": "'self' 'wasm-unsafe-eval'",
+        "style-src": "'self' 'unsafe-inline'"
+      }
     }
   },
   "bundle": {
-    "active": false,
+    "active": true,
     "targets": "all",
     "icon": []
   }

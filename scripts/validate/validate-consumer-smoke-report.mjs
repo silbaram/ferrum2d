@@ -3,6 +3,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  DEPLOYMENT_CANVAS_READBACK_MAX_ATTEMPTS,
   DEPLOYMENT_RUNTIME_SAMPLE_FRAMES,
   runtimeBudgetProfile,
 } from "../../tests/smoke/runtime-budget-profiles.mjs";
@@ -532,6 +533,15 @@ function validateDeploymentBrowserSummary(value, label, reportErrors, templateNa
     if (value.canvas.nonblank !== true) reportErrors.push(`${label}.canvas.nonblank must be true`);
     if (value.canvas.readbackSource !== "same-raf-after-render") {
       reportErrors.push(`${label}.canvas.readbackSource must be same-raf-after-render`);
+    }
+    if (
+      !Number.isInteger(value.canvas.readbackAttempts) ||
+      value.canvas.readbackAttempts < 1 ||
+      value.canvas.readbackAttempts > DEPLOYMENT_CANVAS_READBACK_MAX_ATTEMPTS
+    ) {
+      reportErrors.push(
+        `${label}.canvas.readbackAttempts must be an integer between 1 and ${DEPLOYMENT_CANVAS_READBACK_MAX_ATTEMPTS}`,
+      );
     }
     if (!Number.isInteger(value.canvas.varyingPixelSamples) || value.canvas.varyingPixelSamples <= 0) {
       reportErrors.push(`${label}.canvas.varyingPixelSamples must be a positive integer`);

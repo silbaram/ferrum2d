@@ -47,6 +47,7 @@ export interface SceneCompositionFragmentIncludeSpec extends SceneCompositionTra
   fragment: string;
   idPrefix?: string;
   props?: SceneCompositionProps;
+  instanceTransforms?: Readonly<Record<string, SceneCompositionTransformSpec>>;
 }
 
 export interface SceneCompositionFragmentSpec {
@@ -97,6 +98,7 @@ export interface ResolvedSceneCompositionFragmentInclude extends ResolvedSceneCo
   fragment: string;
   idPrefix: string;
   props: SceneCompositionProps;
+  instanceTransforms: Readonly<Record<string, SceneCompositionTransformSpec>>;
 }
 
 export interface ResolvedSceneCompositionFragment {
@@ -117,6 +119,31 @@ export interface ResolvedSceneCompositionInstance extends ResolvedSceneCompositi
   prefab: string;
   variant?: string;
   props: SceneCompositionProps;
+}
+
+export type SceneCompositionInstancePlacement =
+  | SceneCompositionDirectInstancePlacement
+  | SceneCompositionIncludedInstancePlacement;
+
+export interface SceneCompositionDirectInstancePlacement {
+  kind: "fragmentInstance";
+  fragment: string;
+  instanceId: string;
+  parentTransform: ResolvedSceneCompositionTransform;
+}
+
+export interface SceneCompositionIncludedInstancePlacement {
+  kind: "fragmentIncludeInstance";
+  fragment: string;
+  includeIndex: number;
+  includedFragment: string;
+  instanceId: string;
+  parentTransform: ResolvedSceneCompositionTransform;
+}
+
+export interface ResolvedSceneCompositionPlacementInstance {
+  instance: ResolvedSceneCompositionInstance;
+  placement: SceneCompositionInstancePlacement;
 }
 
 export interface SceneCompositionTarget {
@@ -177,7 +204,7 @@ export function instantiateSceneFragment(
   const maxDepth = positiveInteger(options.maxDepth ?? 16, `${path}.maxDepth`);
   const rootTransform = resolveTransform(options, path);
   const rootProps = propsObject(options.props, `${path}.props`);
-  const instances = collectFragmentInstances(composition, fragment, {
+  const placements = collectFragmentInstances(composition, fragment, {
     transform: rootTransform,
     props: rootProps,
     idPrefix: optionalString(options.idPrefix, `${path}.idPrefix`, ""),
@@ -185,6 +212,7 @@ export function instantiateSceneFragment(
     path,
     stack: [],
   });
+  const instances = placements.map((placement) => placement.instance);
 
   const seen = new Set<string>();
   for (const instance of instances) {
@@ -194,6 +222,37 @@ export function instantiateSceneFragment(
     seen.add(instance.id);
   }
   return instances;
+}
+
+export function instantiateSceneFragmentPlacements(
+  spec: SceneCompositionSpec | ResolvedSceneCompositionSpec,
+  options: InstantiateSceneFragmentOptions = {},
+): ResolvedSceneCompositionPlacementInstance[] {
+  const path = options.path ?? "sceneComposition";
+  const composition = isResolvedSceneCompositionSpec(spec)
+    ? spec
+    : resolveSceneCompositionSpec(spec as SceneCompositionSpec, { path });
+  const fragment = options.fragment ?? composition.initialFragment;
+  if (composition.fragments[fragment] === undefined) {
+    throw sceneCompositionDiagnosticError(`${path}.fragment`, `references unknown fragment '${fragment}'`);
+  }
+  const placements = collectFragmentInstances(composition, fragment, {
+    transform: resolveTransform(options, path),
+    props: propsObject(options.props, `${path}.props`),
+    idPrefix: optionalString(options.idPrefix, `${path}.idPrefix`, ""),
+    maxDepth: positiveInteger(options.maxDepth ?? 16, `${path}.maxDepth`),
+    path,
+    stack: [],
+  });
+
+  const seen = new Set<string>();
+  for (const { instance } of placements) {
+    if (seen.has(instance.id)) {
+      throw sceneCompositionDiagnosticError(`${path}.instances.${instance.id}`, "resolved instance id must be unique");
+    }
+    seen.add(instance.id);
+  }
+  return placements;
 }
 
 export function applySceneCompositionFragment(
@@ -332,6 +391,10 @@ function resolveFragmentInclude(
     idPrefix: optionalString(value.idPrefix, `${path}.idPrefix`, ""),
     ...resolveTransform(value, path),
     props: propsObject(value.props, `${path}.props`),
+    instanceTransforms: resolveFragmentInstanceTransforms(
+      value.instanceTransforms,
+      `${path}.instanceTransforms`,
+    ),
   };
 }
 
@@ -378,7 +441,7 @@ function collectFragmentInstances(
   composition: ResolvedSceneCompositionSpec,
   fragmentId: string,
   context: CollectFragmentContext,
-): ResolvedSceneCompositionInstance[] {
+): ResolvedSceneCompositionPlacementInstance[] {
   if (context.stack.length >= context.maxDepth) {
     throw sceneCompositionDiagnosticError(`${context.path}.fragments.${fragmentId}`, "fragment include depth exceeded maxDepth");
   }
@@ -390,17 +453,58 @@ function collectFragmentInstances(
     throw sceneCompositionDiagnosticError(`${context.path}.fragments.${fragmentId}`, `references unknown fragment '${fragmentId}'`);
   }
   const nextStack = [...context.stack, fragmentId];
-  const instances: ResolvedSceneCompositionInstance[] = [];
-  for (const include of fragment.include) {
-    instances.push(...collectFragmentInstances(composition, include.fragment, {
-      transform: composeTransform(context.transform, include),
+  const instances: ResolvedSceneCompositionPlacementInstance[] = [];
+  fragment.include.forEach((include, includeIndex) => {
+    const parentTransform = composeTransform(context.transform, include);
+    const includePrefix = `${context.idPrefix}${include.idPrefix}`;
+    const includedInstances = collectFragmentInstances(composition, include.fragment, {
+      transform: parentTransform,
       props: mergeProps(context.props, include.props),
-      idPrefix: `${context.idPrefix}${include.idPrefix}`,
+      idPrefix: includePrefix,
       maxDepth: context.maxDepth,
       path: context.path,
       stack: nextStack,
-    }));
-  }
+    });
+    const unmatchedOverrides = new Set(Object.keys(include.instanceTransforms));
+    for (const included of includedInstances) {
+      if (!included.instance.id.startsWith(includePrefix)) {
+        throw sceneCompositionDiagnosticError(
+          `${context.path}.fragments.${fragmentId}.include.${includeIndex}`,
+          "resolved instance id must preserve the include prefix",
+        );
+      }
+      const relativeInstanceId = included.instance.id.slice(includePrefix.length);
+      const override = include.instanceTransforms[relativeInstanceId];
+      unmatchedOverrides.delete(relativeInstanceId);
+      const instance = override === undefined
+        ? included.instance
+        : {
+          ...included.instance,
+          ...composeTransform(
+            parentTransform,
+            applyTransformPatch(inverseComposeTransform(parentTransform, included.instance), override),
+          ),
+        };
+      instances.push({
+        instance,
+        placement: {
+          kind: "fragmentIncludeInstance",
+          fragment: fragmentId,
+          includeIndex,
+          includedFragment: include.fragment,
+          instanceId: relativeInstanceId,
+          parentTransform: { ...parentTransform },
+        },
+      });
+    }
+    const unmatchedOverride = unmatchedOverrides.values().next().value as string | undefined;
+    if (unmatchedOverride !== undefined) {
+      throw sceneCompositionDiagnosticError(
+        `${context.path}.fragments.${fragmentId}.include.${includeIndex}.instanceTransforms.${unmatchedOverride}`,
+        `references unknown included scene instance '${unmatchedOverride}'`,
+      );
+    }
+  });
   fragment.instances.forEach((instance, index) => {
     const prefab = composition.prefabs[instance.prefab];
     if (prefab === undefined) {
@@ -410,15 +514,87 @@ function collectFragmentInstances(
     const prefabProps = variant?.props ?? prefab.props;
     const sourceId = instance.id ?? `${fragmentId}.${index}`;
     instances.push({
-      id: `${context.idPrefix}${sourceId}`,
-      sourceId,
-      prefab: instance.prefab,
-      ...(instance.variant === undefined ? {} : { variant: instance.variant }),
-      ...composeTransform(context.transform, instance),
-      props: mergeProps(prefabProps, context.props, instance.props),
+      instance: {
+        id: `${context.idPrefix}${sourceId}`,
+        sourceId,
+        prefab: instance.prefab,
+        ...(instance.variant === undefined ? {} : { variant: instance.variant }),
+        ...composeTransform(context.transform, instance),
+        props: mergeProps(prefabProps, context.props, instance.props),
+      },
+      placement: {
+        kind: "fragmentInstance",
+        fragment: fragmentId,
+        instanceId: sourceId,
+        parentTransform: { ...context.transform },
+      },
     });
   });
   return instances;
+}
+
+function resolveFragmentInstanceTransforms(
+  value: unknown,
+  path: string,
+): Record<string, SceneCompositionTransformSpec> {
+  if (value === undefined) {
+    return {};
+  }
+  const input = requiredRecord(value, path);
+  const transforms: Record<string, SceneCompositionTransformSpec> = {};
+  for (const [instanceId, transform] of Object.entries(input)) {
+    requiredString(instanceId, `${path}.${instanceId}`);
+    if (!isRecord(transform)) {
+      throw sceneCompositionDiagnosticError(`${path}.${instanceId}`, "must be an object");
+    }
+    transforms[instanceId] = resolveTransformPatch(transform, `${path}.${instanceId}`);
+  }
+  return transforms;
+}
+
+function resolveTransformPatch(
+  value: { x?: unknown; y?: unknown; rotationRadians?: unknown; scale?: unknown; layer?: unknown },
+  path: string,
+): SceneCompositionTransformSpec {
+  return {
+    ...(value.x === undefined ? {} : { x: finiteNumber(value.x, `${path}.x`) }),
+    ...(value.y === undefined ? {} : { y: finiteNumber(value.y, `${path}.y`) }),
+    ...(value.rotationRadians === undefined
+      ? {}
+      : { rotationRadians: finiteNumber(value.rotationRadians, `${path}.rotationRadians`) }),
+    ...(value.scale === undefined ? {} : { scale: positiveNumber(value.scale, `${path}.scale`) }),
+    ...(value.layer === undefined ? {} : { layer: finiteNumber(value.layer, `${path}.layer`) }),
+  };
+}
+
+function applyTransformPatch(
+  transform: ResolvedSceneCompositionTransform,
+  patch: SceneCompositionTransformSpec,
+): ResolvedSceneCompositionTransform {
+  return {
+    x: patch.x ?? transform.x,
+    y: patch.y ?? transform.y,
+    rotationRadians: patch.rotationRadians ?? transform.rotationRadians,
+    scale: patch.scale ?? transform.scale,
+    layer: patch.layer ?? transform.layer,
+  };
+}
+
+function inverseComposeTransform(
+  parent: ResolvedSceneCompositionTransform,
+  world: ResolvedSceneCompositionTransform,
+): ResolvedSceneCompositionTransform {
+  const deltaX = world.x - parent.x;
+  const deltaY = world.y - parent.y;
+  const cos = Math.cos(parent.rotationRadians);
+  const sin = Math.sin(parent.rotationRadians);
+  return {
+    x: (deltaX * cos + deltaY * sin) / parent.scale,
+    y: (-deltaX * sin + deltaY * cos) / parent.scale,
+    rotationRadians: world.rotationRadians - parent.rotationRadians,
+    scale: world.scale / parent.scale,
+    layer: world.layer - parent.layer,
+  };
 }
 
 function composeTransform(

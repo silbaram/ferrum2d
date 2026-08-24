@@ -1,5 +1,8 @@
 use wasm_bindgen::prelude::*;
 
+use crate::components::Transform2D;
+use crate::entity::Entity;
+
 use super::scenes::{ActiveScene, SceneMode};
 use super::Engine;
 
@@ -38,6 +41,97 @@ impl Engine {
         self.world
             .primary_actor_entity()
             .map_or(0, |entity| entity.generation)
+    }
+
+    pub fn built_in_platformer_player_entity_id(&self) -> u32 {
+        if self.scene_mode != SceneMode::BuiltIn || !self.scenes.is_active(ActiveScene::Platformer)
+        {
+            return INVALID_ENTITY_ID;
+        }
+        self.scenes
+            .platformer()
+            .player_entity()
+            .map_or(INVALID_ENTITY_ID, |entity| entity.id)
+    }
+
+    pub fn built_in_platformer_player_entity_generation(&self) -> u32 {
+        if self.scene_mode != SceneMode::BuiltIn || !self.scenes.is_active(ActiveScene::Platformer)
+        {
+            return 0;
+        }
+        self.scenes
+            .platformer()
+            .player_entity()
+            .map_or(0, |entity| entity.generation)
+    }
+
+    pub fn built_in_breakout_paddle_entity_id(&self) -> u32 {
+        if self.scene_mode != SceneMode::BuiltIn || !self.scenes.is_active(ActiveScene::Breakout) {
+            return INVALID_ENTITY_ID;
+        }
+        self.scenes
+            .breakout()
+            .paddle_entity()
+            .map_or(INVALID_ENTITY_ID, |entity| entity.id)
+    }
+
+    pub fn built_in_breakout_paddle_entity_generation(&self) -> u32 {
+        if self.scene_mode != SceneMode::BuiltIn || !self.scenes.is_active(ActiveScene::Breakout) {
+            return 0;
+        }
+        self.scenes
+            .breakout()
+            .paddle_entity()
+            .map_or(0, |entity| entity.generation)
+    }
+
+    pub fn built_in_breakout_ball_entity_id(&self) -> u32 {
+        if self.scene_mode != SceneMode::BuiltIn || !self.scenes.is_active(ActiveScene::Breakout) {
+            return INVALID_ENTITY_ID;
+        }
+        self.scenes
+            .breakout()
+            .ball_entity()
+            .map_or(INVALID_ENTITY_ID, |entity| entity.id)
+    }
+
+    pub fn built_in_breakout_ball_entity_generation(&self) -> u32 {
+        if self.scene_mode != SceneMode::BuiltIn || !self.scenes.is_active(ActiveScene::Breakout) {
+            return 0;
+        }
+        self.scenes
+            .breakout()
+            .ball_entity()
+            .map_or(0, |entity| entity.generation)
+    }
+
+    pub fn set_built_in_scene_entity_position(
+        &mut self,
+        entity_id: u32,
+        entity_generation: u32,
+        x: f32,
+        y: f32,
+    ) -> bool {
+        if !x.is_finite() || !y.is_finite() {
+            return false;
+        }
+        let entity = Entity {
+            id: entity_id,
+            generation: entity_generation,
+        };
+        let active_scene_entity = self.scene_mode == SceneMode::BuiltIn
+            && ((self.scenes.is_active(ActiveScene::Shooter)
+                && self.world.primary_actor_entity() == Some(entity))
+                || (self.scenes.is_active(ActiveScene::Platformer)
+                    && self.scenes.platformer().player_entity() == Some(entity))
+                || (self.scenes.is_active(ActiveScene::Breakout)
+                    && (self.scenes.breakout().paddle_entity() == Some(entity)
+                        || self.scenes.breakout().ball_entity() == Some(entity))));
+        if !active_scene_entity || self.world.transform(entity).is_none() {
+            return false;
+        }
+        self.world.set_transform(entity, Transform2D { x, y });
+        true
     }
 
     pub fn use_data_scene(&mut self) {

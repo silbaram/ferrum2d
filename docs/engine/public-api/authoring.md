@@ -10,6 +10,7 @@ import {
   resolveDataSceneComponentsSpec,
   DATA_SCENE_PRIMITIVE_TEXTURES,
   dataSceneObjectVisualBounds,
+  applyBuiltInSceneAuthoringDocument,
   applyDataSceneAuthoringDocument,
   attachDataSceneVariableRuntimeEngineAdapter,
   compileDataSceneVariableRuntimeIds,
@@ -48,6 +49,7 @@ import {
 | `resolveDataSceneComponentsSpec(...)` | `props.components` v1 `visual` 또는 legacy `sprite`, collider, layer, template descriptor를 검증하고 정규화한다. |
 | `DATA_SCENE_PRIMITIVE_TEXTURES`, `dataSceneObjectVisualBounds(...)` | primitive visual fallback texture id와 placement/picking용 resolved visual bounds를 노출한다. |
 | `applyDataSceneAuthoringDocument(...)` | scene-authoring envelope와 optional 변수 선언을 검증하고 Data Scene runtime target으로 spawn한 뒤 behavior recipe command를 적용한다. 결과의 `variables`로 선언된 값을 접근한다. |
+| `applyBuiltInSceneAuthoringDocument(...)` | 활성 Shooter/Platformer/Breakout scene이 소유한 기존 entity handle에 위치와 Behavior Recipe를 적용한다. generic Data Scene spawn과 분리된 저빈도 adapter다. |
 | `createDataSceneRuntimeTarget(...)` | `FerrumEngine`을 Data Scene spawn target으로 감싸 `applySceneBehaviorRecipes(...)`에 넘길 수 있게 한다. |
 | `compileDataSceneVariableRuntimeIds(...)` | 선언 이름을 고유한 `1..64` numeric slot으로 컴파일한다. 명시적 `ids.variables`도 같은 범위와 완전성을 검증한다. |
 | `attachDataSceneVariableRuntimeEngineAdapter(...)` | custom `FerrumEngine` host에 낮은 빈도 Rust variable slab `clear/configure/get/set` adapter를 연결한다. `createEngine(...)` 결과에는 이미 연결돼 있다. |
@@ -104,6 +106,16 @@ entity별 TypeScript callback이나 frame hot-path 문자열 조회를 추가하
 `spawn_data_scene_entity(...)`로 컴파일한다. authoring validation 실패나 target 생성만으로 기존 scene을
 비우지 않는다. asset texture id는 `engine.textureId(name)` 또는 `options.textureId(name)`으로 해석한다.
 consumer는 generated Wasm `pkg/*`, `dist/*`, `src/*` 내부 경로를 직접 import하지 않는다.
+
+`applyBuiltInSceneAuthoringDocument(engine, scene, document, options?)`는 새 entity를 spawn하지 않는다.
+`props.runtimeEntity`를 `builtinShooterPlayer`, `builtinPlatformerPlayer`,
+`builtinBreakoutPaddle`, `builtinBreakoutBall` 중 scene에 허용된 값으로 preflight한 뒤
+`builtIn*Handle()`과 `setBuiltInSceneEntityPosition(...)`을 사용하고 behavior command를 같은 handle에 적용한다.
+같은 runtime entity의 중복 binding, 비활성 scene handle, Data Scene 변수/component, 0이 아닌 회전·layer,
+1이 아닌 scale은 mutation 전에 diagnostic으로 거부한다. built-in scene이 소유한 entity 수명을 보호하기
+위해 health, `lifetime`, pickup-despawn, collision-despawn command도 preflight에서 거부한다. 생성
+프로젝트는 첫 Playing frame과 명시적 reset 뒤에만 이 adapter를 호출하므로 frame loop에 entity별
+JS/Wasm 왕복을 추가하지 않는다.
 
 default target은 `components.visual` 또는 legacy `components.sprite`, `collider`, `layer` inline descriptor를 spawn한다.
 `visual.kind: "primitive"`는 resolved visual 의미를 유지하면서 WebGL2 runtime path에는
@@ -163,6 +175,13 @@ behavior binding draft는 `props.behaviorRecipes` 참조만 attach/detach하고 
 본문은 수정하지 않는다. target은 instance 또는 ObjectDefinition이며, `null`은 effective binding
 해제를 뜻한다. `clearDraftPatch()`는 draft를 모두 버린다.
 `createScenePlacementPatchStore(...)`는 이 patch를 JSON export용으로 보관하는 export-only store다.
+
+fragment include의 resolved instance transform은 patch version 2의 `updateResolvedTransform`을 사용한다.
+operation target에는 root fragment, include index, included fragment와 include 내부 상대 instance id가
+들어가며 world transform을 include parent-local transform으로 역변환해
+`include[].instanceTransforms[relativeInstanceId]`에 저장한다. 같은 fragment를 여러 번 include해도 선택한
+occurrence만 바뀐다. patch version 1의 flat `updateTransform`은 계속 merge할 수 있으며, nested instance의
+component/binding/rename/remove patch는 잘못된 flat target을 만들지 않도록 명시적으로 거부한다.
 
 `addInstance(...)`는 명시 `instance.id`를 요구하고 invalid/duplicate id를 거절한다. Core viewer API는
 id를 자동 생성하지 않으며, 공식 host가 사용자 입력이 비어 있을 때 deterministic id를 채운 뒤 호출한다.
@@ -254,7 +273,7 @@ palette 추가는 `addInstance(...)`, rename/remove는 각각
 loop나 Wasm ABI에는 새 per-entity mutation 경로를 추가하지 않는다.
 
 `mergeScenePlacementPatch(document, patch, options?)`는 `ScenePlacementPatch`의
-`updateTransform`, `updateComponents`, `updateBehaviorBinding`, `renameInstance`, `addObjectDefinition`,
+`updateTransform`, `updateResolvedTransform`, `updateComponents`, `updateBehaviorBinding`, `renameInstance`, `addObjectDefinition`,
 `addInstance`, `removeInstance` operation을
 scene-authoring document clone에 적용한다. 원본 문서는 수정하지 않고, `behaviorRecipes`, prefab
 catalog의 agent-owned props 같은 영역은 그대로 보존한다. `updateBehaviorBinding`은

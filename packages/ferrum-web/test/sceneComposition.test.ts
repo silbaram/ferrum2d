@@ -105,6 +105,58 @@ test("instantiateSceneFragment resolves variant props, include transforms, and u
   });
 });
 
+test("instantiateSceneFragment applies occurrence-local transforms to repeated fragment includes", () => {
+  const instances = instantiateSceneFragment({
+    prefabs: { object: {} },
+    fragments: {
+      main: {
+        include: [
+          {
+            fragment: "room",
+            idPrefix: "left.",
+            x: 100,
+            y: 50,
+            rotationRadians: Math.PI / 2,
+            scale: 2,
+            layer: 3,
+            instanceTransforms: {
+              crate: { x: 15, y: -10, rotationRadians: 0.25, scale: 2, layer: 4 },
+            },
+          },
+          { fragment: "room", idPrefix: "right.", x: -100 },
+        ],
+      },
+      room: {
+        instances: [{ id: "crate", prefab: "object", x: 4, y: 6, scale: 1.5, layer: 1 }],
+      },
+    },
+  });
+
+  const left = instances.find((instance) => instance.id === "left.crate");
+  const right = instances.find((instance) => instance.id === "right.crate");
+  okClose(left?.x, 120);
+  okClose(left?.y, 80);
+  okClose(left?.rotationRadians, Math.PI / 2 + 0.25);
+  okClose(left?.scale, 4);
+  okClose(left?.layer, 7);
+  okClose(right?.x, -96);
+  okClose(right?.y, 6);
+  okClose(right?.scale, 1.5);
+
+  expectMessage(() => instantiateSceneFragment({
+    prefabs: { object: {} },
+    fragments: {
+      main: {
+        include: [{
+          fragment: "room",
+          instanceTransforms: { missing: { x: 1 } },
+        }],
+      },
+      room: { instances: [{ id: "crate", prefab: "object" }] },
+    },
+  }), /unknown included scene instance/);
+});
+
 test("instantiateSceneFragment replaces component prop sets instead of deep-merging them", () => {
   const [instance] = instantiateSceneFragment({
     prefabs: {
@@ -230,4 +282,8 @@ function expectMessage(fn: () => void, pattern: RegExp): void {
     return;
   }
   throw new Error("Expected function to throw.");
+}
+
+function okClose(actual: number | undefined, expected: number): void {
+  equal(actual !== undefined && Math.abs(actual - expected) < 1e-9, true);
 }

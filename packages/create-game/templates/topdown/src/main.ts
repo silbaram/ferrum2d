@@ -11,6 +11,11 @@ import {
 import {
   type ShooterGameSpec,
 } from "@ferrum2d/ferrum-web/starter-scenes";
+import {
+  createBuiltInSceneAuthoringSession,
+  loadBuiltInSceneAuthoringDocument,
+  type BuiltInSceneAuthoringSession,
+} from "./ferrum-built-in-scene-authoring";
 
 import "./styles.css";
 
@@ -90,6 +95,8 @@ async function loadGameSpec(): Promise<ShooterGameSpec> {
 async function bootstrap(): Promise<void> {
   const shell = createShell();
   const gameSpec = await loadGameSpec();
+  const sceneAuthoringDocument = await loadBuiltInSceneAuthoringDocument();
+  let authoringSession: BuiltInSceneAuthoringSession | undefined;
   const runtime = await createFerrumRuntime({
     canvas: shell.canvas,
     environment: "development",
@@ -97,6 +104,9 @@ async function bootstrap(): Promise<void> {
     ui: { theme: resolveAccessibilityHudTheme(accessibility) },
     uiState: ({ frame, fps }) => hud(frame, fps),
     inputTransform: (snapshot) => shell.consumeStart() ? { ...snapshot, enter: true } : snapshot,
+    onFrame: ({ frame }) => {
+      authoringSession?.sync(frame.gameState);
+    },
     webgl2: {
       clearColor: [0.06, 0.08, 0.09, 1],
     },
@@ -104,6 +114,11 @@ async function bootstrap(): Promise<void> {
 
   runtime.engine.setGameSpec(gameSpec);
   runtime.engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });
+  authoringSession = createBuiltInSceneAuthoringSession(
+    runtime.engine,
+    "shooter",
+    sceneAuthoringDocument,
+  );
   runtime.start();
   shell.queueStart();
 

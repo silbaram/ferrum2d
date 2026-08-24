@@ -90,6 +90,8 @@ Platformer KCC는 물리적 보편 해답보다 예제 게임감과 기존 fixtu
 
 `despawnPhysicsEntity(...)`로 유효한 body를 제거하면 그 body를 어느 endpoint로든 참조하는 distance, rope, spring, pulley, revolute, prismatic, weld, gear joint도 같은 호출에서 제거된다. 제거된 joint handle은 generation이 증가해 즉시 무효화되므로 별도 `clearPhysicsJoint(...)` 호출이 필요하지 않다. World는 generation-aware per-entity incident joint count를 유지하므로 연결 joint가 없는 body의 despawn은 O(1) gate에서 8종 storage 순회를 건너뛴다. 연결 body의 cascade는 미리 capacity를 확보한 free-list에 제거 slot을 반환해 해당 경로에서 재할당하지 않는다.
 
+고차수 graph 회귀는 하나의 hub에 4,096개 spoke와 8종 joint를 연결한 총 32,768개 joint를 구성한다. hub despawn은 연결 joint를 모두 제거하고 관계없는 8종 joint를 보존해야 하며, cleanup 구간은 debug test profile에서 250ms budget을 적용한다. 이 budget은 `pnpm smoke:physics`의 `physics:joint-despawn-budget` scenario가 실제 Rust 측정 marker를 파싱해 CI에서 검증한다. 현재 구조가 budget 안에 있는 동안에는 per-kind incident index나 joint storage 변경을 도입하지 않는다.
+
 이 API는 editor나 runtime tooling처럼 호출 빈도가 낮은 흐름을 대상으로 한다. entity별 매 프레임 authoring stream 용도가 아니다.
 
 ### Rust-only helpers

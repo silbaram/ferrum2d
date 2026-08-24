@@ -7,13 +7,13 @@
       "builtinPaddle": {
         "props": {
           "runtimeEntity": "builtinBreakoutPaddle",
-          "behaviorRecipes": "paddle.survivability"
+          "behaviorRecipes": "paddle.runtimeFaction"
         }
       },
       "builtinBall": {
         "props": {
           "runtimeEntity": "builtinBreakoutBall",
-          "behaviorRecipes": "ball.sessionLifetime"
+          "behaviorRecipes": "ball.runtimeFaction"
         }
       },
       "object": {
@@ -25,11 +25,15 @@
         "instances": [
           {
             "id": "paddle",
-            "prefab": "builtinPaddle"
+            "prefab": "builtinPaddle",
+            "x": 400,
+            "y": 430
           },
           {
             "id": "ball",
-            "prefab": "builtinBall"
+            "prefab": "builtinBall",
+            "x": 400,
+            "y": 402
           }
         ]
       }
@@ -37,21 +41,19 @@
   },
   "behaviorRecipes": {
     "entities": {
-      "paddle.survivability": {
+      "paddle.runtimeFaction": {
         "recipes": [
           {
-            "kind": "health",
-            "max": 3,
-            "start": 3,
-            "onZero": "despawn"
+            "kind": "faction",
+            "faction": "player"
           }
         ]
       },
-      "ball.sessionLifetime": {
+      "ball.runtimeFaction": {
         "recipes": [
           {
-            "kind": "lifetime",
-            "seconds": 60
+            "kind": "faction",
+            "faction": "neutral"
           }
         ]
       }

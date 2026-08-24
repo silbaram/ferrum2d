@@ -661,8 +661,10 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   };
   const engine: Pick<
     FerrumEngine,
-    "setGameSpec" | "setShooterAtlasFrame" | "builtInShooterPlayerHandle" | "captureShooterStateSnapshot" | "restoreShooterStateSnapshot" |
-      "useDataScene" | "useBreakoutGame" | "configurePhysicsRuntime" | "configureFixedTimestep" |
+    "setGameSpec" | "setShooterAtlasFrame" | "builtInShooterPlayerHandle" | "builtInPlatformerPlayerHandle" |
+      "builtInBreakoutPaddleHandle" | "builtInBreakoutBallHandle" | "setBuiltInSceneEntityPosition" |
+      "captureShooterStateSnapshot" | "restoreShooterStateSnapshot" |
+      "useDataScene" | "useBreakoutGame" | "usePlatformerGame" | "configurePhysicsRuntime" | "configureFixedTimestep" |
       "configureAutoRigidBodyStep" | "stepRigidBodies" |
       "spawnRigidBody" | "addPhysicsBodyCollider" | "getPhysicsBodyColliderCount" |
       "getPhysicsBodyCollider" | "getPhysicsEntity" | "despawnPhysicsEntity" |
@@ -778,10 +780,15 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
     }),
     setShooterAtlasFrame: () => true,
     builtInShooterPlayerHandle: () => physicsEntityHandle,
+    builtInPlatformerPlayerHandle: () => physicsEntityHandle,
+    builtInBreakoutPaddleHandle: () => physicsEntityHandle,
+    builtInBreakoutBallHandle: () => physicsEntityHandle,
+    setBuiltInSceneEntityPosition: () => true,
     captureShooterStateSnapshot: () => builtInShooterState,
     restoreShooterStateSnapshot: () => true,
     useDataScene: () => undefined,
     useBreakoutGame: () => undefined,
+    usePlatformerGame: () => undefined,
     configurePhysicsRuntime: (spec) => spec,
     configureFixedTimestep: () => undefined,
     configureAutoRigidBodyStep: () => undefined,
@@ -917,6 +924,10 @@ test("public API shooter spec, audio, diagnostics, and shooter asset types", () 
   equal(engine.setGameSpec(gameSpec).enemyBehavior, "chase");
   equal(engine.setShooterAtlasFrame(shooterRuntimePrefab, shooterRuntimeAtlasFrame), true);
   equal(engine.builtInShooterPlayerHandle()?.entityId, physicsEntityHandle.entityId);
+  equal(engine.builtInPlatformerPlayerHandle()?.entityId, physicsEntityHandle.entityId);
+  equal(engine.builtInBreakoutPaddleHandle()?.entityId, physicsEntityHandle.entityId);
+  equal(engine.builtInBreakoutBallHandle()?.entityId, physicsEntityHandle.entityId);
+  equal(engine.setBuiltInSceneEntityPosition(physicsEntityHandle, 10, 20), true);
   engine.useDataScene();
   engine.useBreakoutGame();
 });

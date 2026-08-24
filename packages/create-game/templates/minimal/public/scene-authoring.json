@@ -19,7 +19,9 @@
         "instances": [
           {
             "id": "player",
-            "prefab": "builtinPlayer"
+            "prefab": "builtinPlayer",
+            "x": 400,
+            "y": 240
           }
         ]
       }

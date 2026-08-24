@@ -93,6 +93,7 @@ pub enum PlacementDesktopError {
     InvalidAssetFolderPath(String),
     InvalidProjectPath(String),
     InvalidHandoff(String),
+    WriteRegistryUnavailable,
 }
 
 #[derive(Debug, Default)]
@@ -100,8 +101,15 @@ pub struct PlacementAssetRegistry {
     assets: Mutex<HashMap<String, RegisteredPlacementAsset>>,
 }
 
+#[derive(Debug, Default)]
+pub struct PlacementWriteRegistry {
+    scene_documents: Mutex<HashSet<PathBuf>>,
+    projects: Mutex<HashSet<PathBuf>>,
+}
+
 #[derive(Debug, Clone)]
 struct RegisteredPlacementAsset {
+    asset_root: PathBuf,
     path: PathBuf,
     mime_type: &'static str,
 }
@@ -128,6 +136,9 @@ impl fmt::Display for PlacementDesktopError {
             Self::InvalidHandoff(detail) => {
                 write!(formatter, "invalid placement agent handoff: {detail}")
             }
+            Self::WriteRegistryUnavailable => {
+                write!(formatter, "placement write allowlist is unavailable")
+            }
         }
     }
 }
@@ -142,6 +153,7 @@ impl std::error::Error for PlacementDesktopError {
             Self::InvalidAssetFolderPath(_) => None,
             Self::InvalidProjectPath(_) => None,
             Self::InvalidHandoff(_) => None,
+            Self::WriteRegistryUnavailable => None,
         }
     }
 }
@@ -159,13 +171,15 @@ impl Serialize for PlacementDesktopError {
 pub fn load_placement_project_folder(
     project_path: String,
     asset_registry: State<'_, PlacementAssetRegistry>,
+    write_registry: State<'_, PlacementWriteRegistry>,
 ) -> CommandResult<PlacementProjectDocumentResponse> {
-    load_placement_project_folder_inner(project_path, Some(&asset_registry))
+    load_placement_project_folder_inner(project_path, Some(&asset_registry), Some(&write_registry))
 }
 
 fn load_placement_project_folder_inner(
     project_path: String,
     asset_registry: Option<&PlacementAssetRegistry>,
+    write_registry: Option<&PlacementWriteRegistry>,
 ) -> CommandResult<PlacementProjectDocumentResponse> {
     let project_path = parse_project_path(&project_path)?;
     let scene_document_path = project_scene_document_path(&project_path)?;
@@ -173,6 +187,10 @@ fn load_placement_project_folder_inner(
     let handoff_path = project_path.join(PROJECT_HANDOFF_FILE);
     let asset_folder =
         inspect_asset_folder_path(&project_asset_folder_path(&project_path), asset_registry)?;
+    if let Some(write_registry) = write_registry {
+        write_registry.authorize_project(&project_path)?;
+        write_registry.authorize_scene_document(&scene_document_path)?;
+    }
     Ok(PlacementProjectDocumentResponse {
         project_path: project_path.display().to_string(),
         scene_document_path: scene_document_path.display().to_string(),
@@ -194,9 +212,20 @@ pub fn inspect_placement_asset_folder(
 #[tauri::command]
 pub fn load_placement_scene_document(
     scene_document_path: Option<String>,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<PlacementSceneDocumentResponse> {
+    load_placement_scene_document_inner(scene_document_path, Some(&write_registry))
+}
+
+fn load_placement_scene_document_inner(
+    scene_document_path: Option<String>,
+    write_registry: Option<&PlacementWriteRegistry>,
 ) -> CommandResult<PlacementSceneDocumentResponse> {
     let path = resolve_scene_document_path(scene_document_path.as_deref())?;
     let document = read_scene_document(&path)?;
+    if let Some(write_registry) = write_registry {
+        write_registry.authorize_scene_document(&path)?;
+    }
     Ok(PlacementSceneDocumentResponse {
         path: path.display().to_string(),
         document,
@@ -208,10 +237,21 @@ pub fn save_placement_agent_handoff(
     project_path: Option<String>,
     scene_document_path: Option<String>,
     handoff: Value,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<PlacementAgentHandoffResponse> {
+    save_placement_agent_handoff_inner(project_path, scene_document_path, handoff, &write_registry)
+}
+
+fn save_placement_agent_handoff_inner(
+    project_path: Option<String>,
+    scene_document_path: Option<String>,
+    handoff: Value,
+    write_registry: &PlacementWriteRegistry,
 ) -> CommandResult<PlacementAgentHandoffResponse> {
     validate_agent_handoff(&handoff)?;
     let project_path =
         resolve_handoff_project_path(project_path.as_deref(), scene_document_path.as_deref())?;
+    let project_path = write_registry.require_project(&project_path)?;
     let handoff_path = project_path.join(PROJECT_HANDOFF_FILE);
     write_agent_handoff(&handoff_path, handoff)
 }
@@ -220,8 +260,18 @@ pub fn save_placement_agent_handoff(
 pub fn save_placement_scene_document(
     scene_document_path: Option<String>,
     document: Value,
+    write_registry: State<'_, PlacementWriteRegistry>,
+) -> CommandResult<PlacementSceneDocumentResponse> {
+    save_placement_scene_document_inner(scene_document_path, document, &write_registry)
+}
+
+fn save_placement_scene_document_inner(
+    scene_document_path: Option<String>,
+    document: Value,
+    write_registry: &PlacementWriteRegistry,
 ) -> CommandResult<PlacementSceneDocumentResponse> {
     let path = resolve_scene_document_path(scene_document_path.as_deref())?;
+    let path = write_registry.require_scene_document(&path)?;
     let document = write_scene_document(&path, document)?;
     Ok(PlacementSceneDocumentResponse {
         path: path.display().to_string(),
@@ -236,9 +286,12 @@ pub fn placement_asset_protocol_response<R: tauri::Runtime>(
     if request.method() == http::Method::OPTIONS {
         return placement_asset_options_response();
     }
+    if request.method() != http::Method::GET && request.method() != http::Method::HEAD {
+        return placement_asset_error_response(http::StatusCode::METHOD_NOT_ALLOWED);
+    }
     let registry = context.app_handle().state::<PlacementAssetRegistry>();
     match registry.asset_for_request(request.uri()) {
-        Ok(asset) => asset_response(&asset),
+        Ok(asset) => asset_response(&asset, request.method() == http::Method::GET),
         Err(status) => placement_asset_error_response(status),
     }
 }
@@ -247,6 +300,22 @@ fn write_agent_handoff(
     path: &Path,
     handoff: Value,
 ) -> CommandResult<PlacementAgentHandoffResponse> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(PlacementDesktopError::InvalidHandoff(format!(
+                "{} must not be a symbolic link",
+                path.display()
+            )));
+        }
+        Ok(_) => {}
+        Err(source) if source.kind() == std::io::ErrorKind::NotFound => {}
+        Err(source) => {
+            return Err(PlacementDesktopError::Io {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    }
     let json =
         serde_json::to_string_pretty(&handoff).map_err(|source| PlacementDesktopError::Json {
             path: path.to_path_buf(),
@@ -516,6 +585,7 @@ fn inspect_asset_folder_path(
         registry_assets.insert(
             id.clone(),
             RegisteredPlacementAsset {
+                asset_root: canonical_asset_root.clone(),
                 path: canonical_path.clone(),
                 mime_type,
             },
@@ -572,8 +642,85 @@ impl PlacementAssetRegistry {
     }
 }
 
-fn asset_response(asset: &RegisteredPlacementAsset) -> http::Response<Vec<u8>> {
-    match fs::read(&asset.path) {
+impl PlacementWriteRegistry {
+    fn authorize_scene_document(&self, path: &Path) -> CommandResult<()> {
+        let canonical_path = canonical_write_path(path)?;
+        let canonical_project_path =
+            canonical_write_path(&infer_project_path_from_scene_document(&canonical_path))?;
+        let mut scene_documents = self
+            .scene_documents
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?;
+        let mut projects = self
+            .projects
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?;
+        scene_documents.insert(canonical_path);
+        projects.insert(canonical_project_path);
+        Ok(())
+    }
+
+    fn authorize_project(&self, path: &Path) -> CommandResult<()> {
+        let canonical_path = canonical_write_path(path)?;
+        self.projects
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?
+            .insert(canonical_path);
+        Ok(())
+    }
+
+    fn require_scene_document(&self, path: &Path) -> CommandResult<PathBuf> {
+        let canonical_path = canonical_write_path(path)?;
+        let authorized = self
+            .scene_documents
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?
+            .contains(&canonical_path);
+        if !authorized {
+            return Err(PlacementDesktopError::InvalidDocumentPath(format!(
+                "{} was not opened by the desktop host",
+                path.display()
+            )));
+        }
+        Ok(canonical_path)
+    }
+
+    fn require_project(&self, path: &Path) -> CommandResult<PathBuf> {
+        let canonical_path = canonical_write_path(path)?;
+        let authorized = self
+            .projects
+            .lock()
+            .map_err(|_| PlacementDesktopError::WriteRegistryUnavailable)?
+            .contains(&canonical_path);
+        if !authorized {
+            return Err(PlacementDesktopError::InvalidProjectPath(format!(
+                "{} was not opened by the desktop host",
+                path.display()
+            )));
+        }
+        Ok(canonical_path)
+    }
+}
+
+fn canonical_write_path(path: &Path) -> CommandResult<PathBuf> {
+    path.canonicalize()
+        .map_err(|source| PlacementDesktopError::Io {
+            path: path.to_path_buf(),
+            source,
+        })
+}
+
+fn asset_response(asset: &RegisteredPlacementAsset, include_body: bool) -> http::Response<Vec<u8>> {
+    let canonical_path = match asset.path.canonicalize() {
+        Ok(path) if path == asset.path && path.starts_with(&asset.asset_root) => path,
+        _ => return placement_asset_error_response(http::StatusCode::NOT_FOUND),
+    };
+    let body = if include_body {
+        fs::read(&canonical_path)
+    } else {
+        fs::metadata(&canonical_path).map(|_| Vec::new())
+    };
+    match body {
         Ok(bytes) => placement_asset_response_builder(http::StatusCode::OK)
             .header(http::header::CONTENT_TYPE, asset.mime_type)
             .header(http::header::CACHE_CONTROL, "no-store")
@@ -612,14 +759,17 @@ fn placement_asset_response_builder(status: http::StatusCode) -> http::response:
 
 fn placement_asset_id_from_uri(uri: &http::Uri) -> Option<String> {
     let path = uri.path().trim_start_matches('/');
-    let raw_id =
-        if uri.scheme_str() == Some(RUNTIME_ASSET_PROTOCOL) && uri.host() == Some("project") {
-            path
-        } else if let Some(rest) = path.strip_prefix("project/") {
-            rest
-        } else {
-            return None;
-        };
+    let scheme = uri.scheme_str();
+    let host = uri.host();
+    let raw_id = if scheme == Some(RUNTIME_ASSET_PROTOCOL) && host == Some("project") {
+        path
+    } else if (scheme == Some(RUNTIME_ASSET_PROTOCOL) && host == Some("localhost"))
+        || (matches!(scheme, Some("http" | "https")) && host == Some("ferrum-asset.localhost"))
+    {
+        path.strip_prefix("project/")?
+    } else {
+        return None;
+    };
     percent_decode(raw_id)
 }
 
@@ -805,8 +955,8 @@ mod tests {
 
     #[test]
     fn loads_sample_scene_document() {
-        let response =
-            load_placement_scene_document(None).expect("sample scene document should load");
+        let response = load_placement_scene_document_inner(None, None)
+            .expect("sample scene document should load");
         assert!(response.path.ends_with("placement.scene-authoring.json"));
         assert_eq!(
             response.document.get("format").and_then(Value::as_str),
@@ -824,7 +974,7 @@ mod tests {
         ));
         write_scene_document(&path, source.clone()).expect("scene document fixture should save");
 
-        let response = load_placement_scene_document(Some(path.display().to_string()))
+        let response = load_placement_scene_document_inner(Some(path.display().to_string()), None)
             .expect("explicit scene document should load");
         let _ = fs::remove_file(&path);
 
@@ -871,7 +1021,7 @@ mod tests {
 
     #[test]
     fn writes_scene_document_to_path() {
-        let source = load_placement_scene_document(None)
+        let source = load_placement_scene_document_inner(None, None)
             .expect("sample scene document should load")
             .document;
         let path = std::env::temp_dir().join(format!(
@@ -896,9 +1046,19 @@ mod tests {
             std::process::id()
         ));
 
-        let response =
-            save_placement_scene_document(Some(path.display().to_string()), source.clone())
-                .expect("explicit scene document should save");
+        write_scene_document(&path, source.clone()).expect("scene document fixture should save");
+        let write_registry = PlacementWriteRegistry::default();
+        load_placement_scene_document_inner(
+            Some(path.display().to_string()),
+            Some(&write_registry),
+        )
+        .expect("explicit scene document should be authorized by loading it");
+        let response = save_placement_scene_document_inner(
+            Some(path.display().to_string()),
+            source.clone(),
+            &write_registry,
+        )
+        .expect("explicit scene document should save");
         let loaded = read_scene_document(&path).expect("saved scene document should reload");
         let _ = fs::remove_file(&path);
 
@@ -908,11 +1068,43 @@ mod tests {
     }
 
     #[test]
+    fn save_command_rejects_scene_document_that_was_not_opened() {
+        let (project_path, source) = create_project_fixture("unauthorized-scene-save");
+        let unauthorized_path = project_path.join("public/other.scene-authoring.json");
+        write_scene_document(&unauthorized_path, source.clone())
+            .expect("unauthorized scene fixture should save");
+        let write_registry = PlacementWriteRegistry::default();
+        load_placement_scene_document_inner(
+            Some(
+                project_path
+                    .join("public/scene-authoring.json")
+                    .display()
+                    .to_string(),
+            ),
+            Some(&write_registry),
+        )
+        .expect("primary scene document should be authorized");
+
+        let error = save_placement_scene_document_inner(
+            Some(unauthorized_path.display().to_string()),
+            source,
+            &write_registry,
+        )
+        .expect_err("a sibling scene document must not inherit write access");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert!(matches!(
+            error,
+            PlacementDesktopError::InvalidDocumentPath(_)
+        ));
+    }
+
+    #[test]
     fn loads_scene_document_from_project_folder() {
         let (project_path, source) = create_project_fixture("project-load");
 
         let response =
-            load_placement_project_folder_inner(project_path.display().to_string(), None)
+            load_placement_project_folder_inner(project_path.display().to_string(), None, None)
                 .expect("project folder should load");
         let _ = fs::remove_dir_all(&project_path);
 
@@ -991,7 +1183,7 @@ mod tests {
                     .expect("asset uri should parse"),
             )
             .expect("registered asset should resolve");
-        let asset_response = asset_response(&asset);
+        let asset_response = asset_response(&asset, true);
         assert_eq!(asset_response.status(), http::StatusCode::OK);
         assert_placement_asset_cors_headers(&asset_response);
         assert_eq!(
@@ -999,6 +1191,9 @@ mod tests {
             Some(&http::HeaderValue::from_static("image/webp"))
         );
         assert_eq!(asset_response.body(), b"webp");
+        let head_response = asset_response(&asset, false);
+        assert_eq!(head_response.status(), http::StatusCode::OK);
+        assert!(head_response.body().is_empty());
         let _ = fs::remove_dir_all(&project_path);
     }
 
@@ -1042,6 +1237,41 @@ mod tests {
             placement_asset_id_from_uri(&localhost_proxy_uri).as_deref(),
             Some("ship one")
         );
+
+        let unrelated_uri = "https://example.com/project/ship%20one"
+            .parse::<http::Uri>()
+            .expect("unrelated uri should parse");
+        assert_eq!(placement_asset_id_from_uri(&unrelated_uri), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn registered_asset_rejects_path_replaced_by_external_symbolic_link() {
+        use std::os::unix::fs::symlink;
+
+        let project_path = create_project_asset_fixture("asset-symlink-swap");
+        let asset_path = project_path.join(PROJECT_ASSET_FOLDER).join("atlas.png");
+        let external_path = unique_temp_dir("external-asset").with_extension("png");
+        fs::write(&external_path, b"external").expect("external asset fixture should be written");
+        let registry = PlacementAssetRegistry::default();
+        inspect_asset_folder_path(&project_path.join(PROJECT_ASSET_FOLDER), Some(&registry))
+            .expect("asset folder should inspect");
+        fs::remove_file(&asset_path).expect("registered asset should be removed");
+        symlink(&external_path, &asset_path).expect("external asset symlink should be created");
+
+        let asset = registry
+            .asset_for_request(
+                &"ferrum-asset://localhost/project/atlas"
+                    .parse::<http::Uri>()
+                    .expect("asset uri should parse"),
+            )
+            .expect("registered asset id should still resolve");
+        let response = asset_response(&asset, true);
+
+        let _ = fs::remove_dir_all(&project_path);
+        let _ = fs::remove_file(&external_path);
+        assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
+        assert!(response.body().is_empty());
     }
 
     #[test]
@@ -1095,8 +1325,9 @@ mod tests {
         let project_path = unique_temp_dir("project-missing-scene");
         fs::create_dir_all(&project_path).expect("project directory should be created");
 
-        let error = load_placement_project_folder_inner(project_path.display().to_string(), None)
-            .expect_err("project folder without scene-authoring should be rejected");
+        let error =
+            load_placement_project_folder_inner(project_path.display().to_string(), None, None)
+                .expect_err("project folder without scene-authoring should be rejected");
         let _ = fs::remove_dir_all(&project_path);
 
         assert!(matches!(
@@ -1109,11 +1340,19 @@ mod tests {
     fn writes_handoff_to_project_folder() {
         let (project_path, _) = create_project_fixture("project-handoff");
         let handoff = sample_handoff();
+        let write_registry = PlacementWriteRegistry::default();
+        load_placement_project_folder_inner(
+            project_path.display().to_string(),
+            None,
+            Some(&write_registry),
+        )
+        .expect("project folder should be authorized by loading it");
 
-        let response = save_placement_agent_handoff(
+        let response = save_placement_agent_handoff_inner(
             Some(project_path.display().to_string()),
             None,
             handoff.clone(),
+            &write_registry,
         )
         .expect("handoff should save to project folder");
         let loaded = fs::read_to_string(project_path.join(PROJECT_HANDOFF_FILE))
@@ -1135,15 +1374,79 @@ mod tests {
     }
 
     #[test]
+    fn handoff_command_rejects_project_that_was_not_opened() {
+        let (project_path, _) = create_project_fixture("unauthorized-handoff");
+        let write_registry = PlacementWriteRegistry::default();
+
+        let error = save_placement_agent_handoff_inner(
+            Some(project_path.display().to_string()),
+            None,
+            sample_handoff(),
+            &write_registry,
+        )
+        .expect_err("an unopened project must not receive a handoff");
+        let _ = fs::remove_dir_all(&project_path);
+
+        assert!(matches!(
+            error,
+            PlacementDesktopError::InvalidProjectPath(_)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn handoff_command_rejects_symbolic_link_destination() {
+        use std::os::unix::fs::symlink;
+
+        let (project_path, _) = create_project_fixture("symlink-handoff");
+        let external_path = std::env::temp_dir().join(format!(
+            "ferrum-placement-external-handoff-{}.json",
+            std::process::id()
+        ));
+        fs::write(&external_path, "preserve").expect("external handoff fixture should be written");
+        symlink(&external_path, project_path.join(PROJECT_HANDOFF_FILE))
+            .expect("handoff symlink fixture should be created");
+        let write_registry = PlacementWriteRegistry::default();
+        load_placement_project_folder_inner(
+            project_path.display().to_string(),
+            None,
+            Some(&write_registry),
+        )
+        .expect("project folder should be authorized by loading it");
+
+        let error = save_placement_agent_handoff_inner(
+            Some(project_path.display().to_string()),
+            None,
+            sample_handoff(),
+            &write_registry,
+        )
+        .expect_err("handoff must not follow a symbolic link destination");
+        let external_source =
+            fs::read_to_string(&external_path).expect("external fixture should remain readable");
+        let _ = fs::remove_dir_all(&project_path);
+        let _ = fs::remove_file(&external_path);
+
+        assert!(matches!(error, PlacementDesktopError::InvalidHandoff(_)));
+        assert_eq!(external_source, "preserve");
+    }
+
+    #[test]
     fn writes_handoff_to_project_inferred_from_scene_document() {
         let (project_path, _) = create_project_fixture("scene-inferred-handoff");
         let scene_document_path = project_path.join("public/scene-authoring.json");
         let handoff = sample_handoff();
+        let write_registry = PlacementWriteRegistry::default();
+        load_placement_scene_document_inner(
+            Some(scene_document_path.display().to_string()),
+            Some(&write_registry),
+        )
+        .expect("scene document should authorize its inferred project");
 
-        let response = save_placement_agent_handoff(
+        let response = save_placement_agent_handoff_inner(
             None,
             Some(scene_document_path.display().to_string()),
             handoff.clone(),
+            &write_registry,
         )
         .expect("handoff should save to inferred project folder");
         let _ = fs::remove_dir_all(&project_path);
@@ -1160,11 +1463,13 @@ mod tests {
     #[test]
     fn rejects_invalid_handoff() {
         let (project_path, _) = create_project_fixture("invalid-handoff");
+        let write_registry = PlacementWriteRegistry::default();
 
-        let error = save_placement_agent_handoff(
+        let error = save_placement_agent_handoff_inner(
             Some(project_path.display().to_string()),
             None,
             json!({ "format": "not-ferrum" }),
+            &write_registry,
         )
         .expect_err("invalid handoff should be rejected");
         let _ = fs::remove_dir_all(&project_path);

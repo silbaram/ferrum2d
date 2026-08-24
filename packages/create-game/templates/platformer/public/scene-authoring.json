@@ -7,7 +7,7 @@
       "builtinPlayer": {
         "props": {
           "runtimeEntity": "builtinPlatformerPlayer",
-          "behaviorRecipes": "player.survivability"
+          "behaviorRecipes": "player.runtimeFaction"
         }
       },
       "object": {
@@ -19,7 +19,9 @@
         "instances": [
           {
             "id": "player",
-            "prefab": "builtinPlayer"
+            "prefab": "builtinPlayer",
+            "x": 96,
+            "y": 500
           }
         ]
       }
@@ -27,13 +29,11 @@
   },
   "behaviorRecipes": {
     "entities": {
-      "player.survivability": {
+      "player.runtimeFaction": {
         "recipes": [
           {
-            "kind": "health",
-            "max": 3,
-            "start": 3,
-            "onZero": "despawn"
+            "kind": "faction",
+            "faction": "player"
           }
         ]
       }

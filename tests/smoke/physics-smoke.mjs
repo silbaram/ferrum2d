@@ -28,6 +28,20 @@ const scenarios = [
     ],
   },
   {
+    id: "physics:joint-despawn-budget",
+    purpose: "high-degree joint graph cascade correctness and cleanup runtime budget",
+    tests: [
+      "world::tests::joints::high_degree_joint_graph_despawn_stays_within_runtime_budget",
+    ],
+    requiredBudgetMetrics: [
+      {
+        metric: "joint-despawn",
+        maxElapsedMicros: 250_000,
+        jointCount: 32_768,
+      },
+    ],
+  },
+  {
     id: "physics:fast-projectile-ccd",
     purpose: "fast body tunneling prevention across supported rigid shapes",
     tests: [
@@ -112,6 +126,7 @@ const suiteHash = hashReplay({
     status: result.status,
     tests: result.tests,
     testCount: result.testCount,
+    budgetRequirements: result.budgetRequirements,
   })),
 });
 
@@ -120,6 +135,11 @@ for (const result of results) {
   console.log(
     `${status} ${result.id} tests=${result.testCount} seed=${REPLAY_SEED} frame=${REPLAY_FRAME} replayHash=${result.replayHash}`,
   );
+  for (const metric of result.budgetMetrics) {
+    console.log(
+      `BUDGET ${result.id} metric=${metric.metric} elapsedMicros=${metric.elapsedMicros} maxElapsedMicros=${metric.maxElapsedMicros} jointCount=${metric.jointCount}`,
+    );
+  }
   if (result.status !== "passed") {
     console.log(result.output.trim());
   }
@@ -150,7 +170,26 @@ function runScenario(scenario) {
   const durationMs = Date.now() - started;
   const output = testResults.map((testResult) => testResult.output).join("\n");
   const testCount = testResults.reduce((total, testResult) => total + testResult.testCount, 0);
-  const status = testResults.every((testResult) => testResult.status === "passed") ? "passed" : "failed";
+  const budgetMetrics = testResults.flatMap((testResult) => testResult.budgetMetrics);
+  const requiredBudgetMetrics = scenario.requiredBudgetMetrics ?? [];
+  const requiredBudgetsPassed = requiredBudgetMetrics.every((requirement) =>
+    budgetMetrics.some(
+      (budget) =>
+        budget.metric === requirement.metric &&
+        budget.maxElapsedMicros === requirement.maxElapsedMicros &&
+        budget.jointCount === requirement.jointCount &&
+        budget.elapsedMicros <= requirement.maxElapsedMicros,
+    ),
+  );
+  const reportedBudgetsPassed = budgetMetrics.every(
+    (budget) => budget.elapsedMicros <= budget.maxElapsedMicros,
+  );
+  const status =
+    testResults.every((testResult) => testResult.status === "passed") &&
+    requiredBudgetsPassed &&
+    reportedBudgetsPassed
+      ? "passed"
+      : "failed";
 
   return {
     id: scenario.id,
@@ -159,6 +198,8 @@ function runScenario(scenario) {
     tests: scenario.tests,
     testCount,
     durationMs,
+    budgetMetrics,
+    budgetRequirements: requiredBudgetMetrics,
     replayHash: hashReplay({
       seed: REPLAY_SEED,
       frame: REPLAY_FRAME,
@@ -166,16 +207,21 @@ function runScenario(scenario) {
       status,
       tests: scenario.tests,
       testCount,
+      budgetRequirements: requiredBudgetMetrics,
     }),
     output,
   };
 }
 
 function runCargoTest(testName) {
-  const result = spawnSync("cargo", ["test", "--manifest-path", CARGO_MANIFEST, testName, "--", "--exact"], {
-    encoding: "utf8",
-    env: { ...process.env, CARGO_TERM_COLOR: "never" },
-  });
+  const result = spawnSync(
+    "cargo",
+    ["test", "--manifest-path", CARGO_MANIFEST, testName, "--", "--exact", "--nocapture"],
+    {
+      encoding: "utf8",
+      env: { ...process.env, CARGO_TERM_COLOR: "never" },
+    },
+  );
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
   const testCount = parsePassedTestCount(output);
   const status = result.status === 0 && testCount > 0 ? "passed" : "failed";
@@ -184,8 +230,21 @@ function runCargoTest(testName) {
     testName,
     status,
     testCount,
+    budgetMetrics: parseBudgetMetrics(output),
     output,
   };
+}
+
+function parseBudgetMetrics(output) {
+  const matches = output.matchAll(
+    /ferrum2d\.physics-budget metric=([^\s]+) elapsedMicros=([0-9]+) maxElapsedMicros=([0-9]+) jointCount=([0-9]+)/g,
+  );
+  return [...matches].map((match) => ({
+    metric: match[1],
+    elapsedMicros: Number(match[2]),
+    maxElapsedMicros: Number(match[3]),
+    jointCount: Number(match[4]),
+  }));
 }
 
 function parsePassedTestCount(output) {

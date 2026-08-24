@@ -23,6 +23,8 @@
 - 공식 `apps/placement-viewer` host가 이 패키지의 공통 title, app chrome, disclosure section, behavior 표시, DOM control 헬퍼를 사용한다.
 - `packages/create-game`의 generated viewer와 harness가 이 패키지의 공통 title, behavior 표시, DOM key-value/number control, viewer shell, panel primitive, workflow ownership, behavior binding evidence helper를 사용한다.
 - 실제 npm publish 전까지는 `private: true`를 유지하고, package/consumer smoke는 로컬 tarball dependency로 검증한다.
+- standalone browser 제품 host는 `apps/placement-viewer`가 담당한다. 이 helper package에 Vite app/runtime을
+  중복 포함하지 않으며, public beta publish는 lockstep release 승인 뒤에만 `private` 상태를 전환한다.
 
 ## 패키지 계약
 

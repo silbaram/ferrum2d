@@ -26,8 +26,9 @@ await runFerrumHarnessCli({
     },
     sceneAuthoring: {
       source: "public/scene-authoring.json",
-      role: "authoring-validation-and-handoff",
-      appliedByGameRuntime: false,
+      role: "runtime-placement-behavior-and-handoff",
+      appliedByGameRuntime: true,
+      implementation: "@ferrum2d/ferrum-web/authoring.applyBuiltInSceneAuthoringDocument",
     },
     platform: { source: "src/main.ts", role: "browser-bootstrap" },
   },

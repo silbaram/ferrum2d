@@ -61,6 +61,7 @@ const sharedTemplateFiles = [
   "_shared/scripts/ferrum-harness-core.mjs",
   "_shared/scripts/ferrum-harness-files.mjs",
   "_shared/scripts/ferrum-runtime-replay-core.mjs",
+  "_shared/src/ferrum-built-in-scene-authoring.ts",
   ...sharedGeneratedPlacementViewerFiles,
 ];
 const templateCatalog = await readJson(path.join(packageRoot, "templates/manifest.json"));
@@ -670,6 +671,22 @@ async function checkGeneratedProject(template) {
 
     await requireFile(path.join(targetRoot, "README.md"), repoRoot);
     await requireFile(path.join(targetRoot, "index.html"), repoRoot);
+    const builtInSceneAuthoringSource = await readFile(
+      path.join(targetRoot, "src/ferrum-built-in-scene-authoring.ts"),
+      "utf8",
+    );
+    assertHasModuleSpecifiers(
+      builtInSceneAuthoringSource,
+      "generated built-in scene authoring adapter",
+      ["@ferrum2d/ferrum-web/core", "@ferrum2d/ferrum-web/authoring"],
+    );
+    assert(
+      builtInSceneAuthoringSource.includes("applyBuiltInSceneAuthoringDocument") &&
+        builtInSceneAuthoringSource.includes("gameState !== GAME_STATE_CODE.playing"),
+      "generated built-in scene authoring adapter must apply only at a low-frequency Playing transition",
+    );
+    assertNoFerrumRootAggregateImport(builtInSceneAuthoringSource, "generated built-in scene authoring adapter");
+    assertNoFerrumWebInternalImports(builtInSceneAuthoringSource, "generated built-in scene authoring adapter");
     await assertGeneratedPlacementViewerScaffold(targetRoot, templateName);
     const generatedAssetPipelinePath = path.join(targetRoot, "scripts/ferrum-assets.mjs");
     await requireFile(generatedAssetPipelinePath, repoRoot);
@@ -855,8 +872,12 @@ function assertRuntimeInputs(value, templateName, label) {
     `${label}.gameplay.implementation is invalid`,
   );
   assert(value?.sceneAuthoring?.source === "public/scene-authoring.json", `${label}.sceneAuthoring.source is invalid`);
-  assert(value?.sceneAuthoring?.role === "authoring-validation-and-handoff", `${label}.sceneAuthoring.role is invalid`);
-  assert(value?.sceneAuthoring?.appliedByGameRuntime === false, `${label}.sceneAuthoring.appliedByGameRuntime must be false`);
+  assert(value?.sceneAuthoring?.role === "runtime-placement-behavior-and-handoff", `${label}.sceneAuthoring.role is invalid`);
+  assert(value?.sceneAuthoring?.appliedByGameRuntime === true, `${label}.sceneAuthoring.appliedByGameRuntime must be true`);
+  assert(
+    value?.sceneAuthoring?.implementation === "@ferrum2d/ferrum-web/authoring.applyBuiltInSceneAuthoringDocument",
+    `${label}.sceneAuthoring.implementation is invalid`,
+  );
   assert(value?.platform?.source === "src/main.ts", `${label}.platform.source is invalid`);
   assert(value?.platform?.role === "browser-bootstrap", `${label}.platform.role is invalid`);
 }
