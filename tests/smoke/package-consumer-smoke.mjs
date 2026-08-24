@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import {
+  DEPLOYMENT_CANVAS_READBACK_MAX_ATTEMPTS,
   DEPLOYMENT_RUNTIME_SAMPLE_FRAMES,
   runtimeBudgetProfile,
 } from "./runtime-budget-profiles.mjs";
@@ -688,7 +689,7 @@ async function smokeGeneratedGameDeployment(generatedGameRoot, templateName) {
     if (await startButton.count() > 0 && await startButton.isVisible()) {
       await startButton.click({ timeout: GENERATED_DEPLOYMENT_TIMEOUT_MS });
     }
-    await page.evaluate(({ sampleFrames }) => {
+    await page.evaluate(({ canvasReadbackAttempts, sampleFrames }) => {
       const runtime = globalThis.ferrumRuntime;
       if (!runtime) throw new Error("Ferrum runtime is unavailable for deployment smoke instrumentation.");
       const samples = [];
@@ -725,6 +726,26 @@ async function smokeGeneratedGameDeployment(generatedGameRoot, templateName) {
           readbackSource: "same-raf-after-render",
         };
       };
+      const publishCompletedFrame = (latest, canvasAttempt = 1) => {
+        const canvasEvidence = readCanvasEvidence();
+        if (!canvasEvidence.nonblank && canvasAttempt < canvasReadbackAttempts) {
+          requestAnimationFrame(() => publishCompletedFrame(latest, canvasAttempt + 1));
+          return;
+        }
+        globalThis.__ferrumDeploymentFrame = {
+          gameState: latest.gameState,
+          entityCount: Math.min(...samples.map((entry) => entry.entityCount)),
+          spriteCount: Math.min(...samples.map((entry) => entry.spriteCount)),
+          renderCommandCount: Math.min(...samples.map((entry) => entry.renderCommandCount)),
+          drawCalls: Math.max(...samples.map((entry) => entry.drawCalls)),
+          sampledFrameCount: samples.length,
+          statsSource: "renderer.stats-after-frame",
+        };
+        globalThis.__ferrumDeploymentCanvas = {
+          ...canvasEvidence,
+          readbackAttempts: canvasAttempt,
+        };
+      };
       const sampleCompletedFrame = () => {
         const stats = runtime.renderer.stats();
         const sample = {
@@ -750,19 +771,13 @@ async function smokeGeneratedGameDeployment(generatedGameRoot, templateName) {
           return;
         }
         const latest = samples.at(-1);
-        globalThis.__ferrumDeploymentFrame = {
-          gameState: latest.gameState,
-          entityCount: Math.min(...samples.map((entry) => entry.entityCount)),
-          spriteCount: Math.min(...samples.map((entry) => entry.spriteCount)),
-          renderCommandCount: Math.min(...samples.map((entry) => entry.renderCommandCount)),
-          drawCalls: Math.max(...samples.map((entry) => entry.drawCalls)),
-          sampledFrameCount: samples.length,
-          statsSource: "renderer.stats-after-frame",
-        };
-        globalThis.__ferrumDeploymentCanvas = readCanvasEvidence();
+        publishCompletedFrame(latest);
       };
       requestAnimationFrame(sampleCompletedFrame);
-    }, { sampleFrames: DEPLOYMENT_RUNTIME_SAMPLE_FRAMES });
+    }, {
+      canvasReadbackAttempts: DEPLOYMENT_CANVAS_READBACK_MAX_ATTEMPTS,
+      sampleFrames: DEPLOYMENT_RUNTIME_SAMPLE_FRAMES,
+    });
     await page.waitForFunction(
       ({ sampleFrames }) => {
         const frame = globalThis.__ferrumDeploymentFrame;
@@ -792,6 +807,12 @@ async function smokeGeneratedGameDeployment(generatedGameRoot, templateName) {
     assert(canvas?.width > 0 && canvas.height > 0, `${templateName} deployment canvas dimensions must be positive`);
     assert(canvas.webgl2 === true, `${templateName} deployment must create a WebGL2 context`);
     assert(canvas.nonblank === true, `${templateName} deployment canvas must render nonblank pixels`);
+    assert(
+      Number.isInteger(canvas.readbackAttempts) &&
+        canvas.readbackAttempts >= 1 &&
+        canvas.readbackAttempts <= DEPLOYMENT_CANVAS_READBACK_MAX_ATTEMPTS,
+      `${templateName} deployment canvas readback attempts must stay within the bounded retry budget`,
+    );
     assert(canvas.readbackSource === "same-raf-after-render", `${templateName} deployment canvas must be sampled after the renderer in the same RAF`);
     assert(wasmResponses.length > 0, `${templateName} deployment browser smoke must load Wasm`);
     assert(
@@ -2632,8 +2653,12 @@ function assertRuntimeInputs(value, templateName, label) {
     `${label}.gameplay.implementation is invalid`,
   );
   assert(value?.sceneAuthoring?.source === "public/scene-authoring.json", `${label}.sceneAuthoring.source is invalid`);
-  assert(value?.sceneAuthoring?.role === "authoring-validation-and-handoff", `${label}.sceneAuthoring.role is invalid`);
-  assert(value?.sceneAuthoring?.appliedByGameRuntime === false, `${label}.sceneAuthoring.appliedByGameRuntime must be false`);
+  assert(value?.sceneAuthoring?.role === "runtime-placement-behavior-and-handoff", `${label}.sceneAuthoring.role is invalid`);
+  assert(value?.sceneAuthoring?.appliedByGameRuntime === true, `${label}.sceneAuthoring.appliedByGameRuntime must be true`);
+  assert(
+    value?.sceneAuthoring?.implementation === "@ferrum2d/ferrum-web/authoring.applyBuiltInSceneAuthoringDocument",
+    `${label}.sceneAuthoring.implementation is invalid`,
+  );
   assert(value?.platform?.source === "src/main.ts", `${label}.platform.source is invalid`);
   assert(value?.platform?.role === "browser-bootstrap", `${label}.platform.role is invalid`);
 }

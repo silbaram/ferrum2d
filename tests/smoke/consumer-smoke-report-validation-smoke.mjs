@@ -5,7 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { DEPLOYMENT_RUNTIME_SAMPLE_FRAMES } from "./runtime-budget-profiles.mjs";
+import {
+  DEPLOYMENT_CANVAS_READBACK_MAX_ATTEMPTS,
+  DEPLOYMENT_RUNTIME_SAMPLE_FRAMES,
+} from "./runtime-budget-profiles.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const validatorPath = path.join(repoRoot, "scripts/validate/validate-consumer-smoke-report.mjs");
@@ -22,6 +25,7 @@ try {
   await assertPassedDeploymentEvidenceMissingFails();
   await assertPassedPlacementViewerEvidenceMissingFails();
   await assertPassedDeploymentSamplingEvidenceInvalidFails();
+  await assertPassedDeploymentReadbackEvidenceInvalidFails();
   await assertPassedDeploymentShortSamplingEvidenceFails();
   await assertPassedDeploymentUnknownBudgetProfileFails();
   await assertDirtySnapshotFails();
@@ -175,6 +179,23 @@ async function assertPassedDeploymentSamplingEvidenceInvalidFails() {
       && result.stdout.includes(`budgets.sampleFrames must be ${DEPLOYMENT_RUNTIME_SAMPLE_FRAMES}`)
       && result.stdout.includes("budgets.maxDrawCalls must match runtime budget profile minimal (8)"),
     `invalid deployment sampling evidence must be reported\n${result.stdout}\n${result.stderr}`,
+  );
+}
+
+async function assertPassedDeploymentReadbackEvidenceInvalidFails() {
+  const artifactDir = path.join(tempRoot, "passed-deployment-readback-evidence-invalid");
+  await mkdir(artifactDir, { recursive: true });
+  const report = createPassedReportWithNotConfiguredRuntime({ artifactDir });
+  report.templates[0].reports.deploymentBrowser.canvas.readbackAttempts =
+    DEPLOYMENT_CANVAS_READBACK_MAX_ATTEMPTS + 1;
+  await writeJson(path.join(artifactDir, "consumer-smoke-report.json"), report);
+  const result = await runValidator(["--artifact-dir", artifactDir, "--expect-status", "passed", "--skip-artifacts"]);
+  assert(result.code !== 0, "passed report with out-of-budget readback attempts must fail validation");
+  assert(
+    result.stdout.includes(
+      `canvas.readbackAttempts must be an integer between 1 and ${DEPLOYMENT_CANVAS_READBACK_MAX_ATTEMPTS}`,
+    ),
+    `invalid deployment readback evidence must be reported\n${result.stdout}\n${result.stderr}`,
   );
 }
 
@@ -605,6 +626,7 @@ function deploymentBrowserSummary(templateName) {
       nonblank: true,
       coloredPixelSamples: 64,
       varyingPixelSamples: 16,
+      readbackAttempts: 1,
       readbackSource: "same-raf-after-render",
     },
     runtime: {
