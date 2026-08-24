@@ -626,6 +626,91 @@ fn despawn_clears_all_connected_joint_types_and_reuses_their_handles() {
 }
 
 #[test]
+fn high_degree_joint_graph_despawn_stays_within_runtime_budget() {
+    use std::time::{Duration, Instant};
+
+    const SPOKE_COUNT: usize = 4_096;
+    const JOINT_KIND_COUNT: usize = 8;
+    const MAX_DESPAWN_ELAPSED: Duration = Duration::from_millis(250);
+
+    let mut world = World::default();
+    let hub = world.spawn_entity();
+    let spokes: Vec<_> = (0..SPOKE_COUNT).map(|_| world.spawn_entity()).collect();
+    let unrelated_a = world.spawn_entity();
+    let unrelated_b = world.spawn_entity();
+
+    for spoke in &spokes {
+        world.add_distance_joint(DistanceJoint::new(hub, *spoke, 4.0));
+        world.add_rope_joint(RopeJoint::new(hub, *spoke, 4.0));
+        world.add_spring_joint(SpringJoint::new(hub, *spoke, 4.0));
+        world.add_pulley_joint(PulleyJoint::new(hub, *spoke, 4.0));
+        world.add_revolute_joint(RevoluteJoint::new(hub, *spoke));
+        world.add_prismatic_joint(PrismaticJoint::new(hub, *spoke));
+        world.add_weld_joint(WeldJoint::new(hub, *spoke));
+        world.add_gear_joint(GearJoint::new(hub, *spoke, 1.0));
+    }
+
+    let unrelated_distance =
+        world.add_distance_joint(DistanceJoint::new(unrelated_a, unrelated_b, 2.0));
+    let unrelated_rope = world.add_rope_joint(RopeJoint::new(unrelated_a, unrelated_b, 2.0));
+    let unrelated_spring = world.add_spring_joint(SpringJoint::new(unrelated_a, unrelated_b, 2.0));
+    let unrelated_pulley = world.add_pulley_joint(PulleyJoint::new(unrelated_a, unrelated_b, 2.0));
+    let unrelated_revolute = world.add_revolute_joint(RevoluteJoint::new(unrelated_a, unrelated_b));
+    let unrelated_prismatic =
+        world.add_prismatic_joint(PrismaticJoint::new(unrelated_a, unrelated_b));
+    let unrelated_weld = world.add_weld_joint(WeldJoint::new(unrelated_a, unrelated_b));
+    let unrelated_gear = world.add_gear_joint(GearJoint::new(unrelated_a, unrelated_b, 1.0));
+
+    let connected_joint_count = SPOKE_COUNT * JOINT_KIND_COUNT;
+    assert!(world.has_incident_joints(hub));
+    assert_eq!(world.distance_joint_count(), SPOKE_COUNT + 1);
+    assert_eq!(world.rope_joint_count(), SPOKE_COUNT + 1);
+    assert_eq!(world.spring_joint_count(), SPOKE_COUNT + 1);
+    assert_eq!(world.pulley_joint_count(), SPOKE_COUNT + 1);
+    assert_eq!(world.revolute_joint_count(), SPOKE_COUNT + 1);
+    assert_eq!(world.prismatic_joint_count(), SPOKE_COUNT + 1);
+    assert_eq!(world.weld_joint_count(), SPOKE_COUNT + 1);
+    assert_eq!(world.gear_joint_count(), SPOKE_COUNT + 1);
+
+    let started = Instant::now();
+    world.despawn(hub);
+    let elapsed = started.elapsed();
+
+    eprintln!(
+        "ferrum2d.physics-budget metric=joint-despawn elapsedMicros={} maxElapsedMicros={} jointCount={connected_joint_count}",
+        elapsed.as_micros(),
+        MAX_DESPAWN_ELAPSED.as_micros(),
+    );
+
+    assert!(
+        elapsed <= MAX_DESPAWN_ELAPSED,
+        "high-degree joint cleanup took {elapsed:?}, exceeding {MAX_DESPAWN_ELAPSED:?}"
+    );
+    assert!(!world.has_incident_joints(hub));
+    assert!(spokes
+        .iter()
+        .all(|spoke| !world.has_incident_joints(*spoke)));
+    assert!(world.has_incident_joints(unrelated_a));
+    assert!(world.has_incident_joints(unrelated_b));
+    assert!(world.distance_joint(unrelated_distance).is_some());
+    assert!(world.rope_joint(unrelated_rope).is_some());
+    assert!(world.spring_joint(unrelated_spring).is_some());
+    assert!(world.pulley_joint(unrelated_pulley).is_some());
+    assert!(world.revolute_joint(unrelated_revolute).is_some());
+    assert!(world.prismatic_joint(unrelated_prismatic).is_some());
+    assert!(world.weld_joint(unrelated_weld).is_some());
+    assert!(world.gear_joint(unrelated_gear).is_some());
+    assert_eq!(world.distance_joint_count(), 1);
+    assert_eq!(world.rope_joint_count(), 1);
+    assert_eq!(world.spring_joint_count(), 1);
+    assert_eq!(world.pulley_joint_count(), 1);
+    assert_eq!(world.revolute_joint_count(), 1);
+    assert_eq!(world.prismatic_joint_count(), 1);
+    assert_eq!(world.weld_joint_count(), 1);
+    assert_eq!(world.gear_joint_count(), 1);
+}
+
+#[test]
 fn incident_joint_gate_tracks_endpoint_updates_snapshot_restore_and_clear_capacity() {
     let mut world = World::default();
     let a = world.spawn_entity();

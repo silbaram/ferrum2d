@@ -1,4 +1,5 @@
 export const DEPLOYMENT_RUNTIME_SAMPLE_FRAMES = 12;
+export const DEPLOYMENT_CANVAS_READBACK_MAX_ATTEMPTS = 8;
 
 export const RUNTIME_BUDGET_PROFILES = Object.freeze({
   minimal: freezeBudget({
