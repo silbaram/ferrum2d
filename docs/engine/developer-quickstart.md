@@ -145,10 +145,10 @@ npx @ferrum2d/create-game my-breakout --template breakout
 
 `ferrum:report`의 `project.runtimeInputs`를 먼저 확인한다. 이 필드는 local gameplay 구성 source와
 `@ferrum2d/ferrum-web/starter-scenes` runtime 구현을 구분한다. Top-down의 `public/game.json`은 실제
-gameplay 구성 입력이지만, starter의 `public/scene-authoring.json`은 Placement Viewer와 validation,
-patch/handoff를 위한 authoring 입력이며 built-in runtime에 자동 적용되지 않는다. `src/main.ts`는 브라우저
-runtime 조립 코드다. Scene Authoring을 실제 게임에 연결할 때는 해당 scene의 entity/component 호환
-계약을 가진 adapter를 명시적으로 작성한다.
+gameplay 구성 입력이고, starter의 `public/scene-authoring.json`은 Placement Viewer·validation·patch/handoff와
+built-in 위치·Behavior Recipe runtime 적용을 함께 담당한다. 생성된 `src/ferrum-built-in-scene-authoring.ts`가
+첫 Playing 전환과 reset 뒤에 scene-specific compatibility adapter를 호출한다. `src/main.ts`는 브라우저 runtime
+조립 코드이며 Data Scene visual/collider는 generic Data Scene adapter 계약을 사용한다.
 
 ## 무엇을 어디서 바꾸나
 

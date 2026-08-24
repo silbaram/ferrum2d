@@ -46,7 +46,7 @@ handle의 `variables`는 현재 문서에 선언된 Data Scene 변수만 읽고 
 | 그룹 | 주요 method |
 | --- | --- |
 | Lifecycle | `start`, `pause`, `resume`, `stop`, `destroy`, `time`, `version` |
-| Scene | `resetGame`, `setViewportSize`, `setGameSpec`, `useDataScene`, `dataSceneState`, `pauseDataScene`, `resumeDataScene`, `completeDataScene`, `useBreakoutGame`, `usePlatformerGame` |
+| Scene | `resetGame`, `setViewportSize`, `setGameSpec`, `useDataScene`, `dataSceneState`, `pauseDataScene`, `resumeDataScene`, `completeDataScene`, `useBreakoutGame`, `usePlatformerGame`, `builtIn*Handle`, `setBuiltInSceneEntityPosition` |
 | Asset | `loadAssets`, `releaseAssets`, `textureId`, `soundId`, `setTextureIds`, `setSoundIds` |
 | Bitmap text | `loadBitmapFont`, `registerBitmapFont`, `setWorldText`, `removeWorldText`, `worldTextGlyphCount` |
 | Particle | `setParticlePreset`, `spawnParticleBurst`, `clearParticles`, `particleCount` |
@@ -63,6 +63,8 @@ scene 전체를 다시 적용하는 method와 부분 변경 method를 구분한�
 | `setGameSpec(...)` | Shooter scene config를 다시 적용한다. 진행 중 enemy/wave 상태가 초기화될 수 있다. |
 | `setShooterAtlasFrame(...)` | prefab의 texture/frame만 교체한다. world config와 wave는 다시 적용하지 않는다. |
 | tilemap edit helper | 낮은 빈도 runtime tile metadata 변경용이다. 대량 편집은 spec 단계에서 처리한다. |
+| `builtInShooterPlayerHandle()`, `builtInPlatformerPlayerHandle()`, `builtInBreakoutPaddleHandle()`, `builtInBreakoutBallHandle()` | 현재 활성 built-in scene의 generation-safe authoring handle만 반환한다. 다른 scene에서는 `undefined`다. |
+| `setBuiltInSceneEntityPosition(...)` | 현재 활성 built-in scene이 소유한 generation-safe player/paddle/ball entity의 x/y만 낮은 빈도로 바꾼다. Scene Authoring adapter용이며 frame별 이동 API가 아니다. |
 
 `FerrumRuntimeOptions.dataScene`은 built-in starter scene을 거치지 않는 generic
 Data Scene boot path다. 옵션이 문서 자체이면 기본 apply option을 쓰고,

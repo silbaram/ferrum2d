@@ -299,6 +299,13 @@ AI agent가 직접 다루는 주요 표면은 코드 내부 구현이 아니라 
 
 이 경계 때문에 visual editor UI 상태, drag/drop 편집 상태, canvas selection state를 runtime core에 넣지 않는다.
 
+Scene Composition fragment include의 occurrence별 배치는 resolved flat id를 원본 flat instance로 잘못
+저장하지 않는다. patch v2 `updateResolvedTransform`은 include occurrence provenance와 parent transform을
+보존하고 world transform을 parent-local로 역변환해 `include.instanceTransforms` override에 기록한다.
+동일 fragment의 다른 include occurrence는 영향을 받지 않으며 patch v1 flat transform merge는 호환
+경로로 유지한다. nested component/binding/rename/remove는 별도 provenance 계약이 생기기 전까지 명시적
+unsupported diagnostic을 반환한다.
+
 ### Renderer
 
 제품 기본 renderer는 WebGL2다. `createRenderer(...)`는 `preferred: "webgpu"`가 들어오면 WebGPU adapter/device/context를 먼저 생성하고, 실패하면 WebGL2로 fallback한다. WebGPU는 Rust render command ABI를 바꾸지 않는 선택 renderer이며 WebGL2를 대체하지 않는다. WebGPU post-process는 현재 fade pass만 지원하므로 bloom/CRT/vignette/glitch 같은 fullscreen pass의 기준 구현은 WebGL2다.
@@ -321,12 +328,33 @@ Browser input events
   -> AudioManager.play()
   -> DebugOverlay update
   -> Runtime content adapters (HUD/accessibility/animationTimeline/localization/dialogue/cutscene/levelStreaming)
-  -> Low-frequency Data Scene authoring adapters
+  -> Low-frequency Data Scene or built-in scene authoring adapters
   -> UiOverlay update
   -> Engine.clear_audio_events()
 ```
 
 `FrameState`는 렌더링, HUD, debug에 필요한 snapshot이다. action trigger diagnostic도 Rust frame telemetry에서 읽은 관측 신호로 포함하지만, 게임 상태를 장기 보관하거나 TypeScript에서 별도 simulation state로 복제하지 않는다.
+
+Built-in Scene Authoring은 Data Scene spawn 계약을 재사용하지 않는다.
+`applyBuiltInSceneAuthoringDocument(...)`는 활성 Shooter/Platformer/Breakout이 이미 생성한 entity를
+`built_in_*_entity_{id,generation}`으로 찾고 generation-safe `set_built_in_scene_entity_position(...)`과 기존 bulk
+behavior apply facade를 scene load/reset 경계에서만 호출한다. Rust가 entity 수명과 transform을 계속
+소유하며, TypeScript가 frame마다 handle을 조회하거나 entity별 callback을 등록하지 않는다. 회전/scale,
+render layer와 Data Scene visual/collider component는 현재 built-in scene 전용 adapter가 지원하지 않으므로
+무시하지 않고 preflight diagnostic으로 거부한다. health, lifetime, pickup-despawn,
+collision-despawn처럼 built-in scene 소유 entity 수명을 끊는 behavior command도 같은 preflight 경계에서
+차단한다.
+
+Placement Viewer Desktop host는 browser frontend와 Rust file authority를 분리한다. Tauri의 load command가
+성공한 scene document canonical path와 inferred/selected project root만 process-local write registry에
+등록하고, scene save와 `.ferrum-placement-handoff.json` save는 이 allowlist를 다시 확인한다. handoff의
+고정 저장 파일이 심볼릭 링크이면 쓰기를 거부한다. 따라서 frontend가 열지 않은 sibling 또는 임의
+filesystem 경로를 save command 인자로 전달하거나 링크로 우회해도 쓰지 않는다.
+이미지 read는 별도 asset registry가 canonical asset root 아래 파일만 `ferrum-asset://` protocol로 제공한다.
+protocol 요청마다 canonical file identity를 다시 확인해 등록 뒤 외부 symlink로 바뀐 경로를 거부하고,
+GET/HEAD/OPTIONS와 공식 custom-protocol URI 형태만 허용한다.
+packaged WebView는 명시적 CSP로 local bundle, Wasm, Tauri IPC와 등록된 asset protocol만 허용한다.
+package smoke는 이 정책이 비활성화되거나 필수 source가 빠지면 artifact build 전에 실패한다.
 
 ## ABI와 데이터 포맷
 
@@ -352,6 +380,7 @@ Rust/TypeScript 공유 buffer는 `#[repr(C)]` Rust struct와 TypeScript decoder�
 - `createEngine(...)`: Wasm `Engine`, input/viewport provider, asset host, frame callback을 묶는다. Public API/type contract는 `engineTypes.ts`에 두고 `createEngine.ts`에서 기존 export 경로를 유지한다.
 - `createFerrumRuntime(...)`: browser canvas, WebGL2/WebGPU renderer, input, asset/audio host, UI/debug overlay를 포함한 제품용 runtime을 만든다. 기본값은 runtime이 `FerrumEngine`을 생성/소유하지만, `engineInstance`로 이미 만든 엔진을 주입하면 runtime은 lifecycle 호출만 forwarding하고 엔진 destroy는 호출하지 않는다.
 - `createRenderer(...)`: 기본 WebGL2 renderer를 생성하며 WebGPU 선호 옵션은 지원 환경에서 선택 renderer를 사용한다.
+- `applyBuiltInSceneAuthoringDocument(...)`: built-in starter의 기존 entity handle에 위치와 Behavior Recipe를 낮은 빈도로 적용한다. generic Data Scene spawn/apply와 분리한다.
 - `applyShooterGameSpec(...)` / `resolveShooterGameSpec(...)`: Top-down Shooter Game Spec 검증과 Rust 적용 계약을 담당한다. Public import 경로는 `gameSpec.ts` facade가 유지하고, 타입/기본값/검증/resolution/Wasm 적용 구현은 `gameSpec*.ts` 내부 모듈에 둔다.
 - `importAsepriteAtlas(...)` / `importTiledTilemap(...)` / `importLDtkTilemap(...)`: asset authoring 데이터를 Game Spec 친화 구조로 변환한다. Public import 경로는 `assetPipeline.ts` facade가 유지하고, 포맷별 구현은 `assetPipeline*.ts` 내부 모듈에 둔다.
 

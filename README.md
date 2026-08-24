@@ -116,7 +116,8 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 | Physics Spec | rigid body, collider, joint, material, layer를 JSON으로 정의한다. |
 | Physics HD-2D authoring | `physics.hd2d`, body floor/elevation/height, tile HD-2D metadata를 검증하고 runtime에 적용한다. |
 | Physics authoring compiler | tooling metadata를 제거하고 runtime Physics Spec만 추출한다. |
-| Scene composition | prefab, variant, reusable fragment를 flat instance로 만든다. |
+| Scene composition | prefab, variant, reusable fragment를 resolved instance로 만들고 반복 include occurrence transform을 v2 local override로 round-trip한다. |
+| Built-in Scene Authoring adapter | Shooter/Platformer/Breakout의 기존 generation-safe entity handle에 위치와 Behavior Recipe를 Playing/reset 경계에서 적용한다. |
 | Behavior recipe | health, damage, pickup, chase 같은 흔한 행동을 command로 변환한다. 기본 Rust adapter의 실행 범위는 현재 Shooter/component capability를 따른다. |
 | Animation timeline | sprite frame, event, state transition을 데이터로 재생한다. |
 | Cutscene sequence | wait/camera/audio/dialogue command timeline을 실행한다. |
@@ -418,7 +419,7 @@ examples/platformer/        Platformer controller 검증 예제
 examples/topdown-shooter/   Top-down Shooter 검증 예제
 examples/physics-sandbox/   Physics Spec authoring/debug 검증 예제
 apps/placement-viewer/       Official Data Scene placement authoring viewer app
-apps/placement-viewer-desktop/ Tauri desktop wrapper spike for the placement viewer
+apps/placement-viewer-desktop/ Tauri local authoring host for the placement viewer
 docs/                       engine 설명과 development 기준 문서
 scripts/                    저장소 보조 스크립트
 ```
