@@ -69,7 +69,7 @@ import {
 import {
   createRuntimeDemoShell,
   renderRuntimeDemoError,
-} from "./runtimeDemoShell";
+} from "../../../examples/shared/runtimeDemoShell";
 import "./runtimeDemoShell.css";
 import "./styles.css";
 
@@ -561,7 +561,7 @@ async function bootstrap(): Promise<void> {
 
     runtime.start();
   } catch (error) {
-    runtime?.destroy();
+    shell.destroy();
     renderRuntimeDemoError(error, {
       title: FERRUM_AUTHORING_VIEWER_TITLE,
       diagnosticReport,

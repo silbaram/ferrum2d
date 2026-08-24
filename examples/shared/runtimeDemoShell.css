@@ -1,6 +1,20 @@
 :root {
-  color: #eef4ee;
-  background: #101312;
+  --demo-text: #eef4ee;
+  --demo-background: #101312;
+  --demo-body-background: var(--demo-background);
+  --demo-button-min-width: 72px;
+  --demo-button-border: #3f4d47;
+  --demo-button-background: #1b2421;
+  --demo-button-hover-background: #24312b;
+  --demo-focus: #7ddc9d;
+  --demo-canvas-border: #2f3b36;
+  --demo-canvas-background: #121716;
+  --demo-metrics-border: var(--demo-canvas-border);
+  --demo-metrics-background: #161d1a;
+  --demo-metrics-label: #9fb0a7;
+  --demo-metrics-value: #f7faf7;
+  color: var(--demo-text);
+  background: var(--demo-background);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -12,26 +26,26 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #101312;
+  background: var(--demo-body-background);
 }
 
 button {
-  min-width: 72px;
+  min-width: var(--demo-button-min-width);
   height: 34px;
-  border: 1px solid #3f4d47;
+  border: 1px solid var(--demo-button-border);
   border-radius: 6px;
-  color: #eef4ee;
-  background: #1b2421;
+  color: var(--demo-text);
+  background: var(--demo-button-background);
   font: inherit;
   cursor: pointer;
 }
 
 button:hover {
-  background: #24312b;
+  background: var(--demo-button-hover-background);
 }
 
 button:focus-visible {
-  outline: 2px solid #7ddc9d;
+  outline: 2px solid var(--demo-focus);
   outline-offset: 2px;
 }
 
@@ -80,8 +94,8 @@ button:focus-visible {
   width: 100%;
   aspect-ratio: 5 / 3;
   height: auto;
-  border: 1px solid #2f3b36;
-  background: #121716;
+  border: 1px solid var(--demo-canvas-border);
+  background: var(--demo-canvas-background);
 }
 
 .demo-metrics {
@@ -90,19 +104,23 @@ button:focus-visible {
   gap: 8px 12px;
   margin: 0;
   padding: 12px;
-  border: 1px solid #2f3b36;
+  border: 1px solid var(--demo-metrics-border);
   border-radius: 6px;
-  background: #161d1a;
+  background: var(--demo-metrics-background);
   font-size: 14px;
 }
 
+.demo-metric {
+  display: contents;
+}
+
 .demo-metrics dt {
-  color: #9fb0a7;
+  color: var(--demo-metrics-label);
 }
 
 .demo-metrics dd {
   margin: 0;
-  color: #f7faf7;
+  color: var(--demo-metrics-value);
   text-align: right;
 }
 

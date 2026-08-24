@@ -51,9 +51,11 @@ import {
   DebugOverlay,
   RuntimeProfiler,
   diagnosticReport,
-  type DiagnosticContext,
-  type DiagnosticReport,
 } from "@ferrum2d/ferrum-web/quality";
+import {
+  cleanupRuntimeDemoResources,
+  runtimeDemoDiagnosticRows,
+} from "../../shared/runtimeDemoShell";
 
 const TOPDOWN_HIT_PARTICLE_PRESET_ID = 0;
 const TOPDOWN_AUTHORED_RUNTIME_ENTITY_BUILTIN_PLAYER = "builtinShooterPlayer";
@@ -309,26 +311,6 @@ function gameStateText(code: number): string {
 
 function assetApplyError(kind: "texture" | "sound" | "json", name: string, detail: string): Error {
   return new Error(`Asset apply error: kind=${kind} name='${name}' detail='${detail}'.`);
-}
-
-function diagnosticRows(report: DiagnosticReport): Array<[string, string]> {
-  const rows: Array<[string, string]> = [["code", report.code], ["message", report.message]];
-  const context = report.context;
-  if (!context) {
-    return rows;
-  }
-
-  appendDiagnosticContext(rows, context);
-  return rows;
-}
-
-function appendDiagnosticContext(rows: Array<[string, string]>, context: DiagnosticContext): void {
-  rows.push(["kind", context.kind]);
-  if (context.name !== undefined) rows.push(["name", context.name]);
-  if (context.id !== undefined) rows.push(["id", String(context.id)]);
-  if (context.url !== undefined) rows.push(["url", context.url]);
-  if (context.path !== undefined) rows.push(["path", context.path]);
-  rows.push(["detail", context.detail]);
 }
 
 function applyBootstrapErrorStyles(container: HTMLElement, list: HTMLElement): void {
@@ -1222,7 +1204,7 @@ function reportBootstrapError(error: unknown): void {
   title.textContent = "Ferrum2D Top-down Shooter MVP";
   summary.textContent = "Startup failed. Diagnostic details are shown below.";
 
-  for (const [label, value] of diagnosticRows(report)) {
+  for (const [label, value] of runtimeDemoDiagnosticRows(report)) {
     const term = document.createElement("dt");
     const description = document.createElement("dd");
     term.textContent = label;
@@ -1237,17 +1219,9 @@ function reportBootstrapError(error: unknown): void {
   app.replaceChildren(container);
 }
 
-function cleanupResources(cleanups: Array<() => void>): void {
-  for (const cleanup of cleanups.splice(0).reverse()) {
-    try {
-      cleanup();
-    } catch (error) {
-      console.warn("Ferrum2D cleanup failed", error);
-    }
-  }
-}
-
 async function bootstrap(): Promise<void> {
+  // This showcase owns a direct renderer/platform bootstrap and inline debug panel, so it shares
+  // lifecycle and diagnostic primitives without forcing those controls into RuntimeDemoShell.
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) return;
   const cleanups: Array<() => void> = [];
@@ -1476,7 +1450,7 @@ async function bootstrap(): Promise<void> {
     }
     assetProgressText = `assets: ${assets.progress.loaded}/${assets.progress.total}`;
 
-    const onBeforeUnload = (): void => cleanupResources(cleanups);
+    const onBeforeUnload = (): void => cleanupRuntimeDemoResources(cleanups);
     window.addEventListener("beforeunload", onBeforeUnload);
     cleanups.push(() => window.removeEventListener("beforeunload", onBeforeUnload));
     engine.start();
@@ -1530,7 +1504,7 @@ async function bootstrap(): Promise<void> {
       };
     }
   } catch (error) {
-    cleanupResources(cleanups);
+    cleanupRuntimeDemoResources(cleanups);
     throw error;
   }
 }

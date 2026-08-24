@@ -37,40 +37,41 @@ pnpm smoke:check
 이 명령은 다음 순서로 실행한다.
 
 1. `pnpm lint`
-2. `pnpm test`
-3. `pnpm validate:docs-links`
-4. `pnpm validate:public-api-surface`
-5. `pnpm release:candidate-check`
-6. `pnpm validate:runtime-budget-product`
-7. `pnpm validate:rust-test-harness`
-8. `pnpm validate:game-spec`
-9. `pnpm validate:physics-authoring`
-10. `pnpm validate:data-scene-authoring`
-11. `pnpm smoke:runtime-budgets`
-12. `pnpm smoke:mass-objects`
-13. `pnpm smoke:physics`
-14. `pnpm smoke:topdown-authored-behavior-variant`
-15. `pnpm smoke:level-streaming`
-16. `pnpm smoke:level-streaming-browser`
-17. `pnpm smoke:asset-pipeline`
-18. `pnpm validate:gameplay-authoring:report`
-19. `pnpm smoke:gameplay-replay:report`
-20. `pnpm validate:gameplay-report-artifacts`
-21. `pnpm smoke:create-game-template-catalog`
-22. `pnpm smoke:create-game-template-reports`
-23. `pnpm smoke:topdown-template-replay-report`
-24. `pnpm smoke:topdown-authored-behavior-runtime`
-25. `pnpm smoke:topdown-mass-objects`
-26. `pnpm smoke:topdown-tilemap-budget`
-27. `pnpm smoke:starter-runtime`
-28. `pnpm smoke:placement-viewer`
-29. `pnpm smoke:placement-viewer-save`
-30. `pnpm smoke:placement-viewer-mass-authoring`
-31. `pnpm smoke:placement-viewer-desktop-assets`
-32. `pnpm smoke:content-runtime`
-33. `pnpm smoke:headless`
-34. `pnpm build`
-35. `pnpm package:check`
+2. `pnpm report:example-demo-harness`
+3. `pnpm test`
+4. `pnpm validate:docs-links`
+5. `pnpm validate:public-api-surface`
+6. `pnpm release:candidate-check`
+7. `pnpm validate:runtime-budget-product`
+8. `pnpm validate:rust-test-harness`
+9. `pnpm validate:game-spec`
+10. `pnpm validate:physics-authoring`
+11. `pnpm validate:data-scene-authoring`
+12. `pnpm smoke:runtime-budgets`
+13. `pnpm smoke:mass-objects`
+14. `pnpm smoke:physics`
+15. `pnpm smoke:topdown-authored-behavior-variant`
+16. `pnpm smoke:level-streaming`
+17. `pnpm smoke:level-streaming-browser`
+18. `pnpm smoke:asset-pipeline`
+19. `pnpm validate:gameplay-authoring:report`
+20. `pnpm smoke:gameplay-replay:report`
+21. `pnpm validate:gameplay-report-artifacts`
+22. `pnpm smoke:create-game-template-catalog`
+23. `pnpm smoke:create-game-template-reports`
+24. `pnpm smoke:topdown-template-replay-report`
+25. `pnpm smoke:topdown-authored-behavior-runtime`
+26. `pnpm smoke:topdown-mass-objects`
+27. `pnpm smoke:topdown-tilemap-budget`
+28. `pnpm smoke:starter-runtime`
+29. `pnpm smoke:placement-viewer`
+30. `pnpm smoke:placement-viewer-save`
+31. `pnpm smoke:placement-viewer-mass-authoring`
+32. `pnpm smoke:placement-viewer-desktop-assets`
+33. `pnpm smoke:content-runtime`
+34. `pnpm smoke:headless`
+35. `pnpm build`
+36. `pnpm package:check`
 
 `pnpm smoke:check`는 Starter Runtime, Scene Placement Viewer, Minimal Game content runtime showcase, Top-down authored behavior runtime의 browser smoke까지 포함하지만, 모든 장르의 WebGL2 화면, 키보드/마우스 입력, 브라우저 오디오 unlock 상태를 전부 확인하지는 않는다. 나머지 항목은 아래 browser render smoke check와 수동 smoke check에서 확인한다.
 
@@ -116,7 +117,7 @@ pnpm smoke:placement-viewer-desktop-assets
 ```
 
 `pnpm smoke:placement-viewer`는 `apps/placement-viewer` production build를 정적 서버로 열고, Data Scene preview가 6개 entity와 6개 이상 render command를 만들었는지, canvas readback이 nonblank인지, 실제 pointer move/click이 `crate_left` hover/selection과 inspector state로 반영되는지 확인한다. 또한 `crate_left` draft transform update가 `ScenePlacementPatch` export와 갱신된 picking bounds에 반영되는지, Handoff 섹션이 draft/reference/asset diagnostic count와 Copy Patch/Copy Handoff/Save Draft action 상태를 표시하는지, Behavior Binding inspector가 기존 recipe id attach/detach를 `updateBehaviorBinding` patch로 내보내고 recipe 본문을 건드리지 않는지, 다른 instance를 선택해도 moved draft marker가 유지되는지, Add Rect/Circle/Point/Sprite/Prefab palette가 렌더되는지, Add Sprite frame picker가 UV frame patch를 만드는지, generated `ScenePlacementAgentHandoff`가 selected instance, draft patch, ownership fields, asset diagnostics array를 포함하는지, collider overlay가 선택 collider를 표시하는지, Add Rect pending mode와 hover preview marker가 표시되는지, canvas click이 `props.components.visual.kind: "primitive"` add patch를 만드는지, 선택 overlay resize handle이 rect visual/aabb collider size patch를 만드는지, collider offset handle drag와 Visual/Collider/Layer inspector edit이 added instance의 component patch export로 접히는지, capsule/orientedBox/convexPolygon collider inspector edit이 같은 component patch export로 접히는지, selected instance 기반 ObjectDefinition 생성 action이 `addObjectDefinition` patch와 prefab option으로 반영되는지, 기본 실행에서 save hook이 opt-in 없이 동작하지 않는지도 확인한다. `pnpm smoke:placement-viewer-save`는 `VITE_FERRUM_PLACEMENT_VIEWER_SAVE=true` opt-in build와 smoke host save endpoint를 사용해 primitive/sprite/prefab/ObjectDefinition add patch를 저장하고 reload 뒤 visual/collider offset/layer/prefab reference와 ObjectDefinition 기반 instance가 draft 없이 유지되는지 확인한다.
-`pnpm smoke:placement-viewer-mass-authoring`은 같은 production build를 `massAuthoring=true` fixture mode로 열고 기본 6개 instance에 1,024개 crate instance를 추가한 authoring document를 낮은 빈도 load path에서 생성한다. smoke는 `ScenePlacementViewerState.instances`, Rust runtime `entityCount`, renderer `renderCommandCount`가 1,030개 이상인지, draw call이 16 이하인지, `mass_crate_0512` 선택과 transform draft patch가 각각 500ms 이하에서 끝나는지, draft marker가 선택된 1개 object에만 생기는지, agent handoff selected/draft summary가 같은 object를 가리키는지 확인한다.
+`pnpm smoke:placement-viewer-mass-authoring`은 같은 production build를 `massAuthoring=true` fixture mode로 열고 기본 6개 instance에 1,024개 crate instance를 추가한 authoring document를 낮은 빈도 load path에서 생성한다. smoke는 `ScenePlacementViewerState.instances`와 Rust runtime `entityCount`가 1,030개 이상인지, responsive viewport culling 뒤에도 visible `renderCommandCount`가 518개 이상이고 전체 entity 수를 넘지 않는지, draw call이 16 이하인지 확인한다. 또한 `mass_crate_0512` 선택과 transform draft patch가 각각 500ms 이하에서 끝나는지, draft marker가 선택된 1개 object에만 생기는지, agent handoff selected/draft summary가 같은 object를 가리키는지 확인한다.
 `pnpm smoke:placement-viewer-desktop-assets`는 같은 production build에 fake Tauri bridge를 주입해 desktop project open과 asset folder switch를 재현한다. smoke는 local asset `runtimeUrl`이 initial runtime texture manifest에 포함되고 `engine.textureId(...)`가 0보다 큰 값을 반환하는지, local asset을 참조하는 Data Scene instance가 render command와 nonblank canvas로 이어지는지, 다른 asset folder 선택 후 runtime asset snapshot/handoff/Inspector status가 새 image manifest로 reload되는지 확인한다. 또한 실제 32x32/16x16 PNG metadata가 provider와 handoff `assetFolder.images[].width/height`에 남고, Add Sprite pending/draft marker와 visual/AABB collider가 같은 thumbnail/size/id를 사용하는지 검증한다.
 Tauri desktop wrapper의 Rust command 계약은 `pnpm --filter @ferrum2d/placement-viewer-desktop check`와 `pnpm --filter @ferrum2d/placement-viewer-desktop test`로 확인한다. 이 테스트는 기본/명시 scene-authoring JSON load/save, project folder의 `public/scene-authoring.json` 자동 탐색, 기본/명시 asset folder inspect, local image의 `ferrum-asset://...` preview URL 생성과 protocol MIME/CORS 응답, `.ferrum-placement-handoff.json` 저장, 잘못된 프로젝트 폴더와 handoff envelope 거부를 검증한다. 실제 GUI window, project 직접 경로 입력, asset folder picker, Add Sprite local thumbnail preview, handoff 자동 sync 상태, native dialog 조작, `.app` 실행은 수동 검증 범위다.
 
@@ -420,6 +421,39 @@ pnpm smoke:headless
 
 이 검증은 WebGL2 draw를 실행하지 않는다. 실제 화면은 browser render smoke check와 수동 smoke check로 보완한다.
 
+## Example demo harness report
+
+예제 UI 보일러플레이트와 runtime integration 코드를 구분하는 현재 기준선은 다음 명령으로 확인한다.
+
+```bash
+pnpm report:example-demo-harness
+pnpm report:example-demo-harness -- --format=json
+```
+
+report는 `ferrum2d.example-demo-harness.report` version 1 계약을 사용한다. 공유 TypeScript shell 구현이
+`examples/shared/runtimeDemoShell.ts` 한 벌인지, conventional `examples/*/src/main.ts`가 report에서 빠지지
+않았는지, `apps/*/src` 또는 `examples/*/src`에 사본이 다시 생기지 않았는지 검사한다. 모든 예제와 Placement
+Viewer가 공유 shell 또는 공통 lifecycle/diagnostic primitive를 사용해야 하며, 로컬
+button/diagnostic/cleanup helper가 다시 생겨도 실패한다. 이 명령은 CI `validate` job과 `pnpm smoke:check`에
+연결된다.
+
+2026-08-24 기준 측정 결과는 다음과 같다. 줄 수는 각 entrypoint의 물리적 줄 수이며, 공백 제외 줄 수도
+machine-readable report에 포함된다.
+
+| Surface | 공유 방식 | Entrypoint 줄 수 | 전용 UI 판단 |
+| --- | --- | ---: | --- |
+| Starter Runtime | shared shell | 685 | profile/capture showcase 로직 포함 |
+| Breakout | shared shell | 80 | 없음 |
+| Minimal Game | shared shell | 500 | content, preload, lighting/material smoke 로직 포함 |
+| Platformer | shared shell | 80 | 없음 |
+| Physics Sandbox | shared primitives | 1,620 | scenario/material/query/frame-step UI 유지 |
+| Top-down Shooter | shared primitives | 1,512 | direct renderer/platform bootstrap와 debug panel 유지 |
+| Placement Viewer | shared shell | 4,936 | Pixelforge authoring UI와 전용 CSS 유지 |
+
+이 수치는 전체가 public API 비용이라는 뜻이 아니다. Breakout과 Platformer는 작은 runtime integration
+기준선으로 사용하고, Minimal Game은 여러 lab/content smoke가 함께 들어간 showcase로 해석한다. Physics,
+Top-down, Placement Viewer의 전용 UI는 범용 shell option으로 흡수하지 않고 공유 primitive만 사용한다.
+
 ## Browser render smoke check
 
 `pnpm smoke:browser`는 `examples/starter-runtime` production build를, `pnpm smoke:placement-viewer`는 `apps/placement-viewer` production build를, `pnpm smoke:topdown`/`pnpm smoke:topdown-mass-objects`/`pnpm smoke:topdown-hd2d`는 `examples/topdown-shooter` production build를, `pnpm smoke:breakout`/`pnpm smoke:breakout-effects`는 `examples/breakout` production build를, `pnpm smoke:platformer`/`pnpm smoke:platformer-effects`는 `examples/platformer` production build를, `pnpm smoke:physics-sandbox`/`pnpm smoke:physics-demo-suite`는 `examples/physics-sandbox` production build를 정적 서버로 띄운 뒤 Playwright Core로 설치된 Chrome/Chromium을 실행한다. 검증 범위는 다음과 같다.
@@ -432,7 +466,7 @@ pnpm smoke:headless
 - `pnpm smoke:browser-budget`은 Starter Runtime에서 `RuntimeProfiler`를 켜고 frame time, Rust update, render time, draw call, render command, texture switch, physics count, asset load elapsed budget을 구조화된 report로 검증한다.
 - `pnpm smoke:topdown-budget`, `pnpm smoke:breakout-budget`, `pnpm smoke:platformer-budget`, `pnpm smoke:physics-sandbox-budget`은 같은 browser budget harness를 각 예제 profile로 실행한다. 직접 `node tests/smoke/browser-render-smoke.mjs --budget --budget-profile=<profile>`을 사용할 수도 있다.
 - `pnpm smoke:placement-viewer`는 Scene Placement Viewer의 `window.__ferrumPlacementViewer` hook, 6개 placed instance/entity, render command와 draw call, canvas readback, `crate_left` hover/click selection, draft transform patch export, Handoff copy/save action state, moved draft marker persistence, sprite frame add patch, ObjectDefinition add patch, collider overlay, rect/circle resize handle patch, collider offset input/drag component patch, capsule/orientedBox/convexPolygon collider component patch, save opt-in disabled gate, inspector selected/hovered/draft row를 확인한다.
-- `pnpm smoke:placement-viewer-mass-authoring`은 Scene Placement Viewer의 mass authoring fixture mode에서 1,030개 이상 instance/entity/render command, draw call 상한, 단일 object 선택/patch latency, 단일 draft marker, handoff selected/draft summary를 확인한다.
+- `pnpm smoke:placement-viewer-mass-authoring`은 Scene Placement Viewer의 mass authoring fixture mode에서 1,030개 이상 instance/entity, responsive viewport에 남는 518개 이상 visible render command, draw call 상한, 단일 object 선택/patch latency, 단일 draft marker, handoff selected/draft summary를 확인한다.
 - `pnpm smoke:placement-viewer-desktop-assets`는 fake Tauri bridge로 desktop project open을 재현하고, asset folder image의 `runtimeUrl`이 initial `runtime.engine.loadAssets(...)` texture manifest에 포함되는지, local texture id가 0보다 큰지, local asset을 참조하는 Data Scene instance가 render command와 nonblank canvas로 이어지는지, asset folder switch 이후 runtime asset snapshot/handoff/Inspector status가 새 manifest로 reload되는지 확인한다. 실제 PNG의 width/height가 provider와 handoff evidence에 유지되는지, Add Sprite pending/draft marker, draft visual size, AABB collider half-size가 같은 local asset metadata를 사용하는지도 검증한다.
 - `pnpm smoke:preload`는 Minimal Game에서 `LoadingOverlay`를 켜고 data URL manifest를 두 번 preload해 첫 실행 fetch와 두 번째 IndexedDB JSON/texture body cache hit를 검증한다.
 - `pnpm smoke:mobile-input`은 Minimal Game에서 `VirtualControls` DOM preset을 켜고 joystick/button state가 `W/D/Space/mouseLeft` input으로 합성되고 release되는지 확인한다.

@@ -4,7 +4,6 @@ import {
   preloadAssetManifest,
   type AssetLoadProgress,
   type FerrumEngine,
-  type FerrumRuntime,
   type FerrumRuntimeEnvironment,
   type InputSnapshot,
   type UiOverlayState,
@@ -24,12 +23,14 @@ import {
   particleVfxPreset,
   type LightingScene2D,
 } from "@ferrum2d/ferrum-web/labs";
-import {
-  diagnosticReport,
-  type DiagnosticContext,
-  type DiagnosticReport,
-} from "@ferrum2d/ferrum-web/quality";
+import { diagnosticReport } from "@ferrum2d/ferrum-web/quality";
 
+import {
+  cleanupRuntimeDemoResources,
+  createRuntimeDemoShell,
+  renderRuntimeDemoError,
+} from "../../shared/runtimeDemoShell";
+import "../../shared/runtimeDemoShell.css";
 import "./styles.css";
 
 const PRELOAD_SMOKE_TEXTURE_URL =
@@ -107,174 +108,6 @@ function gameStateLabel(code: number): string {
   return "GameOver";
 }
 
-function diagnosticRows(report: DiagnosticReport): Array<[string, string]> {
-  const rows: Array<[string, string]> = [["code", report.code], ["message", report.message]];
-  if (report.context) appendDiagnosticContext(rows, report.context);
-  return rows;
-}
-
-function appendDiagnosticContext(rows: Array<[string, string]>, context: DiagnosticContext): void {
-  rows.push(["kind", context.kind]);
-  if (context.name !== undefined) rows.push(["name", context.name]);
-  if (context.id !== undefined) rows.push(["id", String(context.id)]);
-  if (context.url !== undefined) rows.push(["url", context.url]);
-  if (context.path !== undefined) rows.push(["path", context.path]);
-  rows.push(["detail", context.detail]);
-}
-
-function cleanupResources(cleanups: Array<() => void>): void {
-  for (const cleanup of cleanups.splice(0).reverse()) {
-    try {
-      cleanup();
-    } catch (error) {
-      console.warn("Ferrum2D cleanup failed", error);
-    }
-  }
-}
-
-function renderBootstrapError(error: unknown): void {
-  console.error("Ferrum2D minimal game failed", error);
-  const app = document.querySelector<HTMLDivElement>("#app");
-  if (!app) return;
-
-  const report = diagnosticReport(error);
-  const container = document.createElement("main");
-  const title = document.createElement("h1");
-  const summary = document.createElement("p");
-  const list = document.createElement("dl");
-  container.className = "error-shell";
-  title.textContent = "Ferrum2D Minimal Game";
-  summary.textContent = "Startup failed.";
-
-  for (const [label, value] of diagnosticRows(report)) {
-    const term = document.createElement("dt");
-    const description = document.createElement("dd");
-    term.textContent = label;
-    description.textContent = value;
-    list.append(term, description);
-  }
-
-  container.append(title, summary, list);
-  app.replaceChildren(container);
-}
-
-function createButton(label: string, onClick: () => void): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = label;
-  button.addEventListener("click", onClick);
-  return button;
-}
-
-function createShell(): {
-  canvas: HTMLCanvasElement;
-  canvasFrame: HTMLElement;
-  debugRoot: HTMLElement;
-  stateValue: HTMLElement;
-  entityValue: HTMLElement;
-  commandValue: HTMLElement;
-  fpsValue: HTMLElement;
-  setEngine(engine: FerrumEngine): void;
-  queueStart(): void;
-  inputSnapshot(snapshot: InputSnapshot): InputSnapshot;
-} {
-  const app = document.querySelector<HTMLDivElement>("#app");
-  if (!app) {
-    throw new Error("Missing #app root element.");
-  }
-
-  let engine: FerrumEngine | undefined;
-  let startQueued = false;
-  let restartQueued = false;
-  const shell = document.createElement("main");
-  const toolbar = document.createElement("section");
-  const title = document.createElement("h1");
-  const actions = document.createElement("div");
-  const stage = document.createElement("section");
-  const canvasFrame = document.createElement("div");
-  const canvas = document.createElement("canvas");
-  const metrics = document.createElement("dl");
-  const debugRoot = document.createElement("div");
-  const stateValue = document.createElement("dd");
-  const entityValue = document.createElement("dd");
-  const commandValue = document.createElement("dd");
-  const fpsValue = document.createElement("dd");
-
-  shell.className = "app-shell";
-  toolbar.className = "toolbar";
-  actions.className = "actions";
-  stage.className = "stage";
-  canvasFrame.className = "canvas-frame";
-  canvas.className = "game-canvas";
-  metrics.className = "metrics";
-  debugRoot.className = "debug-root";
-
-  title.textContent = "Ferrum2D Minimal Game";
-  canvas.width = 800;
-  canvas.height = 480;
-
-  actions.append(
-    createButton("Start", () => {
-      if (engine?.gameState() === 2) {
-        restartQueued = true;
-      } else {
-        startQueued = true;
-      }
-    }),
-    createButton("Pause", () => {
-      engine?.pause();
-    }),
-    createButton("Resume", () => {
-      engine?.resume();
-    }),
-  );
-
-  appendMetric(metrics, "state", stateValue);
-  appendMetric(metrics, "entities", entityValue);
-  appendMetric(metrics, "commands", commandValue);
-  appendMetric(metrics, "fps", fpsValue);
-
-  toolbar.append(title, actions);
-  canvasFrame.append(canvas);
-  stage.append(canvasFrame, metrics);
-  shell.append(toolbar, stage, debugRoot);
-  app.replaceChildren(shell);
-
-  return {
-    canvas,
-    canvasFrame,
-    debugRoot,
-    stateValue,
-    entityValue,
-    commandValue,
-    fpsValue,
-    setEngine(nextEngine) {
-      engine = nextEngine;
-    },
-    queueStart() {
-      startQueued = true;
-    },
-    inputSnapshot(snapshot) {
-      if (startQueued) {
-        startQueued = false;
-        return { ...snapshot, enter: true };
-      }
-      if (restartQueued) {
-        restartQueued = false;
-        return { ...snapshot, space: true };
-      }
-      return snapshot;
-    },
-  };
-
-  function appendMetric(parent: HTMLElement, label: string, value: HTMLElement): void {
-    const term = document.createElement("dt");
-    term.textContent = label;
-    value.textContent = "-";
-    parent.append(term, value);
-  }
-}
-
 function runtimeUiState(
   frame: { gameState: number; score: number; entityCount: number },
   renderCommandCount: number,
@@ -309,7 +142,18 @@ function runtimeUiState(
 
 async function bootstrap(): Promise<void> {
   const cleanups: Array<() => void> = [];
-  const shell = createShell();
+  const shell = createRuntimeDemoShell({
+    title: "Ferrum2D Minimal Game",
+    gameStateLabel,
+    controls: { reset: false },
+    metrics: [
+      { key: "state", label: "state" },
+      { key: "entityCount", label: "entities" },
+      { key: "renderCommandCount", label: "commands" },
+      { key: "fps", label: "fps" },
+    ],
+  });
+  cleanups.push(() => shell.destroy());
 
   try {
     const searchParams = new URLSearchParams(window.location.search);
@@ -329,10 +173,10 @@ async function bootstrap(): Promise<void> {
     const virtualControlsSmoke = searchParams.get("virtualControlsSmoke") === "true";
     const contentRuntimeSmoke = searchParams.get("contentRuntimeSmoke") === "true";
     const preloadSmokeReport = preloadSmoke
-      ? await runPreloadSmoke(shell.canvasFrame, cleanups)
+      ? await runPreloadSmoke(shell.stage, cleanups)
       : undefined;
     const virtualControls = virtualControlsSmoke
-      ? new VirtualControls(shell.canvasFrame)
+      ? new VirtualControls(shell.stage)
       : undefined;
     if (virtualControls) {
       cleanups.push(() => virtualControls.destroy());
@@ -367,7 +211,7 @@ async function bootstrap(): Promise<void> {
           locale: "en",
         }
         : undefined,
-      uiParent: shell.canvasFrame,
+      uiParent: shell.stage,
       hud: contentRuntimeSmoke
         ? {
           panelId: "minimal-content-hud",
@@ -486,8 +330,8 @@ async function bootstrap(): Promise<void> {
       uiState: ({ frame, rendererStats, fps }) =>
         runtimeUiState(frame, rendererStats.renderCommandCount, fps, { titleDialog: !contentRuntimeSmoke }),
       inputTransform: (snapshot) => {
-        const transformed = virtualControls?.applyToSnapshot(shell.inputSnapshot(snapshot))
-          ?? shell.inputSnapshot(snapshot);
+        const transformed = virtualControls?.applyToSnapshot(shell.inputTransform(snapshot))
+          ?? shell.inputTransform(snapshot);
         (window as Window & { ferrumVirtualControlsSmokeFrame?: { input: InputSnapshot } })
           .ferrumVirtualControlsSmokeFrame = { input: transformed };
         return transformed;
@@ -522,12 +366,10 @@ async function bootstrap(): Promise<void> {
             drawCalls: rendererStats.drawCalls,
           };
         }
-        shell.stateValue.textContent = gameStateLabel(frame.gameState);
-        shell.entityValue.textContent = String(frame.entityCount);
-        shell.commandValue.textContent = String(rendererStats.renderCommandCount);
-        shell.fpsValue.textContent = fps.toFixed(1);
+        shell.updateFrame({ frame, rendererStats, fps });
       },
     });
+    shell.attachRuntime(runtime);
 
     runtime.engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });
     if (particleVfxSmoke) {
@@ -539,28 +381,28 @@ async function bootstrap(): Promise<void> {
       });
       particleVfxEmitter.start(320, 200);
     }
-    shell.setEngine(runtime.engine);
-    cleanups.push(() => runtime.destroy());
 
-    const onBeforeUnload = (): void => cleanupResources(cleanups);
+    const onBeforeUnload = (): void => cleanupRuntimeDemoResources(cleanups);
     window.addEventListener("beforeunload", onBeforeUnload);
     cleanups.push(() => window.removeEventListener("beforeunload", onBeforeUnload));
 
     runtime.start();
     shell.queueStart();
-    (window as Window & { ferrumEngine?: FerrumEngine; ferrumRuntime?: FerrumRuntime }).ferrumEngine = runtime.engine;
-    (window as Window & { ferrumRuntime?: FerrumRuntime }).ferrumRuntime = runtime;
     (window as Window & { ferrumVirtualControls?: VirtualControls }).ferrumVirtualControls = virtualControls;
     (window as Window & { ferrumAssetPreloadSmoke?: Awaited<ReturnType<typeof runPreloadSmoke>> })
       .ferrumAssetPreloadSmoke = preloadSmokeReport;
 
   } catch (error) {
-    cleanupResources(cleanups);
+    cleanupRuntimeDemoResources(cleanups);
     throw error;
   }
 }
 
-void bootstrap().catch(renderBootstrapError);
+void bootstrap().catch((error) => renderRuntimeDemoError(error, {
+  title: "Ferrum2D Minimal Game",
+  summary: "Startup failed.",
+  diagnosticReport,
+}));
 
 async function runPreloadSmoke(parent: HTMLElement, cleanups: Array<() => void>): Promise<{
   first: { fetched: number; cached: number; total: number };
