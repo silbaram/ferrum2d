@@ -111,6 +111,9 @@ jobs:
       - name: Lint TypeScript packages
         run: pnpm lint
 
+      - name: Example demo harness guard
+        run: pnpm report:example-demo-harness
+
       - name: Test packages
         run: pnpm test
 

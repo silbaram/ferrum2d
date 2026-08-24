@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const sharedTemplateRoot = path.join(repoRoot, "packages/create-game/templates/_shared");
 const templateRoot = path.join(repoRoot, "packages/create-game/templates/topdown");
+const authoringViewerRoot = path.join(repoRoot, "packages/ferrum-authoring-viewer");
 const ferrumWebRoot = path.join(repoRoot, "packages/ferrum-web");
 const expectedCoverageTags = ["template-game-spec", "topdown-scene-composition-authoring"];
 const expectedCoverageTagDefinitions = {
@@ -30,7 +31,13 @@ try {
   await cp(sharedTemplateRoot, projectRoot, { recursive: true });
   await cp(templateRoot, projectRoot, { recursive: true });
   await mkdir(path.join(projectRoot, "node_modules/@ferrum2d"), { recursive: true });
-  await symlink(ferrumWebRoot, path.join(projectRoot, "node_modules/@ferrum2d/ferrum-web"), "dir");
+  const linkType = process.platform === "win32" ? "junction" : "dir";
+  await symlink(
+    authoringViewerRoot,
+    path.join(projectRoot, "node_modules/@ferrum2d/authoring-viewer"),
+    linkType,
+  );
+  await symlink(ferrumWebRoot, path.join(projectRoot, "node_modules/@ferrum2d/ferrum-web"), linkType);
 
   const validatedReport = await runJsonReport(projectRoot, ["scripts/ferrum-harness.mjs", "replay-report"]);
   assert.equal(validatedReport.format, "ferrum2d.consumer.gameplay-replay.report");
@@ -96,7 +103,11 @@ async function writeTopdownGameSpecDrift(projectRoot) {
 
 async function runJsonReport(projectRoot, args) {
   const result = await runHarness(projectRoot, args);
-  assert.equal(result.code, 0, `${formatCommand(process.execPath, args)} must pass`);
+  assert.equal(
+    result.code,
+    0,
+    `${formatCommand(process.execPath, args)} must pass\n${result.stdout}\n${result.stderr}`.trim(),
+  );
   return parseJsonReport(result.stdout, formatCommand(process.execPath, args));
 }
 
@@ -136,7 +147,7 @@ function runHarness(projectRoot, args) {
 
 function parseJsonReport(stdout, commandLabel) {
   const start = stdout.indexOf("{");
-  assert.ok(start >= 0, `${commandLabel} must emit a JSON report`);
+  assert.ok(start >= 0, `${commandLabel} must emit a JSON report; stdout=${JSON.stringify(stdout)}`);
   const end = findJsonObjectEnd(stdout, start);
   assert.ok(end >= 0, `${commandLabel} emitted an incomplete JSON report`);
   return JSON.parse(stdout.slice(start, end));

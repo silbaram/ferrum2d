@@ -73,6 +73,8 @@ const PLACEMENT_VIEWER_BASE_INSTANCE_COUNT = 6;
 const PLACEMENT_VIEWER_MASS_AUTHORING_COUNT = 1024;
 const PLACEMENT_VIEWER_MASS_AUTHORING_MIN_INSTANCE_COUNT =
   PLACEMENT_VIEWER_BASE_INSTANCE_COUNT + PLACEMENT_VIEWER_MASS_AUTHORING_COUNT;
+const PLACEMENT_VIEWER_MASS_AUTHORING_MIN_VISIBLE_RENDER_COMMAND_COUNT =
+  PLACEMENT_VIEWER_BASE_INSTANCE_COUNT + Math.floor(PLACEMENT_VIEWER_MASS_AUTHORING_COUNT / 2);
 const PLACEMENT_VIEWER_MASS_AUTHORING_MAX_DRAW_CALLS = 16;
 const PLACEMENT_VIEWER_MASS_AUTHORING_MAX_SELECTION_MS = 500;
 const PLACEMENT_VIEWER_MASS_AUTHORING_MAX_PATCH_MS = 500;
@@ -2125,14 +2127,15 @@ async function smokePlacementViewerSave(page, timeoutMs) {
 async function smokePlacementViewerMassAuthoring(page, timeoutMs) {
   await waitForPageFunction(
     page,
-    "placement viewer mass authoring smoke did not load 1000+ authoring instances",
-    ({ minInstanceCount, maxDrawCalls }) => {
+    "placement viewer mass authoring smoke did not load or render the 1000+ instance fixture",
+    ({ minInstanceCount, minVisibleRenderCommandCount, maxDrawCalls }) => {
       const state = globalThis.ferrumPlacementViewerState;
       const frame = globalThis.ferrumPlacementViewerRuntimeFrame;
       return Boolean(
         state?.instances?.length >= minInstanceCount
         && frame?.entityCount >= minInstanceCount
-        && frame.renderCommandCount >= minInstanceCount
+        && frame.renderCommandCount >= minVisibleRenderCommandCount
+        && frame.renderCommandCount <= frame.entityCount
         && frame.drawCalls >= 1
         && frame.drawCalls <= maxDrawCalls
       );
@@ -2140,6 +2143,7 @@ async function smokePlacementViewerMassAuthoring(page, timeoutMs) {
     timeoutMs,
     {
       minInstanceCount: PLACEMENT_VIEWER_MASS_AUTHORING_MIN_INSTANCE_COUNT,
+      minVisibleRenderCommandCount: PLACEMENT_VIEWER_MASS_AUTHORING_MIN_VISIBLE_RENDER_COMMAND_COUNT,
       maxDrawCalls: PLACEMENT_VIEWER_MASS_AUTHORING_MAX_DRAW_CALLS,
     },
   );
@@ -2192,6 +2196,7 @@ async function smokePlacementViewerMassAuthoring(page, timeoutMs) {
     placementViewerMassAuthoringSmoke: {
       targetInstanceId,
       minInstanceCount: PLACEMENT_VIEWER_MASS_AUTHORING_MIN_INSTANCE_COUNT,
+      minVisibleRenderCommandCount: PLACEMENT_VIEWER_MASS_AUTHORING_MIN_VISIBLE_RENDER_COMMAND_COUNT,
       maxDrawCalls: PLACEMENT_VIEWER_MASS_AUTHORING_MAX_DRAW_CALLS,
       maxSelectionMs: PLACEMENT_VIEWER_MASS_AUTHORING_MAX_SELECTION_MS,
       maxPatchMs: PLACEMENT_VIEWER_MASS_AUTHORING_MAX_PATCH_MS,
@@ -3377,9 +3382,9 @@ async function smokeTopdownAuthoredBehaviorVariant(page, timeoutMs, expectedRepl
       JSON.stringify(stateCommandApply.commandTypes?.["interaction-source"]) !== "[]" ||
       JSON.stringify(stateCommandApply.commandTypes?.["test-projectile"]) !== JSON.stringify(["configureLifetime"]) ||
       JSON.stringify(stateCommandApply.commandTypes?.["timer-source"]) !== "[]" ||
-      stateCommandApply.resultCounts?.["interaction-source"] !== 12 ||
-      stateCommandApply.resultCounts?.["test-projectile"] !== 13 ||
-      stateCommandApply.resultCounts?.["timer-source"] !== 12
+      stateCommandApply.resultCounts?.["interaction-source"] !== 13 ||
+      stateCommandApply.resultCounts?.["test-projectile"] !== 14 ||
+      stateCommandApply.resultCounts?.["timer-source"] !== 13
     ) {
       throw new Error(`Top-down authored behavior state command apply mismatch: ${JSON.stringify(stateCommandApply)}`);
     }
@@ -3502,9 +3507,9 @@ async function smokeTopdownAuthoredBehaviorVariant(page, timeoutMs, expectedRepl
       JSON.stringify(stateCommandApply.commandTypes?.["interaction-source"]) !== "[]" ||
       JSON.stringify(stateCommandApply.commandTypes?.["test-projectile"]) !== JSON.stringify(["configureLifetime"]) ||
       JSON.stringify(stateCommandApply.commandTypes?.["timer-source"]) !== "[]" ||
-      stateCommandApply.resultCounts?.["interaction-source"] !== 12 ||
-      stateCommandApply.resultCounts?.["test-projectile"] !== 13 ||
-      stateCommandApply.resultCounts?.["timer-source"] !== 12
+      stateCommandApply.resultCounts?.["interaction-source"] !== 13 ||
+      stateCommandApply.resultCounts?.["test-projectile"] !== 14 ||
+      stateCommandApply.resultCounts?.["timer-source"] !== 13
     ) {
       throw new Error(`Top-down authored behavior reset/re-apply state command mismatch: ${JSON.stringify(stateCommandApply)}`);
     }

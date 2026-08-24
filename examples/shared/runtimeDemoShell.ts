@@ -78,6 +78,21 @@ export interface RuntimeDemoShellOptions {
   canvasHeight?: number;
   frameProperty?: string;
   gameStateLabel?: (code: number) => string;
+  metrics?: readonly RuntimeDemoMetric[];
+  controls?: false | RuntimeDemoControls;
+}
+
+export interface RuntimeDemoMetric {
+  key: string;
+  label: string;
+  initialValue?: string;
+}
+
+export interface RuntimeDemoControls {
+  start?: boolean;
+  reset?: boolean;
+  pause?: boolean;
+  resume?: boolean;
 }
 
 export interface RuntimeDemoShell {
@@ -88,12 +103,12 @@ export interface RuntimeDemoShell {
   queueStart(): void;
   inputTransform<T extends RuntimeDemoInputSnapshot>(snapshot: T): T;
   updateFrame(frame: RuntimeDemoFrame): RuntimeDemoFrameReport;
+  setMetric(key: string, value: string | number): void;
   uiState(): RuntimeDemoUiOverlayState;
-  exposeSmokeHooks(runtime: RuntimeDemoRuntime): void;
   destroy(): void;
 }
 
-interface RuntimeDemoDiagnosticContext {
+export interface RuntimeDemoDiagnosticContext {
   kind: string;
   name?: string;
   id?: string | number;
@@ -102,7 +117,7 @@ interface RuntimeDemoDiagnosticContext {
   detail: string;
 }
 
-interface RuntimeDemoDiagnosticReport {
+export interface RuntimeDemoDiagnosticReport {
   code: string;
   message: string;
   context?: RuntimeDemoDiagnosticContext;
@@ -111,10 +126,10 @@ interface RuntimeDemoDiagnosticReport {
 export interface RuntimeDemoErrorOptions {
   title: string;
   root?: string | HTMLElement;
+  summary?: string;
+  className?: string;
   diagnosticReport?: (error: unknown) => RuntimeDemoDiagnosticReport;
 }
-
-type MetricKey = keyof RuntimeDemoFrameReport;
 
 const DEFAULT_REPORT: RuntimeDemoFrameReport = {
   state: "Title",
@@ -124,7 +139,7 @@ const DEFAULT_REPORT: RuntimeDemoFrameReport = {
   fps: 0,
 };
 
-const METRICS: readonly Array<{ key: MetricKey; label: string }> = [
+const DEFAULT_METRICS: readonly RuntimeDemoMetric[] = [
   { key: "state", label: "state" },
   { key: "entityCount", label: "entities" },
   { key: "renderCommandCount", label: "commands" },
@@ -132,10 +147,20 @@ const METRICS: readonly Array<{ key: MetricKey; label: string }> = [
   { key: "fps", label: "fps" },
 ];
 
+const DEFAULT_CONTROLS: Required<RuntimeDemoControls> = {
+  start: true,
+  reset: true,
+  pause: true,
+  resume: true,
+};
+
 export function createRuntimeDemoShell(options: RuntimeDemoShellOptions): RuntimeDemoShell {
   const app = resolveRoot(options.root);
   const report: RuntimeDemoFrameReport = { ...DEFAULT_REPORT };
-  const metricValues: Partial<Record<MetricKey, HTMLElement>> = {};
+  const metricValues: Record<string, HTMLElement> = {};
+  const controls = options.controls === false
+    ? { start: false, reset: false, pause: false, resume: false }
+    : { ...DEFAULT_CONTROLS, ...options.controls };
   let runtime: RuntimeDemoRuntime | undefined;
   let startQueued = false;
   let restartQueued = false;
@@ -165,21 +190,27 @@ export function createRuntimeDemoShell(options: RuntimeDemoShellOptions): Runtim
   canvas.width = options.canvasWidth ?? 800;
   canvas.height = options.canvasHeight ?? 480;
 
-  actions.append(
-    createButton("Start", () => {
+  if (controls.start) {
+    actions.append(createRuntimeDemoButton("Start", () => {
       if (runtime?.engine.gameState() === 2) {
         restartQueued = true;
       } else {
         startQueued = true;
       }
-    }),
-    createButton("Reset", () => runtime?.engine.resetGame()),
-    createButton("Pause", () => runtime?.pause()),
-    createButton("Resume", () => runtime?.resume()),
-  );
+    }));
+  }
+  if (controls.reset) {
+    actions.append(createRuntimeDemoButton("Reset", () => runtime?.engine.resetGame()));
+  }
+  if (controls.pause) {
+    actions.append(createRuntimeDemoButton("Pause", () => runtime?.pause()));
+  }
+  if (controls.resume) {
+    actions.append(createRuntimeDemoButton("Resume", () => runtime?.resume()));
+  }
 
-  for (const metric of METRICS) {
-    appendMetric(metrics, metric.label, metric.key);
+  for (const metric of options.metrics ?? DEFAULT_METRICS) {
+    appendMetric(metrics, metric);
   }
   writeMetricValues(report);
 
@@ -194,12 +225,16 @@ export function createRuntimeDemoShell(options: RuntimeDemoShellOptions): Runtim
     stage,
     debugRoot,
     attachRuntime(nextRuntime) {
-      runtime = nextRuntime;
       removeBeforeUnload?.();
-      const onBeforeUnload = (): void => nextRuntime.destroy();
+      removeBeforeUnload = undefined;
+      if (runtime !== undefined && runtime !== nextRuntime) {
+        destroyRuntime();
+      }
+      runtime = nextRuntime;
+      const onBeforeUnload = (): void => destroyRuntime();
       window.addEventListener("beforeunload", onBeforeUnload);
       removeBeforeUnload = () => window.removeEventListener("beforeunload", onBeforeUnload);
-      this.exposeSmokeHooks(nextRuntime);
+      exposeSmokeHooks(nextRuntime);
     },
     queueStart() {
       startQueued = true;
@@ -225,6 +260,9 @@ export function createRuntimeDemoShell(options: RuntimeDemoShellOptions): Runtim
       publishFrameReport();
       return { ...report };
     },
+    setMetric(key, value) {
+      writeMetric(key, String(value));
+    },
     uiState() {
       return {
         panels: [{
@@ -249,47 +287,62 @@ export function createRuntimeDemoShell(options: RuntimeDemoShellOptions): Runtim
           : undefined,
       };
     },
-    exposeSmokeHooks(nextRuntime) {
-      runtime = nextRuntime;
-      const target = window as Window & Record<string, unknown>;
-      target.ferrumRuntime = nextRuntime;
-      target.ferrumEngine = nextRuntime.engine;
-      frameProperty = frameProperty ?? "ferrumDemoFrame";
-      publishFrameReport();
-    },
     destroy() {
       removeBeforeUnload?.();
       removeBeforeUnload = undefined;
-      runtime?.destroy();
-      runtime = undefined;
+      destroyRuntime();
     },
   };
 
-  function appendMetric(parent: HTMLElement, label: string, key: MetricKey): void {
+  function appendMetric(parent: HTMLElement, metric: RuntimeDemoMetric): void {
+    const item = document.createElement("div");
     const term = document.createElement("dt");
     const value = document.createElement("dd");
-    term.textContent = label;
-    value.textContent = "-";
-    parent.append(term, value);
-    metricValues[key] = value;
+    item.className = "demo-metric";
+    term.textContent = metric.label;
+    value.textContent = metric.initialValue ?? "-";
+    item.append(term, value);
+    parent.append(item);
+    metricValues[metric.key] = value;
   }
 
   function writeMetricValues(nextReport: RuntimeDemoFrameReport): void {
-    setMetric("state", nextReport.state);
-    setMetric("entityCount", String(nextReport.entityCount));
-    setMetric("renderCommandCount", String(nextReport.renderCommandCount));
-    setMetric("drawCalls", String(nextReport.drawCalls));
-    setMetric("fps", nextReport.fps.toFixed(1));
+    writeMetric("state", nextReport.state);
+    writeMetric("entityCount", String(nextReport.entityCount));
+    writeMetric("renderCommandCount", String(nextReport.renderCommandCount));
+    writeMetric("drawCalls", String(nextReport.drawCalls));
+    writeMetric("fps", nextReport.fps.toFixed(1));
   }
 
-  function setMetric(key: MetricKey, value: string): void {
+  function writeMetric(key: string, value: string): void {
     const element = metricValues[key];
     if (element) element.textContent = value;
   }
 
   function publishFrameReport(): void {
     if (!frameProperty) return;
-    (window as Window & Record<string, unknown>)[frameProperty] = { ...report };
+    runtimeDemoGlobals()[frameProperty] = { ...report };
+  }
+
+  function exposeSmokeHooks(nextRuntime: RuntimeDemoRuntime): void {
+    const target = runtimeDemoGlobals();
+    target.ferrumRuntime = nextRuntime;
+    target.ferrumEngine = nextRuntime.engine;
+    frameProperty = frameProperty ?? "ferrumDemoFrame";
+    publishFrameReport();
+  }
+
+  function destroyRuntime(): void {
+    const currentRuntime = runtime;
+    runtime = undefined;
+    if (currentRuntime === undefined) return;
+    const target = runtimeDemoGlobals();
+    if (target.ferrumRuntime === currentRuntime) {
+      delete target.ferrumRuntime;
+      if (target.ferrumEngine === currentRuntime.engine) delete target.ferrumEngine;
+      if (frameProperty) delete target[frameProperty];
+    }
+    currentRuntime.destroy();
   }
 }
 
@@ -299,9 +352,11 @@ export function renderRuntimeDemoError(error: unknown, options: RuntimeDemoError
   const report = options.diagnosticReport?.(error);
   const container = document.createElement("main");
   const title = document.createElement("h1");
+  const summary = options.summary === undefined ? undefined : document.createElement("p");
   const list = document.createElement("dl");
-  container.className = "demo-error-shell";
+  container.className = options.className ?? "demo-error-shell";
   title.textContent = options.title;
+  if (summary) summary.textContent = options.summary ?? "";
 
   if (report) {
     appendDiagnosticRows(list, report);
@@ -309,20 +364,38 @@ export function renderRuntimeDemoError(error: unknown, options: RuntimeDemoError
     appendDescription(list, "error", error instanceof Error ? error.message : String(error));
   }
 
-  container.append(title, list);
+  container.append(title);
+  if (summary) container.append(summary);
+  container.append(list);
   app.replaceChildren(container);
 }
 
+export function cleanupRuntimeDemoResources(cleanups: Array<() => void>): void {
+  for (const cleanup of cleanups.splice(0).reverse()) {
+    try {
+      cleanup();
+    } catch (error) {
+      console.warn("Ferrum2D cleanup failed", error);
+    }
+  }
+}
+
 function appendDiagnosticRows(list: HTMLElement, report: RuntimeDemoDiagnosticReport): void {
-  appendDescription(list, "code", report.code);
-  appendDescription(list, "message", report.message);
-  if (!report.context) return;
-  appendDescription(list, "kind", report.context.kind);
-  if (report.context.name !== undefined) appendDescription(list, "name", report.context.name);
-  if (report.context.id !== undefined) appendDescription(list, "id", String(report.context.id));
-  if (report.context.url !== undefined) appendDescription(list, "url", report.context.url);
-  if (report.context.path !== undefined) appendDescription(list, "path", report.context.path);
-  appendDescription(list, "detail", report.context.detail);
+  for (const [label, value] of runtimeDemoDiagnosticRows(report)) {
+    appendDescription(list, label, value);
+  }
+}
+
+export function runtimeDemoDiagnosticRows(report: RuntimeDemoDiagnosticReport): Array<[string, string]> {
+  const rows: Array<[string, string]> = [["code", report.code], ["message", report.message]];
+  if (!report.context) return rows;
+  rows.push(["kind", report.context.kind]);
+  if (report.context.name !== undefined) rows.push(["name", report.context.name]);
+  if (report.context.id !== undefined) rows.push(["id", String(report.context.id)]);
+  if (report.context.url !== undefined) rows.push(["url", report.context.url]);
+  if (report.context.path !== undefined) rows.push(["path", report.context.path]);
+  rows.push(["detail", report.context.detail]);
+  return rows;
 }
 
 function appendDescription(list: HTMLElement, label: string, value: string): void {
@@ -333,7 +406,7 @@ function appendDescription(list: HTMLElement, label: string, value: string): voi
   list.append(term, description);
 }
 
-function createButton(label: string, onClick: () => void): HTMLButtonElement {
+export function createRuntimeDemoButton(label: string, onClick: () => void): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.textContent = label;
@@ -357,4 +430,8 @@ function gameStateLabel(code: number, customLabel?: (code: number) => string): s
   if (code === 1) return "Playing";
   if (code === 2) return "GameOver";
   return `State ${code}`;
+}
+
+function runtimeDemoGlobals(): Window & Record<string, unknown> {
+  return window as unknown as Window & Record<string, unknown>;
 }

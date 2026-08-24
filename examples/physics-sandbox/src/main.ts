@@ -25,9 +25,12 @@ import {
 import {
   DebugGizmoLineBufferWriter,
   diagnosticReport,
-  type DiagnosticContext,
-  type DiagnosticReport,
 } from "@ferrum2d/ferrum-web/quality";
+import {
+  createRuntimeDemoButton,
+  renderRuntimeDemoError,
+  runtimeDemoDiagnosticRows,
+} from "../../shared/runtimeDemoShell";
 
 import "./styles.css";
 
@@ -313,29 +316,6 @@ function publicAssetUrl(path: string): string {
   return `${import.meta.env.BASE_URL}${path}`;
 }
 
-function diagnosticRows(report: DiagnosticReport): Array<[string, string]> {
-  const rows: Array<[string, string]> = [["code", report.code], ["message", report.message]];
-  if (report.context) appendDiagnosticContext(rows, report.context);
-  return rows;
-}
-
-function appendDiagnosticContext(rows: Array<[string, string]>, context: DiagnosticContext): void {
-  rows.push(["kind", context.kind]);
-  if (context.name !== undefined) rows.push(["name", context.name]);
-  if (context.id !== undefined) rows.push(["id", String(context.id)]);
-  if (context.url !== undefined) rows.push(["url", context.url]);
-  if (context.path !== undefined) rows.push(["path", context.path]);
-  rows.push(["detail", context.detail]);
-}
-
-function createButton(label: string, onClick: () => void): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = label;
-  button.addEventListener("click", onClick);
-  return button;
-}
-
 function createShell(
   scenarios: readonly PhysicsScenarioEntry[],
   onScenarioChange: (id: string) => void,
@@ -348,6 +328,8 @@ function createShell(
   onDebugChange: (options: PhysicsDebugOptions) => void,
   initialDebugOptions: PhysicsDebugOptions,
 ): SandboxShell {
+  // Physics Sandbox keeps a specialized shell for scenario, material, query, and frame-step controls.
+  // Common buttons and diagnostics still come from the shared demo harness.
   const app = document.querySelector<HTMLDivElement>("#app");
   if (!app) {
     throw new Error("Missing #app root element.");
@@ -362,10 +344,10 @@ function createShell(
   const summary = document.createElement("p");
   const toolbar = document.createElement("div");
   const scenarioSelect = document.createElement("select");
-  const runButton = createButton("실행", onRun);
-  const pauseButton = createButton("일시정지", onPause);
-  const stepButton = createButton("한 프레임", onStep);
-  const resetButton = createButton("리셋", onReset);
+  const runButton = createRuntimeDemoButton("실행", onRun);
+  const pauseButton = createRuntimeDemoButton("일시정지", onPause);
+  const stepButton = createRuntimeDemoButton("한 프레임", onStep);
+  const resetButton = createRuntimeDemoButton("리셋", onReset);
   const categoryNav = document.createElement("nav");
   const debugControls = document.createElement("div");
   const stage = document.createElement("section");
@@ -478,7 +460,7 @@ function createShell(
   scenarioSelect.addEventListener("change", () => onScenarioChange(scenarioSelect.value));
 
   for (const category of categories) {
-    const button = createButton(categoryLabel(category, scenarios), () => {
+    const button = createRuntimeDemoButton(categoryLabel(category, scenarios), () => {
       const firstScenario = scenarios.find((scenario) => scenario.category === category);
       if (firstScenario) onScenarioChange(firstScenario.id);
     });
@@ -593,7 +575,7 @@ function createShell(
     },
     setActions(actions) {
       actionButtons.replaceChildren(...actions.map((action) => {
-        const button = createButton(actionLabel(action), () => onAction(action.id));
+        const button = createRuntimeDemoButton(actionLabel(action), () => onAction(action.id));
         button.className = "action-button";
         return button;
       }));
@@ -636,7 +618,7 @@ function createShell(
       const titleElement = document.createElement("strong");
       const list = document.createElement("dl");
       titleElement.textContent = "오류";
-      for (const [label, value] of diagnosticRows(report)) {
+      for (const [label, value] of runtimeDemoDiagnosticRows(report)) {
         appendMetric(list, label, createTextValue(value));
       }
       errorBox.hidden = false;
@@ -1631,22 +1613,8 @@ function formatVector(x: number, y: number): string {
   return `${x.toFixed(0)}, ${y.toFixed(0)}`;
 }
 
-function renderBootstrapError(error: unknown): void {
-  console.error("Ferrum2D physics showcase failed", error);
-  const app = document.querySelector<HTMLDivElement>("#app");
-  if (!app) return;
-
-  const report = diagnosticReport(error);
-  const container = document.createElement("main");
-  const title = document.createElement("h1");
-  const list = document.createElement("dl");
-  container.className = "error-shell";
-  title.textContent = "Ferrum2D 물리 쇼케이스 Lab";
-  for (const [label, value] of diagnosticRows(report)) {
-    appendMetric(list, label, createTextValue(value));
-  }
-  container.append(title, list);
-  app.replaceChildren(container);
-}
-
-void bootstrap().catch(renderBootstrapError);
+void bootstrap().catch((error) => renderRuntimeDemoError(error, {
+  title: "Ferrum2D 물리 쇼케이스 Lab",
+  className: "error-shell",
+  diagnosticReport,
+}));
