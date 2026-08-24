@@ -4,6 +4,7 @@ mod placement_document;
 pub fn run() {
     tauri::Builder::default()
         .manage(placement_document::PlacementAssetRegistry::default())
+        .manage(placement_document::PlacementWriteRegistry::default())
         .register_uri_scheme_protocol("ferrum-asset", |context, request| {
             placement_document::placement_asset_protocol_response(context, request)
         })

@@ -3,7 +3,7 @@ name = "ferrum-placement-viewer-desktop"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "Ferrum2D placement viewer desktop spike"
+description = "Ferrum2D native placement and object authoring host"
 
 [lib]
 name = "ferrum_placement_viewer_desktop_lib"
