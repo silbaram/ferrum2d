@@ -7,20 +7,26 @@ import {
   type SceneAuthoringDocumentSpec,
 } from "./sceneAuthoringDocument.js";
 import type {
+  SceneCompositionFragmentIncludeSpec,
   SceneCompositionFragmentInstanceSpec,
   SceneCompositionFragmentSpec,
+  SceneCompositionInstancePlacement,
   SceneCompositionJsonValue,
   SceneCompositionPrefabSpec,
   SceneCompositionSpec,
+  SceneCompositionTransformSpec,
 } from "./sceneComposition.js";
+import { instantiateSceneFragmentPlacements } from "./sceneComposition.js";
 import {
   SCENE_PLACEMENT_PATCH_FORMAT,
+  SCENE_PLACEMENT_PATCH_LEGACY_VERSION,
   SCENE_PLACEMENT_PATCH_VERSION,
   type ScenePlacementPatch,
   type ScenePlacementPatchOperation,
   type ScenePlacementBehaviorBindingPatch,
   type ScenePlacementBehaviorBindingTarget,
   type ScenePlacementTransform,
+  type ScenePlacementResolvedTransformTarget,
 } from "./scenePlacementViewer.js";
 
 export interface MergeScenePlacementPatchOptions {
@@ -99,7 +105,12 @@ export interface ScenePlacementPatchSaveResult extends ScenePlacementPatchMergeR
   adapterId: string;
 }
 
-type MutableSceneCompositionFragmentSpec = Omit<SceneCompositionFragmentSpec, "instances"> & {
+type MutableSceneCompositionFragmentIncludeSpec = Omit<SceneCompositionFragmentIncludeSpec, "instanceTransforms"> & {
+  instanceTransforms?: Record<string, SceneCompositionTransformSpec>;
+};
+
+type MutableSceneCompositionFragmentSpec = Omit<SceneCompositionFragmentSpec, "include" | "instances"> & {
+  include?: MutableSceneCompositionFragmentIncludeSpec[];
   instances?: SceneCompositionFragmentInstanceSpec[];
 };
 
@@ -139,6 +150,27 @@ export function mergeScenePlacementPatch(
           ...ref.instance,
           ...transform,
         };
+        pushUnique(changedInstanceIds, operation.instanceId);
+        break;
+      }
+      case "updateResolvedTransform": {
+        if (patch.version !== SCENE_PLACEMENT_PATCH_VERSION) {
+          throw gameplayAuthoringDiagnosticError(
+            `${operationPath}.kind`,
+            `requires scene placement patch version ${SCENE_PLACEMENT_PATCH_VERSION}`,
+          );
+        }
+        const target = validatedResolvedTransformTarget(operation.target, `${operationPath}.target`);
+        const transform = validatedResolvedTransform(operation.transform, `${operationPath}.transform`);
+        applyResolvedTransformPatch(
+          composition,
+          fragments,
+          operation.instanceId,
+          target,
+          transform,
+          options.allowedFragments,
+          operationPath,
+        );
         pushUnique(changedInstanceIds, operation.instanceId);
         break;
       }
@@ -332,8 +364,14 @@ function validateScenePlacementPatchEnvelope(patch: ScenePlacementPatch, path: s
   if (patch.format !== SCENE_PLACEMENT_PATCH_FORMAT) {
     throw gameplayAuthoringDiagnosticError(path, `format must be ${SCENE_PLACEMENT_PATCH_FORMAT}`);
   }
-  if (patch.version !== SCENE_PLACEMENT_PATCH_VERSION) {
-    throw gameplayAuthoringDiagnosticError(path, `version must be ${SCENE_PLACEMENT_PATCH_VERSION}`);
+  if (
+    patch.version !== SCENE_PLACEMENT_PATCH_LEGACY_VERSION
+    && patch.version !== SCENE_PLACEMENT_PATCH_VERSION
+  ) {
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `version must be ${SCENE_PLACEMENT_PATCH_LEGACY_VERSION} or ${SCENE_PLACEMENT_PATCH_VERSION}`,
+    );
   }
 }
 
@@ -373,6 +411,113 @@ function findUniqueInstanceRef(
     throw gameplayAuthoringDiagnosticError(path, `references ambiguous scene instance '${instanceId}'`);
   }
   return matches[0] as MutableInstanceRef;
+}
+
+function findInstanceRefInFragment(
+  fragments: Record<string, MutableSceneCompositionFragmentSpec>,
+  fragmentId: string,
+  instanceId: string,
+  path: string,
+): MutableInstanceRef {
+  const fragment = fragments[fragmentId];
+  if (fragment === undefined) {
+    throw gameplayAuthoringDiagnosticError(path, `references unknown fragment '${fragmentId}'`);
+  }
+  const instances = fragment.instances ?? [];
+  const matches = instances.flatMap((instance, index) =>
+    instance.id === instanceId
+      ? [{ fragmentId, instances, index, instance }]
+      : []);
+  if (matches.length === 0) {
+    throw gameplayAuthoringDiagnosticError(path, `references unknown scene instance '${instanceId}'`);
+  }
+  if (matches.length > 1) {
+    throw gameplayAuthoringDiagnosticError(path, `references ambiguous scene instance '${instanceId}'`);
+  }
+  return matches[0] as MutableInstanceRef;
+}
+
+function applyResolvedTransformPatch(
+  composition: MutableSceneCompositionSpec,
+  fragments: Record<string, MutableSceneCompositionFragmentSpec>,
+  resolvedInstanceId: string,
+  target: ScenePlacementResolvedTransformTarget,
+  transform: ScenePlacementTransform,
+  allowedFragments: readonly string[] | undefined,
+  path: string,
+): void {
+  assertAllowedFragment(target.fragment, allowedFragments, `${path}.target.fragment`);
+  const matchedPlacement = instantiateSceneFragmentPlacements(composition, {
+    fragment: target.fragment,
+    path: `${path}.target`,
+  }).find(({ placement }) => sameResolvedTransformTarget(placement, target));
+  if (matchedPlacement === undefined) {
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.target`,
+      `does not resolve a scene instance in fragment '${target.fragment}'`,
+    );
+  }
+  if (matchedPlacement.instance.id !== resolvedInstanceId) {
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.instanceId`,
+      `must match resolved target instance '${matchedPlacement.instance.id}'`,
+    );
+  }
+  if (target.kind === "fragmentInstance") {
+    const ref = findInstanceRefInFragment(
+      fragments,
+      target.fragment,
+      target.instanceId,
+      `${path}.target.instanceId`,
+    );
+    ref.instances[ref.index] = {
+      ...ref.instance,
+      ...transform,
+    };
+    return;
+  }
+
+  const fragment = fragments[target.fragment];
+  if (fragment === undefined) {
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.target.fragment`,
+      `references unknown fragment '${target.fragment}'`,
+    );
+  }
+  const include = fragment.include?.[target.includeIndex];
+  if (include === undefined) {
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.target.includeIndex`,
+      `references unknown include index ${target.includeIndex}`,
+    );
+  }
+  if (include.fragment !== target.includedFragment) {
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.target.includedFragment`,
+      `expected include '${target.includedFragment}' at index ${target.includeIndex}, found '${include.fragment}'`,
+    );
+  }
+  include.instanceTransforms = {
+    ...(include.instanceTransforms ?? {}),
+    [target.instanceId]: { ...transform },
+  };
+}
+
+function sameResolvedTransformTarget(
+  placement: SceneCompositionInstancePlacement,
+  target: ScenePlacementResolvedTransformTarget,
+): boolean {
+  if (placement.kind !== target.kind || placement.fragment !== target.fragment) {
+    return false;
+  }
+  if (placement.kind === "fragmentInstance" && target.kind === "fragmentInstance") {
+    return placement.instanceId === target.instanceId;
+  }
+  return placement.kind === "fragmentIncludeInstance"
+    && target.kind === "fragmentIncludeInstance"
+    && placement.includeIndex === target.includeIndex
+    && placement.includedFragment === target.includedFragment
+    && placement.instanceId === target.instanceId;
 }
 
 function assertAllowedFragment(
@@ -587,6 +732,58 @@ function validatedTransformPatch(
     patch.layer = finiteTransformNumber(transform.layer, `${path}.layer`);
   }
   return patch;
+}
+
+function validatedResolvedTransform(
+  transform: ScenePlacementTransform,
+  path: string,
+): ScenePlacementTransform {
+  const patch = validatedTransformPatch(transform, path);
+  if (
+    patch.x === undefined
+    || patch.y === undefined
+    || patch.rotationRadians === undefined
+    || patch.scale === undefined
+    || patch.layer === undefined
+  ) {
+    throw gameplayAuthoringDiagnosticError(path, "must provide x, y, rotationRadians, scale, and layer");
+  }
+  return {
+    x: patch.x,
+    y: patch.y,
+    rotationRadians: patch.rotationRadians,
+    scale: patch.scale,
+    layer: patch.layer,
+  };
+}
+
+function validatedResolvedTransformTarget(
+  target: ScenePlacementResolvedTransformTarget,
+  path: string,
+): ScenePlacementResolvedTransformTarget {
+  if (target?.kind === "fragmentInstance") {
+    return {
+      kind: target.kind,
+      fragment: requiredPlacementId(target.fragment, `${path}.fragment`),
+      instanceId: requiredPlacementId(target.instanceId, `${path}.instanceId`),
+    };
+  }
+  if (target?.kind === "fragmentIncludeInstance") {
+    if (!Number.isInteger(target.includeIndex) || target.includeIndex < 0) {
+      throw gameplayAuthoringDiagnosticError(`${path}.includeIndex`, "must be a non-negative integer");
+    }
+    return {
+      kind: target.kind,
+      fragment: requiredPlacementId(target.fragment, `${path}.fragment`),
+      includeIndex: target.includeIndex,
+      includedFragment: requiredPlacementId(target.includedFragment, `${path}.includedFragment`),
+      instanceId: requiredPlacementId(target.instanceId, `${path}.instanceId`),
+    };
+  }
+  throw gameplayAuthoringDiagnosticError(
+    `${path}.kind`,
+    "must be fragmentInstance or fragmentIncludeInstance",
+  );
 }
 
 function finiteTransformNumber(value: number, path: string): number {

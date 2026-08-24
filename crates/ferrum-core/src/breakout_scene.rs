@@ -52,6 +52,14 @@ impl BreakoutScene {
         self.score
     }
 
+    pub(crate) fn paddle_entity(&self) -> Option<Entity> {
+        self.paddle
+    }
+
+    pub(crate) fn ball_entity(&self) -> Option<Entity> {
+        self.ball
+    }
+
     pub(crate) fn game_state(&self) -> GameState {
         self.game_state
     }

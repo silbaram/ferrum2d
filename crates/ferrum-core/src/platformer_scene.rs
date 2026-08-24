@@ -229,6 +229,10 @@ impl PlatformerScene {
         self.score
     }
 
+    pub(crate) fn player_entity(&self) -> Option<Entity> {
+        self.player
+    }
+
     pub(crate) fn game_state(&self) -> GameState {
         self.game_state
     }

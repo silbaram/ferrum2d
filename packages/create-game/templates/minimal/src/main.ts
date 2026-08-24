@@ -14,6 +14,11 @@ import {
   minimalTemplateUiState,
   renderMinimalTemplateStartupError,
 } from "./minimal-template-shell";
+import {
+  createBuiltInSceneAuthoringSession,
+  loadBuiltInSceneAuthoringDocument,
+  type BuiltInSceneAuthoringSession,
+} from "./ferrum-built-in-scene-authoring";
 
 import "./styles.css";
 
@@ -81,9 +86,11 @@ interface MinimalTemplateWindow extends Window {
 
 async function bootstrap(): Promise<void> {
   const shell = createMinimalTemplateShell();
+  const sceneAuthoringDocument = await loadBuiltInSceneAuthoringDocument();
   const searchParams = new URLSearchParams(window.location.search);
   const weaponProfile = resolveTemplateWeaponProfile(searchParams);
   const weaponActionId = TEMPLATE_WEAPON_ACTION_IDS[weaponProfile];
+  let authoringSession: BuiltInSceneAuthoringSession | undefined;
   const runtime = await createFerrumRuntime({
     canvas: shell.canvas,
     debugParent: shell.debugRoot,
@@ -106,6 +113,9 @@ async function bootstrap(): Promise<void> {
     inputTransform: (snapshot) => shell.inputSnapshot(snapshot),
     onFrame: ({ frame, rendererStats, fps }) => {
       shell.updateMetrics(frame, rendererStats.renderCommandCount, fps, weaponProfile);
+      if (authoringSession?.sync(frame.gameState) !== undefined) {
+        applyTemplateWeaponProfile(runtime.engine, weaponProfile);
+      }
     },
   });
 
@@ -118,7 +128,11 @@ async function bootstrap(): Promise<void> {
     control: "mouseLeft",
     activation: "down",
   });
-  applyTemplateWeaponProfile(runtime.engine, weaponProfile);
+  authoringSession = createBuiltInSceneAuthoringSession(
+    runtime.engine,
+    "shooter",
+    sceneAuthoringDocument,
+  );
   shell.setEngine(runtime.engine);
   runtime.start();
   shell.queueStart();

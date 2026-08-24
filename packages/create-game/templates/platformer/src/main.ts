@@ -8,6 +8,11 @@ import {
   resolveAccessibilityHudTheme,
   resolveAccessibilityOptions,
 } from "@ferrum2d/ferrum-web/authoring";
+import {
+  createBuiltInSceneAuthoringSession,
+  loadBuiltInSceneAuthoringDocument,
+  type BuiltInSceneAuthoringSession,
+} from "./ferrum-built-in-scene-authoring";
 
 import "./styles.css";
 
@@ -78,6 +83,8 @@ function hud(frame: { gameState: number; score: number; entityCount: number }, f
 
 async function bootstrap(): Promise<void> {
   const shell = createShell();
+  const sceneAuthoringDocument = await loadBuiltInSceneAuthoringDocument();
+  let authoringSession: BuiltInSceneAuthoringSession | undefined;
   const runtime = await createFerrumRuntime({
     canvas: shell.canvas,
     environment: "development",
@@ -85,6 +92,9 @@ async function bootstrap(): Promise<void> {
     ui: { theme: resolveAccessibilityHudTheme(accessibility) },
     uiState: ({ frame, fps }) => hud(frame, fps),
     inputTransform: (snapshot) => shell.consumeStart() ? { ...snapshot, enter: true } : snapshot,
+    onFrame: ({ frame }) => {
+      authoringSession?.sync(frame.gameState);
+    },
     webgl2: {
       clearColor: [0.08, 0.08, 0.1, 1],
     },
@@ -92,6 +102,11 @@ async function bootstrap(): Promise<void> {
 
   runtime.engine.setTextureIds({ player: 0, enemy: 0, bullet: 0 });
   runtime.engine.usePlatformerGame();
+  authoringSession = createBuiltInSceneAuthoringSession(
+    runtime.engine,
+    "platformer",
+    sceneAuthoringDocument,
+  );
   runtime.start();
   shell.queueStart();
 

@@ -402,6 +402,52 @@ export async function createEngineWithFramePipeline(
     };
   };
 
+  const builtInPlatformerPlayerHandle = (): GameplayEntityHandle | undefined => {
+    requireAlive();
+    const entityId = rustEngine.built_in_platformer_player_entity_id();
+    if (entityId === 0xffffffff) {
+      return undefined;
+    }
+    return {
+      entityId,
+      entityGeneration: rustEngine.built_in_platformer_player_entity_generation(),
+    };
+  };
+
+  const builtInBreakoutPaddleHandle = (): GameplayEntityHandle | undefined => {
+    requireAlive();
+    const entityId = rustEngine.built_in_breakout_paddle_entity_id();
+    if (entityId === 0xffffffff) {
+      return undefined;
+    }
+    return {
+      entityId,
+      entityGeneration: rustEngine.built_in_breakout_paddle_entity_generation(),
+    };
+  };
+
+  const builtInBreakoutBallHandle = (): GameplayEntityHandle | undefined => {
+    requireAlive();
+    const entityId = rustEngine.built_in_breakout_ball_entity_id();
+    if (entityId === 0xffffffff) {
+      return undefined;
+    }
+    return {
+      entityId,
+      entityGeneration: rustEngine.built_in_breakout_ball_entity_generation(),
+    };
+  };
+
+  const setBuiltInSceneEntityPosition = (handle: GameplayEntityHandle, x: number, y: number): boolean => {
+    requireAlive();
+    return rustEngine.set_built_in_scene_entity_position(
+      handle.entityId,
+      handle.entityGeneration,
+      finiteNumber(x, "setBuiltInSceneEntityPosition.x"),
+      finiteNumber(y, "setBuiltInSceneEntityPosition.y"),
+    );
+  };
+
   const setParticlePreset = (presetId: number, preset: ParticlePresetConfig): void => {
     requireAlive();
     const id = particlePresetId(presetId);
@@ -576,6 +622,10 @@ export async function createEngineWithFramePipeline(
     resumeDataScene,
     completeDataScene,
     builtInShooterPlayerHandle,
+    builtInPlatformerPlayerHandle,
+    builtInBreakoutPaddleHandle,
+    builtInBreakoutBallHandle,
+    setBuiltInSceneEntityPosition,
     captureShooterStateSnapshot,
     restoreShooterStateSnapshot,
     useDataScene,

@@ -24,6 +24,9 @@ export {
   createDataSceneRuntimeTarget,
 } from "../dataSceneRuntimeTarget";
 export {
+  applyBuiltInSceneAuthoringDocument,
+} from "../builtInSceneAuthoring";
+export {
   SCENE_AUTHORING_DOCUMENT_FORMAT,
   SCENE_AUTHORING_DOCUMENT_VERSION,
   resolveSceneAuthoringDocument,
@@ -38,6 +41,7 @@ export {
 } from "../scenePlacementViewport";
 export {
   SCENE_PLACEMENT_PATCH_FORMAT,
+  SCENE_PLACEMENT_PATCH_LEGACY_VERSION,
   SCENE_PLACEMENT_PATCH_VERSION,
   createScenePlacementPatchStore,
   createScenePlacementViewer,
@@ -194,6 +198,12 @@ export type {
   SceneAuthoringDocumentSpec,
 } from "../sceneAuthoringDocument";
 export type {
+  ApplyBuiltInSceneAuthoringDocumentOptions,
+  ApplyBuiltInSceneAuthoringDocumentResult,
+  BuiltInSceneAuthoringKind,
+  BuiltInSceneRuntimeEntity,
+} from "../builtInSceneAuthoring";
+export type {
   ScenePlacementPoint,
   ScenePlacementSnapMode,
   ScenePlacementSnapOptions,
@@ -214,10 +224,14 @@ export type {
   ScenePlacementObjectDefinitionSummary,
   ScenePlacementRemoveInstanceOperation,
   ScenePlacementRenameInstanceOperation,
+  ScenePlacementResolvedTransformTarget,
+  ScenePlacementFragmentInstanceTransformTarget,
+  ScenePlacementFragmentIncludeInstanceTransformTarget,
   ScenePlacementUpdateBehaviorBindingOperation,
   ScenePlacementUpdateComponentsOperation,
   ScenePlacementTransform,
   ScenePlacementUpdateTransformOperation,
+  ScenePlacementUpdateResolvedTransformOperation,
   ScenePlacementViewer,
   ScenePlacementViewerComposition,
   ScenePlacementViewerDocument,

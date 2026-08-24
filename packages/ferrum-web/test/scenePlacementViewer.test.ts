@@ -152,7 +152,7 @@ test("ScenePlacementViewer drafts component patches and updates visual picking b
   equal(viewer.pickInstanceAtScreen({ x: 99, y: 90 })?.instanceId, undefined);
   deepEqual(viewer.exportPatch(), {
     format: "ferrum2d.scene-placement.patch",
-    version: 1,
+    version: 2,
     operations: [
       {
         kind: "updateComponents",
@@ -203,7 +203,7 @@ test("ScenePlacementViewer drafts behavior binding patches without editing recip
   deepEqual(attached.selected?.behaviorProfiles, ["turretBrain"]);
   deepEqual(viewer.exportPatch(), {
     format: "ferrum2d.scene-placement.patch",
-    version: 1,
+    version: 2,
     operations: [
       {
         kind: "updateBehaviorBinding",
@@ -232,7 +232,7 @@ test("ScenePlacementViewer drafts behavior binding patches without editing recip
   deepEqual(detachedInherited.selected?.behaviorProfiles, []);
   deepEqual(viewer.exportPatch(), {
     format: "ferrum2d.scene-placement.patch",
-    version: 1,
+    version: 2,
     operations: [
       {
         kind: "updateBehaviorBinding",
@@ -258,7 +258,7 @@ test("ScenePlacementViewer exports draft transform patches without mutating sour
   equal(draft.selected?.transform.y, 72);
   deepEqual(draft.draftPatch, {
     format: "ferrum2d.scene-placement.patch",
-    version: 1,
+    version: 2,
     operations: [
       {
         kind: "updateTransform",
@@ -279,6 +279,49 @@ test("ScenePlacementViewer exports draft transform patches without mutating sour
   const cleared = viewer.clearDraftPatch();
   equal(cleared.draftPatch, undefined);
   equal(cleared.instances.find((instance) => instance.instanceId === "turret_left")?.transform.scale, 1);
+});
+
+test("ScenePlacementViewer exports included instance transforms in fragment-local coordinates", () => {
+  const viewer = createScenePlacementViewer({
+    sceneComposition: nestedScenePlacementComposition(),
+    viewport: { cssWidth: 320, cssHeight: 180 },
+  });
+
+  viewer.updateInstanceTransform("left.crate", {
+    x: 120,
+    y: 80,
+    rotationRadians: 1.2,
+    scale: 4,
+    layer: 9,
+  });
+  const patch = viewer.exportPatch();
+  equal(patch?.version, 2);
+  const operation = patch?.operations[0];
+  equal(operation?.kind, "updateResolvedTransform");
+  if (operation?.kind !== "updateResolvedTransform") {
+    throw new Error("expected updateResolvedTransform operation");
+  }
+  deepEqual(operation.target, {
+    kind: "fragmentIncludeInstance",
+    fragment: "main",
+    includeIndex: 0,
+    includedFragment: "room",
+    instanceId: "crate",
+  });
+  ok(Math.abs(operation.transform.x - 15) < 1e-9);
+  ok(Math.abs(operation.transform.y + 10) < 1e-9);
+  ok(Math.abs(operation.transform.rotationRadians - (1.2 - Math.PI / 2)) < 1e-9);
+  equal(operation.transform.scale, 2);
+  equal(operation.transform.layer, 4);
+
+  throwsMatching(
+    () => viewer.updateInstanceComponents("left.crate", {
+      visual: { kind: "primitive", shape: "rect", width: 10, height: 10 },
+      collider: "none",
+      layer: "wall",
+    }),
+    /included scene instances currently support transform patches only/u,
+  );
 });
 
 test("ScenePlacementViewer drafts rename, add, and remove operations without mutating source instances", () => {
@@ -311,7 +354,7 @@ test("ScenePlacementViewer drafts rename, add, and remove operations without mut
   equal(removed.instances.some((instance) => instance.instanceId === "crate_a"), false);
   deepEqual(viewer.exportPatch(), {
     format: "ferrum2d.scene-placement.patch",
-    version: 1,
+    version: 2,
     operations: [
       {
         kind: "removeInstance",
@@ -396,7 +439,7 @@ test("ScenePlacementViewer keeps add patches separate from behavior binding patc
   equal(instanceBound.selected?.role, "worldObject");
   deepEqual(viewer.exportPatch(), {
     format: "ferrum2d.scene-placement.patch",
-    version: 1,
+    version: 2,
     operations: [
       {
         kind: "addObjectDefinition",
@@ -479,7 +522,7 @@ test("ScenePlacementViewer folds component edits for added instances into add pa
   equal(updated.selected?.visual?.bounds.width, 64);
   deepEqual(viewer.exportPatch(), {
     format: "ferrum2d.scene-placement.patch",
-    version: 1,
+    version: 2,
     operations: [
       {
         kind: "addInstance",
@@ -551,7 +594,7 @@ test("ScenePlacementViewer drafts object definitions and allows draft prefab pla
   equal(added.selected?.visual?.kind, "primitive");
   deepEqual(viewer.exportPatch(), {
     format: "ferrum2d.scene-placement.patch",
-    version: 1,
+    version: 2,
     operations: [
       {
         kind: "addObjectDefinition",
@@ -776,6 +819,39 @@ function scenePlacementPrimitiveComposition(): SceneCompositionSpec {
         instances: [
           { id: "rect_1", prefab: "primitive", x: 80, y: 90 },
         ],
+      },
+    },
+  };
+}
+
+function nestedScenePlacementComposition(): SceneCompositionSpec {
+  return {
+    initialFragment: "main",
+    prefabs: {
+      crate: {
+        props: {
+          components: {
+            visual: { kind: "primitive", shape: "rect", width: 16, height: 16 },
+            collider: "none",
+            layer: "wall",
+          },
+        },
+      },
+    },
+    fragments: {
+      main: {
+        include: [{
+          fragment: "room",
+          idPrefix: "left.",
+          x: 100,
+          y: 50,
+          rotationRadians: Math.PI / 2,
+          scale: 2,
+          layer: 5,
+        }],
+      },
+      room: {
+        instances: [{ id: "crate", prefab: "crate", x: 4, y: 6 }],
       },
     },
   };

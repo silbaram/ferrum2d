@@ -499,6 +499,60 @@ fn engine_can_switch_to_breakout_scene() {
 }
 
 #[test]
+fn built_in_scene_authoring_handles_are_scene_scoped_and_generation_safe() {
+    let mut engine = Engine::new();
+
+    assert_eq!(engine.built_in_platformer_player_entity_id(), u32::MAX);
+    assert_eq!(engine.built_in_breakout_paddle_entity_id(), u32::MAX);
+    assert_eq!(engine.built_in_breakout_ball_entity_id(), u32::MAX);
+
+    engine.use_breakout_scene();
+    let paddle = Entity {
+        id: engine.built_in_breakout_paddle_entity_id(),
+        generation: engine.built_in_breakout_paddle_entity_generation(),
+    };
+    let ball = Entity {
+        id: engine.built_in_breakout_ball_entity_id(),
+        generation: engine.built_in_breakout_ball_entity_generation(),
+    };
+    assert_ne!(paddle.id, u32::MAX);
+    assert_ne!(ball.id, u32::MAX);
+    assert!(engine.set_built_in_scene_entity_position(paddle.id, paddle.generation, 120.0, 420.0));
+    assert_eq!(
+        engine.world.transform(paddle),
+        Some(Transform2D { x: 120.0, y: 420.0 })
+    );
+    assert!(!engine.set_built_in_scene_entity_position(
+        paddle.id,
+        paddle.generation.wrapping_add(1),
+        0.0,
+        0.0,
+    ));
+    assert!(!engine.set_built_in_scene_entity_position(ball.id, ball.generation, f32::NAN, 0.0));
+
+    let unrelated = engine.world.spawn_entity();
+    assert!(!engine.set_built_in_scene_entity_position(
+        unrelated.id,
+        unrelated.generation,
+        10.0,
+        20.0
+    ));
+
+    engine.use_platformer_scene();
+    let player = Entity {
+        id: engine.built_in_platformer_player_entity_id(),
+        generation: engine.built_in_platformer_player_entity_generation(),
+    };
+    assert_ne!(player.id, u32::MAX);
+    assert_eq!(engine.built_in_breakout_paddle_entity_id(), u32::MAX);
+    assert!(engine.set_built_in_scene_entity_position(player.id, player.generation, 144.0, 360.0));
+    assert_eq!(
+        engine.world.transform(player),
+        Some(Transform2D { x: 144.0, y: 360.0 })
+    );
+}
+
+#[test]
 fn breakout_brick_hit_spawns_default_particle_burst() {
     let mut engine = Engine::new();
     engine.use_breakout_scene();

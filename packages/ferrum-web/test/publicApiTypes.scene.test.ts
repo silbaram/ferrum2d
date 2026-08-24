@@ -4,6 +4,7 @@ import {
   CutsceneSequencePlayer,
   animationTimelineFrameAt,
   applyBehaviorRecipes,
+  applyBuiltInSceneAuthoringDocument,
   applyCutsceneSequenceEvent,
   applyDataSceneAuthoringDocument,
   applyFactionRelationTable,
@@ -636,6 +637,8 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
     resolveDataSceneInstanceComponents;
   const publicApplyDataSceneAuthoringDocument: PublicApi["applyDataSceneAuthoringDocument"] =
     applyDataSceneAuthoringDocument;
+  const publicApplyBuiltInSceneAuthoringDocument: PublicApi["applyBuiltInSceneAuthoringDocument"] =
+    applyBuiltInSceneAuthoringDocument;
   const publicCreateDataSceneRuntimeTarget: PublicApi["createDataSceneRuntimeTarget"] =
     createDataSceneRuntimeTarget;
   const publicCreateScenePlacementViewport: PublicApi["createScenePlacementViewport"] =
@@ -1649,7 +1652,7 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(scenePlacementHoverState.hoveredInstanceId, "a.enemy");
   equal(scenePlacementSelectState.selectedInstanceId, "a.enemy");
   equal(scenePlacementDraftState.draftPatch?.operations.length, 1);
-  equal(scenePlacementViewer.exportPatch()?.operations[0]?.kind, "updateTransform");
+  equal(scenePlacementViewer.exportPatch()?.operations[0]?.kind, "updateResolvedTransform");
   equal(scenePlacementViewer.clearDraftPatch().draftPatch, undefined);
   equal(scenePlacementViewerTransform.x, 6);
   equal(scenePlacementPatch.operations.length, 5);
@@ -2405,6 +2408,7 @@ test("public API animation, scene composition, behavior recipe, and cutscene typ
   equal(typeof publicDryRunSceneBehaviorRecipes, "function");
   equal(typeof publicApplyGameplayBehaviorCommands, "function");
   equal(typeof publicApplySceneBehaviorRecipes, "function");
+  equal(typeof publicApplyBuiltInSceneAuthoringDocument, "function");
   equal(typeof publicCreateGameplayBehaviorRuntimeTarget, "function");
   equal(gameplayInteractionEventAction.action, "inspect");
   equal(gameplayInteractionEventAction.prompt, "Inspect");

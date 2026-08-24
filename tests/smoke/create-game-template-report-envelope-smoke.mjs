@@ -731,8 +731,13 @@ function assertRuntimeInputs(value, templateName, label) {
     `${label}.gameplay.implementation is invalid`,
   );
   assert.equal(value?.sceneAuthoring?.source, "public/scene-authoring.json", `${label}.sceneAuthoring.source is invalid`);
-  assert.equal(value?.sceneAuthoring?.role, "authoring-validation-and-handoff", `${label}.sceneAuthoring.role is invalid`);
-  assert.equal(value?.sceneAuthoring?.appliedByGameRuntime, false, `${label}.sceneAuthoring.appliedByGameRuntime must be false`);
+  assert.equal(value?.sceneAuthoring?.role, "runtime-placement-behavior-and-handoff", `${label}.sceneAuthoring.role is invalid`);
+  assert.equal(value?.sceneAuthoring?.appliedByGameRuntime, true, `${label}.sceneAuthoring.appliedByGameRuntime must be true`);
+  assert.equal(
+    value?.sceneAuthoring?.implementation,
+    "@ferrum2d/ferrum-web/authoring.applyBuiltInSceneAuthoringDocument",
+    `${label}.sceneAuthoring.implementation is invalid`,
+  );
   assert.equal(value?.platform?.source, "src/main.ts", `${label}.platform.source is invalid`);
   assert.equal(value?.platform?.role, "browser-bootstrap", `${label}.platform.role is invalid`);
 }
