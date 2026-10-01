@@ -110,21 +110,36 @@ pnpm smoke:browser
 Scene Placement Authoring Viewer의 공식 host와 screen-coordinate picking 회귀를 확인하려면 다음을 실행한다.
 
 ```bash
+pnpm --filter @ferrum2d/placement-viewer lint
 pnpm smoke:placement-viewer
 pnpm smoke:placement-viewer-save
 pnpm smoke:placement-viewer-mass-authoring
 pnpm smoke:placement-viewer-desktop-assets
 ```
 
+공식 viewer의 `lint`는 app `src`와 참조하는 shared runtime shell을 strict TypeScript로 검사하며
+workspace `pnpm lint`에도 포함된다. Vite build의 transpile 성공과 타입 검사 성공을 별도로 확인한다.
+
 `pnpm smoke:placement-viewer`는 `apps/placement-viewer` production build를 정적 서버로 열고, Data Scene preview가 6개 entity와 6개 이상 render command를 만들었는지, canvas readback이 nonblank인지, 실제 pointer move/click이 `crate_left` hover/selection과 inspector state로 반영되는지 확인한다. 또한 `crate_left` draft transform update가 `ScenePlacementPatch` export와 갱신된 picking bounds에 반영되는지, Handoff 섹션이 draft/reference/asset diagnostic count와 Copy Patch/Copy Handoff/Save Draft action 상태를 표시하는지, Behavior Binding inspector가 기존 recipe id attach/detach를 `updateBehaviorBinding` patch로 내보내고 recipe 본문을 건드리지 않는지, 다른 instance를 선택해도 moved draft marker가 유지되는지, Add Rect/Circle/Point/Sprite/Prefab palette가 렌더되는지, Add Sprite frame picker가 UV frame patch를 만드는지, generated `ScenePlacementAgentHandoff`가 selected instance, draft patch, ownership fields, asset diagnostics array를 포함하는지, collider overlay가 선택 collider를 표시하는지, Add Rect pending mode와 hover preview marker가 표시되는지, canvas click이 `props.components.visual.kind: "primitive"` add patch를 만드는지, 선택 overlay resize handle이 rect visual/aabb collider size patch를 만드는지, collider offset handle drag와 Visual/Collider/Layer inspector edit이 added instance의 component patch export로 접히는지, capsule/orientedBox/convexPolygon collider inspector edit이 같은 component patch export로 접히는지, selected instance 기반 ObjectDefinition 생성 action이 `addObjectDefinition` patch와 prefab option으로 반영되는지, 기본 실행에서 save hook이 opt-in 없이 동작하지 않는지도 확인한다. `pnpm smoke:placement-viewer-save`는 `VITE_FERRUM_PLACEMENT_VIEWER_SAVE=true` opt-in build와 smoke host save endpoint를 사용해 primitive/sprite/prefab/ObjectDefinition add patch를 저장하고 reload 뒤 visual/collider offset/layer/prefab reference와 ObjectDefinition 기반 instance가 draft 없이 유지되는지 확인한다.
 `pnpm smoke:placement-viewer-mass-authoring`은 같은 production build를 `massAuthoring=true` fixture mode로 열고 기본 6개 instance에 1,024개 crate instance를 추가한 authoring document를 낮은 빈도 load path에서 생성한다. smoke는 `ScenePlacementViewerState.instances`와 Rust runtime `entityCount`가 1,030개 이상인지, responsive viewport culling 뒤에도 visible `renderCommandCount`가 518개 이상이고 전체 entity 수를 넘지 않는지, draw call이 16 이하인지 확인한다. 또한 `mass_crate_0512` 선택과 transform draft patch가 각각 500ms 이하에서 끝나는지, draft marker가 선택된 1개 object에만 생기는지, agent handoff selected/draft summary가 같은 object를 가리키는지 확인한다.
 `pnpm smoke:placement-viewer-desktop-assets`는 같은 production build에 fake Tauri bridge를 주입해 desktop project open과 asset folder switch를 재현한다. smoke는 local asset `runtimeUrl`이 initial runtime texture manifest에 포함되고 `engine.textureId(...)`가 0보다 큰 값을 반환하는지, local asset을 참조하는 Data Scene instance가 render command와 nonblank canvas로 이어지는지, 다른 asset folder 선택 후 runtime asset snapshot/handoff/Inspector status가 새 image manifest로 reload되는지 확인한다. 또한 실제 32x32/16x16 PNG metadata가 provider와 handoff `assetFolder.images[].width/height`에 남고, Add Sprite pending/draft marker와 visual/AABB collider가 같은 thumbnail/size/id를 사용하는지 검증한다.
+이 mode의 HTML 응답에는 `apps/placement-viewer-desktop/src-tauri/tauri.conf.json`의 CSP를 적용하고
+navigation 응답의 정책 일치도 검사한다. `desktopCsp` report에 설정 경로와 적용한 정책을 남긴다.
+기본 `data:` 텍스처의 fetch/decode, 초기화 또는 canvas 렌더링이 차단되면 실패하므로 `img-src`에만
+`data:`를 허용하고 `connect-src`에서 빠뜨린 회귀도 검출한다. 실제 native custom protocol은 fake bridge
+대상에 포함되지 않으며 별도 GUI 검증이 필요하다.
+`placementViewerDesktopAssetSmoke.sameNameReload`는 같은 asset id/URL을 반환하는 두 폴더를 전환하고
+같은 폴더를 다시 inspect했을 때 metadata 크기와 실제 WebGL 픽셀 hash가 새 이미지에 맞게 바뀌는지
+검증한다. 이전 runtime upload를 의도적으로 지연한 뒤 최신 폴더를 선택하는 경우도 검사하며,
+최종 픽셀이 최신 이미지와 같아야 한다. 빈 drawing buffer나 context loss는 성공 evidence로 인정하지 않는다.
 
 `pnpm smoke:placement-viewer-desktop-package`는 production frontend를 포함한 Tauri debug Linux deb를 만들고
 명시적 CSP, 실행 파일, deb 내부 실행 파일, `index.html`, Wasm artifact를 검증해 JSON report를 출력한다.
+같은 frontend에 `placement-viewer-desktop-assets` browser smoke도 실행해 실제 CSP 아래에서 texture와
+canvas가 정상인지 확인하고 report의 `frontend.browserSmokeMode`에 검증 mode를 남긴다.
 `--launch`를 붙이면 `xvfb-run` 아래에서 process가 지정 시간 동안 조기 종료하지 않는지도 확인한다.
 현재 GitHub Actions에는 편입하지 않았다. CI/release gate 변경은 별도 승인 뒤 결정한다. 로컬 자동
-검증만으로 native dialog 상호작용과 canvas pixel을 증명한 것으로 보지 않으며, release 전 project/file
+검증만으로 native dialog 상호작용과 native WebView canvas pixel을 증명한 것으로 보지 않으며, release 전 project/file
 picker, save allowlist, `ferrum-asset://`, handoff sync, nonblank interactive canvas를 수동 GUI evidence로
 확인한다.
 

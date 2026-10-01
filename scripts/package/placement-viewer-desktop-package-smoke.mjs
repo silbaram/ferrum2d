@@ -53,6 +53,14 @@ if (!debContents.includes("ferrum-placement-viewer-desktop")) {
   throw new Error("Linux deb artifact does not contain the desktop executable");
 }
 
+// Verify frontend startup and pixels under the actual CSP; process liveness alone
+// cannot detect a WebView that remains open on an asset loading error screen.
+run(process.execPath, [
+  "tests/smoke/browser-render-smoke.mjs",
+  "--mode=placement-viewer-desktop-assets",
+  frontendRoot,
+]);
+
 let launch = { requested: options.launch, status: "not-requested" };
 if (options.launch) {
   launch = await launchUnderXvfb(binaryPath, options.launchTimeoutMs);
@@ -69,6 +77,7 @@ const report = {
   frontend: {
     index: relativeArtifact(path.join(frontendRoot, "index.html")),
     wasm: wasmArtifacts.map(relativeArtifact),
+    browserSmokeMode: "placement-viewer-desktop-assets",
   },
   launch,
   manualReleaseGate: {
@@ -224,6 +233,7 @@ async function assertDesktopSecurityConfig() {
     "object-src": ["'none'"],
     "connect-src": [
       "'self'",
+      "data:",
       "ipc:",
       "http://ipc.localhost",
       "ferrum-asset:",

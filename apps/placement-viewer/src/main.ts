@@ -44,7 +44,6 @@ import {
   type ResolvedDataSceneSpriteFrame,
   type ResolvedSceneAuthoringDocument,
   type SceneAuthoringDocumentSpec,
-  type SceneCompositionFragmentInstanceSpec,
   type ScenePlacementBehaviorBindingPatch,
   type ScenePlacementBehaviorBindingTarget,
   type ScenePlacementBindingMigrationPreview,
@@ -146,12 +145,19 @@ const PLACEMENT_ASSET_PROVIDER = createScenePlacementAssetProviderFromProjectAss
   path: "placementViewer.spriteAssets",
 });
 
+type SceneCompositionFragmentInstanceSpec = Parameters<ScenePlacementViewer["addInstance"]>[1];
+
 interface PlacementViewerWindow extends Window {
   __TAURI__?: PlacementViewerDesktopBridge;
   __ferrumPlacementViewer?: ScenePlacementViewer;
   ferrumPlacementViewerState?: ScenePlacementViewerState;
   ferrumPlacementViewerDesktop?: PlacementViewerDesktopState;
   ferrumPlacementViewerRuntimeAssets?: PlacementViewerRuntimeAssetSnapshot;
+  ferrumPlacementViewerRuntimeFrame?: {
+    entityCount: number;
+    renderCommandCount: number;
+    drawCalls: number;
+  };
   ferrumPlacementViewerAgentHandoff?: PlacementViewerAgentHandoff;
   ferrumPlacementViewerSelect?: (instanceId?: string) => ScenePlacementViewerState;
   ferrumPlacementViewerUpdateTransform?: (
@@ -435,8 +441,10 @@ async function bootstrap(): Promise<void> {
       },
     });
     shell.attachRuntime(runtime);
+    const runtimeEngine = runtime.engine;
     const runtimeTextures = placementRuntimeTextureManifest();
     let runtimeAssetAttemptSignature = placementRuntimeAssetSignature(runtimeTextures);
+    let runtimeAssetReloadInFlight = false;
     await runtime.engine.loadAssets({ textures: runtimeTextures });
     publishPlacementRuntimeAssets(runtimeTextures, runtime.engine);
     publishPlacementRuntimeAssetStatus("ready");
@@ -486,21 +494,36 @@ async function bootstrap(): Promise<void> {
       publishCurrentAgentHandoff(state, placementMigrationPreview(savedDocument, state.draftPatch));
     };
     const reloadPlacementRuntimeAssets = async (): Promise<void> => {
-      const nextRuntimeTextures = placementRuntimeTextureManifest();
-      const nextRuntimeAssetSignature = placementRuntimeAssetSignature(nextRuntimeTextures);
-      if (nextRuntimeAssetSignature === runtimeAssetAttemptSignature) {
+      if (runtimeAssetReloadInFlight) {
         return;
       }
-      runtimeAssetAttemptSignature = nextRuntimeAssetSignature;
-      publishPlacementRuntimeAssetStatus("loading");
+      runtimeAssetReloadInFlight = true;
       try {
-        await runtime.engine.loadAssets({ textures: nextRuntimeTextures });
-        publishPlacementRuntimeAssets(nextRuntimeTextures, runtime.engine);
-        publishPlacementRuntimeAssetStatus("ready");
-      } catch (error: unknown) {
-        publishPlacementRuntimeAssetStatus("error", placementErrorMessage(error));
+        // Serialize uploads: an older folder load must not overwrite a newer texture.
+        while (true) {
+          const nextRuntimeTextures = placementRuntimeTextureManifest();
+          const nextRuntimeAssetSignature = placementRuntimeAssetSignature(nextRuntimeTextures);
+          if (nextRuntimeAssetSignature === runtimeAssetAttemptSignature) {
+            return;
+          }
+          runtimeAssetAttemptSignature = nextRuntimeAssetSignature;
+          publishPlacementRuntimeAssetStatus("loading");
+          try {
+            await runtimeEngine.loadAssets({ textures: nextRuntimeTextures });
+            if (nextRuntimeAssetSignature === placementRuntimeAssetSignature(placementRuntimeTextureManifest())) {
+              publishPlacementRuntimeAssets(nextRuntimeTextures, runtimeEngine);
+              publishPlacementRuntimeAssetStatus("ready");
+            }
+          } catch (error: unknown) {
+            if (nextRuntimeAssetSignature === placementRuntimeAssetSignature(placementRuntimeTextureManifest())) {
+              publishPlacementRuntimeAssetStatus("error", placementErrorMessage(error));
+            }
+          }
+          setState(viewer.state());
+        }
+      } finally {
+        runtimeAssetReloadInFlight = false;
       }
-      setState(viewer.state());
     };
     window.addEventListener("ferrum-placement-desktop-statechange", () => {
       const nextAssetSignature = placementPreviewAssetSignature();
@@ -742,7 +765,7 @@ function updatePlacementColliderOverlay(
   });
   element.dataset.visible = "true";
   element.dataset.colliderType = collider.type;
-  element.dataset.offsetDraggable = String(collider.type !== "none");
+  element.dataset.offsetDraggable = "true";
   element.style.transform = `translate(${topLeft.x.toFixed(2)}px, ${topLeft.y.toFixed(2)}px)`;
   element.style.width = `${(bounds.width * state.viewport.zoom).toFixed(2)}px`;
   element.style.height = `${(bounds.height * state.viewport.zoom).toFixed(2)}px`;
@@ -1132,7 +1155,7 @@ function createPlacementAppChrome(
   options: Pick<PlacementInspectorOptions, "saveEnabled" | "sourceDocument">,
 ): PlacementAppChrome {
   const root = shell.stage.closest<HTMLElement>(".demo-shell");
-  const toolbar = root?.querySelector<HTMLElement>(".demo-toolbar");
+  const toolbar = root?.querySelector<HTMLElement>(".demo-toolbar") ?? null;
   if (root === null || toolbar === null) {
     return {
       setState: () => undefined,
@@ -2283,7 +2306,7 @@ function spriteVisualPatch(
   color: string,
 ): PlacementJsonObject {
   if (currentVisual?.kind === "sprite") {
-    const texture = currentVisual.texture.kind === "asset"
+    const texture: PlacementJsonObject = currentVisual.texture.kind === "asset"
       ? { asset: currentVisual.texture.name ?? String(currentVisual.texture.value) }
       : { texture: currentVisual.texture.id ?? currentVisual.texture.value };
     return {
@@ -2657,7 +2680,7 @@ function installPlacementResizeHandle(
       return;
     }
     const selected = viewer.state().selected;
-    if (placementResizeKindForInstance(selected) === undefined) {
+    if (selected === undefined || placementResizeKindForInstance(selected) === undefined) {
       return;
     }
     canvas.focus({ preventScroll: true });
@@ -3074,7 +3097,7 @@ function placementVisualPatchFromResolved(
       height: visual.height,
     };
   }
-  const texture = visual.texture.kind === "asset"
+  const texture: PlacementJsonObject = visual.texture.kind === "asset"
     ? { asset: visual.texture.name ?? String(visual.texture.value) }
     : { texture: visual.texture.id ?? visual.texture.value };
   return {
@@ -3805,6 +3828,7 @@ let placementAgentHandoffTimer: number | undefined;
 let placementDesktopHandoffSyncTimer: number | undefined;
 let placementDesktopPendingHandoffJson: string | undefined;
 let placementDesktopLastSyncedHandoffJson: string | undefined;
+let placementDesktopAssetFolderRevision = 0;
 
 function publishPlacementAgentHandoff(
   document: SceneAuthoringDocumentSpec,
@@ -4070,9 +4094,10 @@ function placementPreviewAssetSignature(): string {
   if (desktop?.enabled !== true || desktop.assetFolderExists !== true) {
     return "browser";
   }
-  return (desktop.assetFolderImages ?? [])
-    .map((image) => `${image.id}:${image.runtimeUrl ?? ""}:${image.width ?? ""}x${image.height ?? ""}`)
-    .join("|");
+  return JSON.stringify([
+    placementDesktopAssetFolderRevision,
+    (desktop.assetFolderImages ?? []).map((image) => [image.id, image.runtimeUrl, image.width, image.height]),
+  ]);
 }
 
 function createPlacementPreviewAssetProvider(): ScenePlacementAssetProvider {
@@ -4137,10 +4162,10 @@ function placementRuntimeTextureManifest(): Record<string, string> {
 }
 
 function placementRuntimeAssetSignature(textures: Record<string, string>): string {
-  return Object.keys(textures)
-    .sort()
-    .map((name) => `${name}:${textures[name]}`)
-    .join("|");
+  return JSON.stringify([
+    placementDesktopAssetFolderRevision,
+    Object.keys(textures).sort().map((name) => [name, textures[name]]),
+  ]);
 }
 
 function publishPlacementRuntimeAssetStatus(
@@ -4439,6 +4464,9 @@ function publishPlacementDesktopState(update: Partial<PlacementViewerDesktopStat
 }
 
 function publishPlacementDesktopAssetFolder(result: PlacementDesktopAssetFolderResponse): void {
+  // Native asset URLs are stable by id even when a different folder supplies new bytes.
+  // Every explicit inspection must refresh uploads, including retries at the same path.
+  placementDesktopAssetFolderRevision += 1;
   publishPlacementDesktopState({
     assetFolderPath: result.assetFolderPath,
     assetFolderExists: result.exists,
@@ -4532,7 +4560,7 @@ function placementMigrationPreview(
 }
 
 function publishFrameStats(frame: FerrumRuntimeFrame): void {
-  const target = window as Window & Record<string, unknown>;
+  const target = window as PlacementViewerWindow;
   target.ferrumPlacementViewerRuntimeFrame = {
     entityCount: frame.frame.entityCount,
     renderCommandCount: frame.rendererStats.renderCommandCount,
