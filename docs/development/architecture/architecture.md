@@ -353,8 +353,13 @@ filesystem 경로를 save command 인자로 전달하거나 링크로 우회해�
 이미지 read는 별도 asset registry가 canonical asset root 아래 파일만 `ferrum-asset://` protocol로 제공한다.
 protocol 요청마다 canonical file identity를 다시 확인해 등록 뒤 외부 symlink로 바뀐 경로를 거부하고,
 GET/HEAD/OPTIONS와 공식 custom-protocol URI 형태만 허용한다.
-packaged WebView는 명시적 CSP로 local bundle, Wasm, Tauri IPC와 등록된 asset protocol만 허용한다.
+packaged WebView는 명시적 CSP로 local bundle, Wasm, Tauri IPC와 등록된 asset protocol을 허용한다.
+기본 텍스처의 `data:` PNG도 `fetch`로 읽으므로 `connect-src`와 `img-src` 양쪽에 `data:`를 허용한다.
 package smoke는 이 정책이 비활성화되거나 필수 source가 빠지면 artifact build 전에 실패한다.
+desktop asset browser smoke는 같은 CSP를 HTML 응답에 적용해 texture load와 canvas 초기화를 검증한다.
+native asset URL은 id 기준으로 고정되어 있으므로 frontend는 명시적 asset folder 검사마다 별도 revision을
+올려 같은 id/URL도 다시 upload한다. Upload는 순차 처리하고 오래된 결과를 현재 폴더의 ready/error
+상태로 publish하지 않아 연속 폴더 선택에서도 최신 이미지가 마지막으로 적용된다.
 
 ## ABI와 데이터 포맷
 

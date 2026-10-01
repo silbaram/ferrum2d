@@ -41,13 +41,24 @@ Rust host는 성공적으로 연 scene 문서의 canonical 경로와 project roo
 ```bash
 pnpm --filter @ferrum2d/placement-viewer-desktop check
 pnpm --filter @ferrum2d/placement-viewer-desktop test
+pnpm --filter @ferrum2d/placement-viewer lint
 pnpm --filter @ferrum2d/placement-viewer build
+pnpm smoke:placement-viewer-desktop-assets
 pnpm smoke:placement-viewer-desktop-package
 ```
 
 `pnpm smoke:placement-viewer-desktop-package`는 Linux debug deb, 실행 파일, embedded production
-frontend/Wasm을 검증한다. `--launch`는 Xvfb 아래 조기 종료 여부까지 확인한다. 자동 gate와 별개로 release
+frontend/Wasm을 검증하고, 같은 frontend에 desktop asset browser smoke를 실행한다.
+`--launch`는 Xvfb 아래 조기 종료 여부까지 확인한다. 자동 gate와 별개로 release
 전 native picker/save, `ferrum-asset://`, handoff sync, nonblank interactive canvas를 실제 GUI에서 확인한다.
 package smoke는 명시적 CSP도 먼저 검사한다. 정책은 로컬 번들, Wasm 실행, Tauri IPC와 등록된
-`ferrum-asset` 이미지 경로만 허용하며 원격 script/object load는 허용하지 않는다.
+`ferrum-asset` 이미지 경로를 허용한다. 기본 텍스처는 `data:` PNG를 `fetch`로 읽으므로 `img-src`뿐
+아니라 `connect-src`에도 `data:`를 허용하며, 원격 script/object load는 허용하지 않는다.
+`pnpm smoke:placement-viewer-desktop-assets`는 `tauri.conf.json`의 CSP를 HTML 응답에 그대로 적용한
+Chromium에서 texture load, nonblank canvas, asset folder reload, Add Sprite와 handoff metadata를 검증한다.
+같은 이름/URL의 이미지를 가진 폴더 전환과 같은 폴더 재검사에서도 실제 canvas 픽셀이 갱신되는지,
+늦게 끝난 이전 upload가 최신 폴더 이미지를 덮어쓰지 않는지 확인한다. Viewer는 명시적 asset folder
+검사마다 runtime texture를 순차 재로딩한다.
+report의 `desktopCsp`는 적용한 정책과 설정 경로를 기록한다. 이 browser smoke는 fake Tauri bridge를
+사용하므로 native picker나 실제 custom protocol 검증을 대신하지 않는다.
 macOS/Windows signing, notarization, store 제출은 명시적 release 승인 전 범위에 포함하지 않는다.
