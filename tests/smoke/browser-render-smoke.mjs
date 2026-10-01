@@ -69,6 +69,7 @@ const PLACEMENT_VIEWER_MODE = "placement-viewer";
 const PLACEMENT_VIEWER_SAVE_MODE = "placement-viewer-save";
 const PLACEMENT_VIEWER_MASS_AUTHORING_MODE = "placement-viewer-mass-authoring";
 const PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE = "placement-viewer-desktop-assets";
+const PLACEMENT_VIEWER_DESKTOP_CONFIG = "apps/placement-viewer-desktop/src-tauri/tauri.conf.json";
 const PLACEMENT_VIEWER_BASE_INSTANCE_COUNT = 6;
 const PLACEMENT_VIEWER_MASS_AUTHORING_COUNT = 1024;
 const PLACEMENT_VIEWER_MASS_AUTHORING_MIN_INSTANCE_COUNT =
@@ -93,6 +94,11 @@ const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_HEIGHT = 16;
 const PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL = `data:image/png;base64,${(
   await readFile(new URL("../../examples/topdown-shooter/public/assets/bullet.png", import.meta.url))
 ).toString("base64")}`;
+const PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_URL = "/__ferrum-desktop-assets/local_ship.png";
+const PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_FOLDER =
+  "/tmp/ferrum-placement-viewer-desktop-assets-smoke/shared-assets";
+const PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER =
+  "/tmp/ferrum-placement-viewer-desktop-assets-smoke/shared-assets-alternate";
 const PLACEMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
 const MAX_PLACEMENT_SAVE_BYTES = 512 * 1024;
 const PHYSICS_DEMO_SUITE = [
@@ -310,8 +316,12 @@ const browserErrors = [];
 
 try {
   await assertDirectory(distDir);
+  const desktopCsp = options.mode === PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE
+    ? await readPlacementViewerDesktopCsp()
+    : undefined;
   server = await serveStatic(distDir, {
     placementSave: options.mode === PLACEMENT_VIEWER_SAVE_MODE,
+    contentSecurityPolicy: desktopCsp,
   });
   const address = server.address();
   if (!address || typeof address === "string") {
@@ -333,7 +343,10 @@ try {
     await installPlacementViewerDesktopAssetSmokeBridge(page);
   }
 
-  await page.goto(url, { waitUntil: "networkidle", timeout: timeoutMs });
+  const navigation = await page.goto(url, { waitUntil: "networkidle", timeout: timeoutMs });
+  if (desktopCsp !== undefined && navigation?.headers()["content-security-policy"] !== desktopCsp) {
+    throw new Error("desktop asset smoke must serve the configured Tauri CSP on the frontend document");
+  }
   await waitForRuntime(page, timeoutMs);
   const modeReport = await smokeByMode(page, options.mode, timeoutMs);
   const budgetProfileId = options.budget
@@ -356,6 +369,9 @@ try {
     ...budgetReport,
     ...screenshotReport,
     mode: options.mode,
+    ...(desktopCsp === undefined ? {} : {
+      desktopCsp: { source: PLACEMENT_VIEWER_DESKTOP_CONFIG, policy: desktopCsp },
+    }),
   };
   const budgetArtifactReport = options.budget
     ? await writeRuntimeBudgetArtifact({
@@ -662,6 +678,23 @@ async function captureScreenshotArtifact(page, options) {
   };
 }
 
+async function readPlacementViewerDesktopCsp() {
+  const config = JSON.parse(await readFile(
+    new URL(`../../${PLACEMENT_VIEWER_DESKTOP_CONFIG}`, import.meta.url),
+    "utf8",
+  ));
+  const csp = config.app?.security?.csp;
+  if (csp === null || typeof csp !== "object" || Array.isArray(csp) || Object.keys(csp).length === 0) {
+    throw new Error("desktop asset smoke requires an explicit nonempty object-form Tauri CSP");
+  }
+  return Object.entries(csp).map(([directive, sources]) => {
+    if (typeof sources !== "string" && !(Array.isArray(sources) && sources.every((source) => typeof source === "string"))) {
+      throw new Error(`desktop CSP ${directive} must use a string or an array of strings`);
+    }
+    return `${directive} ${Array.isArray(sources) ? sources.join(" ") : sources}`;
+  }).join("; ");
+}
+
 async function serveStatic(root, options = {}) {
   const serverInstance = createServer(async (request, response) => {
     try {
@@ -679,6 +712,9 @@ async function serveStatic(root, options = {}) {
       response.writeHead(200, {
         "Cache-Control": "no-cache",
         "Content-Type": MIME_TYPES.get(extname(filePath)) ?? "application/octet-stream",
+        ...(extname(filePath) === ".html" && options.contentSecurityPolicy !== undefined
+          ? { "Content-Security-Policy": options.contentSecurityPolicy }
+          : {}),
       });
       createReadStream(filePath).pipe(response);
     } catch (error) {
@@ -2279,6 +2315,9 @@ async function installPlacementViewerDesktopAssetSmokeBridge(page) {
       reloadAssetId,
       reloadDataUrl,
       sceneDocumentPath,
+      sharedAssetFolderPath,
+      sharedReloadAssetFolderPath,
+      sharedAssetUrl,
     }) => {
       const initialAssetFolder = {
         assetFolderPath,
@@ -2308,8 +2347,20 @@ async function installPlacementViewerDesktopAssetSmokeBridge(page) {
         ],
         diagnostics: [],
       };
-      const assetFolderForPath = (path) =>
-        path === reloadAssetFolderPath ? reloadAssetFolder : initialAssetFolder;
+      const assetFolderForPath = (path) => {
+        if (path === sharedAssetFolderPath || path === sharedReloadAssetFolderPath) {
+          return {
+            ...initialAssetFolder,
+            assetFolderPath: path,
+            images: [{
+              ...initialAssetFolder.images[0],
+              path: `${path}/local_ship.png`,
+              runtimeUrl: sharedAssetUrl,
+            }],
+          };
+        }
+        return path === reloadAssetFolderPath ? reloadAssetFolder : initialAssetFolder;
+      };
       globalThis.__TAURI__ = {
         core: {
           async invoke(command, args) {
@@ -2361,6 +2412,9 @@ async function installPlacementViewerDesktopAssetSmokeBridge(page) {
       reloadAssetId: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID,
       reloadDataUrl: PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL,
       sceneDocumentPath,
+      sharedAssetFolderPath: PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_FOLDER,
+      sharedReloadAssetFolderPath: PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER,
+      sharedAssetUrl: PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_URL,
     },
   );
 }
@@ -2592,6 +2646,9 @@ async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
       pixels: {
         width,
         height,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        contextLost: gl.isContextLost(),
         nonTransparentPixelCount,
         differentFromFirstPixelCount,
       },
@@ -2608,8 +2665,118 @@ async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
   }
 
   return {
-    placementViewerDesktopAssetSmoke: report,
+    placementViewerDesktopAssetSmoke: {
+      ...report,
+      sameNameReload: await smokePlacementViewerDesktopSameNameAssets(page, timeoutMs),
+    },
   };
+}
+
+async function smokePlacementViewerDesktopSameNameAssets(page, timeoutMs) {
+  const originalImage = Buffer.from(PLACEMENT_VIEWER_DESKTOP_ASSET_DATA_URL.split(",")[1], "base64");
+  const replacementImage = Buffer.from(PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_DATA_URL.split(",")[1], "base64");
+  let image = originalImage;
+  let uploadGate;
+  let fetchCount = 0;
+  await page.route(`**${PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_URL}`, async (route) => {
+    const responseImage = image;
+    if (uploadGate !== undefined && route.request().resourceType() === "fetch" && ++fetchCount === 2) {
+      // First fetch reads metadata; hold the following runtime upload until another inspection completes.
+      const gate = uploadGate;
+      await page.evaluate(() => { globalThis.__ferrumDesktopAssetUploadHeld = true; });
+      await gate;
+    }
+    await route.fulfill({
+      body: responseImage,
+      contentType: "image/png",
+      headers: { "Cache-Control": "no-store" },
+    });
+  });
+
+  const inspectFolder = (path) => page.evaluate(
+    (assetFolderPath) => globalThis.ferrumPlacementViewerOpenAssetFolder(assetFolderPath), path,
+  );
+  const readyPixelHash = async (path, width, height) => {
+    await waitForPageFunction(
+      page,
+      "desktop asset reload did not become ready for a same-name image at an unchanged URL",
+      ({ assetId, height, path, runtimeUrl, width }) => {
+        const desktop = globalThis.ferrumPlacementViewerDesktop;
+        const assets = globalThis.ferrumPlacementViewerRuntimeAssets;
+        const folder = globalThis.ferrumPlacementViewerAgentHandoff?.assetFolder;
+        return desktop?.assetFolderPath === path
+          && desktop.assetFolderRuntimeStatus === "ready"
+          && assets?.textures?.[assetId] === runtimeUrl
+          && folder?.images?.[0]?.width === width
+          && folder.images[0].height === height;
+      },
+      timeoutMs,
+      { path, width, height, assetId: PLACEMENT_VIEWER_DESKTOP_ASSET_ID, runtimeUrl: PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_URL },
+    );
+    // Wait for the newly uploaded texture to reach a rendered frame before reading pixels.
+    await page.evaluate(() => new Promise((resolveFrame) => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
+    return await page.evaluate(placementViewerCanvasFingerprint);
+  };
+  const openFolder = async (path, width, height) => {
+    await inspectFolder(path);
+    return await readyPixelHash(path, width, height);
+  };
+
+  const original = await openFolder(PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_FOLDER, 32, 32);
+  image = replacementImage;
+  const switched = await openFolder(PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER, 16, 16);
+  if (switched === original) {
+    throw new Error("switching folders with the same asset id/URL kept the previous rendered texture");
+  }
+  image = originalImage;
+  const reinspected = await openFolder(PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER, 32, 32);
+  if (reinspected !== original) {
+    throw new Error("reinspecting the same folder did not render the updated image bytes");
+  }
+
+  let releaseUpload;
+  uploadGate = new Promise((resolveUpload) => { releaseUpload = resolveUpload; });
+  image = replacementImage;
+  try {
+    await inspectFolder(PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_FOLDER);
+    await waitForPageFunction(page, "desktop asset race fixture did not hold an older texture upload",
+      () => globalThis.__ferrumDesktopAssetUploadHeld === true, timeoutMs);
+    image = originalImage;
+    await inspectFolder(PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER);
+  } finally {
+    uploadGate = undefined;
+    releaseUpload();
+  }
+  const latest = await readyPixelHash(PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER, 32, 32);
+  if (latest !== original) {
+    throw new Error("a delayed older upload replaced the latest folder's rendered texture");
+  }
+  return {
+    assetId: PLACEMENT_VIEWER_DESKTOP_ASSET_ID,
+    runtimeUrl: PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_URL,
+    originalPixelHash: original,
+    switchedPixelHash: switched,
+    reinspectedPixelHash: reinspected,
+    latestAfterDelayedUploadPixelHash: latest,
+  };
+}
+
+function placementViewerCanvasFingerprint() {
+  const canvas = document.querySelector("canvas");
+  const gl = canvas?.getContext("webgl2");
+  if (!gl) {
+    throw new Error("desktop asset reload requires a WebGL2 canvas for texture evidence");
+  }
+  if (gl.isContextLost() || gl.drawingBufferWidth === 0 || gl.drawingBufferHeight === 0) {
+    throw new Error("desktop asset reload cannot inspect a lost or empty WebGL drawing buffer");
+  }
+  const pixels = new Uint8Array(gl.drawingBufferWidth * gl.drawingBufferHeight * 4);
+  gl.readPixels(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+  let hash = 2166136261;
+  for (const byte of pixels) {
+    hash = Math.imul(hash ^ byte, 16777619) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
 }
 
 async function smokeStarterRuntime(page, timeoutMs) {
