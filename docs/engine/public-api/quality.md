@@ -23,6 +23,26 @@ import {
 
 budget field를 추가하면 smoke runner가 실제 sample에 값을 기록하는지 같이 확인한다.
 
+### GPU 자원 예산
+
+WebGL2 runtime은 다음 값을 DebugOverlay와 `RuntimeProfiler.recordFrame(...)`에 실제로 전달한다.
+
+| frame sample 필드 | budget/snapshot 최대값 필드 | 단위 |
+| --- | --- | --- |
+| `gpuTextureCount` | `maxGpuTextureCount` | count |
+| `gpuBufferCount` | `maxGpuBufferCount` | count |
+| `gpuProgramCount` | `maxGpuProgramCount` | count |
+| `gpuRenderTargetCount` | `maxGpuRenderTargetCount` | count |
+| `gpuEstimatedBytes` | `maxGpuEstimatedBytes` | bytes |
+
+`gpuEstimatedBytes`는 GPU 저장량 추정치이며 실제 VRAM 측정값이 아니다.
+[집계 범위와 계산식](core.md#gpu-자원-통계)을 따른다.
+GPU snapshot 최대값은 보관 중인 frame window 전체가 측정된 경우에만 제공한다.
+빈 window나 하나라도 해당 값이 없는 window는 최대값을 `undefined`로 유지한다.
+해당 budget을 설정하면 `missingMetric`으로 실패하므로 native WebGPU/custom renderer의
+미지원 상태를 0으로 오인하지 않는다. budget을 설정하지 않은 기존 사용은 영향을 받지 않는다.
+`reset()`은 sample window만 비우며 renderer 자원을 해제하지 않는다.
+
 ## Diagnostics
 
 | API | 계약 |

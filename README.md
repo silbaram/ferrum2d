@@ -64,6 +64,9 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 | 기능 | 짧은 설명 |
 | --- | --- |
 | WebGL2 renderer | 기본 2D sprite renderer다. |
+| RenderTexture | WebGL2에서 sprite command를 불투명 텍스처로 캡처하고 texture id로 재사용한다. [사용 계약](docs/engine/public-api/core.md#rendertexture-webgl2)을 따른다. |
+| 색 공간 관리 | 기본 legacy 출력을 유지하고 WebGL2의 `linear-srgb` 모드로 입력 색상·linear 계산·sRGB 출력을 구분한다. [전환 계약](docs/engine/public-api/core.md#색-공간-관리)을 따른다. |
+| GPU 자원 통계 | WebGL2의 texture/program/buffer/render target 수와 저장량 추정치를 표시하고 profiler 예산으로 검증한다. [집계 계약](docs/engine/public-api/core.md#gpu-자원-통계)을 따른다. |
 | WebGPU renderer | 지원 환경에서 선택 사용하고 실패하면 WebGL2로 fallback한다. WebGL2가 기준 renderer다. |
 | Render command buffer | Rust가 sprite draw command를 만들고 TS가 GPU로 그린다. |
 | Bitmap world text | font atlas glyph를 기존 sprite command로 cache 전개해 camera, culling, render layer, HD-2D sort에 함께 참여시킨다. |
@@ -463,3 +466,13 @@ scripts/                    저장소 보조 스크립트
 ## License
 
 Ferrum2D는 `MIT OR Apache-2.0` 듀얼 라이선스로 배포한다. 자세한 내용은 [LICENSE](LICENSE)를 확인한다.
+
+
+큰 atlas는 `TextureLoadOptions.ktx2Url`로 선택적 KTX2/Basis 압축을 사용할 수 있습니다.
+WebGL2 GPU block 압축과 이미지 fallback을 지원하며 작은 pixel sprite는 PNG 유지가 유리할 수 있습니다.
+[측정 결과와 배포 정책](docs/development/quality/compressed-textures.md)을 참고하세요.
+
+
+초기 로딩 UI와 셰이더 준비를 연결하려면 `createFerrumRuntime({ shaderPreparation: { onProgress } })`를
+사용할 수 있습니다. 기존 동기 renderer 생성도 유지합니다.
+[지원 범위와 측정](docs/development/quality/shader-preparation.md)을 참고하세요.

@@ -9,6 +9,11 @@
 | 제품 기준 | 명령 | gate 위치 | evidence |
 | --- | --- | --- | --- |
 | Runtime budget profile 계약 | `pnpm smoke:runtime-budgets` | CI 기본 gate, `smoke:check` | `tests/smoke/runtime-budget-profiles.mjs`의 profile/mode mapping 검증 |
+| WebGL2 RenderTexture | `pnpm smoke:render-texture` | CI workflow의 validate job, `smoke:check` | DPR 1/2, offscreen 1,024 sprite + main 1 sprite + fade, 총 3 draw calls, 픽셀 방향/상태 복구/resize/해제 검증 |
+| 셰이더 준비 | `pnpm smoke:shader-preparation` | CI workflow validate job, `smoke:check` | DPR 1/2 동기/비동기 픽셀 일치, 5 programs, 실패 cleanup, runtime 로딩 UI |
+| KTX2/Basis | `pnpm smoke:ktx2` | CI workflow validate job, `smoke:check` | raw ESM/Vite 번들, 실제 Worker·압축 upload·화질·fallback·취소·해제 |
+| GPU 자원 수명주기 | `pnpm smoke:gpu-resources` | CI workflow의 validate job, `smoke:check` | DPR 1/2, legacy/linear-srgb, 1,024 sprites, 12회 씬 전환 후 warmup 기준값 복귀, resize/해제, 실제 profiler 예산 검증 |
+| 색 공간 관리 | `pnpm smoke:color-management` | CI workflow의 validate job, `smoke:check` | DPR 1/2, legacy/linear-srgb 픽셀·조명·bloom·alpha·fallback, 1,024 sprites에서 1/2 draw calls |
 | Rust-side 대량 오브젝트 budget | `pnpm smoke:mass-objects` | CI 기본 gate, `smoke:check` | `ferrum2d.mass-object-stress.smoke-report` JSON과 scenario replay hash |
 | Physics solver/query budget | `pnpm smoke:physics`, `pnpm smoke:physics-replay` | CI 기본 gate는 `smoke:physics`, release 후보는 replay까지 실행 | scenario seed/frame/suite hash와 Web replay helper state hash |
 | Starter Runtime WebGL2 기본 경로 | `pnpm smoke:starter-runtime`, `pnpm smoke:browser-budget` | `smoke:check`, release 후보 수동/로컬 gate | Browser render smoke report와 `RuntimeProfiler` budget report |
@@ -521,6 +526,8 @@ Top-down, Placement Viewer의 전용 UI는 범용 shell option으로 흡수하�
 - `pnpm smoke:hud-toolkit`은 public package build에서 HUD theme token과 meter/counter/prompt overlay state preset을 확인한다.
 - `pnpm smoke:audio-system`은 public package build에서 `AudioManager` BGM loop/fade와 master/bgm/sfx/ui bus state를 확인한다.
 - `pnpm smoke:camera-postprocess`는 Minimal Game browser runtime에서 renderer fullscreen post-processing pass stats와 camera/post-process public helper를 확인한다.
+- `pnpm smoke:color-management`는 public Data Scene의 Playing 상태와 실제 Rust 15-float command buffer에서 출발한다. DPR 1/2에서 legacy/linear-srgb의 sRGB·linear·data texture, 숫자 RGB/material 혼합, 반투명 이미지/혼합, fade 체인, ambient/point light, bloom threshold, 어두운 grayscale ramp, RenderTexture 재사용·resize·clear, WebGPU 요청의 WebGL2 fallback, 투명 canvas의 premultiplied/additive 출력을 34개 시나리오로 검증한다. 1,024 commands의 sprite batch 1개와 texture switch 0을 유지하며 legacy draw 1회/managed draw 2회(출력 변환 포함)를 assert한다. 20회 warmup 뒤 60회 CPU submission median/P95를 기록하되 GPU 실행 시간이나 portable 성능 한계로 해석하지 않는다. managed 기본 출력의 framebuffer가 1개이며 반복 frame에서 texture/framebuffer 추가 할당이 없고 destroy 뒤 잔여 자원이 0인지 검사한다. metadata와 변환 함수/비지원 모드 거절은 `colorManagement.test.ts`로 검증한다.
+- `pnpm smoke:render-texture`는 public core/authoring entrypoint의 `createEngine`, `applyDataSceneAuthoringDocument`, `WebGL2Renderer`를 실제 browser에서 실행한다. Playing Data Scene의 Rust가 생성한 1,024개 비대칭 사분면 sprite를 target에 그리고, 같은 authoring 경로로 생성한 main sprite와 fade로 합성해 1,025 commands, 2 sprite batches, 3 draw calls를 확인한다. stride는 실제 command view에서 읽으며 15-float 직접 upload와 명시적으로 padding한 호환 buffer의 staging upload, material staging을 각각 검증한다. DPR 1/2의 픽셀 방향, 부분 UV/asset 혼합/target 간 합성, 불투명 alpha, 빈 pass clear, framebuffer/viewport/color-mask/scissor 복구, draw 오류 복구, asset/pending-load id 충돌, feedback/누락 texture 사전 거절, resize 및 8회 destroy/recreate, 최종 live texture/framebuffer 0을 검사한다. `FERRUM_BROWSER_EXECUTABLE` 또는 `FERRUM_BROWSER_CHANNEL`로 브라우저를 선택할 수 있다. 크기/id/foreign handle 및 할당 실패 rollback은 `renderTexture.test.ts`가, batch별 방향 복구와 upload buffer 재사용은 `spriteBatch.test.ts`가 추가 검증한다.
 - `pnpm smoke:cutscene-sequence`는 public package build에서 `CutsceneSequencePlayer`가 wait/camera/audio/dialogue command event를 순서대로 방출하고 target adapter hook과 `LocalizationBundle` 기반 dialogue text 변환을 호출하는지 확인한다.
 - `pnpm validate:game-spec`는 Top-down Shooter `game.json`의 `content` namespace가 localization/dialogue/cutscene resolver path를 통과하는지도 확인한다.
 - `pnpm smoke:localization`은 public package build에서 `LocalizationBundle` fallback/interpolation, text wrapping, web/bitmap font loading policy와 inline bitmap atlas glyph/kerning validation을 확인한다.
@@ -694,3 +701,38 @@ README preview용 스크린샷 절차는 [screenshots README](screenshots/README
 - 실패 원인
 - 사용자 영향
 - 후속 조치 또는 보류 사유
+
+### GPU 자원 수명주기 회귀
+
+`pnpm smoke:gpu-resources`는 public `createFerrumRuntime`/Data Scene 경로로 실제 Rust
+15-float command를 만들고 Playing 상태, entity/command 1,024개와 sprite 1 + 후처리 2 draw를
+함께 assert한다. DPR 1/2에서 legacy/linear-srgb 각각 12회 scene 교체, asset 재로드/evict,
+RenderTexture 2개 생성·resize·중복 해제 후 warmup 자원 snapshot 복귀를 검증한다.
+테스트용 GL 계측은 실제 create/delete/texImage2D/bufferData 호출과 공개 count/bytes를 독립 비교한다.
+색상 픽셀 readback, physics debug buffer 용량 증가, retained target의 canvas resize,
+steady frame 12회의 GPU 객체 재할당 없음, renderer destroy 후 texture/buffer/program/FBO 0도 확인한다.
+
+DebugOverlay 표시와 실제 `RuntimeProfiler.latestFrame`의 GPU sample을 확인하며,
+전용 fixture의 예산은 texture 8, buffer 5, program 5, target 5, 추정 저장량 2 MiB다.
+관측값보다 작은 texture budget에서 실제 위반이 발생하는지도 검사한다.
+이 fixture의 예산은 해당 해상도/scene 전용이며 전체 GPU VRAM의 성능 한계로 해석하지 않는다.
+기존 공용 runtime budget profile에는 미측정 GPU 필드를 일괄 추가하지 않는다.
+`runtimeProfiler.test.ts`는 미지원/부분 누락/빈 window가 GPU budget을 통과하지 않는지 검증한다.
+WebGPU native 자원 집계, 실제 driver 메모리/context-loss 복구는 이 smoke 범위에 포함하지 않는다.
+
+
+`pnpm smoke:ktx2`는 DPR 1/2, legacy/linear-srgb에서 실제 ETC1S/UASTC 변환과
+압축 업로드를 검사한다. public Data Scene Playing, Rust 15-float 명령 1,024개, draw 1/2회,
+PSNR 최소 28/35 dB, 512² GPU block 262,144 bytes, malformed/미지원/alpha fallback,
+AbortSignal 및 destroy 후 Worker/GPU 자원 0을 assert한다. 같은 검증을 Vite production 번들로도
+실행해 Worker 및 decoder JS/Wasm URL 재작성과 self-host 배포 경로를 검사한다.
+단위 테스트는 잘못된 출력, 업로드 실패 cleanup, 입력 크기 제한, 같은 ID 경쟁, WebGPU 취소를 보강한다.
+
+
+`pnpm smoke:shader-preparation`은 실제 Rust Playing Data Scene 1,024개 command(15-float)를
+동기/비동기 renderer로 그린다. DPR 1/2 × legacy/linear-srgb × 기본/3개 후처리에서 픽셀 일치,
+program 5개/shader 10개만 생성, draw 1/2/4회, 30회 steady draw 추가 할당 0, destroy 자원 0을 검사한다.
+초기화 wall time 5초와 CPU submission P95 100ms는 hang/큰 회귀를 잡는 smoke 한계이며 FPS 보장이 아니다.
+실제 native extension 지원 여부를 report한다. CI 미지원 기기에서도 completion 상태 shim으로
+실제 GL shader success/abort/link/allocation/callback/timeout cleanup을 검증하지만 native parallel 성능으로
+해석하지 않는다. public createFerrumRuntime와 LoadingOverlay 연결도 검사한다.
