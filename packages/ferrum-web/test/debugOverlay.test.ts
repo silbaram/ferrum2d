@@ -67,6 +67,11 @@ test("DebugOverlay metric contract fixes row order, labels, and units", () => {
     { id: "spriteCount", label: "sprites", unit: "count", optional: false },
     { id: "drawCalls", label: "draw calls", unit: "count", optional: false },
     { id: "batchCount", label: "batches", unit: "count", optional: false },
+    { id: "gpuTextureCount", label: "GPU textures", unit: "count", optional: true },
+    { id: "gpuBufferCount", label: "GPU buffers", unit: "count", optional: true },
+    { id: "gpuProgramCount", label: "GPU programs", unit: "count", optional: true },
+    { id: "gpuRenderTargetCount", label: "GPU targets", unit: "count", optional: true },
+    { id: "gpuEstimatedBytes", label: "GPU storage estimate", unit: "bytes", optional: true },
     { id: "renderCommandCount", label: "render commands", unit: "count", optional: true },
     { id: "textureBindCount", label: "texture binds", unit: "count", optional: true },
     { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
@@ -199,4 +204,14 @@ test("DebugOverlay destroy is idempotent and prevents later DOM updates", () => 
   } finally {
     (globalThis as unknown as { document?: unknown }).document = previousDocument;
   }
+});
+
+
+test("GPU resource rows distinguish storage estimates from absent measurements", () => {
+  const lines = formatDebugOverlayMetrics(metrics({ gpuTextureCount: 4, gpuBufferCount: 5,
+    gpuProgramCount: 5, gpuRenderTargetCount: 3, gpuEstimatedBytes: 1024 }));
+  deepEqual(lines.filter((line) => line.startsWith("GPU")), [
+    "GPU textures: 4", "GPU buffers: 5", "GPU programs: 5", "GPU targets: 3", "GPU storage estimate: 1024 bytes",
+  ]);
+  equal(formatDebugOverlayMetrics(metrics()).some((line) => line.startsWith("GPU")), false);
 });

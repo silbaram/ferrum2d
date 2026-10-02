@@ -1,7 +1,13 @@
+export { createKtx2Transcoder } from "../ktx2Transcoder";
+export type { Ktx2Transcoder, Ktx2TranscoderOptions, Ktx2TextureFormat, Ktx2TranscodedImage, Ktx2TranscodeOptions } from "../ktx2Texture";
+export type { RendererResourceStats } from "../rendererResources";
 export type { Renderer, RendererStats } from "../renderer";
 export type { CreatedRenderer, CreateRendererOptions, RendererFallbackInfo } from "../createRenderer";
 export { WebGL2Renderer } from "../webgl2Renderer";
 export type { WebGL2RendererOptions } from "../webgl2Renderer";
+export type { RenderTexture, RenderTextureOptions, RenderToTextureOptions } from "../renderTexture";
+export type { ColorManagementMode, TextureColorSpace, TextureLoadOptions } from "../colorManagement";
+export { srgbToLinear, linearToSrgb } from "../colorManagement";
 export type { WebGPURendererOptions } from "../webgpuRenderer";
 export type { PhysicsDebugLineCamera } from "../physicsDebugLineBatch";
 export { BrowserPlatformHost } from "../browserPlatformHost";
@@ -510,3 +516,5 @@ export type {
   ResolveDialogueQuestOptions,
   RestoreDialogueQuestStateOptions,
 } from "../dialogueQuest";
+
+export type { ShaderPreparationOptions, ShaderPreparationProgress } from "../shaderPreparation";

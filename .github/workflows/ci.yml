@@ -120,6 +120,21 @@ jobs:
       - name: Build TypeScript packages
         run: pnpm build
 
+      - name: RenderTexture browser smoke
+        run: pnpm smoke:render-texture
+
+      - name: Color management browser smoke
+        run: pnpm smoke:color-management
+
+      - name: GPU resource lifecycle browser smoke
+        run: pnpm smoke:gpu-resources
+
+      - name: KTX2 compressed texture smoke
+        run: pnpm smoke:ktx2
+
+      - name: Shader preparation smoke
+        run: pnpm smoke:shader-preparation
+
       - name: Data scene authoring sample validation
         run: pnpm validate:data-scene-authoring
 

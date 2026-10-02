@@ -30,7 +30,8 @@ class FakeWebGL2Context {
     byteLength: number;
     values: number[];
   }> = [];
-  readonly bufferSubDataCalls: Array<{ length: number; values: number[] }> = [];
+  readonly bufferSubDataCalls: Array<{ source: Float32Array; length: number; values: number[] }> = [];
+  readonly textureFlipYCalls: number[] = [];
   readonly drawElementsInstancedCalls: Array<{
     mode: number;
     count: number;
@@ -134,7 +135,9 @@ class FakeWebGL2Context {
 
   activeTexture(): void {}
 
-  uniform1i(): void {}
+  uniform1i(location: WebGLUniformLocation, value: number): void {
+    if ((location as unknown as { name: string }).name === "u_texture_flip_y") this.textureFlipYCalls.push(value);
+  }
 
   bindTexture(): void {}
 
@@ -147,6 +150,7 @@ class FakeWebGL2Context {
   ): void {
     const floatCount = length ?? srcData.length - srcOffset;
     this.bufferSubDataCalls.push({
+      source: srcData,
       length: floatCount,
       values: Array.from(srcData.slice(srcOffset, srcOffset + floatCount)),
     });
@@ -251,6 +255,35 @@ test("SpriteBatch draws texture ranges as indexed instanced batches", () => {
   );
 });
 
+test("SpriteBatch flips render textures per batch and resets orientation for raw and asset textures", () => {
+  const gl = new FakeWebGL2Context();
+  const batch = new SpriteBatch(gl as unknown as WebGL2RenderingContext);
+  const source = {
+    texture: (textureId: number) => ({ textureId }) as unknown as WebGLTexture,
+    textureFlipY: (textureId: number) => textureId === 100,
+  };
+  batch.drawBatches(source, commandBuffer([100, 1, 100]), [320, 180]);
+  batch.drawBatch(source.texture(1), commandBuffer([1]), [320, 180]);
+  batch.drawBatches(new FakeTextureManager(), commandBuffer([1]), [320, 180]);
+  deepEqual(gl.textureFlipYCalls, [1, 0, 1, 0, 0]);
+});
+
+test("SpriteBatch uploads canonical buffers directly and converts padded compatibility buffers", () => {
+  const gl = new FakeWebGL2Context();
+  const batch = new SpriteBatch(gl as unknown as WebGL2RenderingContext);
+  const commands = commandBuffer([1, 1]);
+  batch.drawBatches(new FakeTextureManager(), commands, [320, 180]);
+  equal(gl.bufferSubDataCalls[0].source, commands.buffer);
+  const stride = commands.floatsPerCommand + 1;
+  const padded = new Float32Array(commands.commandCount * stride);
+  for (let i = 0; i < commands.commandCount; i++) {
+    padded.set(commands.buffer.subarray(i * commands.floatsPerCommand, (i + 1) * commands.floatsPerCommand), i * stride);
+  }
+  batch.drawBatches(new FakeTextureManager(), { ...commands, buffer: padded, floatsPerCommand: stride }, [320, 180]);
+  equal(gl.bufferSubDataCalls[1].source === padded, false);
+  deepEqual(gl.bufferSubDataCalls[1].values, gl.bufferSubDataCalls[0].values);
+});
+
 function commandBuffer(textureIds: number[]): RenderCommandBufferView {
   const buffer = new Float32Array(textureIds.length * SPRITE_RENDER_COMMAND_FLOATS);
   for (let index = 0; index < textureIds.length; index += 1) {
@@ -277,3 +310,18 @@ function commandBuffer(textureIds: number[]): RenderCommandBufferView {
     floatsPerCommand: SPRITE_RENDER_COMMAND_FLOATS,
   };
 }
+
+test("SpriteBatch reports allocated capacity and reuses it for smaller command buffers", () => {
+  const gl = new FakeWebGL2Context();
+  const batch = new SpriteBatch(gl as unknown as WebGL2RenderingContext);
+  deepEqual(batch.resourceStats(), { bufferCount: 3, programCount: 1, bufferBytes: 44 });
+  batch.drawBatches(new FakeTextureManager(), commandBuffer(Array(100).fill(1)), [320, 180]);
+  const dynamic = gl.bufferDataCalls.filter((call) => call.usage === gl.DYNAMIC_DRAW);
+  const bytes = 44 + dynamic[dynamic.length - 1].byteLength;
+  equal(batch.resourceStats().bufferBytes, bytes);
+  batch.drawBatches(new FakeTextureManager(), commandBuffer([1]), [320, 180]);
+  equal(batch.resourceStats().bufferBytes, bytes);
+  batch.destroy();
+  batch.destroy();
+  deepEqual(batch.resourceStats(), { bufferCount: 0, programCount: 0, bufferBytes: 0 });
+});

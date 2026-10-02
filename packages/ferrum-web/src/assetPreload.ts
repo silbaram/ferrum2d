@@ -1,4 +1,6 @@
 import type { AssetLoadProgress, AssetLoadProgressCallback, AssetManifest } from "./assetLoader.js";
+import { validateAssetTextureOptions } from "./assetLoader.js";
+import { resolveTextureColorSpace } from "./colorManagement.js";
 import { assetLoadError, describeError } from "./diagnostics.js";
 import type { BinaryAssetCache, JsonAssetCache } from "./indexedDbAssetCache.js";
 
@@ -74,6 +76,7 @@ const FNV1A_32_OFFSET = 0x811c9dc5;
 const FNV1A_32_PRIME = 0x01000193;
 
 export function resolveAssetPreloadPlan(manifest: AssetManifest): AssetPreloadPlan {
+  validateAssetTextureOptions(manifest);
   const entries: AssetPreloadEntry[] = [];
   appendEntries(entries, "texture", manifest.textures ?? {});
   appendEntries(entries, "sound", manifest.sounds ?? {});
@@ -92,6 +95,12 @@ export function assetManifestFingerprint(manifest: AssetManifest, versionSalt = 
   hash = hashString(hash, `salt:${versionSalt}\n`);
   for (const entry of fingerprintEntries(manifest)) {
     hash = hashString(hash, `${entry.kind}\0${entry.name}\0${entry.url}\n`);
+    if (entry.kind === "texture") {
+      const colorSpace = resolveTextureColorSpace(manifest.textureOptions?.[entry.name]);
+      if (colorSpace !== "srgb") hash = hashString(hash, `colorSpace:${colorSpace}\n`);
+      const ktx2Url = manifest.textureOptions?.[entry.name]?.ktx2Url;
+      if (ktx2Url !== undefined) hash = hashString(hash, `ktx2:${ktx2Url}\n`);
+    }
   }
   return hash.toString(36).padStart(7, "0");
 }

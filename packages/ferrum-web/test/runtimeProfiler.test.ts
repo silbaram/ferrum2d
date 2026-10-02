@@ -200,3 +200,29 @@ function metrics(overrides: Partial<DebugOverlayMetrics> = {}): DebugOverlayMetr
 function hasOwn(object: object, property: PropertyKey): boolean {
   return Object.prototype.hasOwnProperty.call(object, property);
 }
+
+test("GPU budgets reject absent measurements and retain complete-window maxima", () => {
+  const budget = { maxGpuTextureCount: 3, maxGpuBufferCount: 5, maxGpuProgramCount: 5,
+    maxGpuRenderTargetCount: 1, maxGpuEstimatedBytes: 1024 };
+  const sample = metrics({ gpuTextureCount: 2, gpuBufferCount: 5, gpuProgramCount: 5,
+    gpuRenderTargetCount: 1, gpuEstimatedBytes: 512 });
+  const profiler = new RuntimeProfiler({ budget, maxFrameSamples: 2 });
+  equal(profiler.snapshot().budgetReport?.violations.length, 5);
+  equal(profiler.recordFrame(sample).passed, true);
+  equal(profiler.snapshot().maxGpuEstimatedBytes, 512);
+  const report = profiler.recordFrame({ ...sample, gpuEstimatedBytes: 2048, gpuTextureCount: 4 });
+  deepEqual(report.violations.map((v) => v.id), ["maxGpuTextureCount", "maxGpuEstimatedBytes"]);
+  equal(report.violations[1].unit, "bytes");
+  equal(profiler.snapshot().maxGpuEstimatedBytes, 2048);
+  profiler.recordFrame(metrics());
+  equal(profiler.snapshot().maxGpuEstimatedBytes, undefined);
+  equal(profiler.snapshot().budgetReport?.violations.every((v) => v.reason === "missingMetric"), true);
+  profiler.recordFrame(sample);
+  equal(profiler.snapshot().budgetReport?.passed, false);
+  profiler.recordFrame(sample);
+  equal(profiler.snapshot().budgetReport?.passed, true);
+  profiler.reset();
+  equal(profiler.snapshot().maxGpuTextureCount, undefined);
+  equal(evaluateRuntimeDiagnosticsSample({ ...sample, gpuEstimatedBytes: NaN }, budget)
+    .violations[0].reason, "nonFiniteMetric");
+});

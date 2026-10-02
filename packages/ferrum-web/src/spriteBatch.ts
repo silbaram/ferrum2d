@@ -1,5 +1,6 @@
-import type { TextureManager } from "./textureManager";
+import { createWebGL2Program } from "./webgl2ShaderPrograms";
 import type { RenderCommandBufferView } from "./wasmBridge";
+import { setSpriteBlend } from "./webgl2Blend";
 import {
   DEFAULT_SPRITE_MATERIAL_PRESET,
   SPRITE_RENDER_COMMAND_FLOATS,
@@ -23,6 +24,12 @@ export interface SpriteDrawOptions {
 export interface SpriteBatchStats {
   drawCalls: number;
   textureSwitchCount: number;
+}
+
+export interface SpriteTextureSource {
+  texture(textureId: number): WebGLTexture;
+  /** Framebuffer textures need bottom-left storage mapped to top-left sprite UVs. */
+  textureFlipY?(textureId: number): boolean;
 }
 
 const FLOATS_PER_COMMAND = SPRITE_RENDER_COMMAND_FLOATS;
@@ -52,6 +59,7 @@ export class SpriteBatch {
   private readonly resolutionLocation: WebGLUniformLocation;
   private readonly screenOffsetLocation: WebGLUniformLocation;
   private readonly textureLocation: WebGLUniformLocation;
+  private readonly textureFlipYLocation: WebGLUniformLocation;
   private instanceCapacityFloats = 0;
   private materialStaging = new Float32Array(0);
   private cachedMaterial: ResolvedSpriteMaterialPreset = DEFAULT_SPRITE_MATERIAL_PRESET;
@@ -59,63 +67,80 @@ export class SpriteBatch {
   private readonly textureRangeScratch: Array<{ textureId: number; start: number; end: number }> = [];
   private destroyed = false;
 
-  constructor(private readonly gl: WebGL2RenderingContext) {
-    this.program = this.createProgram();
-    const vao = this.gl.createVertexArray();
-    const quadVbo = this.gl.createBuffer();
-    const instanceVbo = this.gl.createBuffer();
-    const indexBuffer = this.gl.createBuffer();
-    if (!vao || !quadVbo || !instanceVbo || !indexBuffer) throw new Error("SpriteBatch 버퍼 생성 실패");
-    this.vao = vao;
-    this.quadVbo = quadVbo;
-    this.instanceVbo = instanceVbo;
-    this.indexBuffer = indexBuffer;
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false) {
+    const programs: WebGLProgram[] = [];
+    const vaos: WebGLVertexArrayObject[] = [];
+    const buffers: WebGLBuffer[] = [];
+    try {
+      this.program = createWebGL2Program(this.gl, "sprite");
+      programs.push(this.program);
+      const vao = this.gl.createVertexArray();
+      if (vao) vaos.push(vao);
+      const quadVbo = this.gl.createBuffer();
+      if (quadVbo) buffers.push(quadVbo);
+      const instanceVbo = this.gl.createBuffer();
+      if (instanceVbo) buffers.push(instanceVbo);
+      const indexBuffer = this.gl.createBuffer();
+      if (indexBuffer) buffers.push(indexBuffer);
+      if (!vao || !quadVbo || !instanceVbo || !indexBuffer) throw new Error("SpriteBatch 버퍼 생성 실패");
+      this.vao = vao;
+      this.quadVbo = quadVbo;
+      this.instanceVbo = instanceVbo;
+      this.indexBuffer = indexBuffer;
 
-    this.gl.bindVertexArray(this.vao);
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.quadVbo);
-    this.gl.bufferData(this.gl.ARRAY_BUFFER, QUAD_VERTEX_DATA, this.gl.STATIC_DRAW);
-    this.gl.enableVertexAttribArray(0);
-    this.gl.vertexAttribPointer(0, 2, this.gl.FLOAT, false, QUAD_CORNER_STRIDE_BYTES, 0);
+      this.gl.bindVertexArray(this.vao);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.quadVbo);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, QUAD_VERTEX_DATA, this.gl.STATIC_DRAW);
+      this.gl.enableVertexAttribArray(0);
+      this.gl.vertexAttribPointer(0, 2, this.gl.FLOAT, false, QUAD_CORNER_STRIDE_BYTES, 0);
 
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceVbo);
-    this.gl.enableVertexAttribArray(1);
-    this.gl.vertexAttribPointer(1, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 0);
-    this.gl.vertexAttribDivisor(1, 1);
-    this.gl.enableVertexAttribArray(2);
-    this.gl.vertexAttribPointer(2, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 4 * BYTES_PER_F32);
-    this.gl.vertexAttribDivisor(2, 1);
-    this.gl.enableVertexAttribArray(3);
-    this.gl.vertexAttribPointer(3, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 8 * BYTES_PER_F32);
-    this.gl.vertexAttribDivisor(3, 1);
-    this.gl.enableVertexAttribArray(4);
-    this.gl.vertexAttribPointer(4, 1, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 14 * BYTES_PER_F32);
-    this.gl.vertexAttribDivisor(4, 1);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceVbo);
+      this.gl.enableVertexAttribArray(1);
+      this.gl.vertexAttribPointer(1, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 0);
+      this.gl.vertexAttribDivisor(1, 1);
+      this.gl.enableVertexAttribArray(2);
+      this.gl.vertexAttribPointer(2, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 4 * BYTES_PER_F32);
+      this.gl.vertexAttribDivisor(2, 1);
+      this.gl.enableVertexAttribArray(3);
+      this.gl.vertexAttribPointer(3, 4, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 8 * BYTES_PER_F32);
+      this.gl.vertexAttribDivisor(3, 1);
+      this.gl.enableVertexAttribArray(4);
+      this.gl.vertexAttribPointer(4, 1, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 14 * BYTES_PER_F32);
+      this.gl.vertexAttribDivisor(4, 1);
 
-    this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-    this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, QUAD_INDEX_DATA, this.gl.STATIC_DRAW);
-    this.gl.bindVertexArray(null);
+      this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+      this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, QUAD_INDEX_DATA, this.gl.STATIC_DRAW);
+      this.gl.bindVertexArray(null);
 
-    this.gl.enable(this.gl.BLEND);
-    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+      this.gl.enable(this.gl.BLEND);
+      setSpriteBlend(this.gl, this.linearTarget);
 
-    const resolutionLocation = this.gl.getUniformLocation(this.program, "u_resolution");
-    const screenOffsetLocation = this.gl.getUniformLocation(this.program, "u_screen_offset");
-    const textureLocation = this.gl.getUniformLocation(this.program, "u_texture");
-    if (!resolutionLocation || !screenOffsetLocation || !textureLocation) throw new Error("Sprite shader uniform location 조회 실패");
-    this.resolutionLocation = resolutionLocation;
-    this.screenOffsetLocation = screenOffsetLocation;
-    this.textureLocation = textureLocation;
+      const resolutionLocation = this.gl.getUniformLocation(this.program, "u_resolution");
+      const screenOffsetLocation = this.gl.getUniformLocation(this.program, "u_screen_offset");
+      const textureLocation = this.gl.getUniformLocation(this.program, "u_texture");
+      const textureFlipYLocation = this.gl.getUniformLocation(this.program, "u_texture_flip_y");
+      if (!resolutionLocation || !screenOffsetLocation || !textureLocation || !textureFlipYLocation) throw new Error("Sprite shader uniform location 조회 실패");
+      this.resolutionLocation = resolutionLocation;
+      this.screenOffsetLocation = screenOffsetLocation;
+      this.textureLocation = textureLocation;
+      this.textureFlipYLocation = textureFlipYLocation;
+    } catch (error) {
+      for (const buffer of buffers) gl.deleteBuffer(buffer);
+      for (const vao of vaos) gl.deleteVertexArray(vao);
+      for (const program of programs) gl.deleteProgram(program);
+      throw error;
+    }
   }
 
   drawBatches(
-    textureManager: TextureManager,
+    textureManager: SpriteTextureSource,
     commands: RenderCommandBufferView,
     resolution: [number, number],
     material?: ResolvedSpriteMaterialPreset,
     screenOffset?: readonly [number, number],
   ): SpriteBatchStats;
   drawBatches(
-    textureManager: TextureManager,
+    textureManager: SpriteTextureSource,
     commands: RenderCommandBufferView,
     resolution: [number, number],
     material: ResolvedSpriteMaterialPreset = DEFAULT_SPRITE_MATERIAL_PRESET,
@@ -132,7 +157,8 @@ export class SpriteBatch {
         this.applyBlendMode(pass.blendMode);
         for (const range of ranges) {
           const texture = textureManager.texture(range.textureId);
-          drawCalls += this.drawRange(texture, commands, range.start, range.end, pass);
+          drawCalls += this.drawRange(texture, commands, range.start, range.end, pass,
+            textureManager.textureFlipY?.(range.textureId) ?? false);
         }
       }
     } finally {
@@ -178,6 +204,7 @@ export class SpriteBatch {
     startCommand: number,
     endCommand: number,
     pass: SpriteMaterialPass,
+    textureFlipY = false,
   ): number {
     const commandCount = endCommand - startCommand;
     if (commandCount === 0) return 0;
@@ -203,6 +230,7 @@ export class SpriteBatch {
     }
 
     this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+    this.gl.uniform1i(this.textureFlipYLocation, textureFlipY ? 1 : 0);
     this.gl.drawElementsInstanced(this.gl.TRIANGLES, QUAD_INDEX_COUNT, this.gl.UNSIGNED_SHORT, 0, commandCount);
     return 1;
   }
@@ -275,11 +303,16 @@ export class SpriteBatch {
 
   private applyBlendMode(blendMode: SpriteMaterialBlendMode): void {
     this.gl.enable(this.gl.BLEND);
-    if (blendMode === "additive") {
-      this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE);
-      return;
-    }
-    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+    setSpriteBlend(this.gl, this.linearTarget, blendMode === "additive");
+  }
+
+  /** Internal allocation summary; no GPU queries or per-command work. */
+  resourceStats(): { bufferCount: number; programCount: number; bufferBytes: number } {
+    return {
+      bufferCount: this.destroyed ? 0 : 3,
+      programCount: this.destroyed ? 0 : 1,
+      bufferBytes: this.destroyed ? 0 : QUAD_VERTEX_DATA.byteLength + QUAD_INDEX_DATA.byteLength + this.instanceCapacityFloats * BYTES_PER_F32,
+    };
   }
 
   destroy(): void {
@@ -302,18 +335,4 @@ export class SpriteBatch {
     }
   }
 
-  private createProgram(): WebGLProgram { /* unchanged */
-    const vert = this.compile(this.gl.VERTEX_SHADER, `#version 300 es
-      layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;
-      uniform vec2 u_resolution;uniform vec2 u_screen_offset;out vec2 v_uv;out vec4 v_color;
-      void main(){vec2 corner=a_corner;vec2 local=(corner-vec2(0.5))*a_rect.zw;float c=cos(a_rotation);float s=sin(a_rotation);vec2 rotated=vec2(local.x*c-local.y*s,local.x*s+local.y*c);vec2 position=a_rect.xy+u_screen_offset+a_rect.zw*0.5+rotated;vec2 z=position/u_resolution;vec2 clip=(z*2.0)-1.0;gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);v_color=a_color;}`);
-    const frag = this.compile(this.gl.FRAGMENT_SHADER, `#version 300 es
-      precision mediump float;in vec2 v_uv;in vec4 v_color;uniform sampler2D u_texture;out vec4 outColor;
-      void main(){outColor=texture(u_texture,v_uv)*v_color;}`);
-    const p = this.gl.createProgram(); if (!p) throw new Error("Sprite shader program 생성 실패");
-    this.gl.attachShader(p, vert); this.gl.attachShader(p, frag); this.gl.linkProgram(p);
-    if (!this.gl.getProgramParameter(p, this.gl.LINK_STATUS)) throw new Error(this.gl.getProgramInfoLog(p) ?? "Sprite shader 링크 실패");
-    this.gl.deleteShader(vert); this.gl.deleteShader(frag); return p;
-  }
-  private compile(type:number,source:string):WebGLShader{const s=this.gl.createShader(type);if(!s) throw new Error("Shader 생성 실패");this.gl.shaderSource(s,source);this.gl.compileShader(s);if(!this.gl.getShaderParameter(s,this.gl.COMPILE_STATUS)) throw new Error(this.gl.getShaderInfoLog(s)??"Shader 컴파일 실패");return s;}
 }

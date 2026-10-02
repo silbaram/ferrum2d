@@ -1,3 +1,6 @@
+import { textureLoadAbortError } from "./ktx2Texture.js";
+import { resolveTextureColorSpace } from "./colorManagement.js";
+import type { TextureLoadOptions } from "./colorManagement.js";
 import type {
   PixelMaskTerrain,
   PixelMaskTerrainAlphaPatch,
@@ -23,6 +26,8 @@ const TEXTURE_ROW_ALIGNMENT = 256;
 export class WebGpuTextureStore {
   private readonly textures = new Set<GPUTexture>();
   private readonly texturesById = new Map<number, WebGpuTextureResource>();
+  private readonly pendingLoads = new Set<AbortController>();
+  private readonly pendingIds = new Map<number, AbortController>();
   private destroyed = false;
 
   constructor(
@@ -31,26 +36,41 @@ export class WebGpuTextureStore {
     private readonly textureBindGroupLayout: GPUBindGroupLayout,
   ) {}
 
-  async load(url: string): Promise<GPUTexture> {
-    this.assertAlive();
-    const bitmap = await this.loadImageBitmap(url);
-    try {
-      this.assertAlive();
-      return this.createTextureFromSource(undefined, bitmap);
-    } finally {
-      bitmap.close();
-    }
+  async load(url: string, options?: TextureLoadOptions): Promise<GPUTexture> {
+    return this.loadManaged(url, options);
   }
 
-  async loadTexture(textureId: number, url: string): Promise<GPUTexture> {
-    this.assertAlive();
+  async loadTexture(textureId: number, url: string, options?: TextureLoadOptions): Promise<GPUTexture> {
     validateTextureId(textureId);
-    const bitmap = await this.loadImageBitmap(url);
+    return this.loadManaged(url, options, textureId);
+  }
+
+  private async loadManaged(url: string, options: TextureLoadOptions = {}, textureId?: number): Promise<GPUTexture> {
+    this.assertAlive();
+    resolveTextureColorSpace(options);
+    if (options.signal?.aborted) throw textureLoadAbortError();
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    options.signal?.addEventListener("abort", abort, { once: true });
+    this.pendingLoads.add(controller);
+    if (textureId !== undefined) {
+      this.pendingIds.get(textureId)?.abort();
+      this.pendingIds.set(textureId, controller);
+    }
     try {
-      this.assertAlive();
-      return this.createTextureFromSource(textureId, bitmap);
+      // Native WebGPU currently uses the ordinary image fallback even when ktx2Url is present.
+      const bitmap = await this.loadImageBitmap(url, options, controller.signal);
+      try {
+        if (this.destroyed || controller.signal.aborted) throw textureLoadAbortError();
+        return this.createTextureFromSource(textureId, bitmap);
+      } finally { bitmap.close(); }
+    } catch (error) {
+      if (this.destroyed || controller.signal.aborted) throw textureLoadAbortError();
+      throw error;
     } finally {
-      bitmap.close();
+      this.pendingLoads.delete(controller);
+      if (textureId !== undefined && this.pendingIds.get(textureId) === controller) this.pendingIds.delete(textureId);
+      options.signal?.removeEventListener("abort", abort);
     }
   }
 
@@ -109,6 +129,7 @@ export class WebGpuTextureStore {
     if (textureId === 0) {
       return false;
     }
+    this.pendingIds.get(textureId)?.abort();
     const resource = this.texturesById.get(textureId);
     if (resource === undefined) {
       return false;
@@ -133,6 +154,9 @@ export class WebGpuTextureStore {
       return;
     }
     this.destroyed = true;
+    for (const controller of this.pendingLoads) controller.abort();
+    this.pendingLoads.clear();
+    this.pendingIds.clear();
     for (const texture of this.textures) {
       texture.destroy();
     }
@@ -140,12 +164,15 @@ export class WebGpuTextureStore {
     this.texturesById.clear();
   }
 
-  private async loadImageBitmap(url: string): Promise<ImageBitmap> {
-    const response = await fetch(url);
+  private async loadImageBitmap(url: string, options: TextureLoadOptions, signal: AbortSignal): Promise<ImageBitmap> {
+    const colorSpace = resolveTextureColorSpace(options);
+    const response = await fetch(url, { signal });
     if (!response.ok) {
       throw new Error(`Texture load failed: HTTP ${response.status} ${response.statusText}`.trim());
     }
-    return await createImageBitmap(await response.blob());
+    const blob = await response.blob();
+    return colorSpace === "srgb" ? await createImageBitmap(blob)
+      : await createImageBitmap(blob, { colorSpaceConversion: "none", premultiplyAlpha: "none" });
   }
 
   private createTextureFromSource(textureId: number | undefined, source: ImageBitmap): GPUTexture {
@@ -204,6 +231,7 @@ export class WebGpuTextureStore {
 
   private setTexture(textureId: number, resource: WebGpuTextureResource): void {
     validateTextureId(textureId);
+    this.pendingIds.get(textureId)?.abort();
     const previous = this.texturesById.get(textureId);
     if (previous && previous.texture !== resource.texture) {
       previous.texture.destroy();

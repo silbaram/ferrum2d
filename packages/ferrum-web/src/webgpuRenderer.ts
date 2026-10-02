@@ -29,8 +29,12 @@ import { WebGpuLightingPass } from "./webgpuLightingPass.js";
 import { WebGpuPostProcessPass } from "./webgpuPostProcessPass.js";
 import { WebGpuSpritePass } from "./webgpuSpritePass.js";
 import { WebGpuTextureStore } from "./webgpuTextureStore.js";
+import { resolveColorManagementMode, resolveTextureColorSpace } from "./colorManagement.js";
+import type { ColorManagementMode, TextureLoadOptions } from "./colorManagement.js";
 
 export interface WebGPURendererOptions {
+  /** linear-srgb is currently supported by WebGL2 only; createRenderer can fall back. */
+  colorManagement?: ColorManagementMode;
   clearColor?: [number, number, number, number];
   powerPreference?: GPUPowerPreference;
   fallbackAdapter?: boolean;
@@ -127,6 +131,9 @@ export class WebGPURenderer implements Renderer {
     canvas?: HTMLCanvasElement,
     options: WebGPURendererOptions = {},
   ): Promise<WebGPURenderer> {
+    if (resolveColorManagementMode(options.colorManagement) !== "legacy") {
+      throw new Error("WebGPU linear-srgb color management is not supported; use the WebGL2 fallback.");
+    }
     if (canvas === undefined) {
       throw new Error("WebGPURenderer.create(...) requires an HTMLCanvasElement.");
     }
@@ -166,18 +173,21 @@ export class WebGPURenderer implements Renderer {
     return this.device;
   }
 
-  async loadTexture(textureId: number, url: string): Promise<GPUTexture>;
-  async loadTexture(url: string): Promise<GPUTexture>;
-  async loadTexture(first: number | string, second?: string): Promise<GPUTexture> {
+  async loadTexture(textureId: number, url: string, options?: TextureLoadOptions): Promise<GPUTexture>;
+  async loadTexture(url: string, options?: TextureLoadOptions): Promise<GPUTexture>;
+  async loadTexture(first: number | string, second?: string | TextureLoadOptions, options?: TextureLoadOptions): Promise<GPUTexture> {
     this.assertAlive();
     if (typeof first === "number") {
-      if (second === undefined) {
+      if (typeof second !== "string") {
         throw new Error("loadTexture(textureId, url) requires a texture URL.");
       }
-      return await this.textureStore.loadTexture(first, second);
+      resolveTextureColorSpace(options);
+      return await this.textureStore.loadTexture(first, second, options);
     }
 
-    return await this.textureStore.load(first);
+    const loadOptions = typeof second === "object" ? second : undefined;
+    resolveTextureColorSpace(loadOptions);
+    return await this.textureStore.load(first, loadOptions);
   }
 
   createPixelMaskTerrainTexture(
@@ -209,6 +219,9 @@ export class WebGPURenderer implements Renderer {
       height: this.logicalHeight,
     };
   }
+
+  /** Native WebGPU allocation statistics are not available yet. */
+  resourceStats(): undefined { return undefined; }
 
   stats(): RendererStats {
     return { ...this.currentStats };

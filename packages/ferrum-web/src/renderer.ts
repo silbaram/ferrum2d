@@ -1,3 +1,4 @@
+import type { RendererResourceStats } from "./rendererResources";
 import type { RenderCommandBufferView } from "./renderCommandDecoder";
 import type { PostProcessStackInput } from "./cameraPostProcessing";
 
@@ -132,6 +133,8 @@ export interface Renderer {
   render(): void;
   resize(): void;
   stats(): RendererStats;
+  /** Optional capability: absent means unsupported, not zero resources. */
+  resourceStats?(): RendererResourceStats | undefined;
   setPostProcess?(postProcess: PostProcessStackInput): void;
   renderPostProcess?(postProcess?: PostProcessStackInput): RendererStats;
   destroy(): void;

@@ -36,6 +36,9 @@ const requiredPackedFiles = [
   "package/package.json",
   "package/LICENSE",
   "package/README.md",
+  "package/dist/ktx2Worker.js",
+  ...["basis_transcoder.js", "basis_transcoder.wasm", "LICENSE", "NOTICE", "LICENSE-Zstd", "provenance.json"]
+    .map((file) => `package/dist/vendor/basis/${file}`),
   ...publicEntrypoints.flatMap(([, distName]) => [
     `package/dist/${distName}.js`,
     `package/dist/${distName}.d.ts`,
@@ -91,6 +94,10 @@ for (const [, distName] of publicEntrypoints) {
   await requireFile(`src/${distName}.ts`);
   await requireFile(`dist/${distName}.js`);
   await requireFile(`dist/${distName}.d.ts`);
+}
+await requireFile("dist/ktx2Worker.js");
+for (const file of ["basis_transcoder.js", "basis_transcoder.wasm", "LICENSE", "NOTICE", "LICENSE-Zstd", "provenance.json"]) {
+  await requireFile(`dist/vendor/basis/${file}`);
 }
 await requireFile("dist/collisionEventDecoder.js");
 await requireFile("dist/collisionEventDecoder.d.ts");

@@ -1,4 +1,18 @@
+import { createKtx2Transcoder } from "./ktx2Transcoder.js";
+import { KTX2_MAX_INPUT_BYTES, KTX2_MAX_DIMENSION, ktx2BlockBytes, textureLoadAbortError } from "./ktx2Texture.js";
+import type { Ktx2Transcoder, Ktx2TranscodedImage } from "./ktx2Texture.js";
+import { selectWebGL2Ktx2Format } from "./webgl2CompressedTexture.js";
+import type { WebGL2CompressedTextureFormat } from "./webgl2CompressedTexture.js";
+
+export interface TextureManagerOptions {
+  /** Injected transcoders remain caller-owned. false always selects the normal image. */
+  ktx2?: Ktx2Transcoder | false;
+  onKtx2Fallback?: (info: { url: string; ktx2Url: string; reason: unknown }) => void;
+}
+
 import { describeError, diagnosticError } from "./diagnostics.js";
+import { resolveColorManagementMode, resolveTextureColorSpace } from "./colorManagement.js";
+import type { ColorManagementMode, TextureLoadOptions } from "./colorManagement.js";
 import type {
   PixelMaskTerrain,
   PixelMaskTerrainAlphaPatch,
@@ -14,31 +28,122 @@ export class TextureManager {
   private readonly textures = new Set<WebGLTexture>();
   private readonly texturesById = new Map<number, WebGLTexture>();
   private readonly textureSizesById = new Map<number, TextureSize>();
+  private readonly textureBytesByObject = new Map<WebGLTexture, number | undefined>();
+  private knownTextureBytes = 0;
+  private unmeasuredTextureCount = 0;
+  private readonly pendingLoads = new Set<AbortController>();
+  private readonly pendingIds = new Map<number, AbortController>();
+  private ownedTranscoder?: Ktx2Transcoder;
   private destroyed = false;
 
-  constructor(private readonly gl: WebGL2RenderingContext) {}
+  constructor(
+    private readonly gl: WebGL2RenderingContext,
+    private readonly colorManagement: ColorManagementMode = "legacy",
+    private readonly options: TextureManagerOptions = {},
+  ) {
+    resolveColorManagementMode(colorManagement);
+  }
 
-  async load(url: string): Promise<WebGLTexture> {
+  async load(url: string, options?: TextureLoadOptions): Promise<WebGLTexture> {
+    return this.loadManaged(url, options);
+  }
+
+  async loadTexture(textureId: number, url: string, options?: TextureLoadOptions): Promise<WebGLTexture> {
+    validateTextureId(textureId);
+    return this.loadManaged(url, options, textureId);
+  }
+
+  private async loadManaged(url: string, options: TextureLoadOptions = {}, textureId?: number): Promise<WebGLTexture> {
     this.assertAlive();
-    const image = await this.loadImageBitmap(url);
+    const colorSpace = resolveTextureColorSpace(options);
+    if (options.signal?.aborted) throw textureLoadAbortError();
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    options.signal?.addEventListener("abort", abort, { once: true });
+    this.pendingLoads.add(controller);
+    if (textureId !== undefined) {
+      this.pendingIds.get(textureId)?.abort();
+      this.pendingIds.set(textureId, controller);
+    }
+    const signal = controller.signal;
     try {
-      this.assertAlive();
-      return this.createTextureFromSource(image);
+      let texture: WebGLTexture | undefined;
+      if (options.ktx2Url !== undefined && this.options.ktx2 !== false) {
+        try {
+          const format = selectWebGL2Ktx2Format(this.gl, this.colorManagement === "linear-srgb" && colorSpace === "srgb");
+          if (!format) throw new Error("No supported KTX2 GPU block format.");
+          const response = await fetch(options.ktx2Url, { signal });
+          if (!response.ok) throw new Error(`KTX2 fetch failed: HTTP ${response.status}.`);
+          const length = Number(response.headers.get("content-length"));
+          if (length > KTX2_MAX_INPUT_BYTES) {
+            await response.body?.cancel();
+            throw new Error("KTX2 input exceeds 64 MiB.");
+          }
+          const bytes = await readKtx2Bytes(response);
+          this.assertLoadActive(signal);
+          const transcoder = this.options.ktx2 || (this.ownedTranscoder ??= createKtx2Transcoder());
+          const image = await transcoder.transcode(bytes, {
+            format: format.format, srgb: colorSpace === "srgb",
+            allowAlpha: this.colorManagement === "linear-srgb",
+            maxDimension: Math.min(KTX2_MAX_DIMENSION, this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE)), signal,
+          });
+          this.assertLoadActive(signal);
+          texture = this.createCompressedTexture(image, format);
+        } catch (reason) {
+          this.assertLoadActive(signal);
+          this.options.onKtx2Fallback?.({ url, ktx2Url: options.ktx2Url, reason });
+        }
+      }
+      if (texture === undefined) {
+        const image = await this.loadImageBitmap(url, colorSpace, signal);
+        try {
+          this.assertLoadActive(signal);
+          texture = this.createTextureFromSource(image, { colorSpace });
+        } finally { image.close(); }
+      }
+      if (textureId !== undefined) this.setTexture(textureId, texture);
+      return texture;
     } finally {
-      image.close();
+      this.pendingLoads.delete(controller);
+      if (textureId !== undefined && this.pendingIds.get(textureId) === controller) this.pendingIds.delete(textureId);
+      options.signal?.removeEventListener("abort", abort);
     }
   }
 
-  async loadTexture(textureId: number, url: string): Promise<WebGLTexture> {
-    this.assertAlive();
-    const texture = await this.load(url);
-    this.assertAlive();
-    this.setTexture(textureId, texture);
-    return texture;
+  private assertLoadActive(signal: AbortSignal): void {
+    if (this.destroyed || signal.aborted) throw textureLoadAbortError();
   }
 
-  createTextureFromSource(source: TexImageSource): WebGLTexture {
+  private createCompressedTexture(image: Ktx2TranscodedImage, format: WebGL2CompressedTextureFormat): WebGLTexture {
+    const maxSize = Math.min(KTX2_MAX_DIMENSION, this.gl.getParameter(this.gl.MAX_TEXTURE_SIZE));
+    if (!Number.isInteger(image.width) || !Number.isInteger(image.height) || image.width < 4 || image.height < 4
+      || image.width % 4 !== 0 || image.height % 4 !== 0
+      || image.width > maxSize || image.height > maxSize || image.format !== format.format
+      || !(image.data instanceof Uint8Array) || image.data.byteLength !== ktx2BlockBytes(image.width, image.height)) {
+      throw new Error("Invalid KTX2 transcoder output.");
+    }
+    const texture = this.gl.createTexture();
+    if (!texture) throw new Error("Compressed texture allocation failed.");
+    try {
+      this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+      this.gl.compressedTexImage2D(this.gl.TEXTURE_2D, 0, format.internalFormat, image.width, image.height, 0, image.data);
+      const error = this.gl.getError();
+      if (error !== this.gl.NO_ERROR) throw new Error(`KTX2 GPU upload failed: ${error}.`);
+      this.adoptTexture(texture, image.data.byteLength);
+      return texture;
+    } catch (error) {
+      this.gl.deleteTexture(texture);
+      throw error;
+    } finally { this.gl.bindTexture(this.gl.TEXTURE_2D, null); }
+  }
+
+  createTextureFromSource(source: TexImageSource, options?: TextureLoadOptions): WebGLTexture {
     this.assertAlive();
+    const colorSpace = resolveTextureColorSpace(options);
     const texture = this.gl.createTexture();
     if (!texture) {
       throw diagnosticError("Texture create error", {
@@ -47,23 +152,29 @@ export class TextureManager {
       }, "FERRUM_TEXTURE_CREATE");
     }
 
-    this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
-    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
-    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
-    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-    this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1);
-    this.gl.texImage2D(
-      this.gl.TEXTURE_2D,
-      0,
-      this.gl.RGBA,
-      this.gl.RGBA,
-      this.gl.UNSIGNED_BYTE,
-      source,
-    );
+    try {
+      this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+      this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.colorManagement === "legacy" ? 1 : 0);
+      this.gl.texImage2D(
+        this.gl.TEXTURE_2D,
+        0,
+        this.colorManagement === "linear-srgb" && colorSpace === "srgb" ? this.gl.SRGB8_ALPHA8 : this.gl.RGBA,
+        this.gl.RGBA,
+        this.gl.UNSIGNED_BYTE,
+        source,
+      );
 
-    this.gl.bindTexture(this.gl.TEXTURE_2D, null);
-    this.textures.add(texture);
+      this.adoptTexture(texture, sourceByteLength(source));
+    } catch (error) {
+      this.gl.deleteTexture(texture);
+      throw error;
+    } finally {
+      this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+    }
     return texture;
   }
 
@@ -73,6 +184,7 @@ export class TextureManager {
     options: PixelMaskTerrainTextureUploadOptions = {},
   ): WebGLTexture {
     this.assertAlive();
+    validateTextureId(textureId);
     const texture = this.createTextureFromRgbaData(
       terrain.width,
       terrain.height,
@@ -128,6 +240,7 @@ export class TextureManager {
 
   createPlaceholderTextureForId(textureId: number, size = 64): WebGLTexture {
     this.assertAlive();
+    validateTextureId(textureId);
     const texture = this.createPlaceholderTexture(size);
     this.setTexture(textureId, texture);
     return texture;
@@ -159,14 +272,13 @@ export class TextureManager {
     this.assertAlive();
     validateTextureId(textureId);
 
+    if (size !== undefined && (!Number.isInteger(size.width) || !Number.isInteger(size.height)
+      || size.width <= 0 || size.height <= 0)) throw new Error("Texture dimensions must be positive integers.");
+    this.pendingIds.get(textureId)?.abort();
     const previousTexture = this.texturesById.get(textureId);
-    if (previousTexture && previousTexture !== texture) {
-      this.gl.deleteTexture(previousTexture);
-      this.textures.delete(previousTexture);
-    }
-
-    this.textures.add(texture);
+    this.adoptTexture(texture, size === undefined ? undefined : size.width * size.height * 4);
     this.texturesById.set(textureId, texture);
+    if (previousTexture && previousTexture !== texture) this.releaseUnreferencedTexture(previousTexture);
     if (size === undefined) {
       this.textureSizesById.delete(textureId);
     } else {
@@ -177,18 +289,49 @@ export class TextureManager {
   evictTexture(textureId: number): boolean {
     this.assertAlive();
     validateTextureId(textureId);
-    if (textureId === 0) {
-      return false;
-    }
+    if (textureId === 0) return false;
+    this.pendingIds.get(textureId)?.abort();
     const texture = this.texturesById.get(textureId);
-    if (!texture) {
-      return false;
-    }
-    this.gl.deleteTexture(texture);
-    this.textures.delete(texture);
+    if (!texture) return false;
     this.texturesById.delete(textureId);
     this.textureSizesById.delete(textureId);
+    this.releaseUnreferencedTexture(texture);
     return true;
+  }
+
+  resourceStats(): { textureCount: number; textureBytes?: number; unmeasuredTextureCount: number } {
+    return {
+      textureCount: this.textures.size,
+      textureBytes: this.unmeasuredTextureCount === 0 ? this.knownTextureBytes : undefined,
+      unmeasuredTextureCount: this.unmeasuredTextureCount,
+    };
+  }
+
+  private adoptTexture(texture: WebGLTexture, bytes?: number): void {
+    if (this.textures.has(texture)) {
+      // Registration/aliases must not erase dimensions learned during upload.
+      if (bytes === undefined) return;
+      const previous = this.textureBytesByObject.get(texture);
+      // setTexture dimensions are not a GPU resize. Preserve the actual upload format/size.
+      if (previous !== undefined) return;
+      this.unmeasuredTextureCount -= 1;
+    } else {
+      this.textures.add(texture);
+    }
+    this.textureBytesByObject.set(texture, bytes);
+    if (bytes === undefined) this.unmeasuredTextureCount += 1;
+    else this.knownTextureBytes += bytes;
+  }
+
+  private releaseUnreferencedTexture(texture: WebGLTexture): void {
+    // Only registry mutations scan aliases; frame statistics remain O(1).
+    for (const referenced of this.texturesById.values()) if (referenced === texture) return;
+    this.gl.deleteTexture(texture);
+    this.textures.delete(texture);
+    const bytes = this.textureBytesByObject.get(texture);
+    if (bytes === undefined) this.unmeasuredTextureCount -= 1;
+    else this.knownTextureBytes -= bytes;
+    this.textureBytesByObject.delete(texture);
   }
 
   texture(textureId: number): WebGLTexture {
@@ -214,10 +357,17 @@ export class TextureManager {
       return;
     }
     this.destroyed = true;
+    for (const controller of this.pendingLoads) controller.abort();
+    this.pendingLoads.clear();
+    this.pendingIds.clear();
+    this.ownedTranscoder?.destroy();
     for (const texture of this.textures) this.gl.deleteTexture(texture);
     this.textures.clear();
     this.texturesById.clear();
     this.textureSizesById.clear();
+    this.textureBytesByObject.clear();
+    this.knownTextureBytes = 0;
+    this.unmeasuredTextureCount = 0;
   }
 
   private createTextureFromRgbaData(width: number, height: number, data: Uint8Array): WebGLTexture {
@@ -228,25 +378,31 @@ export class TextureManager {
         detail: "WebGL texture creation returned null",
       }, "FERRUM_TEXTURE_CREATE");
     }
-    this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
-    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
-    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
-    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-    this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
-    this.gl.texImage2D(
-      this.gl.TEXTURE_2D,
-      0,
-      this.gl.RGBA,
-      width,
-      height,
-      0,
-      this.gl.RGBA,
-      this.gl.UNSIGNED_BYTE,
-      data,
-    );
-    this.gl.bindTexture(this.gl.TEXTURE_2D, null);
-    this.textures.add(texture);
+    try {
+      this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.NEAREST);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
+      this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
+      this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+      this.gl.texImage2D(
+        this.gl.TEXTURE_2D,
+        0,
+        this.colorManagement === "linear-srgb" ? this.gl.SRGB8_ALPHA8 : this.gl.RGBA,
+        width,
+        height,
+        0,
+        this.gl.RGBA,
+        this.gl.UNSIGNED_BYTE,
+        data,
+      );
+      this.adoptTexture(texture, width * height * 4);
+    } catch (error) {
+      this.gl.deleteTexture(texture);
+      throw error;
+    } finally {
+      this.gl.bindTexture(this.gl.TEXTURE_2D, null);
+    }
     return texture;
   }
 
@@ -256,11 +412,12 @@ export class TextureManager {
     }
   }
 
-  private async loadImageBitmap(url: string): Promise<ImageBitmap> {
+  private async loadImageBitmap(url: string, colorSpace: "srgb" | "linear" | "none", signal: AbortSignal): Promise<ImageBitmap> {
     let response: Response;
     try {
-      response = await fetch(url);
+      response = await fetch(url, { signal });
     } catch (error) {
+      this.assertLoadActive(signal);
       throw diagnosticError("Texture load error", {
         kind: "texture",
         url,
@@ -279,6 +436,7 @@ export class TextureManager {
     try {
       blob = await response.blob();
     } catch (error) {
+      this.assertLoadActive(signal);
       throw diagnosticError("Texture load error", {
         kind: "texture",
         url,
@@ -286,8 +444,13 @@ export class TextureManager {
       }, "FERRUM_TEXTURE_LOAD");
     }
     try {
-      return await createImageBitmap(blob);
+      if (this.colorManagement === "legacy" && colorSpace === "srgb") return await createImageBitmap(blob);
+      return await createImageBitmap(blob, {
+        premultiplyAlpha: "none",
+        colorSpaceConversion: colorSpace === "srgb" ? "default" : "none",
+      });
     } catch (error) {
+      this.assertLoadActive(signal);
       throw diagnosticError("Texture decode error", {
         kind: "texture",
         url,
@@ -344,4 +507,35 @@ function validateTextureId(textureId: number): void {
       detail: "texture_id must be a non-negative integer",
     }, "FERRUM_TEXTURE_REGISTRY");
   }
+}
+
+// Bitmap/canvas/ImageData dimensions describe uploaded pixels. DOM images (SVG/density
+// correction) and video frames can differ; retain an unknown estimate rather than guess.
+// https://registry.khronos.org/webgl/specs/latest/1.0/#TEXTURE_UPLOAD_SIZE
+function sourceByteLength(source: TexImageSource): number | undefined {
+  if ("videoWidth" in source || "naturalWidth" in source || "displayWidth" in source) return undefined;
+  return source.width * source.height * 4;
+}
+
+async function readKtx2Bytes(response: Response): Promise<Uint8Array> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("KTX2 response has no body.");
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      length += result.value.byteLength;
+      if (length > KTX2_MAX_INPUT_BYTES) {
+        await reader.cancel();
+        throw new Error("KTX2 input exceeds 64 MiB.");
+      }
+      chunks.push(result.value);
+    }
+  } finally { reader.releaseLock(); }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return bytes;
 }

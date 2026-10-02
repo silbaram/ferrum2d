@@ -185,7 +185,16 @@ async function bootstrap(): Promise<void> {
     let particleVfxEngine: FerrumEngine | undefined;
     let contentRuntimeDialogueEventObserved = false;
     let contentRuntimeAnimationEventObserved = false;
+    const shaderLoading = searchParams.get("shaderPreparation") === "true"
+      ? new LoadingOverlay(shell.stage)
+      : undefined;
+    const shaderAbort = new AbortController();
+    if (shaderLoading) cleanups.push(() => { shaderAbort.abort(); shaderLoading.destroy(); });
     const runtime = await createFerrumRuntime({
+      shaderPreparation: shaderLoading ? {
+        signal: shaderAbort.signal,
+        onProgress: (progress) => shaderLoading.updateShaderPreparation(progress),
+      } : undefined,
       canvas: shell.canvas,
       debugParent: shell.debugRoot,
       debug: debugParam === null ? undefined : { enabled: debugParam !== "false" },
@@ -193,6 +202,7 @@ async function bootstrap(): Promise<void> {
       environment,
       profiler: profilerSmoke,
       rendererPreference,
+      colorManagement: searchParams.get("colorManagement") === "linear-srgb" ? "linear-srgb" : "legacy",
       webgl2: {
         clearColor: [0.07, 0.09, 0.11, 1],
         preserveDrawingBuffer,
@@ -382,6 +392,7 @@ async function bootstrap(): Promise<void> {
       particleVfxEmitter.start(320, 200);
     }
 
+    shaderLoading?.hide();
     const onBeforeUnload = (): void => cleanupRuntimeDemoResources(cleanups);
     window.addEventListener("beforeunload", onBeforeUnload);
     cleanups.push(() => window.removeEventListener("beforeunload", onBeforeUnload));
