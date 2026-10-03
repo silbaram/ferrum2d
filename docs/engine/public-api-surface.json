@@ -57,6 +57,8 @@
         "saveScenePlacementPatch",
         "createScenePlacementViewport",
         "createScenePlacementViewer",
+        "scenePlacementVisualGeometry",
+        "ScenePlacementVisualGeometry",
         "classifySceneInstance",
         "screenToSceneWorld",
         "worldToSceneScreen",
@@ -80,7 +82,16 @@
         "Ktx2TranscodeOptions",
         "Ktx2TextureFormat",
         "ShaderPreparationOptions",
-        "ShaderPreparationProgress"
+        "ShaderPreparationProgress",
+        "createDataSceneView",
+        "DataSceneView",
+        "DataSceneViewOptions",
+        "DataSceneViewSnapshot",
+        "DataSceneCameraOptions",
+        "CameraRigController",
+        "resolveCameraRigSpec",
+        "clampCameraToBounds",
+        "DataSceneBodySpec"
       ]
     },
     {
@@ -124,7 +135,15 @@
         "Ktx2TranscodeOptions",
         "Ktx2TextureFormat",
         "ShaderPreparationOptions",
-        "ShaderPreparationProgress"
+        "ShaderPreparationProgress",
+        "createDataSceneView",
+        "DataSceneView",
+        "DataSceneViewOptions",
+        "DataSceneViewSnapshot",
+        "DataSceneCameraOptions",
+        "CameraRigController",
+        "resolveCameraRigSpec",
+        "clampCameraToBounds"
       ]
     },
     {
@@ -154,6 +173,8 @@
         "saveScenePlacementPatch",
         "createScenePlacementViewport",
         "createScenePlacementViewer",
+        "scenePlacementVisualGeometry",
+        "ScenePlacementVisualGeometry",
         "classifySceneInstance",
         "screenToSceneWorld",
         "worldToSceneScreen",
@@ -162,7 +183,8 @@
         "snapSceneWorldPoint",
         "resolveBehaviorRecipeDocument",
         "compileWeaponProfiles",
-        "resolvePhysicsSpec"
+        "resolvePhysicsSpec",
+        "DataSceneBodySpec"
       ]
     },
     {

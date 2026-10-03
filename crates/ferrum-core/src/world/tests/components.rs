@@ -211,6 +211,10 @@ fn renderable_sprite_index_helper_requires_live_transform_and_sprite() {
         a: 1.0,
         rotation_radians: 0.0,
         render_layer: DEFAULT_SPRITE_RENDER_LAYER,
+        origin_x: 0.5,
+        origin_y: 0.5,
+        sort_order: 0.0,
+        depth_sort: false,
     };
 
     world.set_transform(entity, transform);

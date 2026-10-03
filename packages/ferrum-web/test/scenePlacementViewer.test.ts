@@ -7,6 +7,7 @@ import {
   createSceneInstanceHandleRegistry,
   createScenePlacementPatchStore,
   createScenePlacementViewer,
+  scenePlacementVisualGeometry,
 } from "../src/authoring.js";
 import type { SceneAuthoringDocumentSpec, SceneCompositionSpec, ScenePlacementPatch } from "../src/authoring.js";
 
@@ -67,6 +68,40 @@ test("ScenePlacementViewer selection, hover, pointer, and viewport updates are e
   equal(viewer.hoverInstance().hoveredInstanceId, undefined);
 });
 
+test("ScenePlacementViewer preserves body and depth metadata in independent authoring snapshots", () => {
+  const composition = scenePlacementComposition();
+  composition.prefabs = { ...composition.prefabs, crate: {
+    props: {
+      components: {
+        visual: { kind: "sprite", texture: "crate", width: 16, height: 32, originY: 1, depthSort: "hd2d" },
+        collider: { type: "aabb", halfWidth: 8, halfHeight: 4 },
+        body: { type: "kinematic", heightSpan: { floorId: 2, elevation: 3, height: 8 } },
+        layer: "wall",
+      },
+    },
+  } };
+  const viewer = createScenePlacementViewer({
+    sceneComposition: composition,
+    viewport: { cssWidth: 320, cssHeight: 180 },
+    selectedInstanceId: "crate_a",
+  });
+  const state = viewer.state();
+  const selected = state.selected;
+  if (selected?.visual?.kind !== "sprite") throw new Error("expected sprite");
+  equal(selected.visual.depthSort, "hd2d");
+  deepEqual(selected.body, { type: "kinematic", heightSpan: { floorId: 2, elevation: 3, height: 8 } });
+  const definition = state.objectDefinitions.find((entry) => entry.id === "crate");
+  deepEqual(definition?.body, selected.body);
+  if (!selected.body?.heightSpan) throw new Error("expected height span");
+  selected.body.heightSpan.height = 100;
+  selected.visual.depthSort = "layer";
+  equal(definition?.body?.heightSpan?.height, 8);
+  const moved = viewer.updateInstanceTransform("crate_a", { x: 80 });
+  equal(moved.selected?.body?.heightSpan?.height, 8);
+  if (moved.selected?.visual?.kind !== "sprite") throw new Error("expected moved sprite");
+  equal(moved.selected.visual.depthSort, "hd2d");
+});
+
 test("ScenePlacementViewer picks scene instances from screen coordinates", () => {
   const viewer = createScenePlacementViewer({
     sceneComposition: scenePlacementComposition(),
@@ -93,6 +128,41 @@ test("ScenePlacementViewer picks scene instances from screen coordinates", () =>
   const clearedSelection = viewer.selectInstanceAtScreen({ x: 200, y: 120 });
   equal(clearedSelection.selectedInstanceId, undefined);
   equal(viewer.hoverInstanceAtScreen().pointerWorld, undefined);
+});
+
+test("ScenePlacementViewer picks the pivoted, scaled, rotated quad and refreshes component drafts", () => {
+  const viewer = createScenePlacementViewer({
+    sceneComposition: {
+      initialFragment: "main",
+      prefabs: { sprite: { props: { components: {
+        visual: { kind: "sprite", texture: 71, width: 32, height: 64, originY: 1 },
+        collider: "none", layer: "player",
+      } } } },
+      fragments: { main: { instances: [{ id: "sprite", prefab: "sprite", x: 100, y: 100, scale: 2 }] } },
+    },
+    viewport: { cssWidth: 320, cssHeight: 240 },
+  });
+  equal(viewer.pickInstanceAtScreen({ x: 100, y: 0 })?.instanceId, "sprite");
+  equal(viewer.pickInstanceAtScreen({ x: 100, y: 120 }), undefined);
+  viewer.updateInstanceTransform("sprite", { rotationRadians: Math.PI / 2 });
+  equal(viewer.pickInstanceAtScreen({ x: 220, y: 100 })?.instanceId, "sprite");
+  equal(viewer.pickInstanceAtScreen({ x: 80, y: 100 }), undefined);
+  const instance = viewer.state().instances[0];
+  if (instance.visual === undefined) throw new Error("expected sprite visual");
+  const geometry = scenePlacementVisualGeometry(instance.visual, instance.transform);
+  equal(geometry.width, 64);
+  equal(geometry.height, 128);
+  ok(Math.abs(geometry.x - 164) < 1e-8 && Math.abs(geometry.y - 100) < 1e-8);
+
+  viewer.updateInstanceComponents("sprite", {
+    visual: { kind: "sprite", texture: 71, width: 32, height: 64, originX: 0, originY: 0 },
+    collider: "none", layer: "player",
+  });
+  viewer.updateInstanceTransform("sprite", { rotationRadians: Math.PI / 4, scale: 1 });
+  equal(viewer.pickInstanceAtScreen({ x: 100, y: 110 })?.instanceId, "sprite");
+  // Inside the world AABB but outside the rotated quad's left edge.
+  equal(viewer.pickInstanceAtScreen({ x: 98, y: 101 }), undefined);
+  equal(viewer.pickInstanceAtScreen({ x: 220, y: 100 }), undefined);
 });
 
 test("ScenePlacementViewer exposes primitive visual summaries and picks from visual bounds", () => {

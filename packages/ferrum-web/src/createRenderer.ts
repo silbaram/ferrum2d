@@ -31,14 +31,7 @@ export async function createRenderer(
   options: CreateRendererOptions = {},
 ): Promise<CreatedRenderer & Renderer> {
   if (options.shaderPreparation?.signal?.aborted) throw new DOMException("Renderer creation was cancelled.", "AbortError");
-  const colorManagement = resolveColorManagementMode(
-    options.colorManagement ?? options.webgl2?.colorManagement ?? options.webgpu?.colorManagement,
-  );
-  for (const mode of [options.colorManagement, options.webgl2?.colorManagement, options.webgpu?.colorManagement]) {
-    if (mode !== undefined && resolveColorManagementMode(mode) !== colorManagement) {
-      throw new Error("Conflicting renderer colorManagement options.");
-    }
-  }
+  const colorManagement = resolveRendererColorManagement(options);
   if (options.preferred === "webgpu") {
     try {
       const renderer = await WebGPURenderer.create(canvas, { ...options.webgpu, colorManagement });
@@ -63,4 +56,19 @@ export async function createRenderer(
   const webgl2 = { ...options.webgl2, colorManagement };
   return options.shaderPreparation === undefined ? new WebGL2Renderer(canvas, webgl2)
     : WebGL2Renderer.create(canvas, webgl2, options.shaderPreparation);
+}
+
+/** Internal shared resolution for renderer creation and runtime-authored colors. */
+export function resolveRendererColorManagement(
+  options: Pick<CreateRendererOptions, "colorManagement" | "webgl2" | "webgpu">,
+): ColorManagementMode {
+  const colorManagement = resolveColorManagementMode(
+    options.colorManagement ?? options.webgl2?.colorManagement ?? options.webgpu?.colorManagement,
+  );
+  for (const mode of [options.colorManagement, options.webgl2?.colorManagement, options.webgpu?.colorManagement]) {
+    if (mode !== undefined && resolveColorManagementMode(mode) !== colorManagement) {
+      throw new Error("Conflicting renderer colorManagement options.");
+    }
+  }
+  return colorManagement;
 }

@@ -132,6 +132,8 @@ export const RENDERER_STATS_FIELD_CONTRACT: readonly RendererStatsFieldContract[
 export interface Renderer {
   render(): void;
   resize(): void;
+  /** Optional view capability: world units per logical viewport, without reducing device pixels. */
+  setViewportZoom?(zoom: number): void;
   stats(): RendererStats;
   /** Optional capability: absent means unsupported, not zero resources. */
   resourceStats?(): RendererResourceStats | undefined;

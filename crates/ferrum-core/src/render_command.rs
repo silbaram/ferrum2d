@@ -80,6 +80,7 @@ pub(crate) struct SpriteRenderSortKey {
     pub elevation: f32,
     pub foot_y: f32,
     pub render_layer: i32,
+    pub sort_order: f32,
     pub stable_id: u32,
 }
 
@@ -90,6 +91,7 @@ impl SpriteRenderSortKey {
             .then_with(|| self.elevation.total_cmp(&other.elevation))
             .then_with(|| self.foot_y.total_cmp(&other.foot_y))
             .then_with(|| self.render_layer.cmp(&other.render_layer))
+            .then_with(|| self.sort_order.total_cmp(&other.sort_order))
             .then_with(|| self.stable_id.cmp(&other.stable_id))
     }
 }

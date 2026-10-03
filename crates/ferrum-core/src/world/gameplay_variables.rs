@@ -64,7 +64,7 @@ impl World {
     pub(crate) fn reset_preserving_gameplay_variables(&mut self) {
         let mut variables = std::mem::take(&mut self.gameplay_variables);
         variables.reset_scene_values();
-        *self = Self::default();
+        self.reset_entity_storage();
         self.gameplay_variables = variables;
     }
 

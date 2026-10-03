@@ -4,6 +4,7 @@ import { AssetLoader, assetManifestFingerprint, linearToSrgb, srgbToLinear } fro
 import { resolveColorManagementMode, resolveTextureColorSpace } from "../src/colorManagement.js";
 import { resolveAssetPreloadPlan } from "../src/assetPreload.js";
 import { WebGPURenderer } from "../src/webgpuRenderer.js";
+import { resolveRendererColorManagement } from "../src/createRenderer.js";
 
 async function rejects(promise: Promise<unknown>, pattern: RegExp): Promise<void> {
   try { await promise; } catch (error) {
@@ -33,6 +34,18 @@ test("color metadata defaults preserve legacy output and validate unknown runtim
   throws(() => resolveColorManagementMode("display-p3"), /colorManagement/);
   throws(() => resolveTextureColorSpace({ colorSpace: "bad" as "srgb" }), /colorSpace/);
   throws(() => resolveTextureColorSpace(null as unknown as {}), /object/);
+});
+
+test("runtime and renderer share nested color mode resolution and reject conflicts", () => {
+  equal(resolveRendererColorManagement({}), "legacy");
+  equal(resolveRendererColorManagement({ webgl2: { colorManagement: "linear-srgb" } }), "linear-srgb");
+  equal(resolveRendererColorManagement({ webgpu: { colorManagement: "linear-srgb" } }), "linear-srgb");
+  throws(() => resolveRendererColorManagement({
+    colorManagement: "legacy", webgl2: { colorManagement: "linear-srgb" },
+  }), /Conflicting renderer/);
+  throws(() => resolveRendererColorManagement({
+    webgl2: { colorManagement: "legacy" }, webgpu: { colorManagement: "linear-srgb" },
+  }), /Conflicting renderer/);
 });
 
 test("asset metadata is validated before loading and forwarded without changing string manifests", async () => {

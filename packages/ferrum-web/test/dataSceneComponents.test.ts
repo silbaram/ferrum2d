@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert/strict";
+import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 
 import {
@@ -283,3 +283,29 @@ function expectMessage(fn: () => void, pattern: RegExp): void {
   }
   throw new Error("Expected function to throw");
 }
+
+
+test("Data Scene diagnoses unsupported visual colors and body fields at the authored path", () => {
+  const base = { visual: { kind: "sprite", texture: 1, width: 32, height: 64 }, collider: "none", layer: "wall" };
+  throws(() => resolveDataSceneComponentsSpec({ ...base, visual: { ...base.visual, tint: "red" } }, { path: "actor.components" }), /actor.components.visual.tint/);
+  throws(() => resolveDataSceneComponentsSpec({ ...base, body: { type: "kinematic" } }), /body.*requires a collider/);
+  const collider = { type: "aabb", halfWidth: 8, halfHeight: 8 };
+  throws(() => resolveDataSceneComponentsSpec({ ...base, collider, body: { type: "dynamic" } }), /body.type/);
+  throws(() => resolveDataSceneComponentsSpec({ ...base, collider, body: { type: "kinematic", mass: 4 } }), /body.mass/);
+  throws(() => resolveDataSceneComponentsSpec({ template: "actor", body: { type: "kinematic" } }), /body/);
+  throws(() => resolveDataSceneComponentsSpec({ ...base, collider, body: {
+    type: "kinematic", heightSpan: { floorId: 0, elevation: 0, height: 1e-100 },
+  } }), /heightSpan.height/);
+  throws(() => resolveDataSceneComponentsSpec({ ...base, collider, body: {
+    type: "kinematic", heightSpan: { floorId: 0, elevation: 3e38, height: 3e38 },
+  } }), /heightSpan.elevation/);
+});
+
+test("Data Scene hex colors preserve alpha and honor the renderer working space", async () => {
+  const { dataSceneVisualColor } = await import("../src/dataSceneVisualColor.js");
+  deepEqual(dataSceneVisualColor("#f008", "visual.tint"), [1, 0, 0, 136 / 255]);
+  deepEqual(dataSceneVisualColor("#80808080", "visual.tint"), [128 / 255, 128 / 255, 128 / 255, 128 / 255]);
+  const linear = dataSceneVisualColor("#80808080", "visual.tint", "linear-srgb");
+  equal(linear[3], 128 / 255);
+  equal(Math.round(linear[0] * 1000), 216);
+});

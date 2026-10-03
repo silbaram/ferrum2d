@@ -122,8 +122,9 @@ textarea {
   position: absolute;
   display: grid;
   place-items: center;
-  min-width: 26px;
-  min-height: 26px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
   border: 1px solid #69c0ff;
   border-radius: 6px;
   color: #eaf7ff;

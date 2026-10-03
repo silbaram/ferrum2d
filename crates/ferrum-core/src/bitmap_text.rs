@@ -631,6 +631,7 @@ impl BitmapTextSystem {
                         elevation: text.spec.elevation,
                         foot_y,
                         render_layer: text.spec.render_layer,
+                        sort_order: 0.0,
                         stable_id: world_text_stable_id(*text_id, glyph_index),
                     },
                 });

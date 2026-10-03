@@ -130,13 +130,15 @@ impl BuiltInSceneSlots {
 }
 
 pub(super) struct DataSceneRuntime {
+    pub(super) camera: super::viewport_controls::DataSceneCamera,
     score: u32,
     game_state: GameState,
 }
 
 impl DataSceneRuntime {
-    pub(super) const fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
+            camera: super::viewport_controls::DataSceneCamera::default(),
             score: 0,
             game_state: GameState::Playing,
         }
@@ -176,6 +178,7 @@ impl DataSceneRuntime {
 
     pub(super) fn reset_playing(&mut self, context: &mut SceneResetContext<'_>) {
         context.world.reset_preserving_gameplay_variables();
+        self.camera = super::viewport_controls::DataSceneCamera::default();
         self.score = 0;
         self.game_state = GameState::Playing;
     }

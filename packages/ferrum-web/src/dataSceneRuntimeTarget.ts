@@ -1,9 +1,12 @@
+import { dataSceneVisualColor } from "./dataSceneVisualColor.js";
+import { resolveColorManagementMode, type ColorManagementMode } from "./colorManagement.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 import type { FerrumEngine } from "./engineTypes.js";
 import {
   resolveDataSceneComponentsSpec,
   resolveDataSceneInstanceComponents,
   type DataSceneComponentsSpec,
+  type DataSceneBodySpec,
   type ResolvedDataSceneColliderComponent,
   type ResolvedDataSceneComponents,
   type ResolvedDataSceneSpriteComponent,
@@ -46,6 +49,8 @@ export type DataSceneRuntimeComponentTemplates =
 export interface CreateDataSceneRuntimeTargetOptions {
   path?: string;
   activateDataScene?: boolean;
+  /** Match the renderer working space when compiling sRGB authoring colors. */
+  colorManagement?: ColorManagementMode;
   textureId?: DataSceneRuntimeTextureIdResolver;
   componentTemplates?: DataSceneRuntimeComponentTemplates;
 }
@@ -69,6 +74,12 @@ export interface DataSceneRuntimeSpawnRequest {
   y: number;
   rotationRadians: number;
   renderLayer: number;
+  body?: DataSceneBodySpec;
+  originX: number;
+  originY: number;
+  sortOrder: number;
+  depthSort: boolean;
+  color: readonly [number, number, number, number];
   textureId: number;
   spriteWidth: number;
   spriteHeight: number;
@@ -124,6 +135,7 @@ export function createDataSceneRuntimeTarget(
   const path = options.path ?? "dataSceneRuntimeTarget";
   const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
   const textureId = options.textureId ?? ((name: string) => adapter.textureId(name));
+  const colorManagement = resolveColorManagementMode(options.colorManagement);
   let dataSceneActivated = false;
 
   const activateDataScene = (): void => {
@@ -141,6 +153,7 @@ export function createDataSceneRuntimeTarget(
         textureId,
         options.componentTemplates,
         `${path}.instances.${instance.id}`,
+        colorManagement,
       );
       activateDataScene();
       const handle = adapter.spawnDataSceneEntity(request);
@@ -160,6 +173,7 @@ export function applyDataSceneAuthoringDocument(
   const {
     path: optionPath,
     activateDataScene,
+    colorManagement,
     componentTemplates,
     textureId,
     validateBindings = true,
@@ -173,6 +187,7 @@ export function applyDataSceneAuthoringDocument(
     ...bindingOptions
   } = applyOptions;
   const path = optionPath ?? "dataSceneAuthoring";
+  resolveColorManagementMode(colorManagement);
   const resolved = resolveSceneAuthoringDocument(document, {
     ...bindingOptions,
     path,
@@ -209,6 +224,7 @@ export function applyDataSceneAuthoringDocument(
     const target = createDataSceneRuntimeTarget(engine, {
       path: `${path}.runtimeTarget`,
       activateDataScene: false,
+      colorManagement,
       textureId,
       componentTemplates,
     });
@@ -255,6 +271,7 @@ function dataSceneRuntimeSpawnRequest(
   textureId: DataSceneRuntimeTextureIdResolver,
   componentTemplates: DataSceneRuntimeComponentTemplates | undefined,
   path: string,
+  colorManagement: ColorManagementMode,
 ): DataSceneRuntimeSpawnRequest {
   const components = resolveDataSceneInstanceComponents(instance, {
     allowTemplate: true,
@@ -262,7 +279,7 @@ function dataSceneRuntimeSpawnRequest(
   });
   const inlineComponents = dataSceneRuntimeInlineComponents(components, componentTemplates, path);
 
-  return inlineDataSceneRuntimeSpawnRequest(instance, inlineComponents, textureId);
+  return inlineDataSceneRuntimeSpawnRequest(instance, inlineComponents, textureId, colorManagement);
 }
 
 function dataSceneRuntimeInlineComponents(
@@ -317,16 +334,25 @@ function inlineDataSceneRuntimeSpawnRequest(
   instance: ResolvedSceneCompositionInstance,
   components: Extract<ResolvedDataSceneComponents, { mode: "inline" }>,
   textureId: DataSceneRuntimeTextureIdResolver,
+  colorManagement: ColorManagementMode,
 ): DataSceneRuntimeSpawnRequest {
   const scale = instance.scale;
   const sprite = components.sprite;
+  const visual = components.visual;
+  const spriteVisual = visual.kind === "sprite" ? visual : undefined;
   const collider = components.collider;
   const colliderShape = colliderRuntimeShape(collider, scale, instance.rotationRadians);
   return {
+    ...(components.body === undefined ? {} : { body: components.body }),
     x: instance.x,
     y: instance.y,
     rotationRadians: instance.rotationRadians,
-    renderLayer: instance.layer,
+    renderLayer: spriteVisual?.layer ?? instance.layer,
+    originX: spriteVisual?.originX ?? 0.5,
+    originY: spriteVisual?.originY ?? 0.5,
+    sortOrder: spriteVisual?.sortOrder ?? 0,
+    depthSort: spriteVisual?.depthSort === "hd2d",
+    color: dataSceneVisualColor(spriteVisual?.tint ?? visual.color, "visual.color", colorManagement),
     textureId: dataSceneTextureId(sprite, textureId),
     spriteWidth: sprite.width * scale,
     spriteHeight: sprite.height * scale,

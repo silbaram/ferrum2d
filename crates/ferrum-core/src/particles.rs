@@ -326,6 +326,7 @@ impl ParticleSystem {
                     elevation: 0.0,
                     foot_y: particle.y + size * 0.5,
                     render_layer: i32::MAX - 1,
+                    sort_order: 0.0,
                     stable_id: index as u32,
                 },
             });

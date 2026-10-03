@@ -1,14 +1,15 @@
 import { gameplayAuthoringDiagnosticError } from "./diagnostics.js";
 import {
   DATA_SCENE_COMPONENTS_PROP,
-  dataSceneObjectVisualBounds,
   resolveDataSceneComponentsSpec,
   resolveDataSceneInstanceComponents,
+  type DataSceneBodySpec,
   type ResolvedDataSceneColliderComponent,
   type ResolvedDataSceneCollisionLayer,
   type ResolvedDataSceneComponents,
   type ResolvedDataSceneObjectVisual,
 } from "./dataSceneComponents.js";
+import { scenePlacementVisualGeometry, type ScenePlacementVisualGeometry } from "./scenePlacementGeometry.js";
 import {
   GAMEPLAY_BEHAVIOR_BINDING_PROP,
   classifySceneInstance,
@@ -86,6 +87,7 @@ export interface ScenePlacementViewerInstance {
   visual?: ResolvedDataSceneObjectVisual;
   collider?: ResolvedDataSceneColliderComponent;
   componentLayer?: ResolvedDataSceneCollisionLayer;
+  body?: DataSceneBodySpec;
   behaviorProfiles: readonly string[];
   entity?: GameplayEntityHandle;
   transform: ScenePlacementTransform;
@@ -98,6 +100,7 @@ export interface ScenePlacementObjectDefinitionSummary {
   visual?: ResolvedDataSceneObjectVisual;
   collider?: ResolvedDataSceneColliderComponent;
   componentLayer?: ResolvedDataSceneCollisionLayer;
+  body?: DataSceneBodySpec;
   behaviorProfiles: readonly string[];
 }
 
@@ -733,6 +736,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         visual: copyResolvedDataSceneObjectVisual(components.visual),
         collider: copyResolvedDataSceneCollider(components.collider),
         componentLayer: { ...components.layer },
+        ...copyDataSceneBody(components.body),
       }),
       behaviorProfiles: [...classification.behaviorProfiles],
       ...(entity === undefined ? {} : { entity: copyGameplayEntityHandle(entity) }),
@@ -770,6 +774,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
           visual: copyResolvedDataSceneObjectVisual(components.visual),
           collider: copyResolvedDataSceneCollider(components.collider),
           componentLayer: { ...components.layer },
+          ...copyDataSceneBody(components.body),
         }),
         behaviorProfiles: behaviorProfilesForProps(
           prefab.props,
@@ -797,15 +802,12 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         continue;
       }
       const transform = this.transformFor(instance);
-      const visualBounds = dataSceneObjectVisualBounds(components);
-      const halfWidth = visualBounds.width * transform.scale * 0.5;
-      const halfHeight = visualBounds.height * transform.scale * 0.5;
+      const geometry = scenePlacementVisualGeometry(components.visual, transform);
       bounds.push({
         instanceId: instance.id,
-        minX: transform.x - halfWidth,
-        minY: transform.y - halfHeight,
-        maxX: transform.x + halfWidth,
-        maxY: transform.y + halfHeight,
+        ...geometry,
+        cos: Math.cos(geometry.rotationRadians),
+        sin: Math.sin(geometry.rotationRadians),
       });
     }
     return bounds;
@@ -860,12 +862,11 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       if (bounds === undefined) {
         continue;
       }
-      if (
-        point.x >= bounds.minX
-        && point.x <= bounds.maxX
-        && point.y >= bounds.minY
-        && point.y <= bounds.maxY
-      ) {
+      const dx = point.x - bounds.x;
+      const dy = point.y - bounds.y;
+      const localX = dx * bounds.cos + dy * bounds.sin;
+      const localY = -dx * bounds.sin + dy * bounds.cos;
+      if (Math.abs(localX) <= bounds.width * 0.5 && Math.abs(localY) <= bounds.height * 0.5) {
         return bounds.instanceId;
       }
     }
@@ -1144,12 +1145,10 @@ class ScenePlacementPatchStoreController implements ScenePlacementPatchStore {
   }
 }
 
-interface ScenePlacementPickBounds {
+interface ScenePlacementPickBounds extends ScenePlacementVisualGeometry {
   instanceId: string;
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
+  cos: number;
+  sin: number;
 }
 
 function viewerComposition(
@@ -1225,9 +1224,19 @@ function copyResolvedDataSceneObjectVisual(
     originY: visual.originY,
     ...(visual.layer === undefined ? {} : { layer: visual.layer }),
     ...(visual.sortOrder === undefined ? {} : { sortOrder: visual.sortOrder }),
+    ...(visual.depthSort === undefined ? {} : { depthSort: visual.depthSort }),
     ...(visual.tint === undefined ? {} : { tint: visual.tint }),
     ...(visual.color === undefined ? {} : { color: visual.color }),
     bounds: { ...visual.bounds },
+  };
+}
+
+function copyDataSceneBody(body: DataSceneBodySpec | undefined): { body?: DataSceneBodySpec } {
+  return body === undefined ? {} : {
+    body: {
+      type: body.type,
+      ...(body.heightSpan === undefined ? {} : { heightSpan: { ...body.heightSpan } }),
+    },
   };
 }
 

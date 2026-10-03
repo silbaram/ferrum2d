@@ -82,6 +82,7 @@ export class WebGL2Renderer implements Renderer {
   private sceneRenderTarget?: WebGL2RenderTarget;
   private postProcessScratchA?: WebGL2RenderTarget;
   private postProcessScratchB?: WebGL2RenderTarget;
+  private viewportZoom = 1;
   private logicalWidth = 0;
   private logicalHeight = 0;
   private readonly logicalResolution: [number, number] = [0, 0];
@@ -357,14 +358,21 @@ export class WebGL2Renderer implements Renderer {
     }
   }
 
+  setViewportZoom(zoom: number): void {
+    this.assertAlive();
+    if (!Number.isFinite(zoom) || zoom < 0.0001 || zoom > 10000) throw new Error("Viewport zoom must be in [0.0001, 10000].");
+    this.viewportZoom = zoom;
+    this.resize();
+  }
+
   resize(): void {
     this.assertAlive();
     const dpr = window.devicePixelRatio || 1;
-    this.logicalWidth = this.canvas.clientWidth;
-    this.logicalHeight = this.canvas.clientHeight;
+    this.logicalWidth = this.canvas.clientWidth / this.viewportZoom;
+    this.logicalHeight = this.canvas.clientHeight / this.viewportZoom;
 
-    const drawingBufferWidth = Math.floor(this.logicalWidth * dpr);
-    const drawingBufferHeight = Math.floor(this.logicalHeight * dpr);
+    const drawingBufferWidth = Math.floor(this.canvas.clientWidth * dpr);
+    const drawingBufferHeight = Math.floor(this.canvas.clientHeight * dpr);
 
     if (this.canvas.width !== drawingBufferWidth || this.canvas.height !== drawingBufferHeight) {
       this.canvas.width = drawingBufferWidth;

@@ -35,6 +35,9 @@ declare module "../pkg/ferrum_core.js" {
     pause_data_scene(): boolean;
     resume_data_scene(): boolean;
     complete_data_scene(): boolean;
+    configure_data_scene_camera(x:number,y:number,follow_id:number,follow_generation:number,bounded:boolean,min_x:number,min_y:number,max_x:number,max_y:number,smooth_seconds:number): boolean;
+    configure_data_scene_body(entity_id:number,generation:number,body_type:number,has_height:boolean,floor:number,elevation:number,height:number): boolean;
+    configure_data_scene_visual(entity_id:number,generation:number,origin_x:number,origin_y:number,sort_order:number,depth_sort:boolean,r:number,g:number,b:number,a:number): boolean;
     spawn_data_scene_entity(x:number,y:number,rotation_radians:number,render_layer:number,texture_id:number,sprite_width:number,sprite_height:number,frame_u0:number,frame_v0:number,frame_u1:number,frame_v1:number,animation_frame_count:number,animation_fps:number,layer:number,collider_type:number,collider_offset_x:number,collider_offset_y:number,collider_enabled:boolean,collider_is_trigger:boolean,collider_half_width:number,collider_half_height:number,collider_radius:number,collider_start_x:number,collider_start_y:number,collider_end_x:number,collider_end_y:number,collider_rotation_radians:number,collider_vertices:Float32Array): boolean;
     data_scene_entity_id(): number;
     data_scene_entity_generation(): number;

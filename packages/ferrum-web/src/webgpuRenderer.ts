@@ -62,6 +62,7 @@ export class WebGPURenderer implements Renderer {
   private lightingSceneStaging: ResolvedLightingScene2D = createResolvedLightingScene();
   private readonly lightingResolveCache = createLightingSceneResolveCache();
   private spriteMaterialPasses: readonly SpriteMaterialPass[];
+  private viewportZoom = 1;
   private logicalWidth = 0;
   private logicalHeight = 0;
   private readonly resolutionStaging = new Float32Array(2);
@@ -244,13 +245,20 @@ export class WebGPURenderer implements Renderer {
     this.postProcessPass.setPostProcess(postProcess);
   }
 
+  setViewportZoom(zoom: number): void {
+    this.assertAlive();
+    if (!Number.isFinite(zoom) || zoom < 0.0001 || zoom > 10000) throw new Error("Viewport zoom must be in [0.0001, 10000].");
+    this.viewportZoom = zoom;
+    this.resize();
+  }
+
   resize(): void {
     this.assertAlive();
     const dpr = window.devicePixelRatio || 1;
-    this.logicalWidth = this.canvas.clientWidth;
-    this.logicalHeight = this.canvas.clientHeight;
-    const drawingBufferWidth = Math.max(1, Math.floor(this.logicalWidth * dpr));
-    const drawingBufferHeight = Math.max(1, Math.floor(this.logicalHeight * dpr));
+    this.logicalWidth = this.canvas.clientWidth / this.viewportZoom;
+    this.logicalHeight = this.canvas.clientHeight / this.viewportZoom;
+    const drawingBufferWidth = Math.max(1, Math.floor(this.canvas.clientWidth * dpr));
+    const drawingBufferHeight = Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
     if (this.canvas.width !== drawingBufferWidth || this.canvas.height !== drawingBufferHeight) {
       this.canvas.width = drawingBufferWidth;
       this.canvas.height = drawingBufferHeight;

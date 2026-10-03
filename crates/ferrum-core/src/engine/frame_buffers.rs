@@ -252,6 +252,7 @@ mod tests {
                 elevation: 0.0,
                 foot_y: 0.0,
                 render_layer: 0,
+                sort_order: 0.0,
                 stable_id: 0,
             },
         }

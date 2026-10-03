@@ -35,6 +35,7 @@ import {
   resolveDataSceneInstanceComponents,
   resolveSceneAuthoringDocument,
   saveScenePlacementPatch,
+  scenePlacementVisualGeometry,
   snapSceneWorldPoint,
   worldToSceneScreen,
   type DataSceneCollisionLayerName,
@@ -711,14 +712,8 @@ function createPlacementOverlay(
         colliderOverlay.dataset.visible = "false";
         return;
       }
-      const topLeft = worldToSceneScreen(state.viewport, {
-        x: selected.transform.x - bounds.width * selected.transform.scale * 0.5,
-        y: selected.transform.y - bounds.height * selected.transform.scale * 0.5,
-      });
       selection.dataset.visible = "true";
-      selection.style.transform = `translate(${topLeft.x.toFixed(2)}px, ${topLeft.y.toFixed(2)}px)`;
-      selection.style.width = `${(bounds.width * selected.transform.scale * state.viewport.zoom).toFixed(2)}px`;
-      selection.style.height = `${(bounds.height * selected.transform.scale * state.viewport.zoom).toFixed(2)}px`;
+      positionPlacementVisual(selection, selected, state, bounds);
       label.textContent = selected.instanceId;
       const resizeKind = placementResizeKindForInstance(selected);
       selection.dataset.resizable = String(resizeKind !== undefined);
@@ -730,6 +725,25 @@ function createPlacementOverlay(
       updatePlacementColliderOverlay(colliderOverlay, state, selected);
     },
   };
+}
+
+function positionPlacementVisual(
+  element: HTMLElement,
+  instance: ScenePlacementViewerInstance,
+  state: ScenePlacementViewerState,
+  bounds: PlacementInstanceBounds,
+): void {
+  const geometry = instance.visual === undefined
+    ? { ...instance.transform, width: bounds.width * instance.transform.scale, height: bounds.height * instance.transform.scale }
+    : scenePlacementVisualGeometry(instance.visual, instance.transform);
+  const topLeft = worldToSceneScreen(state.viewport, {
+    x: geometry.x - geometry.width * 0.5,
+    y: geometry.y - geometry.height * 0.5,
+  });
+  element.style.transformOrigin = "center";
+  element.style.transform = `translate(${topLeft.x.toFixed(2)}px, ${topLeft.y.toFixed(2)}px) rotate(${geometry.rotationRadians}rad)`;
+  element.style.width = `${(geometry.width * state.viewport.zoom).toFixed(2)}px`;
+  element.style.height = `${(geometry.height * state.viewport.zoom).toFixed(2)}px`;
 }
 
 function placementResizeKindForInstance(
@@ -886,19 +900,13 @@ function createPlacementDraftMarker(
   if (bounds === undefined) {
     return undefined;
   }
-  const topLeft = worldToSceneScreen(state.viewport, {
-    x: instance.transform.x - bounds.width * instance.transform.scale * 0.5,
-    y: instance.transform.y - bounds.height * instance.transform.scale * 0.5,
-  });
   const marker = document.createElement("div");
   const label = document.createElement("div");
   marker.className = "placement-draft-marker";
   label.className = "placement-draft-label";
   label.textContent = `${instance.instanceId} draft`;
   applyPlacementMarkerAssetPreview(marker, instance.visual, assetProvider);
-  marker.style.transform = `translate(${topLeft.x.toFixed(2)}px, ${topLeft.y.toFixed(2)}px)`;
-  marker.style.width = `${(bounds.width * instance.transform.scale * state.viewport.zoom).toFixed(2)}px`;
-  marker.style.height = `${(bounds.height * instance.transform.scale * state.viewport.zoom).toFixed(2)}px`;
+  positionPlacementVisual(marker, instance, state, bounds);
   marker.append(label);
   return marker;
 }
@@ -2257,6 +2265,7 @@ function placementComponentsPatchFromControls(
     visual,
     collider,
     layer,
+    ...placementBodyPatch(selected),
   };
 }
 
@@ -2279,7 +2288,7 @@ function placementVisualPatchFromControls(
       kind: "primitive",
       shape: primitiveShape,
       radius,
-      color,
+      ...placementVisualColorPatch(selected.visual, color, false),
     };
   }
   if (primitiveShape === "point") {
@@ -2287,7 +2296,7 @@ function placementVisualPatchFromControls(
       kind: "primitive",
       shape: primitiveShape,
       width,
-      color,
+      ...placementVisualColorPatch(selected.visual, color, false),
     };
   }
   return {
@@ -2295,7 +2304,7 @@ function placementVisualPatchFromControls(
     shape: "rect",
     width,
     height,
-    color,
+    ...placementVisualColorPatch(selected.visual, color, false),
   };
 }
 
@@ -2325,7 +2334,8 @@ function spriteVisualPatch(
       originY: currentVisual.originY,
       ...(currentVisual.layer === undefined ? {} : { layer: currentVisual.layer }),
       ...(currentVisual.sortOrder === undefined ? {} : { sortOrder: currentVisual.sortOrder }),
-      color,
+      ...(currentVisual.depthSort === undefined ? {} : { depthSort: currentVisual.depthSort }),
+      ...placementVisualColorPatch(currentVisual, color),
     };
   }
   return {
@@ -2337,6 +2347,23 @@ function spriteVisualPatch(
     originY: 0.5,
     color,
   };
+}
+
+function placementVisualColorPatch(
+  visual: ResolvedDataSceneObjectVisual | undefined,
+  color: string,
+  preserveTint = true,
+): PlacementJsonObject {
+  const tint = visual?.kind === "sprite" ? visual.tint : undefined;
+  const original = tint ?? visual?.color;
+  if (color === normalizedPlacementColor(original ?? DEFAULT_PRIMITIVE_COLOR)) {
+    if (!preserveTint) return original === undefined ? {} : { color: original };
+    return {
+      ...(tint === undefined ? {} : { tint }),
+      ...(visual?.color === undefined ? {} : { color: visual.color }),
+    };
+  }
+  return { color };
 }
 
 function spriteFramePatch(frame: ResolvedDataSceneSpriteFrame): PlacementJsonObject {
@@ -2928,6 +2955,7 @@ function placementComponentsPatchFromColliderOffset(
     visual: placementVisualPatchFromResolved(selected.visual),
     collider: placementColliderPatchFromResolved(selected.collider, offset),
     layer: selected.componentLayer?.name ?? "wall",
+    ...placementBodyPatch(selected),
   };
 }
 
@@ -2940,14 +2968,17 @@ function placementComponentsPatchFromResize(
     throw new Error("placement resize handle only supports primitive rect and circle visuals.");
   }
   const scale = Math.max(0.0001, Math.abs(selected.transform.scale));
+  const dx = pointerWorld.x - selected.transform.x;
+  const dy = pointerWorld.y - selected.transform.y;
+  const cos = Math.cos(selected.transform.rotationRadians);
+  const sin = Math.sin(selected.transform.rotationRadians);
+  const localX = (dx * cos + dy * sin) / scale;
+  const localY = (-dx * sin + dy * cos) / scale;
   if (visual.shape === "circle") {
     const radius = roundPlacementResizeValue(
       Math.max(
         PLACEMENT_RESIZE_MIN_SIZE * 0.5,
-        Math.max(
-          Math.abs(pointerWorld.x - selected.transform.x),
-          Math.abs(pointerWorld.y - selected.transform.y),
-        ) / scale,
+        Math.max(Math.abs(localX), Math.abs(localY)),
       ),
     );
     return {
@@ -2959,13 +2990,14 @@ function placementComponentsPatchFromResize(
       },
       collider: placementColliderPatchForResize(selected.collider, { shape: "circle", radius }),
       layer: selected.componentLayer?.name ?? "wall",
+      ...placementBodyPatch(selected),
     };
   }
   const width = roundPlacementResizeValue(
-    Math.max(PLACEMENT_RESIZE_MIN_SIZE, Math.abs(pointerWorld.x - selected.transform.x) * 2 / scale),
+    Math.max(PLACEMENT_RESIZE_MIN_SIZE, Math.abs(localX) * 2),
   );
   const height = roundPlacementResizeValue(
-    Math.max(PLACEMENT_RESIZE_MIN_SIZE, Math.abs(pointerWorld.y - selected.transform.y) * 2 / scale),
+    Math.max(PLACEMENT_RESIZE_MIN_SIZE, Math.abs(localY) * 2),
   );
   return {
     visual: {
@@ -2977,6 +3009,7 @@ function placementComponentsPatchFromResize(
     },
     collider: placementColliderPatchForResize(selected.collider, { shape: "rect", width, height }),
     layer: selected.componentLayer?.name ?? "wall",
+    ...placementBodyPatch(selected),
   };
 }
 
@@ -3070,6 +3103,17 @@ function placementColliderBasePatchFromResolved(
   };
 }
 
+// Preserve runtime body authoring when editing visual/collider fields in the viewer.
+function placementBodyPatch(selected: ScenePlacementViewerInstance): PlacementJsonObject {
+  const body = selected.body;
+  return body === undefined ? {} : {
+    body: {
+      type: body.type,
+      ...(body.heightSpan === undefined ? {} : { heightSpan: { ...body.heightSpan } }),
+    },
+  };
+}
+
 function placementVisualPatchFromResolved(
   visual: ResolvedDataSceneObjectVisual,
 ): PlacementJsonObject {
@@ -3116,6 +3160,7 @@ function placementVisualPatchFromResolved(
     originY: visual.originY,
     ...(visual.layer === undefined ? {} : { layer: visual.layer }),
     ...(visual.sortOrder === undefined ? {} : { sortOrder: visual.sortOrder }),
+    ...(visual.depthSort === undefined ? {} : { depthSort: visual.depthSort }),
     ...(visual.tint === undefined ? {} : { tint: visual.tint }),
     ...(visual.color === undefined ? {} : { color: visual.color }),
   };
@@ -3512,6 +3557,7 @@ function placementObjectDefinitionFromSelected(
           ? "none"
           : placementColliderPatchFromResolved(selected.collider),
         layer: selected.componentLayer?.name ?? "wall",
+        ...placementBodyPatch(selected),
       },
     },
   };
@@ -4951,7 +4997,12 @@ function appendCheckboxControl(parent: HTMLElement, label: string, field: string
 }
 
 function normalizedPlacementColor(value: string): string {
-  return /^#[0-9a-fA-F]{6}$/.test(value) ? value : DEFAULT_PRIMITIVE_COLOR;
+  if (/^#[0-9a-fA-F]{3,4}$/.test(value)) {
+    return "#" + [...value.slice(1, 4)].map((channel) => channel + channel).join("").toLowerCase();
+  }
+  return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value)
+    ? value.slice(0, 7).toLowerCase()
+    : DEFAULT_PRIMITIVE_COLOR;
 }
 
 function placementGameStateLabel(code: number): string {

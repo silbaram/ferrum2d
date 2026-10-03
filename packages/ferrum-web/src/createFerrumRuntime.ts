@@ -28,7 +28,7 @@ import type {
   FerrumRuntimeLevelStreamingTarget,
 } from "./levelStreamingRuntime.js";
 import { LevelChunkStreamer } from "./levelStreamingStreamer.js";
-import { createRenderer } from "./createRenderer.js";
+import { createRenderer, resolveRendererColorManagement } from "./createRenderer.js";
 import type { CreatedRenderer } from "./createRenderer.js";
 import type { RendererStats } from "./renderer.js";
 import type { TextureAssetManager } from "./assetLoader.js";
@@ -368,6 +368,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
   let destroyed = false;
 
   try {
+    const colorManagement = ownsRenderer ? resolveRendererColorManagement(options) : options.colorManagement;
     renderer ??= await createRenderer(options.canvas, {
       preferred: options.rendererPreference ?? "webgl2",
       colorManagement: options.colorManagement,
@@ -459,7 +460,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       needsPhysicsDebugLineBuffer: shouldRenderPhysicsDebugLines,
       onRenderFrame: (renderFrame) => runtimeFrameRenderer.renderFrame(renderFrame),
     }, inputProvider, runtimeAssetHost, () => runtimeRenderer.viewportSize(), engineOptions);
-    const dataScene = createRuntimeDataScene(engine, options.dataScene);
+    const dataScene = createRuntimeDataScene(engine, options.dataScene, colorManagement);
     let physicsScene: PhysicsSceneProfileApplyResult | undefined;
     if (options.physicsScene !== undefined && options.physicsScene !== false) {
       physicsScene = applyPhysicsSceneProfile(engine, options.physicsScene);
@@ -879,6 +880,7 @@ function createRuntimeCutscene(
 function createRuntimeDataScene(
   engine: FerrumEngine,
   option: FerrumRuntimeOptions["dataScene"],
+  colorManagement?: ColorManagementMode,
 ): FerrumRuntimeDataScene | undefined {
   if (option === undefined || option === false) {
     return undefined;
@@ -888,6 +890,13 @@ function createRuntimeDataScene(
     document,
     ...applyOptions
   } = runtimeOptions;
+  const checkColorManagement = (requested: ColorManagementMode | undefined): void => {
+    if (colorManagement !== undefined && requested !== undefined && requested !== colorManagement) {
+      throw new Error("Data Scene colorManagement must match the runtime renderer colorManagement.");
+    }
+  };
+  checkColorManagement(applyOptions.colorManagement);
+  applyOptions.colorManagement = colorManagement ?? applyOptions.colorManagement;
   const basePath = applyOptions.path ?? "dataScene";
   let currentDocument: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument = document;
   let result = applyDataSceneAuthoringDocument(engine, currentDocument, {
@@ -898,9 +907,11 @@ function createRuntimeDataScene(
     nextDocument: SceneAuthoringDocumentSpec | ResolvedSceneAuthoringDocument,
     nextOptions: ApplyDataSceneAuthoringDocumentOptions,
   ): ApplyDataSceneAuthoringDocumentResult => {
+    checkColorManagement(nextOptions.colorManagement);
     const nextResult = applyDataSceneAuthoringDocument(engine, nextDocument, {
       ...applyOptions,
       ...nextOptions,
+      colorManagement: colorManagement ?? nextOptions.colorManagement ?? applyOptions.colorManagement,
       path: nextOptions.path ?? basePath,
     });
     currentDocument = nextDocument;
