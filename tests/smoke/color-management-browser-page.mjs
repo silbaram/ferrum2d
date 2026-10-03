@@ -1,4 +1,4 @@
-import { AssetLoader, createRenderer, linearToSrgb, WebGL2Renderer } from "@ferrum2d/ferrum-web/core";
+import { AssetLoader, createFerrumRuntime, createRenderer, linearToSrgb, WebGL2Renderer } from "@ferrum2d/ferrum-web/core";
 import { sceneCommands } from "./data-scene-render-fixture.mjs";
 
 function assert(value, message) { if (!value) throw new Error(message); }
@@ -7,6 +7,73 @@ function close(actual, expected, label, tolerance = 2) {
     `${label}: ${actual} expected ${expected}`);
 }
 const encodeByte = (linear) => Math.round(linearToSrgb(linear) * 255);
+
+async function checkRuntimeDataSceneColor() {
+  const documentSpec = { format: "ferrum2d.consumer.scene-authoring", version: 1,
+    sceneComposition: { initialFragment: "main", prefabs: { gray: { props: { components: {
+      visual: { kind: "sprite", texture: 71, width: 64, height: 64, tint: "#808080" },
+      collider: "none", layer: "player",
+    } } } }, fragments: { main: { instances: [{ id: "gray", prefab: "gray", x: 100, y: 100 }] } } },
+    behaviorRecipes: { entities: {} } };
+  const samples = [];
+  for (const source of ["default", "top-level", "webgl2", "webgpu-fallback", "injected"]) {
+    const canvas = document.createElement("canvas");
+    document.body.append(canvas);
+    const mode = source === "default" ? "legacy" : "linear-srgb";
+    const injected = source === "injected"
+      ? new WebGL2Renderer(canvas, { colorManagement: mode, preserveDrawingBuffer: true }) : undefined;
+    let runtime;
+    let receiveFrame;
+    try {
+      runtime = await createFerrumRuntime({
+        canvas, ui: false, debug: false, autostart: false,
+        ...(source === "top-level" ? { colorManagement: mode } : {}),
+        ...(source === "webgpu-fallback" ? { rendererPreference: "webgpu", webgpu: { colorManagement: mode } } : {}),
+        ...(injected ? { renderer: injected } : {}),
+        webgl2: { preserveDrawingBuffer: true, ...(source === "webgl2" ? { colorManagement: mode } : {}) },
+        dataScene: injected ? { document: documentSpec, colorManagement: mode } : documentSpec,
+        onFrame: ({ frame }) => {
+          if (!receiveFrame) return;
+          const gl = canvas.getContext("webgl2");
+          const pixel = new Uint8Array(4);
+          gl.readPixels(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+          const receive = receiveFrame;
+          receiveFrame = undefined;
+          receive({ pixel: [...pixel], rgb: [...frame.renderCommandBuffer.buffer.slice(8, 11)], state: runtime.dataScene.state() });
+        },
+      });
+      await runtime.renderer.loadTexture(71, imageUrl([[255, 255, 255, 255]]));
+      for (const operation of ["initial", "reapply", "transition"]) {
+        if (operation !== "initial") runtime.dataScene[operation](documentSpec);
+        runtime.engine.setDataSceneCamera({ x: 100, y: 100 });
+        const frame = new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error(`${source} ${operation}: no frame`)), 5000);
+          receiveFrame = (value) => { clearTimeout(timer); resolve(value); };
+        });
+        if (operation === "initial") runtime.start();
+        const sample = await frame;
+        close(sample.pixel, [128, 128, 128, 255], `${source} ${operation} authored sRGB gray`);
+        const expected = mode === "legacy" ? 128 / 255 : 0.2158605;
+        assert(sample.state === "playing" && sample.rgb.every((value) => Math.abs(value - expected) < 1e-6),
+          `${source} ${operation}: incorrect Data Scene working color/state`);
+        samples.push({ source, operation, ...sample });
+      }
+      if (!injected) {
+        for (const operation of ["reapply", "transition"]) {
+          let rejected = false;
+          try { runtime.dataScene[operation](documentSpec, { colorManagement: mode === "legacy" ? "linear-srgb" : "legacy" }); }
+          catch (error) { rejected = /must match the runtime renderer/.test(error.message); }
+          assert(rejected && runtime.dataScene.state() === "playing", `${operation}: conflicting mode was not rejected`);
+        }
+      }
+    } finally {
+      runtime?.destroy();
+      injected?.destroy();
+      canvas.remove();
+    }
+  }
+  return samples;
+}
 
 function imageUrl(pixels) {
   const canvas = document.createElement("canvas");
@@ -200,7 +267,8 @@ async function run() {
   cases++;
   transparent.destroy();
   transparentCanvas.remove();
-  return { status: "passed", cases, dataSceneState: "playing", floatsPerCommand: many.floatsPerCommand, reports };
+  const runtimeColors = await checkRuntimeDataSceneColor();
+  return { status: "passed", cases: cases + runtimeColors.length, dataSceneState: "playing", floatsPerCommand: many.floatsPerCommand, reports, runtimeColors };
 }
 
 run().then((report) => { globalThis.colorManagementSmoke = report; })

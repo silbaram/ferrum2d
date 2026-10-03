@@ -1,3 +1,4 @@
+import { configureDataSceneCamera } from "./dataSceneCamera.js";
 import type { Engine } from "../pkg/ferrum_core";
 import { applyShooterGameSpec } from "./gameSpec";
 import type { ResolvedShooterGameSpec, ShooterGameSpec } from "./gameSpec";
@@ -631,6 +632,7 @@ export async function createEngineWithFramePipeline(
     useDataScene,
     useBreakoutGame,
     usePlatformerGame,
+    setDataSceneCamera: (options) => { requireAlive(); return configureDataSceneCamera(rustEngine, options); },
     setViewportSize: (width, height) => {
       requireAlive();
       rustEngine.set_viewport_size(width, height);
@@ -912,10 +914,22 @@ export async function createEngineWithFramePipeline(
       if (entityId === 0xffffffff) {
         return undefined;
       }
-      return {
-        entityId,
-        entityGeneration: rustEngine.data_scene_entity_generation(),
-      };
+      const entityGeneration = rustEngine.data_scene_entity_generation();
+      if (!rustEngine.configure_data_scene_visual(entityId, entityGeneration,
+        request.originX, request.originY, request.sortOrder, request.depthSort, ...request.color)) {
+        rustEngine.despawn_physics_entity(entityId, entityGeneration);
+        return undefined;
+      }
+      if (request.body !== undefined) {
+        const body = request.body;
+        const span = body.heightSpan;
+        if (!rustEngine.configure_data_scene_body(entityId, entityGeneration, body.type === "static" ? 0 : 1,
+          span !== undefined, span?.floorId ?? 0, span?.elevation ?? 0, span?.height ?? 1)) {
+          rustEngine.despawn_physics_entity(entityId, entityGeneration);
+          return undefined;
+        }
+      }
+      return { entityId, entityGeneration };
     },
   });
 }

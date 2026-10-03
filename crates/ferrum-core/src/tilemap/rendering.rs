@@ -154,6 +154,7 @@ impl Tilemap {
             elevation: height_span.map_or(0.0, |span| span.elevation),
             foot_y,
             render_layer: layer_index.min(i32::MAX as usize) as i32,
+            sort_order: 0.0,
             stable_id: (layer_index as u32)
                 .saturating_mul(1_000_000)
                 .saturating_add(tile_index as u32),

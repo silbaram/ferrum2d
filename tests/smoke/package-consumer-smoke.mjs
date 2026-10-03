@@ -794,6 +794,32 @@ async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
     });
     await waitForGeneratedPlacementViewerReady(page, templateName);
     const behaviorBindingReport = await smokeGeneratedPlacementViewerBehaviorBinding(page, templateName);
+    const visualGeometry = await page.evaluate(() => {
+      const api = globalThis.__ferrumConsumerPlacementViewer;
+      const state = api.state();
+      const x = state.viewport.worldMinX + 60;
+      const y = state.viewport.worldMinY + 60;
+      api.addInstance(state.fragment, { id: "geometry_probe", prefab: "object", x, y,
+        scale: 2, rotationRadians: Math.PI / 2, props: { components: {
+          visual: { kind: "sprite", asset: "atlas", width: 12, height: 20, originX: 1, originY: 1 },
+          collider: "none", layer: "wall",
+        } } });
+      const stage = document.querySelector(".placement-stage");
+      const stageRect = stage.getBoundingClientRect();
+      // A stage pointer event refreshes the generated UI from the authoring draft.
+      stage.dispatchEvent(new PointerEvent("pointerdown", { clientX: stageRect.x + 1, clientY: stageRect.y + 1 }));
+      const button = [...document.querySelectorAll(".placement-object")].find((element) => element.textContent === "geometry_probe");
+      if (!button) throw new Error("Generated viewer geometry probe was not rendered");
+      const rect = button.getBoundingClientRect();
+      const viewport = api.state().viewport;
+      const expectedX = stageRect.x + stage.clientLeft + (x - viewport.worldMinX) * viewport.zoom;
+      const expectedY = stageRect.y + stage.clientTop + (y - 24 - viewport.worldMinY) * viewport.zoom;
+      if (Math.abs(rect.x - expectedX) > 1 || Math.abs(rect.y - expectedY) > 1
+        || Math.abs(rect.width - 40 * viewport.zoom) > 1 || Math.abs(rect.height - 24 * viewport.zoom) > 1) {
+        throw new Error(`Generated viewer pivot/scale/rotation mismatch: ${JSON.stringify(rect.toJSON())}`);
+      }
+      return { pivot: true, scale: true, rotation: true, smallVisual: true };
+    });
     await page.click(".placement-asset-card[data-asset-id='atlas'] .placement-asset-add", {
       timeout: GENERATED_PLACEMENT_VIEWER_TIMEOUT_MS,
     });
@@ -815,7 +841,7 @@ async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
     if (browserErrors.length > 0) {
       throw new Error(`${templateName} placement viewer browser errors:\n${browserErrors.join("\n")}`);
     }
-    return await page.evaluate(({ definitionId, behaviorBindingReport }) => {
+    return await page.evaluate(({ definitionId, behaviorBindingReport, visualGeometry }) => {
       const state = globalThis.ferrumConsumerPlacementViewerState;
       const patch = globalThis.__ferrumConsumerPlacementViewer?.exportPatch?.()
         ?? globalThis.ferrumConsumerPlacementViewerPatch;
@@ -875,10 +901,11 @@ async function smokeGeneratedPlacementViewer(generatedGameRoot, templateName) {
         objectDefinitionInstanceId: definitionInstanceOperation?.instance?.id,
         objectDefinitionInstancePrefab: definitionInstanceOperation?.instance?.prefab,
         behaviorBinding: behaviorBindingReport,
+        visualGeometry,
         handoffUi,
         inspectorUi,
       };
-    }, { definitionId, behaviorBindingReport });
+    }, { definitionId, behaviorBindingReport, visualGeometry });
   } finally {
     await browser?.close().catch(() => undefined);
     await closeServer(server).catch(() => undefined);

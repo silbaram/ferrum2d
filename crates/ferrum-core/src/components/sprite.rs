@@ -15,6 +15,13 @@ pub struct Sprite {
     pub a: f32,
     pub rotation_radians: f32,
     pub render_layer: i32,
+    /// Normalized visual pivot; the entity transform remains the collider anchor.
+    pub origin_x: f32,
+    pub origin_y: f32,
+    /// Ordering within the same render layer.
+    pub sort_order: f32,
+    /// Data Scene opt-in: floor/elevation/foot depth inside the render layer.
+    pub depth_sort: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

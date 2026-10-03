@@ -157,9 +157,14 @@ frame hot path에 Wasm entity query를 추가하지 않는다.
 `validateLiveHandles` 기본값은 `false`라 `state()` 호출만으로 stale
 handle 검증용 entity query가 돌지 않는다. `pointerAtScreen(point)`는 pointer world 좌표만 갱신하고,
 `pickInstanceAtScreen(point)`, `hoverInstanceAtScreen(point)`, `selectInstanceAtScreen(point)`는
-viewer 생성 시 계산한 resolved `visual.bounds` 기반 instance bounds cache로 screen coordinate 기반 instance id를 찾는다. 이 picking
+resolved `visual.bounds`, sprite origin, transform scale/rotation을 반영한 회전 사각형 cache로 screen coordinate 기반 instance id를 찾는다. 원점은 sprite pivot이며 primitive는 중심을 사용한다. 이 picking
 경로는 pointer/click 같은 낮은 빈도 authoring interaction용이며 frame loop에 entity별 Wasm query를
 추가하지 않는다.
+
+`scenePlacementVisualGeometry(visual, transform)`는 같은 visual 사각형의 world 중심 `x/y`,
+scale 적용 `width/height`, `rotationRadians`를 반환한다. 공식 viewer와 생성 프로젝트의
+selection/draft 표시는 이 helper를 사용한다. picking은 회전 사각형 내부를 검사하며
+collider 형태나 텍스처 투명도는 검사하지 않는다.
 
 `updateInstanceTransform(instanceId, transform)`, `updateInstanceComponents(instanceId, components)`,
 `updateBehaviorBinding(target, behaviorRecipes)`, `renameInstance(instanceId, nextInstanceId)`,
@@ -362,3 +367,12 @@ Authoring subpath는 Physics Spec helper도 노출한다.
 
 Physics solver와 runtime query 계약은 [Core Runtime](core.md)과
 [Physics Spec](../physics-spec.md)을 기준으로 한다.
+
+
+## Data Scene native runtime
+
+`createDataSceneView`, `DataSceneView`, `DataSceneViewOptions`, `DataSceneViewSnapshot`,
+`DataSceneCameraOptions`는 `/core`에서 제공한다. `CameraRigController`, `resolveCameraRigSpec`,
+`clampCameraToBounds`도 `/core`에서 사용할 수 있다. `/authoring`의 `DataSceneBodySpec`은 optional
+static/kinematic body와 sprite의 같은 핸들 연결을 정의한다.
+[Data Scene native runtime](../data-scene-native-runtime.md)에서 정렬·원점·색 공간·카메라·좌표·조명 계약을 확인한다.

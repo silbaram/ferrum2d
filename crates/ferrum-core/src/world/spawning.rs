@@ -256,6 +256,10 @@ impl World {
             a: request.sprite_tint.a,
             rotation_radians: request.sprite_rotation_radians,
             render_layer: request.render_layer,
+            origin_x: 0.5,
+            origin_y: 0.5,
+            sort_order: 0.0,
+            depth_sort: false,
         });
         self.sprite_animations[i] = request.template.animation;
         self.velocities[i] = request.velocity;

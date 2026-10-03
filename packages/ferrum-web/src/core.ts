@@ -386,3 +386,10 @@ export type {
 } from "./public/workflowExports.js";
 
 export type { ShaderPreparationOptions, ShaderPreparationProgress } from "./shaderPreparation";
+
+export { createDataSceneView } from "./dataSceneView.js";
+export type { DataSceneView, DataSceneViewOptions, DataSceneViewSnapshot, DataSceneViewRenderer } from "./dataSceneView.js";
+export type { DataSceneCameraOptions } from "./dataSceneCamera.js";
+
+export { CameraRigController, resolveCameraRigSpec, clampCameraToBounds } from "./cameraPostProcessing.js";
+export type { CameraRigSpec, CameraRigSnapshot, CameraBounds } from "./cameraPostProcessing.js";

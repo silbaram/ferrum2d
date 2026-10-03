@@ -4,7 +4,7 @@ use crate::render_command::{
     SpriteRenderCommand, SpriteRenderItem, SpriteRenderSortKey, SPRITE_EFFECT_NONE,
 };
 
-use super::Engine;
+use super::{Engine, SceneMode};
 
 impl Engine {
     pub(super) fn build_render_commands(&mut self) {
@@ -47,13 +47,28 @@ impl Engine {
     fn append_layered_world_render_commands(&mut self, visible_bounds: AabbBounds) {
         self.append_entity_render_items(visible_bounds);
         self.append_bitmap_text_render_items(visible_bounds);
-        if entity_render_items_need_layer_sort(&self.frame_buffers.render_items) {
+        if self.scene_mode == SceneMode::Data {
+            // Explicit Data Scene contract: a background band never joins world depth sort.
             self.frame_buffers
                 .render_items
                 .sort_unstable_by(|left, right| {
                     left.sort_key
                         .render_layer
                         .cmp(&right.sort_key.render_layer)
+                        .then_with(|| left.sort_key.cmp_draw_order(right.sort_key))
+                });
+        } else if entity_render_items_need_layer_sort(&self.frame_buffers.render_items) {
+            self.frame_buffers
+                .render_items
+                .sort_unstable_by(|left, right| {
+                    left.sort_key
+                        .render_layer
+                        .cmp(&right.sort_key.render_layer)
+                        .then_with(|| {
+                            left.sort_key
+                                .sort_order
+                                .total_cmp(&right.sort_key.sort_order)
+                        })
                         .then_with(|| left.sort_key.stable_id.cmp(&right.sort_key.stable_id))
                 });
         }
@@ -68,19 +83,32 @@ impl Engine {
 
     fn append_entity_render_items(&mut self, visible_bounds: AabbBounds) {
         for &i in self.world.alive_indices() {
-            let Some((t, s)) = self.world.renderable_sprite_at_index(i) else {
+            let Some((t, mut s)) = self.world.renderable_sprite_at_index(i) else {
                 continue;
             };
-            if !sprite_intersects_viewport(t, s, visible_bounds) {
+            if self.scene_mode == SceneMode::Data {
+                s.rotation_radians += self.world.rotation_at_index_or_default(i).radians;
+            }
+            let center = sprite_center(t, s);
+            if !sprite_intersects_viewport(center, s, visible_bounds) {
                 continue;
             }
-            let screen = self.camera.world_to_screen(t);
+            let screen = self.camera.world_to_screen(center);
             self.frame_buffers.render_items.push(SpriteRenderItem {
                 command: sprite_render_command(screen, s),
                 sort_key: entity_render_sort_key(
-                    self.world.height_span_at(i),
-                    t.y + s.height * 0.5,
+                    if self.scene_mode != SceneMode::Data || s.depth_sort {
+                        self.world.height_span_at(i)
+                    } else {
+                        None
+                    },
+                    if self.scene_mode != SceneMode::Data || s.depth_sort {
+                        t.y + s.height * (1.0 - s.origin_y)
+                    } else {
+                        0.0
+                    },
                     s.render_layer,
+                    s.sort_order,
                     i,
                 ),
             });
@@ -97,6 +125,9 @@ impl Engine {
     }
 
     fn uses_hd2d_render_sort(&self) -> bool {
+        if self.scene_mode == SceneMode::Data {
+            return false;
+        }
         self.tilemap.has_hd2d_render_metadata()
             || self.bitmap_text.has_hd2d_metadata()
             || self
@@ -111,6 +142,7 @@ fn entity_render_sort_key(
     height_span: Option<HeightSpan>,
     foot_y: f32,
     render_layer: i32,
+    sort_order: f32,
     entity_index: usize,
 ) -> SpriteRenderSortKey {
     SpriteRenderSortKey {
@@ -118,6 +150,7 @@ fn entity_render_sort_key(
         elevation: height_span.map_or(0.0, |span| span.elevation),
         foot_y,
         render_layer,
+        sort_order,
         stable_id: entity_index as u32,
     }
 }
@@ -143,9 +176,12 @@ fn sprite_render_command(screen: Transform2D, sprite: Sprite) -> SpriteRenderCom
 }
 
 fn entity_render_items_need_layer_sort(items: &[SpriteRenderItem]) -> bool {
-    items
-        .windows(2)
-        .any(|pair| pair[0].sort_key.render_layer > pair[1].sort_key.render_layer)
+    items.windows(2).any(|pair| {
+        let a = pair[0].sort_key;
+        let b = pair[1].sort_key;
+        a.render_layer > b.render_layer
+            || (a.render_layer == b.render_layer && a.sort_order > b.sort_order)
+    })
 }
 
 fn sprite_intersects_viewport(
@@ -167,4 +203,25 @@ fn sprite_intersects_viewport(
     };
     AabbBounds::from_center(transform, half_width, half_height)
         .is_some_and(|bounds| bounds.overlaps(visible_bounds))
+}
+
+// The renderer rotates about the rectangle center. Shift that center around the authored
+// pivot here, so culling and both renderers share the same unchanged command ABI.
+fn sprite_center(transform: Transform2D, sprite: Sprite) -> Transform2D {
+    if sprite.origin_x == 0.5 && sprite.origin_y == 0.5 {
+        return transform;
+    }
+    let x = (0.5 - sprite.origin_x) * sprite.width;
+    let y = (0.5 - sprite.origin_y) * sprite.height;
+    if sprite.rotation_radians == 0.0 {
+        return Transform2D {
+            x: transform.x + x,
+            y: transform.y + y,
+        };
+    }
+    let (sin, cos) = sprite.rotation_radians.sin_cos();
+    Transform2D {
+        x: transform.x + x * cos - y * sin,
+        y: transform.y + x * sin + y * cos,
+    }
 }

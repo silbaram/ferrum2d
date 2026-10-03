@@ -140,8 +140,12 @@ preload fingerprint에는 기본값이 아닌 색 공간도 포함한다. 이 me
 PixelMaskTerrain의 RGB byte 색상은 sRGB, alpha byte는 coverage로 처리한다.
 
 기존 프로젝트를 전환할 때는 이미지의 color/data 의미부터 표시하고, sRGB로 작성했던
-숫자 RGB를 `srgbToLinear`로 변환한다. CSS/hex를 쓰는 authoring 경로가 자동으로
-renderer 모드를 따라 바뀌지는 않는다. 해당 경로가 출력한 숫자 tint도 이 계약을 따른다.
+숫자 RGB를 `srgbToLinear`로 변환한다. Data Scene hex authoring은 apply의 `colorManagement`를 명시하면 RGB를 변환하며,
+runtime이 렌더러를 생성하면 최상위 또는 `webgl2`/`webgpu`의 최종 색 공간을
+Data Scene 초기 적용·reapply·transition에 동일하게 전달한다. 충돌하는 Data Scene 색 공간은
+적용 전에 거부한다. 외부 renderer를 주입할 때는 caller가 `dataScene.colorManagement`를
+renderer와 일치시켜야 한다. 다른 CSS/hex authoring 경로는
+출력한 숫자 tint가 이 계약을 따르는지 별도로 확인한다.
 밝기와 bloom 수치는 linear 기준으로 다시 확인한다. `legacy`는 metadata를 받아도
 GPU의 sRGB decode/출력 변환을 활성화하지 않는다.
 
@@ -614,3 +618,12 @@ AbortController를 abort하면 `AbortError`로 종료하고 중간 Shader/Progra
 shader compile/link driver 호출 자체나 첫 draw의 지연까지 제거하지 않는다.
 context loss, timeout, 컴파일/링크 실패는 reject하며 context 자동 복구는 제공하지 않는다.
 [측정과 검증 범위](../../development/quality/shader-preparation.md)를 참고한다.
+
+
+## Data Scene native runtime
+
+`createDataSceneView`, `DataSceneView`, `DataSceneViewOptions`, `DataSceneViewSnapshot`,
+`DataSceneCameraOptions`는 `/core`에서 제공한다. `CameraRigController`, `resolveCameraRigSpec`,
+`clampCameraToBounds`도 `/core`에서 사용할 수 있다. `/authoring`의 `DataSceneBodySpec`은 optional
+static/kinematic body와 sprite의 같은 핸들 연결을 정의한다.
+[Data Scene native runtime](../data-scene-native-runtime.md)에서 정렬·원점·색 공간·카메라·좌표·조명 계약을 확인한다.

@@ -27,6 +27,7 @@ use crate::{
 };
 
 mod collision_events;
+mod data_scene_visuals;
 mod fixed_timestep;
 mod mass_objects;
 mod particles;

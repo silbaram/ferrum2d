@@ -1,7 +1,8 @@
 use wasm_bindgen::prelude::*;
 
 use crate::components::{
-    CollisionLayer, SpriteAnimation, SpriteFrame, Transform2D, DEFAULT_SPRITE_RENDER_LAYER,
+    CollisionLayer, HeightSpan, PhysicsFloorId, RigidBody, SpriteAnimation, SpriteFrame,
+    Transform2D, DEFAULT_SPRITE_RENDER_LAYER,
 };
 use crate::entity::Entity;
 use crate::world::{
@@ -138,6 +139,92 @@ impl Engine {
             self.world.clear_collider(entity);
         }
         self.data_scene_entity = Some(entity);
+        true
+    }
+
+    /// Attaches a static/kinematic body to the sprite's existing transform and collider.
+    #[allow(clippy::too_many_arguments)]
+    pub fn configure_data_scene_body(
+        &mut self,
+        entity_id: u32,
+        generation: u32,
+        body_type: u32,
+        has_height: bool,
+        floor: u32,
+        elevation: f32,
+        height: f32,
+    ) -> bool {
+        if self.scene_mode != SceneMode::Data {
+            return false;
+        }
+        let body = match body_type {
+            0 => RigidBody::static_body(),
+            1 => RigidBody::kinematic(),
+            _ => return false,
+        };
+        let span = if has_height {
+            let Some(span) = HeightSpan::new(PhysicsFloorId(floor), elevation, height) else {
+                return false;
+            };
+            Some(span)
+        } else {
+            None
+        };
+        let Some(entity) = self.entity_from_handle(entity_id, generation) else {
+            return false;
+        };
+        if self.world.sprite_at_index(entity.id as usize).is_none()
+            || self.world.collider_layer_at(entity.id as usize).is_none()
+        {
+            return false;
+        }
+        self.world.set_rigid_body(entity, body);
+        if let Some(span) = span {
+            self.world.set_height_span(entity, span);
+        }
+        self.clear_physics_history();
+        true
+    }
+
+    /// Configures a generation-checked sprite at the scene authoring boundary.
+    #[allow(clippy::too_many_arguments)]
+    pub fn configure_data_scene_visual(
+        &mut self,
+        entity_id: u32,
+        generation: u32,
+        origin_x: f32,
+        origin_y: f32,
+        sort_order: f32,
+        depth_sort: bool,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    ) -> bool {
+        if self.scene_mode != SceneMode::Data
+            || ![origin_x, origin_y, sort_order]
+                .iter()
+                .all(|v| v.is_finite())
+            || ![r, g, b, a]
+                .iter()
+                .all(|v| v.is_finite() && (0.0..=1.0).contains(v))
+        {
+            return false;
+        }
+        let Some(entity) = self.entity_from_handle(entity_id, generation) else {
+            return false;
+        };
+        let Some(sprite) = self.world.sprite_mut_at_index(entity.id as usize) else {
+            return false;
+        };
+        sprite.origin_x = origin_x;
+        sprite.origin_y = origin_y;
+        sprite.sort_order = sort_order;
+        sprite.depth_sort = depth_sort;
+        sprite.r = r;
+        sprite.g = g;
+        sprite.b = b;
+        sprite.a = a;
         true
     }
 

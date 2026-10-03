@@ -4,6 +4,7 @@ import {
   dataSceneObjectVisualBounds,
   resolveDataSceneInstanceComponents,
   resolveSceneAuthoringDocument,
+  scenePlacementVisualGeometry,
   worldToSceneScreen,
   type ResolvedSceneAuthoringDocument,
   type ResolvedSceneCompositionInstance,
@@ -101,9 +102,12 @@ export function renderPlacementStage(
 
   for (const instance of state.instances) {
     const bounds = boundsForInstance(session, instance, settings);
-    const point = worldToSceneScreen(state.viewport, instance.transform);
-    const width = Math.max(26, bounds.width * state.viewport.zoom);
-    const height = Math.max(26, bounds.height * state.viewport.zoom);
+    const geometry = instance.visual === undefined
+      ? { ...instance.transform, ...bounds }
+      : scenePlacementVisualGeometry(instance.visual, instance.transform);
+    const point = worldToSceneScreen(state.viewport, geometry);
+    const width = geometry.width * state.viewport.zoom;
+    const height = geometry.height * state.viewport.zoom;
     const button = document.createElement("button");
     const label = document.createElement("span");
     button.type = "button";
@@ -114,6 +118,7 @@ export function renderPlacementStage(
     button.style.top = `${point.y - height * 0.5}px`;
     button.style.width = `${width}px`;
     button.style.height = `${height}px`;
+    button.style.transform = `rotate(${geometry.rotationRadians}rad)`;
     label.textContent = instance.instanceId;
     button.append(label);
     button.addEventListener("click", (event) => {

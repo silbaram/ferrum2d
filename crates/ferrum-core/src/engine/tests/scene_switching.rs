@@ -377,6 +377,7 @@ fn data_scene_switch_and_reset_clear_stale_output_buffers() {
                 elevation: 0.0,
                 foot_y: 0.0,
                 render_layer: 0,
+                sort_order: 0.0,
                 stable_id: 0,
             },
         }

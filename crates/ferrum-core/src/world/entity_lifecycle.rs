@@ -34,12 +34,35 @@ impl World {
             }
             self.retire_gameplay_variable_mutation_triggers(entity, i);
             self.alive[i] = false;
-            self.generations[i] += 1;
+            let next_generation = self.generations[i].checked_add(1);
+            if let Some(next) = next_generation {
+                self.generations[i] = next;
+            }
             WorldComponentStorage::clear_entity(self, i);
             self.untrack_alive_index(i);
             self.clear_primary_actor_entity(entity);
-            self.free_list.push(entity.id);
+            if next_generation.is_some() {
+                self.free_list.push(entity.id);
+            }
         }
+    }
+
+    /// Clear all components without allowing handles from an earlier scene to alias.
+    pub(super) fn reset_entity_storage(&mut self) {
+        let generations = std::mem::take(&mut self.generations);
+        *self = Self::default();
+        for (i, generation) in generations.into_iter().enumerate() {
+            let next = generation.checked_add(1);
+            self.generations.push(next.unwrap_or(u32::MAX));
+            self.alive.push(false);
+            self.alive_positions.push(DEAD_ALIVE_POSITION);
+            WorldComponentStorage::push_empty_entity(self);
+            if next.is_some() {
+                self.free_list.push(i as u32);
+            }
+        }
+        // Reuse ids in original spawn order while advancing each id's generation.
+        self.free_list.reverse();
     }
 
     pub fn alive_count(&self) -> usize {

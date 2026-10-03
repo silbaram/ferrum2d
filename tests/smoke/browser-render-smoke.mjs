@@ -1543,6 +1543,15 @@ async function smokePlacementViewer(page, timeoutMs) {
     },
     timeoutMs,
   );
+  // Runtime body metadata must survive resize, collider edits and definition extraction.
+  await page.evaluate(() => {
+    const patch = globalThis.ferrumPlacementViewerExportPatch();
+    const components = patch.operations.find((op) => op.kind === "addInstance" && op.instance.id === "rect_1").instance.props.components;
+    globalThis.ferrumPlacementViewerUpdateComponents("rect_1", {
+      ...components, body: { type: "kinematic", heightSpan: { floorId: 2, elevation: 3, height: 8 } },
+    });
+    globalThis.ferrumPlacementViewerUpdateTransform("rect_1", { rotationRadians: Math.PI / 2 });
+  });
   const resizeDrag = await page.evaluate(() => {
     const state = globalThis.ferrumPlacementViewerState;
     const selected = state?.selected;
@@ -1568,8 +1577,8 @@ async function smokePlacementViewer(page, timeoutMs) {
         y: handleRect.top + handleRect.height * 0.5,
       },
       to: screenForWorld({
-        x: selected.transform.x + 40,
-        y: selected.transform.y + 24,
+        x: selected.transform.x - 24,
+        y: selected.transform.y + 40,
       }),
     };
   });
@@ -1607,6 +1616,7 @@ async function smokePlacementViewer(page, timeoutMs) {
     },
     timeoutMs,
   );
+  await page.evaluate(() => globalThis.ferrumPlacementViewerUpdateTransform("rect_1", { rotationRadians: 0 }));
   const colliderOffsetDrag = await page.evaluate(() => {
     const state = globalThis.ferrumPlacementViewerState;
     const selected = state?.selected;
@@ -1880,6 +1890,10 @@ async function smokePlacementViewer(page, timeoutMs) {
         && components.collider.offsetX === -4
         && components.collider.offsetY === 6
         && components.layer === "enemy"
+        && components.body?.type === "kinematic"
+        && components.body.heightSpan?.floorId === 2
+        && components.body.heightSpan?.elevation === 3
+        && components.body.heightSpan?.height === 8
       );
     },
     timeoutMs,
@@ -1923,7 +1937,54 @@ async function smokePlacementViewer(page, timeoutMs) {
     }
   });
 
-  return { placementViewerSmoke: { target: cratePoint, movedTarget: movedCratePoint, ...report, editReport } };
+  await page.evaluate(() => globalThis.ferrumPlacementViewerAddInstance("main", {
+    id: "native_sprite", prefab: "object", x: 800, y: 500,
+    props: { components: {
+      visual: { kind: "sprite", asset: "turret", width: 32, height: 48, originY: 1, depthSort: "hd2d", tint: "#ff000080", layer: 2, sortOrder: 3 },
+      collider: { type: "aabb", halfWidth: 8, halfHeight: 4 },
+      body: { type: "kinematic", heightSpan: { floorId: 1, elevation: 0, height: 12 } },
+      layer: "player",
+    } },
+  }));
+  await page.fill("input[data-placement-component-field='visualWidth']", "40", { timeout: timeoutMs });
+  await page.click("button[data-placement-action='apply-components']", { timeout: timeoutMs });
+  await page.fill("input[data-placement-definition-id='true']", "native_template", { timeout: timeoutMs });
+  await page.click("button[data-placement-action='create-object-definition']", { timeout: timeoutMs });
+  await waitForPageFunction(page, "placement sprite edits lost runtime visual/body metadata", () => {
+    const operations = globalThis.ferrumPlacementViewerExportPatch()?.operations;
+    const components = operations?.find((op) => op.kind === "addObjectDefinition" && op.id === "native_template")?.definition.props.components;
+    return components?.visual?.width === 40 && components.visual.originY === 1
+      && components.visual.depthSort === "hd2d" && components.visual.layer === 2 && components.visual.sortOrder === 3
+      && components.visual.tint === "#ff000080"
+      && components.body?.type === "kinematic" && components.body.heightSpan?.height === 12;
+  }, timeoutMs);
+  const visualGeometry = await page.evaluate(() => {
+    globalThis.ferrumPlacementViewerSelect("native_sprite");
+    const state = globalThis.ferrumPlacementViewerUpdateTransform("native_sprite", { scale: 1.5, rotationRadians: Math.PI / 2 });
+    const canvas = document.querySelector("canvas").getBoundingClientRect();
+    const viewport = state.viewport;
+    const screen = (x, y) => ({ x: (x - viewport.worldMinX) * viewport.zoom, y: (y - viewport.worldMinY) * viewport.zoom });
+    // 40x48 bottom-origin sprite at (800,500), scaled 1.5 and rotated 90 degrees:
+    // world rectangle is [800,872] x [470,530].
+    const expected = screen(800, 470);
+    const selection = document.querySelector(".placement-selection");
+    const marker = [...document.querySelectorAll(".placement-draft-marker")].find((element) => element.textContent === "native_sprite draft");
+    for (const element of [selection, marker]) {
+      if (!element) throw new Error("Missing native sprite overlay");
+      const rect = element.getBoundingClientRect();
+      if (Math.abs(rect.x - canvas.x - expected.x) > 1 || Math.abs(rect.y - canvas.y - expected.y) > 1
+        || Math.abs(rect.width - 72 * viewport.zoom) > 1 || Math.abs(rect.height - 60 * viewport.zoom) > 1) {
+        throw new Error(`Pivot/rotation overlay mismatch: ${JSON.stringify(rect.toJSON())}`);
+      }
+    }
+    const viewer = globalThis.__ferrumPlacementViewer;
+    if (viewer.pickInstanceAtScreen(screen(850, 500))?.instanceId !== "native_sprite"
+      || viewer.pickInstanceAtScreen(screen(770, 500))?.instanceId === "native_sprite") {
+      throw new Error("Pivot/rotation picking does not match the visual");
+    }
+    return { pivot: true, rotation: true, scale: true, rotatedResize: true };
+  });
+  return { placementViewerSmoke: { target: cratePoint, movedTarget: movedCratePoint, ...report, editReport, nativeMetadataPreserved: true, visualGeometry } };
 }
 
 async function smokePlacementViewerSave(page, timeoutMs) {
@@ -3116,10 +3177,28 @@ async function smokeLightingWebGpu(page, timeoutMs) {
     },
     timeoutMs,
   );
+  const viewportZoomCases = await page.evaluate(async () => {
+    const renderer = globalThis.ferrumRuntime.renderer;
+    const canvas = document.querySelector("canvas");
+    const width = canvas.width, height = canvas.height;
+    for (const zoom of [0.5, 2]) {
+      renderer.setViewportZoom(zoom);
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      const viewport = renderer.viewportSize();
+      if (viewport.width !== canvas.clientWidth / zoom || viewport.height !== canvas.clientHeight / zoom
+        || canvas.width !== width || canvas.height !== height || renderer.stats().renderCommandCount === 0) {
+        throw new Error("WebGPU zoom must update logical units while preserving the device backbuffer and rendering");
+      }
+    }
+    renderer.setViewportZoom(1);
+    return 2;
+  });
   const status = await webGpuLightingStatus(page);
   return {
     webgpuLightingSmoke: {
       skipped: false,
+      viewportZoomCases,
       renderer: status.renderer,
       webgpuAvailable: status.webgpuAvailable,
       rendererStats: status.rendererStats,

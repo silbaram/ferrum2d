@@ -1,4 +1,6 @@
+import { dataSceneVisualColor } from "./dataSceneVisualColor.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
+import type { PhysicsBodyHeightSpan } from "./engineTypes/physicsBodies.js";
 import type { ResolvedSceneCompositionInstance } from "./sceneComposition.js";
 
 export const DATA_SCENE_COMPONENTS_PROP = "components" as const;
@@ -74,6 +76,7 @@ export interface DataSceneSpriteVisualSpec {
   originY?: number;
   layer?: number;
   sortOrder?: number;
+  depthSort?: "layer" | "hd2d";
   tint?: string;
   color?: string;
 }
@@ -140,8 +143,15 @@ export type DataSceneColliderComponentSpec =
   | DataSceneOrientedBoxColliderSpec
   | DataSceneConvexPolygonColliderSpec;
 
+/** Optional body on the same entity; omitting it preserves collider-only authoring. */
+export interface DataSceneBodySpec {
+  type: "static" | "kinematic";
+  heightSpan?: PhysicsBodyHeightSpan;
+}
+
 export interface DataSceneComponentsSpec {
   template?: string;
+  body?: DataSceneBodySpec;
   visual?: DataSceneObjectVisualSpec;
   sprite?: DataSceneSpriteComponentSpec;
   collider?: DataSceneColliderComponentSpec;
@@ -201,6 +211,7 @@ export type ResolvedDataSceneObjectVisual =
       originY: number;
       layer?: number;
       sortOrder?: number;
+      depthSort?: "layer" | "hd2d";
       tint?: string;
       color?: string;
       bounds: ResolvedDataSceneObjectVisualBounds;
@@ -258,6 +269,7 @@ export type ResolvedDataSceneComponents =
       sprite: ResolvedDataSceneSpriteComponent;
       collider: ResolvedDataSceneColliderComponent;
       layer: ResolvedDataSceneCollisionLayer;
+      body?: DataSceneBodySpec;
     };
 
 export interface ResolveDataSceneComponentsOptions {
@@ -292,10 +304,15 @@ export function resolveDataSceneComponentsSpec(
     };
   }
 
+  const collider = resolveColliderComponent(requiredProperty(components, "collider", path), `${path}.collider`);
+  if (components.body !== undefined && collider.type === "none") {
+    throw sceneCompositionDiagnosticError(`${path}.body`, "requires a collider; omit body for a visual-only object");
+  }
   return {
     mode: "inline",
     ...resolveInlineVisualComponents(components, path),
-    collider: resolveColliderComponent(requiredProperty(components, "collider", path), `${path}.collider`),
+    ...(components.body === undefined ? {} : { body: resolveBody(components.body, `${path}.body`) }),
+    collider,
     layer: resolveCollisionLayer(requiredProperty(components, "layer", path), `${path}.layer`),
   };
 }
@@ -324,7 +341,7 @@ function rejectTemplateMixedWithInlineFields(
   components: Readonly<Record<string, unknown>>,
   path: string,
 ): void {
-  for (const key of ["visual", "sprite", "collider", "layer"] as const) {
+  for (const key of ["visual", "sprite", "collider", "layer", "body"] as const) {
     if (components[key] !== undefined) {
       throw sceneCompositionDiagnosticError(
         `${path}.${key}`,
@@ -377,6 +394,7 @@ function resolvePrimitiveVisual(
 ): Extract<ResolvedDataSceneObjectVisual, { kind: "primitive" }> {
   const shape = requiredPrimitiveVisualShape(visual.shape, `${path}.shape`);
   const color = optionalString(visual.color, `${path}.color`);
+  dataSceneVisualColor(color, `${path}.color`);
   if (shape === "circle") {
     const radius = positiveNumber(visual.radius ?? DATA_SCENE_DEFAULT_PRIMITIVE_SIZE * 0.5, `${path}.radius`);
     const size = radius * 2;
@@ -427,10 +445,25 @@ function resolveSpriteVisual(
   }, path);
   const originX = finiteNumber(visual.originX ?? 0.5, `${path}.originX`);
   const originY = finiteNumber(visual.originY ?? 0.5, `${path}.originY`);
+  if (![originX, originY].every((v) => Number.isFinite(Math.fround(v)))) {
+    throw sceneCompositionDiagnosticError(path, "originX and originY must fit finite f32 values");
+  }
   const layer = visual.layer === undefined ? undefined : finiteNumber(visual.layer, `${path}.layer`);
   const sortOrder = visual.sortOrder === undefined ? undefined : finiteNumber(visual.sortOrder, `${path}.sortOrder`);
+  if (layer !== undefined && (!Number.isInteger(layer) || layer < -2147483648 || layer > 2147482647)) {
+    throw sceneCompositionDiagnosticError(`${path}.layer`, "must be an integer render layer in [-2147483648, 2147482647]");
+  }
+  if (sortOrder !== undefined && !Number.isFinite(Math.fround(sortOrder))) {
+    throw sceneCompositionDiagnosticError(`${path}.sortOrder`, "must fit a finite f32 value");
+  }
+  const depthSort = visual.depthSort;
+  if (depthSort !== undefined && depthSort !== "layer" && depthSort !== "hd2d") {
+    throw sceneCompositionDiagnosticError(`${path}.depthSort`, "must be layer or hd2d");
+  }
   const tint = optionalString(visual.tint, `${path}.tint`);
+  dataSceneVisualColor(tint, `${path}.tint`);
   const color = optionalString(visual.color, `${path}.color`);
+  dataSceneVisualColor(color, `${path}.color`);
   return {
     kind: "sprite",
     texture: sprite.texture,
@@ -442,6 +475,7 @@ function resolveSpriteVisual(
     originY,
     ...(layer === undefined ? {} : { layer }),
     ...(sortOrder === undefined ? {} : { sortOrder }),
+    ...(depthSort === undefined ? {} : { depthSort }),
     ...(tint === undefined ? {} : { tint }),
     ...(color === undefined ? {} : { color }),
     bounds: { width: sprite.width, height: sprite.height },
@@ -737,4 +771,29 @@ function isU32(value: unknown): value is number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function resolveBody(value: unknown, path: string): DataSceneBodySpec {
+  const body = requiredRecord(value, path);
+  for (const key of Object.keys(body)) if (key !== "type" && key !== "heightSpan") {
+    throw sceneCompositionDiagnosticError(`${path}.${key}`, "is not supported by Data Scene body authoring");
+  }
+  if (body.type !== "static" && body.type !== "kinematic") {
+    throw sceneCompositionDiagnosticError(`${path}.type`, "must be static or kinematic");
+  }
+  if (body.heightSpan === undefined) return { type: body.type };
+  const span = requiredRecord(body.heightSpan, `${path}.heightSpan`);
+  const floorId = finiteNumber(span.floorId, `${path}.heightSpan.floorId`);
+  const elevation = finiteNumber(span.elevation, `${path}.heightSpan.elevation`);
+  const height = finiteNumber(span.height, `${path}.heightSpan.height`);
+  if (!Number.isInteger(floorId) || floorId < 0 || floorId > 0xffffffff) {
+    throw sceneCompositionDiagnosticError(`${path}.heightSpan.floorId`, "must be a uint32");
+  }
+  if (Math.fround(height) <= 0 || !Number.isFinite(Math.fround(height))) {
+    throw sceneCompositionDiagnosticError(`${path}.heightSpan.height`, "must be positive finite f32");
+  }
+  if (!Number.isFinite(Math.fround(elevation)) || !Number.isFinite(Math.fround(Math.fround(elevation) + Math.fround(height)))) {
+    throw sceneCompositionDiagnosticError(`${path}.heightSpan.elevation`, "must form a finite f32 height span");
+  }
+  return { type: body.type, heightSpan: { floorId, elevation, height } };
 }

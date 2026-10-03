@@ -742,3 +742,9 @@ program 5개/shader 10개만 생성, draw 1/2/4회, 30회 steady draw 추가 할
 실제 native extension 지원 여부를 report한다. CI 미지원 기기에서도 completion 상태 shim으로
 실제 GL shader success/abort/link/allocation/callback/timeout cleanup을 검증하지만 native parallel 성능으로
 해석하지 않는다. public createFerrumRuntime와 LoadingOverlay 연결도 검사한다.
+
+## Data Scene native consumer (#62~#65)
+
+`pnpm smoke:data-scene`는 실제 runtime tarball을 pack/추출하고 public imports로 WebGL2 recipe를 실행한다. 1280×720/390×844 × DPR 1/2에서 origin/tint 픽셀, 배경/나무/actor 순서, heightSpan 추가/제거, kinematic collider/조개 접촉 위치, camera pan/zoom/resize, pointer 이동, culling, world label/light/occluder, reset stale handle을 확인한다. report는 `artifacts/data-scene-consumer-*/report.json`이다. `smoke:check`와 수동 CI validate job에 연결된다. 원격 CI 성공을 의미하지 않는다.
+
+`smoke:placement-viewer`는 bottom-origin sprite의 회전·scale을 반영한 selection/draft overlay와 picking, 회전된 primitive resize를 검증한다. `smoke:color-management`는 기본·최상위·WebGL2·WebGPU fallback·주입 renderer의 Data Scene hex 색을 초기 적용/reapply/transition마다 실제 Wasm command와 픽셀로 확인한다. renderer와 다른 색 공간으로 재적용하는 요청은 거부해야 한다.

@@ -1,3 +1,4 @@
+import type { DataSceneCameraOptions } from "../dataSceneCamera.js";
 import type { AssetLoadProgressCallback, AssetManifest, AssetReleasePayload, LoadedAssets } from "../assetLoader";
 import type { BuiltInShooterStateSnapshot } from "../builtInShooterStateSnapshot.js";
 import type {
@@ -192,6 +193,8 @@ export interface FerrumSceneApi {
   captureShooterStateSnapshot(): BuiltInShooterStateSnapshot | undefined;
   restoreShooterStateSnapshot(snapshot: BuiltInShooterStateSnapshot): boolean;
   useDataScene(): void;
+  /** Camera follow resolves generation-safe transforms in Rust, before rendering. */
+  setDataSceneCamera(options: DataSceneCameraOptions): boolean;
   useBreakoutGame(): void;
   usePlatformerGame(): void;
   setViewportSize(width: number, height: number): void;

@@ -488,3 +488,5 @@ WebGL2 GPU block 압축과 이미지 fallback을 지원하며 작은 pixel sprit
 초기 로딩 UI와 셰이더 준비를 연결하려면 `createFerrumRuntime({ shaderPreparation: { onProgress } })`를
 사용할 수 있습니다. 기존 동기 renderer 생성도 유지합니다.
 [지원 범위와 측정](docs/development/quality/shader-preparation.md)을 참고하세요.
+
+Data Scene의 native actor, 명시적 depth 정렬, camera/zoom/조명 연결은 [Data Scene native runtime](docs/engine/data-scene-native-runtime.md)을 참고한다. 이 경로는 #62~#65 개발 브랜치 기능이며 기존 beta.1 설치 파일에는 포함되지 않는다.

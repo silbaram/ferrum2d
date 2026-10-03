@@ -9,7 +9,7 @@ import {
   DATA_SCENE_PRIMITIVE_TEXTURES,
   resolveSceneAuthoringDocument,
 } from "../src/authoring.js";
-import { createEngine } from "../src/core.js";
+import { createEngine, createDataSceneView } from "../src/core.js";
 import {
   attachDataSceneRuntimeEngineAdapter,
   type DataSceneRuntimeSpawnRequest,
@@ -980,3 +980,71 @@ function fileUrlFromString(value: string): URL | undefined {
     return undefined;
   }
 }
+
+test("visual authoring forwards pivot, tint, render layer precedence and explicit depth sort", () => {
+  const adapter = new MockDataSceneRuntimeAdapter();
+  const target = createDataSceneRuntimeTarget(attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, adapter));
+  target.spawnSceneInstance({ id: "actor", sourceId: "actor", prefab: "actor", x: 300, y: 300,
+    scale: 2, rotationRadians: Math.PI / 2, layer: -10,
+    props: { components: { visual: { kind: "sprite", texture: 71, width: 32, height: 64,
+      originX: 0, originY: 1, layer: 10, sortOrder: 100, depthSort: "hd2d", tint: "#ff000080", color: "#00ff00" },
+      collider: { type: "aabb", halfWidth: 8, halfHeight: 8 }, layer: "player" } } });
+  const r = adapter.requests[0];
+  deepEqual([r.originX, r.originY, r.renderLayer, r.sortOrder, r.depthSort], [0, 1, 10, 100, true]);
+  deepEqual(r.color, [1, 0, 0, 128 / 255]);
+  deepEqual([r.spriteWidth, r.spriteHeight, r.colliderOffsetX, r.colliderOffsetY], [64, 128, 0, 0]);
+});
+
+test("Data Scene body shares the sprite handle and stays generation safe through reapply", async () => {
+  await withNodeWasmFileFetch(async () => {
+    const engine = await createEngine();
+    const document = {
+      format: "ferrum2d.consumer.scene-authoring", version: 1,
+      sceneComposition: { initialFragment: "main", prefabs: { actor: { props: { components: {
+        visual: { kind: "sprite", texture: 71, width: 32, height: 64, originY: 1, depthSort: "hd2d" },
+        collider: { type: "aabb", halfWidth: 8, halfHeight: 8 }, layer: "player",
+        body: { type: "kinematic", heightSpan: { floorId: 0, elevation: 0, height: 1 } },
+      } } } }, fragments: { main: { instances: [{ id: "actor", prefab: "actor", x: 300, y: 300 }] } } },
+      behaviorRecipes: { entities: {} },
+    };
+    try {
+      const actor = applyDataSceneAuthoringDocument(engine, document).entityHandles.actor;
+      equal(engine.getPhysicsEntity(actor)?.bodyType, "kinematic");
+      equal(engine.moveHd2dKinematicBodyWithTilemap(actor, { displacementX: 20, displacementY: 0, solidMaskBits: 8 })?.body.x, 320);
+      ok(engine.queryCircleBodies({ x: 320, y: 300, radius: 1, queryMaskBits: 1 }).some((h) => h.entityId === actor.entityId));
+      ok(!engine.queryCircleBodies({ x: 300, y: 300, radius: 1, queryMaskBits: 1 }).some((h) => h.entityId === actor.entityId));
+      const next = applyDataSceneAuthoringDocument(engine, document).entityHandles.actor;
+      equal(engine.getPhysicsEntity(actor), undefined);
+      equal(engine.setPhysicsBodyPosition(actor, 999, 999), false);
+      equal(engine.getPhysicsEntity(next)?.x, 300);
+      equal(engine.despawnPhysicsEntity(next), true);
+      equal(engine.getPhysicsEntity(next), undefined);
+    } finally { engine.destroy(); }
+  });
+});
+
+
+test("Data Scene view clamps its initial bounded camera using the zoomed viewport", async () => {
+  await withNodeWasmFileFetch(async () => {
+    const engine = await createEngine();
+    try {
+      engine.useDataScene();
+      engine.setViewportSize(1280, 720);
+      let zoom = 1;
+      const renderer = {
+        setViewportZoom: (value: number) => { zoom = value; },
+        viewportSize: () => ({ width: 1280 / zoom, height: 720 / zoom }),
+      };
+      const canvas = { clientWidth: 1280, clientHeight: 720, width: 2560, height: 1440 } as HTMLCanvasElement;
+      const view = createDataSceneView(engine, renderer, canvas, {
+        x: 400, y: 300, zoom: 2, bounds: { minX: 0, minY: 0, maxX: 1600, maxY: 1200 },
+      });
+      // x=400 is valid at zoom 2, but would incorrectly clamp to 640 at zoom 1.
+      equal(engine.cameraX(), 400);
+      equal(engine.cameraY(), 300);
+      equal(view.snapshot().worldMinX, 80);
+    } finally {
+      engine.destroy();
+    }
+  });
+});

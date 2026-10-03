@@ -54,7 +54,7 @@ try {
     await page.waitForFunction(() => globalThis.colorManagementSmoke !== undefined, undefined, { timeout: 15_000 });
     const report = await page.evaluate(() => globalThis.colorManagementSmoke);
     if (report.error || errors.length) throw new Error(JSON.stringify({ report, errors }));
-    if (report.status !== "passed" || report.cases < 34 || report.dataSceneState !== "playing"
+    if (report.status !== "passed" || report.cases < 49 || report.runtimeColors?.length !== 15 || report.dataSceneState !== "playing"
       || report.floatsPerCommand !== 15 || report.reports.length !== 2
       || report.reports.some((entry) => entry.commandCount !== 1024 || !Number.isFinite(entry.cpuSubmitP95Ms))) {
       throw new Error(`Invalid color management smoke report: ${JSON.stringify(report)}`);

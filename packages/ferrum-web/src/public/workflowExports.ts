@@ -46,6 +46,8 @@ export {
   createScenePlacementPatchStore,
   createScenePlacementViewer,
 } from "../scenePlacementViewer";
+export { scenePlacementVisualGeometry } from "../scenePlacementGeometry";
+export type { ScenePlacementVisualGeometry } from "../scenePlacementGeometry";
 export {
   SCENE_PLACEMENT_BINDING_MIGRATION_PREVIEW_FORMAT,
   SCENE_PLACEMENT_BINDING_MIGRATION_PREVIEW_VERSION,
@@ -294,6 +296,7 @@ export type {
   DataSceneSpriteComponentSpec,
   DataSceneSpriteFrameSpec,
   DataSceneSpriteVisualSpec,
+  DataSceneBodySpec,
   DataSceneTextureRefSpec,
   ResolveDataSceneComponentsOptions,
   ResolveDataSceneInstanceComponentsOptions,

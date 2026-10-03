@@ -63,6 +63,7 @@ impl Engine {
         physics_debug_lines: bool,
     ) {
         self.advance_simulation(delta);
+        self.update_data_scene_camera(delta as f32);
         if physics_debug_lines {
             self.build_physics_debug_lines();
         } else {
