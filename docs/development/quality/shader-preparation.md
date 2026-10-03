@@ -29,7 +29,7 @@ renderer/1,056 frames를 측정했다. canvas 128²/DPR 1, sprite 1,024개, pres
 생성자 수치에는 context 생성 약 6.5 ms, 버퍼·placeholder·상태 설정도 포함되어 순수 shader 시간은 아니다.
 첫 frame의 동기 readPixels까지 포함한 wall time은 약 30~77 ms였지만 warm readback도 26~28 ms다.
 따라서 이를 셰이더 컴파일 비용이나 GPU 실행 시간으로 간주하지 않는다.
-[측정 방법과 집계 report](../../../tests/fixtures/shader-initialization-baseline.json)는 소스 artifact hash와
+[측정 방법과 집계 report](https://github.com/silbaram/ferrum2d/blob/main/tests/fixtures/shader-initialization-baseline.json)는 소스 artifact hash와
 분포를 포함한다. GPU driver/system cache까지 제거한 cold hardware 측정은 아니다.
 
 ## 구현 후 검증

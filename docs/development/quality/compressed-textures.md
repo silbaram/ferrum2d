@@ -21,7 +21,7 @@ ASTC 4×4, BC7, ETC2 RGBA 순으로 장치 지원을 확인한다. premultiplied
 
 PSNR은 encoder의 RGBA32 복원과 원본을 비교한 값이다. ETC1S/UASTC encode는 atlas에서
 각각 약 1,114/927 ms, BC7 transcode는 8.05/2.46 ms였다. 단일 로컬 실행의 CPU 수치다.
-[원본 측정 report](../../../tests/fixtures/ktx2/measurement.json)에 byte·시간·화질 값을 보관한다.
+[원본 측정 report](https://github.com/silbaram/ferrum2d/blob/main/tests/fixtures/ktx2/measurement.json)에 byte·시간·화질 값을 보관한다.
 
 실제 Chromium 148/ANGLE SwiftShader browser smoke에서는 ASTC 업로드가 선택됐다.
 DPR 1/2 readback PSNR은 ETC1S 35.67~36.95, UASTC 46.73~48.01 dB였다.
@@ -37,7 +37,7 @@ commit `9bebe16726b3a61c8c213eeee3b7cffb462ef34e` decoder를 vendor한다.
 upstream JS 50,538 bytes + Wasm 1,060,846 bytes, gzip 합 470,058 bytes였다.
 ES module export와 수정 고지 이외에는 generated decoder를 변경하지 않는다.
 Apache-2.0 LICENSE/NOTICE 및 Zstd BSD license를 함께 배포한다.
-[provenance](../../../packages/ferrum-web/vendor/basis/provenance.json)의 SHA-256을 build에서 검사한다.
+[provenance](https://github.com/silbaram/ferrum2d/blob/main/packages/ferrum-web/vendor/basis/provenance.json)의 SHA-256을 build에서 검사한다.
 
 package `dist/vendor/basis`와 `dist/ktx2Worker.js`는 tarball 필수 파일이다.
 Vite는 Worker/JS/Wasm을 별도 asset으로 배출한다. 파일은 번들 산출물에 포함되지만
