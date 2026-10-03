@@ -747,4 +747,22 @@ program 5개/shader 10개만 생성, draw 1/2/4회, 30회 steady draw 추가 할
 
 `pnpm smoke:data-scene`는 실제 runtime tarball을 pack/추출하고 public imports로 WebGL2 recipe를 실행한다. 1280×720/390×844 × DPR 1/2에서 origin/tint 픽셀, 배경/나무/actor 순서, heightSpan 추가/제거, kinematic collider/조개 접촉 위치, camera pan/zoom/resize, pointer 이동, culling, world label/light/occluder, reset stale handle을 확인한다. report는 `artifacts/data-scene-consumer-*/report.json`이다. `smoke:check`와 수동 CI validate job에 연결된다. 원격 CI 성공을 의미하지 않는다.
 
+## Data Scene 애니메이션·투영·태양 (#68~#70)
+
+`pnpm smoke:data-scene-presentation`은 실제 runtime tarball과 Wasm으로 optional
+`examples/data-scene-native/presentation.mjs` recipe를 실행한다. 1280×720/390×844 × DPR 1/2 ×
+legacy/linear-sRGB에서 독립 clip/frame/flip 픽셀, texture 재업로드 및 entity 재생성 없음,
+pause/완료/stale handle, ground scale 1/0.72 × zoom 0.75/1.5의 좌표/입력/label/particle,
+지면 그림자 alpha와 sun 방향/cache, point light/occluder/debug를 검증한다.
+두 renderer 모두 기본 pivot과 발 pivot 혼용 및 world text의 앞뒤 가림 픽셀, 타원 점광원의 세로 차폐물
+그림자와 반경 변경, Wasm f32 최솟값 ground scale 0.01의 실제 frame 진행을 검사한다.
+100/500/1000 caster의 command 수와 draw/resource 비용을 report하고 reapply/despawn/destroy를 검사한다.
+report와 screenshots는 `artifacts/data-scene-presentation-*/`에 남긴다. `smoke:check`와 CI validate
+job에서 실행하며 로컬 통과가 원격 CI 성공이나 물리 GPU 성능을 의미하지는 않는다.
+
+WebGPU는 별도 GPU texture에 같은 renderer/WGSL을 실행하고 readback한 DPR 1/2 픽셀을 검증한다.
+test-only canvas context adapter는 offscreen target만 제공하며 shader/queue/texture는 실제 WebGPU다.
+headless 환경에서 native canvas clear만으로 device가 종료되는 경로와 분리했으므로 native 화면
+presentation 성공으로 해석하지 않는다. adapter가 없거나 validation/pixel 검증에 실패하면 smoke도 실패한다.
+
 `smoke:placement-viewer`는 bottom-origin sprite의 회전·scale을 반영한 selection/draft overlay와 picking, 회전된 primitive resize를 검증한다. `smoke:color-management`는 기본·최상위·WebGL2·WebGPU fallback·주입 renderer의 Data Scene hex 색을 초기 적용/reapply/transition마다 실제 Wasm command와 픽셀로 확인한다. renderer와 다른 색 공간으로 재적용하는 요청은 거부해야 한다.

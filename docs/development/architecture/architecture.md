@@ -492,3 +492,24 @@ Data Scene spawn은 origin/tint/sortOrder와 명시적 depthSort를 Rust Sprite�
 TypeScript authoring viewer는 `scenePlacementVisualGeometry`로 동일한 pivot/scale/rotation 사각형을 계산해 picking과 공식·생성 viewer overlay에 사용한다. 이 계산은 authoring interaction에만 사용한다. runtime 소유 renderer와 Data Scene hex 색 변환은 같은 renderer option resolver를 공유하며 reapply/transition도 같은 working color space를 유지한다.
 
 Data Scene camera follow/bounds/smoothing은 simulation 뒤 Rust에서 계산한다. TypeScript `createDataSceneView`는 renderer의 CSS zoom, pointer와 light/occluder 변환을 같은 camera snapshot으로 연결한다. 렌더러는 zoom에 맞춘 logical viewport와 원래 DPR backbuffer를 분리한다. [사용 계약](../../engine/data-scene-native-runtime.md).
+
+Data Scene clip descriptor와 UV는 생성/재설정 시 Rust `SpritePlayback`에 설치한다. 전환은
+generation handle을 포함한 stride-8 u32 batch를 검증한 뒤 원자적으로 적용한다. Rust가 시간·frame·
+flip을 소유하며 기존 texture와 sprite/body를 유지한다. cold 설정 이외에는 clip frame allocation이 없다.
+
+`Camera2D.ground_y_scale`은 물리 transform과 별개인 render-only 값이다. Rust가 anchor/culling을,
+WebGL2/WebGPU vertex shader가 회전된 ground quad의 local Y를 변환한다. `SpriteRenderCommand`는
+15-float/60-byte를 유지한다. effectFlags의 bit 4는 ground projection, bit 8/16은 ellipse/box shadow다
+(여기서 숫자는 mask 값이며 기존 low effect bit와 독립이다). frame buffer metadata로 실제 scale을
+한 번 전달하므로 내장 씬으로 전환해도 renderer/debug에 이전 scale이 남지 않는다.
+renderer는 f32로 반올림된 최솟값 0.01을 허용한다. upright의 depth-sort pivot offset은 scale로
+나눠 지면 단위로 비교하며, 기존 회전 독립 정렬과 ground sprite의 기준은 유지한다.
+world text의 직립 block 높이도 같은 지면 단위로 환산해 sprite와 정렬한다.
+점광원의 타원 falloff와 차폐물 거리/외삽은 같은 `radiusY / radius` 좌표계를 사용하고,
+세로 반경 변경도 geometry cache를 무효화한다.
+
+`GroundShadowCaster`의 explicit silhouette와 geometry cache는 Rust world component로 소유한다.
+camera offset은 cache 밖에서 적용한다. transform/origin/alpha/sun/projection 변화로 무효화하고
+despawn/reset에서 제거한다. culling 후 visible caster budget을 적용하고 일반 sprite batch에 제출한다.
+caster마다 GPU resource/pass를 만들지 않는다. TS의 directional light는 기존 ambient/point-light
+pipeline에 추가되는 flat additive pass다. [지원 범위와 비용 계약](../../engine/data-scene-presentation.md).

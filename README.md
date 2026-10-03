@@ -490,3 +490,4 @@ WebGL2 GPU block 압축과 이미지 fallback을 지원하며 작은 pixel sprit
 [지원 범위와 측정](docs/development/quality/shader-preparation.md)을 참고하세요.
 
 Data Scene의 native actor, 명시적 depth 정렬, camera/zoom/조명 연결은 [Data Scene native runtime](docs/engine/data-scene-native-runtime.md)을 참고한다. 이 경로는 `0.1.0-beta.2`부터 제공한다.
+개발 브랜치에는 캐릭터별 atlas 클립·방향 전환, 2.5D 지면 투영, 태양 방향광·지면 그림자를 추가했다. [사용법과 지원 범위](docs/engine/data-scene-presentation.md)를 참고한다. 이 확장은 아직 릴리즈되지 않았다.

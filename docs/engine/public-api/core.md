@@ -627,3 +627,13 @@ context loss, timeout, 컴파일/링크 실패는 reject하며 context 자동 �
 `clampCameraToBounds`도 `/core`에서 사용할 수 있다. `/authoring`의 `DataSceneBodySpec`은 optional
 static/kinematic body와 sprite의 같은 핸들 연결을 정의한다.
 [Data Scene native runtime](../data-scene-native-runtime.md)에서 정렬·원점·색 공간·카메라·좌표·조명 계약을 확인한다.
+
+## Data Scene 표현 확장 (#68~#70, 미출시)
+
+`/core`, `/authoring`은 `DataSceneSpriteAnimationSetSpec`, `DataSceneSpriteAnimationUpdate`,
+`DataSceneSpriteAnimationState`, `resolveDataSceneSpriteAnimationSet`, `DirectionalLight2D`,
+`resolveDirectionalLight2D`, `DataSceneGroundShadowSpec`, `DataSceneGroundShadowStats`를 제공한다.
+`FerrumEngine.configureDataSceneSpriteAnimation`, `updateDataSceneSpriteAnimations`,
+`dataSceneSpriteAnimationState`, `setDataSceneGroundYScale`, `cameraGroundYScale`, `setDataSceneSun`,
+`dataSceneGroundShadowStats`와 `view.setGroundYScale/setSun`의 사용법은
+[애니메이션·투영·태양 그림자](../data-scene-presentation.md)에 정리했다.

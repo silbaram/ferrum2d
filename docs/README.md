@@ -6,6 +6,8 @@ Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI a
 
 게임 개발 환경을 초기 설정하는 AI 에이전트는 [AI 에이전트용 설치 지침](engine/ai-agent-install.md)을 먼저 읽는다. 엔진 tarball·개발 도구·consumer 지침만 설치하고 의존성을 검증한다. 예제 코드와 게임 데이터는 생성하지 않는다.
 
+Data Scene 캐릭터별 clip, 2.5D view, 방향광·caster API는 [애니메이션·투영·태양 그림자](engine/data-scene-presentation.md)에서 확인한다.
+
 ## 큰 구분
 
 | 디렉터리 | 역할 | 주요 문서 |

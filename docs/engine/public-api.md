@@ -83,6 +83,7 @@ preview API는 1.0 전 breaking change가 가능하다. 그래도 `public-api-su
 | [Migration Guide](public-api/migration-guide.md) | root aggregate/internal path import를 목적별 public subpath로 이전하는 절차 |
 | [Runtime Extensibility](runtime-extensibility.md) | projectile/weapon/prefab/reaction/effect event의 제품 기준 설명 |
 | [Data Scene Authoring](data-scene-authoring.md) | generic data scene 최소 authoring envelope |
+| [Data Scene 표현 확장](data-scene-presentation.md) | 캐릭터별 atlas 클립, 지면 투영, 태양 방향광과 native 그림자 |
 | [Physics Spec](physics-spec.md) | physics authoring, solver, query, snapshot/replay 계약 |
 | [좌표계와 2D 기하 변환](coordinate-system.md) | world 축, 단위, anchor와 public point/collider transform 계약 |
 
