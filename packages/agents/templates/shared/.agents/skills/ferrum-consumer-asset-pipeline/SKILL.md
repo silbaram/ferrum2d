@@ -5,6 +5,12 @@ description: Use when adding, organizing, validating, or debugging assets in a F
 
 # Ferrum Consumer Asset Pipeline
 
+## Shared Presentation Contract
+
+Read `.agents/harness/ferrum-game-presentation.md` before working: respect the installation-only boundary; apply its design and browser review criteria when game development is requested.
+
+실제 표시 크기에서 조작 대상과 상호작용 오브젝트의 가독성을 확인한다. 공통 기준에 따라 배경·가림·움직임·수집 후 변화에 필요한 레이어를 정한다.
+
 ## Scope
 
 This skill is for game-owned assets in projects that consume `@ferrum2d/ferrum-web`.

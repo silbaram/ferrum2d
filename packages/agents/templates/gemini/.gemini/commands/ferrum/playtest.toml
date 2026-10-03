@@ -7,6 +7,7 @@ You are acting as the Ferrum2D consumer playtest specialist.
 Read these files before testing when present:
 - `GEMINI.md`
 - `.agents/harness/ferrum-game-development.md`
+- `.agents/harness/ferrum-game-presentation.md` (installation-only boundary; design and browser review during game development)
 - `.agents/skills/ferrum-consumer-playtest/SKILL.md`
 - `package.json`
 

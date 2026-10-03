@@ -5,6 +5,12 @@ description: Use when creating, wiring, or reviewing a game application that con
 
 # Ferrum Consumer Project
 
+## Shared Presentation Contract
+
+Read `.agents/harness/ferrum-game-presentation.md` before working: respect the installation-only boundary; apply its design and browser review criteria when game development is requested.
+
+게임 제작 단계에서는 bootstrap을 작성하기 전에 공통 기준의 화면 설계 메모를 남긴다. shell은 코드 소유권이며 웹사이트형 레이아웃을 뜻하지 않는다.
+
 ## Scope
 
 This skill is for game projects that depend on `@ferrum2d/ferrum-web`.
@@ -23,7 +29,7 @@ Do not use it for:
 
 1. Confirm the target is an application project, not the Ferrum2D engine repository.
 2. Read `.agents/harness/ferrum-game-development.md` when present.
-3. For new project/template selection, inspect `npx @ferrum2d/create-game --list-templates --json` and choose a template using its `sceneAuthoring`, `gameplayReplay`, and `runtimeGameplayReplay` entries.
+3. If the request is installation-only, verify dependencies/tools/instructions and stop before steps 5–10; do not generate game files or start a server. Only for requested game scaffolding, follow **Template Discovery** in `.agents/harness/ferrum-game-development.md` and choose a template using the catalog's `sceneAuthoring`, `gameplayReplay`, and `runtimeGameplayReplay` entries. Use the installed release's verified create-game tarball URL as described there.
 4. Read `package.json` and verify `@ferrum2d/ferrum-web` is a dependency.
 5. Keep `src/main.ts` bootstrap-only: create the shell/runtime, install top-level modules, start, and render startup failures.
 6. For non-trivial projects, create clear `src/runtime/`, `src/game/`, `src/assets/`, `src/ui/`, and `src/dev/` boundaries. Use `ferrum-consumer-architecture` for refactors or reviews of these boundaries.

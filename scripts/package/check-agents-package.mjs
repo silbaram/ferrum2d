@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ const packageJson = await readJson(path.join(packageRoot, "package.json"));
 const expectPublishable = process.argv.includes("--expect-publishable");
 const verifyPack = process.argv.includes("--verify-pack");
 const packageLabel = "@ferrum2d/agents";
+const presentationHarness = ".agents/harness/ferrum-game-presentation.md";
 const expectedFiles = ["LICENSE", "README.md", "bin", "templates"];
 const skills = [
   "ferrum-consumer-project",
@@ -79,6 +80,7 @@ const geminiCommandSkillMap = new Map([
 ]);
 const expectedTemplateFiles = [
   "shared/.agents/harness/ferrum-game-development.md",
+  `shared/${presentationHarness}`,
   "shared/.agents/harness/ferrum-runtime-replay.md",
   ...skills.map((skill) => `shared/.agents/skills/${skill}/SKILL.md`),
   "codex/.codex/config.toml",
@@ -93,6 +95,7 @@ const requiredPackedFiles = [
   "package/README.md",
   "package/bin/ferrum2d-agents.mjs",
   "package/templates/shared/.agents/harness/ferrum-game-development.md",
+  `package/templates/shared/${presentationHarness}`,
   "package/templates/shared/.agents/harness/ferrum-runtime-replay.md",
   ...skills.map((skill) => `package/templates/shared/.agents/skills/${skill}/SKILL.md`),
   "package/templates/codex/.codex/config.toml",
@@ -131,7 +134,7 @@ assertConsumerRuntimeApplyContract(packageReadmeSource, packageReadmeFile);
 assertConsumerAssetPipelineContract(packageReadmeSource, packageReadmeFile);
 assertConsumerPlacementAuthoringContract(packageReadmeSource, packageReadmeFile);
 assertConsumerBehaviorBindingHandoffContract(packageReadmeSource, packageReadmeFile);
-assertCreateGameTemplateCatalogDiscovery(packageReadmeSource, packageReadmeFile);
+assertCreateGameTemplateCatalogDiscovery(packageReadmeSource, packageReadmeFile, { referenceOnly: true });
 assertForbiddenPublicImportBoundary(packageReadmeSource, packageReadmeFile);
 assertNoForbiddenImportExamples(packageReadmeSource, packageReadmeFile);
 await requireFile(path.join(packageRoot, "bin/ferrum2d-agents.mjs"), repoRoot);
@@ -174,7 +177,9 @@ async function checkTemplates() {
   await requireFile(gameDevelopmentHarnessFile, repoRoot);
   await requireFile(runtimeReplayHarnessFile, repoRoot);
 
+  await requireFile(path.join(templatesRoot, "shared", presentationHarness), repoRoot);
   const gameDevelopmentHarnessSource = await readFile(gameDevelopmentHarnessFile, "utf8");
+  assertPresentationReference(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
   assert(
     gameDevelopmentHarnessSource.includes(".agents/harness/ferrum-runtime-replay.md"),
     "game development harness must point to project-specific runtime replay harness",
@@ -195,11 +200,12 @@ async function checkTemplates() {
   for (const skill of skills) {
     const sharedFile = path.join(templatesRoot, `shared/.agents/skills/${skill}/SKILL.md`);
     const sharedSource = await readFile(sharedFile, "utf8");
+    assertPresentationReference(sharedSource, sharedFile);
     assertFrontmatterField(sharedSource, "name", skill, sharedFile);
     assertFrontmatterExists(sharedSource, "description", sharedFile);
     assert(sharedSource.includes("Do not use"), `${path.relative(repoRoot, sharedFile)} must define hard boundaries`);
     if (skill === "ferrum-consumer-project") {
-      assertCreateGameTemplateCatalogDiscovery(sharedSource, sharedFile);
+      assertCreateGameTemplateCatalogDiscovery(sharedSource, sharedFile, { referenceOnly: true });
     }
     if (skill === "ferrum-consumer-game-spec") {
       assertConsumerProjectileWeaponAuthoringContract(sharedSource, sharedFile);
@@ -251,6 +257,7 @@ async function checkTemplates() {
     assert(expectedCodexName !== undefined, `missing expected Codex name mapping for ${agent}`);
     const codexFile = path.join(templatesRoot, `codex/.codex/agents/${agent}.toml`);
     const codexSource = await readFile(codexFile, "utf8");
+    assertPresentationReference(codexSource, codexFile);
     assert(
       new RegExp(`^name\\s*=\\s*"${escapeRegExp(expectedCodexName)}"$`, "m").test(codexSource),
       `${path.relative(repoRoot, codexFile)} must define Codex name ${expectedCodexName}`,
@@ -265,6 +272,7 @@ async function checkTemplates() {
 
     const claudeFile = path.join(templatesRoot, `claude/.claude/agents/${agent}.md`);
     const claudeSource = await readFile(claudeFile, "utf8");
+    assertPresentationReference(claudeSource, claudeFile);
     assertFrontmatterField(claudeSource, "name", agent, claudeFile);
     assertFrontmatterExists(claudeSource, "description", claudeFile);
     const skillRefs = [...frontmatter(claudeSource, claudeFile).matchAll(/^\s*-\s+(ferrum-consumer-[a-z-]+)$/gm)].map((match) => match[1]);
@@ -287,6 +295,7 @@ async function checkTemplates() {
     assert(expectedSkill !== undefined, `missing expected Gemini skill mapping for ${command}`);
     const geminiFile = path.join(templatesRoot, `gemini/.gemini/commands/ferrum/${command}.toml`);
     const geminiSource = await readFile(geminiFile, "utf8");
+    assertPresentationReference(geminiSource, geminiFile);
     assert(/^description\s*=\s*"/m.test(geminiSource), `${path.relative(repoRoot, geminiFile)} must define Gemini command description`);
     assert(/^prompt\s*=\s*"""/m.test(geminiSource), `${path.relative(repoRoot, geminiFile)} must define Gemini command prompt`);
     assert(
@@ -366,6 +375,43 @@ async function checkInstallerOutput() {
     assert(!await exists(path.join(targetRoot, ".gemini/agents")), "installed output must not create unsupported .gemini/agents");
     assert(!await exists(path.join(targetRoot, ".gemini/skills")), "installed output must not create .gemini/skills wrappers");
 
+    // A setup-only install must contain AI instructions and nothing that starts a game.
+    const expectedInstalledFiles = expectedTemplateFiles.map((file) => file.slice(file.indexOf("/") + 1));
+    const expectedOutput = [...expectedInstalledFiles, "AGENTS.md", "CLAUDE.md", "GEMINI.md"].sort();
+    assert(
+      JSON.stringify(await listFilesRecursive(targetRoot)) === JSON.stringify(expectedOutput),
+      "agents init must only create the approved instruction files, without game sources or scripts",
+    );
+    const expectedRootEntries = [...new Set(expectedOutput.map((file) => file.split("/")[0]))].sort();
+    assert(
+      JSON.stringify((await readdir(targetRoot)).sort()) === JSON.stringify(expectedRootEntries),
+      "agents init must not create game directories, even empty ones",
+    );
+    for (const templateFile of expectedTemplateFiles) {
+      const installedFile = templateFile.slice(templateFile.indexOf("/") + 1);
+      assert(
+        await readFile(path.join(targetRoot, installedFile), "utf8") === await readFile(path.join(templatesRoot, templateFile), "utf8"),
+        `installed ${installedFile} must match the canonical template`,
+      );
+    }
+    for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"]) {
+      assertPresentationReference(await readFile(path.join(targetRoot, name), "utf8"), name);
+    }
+
+    // Updating instructions without --force must preserve consumer customizations.
+    for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md", presentationHarness]) {
+      const file = path.join(targetRoot, name);
+      await writeFile(file, `User-owned instruction.\n${await readFile(file, "utf8")}`);
+    }
+    const before = await Promise.all(expectedOutput.map((file) => readFile(path.join(targetRoot, file), "utf8")));
+    const repeated = await run(process.execPath, [cliPath, "init", "--target", targetRoot, "--tools", "all"], repoRoot);
+    assert(repeated.code === 0, `repeated agents init failed: ${repeated.stderr}`);
+    assert(JSON.stringify(await listFilesRecursive(targetRoot)) === JSON.stringify(expectedOutput), "repeated init must not create extra files");
+    const after = await Promise.all(expectedOutput.map((file) => readFile(path.join(targetRoot, file), "utf8")));
+    assert(JSON.stringify(after) === JSON.stringify(before), "repeated init must preserve existing consumer instructions");
+
+    await checkExistingProjectUpgrade(cliPath, path.join(tempDir, "existing-game"), expectedOutput);
+
     const dryRunTarget = path.join(tempDir, "dry-run-game");
     const dryRun = await run(process.execPath, [cliPath, "init", "--target", dryRunTarget, "--tools", "codex", "--dry-run"], repoRoot);
     assert(dryRun.code === 0, `agents dry-run failed with exit code ${dryRun.code}`);
@@ -373,6 +419,55 @@ async function checkInstallerOutput() {
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
+}
+
+async function checkExistingProjectUpgrade(cliPath, targetRoot, expectedOutput) {
+  const legacyFiles = {
+    "package.json": '{"private":true,"scripts":{"dev":"user-owned-command"}}\n',
+    "src/main.ts": '// User-owned game source.\n',
+    "public/game.json": '{"title":"User-owned game data"}\n',
+    ".agents/harness/ferrum-game-development.md": "# Older installed harness with project customizations\n",
+  };
+  for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"]) {
+    legacyFiles[name] = "User instructions before the block.\n<!-- ferrum2d-consumer-agents:start -->\nOlder installed instructions.\n<!-- ferrum2d-consumer-agents:end -->\nUser instructions after the block.\n";
+  }
+  for (const [file, content] of Object.entries(legacyFiles)) {
+    await mkdir(path.dirname(path.join(targetRoot, file)), { recursive: true });
+    await writeFile(path.join(targetRoot, file), content);
+  }
+  const args = [cliPath, "init", "--target", targetRoot, "--tools", "all"];
+  const dryRun = await run(process.execPath, [...args, "--dry-run"], repoRoot);
+  assert(dryRun.code === 0, `existing project dry-run failed: ${dryRun.stderr}`);
+  assert(dryRun.stdout.includes("Existing files would be preserved"), "dry-run must explain that existing instructions are not upgraded");
+  assert(
+    JSON.stringify(await listFilesRecursive(targetRoot)) === JSON.stringify(Object.keys(legacyFiles).sort()),
+    "existing project dry-run must not create files",
+  );
+  await assertLegacyFilesPreserved();
+
+  const result = await run(process.execPath, args, repoRoot);
+  assert(result.code === 0, `existing project install failed: ${result.stderr}`);
+  assert(result.stdout.includes("Existing files were preserved"), "update must report that existing instructions were preserved");
+  assert(result.stdout.includes("init --target <empty-directory>") && result.stdout.includes("compare and merge"), "update must offer a non-destructive migration path");
+  assert(!result.stdout.includes("Pass --force to replace managed files."), "update must not recommend an unreviewed force overwrite");
+  await assertLegacyFilesPreserved();
+  assert(
+    await readFile(path.join(targetRoot, presentationHarness), "utf8") ===
+      await readFile(path.join(templatesRoot, "shared", presentationHarness), "utf8"),
+    "update must install the missing presentation harness while preserving legacy instructions",
+  );
+  const expectedFiles = [...new Set([...expectedOutput, ...Object.keys(legacyFiles)])].sort();
+  assert(JSON.stringify(await listFilesRecursive(targetRoot)) === JSON.stringify(expectedFiles), "update must only add missing instruction files");
+
+  async function assertLegacyFilesPreserved() {
+    for (const [file, content] of Object.entries(legacyFiles)) {
+      assert(await readFile(path.join(targetRoot, file), "utf8") === content, `update must preserve existing ${file}`);
+    }
+  }
+}
+
+function assertPresentationReference(source, file) {
+  assert(source.includes(presentationHarness), `${file} must reference the canonical game presentation contract`);
 }
 
 function assertFrontmatterField(source, name, expected, filePath) {
@@ -513,9 +608,12 @@ function assertConsumerAssetPipelineContract(source, filePath) {
   );
 }
 
-function assertCreateGameTemplateCatalogDiscovery(source, filePath) {
+function assertCreateGameTemplateCatalogDiscovery(source, filePath, { referenceOnly = false } = {}) {
+  const hasDiscovery = referenceOnly
+    ? source.includes(".agents/harness/ferrum-game-development.md") && source.includes("Template Discovery")
+    : source.includes('npx --yes --allow-remote=root "$ferrum_cli_url" --list-templates --json');
   assert(
-    source.includes("npx @ferrum2d/create-game --list-templates --json") &&
+    hasDiscovery &&
       source.includes("sceneAuthoring") &&
       source.includes("gameplayReplay") &&
       source.includes("runtimeGameplayReplay"),

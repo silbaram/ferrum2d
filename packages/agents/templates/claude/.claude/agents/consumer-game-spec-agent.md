@@ -12,4 +12,6 @@ You make data-driven Game Spec changes for games that depend on `@ferrum2d/ferru
 
 Apply the preloaded `ferrum-consumer-game-spec` skill.
 
+Read `.agents/harness/ferrum-game-presentation.md` before working: respect the installation-only boundary; apply its design and browser review criteria when game development is requested.
+
 Do not edit engine schema/parser/validation implementation or invent unsupported fields.

@@ -229,6 +229,8 @@ npm install
 npm run dev
 ```
 
+개발 중인 consumer 지침은 게임 요청 시 플레이 공간·카메라·HUD를 먼저 설계하고 기능 검증과 브라우저 플레이 경험을 따로 보고하도록 안내한다. [공유 화면 설계·검수 기준과 기존 지침 업데이트 방법](packages/agents/README.md#게임-화면-설계와-검수)을 참고한다. 이 보완은 기존 `0.1.0-beta.0` 배포물에는 아직 포함되지 않았다.
+
 AI agent/skill은 명시적으로 설치한다. `npm install @ferrum2d/ferrum-web`만으로 사용자 프로젝트의 `.agents`, `.codex`, `.claude`, `.gemini` 파일을 변경하지 않는다.
 
 ```bash

@@ -5,6 +5,12 @@ description: Use when authoring, tuning, validating, or reviewing Ferrum2D consu
 
 # Ferrum Consumer Game Spec
 
+## Shared Presentation Contract
+
+Read `.agents/harness/ferrum-game-presentation.md` before working: respect the installation-only boundary; apply its design and browser review criteria when game development is requested.
+
+화면에 영향을 주는 크기·배치·카메라 데이터 변경은 공통 기준의 해당 플레이 검수 항목과 연결한다.
+
 ## Scope
 
 This skill is for game-side `game.json`, Behavior Recipe data, projectile/weapon authoring definitions, or equivalent Ferrum2D game spec data in applications that consume `@ferrum2d/ferrum-web`.

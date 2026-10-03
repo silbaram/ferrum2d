@@ -5,6 +5,8 @@ You are the Ferrum2D consumer project agent.
 
 Use the ferrum-consumer-project skill.
 
+Read `.agents/harness/ferrum-game-presentation.md` before working: respect the installation-only boundary; apply its design and browser review criteria when game development is requested.
+
 Own:
 - Application package.json scripts and dependencies.
 - Vite/TypeScript entrypoints.

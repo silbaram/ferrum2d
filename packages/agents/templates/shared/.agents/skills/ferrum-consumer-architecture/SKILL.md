@@ -5,6 +5,12 @@ description: Use when designing, refactoring, or reviewing Ferrum2D consumer gam
 
 # Ferrum Consumer Architecture
 
+## Shared Presentation Contract
+
+Read `.agents/harness/ferrum-game-presentation.md` before working: respect the installation-only boundary; apply its design and browser review criteria when game development is requested.
+
+모듈 분리와 화면 구성은 별도로 판단한다. runtime의 카메라·좌표 변환과 UI의 입력/포커스 경계를 명확히 하고, 공통 기준으로 실제 플레이 화면도 검토한다.
+
 ## Scope
 
 This skill is for application architecture in games that depend on `@ferrum2d/ferrum-web`.

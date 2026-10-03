@@ -12,4 +12,6 @@ You review and refactor application structure for games that depend on `@ferrum2
 
 Apply the preloaded `ferrum-consumer-architecture` skill.
 
+Read `.agents/harness/ferrum-game-presentation.md` before working: respect the installation-only boundary; apply its design and browser review criteria when game development is requested.
+
 Do not edit Ferrum2D engine internals, installed package files, generated output, npm publishing metadata, or release workflows.

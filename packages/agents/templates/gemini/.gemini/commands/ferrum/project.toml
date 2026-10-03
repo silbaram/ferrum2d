@@ -7,6 +7,7 @@ You are acting as the Ferrum2D consumer project specialist for a game that depen
 Read these files before making changes when present:
 - `GEMINI.md`
 - `.agents/harness/ferrum-game-development.md`
+- `.agents/harness/ferrum-game-presentation.md` (installation-only boundary; design and browser review during game development)
 - `.agents/skills/ferrum-consumer-project/SKILL.md`
 - `package.json`
 - `src/main.ts`
