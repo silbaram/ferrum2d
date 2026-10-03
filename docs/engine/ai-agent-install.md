@@ -1,37 +1,26 @@
-# AI 에이전트용 Ferrum2D 설치 지침
+# AI 에이전트용 Ferrum2D 초기 설치 지침
 
-이 문서는 Codex, Claude, Gemini 등 터미널을 사용할 수 있는 AI 에이전트가 **사용자의 게임 프로젝트 디렉터리에 Ferrum2D를 설치하고 실행을 검증하는 절차**다. 사용자가 이 문서를 따라 설치하라고 요청하면 설명에 그치지 말고 아래 단계를 실행한다. 사용자가 지정한 경로, 템플릿, 기존 프로젝트 지침을 우선한다.
+이 문서는 사용자의 게임 프로젝트에 **엔진 패키지, 개발 도구, AI 지침만 설치하는 절차**다. 설치가 끝나면 게임 요구사항을 기다린다. 초기 설치 요청만으로 예제 게임, `src/`, `public/`, HTML 화면, 배치 뷰어, replay fixture를 만들거나 개발 서버를 시작하지 않는다.
+
+`0.1.0-beta.0`의 `create-game`은 실행 가능한 예제 생성기다. `minimal`에도 슈팅 동작, HUD, authoring/replay 데이터와 viewer 코드가 들어 있다. **초기 설정에서는 어떤 `create-game` 템플릿도 실행하지 않고 엔진 tarball을 직접 설치한다.** 사용자가 예제 게임을 명시적으로 요청한 경우에만 [템플릿 퀵스타트](developer-quickstart.md)를 따른다.
 
 ## 사용자 요청 예시
 
-빈 게임 디렉터리를 AI 도구에서 열고 다음 요청을 전달한다.
+대상 디렉터리를 AI 도구에서 열고 다음 요청을 전달한다.
 
 ```text
 https://github.com/silbaram/ferrum2d/blob/main/docs/engine/ai-agent-install.md
 
-이 문서를 읽고 현재 빈 디렉터리에 Ferrum2D 게임 개발 환경을 설치해줘.
-topdown 템플릿과 AI 개발 지침을 설치하고, 게임 검사와 배포 준비 검사를 실행해줘.
-개발 서버를 실행한 뒤 접속 주소와 검증 결과를 알려줘.
+이 문서를 따라 현재 디렉터리에 Ferrum2D 초기 개발 환경만 설치해줘.
+엔진, TypeScript/Vite, AI 개발 지침을 설치하고 의존성을 검증해줘.
+예제 게임, src 코드, 화면, 뷰어, 게임 데이터는 만들지 말고 설치 결과만 알려줘.
 ```
 
-원문을 읽어야 하는 도구는 [Raw Markdown](https://raw.githubusercontent.com/silbaram/ferrum2d/main/docs/engine/ai-agent-install.md)을 사용한다. 이 문서를 설치 대상 폴더에 먼저 저장하면 폴더가 비어 있지 않게 된다. 원격으로 읽거나 대상 폴더 밖에 보관한다.
+원문이 필요한 도구는 [Raw Markdown](https://raw.githubusercontent.com/silbaram/ferrum2d/main/docs/engine/ai-agent-install.md)을 읽는다. 사용자가 지정한 경로와 기존 프로젝트 지침을 우선하며, 설치 설명에 그치지 말고 아래 절차를 실행한다.
 
-## 설치 기준
+## 1. 환경과 기존 파일 확인
 
-| 항목 | 기준 |
-| --- | --- |
-| 설치 버전 | `0.1.0-beta.0` |
-| Git tag | `ferrum-web-v0.1.0-beta.0` |
-| 공개 릴리스 | [Ferrum2D 0.1.0-beta.0](https://github.com/silbaram/ferrum2d/releases/tag/ferrum-web-v0.1.0-beta.0) |
-| 실행 환경 | Node.js 22 권장, npm과 npx, WebGL2 지원 브라우저 |
-| 다운로드 | Ferrum2D 패키지는 GitHub Release, Vite·TypeScript 등 개발 도구는 npm 레지스트리 |
-| 기본 템플릿 | 사용자가 지정하지 않았다면 이 지침에서는 `topdown` 사용 |
-
-빌드된 Wasm이 패키지에 포함되어 있으므로 게임 프로젝트에 Rust, wasm-pack, pnpm이나 엔진 소스 clone은 필요하지 않다. npm에 공개된 패키지 이름으로 설치하는 대신 아래의 **버전이 고정된 GitHub tarball URL**을 사용한다. GitHub의 자동 생성 Source code 압축 파일은 설치용 패키지가 아니다.
-
-## 1. 대상 디렉터리와 실행 환경 확인
-
-사용자가 지정한 게임 디렉터리에서 실행한다. 각 명령의 종료 상태를 확인하고 실패한 단계가 있으면 원인을 해결한 뒤 다음 단계로 진행한다.
+사용자가 지정한 프로젝트 디렉터리에서 실행한다.
 
 ```bash
 node --version
@@ -39,52 +28,68 @@ npm --version
 node -e "console.log(process.cwd()); console.log(require('node:fs').readdirSync('.'))"
 ```
 
-- 새 프로젝트 생성 대상은 빈 디렉터리여야 한다. `.git`, `.vscode`, `AGENTS.md` 같은 숨김 파일이나 지침 파일만 있어도 생성기는 비어 있지 않은 것으로 판단한다.
-- 파일이 있다면 먼저 내용을 확인한다. 이미 생성된 Ferrum2D 프로젝트라면 아래 재설치 절차를 사용한다. 새 프로젝트가 필요하면 사용자가 지정한 새 경로나 비어 있는 하위 디렉터리를 사용한다.
-- 사용자 파일을 삭제하거나 `--force`로 덮어써서 빈 디렉터리 검사를 우회하지 않는다. 대상이 불명확하면 충돌 내용과 필요한 경로 선택을 알린다.
-- Node.js/npm을 실행할 수 없다면 누락된 도구와 설치 필요 사항을 알린다. 기존 전역 개발 환경을 임의로 교체하지 않는다.
+Node.js 22를 권장한다. npm/npx와 GitHub·npm 레지스트리 네트워크 접근이 필요하다. 빌드된 Wasm을 설치하므로 Rust, wasm-pack, 엔진 저장소 clone은 필요하지 않다.
 
-## 2. 현재 디렉터리에 게임 프로젝트 생성
+`.git`이나 기존 AI 지침이 있어도 초기 설치는 가능하다. 기존 `package.json`, `.npmrc`, `.gitignore`, 지침 파일은 읽고 필요한 설정만 병합한다. 사용자가 작성한 코드와 지침을 덮어쓰거나 예제 정리 명목으로 삭제하지 않는다. Node.js/npm이 없으면 누락된 도구를 알리고, 기존 전역 환경을 임의로 교체하지 않는다.
 
-아래 명령의 `.`은 현재 디렉터리다. 명령은 한 줄로 실행하며 Bash와 PowerShell에서 같은 형태로 사용할 수 있다.
+## 2. 프로젝트 설정 작성
 
-```bash
-npx --yes --allow-remote=root https://github.com/silbaram/ferrum2d/releases/download/ferrum-web-v0.1.0-beta.0/ferrum2d-create-game-0.1.0-beta.0.tgz . --template topdown
+새 프로젝트에서는 아래 `package.json`을 작성한다. `name`은 실제 디렉터리에 맞는 npm package name으로 바꾼다. 기존 프로젝트에는 필요한 dependency와 script만 병합한다. `authoring-viewer`와 `create-game`은 초기 설치에 추가하지 않는다.
+
+```json
+{
+  "name": "my-game",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "ferrum:setup-check": "node --input-type=module -e \"await import('@ferrum2d/ferrum-web/core'); console.log('Ferrum2D setup OK')\"",
+    "ferrum:agents": "npx --yes --allow-remote=root --package=https://github.com/silbaram/ferrum2d/releases/download/ferrum-web-v0.1.0-beta.0/ferrum2d-agents-0.1.0-beta.0.tgz ferrum2d-agents init --tools codex,claude,gemini"
+  },
+  "dependencies": {
+    "@ferrum2d/ferrum-web": "https://github.com/silbaram/ferrum2d/releases/download/ferrum-web-v0.1.0-beta.0/ferrum2d-ferrum-web-0.1.0-beta.0.tgz"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vite": "^5.4.19"
+  },
+  "ferrumGithubRelease": {
+    "repository": "silbaram/ferrum2d",
+    "version": "0.1.0-beta.0",
+    "tag": "ferrum-web-v0.1.0-beta.0"
+  }
+}
 ```
 
-새 하위 디렉터리에 만들려면 `.`을 `my-game`처럼 원하는 이름으로 바꾸고 생성 후 해당 디렉터리로 이동한다. 공백이 있는 경로는 따옴표로 감싼다. 이후 모든 명령은 생성된 `package.json`이 있는 디렉터리에서 실행한다.
+공개 릴리스는 [Ferrum2D 0.1.0-beta.0](https://github.com/silbaram/ferrum2d/releases/tag/ferrum-web-v0.1.0-beta.0)다. 엔진과 agents URL은 같은 버전으로 고정한다. `latest`나 npm registry package name으로 임의 치환하지 않는다. 게임 자체의 `version`은 엔진 버전과 별개다.
 
-| 템플릿 | 시작점 |
-| --- | --- |
-| `topdown` | Game Spec 기반 탑다운 슈터 |
-| `minimal` | 가장 작은 runtime starter |
-| `platformer` | 이동·점프 중심 플랫폼 게임 starter |
-| `breakout` | 패들·공·벽돌 중심 아케이드 starter |
+새 `.npmrc`에는 다음을 기록한다. 기존 정책과 충돌하면 파일을 덮어쓰지 말고 충돌을 알린다.
 
-템플릿은 위 명령의 `--template` 값으로 선택한다. 생성 후 `package.json`과 `FERRUM_INSTALL.md`를 읽고 다음을 확인한다.
+```ini
+allow-remote=root
+```
 
-- `ferrumGithubRelease`의 저장소는 `silbaram/ferrum2d`, 버전은 `0.1.0-beta.0`, 태그는 `ferrum-web-v0.1.0-beta.0`이다.
-- `@ferrum2d/ferrum-web`, `@ferrum2d/authoring-viewer` 의존성과 `ferrum:agents` 스크립트의 다운로드 URL은 모두 같은 릴리스를 가리킨다.
-- `.npmrc`에 `allow-remote=root`가 있다. npm 12에서 직접 URL 의존성을 설치하기 위한 설정이다.
+새 `.gitignore`에는 다음을 기록한다. 기존 파일에는 없는 항목만 추가한다.
 
-## 3. 엔진과 개발 도구 설치
+```gitignore
+node_modules/
+dist/
+```
+
+이 단계에서 `dev`, `build`, `preview`, `ferrum:check`, `ferrum:deploy-report` 스크립트나 TypeScript/Vite 설정 파일을 임의로 만들지 않는다. 이들은 실제 게임의 entrypoint와 검증 요구가 정해진 뒤 추가한다.
+
+## 3. 패키지와 AI 지침 설치
+
+각 명령의 종료 코드를 확인하고 성공한 뒤 다음 명령을 실행한다.
 
 ```bash
 npm install
-npm ls --depth=0
-```
-
-엔진과 viewer의 설치 버전이 `0.1.0-beta.0`인지 확인한다. 게임 자체의 `package.json.version`은 게임 프로젝트 버전이므로 엔진 버전과 같을 필요가 없다. 생성된 `package-lock.json`을 보존하고 버전 관리에 포함한다.
-
-## 4. AI 게임 개발 지침 설치
-
-```bash
 npm run ferrum:agents
 ```
 
-이 단계는 AI로 게임을 개발할 때 명시적으로 실행한다. `npm install`만으로는 지침을 설치하지 않는다. 위 사용자 요청 예시에는 이 단계가 포함되어 있다.
+엔진은 GitHub Release에서, TypeScript와 Vite는 npm 레지스트리에서 설치한다. `package-lock.json`을 보존하고 버전 관리에 포함한다. 기존 lockfile과 의존성이 바뀌지 않은 재설치는 `npm ci`를 사용한다.
 
-설치 후 현재 사용하는 도구의 진입 지침, 공통 `.agents/harness/ferrum-game-development.md`, 작업에 해당하는 consumer skill을 읽고 이후 게임 개발에 적용한다.
+`ferrum:agents`는 게임 코드 없이 consumer AI 지침만 설치한다.
 
 | 도구 | 진입 지침 | 설치 디렉터리 |
 | --- | --- | --- |
@@ -92,50 +97,47 @@ npm run ferrum:agents
 | Claude | `CLAUDE.md` | `.claude/agents/`, `.claude/skills/`, `.agents/skills/` |
 | Gemini | `GEMINI.md` | `.gemini/commands/`, `.agents/skills/` |
 
-이 파일들은 게임 프로젝트용 지침이다. 엔진 저장소 루트의 `AGENTS.md`와 개발용 agent 설정을 게임 프로젝트에 복사하지 않는다. 현재 세션에서 도구가 새 설정을 자동 발견하지 못하면 진입 지침을 직접 읽고, 도구 재시작이 필요한 경우 그 사실을 알린다.
+`FERRUM_INSTALL.md`에 릴리스 URL, 엔진 버전, 재설치 명령과 아래 프로젝트 상태를 기록한다. 설치된 각 진입 지침에도 기존 내용과 managed block을 보존하면서 `FERRUM_INSTALL.md`를 먼저 읽으라는 안내와 아래 초기 설정 범위를 추가한다. 이 문구는 실제 게임 개발 요청이 들어오면 해당 요구사항에 맞게 갱신한다.
 
-## 5. 설치와 게임 검증
-
-```bash
-npm run ferrum:report
-npm run ferrum:check
-npm run ferrum:deploy-report
+```text
+현재 프로젝트는 Ferrum2D 의존성과 AI 지침만 설치한 초기 설정 상태다.
+초기 설치 검증은 npm run ferrum:setup-check를 사용한다.
+설치를 완료한다는 이유로 src/, public/, HTML, 예제 게임, viewer, replay 데이터 또는 누락된 게임 검증 스크립트를 생성하지 않는다.
+사용자가 게임 개발을 요청한 뒤 필요한 코드와 설정, 게임 검증 명령을 추가한다.
 ```
 
-- `ferrum:report`: 생성 프로젝트 구조와 `project.runtimeInputs`에서 실제 게임 입력 파일을 확인한다.
-- `ferrum:check`: validation, asset, authoring, replay와 production build를 검사한다. 종료 코드 0과 check 보고서의 `status: "passed"`를 확인한다.
-- `ferrum:deploy-report`: 종료 코드 0, `ok: true`, `deployment.status: "ready"`를 확인한다. production build, 정적 asset 경로, 실제 preview HTTP 응답과 Wasm MIME을 검사한다.
+게임 개발용 skill의 build/report 절차는 해당 게임 파일과 명령이 실제로 존재할 때 적용한다. 초기 설정 단계에서 없는 파일을 검사 실패로 취급하고 예제를 복사해 보충하지 않는다. 엔진 저장소의 개발용 `AGENTS.md`나 release agent를 게임 프로젝트에 복사하지 않는다.
 
-검사가 실패하면 `failedStep`, diagnostic, `nextCommand`를 읽고 원인을 해결한다. 검사를 건너뛰거나 replay fixture를 무조건 갱신해 성공으로 만들지 않는다. HTTP 배포 준비 검사 통과와 브라우저에서 직접 게임을 조작한 결과는 구분해 보고한다.
-
-## 6. 개발 서버 실행과 완료 보고
+## 4. 설치 검증과 종료
 
 ```bash
-npm run dev
+npm ls --depth=0
+npm run ferrum:setup-check
 ```
 
-이 명령은 계속 실행되는 서버다. 에이전트 도구의 지속 실행 세션으로 시작하고 로그에 출력된 실제 접속 URL을 확인해 사용자에게 알려준다. 사용 중인 포트에 따라 URL이 달라지므로 `5173`이라고 단정하지 않는다. `dist/index.html`을 `file://`로 여는 대신 HTTP 주소를 사용한다.
+엔진 버전이 `0.1.0-beta.0`이고 TypeScript/Vite가 정상 설치되었는지 확인한다. `ferrum:setup-check`는 설치한 엔진의 공개 `/core` JavaScript entrypoint를 import한다. **브라우저 렌더링, Wasm 초기화, 게임 실행을 검증한 결과는 아니다.** 별도 `src` 파일이나 검사 스크립트 파일은 생성하지 않는다.
 
-브라우저 도구가 있으면 게임 화면과 입력을 확인한다. 사용할 수 없으면 서버 기동·HTTP 확인 결과와 브라우저 조작 미검증 사실을 구분한다. 서버를 유지할 수 없는 도구라면 사용자가 실행할 명령과 작업 디렉터리를 알려준다.
+새 프로젝트의 정상적인 완료 형태는 다음과 같다.
 
-완료 보고에는 다음을 포함한다.
+```text
+game-project/
+  package.json
+  package-lock.json
+  .npmrc
+  .gitignore
+  FERRUM_INSTALL.md
+  AGENTS.md / CLAUDE.md / GEMINI.md
+  .agents/ / .codex/ / .claude/ / .gemini/
+  node_modules/
+```
 
-- 프로젝트 절대 경로, 선택한 템플릿, 엔진 버전과 릴리스 URL
-- AI 지침 설치 결과와 적용한 진입 지침
-- 실행한 검증 명령과 성공·실패 결과, 미실행 항목과 사유
-- 개발 서버 접속 URL과 유지 여부, 다음에 수정할 게임 파일
+프로젝트 루트에 `src/`, `public/`, `scripts/`, `index.html`, `placement-viewer.html`, `dist/`가 없어도 정상이다. `node_modules/` 안의 설치 패키지 파일은 게임 프로젝트에 예제를 생성한 것으로 간주하지 않는다.
 
-`topdown`의 게임 설정은 `public/game.json`, scene/behavior authoring은 `public/scene-authoring.json`, 브라우저 runtime 조립은 `src/main.ts`에서 시작한다. 이후 기능 개발은 생성된 지침과 [개발자 퀵스타트](developer-quickstart.md), [Public API](public-api.md)를 따른다. 공개 import는 `@ferrum2d/ferrum-web/core`, `.../authoring`, `.../starter-scenes` 등 목적별 경로를 사용한다.
+완료 보고에는 프로젝트 경로, 설치 버전, AI 지침 설치 여부, 실행한 검증 결과를 적는다. **초기 설정 완료·게임 코드는 아직 생성하지 않음**을 명시하고 여기서 종료한다. 개발 서버 주소나 게임 배포 준비 완료를 보고하지 않는다. 이후 게임 개발 요청을 받으면 [Public API](public-api.md)와 설치된 consumer 지침을 읽고 필요한 코드부터 작성한다.
 
-## 재설치와 오류 대응
+## 기존 예제 프로젝트와 오류 대응
 
-기존 게임 프로젝트는 생성기를 다시 실행하지 않는다. `package-lock.json`이 있으면 `npm ci`, 없다면 `npm install` 후 `ferrum:check`를 실행한다. 새 버전으로 업데이트하는 경우에는 [GitHub Release 설치·업데이트 절차](../development/operations/github-release.md)를 따른다.
-
-| 증상 | 다음 조치 |
-| --- | --- |
-| `Target directory is not empty` | 숨김 파일을 포함한 기존 내용을 확인하고 빈 설치 대상을 선택한다. 자동 `--force` 사용 금지. |
-| tarball 다운로드 404/접근 실패 | 위 고정 버전의 공개 릴리스와 파일명, GitHub 네트워크 접근을 확인한다. 임의 버전·npm 패키지로 대체하지 않는다. |
-| `EALLOWREMOTE` | 프로젝트 `.npmrc`와 기존 정책을 확인한다. 직접 URL 설치가 허용된 환경에서는 `npm install --allow-remote=root`로 실행한다. |
-| npm 12 이전 버전의 `allow-remote` 관련 경고 | 경고와 종료 코드를 구분한다. 이 설정을 모르는 구버전의 경고만으로 설치 실패를 단정하지 않는다. |
-| `ferrum:check` 실패 | 첫 실패 단계의 진단과 권장 명령을 따라 수정하고 해당 검사부터 다시 실행한다. |
-| 서버는 실행되지만 게임 화면이 나오지 않음 | 브라우저 console, asset/Wasm 요청과 WebGL2 지원을 확인하고 관찰한 오류를 보고한다. |
+- 이미 `create-game`으로 예제가 생성된 폴더라면 이 초기 설치를 다시 실행한다고 파일이 사라지지는 않는다. 정리를 요청받은 경우 기존 수정 여부를 확인하고, 예제 코드·설정·데이터와 기존 package/lock을 프로젝트 밖에 백업한 뒤 초기 설정으로 전환한다. 사용자 코드와 자산은 보존한다.
+- GitHub 다운로드가 실패하면 위 버전의 릴리스 공개 상태, 파일명, 네트워크 접근을 확인한다.
+- npm 12에서 `EALLOWREMOTE`가 발생하면 `.npmrc`와 기존 정책을 확인한다. 직접 URL 설치가 허용된 환경에서는 `npm install --allow-remote=root`를 사용할 수 있다. npm 12 이전 버전의 알 수 없는 설정 경고와 실제 실패 종료 코드를 구분한다.
+- `ferrum:setup-check`가 실패하면 Node 버전, lockfile, 실제 설치된 dependency와 공개 import 경로를 확인한다. 예제 게임 생성으로 우회하지 않는다.

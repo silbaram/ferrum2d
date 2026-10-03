@@ -4,7 +4,7 @@ Ferrum2D는 Rust core, WebAssembly, TypeScript platform layer, WebGL2 renderer�
 
 이 페이지는 Ferrum2D를 처음 보는 개발자가 엔진의 방향과 구조를 이해하고, 첫 게임 프로젝트를 실행한 뒤, 어떤 파일을 수정해야 하는지 빠르게 판단하도록 돕는 시작 문서다.
 
-설치를 AI에게 맡길 때는 [AI 에이전트용 설치 지침](ai-agent-install.md)의 링크를 전달한다. 공개된 beta의 정확한 다운로드 URL과 현재 빈 디렉터리에서 실행할 명령, agent 설치·검증 순서를 제공한다.
+초기 설정만 AI에게 맡길 때는 [AI 에이전트용 설치 지침](ai-agent-install.md)을 전달한다. 엔진·개발 도구·AI 지침만 설치하며 `src/`나 예제를 생성하지 않는다. 아래 퀵스타트는 실행 가능한 예제 게임을 명시적으로 선택한 경우의 절차다.
 
 ## 이 페이지에서 얻는 것
 
@@ -28,7 +28,7 @@ Ferrum2D의 public package에는 core runtime, starter scene, helper, smoke/repo
 | Optional/lab/helper | `@ferrum2d/ferrum-web/labs` | WebGPU, HD-2D helper, PixelMaskTerrain, deterministic texture atlas JSON helper는 제약을 확인하고 opt-in으로 사용한다. |
 | Quality infrastructure | `@ferrum2d/ferrum-web/quality` | `ferrum:*` report, replay, smoke, runtime budget은 게임 기능이 아니라 변경 결과를 검증하는 도구다. |
 
-## 10분 시작 경로
+## 예제 게임으로 시작하는 경로
 
 ### 1. 프로젝트 생성
 

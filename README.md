@@ -6,7 +6,7 @@ Ferrum2D는 Rust core, WebAssembly, TypeScript 플랫폼 레이어, WebGL2 기�
 
 Ferrum2D의 제품 목표는 기존 게임 엔진처럼 비주얼 에디터를 중심에 두는 것이 아니라, AI agent가 Game Spec, Physics Spec, 프로젝트 템플릿, 검증 스크립트를 사용해 게임을 생성하고 수정하는 **AI agent-first 2D game engine**을 만드는 것이다.
 
-**AI에게 게임 개발 환경 설치를 맡기려면 [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)의 링크를 전달한다.** 공개된 `0.1.0-beta.0` 릴리스로 빈 디렉터리에서 프로젝트 생성, 엔진·AI 지침 설치, 검증과 실행까지 진행할 수 있다.
+**AI에게 초기 개발 환경 설치를 맡기려면 [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)의 링크를 전달한다.** 공개된 `0.1.0-beta.0` 엔진·개발 도구·AI 지침만 설치하고 의존성을 검증한다. 게임 코드와 예제는 게임 개발을 요청한 뒤 작성한다.
 
 ## 엔진 철학
 
@@ -207,6 +207,8 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 일부 제외 항목의 이전 public API 이름은 마이그레이션 리스크를 줄이기 위한 deprecated compatibility shim으로만 남아 있을 수 있다. 이 shim은 제품 런타임 기능을 제공하지 않으며, 기본 실행 경로는 WebGL2/WebGPU renderer, requestAnimationFrame, SFX, 직접 asset loading으로 제한한다.
 
 ## 게임 개발용 패키지
+
+초기 설정만 필요하면 [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)의 엔진 tarball 직접 설치를 사용한다. 아래 `create-game` 경로는 예제 코드·데이터와 뷰어가 포함된 실행 가능한 템플릿을 선택하는 경우에 사용한다. `minimal`도 빈 프로젝트는 아니다.
 
 Ferrum2D는 GitHub Releases의 설치용 `.tgz` 패키지를 기본 배포 경로로 준비한다. npm 레지스트리 공개 없이도 `npx`와 `npm install`로 사용할 수 있다. 패키지 역할은 다음과 같다.
 
