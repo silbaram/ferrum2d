@@ -10,6 +10,35 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 - 아직 기록할 변경 사항이 없다.
 
+## 0.1.0-beta.3 - 2026-10-04
+
+GitHub Release 설치용 네 번째 beta다. 소스 package는 `0.1.0`/`private: true`를 유지하고, 배포 staging의 네 package를 `0.1.0-beta.3`으로 고정한다. #68~#70 구현과 후속 리뷰 수정을 포함한다. (#71)
+
+### Added
+
+- Data Scene 캐릭터마다 독립적인 atlas animation set과 clip/frame/방향/일시정지 전환을 제공한다. 같은 texture를 공유하면서 여러 entity를 하나의 batch로 갱신하고, 잘못되거나 stale한 handle이 있으면 batch 전체를 거부한다. (#68)
+- `groundYScale`과 ground/upright sprite로 2.5D 지면 투영을 제공한다. 카메라·입력·조명·문자·particle·collider debug가 같은 투영을 사용하고, world/physics 데이터는 그대로 유지한다. (#69)
+- 태양 방향광과 ellipse/box 지면 그림자를 제공한다. sprite의 발 위치·회전·이동과 연결하며, 정적 그림자 cache와 화면 culling, caster 상한으로 비용을 제어한다. (#70)
+- 공개 API recipe와 packed runtime의 WebGL2 및 WebGPU offscreen 픽셀·자원·비용 검증을 추가했다.
+
+### Fixed
+
+- 지면 투영에서 원점이 다른 직립 sprite와 world text의 깊이 정렬이 화면의 발·문자 block 위치를 따르도록 수정했다.
+- 타원형 점광원의 세로 반경을 그림자 거리·외삽·차폐물 culling과 geometry cache에 반영했다.
+- 최소 `groundYScale: 0.01`이 Wasm f32로 반올림된 뒤 renderer 검증에서 거부되던 문제를 수정했다.
+
+### Upgrade Notes
+
+- engine/viewer/agents URL과 릴리스 출처 metadata를 같은 버전으로 맞춘다. 초기 설정 프로젝트에는 viewer나 예제를 추가하지 않는다. 기존 AI 지침은 별도 디렉터리에 설치해 비교·병합한다.
+- 기본 `groundYScale: 1`과 기존 animation은 유지한다. `animation`과 `animationSet`은 동시에 지정할 수 없다. reapply 뒤 새 entity handle로 animation/camera/label을 다시 연결한다.
+- 투영과 태양 그림자는 선택 기능이다. `createDataSceneView`의 snapshot/lighting을 같은 frame에 공유하고, 사용자 renderer는 투영 capability와 새 render flag를 지원해야 한다.
+- 공개 import 경로와 15-float/60-byte render command ABI는 유지한다. 새 frame metadata와 render flag가 있으므로 JS와 Wasm은 동일한 release tarball로 함께 업데이트한다.
+
+### Known Limitations
+
+- 2.5D는 평면 world의 지면 투영과 직립 sprite 표현이다. 3D renderer, PBR/normal map, sprite alpha 윤곽 그림자나 임의 높이의 그림자 수신면은 제공하지 않는다.
+- WebGPU 검증은 실제 device/WGSL/queue/readback을 사용하는 offscreen 방식이다. headless native canvas presentation과 실물 GPU/mobile 성능 검증은 포함하지 않는다. linear-sRGB는 WebGL2 fallback을 사용한다.
+
 ## 0.1.0-beta.2 - 2026-10-04
 
 GitHub Release 설치용 세 번째 beta다. 소스 package는 `0.1.0`/`private: true`를 유지하고, 배포 staging의 네 package를 `0.1.0-beta.2`로 고정한다. #62~#65 구현과 후속 리뷰 수정을 포함한다. (#66)
