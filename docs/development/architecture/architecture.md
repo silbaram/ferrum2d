@@ -484,3 +484,11 @@ KHR completion 상태만 poll하며 준비된 program을 생성자에 1회 이�
 미지원 기기는 link 조회 사이에 yield하며 해당 조회의 blocking은 남는다. AbortSignal,
 timeout/context loss/compile/link 오류와 부분 생성 실패는 owned GPU 자원을 rollback한다.
 로딩 UI는 renderer 준비 phase를 표시하고 전체 runtime/asset 준비 완료와 구분한다.
+
+## Data Scene visual/body/view 연결
+
+Data Scene spawn은 origin/tint/sortOrder와 명시적 depthSort를 Rust Sprite에 저장한다. Rust가 pivot 회전·culling·레이어 및 depth 정렬을 수행하며 15-float render ABI는 유지한다. optional static/kinematic body는 sprite와 동일한 World entity/transform을 사용한다. reset은 entity generation을 보존·증가시킨다.
+
+TypeScript authoring viewer는 `scenePlacementVisualGeometry`로 동일한 pivot/scale/rotation 사각형을 계산해 picking과 공식·생성 viewer overlay에 사용한다. 이 계산은 authoring interaction에만 사용한다. runtime 소유 renderer와 Data Scene hex 색 변환은 같은 renderer option resolver를 공유하며 reapply/transition도 같은 working color space를 유지한다.
+
+Data Scene camera follow/bounds/smoothing은 simulation 뒤 Rust에서 계산한다. TypeScript `createDataSceneView`는 renderer의 CSS zoom, pointer와 light/occluder 변환을 같은 camera snapshot으로 연결한다. 렌더러는 zoom에 맞춘 logical viewport와 원래 DPR backbuffer를 분리한다. [사용 계약](../../engine/data-scene-native-runtime.md).

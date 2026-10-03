@@ -121,7 +121,7 @@ Behavior Recipe의 `setVariable`/`incrementVariable`은 gameplay event에 반응
 
 `props.components`는 prefab/variant/instance merge와 placement `updateComponents` patch에서 하나의 component set으로 취급한다. 일반 `props` 값은 기존처럼 JSON object merge를 사용할 수 있지만, `components` 내부만 부분 deep merge하지 않고 전체 교체한다. 이 정책은 legacy `components.sprite`와 신규 `components.visual`이 동시에 남거나 collider/layer 일부만 stale 값으로 유지되는 authoring 충돌을 막기 위한 것이다. 공식 placement viewer의 Visual/Collider/Layer inspector도 이 계약에 맞춰 selected instance의 `props.components` 전체를 낮은 빈도 draft patch로 교체하고, runtime entity를 직접 수정하지 않는다.
 
-`SceneComposition`의 instance `x`/`y`/`scale`/`rotationRadians`/`layer`는 default Data Scene runtime target이 반영한다. instance `rotationRadians`는 visible sprite rotation으로 `SpriteRenderCommand`에 기록되고 collider runtime geometry에도 합성된다. 예를 들어 rotated AABB는 oriented-box collider로 컴파일되고, collider offset/capsule endpoint는 instance rotation을 반영해 회전된다. instance `layer`는 Data Scene entity render band 안에서 `1000 + layer` sort key로 저장되어 같은 Data Scene entity끼리 render 순서를 정한다. `components.layer`는 collision layer이며 render/sort layer가 아니다.
+`SceneComposition`의 instance `x`/`y`/`scale`/`rotationRadians`/`layer`는 default Data Scene runtime target이 반영한다. instance `rotationRadians`는 visible sprite rotation으로 `SpriteRenderCommand`에 기록되고 collider runtime geometry에도 합성된다. 예를 들어 rotated AABB는 oriented-box collider로 컴파일되고, collider offset/capsule endpoint는 instance rotation을 반영해 회전된다. render layer는 `visual.layer ?? instance.layer`를 사용하고 Data Scene entity render band 안에서 `1000 + layer` sort key로 저장되어 같은 Data Scene entity끼리 render 순서를 정한다. `components.layer`는 collision layer이며 render/sort layer가 아니다.
 
 ## Runtime Spawn Hook
 
@@ -265,3 +265,9 @@ pnpm validate:data-scene-authoring
 ## create-game 연결
 
 `packages/create-game/templates/*/public/scene-authoring.json`은 같은 `ferrum2d.consumer.scene-authoring` envelope를 사용한다. 템플릿 파일은 built-in starter scene과 연결하기 위해 `runtimeEntity` 같은 adapter prop을 사용할 수 있지만, 이는 template surface contract이며 최소 Data Scene contract와 분리해서 다룬다.
+
+## Native runtime 연결 (#62~#65)
+
+`visual`의 origin/tint/layer/sortOrder는 실제 Rust render command에 반영된다. `visual.layer`가 instance.layer보다 우선하며, `visual.depthSort: "hd2d"`는 같은 layer 안에서만 floor/elevation/발 위치 정렬을 활성화한다. Data Scene에서는 heightSpan 추가만으로 전역 정렬 모드가 바뀌지 않는다.
+
+optional `components.body: { type: "static" | "kinematic", heightSpan? }`는 sprite와 같은 entity에 물리 바디를 설치한다. 생략한 기존 collider-only 객체는 그대로다. [계약·공개 API recipe·검증](data-scene-native-runtime.md)을 참고한다. 기존 beta.1 tarball에는 이 연결이 없다.

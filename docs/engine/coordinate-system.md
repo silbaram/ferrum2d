@@ -71,3 +71,7 @@ TypeScript unit test와 Rust collision test는 같은 canonical body/collider ve
 계산해 AABB, circle, capsule, oriented box, convex polygon의 center/reference point가
 일치하는지 검증한다. 이 helper는 순수 TypeScript API이므로 새 Wasm 호출, frame별
 JS/Wasm 왕복 또는 공유 ABI 변경을 만들지 않는다.
+
+## Data Scene runtime viewport
+
+`createDataSceneView`는 `/core`의 runtime 연결 helper다. sprite/text/collider culling은 Rust camera와 world 단위의 logical viewport를 사용하고 renderer가 CSS zoom 및 device pixel로 변환한다. 같은 `view.snapshot(frame)`으로 pointer, world light, occluder를 변환한다. 균일 zoom만 지원하며 2.5D affine 투영은 consumer 책임이다. [상세 계약과 recipe](data-scene-native-runtime.md)를 참고한다.

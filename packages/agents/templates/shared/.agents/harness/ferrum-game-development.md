@@ -118,3 +118,9 @@ The runtime replay harness must use only public imports from `@ferrum2d/ferrum-w
 - Do not import `@ferrum2d/ferrum-web/dist/*`, `@ferrum2d/ferrum-web/pkg/*`, or `@ferrum2d/ferrum-web/src/*`.
 - Do not use consumer agents for Ferrum2D engine internals, npm publishing, release tags, or package allowlists.
 - Treat remote deploys and publishing as external-state changes requiring explicit user approval.
+
+## Native Data Scene actor / camera recipe
+
+게임 개발 단계에서 sprite와 물리 이동을 조합하려면 설치된 공개 타입과 릴리스 문서를 먼저 확인한다. #62~#65 이후 구현은 `components.body: { type: "kinematic", heightSpan }`로 같은 entity에 sprite/collider/body를 조립하고, `visual.originY: 1`, `visual.depthSort: "hd2d"` 및 별도 배경 layer를 사용한다. `/core`의 `createDataSceneView`는 camera follow/zoom, pointer, world lighting을 같은 snapshot으로 연결한다. 기존 beta.1에는 이 기능이 없으므로 API 존재를 가정하지 않는다.
+
+엔진 문서 `docs/engine/data-scene-native-runtime.md`와 공개 API만 사용하는 `examples/data-scene-native/main.mjs` recipe를 참고한다. 실제 게임 코드·asset·사용자 지침은 보존한다. 초기 설치/업그레이드만 요청받았다면 recipe, src, 예제, viewer를 생성하지 않는다.
