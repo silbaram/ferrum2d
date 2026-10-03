@@ -1,3 +1,5 @@
+import { resolveDataSceneGroundShadow, type DataSceneGroundShadowSpec, type ResolvedDataSceneGroundShadow } from "./dataSceneSun.js";
+import { resolveDataSceneSpriteAnimationSet, type DataSceneSpriteAnimationSetSpec } from "./dataSceneSpriteAnimation.js";
 import { dataSceneVisualColor } from "./dataSceneVisualColor.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 import type { PhysicsBodyHeightSpan } from "./engineTypes/physicsBodies.js";
@@ -53,10 +55,13 @@ export interface DataSceneSpriteComponentSpec {
   height: number;
   frame?: DataSceneSpriteFrameSpec;
   animation?: DataSceneSpriteAnimationSpec;
+  animationSet?: DataSceneSpriteAnimationSetSpec;
 }
 
 export interface DataScenePrimitiveVisualSpec {
   kind: "primitive";
+  projection?: "ground" | "upright";
+  shadow?: DataSceneGroundShadowSpec;
   shape: DataScenePrimitiveVisualShape;
   color?: string;
   width?: number;
@@ -66,12 +71,15 @@ export interface DataScenePrimitiveVisualSpec {
 
 export interface DataSceneSpriteVisualSpec {
   kind: "sprite";
+  projection?: "ground" | "upright";
+  shadow?: DataSceneGroundShadowSpec;
   texture?: DataSceneTextureRefSpec;
   asset?: DataSceneTextureRefSpec;
   width: number;
   height: number;
   frame?: DataSceneSpriteFrameSpec;
   animation?: DataSceneSpriteAnimationSpec;
+  animationSet?: DataSceneSpriteAnimationSetSpec;
   originX?: number;
   originY?: number;
   layer?: number;
@@ -183,6 +191,7 @@ export interface ResolvedDataSceneSpriteComponent {
   height: number;
   frame: ResolvedDataSceneSpriteFrame;
   animation?: ResolvedDataSceneSpriteAnimation;
+  animationSet?: DataSceneSpriteAnimationSetSpec;
 }
 
 export interface ResolvedDataSceneObjectVisualBounds {
@@ -193,6 +202,8 @@ export interface ResolvedDataSceneObjectVisualBounds {
 export type ResolvedDataSceneObjectVisual =
   | {
       kind: "primitive";
+      projection?: "ground" | "upright";
+      shadow?: ResolvedDataSceneGroundShadow;
       shape: DataScenePrimitiveVisualShape;
       color?: string;
       width: number;
@@ -202,11 +213,14 @@ export type ResolvedDataSceneObjectVisual =
     }
   | {
       kind: "sprite";
+      projection?: "ground" | "upright";
+      shadow?: ResolvedDataSceneGroundShadow;
       texture: ResolvedDataSceneTextureRef;
       width: number;
       height: number;
       frame: ResolvedDataSceneSpriteFrame;
       animation?: ResolvedDataSceneSpriteAnimation;
+      animationSet?: DataSceneSpriteAnimationSetSpec;
       originX: number;
       originY: number;
       layer?: number;
@@ -378,14 +392,22 @@ function resolveInlineVisualComponents(
 function resolveObjectVisual(value: unknown, path: string): ResolvedDataSceneObjectVisual {
   const visual = requiredRecord(value, path);
   const kind = requiredString(visual.kind, `${path}.kind`);
+  const projection = visual.projection;
+  if (projection !== undefined && projection !== "ground" && projection !== "upright") {
+    throw sceneCompositionDiagnosticError(`${path}.projection`, "must be ground or upright");
+  }
   switch (kind) {
     case "primitive":
-      return resolvePrimitiveVisual(visual, path);
+      return { ...withGroundShadow(resolvePrimitiveVisual(visual, path), visual.shadow, path), ...(projection === undefined ? {} : { projection }) };
     case "sprite":
-      return resolveSpriteVisual(visual, path);
+      return { ...withGroundShadow(resolveSpriteVisual(visual, path), visual.shadow, path), ...(projection === undefined ? {} : { projection }) };
     default:
       throw sceneCompositionDiagnosticError(`${path}.kind`, "must be one of primitive or sprite");
   }
+}
+
+function withGroundShadow<T extends ResolvedDataSceneObjectVisual>(visual: T, shadow: unknown, path: string): T & { shadow?: ResolvedDataSceneGroundShadow } {
+  return shadow === undefined ? visual : { ...visual, shadow: resolveDataSceneGroundShadow(shadow, visual.width, visual.height, `${path}.shadow`) };
 }
 
 function resolvePrimitiveVisual(
@@ -442,6 +464,7 @@ function resolveSpriteVisual(
     height: visual.height,
     ...(visual.frame === undefined ? {} : { frame: visual.frame }),
     ...(visual.animation === undefined ? {} : { animation: visual.animation }),
+    ...(visual.animationSet === undefined ? {} : { animationSet: visual.animationSet }),
   }, path);
   const originX = finiteNumber(visual.originX ?? 0.5, `${path}.originX`);
   const originY = finiteNumber(visual.originY ?? 0.5, `${path}.originY`);
@@ -471,6 +494,7 @@ function resolveSpriteVisual(
     height: sprite.height,
     frame: sprite.frame,
     ...(sprite.animation === undefined ? {} : { animation: sprite.animation }),
+    ...(sprite.animationSet === undefined ? {} : { animationSet: sprite.animationSet }),
     originX,
     originY,
     ...(layer === undefined ? {} : { layer }),
@@ -490,6 +514,7 @@ function runtimeSpriteForVisual(visual: ResolvedDataSceneObjectVisual): Resolved
       height: visual.height,
       frame: visual.frame,
       ...(visual.animation === undefined ? {} : { animation: visual.animation }),
+      ...(visual.animationSet === undefined ? {} : { animationSet: visual.animationSet }),
     };
   }
   return {
@@ -514,6 +539,7 @@ function spriteVisualFromResolvedSprite(
     height: sprite.height,
     frame: sprite.frame,
     ...(sprite.animation === undefined ? {} : { animation: sprite.animation }),
+    ...(sprite.animationSet === undefined ? {} : { animationSet: sprite.animationSet }),
     originX: 0.5,
     originY: 0.5,
     bounds: { width: sprite.width, height: sprite.height },
@@ -523,11 +549,15 @@ function spriteVisualFromResolvedSprite(
 function resolveSpriteComponent(value: unknown, path: string): ResolvedDataSceneSpriteComponent {
   const sprite = requiredRecord(value, path);
   const animationValue = sprite.animation;
+  if (animationValue !== undefined && sprite.animationSet !== undefined) {
+    throw sceneCompositionDiagnosticError(path, "animation and animationSet are mutually exclusive");
+  }
   return {
     texture: resolveTextureRef(requiredProperty(sprite, "texture", path), `${path}.texture`),
     width: positiveNumber(requiredProperty(sprite, "width", path), `${path}.width`),
     height: positiveNumber(requiredProperty(sprite, "height", path), `${path}.height`),
     frame: resolveSpriteFrame(sprite.frame, `${path}.frame`),
+    ...(sprite.animationSet === undefined ? {} : { animationSet: resolveDataSceneSpriteAnimationSet(sprite.animationSet, `${path}.animationSet`) }),
     ...(animationValue === undefined
       ? {}
       : { animation: resolveSpriteAnimation(animationValue, `${path}.animation`) }),

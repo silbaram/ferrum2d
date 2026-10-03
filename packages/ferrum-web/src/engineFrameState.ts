@@ -138,6 +138,7 @@ export function buildFrameState(input: FrameStateBuildInput): FrameState {
     mouseY: input.input?.mouseY ?? 0,
     cameraX: telemetry[TELEMETRY_CAMERA_X],
     cameraY: telemetry[TELEMETRY_CAMERA_Y],
+    cameraGroundYScale: input.renderCommandBuffer.groundYScale ?? 1,
     playerFloorId: finiteTelemetry(telemetry[TELEMETRY_PLAYER_FLOOR_ID]),
     playerElevation: finiteTelemetry(telemetry[TELEMETRY_PLAYER_ELEVATION]),
     playerHeight: finiteTelemetry(telemetry[TELEMETRY_PLAYER_HEIGHT]),

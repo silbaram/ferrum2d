@@ -5,6 +5,13 @@ impl World {
         let alive_count = self.alive_indices().len();
         for alive_position in 0..alive_count {
             let i = self.alive_indices()[alive_position];
+            if let Some(playback) = self.sprite_playbacks[i].as_mut() {
+                playback.advance(delta);
+                if let Some(sprite) = self.sprites[i].as_mut() {
+                    playback.write_sprite(sprite);
+                }
+                continue;
+            }
             let Some(animation) = self.sprite_animations[i].as_mut() else {
                 continue;
             };

@@ -83,6 +83,7 @@ export class WebGL2Renderer implements Renderer {
   private postProcessScratchA?: WebGL2RenderTarget;
   private postProcessScratchB?: WebGL2RenderTarget;
   private viewportZoom = 1;
+  private groundYScale = 1;
   private logicalWidth = 0;
   private logicalHeight = 0;
   private readonly logicalResolution: [number, number] = [0, 0];
@@ -260,7 +261,9 @@ export class WebGL2Renderer implements Renderer {
     const previousMask = gl.getParameter(gl.COLOR_WRITEMASK) as boolean[];
     const scissorEnabled = gl.isEnabled(gl.SCISSOR_TEST);
     const stats = emptyRendererStats();
+    const previousGroundYScale = this.groundYScale;
     try {
+      if (commands.groundYScale !== undefined) this.setGroundYScale(commands.groundYScale);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resource.framebuffer);
       gl.viewport(0, 0, target.width, target.height);
       gl.disable(gl.SCISSOR_TEST);
@@ -280,6 +283,7 @@ export class WebGL2Renderer implements Renderer {
       this.offscreenStats.textureBindCount += stats.textureBindCount;
       this.offscreenStats.textureSwitchCount += stats.textureSwitchCount;
     } finally {
+      this.setGroundYScale(previousGroundYScale);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, previousFramebuffer);
       gl.viewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
       gl.clearColor(previousClear[0], previousClear[1], previousClear[2], previousClear[3]);
@@ -358,6 +362,14 @@ export class WebGL2Renderer implements Renderer {
     }
   }
 
+  setGroundYScale(scale: number): void {
+    this.assertAlive();
+    // Rust sends f32 metadata; the encoded lower bound is slightly less than JS 0.01.
+    if (!Number.isFinite(scale) || scale < Math.fround(0.01) || scale > 1) throw new Error("groundYScale must be in [0.01, 1]");
+    this.groundYScale = scale;
+    this.spriteBatch.groundYScale = scale;
+  }
+
   setViewportZoom(zoom: number): void {
     this.assertAlive();
     if (!Number.isFinite(zoom) || zoom < 0.0001 || zoom > 10000) throw new Error("Viewport zoom must be in [0.0001, 10000].");
@@ -415,6 +427,7 @@ export class WebGL2Renderer implements Renderer {
     this.assertAlive();
     this.ensureCurrentFrameTarget();
     const commands = second ?? (first as RenderCommandBufferView);
+    if (commands.groundYScale !== undefined) this.setGroundYScale(commands.groundYScale);
     const resolution = this.logicalResolution;
     const batchStats = second
       ? this.spriteBatch.drawBatch(
@@ -459,7 +472,7 @@ export class WebGL2Renderer implements Renderer {
     const drawCalls = this.physicsDebugLineBatch.draw(
       lines,
       this.logicalResolution,
-      camera,
+      { ...camera, groundYScale: this.groundYScale },
     );
     addPhysicsDebugLineStatsInto(
       this.currentStats,

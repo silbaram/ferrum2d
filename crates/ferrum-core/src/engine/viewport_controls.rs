@@ -5,6 +5,43 @@ use super::Engine;
 
 #[wasm_bindgen]
 impl Engine {
+    pub fn camera_ground_y_scale(&self) -> f32 {
+        self.camera.ground_y_scale
+    }
+
+    /// Render-only orthographic ground compression, in (0, 1].
+    pub fn configure_data_scene_projection(&mut self, ground_y_scale: f32) -> bool {
+        if self.scene_mode != SceneMode::Data
+            || !ground_y_scale.is_finite()
+            || !(0.01..=1.0).contains(&ground_y_scale)
+        {
+            return false;
+        }
+        self.camera.ground_y_scale = ground_y_scale;
+        self.update_data_scene_camera(0.0);
+        true
+    }
+
+    /// Classifies an authored visual without changing its collider or world transform.
+    pub fn configure_data_scene_sprite_projection(
+        &mut self,
+        id: u32,
+        generation: u32,
+        ground: bool,
+    ) -> bool {
+        if self.scene_mode != SceneMode::Data {
+            return false;
+        }
+        let Some(entity) = self.entity_from_handle(id, generation) else {
+            return false;
+        };
+        let Some(sprite) = self.world.sprite_mut_at_index(entity.id as usize) else {
+            return false;
+        };
+        sprite.project_ground = ground;
+        true
+    }
+
     pub fn set_viewport_size(&mut self, width: f32, height: f32) {
         self.camera.set_viewport_size(width, height);
         if self.scene_mode == SceneMode::Data {
@@ -104,8 +141,12 @@ impl Engine {
         if let Some([min_x, min_y, max_x, max_y]) = config.bounds {
             self.camera.x =
                 clamp_camera_axis(self.camera.x, min_x, max_x, self.camera.viewport_width);
-            self.camera.y =
-                clamp_camera_axis(self.camera.y, min_y, max_y, self.camera.viewport_height);
+            self.camera.y = clamp_camera_axis(
+                self.camera.y,
+                min_y,
+                max_y,
+                self.camera.viewport_height / self.camera.ground_y_scale,
+            );
         }
     }
 }

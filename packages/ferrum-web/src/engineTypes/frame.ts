@@ -62,6 +62,7 @@ export interface FrameState {
   mouseY: number;
   cameraX: number;
   cameraY: number;
+  cameraGroundYScale?: number;
   playerFloorId?: number;
   playerElevation?: number;
   playerHeight?: number;

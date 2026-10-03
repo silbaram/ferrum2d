@@ -159,14 +159,15 @@ export class WebGpuDebugLinePass {
     viewportHeight: number,
   ): void {
     const originX = viewportWidth * 0.5 - camera.x;
-    const originY = viewportHeight * 0.5 - camera.y;
+    const scaleY = camera.groundYScale ?? 1;
+    const originY = viewportHeight * 0.5 - camera.y * scaleY;
     let vertexOffset = 0;
     for (let lineIndex = 0; lineIndex < lines.lineCount; lineIndex += 1) {
       const lineOffset = lineIndex * lines.floatsPerLine;
       const x0 = lines.buffer[lineOffset] + originX;
-      const y0 = lines.buffer[lineOffset + 1] + originY;
+      const y0 = lines.buffer[lineOffset + 1] * scaleY + originY;
       const x1 = lines.buffer[lineOffset + 2] + originX;
-      const y1 = lines.buffer[lineOffset + 3] + originY;
+      const y1 = lines.buffer[lineOffset + 3] * scaleY + originY;
       const r = lines.buffer[lineOffset + 4];
       const g = lines.buffer[lineOffset + 5];
       const b = lines.buffer[lineOffset + 6];

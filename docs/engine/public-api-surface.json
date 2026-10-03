@@ -91,7 +91,19 @@
         "CameraRigController",
         "resolveCameraRigSpec",
         "clampCameraToBounds",
-        "DataSceneBodySpec"
+        "DataSceneBodySpec",
+        "resolveDataSceneSpriteAnimationSet",
+        "DataSceneSpriteClipSpec",
+        "DataSceneSpriteAnimationSetSpec",
+        "DataSceneSpriteAnimationUpdate",
+        "DataSceneSpriteAnimationState",
+        "resolveDirectionalLight2D",
+        "resolveDataSceneGroundShadow",
+        "DataSceneGroundShadowSpec",
+        "ResolvedDataSceneGroundShadow",
+        "DataSceneGroundShadowStats",
+        "DirectionalLight2D",
+        "ResolvedDirectionalLight2D"
       ]
     },
     {
@@ -143,7 +155,19 @@
         "DataSceneCameraOptions",
         "CameraRigController",
         "resolveCameraRigSpec",
-        "clampCameraToBounds"
+        "clampCameraToBounds",
+        "resolveDataSceneSpriteAnimationSet",
+        "DataSceneSpriteClipSpec",
+        "DataSceneSpriteAnimationSetSpec",
+        "DataSceneSpriteAnimationUpdate",
+        "DataSceneSpriteAnimationState",
+        "resolveDirectionalLight2D",
+        "resolveDataSceneGroundShadow",
+        "DataSceneGroundShadowSpec",
+        "ResolvedDataSceneGroundShadow",
+        "DataSceneGroundShadowStats",
+        "DirectionalLight2D",
+        "ResolvedDirectionalLight2D"
       ]
     },
     {
@@ -184,7 +208,19 @@
         "resolveBehaviorRecipeDocument",
         "compileWeaponProfiles",
         "resolvePhysicsSpec",
-        "DataSceneBodySpec"
+        "DataSceneBodySpec",
+        "resolveDataSceneSpriteAnimationSet",
+        "DataSceneSpriteClipSpec",
+        "DataSceneSpriteAnimationSetSpec",
+        "DataSceneSpriteAnimationUpdate",
+        "DataSceneSpriteAnimationState",
+        "resolveDirectionalLight2D",
+        "resolveDataSceneGroundShadow",
+        "DataSceneGroundShadowSpec",
+        "ResolvedDataSceneGroundShadow",
+        "DataSceneGroundShadowStats",
+        "DirectionalLight2D",
+        "ResolvedDirectionalLight2D"
       ]
     },
     {

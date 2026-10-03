@@ -550,18 +550,27 @@ impl Engine {
     pub(super) fn activate_built_in_shooter_scene(&mut self) {
         self.clear_data_scene_entity_handle();
         self.scene_mode = SceneMode::BuiltIn;
+        self.camera.ground_y_scale = 1.0;
+        self.ground_sun = crate::world::ground_shadow::GroundSun::default();
+        self.ground_shadow_stats = [0; 5];
         self.scenes.use_shooter();
     }
 
     pub(super) fn activate_built_in_breakout_scene(&mut self) {
         self.clear_data_scene_entity_handle();
         self.scene_mode = SceneMode::BuiltIn;
+        self.camera.ground_y_scale = 1.0;
+        self.ground_sun = crate::world::ground_shadow::GroundSun::default();
+        self.ground_shadow_stats = [0; 5];
         self.scenes.use_breakout();
     }
 
     pub(super) fn activate_built_in_platformer_scene(&mut self) {
         self.clear_data_scene_entity_handle();
         self.scene_mode = SceneMode::BuiltIn;
+        self.camera.ground_y_scale = 1.0;
+        self.ground_sun = crate::world::ground_shadow::GroundSun::default();
+        self.ground_shadow_stats = [0; 5];
         self.scenes.use_platformer();
     }
 

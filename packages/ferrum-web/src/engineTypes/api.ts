@@ -1,3 +1,6 @@
+import type { DirectionalLight2D } from "../lightingTypes.js";
+import type { DataSceneGroundShadowStats } from "../dataSceneSun.js";
+import type { DataSceneSpriteAnimationSetSpec, DataSceneSpriteAnimationUpdate, DataSceneSpriteAnimationState } from "../dataSceneSpriteAnimation.js";
 import type { DataSceneCameraOptions } from "../dataSceneCamera.js";
 import type { AssetLoadProgressCallback, AssetManifest, AssetReleasePayload, LoadedAssets } from "../assetLoader";
 import type { BuiltInShooterStateSnapshot } from "../builtInShooterStateSnapshot.js";
@@ -195,6 +198,14 @@ export interface FerrumSceneApi {
   useDataScene(): void;
   /** Camera follow resolves generation-safe transforms in Rust, before rendering. */
   setDataSceneCamera(options: DataSceneCameraOptions): boolean;
+  setDataSceneGroundYScale(scale: number): boolean;
+  setDataSceneSun(light: DirectionalLight2D | false): boolean;
+  dataSceneGroundShadowStats(): DataSceneGroundShadowStats;
+  configureDataSceneSpriteAnimation(entity: GameplayEntityHandle, clips: DataSceneSpriteAnimationSetSpec): boolean;
+  /** Atomic batch. Duplicate/stale handles or unknown clip/frame reject the entire batch. */
+  updateDataSceneSpriteAnimations(updates: readonly DataSceneSpriteAnimationUpdate[]): boolean;
+  /** Diagnostic read; avoid per-entity queries in the frame loop. */
+  dataSceneSpriteAnimationState(entity: GameplayEntityHandle): DataSceneSpriteAnimationState | undefined;
   useBreakoutGame(): void;
   usePlatformerGame(): void;
   setViewportSize(width: number, height: number): void;
@@ -221,6 +232,7 @@ export interface FerrumSceneApi {
   queryTilemapNavigationPath(query: TilemapNavigationPathQuery): TilemapNavigationPath | undefined;
   cameraX(): number;
   cameraY(): number;
+  cameraGroundYScale(): number;
 }
 
 export type ShooterRuntimePrefab = "player" | "enemy" | "bullet";

@@ -9,6 +9,7 @@ use super::{Engine, SceneMode};
 impl Engine {
     pub(super) fn build_render_commands(&mut self) {
         self.frame_buffers.clear_render_work_buffers();
+        self.ground_shadow_stats = [0; 5];
         let visible_bounds = self.camera.visible_bounds();
 
         if self.uses_hd2d_render_sort() {
@@ -81,19 +82,39 @@ impl Engine {
         self.frame_buffers.render_items.clear();
     }
 
-    fn append_entity_render_items(&mut self, visible_bounds: AabbBounds) {
-        for &i in self.world.alive_indices() {
+    fn append_entity_render_items(&mut self, _visible_bounds: AabbBounds) {
+        for position in 0..self.world.alive_indices().len() {
+            let i = self.world.alive_indices()[position];
             let Some((t, mut s)) = self.world.renderable_sprite_at_index(i) else {
                 continue;
             };
             if self.scene_mode == SceneMode::Data {
                 s.rotation_radians += self.world.rotation_at_index_or_default(i).radians;
             }
+            self.append_ground_shadow(i, t, s);
             let center = sprite_center(t, s);
-            if !sprite_intersects_viewport(center, s, visible_bounds) {
+            let mut screen = self.camera.world_to_screen(center);
+            let scale_y = if s.project_ground {
+                self.camera.ground_y_scale
+            } else {
+                1.0
+            };
+            if !s.project_ground {
+                screen.y = self.camera.world_to_screen(t).y + center.y - t.y;
+            }
+            if !sprite_intersects_viewport(
+                screen,
+                s,
+                AabbBounds {
+                    min_x: 0.0,
+                    min_y: 0.0,
+                    max_x: self.camera.viewport_width,
+                    max_y: self.camera.viewport_height,
+                },
+                scale_y,
+            ) {
                 continue;
             }
-            let screen = self.camera.world_to_screen(center);
             self.frame_buffers.render_items.push(SpriteRenderItem {
                 command: sprite_render_command(screen, s),
                 sort_key: entity_render_sort_key(
@@ -103,7 +124,15 @@ impl Engine {
                         None
                     },
                     if self.scene_mode != SceneMode::Data || s.depth_sort {
-                        t.y + s.height * (1.0 - s.origin_y)
+                        // Upright pivot offsets are screen units; compare their nominal feet
+                        // in ground units. Keep the existing rotation-independent depth rule.
+                        let foot_scale = if self.scene_mode == SceneMode::Data && !s.project_ground
+                        {
+                            self.camera.ground_y_scale
+                        } else {
+                            1.0
+                        };
+                        t.y + s.height * (1.0 - s.origin_y) / foot_scale
                     } else {
                         0.0
                     },
@@ -170,7 +199,11 @@ fn sprite_render_command(screen: Transform2D, sprite: Sprite) -> SpriteRenderCom
         b: sprite.b,
         a: sprite.a,
         texture_id: sprite.texture_id as f32,
-        effect_flags: SPRITE_EFFECT_NONE,
+        effect_flags: if sprite.project_ground {
+            crate::render_command::SPRITE_PROJECT_GROUND
+        } else {
+            SPRITE_EFFECT_NONE
+        },
         rotation_radians: sprite.rotation_radians,
     }
 }
@@ -188,6 +221,7 @@ fn sprite_intersects_viewport(
     transform: Transform2D,
     sprite: Sprite,
     visible_bounds: AabbBounds,
+    scale_y: f32,
 ) -> bool {
     let half_width = sprite.width * 0.5;
     let half_height = sprite.height * 0.5;
@@ -201,7 +235,7 @@ fn sprite_intersects_viewport(
             sin.abs() * half_width + cos.abs() * half_height,
         )
     };
-    AabbBounds::from_center(transform, half_width, half_height)
+    AabbBounds::from_center(transform, half_width, half_height * scale_y)
         .is_some_and(|bounds| bounds.overlaps(visible_bounds))
 }
 

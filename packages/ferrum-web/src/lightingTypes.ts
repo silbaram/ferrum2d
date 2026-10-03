@@ -1,10 +1,24 @@
 export type LightingColor3 = readonly [number, number, number];
 export type LightingColor4 = readonly [number, number, number, number];
 
+/** Flat 2D sunlight: additive full-view illumination plus optional native ground casters. */
+export interface DirectionalLight2D {
+  directionX: number;
+  directionY: number;
+  intensity?: number;
+  color?: LightingColor3;
+  shadowOpacity?: number;
+  shadowLengthScale?: number;
+  maxCasters?: number;
+}
+export interface ResolvedDirectionalLight2D extends Required<DirectionalLight2D> {}
+
 export interface PointLight2D {
   x: number;
   y: number;
   radius: number;
+  /** Logical vertical radius; defaults to radius. */
+  radiusY?: number;
   color?: LightingColor3 | LightingColor4;
   intensity?: number;
   falloff?: number;
@@ -64,6 +78,7 @@ export interface ShadowProjectionScratch {
 export interface LightingScene2D {
   enabled?: boolean;
   ambient?: LightingColor4;
+  directionalLight?: DirectionalLight2D;
   pointLights?: readonly PointLight2D[];
   tileOccluders?: readonly TileOccluder2D[];
   shadows?: boolean | LightingShadowOptions;
@@ -74,6 +89,8 @@ export interface ResolvedPointLight2D {
   x: number;
   y: number;
   radius: number;
+  /** Logical vertical radius; defaults to radius. */
+  radiusY?: number;
   color: LightingColor4;
   intensity: number;
   falloff: number;
@@ -94,6 +111,7 @@ export interface ResolvedLightingShadowOptions {
 export interface ResolvedLightingScene2D {
   enabled: boolean;
   ambient: LightingColor4;
+  directionalLight?: ResolvedDirectionalLight2D;
   pointLights: readonly ResolvedPointLight2D[];
   tileOccluders: readonly TileOccluder2D[];
   shadows: ResolvedLightingShadowOptions;

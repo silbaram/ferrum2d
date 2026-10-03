@@ -16,7 +16,7 @@ export interface WebGpuLightingPassStats {
 const BYTES_PER_F32 = Float32Array.BYTES_PER_ELEMENT;
 const FLOATS_PER_LIGHTING_INSTANCE = 13;
 const LIGHTING_INSTANCE_STRIDE_BYTES = FLOATS_PER_LIGHTING_INSTANCE * BYTES_PER_F32;
-const FLOATS_PER_SHADOW_VERTEX = 9;
+const FLOATS_PER_SHADOW_VERTEX = 10;
 const SHADOW_VERTEX_STRIDE_BYTES = FLOATS_PER_SHADOW_VERTEX * BYTES_PER_F32;
 
 export class WebGpuLightingPass {
@@ -78,9 +78,11 @@ export class WebGpuLightingPass {
 
     const ambientInstanceCount = scene.ambient[3] > 0 ? 1 : 0;
     const debugTileOccluderCount = scene.debug.tileOccluders ? scene.tileOccluders.length : 0;
-    const lightingInstanceCount = ambientInstanceCount + activePointLights.length + debugTileOccluderCount;
+    const sun = scene.directionalLight;
+    const sunCount = sun !== undefined && sun.intensity > 0 ? 1 : 0;
+    const lightingInstanceCount = ambientInstanceCount + activePointLights.length + sunCount + debugTileOccluderCount;
     const pointLightFirstInstance = ambientInstanceCount;
-    const debugFirstInstance = pointLightFirstInstance + activePointLights.length;
+    const debugFirstInstance = pointLightFirstInstance + activePointLights.length + sunCount;
     if (lightingInstanceCount > 0) {
       this.ensureLightingStaging(lightingInstanceCount * FLOATS_PER_LIGHTING_INSTANCE);
       let lightingOffset = 0;
@@ -101,6 +103,12 @@ export class WebGpuLightingPass {
         );
       }
 
+      if (sun !== undefined && sunCount > 0) {
+        this.lightColorScratch[0] = sun.color[0]; this.lightColorScratch[1] = sun.color[1];
+        this.lightColorScratch[2] = sun.color[2]; this.lightColorScratch[3] = sun.intensity;
+        lightingOffset = writeLightingInstance(this.lightingStaging, lightingOffset, 0, 0, viewportWidth, viewportHeight,
+          this.lightColorScratch, 0, 0, 1, 1, 0);
+      }
       for (const light of activePointLights) {
         const radius = light.radius;
         this.lightColorScratch[0] = light.color[0] * light.intensity;
@@ -111,9 +119,9 @@ export class WebGpuLightingPass {
           this.lightingStaging,
           lightingOffset,
           light.x - radius,
-          light.y - radius,
+          light.y - (light.radiusY ?? radius),
           radius * 2,
-          radius * 2,
+          (light.radiusY ?? radius) * 2,
           this.lightColorScratch,
           light.x,
           light.y,
@@ -154,11 +162,11 @@ export class WebGpuLightingPass {
       );
     }
 
-    if (activePointLights.length > 0) {
+    if (activePointLights.length + sunCount > 0) {
       drawCalls += this.drawLightingInstances(
         pass,
         this.additivePipeline,
-        activePointLights.length,
+        activePointLights.length + sunCount,
         pointLightFirstInstance,
       );
     }
@@ -239,6 +247,7 @@ export class WebGpuLightingPass {
           @location(1) color: vec4f,
           @location(2) light: vec4f,
           @location(3) mode: f32,
+          @location(4) scaleY: f32,
         };
 
         fn cornerForVertex(vertexIndex: u32) -> vec2f {
@@ -262,13 +271,14 @@ export class WebGpuLightingPass {
           output.color = input.color;
           output.light = input.light;
           output.mode = input.mode;
+          output.scaleY = input.rect.w / input.rect.z;
           return output;
         }
 
         @fragment
         fn fs_main(input: VertexOutput) -> @location(0) vec4f {
           if (input.mode > 0.5) {
-            let distanceToLight = distance(input.pixelPosition, input.light.xy);
+            let distanceToLight = length((input.pixelPosition-input.light.xy)/vec2f(1.0,input.scaleY));
             let attenuation = max(1.0 - (distanceToLight / input.light.z), 0.0);
             let alpha = pow(attenuation, input.light.w) * input.color.a;
             return vec4f(input.color.rgb, alpha);
@@ -325,14 +335,14 @@ export class WebGpuLightingPass {
         struct VertexInput {
           @location(0) position: vec2f,
           @location(1) color: vec4f,
-          @location(2) light: vec3f,
+          @location(2) light: vec4f,
         };
 
         struct VertexOutput {
           @builtin(position) position: vec4f,
           @location(0) pixelPosition: vec2f,
           @location(1) color: vec4f,
-          @location(2) light: vec3f,
+          @location(2) light: vec4f,
         };
 
         @vertex
@@ -349,7 +359,7 @@ export class WebGpuLightingPass {
 
         @fragment
         fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-          let distanceToLight = distance(input.pixelPosition, input.light.xy);
+          let distanceToLight = length((input.pixelPosition-input.light.xy)/vec2f(1.0,input.light.w));
           let clippedAlpha = input.color.a * (1.0 - smoothstep(input.light.z * 0.86, input.light.z, distanceToLight));
           if (clippedAlpha <= 0.0) {
             discard;
@@ -369,7 +379,7 @@ export class WebGpuLightingPass {
           attributes: [
             { shaderLocation: 0, offset: 0, format: "float32x2" },
             { shaderLocation: 1, offset: 2 * BYTES_PER_F32, format: "float32x4" },
-            { shaderLocation: 2, offset: 6 * BYTES_PER_F32, format: "float32x3" },
+            { shaderLocation: 2, offset: 6 * BYTES_PER_F32, format: "float32x4" },
           ],
         }],
       },
@@ -575,6 +585,7 @@ function writeShadowVertex(
   buffer[offset + 6] = light.x;
   buffer[offset + 7] = light.y;
   buffer[offset + 8] = light.radius;
+  buffer[offset + 9] = (light.radiusY ?? light.radius) / light.radius;
   return offset + FLOATS_PER_SHADOW_VERTEX;
 }
 

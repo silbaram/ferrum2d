@@ -14,6 +14,8 @@ export interface RenderCommandBufferView {
   buffer: Float32Array;
   commandCount: number;
   floatsPerCommand: number;
+  /** Frame-level projection metadata. Does not change the packed command ABI. */
+  groundYScale?: number;
 }
 
 export function decodeRenderCommands(view: RenderCommandBufferView): RenderCommandView[] {

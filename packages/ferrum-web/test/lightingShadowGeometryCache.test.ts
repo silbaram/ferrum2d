@@ -64,3 +64,17 @@ test("LightingShadowGeometryCache invalidates on light, shadow, viewport, and oc
   cache.resolveLightGeometry(0, occluderVersion, occluders, scene.pointLights[0], scene.shadows, clipRect);
   ok(first.revision > revision);
 });
+
+test("elliptical light culling and cache invalidation follow its vertical radius", () => {
+  const cache = new LightingShadowGeometryCache();
+  const occluders: TileOccluder2D[] = [{ x: -10, y: 140, width: 20, height: 10 }];
+  const scene = normalizeLightingScene({ pointLights: [{ x: 0, y: 0, radius: 100, radiusY: 200 }], shadows: true });
+  const version = cache.syncOccluders(occluders);
+  const viewport = { x: -200, y: -200, width: 400, height: 600 };
+  const geometry = cache.resolveLightGeometry(0, version, occluders, scene.pointLights[0], scene.shadows, viewport);
+  equal(geometry.casterCount, 1, "occluder inside the vertical light radius must cast a shadow");
+  const revision = geometry.revision;
+  cache.resolveLightGeometry(0, version, occluders, { ...scene.pointLights[0], radiusY: 50 }, scene.shadows, viewport);
+  equal(geometry.casterCount, 0);
+  ok(geometry.revision > revision, "changing only radiusY must invalidate geometry");
+});

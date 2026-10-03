@@ -133,6 +133,8 @@ class FakeWebGL2Context {
 
   uniform2f(): void {}
 
+  uniform1f(): void {}
+
   activeTexture(): void {}
 
   uniform1i(location: WebGLUniformLocation, value: number): void {
@@ -204,12 +206,14 @@ test("SpriteBatch uses static quad buffers with indexed instancing", () => {
     { index: 2, divisor: 1 },
     { index: 3, divisor: 1 },
     { index: 4, divisor: 1 },
+    { index: 5, divisor: 1 },
   ]);
   deepEqual(gl.vertexAttribPointerCalls.filter((call) => call.index > 0), [
     { index: 1, size: 4, type: gl.FLOAT, normalized: false, stride: SPRITE_RENDER_COMMAND_FLOATS * 4, offset: 0 },
     { index: 2, size: 4, type: gl.FLOAT, normalized: false, stride: SPRITE_RENDER_COMMAND_FLOATS * 4, offset: 16 },
     { index: 3, size: 4, type: gl.FLOAT, normalized: false, stride: SPRITE_RENDER_COMMAND_FLOATS * 4, offset: 32 },
     { index: 4, size: 1, type: gl.FLOAT, normalized: false, stride: SPRITE_RENDER_COMMAND_FLOATS * 4, offset: 56 },
+    { index: 5, size: 1, type: gl.FLOAT, normalized: false, stride: SPRITE_RENDER_COMMAND_FLOATS * 4, offset: 52 },
   ]);
 
   const stats = batch.drawBatches(

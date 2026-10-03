@@ -1,7 +1,7 @@
 use super::*;
 use crate::entity::Entity;
 
-fn sprite(engine: &mut Engine, texture: u32, x: f32, y: f32, layer: i32) -> Entity {
+pub(super) fn sprite(engine: &mut Engine, texture: u32, x: f32, y: f32, layer: i32) -> Entity {
     assert!(engine.spawn_data_scene_entity(
         x,
         y,
