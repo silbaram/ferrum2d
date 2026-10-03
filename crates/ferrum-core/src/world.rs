@@ -32,6 +32,7 @@ mod component_storage;
 mod entity_lifecycle;
 mod gameplay_query_indices;
 mod gameplay_variables;
+pub(crate) mod ground_shadow;
 mod hd2d;
 mod joints;
 mod projectiles;
@@ -39,6 +40,7 @@ mod rigid_bodies;
 mod snapshot;
 mod spawning;
 mod sprite_animation;
+pub(crate) mod sprite_playback;
 mod templates;
 #[cfg(test)]
 mod tests;
@@ -60,6 +62,8 @@ pub struct World {
     pub(crate) transforms: Vec<Option<Transform2D>>,
     pub(crate) sprites: Vec<Option<Sprite>>,
     pub(crate) sprite_animations: Vec<Option<SpriteAnimation>>,
+    pub(crate) ground_shadows: Vec<Option<ground_shadow::GroundShadowCaster>>,
+    pub(crate) sprite_playbacks: Vec<Option<sprite_playback::SpritePlayback>>,
     pub(crate) velocities: Vec<Option<Velocity>>,
     pub(crate) rotations: Vec<Option<Rotation2D>>,
     pub(crate) angular_velocities: Vec<Option<AngularVelocity>>,

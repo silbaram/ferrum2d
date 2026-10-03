@@ -94,6 +94,7 @@ export class WebGpuSpritePass {
       code: `
         struct Resolution {
           size: vec2f,
+          groundYScale: f32,
         };
         @group(0) @binding(0) var<uniform> resolution: Resolution;
         @group(1) @binding(0) var spriteSampler: sampler;
@@ -104,6 +105,7 @@ export class WebGpuSpritePass {
           @location(1) uvRect: vec4f,
           @location(2) color: vec4f,
           @location(3) rotation: f32,
+          @location(4) flags: f32,
           @builtin(vertex_index) vertexIndex: u32,
         };
 
@@ -111,6 +113,8 @@ export class WebGpuSpritePass {
           @builtin(position) position: vec4f,
           @location(0) uv: vec2f,
           @location(1) color: vec4f,
+          @location(2) corner: vec2f,
+          @location(3) @interpolate(flat) flags: f32,
         };
 
         fn cornerForVertex(vertexIndex: u32) -> vec2f {
@@ -128,10 +132,11 @@ export class WebGpuSpritePass {
           let local = (corner - vec2f(0.5, 0.5)) * input.rect.zw;
           let rotationCos = cos(input.rotation);
           let rotationSin = sin(input.rotation);
-          let rotated = vec2f(
+          var rotated = vec2f(
             local.x * rotationCos - local.y * rotationSin,
             local.x * rotationSin + local.y * rotationCos,
           );
+          if ((u32(input.flags) & 4u) != 0u) { rotated.y *= resolution.groundYScale; }
           let pixelPosition = input.rect.xy + input.rect.zw * 0.5 + rotated;
           let zeroToOne = pixelPosition / resolution.size;
           let clip = zeroToOne * 2.0 - vec2f(1.0, 1.0);
@@ -139,12 +144,20 @@ export class WebGpuSpritePass {
           output.position = vec4f(clip * vec2f(1.0, -1.0), 0.0, 1.0);
           output.uv = mix(input.uvRect.xy, input.uvRect.zw, corner);
           output.color = input.color;
+          output.corner = corner;
+          output.flags = input.flags;
           return output;
         }
 
         @fragment
         fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-          return textureSample(spriteTexture, spriteSampler, input.uv) * input.color;
+          let sampled = textureSample(spriteTexture, spriteSampler, input.uv);
+          if ((u32(input.flags) & 24u) != 0u) {
+            let q = (input.corner - vec2f(0.5)) * 2.0;
+            if ((u32(input.flags) & 8u) != 0u && dot(q, q) > 1.0) { discard; }
+            return input.color;
+          }
+          return sampled * input.color;
         }
       `,
     });
@@ -162,6 +175,7 @@ export class WebGpuSpritePass {
             { shaderLocation: 1, offset: 4 * BYTES_PER_F32, format: "float32x4" },
             { shaderLocation: 2, offset: 8 * BYTES_PER_F32, format: "float32x4" },
             { shaderLocation: 3, offset: 14 * BYTES_PER_F32, format: "float32" },
+            { shaderLocation: 4, offset: 13 * BYTES_PER_F32, format: "float32" },
           ],
         }],
       },

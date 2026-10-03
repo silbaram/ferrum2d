@@ -22,6 +22,8 @@ pub struct Sprite {
     pub sort_order: f32,
     /// Data Scene opt-in: floor/elevation/foot depth inside the render layer.
     pub depth_sort: bool,
+    /// Ground geometry is compressed with the view; upright images retain their dimensions.
+    pub project_ground: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

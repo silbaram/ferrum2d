@@ -7,6 +7,8 @@ impl WorldComponentStorage {
         world.transforms.push(None);
         world.sprites.push(None);
         world.sprite_animations.push(None);
+        world.sprite_playbacks.push(None);
+        world.ground_shadows.push(None);
         world.velocities.push(None);
         world.rotations.push(None);
         world.angular_velocities.push(None);
@@ -48,6 +50,8 @@ impl WorldComponentStorage {
         world.transforms[index] = None;
         world.sprites[index] = None;
         world.sprite_animations[index] = None;
+        world.sprite_playbacks[index] = None;
+        world.ground_shadows[index] = None;
         world.velocities[index] = None;
         world.rotations[index] = None;
         world.angular_velocities[index] = None;
@@ -126,6 +130,8 @@ mod tests {
         assert_eq!(world.transforms.len(), len);
         assert_eq!(world.sprites.len(), len);
         assert_eq!(world.sprite_animations.len(), len);
+        assert_eq!(world.sprite_playbacks.len(), len);
+        assert_eq!(world.ground_shadows.len(), len);
         assert_eq!(world.velocities.len(), len);
         assert_eq!(world.rotations.len(), len);
         assert_eq!(world.angular_velocities.len(), len);
@@ -167,6 +173,8 @@ mod tests {
         assert_eq!(world.transforms[index], None);
         assert_eq!(world.sprites[index], None);
         assert_eq!(world.sprite_animations[index], None);
+        assert_eq!(world.sprite_playbacks[index], None);
+        assert_eq!(world.ground_shadows[index], None);
         assert_eq!(world.velocities[index], None);
         assert_eq!(world.rotations[index], None);
         assert_eq!(world.angular_velocities[index], None);

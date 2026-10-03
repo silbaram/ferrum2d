@@ -129,7 +129,9 @@ export class WasmBridge {
   }
 
   readRenderCommandBuffer(): RenderCommandBufferView {
-    return renderCommandBufferView(this.bufferContext);
+    const view = renderCommandBufferView(this.bufferContext);
+    view.groundYScale = this.engineInstance.camera_ground_y_scale();
+    return view;
   }
 
   readFrameTelemetryBuffer(): FrameTelemetryBufferView {

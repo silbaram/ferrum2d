@@ -30,6 +30,8 @@ export class WebGL2LightingPass {
   private readonly colorLocation: WebGLUniformLocation;
   private readonly modeLocation: WebGLUniformLocation;
   private readonly lightCenterLocation: WebGLUniformLocation;
+  private readonly lightYScaleLocation: WebGLUniformLocation;
+  private readonly shadowLightYScaleLocation: WebGLUniformLocation;
   private readonly lightRadiusLocation: WebGLUniformLocation;
   private readonly lightFalloffLocation: WebGLUniformLocation;
   private readonly shadowResolutionLocation: WebGLUniformLocation;
@@ -99,6 +101,11 @@ export class WebGL2LightingPass {
       this.colorLocation = colorLocation;
       this.modeLocation = modeLocation;
       this.lightCenterLocation = lightCenterLocation;
+      const lightYScaleLocation = this.gl.getUniformLocation(this.program, "u_light_y_scale");
+      const shadowLightYScaleLocation = this.gl.getUniformLocation(this.shadowProgram, "u_light_y_scale");
+      if (!lightYScaleLocation || !shadowLightYScaleLocation) throw new Error("Missing light projection uniforms");
+      this.lightYScaleLocation = lightYScaleLocation;
+      this.shadowLightYScaleLocation = shadowLightYScaleLocation;
       this.lightRadiusLocation = lightRadiusLocation;
       this.lightFalloffLocation = lightFalloffLocation;
       this.shadowResolutionLocation = shadowResolutionLocation;
@@ -149,6 +156,10 @@ export class WebGL2LightingPass {
     }
     activePointLights.length = activePointLightCount;
     setSpriteBlend(this.gl, this.linearTarget, true);
+    const sun = scene.directionalLight;
+    if (sun !== undefined && sun.intensity > 0) {
+      drawCalls += this.drawSolidRect(0, 0, resolution[0], resolution[1], [sun.color[0], sun.color[1], sun.color[2], sun.intensity]);
+    }
     for (const light of activePointLights) {
       drawCalls += this.drawPointLight(light);
     }
@@ -210,9 +221,9 @@ export class WebGL2LightingPass {
     this.gl.uniform4f(
       this.rectLocation,
       light.x - radius,
-      light.y - radius,
+      light.y - (light.radiusY ?? radius),
       light.x + radius,
-      light.y + radius,
+      light.y + (light.radiusY ?? radius),
     );
     this.gl.uniform4f(
       this.colorLocation,
@@ -223,6 +234,7 @@ export class WebGL2LightingPass {
     );
     this.gl.uniform2f(this.lightCenterLocation, light.x, light.y);
     this.gl.uniform1f(this.lightRadiusLocation, radius);
+    this.gl.uniform1f(this.lightYScaleLocation, (light.radiusY ?? radius) / radius);
     this.gl.uniform1f(this.lightFalloffLocation, light.falloff);
     this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
     return 1;
@@ -270,6 +282,7 @@ export class WebGL2LightingPass {
         this.ensureShadowVertexDataCapacity(shadowGeometry.floatCount);
         this.gl.uniform2f(this.shadowLightCenterLocation, light.x, light.y);
         this.gl.uniform1f(this.shadowLightRadiusLocation, light.radius);
+        this.gl.uniform1f(this.shadowLightYScaleLocation, (light.radiusY ?? light.radius) / light.radius);
         this.gl.bufferSubData(this.gl.ARRAY_BUFFER, 0, shadowGeometry.positions, 0, shadowGeometry.floatCount);
         this.gl.drawArrays(this.gl.TRIANGLES, 0, shadowGeometry.floatCount / 2);
         drawCalls += 1;
@@ -299,6 +312,7 @@ export class WebGL2LightingPass {
     this.gl.uniform4f(this.colorLocation, color[0], color[1], color[2], color[3]);
     this.gl.uniform2f(this.lightCenterLocation, 0, 0);
     this.gl.uniform1f(this.lightRadiusLocation, 1);
+    this.gl.uniform1f(this.lightYScaleLocation, 1);
     this.gl.uniform1f(this.lightFalloffLocation, 1);
     this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
     return 1;

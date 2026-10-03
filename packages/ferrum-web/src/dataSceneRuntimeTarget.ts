@@ -1,3 +1,5 @@
+import { resolveDataSceneGroundShadow, type ResolvedDataSceneGroundShadow } from "./dataSceneSun.js";
+import type { DataSceneSpriteAnimationSetSpec } from "./dataSceneSpriteAnimation.js";
 import { dataSceneVisualColor } from "./dataSceneVisualColor.js";
 import { resolveColorManagementMode, type ColorManagementMode } from "./colorManagement.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
@@ -79,6 +81,8 @@ export interface DataSceneRuntimeSpawnRequest {
   originY: number;
   sortOrder: number;
   depthSort: boolean;
+  projectGround?: boolean;
+  groundShadow?: ResolvedDataSceneGroundShadow;
   color: readonly [number, number, number, number];
   textureId: number;
   spriteWidth: number;
@@ -89,6 +93,7 @@ export interface DataSceneRuntimeSpawnRequest {
   frameV1: number;
   animationFrameCount: number;
   animationFps: number;
+  animationSet?: DataSceneSpriteAnimationSetSpec;
   layer: number;
   colliderType: number;
   colliderOffsetX: number;
@@ -340,6 +345,9 @@ function inlineDataSceneRuntimeSpawnRequest(
   const sprite = components.sprite;
   const visual = components.visual;
   const spriteVisual = visual.kind === "sprite" ? visual : undefined;
+  const groundShadow = visual.shadow === undefined ? undefined : resolveDataSceneGroundShadow({
+    ...visual.shadow, width: visual.shadow.width * scale, height: visual.shadow.height * scale,
+  }, visual.width * scale, visual.height * scale);
   const collider = components.collider;
   const colliderShape = colliderRuntimeShape(collider, scale, instance.rotationRadians);
   return {
@@ -352,6 +360,8 @@ function inlineDataSceneRuntimeSpawnRequest(
     originY: spriteVisual?.originY ?? 0.5,
     sortOrder: spriteVisual?.sortOrder ?? 0,
     depthSort: spriteVisual?.depthSort === "hd2d",
+    projectGround: visual.projection === "ground",
+    ...(groundShadow === undefined ? {} : { groundShadow }),
     color: dataSceneVisualColor(spriteVisual?.tint ?? visual.color, "visual.color", colorManagement),
     textureId: dataSceneTextureId(sprite, textureId),
     spriteWidth: sprite.width * scale,
@@ -362,6 +372,7 @@ function inlineDataSceneRuntimeSpawnRequest(
     frameV1: sprite.frame.v1,
     animationFrameCount: sprite.animation?.frameCount ?? 0,
     animationFps: sprite.animation?.fps ?? 0,
+    ...(sprite.animationSet === undefined ? {} : { animationSet: sprite.animationSet }),
     layer: components.layer.code,
     colliderType: colliderShape.type,
     colliderOffsetX: colliderShape.offsetX,

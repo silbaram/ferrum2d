@@ -1,3 +1,4 @@
+import { resolveDirectionalLight2D } from "./dataSceneSun.js";
 import type {
   LightingScene2D,
   LightingShadowOptions,
@@ -106,6 +107,7 @@ export function resolveLightingSceneInto(
   const mutableTarget = target as MutableResolvedLightingScene2D;
   if (scene === undefined || scene === false || scene.enabled === false) {
     mutableTarget.enabled = false;
+    delete mutableTarget.directionalLight;
     writeColor4Into(mutableTarget.ambient, DEFAULT_DISABLED_AMBIENT);
     mutableTarget.pointLights.length = 0;
     writeEmptyTileOccludersInto(mutableTarget, cache);
@@ -116,6 +118,8 @@ export function resolveLightingSceneInto(
   }
 
   mutableTarget.enabled = true;
+  if (scene.directionalLight === undefined) delete mutableTarget.directionalLight;
+  else mutableTarget.directionalLight = resolveDirectionalLight2D(scene.directionalLight);
   writeNormalizedColor4Into(mutableTarget.ambient, scene.ambient ?? DEFAULT_AMBIENT, "ambient");
 
   const pointLights = scene.pointLights ?? [];
@@ -199,6 +203,8 @@ function resolvePointLightInto(target: MutableResolvedPointLight2D, light: Point
   target.x = finiteIndexedNumber(light.x, "pointLights", index, "x");
   target.y = finiteIndexedNumber(light.y, "pointLights", index, "y");
   target.radius = positiveIndexedNumber(light.radius, "pointLights", index, "radius");
+  if (light.radiusY === undefined) delete target.radiusY;
+  else target.radiusY = positiveIndexedNumber(light.radiusY, "pointLights", index, "radiusY");
   writeIndexedNormalizedColor4Into(target.color, light.color ?? DEFAULT_LIGHT_COLOR, "pointLights", index, "color");
   target.intensity = nonNegativeIndexedNumber(light.intensity ?? 1, "pointLights", index, "intensity");
   target.falloff = positiveIndexedNumber(light.falloff ?? 2, "pointLights", index, "falloff");

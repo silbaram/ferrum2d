@@ -253,7 +253,7 @@ impl ParticleSystem {
                 x: particle.x,
                 y: particle.y,
             };
-            if !particle_intersects_viewport(center, size, visible_bounds) {
+            if !particle_intersects_viewport(center, size, visible_bounds, camera.ground_y_scale) {
                 continue;
             }
 
@@ -297,7 +297,7 @@ impl ParticleSystem {
                 x: particle.x,
                 y: particle.y,
             };
-            if !particle_intersects_viewport(center, size, visible_bounds) {
+            if !particle_intersects_viewport(center, size, visible_bounds, camera.ground_y_scale) {
                 continue;
             }
 
@@ -338,8 +338,9 @@ fn particle_intersects_viewport(
     center: Transform2D,
     size: f32,
     visible_bounds: AabbBounds,
+    ground_y_scale: f32,
 ) -> bool {
-    AabbBounds::from_center(center, size * 0.5, size * 0.5)
+    AabbBounds::from_center(center, size * 0.5, size * 0.5 / ground_y_scale)
         .is_some_and(|bounds| bounds.overlaps(visible_bounds))
 }
 

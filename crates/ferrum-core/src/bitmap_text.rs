@@ -595,32 +595,39 @@ impl BitmapTextSystem {
         &self,
         world: &World,
         camera: &Camera2D,
-        visible_bounds: AabbBounds,
+        _visible_bounds: AabbBounds,
         items: &mut Vec<SpriteRenderItem>,
     ) {
         for (text_id, text) in &self.texts {
             let Some(origin) = text.origin(world) else {
                 continue;
             };
-            let foot_y = origin.y + text.block_height;
+            // Glyphs stay upright: convert the block's uncompressed height to ground units.
+            let foot_y = origin.y + text.block_height / camera.ground_y_scale;
+            let anchor = camera.world_to_screen(origin);
             for (glyph_index, cached) in text.cached_commands.iter().enumerate() {
-                let world_top_left = Transform2D {
-                    x: origin.x + cached.x,
-                    y: origin.y + cached.y,
+                let screen_top_left = Transform2D {
+                    x: anchor.x + cached.x,
+                    y: anchor.y + cached.y,
                 };
-                let center = Transform2D {
-                    x: world_top_left.x + cached.width * 0.5,
-                    y: world_top_left.y + cached.height * 0.5,
-                };
-                let Some(bounds) =
-                    AabbBounds::from_center(center, cached.width * 0.5, cached.height * 0.5)
-                else {
+                let Some(bounds) = AabbBounds::from_center(
+                    Transform2D {
+                        x: screen_top_left.x + cached.width * 0.5,
+                        y: screen_top_left.y + cached.height * 0.5,
+                    },
+                    cached.width * 0.5,
+                    cached.height * 0.5,
+                ) else {
                     continue;
                 };
-                if !bounds.overlaps(visible_bounds) {
+                if !bounds.overlaps(AabbBounds {
+                    min_x: 0.0,
+                    min_y: 0.0,
+                    max_x: camera.viewport_width,
+                    max_y: camera.viewport_height,
+                }) {
                     continue;
                 }
-                let screen_top_left = camera.world_to_screen(world_top_left);
                 let mut command = *cached;
                 command.x = screen_top_left.x;
                 command.y = screen_top_left.y;

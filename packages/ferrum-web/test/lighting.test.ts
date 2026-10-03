@@ -367,6 +367,23 @@ test("projectTileOccluderShadowTriangles derives two shadow triangles outside th
   equal(projectTileOccluderShadowTriangles({ x: 60, y: 28, width: 8, height: 8 }, light, 128), undefined);
 });
 
+test("point-light shadow projection commutes with ground Y scaling", () => {
+  const light = normalizeLightingScene({ pointLights: [{ x: 0, y: 0, radius: 100 }] }).pointLights[0];
+  const occluder = { x: -10, y: 30, width: 20, height: 10 };
+  const flat = projectTileOccluderShadowTriangles(occluder, light, 100)!;
+  for (const scale of [0.72, 0.5, 2]) {
+    const projected = projectTileOccluderShadowTriangles(
+      { ...occluder, y: occluder.y * scale, height: occluder.height * scale },
+      { ...light, radiusY: light.radius * scale }, 100,
+    )!;
+    equal(projected.length, flat.length);
+    for (let i = 0; i < flat.length; i += 1) {
+      ok(Math.abs(projected[i] - flat[i] * (i % 2 === 0 ? 1 : scale)) < 0.00001,
+        `shadow coordinate ${i} must follow the same ground projection`);
+    }
+  }
+});
+
 test("distanceSquaredToTileOccluder preserves shadow culling edge semantics", () => {
   const scene = normalizeLightingScene({
     pointLights: [{ x: 0, y: 0, radius: 10 }],

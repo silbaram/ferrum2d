@@ -1,9 +1,7 @@
 use super::{TileDefinition, TileRange, Tilemap, TilemapLayer};
 use crate::camera::Camera2D;
 use crate::components::HeightSpan;
-use crate::render_command::{
-    SpriteRenderCommand, SpriteRenderItem, SpriteRenderSortKey, SPRITE_EFFECT_NONE,
-};
+use crate::render_command::{SpriteRenderCommand, SpriteRenderItem, SpriteRenderSortKey};
 
 impl Tilemap {
     pub fn append_render_commands(
@@ -73,7 +71,11 @@ impl Tilemap {
                     b: definition.b,
                     a: definition.a,
                     texture_id: definition.texture_id as f32,
-                    effect_flags: SPRITE_EFFECT_NONE,
+                    effect_flags: if camera.ground_y_scale == 1.0 {
+                        0.0
+                    } else {
+                        crate::render_command::SPRITE_PROJECT_GROUND
+                    },
                     rotation_radians: 0.0,
                 });
             }
@@ -121,7 +123,11 @@ impl Tilemap {
                         b: definition.b,
                         a: definition.a,
                         texture_id: definition.texture_id as f32,
-                        effect_flags: SPRITE_EFFECT_NONE,
+                        effect_flags: if camera.ground_y_scale == 1.0 {
+                            0.0
+                        } else {
+                            crate::render_command::SPRITE_PROJECT_GROUND
+                        },
                         rotation_radians: 0.0,
                     },
                     sort_key: self.tile_render_sort_key(

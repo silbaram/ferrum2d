@@ -393,3 +393,10 @@ export type { DataSceneCameraOptions } from "./dataSceneCamera.js";
 
 export { CameraRigController, resolveCameraRigSpec, clampCameraToBounds } from "./cameraPostProcessing.js";
 export type { CameraRigSpec, CameraRigSnapshot, CameraBounds } from "./cameraPostProcessing.js";
+
+export { resolveDataSceneSpriteAnimationSet } from "./dataSceneSpriteAnimation.js";
+export type { DataSceneSpriteClipSpec, DataSceneSpriteAnimationSetSpec, DataSceneSpriteAnimationUpdate, DataSceneSpriteAnimationState } from "./dataSceneSpriteAnimation.js";
+
+export { resolveDirectionalLight2D, resolveDataSceneGroundShadow } from "./dataSceneSun.js";
+export type { DataSceneGroundShadowSpec, ResolvedDataSceneGroundShadow, DataSceneGroundShadowStats } from "./dataSceneSun.js";
+export type { DirectionalLight2D, ResolvedDirectionalLight2D } from "./lightingTypes.js";

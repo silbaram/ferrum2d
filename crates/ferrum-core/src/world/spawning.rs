@@ -260,8 +260,10 @@ impl World {
             origin_y: 0.5,
             sort_order: 0.0,
             depth_sort: false,
+            project_ground: false,
         });
         self.sprite_animations[i] = request.template.animation;
+        self.sprite_playbacks[i] = None;
         self.velocities[i] = request.velocity;
         self.apply_template_collider(entity, request.layer, request.template);
         if let Some(lifetime_seconds) = request.lifetime_seconds {
@@ -308,6 +310,7 @@ impl World {
             self.apply_template_collider(entity, layer, template);
         }
         self.sprite_animations[i] = template.animation;
+        self.sprite_playbacks[i] = None;
     }
 
     fn apply_template_collider(

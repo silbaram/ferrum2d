@@ -43,7 +43,7 @@ export interface WebGPURendererOptions {
   postProcess?: PostProcessStackInput;
 }
 
-const UNIFORM_BUFFER_BYTES = 8;
+const UNIFORM_BUFFER_BYTES = 16;
 const PLACEHOLDER_TEXTURE_ID = 0;
 
 export class WebGPURenderer implements Renderer {
@@ -63,9 +63,10 @@ export class WebGPURenderer implements Renderer {
   private readonly lightingResolveCache = createLightingSceneResolveCache();
   private spriteMaterialPasses: readonly SpriteMaterialPass[];
   private viewportZoom = 1;
+  private groundYScale = 1;
   private logicalWidth = 0;
   private logicalHeight = 0;
-  private readonly resolutionStaging = new Float32Array(2);
+  private readonly resolutionStaging = new Float32Array(4);
   private destroyed = false;
 
   private constructor(
@@ -245,6 +246,14 @@ export class WebGPURenderer implements Renderer {
     this.postProcessPass.setPostProcess(postProcess);
   }
 
+  setGroundYScale(scale: number): void {
+    this.assertAlive();
+    // Rust sends f32 metadata; the encoded lower bound is slightly less than JS 0.01.
+    if (!Number.isFinite(scale) || scale < Math.fround(0.01) || scale > 1) throw new Error("groundYScale must be in [0.01, 1]");
+    this.groundYScale = scale;
+    this.writeResolution();
+  }
+
   setViewportZoom(zoom: number): void {
     this.assertAlive();
     if (!Number.isFinite(zoom) || zoom < 0.0001 || zoom > 10000) throw new Error("Viewport zoom must be in [0.0001, 10000].");
@@ -278,6 +287,7 @@ export class WebGPURenderer implements Renderer {
 
   renderCommands(commands: RenderCommandBufferView): RendererStats {
     this.assertAlive();
+    if (commands.groundYScale !== undefined && commands.groundYScale !== this.groundYScale) this.setGroundYScale(commands.groundYScale);
     const encoder = this.device.createCommandEncoder();
     const pass = this.beginRenderPass(encoder, "load");
 
@@ -312,7 +322,7 @@ export class WebGPURenderer implements Renderer {
       return this.stats();
     }
 
-    const drawCalls = this.debugLinePass.draw(lines, camera, this.logicalWidth, this.logicalHeight);
+    const drawCalls = this.debugLinePass.draw(lines, { ...camera, groundYScale: this.groundYScale }, this.logicalWidth, this.logicalHeight);
     addPhysicsDebugLineStatsInto(this.currentStats, lines.lineCount, drawCalls);
     return this.stats();
   }
@@ -398,6 +408,7 @@ export class WebGPURenderer implements Renderer {
   private writeResolution(): void {
     this.resolutionStaging[0] = Math.max(this.logicalWidth, 1);
     this.resolutionStaging[1] = Math.max(this.logicalHeight, 1);
+    this.resolutionStaging[2] = this.groundYScale;
     this.device.queue.writeBuffer(
       this.resolutionBuffer,
       0,

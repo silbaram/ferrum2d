@@ -7,3 +7,10 @@ export * from "./public/wasmBufferExports.js";
 export { createDataSceneView } from "./dataSceneView.js";
 export type { DataSceneView, DataSceneViewOptions, DataSceneViewSnapshot, DataSceneViewRenderer } from "./dataSceneView.js";
 export type { DataSceneCameraOptions } from "./dataSceneCamera.js";
+
+export { resolveDataSceneSpriteAnimationSet } from "./dataSceneSpriteAnimation.js";
+export type { DataSceneSpriteClipSpec, DataSceneSpriteAnimationSetSpec, DataSceneSpriteAnimationUpdate, DataSceneSpriteAnimationState } from "./dataSceneSpriteAnimation.js";
+
+export { resolveDirectionalLight2D, resolveDataSceneGroundShadow } from "./dataSceneSun.js";
+export type { DataSceneGroundShadowSpec, ResolvedDataSceneGroundShadow, DataSceneGroundShadowStats } from "./dataSceneSun.js";
+export type { DirectionalLight2D, ResolvedDirectionalLight2D } from "./lightingTypes.js";

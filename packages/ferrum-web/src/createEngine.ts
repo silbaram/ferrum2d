@@ -1,3 +1,5 @@
+import { configureDataSceneSun } from "./dataSceneSun.js";
+import { configureDataSceneSpriteAnimation, updateDataSceneSpriteAnimations, dataSceneSpriteAnimationState } from "./dataSceneSpriteAnimation.js";
 import { configureDataSceneCamera } from "./dataSceneCamera.js";
 import type { Engine } from "../pkg/ferrum_core";
 import { applyShooterGameSpec } from "./gameSpec";
@@ -632,7 +634,13 @@ export async function createEngineWithFramePipeline(
     useDataScene,
     useBreakoutGame,
     usePlatformerGame,
+    setDataSceneSun: (sun) => { requireAlive(); return configureDataSceneSun(rustEngine, sun); },
+    dataSceneGroundShadowStats: () => { requireAlive(); const s = rustEngine.data_scene_ground_shadow_stats(); return { casters: s[0], cacheHits: s[1], rebuilds: s[2], culled: s[3], skippedByBudget: s[4] }; },
+    setDataSceneGroundYScale: (scale) => { requireAlive(); return rustEngine.configure_data_scene_projection(scale); },
     setDataSceneCamera: (options) => { requireAlive(); return configureDataSceneCamera(rustEngine, options); },
+    configureDataSceneSpriteAnimation: (entity, clips) => { requireAlive(); return configureDataSceneSpriteAnimation(rustEngine, entity, clips); },
+    updateDataSceneSpriteAnimations: (updates) => { requireAlive(); return updateDataSceneSpriteAnimations(rustEngine, updates); },
+    dataSceneSpriteAnimationState: (entity) => { requireAlive(); return dataSceneSpriteAnimationState(rustEngine, entity); },
     setViewportSize: (width, height) => {
       requireAlive();
       rustEngine.set_viewport_size(width, height);
@@ -643,6 +651,7 @@ export async function createEngineWithFramePipeline(
     ...tilemapSceneApi,
     cameraX: () => { requireAlive(); return rustEngine.camera_x(); },
     cameraY: () => { requireAlive(); return rustEngine.camera_y(); },
+    cameraGroundYScale: () => { requireAlive(); return rustEngine.camera_ground_y_scale(); },
   };
 
   const bufferAccessorApi: FerrumBufferAccessorApi = {
@@ -920,6 +929,10 @@ export async function createEngineWithFramePipeline(
         rustEngine.despawn_physics_entity(entityId, entityGeneration);
         return undefined;
       }
+      if (!rustEngine.configure_data_scene_sprite_projection(entityId, entityGeneration, request.projectGround ?? false)) {
+        rustEngine.despawn_physics_entity(entityId, entityGeneration);
+        return undefined;
+      }
       if (request.body !== undefined) {
         const body = request.body;
         const span = body.heightSpan;
@@ -928,6 +941,18 @@ export async function createEngineWithFramePipeline(
           rustEngine.despawn_physics_entity(entityId, entityGeneration);
           return undefined;
         }
+      }
+      if (request.groundShadow !== undefined) {
+        const shadow = request.groundShadow;
+        if (!rustEngine.configure_data_scene_ground_shadow(entityId, entityGeneration, shadow.shape === "ellipse" ? 1 : 2,
+          shadow.width, shadow.height, shadow.opacity, shadow.layer !== undefined, shadow.layer ?? 0)) {
+          rustEngine.despawn_physics_entity(entityId, entityGeneration);
+          return undefined;
+        }
+      }
+      if (request.animationSet !== undefined && !configureDataSceneSpriteAnimation(rustEngine, { entityId, entityGeneration }, request.animationSet)) {
+        rustEngine.despawn_physics_entity(entityId, entityGeneration);
+        return undefined;
       }
       return { entityId, entityGeneration };
     },

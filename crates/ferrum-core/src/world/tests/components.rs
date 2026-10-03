@@ -215,6 +215,7 @@ fn renderable_sprite_index_helper_requires_live_transform_and_sprite() {
         origin_y: 0.5,
         sort_order: 0.0,
         depth_sort: false,
+        project_ground: false,
     };
 
     world.set_transform(entity, transform);

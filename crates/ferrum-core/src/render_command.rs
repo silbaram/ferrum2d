@@ -3,6 +3,8 @@ use std::cmp::Ordering;
 pub const SPRITE_EFFECT_NONE: f32 = 0.0;
 pub const SPRITE_EFFECT_FADE: f32 = 1.0;
 pub const SPRITE_EFFECT_GLITCH: f32 = 2.0;
+/// Independent bit; low two bits retain the legacy sprite effect codes.
+pub const SPRITE_PROJECT_GROUND: f32 = 4.0;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]

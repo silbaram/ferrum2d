@@ -71,9 +71,10 @@ export function writeTileOccluderShadowTrianglesInto(
 
   writeOccluderCorners(scratch.corners, occluder);
   const anglePoints = scratch.anglePoints;
+  const scaleY = (light.radiusY ?? light.radius) / light.radius;
   for (let index = 0; index < anglePoints.length; index += 1) {
     const point = anglePoints[index].point;
-    anglePoints[index].angle = Math.atan2(point.y - light.y, point.x - light.x);
+    anglePoints[index].angle = Math.atan2((point.y - light.y) / scaleY, point.x - light.x);
   }
   anglePoints.sort((a, b) => a.angle - b.angle);
 
@@ -145,7 +146,8 @@ function extrudePointInto(
 ): boolean {
   const dx = point.x - light.x;
   const dy = point.y - light.y;
-  const distance = Math.hypot(dx, dy);
+  // projectionLength is measured in the same radial units as radius/maxDistance.
+  const distance = Math.hypot(dx, dy / ((light.radiusY ?? light.radius) / light.radius));
   if (distance <= SHADOW_EPSILON) {
     return false;
   }

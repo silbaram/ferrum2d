@@ -3,7 +3,6 @@ import {
   MAX_TILE_OCCLUDER_SHADOW_TRIANGLE_FLOATS,
   writeTileOccluderShadowTrianglesInto,
 } from "./lightingShadows.js";
-import { distanceSquaredToTileOccluder } from "./lightingTileOccluders.js";
 import type {
   ResolvedLightingShadowOptions,
   ResolvedPointLight2D,
@@ -28,6 +27,7 @@ interface MutableCachedLightingShadowGeometry extends CachedLightingShadowGeomet
   lightX: number;
   lightY: number;
   lightRadius: number;
+  lightRadiusY: number;
   projectionLength: number;
   maxDistance: number;
   clipX: number;
@@ -78,10 +78,14 @@ export class LightingShadowGeometryCache {
 
     ensurePositionCapacity(entry, occluders.length * MAX_TILE_OCCLUDER_SHADOW_TRIANGLE_FLOATS);
     const maxDistanceSquared = maxDistance * maxDistance;
+    const scaleY = (light.radiusY ?? light.radius) / light.radius;
     let shadowFloatCount = 0;
     let casterCount = 0;
     for (const occluder of occluders) {
-      if (distanceSquaredToTileOccluder(light, occluder) > maxDistanceSquared) {
+      // Match the shader's elliptical distance, retaining world units after ground projection.
+      const dx = Math.max(occluder.x - light.x, 0, light.x - occluder.x - occluder.width);
+      const dy = Math.max(occluder.y - light.y, 0, light.y - occluder.y - occluder.height) / scaleY;
+      if (dx * dx + dy * dy > maxDistanceSquared) {
         continue;
       }
 
@@ -107,6 +111,7 @@ export class LightingShadowGeometryCache {
     entry.lightX = light.x;
     entry.lightY = light.y;
     entry.lightRadius = light.radius;
+    entry.lightRadiusY = light.radiusY ?? light.radius;
     entry.projectionLength = projectionLength;
     entry.maxDistance = maxDistance;
     entry.clipX = clipRect.x;
@@ -148,6 +153,7 @@ export class LightingShadowGeometryCache {
         lightX: 0,
         lightY: 0,
         lightRadius: 0,
+        lightRadiusY: 0,
         projectionLength: 0,
         maxDistance: 0,
         clipX: 0,
@@ -173,6 +179,7 @@ function isEntryValid(
     entry.lightX === light.x &&
     entry.lightY === light.y &&
     entry.lightRadius === light.radius &&
+    entry.lightRadiusY === (light.radiusY ?? light.radius) &&
     entry.projectionLength === projectionLength &&
     entry.maxDistance === maxDistance &&
     entry.clipX === clipRect.x &&

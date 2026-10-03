@@ -134,6 +134,7 @@ export interface Renderer {
   resize(): void;
   /** Optional view capability: world units per logical viewport, without reducing device pixels. */
   setViewportZoom?(zoom: number): void;
+  setGroundYScale?(scale: number): void;
   stats(): RendererStats;
   /** Optional capability: absent means unsupported, not zero resources. */
   resourceStats?(): RendererResourceStats | undefined;

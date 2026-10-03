@@ -39,6 +39,14 @@ declare module "../pkg/ferrum_core.js" {
     configure_data_scene_body(entity_id:number,generation:number,body_type:number,has_height:boolean,floor:number,elevation:number,height:number): boolean;
     configure_data_scene_visual(entity_id:number,generation:number,origin_x:number,origin_y:number,sort_order:number,depth_sort:boolean,r:number,g:number,b:number,a:number): boolean;
     spawn_data_scene_entity(x:number,y:number,rotation_radians:number,render_layer:number,texture_id:number,sprite_width:number,sprite_height:number,frame_u0:number,frame_v0:number,frame_u1:number,frame_v1:number,animation_frame_count:number,animation_fps:number,layer:number,collider_type:number,collider_offset_x:number,collider_offset_y:number,collider_enabled:boolean,collider_is_trigger:boolean,collider_half_width:number,collider_half_height:number,collider_radius:number,collider_start_x:number,collider_start_y:number,collider_end_x:number,collider_end_y:number,collider_rotation_radians:number,collider_vertices:Float32Array): boolean;
+    configure_data_scene_sprite_clips(id: number, generation: number, descriptors: Float32Array, frames: Float32Array, initial: number): boolean;
+    update_data_scene_sprite_animations(updates: Uint32Array): boolean;
+    data_scene_sprite_animation_state(id: number, generation: number): Float64Array;
+    configure_data_scene_projection(scale: number): boolean;
+    configure_data_scene_sprite_projection(id: number, generation: number, ground: boolean): boolean;
+    configure_data_scene_sun(x: number, y: number, opacity: number, lengthScale: number, maxCasters: number): boolean;
+    configure_data_scene_ground_shadow(id: number, generation: number, shape: number, width: number, height: number, opacity: number, explicitLayer: boolean, layer: number): boolean;
+    data_scene_ground_shadow_stats(): Uint32Array;
     data_scene_entity_id(): number;
     data_scene_entity_generation(): number;
     use_breakout_scene(): void;
@@ -546,6 +554,7 @@ declare module "../pkg/ferrum_core.js" {
     sprite_count(): number;
     camera_x(): number;
     camera_y(): number;
+    camera_ground_y_scale(): number;
     reset_game(): void;
     free(): void;
   }

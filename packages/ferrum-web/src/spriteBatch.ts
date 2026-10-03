@@ -59,6 +59,8 @@ export class SpriteBatch {
   private readonly resolutionLocation: WebGLUniformLocation;
   private readonly screenOffsetLocation: WebGLUniformLocation;
   private readonly textureLocation: WebGLUniformLocation;
+  groundYScale = 1;
+  private readonly groundYScaleLocation: WebGLUniformLocation;
   private readonly textureFlipYLocation: WebGLUniformLocation;
   private instanceCapacityFloats = 0;
   private materialStaging = new Float32Array(0);
@@ -107,6 +109,9 @@ export class SpriteBatch {
       this.gl.enableVertexAttribArray(4);
       this.gl.vertexAttribPointer(4, 1, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 14 * BYTES_PER_F32);
       this.gl.vertexAttribDivisor(4, 1);
+      this.gl.enableVertexAttribArray(5);
+      this.gl.vertexAttribPointer(5, 1, this.gl.FLOAT, false, COMMAND_STRIDE_BYTES, 13 * BYTES_PER_F32);
+      this.gl.vertexAttribDivisor(5, 1);
 
       this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
       this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, QUAD_INDEX_DATA, this.gl.STATIC_DRAW);
@@ -120,6 +125,9 @@ export class SpriteBatch {
       const textureLocation = this.gl.getUniformLocation(this.program, "u_texture");
       const textureFlipYLocation = this.gl.getUniformLocation(this.program, "u_texture_flip_y");
       if (!resolutionLocation || !screenOffsetLocation || !textureLocation || !textureFlipYLocation) throw new Error("Sprite shader uniform location 조회 실패");
+      const groundYScaleLocation = this.gl.getUniformLocation(this.program, "u_ground_y_scale");
+      if (!groundYScaleLocation) throw new Error("Missing ground projection uniform");
+      this.groundYScaleLocation = groundYScaleLocation;
       this.resolutionLocation = resolutionLocation;
       this.screenOffsetLocation = screenOffsetLocation;
       this.textureLocation = textureLocation;
@@ -239,6 +247,7 @@ export class SpriteBatch {
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceVbo);
+    this.gl.uniform1f(this.groundYScaleLocation, this.groundYScale);
     this.gl.uniform2f(this.resolutionLocation, resolution[0], resolution[1]);
     this.gl.uniform2f(this.screenOffsetLocation, screenOffset[0], screenOffset[1]);
     this.gl.activeTexture(this.gl.TEXTURE0);

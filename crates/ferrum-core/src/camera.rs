@@ -83,6 +83,8 @@ pub struct Camera2D {
     pub y: f32,
     pub viewport_width: f32,
     pub viewport_height: f32,
+    /// Render-only ground projection. Simulation and camera centers remain world coordinates.
+    pub ground_y_scale: f32,
 }
 
 impl Camera2D {
@@ -92,6 +94,7 @@ impl Camera2D {
             y: viewport_height * 0.5,
             viewport_width,
             viewport_height,
+            ground_y_scale: 1.0,
         }
     }
 
@@ -143,14 +146,14 @@ impl Camera2D {
     pub fn world_to_screen(&self, transform: Transform2D) -> Transform2D {
         Transform2D {
             x: transform.x - self.left(),
-            y: transform.y - self.top(),
+            y: (transform.y - self.top()) * self.ground_y_scale,
         }
     }
 
     pub fn screen_to_world(&self, transform: Transform2D) -> Transform2D {
         Transform2D {
             x: transform.x + self.left(),
-            y: transform.y + self.top(),
+            y: transform.y / self.ground_y_scale + self.top(),
         }
     }
 
@@ -159,7 +162,7 @@ impl Camera2D {
             min_x: self.left(),
             min_y: self.top(),
             max_x: self.left() + self.viewport_width,
-            max_y: self.top() + self.viewport_height,
+            max_y: self.top() + self.viewport_height / self.ground_y_scale,
         }
     }
 
@@ -168,7 +171,7 @@ impl Camera2D {
     }
 
     fn top(&self) -> f32 {
-        self.y - self.viewport_height * 0.5
+        self.y - self.viewport_height / self.ground_y_scale * 0.5
     }
 
     fn clamp_to_world(&mut self, world_width: f32, world_height: f32) {
