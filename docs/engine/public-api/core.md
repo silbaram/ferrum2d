@@ -628,7 +628,7 @@ context loss, timeout, 컴파일/링크 실패는 reject하며 context 자동 �
 static/kinematic body와 sprite의 같은 핸들 연결을 정의한다.
 [Data Scene native runtime](../data-scene-native-runtime.md)에서 정렬·원점·색 공간·카메라·좌표·조명 계약을 확인한다.
 
-## Data Scene 표현 확장 (#68~#70, 미출시)
+## Data Scene 표현 확장 (#68~#70, 0.1.0-beta.3)
 
 `/core`, `/authoring`은 `DataSceneSpriteAnimationSetSpec`, `DataSceneSpriteAnimationUpdate`,
 `DataSceneSpriteAnimationState`, `resolveDataSceneSpriteAnimationSet`, `DirectionalLight2D`,

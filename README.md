@@ -6,7 +6,7 @@ Ferrum2D는 Rust core, WebAssembly, TypeScript 플랫폼 레이어, WebGL2 기�
 
 Ferrum2D의 제품 목표는 기존 게임 엔진처럼 비주얼 에디터를 중심에 두는 것이 아니라, AI agent가 Game Spec, Physics Spec, 프로젝트 템플릿, 검증 스크립트를 사용해 게임을 생성하고 수정하는 **AI agent-first 2D game engine**을 만드는 것이다.
 
-**AI에게 초기 개발 환경 설치를 맡기려면 [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)의 링크를 전달한다.** `0.1.0-beta.2` 엔진·개발 도구·AI 지침만 설치하고 의존성을 검증한다. 게임 코드와 예제는 게임 개발을 요청한 뒤 작성한다.
+**AI에게 초기 개발 환경 설치를 맡기려면 [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)의 링크를 전달한다.** `0.1.0-beta.3` 엔진·개발 도구·AI 지침만 설치하고 의존성을 검증한다. 게임 코드와 예제는 게임 개발을 요청한 뒤 작성한다.
 
 ## 엔진 철학
 
@@ -490,4 +490,4 @@ WebGL2 GPU block 압축과 이미지 fallback을 지원하며 작은 pixel sprit
 [지원 범위와 측정](docs/development/quality/shader-preparation.md)을 참고하세요.
 
 Data Scene의 native actor, 명시적 depth 정렬, camera/zoom/조명 연결은 [Data Scene native runtime](docs/engine/data-scene-native-runtime.md)을 참고한다. 이 경로는 `0.1.0-beta.2`부터 제공한다.
-개발 브랜치에는 캐릭터별 atlas 클립·방향 전환, 2.5D 지면 투영, 태양 방향광·지면 그림자를 추가했다. [사용법과 지원 범위](docs/engine/data-scene-presentation.md)를 참고한다. 이 확장은 아직 릴리즈되지 않았다.
+`0.1.0-beta.3`부터 캐릭터별 atlas 클립·방향 전환, 2.5D 지면 투영, 태양 방향광·지면 그림자를 제공한다. [사용법과 지원 범위](docs/engine/data-scene-presentation.md)를 참고한다.

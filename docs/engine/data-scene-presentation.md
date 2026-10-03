@@ -1,7 +1,7 @@
 # Data Scene 애니메이션·지면 투영·태양 그림자
 
-#68~#70에서 추가한 공개 API다. **아직 릴리즈되지 않은 개발 브랜치 기능**이며,
-`0.1.0-beta.2`에는 포함되지 않는다. [native actor 조립](data-scene-native-runtime.md)에
+#68~#70에서 추가한 공개 API이며 `0.1.0-beta.3`부터 제공한다.
+[native actor 조립](data-scene-native-runtime.md)에
 이어 적용한다. 초기 설치용 템플릿은 예제 게임이나 아래 recipe를 자동 생성하지 않는다.
 
 ## 캐릭터별 atlas 클립

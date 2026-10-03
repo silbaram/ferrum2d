@@ -64,7 +64,7 @@ floor/elevation/footY가 0인 항목으로 비교된다. 서로 다른 그룹은
 
 HD-2D metadata가 없는 sprite의 floor/elevation은 0이다. 발 위치는
 `entity.y + sprite.height × (1 - originY)`이며, 기울어진 그림과 무관한 지면상의 정렬 기준이다.
-개발 브랜치의 지면 투영에서는 upright의 높이 offset을 `groundYScale`로 나눠 같은 지면 단위로
+`0.1.0-beta.3`부터 제공하는 지면 투영에서는 upright의 높이 offset을 `groundYScale`로 나눠 같은 지면 단위로
 비교한다. ground sprite는 이미지와 offset이 함께 압축되므로 위 식을 유지한다.
 내장 Shooter/Breakout/Platformer의 기존 전역 HD-2D 정렬은 유지한다. Data Scene tilemap은 기존
 배경 pass, particle은 월드 이후 pass를 유지한다. Data Scene world text의 `renderLayer`는
@@ -121,7 +121,7 @@ WebGL2와 WebGPU 모두 이 capability를 제공한다. 주입한 renderer가 �
 radius/size는 world 단위를 유지한다. viewport zoom이 renderer의 해상도 변환을 담당하므로 여기서
 한 번 더 확대하지 않는다. 객체 수가 많은 앱은 같은 snapshot과 bulk body buffer를 사용한다.
 
-개발 브랜치의 [표현 확장](data-scene-presentation.md)은 선택적인 `groundYScale` 지면 투영과
+`0.1.0-beta.3`의 [표현 확장](data-scene-presentation.md)은 선택적인 `groundYScale` 지면 투영과
 직립 sprite, 클립 전환, 태양 그림자를 제공한다. 기본값 1에서는 위 좌표 계약을 유지한다.
 world는 평면 2D이며 zoom은 균일하다. 회전·skew CSS 변환은 지원하지 않는다. HTML HUD/일지는 화면 공간으로 유지할 수 있고, 월드 sprite와
 world label은 native renderer를 사용한다. 모달 입력 차단은 consumer 입력 흐름에서 처리한다.
