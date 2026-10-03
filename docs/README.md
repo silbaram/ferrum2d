@@ -4,6 +4,8 @@
 
 Ferrum2D의 제품 목표는 비주얼 에디터 중심 엔진이 아니라 AI agent-first 2D game engine이다. 문서는 사람이 읽는 설명과 함께 AI agent가 Game Spec, Physics Spec, template, validation, smoke check를 안전하게 수정할 수 있는 기준 소스 역할을 한다.
 
+빈 게임 디렉터리에서 설치를 시작하는 AI 에이전트는 [AI 에이전트용 설치 지침](engine/ai-agent-install.md)을 먼저 읽는다. 공개 릴리스의 고정 URL, 생성 명령, consumer 지침 설치와 완료 검증을 한 문서에서 따른다.
+
 ## 큰 구분
 
 | 디렉터리 | 역할 | 주요 문서 |

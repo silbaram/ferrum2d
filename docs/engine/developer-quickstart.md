@@ -4,6 +4,8 @@ Ferrum2D는 Rust core, WebAssembly, TypeScript platform layer, WebGL2 renderer�
 
 이 페이지는 Ferrum2D를 처음 보는 개발자가 엔진의 방향과 구조를 이해하고, 첫 게임 프로젝트를 실행한 뒤, 어떤 파일을 수정해야 하는지 빠르게 판단하도록 돕는 시작 문서다.
 
+설치를 AI에게 맡길 때는 [AI 에이전트용 설치 지침](ai-agent-install.md)의 링크를 전달한다. 공개된 beta의 정확한 다운로드 URL과 현재 빈 디렉터리에서 실행할 명령, agent 설치·검증 순서를 제공한다.
+
 ## 이 페이지에서 얻는 것
 
 | 질문 | 답 |
