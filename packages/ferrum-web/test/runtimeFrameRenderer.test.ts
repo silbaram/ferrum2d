@@ -537,3 +537,23 @@ function steppedNow(...values: number[]): () => number {
   let index = 0;
   return () => values[Math.min(index++, values.length - 1)] ?? 0;
 }
+
+test("RuntimeFrameRenderer carries real resource statistics to overlay and profiler", () => {
+  const renderer = fakeRuntimeRenderer([]);
+  renderer.resourceStats = () => ({ textureCount: 7, bufferCount: 5, programCount: 5,
+    renderTargetCount: 3, unmeasuredTextureCount: 0, textureBytes: 1000, bufferBytes: 24, estimatedBytes: 1024 });
+  let overlayMetrics: unknown;
+  let profilerMetrics: unknown;
+  const frameRenderer = new RuntimeFrameRenderer({ renderer, needsRuntimeFrame: true, shouldRenderPhysicsDebugLines: false,
+    debugOverlay: { update: (value: unknown) => { overlayMetrics = value; } } as never,
+    profiler: { recordFrame: (value: unknown) => { profilerMetrics = value; } } as never,
+    onFrame: ({ debugMetrics }) => {
+      equal(debugMetrics.gpuTextureCount, 7);
+      equal(debugMetrics.gpuRenderTargetCount, 3);
+      equal(debugMetrics.gpuEstimatedBytes, 1024);
+      equal(debugMetrics, overlayMetrics);
+      equal(debugMetrics, profilerMetrics);
+    },
+  });
+  frameRenderer.renderFrame(renderFrameState({ frameState: frameState() }));
+});

@@ -1,9 +1,10 @@
 # @ferrum2d/create-game
 
-Ferrum2D 게임 프로젝트 생성 CLI다.
+Ferrum2D 게임 프로젝트 생성 CLI다. 기본 배포 경로는 GitHub Releases의 설치용 tarball이다. 공개된 릴리스가 있어야 원격 설치할 수 있다. Node.js 22를 권장하며 게임 개발자에게 Rust 빌드는 필요 없다.
 
 ```bash
-npm create @ferrum2d/game my-game
+ferrum_cli_url="<GitHub Release의 create-game .tgz 다운로드 URL>"
+npx --yes --allow-remote=root "$ferrum_cli_url" my-game
 cd my-game
 npm install
 npm run dev
@@ -11,20 +12,35 @@ npm run dev
 
 생성된 프로젝트는 `@ferrum2d/ferrum-web`을 dependency로 사용한다. 엔진 소스 코드를 복사하지 않고, npm package entrypoint만 import한다.
 
+
+GitHub Release 전용 패키지는 `package.json.ferrumGithubRelease`에 기록된 버전/저장소를 사용한다. 생성 프로젝트의 엔진과 authoring viewer dependency, 선택형 `ferrum:agents` 명령이 같은 릴리스 URL을 사용한다. `FERRUM_INSTALL.md`에 출처를 남기며 `.npmrc`에 `allow-remote=root`를 생성해 npm 12 설치를 지원한다. 기존 `.npmrc`는 `--force`에서도 보존한다. `npm install`은 agent 파일을 만들지 않는다.
+
+저장소의 CLI를 직접 실행할 때도 릴리스를 선택할 수 있다.
+
+```bash
+node packages/create-game/bin/create-game.mjs ../my-game --github-release 0.1.0-beta.0
+```
+
+위 버전은 예시다. `--github-release`는 정확한 `x.y.z-beta.N` 또는 `ferrum-web-vx.y.z-beta.N`만 받는다. `--github-repository owner/repo`로 fork를 선택할 수 있다. 릴리스 모드와 `--ferrum-version`/`--authoring-viewer-version`의 혼용은 거부한다. `latest` 자동 선택은 하지 않는다.
+
+기존 source/local CLI의 `--ferrum-version` 및 `--authoring-viewer-version`은 유지한다. 릴리스 metadata나 옵션이 없는 source CLI는 기존 npm 범위 기본값을 사용하므로 공개 npm 패키지가 없는 동안에는 로컬 tarball 두 개를 명시해야 한다.
+
+생성 후 출력되는 폴더 이동 명령은 공백·따옴표 등 경로 문자를 보존한다. Windows에서는 PowerShell용 `Set-Location -LiteralPath`를 안내한다.
+
 템플릿은 `--template`으로 고른다. 현재 기본 템플릿은 `minimal`이다.
 
 ```bash
-npx @ferrum2d/create-game my-game --template minimal
+npx --yes --allow-remote=root "$ferrum_cli_url" my-game --template minimal
 ```
 
 사용 가능한 템플릿:
 
 ```bash
-npx @ferrum2d/create-game --list-templates
-npx @ferrum2d/create-game --list-templates --json
-npx @ferrum2d/create-game my-shooter --template topdown
-npx @ferrum2d/create-game my-platformer --template platformer
-npx @ferrum2d/create-game my-breakout --template breakout
+npx --yes --allow-remote=root "$ferrum_cli_url" --list-templates
+npx --yes --allow-remote=root "$ferrum_cli_url" --list-templates --json
+npx --yes --allow-remote=root "$ferrum_cli_url" my-shooter --template topdown
+npx --yes --allow-remote=root "$ferrum_cli_url" my-platformer --template platformer
+npx --yes --allow-remote=root "$ferrum_cli_url" my-breakout --template breakout
 ```
 
 - `minimal`: runtime/HUD/debug metric과 `ProjectileDefinition`/`WeaponDefinition` authoring 예제를 포함한 가장 작은 starter
@@ -70,5 +86,5 @@ npm run preview
 AI agent/skill/command 템플릿은 별도 패키지로 명시적으로 설치한다.
 
 ```bash
-npx @ferrum2d/agents init --tools codex,claude,gemini
+npm run ferrum:agents
 ```

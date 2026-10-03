@@ -1,3 +1,4 @@
+import type { RendererResourceStats } from "./rendererResources";
 import type { DebugOverlay } from "./debugOverlay.js";
 import type { DebugOverlayMetrics } from "./debugOverlay.js";
 import type { FrameState } from "./engineTypes.js";
@@ -144,6 +145,7 @@ export class RuntimeFrameRenderer {
       renderTimeMs,
       this.audioEventsPerSecond,
       this.options.gameStateLabel ?? defaultGameStateLabel,
+      this.options.renderer.resourceStats?.(),
     );
     this.options.debugOverlay?.update(debugMetrics);
     const runtimeFrame: FerrumRuntimeFrame = {
@@ -191,9 +193,17 @@ function buildDebugMetrics(
   renderTimeMs: number,
   audioEventsPerSecond: number,
   gameStateLabel: (code: GameStateCode) => string,
+  resources?: RendererResourceStats,
 ): DebugOverlayMetrics {
   return {
     fps,
+    ...(resources === undefined ? {} : {
+      gpuTextureCount: resources.textureCount,
+      gpuBufferCount: resources.bufferCount,
+      gpuProgramCount: resources.programCount,
+      gpuRenderTargetCount: resources.renderTargetCount,
+      gpuEstimatedBytes: resources.estimatedBytes,
+    }),
     frameTimeMs: frame.frameTimeMs,
     entityCount: frame.entityCount,
     spriteCount: frame.spriteCount,

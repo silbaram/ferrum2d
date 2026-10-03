@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/BinomialLLC/basis_universal",
+  "tag": "v2_50",
+  "commit": "9bebe16726b3a61c8c213eeee3b7cffb462ef34e",
+  "modification": "basis_transcoder.js: license note and export default BASIS appended for ES modules",
+  "sha256": {
+    "LICENSE": "065fcf48d6af21c0b75e23be5ed5753aee75c892e1c2cf178fa6736305614a5c",
+    "LICENSE-Zstd": "2c1a7fa704df8f3a606f6fc010b8b5aaebf403f3aeec339a12048f1ba7331a0b",
+    "NOTICE": "a710c77f53231533f19fbc00e04a7109077f2dec74232b62a96f2ac1a1c04c85",
+    "basis_transcoder.js": "f65c3bb3bfa82652ffae29c48b7c2b52d06359161dfc1548ae9c7871ee778670",
+    "basis_transcoder.wasm": "a0f65d4a30ecb3269d01ead7d0a3477d2b0208146d083625a90623f473f6c139"
+  }
+}

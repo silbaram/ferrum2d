@@ -20,6 +20,12 @@ Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame
 
 Physics debug line 생성은 opt-in quality/debug path다. Runtime `Engine`은 debug 전용 collision scratch를 보관해 broadphase proxy와 contact collider pair scratch를 frame마다 재사용하며, public debug line buffer ABI와 renderer 경로는 그대로 유지한다.
 
+## 게임 프로젝트 설치 경계
+
+GitHub Releases에는 런타임, authoring viewer, create-game, agents를 개별 npm tarball로 제공한다. `scripts/package/prepare-github-release.mjs`는 기존 package allowlist의 빌드 산출물만 임시 staging으로 복사하고 동일한 beta 버전으로 포장한다. 저장소 package version과 `private: true`는 바꾸지 않는다. 생성기 tarball의 `ferrumGithubRelease` metadata가 같은 릴리스의 dependency URL과 명시적 AI 지침 설치 명령을 결정한다. 새 프로젝트 `.npmrc`는 npm 12에서 직접 URL 의존성만 허용하도록 `allow-remote=root`를 기록하며 기존 설정은 보존한다.
+
+이 경로는 게임 시뮬레이션, Rust/Wasm ABI, public runtime export를 변경하지 않는다. 게임 개발자는 Node/npm만 준비하고 엔진의 JS/Wasm은 패키지에서 받는다. 버전·파일·SHA-256은 `release-manifest.json`과 `SHA256SUMS`에 기록한다. 준비 명령과 수동 workflow는 로컬/Actions artifact만 만들며 GitHub Release 공개는 별도 실행이다. 상세 계약은 [GitHub Release 배포 절차](../operations/github-release.md)를 따른다.
+
 ## 기준 소스
 
 | 영역 | 코드 기준 |
@@ -308,6 +314,37 @@ unsupported diagnostic을 반환한다.
 
 ### Renderer
 
+WebGL2 자원 통계는 기존 소유 모듈에서 집계한다. TextureManager는 texture 객체별 크기와
+합계를 변경 시 갱신하고, RenderTexture store도 생성/resize/release 때 합계를 갱신한다.
+renderer의 `resourceStats()`는 이 합계와 고정 개수의 batch/내부 target 상태를 결합하므로
+전체 asset/entity 순회나 GPU query가 없다. 소유권 관리용 별도 GC/리소스 그래프는 도입하지 않는다.
+같은 TextureManager의 ID alias는 마지막 참조가 사라질 때 texture를 해제하며 중복 집계하지 않는다.
+raw texture는 기존처럼 renderer destroy까지 소유한다.
+RuntimeFrameRenderer는 실제 render/post-process 완료 뒤 snapshot을 DebugOverlay 및
+RuntimeProfiler sample로 전달한다. bytes는 texture 저장량과 GPU buffer capacity의 합계 추정치이며
+미지원/크기 불명은 0으로 보정하지 않는다. native WebGPU 통계는 아직 미지원이다.
+
+
+색 공간은 renderer 생성 시 `legacy`(기본값) 또는 `linear-srgb`로 고정한다.
+WebGL2 managed 모드는 sRGB 색상 texture와 수치 texture를 분리하며, 숫자 RGB는 linear 계약이다.
+sprite/lighting/material/후처리는 linear로 계산하고 sRGB framebuffer 저장 형식으로 중간 정밀도를 확보한다.
+최종 fullscreen pass만 canvas용 sRGB 변환을 수행하고 premultiplied alpha를 보존한다.
+후처리가 없으면 출력 draw 1회가 추가되며 frame 통계에 포함한다. 기존 bulk ABI와 Rust 게임 상태는 바꾸지 않는다.
+WebGPU의 managed 모드는 canvas 취득 전에 거절하고 factory가 같은 설정을 유지해 WebGL2로 fallback한다.
+asset manifest의 `textureOptions`는 직접 load/preload 단계에서 검증하고 renderer로 전달한다.
+
+WebGL2 RenderTexture는 `webgl2RenderTextureStore.ts`가 renderer별 handle/id와 자원을 소유하고,
+`webgl2RenderTarget.ts`가 내부 후처리 target과 공개 target의 GPU 할당을 공통으로 처리한다.
+asset texture와 별도 저장하되 `SpriteBatch`의 texture 조회 계약에서 합쳐 소유권 중복과 double delete를 피한다.
+`renderToTexture`는 기존 bulk command를 별도 framebuffer로 소비하고 main draw framebuffer,
+viewport, clear/color-mask/scissor 상태를 복구한다. texture feedback과 누락된 입력은 clear 전에 거절한다.
+불투명 8-bit RGBA(legacy RGBA8/managed SRGB8_ALPHA8), 일반 sprite와 같은 좌상단 UV,
+고정 texel 크기와 별도 논리 viewport가 첫 버전의 계약이다.
+framebuffer 저장 방향은 `SpriteBatch`의 texture별 shader uniform으로 보정하므로 Data Scene/Rust UV 계약과
+직접 buffer upload를 유지한다. 부분 UV, asset 혼합, material staging에서도 동일하게 적용한다.
+기존 Rust 컬링/화면 좌표 및 Wasm ABI를 바꾸지 않으며 독립 카메라를 구현하지 않는다.
+main/offscreen 비용을 frame 통계에 합산한다. 공개 API와 제약은 [Core Runtime](../../engine/public-api/core.md#rendertexture-webgl2)을 따른다.
+
 제품 기본 renderer는 WebGL2다. `createRenderer(...)`는 `preferred: "webgpu"`가 들어오면 WebGPU adapter/device/context를 먼저 생성하고, 실패하면 WebGL2로 fallback한다. WebGPU는 Rust render command ABI를 바꾸지 않는 선택 renderer이며 WebGL2를 대체하지 않는다. WebGPU post-process는 현재 fade pass만 지원하므로 bloom/CRT/vignette/glitch 같은 fullscreen pass의 기준 구현은 WebGL2다.
 
 WebGL2 sprite renderer는 Rust render command buffer를 그대로 instance data로 업로드하고, static quad vertex buffer와 static index buffer를 재사용해 `drawElementsInstanced`로 texture-contiguous batch를 그린다. `SpriteRenderCommand`는 rect/uv/color/texture/effect와 visible `rotation_radians`를 숫자 슬롯으로 전달하며, shader는 rect 중심 기준으로 회전한다. 이 구조는 per-sprite draw call 없이 tilemap/sprite render command를 WebGL2 instancing path로 소비한다.
@@ -425,3 +462,25 @@ Rust/TypeScript 공유 buffer는 `#[repr(C)]` Rust struct와 TypeScript decoder�
 - Wasm/API: `wasm-pack build crates/ferrum-core --target web --out-dir ../../packages/ferrum-web/pkg`, `pnpm build`
 - Game Spec: `pnpm validate:game-spec`
 - 예제 회귀: [Smoke Check](../quality/smoke-check.md), `examples/topdown-shooter/SMOKE_CHECKLIST.md`
+
+
+### 선택적 KTX2/Basis 에셋 경로
+
+`TextureLoadOptions.ktx2Url`은 TS 자산 로딩 계층이 처리한다. WebGL2 capability 선택 후
+별도 module Worker가 Basis v2.50 decoder로 ETC1S/UASTC를 ASTC/BC7/ETC2 block으로 변환한다.
+Rust command ABI, texture ID 및 게임 시뮬레이션은 바뀌지 않는다. 이미지 URL은 항상 fallback으로
+유지하며 native WebGPU는 이 이미지 경로를 사용한다. 같은 ID의 새 load/evict/destroy와
+AbortSignal은 늦은 upload를 차단한다. 소유한 Worker와 공유 decoder의 수명을 구분한다.
+고정된 공식 decoder와 라이선스는 package dist에 복사하고 SHA-256으로 검증한다.
+[측정·배포·캐시 정책](../quality/compressed-textures.md)에 유지보수 및 지원 범위를 기록한다.
+
+
+### WebGL2 셰이더 사전 준비
+
+`WebGL2Renderer.create`와 factory의 `shaderPreparation`은 선택적 async 초기화 경로다.
+5개 내부 shader source를 동기 생성과 공유한다. compile/link를 제출한 뒤 지원 기기에서는
+KHR completion 상태만 poll하며 준비된 program을 생성자에 1회 이전한다. 이 scope는 동기
+구성 직후 제거되므로 renderer/context를 넘어 program을 공유하거나 frame에서 조회하지 않는다.
+미지원 기기는 link 조회 사이에 yield하며 해당 조회의 blocking은 남는다. AbortSignal,
+timeout/context loss/compile/link 오류와 부분 생성 실패는 owned GPU 자원을 rollback한다.
+로딩 UI는 renderer 준비 phase를 표시하고 전체 runtime/asset 준비 완료와 구분한다.

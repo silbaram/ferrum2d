@@ -75,6 +75,7 @@ const requiredPackageFiles = [
   "LICENSE",
   "README.md",
   "bin/create-game.mjs",
+  "bin/github-release.mjs",
   "templates/manifest.json",
   ...sharedTemplateFiles.map((file) => `templates/${file}`),
   ...templateEntries.flatMap((template) => (
@@ -86,6 +87,7 @@ const requiredPackedFiles = [
   "package/LICENSE",
   "package/README.md",
   "package/bin/create-game.mjs",
+  "package/bin/github-release.mjs",
   "package/templates/manifest.json",
   ...sharedTemplateFiles.map((file) => `package/templates/${file}`),
   ...templateEntries.flatMap((template) => (

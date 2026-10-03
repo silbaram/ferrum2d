@@ -9,6 +9,8 @@ npm install
 npm run dev
 ```
 
+GitHub Release 생성기로 만든 프로젝트는 `FERRUM_INSTALL.md`에서 엔진 버전과 설치 출처를 확인한다. AI 개발 지침은 선택적으로 `npm run ferrum:agents`를 실행해 설치한다. 생성된 `package-lock.json`을 버전 관리에 포함하면 `npm ci`로 같은 의존성을 재설치할 수 있다.
+
 ## 검증
 
 ```bash

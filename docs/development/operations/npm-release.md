@@ -2,6 +2,8 @@
 
 이 문서는 `@ferrum2d/ferrum-web`를 npm 베타 패키지로 공개하기 전 확인해야 하는 기준을 고정한다. 동시에 `@ferrum2d/authoring-viewer`, `@ferrum2d/create-game`, `@ferrum2d/agents`를 같은 base version 후보로 로컬 tarball install 검증하는 기준을 포함한다. 현재 저장소는 accidental publish를 막기 위해 네 package 모두 `private: true`를 유지한다. npm package 역할 분리는 [npm 패키지 구성 전략](npm-package-strategy.md)을 따른다.
 
+현재 기본 배포 경로는 [GitHub Release 설치용 패키지](github-release.md)다. GitHub 경로는 `private: true`를 유지하고 로컬 staging 복사본만 beta 버전으로 포장한다. 아래 npm publish 절차는 npm 레지스트리 공개를 별도로 선택했을 때 적용한다.
+
 ## 목표
 
 - 사용자가 `pnpm add @ferrum2d/ferrum-web@beta`로 browser runtime을 설치할 수 있는 패키지 형태를 만든다.
@@ -101,20 +103,18 @@ publish 승인 전 staged beta 후보를 검증할 때는 `private: true`를 유
 
 ```bash
 pnpm release:candidate-check
-pnpm release:candidate-check -- --version x.y.z-beta.N --tag ferrum-web-vx.y.z-beta.N
+node scripts/package/check-release-candidate.mjs --version x.y.z-beta.N --tag ferrum-web-vx.y.z-beta.N
 pnpm release:local-check
 ```
 
 `pnpm release:candidate-check`는 현재 root package와 네 release package의 base version, candidate beta semver, expected tag, `private: true`, `publishConfig.access: "public"`, `publishConfig.tag: "beta"`, `CHANGELOG.md`의 `Unreleased` staging section, release note template, `release:local-check`/`release:publish-check` gate 존재 여부를 확인한다. 이 명령은 네 package의 `private: true`를 유지해야 통과한다.
 
-`ferrum-web-v*` tag push가 발생하면 CI가 release metadata check를 실행하고 package consumer smoke를 별도 job으로 gate한다. PR이나 일반 push에서는 무겁기 때문에 기본 실행하지 않으며, 수동 `workflow_dispatch`에서 `consumer_smoke` input을 켜면 같은 job을 opt-in으로 실행한다. tag 기반 검증에서는 다음 조건을 추가로 요구한다.
+현재 CI는 수동 `workflow_dispatch`로 실행하며 GitHub Release 배포를 기본으로 한다. tag ref에서도 `private: true`를 유지한 candidate metadata와 `pnpm package:check`를 검사한다. npm publish 후보는 아래 별도 npm 절차를 적용해야 한다.
 
-- `packages/ferrum-web/package.json` version이 `x.y.z-beta.N` 형식이다.
-- Git tag가 정확히 `ferrum-web-vx.y.z-beta.N` 형식이며 package version과 일치한다.
-- `CHANGELOG.md`에 `## x.y.z-beta.N - YYYY-MM-DD` release section이 있다.
-- publish 후보 metadata로 `private: false`가 설정되어 있다.
-
-tag CI의 validate job은 일반 `pnpm package:check` 대신 publish 후보용 `pnpm package:publish-check:ferrum-web`과 companion package artifact check인 `pnpm package:check:authoring-viewer`, `pnpm package:check:create-game`, `pnpm package:check:agents`를 사용한다. `pnpm package:check`는 accidental publish 방지를 위해 `private: true`를 요구하고, `pnpm package:publish-check:ferrum-web`은 publish 직전 상태인 `private: false`를 요구하기 때문이다.
+- publish package version은 `x.y.z-beta.N`으로 맞춘다.
+- Git tag는 `ferrum-web-vx.y.z-beta.N`이며 package version과 일치해야 한다.
+- `CHANGELOG.md`에 해당 release section을 기록한다.
+- 명시적 npm 공개 승인 뒤 `private: false` 전환과 package별 `package:publish-check:*`를 실행한다.
 
 실제 publish 직전에는 release metadata check와 package publish guard를 함께 실행한다.
 
@@ -131,7 +131,8 @@ pnpm release:publish-check
 ```bash
 pnpm build:wasm
 pnpm --filter @ferrum2d/ferrum-web build
-pnpm --filter @ferrum2d/ferrum-web pack --pack-destination ../../artifacts/npm
+mkdir -p artifacts/npm
+(cd packages/ferrum-web && pnpm pack --pack-destination ../../artifacts/npm)
 ```
 
 생성된 `.tgz`는 임시 소비자 프로젝트에서 설치해 import smoke를 확인한다.
@@ -190,7 +191,7 @@ pnpm release:publish-check
 7. npm 로그인과 organization 권한을 확인한다.
 8. `npm publish --access public --tag beta`를 `packages/ferrum-web`에서 실행한다.
 9. Git tag는 `ferrum-web-v0.1.0-beta.N` 형식으로 만든다.
-10. tag push 후 CI의 `Release metadata check`가 통과하는지 확인한다.
+10. npm 후보는 `pnpm release:check`와 package별 publish-check 통과를 확인한다. GitHub 전용 CI는 private candidate를 검사하므로 npm 공개 검증을 대신하지 않는다.
 11. [릴리스 노트 템플릿](release-notes-template.md)에 맞춰 GitHub Release 본문을 작성한다.
 
 ## GitHub generated release notes

@@ -69,13 +69,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Release metadata check
-        if: startsWith(github.ref, 'refs/tags/ferrum-web-v')
-        run: pnpm release:check
-
       - name: Release candidate metadata guard
-        if: ${{ !startsWith(github.ref, 'refs/tags/ferrum-web-v') }}
-        run: pnpm release:candidate-check
+        env:
+          RELEASE_REF: ${{ github.ref_name }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/ferrum-web-v* ]]; then
+            node scripts/package/check-release-candidate.mjs --version "${RELEASE_REF#ferrum-web-v}" --tag "$RELEASE_REF"
+          else
+            pnpm release:candidate-check
+          fi
 
       - name: Public API surface guard
         run: pnpm validate:public-api-surface
@@ -120,16 +122,26 @@ jobs:
       - name: Build TypeScript packages
         run: pnpm build
 
+      - name: RenderTexture browser smoke
+        run: pnpm smoke:render-texture
+
+      - name: Color management browser smoke
+        run: pnpm smoke:color-management
+
+      - name: GPU resource lifecycle browser smoke
+        run: pnpm smoke:gpu-resources
+
+      - name: KTX2 compressed texture smoke
+        run: pnpm smoke:ktx2
+
+      - name: Shader preparation smoke
+        run: pnpm smoke:shader-preparation
+
       - name: Data scene authoring sample validation
         run: pnpm validate:data-scene-authoring
 
       - name: Package artifact checks
-        if: ${{ !startsWith(github.ref, 'refs/tags/ferrum-web-v') }}
         run: pnpm package:check
-
-      - name: Publish package artifact check
-        if: ${{ startsWith(github.ref, 'refs/tags/ferrum-web-v') }}
-        run: pnpm package:publish-check:ferrum-web && pnpm package:check:authoring-viewer && pnpm package:check:create-game && pnpm package:check:agents
 
       - name: Gameplay authoring report
         run: pnpm validate:gameplay-authoring:report
@@ -145,6 +157,9 @@ jobs:
 
       - name: Asset pipeline smoke
         run: pnpm smoke:asset-pipeline
+
+      - name: GitHub Release generator contracts
+        run: pnpm test:github-release
 
       - name: Create-game template catalog smoke
         run: pnpm smoke:create-game-template-catalog

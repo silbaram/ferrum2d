@@ -10,6 +10,8 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ### Added
 
+- GitHub Releases의 tarball로 게임 프로젝트를 생성하고 동일 버전의 엔진·뷰어·선택형 AI 도구를 연결하는 설치 경로와 로컬 배포 묶음 검증을 추가했다.
+
 - Rust + WebAssembly 기반 2D browser game runtime과 TypeScript platform layer를 준비했다.
 - WebGL2 기본 렌더러와 선택형 WebGPU renderer fallback 구조를 준비했다.
 - Top-down Shooter, Minimal, Platformer, Breakout starter/template 흐름을 준비했다.

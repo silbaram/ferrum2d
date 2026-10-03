@@ -1,4 +1,9 @@
 export interface DebugOverlayMetrics {
+  gpuTextureCount?: number;
+  gpuBufferCount?: number;
+  gpuProgramCount?: number;
+  gpuRenderTargetCount?: number;
+  gpuEstimatedBytes?: number;
   fps: number;
   frameTimeMs: number;
   entityCount: number;
@@ -43,7 +48,7 @@ export interface DebugOverlayMetrics {
   score: number;
 }
 
-export type DebugOverlayMetricUnit = "fps" | "ms" | "count" | "events/s" | "px" | "world" | "state" | "score" | "mode";
+export type DebugOverlayMetricUnit = "bytes" | "fps" | "ms" | "count" | "events/s" | "px" | "world" | "state" | "score" | "mode";
 
 export interface DebugOverlayRowContract {
   id: string;
@@ -61,6 +66,11 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "spriteCount", label: "sprites", unit: "count" },
   { id: "drawCalls", label: "draw calls", unit: "count" },
   { id: "batchCount", label: "batches", unit: "count" },
+  { id: "gpuTextureCount", label: "GPU textures", unit: "count", optional: true },
+  { id: "gpuBufferCount", label: "GPU buffers", unit: "count", optional: true },
+  { id: "gpuProgramCount", label: "GPU programs", unit: "count", optional: true },
+  { id: "gpuRenderTargetCount", label: "GPU targets", unit: "count", optional: true },
+  { id: "gpuEstimatedBytes", label: "GPU storage estimate", unit: "bytes", optional: true },
   { id: "renderCommandCount", label: "render commands", unit: "count", optional: true },
   { id: "textureBindCount", label: "texture binds", unit: "count", optional: true },
   { id: "textureSwitchCount", label: "texture switches", unit: "count", optional: true },
@@ -173,6 +183,12 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
     row("drawCalls", metrics.drawCalls),
     row("batchCount", metrics.batchCount),
   ];
+
+  if (metrics.gpuTextureCount !== undefined) lines.push(row("gpuTextureCount", metrics.gpuTextureCount));
+  if (metrics.gpuBufferCount !== undefined) lines.push(row("gpuBufferCount", metrics.gpuBufferCount));
+  if (metrics.gpuProgramCount !== undefined) lines.push(row("gpuProgramCount", metrics.gpuProgramCount));
+  if (metrics.gpuRenderTargetCount !== undefined) lines.push(row("gpuRenderTargetCount", metrics.gpuRenderTargetCount));
+  if (metrics.gpuEstimatedBytes !== undefined) lines.push(row("gpuEstimatedBytes", `${metrics.gpuEstimatedBytes} bytes`));
 
   if (metrics.renderCommandCount !== undefined) {
     lines.push(row("renderCommandCount", metrics.renderCommandCount));

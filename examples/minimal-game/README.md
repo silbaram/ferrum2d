@@ -11,6 +11,7 @@
 | UiOverlay | 기본 Dialogue 예제와 content runtime showcase를 DOM overlay로 표시한다. |
 | Content runtime smoke | `?contentRuntimeSmoke=true`에서 localization, cutscene, HUD, accessibility, animation timeline을 한 번에 확인한다. |
 | Visual smoke modes | lighting, material, camera post-process, particle VFX smoke fixture로도 사용한다. |
+| 색 공간 | `?colorManagement=linear-srgb`로 opt-in linear 계산/sRGB 출력을 확인한다. 기본은 legacy이며 `renderer=webgpu`를 함께 지정하면 WebGL2로 fallback한다. |
 | DebugOverlay | `?debug=true`, `?environment=production`, `?physicsDebugLines=true` query로 runtime/debug 상태를 전환한다. |
 
 ## Lab Profile 결정
@@ -50,6 +51,7 @@ pnpm smoke:screenshot-capture
 ```
 
 시각 효과 회귀는 `pnpm smoke:lighting`, `pnpm smoke:material`, `pnpm smoke:camera-postprocess`, `pnpm smoke:particle-vfx`에서 같은 예제 dist를 사용한다.
+색 공간의 수치 픽셀 회귀는 별도 public Data Scene fixture를 사용하는 `pnpm smoke:color-management`로 검증한다.
 
 ## Pages 노출
 
@@ -66,3 +68,7 @@ pnpm smoke:screenshot-capture
 - 새 smoke query가 늘어나면 `visual-runtime-lab` 또는 `input-ui-lab` 중 하나에 배치하고, 별도 예제 분리는 public portfolio 승격이 필요할 때만 검토한다.
 - Top-down Shooter 수치 조정은 `examples/topdown-shooter/public/game.json` 흐름을 따른다.
 - 새 장르 runtime이 필요하면 Rust scene/module 계약을 먼저 설계한다.
+
+
+`?shaderPreparation=true`는 선택적 WebGL2 비동기 셰이더 준비와 LoadingOverlay 진행 표시를 켠다.
+확장 미지원 기기에서는 link 조회가 여전히 동기 대기할 수 있다. 전체 runtime 준비 뒤 overlay를 숨긴다.

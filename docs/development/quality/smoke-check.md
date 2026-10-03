@@ -9,6 +9,11 @@
 | 제품 기준 | 명령 | gate 위치 | evidence |
 | --- | --- | --- | --- |
 | Runtime budget profile 계약 | `pnpm smoke:runtime-budgets` | CI 기본 gate, `smoke:check` | `tests/smoke/runtime-budget-profiles.mjs`의 profile/mode mapping 검증 |
+| WebGL2 RenderTexture | `pnpm smoke:render-texture` | CI workflow의 validate job, `smoke:check` | DPR 1/2, offscreen 1,024 sprite + main 1 sprite + fade, 총 3 draw calls, 픽셀 방향/상태 복구/resize/해제 검증 |
+| 셰이더 준비 | `pnpm smoke:shader-preparation` | CI workflow validate job, `smoke:check` | DPR 1/2 동기/비동기 픽셀 일치, 5 programs, 실패 cleanup, runtime 로딩 UI |
+| KTX2/Basis | `pnpm smoke:ktx2` | CI workflow validate job, `smoke:check` | raw ESM/Vite 번들, 실제 Worker·압축 upload·화질·fallback·취소·해제 |
+| GPU 자원 수명주기 | `pnpm smoke:gpu-resources` | CI workflow의 validate job, `smoke:check` | DPR 1/2, legacy/linear-srgb, 1,024 sprites, 12회 씬 전환 후 warmup 기준값 복귀, resize/해제, 실제 profiler 예산 검증 |
+| 색 공간 관리 | `pnpm smoke:color-management` | CI workflow의 validate job, `smoke:check` | DPR 1/2, legacy/linear-srgb 픽셀·조명·bloom·alpha·fallback, 1,024 sprites에서 1/2 draw calls |
 | Rust-side 대량 오브젝트 budget | `pnpm smoke:mass-objects` | CI 기본 gate, `smoke:check` | `ferrum2d.mass-object-stress.smoke-report` JSON과 scenario replay hash |
 | Physics solver/query budget | `pnpm smoke:physics`, `pnpm smoke:physics-replay` | CI 기본 gate는 `smoke:physics`, release 후보는 replay까지 실행 | scenario seed/frame/suite hash와 Web replay helper state hash |
 | Starter Runtime WebGL2 기본 경로 | `pnpm smoke:starter-runtime`, `pnpm smoke:browser-budget` | `smoke:check`, release 후보 수동/로컬 gate | Browser render smoke report와 `RuntimeProfiler` budget report |
@@ -521,6 +526,8 @@ Top-down, Placement Viewer의 전용 UI는 범용 shell option으로 흡수하�
 - `pnpm smoke:hud-toolkit`은 public package build에서 HUD theme token과 meter/counter/prompt overlay state preset을 확인한다.
 - `pnpm smoke:audio-system`은 public package build에서 `AudioManager` BGM loop/fade와 master/bgm/sfx/ui bus state를 확인한다.
 - `pnpm smoke:camera-postprocess`는 Minimal Game browser runtime에서 renderer fullscreen post-processing pass stats와 camera/post-process public helper를 확인한다.
+- `pnpm smoke:color-management`는 public Data Scene의 Playing 상태와 실제 Rust 15-float command buffer에서 출발한다. DPR 1/2에서 legacy/linear-srgb의 sRGB·linear·data texture, 숫자 RGB/material 혼합, 반투명 이미지/혼합, fade 체인, ambient/point light, bloom threshold, 어두운 grayscale ramp, RenderTexture 재사용·resize·clear, WebGPU 요청의 WebGL2 fallback, 투명 canvas의 premultiplied/additive 출력을 34개 시나리오로 검증한다. 1,024 commands의 sprite batch 1개와 texture switch 0을 유지하며 legacy draw 1회/managed draw 2회(출력 변환 포함)를 assert한다. 20회 warmup 뒤 60회 CPU submission median/P95를 기록하되 GPU 실행 시간이나 portable 성능 한계로 해석하지 않는다. managed 기본 출력의 framebuffer가 1개이며 반복 frame에서 texture/framebuffer 추가 할당이 없고 destroy 뒤 잔여 자원이 0인지 검사한다. metadata와 변환 함수/비지원 모드 거절은 `colorManagement.test.ts`로 검증한다.
+- `pnpm smoke:render-texture`는 public core/authoring entrypoint의 `createEngine`, `applyDataSceneAuthoringDocument`, `WebGL2Renderer`를 실제 browser에서 실행한다. Playing Data Scene의 Rust가 생성한 1,024개 비대칭 사분면 sprite를 target에 그리고, 같은 authoring 경로로 생성한 main sprite와 fade로 합성해 1,025 commands, 2 sprite batches, 3 draw calls를 확인한다. stride는 실제 command view에서 읽으며 15-float 직접 upload와 명시적으로 padding한 호환 buffer의 staging upload, material staging을 각각 검증한다. DPR 1/2의 픽셀 방향, 부분 UV/asset 혼합/target 간 합성, 불투명 alpha, 빈 pass clear, framebuffer/viewport/color-mask/scissor 복구, draw 오류 복구, asset/pending-load id 충돌, feedback/누락 texture 사전 거절, resize 및 8회 destroy/recreate, 최종 live texture/framebuffer 0을 검사한다. `FERRUM_BROWSER_EXECUTABLE` 또는 `FERRUM_BROWSER_CHANNEL`로 브라우저를 선택할 수 있다. 크기/id/foreign handle 및 할당 실패 rollback은 `renderTexture.test.ts`가, batch별 방향 복구와 upload buffer 재사용은 `spriteBatch.test.ts`가 추가 검증한다.
 - `pnpm smoke:cutscene-sequence`는 public package build에서 `CutsceneSequencePlayer`가 wait/camera/audio/dialogue command event를 순서대로 방출하고 target adapter hook과 `LocalizationBundle` 기반 dialogue text 변환을 호출하는지 확인한다.
 - `pnpm validate:game-spec`는 Top-down Shooter `game.json`의 `content` namespace가 localization/dialogue/cutscene resolver path를 통과하는지도 확인한다.
 - `pnpm smoke:localization`은 public package build에서 `LocalizationBundle` fallback/interpolation, text wrapping, web/bitmap font loading policy와 inline bitmap atlas glyph/kerning validation을 확인한다.
@@ -598,13 +605,17 @@ create-game template catalog 계약만 빠르게 확인하려면 `pnpm smoke:cre
 
 전체 create-game template이 consumer agent가 읽을 수 있는 report envelope를 내는지만 빠르게 확인하려면 `pnpm smoke:create-game-template-reports`를 사용한다. 이 smoke는 `packages/create-game/templates/manifest.json`의 모든 template을 임시 폴더에 복사하고, `_shared` asset scaffold를 template overlay 전에 합친 뒤 `package.json` placeholder만 temp copy에서 정규화한다. 이후 `ferrum-assets.mjs report`, `ferrum-assets.mjs validate`, `ferrum-harness.mjs report`, `ferrum-harness.mjs authoring-report`와 `replay-report`, `update-replay-fixture`, `ferrum-runtime-replay.mjs report`, `ferrum-runtime-replay.mjs recipe`, `ferrum-runtime-replay.mjs update-fixture`를 직접 실행한다. 별도 deploy synthetic output과 실제 preview fixture server로 상대 `fetch`/module URL 및 preview HTTP/MIME 정상 경로, 잘못된 preview Wasm MIME, 절대 `fetch`, HTML `<base>`, 다중 HTML 디렉터리의 상대 `fetch` 경로를 실행해 deploy diagnostic의 성공·실패 동작을 고정한다. `ferrum-harness.mjs report`는 `ferrum2d.consumer.project.report` envelope로 project status, package dependency, generated files, internal/root aggregate import count, 최상위 recommended command를 확인한다. `ferrum-harness.mjs authoring-report`는 `placementAuthoring.instances[].behaviorBindings[]`의 `recipeId`, `bindingPath`, `behaviorRecipePath`, target instance, command count/type까지 확인해 Behavior Binding inspector가 만든 reference patch를 agent가 report evidence로 추적할 수 있는지도 검증한다. manifest의 `sceneAuthoring`, `gameplayReplay`, `runtimeGameplayReplay` entry는 template별 deterministic fixture 제공 여부를 catalog로 고정하며, smoke는 각 harness의 configured 값이 catalog와 일치하는지도 확인한다. Workspace `@ferrum2d/ferrum-web` package를 symlink해 asset public subpath validate와 authoring/gameplay/runtime replay fixture를 검증한다. `topdown`은 Game Spec contract replay를, `minimal`/`platformer`/`breakout`은 template surface contract replay를 검증한다. runtime replay는 configured template의 headless runtime fixture/report/update path를 확인한다. 이 명령은 install, tarball pack, create-game CLI token replacement, 실제 template production build를 검증하지 않는다.
 
-의존성 store가 준비된 CI 환경에서는 `pnpm package:consumer-smoke -- --offline`으로 registry resolution 없이 실행할 수 있다. 새 머신에서는 일반 실행으로 Vite/TypeScript 범위 의존성을 consumer install과 같은 방식으로 해석한다. offline 실행은 generated project의 direct dependency tarball(예: TypeScript)이 pnpm store에 없으면 `ERR_PNPM_NO_OFFLINE_TARBALL`로 실패한다. 성공/실패 report와 재현용 파일을 보존하려면 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`를 사용한다. generated deployment canvas는 완료된 runtime frame 뒤 같은 RAF 순서에서 픽셀을 읽고, WebGL swap timing으로 빈 readback이 나온 경우 최대 8 RAF까지만 다시 읽은 뒤 계속 비어 있으면 실패한다. 이 artifact는 `pnpm validate:consumer-smoke-report`로 `consumer-smoke-report.json`, tarball, tarball-installed `@ferrum2d/create-game --list-templates --json`에서 얻은 `createGameCatalog`, `requestedTemplates`와 generated template summary의 일치, deployment readiness/browser summary의 1~8 `readbackAttempts`, placement viewer check/report와 `dist/placement-viewer.html` build output, `node_modules`/`dist` 없는 snapshot 계약을 검증한다. `pnpm smoke:consumer-smoke-report`는 tarball 생성 전 초기 실패처럼 snapshot이 아직 없을 수 있는 failed report를 허용하면서, passed report의 `createGameCatalog`/deployment/placement viewer summary 누락·불일치와 범위를 벗어난 readback evidence, 존재하는 snapshot의 `node_modules`/`dist`/`.pnpm` 오염은 계속 실패시키는지 확인한다.
+의존성 store가 준비된 CI 환경에서는 `pnpm package:consumer-smoke -- --offline`으로 registry resolution 없이 실행할 수 있다. 새 머신에서는 일반 실행으로 Vite/TypeScript 범위 의존성을 consumer install과 같은 방식으로 해석한다. offline 실행은 generated project의 direct dependency tarball(예: TypeScript)이 pnpm store에 없으면 `ERR_PNPM_NO_OFFLINE_TARBALL`로 실패한다. 성공/실패 report와 재현용 파일을 보존하려면 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`를 사용한다. generated deployment canvas는 `renderPostProcess` 직후 같은 호출 스택에서 픽셀을 읽는다. 별도 RAF 등록 순서에 의존하지 않고 실제 완료된 12프레임만 집계하며, 빈 readback은 이후 완료된 프레임에서 최대 8회까지만 읽은 뒤 계속 비어 있으면 실패한다. 재시도 중 draw call도 최대 예산값에 포함한다. context loss/readback 오류는 별도 원인을 남기고, 빈 화면 실패 메시지에도 runtime/canvas 측정값을 보존한다. 이 artifact는 `pnpm validate:consumer-smoke-report`로 `consumer-smoke-report.json`, tarball, tarball-installed `@ferrum2d/create-game --list-templates --json`에서 얻은 `createGameCatalog`, `requestedTemplates`와 generated template summary의 일치, deployment readiness/browser summary의 1~8 `readbackAttempts`, placement viewer check/report와 `dist/placement-viewer.html` build output, `node_modules`/`dist` 없는 snapshot 계약을 검증한다. `pnpm smoke:consumer-smoke-report`는 렌더 완료 시점/연속 프레임/bounded retry/draw budget/WebGL 오류 진단 회귀 테스트와 report validator를 함께 실행한다. validator는 tarball 생성 전 초기 실패처럼 snapshot이 아직 없을 수 있는 failed report를 허용하면서, passed report의 `createGameCatalog`/deployment/placement viewer summary 누락·불일치와 범위를 벗어난 readback evidence, 존재하는 snapshot의 `node_modules`/`dist`/`.pnpm` 오염은 계속 실패시키는지 확인한다.
+
+Consumer browser smoke는 설치된 Chrome을 우선 사용하고, 없으면 전체 Chromium의 `channel: "chromium"` headless 모드를 사용한다. 별도 headless shell로 자동 전환하지 않는다. 로컬 브라우저가 없으면 `pnpm exec playwright-core install chromium`으로 전체 Chromium을 설치한다(`--only-shell` 제외). `FERRUM_BROWSER_CHANNEL` 또는 `FERRUM_BROWSER_EXECUTABLE`로 지정할 수도 있다. 두 headless 구현의 차이는 [Playwright 브라우저 문서](https://playwright.dev/docs/browsers#chromium-new-headless-mode)에 설명되어 있다.
+
+GitHub Releases 설치 경로는 `pnpm test:github-release`로 자동 release 선택, 네 template의 동일 버전 URL, fork, 잘못된 옵션, 기존 프로젝트/.npmrc 보존, 출력된 디렉터리 이동 명령의 특수문자 처리, 실패 보고서 갱신과 명령 시간 초과 시 하위 프로세스 종료를 검사한다. `pnpm release:github:prepare -- --version 0.1.0-beta.0`으로 준비한 묶음에 `pnpm smoke:github-release-install -- --bundle-dir <묶음 경로>`를 실행하면 실제 npx URL tarball 실행, HTTP redirect, npm install/ci, lock integrity, 명시적 agent 설치, check/build와 preview/Wasm MIME을 검증한다. localhost mirror 검증이며 실제 GitHub 다운로드 성공을 뜻하지 않는다. 전체 template browser/placement viewer 회귀는 기존 `package:consumer-smoke`와 report validator를 사용한다. 계약 테스트는 CI validate에 연결되며 수동 `github-release-prepare.yml`은 묶음 준비부터 HTTP 설치와 전체 consumer matrix까지 실행한다. [배포 절차](../operations/github-release.md)를 참고한다.
 
 release 후보를 배포하지 않고 로컬에서 리허설할 때는 `pnpm release:local-check`를 사용한다. 이 명령은 `pnpm release:candidate-check`, `pnpm package:check`, `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke-release-local`, `pnpm validate:consumer-smoke-report -- --expect-status passed`를 순서대로 실행해 같은 후보 세트의 metadata, tarball, generated consumer project smoke를 묶어서 확인한다.
 
 ## CI와 로컬 검증 차이
 
-GitHub Actions CI는 main push/PR에서 headless 환경으로 실행된다. `ferrum-web-v*` tag push에서는 release metadata check, package consumer smoke gate, extended browser smoke matrix도 실행한다. 일반 PR에서 consumer smoke나 extended browser smoke가 필요할 때는 CI workflow를 수동 실행하고 각각 `consumer_smoke`, `extended_browser_smoke` input을 켠다.
+현재 GitHub Actions CI는 `workflow_dispatch`로 수동 실행한다. `ferrum-web-v*` tag ref에서도 GitHub 배포용 candidate guard와 `private: true` package 검사를 사용하며 consumer smoke와 extended browser matrix를 실행한다. branch에서 해당 matrix가 필요하면 각각 `consumer_smoke`, `extended_browser_smoke` input을 켠다. npm publish 전용 검사는 별도 npm 배포 절차에 남긴다.
 
 현재 CI 기준:
 
@@ -694,3 +705,38 @@ README preview용 스크린샷 절차는 [screenshots README](screenshots/README
 - 실패 원인
 - 사용자 영향
 - 후속 조치 또는 보류 사유
+
+### GPU 자원 수명주기 회귀
+
+`pnpm smoke:gpu-resources`는 public `createFerrumRuntime`/Data Scene 경로로 실제 Rust
+15-float command를 만들고 Playing 상태, entity/command 1,024개와 sprite 1 + 후처리 2 draw를
+함께 assert한다. DPR 1/2에서 legacy/linear-srgb 각각 12회 scene 교체, asset 재로드/evict,
+RenderTexture 2개 생성·resize·중복 해제 후 warmup 자원 snapshot 복귀를 검증한다.
+테스트용 GL 계측은 실제 create/delete/texImage2D/bufferData 호출과 공개 count/bytes를 독립 비교한다.
+색상 픽셀 readback, physics debug buffer 용량 증가, retained target의 canvas resize,
+steady frame 12회의 GPU 객체 재할당 없음, renderer destroy 후 texture/buffer/program/FBO 0도 확인한다.
+
+DebugOverlay 표시와 실제 `RuntimeProfiler.latestFrame`의 GPU sample을 확인하며,
+전용 fixture의 예산은 texture 8, buffer 5, program 5, target 5, 추정 저장량 2 MiB다.
+관측값보다 작은 texture budget에서 실제 위반이 발생하는지도 검사한다.
+이 fixture의 예산은 해당 해상도/scene 전용이며 전체 GPU VRAM의 성능 한계로 해석하지 않는다.
+기존 공용 runtime budget profile에는 미측정 GPU 필드를 일괄 추가하지 않는다.
+`runtimeProfiler.test.ts`는 미지원/부분 누락/빈 window가 GPU budget을 통과하지 않는지 검증한다.
+WebGPU native 자원 집계, 실제 driver 메모리/context-loss 복구는 이 smoke 범위에 포함하지 않는다.
+
+
+`pnpm smoke:ktx2`는 DPR 1/2, legacy/linear-srgb에서 실제 ETC1S/UASTC 변환과
+압축 업로드를 검사한다. public Data Scene Playing, Rust 15-float 명령 1,024개, draw 1/2회,
+PSNR 최소 28/35 dB, 512² GPU block 262,144 bytes, malformed/미지원/alpha fallback,
+AbortSignal 및 destroy 후 Worker/GPU 자원 0을 assert한다. 같은 검증을 Vite production 번들로도
+실행해 Worker 및 decoder JS/Wasm URL 재작성과 self-host 배포 경로를 검사한다.
+단위 테스트는 잘못된 출력, 업로드 실패 cleanup, 입력 크기 제한, 같은 ID 경쟁, WebGPU 취소를 보강한다.
+
+
+`pnpm smoke:shader-preparation`은 실제 Rust Playing Data Scene 1,024개 command(15-float)를
+동기/비동기 renderer로 그린다. DPR 1/2 × legacy/linear-srgb × 기본/3개 후처리에서 픽셀 일치,
+program 5개/shader 10개만 생성, draw 1/2/4회, 30회 steady draw 추가 할당 0, destroy 자원 0을 검사한다.
+초기화 wall time 5초와 CPU submission P95 100ms는 hang/큰 회귀를 잡는 smoke 한계이며 FPS 보장이 아니다.
+실제 native extension 지원 여부를 report한다. CI 미지원 기기에서도 completion 상태 shim으로
+실제 GL shader success/abort/link/allocation/callback/timeout cleanup을 검증하지만 native parallel 성능으로
+해석하지 않는다. public createFerrumRuntime와 LoadingOverlay 연결도 검사한다.

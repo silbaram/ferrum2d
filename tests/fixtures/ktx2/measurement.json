@@ -1,0 +1,65 @@
+{
+  "decoder": {
+    "jsBytes": 50538,
+    "wasmBytes": 1060846,
+    "gzipBytes": 470058
+  },
+  "reports": [
+    {
+      "sample": "atlas",
+      "format": "ETC1S",
+      "width": 512,
+      "height": 512,
+      "pngBytes": 816256,
+      "ktx2Bytes": 60001,
+      "gpuRgbaBytes": 1048576,
+      "gpuBc7Bytes": 262144,
+      "encodeMs": 1113.865557,
+      "rgbaMs": 2.717973000000029,
+      "bc7Ms": 8.045076000000108,
+      "rgbaPsnr": 35.88074909160483
+    },
+    {
+      "sample": "atlas",
+      "format": "UASTC+Zstd",
+      "width": 512,
+      "height": 512,
+      "pngBytes": 816256,
+      "ktx2Bytes": 251560,
+      "gpuRgbaBytes": 1048576,
+      "gpuBc7Bytes": 262144,
+      "encodeMs": 926.8945990000002,
+      "rgbaMs": 4.046877000000222,
+      "bc7Ms": 2.458165999999892,
+      "rgbaPsnr": 46.569478908378514
+    },
+    {
+      "sample": "pixel-sprite",
+      "format": "ETC1S",
+      "width": 32,
+      "height": 32,
+      "pngBytes": 212,
+      "ktx2Bytes": 462,
+      "gpuRgbaBytes": 4096,
+      "gpuBc7Bytes": 1024,
+      "encodeMs": 4.625282999999854,
+      "rgbaMs": 0.015811000000212516,
+      "bc7Ms": 0.03848199999993085,
+      "rgbaPsnr": 25.314922228368275
+    },
+    {
+      "sample": "pixel-sprite",
+      "format": "UASTC+Zstd",
+      "width": 32,
+      "height": 32,
+      "pngBytes": 212,
+      "ktx2Bytes": 405,
+      "gpuRgbaBytes": 4096,
+      "gpuBc7Bytes": 1024,
+      "encodeMs": 3.9594240000001264,
+      "rgbaMs": 0.1435590000000957,
+      "bc7Ms": 0.019581000000016502,
+      "rgbaPsnr": 64.08406969536904
+    }
+  ]
+}

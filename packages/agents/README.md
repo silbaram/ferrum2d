@@ -2,9 +2,20 @@
 
 Ferrum2D consumer game development용 AI agent, skill, Gemini command, shared harness를 프로젝트에 설치하는 CLI다.
 
+GitHub Release 생성기로 만든 게임에서는 같은 버전에 고정된 명령을 사용한다.
+
 ```bash
-npx @ferrum2d/agents init --tools codex,claude,gemini
+npm run ferrum:agents
 ```
+
+기존 프로젝트에는 공개된 Release의 agents `.tgz` 링크를 사용한다.
+
+```bash
+ferrum_agents_url="<GitHub Release의 agents .tgz 다운로드 URL>"
+npx --yes --allow-remote=root "$ferrum_agents_url" init --tools codex,claude,gemini
+```
+
+npm 레지스트리에 별도로 공개한 경우에는 기존 `npx @ferrum2d/agents init --tools codex,claude,gemini`도 사용할 수 있다.
 
 이 패키지는 Ferrum2D 엔진 개발용 agent를 설치하지 않는다. 설치 대상은 `@ferrum2d/ferrum-web`을 사용하는 게임 프로젝트다.
 

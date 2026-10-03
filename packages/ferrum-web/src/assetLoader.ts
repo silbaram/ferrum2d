@@ -2,9 +2,11 @@ import { assetLoadError, describeError } from "./diagnostics.js";
 import type { JsonAssetCache } from "./indexedDbAssetCache.js";
 import { SoundRegistry } from "./soundRegistry.js";
 import { TextureRegistry } from "./textureRegistry.js";
+import { resolveTextureColorSpace } from "./colorManagement.js";
+import type { TextureLoadOptions } from "./colorManagement.js";
 
 export interface TextureAssetManager {
-  loadTexture(textureId: number, url: string): Promise<unknown>;
+  loadTexture(textureId: number, url: string, options?: TextureLoadOptions): Promise<unknown>;
   evictTexture?(textureId: number): boolean;
 }
 
@@ -15,6 +17,8 @@ export interface SoundAssetManager {
 
 export interface AssetManifest {
   textures?: Record<string, string>;
+  /** Per-texture decode metadata. Keys must also appear in textures. */
+  textureOptions?: Record<string, TextureLoadOptions>;
   sounds?: Record<string, string>;
   json?: Record<string, string>;
 }
@@ -70,6 +74,7 @@ export class AssetLoader {
     manifest: AssetManifest,
     onProgress?: AssetLoadProgressCallback,
   ): Promise<LoadedAssets> {
+    validateAssetTextureOptions(manifest);
     const startedAtMs = nowMs();
     const textureEntries = Object.entries(manifest.textures ?? {});
     const soundEntries = Object.entries(manifest.sounds ?? {});
@@ -93,7 +98,9 @@ export class AssetLoader {
     for (const [name, url] of textureEntries) {
       const textureId = this.textureRegistry.reserve(name, url);
       try {
-        await this.textureManager.loadTexture(textureId, url);
+        const options = manifest.textureOptions?.[name];
+        if (options === undefined) await this.textureManager.loadTexture(textureId, url);
+        else await this.textureManager.loadTexture(textureId, url, options);
       } catch (error) {
         throw assetLoadError({
           kind: "texture",
@@ -229,6 +236,19 @@ export class AssetLoader {
         detail: `Invalid JSON: ${describeError(error)}`,
       });
     }
+  }
+}
+
+export function validateAssetTextureOptions(manifest: AssetManifest): void {
+  if (manifest.textureOptions === undefined) return;
+  if (!manifest.textureOptions || typeof manifest.textureOptions !== "object" || Array.isArray(manifest.textureOptions)) {
+    throw new Error("AssetManifest.textureOptions must be an object.");
+  }
+  for (const [name, options] of Object.entries(manifest.textureOptions)) {
+    if (!Object.prototype.hasOwnProperty.call(manifest.textures ?? {}, name)) {
+      throw new Error(`AssetManifest.textureOptions.${name} has no matching texture.`);
+    }
+    resolveTextureColorSpace(options);
   }
 }
 

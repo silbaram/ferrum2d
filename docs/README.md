@@ -25,7 +25,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 | Authoring | [Data Scene Authoring](engine/data-scene-authoring.md) | generic scene composition과 behavior recipe 계약 확인 |
 | Examples | [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md) | 공식 예제 Game Spec 필드와 검증 규칙 확인 |
 | Smoke/Budget | [Smoke Check](development/quality/smoke-check.md) | 자동, browser, runtime budget 검증 기준 확인 |
-| Release | [npm 베타 패키징](development/operations/npm-release.md) | beta package, changelog, tag, publish gate 확인 |
+| Release | [GitHub Release 패키지 배포](development/operations/github-release.md), [npm 베타 패키징](development/operations/npm-release.md) | 설치용 tarball, beta package, changelog, tag, publish gate 확인 |
 
 ## development 하위 구조
 
@@ -33,7 +33,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 | --- | --- | --- |
 | `development/architecture/` | Rust core, Wasm boundary, Web platform layer, physics 구현 기준 | [아키텍처](development/architecture/architecture.md), [2D 물리엔진 기능 맵](development/architecture/physics-engine.md) |
 | `development/quality/` | 테스트, smoke check, 리뷰 기준, 스크린샷 갱신 | [Smoke Check](development/quality/smoke-check.md), [코드 리뷰 기준](development/quality/code-review.md), [스크린샷 README](development/quality/screenshots/README.md) |
-| `development/operations/` | 배포, 패키징, 릴리스 운영 절차 | [GitHub Pages 데모/문서 배포](development/operations/demo-deploy.md), [npm 패키지 구성 전략](development/operations/npm-package-strategy.md), [npm 베타 패키징](development/operations/npm-release.md), [릴리스 노트 템플릿](development/operations/release-notes-template.md) |
+| `development/operations/` | 배포, 패키징, 릴리스 운영 절차 | [GitHub Pages 데모/문서 배포](development/operations/demo-deploy.md), [npm 패키지 구성 전략](development/operations/npm-package-strategy.md), [GitHub Release 패키지 배포](development/operations/github-release.md), [npm 베타 패키징](development/operations/npm-release.md), [릴리스 노트 템플릿](development/operations/release-notes-template.md) |
 
 ## 읽는 순서
 

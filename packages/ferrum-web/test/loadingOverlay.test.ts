@@ -134,3 +134,17 @@ test("LoadingOverlay destroy is idempotent", () => {
     equal(body.children.length, 0);
   });
 });
+
+
+test("shader readiness keeps the loading phase visible until the caller finishes", () => {
+  installFakeDocument((body) => {
+    const overlay = new LoadingOverlay(body as unknown as HTMLElement);
+    overlay.updateShaderPreparation({ phase: "compiling", completedPrograms: 2, totalPrograms: 5, parallelCompile: true, elapsedMs: 10 });
+    equal(overlay.state().progress.ratio, 0.4);
+    equal(overlay.state().detail, "Preparing renderer");
+    overlay.updateShaderPreparation({ phase: "ready", completedPrograms: 5, totalPrograms: 5, parallelCompile: true, elapsedMs: 20 });
+    equal(overlay.state().status, "loading");
+    equal(overlay.state().detail, "Renderer ready");
+    overlay.destroy();
+  });
+});

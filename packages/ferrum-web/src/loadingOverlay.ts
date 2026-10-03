@@ -1,3 +1,4 @@
+import type { ShaderPreparationProgress } from "./shaderPreparation.js";
 import type { AssetLoadProgress } from "./assetLoader.js";
 
 export type LoadingOverlayStatus = "idle" | "loading" | "complete" | "error";
@@ -96,6 +97,21 @@ export class LoadingOverlay {
     this.progress = normalizeProgress(progress);
     this.title = this.options.title ?? "Loading";
     this.detail = progressDetail(this.progress);
+    this.show();
+    this.render();
+  }
+
+  /** Renderer readiness is a separate phase; the caller completes/hides after all loading. */
+  updateShaderPreparation(progress: ShaderPreparationProgress): void {
+    if (this.destroyed) return;
+    this.status = "loading";
+    this.title = this.options.title ?? "Loading";
+    this.progress = normalizeProgress({
+      loaded: progress.completedPrograms, total: progress.totalPrograms,
+      ratio: progress.totalPrograms === 0 ? 0 : progress.completedPrograms / progress.totalPrograms,
+      elapsedMs: progress.elapsedMs,
+    });
+    this.detail = progress.phase === "ready" ? "Renderer ready" : "Preparing renderer";
     this.show();
     this.render();
   }

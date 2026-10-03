@@ -2,6 +2,7 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveGithubRelease } from "./github-release.mjs";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const templatesRoot = path.join(packageRoot, "templates");
@@ -34,7 +35,9 @@ try {
     process.exit(1);
   }
 
-  await createGameProject(options);
+  const packageJson = JSON.parse(await readFile(path.join(packageRoot, "package.json"), "utf8"));
+  const release = resolveGithubRelease(options, packageJson);
+  await createGameProject({ ...options, release });
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
@@ -42,8 +45,10 @@ try {
 
 function parseArgs(args) {
   const parsed = {
-    authoringViewerVersion: defaultAuthoringViewerVersion,
-    ferrumVersion: defaultFerrumVersion,
+    authoringViewerVersion: undefined,
+    ferrumVersion: undefined,
+    githubRelease: undefined,
+    githubRepository: undefined,
     force: false,
     help: false,
     json: false,
@@ -68,6 +73,16 @@ function parseArgs(args) {
     }
     if (arg === "--json") {
       parsed.json = true;
+      continue;
+    }
+    if (arg === "--github-release" || arg.startsWith("--github-release=")) {
+      parsed.githubRelease = arg.includes("=") ? arg.slice("--github-release=".length) : requireValue(args, index, arg);
+      if (arg === "--github-release") index += 1;
+      continue;
+    }
+    if (arg === "--github-repository" || arg.startsWith("--github-repository=")) {
+      parsed.githubRepository = arg.includes("=") ? arg.slice("--github-repository=".length) : requireValue(args, index, arg);
+      if (arg === "--github-repository") index += 1;
       continue;
     }
     if (arg === "--template") {
@@ -117,7 +132,7 @@ function requireValue(args, index, optionName) {
   return value;
 }
 
-async function createGameProject({ authoringViewerVersion, ferrumVersion, force, projectDir, template }) {
+async function createGameProject({ authoringViewerVersion, ferrumVersion, force, projectDir, template, release }) {
   const catalog = await loadTemplateCatalog();
   const templateIds = catalog.templates.map((entry) => entry.id);
   const templateEntry = catalog.templates.find((entry) => entry.id === template);
@@ -146,30 +161,59 @@ async function createGameProject({ authoringViewerVersion, ferrumVersion, force,
     "Shared create-game template scaffold is missing.",
   );
   const replacements = {
-    __FERRUM_AUTHORING_VIEWER_VERSION__: authoringViewerVersion,
-    __FERRUM_WEB_VERSION__: ferrumVersion,
+    __FERRUM_AUTHORING_VIEWER_VERSION__: release?.viewer ?? authoringViewerVersion ?? defaultAuthoringViewerVersion,
+    __FERRUM_WEB_VERSION__: release?.runtime ?? ferrumVersion ?? defaultFerrumVersion,
     __PROJECT_NAME__: packageName,
     __PROJECT_TITLE__: projectTitle,
   };
   await copyTemplate(sharedTemplateRoot, targetRoot, replacements);
   await copyTemplate(templateRoot, targetRoot, replacements);
 
+  if (release) {
+    const manifestPath = path.join(targetRoot, "package.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.ferrumGithubRelease = { repository: release.repository, version: release.version, tag: release.tag };
+    manifest.scripts["ferrum:agents"] = `npx --yes --allow-remote=root --package=${release.agents} ferrum2d-agents init --tools codex,claude,gemini`;
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    // npm 12 requires explicit permission for direct URL dependencies. Preserve
+    // an existing project's policy even when --force was used for the template.
+    try {
+      await writeFile(path.join(targetRoot, ".npmrc"), "# Ferrum2D GitHub Release direct dependencies\nallow-remote=root\n", { flag: "wx" });
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+    await writeFile(path.join(targetRoot, "FERRUM_INSTALL.md"), `# Ferrum2D 설치 정보\n\n` +
+      `GitHub Release: https://github.com/${release.repository}/releases/tag/${release.tag}\n\n` +
+      `엔진과 authoring viewer는 ${release.version} 릴리스 URL에 고정되어 있다.\n` +
+      `Node.js 22 권장. npm install 후 npm run dev로 개발한다. Rust 빌드는 필요 없다.\n\n` +
+      `AI 개발 도구 지침 설치(선택): npm run ferrum:agents\n` +
+      `이 명령은 명시적으로 실행했을 때만 agent/skill 파일을 생성한다.\n\n` +
+      `package-lock.json을 버전 관리에 포함하고 재설치에는 npm ci를 사용한다.\n` +
+      `새 .npmrc는 npm 12의 직접 URL 의존성 설치를 위해 allow-remote=root를 설정한다. 기존 .npmrc는 보존한다.\n` +
+      `EALLOWREMOTE 오류가 나면 프로젝트 정책을 확인하고 npm install --allow-remote=root로 실행한다.\n` +
+      `릴리스 파일이 없거나 접근할 수 없으면 URL과 GitHub Release 공개 상태를 확인한다.\n`);
+  }
+
   console.log(`Created Ferrum2D game project at ${targetRoot}`);
   console.log("");
-  console.log("Next steps:");
-  console.log(`  cd ${formatShellPath(targetRoot)}`);
+  console.log(process.platform === "win32" ? "Next steps (PowerShell):" : "Next steps:");
+  console.log(`  ${formatDirectoryCommand(targetRoot)}`);
   console.log("  npm install");
   console.log("  npm run dev");
   console.log("");
   console.log("For AI-assisted game development:");
-  console.log("  npx @ferrum2d/agents init --tools codex,claude,gemini");
+  console.log(release ? "  npm run ferrum:agents" : "  npx @ferrum2d/agents init --tools codex,claude,gemini");
 }
 
-function formatShellPath(targetRoot) {
+function formatDirectoryCommand(targetRoot) {
   const relativePath = path.relative(process.cwd(), targetRoot);
-  if (!relativePath) return ".";
-  if (relativePath === ".." || relativePath.startsWith(`..${path.sep}`)) return targetRoot;
-  return relativePath;
+  let directory = !relativePath ? "."
+    : relativePath === ".." || relativePath.startsWith(`..${path.sep}`) ? targetRoot : relativePath;
+  if (process.platform === "win32") {
+    return `Set-Location -LiteralPath '${directory.replace(/'/g, "''")}'`;
+  }
+  if (directory.startsWith("-")) directory = `./${directory}`;
+  return `cd '${directory.replace(/'/g, "'\\''")}'`;
 }
 
 async function loadTemplateCatalog() {
@@ -431,6 +475,11 @@ function printHelp() {
 
 Options:
   --template <name>          Template to use. Default: minimal
+  --github-release <version-or-tag>
+                             Pin dependencies to an exact GitHub beta release.
+                             Release-built generators select their own release automatically.
+  --github-repository <owner/repo>
+                             GitHub repository. Default: silbaram/ferrum2d
   --list-templates           Print available templates
   --json                     With --list-templates, print a machine-readable template catalog
   --ferrum-version <range>   @ferrum2d/ferrum-web dependency range. Default: ^0.1.0
@@ -438,5 +487,8 @@ Options:
                              @ferrum2d/authoring-viewer dependency range. Default: ^0.1.0
   --force                    Allow writing into a non-empty target directory
   -h, --help                 Show this help
+
+GitHub Releases: run npx --yes --allow-remote=root <create-game .tgz asset URL> my-game.
+Local/source generators retain registry defaults unless --github-release is supplied.
 `);
 }

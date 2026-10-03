@@ -1,3 +1,6 @@
+import { prepareWebGL2Renderer } from "./webgl2ShaderPrograms";
+import type { ShaderPreparationOptions } from "./shaderPreparation";
+import type { RendererResourceStats } from "./rendererResources";
 import {
   addLightingStatsInto,
   addPhysicsDebugLineStatsInto,
@@ -16,6 +19,7 @@ import {
 } from "./cameraPostProcessing";
 import type { PostProcessStackInput, ResolvedPostProcessPass } from "./cameraPostProcessing";
 import { SpriteBatch } from "./spriteBatch";
+import type { SpriteTextureSource } from "./spriteBatch";
 import type { LightingScene2D, ResolvedLightingScene2D } from "./lighting";
 import {
   createLightingSceneResolveCache,
@@ -24,7 +28,13 @@ import {
 } from "./lightingNormalize";
 import { resolveSpriteMaterialPreset } from "./spriteMaterial";
 import type { ResolvedSpriteMaterialPreset, SpriteMaterialPresetInput } from "./spriteMaterial";
+import { WebGL2RenderTarget } from "./webgl2RenderTarget";
+import { WebGL2RenderTextureStore } from "./webgl2RenderTextureStore";
+import type { RenderTexture, RenderTextureOptions, RenderToTextureOptions } from "./renderTexture";
+import { resolveColorManagementMode, resolveTextureColorSpace } from "./colorManagement";
+import type { ColorManagementMode, TextureLoadOptions } from "./colorManagement";
 import { TextureManager } from "./textureManager";
+import type { TextureManagerOptions } from "./textureManager";
 import { WebGL2FullscreenPass } from "./webgl2FullscreenPass";
 import type { WebGL2FullscreenPassStats, WebGL2FullscreenRenderTarget } from "./webgl2FullscreenPass";
 import { WebGL2LightingPass } from "./webgl2LightingPass";
@@ -42,7 +52,8 @@ const COPY_POST_PROCESS_PASS: ResolvedPostProcessPass = {
   color: [0, 0, 0, 0],
 };
 
-export interface WebGL2RendererOptions {
+export interface WebGL2RendererOptions extends TextureManagerOptions {
+  colorManagement?: ColorManagementMode;
   clearColor?: [number, number, number, number];
   preserveDrawingBuffer?: boolean;
   lighting?: LightingScene2D | false;
@@ -51,9 +62,14 @@ export interface WebGL2RendererOptions {
 }
 
 export class WebGL2Renderer implements Renderer {
+  readonly colorManagement: ColorManagementMode;
   private readonly gl: WebGL2RenderingContext;
   private readonly textureManager: TextureManager;
   private readonly spriteBatch: SpriteBatch;
+  private readonly renderTextures: WebGL2RenderTextureStore;
+  private readonly loadingTextureIds = new Map<number, number>();
+  private readonly textureSource: SpriteTextureSource;
+  private readonly offscreenStats = emptyRendererStats();
   private readonly physicsDebugLineBatch: PhysicsDebugLineBatch;
   private readonly lightingPass: WebGL2LightingPass;
   private readonly fullscreenPass: WebGL2FullscreenPass;
@@ -77,37 +93,79 @@ export class WebGL2Renderer implements Renderer {
   private destroyed = false;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly options: WebGL2RendererOptions = {}) {
+    this.colorManagement = resolveColorManagementMode(options.colorManagement);
     const gl = canvas.getContext("webgl2", {
       preserveDrawingBuffer: options.preserveDrawingBuffer ?? false,
     });
     if (!gl) throw new Error("WebGL2 context를 생성할 수 없습니다.");
     this.gl = gl;
-    this.textureManager = new TextureManager(gl);
-    this.textureManager.createPlaceholderTextureForId(0);
-    this.spriteBatch = new SpriteBatch(gl);
-    this.physicsDebugLineBatch = new PhysicsDebugLineBatch(gl);
-    this.lightingPass = new WebGL2LightingPass(gl);
-    this.fullscreenPass = new WebGL2FullscreenPass(gl);
     resolveLightingSceneInto(this.lightingScene, options.lighting, this.lightingResolveCache);
     this.spriteMaterial = resolveSpriteMaterialPreset(options.spriteMaterial);
     this.postProcessPasses = resolvePostProcessPasses(options.postProcess);
-    this.resize();
+    const cleanup: Array<() => void> = [];
+    try {
+      this.textureManager = new TextureManager(gl, this.colorManagement, options);
+      cleanup.push(() => this.textureManager.destroy());
+      this.renderTextures = new WebGL2RenderTextureStore(gl, this.colorManagement === "linear-srgb");
+      cleanup.push(() => this.renderTextures.destroy());
+      this.textureSource = {
+        texture: (id) => this.renderTextures.texture(id) ?? this.textureManager.texture(id),
+        textureFlipY: (id) => this.renderTextures.has(id),
+      };
+      this.textureManager.createPlaceholderTextureForId(0);
+      this.spriteBatch = new SpriteBatch(gl, this.colorManagement === "linear-srgb");
+      cleanup.push(() => this.spriteBatch.destroy());
+      this.physicsDebugLineBatch = new PhysicsDebugLineBatch(gl, this.colorManagement === "linear-srgb");
+      cleanup.push(() => this.physicsDebugLineBatch.destroy());
+      this.lightingPass = new WebGL2LightingPass(gl, this.colorManagement === "linear-srgb");
+      cleanup.push(() => this.lightingPass.destroy());
+      this.fullscreenPass = new WebGL2FullscreenPass(gl);
+      cleanup.push(() => this.fullscreenPass.destroy());
+      this.resize();
+    } catch (error) {
+      for (const dispose of cleanup.reverse()) dispose();
+      throw error;
+    }
   }
 
-  async loadTexture(textureId: number, url: string): Promise<WebGLTexture>;
-  async loadTexture(url: string): Promise<WebGLTexture>;
-  async loadTexture(first: number | string, second?: string): Promise<WebGLTexture> {
+  /** Optional preparation path; the normal constructor remains synchronous. */
+  static async create(
+    canvas: HTMLCanvasElement,
+    options: WebGL2RendererOptions = {},
+    preparation: ShaderPreparationOptions = {},
+  ): Promise<WebGL2Renderer> {
+    resolveColorManagementMode(options.colorManagement);
+    if (preparation.signal?.aborted) throw new DOMException("Shader preparation was cancelled.", "AbortError");
+    const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: options.preserveDrawingBuffer ?? false });
+    if (!gl) throw new Error("WebGL2 context를 생성할 수 없습니다.");
+    return prepareWebGL2Renderer(gl, preparation, () => new WebGL2Renderer(canvas, options));
+  }
+
+  async loadTexture(textureId: number, url: string, options?: TextureLoadOptions): Promise<WebGLTexture>;
+  async loadTexture(url: string, options?: TextureLoadOptions): Promise<WebGLTexture>;
+  async loadTexture(first: number | string, second?: string | TextureLoadOptions, options?: TextureLoadOptions): Promise<WebGLTexture> {
     this.assertAlive();
     if (typeof first === "number") {
-      if (second === undefined) {
+      if (typeof second !== "string") {
         throw new Error("loadTexture(textureId, url) requires a texture URL.");
       }
-      return await this.textureManager.loadTexture(first, second);
+      this.assertAssetTextureId(first);
+      this.loadingTextureIds.set(first, (this.loadingTextureIds.get(first) ?? 0) + 1);
+      try {
+        return await this.textureManager.loadTexture(first, second, options);
+      } finally {
+        const remaining = (this.loadingTextureIds.get(first) ?? 1) - 1;
+        if (remaining === 0) this.loadingTextureIds.delete(first);
+        else this.loadingTextureIds.set(first, remaining);
+      }
     }
 
+    const loadOptions = typeof second === "object" ? second : undefined;
+    resolveTextureColorSpace(loadOptions);
     try {
-      return await this.textureManager.load(first);
-    } catch {
+      return await this.textureManager.load(first, loadOptions);
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") throw error;
       return this.textureManager.createPlaceholderTexture();
     }
   }
@@ -118,6 +176,7 @@ export class WebGL2Renderer implements Renderer {
     options?: PixelMaskTerrainTextureUploadOptions,
   ): WebGLTexture {
     this.assertAlive();
+    this.assertAssetTextureId(textureId);
     return this.textureManager.createPixelMaskTerrainTexture(textureId, terrain, options);
   }
 
@@ -127,16 +186,146 @@ export class WebGL2Renderer implements Renderer {
     options?: PixelMaskTerrainTextureUploadOptions,
   ): void {
     this.assertAlive();
+    this.assertAssetTextureId(textureId);
     this.textureManager.updatePixelMaskTerrainTexture(textureId, patch, options);
   }
 
   evictTexture(textureId: number): boolean {
     this.assertAlive();
+    this.assertAssetTextureId(textureId);
     return this.textureManager.evictTexture(textureId);
   }
 
+  /** Allocates an opaque image. The id must not belong to an asset or a pending load. */
+  createRenderTexture(textureId: number, options: RenderTextureOptions): RenderTexture {
+    this.assertAlive();
+    if (this.textureManager.hasTexture(textureId) || this.loadingTextureIds.has(textureId)) {
+      throw new Error("RenderTexture textureId is already used by an asset or pending load.");
+    }
+    return this.renderTextures.create(textureId, options);
+  }
+
+  /** Resizing discards pixels; render again before sampling. Failed allocation preserves the old image. */
+  resizeRenderTexture(target: RenderTexture, width: number, height: number): void {
+    this.assertAlive();
+    this.renderTextures.resize(target, width, height);
+  }
+
+  /** Releases this renderer's image. Repeating the call for the same handle returns false. */
+  destroyRenderTexture(target: RenderTexture): boolean {
+    this.assertAlive();
+    return this.renderTextures.release(target);
+  }
+
+  /**
+   * Draws sprite commands only, using the current sprite material and screen offset.
+   * Call after render() to include this pass in the current frame's stats().
+   * Commands remain in their original screen coordinates; this does not recull the world.
+   * The returned stats describe only this pass, while stats() includes main and offscreen work.
+   */
+  renderToTexture(
+    target: RenderTexture,
+    commands: RenderCommandBufferView,
+    options: RenderToTextureOptions = {},
+  ): RendererStats {
+    this.assertAlive();
+    const resource = this.renderTextures.target(target);
+    const viewport = options.viewport ?? this.viewportSize();
+    const clear = options.clearColor ?? [0, 0, 0];
+    if (!Number.isFinite(viewport.width) || viewport.width <= 0
+      || !Number.isFinite(viewport.height) || viewport.height <= 0) {
+      throw new Error("RenderTexture viewport dimensions must be finite and positive.");
+    }
+    if (clear.length !== 3 || ![0, 1, 2].every((index) => Number.isFinite(clear[index]) && clear[index] >= 0 && clear[index] <= 1)) {
+      throw new Error("RenderTexture clearColor must contain three RGB values in [0, 1].");
+    }
+    if (!Number.isInteger(commands.commandCount) || commands.commandCount < 0
+      || !Number.isInteger(commands.floatsPerCommand) || commands.floatsPerCommand < 13
+      || commands.commandCount * commands.floatsPerCommand > commands.buffer.length) {
+      throw new Error("Invalid RenderTexture command buffer layout.");
+    }
+    // Validate before clearing: a feedback or missing-texture error must preserve the image.
+    for (let i = 0; i < commands.commandCount; i += 1) {
+      const id = Math.trunc(commands.buffer[i * commands.floatsPerCommand + 12]);
+      if (id === target.textureId) throw new Error("RenderTexture feedback: cannot sample the active output texture.");
+      this.textureSource.texture(id);
+    }
+
+    const gl = this.gl;
+    // Each getParameter return type is guaranteed by the corresponding WebGL enum.
+    const previousFramebuffer = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+    const previousViewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
+    const previousClear = gl.getParameter(gl.COLOR_CLEAR_VALUE) as Float32Array;
+    const previousMask = gl.getParameter(gl.COLOR_WRITEMASK) as boolean[];
+    const scissorEnabled = gl.isEnabled(gl.SCISSOR_TEST);
+    const stats = emptyRendererStats();
+    try {
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, resource.framebuffer);
+      gl.viewport(0, 0, target.width, target.height);
+      gl.disable(gl.SCISSOR_TEST);
+      gl.colorMask(true, true, true, true);
+      gl.clearColor(clear[0], clear[1], clear[2], 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      // Preserve opaque alpha even with translucent sprites and additive material passes.
+      gl.colorMask(true, true, true, false);
+      const batch = this.spriteBatch.drawBatches(
+        this.textureSource, commands, [viewport.width, viewport.height], this.spriteMaterial, this.spriteScreenOffset,
+      );
+      writeRendererStatsForCommandsInto(stats, commands, batch.drawCalls, batch.textureSwitchCount);
+      this.offscreenStats.drawCalls += stats.drawCalls;
+      this.offscreenStats.batchCount += stats.batchCount;
+      this.offscreenStats.spriteCount += stats.spriteCount;
+      this.offscreenStats.renderCommandCount += stats.renderCommandCount;
+      this.offscreenStats.textureBindCount += stats.textureBindCount;
+      this.offscreenStats.textureSwitchCount += stats.textureSwitchCount;
+    } finally {
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, previousFramebuffer);
+      gl.viewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+      gl.clearColor(previousClear[0], previousClear[1], previousClear[2], previousClear[3]);
+      gl.colorMask(previousMask[0], previousMask[1], previousMask[2], previousMask[3]);
+      if (scissorEnabled) gl.enable(gl.SCISSOR_TEST);
+    }
+    return stats;
+  }
+
+  resourceStats(): RendererResourceStats {
+    const assets = this.textureManager.resourceStats();
+    const captures = this.renderTextures.resourceStats();
+    let renderTargetCount = captures.renderTargetCount;
+    let targetBytes = captures.textureBytes;
+    for (const target of [this.sceneRenderTarget, this.postProcessScratchA, this.postProcessScratchB]) {
+      const bytes = target?.allocatedTextureBytes ?? 0;
+      if (bytes > 0) renderTargetCount += 1;
+      targetBytes += bytes;
+    }
+    let bufferCount = 0;
+    let programCount = 0;
+    let bufferBytes = 0;
+    for (const owner of [this.spriteBatch, this.physicsDebugLineBatch, this.lightingPass, this.fullscreenPass]) {
+      const stats = owner.resourceStats();
+      bufferCount += stats.bufferCount;
+      programCount += stats.programCount;
+      bufferBytes += stats.bufferBytes;
+    }
+    const textureBytes = assets.textureBytes === undefined ? undefined : assets.textureBytes + targetBytes;
+    return {
+      textureCount: assets.textureCount + renderTargetCount,
+      bufferCount, programCount, renderTargetCount,
+      unmeasuredTextureCount: assets.unmeasuredTextureCount,
+      textureBytes, bufferBytes,
+      estimatedBytes: textureBytes === undefined ? undefined : textureBytes + bufferBytes,
+    };
+  }
+
   stats(): RendererStats {
-    return { ...this.currentStats };
+    const stats = { ...this.currentStats };
+    stats.drawCalls += this.offscreenStats.drawCalls;
+    stats.batchCount += this.offscreenStats.batchCount;
+    stats.spriteCount += this.offscreenStats.spriteCount;
+    stats.renderCommandCount += this.offscreenStats.renderCommandCount;
+    stats.textureBindCount += this.offscreenStats.textureBindCount;
+    stats.textureSwitchCount += this.offscreenStats.textureSwitchCount;
+    return stats;
   }
 
   setLighting(scene: LightingScene2D | false | undefined): void {
@@ -202,6 +391,7 @@ export class WebGL2Renderer implements Renderer {
   render(): void {
     this.assertAlive();
     resetRendererStatsInto(this.currentStats);
+    resetRendererStatsInto(this.offscreenStats);
     this.frameStarted = true;
     this.frameHasDrawnScene = false;
     this.bindFrameStartTarget();
@@ -227,7 +417,7 @@ export class WebGL2Renderer implements Renderer {
         this.spriteScreenOffset,
       )
       : this.spriteBatch.drawBatches(
-        this.textureManager,
+        this.textureSource,
         commands,
         resolution,
         this.spriteMaterial,
@@ -297,13 +487,15 @@ export class WebGL2Renderer implements Renderer {
       this.frameTargetMode = "default";
       return this.stats();
     }
-    const targets = this.ensurePostProcessTargets();
+    const scene = this.ensureSceneRenderTarget();
+    const targets = this.postProcessPasses.length > 1 ? this.ensurePostProcessTargets() : undefined;
     this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
     const postProcessStats = this.fullscreenPass.draw({
-      sourceTexture: targets.scene.texture,
+      sourceTexture: scene.texture,
       passes: this.postProcessPasses,
       resolution: this.currentDrawingBufferResolution(),
-      scratchTargets: [targets.scratchA, targets.scratchB],
+      scratchTargets: targets && [targets.scratchA, targets.scratchB],
+      encodeSrgb: this.colorManagement === "linear-srgb",
     });
     addPostProcessStatsInto(
       this.currentStats,
@@ -333,18 +525,19 @@ export class WebGL2Renderer implements Renderer {
     this.sceneRenderTarget?.destroy();
     this.postProcessScratchA?.destroy();
     this.postProcessScratchB?.destroy();
+    this.renderTextures.destroy();
     this.textureManager.destroy();
   }
 
   private bindFrameStartTarget(): void {
-    if (this.postProcessPasses.length === 0) {
+    if (this.postProcessPasses.length === 0 && this.colorManagement === "legacy") {
       this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
       this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
       this.frameTargetMode = "default";
       return;
     }
-    const targets = this.ensurePostProcessTargets();
-    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, targets.scene.framebuffer);
+    const target = this.ensureSceneRenderTarget();
+    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, target.framebuffer);
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     this.frameTargetMode = "postProcess";
   }
@@ -353,7 +546,7 @@ export class WebGL2Renderer implements Renderer {
     if (!this.frameStarted || this.frameHasDrawnScene) {
       return;
     }
-    const expectedTargetMode = this.postProcessPasses.length === 0 ? "default" : "postProcess";
+    const expectedTargetMode = this.postProcessPasses.length === 0 && this.colorManagement === "legacy" ? "default" : "postProcess";
     if (this.frameTargetMode !== expectedTargetMode) {
       this.bindFrameStartTarget();
       this.clearFrameTarget();
@@ -376,19 +569,28 @@ export class WebGL2Renderer implements Renderer {
 
   private clearFrameTarget(): void {
     const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1.0];
-    this.gl.clearColor(clear[0], clear[1], clear[2], clear[3]);
+    const scale = this.colorManagement === "linear-srgb" ? clear[3] : 1;
+    this.gl.clearColor(clear[0] * scale, clear[1] * scale, clear[2] * scale, clear[3]);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
   }
 
   private copySceneTargetToDefaultFramebuffer(): WebGL2FullscreenPassStats {
-    const targets = this.ensurePostProcessTargets();
+    const scene = this.ensureSceneRenderTarget();
     this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
     return this.fullscreenPass.draw({
-      sourceTexture: targets.scene.texture,
+      sourceTexture: scene.texture,
       passes: [COPY_POST_PROCESS_PASS],
+      encodeSrgb: this.colorManagement === "linear-srgb",
       resolution: this.currentDrawingBufferResolution(),
-      scratchTargets: [targets.scratchA, targets.scratchB],
     });
+  }
+
+  private ensureSceneRenderTarget(): WebGL2RenderTarget {
+    const width = Math.max(1, this.canvas.width);
+    const height = Math.max(1, this.canvas.height);
+    this.sceneRenderTarget ??= new WebGL2RenderTarget(this.gl, width, height, "linear", this.colorManagement === "linear-srgb");
+    this.sceneRenderTarget.resize(width, height);
+    return this.sceneRenderTarget;
   }
 
   private ensurePostProcessTargets(): {
@@ -398,14 +600,14 @@ export class WebGL2Renderer implements Renderer {
   } {
     const width = Math.max(1, this.canvas.width);
     const height = Math.max(1, this.canvas.height);
-    this.sceneRenderTarget ??= new WebGL2RenderTarget(this.gl, width, height);
-    this.postProcessScratchA ??= new WebGL2RenderTarget(this.gl, width, height);
-    this.postProcessScratchB ??= new WebGL2RenderTarget(this.gl, width, height);
-    this.sceneRenderTarget.resize(width, height);
+    const srgbStorage = this.colorManagement === "linear-srgb";
+    const scene = this.ensureSceneRenderTarget();
+    this.postProcessScratchA ??= new WebGL2RenderTarget(this.gl, width, height, "linear", srgbStorage);
+    this.postProcessScratchB ??= new WebGL2RenderTarget(this.gl, width, height, "linear", srgbStorage);
     this.postProcessScratchA.resize(width, height);
     this.postProcessScratchB.resize(width, height);
     return {
-      scene: this.sceneRenderTarget,
+      scene,
       scratchA: this.postProcessScratchA,
       scratchB: this.postProcessScratchB,
     };
@@ -422,78 +624,15 @@ export class WebGL2Renderer implements Renderer {
     this.postProcessScratchB?.resize(width, height);
   }
 
+  private assertAssetTextureId(textureId: number): void {
+    if (this.renderTextures.has(textureId)) {
+      throw new Error("Texture id is owned by a RenderTexture; use its dedicated lifecycle methods.");
+    }
+  }
+
   private assertAlive(): void {
     if (this.destroyed) {
       throw new Error("WebGL2Renderer has been destroyed.");
     }
-  }
-}
-
-class WebGL2RenderTarget implements WebGL2FullscreenRenderTarget {
-  readonly texture: WebGLTexture;
-  readonly framebuffer: WebGLFramebuffer;
-  private width = 0;
-  private height = 0;
-  private destroyed = false;
-
-  constructor(private readonly gl: WebGL2RenderingContext, width: number, height: number) {
-    const texture = this.gl.createTexture();
-    const framebuffer = this.gl.createFramebuffer();
-    if (!texture || !framebuffer) {
-      throw new Error("WebGL2 post-process render target 생성 실패");
-    }
-    this.texture = texture;
-    this.framebuffer = framebuffer;
-
-    this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
-    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MIN_FILTER, this.gl.LINEAR);
-    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.LINEAR);
-    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
-    this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-    this.gl.bindTexture(this.gl.TEXTURE_2D, null);
-    this.resize(width, height);
-  }
-
-  resize(width: number, height: number): void {
-    if (this.destroyed || (this.width === width && this.height === height)) {
-      return;
-    }
-    this.width = width;
-    this.height = height;
-    this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
-    this.gl.texImage2D(
-      this.gl.TEXTURE_2D,
-      0,
-      this.gl.RGBA,
-      width,
-      height,
-      0,
-      this.gl.RGBA,
-      this.gl.UNSIGNED_BYTE,
-      null,
-    );
-    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.framebuffer);
-    this.gl.framebufferTexture2D(
-      this.gl.FRAMEBUFFER,
-      this.gl.COLOR_ATTACHMENT0,
-      this.gl.TEXTURE_2D,
-      this.texture,
-      0,
-    );
-    const status = this.gl.checkFramebufferStatus(this.gl.FRAMEBUFFER);
-    this.gl.bindTexture(this.gl.TEXTURE_2D, null);
-    this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
-    if (status !== this.gl.FRAMEBUFFER_COMPLETE) {
-      throw new Error(`WebGL2 post-process framebuffer incomplete: ${status}`);
-    }
-  }
-
-  destroy(): void {
-    if (this.destroyed) {
-      return;
-    }
-    this.destroyed = true;
-    this.gl.deleteFramebuffer(this.framebuffer);
-    this.gl.deleteTexture(this.texture);
   }
 }

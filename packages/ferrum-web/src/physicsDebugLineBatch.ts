@@ -1,4 +1,6 @@
+import { createWebGL2Program } from "./webgl2ShaderPrograms";
 import type { PhysicsDebugLineBufferView } from "./physicsDebugLineDecoder";
+import { setSpriteBlend } from "./webgl2Blend";
 
 export interface PhysicsDebugLineCamera {
   x: number;
@@ -18,32 +20,45 @@ export class PhysicsDebugLineBatch {
   private vertexCapacityFloats = 0;
   private destroyed = false;
 
-  constructor(private readonly gl: WebGL2RenderingContext) {
-    this.program = this.createProgram();
-    const vao = this.gl.createVertexArray();
-    const vbo = this.gl.createBuffer();
-    if (!vao || !vbo) {
-      throw new Error("PhysicsDebugLineBatch 버퍼 생성 실패");
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false) {
+    const programs: WebGLProgram[] = [];
+    const vaos: WebGLVertexArrayObject[] = [];
+    const buffers: WebGLBuffer[] = [];
+    try {
+      this.program = createWebGL2Program(this.gl, "debug");
+      programs.push(this.program);
+      const vao = this.gl.createVertexArray();
+      if (vao) vaos.push(vao);
+      const vbo = this.gl.createBuffer();
+      if (vbo) buffers.push(vbo);
+      if (!vao || !vbo) {
+        throw new Error("PhysicsDebugLineBatch 버퍼 생성 실패");
+      }
+      this.vao = vao;
+      this.vbo = vbo;
+
+      this.gl.bindVertexArray(this.vao);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vbo);
+      this.gl.enableVertexAttribArray(0);
+      this.gl.vertexAttribPointer(0, 2, this.gl.FLOAT, false, VERTEX_STRIDE_BYTES, 0);
+      this.gl.enableVertexAttribArray(1);
+      this.gl.vertexAttribPointer(1, 4, this.gl.FLOAT, false, VERTEX_STRIDE_BYTES, 2 * BYTES_PER_F32);
+      this.gl.bindVertexArray(null);
+
+      this.gl.enable(this.gl.BLEND);
+      setSpriteBlend(this.gl, this.linearTarget);
+
+      const resolutionLocation = this.gl.getUniformLocation(this.program, "u_resolution");
+      if (!resolutionLocation) {
+        throw new Error("Physics debug line shader uniform location 조회 실패");
+      }
+      this.resolutionLocation = resolutionLocation;
+    } catch (error) {
+      for (const buffer of buffers) gl.deleteBuffer(buffer);
+      for (const vao of vaos) gl.deleteVertexArray(vao);
+      for (const program of programs) gl.deleteProgram(program);
+      throw error;
     }
-    this.vao = vao;
-    this.vbo = vbo;
-
-    this.gl.bindVertexArray(this.vao);
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vbo);
-    this.gl.enableVertexAttribArray(0);
-    this.gl.vertexAttribPointer(0, 2, this.gl.FLOAT, false, VERTEX_STRIDE_BYTES, 0);
-    this.gl.enableVertexAttribArray(1);
-    this.gl.vertexAttribPointer(1, 4, this.gl.FLOAT, false, VERTEX_STRIDE_BYTES, 2 * BYTES_PER_F32);
-    this.gl.bindVertexArray(null);
-
-    this.gl.enable(this.gl.BLEND);
-    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
-
-    const resolutionLocation = this.gl.getUniformLocation(this.program, "u_resolution");
-    if (!resolutionLocation) {
-      throw new Error("Physics debug line shader uniform location 조회 실패");
-    }
-    this.resolutionLocation = resolutionLocation;
   }
 
   draw(
@@ -77,6 +92,15 @@ export class PhysicsDebugLineBatch {
     this.gl.drawArrays(this.gl.LINES, 0, vertexCount);
     this.gl.bindVertexArray(null);
     return 1;
+  }
+
+  /** Internal allocation summary; no GPU queries or per-command work. */
+  resourceStats(): { bufferCount: number; programCount: number; bufferBytes: number } {
+    return {
+      bufferCount: this.destroyed ? 0 : 1,
+      programCount: this.destroyed ? 0 : 1,
+      bufferBytes: this.destroyed ? 0 : this.vertexCapacityFloats * BYTES_PER_F32,
+    };
   }
 
   destroy(): void {
@@ -143,52 +167,6 @@ export class PhysicsDebugLineBatch {
     return 2 ** Math.ceil(Math.log2(Math.max(value, 1)));
   }
 
-  private createProgram(): WebGLProgram {
-    const vert = this.compile(this.gl.VERTEX_SHADER, `#version 300 es
-      layout(location=0) in vec2 a_position;
-      layout(location=1) in vec4 a_color;
-      uniform vec2 u_resolution;
-      out vec4 v_color;
-      void main() {
-        vec2 zeroToOne = a_position / u_resolution;
-        vec2 clip = (zeroToOne * 2.0) - 1.0;
-        gl_Position = vec4(clip * vec2(1.0, -1.0), 0.0, 1.0);
-        v_color = a_color;
-      }`);
-    const frag = this.compile(this.gl.FRAGMENT_SHADER, `#version 300 es
-      precision mediump float;
-      in vec4 v_color;
-      out vec4 outColor;
-      void main() {
-        outColor = v_color;
-      }`);
-    const program = this.gl.createProgram();
-    if (!program) {
-      throw new Error("Physics debug line shader program 생성 실패");
-    }
-    this.gl.attachShader(program, vert);
-    this.gl.attachShader(program, frag);
-    this.gl.linkProgram(program);
-    if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
-      throw new Error(this.gl.getProgramInfoLog(program) ?? "Physics debug line shader 링크 실패");
-    }
-    this.gl.deleteShader(vert);
-    this.gl.deleteShader(frag);
-    return program;
-  }
-
-  private compile(type: number, source: string): WebGLShader {
-    const shader = this.gl.createShader(type);
-    if (!shader) {
-      throw new Error("Shader 생성 실패");
-    }
-    this.gl.shaderSource(shader, source);
-    this.gl.compileShader(shader);
-    if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
-      throw new Error(this.gl.getShaderInfoLog(shader) ?? "Shader 컴파일 실패");
-    }
-    return shader;
-  }
 
   private assertAlive(): void {
     if (this.destroyed) {

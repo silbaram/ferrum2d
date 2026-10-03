@@ -5,7 +5,8 @@
 ## 사용 시점
 
 - `CHANGELOG.md`의 `Unreleased` 항목을 `## x.y.z-beta.N - YYYY-MM-DD` 섹션으로 내린 뒤 사용한다.
-- `packages/ferrum-web/package.json` version과 `ferrum-web-vx.y.z-beta.N` tag 이름이 맞는지 `pnpm release:check`로 확인한다.
+- GitHub 전용 tarball 배포는 [GitHub Release 절차](github-release.md)의 staging metadata, source commit, 설치 smoke를 확인한다.
+- npm registry 배포는 `packages/ferrum-web/package.json` version과 `ferrum-web-vx.y.z-beta.N` tag 이름이 맞는지 `pnpm release:check`로 확인한다.
 - publish하지 않은 draft/rehearsal release는 `pnpm release:local-check` 결과와 `artifacts/consumer-smoke-release-local` report 경로를 Install 또는 Verification에 적는다.
 - GitHub Release 작성 시 아래 섹션 구조를 본문으로 사용한다.
 - GitHub의 generated release notes를 사용하는 경우 `.github/release.yml`의 label category를 먼저 확인하고, 아래 섹션에 맞춰 사람이 최종 편집한다.
@@ -23,9 +24,16 @@
 
 ## Install
 
+GitHub 전용 배포는 `release:github:prepare`가 만든 `INSTALL.md`의 정확한 버전 URL을 사용한다. npm에 공개하지 않은 릴리스에 registry 설치 명령을 기재하지 않는다.
+
 ```bash
-pnpm add @ferrum2d/ferrum-web@beta
+npx --yes --allow-remote=root <create-game-tarball-url> my-game --template topdown
+cd my-game
+npm install
+npm run dev
 ```
+
+npm registry에도 별도 공개한 경우에만 `pnpm add @ferrum2d/ferrum-web@beta` 경로를 함께 안내한다.
 
 Package version: `x.y.z-beta.N`
 

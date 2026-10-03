@@ -1,3 +1,4 @@
+import { createWebGL2Program } from "./webgl2ShaderPrograms";
 import type {
   ResolvedLightingScene2D,
   ResolvedLightingShadowOptions,
@@ -5,6 +6,7 @@ import type {
   TileOccluder2D,
 } from "./lightingTypes.js";
 import { LightingShadowGeometryCache } from "./lightingShadowGeometryCache.js";
+import { setSpriteBlend } from "./webgl2Blend.js";
 
 export interface WebGL2LightingPassStats {
   drawCalls: number;
@@ -40,68 +42,83 @@ export class WebGL2LightingPass {
   private readonly shadowClipRect = { x: 0, y: 0, width: 0, height: 0 };
   private destroyed = false;
 
-  constructor(private readonly gl: WebGL2RenderingContext) {
-    this.program = this.createProgram();
-    this.shadowProgram = this.createShadowProgram();
-    const vao = this.gl.createVertexArray();
-    if (!vao) {
-      throw new Error("Lighting pass VAO 생성 실패");
-    }
-    this.vao = vao;
-    const shadowVao = this.gl.createVertexArray();
-    const shadowBuffer = this.gl.createBuffer();
-    if (!shadowVao || !shadowBuffer) {
-      throw new Error("Lighting shadow buffer 생성 실패");
-    }
-    this.shadowVao = shadowVao;
-    this.shadowBuffer = shadowBuffer;
+  constructor(private readonly gl: WebGL2RenderingContext, private readonly linearTarget = false) {
+    const programs: WebGLProgram[] = [];
+    const vaos: WebGLVertexArrayObject[] = [];
+    const buffers: WebGLBuffer[] = [];
+    try {
+      this.program = createWebGL2Program(this.gl, "lighting");
+      programs.push(this.program);
+      this.shadowProgram = createWebGL2Program(this.gl, "shadow");
+      programs.push(this.shadowProgram);
+      const vao = this.gl.createVertexArray();
+      if (vao) vaos.push(vao);
+      if (!vao) {
+        throw new Error("Lighting pass VAO 생성 실패");
+      }
+      this.vao = vao;
+      const shadowVao = this.gl.createVertexArray();
+      if (shadowVao) vaos.push(shadowVao);
+      const shadowBuffer = this.gl.createBuffer();
+      if (shadowBuffer) buffers.push(shadowBuffer);
+      if (!shadowVao || !shadowBuffer) {
+        throw new Error("Lighting shadow buffer 생성 실패");
+      }
+      this.shadowVao = shadowVao;
+      this.shadowBuffer = shadowBuffer;
 
-    const resolutionLocation = this.gl.getUniformLocation(this.program, "u_resolution");
-    const rectLocation = this.gl.getUniformLocation(this.program, "u_rect");
-    const colorLocation = this.gl.getUniformLocation(this.program, "u_color");
-    const modeLocation = this.gl.getUniformLocation(this.program, "u_mode");
-    const lightCenterLocation = this.gl.getUniformLocation(this.program, "u_light_center");
-    const lightRadiusLocation = this.gl.getUniformLocation(this.program, "u_light_radius");
-    const lightFalloffLocation = this.gl.getUniformLocation(this.program, "u_light_falloff");
-    const shadowResolutionLocation = this.gl.getUniformLocation(this.shadowProgram, "u_resolution");
-    const shadowColorLocation = this.gl.getUniformLocation(this.shadowProgram, "u_color");
-    const shadowLightCenterLocation = this.gl.getUniformLocation(this.shadowProgram, "u_light_center");
-    const shadowLightRadiusLocation = this.gl.getUniformLocation(this.shadowProgram, "u_light_radius");
-    if (
-      !resolutionLocation ||
-      !rectLocation ||
-      !colorLocation ||
-      !modeLocation ||
-      !lightCenterLocation ||
-      !lightRadiusLocation ||
-      !lightFalloffLocation ||
-      !shadowResolutionLocation ||
-      !shadowColorLocation ||
-      !shadowLightCenterLocation ||
-      !shadowLightRadiusLocation
-    ) {
-      throw new Error("Lighting pass uniform location 조회 실패");
+      const resolutionLocation = this.gl.getUniformLocation(this.program, "u_resolution");
+      const rectLocation = this.gl.getUniformLocation(this.program, "u_rect");
+      const colorLocation = this.gl.getUniformLocation(this.program, "u_color");
+      const modeLocation = this.gl.getUniformLocation(this.program, "u_mode");
+      const lightCenterLocation = this.gl.getUniformLocation(this.program, "u_light_center");
+      const lightRadiusLocation = this.gl.getUniformLocation(this.program, "u_light_radius");
+      const lightFalloffLocation = this.gl.getUniformLocation(this.program, "u_light_falloff");
+      const shadowResolutionLocation = this.gl.getUniformLocation(this.shadowProgram, "u_resolution");
+      const shadowColorLocation = this.gl.getUniformLocation(this.shadowProgram, "u_color");
+      const shadowLightCenterLocation = this.gl.getUniformLocation(this.shadowProgram, "u_light_center");
+      const shadowLightRadiusLocation = this.gl.getUniformLocation(this.shadowProgram, "u_light_radius");
+      if (
+        !resolutionLocation ||
+        !rectLocation ||
+        !colorLocation ||
+        !modeLocation ||
+        !lightCenterLocation ||
+        !lightRadiusLocation ||
+        !lightFalloffLocation ||
+        !shadowResolutionLocation ||
+        !shadowColorLocation ||
+        !shadowLightCenterLocation ||
+        !shadowLightRadiusLocation
+      ) {
+        throw new Error("Lighting pass uniform location 조회 실패");
+      }
+
+      this.resolutionLocation = resolutionLocation;
+      this.rectLocation = rectLocation;
+      this.colorLocation = colorLocation;
+      this.modeLocation = modeLocation;
+      this.lightCenterLocation = lightCenterLocation;
+      this.lightRadiusLocation = lightRadiusLocation;
+      this.lightFalloffLocation = lightFalloffLocation;
+      this.shadowResolutionLocation = shadowResolutionLocation;
+      this.shadowColorLocation = shadowColorLocation;
+      this.shadowLightCenterLocation = shadowLightCenterLocation;
+      this.shadowLightRadiusLocation = shadowLightRadiusLocation;
+
+      this.gl.bindVertexArray(this.shadowVao);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.shadowBuffer);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, this.shadowVertexData.byteLength, this.gl.DYNAMIC_DRAW);
+      this.gl.enableVertexAttribArray(0);
+      this.gl.vertexAttribPointer(0, 2, this.gl.FLOAT, false, 0, 0);
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
+      this.gl.bindVertexArray(null);
+    } catch (error) {
+      for (const buffer of buffers) gl.deleteBuffer(buffer);
+      for (const vao of vaos) gl.deleteVertexArray(vao);
+      for (const program of programs) gl.deleteProgram(program);
+      throw error;
     }
-
-    this.resolutionLocation = resolutionLocation;
-    this.rectLocation = rectLocation;
-    this.colorLocation = colorLocation;
-    this.modeLocation = modeLocation;
-    this.lightCenterLocation = lightCenterLocation;
-    this.lightRadiusLocation = lightRadiusLocation;
-    this.lightFalloffLocation = lightFalloffLocation;
-    this.shadowResolutionLocation = shadowResolutionLocation;
-    this.shadowColorLocation = shadowColorLocation;
-    this.shadowLightCenterLocation = shadowLightCenterLocation;
-    this.shadowLightRadiusLocation = shadowLightRadiusLocation;
-
-    this.gl.bindVertexArray(this.shadowVao);
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.shadowBuffer);
-    this.gl.bufferData(this.gl.ARRAY_BUFFER, this.shadowVertexData.byteLength, this.gl.DYNAMIC_DRAW);
-    this.gl.enableVertexAttribArray(0);
-    this.gl.vertexAttribPointer(0, 2, this.gl.FLOAT, false, 0, 0);
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
-    this.gl.bindVertexArray(null);
   }
 
   draw(scene: ResolvedLightingScene2D, resolution: [number, number]): WebGL2LightingPassStats {
@@ -117,7 +134,7 @@ export class WebGL2LightingPass {
 
     let drawCalls = 0;
     if (scene.ambient[3] > 0) {
-      this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+      setSpriteBlend(this.gl, this.linearTarget);
       drawCalls += this.drawSolidRect(0, 0, resolution[0], resolution[1], scene.ambient);
     }
 
@@ -131,7 +148,7 @@ export class WebGL2LightingPass {
       activePointLightCount += 1;
     }
     activePointLights.length = activePointLightCount;
-    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE);
+    setSpriteBlend(this.gl, this.linearTarget, true);
     for (const light of activePointLights) {
       drawCalls += this.drawPointLight(light);
     }
@@ -142,7 +159,7 @@ export class WebGL2LightingPass {
     let tileOccluderCount = 0;
     if (scene.debug.tileOccluders) {
       this.bindRectProgram(resolution);
-      this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+      setSpriteBlend(this.gl, this.linearTarget);
       for (const occluder of scene.tileOccluders) {
         drawCalls += this.drawTileOccluderDebug(occluder, scene.debug.color);
         tileOccluderCount += 1;
@@ -150,13 +167,22 @@ export class WebGL2LightingPass {
     }
 
     this.gl.bindVertexArray(null);
-    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+    setSpriteBlend(this.gl, this.linearTarget);
     return {
       drawCalls,
       pointLightCount: activePointLights.length,
       tileOccluderCount,
       shadowDrawCalls: shadowStats.drawCalls,
       shadowCasterCount: shadowStats.casterCount,
+    };
+  }
+
+  /** Internal allocation summary; no GPU queries or per-command work. */
+  resourceStats(): { bufferCount: number; programCount: number; bufferBytes: number } {
+    return {
+      bufferCount: this.destroyed ? 0 : 1,
+      programCount: this.destroyed ? 0 : 2,
+      bufferBytes: this.destroyed ? 0 : this.shadowVertexData.byteLength,
     };
   }
 
@@ -221,7 +247,7 @@ export class WebGL2LightingPass {
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.shadowBuffer);
     this.gl.uniform2f(this.shadowResolutionLocation, resolution[0], resolution[1]);
     this.gl.uniform4f(this.shadowColorLocation, shadows.color[0], shadows.color[1], shadows.color[2], shadows.color[3]);
-    this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+    setSpriteBlend(this.gl, this.linearTarget);
     this.shadowClipRect.x = 0;
     this.shadowClipRect.y = 0;
     this.shadowClipRect.width = resolution[0];
@@ -278,114 +304,8 @@ export class WebGL2LightingPass {
     return 1;
   }
 
-  private createProgram(): WebGLProgram {
-    const vert = this.compile(this.gl.VERTEX_SHADER, `#version 300 es
-      precision mediump float;
-      uniform vec2 u_resolution;
-      uniform vec4 u_rect;
-      out vec2 v_position;
-      vec2 cornerForVertex(int v) {
-        if (v == 0) return vec2(0.0, 0.0);
-        if (v == 1) return vec2(1.0, 0.0);
-        if (v == 2) return vec2(0.0, 1.0);
-        if (v == 3) return vec2(0.0, 1.0);
-        if (v == 4) return vec2(1.0, 0.0);
-        return vec2(1.0, 1.0);
-      }
-      void main() {
-        vec2 corner = cornerForVertex(gl_VertexID % 6);
-        vec2 position = mix(u_rect.xy, u_rect.zw, corner);
-        vec2 clip = ((position / u_resolution) * 2.0) - 1.0;
-        gl_Position = vec4(clip * vec2(1.0, -1.0), 0.0, 1.0);
-        v_position = position;
-      }`);
-    const frag = this.compile(this.gl.FRAGMENT_SHADER, `#version 300 es
-      precision mediump float;
-      in vec2 v_position;
-      uniform int u_mode;
-      uniform vec4 u_color;
-      uniform vec2 u_light_center;
-      uniform float u_light_radius;
-      uniform float u_light_falloff;
-      out vec4 outColor;
-      void main() {
-        if (u_mode == ${MODE_POINT_LIGHT}) {
-          float distanceToLight = distance(v_position, u_light_center);
-          float attenuation = max(1.0 - (distanceToLight / u_light_radius), 0.0);
-          float alpha = pow(attenuation, u_light_falloff) * u_color.a;
-          outColor = vec4(u_color.rgb, alpha);
-        } else {
-          outColor = u_color;
-        }
-      }`);
-    const program = this.gl.createProgram();
-    if (!program) {
-      throw new Error("Lighting shader program 생성 실패");
-    }
-    this.gl.attachShader(program, vert);
-    this.gl.attachShader(program, frag);
-    this.gl.linkProgram(program);
-    if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
-      throw new Error(this.gl.getProgramInfoLog(program) ?? "Lighting shader 링크 실패");
-    }
-    this.gl.deleteShader(vert);
-    this.gl.deleteShader(frag);
-    return program;
-  }
 
-  private createShadowProgram(): WebGLProgram {
-    const vert = this.compile(this.gl.VERTEX_SHADER, `#version 300 es
-      precision mediump float;
-      layout(location = 0) in vec2 a_position;
-      uniform vec2 u_resolution;
-      out vec2 v_position;
-      void main() {
-        vec2 clip = ((a_position / u_resolution) * 2.0) - 1.0;
-        gl_Position = vec4(clip * vec2(1.0, -1.0), 0.0, 1.0);
-        v_position = a_position;
-      }`);
-    const frag = this.compile(this.gl.FRAGMENT_SHADER, `#version 300 es
-      precision mediump float;
-      in vec2 v_position;
-      uniform vec4 u_color;
-      uniform vec2 u_light_center;
-      uniform float u_light_radius;
-      out vec4 outColor;
-      void main() {
-        float distanceToLight = distance(v_position, u_light_center);
-        float clippedAlpha = u_color.a * (1.0 - smoothstep(u_light_radius * 0.86, u_light_radius, distanceToLight));
-        if (clippedAlpha <= 0.0) {
-          discard;
-        }
-        outColor = vec4(u_color.rgb, clippedAlpha);
-      }`);
-    const program = this.gl.createProgram();
-    if (!program) {
-      throw new Error("Lighting shadow shader program 생성 실패");
-    }
-    this.gl.attachShader(program, vert);
-    this.gl.attachShader(program, frag);
-    this.gl.linkProgram(program);
-    if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
-      throw new Error(this.gl.getProgramInfoLog(program) ?? "Lighting shadow shader 링크 실패");
-    }
-    this.gl.deleteShader(vert);
-    this.gl.deleteShader(frag);
-    return program;
-  }
 
-  private compile(type: number, source: string): WebGLShader {
-    const shader = this.gl.createShader(type);
-    if (!shader) {
-      throw new Error("Lighting shader 생성 실패");
-    }
-    this.gl.shaderSource(shader, source);
-    this.gl.compileShader(shader);
-    if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
-      throw new Error(this.gl.getShaderInfoLog(shader) ?? "Lighting shader 컴파일 실패");
-    }
-    return shader;
-  }
 
   private assertAlive(): void {
     if (this.destroyed) {

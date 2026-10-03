@@ -1,3 +1,4 @@
+import type { ShaderPreparationOptions } from "./shaderPreparation";
 import { BrowserPlatformHost } from "./browserPlatformHost.js";
 import { createEngineWithFramePipeline } from "./createEngine.js";
 import type {
@@ -79,6 +80,7 @@ import type { CreateHudOverlayStateOptions, HudComponentSpec } from "./hudToolki
 import { UiOverlay } from "./uiOverlay.js";
 import type { UiOverlayActionEvent, UiOverlayOptions, UiOverlayState } from "./uiOverlay.js";
 import type { WebGL2RendererOptions } from "./webgl2Renderer.js";
+import type { ColorManagementMode } from "./colorManagement.js";
 import type { WebGPURendererOptions } from "./webgpuRenderer.js";
 import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch.js";
 import type { PhysicsDebugLineBufferView, RenderCommandBufferView } from "./wasmBridge.js";
@@ -279,7 +281,10 @@ export interface FerrumRuntimeDataScene {
 export interface FerrumRuntimeOptions {
   canvas: HTMLCanvasElement;
   webgl2?: WebGL2RendererOptions;
+  /** Applied when this runtime creates its renderer. */
+  colorManagement?: ColorManagementMode;
   webgpu?: WebGPURendererOptions;
+  shaderPreparation?: ShaderPreparationOptions;
   rendererPreference?: "webgl2" | "webgpu";
   renderer?: FerrumRuntimeRenderer;
   input?: InputManager;
@@ -365,7 +370,9 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
   try {
     renderer ??= await createRenderer(options.canvas, {
       preferred: options.rendererPreference ?? "webgl2",
+      colorManagement: options.colorManagement,
       webgl2: options.webgl2,
+      shaderPreparation: options.shaderPreparation,
       webgpu: webGpuOptionsWithStaticPostProcess(options),
     });
     const runtimeRenderer = renderer;

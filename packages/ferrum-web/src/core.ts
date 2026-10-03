@@ -1,3 +1,6 @@
+export { createKtx2Transcoder } from "./ktx2Transcoder";
+export type { Ktx2Transcoder, Ktx2TranscoderOptions, Ktx2TextureFormat, Ktx2TranscodedImage, Ktx2TranscodeOptions } from "./ktx2Texture";
+export type { RendererResourceStats } from "./rendererResources";
 export {
   BITMAP_FONT_ATLAS_FORMAT,
   BITMAP_FONT_ATLAS_VERSION,
@@ -33,6 +36,8 @@ export {
   LoadingOverlay,
   SoundRegistry,
   SpriteBatch,
+  srgbToLinear,
+  linearToSrgb,
   TextureManager,
   TextureRegistry,
   UiOverlay,
@@ -245,6 +250,12 @@ export type {
   Renderer,
   RendererFallbackInfo,
   RendererStats,
+  RenderTexture,
+  RenderTextureOptions,
+  ColorManagementMode,
+  TextureColorSpace,
+  TextureLoadOptions,
+  RenderToTextureOptions,
   ResolveInputActionStateOptions,
   SoundAssetManager,
   SoundRegistryEntry,
@@ -373,3 +384,5 @@ export type {
   GameStateSnapshotStorage,
   RestoreGameStateSnapshotOptions,
 } from "./public/workflowExports.js";
+
+export type { ShaderPreparationOptions, ShaderPreparationProgress } from "./shaderPreparation";
