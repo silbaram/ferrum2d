@@ -44,6 +44,7 @@ const AGENT_INSTALL_EXPECTED_FILES = Object.freeze([
   "CLAUDE.md",
   "GEMINI.md",
   ".agents/harness/ferrum-game-development.md",
+  ".agents/harness/ferrum-game-presentation.md",
   ".agents/harness/ferrum-runtime-replay.md",
   ".agents/skills/ferrum-consumer-asset-pipeline/SKILL.md",
   ".agents/skills/ferrum-consumer-architecture/SKILL.md",
@@ -1290,12 +1291,26 @@ async function pinGeneratedPackageManager(targetRoot) {
 }
 
 async function assertGeneratedAgentsInstall(generatedGameRoot, templateName) {
+  const presentationPath = ".agents/harness/ferrum-game-presentation.md";
   for (const file of AGENT_INSTALL_EXPECTED_FILES) {
     await requireFile(
       path.join(generatedGameRoot, file),
       `${templateName} generated game must include installed agents file ${file}`,
     );
+    if (
+      ["AGENTS.md", "CLAUDE.md", "GEMINI.md", ".agents/harness/ferrum-game-development.md"].includes(file) ||
+      file.startsWith(".agents/skills/") || file.startsWith(".codex/agents/") ||
+      file.startsWith(".claude/agents/") || file.startsWith(".gemini/commands/")
+    ) {
+      const source = await readFile(path.join(generatedGameRoot, file), "utf8");
+      assert(source.includes(presentationPath), `${templateName} installed ${file} must reference the game presentation contract`);
+    }
   }
+  assert(
+    await readFile(path.join(generatedGameRoot, presentationPath), "utf8") ===
+      await readFile(path.join(packageRoots.agents, "templates/shared", presentationPath), "utf8"),
+    `${templateName} installed game presentation contract must match the packed source`,
+  );
   await assertMissing(
     path.join(generatedGameRoot, ".gemini/agents"),
     `${templateName} generated game must not install unsupported Gemini agents`,

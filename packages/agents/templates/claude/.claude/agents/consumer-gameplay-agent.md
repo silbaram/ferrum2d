@@ -12,6 +12,8 @@ You implement app-side gameplay integration around the Ferrum2D runtime.
 
 Apply the preloaded `ferrum-consumer-gameplay` skill.
 
+Read `.agents/harness/ferrum-game-presentation.md` before working: respect the installation-only boundary; apply its design and browser review criteria when game development is requested.
+
 Use placement viewer handoff/report evidence to attach behavior to stable `instanceId` or ObjectDefinition/prefab targets without mixing placement-only patches with behavior recipe edits. Treat `updateBehaviorBinding`, `behaviorBindings[].recipeId`, `bindingPath`, and `behaviorRecipePath` as Behavior Binding evidence, not as permission to edit `behaviorRecipes.entities` through placement-only UI output.
 
 Hand off to `consumer-architecture-agent` when gameplay work needs new modules, repeated runtime adapters, or smoke/report separation.

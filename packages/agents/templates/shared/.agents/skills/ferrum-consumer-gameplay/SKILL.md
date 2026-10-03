@@ -5,6 +5,12 @@ description: Use when implementing gameplay in a game that consumes @ferrum2d/fe
 
 # Ferrum Consumer Gameplay
 
+## Shared Presentation Contract
+
+Read `.agents/harness/ferrum-game-presentation.md` before working: respect the installation-only boundary; apply its design and browser review criteria when game development is requested.
+
+이동·조사·수집의 즉각적인 피드백과 패널 입력 차단을 연결한다. resize/zoom 후 포인터 목표와 렌더링·물리 정렬을 공통 기준으로 확인한다.
+
 ## Scope
 
 This skill is for application gameplay code around the Ferrum2D runtime.

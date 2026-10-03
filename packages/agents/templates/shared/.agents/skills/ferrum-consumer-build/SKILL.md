@@ -5,6 +5,12 @@ description: Use when preparing or verifying a Ferrum2D consumer game production
 
 # Ferrum Consumer Build
 
+## Shared Presentation Contract
+
+Read `.agents/harness/ferrum-game-presentation.md` before working: respect the installation-only boundary; apply its design and browser review criteria when game development is requested.
+
+빌드 결과는 기능 검증에 기록한다. 브라우저 플레이 경험 검수를 대신하지 않으며, 직접 확인하지 않은 항목은 공통 기준의 not-reviewed로 보고한다.
+
 ## Scope
 
 This skill is for production builds of games that consume `@ferrum2d/ferrum-web`.

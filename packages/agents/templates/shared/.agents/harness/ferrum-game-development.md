@@ -6,6 +6,12 @@ Use this harness for games that depend on `@ferrum2d/ferrum-web`.
 
 Ferrum2D consumer projects are AI agent-first. The default development loop is not a visual editor. Agents should modify app code, Game Spec, Physics Spec, assets, and metadata through explicit files, then prove the result with local validation and smoke commands.
 
+## Setup And Game Presentation
+
+Read `.agents/harness/ferrum-game-presentation.md` before working: respect the installation-only boundary; apply its design and browser review criteria when game development is requested.
+
+Installing dependencies and agent instructions alone does not authorize generating a game, UI, viewer, replay fixture, or starting a server. During game development, record the play-space/camera/HUD design and report functional validation separately from browser experience review using that shared contract.
+
 ## Standard Loop
 
 1. Inspect `package.json`, `src/`, `public/`, `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md`.
@@ -19,11 +25,14 @@ Ferrum2D consumer projects are AI agent-first. The default development loop is n
 
 ## Template Discovery
 
-When creating a new Ferrum2D consumer project or choosing a closer starting point, prefer the machine-readable create-game catalog before guessing a template:
+Only when game scaffolding is requested (not installation-only setup), inspect the machine-readable create-game catalog. For GitHub Release installations, select the verified create-game tarball URL matching the project's installed release (check `FERRUM_INSTALL.md` or `package.json.ferrumGithubRelease` when available):
 
 ```bash
-npx @ferrum2d/create-game --list-templates --json
+ferrum_cli_url="<verified create-game .tgz download URL for the selected GitHub Release>"
+npx --yes --allow-remote=root "$ferrum_cli_url" --list-templates --json
 ```
+
+Use registry package commands only if that package version was separately published to npm. Listing templates does not authorize generating one during installation-only setup.
 
 Use the catalog's `sceneAuthoring`, `gameplayReplay`, and `runtimeGameplayReplay` entries to decide which template already provides data-driven authoring reports, deterministic template replay, and runtime replay scaffolding. Keep the selected template id in the task notes so later agents know which scaffold contract they inherited.
 
@@ -80,7 +89,7 @@ Generated projects from `@ferrum2d/create-game` include:
 - `npm run dev`: launch the local Vite server for browser playtest.
 - `npm run build`: create the static production artifact.
 
-If a project was created before these commands existed, add the same scripts before relying on the harness.
+These commands belong to generated game projects. During game development, add only the scripts needed for the requested change; during installation-only setup, use the existing setup check and do not add game scripts or files.
 
 ## Agent-First Gameplay Reports
 

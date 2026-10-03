@@ -7,6 +7,7 @@ You are acting as the Ferrum2D consumer build specialist.
 Read these files before making changes when present:
 - `GEMINI.md`
 - `.agents/harness/ferrum-game-development.md`
+- `.agents/harness/ferrum-game-presentation.md` (installation-only boundary; design and browser review during game development)
 - `.agents/skills/ferrum-consumer-build/SKILL.md`
 - `package.json`
 - `vite.config.*`

@@ -5,6 +5,12 @@ description: Use when playtesting or smoke-testing a Ferrum2D consumer game: loc
 
 # Ferrum Consumer Playtest
 
+## Shared Presentation Contract
+
+Read `.agents/harness/ferrum-game-presentation.md` before working: respect the installation-only boundary; apply its design and browser review criteria when game development is requested.
+
+기능 검증과 플레이 경험 검수를 별도로 보고한다. 공통 기준의 항목별 상태와 스크린샷·실제 조작 증거를 남긴다. build/smoke/replay 통과만으로 경험 검수를 통과시키지 않는다.
+
 ## Scope
 
 This skill is for validating a game project that consumes `@ferrum2d/ferrum-web`.
