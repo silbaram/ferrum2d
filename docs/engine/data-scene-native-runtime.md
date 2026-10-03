@@ -1,7 +1,7 @@
 # Data Scene native actor와 카메라 연결
 
-이 경로는 #62~#65에서 추가한 개발 브랜치 기능이다. 기존 `0.1.0-beta.1` tarball에는 없다.
-이 코드가 포함된 엔진을 설치한 뒤 공개 `/core`, `/authoring` API로 사용한다.
+이 경로는 #62~#65에서 추가했으며 `0.1.0-beta.2`부터 제공한다.
+해당 버전 이상의 엔진을 설치한 뒤 공개 `/core`, `/authoring` API로 사용한다.
 초기 설치 단계에서 아래 recipe나 게임 파일을 자동 생성하지 않는다.
 
 ## Sprite와 body 조립

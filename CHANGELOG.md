@@ -10,6 +10,31 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 - 아직 기록할 변경 사항이 없다.
 
+## 0.1.0-beta.2 - 2026-10-04
+
+GitHub Release 설치용 세 번째 beta다. 소스 package는 `0.1.0`/`private: true`를 유지하고, 배포 staging의 네 package를 `0.1.0-beta.2`로 고정한다. #62~#65 구현과 후속 리뷰 수정을 포함한다. (#66)
+
+### Added
+
+- Data Scene sprite와 같은 entity에 optional static/kinematic body와 heightSpan을 연결한다. 물리 이동과 sprite 위치를 별도로 동기화할 필요가 없다. (#64)
+- Rust camera follow/bounds/smoothing과 `createDataSceneView`를 추가해 camera, zoom, pointer, world label/light/occluder 좌표를 같은 viewport에 연결한다. (#65)
+- 공개 API recipe와 실제 runtime tarball 기반 Data Scene browser 검증을 추가했다.
+
+### Fixed
+
+- sprite origin, tint/alpha, sortOrder를 렌더링에 반영하고 회전된 pivot의 culling을 수정했다. (#62)
+- Data Scene은 render layer를 먼저 정렬하고 `depthSort: "hd2d"`를 명시한 sprite에만 높이·발 위치 정렬을 적용한다. heightSpan만 추가해 배경 순서가 바뀌던 문제를 수정했다. (#63)
+- Placement Viewer와 생성 프로젝트의 선택 영역·표시가 origin/rotation/scale을 반영하며 회전된 primitive의 크기 조절과 runtime body/depth/tint metadata 보존을 수정했다.
+- renderer별 색 공간 옵션을 Data Scene 초기 적용/reapply/transition에 동일하게 전달하고 충돌하는 옵션은 적용 전에 거부한다.
+- Data Scene reset/reapply 후 이전 entity handle이 새 객체를 가리키지 않도록 generation을 유지·증가시킨다.
+
+### Upgrade Notes
+
+- engine/viewer/agents URL과 릴리스 출처 metadata를 같은 버전으로 맞춘다. 초기 설정 프로젝트에는 viewer나 예제를 추가하지 않는다. 기존 AI 지침은 별도 디렉터리에 설치해 비교·병합한다.
+- 수동 sprite origin/색조 보정 코드는 중복 적용되지 않도록 확인한다. Data Scene 색은 `#RGB`, `#RGBA`, `#RRGGBB`, `#RRGGBBAA`만 허용하며 다른 CSS 색 표현은 오류로 진단한다.
+- 높이·Y 정렬을 사용할 sprite에는 `depthSort: "hd2d"`를 지정한다. reset/reapply 뒤 새 entity handle로 camera follow와 label anchor를 다시 연결한다.
+- 공개 import 경로와 15-float render command ABI는 유지한다. JS와 Wasm은 동일한 release tarball로 함께 업데이트한다.
+
 ## 0.1.0-beta.1 - 2026-10-03
 
 GitHub Release 설치용 두 번째 beta다. 소스 package는 `0.1.0`/`private: true`를 유지하고, 배포 staging의 네 package를 `0.1.0-beta.1`로 고정한다.
