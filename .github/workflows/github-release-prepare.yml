@@ -1,0 +1,55 @@
+name: Prepare GitHub Release assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact beta version (for example 0.1.0-beta.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.0
+          run_install: false
+      - run: cargo install wasm-pack --locked
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:github-release
+      - run: pnpm smoke:consumer-smoke-report
+      - name: Build and check local release assets
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: pnpm release:github:prepare -- --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" --output artifacts/github-release-candidate
+      - name: HTTP package install and game setup
+        run: pnpm smoke:github-release-install -- --bundle-dir artifacts/github-release-candidate
+      - name: Full generated game and placement viewer matrix
+        run: pnpm package:consumer-smoke -- --skip-build --skip-package-check --artifact-dir artifacts/consumer-smoke-github-release
+      - name: Validate consumer report
+        run: pnpm validate:consumer-smoke-report -- --report artifacts/consumer-smoke-github-release/consumer-smoke-report.json --artifact-dir artifacts/consumer-smoke-github-release --expect-status passed
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: github-release-candidate
+          path: |
+            artifacts/github-release-candidate
+            artifacts/consumer-smoke-github-release
+          if-no-files-found: ignore
+
+# This workflow only prepares reviewable artifacts. It does not create a tag,
+# publish a GitHub Release, or publish to npm.

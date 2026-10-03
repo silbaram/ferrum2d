@@ -85,7 +85,7 @@
     "smoke:topdown-template-replay-report": "pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/topdown-template-replay-report-smoke.mjs",
     "smoke:create-game-template-catalog": "node tests/smoke/create-game-template-catalog-smoke.mjs",
     "smoke:create-game-template-reports": "pnpm --filter @ferrum2d/authoring-viewer build && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/create-game-template-report-envelope-smoke.mjs",
-    "smoke:consumer-smoke-report": "node tests/smoke/consumer-smoke-report-validation-smoke.mjs",
+    "smoke:consumer-smoke-report": "node --test tests/smoke/consumer-deployment-frame-probe.test.mjs && node tests/smoke/consumer-smoke-report-validation-smoke.mjs",
     "smoke:topdown-authored-behavior-variant": "pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/topdown-authored-behavior-variant-smoke.mjs",
     "smoke:topdown-authored-behavior-runtime": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && pnpm --filter @ferrum2d/topdown-shooter build && node tests/smoke/browser-render-smoke.mjs --mode=topdown-authored-behavior-variant examples/topdown-shooter/dist",
     "update:gameplay-replay-golden": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/gameplay-replay-smoke.mjs --update",
@@ -114,7 +114,7 @@
     "package:publish-check": "pnpm package:publish-check:ferrum-web",
     "create:game-variant": "pnpm --filter @ferrum2d/ferrum-web build && node scripts/tools/create-game-variant.mjs",
     "check": "pnpm build && pnpm test",
-    "smoke:check": "pnpm lint && pnpm report:example-demo-harness && pnpm test && pnpm validate:docs-links && pnpm validate:public-api-surface && pnpm release:candidate-check && pnpm validate:runtime-budget-product && pnpm validate:rust-test-harness && pnpm validate:game-spec && pnpm validate:physics-authoring && pnpm validate:data-scene-authoring && pnpm smoke:runtime-budgets && pnpm smoke:render-texture && pnpm smoke:color-management && pnpm smoke:gpu-resources && pnpm smoke:ktx2 && pnpm smoke:shader-preparation && pnpm smoke:mass-objects && pnpm smoke:physics && pnpm smoke:topdown-authored-behavior-variant && pnpm smoke:level-streaming && pnpm smoke:level-streaming-browser && pnpm smoke:asset-pipeline && pnpm validate:gameplay-authoring:report && pnpm smoke:gameplay-replay:report && pnpm validate:gameplay-report-artifacts && pnpm smoke:create-game-template-catalog && pnpm smoke:create-game-template-reports && pnpm smoke:topdown-template-replay-report && pnpm smoke:topdown-authored-behavior-runtime && pnpm smoke:topdown-mass-objects && pnpm smoke:topdown-tilemap-budget && pnpm smoke:starter-runtime && pnpm smoke:placement-viewer && pnpm smoke:placement-viewer-save && pnpm smoke:placement-viewer-mass-authoring && pnpm smoke:placement-viewer-desktop-assets && pnpm smoke:content-runtime && pnpm smoke:headless && pnpm build && pnpm package:check",
+    "smoke:check": "pnpm lint && pnpm report:example-demo-harness && pnpm test && pnpm validate:docs-links && pnpm validate:public-api-surface && pnpm release:candidate-check && pnpm validate:runtime-budget-product && pnpm validate:rust-test-harness && pnpm validate:game-spec && pnpm validate:physics-authoring && pnpm validate:data-scene-authoring && pnpm smoke:runtime-budgets && pnpm smoke:render-texture && pnpm smoke:color-management && pnpm smoke:gpu-resources && pnpm smoke:ktx2 && pnpm smoke:shader-preparation && pnpm smoke:mass-objects && pnpm smoke:physics && pnpm smoke:topdown-authored-behavior-variant && pnpm smoke:level-streaming && pnpm smoke:level-streaming-browser && pnpm smoke:asset-pipeline && pnpm validate:gameplay-authoring:report && pnpm smoke:gameplay-replay:report && pnpm validate:gameplay-report-artifacts && pnpm test:github-release && pnpm smoke:create-game-template-catalog && pnpm smoke:create-game-template-reports && pnpm smoke:topdown-template-replay-report && pnpm smoke:topdown-authored-behavior-runtime && pnpm smoke:topdown-mass-objects && pnpm smoke:topdown-tilemap-budget && pnpm smoke:starter-runtime && pnpm smoke:placement-viewer && pnpm smoke:placement-viewer-save && pnpm smoke:placement-viewer-mass-authoring && pnpm smoke:placement-viewer-desktop-assets && pnpm smoke:content-runtime && pnpm smoke:headless && pnpm build && pnpm package:check",
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm test:web && pnpm test:rust",
     "format": "pnpm -r --if-present format",
@@ -126,7 +126,10 @@
     "smoke:color-management": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/color-management-browser-smoke.mjs",
     "smoke:gpu-resources": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/gpu-resources-browser-smoke.mjs",
     "smoke:ktx2": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/ktx2-browser-smoke.mjs && node tests/smoke/ktx2-browser-smoke.mjs --bundled",
-    "smoke:shader-preparation": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/shader-preparation-browser-smoke.mjs"
+    "smoke:shader-preparation": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/shader-preparation-browser-smoke.mjs",
+    "test:github-release": "node --test tests/smoke/github-release-contracts.test.mjs",
+    "release:github:prepare": "node scripts/package/prepare-github-release.mjs",
+    "smoke:github-release-install": "node tests/smoke/github-release-install-smoke.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.60.0"

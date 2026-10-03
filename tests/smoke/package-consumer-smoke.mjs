@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { installDeploymentFrameProbe } from "./consumer-deployment-frame-probe.mjs";
 import {
   DEPLOYMENT_CANVAS_READBACK_MAX_ATTEMPTS,
   DEPLOYMENT_RUNTIME_SAMPLE_FRAMES,
@@ -689,99 +690,14 @@ async function smokeGeneratedGameDeployment(generatedGameRoot, templateName) {
     if (await startButton.count() > 0 && await startButton.isVisible()) {
       await startButton.click({ timeout: GENERATED_DEPLOYMENT_TIMEOUT_MS });
     }
-    await page.evaluate(({ canvasReadbackAttempts, sampleFrames }) => {
-      const runtime = globalThis.ferrumRuntime;
-      if (!runtime) throw new Error("Ferrum runtime is unavailable for deployment smoke instrumentation.");
-      const samples = [];
-      const readCanvasEvidence = () => {
-        const canvas = document.querySelector("canvas.game-canvas");
-        if (!(canvas instanceof HTMLCanvasElement)) {
-          return { width: 0, height: 0, webgl2: false, nonblank: false, coloredPixelSamples: 0, varyingPixelSamples: 0, readbackSource: "same-raf-after-render" };
-        }
-        const gl = canvas.getContext("webgl2");
-        if (!(gl instanceof WebGL2RenderingContext)) {
-          return { width: canvas.width, height: canvas.height, webgl2: false, nonblank: false, coloredPixelSamples: 0, varyingPixelSamples: 0, readbackSource: "same-raf-after-render" };
-        }
-        const pixels = new Uint8Array(canvas.width * canvas.height * 4);
-        gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-        let coloredPixelSamples = 0;
-        let varyingPixelSamples = 0;
-        let firstSample;
-        const stride = Math.max(4, Math.floor(pixels.length / 4096 / 4) * 4);
-        for (let index = 0; index < pixels.length; index += stride) {
-          const sample = [pixels[index], pixels[index + 1], pixels[index + 2], pixels[index + 3]];
-          if (sample[0] !== 0 || sample[1] !== 0 || sample[2] !== 0 || sample[3] !== 0) {
-            coloredPixelSamples += 1;
-          }
-          firstSample ??= sample;
-          if (sample.some((value, channel) => value !== firstSample[channel])) varyingPixelSamples += 1;
-        }
-        return {
-          width: canvas.width,
-          height: canvas.height,
-          webgl2: true,
-          nonblank: varyingPixelSamples > 0,
-          coloredPixelSamples,
-          varyingPixelSamples,
-          readbackSource: "same-raf-after-render",
-        };
-      };
-      const publishCompletedFrame = (latest, canvasAttempt = 1) => {
-        const canvasEvidence = readCanvasEvidence();
-        if (!canvasEvidence.nonblank && canvasAttempt < canvasReadbackAttempts) {
-          requestAnimationFrame(() => publishCompletedFrame(latest, canvasAttempt + 1));
-          return;
-        }
-        globalThis.__ferrumDeploymentFrame = {
-          gameState: latest.gameState,
-          entityCount: Math.min(...samples.map((entry) => entry.entityCount)),
-          spriteCount: Math.min(...samples.map((entry) => entry.spriteCount)),
-          renderCommandCount: Math.min(...samples.map((entry) => entry.renderCommandCount)),
-          drawCalls: Math.max(...samples.map((entry) => entry.drawCalls)),
-          sampledFrameCount: samples.length,
-          statsSource: "renderer.stats-after-frame",
-        };
-        globalThis.__ferrumDeploymentCanvas = {
-          ...canvasEvidence,
-          readbackAttempts: canvasAttempt,
-        };
-      };
-      const sampleCompletedFrame = () => {
-        const stats = runtime.renderer.stats();
-        const sample = {
-          gameState: runtime.engine.gameState(),
-          entityCount: runtime.engine.entityCount(),
-          spriteCount: runtime.engine.spriteCount(),
-          renderCommandCount: stats.renderCommandCount,
-          drawCalls: stats.drawCalls,
-        };
-        const valid = sample.gameState === 1
-          && sample.entityCount > 0
-          && sample.spriteCount > 0
-          && sample.renderCommandCount > 0
-          && sample.drawCalls > 0;
-        if (!valid) {
-          samples.length = 0;
-          requestAnimationFrame(sampleCompletedFrame);
-          return;
-        }
-        samples.push(sample);
-        if (samples.length < sampleFrames) {
-          requestAnimationFrame(sampleCompletedFrame);
-          return;
-        }
-        const latest = samples.at(-1);
-        publishCompletedFrame(latest);
-      };
-      requestAnimationFrame(sampleCompletedFrame);
-    }, {
+    await page.evaluate(installDeploymentFrameProbe, {
       canvasReadbackAttempts: DEPLOYMENT_CANVAS_READBACK_MAX_ATTEMPTS,
       sampleFrames: DEPLOYMENT_RUNTIME_SAMPLE_FRAMES,
     });
     await page.waitForFunction(
       ({ sampleFrames }) => {
         const frame = globalThis.__ferrumDeploymentFrame;
-        return frame?.sampledFrameCount === sampleFrames;
+        return Boolean(globalThis.__ferrumDeploymentError) || frame?.sampledFrameCount === sampleFrames;
       },
       { sampleFrames: DEPLOYMENT_RUNTIME_SAMPLE_FRAMES },
       { timeout: GENERATED_DEPLOYMENT_TIMEOUT_MS },
@@ -789,7 +705,9 @@ async function smokeGeneratedGameDeployment(generatedGameRoot, templateName) {
     const evidence = await page.evaluate(() => ({
       runtime: globalThis.__ferrumDeploymentFrame,
       canvas: globalThis.__ferrumDeploymentCanvas,
+      error: globalThis.__ferrumDeploymentError,
     }));
+    assert(!evidence.error, `${templateName} deployment frame probe failed: ${JSON.stringify(evidence)}`);
     const { runtime, canvas } = evidence;
     assert(runtime?.gameState === 1, `${templateName} deployment runtime must enter Playing state`);
     assert(runtime.entityCount > 0, `${templateName} deployment runtime must expose entities`);
@@ -806,7 +724,8 @@ async function smokeGeneratedGameDeployment(generatedGameRoot, templateName) {
     );
     assert(canvas?.width > 0 && canvas.height > 0, `${templateName} deployment canvas dimensions must be positive`);
     assert(canvas.webgl2 === true, `${templateName} deployment must create a WebGL2 context`);
-    assert(canvas.nonblank === true, `${templateName} deployment canvas must render nonblank pixels`);
+    assert(canvas.nonblank === true,
+      `${templateName} deployment canvas must render nonblank pixels: ${JSON.stringify(evidence)}`);
     assert(
       Number.isInteger(canvas.readbackAttempts) &&
         canvas.readbackAttempts >= 1 &&
@@ -2407,11 +2326,15 @@ async function launchConsumerSmokeBrowser() {
     return await chromium.launch({ ...launchOptions, channel });
   } catch (channelError) {
     try {
-      return await chromium.launch(launchOptions);
+      // Keep the regular browser's headless rendering path when Chrome is absent.
+      // An unspecified channel selects the separate headless shell, whose
+      // SharedImage allocation failed and lost WebGL contexts in this smoke.
+      return await chromium.launch({ ...launchOptions, channel: "chromium" });
     } catch (bundledError) {
       throw new Error(
         "Unable to launch a browser for generated consumer smoke. " +
-          "Set FERRUM_BROWSER_CHANNEL or FERRUM_BROWSER_EXECUTABLE. " +
+          "Install full Chromium with pnpm exec playwright-core install chromium, " +
+          "or set FERRUM_BROWSER_CHANNEL or FERRUM_BROWSER_EXECUTABLE. " +
           `channel error: ${errorMessage(channelError)} bundled error: ${errorMessage(bundledError)}`,
       );
     }
