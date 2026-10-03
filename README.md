@@ -6,7 +6,7 @@ Ferrum2D는 Rust core, WebAssembly, TypeScript 플랫폼 레이어, WebGL2 기�
 
 Ferrum2D의 제품 목표는 기존 게임 엔진처럼 비주얼 에디터를 중심에 두는 것이 아니라, AI agent가 Game Spec, Physics Spec, 프로젝트 템플릿, 검증 스크립트를 사용해 게임을 생성하고 수정하는 **AI agent-first 2D game engine**을 만드는 것이다.
 
-**AI에게 초기 개발 환경 설치를 맡기려면 [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)의 링크를 전달한다.** 공개된 `0.1.0-beta.0` 엔진·개발 도구·AI 지침만 설치하고 의존성을 검증한다. 게임 코드와 예제는 게임 개발을 요청한 뒤 작성한다.
+**AI에게 초기 개발 환경 설치를 맡기려면 [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)의 링크를 전달한다.** `0.1.0-beta.1` 엔진·개발 도구·AI 지침만 설치하고 의존성을 검증한다. 게임 코드와 예제는 게임 개발을 요청한 뒤 작성한다.
 
 ## 엔진 철학
 
@@ -229,7 +229,7 @@ npm install
 npm run dev
 ```
 
-개발 중인 consumer 지침은 게임 요청 시 플레이 공간·카메라·HUD를 먼저 설계하고 기능 검증과 브라우저 플레이 경험을 따로 보고하도록 안내한다. [공유 화면 설계·검수 기준과 기존 지침 업데이트 방법](packages/agents/README.md#게임-화면-설계와-검수)을 참고한다. 이 보완은 기존 `0.1.0-beta.0` 배포물에는 아직 포함되지 않았다.
+`0.1.0-beta.1`의 consumer 지침은 게임 요청 시 플레이 공간·카메라·HUD를 먼저 설계하고 기능 검증과 브라우저 플레이 경험을 따로 보고하도록 안내한다. [공유 화면 설계·검수 기준과 기존 지침 업데이트 방법](packages/agents/README.md#게임-화면-설계와-검수)을 참고한다. 기존 `0.1.0-beta.0` 사용자는 agents 지침을 업데이트해야 이 기준을 적용할 수 있다.
 
 AI agent/skill은 명시적으로 설치한다. `npm install @ferrum2d/ferrum-web`만으로 사용자 프로젝트의 `.agents`, `.codex`, `.claude`, `.gemini` 파일을 변경하지 않는다.
 

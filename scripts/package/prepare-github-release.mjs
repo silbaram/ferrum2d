@@ -93,14 +93,18 @@ function installGuide(release) {
   return `# Ferrum2D ${release.version}\n\n` +
     `아래 명령은 ${release.tag} GitHub Release에 이 묶음의 모든 .tgz 파일을 공개한 뒤 사용할 수 있다.\n` +
     `이 파일과 로컬 묶음 생성만으로 GitHub에 배포되지는 않는다.\n\n` +
-    `## 게임 개발 시작\n\nNode.js 22 권장. Rust나 wasm-pack 설치는 필요 없다.\n\n` +
+    `## 초기 개발 환경만 설치\n\nNode.js 22 권장. Rust나 wasm-pack 설치는 필요 없다.\n\n` +
+    `[AI 에이전트용 초기 설치 지침](https://github.com/${release.repository}/blob/${release.tag}/docs/engine/ai-agent-install.md)을 따른다.\n` +
+    `엔진·개발 도구·AI 지침만 설치하며 게임 제작 요청 전에는 예제, src/, public/, 화면, viewer, replay fixture를 생성하거나 개발 서버를 실행하지 않는다.\n\n` +
+    `## 예제 게임 생성(선택)\n\n실행 가능한 예제를 요청한 경우에만 아래 명령을 사용한다. minimal도 빈 프로젝트가 아니다.\n\n` +
     `\`\`\`bash\nnpx --yes --allow-remote=root ${release.generator} my-game --template topdown\ncd my-game\nnpm install\nnpm run dev\n\`\`\`\n\n` +
     `템플릿: minimal, topdown, platformer, breakout. 엔진과 viewer는 같은 릴리스 URL에 고정된다.\n` +
     `일반 개발 도구(Vite/TypeScript)는 npm 레지스트리에서 설치한다. package-lock.json을 커밋하고 재설치는 npm ci를 사용한다.\n\n` +
     `npm 12의 외부 URL 설치 정책에 맞춰 생성 프로젝트 .npmrc에 allow-remote=root를 기록한다. 기존 .npmrc는 덮어쓰지 않는다.\n\n` +
-    `## AI 개발 지침 설치(선택)\n\n\`\`\`bash\nnpm run ferrum:agents\n\`\`\`\n\n` +
-    `## 게임 검증과 빌드\n\n\`\`\`bash\nnpm run ferrum:check\nnpm run ferrum:deploy-report\nnpm run preview\n\`\`\`\n\n` +
+    `## 예제 게임의 AI 개발 지침 설치(선택)\n\n\`\`\`bash\nnpm run ferrum:agents\n\`\`\`\n\n` +
+    `## 예제 게임 검증과 빌드\n\n초기 환경만 설치한 프로젝트는 초기 설치 지침의 ferrum:setup-check까지만 실행한다. 아래 명령은 예제 게임을 생성한 경우에만 사용한다.\n\n\`\`\`bash\nnpm run ferrum:check\nnpm run ferrum:deploy-report\nnpm run preview\n\`\`\`\n\n` +
     `이전 버전 게임을 업데이트할 때는 package.json의 엔진/viewer URL과 ferrum:agents URL을 같은 릴리스로 함께 변경하고 npm install 및 ferrum:check를 실행한다.\n` +
+    `기존 AI 지침은 init 재실행으로 교체되지 않는다. 같은 도구 선택으로 빈 디렉터리에 설치한 뒤 새 harness, skill/agent/command, 루트 managed block을 비교·병합한다. 사용자 수정 내용에 --force를 무조건 적용하지 않는다.\n` +
     `GitHub에서 자동 생성하는 Source code.zip은 설치용 패키지가 아니다.\n`;
 }
 

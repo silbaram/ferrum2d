@@ -10,6 +10,28 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 - 아직 기록할 변경 사항이 없다.
 
+## 0.1.0-beta.1 - 2026-10-03
+
+GitHub Release 설치용 두 번째 beta다. 소스 package는 `0.1.0`/`private: true`를 유지하고, 배포 staging의 네 package를 `0.1.0-beta.1`로 고정한다.
+
+### Changed
+
+- 초기 설치 지침은 엔진·개발 도구·AI 지침만 설치하고 게임 제작 요청을 기다리도록 정리했다. Release 설치 안내에서 이 경로와 선택형 예제 생성을 구분한다.
+- consumer 공통 지침에 플레이 공간·카메라·HUD·에셋 설계와 장르별 예외를 추가하고 Codex·Claude·Gemini가 같은 기준을 참조하도록 했다. 기능 검증과 실제 브라우저 플레이 경험 검수를 분리한다. (#59, #60)
+- 기존 AI 지침은 자동으로 덮어쓰지 않는다. 업데이트 시 빈 디렉터리 설치 후 비교·병합하도록 CLI 안내와 설치 보존 검사를 보강했다.
+
+### Fixed
+
+- consumer template catalog 조회를 설치 버전에 맞는 GitHub Release tarball 경로로 안내하고 npm 12의 외부 URL 정책을 반영했다.
+- 초기 설치의 게임 파일/빈 디렉터리 생성 방지, 기존 게임 소스·데이터·사용자 지침 보존, 패키지에 포함된 공통 지침 참조 검사를 보강했다.
+- 문서 사이트의 저장소 증거 링크를 수정했다.
+
+### Upgrade Notes
+
+- 엔진 public API와 Wasm ABI 변경은 없다. 엔진·viewer·agents URL과 릴리스 출처 metadata는 같은 버전으로 맞춘다.
+- `ferrum:agents` 재실행은 기존 파일을 보존한다. 새 지침을 별도 빈 디렉터리에 설치해 기존 skill/agent/command와 루트 managed block을 비교·병합한다.
+- 기존 게임의 화면을 자동으로 재설계하지 않으며, 게임 제작·변경 요청 시 새 검수 기준을 적용한다.
+
 ## 0.1.0-beta.0 - 2026-10-03
 
 GitHub Releases의 설치 패키지로 제공하는 첫 공개 beta다. 소스 package는 `0.1.0`/`private: true`를 유지하고, 배포 staging의 네 package를 `0.1.0-beta.0`으로 고정한다.
