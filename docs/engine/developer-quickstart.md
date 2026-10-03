@@ -30,11 +30,16 @@ Ferrum2D의 public package에는 core runtime, starter scene, helper, smoke/repo
 
 ### 1. 프로젝트 생성
 
+Node.js 22를 권장한다. 공개된 GitHub Release에서 설치용 `ferrum2d-create-game-<버전>.tgz` 링크를 복사한다. Source code.zip은 사용하지 않는다. 릴리스가 아직 공개되지 않았다면 [로컬 패키지 준비 절차](../development/operations/github-release.md)를 먼저 따른다.
+
 ```bash
-npm create @ferrum2d/game my-game
+ferrum_cli_url="<GitHub Release의 create-game .tgz 다운로드 URL>"
+npx --yes --allow-remote=root "$ferrum_cli_url" my-game
 cd my-game
 npm install
 ```
+
+생성기는 같은 릴리스의 엔진과 viewer URL을 `package.json`에 고정하고 `FERRUM_INSTALL.md`를 남긴다. 새 `.npmrc`의 `allow-remote=root`는 npm 12의 직접 URL 의존성 설치를 허용한다. Rust/wasm-pack은 게임 개발자에게 필요 없으며 일반 개발 도구는 npm 레지스트리에서 설치한다.
 
 ### 2. 브라우저 실행
 
@@ -69,7 +74,7 @@ npm run preview
 ### 6. AI agent 템플릿 설치
 
 ```bash
-npx @ferrum2d/agents init --tools codex,claude,gemini
+npm run ferrum:agents
 ```
 
 ## 엔진 모델
@@ -196,7 +201,7 @@ npm run ferrum:deploy-report
 Ferrum2D는 AI agent가 안전하게 수정할 수 있는 파일과 검증 명령을 제공한다. agent를 설치하면 Codex, Claude, Gemini용 consumer 개발 지침과 command가 생성된다.
 
 ```bash
-npx @ferrum2d/agents init --tools codex,claude,gemini
+npm run ferrum:agents
 ```
 
 권장 작업 흐름은 다음이다.

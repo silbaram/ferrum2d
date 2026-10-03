@@ -204,20 +204,22 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 
 일부 제외 항목의 이전 public API 이름은 마이그레이션 리스크를 줄이기 위한 deprecated compatibility shim으로만 남아 있을 수 있다. 이 shim은 제품 런타임 기능을 제공하지 않으며, 기본 실행 경로는 WebGL2/WebGPU renderer, requestAnimationFrame, SFX, 직접 asset loading으로 제한한다.
 
-## npm 패키지 구성
+## 게임 개발용 패키지
 
-Ferrum2D npm 배포 단위는 역할별로 분리한다.
+Ferrum2D는 GitHub Releases의 설치용 `.tgz` 패키지를 기본 배포 경로로 준비한다. npm 레지스트리 공개 없이도 `npx`와 `npm install`로 사용할 수 있다. 패키지 역할은 다음과 같다.
 
 | package | 역할 |
 | --- | --- |
 | `@ferrum2d/ferrum-web` | 게임 실행에 필요한 엔진 런타임 본체 |
+| `@ferrum2d/authoring-viewer` | 생성 프로젝트의 배치 보조 도구 공통 기능 |
 | `@ferrum2d/create-game` | 새 Ferrum2D 게임 프로젝트 생성 CLI |
 | `@ferrum2d/agents` | AI로 Ferrum2D 게임을 개발할 때 사용하는 consumer agent/skill/command 설치 CLI. Agent Template Showcase 기준은 [packages/agents/README.md](packages/agents/README.md#agent-template-showcase)다. |
 
-새 게임 프로젝트는 다음 흐름으로 만든다.
+공개된 GitHub Release의 `ferrum2d-create-game-<버전>.tgz` 링크를 복사한 뒤 실행한다. **릴리스 패키지가 아직 공개되지 않았다면 이 원격 설치는 사용할 수 없다.** 배포 준비와 로컬 검증은 [GitHub Release 배포 절차](docs/development/operations/github-release.md)를 따른다. 게임 개발자는 Node.js 22만 준비하면 되며 Rust 빌드는 필요 없다.
 
 ```bash
-npm create @ferrum2d/game my-game
+ferrum_cli_url="<GitHub Release의 create-game .tgz 다운로드 URL>"
+npx --yes --allow-remote=root "$ferrum_cli_url" my-game
 cd my-game
 npm install
 npm run dev
@@ -226,10 +228,12 @@ npm run dev
 AI agent/skill은 명시적으로 설치한다. `npm install @ferrum2d/ferrum-web`만으로 사용자 프로젝트의 `.agents`, `.codex`, `.claude`, `.gemini` 파일을 변경하지 않는다.
 
 ```bash
-npx @ferrum2d/agents init --tools codex,claude,gemini
+npm run ferrum:agents
 ```
 
-## 개발환경 설정
+릴리스 생성기는 엔진·viewer URL과 선택형 `ferrum:agents` 명령을 같은 버전에 고정한다. npm 12를 위해 새 프로젝트 `.npmrc`에 `allow-remote=root`를 기록한다. 일반 개발 도구는 npm에서 설치한다.
+
+## 엔진 자체 개발환경 설정
 
 Ferrum2D는 Rust/Wasm core와 TypeScript web package를 함께 빌드한다. Rust toolchain, Wasm target, wasm-pack, Node.js, pnpm이 모두 필요하다.
 
@@ -369,10 +373,11 @@ pnpm release:check
 consumer game의 기본 제품 흐름은 새 프로젝트 생성, agent 설치, machine-readable report 확인, 검증 순서로 고정한다.
 
 ```bash
-npm create @ferrum2d/game my-game -- --template minimal
+ferrum_cli_url="<GitHub Release의 create-game .tgz 다운로드 URL>"
+npx --yes --allow-remote=root "$ferrum_cli_url" my-game --template minimal
 cd my-game
 npm install
-npx @ferrum2d/agents init --tools codex,claude,gemini
+npm run ferrum:agents
 npm run ferrum:check
 npm run ferrum:deploy-report
 npm run preview
@@ -412,7 +417,7 @@ pnpm build
 ```text
 crates/ferrum-core/          Rust core, scenes, game state, collision/physics, render/audio command
 packages/ferrum-web/        TypeScript platform layer, WasmBridge, WebGL2/WebGPU renderer
-packages/create-game/       npm create용 게임 프로젝트 생성 CLI
+packages/create-game/       게임 프로젝트 생성 CLI (GitHub Release tarball)
 packages/agents/            consumer game development용 AI agent/skill 설치 CLI
 examples/shared/            예제 공통 demo shell, metric panel, smoke hook
 examples/starter-runtime/   createFerrumRuntime starter 예제
@@ -434,12 +439,12 @@ scripts/                    저장소 보조 스크립트
 - Examples: [Top-down Shooter Game Spec](docs/examples/topdown-shooter/game-spec.md)
 - Development Architecture: [아키텍처](docs/development/architecture/architecture.md), [2D 물리엔진 기능 맵](docs/development/architecture/physics-engine.md)
 - Development Quality: [코드 리뷰 기준](docs/development/quality/code-review.md), [Smoke Check](docs/development/quality/smoke-check.md)
-- Development Operations: [GitHub Pages 배포](docs/development/operations/demo-deploy.md), [npm 베타 패키징](docs/development/operations/npm-release.md), [릴리스 노트 템플릿](docs/development/operations/release-notes-template.md)
+- Development Operations: [GitHub Pages 배포](docs/development/operations/demo-deploy.md), [GitHub Release 패키지 배포](docs/development/operations/github-release.md), [npm 베타 패키징](docs/development/operations/npm-release.md), [릴리스 노트 템플릿](docs/development/operations/release-notes-template.md)
 - [변경 기록](CHANGELOG.md)
 
 ## GitHub Actions
 
-현재 CI는 `main` push와 `main` 대상 pull request에서 Rust stable, wasm target, wasm-pack, Node.js 22, pnpm 10.8.0을 준비한 뒤 다음을 실행한다.
+현재 CI workflow는 `workflow_dispatch`로 수동 실행하며 Rust stable, wasm target, wasm-pack, Node.js 22, pnpm 10.8.0을 준비한 뒤 다음을 실행한다.
 
 - `pnpm install`
 - `cargo test --manifest-path crates/ferrum-core/Cargo.toml`
@@ -457,11 +462,12 @@ scripts/                    저장소 보조 스크립트
 - `pnpm validate:gameplay-report-artifacts`
 - `pnpm smoke:consumer-smoke-report`
 - `pnpm smoke:asset-pipeline`
+- `pnpm test:github-release`
 - `pnpm smoke:create-game-template-catalog`
 - `pnpm smoke:create-game-template-reports`
 - `pnpm smoke:topdown-template-replay-report`
 
-`pnpm build:pages`는 `/starter-runtime/`, `/topdown-shooter/`, `/placement-viewer/`, `/physics-sandbox/`, `/breakout/`, `/platformer/` demo route와 `docs/**/*.md` 기반 문서 HTML을 만든다. `ferrum-web-v*` tag push에서는 일반 `pnpm package:check` 대신 publish 후보용 `pnpm package:publish-check:ferrum-web`을 실행한다. `ferrum-web-v*` tag push 또는 수동 `consumer_smoke` opt-in에서는 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`와 `pnpm validate:consumer-smoke-report`도 실행한다. 로컬 릴리스 후보 검증에서는 CI 명령에 더해 `pnpm validate:game-spec`와 브라우저 수동 smoke check를 함께 실행하는 것을 권장한다. 실제 npm publish는 `private: true` 해제와 npm 권한 확인이 승인된 뒤 별도로 수행한다.
+`pnpm build:pages`는 `/starter-runtime/`, `/topdown-shooter/`, `/placement-viewer/`, `/physics-sandbox/`, `/breakout/`, `/platformer/` demo route와 `docs/**/*.md` 기반 문서 HTML을 만든다. GitHub Release 경로에 맞춰 tag ref에서도 `private: true`의 candidate guard와 `pnpm package:check`를 실행한다. `ferrum-web-v*` tag ref에서 수동 실행하거나 `consumer_smoke`를 켜면 `pnpm package:consumer-smoke -- --artifact-dir artifacts/consumer-smoke`와 `pnpm validate:consumer-smoke-report`도 실행한다. 로컬 릴리스 후보 검증에서는 CI 명령에 더해 `pnpm validate:game-spec`와 브라우저 수동 smoke check를 함께 실행하는 것을 권장한다. GitHub Release 설치용 묶음은 수동 `github-release-prepare.yml`로 준비하며 원격 Release를 자동 공개하지 않는다. 실제 npm publish는 별도 npm release 절차와 승인 후 수행한다.
 
 ## License
 
