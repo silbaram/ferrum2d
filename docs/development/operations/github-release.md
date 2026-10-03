@@ -4,6 +4,8 @@ Ferrum2D는 npm 레지스트리에 공개하지 않고 GitHub Releases의 설치
 
 ## 게임 개발자 설치 흐름
 
+초기 환경만 설치하는 요청은 [AI 에이전트용 초기 설치 지침](../../engine/ai-agent-install.md)을 따른다. 아래 생성기 명령은 실행 가능한 예제 게임을 요청한 경우에 사용하며 `minimal`도 빈 프로젝트는 아니다. 릴리스 묶음의 `INSTALL.md`도 두 흐름을 구분한다.
+
 Node.js 22를 권장한다. 공개된 GitHub Release의 `ferrum2d-create-game-<버전>.tgz` 다운로드 링크를 사용한다.
 
 ```bash

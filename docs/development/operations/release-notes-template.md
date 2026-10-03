@@ -24,7 +24,7 @@
 
 ## Install
 
-GitHub 전용 배포는 `release:github:prepare`가 만든 `INSTALL.md`의 정확한 버전 URL을 사용한다. npm에 공개하지 않은 릴리스에 registry 설치 명령을 기재하지 않는다.
+GitHub 전용 배포는 `release:github:prepare`가 만든 `INSTALL.md`의 정확한 버전 URL을 사용한다. npm에 공개하지 않은 릴리스에 registry 설치 명령을 기재하지 않는다. 초기 환경만 설치하는 요청에는 릴리스 tag에 고정된 AI 설치 지침을 먼저 안내하고, 아래 예제 생성 명령은 사용자가 실행 가능한 게임 템플릿을 요청한 경우로 구분한다.
 
 ```bash
 npx --yes --allow-remote=root <create-game-tarball-url> my-game --template topdown
