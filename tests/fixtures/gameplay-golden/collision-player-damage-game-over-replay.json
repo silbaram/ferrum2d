@@ -1813,7 +1813,7 @@
             "handles": {
               "player": {
                 "entityId": 0,
-                "entityGeneration": 0
+                "entityGeneration": 4
               },
               "enemy": {
                 "entityId": 1,
@@ -1822,9 +1822,9 @@
             },
             "gameplayEvents": []
           },
-          "snapshotHash": "66ba3cb5"
+          "snapshotHash": "d6328141"
         },
-        "replayHash": "66ba3cb5"
+        "replayHash": "d6328141"
       },
       {
         "frame": 2,
@@ -2835,7 +2835,7 @@
             "handles": {
               "player": {
                 "entityId": 0,
-                "entityGeneration": 0
+                "entityGeneration": 4
               },
               "enemy": {
                 "entityId": 1,
@@ -2847,7 +2847,7 @@
                 "kind": "collisionDamage",
                 "kindCode": 2,
                 "actorId": 0,
-                "actorGeneration": 0,
+                "actorGeneration": 4,
                 "sourceId": 1,
                 "sourceGeneration": 0,
                 "tokenId": 0,
@@ -2857,9 +2857,9 @@
               }
             ]
           },
-          "snapshotHash": "39bce12c"
+          "snapshotHash": "6596ffac"
         },
-        "replayHash": "39bce12c"
+        "replayHash": "6596ffac"
       },
       {
         "frame": 3,
@@ -3870,7 +3870,7 @@
             "handles": {
               "player": {
                 "entityId": 0,
-                "entityGeneration": 0
+                "entityGeneration": 4
               },
               "enemy": {
                 "entityId": 1,
@@ -3879,12 +3879,12 @@
             },
             "gameplayEvents": []
           },
-          "snapshotHash": "684105eb"
+          "snapshotHash": "05e5b1bf"
         },
-        "replayHash": "684105eb"
+        "replayHash": "05e5b1bf"
       }
     ],
-    "replayHash": "93700a37"
+    "replayHash": "e2cf31eb"
   },
   "manifestPath": "tests/fixtures/gameplay-golden/scenarios.json",
   "manifestIndex": 2

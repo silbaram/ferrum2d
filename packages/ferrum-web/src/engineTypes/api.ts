@@ -1,3 +1,5 @@
+import type { DataSceneGameplayOptions } from "../dataSceneGameplay.js";
+import type { DataSceneNavigationSpec } from "../dataSceneNavigation.js";
 import type { DirectionalLight2D } from "../lightingTypes.js";
 import type { DataSceneGroundShadowStats } from "../dataSceneSun.js";
 import type { DataSceneSpriteAnimationSetSpec, DataSceneSpriteAnimationUpdate, DataSceneSpriteAnimationState } from "../dataSceneSpriteAnimation.js";
@@ -227,6 +229,10 @@ export interface FerrumSceneApi {
   clearShooterTileHd2dMetadata(tileId: number): boolean;
   setShooterTileBridgePortal(tileId: number, portal: ShooterTileBridgePortalMetadata): boolean;
   clearShooterTileBridgePortal(tileId: number): boolean;
+  configureDataSceneGameplay(options: DataSceneGameplayOptions): boolean;
+  configureDataSceneNavigation(spec: DataSceneNavigationSpec): boolean;
+  setDataSceneNavigationCost(column: number, row: number, cost: number): boolean;
+  clearDataSceneNavigation(): boolean;
   setShooterTilemapNavigationCost(layerIndex: number, column: number, row: number, cost: number): boolean;
   queryTilemapNavigationWaypoint(query: TilemapNavigationWaypointQuery): TilemapNavigationWaypoint | undefined;
   queryTilemapNavigationPath(query: TilemapNavigationPathQuery): TilemapNavigationPath | undefined;

@@ -130,6 +130,9 @@ impl BuiltInSceneSlots {
 }
 
 pub(super) struct DataSceneRuntime {
+    pub(super) epoch: u32,
+    pub(super) gameplay: super::data_scene_gameplay::DataSceneGameplay,
+    pub(super) navigation: Tilemap,
     pub(super) camera: super::viewport_controls::DataSceneCamera,
     score: u32,
     game_state: GameState,
@@ -138,7 +141,10 @@ pub(super) struct DataSceneRuntime {
 impl DataSceneRuntime {
     pub(super) fn new() -> Self {
         Self {
+            epoch: 0,
             camera: super::viewport_controls::DataSceneCamera::default(),
+            gameplay: Default::default(),
+            navigation: Tilemap::default(),
             score: 0,
             game_state: GameState::Playing,
         }
@@ -178,6 +184,9 @@ impl DataSceneRuntime {
 
     pub(super) fn reset_playing(&mut self, context: &mut SceneResetContext<'_>) {
         context.world.reset_preserving_gameplay_variables();
+        self.epoch = self.epoch.wrapping_add(1).max(1);
+        self.gameplay = Default::default();
+        self.navigation.clear();
         self.camera = super::viewport_controls::DataSceneCamera::default();
         self.score = 0;
         self.game_state = GameState::Playing;

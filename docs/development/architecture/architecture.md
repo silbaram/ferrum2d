@@ -529,3 +529,27 @@ camera offset은 cache 밖에서 적용한다. transform/origin/alpha/sun/projec
 despawn/reset에서 제거한다. culling 후 visible caster budget을 적용하고 일반 sprite batch에 제출한다.
 caster마다 GPU resource/pass를 만들지 않는다. TS의 directional light는 기존 ambient/point-light
 pipeline에 추가되는 flat additive pass다. [지원 범위와 비용 계약](../../engine/data-scene-presentation.md).
+
+
+## Data Scene 탐험 실행 경계
+
+DataSceneGameplay는 Rust에 있고 generic scene의 physics step 뒤 interaction/pickup을 실행한다.
+primary actor는 World의 generation handle/예약 tag를 재사용한다. 입력 edge는 별도 이전 step 입력으로
+비교하며 첫 fixed step에는 누적 press edge를 함께 소비해 연속한 짧은 입력을 보존한다.
+frozen frame 및 pause/resume·gameplay 재설정에서 입력 기록을 동기화한다. CollisionScratch/pair buffer를 재사용하고
+충돌 debug/event 출력 여부와 독립적으로 pickup을 처리한다. GameplayEvent ABI는 그대로 사용하며
+variable/FSM event phase보다 먼저 event를 생성한다. Shooter의 점수·발사·적 spawning 정책을 가져오지 않는다.
+
+Data Scene은 별도 Tilemap을 navigation 전용으로 소유하고 기존 A* scratch와 path buffer ABI를 재사용한다.
+이 grid는 단일 XY 평면이며 renderer/물리 collider에는 설치하지 않는다. TS는 문서를 검증하고 초기화
+명령을 호출할 뿐 frame별 충돌·수집·탐색 상태를 복제하지 않는다. `gameplay` opt-in 문서는 지원 executor를
+명시적으로 검사한다. [public 계약](../../engine/data-scene-authoring.md)을 참고한다.
+
+Data Scene 진행 snapshot의 시뮬레이션 상태는 Rust World에만 있다. TS WeakMap은 성공한 전체
+문서 apply의 원본 문서와 stable ID→원래 generation handle만 보관하며 live registry에서 제거된
+객체도 추적한다. Rust scene epoch로 reset/씬 교체를 감지한다. 낮은 빈도의 capture/restore는
+handle pair와 상태 u32 배열을 bulk 전달하고 navigation도 한 번에 복사한다. 프레임별 JS 왕복은 없다.
+Rust restore는 전체 entity batch의 유효성을 먼저 확인한다. TS는 저장 문서의 ID/interaction 계약과
+navigation을 activation 전에 검사한 뒤, 새 apply handle로 제거/consumed 상태를 연결한다.
+Data Scene state v3는 optional progress를 담고 v2 읽기를 유지한다. 외부 binding override/누적 apply와
+위치·timer·FSM·추가 spawn의 전체 세계 저장은 이 계약에 포함하지 않는다.

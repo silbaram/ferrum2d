@@ -14,3 +14,8 @@ export type { DataSceneSpriteClipSpec, DataSceneSpriteAnimationSetSpec, DataScen
 export { resolveDirectionalLight2D, resolveDataSceneGroundShadow } from "./dataSceneSun.js";
 export type { DataSceneGroundShadowSpec, ResolvedDataSceneGroundShadow, DataSceneGroundShadowStats } from "./dataSceneSun.js";
 export type { DirectionalLight2D, ResolvedDirectionalLight2D } from "./lightingTypes.js";
+
+export type { DataSceneGameplayOptions, DataSceneGameplaySpec } from "./dataSceneGameplay.js";
+export { resolveDataSceneGameplaySpec } from "./dataSceneGameplay.js";
+export type { DataSceneNavigationSpec } from "./dataSceneNavigation.js";
+export { resolveDataSceneNavigationSpec } from "./dataSceneNavigation.js";

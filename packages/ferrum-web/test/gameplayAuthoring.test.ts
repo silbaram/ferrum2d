@@ -1864,6 +1864,34 @@ test("applyGameplayBehaviorCommands applies supported score pickup commands", ()
   ]);
 });
 
+test("generic pickup ids are validated before calling a uint32 Wasm adapter", () => {
+  const engine = new MockGameplayEngine();
+  const checkedIds: number[] = [];
+  Object.assign(engine, {
+    supports_gameplay_pickup_item(itemId: number) {
+      checkedIds.push(itemId);
+      return (itemId >>> 0) > 0;
+    },
+  });
+  const handles = { shell: { entityId: 7, entityGeneration: 2 } };
+  const pickup = (itemId: number, count = 1): BehaviorRecipeCommand => ({
+    entity: "shell", recipe: "shell", tags: [], type: "configurePickup",
+    item: "shell", itemId, count, despawn: true,
+  });
+  for (const itemId of [0x100000001, Number.MAX_SAFE_INTEGER, Infinity]) {
+    expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [pickup(itemId)], handles), "gameplayAuthoring.commands.0.itemId");
+    expectDiagnostic(() => applyGameplayBehaviorCommands(engine, [pickup(2, itemId)], handles), "gameplayAuthoring.commands.0.count");
+  }
+  deepEqual(checkedIds, []);
+  deepEqual(engine.calls, []);
+  applyGameplayBehaviorCommands(engine, [pickup(2), pickup(0xffffffff)], handles);
+  deepEqual(checkedIds, [2, 0xffffffff]);
+  deepEqual(engine.calls, [
+    ["set_gameplay_pickup", 7, 2, 2, 1, true],
+    ["set_gameplay_pickup", 7, 2, 0xffffffff, 1, true],
+  ]);
+});
+
 test("applyGameplayBehaviorCommands applies supported interaction commands", () => {
   const engine = new MockGameplayEngine();
   const handles = {

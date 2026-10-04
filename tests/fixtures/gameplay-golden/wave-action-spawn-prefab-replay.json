@@ -786,13 +786,13 @@
           "custom": {
             "source": {
               "entityId": 0,
-              "entityGeneration": 0
+              "entityGeneration": 4
             },
             "gameplayEvents": []
           },
-          "snapshotHash": "56279e3b"
+          "snapshotHash": "6c631447"
         },
-        "replayHash": "56279e3b"
+        "replayHash": "6c631447"
       },
       {
         "frame": 1,
@@ -1554,13 +1554,13 @@
           "custom": {
             "source": {
               "entityId": 0,
-              "entityGeneration": 0
+              "entityGeneration": 4
             },
             "gameplayEvents": []
           },
-          "snapshotHash": "02ed1bad"
+          "snapshotHash": "d6dc2989"
         },
-        "replayHash": "02ed1bad"
+        "replayHash": "d6dc2989"
       },
       {
         "frame": 2,
@@ -2322,13 +2322,13 @@
           "custom": {
             "source": {
               "entityId": 0,
-              "entityGeneration": 0
+              "entityGeneration": 4
             },
             "gameplayEvents": []
           },
-          "snapshotHash": "9d0077a1"
+          "snapshotHash": "6b6e530d"
         },
-        "replayHash": "9d0077a1"
+        "replayHash": "6b6e530d"
       },
       {
         "frame": 3,
@@ -3090,13 +3090,13 @@
           "custom": {
             "source": {
               "entityId": 0,
-              "entityGeneration": 0
+              "entityGeneration": 4
             },
             "gameplayEvents": []
           },
-          "snapshotHash": "6a4f4c27"
+          "snapshotHash": "76c1738b"
         },
-        "replayHash": "6a4f4c27"
+        "replayHash": "76c1738b"
       },
       {
         "frame": 4,
@@ -4106,7 +4106,7 @@
           "custom": {
             "source": {
               "entityId": 0,
-              "entityGeneration": 0
+              "entityGeneration": 4
             },
             "gameplayEvents": [
               {
@@ -4115,7 +4115,7 @@
                 "actorId": 1,
                 "actorGeneration": 0,
                 "sourceId": 0,
-                "sourceGeneration": 0,
+                "sourceGeneration": 4,
                 "tokenId": 1,
                 "flags": 0,
                 "targetRemoved": false,
@@ -4123,9 +4123,9 @@
               }
             ]
           },
-          "snapshotHash": "d575b9a9"
+          "snapshotHash": "737a6259"
         },
-        "replayHash": "d575b9a9"
+        "replayHash": "737a6259"
       },
       {
         "frame": 5,
@@ -5135,13 +5135,13 @@
           "custom": {
             "source": {
               "entityId": 0,
-              "entityGeneration": 0
+              "entityGeneration": 4
             },
             "gameplayEvents": []
           },
-          "snapshotHash": "7741e07b"
+          "snapshotHash": "544db597"
         },
-        "replayHash": "7741e07b"
+        "replayHash": "544db597"
       },
       {
         "frame": 6,
@@ -6151,16 +6151,16 @@
           "custom": {
             "source": {
               "entityId": 0,
-              "entityGeneration": 0
+              "entityGeneration": 4
             },
             "gameplayEvents": []
           },
-          "snapshotHash": "7bf79b86"
+          "snapshotHash": "1a04f07a"
         },
-        "replayHash": "7bf79b86"
+        "replayHash": "1a04f07a"
       }
     ],
-    "replayHash": "1c90e7fd"
+    "replayHash": "0a14d604"
   },
   "manifestPath": "tests/fixtures/gameplay-golden/scenarios.json",
   "manifestIndex": 3

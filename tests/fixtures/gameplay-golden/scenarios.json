@@ -256,7 +256,7 @@
         ]
       },
       "expected": {
-        "replayHash": "b925b1d3",
+        "replayHash": "1396c370",
         "finalScore": 14,
         "eventFrame": 2,
         "eventKinds": [
@@ -342,7 +342,7 @@
         ]
       },
       "expected": {
-        "replayHash": "93700a37",
+        "replayHash": "e2cf31eb",
         "finalScore": 0,
         "finalGameState": 2,
         "entityCountAfterSetup": 2,
@@ -419,7 +419,7 @@
         ]
       },
       "expected": {
-        "replayHash": "1c90e7fd",
+        "replayHash": "0a14d604",
         "finalScore": 0,
         "eventFrame": 4,
         "eventKinds": [
@@ -1905,7 +1905,7 @@
         "events": []
       },
       "expected": {
-        "replayHash": "4f95ccc8",
+        "replayHash": "c6a0c839",
         "finalScore": 0,
         "bootFrame": 0,
         "restoreFrame": 1,

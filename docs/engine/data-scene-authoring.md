@@ -189,10 +189,11 @@ Data Scene에 문서를 적용하는 low-level 호환 경로이므로 전환/res
 실제 Data Scene mode에서만 허용되며 이 문서를 clone해서 snapshot hash 범위에 포함한다. built-in scene에서
 Data Scene payload capture를 요청하면 자체 복원 불가능한 snapshot을 만들지 않고 즉시 거절한다.
 
-`GameStateSnapshot`과 `DataSceneStateSnapshot` 현재 version은 각각 `2`다. lifecycle state가
+미배포 개발 소스의 `GameStateSnapshot` version은 `2`, 신규 `DataSceneStateSnapshot` version은 `3`다.
+기존 Data Scene v2도 읽는다. lifecycle state가
 snapshot/replay hash 범위에 들어가므로 같은 scene이라도 `playing`, `paused`, `levelComplete` snapshot은
 서로 다른 hash를 가진다. version `1` snapshot은 자동 추론하지 않고 validation에서 거절한다. 저장 데이터를
-유지해야 하는 consumer는 원래 authoring document와 custom/variable payload로 version `2` snapshot을 다시
+유지해야 하는 consumer는 원래 authoring document와 custom/variable payload로 새 snapshot을 다시
 캡처하거나 명시적 migration을 수행해야 한다.
 
 `restoreGameStateSnapshot(...)`은 `DataSceneStateSnapshot.authoringDocument`가 있으면 기본적으로
@@ -216,12 +217,12 @@ committed golden fixture로도 검증한다.
 - `scene`: `snapshot.dataScene.custom["ferrum2d.variables"]`
 
 두 custom 슬롯은 기존 Data Scene snapshot hash 범위다. Built-in Shooter snapshot version `19`는 같은 Rust slab을 header에 exact bit로 포함하므로 gameplay replay hash에도 직접 반영된다.
-Scene/Level Flow v1 lifecycle 추가와 함께 상위 Data Scene snapshot version은 계속 `2`이며,
+Scene/Level Flow v1은 Data Scene snapshot v2부터 지원한다. 현재 소스는 progress용 v3를 생성하며,
 같은 문서와 같은 최종 변수 값은 변수 설정 순서와 무관하게 같은 snapshot hash를 만든다.
 기존 custom state와 함께 캡처할 때는 custom state가 object여야 하며
 `"ferrum2d.variables"`는 consumer가 직접 쓰지 않는 reserved key이며 public
 `DATA_SCENE_VARIABLES_SNAPSHOT_KEY` 상수로도 노출한다. 변수가 없는 문서는 custom payload shape에
-변수 slot을 추가하지 않지만, 상위 lifecycle version `2` 전환으로 전체 snapshot hash는 갱신된다.
+변수 slot을 추가하지 않는다. v3로 새로 캡처하면 version 필드 변경으로 전체 snapshot hash는 갱신된다.
 
 restore는 authoring document와 변수 payload의 선언·타입 정합성을 runtime activation/spawn 전에
 검사하고, 문서를 재적용해 선언 저장소를 구성한 뒤 global/scene 값을 복원한다. snapshot에 선언되지
@@ -271,3 +272,112 @@ pnpm validate:data-scene-authoring
 `visual`의 origin/tint/layer/sortOrder는 실제 Rust render command에 반영된다. `visual.layer`가 instance.layer보다 우선하며, `visual.depthSort: "hd2d"`는 같은 layer 안에서만 floor/elevation/발 위치 정렬을 활성화한다. Data Scene에서는 heightSpan 추가만으로 전역 정렬 모드가 바뀌지 않는다.
 
 optional `components.body: { type: "static" | "kinematic", heightSpan? }`는 sprite와 같은 entity에 물리 바디를 설치한다. 생략한 기존 collider-only 객체는 그대로다. [계약·공개 API recipe·검증](data-scene-native-runtime.md)을 참고한다. 이 연결은 `0.1.0-beta.2`부터 제공한다.
+
+
+## Data Scene 탐험 gameplay와 navigation (미배포)
+
+이 절은 beta.6 이후 개발 소스의 계약이다. beta.6 tarball에는 아래 API가 없다. 설치된 타입에
+`configureDataSceneGameplay` / `configureDataSceneNavigation`이 있는지 먼저 확인한다.
+
+문서에 optional `gameplay`와 `navigation`을 선언한다. 기존 필드만 있는 배치 문서는 그대로 적용된다.
+`interaction`, `pickup`, `collisionPickup`을 실행하려면 `gameplay`를 명시해야 하며, 누락하면
+씬 활성화 전에 경로가 있는 diagnostic으로 거절한다. 기존에 이 recipe가 성공으로 저장되지만 실행되지
+않던 Data Scene은 이 진단을 받을 수 있으므로 아래 설정을 추가한다.
+
+```json
+{
+  "gameplay": { "primaryActor": "player", "interactionInputActionId": 91 },
+  "navigation": {
+    "columns": 5, "rows": 5, "cellWidth": 24, "cellHeight": 24,
+    "originX": 0, "originY": 0,
+    "costs": [1,1,1,1,1, 1,1,1,1,1, 1,1,0,1,1, 1,1,1,1,1, 1,1,1,1,1]
+  }
+}
+```
+
+위 조각을 `format/version/sceneComposition/behaviorRecipes`가 있는 문서에 병합한다.
+`primaryActor`는 적용할 fragment의 instance ID다. `player` collision layer만으로 주인공을 추론하지
+않으며, apply/reapply마다 새 generation handle에 연결한다. pickup만 쓰면 `gameplay: {}`도 가능하다.
+
+- `interactionInputActionId` 생략: 반경 안의 모든 유효한 interaction이 자동 발생한다. `once: true`이면
+  해당 entity 생존 기간 중 한 번만 발생하고, false이면 출력 frame마다 최대 한 번이다.
+- 지정: `engine.setInputActionBinding(91, 0, { control: "space", activation: "pressed" })`처럼
+  **엔진 input action**을 별도로 등록한다. 활성 입력에서 가장 가까운 interaction 한 곳을 선택한다.
+  같은 거리면 entity 순서로 결정한다. `InputManager`의 문자열 action 이름과 자동 연결되는 것은 아니다.
+  E 키를 쓰려면 `InputManager`의 `keyBindings.space: ["KeyE"]`처럼 control에 매핑할 수 있다.
+- recipe의 `action`/`actionId`는 이벤트 식별자이고 입력 gate ID와 독립적이다.
+  pause/complete에서 실행을 멈추며, 잘못된/stale actor handle은 기존 설정을 바꾸지 않고 거절한다.
+  fixed step 사이의 짧은 누름은 다음 step에 한 번 전달하며 연속한 step의 별도 누름도 유지한다.
+  gameplay 재설정과 pause/resume은 이전에 대기하던 입력을 버린다. 계속 누르는 `down` 바인딩은
+  재개 이후에도 활성 상태이며, 한 번씩 조사하려면 `pressed`를 사용한다.
+- `collisionPickup`은 실제 collider overlap/filter/heightSpan 검사 뒤 동작한다. collider-only와 native
+  body 모두 사용 가능하며 `includeCollisionEvents` 옵션에 의존하지 않는다. `target: "other"`이면 상대
+  entity의 `pickup`을 수집한다. `target: "self"`이면 recipe 소유 pickup을 상대가 수집한다.
+- Data Scene pickup은 양수 uint32 item ID와 count, `despawn: true`를 지원한다. 수집 이벤트의
+  actorId/actorGeneration=collector, sourceId/sourceGeneration=pickup, tokenId=item ID, payloadBits=count를 전달하고 entity를 한 번 제거한다. 모든 ID는 Data Scene에서
+  게임이 정의하는 아이템이며 자동 점수 증가는 없다. 기존 Shooter는 점수 ID 1 전용 계약을 유지한다.
+  `despawn: false`는 반복 지급 방지 상태를 제공하지 않으므로 거절한다.
+- `gameplay`를 명시한 문서는 interaction/pickup/timer와 변수 이벤트 처리 및 metadata 저장만 지원한다.
+  health/damage/faction/tags/lifetime/scoreReward는 기존 component 저장 계약을 따른다. chase/seekTarget/
+  accelerate, projectile/dash/melee/spawn action 및 pickup 이외 collision reaction은 executor가 없으므로
+  적용 전에 거절한다. 이 모드의 변수 이벤트 조건은 interaction/timer/pickupCollected로 한정한다.
+  timer는 이벤트 발생만 지원하므로 action 실행 설정은 거절한다. metadata 저장도 기존 adapter의
+  제약(health의 start=max, damage cooldown=0 등)을 적용 전에 검사한다. 변수 이벤트 trigger는
+  entity별 고유 event/token/variable/operation 조합 최대 16개이며 같은 조합 재설정은 한 칸을 사용한다.
+  apply 옵션으로 variable ID를 바꾸더라도 실제 선언 타입·참조를 다시 검사한다.
+  `gameplay` 없는 기존 authoring primitive 문서의 component 저장 성공을 실행 지원으로 해석하지 않는다.
+
+navigation은 렌더링·물리 collider와 별도인 **단일 XY 평면 격자**다. 최대 4096칸, 양수 float32 셀 크기,
+행 우선 `costs` 배열을 사용한다. 비용 0은 통행 불가, 1..65535는 통행 비용이다. 맵 이미지나 body에서
+자동으로 장애물을 생성하지 않으며 게임이 이동 가능한 영역과 캐릭터 여유 폭을 반영해 격자를 작성한다.
+`queryTilemapNavigationPath/Waypoint`를 그대로 사용하고 `setDataSceneNavigationCost(column,row,cost)`로
+문/장애물 비용을 바꾼다. 동일 값 또는 범위 밖 수정은 false다. 높이 span을 전달해도 동일 XY 격자의
+장애물과 비용을 사용한다. 서로 다른 시작/도착 heightSpan을 연결하는 경사로·층간 portal은 지원하지 않는다.
+경로 조회는 waypoint 반환까지이며 캐릭터 이동/도착 정책은 별도로 연결한다.
+NaN/Infinity가 들어간 좌표 조회는 경로·waypoint를 반환하지 않는다.
+
+`useDataScene`, reset, transition은 navigation과 gameplay binding을 초기화한다. 문서 reapply는 새
+격자와 주인공을 다시 설치한다. invalid grid/actor/지원하지 않는 opted-in recipe는 기존 씬을 지우기 전에
+거절한다. `activateDataScene: false`는 기존 씬을 유지하는 저수준 apply로, 생략한 gameplay/navigation은
+기존 설정을 유지한다. Shooter tile 설정 API는 Data Scene에서 씬을 전환하지 않고 false 또는 void no-op로
+거절한다. 실제 Shooter 전환은 `setGameSpec` 등 명시적인 씬 구성 경로를 사용한다.
+
+기본 Data Scene snapshot은 문서 재적용 + variables/custom 복원이다. 탐험 진행 상태도 저장하려면
+`includeDataSceneProgress: true`를 명시한다. 수집 등으로 제거된 authored entity, `once` interaction의
+consumed 상태, 현재 navigation 전체(크기·원점·비용 또는 clear)를 함께 저장한다.
+
+```ts
+import { captureGameStateSnapshot, restoreGameStateSnapshot } from "@ferrum2d/ferrum-web/core";
+import { applyDataSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring";
+
+applyDataSceneAuthoringDocument(engine, document);
+const saved = captureGameStateSnapshot(engine, {
+  includeDataSceneState: true,
+  includeDataSceneProgress: true,
+  dataSceneAuthoringDocument: document,
+});
+// saved는 JSON 직렬화/저장 후 새 engine에서도 복원할 수 있다.
+restoreGameStateSnapshot(engine, saved);
+```
+
+저장 payload의 `dataScene.progress`는 stable instance ID를 사용한다. 새 handle/generation은 문서 재적용
+결과에서 다시 연결하며 제거 상태를 복원할 때 수집 이벤트나 변수 증가를 재실행하지 않는다.
+문서 apply → 진행 상태 → 변수 → lifecycle → custom callback 순서로 복원한다. 입력 바인딩은 게임이
+새 엔진에 다시 설치한다. 진행 상태에는 위치·속도·카메라 설정·타이머 경과·FSM·추가 spawn·임의 JS 상태가
+포함되지 않는다. 필요한 게임 데이터는 기존 variables/custom 또는 별도 physics snapshot 정책으로 관리한다.
+
+이번 진행 저장은 **기본 binding 옵션으로 전체 apply한 단일 문서**를 대상으로 한다. 같은 원본 문서를
+capture에 전달해야 한다. fragment/idPrefix/transform/ids/kinds override, 외부 componentTemplates,
+`activateDataScene: false` 누적 apply 뒤에는 진행 capture를 거절한다. 설정을 문서에 넣고 전체 적용한다.
+`path`, `textureId`, `colorManagement`, `instanceHandleRegistry` 옵션은 허용한다.
+reset/씬 전환 뒤 이전 apply 메타데이터로 모든 객체가 제거됐다고 저장하지 않도록 epoch를 확인한다.
+진행 payload가 있으면 `restoreDataSceneAuthoringDocument: false`를 거절한다.
+`restoreDataSceneState: false`는 문서와 진행 복원 모두 건너뛴다.
+
+새 Data Scene state version은 `3`이며 바깥 GameStateSnapshot version은 `2`를 유지한다.
+기존 Data Scene v2 파일은 해시를 변경하지 않고 읽으며 progress 없이 종전 동작으로 복원한다.
+v2 엔진은 새 v3 파일을 거절하므로 진행 상태를 무시한 복원으로 아이템이 다시 나타나는 일을 방지한다.
+잘못된 progress ID/중복/consumed 조합/grid/버전은 씬 초기화 전에 거절하며 payload도 snapshot hash에 포함된다.
+
+실행 검증: `pnpm smoke:data-scene-gameplay`. 실제 packed package의 `/core`와 `/authoring`만 사용해
+입력·수집·변수·navigation·실패 시 씬 보존·generation reset을 검증한다.

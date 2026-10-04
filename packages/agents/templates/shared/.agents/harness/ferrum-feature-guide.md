@@ -210,3 +210,28 @@ const animationSet = resolveDataSceneSpriteAnimationSet({
 [physics]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/physics-spec.md
 [runtime]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/runtime-extensibility.md
 [user]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/user-guide.md
+
+
+## 개발 소스의 Data Scene 확장 (아직 미배포)
+
+배포 기준 beta.6에는 아래 기능이 없다. 로컬 개발 패키지에서는 public 타입에
+`configureDataSceneGameplay`와 `configureDataSceneNavigation`이 있는지 먼저 확인한다.
+이전 패키지에 JSON 필드만 추가해 적용했다고 보고하지 않는다.
+
+- 자동 조사/수집: Scene Authoring `gameplay.primaryActor`로 instance를 연결한다. 입력 조사는 optional
+  `interactionInputActionId`와 엔진 input binding을 별도로 설정하며 recipe action token과 구분한다.
+  generic item은 양수 ID·`despawn: true`이며 collisionPickup이 실제 overlap 후 이벤트와 제거를 수행한다.
+- 길찾기: optional `navigation`에 최대 4096칸 단일 XY grid와 0=막힘/양수=비용을 작성한다.
+  `queryTilemapNavigationPath/Waypoint`, `setDataSceneNavigationCost`를 사용한다. collider 자동 추출,
+  층간 경로, 자동 path following은 별도 기능으로 가정하지 않는다.
+- 지원 진단: `gameplay` opt-in의 미지원 이동/공격/비-pickup collision recipe는 사전 거절한다.
+  기존 primitive command의 등록 성공과 scene에서 실제 실행됨을 구분한다.
+- 저장: 미배포 `captureGameStateSnapshot`의 `includeDataSceneState: true`와
+  `includeDataSceneProgress: true`, 동일 `dataSceneAuthoringDocument`를 함께 지정하면 authored entity
+  제거·once interaction consumed·현재 navigation을 복원한다. 기본 binding으로 전체 apply한 단일 문서만
+  지원하며 누적 apply/외부 binding override 후 capture는 거절한다. 위치·timer·추가 spawn은 저장하지 않는다.
+  Data Scene v3를 생성하고 기존 v2를 읽는다. 새 엔진의 입력 바인딩은 게임이 다시 설정한다.
+
+상세 계약과 실행 예제는 엔진 저장소의 `docs/engine/data-scene-authoring.md` 및
+`tests/smoke/data-scene-gameplay-probe.mjs`에 있다. 소비자 프로젝트에서는 설치 출처 commit의 문서를 확인한다.
+위 표의 beta.5 문서 링크에는 이 미배포 확장이 포함되지 않는다.

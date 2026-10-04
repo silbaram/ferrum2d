@@ -400,6 +400,7 @@ export interface GameplayBehaviorRuntimeEngine {
   clear_gameplay_lifetime(entityId: number, entityGeneration: number): boolean;
   set_gameplay_score_reward(entityId: number, entityGeneration: number, reward: number): boolean;
   clear_gameplay_score_reward(entityId: number, entityGeneration: number): boolean;
+  supports_gameplay_pickup_item?(itemId: number): boolean;
   set_gameplay_pickup(
     entityId: number,
     entityGeneration: number,
@@ -979,7 +980,7 @@ export function applySceneBehaviorRecipes(
       target.spawnSceneInstance(instance),
       `${path}.instances.${index}.handle`,
     );
-    entityHandles[instance.id] = handle;
+    Object.defineProperty(entityHandles, instance.id, { value: handle, enumerable: true, writable: true, configurable: true });
     return handle;
   });
   const instanceHandleSync = options.instanceHandleRegistry?.sync(plan.instances, spawnResults, {
@@ -1131,6 +1132,94 @@ function registerGameplayPrefab(
     return true;
   }
   throw gameplayAuthoringDiagnosticError(`${path}.kind`, "must be enemy or bullet for the default gameplay prefab registry");
+}
+
+/** Internal preflight; returns the Rust variable-trigger upsert key when applicable. */
+export function validateDataSceneGameplayCommand(
+  command: BehaviorRecipeCommand,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+  path: string,
+): string | undefined {
+  let variableMutationKey: string | undefined;
+  switch (command.type) {
+    case "configureTags":
+      gameplayTagMask(command.tags, ids, `${path}.tags`);
+      break;
+    case "configureHealth":
+      assertSupportedHealthCommand(command, path);
+      dataSceneFloat32(command.current, `${path}.current`, false);
+      break;
+    case "configureDamage":
+      assertSupportedDamageCommand(command, path);
+      dataSceneFloat32(command.amount, `${path}.amount`, true);
+      break;
+    case "configureFaction":
+      assertSupportedFactionCommand(command, path);
+      break;
+    case "configureLifetime":
+      assertSupportedLifetimeCommand(command, path);
+      dataSceneFloat32(command.seconds, `${path}.seconds`, true);
+      break;
+    case "configureScoreReward":
+      assertSupportedScoreRewardCommand(command, path);
+      if (command.reward > 0xffffffff) {
+        throw gameplayAuthoringDiagnosticError(`${path}.reward`, "must fit uint32 gameplay score storage");
+      }
+      break;
+    case "configurePickup":
+      assertSupportedPickupCommand(command, path);
+      resolvedPickupItemId(command, ids, path);
+      break;
+    case "configureCollisionPickup":
+      assertSupportedCollisionPickupCommand(command, path);
+      break;
+    case "configureInteraction":
+      assertSupportedInteractionCommand(command, path);
+      positiveU32(interactionActionId(command, ids, path), `${path}.actionId`);
+      dataSceneFloat32(command.radius, `${path}.radius`, true);
+      break;
+    case "configureTimerTrigger":
+      assertSupportedTimerTriggerCommand(command, path);
+      if (command.action !== undefined || command.actionId !== undefined) {
+        throw gameplayAuthoringDiagnosticError(`${path}.action`, "timer actions have no generic Data Scene executor; use the timer event");
+      }
+      positiveU32(timerTriggerId(command, ids, path), `${path}.timerId`);
+      dataSceneFloat32(command.seconds, `${path}.seconds`, true);
+      break;
+    case "configureSetVariable":
+    case "configureIncrementVariable": {
+      if (!["interaction", "timer", "pickupCollected"].includes(command.when.event)) {
+        throw gameplayAuthoringDiagnosticError(`${path}.when.event`, "this event is not emitted by Data Scene gameplay");
+      }
+      const slot = runtimeVariableSlot(command.variable, command.variableId, ids, `${path}.variable`);
+      const eventKind = runtimeGameplayEventKind(command.when.event);
+      const tokenId = runtimeGameplayEventTokenId(command.when, ids, `${path}.when`);
+      variableMutationKey = `${eventKind}:${tokenId}:${slot}:${command.type === "configureSetVariable" ? 0 : 1}`;
+      const value = command.type === "configureSetVariable"
+        ? runtimeVariableLiteral(command.value)
+        : command.amount;
+      if (!Number.isFinite(value)) {
+        throw gameplayAuthoringDiagnosticError(path, "variable mutation value must be finite");
+      }
+      break;
+    }
+    default:
+      throw gameplayAuthoringDiagnosticError(path, `${command.type} has no generic Data Scene executor; use a supported recipe or a scene-specific runtime`);
+  }
+  if (command.guard !== undefined) {
+    const [, , , literal] = runtimeVariableComparison(command.guard, ids, `${path}.guard`);
+    if (!Number.isFinite(literal)) {
+      throw gameplayAuthoringDiagnosticError(`${path}.guard.value`, "must be a finite variable comparison value");
+    }
+  }
+  return variableMutationKey;
+}
+
+function dataSceneFloat32(value: unknown, path: string, positive: boolean): void {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isFinite(Math.fround(value))
+      || (positive ? Math.fround(value) <= 0 : value < 0)) {
+    throw gameplayAuthoringDiagnosticError(path, `must be a ${positive ? "positive" : "non-negative"} finite float32 value`);
+  }
 }
 
 function applyGameplayBehaviorCommand(
@@ -1370,7 +1459,7 @@ function applyConfigurePickupCommand(
   ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
   assertSupportedPickupCommand(command, path);
-  const itemId = pickupItemId(command, ids, path);
+  const itemId = pickupItemId(command, ids, path, engine);
   return requireApplied(
     engine.set_gameplay_pickup(
       handle.entityId,
@@ -2917,8 +3006,8 @@ function assertSupportedPickupCommand(
   command: Extract<BehaviorRecipeCommand, { type: "configurePickup" }>,
   path: string,
 ): void {
-  if (!Number.isInteger(command.count) || command.count <= 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.count`, "must be a positive integer for gameplay pickup storage");
+  if (!Number.isInteger(command.count) || command.count <= 0 || command.count > 0xffffffff) {
+    throw gameplayAuthoringDiagnosticError(`${path}.count`, "must be a positive uint32 for gameplay pickup storage");
   }
   if (command.despawn !== true) {
     throw gameplayAuthoringDiagnosticError(`${path}.despawn`, "must be true because persistent pickup collection is not supported yet");
@@ -3245,16 +3334,26 @@ function pickupItemId(
   command: Extract<BehaviorRecipeCommand, { type: "configurePickup" }>,
   ids: GameplayBehaviorRuntimeIds | undefined,
   path: string,
+  engine: GameplayBehaviorRuntimeEngine,
+): number {
+  const itemId = resolvedPickupItemId(command, ids, path);
+  if (!(engine.supports_gameplay_pickup_item?.(itemId) ?? (itemId === GAMEPLAY_PICKUP_ITEM_SCORE))) {
+    throw gameplayAuthoringDiagnosticError(`${path}.itemId`, "only score pickup item id is supported by the default runtime adapter");
+  }
+  return itemId;
+}
+
+function resolvedPickupItemId(
+  command: Extract<BehaviorRecipeCommand, { type: "configurePickup" }>,
+  ids: GameplayBehaviorRuntimeIds | undefined,
+  path: string,
 ): number {
   const itemId = command.itemId ?? ids?.items?.[command.item] ?? (command.item === "score" ? GAMEPLAY_PICKUP_ITEM_SCORE : undefined);
   if (itemId === undefined) {
     throw gameplayAuthoringDiagnosticError(`${path}.item`, `must resolve pickup item '${command.item}' to a supported runtime item id`);
   }
-  if (!Number.isInteger(itemId) || itemId <= 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.itemId`, "must be a positive integer runtime item id");
-  }
-  if (itemId !== GAMEPLAY_PICKUP_ITEM_SCORE) {
-    throw gameplayAuthoringDiagnosticError(`${path}.itemId`, "only score pickup item id is supported by the default runtime adapter");
+  if (!Number.isInteger(itemId) || itemId <= 0 || itemId > 0xffffffff) {
+    throw gameplayAuthoringDiagnosticError(`${path}.itemId`, "must be a positive uint32 runtime item id");
   }
   return itemId;
 }

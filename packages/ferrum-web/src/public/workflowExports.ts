@@ -587,6 +587,7 @@ export type {
 export type {
   CaptureGameStateSnapshotOptions,
   DataSceneStateSnapshot,
+  DataSceneProgressSnapshot,
   GameStateSceneSnapshot,
   GameStateSnapshot,
   GameStateSnapshotJsonValue,

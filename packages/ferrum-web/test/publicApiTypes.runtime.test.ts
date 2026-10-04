@@ -487,7 +487,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   const gameStateCode: GameStateCode = publicGameStateCode.paused;
   const gameStateNameValue: GameStateName = publicGameStateName(gameStateCode);
   const dataSceneGameStateValue: DataSceneGameState = "paused";
-  equal(publicDataSceneStateVersion, 2);
+  equal(publicDataSceneStateVersion, 3);
   equal(publicGameStateSnapshotFormat, "ferrum2d.game-state.snapshot");
   equal(publicGameStateSnapshotVersion, 2);
   equal(gameStateNameValue, dataSceneGameStateValue);

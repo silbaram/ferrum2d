@@ -56,6 +56,9 @@ export function applyBuiltInSceneAuthoringDocument(
     validateBindings: true,
     validateComponents: false,
   });
+  if (resolved.gameplay !== undefined || resolved.navigation !== undefined) {
+    throw gameplayAuthoringDiagnosticError(path, "gameplay/navigation configuration is supported only by Data Scene");
+  }
   if ((resolved.variables?.length ?? 0) > 0) {
     throw gameplayAuthoringDiagnosticError(
       `${path}.variables`,

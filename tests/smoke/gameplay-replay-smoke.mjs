@@ -66,6 +66,7 @@ import {
 import {
   captureGameStateSnapshot,
   GAME_STATE_SNAPSHOT_VERSION,
+  DATA_SCENE_STATE_VERSION,
   hashGameStateSnapshot,
   restoreGameStateSnapshot,
 } from "../../packages/ferrum-web/dist/gameStateSnapshot.js";
@@ -2688,8 +2689,8 @@ function validateDataSceneAuthoringSnapshotRestoreScenarioOutcome(fixture, label
   assert.equal(finalSnapshot?.scene?.score, this.expected.finalScore, `${label} final score must stay deterministic`);
   assert.equal(bootSnapshot?.version, GAME_STATE_SNAPSHOT_VERSION, `${label} boot snapshot version must match`);
   assert.equal(restoreSnapshot?.version, GAME_STATE_SNAPSHOT_VERSION, `${label} restored snapshot version must match`);
-  assert.equal(bootSnapshot?.dataScene?.version, 2, `${label} boot Data Scene state version must match`);
-  assert.equal(restoreSnapshot?.dataScene?.version, 2, `${label} restored Data Scene state version must match`);
+  assert.equal(bootSnapshot?.dataScene?.version, DATA_SCENE_STATE_VERSION, `${label} boot Data Scene state version must match`);
+  assert.equal(restoreSnapshot?.dataScene?.version, DATA_SCENE_STATE_VERSION, `${label} restored Data Scene state version must match`);
   assert.equal(bootSnapshot?.scene?.gameState, this.expected.gameState, `${label} boot lifecycle state must match`);
   assert.equal(restoreSnapshot?.scene?.gameState, this.expected.gameState, `${label} restored lifecycle state must match`);
   assert.equal(bootSnapshot?.custom?.["ferrum2d.variables"]?.["campaign.level"], this.expected.globalLevel, `${label} boot global variable must be captured`);
@@ -2776,8 +2777,8 @@ function validateAuthoredScenarioOutcome(fixture, label) {
     {
       kind: "interaction",
       kindCode: GAMEPLAY_EVENT_KIND_INTERACTION,
-      actorId: 0,
-      actorGeneration: 0,
+      actorId: handles?.player?.entityId,
+      actorGeneration: handles?.player?.entityGeneration,
       sourceId: handles?.interactionSource?.entityId,
       sourceGeneration: handles?.interactionSource?.entityGeneration,
       tokenId: this.authoring.components.interaction.actionId,

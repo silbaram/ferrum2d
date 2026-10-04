@@ -529,14 +529,22 @@ bind/select 검증 실패는 이전 snapshot 참조, mutable 쓰기 권한, enti
 전달한다. 결과의
 `dataSceneVariables`/`globalVariablesApplied`/`sceneVariablesApplied`로 적용 여부를 보고한다.
 
-현재 `GameStateSnapshot.version`과 `DataSceneStateSnapshot.version`은 `2`다. Data Scene lifecycle state는
+미배포 개발 소스의 `GameStateSnapshot.version`은 `2`, 신규 `DataSceneStateSnapshot.version`은 `3`이다.
+기존 Data Scene v2 파일도 읽으며 기존 해시는 그대로 검증한다. Data Scene lifecycle state는
 snapshot/replay hash에 포함되며 restore는 변수 복원 뒤 lifecycle을 복원한 다음 custom callback을 호출한다.
 따라서 `paused`와 `levelComplete` 저장은 fresh runtime에서도 같은 상태로 복원된다. version `1`은
-validation에서 거절하므로 저장 데이터가 필요한 consumer는 version `2` 재캡처 또는 명시적 migration이
+validation에서 거절하므로 저장 데이터가 필요한 consumer는 새 버전으로 재캡처 또는 명시적 migration이
 필요하다. Built-in Shooter state ABI는 lifecycle code 계약 변경과 함께 version `18`이다. Built-in snapshot은
 기존 `title|playing|gameOver`만 허용하고 Data Scene 전용 `paused|levelComplete` code는 복원에서 거절한다.
 `includeDataSceneState: true` capture는 active Data Scene에서만 허용되며 restore authoring option의
 `activateDataScene: false`는 mutation 전에 거절한다.
+
+미배포 `includeDataSceneProgress: true`는 `includeDataSceneState`와 동일한 authoringDocument를 요구한다.
+`DataSceneProgressSnapshot`은 `dataScene.progress`의 instance ID별 제거·once interaction consumed 상태와
+현재 navigation 전체 또는 null(clear)을 표현한다. 복원은 문서 재적용의 새 handle에 연결한다.
+잘못된 payload는 씬 활성화 전에 거절한다. 기본 옵션 전체 apply만 지원하며 위치·타이머·추가 spawn은
+저장하지 않는다. progress가 있으면 authoring 복원을 끌 수 없다. 자세한 제한은
+[Data Scene 진행 저장](../data-scene-authoring.md)을 따른다.
 
 일반 consumer는 decoder를 직접 호출하기보다 `FerrumEngine`과 `FrameState`를 우선
 사용한다. decoder는 custom renderer, replay, smoke, diagnostic adapter에서 사용한다.
@@ -648,3 +656,19 @@ static/kinematic body와 sprite의 같은 핸들 연결을 정의한다.
 #73 B2의 `DataSceneGroundShadowSpec.shape: "alpha"`는 기존 texture/frame/flip의 alpha를
 지면에 투영한다. 기존 ellipse/box는 유지한다. render buffer의 `groundShadowProjection` 세 f32와
 flag 32를 함께 소비하며 15-float command layout은 유지한다. `0.1.0-beta.5`부터 제공한다.
+
+
+## Data Scene gameplay / navigation (beta.6 이후, 미배포)
+
+- `engine.configureDataSceneGameplay({ primaryActor?, interactionInputActionId? })`: Data Scene 실행 활성화.
+  주인공은 generation handle이며 입력 ID 생략 시 자동 근접 interaction, 지정 시 가까운 대상 한 곳에 적용한다.
+- `engine.configureDataSceneNavigation(spec)`: 최대 4096칸 단일 XY grid를 교체한다.
+- `engine.setDataSceneNavigationCost(column, row, cost)`: 0=막힘, 1..65535=통행 비용. 동일 값/잘못된 위치는 false.
+- `engine.clearDataSceneNavigation()`: Data Scene navigation을 제거한다.
+- `queryTilemapNavigationPath/Waypoint`: 활성 Data Scene의 grid를 조회한다. 캐릭터를 자동 이동시키지는 않는다.
+- `/core` exports: `DataSceneGameplayOptions`, `DataSceneGameplaySpec`, `DataSceneNavigationSpec`,
+  `resolveDataSceneGameplaySpec`, `resolveDataSceneNavigationSpec`.
+
+새 메서드는 다른 씬에서 false를 반환하고 씬을 전환하지 않는다. Shooter tile setter도 Data Scene을
+암묵적으로 전환하지 않는다. 동적 save 범위와 single-plane 제약은
+[Data Scene 계약](../data-scene-authoring.md)을 따른다.

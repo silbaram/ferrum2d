@@ -477,6 +477,9 @@ impl TilemapLayer {
     }
 
     pub(super) fn cell_at(&self, transform: Transform2D) -> Option<usize> {
+        if !transform.x.is_finite() || !transform.y.is_finite() {
+            return None;
+        }
         let max_x = self.origin_x + self.columns as f32 * self.tile_width;
         let max_y = self.origin_y + self.rows as f32 * self.tile_height;
         if transform.x < self.origin_x
@@ -804,4 +807,23 @@ fn push_navigation_state(
         g_score: next_g_score,
         f_score: next_g_score + hd2d_navigation_distance(layer, cell_count, next_state, goal_state),
     });
+}
+
+// Cold-path snapshot of the dedicated Data Scene navigation layer.
+impl super::Tilemap {
+    pub(crate) fn data_scene_navigation_snapshot(&self) -> Vec<f64> {
+        let Some(Some(layer)) = self.layers.first() else {
+            return Vec::new();
+        };
+        let mut values = vec![
+            f64::from(layer.columns),
+            f64::from(layer.rows),
+            f64::from(layer.tile_width),
+            f64::from(layer.tile_height),
+            f64::from(layer.origin_x),
+            f64::from(layer.origin_y),
+        ];
+        values.extend(layer.navigation_costs.iter().map(|cost| f64::from(*cost)));
+        values
+    }
 }

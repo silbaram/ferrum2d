@@ -390,3 +390,14 @@ static/kinematic body와 sprite의 같은 핸들 연결을 정의한다.
 #73 B2는 optional `visual.shadow.shape`에 `"alpha"`를 추가한다. width/height/opacity/layer의
 기존 기본값과 instance scale 적용은 유지하며 새로운 texture나 collider 정의는 필요 없다.
 ellipse/box authoring은 변경 없이 동작한다. alpha는 `0.1.0-beta.5`부터 제공한다.
+
+
+## 탐험 gameplay / navigation 설정 (미배포)
+
+`SceneAuthoringDocumentSpec`의 optional `gameplay` / `navigation`과
+`resolveDataSceneGameplaySpec`, `resolveDataSceneNavigationSpec`은
+[Data Scene 계약](../data-scene-authoring.md)의 주인공·조사·수집·단일 평면 경로 설정을 검증한다.
+`applyDataSceneAuthoringDocument`는 새 instance handle에 gameplay를 연결하고 navigation을 설치한다.
+`gameplay`가 명시된 문서의 미지원 executor 및 actor/grid 오류는 activation 전에 거절한다.
+`applyBuiltInSceneAuthoringDocument`는 Data Scene 전용 gameplay/navigation 필드를 거절한다.
+배포된 beta.6에 이 필드를 넣는 것으로 새 기능이 설치되지는 않는다.

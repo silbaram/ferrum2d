@@ -1,3 +1,4 @@
+import { forgetDataSceneProgressContext, rememberDataSceneProgressContext } from "./dataSceneProgress.js";
 import { resolveDataSceneGroundShadow, type ResolvedDataSceneGroundShadow } from "./dataSceneSun.js";
 import type { DataSceneSpriteAnimationSetSpec } from "./dataSceneSpriteAnimation.js";
 import { dataSceneVisualColor } from "./dataSceneVisualColor.js";
@@ -13,7 +14,8 @@ import {
   type ResolvedDataSceneComponents,
   type ResolvedDataSceneSpriteComponent,
 } from "./dataSceneComponents.js";
-import { applySceneBehaviorRecipes } from "./gameplayAuthoring.js";
+import { applySceneBehaviorRecipes, bindSceneBehaviorRecipes } from "./gameplayAuthoring.js";
+import { preflightDataSceneGameplay } from "./dataSceneGameplayAuthoring.js";
 import { resolveSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
 import {
   captureDataSceneVariableRuntimeSnapshot,
@@ -214,9 +216,11 @@ export function applyDataSceneAuthoringDocument(
         ...(resolvedVariables.length === 0 ? {} : { variables: runtimeVariableIds }),
       };
   const runtimeAdapter = dataSceneRuntimeEngineAdapter(engine, `${path}.runtimeTarget.engine`);
+  preflightDataSceneGameplay(engine, resolved, bindSceneBehaviorRecipes(resolved.sceneComposition, resolved.behaviorRecipes, { ...bindingOptions, path }), runtimeIds, path);
   preflightDataSceneVariableRuntime(engine, resolvedVariables, `${path}.variables`);
   const previousVariables = captureDataSceneVariableRuntimeSnapshot(engine);
   try {
+    forgetDataSceneProgressContext(engine);
     if (activateDataScene !== false) {
       runtimeAdapter.useDataScene();
     }
@@ -245,6 +249,14 @@ export function applyDataSceneAuthoringDocument(
         instanceHandleRegistry,
       },
     );
+    if (resolved.gameplay !== undefined && !engine.configureDataSceneGameplay({
+      ...(resolved.gameplay.primaryActor === undefined ? {} : { primaryActor: result.entityHandles[resolved.gameplay.primaryActor] }),
+      ...(resolved.gameplay.interactionInputActionId === undefined ? {} : { interactionInputActionId: resolved.gameplay.interactionInputActionId }),
+    })) throw sceneCompositionDiagnosticError(`${path}.gameplay`, "runtime rejected Data Scene gameplay configuration");
+    if (resolved.navigation !== undefined && !engine.configureDataSceneNavigation(resolved.navigation)) {
+      throw sceneCompositionDiagnosticError(`${path}.navigation`, "runtime rejected Data Scene navigation configuration");
+    }
+    rememberDataSceneProgressContext(engine, document, result.entityHandles, options);
     return {
       document: resolved,
       variables,
