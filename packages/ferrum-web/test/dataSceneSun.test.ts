@@ -18,7 +18,8 @@ test("shadow authoring keeps geometry separate from body and normalizes inherite
   if (components.mode !== "inline") throw new Error("Expected inline");
   deepEqual(components.visual.shadow, { shape: "box", width: 40, height: 80, opacity: 0.5 });
   deepEqual(components.collider, { type: "none" });
-  throws(() => resolveDataSceneGroundShadow({ shape: "alpha" }, 40, 80), /ellipse or box/);
+  deepEqual(resolveDataSceneGroundShadow({ shape: "alpha" }, 40, 80), { shape: "alpha", width: 40, height: 80, opacity: 1 });
+  throws(() => resolveDataSceneGroundShadow({ shape: "contour" }, 40, 80), /ellipse, box or alpha/);
   throws(() => resolveDataSceneGroundShadow({ shape: "ellipse", opacity: 2 }, 40, 80), /opacity/);
   throws(() => resolveDataSceneComponentsSpec({ visual: { kind: "sprite", texture: 1, width: 10, height: 10, projection: "perspective" }, collider: "none", layer: "wall" }), /projection/);
   throws(() => resolveDataSceneComponentsSpec({ visual: { kind: "sprite", texture: 1, width: 10, height: 10, shadow: { shape: "box", width: -1 } }, collider: "none", layer: "wall" }), /components.visual.shadow.width/);

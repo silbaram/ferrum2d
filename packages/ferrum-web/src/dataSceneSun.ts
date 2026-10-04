@@ -2,9 +2,9 @@ import type { Engine } from "../pkg/ferrum_core.js";
 import type { DirectionalLight2D, ResolvedDirectionalLight2D } from "./lightingTypes.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 
-/** A low-cost explicit silhouette; independent from collision geometry and sprite alpha. */
+/** Opt-in ground silhouette. Alpha reuses the owner's current texture frame; shapes need no mask. */
 export interface DataSceneGroundShadowSpec {
-  shape: "ellipse" | "box";
+  shape: "ellipse" | "box" | "alpha";
   width?: number;
   height?: number;
   opacity?: number;
@@ -12,7 +12,7 @@ export interface DataSceneGroundShadowSpec {
   layer?: number;
 }
 export interface ResolvedDataSceneGroundShadow {
-  shape: "ellipse" | "box";
+  shape: DataSceneGroundShadowSpec["shape"];
   width: number;
   height: number;
   opacity: number;
@@ -46,7 +46,7 @@ export function resolveDirectionalLight2D(light: DirectionalLight2D): ResolvedDi
 export function resolveDataSceneGroundShadow(value: unknown, width: number, height: number, path = "visual.shadow"): ResolvedDataSceneGroundShadow {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw sceneCompositionDiagnosticError(path, "must be an object");
   const spec = value as Record<string, unknown>; // Runtime object shape checked above; each field validated below.
-  if (spec.shape !== "ellipse" && spec.shape !== "box") throw sceneCompositionDiagnosticError(`${path}.shape`, "must be ellipse or box");
+  if (spec.shape !== "ellipse" && spec.shape !== "box" && spec.shape !== "alpha") throw sceneCompositionDiagnosticError(`${path}.shape`, "must be ellipse, box or alpha");
   const layer = spec.layer === undefined ? undefined : shadowRange(spec.layer, -2147483648, 2147482647, `${path}.layer`);
   if (layer !== undefined && !Number.isInteger(layer)) throw sceneCompositionDiagnosticError(`${path}.layer`, "must be an integer");
   return { shape: spec.shape, width: shadowRange(spec.width ?? width, 0.001, 1e10, `${path}.width`),

@@ -4,6 +4,7 @@ use crate::collision_event::CollisionEvent;
 use crate::effect_event::EffectEvent;
 use crate::gameplay_event::GameplayEvent;
 use crate::render_command::{SpriteRenderCommand, SpriteRenderItem};
+use crate::world::ground_shadow::GroundShadowProjection;
 
 use super::telemetry::frame_stats::FrameTelemetry;
 
@@ -20,6 +21,8 @@ const TILEMAP_NAVIGATION_DEBUG_LINE_CAPACITY: usize = 16;
 pub(in crate::engine) struct EngineFrameBuffers {
     pub(in crate::engine) render_commands: Vec<SpriteRenderCommand>,
     pub(in crate::engine) render_items: Vec<SpriteRenderItem>,
+    pub(in crate::engine) ground_shadow_projection: GroundShadowProjection,
+    pub(in crate::engine) ground_y_scale: f32,
     pub(in crate::engine) audio_events: Vec<AudioEvent>,
     pub(in crate::engine) effect_events: Vec<EffectEvent>,
     pub(in crate::engine) collision_events: Vec<CollisionEvent>,
@@ -35,6 +38,8 @@ impl EngineFrameBuffers {
         Self {
             render_commands: Vec::with_capacity(RENDER_COMMAND_CAPACITY),
             render_items: Vec::with_capacity(RENDER_ITEM_CAPACITY),
+            ground_shadow_projection: GroundShadowProjection::default(),
+            ground_y_scale: 1.0,
             audio_events: Vec::with_capacity(AUDIO_EVENT_CAPACITY),
             effect_events: Vec::with_capacity(EFFECT_EVENT_CAPACITY),
             collision_events: Vec::with_capacity(COLLISION_EVENT_CAPACITY),

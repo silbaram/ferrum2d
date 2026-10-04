@@ -57,6 +57,8 @@ try {
     if (report.status !== "passed" || report.commandCount < 1024 || report.drawCalls !== 3
       || report.dataSceneState !== "playing" || report.floatsPerCommand !== 15
       || JSON.stringify(report.uploadPaths) !== '["direct","compatibility","material"]'
+      || report.retainedProjection !== true || report.alphaCases?.length !== 6
+      || report.alphaCases.some((item) => item.samples?.length !== 4 || item.rejectedPasses !== 4)
       || report.liveTextures !== 0 || report.liveFramebuffers !== 0) {
       throw new Error(`Invalid RenderTexture smoke report: ${JSON.stringify(report)}`);
     }

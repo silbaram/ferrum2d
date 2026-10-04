@@ -4,7 +4,7 @@ import { applyDataSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring"
 function assert(value, message) { if (!value) throw new Error(message); }
 
 // Public authoring -> Rust scene -> bulk command buffer, including the output sprite's UV validation.
-export async function sceneCommands(rectangles, textureId, defaultUv = [0, 0, 1, 1]) {
+export async function sceneCommands(rectangles, textureId, defaultUv = [0, 0, 1, 1], { sun } = {}) {
   let engine;
   let resolveFrame;
   let rejectFrame;
@@ -18,7 +18,8 @@ export async function sceneCommands(rectangles, textureId, defaultUv = [0, 0, 1,
         assert(commands.commandCount === rectangles.length,
           `Rust command count: ${commands.commandCount}, entities: ${frame.entityCount}, camera: ${frame.cameraX},${frame.cameraY}`);
         // Snapshot before engine destruction invalidates the borrowed Wasm view.
-        resolveFrame({ ...commands, buffer: commands.buffer.slice() });
+        resolveFrame({ ...commands, buffer: commands.buffer.slice(),
+          groundShadowProjection: commands.groundShadowProjection?.slice() });
       } catch (error) { rejectFrame(error); }
     });
     engine.useDataScene();
@@ -42,6 +43,7 @@ export async function sceneCommands(rectangles, textureId, defaultUv = [0, 0, 1,
       },
       behaviorRecipes: { entities: {} },
     }, { activateDataScene: false });
+    if (sun !== undefined) assert(engine.setDataSceneSun(sun), "Data Scene sun was rejected");
     engine.start();
     return await frameReady;
   } finally { engine?.destroy(); }

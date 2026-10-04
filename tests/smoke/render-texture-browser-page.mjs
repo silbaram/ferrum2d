@@ -73,7 +73,16 @@ async function run() {
     rectangles.push({ rect: [x * 4, y * 4, 4, 4], uv: [u + 0.125, v + 0.125, u + 0.375, v + 0.375] });
   }
   const source = await sceneCommands(rectangles, ATLAS_ASSET);
+  const savedProjection = [...source.groundShadowProjection];
+  const otherSun = await sceneCommands([{ rect: [0, 0, 16, 16] }], WHITE_ASSET, undefined, {
+    sun: { directionX: 0, directionY: 1, shadowLengthScale: 2 },
+  });
+  assert(JSON.stringify([...source.groundShadowProjection]) === JSON.stringify(savedProjection),
+    `A later engine changed a saved render projection: ${source.groundShadowProjection}`);
+  assert(JSON.stringify([...otherSun.groundShadowProjection]) === "[0,1,2]", "custom sun fixture metadata");
   const output = await sceneCommands([{ rect: [0, 0, 128, 128] }], TARGET_ID, target.uv);
+  assert(JSON.stringify([...otherSun.groundShadowProjection]) === "[0,1,2]",
+    "Engine destruction/reuse invalidated saved sun metadata");
   const mixedOutput = await sceneCommands([
     { rect: [0, 0, 64, 64], uv: [0, 0, 0.5, 0.5] },
     { rect: [64, 0, 64, 64], texture: ATLAS_ASSET, uv: [0.125, 0.625, 0.375, 0.875] },
@@ -173,6 +182,53 @@ async function run() {
   assert(pixel(16, 16).every((value, channel) => Math.abs(value - [96, 0, 0, 255][channel]) <= 2),
     "material target orientation/color");
   renderer.setSpriteMaterial("unlit");
+  // Retained frame metadata must reach offscreen draws on every upload path.
+  const alphaAtlas = document.createElement("canvas");
+  alphaAtlas.width = alphaAtlas.height = 2;
+  const alphaContext = alphaAtlas.getContext("2d");
+  alphaContext.fillStyle = "rgba(0,255,0,0.5)"; alphaContext.fillRect(1, 0, 1, 1);
+  alphaContext.fillStyle = "red"; alphaContext.fillRect(0, 1, 1, 1);
+  alphaContext.fillStyle = "blue"; alphaContext.fillRect(1, 1, 1, 1);
+  const alphaAsset = 3;
+  await renderer.loadTexture(alphaAsset, alphaAtlas.toDataURL());
+  const alphaCommands = commands([{ rect: [16, 0, 96, 96], color: [0, 0, 0, 0.8] }], alphaAsset);
+  alphaCommands.buffer[13] = 36;
+  alphaCommands.groundYScale = 0.5;
+  const alphaCases = [];
+  for (const directionY of [1, -1]) for (const path of ["direct", "compatibility", "material"]) {
+    alphaCommands.groundShadowProjection = new Float32Array([0, directionY, 1]);
+    const input = path === "compatibility" ? paddedCommands(alphaCommands) : alphaCommands;
+    renderer.render();
+    if (path === "material") renderer.setSpriteMaterial({ colorMix: { color: [0, 0, 0, 1], amount: 0.5 } });
+    const pass = renderer.renderToTexture(target, input, { clearColor: [1, 1, 1] });
+    assert(pass.drawCalls === 1 && pass.renderCommandCount === 1, "alpha offscreen draw budget");
+    assert((lastUpload === input.buffer) === (path === "direct"), `alpha ${path} upload path`);
+    renderer.setSpriteMaterial("unlit");
+    const beforeStats = JSON.stringify(renderer.stats());
+    const beforeFramebuffer = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
+    for (const invalid of [undefined, new Float32Array([0, 0, 1]), new Float32Array([0, 1, 0]), new Float32Array([0, 1])]) {
+      rejects(() => renderer.renderToTexture(target, { ...input, groundShadowProjection: invalid }, { clearColor: [1, 0, 1] }),
+        /groundShadowProjection/);
+    }
+    assert(JSON.stringify(renderer.stats()) === beforeStats, "rejected alpha passes changed stats");
+    assert(gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING) === beforeFramebuffer, "rejected alpha pass changed framebuffer");
+    renderer.renderCommands(output);
+    renderer.renderPostProcess();
+    // A downward sun flips the mask vertically; an upward sun flips it horizontally.
+    // The retained target then receives the existing 25% fade exactly once.
+    const expected = directionY === 1 ? [38, 38, 191, 114] : [114, 191, 38, 38];
+    const samples = [[40, 36], [88, 36], [40, 60], [88, 60]].map((point, index) => {
+      const actual = pixel(...point);
+      assert(actual.slice(0, 3).every((value) => Math.abs(value - expected[index]) <= 2) && actual[3] === 255,
+        `alpha target ${directionY}/${path}: ${actual}, expected grayscale ${expected[index]}`);
+      return actual;
+    });
+    assert(pixel(40, 16).every((value, channel) => Math.abs(value - (channel === 3 ? 255 : 191)) <= 2),
+      "offscreen ground scale or main-pass projection was not restored");
+    assert(gl.getError() === gl.NO_ERROR, "alpha offscreen WebGL error");
+    alphaCases.push({ directionY, path, samples, rejectedPasses: 4 });
+  }
+  assert(renderer.evictTexture(alphaAsset), "alpha fixture texture release");
   const baseline = [liveTextures.size, liveFramebuffers.size];
   for (let i = 0; i < 8; i++) {
     renderer.resizeRenderTexture(target, 32 + i * 4, 40 + i * 4);
@@ -220,6 +276,7 @@ async function run() {
   assert(gl.getError() === gl.NO_ERROR, "final WebGL error");
   return { status: "passed", commandCount: result.renderCommandCount, drawCalls: result.drawCalls,
     dataSceneState: "playing", floatsPerCommand: source.floatsPerCommand,
+    retainedProjection: true, alphaCases,
     uploadPaths: ["direct", "compatibility", "material"],
     liveTextures: liveTextures.size, liveFramebuffers: liveFramebuffers.size };
 }

@@ -9,6 +9,8 @@ use super::{Engine, SceneMode};
 impl Engine {
     pub(super) fn build_render_commands(&mut self) {
         self.frame_buffers.clear_render_work_buffers();
+        self.frame_buffers.ground_shadow_projection = self.ground_sun.projection;
+        self.frame_buffers.ground_y_scale = self.camera.ground_y_scale;
         self.ground_shadow_stats = [0; 5];
         let visible_bounds = self.camera.visible_bounds();
 

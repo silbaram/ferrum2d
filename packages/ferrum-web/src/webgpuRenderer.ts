@@ -16,6 +16,7 @@ import {
   resolveLightingSceneInto,
 } from "./lightingNormalize.js";
 import { resolveSpriteMaterialPreset, spriteMaterialPasses } from "./spriteMaterial.js";
+import { groundShadowProjection } from "./groundShadowProjection.js";
 import type { SpriteMaterialPass, SpriteMaterialPresetInput } from "./spriteMaterial.js";
 import type {
   PixelMaskTerrain,
@@ -43,7 +44,7 @@ export interface WebGPURendererOptions {
   postProcess?: PostProcessStackInput;
 }
 
-const UNIFORM_BUFFER_BYTES = 16;
+const UNIFORM_BUFFER_BYTES = 32;
 const PLACEHOLDER_TEXTURE_ID = 0;
 
 export class WebGPURenderer implements Renderer {
@@ -66,7 +67,7 @@ export class WebGPURenderer implements Renderer {
   private groundYScale = 1;
   private logicalWidth = 0;
   private logicalHeight = 0;
-  private readonly resolutionStaging = new Float32Array(4);
+  private readonly resolutionStaging = new Float32Array([0, 0, 1, 0, 1, 0, 1, 0]);
   private destroyed = false;
 
   private constructor(
@@ -288,6 +289,12 @@ export class WebGPURenderer implements Renderer {
   renderCommands(commands: RenderCommandBufferView): RendererStats {
     this.assertAlive();
     if (commands.groundYScale !== undefined && commands.groundYScale !== this.groundYScale) this.setGroundYScale(commands.groundYScale);
+    const projection = groundShadowProjection(commands);
+    const x = projection[0], y = projection[1], length = projection[2];
+    if (this.resolutionStaging[4] !== x || this.resolutionStaging[5] !== y || this.resolutionStaging[6] !== length) {
+      this.resolutionStaging[4] = x; this.resolutionStaging[5] = y; this.resolutionStaging[6] = length;
+      this.writeResolution();
+    }
     const encoder = this.device.createCommandEncoder();
     const pass = this.beginRenderPass(encoder, "load");
 

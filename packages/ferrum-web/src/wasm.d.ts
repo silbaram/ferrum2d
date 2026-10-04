@@ -47,6 +47,9 @@ declare module "../pkg/ferrum_core.js" {
     configure_data_scene_sun(x: number, y: number, opacity: number, lengthScale: number, maxCasters: number): boolean;
     configure_data_scene_ground_shadow(id: number, generation: number, shape: number, width: number, height: number, opacity: number, explicitLayer: boolean, layer: number): boolean;
     data_scene_ground_shadow_stats(): Uint32Array;
+    data_scene_ground_shadow_projection_ptr(): number;
+    data_scene_ground_shadow_projection_len(): number;
+    render_command_ground_y_scale(): number;
     data_scene_entity_id(): number;
     data_scene_entity_generation(): number;
     use_breakout_scene(): void;

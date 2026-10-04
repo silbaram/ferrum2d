@@ -35,8 +35,8 @@ fn shared_atlas_playback_is_independent_and_preserves_native_body() {
         0
     ]));
     engine.update(0.125);
-    let sa = engine.world.sprites[a.id as usize].unwrap();
-    let sb = engine.world.sprites[b.id as usize].unwrap();
+    let sa = engine.world.sprite_at_index(a.id as usize).unwrap();
+    let sb = engine.world.sprite_at_index(b.id as usize).unwrap();
     assert_eq!((sa.texture_id, sb.texture_id), (71, 71));
     assert_eq!((sa.u0, sa.u1), (0.75, 0.5));
     assert_eq!((sb.u0, sb.u1), (0.0, 0.25));
