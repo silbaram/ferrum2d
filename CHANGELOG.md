@@ -6,6 +6,16 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ## Unreleased
 
+### Changed
+
+- 아직 기록할 변경 사항이 없다.
+
+## 0.1.0-beta.5 - 2026-10-04
+
+GitHub Release 설치용 여섯 번째 beta다. 소스 package는 `0.1.0`/`private: true`를 유지하고,
+배포 staging의 네 package를 `0.1.0-beta.5`로 고정한다. #73 B2 alpha 그림자와 C1 후속 설계,
+리뷰 수정을 포함한다. (#75)
+
 ### Added
 
 - Data Scene의 `visual.shadow.shape: "alpha"`로 현재 atlas frame의 투명 윤곽을 지면에 투영한다.
@@ -16,6 +26,18 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 ### Fixed
 
 - 태양 방향과 지면 압축을 렌더 명령과 함께 확정해 다음 frame 설정 변경이 현재 frame의 그림자 투영을 바꾸지 않도록 했다.
+- 렌더 검증용 snapshot에서 projection metadata도 복사해 엔진 파괴·메모리 재사용 뒤 저장한 값이 바뀌지 않도록 했다. RenderTexture의 alpha 픽셀과 잘못된 metadata 거절 후 기존 이미지 보존 검증을 추가했다.
+
+### Upgrade Notes
+
+- engine/viewer/agents URL과 릴리스 출처 metadata를 같은 버전으로 맞춘다. 초기 설정 프로젝트에는 viewer나 예제를 추가하지 않으며 기존 AI 지침은 별도 디렉터리에 설치해 비교·병합한다.
+- 기본 ellipse/box와 공개 import 경로, 15-float/60-byte render command layout을 유지한다. `shape: "alpha"`는 선택 기능이며 JS와 Wasm은 같은 runtime tarball로 함께 업데이트한다.
+- custom renderer는 flag 32와 `groundShadowProjection` metadata를 함께 처리해야 한다. 보관하는 frame은 command buffer뿐 아니라 projection typed array도 복사한다.
+
+### Known Limitations
+
+- alpha 그림자는 2D 이미지의 지면 투영 근사다. normal map, 높이·층별 receiver, 차폐 광선, view-depth/DOF는 C1 설계이며 런타임 구현은 포함하지 않는다. #73 A1~A4의 별도 게임 이식도 포함하지 않는다.
+- WebGL2 legacy/linear-sRGB 및 WebGPU legacy를 검증했다. WebGPU linear-sRGB는 기존 WebGL2 fallback을 사용하며, 실물 GPU/mobile 성능 검증은 별도다.
 
 ## 0.1.0-beta.4 - 2026-10-04
 

@@ -1,8 +1,8 @@
 # Data Scene 애니메이션·지면 투영·태양 그림자
 
 #68~#70에서 추가한 공개 API이며 `0.1.0-beta.3`부터 제공한다.
-아래 `shape: "alpha"`는 #73 B2 후속 구현이며 **beta.4 배포본에는 없다**. 새 패키지 배포 전에는
-이 변경을 포함해 빌드한 tarball에서 검증한다.
+아래 `shape: "alpha"`는 #73 B2 후속 구현이며 **`0.1.0-beta.5`부터 제공한다**.
+beta.4 이하에서는 ellipse/box를 사용하거나 패키지를 업그레이드한다.
 [native actor 조립](data-scene-native-runtime.md)에
 이어 적용한다. 초기 설치용 템플릿은 예제 게임이나 아래 recipe를 자동 생성하지 않는다.
 

@@ -6,7 +6,7 @@ Ferrum2D는 Rust core, WebAssembly, TypeScript 플랫폼 레이어, WebGL2 기�
 
 Ferrum2D의 제품 목표는 기존 게임 엔진처럼 비주얼 에디터를 중심에 두는 것이 아니라, AI agent가 Game Spec, Physics Spec, 프로젝트 템플릿, 검증 스크립트를 사용해 게임을 생성하고 수정하는 **AI agent-first 2D game engine**을 만드는 것이다.
 
-**AI에게 초기 개발 환경 설치를 맡기려면 [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)의 링크를 전달한다.** `0.1.0-beta.4` 엔진·개발 도구·AI 지침만 설치하고 의존성을 검증한다. 게임 코드와 예제는 게임 개발을 요청한 뒤 작성한다.
+**AI에게 초기 개발 환경 설치를 맡기려면 [AI 에이전트용 설치 지침](docs/engine/ai-agent-install.md)의 링크를 전달한다.** `0.1.0-beta.5` 엔진·개발 도구·AI 지침만 설치하고 의존성을 검증한다. 게임 코드와 예제는 게임 개발을 요청한 뒤 작성한다.
 
 ## 엔진 철학
 
