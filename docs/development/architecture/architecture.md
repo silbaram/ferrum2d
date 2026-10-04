@@ -22,6 +22,11 @@ Physics debug line 생성은 opt-in quality/debug path다. Runtime `Engine`은 d
 
 ## 게임 프로젝트 설치 경계
 
+consumer의 기능 탐색은 `@ferrum2d/agents`가 설치하는 `.agents/harness/ferrum-feature-guide.md`에서
+시작한다. root 지침과 공통 harness가 이 안내서로 연결하고, 실제 설치된 runtime의 public 타입과
+같은 릴리즈의 reference로 지원 여부를 확인한다. 안내서는 runtime 지원 여부를 자동 판정하는 API가
+아니다. 내용과 배포 범위는 [AI 기능 안내](../../engine/ai-feature-guide.md)를 따른다.
+
 GitHub Releases에는 런타임, authoring viewer, create-game, agents를 개별 npm tarball로 제공한다. `scripts/package/prepare-github-release.mjs`는 기존 package allowlist의 빌드 산출물만 임시 staging으로 복사하고 동일한 beta 버전으로 포장한다. 저장소 package version과 `private: true`는 바꾸지 않는다. 생성기 tarball의 `ferrumGithubRelease` metadata가 같은 릴리스의 dependency URL과 명시적 AI 지침 설치 명령을 결정한다. 새 프로젝트 `.npmrc`는 npm 12에서 직접 URL 의존성만 허용하도록 `allow-remote=root`를 기록하며 기존 설정은 보존한다.
 
 이 경로는 게임 시뮬레이션, Rust/Wasm ABI, public runtime export를 변경하지 않는다. 게임 개발자는 Node/npm만 준비하고 엔진의 JS/Wasm은 패키지에서 받는다. 버전·파일·SHA-256은 `release-manifest.json`과 `SHA256SUMS`에 기록한다. 준비 명령과 수동 workflow는 로컬/Actions artifact만 만들며 GitHub Release 공개는 별도 실행이다. 상세 계약은 [GitHub Release 배포 절차](../operations/github-release.md)를 따른다.

@@ -23,6 +23,7 @@ const expectPublishable = process.argv.includes("--expect-publishable");
 const verifyPack = process.argv.includes("--verify-pack");
 const packageLabel = "@ferrum2d/agents";
 const presentationHarness = ".agents/harness/ferrum-game-presentation.md";
+const featureGuide = ".agents/harness/ferrum-feature-guide.md";
 const expectedFiles = ["LICENSE", "README.md", "bin", "templates"];
 const skills = [
   "ferrum-consumer-project",
@@ -81,6 +82,7 @@ const geminiCommandSkillMap = new Map([
 const expectedTemplateFiles = [
   "shared/.agents/harness/ferrum-game-development.md",
   `shared/${presentationHarness}`,
+  `shared/${featureGuide}`,
   "shared/.agents/harness/ferrum-runtime-replay.md",
   ...skills.map((skill) => `shared/.agents/skills/${skill}/SKILL.md`),
   "codex/.codex/config.toml",
@@ -96,6 +98,7 @@ const requiredPackedFiles = [
   "package/bin/ferrum2d-agents.mjs",
   "package/templates/shared/.agents/harness/ferrum-game-development.md",
   `package/templates/shared/${presentationHarness}`,
+  `package/templates/shared/${featureGuide}`,
   "package/templates/shared/.agents/harness/ferrum-runtime-replay.md",
   ...skills.map((skill) => `package/templates/shared/.agents/skills/${skill}/SKILL.md`),
   "package/templates/codex/.codex/config.toml",
@@ -178,8 +181,14 @@ async function checkTemplates() {
   await requireFile(runtimeReplayHarnessFile, repoRoot);
 
   await requireFile(path.join(templatesRoot, "shared", presentationHarness), repoRoot);
+  await requireFile(path.join(templatesRoot, "shared", featureGuide), repoRoot);
   const gameDevelopmentHarnessSource = await readFile(gameDevelopmentHarnessFile, "utf8");
   assertPresentationReference(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
+  assertFeatureGuideReference(gameDevelopmentHarnessSource, gameDevelopmentHarnessFile);
+  assertFeatureGuideReference(
+    await readFile(path.join(templatesRoot, "shared", presentationHarness), "utf8"),
+    presentationHarness,
+  );
   assert(
     gameDevelopmentHarnessSource.includes(".agents/harness/ferrum-runtime-replay.md"),
     "game development harness must point to project-specific runtime replay harness",
@@ -395,11 +404,13 @@ async function checkInstallerOutput() {
       );
     }
     for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"]) {
-      assertPresentationReference(await readFile(path.join(targetRoot, name), "utf8"), name);
+      const source = await readFile(path.join(targetRoot, name), "utf8");
+      assertPresentationReference(source, name);
+      assertFeatureGuideReference(source, name);
     }
 
     // Updating instructions without --force must preserve consumer customizations.
-    for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md", presentationHarness]) {
+    for (const name of ["AGENTS.md", "CLAUDE.md", "GEMINI.md", presentationHarness, featureGuide]) {
       const file = path.join(targetRoot, name);
       await writeFile(file, `User-owned instruction.\n${await readFile(file, "utf8")}`);
     }
@@ -468,6 +479,10 @@ async function checkExistingProjectUpgrade(cliPath, targetRoot, expectedOutput) 
 
 function assertPresentationReference(source, file) {
   assert(source.includes(presentationHarness), `${file} must reference the canonical game presentation contract`);
+}
+
+function assertFeatureGuideReference(source, file) {
+  assert(source.includes(featureGuide), `${file} must reference the consumer feature guide`);
 }
 
 function assertFrontmatterField(source, name, expected, filePath) {

@@ -12,7 +12,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const DEFAULT_ARTIFACT_DIR = "artifacts/consumer-smoke";
 const REPORT_FORMAT = "ferrum2d.package.consumer-smoke.report";
 const REPORT_VERSION = 1;
-const EXPECTED_AGENT_FILES_CHECKED = 42;
+const EXPECTED_AGENT_FILES_CHECKED = 43;
 const REQUIRED_TEMPLATE_CHECKS = Object.freeze([
   "createGame",
   "agentsDryRun",

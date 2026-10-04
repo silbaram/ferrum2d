@@ -62,6 +62,7 @@ Consumer smoke 계열 report의 `version: 1`은 internal QA artifact 계약이�
 - `.agents/harness/ferrum-game-development.md`
 - `.agents/harness/ferrum-runtime-replay.md`
 - `.agents/harness/ferrum-game-presentation.md`
+- `.agents/harness/ferrum-feature-guide.md` (요구사항별 기능 탐색, 설치 버전·공개 타입·reference 확인)
 - `.codex/config.toml`
 - `.codex/agents/consumer-*.toml`
 - `.claude/agents/consumer-*.md`
