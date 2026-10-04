@@ -2,6 +2,10 @@
 
 Use this harness for games that depend on `@ferrum2d/ferrum-web`.
 
+Before choosing an engine feature or writing gameplay code, read `.agents/harness/ferrum-feature-guide.md`.
+Match the request to a supported public API, verify the installed runtime version and declarations, and follow
+the matching release's reference docs. The guide is a feature map, not proof that an older package supports it.
+
 ## Product Goal
 
 Ferrum2D consumer projects are AI agent-first. The default development loop is not a visual editor. Agents should modify app code, Game Spec, Physics Spec, assets, and metadata through explicit files, then prove the result with local validation and smoke commands.

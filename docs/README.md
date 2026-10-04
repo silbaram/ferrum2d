@@ -41,6 +41,9 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 
 ## 읽는 순서
 
+AI가 게임 기능을 구현하기 전에는 [AI 게임 개발 기능 안내](engine/ai-feature-guide.md)에서
+요구사항에 맞는 API를 찾고 실제 설치 버전의 타입·reference를 확인한다.
+
 1. 엔진을 처음 이해하고 새 프로젝트를 시작하는 경우: [Showcase Hub](engine/showcase-hub.md) -> [개발자 퀵스타트](engine/developer-quickstart.md) -> 생성 프로젝트의 `npm run ferrum:check` -> [사용자 설명서](engine/user-guide.md)
 2. Top-down Shooter 예제 설정을 바꾸는 경우: [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md), 수동 QA는 `examples/topdown-shooter/SMOKE_CHECKLIST.md`
 3. projectile/weapon/prefab/motion/reaction/effect 같은 범용 runtime 확장 기능을 확인하는 경우: [Runtime Extensibility](engine/runtime-extensibility.md) -> [Data Scene Authoring](engine/data-scene-authoring.md) -> [Public API](engine/public-api.md)

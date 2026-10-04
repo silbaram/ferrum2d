@@ -6,11 +6,14 @@ Ferrum2D browser runtime과 WebGL2 platform layer 패키지다.
 
 ## 설치
 
-현재 저장소에서는 accidental publish를 막기 위해 `private: true`를 유지한다. 베타 배포가 승인된 뒤에는 다음 형태로 설치한다.
+기본 배포는 GitHub Releases의 버전별 `.tgz`다. npm은 설치 도구로 사용하며 npm 레지스트리 공개는 필수가 아니다.
+[AI 초기 설치 지침](https://github.com/silbaram/ferrum2d/blob/main/docs/engine/ai-agent-install.md)을 따라
+선택한 릴리즈의 runtime URL을 dependency에 고정한다. 엔진 소스/Rust 빌드 도구는 게임 프로젝트에 필요하지 않다.
 
-```bash
-pnpm add @ferrum2d/ferrum-web@beta
-```
+AI가 기능을 선택할 때는 설치된 `.agents/harness/ferrum-feature-guide.md` 또는
+[AI 게임 개발 기능 안내](https://github.com/silbaram/ferrum2d/blob/main/docs/engine/ai-feature-guide.md)를 읽는다.
+기능 존재 여부는 이 패키지의 버전과 공개 `.d.ts`로 확인하고, 상세 문서는 같은 release tag의 것을 사용한다.
+기능 안내서는 agents 패키지가 별도로 설치하며 runtime 의존성 설치만으로 AI 지침을 생성하지 않는다.
 
 ## 기본 사용
 

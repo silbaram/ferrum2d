@@ -4,6 +4,9 @@
 인덱스다. 세부 동작은 목적별 reference 문서로 나누고, 이 파일은 import 경로,
 지원 수준, 호환 정책, 내부 API 차단 규칙만 유지한다.
 
+게임 요구사항에 맞는 기능을 찾을 때는 [AI 게임 개발 기능 안내](ai-feature-guide.md)부터 읽는다.
+기능 선택 후 이 문서와 설치 버전의 공개 타입으로 정확한 계약을 확인한다.
+
 Public API surface manifest는 `docs/engine/public-api-surface.json`이다. 이
 manifest는 package export path, source entrypoint, stable/preview/compatibility
 tier, forbidden internal import allowlist를 기계적으로 검증하는 기준이다.

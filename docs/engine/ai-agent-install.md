@@ -108,6 +108,11 @@ npm run ferrum:agents
 
 게임 개발용 skill의 build/report 절차는 해당 게임 파일과 명령이 실제로 존재할 때 적용한다. 초기 설정 단계에서 없는 파일을 검사 실패로 취급하고 예제를 복사해 보충하지 않는다. 엔진 저장소의 개발용 `AGENTS.md`나 release agent를 게임 프로젝트에 복사하지 않는다.
 
+게임 개발을 요청받으면 [AI 게임 개발 기능 안내](ai-feature-guide.md)를 통해 요구사항에 맞는
+공개 API와 설치 버전의 reference를 확인한다. 새 `.agents/harness/ferrum-feature-guide.md`는
+다음 agents 배포에 포함되며 이 문서의 beta.5 설치에는 아직 없다. 없으면 저장소의 안내서를
+참고하고 설치 타입과 대조한다. 안내서가 없다는 이유로 설치 실패 처리하거나 예제를 추가하지 않는다.
+
 ## 4. 설치 검증과 종료
 
 ```bash

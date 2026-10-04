@@ -296,7 +296,7 @@ async function writePartialFailedArtifact(artifactDir, { includeForbiddenSnapsho
         },
         agents: {
           tools: ["codex", "claude", "gemini"],
-          expectedFilesChecked: 42,
+          expectedFilesChecked: 43,
           unsupportedGeminiWrappersAbsent: true,
         },
         reports: {},
@@ -405,7 +405,7 @@ function createPassedReportWithNotConfiguredRuntime({ artifactDir }) {
         },
         agents: {
           tools: ["codex", "claude", "gemini"],
-          expectedFilesChecked: 42,
+          expectedFilesChecked: 43,
           unsupportedGeminiWrappersAbsent: true,
         },
         reports: {
@@ -496,7 +496,7 @@ function createPassedReportWithNotConfiguredGameplayReplay({ artifactDir }) {
     },
     agents: {
       tools: ["codex", "claude", "gemini"],
-      expectedFilesChecked: 42,
+      expectedFilesChecked: 43,
       unsupportedGeminiWrappersAbsent: true,
     },
     reports: {
