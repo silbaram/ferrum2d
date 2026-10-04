@@ -528,6 +528,7 @@ Top-down, Placement Viewer의 전용 UI는 범용 shell option으로 흡수하�
 - `pnpm smoke:camera-postprocess`는 Minimal Game browser runtime에서 renderer fullscreen post-processing pass stats와 camera/post-process public helper를 확인한다.
 - `pnpm smoke:color-management`는 public Data Scene의 Playing 상태와 실제 Rust 15-float command buffer에서 출발한다. DPR 1/2에서 legacy/linear-srgb의 sRGB·linear·data texture, 숫자 RGB/material 혼합, 반투명 이미지/혼합, fade 체인, ambient/point light, bloom threshold, 어두운 grayscale ramp, RenderTexture 재사용·resize·clear, WebGPU 요청의 WebGL2 fallback, 투명 canvas의 premultiplied/additive 출력을 34개 시나리오로 검증한다. 1,024 commands의 sprite batch 1개와 texture switch 0을 유지하며 legacy draw 1회/managed draw 2회(출력 변환 포함)를 assert한다. 20회 warmup 뒤 60회 CPU submission median/P95를 기록하되 GPU 실행 시간이나 portable 성능 한계로 해석하지 않는다. managed 기본 출력의 framebuffer가 1개이며 반복 frame에서 texture/framebuffer 추가 할당이 없고 destroy 뒤 잔여 자원이 0인지 검사한다. metadata와 변환 함수/비지원 모드 거절은 `colorManagement.test.ts`로 검증한다.
 - `pnpm smoke:render-texture`는 public core/authoring entrypoint의 `createEngine`, `applyDataSceneAuthoringDocument`, `WebGL2Renderer`를 실제 browser에서 실행한다. Playing Data Scene의 Rust가 생성한 1,024개 비대칭 사분면 sprite를 target에 그리고, 같은 authoring 경로로 생성한 main sprite와 fade로 합성해 1,025 commands, 2 sprite batches, 3 draw calls를 확인한다. stride는 실제 command view에서 읽으며 15-float 직접 upload와 명시적으로 padding한 호환 buffer의 staging upload, material staging을 각각 검증한다. DPR 1/2의 픽셀 방향, 부분 UV/asset 혼합/target 간 합성, 불투명 alpha, 빈 pass clear, framebuffer/viewport/color-mask/scissor 복구, draw 오류 복구, asset/pending-load id 충돌, feedback/누락 texture 사전 거절, resize 및 8회 destroy/recreate, 최종 live texture/framebuffer 0을 검사한다. `FERRUM_BROWSER_EXECUTABLE` 또는 `FERRUM_BROWSER_CHANNEL`로 브라우저를 선택할 수 있다. 크기/id/foreign handle 및 할당 실패 rollback은 `renderTexture.test.ts`가, batch별 방향 복구와 upload buffer 재사용은 `spriteBatch.test.ts`가 추가 검증한다.
+- 같은 RenderTexture smoke는 서로 다른 태양 설정의 엔진을 생성·파괴해 저장한 projection metadata의 독립성을 확인한다. DPR별 태양 방향 2개 × 직접/호환/material upload 3개의 alpha 그림자 픽셀 사례에서 투명 구멍·반투명·지면 압축·후처리 합성을 검사한다. 각 사례는 metadata 누락/잘못된 방향·길이·배열 크기를 거절한 뒤 기존 target 픽셀과 stats/framebuffer가 보존되는지도 확인한다.
 - `pnpm smoke:cutscene-sequence`는 public package build에서 `CutsceneSequencePlayer`가 wait/camera/audio/dialogue command event를 순서대로 방출하고 target adapter hook과 `LocalizationBundle` 기반 dialogue text 변환을 호출하는지 확인한다.
 - `pnpm validate:game-spec`는 Top-down Shooter `game.json`의 `content` namespace가 localization/dialogue/cutscene resolver path를 통과하는지도 확인한다.
 - `pnpm smoke:localization`은 public package build에서 `LocalizationBundle` fallback/interpolation, text wrapping, web/bitmap font loading policy와 inline bitmap atlas glyph/kerning validation을 확인한다.
@@ -757,6 +758,11 @@ pause/완료/stale handle, ground scale 1/0.72 × zoom 0.75/1.5의 좌표/입력
 두 renderer 모두 기본 pivot과 발 pivot 혼용 및 world text의 앞뒤 가림 픽셀, 타원 점광원의 세로 차폐물
 그림자와 반경 변경, Wasm f32 최솟값 ground scale 0.01의 실제 frame 진행을 검사한다.
 100/500/1000 caster의 command 수와 draw/resource 비용을 report하고 reapply/despawn/destroy를 검사한다.
+#73 B2 alpha 경로는 두 atlas frame의 구멍/반투명 픽셀, flipX/flipY, rotation/origin/instance scale,
+ground/upright와 resize를 검사한다. 같은 frame 구간에서 texture upload/readback이 증가하지 않아야
+하며 100/500/1000 alpha caster의 command는 2N+1, draw는 5 이하, texture/buffer 생존 수는 일정해야
+한다. WebGPU 자원은 test-only native allocation tracker로 확인한다. CPU render/Rust p95는 기록만
+하고 소프트웨어 adapter 수치로 실제 GPU frame-time gate를 대신하지 않는다.
 report와 screenshots는 `artifacts/data-scene-presentation-*/`에 남긴다. `smoke:check`와 CI validate
 job에서 실행하며 로컬 통과가 원격 CI 성공이나 물리 GPU 성능을 의미하지는 않는다.
 

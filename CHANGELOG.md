@@ -6,9 +6,16 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ## Unreleased
 
-### Changed
+### Added
 
-- 아직 기록할 변경 사항이 없다.
+- Data Scene의 `visual.shadow.shape: "alpha"`로 현재 atlas frame의 투명 윤곽을 지면에 투영한다.
+  프레임·UV 반전·회전·원점·scale을 따르며 기존 ellipse/box와 caster budget을 유지한다. (#73 B2)
+- normal map, receiver 높이·층, 차폐 광선, view-depth/DOF의 범위·비용·fallback을 독립 후속 설계로 정리했다.
+  이 네 효과의 런타임 구현이나 consumer A1~A4 이식을 포함하지 않는다. (#73 C1)
+
+### Fixed
+
+- 태양 방향과 지면 압축을 렌더 명령과 함께 확정해 다음 frame 설정 변경이 현재 frame의 그림자 투영을 바꾸지 않도록 했다.
 
 ## 0.1.0-beta.4 - 2026-10-04
 

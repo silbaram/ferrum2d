@@ -500,9 +500,19 @@ flip을 소유하며 기존 texture와 sprite/body를 유지한다. cold 설정 
 
 `Camera2D.ground_y_scale`은 물리 transform과 별개인 render-only 값이다. Rust가 anchor/culling을,
 WebGL2/WebGPU vertex shader가 회전된 ground quad의 local Y를 변환한다. `SpriteRenderCommand`는
-15-float/60-byte를 유지한다. effectFlags의 bit 4는 ground projection, bit 8/16은 ellipse/box shadow다
+15-float/60-byte를 유지한다. effectFlags의 bit 4는 ground projection, bit 8/16은 ellipse/box shadow,
+bit 32는 현재 sprite alpha를 사용하는 ground shadow다
 (여기서 숫자는 mask 값이며 기존 low effect bit와 독립이다). frame buffer metadata로 실제 scale을
 한 번 전달하므로 내장 씬으로 전환해도 renderer/debug에 이전 scale이 남지 않는다.
+alpha shadow의 `GroundShadowProjection`은 `#[repr(C)]` 세 f32(direction X/Y, length scale)로
+Wasm에서 소유한다. bridge가 매 frame ptr로 새 typed view를 만들고 renderer의 공통 uniform으로
+보낸다. entity별 추가 boundary 호출이나 command의 RGB/rotation 필드 재해석은 없다.
+projection과 groundYScale은 `EngineFrameBuffers`에 render build와 함께 캡처한다. 다음 frame용
+설정이 먼저 변경돼도 현재 command 중심/AABB와 shader의 projection이 어긋나지 않는다.
+폭 축 `p=(sun.y,-sun.x)`와 길이 축 `-sun*lengthScale`의 행렬 B에 대해,
+발 F에서 `B * rotation * diag(width,height) * (uvCorner-(0.5,1))`를 계산하고 마지막에 ground Y를
+압축한다. Rust의 중심/AABB와 GL/WGSL vertex가 같은 순서를 사용한다. UV/frame/flip은 캐시된
+geometry와 별도로 매 command에 현재 값을 복사한다. alpha texture 재사용으로 별도 mask/FBO는 없다.
 renderer는 f32로 반올림된 최솟값 0.01을 허용한다. upright의 depth-sort pivot offset은 scale로
 나눠 지면 단위로 비교하며, 기존 회전 독립 정렬과 ground sprite의 기준은 유지한다.
 world text의 직립 block 높이도 같은 지면 단위로 환산해 sprite와 정렬한다.

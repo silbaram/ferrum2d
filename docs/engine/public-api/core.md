@@ -644,3 +644,7 @@ static/kinematic body와 sprite의 같은 핸들 연결을 정의한다.
 `dataSceneSpriteAnimationState`, `setDataSceneGroundYScale`, `cameraGroundYScale`, `setDataSceneSun`,
 `dataSceneGroundShadowStats`와 `view.setGroundYScale/setSun`의 사용법은
 [애니메이션·투영·태양 그림자](../data-scene-presentation.md)에 정리했다.
+
+#73 B2의 `DataSceneGroundShadowSpec.shape: "alpha"`는 기존 texture/frame/flip의 alpha를
+지면에 투영한다. 기존 ellipse/box는 유지한다. render buffer의 `groundShadowProjection` 세 f32와
+flag 32를 함께 소비하며 15-float command layout은 유지한다. beta.4 배포본에는 없는 후속 변경이다.
