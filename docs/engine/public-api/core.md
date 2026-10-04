@@ -44,7 +44,7 @@ handle의 `variables`는 현재 문서에 선언된 Data Scene 변수만 읽고 
 `InputManager`는 기존 `snapshot()` 외에 `keyBindings`, `actionProfile`,
 `actionSnapshot()`, `setEnabled()`, `clear()`, `setVirtualInput()`을 제공한다.
 `InputActionSnapshot`, `InputKeyBindings`, `VirtualInputState`, `resolveInputActionProfile`은
-core/root에서 import한다. [입력 계약과 beta.3 이행](../input-actions.md)을 참고한다.
+core/root에서 import한다. `0.1.0-beta.4`부터 제공하며 [입력 계약과 기존 게임 이행](../input-actions.md)을 참고한다.
 
 ## GPU 자원 통계
 

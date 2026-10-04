@@ -10,6 +10,34 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 - 아직 기록할 변경 사항이 없다.
 
+## 0.1.0-beta.4 - 2026-10-04
+
+GitHub Release 설치용 다섯 번째 beta다. 소스 package는 `0.1.0`/`private: true`를 유지하고, 배포 staging의 네 package를 `0.1.0-beta.4`로 고정한다. #73 B1 입력 API와 후속 리뷰 수정을 포함한다. (#74)
+
+### Added
+
+- `InputManager`에 임의 키·복수 키 바인딩과 JSON action/axis profile을 추가했다. `actionSnapshot()`으로 현재 입력과 프레임 사이의 짧은 누름·해제를 함께 읽을 수 있다.
+- `setEnabled()`/`clear()`로 모달·포커스 전환·씬 재시작 때 gameplay 입력을 취소하고, `setVirtualInput()`으로 앱의 가상 입력을 source별로 합성한다.
+- `VirtualControls.subscribe()`와 실제 tarball의 `/core`를 사용하는 입력 browser smoke를 추가했다.
+
+### Fixed
+
+- 키·포인터·게임패드·가상 입력을 함께 사용할 때 일부 해제가 다른 source를 지우거나, 모달·창 전환 뒤 held 입력이 다시 살아나던 문제를 수정했다.
+- canvas와 가상 버튼/joystick의 마우스 버튼 조합, open Shadow DOM 입력칸, touch fallback 좌표, canvas 소유 창의 gamepad 처리와 잘못된 profile 검증을 보완했다.
+- 입력 취소 콜백이 실패해도 리스너·DOM과 runtime 소유 자원 정리를 계속한다. 초기화 실패 시 생성한 physics scene/streaming wrapper를 정리하고 원래 오류와 외부 객체 소유권을 보존한다.
+
+### Upgrade Notes
+
+- 사용 중인 engine/viewer/agents URL과 릴리스 출처 metadata를 같은 버전으로 맞춘다. 초기 설정 프로젝트에는 viewer나 예제를 추가하지 않으며, 기존 AI 지침은 별도 디렉터리에 설치해 비교·병합한다.
+- 공개 import 경로, 기존 9-field `InputSnapshot`과 Wasm ABI는 유지한다. `pressedActions`는 기존처럼 held 목록이며, 한 번의 누름 처리는 `justPressedActions`를 사용한다.
+- `actionSnapshot()`의 edge는 읽으면 소비하므로 프레임마다 한 번 읽고 여러 처리기가 공유한다. `clear()`는 대기 중 edge도 취소한다.
+- 입력 비활성화는 시뮬레이션 pause나 클릭 이동 목표를 바꾸지 않는다. 앱의 pause·경로 취소 정책을 함께 연결하고, 초기화된 게임패드는 매핑된 모든 control의 중립 상태를 한 번 확인한 뒤 다시 활성화한다.
+
+### Known Limitations
+
+- context는 단일 gameplay enable gate다. context stack이나 UI/gameplay action 우선순위 router는 제공하지 않는다. 게임패드 poll 사이의 짧은 전환은 관찰할 수 없다.
+- #73의 소비자 게임 작업 A1~A4, B2/C1과 기존 게임의 입력 이행은 이 릴리스에 포함하지 않는다. 실물 모바일·게임패드 조합 검증은 남아 있다.
+
 ## 0.1.0-beta.3 - 2026-10-04
 
 GitHub Release 설치용 네 번째 beta다. 소스 package는 `0.1.0`/`private: true`를 유지하고, 배포 staging의 네 package를 `0.1.0-beta.3`으로 고정한다. #68~#70 구현과 후속 리뷰 수정을 포함한다. (#71)
