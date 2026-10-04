@@ -788,3 +788,41 @@ canvas/가상 버튼/joystick의 마우스 버튼 조합과 구독 예외 뒤 DO
 실패 시 nonzero로 종료하고 `artifacts/input-context-consumer-*/report.json`에 결과를
 남긴다. `smoke:check`와 GitHub Actions validate job에 연결한다. CI 실행 성공 여부는
 실제 원격 실행 결과로 별도 확인해야 한다. 기존 mobile-input smoke gate도 유지한다.
+
+
+## Data Scene 탐험 capability 회귀
+
+`pnpm smoke:data-scene-gameplay`는 Wasm/TS 빌드 후 tarball을 별도 consumer에 풀고 public subpath만 import한다.
+CI validate job과 `smoke:check`에 연결한다. 증거는 `artifacts/data-scene-gameplay-consumer-*/result.json`이다.
+장애물 우회/비용 변경/정확한 waypoint 및 잘못된 좌표 거절, 실패한 Shooter setter의 Data Scene 보존,
+activation 전 actor/grid/executor/metadata 진단과 paused 상태·변수·비용 보존을 assert한다.
+input gate·pressed/down·hold·release·pause, generic item 수집/한 번 제거/변수 반영을 확인한다.
+reapply 및 snapshot restore 뒤 새 generation으로 실제 조사 실행, 변수·정적 grid 복원,
+activateDataScene:false의 생략한 설정 보존, complete 중 조사/수집 중단, resetGame과 빈 씬 전환 시
+stale handle/grid 제거도 검증한다. Rust 회귀 테스트는 연속 fixed-step 짧은 입력과 재설정 경계를 추가로 검사한다.
+`status: passed`는 모든 조건 통과를 의미하며 기존 게임의 관측용 `ok: true` 보고서와 구분한다.
+이 명령은 렌더 픽셀/전체 플레이 경험 검증이 아니며 기존 `smoke:data-scene` browser 검증을 함께 유지한다.
+
+같은 packed smoke는 opt-in progress의 JSON 왕복과 fresh engine 복원을 확인한다. 수집된 아이템이
+재생성되지 않고 once interaction이 반복되지 않으며 scoped 변수/paused 상태/비용이 유지되어야 한다.
+교체한 grid의 크기·원점·최대 비용과 명시적 clear, 잘못된 ID/중복/consumed/grid/version에 해시를
+재계산해도 기존 씬 보존, reset/누적 apply/옵션 override의 stale metadata 거절, `__proto__` ID를 검사한다.
+Rust는 ID 재사용과 batch 중간 invalid state의 무변경을, TS는 v2 읽기/기존 hash와 restore opt-out을 검증한다.
+
+목적지 이동도 public `moveDataSceneActorTo`로 실행한다. solid 장애물을 우회해 정확한 목적지에 도착하고
+pickup을 한 번만 수집해야 한다. 잘못된 요청의 이전 경로 보존, pause/resume, 수동 입력 취소와 opt-out,
+명시 취소, grid 수정/clear의 blocked 전환, 벽 접촉 후 재요청 시 관통 방지, 진행 복원 시 authored 위치와
+idle 복귀, complete/reset 및 static actor 거절을 assert한다. Rust 회귀는 큰 delta의 코너 보존,
+auto physics/fixed-step 조합의 거리 중복 방지, 미소 속도/큰 좌표의 거리 누적, 높이/trigger/filter,
+teleport·generation 재사용과 양축 접촉면의 분리/접선 이동을 추가 검증한다.
+수치 정밀도 회귀는 작은 격자의 코너 유지, 이전 sweep epsilon 경계에서 도착, 양축 미소 변위의
+장애물 충돌, 큰 원점에서 잘못 반올림된 셀 중심 거절과 이전 경로 보존, 큰 변위의 목적지 초과 방지를 검사한다.
+
+이동·애니메이션 자동 연결은 같은 packed smoke에서 세 case로 확인한다. authored clip을 적용하고
+`configureDataSceneMovementAnimation`으로 연결해 walk→arrival idle, 좌우 공용 clip의 flip/시간 유지,
+pause/resume을 검사한다. 없는 clip/중간 invalid batch는 기존 연결을 유지하고 성공한 수동 명령은
+해제해야 한다. disable은 playback을 보존하며 진행 snapshot 복원은 authored clip만 설치한다.
+복원 후 명시적으로 다시 연결해야 walk가 선택되고 complete는 idle로 전환되어야 한다.
+Rust 회귀는 네 방향, 마지막 코너의 도착 방향, 실제 수동 velocity, blocked 후 idle/수동 이동,
+fixed-step·delta 0·pause, 입력 취소, clip 재설정, generation 재사용과 초기화 경계를 추가 검증한다.
+기존 `smoke:data-scene-presentation`은 실제 browser의 clip UV/flip 표시 회귀를 확인한다.

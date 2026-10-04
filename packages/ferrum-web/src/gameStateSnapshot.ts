@@ -1,4 +1,12 @@
 import {
+  captureDataSceneProgress,
+  preflightDataSceneProgressRestore,
+  restoreDataSceneProgress,
+  validateDataSceneProgress,
+  type DataSceneProgressSnapshot,
+} from "./dataSceneProgress.js";
+export type { DataSceneProgressSnapshot } from "./dataSceneProgress.js";
+import {
   validateBuiltInShooterStateSnapshot,
   type BuiltInShooterStateSnapshot,
 } from "./builtInShooterStateSnapshot.js";
@@ -34,7 +42,7 @@ import {
 export const GAME_STATE_SNAPSHOT_FORMAT = "ferrum2d.game-state.snapshot";
 export const GAME_STATE_SNAPSHOT_VERSION = 2;
 export const DATA_SCENE_STATE_FORMAT = "ferrum2d.data-scene-state";
-export const DATA_SCENE_STATE_VERSION = 2;
+export const DATA_SCENE_STATE_VERSION = 3;
 
 export type GameStateSnapshotJsonValue =
   | null
@@ -55,7 +63,8 @@ export interface GameStateSceneSnapshot {
 
 export interface DataSceneStateSnapshot {
   readonly format: typeof DATA_SCENE_STATE_FORMAT;
-  readonly version: typeof DATA_SCENE_STATE_VERSION;
+  readonly version: 2 | typeof DATA_SCENE_STATE_VERSION;
+  readonly progress?: DataSceneProgressSnapshot;
   readonly scene: GameStateSceneSnapshot;
   readonly authoringDocument?: GameStateSnapshotJsonValue;
   readonly custom?: GameStateSnapshotJsonValue;
@@ -78,6 +87,8 @@ export interface CaptureGameStateSnapshotOptions {
   frame?: number;
   includeBuiltInShooterState?: boolean;
   includeDataSceneState?: boolean;
+  /** Requires includeDataSceneState and the document from a complete default authoring apply. */
+  includeDataSceneProgress?: boolean;
   physicsWorld?: PhysicsWorldApplyResult;
   dataSceneAuthoringDocument?: GameStateSnapshotJsonValue;
   dataSceneCustomState?: GameStateSnapshotJsonValue;
@@ -123,6 +134,9 @@ export function captureGameStateSnapshot(
   if (options.includeBuiltInShooterState === true && options.includeDataSceneState === true) {
     throw new Error("game state snapshot cannot include both built-in shooter state and data scene state.");
   }
+  if (options.includeDataSceneProgress === true && options.includeDataSceneState !== true) {
+    throw new Error("includeDataSceneProgress requires includeDataSceneState.");
+  }
   const frame = nonNegativeInteger(options.frame ?? 0, "game state snapshot frame");
   const scene = captureGameStateSceneSnapshot(engine);
   const dataSceneLifecycleState = options.includeDataSceneState === true
@@ -156,6 +170,7 @@ export function captureGameStateSnapshot(
         dataSceneLifecycleState,
         options.dataSceneAuthoringDocument,
         dataSceneCustomState,
+        options.includeDataSceneProgress === true ? captureDataSceneProgress(engine, options.dataSceneAuthoringDocument) : undefined,
       )
     : undefined;
   const snapshot: Omit<GameStateSnapshot, "snapshotHash"> = {
@@ -188,6 +203,12 @@ export function restoreGameStateSnapshot(
   const sceneBefore = captureGameStateSceneSnapshot(engine);
   const snapshotPath = options.path ?? "gameState.snapshot";
   preflightDataSceneActivation(snapshot, options, snapshotPath);
+  if (snapshot.dataScene?.progress !== undefined && options.restoreDataSceneState !== false) {
+    if (options.restoreDataSceneAuthoringDocument === false) {
+      throw new Error("Data Scene progress restore requires restoring its authoringDocument.");
+    }
+    preflightDataSceneProgressRestore(engine, options.dataSceneAuthoringApplyOptions);
+  }
   const globalVariableValues = snapshotVariableValues(
     snapshot.custom,
     `${snapshotPath}.custom`,
@@ -233,7 +254,7 @@ export function restoreGameStateSnapshot(
       snapshot.dataScene.authoringDocument !== undefined
       && options.restoreDataSceneAuthoringDocument !== false
     ) {
-      applyDataSceneAuthoringDocument(
+      const applied = applyDataSceneAuthoringDocument(
         engine,
         snapshot.dataScene.authoringDocument,
         {
@@ -241,6 +262,9 @@ export function restoreGameStateSnapshot(
           ...options.dataSceneAuthoringApplyOptions,
         },
       );
+      if (snapshot.dataScene.progress !== undefined) {
+        restoreDataSceneProgress(engine, snapshot.dataScene.progress, applied.entityHandles);
+      }
       dataSceneAuthoringDocumentApplied = true;
     } else {
       engine.useDataScene();
@@ -454,8 +478,12 @@ export function validateDataSceneStateSnapshot(
   if (snapshot.format !== DATA_SCENE_STATE_FORMAT) {
     throw new Error(`${path}.format must be '${DATA_SCENE_STATE_FORMAT}'.`);
   }
-  if (snapshot.version !== DATA_SCENE_STATE_VERSION) {
-    throw new Error(`${path}.version must be ${DATA_SCENE_STATE_VERSION}.`);
+  if (snapshot.version !== 2 && snapshot.version !== DATA_SCENE_STATE_VERSION) {
+    throw new Error(`${path}.version must be 2 or ${DATA_SCENE_STATE_VERSION}.`);
+  }
+  if (snapshot.progress !== undefined) {
+    if (snapshot.version !== DATA_SCENE_STATE_VERSION) throw new Error(`${path}.progress requires data scene state version 3.`);
+    validateDataSceneProgress(snapshot.progress, snapshot.authoringDocument);
   }
   validateSceneSnapshot(snapshot.scene, `${path}.scene`);
   if (!isDataSceneGameStateCode(snapshot.scene.gameState)) {
@@ -489,6 +517,7 @@ function captureDataSceneState(
   lifecycleState: DataSceneGameState,
   authoringDocument: GameStateSnapshotJsonValue | undefined,
   customState: GameStateSnapshotJsonValue | undefined,
+  progress?: DataSceneProgressSnapshot,
 ): DataSceneStateSnapshot {
   if (scene.gameState !== GAME_STATE_CODE[lifecycleState]) {
     throw new Error("data scene lifecycle state must match the captured scene gameState.");
@@ -496,6 +525,7 @@ function captureDataSceneState(
   return {
     format: DATA_SCENE_STATE_FORMAT,
     version: DATA_SCENE_STATE_VERSION,
+    ...(progress === undefined ? {} : { progress }),
     scene: { ...scene },
     ...(authoringDocument === undefined
       ? {}

@@ -151,15 +151,32 @@ impl Engine {
     }
 
     pub fn pause_data_scene(&mut self) -> bool {
-        self.scene_mode == SceneMode::Data && self.data_scene.pause()
+        if self.scene_mode != SceneMode::Data || !self.data_scene.pause() {
+            return false;
+        }
+        self.data_scene.gameplay.observe_input(self.input);
+        self.fixed_timestep_input_latch.clear();
+        self.previous_input_sample = self.input;
+        true
     }
 
     pub fn resume_data_scene(&mut self) -> bool {
-        self.scene_mode == SceneMode::Data && self.data_scene.resume()
+        if self.scene_mode != SceneMode::Data || !self.data_scene.resume() {
+            return false;
+        }
+        self.data_scene.gameplay.observe_input(self.input);
+        self.fixed_timestep_input_latch.clear();
+        self.previous_input_sample = self.input;
+        true
     }
 
     pub fn complete_data_scene(&mut self) -> bool {
-        self.scene_mode == SceneMode::Data && self.data_scene.complete_level()
+        if self.scene_mode != SceneMode::Data || !self.data_scene.complete_level() {
+            return false;
+        }
+        self.data_scene.movement.cancel();
+        self.data_scene.movement_animation.stop(&mut self.world);
+        true
     }
 
     pub fn use_breakout_scene(&mut self) {

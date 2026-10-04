@@ -1,4 +1,4 @@
-import { deepEqual, equal, ok } from "node:assert/strict";
+import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import {
   BUILT_IN_SHOOTER_STATE_FLOATS_PER_ENTITY,
@@ -102,7 +102,7 @@ test("game state snapshot hashes and restores Data Scene lifecycle state", () =>
   });
 
   equal(playing.version, 2);
-  equal(playing.dataScene?.version, 2);
+  equal(playing.dataScene?.version, 3);
   equal(playing.snapshotHash === paused.snapshotHash, false);
   equal(paused.snapshotHash === levelComplete.snapshotHash, false);
 
@@ -754,3 +754,50 @@ function memoryStorage(): GameStateSnapshotStorage {
     },
   };
 }
+
+
+test("legacy v2 Data Scene snapshots retain their hash and restore without progress", () => {
+  const captured = captureGameStateSnapshot(fakeEngine({ dataSceneActive: true, gameState: 1 }), { includeDataSceneState: true });
+  const legacy = { ...captured, dataScene: { ...captured.dataScene!, version: 2 as const } };
+  legacy.snapshotHash = hashGameStateSnapshot(legacy);
+  const parsed = parseGameStateSnapshot(stringifyGameStateSnapshot(legacy));
+  equal(parsed.snapshotHash, legacy.snapshotHash);
+  equal(parsed.dataScene?.version, 2);
+  const target = fakeEngine({ gameState: 2 });
+  equal(restoreGameStateSnapshot(target, parsed).dataSceneStateApplied, true);
+  equal(target.dataSceneActivations(), 1);
+});
+
+test("invalid progress payloads and restore options fail before scene activation", () => {
+  const captured = captureGameStateSnapshot(fakeEngine({ dataSceneActive: true, gameState: 1 }), {
+    includeDataSceneState: true, dataSceneAuthoringDocument: sampleDataSceneAuthoringDocument(),
+  });
+  const progress = { instances: [{ id: "crate-1", removed: false, interactionConsumed: false }], navigation: null };
+  const target = fakeEngine({ gameState: 2 });
+  for (const invalid of [
+    { ...progress, instances: [] },
+    { ...progress, instances: [progress.instances[0], progress.instances[0]] },
+    { ...progress, instances: [{ ...progress.instances[0], id: "missing" }] },
+    { ...progress, instances: [{ ...progress.instances[0], interactionConsumed: true }] },
+    { ...progress, navigation: { columns: 1, rows: 1, cellWidth: 1, cellHeight: 1, costs: [65536] } },
+  ]) {
+    const snapshot = { ...captured, dataScene: { ...captured.dataScene!, progress: invalid } };
+    snapshot.snapshotHash = hashGameStateSnapshot(snapshot);
+    throws(() => restoreGameStateSnapshot(target, snapshot));
+    equal(target.dataSceneActivations(), 0);
+    equal(target.gameState(), 2);
+  }
+  const valid = { ...captured, dataScene: { ...captured.dataScene!, progress } };
+  valid.snapshotHash = hashGameStateSnapshot(valid);
+  throws(() => restoreGameStateSnapshot(target, valid, { restoreDataSceneAuthoringDocument: false }), /requires restoring/);
+  equal(target.dataSceneActivations(), 0);
+  equal(restoreGameStateSnapshot(target, valid, { restoreDataSceneState: false }).dataSceneStateApplied, false);
+  equal(target.dataSceneActivations(), 0);
+  const invalidLegacy = { ...valid, dataScene: { ...valid.dataScene, version: 2 as const } };
+  invalidLegacy.snapshotHash = hashGameStateSnapshot(invalidLegacy);
+  throws(() => parseGameStateSnapshot(JSON.stringify(invalidLegacy)), /requires data scene state version 3/);
+});
+
+test("progress capture requires Data Scene state opt-in", () => {
+  throws(() => captureGameStateSnapshot(fakeEngine({}), { includeDataSceneProgress: true }), /requires includeDataSceneState/);
+});

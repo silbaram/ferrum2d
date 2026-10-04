@@ -1,3 +1,4 @@
+import { resolveDataSceneNavigationSpec } from "./dataSceneNavigation.js";
 import type { Engine } from "../pkg/ferrum_core";
 import type {
   FerrumSceneApi,
@@ -21,6 +22,9 @@ import type {
 
 type FerrumTilemapSceneApi = Pick<
   FerrumSceneApi,
+  | "configureDataSceneNavigation"
+  | "setDataSceneNavigationCost"
+  | "clearDataSceneNavigation"
   | "setShooterTilemapTile"
   | "setShooterTilemapTilesRect"
   | "setShooterTileHeightSpan"
@@ -46,6 +50,18 @@ export function createTilemapSceneApi({
   requireAlive,
 }: TilemapSceneApiContext): FerrumTilemapSceneApi {
   return {
+    configureDataSceneNavigation(spec) {
+      requireAlive();
+      const grid = resolveDataSceneNavigationSpec(spec);
+      return rustEngine.configure_data_scene_navigation(grid.columns, grid.rows, grid.cellWidth, grid.cellHeight, grid.originX ?? 0, grid.originY ?? 0, new Uint32Array(grid.costs));
+    },
+    setDataSceneNavigationCost(column, row, cost) {
+      requireAlive();
+      const value = uint32Number(cost, "navigation.cost");
+      if (value > 65535) throw new Error("navigation.cost must be in 0..65535");
+      return rustEngine.set_data_scene_navigation_cost(uint32Number(column, "navigation.column"), uint32Number(row, "navigation.row"), value);
+    },
+    clearDataSceneNavigation() { requireAlive(); return rustEngine.clear_data_scene_navigation(); },
     setShooterTilemapTile(layerIndex, column, row, tileId) {
       requireAlive();
       return rustEngine.set_shooter_tilemap_tile(

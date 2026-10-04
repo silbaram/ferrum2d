@@ -1,3 +1,7 @@
+import type { DataSceneMoveOptions, DataSceneMoveStatus } from "../dataSceneMovement.js";
+import type { DataSceneMovementAnimationSpec } from "../dataSceneMovementAnimation.js";
+import type { DataSceneGameplayOptions } from "../dataSceneGameplay.js";
+import type { DataSceneNavigationSpec } from "../dataSceneNavigation.js";
 import type { DirectionalLight2D } from "../lightingTypes.js";
 import type { DataSceneGroundShadowStats } from "../dataSceneSun.js";
 import type { DataSceneSpriteAnimationSetSpec, DataSceneSpriteAnimationUpdate, DataSceneSpriteAnimationState } from "../dataSceneSpriteAnimation.js";
@@ -202,6 +206,8 @@ export interface FerrumSceneApi {
   setDataSceneSun(light: DirectionalLight2D | false): boolean;
   dataSceneGroundShadowStats(): DataSceneGroundShadowStats;
   configureDataSceneSpriteAnimation(entity: GameplayEntityHandle, clips: DataSceneSpriteAnimationSetSpec): boolean;
+  /** Opt-in idle/walk and facing policy for the primary actor. false preserves playback and detaches. */
+  configureDataSceneMovementAnimation(spec: DataSceneMovementAnimationSpec | false): boolean;
   /** Atomic batch. Duplicate/stale handles or unknown clip/frame reject the entire batch. */
   updateDataSceneSpriteAnimations(updates: readonly DataSceneSpriteAnimationUpdate[]): boolean;
   /** Diagnostic read; avoid per-entity queries in the frame loop. */
@@ -227,6 +233,15 @@ export interface FerrumSceneApi {
   clearShooterTileHd2dMetadata(tileId: number): boolean;
   setShooterTileBridgePortal(tileId: number, portal: ShooterTileBridgePortalMetadata): boolean;
   clearShooterTileBridgePortal(tileId: number): boolean;
+  configureDataSceneGameplay(options: DataSceneGameplayOptions): boolean;
+  configureDataSceneNavigation(spec: DataSceneNavigationSpec): boolean;
+  setDataSceneNavigationCost(column: number, row: number, cost: number): boolean;
+  clearDataSceneNavigation(): boolean;
+  /** Request a Rust-owned route for the primary actor; rejection preserves any active route. */
+  moveDataSceneActorTo(options: DataSceneMoveOptions): boolean;
+  cancelDataSceneMove(): boolean;
+  /** Low-frequency diagnostic; undefined outside Data Scene. */
+  dataSceneMoveStatus(): DataSceneMoveStatus | undefined;
   setShooterTilemapNavigationCost(layerIndex: number, column: number, row: number, cost: number): boolean;
   queryTilemapNavigationWaypoint(query: TilemapNavigationWaypointQuery): TilemapNavigationWaypoint | undefined;
   queryTilemapNavigationPath(query: TilemapNavigationPathQuery): TilemapNavigationPath | undefined;

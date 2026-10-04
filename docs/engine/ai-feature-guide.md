@@ -18,7 +18,7 @@ AI가 게임 요구사항을 Ferrum2D의 기존 기능과 연결하도록 만든
 4. 설치 버전의 Git tag에 고정된 문서로 동작과 제약을 확인하고 게임 설정/코드에 적용한다.
 5. 프로젝트에 정의된 검증 명령과 브라우저 조작으로 확인한다.
 
-기능 안내서의 현재 기능 기준은 **runtime `0.1.0-beta.5`**다. 안내서 자체의 배포와 엔진 기능의
+기능 안내서의 현재 기능 기준은 **runtime `0.1.0-beta.7`**다. 안내서 자체의 배포와 엔진 기능의
 도입 버전은 별개다. 위 canonical 링크는 개발 중인 `main`이며 설치 버전의 기능 증거가 아니다.
 안내서는 **agents `0.1.0-beta.6`부터 포함**된다. beta.6의 runtime API는 beta.5와 같으며,
 기존 beta.5 agents tarball에는 이 안내서가 없다. 이전 지침을 사용하는 프로젝트는
@@ -47,3 +47,7 @@ export, 메서드는 facade 타입과 대조한다. `main`의 API를 과거 릴�
 `pnpm package:check:agents`는 안내서가 tarball과 설치 결과에 포함되고 진입 지침에서 참조되는지
 검사한다. `pnpm package:consumer-smoke -- --skip-build --skip-package-check --templates minimal`은
 패키지로 설치한 실제 게임 프로젝트에서도 같은 안내서를 받을 수 있는지 확인한다.
+
+
+beta.7의 Data Scene gameplay/navigation, primary actor 목적지 이동·애니메이션 연결과 opt-in 진행 저장·복원은 canonical 안내서의 Data Scene 절에서
+설명한다. 최소 버전과 설치 타입을 확인하며 primitive 설정 성공만으로 실행 지원을 판정하지 않는다.

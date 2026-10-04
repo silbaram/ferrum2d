@@ -1,3 +1,7 @@
+import { createDataSceneMovementApi } from "./dataSceneMovement.js";
+import { createDataSceneMovementAnimationApi } from "./dataSceneMovementAnimation.js";
+import { attachDataSceneProgressAdapter } from "./dataSceneProgress.js";
+import { configureDataSceneGameplay } from "./dataSceneGameplay.js";
 import { configureDataSceneSun } from "./dataSceneSun.js";
 import { configureDataSceneSpriteAnimation, updateDataSceneSpriteAnimations, dataSceneSpriteAnimationState } from "./dataSceneSpriteAnimation.js";
 import { configureDataSceneCamera } from "./dataSceneCamera.js";
@@ -634,6 +638,7 @@ export async function createEngineWithFramePipeline(
     useDataScene,
     useBreakoutGame,
     usePlatformerGame,
+    configureDataSceneGameplay: (config) => { requireAlive(); return configureDataSceneGameplay(rustEngine, config); },
     setDataSceneSun: (sun) => { requireAlive(); return configureDataSceneSun(rustEngine, sun); },
     dataSceneGroundShadowStats: () => { requireAlive(); const s = rustEngine.data_scene_ground_shadow_stats(); return { casters: s[0], cacheHits: s[1], rebuilds: s[2], culled: s[3], skippedByBudget: s[4] }; },
     setDataSceneGroundYScale: (scale) => { requireAlive(); return rustEngine.configure_data_scene_projection(scale); },
@@ -649,6 +654,8 @@ export async function createEngineWithFramePipeline(
     setGameSpec,
     setShooterAtlasFrame,
     ...tilemapSceneApi,
+    ...createDataSceneMovementApi(rustEngine, requireAlive),
+    ...createDataSceneMovementAnimationApi(rustEngine, requireAlive),
     cameraX: () => { requireAlive(); return rustEngine.camera_x(); },
     cameraY: () => { requireAlive(); return rustEngine.camera_y(); },
     cameraGroundYScale: () => { requireAlive(); return rustEngine.camera_ground_y_scale(); },
@@ -854,6 +861,12 @@ export async function createEngineWithFramePipeline(
     ...gameplayAuthoringApi,
     ...inputActionApi,
   };
+  attachDataSceneProgressAdapter(engine, {
+    epoch: () => { requireAlive(); return rustEngine.data_scene_epoch(); },
+    capture: (epoch, handles) => { requireAlive(); return rustEngine.capture_data_scene_progress(epoch, handles); },
+    navigation: () => { requireAlive(); return rustEngine.capture_data_scene_navigation(); },
+    restore: (epoch, handles, states) => { requireAlive(); return rustEngine.restore_data_scene_progress(epoch, handles, states); },
+  });
   attachDataSceneVariableRuntimeEngineAdapter(engine, {
     clear: () => {
       requireAlive();

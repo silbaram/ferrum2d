@@ -23,11 +23,34 @@ mod step_offset;
 
 use controller::{move_platformer_controller_internal, PlatformerControllerRuntime};
 use ground_probe::ground_probe_internal;
-pub(super) use kinematic_sweep::KinematicSweepScratch;
+pub(crate) use kinematic_sweep::KinematicSweepScratch;
 use kinematic_sweep::{earliest_solid_hit, KinematicSweep};
 use moving_platform::carry_moving_platform_internal;
 
 impl PhysicsSystem {
+    /// Reuses sweep buffers for the scene-owned, single-segment AABB follower.
+    pub(crate) fn move_navigation_actor_with_scratch(
+        world: &mut World,
+        entity: Entity,
+        displacement: Velocity,
+        solid_mask: CollisionMask,
+        scratch: &mut KinematicSweepScratch,
+        counters: &mut PhysicsCounters,
+    ) -> KinematicMoveResult {
+        let settings = KinematicMoveSettings::new(solid_mask, OneWayPlatformConfig::default(), 1)
+            .with_height_span(world.height_span(entity))
+            .preserving_small_displacements();
+        move_and_slide_internal(
+            world,
+            None,
+            entity,
+            displacement,
+            settings,
+            scratch,
+            Some(counters),
+        )
+    }
+
     pub fn move_and_slide(
         world: &mut World,
         entity: Entity,
@@ -412,7 +435,10 @@ pub(super) fn move_and_slide_internal(
     }
 
     for _ in 0..iterations {
-        if velocity_len_squared(remaining) <= KINEMATIC_EPSILON * KINEMATIC_EPSILON {
+        if (remaining.vx == 0.0 && remaining.vy == 0.0)
+            || (!settings.preserve_small_displacements
+                && velocity_len_squared(remaining) <= KINEMATIC_EPSILON * KINEMATIC_EPSILON)
+        {
             remaining = Velocity::default();
             break;
         }

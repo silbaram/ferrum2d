@@ -726,6 +726,12 @@ impl Engine {
         true
     }
 
+    pub fn supports_gameplay_pickup_item(&self, item_id: u32) -> bool {
+        item_id > 0
+            && (self.scene_mode == super::scenes::SceneMode::Data
+                || item_id == GAMEPLAY_PICKUP_ITEM_SCORE)
+    }
+
     pub fn set_gameplay_pickup(
         &mut self,
         entity_id: u32,
@@ -734,7 +740,12 @@ impl Engine {
         count: u32,
         despawn_on_collect: bool,
     ) -> bool {
-        if item_id != GAMEPLAY_PICKUP_ITEM_SCORE || count == 0 || !despawn_on_collect {
+        if item_id == 0
+            || (self.scene_mode != super::scenes::SceneMode::Data
+                && item_id != GAMEPLAY_PICKUP_ITEM_SCORE)
+            || count == 0
+            || !despawn_on_collect
+        {
             return false;
         }
         let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {

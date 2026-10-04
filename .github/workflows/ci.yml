@@ -125,6 +125,9 @@ jobs:
       - name: Packed input context browser smoke
         run: pnpm smoke:input-context
 
+      - name: Data Scene gameplay packed Wasm smoke
+        run: pnpm smoke:data-scene-gameplay
+
       - name: Data Scene packed runtime browser smoke
         run: pnpm smoke:data-scene
 

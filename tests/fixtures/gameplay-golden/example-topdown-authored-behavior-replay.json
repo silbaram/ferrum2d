@@ -2692,7 +2692,7 @@
             "handles": {
               "player": {
                 "entityId": 0,
-                "entityGeneration": 0
+                "entityGeneration": 4
               },
               "interactionSource": {
                 "entityId": 1,
@@ -2728,9 +2728,9 @@
             "timerFsmState": 2,
             "gameplayEvents": []
           },
-          "snapshotHash": "70b53210"
+          "snapshotHash": "c8930344"
         },
-        "replayHash": "70b53210"
+        "replayHash": "c8930344"
       },
       {
         "frame": 2,
@@ -4237,7 +4237,7 @@
             "handles": {
               "player": {
                 "entityId": 0,
-                "entityGeneration": 0
+                "entityGeneration": 4
               },
               "interactionSource": {
                 "entityId": 1,
@@ -4300,7 +4300,7 @@
                 "kind": "pickupCollected",
                 "kindCode": 8,
                 "actorId": 0,
-                "actorGeneration": 0,
+                "actorGeneration": 4,
                 "sourceId": 2,
                 "sourceGeneration": 0,
                 "tokenId": 1,
@@ -4312,7 +4312,7 @@
                 "kind": "interaction",
                 "kindCode": 1,
                 "actorId": 0,
-                "actorGeneration": 0,
+                "actorGeneration": 4,
                 "sourceId": 1,
                 "sourceGeneration": 0,
                 "tokenId": 7,
@@ -4346,9 +4346,9 @@
               }
             ]
           },
-          "snapshotHash": "10d426a7"
+          "snapshotHash": "6b2d13db"
         },
-        "replayHash": "10d426a7"
+        "replayHash": "6b2d13db"
       },
       {
         "frame": 3,
@@ -5607,7 +5607,7 @@
             "handles": {
               "player": {
                 "entityId": 0,
-                "entityGeneration": 0
+                "entityGeneration": 4
               },
               "interactionSource": {
                 "entityId": 1,
@@ -5646,9 +5646,9 @@
                 "kind": "actionFailed",
                 "kindCode": 6,
                 "actorId": 0,
-                "actorGeneration": 0,
+                "actorGeneration": 4,
                 "sourceId": 0,
-                "sourceGeneration": 0,
+                "sourceGeneration": 4,
                 "tokenId": 11,
                 "flags": 0,
                 "targetRemoved": false,
@@ -5656,9 +5656,9 @@
               }
             ]
           },
-          "snapshotHash": "e0a95f01"
+          "snapshotHash": "82889385"
         },
-        "replayHash": "e0a95f01"
+        "replayHash": "82889385"
       },
       {
         "frame": 4,
@@ -7165,7 +7165,7 @@
             "handles": {
               "player": {
                 "entityId": 0,
-                "entityGeneration": 0
+                "entityGeneration": 4
               },
               "interactionSource": {
                 "entityId": 1,
@@ -7238,9 +7238,9 @@
               }
             ]
           },
-          "snapshotHash": "1d418a23"
+          "snapshotHash": "f62b069f"
         },
-        "replayHash": "1d418a23"
+        "replayHash": "f62b069f"
       },
       {
         "frame": 5,
@@ -8747,7 +8747,7 @@
             "handles": {
               "player": {
                 "entityId": 0,
-                "entityGeneration": 0
+                "entityGeneration": 4
               },
               "interactionSource": {
                 "entityId": 1,
@@ -8783,12 +8783,12 @@
             "timerFsmState": 1,
             "gameplayEvents": []
           },
-          "snapshotHash": "ef6d07c7"
+          "snapshotHash": "5e4d37cb"
         },
-        "replayHash": "ef6d07c7"
+        "replayHash": "5e4d37cb"
       }
     ],
-    "replayHash": "b925b1d3"
+    "replayHash": "1396c370"
   },
   "manifestPath": "tests/fixtures/gameplay-golden/scenarios.json",
   "manifestIndex": 1

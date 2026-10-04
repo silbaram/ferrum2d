@@ -37,7 +37,7 @@
       ],
       "runner": "exampleTopdownAuthoredBehavior",
       "fixturePath": "tests/fixtures/gameplay-golden/example-topdown-authored-behavior-replay.json",
-      "replayHash": "b925b1d3",
+      "replayHash": "1396c370",
       "frameCount": 5,
       "captureFrameCount": 6
     },
@@ -52,7 +52,7 @@
       ],
       "runner": "playerDamageCollision",
       "fixturePath": "tests/fixtures/gameplay-golden/collision-player-damage-game-over-replay.json",
-      "replayHash": "93700a37",
+      "replayHash": "e2cf31eb",
       "frameCount": 3,
       "captureFrameCount": 4
     },
@@ -67,7 +67,7 @@
       ],
       "runner": "waveActionSpawnPrefab",
       "fixturePath": "tests/fixtures/gameplay-golden/wave-action-spawn-prefab-replay.json",
-      "replayHash": "1c90e7fd",
+      "replayHash": "0a14d604",
       "frameCount": 6,
       "captureFrameCount": 7
     },
@@ -284,7 +284,7 @@
       ],
       "runner": "dataSceneAuthoringSnapshotRestore",
       "fixturePath": "tests/fixtures/gameplay-golden/data-scene-authoring-snapshot-restore-replay.json",
-      "replayHash": "4f95ccc8",
+      "replayHash": "c6a0c839",
       "frameCount": 1,
       "captureFrameCount": 2
     }

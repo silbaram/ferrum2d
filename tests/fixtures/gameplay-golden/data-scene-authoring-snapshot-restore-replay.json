@@ -32,7 +32,7 @@
           },
           "dataScene": {
             "format": "ferrum2d.data-scene-state",
-            "version": 2,
+            "version": 3,
             "scene": {
               "score": 0,
               "gameState": 3,
@@ -147,9 +147,9 @@
               "campaign.level": 2
             }
           },
-          "snapshotHash": "aeb0d4b0"
+          "snapshotHash": "1e1ce63f"
         },
-        "replayHash": "aeb0d4b0"
+        "replayHash": "1e1ce63f"
       },
       {
         "frame": 1,
@@ -168,7 +168,7 @@
           },
           "dataScene": {
             "format": "ferrum2d.data-scene-state",
-            "version": 2,
+            "version": 3,
             "scene": {
               "score": 0,
               "gameState": 3,
@@ -302,12 +302,12 @@
               "campaign.level": 2
             }
           },
-          "snapshotHash": "895d1e49"
+          "snapshotHash": "2224944e"
         },
-        "replayHash": "895d1e49"
+        "replayHash": "2224944e"
       }
     ],
-    "replayHash": "4f95ccc8"
+    "replayHash": "c6a0c839"
   },
   "manifestPath": "tests/fixtures/gameplay-golden/scenarios.json",
   "manifestIndex": 16

@@ -3,11 +3,15 @@ use wasm_bindgen::prelude::*;
 use crate::components::{HeightSpan, PhysicsFloorId, Transform2D};
 
 use super::physics_bridge::PhysicsQueryResult;
+use super::scenes::SceneMode;
 use super::Engine;
 
 #[wasm_bindgen]
 impl Engine {
     pub fn clear_shooter_tilemap(&mut self) {
+        if self.scene_mode == SceneMode::Data {
+            return;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap.clear();
     }
@@ -26,6 +30,9 @@ impl Engine {
         b: f32,
         a: f32,
     ) {
+        if self.scene_mode == SceneMode::Data {
+            return;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap
             .set_tile_definition(tile_id, texture_id, u0, v0, u1, v1, r, g, b, a);
@@ -39,17 +46,26 @@ impl Engine {
         local_x1: f32,
         local_y1: f32,
     ) {
+        if self.scene_mode == SceneMode::Data {
+            return;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap
             .set_tile_slope_definition(tile_id, local_x0, local_y0, local_x1, local_y1);
     }
 
     pub fn set_shooter_tile_one_way_platform(&mut self, tile_id: u32) {
+        if self.scene_mode == SceneMode::Data {
+            return;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap.set_tile_one_way_platform(tile_id);
     }
 
     pub fn clear_shooter_tile_one_way_platform(&mut self, tile_id: u32) {
+        if self.scene_mode == SceneMode::Data {
+            return;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap.clear_tile_one_way_platform(tile_id);
     }
@@ -61,12 +77,18 @@ impl Engine {
         elevation: f32,
         height: f32,
     ) -> bool {
+        if self.scene_mode == SceneMode::Data {
+            return false;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap
             .set_tile_height_span_definition(tile_id, floor_id, elevation, height)
     }
 
     pub fn clear_shooter_tile_height_span(&mut self, tile_id: u32) -> bool {
+        if self.scene_mode == SceneMode::Data {
+            return false;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap.clear_tile_height_span_definition(tile_id)
     }
@@ -85,6 +107,9 @@ impl Engine {
         ramp_start_elevation: f32,
         ramp_end_elevation: f32,
     ) -> bool {
+        if self.scene_mode == SceneMode::Data {
+            return false;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap.set_tile_hd2d_definition(
             tile_id,
@@ -101,6 +126,9 @@ impl Engine {
     }
 
     pub fn clear_shooter_tile_hd2d_metadata(&mut self, tile_id: u32) -> bool {
+        if self.scene_mode == SceneMode::Data {
+            return false;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap.clear_tile_hd2d_definition(tile_id)
     }
@@ -115,6 +143,9 @@ impl Engine {
         upper_elevation: f32,
         navigation_cost: u32,
     ) -> bool {
+        if self.scene_mode == SceneMode::Data {
+            return false;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap.set_tile_bridge_portal_definition(
             tile_id,
@@ -127,6 +158,9 @@ impl Engine {
     }
 
     pub fn clear_shooter_tile_bridge_portal(&mut self, tile_id: u32) -> bool {
+        if self.scene_mode == SceneMode::Data {
+            return false;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap.clear_tile_bridge_portal_definition(tile_id)
     }
@@ -144,6 +178,9 @@ impl Engine {
         collision: bool,
         tiles: Vec<u32>,
     ) {
+        if self.scene_mode == SceneMode::Data {
+            return;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap.set_layer(
             index,
@@ -165,6 +202,9 @@ impl Engine {
         row: u32,
         tile_id: u32,
     ) -> bool {
+        if self.scene_mode == SceneMode::Data {
+            return false;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap.set_tile(layer_index, column, row, tile_id)
     }
@@ -178,6 +218,9 @@ impl Engine {
         height: u32,
         tile_id: u32,
     ) -> bool {
+        if self.scene_mode == SceneMode::Data {
+            return false;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap
             .set_tiles_rect(layer_index, column, row, width, height, tile_id)
@@ -194,6 +237,9 @@ impl Engine {
         tile_id: u32,
         max_rebuilt_chunks: u32,
     ) -> bool {
+        if self.scene_mode == SceneMode::Data {
+            return false;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap.set_tiles_rect_with_rebuild_budget(
             layer_index,
@@ -213,6 +259,9 @@ impl Engine {
         row: u32,
         cost: u32,
     ) -> bool {
+        if self.scene_mode == SceneMode::Data {
+            return false;
+        }
         self.activate_built_in_shooter_scene();
         self.tilemap
             .set_navigation_cost(layer_index, column, row, cost)
@@ -225,7 +274,12 @@ impl Engine {
         to_x: f32,
         to_y: f32,
     ) -> bool {
-        let Some(waypoint) = self.tilemap.navigation_waypoint_with_scratch(
+        let navigation = if self.scene_mode == SceneMode::Data {
+            &self.data_scene.navigation
+        } else {
+            &self.tilemap
+        };
+        let Some(waypoint) = navigation.navigation_waypoint_with_scratch(
             Transform2D {
                 x: from_x,
                 y: from_y,
@@ -264,15 +318,31 @@ impl Engine {
             self.physics_query_result = PhysicsQueryResult::default();
             return false;
         };
-        let Some(waypoint) = self.tilemap.navigation_waypoint_with_height_span_scratch(
-            Transform2D {
-                x: from_x,
-                y: from_y,
-            },
-            Transform2D { x: to_x, y: to_y },
-            height_span,
-            &mut self.tilemap_navigation_scratch,
-        ) else {
+        let navigation = if self.scene_mode == SceneMode::Data {
+            &self.data_scene.navigation
+        } else {
+            &self.tilemap
+        };
+        let from = Transform2D {
+            x: from_x,
+            y: from_y,
+        };
+        let to = Transform2D { x: to_x, y: to_y };
+        let waypoint = if self.scene_mode == SceneMode::Data {
+            navigation.navigation_waypoint_with_scratch(
+                from,
+                to,
+                &mut self.tilemap_navigation_scratch,
+            )
+        } else {
+            navigation.navigation_waypoint_with_height_span_scratch(
+                from,
+                to,
+                height_span,
+                &mut self.tilemap_navigation_scratch,
+            )
+        };
+        let Some(waypoint) = waypoint else {
             self.physics_query_result = PhysicsQueryResult::default();
             return false;
         };
@@ -300,7 +370,12 @@ impl Engine {
             x: from_x,
             y: from_y,
         };
-        let Some(path) = self.tilemap.navigation_path_with_scratch(
+        let navigation = if self.scene_mode == SceneMode::Data {
+            &self.data_scene.navigation
+        } else {
+            &self.tilemap
+        };
+        let Some(path) = navigation.navigation_path_with_scratch(
             from,
             Transform2D { x: to_x, y: to_y },
             &mut self.tilemap_navigation_scratch,
@@ -360,6 +435,23 @@ impl Engine {
             self.frame_buffers.clear_tilemap_navigation_output();
             return false;
         };
+        // A Data Scene grid is one XY plane, not an inter-floor portal graph.
+        if self.scene_mode == SceneMode::Data {
+            if from_height_span != to_height_span {
+                self.physics_query_result = PhysicsQueryResult::default();
+                self.frame_buffers.clear_tilemap_navigation_output();
+                return false;
+            }
+            return self.query_tilemap_navigation_path_with_height_span(
+                from_x,
+                from_y,
+                to_x,
+                to_y,
+                from_floor_id,
+                from_elevation,
+                from_height,
+            );
+        }
         let Some(path) = self.tilemap.navigation_path_between_height_spans_scratch(
             from,
             Transform2D { x: to_x, y: to_y },
@@ -410,12 +502,23 @@ impl Engine {
             self.frame_buffers.clear_tilemap_navigation_output();
             return false;
         };
-        let Some(path) = self.tilemap.navigation_path_with_height_span_scratch(
-            from,
-            Transform2D { x: to_x, y: to_y },
-            height_span,
-            &mut self.tilemap_navigation_scratch,
-        ) else {
+        let navigation = if self.scene_mode == SceneMode::Data {
+            &self.data_scene.navigation
+        } else {
+            &self.tilemap
+        };
+        let to = Transform2D { x: to_x, y: to_y };
+        let path = if self.scene_mode == SceneMode::Data {
+            navigation.navigation_path_with_scratch(from, to, &mut self.tilemap_navigation_scratch)
+        } else {
+            navigation.navigation_path_with_height_span_scratch(
+                from,
+                to,
+                height_span,
+                &mut self.tilemap_navigation_scratch,
+            )
+        };
+        let Some(path) = path else {
             self.physics_query_result = PhysicsQueryResult::default();
             self.frame_buffers.clear_tilemap_navigation_output();
             return false;

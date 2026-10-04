@@ -89,6 +89,7 @@ impl Engine {
             self.last_fixed_update = FixedTimestepUpdate::default();
             self.fixed_timestep_input_latch.clear();
             self.previous_input_sample = self.input;
+            self.data_scene.gameplay.observe_input(self.input);
             return;
         }
         if self.fixed_timestep_enabled {
@@ -101,10 +102,17 @@ impl Engine {
                 self.tweens.update(&mut self.world, step_seconds);
                 self.update_scene(step_seconds, input);
                 self.step_auto_rigid_bodies(step_seconds);
+                let latched_presses = if step_index == 0 {
+                    self.fixed_timestep_input_latch
+                        .apply_to(InputState::default())
+                } else {
+                    InputState::default()
+                };
                 if step_index == 0 {
                     self.fixed_timestep_input_latch.clear();
                 }
                 self.record_collision_lifecycle_events();
+                self.update_data_scene_gameplay(input, latched_presses);
             }
             if !self.active_scene_ticks_gameplay_timers() {
                 tick_gameplay_timer_triggers(
@@ -119,6 +127,7 @@ impl Engine {
             self.update_scene(delta as f32, self.input);
             self.step_auto_rigid_bodies(delta as f32);
             self.record_collision_lifecycle_events();
+            self.update_data_scene_gameplay(self.input, InputState::default());
             if !self.active_scene_ticks_gameplay_timers() {
                 tick_gameplay_timer_triggers(
                     &mut self.world,
@@ -158,6 +167,7 @@ impl Engine {
         if !enabled || !was_enabled {
             self.fixed_timestep_input_latch.clear();
             self.previous_input_sample = self.input;
+            self.data_scene.gameplay.observe_input(self.input);
         }
     }
 

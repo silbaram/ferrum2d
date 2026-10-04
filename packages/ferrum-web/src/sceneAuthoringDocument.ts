@@ -27,6 +27,8 @@ import {
   type DataSceneVariableDeclarationSpec,
   type ResolvedDataSceneVariableDeclaration,
 } from "./dataSceneVariables.js";
+import { resolveDataSceneGameplaySpec, type DataSceneGameplaySpec } from "./dataSceneGameplay.js";
+import { resolveDataSceneNavigationSpec, type DataSceneNavigationSpec } from "./dataSceneNavigation.js";
 
 export const SCENE_AUTHORING_DOCUMENT_FORMAT = "ferrum2d.consumer.scene-authoring" as const;
 export const SCENE_AUTHORING_DOCUMENT_VERSION = 1 as const;
@@ -38,6 +40,8 @@ export interface SceneAuthoringDocumentSpec {
   behaviorRecipes: BehaviorRecipeDocumentSpec;
   ids?: GameplayBehaviorRuntimeIds;
   variables?: readonly DataSceneVariableDeclarationSpec[];
+  gameplay?: DataSceneGameplaySpec;
+  navigation?: DataSceneNavigationSpec;
 }
 
 export interface ResolvedSceneAuthoringDocument {
@@ -47,6 +51,8 @@ export interface ResolvedSceneAuthoringDocument {
   behaviorRecipes: ResolvedBehaviorRecipeDocument;
   ids?: GameplayBehaviorRuntimeIds;
   variables?: readonly ResolvedDataSceneVariableDeclaration[];
+  gameplay?: DataSceneGameplaySpec;
+  navigation?: DataSceneNavigationSpec;
   bindingPlan?: SceneBehaviorBindingPlan;
 }
 
@@ -131,11 +137,14 @@ export function resolveSceneAuthoringDocument(
     behaviorRecipes,
     ...(ids === undefined ? {} : { ids }),
     ...(document.variables === undefined ? {} : { variables }),
+    ...(document.gameplay === undefined ? {} : { gameplay: resolveDataSceneGameplaySpec(document.gameplay, `${path}.gameplay`) }),
+    ...(document.navigation === undefined ? {} : { navigation: resolveDataSceneNavigationSpec(document.navigation, `${path}.navigation`) }),
     ...(bindingPlan === undefined ? {} : { bindingPlan }),
   };
 }
 
-function validateBehaviorVariableContracts(
+/** Internal shared validation for document declarations and effective apply-time slot ids. */
+export function validateBehaviorVariableContracts(
   behaviorRecipes: ResolvedBehaviorRecipeDocument,
   declarations: readonly ResolvedDataSceneVariableDeclaration[],
   variableIds: Readonly<Record<string, number>>,

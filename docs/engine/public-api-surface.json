@@ -108,7 +108,18 @@
         "InputActionSnapshot",
         "InputKeyBindings",
         "VirtualInputState",
-        "resolveInputActionProfile"
+        "resolveInputActionProfile",
+        "DataSceneGameplayOptions",
+        "DataSceneGameplaySpec",
+        "DataSceneNavigationSpec",
+        "DataSceneMoveOptions",
+        "DataSceneMoveStatus",
+        "DataSceneMovementDirection",
+        "DataSceneMovementAnimationPose",
+        "DataSceneMovementAnimationSpec",
+        "resolveDataSceneGameplaySpec",
+        "resolveDataSceneNavigationSpec",
+        "DataSceneProgressSnapshot"
       ]
     },
     {
@@ -177,7 +188,18 @@
         "InputActionSnapshot",
         "InputKeyBindings",
         "VirtualInputState",
-        "resolveInputActionProfile"
+        "resolveInputActionProfile",
+        "DataSceneGameplayOptions",
+        "DataSceneGameplaySpec",
+        "DataSceneNavigationSpec",
+        "DataSceneMoveOptions",
+        "DataSceneMoveStatus",
+        "DataSceneMovementDirection",
+        "DataSceneMovementAnimationPose",
+        "DataSceneMovementAnimationSpec",
+        "resolveDataSceneGameplaySpec",
+        "resolveDataSceneNavigationSpec",
+        "DataSceneProgressSnapshot"
       ]
     },
     {
@@ -230,7 +252,12 @@
         "ResolvedDataSceneGroundShadow",
         "DataSceneGroundShadowStats",
         "DirectionalLight2D",
-        "ResolvedDirectionalLight2D"
+        "ResolvedDirectionalLight2D",
+        "DataSceneGameplayOptions",
+        "DataSceneGameplaySpec",
+        "DataSceneNavigationSpec",
+        "resolveDataSceneGameplaySpec",
+        "resolveDataSceneNavigationSpec"
       ]
     },
     {
