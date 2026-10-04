@@ -2,7 +2,7 @@
 
 이 문서는 사용자의 게임 프로젝트에 **엔진 패키지, 개발 도구, AI 지침만 설치하는 절차**다. 설치가 끝나면 게임 요구사항을 기다린다. 초기 설치 요청만으로 예제 게임, `src/`, `public/`, HTML 화면, 배치 뷰어, replay fixture를 만들거나 개발 서버를 시작하지 않는다.
 
-`0.1.0-beta.5`의 `create-game`은 실행 가능한 예제 생성기다. `minimal`에도 슈팅 동작, HUD, authoring/replay 데이터와 viewer 코드가 들어 있다. **초기 설정에서는 어떤 `create-game` 템플릿도 실행하지 않고 엔진 tarball을 직접 설치한다.** 사용자가 예제 게임을 명시적으로 요청한 경우에만 [템플릿 퀵스타트](developer-quickstart.md)를 따른다.
+`0.1.0-beta.6`의 `create-game`은 실행 가능한 예제 생성기다. `minimal`에도 슈팅 동작, HUD, authoring/replay 데이터와 viewer 코드가 들어 있다. **초기 설정에서는 어떤 `create-game` 템플릿도 실행하지 않고 엔진 tarball을 직접 설치한다.** 사용자가 예제 게임을 명시적으로 요청한 경우에만 [템플릿 퀵스타트](developer-quickstart.md)를 따른다.
 
 ## 사용자 요청 예시
 
@@ -44,10 +44,10 @@ Node.js 22를 권장한다. npm/npx와 GitHub·npm 레지스트리 네트워크 
   "type": "module",
   "scripts": {
     "ferrum:setup-check": "node --input-type=module -e \"await import('@ferrum2d/ferrum-web/core'); console.log('Ferrum2D setup OK')\"",
-    "ferrum:agents": "npx --yes --allow-remote=root --package=https://github.com/silbaram/ferrum2d/releases/download/ferrum-web-v0.1.0-beta.5/ferrum2d-agents-0.1.0-beta.5.tgz ferrum2d-agents init --tools codex,claude,gemini"
+    "ferrum:agents": "npx --yes --allow-remote=root --package=https://github.com/silbaram/ferrum2d/releases/download/ferrum-web-v0.1.0-beta.6/ferrum2d-agents-0.1.0-beta.6.tgz ferrum2d-agents init --tools codex,claude,gemini"
   },
   "dependencies": {
-    "@ferrum2d/ferrum-web": "https://github.com/silbaram/ferrum2d/releases/download/ferrum-web-v0.1.0-beta.5/ferrum2d-ferrum-web-0.1.0-beta.5.tgz"
+    "@ferrum2d/ferrum-web": "https://github.com/silbaram/ferrum2d/releases/download/ferrum-web-v0.1.0-beta.6/ferrum2d-ferrum-web-0.1.0-beta.6.tgz"
   },
   "devDependencies": {
     "typescript": "^5.8.3",
@@ -55,13 +55,13 @@ Node.js 22를 권장한다. npm/npx와 GitHub·npm 레지스트리 네트워크 
   },
   "ferrumGithubRelease": {
     "repository": "silbaram/ferrum2d",
-    "version": "0.1.0-beta.5",
-    "tag": "ferrum-web-v0.1.0-beta.5"
+    "version": "0.1.0-beta.6",
+    "tag": "ferrum-web-v0.1.0-beta.6"
   }
 }
 ```
 
-설치 대상은 [Ferrum2D 0.1.0-beta.5](https://github.com/silbaram/ferrum2d/releases/tag/ferrum-web-v0.1.0-beta.5)다. 해당 Release와 설치 파일이 공개되어 있는지 확인한 뒤 진행한다. 엔진과 agents URL은 같은 버전으로 고정한다. `latest`나 npm registry package name으로 임의 치환하지 않는다. 게임 자체의 `version`은 엔진 버전과 별개다.
+설치 대상은 [Ferrum2D 0.1.0-beta.6](https://github.com/silbaram/ferrum2d/releases/tag/ferrum-web-v0.1.0-beta.6)다. 해당 Release와 설치 파일이 공개되어 있는지 확인한 뒤 진행한다. 엔진과 agents URL은 같은 버전으로 고정한다. `latest`나 npm registry package name으로 임의 치환하지 않는다. 게임 자체의 `version`은 엔진 버전과 별개다.
 
 새 `.npmrc`에는 다음을 기록한다. 기존 정책과 충돌하면 파일을 덮어쓰지 말고 충돌을 알린다.
 
@@ -109,9 +109,10 @@ npm run ferrum:agents
 게임 개발용 skill의 build/report 절차는 해당 게임 파일과 명령이 실제로 존재할 때 적용한다. 초기 설정 단계에서 없는 파일을 검사 실패로 취급하고 예제를 복사해 보충하지 않는다. 엔진 저장소의 개발용 `AGENTS.md`나 release agent를 게임 프로젝트에 복사하지 않는다.
 
 게임 개발을 요청받으면 [AI 게임 개발 기능 안내](ai-feature-guide.md)를 통해 요구사항에 맞는
-공개 API와 설치 버전의 reference를 확인한다. 새 `.agents/harness/ferrum-feature-guide.md`는
-다음 agents 배포에 포함되며 이 문서의 beta.5 설치에는 아직 없다. 없으면 저장소의 안내서를
-참고하고 설치 타입과 대조한다. 안내서가 없다는 이유로 설치 실패 처리하거나 예제를 추가하지 않는다.
+공개 API와 설치 버전의 reference를 확인한다. `0.1.0-beta.6` agents부터
+`.agents/harness/ferrum-feature-guide.md`가 함께 설치되며 root 지침과 공통 harness에서 참조한다.
+기존 프로젝트의 지침은 자동 교체되지 않으므로 새 파일을 빈 임시 디렉터리에 설치해 사용자 수정과
+비교·병합한다. beta.5 이하 지침에 안내서가 없다는 이유로 예제나 게임 파일을 추가하지 않는다.
 
 ## 4. 설치 검증과 종료
 
@@ -120,7 +121,7 @@ npm ls --depth=0
 npm run ferrum:setup-check
 ```
 
-엔진 버전이 `0.1.0-beta.5`이고 TypeScript/Vite가 정상 설치되었는지 확인한다. `ferrum:setup-check`는 설치한 엔진의 공개 `/core` JavaScript entrypoint를 import한다. **브라우저 렌더링, Wasm 초기화, 게임 실행을 검증한 결과는 아니다.** 별도 `src` 파일이나 검사 스크립트 파일은 생성하지 않는다.
+엔진 버전이 `0.1.0-beta.6`이고 TypeScript/Vite가 정상 설치되었는지 확인한다. `ferrum:setup-check`는 설치한 엔진의 공개 `/core` JavaScript entrypoint를 import한다. **브라우저 렌더링, Wasm 초기화, 게임 실행을 검증한 결과는 아니다.** 별도 `src` 파일이나 검사 스크립트 파일은 생성하지 않는다.
 
 새 프로젝트의 정상적인 완료 형태는 다음과 같다.
 

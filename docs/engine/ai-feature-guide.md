@@ -20,8 +20,9 @@ AI가 게임 요구사항을 Ferrum2D의 기존 기능과 연결하도록 만든
 
 기능 안내서의 현재 기능 기준은 **runtime `0.1.0-beta.5`**다. 안내서 자체의 배포와 엔진 기능의
 도입 버전은 별개다. 위 canonical 링크는 개발 중인 `main`이며 설치 버전의 기능 증거가 아니다.
-기존 beta.5 agents tarball에는 이 새 안내서가 없으며 다음 agents 배포부터 포함된다.
-현재 바로 참고하려면 이 저장소의 안내서를 읽고 설치된 API와 대조한다.
+안내서는 **agents `0.1.0-beta.6`부터 포함**된다. beta.6의 runtime API는 beta.5와 같으며,
+기존 beta.5 agents tarball에는 이 안내서가 없다. 이전 지침을 사용하는 프로젝트는
+안내서와 연결 지침을 비교·병합하고 설치된 API와 대조한다.
 
 새 agents 패키지 설치 시 `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`와 공통 harness가 이 안내서를
 참조한다. 기존 프로젝트는 재설치만으로 구형 지침이 교체되지 않으므로 새 파일과 기존 지침을

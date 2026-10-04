@@ -27,7 +27,7 @@ npm 레지스트리에 별도로 공개한 경우에는 기존 `npx @ferrum2d/ag
 - Shared harness: `.agents/harness/ferrum-game-development.md`, `.agents/harness/ferrum-runtime-replay.md`, `.agents/harness/ferrum-game-presentation.md`
 - 기능 안내서: `.agents/harness/ferrum-feature-guide.md`. 요구사항별 기능·공개 API·사용 조건·버전별 문서와 짧은 설정 예시를 제공한다.
 
-게임 기능을 구현하기 전에 [기능 안내서 원본](templates/shared/.agents/harness/ferrum-feature-guide.md)을 읽고 실제 설치된 runtime 버전/타입과 대조한다. root `AGENTS.md`/`CLAUDE.md`/`GEMINI.md`와 공통 development/presentation harness가 이 안내서로 연결한다. 전체 기능 설명은 이 파일 하나에서 관리한다. 현재 runtime beta.5를 기준으로 설명하지만 새 안내서는 다음 agents 배포부터 제공하며 기존 beta.5 tarball에는 포함되지 않는다.
+게임 기능을 구현하기 전에 [기능 안내서 원본](templates/shared/.agents/harness/ferrum-feature-guide.md)을 읽고 실제 설치된 runtime 버전/타입과 대조한다. root `AGENTS.md`/`CLAUDE.md`/`GEMINI.md`와 공통 development/presentation harness가 이 안내서로 연결한다. 전체 기능 설명은 이 파일 하나에서 관리한다. 기능 설명은 runtime beta.5를 기준으로 하며 beta.6의 API도 같다. 안내서는 agents `0.1.0-beta.6`부터 제공하고 기존 beta.5 tarball에는 포함되지 않는다.
 
 ## Agent Template Showcase
 

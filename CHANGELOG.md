@@ -8,7 +8,34 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 ### Changed
 
-- consumer AI 지침에 요구사항별 기능 안내서를 추가했다. 공개 API·사용 조건·최소 버전·예시·미지원 범위를 안내하고, 개발 전에 설치된 타입과 같은 버전의 문서를 확인하도록 연결한다. 기존 agents 지침은 비교·병합해 갱신해야 한다.
+- 아직 기록할 변경 사항이 없다.
+
+## 0.1.0-beta.6 - 2026-10-04
+
+GitHub Release 설치용 일곱 번째 beta다. AI가 설치된 엔진의 기능을 찾고 사용하는 안내서를
+consumer agents에 포함한다. runtime API와 Rust/Wasm 동작은 beta.5와 같다. (#76)
+소스 package는 `0.1.0`/`private: true`를 유지하고 staging의 네 package를 같은 beta.6으로 배포한다.
+
+### Added
+
+- 28개 게임 요구사항을 공개 API·사용 조건·상세 문서로 연결하는 `.agents/harness/ferrum-feature-guide.md`를 추가했다. 최근 기능의 최소 버전, 설정 예시 3개, 미지원/후속 설계와 검증 절차를 포함한다.
+- Codex/Claude/Gemini의 root 지침과 공통 harness에서 기능 구현 전에 안내서, 설치된 runtime 타입, 같은 버전의 reference를 확인하도록 연결했다.
+
+### Changed
+
+- 설치 문서와 runtime README를 GitHub Assets 설치 흐름에 맞추고 beta.6을 기본 설치 대상으로 안내한다. 초기 설정에는 게임 코드·예제·viewer를 생성하지 않는다.
+- 패키지 검사와 실제 consumer smoke에서 기능 안내서의 포함·내용·참조를 확인한다. report validator와 fixture의 필수 AI 파일 수를 43개로 맞췄다.
+
+### Upgrade Notes
+
+- 사용 중인 engine/viewer URL, `ferrum:agents` URL과 출처 metadata를 같은 beta.6으로 맞춘다. 초기 설정 프로젝트에 viewer나 예제를 추가하지 않는다.
+- 기존 agents 파일은 재설치만으로 교체되지 않는다. beta.6 agents를 빈 임시 디렉터리에 설치해 새 안내서와 root/development/presentation 연결 지침을 사용자 수정과 비교·병합한다. 무조건 `--force`로 덮어쓰지 않는다.
+- 새 안내서의 기능 설명/링크 기준은 runtime beta.5이며 beta.6 API도 같다. 설치 버전과 공개 타입을 최종 확인한다. 런타임 동작이나 공개 import 경로의 breaking change는 없다.
+
+### Known Limitations
+
+- 기능 안내서는 API 전수 명세나 자동 capability 판별기가 아니다. 이전 runtime의 지원 여부는 설치 타입과 같은 버전의 reference로 확인한다.
+- normal map, 높이별 shadow receiver, 차폐 광선, view-depth/DOF와 3D 엔진 기능은 이번 배포에 추가되지 않는다.
 
 ## 0.1.0-beta.5 - 2026-10-04
 
