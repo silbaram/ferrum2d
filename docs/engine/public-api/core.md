@@ -39,6 +39,13 @@ handle의 `variables`는 현재 문서에 선언된 Data Scene 변수만 읽고 
 동일 이름·동일 타입의 global 값을 유지하고 scene 값을 다음 문서의 default로 초기화한다. 검증 실패 시
 현재 document/result/variable store와 인자 없는 다음 reapply의 기준 문서는 마지막 성공 상태를 유지한다.
 
+## 입력 액션과 context
+
+`InputManager`는 기존 `snapshot()` 외에 `keyBindings`, `actionProfile`,
+`actionSnapshot()`, `setEnabled()`, `clear()`, `setVirtualInput()`을 제공한다.
+`InputActionSnapshot`, `InputKeyBindings`, `VirtualInputState`, `resolveInputActionProfile`은
+core/root에서 import한다. [입력 계약과 beta.3 이행](../input-actions.md)을 참고한다.
+
 ## GPU 자원 통계
 
 `WebGL2Renderer.resourceStats()`는 renderer가 소유한 현재 자원을 독립된

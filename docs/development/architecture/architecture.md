@@ -250,6 +250,7 @@ TypeScript는 브라우저와 package-facing API를 담당한다.
 - Wasm module 초기화와 `FerrumEngine` lifecycle 조정
 - `requestAnimationFrame` 기반 `GameLoop`
 - keyboard/mouse/pointer/touch/gamepad 입력 snapshot 생성
+- InputManager가 physical key·pointer·가상 source를 독립 보관하고 OR로 합친다. JSON action profile은 생성 시 검증·복사하며 TS 플랫폼에서 named action/axis와 소비 가능한 edge를 계산한다. `clear`/`setEnabled`는 입력을 취소하고, 초기화된 게임패드는 매핑된 모든 control의 중립 poll 뒤 재활성화한다. 기존 9-field snapshot과 Wasm 입력 ABI는 유지한다. 앱이 pause·클릭 이동 목표를 소유한다. 입력 이벤트와 gamepad는 canvas 소유 창의 focus/lifecycle을 따른다. 입력 취소 콜백이 실패해도 InputManager/VirtualControls와 상위 runtime은 소유한 리스너·DOM·자원 정리를 끝내며 외부 주입 객체의 소유권은 유지한다. 상세 [입력 계약](../../engine/input-actions.md).
 - texture/sound/JSON asset 로딩, Aseprite/Tiled/LDtk import helper
 - WebGL2/WebGPU texture path, audio registry, `AudioManager`, `UiOverlay`, `DebugOverlay`
 - `createFerrumRuntime(...)`의 opt-in dialogue/localization/cutscene/HUD/accessibility/animationTimeline/levelStreaming frame-end adapter
