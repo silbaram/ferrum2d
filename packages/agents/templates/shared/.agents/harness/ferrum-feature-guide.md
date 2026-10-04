@@ -222,14 +222,28 @@ const animationSet = resolveDataSceneSpriteAnimationSet({
   `interactionInputActionId`와 엔진 input binding을 별도로 설정하며 recipe action token과 구분한다.
   generic item은 양수 ID·`despawn: true`이며 collisionPickup이 실제 overlap 후 이벤트와 제거를 수행한다.
 - 길찾기: optional `navigation`에 최대 4096칸 단일 XY grid와 0=막힘/양수=비용을 작성한다.
-  `queryTilemapNavigationPath/Waypoint`, `setDataSceneNavigationCost`를 사용한다. collider 자동 추출,
-  층간 경로, 자동 path following은 별도 기능으로 가정하지 않는다.
+  `queryTilemapNavigationPath/Waypoint`, `setDataSceneNavigationCost`를 사용한다. collider 자동 추출과
+  층간 경로는 지원하지 않는다. 캐릭터 폭과 여유를 포함한 grid를 작성한다.
+- 목적지 이동: 설치 타입에서 `moveDataSceneActorTo`를 확인한 뒤 `{ x, y, speed }`로 시작한다.
+  primary actor에 활성 native kinematic body와 non-trigger AABB 하나가 필요하다. Rust가 경로를 따라
+  이동하며 primary AABB solid에 막히면 blocked로 정지한다. `dataSceneMoveStatus`/`cancelDataSceneMove`로
+  상태/취소를 제어한다. 기본 W/A/S/D 취소, pause 유지, complete 취소, grid 변경 시 재탐색을 지원한다.
+  클릭 좌표는 `DataSceneView.pointerToWorld`로 변환한다. 다중 actor·복합 도형 회피는 별도다.
+  작은 격자에서도 코너를 유지한다. 큰 원점 탓에 float32 셀 중심이 다른 칸으로 반올림되는 경로는
+  false로 거절하므로 월드 원점/셀 크기를 조정한다. `arrivalRadius: 0`은 float32 목적지까지 이동한다.
+- 이동 애니메이션: 설치 타입에서 `configureDataSceneMovementAnimation`을 확인한다. 주인공의
+  `visual.animationSet` 또는 runtime clip을 먼저 설치하고 idle/walk 각각 up/down/left/right의
+  `{ clip, flipX?, flipY? }`를 연결한다. Rust가 경로 이동/도착/막힘 및 수동 velocity 이동에 맞춰
+  자동 전환한다. +Y=down, 초기 방향=down이며 좌우 공용 clip은 flip만 바꾸고 시간을 유지한다.
+  주인공에 성공한 수동 playback 명령/clip 재설정은 자동 연결을 해제하므로 공격·대화 연출 뒤
+  다시 연결한다. `false`는 현재 playback을 보존하고 해제한다. gameplay 재설정/문서 재적용/restore
+  후에는 다시 연결해야 한다. 진행 snapshot은 이 연결과 runtime playback을 저장하지 않는다.
 - 지원 진단: `gameplay` opt-in의 미지원 이동/공격/비-pickup collision recipe는 사전 거절한다.
   기존 primitive command의 등록 성공과 scene에서 실제 실행됨을 구분한다.
 - 저장: 미배포 `captureGameStateSnapshot`의 `includeDataSceneState: true`와
   `includeDataSceneProgress: true`, 동일 `dataSceneAuthoringDocument`를 함께 지정하면 authored entity
   제거·once interaction consumed·현재 navigation을 복원한다. 기본 binding으로 전체 apply한 단일 문서만
-  지원하며 누적 apply/외부 binding override 후 capture는 거절한다. 위치·timer·추가 spawn은 저장하지 않는다.
+  지원하며 누적 apply/외부 binding override 후 capture는 거절한다. 위치·이동 경로/상태·timer·추가 spawn은 저장하지 않는다.
   Data Scene v3를 생성하고 기존 v2를 읽는다. 새 엔진의 입력 바인딩은 게임이 다시 설정한다.
 
 상세 계약과 실행 예제는 엔진 저장소의 `docs/engine/data-scene-authoring.md` 및

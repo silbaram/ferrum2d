@@ -50,6 +50,7 @@ impl Engine {
             grid.set_navigation_cost(0, index as u32 % columns, index as u32 / columns, cost);
         }
         self.data_scene.navigation = grid;
+        self.data_scene.movement.invalidate_route();
         self.frame_buffers.clear_tilemap_navigation_output();
         true
     }
@@ -63,6 +64,7 @@ impl Engine {
         let tile_changed = grid.set_tile(0, column, row, u32::from(cost == 0));
         let cost_changed = grid.set_navigation_cost(0, column, row, cost);
         if tile_changed || cost_changed {
+            self.data_scene.movement.invalidate_route();
             self.frame_buffers.clear_tilemap_navigation_output();
         }
         tile_changed || cost_changed
@@ -74,6 +76,7 @@ impl Engine {
             return false;
         }
         self.data_scene.navigation.clear();
+        self.data_scene.movement.invalidate_route();
         self.frame_buffers.clear_tilemap_navigation_output();
         true
     }

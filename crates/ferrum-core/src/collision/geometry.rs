@@ -371,7 +371,9 @@ pub(super) fn segment_direction_and_distance(
 }
 
 pub(super) fn axis_entry_exit(start: f32, delta: f32, min: f32, max: f32) -> Option<AxisEntryExit> {
-    if delta.abs() <= SWEPT_EPSILON {
+    // A small nonzero displacement can still cross a small gap. Only a truly
+    // stationary axis may use the parallel-slab branch.
+    if delta == 0.0 {
         return (start >= min && start <= max).then_some(AxisEntryExit {
             entry: f32::NEG_INFINITY,
             exit: f32::INFINITY,

@@ -198,6 +198,9 @@ impl Engine {
             }
             None
         };
+        self.data_scene.movement.cancel();
+        self.data_scene.movement_animation.stop(&mut self.world);
+        self.data_scene.movement_animation.clear();
         if let Some(actor) = actor {
             self.world.set_primary_actor_entity(actor);
         } else if let Some(current) = self.world.primary_actor_entity() {
@@ -219,6 +222,12 @@ impl Engine {
         latched_presses: InputState,
     ) {
         if self.scene_mode == SceneMode::Data {
+            self.data_scene.movement_animation.update(
+                &mut self.world,
+                self.data_scene.movement.animation_target(),
+                self.data_scene.movement.animation_ended(),
+                self.data_scene.movement.animation_last_motion(),
+            );
             self.data_scene.gameplay.update(
                 &mut self.world,
                 &self.input_actions,

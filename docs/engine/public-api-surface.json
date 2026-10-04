@@ -112,6 +112,11 @@
         "DataSceneGameplayOptions",
         "DataSceneGameplaySpec",
         "DataSceneNavigationSpec",
+        "DataSceneMoveOptions",
+        "DataSceneMoveStatus",
+        "DataSceneMovementDirection",
+        "DataSceneMovementAnimationPose",
+        "DataSceneMovementAnimationSpec",
         "resolveDataSceneGameplaySpec",
         "resolveDataSceneNavigationSpec",
         "DataSceneProgressSnapshot"
@@ -187,6 +192,11 @@
         "DataSceneGameplayOptions",
         "DataSceneGameplaySpec",
         "DataSceneNavigationSpec",
+        "DataSceneMoveOptions",
+        "DataSceneMoveStatus",
+        "DataSceneMovementDirection",
+        "DataSceneMovementAnimationPose",
+        "DataSceneMovementAnimationSpec",
         "resolveDataSceneGameplaySpec",
         "resolveDataSceneNavigationSpec",
         "DataSceneProgressSnapshot"

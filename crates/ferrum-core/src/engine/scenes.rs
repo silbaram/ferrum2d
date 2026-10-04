@@ -133,6 +133,8 @@ pub(super) struct DataSceneRuntime {
     pub(super) epoch: u32,
     pub(super) gameplay: super::data_scene_gameplay::DataSceneGameplay,
     pub(super) navigation: Tilemap,
+    pub(super) movement: super::data_scene_movement::DataSceneMovement,
+    pub(super) movement_animation: super::data_scene_movement_animation::DataSceneMovementAnimation,
     pub(super) camera: super::viewport_controls::DataSceneCamera,
     score: u32,
     game_state: GameState,
@@ -145,6 +147,8 @@ impl DataSceneRuntime {
             camera: super::viewport_controls::DataSceneCamera::default(),
             gameplay: Default::default(),
             navigation: Tilemap::default(),
+            movement: Default::default(),
+            movement_animation: Default::default(),
             score: 0,
             game_state: GameState::Playing,
         }
@@ -187,6 +191,8 @@ impl DataSceneRuntime {
         self.epoch = self.epoch.wrapping_add(1).max(1);
         self.gameplay = Default::default();
         self.navigation.clear();
+        self.movement = Default::default();
+        self.movement_animation = Default::default();
         self.camera = super::viewport_controls::DataSceneCamera::default();
         self.score = 0;
         self.game_state = GameState::Playing;
@@ -196,10 +202,27 @@ impl DataSceneRuntime {
         self.reset_playing(context);
     }
 
-    pub(super) fn update(&mut self, context: &mut SceneUpdateContext<'_>, delta: f32) {
+    pub(super) fn update(
+        &mut self,
+        context: &mut SceneUpdateContext<'_>,
+        input: InputState,
+        delta: f32,
+    ) {
         if self.game_state != GameState::Playing {
             return;
         }
+        self.movement_animation.begin_step(
+            context.world,
+            self.movement.animation_target().is_some(),
+            delta,
+        );
+        self.movement.update(
+            context.world,
+            &self.navigation,
+            input,
+            delta,
+            context.physics_counters,
+        );
         context.world.tick_action_cooldowns(delta);
         context.world.tick_collision_reaction_cooldowns(delta);
         context.world.update(delta);
@@ -250,7 +273,7 @@ impl<'a> SceneRuntimeDispatch<'a> {
     ) {
         match self.mode {
             SceneMode::BuiltIn => self.built_in.update_active(context, input, delta),
-            SceneMode::Data => self.data.update(context, delta),
+            SceneMode::Data => self.data.update(context, input, delta),
         }
     }
 }

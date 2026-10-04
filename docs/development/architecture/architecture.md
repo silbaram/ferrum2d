@@ -125,7 +125,20 @@ canonical hash 범위도 그대로 재사용한다. Data Scene snapshot opt-in�
 
 `engine/scenes.rs`는 `ActiveScene` dispatch, `BuiltInSceneSlots`, `DataSceneRuntime`, crate 내부 `BuiltInSceneRuntime` 계약을 소유하며, built-in scene의 score/game state/title reset/playing reset/update/camera update/frame telemetry/action-trigger hooks는 공통 reset/update context와 active runtime accessor를 통해 호출한다.
 concrete scene 필드는 `BuiltInSceneSlots` 내부 private state로 유지하고, shooter snapshot/authoring처럼 호환 ABI가 필요한 경로만 `shooter()`/`shooter_mut()` accessor로 명시한다.
-data scene update는 shooter/breakout/platformer 로직을 실행하지 않고 `World` cooldown tick, generic world update, tilemap dynamic collision resolve만 호출한다.
+data scene update는 shooter/breakout/platformer 로직을 실행하지 않고 scene-owned 경로 이동,
+`World` cooldown tick, generic world update와 opted-in interaction/pickup/timer/변수 이벤트를 처리한다.
+`engine/data_scene_movement.rs`의 `DataSceneMovement`는 primary actor generation handle, 목적지,
+waypoint cursor, 미소 거리 누적값과 재사용 A*/AABB sweep scratch를 소유한다. 명령/격자 수정/외부 위치
+변경 때만 경로를 계산하고 public navigation query 결과 buffer는 수정하지 않는다. 각 simulation step의
+거리 예산을 구간별로 소비하며 world/자동 rigid-body 적분 전에 제어 actor velocity를 0으로 유지하여
+중복 이동을 막는다. 수동 입력 취소는 해당 sample의 velocity를 보존한다. TypeScript는 옵션 검증과
+낮은 빈도 명령/상태 조회만 제공하며 frame별 위치 제어 callback을 추가하지 않는다.
+primary AABB sweep의 가까운 접촉 판정은 offset을 반영한 접촉면·이동 방향을 사용하여 반복 요청 관통을
+막고 분리/접선 이동을 허용한다. 경로는 transient state이므로 snapshot schema/ABI는 변경하지 않는다.
+Navigation 이동은 내부 설정으로 작은 변위를 보존하며 기존 platformer의 반복 종료 epsilon은 유지한다.
+AABB sweep의 축 정지 판정은 정확히 0인 변위에만 적용해 작은 틈의 충돌도 처리한다.
+중간 waypoint는 정확히 도달해야 하며 float32 셀 중심이 원래 셀로 매핑되지 않는 경로는 거절한다.
+변위를 float32로 바꾼 실제 끝점이 waypoint를 넘으면 한 ULP를 0 방향으로 보정해 sweep 범위를 보존한다.
 이 계약은 Rust 내부 구조 정리용이며 기존 snapshot/event/render buffer layout을 바꾸지 않고 frame hot path에 JS/Wasm callback이나 entity별 동적 dispatch를 추가하지 않는다.
 scene-level trait object dispatch는 active built-in scene당 frame update/reset/telemetry 호출 1회 단위로 제한한다.
 `engine/gameplay_authoring.rs`는 scene load/agent apply 같은 낮은 빈도 경로에서만 호출하는 generation-checked gameplay component setter를 담당하며, frame hot path의 behavior evaluation이나 entity별 JS callback을 담당하지 않는다.
@@ -502,6 +515,14 @@ Data Scene camera follow/bounds/smoothing은 simulation 뒤 Rust에서 계산한
 Data Scene clip descriptor와 UV는 생성/재설정 시 Rust `SpritePlayback`에 설치한다. 전환은
 generation handle을 포함한 stride-8 u32 batch를 검증한 뒤 원자적으로 적용한다. Rust가 시간·frame·
 flip을 소유하며 기존 texture와 sprite/body를 유지한다. cold 설정 이외에는 clip frame allocation이 없다.
+
+Primary actor의 opt-in 이동 애니메이션은 `engine/data_scene_movement_animation.rs`가 소유한다.
+TS는 idle/walk의 네 방향 pose를 검증해 8개 `[clip, flipX, flipY]` 레코드로 한 번 전달한다.
+Rust는 scene update 시작 위치와 경로의 다음 waypoint/마지막 실제 구간을 이용해 physics 뒤에 clip을
+선택한다. 같은 clip이면 시간은 유지하고 flip만 적용하며, 다른 clip이면 elapsed를 0으로 초기화한다.
+시간 증가는 기존 World playback update 한 곳에서만 한다. frame별 JS 호출/추가 allocation은 없다.
+성공한 수동 playback 변경은 full-batch 검증 뒤 해당 actor 연결을 해제하므로 수동 연출을 덮어쓰지 않는다.
+연결은 scene-owned transient state이며 reset/gameplay 재설정으로 제거한다. 기존 render/snapshot ABI는 유지한다.
 
 `Camera2D.ground_y_scale`은 물리 transform과 별개인 render-only 값이다. Rust가 anchor/culling을,
 WebGL2/WebGPU vertex shader가 회전된 ground quad의 local Y를 변환한다. `SpriteRenderCommand`는

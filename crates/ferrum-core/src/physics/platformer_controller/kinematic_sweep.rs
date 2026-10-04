@@ -32,7 +32,7 @@ pub(super) struct KinematicSweep<'a> {
 }
 
 #[derive(Default)]
-pub(in crate::physics) struct KinematicSweepScratch {
+pub(crate) struct KinematicSweepScratch {
     collision: CollisionScratch,
     candidates: Vec<usize>,
 }
@@ -128,7 +128,22 @@ pub(super) fn earliest_solid_hit(
                 .is_none()
             && !is_one_way_platform
         {
-            continue;
+            // The slab sweep also reports time zero for touching boxes moving
+            // apart or tangentially. Only discard those contacts, not a small
+            // positive TOI or motion into a touching face (including retries).
+            let a = collider.center(position);
+            let b = target_collider.center(target_transform);
+            if (a.x + collider.half_width <= b.x - target_collider.half_width
+                && remaining.vx <= 0.0)
+                || (a.x - collider.half_width >= b.x + target_collider.half_width
+                    && remaining.vx >= 0.0)
+                || (a.y + collider.half_height <= b.y - target_collider.half_height
+                    && remaining.vy <= 0.0)
+                || (a.y - collider.half_height >= b.y + target_collider.half_height
+                    && remaining.vy >= 0.0)
+            {
+                continue;
+            }
         }
         let into_normal = remaining.vx * contact.normal_x + remaining.vy * contact.normal_y;
         if contact.time <= KINEMATIC_EPSILON && into_normal <= 0.0 {

@@ -19,6 +19,7 @@ pub(super) struct KinematicMoveSettings {
     pub(super) max_iterations: u32,
     pub(super) ignored_entity: Option<Entity>,
     pub(super) height_span: Option<HeightSpan>,
+    pub(super) preserve_small_displacements: bool,
 }
 
 impl KinematicMoveSettings {
@@ -33,6 +34,7 @@ impl KinematicMoveSettings {
             max_iterations,
             ignored_entity: None,
             height_span: None,
+            preserve_small_displacements: false,
         }
     }
 
@@ -43,6 +45,11 @@ impl KinematicMoveSettings {
 
     pub(super) const fn with_height_span(mut self, height_span: Option<HeightSpan>) -> Self {
         self.height_span = height_span;
+        self
+    }
+
+    pub(super) const fn preserving_small_displacements(mut self) -> Self {
+        self.preserve_small_displacements = true;
         self
     }
 }

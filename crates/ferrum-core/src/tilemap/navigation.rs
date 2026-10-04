@@ -56,6 +56,34 @@ impl TilemapNavigationScratch {
 }
 
 impl Tilemap {
+    /// Internal center lookup for the dedicated, single-layer Data Scene grid.
+    pub(crate) fn data_scene_navigation_cell_center(&self, at: Transform2D) -> Option<Transform2D> {
+        let layer = self.layers.first()?.as_ref()?;
+        let cell = layer.cell_at(at)?;
+        let center = layer.tile_center(cell);
+        (layer.cell_at(center) == Some(cell)).then_some(center)
+    }
+
+    /// Reject paths whose float32 centers round into other cells. In particular,
+    /// a large origin must not turn a walkable waypoint into a blocked neighbor.
+    pub(crate) fn data_scene_navigation_path_with_scratch<'a>(
+        &self,
+        from: Transform2D,
+        to: Transform2D,
+        scratch: &'a mut TilemapNavigationScratch,
+    ) -> Option<&'a [Transform2D]> {
+        self.navigation_path_with_scratch(from, to, scratch)?;
+        let layer = self.layers.first()?.as_ref()?;
+        if scratch
+            .path_cells
+            .iter()
+            .any(|&cell| layer.cell_at(layer.tile_center(cell)) != Some(cell))
+        {
+            return None;
+        }
+        Some(&scratch.path_points)
+    }
+
     pub fn navigation_waypoint(&self, from: Transform2D, to: Transform2D) -> Option<Transform2D> {
         let mut scratch = TilemapNavigationScratch::default();
         self.navigation_waypoint_with_scratch(from, to, &mut scratch)

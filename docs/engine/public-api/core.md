@@ -669,6 +669,33 @@ flag 32를 함께 소비하며 15-float command layout은 유지한다. `0.1.0-b
 - `/core` exports: `DataSceneGameplayOptions`, `DataSceneGameplaySpec`, `DataSceneNavigationSpec`,
   `resolveDataSceneGameplaySpec`, `resolveDataSceneNavigationSpec`.
 
-새 메서드는 다른 씬에서 false를 반환하고 씬을 전환하지 않는다. Shooter tile setter도 Data Scene을
+목적지 이동은 별도 명령으로 실행한다. `/core` 및 호환 root는 `DataSceneMoveOptions`,
+`DataSceneMoveStatus` 타입을 export한다.
+
+- `engine.moveDataSceneActorTo({ x, y, speed, arrivalRadius?, solidMaskBits?, cancelOnInput? }): boolean`:
+  primary actor의 경로를 시작/교체한다. 활성 native kinematic body와 solid AABB 하나 및 navigation이 필요하다.
+  기본 반경 0.5, 모든 solid layer, W/A/S/D 취소 활성이다. 잘못된 옵션은 throw하며
+  조건 불충족/경로 없음/float32 셀 중심이 다른 칸으로 반올림되는 경로는 기존 이동을 보존하고 false를 반환한다.
+- `engine.cancelDataSceneMove(): boolean`: moving 상태만 취소한다.
+- `engine.dataSceneMoveStatus(): DataSceneMoveStatus | undefined`:
+  `idle/moving/arrived/blocked/cancelled`, Data Scene 밖에서는 undefined다.
+
+Rust가 waypoint별 거리 예산과 AABB sweep을 처리한다. grid/위치 변경 시 다음 step에 재탐색하고,
+막히면 blocked로 정지한다. pause는 경로를 유지하고 complete/gameplay 재설정은 취소한다.
+작은 변위도 sweep하며 중간 코너는 거리 tolerance로 생략하지 않는다. 도착 반경 0은 float32 목적지까지 이동한다.
+reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snapshot에 포함하지 않는다.
+
+- `engine.configureDataSceneMovementAnimation(spec | false): boolean`: 주인공의 기존 clip을
+  idle/walk × up/down/left/right에 연결한다. 각 pose는 `{ clip, flipX?, flipY? }`이고
+  `initialDirection`은 기본 down이다. `/core`와 root는 `DataSceneMovementAnimationSpec`,
+  `DataSceneMovementAnimationPose`, `DataSceneMovementDirection` 타입을 export한다.
+  경로 이동/도착/막힘과 실제 수동 이동에 맞춰 Rust가 전환하며 동일 clip의 시간은 유지한다.
+  잘못된 JS 설정은 throw, 없는 주인공/playback/clip은 false이며 기존 설정을 보존한다.
+  성공한 주인공 수동 playback 명령 또는 clip 재설정은 자동 연결을 해제한다. `false`는 현재 playback을
+  바꾸지 않고 해제한다. gameplay 재설정/전체 reapply/restore 뒤에는 다시 연결해야 한다.
+  설정은 runtime 전용이며 진행 snapshot에는 포함하지 않는다. 방향·pause·수동 연출의 상세 규칙은
+  [자동 연결 계약](../data-scene-authoring.md#이동애니메이션-자동-연결-beta6-이후-미배포)을 따른다.
+
+설정·이동 명령은 다른 씬에서 false를 반환하고 씬을 전환하지 않는다. Shooter tile setter도 Data Scene을
 암묵적으로 전환하지 않는다. 동적 save 범위와 single-plane 제약은
 [Data Scene 계약](../data-scene-authoring.md)을 따른다.

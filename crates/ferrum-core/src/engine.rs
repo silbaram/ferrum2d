@@ -28,6 +28,8 @@ use crate::world::World;
 mod bitmap_text_controls;
 mod data_scene_animation;
 mod data_scene_gameplay;
+mod data_scene_movement;
+mod data_scene_movement_animation;
 mod data_scene_navigation;
 mod data_scene_progress;
 mod data_scene_spawning;

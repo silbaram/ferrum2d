@@ -495,6 +495,6 @@ Data Scene의 native actor, 명시적 depth 정렬, camera/zoom/조명 연결은
 `0.1.0-beta.3`부터 캐릭터별 atlas 클립·방향 전환, 2.5D 지면 투영, 태양 방향광·지면 그림자를 제공한다. [사용법과 지원 범위](docs/engine/data-scene-presentation.md)를 참고한다.
 
 
-Data Scene의 주인공·근접/입력 조사·범용 아이템 수집·단일 평면 navigation 및 진행 저장·복원 개발 계약은
+Data Scene의 주인공·근접/입력 조사·범용 아이템 수집·단일 평면 navigation·목적지 이동·이동 애니메이션 자동 연결 및 진행 저장·복원 개발 계약은
 [Data Scene Authoring](docs/engine/data-scene-authoring.md)을 참고한다. 이 확장은 beta.6 이후 소스 변경이며
 설치된 beta.6에는 포함되지 않는다. `pnpm smoke:data-scene-gameplay`로 실제 패키지 경로를 검증한다.

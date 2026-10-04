@@ -37,6 +37,7 @@ pub use platformer::{
     PlatformerControllerConfig, PlatformerControllerInput, PlatformerControllerResult,
     PlatformerControllerState, SlopeConfig, SlopeSegment, SlopeSurfaceHit,
 };
+pub(crate) use platformer_controller::KinematicSweepScratch;
 pub use rigid_body::{RigidBodyIslandStats, RigidBodyStepConfig, RigidBodyStepStats};
 #[cfg(test)]
 use rigid_body::{

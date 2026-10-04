@@ -171,7 +171,12 @@ impl Engine {
     }
 
     pub fn complete_data_scene(&mut self) -> bool {
-        self.scene_mode == SceneMode::Data && self.data_scene.complete_level()
+        if self.scene_mode != SceneMode::Data || !self.data_scene.complete_level() {
+            return false;
+        }
+        self.data_scene.movement.cancel();
+        self.data_scene.movement_animation.stop(&mut self.world);
+        true
     }
 
     pub fn use_breakout_scene(&mut self) {

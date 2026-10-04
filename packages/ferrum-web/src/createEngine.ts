@@ -1,3 +1,5 @@
+import { createDataSceneMovementApi } from "./dataSceneMovement.js";
+import { createDataSceneMovementAnimationApi } from "./dataSceneMovementAnimation.js";
 import { attachDataSceneProgressAdapter } from "./dataSceneProgress.js";
 import { configureDataSceneGameplay } from "./dataSceneGameplay.js";
 import { configureDataSceneSun } from "./dataSceneSun.js";
@@ -652,6 +654,8 @@ export async function createEngineWithFramePipeline(
     setGameSpec,
     setShooterAtlasFrame,
     ...tilemapSceneApi,
+    ...createDataSceneMovementApi(rustEngine, requireAlive),
+    ...createDataSceneMovementAnimationApi(rustEngine, requireAlive),
     cameraX: () => { requireAlive(); return rustEngine.camera_x(); },
     cameraY: () => { requireAlive(); return rustEngine.camera_y(); },
     cameraGroundYScale: () => { requireAlive(); return rustEngine.camera_ground_y_scale(); },

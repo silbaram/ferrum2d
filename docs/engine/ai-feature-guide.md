@@ -49,5 +49,5 @@ export, 메서드는 facade 타입과 대조한다. `main`의 API를 과거 릴�
 패키지로 설치한 실제 게임 프로젝트에서도 같은 안내서를 받을 수 있는지 확인한다.
 
 
-beta.6 이후 개발 소스의 Data Scene gameplay/navigation과 opt-in 진행 저장·복원은 canonical 안내서의 미배포 절에서 별도로
+beta.6 이후 개발 소스의 Data Scene gameplay/navigation, primary actor 목적지 이동·애니메이션 연결과 opt-in 진행 저장·복원은 canonical 안내서의 미배포 절에서 별도로
 설명한다. 배포 기준과 섞지 않으며 primitive 설정 성공만으로 실행 지원을 판정하지 않는다.

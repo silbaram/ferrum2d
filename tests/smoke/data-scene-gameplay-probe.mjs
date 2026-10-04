@@ -335,6 +335,215 @@ try {
   restoreGameStateSnapshot(engine, specialSnapshot);
   assert.deepEqual(captureGameStateSnapshot(engine, specialOptions).dataScene.progress, specialSnapshot.dataScene.progress);
   cases.push("prototype-like authored IDs retain own handles through progress capture and restore");
+
+  const movementDocument = structuredClone(document);
+  const movementInstances = movementDocument.sceneComposition.fragments.island.instances;
+  movementInstances.splice(1, 1);
+  movementInstances.find(instance => instance.id === "shell").x = 108;
+  movementInstances.find(instance => instance.id === "shell").y = 60;
+  const wallComponents = components("wall");
+  wallComponents.collider = { type: "aabb", halfWidth: 12, halfHeight: 12, isTrigger: false };
+  movementDocument.sceneComposition.prefabs.wall = { props: { components: wallComponents } };
+  movementInstances.push({ id: "wall", prefab: "wall", x: 60, y: 60 });
+  let movementLive = applyDataSceneAuthoringDocument(engine, movementDocument);
+  const actorPosition = () => {
+    const actor = engine.getPhysicsEntity(movementLive.entityHandles.player);
+    assert(actor); return { x: actor.x, y: actor.y };
+  };
+  events.length = 0;
+  assert.equal(engine.dataSceneMoveStatus(), "idle");
+  assert(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 120, arrivalRadius: 0 }));
+  let detoured = false;
+  for (let frame = 0; frame < 180 && engine.dataSceneMoveStatus() === "moving"; frame++) {
+    step(); const at = actorPosition();
+    detoured ||= at.y !== 60;
+    assert(!(at.x > 40 && at.x < 80 && at.y > 40 && at.y < 80), "Actor AABB must not enter the wall");
+  }
+  assert(detoured);
+  assert.equal(engine.dataSceneMoveStatus(), "arrived");
+  assert.deepEqual(actorPosition(), { x: 108, y: 60 });
+  assert.equal(movementLive.variables.get("shells"), 1);
+  assert.equal(events.filter(event => event.kind === "pickupCollected").length, 1);
+  assert.equal(engine.gameplayEntityExists(movementLive.entityHandles.shell), false);
+  step(5); assert.deepEqual(actorPosition(), { x: 108, y: 60 });
+  cases.push("public destination movement detours around a solid wall, arrives exactly, and collects once");
+
+  movementLive = applyDataSceneAuthoringDocument(engine, movementDocument);
+  assert(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 24 }));
+  assert.equal(engine.moveDataSceneActorTo({ x: 1000, y: 60, speed: 24 }), false);
+  assert.throws(() => engine.moveDataSceneActorTo({ x: NaN, y: 60, speed: 24 }), /float32/);
+  assert.equal(engine.dataSceneMoveStatus(), "moving");
+  assert(engine.pauseDataScene()); const pausedPosition = actorPosition(); step(10);
+  assert.deepEqual(actorPosition(), pausedPosition);
+  assert.equal(engine.dataSceneMoveStatus(), "moving");
+  assert(engine.resumeDataScene()); step(5);
+  assert.notDeepEqual(actorPosition(), pausedPosition);
+  input.d = true; step(); input.d = false;
+  assert.equal(engine.dataSceneMoveStatus(), "cancelled");
+  assert.equal(engine.cancelDataSceneMove(), false);
+  assert(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 24, cancelOnInput: false }));
+  input.d = true; step(); input.d = false;
+  assert.equal(engine.dataSceneMoveStatus(), "moving");
+  assert(engine.cancelDataSceneMove());
+  const cancelledPosition = actorPosition(); step(5);
+  assert.deepEqual(actorPosition(), cancelledPosition);
+  cases.push("invalid destinations preserve movement; pause, manual handoff, opt-out and cancellation preserve lifecycle");
+
+  movementLive = applyDataSceneAuthoringDocument(engine, movementDocument);
+  assert(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 240 }));
+  assert(engine.setDataSceneNavigationCost(4, 2, 0)); step();
+  assert.equal(engine.dataSceneMoveStatus(), "blocked");
+  assert.deepEqual(actorPosition(), { x: 12, y: 60 });
+  assert(engine.setDataSceneNavigationCost(4, 2, 1));
+  assert(engine.setDataSceneNavigationCost(2, 2, 1));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    assert(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 240 }));
+    for (let frame = 0; frame < 60 && engine.dataSceneMoveStatus() === "moving"; frame++) step();
+    assert.equal(engine.dataSceneMoveStatus(), "blocked");
+    assert.deepEqual(actorPosition(), { x: 40, y: 60 });
+  }
+  assert(engine.moveDataSceneActorTo({ x: 12, y: 60, speed: 240 }));
+  assert(engine.clearDataSceneNavigation()); step();
+  assert.equal(engine.dataSceneMoveStatus(), "blocked");
+  assert.deepEqual(actorPosition(), { x: 40, y: 60 });
+  cases.push("grid edits and removal stop stale routes; repeated requests cannot cross a touching solid");
+
+  movementLive = applyDataSceneAuthoringDocument(engine, movementDocument);
+  assert(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 24 })); step(5);
+  assert.notDeepEqual(actorPosition(), { x: 12, y: 60 });
+  const movingSnapshot = captureGameStateSnapshot(engine, {
+    includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: movementDocument,
+  });
+  restoreGameStateSnapshot(engine, parseGameStateSnapshot(stringifyGameStateSnapshot(movingSnapshot)));
+  assert.equal(engine.dataSceneMoveStatus(), "idle");
+  const restoredActors = engine.queryAabbBodies({ x: 12, y: 60, halfWidth: 1, halfHeight: 1, queryMaskBits: 1 });
+  assert.equal(restoredActors.length, 1);
+  assert(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 24 }));
+  assert(engine.completeDataScene());
+  assert.equal(engine.dataSceneMoveStatus(), "cancelled");
+  assert.equal(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 24 }), false);
+  engine.resetGame(); assert.equal(engine.dataSceneMoveStatus(), "idle");
+  const staticDocument = structuredClone(movementDocument);
+  staticDocument.sceneComposition.prefabs.player.props.components.body.type = "static";
+  applyDataSceneAuthoringDocument(engine, staticDocument);
+  assert.equal(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 24 }), false);
+  assert.equal(engine.dataSceneMoveStatus(), "idle");
+  cases.push("progress restore discards active route and pose; completion, reset and unsupported actor are safe");
+
+  movementLive = applyDataSceneAuthoringDocument(engine, movementDocument);
+  const cell = 2 ** -14;
+  assert(engine.configureDataSceneNavigation({ columns: 3, rows: 3, cellWidth: cell, cellHeight: cell, costs: [1, 1, 1, 1, 0, 1, 1, 1, 1] }));
+  assert(engine.setPhysicsBodyPosition(movementLive.entityHandles.player, 0.5 * cell, 1.5 * cell));
+  assert(engine.moveDataSceneActorTo({ x: 2.5 * cell, y: 1.5 * cell, speed: cell * 4, arrivalRadius: 0, solidMaskBits: 0 }));
+  for (let frame = 0; frame < 120 && engine.dataSceneMoveStatus() === "moving"; frame++) {
+    step(); const at = actorPosition();
+    assert(!(at.x > cell && at.x < 2 * cell && at.y > cell && at.y < 2 * cell), "Small-grid movement entered a blocked cell");
+  }
+  assert.equal(engine.dataSceneMoveStatus(), "arrived");
+  assert.deepEqual(actorPosition(), { x: 2.5 * cell, y: 1.5 * cell });
+  assert(engine.configureDataSceneNavigation({ columns: 1, rows: 1, cellWidth: 1, cellHeight: 1, costs: [1] }));
+  assert(engine.setPhysicsBodyPosition(movementLive.entityHandles.player, 0, 0));
+  const tinyGoal = { x: 0.00008830292063066736, y: 0.000046931803808547556 };
+  assert(engine.moveDataSceneActorTo({ ...tinyGoal, speed: 1, arrivalRadius: 0, solidMaskBits: 0 })); step();
+  assert.equal(engine.dataSceneMoveStatus(), "arrived");
+  assert.deepEqual(actorPosition(), tinyGoal);
+  const largeOrigin = 2 ** 24;
+  assert(engine.configureDataSceneNavigation({ columns: 3, rows: 2, cellWidth: 2, cellHeight: 2, originX: largeOrigin, costs: [1, 1, 1, 1, 1, 0] }));
+  assert(engine.setPhysicsBodyPosition(movementLive.entityHandles.player, largeOrigin, 1));
+  assert(engine.moveDataSceneActorTo({ x: largeOrigin, y: 3, speed: 2, arrivalRadius: 0, solidMaskBits: 0 }));
+  for (const goal of [{ x: largeOrigin + 2, y: 3 }, { x: largeOrigin + 4, y: 1 }]) {
+    assert.equal(engine.moveDataSceneActorTo({ ...goal, speed: 2, arrivalRadius: 0, solidMaskBits: 0 }), false);
+  }
+  step(70);
+  assert.equal(engine.dataSceneMoveStatus(), "arrived");
+  assert.deepEqual(actorPosition(), { x: largeOrigin, y: 3 });
+  assert(engine.configureDataSceneNavigation({ columns: 1, rows: 1, cellWidth: 200000000, cellHeight: 1, originX: 1, costs: [1] }));
+  assert(engine.setPhysicsBodyPosition(movementLive.entityHandles.player, 100000000, 0.5));
+  assert(engine.moveDataSceneActorTo({ x: 1, y: 0.5, speed: 1e10, arrivalRadius: 0, solidMaskBits: 0 })); step();
+  assert(actorPosition().x >= 1, "Rounded displacement must not pass the waypoint or grid boundary");
+  step(); assert.equal(engine.dataSceneMoveStatus(), "arrived");
+  assert.deepEqual(actorPosition(), { x: 1, y: 0.5 });
+  cases.push("float32 precision preserves tiny-grid corners, finishes tiny moves, bounds large displacements and rejects rounded centers without replacing a route");
+  const animatedDocument = structuredClone(movementDocument);
+  animatedDocument.sceneComposition.prefabs.player.props.components.visual.animationSet = {
+    clips: Array.from({ length: 8 }, (_, id) => ({ id, fps: 4, loop: true, frames: [
+      { u0: 0, v0: 0, u1: 0.5, v1: 1 }, { u0: 0.5, v0: 0, u1: 1, v1: 1 },
+    ] })), initialClip: 0,
+  };
+  const movementAnimation = {
+    idle: { up: { clip: 0 }, down: { clip: 1 }, left: { clip: 2, flipX: true }, right: { clip: 2 } },
+    walk: { up: { clip: 4 }, down: { clip: 5 }, left: { clip: 7, flipX: true }, right: { clip: 7 } },
+  };
+  movementLive = applyDataSceneAuthoringDocument(engine, animatedDocument);
+  const animationState = () => {
+    const value = engine.dataSceneSpriteAnimationState(movementLive.entityHandles.player);
+    assert(value); return value;
+  };
+  assert(engine.configureDataSceneMovementAnimation(movementAnimation));
+  assert.equal(animationState().clip, 1);
+  assert(engine.moveDataSceneActorTo({ x: 36, y: 60, speed: 24, arrivalRadius: 0 })); step(2);
+  assert.equal(animationState().clip, 7);
+  assert(animationState().elapsedSeconds > 0);
+  assert(engine.pauseDataScene()); const pausedAnimation = animationState(); step(5);
+  assert.deepEqual(animationState(), pausedAnimation);
+  assert(engine.resumeDataScene());
+  for (let frame = 0; frame < 80 && engine.dataSceneMoveStatus() === "moving"; frame++) step();
+  assert.equal(engine.dataSceneMoveStatus(), "arrived");
+  assert.equal(animationState().clip, 2); assert.equal(animationState().flipX, false);
+  assert(engine.moveDataSceneActorTo({ x: 12, y: 60, speed: 24, arrivalRadius: 0 })); step(2);
+  assert.equal(animationState().clip, 7); assert.equal(animationState().flipX, true);
+  const leftElapsed = animationState().elapsedSeconds;
+  assert(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 24, arrivalRadius: 0 })); step();
+  assert.equal(animationState().clip, 7); assert.equal(animationState().flipX, false);
+  assert(animationState().elapsedSeconds > leftElapsed, "Flipping a shared clip must not restart it");
+  cases.push("movement animation selects idle/walk and facing, preserves shared-clip time and freezes while paused");
+
+  const invalidAnimation = structuredClone(movementAnimation); invalidAnimation.walk.right.clip = 65535;
+  const beforeInvalidAnimation = animationState();
+  assert.equal(engine.configureDataSceneMovementAnimation(invalidAnimation), false);
+  assert.deepEqual(animationState(), beforeInvalidAnimation);
+  assert(engine.cancelDataSceneMove());
+  assert(animationState().clip < 4, "Invalid configuration must preserve binding for the next idle transition");
+  assert(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 24, arrivalRadius: 0 })); step(2);
+  assert(animationState().clip >= 4);
+  assert.equal(engine.updateDataSceneSpriteAnimations([
+    { entity: movementLive.entityHandles.player, clip: 0 },
+    { entity: movementLive.entityHandles.wall, clip: 0 },
+  ]), false);
+  assert(engine.cancelDataSceneMove());
+  assert(animationState().clip < 4, "Failed manual batch must preserve binding for the next idle transition");
+  assert(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 24, arrivalRadius: 0 })); step(2);
+  assert(animationState().clip >= 4);
+  assert(engine.updateDataSceneSpriteAnimations([{ entity: movementLive.entityHandles.player, clip: 0, paused: true }]));
+  step(5); assert.equal(animationState().clip, 0); assert.equal(animationState().paused, true);
+  assert(engine.configureDataSceneMovementAnimation(movementAnimation)); step();
+  assert(animationState().clip >= 4); assert.equal(animationState().paused, false);
+  const beforeDisable = animationState();
+  assert(engine.configureDataSceneMovementAnimation(false));
+  assert.deepEqual(animationState(), beforeDisable);
+  assert(engine.cancelDataSceneMove());
+  assert.equal(animationState().clip, beforeDisable.clip);
+  cases.push("invalid animation settings and batches preserve binding; explicit playback and disabling hand control to the game");
+
+  assert(engine.configureDataSceneMovementAnimation(movementAnimation));
+  assert(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 24 })); step(2);
+  assert(engine.pauseDataScene());
+  const animationSnapshot = captureGameStateSnapshot(engine, {
+    includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: animatedDocument,
+  });
+  restoreGameStateSnapshot(engine, animationSnapshot);
+  assert.equal(engine.dataSceneState(), "paused");
+  const restoredAnimationActor = engine.queryAabbBodies({ x: 12, y: 60, halfWidth: 1, halfHeight: 1, queryMaskBits: 1 })[0];
+  assert(restoredAnimationActor);
+  assert.equal(engine.dataSceneSpriteAnimationState(restoredAnimationActor).clip, 0);
+  assert(engine.resumeDataScene());
+  assert(engine.moveDataSceneActorTo({ x: 36, y: 60, speed: 24 })); step(2);
+  assert.equal(engine.dataSceneSpriteAnimationState(restoredAnimationActor).clip, 0, "Snapshot must not restore a runtime animation binding");
+  assert(engine.configureDataSceneMovementAnimation(movementAnimation)); step();
+  assert.equal(engine.dataSceneSpriteAnimationState(restoredAnimationActor).clip, 7);
+  assert(engine.completeDataScene());
+  assert.equal(engine.dataSceneSpriteAnimationState(restoredAnimationActor).clip, 2);
+  cases.push("restore reinstalls authored clips with fresh handles but requires animation binding setup again; complete selects idle immediately");
   const report = { format: "ferrum2d.data-scene-gameplay.consumer-smoke", version: 1, status: "passed", cases };
   await writeFile(new URL("./result.json", import.meta.url), JSON.stringify(report, null, 2) + "\n");
   console.log(JSON.stringify(report));

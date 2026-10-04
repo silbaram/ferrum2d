@@ -410,3 +410,6 @@ export type { DataSceneGameplayOptions, DataSceneGameplaySpec } from "./dataScen
 export { resolveDataSceneGameplaySpec } from "./dataSceneGameplay.js";
 export type { DataSceneNavigationSpec } from "./dataSceneNavigation.js";
 export { resolveDataSceneNavigationSpec } from "./dataSceneNavigation.js";
+
+export type { DataSceneMoveOptions, DataSceneMoveStatus } from "./dataSceneMovement.js";
+export type { DataSceneMovementAnimationSpec, DataSceneMovementAnimationPose, DataSceneMovementDirection } from "./dataSceneMovementAnimation.js";

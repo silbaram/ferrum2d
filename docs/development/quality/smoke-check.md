@@ -808,3 +808,21 @@ stale handle/grid 제거도 검증한다. Rust 회귀 테스트는 연속 fixed-
 교체한 grid의 크기·원점·최대 비용과 명시적 clear, 잘못된 ID/중복/consumed/grid/version에 해시를
 재계산해도 기존 씬 보존, reset/누적 apply/옵션 override의 stale metadata 거절, `__proto__` ID를 검사한다.
 Rust는 ID 재사용과 batch 중간 invalid state의 무변경을, TS는 v2 읽기/기존 hash와 restore opt-out을 검증한다.
+
+목적지 이동도 public `moveDataSceneActorTo`로 실행한다. solid 장애물을 우회해 정확한 목적지에 도착하고
+pickup을 한 번만 수집해야 한다. 잘못된 요청의 이전 경로 보존, pause/resume, 수동 입력 취소와 opt-out,
+명시 취소, grid 수정/clear의 blocked 전환, 벽 접촉 후 재요청 시 관통 방지, 진행 복원 시 authored 위치와
+idle 복귀, complete/reset 및 static actor 거절을 assert한다. Rust 회귀는 큰 delta의 코너 보존,
+auto physics/fixed-step 조합의 거리 중복 방지, 미소 속도/큰 좌표의 거리 누적, 높이/trigger/filter,
+teleport·generation 재사용과 양축 접촉면의 분리/접선 이동을 추가 검증한다.
+수치 정밀도 회귀는 작은 격자의 코너 유지, 이전 sweep epsilon 경계에서 도착, 양축 미소 변위의
+장애물 충돌, 큰 원점에서 잘못 반올림된 셀 중심 거절과 이전 경로 보존, 큰 변위의 목적지 초과 방지를 검사한다.
+
+이동·애니메이션 자동 연결은 같은 packed smoke에서 세 case로 확인한다. authored clip을 적용하고
+`configureDataSceneMovementAnimation`으로 연결해 walk→arrival idle, 좌우 공용 clip의 flip/시간 유지,
+pause/resume을 검사한다. 없는 clip/중간 invalid batch는 기존 연결을 유지하고 성공한 수동 명령은
+해제해야 한다. disable은 playback을 보존하며 진행 snapshot 복원은 authored clip만 설치한다.
+복원 후 명시적으로 다시 연결해야 walk가 선택되고 complete는 idle로 전환되어야 한다.
+Rust 회귀는 네 방향, 마지막 코너의 도착 방향, 실제 수동 velocity, blocked 후 idle/수동 이동,
+fixed-step·delta 0·pause, 입력 취소, clip 재설정, generation 재사용과 초기화 경계를 추가 검증한다.
+기존 `smoke:data-scene-presentation`은 실제 browser의 clip UV/flip 표시 회귀를 확인한다.

@@ -333,7 +333,7 @@ navigation은 렌더링·물리 collider와 별도인 **단일 XY 평면 격자*
 `queryTilemapNavigationPath/Waypoint`를 그대로 사용하고 `setDataSceneNavigationCost(column,row,cost)`로
 문/장애물 비용을 바꾼다. 동일 값 또는 범위 밖 수정은 false다. 높이 span을 전달해도 동일 XY 격자의
 장애물과 비용을 사용한다. 서로 다른 시작/도착 heightSpan을 연결하는 경사로·층간 portal은 지원하지 않는다.
-경로 조회는 waypoint 반환까지이며 캐릭터 이동/도착 정책은 별도로 연결한다.
+경로 조회는 waypoint 반환까지다. 아래 목적지 이동 API로 주인공의 경로 추종을 실행할 수 있다.
 NaN/Infinity가 들어간 좌표 조회는 경로·waypoint를 반환하지 않는다.
 
 `useDataScene`, reset, transition은 navigation과 gameplay binding을 초기화한다. 문서 reapply는 새
@@ -341,6 +341,100 @@ NaN/Infinity가 들어간 좌표 조회는 경로·waypoint를 반환하지 않�
 거절한다. `activateDataScene: false`는 기존 씬을 유지하는 저수준 apply로, 생략한 gameplay/navigation은
 기존 설정을 유지한다. Shooter tile 설정 API는 Data Scene에서 씬을 전환하지 않고 false 또는 void no-op로
 거절한다. 실제 Shooter 전환은 `setGameSpec` 등 명시적인 씬 구성 경로를 사용한다.
+
+### 목적지 이동 (beta.6 이후, 미배포)
+
+`gameplay.primaryActor`와 `navigation`을 적용한 뒤 월드 좌표를 지정한다.
+주인공은 활성 native `kinematic` body와 활성 non-trigger AABB 하나를 가져야 한다.
+
+```ts
+import type { DataSceneMoveOptions } from "@ferrum2d/ferrum-web/core";
+
+const destination: DataSceneMoveOptions = {
+  x: 108, y: 60, speed: 120, arrivalRadius: 0.5, cancelOnInput: true,
+};
+const accepted = engine.moveDataSceneActorTo(destination);
+// "idle" | "moving" | "arrived" | "blocked" | "cancelled"
+const status = engine.dataSceneMoveStatus();
+// 사용자 취소 버튼 등에서 호출한다. 이동 중일 때만 true다.
+engine.cancelDataSceneMove();
+```
+
+클릭 이동은 `DataSceneView.pointerToWorld({ x: event.clientX, y: event.clientY })`의 결과를
+목적지로 전달한다. 카메라·줌·지면 투영을 반영하므로 화면 좌표를 직접 목적지로 쓰지 않는다.
+
+- `speed`는 simulation 초당 월드 거리이며 양수 float32다. `x/y`와 `arrivalRadius`도 유한 float32이고
+  반경은 0 이상이다. 반경 기본값은 0.5이며 마지막 구간에만 적용한다. 0이면 float32 목적지까지 이동한다.
+  `solidMaskBits`는 uint32이며 기본값은 모든 layer다. 0이면 물리 solid 검사를 제외하지만 grid는 유지한다.
+- 성공한 명령은 이전 경로를 교체하고 주인공 velocity를 0으로 만든다. 잘못된 JS 옵션은 throw,
+  씬/주인공 조건 불충족·격자 밖·경로 없음·완료된 씬은 false이며 기존 경로를 보존한다.
+  `dataSceneMoveStatus()`는 Data Scene 밖에서 undefined다. 이미 도착한 곳도 명령 직후 moving이며 다음 step에 판정한다.
+- Rust가 셀 중심을 순서대로 지나 마지막 목적지로 이동한다. 큰 delta에서도 구간을 건너뛰지 않으며,
+  작은 셀의 중간 코너도 정확히 거친다. 매우 느린 이동의 미소 거리는 다음 step으로 누적한다.
+  큰 원점/작은 셀 조합에서 float32 셀 중심이 다른 칸으로 반올림되는 경로는 이동 요청을 false로 거절한다.
+  기존 경로는 보존하며 이동 중 재탐색이 이런 경로를 만나면 blocked다. 월드 원점이나 셀 크기를 조정해야 한다.
+  비용은 경로 선택에만 사용하며 속도 배율이 아니다.
+- 실제 이동은 기존 AABB sweep으로 primary AABB solid를 검사한다. collision filter·heightSpan을 따르고
+  trigger를 차단물로 취급하지 않는다. 원/다각형·compound의 추가 collider를 장애물로 추출하거나
+  회피하지 않는다. 격자에 캐릭터 폭과 장애물 여유를 반영해야 한다. 물리 solid에 막히면 blocked로 정지한다.
+- grid 교체/비용 수정/clear 또는 외부 위치 변경은 다음 simulation step에 경로를 다시 계산한다.
+  경로가 없어지면 blocked다. 이미 blocked인 이동은 자동 재시도하지 않으므로 목적지를 다시 지정한다.
+- pause는 경로를 보존하고 resume 후 이어간다. complete, gameplay 재설정, actor 제거/세대 변경은
+  이동을 취소한다. reset/문서 전체 reapply는 idle로 초기화한다.
+  기본 `cancelOnInput: true`는 W/A/S/D control 중 하나가 활성화되면 취소하며, 같은 입력 sample에서
+  게임이 설정한 수동 velocity를 보존한다. false일 때 이동 중 velocity는 엔진이 0으로 유지한다.
+- 한 씬의 primary actor 한 명만 지원한다. 애니메이션/방향 전환은 아래 opt-in 설정으로 연결한다.
+  pickup/interaction은 각 simulation step 끝의 실제 overlap/거리로 처리하며 지나친 trigger의 연속 감지는 제공하지 않는다.
+  진행 snapshot에는 경로·이동 상태·현재 위치를 저장하지 않는다. 문서를 포함한 복원은 authored 위치와 idle로 시작한다.
+
+### 이동·애니메이션 자동 연결 (beta.6 이후, 미배포)
+
+`gameplay.primaryActor`와 캐릭터의 `visual.animationSet`을 적용한 뒤 아래 설정으로 연결한다.
+`configureDataSceneSpriteAnimation`으로 먼저 설치한 clip도 사용할 수 있다. clip ID는 게임이 정하며,
+아래 숫자는 예시다. 각 상태에 네 방향을 모두 지정해야 하지만 같은 clip을 여러 방향에 재사용할 수 있다.
+
+```ts
+import type { DataSceneMovementAnimationSpec } from "@ferrum2d/ferrum-web/core";
+
+const movementAnimation: DataSceneMovementAnimationSpec = {
+  idle: {
+    up: { clip: 0 }, down: { clip: 1 },
+    left: { clip: 2, flipX: true }, right: { clip: 2 },
+  },
+  walk: {
+    up: { clip: 4 }, down: { clip: 5 },
+    left: { clip: 7, flipX: true }, right: { clip: 7 },
+  },
+  initialDirection: "down",
+};
+const bound = engine.configureDataSceneMovementAnimation(movementAnimation);
+// 해제는 현재 clip/시간/flip을 보존한다.
+engine.configureDataSceneMovementAnimation(false);
+```
+
+- 주인공에 sprite와 기존 clip playback이 필요하다. 잘못된 JS 필드/clip ID 범위는 throw한다.
+  Data Scene 밖, 주인공/playback 없음, 등록하지 않은 clip 참조는 false이며 기존 설정을 보존한다.
+  `clip`은 0..65535 정수, `flipX/flipY`는 optional boolean이다. 초기 방향은 down, flip 기본값은 false다.
+- 활성화 즉시 초기 방향의 idle을 선택하고 playback pause를 해제한다. 씬의 paused/complete 상태는 바꾸지 않는다.
+  Rust가 다음 simulation step부터 경로 이동은 walk, 도착·막힘은 idle로 선택한다.
+  도착 step에 여러 코너를 지나도 마지막 실제 이동 구간의 방향을 유지한다.
+- 경로 추종 중이 아니면 해당 step의 실제 위치 변화를 기준으로 walk/idle을 고른다. 따라서 게임이
+  설정한 수동 velocity도 연결된다. step 사이의 teleport와 step 시작 전 tween 변경은 이동으로 세지 않는다.
+  별도 키 입력이나 수동 이동 controller를 만드는 API는 아니다.
+- 월드 +Y는 down이며, 대각선은 큰 축을 선택하고 양축 크기가 같으면 좌우를 선택한다.
+  같은 clip의 방향/flip만 바뀌면 경과 시간을 유지한다. 다른 clip으로 바뀌면 첫 프레임부터 시작해
+  다음 simulation step부터 시간을 진행한다. playback 시간을 한 step에 두 번 증가시키지 않는다.
+- pause와 delta 0에서는 자동 전환/시간 진행이 멈춘다. 명시적 이동 취소와 complete는 즉시 idle로
+  전환한다. W/A/S/D가 경로를 취소한 step에 수동 velocity가 실제로 움직이면 walk로 이어진다.
+- 주인공에 성공한 `updateDataSceneSpriteAnimations` 명령을 보내거나 clip을 재설정하면 자동 연결을
+  해제한다. 실패한 batch, 빈 batch, 필드 없는 명령, 다른 entity 명령은 연결을 유지한다.
+  공격·대화 등의 수동 연출이 끝나면 위 설정을 다시 호출해 자동 연결을 켠다.
+- `false`는 Data Scene에서 이미 해제되어도 true다. gameplay 재설정은 기존 주인공을 idle로 바꾼 뒤
+  연결을 해제한다. reset/전체 reapply/씬 전환도 연결을 초기화한다. 대상은 primary actor 한 명이다.
+- 이 설정과 runtime clip/시간/flip은 진행 snapshot에 저장하지 않는다. 문서의 `visual.animationSet`은
+  복원되므로 restore 후 위 설정을 다시 호출한다. runtime에서만 설치한 clip은 먼저 재설치한다.
+
+### 진행 저장·복원 (beta.6 이후, 미배포)
 
 기본 Data Scene snapshot은 문서 재적용 + variables/custom 복원이다. 탐험 진행 상태도 저장하려면
 `includeDataSceneProgress: true`를 명시한다. 수집 등으로 제거된 authored entity, `once` interaction의

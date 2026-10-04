@@ -38,7 +38,6 @@ use shape_contact::shape_contact;
 mod types;
 mod validation;
 
-const SWEPT_EPSILON: f32 = 0.0001;
 const RAY_EPSILON: f32 = 0.0001;
 const EDGE_COLLIDER_RADIUS: f32 = RAY_EPSILON;
 pub const MAX_COLLISION_MANIFOLD_POINTS: usize = 2;

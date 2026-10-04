@@ -87,6 +87,7 @@ impl Engine {
         }
         self.world.sprite_playbacks[index] = Some(playback);
         self.world.sprite_animations[index] = None;
+        self.data_scene.movement_animation.detach(entity);
         true
     }
 
@@ -129,6 +130,14 @@ impl Engine {
         }
         for update in updates.chunks_exact(UPDATE_STRIDE) {
             let index = update[0] as usize;
+            if update[2] != 0 {
+                self.data_scene
+                    .movement_animation
+                    .detach(crate::entity::Entity {
+                        id: update[0],
+                        generation: update[1],
+                    });
+            }
             let Some(playback) = self.world.sprite_playbacks[index].as_mut() else {
                 continue;
             };
