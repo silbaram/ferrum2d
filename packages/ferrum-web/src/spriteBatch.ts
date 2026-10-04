@@ -1,6 +1,7 @@
 import { createWebGL2Program } from "./webgl2ShaderPrograms";
 import type { RenderCommandBufferView } from "./wasmBridge";
 import { setSpriteBlend } from "./webgl2Blend";
+import { groundShadowProjection } from "./groundShadowProjection.js";
 import {
   DEFAULT_SPRITE_MATERIAL_PRESET,
   SPRITE_RENDER_COMMAND_FLOATS,
@@ -61,6 +62,7 @@ export class SpriteBatch {
   private readonly textureLocation: WebGLUniformLocation;
   groundYScale = 1;
   private readonly groundYScaleLocation: WebGLUniformLocation;
+  private readonly groundShadowProjectionLocation: WebGLUniformLocation;
   private readonly textureFlipYLocation: WebGLUniformLocation;
   private instanceCapacityFloats = 0;
   private materialStaging = new Float32Array(0);
@@ -128,6 +130,9 @@ export class SpriteBatch {
       const groundYScaleLocation = this.gl.getUniformLocation(this.program, "u_ground_y_scale");
       if (!groundYScaleLocation) throw new Error("Missing ground projection uniform");
       this.groundYScaleLocation = groundYScaleLocation;
+      const groundShadowProjectionLocation = this.gl.getUniformLocation(this.program, "u_ground_shadow_projection");
+      if (!groundShadowProjectionLocation) throw new Error("Missing ground shadow projection uniform");
+      this.groundShadowProjectionLocation = groundShadowProjectionLocation;
       this.resolutionLocation = resolutionLocation;
       this.screenOffsetLocation = screenOffsetLocation;
       this.textureLocation = textureLocation;
@@ -159,7 +164,7 @@ export class SpriteBatch {
     const ranges = this.textureRanges(commands);
     const materialPasses = this.materialPassesFor(material);
     let drawCalls = 0;
-    this.bindForDraw(resolution, screenOffset);
+    this.bindForDraw(resolution, screenOffset, commands);
     try {
       for (const pass of materialPasses) {
         this.applyBlendMode(pass.blendMode);
@@ -193,7 +198,7 @@ export class SpriteBatch {
     this.assertAlive();
     const materialPasses = this.materialPassesFor(material);
     let drawCalls = 0;
-    this.bindForDraw(resolution, screenOffset);
+    this.bindForDraw(resolution, screenOffset, commands);
     try {
       for (const pass of materialPasses) {
         this.applyBlendMode(pass.blendMode);
@@ -243,11 +248,13 @@ export class SpriteBatch {
     return 1;
   }
 
-  private bindForDraw(resolution: [number, number], screenOffset: readonly [number, number]): void {
+  private bindForDraw(resolution: [number, number], screenOffset: readonly [number, number], commands: RenderCommandBufferView): void {
+    const projection = groundShadowProjection(commands);
     this.gl.useProgram(this.program);
     this.gl.bindVertexArray(this.vao);
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instanceVbo);
     this.gl.uniform1f(this.groundYScaleLocation, this.groundYScale);
+    this.gl.uniform3f(this.groundShadowProjectionLocation, projection[0], projection[1], projection[2]);
     this.gl.uniform2f(this.resolutionLocation, resolution[0], resolution[1]);
     this.gl.uniform2f(this.screenOffsetLocation, screenOffset[0], screenOffset[1]);
     this.gl.activeTexture(this.gl.TEXTURE0);

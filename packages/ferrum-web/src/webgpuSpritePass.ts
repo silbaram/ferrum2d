@@ -95,6 +95,7 @@ export class WebGpuSpritePass {
         struct Resolution {
           size: vec2f,
           groundYScale: f32,
+          shadowProjection: vec3f,
         };
         @group(0) @binding(0) var<uniform> resolution: Resolution;
         @group(1) @binding(0) var spriteSampler: sampler;
@@ -136,6 +137,11 @@ export class WebGpuSpritePass {
             local.x * rotationCos - local.y * rotationSin,
             local.x * rotationSin + local.y * rotationCos,
           );
+          if ((u32(input.flags) & 32u) != 0u) {
+            let s = resolution.shadowProjection;
+            rotated = vec2f(s.y * rotated.x - s.x * rotated.y * s.z,
+              -s.x * rotated.x - s.y * rotated.y * s.z);
+          }
           if ((u32(input.flags) & 4u) != 0u) { rotated.y *= resolution.groundYScale; }
           let pixelPosition = input.rect.xy + input.rect.zw * 0.5 + rotated;
           let zeroToOne = pixelPosition / resolution.size;
@@ -152,6 +158,9 @@ export class WebGpuSpritePass {
         @fragment
         fn fs_main(input: VertexOutput) -> @location(0) vec4f {
           let sampled = textureSample(spriteTexture, spriteSampler, input.uv);
+          if ((u32(input.flags) & 32u) != 0u) {
+            return vec4f(input.color.rgb, sampled.a * input.color.a);
+          }
           if ((u32(input.flags) & 24u) != 0u) {
             let q = (input.corner - vec2f(0.5)) * 2.0;
             if ((u32(input.flags) & 8u) != 0u && dot(q, q) > 1.0) { discard; }

@@ -2,10 +2,10 @@
 export const WEBGL2_SHADER_SOURCES = {
   sprite: { vertex: `#version 300 es
       layout(location=0) in vec2 a_corner;layout(location=1) in vec4 a_rect;layout(location=2) in vec4 a_uv_rect;layout(location=3) in vec4 a_color;layout(location=4) in float a_rotation;layout(location=5) in float a_flags;
-      uniform vec2 u_resolution;uniform vec2 u_screen_offset;uniform bool u_texture_flip_y;uniform float u_ground_y_scale;out vec2 v_uv;out vec4 v_color;out vec2 v_corner;flat out float v_flags;
-      void main(){vec2 corner=a_corner;vec2 local=(corner-vec2(0.5))*a_rect.zw;float c=cos(a_rotation);float s=sin(a_rotation);vec2 rotated=vec2(local.x*c-local.y*s,local.x*s+local.y*c);if((int(a_flags)&4)!=0){rotated.y*=u_ground_y_scale;}vec2 position=a_rect.xy+u_screen_offset+a_rect.zw*0.5+rotated;vec2 z=position/u_resolution;vec2 clip=(z*2.0)-1.0;gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);if(u_texture_flip_y){v_uv.y=1.0-v_uv.y;}v_color=a_color;v_corner=corner;v_flags=a_flags;}`, fragment: `#version 300 es
+      uniform vec2 u_resolution;uniform vec2 u_screen_offset;uniform bool u_texture_flip_y;uniform float u_ground_y_scale;uniform vec3 u_ground_shadow_projection;out vec2 v_uv;out vec4 v_color;out vec2 v_corner;flat out float v_flags;
+      void main(){vec2 corner=a_corner;vec2 local=(corner-vec2(0.5))*a_rect.zw;float c=cos(a_rotation);float s=sin(a_rotation);vec2 rotated=vec2(local.x*c-local.y*s,local.x*s+local.y*c);if((int(a_flags)&32)!=0){vec3 sun=u_ground_shadow_projection;rotated=vec2(sun.y*rotated.x-sun.x*rotated.y*sun.z,-sun.x*rotated.x-sun.y*rotated.y*sun.z);}if((int(a_flags)&4)!=0){rotated.y*=u_ground_y_scale;}vec2 position=a_rect.xy+u_screen_offset+a_rect.zw*0.5+rotated;vec2 z=position/u_resolution;vec2 clip=(z*2.0)-1.0;gl_Position=vec4(clip*vec2(1.0,-1.0),0.0,1.0);v_uv=mix(a_uv_rect.xy,a_uv_rect.zw,corner);if(u_texture_flip_y){v_uv.y=1.0-v_uv.y;}v_color=a_color;v_corner=corner;v_flags=a_flags;}`, fragment: `#version 300 es
       precision mediump float;in vec2 v_uv;in vec4 v_color;in vec2 v_corner;flat in float v_flags;uniform sampler2D u_texture;out vec4 outColor;
-      void main(){if((int(v_flags)&24)!=0){vec2 q=(v_corner-vec2(0.5))*2.0;if((int(v_flags)&8)!=0&&dot(q,q)>1.0){discard;}outColor=v_color;}else{outColor=texture(u_texture,v_uv)*v_color;}}` },
+      void main(){if((int(v_flags)&32)!=0){outColor=vec4(v_color.rgb,texture(u_texture,v_uv).a*v_color.a);}else if((int(v_flags)&24)!=0){vec2 q=(v_corner-vec2(0.5))*2.0;if((int(v_flags)&8)!=0&&dot(q,q)>1.0){discard;}outColor=v_color;}else{outColor=texture(u_texture,v_uv)*v_color;}}` },
   debug: { vertex: `#version 300 es
       layout(location=0) in vec2 a_position;
       layout(location=1) in vec4 a_color;

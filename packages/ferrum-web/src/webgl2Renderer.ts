@@ -27,6 +27,7 @@ import {
   resolveLightingSceneInto,
 } from "./lightingNormalize";
 import { resolveSpriteMaterialPreset } from "./spriteMaterial";
+import { groundShadowProjection } from "./groundShadowProjection.js";
 import type { ResolvedSpriteMaterialPreset, SpriteMaterialPresetInput } from "./spriteMaterial";
 import { WebGL2RenderTarget } from "./webgl2RenderTarget";
 import { WebGL2RenderTextureStore } from "./webgl2RenderTextureStore";
@@ -247,6 +248,7 @@ export class WebGL2Renderer implements Renderer {
       throw new Error("Invalid RenderTexture command buffer layout.");
     }
     // Validate before clearing: a feedback or missing-texture error must preserve the image.
+    groundShadowProjection(commands);
     for (let i = 0; i < commands.commandCount; i += 1) {
       const id = Math.trunc(commands.buffer[i * commands.floatsPerCommand + 12]);
       if (id === target.textureId) throw new Error("RenderTexture feedback: cannot sample the active output texture.");

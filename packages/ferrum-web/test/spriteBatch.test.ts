@@ -135,6 +135,8 @@ class FakeWebGL2Context {
 
   uniform1f(): void {}
 
+  uniform3f(): void {}
+
   activeTexture(): void {}
 
   uniform1i(location: WebGLUniformLocation, value: number): void {

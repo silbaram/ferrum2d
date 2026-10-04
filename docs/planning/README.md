@@ -8,6 +8,7 @@
 
 | 문서 | 현재 상태 | 활성 후보 |
 | --- | --- | --- |
+| [2.5D 그래픽 후속 설계 (#73 C1)](hd2d-graphics-followups.md) | 2026-10-04 범위·비용·fallback 설계, 구현 미착수 | normal map, receiver 평면, 차폐 광선, view-depth/DOF의 독립 prototype |
 | [데모 게임 포트폴리오 후속 계획](demo-game-showcase-plan.md) | Showcase Hub와 6개 public route 기반 완료 | Content/UX, Renderer/Streaming lab, Agent Workflow report의 사용자-facing 노출 결정 |
 | [게임 개발 편의성 실사용 검토](game-development-convenience-review.md) | built-in Scene Authoring 위치/Behavior runtime 적용, Tauri allowlisted save, 기존 report/check 개선 반영 | asset 반복 작업, read-only gameplay 진단 |
 | [배포 후속 계획](deployment-roadmap.md) | 정적 Pages, Tauri authoring host, 로컬 Linux package smoke 구현 | 수동 GUI evidence, CI 편입, generated game wrapper와 macOS/Windows release matrix 필요성 판단 |

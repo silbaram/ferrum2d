@@ -944,7 +944,7 @@ export async function createEngineWithFramePipeline(
       }
       if (request.groundShadow !== undefined) {
         const shadow = request.groundShadow;
-        if (!rustEngine.configure_data_scene_ground_shadow(entityId, entityGeneration, shadow.shape === "ellipse" ? 1 : 2,
+        if (!rustEngine.configure_data_scene_ground_shadow(entityId, entityGeneration, shadow.shape === "ellipse" ? 1 : shadow.shape === "box" ? 2 : 3,
           shadow.width, shadow.height, shadow.opacity, shadow.layer !== undefined, shadow.layer ?? 0)) {
           rustEngine.despawn_physics_entity(entityId, entityGeneration);
           return undefined;

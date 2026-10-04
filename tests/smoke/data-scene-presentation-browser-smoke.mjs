@@ -6,6 +6,7 @@ import { resolve, sep } from "node:path";
 import { chromium } from "playwright-core";
 import { runReleaseCommand } from "./github-release-command.mjs";
 import { installPresentationGpuCapture } from "./presentation-webgpu-capture.mjs";
+import { installAlphaShadowTracking, checkAlphaGroundShadows } from "./alpha-ground-shadow-checks.mjs";
 
 const root = resolve(".");
 const webgpuOnly = process.argv.includes("--webgpu-only");
@@ -39,6 +40,7 @@ try {
     report.activeCase = { viewport, deviceScaleFactor, color };
     const page = await browser.newPage({ viewport, deviceScaleFactor }); const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(installAlphaShadowTracking);
     await page.addInitScript(() => {
       window.textureUploads = 0;
       for (const name of ["texImage2D", "texSubImage2D"]) {
@@ -123,15 +125,28 @@ try {
         projection, lightPixel: lit, darkPixel: dark, debugPixels, shadowCache: s.engine.dataSceneGroundShadowStats() };
     }, color);
     const projectionEdges = await page.evaluate(checkPresentationProjectionEdges);
+    const alphaShadows = await page.evaluate(checkAlphaGroundShadows, color);
+    await writeFile(resolve(output, `alpha-${viewport.width}-dpr${deviceScaleFactor}-${color}.png`), Buffer.from(alphaShadows.screenshot.split(",")[1], "base64"));
+    delete alphaShadows.screenshot;
     await page.evaluate(async () => { const s = window.presentation; s.engine.resumeDataScene(); s.view.setZoom(1.5); await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
     const target = await page.evaluate(() => window.presentation.view.worldToScreen({ x: 360, y: 385 })); await page.mouse.click(target.x, target.y);
     await page.evaluate(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
     const clicked = await page.evaluate(() => window.presentation.engine.getPhysicsEntity(window.presentation.handles.actor));
     const pointerMove = await page.evaluate(() => window.presentation.lastPointerMove);
     assert(Math.abs(clicked.y - 385) < 0.1, `Pointer move mismatch: ${JSON.stringify({ target, pointerMove, clicked })}`);
-    await page.setViewportSize({ width: viewport.width - 20, height: viewport.height - 30 }); await page.waitForTimeout(80);
-    const target2 = await page.evaluate(() => window.presentation.view.worldToScreen({ x: 370, y: 395 })); await page.mouse.click(target2.x, target2.y);
-    await page.waitForFunction(() => Math.abs(window.presentation.engine.getPhysicsEntity(window.presentation.handles.actor).y - 395) < 0.1);
+    const resizedViewport = { width: viewport.width - 20, height: viewport.height - 30 };
+    await page.setViewportSize(resizedViewport);
+    await page.waitForFunction(({ width, height }) => {
+      const frame = window.presentation.frame;
+      return frame.camera.cssWidth === width && frame.camera.cssHeight === height;
+    }, resizedViewport);
+    const target2 = await page.evaluate(() => window.presentation.view.worldToScreen({ x: 370, y: 395 }, window.presentation.frame.camera)); await page.mouse.click(target2.x, target2.y);
+    try { await page.waitForFunction(() => Math.abs(window.presentation.engine.getPhysicsEntity(window.presentation.handles.actor).y - 395) < 0.1); }
+    catch (error) {
+      const state = await page.evaluate(() => ({ camera: window.presentation.frame.camera, pointer: window.presentation.lastPointerMove,
+        actor: window.presentation.engine.getPhysicsEntity(window.presentation.handles.actor) }));
+      throw new Error(`Resize pointer mismatch: ${JSON.stringify({ target2, state })}`, { cause: error });
+    }
     await page.screenshot({ path: resolve(output, `${viewport.width}-dpr${deviceScaleFactor}-${color}.png`) });
     const lifecycle = await page.evaluate(async () => {
       const s = window.presentation, old = s.handles.actor;
@@ -174,7 +189,7 @@ try {
       assert(Number.isFinite(cost.renderP95Ms) && Number.isFinite(cost.rustUpdateP95Ms));
     }
     assert.deepEqual(errors, []);
-    report.cases.push({ viewport, deviceScaleFactor, color, ...result, projectionEdges, lifecycle, browserErrors: errors }); await page.close();
+    report.cases.push({ viewport, deviceScaleFactor, color, ...result, projectionEdges, alphaShadows, lifecycle, browserErrors: errors }); await page.close();
   }
   // Exercise actual WGSL/queue submissions with GPU readback, without a WebGL2 fallback.
   report.webgpu = [];
@@ -185,6 +200,7 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => { if (message.type() === "error" || message.type() === "warning") errors.push(message.text()); });
     await page.addInitScript(installPresentationGpuCapture);
+    await page.addInitScript(installAlphaShadowTracking);
     await page.goto(`${address}?backend=webgpu`);
     try { await page.waitForFunction(() => window.presentation?.frame, undefined, { timeout: 30000 }); }
     catch (error) { throw new Error(`WebGPU startup failed: ${errors.join("; ") || error}`); }
@@ -216,9 +232,12 @@ try {
     assert(gpu.lightingPixels.lit[0] > gpu.lightingPixels.dark[0] + 10, "WebGPU sun/point lighting pixels mismatch");
     assert(gpu.stats.lightingDrawCalls > 0 && gpu.stats.physicsDebugLineCount > 0);
     const projectionEdges = await page.evaluate(checkPresentationProjectionEdges);
+    const alphaShadows = await page.evaluate(checkAlphaGroundShadows, "legacy");
+    await writeFile(resolve(output, `alpha-webgpu-dpr${deviceScaleFactor}.png`), Buffer.from(alphaShadows.screenshot.split(",")[1], "base64"));
+    delete alphaShadows.screenshot;
     const gpuErrors = await page.evaluate(() => { window.presentation.destroy(); window.disposePresentationGpuCapture(); return window.gpuErrors; });
     assert.deepEqual(errors, []); assert.deepEqual(gpuErrors, []);
-    report.webgpu.push({ backend: "native-webgpu-offscreen", deviceScaleFactor, ...gpu, pixels, projectionEdges, errors, gpuErrors }); await page.close();
+    report.webgpu.push({ backend: "native-webgpu-offscreen", deviceScaleFactor, ...gpu, pixels, projectionEdges, alphaShadows, errors, gpuErrors }); await page.close();
   }
   delete report.webgpuPending;
   assert.equal(report.cases.length, webgpuOnly ? 0 : 8); assert.equal(report.webgpu.length, 2);

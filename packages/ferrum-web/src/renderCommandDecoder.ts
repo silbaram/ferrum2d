@@ -16,6 +16,8 @@ export interface RenderCommandBufferView {
   floatsPerCommand: number;
   /** Frame-level projection metadata. Does not change the packed command ABI. */
   groundYScale?: number;
+  /** Three borrowed f32s: normalized sun direction X/Y, shadow length scale. Reacquire each frame. */
+  groundShadowProjection?: Float32Array;
 }
 
 export function decodeRenderCommands(view: RenderCommandBufferView): RenderCommandView[] {

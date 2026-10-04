@@ -96,6 +96,9 @@ export class WasmBridge {
     private readonly memory: WebAssembly.Memory,
   ) {
     const layout = verifyWasmBridgeAbi(this.engineInstance);
+    if (this.engineInstance.data_scene_ground_shadow_projection_len() !== 3) {
+      throw new Error("Ground shadow projection ABI must contain three f32 values.");
+    }
     this.bufferContext = {
       engine: this.engineInstance,
       memory: this.memory,
@@ -130,7 +133,10 @@ export class WasmBridge {
 
   readRenderCommandBuffer(): RenderCommandBufferView {
     const view = renderCommandBufferView(this.bufferContext);
-    view.groundYScale = this.engineInstance.camera_ground_y_scale();
+    view.groundYScale = this.engineInstance.render_command_ground_y_scale();
+    view.groundShadowProjection = new Float32Array(
+      this.memory.buffer, this.engineInstance.data_scene_ground_shadow_projection_ptr(), 3,
+    );
     return view;
   }
 

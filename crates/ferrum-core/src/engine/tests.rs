@@ -27,6 +27,7 @@ use crate::{
 };
 
 mod collision_events;
+mod data_scene_alpha_shadows;
 mod data_scene_animation;
 mod data_scene_projection_sun;
 mod data_scene_visuals;

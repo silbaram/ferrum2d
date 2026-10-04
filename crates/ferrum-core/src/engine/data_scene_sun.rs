@@ -1,6 +1,8 @@
 use super::{Engine, SceneMode};
 use crate::components::DEFAULT_SPRITE_RENDER_LAYER;
-use crate::world::ground_shadow::{GroundShadowCaster, GroundSun};
+use crate::world::ground_shadow::{
+    GroundShadowCaster, GroundShadowProjection, GroundShadowShape, GroundSun,
+};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -27,10 +29,12 @@ impl Engine {
             return false;
         }
         self.ground_sun = GroundSun {
-            x: x / length,
-            y: y / length,
+            projection: GroundShadowProjection {
+                direction_x: x / length,
+                direction_y: y / length,
+                length_scale,
+            },
             opacity,
-            length_scale,
             max_casters: max_casters as usize,
         };
         true
@@ -50,7 +54,7 @@ impl Engine {
         layer: i32,
     ) -> bool {
         if self.scene_mode != SceneMode::Data
-            || shape > 2
+            || shape > 3
             || !width.is_finite()
             || !height.is_finite()
             || width <= 0.0
@@ -77,18 +81,31 @@ impl Engine {
         } else {
             sprite.render_layer.saturating_sub(1)
         };
-        self.world.ground_shadows[index] = if shape == 0 {
-            None
-        } else {
-            Some(GroundShadowCaster::new(
-                shape == 1,
-                width,
-                height,
-                opacity,
-                layer,
-            ))
+        let shape = match shape {
+            0 => None,
+            1 => Some(GroundShadowShape::Ellipse),
+            2 => Some(GroundShadowShape::Box),
+            3 => Some(GroundShadowShape::Alpha),
+            _ => return false,
         };
+        self.world.ground_shadows[index] =
+            shape.map(|shape| GroundShadowCaster::new(shape, width, height, opacity, layer));
         true
+    }
+
+    /// Three contiguous f32s captured with the last render build: normalized direction X/Y,
+    /// then length scale. Reacquire after memory growth or the next render build.
+    pub fn data_scene_ground_shadow_projection_ptr(&self) -> *const f32 {
+        &self.frame_buffers.ground_shadow_projection.direction_x
+    }
+
+    pub fn data_scene_ground_shadow_projection_len(&self) -> usize {
+        core::mem::size_of::<GroundShadowProjection>() / core::mem::size_of::<f32>()
+    }
+
+    /// Ground scale captured with the render commands, unaffected by changes for the next frame.
+    pub fn render_command_ground_y_scale(&self) -> f32 {
+        self.frame_buffers.ground_y_scale
     }
 
     /// Last render-build counters: admitted casters, cache hits, rebuilds, culled, budget skipped.
@@ -129,11 +146,8 @@ impl Engine {
             x: command.x + command.width * 0.5,
             y: command.y + command.height * 0.5,
         });
-        let (sin, cos) = command.rotation_radians.sin_cos();
-        let hw = (cos.abs() * command.width + sin.abs() * command.height) * 0.5;
-        let hh = (sin.abs() * command.width + cos.abs() * command.height)
-            * 0.5
-            * self.camera.ground_y_scale;
+        let (hw, hh) = caster.half_extents(command, self.ground_sun.projection);
+        let hh = hh * self.camera.ground_y_scale;
         if ![center.x, center.y, hw, hh].iter().all(|v| v.is_finite())
             || center.x + hw < 0.0
             || center.y + hh < 0.0
