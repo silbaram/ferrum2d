@@ -9,6 +9,7 @@ import type {
 } from "../src/createFerrumRuntime.js";
 import type { AssetHost, FerrumEngine } from "../src/engineTypes.js";
 import type { InputManager } from "../src/inputManager.js";
+import { VirtualControls } from "../src/virtualControls.js";
 import type { AssetReleasePayload, LoadedAssets } from "../src/assetLoader.js";
 import type { PlayBgmOptions } from "../src/audioManager.js";
 import type { DataSceneGameState } from "../src/gameState.js";
@@ -524,3 +525,98 @@ function runtimeFrame(): FerrumRuntimeFrame {
     renderTimeMs: 1,
   } as FerrumRuntimeFrame;
 }
+
+
+// EventTarget adapters keep ownership tests independent of a browser or Wasm.
+class RuntimeInputSurface extends EventTarget {
+  getBoundingClientRect() { return { left: 0, top: 0 }; }
+}
+
+test("runtime destroys owned assets after an input cancellation callback throws", async () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = new RuntimeInputSurface() as unknown as Window & typeof globalThis;
+  const virtual = new VirtualControls({} as HTMLElement, { enabled: false });
+  try {
+    const calls: string[] = [];
+    const renderer = fakeRuntimeRenderer();
+    renderer.destroy = () => { calls.push("renderer destroy"); };
+    const runtime = await createFerrumRuntime({
+      canvas: new RuntimeInputSurface() as unknown as HTMLCanvasElement,
+      engineInstance: fakeEngine(calls), renderer, ui: false, debug: false, profiler: false,
+      inputOptions: { virtualControls: virtual, gamepad: false },
+    });
+    virtual.setButtonPressed("primary", true);
+    virtual.subscribe(() => { throw new Error("input cancellation failed"); });
+    throws(() => runtime.destroy(), /input cancellation failed/);
+    throws(() => runtime.assetHost.hasSound?.(1), /destroyed/);
+    equal(runtime.input.enabled, false);
+    runtime.destroy();
+    deepEqual(calls, []); // Injected engine/renderer remain externally owned.
+  } finally {
+    virtual.destroy();
+    globalThis.window = previousWindow;
+  }
+});
+
+test("runtime startup keeps the original failure if input cleanup also fails", async () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = new RuntimeInputSurface() as unknown as Window & typeof globalThis;
+  const virtual = new VirtualControls({} as HTMLElement, { enabled: false });
+  try {
+    virtual.setButtonPressed("primary", true);
+    virtual.subscribe(() => { throw new Error("cleanup failure"); });
+    const renderer = fakeRuntimeRenderer();
+    renderer.resize = () => { throw new Error("startup failure"); };
+    let caught: unknown;
+    try {
+      await createFerrumRuntime({
+        canvas: new RuntimeInputSurface() as unknown as HTMLCanvasElement,
+        engineInstance: fakeEngine([]), renderer, ui: false, debug: false, profiler: false,
+        inputOptions: { virtualControls: virtual, gamepad: false },
+      });
+    } catch (error) { caught = error; }
+    equal(caught instanceof Error ? caught.message : String(caught), "startup failure");
+    equal(virtual.state().buttons.primary, false);
+  } finally {
+    virtual.destroy();
+    globalThis.window = previousWindow;
+  }
+});
+
+test("runtime startup failure clears its physics scene without destroying injected resources", async () => {
+  const calls: string[] = [];
+  const engine = fakeEngine(calls);
+  const startupError = new Error("engine start failed");
+  const body = { entityId: 7, entityGeneration: 1 };
+  let bodyPresent = false;
+  let autoStep = false;
+  engine.start = () => { throw startupError; };
+  engine.configurePhysicsRuntime = (spec) => spec;
+  engine.configureAutoRigidBodyStep = (options) => { autoStep = options !== false; };
+  engine.spawnRigidBody = () => { bodyPresent = true; return body; };
+  engine.despawnPhysicsEntity = (handle) => {
+    deepEqual(handle, body);
+    bodyPresent = false;
+    return true;
+  };
+  const renderer = fakeRuntimeRenderer();
+  renderer.destroy = () => { calls.push("renderer destroy"); };
+  let caught: unknown;
+  try {
+    await createFerrumRuntime({
+      canvas: {} as HTMLCanvasElement,
+      engineInstance: engine, renderer, input: {} as InputManager, assetHost: fakeAssetHost([]),
+      ui: false, autostart: true,
+      physicsScene: {
+        physics: {
+          mode: "rigid",
+          bodies: { crate: { type: "dynamic", collider: { shape: "box", size: [16, 16] } } },
+        },
+      },
+    });
+  } catch (error) { caught = error; }
+  equal(caught, startupError);
+  equal(bodyPresent, false);
+  equal(autoStep, false);
+  deepEqual(calls, []);
+});

@@ -59,10 +59,13 @@ export const DEFAULT_VIRTUAL_CONTROL_BUTTONS: readonly VirtualButtonOptions[] = 
 export class VirtualControls {
   private root?: HTMLDivElement;
   private joystickKnob?: HTMLDivElement;
+  private joystickElement?: HTMLDivElement;
   private joystickPointerId: number | undefined;
   private joystickVector: Point = { x: 0, y: 0 };
   private readonly buttons = new Map<string, VirtualButtonOptions>();
   private readonly pressedButtons = new Set<string>();
+  private readonly buttonPointers = new Map<string, { id: number; element: HTMLElement }>();
+  private readonly listeners = new Set<() => void>();
   private destroyed = false;
 
   constructor(
@@ -96,16 +99,24 @@ export class VirtualControls {
     this.root = root;
   }
 
+  /** Observe input transitions, including taps between frame polls. The caller owns unsubscription. */
+  subscribe(listener: () => void): () => void {
+    this.assertAlive();
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
+  }
+
   state(): VirtualControlsState {
-    const virtualButtons: Record<string, boolean> = {};
+    const virtualButtons = new Map<string, boolean>();
     for (const [id, button] of this.buttons) {
-      const pressed = this.pressedButtons.has(id);
-      virtualButtons[button.virtualButton ?? id] = pressed;
+      const pressed = this.buttonPressed(id);
+      const name = button.virtualButton ?? id;
+      virtualButtons.set(name, virtualButtons.get(name) === true || pressed);
     }
     return {
       ...directionsFromVector(this.joystickVector, joystickDeadzone(this.options.joystick)),
-      buttons: Object.fromEntries([...this.buttons.keys()].map((id) => [id, this.pressedButtons.has(id)])),
-      virtualButtons,
+      buttons: Object.fromEntries([...this.buttons.keys()].map((id) => [id, this.buttonPressed(id)])),
+      virtualButtons: Object.fromEntries(virtualButtons),
     };
   }
 
@@ -124,6 +135,7 @@ export class VirtualControls {
       y: clampFinite(y, -1, 1),
     };
     this.updateJoystickKnob();
+    this.notify();
   }
 
   setButtonPressed(id: string, pressed: boolean): void {
@@ -137,30 +149,47 @@ export class VirtualControls {
       this.pressedButtons.delete(id);
     }
     this.updateButtonAria(id);
+    this.notify();
   }
 
   releaseAll(): void {
-    if (this.destroyed) {
-      return;
-    }
+    if (!this.destroyed) this.resetState();
+  }
+
+  private resetState(): void {
+    const changed = this.joystickPointerId !== undefined || this.buttonPointers.size > 0
+      || this.pressedButtons.size > 0 || this.joystickVector.x !== 0 || this.joystickVector.y !== 0;
+    const joystickId = this.joystickPointerId;
+    const pointers = [...this.buttonPointers.values()];
     this.joystickPointerId = undefined;
+    this.buttonPointers.clear();
     this.joystickVector = { x: 0, y: 0 };
     this.pressedButtons.clear();
+    if (joystickId !== undefined && this.joystickElement) releasePointer(this.joystickElement, joystickId);
+    for (const pointer of pointers) releasePointer(pointer.element, pointer.id);
     this.updateJoystickKnob();
     for (const id of this.buttons.keys()) {
       this.updateButtonAria(id);
     }
+    if (changed) this.notify();
   }
 
   destroy(): void {
     if (this.destroyed) {
       return;
     }
-    this.releaseAll();
     this.destroyed = true;
-    this.root?.remove();
-    this.root = undefined;
-    this.joystickKnob = undefined;
+    try {
+      this.resetState();
+    } finally {
+      // A consumer callback may throw during cancellation; DOM and subscriptions
+      // must still be released, and setters must remain unusable after destroy.
+      this.listeners.clear();
+      this.root?.remove();
+      this.root = undefined;
+      this.joystickKnob = undefined;
+      this.joystickElement = undefined;
+    }
   }
 
   private createJoystick(options: VirtualJoystickOptions): HTMLDivElement {
@@ -175,18 +204,25 @@ export class VirtualControls {
     styleJoystickKnob(knob);
     joystick.appendChild(knob);
     this.joystickKnob = knob;
+    this.joystickElement = joystick;
 
     joystick.addEventListener("pointerdown", (event) => {
-      if (this.destroyed || event.isPrimary === false) {
+      if (this.destroyed || this.joystickPointerId !== undefined || (event.pointerType === "mouse" && event.button !== 0)) {
         return;
       }
       this.joystickPointerId = event.pointerId;
-      this.updateJoystickFromPointer(joystick, event.clientX, event.clientY);
       capturePointer(joystick, event.pointerId);
       event.preventDefault();
+      this.updateJoystickFromPointer(joystick, event.clientX, event.clientY);
     });
     joystick.addEventListener("pointermove", (event) => {
       if (this.destroyed || event.pointerId !== this.joystickPointerId) {
+        return;
+      }
+      // A mouse chord releases the primary button through pointermove before
+      // pointerup fires for the final button. Pen/touch retain their own rules.
+      if (event.pointerType === "mouse" && (event.buttons & 1) === 0) {
+        this.releaseJoystickPointer(event.pointerId);
         return;
       }
       this.updateJoystickFromPointer(joystick, event.clientX, event.clientY);
@@ -194,6 +230,7 @@ export class VirtualControls {
     });
     joystick.addEventListener("pointerup", (event) => this.releaseJoystickPointer(event.pointerId));
     joystick.addEventListener("pointercancel", (event) => this.releaseJoystickPointer(event.pointerId));
+    joystick.addEventListener("lostpointercapture", (event) => this.releaseJoystickPointer(event.pointerId));
     return joystick;
   }
 
@@ -206,30 +243,28 @@ export class VirtualControls {
     styleButton(element, button.id);
 
     element.addEventListener("pointerdown", (event) => {
-      if (this.destroyed || event.isPrimary === false) {
-        return;
-      }
-      this.setButtonPressed(button.id, true);
+      if (this.destroyed || this.buttonPointers.has(button.id) || (event.pointerType === "mouse" && event.button !== 0)) return;
+      this.buttonPointers.set(button.id, { id: event.pointerId, element });
+      this.updateButtonAria(button.id);
       capturePointer(element, event.pointerId);
       event.preventDefault();
+      this.notify();
     });
-    element.addEventListener("pointerup", (event) => {
-      if (this.destroyed) {
-        return;
-      }
-      this.setButtonPressed(button.id, false);
+    const release = (event: PointerEvent): void => {
+      if (this.destroyed || this.buttonPointers.get(button.id)?.id !== event.pointerId) return;
+      this.buttonPointers.delete(button.id);
       releasePointer(element, event.pointerId);
-      event.preventDefault();
-    });
-    element.addEventListener("pointercancel", () => {
-      if (!this.destroyed) {
-        this.setButtonPressed(button.id, false);
-      }
+      this.updateButtonAria(button.id);
+      this.notify();
+    };
+    element.addEventListener("pointerup", release);
+    element.addEventListener("pointercancel", release);
+    element.addEventListener("lostpointercapture", release);
+    element.addEventListener("pointermove", (event) => {
+      if (event.pointerType === "mouse" && (event.buttons & 1) === 0) release(event);
     });
     element.addEventListener("pointerleave", (event) => {
-      if (!this.destroyed && event.buttons === 0) {
-        this.setButtonPressed(button.id, false);
-      }
+      if (event.buttons === 0) release(event);
     });
     return element;
   }
@@ -249,6 +284,16 @@ export class VirtualControls {
     this.joystickPointerId = undefined;
     this.joystickVector = { x: 0, y: 0 };
     this.updateJoystickKnob();
+    if (this.joystickElement) releasePointer(this.joystickElement, pointerId);
+    this.notify();
+  }
+
+  private buttonPressed(id: string): boolean {
+    return this.pressedButtons.has(id) || this.buttonPointers.has(id);
+  }
+
+  private notify(): void {
+    for (const listener of this.listeners) listener();
   }
 
   private updateJoystickKnob(): void {
@@ -261,7 +306,7 @@ export class VirtualControls {
 
   private updateButtonAria(id: string): void {
     const button = this.root?.querySelector<HTMLButtonElement>(`[data-ferrum-virtual-button="${cssEscape(id)}"]`);
-    button?.setAttribute("aria-pressed", this.pressedButtons.has(id) ? "true" : "false");
+    button?.setAttribute("aria-pressed", this.buttonPressed(id) ? "true" : "false");
   }
 
   private assertAlive(): void {

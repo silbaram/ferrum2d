@@ -1,6 +1,7 @@
-import { equal, ok } from "node:assert/strict";
+import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { InputManager } from "../src/inputManager.js";
+import { VirtualControls } from "../src/virtualControls.js";
 
 type Listener = (event: Record<string, unknown>) => void;
 
@@ -302,6 +303,387 @@ test("InputManager supports JSON-friendly gamepad remapping", () => {
     equal(snapshot.space, true);
     equal(snapshot.enter, true);
     equal(snapshot.mouseLeft, true);
+    input.destroy();
+  });
+});
+
+
+test("key aliases keep movement held until the last physical key is released", () => {
+  const win = new FakeEventTarget();
+  withWindowAndNavigator(win, undefined, () => {
+    const aliases = ["KeyW", "ArrowUp"];
+    const input = new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement, {
+      keyBindings: { w: aliases, space: [] }, gamepad: false,
+    });
+    aliases.length = 0; // The manager owns a copy of authoring data.
+    win.dispatch("keydown", keyEvent("KeyW"));
+    win.dispatch("keydown", keyEvent("ArrowUp"));
+    win.dispatch("keyup", keyEvent("KeyW"));
+    equal(input.snapshot().w, true);
+    equal(input.actionSnapshot().axes.moveY, -1);
+    win.dispatch("keyup", keyEvent("ArrowUp"));
+    equal(input.snapshot().w, false);
+    const space = keyEvent("Space");
+    win.dispatch("keydown", space);
+    equal(input.snapshot().space, false);
+    equal(space.prevented, false);
+    input.destroy();
+  });
+});
+
+test("named actions retain short taps and expose held separately from consumable edges", () => {
+  const win = new FakeEventTarget();
+  withWindowAndNavigator(win, undefined, () => {
+    const profile = { actions: {
+      interact: [{ code: "KeyE" }], sprint: [{ code: "ShiftLeft" }, { code: "ShiftRight" }],
+    } };
+    const input = new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement, { actionProfile: profile, gamepad: false });
+    profile.actions.interact[0].code = "KeyQ";
+    win.dispatch("keydown", keyEvent("KeyE"));
+    win.dispatch("keyup", keyEvent("KeyE"));
+    win.dispatch("keydown", keyEvent("ShiftLeft"));
+    input.snapshot(); // Legacy sampling never consumes edges.
+    const first = input.actionSnapshot();
+    deepEqual(first.justPressedActions, ["interact", "sprint"]);
+    deepEqual(first.releasedActions, ["interact"]);
+    deepEqual(first.pressedActions, ["sprint"]);
+    equal(first.actions.interact, false);
+    const second = input.actionSnapshot();
+    deepEqual(second.justPressedActions, []);
+    deepEqual(second.releasedActions, []);
+    equal(second.actions.sprint, true);
+    input.clear();
+    deepEqual(input.actionSnapshot().releasedActions, []);
+    equal(input.actionSnapshot().actions.sprint, false);
+    input.destroy();
+  });
+});
+
+test("disable, clear, blur and visibility cancel held input without resurrecting repeats", () => {
+  const win = new FakeEventTarget();
+  const doc = Object.assign(new FakeEventTarget(), { defaultView: win, hidden: false });
+  const canvas = Object.assign(new FakeCanvas(), { ownerDocument: doc });
+  withWindowAndNavigator(win, undefined, () => {
+    const input = new InputManager(canvas as unknown as HTMLCanvasElement, { gamepad: false });
+    win.dispatch("keydown", keyEvent("KeyW"));
+    input.setEnabled(false);
+    deepEqual(input.actionSnapshot().justPressedActions, []);
+    const disabledKey = keyEvent("KeyD");
+    win.dispatch("keydown", disabledKey);
+    equal(disabledKey.prevented, false);
+    win.dispatch("keyup", keyEvent("KeyW")); // Release while a modal owns input.
+    input.setEnabled(true);
+    win.dispatch("keydown", { ...keyEvent("KeyD"), repeat: true });
+    equal(input.snapshot().d, false);
+    win.dispatch("keyup", keyEvent("KeyD"));
+    win.dispatch("keydown", keyEvent("KeyD"));
+    equal(input.snapshot().d, true);
+    win.dispatch("blur", {});
+    equal(input.snapshot().d, false);
+    win.dispatch("keyup", keyEvent("KeyD"));
+    win.dispatch("focus", {});
+    win.dispatch("keydown", keyEvent("KeyW"));
+    doc.hidden = true;
+    doc.dispatch("visibilitychange", {});
+    equal(input.snapshot().w, false);
+    doc.hidden = false;
+    doc.dispatch("visibilitychange", {});
+    win.dispatch("keydown", { ...keyEvent("KeyW"), repeat: true });
+    equal(input.snapshot().w, false);
+    win.dispatch("keyup", keyEvent("KeyW"));
+    win.dispatch("keydown", keyEvent("KeyW"));
+    equal(input.snapshot().w, true);
+    input.destroy();
+    equal(doc.listenerCount("visibilitychange"), 0);
+    equal(win.listenerCount("focus"), 0);
+    equal(win.listenerCount("blur"), 0);
+  });
+});
+
+test("editable targets do not consume gameplay keys and require fresh input on return", () => {
+  const win = new FakeEventTarget();
+  withWindowAndNavigator(win, undefined, () => {
+    const input = new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement, { gamepad: false });
+    const event: Record<string, unknown> = { ...keyEvent("KeyW"), target: { closest: () => ({}) } };
+    win.dispatch("keydown", event);
+    equal(event.prevented, false);
+    equal(input.snapshot().w, false);
+    win.dispatch("keydown", { ...keyEvent("KeyW"), repeat: true });
+    equal(input.snapshot().w, false);
+    win.dispatch("keyup", keyEvent("KeyW"));
+    win.dispatch("keydown", keyEvent("KeyW"));
+    equal(input.snapshot().w, true);
+    input.destroy();
+  });
+});
+
+test("gamepad requires a fully neutral poll after context reset and never polls after destroy", () => {
+  const win = new FakeEventTarget();
+  let polls = 0;
+  let pad: Gamepad | null = gamepadSnapshot([1, 0], [gamepadButton(true)]);
+  withWindowAndNavigator(win, { getGamepads: () => { polls++; return [pad]; } }, () => {
+    const input = new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement);
+    equal(input.snapshot().d, true);
+    input.setEnabled(false);
+    input.setEnabled(true);
+    equal(input.snapshot().d, false);
+    equal(input.snapshot().space, false);
+    pad = gamepadSnapshot([0, 0], [gamepadButton(true)]);
+    equal(input.snapshot().space, false); // One held control keeps the whole pad gated.
+    pad = gamepadSnapshot([0, 0], [gamepadButton(false)]);
+    equal(input.snapshot().space, false);
+    pad = gamepadSnapshot([1, 0], [gamepadButton(true)]);
+    equal(input.actionSnapshot().actions.primary, true);
+    pad = null;
+    equal(input.snapshot().d, false);
+    pad = gamepadSnapshot([1, 0], [gamepadButton(true)]);
+    equal(input.snapshot().d, false); // Reconnect also waits for neutral.
+    input.destroy();
+    const before = polls;
+    equal(input.actionSnapshot().input.d, false);
+    equal(polls, before);
+    throws(() => input.setEnabled(true), /destroyed/);
+  });
+});
+
+test("pointer cancellation and virtual source removal leave independent sources held", () => {
+  const win = new FakeEventTarget();
+  const canvas = new FakeCanvas();
+  withWindowAndNavigator(win, undefined, () => {
+    const input = new InputManager(canvas as unknown as HTMLCanvasElement, { gamepad: false });
+    win.dispatch("keydown", keyEvent("KeyW"));
+    input.setVirtualInput("finger:1", { controls: { w: true }, buttons: { primary: true } });
+    input.setVirtualInput("finger:2", { controls: { w: true } });
+    canvas.dispatch("pointerdown", preventableEvent({ pointerId: 1, pointerType: "touch", button: 0, clientX: 10, clientY: 20 }));
+    canvas.dispatch("pointermove", preventableEvent({ pointerId: 1, clientX: 10, clientY: 0 }));
+    canvas.dispatch("lostpointercapture", { pointerId: 1 });
+    equal(input.snapshot().mouseLeft, false);
+    equal(input.snapshot().w, true);
+    input.setVirtualInput("finger:1");
+    equal(input.actionSnapshot().actions.primary, false);
+    equal(input.snapshot().w, true);
+    win.dispatch("keyup", keyEvent("KeyW"));
+    equal(input.snapshot().w, true);
+    input.setVirtualInput("finger:2");
+    equal(input.snapshot().w, false);
+    input.destroy();
+  });
+});
+
+test("attached virtual controls capture short edges and remain externally owned", () => {
+  const win = new FakeEventTarget();
+  withWindowAndNavigator(win, undefined, () => {
+    const virtual = new VirtualControls({} as HTMLElement, { enabled: false });
+    const input = new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement, { virtualControls: virtual, gamepad: false });
+    virtual.setButtonPressed("primary", true);
+    virtual.setButtonPressed("primary", false);
+    deepEqual(input.actionSnapshot().justPressedActions, ["primary"]);
+    virtual.setJoystickVector(1, 0);
+    equal(input.snapshot().d, true);
+    input.clear();
+    equal(virtual.state().d, false);
+    deepEqual(input.actionSnapshot().releasedActions, []);
+    input.destroy();
+    virtual.setButtonPressed("primary", true);
+    equal(input.snapshot().space, false);
+    virtual.destroy();
+  });
+});
+
+test("invalid bindings fail before any listeners are installed", () => {
+  const win = new FakeEventTarget();
+  withWindowAndNavigator(win, undefined, () => {
+    throws(() => new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement, {
+      keyBindings: { w: ["not a code"] },
+    }), /KeyboardEvent.code/);
+    equal(win.listenerCount("keydown"), 0);
+  });
+});
+
+
+test("virtual cancellation observers may clear input without reentering clear", () => {
+  const win = new FakeEventTarget();
+  withWindowAndNavigator(win, undefined, () => {
+    const virtual = new VirtualControls({} as HTMLElement, { enabled: false });
+    const input = new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement, { virtualControls: virtual, gamepad: false });
+    let callbacks = 0;
+    const unsubscribe = virtual.subscribe(() => { callbacks++; input.clear(); });
+    virtual.setButtonPressed("primary", true);
+    equal(callbacks, 2); // press and cancellation, then already-neutral releaseAll is silent.
+    equal(input.snapshot().space, false);
+    deepEqual(input.actionSnapshot().justPressedActions, []);
+    unsubscribe();
+    input.destroy(); virtual.destroy();
+  });
+});
+
+
+test("a fresh keydown works after keyup was lost outside the window", () => {
+  const win = new FakeEventTarget();
+  withWindowAndNavigator(win, undefined, () => {
+    const input = new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement, { gamepad: false });
+    win.dispatch("keydown", keyEvent("KeyW"));
+    win.dispatch("blur", {});
+    win.dispatch("focus", {});
+    win.dispatch("keydown", { ...keyEvent("KeyW"), repeat: true });
+    equal(input.snapshot().w, false);
+    // The OS delivered keyup to another window. The next non-repeat press is new input.
+    win.dispatch("keydown", { ...keyEvent("KeyW"), repeat: false });
+    equal(input.snapshot().w, true);
+    input.destroy();
+  });
+});
+
+
+test("multiple virtual buttons bound to one action combine without erasing held input", () => {
+  const win = new FakeEventTarget();
+  withWindowAndNavigator(win, undefined, () => {
+    const virtual = new VirtualControls({} as HTMLElement, {
+      enabled: false, buttons: [
+        { id: "left", label: "A", virtualButton: "primary" },
+        { id: "right", label: "B", virtualButton: "primary" },
+      ],
+    });
+    const input = new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement, { virtualControls: virtual, gamepad: false });
+    virtual.setButtonPressed("left", true);
+    equal(input.actionSnapshot().actions.primary, true);
+    virtual.setButtonPressed("right", true);
+    virtual.setButtonPressed("left", false);
+    equal(input.actionSnapshot().actions.primary, true);
+    virtual.setButtonPressed("right", false);
+    equal(input.actionSnapshot().actions.primary, false);
+    input.destroy(); virtual.destroy();
+  });
+});
+
+test("destroy releases every listener even when a virtual cancellation observer throws", () => {
+  const win = new FakeEventTarget();
+  const doc = Object.assign(new FakeEventTarget(), { defaultView: win, hidden: false });
+  const canvas = Object.assign(new FakeCanvas(), { ownerDocument: doc });
+  withWindowAndNavigator(win, undefined, () => {
+    const virtual = new VirtualControls({} as HTMLElement, { enabled: false });
+    const input = new InputManager(canvas as unknown as HTMLCanvasElement, { virtualControls: virtual, gamepad: false });
+    virtual.setButtonPressed("primary", true);
+    const unsubscribe = virtual.subscribe(() => { throw new Error("cancellation observer failed"); });
+    throws(() => input.destroy(), /cancellation observer failed/);
+    for (const type of ["keydown", "keyup", "blur", "focus", "mouseup", "pointerup", "pointercancel", "touchend", "touchcancel"]) {
+      equal(win.listenerCount(type), 0, `${type} must be removed after failed observer`);
+    }
+    equal(doc.listenerCount("visibilitychange"), 0);
+    equal(canvas.listenerCount("pointerdown"), 0);
+    equal(input.enabled, false);
+    equal(input.snapshot().space, false);
+    input.destroy();
+    unsubscribe();
+    virtual.destroy();
+  });
+});
+
+test("destroy prevents a cancellation observer from resurrecting virtual input", () => {
+  const win = new FakeEventTarget();
+  withWindowAndNavigator(win, undefined, () => {
+    const virtual = new VirtualControls({} as HTMLElement, { enabled: false });
+    const input = new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement, { virtualControls: virtual, gamepad: false });
+    virtual.setButtonPressed("primary", true);
+    virtual.subscribe(() => {
+      throws(() => input.setVirtualInput("late", { controls: { w: true } }), /destroyed/);
+      equal(input.snapshot().w, false);
+    });
+    input.destroy();
+    virtual.destroy();
+  });
+});
+
+test("mouse button chords release the primary source while another button is held", () => {
+  const win = new FakeEventTarget();
+  const canvas = new FakeCanvas();
+  withWindowAndNavigator(win, undefined, () => {
+    const input = new InputManager(canvas as unknown as HTMLCanvasElement, { gamepad: false });
+    input.setVirtualInput("touch", { controls: { w: true } });
+    canvas.dispatch("pointerdown", preventableEvent({ pointerId: 1, pointerType: "mouse", button: 0, buttons: 1, clientX: 12, clientY: 22 }));
+    equal(input.snapshot().mouseLeft, true);
+    // A chord change uses pointermove until the final mouse button is released.
+    canvas.dispatch("pointermove", preventableEvent({ pointerId: 1, pointerType: "mouse", button: 0, buttons: 2, clientX: 12, clientY: 22 }));
+    equal(input.snapshot().mouseLeft, false);
+    equal(input.snapshot().w, true);
+    input.destroy();
+  });
+});
+
+test("editable input inside an open shadow root keeps its keyboard events", () => {
+  const win = new FakeEventTarget();
+  withWindowAndNavigator(win, undefined, () => {
+    const input = new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement, { gamepad: false });
+    const host = { closest: () => null };
+    const field = { closest: () => ({}) };
+    const event = preventableEvent({ code: "KeyW", target: host, composedPath: () => [field, host] });
+    win.dispatch("keydown", event);
+    equal(event.prevented, false);
+    equal(input.snapshot().w, false);
+    input.destroy();
+  });
+});
+
+test("touch position tracks dragging even when movement gestures are disabled", () => {
+  const win = new FakeEventTarget();
+  const canvas = new FakeCanvas();
+  withWindowAndNavigator(win, undefined, () => {
+    const input = new InputManager(canvas as unknown as HTMLCanvasElement, { pointerGestures: false, gamepad: false });
+    canvas.dispatch("touchstart", preventableEvent({ changedTouches: touchList({ identifier: 1, clientX: 20, clientY: 30 }) }));
+    canvas.dispatch("touchmove", preventableEvent({ changedTouches: touchList({ identifier: 1, clientX: 90, clientY: 100 }) }));
+    const state = input.snapshot();
+    equal(state.mouseX, 80); equal(state.mouseY, 80);
+    equal(state.w || state.a || state.s || state.d, false);
+    equal(state.mouseLeft, true);
+    input.destroy();
+  });
+});
+
+test("JSON null action profiles and sparse key arrays fail before attaching listeners", () => {
+  const win = new FakeEventTarget();
+  withWindowAndNavigator(win, undefined, () => {
+    throws(() => new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement, JSON.parse('{"actionProfile":null}')), /input.profile.actions/);
+    throws(() => new InputManager(new FakeCanvas() as unknown as HTMLCanvasElement, { keyBindings: { w: new Array<string>(1) } }), /input.keyBindings.w.0/);
+    equal(win.listenerCount("keydown"), 0);
+  });
+});
+
+test("canvas input polls its owning window gamepad and starts neutral while unfocused", () => {
+  const win = new FakeEventTarget();
+  let polls = 0;
+  let axis = 1;
+  const ownerWindow = Object.assign(new FakeEventTarget(), {
+    navigator: { getGamepads: () => { polls++; return [gamepadSnapshot([axis, 0], [])]; } },
+  });
+  const doc = Object.assign(new FakeEventTarget(), { defaultView: ownerWindow, hidden: false, hasFocus: () => false });
+  const canvas = Object.assign(new FakeCanvas(), { ownerDocument: doc });
+  withWindowAndNavigator(win, { getGamepads: () => { throw new Error("wrong window"); } }, () => {
+    const input = new InputManager(canvas as unknown as HTMLCanvasElement);
+    equal(input.snapshot().d, false);
+    equal(polls, 0);
+    ownerWindow.dispatch("focus", {});
+    equal(input.snapshot().d, false); // Held pad remains gated until neutral.
+    axis = 0; input.snapshot();
+    axis = 1;
+    equal(input.snapshot().d, true);
+    equal(win.listenerCount("keydown"), 0);
+    input.destroy();
+    equal(ownerWindow.listenerCount("keydown"), 0);
+  });
+});
+
+
+test("mouse chord handling preserves pen eraser drag gestures", () => {
+  const win = new FakeEventTarget();
+  const canvas = new FakeCanvas();
+  withWindowAndNavigator(win, undefined, () => {
+    const input = new InputManager(canvas as unknown as HTMLCanvasElement, { gamepad: false });
+    canvas.dispatch("pointerdown", preventableEvent({ pointerId: 9, pointerType: "pen", button: 5, buttons: 32, clientX: 30, clientY: 40 }));
+    canvas.dispatch("pointermove", preventableEvent({ pointerId: 9, pointerType: "pen", button: -1, buttons: 32, clientX: 70, clientY: 40 }));
+    equal(input.snapshot().d, true);
+    equal(input.snapshot().mouseLeft, true);
+    win.dispatch("pointerup", { pointerId: 9 });
+    equal(input.snapshot().mouseLeft, false);
     input.destroy();
   });
 });

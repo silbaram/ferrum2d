@@ -1,10 +1,11 @@
-import { deepEqual, equal } from "node:assert/strict";
+import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 import {
   BREAKOUT_INPUT_ACTION_PROFILE,
   DEFAULT_INPUT_ACTION_PROFILE,
   INPUT_ACTION_PROFILES,
   PLATFORMER_INPUT_ACTION_PROFILE,
+  resolveInputActionProfile,
   resolveInputActionState,
   TOPDOWN_SHOOTER_INPUT_ACTION_PROFILE,
   type InputActionProfile,
@@ -114,3 +115,27 @@ function input(overrides: Partial<InputSnapshot> = {}): InputSnapshot {
     ...overrides,
   };
 }
+
+
+test("arbitrary physical codes are JSON-authorable and evaluate digital axes", () => {
+  const profile = resolveInputActionProfile(JSON.parse(JSON.stringify({
+    actions: { left: [{ code: "ArrowLeft" }], right: [{ code: "ArrowRight" }], interact: [{ code: "KeyE" }] },
+    axes: { moveX: { negative: "left", positive: "right" } },
+  })));
+  const state = resolveInputActionState(input(), profile, { keys: new Set(["KeyE", "ArrowRight"]) });
+  equal(state.actions.interact, true);
+  equal(state.axes.moveX, 1);
+  deepEqual(state.pressedActions, ["right", "interact"]);
+});
+
+test("validation checks even bindings hidden behind an already-held control", () => {
+  throws(() => resolveInputActionState(input({ space: true }), {
+    actions: { interact: [{ control: "space" }, { code: "" }] },
+  }), /actions.interact.1.code/);
+  throws(() => resolveInputActionProfile({ actions: { interact: [{ code: "KeyE", virtualButton: "interact" }] } }), /exactly one/);
+  throws(() => resolveInputActionProfile({ actions: { interact: [{ code: "Unidentified" }] } }), /KeyboardEvent.code/);
+});
+
+test("profile validation rejects sparse binding slots with an actionable path", () => {
+  throws(() => resolveInputActionProfile({ actions: { interact: new Array(1) } }), /input.profile.actions.interact.0 must be an object/);
+});

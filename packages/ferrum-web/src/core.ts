@@ -49,6 +49,7 @@ export {
   invalidatePreloadedAssetCache,
   preloadAssetManifest,
   resolveAssetPreloadPlan,
+  resolveInputActionProfile,
   resolveInputActionState,
 } from "./public/platformExports.js";
 export {
@@ -237,7 +238,10 @@ export type {
   InputActionState,
   InputAxisBinding,
   InputDigitalControl,
+  InputActionSnapshot,
+  InputKeyBindings,
   InputManagerOptions,
+  VirtualInputState,
   InputSnapshot,
   InvalidatePreloadedAssetCacheOptions,
   LoadedAssets,

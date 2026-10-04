@@ -364,6 +364,8 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
   let debugOverlay: DebugOverlay | undefined;
   let detachRendererResize: (() => void) | undefined;
   let engine: FerrumEngine | undefined = options.engineInstance;
+  let levelStreaming: FerrumRuntimeLevelStreaming | undefined;
+  let physicsScene: PhysicsSceneProfileApplyResult | undefined;
 
   let destroyed = false;
 
@@ -386,7 +388,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
     const localization = createRuntimeLocalization(options.localization);
     const dialogue = createRuntimeDialogue(options.dialogue);
     const cutscene = createRuntimeCutscene(options.cutscene, localization, assetHost);
-    const levelStreaming = createRuntimeLevelStreamingOption(
+    levelStreaming = createRuntimeLevelStreamingOption(
       options.levelStreaming,
       () => runtimeRenderer.viewportSize(),
       (progress) => profiler?.recordAssetProgress(progress),
@@ -461,7 +463,6 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       onRenderFrame: (renderFrame) => runtimeFrameRenderer.renderFrame(renderFrame),
     }, inputProvider, runtimeAssetHost, () => runtimeRenderer.viewportSize(), engineOptions);
     const dataScene = createRuntimeDataScene(engine, options.dataScene, colorManagement);
-    let physicsScene: PhysicsSceneProfileApplyResult | undefined;
     if (options.physicsScene !== undefined && options.physicsScene !== false) {
       physicsScene = applyPhysicsSceneProfile(engine, options.physicsScene);
     }
@@ -493,16 +494,19 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
           return;
         }
         destroyed = true;
-        detachRendererResize?.();
+        const detach = detachRendererResize;
         detachRendererResize = undefined;
-        levelStreaming?.destroy();
-        physicsScene?.clear();
-        if (ownsEngine) runtimeEngine.destroy();
-        if (ownsUiOverlay) uiOverlay?.destroy();
-        debugOverlay?.destroy();
-        if (ownsInput) runtimeInput.destroy();
-        if (ownsAssetHost) destroyAssetHost(runtimeAssetHost);
-        if (ownsRenderer) runtimeRenderer.destroy();
+        disposeRuntimeResources([
+          () => detach?.(),
+          () => levelStreaming?.destroy(),
+          () => physicsScene?.clear(),
+          () => { if (ownsEngine) runtimeEngine.destroy(); },
+          () => { if (ownsUiOverlay) uiOverlay?.destroy(); },
+          () => debugOverlay?.destroy(),
+          () => { if (ownsInput) runtimeInput.destroy(); },
+          () => { if (ownsAssetHost) destroyAssetHost(runtimeAssetHost); },
+          () => { if (ownsRenderer) runtimeRenderer.destroy(); },
+        ]);
       },
     };
 
@@ -512,15 +516,32 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
 
     return runtime;
   } catch (error) {
-    detachRendererResize?.();
-    if (ownsUiOverlay) uiOverlay?.destroy();
-    debugOverlay?.destroy();
-    if (ownsInput && input) input.destroy();
-    if (ownsAssetHost && assetHost) destroyAssetHost(assetHost);
-    if (ownsRenderer && renderer) renderer.destroy();
-    if (ownsEngine) engine?.destroy();
+    // Preserve the startup error after attempting every owned resource cleanup.
+    disposeRuntimeResources([
+      () => detachRendererResize?.(),
+      () => levelStreaming?.destroy(),
+      () => physicsScene?.clear(),
+      () => { if (ownsUiOverlay) uiOverlay?.destroy(); },
+      () => debugOverlay?.destroy(),
+      () => { if (ownsInput) input?.destroy(); },
+      () => { if (ownsAssetHost && assetHost) destroyAssetHost(assetHost); },
+      () => { if (ownsRenderer) renderer?.destroy(); },
+      () => { if (ownsEngine) engine?.destroy(); },
+    ], false);
     throw error;
   }
+}
+
+function disposeRuntimeResources(disposers: readonly (() => void)[], rethrow = true): void {
+  let firstFailure: { error: unknown } | undefined;
+  for (const dispose of disposers) {
+    try {
+      dispose();
+    } catch (error) {
+      firstFailure ??= { error };
+    }
+  }
+  if (rethrow && firstFailure) throw firstFailure.error;
 }
 
 function configureStaticLighting(

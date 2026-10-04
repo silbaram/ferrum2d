@@ -1,3 +1,10 @@
+import {
+  DEFAULT_INPUT_ACTION_PROFILE, INPUT_DIGITAL_CONTROLS, evaluateInputActionState,
+  keyboardCode, resolveInputActionProfile,
+} from "./inputProfile.js";
+import type { InputActionProfile, InputActionState, InputDigitalControl } from "./inputProfile.js";
+import type { VirtualControls } from "./virtualControls.js";
+
 export interface InputSnapshot {
   w: boolean;
   a: boolean;
@@ -10,18 +17,41 @@ export interface InputSnapshot {
   mouseY: number;
 }
 
+export interface InputActionSnapshot extends InputActionState {
+  /** Legacy input sampled at the same instant; pressedActions retains its held-list meaning. */
+  input: InputSnapshot;
+  /** Transitions since the previous actionSnapshot(), including short DOM taps. */
+  justPressedActions: readonly string[];
+  releasedActions: readonly string[];
+}
+
+export interface VirtualInputState {
+  controls?: Partial<Record<InputDigitalControl, boolean>>;
+  buttons?: Readonly<Record<string, boolean>>;
+}
+
+export type InputKeyBindings = Partial<Record<InputDigitalControl, readonly string[]>>;
+
 export interface InputManagerOptions {
+  /** Starts enabled by default. Disabled input is neutral and does not consume DOM events. */
+  enabled?: boolean;
+  /** Omitted controls retain their existing keyboard binding; [] disables that binding. */
+  keyBindings?: InputKeyBindings;
+  /** JSON-friendly named actions and axes; copied and validated before attaching listeners. */
+  actionProfile?: InputActionProfile;
+  /** Optional externally owned controls, included in snapshots and released on clear. */
+  virtualControls?: VirtualControls;
   /** Enables polling of the first connected standard gamepad. Default: true. */
   gamepad?: boolean;
-  /** Optional fixed gamepad slot. When omitted, the first connected gamepad is used. */
+  /** Optional fixed slot; otherwise the first connected gamepad is used. */
   gamepadIndex?: number;
-  /** JSON-friendly mapping for standard gamepad axes and buttons. */
+  /** JSON-friendly mapping for gamepad axes and buttons. */
   gamepadMapping?: GamepadInputMapping;
-  /** Axis magnitude required before stick input maps to WASD. Default: 0.25. */
+  /** Stick magnitude threshold for digital movement. Default: 0.25. */
   gamepadDeadzone?: number;
-  /** Enables touch/pen drag gestures that map to WASD. Default: true. */
+  /** Enables touch/pen drag movement. Default: true. */
   pointerGestures?: boolean;
-  /** Drag distance in CSS pixels before a pointer gesture maps to movement. Default: 18. */
+  /** Drag distance in CSS pixels. Default: 18. */
   pointerGestureThreshold?: number;
 }
 
@@ -33,382 +63,433 @@ export interface GamepadInputMapping {
   pointerButtons?: readonly number[];
 }
 
-interface DirectionState {
-  w: boolean;
-  a: boolean;
-  s: boolean;
-  d: boolean;
-}
-
-interface Point {
-  x: number;
-  y: number;
-}
-
-const DEFAULT_GAMEPAD_DEADZONE = 0.25;
-const DEFAULT_POINTER_GESTURE_THRESHOLD = 18;
+interface Point { x: number; y: number }
+const DEFAULT_KEYS: Record<InputDigitalControl, readonly string[]> = {
+  w: ["KeyW"], a: ["KeyA"], s: ["KeyS"], d: ["KeyD"],
+  space: ["Space"], enter: ["Enter"], mouseLeft: [],
+};
 const DEFAULT_GAMEPAD_MAPPING: Required<GamepadInputMapping> = {
-  moveXAxis: 0,
-  moveYAxis: 1,
-  actionButtons: [0],
-  menuButtons: [9],
-  pointerButtons: [5, 7],
+  moveXAxis: 0, moveYAxis: 1, actionButtons: [0], menuButtons: [9], pointerButtons: [5, 7],
 };
 
 export class InputManager {
-  private state: InputSnapshot = {
-    w: false, a: false, s: false, d: false, space: false,
-    enter: false,
-    mouseLeft: false, mouseX: 0, mouseY: 0,
-  };
-  private pointerGesture: DirectionState = { w: false, a: false, s: false, d: false };
+  private readonly keys = new Set<string>();
+  private readonly keyBindings: Record<InputDigitalControl, readonly string[]>;
+  private readonly managedCodes = new Set<string>();
+  private readonly profile: InputActionProfile;
+  private readonly virtualSources = new Map<string, VirtualInputState>();
+  private virtualButtons: Record<string, boolean> = {};
+  private readonly pendingPressed = new Set<string>();
+  private readonly pendingReleased = new Set<string>();
+  private actionState: InputActionState;
+  private isEnabled: boolean;
+  private focused = true;
+  private destroyed = false;
+  private clearing = false;
+  private readonly unsubscribeVirtual?: () => void;
+  private mouseDown = false;
+  private pointerDown = false;
+  private touchDown = false;
+  private mouseX = 0;
+  private mouseY = 0;
   private activePointerId: number | undefined;
+  private activePointerType: string | undefined;
   private activePointerOrigin: Point | undefined;
   private activeTouchId: number | undefined;
   private activeTouchOrigin: Point | undefined;
-  private destroyed = false;
-  private readonly resolvedGamepadMapping: Required<GamepadInputMapping>;
-  private readonly gamepadState: InputSnapshot = emptyInputSnapshot(0, 0);
+  private gesture = { w: false, a: false, s: false, d: false };
+  private readonly gamepadMapping: Required<GamepadInputMapping>;
+  private gamepadNeedsNeutral = false;
+  private lastGamepad: string | undefined;
+  private readonly eventWindow: Window;
+  private readonly eventDocument: Document | undefined;
 
-  private readonly onKeyDown = (e: KeyboardEvent): void => {
-    if (!this.destroyed) this.setKey(e, true);
-  };
-  private readonly onKeyUp = (e: KeyboardEvent): void => {
-    if (!this.destroyed) this.setKey(e, false);
-  };
-  private readonly onMouseMove = (e: MouseEvent): void => {
-    if (this.destroyed) return;
-    const rect = this.canvas.getBoundingClientRect();
-    this.state.mouseX = e.clientX - rect.left;
-    this.state.mouseY = e.clientY - rect.top;
-  };
-  private readonly onMouseDown = (e: MouseEvent): void => {
-    if (!this.destroyed && e.button === 0) this.state.mouseLeft = true;
-  };
-  private readonly onMouseUp = (e: MouseEvent): void => {
-    if (!this.destroyed && e.button === 0) this.state.mouseLeft = false;
-  };
-  private readonly onPointerDown = (e: PointerEvent): void => {
-    if (this.destroyed || !this.isPrimaryPointer(e) || !this.isPrimaryButton(e)) {
+  private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (!this.managedCodes.has(event.code) || this.destroyed) return;
+    if (!this.active || isEditableEvent(event)) {
+      this.keys.delete(event.code);
+      this.sample();
       return;
     }
-    const position = this.updatePointerPosition(e.clientX, e.clientY);
-    this.state.mouseLeft = true;
-    this.activePointerId = e.pointerId;
-    if (this.shouldUsePointerGesture(e.pointerType)) {
-      this.activePointerOrigin = position;
-      this.updatePointerGesture(position, position);
-    }
-    this.capturePointer(e.pointerId);
-    e.preventDefault();
+    event.preventDefault();
+    // A non-repeat keydown is a fresh press even if keyup happened outside this window.
+    if (event.repeat && !this.keys.has(event.code)) return;
+    this.keys.add(event.code);
+    this.sample();
   };
-  private readonly onPointerMove = (e: PointerEvent): void => {
-    if (this.destroyed || !this.isPrimaryPointer(e)) {
+  private readonly onKeyUp = (event: KeyboardEvent): void => {
+    if (!this.managedCodes.has(event.code) || this.destroyed) return;
+    this.keys.delete(event.code);
+    if (this.active && !isEditableEvent(event)) event.preventDefault();
+    this.sample();
+  };
+  private readonly onMouseMove = (event: MouseEvent): void => {
+    if (this.active) this.updatePosition(event.clientX, event.clientY);
+  };
+  private readonly onMouseDown = (event: MouseEvent): void => {
+    // Pointer events already own their compatibility mouse events.
+    if (!this.active || event.button !== 0 || this.activePointerId !== undefined || this.activeTouchId !== undefined) return;
+    this.mouseDown = true;
+    this.sample();
+  };
+  private readonly onMouseUp = (event: MouseEvent): void => {
+    if (this.destroyed || event.button !== 0) return;
+    this.mouseDown = false;
+    if (this.activePointerType === "mouse") this.releasePointer();
+    this.sample();
+  };
+  private readonly onPointerDown = (event: PointerEvent): void => {
+    if (!this.active || event.isPrimary === false || this.activePointerId !== undefined || this.activeTouchId !== undefined
+      || (event.button !== 0 && event.pointerType !== "touch" && event.pointerType !== "pen")) return;
+    const position = this.updatePosition(event.clientX, event.clientY);
+    this.pointerDown = true;
+    this.activePointerId = event.pointerId;
+    this.activePointerType = event.pointerType;
+    if (this.options.pointerGestures !== false && event.pointerType !== "mouse") this.activePointerOrigin = position;
+    try { this.canvas.setPointerCapture?.(event.pointerId); } catch { /* Capture can fail after cancellation. */ }
+    event.preventDefault();
+    this.sample();
+  };
+  private readonly onPointerMove = (event: PointerEvent): void => {
+    if (!this.active || event.isPrimary === false) return;
+    const position = this.updatePosition(event.clientX, event.clientY);
+    // Chord changes use pointermove: releasing the primary button does not
+    // produce pointerup until all mouse buttons have been released.
+    if (event.pointerId === this.activePointerId && typeof event.buttons === "number"
+      && this.activePointerType === "mouse" && (event.buttons & 1) === 0) {
+      this.releasePointer();
+      this.sample();
       return;
     }
-    const position = this.updatePointerPosition(e.clientX, e.clientY);
-    if (e.pointerId === this.activePointerId && this.activePointerOrigin) {
-      this.updatePointerGesture(this.activePointerOrigin, position);
-      e.preventDefault();
+    if (event.pointerId === this.activePointerId && this.activePointerOrigin) {
+      this.updateGesture(this.activePointerOrigin, position);
+      event.preventDefault();
+      this.sample();
     }
   };
-  private readonly onPointerUp = (e: PointerEvent): void => {
-    if (!this.destroyed) {
-      this.releasePointer(e.pointerId);
-    }
+  private readonly onPointerEnd = (event: PointerEvent): void => {
+    if (this.destroyed || event.pointerId !== this.activePointerId) return;
+    this.releasePointer();
+    this.sample();
   };
-  private readonly onPointerCancel = (e: PointerEvent): void => {
-    if (!this.destroyed) {
-      this.releasePointer(e.pointerId);
-    }
-  };
-  private readonly onTouchStart = (e: TouchEvent): void => {
-    if (this.destroyed || this.activePointerId !== undefined || this.activeTouchId !== undefined) {
-      return;
-    }
-    const touch = e.changedTouches.item(0);
-    if (!touch) {
-      return;
-    }
-    const position = this.updatePointerPosition(touch.clientX, touch.clientY);
-    this.state.mouseLeft = true;
+  private readonly onTouchStart = (event: TouchEvent): void => {
+    if (!this.active || this.activePointerId !== undefined || this.activeTouchId !== undefined) return;
+    const touch = event.changedTouches.item(0);
+    if (!touch) return;
+    const position = this.updatePosition(touch.clientX, touch.clientY);
+    this.touchDown = true;
     this.activeTouchId = touch.identifier;
-    this.activeTouchOrigin = position;
-    this.updatePointerGesture(position, position);
-    e.preventDefault();
+    if (this.options.pointerGestures !== false) this.activeTouchOrigin = position;
+    event.preventDefault();
+    this.sample();
   };
-  private readonly onTouchMove = (e: TouchEvent): void => {
-    if (this.destroyed || this.activePointerId !== undefined || this.activeTouchId === undefined || !this.activeTouchOrigin) {
-      return;
-    }
-    const touch = this.findTouch(e.changedTouches, this.activeTouchId);
-    if (!touch) {
-      return;
-    }
-    const position = this.updatePointerPosition(touch.clientX, touch.clientY);
-    this.updatePointerGesture(this.activeTouchOrigin, position);
-    e.preventDefault();
+  private readonly onTouchMove = (event: TouchEvent): void => {
+    if (!this.active || this.activeTouchId === undefined) return;
+    const touch = findTouch(event.changedTouches, this.activeTouchId);
+    if (!touch) return;
+    const position = this.updatePosition(touch.clientX, touch.clientY);
+    if (this.activeTouchOrigin) this.updateGesture(this.activeTouchOrigin, position);
+    event.preventDefault();
+    this.sample();
   };
-  private readonly onTouchEnd = (e: TouchEvent): void => {
-    if (!this.destroyed) {
-      this.releaseTouch(e.changedTouches);
-    }
+  private readonly onTouchEnd = (event: TouchEvent): void => {
+    if (this.destroyed || this.activeTouchId === undefined || !findTouch(event.changedTouches, this.activeTouchId)) return;
+    this.releaseTouch();
+    this.sample();
   };
-  private readonly onTouchCancel = (e: TouchEvent): void => {
-    if (!this.destroyed) {
-      this.releaseTouch(e.changedTouches);
-    }
-  };
+  private readonly onBlur = (): void => { this.focused = false; this.clear(); };
+  private readonly onFocus = (): void => { this.focused = true; this.clear(); };
+  private readonly onVisibility = (): void => { this.clear(); };
 
-  constructor(
-    private readonly canvas: HTMLCanvasElement,
-    private readonly options: InputManagerOptions = {},
-  ) {
-    this.resolvedGamepadMapping = resolveGamepadMapping(options.gamepadMapping);
-    window.addEventListener("keydown", this.onKeyDown);
-    window.addEventListener("keyup", this.onKeyUp);
+  constructor(private readonly canvas: HTMLCanvasElement, private readonly options: InputManagerOptions = {}) {
+    this.options = { ...options };
+    this.keyBindings = resolveKeyBindings(options.keyBindings);
+    this.profile = resolveInputActionProfile(options.actionProfile === undefined ? DEFAULT_INPUT_ACTION_PROFILE : options.actionProfile);
+    if (options.enabled !== undefined && typeof options.enabled !== "boolean") throw new Error("input.enabled must be a boolean.");
+    this.isEnabled = options.enabled !== false;
+    this.gamepadMapping = resolveGamepadMapping(options.gamepadMapping);
+    for (const codes of Object.values(this.keyBindings)) for (const code of codes) this.managedCodes.add(code);
+    for (const bindings of Object.values(this.profile.actions)) for (const binding of bindings) {
+      if (binding.code !== undefined) this.managedCodes.add(binding.code);
+    }
+    this.actionState = evaluateInputActionState(emptyInputSnapshot(0, 0), this.profile);
+    this.eventDocument = canvas.ownerDocument ?? (typeof document === "undefined" ? undefined : document);
+    this.eventWindow = this.eventDocument?.defaultView ?? window;
+    this.focused = this.eventDocument?.hasFocus?.() ?? true;
+    this.unsubscribeVirtual = options.virtualControls?.subscribe(() => {
+      if (!this.clearing && !this.destroyed) this.sample();
+    });
+    this.eventWindow.addEventListener("keydown", this.onKeyDown);
+    this.eventWindow.addEventListener("keyup", this.onKeyUp);
+    this.eventWindow.addEventListener("blur", this.onBlur);
+    this.eventWindow.addEventListener("focus", this.onFocus);
+    this.eventDocument?.addEventListener("visibilitychange", this.onVisibility);
     canvas.addEventListener("mousemove", this.onMouseMove);
     canvas.addEventListener("mousedown", this.onMouseDown);
-    window.addEventListener("mouseup", this.onMouseUp);
+    this.eventWindow.addEventListener("mouseup", this.onMouseUp);
     canvas.addEventListener("pointerdown", this.onPointerDown);
     canvas.addEventListener("pointermove", this.onPointerMove);
-    window.addEventListener("pointerup", this.onPointerUp);
-    window.addEventListener("pointercancel", this.onPointerCancel);
+    canvas.addEventListener("lostpointercapture", this.onPointerEnd);
+    this.eventWindow.addEventListener("pointerup", this.onPointerEnd);
+    this.eventWindow.addEventListener("pointercancel", this.onPointerEnd);
     canvas.addEventListener("touchstart", this.onTouchStart, { passive: false });
     canvas.addEventListener("touchmove", this.onTouchMove, { passive: false });
-    window.addEventListener("touchend", this.onTouchEnd);
-    window.addEventListener("touchcancel", this.onTouchCancel);
+    this.eventWindow.addEventListener("touchend", this.onTouchEnd);
+    this.eventWindow.addEventListener("touchcancel", this.onTouchEnd);
   }
 
-  snapshot(): InputSnapshot {
-    const gamepad = this.readGamepadState();
-    return {
-      w: this.state.w || this.pointerGesture.w || gamepad.w,
-      a: this.state.a || this.pointerGesture.a || gamepad.a,
-      s: this.state.s || this.pointerGesture.s || gamepad.s,
-      d: this.state.d || this.pointerGesture.d || gamepad.d,
-      space: this.state.space || gamepad.space,
-      enter: this.state.enter || gamepad.enter,
-      mouseLeft: this.state.mouseLeft || gamepad.mouseLeft,
-      mouseX: this.state.mouseX,
-      mouseY: this.state.mouseY,
+  get enabled(): boolean { return this.isEnabled && !this.destroyed; }
+  private get active(): boolean { return this.enabled && !this.clearing && this.focused && this.eventDocument?.hidden !== true; }
+
+  /** Legacy snapshot does not consume action edges. Coordinates remain canvas-local CSS pixels. */
+  snapshot(): InputSnapshot { return this.sample(); }
+
+  /** Call once per application input update; subsequent calls consume no previous edges. */
+  actionSnapshot(): InputActionSnapshot {
+    const input = this.sample();
+    const result = {
+      input, actions: { ...this.actionState.actions }, axes: { ...this.actionState.axes },
+      pressedActions: [...this.actionState.pressedActions],
+      justPressedActions: [...this.pendingPressed], releasedActions: [...this.pendingReleased],
     };
+    this.pendingPressed.clear();
+    this.pendingReleased.clear();
+    return result;
+  }
+
+  /** A single gameplay input gate. UI can handle DOM input while this manager is disabled. */
+  setEnabled(enabled: boolean): void {
+    this.assertAlive();
+    if (typeof enabled !== "boolean") throw new Error("input.enabled must be a boolean.");
+    if (this.isEnabled === enabled) return;
+    this.isEnabled = enabled;
+    this.clear();
+  }
+
+  /** Cancel held input and pending edges without synthesizing release events. */
+  clear(): void {
+    if (!this.destroyed) this.resetInput();
+  }
+
+  private resetInput(): void {
+    if (this.clearing) return;
+    this.clearing = true;
+    try {
+      this.keys.clear();
+      this.mouseDown = false;
+      this.releasePointer();
+      this.releaseTouch();
+      this.virtualSources.clear();
+      this.virtualButtons = {};
+      this.gamepadNeedsNeutral = true;
+      this.pendingPressed.clear();
+      this.pendingReleased.clear();
+      this.actionState = evaluateInputActionState(emptyInputSnapshot(this.mouseX, this.mouseY), this.profile);
+      this.options.virtualControls?.releaseAll();
+    } finally {
+      this.clearing = false;
+    }
+  }
+
+  /** Replace one virtual source's state; omitting state removes only that source. */
+  setVirtualInput(sourceId: string, state?: VirtualInputState): void {
+    this.assertAlive();
+    if (typeof sourceId !== "string" || sourceId.trim().length === 0) throw new Error("input source id must be non-empty.");
+    const resolved = state === undefined ? undefined : resolveVirtualInput(state);
+    if (resolved === undefined || !this.active) this.virtualSources.delete(sourceId);
+    else this.virtualSources.set(sourceId, resolved);
+    this.sample();
   }
 
   destroy(): void {
-    if (this.destroyed) {
-      return;
-    }
+    if (this.destroyed) return;
+    // Mark destroyed before notifying external controls so callbacks cannot
+    // create fresh input while this manager is being disposed.
     this.destroyed = true;
-    window.removeEventListener("keydown", this.onKeyDown);
-    window.removeEventListener("keyup", this.onKeyUp);
-    this.canvas.removeEventListener("mousemove", this.onMouseMove);
-    this.canvas.removeEventListener("mousedown", this.onMouseDown);
-    window.removeEventListener("mouseup", this.onMouseUp);
-    this.canvas.removeEventListener("pointerdown", this.onPointerDown);
-    this.canvas.removeEventListener("pointermove", this.onPointerMove);
-    window.removeEventListener("pointerup", this.onPointerUp);
-    window.removeEventListener("pointercancel", this.onPointerCancel);
-    this.canvas.removeEventListener("touchstart", this.onTouchStart);
-    this.canvas.removeEventListener("touchmove", this.onTouchMove);
-    window.removeEventListener("touchend", this.onTouchEnd);
-    window.removeEventListener("touchcancel", this.onTouchCancel);
+    try {
+      this.resetInput();
+    } finally {
+      this.unsubscribeVirtual?.();
+      this.eventWindow.removeEventListener("keydown", this.onKeyDown);
+      this.eventWindow.removeEventListener("keyup", this.onKeyUp);
+      this.eventWindow.removeEventListener("blur", this.onBlur);
+      this.eventWindow.removeEventListener("focus", this.onFocus);
+      this.eventDocument?.removeEventListener("visibilitychange", this.onVisibility);
+      this.canvas.removeEventListener("mousemove", this.onMouseMove);
+      this.canvas.removeEventListener("mousedown", this.onMouseDown);
+      this.eventWindow.removeEventListener("mouseup", this.onMouseUp);
+      this.canvas.removeEventListener("pointerdown", this.onPointerDown);
+      this.canvas.removeEventListener("pointermove", this.onPointerMove);
+      this.canvas.removeEventListener("lostpointercapture", this.onPointerEnd);
+      this.eventWindow.removeEventListener("pointerup", this.onPointerEnd);
+      this.eventWindow.removeEventListener("pointercancel", this.onPointerEnd);
+      this.canvas.removeEventListener("touchstart", this.onTouchStart);
+      this.canvas.removeEventListener("touchmove", this.onTouchMove);
+      this.eventWindow.removeEventListener("touchend", this.onTouchEnd);
+      this.eventWindow.removeEventListener("touchcancel", this.onTouchEnd);
+    }
   }
 
-  private setKey(event: KeyboardEvent, pressed: boolean): void {
-    if (event.code === "KeyW") this.state.w = pressed;
-    else if (event.code === "KeyA") this.state.a = pressed;
-    else if (event.code === "KeyS") this.state.s = pressed;
-    else if (event.code === "KeyD") this.state.d = pressed;
-    else if (event.code === "Space") this.state.space = pressed;
-    else if (event.code === "Enter") this.state.enter = pressed;
-    else return;
-
-    event.preventDefault();
+  private sample(): InputSnapshot {
+    const input = this.readSnapshot();
+    const next = evaluateInputActionState(input, this.profile, {
+      keys: this.active ? this.keys : undefined, virtualButtons: this.virtualButtons,
+    });
+    for (const [action, held] of Object.entries(next.actions)) {
+      if (held && !this.actionState.actions[action]) this.pendingPressed.add(action);
+      if (!held && this.actionState.actions[action]) this.pendingReleased.add(action);
+    }
+    this.actionState = next;
+    return input;
   }
 
-  private updatePointerPosition(clientX: number, clientY: number): Point {
+  private readSnapshot(): InputSnapshot {
+    this.virtualButtons = {};
+    if (!this.active) return emptyInputSnapshot(this.mouseX, this.mouseY);
+    let input = this.readGamepad();
+    for (const control of INPUT_DIGITAL_CONTROLS) input[control] ||= this.keyBindings[control].some((code) => this.keys.has(code));
+    for (const control of ["w", "a", "s", "d"] as const) input[control] ||= this.gesture[control];
+    input.mouseLeft ||= this.mouseDown || this.pointerDown || this.touchDown;
+    if (this.options.virtualControls) {
+      input = this.options.virtualControls.applyToSnapshot(input);
+      this.virtualButtons = { ...this.options.virtualControls.virtualButtons() };
+    }
+    const buttonEntries = Object.entries(this.virtualButtons);
+    for (const source of this.virtualSources.values()) {
+      for (const control of INPUT_DIGITAL_CONTROLS) input[control] ||= source.controls?.[control] === true;
+      for (const [button, held] of Object.entries(source.buttons ?? {})) if (held) buttonEntries.push([button, true]);
+    }
+    this.virtualButtons = Object.fromEntries(buttonEntries);
+    return input;
+  }
+
+  private updatePosition(clientX: number, clientY: number): Point {
     const rect = this.canvas.getBoundingClientRect();
-    const position = {
-      x: clientX - rect.left,
-      y: clientY - rect.top,
-    };
-    this.state.mouseX = position.x;
-    this.state.mouseY = position.y;
-    return position;
+    this.mouseX = clientX - rect.left;
+    this.mouseY = clientY - rect.top;
+    return { x: this.mouseX, y: this.mouseY };
   }
 
-  private shouldUsePointerGesture(pointerType: string): boolean {
-    return this.options.pointerGestures !== false && pointerType !== "mouse";
-  }
-
-  private updatePointerGesture(origin: Point, position: Point): void {
-    const threshold = this.pointerGestureThreshold();
-    const dx = position.x - origin.x;
-    const dy = position.y - origin.y;
-    this.pointerGesture = {
-      w: dy < -threshold,
-      a: dx < -threshold,
-      s: dy > threshold,
-      d: dx > threshold,
+  private updateGesture(origin: Point, position: Point): void {
+    const configured = this.options.pointerGestureThreshold ?? 18;
+    const threshold = Number.isFinite(configured) && configured >= 0 ? configured : 18;
+    this.gesture = {
+      w: position.y - origin.y < -threshold, a: position.x - origin.x < -threshold,
+      s: position.y - origin.y > threshold, d: position.x - origin.x > threshold,
     };
   }
 
-  private clearPointerGesture(): void {
-    this.pointerGesture = { w: false, a: false, s: false, d: false };
-  }
-
-  private pointerGestureThreshold(): number {
-    const threshold = this.options.pointerGestureThreshold ?? DEFAULT_POINTER_GESTURE_THRESHOLD;
-    return Number.isFinite(threshold) && threshold >= 0 ? threshold : DEFAULT_POINTER_GESTURE_THRESHOLD;
-  }
-
-  private isPrimaryPointer(event: PointerEvent): boolean {
-    return event.isPrimary !== false;
-  }
-
-  private isPrimaryButton(event: PointerEvent): boolean {
-    return event.button === 0 || event.pointerType === "touch" || event.pointerType === "pen";
-  }
-
-  private capturePointer(pointerId: number): void {
-    try {
-      this.canvas.setPointerCapture?.(pointerId);
-    } catch {
-      // Pointer capture can fail after cancellation; input state still remains valid.
-    }
-  }
-
-  private releasePointer(pointerId: number): void {
-    if (pointerId !== this.activePointerId) {
-      return;
-    }
-    this.state.mouseLeft = false;
+  private releasePointer(): void {
+    const id = this.activePointerId;
     this.activePointerId = undefined;
+    this.activePointerType = undefined;
     this.activePointerOrigin = undefined;
-    this.clearPointerGesture();
-    try {
-      this.canvas.releasePointerCapture?.(pointerId);
-    } catch {
-      // Matching capture may not exist in tests or after browser cancellation.
-    }
+    this.pointerDown = false;
+    if (this.activeTouchId === undefined) this.gesture = { w: false, a: false, s: false, d: false };
+    if (id !== undefined) try { this.canvas.releasePointerCapture?.(id); } catch { /* Capture may already be lost. */ }
   }
 
-  private findTouch(touches: TouchList, identifier: number): Touch | undefined {
-    for (let index = 0; index < touches.length; index += 1) {
-      const touch = touches.item(index);
-      if (touch?.identifier === identifier) {
-        return touch;
-      }
-    }
-    return undefined;
-  }
-
-  private releaseTouch(touches: TouchList): void {
-    if (this.activeTouchId === undefined || !this.findTouch(touches, this.activeTouchId)) {
-      return;
-    }
-    this.state.mouseLeft = false;
+  private releaseTouch(): void {
     this.activeTouchId = undefined;
     this.activeTouchOrigin = undefined;
-    this.clearPointerGesture();
+    this.touchDown = false;
+    if (this.activePointerId === undefined) this.gesture = { w: false, a: false, s: false, d: false };
   }
 
-  private readGamepadState(): InputSnapshot {
-    if (this.options.gamepad === false || typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") {
-      return this.clearGamepadState();
+  private readGamepad(): InputSnapshot {
+    const input = emptyInputSnapshot(this.mouseX, this.mouseY);
+    const source = this.eventWindow.navigator ?? (typeof navigator === "undefined" ? undefined : navigator);
+    if (this.options.gamepad === false || typeof source?.getGamepads !== "function") return input;
+    let pads: (Gamepad | null)[];
+    try { pads = source.getGamepads(); } catch { return input; }
+    const pad = this.options.gamepadIndex === undefined
+      ? pads.find((item) => item?.connected === true) : pads[this.options.gamepadIndex];
+    if (!pad?.connected) {
+      if (this.lastGamepad !== undefined) this.gamepadNeedsNeutral = true;
+      this.lastGamepad = undefined;
+      return input;
     }
-    const gamepads = navigator.getGamepads();
-    const gamepad = this.selectGamepad(gamepads);
-    if (!gamepad) {
-      return this.clearGamepadState();
+    const id = `${pad.index}:${pad.id}`;
+    if (this.lastGamepad !== undefined && this.lastGamepad !== id) this.gamepadNeedsNeutral = true;
+    this.lastGamepad = id;
+    const configured = this.options.gamepadDeadzone ?? 0.25;
+    const deadzone = Number.isFinite(configured) ? Math.min(Math.max(configured, 0), 1) : 0.25;
+    const mapping = this.gamepadMapping;
+    const x = pad.axes[mapping.moveXAxis] ?? 0, y = pad.axes[mapping.moveYAxis] ?? 0;
+    const pressed = (indices: readonly number[]): boolean => indices.some((index) => pad.buttons[index]?.pressed === true || (pad.buttons[index]?.value ?? 0) > 0.5);
+    input.w = y < -deadzone; input.a = x < -deadzone;
+    input.s = y > deadzone; input.d = x > deadzone;
+    input.space = pressed(mapping.actionButtons); input.enter = pressed(mapping.menuButtons);
+    input.mouseLeft = pressed(mapping.pointerButtons);
+    if (this.gamepadNeedsNeutral) {
+      if (INPUT_DIGITAL_CONTROLS.every((control) => !input[control])) this.gamepadNeedsNeutral = false;
+      return emptyInputSnapshot(this.mouseX, this.mouseY);
     }
-    const deadzone = this.gamepadDeadzone();
-    const mapping = this.resolvedGamepadMapping;
-    const axisX = gamepad.axes[mapping.moveXAxis] ?? 0;
-    const axisY = gamepad.axes[mapping.moveYAxis] ?? 0;
-    const state = this.gamepadState;
-    state.w = axisY < -deadzone;
-    state.a = axisX < -deadzone;
-    state.s = axisY > deadzone;
-    state.d = axisX > deadzone;
-    state.space = this.isAnyGamepadButtonPressed(gamepad, mapping.actionButtons);
-    state.enter = this.isAnyGamepadButtonPressed(gamepad, mapping.menuButtons);
-    state.mouseLeft = this.isAnyGamepadButtonPressed(gamepad, mapping.pointerButtons);
-    state.mouseX = this.state.mouseX;
-    state.mouseY = this.state.mouseY;
-    return state;
+    return input;
   }
 
-  private selectGamepad(gamepads: readonly (Gamepad | null)[]): Gamepad | undefined {
-    if (this.options.gamepadIndex !== undefined) {
-      const gamepad = gamepads[this.options.gamepadIndex];
-      return gamepad?.connected === true ? gamepad : undefined;
-    }
-    return gamepads.find((gamepad): gamepad is Gamepad => gamepad?.connected === true);
+  private assertAlive(): void {
+    if (this.destroyed) throw new Error("InputManager has been destroyed.");
   }
-
-  private gamepadDeadzone(): number {
-    const deadzone = this.options.gamepadDeadzone ?? DEFAULT_GAMEPAD_DEADZONE;
-    return Number.isFinite(deadzone) ? Math.min(Math.max(deadzone, 0), 1) : DEFAULT_GAMEPAD_DEADZONE;
-  }
-
-  private isAnyGamepadButtonPressed(gamepad: Gamepad, indices: readonly number[]): boolean {
-    return indices.some((index) => this.isGamepadButtonPressed(gamepad.buttons[index]));
-  }
-
-  private isGamepadButtonPressed(button: GamepadButton | undefined): boolean {
-    return button?.pressed === true || (button?.value ?? 0) > 0.5;
-  }
-
-  private clearGamepadState(): InputSnapshot {
-    const state = this.gamepadState;
-    state.w = false;
-    state.a = false;
-    state.s = false;
-    state.d = false;
-    state.space = false;
-    state.enter = false;
-    state.mouseLeft = false;
-    state.mouseX = this.state.mouseX;
-    state.mouseY = this.state.mouseY;
-    return state;
-  }
-}
-
-function gamepadAxisIndex(value: number | undefined, fallback: number): number {
-  return value !== undefined && Number.isInteger(value) && value >= 0 ? value : fallback;
-}
-
-function gamepadButtonIndices(values: readonly number[] | undefined, fallback: readonly number[]): readonly number[] {
-  if (values === undefined) {
-    return fallback;
-  }
-  const valid = values.filter((value) => Number.isInteger(value) && value >= 0);
-  return valid.length === 0 ? fallback : valid;
-}
-
-function resolveGamepadMapping(mapping: GamepadInputMapping | undefined): Required<GamepadInputMapping> {
-  const input = mapping ?? {};
-  return {
-    moveXAxis: gamepadAxisIndex(input.moveXAxis, DEFAULT_GAMEPAD_MAPPING.moveXAxis),
-    moveYAxis: gamepadAxisIndex(input.moveYAxis, DEFAULT_GAMEPAD_MAPPING.moveYAxis),
-    actionButtons: gamepadButtonIndices(input.actionButtons, DEFAULT_GAMEPAD_MAPPING.actionButtons),
-    menuButtons: gamepadButtonIndices(input.menuButtons, DEFAULT_GAMEPAD_MAPPING.menuButtons),
-    pointerButtons: gamepadButtonIndices(input.pointerButtons, DEFAULT_GAMEPAD_MAPPING.pointerButtons),
-  };
 }
 
 function emptyInputSnapshot(mouseX: number, mouseY: number): InputSnapshot {
-  return {
-    w: false,
-    a: false,
-    s: false,
-    d: false,
-    space: false,
-    enter: false,
-    mouseLeft: false,
-    mouseX,
-    mouseY,
+  return { w: false, a: false, s: false, d: false, space: false, enter: false, mouseLeft: false, mouseX, mouseY };
+}
+
+function resolveKeyBindings(bindings: InputKeyBindings = {}): Record<InputDigitalControl, readonly string[]> {
+  if (typeof bindings !== "object" || bindings === null || Array.isArray(bindings)) throw new Error("input.keyBindings must be an object.");
+  for (const name of Object.keys(bindings)) if (!INPUT_DIGITAL_CONTROLS.some((control) => control === name)) throw new Error(`input.keyBindings contains unknown control '${name}'.`);
+  const result = { ...DEFAULT_KEYS };
+  for (const control of INPUT_DIGITAL_CONTROLS) {
+    const codes = bindings[control] === undefined ? DEFAULT_KEYS[control] : bindings[control];
+    if (!Array.isArray(codes)) throw new Error(`input.keyBindings.${control} must be an array.`);
+    result[control] = Array.from(codes, (code, index) => keyboardCode(code, `input.keyBindings.${control}.${index}`));
+  }
+  return result;
+}
+
+function resolveVirtualInput(state: VirtualInputState): VirtualInputState {
+  if (!state || typeof state !== "object" || Array.isArray(state)) throw new Error("virtual input must be an object.");
+  const copy = (values: Readonly<Record<string, boolean>> | undefined, controls: boolean): Record<string, boolean> => {
+    if (values === undefined) return {};
+    if (!values || typeof values !== "object" || Array.isArray(values)) throw new Error("virtual input values must be an object.");
+    return Object.fromEntries(Object.entries(values).map(([id, held]) => {
+      if (id.trim().length === 0 || typeof held !== "boolean" || (controls && !INPUT_DIGITAL_CONTROLS.some((control) => control === id))) {
+        throw new Error(`Invalid virtual input '${id}'.`);
+      }
+      return [id, held];
+    }));
   };
+  return { controls: copy(state.controls, true), buttons: copy(state.buttons, false) };
+}
+
+function resolveGamepadMapping(mapping: GamepadInputMapping = {}): Required<GamepadInputMapping> {
+  const axis = (value: number | undefined, fallback: number): number => value !== undefined && Number.isInteger(value) && value >= 0 ? value : fallback;
+  const buttons = (values: readonly number[] | undefined, fallback: readonly number[]): readonly number[] => {
+    const valid = values?.filter((value) => Number.isInteger(value) && value >= 0);
+    return valid?.length ? valid : [...fallback];
+  };
+  return {
+    moveXAxis: axis(mapping.moveXAxis, 0), moveYAxis: axis(mapping.moveYAxis, 1),
+    actionButtons: buttons(mapping.actionButtons, DEFAULT_GAMEPAD_MAPPING.actionButtons),
+    menuButtons: buttons(mapping.menuButtons, DEFAULT_GAMEPAD_MAPPING.menuButtons),
+    pointerButtons: buttons(mapping.pointerButtons, DEFAULT_GAMEPAD_MAPPING.pointerButtons),
+  };
+}
+
+function findTouch(touches: TouchList, identifier: number): Touch | undefined {
+  for (let index = 0; index < touches.length; index++) {
+    const touch = touches.item(index);
+    if (touch?.identifier === identifier) return touch;
+  }
+  return undefined;
+}
+
+function isEditableEvent(event: KeyboardEvent): boolean {
+  // Open shadow roots retarget event.target to their host. The composed path
+  // retains the actual focused element without cross-window instanceof checks.
+  const target = (event.composedPath?.()[0] ?? event.target) as HTMLElement | null;
+  return typeof target?.closest === "function"
+    && (target.isContentEditable === true || target.closest("input,textarea,select,button") !== null);
 }

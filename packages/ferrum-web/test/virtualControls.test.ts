@@ -1,8 +1,9 @@
-import { deepEqual, equal } from "node:assert/strict";
+import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 import {
   applyVirtualControlStateToSnapshot,
   DEFAULT_VIRTUAL_CONTROL_BUTTONS,
+  VirtualControls,
 } from "../src/virtualControls.js";
 import type { InputSnapshot } from "../src/inputManager.js";
 import type { VirtualControlsState } from "../src/virtualControls.js";
@@ -80,3 +81,14 @@ function state(overrides: Partial<VirtualControlsState> = {}): VirtualControlsSt
     ...overrides,
   };
 }
+
+
+test("VirtualControls finishes destroy and stays neutral when an observer throws", () => {
+  const controls = new VirtualControls({} as HTMLElement, { enabled: false });
+  controls.setButtonPressed("primary", true);
+  controls.subscribe(() => { throw new Error("observer failed"); });
+  throws(() => controls.destroy(), /observer failed/);
+  equal(controls.state().buttons.primary, false);
+  throws(() => controls.setButtonPressed("primary", true), /destroyed/);
+  controls.destroy();
+});

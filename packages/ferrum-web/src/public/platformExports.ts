@@ -124,6 +124,7 @@ export {
   DEFAULT_INPUT_ACTION_PROFILE,
   INPUT_ACTION_PROFILES,
   PLATFORMER_INPUT_ACTION_PROFILE,
+  resolveInputActionProfile,
   resolveInputActionState,
   TOPDOWN_SHOOTER_INPUT_ACTION_PROFILE,
 } from "../inputProfile";
@@ -189,7 +190,7 @@ export {
   bakeAnimatedTileLayer,
   resolveAnimatedTileFrame,
 } from "../tilemapAuthoring";
-export type { GamepadInputMapping, InputManagerOptions, InputSnapshot } from "../inputManager";
+export type { GamepadInputMapping, InputActionSnapshot, InputKeyBindings, InputManagerOptions, InputSnapshot, VirtualInputState } from "../inputManager";
 export type {
   InputActionBinding,
   InputActionProfile,
