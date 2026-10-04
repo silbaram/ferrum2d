@@ -392,7 +392,7 @@ static/kinematic body와 sprite의 같은 핸들 연결을 정의한다.
 ellipse/box authoring은 변경 없이 동작한다. alpha는 `0.1.0-beta.5`부터 제공한다.
 
 
-## 탐험 gameplay / navigation 설정 (미배포)
+## 탐험 gameplay / navigation 설정 (beta.7부터)
 
 `SceneAuthoringDocumentSpec`의 optional `gameplay` / `navigation`과
 `resolveDataSceneGameplaySpec`, `resolveDataSceneNavigationSpec`은
@@ -400,4 +400,4 @@ ellipse/box authoring은 변경 없이 동작한다. alpha는 `0.1.0-beta.5`부�
 `applyDataSceneAuthoringDocument`는 새 instance handle에 gameplay를 연결하고 navigation을 설치한다.
 `gameplay`가 명시된 문서의 미지원 executor 및 actor/grid 오류는 activation 전에 거절한다.
 `applyBuiltInSceneAuthoringDocument`는 Data Scene 전용 gameplay/navigation 필드를 거절한다.
-배포된 beta.6에 이 필드를 넣는 것으로 새 기능이 설치되지는 않는다.
+`0.1.0-beta.7`부터 제공한다. beta.6 이하에는 이 필드만 추가해도 기능이 설치되지 않는다.

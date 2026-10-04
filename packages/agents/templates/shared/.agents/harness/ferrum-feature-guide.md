@@ -2,7 +2,7 @@
 
 게임 요구사항을 엔진 기능으로 연결할 때 먼저 읽는 consumer 안내서다. API 전체 명세는 아니며,
 필요한 기능을 고른 다음 설치된 공개 타입과 같은 버전의 상세 문서로 정확한 인자를 확인한다.
-아래 기능 설명의 기준은 **엔진 `0.1.0-beta.5`**다. 이 안내서가 있다는 사실만으로 설치된
+아래 기능 설명의 기준은 **엔진 `0.1.0-beta.7`**다. 이 안내서가 있다는 사실만으로 설치된
 엔진이 모든 기능을 지원한다고 판단하지 않는다. guide/agents와 runtime은 각각 확인한다.
 안내서는 **agents `0.1.0-beta.6`부터 제공**한다. beta.6은 AI 안내서/지침 배포이며 runtime API는 beta.5와 같다.
 
@@ -20,7 +20,7 @@
 4. **기능 선택:** 아래 표에서 요구사항을 찾아 엔진이 이미 제공하는 기능을 먼저 조합한다.
    필요한 입력값·에셋·지원 범위와 선택한 API를 짧게 기록한다. 모든 문서를 한꺼번에 읽을
    필요는 없으며 해당 기능의 reference를 확인한다.
-5. **버전별 상세 문서:** 아래 링크는 beta.5에 고정돼 있다. 다른 릴리즈라면 출처가 확인된
+5. **버전별 상세 문서:** 아래 링크는 beta.7에 고정돼 있다. 다른 릴리즈라면 출처가 확인된
    저장소와 tag의 동일 문서 경로를 사용한다. 공식 tag 형식은 `ferrum-web-v<version>`이다.
    `main`이나 planning 문서를 설치 버전의 기능 증거로 삼지 않는다. 로컬 `0.1.0` 빌드는
    특정 beta로 환산하지 말고 설치 타입과 빌드 출처 commit을 확인한다.
@@ -56,7 +56,8 @@
 | 방/레벨 전환·일시정지 | `runtime.dataScene.transition`, `reapply`, `pause`, `resume`, `complete` | `dataScene` 옵션으로 시작한 runtime인지 확인. 전환/reapply reset 뒤 새 handle로 카메라·행동 연결 | [Core][core] |
 | 이미지·색·크기·피벗·가림 순서 | `/authoring` `resolveDataSceneComponentsSpec`, `components.visual` | `texture`, `width/height`, `originX/Y`, `tint`, `layer`, `depthSort`. 배경과 월드 band를 구분 | [Native actor][native] |
 | 캐릭터 이미지와 충돌체를 같이 이동 | `components.visual`, `collider`, `body`; `/core` 물리 API | sprite와 body를 같은 entity에 조립. body 종류·충돌 layer·heightSpan 설정. TS에서 별도 좌표를 매 프레임 복제하지 않음 | [Native actor][native], [Physics][physics] |
-| 대기·걷기·방향별 애니메이션 | `visual.animationSet`; `engine.configureDataSceneSpriteAnimation`, `updateDataSceneSpriteAnimations` | atlas UV frame, clip id/fps, flip, pause/seek를 사용. 재생 시간은 Rust가 진행; 여러 actor 변경은 batch | [표현 확장][presentation] |
+| 대기·걷기·방향별 애니메이션 | `visual.animationSet`; `engine.configureDataSceneSpriteAnimation`, `updateDataSceneSpriteAnimations` | atlas UV frame, clip id/fps, flip, pause/seek를 사용. beta.7의 주인공은 `configureDataSceneMovementAnimation`으로 이동과 자동 연결; 여러 actor 수동 변경은 batch | [표현 확장][presentation] |
+| Data Scene 조사·수집·이동·진행 저장 | `gameplay.primaryActor`, `navigation`; `engine.moveDataSceneActorTo`, `configureDataSceneMovementAnimation`; `captureGameStateSnapshot` | beta.7부터 제공. 아래 Data Scene 절의 actor/body/격자 및 저장 제외 범위를 확인 | [Data Scene][scene], [Core][core] |
 | 추적·순찰·발사·상태 전환 | `/authoring` `resolveBehaviorRecipeDocument`, `resolveBehaviorStateMachineDocument`, `applyGameplayBehaviorCommands` | 지원 recipe/FSM 조건·action으로 구성. 복잡한 NPC 판단이 자동 제공된다고 가정하지 않음 | [Authoring][authoring], [Runtime 확장][runtime] |
 | 무기·투사체·쿨다운 구성 | `/authoring` `ProjectileDefinition`, `WeaponDefinition`, `compileWeaponProfiles`, `behaviorRecipeCommandsForEntity` | 정의를 runtime command로 변환해 적용. TS frame loop에서 충돌·피해 판정을 중복 구현하지 않음 | [Authoring][authoring] |
 | 내장 슈터·플랫포머·벽돌깨기에서 시작 | `/starter-scenes` `resolveShooterGameSpec`; `engine.usePlatformerGame`, `useBreakoutGame` | 해당 starter의 입력·상태·spec 계약을 따른다. `setGameSpec`은 진행 상태를 초기화할 수 있음 | [Starter scenes][starters] |
@@ -102,6 +103,7 @@
 | actor별 animationSet, ground/upright 투영, 태양·도형 그림자 | `0.1.0-beta.3` | 최신 설정을 구버전 spec에 넣지 않음 |
 | 임의 키 code, action edge, input context/차단 | `0.1.0-beta.4` | legacy 입력을 새 계약으로 오인하지 않음 |
 | sprite alpha 윤곽 지면 그림자 | `0.1.0-beta.5` | ellipse/box 사용 또는 사용자 요청 범위 안에서 업그레이드 |
+| Data Scene 조사·수집·격자 길찾기·자동 이동·이동 애니메이션·진행 저장 | `0.1.0-beta.7` | 해당 API/authoring 필드와 Data Scene v3 저장을 쓰기 전에 업그레이드 |
 
 모든 API의 도입 버전 목록은 아니다. 나머지 기능도 설치된 타입과 같은 버전의 문서를 확인한다.
 업그레이드할 때 JS/Wasm을 같은 runtime 패키지로 교체하고, agents의 기존 파일은 자동으로
@@ -198,23 +200,23 @@ const animationSet = resolveDataSceneSpriteAnimationSet({
 상세 개발 절차는 `.agents/harness/ferrum-game-development.md`, 화면 검수는
 `.agents/harness/ferrum-game-presentation.md`, replay는 `.agents/harness/ferrum-runtime-replay.md`를 따른다.
 
-[core]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/public-api/core.md
-[authoring]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/public-api/authoring.md
-[starters]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/public-api/starter-scenes.md
-[labs]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/public-api/labs.md
-[quality]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/public-api/quality.md
-[scene]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/data-scene-authoring.md
-[native]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/data-scene-native-runtime.md
-[presentation]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/data-scene-presentation.md
-[input]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/input-actions.md
-[physics]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/physics-spec.md
-[runtime]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/runtime-extensibility.md
-[user]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.5/docs/engine/user-guide.md
+[core]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.7/docs/engine/public-api/core.md
+[authoring]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.7/docs/engine/public-api/authoring.md
+[starters]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.7/docs/engine/public-api/starter-scenes.md
+[labs]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.7/docs/engine/public-api/labs.md
+[quality]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.7/docs/engine/public-api/quality.md
+[scene]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.7/docs/engine/data-scene-authoring.md
+[native]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.7/docs/engine/data-scene-native-runtime.md
+[presentation]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.7/docs/engine/data-scene-presentation.md
+[input]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.7/docs/engine/input-actions.md
+[physics]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.7/docs/engine/physics-spec.md
+[runtime]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.7/docs/engine/runtime-extensibility.md
+[user]: https://github.com/silbaram/ferrum2d/blob/ferrum-web-v0.1.0-beta.7/docs/engine/user-guide.md
 
 
-## 개발 소스의 Data Scene 확장 (아직 미배포)
+## 7. Data Scene 탐험 기능 (beta.7부터)
 
-배포 기준 beta.6에는 아래 기능이 없다. 로컬 개발 패키지에서는 public 타입에
+아래 기능은 `0.1.0-beta.7`부터 제공한다. beta.6 이하에는 없으므로 설치된 public 타입에
 `configureDataSceneGameplay`와 `configureDataSceneNavigation`이 있는지 먼저 확인한다.
 이전 패키지에 JSON 필드만 추가해 적용했다고 보고하지 않는다.
 
@@ -240,7 +242,7 @@ const animationSet = resolveDataSceneSpriteAnimationSet({
   후에는 다시 연결해야 한다. 진행 snapshot은 이 연결과 runtime playback을 저장하지 않는다.
 - 지원 진단: `gameplay` opt-in의 미지원 이동/공격/비-pickup collision recipe는 사전 거절한다.
   기존 primitive command의 등록 성공과 scene에서 실제 실행됨을 구분한다.
-- 저장: 미배포 `captureGameStateSnapshot`의 `includeDataSceneState: true`와
+- 저장: `captureGameStateSnapshot`의 `includeDataSceneState: true`와
   `includeDataSceneProgress: true`, 동일 `dataSceneAuthoringDocument`를 함께 지정하면 authored entity
   제거·once interaction consumed·현재 navigation을 복원한다. 기본 binding으로 전체 apply한 단일 문서만
   지원하며 누적 apply/외부 binding override 후 capture는 거절한다. 위치·이동 경로/상태·timer·추가 spawn은 저장하지 않는다.
@@ -248,4 +250,4 @@ const animationSet = resolveDataSceneSpriteAnimationSet({
 
 상세 계약과 실행 예제는 엔진 저장소의 `docs/engine/data-scene-authoring.md` 및
 `tests/smoke/data-scene-gameplay-probe.mjs`에 있다. 소비자 프로젝트에서는 설치 출처 commit의 문서를 확인한다.
-위 표의 beta.5 문서 링크에는 이 미배포 확장이 포함되지 않는다.
+위 표의 beta.7 문서 링크에 상세 설정과 지원 범위가 포함되어 있다.

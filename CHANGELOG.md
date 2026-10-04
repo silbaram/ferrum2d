@@ -10,6 +10,50 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 - 아직 기록할 변경 사항이 없다.
 
+## 0.1.0-beta.7 - 2026-10-04
+
+GitHub Release 설치용 여덟 번째 beta다. Data Scene으로 탐험 게임을 만들 때 필요한 조사·수집,
+길찾기·자동 이동·이동 애니메이션과 진행 저장·복원을 제공한다. 소스 package는 `0.1.0`/`private: true`를
+유지하며 staging의 네 package를 `0.1.0-beta.7`으로 배포한다.
+
+### Added
+
+- `gameplay.primaryActor`와 선택적 입력 action으로 주인공, 근접/입력 조사 및 범용 아이템 수집을 실행한다.
+  지원하지 않는 Data Scene 행동은 apply 전에 진단한다.
+- 단일 XY navigation grid, 비용 변경과 `moveDataSceneActorTo`/`cancelDataSceneMove`/`dataSceneMoveStatus`를
+  제공한다. Rust가 A* 경로와 AABB 충돌을 처리하고 pause/resume, 입력 취소, grid 변경 재탐색을 지원한다.
+- `configureDataSceneMovementAnimation`으로 주인공의 idle/walk 네 방향을 기존 clip에 연결한다.
+  같은 clip의 flip 변경은 재생 시간을 유지하며 수동 playback 명령은 자동 연결을 해제한다.
+- `includeDataSceneProgress`로 제거된 authored entity, 소비된 once interaction, 현재 navigation을
+  변수·lifecycle과 함께 복원한다. 문서 재적용 후 새 generation handle로 연결한다.
+- 설치 문서와 consumer AI 안내서에 beta.7의 지원 범위, 설정 및 업그레이드 계약을 반영했다.
+
+### Fixed
+
+- Data Scene의 기본 playing 상태, 조사·수집 실행, recipe 지원 진단 및 reset 시 stale handle/grid 처리를 보완했다.
+- 경로 이동이 작은 격자의 코너를 건너뛰거나 미소 속도에서 멈추는 문제, 큰 변위가 목적지를 넘는 문제를 수정했다.
+  float32 셀 중심이 다른 칸으로 반올림되는 경로는 기존 이동을 보존하고 거절한다.
+- 장애물 접촉 뒤 이동을 반복 요청해도 벽을 관통하지 않으며 접촉면에서 분리·접선 이동을 허용한다.
+- 저장 payload의 잘못된 ID/중복/버전/격자와 오래된 apply metadata를 거절하고 이전 씬을 보존한다.
+
+### Upgrade Notes
+
+- engine/viewer/agents URL과 출처 metadata를 beta.7로 함께 맞추고 JS/Wasm을 같은 tarball에서 갱신한다.
+  초기 설정 프로젝트에는 예제·viewer를 추가하지 않는다. 기존 AI 지침은 별도 디렉터리에 풀어 비교·병합한다.
+- 기존 Data Scene의 주인공 조사·수집은 `gameplay.primaryActor`를 명시한다. 자동 이동에는 활성 native
+  kinematic body, non-trigger AABB 하나와 navigation이 필요하다. 애니메이션 연결은 별도로 opt-in한다.
+- 바깥 `GameStateSnapshot` version은 2, 신규 Data Scene state는 3이다. 기존 Data Scene v2를 읽지만
+  이전 엔진은 새 v3 저장 파일을 읽지 못한다. 수동 animation 명령 뒤와 전체 reapply/restore 뒤에는 자동 연결을 다시 설정한다.
+- public import 경로와 15-float/60-byte render command ABI는 유지한다.
+
+### Known Limitations
+
+- 자동 이동·애니메이션은 primary actor 한 명, 길찾기는 최대 4096칸의 수동 XY grid를 대상으로 한다.
+  collider에서 격자를 자동 생성하거나 원/다각형/compound 전체 및 층간 경로를 회피하지 않는다.
+- 진행 저장은 기본 binding으로 전체 apply한 단일 문서를 대상으로 한다. 위치·속도·이동 경로·runtime playback,
+  timer/FSM·추가 spawn은 저장하지 않는다. 실제 섬 게임의 전체 플레이 검증은 포함하지 않는다.
+- normal map, 높이별 shadow receiver, 차폐 광선, view-depth/DOF와 3D 렌더링은 추가되지 않는다.
+
 ## 0.1.0-beta.6 - 2026-10-04
 
 GitHub Release 설치용 일곱 번째 beta다. AI가 설치된 엔진의 기능을 찾고 사용하는 안내서를

@@ -529,7 +529,7 @@ bind/select 검증 실패는 이전 snapshot 참조, mutable 쓰기 권한, enti
 전달한다. 결과의
 `dataSceneVariables`/`globalVariablesApplied`/`sceneVariablesApplied`로 적용 여부를 보고한다.
 
-미배포 개발 소스의 `GameStateSnapshot.version`은 `2`, 신규 `DataSceneStateSnapshot.version`은 `3`이다.
+`0.1.0-beta.7`의 `GameStateSnapshot.version`은 `2`, 신규 `DataSceneStateSnapshot.version`은 `3`이다.
 기존 Data Scene v2 파일도 읽으며 기존 해시는 그대로 검증한다. Data Scene lifecycle state는
 snapshot/replay hash에 포함되며 restore는 변수 복원 뒤 lifecycle을 복원한 다음 custom callback을 호출한다.
 따라서 `paused`와 `levelComplete` 저장은 fresh runtime에서도 같은 상태로 복원된다. version `1`은
@@ -539,7 +539,7 @@ validation에서 거절하므로 저장 데이터가 필요한 consumer는 새 �
 `includeDataSceneState: true` capture는 active Data Scene에서만 허용되며 restore authoring option의
 `activateDataScene: false`는 mutation 전에 거절한다.
 
-미배포 `includeDataSceneProgress: true`는 `includeDataSceneState`와 동일한 authoringDocument를 요구한다.
+beta.7의 `includeDataSceneProgress: true`는 `includeDataSceneState`와 동일한 authoringDocument를 요구한다.
 `DataSceneProgressSnapshot`은 `dataScene.progress`의 instance ID별 제거·once interaction consumed 상태와
 현재 navigation 전체 또는 null(clear)을 표현한다. 복원은 문서 재적용의 새 handle에 연결한다.
 잘못된 payload는 씬 활성화 전에 거절한다. 기본 옵션 전체 apply만 지원하며 위치·타이머·추가 spawn은
@@ -658,7 +658,7 @@ static/kinematic body와 sprite의 같은 핸들 연결을 정의한다.
 flag 32를 함께 소비하며 15-float command layout은 유지한다. `0.1.0-beta.5`부터 제공한다.
 
 
-## Data Scene gameplay / navigation (beta.6 이후, 미배포)
+## Data Scene gameplay / navigation (beta.7부터)
 
 - `engine.configureDataSceneGameplay({ primaryActor?, interactionInputActionId? })`: Data Scene 실행 활성화.
   주인공은 generation handle이며 입력 ID 생략 시 자동 근접 interaction, 지정 시 가까운 대상 한 곳에 적용한다.
@@ -694,7 +694,7 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
   성공한 주인공 수동 playback 명령 또는 clip 재설정은 자동 연결을 해제한다. `false`는 현재 playback을
   바꾸지 않고 해제한다. gameplay 재설정/전체 reapply/restore 뒤에는 다시 연결해야 한다.
   설정은 runtime 전용이며 진행 snapshot에는 포함하지 않는다. 방향·pause·수동 연출의 상세 규칙은
-  [자동 연결 계약](../data-scene-authoring.md#이동애니메이션-자동-연결-beta6-이후-미배포)을 따른다.
+  [자동 연결 계약](../data-scene-authoring.md#이동애니메이션-자동-연결-beta7부터)을 따른다.
 
 설정·이동 명령은 다른 씬에서 false를 반환하고 씬을 전환하지 않는다. Shooter tile setter도 Data Scene을
 암묵적으로 전환하지 않는다. 동적 save 범위와 single-plane 제약은

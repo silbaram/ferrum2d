@@ -189,7 +189,7 @@ Data Scene에 문서를 적용하는 low-level 호환 경로이므로 전환/res
 실제 Data Scene mode에서만 허용되며 이 문서를 clone해서 snapshot hash 범위에 포함한다. built-in scene에서
 Data Scene payload capture를 요청하면 자체 복원 불가능한 snapshot을 만들지 않고 즉시 거절한다.
 
-미배포 개발 소스의 `GameStateSnapshot` version은 `2`, 신규 `DataSceneStateSnapshot` version은 `3`다.
+`0.1.0-beta.7`의 `GameStateSnapshot` version은 `2`, 신규 `DataSceneStateSnapshot` version은 `3`다.
 기존 Data Scene v2도 읽는다. lifecycle state가
 snapshot/replay hash 범위에 들어가므로 같은 scene이라도 `playing`, `paused`, `levelComplete` snapshot은
 서로 다른 hash를 가진다. version `1` snapshot은 자동 추론하지 않고 validation에서 거절한다. 저장 데이터를
@@ -274,9 +274,9 @@ pnpm validate:data-scene-authoring
 optional `components.body: { type: "static" | "kinematic", heightSpan? }`는 sprite와 같은 entity에 물리 바디를 설치한다. 생략한 기존 collider-only 객체는 그대로다. [계약·공개 API recipe·검증](data-scene-native-runtime.md)을 참고한다. 이 연결은 `0.1.0-beta.2`부터 제공한다.
 
 
-## Data Scene 탐험 gameplay와 navigation (미배포)
+## Data Scene 탐험 gameplay와 navigation (beta.7부터)
 
-이 절은 beta.6 이후 개발 소스의 계약이다. beta.6 tarball에는 아래 API가 없다. 설치된 타입에
+이 절은 `0.1.0-beta.7`부터 제공하는 계약이다. beta.6 이하 tarball에는 아래 API가 없다. 설치된 타입에
 `configureDataSceneGameplay` / `configureDataSceneNavigation`이 있는지 먼저 확인한다.
 
 문서에 optional `gameplay`와 `navigation`을 선언한다. 기존 필드만 있는 배치 문서는 그대로 적용된다.
@@ -342,7 +342,7 @@ NaN/Infinity가 들어간 좌표 조회는 경로·waypoint를 반환하지 않�
 기존 설정을 유지한다. Shooter tile 설정 API는 Data Scene에서 씬을 전환하지 않고 false 또는 void no-op로
 거절한다. 실제 Shooter 전환은 `setGameSpec` 등 명시적인 씬 구성 경로를 사용한다.
 
-### 목적지 이동 (beta.6 이후, 미배포)
+### 목적지 이동 (beta.7부터)
 
 `gameplay.primaryActor`와 `navigation`을 적용한 뒤 월드 좌표를 지정한다.
 주인공은 활성 native `kinematic` body와 활성 non-trigger AABB 하나를 가져야 한다.
@@ -387,7 +387,7 @@ engine.cancelDataSceneMove();
   pickup/interaction은 각 simulation step 끝의 실제 overlap/거리로 처리하며 지나친 trigger의 연속 감지는 제공하지 않는다.
   진행 snapshot에는 경로·이동 상태·현재 위치를 저장하지 않는다. 문서를 포함한 복원은 authored 위치와 idle로 시작한다.
 
-### 이동·애니메이션 자동 연결 (beta.6 이후, 미배포)
+### 이동·애니메이션 자동 연결 (beta.7부터)
 
 `gameplay.primaryActor`와 캐릭터의 `visual.animationSet`을 적용한 뒤 아래 설정으로 연결한다.
 `configureDataSceneSpriteAnimation`으로 먼저 설치한 clip도 사용할 수 있다. clip ID는 게임이 정하며,
@@ -434,7 +434,7 @@ engine.configureDataSceneMovementAnimation(false);
 - 이 설정과 runtime clip/시간/flip은 진행 snapshot에 저장하지 않는다. 문서의 `visual.animationSet`은
   복원되므로 restore 후 위 설정을 다시 호출한다. runtime에서만 설치한 clip은 먼저 재설치한다.
 
-### 진행 저장·복원 (beta.6 이후, 미배포)
+### 진행 저장·복원 (beta.7부터)
 
 기본 Data Scene snapshot은 문서 재적용 + variables/custom 복원이다. 탐험 진행 상태도 저장하려면
 `includeDataSceneProgress: true`를 명시한다. 수집 등으로 제거된 authored entity, `once` interaction의
