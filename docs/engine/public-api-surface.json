@@ -103,7 +103,12 @@
         "ResolvedDataSceneGroundShadow",
         "DataSceneGroundShadowStats",
         "DirectionalLight2D",
-        "ResolvedDirectionalLight2D"
+        "ResolvedDirectionalLight2D",
+        "InputManager",
+        "InputActionSnapshot",
+        "InputKeyBindings",
+        "VirtualInputState",
+        "resolveInputActionProfile"
       ]
     },
     {
@@ -167,7 +172,12 @@
         "ResolvedDataSceneGroundShadow",
         "DataSceneGroundShadowStats",
         "DirectionalLight2D",
-        "ResolvedDirectionalLight2D"
+        "ResolvedDirectionalLight2D",
+        "InputManager",
+        "InputActionSnapshot",
+        "InputKeyBindings",
+        "VirtualInputState",
+        "resolveInputActionProfile"
       ]
     },
     {

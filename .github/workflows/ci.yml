@@ -122,6 +122,9 @@ jobs:
       - name: Build TypeScript packages
         run: pnpm build
 
+      - name: Packed input context browser smoke
+        run: pnpm smoke:input-context
+
       - name: Data Scene packed runtime browser smoke
         run: pnpm smoke:data-scene
 

@@ -94,7 +94,7 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 
 | 기능 | 짧은 설명 |
 | --- | --- |
-| InputManager | keyboard, mouse, pointer, touch, gamepad 입력을 snapshot으로 합친다. |
+| InputManager | keyboard, mouse, pointer, touch, gamepad 입력을 합친다. [임의 키·액션·context](docs/engine/input-actions.md)와 모달 입력 초기화를 지원한다. |
 | Action profile | raw input을 `move`, `fire`, `jump` 같은 게임 action으로 바꾼다. |
 | Virtual controls | 모바일용 joystick/button DOM control을 제공한다. |
 | AssetLoader | texture, sound, JSON asset을 로드한다. |

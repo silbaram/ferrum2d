@@ -766,3 +766,19 @@ headless 환경에서 native canvas clear만으로 device가 종료되는 경로
 presentation 성공으로 해석하지 않는다. adapter가 없거나 validation/pixel 검증에 실패하면 smoke도 실패한다.
 
 `smoke:placement-viewer`는 bottom-origin sprite의 회전·scale을 반영한 selection/draft overlay와 picking, 회전된 primitive resize를 검증한다. `smoke:color-management`는 기본·최상위·WebGL2·WebGPU fallback·주입 renderer의 Data Scene hex 색을 초기 적용/reapply/transition마다 실제 Wasm command와 픽셀로 확인한다. renderer와 다른 색 공간으로 재적용하는 요청은 거부해야 한다.
+
+
+## 입력 context packed consumer 검증 (#73 B1)
+
+`pnpm smoke:input-context`는 runtime package를 pack한 뒤 `/core`만 import한다.
+Chromium의 1280×720/390×844 × DPR 1/2에서 실제 keyboard/mouse 입력으로
+복수 키 바인딩, E/Shift action, 짧은 탭 edge, 모달 keyup과 held repeat 차단,
+가상 버튼 capture 초기화, 브라우저의 실제 lostpointercapture, source별 해제 및
+destroy 후 중립 상태를 assert한다. native dialog, open Shadow DOM 입력칸,
+canvas/가상 버튼/joystick의 마우스 버튼 조합과 구독 예외 뒤 DOM 정리도 검사한다.
+게임패드는 `navigator.getGamepads` 대역으로 중립 poll 후 재활성화를 검증하며
+물리 기기 지원 여부를 판정하지 않는다. visibility와 touch fallback은 단위 테스트로 보강한다.
+
+실패 시 nonzero로 종료하고 `artifacts/input-context-consumer-*/report.json`에 결과를
+남긴다. `smoke:check`와 GitHub Actions validate job에 연결한다. CI 실행 성공 여부는
+실제 원격 실행 결과로 별도 확인해야 한다. 기존 mobile-input smoke gate도 유지한다.
