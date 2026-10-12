@@ -10,6 +10,46 @@ Ferrum2D의 공식 공개 릴리즈 변경 기록이다. 정식 공개 전 내�
 
 - 아직 기록할 변경 사항이 없다.
 
+## 0.1.0-beta.8 - 2026-10-12
+
+GitHub Release 설치용 아홉 번째 beta 후보다. GPU 실행 시간과 Wasm 확보 용량을 공개 진단 API,
+DebugOverlay 및 RuntimeProfiler에서 확인한다. 소스 package는 `0.1.0`/`private: true`를 유지하며,
+GitHub staging의 네 설치 package는 `0.1.0-beta.8`로 맞춘다.
+
+### Added
+
+- `webgl2.gpuTiming: true`로 비동기 GPU timer를 켠다. 공식 runtime은 clear, sprite, 조명,
+  physics debug 및 후처리 구간을 측정한다. 이전 frame의 유효한 결과만 밀리초와 frame ID로 제공한다.
+- `engine.memoryStats().wasmLinearMemoryBytes`와 full frame sample에서 Wasm 모듈 전체의
+  linear memory 확보 용량을 읽는다. memory growth 뒤의 새 buffer를 사용한다.
+- `maxGpuFrameTimeMs`/`maxWasmLinearMemoryBytes` budget과 GPU sample 수·평균·최대값을 제공한다.
+  미측정 frame을 0ms로 계산하지 않으며 측정값이 없는 budget은 `missingMetric`으로 실패한다.
+- `/core`에서 `EngineMemoryStats`와 `RendererGpuTimingStats`를 export한다.
+
+### Fixed
+
+- GPU 진단의 query 수를 최대 4개로 제한하고 재사용한다. disjoint/context loss 결과는 폐기하며,
+  render 예외에도 query를 종료하고 renderer destroy에서 해제한다.
+- 실제 Wasm bytes 및 GPU query 결과가 DebugOverlay/profiler까지 전달되는 브라우저 회귀를 보강했다.
+  두 색 공간과 DPR 1/2, 반복 자원 생성·해제, 미지원 환경을 함께 검사한다.
+
+### Upgrade Notes
+
+- engine/viewer/agents URL과 릴리스 출처 metadata를 같은 beta.8로 맞추고 JS/Wasm을 같은 tarball에서 갱신한다.
+- GPU timer는 기본 비활성이다. 필요한 경우 `webgl2: { gpuTiming: true }`를 지정한다.
+  renderer를 직접 사용할 때는 모든 측정 대상 pass를 `beginGpuTiming()`/`endGpuTiming()` 사이에 배치한다.
+- public import 경로, 15-float/60-byte render command ABI와 Data Scene state version 3을 유지한다.
+  custom renderer의 timer capability는 선택 사항이다.
+
+### Known Limitations
+
+- GPU 시간은 WebGL2 `EXT_disjoint_timer_query_webgl2` 지원 환경에서만 측정한다. native WebGPU timer는 미지원이다.
+  GPU가 느리면 측정을 생략할 수 있으므로 상태와 sample 수를 함께 확인한다.
+- Wasm bytes는 모듈의 확보 용량이다. 실제 사용 중인 Rust/JS heap이나 VRAM, 인스턴스별 사용량과 누수 여부는 측정하지 않는다.
+- SwiftShader 브라우저 검증은 계측 연결의 근거이며 실물 GPU 성능 기준이 아니다. 실제 섬 게임과 실물 모바일 검수는 별도다.
+- beta.7 이후의 문 collider/navigation obstacle binding, progress v5 및 로컬 엔진 설치 도구는
+  현재 main에 커밋되지 않아 이 beta.8 후보에 포함하지 않는다.
+
 ## 0.1.0-beta.7 - 2026-10-04
 
 GitHub Release 설치용 여덟 번째 beta다. Data Scene으로 탐험 게임을 만들 때 필요한 조사·수집,
