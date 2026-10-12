@@ -343,6 +343,14 @@ RuntimeFrameRenderer는 실제 render/post-process 완료 뒤 snapshot을 DebugO
 RuntimeProfiler sample로 전달한다. bytes는 texture 저장량과 GPU buffer capacity의 합계 추정치이며
 미지원/크기 불명은 0으로 보정하지 않는다. native WebGPU 통계는 아직 미지원이다.
 
+`webgl2.gpuTiming: true`는 별도의 비동기 GPU timer를 켠다. RuntimeFrameRenderer가
+clear부터 post-process까지 `try/finally`로 감싸고 WebGL2GpuTimer가 이전 query를
+준비된 경우에만 읽는다. 최대 4개 query를 재사용하며 disjoint/context loss에서는 결과를 폐기한다.
+GPU 시간은 CPU `renderTimeMs`와 분리하고 미측정 frame에 값을 만들지 않는다.
+`engine.memoryStats()`와 full FrameState는 현재 `WebAssembly.Memory.buffer.byteLength`를
+읽어 모듈 전체 Wasm 확보 용량을 제공한다. Rust ABI 변경이나 entity별 경계 호출은 없다.
+이 값은 사용 중인 heap이나 누수 판정값이 아니며 GPU 저장량 추정치와도 분리한다.
+
 
 색 공간은 renderer 생성 시 `legacy`(기본값) 또는 `linear-srgb`로 고정한다.
 WebGL2 managed 모드는 sRGB 색상 texture와 수치 texture를 분리하며, 숫자 RGB는 linear 계약이다.

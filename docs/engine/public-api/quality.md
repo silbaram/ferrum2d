@@ -23,6 +23,20 @@ import {
 
 budget field를 추가하면 smoke runner가 실제 sample에 값을 기록하는지 같이 확인한다.
 
+### GPU 시간과 Wasm 용량 예산
+
+`wasmLinearMemoryBytes`와 `gpuFrameTimeMs`는 실제 frame sample에서 읽는다.
+상한은 `maxWasmLinearMemoryBytes`, `maxGpuFrameTimeMs`로 설정한다.
+Wasm 최대값은 보관한 frame window 전체에서 값이 있을 때만 제공한다.
+GPU 결과는 비동기이므로 측정된 sample만으로 `gpuFrameSampleCount`,
+`averageGpuFrameTimeMs`, `maxGpuFrameTimeMs`를 계산한다. 측정되지 않은 frame을 0ms로 평균에 넣지 않는다.
+`gpuFrameId`는 결과를 발행한 renderer frame이며 sample을 소비하는 현재 frame과 다를 수 있다.
+GPU sample이 하나도 없거나 Wasm sample이 빠진 경우 해당 snapshot budget은 `missingMetric`으로 실패한다.
+단일 frame evaluator는 대기 frame의 GPU budget도 `missingMetric`으로 처리하므로,
+비동기 GPU 예산은 충분한 frame 실행 뒤 snapshot에서 평가한다.
+GPU 통계는 측정된 구간만 평가하므로 `gpuFrameSampleCount`와 renderer capability도 함께 확인한다.
+메모리/타이머의 범위와 한계는 [core 계약](core.md#gpu-실행-시간과-wasm-메모리)을 따른다.
+
 ### GPU 자원 예산
 
 WebGL2 runtime은 다음 값을 DebugOverlay와 `RuntimeProfiler.recordFrame(...)`에 실제로 전달한다.

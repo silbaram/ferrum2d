@@ -711,6 +711,21 @@ README preview용 스크린샷 절차는 [screenshots README](screenshots/README
 
 ### GPU 자원 수명주기 회귀
 
+같은 `pnpm smoke:gpu-resources`는 opt-in GPU timer와 Wasm 용량 sample 연결도 검증한다.
+실제 Wasm Data Scene 상태, 1024개 command, 3개 draw call과 함께 engine/frame/profiler의
+Wasm bytes 일치, 최대 4개 native query, destroy 후 query 0을 확인한다.
+지원 환경에서는 비동기 GPU query 결과가 실제 profiler sample에 들어가야 한다.
+미지원 환경은 `unsupported`, sample 0, 최대 시간 없음으로 보고하고 GPU 시간 검증 통과로 해석하지 않는다.
+`gpuTiming` report의 상태/sampleCount/maxMs와 `memoryBytes`를 확인한다.
+`memoryBaselineBytes`/`memoryFinalBytes`/`memoryDeltaBytes`는 warmup 이후 용량 변화이며
+heap 누수 없음의 증거가 아니다. `gpuRenderer`는 검증 브라우저의 실제 renderer 정보를 기록한다.
+`node tests/smoke/gpu-resources-browser-smoke.mjs --require-gpu-timing`은 Chromium developer extension을
+허용하고 실제 GPU sample이 없으면 실패한다. 이 설정은 검증 브라우저에만 적용한다.
+software renderer에서 얻은 시간은 계측 연결 증거이며 실물 GPU 성능 판정값이 아니다.
+단위 검사는 query 지연/재사용/포화, 외부 query 충돌 회피, disjoint/context loss,
+render 예외의 query 종료와 미측정 budget 실패를 검증한다. 이 smoke는 기존 CI validate에 연결되어 있다.
+섬 게임의 나무 24/72/144개 비교, 장면 10회 왕복, 실물 모바일 및 실제 사용 heap 검수는 별도다.
+
 `pnpm smoke:gpu-resources`는 public `createFerrumRuntime`/Data Scene 경로로 실제 Rust
 15-float command를 만들고 Playing 상태, entity/command 1,024개와 sprite 1 + 후처리 2 draw를
 함께 assert한다. DPR 1/2에서 legacy/linear-srgb 각각 12회 scene 교체, asset 재로드/evict,

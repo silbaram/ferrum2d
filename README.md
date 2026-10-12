@@ -71,6 +71,7 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 | RenderTexture | WebGL2에서 sprite command를 불투명 텍스처로 캡처하고 texture id로 재사용한다. [사용 계약](docs/engine/public-api/core.md#rendertexture-webgl2)을 따른다. |
 | 색 공간 관리 | 기본 legacy 출력을 유지하고 WebGL2의 `linear-srgb` 모드로 입력 색상·linear 계산·sRGB 출력을 구분한다. [전환 계약](docs/engine/public-api/core.md#색-공간-관리)을 따른다. |
 | GPU 자원 통계 | WebGL2의 texture/program/buffer/render target 수와 저장량 추정치를 표시하고 profiler 예산으로 검증한다. [집계 계약](docs/engine/public-api/core.md#gpu-자원-통계)을 따른다. |
+| GPU 시간·Wasm 용량 진단 | opt-in WebGL2 비동기 timer와 `engine.memoryStats()`를 제공하며 profiler 예산으로 연결한다. [범위와 한계](docs/engine/public-api/core.md#gpu-실행-시간과-wasm-메모리)를 따른다. |
 | WebGPU renderer | 지원 환경에서 선택 사용하고 실패하면 WebGL2로 fallback한다. WebGL2가 기준 renderer다. |
 | Render command buffer | Rust가 sprite draw command를 만들고 TS가 GPU로 그린다. |
 | Bitmap world text | font atlas glyph를 기존 sprite command로 cache 전개해 camera, culling, render layer, HD-2D sort에 함께 참여시킨다. |

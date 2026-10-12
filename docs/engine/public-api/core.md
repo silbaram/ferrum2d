@@ -46,6 +46,40 @@ handle의 `variables`는 현재 문서에 선언된 Data Scene 변수만 읽고 
 `InputActionSnapshot`, `InputKeyBindings`, `VirtualInputState`, `resolveInputActionProfile`은
 core/root에서 import한다. `0.1.0-beta.4`부터 제공하며 [입력 계약과 기존 게임 이행](../input-actions.md)을 참고한다.
 
+## GPU 실행 시간과 Wasm 메모리
+
+`engine.memoryStats(): EngineMemoryStats`는 `wasmLinearMemoryBytes`를 반환한다.
+현재 Wasm linear memory의 확보 용량이며 같은 모듈의 여러 engine 인스턴스가 공유한다.
+`memory.grow` 이후 새 buffer에서 바이트를 읽는다. JS heap, 실제 사용 중인 Rust heap,
+GPU 저장량은 포함하지 않으며, 용량이 일정해도 메모리 누수가 없다고 판정할 수 없다.
+Wasm memory는 개체/장면 해제 후에도 축소되지 않을 수 있다.
+`FrameState.wasmLinearMemoryBytes`와 DebugOverlay/RuntimeProfiler에도 같은 값이 전달된다.
+
+```ts
+const runtime = await createFerrumRuntime({
+  canvas,
+  webgl2: { gpuTiming: true },
+  profiler: true,
+});
+const bytes = runtime.engine.memoryStats().wasmLinearMemoryBytes;
+const timing = runtime.renderer.gpuTimingStats?.();
+const report = runtime.profiler?.snapshot();
+```
+
+GPU timer는 기본 비활성이며 WebGL2 `EXT_disjoint_timer_query_webgl2`를 지원할 때만 동작한다.
+`RendererGpuTimingStats`의 `status`는 `disabled`, `unsupported`, `pending`, `ready`,
+`disjoint`, `context-lost` 중 하나다. `elapsedMs`와 `frameId`는 유효한 이전 frame 결과가
+완료되었을 때만 제공한다. 결과는 후속 frame에서 비동기로 읽으며 같은 결과를 다음 frame에
+다시 기록하지 않는다. CPU 제출 시간인 `renderTimeMs`와 별개이며 화면 표시 지연은 측정하지 않는다.
+타이머는 최대 4개 query를 재사용한다. GPU가 느리면 새 측정을 생략하고 기다리거나 `gl.finish()`를 호출하지 않는다.
+disjoint/context loss 결과를 폐기하고 renderer destroy에서 query를 해제한다.
+이 동작은 [Khronos 확장 명세](https://registry.khronos.org/webgl/extensions/EXT_disjoint_timer_query_webgl2/)를 따른다.
+
+공식 runtime은 clear, sprite, 조명, physics debug, post-process 전체를 자동으로 감싼다.
+renderer를 직접 호출할 때는 `beginGpuTiming()`과 `endGpuTiming()`을 `try/finally`로
+호출하고 필요한 offscreen pass도 사이에 배치한다. 구간 밖의 asset upload와 render 작업은 제외된다.
+native WebGPU/custom renderer는 이 capability가 없을 수 있다. 미지원/대기/무효 결과는 0ms로 보정하지 않는다.
+
 ## GPU 자원 통계
 
 `WebGL2Renderer.resourceStats()`는 renderer가 소유한 현재 자원을 독립된
