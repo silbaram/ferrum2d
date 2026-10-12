@@ -117,6 +117,7 @@ export type {
   CreateEngineOptions,
   EngineLifecycleHooks,
   EngineLifecycleSnapshot,
+  EngineMemoryStats,
   FerrumAssetApi,
   FerrumBufferAccessorApi,
   FerrumEngine,
@@ -613,6 +614,7 @@ export async function createEngineWithFramePipeline(
     destroy,
     time: () => { requireAlive(); return rustEngine.time(); },
     version: () => { requireAlive(); return bridge.version(); },
+    memoryStats: () => { requireAlive(); return { wasmLinearMemoryBytes: bridge.memoryByteLength() }; },
   };
 
   const sceneApi: FerrumSceneApi = {

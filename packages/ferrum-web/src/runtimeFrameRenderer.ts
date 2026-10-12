@@ -5,6 +5,7 @@ import type { FrameState } from "./engineTypes.js";
 import { GAME_STATE_CODE, type GameStateCode } from "./gameState.js";
 import type { RenderFrameState } from "./engineFramePipeline.js";
 import type { RuntimeProfiler } from "./runtimeProfiler.js";
+import type { RendererGpuTimingStats } from "./gpuTiming.js";
 import type { UiOverlay } from "./uiOverlay.js";
 import type {
   FerrumRuntimeFrame,
@@ -58,17 +59,23 @@ export class RuntimeFrameRenderer {
     const renderStartMs = this.options.needsRuntimeFrame ? this.now() : 0;
     let frame = this.applyDynamicFrameProviders(renderFrame);
 
-    this.options.renderer.render();
-    let rendererStats = this.options.renderer.renderCommands(renderFrame.renderCommandBuffer);
-    if (this.options.shouldRenderPhysicsDebugLines && renderFrame.physicsDebugLineBuffer !== undefined) {
-      const physicsDebugLines = this.options.physicsDebugLineComposer?.(renderFrame.physicsDebugLineBuffer)
-        ?? renderFrame.physicsDebugLineBuffer;
-      rendererStats = this.options.renderer.renderPhysicsDebugLines(physicsDebugLines, {
-        x: renderFrame.cameraX,
-        y: renderFrame.cameraY,
-      });
+    let rendererStats: RendererStats;
+    this.options.renderer.beginGpuTiming?.();
+    try {
+      this.options.renderer.render();
+      rendererStats = this.options.renderer.renderCommands(renderFrame.renderCommandBuffer);
+      if (this.options.shouldRenderPhysicsDebugLines && renderFrame.physicsDebugLineBuffer !== undefined) {
+        const physicsDebugLines = this.options.physicsDebugLineComposer?.(renderFrame.physicsDebugLineBuffer)
+          ?? renderFrame.physicsDebugLineBuffer;
+        rendererStats = this.options.renderer.renderPhysicsDebugLines(physicsDebugLines, {
+          x: renderFrame.cameraX,
+          y: renderFrame.cameraY,
+        });
+      }
+      rendererStats = this.options.renderer.renderPostProcess?.() ?? rendererStats;
+    } finally {
+      this.options.renderer.endGpuTiming?.();
     }
-    rendererStats = this.options.renderer.renderPostProcess?.() ?? rendererStats;
     if (!this.options.needsRuntimeFrame) {
       return;
     }
@@ -146,6 +153,7 @@ export class RuntimeFrameRenderer {
       this.audioEventsPerSecond,
       this.options.gameStateLabel ?? defaultGameStateLabel,
       this.options.renderer.resourceStats?.(),
+      this.options.renderer.gpuTimingStats?.(),
     );
     this.options.debugOverlay?.update(debugMetrics);
     const runtimeFrame: FerrumRuntimeFrame = {
@@ -194,9 +202,15 @@ function buildDebugMetrics(
   audioEventsPerSecond: number,
   gameStateLabel: (code: GameStateCode) => string,
   resources?: RendererResourceStats,
+  gpuTiming?: RendererGpuTimingStats,
 ): DebugOverlayMetrics {
   return {
     fps,
+    wasmLinearMemoryBytes: frame.wasmLinearMemoryBytes,
+    ...(gpuTiming?.status === "ready" ? {
+      gpuFrameTimeMs: gpuTiming.elapsedMs,
+      gpuFrameId: gpuTiming.frameId,
+    } : {}),
     ...(resources === undefined ? {} : {
       gpuTextureCount: resources.textureCount,
       gpuBufferCount: resources.bufferCount,

@@ -13,13 +13,13 @@ function observeAllocations(gl) {
   const textureBytes = new Map();
   const bufferBytes = new Map();
   let allocations = 0;
-  for (const kind of ["Texture", "Buffer", "Program", "Framebuffer"]) {
+  for (const kind of ["Texture", "Buffer", "Program", "Framebuffer", "Query"]) {
     const objects = live[kind] = new Set();
     const create = gl[`create${kind}`].bind(gl);
     const destroy = gl[`delete${kind}`].bind(gl);
     gl[`create${kind}`] = (...args) => {
       const value = create(...args);
-      if (value) { objects.add(value); allocations++; }
+      if (value) { objects.add(value); if (kind !== "Query") allocations++; }
       return value;
     };
     gl[`delete${kind}`] = (value) => {
@@ -46,6 +46,7 @@ function observeAllocations(gl) {
   const sum = (map) => [...map.values()].reduce((a, b) => a + b, 0);
   return {
     get allocations() { return allocations; },
+    get queries() { return live.Query.size; },
     verify(renderer) {
       const stats = renderer.resourceStats();
       const textures = sum(textureBytes);
@@ -90,7 +91,7 @@ async function runMode(colorManagement) {
   const debugRoot = document.createElement("div");
   document.body.appendChild(debugRoot);
   const runtime = await createFerrumRuntime({ canvas, debug: true, debugParent: debugRoot,
-    colorManagement, profiler: { budget }, webgl2: { preserveDrawingBuffer: true, clearColor: [0, 0, 0, 1] },
+    colorManagement, profiler: { budget }, webgl2: { gpuTiming: true, preserveDrawingBuffer: true, clearColor: [0, 0, 0, 1] },
     postProcess: [{ kind: "fade", color: [0, 0, 0], opacity: 0.1 },
       { kind: "fade", color: [0, 0, 0], opacity: 0.1 }],
     onFrame(frame) { runtime.stop(); completeFrame(frame); },
@@ -102,6 +103,12 @@ async function runMode(colorManagement) {
     equal(result.frame.renderCommandBuffer.floatsPerCommand, 15, "Rust command ABI");
     equal(result.rendererStats.renderCommandCount, count, "scene command count");
     equal(result.frame.entityCount, count, "scene transition must clear old entities");
+    const memory = runtime.engine.memoryStats().wasmLinearMemoryBytes;
+    equal(memory, result.frame.renderCommandBuffer.buffer.buffer.byteLength, "memory API must match current Wasm backing buffer");
+    assert(memory > 0 && memory % 65536 === 0, "Wasm capacity must contain whole 64KiB pages");
+    equal(result.frame.wasmLinearMemoryBytes, memory, "frame memory sample");
+    equal(runtime.profiler.snapshot().latestFrame.wasmLinearMemoryBytes, memory, "profiler memory sample");
+    assert(observed.queries <= 4, "GPU query allocation must stay bounded");
     equal(result.rendererStats.drawCalls, count === 0 ? 2 : 3, "sprite + two post-process draws");
     const stats = observed.verify(renderer);
     equal(result.debugMetrics.gpuTextureCount, stats.textureCount, "debug resource sample");
@@ -119,6 +126,7 @@ async function runMode(colorManagement) {
     equal(baseline.renderTargetCount, 3, "retained post-process targets");
     equal(baseline.textureCount, 4, "placeholder plus targets");
     const savedBaseline = JSON.stringify(baseline);
+    const memoryBaselineBytes = runtime.engine.memoryStats().wasmLinearMemoryBytes;
     const image = document.createElement("canvas");
     image.width = image.height = 8;
     const context = image.getContext("2d");
@@ -158,6 +166,8 @@ async function runMode(colorManagement) {
     equal(observed.allocations, afterCycles, "steady frames must not allocate GPU resources");
     assert(debugRoot.textContent.includes("GPU textures") && debugRoot.textContent.includes("GPU storage estimate"), "overlay must display resources");
     const latest = runtime.profiler.snapshot().latestFrame;
+    const memoryDenied = evaluateRuntimeDiagnosticsSample(latest, { maxWasmLinearMemoryBytes: latest.wasmLinearMemoryBytes - 1 });
+    assert(!memoryDenied.passed && memoryDenied.violations[0].actual === latest.wasmLinearMemoryBytes, "Wasm budget must use measured bytes");
     const denied = evaluateRuntimeDiagnosticsSample(latest, { maxGpuTextureCount: baseline.textureCount - 1 });
     assert(!denied.passed && denied.violations[0].actual === baseline.textureCount, "resource budget must fail on actual usage");
     // Resize retained targets; DPR-aware estimates must reflect the real backing pixels.
@@ -167,13 +177,28 @@ async function runMode(colorManagement) {
     const resized = observed.verify(renderer);
     equal(resized.textureBytes, 64 * 64 * 4 + 3 * canvas.width * canvas.height * 4, "resized target bytes");
     const snapshot = runtime.profiler.snapshot();
+    const memoryFinalBytes = runtime.engine.memoryStats().wasmLinearMemoryBytes;
+    const gpuDevice = gl.getExtension("WEBGL_debug_renderer_info");
+    const gpuRenderer = gpuDevice ? gl.getParameter(gpuDevice.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    const gpuStatus = renderer.gpuTimingStats().status;
+    if (gpuStatus !== "unsupported") {
+      assert(snapshot.gpuFrameSampleCount > 0, "supported GPU timer must complete real queries");
+      assert(Number.isFinite(snapshot.maxGpuFrameTimeMs) && snapshot.maxGpuFrameTimeMs >= 0, "real GPU time sample");
+    } else {
+      equal(snapshot.gpuFrameSampleCount, 0, "unsupported GPU time is not zero milliseconds");
+      equal(snapshot.maxGpuFrameTimeMs, undefined, "unsupported GPU time remains absent");
+    }
     runtime.destroy();
     runtime.destroy();
     const final = observed.verify(renderer);
     equal(final.estimatedBytes, 0, "destroy bytes");
+    equal(observed.queries, 0, "destroy must release GPU timer queries");
     equal(final.textureCount + final.bufferCount + final.programCount + final.renderTargetCount, 0, "destroy live objects");
     return { colorManagement, cycles: 12, commandCount: 1024, drawCalls: 3,
-      dataSceneState: "playing", baseline, maxGpuEstimatedBytes: snapshot.maxGpuEstimatedBytes, final };
+      dataSceneState: "playing", baseline, maxGpuEstimatedBytes: snapshot.maxGpuEstimatedBytes, final,
+      memoryBytes: snapshot.maxWasmLinearMemoryBytes,
+      memoryBaselineBytes, memoryFinalBytes, memoryDeltaBytes: memoryFinalBytes - memoryBaselineBytes, gpuRenderer,
+      gpuTiming: { status: gpuStatus, sampleCount: snapshot.gpuFrameSampleCount, maxMs: snapshot.maxGpuFrameTimeMs } };
   } finally {
     runtime.destroy();
     canvas.remove();

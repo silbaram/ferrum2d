@@ -1,4 +1,8 @@
 export interface DebugOverlayMetrics {
+  wasmLinearMemoryBytes?: number;
+  /** Completed GPU query time from a previous renderer frame. */
+  gpuFrameTimeMs?: number;
+  gpuFrameId?: number;
   gpuTextureCount?: number;
   gpuBufferCount?: number;
   gpuProgramCount?: number;
@@ -66,6 +70,8 @@ export const DEBUG_OVERLAY_ROW_CONTRACT: readonly DebugOverlayRowContract[] = [
   { id: "spriteCount", label: "sprites", unit: "count" },
   { id: "drawCalls", label: "draw calls", unit: "count" },
   { id: "batchCount", label: "batches", unit: "count" },
+  { id: "wasmLinearMemoryBytes", label: "Wasm capacity", unit: "bytes", optional: true },
+  { id: "gpuFrameTimeMs", label: "GPU elapsed", unit: "ms", optional: true },
   { id: "gpuTextureCount", label: "GPU textures", unit: "count", optional: true },
   { id: "gpuBufferCount", label: "GPU buffers", unit: "count", optional: true },
   { id: "gpuProgramCount", label: "GPU programs", unit: "count", optional: true },
@@ -184,6 +190,8 @@ export function formatDebugOverlayMetrics(metrics: DebugOverlayMetrics): string[
     row("batchCount", metrics.batchCount),
   ];
 
+  if (metrics.wasmLinearMemoryBytes !== undefined) lines.push(row("wasmLinearMemoryBytes", `${metrics.wasmLinearMemoryBytes} bytes`));
+  if (metrics.gpuFrameTimeMs !== undefined) lines.push(row("gpuFrameTimeMs", `${metrics.gpuFrameTimeMs.toFixed(2)} ms`));
   if (metrics.gpuTextureCount !== undefined) lines.push(row("gpuTextureCount", metrics.gpuTextureCount));
   if (metrics.gpuBufferCount !== undefined) lines.push(row("gpuBufferCount", metrics.gpuBufferCount));
   if (metrics.gpuProgramCount !== undefined) lines.push(row("gpuProgramCount", metrics.gpuProgramCount));

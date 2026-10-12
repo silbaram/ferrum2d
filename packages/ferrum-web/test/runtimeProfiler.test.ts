@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert/strict";
+import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 import {
   evaluateRuntimeDiagnosticsSample,
@@ -7,6 +7,40 @@ import {
   runtimeDiagnosticsFrameSample,
 } from "../src/runtimeProfiler.js";
 import type { DebugOverlayMetrics } from "../src/debugOverlay.js";
+
+test("Wasm capacity requires complete samples and GPU aggregates count only measured queries", () => {
+  const profiler = new RuntimeProfiler({ budget: { maxWasmLinearMemoryBytes: 65536, maxGpuFrameTimeMs: 3 } });
+  equal(profiler.snapshot().budgetReport?.passed, false);
+  profiler.recordFrame(metrics({ wasmLinearMemoryBytes: 65536 }));
+  let snapshot = profiler.snapshot();
+  equal(snapshot.gpuFrameSampleCount, 0);
+  equal(snapshot.maxGpuFrameTimeMs, undefined);
+  equal(snapshot.budgetReport?.violations[0].reason, "missingMetric");
+  profiler.recordFrame(metrics({ wasmLinearMemoryBytes: 65536, gpuFrameTimeMs: 2, gpuFrameId: 1 }));
+  profiler.recordFrame(metrics({ wasmLinearMemoryBytes: 131072, gpuFrameTimeMs: 4, gpuFrameId: 2 }));
+  snapshot = profiler.snapshot();
+  equal(snapshot.gpuFrameSampleCount, 2);
+  equal(snapshot.averageGpuFrameTimeMs, 3);
+  equal(snapshot.maxGpuFrameTimeMs, 4);
+  equal(snapshot.maxWasmLinearMemoryBytes, 131072);
+  deepEqual(snapshot.budgetReport?.violations.map((v) => v.id), ["maxWasmLinearMemoryBytes", "maxGpuFrameTimeMs"]);
+  profiler.recordFrame(metrics());
+  equal(profiler.snapshot().maxWasmLinearMemoryBytes, undefined);
+  profiler.reset();
+  equal(profiler.snapshot().gpuFrameSampleCount, 0);
+  equal(profiler.snapshot().averageGpuFrameTimeMs, undefined);
+});
+
+test("new timing diagnostics preserve measured zero and reject invalid samples", () => {
+  const profiler = new RuntimeProfiler({ budget: { maxGpuFrameTimeMs: 0, maxWasmLinearMemoryBytes: 0 } });
+  equal(profiler.recordFrame(metrics({ gpuFrameTimeMs: 0, wasmLinearMemoryBytes: 0 })).passed, true);
+  equal(profiler.snapshot().gpuFrameSampleCount, 1);
+  equal(profiler.snapshot().averageGpuFrameTimeMs, 0);
+  equal(profiler.snapshot().budgetReport?.passed, true);
+  throws(() => runtimeDiagnosticsFrameSample(metrics({ gpuFrameTimeMs: -1 })), /non-negative/);
+  throws(() => runtimeDiagnosticsFrameSample(metrics({ gpuFrameTimeMs: Number.NaN })), /finite/);
+  throws(() => runtimeDiagnosticsFrameSample(metrics({ wasmLinearMemoryBytes: 1.5 })), /integer/);
+});
 
 test("RuntimeProfiler records frame samples and aggregate budget violations", () => {
   const profiler = new RuntimeProfiler({

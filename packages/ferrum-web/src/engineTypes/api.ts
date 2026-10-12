@@ -165,6 +165,8 @@ export interface CreateEngineOptions {
   lifecycle?: EngineLifecycleHooks;
 }
 export interface FerrumLifecycleApi {
+  /** Module-wide allocated Wasm capacity; not live heap usage or leak proof. */
+  memoryStats(): EngineMemoryStats;
   start(): void;
   pause(): void;
   resume(): void;
@@ -172,6 +174,11 @@ export interface FerrumLifecycleApi {
   destroy(): void;
   time(): number;
   version(): string;
+}
+
+export interface EngineMemoryStats {
+  /** Current linear memory capacity in bytes, shared by engines in this Wasm module. */
+  wasmLinearMemoryBytes: number;
 }
 
 export interface FerrumBufferAccessorApi {

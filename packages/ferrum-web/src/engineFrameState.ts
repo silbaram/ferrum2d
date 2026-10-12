@@ -125,6 +125,7 @@ export function buildFrameState(input: FrameStateBuildInput): FrameState {
   const telemetry = frameTelemetryBuffer.buffer;
   return {
     timeSeconds: telemetry[TELEMETRY_TIME_SECONDS],
+    wasmLinearMemoryBytes: bridge.memoryByteLength(),
     frameTimeMs: deltaSeconds * 1000,
     rustUpdateTimeMs,
     score: telemetry[TELEMETRY_SCORE],

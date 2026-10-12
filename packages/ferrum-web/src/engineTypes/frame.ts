@@ -50,6 +50,8 @@ export interface ShooterSoundIds {
 }
 
 export interface FrameState {
+  /** Module-wide Wasm linear memory capacity; not live heap usage. */
+  wasmLinearMemoryBytes?: number;
   timeSeconds: number;
   frameTimeMs: number;
   rustUpdateTimeMs: number;

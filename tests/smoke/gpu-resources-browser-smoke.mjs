@@ -5,7 +5,9 @@ import { resolve, sep } from "node:path";
 import { chromium } from "playwright-core";
 
 const root = resolve(".");
+const requireGpuTiming = process.argv.includes("--require-gpu-timing");
 const html = `<!doctype html><html><head><meta charset="utf-8">
+<link rel="icon" href="data:,">
 <style>canvas { width: 128px; height: 128px; }</style>
 <script type="importmap">{"imports":{"@ferrum2d/ferrum-web/core":"/packages/ferrum-web/dist/core.js","@ferrum2d/ferrum-web/quality":"/packages/ferrum-web/dist/quality.js","@ferrum2d/ferrum-web/authoring":"/packages/ferrum-web/dist/authoring.js"}}</script>
 </head><body><canvas id="game"></canvas>
@@ -35,6 +37,7 @@ try {
     server.listen(0, "127.0.0.1", done);
   });
   const options = { headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage"] };
+  if (requireGpuTiming) options.args.push("--enable-webgl-developer-extensions");
   if (process.env.FERRUM_BROWSER_EXECUTABLE) {
     browser = await chromium.launch({ ...options, executablePath: process.env.FERRUM_BROWSER_EXECUTABLE });
   } else {
@@ -54,6 +57,9 @@ try {
     await page.waitForFunction(() => globalThis.gpuResourcesSmoke !== undefined, undefined, { timeout: 45_000 });
     const report = await page.evaluate(() => globalThis.gpuResourcesSmoke);
     if (report.error || errors.length) throw new Error(JSON.stringify({ report, errors }));
+    if (requireGpuTiming && report.modes?.some((mode) => !(mode.gpuTiming?.sampleCount > 0))) {
+      throw new Error(`GPU timing was required but not measured: ${JSON.stringify(report)}`);
+    }
     if (report.status !== "passed" || report.modes?.length !== 2 || report.modes.some((mode) =>
       mode.cycles !== 12 || mode.commandCount !== 1024 || mode.drawCalls !== 3
       || mode.dataSceneState !== "playing" || mode.final.estimatedBytes !== 0)) {

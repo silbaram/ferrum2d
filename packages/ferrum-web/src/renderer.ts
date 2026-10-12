@@ -1,4 +1,5 @@
 import type { RendererResourceStats } from "./rendererResources";
+import type { RendererGpuTimingStats } from "./gpuTiming.js";
 import type { RenderCommandBufferView } from "./renderCommandDecoder";
 import type { PostProcessStackInput } from "./cameraPostProcessing";
 
@@ -138,6 +139,10 @@ export interface Renderer {
   stats(): RendererStats;
   /** Optional capability: absent means unsupported, not zero resources. */
   resourceStats?(): RendererResourceStats | undefined;
+  /** Optional asynchronous GPU timer; bracket all render passes with begin/end. */
+  beginGpuTiming?(): void;
+  endGpuTiming?(): void;
+  gpuTimingStats?(): RendererGpuTimingStats;
   setPostProcess?(postProcess: PostProcessStackInput): void;
   renderPostProcess?(postProcess?: PostProcessStackInput): RendererStats;
   destroy(): void;

@@ -4,6 +4,8 @@ import type { DebugOverlayMetrics } from "./debugOverlay.js";
 export type RuntimeDiagnosticsUnit = "ms" | "count" | "events/s" | "bytes";
 
 export interface RuntimeDiagnosticsBudget {
+  maxWasmLinearMemoryBytes?: number;
+  maxGpuFrameTimeMs?: number;
   maxGpuTextureCount?: number;
   maxGpuBufferCount?: number;
   maxGpuProgramCount?: number;
@@ -41,6 +43,9 @@ export interface RuntimeDiagnosticsReport {
 }
 
 export interface RuntimeDiagnosticsFrameSample {
+  wasmLinearMemoryBytes?: number;
+  gpuFrameTimeMs?: number;
+  gpuFrameId?: number;
   gpuTextureCount?: number;
   gpuBufferCount?: number;
   gpuProgramCount?: number;
@@ -89,6 +94,11 @@ export interface RuntimeProfilerOptions {
 }
 
 export interface RuntimeProfilerSnapshot {
+  maxWasmLinearMemoryBytes?: number;
+  /** Only completed, valid GPU queries in the retained sample window. */
+  gpuFrameSampleCount: number;
+  averageGpuFrameTimeMs?: number;
+  maxGpuFrameTimeMs?: number;
   maxGpuTextureCount?: number;
   maxGpuBufferCount?: number;
   maxGpuProgramCount?: number;
@@ -192,6 +202,12 @@ export function runtimeDiagnosticsFrameSample(
     drawCalls: nonNegativeInteger(metrics.drawCalls, "drawCalls"),
     batchCount: nonNegativeInteger(metrics.batchCount, "batchCount"),
   };
+  if (metrics.wasmLinearMemoryBytes !== undefined) sample.wasmLinearMemoryBytes = nonNegativeInteger(metrics.wasmLinearMemoryBytes, "wasmLinearMemoryBytes");
+  if (metrics.gpuFrameTimeMs !== undefined) {
+    sample.gpuFrameTimeMs = finiteNumber(metrics.gpuFrameTimeMs, "gpuFrameTimeMs");
+    if (sample.gpuFrameTimeMs < 0) throw new Error("gpuFrameTimeMs must be non-negative.");
+  }
+  if (metrics.gpuFrameId !== undefined) sample.gpuFrameId = nonNegativeInteger(metrics.gpuFrameId, "gpuFrameId");
   if (metrics.gpuTextureCount !== undefined) sample.gpuTextureCount = nonNegativeInteger(metrics.gpuTextureCount, "gpuTextureCount");
   if (metrics.gpuBufferCount !== undefined) sample.gpuBufferCount = nonNegativeInteger(metrics.gpuBufferCount, "gpuBufferCount");
   if (metrics.gpuProgramCount !== undefined) sample.gpuProgramCount = nonNegativeInteger(metrics.gpuProgramCount, "gpuProgramCount");
@@ -256,6 +272,8 @@ export function evaluateRuntimeDiagnosticsSample(
   budget: RuntimeDiagnosticsBudget,
 ): RuntimeDiagnosticsReport {
   const violations: RuntimeDiagnosticsViolation[] = [];
+  addViolation(violations, "maxWasmLinearMemoryBytes", "Wasm capacity", sample.wasmLinearMemoryBytes, budget.maxWasmLinearMemoryBytes, "bytes");
+  addViolation(violations, "maxGpuFrameTimeMs", "GPU elapsed", sample.gpuFrameTimeMs, budget.maxGpuFrameTimeMs, "ms");
   addViolation(violations, "maxGpuTextureCount", "GPU textures", sample.gpuTextureCount, budget.maxGpuTextureCount, "count");
   addViolation(violations, "maxGpuBufferCount", "GPU buffers", sample.gpuBufferCount, budget.maxGpuBufferCount, "count");
   addViolation(violations, "maxGpuProgramCount", "GPU programs", sample.gpuProgramCount, budget.maxGpuProgramCount, "count");
@@ -353,6 +371,8 @@ export function evaluateRuntimeProfilerBudget(
   budget: RuntimeDiagnosticsBudget,
 ): RuntimeDiagnosticsReport {
   const violations: RuntimeDiagnosticsViolation[] = [];
+  addViolation(violations, "maxWasmLinearMemoryBytes", "Wasm capacity", snapshot.maxWasmLinearMemoryBytes, budget.maxWasmLinearMemoryBytes, "bytes");
+  addViolation(violations, "maxGpuFrameTimeMs", "GPU elapsed", snapshot.maxGpuFrameTimeMs, budget.maxGpuFrameTimeMs, "ms");
   addViolation(violations, "maxGpuTextureCount", "GPU textures", snapshot.maxGpuTextureCount, budget.maxGpuTextureCount, "count");
   addViolation(violations, "maxGpuBufferCount", "GPU buffers", snapshot.maxGpuBufferCount, budget.maxGpuBufferCount, "count");
   addViolation(violations, "maxGpuProgramCount", "GPU programs", snapshot.maxGpuProgramCount, budget.maxGpuProgramCount, "count");
@@ -584,6 +604,16 @@ function summarizeRuntimeProfiler(
   snapshot.maxGpuProgramCount = completeWindowMaximum(frames, "gpuProgramCount");
   snapshot.maxGpuRenderTargetCount = completeWindowMaximum(frames, "gpuRenderTargetCount");
   snapshot.maxGpuEstimatedBytes = completeWindowMaximum(frames, "gpuEstimatedBytes");
+  snapshot.maxWasmLinearMemoryBytes = completeWindowMaximum(frames, "wasmLinearMemoryBytes");
+  snapshot.gpuFrameSampleCount = 0;
+  let totalGpuTimeMs = 0;
+  for (const frame of frames) {
+    if (frame.gpuFrameTimeMs === undefined) continue;
+    snapshot.gpuFrameSampleCount += 1;
+    totalGpuTimeMs += frame.gpuFrameTimeMs;
+    snapshot.maxGpuFrameTimeMs = Math.max(snapshot.maxGpuFrameTimeMs ?? 0, frame.gpuFrameTimeMs);
+  }
+  if (snapshot.gpuFrameSampleCount > 0) snapshot.averageGpuFrameTimeMs = totalGpuTimeMs / snapshot.gpuFrameSampleCount;
 
   return snapshot;
 }
@@ -677,7 +707,7 @@ function finiteNumber(value: unknown, name: string): number {
 // A missing measurement anywhere in the retained window cannot pass a GPU budget.
 function completeWindowMaximum(
   frames: readonly RuntimeDiagnosticsFrameSample[],
-  field: "gpuTextureCount" | "gpuBufferCount" | "gpuProgramCount" | "gpuRenderTargetCount" | "gpuEstimatedBytes",
+  field: "gpuTextureCount" | "gpuBufferCount" | "gpuProgramCount" | "gpuRenderTargetCount" | "gpuEstimatedBytes" | "wasmLinearMemoryBytes",
 ): number | undefined {
   if (frames.length === 0) return undefined;
   let maximum = 0;

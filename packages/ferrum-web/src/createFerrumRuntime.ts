@@ -80,6 +80,7 @@ import type { CreateHudOverlayStateOptions, HudComponentSpec } from "./hudToolki
 import { UiOverlay } from "./uiOverlay.js";
 import type { UiOverlayActionEvent, UiOverlayOptions, UiOverlayState } from "./uiOverlay.js";
 import type { WebGL2RendererOptions } from "./webgl2Renderer.js";
+import type { Renderer } from "./renderer.js";
 import type { ColorManagementMode } from "./colorManagement.js";
 import type { WebGPURendererOptions } from "./webgpuRenderer.js";
 import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch.js";
@@ -98,7 +99,7 @@ import type {
 import type { DataSceneVariableStore } from "./dataSceneVariables.js";
 import type { DataSceneGameState, GameStateCode } from "./gameState.js";
 
-export type FerrumRuntimeRenderer = CreatedRenderer & TextureAssetManager & {
+export type FerrumRuntimeRenderer = CreatedRenderer & Renderer & TextureAssetManager & {
   renderCommands(commands: RenderCommandBufferView): RendererStats;
   renderPhysicsDebugLines(lines: PhysicsDebugLineBufferView, camera: PhysicsDebugLineCamera): RendererStats;
   viewportSize(): { width: number; height: number };

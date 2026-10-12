@@ -120,6 +120,11 @@ export class WasmBridge {
     return version();
   }
 
+  memoryByteLength(): number {
+    // Always read the current buffer: memory.grow replaces/detaches previous views.
+    return this.memory.buffer.byteLength;
+  }
+
   createRenderCommandAccessor(): RenderCommandAccessor {
     return createRenderCommandAccessor(
       this.bufferContext.layout.renderCommandFieldOffsets,

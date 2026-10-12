@@ -1,4 +1,4 @@
-import { deepEqual, equal } from "node:assert/strict";
+import { deepEqual, equal, throws } from "node:assert/strict";
 import { test } from "node:test";
 import { RuntimeFrameRenderer } from "../src/runtimeFrameRenderer.js";
 import type { RenderFrameState } from "../src/engineFramePipeline.js";
@@ -7,6 +7,36 @@ import type { FerrumRuntimeFrame, FerrumRuntimeRenderer } from "../src/createFer
 import { GAME_STATE_CODE } from "../src/gameState.js";
 import { emptyRendererStats } from "../src/renderer.js";
 import type { RendererStats } from "../src/renderer.js";
+
+test("runtime brackets all GPU passes and publishes delayed query plus Wasm capacity", () => {
+  const order: string[] = [];
+  const renderer = fakeRuntimeRenderer(order);
+  renderer.beginGpuTiming = () => { order.push("gpu_begin"); };
+  renderer.endGpuTiming = () => { order.push("gpu_end"); };
+  renderer.gpuTimingStats = () => ({ status: "ready", elapsedMs: 2.5, frameId: 7, pendingQueryCount: 1 });
+  let published: FerrumRuntimeFrame | undefined;
+  const runtime = new RuntimeFrameRenderer({ renderer, shouldRenderPhysicsDebugLines: true, needsRuntimeFrame: true,
+    onFrame: (frame) => { published = frame; } });
+  runtime.renderFrame(renderFrameState({ frameState: frameState({ wasmLinearMemoryBytes: 65536 }), includePhysicsDebugLines: true }));
+  deepEqual(order, ["gpu_begin", "render", "render_commands", "render_debug:11,22", "post_process", "gpu_end"]);
+  equal(published?.debugMetrics.gpuFrameTimeMs, 2.5);
+  equal(published?.debugMetrics.gpuFrameId, 7);
+  equal(published?.debugMetrics.wasmLinearMemoryBytes, 65536);
+  renderer.gpuTimingStats = () => ({ status: "pending", pendingQueryCount: 2 });
+  runtime.renderFrame(renderFrameState({ frameState: frameState() }));
+  equal(published?.debugMetrics.gpuFrameTimeMs, undefined);
+});
+
+test("runtime closes its GPU query when a render pass throws", () => {
+  const order: string[] = [];
+  const renderer = fakeRuntimeRenderer(order);
+  renderer.beginGpuTiming = () => { order.push("gpu_begin"); };
+  renderer.endGpuTiming = () => { order.push("gpu_end"); };
+  renderer.renderCommands = () => { throw new Error("render failed"); };
+  const runtime = new RuntimeFrameRenderer({ renderer, shouldRenderPhysicsDebugLines: false, needsRuntimeFrame: false });
+  throws(() => runtime.renderFrame(renderFrameState()), /render failed/);
+  deepEqual(order, ["gpu_begin", "render", "gpu_end"]);
+});
 
 test("RuntimeFrameRenderer preserves dynamic provider, render, overlay, profiler, and onFrame order", () => {
   const order: string[] = [];

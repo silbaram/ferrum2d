@@ -91,6 +91,8 @@ class FakeEngine {
 class FakeBridge {
   decodeAudioCount = 0;
 
+  memoryByteLength(): number { return 65536; }
+
   constructor(
     private readonly order: string[],
     private readonly audioEventCount = 1,

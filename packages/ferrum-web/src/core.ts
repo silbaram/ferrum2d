@@ -1,6 +1,7 @@
 export { createKtx2Transcoder } from "./ktx2Transcoder";
 export type { Ktx2Transcoder, Ktx2TranscoderOptions, Ktx2TextureFormat, Ktx2TranscodedImage, Ktx2TranscodeOptions } from "./ktx2Texture";
 export type { RendererResourceStats } from "./rendererResources";
+export type { RendererGpuTimingStats } from "./gpuTiming.js";
 export {
   BITMAP_FONT_ATLAS_FORMAT,
   BITMAP_FONT_ATLAS_VERSION,
@@ -160,6 +161,7 @@ export type {
   EffectEventRuntimeOptions,
   EngineLifecycleHooks,
   EngineLifecycleSnapshot,
+  EngineMemoryStats,
   FerrumAssetApi,
   FerrumBitmapTextApi,
   FerrumBufferAccessorApi,

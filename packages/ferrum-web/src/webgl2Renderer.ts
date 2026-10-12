@@ -1,4 +1,6 @@
 import { prepareWebGL2Renderer } from "./webgl2ShaderPrograms";
+import { WebGL2GpuTimer } from "./webgl2GpuTimer.js";
+import type { RendererGpuTimingStats } from "./gpuTiming.js";
 import type { ShaderPreparationOptions } from "./shaderPreparation";
 import type { RendererResourceStats } from "./rendererResources";
 import {
@@ -54,6 +56,8 @@ const COPY_POST_PROCESS_PASS: ResolvedPostProcessPass = {
 };
 
 export interface WebGL2RendererOptions extends TextureManagerOptions {
+  /** Opt-in nonblocking EXT_disjoint_timer_query_webgl2 measurement. Default false. */
+  gpuTiming?: boolean;
   colorManagement?: ColorManagementMode;
   clearColor?: [number, number, number, number];
   preserveDrawingBuffer?: boolean;
@@ -65,6 +69,7 @@ export interface WebGL2RendererOptions extends TextureManagerOptions {
 export class WebGL2Renderer implements Renderer {
   readonly colorManagement: ColorManagementMode;
   private readonly gl: WebGL2RenderingContext;
+  private readonly gpuTimer?: WebGL2GpuTimer;
   private readonly textureManager: TextureManager;
   private readonly spriteBatch: SpriteBatch;
   private readonly renderTextures: WebGL2RenderTextureStore;
@@ -124,6 +129,10 @@ export class WebGL2Renderer implements Renderer {
       cleanup.push(() => this.lightingPass.destroy());
       this.fullscreenPass = new WebGL2FullscreenPass(gl);
       cleanup.push(() => this.fullscreenPass.destroy());
+      if (options.gpuTiming) {
+        this.gpuTimer = new WebGL2GpuTimer(gl);
+        cleanup.push(() => this.gpuTimer?.destroy());
+      }
       this.resize();
     } catch (error) {
       for (const dispose of cleanup.reverse()) dispose();
@@ -420,6 +429,20 @@ export class WebGL2Renderer implements Renderer {
     this.clearFrameTarget();
   }
 
+  beginGpuTiming(): void {
+    this.assertAlive();
+    this.gpuTimer?.beginFrame();
+  }
+
+  endGpuTiming(): void {
+    this.assertAlive();
+    this.gpuTimer?.endFrame();
+  }
+
+  gpuTimingStats(): RendererGpuTimingStats {
+    return this.gpuTimer?.stats() ?? { status: "disabled", pendingQueryCount: 0 };
+  }
+
   renderCommands(commands: RenderCommandBufferView): RendererStats;
   renderCommands(texture: WebGLTexture, commands: RenderCommandBufferView): RendererStats;
   renderCommands(
@@ -541,6 +564,7 @@ export class WebGL2Renderer implements Renderer {
       return;
     }
     this.destroyed = true;
+    this.gpuTimer?.destroy();
     this.spriteBatch.destroy();
     this.physicsDebugLineBatch.destroy();
     this.lightingPass.destroy();

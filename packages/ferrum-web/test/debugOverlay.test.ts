@@ -67,6 +67,8 @@ test("DebugOverlay metric contract fixes row order, labels, and units", () => {
     { id: "spriteCount", label: "sprites", unit: "count", optional: false },
     { id: "drawCalls", label: "draw calls", unit: "count", optional: false },
     { id: "batchCount", label: "batches", unit: "count", optional: false },
+    { id: "wasmLinearMemoryBytes", label: "Wasm capacity", unit: "bytes", optional: true },
+    { id: "gpuFrameTimeMs", label: "GPU elapsed", unit: "ms", optional: true },
     { id: "gpuTextureCount", label: "GPU textures", unit: "count", optional: true },
     { id: "gpuBufferCount", label: "GPU buffers", unit: "count", optional: true },
     { id: "gpuProgramCount", label: "GPU programs", unit: "count", optional: true },

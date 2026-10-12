@@ -83,6 +83,7 @@ export type {
   CreateEngineOptions,
   EngineLifecycleHooks,
   EngineLifecycleSnapshot,
+  EngineMemoryStats,
   EffectEventAssetValidationPolicy,
   EffectEventRuntimeOptions,
   FerrumAssetApi,
