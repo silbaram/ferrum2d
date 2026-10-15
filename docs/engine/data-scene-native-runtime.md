@@ -1,5 +1,8 @@
 # Data Scene native actor와 카메라 연결
 
+아래 카메라·정렬은 기존 평면 경로의 계약이다. 개발 소스의 선택적 입체 지형과 물리 elevation의
+화면 높이·깊이 연결은 [공간 카메라·빌보드](data-scene-spatial.md)를 사용한다.
+
 이 경로는 #62~#65에서 추가했으며 `0.1.0-beta.2`부터 제공한다.
 해당 버전 이상의 엔진을 설치한 뒤 공개 `/core`, `/authoring` API로 사용한다.
 초기 설치 단계에서 아래 recipe나 게임 파일을 자동 생성하지 않는다.
@@ -32,10 +35,59 @@ const movement = engine.moveHd2dKinematicBodyWithTilemap(actor, {
 });
 ```
 
-`components.body`는 같은 entity에 `static` 또는 `kinematic` body를 설치한다. 생략하면 기존
-collider-only 장식/trigger 계약을 유지한다. `dynamic`이나 지원하지 않는 body 필드는 경로를 포함한 diagnostic으로 거부한다. `collider: "none"`과 body를 함께 쓰는 것은 거부한다.
+`components.body`는 같은 entity에 `static`, `kinematic`, `dynamic` body를 설치한다. 생략하면 기존
+collider-only 장식/trigger 계약을 유지한다. 지원하지 않는 body 필드는 경로를 포함한 diagnostic으로
+거부한다. `collider: "none"`과 body를 함께 쓰는 것은 거부한다.
 `heightSpan`은 optional이며 HD-2D mover를 사용할 때 명시한다. 높이의 `height`는 이 authoring
 경로에서 양수다. 별도 body를 생성하거나 sprite transform을 JS에서 매 frame 복사하지 않는다.
+
+현재 flat 경로의 `heightSpan.elevation`은 물리 높이 필터와 depth sort metadata에 반영되지만
+sprite의 화면 높이를 자동으로 올리지는 않는다. `groundYScale`은 지면 XY의 압축 투영이며
+입체 camera나 GPU depth buffer를 제공하지 않는다. 층별 충돌/정렬과 실제 입체 공간 표현을 구분한다.
+
+현재 개발 소스는 authored dynamic body를 지원한다. 다음은 밀어서 이동하는 상자용 작성 예다.
+
+```ts
+// props.components의 visual/collider/layer와 함께 작성한다.
+const body = {
+  type: "dynamic", mass: 1, gravityScale: 0,
+  linearDamping: 3, angularDamping: 3, canSleep: true,
+  material: { friction: 0.6, restitution: 0 },
+  heightSpan: { floorId: 0, elevation: 0, height: 1 },
+};
+// collider는 isTrigger:false로 작성하고, 적용 후 받은 authored handle을 사용한다.
+const box = applied.entityHandles.box;
+engine.configureAutoRigidBodyStep({ gravityX: 0, gravityY: 0 });
+engine.applyPhysicsBodyImpulse(box, 0, -180);
+```
+
+`dynamic` 전용 optional 필드는 `mass`(기본 1), `canSleep`(true), `gravityScale`(1),
+`linearDamping`/`angularDamping`(0), `material.friction`(0.4)/`material.restitution`(0)이다.
+mass는 collider 면적·instance scale과 독립적인 명시적 질량이며 양수 finite f32와 유한한 역수가
+필요하다. damping과 재질 값은 음수가 아닌 finite f32, gravityScale은 finite f32여야 한다.
+`material`은 이 두 필드만 지원하며 density/solver tuning은 이 작성 계약에 포함하지 않는다.
+`static`/`kinematic`에는 기존 `type`/`heightSpan`만 허용한다.
+AABB/circle/capsule/orientedBox/convexPolygon의 관성은 scale이 적용된 native collider geometry로 계산한다.
+
+body 작성만으로 자동 stepping을 켜지 않는다. 자동 실행은 `configureAutoRigidBodyStep`으로 설정하며,
+수동 실행은 `stepRigidBodies`를 호출한다. Data Scene의 일반 velocity 이동은 dynamic/static/disabled
+body를 적분하지 않는다. 자동 stepping이 켜진 Data Scene은 kinematic 이동도 solver에 맡겨
+프레임마다 한 번만 적분한다. 자동 stepping이 꺼진 기존 kinematic velocity 이동은 유지한다.
+`pauseDataScene()`은 자동 simulation을 멈춘다. 명시적 수동 `stepRigidBodies` 호출은 앱이 관리한다.
+
+authored dynamic handle은 `navigation.obstacles: [{ instanceId: "box", collider: true }]`에도 그대로
+사용할 수 있다. Rust가 현재 collider 위치/회전과 활성 상태로 차단 칸을 계산하므로 별도 authored
+proxy나 JS transform 동기화가 필요 없다. obstacle은 활성 non-trigger collider를 요구하며
+기본 Data Scene grid는 XY 평면으로 검사한다.
+progress 저장은 authored identity, 활성 상태와 obstacle binding을 보존한다. 위치/속도/회전은
+progress에 포함하지 않으며, 재진입 시 authored 초기 위치로 생성한다. 세션 내 물리 복구는
+`capturePhysicsBodyStateBuffer`/`restorePhysicsBodyStateBuffer`를 사용한다.
+raw runtime spawn을 authored ID 대신 obstacle에 연결한 progress 저장은 계속 거절한다.
+
+`setPhysicsBodyEnabled(handle, false)`는 collider를 함께 끄지 않아도 충돌과 공간 query/raycast/shape-cast에서
+body 전체를 제외한다. 다시 활성화하면 켜져 있던 collider가 query에 복귀한다. body 없는 collider-only
+객체와 활성 sleeping body는 query에 남고, 비활성 body도 `getPhysicsEntity`/bulk state로 조회할 수 있다.
+이 제외 동작과 authored dynamic 지원은 현재 개발 소스의 변경이며 기존 beta 배포와 구분한다.
 
 렌더와 collider는 하나의 Rust transform을 읽는다. visual origin은 collider를 이동하지 않는다.
 `originY: 1`이면 entity 위치가 sprite 하단 중앙이고 작은 발 collider를 같은 위치에 둘 수 있다.
@@ -46,7 +98,7 @@ body rotation은 초기 instance 회전에 더해진다. AABB/circle/capsule의 
 `despawnPhysicsEntity`, Data Scene reset/reapply는 sprite와 body를 함께 제거한다.
 장면 초기화는 슬롯 generation을 보존·증가시키므로 이전 handle을 새 객체에 사용할 수 없다.
 재적용 결과의 `entityHandles`를 다시 받으며, 카메라/라벨의 anchor도 새 handle로 연결한다.
-Placement Viewer의 visual/collider 편집과 ObjectDefinition 생성은 기존 body, heightSpan, depthSort와
+Placement Viewer의 visual/collider 편집과 ObjectDefinition 생성은 기존 body, dynamic tuning/material, heightSpan, depthSort와
 변경하지 않은 tint/alpha를 보존한다. body 자체의 작성과 수정은 agent/spec에서 수행한다.
 
 ## 정렬, 원점, 색조

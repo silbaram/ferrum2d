@@ -68,6 +68,7 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 | 기능 | 짧은 설명 |
 | --- | --- |
 | WebGL2 renderer | 기본 2D sprite renderer다. |
+| HD-2D 공간 기반 (개발 소스) | opt-in WebGL2 입체 지형·camera·picking·높이/depth 빌보드, 층 연결·다층 경로와 공간 물리 디버그를 제공한다. 선택 environment는 점광원·지형/cutout 그림자, 거리 DOF·HDR 톤 매핑·색 보정·안개와 v7 저장·새 엔진 복원을 지원한다. [지원 범위와 예산](docs/engine/data-scene-spatial.md)을 따른다. |
 | RenderTexture | WebGL2에서 sprite command를 불투명 텍스처로 캡처하고 texture id로 재사용한다. [사용 계약](docs/engine/public-api/core.md#rendertexture-webgl2)을 따른다. |
 | 색 공간 관리 | 기본 legacy 출력을 유지하고 WebGL2의 `linear-srgb` 모드로 입력 색상·linear 계산·sRGB 출력을 구분한다. [전환 계약](docs/engine/public-api/core.md#색-공간-관리)을 따른다. |
 | GPU 자원 통계 | WebGL2의 texture/program/buffer/render target 수와 저장량 추정치를 표시하고 profiler 예산으로 검증한다. [집계 계약](docs/engine/public-api/core.md#gpu-자원-통계)을 따른다. |
@@ -284,6 +285,17 @@ pnpm build
 
 `pnpm build`가 `wasm32-unknown-unknown target not found`로 실패하면 PATH에서 rustup Rust가 아닌 다른 Rust가 먼저 잡힌 상태일 수 있다. 이 경우 `which rustc`, `rustup which rustc`, `rustup target list --installed`를 확인한다.
 
+수정 중인 엔진을 외부 npm 게임 프로젝트에 적용할 때는 다음 명령으로 Wasm·JS 빌드,
+패키징, 설치와 게임 검증을 한 번에 실행한다.
+
+```bash
+pnpm engine:local --project 'C:\Users\psj\projects\game-test'
+```
+
+WSL의 Windows 게임에는 Windows npm을 사용한다. 설치된 수정본의 고유 버전과 SHA-256은
+게임의 `package.json`에 기록하고 기존 엔진은 백업한다. 경로·report·재시작·실패 복원
+계약은 [로컬 엔진 설치](docs/development/operations/local-engine-install.md)를 따른다.
+
 ## 예제 실행
 
 최소 starter 예제는 별도 asset 없이 engine loop와 WebGL2 render path를 확인한다.
@@ -498,3 +510,12 @@ Data Scene의 native actor, 명시적 depth 정렬, camera/zoom/조명 연결은
 
 Data Scene의 주인공·근접/입력 조사·범용 아이템 수집·단일 평면 navigation·목적지 이동·이동 애니메이션 자동 연결 및 진행 저장·복원 개발 계약은
 [Data Scene Authoring](docs/engine/data-scene-authoring.md)을 참고한다. 이 기능은 `0.1.0-beta.7`부터 제공한다. `pnpm smoke:data-scene-gameplay`로 실제 패키지 경로를 검증한다.
+
+현재 소스에는 문 collider와 격자 칸을 연결하는 `navigation.obstacles`, body/collider 활성 상태를
+저장하는 Data Scene progress v5가 추가되어 있다. `collider: true`는 위치/크기/회전에서
+차단 칸을 자동 계산하며 authored atlas playback과 native 이동 애니메이션 연결도 저장·복원한다. 문을 비활성화하거나 제거하면 연결한 칸과 경로가
+자동 갱신된다. 기존 v2/v3/v4 저장 파일은 읽을 수 있으며 이 확장은 배포된 beta.7에는 포함되지 않는다.
+
+현재 개발 소스는 authored dynamic body를 sprite와 같은 entity에 조립한다. 같은 handle로 impulse,
+collider obstacle와 progress identity를 연결하므로 별도 visual proxy가 필요 없다. 비활성 body는
+raycast 등 공간 query에서 제외된다. [옵션·stepping·저장 범위](docs/engine/data-scene-native-runtime.md)를 참고한다.

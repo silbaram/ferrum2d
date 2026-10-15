@@ -574,10 +574,13 @@ validation에서 거절하므로 저장 데이터가 필요한 consumer는 새 �
 `activateDataScene: false`는 mutation 전에 거절한다.
 
 beta.7의 `includeDataSceneProgress: true`는 `includeDataSceneState`와 동일한 authoringDocument를 요구한다.
-`DataSceneProgressSnapshot`은 `dataScene.progress`의 instance ID별 제거·once interaction consumed 상태와
-현재 navigation 전체 또는 null(clear)을 표현한다. 복원은 문서 재적용의 새 handle에 연결한다.
-잘못된 payload는 씬 활성화 전에 거절한다. 기본 옵션 전체 apply만 지원하며 위치·타이머·추가 spawn은
-저장하지 않는다. progress가 있으면 authoring 복원을 끌 수 없다. 자세한 제한은
+`DataSceneProgressSnapshot`은 `dataScene.progress`의 instance ID별 제거·once interaction consumed·
+optional `bodyEnabled`/단일 `colliderEnabled`와 현재 navigation의 기본 비용·obstacle binding 또는
+null(clear), authored atlas playback과 native 이동 pose 연결을 표현한다. 일반 capture는 Data Scene v5이며
+공간 pose/camera capture는 v6, authored/runtime environment 진행이 있으면 v7이다. 최신 지원값은 7이며 v2~v6 읽기와 기존 해시를 유지한다.
+생략한 physics flag는 authored 기본값이다. 복원은 문서 재적용의 새 handle에 연결한다.
+잘못된 payload는 씬 활성화 전에 거절한다. 기본 옵션 전체 apply만 지원하며 일반 v5는 위치를 저장하지 않는다.
+타이머·추가 spawn은 공간 v6에도 포함하지 않는다. progress가 있으면 authoring 복원을 끌 수 없다. 자세한 제한은
 [Data Scene 진행 저장](../data-scene-authoring.md)을 따른다.
 
 일반 consumer는 decoder를 직접 호출하기보다 `FerrumEngine`과 `FrameState`를 우선
@@ -674,7 +677,15 @@ context loss, timeout, 컴파일/링크 실패는 reject하며 context 자동 �
 `createDataSceneView`, `DataSceneView`, `DataSceneViewOptions`, `DataSceneViewSnapshot`,
 `DataSceneCameraOptions`는 `/core`에서 제공한다. `CameraRigController`, `resolveCameraRigSpec`,
 `clampCameraToBounds`도 `/core`에서 사용할 수 있다. `/authoring`의 `DataSceneBodySpec`은 optional
-static/kinematic body와 sprite의 같은 핸들 연결을 정의한다.
+static/kinematic/dynamic body와 sprite의 같은 핸들 연결을 정의한다. 현재 개발 소스의 dynamic
+작성은 `mass`, `gravityScale`, `linearDamping`, `angularDamping`, `canSleep`,
+`material: { friction?, restitution? }`를 지원한다. 기본 mass는 1이며 collider geometry로 관성을
+계산한다. simulation은 `configureAutoRigidBodyStep` 또는 `stepRigidBodies`로 실행한다.
+authored handle을 native collider obstacle과 progress 저장에 함께 사용할 수 있지만 progress는
+일반 v5는 물리 pose를 저장하지 않는다. 공간 v6의 billboard pose는 [공간 저장](../data-scene-spatial.md) 계약을 따른다.
+bodyEnabled=false는 collider flag와 독립적으로 모든 body 공간 query와
+cast에서 제외하며 `getPhysicsEntity`/bulk state 조회는 계속 가능하다. 자세한 기본값·호환 계약은
+[Data Scene native runtime](../data-scene-native-runtime.md)을 따른다.
 [Data Scene native runtime](../data-scene-native-runtime.md)에서 정렬·원점·색 공간·카메라·좌표·조명 계약을 확인한다.
 
 ## Data Scene 표현 확장 (#68~#70, 0.1.0-beta.3)
@@ -696,8 +707,17 @@ flag 32를 함께 소비하며 15-float command layout은 유지한다. `0.1.0-b
 
 - `engine.configureDataSceneGameplay({ primaryActor?, interactionInputActionId? })`: Data Scene 실행 활성화.
   주인공은 generation handle이며 입력 ID 생략 시 자동 근접 interaction, 지정 시 가까운 대상 한 곳에 적용한다.
-- `engine.configureDataSceneNavigation(spec)`: 최대 4096칸 단일 XY grid를 교체한다.
-- `engine.setDataSceneNavigationCost(column, row, cost)`: 0=막힘, 1..65535=통행 비용. 동일 값/잘못된 위치는 false.
+- `engine.configureDataSceneNavigation(spec, entityHandles?)`: 최대 4096칸 단일 XY grid를 교체한다.
+  현재 소스의 optional `spec.obstacles: [{ instanceId, cells: [{ column, row }] }]`는 apply 결과의
+  `entityHandles`가 필요하다. 선언한 solid collider의 body/collider 비활성화·제거·재활성화를 Rust가
+  통행 비용과 경로에 자동 반영한다. 전체 문서 apply/진행 복원은 handle 연결을 수행한다.
+  문서 검증은 선택 fragment와 적용 옵션의 instance를 사용하고 빈 슬롯 배열은 activation 전에 거절한다.
+  collider-only instance도 지원하며 `setPhysicsColliderEnabled`는 body 유무와 독립적으로 변경 성공 시 true를 반환한다.
+  `cells` 대신 `collider: true`를 지정하면 현재 collider XY 경계와 겹치는 칸을 계산한다.
+  위치/크기/회전 변경도 추적하며, 자동 obstacle은 최대 64개다. 보수적인 AABB coverage이며
+  actor 반경 팽창은 하지 않는다. 이 확장은 beta.7 배포물에는 없다.
+- `engine.setDataSceneNavigationCost(column, row, cost)`: 0=막힘, 1..65535=기본 지형 비용.
+  활성 obstacle은 비용 수정 뒤에도 차단을 유지한다. 동일 기본값/잘못된 위치는 false.
 - `engine.clearDataSceneNavigation()`: Data Scene navigation을 제거한다.
 - `queryTilemapNavigationPath/Waypoint`: 활성 Data Scene의 grid를 조회한다. 캐릭터를 자동 이동시키지는 않는다.
 - `/core` exports: `DataSceneGameplayOptions`, `DataSceneGameplaySpec`, `DataSceneNavigationSpec`,
@@ -733,3 +753,72 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 설정·이동 명령은 다른 씬에서 false를 반환하고 씬을 전환하지 않는다. Shooter tile setter도 Data Scene을
 암묵적으로 전환하지 않는다. 동적 save 범위와 single-plane 제약은
 [Data Scene 계약](../data-scene-authoring.md)을 따른다.
+
+
+현재 Data Scene progress v5는 authored `animationSet` instance의 clip·소수 경과 시간·pause·flip을
+저장한다. native movement animation policy와 현재 방향도 자동 복원한다. 과거 v2/v3/v4는
+해시를 유지하며 읽고, playback이 없는 저장은 초기 clip을 사용한다. 계약은
+[진행 저장](../data-scene-authoring.md)을 따른다.
+
+## Data Scene 공간 경로 (개발 소스)
+
+`createDataSceneSpatialView`, `resolveDataSceneSpatialSpec`, `resolveSpatialCameraSpec`과
+`DataSceneSpatialSpec`, `SpatialCameraSpec`, `SpatialPoint`, `SpatialTerrainSurface`, `SpatialSurfaceConnection`,
+`SpatialMoveOptions`, `SpatialMoveStats`, `SpatialBillboardSpec`, `SpatialRenderBufferView`, `SpatialSurfaceHit`, `FerrumSpatialApi`,
+`SpatialRendererStats`, `SpatialDebugOptions`, `SpatialDebugBufferView`를 `/core`에서 제공한다. 공간 확장은 opt-in WebGL2 첫 구현이며 세부 계약은
+[입체 지형·카메라·빌보드](../data-scene-spatial.md)를 따른다.
+
+| FerrumEngine method | 계약 |
+| --- | --- |
+| `configureDataSceneSpatial(spec, handles)` | terrain/camera/billboard/actor를 검증해 atomic configure. 잘못된 JSON은 diagnostic, native 거절은 false |
+| `setDataSceneSpatialCamera(camera, viewport)` | 낮은 빈도 camera 변경. 다음 frame snapshot에 반영 |
+| `setDataSceneSpatialEnvironment(spec \| null)` | 낮은 빈도 조명/그림자/DOF/색 보정/안개 변경. null은 해제, 다음 frame 반영. 물리·route·terrain revision 유지 |
+| `setDataSceneSpatialDebug(options \| null)` | terrain/billboard/native heightSpan/collider/contact/floor ID 진단선, 기본 꺼짐. depthTest 기본 true, false는 가려진 선 표시. null은 해제 |
+| `clearDataSceneSpatial()` | 공간 설정 해제, 다음 frame부터 평면 출력 |
+| `moveDataSceneSpatialBody(handle, dx, dy, options?)` | native kinematic 이동·높이와 명시적 shared-edge 연결의 층 전환. true는 도착 보장이 아님 |
+| `moveDataSceneSpatialActorTo(options)` | x/y/floorId/speed 목적지. native bounded A*, cellSize 기본 8·arrivalRadius 0.5·cancelOnInput true. 실패 시 기존 경로 보존 |
+| `cancelDataSceneSpatialMove()` | 진행 경로 취소 시 true |
+| `dataSceneSpatialMoveStatus()` | idle/moving/arrived/blocked/cancelled, Data Scene 밖·구 Wasm은 undefined |
+| `dataSceneSpatialMoveStats()` | 마지막 탐색 node/probe/work·경로 waypoint/잔여·누적 searchCount, 구 Wasm은 undefined |
+| `pickDataSceneSpatialSurface(ndcX, ndcY, frame)` | 표시 camera와 같은 native terrain ray hit, stale revision은 undefined |
+
+`RenderCommandBufferView.spatial`은 borrowed Wasm geometry/camera view다. 현재 v2는 필수
+`terrainDrawRanges: Uint32Array`의 `[firstVertex, vertexCount]` 쌍으로 visible authored surface만 제출한다.
+빈 범위는 전체 cull이며 full terrain/physics/picking은 유지한다. 새 reader의 v1 packet에는 범위가 없고 전체 지형을 그린다.
+구 JS/새 v2 Wasm을 혼합하지 않으며 지연 사용 시 range도 `.slice()`한다.
+`RendererStats.spatial`의 terrainChunkCount/visibleTerrainChunkCount/culledTerrainChunkCount는 v2의 전체/제출/제외 수,
+terrainTriangleCount/triangleCount는 실제 제출 지형/전체 삼각형 수다. 그 밖의 값은
+triangle/billboard/draw/upload/depth storage metric이다. 미지원 renderer와 spatial RenderTexture capture,
+활성 flat LightingScene2D는 거절한다. `includeDataSceneProgress` 공간 capture는 v6에서 현재 native camera와
+authored billboard의 pose를 저장한다. `DataSceneSpatialPoseSnapshot`, `DataSceneSpatialProgressSnapshot`도 `/core`에서 제공한다.
+
+optional `spatial.debug`는 독립 extension v1의 borrowed endpoint pairs다. 11-float vertex × 2가 선분 하나이며
+최대 32,768 vertices, 초과 시 `truncated=true`다. `debugLineCount/debugDrawCalls/debugUploadBytes/debugTruncated`로
+비용을 구분한다. 선분은 triangle 통계에서 제외하며 전체 draw/upload에는 합산한다. 설정은 저장하지 않고
+전체 spatial configure/reset/authoring·native progress restore에서 해제한다.
+`colliders`/`contacts`/`floorIds`는 같은 endpoint buffer·1 draw를 공유한다. native 형태/offset/회전·높이의
+collider wireframe과 `F숫자`(span 없는 body는 `F-`)를 표시한다. entity 4,096·shape/chain segment 2,048 순회 상한이 있다.
+contact는 마지막 실제 spatial nonzero 이동의 sweep hit 128개와 기존 nonzero rigid impulse contact 256개를 읽는다.
+가상 이동/rollback은 제외하고 render에서 충돌을 다시 계산하지 않는다. 전체 접촉/trigger/resting manifold 이력이 아니다.
+상한 초과는 `truncated`이며 자세한 범위·초기화는 공간 계약을 따른다.
+
+`DataSceneSpatialSpec.connections`는 `{from,to}` stable surface ID의 선택 양방향 연결(최대 256개)이다.
+서로 다른 floor의 walkable 지형이 f32 경계를 공유해야 하며 overlap/모서리/모호한 연결은 거절한다.
+실제 collider center 경계 통과·폭·step/drop·양쪽 floor solid를 검사해 같은 entity의 floor/elevation을 바꾼다.
+실패한 substep은 복구한다. WASD와 공간 목적지 이동도 같은 native 경로를 사용한다.
+공간 목적지 이동은 node 4,096(+시작/목적지 2)·probe 32,768·요청 work 8M/frame 1M으로 제한한다.
+이동 중 새 solid는 blocked이며 자동 재탐색하지 않는다. 새 목적지 요청으로 재탐색한다.
+route는 저장하지 않으며 v6 pose 복원 뒤 idle이다. 세부 제한과 통계 의미는 공간 계약을 따른다.
+연결은 authoring JSON에 저장하며 기존 v6 progress/공간 render ABI는 유지한다.
+
+선택 `DataSceneSpatialSpec.environment`와 `resolveSpatialEnvironmentSpec`은 `SpatialEnvironmentSpec`을
+검증한다. 관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialLightingSpec`,
+`SpatialDepthOfFieldSpec`, `SpatialColorGradingSpec`, `SpatialFogSpec`, `SpatialEnvironmentBufferView`다.
+점광원 4개·그림자 광원 1개·cube 6면·caster 1,024개·면당 64 texture batch·DOF 최대 13 samples로 제한한다.
+HDR RGBA16F/depth24에는 `EXT_color_buffer_float`가 필요하다. 실제 surface normal·world view depth를
+사용하며 flat HUD 이전에 composite한다. 기존 전체 화면 postprocess의 HUD 정책은 유지한다.
+`spatial.environment`는 numeric80/6개 light matrix/caster geometry의 독립 borrowed v1 확장이다.
+`lightCount/shadowPassCount/shadowDrawCalls/shadowTriangleCount/shadowUploadBytes/effectDrawCalls/effectTextureBytes/dofSampleBudget`가
+공간 통계에 추가된다. `progress.spatial.environment`가 있는 capture는 v7이며 null은 authored 효과 해제다.
+v6 이하에 이 progress를 넣으면 거절한다. legacy v5·공간 v6 기본 capture/hash는 유지한다.
+자세한 색 공간·자원 예산·cutout/DOF 제한은 [공간 environment 계약](../data-scene-spatial.md)을 따른다.

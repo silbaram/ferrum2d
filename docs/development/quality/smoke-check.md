@@ -33,6 +33,12 @@ WebGL2 기본 경로는 제품 renderer 기준이다. WebGPU optional smoke(`smo
 
 ## 로컬 자동 sanity check
 
+로컬 게임 설치 도구는 빌드된 Wasm/JS가 있는 상태에서 `pnpm smoke:local-engine-install`로
+검증한다. 실제 npm tarball 오프라인 설치, public import, 설치 파일 일치와 게임 검증
+실패 시 직전 엔진/package/lockfile 복원을 확인한다. 독립 개발 도구 smoke이며 CI/release
+aggregate에는 편입하지 않았다. 실제 적용 명령은
+[로컬 엔진 설치](../operations/local-engine-install.md)를 따른다.
+
 권장 명령:
 
 ```bash
@@ -510,6 +516,13 @@ Top-down, Placement Viewer의 전용 UI는 범용 shell option으로 흡수하�
 - `pnpm smoke:topdown-save-load`는 Top-down Shooter production build에서 enemy/bullet과 Rust gameplay variable slab이 포함된 built-in shooter snapshot version `19`와 `GameStateSnapshot` version `2`를 캡처하고, `resetGame()` 이후 restore 및 재캡처 hash 일치를 확인한다. 또한 저장/복원 전후 snapshot을 `createGameplayReplayRun(...)` / `compareGameplayReplayRuns(...)`로 비교해 첫 mismatch frame과 JSON path를 실패 report에 포함한다.
 - `pnpm smoke:gameplay-replay`는 Top-down Shooter raw Wasm runtime을 deterministic input stream으로 실행하고 committed golden fixture의 replay hash와 비교한다. 이 경로는 browser rendering smoke가 아니라 gameplay canonical state 회귀 gate다.
 - `pnpm smoke:topdown-hd2d`는 Top-down Shooter production build에 smoke 전용 HD-2D spec을 적용해 `weapons.projectileArc`, bridge `toHeightSpan` path, under-pass same-floor path, render command 생성을 확인한다.
+- `pnpm smoke:spatial-scene`은 packed public `/core`·`/authoring`과 실제 Wasm의 opt-in 입체 경로를 검증한다. 1280×720 / 390×844, DPR 1/2에서 직교/원근·camera tilt의 terrain hit, canvas offset/CSS scale, native 계단 elevation·화면 높이, bridge depth 픽셀·제출 순서 역전, alpha 구멍, postprocess depth attachment를 assert한다. 100/500/1000 billboard는 draw 2회, steady terrain upload 0, 동적 업로드 count×6×44 bytes와 반복 GPU object 할당 0을 확인하고 CPU submission median/P95를 기록한다. reset의 stale handle/vertex 제거와 destroy 후 buffer/program/shader/texture/FBO/renderbuffer/VAO/sampler 잔여 0도 검사한다. `artifacts/spatial-scene-consumer-*/report.json`과 스크린샷을 남기며 CI validate job에서 실행한다. WebGPU parity·실제 모바일 GPU 예산은 이 gate의 통과 범위가 아니다. [계약](../../engine/data-scene-spatial.md)을 따른다. 공간 진행 v6의 JSON을 fresh engine/renderer에 복원한 뒤 actor XY/높이, bridge floor, 변경 camera, label anchor, paused 상태와 framebuffer 전체 픽셀 차이 0을 검증한다. 같은 gate에 연결된 `spatial-visibility-browser-fixture.mjs`는 atlas 2 frame × flipX/flipY × 직교/원근 16개 조합의 실제 색/alpha hole/nearest 경계 픽셀, 비중앙 발 pivot, native 시간 진행/pause, 화면 밖 pivot, near plane 부분 절단·완전 cull·복귀와 eye plane(w=0) 교차를 검사한다. RGB 오차 허용은 채널당 3이며 retained billboard 수에 맞는 draw/upload 비용을 함께 assert한다. 회전 pivot/bounds는 native Rust 회귀로 검사한다.
+- 같은 공간 gate의 `spatial-terrain-chunks-browser-fixture.mjs`는 실제 ABI v2의 `terrainDrawRanges`와 256 surface/9216 vertices를 검사한다. 가로/세로·DPR 1/2에서 camera 이동·zoom·orbit·near·전체 cull·복귀 7개 조건마다 v1 전체 제출과 framebuffer RGB 차이(채널당 허용 3)를 비교한다. `drawArrays`의 실제 first/count와 `bufferData`/`bufferSubData` 업로드를 별도로 관찰해 range·triangle·draw·upload 통계와 대조하며 GPU object 재할당도 검사한다. 9종 invalid range는 draw 0으로 거절하고 빈 range는 fallback 없이 draw 0·빈 화면이어야 한다. far plane의 float32 상쇄로 GPU에 남는 지형을 CPU가 잘못 제외했던 회귀는 기준 화면의 유색 픽셀과 전체 framebuffer 일치로 검증한다. camera-only culling 뒤 공간 v6 capture가 계속 유효한지도 확인한다. coarse chunk는 authored surface 하나이며 전체 메시/물리/picking과 GPU 상주 메모리는 유지한다.
+- 같은 gate의 `spatial-debug-browser-fixture.mjs`는 public `setDataSceneSpatialDebug`와 실제 Wasm의 optional debug v1을 검사한다. occluder 안 billboard/heightSpan의 깊이 가림과 가려진 선 표시를 색상 픽셀로 구분하고, 직교/원근 camera·native elevation 변경 후 투영된 물리 끝점의 자홍색 픽셀을 확인한다. 실제 `LINES` first/count·depth test/write·bulk upload와 별도 통계를 대조하고 camera/toggle 시 반복 GPU object 할당 0을 검사한다. invalid extension 10종은 실제 draw 0으로 거절하며 disable 뒤 전체 framebuffer 차이 0, 저장 progress 불변, scene reset의 debug 해제를 확인한다. 색상 판정은 MSAA 선분 coverage를 허용하며 회색 occluder와 진단 색을 구분한다. 조건별 depth/overlay PNG도 report 옆에 저장한다. native 회귀는 최대 32,768 vertices의 truncation·capacity 재사용, stale handle·skip/reset을 별도 검사한다. 새 physics category는 같은 fixture에서 실제 native collider bottom/top·offset과 visual elevation 분리를 검사한다. depth/overlay의 초록 collider·흰 층 문자 픽셀과 64개 endpoint/1 draw/64×44 upload를 실제 GL 호출과 대조한다. wall 이동은 actor가 충돌면에서 멈추고 빨강 marker/normal 픽셀이 있어야 한다. navigation feasibility probe 후 capture buffer 불변과 debug disable 뒤 draw/upload 0·progress 불변을 검사한다. physics depth/overlay·contact PNG도 저장한다. native 회귀는 모든 collider 형태·compound/chain·disabled·floor/span·rigid snapshot·bounded 순회를 검사한다. 전체 resting/trigger/gateway contact manifold와 실제 대상 GPU 예산은 검증 범위 밖이다.
+- 같은 gate의 `spatial-connections-browser-fixture.mjs`는 packed public API로 명시적 shared-edge 연결을 작성하고 같은 actor의 경사로→다리 floor 0→1·높이 0→32와 역방향 이동을 검사한다. 연결 없는 underpass floor 0을 유지하고 실제 WASD 입력도 연결을 통과해야 한다. 전환 pose/authoring connections를 v6 JSON으로 저장해 fresh engine에 복원하고 framebuffer 차이 0(채널당 허용 3), 복원 후 역방향 연결 사용을 확인한다. 목적지 floor 벽은 진입을 막고 invalid connection은 activation 전에 기존 handle을 유지한 채 거절해야 한다. camera/terrain revision·steady terrain upload를 함께 검사한다. native 회귀는 양쪽 floor의 초기/최종 penetration, step/drop·폭·topology·terrain 교체 원자성·미세 이동·중간 floor를 건너뛰는 대각선 substep 거절을 보장한다. 다층 목적지 이동은 다음 fixture에서 별도로 검사한다.
+- 같은 gate의 `spatial-navigation-browser-fixture.mjs`는 실제 packed 목적지 API로 ramp→bridge와 같은 XY의 아래층 우회, 도착 floor/elevation·picking, steady terrain revision/upload, 실패 요청의 기존 경로 보존을 검사한다. WASD는 취소와 같은 frame 수동 이동, 이동 중 새 solid는 blocked와 searchCount 불변, 새 요청은 실제 우회 도착이어야 한다. paused 진행 중 route를 v6 JSON으로 fresh restore하면 pose는 보존하고 상태는 idle이어야 하며 새 요청으로 다리를 올라야 한다. 탐색 node/probe/work 상한과 waypoint 소진을 assert한다. native 회귀는 offset·step/drop·미세 속도·pause·외부 mutation·애니메이션·최소 frame 비용 거절·실패 원상복구를 추가한다. 대규모 navmesh/자동 replan/실제 대상 GPU 성능은 이 gate의 보장 범위 밖이다.
+- 같은 gate의 `spatial-environment-browser-fixture.mjs`는 P1/P2를 packed public API와 실제 Wasm으로 검증한다. 다리/벽의 빛 차폐·아래 광원의 윗면 비조명, alpha 구멍·이동/화면 밖 caster, 직교/원근 depth DOF·runtime refocus·HDR 노출/톤 매핑/색 보정·camera-distance fog·flat HUD 픽셀 동일성을 assert한다. legacy/linear-sRGB 입력의 중복 decode/encode와 현재 scene FBO composite, 배경 위 debug coverage, 환경 진행 v7 JSON의 fresh Engine/renderer 복원 픽셀 차이 0을 확인한다. 실제 cube face 6회·전체 draw와 통계를 대조하고 면당 batch 64/DOF 13 sample/terrain steady upload 0/HDR·cube 저장량·warm GPU object 할당 0을 검사한다. 잘못된 환경 packet 8종은 draw 0으로 거절하며 disable/destroy 후 effect target 해제를 확인한다. 그림자/DOF PNG와 report의 `spatialEnvironment`에 증거를 남긴다. `EXT_color_buffer_float` 필수이며 WebGPU·실제 모바일 GPU 시간 예산·반투명/실루엣 밖 DOF는 지원 범위 밖이다.
+- 환경 회귀는 외부 scissor/color mask crop과 기준 화면 차이 0, cold/warm/resize debug-only GL error 0, 불완전 cube 할당 주입 후 정상 재시도, 같은 frame flat HUD의 자원 유지와 전체 flat frame 전환의 effect target 해제를 확인한다. 실제 Wasm unit은 잘못된 caster/texture 예산의 activation 전 거절·기존 handle 보존, 제거 예정 caster를 제외한 정상 v7 fresh restore를 검사한다. 기존 슈터 raw dynamic 투사체는 public World 이동을 유지하고 Data Scene만 solver 소유 정책을 선택한다. gameplay replay 전체 17개를 검증하며 의도적인 flat capture v3→v5 골든 변경은 version/hash만 갱신하고 원본 v3/hash의 복원은 legacy fixture로 보존한다.
 - `pnpm smoke:breakout-effects`는 `resetGame()` 이후 자연 ball/brick hit에서 scene-internal particle burst와 render command 증가가 관측되는지 확인한다.
 - `pnpm smoke:platformer-effects`는 `resetGame()` 이후 player landing transition에서 scene-internal dust burst와 render command 증가가 관측되는지 확인한다.
 - `pnpm smoke:physics-sandbox`는 기본 `rigid-materials` fixture가 body를 생성하고 Rust/custom debug line과 bitmap world text를 렌더링하며 frame이 진행되는지 확인한다.
@@ -818,11 +831,29 @@ stale handle/grid 제거도 검증한다. Rust 회귀 테스트는 연속 fixed-
 `status: passed`는 모든 조건 통과를 의미하며 기존 게임의 관측용 `ok: true` 보고서와 구분한다.
 이 명령은 렌더 픽셀/전체 플레이 경험 검증이 아니며 기존 `smoke:data-scene` browser 검증을 함께 유지한다.
 
+Beacon lab 회귀는 authored dynamic의 AABB/circle/capsule/orientedBox/convexPolygon을 scale 1/2로
+생성해 기본 mass·gravity와 형상별 관성을 실제 패키지 Wasm에서 확인한다. 자동 stepping의 정확한
+단일 이동량, pause, collider obstacle 자동 갱신과 disabled body의 raycast 제외를 검사한다.
+authored ID·body flag·collider obstacle은 JSON 왕복/fresh engine 복원 후에도 유지되어야 한다.
+Rust 회귀는 variable/fixed step의 dynamic/kinematic 단일 적분, manual dynamic의 명시적 step,
+static/disabled 정지, stale handle과 primary/secondary collider의 query/segment/shape cast 제외·재활성화를 검사한다.
+TS는 잘못된 f32/mass/material 진단, 작성 옵션의 실제 native 반영과 viewer snapshot의 독립 복사를 확인한다.
+
 같은 packed smoke는 opt-in progress의 JSON 왕복과 fresh engine 복원을 확인한다. 수집된 아이템이
 재생성되지 않고 once interaction이 반복되지 않으며 scoped 변수/paused 상태/비용이 유지되어야 한다.
 교체한 grid의 크기·원점·최대 비용과 명시적 clear, 잘못된 ID/중복/consumed/grid/version에 해시를
 재계산해도 기존 씬 보존, reset/누적 apply/옵션 override의 stale metadata 거절, `__proto__` ID를 검사한다.
 Rust는 ID 재사용과 batch 중간 invalid state의 무변경을, TS는 v2 읽기/기존 hash와 restore opt-out을 검증한다.
+
+문 회귀는 `navigation.obstacles`로 연결한 좁은 통로의 body/collider 비활성화 및 개체 제거를 검사한다.
+비용 setter 없이 즉시 경로가 열리고 native sweep으로 통과하며, closed/open 상태와 기본 가중 비용·
+binding·paused 상태가 JSON 왕복/fresh engine 복원 뒤 유지되어야 한다. 재활성화 시 차단 복구,
+잘못된 physics flag/obstacle ID/칸 및 v3에 v4 필드 주입의 무변경 거절, 실제 v3 hash/독립 grid 복원을 검사한다.
+Rust는 겹친 blocker·지형 0·generation 재사용·이동 중 재탐색·disabled body의 sweep/ground probe 제외도 검증한다.
+빈 슬롯 obstacle/cell 배열과 선택 fragment의 collider 누락은 activation 전에 거절되어 paused 상태·
+handle·변수·grid·progress context를 보존해야 한다. 기본 fragment가 비어 있어도 명시적으로 선택한
+fragment의 문은 정상 적용된다. collider-only 문은 setter가 true를 반환하고 body flag 없이 저장되어
+fresh engine 복원 뒤 재활성화로 통로가 차단되며 stale handle 변경은 false로 거절되어야 한다.
 
 목적지 이동도 public `moveDataSceneActorTo`로 실행한다. solid 장애물을 우회해 정확한 목적지에 도착하고
 pickup을 한 번만 수집해야 한다. 잘못된 요청의 이전 경로 보존, pause/resume, 수동 입력 취소와 opt-out,
@@ -836,8 +867,15 @@ teleport·generation 재사용과 양축 접촉면의 분리/접선 이동을 �
 이동·애니메이션 자동 연결은 같은 packed smoke에서 세 case로 확인한다. authored clip을 적용하고
 `configureDataSceneMovementAnimation`으로 연결해 walk→arrival idle, 좌우 공용 clip의 flip/시간 유지,
 pause/resume을 검사한다. 없는 clip/중간 invalid batch는 기존 연결을 유지하고 성공한 수동 명령은
-해제해야 한다. disable은 playback을 보존하며 진행 snapshot 복원은 authored clip만 설치한다.
-복원 후 명시적으로 다시 연결해야 walk가 선택되고 complete는 idle로 전환되어야 한다.
+해제해야 한다. disable은 playback을 보존하며 v5 진행 snapshot은 clip/시간/flags와 native
+pose policy를 자동 복원한다. 새 handle의 주인공이 추가 연결 없이 walk/complete idle을 선택해야 한다.
 Rust 회귀는 네 방향, 마지막 코너의 도착 방향, 실제 수동 velocity, blocked 후 idle/수동 이동,
 fixed-step·delta 0·pause, 입력 취소, clip 재설정, generation 재사용과 초기화 경계를 추가 검증한다.
 기존 `smoke:data-scene-presentation`은 실제 browser의 clip UV/flip 표시 회귀를 확인한다.
+
+
+같은 packed gameplay smoke는 `collider: true` 장애물의 native 이동/격자 밖 이동/비활성 상태
+및 fresh-engine 복원도 검사한다. 분수 경과 시간과 종료된 non-loop clip, pause/flip의 JSON
+복원, 잘못된 clip/시간/flag 및 v4에 v5 payload 주입의 원상태 보존을 assert한다. Rust는
+경계 접촉/offset/크기/회전/shape 교체, fixed/자동 overlap, 자동 obstacle 제한, native pose
+policy와 detached 상태 복원 및 batch atomicity를 확인한다.

@@ -6,6 +6,9 @@ beta.4 이하에서는 ellipse/box를 사용하거나 패키지를 업그레이�
 [native actor 조립](data-scene-native-runtime.md)에
 이어 적용한다. 초기 설치용 템플릿은 예제 게임이나 아래 recipe를 자동 생성하지 않는다.
 
+이 문서는 기존 평면 투영과 지면 그림자의 계약이다. 개발 소스의 입체 지형·직교/원근 카메라·
+깊이 버퍼·물리 높이 자동 반영은 별도 opt-in [공간 경로](data-scene-spatial.md)에서 제공한다.
+
 ## 캐릭터별 atlas 클립
 
 `components.visual`의 sprite 또는 기존 `components.sprite`에 `animationSet`을 지정한다.
@@ -89,6 +92,7 @@ render buffer의 frame metadata를 따라간다. 사용자 renderer는 `setGroun
 WebGL2와 WebGPU legacy에서 지원한다. WebGPU의 `linear-srgb`는 기존과 같이 미지원이며
 `createRenderer`의 명시적 WebGL2 fallback을 사용한다. 3D perspective, camera tilt/yaw, CSS 회전/skew,
 sprite normal map 또는 여러 층 사이의 shadow receiver 판정은 제공하지 않는다.
+물리 `elevation`은 이 flat projection에서 sprite 위치를 자동으로 상승시키지 않는다.
 앱에서 이미 지면 좌표를 압축하고 있었다면 그 변환을 제거하고 native view 하나로 통일한다.
 
 ## 방향광과 지면 그림자
