@@ -133,7 +133,9 @@
     "smoke:data-scene-presentation": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/data-scene-presentation-browser-smoke.mjs",
     "smoke:data-scene": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/data-scene-browser-smoke.mjs",
     "smoke:input-context": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/input-context-browser-smoke.mjs",
-    "smoke:data-scene-gameplay": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/data-scene-gameplay-smoke.mjs"
+    "smoke:data-scene-gameplay": "pnpm build:wasm && pnpm --filter @ferrum2d/ferrum-web build && node tests/smoke/data-scene-gameplay-smoke.mjs",
+    "engine:local": "node scripts/package/install-local-engine.mjs",
+    "smoke:local-engine-install": "node --test tests/smoke/local-engine-install.test.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.60.0"
