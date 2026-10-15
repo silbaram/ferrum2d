@@ -12,6 +12,25 @@ const CCD_HIT_MARKER_SIZE: f32 = 4.0;
 const CCD_HIT_NORMAL_LENGTH: f32 = 12.0;
 
 impl CollisionSystem {
+    /// One validated native shape, including compound/chain child selection and entity rotation.
+    pub(crate) fn spatial_collider_debug_lines_into(
+        world: &World,
+        key: ColliderKey,
+        lines: &mut Vec<PhysicsDebugLine>,
+    ) -> Option<AabbBounds> {
+        lines.clear();
+        let transform = world.transform_at_index(key.entity_index)?;
+        let shape = collider_shape_at_segment(
+            world,
+            key.entity_index,
+            key.collider_index,
+            key.segment_index,
+        )?;
+        let bounds = collider_bounds(transform, shape);
+        AabbBounds::from_min_max(bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y)?;
+        append_collider_outline_debug_lines(transform, shape, [1.; 4], lines);
+        Some(bounds)
+    }
     pub fn build_contact_debug_lines(world: &World, normal_length: f32) -> Vec<PhysicsDebugLine> {
         let mut lines = Vec::new();
         Self::build_contact_debug_lines_into(world, normal_length, &mut lines);

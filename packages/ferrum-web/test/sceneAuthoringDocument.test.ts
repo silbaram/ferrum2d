@@ -258,3 +258,47 @@ function expectMessage(fn: () => void, pattern: RegExp): void {
   }
   throw new Error("Expected function to throw");
 }
+
+test("navigation obstacles reference applied inline collider instances", () => {
+  const navigation = { columns: 1, rows: 1, cellWidth: 20, cellHeight: 20, costs: [1], obstacles: [{ instanceId: "player", cells: [{ column: 0, row: 0 }] }] };
+  equal(resolveSceneAuthoringDocument({ ...sampleDocument(), navigation }).navigation?.obstacles?.[0]?.instanceId, "player");
+  expectMessage(() => resolveSceneAuthoringDocument({ ...sampleDocument(), navigation: { ...navigation, obstacles: [{ ...navigation.obstacles[0], instanceId: "missing" }] } }), /applied fragment/);
+});
+
+test("navigation obstacle validation uses the selected fragment with or without a binding plan", () => {
+  const base = sampleDocument();
+  const document = {
+    ...base,
+    sceneComposition: {
+      ...base.sceneComposition,
+      initialFragment: "empty",
+      fragments: { ...base.sceneComposition.fragments, empty: { instances: [] } },
+    },
+    navigation: { columns: 1, rows: 1, cellWidth: 20, cellHeight: 20, costs: [1], obstacles: [{ instanceId: "player", cells: [{ column: 0, row: 0 }] }] },
+  };
+  for (const validateBindings of [false, true]) {
+    equal(resolveSceneAuthoringDocument(document, { fragment: "main", validateBindings, validateComponents: true }).navigation?.obstacles?.[0]?.instanceId, "player");
+    expectMessage(() => resolveSceneAuthoringDocument(document, { validateBindings }), /applied fragment/);
+  }
+  equal(resolveSceneAuthoringDocument({ ...document, navigation: { ...document.navigation, obstacles: [{ ...document.navigation.obstacles[0], instanceId: "room/player" }] } }, {
+    fragment: "main", idPrefix: "room/", validateBindings: true,
+  }).bindingPlan?.instances[0]?.id, "room/player");
+});
+
+test("navigation checks collider overrides in the selected fragment and root props", () => {
+  const base = sampleDocument();
+  const visualOnly = { sprite: { texture: "player", width: 24, height: 24 }, collider: { type: "none" }, layer: "player" };
+  const document = {
+    ...base,
+    sceneComposition: {
+      ...base.sceneComposition,
+      fragments: { ...base.sceneComposition.fragments, visual: { instances: [{ id: "player", prefab: "player", props: { components: visualOnly } }] } },
+    },
+    navigation: { columns: 1, rows: 1, cellWidth: 20, cellHeight: 20, costs: [1], obstacles: [{ instanceId: "player", cells: [{ column: 0, row: 0 }] }] },
+  };
+  for (const validateBindings of [false, true]) {
+    equal(resolveSceneAuthoringDocument(document, { validateBindings }).navigation?.obstacles?.length, 1);
+    expectMessage(() => resolveSceneAuthoringDocument(document, { fragment: "visual", validateBindings }), /requires an inline collider/);
+    expectMessage(() => resolveSceneAuthoringDocument(document, { props: { components: visualOnly }, validateBindings }), /requires an inline collider/);
+  }
+});

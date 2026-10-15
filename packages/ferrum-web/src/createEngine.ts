@@ -1,3 +1,4 @@
+import { createSpatialApi } from "./dataSceneSpatial.js";
 import { createDataSceneMovementApi } from "./dataSceneMovement.js";
 import { createDataSceneMovementAnimationApi } from "./dataSceneMovementAnimation.js";
 import { attachDataSceneProgressAdapter } from "./dataSceneProgress.js";
@@ -850,6 +851,7 @@ export async function createEngineWithFramePipeline(
   };
 
   const engine: FerrumEngine = {
+    ...createSpatialApi(rustEngine, requireAlive, () => ({ width: rustEngine.spatial_viewport_width(), height: rustEngine.spatial_viewport_height() })),
     ...lifecycleApi,
     ...bufferAccessorApi,
     ...sceneApi,
@@ -867,7 +869,32 @@ export async function createEngineWithFramePipeline(
     epoch: () => { requireAlive(); return rustEngine.data_scene_epoch(); },
     capture: (epoch, handles) => { requireAlive(); return rustEngine.capture_data_scene_progress(epoch, handles); },
     navigation: () => { requireAlive(); return rustEngine.capture_data_scene_navigation(); },
-    restore: (epoch, handles, states) => { requireAlive(); return rustEngine.restore_data_scene_progress(epoch, handles, states); },
+    obstacles: () => { requireAlive(); return rustEngine.capture_data_scene_navigation_obstacles(); },
+    animations: (epoch, handles) => { requireAlive(); return rustEngine.capture_data_scene_animation_progress(epoch, handles); },
+    spatialRevision: () => { requireAlive(); return rustEngine.spatial_terrain_revision(); },
+    viewport: () => { requireAlive(); return {width:rustEngine.spatial_viewport_width(),height:rustEngine.spatial_viewport_height()}; },
+    spatial: (epoch, handles) => { requireAlive(); return rustEngine.capture_data_scene_spatial_progress(epoch, handles); },
+    environment: () => {
+      requireAlive();
+      return typeof rustEngine.capture_spatial_environment === "function"
+        ? rustEngine.capture_spatial_environment()
+        : undefined;
+    },
+    preflightSpatial: (values, metadata, state) => { requireAlive(); return rustEngine.preflight_data_scene_spatial_progress(values, metadata, state); },
+    restore: (epoch, handles, states, animations, spatial, environment) => {
+      requireAlive();
+      if (environment !== undefined && spatial !== undefined) {
+        return typeof rustEngine.restore_data_scene_progress_with_spatial_environment === "function"
+          && rustEngine.restore_data_scene_progress_with_spatial_environment(
+            epoch, handles, states, animations ?? new Float64Array(), spatial, environment,
+          );
+      }
+      return spatial !== undefined
+        ? rustEngine.restore_data_scene_progress_with_spatial(epoch, handles, states, animations ?? new Float64Array(), spatial)
+        : animations === undefined
+        ? rustEngine.restore_data_scene_progress(epoch, handles, states)
+        : rustEngine.restore_data_scene_progress_with_animations(epoch, handles, states, animations);
+    },
   });
   attachDataSceneVariableRuntimeEngineAdapter(engine, {
     clear: () => {
@@ -951,8 +978,14 @@ export async function createEngineWithFramePipeline(
       if (request.body !== undefined) {
         const body = request.body;
         const span = body.heightSpan;
-        if (!rustEngine.configure_data_scene_body(entityId, entityGeneration, body.type === "static" ? 0 : 1,
-          span !== undefined, span?.floorId ?? 0, span?.elevation ?? 0, span?.height ?? 1)) {
+        const configured = body.type === "dynamic"
+          ? rustEngine.configure_data_scene_dynamic_body(entityId, entityGeneration, body.mass ?? 1, body.canSleep ?? true)
+            && (span === undefined || rustEngine.set_physics_body_height_span(entityId, entityGeneration, span.floorId ?? 0, span.elevation, span.height))
+            && rustEngine.set_physics_body_tuning(entityId, entityGeneration, body.gravityScale ?? 1, body.linearDamping ?? 0, body.angularDamping ?? 0)
+            && rustEngine.set_physics_body_material(entityId, entityGeneration, body.material?.restitution ?? 0, body.material?.friction ?? 0.4, 0, 0, 1, 1, 1, 1, 1)
+          : rustEngine.configure_data_scene_body(entityId, entityGeneration, body.type === "static" ? 0 : 1,
+            span !== undefined, span?.floorId ?? 0, span?.elevation ?? 0, span?.height ?? 1);
+        if (!configured) {
           rustEngine.despawn_physics_entity(entityId, entityGeneration);
           return undefined;
         }

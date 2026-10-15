@@ -26,6 +26,19 @@ pub(super) struct DataSceneMovementAnimation {
 }
 
 impl DataSceneMovementAnimation {
+    pub(super) fn progress(&self, actor: Entity) -> Option<[u32; 25]> {
+        let binding = self
+            .binding
+            .as_ref()
+            .filter(|binding| binding.actor == actor)?;
+        let mut values = [0; 25];
+        values[0] = binding.facing as u32;
+        for (output, pose) in values[1..].chunks_exact_mut(3).zip(binding.poses) {
+            output.copy_from_slice(&[pose.clip, u32::from(pose.flip_x), u32::from(pose.flip_y)]);
+        }
+        Some(values)
+    }
+
     pub(super) fn clear(&mut self) {
         self.binding = None;
     }

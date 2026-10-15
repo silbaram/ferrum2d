@@ -591,14 +591,23 @@ impl BitmapTextSystem {
             .any(|(_, text)| text.spec.floor_id != 0 || text.spec.elevation != 0.0)
     }
 
-    pub(crate) fn append_render_items(
+    pub(crate) fn append_render_items_filtered(
         &self,
         world: &World,
         camera: &Camera2D,
         _visible_bounds: AabbBounds,
         items: &mut Vec<SpriteRenderItem>,
+        spatial: Option<&crate::spatial_scene::SpatialScene>,
     ) {
         for (text_id, text) in &self.texts {
+            if let WorldTextAnchor::Entity(entity) = text.spec.anchor {
+                if spatial.is_some_and(|scene| {
+                    scene.bindings.contains_key(&(entity.id, entity.generation))
+                }) {
+                    continue;
+                }
+            }
+
             let Some(origin) = text.origin(world) else {
                 continue;
             };
@@ -642,6 +651,63 @@ impl BitmapTextSystem {
                         stable_id: world_text_stable_id(*text_id, glyph_index),
                     },
                 });
+            }
+        }
+    }
+
+    pub(crate) fn append_spatial_text(
+        &self,
+        world: &World,
+        scene: &mut crate::spatial_scene::SpatialScene,
+    ) {
+        let Some(camera) = scene.camera else {
+            return;
+        };
+        for (_, text) in &self.texts {
+            let WorldTextAnchor::Entity(entity) = text.spec.anchor else {
+                continue;
+            };
+            let Some(style) = scene.bindings.get(&(entity.id, entity.generation)).copied() else {
+                continue;
+            };
+            let Some(anchor) = world.transform(entity) else {
+                continue;
+            };
+            let Some(owner) = world.sprite_at_index(entity.id as usize) else {
+                continue;
+            };
+            let elevation = world.height_span(entity).map_or(0.0, |s| s.elevation)
+                + style.elevation
+                + text.spec.elevation;
+            for c in &text.cached_commands {
+                let horizontal = (text.spec.x + c.x) * style.units_per_pixel;
+                let t = Transform2D {
+                    x: anchor.x + camera.right[0] * horizontal,
+                    y: anchor.y - camera.right[2] * horizontal,
+                };
+                let mut sprite = owner;
+                sprite.width = c.width;
+                sprite.height = c.height;
+                sprite.origin_x = 0.0;
+                sprite.origin_y = 1.0;
+                sprite.rotation_radians = 0.0;
+                sprite.texture_id = c.texture_id as u32;
+                sprite.u0 = c.u0;
+                sprite.v0 = c.v0;
+                sprite.u1 = c.u1;
+                sprite.v1 = c.v1;
+                sprite.r = c.r;
+                sprite.g = c.g;
+                sprite.b = c.b;
+                sprite.a = c.a;
+                crate::spatial_scene::append_billboard(
+                    &mut scene.billboards,
+                    &camera,
+                    t,
+                    sprite,
+                    elevation - (text.spec.y + c.y + c.height) * style.units_per_pixel,
+                    style,
+                );
             }
         }
     }

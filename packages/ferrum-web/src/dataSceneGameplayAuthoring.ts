@@ -20,6 +20,9 @@ export function preflightDataSceneGameplay(
   if (document.navigation !== undefined && typeof engine.configureDataSceneNavigation !== "function") {
     throw gameplayAuthoringDiagnosticError(`${path}.navigation`, "runtime does not support Data Scene navigation");
   }
+  for (const obstacle of document.navigation?.obstacles ?? []) {
+    if (!plan.instances.some(instance => instance.id === obstacle.instanceId)) throw gameplayAuthoringDiagnosticError(`${path}.navigation.obstacles`, "must reference an instance in the applied fragment");
+  }
   const config = document.gameplay;
   if (config !== undefined) {
     if (typeof engine.configureDataSceneGameplay !== "function") throw gameplayAuthoringDiagnosticError(`${path}.gameplay`, "runtime does not support Data Scene gameplay");

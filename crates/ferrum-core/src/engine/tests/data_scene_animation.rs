@@ -15,6 +15,132 @@ fn clips(engine: &mut Engine, entity: Entity) {
 }
 
 #[test]
+fn animation_progress_restores_fractional_paused_flipped_and_finished_playback() {
+    let mut engine = Engine::new();
+    engine.use_data_scene();
+    let actor = sprite(&mut engine, 71, 300.0, 300.0, 0);
+    clips(&mut engine, actor);
+    assert!(engine.update_data_scene_sprite_animations(&[
+        actor.id,
+        actor.generation,
+        33 | 4 | 8,
+        1,
+        0,
+        1,
+        1,
+        0
+    ]));
+    engine.update(0.073);
+    assert!(engine.update_data_scene_sprite_animations(&[
+        actor.id,
+        actor.generation,
+        16,
+        0,
+        0,
+        0,
+        0,
+        1
+    ]));
+    let epoch = engine.data_scene_epoch();
+    let handles = [actor.id, actor.generation];
+    let states = engine.capture_data_scene_progress(epoch, &handles);
+    let animation = engine.capture_data_scene_animation_progress(epoch, &handles);
+    let expected = engine.data_scene_sprite_animation_state(actor.id, actor.generation);
+    assert!(expected[2] > 0.07 && expected[2] < 0.08);
+    let mut fresh = Engine::new();
+    fresh.use_data_scene();
+    let replacement = sprite(&mut fresh, 71, 300.0, 300.0, 0);
+    clips(&mut fresh, replacement);
+    assert!(fresh.restore_data_scene_progress_with_animations(
+        fresh.data_scene_epoch(),
+        &[replacement.id, replacement.generation],
+        &states,
+        &animation
+    ));
+    assert_eq!(
+        fresh.data_scene_sprite_animation_state(replacement.id, replacement.generation),
+        expected
+    );
+    fresh.update(0.1);
+    assert_eq!(
+        fresh.data_scene_sprite_animation_state(replacement.id, replacement.generation),
+        expected
+    );
+    assert!(fresh.update_data_scene_sprite_animations(&[
+        replacement.id,
+        replacement.generation,
+        33 | 16,
+        2,
+        0,
+        0,
+        0,
+        0
+    ]));
+    fresh.update(1.0);
+    let finished = fresh.capture_data_scene_animation_progress(
+        fresh.data_scene_epoch(),
+        &[replacement.id, replacement.generation],
+    );
+    assert!(fresh.update_data_scene_sprite_animations(&[
+        replacement.id,
+        replacement.generation,
+        33,
+        0,
+        0,
+        0,
+        0,
+        0
+    ]));
+    assert!(fresh.restore_data_scene_progress_with_animations(
+        fresh.data_scene_epoch(),
+        &[replacement.id, replacement.generation],
+        &states,
+        &finished
+    ));
+    assert_eq!(
+        fresh.data_scene_sprite_animation_state(replacement.id, replacement.generation)[4],
+        1.0
+    );
+}
+
+#[test]
+fn malformed_animation_progress_preserves_entire_physics_and_animation_batch() {
+    let mut engine = Engine::new();
+    engine.use_data_scene();
+    let actor = sprite(&mut engine, 71, 300.0, 300.0, 0);
+    clips(&mut engine, actor);
+    let other = sprite(&mut engine, 71, 340.0, 300.0, 0);
+    clips(&mut engine, other);
+    let handles = [actor.id, actor.generation, other.id, other.generation];
+    let epoch = engine.data_scene_epoch();
+    let states = engine.capture_data_scene_progress(epoch, &handles);
+    let before = engine.capture_data_scene_animation_progress(epoch, &handles);
+    for (index, value) in [
+        (33, 999.0),
+        (34, f64::NAN),
+        (34, -1.0),
+        (34, 1.0),
+        (35, 2.0),
+        (39, 2.0),
+    ] {
+        let mut invalid = before.clone();
+        invalid[index] = value;
+        assert!(!engine.restore_data_scene_progress_with_animations(
+            epoch,
+            &handles,
+            &[states[0] & !32, states[1]],
+            &invalid
+        ));
+        assert!(engine.world.is_current_entity(actor));
+        assert_eq!(engine.capture_data_scene_progress(epoch, &handles), states);
+        assert_eq!(
+            engine.capture_data_scene_animation_progress(epoch, &handles),
+            before
+        );
+    }
+}
+
+#[test]
 fn shared_atlas_playback_is_independent_and_preserves_native_body() {
     let mut engine = Engine::new();
     engine.use_data_scene();

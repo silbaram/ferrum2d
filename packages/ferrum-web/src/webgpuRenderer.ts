@@ -287,6 +287,7 @@ export class WebGPURenderer implements Renderer {
   }
 
   renderCommands(commands: RenderCommandBufferView): RendererStats {
+    if (commands.spatial) throw new Error("Spatial scene currently requires WebGL2");
     this.assertAlive();
     if (commands.groundYScale !== undefined && commands.groundYScale !== this.groundYScale) this.setGroundYScale(commands.groundYScale);
     const projection = groundShadowProjection(commands);

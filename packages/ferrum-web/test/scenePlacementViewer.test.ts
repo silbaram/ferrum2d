@@ -75,7 +75,9 @@ test("ScenePlacementViewer preserves body and depth metadata in independent auth
       components: {
         visual: { kind: "sprite", texture: "crate", width: 16, height: 32, originY: 1, depthSort: "hd2d" },
         collider: { type: "aabb", halfWidth: 8, halfHeight: 4 },
-        body: { type: "kinematic", heightSpan: { floorId: 2, elevation: 3, height: 8 } },
+        body: { type: "dynamic", mass: 2, gravityScale: 0, linearDamping: 3, angularDamping: 4,
+          canSleep: false, material: { friction: 0.6, restitution: 0.1 },
+          heightSpan: { floorId: 2, elevation: 3, height: 8 } },
         layer: "wall",
       },
     },
@@ -89,15 +91,22 @@ test("ScenePlacementViewer preserves body and depth metadata in independent auth
   const selected = state.selected;
   if (selected?.visual?.kind !== "sprite") throw new Error("expected sprite");
   equal(selected.visual.depthSort, "hd2d");
-  deepEqual(selected.body, { type: "kinematic", heightSpan: { floorId: 2, elevation: 3, height: 8 } });
+  deepEqual(selected.body, { type: "dynamic", mass: 2, gravityScale: 0, linearDamping: 3, angularDamping: 4,
+    canSleep: false, material: { friction: 0.6, restitution: 0.1 }, heightSpan: { floorId: 2, elevation: 3, height: 8 } });
   const definition = state.objectDefinitions.find((entry) => entry.id === "crate");
   deepEqual(definition?.body, selected.body);
   if (!selected.body?.heightSpan) throw new Error("expected height span");
   selected.body.heightSpan.height = 100;
+  if (selected.body.type !== "dynamic" || !selected.body.material) throw new Error("expected dynamic material");
+  selected.body.material.friction = 10;
   selected.visual.depthSort = "layer";
   equal(definition?.body?.heightSpan?.height, 8);
   const moved = viewer.updateInstanceTransform("crate_a", { x: 80 });
   equal(moved.selected?.body?.heightSpan?.height, 8);
+  if (definition?.body?.type !== "dynamic" || moved.selected?.body?.type !== "dynamic") throw new Error("expected preserved dynamics");
+  equal(definition.body.material?.friction, 0.6);
+  equal(moved.selected.body.material?.friction, 0.6);
+  equal(moved.selected.body.mass, 2);
   if (moved.selected?.visual?.kind !== "sprite") throw new Error("expected moved sprite");
   equal(moved.selected.visual.depthSort, "hd2d");
 });

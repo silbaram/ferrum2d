@@ -1905,7 +1905,7 @@
         "events": []
       },
       "expected": {
-        "replayHash": "c6a0c839",
+        "replayHash": "fc67acd7",
         "finalScore": 0,
         "bootFrame": 0,
         "restoreFrame": 1,

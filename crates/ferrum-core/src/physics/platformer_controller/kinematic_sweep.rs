@@ -35,6 +35,112 @@ pub(super) struct KinematicSweep<'a> {
 pub(crate) struct KinematicSweepScratch {
     collision: CollisionScratch,
     candidates: Vec<usize>,
+    spatial_tile_contacts: Vec<crate::tilemap::TilemapContactHit>,
+    pub(crate) debug_hits: Vec<KinematicDebugHit>,
+    pub(crate) debug_truncated: bool,
+    capture_debug_hits: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct KinematicDebugHit {
+    pub target: Option<Entity>,
+    pub point: Transform2D,
+    pub normal: Velocity,
+    pub span: Option<HeightSpan>,
+}
+impl KinematicSweepScratch {
+    pub fn begin_debug_capture(&mut self, enabled: bool) {
+        self.capture_debug_hits = enabled;
+        self.debug_hits.clear();
+        self.debug_truncated = false;
+        if enabled && self.debug_hits.capacity() < 128 {
+            self.debug_hits.reserve(128);
+        }
+    }
+    pub fn set_debug_capture(&mut self, enabled: bool) {
+        self.capture_debug_hits = enabled;
+    }
+    pub(super) fn record_debug_hit(
+        &mut self,
+        hit: KinematicHit,
+        position: Transform2D,
+        collider: AabbCollider,
+        span: Option<HeightSpan>,
+    ) {
+        if !self.capture_debug_hits {
+            return;
+        }
+        if self.debug_hits.len() == 128 {
+            self.debug_truncated = true;
+            return;
+        }
+        let center = collider.center(position);
+        self.debug_hits.push(KinematicDebugHit {
+            target: hit.entity,
+            point: Transform2D {
+                x: center.x + hit.contact.normal_x * collider.half_width,
+                y: center.y + hit.contact.normal_y * collider.half_height,
+            },
+            normal: Velocity {
+                vx: hit.contact.normal_x,
+                vy: hit.contact.normal_y,
+            },
+            span,
+        });
+    }
+}
+
+/// Gateways must reject penetration even when an ordinary sweep permits moving out of an overlap.
+pub(super) fn spatial_pose_overlaps_solid(
+    world: &World,
+    tilemap: &Tilemap,
+    entity: Entity,
+    at: Transform2D,
+    scratch: &mut KinematicSweepScratch,
+    mut counters: Option<&mut PhysicsCounters>,
+) -> bool {
+    let Some(collider) = world.collider(entity) else {
+        return true;
+    };
+    let moving_index = entity.id as usize;
+    let height_span = world.height_span(entity);
+    CollisionSystem::build_kinematic_sweep_candidate_indices_into(
+        &mut scratch.collision,
+        world,
+        KinematicSweepCandidateQuery {
+            moving_index,
+            ignored_index: None,
+            moving_start: at,
+            moving_collider: collider,
+            remaining: Velocity::default(),
+        },
+        &mut scratch.candidates,
+    );
+    for &index in &scratch.candidates {
+        let Some(target) = world.colliders[index] else {
+            continue;
+        };
+        if let Some(counters) = counters.as_deref_mut() {
+            counters.solid_candidate_checks = counters.solid_candidate_checks.saturating_add(1);
+        }
+        if target.enabled
+            && !target.is_trigger
+            && solid_filter_allows(world, moving_index, index, CollisionMask::ALL)
+            && height_span_allows_kinematic_target(world, index, height_span)
+            && world
+                .transform_at_index(index)
+                .is_some_and(|p| CollisionSystem::aabb_contact(at, collider, p, target).is_some())
+        {
+            return true;
+        }
+    }
+    tilemap.aabb_obstacle_contacts_with_height_span_into(
+        at,
+        collider,
+        height_span,
+        &mut scratch.spatial_tile_contacts,
+    );
+    !scratch.spatial_tile_contacts.is_empty()
 }
 
 pub(super) fn earliest_solid_hit(

@@ -37,7 +37,7 @@ pub use platformer::{
     PlatformerControllerConfig, PlatformerControllerInput, PlatformerControllerResult,
     PlatformerControllerState, SlopeConfig, SlopeSegment, SlopeSurfaceHit,
 };
-pub(crate) use platformer_controller::KinematicSweepScratch;
+pub(crate) use platformer_controller::{KinematicDebugHit, KinematicSweepScratch};
 pub use rigid_body::{RigidBodyIslandStats, RigidBodyStepConfig, RigidBodyStepStats};
 #[cfg(test)]
 use rigid_body::{
@@ -65,9 +65,39 @@ const DEFAULT_SLEEP_TIME_THRESHOLD_SECONDS: f32 = 0.5;
 
 impl PhysicsSystem {
     pub fn integrate(world: &mut World, delta: f32) {
+        // Preserve the public legacy velocity path used by built-in shooter entities.
+        // Data Scene explicitly chooses solver-owned dynamic integration below.
         let alive_count = world.alive_indices().len();
         for alive_position in 0..alive_count {
             let i = world.alive_indices()[alive_position];
+            let Some(velocity) = world.velocity_at_index(i) else {
+                continue;
+            };
+            let Some(transform) = world.transform_mut_at_index(i) else {
+                continue;
+            };
+            transform.x += velocity.vx * delta;
+            transform.y += velocity.vy * delta;
+        }
+    }
+
+    pub(crate) fn integrate_legacy_velocities(
+        world: &mut World,
+        delta: f32,
+        rigid_body_step_enabled: bool,
+    ) {
+        let alive_count = world.alive_indices().len();
+        for alive_position in 0..alive_count {
+            let i = world.alive_indices()[alive_position];
+            // Rigid dynamics belong to the solver. Preserve manual kinematic velocity
+            // movement, but never integrate a body both here and in an automatic step.
+            if world.rigid_bodies[i].is_some_and(|body| {
+                !body.enabled
+                    || body.body_type != crate::components::RigidBodyType::Kinematic
+                    || rigid_body_step_enabled
+            }) {
+                continue;
+            }
             let Some(velocity) = world.velocity_at_index(i) else {
                 continue;
             };

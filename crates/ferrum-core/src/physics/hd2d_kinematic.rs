@@ -88,6 +88,30 @@ impl PhysicsSystem {
         config: Hd2dKinematicControllerConfig,
         counters: Option<&mut PhysicsCounters>,
     ) -> Hd2dKinematicMoveResult {
+        let mut scratch = KinematicSweepScratch::default();
+        Self::move_hd2d_kinematic_with_tilemap_and_scratch(
+            world,
+            tilemap,
+            entity,
+            displacement,
+            config,
+            counters,
+            &mut scratch,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn move_hd2d_kinematic_with_tilemap_and_scratch(
+        world: &mut World,
+        tilemap: &Tilemap,
+        entity: Entity,
+        displacement: Velocity,
+        config: Hd2dKinematicControllerConfig,
+        counters: Option<&mut PhysicsCounters>,
+        movement_scratch: &mut KinematicSweepScratch,
+        preserve_small_displacements: bool,
+    ) -> Hd2dKinematicMoveResult {
         let config = sanitize_hd2d_kinematic_config(config);
         let displacement = finite_velocity(displacement);
         let start_transform = world.transform(entity).unwrap_or_default();
@@ -96,20 +120,22 @@ impl PhysicsSystem {
             hd2d_surface_point(world, entity, start_transform),
             start_height_span,
         );
-        let movement_settings = KinematicMoveSettings::new(
+        let mut movement_settings = KinematicMoveSettings::new(
             config.solid_mask,
             OneWayPlatformConfig::default(),
             config.max_iterations,
         )
         .with_height_span(start_height_span);
-        let mut movement_scratch = KinematicSweepScratch::default();
+        if preserve_small_displacements {
+            movement_settings = movement_settings.preserving_small_displacements();
+        }
         let movement = move_and_slide_internal(
             world,
             Some(tilemap),
             entity,
             displacement,
             movement_settings,
-            &mut movement_scratch,
+            movement_scratch,
             counters,
         );
         let moved_transform = world.transform(entity).unwrap_or(movement.end);

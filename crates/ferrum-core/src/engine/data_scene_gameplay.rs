@@ -222,11 +222,27 @@ impl Engine {
         latched_presses: InputState,
     ) {
         if self.scene_mode == SceneMode::Data {
+            let spatial = self
+                .spatial_scene
+                .actor
+                .is_some_and(|(actor, ..)| Some(actor) == self.world.primary_actor_entity());
             self.data_scene.movement_animation.update(
                 &mut self.world,
-                self.data_scene.movement.animation_target(),
-                self.data_scene.movement.animation_ended(),
-                self.data_scene.movement.animation_last_motion(),
+                if spatial {
+                    self.spatial_scene.navigation.animation_target()
+                } else {
+                    self.data_scene.movement.animation_target()
+                },
+                if spatial {
+                    self.spatial_scene.navigation.animation_ended()
+                } else {
+                    self.data_scene.movement.animation_ended()
+                },
+                if spatial {
+                    self.spatial_scene.navigation.animation_last_motion()
+                } else {
+                    self.data_scene.movement.animation_last_motion()
+                },
             );
             self.data_scene.gameplay.update(
                 &mut self.world,

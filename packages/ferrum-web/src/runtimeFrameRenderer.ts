@@ -63,6 +63,7 @@ export class RuntimeFrameRenderer {
     this.options.renderer.beginGpuTiming?.();
     try {
       this.options.renderer.render();
+      if (renderFrame.renderCommandBuffer.spatial && !this.options.renderer.supportsSpatialScene) throw new Error("Renderer does not support spatial scene geometry");
       rendererStats = this.options.renderer.renderCommands(renderFrame.renderCommandBuffer);
       if (this.options.shouldRenderPhysicsDebugLines && renderFrame.physicsDebugLineBuffer !== undefined) {
         const physicsDebugLines = this.options.physicsDebugLineComposer?.(renderFrame.physicsDebugLineBuffer)

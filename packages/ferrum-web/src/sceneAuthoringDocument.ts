@@ -1,9 +1,10 @@
+import { resolveDataSceneSpatialSpec, type DataSceneSpatialSpec } from "./dataSceneSpatial.js";
 import {
   resolveBehaviorRecipeDocument,
   type ResolvedBehaviorRecipe,
   type ResolvedBehaviorRecipeVariableComparison,
 } from "./behaviorRecipes.js";
-import { gameplayAuthoringDiagnosticError } from "./diagnostics.js";
+import { gameplayAuthoringDiagnosticError, sceneCompositionDiagnosticError } from "./diagnostics.js";
 import {
   bindSceneBehaviorRecipes,
   resolveGameplayBehaviorRuntimeIds,
@@ -42,6 +43,7 @@ export interface SceneAuthoringDocumentSpec {
   variables?: readonly DataSceneVariableDeclarationSpec[];
   gameplay?: DataSceneGameplaySpec;
   navigation?: DataSceneNavigationSpec;
+  spatial?: DataSceneSpatialSpec;
 }
 
 export interface ResolvedSceneAuthoringDocument {
@@ -53,6 +55,7 @@ export interface ResolvedSceneAuthoringDocument {
   variables?: readonly ResolvedDataSceneVariableDeclaration[];
   gameplay?: DataSceneGameplaySpec;
   navigation?: DataSceneNavigationSpec;
+  spatial?: DataSceneSpatialSpec;
   bindingPlan?: SceneBehaviorBindingPlan;
 }
 
@@ -121,8 +124,13 @@ export function resolveSceneAuthoringDocument(
         path,
       })
     : undefined;
+  const navigation = document.navigation === undefined ? undefined : resolveDataSceneNavigationSpec(document.navigation, `${path}.navigation`);
+  const spatial = document.spatial === undefined ? undefined : resolveDataSceneSpatialSpec(document.spatial, `${path}.spatial`);
+  const instances = validateComponents || spatial !== undefined || navigation?.obstacles !== undefined
+    ? bindingPlan?.instances ?? instantiateSceneFragment(sceneComposition, { ...bindingOptions, path: `${path}.composition` })
+    : [];
   if (validateComponents) {
-    instantiateSceneFragment(sceneComposition).forEach((instance, index) => {
+    instances.forEach((instance, index) => {
       resolveDataSceneInstanceComponents(instance, {
         allowTemplate: allowComponentTemplates,
         path: `${path}.sceneComposition.instances.${index}`,
@@ -130,6 +138,27 @@ export function resolveSceneAuthoringDocument(
     });
   }
 
+  if (navigation?.obstacles !== undefined) {
+    const instancesById = new Map(instances.map(instance => [instance.id, instance]));
+    for (const obstacle of navigation.obstacles) {
+      const instance = instancesById.get(obstacle.instanceId);
+      if (instance === undefined) throw sceneCompositionDiagnosticError(`${path}.navigation.obstacles`, "must reference an instance in the applied fragment");
+      const components = resolveDataSceneInstanceComponents(instance, { allowTemplate: allowComponentTemplates, path: `${path}.navigation.obstacles.${obstacle.instanceId}` });
+      if (components.mode !== "inline" || components.collider.type === "none") {
+        throw sceneCompositionDiagnosticError(`${path}.navigation.obstacles`, "requires an inline collider");
+      }
+    }
+  }
+
+  if (spatial) {
+    const byId=new Map(instances.map(instance=>[instance.id,instance]));
+    for (const id of Object.keys(spatial.billboards)) {
+      const instance=byId.get(id);if (!instance) throw sceneCompositionDiagnosticError(`${path}.spatial.billboards.${id}`,"must reference the applied fragment");
+      const c=resolveDataSceneInstanceComponents(instance,{allowTemplate:allowComponentTemplates,path:`${path}.spatial.billboards.${id}`});
+      if (c.mode!=="inline") throw sceneCompositionDiagnosticError(`${path}.spatial.billboards.${id}`,"requires inline components");
+      if (spatial.actor?.instanceId===id && (c.body?.type!=="kinematic" || !c.body.heightSpan || c.collider.type!=="aabb" || c.collider.isTrigger || !c.collider.enabled)) throw sceneCompositionDiagnosticError(`${path}.spatial.actor`,"requires a kinematic heightSpan body and enabled non-trigger AABB");
+    }
+  }
   return {
     format: SCENE_AUTHORING_DOCUMENT_FORMAT,
     version: SCENE_AUTHORING_DOCUMENT_VERSION,
@@ -138,7 +167,8 @@ export function resolveSceneAuthoringDocument(
     ...(ids === undefined ? {} : { ids }),
     ...(document.variables === undefined ? {} : { variables }),
     ...(document.gameplay === undefined ? {} : { gameplay: resolveDataSceneGameplaySpec(document.gameplay, `${path}.gameplay`) }),
-    ...(document.navigation === undefined ? {} : { navigation: resolveDataSceneNavigationSpec(document.navigation, `${path}.navigation`) }),
+    ...(navigation === undefined ? {} : { navigation }),
+    ...(spatial === undefined ? {} : { spatial }),
     ...(bindingPlan === undefined ? {} : { bindingPlan }),
   };
 }

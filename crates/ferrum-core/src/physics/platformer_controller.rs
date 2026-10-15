@@ -23,11 +23,57 @@ mod step_offset;
 
 use controller::{move_platformer_controller_internal, PlatformerControllerRuntime};
 use ground_probe::ground_probe_internal;
-pub(crate) use kinematic_sweep::KinematicSweepScratch;
-use kinematic_sweep::{earliest_solid_hit, KinematicSweep};
+use kinematic_sweep::{earliest_solid_hit, spatial_pose_overlaps_solid, KinematicSweep};
+pub(crate) use kinematic_sweep::{KinematicDebugHit, KinematicSweepScratch};
 use moving_platform::carry_moving_platform_internal;
 
 impl PhysicsSystem {
+    pub(crate) fn spatial_body_pose_is_clear(
+        world: &World,
+        tilemap: &Tilemap,
+        entity: Entity,
+        at: Transform2D,
+        scratch: &mut KinematicSweepScratch,
+        counters: Option<&mut PhysicsCounters>,
+    ) -> bool {
+        !spatial_pose_overlaps_solid(world, tilemap, entity, at, scratch, counters)
+    }
+    /// Geometry-only sweep for a spatial gateway probe; surface/floor commit stays scene-owned.
+    pub(crate) fn sweep_spatial_body_with_scratch(
+        world: &mut World,
+        tilemap: &Tilemap,
+        entity: Entity,
+        displacement: Velocity,
+        scratch: &mut KinematicSweepScratch,
+        mut counters: Option<&mut PhysicsCounters>,
+    ) -> Option<KinematicMoveResult> {
+        let start = world.transform(entity)?;
+        if spatial_pose_overlaps_solid(
+            world,
+            tilemap,
+            entity,
+            start,
+            scratch,
+            counters.as_deref_mut(),
+        ) {
+            return None;
+        }
+        let settings =
+            KinematicMoveSettings::new(CollisionMask::ALL, OneWayPlatformConfig::default(), 8)
+                .with_height_span(world.height_span(entity))
+                .preserving_small_displacements();
+        let moved = move_and_slide_internal(
+            world,
+            Some(tilemap),
+            entity,
+            displacement,
+            settings,
+            scratch,
+            counters.as_deref_mut(),
+        );
+        (!spatial_pose_overlaps_solid(world, tilemap, entity, moved.end, scratch, counters))
+            .then_some(moved)
+    }
     /// Reuses sweep buffers for the scene-owned, single-segment AABB follower.
     pub(crate) fn move_navigation_actor_with_scratch(
         world: &mut World,
@@ -468,6 +514,7 @@ pub(super) fn move_and_slide_internal(
         let travel = hit.contact.time.clamp(0.0, 1.0);
         position.x += remaining.vx * travel;
         position.y += remaining.vy * travel;
+        scratch.record_debug_hit(hit, position, collider, settings.height_span);
         hit_count += 1;
         if let Some(counters) = counters.as_deref_mut() {
             counters.kinematic_hits = counters.kinematic_hits.saturating_add(1);

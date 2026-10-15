@@ -1,3 +1,4 @@
+import { WebGL2SpatialPass } from "./webgl2SpatialPass.js";
 import { prepareWebGL2Renderer } from "./webgl2ShaderPrograms";
 import { WebGL2GpuTimer } from "./webgl2GpuTimer.js";
 import type { RendererGpuTimingStats } from "./gpuTiming.js";
@@ -67,6 +68,9 @@ export interface WebGL2RendererOptions extends TextureManagerOptions {
 }
 
 export class WebGL2Renderer implements Renderer {
+  readonly supportsSpatialScene = true;
+  private spatialPass?: WebGL2SpatialPass;
+  private frameHasSpatial = false;
   readonly colorManagement: ColorManagementMode;
   private readonly gl: WebGL2RenderingContext;
   private readonly gpuTimer?: WebGL2GpuTimer;
@@ -242,6 +246,7 @@ export class WebGL2Renderer implements Renderer {
   ): RendererStats {
     this.assertAlive();
     const resource = this.renderTextures.target(target);
+    if (commands.spatial) throw new Error("Spatial RenderTexture capture is not supported in this slice");
     const viewport = options.viewport ?? this.viewportSize();
     const clear = options.clearColor ?? [0, 0, 0];
     if (!Number.isFinite(viewport.width) || viewport.width <= 0
@@ -309,6 +314,9 @@ export class WebGL2Renderer implements Renderer {
     const captures = this.renderTextures.resourceStats();
     let renderTargetCount = captures.renderTargetCount;
     let targetBytes = captures.textureBytes;
+    const spatialEffects=this.spatialPass?.environmentResourceStats()??{textureCount:0,renderTargetCount:0,textureBytes:0};
+    renderTargetCount+=spatialEffects.renderTargetCount;
+    targetBytes+=spatialEffects.textureBytes;
     for (const target of [this.sceneRenderTarget, this.postProcessScratchA, this.postProcessScratchB]) {
       const bytes = target?.allocatedTextureBytes ?? 0;
       if (bytes > 0) renderTargetCount += 1;
@@ -317,7 +325,8 @@ export class WebGL2Renderer implements Renderer {
     let bufferCount = 0;
     let programCount = 0;
     let bufferBytes = 0;
-    for (const owner of [this.spriteBatch, this.physicsDebugLineBatch, this.lightingPass, this.fullscreenPass]) {
+    for (const owner of [this.spatialPass, this.spriteBatch, this.physicsDebugLineBatch, this.lightingPass, this.fullscreenPass]) {
+      if (!owner) continue;
       const stats = owner.resourceStats();
       bufferCount += stats.bufferCount;
       programCount += stats.programCount;
@@ -325,7 +334,7 @@ export class WebGL2Renderer implements Renderer {
     }
     const textureBytes = assets.textureBytes === undefined ? undefined : assets.textureBytes + targetBytes;
     return {
-      textureCount: assets.textureCount + renderTargetCount,
+      textureCount: assets.textureCount + renderTargetCount-spatialEffects.renderTargetCount+spatialEffects.textureCount,
       bufferCount, programCount, renderTargetCount,
       unmeasuredTextureCount: assets.unmeasuredTextureCount,
       textureBytes, bufferBytes,
@@ -421,6 +430,8 @@ export class WebGL2Renderer implements Renderer {
 
   render(): void {
     this.assertAlive();
+    if (!this.frameHasSpatial) this.spatialPass?.releaseEnvironment();
+    this.frameHasSpatial = false;
     resetRendererStatsInto(this.currentStats);
     resetRendererStatsInto(this.offscreenStats);
     this.frameStarted = true;
@@ -452,7 +463,10 @@ export class WebGL2Renderer implements Renderer {
     this.assertAlive();
     this.ensureCurrentFrameTarget();
     const commands = second ?? (first as RenderCommandBufferView);
+    if (commands.spatial && this.lightingScene.enabled) throw new Error("Flat LightingScene2D cannot be combined with a spatial scene; use spatial.environment.lighting");
     if (commands.groundYScale !== undefined) this.setGroundYScale(commands.groundYScale);
+    const spatialStats = commands.spatial ? (this.spatialPass ??= new WebGL2SpatialPass(this.gl,this.colorManagement==="linear-srgb")).draw(commands.spatial, this.textureSource) : undefined;
+    if (commands.spatial) this.frameHasSpatial = true;
     const resolution = this.logicalResolution;
     const batchStats = second
       ? this.spriteBatch.drawBatch(
@@ -475,6 +489,14 @@ export class WebGL2Renderer implements Renderer {
       batchStats.drawCalls,
       batchStats.textureSwitchCount,
     );
+    if (spatialStats) {
+      this.currentStats.drawCalls += spatialStats.drawCalls;
+      this.currentStats.spriteCount += spatialStats.billboardCount;
+      this.currentStats.batchCount += spatialStats.billboardDrawCalls;
+      this.currentStats.textureBindCount += spatialStats.textureBindCount;
+      this.currentStats.textureSwitchCount += spatialStats.textureSwitchCount;
+      this.currentStats.spatial = spatialStats;
+    }
     const lightingStats = this.lightingPass.draw(this.lightingScene, resolution);
     addLightingStatsInto(
       this.currentStats,
@@ -512,6 +534,7 @@ export class WebGL2Renderer implements Renderer {
 
   renderPostProcess(postProcess?: PostProcessStackInput): RendererStats {
     this.assertAlive();
+    if (!this.frameHasSpatial) this.spatialPass?.releaseEnvironment();
     if (postProcess !== undefined) {
       this.setPostProcess(postProcess);
     }
@@ -564,6 +587,7 @@ export class WebGL2Renderer implements Renderer {
       return;
     }
     this.destroyed = true;
+    this.spatialPass?.destroy();
     this.gpuTimer?.destroy();
     this.spriteBatch.destroy();
     this.physicsDebugLineBatch.destroy();

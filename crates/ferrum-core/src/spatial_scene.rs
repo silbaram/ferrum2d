@@ -1,0 +1,820 @@
+//! Opt-in orthographic/perspective terrain and cylindrical sprite presentation.
+use crate::{
+    components::{RigidBodyType, Sprite, Transform2D},
+    entity::Entity,
+    physics::{Hd2dKinematicControllerConfig, PhysicsSystem},
+    tilemap::Tilemap,
+    world::World,
+};
+use std::collections::BTreeMap;
+mod connections;
+mod environment;
+pub(crate) use environment::{SpatialEnvironment, MAX_SHADOW_CASTERS};
+mod navigation;
+pub(crate) use navigation::SpatialNavigation;
+mod debug;
+use connections::{ConnectionMove, SurfaceConnection};
+pub(crate) use debug::SpatialDebugGeometry;
+
+pub(crate) type Point = [f32; 3];
+pub(crate) fn add(a: Point, b: Point) -> Point {
+    std::array::from_fn(|i| a[i] + b[i])
+}
+pub(crate) fn sub(a: Point, b: Point) -> Point {
+    std::array::from_fn(|i| a[i] - b[i])
+}
+pub(crate) fn scale(a: Point, s: f32) -> Point {
+    a.map(|v| v * s)
+}
+pub(crate) fn dot(a: Point, b: Point) -> f32 {
+    a.iter().zip(b).map(|(a, b)| a * b).sum()
+}
+pub(crate) fn cross(a: Point, b: Point) -> Point {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+fn unit(a: Point) -> Option<Point> {
+    let n = dot(a, a).sqrt();
+    (n.is_finite() && n > 1e-5).then(|| scale(a, 1.0 / n))
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SpatialCamera {
+    pub parameters: [f32; 12],
+    pub matrix: [f32; 16],
+    pub right: Point,
+    up: Point,
+    forward: Point,
+    frustum: [[f64; 4]; 6],
+    clip_magnitudes: [[f64; 4]; 3],
+}
+impl SpatialCamera {
+    pub fn new(v: &[f32]) -> Option<Self> {
+        if v.len() != 12
+            || v.iter().any(|v| !v.is_finite())
+            || ![0.0, 1.0].contains(&v[0])
+            || v[7] <= 0.0
+            || v[8] <= 0.0
+            || v[9] <= v[8]
+            || v[10] <= 0.0
+            || v[11] <= 0.0
+            || (v[0] == 1.0 && v[7] >= 3.13)
+        {
+            return None;
+        }
+        let eye = [v[1], v[2], v[3]];
+        let target = [v[4], v[5], v[6]];
+        let forward = unit(sub(target, eye))?;
+        let right = unit(cross(forward, [0.0, 1.0, 0.0]))?;
+        let up = cross(right, forward);
+        let aspect = v[10] / v[11];
+        let view = [
+            right[0],
+            up[0],
+            -forward[0],
+            0.0,
+            right[1],
+            up[1],
+            -forward[1],
+            0.0,
+            right[2],
+            up[2],
+            -forward[2],
+            0.0,
+            -dot(right, eye),
+            -dot(up, eye),
+            dot(forward, eye),
+            1.0,
+        ];
+        let mut projection = [0.0; 16];
+        let near = v[8];
+        let far = v[9];
+        if v[0] == 0.0 {
+            projection[0] = 2.0 / (v[7] * aspect);
+            projection[5] = 2.0 / v[7];
+            projection[10] = -2.0 / (far - near);
+            projection[14] = -(far + near) / (far - near);
+            projection[15] = 1.0;
+        } else {
+            let f = 1.0 / (v[7] * 0.5).tan();
+            projection[0] = f / aspect;
+            projection[5] = f;
+            projection[10] = -(far + near) / (far - near);
+            projection[11] = -1.0;
+            projection[14] = -2.0 * far * near / (far - near);
+        }
+        let matrix: [f32; 16] = std::array::from_fn(|i| {
+            let r = i % 4;
+            let c = i / 4;
+            (0..4)
+                .map(|k| projection[k * 4 + r] * view[c * 4 + k])
+                .sum()
+        });
+        if matrix.iter().any(|v: &f32| !v.is_finite()) {
+            return None;
+        }
+        Some(Self {
+            parameters: v.try_into().ok()?,
+            matrix,
+            right,
+            up,
+            forward,
+            frustum: std::array::from_fn(|plane| {
+                let axis = plane / 2;
+                let sign = if plane % 2 == 0 { 1.0 } else { -1.0 };
+                std::array::from_fn(|column| {
+                    f64::from(matrix[column * 4 + 3]) + sign * f64::from(matrix[column * 4 + axis])
+                })
+            }),
+            // GPU computes clip.w and clip[axis] separately. Keep their pre-cancellation magnitudes.
+            clip_magnitudes: std::array::from_fn(|axis| {
+                std::array::from_fn(|column| {
+                    f64::from(matrix[column * 4 + 3]).abs()
+                        + f64::from(matrix[column * 4 + axis]).abs()
+                })
+            }),
+        })
+    }
+    /// Conservative AABB/clip-plane test, including geometry crossing the near or eye plane.
+    fn intersects_bounds(&self, min: Point, max: Point) -> bool {
+        self.frustum.iter().enumerate().all(|(index, plane)| {
+            let mut distance = plane[3];
+            let weights = self.clip_magnitudes[index / 2];
+            let mut magnitude = weights[3];
+            for axis in 0..3 {
+                let support = if plane[axis] >= 0.0 {
+                    max[axis]
+                } else {
+                    min[axis]
+                };
+                let term = plane[axis] * f64::from(support);
+                distance += term;
+                magnitude += weights[axis] * f64::from(min[axis].abs().max(max[axis].abs()));
+            }
+            // Keep boundary geometry despite f32 GPU transform rounding; f64 avoids CPU overflow.
+            distance >= -16.0 * f64::from(f32::EPSILON) * magnitude.max(1.0)
+        })
+    }
+    pub fn ray(&self, x: f32, y: f32) -> (Point, Point) {
+        let v = self.parameters;
+        let eye = [v[1], v[2], v[3]];
+        let aspect = v[10] / v[11];
+        if v[0] == 0.0 {
+            let origin = add(
+                add(eye, scale(self.right, x * v[7] * aspect * 0.5)),
+                scale(self.up, y * v[7] * 0.5),
+            );
+            (add(origin, scale(self.forward, v[8])), self.forward)
+        } else {
+            let t = (v[7] * 0.5).tan();
+            let dir = unit(add(
+                add(self.forward, scale(self.right, x * t * aspect)),
+                scale(self.up, y * t),
+            ))
+            .unwrap_or(self.forward);
+            (add(eye, scale(dir, v[8] / dot(dir, self.forward))), dir)
+        }
+    }
+}
+
+/// World XYZ, atlas UV, straight RGBA, texture ID, alpha cutoff; 11 f32 values.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SpatialVertex {
+    pub position: Point,
+    pub uv: [f32; 2],
+    pub color: [f32; 4],
+    pub texture: f32,
+    pub cutoff: f32,
+}
+const _: () = assert!(std::mem::size_of::<SpatialVertex>() == 44);
+/// Vertex ranges into the unchanged static terrain buffer; ABI v2, two u32 values.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct SpatialTerrainDrawRange {
+    pub first_vertex: u32,
+    pub vertex_count: u32,
+}
+const _: () = assert!(std::mem::size_of::<SpatialTerrainDrawRange>() == 8);
+#[derive(Clone, Copy)]
+pub(crate) struct Surface {
+    pub id: u32,
+    pub floor: u32,
+    pub bounds: [f32; 4],
+    pub base: f32,
+    pub heights: [f32; 2],
+    pub color: [f32; 4],
+    pub texture: u32,
+    pub kind: u32,
+    pub walkable: bool,
+}
+#[derive(Clone, Copy)]
+pub(crate) struct Billboard {
+    pub units_per_pixel: f32,
+    pub cutoff: f32,
+    pub elevation: f32,
+}
+
+#[derive(Default)]
+pub(crate) struct SpatialScene {
+    pub environment: SpatialEnvironment,
+    pub shadow_casters: Vec<[SpatialVertex; 6]>,
+    shadow_quad_scratch: Vec<SpatialVertex>,
+    pub camera: Option<SpatialCamera>,
+    pub surfaces: Vec<Surface>,
+    pub terrain: Vec<SpatialVertex>,
+    pub terrain_draw_ranges: Vec<SpatialTerrainDrawRange>,
+    pub billboards: Vec<SpatialVertex>,
+    pub debug: SpatialDebugGeometry,
+    pub bindings: BTreeMap<(u32, u32), Billboard>,
+    pub frame_camera: [f32; 28],
+    pub frame_active: bool,
+    pub revision: u32,
+    pub physics: Tilemap,
+    movement_scratch: crate::physics::KinematicSweepScratch,
+    pub actor: Option<(Entity, f32, f32, f32)>,
+    connections: Vec<SurfaceConnection>,
+    pub navigation: SpatialNavigation,
+}
+impl SpatialScene {
+    pub fn clear(&mut self) {
+        self.environment = SpatialEnvironment::default();
+        self.shadow_casters.clear();
+        self.shadow_quad_scratch.clear();
+        self.camera = None;
+        self.surfaces.clear();
+        self.terrain.clear();
+        self.terrain_draw_ranges.clear();
+        self.billboards.clear();
+        self.debug.reset();
+        self.bindings.clear();
+        self.physics.clear();
+        self.actor = None;
+        self.connections.clear();
+        self.navigation = SpatialNavigation::default();
+        self.frame_active = false;
+        self.revision = self.revision.wrapping_add(1);
+    }
+    pub fn configure_surfaces(&mut self, floats: &[f32], integers: &[u32]) -> bool {
+        if !floats.len().is_multiple_of(11)
+            || integers.len() != floats.len() / 11 * 4
+            || integers.len() > 256 * 4
+        {
+            return false;
+        }
+        let mut surfaces = Vec::new();
+        let mut mesh = Vec::new();
+        let mut physics = Tilemap::default();
+        for (index, (v, n)) in floats
+            .chunks_exact(11)
+            .zip(integers.chunks_exact(4))
+            .enumerate()
+        {
+            if v.iter().any(|v| !v.is_finite())
+                || v[2] <= 0.0
+                || v[3] <= 0.0
+                || v[4] > v[5].min(v[6])
+                || v[7..11].iter().any(|c| !(0.0..=1.0).contains(c))
+                || n[0] == 0
+                || n[0] > 65535
+                || n[1] > 65535
+                || n[2] > 16_777_215
+                || n[3] > 9
+                || ![0, 1, 2, 4].contains(&(n[3] >> 1))
+                || ((n[3] >> 1) != 2 && v[5] != v[6])
+                || ![v[0] + v[2], v[1] + v[3]].iter().all(|v| v.is_finite())
+            {
+                return false;
+            }
+            let surface = Surface {
+                id: n[0],
+                floor: n[1],
+                bounds: [v[0], v[1], v[2], v[3]],
+                base: v[4],
+                heights: [v[5], v[6]],
+                color: v[7..11].try_into().unwrap_or([1.0; 4]),
+                texture: n[2],
+                kind: n[3] >> 1,
+                walkable: n[3] & 1 != 0,
+            };
+            if surfaces.iter().any(|s: &Surface| {
+                s.id == surface.id
+                    || (s.floor == surface.floor && rectangles_overlap(s.bounds, surface.bounds))
+            }) {
+                return false;
+            }
+            let tile = (index + 1) as u32;
+            physics.set_tile_definition(tile, 0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0);
+            if !physics.set_tile_height_span_definition(
+                tile,
+                surface.floor,
+                if surface.walkable {
+                    surface.heights[0]
+                } else {
+                    surface.base
+                },
+                if surface.walkable {
+                    0.0
+                } else {
+                    surface.heights[0].max(surface.heights[1]) - surface.base
+                },
+            ) || !physics.set_tile_hd2d_definition(
+                tile,
+                surface.kind,
+                !surface.walkable,
+                true,
+                true,
+                surface.heights[0] - surface.base,
+                surface.kind == 2,
+                1,
+                surface.heights[0],
+                surface.heights[1],
+            ) {
+                return false;
+            }
+            physics.set_layer(index as u32, 1, 1, v[2], v[3], v[0], v[1], true, vec![tile]);
+            append_surface(&mut mesh, surface);
+            surfaces.push(surface);
+        }
+        self.terrain_draw_ranges = Vec::with_capacity(surfaces.len());
+        self.navigation.cancel();
+        self.connections.clear();
+        self.surfaces = surfaces;
+        self.terrain = mesh;
+        self.physics = physics;
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+    pub fn build(&mut self, world: &World) {
+        self.shadow_casters.clear();
+        self.billboards.clear();
+        self.debug.clear_frame();
+        self.terrain_draw_ranges.clear();
+        self.frame_active = self.camera.is_some();
+        let Some(camera) = self.camera else {
+            return;
+        };
+        self.frame_camera[..16].copy_from_slice(&camera.matrix);
+        self.frame_camera[16..].copy_from_slice(&camera.parameters);
+        self.debug.begin_frame();
+        for (index, surface) in self.surfaces.iter().enumerate() {
+            let [x, y, width, depth] = surface.bounds;
+            if !camera.intersects_bounds(
+                [x, surface.base, -y - depth],
+                [x + width, surface.heights[0].max(surface.heights[1]), -y],
+            ) {
+                continue;
+            }
+            self.debug.surface(*surface);
+            self.debug.surface_floor(*surface, &camera);
+            let first_vertex = index as u32 * 36;
+            if let Some(previous) = self.terrain_draw_ranges.last_mut() {
+                if previous.first_vertex + previous.vertex_count == first_vertex {
+                    previous.vertex_count += 36;
+                    continue;
+                }
+            }
+            self.terrain_draw_ranges.push(SpatialTerrainDrawRange {
+                first_vertex,
+                vertex_count: 36,
+            });
+        }
+        for (&(id, generation), &style) in &self.bindings {
+            let entity = Entity { id, generation };
+            if !world.is_current_entity(entity) {
+                continue;
+            }
+            let Some((t, mut s)) = world.renderable_sprite_at_index(id as usize) else {
+                continue;
+            };
+            s.rotation_radians += world.rotation_at_index_or_default(id as usize).radians;
+            let elevation =
+                world.height_span(entity).map_or(0.0, |s| s.elevation) + style.elevation;
+            let first = self.billboards.len();
+            if self.environment.shadows() && self.shadow_casters.len() < MAX_SHADOW_CASTERS {
+                self.shadow_quad_scratch.clear();
+                append_billboard_internal(
+                    &mut self.shadow_quad_scratch,
+                    &camera,
+                    t,
+                    s,
+                    elevation,
+                    style,
+                    false,
+                );
+                if let Ok(q) = self.shadow_quad_scratch.as_slice().try_into() {
+                    self.shadow_casters.push(q);
+                }
+            }
+            append_billboard(&mut self.billboards, &camera, t, s, elevation, style);
+            self.debug.billboard(
+                &self.billboards[first..],
+                [t.x, elevation, -t.y],
+                camera.right,
+            );
+            if let Some(span) = world.height_span(entity) {
+                self.debug.height_span(t, span, &camera);
+            }
+        }
+        self.debug.physics(world, &camera);
+        self.shadow_casters
+            .sort_unstable_by_key(|q| q[0].texture as u32);
+    }
+    pub fn shadow_budget_valid(&self, world: &World) -> bool {
+        self.shadow_budget_valid_after_removals(world, &std::collections::BTreeSet::new())
+    }
+    pub fn shadow_budget_valid_after_removals(
+        &self,
+        world: &World,
+        removed: &std::collections::BTreeSet<(u32, u32)>,
+    ) -> bool {
+        if !self.environment.shadows() {
+            return true;
+        }
+        if self.bindings.len() > MAX_SHADOW_CASTERS {
+            return false;
+        }
+        let mut previous = None;
+        let mut runs = 0;
+        for s in &self.surfaces {
+            if previous != Some(s.texture) {
+                runs += 1;
+                previous = Some(s.texture);
+            }
+        }
+        let textures: std::collections::BTreeSet<_> = self
+            .bindings
+            .keys()
+            .filter(|key| !removed.contains(key))
+            .filter_map(|&(id, generation)| {
+                world
+                    .sprite_at_index(id as usize)
+                    .filter(|_| world.is_current_entity(Entity { id, generation }))
+                    .map(|s| s.texture_id)
+            })
+            .collect();
+        runs + textures.len() <= 64
+    }
+    /// Stable terrain identity only when the entity origin is on a walkable surface.
+    pub fn support_surface_id(
+        &self,
+        at: Transform2D,
+        span: crate::components::HeightSpan,
+    ) -> Option<u32> {
+        let hit = self.physics.hd2d_surface_at(at, Some(span))?;
+        if hit.blocks_movement || (hit.elevation - span.elevation).abs() > 0.001 {
+            return None;
+        }
+        self.surfaces.get(hit.layer_index).map(|surface| surface.id)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn move_body(
+        &mut self,
+        world: &mut World,
+        entity: Entity,
+        dx: f32,
+        dy: f32,
+        max_step: f32,
+        max_drop: f32,
+        counters: Option<&mut crate::physics::PhysicsCounters>,
+    ) -> bool {
+        self.move_body_internal(world, entity, dx, dy, max_step, max_drop, counters, true)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn move_body_internal(
+        &mut self,
+        world: &mut World,
+        entity: Entity,
+        dx: f32,
+        dy: f32,
+        max_step: f32,
+        max_drop: f32,
+        mut counters: Option<&mut crate::physics::PhysicsCounters>,
+        record_contacts: bool,
+    ) -> bool {
+        if !world.is_current_entity(entity)
+            || ![dx, dy, max_step, max_drop].iter().all(|v| v.is_finite())
+            || max_step < 0.0
+            || max_drop < 0.0
+            || world.height_span(entity).is_none()
+            || !world
+                .rigid_body(entity)
+                .is_some_and(|b| b.enabled && b.body_type == RigidBodyType::Kinematic)
+            || world.compound_collider_count(entity) != 1
+            || !world
+                .collider(entity)
+                .is_some_and(|c| c.enabled && !c.is_trigger)
+        {
+            return false;
+        }
+        let cell = self
+            .surfaces
+            .iter()
+            .fold(f32::INFINITY, |m, s| m.min(s.bounds[2]).min(s.bounds[3]));
+        if !cell.is_finite() {
+            return false;
+        }
+        let steps = (dx.abs().max(dy.abs()) / (cell * 0.25)).ceil().max(1.0);
+        if steps > 128.0 {
+            return false;
+        }
+        let capture = record_contacts && self.debug.captures_contacts() && (dx != 0. || dy != 0.);
+        self.movement_scratch.begin_debug_capture(capture);
+        for _ in 0..steps as usize {
+            let current = world.transform(entity).unwrap_or_default();
+            let center = world
+                .collider(entity)
+                .map_or(current, |c| c.center(current));
+            let target = Transform2D {
+                x: center.x + dx / steps,
+                y: center.y + dy / steps,
+            };
+            let start_span = world.height_span(entity);
+            // Gateway sweeps test hypothetical source/destination poses, not committed contacts.
+            self.movement_scratch.set_debug_capture(false);
+            match self.move_connected_body(
+                world,
+                entity,
+                current,
+                center,
+                target,
+                max_step,
+                max_drop,
+                counters.as_deref_mut(),
+            ) {
+                ConnectionMove::Moved => continue,
+                ConnectionMove::Blocked => break,
+                ConnectionMove::Unconnected => {}
+            }
+            self.movement_scratch.set_debug_capture(capture);
+            if self.surfaces.iter().any(|s| {
+                !s.walkable
+                    && world
+                        .height_span(entity)
+                        .is_some_and(|span| span.floor.0 == s.floor)
+                    && target.x >= s.bounds[0]
+                    && target.x < s.bounds[0] + s.bounds[2]
+                    && target.y >= s.bounds[1]
+                    && target.y < s.bounds[1] + s.bounds[3]
+            }) {
+                break;
+            }
+            let previous_hits = self.movement_scratch.debug_hits.len();
+            let previous_truncated = self.movement_scratch.debug_truncated;
+            let result = PhysicsSystem::move_hd2d_kinematic_with_tilemap_and_scratch(
+                world,
+                &self.physics,
+                entity,
+                crate::components::Velocity {
+                    vx: dx / steps,
+                    vy: dy / steps,
+                },
+                Hd2dKinematicControllerConfig::new(crate::components::CollisionMask::ALL, 8)
+                    .with_step_height(max_step)
+                    .with_drop_height(max_drop),
+                counters.as_deref_mut(),
+                &mut self.movement_scratch,
+                true,
+            );
+            if result.blocked_by_step || result.blocked_by_drop {
+                self.movement_scratch.debug_hits.truncate(previous_hits);
+                self.movement_scratch.debug_truncated = previous_truncated;
+            }
+            // The generic tile controller can infer stair/ramp floor changes. Spatial scenes require an authored gateway.
+            if world.height_span(entity).map(|s| s.floor) != start_span.map(|s| s.floor) {
+                self.movement_scratch.debug_hits.truncate(previous_hits);
+                self.movement_scratch.debug_truncated = previous_truncated;
+                world.set_transform(entity, current);
+                if let Some(span) = start_span {
+                    world.set_height_span(entity, span);
+                }
+                break;
+            }
+        }
+        if capture {
+            self.debug.capture_contacts(
+                world,
+                entity,
+                &self.movement_scratch.debug_hits,
+                self.movement_scratch.debug_truncated,
+            );
+        }
+        self.movement_scratch.set_debug_capture(false);
+        world.set_velocity(entity, crate::components::Velocity::default());
+        true
+    }
+    pub fn pick(&self, camera: &SpatialCamera, x: f32, y: f32) -> Vec<f32> {
+        let (origin, dir) = camera.ray(x, y);
+        let mut closest = f32::INFINITY;
+        let mut result = vec![];
+        for (surface, vertices) in self.surfaces.iter().zip(self.terrain.chunks_exact(36)) {
+            for triangle in vertices.chunks_exact(3) {
+                if let Some(distance) = ray_triangle(
+                    origin,
+                    dir,
+                    triangle[0].position,
+                    triangle[1].position,
+                    triangle[2].position,
+                ) {
+                    let hit = add(origin, scale(dir, distance));
+                    let eye = [
+                        camera.parameters[1],
+                        camera.parameters[2],
+                        camera.parameters[3],
+                    ];
+                    let depth = dot(sub(hit, eye), camera.forward);
+                    if distance < closest
+                        && depth >= camera.parameters[8]
+                        && depth <= camera.parameters[9]
+                    {
+                        closest = distance;
+                        let normal = unit(cross(
+                            sub(triangle[1].position, triangle[0].position),
+                            sub(triangle[2].position, triangle[0].position),
+                        ))
+                        .unwrap_or([0.0, 1.0, 0.0]);
+                        result = vec![
+                            surface.id as f32,
+                            surface.floor as f32,
+                            hit[0],
+                            -hit[2],
+                            hit[1],
+                            normal[0],
+                            normal[1],
+                            normal[2],
+                            distance,
+                            if surface.walkable && normal[1] > 0.5 {
+                                1.0
+                            } else {
+                                0.0
+                            },
+                        ];
+                    }
+                }
+            }
+        }
+        result
+    }
+}
+fn rectangles_overlap(a: [f32; 4], b: [f32; 4]) -> bool {
+    a[0] < b[0] + b[2] && a[0] + a[2] > b[0] && a[1] < b[1] + b[3] && a[1] + a[3] > b[1]
+}
+fn quad(
+    out: &mut Vec<SpatialVertex>,
+    points: [Point; 4],
+    uv: [f32; 4],
+    color: [f32; 4],
+    texture: u32,
+    cutoff: f32,
+) {
+    let uvs = [
+        [uv[0], uv[1]],
+        [uv[2], uv[1]],
+        [uv[2], uv[3]],
+        [uv[0], uv[3]],
+    ];
+    for i in [0, 1, 2, 0, 2, 3] {
+        out.push(SpatialVertex {
+            position: points[i],
+            uv: uvs[i],
+            color,
+            texture: texture as f32,
+            cutoff,
+        });
+    }
+}
+fn append_surface(out: &mut Vec<SpatialVertex>, s: Surface) {
+    let [x, y, w, d] = s.bounds;
+    let [a, b] = s.heights;
+    let p = [
+        [x, a, -y],
+        [x + w, a, -y],
+        [x + w, b, -y - d],
+        [x, b, -y - d],
+    ];
+    quad(out, p, [0.0, 0.0, 1.0, 1.0], s.color, s.texture, 0.01);
+    let sides = std::array::from_fn(|i| {
+        [
+            s.color[0] * 0.65,
+            s.color[1] * 0.65,
+            s.color[2] * 0.65,
+            s.color[3],
+        ][i]
+    });
+    for i in 0..4 {
+        let j = (i + 1) % 4;
+        quad(
+            out,
+            [
+                p[j],
+                p[i],
+                [p[i][0], s.base, p[i][2]],
+                [p[j][0], s.base, p[j][2]],
+            ],
+            [0.0, 0.0, 1.0, 1.0],
+            sides,
+            s.texture,
+            0.01,
+        );
+    }
+    let bottom = if s.base < s.heights[0].max(s.heights[1]) {
+        [
+            [x, s.base, -y],
+            [x, s.base, -y - d],
+            [x + w, s.base, -y - d],
+            [x + w, s.base, -y],
+        ]
+    } else {
+        [[x, s.base, -y]; 4]
+    };
+    quad(out, bottom, [0.0, 0.0, 1.0, 1.0], sides, s.texture, 0.01);
+}
+pub(crate) fn append_billboard(
+    out: &mut Vec<SpatialVertex>,
+    camera: &SpatialCamera,
+    t: Transform2D,
+    s: Sprite,
+    elevation: f32,
+    style: Billboard,
+) {
+    append_billboard_internal(out, camera, t, s, elevation, style, true);
+}
+#[allow(clippy::too_many_arguments)]
+fn append_billboard_internal(
+    out: &mut Vec<SpatialVertex>,
+    camera: &SpatialCamera,
+    t: Transform2D,
+    s: Sprite,
+    elevation: f32,
+    style: Billboard,
+    cull: bool,
+) {
+    let right = unit([camera.right[0], 0.0, camera.right[2]]).unwrap_or([1.0, 0.0, 0.0]);
+    let base = [t.x, elevation, -t.y];
+    let size = style.units_per_pixel;
+    let mut points = [[0.0; 3]; 4];
+    for (index, (u, v)) in [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+        .into_iter()
+        .enumerate()
+    {
+        let x = (u - s.origin_x) * s.width * size;
+        let y = (s.origin_y - v) * s.height * size;
+        let (sin, cos) = s.rotation_radians.sin_cos();
+        points[index] = add(
+            add(base, scale(right, x * cos - y * sin)),
+            [0.0, x * sin + y * cos, 0.0],
+        );
+    }
+    if points.iter().flatten().any(|v| !v.is_finite()) {
+        return;
+    }
+    let clips: [[f32; 4]; 4] = points.map(|p| {
+        std::array::from_fn(|r| {
+            camera.matrix[r] * p[0]
+                + camera.matrix[4 + r] * p[1]
+                + camera.matrix[8 + r] * p[2]
+                + camera.matrix[12 + r]
+        })
+    });
+    if cull
+        && (0..3).any(|axis| {
+            clips.iter().all(|p| p[axis] > p[3]) || clips.iter().all(|p| p[axis] < -p[3])
+        })
+    {
+        return;
+    }
+    quad(
+        out,
+        points,
+        [s.u0, s.v0, s.u1, s.v1],
+        [s.r, s.g, s.b, s.a],
+        s.texture_id,
+        style.cutoff,
+    );
+}
+fn ray_triangle(origin: Point, dir: Point, a: Point, b: Point, c: Point) -> Option<f32> {
+    let e1 = sub(b, a);
+    let e2 = sub(c, a);
+    let p = cross(dir, e2);
+    let det = dot(e1, p);
+    if det.abs() < 1e-6 {
+        return None;
+    }
+    let t = sub(origin, a);
+    let u = dot(t, p) / det;
+    // A shared triangle edge must not become a hole after f64 screen -> f32 ray conversion.
+    let edge_epsilon = 8.0 * f32::EPSILON;
+    if !(-edge_epsilon..=1.0 + edge_epsilon).contains(&u) {
+        return None;
+    }
+    let q = cross(t, e1);
+    let v = dot(dir, q) / det;
+    if v < -edge_epsilon || u + v > 1.0 + edge_epsilon {
+        return None;
+    }
+    let distance = dot(e2, q) / det;
+    (distance >= 0.0 && distance.is_finite()).then_some(distance)
+}

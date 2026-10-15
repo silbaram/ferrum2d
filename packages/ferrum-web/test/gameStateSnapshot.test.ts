@@ -72,7 +72,7 @@ test("game state snapshot captures data scene state separately from built-in sho
   });
 
   equal(snapshot.dataScene?.format, DATA_SCENE_STATE_FORMAT);
-  equal(snapshot.dataScene?.version, DATA_SCENE_STATE_VERSION);
+  equal(snapshot.dataScene?.version, 5);
   deepEqual(snapshot.dataScene?.scene, snapshot.scene);
   deepEqual(snapshot.dataScene?.custom, { sceneId: "blank-arena" });
   equal(snapshot.builtInShooter, undefined);
@@ -102,7 +102,7 @@ test("game state snapshot hashes and restores Data Scene lifecycle state", () =>
   });
 
   equal(playing.version, 2);
-  equal(playing.dataScene?.version, 3);
+  equal(playing.dataScene?.version, 5);
   equal(playing.snapshotHash === paused.snapshotHash, false);
   equal(paused.snapshotHash === levelComplete.snapshotHash, false);
 
@@ -779,7 +779,12 @@ test("invalid progress payloads and restore options fail before scene activation
     { ...progress, instances: [progress.instances[0], progress.instances[0]] },
     { ...progress, instances: [{ ...progress.instances[0], id: "missing" }] },
     { ...progress, instances: [{ ...progress.instances[0], interactionConsumed: true }] },
+    { ...progress, instances: [{ ...progress.instances[0], bodyEnabled: false }] }, // no authored body
+    { ...progress, instances: [{ ...progress.instances[0], colliderEnabled: "false" as unknown as boolean }] },
+    { ...progress, instances: [{ ...progress.instances[0], removed: true, colliderEnabled: false }] },
+    { ...progress, instances: [{ ...progress.instances[0], animation: { clip: 0, elapsedSeconds: 0, paused: false, flipX: false, flipY: false } }] }, // no authored clips
     { ...progress, navigation: { columns: 1, rows: 1, cellWidth: 1, cellHeight: 1, costs: [65536] } },
+    { ...progress, navigation: { columns: 1, rows: 1, cellWidth: 1, cellHeight: 1, costs: [1], obstacles: [{ instanceId: "missing", cells: [{ column: 0, row: 0 }] }] } },
   ]) {
     const snapshot = { ...captured, dataScene: { ...captured.dataScene!, progress: invalid } };
     snapshot.snapshotHash = hashGameStateSnapshot(snapshot);

@@ -22,3 +22,12 @@ export { resolveDataSceneNavigationSpec } from "./dataSceneNavigation.js";
 
 export type { DataSceneMoveOptions, DataSceneMoveStatus } from "./dataSceneMovement.js";
 export type { DataSceneMovementAnimationSpec, DataSceneMovementAnimationPose, DataSceneMovementDirection } from "./dataSceneMovementAnimation.js";
+
+export { resolveDataSceneSpatialSpec, resolveSpatialCameraSpec, createDataSceneSpatialView } from "./dataSceneSpatial.js";
+export type { DataSceneSpatialSpec, SpatialCameraSpec, SpatialPoint, SpatialTerrainSurface, SpatialSurfaceConnection, SpatialMoveOptions, SpatialMoveStats, SpatialBillboardSpec, SpatialDebugOptions, SpatialDebugBufferView, SpatialRenderBufferView, SpatialSurfaceHit, FerrumSpatialApi } from "./dataSceneSpatial.js";
+
+export type { SpatialRendererStats } from "./webgl2SpatialPass.js";
+export type { DataSceneSpatialPoseSnapshot, DataSceneSpatialProgressSnapshot } from "./dataSceneSpatialProgress.js";
+
+export { resolveSpatialEnvironmentSpec } from "./spatialEnvironment.js";
+export type { SpatialRgb, SpatialPointLightSpec, SpatialLightingSpec, SpatialDepthOfFieldSpec, SpatialColorGradingSpec, SpatialFogSpec, SpatialEnvironmentSpec, SpatialEnvironmentBufferView } from "./spatialEnvironment.js";

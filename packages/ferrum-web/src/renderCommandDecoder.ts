@@ -1,3 +1,4 @@
+import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 export interface RenderCommandView {
   x: number;
   y: number;
@@ -11,6 +12,7 @@ export interface RenderCommandView {
 }
 
 export interface RenderCommandBufferView {
+  spatial?: SpatialRenderBufferView;
   buffer: Float32Array;
   commandCount: number;
   floatsPerCommand: number;

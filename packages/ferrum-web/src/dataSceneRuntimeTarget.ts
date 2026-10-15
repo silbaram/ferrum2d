@@ -32,6 +32,8 @@ import type {
 } from "./gameplayAuthoring.js";
 import type { ResolvedSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
 import type { ResolvedSceneCompositionInstance } from "./sceneComposition.js";
+import type { DataSceneSpatialSpec } from "./dataSceneSpatial.js";
+import type { SpatialEnvironmentSpec } from "./spatialEnvironment.js";
 import type { DataSceneVariableStore } from "./dataSceneVariables.js";
 
 const DATA_SCENE_RUNTIME_ENGINE_ADAPTER = Symbol("ferrum2d.dataSceneRuntimeEngineAdapter");
@@ -216,7 +218,9 @@ export function applyDataSceneAuthoringDocument(
         ...(resolvedVariables.length === 0 ? {} : { variables: runtimeVariableIds }),
       };
   const runtimeAdapter = dataSceneRuntimeEngineAdapter(engine, `${path}.runtimeTarget.engine`);
-  preflightDataSceneGameplay(engine, resolved, bindSceneBehaviorRecipes(resolved.sceneComposition, resolved.behaviorRecipes, { ...bindingOptions, path }), runtimeIds, path);
+  const bindingPlan = bindSceneBehaviorRecipes(resolved.sceneComposition, resolved.behaviorRecipes, { ...bindingOptions, path });
+  preflightDataSceneGameplay(engine, resolved, bindingPlan, runtimeIds, path);
+  if (resolved.spatial) preflightDataSceneSpatialEnvironment(engine, resolved.spatial, bindingPlan.instances, options, resolved.spatial.environment);
   preflightDataSceneVariableRuntime(engine, resolvedVariables, `${path}.variables`);
   const previousVariables = captureDataSceneVariableRuntimeSnapshot(engine);
   try {
@@ -253,9 +257,10 @@ export function applyDataSceneAuthoringDocument(
       ...(resolved.gameplay.primaryActor === undefined ? {} : { primaryActor: result.entityHandles[resolved.gameplay.primaryActor] }),
       ...(resolved.gameplay.interactionInputActionId === undefined ? {} : { interactionInputActionId: resolved.gameplay.interactionInputActionId }),
     })) throw sceneCompositionDiagnosticError(`${path}.gameplay`, "runtime rejected Data Scene gameplay configuration");
-    if (resolved.navigation !== undefined && !engine.configureDataSceneNavigation(resolved.navigation)) {
+    if (resolved.navigation !== undefined && !engine.configureDataSceneNavigation(resolved.navigation, result.entityHandles)) {
       throw sceneCompositionDiagnosticError(`${path}.navigation`, "runtime rejected Data Scene navigation configuration");
     }
+    if (resolved.spatial !== undefined && !engine.configureDataSceneSpatial(resolved.spatial,result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
     rememberDataSceneProgressContext(engine, document, result.entityHandles, options);
     return {
       document: resolved,
@@ -401,6 +406,43 @@ function inlineDataSceneRuntimeSpawnRequest(
     colliderRotationRadians: colliderShape.rotationRadians,
     colliderVertices: colliderShape.vertices,
   };
+}
+
+/** Internal cold preflight shared by authoring activation and prospective saved progress. */
+export function preflightDataSceneSpatialEnvironment(
+  engine: FerrumEngine,
+  spec: DataSceneSpatialSpec,
+  instances: readonly ResolvedSceneCompositionInstance[],
+  options: CreateDataSceneRuntimeTargetOptions,
+  environment: SpatialEnvironmentSpec | null | undefined,
+  removed: ReadonlySet<string> = new Set(),
+): void {
+  if (!environment?.lighting?.shadows) return;
+  const path = `${options.path ?? "dataScene"}.spatial.environment.lighting.shadows`;
+  if (Object.keys(spec.billboards).length > 1024) {
+    throw sceneCompositionDiagnosticError(path, "shadow caster budget exceeds 1024 authored billboards");
+  }
+  let previous = -1, batches = 0;
+  for (const surface of spec.terrain) {
+    const texture = surface.textureId ?? 16777215;
+    if (texture !== previous) batches++;
+    previous = texture;
+  }
+  const byId = new Map(instances.map(instance => [instance.id, instance]));
+  const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
+  const textureId = options.textureId ?? ((name: string) => adapter.textureId(name));
+  const textures = new Set<number>();
+  for (const id of Object.keys(spec.billboards)) {
+    if (removed.has(id)) continue;
+    const instance = byId.get(id);
+    if (!instance) throw sceneCompositionDiagnosticError(path, `unknown billboard '${id}'`);
+    const components = resolveDataSceneInstanceComponents(instance, { allowTemplate: false, path });
+    if (components.mode !== "inline") throw sceneCompositionDiagnosticError(path, "requires inline billboard components");
+    textures.add(dataSceneTextureId(components.sprite, textureId));
+  }
+  if (batches + textures.size > 64) {
+    throw sceneCompositionDiagnosticError(path, "shadow texture batch budget exceeds 64 per cube face");
+  }
 }
 
 function dataSceneTextureId(

@@ -29,9 +29,11 @@ use crate::{
 mod collision_events;
 mod data_scene_alpha_shadows;
 mod data_scene_animation;
+mod data_scene_dynamic_bodies;
 mod data_scene_gameplay;
 mod data_scene_movement;
 mod data_scene_movement_animation;
+mod data_scene_obstacles;
 mod data_scene_projection_sun;
 mod data_scene_visuals;
 mod fixed_timestep;
@@ -164,3 +166,11 @@ fn spawn_test_body_with_trigger(
     );
     entity
 }
+
+mod spatial_connections;
+mod spatial_debug;
+mod spatial_environment;
+mod spatial_navigation;
+mod spatial_progress;
+mod spatial_scene;
+mod spatial_terrain_chunks;

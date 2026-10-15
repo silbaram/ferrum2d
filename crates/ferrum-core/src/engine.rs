@@ -32,6 +32,7 @@ mod data_scene_movement;
 mod data_scene_movement_animation;
 mod data_scene_navigation;
 mod data_scene_progress;
+mod data_scene_spatial_progress;
 mod data_scene_spawning;
 mod data_scene_sun;
 mod fixed_step;
@@ -53,6 +54,7 @@ mod scene_controls;
 mod scenes;
 mod shooter_authoring;
 mod snapshots;
+mod spatial_api;
 mod telemetry;
 mod tilemap_api;
 mod viewport_controls;
@@ -103,6 +105,7 @@ pub struct Engine {
     scene_mode: SceneMode,
     scenes: BuiltInSceneSlots,
     data_scene: DataSceneRuntime,
+    spatial_scene: crate::spatial_scene::SpatialScene,
     camera: Camera2D,
     world: World,
     data_scene_entity: Option<Entity>,
@@ -180,6 +183,7 @@ impl Engine {
             scene_mode: SceneMode::BuiltIn,
             scenes: BuiltInSceneSlots::new(),
             data_scene: DataSceneRuntime::new(),
+            spatial_scene: Default::default(),
             camera: Camera2D::new(DEFAULT_VIEWPORT_WIDTH, DEFAULT_VIEWPORT_HEIGHT),
             world: World::default(),
             data_scene_entity: None,

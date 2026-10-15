@@ -142,6 +142,65 @@ export class WasmBridge {
     view.groundShadowProjection = new Float32Array(
       this.memory.buffer, this.engineInstance.data_scene_ground_shadow_projection_ptr(), 3,
     );
+    if (typeof this.engineInstance.spatial_frame_active === "function" && this.engineInstance.spatial_frame_active()) {
+      const e = this.engineInstance;
+      const version = e.spatial_abi_version();
+      if ((version !== 1 && version !== 2) || e.spatial_vertex_stride() !== 11) {
+        throw new Error("Unsupported spatial buffer ABI");
+      }
+      const terrainVertexCount = e.spatial_terrain_len();
+      const billboardVertexCount = e.spatial_billboard_len();
+      const rangeCount = version === 2 ? e.spatial_terrain_draw_range_len() : 0;
+      if (version === 2 && (e.spatial_terrain_draw_range_stride() !== 2 || rangeCount > 256)) {
+        throw new Error("Unsupported spatial terrain range ABI");
+      }
+      const spatial = {
+        vertexStride: 11 as const,
+        camera: new Float32Array(this.memory.buffer, e.spatial_camera_ptr(), 28),
+        terrain: new Float32Array(this.memory.buffer, e.spatial_terrain_ptr(), terrainVertexCount * 11),
+        terrainVertexCount,
+        terrainRevision: e.spatial_terrain_revision(),
+        billboards: new Float32Array(this.memory.buffer, e.spatial_billboard_ptr(), billboardVertexCount * 11),
+        billboardVertexCount,
+      };
+      const debugFlags = typeof e.spatial_debug_flags === "function" ? e.spatial_debug_flags() : 0;
+      const debugVertexCount = debugFlags ? e.spatial_debug_len() : 0;
+      if (debugFlags && (e.spatial_debug_abi_version() !== 1 || e.spatial_debug_vertex_stride() !== 11
+          || debugVertexCount % 2 !== 0 || debugVertexCount > 32768)) {
+        throw new Error("Unsupported spatial debug ABI");
+      }
+      const debug = debugFlags ? {
+        version: 1 as const,
+        vertexStride: 11 as const,
+        vertices: new Float32Array(this.memory.buffer, e.spatial_debug_ptr(), debugVertexCount * 11),
+        vertexCount: debugVertexCount,
+        depthTest: e.spatial_debug_depth_test(),
+        truncated: e.spatial_debug_truncated(),
+      } : undefined;
+      const environmentLength = typeof e.spatial_environment_len === "function" ? e.spatial_environment_len() : 0;
+      const casterCount = environmentLength ? e.spatial_shadow_caster_len() : 0;
+      const matrixCount = environmentLength ? e.spatial_shadow_matrix_len() : 0;
+      if (environmentLength && (e.spatial_environment_abi_version() !== 1 || environmentLength !== 80
+          || casterCount % 6 !== 0 || casterCount > 1024 * 6 || (matrixCount !== 0 && matrixCount !== 96))) {
+        throw new Error("Unsupported spatial environment ABI");
+      }
+      const environment = environmentLength ? {
+        version: 1 as const,
+        values: new Float32Array(this.memory.buffer, e.spatial_environment_ptr(), environmentLength),
+        shadowMatrices: new Float32Array(this.memory.buffer, e.spatial_shadow_matrix_ptr(), matrixCount),
+        shadowCasters: new Float32Array(this.memory.buffer, e.spatial_shadow_caster_ptr(), casterCount * 11),
+        shadowCasterVertexCount: casterCount,
+      } : undefined;
+      view.spatial = version === 2
+        ? {
+          ...spatial,
+          debug,
+          environment,
+          version: 2,
+          terrainDrawRanges: new Uint32Array(this.memory.buffer, e.spatial_terrain_draw_range_ptr(), rangeCount * 2),
+        }
+        : { ...spatial, debug, environment, version: 1 };
+    }
     return view;
   }
 

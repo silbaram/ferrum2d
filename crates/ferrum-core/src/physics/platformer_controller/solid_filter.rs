@@ -10,6 +10,9 @@ pub(super) fn solid_filter_allows(
     target_index: usize,
     solid_mask: CollisionMask,
 ) -> bool {
+    if crate::physics::rigid_body_properties::has_disabled_rigid_body(world, target_index) {
+        return false;
+    }
     let Some(target_filter) = world.collision_filter_at(target_index) else {
         return false;
     };

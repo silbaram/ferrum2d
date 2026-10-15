@@ -273,6 +273,10 @@ impl Engine {
         solid_mask_bits: u32,
         cancel_on_input: bool,
     ) -> bool {
+        if self.spatial_scene.actor.is_some() {
+            return false;
+        }
+
         if self.scene_mode != SceneMode::Data
             || self.data_scene.game_state() == GameState::LevelComplete
             || !x.is_finite()
@@ -294,6 +298,7 @@ impl Engine {
             return false;
         };
         let destination = Transform2D { x, y };
+        self.synchronize_data_scene_navigation();
         let movement = &mut self.data_scene.movement;
         if !movement.plan(&self.data_scene.navigation, from, destination) {
             return false;

@@ -133,6 +133,7 @@ pub(super) struct DataSceneRuntime {
     pub(super) epoch: u32,
     pub(super) gameplay: super::data_scene_gameplay::DataSceneGameplay,
     pub(super) navigation: Tilemap,
+    pub(super) navigation_obstacles: super::data_scene_navigation::NavigationObstacles,
     pub(super) movement: super::data_scene_movement::DataSceneMovement,
     pub(super) movement_animation: super::data_scene_movement_animation::DataSceneMovementAnimation,
     pub(super) camera: super::viewport_controls::DataSceneCamera,
@@ -147,6 +148,7 @@ impl DataSceneRuntime {
             camera: super::viewport_controls::DataSceneCamera::default(),
             gameplay: Default::default(),
             navigation: Tilemap::default(),
+            navigation_obstacles: Default::default(),
             movement: Default::default(),
             movement_animation: Default::default(),
             score: 0,
@@ -191,6 +193,7 @@ impl DataSceneRuntime {
         self.epoch = self.epoch.wrapping_add(1).max(1);
         self.gameplay = Default::default();
         self.navigation.clear();
+        self.navigation_obstacles = Default::default();
         self.movement = Default::default();
         self.movement_animation = Default::default();
         self.camera = super::viewport_controls::DataSceneCamera::default();
@@ -211,21 +214,58 @@ impl DataSceneRuntime {
         if self.game_state != GameState::Playing {
             return;
         }
+        if self
+            .navigation_obstacles
+            .synchronize(context.world, &mut self.navigation)
+        {
+            self.movement.invalidate_route();
+        }
         self.movement_animation.begin_step(
             context.world,
-            self.movement.animation_target().is_some(),
+            self.movement.animation_target().is_some()
+                || (context.spatial_scene.actor.is_some_and(|(actor, ..)| {
+                    Some(actor) == context.world.primary_actor_entity()
+                }) && context
+                    .spatial_scene
+                    .navigation
+                    .animation_target()
+                    .is_some()),
             delta,
         );
-        self.movement.update(
-            context.world,
-            &self.navigation,
-            input,
-            delta,
-            context.physics_counters,
-        );
+        if let Some((entity, speed, step, drop)) = context.spatial_scene.actor {
+            if !context.spatial_scene.update_navigation(
+                context.world,
+                input,
+                delta,
+                context.physics_counters,
+            ) {
+                let x = f32::from(input.d) - f32::from(input.a);
+                let y = f32::from(input.s) - f32::from(input.w);
+                let length = (x * x + y * y).sqrt().max(1.0);
+                context.spatial_scene.move_body(
+                    context.world,
+                    entity,
+                    x * speed * delta / length,
+                    y * speed * delta / length,
+                    step,
+                    drop,
+                    Some(context.physics_counters),
+                );
+            }
+        } else {
+            self.movement.update(
+                context.world,
+                &self.navigation,
+                input,
+                delta,
+                context.physics_counters,
+            );
+        }
         context.world.tick_action_cooldowns(delta);
         context.world.tick_collision_reaction_cooldowns(delta);
-        context.world.update(delta);
+        context
+            .world
+            .update_with_rigid_body_step(delta, context.auto_rigid_body_step_enabled);
         context
             .tilemap
             .resolve_dynamic_collisions_with_counters(context.world, context.physics_counters);
@@ -285,6 +325,8 @@ pub(super) struct SceneResetContext<'a> {
 }
 
 pub(super) struct SceneUpdateContext<'a> {
+    spatial_scene: &'a mut crate::spatial_scene::SpatialScene,
+    auto_rigid_body_step_enabled: bool,
     pub(super) world: &'a mut World,
     pub(super) camera: &'a mut Camera2D,
     pub(super) input_actions: &'a InputActionRegistry,
@@ -581,6 +623,7 @@ impl BuiltInSceneRuntime for PlatformerScene {
 impl Engine {
     pub(super) fn activate_built_in_shooter_scene(&mut self) {
         self.clear_data_scene_entity_handle();
+        self.spatial_scene.clear();
         self.scene_mode = SceneMode::BuiltIn;
         self.camera.ground_y_scale = 1.0;
         self.ground_sun = crate::world::ground_shadow::GroundSun::default();
@@ -590,6 +633,7 @@ impl Engine {
 
     pub(super) fn activate_built_in_breakout_scene(&mut self) {
         self.clear_data_scene_entity_handle();
+        self.spatial_scene.clear();
         self.scene_mode = SceneMode::BuiltIn;
         self.camera.ground_y_scale = 1.0;
         self.ground_sun = crate::world::ground_shadow::GroundSun::default();
@@ -599,6 +643,7 @@ impl Engine {
 
     pub(super) fn activate_built_in_platformer_scene(&mut self) {
         self.clear_data_scene_entity_handle();
+        self.spatial_scene.clear();
         self.scene_mode = SceneMode::BuiltIn;
         self.camera.ground_y_scale = 1.0;
         self.ground_sun = crate::world::ground_shadow::GroundSun::default();
@@ -607,6 +652,7 @@ impl Engine {
     }
 
     pub(super) fn activate_data_scene(&mut self) {
+        self.spatial_scene.clear();
         self.clear_data_scene_entity_handle();
         self.scenes.shooter_mut().clear_deferred_runtime_state();
         self.scene_mode = SceneMode::Data;
@@ -797,6 +843,8 @@ impl Engine {
 
     pub(super) fn update_scene(&mut self, delta: f32, input: InputState) {
         let mut context = SceneUpdateContext {
+            spatial_scene: &mut self.spatial_scene,
+            auto_rigid_body_step_enabled: self.auto_rigid_body_step_enabled,
             world: &mut self.world,
             camera: &mut self.camera,
             input_actions: &self.input_actions,
