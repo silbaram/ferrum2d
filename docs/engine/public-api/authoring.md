@@ -423,9 +423,11 @@ route 자체는 저장하지 않고 공간 v6의 pose만 복원한 뒤 idle로 �
 일반 capture v5와 기존 v2~v5 해시/읽기를 유지한다.
 
 선택 `spatial.environment`는 `SpatialEnvironmentSpec`이며 `resolveSpatialEnvironmentSpec`으로 검증한다.
-관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialLightingSpec`, `SpatialDepthOfFieldSpec`,
+관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialDirectionalLightSpec`, `SpatialLightingSpec`, `SpatialDepthOfFieldSpec`,
 `SpatialColorGradingSpec`, `SpatialFogSpec`, `SpatialEnvironmentBufferView`다.
-높이를 가진 최대 4개 점광원, 1개 광원의 6면 깊이 그림자, 실제 view depth DOF와 HDR 색 보정·안개를 작성한다.
+최대 4개 점광원과 1개 태양 방향광, hard/PCF 그림자, 고정 내부 해상도·표시 스냅, normal atlas와
+개체별 cast/receive, 실제 view depth DOF·actor 초점·HDR 색 보정·안개를 작성한다.
+새 품질 설정은 환경 v2 numeric112이며 기존 v1 numeric80과 저장 v7 계약을 유지한다.
 field/default/range와 WebGL2 capability·caster/draw/메모리 상한은 [공간 계약](../data-scene-spatial.md)을 따른다.
 runtime setter로 바꾼 효과도 native progress에 저장하며 environment 진행이 있는 capture만 v7이다.
 null은 authored 효과의 해제, 생략은 authored 기본값 유지다. 기존 flat v5·공간 pose/camera v6 해시는 유지한다.

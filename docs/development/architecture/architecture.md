@@ -489,22 +489,36 @@ configuration revision은 terrain/binding/actor 변경의 누락 저장을 막�
 공개 API·지원 제한은 [공간 지형·카메라·빌보드](../../engine/data-scene-spatial.md), pixel/resource gate는
 `pnpm smoke:spatial-scene`을 기준으로 한다.
 
-선택 environment v1은 Rust가 검증한 numeric80 설정·6개 점광원 shadow matrix·camera cull과 독립인
-authored cutout caster bulk buffer다. simulation pose/elevation·atlas는 기존 Rust 상태를 재사용한다.
-TS `WebGL2SpatialEnvironmentPass`는 HDR RGBA16F/depth24 target, 단일 depth cube 6면, 깊이 기반
-최대 13 sample DOF·HDR 톤 매핑/색 보정·view-distance fog와 composite만 소유한다.
-현재 draw FBO/viewport에 composite하고 flat HUD를 그린다. legacy는 effect pass의 색 변환,
-linear-srgb는 기존 최종 encode를 사용하며 입력 sRGB texture를 중복 decode하지 않는다.
-효과는 `EXT_color_buffer_float`를 요구한다. 최대 4 lights/1 shadow light/1,024 caster/면당 64 batch,
-8,388,608 HDR pixel/blur 12 CSS px가 native/TS/GPU 작업량 상한이다. native setting 변경은 pose/route나
-source revision을 바꾸지 않는다. 환경 진행만 v7로 확장하고 native 전체 progress batch로 복원한다.
-일반 v5/환경 없는 공간 v6 hash는 유지한다. GPU texture·FBO·matrix는 save에 넣지 않고 재생성한다.
-GPU 자원은 resize/disable/destroy에서 해제하고 shadow·effect 비용을 실제 draw/upload/resource 통계에 합산한다.
-환경 예산 preflight는 authoring activation 전 실제 texture ID와 저장된 제거 상태를 사용한다.
-native progress도 제거 후 생존 caster의 최종 예산을 검증한 뒤 commit한다. 내부 cube/HDR pass는
-외부 scissor/color mask와 독립적으로 초기화하고 composite에서 원래 상태를 적용·복원한다.
-debug-only cold/resize에서 attachment를 입력 texture로 읽지 않으며 cube 생성 실패는 캐시를 해제해 재시도한다.
-같은 frame의 flat HUD는 공간 자원을 유지하고 전체 flat frame으로 전환하면 환경 target을 해제한다.
+선택 environment는 기존 v1 numeric80을 보존하고 새 품질 설정에만 v2 numeric112를 사용한다.
+Rust는 원본 환경·native actor 초점·표시 camera/viewport·caster revision과 광원 면별 제출 범위를
+소유한다. source camera/physics pose는 보존하고 직교 표시 camera만 opt-in pixel snap을 적용한다.
+`spatial_scene/shadows.rs`의 repr(C) 16-byte 범위는 point cube face 0..5와 sun face 6을 구분한다.
+material sidecar는 repr(C) 8-byte normal texture ID/cast-receive flags이며 기존 44-byte vertex는 유지한다.
+
+TS `WebGL2SpatialEnvironmentPass`는 HDR RGBA16F/depth24 target, point cube 6면과 방향광의
+단일 depth map, 13/25 sample DOF·HDR 색 보정·view-distance fog와 composite를 소유한다.
+`spatialShadowCache.ts`는 native revision/matrix와 texture 내용 revision이 같을 때 GPU 결과를 재사용한다.
+authoring/진행 복원의 camera/environment 조합은 read-only native preflight로 activation 전에 검사한다.
+태양 matrix 생성 실패가 장면 교체 이후 발생하지 않도록 저장 camera도 같은 검증에 전달한다.
+태양 방향은 f32 단위 벡터의 재정규화 오차가 저장 왕복에 누적되지 않게 보존한다.
+알 수 없는 mutable texture와 RenderTexture는 재계산하며 native geometry 생성까지 생략하지 않는다.
+normal atlas는 기존 asset loading 경로에서 none/linear 데이터로 읽고 크기·색 공간을 제출 전에 검사한다.
+shader는 같은 atlas UV로 tangent basis를 계산한다. normal 미지정 시 기존 표면 normal을 유지한다.
+
+고정 내부 해상도는 같은 native 표시 viewport로 nearest 정수 확대하고 최종 해상도 flat HUD 전에 합성한다.
+legacy는 effect pass의 색 변환, linear-srgb는 기존 최종 encode를 유지한다. `EXT_color_buffer_float`가
+필요하며 기능 제거를 조용히 적용하지 않는다. 상한은 point light 4개/point shadow 1개/sun 1개,
+1,024 caster/면당 64 batch/HDR 8,388,608 pixel/내부 pixel target 1,048,576 pixel/blur 12 CSS px다.
+PCF는 receiver당 최대 9회 비교이며 pass 수를 늘리지 않는다. 고급 DOF는 같은 composite에서 전경/배경을
+분리 누적하고 기존 배경 위 전경 coverage를 확장한다. 중간 texture·반투명 다중 depth는 추가하지 않는다.
+
+환경 진행 v7은 설정을 저장하고 native batch로 복원한다. frame 파생 초점·GPU identity는 저장하지 않는다.
+기존 v5/v6 hash와 v1 numeric80 capture는 유지한다. 자원은 resize/disable/destroy에서 해제하고
+그림자·효과 비용은 실제 draw/upload/resource 통계에 합산한다. authoring/restore 예산은 activation과
+native commit 전에 검증한다. 내부 shadow/HDR pass는 외부 scissor/color mask와 독립적으로 초기화하고
+composite 뒤 texture units 0..3, sampler·FBO·viewport 등 호출자 상태를 복원한다.
+같은 frame flat HUD는 공간 자원을 유지하고 전체 flat frame 전환은 환경 target을 회수한다.
+구체적인 제한과 별도 extension layout은 [공간 계약](../../engine/data-scene-spatial.md)을 따른다.
 같은 gate의 `spatial-visibility-browser-fixture.mjs`는 packed public subpath로만 atlas/flip/native
 playback·offscreen pivot·near/eye-plane clipping의 framebuffer를 확인한다. CPU는 실제 billboard quad의
 보수적 frustum 판정을 하고 부분 절단은 GPU에 맡긴다. frame/flip은 UV를 바꾸며 body/발 pivot은

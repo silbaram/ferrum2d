@@ -812,13 +812,16 @@ route는 저장하지 않으며 v6 pose 복원 뒤 idle이다. 세부 제한과 
 연결은 authoring JSON에 저장하며 기존 v6 progress/공간 render ABI는 유지한다.
 
 선택 `DataSceneSpatialSpec.environment`와 `resolveSpatialEnvironmentSpec`은 `SpatialEnvironmentSpec`을
-검증한다. 관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialLightingSpec`,
+검증한다. 관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialDirectionalLightSpec`, `SpatialLightingSpec`,
 `SpatialDepthOfFieldSpec`, `SpatialColorGradingSpec`, `SpatialFogSpec`, `SpatialEnvironmentBufferView`다.
-점광원 4개·그림자 광원 1개·cube 6면·caster 1,024개·면당 64 texture batch·DOF 최대 13 samples로 제한한다.
+점광원 4개·point shadow cube 1개·태양 방향광/그림자 1개·caster 1,024개·면당 64 batch로 제한한다.
+기본/고급 DOF는 최대 13/25 sample 위치이며 선택 actor 초점은 native view-axis depth를 사용한다.
 HDR RGBA16F/depth24에는 `EXT_color_buffer_float`가 필요하다. 실제 surface normal·world view depth를
 사용하며 flat HUD 이전에 composite한다. 기존 전체 화면 postprocess의 HUD 정책은 유지한다.
-`spatial.environment`는 numeric80/6개 light matrix/caster geometry의 독립 borrowed v1 확장이다.
-`lightCount/shadowPassCount/shadowDrawCalls/shadowTriangleCount/shadowUploadBytes/effectDrawCalls/effectTextureBytes/dofSampleBudget`가
+`spatial.environment`는 기존 numeric80 v1과 품질 설정용 numeric112 v2를 지원한다.
+pixelArt 고정 해상도·직교 표시 스냅·normal atlas·cast/receive·방향광·PCF를 선택할 수 있다.
+독립 presentation/material/shadow submission v1 배열도 borrowed이며 지연 사용 전 복사한다.
+`directionalLightCount/shadowCacheHit/shadowCulledTriangleCount`와 기존 light/shadow/effect 비용 metric이
 공간 통계에 추가된다. `progress.spatial.environment`가 있는 capture는 v7이며 null은 authored 효과 해제다.
 v6 이하에 이 progress를 넣으면 거절한다. legacy v5·공간 v6 기본 capture/hash는 유지한다.
 자세한 색 공간·자원 예산·cutout/DOF 제한은 [공간 environment 계약](../data-scene-spatial.md)을 따른다.

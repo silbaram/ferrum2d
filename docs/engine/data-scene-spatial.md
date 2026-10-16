@@ -3,7 +3,8 @@
 현재 개발 소스는 **WebGL2 전용, opt-in 공간 렌더링의 첫 구현**을 제공한다.
 높이가 있는 사각 지형과 2D 스프라이트를 같은 깊이 버퍼로 그린다. 직교/원근 카메라,
 실제 지형 클릭, native kinematic 계단·경사 이동, 물리 elevation에 연결한 빌보드를 포함한다.
-선택 `environment`로 높이 기반 점광원·깊이 그림자, 실제 거리 DOF·색 보정·안개를 제공한다.
+선택 `environment`로 고정 해상도·픽셀 스냅, normal atlas·점광원/태양광·PCF·그림자 캐시/컬링,
+실제 거리 DOF·actor 초점·색 보정·안개를 제공한다.
 기존 beta 설치본에 이 기능이 있다고 가정하지 말고 아래 API가 포함된 빌드를 사용한다.
 
 ## 공개 작성 경로
@@ -260,11 +261,11 @@ engine.setDataSceneSpatialEnvironment(null); // 다음 frame부터 공간 효과
 
 조명은 실제 triangle 표면 방향과 광원 위치/높이·거리 감쇠를 사용한다. terrain의 top/side/bottom과
 authoring에 연결한 cutout billboard가 그림자를 만들고 받는다. 동일 native atlas UV·flip·alpha cutoff와
-물리 elevation을 사용하며 화면 밖 caster도 제출한다. 그림자는 면당 nearest depth의 hard shadow다.
+물리 elevation을 사용하며 화면 밖 caster도 광원 기준으로 판정한다. 기본 그림자는 nearest depth의 hard shadow다.
 깊이 비교는 작성한 bias에 해상도·입사각 기반의 제한된 receiver 보정을 더해 자기 그림자 줄무늬를 줄인다.
 얇고 밀착한 geometry의 shadow offset은 해상도·bias 조정으로 관리한다.
 billboard는 하나의 camera-facing 평면이므로 입체 캐릭터 메시나 normal map을 대신하지 않는다.
-bitmap world label은 caster에 포함하지 않는다. normal map·연성 그림자·여러 shadow light는 후속이다.
+bitmap world label은 caster에 포함하지 않는다. 여러 point shadow light·PCSS는 후속이며, 방향광·PCF와 normal atlas는 아래 계약을 따른다.
 
 효과가 켜지면 `EXT_color_buffer_float`가 필요한 RGBA16F color + depth24 target을 사용한다.
 미지원 환경은 명시적 오류를 내며 효과를 조용히 생략하지 않는다. linear 공간에서 조명→안개→DOF→
@@ -276,22 +277,140 @@ DOF·색 보정에는 포함된다.
 
 DOF는 실제 depth texture에서 직교/원근 view distance를 복원하며 중심+최대 12개 이웃을 읽는다.
 초점 범위 안은 그대로 출력하고 깊이 불연속/빈 배경 샘플은 제외한다. opaque/cutout의 첫 표면을 처리하는
-화면 공간 효과로, 반투명 다중 depth·숨은 배경 복원·실루엣 밖 bokeh 확장은 제공하지 않는다.
-피사체 초점 추적은 앱에서 낮은 빈도로 focusDistance를 갱신한다.
+화면 공간 효과다. `quality: "high"`는 아래 전경 coverage 확장을 추가한다. 반투명 다중 depth·숨은 배경 복원은 제공하지 않는다.
+수동 focusDistance와 opt-in native actor 초점 추적을 선택한다.
 
-그림자 활성 시 authored billboard 최대 1,024개, 전체 terrain texture run + caster의 texture group 합은
-면당 최대 64개다. 6면 총 shadow draw 최대 384, spatial composite 1 draw다. runtime texture 변경으로
-상한을 넘는 packet도 GPU 제출 전에 거절한다. HDR target은 8,388,608 pixel·각 축 최대 8,192이고,
-저장량은 `width×height×12 + shadowResolution²×6×4` bytes다. shadow caster는 최대 `1,024×6×44` bytes의
-bulk buffer이며 매 프레임 업로드한다. terrain은 정적 mesh를 재사용하되 그림자에 전체 지형을 제출한다.
-warm frame은 GPU object를 추가 생성하지 않으며 null 해제·renderer destroy 시 effect target을 해제한다.
+### 그림자 캐시·광원 기준 컬링
 
-`RenderCommandBufferView.spatial.environment`는 독립 v1 확장이다. native 소유 numeric80 설정,
-6개 shadow view-projection matrix(96 floats), cull하지 않은 authored billboard caster를 borrowed view로 전달한다.
-기존 render ABI v2/vertex 44 bytes/flat ABI는 유지한다. 지연 사용 시 이 배열들도 복사한다.
-`RendererStats.spatial`의 `lightCount`, `shadowPassCount`, `shadowDrawCalls`, `shadowTriangleCount`,
-`shadowUploadBytes`, `effectDrawCalls`, `effectTextureBytes`, `dofSampleBudget`로 비용을 구분한다.
-전체 draw/triangle/upload에도 그림자와 composite 비용을 합산한다.
+그림자 활성 시 authored billboard 최대 1,024개, terrain texture run과 caster texture group 합은
+면당 최대 64개다. 점광원 6면 최대 384 draw, 방향광 1면 최대 64 draw이며 둘을 함께 켜면 최대 448 draw다.
+비연속 컬링 범위 때문에 batch가 늘면 해당 면은 cast 허용 geometry 전체 범위로 되돌려 상한을 지킨다.
+화면 밖 caster를 main camera visibility로 제거하지 않는다. Rust는 각 광원 면의 frustum에 대한
+보수적 범위와 caster revision을 만들고 TS는 GPU 그림자 결과를 재사용한다.
+
+지형·caster·광원·camera-facing 방향·atlas frame/flip/alpha와 texture 내용이 같으면 그림자 draw와
+caster upload가 0이다. texture 등록/교체/제거와 pixel-mask patch는 cache를 무효화한다.
+RenderTexture 또는 revision을 제공하지 않는 외부 texture source는 재계산한다. 캐시는 GPU 결과만
+보관하며 JS가 entity pose를 소유하지 않는다. CPU의 native geometry 생성·packet 검증까지 생략하는 기능은 아니다.
+구 packet에 제출 extension이 없으면 전체 재계산 경로를 유지한다.
+
+HDR target은 최대 8,388,608 pixel·각 축 8,192이며, 추정 attachment 저장량은
+`width×height×12 + pointResolution²×6×4 + sunResolution²×4` bytes다. normal atlas는 별도로 집계한다.
+켜지지 않은 shadow 항의 resolution은 0이다. caster bulk 최대 크기는 `1,024×6×44` bytes이고
+정적 지형 buffer는 재사용한다. warm frame GPU object 추가 생성 없이 resize/disable/destroy 시 회수한다.
+
+### 고정 해상도와 픽셀 안정성
+
+```ts
+engine.setDataSceneSpatialEnvironment({
+  pixelArt: { width: 320, height: 180, snapCamera: true },
+});
+```
+
+`pixelArt.width/height`는 정수 1..2,048, 곱은 최대 1,048,576이다. 고정 내부 scene target을
+nearest로 확대하고 CSS 크기의 정수 배율로 가운데 배치한다. 창이 더 작으면 비율을 유지하며
+축소하고 여백은 기존 scene 배경을 유지한다. DPR 2에서도 같은 CSS 배율을 사용한다.
+픽셀 모드도 공간 환경의 HDR capability 계약을 따른다. 물리 pose와 원본 camera는 반올림하지 않는다.
+
+`snapCamera`는 기본 false이며 직교 camera의 표시 eye/target을 내부 pixel 격자에 맞춘다.
+원근 camera에는 스냅을 적용하지 않으며 원근에서 모든 world pixel 크기가 일정해진다고 보장하지 않는다.
+표시 camera·정규화 viewport를 native frame으로 전달해 지형 컬링·picking·project·label을 맞춘다.
+여백을 클릭하면 hit가 없다. HUD는 기존 최종 해상도로 그리며 DOF 반경은 계속 CSS px 단위다.
+
+### normal atlas와 개체별 그림자
+
+```ts
+await renderer.loadTexture(12, "/hero-color.png");
+await renderer.loadTexture(13, "/hero-normal.png", { colorSpace: "none" });
+document.spatial.billboards.hero = {
+  normalTextureId: 13, castShadow: true, receiveShadow: true,
+};
+document.spatial.terrain[0].receiveShadow = false;
+```
+
+`SpatialBillboardSpec.normalTextureId`는 선택 numeric texture ID다. color/normal은 같은 크기의 atlas이며
+UV·frame·pivot·rotation·flip을 공유한다. 별도 normal frame metadata를 만들지 않는다.
+normal은 sprite-local X 오른쪽/Y 위쪽/Z 바깥쪽이며 RGB 0..1을 -1..1로 복원한다. shader는 UV·world
+미분으로 basis를 만들어 flip 방향을 반영한다. 누락하면 기존 평면 normal을 사용한다.
+알려진 크기의 color atlas와 `colorSpace: "none"` 또는 `"linear"` normal atlas를 미리 로드해야 한다.
+크기 불일치·sRGB normal·metadata를 알 수 없는 외부 texture는 GPU 제출 전에 거절한다.
+모든 alpha coverage·깊이·그림자는 color atlas를 기준으로 한다. normal 제작은 게임 에셋 작업이다.
+
+terrain/billboard의 `castShadow`/`receiveShadow`는 선택 boolean이며 기본 true다. false는 각각
+caster 제출 또는 직접 그림자 수신만 끈다. 조명 자체와 물리 충돌은 유지한다. normal/material이 다른
+연속 geometry는 draw batch가 나뉠 수 있다. normal atlas는 공간 조명 경로에 적용하며 flat sprite
+material이나 기존 15-float render command에 추가 ID를 포장하지 않는다.
+
+### 태양 방향광과 PCF
+
+```ts
+engine.setDataSceneSpatialEnvironment({ lighting: {
+  lights: [],
+  directional: {
+    direction: { x: -1, y: -1, elevation: 2 },
+    color: [1, 0.95, 0.85], intensity: 2,
+    shadows: { resolution: 512, extent: 256, distance: 512, bias: 0.1 },
+  },
+  shadowFilter: "pcf3",
+} });
+```
+
+`SpatialDirectionalLightSpec.direction`은 표면에서 태양을 향하는 nonzero world 벡터다.
+compiler가 정규화하며 color/intensity의 범위와 기본값은 point light와 같다. 점광원 최대 4개에
+방향광 1개를 추가할 수 있다. shadows 생략 시 방향광 그림자는 꺼진다.
+이미 정규화된 f32 방향은 저장·복원 때 다시 정규화하지 않아 numeric buffer를 그대로 보존한다.
+`resolution`은 128/256/512/1024(기본 512), `extent`는 직교 맵 반폭 1..10,000(기본 256),
+`distance`는 target 중심 앞/뒤 깊이의 반폭 1..10,000(기본 512), `bias`는 world 0..10(기본 0.05)다.
+카메라 target 주변 유한 영역을 덮고 light-space texel에 중심을 맞춘다. 영역 밖에서는 직접 조명만
+적용하며 무한 거리 그림자나 cascade를 제공하지 않는다.
+
+`lighting.shadowFilter`는 `hard`(기본)/`pcf3`다. PCF는 최대 9회 깊이 비교를 평균하며 point cube의
+면 경계를 건너는 방향 sampling도 포함한다. 추가 shadow target이나 pass를 만들지 않지만
+수신 pixel의 sample 비용은 증가한다. PCSS처럼 물리적 광원 크기에 따른 가변 반그림자는 아니다.
+
+### 고급 DOF와 native actor 초점
+
+```ts
+engine.setDataSceneSpatialEnvironment({ depthOfField: {
+  focusDistance: 400, focusRange: 12, aperture: 8, maxBlurRadius: 8,
+  quality: "high", focusTarget: "actor", focusOffset: 16,
+} });
+```
+
+`quality`는 `standard`(기본, 중심 포함 최대 13개 sample 위치)/`high`(최대 25개)다.
+high는 부호 있는 CoC로 전경/배경 색을 별도 누적한 뒤 전경 coverage를 합성한다. 선명한 전경 색을
+배경 blur에 섞지 않으며 흐려진 전경을 이미 렌더된 배경 위로 확장한다. 단일 composite 안에서
+누적하므로 중간 texture를 추가하지 않는다. 빈 투명 배경 바깥으로의 확장·물리적 bokeh·숨은 배경이나
+여러 겹 반투명 복원은 지원하지 않는다. quality를 바꿔도 blur 상한 12 CSS px와 HUD 제외는 유지한다.
+
+`focusTarget: "actor"`는 `spatial.actor`의 현재 native entity를 추적한다. 발의 물리 elevation과
+billboard 시각 offset에 `focusOffset`(world ±1M, 기본 0)을 더해 camera 전방 축의 깊이를 계산한다.
+원근·직교 모두 유클리드 거리를 사용하지 않는다. actor 부재/삭제/카메라 뒤·clip 범위 밖에서는
+작성한 focusDistance로 돌아간다. 프레임마다 JS에서 pose를 복제하거나 entity별 Wasm 호출을 하지 않는다.
+진행 v7은 수동 fallback·target 정책·품질을 저장하며 파생 focus 값은 저장하지 않는다.
+fresh restore는 authored actor의 새 handle을 사용한다.
+
+### 버퍼와 통계 호환
+
+기존 spatial render ABI v2/vertex 44 bytes/flat ABI는 유지한다. environment v1 numeric80도 읽고 쓴다.
+새 설정을 사용하는 경우에만 v2 numeric112를 사용한다. 80..82는 pixel 크기/snap, 83..94는 방향광,
+95는 shadow filter, 96..98은 DOF 품질/actor focus/offset, 99는 frame 파생 focus, 100..111은 reserved 0이다.
+설정 입력의 99는 0이며 capture는 설정 원본을 반환한다. matrix는 point 96/sun 16 floats를 순서대로
+전달하므로 총 0/16/96/112다. 환경 없는 v5/v6 및 기존 v7 설정은 이전 capture 형태를 유지한다.
+새 optional field를 쓰는 문서는 지원하는 JS/Wasm을 함께 설치해야 하며 과거 reader는 거절할 수 있다.
+authoring 적용과 진행 복원은 실제 적용할 camera/environment 조합을 native에서 먼저 검사한다.
+개별 필드가 유효해도 태양 shadow matrix를 유한하게 만들 수 없는 조합은 장면 교체 전에 거절하며
+현재 장면과 entity handle을 보존한다.
+
+독립 shadow submission v1은 u32 `[face, source, first, count]` 범위와 native caster revision이다.
+face 0..5는 point cube, 6은 sun이며 source 0/1은 terrain/caster다. material v1은 object별
+u32 `[normalTextureId, castReceiveFlags]`이고 기본 none ID는 16,777,215다. terrain object는 36 vertices,
+billboard는 6 vertices다. bitmap label에 material이 없으면 기본값을 쓴다. presentation v1의 6 floats는
+정규화된 top-left viewport x/y/w/h와 내부 width/height다. borrowed 배열은 지연 사용 전에 모두 복사한다.
+
+`RendererStats.spatial`은 `lightCount`/`directionalLightCount`, `shadowPassCount`/`shadowDrawCalls`,
+`shadowTriangleCount`/`shadowCulledTriangleCount`, `shadowUploadBytes`/`shadowCacheHit`, `effectDrawCalls`,
+`effectTextureBytes`, `dofSampleBudget`을 제공한다. 전체 draw/triangle/upload에도 그림자와 composite를 합산한다.
 
 ## 공간 디버그 표시 (개발 소스)
 

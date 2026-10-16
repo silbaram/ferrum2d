@@ -68,7 +68,7 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 | 기능 | 짧은 설명 |
 | --- | --- |
 | WebGL2 renderer | 기본 2D sprite renderer다. |
-| HD-2D 공간 기반 (개발 소스) | opt-in WebGL2 입체 지형·camera·picking·높이/depth 빌보드, 층 연결·다층 경로와 공간 물리 디버그를 제공한다. 선택 environment는 점광원·지형/cutout 그림자, 거리 DOF·HDR 톤 매핑·색 보정·안개와 v7 저장·새 엔진 복원을 지원한다. [지원 범위와 예산](docs/engine/data-scene-spatial.md)을 따른다. |
+| HD-2D 공간 기반 (개발 소스) | opt-in WebGL2 입체 지형·camera·picking·높이/depth 빌보드, 층 연결·다층 경로와 공간 물리 디버그를 제공한다. 선택 environment는 고정 해상도·픽셀 스냅·normal atlas, 점광원/태양광·PCF·그림자 캐시/컬링, actor 초점·전경 DOF·HDR 색 보정·안개와 v7 복원을 지원한다. [지원 범위와 예산](docs/engine/data-scene-spatial.md)을 따른다. |
 | RenderTexture | WebGL2에서 sprite command를 불투명 텍스처로 캡처하고 texture id로 재사용한다. [사용 계약](docs/engine/public-api/core.md#rendertexture-webgl2)을 따른다. |
 | 색 공간 관리 | 기본 legacy 출력을 유지하고 WebGL2의 `linear-srgb` 모드로 입력 색상·linear 계산·sRGB 출력을 구분한다. [전환 계약](docs/engine/public-api/core.md#색-공간-관리)을 따른다. |
 | GPU 자원 통계 | WebGL2의 texture/program/buffer/render target 수와 저장량 추정치를 표시하고 profiler 예산으로 검증한다. [집계 계약](docs/engine/public-api/core.md#gpu-자원-통계)을 따른다. |

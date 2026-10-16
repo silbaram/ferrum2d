@@ -8,7 +8,7 @@
 
 | 문서 | 현재 상태 | 활성 후보 |
 | --- | --- | --- |
-| [HD-2D 공간 기반·그래픽 후속 설계](hd2d-graphics-followups.md) | 2026-10-15 P0 WebGL2·층 연결·다층 이동, P1 점광원/공간 그림자, P2 거리 DOF/HDR 색 보정/안개와 환경 진행 v7 구현. WebGPU·실제 GPU gate 잔여 | 공간·그림자·거리 효과의 packed pixel/resource 검증, 후속 확장 범위 |
+| [HD-2D 공간 기반·그래픽 후속 설계](hd2d-graphics-followups.md) | 2026-10-16 그림자 cache/culling·픽셀 안정화·normal atlas·태양/PCF·고급 DOF/actor 초점의 다섯 보강 구현·회귀 검증 완료. WebGPU·실제 GPU gate 잔여 | 공간·그림자·거리 효과의 packed pixel/resource 검증, 후속 확장 범위 |
 | [데모 게임 포트폴리오 후속 계획](demo-game-showcase-plan.md) | Showcase Hub와 6개 public route 기반 완료 | Content/UX, Renderer/Streaming lab, Agent Workflow report의 사용자-facing 노출 결정 |
 | [게임 개발 편의성 실사용 검토](game-development-convenience-review.md) | built-in Scene Authoring 위치/Behavior runtime 적용, Tauri allowlisted save, 기존 report/check 개선 반영 | asset 반복 작업, read-only gameplay 진단 |
 | [배포 후속 계획](deployment-roadmap.md) | 정적 Pages, Tauri authoring host, 로컬 Linux package smoke 구현 | 수동 GUI evidence, CI 편입, generated game wrapper와 macOS/Windows release matrix 필요성 판단 |

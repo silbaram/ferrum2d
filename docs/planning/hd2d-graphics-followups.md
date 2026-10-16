@@ -1,6 +1,6 @@
 # HD-2D 공간 기반과 그래픽 후속 설계
 
-기준일: 2026-10-15. 상태: **P0 WebGL2·층 연결·다층 이동, P1 공간 조명/그림자와 P2 거리 효과·환경 진행 v7 구현. 확장 gate 잔여**.
+기준일: 2026-10-16. 상태: **P0 WebGL2·층 연결·다층 이동, P1/P2와 아래 다섯 그래픽 보강 구현·회귀 검증 완료. 확장 gate 잔여**.
 2026-10-04의 [#73 C1](https://github.com/silbaram/ferrum2d/issues/73) 효과 설계를 보존하되,
 사용자 요구와 game-test 재현을 근거로 **입체 지형·카메라·높이/깊이·빌보드**를 먼저 구현한다.
 아래 설계의 미구현 후보 필드와 확장 gate는 공개 API가 아니다. 현재 개발 소스의 P0 계약은
@@ -117,7 +117,154 @@ P1의 최대 4개 점광원과 실제 표면 normal, 단일 광원 6면 depth cu
 P2의 실제 view distance DOF(최대 13 samples), HDR 노출/톤 매핑/색 보정·거리 안개를 구현했다.
 공간 효과는 HUD 이전에 composite하며 환경 진행 v7을 새 엔진에 복원한다. 환경 없는 v5/v6 해시는 유지한다.
 `EXT_color_buffer_float` 필수, 1,024 caster·면당 64 batch·HDR 8M pixel·blur 12 CSS px의 첫 구현이다.
-normal map·연성 그림자·여러 shadow light·실루엣 밖 bokeh·WebGPU parity·실제 대상 GPU 예산은 남아 있다.
+이 시점의 잔여 후보는 아래 2026-10-16 강화 기록으로 갱신한다. PCSS·여러 point shadow light·물리적 bokeh·WebGPU parity·실제 대상 GPU 예산은 후속이다.
+
+## 2026-10-16 외부 프로젝트 비교와 강화 후보
+
+상태: **2026-10-16 다섯 강화 항목 구현·회귀 검증 완료**. 확정 사용 계약은 [공간 기능 문서](../engine/data-scene-spatial.md)를 따른다. 아래는 조사 당시의 근거와 범위 결정 기록이다. 비교 기준은 `feat/hd2d-enhancements`의
+`5f0acc5`이며, 완료된 P0/P1/P2 slice를 다시 미완료로 분류하지 않는다. 아래 순서는 자료와
+현재 코드를 대조한 Ferrum2D 적용 제안이다. 외부 엔진과의 기능·성능 동등성을 의미하지 않는다.
+공식 문서와 공개 소스를 확인했으며 `stable`/`main` URL의 내용은 이후 바뀔 수 있다.
+
+### 다섯 항목의 완료 기록
+
+| 항목 | 구현한 범위 | 확인한 결과 |
+| --- | --- | --- |
+| 그림자 cache/culling | Rust 광원 면별 제출 범위·revision, TS GPU cache·texture 변경 감지 | 정지 장면 shadow draw/upload 0, 전체 제출과 픽셀 일치. 점광원+태양 사례는 168→108 shadow triangle, 잘못된 범위 5종은 draw 전에 거절 |
+| 픽셀 안정화 | 고정 내부 해상도·nearest 정수 확대·여백, 직교 표시 camera snap | 160×90 내부 화면의 가로/세로·DPR 1/2에서 픽셀 블록 불일치 0. picking·label은 표시 camera/viewport 공유 |
+| normal atlas | billboard paired atlas·flip 방향, material sidecar, cast/receive 선택 | 광원 방향·flip 반응과 sRGB/mismatched atlas 거절. 기본 material의 기존 texture bind 비용 유지 |
+| 태양·PCF | 방향광 1개·유한 범위의 texel-snapped shadow map, hard/3×3 PCF | 지형 차폐·cast/receive, 점광원과 동시 사용, PCF self-shadow 회귀. 비차폐 지면의 밝기 유지 |
+| DOF·초점 추적 | 기존 13 sample 유지, 고급 25 sample 전경/배경 CoC 합성, native actor view-axis 초점 | 전경 coverage·계단 높이 추적·HUD 제외, fresh v7 복원 후 초점 일치. 추가 중간 texture 없이 1회 composite |
+
+`node tests/smoke/spatial-scene-browser-smoke.mjs`의 packed consumer 4조건은 모두 통과했다.
+최종 공간 증거는 `artifacts/spatial-scene-consumer-ubrlcF/report.json`과 screenshot 56장
+(신규 품질 증거 20장 포함)에 있다. 평면 WebGL2 8조건·WebGPU 2조건은
+`artifacts/data-scene-presentation-tsVCGN/report.json`, 기존 replay 17건은
+`artifacts/hd2d-quality-review/replay/gameplay-replay-smoke-report.json`에서 확인했다.
+Rust 1,366건·웹 857건과 lint/clippy/build/package 검증을 통과했다. 명령·변경 이유·제한은
+`artifacts/hd2d-quality-review/review-report.md`에 남긴다. 이 경로들은 로컬 검증 산출물이며 배포 문서에 포함되지 않는다.
+
+이번 완료는 위 다섯 항목의 WebGL2 구현과 정확성·제출량·자원 회귀 기준이다. 실제 대상 GPU의
+시간 예산, 공간 WebGPU parity, PCSS/CSM·여러 point shadow light·GI·광선·물리적 bokeh는
+포함하지 않는다. 고급 DOF도 단일 depth의 opaque/cutout 근사이며 숨은 배경 복원이나 다층
+반투명을 해결하지 않는다. 아래의 "현재/후보/검토" 표현은 조사 당시 상태를 보존한 것이다.
+
+### 완료 후 코드 리뷰
+
+같은 날 전체 미커밋 차분을 다시 검토해 세 가지를 수정했다.
+
+- 개별 필드는 유효하지만 태양 shadow matrix를 만들 수 없는 camera/environment 조합이 저장 복원
+  후반에 거절되면 기존 장면이 먼저 교체될 수 있었다. read-only native preflight를 authoring과
+  저장 camera 모두에 연결해 activation 전에 거절하고 기존 entity handle을 보존한다.
+- 일부 태양 방향을 f32로 저장한 뒤 재정규화하면 numeric buffer가 달라졌다. 이미 정규화된
+  f32 방향을 보존해 반복 저장·복원에서도 동일하게 유지한다.
+- 그림자 target 재생성 때 texture revision 수집이 생략되어 다음 프레임에 다시 그리던 경우를
+  수정했다. 첫 렌더 직후 cache hit와 shadow draw/upload 0을 실제 GPU 호출로 검사한다.
+
+수정한 소스와 재현·재검증 결과의 최신 기록은 `artifacts/hd2d-code-review/review-report.md`다.
+수정 후 Rust 1,367건·웹 858건, packed 공간 4조건·평면 WebGL2 8조건/WebGPU 2조건,
+기존 golden replay 17건과 build/lint/package 검증을 통과했다. 재검토 범위에서 미해결 차단 이슈는 없다.
+위 첫 완료 기록의 검증 산출물과 구분하며 실제 하드웨어 GPU 시간·공간 WebGPU 잔여 범위는 유지한다.
+
+### 비교 근거
+
+| 참고 프로젝트·근거 | 확인한 방식 | Ferrum2D에서 강화할 부분 |
+| --- | --- | --- |
+| [PlayCanvas local shadow renderer 소스](https://github.com/playcanvas/engine/blob/main/src/scene/renderer/shadow-renderer-local.js), [광원 API](https://api.playcanvas.com/engine/classes/LightComponent.html) | shadow face별 camera frustum으로 caster를 cull하고, 그림자 갱신을 매 프레임/1회/정지로 선택 | 광원·면 기준 caster culling과 변경 감지 기반 shadow cache |
+| [Bevy pixel grid 예제와 코드](https://bevy.org/examples/2d-rendering/pixel-grid-snap/) | 저해상도 render target, nearest sampling, 정수 배율 확대와 별도 고해상도 layer | 공간 장면의 선택적 고정 내부 해상도·정수 확대와 고해상도 HUD |
+| [Unity URP secondary textures](https://docs.unity3d.com/6000.0/Documentation/Manual/urp/SecondaryTextures.html) | sprite와 같은 UV를 쓰는 normal/mask texture, normal 데이터의 sRGB 해제 | spatial billboard의 paired normal atlas와 asset 검증 |
+| [Godot 3D 조명·그림자](https://docs.godotengine.org/en/stable/tutorials/3d/lights_and_shadows.html), [SpriteBase3D](https://docs.godotengine.org/en/stable/classes/class_spritebase3d.html) | 태양용 directional light, caster mask, 변경된 shadow만 재계산; billboard와 alpha mode의 명시적 계약 | 야외용 방향광과 cast/receive 선택, cutout/반투명 계약 구분 |
+| [pmndrs/postprocessing DOF 소스](https://github.com/pmndrs/postprocessing/blob/main/src/effects/DepthOfFieldEffect.js) | 전경/배경의 CoC·색 버퍼 분리, 전경 CoC blur와 background mask, 초점 target | 전경 경계 품질을 선택하는 DOF와 native entity 초점 추적 |
+
+Bevy 예제와 Unity URP 자료는 2D 경로다. 여기서는 해상도 합성과 atlas 계약을 참고하며,
+Ferrum2D 공간 장면의 투영·depth·가림을 이 예제들이 해결한다고 해석하지 않는다.
+
+### 1. 그림자 제출량과 갱신 비용
+
+현재 [공간 pass](../../packages/ferrum-web/src/webgl2SpatialPass.ts)는 shadow caster bulk를
+매 프레임 업로드하고, [환경 pass](../../packages/ferrum-web/src/webgl2SpatialEnvironmentPass.ts)는
+선택한 점광원의 cube 6면마다 전체 지형·caster를 제출한다. 기존 camera terrain culling은
+main scene 경로이며 shadow face별 culling과 다르다. 따라서 다음 첫 slice를 권장한다.
+
+- 광원 radius와 각 face frustum으로 caster를 보수적으로 제외한다. 화면 밖에서 화면 안으로
+  그림자를 드리우는 개체는 유지한다. 카메라에 안 보인다는 이유로 shadow caster를 제거하지 않는다.
+- 광원·지형·caster 내용이 같으면 cube 재계산과 caster 재업로드를 건너뛴다. 첫 구현은 cube
+  전체의 갱신 여부부터 결정하고, face별 dirty cache와 static/dynamic map 분리는 실측 후 검토한다.
+- cache 무효화에는 위치·높이·추가/삭제·enabled, atlas frame/flip/alpha texture 변경, billboard의
+  camera 방향, 광원 위치/radius, shadow 해상도와 GPU 자원 재생성을 포함한다. XY만 비교하지 않는다.
+- caster bounds/revision과 제출 범위는 Rust에서 만들고 TS는 GPU 자원·cache를 소유한다.
+  entity마다 JS/Wasm을 왕복하거나 TS에 별도 simulation 상태를 만들지 않는다.
+
+완료 gate: 강제 전체 재계산과 cache/culling 경로의 픽셀 일치, 정지 장면의 shadow draw/upload 0,
+움직임·애니메이션·camera 회전의 즉시 갱신, offscreen caster·다리 아래 광원·reset/context restore.
+cache hit/rebuild, face별 제출 삼각형, 실제 draw/upload를 보고한다. culling만 켠 경우에는
+6면 clear 자체가 없어지는 것으로 주장하지 않는다. 실제 GPU 시간 단축은 별도로 측정한다.
+
+### 2. 픽셀 표현의 안정성
+
+현재 nearest sampling과 `unitsPerPixel`은 있지만 고정 내부 해상도·정수 확대 정책은 없다.
+opt-in 공간 render target과 정수 nearest upscale을 검토하고 HUD는 최종 해상도로 합성한다.
+창이 내부 해상도보다 작거나 종횡비가 다를 때의 축소/여백 정책도 명시한다.
+물리 pose를 반올림하지 않으며 camera quantization은 선택적 표시 정책으로 설계한다.
+
+완료 gate: 느린 camera 이동, 직교 zoom·원근 tilt, 가로/세로·DPR 1/2·resize에서 픽셀 패턴과
+viewport 여백을 검사한다. terrain picking·label anchor는 실제 표시 viewport와 동일한 변환을
+사용하고 기존 projection round-trip을 유지한다. 원근 장면의 모든 world pixel 크기가 같아진다고
+보장하지 않는다. DOF의 CSS px 반경과 내부 해상도·upscale의 관계도 함께 확정한다.
+
+### 3. 캐릭터·소품의 normal atlas
+
+현재 spatial shader의 normal은 triangle 표면에서 계산하므로 sprite 내부의 얼굴·옷·나무 질감을
+조명으로 구분하지 못한다. 기존 C1-N의 paired atlas 후보를 spatial billboard부터 적용하는 안이다.
+color/normal의 frame·UV·trim/pivot·padding을 맞추고, flip과 billboard basis를 normal 방향에
+반영한다. normal은 linear 데이터로 읽으며 미지정 시 기존 평면 normal을 유지한다.
+추가 texture pair에 따른 batch 증가와 material 참조의 버전 있는 bulk 계약을 먼저 설계한다.
+
+완료 gate: 광원 방향 4종, frame/flip, elevation·camera 회전, missing map·잘못된 atlas 진단,
+기능을 끈 기존 화면, texture bytes/sample/batch 예산. normal map 제작은 게임 에셋 작업이다.
+[PlayCanvas의 emissive map](https://api.playcanvas.com/engine/classes/StandardMaterial.html#emissiveMap)도
+별도 후보다. 발광은 HDR 합성에 연결하되 주변 물체를 자동으로 비추는 GI로 설명하지 않는다.
+
+### 4. 야외 조명과 그림자 품질 선택
+
+현재 최대 4개 point light와 단일 hard cube shadow에 더해 태양용 directional light 1개와
+제한된 orthographic shadow map을 검토한다. 넓은 야외 장면의 빛 방향을 일정하게 작성하는 것이
+목적이며, directional shadow가 항상 point shadow보다 빠르다고 가정하지 않는다.
+첫 범위는 유한 shadow distance·안정적인 투영으로 제한하고 cascade는 필요성이 확인되면 분리한다.
+
+[PlayCanvas shadow 설정](https://developer.playcanvas.com/user-manual/graphics/lighting/shadows/)의
+cast/receive 분리와 PCF 품질 선택을 참고해 개체별 수신/생성 선택과 bounded PCF를 검토한다.
+기존 개체의 기본 cast/receive는 유지한다. cube PCF에는 face 경계의 sampling 연속성도 필요하다.
+PCSS·다중 shadow light·atlas 전체 구조를 한 slice에 포함하지 않는다.
+
+완료 gate: top/side/bottom·billboard의 방향 반응, 다리 차폐, cast/receive 조합, camera 이동의
+그림자 떨림·acne·분리 현상, hard/PCF 비용·기능 off 회귀와 실제 대상 GPU 측정.
+
+### 5. 전경 경계를 보존하는 DOF와 초점 추적
+
+현재 최대 13 sample DOF는 첫 opaque/cutout depth와 깊이 차이 rejection을 사용한다.
+고급 품질 후보는 부호 있는 CoC(초점에서 벗어나 흐려지는 정도)를 전경/배경으로 분리하고
+전경 coverage 확장·배경 mask를 제한적으로 합성한다. 기존 모드는 유지하며 추가 pass와
+texture bytes에 상한을 둔다. 참고 소스도 일부 버퍼는 full resolution이므로 모든 중간 결과를
+단순히 half resolution으로 내릴 수 있다고 가정하지 않는다.
+
+초점 target은 별도 작은 slice로 개발할 수 있다. stable entity ID와 elevation을 Rust에서
+view-axis depth로 계산하고 bulk 환경 값으로 전달한다. 참고 소스의 target 기능을 그대로 복사해
+기존 focusDistance를 유클리드 거리로 바꾸지 않는다. target 삭제·복원·camera 뒤쪽의 정책도 정한다.
+
+완료 gate: 전경 나무·얇은 난간·alpha 구멍·다리 뒤 캐릭터의 halo/색 번짐, 계단 이동 중 초점,
+HUD 제외, quality 전환·resize·destroy와 메모리 예산. 단일 depth의 고급 DOF만으로 여러 겹의
+반투명 복원을 보장하지 않는다. blend 재질은 sorting/depth-write/그림자/DOF를 별도 설계한다.
+
+### 적용 순서와 공통 측정
+
+우선순위는 **그림자 cache/culling → 픽셀 안정성 → normal atlas → 야외 조명 → 고급 DOF**다.
+초점 target은 기존 DOF를 사용하는 게임에서 필요하면 고급 DOF보다 먼저 분리한다.
+각 단계의 개발 범위는 별도 task/이슈로 확정하며 새 production 의존성을 전제하지 않는다.
+기존 잔여 gate인 실제 대상 GPU 예산과 WebGPU parity는 이 후보 목록으로 대체하지 않는다.
+실제 GPU에서 frame/render p95·draw/upload·GPU texture 추정량을 함께 기록하며 software Chromium의
+정확성·작업량 검증을 모바일 성능 검증으로 해석하지 않는다. HDR capability 미지원 시에는
+현재의 명시적 오류 계약을 유지하고 품질 저하나 효과 제거를 조용히 적용하지 않는다.
 
 ## 개발 우선순위
 
@@ -128,7 +275,7 @@ normal map·연성 그림자·여러 shadow light·실루엣 밖 bokeh·WebGPU p
 | **P2 분위기** | 실제 view depth DOF, 노출/톤 매핑/색 보정, 거리 안개 | 초점·거리 변화 검증과 HUD 제외, HDR/하이라이트·과도한 bloom 제어 |
 | **공통** | spec 작성·저장/복원·debug·성능 예산 | stable ID, 데이터 왕복, pixel/좌표/자원 회귀와 실제 GPU 측정 |
 
-normal map은 공간 기반 이후 표면 조명을 보강하는 후보다. DOF는 P0의 실제 depth 계약에 의존한다.
+공간 normal atlas와 고급 DOF·actor 초점은 2026-10-16 보강 범위다. 실제 depth·높이 계약을 공유한다.
 B2 alpha 그림자와 기존 게임의 진행·저장·UI는 현재 구현된 경로에서 계속 사용할 수 있다.
 
 ## P0: 첫 공간 장면의 범위
@@ -261,8 +408,11 @@ world label/HUD, reset/despawn/fresh engine restore, WebGL2와 명시적 WebGPU 
 
 ## 공간 기반 이후의 효과 후보
 
-아래 C1-N/R/L/D는 기존 #73 C1 상세 초안을 유지한 것이다. 착수 우선순위는 위 P0→P1→P2를
-따르며, 단일 평면 prototype의 결과를 입체 지형 renderer의 지원으로 설명하지 않는다.
+아래 C1-N/R/L/D는 기존 #73 C1의 **평면 경로 설계 초안 기록**이다. 현재 공개 공간 계약은
+[공간 기능 문서](../engine/data-scene-spatial.md)가 우선이며 아래 필드를 그대로 구현한 API가 아니다.
+C1-N의 forward normal atlas, C1-R의 높이·수신 요구, C1-D의 실제 depth/DOF는 현재 spatial 경로로
+보강했다. 독립 평면 receiver API·화면 공간 광선 mask(C1-L)·반투명 다중 depth·물리적 bokeh는
+이번 다섯 slice에 포함하지 않는다. 과거 prototype 제안을 완료된 공간 API와 혼합하지 않는다.
 
 ## C1-N: sprite normal map과 조명
 
