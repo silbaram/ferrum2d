@@ -18,6 +18,12 @@ declare module "../pkg/ferrum_core.js" {
     data_scene_spatial_move_status(): number;
     data_scene_spatial_move_stats(): Uint32Array;
     restore_data_scene_progress_with_spatial_environment(epoch:number,handles:Uint32Array,states:Uint32Array,animations:Float64Array,spatial:Float64Array,environment:Float32Array): boolean;
+    configure_spatial_scene_materials(camera:Float32Array,terrain:Float32Array,metadata:Uint32Array,handles:Uint32Array,styles:Float32Array,actor:Uint32Array,actorValues:Float32Array,connections:Uint32Array,environment:Float32Array,terrainMaterials:Uint32Array,billboardMaterials:Uint32Array): boolean;
+    spatial_material_abi_version(): number;
+    spatial_terrain_material_ptr(): number;
+    spatial_terrain_material_len(): number;
+    spatial_billboard_material_ptr(): number;
+    spatial_billboard_material_len(): number;
     configure_spatial_scene_environment(camera:Float32Array,terrain:Float32Array,metadata:Uint32Array,handles:Uint32Array,styles:Float32Array,actor:Uint32Array,actorValues:Float32Array,connections:Uint32Array,environment:Float32Array): boolean;
     configure_spatial_environment(values:Float32Array): boolean;
     capture_spatial_environment(): Float32Array;
@@ -26,6 +32,10 @@ declare module "../pkg/ferrum_core.js" {
     spatial_environment_ptr(): number;
     spatial_shadow_matrix_ptr(): number;
     spatial_shadow_matrix_len(): number;
+    spatial_shadow_submission_version(): number;
+    spatial_shadow_revision(): number;
+    spatial_shadow_range_ptr(): number;
+    spatial_shadow_range_len(): number;
     spatial_shadow_caster_ptr(): number;
     spatial_shadow_caster_len(): number;
     configure_spatial_scene(camera_values: Float32Array, terrain_values: Float32Array, terrain_metadata: Uint32Array, handles: Uint32Array, styles: Float32Array, actor_handle: Uint32Array, actor_values: Float32Array): boolean;
@@ -36,6 +46,8 @@ declare module "../pkg/ferrum_core.js" {
     spatial_abi_version(): number;
     spatial_billboard_len(): number;
     spatial_billboard_ptr(): number;
+    spatial_presentation_version(): number;
+    spatial_presentation_ptr(): number;
     spatial_camera_ptr(): number;
     spatial_frame_active(): boolean;
     spatial_terrain_len(): number;
@@ -83,6 +95,7 @@ declare module "../pkg/ferrum_core.js" {
     capture_data_scene_animation_progress(epoch:number,handles:Uint32Array): Float64Array;
     capture_data_scene_spatial_progress(epoch:number,handles:Uint32Array): Float64Array;
     preflight_data_scene_spatial_progress(terrain_values:Float32Array,terrain_metadata:Uint32Array,values:Float64Array): boolean;
+    preflight_spatial_camera_environment(camera_values:Float32Array,environment_values:Float32Array): boolean;
     restore_data_scene_progress_with_spatial(epoch:number,handles:Uint32Array,states:Uint32Array,animations:Float64Array,spatial:Float64Array): boolean;
     restore_data_scene_progress_with_animations(epoch:number,handles:Uint32Array,states:Uint32Array,animations:Float64Array): boolean;
     data_scene_game_state(): number;

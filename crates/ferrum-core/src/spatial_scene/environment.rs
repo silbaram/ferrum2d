@@ -1,10 +1,13 @@
 //! Optional native-owned lighting and post-process settings. Existing vertex/render ABI stays intact.
-use super::{cross, dot, unit, Point};
-pub(crate) const ENVIRONMENT_VALUES: usize = 80;
+use super::{add, cross, dot, scale, unit, Point, SpatialCamera};
+use crate::{entity::Entity, world::World};
+pub(crate) const ENVIRONMENT_VALUES: usize = 112;
 pub(crate) const MAX_SHADOW_CASTERS: usize = 1024;
 #[derive(Default)]
 pub(crate) struct SpatialEnvironment {
     pub values: Option<[f32; ENVIRONMENT_VALUES]>,
+    pub value_len: usize,
+    pub frame_values: Vec<f32>,
     pub shadow_matrices: Vec<f32>,
 }
 impl SpatialEnvironment {
@@ -12,10 +15,14 @@ impl SpatialEnvironment {
         if v.is_empty() {
             return Some(Self::default());
         }
-        let a: [f32; 80] = v.try_into().ok()?;
+        if ![80, ENVIRONMENT_VALUES].contains(&v.len()) {
+            return None;
+        }
+        let mut a = [0.; ENVIRONMENT_VALUES];
+        a[..v.len()].copy_from_slice(v);
         if a.iter().any(|x| !x.is_finite())
             || a[0].fract() != 0.
-            || !(0. ..=15.).contains(&a[0])
+            || !(0. ..=31.).contains(&a[0])
             || a[1].fract() != 0.
             || !(0. ..=4.).contains(&a[1])
             || a[2].fract() != 0.
@@ -24,6 +31,60 @@ impl SpatialEnvironment {
             return None;
         }
         let flags = a[0] as u32;
+        if flags & 16 != 0 {
+            if v.len() != ENVIRONMENT_VALUES
+                || a[80..82]
+                    .iter()
+                    .any(|x| x.fract() != 0. || !(1. ..=2048.).contains(x))
+                || a[80] * a[81] > 1_048_576.
+                || ![0., 1.].contains(&a[82])
+            {
+                return None;
+            }
+        } else if a[80..83].iter().any(|x| *x != 0.) {
+            return None;
+        }
+        if ![0., 1.].contains(&a[83])
+            || ![0., 1.].contains(&a[95])
+            || ![0., 1.].contains(&a[96])
+            || ![0., 1.].contains(&a[97])
+            || a[98].abs() > 1e6
+            || a[99..].iter().any(|x| *x != 0.)
+        {
+            return None;
+        }
+        if a[83] == 1. {
+            if flags & 1 == 0
+                || unit([a[84], a[85], a[86]]).is_none()
+                || a[84..87].iter().any(|x| x.abs() > 1.)
+                || !(0. ..=64.).contains(&a[87])
+                || a[88..91].iter().any(|x| !(0. ..=1.).contains(x))
+            {
+                return None;
+            }
+            if a[92] > 0. {
+                if ![128., 256., 512., 1024.].contains(&a[92])
+                    || !(1. ..=10000.).contains(&a[91])
+                    || !(0. ..=10.).contains(&a[93])
+                    || !(1. ..=10000.).contains(&a[94])
+                {
+                    return None;
+                }
+            } else if a[91..95].iter().any(|x| *x != 0.) {
+                return None;
+            }
+        } else if a[84..95].iter().any(|x| *x != 0.) {
+            return None;
+        }
+        if flags & 4 == 0 && a[96..99].iter().any(|x| *x != 0.) {
+            return None;
+        }
+        if a[97] == 0. && a[98] != 0. {
+            return None;
+        }
+        if flags & 1 == 0 && a[95] != 0. {
+            return None;
+        }
         let count = a[1] as usize;
         if (flags & 1 == 0 && (count != 0 || a[2] != -1.))
             || a[5..8].iter().any(|x| !(0. ..=4.).contains(x))
@@ -66,13 +127,15 @@ impl SpatialEnvironment {
             || a[72] <= a[71]
             || a[72] > 1e6
             || a[73..76].iter().any(|x| !(0. ..=1.).contains(x))
-            || a[8..12].iter().chain(a[76..].iter()).any(|x| *x != 0.)
+            || a[8..12].iter().chain(a[76..80].iter()).any(|x| *x != 0.)
         {
             return None;
         }
         let mut result = Self {
             values: Some(a),
             shadow_matrices: Vec::new(),
+            value_len: v.len(),
+            frame_values: v.to_vec(),
         };
         if a[2] >= 0. {
             let p = 12 + a[2] as usize * 12;
@@ -94,8 +157,77 @@ impl SpatialEnvironment {
         }
         Some(result)
     }
+    pub fn camera_valid(&self, camera: &SpatialCamera) -> bool {
+        self.values.as_ref().is_none_or(|v| {
+            v[92] == 0.
+                || sun_matrix(
+                    [
+                        camera.parameters[4],
+                        camera.parameters[5],
+                        camera.parameters[6],
+                    ],
+                    [v[84], v[85], v[86]],
+                    v[94],
+                    v[91],
+                    v[92],
+                )
+                .iter()
+                .all(|x| x.is_finite())
+        })
+    }
+    pub fn build(&mut self, camera: &SpatialCamera, world: &World, actor: Option<(Entity, f32)>) {
+        let Some(v) = self.values else {
+            return;
+        };
+        self.frame_values.copy_from_slice(&v[..self.value_len]);
+        if v[97] == 1. {
+            let focus = actor
+                .filter(|(a, _)| world.is_current_entity(*a))
+                .and_then(|(a, visual_offset)| {
+                    let p = world.transform(a)?;
+                    let elevation =
+                        world.height_span(a).map_or(0., |s| s.elevation) + visual_offset + v[98];
+                    let depth = dot(
+                        super::sub(
+                            [p.x, elevation, -p.y],
+                            [
+                                camera.parameters[1],
+                                camera.parameters[2],
+                                camera.parameters[3],
+                            ],
+                        ),
+                        camera.forward,
+                    );
+                    (depth.is_finite()
+                        && depth >= camera.parameters[8]
+                        && depth <= camera.parameters[9]
+                        && depth <= 1e6)
+                        .then_some(depth)
+                })
+                .unwrap_or(v[60]);
+            self.frame_values[99] = focus;
+        }
+        let base = if v[2] >= 0. { 96 } else { 0 };
+        self.shadow_matrices.truncate(base);
+        if v[92] > 0. {
+            let target = [
+                camera.parameters[4],
+                camera.parameters[5],
+                camera.parameters[6],
+            ];
+            self.shadow_matrices.extend(sun_matrix(
+                target,
+                [v[84], v[85], v[86]],
+                v[94],
+                v[91],
+                v[92],
+            ));
+        }
+    }
     pub fn shadows(&self) -> bool {
-        self.values.is_some_and(|v| v[2] >= 0.)
+        self.values
+            .as_ref()
+            .is_some_and(|v| v[2] >= 0. || v[92] > 0.)
     }
 }
 fn cube_matrix(eye: Point, forward: Point, up: Point, near: f32, far: f32) -> Option<[f32; 16]> {
@@ -143,4 +275,55 @@ fn cube_matrix(eye: Point, forward: Point, up: Point, near: f32, far: f32) -> Op
         (0..4).map(|k| p[k * 4 + row] * view[col * 4 + k]).sum()
     });
     matrix.iter().all(|v| v.is_finite()).then_some(matrix)
+}
+
+fn sun_matrix(
+    center: Point,
+    direction: Point,
+    extent: f32,
+    distance: f32,
+    resolution: f32,
+) -> [f32; 16] {
+    // Input is validated; choose an up axis that remains defined for a vertical sun.
+    let dir = unit(direction).unwrap_or([0., 1., 0.]);
+    let forward = scale(dir, -1.);
+    let up = if dir[1].abs() > 0.99 {
+        [0., 0., 1.]
+    } else {
+        [0., 1., 0.]
+    };
+    let r = unit(cross(forward, up)).unwrap_or([1., 0., 0.]);
+    let u = cross(r, forward);
+    let texel = extent * 2. / resolution;
+    let x = (dot(center, r) / texel).round() * texel - dot(center, r);
+    let y = (dot(center, u) / texel).round() * texel - dot(center, u);
+    let eye = add(
+        add(add(center, scale(r, x)), scale(u, y)),
+        scale(dir, distance),
+    );
+    let view = [
+        r[0],
+        u[0],
+        -forward[0],
+        0.,
+        r[1],
+        u[1],
+        -forward[1],
+        0.,
+        r[2],
+        u[2],
+        -forward[2],
+        0.,
+        -dot(r, eye),
+        -dot(u, eye),
+        dot(forward, eye),
+        1.,
+    ];
+    let mut p = [0.; 16];
+    p[0] = 1. / extent;
+    p[5] = 1. / extent;
+    p[10] = -1. / distance;
+    p[14] = -1. - 0.001 / distance;
+    p[15] = 1.;
+    std::array::from_fn(|i| (0..4).map(|k| p[k * 4 + i % 4] * view[i / 4 * 4 + k]).sum())
 }

@@ -35,6 +35,10 @@ export class TextureManager {
   private readonly pendingIds = new Map<number, AbortController>();
   private ownedTranscoder?: Ktx2Transcoder;
   private destroyed = false;
+  private revision = 0;
+  private readonly textureInfos = new Map<WebGLTexture, { width: number; height: number; colorSpace: "srgb" | "linear" | "none" }>();
+  textureInfo(textureId: number) { return this.textureInfos.get(this.texture(textureId)); }
+  contentRevision(): number { return this.revision; }
 
   constructor(
     private readonly gl: WebGL2RenderingContext,
@@ -89,6 +93,7 @@ export class TextureManager {
           });
           this.assertLoadActive(signal);
           texture = this.createCompressedTexture(image, format);
+          this.textureInfos.set(texture, { width: image.width, height: image.height, colorSpace });
         } catch (reason) {
           this.assertLoadActive(signal);
           this.options.onKtx2Fallback?.({ url, ktx2Url: options.ktx2Url, reason });
@@ -158,7 +163,7 @@ export class TextureManager {
       this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_MAG_FILTER, this.gl.NEAREST);
       this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_S, this.gl.CLAMP_TO_EDGE);
       this.gl.texParameteri(this.gl.TEXTURE_2D, this.gl.TEXTURE_WRAP_T, this.gl.CLAMP_TO_EDGE);
-      this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.colorManagement === "legacy" ? 1 : 0);
+      this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, this.colorManagement === "legacy" && colorSpace === "srgb" ? 1 : 0);
       this.gl.texImage2D(
         this.gl.TEXTURE_2D,
         0,
@@ -169,6 +174,7 @@ export class TextureManager {
       );
 
       this.adoptTexture(texture, sourceByteLength(source));
+      if (!("videoWidth" in source || "naturalWidth" in source || "displayWidth" in source)) this.textureInfos.set(texture, { width: source.width, height: source.height, colorSpace });
     } catch (error) {
       this.gl.deleteTexture(texture);
       throw error;
@@ -224,6 +230,7 @@ export class TextureManager {
     const rgba = rgbaFromAlpha(patch.rect.width, patch.rect.height, patch.alpha, options);
     this.gl.bindTexture(this.gl.TEXTURE_2D, texture);
     this.gl.pixelStorei(this.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+    this.revision++;
     this.gl.texSubImage2D(
       this.gl.TEXTURE_2D,
       0,
@@ -278,6 +285,7 @@ export class TextureManager {
     const previousTexture = this.texturesById.get(textureId);
     this.adoptTexture(texture, size === undefined ? undefined : size.width * size.height * 4);
     this.texturesById.set(textureId, texture);
+    this.revision++;
     if (previousTexture && previousTexture !== texture) this.releaseUnreferencedTexture(previousTexture);
     if (size === undefined) {
       this.textureSizesById.delete(textureId);
@@ -294,6 +302,7 @@ export class TextureManager {
     const texture = this.texturesById.get(textureId);
     if (!texture) return false;
     this.texturesById.delete(textureId);
+    this.revision++;
     this.textureSizesById.delete(textureId);
     this.releaseUnreferencedTexture(texture);
     return true;
@@ -332,6 +341,7 @@ export class TextureManager {
     if (bytes === undefined) this.unmeasuredTextureCount -= 1;
     else this.knownTextureBytes -= bytes;
     this.textureBytesByObject.delete(texture);
+    this.textureInfos.delete(texture);
   }
 
   texture(textureId: number): WebGLTexture {
@@ -362,6 +372,7 @@ export class TextureManager {
     this.pendingIds.clear();
     this.ownedTranscoder?.destroy();
     for (const texture of this.textures) this.gl.deleteTexture(texture);
+    this.textureInfos.clear();
     this.textures.clear();
     this.texturesById.clear();
     this.textureSizesById.clear();

@@ -39,8 +39,13 @@ export interface SpatialTerrainSurface {
   color?: readonly [number, number, number, number];
   textureId?: number;
   walkable?: boolean;
+  castShadow?: boolean;
+  receiveShadow?: boolean;
 }
 export interface SpatialBillboardSpec {
+  normalTextureId?: number;
+  castShadow?: boolean;
+  receiveShadow?: boolean;
   unitsPerPixel?: number;
   alphaCutoff?: number;
   elevation?: number;
@@ -116,6 +121,10 @@ interface SpatialRenderBufferBase {
   terrain: Float32Array;
   terrainVertexCount: number;
   terrainRevision: number;
+  /** Normalized top-left viewport x/y/w/h, followed by internal width/height (zero disables). */
+  presentation?: Float32Array;
+  /** Independent material extension v1: normal texture ID (16777215=none), cast/receive flags. */
+  materials?: { version: 1; terrain: Uint32Array; billboards: Uint32Array };
   billboards: Float32Array;
   billboardVertexCount: number;
   debug?: SpatialDebugBufferView;
@@ -306,6 +315,8 @@ export function resolveDataSceneSpatialSpec(
           "color",
           "textureId",
           "walkable",
+          "castShadow",
+          "receiveShadow",
         ],
         at,
       );
@@ -371,6 +382,8 @@ export function resolveDataSceneSpatialSpec(
         floorId: integer(s.floorId ?? 0, `${at}.floorId`, 65535),
         color: rgba,
         walkable: bool(s.walkable ?? true, `${at}.walkable`),
+        ...(s.castShadow === undefined ? {} : { castShadow: bool(s.castShadow, `${at}.castShadow`) }),
+        ...(s.receiveShadow === undefined ? {} : { receiveShadow: bool(s.receiveShadow, `${at}.receiveShadow`) }),
         ...(s.textureId === undefined
           ? {}
           : { textureId: integer(s.textureId, `${at}.textureId`, 16777214) }),
@@ -408,8 +421,11 @@ export function resolveDataSceneSpatialSpec(
   for (const [id, v] of Object.entries(source)) {
     const at = `${path}.billboards.${id}`,
       b = record(v, at);
-    keys(b, ["unitsPerPixel", "alphaCutoff", "elevation"], at);
+    keys(b, ["unitsPerPixel", "alphaCutoff", "elevation", "normalTextureId", "castShadow", "receiveShadow"], at);
     billboards[id] = {
+      ...(b.normalTextureId === undefined ? {} : { normalTextureId: integer(b.normalTextureId, `${at}.normalTextureId`, 16777214) }),
+      ...(b.castShadow === undefined ? {} : { castShadow: bool(b.castShadow, `${at}.castShadow`) }),
+      ...(b.receiveShadow === undefined ? {} : { receiveShadow: bool(b.receiveShadow, `${at}.receiveShadow`) }),
       unitsPerPixel: positive(b.unitsPerPixel ?? 1, `${at}.unitsPerPixel`),
       alphaCutoff: num(b.alphaCutoff ?? 0.5, `${at}.alphaCutoff`, 0.001, 1),
       elevation: num(b.elevation ?? 0, `${at}.elevation`),
@@ -437,7 +453,7 @@ export function resolveDataSceneSpatialSpec(
     o.environment === undefined
       ? undefined
       : resolveSpatialEnvironmentSpec(o.environment, `${path}.environment`);
-  if (environment?.lighting?.shadows && Object.keys(billboards).length > 1024)
+  if ((environment?.lighting?.shadows || environment?.lighting?.directional?.shadows) && Object.keys(billboards).length > 1024)
     throw sceneCompositionDiagnosticError(
       `${path}.billboards`,
       "shadow casting supports at most 1024 authored billboards",
@@ -750,8 +766,14 @@ export function createSpatialApi(
           : new Float32Array(),
       ] as const;
       const connections = spec.connections ?? [];
-      const accepted =
-        spec.environment !== undefined
+      const materialFlags = (o: { castShadow?: boolean; receiveShadow?: boolean }) => (o.castShadow === false ? 0 : 1) | (o.receiveShadow === false ? 0 : 2);
+      const materialOptions = spec.terrain.some(t => t.castShadow !== undefined || t.receiveShadow !== undefined) || Object.values(spec.billboards).some(b => b.normalTextureId !== undefined || b.castShadow !== undefined || b.receiveShadow !== undefined);
+      const connectionValues = Uint32Array.from(connections.flatMap(c => [spec.terrain.findIndex(s => s.id === c.from) + 1, spec.terrain.findIndex(s => s.id === c.to) + 1]));
+      const accepted = materialOptions
+        ? typeof rust.configure_spatial_scene_materials === "function" && rust.configure_spatial_scene_materials(...args, connectionValues,
+            compileSpatialEnvironment(spec.environment ?? null), Uint32Array.from(spec.terrain.map(materialFlags)),
+            Uint32Array.from(Object.values(spec.billboards).flatMap(b => [b.normalTextureId ?? 16777215, materialFlags(b)])))
+        : spec.environment !== undefined
           ? typeof rust.configure_spatial_scene_environment === "function" &&
             rust.configure_spatial_scene_environment(
               ...args,
@@ -871,6 +893,10 @@ export function createSpatialApi(
 }
 
 /** Browser coordinate adapter; camera projection and terrain identity come from the displayed frame. */
+function spatialDisplayRect(canvas: HTMLCanvasElement, frame: SpatialRenderBufferView) {
+  const rect = canvas.getBoundingClientRect(), p = frame.presentation;
+  return p && p[4] > 0 ? { left: rect.left + rect.width * p[0], top: rect.top + rect.height * p[1], width: rect.width * p[2], height: rect.height * p[3] } : rect;
+}
 export function createDataSceneSpatialView(
   engine: FerrumSpatialApi,
   canvas: HTMLCanvasElement,
@@ -883,7 +909,7 @@ export function createDataSceneSpatialView(
         p.reduce((sum, v, column) => sum + m[column * 4 + row] * v, 0),
       );
       if (c[3] <= 0) return undefined;
-      const rect = canvas.getBoundingClientRect();
+      const rect = spatialDisplayRect(canvas, frame);
       return {
         x: rect.left + ((c[0] / c[3] + 1) * rect.width) / 2,
         y: rect.top + ((1 - c[1] / c[3]) * rect.height) / 2,
@@ -896,7 +922,7 @@ export function createDataSceneSpatialView(
       };
     },
     pick(client: { x: number; y: number }, frame: SpatialRenderBufferView) {
-      const rect = canvas.getBoundingClientRect();
+      const rect = spatialDisplayRect(canvas, frame);
       if (rect.width <= 0 || rect.height <= 0)
         throw new Error("Spatial picking requires a visible canvas");
       const x = ((client.x - rect.left) / rect.width) * 2 - 1,

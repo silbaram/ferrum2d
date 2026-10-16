@@ -349,7 +349,7 @@ export async function probeSpatialEnvironment(scene, canvas) {
   );
   await apply(document);
 
-  // Six actual cube faces, bounded draw/upload/resource costs and no warm-frame allocations.
+  // Unchanged shadows reuse the cube, with actual draw/upload/resource checks.
   await env({
     lighting: {
       ...lighting,
@@ -390,8 +390,8 @@ export async function probeSpatialEnvironment(scene, canvas) {
       { before, after },
     );
     check(
-      budget.shadowPassCount === 6 &&
-        observed.cubeFaces === 6 &&
+      budget.shadowCacheHit === true && budget.shadowPassCount === 0 && budget.shadowUploadBytes === 0 &&
+        observed.cubeFaces === 0 &&
         budget.shadowDrawCalls <= 384 &&
         budget.effectDrawCalls === 1 &&
         budget.dofSampleBudget === 13 &&
@@ -409,6 +409,10 @@ export async function probeSpatialEnvironment(scene, canvas) {
     Object.assign(gl, original);
   }
 
+  const cached = draw();
+  const full = draw({ ...scene.frame.spatial, environment: { ...scene.frame.spatial.environment, shadowSubmission: undefined } });
+  check(full.stats.shadowPassCount === 6 && delta(cached.pixels, full.pixels) === 0,
+    "shadow culling/cache changed framebuffer pixels", { cached: cached.stats, full: full.stats });
   // Camera-facing cutout caster: inspect its ground shadow without the visible sprite hiding the receiver.
   const casterDoc = structuredClone(document);
   casterDoc.spatial.camera = {
@@ -462,6 +466,7 @@ export async function probeSpatialEnvironment(scene, canvas) {
     ...scene.frame.spatial,
     billboards: new Float32Array(),
     billboardVertexCount: 0,
+    materials: { ...scene.frame.spatial.materials, billboards: new Uint32Array() },
   });
   const alphaImage = draw(casterPacket()).pixels;
   const alpha = {
@@ -528,7 +533,7 @@ export async function probeSpatialEnvironment(scene, canvas) {
   });
   check(
     luma(alpha.offscreenLit) > luma(alpha.offscreenShadow) + 35 &&
-      offscreenShadow.stats.shadowUploadBytes === 264,
+      offscreenShadow.stats.shadowCacheHit && offscreenShadow.stats.shadowUploadBytes === 0,
     "offscreen caster shadow or upload statistics missing",
     alpha,
   );
@@ -807,6 +812,7 @@ export async function probeSpatialEnvironment(scene, canvas) {
     terrainDrawRanges: new Uint32Array(),
     billboards: new Float32Array(),
     billboardVertexCount: 0,
+    materials: { ...scene.frame.spatial.materials, billboards: new Uint32Array() },
     environment: {
       ...debugFrame.environment,
       values: new Float32Array(debugFrame.environment.values),
@@ -821,6 +827,7 @@ export async function probeSpatialEnvironment(scene, canvas) {
   debugOnly.environment.shadowMatrices = new Float32Array();
   debugOnly.environment.shadowCasters = new Float32Array();
   debugOnly.environment.shadowCasterVertexCount = 0;
+  debugOnly.environment.shadowSubmission = undefined;
   const debugPixels = draw(debugOnly).pixels;
   let debugColored = 0;
   for (let i = 0; i < debugPixels.length; i += 4)

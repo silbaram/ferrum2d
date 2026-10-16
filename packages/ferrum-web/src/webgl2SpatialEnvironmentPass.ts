@@ -26,11 +26,16 @@ export class WebGL2SpatialEnvironmentPass {
   private width = 0;
   private height = 0;
   private resolution = 0;
+  private sun?: WebGLTexture;
+  private sunTarget?: WebGLFramebuffer;
+  private sunResolution = 0;
+  private readonly emptyMatrix = new Float32Array(16);
   private readonly positionValues = new Float32Array(16);
   private readonly colorValues = new Float32Array(16);
   private compositeUniforms: Record<string, WebGLUniformLocation> = {};
   private shadowUniforms?: SpatialGeometryUniforms & {
     light: WebGLUniformLocation;
+    directional: WebGLUniformLocation;
   };
   constructor(
     private readonly gl: WebGL2RenderingContext,
@@ -56,6 +61,7 @@ export class WebGL2SpatialEnvironmentPass {
         "nearFar",
         "perspective",
         "dof",
+        "highDof",
         "grade",
         "encode",
         "focus",
@@ -71,6 +77,10 @@ export class WebGL2SpatialEnvironmentPass {
       this.destroy();
       throw error;
     }
+  }
+  shadowReady(v: Float32Array): boolean {
+    return (v[2] < 0 || (this.cube !== undefined && this.resolution === v[3])) &&
+      (!(v.length > 80 && v[92] > 0) || (this.sun !== undefined && this.sunResolution === v[92]));
   }
   prepare(frame: SpatialRenderBufferView, width: number, height: number): void {
     if (
@@ -157,6 +167,9 @@ export class WebGL2SpatialEnvironmentPass {
     const values = frame.environment!.values;
     if (values[2] >= 0) this.prepareShadow(values[3]);
     else this.releaseShadow();
+    if (values.length > 80 && values[92] > 0) this.prepareSun(values[92]);
+    else this.releaseSun();
+    if (!this.cube && !this.sun) this.releaseShadowProgram();
   }
   private parameters(target: number): void {
     const gl = this.gl;
@@ -167,9 +180,8 @@ export class WebGL2SpatialEnvironmentPass {
     if (target === gl.TEXTURE_CUBE_MAP)
       gl.texParameteri(target, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
   }
-  private prepareShadow(resolution: number): void {
-    if (this.resolution === resolution) return;
-    this.releaseShadow();
+  private prepareShadowProgram(): void {
+    if (this.shadow) return;
     const gl = this.gl;
     try {
       this.shadow = createSpatialProgram(
@@ -183,7 +195,34 @@ export class WebGL2SpatialEnvironmentPass {
         textured: spatialUniform(gl, this.shadow, "u_textured"),
         flip: spatialUniform(gl, this.shadow, "u_flip_y"),
         light: spatialUniform(gl, this.shadow, "u_shadowLight"),
+        directional: spatialUniform(gl, this.shadow, "u_directionalShadow"),
       };
+    } catch (error) { this.releaseShadowProgram(); throw error; }
+  }
+  private prepareSun(resolution: number): void {
+    if (this.sunResolution === resolution) return;
+    this.releaseSun();
+    const gl = this.gl;
+    try {
+      this.prepareShadowProgram();
+      this.sun = gl.createTexture() ?? undefined;
+      this.sunTarget = gl.createFramebuffer() ?? undefined;
+      if (!this.sun || !this.sunTarget) throw new Error("Directional shadow allocation failed");
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.sun); this.parameters(gl.TEXTURE_2D);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, resolution, resolution, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.sunTarget);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.sun, 0);
+      gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error("Directional shadow target incomplete");
+      this.sunResolution = resolution;
+    } catch (error) { this.releaseSun(); throw error; }
+  }
+  private prepareShadow(resolution: number): void {
+    if (this.resolution === resolution) return;
+    this.releaseShadow();
+    const gl = this.gl;
+    try {
+      this.prepareShadowProgram();
       const cube = gl.createTexture(),
         target = gl.createFramebuffer();
       if (!cube || !target) {
@@ -234,9 +273,9 @@ export class WebGL2SpatialEnvironmentPass {
   }
   drawShadows(
     frame: SpatialRenderBufferView,
-    draw: (uniforms: SpatialGeometryUniforms) => void,
+    draw: (uniforms: SpatialGeometryUniforms, face: number) => void,
   ): number {
-    if (!this.shadow || !this.shadowUniforms) return 0;
+    if (!this.cube || !this.shadow || !this.shadowUniforms) return 0;
     const gl = this.gl,
       env = frame.environment!,
       v = env.values,
@@ -252,6 +291,7 @@ export class WebGL2SpatialEnvironmentPass {
     gl.disable(gl.CULL_FACE);
     gl.useProgram(this.shadow);
     gl.uniform1i(u.texture, 0);
+    gl.uniform1i(u.directional, 0);
     gl.uniform4fv(u.light, v.subarray(p, p + 4));
     for (let face = 0; face < 6; face++) {
       gl.framebufferTexture2D(
@@ -273,9 +313,19 @@ export class WebGL2SpatialEnvironmentPass {
         false,
         env.shadowMatrices.subarray(face * 16, face * 16 + 16),
       );
-      draw(u);
+      draw(u, face);
     }
     return 6;
+  }
+  drawSunShadow(frame: SpatialRenderBufferView, draw: (u: SpatialGeometryUniforms, face: number) => void): number {
+    if (!this.sun || !this.shadow || !this.shadowUniforms) return 0;
+    const gl = this.gl, u = this.shadowUniforms, matrices = frame.environment!.shadowMatrices;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.sunTarget!); gl.viewport(0, 0, this.sunResolution, this.sunResolution);
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(true); gl.clearDepth(1);
+    gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE); gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(this.shadow); gl.uniform1i(u.texture, 0); gl.uniform1i(u.directional, 1);
+    gl.uniformMatrix4fv(u.camera, false, matrices.subarray(matrices.length - 16));
+    draw(u, 6); return 1;
   }
   beginScene(): void {
     const gl = this.gl;
@@ -308,6 +358,14 @@ export class WebGL2SpatialEnvironmentPass {
     gl.uniform4fv(u.lightColor, this.colorValues);
     gl.uniform1i(u.shadowIndex, v[2]);
     gl.uniform1f(u.shadowBias, v[4]);
+    gl.uniform1i(u.shadowFilter, v.length > 80 ? v[95] : 0);
+    gl.uniform3fv(u.sunDirection, v.length > 80 ? v.subarray(84, 87) : this.emptyMatrix.subarray(0, 3));
+    gl.uniform4f(u.sunColor, v[83] ? v[88] : 0, v[83] ? v[89] : 0, v[83] ? v[90] : 0, v[83] ? v[87] : 0);
+    gl.uniform1i(u.sunShadow, v.length > 80 && v[92] > 0 ? 1 : 0);
+    gl.uniform3f(u.sunParams, v[91] ? v[91] * 2 : 1, v[93] ?? 0, v[94] ?? 1);
+    const matrices = frame.environment!.shadowMatrices;
+    gl.uniformMatrix4fv(u.sunMatrix, false, v.length > 80 && v[92] > 0 ? matrices.subarray(matrices.length - 16) : this.emptyMatrix);
+    gl.activeTexture(gl.TEXTURE3); gl.bindSampler(3, null); gl.bindTexture(gl.TEXTURE_2D, this.sun ?? null); gl.uniform1i(u.sunMap, 3);
     gl.uniform3fv(u.eye, frame.camera.subarray(17, 20));
     const x = frame.camera[20] - frame.camera[17],
       y = frame.camera[21] - frame.camera[18],
@@ -349,11 +407,12 @@ export class WebGL2SpatialEnvironmentPass {
     gl.uniform2f(u.nearFar, frame.camera[24], frame.camera[25]);
     gl.uniform1i(u.perspective, frame.camera[16] === 1 ? 1 : 0);
     gl.uniform1i(u.dof, v[0] & 4 ? 1 : 0);
+    gl.uniform1i(u.highDof, v[96] === 1 ? 1 : 0);
     gl.uniform1i(u.grade, v[0] & 8 ? 1 : 0);
     gl.uniform1i(u.encode, this.linearInput ? 0 : 1);
     gl.uniform4f(
       u.focus,
-      v[60],
+      v[97] === 1 && v[99] > 0 ? v[99] : v[60],
       v[61],
       v[62],
       (v[63] * this.height) / frame.camera[27],
@@ -364,11 +423,11 @@ export class WebGL2SpatialEnvironmentPass {
   }
   resourceStats(): SpatialEnvironmentGpuStats {
     return {
-      textureCount: (this.color ? 2 : 0) + (this.cube ? 1 : 0),
-      renderTargetCount: (this.target ? 1 : 0) + (this.cubeTarget ? 1 : 0),
+      textureCount: (this.color ? 2 : 0) + (this.cube ? 1 : 0) + (this.sun ? 1 : 0),
+      renderTargetCount: (this.target ? 1 : 0) + (this.cubeTarget ? 1 : 0) + (this.sunTarget ? 1 : 0),
       textureBytes:
         this.width * this.height * 12 +
-        this.resolution * this.resolution * 6 * 4,
+        (this.resolution * this.resolution * 6 + this.sunResolution * this.sunResolution) * 4,
     };
   }
   programCount(): number {
@@ -376,7 +435,7 @@ export class WebGL2SpatialEnvironmentPass {
   }
   depthBytes(): number {
     return (
-      this.width * this.height * 4 + this.resolution * this.resolution * 6 * 4
+      this.width * this.height * 4 + (this.resolution * this.resolution * 6 + this.sunResolution * this.sunResolution) * 4
     );
   }
   private releaseTarget(): void {
@@ -394,16 +453,24 @@ export class WebGL2SpatialEnvironmentPass {
     const gl = this.gl;
     if (this.cube) gl.deleteTexture(this.cube);
     if (this.cubeTarget) gl.deleteFramebuffer(this.cubeTarget);
-    if (this.shadow) gl.deleteProgram(this.shadow);
     this.cube = undefined;
     this.cubeTarget = undefined;
-    this.shadow = undefined;
-    this.shadowUniforms = undefined;
     this.resolution = 0;
+  }
+  private releaseSun(): void {
+    if (this.sun) this.gl.deleteTexture(this.sun);
+    if (this.sunTarget) this.gl.deleteFramebuffer(this.sunTarget);
+    this.sun = undefined; this.sunTarget = undefined; this.sunResolution = 0;
+  }
+  private releaseShadowProgram(): void {
+    if (this.shadow) this.gl.deleteProgram(this.shadow);
+    this.shadow = undefined; this.shadowUniforms = undefined;
   }
   destroy(): void {
     this.releaseTarget();
     this.releaseShadow();
+    this.releaseSun();
+    this.releaseShadowProgram();
     if (this.composite) this.gl.deleteProgram(this.composite);
     if (this.vao) this.gl.deleteVertexArray(this.vao);
     this.composite = undefined;

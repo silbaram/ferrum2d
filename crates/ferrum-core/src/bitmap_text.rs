@@ -660,7 +660,11 @@ impl BitmapTextSystem {
         world: &World,
         scene: &mut crate::spatial_scene::SpatialScene,
     ) {
-        let Some(camera) = scene.camera else {
+        if self.texts.is_empty() || !scene.frame_active {
+            return;
+        }
+        let Some(camera) = crate::spatial_scene::SpatialCamera::new(&scene.frame_camera[16..])
+        else {
             return;
         };
         for (_, text) in &self.texts {

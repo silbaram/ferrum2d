@@ -32,7 +32,7 @@ import type {
 } from "./gameplayAuthoring.js";
 import type { ResolvedSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
 import type { ResolvedSceneCompositionInstance } from "./sceneComposition.js";
-import type { DataSceneSpatialSpec } from "./dataSceneSpatial.js";
+import type { DataSceneSpatialSpec, SpatialCameraSpec } from "./dataSceneSpatial.js";
 import type { SpatialEnvironmentSpec } from "./spatialEnvironment.js";
 import type { DataSceneVariableStore } from "./dataSceneVariables.js";
 
@@ -119,6 +119,8 @@ export interface DataSceneRuntimeEngineAdapter {
   useDataScene(): void;
   textureId(name: string): number;
   spawnDataSceneEntity(request: DataSceneRuntimeSpawnRequest): GameplayEntityHandle | undefined;
+  /** Cold native camera/environment validation before destructive authoring activation. */
+  preflightSpatialEnvironment?(camera: SpatialCameraSpec, environment: SpatialEnvironmentSpec): boolean;
 }
 
 interface DataSceneRuntimeEngine {
@@ -416,24 +418,34 @@ export function preflightDataSceneSpatialEnvironment(
   options: CreateDataSceneRuntimeTargetOptions,
   environment: SpatialEnvironmentSpec | null | undefined,
   removed: ReadonlySet<string> = new Set(),
+  camera: SpatialCameraSpec = spec.camera,
 ): void {
-  if (!environment?.lighting?.shadows) return;
-  const path = `${options.path ?? "dataScene"}.spatial.environment.lighting.shadows`;
+  if (!environment) return;
+  const environmentPath = `${options.path ?? "dataScene"}.spatial.environment`;
+  const adapter = dataSceneRuntimeEngineAdapter(engine, `${environmentPath}.engine`);
+  if (adapter.preflightSpatialEnvironment) {
+    if (!adapter.preflightSpatialEnvironment(camera, environment))
+      throw sceneCompositionDiagnosticError(environmentPath, "native camera/environment preflight rejected configuration");
+  } else if (environment.pixelArt || environment.lighting?.directional) {
+    throw sceneCompositionDiagnosticError(environmentPath, "native camera/environment preflight is unavailable");
+  }
+  if (!environment.lighting?.shadows && !environment.lighting?.directional?.shadows) return;
+  const path = `${environmentPath}.lighting.shadows`;
   if (Object.keys(spec.billboards).length > 1024) {
     throw sceneCompositionDiagnosticError(path, "shadow caster budget exceeds 1024 authored billboards");
   }
   let previous = -1, batches = 0;
   for (const surface of spec.terrain) {
+    if (surface.castShadow === false) { previous = -1; continue; }
     const texture = surface.textureId ?? 16777215;
     if (texture !== previous) batches++;
     previous = texture;
   }
   const byId = new Map(instances.map(instance => [instance.id, instance]));
-  const adapter = dataSceneRuntimeEngineAdapter(engine, `${path}.engine`);
   const textureId = options.textureId ?? ((name: string) => adapter.textureId(name));
   const textures = new Set<number>();
   for (const id of Object.keys(spec.billboards)) {
-    if (removed.has(id)) continue;
+    if (removed.has(id) || spec.billboards[id].castShadow === false) continue;
     const instance = byId.get(id);
     if (!instance) throw sceneCompositionDiagnosticError(path, `unknown billboard '${id}'`);
     const components = resolveDataSceneInstanceComponents(instance, { allowTemplate: false, path });
@@ -441,7 +453,7 @@ export function preflightDataSceneSpatialEnvironment(
     textures.add(dataSceneTextureId(components.sprite, textureId));
   }
   if (batches + textures.size > 64) {
-    throw sceneCompositionDiagnosticError(path, "shadow texture batch budget exceeds 64 per cube face");
+    throw sceneCompositionDiagnosticError(path, "shadow texture batch budget exceeds 64 per shadow face");
   }
 }
 

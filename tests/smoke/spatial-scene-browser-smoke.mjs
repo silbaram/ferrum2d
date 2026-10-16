@@ -49,6 +49,8 @@ const server = createServer((req, res) => {
         root,
         "tests/smoke/spatial-navigation-browser-fixture.mjs",
       );
+    else if (url.pathname === "/spatial-quality-probe.mjs")
+      file = resolve(root, "tests/smoke/spatial-quality-browser-fixture.mjs");
     else if (url.pathname === "/spatial-environment-probe.mjs")
       file = resolve(
         root,
@@ -130,6 +132,7 @@ try {
               "environment-lit",
               "environment-shadow",
               "environment-dof",
+              "quality-pixel", "quality-normal", "quality-sun-pcf", "quality-dof-standard", "quality-dof-high",
             ].includes(mode) ||
             !data.startsWith("data:image/png;base64,")
           )
@@ -574,6 +577,8 @@ try {
           "/spatial-environment-probe.mjs"
         );
         const spatialEnvironment = await probeSpatialEnvironment(s, canvas);
+        const { probeSpatialQuality } = await import("/spatial-quality-probe.mjs");
+        const spatialQuality = await probeSpatialQuality(s, canvas);
         const visibilityRestore = s.restore(saved);
         await wait();
         const visibilityActor = s.engine.getPhysicsEntity(s.handles.actor);
@@ -630,6 +635,7 @@ try {
           spatialConnections,
           spatialNavigation,
           spatialEnvironment,
+          spatialQuality,
           budgets,
           errors: s.errors,
         };

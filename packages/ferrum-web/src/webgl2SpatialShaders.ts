@@ -6,11 +6,12 @@ void main(){gl_Position=u_camera*vec4(a_position,1.0);v_uv=a_uv;v_color=a_color;
 export const spatialFragmentSource = `#version 300 es
 precision highp float;precision highp samplerCube;
 in vec2 v_uv;in vec4 v_color;in float v_cutoff;in vec3 v_world;
-uniform highp sampler2D u_texture;uniform samplerCube u_shadowMap;
+uniform highp sampler2D u_texture;uniform sampler2D u_normalMap;uniform bool u_hasNormal,u_receiveShadow;uniform samplerCube u_shadowMap;
 uniform bool u_textured,u_flip_y,u_environment,u_linearInput,u_lighting,u_fog;
 uniform vec3 u_ambient,u_eye,u_forward,u_fogColor;
 uniform vec2 u_fogRange;uniform vec4 u_lightPosition[4],u_lightColor[4];
-uniform int u_lightCount,u_shadowIndex;uniform float u_shadowBias;
+uniform int u_lightCount,u_shadowIndex,u_shadowFilter;uniform float u_shadowBias;
+uniform vec3 u_sunDirection,u_sunParams;uniform vec4 u_sunColor;uniform bool u_sunShadow;uniform mat4 u_sunMatrix;uniform sampler2D u_sunMap;
 out vec4 outColor;
 vec3 linearize(vec3 c){return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));}
 void main(){vec2 uv=vec2(v_uv.x,u_flip_y?1.0-v_uv.y:v_uv.y);
@@ -19,21 +20,56 @@ if(c.a<v_cutoff)discard;
 if(!u_environment){outColor=vec4(c.rgb,1.0);return;}
 vec3 albedo=u_linearInput?c.rgb:linearize(c.rgb),color=albedo;
 if(u_lighting){
- vec3 n=cross(dFdx(v_world),dFdy(v_world));float nl=length(n);n=nl>0.000001?n/nl:vec3(0.,1.,0.);
+ vec3 n=cross(dFdx(v_world),dFdy(v_world));float nl=length(n);n=nl>0.000001?n/nl:vec3(0.,1.,0.);vec3 geometricNormal=n;
+ if(u_hasNormal){
+  vec2 a=dFdx(uv),b=dFdy(uv);float det=a.x*b.y-a.y*b.x;
+  vec3 dx=dFdx(v_world),dy=dFdy(v_world);
+  if(abs(det)>0.00000001){
+   vec3 t=(dx*b.y-dy*a.y)/det,bt=-(dy*a.x-dx*b.x)/det;
+   vec3 sampleNormal=texture(u_normalMap,uv).rgb*2.0-1.0;
+   if(length(t)>0.000001 && length(bt)>0.000001 && length(sampleNormal)>0.000001)
+    n=normalize(normalize(t)*sampleNormal.x+normalize(bt)*sampleNormal.y+n*sampleNormal.z);
+  }
+ }
  vec3 illumination=u_ambient;
  for(int i=0;i<4;i++){if(i>=u_lightCount)break;
   vec3 delta=u_lightPosition[i].xyz-v_world;float d=length(delta),radius=u_lightPosition[i].w;
   float falloff=max(1.0-(d*d)/(radius*radius),0.0);falloff*=falloff;
   float lambert=d>0.000001?max(dot(n,delta/d),0.0):1.0;
   float visibility=1.0;
-  if(i==u_shadowIndex && d>u_shadowBias){
+  if(u_receiveShadow && i==u_shadowIndex && d>u_shadowBias){
    float nearest=texture(u_shadowMap,-delta).r*radius;
    // A world-space bias alone cannot cover a grazing receiver's cubemap texel footprint.
-   float slope=min(sqrt(max(1.0-lambert*lambert,0.0))/max(lambert,0.2),2.0);
-   float receiverBias=u_shadowBias+2.0*d/float(textureSize(u_shadowMap,0).x)*slope;
+   float incidence=max(dot(geometricNormal,delta/d),0.);
+   float slope=min(sqrt(max(1.0-incidence*incidence,0.0))/max(incidence,0.2),2.0);
+   float receiverBias=u_shadowBias+2.0*d/float(textureSize(u_shadowMap,0).x)*slope*(u_shadowFilter==1?3.:1.);
    visibility=nearest+receiverBias<d?0.0:1.0;
+   if(u_shadowFilter==1){
+    vec3 axis=normalize(-delta),up=abs(axis.y)>.99?vec3(0.,0.,1.):vec3(0.,1.,0.);
+    vec3 tangent=normalize(cross(axis,up)),bitangent=cross(axis,tangent);float stepSize=2./float(textureSize(u_shadowMap,0).x);
+    visibility=0.;
+    for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){
+     float value=texture(u_shadowMap,axis+(tangent*float(x)+bitangent*float(y))*stepSize).r*radius;
+     visibility+=value+receiverBias<d?0.:1.;
+    }visibility/=9.;
+   }
   }
   illumination+=u_lightColor[i].rgb*u_lightColor[i].a*falloff*lambert*visibility;
+ }
+ if(u_sunColor.a>0.){
+  float lambert=max(dot(n,normalize(u_sunDirection)),0.),visibility=1.;
+  if(u_sunShadow && u_receiveShadow){
+   vec4 clip=u_sunMatrix*vec4(v_world,1.);vec3 q=clip.xyz/clip.w*.5+.5;
+   if(all(greaterThanEqual(q,vec3(0.))) && all(lessThanEqual(q,vec3(1.)))){
+    vec2 texel=1./vec2(textureSize(u_sunMap,0));
+    float incidence=max(dot(geometricNormal,normalize(u_sunDirection)),0.);
+    float slope=min(sqrt(max(1.-incidence*incidence,0.))/max(incidence,.2),2.);
+    float bias=(u_sunParams.y+2.*u_sunParams.z*texel.x*slope*(u_shadowFilter==1?3.:1.))/u_sunParams.x;
+    visibility=texture(u_sunMap,q.xy).r+bias<q.z?0.:1.;
+    if(u_shadowFilter==1){visibility=0.;for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++) visibility+=texture(u_sunMap,q.xy+vec2(x,y)*texel).r+bias<q.z?0.:1.;visibility/=9.;}
+   }
+  }
+  illumination+=u_sunColor.rgb*u_sunColor.a*lambert*visibility;
  }
  color=albedo*illumination;
 }
@@ -41,23 +77,41 @@ if(u_fog){float z=max(dot(v_world-u_eye,u_forward),0.0);float amount=clamp((z-u_
 outColor=vec4(color,1.0);}`;
 export const spatialShadowFragmentSource = `#version 300 es
 precision highp float;in vec2 v_uv;in vec4 v_color;in float v_cutoff;in vec3 v_world;
-uniform sampler2D u_texture;uniform bool u_textured,u_flip_y;uniform vec4 u_shadowLight;
+uniform sampler2D u_texture;uniform bool u_textured,u_flip_y,u_directionalShadow;uniform vec4 u_shadowLight;
 void main(){vec2 uv=vec2(v_uv.x,u_flip_y?1.0-v_uv.y:v_uv.y);
 float alpha=(u_textured?texture(u_texture,uv).a:1.0)*v_color.a;
-if(alpha<v_cutoff)discard;gl_FragDepth=clamp(length(v_world-u_shadowLight.xyz)/u_shadowLight.w,0.0,1.0);}`;
+if(alpha<v_cutoff)discard;gl_FragDepth=u_directionalShadow?gl_FragCoord.z:clamp(length(v_world-u_shadowLight.xyz)/u_shadowLight.w,0.0,1.0);}`;
 export const spatialCompositeVertexSource = `#version 300 es
 out vec2 v_uv;
 void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));v_uv=p;gl_Position=vec4(p*2.0-1.0,0.0,1.0);}`;
 export const spatialCompositeFragmentSource = `#version 300 es
 precision highp float;in vec2 v_uv;out vec4 outColor;
-uniform highp sampler2D u_color,u_depth;uniform vec2 u_size,u_nearFar;uniform bool u_perspective,u_dof,u_grade,u_encode;
+uniform highp sampler2D u_color,u_depth;uniform vec2 u_size,u_nearFar;uniform bool u_perspective,u_dof,u_grade,u_encode,u_highDof;
 uniform vec4 u_focus,u_gradeValues;uniform vec3 u_tint;
 float viewDepth(float d){float n=u_nearFar.x,f=u_nearFar.y;return u_perspective?(2.0*n*f)/(f+n-(d*2.0-1.0)*(f-n)):mix(n,f,d);}
 vec3 encode(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1.0/2.4))-0.055,step(vec3(0.0031308),c));}
 vec3 aces(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);}
 void main(){float depth=texture(u_depth,v_uv).r;vec4 center=texture(u_color,v_uv);if(center.a<=0.0)discard;
 float z=viewDepth(depth);vec3 color=center.rgb;
-if(u_dof){
+if(u_dof && u_highDof){
+ float centerDelta=z-u_focus.x;
+ float centerRadius=sign(centerDelta)*clamp(max(abs(centerDelta)-u_focus.y,0.)/max(z,.001)*u_focus.z,0.,1.)*u_focus.w;
+ vec3 farSum=color,nearSum=vec3(0.);float farWeight=1.,nearWeight=0.,kernelWeight=0.;
+ for(int i=0;i<24;i++){
+  float angle=float(i)*2.39996323,r=sqrt((float(i)+.5)/24.)*u_focus.w;
+  vec2 uv=clamp(v_uv+vec2(cos(angle),sin(angle))*r/u_size,vec2(.5)/u_size,vec2(1.)-vec2(.5)/u_size);
+  float kernel=1.-r/max(u_focus.w,.001);kernelWeight+=kernel;
+  float d=texture(u_depth,uv).r;if(d>=1.)continue;
+  float nz=viewDepth(d),delta=nz-u_focus.x;
+  float sampleRadius=sign(delta)*clamp(max(abs(delta)-u_focus.y,0.)/max(nz,.001)*u_focus.z,0.,1.)*u_focus.w;
+  vec3 sampleColor=texture(u_color,uv).rgb;
+  if(centerRadius>r && sampleRadius>=0. && abs(nz-z)<=max(u_focus.y,z*.02)){farSum+=sampleColor*kernel;farWeight+=kernel;}
+  if(sampleRadius < -r){float weight=kernel*smoothstep(0.,1.,-sampleRadius-r);nearSum+=sampleColor*weight;nearWeight+=weight;}
+ }
+ color=farSum/farWeight;
+ if(nearWeight>.00001){float coverage=centerRadius<-.05?1.:clamp(nearWeight/max(kernelWeight,.00001),0.,1.);color=mix(color,nearSum/nearWeight,coverage);}
+}
+else if(u_dof){
  float coc=clamp(max(abs(z-u_focus.x)-u_focus.y,0.0)/max(z,0.001)*u_focus.z,0.0,1.0);
  float radius=coc*u_focus.w;
  if(radius>0.05){vec3 sum=color*2.0;float weight=2.0;

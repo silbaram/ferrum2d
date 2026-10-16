@@ -618,7 +618,7 @@ function preflightEnvironmentProgress(
     progress.spatial.environment === undefined
       ? resolved.spatial.environment
       : progress.spatial.environment;
-  if (!environment?.lighting?.shadows) return;
+  if (!environment) return;
   const plan = bindSceneBehaviorRecipes(
     resolved.sceneComposition,
     resolved.behaviorRecipes,
@@ -634,6 +634,7 @@ function preflightEnvironmentProgress(
         .filter((instance) => instance.removed)
         .map((instance) => instance.id),
     ),
+    progress.spatial.camera,
   );
 }
 

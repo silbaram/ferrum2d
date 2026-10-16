@@ -7,6 +7,7 @@ import {
   spatialFragmentSource,
   type SpatialGeometryUniforms,
 } from "./webgl2SpatialShaders.js";
+import { SpatialShadowCache } from "./spatialShadowCache.js";
 import { validSpatialEnvironmentValues } from "./spatialEnvironment.js";
 export interface SpatialRendererStats {
   triangleCount: number;
@@ -28,10 +29,13 @@ export interface SpatialRendererStats {
   debugUploadBytes: number;
   debugTruncated: boolean;
   lightCount: number;
+  directionalLightCount: number;
   shadowPassCount: number;
   shadowDrawCalls: number;
   shadowTriangleCount: number;
   shadowUploadBytes: number;
+  shadowCacheHit: boolean;
+  shadowCulledTriangleCount: number;
   effectDrawCalls: number;
   effectTextureBytes: number;
   dofSampleBudget: number;
@@ -57,6 +61,7 @@ export class WebGL2SpatialPass {
   private environmentPass?: WebGL2SpatialEnvironmentPass;
   private shadowBuffer?: WebGLBuffer;
   private shadowBytes = 0;
+  private shadowCache = new SpatialShadowCache();
   private destroyed = false;
   constructor(
     private readonly gl: WebGL2RenderingContext,
@@ -111,6 +116,10 @@ export class WebGL2SpatialPass {
         "shadowIndex",
         "shadowBias",
         "shadowMap",
+        "normalMap",
+        "hasNormal",
+        "receiveShadow",
+        "shadowFilter", "sunDirection", "sunColor", "sunShadow", "sunParams", "sunMatrix", "sunMap",
       ])
         this.uniforms[name] = uniform(`u_${name}`);
       for (const name of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER])
@@ -167,6 +176,25 @@ export class WebGL2SpatialPass {
     } else if (ranges !== undefined) {
       throw new Error("Spatial v1 packets cannot contain terrain draw ranges");
     }
+    const presentation = frame.presentation;
+    if (presentation && (!(presentation instanceof Float32Array) || presentation.length !== 6 || presentation.some(x => !Number.isFinite(x)) ||
+      presentation[0] < 0 || presentation[1] < 0 || presentation[2] <= 0 || presentation[3] <= 0 || presentation[0] + presentation[2] > 1.00001 || presentation[1] + presentation[3] > 1.00001)) throw new Error("Invalid spatial presentation viewport");
+    const materials = frame.materials;
+    if (materials) {
+      if (materials.version !== 1) throw new Error("Invalid spatial material version");
+      for (const [data, vertices, stride] of [[materials.terrain, frame.terrain, 36], [materials.billboards, frame.billboards, 6]] as const) {
+        if (!(data instanceof Uint32Array) || data.length % 2 || data.length > vertices.length / 11 / stride * 2) throw new Error("Invalid spatial material buffer");
+        for (let i = 0; i < data.length; i += 2) {
+          const id = data[i];
+          if (id > 16777215 || data[i + 1] > 3) throw new Error("Invalid spatial material reference");
+          if (id !== 16777215) {
+            const colorId = vertices[(i / 2 * stride) * 11 + 9], normal = textures.textureInfo?.(id), color = textures.textureInfo?.(colorId);
+            if (!normal || !color || normal.colorSpace === "srgb" || normal.width !== color.width || normal.height !== color.height) throw new Error("Spatial normal atlas must be loaded with colorSpace: none or linear and match the color atlas dimensions");
+            textures.texture(id);
+          }
+        }
+      }
+    }
     const debug = frame.debug;
     if (
       debug !== undefined &&
@@ -188,8 +216,9 @@ export class WebGL2SpatialPass {
     if (
       environment !== undefined &&
       (!environment ||
-        environment.version !== 1 ||
+        (environment.version !== 1 && environment.version !== 2) ||
         !(environment.values instanceof Float32Array) ||
+        environment.values.length !== (environment.version === 1 ? 80 : 112) ||
         !validSpatialEnvironmentValues(environment.values) ||
         !(environment.shadowMatrices instanceof Float32Array) ||
         !(environment.shadowCasters instanceof Float32Array) ||
@@ -202,24 +231,47 @@ export class WebGL2SpatialPass {
         environment.shadowCasters.some((x) => !Number.isFinite(x)) ||
         environment.shadowMatrices.some((x) => !Number.isFinite(x)) ||
         environment.shadowMatrices.length !==
-          (environment.values[2] >= 0 ? 96 : 0) ||
-        (environment.values[2] < 0 &&
+          ((environment.values[2] >= 0 ? 96 : 0) + (environment.values.length > 80 && environment.values[92] > 0 ? 16 : 0)) ||
+        (environment.values[2] < 0 && !(environment.values[92] > 0) &&
           environment.shadowCasterVertexCount !== 0))
     )
       throw new Error("Invalid spatial environment buffer");
+    const submission = environment?.shadowSubmission;
+    if (submission) {
+      if (submission.version !== 1 || !Number.isInteger(submission.revision) || submission.revision < 0 || submission.revision > 0xffffffff ||
+          !(submission.ranges instanceof Uint32Array) || submission.ranges.length % 4 || submission.ranges.length > 35840)
+        throw new Error("Invalid shadow submission buffer");
+      let previousFace = -1, previousSource = -1, previousEnd = 0;
+      const batches = new Uint32Array(7);
+      for (let i = 0; i < submission.ranges.length; i += 4) {
+        const [face, source, first, count] = submission.ranges.subarray(i, i + 4);
+        const stride = source === 0 ? 36 : 6;
+        const vertices = source === 0 ? frame.terrain : environment!.shadowCasters;
+        if (face > 6 || (face === 6 && !(environment!.values[92] > 0)) || source > 1 || count === 0 || first % stride || count % stride ||
+            first + count > vertices.length / 11 || face < previousFace ||
+            (face === previousFace && (source < previousSource || (source === previousSource && first < previousEnd))))
+          throw new Error("Invalid shadow submission range");
+        let last = -1;
+        for (let v = first * 11; v < (first + count) * 11; v += 33) if (vertices[v + 9] !== last) {
+          batches[face]++; last = vertices[v + 9];
+        }
+        if (batches[face] > 64) throw new Error("Shadow face batch budget exceeded");
+        previousFace = face; previousSource = source; previousEnd = first + count;
+      }
+    }
     const activeEnvironment =
       environment !== undefined && environment.values[0] !== 0;
-    if (environment && environment.values[2] >= 0) {
+    if (environment && (environment.values[2] >= 0 || environment.values[92] > 0)) {
       if (frame.terrainVertexCount > 256 * 36)
         throw new Error("Spatial shadow terrain budget exceeded");
       let batches = 0;
       for (const vertices of [frame.terrain, environment.shadowCasters]) {
         let last = -1;
-        for (let i = 0; i < vertices.length; i += 33)
-          if (vertices[i + 9] !== last) {
-            batches++;
-            last = vertices[i + 9];
-          }
+        for (let i = 0; i < vertices.length; i += 33) {
+          const flags = vertices === frame.terrain ? frame.materials?.terrain[Math.floor(i / 396) * 2 + 1] ?? 3 : 3;
+          if (!(flags & 1)) { last = -1; continue; }
+          if (vertices[i + 9] !== last) { batches++; last = vertices[i + 9]; }
+        }
       }
       if (batches > 64)
         throw new Error("Spatial shadow texture batch budget exceeded");
@@ -235,6 +287,10 @@ export class WebGL2SpatialPass {
         gl.DRAW_FRAMEBUFFER_BINDING,
       ) as WebGLFramebuffer | null;
     const viewport = gl.getParameter(gl.VIEWPORT) as Int32Array;
+    const displayViewport = presentation && presentation[4] > 0 ? Int32Array.from([
+      viewport[0] + Math.round(viewport[2] * presentation[0]), viewport[1] + Math.round(viewport[3] * (1 - presentation[1] - presentation[3])),
+      Math.max(1, Math.round(viewport[2] * presentation[2])), Math.max(1, Math.round(viewport[3] * presentation[3])),
+    ]) : viewport;
     if (!activeEnvironment) this.ensureDepth(target, viewport[2], viewport[3]);
     // Validate all textures before uploading or submitting any geometry.
     for (const buffer of [
@@ -281,6 +337,12 @@ export class WebGL2SpatialPass {
       gl.TEXTURE_BINDING_CUBE_MAP,
     ) as WebGLTexture | null;
     const sampler1 = gl.getParameter(gl.SAMPLER_BINDING) as WebGLSampler | null;
+    gl.activeTexture(gl.TEXTURE2);
+    const texture2 = gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
+    const sampler2 = gl.getParameter(gl.SAMPLER_BINDING) as WebGLSampler | null;
+    gl.activeTexture(gl.TEXTURE3);
+    const texture3 = gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
+    const sampler3 = gl.getParameter(gl.SAMPLER_BINDING) as WebGLSampler | null;
     gl.activeTexture(gl.TEXTURE0);
     const stats: SpatialRendererStats = {
       triangleCount: (terrainVertices + frame.billboardVertexCount) / 3,
@@ -305,13 +367,16 @@ export class WebGL2SpatialPass {
       debugUploadBytes: 0,
       debugTruncated: debug?.truncated ?? false,
       lightCount: environment?.values[0]! & 1 ? environment!.values[1] : 0,
+      directionalLightCount: environment?.values[83] === 1 ? 1 : 0,
       shadowPassCount: 0,
       shadowDrawCalls: 0,
       shadowTriangleCount: 0,
       shadowUploadBytes: 0,
+      shadowCacheHit: false,
+      shadowCulledTriangleCount: 0,
       effectDrawCalls: 0,
       effectTextureBytes: 0,
-      dofSampleBudget: environment?.values[0]! & 4 ? 13 : 0,
+      dofSampleBudget: environment?.values[0]! & 4 ? (environment!.values[96] === 1 ? 25 : 13) : 0,
     };
     try {
       if (activeEnvironment) {
@@ -338,6 +403,13 @@ export class WebGL2SpatialPass {
       );
       gl.uniform1i(this.uniforms.texture, 0);
       gl.uniform1i(this.uniforms.shadowMap, 1);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindSampler(2, this.sampler);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(this.uniforms.normalMap, 2);
+      gl.uniform1i(this.uniforms.hasNormal, 0);
+      gl.uniform1i(this.uniforms.receiveShadow, 1);
       gl.uniform1i(this.uniforms.environment, 0);
       if (
         this.revision !== frame.terrainRevision ||
@@ -354,9 +426,15 @@ export class WebGL2SpatialPass {
       if (activeEnvironment) {
         const effects = (this.environmentPass ??=
           new WebGL2SpatialEnvironmentPass(gl, this.linearInput));
-        effects.prepare(frame, viewport[2], viewport[3]);
+        const shadowReady = effects.shadowReady(environment!.values);
+        effects.prepare(frame, presentation && presentation[4] > 0 ? presentation[4] : viewport[2], presentation && presentation[5] > 0 ? presentation[5] : viewport[3]);
         const casters = environment!.shadowCasters;
-        if (environment!.values[2] >= 0 && casters.length) {
+        const hasShadows = environment!.values[2] >= 0 || environment!.values[92] > 0;
+        // Collect texture revisions even for a new target so its first successful render can be cached.
+        const cacheMatches = hasShadows && this.shadowCache.matches(frame, textures);
+        const cacheHit = shadowReady && cacheMatches;
+        stats.shadowCacheHit = cacheHit;
+        if (!cacheHit && hasShadows && casters.length) {
           if (!this.shadowBuffer) {
             const b = gl.createBuffer();
             if (!b)
@@ -374,43 +452,45 @@ export class WebGL2SpatialPass {
           gl.bufferSubData(gl.ARRAY_BUFFER, 0, casters);
           stats.shadowUploadBytes = casters.byteLength;
           stats.uploadBytes += casters.byteLength;
-        } else if (this.shadowBuffer && environment!.values[2] < 0) {
+        } else if (this.shadowBuffer && !hasShadows) {
           gl.deleteBuffer(this.shadowBuffer);
           this.shadowBuffer = undefined;
           this.shadowBytes = 0;
         }
         const before = stats.drawCalls;
-        stats.shadowPassCount = effects.drawShadows(frame, (u) => {
-          gl.activeTexture(gl.TEXTURE0);
-          gl.bindSampler(0, this.sampler);
-          gl.bindVertexArray(this.vao);
-          this.drawBuffer(
-            this.terrainBuffer,
-            frame.terrain,
-            textures,
-            stats,
-            undefined,
-            0,
-            frame.terrainVertexCount,
-            u,
-          );
-          if (casters.length)
-            this.drawBuffer(
-              this.shadowBuffer!,
-              casters,
-              textures,
-              stats,
-              undefined,
-              0,
-              environment!.shadowCasterVertexCount,
-              u,
-            );
-        });
+        if (!cacheHit) {
+          const submit = (u: SpatialGeometryUniforms, face: number) => {
+            const ranges = environment!.shadowSubmission?.ranges;
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindSampler(0, this.sampler);
+            gl.bindVertexArray(this.vao);
+            const draw = (source: number, first: number, count: number) => {
+              this.drawBuffer(source === 0 ? this.terrainBuffer : this.shadowBuffer!, source === 0 ? frame.terrain : casters,
+                textures, stats, undefined, first, count, u);
+              stats.shadowTriangleCount += count / 3;
+            };
+            if (ranges) {
+              for (let i = 0; i < ranges.length; i += 4) if (ranges[i] === face) draw(ranges[i + 1], ranges[i + 2], ranges[i + 3]);
+            } else {
+              const meta = frame.materials?.terrain;
+              if (!meta) draw(0, 0, frame.terrainVertexCount);
+              else {
+                let first = 0, count = 0;
+                for (let object = 0; object < frame.terrainVertexCount / 36; object++) {
+                  if ((meta[object * 2 + 1] ?? 3) & 1) { if (!count) first = object * 36; count += 36; }
+                  else if (count) { draw(0, first, count); count = 0; }
+                }
+                if (count) draw(0, first, count);
+              }
+              if (casters.length) draw(1, 0, environment!.shadowCasterVertexCount);
+            }
+          };
+          stats.shadowPassCount = effects.drawShadows(frame, submit) + effects.drawSunShadow(frame, submit);
+          if (stats.shadowPassCount) this.shadowCache.commit(frame);
+        }
         stats.shadowDrawCalls = stats.drawCalls - before;
-        stats.shadowTriangleCount =
-          (stats.shadowPassCount *
-            (frame.terrainVertexCount + environment!.shadowCasterVertexCount)) /
-          3;
+        if (environment!.shadowSubmission && !cacheHit) stats.shadowCulledTriangleCount =
+          stats.shadowPassCount * (frame.terrainVertexCount + environment!.shadowCasterVertexCount) / 3 - stats.shadowTriangleCount;
         stats.triangleCount += stats.shadowTriangleCount;
         effects.beginScene();
         // A resized HDR target can leave its own depth texture on unit 0.
@@ -430,25 +510,11 @@ export class WebGL2SpatialPass {
         stats.effectTextureBytes = effects.resourceStats().textureBytes;
       }
       let lastTexture: number | undefined;
-      if (ranges === undefined) {
-        lastTexture = this.drawBuffer(
-          this.terrainBuffer,
-          frame.terrain,
-          textures,
-          stats,
-        );
-      } else {
-        for (let i = 0; i < ranges.length; i += 2)
-          lastTexture = this.drawBuffer(
-            this.terrainBuffer,
-            frame.terrain,
-            textures,
-            stats,
-            lastTexture,
-            ranges[i],
-            ranges[i + 1],
-          );
-      }
+      const drawTerrain = (first: number, count: number) => {
+        lastTexture = this.drawBuffer(this.terrainBuffer, frame.terrain, textures, stats, lastTexture, first, count, this.uniforms, materials?.terrain, 36);
+      };
+      if (ranges === undefined) drawTerrain(0, frame.terrainVertexCount);
+      else for (let i = 0; i < ranges.length; i += 2) drawTerrain(ranges[i], ranges[i + 1]);
       if (frame.billboards.length) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.spriteBuffer);
         if (frame.billboards.byteLength > this.spriteBytes) {
@@ -467,11 +533,13 @@ export class WebGL2SpatialPass {
           frame.billboards,
           textures,
           stats,
-          lastTexture,
+          lastTexture, 0, frame.billboardVertexCount, this.uniforms, materials?.billboards, 6,
         );
         stats.billboardDrawCalls = stats.drawCalls - terrainDrawCalls;
       }
       if (debug?.vertexCount) {
+        gl.uniform1i(this.uniforms.hasNormal, 0);
+        gl.uniform1i(this.uniforms.receiveShadow, 1);
         if (!this.debugBuffer) {
           const buffer = gl.createBuffer();
           if (!buffer)
@@ -516,7 +584,7 @@ export class WebGL2SpatialPass {
           previous.colorMask[2],
           previous.colorMask[3],
         );
-        this.environmentPass!.compositeScene(frame, target, viewport);
+        this.environmentPass!.compositeScene(frame, target, displayViewport);
         stats.effectDrawCalls = 1;
         stats.drawCalls++;
         stats.triangleCount++;
@@ -547,6 +615,12 @@ export class WebGL2SpatialPass {
         previous.clearColor[2],
         previous.clearColor[3],
       );
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindSampler(3, sampler3);
+      gl.bindTexture(gl.TEXTURE_2D, texture3);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindSampler(2, sampler2);
+      gl.bindTexture(gl.TEXTURE_2D, texture2);
       gl.activeTexture(gl.TEXTURE1);
       gl.bindSampler(1, sampler1);
       gl.bindTexture(gl.TEXTURE_2D, texture1);
@@ -579,6 +653,8 @@ export class WebGL2SpatialPass {
     first = 0,
     vertexCount = buffer.length / 11 - first,
     uniforms: SpatialGeometryUniforms = this.uniforms,
+    materials?: Uint32Array,
+    materialStride = 6,
   ): number | undefined {
     const gl = this.gl;
     this.bindVertexBuffer(gpu);
@@ -588,8 +664,21 @@ export class WebGL2SpatialPass {
       if (lastTexture !== undefined && lastTexture !== id)
         stats.textureSwitchCount++;
       lastTexture = id;
+      const material = (vertex: number, field: number) => materials?.[Math.floor(vertex / materialStride) * 2 + field] ?? (field === 0 ? 16777215 : 3);
+      const normal = material(first, 0), flags = material(first, 1);
       let end = first + 3;
-      while (end < vertices && buffer[end * 11 + 9] === id) end += 3;
+      while (end < vertices && buffer[end * 11 + 9] === id && material(end, 0) === normal && material(end, 1) === flags) end += 3;
+      if (uniforms === this.uniforms) {
+        gl.uniform1i(this.uniforms.hasNormal, normal === 16777215 ? 0 : 1);
+        gl.uniform1i(this.uniforms.receiveShadow, flags & 2 ? 1 : 0);
+        if (normal !== 16777215) {
+          gl.activeTexture(gl.TEXTURE2);
+          gl.bindSampler(2, this.sampler);
+          gl.bindTexture(gl.TEXTURE_2D, textures.texture(normal));
+          stats.textureBindCount++;
+          gl.activeTexture(gl.TEXTURE0);
+        }
+      }
       const texture = id === 16777215 ? undefined : textures.texture(id);
       gl.bindTexture(gl.TEXTURE_2D, texture ?? null);
       gl.uniform1i(uniforms.textured, texture ? 1 : 0);
@@ -688,6 +777,7 @@ export class WebGL2SpatialPass {
     };
   }
   releaseEnvironment(): void {
+    this.shadowCache = new SpatialShadowCache();
     this.environmentPass?.destroy();
     this.environmentPass = undefined;
     if (this.shadowBuffer) this.gl.deleteBuffer(this.shadowBuffer);

@@ -123,6 +123,8 @@ export class WebGL2Renderer implements Renderer {
       this.textureSource = {
         texture: (id) => this.renderTextures.texture(id) ?? this.textureManager.texture(id),
         textureFlipY: (id) => this.renderTextures.has(id),
+        textureInfo: (id) => this.renderTextures.has(id) ? undefined : this.textureManager.textureInfo(id),
+        textureRevision: (id) => this.renderTextures.has(id) ? undefined : this.textureManager.contentRevision(),
       };
       this.textureManager.createPlaceholderTextureForId(0);
       this.spriteBatch = new SpriteBatch(gl, this.colorManagement === "linear-srgb");

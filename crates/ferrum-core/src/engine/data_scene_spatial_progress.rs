@@ -143,6 +143,13 @@ impl Engine {
         ) else {
             return false;
         };
+        if progress
+            .camera
+            .as_ref()
+            .is_some_and(|c| !self.spatial_scene.environment.camera_valid(c))
+        {
+            return false;
+        }
         if progress.poses.len() != states.len() {
             return false;
         }

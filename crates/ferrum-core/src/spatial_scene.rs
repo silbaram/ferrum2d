@@ -9,6 +9,7 @@ use crate::{
 use std::collections::BTreeMap;
 mod connections;
 mod environment;
+mod shadows;
 pub(crate) use environment::{SpatialEnvironment, MAX_SHADOW_CASTERS};
 mod navigation;
 pub(crate) use navigation::SpatialNavigation;
@@ -182,7 +183,7 @@ impl SpatialCamera {
 
 /// World XYZ, atlas UV, straight RGBA, texture ID, alpha cutoff; 11 f32 values.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SpatialVertex {
     pub position: Point,
     pub uv: [f32; 2],
@@ -211,8 +212,24 @@ pub(crate) struct Surface {
     pub kind: u32,
     pub walkable: bool,
 }
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SpatialMaterial {
+    pub normal_texture: u32,
+    pub flags: u32,
+}
+const _: () = assert!(std::mem::size_of::<SpatialMaterial>() == 8);
+impl Default for SpatialMaterial {
+    fn default() -> Self {
+        Self {
+            normal_texture: 16_777_215,
+            flags: 3,
+        }
+    }
+}
 #[derive(Clone, Copy)]
 pub(crate) struct Billboard {
+    pub material: SpatialMaterial,
     pub units_per_pixel: f32,
     pub cutoff: f32,
     pub elevation: f32,
@@ -222,15 +239,21 @@ pub(crate) struct Billboard {
 pub(crate) struct SpatialScene {
     pub environment: SpatialEnvironment,
     pub shadow_casters: Vec<[SpatialVertex; 6]>,
+    previous_shadow_casters: Vec<[SpatialVertex; 6]>,
+    pub shadow_revision: u32,
+    pub shadow_draw_ranges: Vec<shadows::ShadowDrawRange>,
     shadow_quad_scratch: Vec<SpatialVertex>,
     pub camera: Option<SpatialCamera>,
     pub surfaces: Vec<Surface>,
     pub terrain: Vec<SpatialVertex>,
+    pub terrain_materials: Vec<SpatialMaterial>,
+    pub billboard_materials: Vec<SpatialMaterial>,
     pub terrain_draw_ranges: Vec<SpatialTerrainDrawRange>,
     pub billboards: Vec<SpatialVertex>,
     pub debug: SpatialDebugGeometry,
     pub bindings: BTreeMap<(u32, u32), Billboard>,
     pub frame_camera: [f32; 28],
+    pub presentation: [f32; 6],
     pub frame_active: bool,
     pub revision: u32,
     pub physics: Tilemap,
@@ -243,10 +266,15 @@ impl SpatialScene {
     pub fn clear(&mut self) {
         self.environment = SpatialEnvironment::default();
         self.shadow_casters.clear();
+        self.previous_shadow_casters.clear();
+        self.shadow_draw_ranges.clear();
+        self.shadow_revision = self.shadow_revision.wrapping_add(1);
         self.shadow_quad_scratch.clear();
         self.camera = None;
         self.surfaces.clear();
         self.terrain.clear();
+        self.terrain_materials.clear();
+        self.billboard_materials.clear();
         self.terrain_draw_ranges.clear();
         self.billboards.clear();
         self.debug.reset();
@@ -342,6 +370,7 @@ impl SpatialScene {
         self.terrain_draw_ranges = Vec::with_capacity(surfaces.len());
         self.navigation.cancel();
         self.connections.clear();
+        self.terrain_materials = vec![SpatialMaterial::default(); surfaces.len()];
         self.surfaces = surfaces;
         self.terrain = mesh;
         self.physics = physics;
@@ -351,12 +380,58 @@ impl SpatialScene {
     pub fn build(&mut self, world: &World) {
         self.shadow_casters.clear();
         self.billboards.clear();
+        self.billboard_materials.clear();
         self.debug.clear_frame();
         self.terrain_draw_ranges.clear();
         self.frame_active = self.camera.is_some();
-        let Some(camera) = self.camera else {
+        let Some(mut camera) = self.camera else {
             return;
         };
+        self.presentation = [0., 0., 1., 1., 0., 0.];
+        if let Some(values) = self.environment.values.filter(|v| v[0] as u32 & 16 != 0) {
+            let [width, height] = [values[80], values[81]];
+            let mut p = camera.parameters;
+            let fit = (p[10] / width).min(p[11] / height);
+            let pixel_scale = if fit >= 1. { fit.floor() } else { fit };
+            let w = width * pixel_scale;
+            let h = height * pixel_scale;
+            self.presentation = [
+                (1. - w / p[10]) * 0.5,
+                (1. - h / p[11]) * 0.5,
+                w / p[10],
+                h / p[11],
+                width,
+                height,
+            ];
+            p[10] = w;
+            p[11] = h;
+            if p[0] == 0. && values[82] == 1. {
+                let unit = p[7] / height;
+                let eye = [p[1], p[2], p[3]];
+                let dx = ((dot(eye, camera.right) / unit).round() * unit) - dot(eye, camera.right);
+                let dy = ((dot(eye, camera.up) / unit).round() * unit) - dot(eye, camera.up);
+                let offset = add(scale(camera.right, dx), scale(camera.up, dy));
+                for axis in 0..3 {
+                    p[1 + axis] += offset[axis];
+                    p[4 + axis] += offset[axis];
+                }
+            }
+            if let Some(displayed) = SpatialCamera::new(&p) {
+                camera = displayed;
+            }
+        }
+        self.environment.build(
+            &camera,
+            world,
+            self.actor.map(|a| {
+                (
+                    a.0,
+                    self.bindings
+                        .get(&(a.0.id, a.0.generation))
+                        .map_or(0., |b| b.elevation),
+                )
+            }),
+        );
         self.frame_camera[..16].copy_from_slice(&camera.matrix);
         self.frame_camera[16..].copy_from_slice(&camera.parameters);
         self.debug.begin_frame();
@@ -394,7 +469,10 @@ impl SpatialScene {
             let elevation =
                 world.height_span(entity).map_or(0.0, |s| s.elevation) + style.elevation;
             let first = self.billboards.len();
-            if self.environment.shadows() && self.shadow_casters.len() < MAX_SHADOW_CASTERS {
+            if style.material.flags & 1 != 0
+                && self.environment.shadows()
+                && self.shadow_casters.len() < MAX_SHADOW_CASTERS
+            {
                 self.shadow_quad_scratch.clear();
                 append_billboard_internal(
                     &mut self.shadow_quad_scratch,
@@ -410,6 +488,9 @@ impl SpatialScene {
                 }
             }
             append_billboard(&mut self.billboards, &camera, t, s, elevation, style);
+            if self.billboards.len() > first {
+                self.billboard_materials.push(style.material);
+            }
             self.debug.billboard(
                 &self.billboards[first..],
                 [t.x, elevation, -t.y],
@@ -422,6 +503,13 @@ impl SpatialScene {
         self.debug.physics(world, &camera);
         self.shadow_casters
             .sort_unstable_by_key(|q| q[0].texture as u32);
+        if self.shadow_casters != self.previous_shadow_casters {
+            self.shadow_revision = self.shadow_revision.wrapping_add(1);
+            self.previous_shadow_casters.clear();
+            self.previous_shadow_casters
+                .extend_from_slice(&self.shadow_casters);
+        }
+        self.build_shadow_ranges();
     }
     pub fn shadow_budget_valid(&self, world: &World) -> bool {
         self.shadow_budget_valid_after_removals(world, &std::collections::BTreeSet::new())
@@ -439,7 +527,11 @@ impl SpatialScene {
         }
         let mut previous = None;
         let mut runs = 0;
-        for s in &self.surfaces {
+        for (index, s) in self.surfaces.iter().enumerate() {
+            if self.terrain_materials[index].flags & 1 == 0 {
+                previous = None;
+                continue;
+            }
             if previous != Some(s.texture) {
                 runs += 1;
                 previous = Some(s.texture);
@@ -448,7 +540,7 @@ impl SpatialScene {
         let textures: std::collections::BTreeSet<_> = self
             .bindings
             .keys()
-            .filter(|key| !removed.contains(key))
+            .filter(|key| !removed.contains(key) && self.bindings[*key].material.flags & 1 != 0)
             .filter_map(|&(id, generation)| {
                 world
                     .sprite_at_index(id as usize)

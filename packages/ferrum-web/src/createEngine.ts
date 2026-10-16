@@ -1,4 +1,5 @@
-import { createSpatialApi } from "./dataSceneSpatial.js";
+import { createSpatialApi, spatialCameraValues } from "./dataSceneSpatial.js";
+import { compileSpatialEnvironment } from "./spatialEnvironment.js";
 import { createDataSceneMovementApi } from "./dataSceneMovement.js";
 import { createDataSceneMovementAnimationApi } from "./dataSceneMovementAnimation.js";
 import { attachDataSceneProgressAdapter } from "./dataSceneProgress.js";
@@ -922,6 +923,16 @@ export async function createEngineWithFramePipeline(
   });
   return attachDataSceneRuntimeEngineAdapter(engine, {
     useDataScene,
+    preflightSpatialEnvironment: (camera, environment) => {
+      requireAlive();
+      const values = compileSpatialEnvironment(environment);
+      return typeof rustEngine.preflight_spatial_camera_environment === "function"
+        ? rustEngine.preflight_spatial_camera_environment(
+          spatialCameraValues(camera, rustEngine.spatial_viewport_width(), rustEngine.spatial_viewport_height()),
+          values,
+        )
+        : values.length === 80;
+    },
     textureId: (name) => {
       requireAlive();
       return requireAssetHost().textureId(name);

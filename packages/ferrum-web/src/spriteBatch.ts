@@ -29,6 +29,9 @@ export interface SpriteBatchStats {
 
 export interface SpriteTextureSource {
   texture(textureId: number): WebGLTexture;
+  /** Undefined means mutable/untracked; spatial shadow results must then be regenerated. */
+  textureRevision?(textureId: number): number | undefined;
+  textureInfo?(textureId: number): { width: number; height: number; colorSpace: "srgb" | "linear" | "none" } | undefined;
   /** Framebuffer textures need bottom-left storage mapped to top-left sprite UVs. */
   textureFlipY?(textureId: number): boolean;
 }

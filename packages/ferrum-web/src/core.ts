@@ -423,4 +423,4 @@ export type { SpatialRendererStats } from "./webgl2SpatialPass.js";
 export type { DataSceneSpatialPoseSnapshot, DataSceneSpatialProgressSnapshot } from "./dataSceneSpatialProgress.js";
 
 export { resolveSpatialEnvironmentSpec } from "./spatialEnvironment.js";
-export type { SpatialRgb, SpatialPointLightSpec, SpatialLightingSpec, SpatialDepthOfFieldSpec, SpatialColorGradingSpec, SpatialFogSpec, SpatialEnvironmentSpec, SpatialEnvironmentBufferView } from "./spatialEnvironment.js";
+export type { SpatialRgb, SpatialDirectionalLightSpec, SpatialPointLightSpec, SpatialLightingSpec, SpatialDepthOfFieldSpec, SpatialColorGradingSpec, SpatialFogSpec, SpatialEnvironmentSpec, SpatialEnvironmentBufferView } from "./spatialEnvironment.js";

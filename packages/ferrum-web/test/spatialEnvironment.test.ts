@@ -112,3 +112,45 @@ test("spatial environment facade is cold numeric, validates before call, and gua
   );
   equal(old.setDataSceneSpatialEnvironment(spec), false);
 });
+
+test("pixel presentation uses a versioned optional numeric extension and round trips", () => {
+  const v = compileSpatialEnvironment({ pixelArt: { width: 160, height: 90, snapCamera: true } });
+  equal(v.length, 112); equal(v[0], 16); ok(validSpatialEnvironmentValues(v));
+  deepEqual(compileSpatialEnvironment(decodeSpatialEnvironment(v)), v);
+  for (const bad of [{ width: 0, height: 90 }, { width: 160.5, height: 90 }, { width: 2048, height: 2048 }, { width: 160, height: 90, snapCamera: 1 }])
+    throws(() => resolveSpatialEnvironmentSpec({ pixelArt: bad }), /pixelArt/);
+});
+
+test("directional shadows, PCF and actor focus round trip without changing legacy settings", () => {
+  const settings: SpatialEnvironmentSpec = {
+    lighting: { lights: [], directional: { direction: { x: 1, y: -1, elevation: 2 }, shadows: {} }, shadowFilter: "pcf3" },
+    depthOfField: { focusDistance: 100, quality: "high", focusTarget: "actor", focusOffset: 16 },
+  };
+  const v = compileSpatialEnvironment(settings);
+  equal(v.length, 112); ok(validSpatialEnvironmentValues(v)); equal(v[92], 512);
+  equal(v[95], 1); equal(v[96], 1); equal(v[97], 1); equal(v[98], 16); equal(v[99], 0);
+  deepEqual(compileSpatialEnvironment(decodeSpatialEnvironment(v)), v);
+  for (const invalid of [
+    { lighting: { lights: [], directional: { direction: { x: 0, y: 0, elevation: 0 } } } },
+    { lighting: { lights: [], shadowFilter: "pcss" } },
+    { depthOfField: { focusDistance: 100, quality: "ultra" } },
+    { depthOfField: { focusDistance: 100, focusTarget: "missing" } },
+    { depthOfField: { focusDistance: 100, focusOffset: 16 } },
+  ]) throws(() => resolveSpatialEnvironmentSpec(invalid), /spatial.environment/);
+});
+
+test("directional f32 vectors stay byte-identical across repeated environment save round trips", () => {
+  for (let i = 0; i < 2000; i++) {
+    const original = compileSpatialEnvironment({
+      lighting: { lights: [], directional: {
+        direction: { x: Math.sin(i * 0.17) * 100, y: Math.cos(i * 0.3) * 300, elevation: Math.sin(i * 0.9) * 400 },
+        shadows: { extent: 256, resolution: 512 },
+      } },
+    });
+    let current = original;
+    for (let save = 0; save < 3; save++) {
+      current = compileSpatialEnvironment(decodeSpatialEnvironment(current));
+      deepEqual(current, original, `direction ${i}, save ${save}`);
+    }
+  }
+});

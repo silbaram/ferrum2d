@@ -5,6 +5,7 @@ import {
   captureGameStateSnapshot,
   restoreGameStateSnapshot,
   hashGameStateSnapshot,
+  type SpatialEnvironmentSpec,
 } from "../src/core.js";
 import { applyDataSceneAuthoringDocument } from "../src/authoring.js";
 
@@ -40,7 +41,7 @@ test("spatial shadow restore preflights prospective caster budgets before activa
     undefined,
     () => ({ width: 800, height: 480 }),
   );
-  const environment = {
+  const pointEnvironment: SpatialEnvironmentSpec = {
     lighting: {
       lights: [{ position: { x: 0, y: 0, elevation: 100 }, radius: 500 }],
       shadows: { lightIndex: 0 },
@@ -119,6 +120,7 @@ test("spatial shadow restore preflights prospective caster budgets before activa
     );
     equal(destination.entityCount(), legacy.dataScene.scene.entityCount);
     equal(hashGameStateSnapshot(legacy), legacy.snapshotHash);
+    for (const environment of [pointEnvironment, { lighting: { lights: [], directional: { direction: { x: 0, y: 0, elevation: 1 }, shadows: {} } } } satisfies SpatialEnvironmentSpec]) {
     for (const [count, terrainCount, message] of [
       [1025, 1, /1024/],
       [2, 63, /64/],
@@ -152,6 +154,10 @@ test("spatial shadow restore preflights prospective caster budgets before activa
       );
       ok(destination.gameplayEntityExists(sentinel));
     }
+    const flagsDoc = { ...document(2, 63), spatial: { ...document(2, 63).spatial, environment } };
+    const flagsBillboards: Record<string, { castShadow?: boolean }> = flagsDoc.spatial.billboards;
+    flagsBillboards.tree1 = { castShadow: false };
+    ok(applyDataSceneAuthoringDocument(destination, flagsDoc).entityHandles.tree0);
     const doc = document(2, 63);
     const handles = applyDataSceneAuthoringDocument(source, doc).entityHandles;
     ok(source.despawnPhysicsEntity(handles.tree1!));
@@ -166,6 +172,38 @@ test("spatial shadow restore preflights prospective caster budgets before activa
       restoreGameStateSnapshot(destination, JSON.parse(JSON.stringify(saved)))
         .dataSceneStateApplied,
     );
+    equal(destination.entityCount(), 1);
+    }
+    // Valid camera values can still overflow directional shadow projection. Reject before activation.
+    const doc = document(1, 1);
+    applyDataSceneAuthoringDocument(source, doc);
+    const sentinel = applyDataSceneAuthoringDocument(destination, doc).entityHandles.tree0!;
+    const bad = JSON.parse(JSON.stringify(captureGameStateSnapshot(source, {
+      includeDataSceneState: true,
+      includeDataSceneProgress: true,
+      dataSceneAuthoringDocument: doc,
+    })));
+    const environment: SpatialEnvironmentSpec = {
+      lighting: { lights: [], directional: {
+        direction: { x: 0, y: 0, elevation: 1 },
+        shadows: { extent: 1, resolution: 1024 },
+      } },
+    };
+    const camera = { ...doc.spatial.camera,
+      position: { ...doc.spatial.camera.position, x: 1e37 },
+      target: { ...doc.spatial.camera.target, x: 1e37 },
+    };
+    bad.dataScene.version = 7;
+    bad.dataScene.progress.spatial.environment = environment;
+    bad.dataScene.progress.spatial.camera = camera;
+    bad.snapshotHash = hashGameStateSnapshot(bad);
+    throws(() => restoreGameStateSnapshot(destination, bad), /camera\/environment preflight/);
+    ok(destination.gameplayEntityExists(sentinel), "rejected saved camera must preserve the active entity");
+    equal(destination.entityCount(), 1);
+    throws(() => applyDataSceneAuthoringDocument(destination, {
+      ...doc, spatial: { ...doc.spatial, camera, environment },
+    }), /camera\/environment preflight/);
+    ok(destination.gameplayEntityExists(sentinel), "rejected authored camera must preserve the active entity");
     equal(destination.entityCount(), 1);
   } finally {
     source.destroy();

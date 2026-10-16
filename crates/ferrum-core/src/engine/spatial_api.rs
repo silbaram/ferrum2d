@@ -124,6 +124,35 @@ impl Engine {
         connections: &[u32],
         environment: &[f32],
     ) -> bool {
+        self.configure_spatial_scene_materials(
+            camera_values,
+            terrain_values,
+            terrain_metadata,
+            handles,
+            styles,
+            actor_handle,
+            actor_values,
+            connections,
+            environment,
+            &[],
+            &[],
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn configure_spatial_scene_materials(
+        &mut self,
+        camera_values: &[f32],
+        terrain_values: &[f32],
+        terrain_metadata: &[u32],
+        handles: &[u32],
+        styles: &[f32],
+        actor_handle: &[u32],
+        actor_values: &[f32],
+        connections: &[u32],
+        environment: &[f32],
+        terrain_materials: &[u32],
+        billboard_materials: &[u32],
+    ) -> bool {
         if self.scene_mode != SceneMode::Data
             || !handles.len().is_multiple_of(2)
             || styles.len() != handles.len() / 2 * 3
@@ -171,6 +200,7 @@ impl Engine {
             next.bindings.insert(
                 (h[0], h[1]),
                 Billboard {
+                    material: Default::default(),
                     units_per_pixel: v[0],
                     cutoff: v[1],
                     elevation: v[2],
@@ -205,13 +235,55 @@ impl Engine {
         } else if !actor_values.is_empty() {
             return false;
         }
-        if !next.shadow_budget_valid(&self.world) {
+        if !terrain_materials.is_empty() {
+            if terrain_materials.len() != next.surfaces.len()
+                || terrain_materials.iter().any(|f| *f > 3)
+            {
+                return false;
+            }
+            for (m, flags) in next.terrain_materials.iter_mut().zip(terrain_materials) {
+                m.flags = *flags;
+            }
+        }
+        if !billboard_materials.is_empty() {
+            if billboard_materials.len() != handles.len() {
+                return false;
+            }
+            for (h, m) in handles
+                .chunks_exact(2)
+                .zip(billboard_materials.chunks_exact(2))
+            {
+                if m[0] > 16_777_215 || m[1] > 3 {
+                    return false;
+                }
+                let Some(binding) = next.bindings.get_mut(&(h[0], h[1])) else {
+                    return false;
+                };
+                binding.material = crate::spatial_scene::SpatialMaterial {
+                    normal_texture: m[0],
+                    flags: m[1],
+                };
+            }
+        }
+        if !next.environment.camera_valid(&camera) || !next.shadow_budget_valid(&self.world) {
             return false;
         }
         self.data_scene.movement.cancel();
         next.revision = self.spatial_scene.revision.wrapping_add(1);
         self.spatial_scene = next;
         true
+    }
+    /// Cold preflight for authoring/restore before replacing the active scene.
+    pub fn preflight_spatial_camera_environment(
+        &self,
+        camera_values: &[f32],
+        environment_values: &[f32],
+    ) -> bool {
+        let Some(camera) = SpatialCamera::new(camera_values) else {
+            return false;
+        };
+        crate::spatial_scene::SpatialEnvironment::new(environment_values)
+            .is_some_and(|environment| environment.camera_valid(&camera))
     }
     pub fn configure_spatial_environment(&mut self, values: &[f32]) -> bool {
         if self.scene_mode != SceneMode::Data || self.spatial_scene.camera.is_none() {
@@ -220,6 +292,14 @@ impl Engine {
         let Some(next) = crate::spatial_scene::SpatialEnvironment::new(values) else {
             return false;
         };
+        if self
+            .spatial_scene
+            .camera
+            .as_ref()
+            .is_none_or(|c| !next.camera_valid(c))
+        {
+            return false;
+        }
         let previous = std::mem::replace(&mut self.spatial_scene.environment, next);
         if !self.spatial_scene.shadow_budget_valid(&self.world) {
             self.spatial_scene.environment = previous;
@@ -232,30 +312,45 @@ impl Engine {
         self.spatial_scene
             .environment
             .values
-            .map_or_else(Vec::new, |v| v.to_vec())
+            .map_or_else(Vec::new, |v| {
+                v[..self.spatial_scene.environment.value_len].to_vec()
+            })
     }
     pub fn spatial_environment_abi_version(&self) -> u32 {
-        1
+        if self.spatial_scene.environment.value_len > 80 {
+            2
+        } else {
+            1
+        }
     }
     pub fn spatial_environment_len(&self) -> u32 {
         if self.spatial_scene.frame_active && self.spatial_scene.environment.values.is_some() {
-            80
+            self.spatial_scene.environment.value_len as u32
         } else {
             0
         }
     }
     pub fn spatial_environment_ptr(&self) -> *const f32 {
-        self.spatial_scene
-            .environment
-            .values
-            .as_ref()
-            .map_or(std::ptr::null(), |v| v.as_ptr())
+        self.spatial_scene.environment.frame_values.as_ptr()
     }
     pub fn spatial_shadow_matrix_ptr(&self) -> *const f32 {
         self.spatial_scene.environment.shadow_matrices.as_ptr()
     }
     pub fn spatial_shadow_matrix_len(&self) -> u32 {
         self.spatial_scene.environment.shadow_matrices.len() as u32
+    }
+    /// Optional shadow submission extension v1: face, source (terrain/caster), first, count.
+    pub fn spatial_shadow_submission_version(&self) -> u32 {
+        1
+    }
+    pub fn spatial_shadow_revision(&self) -> u32 {
+        self.spatial_scene.shadow_revision
+    }
+    pub fn spatial_shadow_range_ptr(&self) -> *const u32 {
+        self.spatial_scene.shadow_draw_ranges.as_ptr().cast()
+    }
+    pub fn spatial_shadow_range_len(&self) -> u32 {
+        self.spatial_scene.shadow_draw_ranges.len() as u32
     }
     pub fn spatial_shadow_caster_ptr(&self) -> *const f32 {
         self.spatial_scene.shadow_casters.as_ptr().cast()
@@ -270,6 +365,9 @@ impl Engine {
         let Some(camera) = SpatialCamera::new(values) else {
             return false;
         };
+        if !self.spatial_scene.environment.camera_valid(&camera) {
+            return false;
+        }
         self.spatial_scene.camera = Some(camera);
         true
     }
@@ -319,6 +417,7 @@ impl Engine {
             next.insert(
                 (h[0], h[1]),
                 Billboard {
+                    material: Default::default(),
                     units_per_pixel: v[0],
                     cutoff: v[1],
                     elevation: v[2],
@@ -485,6 +584,27 @@ impl Engine {
     }
     pub fn spatial_billboard_len(&self) -> u32 {
         self.spatial_scene.billboards.len() as u32
+    }
+    pub fn spatial_presentation_version(&self) -> u32 {
+        1
+    }
+    pub fn spatial_presentation_ptr(&self) -> *const f32 {
+        self.spatial_scene.presentation.as_ptr()
+    }
+    pub fn spatial_material_abi_version(&self) -> u32 {
+        1
+    }
+    pub fn spatial_terrain_material_ptr(&self) -> *const u32 {
+        self.spatial_scene.terrain_materials.as_ptr().cast()
+    }
+    pub fn spatial_terrain_material_len(&self) -> u32 {
+        self.spatial_scene.terrain_materials.len() as u32
+    }
+    pub fn spatial_billboard_material_ptr(&self) -> *const u32 {
+        self.spatial_scene.billboard_materials.as_ptr().cast()
+    }
+    pub fn spatial_billboard_material_len(&self) -> u32 {
+        self.spatial_scene.billboard_materials.len() as u32
     }
     pub fn spatial_camera_ptr(&self) -> *const f32 {
         self.spatial_scene.frame_camera.as_ptr()
