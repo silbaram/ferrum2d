@@ -763,10 +763,17 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 ## Data Scene 공간 경로 (개발 소스)
 
 `createDataSceneSpatialView`, `resolveDataSceneSpatialSpec`, `resolveSpatialCameraSpec`과
+`SpatialTerrainSurface.render`는 기본 true이며 false는 물리·picking·debug용 proxy를 유지하고 렌더/그림자 제출에서 제외한다.
+이 경우 texture와 true shadow flag를 거절하며 native capability v1이 필요하다. 기존 frame ABI와 저장 버전을 유지한다.
+
 `DataSceneSpatialSpec`, `SpatialCameraSpec`, `SpatialPoint`, `SpatialTerrainSurface`, `SpatialSurfaceConnection`,
 `SpatialMoveOptions`, `SpatialMoveStats`, `SpatialBillboardSpec`, `SpatialRenderBufferView`, `SpatialSurfaceHit`, `FerrumSpatialApi`,
 `SpatialRendererStats`, `SpatialDebugOptions`, `SpatialDebugBufferView`를 `/core`에서 제공한다. 공간 확장은 opt-in WebGL2 첫 구현이며 세부 계약은
 [입체 지형·카메라·빌보드](../data-scene-spatial.md)를 따른다.
+
+`SpatialRendererStats.modelInstancedDrawCalls`는 main 모델 draw에 포함되는 실제 인스턴싱 호출 수다.
+`modelInstanceUploadBytes`는 main/재계산 shadow의 동적 행렬 전송량이고 전체 upload에도 포함한다.
+정적 자원 전송은 기존 `modelUploadBytes`로 구분한다. 연속 동일 자원/receive 설정만 묶으며 scene당 모델 입력 한도는 1,024개다.
 
 | FerrumEngine method | 계약 |
 | --- | --- |
@@ -779,8 +786,44 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 | `moveDataSceneSpatialActorTo(options)` | x/y/floorId/speed 목적지. native bounded A*, cellSize 기본 8·arrivalRadius 0.5·cancelOnInput true. 실패 시 기존 경로 보존 |
 | `cancelDataSceneSpatialMove()` | 진행 경로 취소 시 true |
 | `dataSceneSpatialMoveStatus()` | idle/moving/arrived/blocked/cancelled, Data Scene 밖·구 Wasm은 undefined |
-| `dataSceneSpatialMoveStats()` | 마지막 탐색 node/probe/work·경로 waypoint/잔여·누적 searchCount, 구 Wasm은 undefined |
+| `dataSceneSpatialMoveStats()` | 마지막 요청 node/probe/work·경로 waypoint/잔여·누적 searchCount, 구 Wasm은 undefined |
 | `pickDataSceneSpatialSurface(ndcX, ndcY, frame)` | 표시 camera와 같은 native terrain ray hit, stale revision은 undefined |
+
+`loadSpatialGlb(source, { materialProfile: "diffuse", signal? })`는 자체 완결 정적 GLB를 비동기 준비한다.
+`SpatialGlbOptions`, `SpatialModelAsset`, `SpatialModelPrimitive`, `SpatialModelInstanceSpec` 타입을 제공한다.
+`loadSpatialGltf(source, { materialProfile: "diffuse", signal? })`와 `SpatialGltfOptions`는 HTTP(S) 분리형 glTF를 준비한다.
+같은 document origin의 최대 16 binary/16 image, document 2 MiB·전체 입력/정규화 bundle 32 MiB와 취소를 검사한다.
+기존 GLB decoder를 재사용하며 contentId는 종속 bytes를 포함한 정규화 bundle hash다. redirect/data URI는 지원하지 않는다.
+자세한 계약은 [분리형 glTF](../data-scene-spatial.md#분리형-gltf-배경-모델)를 따른다.
+
+`SpatialModelAssetCache`는 같은 source의 pending/ready CPU 자원을 공유하고 독립 취소·lease·LRU 용량을 관리한다.
+`SpatialModelAssetSource`, `SpatialModelAssetCacheOptions`, `SpatialModelAssetAcquireOptions`, `SpatialModelAssetLease`,
+`SpatialModelAssetCacheStats`를 제공한다. 기본 16 entry/128 MiB/동시 로드 2개이며 active 자원은 제거하지 않는다.
+사용법과 destroy/engine/GPU 수명 구분은 [공유 모델 캐시](../data-scene-spatial.md#공유-모델-캐시와-preload-수명)를 따른다.
+
+asset은 SHA-256 contentId/bounds/count/byteLength/diagnostics의 불변 식별자다.
+`registerDataSceneSpatialModel(id, asset)` 후 `DataSceneSpatialSpec.models`에 instance별 asset/contentId를 연결한다.
+`releaseDataSceneSpatialModel(id)`는 native binding이 있으면 false이며, `preflightDataSceneSpatialModels(spec, origins?)`는
+등록 자원/content/제출 예산을 활성화 전에 검사한다. 자원 누락 fresh restore는 현재 씬을 보존하며 거절한다.
+OPAQUE/MASK·단면/양면 base color·normal map·emissive·PNG/JPEG·sampler·공유 indexed geometry를 지원하며
+물리는 최종 world 단위 AABB/heightSpan으로 따로 작성한다. 자세한 제한은 [정적 GLB 계약](../data-scene-spatial.md)을 따른다.
+`SpatialModelPrimitive.alphaCutoff`는 OPAQUE에서 0, MASK에서 GLB의 cutoff(기본 0.5)이며
+`doubleSided`는 GLB material의 양면 설정이다. alpha 비교는 color/depth와 그림자 pass에 동일하게 적용한다.
+`SpatialModelPrimitive.normal`은 image/sampler/scale, `emissive`는 image/sampler 참조이며 선택 값이다.
+`emissiveFactor`는 linear RGB 0..1(기본 0)이다. CPU vertices는 normal map이 있으면 tangent XYZW를 포함한 12 floats,
+없으면 기존 8 floats다. 정상적인 GLB normal map은 UV0와 exported TANGENT VEC4를 요구한다.
+normal scale은 -64..64(기본 1), emissive texture는 sRGB·alpha 무시다. 발광도 기존 HDR/fog를 따른다.
+모델 base/emissive texture는 renderer 색상 모드와 무관하게 sRGB GPU format을 사용해 보간 전에 해석한다.
+이미지가 포함된 GLB 준비는 임시 WebGL2 readback을 사용해 투명 픽셀의 RGB도 보존한다.
+각 이미지에서 bitmap·임시 GPU 자원을 해제하며 읽은 RGBA만 asset에 유지한다. WebGL2를 사용할 수 없으면 준비를 거절한다.
+모델 handle에 anchor한 world text는 같은 공간 높이·depth를 사용하며 글꼴 크기는 모델 배율과 독립적이다.
+공간 진행 capture는 GPU 변환 범위를 벗어난 모델 pose를 발견하면 예외를 발생시킨다.
+
+`SpatialMoveStats.lastRequest`는 새 Wasm에서 제공하는 optional 진단이다.
+`status`는 요청 전/수락·입력/actor·경로 없음·node/probe/work/frame 예산 거절을 구분한다.
+`count`는 native 요청 횟수, `collisionProxyCount`는 준비한 target AABB 수,
+`preparationWorkUnits`는 최초 순회·정렬 비용이다. 실패한 요청은 기존 경로·pose를 보존한다.
+자세한 status와 비용·호환 계약은 [공간 목적지 이동](../data-scene-spatial.md)을 따른다.
 
 `RenderCommandBufferView.spatial`은 borrowed Wasm geometry/camera view다. 현재 v2는 필수
 `terrainDrawRanges: Uint32Array`의 `[firstVertex, vertexCount]` 쌍으로 visible authored surface만 제출한다.
@@ -790,7 +833,7 @@ reset/전체 reapply는 idle이다. 경로·이동 상태·위치는 진행 snap
 terrainTriangleCount/triangleCount는 실제 제출 지형/전체 삼각형 수다. 그 밖의 값은
 triangle/billboard/draw/upload/depth storage metric이다. 미지원 renderer와 spatial RenderTexture capture,
 활성 flat LightingScene2D는 거절한다. `includeDataSceneProgress` 공간 capture는 v6에서 현재 native camera와
-authored billboard의 pose를 저장한다. `DataSceneSpatialPoseSnapshot`, `DataSceneSpatialProgressSnapshot`도 `/core`에서 제공한다.
+authored billboard/model의 pose를 저장한다. `DataSceneSpatialPoseSnapshot`, `DataSceneSpatialProgressSnapshot`도 `/core`에서 제공한다.
 
 optional `spatial.debug`는 독립 extension v1의 borrowed endpoint pairs다. 11-float vertex × 2가 선분 하나이며
 최대 32,768 vertices, 초과 시 `truncated=true`다. `debugLineCount/debugDrawCalls/debugUploadBytes/debugTruncated`로
@@ -825,3 +868,26 @@ pixelArt 고정 해상도·직교 표시 스냅·normal atlas·cast/receive·방
 공간 통계에 추가된다. `progress.spatial.environment`가 있는 capture는 v7이며 null은 authored 효과 해제다.
 v6 이하에 이 progress를 넣으면 거절한다. legacy v5·공간 v6 기본 capture/hash는 유지한다.
 자세한 색 공간·자원 예산·cutout/DOF 제한은 [공간 environment 계약](../data-scene-spatial.md)을 따른다.
+
+`SpatialModelPreparer`·`SpatialModelPreparation`은 모델 GPU 사전 준비의 opaque 자원/lease 계약이다.
+`WebGL2Renderer.prepareSpatialModels(assets)`는 uploadBytes·commit/dispose를 반환한다.
+authoring의 spatialModelPreparer 옵션으로 연결하며 실패 시 기존 씬을 유지한다.
+[지원 범위와 수명 계약](../data-scene-spatial.md#모델-gpu-준비-후-활성화)을 따른다.
+
+공간 frame의 `models.assets`는 native ID를 공개 `SpatialModelAsset` 핸들에 연결하며 내부 메시·RGBA 배열을
+노출하지 않는다. 자원은 renderer 내부에서만 해석하고 위조한 핸들은 draw 전에 거절한다.
+`preflightDataSceneSpatialModels`의 생략된 origin은 own property만 조회한 뒤 기본 XY/높이 0을 사용하므로
+`constructor`·`__proto__` 같은 유효한 instance ID에서도 일관되게 동작한다.
+
+`DataSceneSpatialSpec.modelChunks`와 `SpatialModelInstanceSpec.chunk/lods`는 bounded visual residency와
+거리별 정적 model 선택을 작성한다. 모든 LOD 자원을 먼저 등록하며 native가 거리·hysteresis·shadow
+필요 여부를 고른다. physics는 visual unload와 무관하다. 자동 네트워크 다운로드는 제공하지 않는다.
+`attachments`는 parent body 기준 child pose이며 native가 위치·높이·회전을 갱신한다.
+`DATA_SCENE_STATE_VERSION` 최신값은 8이다. attachment·chunk/LOD 또는 native model rotation 진행은 v8,
+기존 문서는 v5/v6/v7 capture/hash를 유지한다. root yaw를 저장하고 child pose는 복원 시 재계산한다.
+[모델 고도화 계약](../data-scene-spatial.md#모델-고도화-재질-batch움직이는-묶음청크lod)을 따른다.
+
+GPU stats의 `currentFrameId`는 현재 begun renderer frame이며 `frameId`는 완료한 과거 query의 발행
+frame이다. 두 값을 구분해 `RuntimeProfilerOptions.frameTrace`가 느린 frame 전후의 CPU·GPU·공간 비용을
+연결한다. `RuntimeFrameTraceOptions`·`RuntimeFrameTraceSample`·`RuntimeFrameTraceCapture`·
+`RuntimeFrameTraceSnapshot`의 범위와 상한은 [quality 진단 계약](quality.md#느린-프레임-전후-기록)을 따른다.

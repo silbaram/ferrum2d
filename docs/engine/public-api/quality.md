@@ -96,3 +96,43 @@ Replay helper는 CI와 agent workflow의 evidence를 만들기 위한 API다. pu
 | `compareScreenshotSummaries(...)` | visual smoke summary를 비교한다. |
 
 Screenshot과 debug gizmo helper는 smoke evidence와 저빈도 debug authoring 보조용이다. gameplay simulation이나 visual editor를 의미하지 않는다.
+
+## 느린 프레임 전후 기록
+
+`RuntimeProfilerOptions.frameTrace`는 선택적인 진단 기록이다. 기본값은 꺼짐이며
+`RuntimeFrameTraceOptions`, `RuntimeFrameTraceSample`, `RuntimeFrameTraceCapture`,
+`RuntimeFrameTraceSnapshot` 타입을 core/quality/root에서 제공한다.
+
+```ts
+const runtime = await createFerrumRuntime({
+  canvas,
+  webgl2: { gpuTiming: true },
+  profiler: {
+    frameTrace: {
+      frameBudgetMs: 1000 / 60,
+      beforeFrames: 15, afterFrames: 15, maxCaptures: 8,
+    },
+  },
+});
+const trace = runtime.profiler?.snapshot().frameTrace;
+```
+
+frame interval 또는 Rust update+render CPU 시간이 예산을 넘으면 앞뒤 window를 보존한다.
+유효한 GPU 결과가 `gpuBudgetMs`(기본 frameBudgetMs)를 넘으면 해당 발행 frame의 과거 window도
+보존한다. 현재 `rendererFrameId`와 완료된 이전 query의 `gpuFrameId`를 구분해 원래 row에 GPU 시간을
+연결한다. window에는 원시 `frameIntervalMs`·기존 frameTimeMs·CPU 시간과 model draw/triangle,
+geometry/instance upload, spatial shadow draw/pass/upload/cache hit 및 자원 수가 포함된다.
+애플리케이션의 onFrame 후속 작업·OS/드라이버 클럭·실제 VRAM은 자동으로 측정하지 않는다.
+
+before/after는 각각 0..240(기본 15), maxCaptures는 1..32(기본 8)다. history는 최소 120개,
+최대 before+after+1개와 120 중 큰 값이다. capture가 가득 차면 오래된 window를 버리며
+`droppedCaptureCount`를 기록한다. 겹치는 트리거는 기존 window에 포함하며 무한히 연장하지 않는다.
+`complete`는 후속 frame window가 채워졌다는 뜻이며 GPU query 완료를 보장하지 않는다.
+GPU 결과가 늦게 도착하면 해당 row를 보강한다. 빠진 값은 undefined로 유지하고, history/capture에서
+이미 사라진 결과와 중복 결과는 별도 집계한다. snapshot은 숫자·boolean의 독립 복사본이며 Wasm view를
+보관하지 않는다. measured/unmeasuredGpuFrameCount는 **보관한 capture들의 고유 frame 수**다.
+전체 측정 구간의 표본 수로 해석하지 않는다. `reset()`은 history·capture·연결 상태를 비운다.
+
+자동 runtime은 renderer frame ID를 제공한다. 수동 `recordFrame` 사용자는 증가하는 실제
+`rendererFrameId`를 전달해야 GPU 결과를 연결할 수 있다. ID 누락은 missingFrameIdCount로 집계하고,
+ID가 되돌아가면 오류다. 다른 renderer에 같은 profiler를 재사용할 때 먼저 reset한다.

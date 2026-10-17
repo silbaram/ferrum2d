@@ -480,7 +480,7 @@ GPU terrain은 revision/memory identity
 효과가 꺼진 fullscreen postprocess target은 별도 depth renderbuffer를 소유한다.
 
 공간 설정은 Scene Authoring version 1의 optional `spatial`이고 기존 JSON document 재적용에 참여한다.
-공간 진행을 opt-in capture하면 Data Scene v6에 native camera와 live authored billboard의 XY/heightSpan을
+공간 진행을 opt-in capture하면 Data Scene v6에 native camera와 live authored billboard/model의 XY/heightSpan을
 저장한다. body 없는 장식은 span=null이고 terrain support link는 stable authored ID로 저장한다.
 TS는 ID/JSON 변환만 수행하고 native는 임시 terrain 기반 preflight 및 flag/animation/pose/camera
 전체 batch의 검증·commit을 수행한다. viewport는 복원 대상 engine에서 재생성한다.
@@ -488,6 +488,77 @@ configuration revision은 terrain/binding/actor 변경의 누락 저장을 막�
 일반 capture v5와 v2~v5 읽기/기존 hash는 보존한다. 전체 physics momentum/world save는 별도 계약이다.
 공개 API·지원 제한은 [공간 지형·카메라·빌보드](../../engine/data-scene-spatial.md), pixel/resource gate는
 `pnpm smoke:spatial-scene`을 기준으로 한다.
+
+M3 외부 입력의 `spatialGltf.ts`는 HTTP glTF JSON과 같은 origin의 binary/image를 cold 단계에서 준비한다.
+문서 2 MiB·전체 고유 decoded bytes/정규화 bundle 32 MiB·16 binary/16 image 상한, redirect/URL 정책과 reader 취소/해제를 소유한다.
+압축 응답·Content-Encoding이 숨겨진 CORS 응답은 실제 decoded stream으로 상한을 검사한다.
+image용 view를 추가하기 전에 accessor/image 참조가 원래 view 목록 안에 있는지도 검증한다.
+`spatialModelAssetCache.ts`는 URL/format/content revision의 cold CPU load를 합치고 독립 소비자 lease·취소·
+동시 로드/entry/decoded byte 상한·idle LRU를 관리한다. engine 등록/GPU 준비·해제와 native scene 상태는 소유하지 않는다.
+같은 asset handle을 공유해 renderer의 기존 resource identity cache를 재사용하며 저장 포맷과 render ABI는 유지한다.
+모든 view를 원래 buffer 범위로 검사한 뒤 정렬·재배치하며 이미지를 내장한다. 결과는 기존 GLB 디코더로 보내므로
+geometry·normal/tangent·재질·이미지 해석을 복제하지 않는다. content identity는 종속 bytes를 포함한 정규화 bundle에 둔다.
+네트워크·정규화는 플랫폼 자산 준비이며 Rust simulation·기존 80-byte model ABI·authoring/progress 형식을 바꾸지 않는다.
+load 실패/취소는 씬을 적용하지 않으며 성공 뒤 기존 register/preflight/선택 GPU 준비/apply 흐름을 사용한다.
+
+정적 GLB 모델 M1은 기존 spatial pass의 독립 extension v1이다. `spatialModel.ts`가 제한된 파일/이미지
+파싱과 SHA-256 content identity, 불변 CPU 자원 등록을 맡고 `spatial_scene/models.rs`는 native entity의
+XY/heightSpan과 authored root yaw/scale에서 matrix·bounds·camera/light 제출 mask를 만든다.
+`repr(C)` 80-byte record(u32×4 + f32×16)를 한 bulk view로 읽으며 entity별 Wasm 호출은 없다.
+`webgl2SpatialModels.ts`는 공유 indexed buffers/texture/sampler를 같은 depth/HDR/shadow pass에서 소비한다.
+M3 첫 규모 확장은 scene당 1,024 instance/4,096 제출 primitive/262,144 triangle 입력을 허용한다.
+TS는 native mask로 걸러진 연속 동일 자원/receive 설정을 GPU instancing하며 게임 pose/culling을 계산하지 않는다.
+WebGL2의 attr 6..9는 instance matrix이고 main/shadow가 같은 shader 변환을 사용한다. geometry 순서를 전역 정렬하지 않는다.
+기본 공간 pipeline 생성 시 64 KiB GPU buffer를 미리 예약하고 CPU staging을 재사용하며 frame 안에서는 행렬만 bulk 갱신한다.
+한 개체 batch는 기존 uniform draw를 유지한다. main instanced draw와 전체 pass 행렬 bytes를 별도 통계로 노출하며,
+총 draw/triangle/upload에도 실제 비용을 반영한다. shadow cache hit에는 shadow 행렬을 전송하지 않는다.
+기존 render ABI v1은 유지하고 확장 한도는 cold capability로 식별한다. 저장 문서/v6/v7과 physics proxy 계약은 유지한다.
+공유 모델의 geometry/material 검증과 triangle 합계 계산은 같은 frame에서 자원별 한 번만 수행한다.
+각 native row의 matrix/flags/mask/reserved와 전체 primitive/triangle 예산은 계속 전부 검사한다.
+직접 작성한 renderer packet도 참조하는 서로 다른 CPU 자원 수/bytes를 16개/128 MiB로 제한해 native registry 우회를 막는다.
+미참조 handle은 업로드하지 않고 같은 resource identity의 숫자 별칭은 자원을 중복 계산하지 않는다.
+검증 cache는 frame 밖으로 유지하지 않아 자원 수명을 늘리거나 다음 frame 검증을 생략하지 않는다.
+행렬은 원래 bulk view의 숫자 인덱스로 검사해 개체별 임시 typed-array view를 만들지 않는다.
+Rust는 cold model configure에서 최대 제출 수의 output Vec 용량을 예약하며 첫 frame부터 같은 pointer/capacity를 사용한다.
+캐시에는 model pose/flags/mask와 contentId도 포함하며 제거/실패/destroy 자원을 회수한다. mesh 데이터는
+기존 44-byte 지형 정점이나 shadow source 0/1로 위장하지 않는다. 물리는 별도 작성한 world 단위 AABB/heightSpan,
+저장은 기존 v6/v7의 authored resource 참조·pose를 재사용한다. 모델 자원/content preflight는 파괴적 활성화 전에 수행한다.
+capture/restore 모두 native model pose의 표현 가능 범위를 검사한다. 모델에 anchor한 world text는 공간
+billboard 정점 경로에서 같은 높이·depth를 사용하며 모델 배율과 독립적인 글꼴 크기를 유지한다.
+선택 authoring `spatialModelPreparer`는 native 씬 교체 전에 opaque 모델 handle을 WebGL2 renderer에 전달한다.
+`WebGL2SpatialModels`는 batch 전체 upload를 staging하고 성공 전 기존 cache를 evict하지 않는다.
+cache는 불변 CPU resource identity로 공유하므로 engine numeric ID가 바뀌어도 재사용한다.
+preparation lease는 native 적용 성공 뒤 commit, finally dispose하며 pending GPU 자원도 진단에 포함한다.
+모델 GPU 준비 실패는 entity/progress context를 변경하지 않는다. lease는 platform 자원이며 JSON/save에 넣지 않는다.
+normal frame은 이미 준비한 자원을 소비하고 cold 준비 bytes는 lease에서 별도 보고한다. engine/frame ABI는 유지한다.
+environment/FBO·동적 frame buffer의 첫 할당과 arbitrary callback 실패까지 포함한 전체 씬 transaction은 별도다.
+모델 GPU upload는 ARRAY/ELEMENT buffer·texture unit과 unpack row/skip·PBO를 격리하고 cold upload의 WebGL 오류를 검사해 실패 staging을
+해제한다. renderer의 실제 geometry budget 검증을 통과한 자원만 준비하며 warm frame에는 오류 polling을 추가하지 않는다.
+M2 첫 재질 확장은 CPU primitive의 cutoff/양면 설정을 기존 attr3와 WebGL culling에 연결한다.
+MASK는 같은 alpha 비교로 color/depth·point/sun shadow를 작성하고 양면 mesh의 뒷면 normal을 반전한다.
+M2 후속은 normal map의 exported tangent XYZW를 CPU model 정점에 선택적으로 추가한다(32/48 bytes).
+node normal/tangent 변환과 직교화는 GLB cold prepare에서 수행하고 native 80-byte pose ABI는 유지한다.
+TS는 base/normal/emissive의 sampler와 색 공간별 texture 자원을 소유한다. GLB color는 두 renderer 모드에서
+모두 sRGB8로 준비해 GPU 보간/mipmap 전에 linear로 해석하며 normal은 RGBA8을 유지한다.
+HTTP prepare는 최대 파일 크기의 연속 버퍼를 단계적으로 확장하여 작은 chunk 참조의 누적을 막는다.
+main pass의 normal unit 2와
+emissive unit 4를 사용하며 caller texture/sampler state를 복구하고 legacy 정점에서 tangent attr 5를 해제한다.
+shader는 glTF handedness·양면 최종 normal 반전과 linear emission을 처리한다. emission은 diffuse 조명 뒤,
+fog/HDR composite 앞에 합성하며 shadow는 기존 base alpha만 사용한다. GPU 오류/부분 sampler 할당도 회수한다.
+null을 반환한 allocation의 OOM flag도 cold 실패 정리에서 비워 즉시 재시도에 남기지 않는다.
+material은 불변 asset/contentId에 속하므로 native pose ABI·instance별 Wasm 호출·기존 저장 버전을 추가하지 않는다.
+GLB의 image 준비는 `spatialModelImage.ts`의 격리된 임시 WebGL2 readback을 사용한다. Canvas 2D의
+premultiply 왕복을 제거해 alpha 0 RGB와 부분 alpha 색을 보존하고, 이미지마다 다음 await 전에
+texture/FBO·bitmap과 지원되는 임시 context를 해제한다. persistent model GPU upload와 구분되는 cold 준비다.
+readback 실패·비동기 decode 취소도 활성 renderer state에 접근하지 않고 자원을 회수한다.
+M2 건물 통합은 `SpatialTerrainSurface.render:false`인 보행/충돌 proxy를 지원한다.
+Rust는 같은 surface/height tile을 물리·picking·debug에 유지하고 main/shadow 제출만 제외한다.
+static terrain의 surface당 36 vertices와 절대 range index는 유지하며 material cast/receive도 0으로 제한한다.
+cold metadata bit 4와 native capability v1을 사용하고 TS authoring은 씬 교체 전에 지원 여부를 확인한다.
+frame v2·44-byte 정점·80-byte model instance 및 저장 버전은 유지한다. GLB 계층은 static bake,
+assembly는 기존 fragment include/prefab, 보행층 연결과 벽 AABB는 명시적 world-unit 데이터다.
+모델 geometry와 proxy의 자동 변환/추출 및 runtime parenting은 추가하지 않는다.
+OPAQUE/MASK diffuse 변환이며 BLEND·glTF PBR, mesh physics, 자동 proxy 변환, skin/animation이나 3D editor는 범위 밖이다.
 
 선택 environment는 기존 v1 numeric80을 보존하고 새 품질 설정에만 v2 numeric112를 사용한다.
 Rust는 원본 환경·native actor 초점·표시 camera/viewport·caster revision과 광원 면별 제출 범위를
@@ -556,12 +627,25 @@ public consumer의 ramp→bridge·underpass·WASD·fresh restore framebuffer 검
 TS는 옵션 검증/숫자 인자 전달만 하며 Rust가 collider offset·floor support와 명시적 surface 연결로
 4방향 sparse grid A*를 수행한다. 정확한 시작/목적지를 추가하고 모든 edge를 같은 native move/solid 검사로
 probe한다. 탐색 중 임시 actor XY/span/velocity는 성공/실패 모두 복원하며 tick/event는 실행하지 않는다.
-격자 node 4,096(+2)·probe/heap 32,768 외에 sweep substep·proxy 정렬의 보수적 work를 요청 8M/frame 1M으로 제한한다.
+entity AABB의 공간 pose/접촉 분리는 `kinematic_sweep.rs`에서 sweep과 같은 rounded f32 모서리로
+판정한다. center 거리와 half extent 합의 반올림 차이로 표면 접촉이 penetration으로 바뀌지 않게 하며,
+접선/이탈 경로와 실제 모서리 겹침을 구분한다. epsilon 확대나 actor 위치 보정은 하지 않는다.
+격자 node 4,096(+2)·probe/heap 32,768 외에 보수적 work를 요청 8M/frame 1M으로 제한한다.
+`KinematicSweepScratch`는 동기 탐색 요청/추종 frame 안에서만 actor 이외 target AABB bounds를 준비·정렬해
+재사용한다. narrow phase는 기존 world/filter/height/sweep 판정을 유지한다. actor만 바뀌는 범위에서
+사용하며 모든 정상 종료·거절에서 snapshot을 해제하고, 다음 요청/frame은 다른 body의 변경을 다시 읽는다.
+준비 work는 alive 순회·target 정렬, 반복 work는 실제 target 수·surface·substep·candidate 정렬에 근거한다.
+장식 entity의 순회를 edge마다 중복 청구하지 않으며 frame admission과 follower 비용에 준비도 포함한다.
 follower는 최대 64회 iteration, f64 잔여 이동량과 실제 변위 정산을 사용하며 frame에서 재탐색하지 않는다.
+현재/다음 support의 slope와 step/drop 허용량으로 frame 조각을 제한하여, 전체 edge와 부분 변위의
+substep 수 차이가 유효한 경사면 경로를 막지 않게 한다. 기존 native collision 검사는 매 조각에 유지한다.
 동적 solid는 blocked, WASD 기본 취소는 같은 frame 수동 이동, cancelOnInput=false는 follower가 전담한다.
 평면/spatial follower 소유권을 분리하고 기존 movement animation에 target/마지막 motion/종료를 전달한다.
-진행 복원은 navigation을 idle로 초기화하며 route/search는 저장하지 않는다. raw method 4개는 낮은 빈도
-요청·상태·취소·6개 u32 통계 전달이며 render ABI/authoring version은 바뀌지 않는다.
+진행 복원은 navigation을 idle로 초기화하며 route/search는 저장하지 않는다. 기존 raw method 4개의 낮은 빈도
+요청·상태·취소·6개 u32 통계 전달은 유지한다. 독립 optional `data_scene_spatial_move_diagnostics`는
+v1의 5개 u32로 마지막 요청 사유·누적 요청 횟수·target 수·준비 work를 전달한다. TS는 이를
+`SpatialMoveStats.lastRequest`로 해석하고 구 Wasm/미지원 진단 확장에는 생략한다.
+실패 요청의 진단과 현재 설치된 route 통계를 구분하며 render ABI/authoring/save version은 바뀌지 않는다.
 검증은 `spatial-navigation-browser-fixture.mjs`의 다리 위/아래·동적 solid·입력·fresh restore와 native 회귀다.
 
 공간 physics debug는 `spatial_scene/debug/physics.rs`에서 기존 native collider shape 선을
@@ -596,7 +680,7 @@ truncated는 vertex 외 work/hit 상한도 포함하며 native progress restore�
 - 전체 게임 루프의 Web Worker 이전 또는 Wasm threads
 - visual editor
 - multiplayer
-- 범용 3D rendering. 승인된 제한적 HD-2D terrain/billboard 경로는 이 문서의 공간 계약을 따른다.
+- 범용 3D rendering. 승인된 제한적 HD-2D terrain/billboard/정적 GLB 배경 경로는 이 문서의 공간 계약을 따른다.
 - user scripting/plugin runtime
 - skeletal animation
 - complex physics core expansion
@@ -730,3 +814,49 @@ overlay를 제거하고 새 overlay를 적용한다. 자동 collider는 최대 6
 Data Scene progress v5는 JS가 stable instance ID만 연결하고 Rust의 atlas playback과 이동 pose
 policy를 cold-path bulk buffer로 캡처·복원한다. raw restore는 entity/physics/animation batch
 전체를 검증한 뒤 적용한다. 공유 render ABI와 per-frame JS/Wasm 호출 수는 바뀌지 않는다.
+
+정적 모델 묶음 `addSpatialModelAssembly`는 cold authoring 단계에서 모델-local AABB/사각 보행면을
+기존 Scene JSON으로 컴파일한다. cardinal yaw와 단일 양수 scale만 지원하고 floorId는 전역으로 유지한다.
+TS에 live 부모/자식 pose 상태를 두지 않으며 이후 이동·높이·충돌·path following은 Rust가 소유한다.
+선택 assembly `children`은 cold authoring 입력의 정적 계층이다. 부모 기준 transform을 재귀 합성해
+일반 world-unit 모델·충돌체·보행면으로 평탄화하고, 전체 결과를 한 번 검증한다. root 포함 깊이 8·64노드,
+순환 참조·전체 ID 충돌·합성 scale/좌표 범위를 검사한다. 자식의 보행면으로 actor 계약을 완성할 수 있다.
+저장은 생성된 일반 Scene JSON을 사용하고 원본 계층의 live state나 새 Wasm ABI를 추가하지 않는다.
+assembly proxy 배열은 생략만 기본값으로 처리하고 null·빈 칸은 거절한다. collider의 최종 월드 AABB 경계와
+높이 구간도 f32에서 유한·양수임을 확인해, 구성요소만 유효한 퇴화/무한 bounds를 native에 전달하지 않는다.
+X-axis ramp는 기존 cold terrain metadata의 bit 5와 별도 capability v1로 확장한다. Surface의 동일
+축/모서리 데이터를 native tilemap·층 연결·slope budget·render/pick/debug에서 재사용한다.
+기존 공유 render layout·proxy capability·저장 버전은 유지한다. 자세한 제한은
+[모델 묶음 배치 계약](../../engine/data-scene-spatial.md#정적-모델-로컬-proxy-묶음-배치)을 따른다.
+
+공개 model frame sidecar는 ID→불투명 `SpatialModelAsset` 핸들만 전달한다. immutable resource identity의
+vertex/index·decoded RGBA는 내부 WeakMap에 유지하고 WebGL2 cache가 해석하므로 공개 frame이 CPU
+자원 소유권을 누출하지 않는다. 공간 지형의 bounds/overlap 검증은 numeric buffer와 동일한 f32
+연산을 사용하며 model-local authoring 정규화와 최종 월드 bounds 검증을 구분한다. 축소된 폭/깊이는
+TS 사전 검증과 native configure 모두에서 원자적으로 거절한다.
+
+### 모델 attachment·LOD 경계
+
+공간 모델의 native body yaw와 제한된 attachment DAG는 Rust가 소유한다. root setter와 물리 적분 뒤
+자식 model/collider pose를 한 번의 native batch로 갱신한다. 유효하지 않은 batch는 commit하지 않으며
+적분 실패는 마지막 유효 root로 복원한다. 저장 v8은 root yaw만 추가하고 child pose는 재계산한다.
+정적 authoring bake와 살아 있는 attachment를 구분하며 보행면이 움직이는 묶음은 허용하지 않는다.
+
+native chunk/LOD 정책은 카메라 거리·진입/이탈 hysteresis와 light visibility로 visual residency를 고른다.
+기존 80-byte model draw ABI는 유지한다. CPU asset decode/cache/lease·GPU upload/release는 TS에 남고,
+물리·보행면은 visual unload와 무관하다. 모든 LOD를 사전 등록하는 bounded 모델이며 자동 network
+스트리밍은 제공하지 않는다. 선택된 geometry의 최대 제출 예산과 모든 LOD의 bounds를 cold preflight한다.
+세부 저장/수명/지원 범위는 [공간 모델 계약](../../engine/data-scene-spatial.md)을 따른다.
+
+### 밀집 프레임 진단과 matrix 제출
+
+opt-in RuntimeProfiler frameTrace는 현재 renderer ID와 완료한 query의 발행 ID를 분리한다.
+유한 history/window에 CPU·공간 draw/shadow/upload를 복사하고, 지연된 GPU 결과를 원래 frame에
+연결한다. snapshot은 CPU 진단 데이터이며 simulation·Wasm view·GPU 동기 대기를 소유하지 않는다.
+모델 matrix는 native 순서를 유지하는 pass별 batch 계획으로 한 번 업로드하고, 고정 512KiB GPU
+버퍼의 독립 offset을 사용한다. 그림자 캐시는 실제 shadow 수요만 비교해 camera-only 변경의
+무효화를 피한다. 80-byte native model ABI는 유지한다.
+
+모델 primitive 색상/cutoff는 엔진 소유 main/shadow program의 uniform이다. context-global generic
+attribute를 수정하거나 매 frame 조회하지 않으며, enable/pointer는 공간 pass 소유 VAO 안에서만
+바꾸고 caller VAO/program 복원은 유지한다.

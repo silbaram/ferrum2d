@@ -432,3 +432,23 @@ field/default/range와 WebGL2 capability·caster/draw/메모리 상한은 [공�
 runtime setter로 바꾼 효과도 native progress에 저장하며 environment 진행이 있는 capture만 v7이다.
 null은 authored 효과의 해제, 생략은 authored 기본값 유지다. 기존 flat v5·공간 pose/camera v6 해시는 유지한다.
 잘못된 environment는 activation 전 거절하고 native도 전체 scene/progress batch 검증 후 commit한다.
+
+`ApplyDataSceneAuthoringDocumentOptions.spatialModelPreparer`는 선택 `SpatialModelPreparer`다.
+반환 `SpatialModelPreparation`을 native 적용 전에 준비하고 성공 뒤 commit하며 finally dispose한다.
+[모델 GPU 준비 계약](../data-scene-spatial.md#모델-gpu-준비-후-활성화)에 따라 실패 시 기존 씬을 보존한다.
+옵션은 문서/저장 JSON에 직렬화하지 않는다.
+
+`addSpatialModelAssembly(document, assembly)`와 `SpatialModelAssemblySpec`, `SpatialModelColliderProxy`는
+정적 모델의 로컬 AABB·보행면·층 연결을 한 번의 위치/높이/90도 yaw/균일 scale로 생성한다.
+결과는 기존 authoring JSON이며 입력을 변경하지 않는다. 생성 ID·지원 변환·전역 floorId·최대 개수와
+runtime 이동 시 proxy가 따라가지 않는 제한은 [모델 묶음 배치 계약](../data-scene-spatial.md#정적-모델-로컬-proxy-묶음-배치)을 따른다.
+선택 `children?: readonly SpatialModelAssemblySpec[]`은 부모 기준 위치·높이·cardinal yaw·균일 scale을
+정적 합성한다. 자식 ID는 `parentId/children/localId`이며 root 포함 최대 64개·깊이 8을 검증한다.
+생략한 기존 호출 결과와 저장 버전은 유지하며 원본 계층은 runtime/저장 데이터로 전달하지 않는다.
+proxy 배열의 null·빈 칸과 f32에서 퇴화/overflow하는 월드 collider 경계·높이는 반환 전에 거절한다.
+`SpatialTerrainSurface.rampAxis`는 ramp에만 허용하는 선택 X/Y 축이며 생략 기본은 Y다.
+
+`addSpatialModelAssembly`는 `motion:"kinematic"`으로 native root와 부착 child model/collider를 생성한다.
+일반 각도 collider는 OBB이며 보행면이 있는 묶음의 최종 world yaw는 90도 배수다.
+움직이는 terrain/connection은 거절한다. model 옵션에 chunk/lods를 함께 작성할 수 있다.
+[공간 authoring의 지원 범위](../data-scene-spatial.md)를 따른다.
