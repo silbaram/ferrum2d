@@ -24,11 +24,11 @@
 | 새 디렉터리의 파일 목록 검사만으로는 빈 게임 디렉터리 생성이나 구형 지침과 게임 파일이 함께 있는 프로젝트의 보존을 검증하지 못했다. | 루트 디렉터리 allowlist와 기존 `package.json`·소스·데이터·managed block 전후 사용자 문구의 byte 보존, 기존 프로젝트 dry-run, 누락된 새 harness 추가 검사를 보강했다. |
 | 포인터 매핑 지침을 넓게 해석하면 CSS 변환 후 bounding rect를 이용하는 정상 구현도 금지할 수 있었다. | 실제 카메라 변환을 반영하지 않는 매핑을 문제로 한정하고, 실제 클릭 도달로 판단하도록 수정했다. |
 
-수정 후 `package:check:agents`, `smoke:consumer-smoke-report`, `lint`, `validate:docs-links`와 minimal tarball 설치/브라우저 smoke 및 report validator를 다시 실행해 통과했다. 로그는 `artifacts/issue59-review2-package-qa/`, 설치 보고서는 `artifacts/issue59-review2-consumer-smoke/consumer-smoke-report.json`에 있다. 실제 catalog 조회 결과는 `artifacts/issue59-review2-catalog/catalog.json`에 보존했다.
+수정 후 `package:check:agents`, `smoke:consumer-smoke-report`, `lint`, `validate:docs-links`와 minimal tarball 설치/브라우저 smoke 및 report validator를 다시 실행해 통과했다. 실제 catalog 조회도 확인했다. 완료된 당시 로컬 산출물은 2026-10-17에 삭제했으며 결과는 이 문서에 요약했다. 재검증 시 아래 명령으로 새 보고서를 만든다.
 
 ```bash
-pnpm package:consumer-smoke -- --skip-build --skip-package-check --templates minimal --artifact-dir artifacts/issue59-review2-consumer-smoke
-pnpm validate:consumer-smoke-report -- --report artifacts/issue59-review2-consumer-smoke/consumer-smoke-report.json --artifact-dir artifacts/issue59-review2-consumer-smoke --expect-status passed
+pnpm package:consumer-smoke -- --skip-build --skip-package-check --templates minimal --artifact-dir artifacts/consumer-smoke
+pnpm validate:consumer-smoke-report -- --report artifacts/consumer-smoke/consumer-smoke-report.json --artifact-dir artifacts/consumer-smoke --expect-status passed
 ferrum_cli_url="https://github.com/silbaram/ferrum2d/releases/download/ferrum-web-v0.1.0-beta.0/ferrum2d-create-game-0.1.0-beta.0.tgz"
 npx --yes --allow-remote=root "$ferrum_cli_url" --list-templates --json
 ```
@@ -37,7 +37,7 @@ npx --yes --allow-remote=root "$ferrum_cli_url" --list-templates --json
 
 ## 패키지·설치 검증
 
-다음 명령이 통과했다. 패키지 QA 로그는 로컬 `artifacts/issue59-package-qa/`에 있으며, 문서 HTML 생성과 링크 검사도 로컬에서 확인했다.
+다음 명령이 통과했다. 문서 HTML 생성과 링크 검사도 로컬에서 확인했다. 아래는 새 검증 결과를 생성하는 명령이며 당시 로그의 영구 보존 경로가 아니다.
 
 ```bash
 pnpm package:check:agents
@@ -46,14 +46,14 @@ pnpm validate:docs-links
 pnpm lint
 pnpm build:pages
 pnpm validate:pages-artifact
-pnpm package:consumer-smoke -- --skip-build --skip-package-check --templates minimal --artifact-dir artifacts/issue59-consumer-smoke
-pnpm validate:consumer-smoke-report -- --report artifacts/issue59-consumer-smoke/consumer-smoke-report.json --artifact-dir artifacts/issue59-consumer-smoke --expect-status passed
+pnpm package:consumer-smoke -- --skip-build --skip-package-check --templates minimal --artifact-dir artifacts/consumer-smoke
+pnpm validate:consumer-smoke-report -- --report artifacts/consumer-smoke/consumer-smoke-report.json --artifact-dir artifacts/consumer-smoke --expect-status passed
 ```
 
 - 새 디렉터리에 agents를 설치하면 승인된 AI 설정/지침 42개만 생성된다. 게임 소스, HTML, 예제, package script는 생성하지 않는다. CLI는 서버를 실행하지 않는다.
 - 설치된 template 내용이 원본과 일치하고, 사용자 문구를 추가한 루트 지침과 공통 harness는 재실행해도 보존된다. dry-run도 대상 디렉터리를 만들지 않는다.
 - 실제 tarball 설치 후 Codex·Claude·Gemini의 참조와 public import/type/build/replay를 확인했다. 생성된 minimal 게임의 placement viewer와 배포 브라우저 검증도 통과했다. WebGL2 완료 프레임 12개, draw call 1/8, Wasm MIME 정상, 브라우저 오류 0건이었다.
-- `smoke:consumer-smoke-report`는 제한된 실행 환경에서 validator 하위 프로세스의 진단 출력이 비어 두 차례 실패했다. 동일 명령을 제한 밖에서 실행하면 통과했다. 실패/재실행 로그를 보존했다.
+- `smoke:consumer-smoke-report`는 제한된 실행 환경에서 validator 하위 프로세스의 진단 출력이 비어 두 차례 실패했다. 동일 명령을 제한 밖에서 다시 실행해 통과했다.
 
 설치-only 검사는 agents 설치의 파일 경계를 확인한다. minimal 게임 생성은 별도의 개발 회귀 검사이며 초기 설치 동작에 추가되지 않는다.
 
@@ -75,7 +75,7 @@ pnpm validate:consumer-smoke-report -- --report artifacts/issue59-consumer-smoke
 
 사본에서 `npm run ferrum:check`가 통과했다. 내부의 authoring validation, runtime smoke, TypeScript/production build를 실행했다. runtime smoke는 여섯 조개의 도달·제거, 해안 충돌, pause/resume, reset을 확인했다. production JS가 500 kB를 넘는 Vite 경고는 남아 있다.
 
-`node artifacts/issue59-island-review/review.mjs`로 아래 순서의 16개 동작/관측 기록과 8개 스크린샷을 생성했다. 브라우저 오류는 0건이었다.
+당시 로컬 Playwright 검수로 아래 순서의 16개 동작/관측 기록과 8개 스크린샷을 생성했다. 브라우저 오류는 0건이었다.
 
 1. 새 browser context에서 시작 화면을 캡처하고 탐험 시작 버튼을 누른다.
 2. 시작 지점에서 `E`로 야영지를 조사하고 발견 이야기와 진행 증가를 확인한 뒤 닫는다.
@@ -101,15 +101,12 @@ pnpm validate:consumer-smoke-report -- --report artifacts/issue59-consumer-smoke
 
 일지 입력 문제를 확인한 뒤 공통 지침의 HUD 검수 항목을 포인터뿐 아니라 키보드, 이미 눌린 키와 남아 있는 이동 목표까지 포함하도록 보완했다.
 
-### 로컬 증거 위치
+### 검증 기록과 보존 범위
 
-- `artifacts/issue59-island-review/source-manifest.json`: 사본 소스 식별용 해시.
-- `artifacts/issue59-island-review/functional-check.log`: 기존 게임의 기능 검증 로그.
-- `artifacts/issue59-island-review/review.mjs`, `browser-report.json`: 재실행 가능한 로컬 조작 시나리오와 좌표/geometry 관측. 원본과 같은 게임 사본 및 위 환경이 필요하다.
-- `artifacts/issue59-island-review/screenshots/01-desktop-start.png`부터 `08-narrow-resumed.png`까지: 시작, 조사, 수집, 확대, 좁은 화면, 일지, 재개 화면.
-- `artifacts/issue59-consumer-smoke/consumer-smoke-report.json`: 패키지 검증 결과.
-
-개인 게임의 소스와 스크린샷은 로컬 개발 증거로만 보존하고 저장소나 외부 서비스에 올리지 않는다.
+검수 과정에서는 사본의 소스 해시, 기능 검사 로그, 조작 시나리오·좌표 관측과 화면 캡처를 확인했다.
+완료된 사본·보고서·스크린샷은 2026-10-17에 로컬 정리했으며 저장소나 외부 서비스에 올리지 않았다.
+현재 남는 기록은 이 문서의 관찰·검증 결과다. 게임 검수를 반복하려면 해당 게임 버전의 사본과
+위 환경을 다시 준비하고, 패키지 회귀는 위 명령으로 새 보고서를 생성한다.
 
 ## 미실행 범위와 후속 작업
 
