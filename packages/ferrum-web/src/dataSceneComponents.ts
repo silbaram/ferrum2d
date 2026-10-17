@@ -152,10 +152,20 @@ export type DataSceneColliderComponentSpec =
   | DataSceneConvexPolygonColliderSpec;
 
 /** Optional body on the same entity; omitting it preserves collider-only authoring. */
-export interface DataSceneBodySpec {
+export type DataSceneBodySpec = {
   type: "static" | "kinematic";
   heightSpan?: PhysicsBodyHeightSpan;
-}
+} | {
+  type: "dynamic";
+  heightSpan?: PhysicsBodyHeightSpan;
+  /** Explicit mass, independent of collider area and instance scale. Defaults to 1. */
+  mass?: number;
+  canSleep?: boolean;
+  gravityScale?: number;
+  linearDamping?: number;
+  angularDamping?: number;
+  material?: { friction?: number; restitution?: number };
+};
 
 export interface DataSceneComponentsSpec {
   template?: string;
@@ -805,13 +815,42 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function resolveBody(value: unknown, path: string): DataSceneBodySpec {
   const body = requiredRecord(value, path);
-  for (const key of Object.keys(body)) if (key !== "type" && key !== "heightSpan") {
+  if (body.type !== "static" && body.type !== "kinematic" && body.type !== "dynamic") {
+    throw sceneCompositionDiagnosticError(`${path}.type`, "must be static, kinematic, or dynamic");
+  }
+  const dynamicKeys = ["mass", "canSleep", "gravityScale", "linearDamping", "angularDamping", "material"];
+  for (const key of Object.keys(body)) if (key !== "type" && key !== "heightSpan" &&
+    !(body.type === "dynamic" && dynamicKeys.includes(key))) {
     throw sceneCompositionDiagnosticError(`${path}.${key}`, "is not supported by Data Scene body authoring");
   }
-  if (body.type !== "static" && body.type !== "kinematic") {
-    throw sceneCompositionDiagnosticError(`${path}.type`, "must be static or kinematic");
+  const result: DataSceneBodySpec = { type: body.type };
+  if (result.type === "dynamic") {
+    for (const key of ["mass", "gravityScale", "linearDamping", "angularDamping"] as const) {
+      if (body[key] === undefined) continue;
+      const value = bodyF32(body[key], `${path}.${key}`, key !== "gravityScale");
+      if (key === "mass" && (Math.fround(value) <= 0 || !Number.isFinite(Math.fround(1 / Math.fround(value))))) {
+        throw sceneCompositionDiagnosticError(`${path}.mass`, "must be positive finite f32 with a finite reciprocal");
+      }
+      result[key] = value;
+    }
+    if (body.canSleep !== undefined) {
+      if (typeof body.canSleep !== "boolean") {
+        throw sceneCompositionDiagnosticError(`${path}.canSleep`, "must be a boolean");
+      }
+      result.canSleep = body.canSleep;
+    }
+    if (body.material !== undefined) {
+      const material = requiredRecord(body.material, `${path}.material`);
+      result.material = {};
+      for (const key of Object.keys(material)) {
+        if (key !== "friction" && key !== "restitution") {
+          throw sceneCompositionDiagnosticError(`${path}.material.${key}`, "is not supported by Data Scene body authoring");
+        }
+        result.material[key] = bodyF32(material[key], `${path}.material.${key}`, true);
+      }
+    }
   }
-  if (body.heightSpan === undefined) return { type: body.type };
+  if (body.heightSpan === undefined) return result;
   const span = requiredRecord(body.heightSpan, `${path}.heightSpan`);
   const floorId = finiteNumber(span.floorId, `${path}.heightSpan.floorId`);
   const elevation = finiteNumber(span.elevation, `${path}.heightSpan.elevation`);
@@ -825,5 +864,13 @@ function resolveBody(value: unknown, path: string): DataSceneBodySpec {
   if (!Number.isFinite(Math.fround(elevation)) || !Number.isFinite(Math.fround(Math.fround(elevation) + Math.fround(height)))) {
     throw sceneCompositionDiagnosticError(`${path}.heightSpan.elevation`, "must form a finite f32 height span");
   }
-  return { type: body.type, heightSpan: { floorId, elevation, height } };
+  return { ...result, heightSpan: { floorId, elevation, height } };
+}
+
+function bodyF32(value: unknown, path: string, nonNegative: boolean): number {
+  const number = finiteNumber(value, path);
+  if (!Number.isFinite(Math.fround(number)) || (nonNegative && number < 0)) {
+    throw sceneCompositionDiagnosticError(path, nonNegative ? "must be non-negative finite f32" : "must be finite f32");
+  }
+  return number;
 }

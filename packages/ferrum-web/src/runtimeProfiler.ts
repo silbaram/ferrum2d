@@ -1,4 +1,5 @@
 import type { AssetLoadProgress } from "./assetLoader.js";
+import { RuntimeFrameTraceRecorder, type RuntimeFrameTraceOptions, type RuntimeFrameTraceSnapshot } from "./runtimeFrameTrace.js";
 import type { DebugOverlayMetrics } from "./debugOverlay.js";
 
 export type RuntimeDiagnosticsUnit = "ms" | "count" | "events/s" | "bytes";
@@ -43,6 +44,23 @@ export interface RuntimeDiagnosticsReport {
 }
 
 export interface RuntimeDiagnosticsFrameSample {
+  /** Current renderer frame, distinct from the completed prior query's gpuFrameId. */
+  rendererFrameId?: number;
+  /** Unclamped interval between render callbacks; omitted on the first frame. */
+  frameIntervalMs?: number;
+  modelCount?: number;
+  visibleModelCount?: number;
+  modelDrawCalls?: number;
+  modelInstancedDrawCalls?: number;
+  modelTriangleCount?: number;
+  modelUploadBytes?: number;
+  modelInstanceUploadBytes?: number;
+  spatialShadowDrawCalls?: number;
+  spatialShadowPassCount?: number;
+  spatialShadowUploadBytes?: number;
+  spatialShadowCacheHit?: boolean;
+  spatialEffectDrawCalls?: number;
+
   wasmLinearMemoryBytes?: number;
   gpuFrameTimeMs?: number;
   gpuFrameId?: number;
@@ -88,12 +106,15 @@ export interface RuntimeAssetLoadSample {
 }
 
 export interface RuntimeProfilerOptions {
+  /** Opt-in bounded slow-frame windows, joined to delayed GPU queries by renderer frame ID. */
+  frameTrace?: RuntimeFrameTraceOptions;
   budget?: RuntimeDiagnosticsBudget;
   maxFrameSamples?: number;
   maxAssetSamples?: number;
 }
 
 export interface RuntimeProfilerSnapshot {
+  frameTrace?: RuntimeFrameTraceSnapshot;
   maxWasmLinearMemoryBytes?: number;
   /** Only completed, valid GPU queries in the retained sample window. */
   gpuFrameSampleCount: number;
@@ -138,15 +159,18 @@ export class RuntimeProfiler {
   private readonly maxAssetSamples: number;
   private readonly frames: RuntimeDiagnosticsFrameSample[] = [];
   private readonly assets: RuntimeAssetLoadSample[] = [];
+  private readonly trace?: RuntimeFrameTraceRecorder;
 
   constructor(options: RuntimeProfilerOptions = {}) {
     this.budget = options.budget;
+    if(options.frameTrace!==undefined)this.trace=new RuntimeFrameTraceRecorder(options.frameTrace);
     this.maxFrameSamples = positiveInteger(options.maxFrameSamples ?? DEFAULT_MAX_FRAME_SAMPLES, "maxFrameSamples");
     this.maxAssetSamples = positiveInteger(options.maxAssetSamples ?? DEFAULT_MAX_ASSET_SAMPLES, "maxAssetSamples");
   }
 
   recordFrame(metrics: DebugOverlayMetrics | RuntimeDiagnosticsFrameSample): RuntimeDiagnosticsReport {
     const sample = runtimeDiagnosticsFrameSample(metrics);
+    this.trace?.record(sample);
     pushBounded(this.frames, sample, this.maxFrameSamples);
     return this.budget === undefined
       ? { passed: true, violations: [] }
@@ -177,6 +201,7 @@ export class RuntimeProfiler {
 
   snapshot(): RuntimeProfilerSnapshot {
     const snapshot = summarizeRuntimeProfiler(this.frames, this.assets);
+    if(this.trace)snapshot.frameTrace=this.trace.snapshot();
     if (this.budget !== undefined) {
       snapshot.budgetReport = evaluateRuntimeProfilerBudget(snapshot, this.budget);
     }
@@ -186,6 +211,7 @@ export class RuntimeProfiler {
   reset(): void {
     this.frames.length = 0;
     this.assets.length = 0;
+    this.trace?.reset();
   }
 }
 
@@ -202,6 +228,11 @@ export function runtimeDiagnosticsFrameSample(
     drawCalls: nonNegativeInteger(metrics.drawCalls, "drawCalls"),
     batchCount: nonNegativeInteger(metrics.batchCount, "batchCount"),
   };
+  for(const field of ["rendererFrameId","modelCount","visibleModelCount","modelDrawCalls","modelInstancedDrawCalls","modelTriangleCount","modelUploadBytes","modelInstanceUploadBytes","spatialShadowDrawCalls","spatialShadowPassCount","spatialShadowUploadBytes","spatialEffectDrawCalls"] as const) {
+    const value=metrics[field];if(value!==undefined)sample[field]=nonNegativeInteger(value,field);
+  }
+  if(metrics.frameIntervalMs!==undefined){const v=finiteNumber(metrics.frameIntervalMs,"frameIntervalMs");if(v<0)throw Error("frameIntervalMs must be non-negative");sample.frameIntervalMs=v;}
+  if(metrics.spatialShadowCacheHit!==undefined){if(typeof metrics.spatialShadowCacheHit!=="boolean")throw Error("spatialShadowCacheHit must be boolean");sample.spatialShadowCacheHit=metrics.spatialShadowCacheHit;}
   if (metrics.wasmLinearMemoryBytes !== undefined) sample.wasmLinearMemoryBytes = nonNegativeInteger(metrics.wasmLinearMemoryBytes, "wasmLinearMemoryBytes");
   if (metrics.gpuFrameTimeMs !== undefined) {
     sample.gpuFrameTimeMs = finiteNumber(metrics.gpuFrameTimeMs, "gpuFrameTimeMs");

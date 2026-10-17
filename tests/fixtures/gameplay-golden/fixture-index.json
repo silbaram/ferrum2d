@@ -284,7 +284,7 @@
       ],
       "runner": "dataSceneAuthoringSnapshotRestore",
       "fixturePath": "tests/fixtures/gameplay-golden/data-scene-authoring-snapshot-restore-replay.json",
-      "replayHash": "c6a0c839",
+      "replayHash": "fc67acd7",
       "frameCount": 1,
       "captureFrameCount": 2
     }

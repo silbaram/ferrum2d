@@ -6,6 +6,12 @@ use crate::collision::AabbBounds;
 use crate::components::{HeightSpan, PhysicsFloorId, Transform2D};
 
 impl Tilemap {
+    pub(crate) fn with_half_open_hd2d_surfaces() -> Self {
+        Self {
+            half_open_hd2d_surfaces: true,
+            ..Self::default()
+        }
+    }
     pub fn hd2d_surface_at(
         &self,
         point: Transform2D,
@@ -196,6 +202,12 @@ impl Tilemap {
             .filter_map(|(index, layer)| layer.as_ref().map(|layer| (index, layer)))
             .filter(|(_, layer)| layer.collision)
         {
+            if self.half_open_hd2d_surfaces
+                && (point.x >= layer.origin_x + layer.columns as f32 * layer.tile_width
+                    || point.y >= layer.origin_y + layer.rows as f32 * layer.tile_height)
+            {
+                continue;
+            }
             let Some(tile_index) = layer.cell_at(point) else {
                 continue;
             };

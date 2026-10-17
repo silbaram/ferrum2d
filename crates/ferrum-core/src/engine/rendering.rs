@@ -8,7 +8,19 @@ use super::{Engine, SceneMode};
 
 impl Engine {
     pub(super) fn build_render_commands(&mut self) {
+        self.spatial_scene
+            .attachments
+            .synchronize_or_restore(&mut self.world, &self.spatial_scene.models);
         self.frame_buffers.clear_render_work_buffers();
+        if let Some(camera) = self.spatial_scene.camera {
+            let mut values = camera.parameters;
+            values[10] = self.camera.viewport_width;
+            values[11] = self.camera.viewport_height;
+            self.spatial_scene.camera = crate::spatial_scene::SpatialCamera::new(&values);
+        }
+        self.spatial_scene.build(&self.world);
+        self.bitmap_text
+            .append_spatial_text(&self.world, &mut self.spatial_scene);
         self.frame_buffers.ground_shadow_projection = self.ground_sun.projection;
         self.frame_buffers.ground_y_scale = self.camera.ground_y_scale;
         self.ground_shadow_stats = [0; 5];
@@ -22,8 +34,10 @@ impl Engine {
     }
 
     fn build_layered_render_commands(&mut self, visible_bounds: AabbBounds) {
-        self.tilemap
-            .append_render_commands(&self.camera, &mut self.frame_buffers.render_commands);
+        if self.spatial_scene.camera.is_none() {
+            self.tilemap
+                .append_render_commands(&self.camera, &mut self.frame_buffers.render_commands);
+        }
         self.append_layered_world_render_commands(visible_bounds);
         self.particles
             .append_render_commands(&self.camera, &mut self.frame_buffers.render_commands);
@@ -87,6 +101,20 @@ impl Engine {
     fn append_entity_render_items(&mut self, _visible_bounds: AabbBounds) {
         for position in 0..self.world.alive_indices().len() {
             let i = self.world.alive_indices()[position];
+            if self.spatial_scene.camera.is_some()
+                && self.world.entity_at_index(i).is_some_and(|e| {
+                    self.spatial_scene
+                        .bindings
+                        .contains_key(&(e.id, e.generation))
+                        || self
+                            .spatial_scene
+                            .models
+                            .bindings
+                            .contains_key(&(e.id, e.generation))
+                })
+            {
+                continue;
+            }
             let Some((t, mut s)) = self.world.renderable_sprite_at_index(i) else {
                 continue;
             };
@@ -147,11 +175,15 @@ impl Engine {
     }
 
     fn append_bitmap_text_render_items(&mut self, visible_bounds: AabbBounds) {
-        self.bitmap_text.append_render_items(
+        self.bitmap_text.append_render_items_filtered(
             &self.world,
             &self.camera,
             visible_bounds,
             &mut self.frame_buffers.render_items,
+            self.spatial_scene
+                .camera
+                .as_ref()
+                .map(|_| &self.spatial_scene),
         );
     }
 

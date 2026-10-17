@@ -88,13 +88,26 @@ async function runMode(colorManagement) {
     maxGpuTextureCount: 8, maxGpuBufferCount: 5, maxGpuProgramCount: 5,
     maxGpuRenderTargetCount: 5, maxGpuEstimatedBytes: 2 * 1024 * 1024 };
   let completeFrame;
+  // Independent of profiler trace rows: current CPU samples and completed issuing-query results.
+  const issuedFrames = new Map();
+  const gpuResults = new Map();
   const debugRoot = document.createElement("div");
   document.body.appendChild(debugRoot);
   const runtime = await createFerrumRuntime({ canvas, debug: true, debugParent: debugRoot,
-    colorManagement, profiler: { budget }, webgl2: { gpuTiming: true, preserveDrawingBuffer: true, clearColor: [0, 0, 0, 1] },
+    colorManagement, profiler: { budget, frameTrace: { frameBudgetMs: .001, beforeFrames: 2, afterFrames: 2, maxCaptures: 2 } }, webgl2: { gpuTiming: true, preserveDrawingBuffer: true, clearColor: [0, 0, 0, 1] },
     postProcess: [{ kind: "fade", color: [0, 0, 0], opacity: 0.1 },
       { kind: "fade", color: [0, 0, 0], opacity: 0.1 }],
-    onFrame(frame) { runtime.stop(); completeFrame(frame); },
+    onFrame(frame) {
+      const timing = runtime.renderer.gpuTimingStats();
+      equal(frame.debugMetrics.rendererFrameId, timing.currentFrameId, "current renderer frame identity");
+      issuedFrames.set(timing.currentFrameId, {
+        rustUpdateTimeMs: frame.debugMetrics.rustUpdateTimeMs,
+        renderTimeMs: frame.debugMetrics.renderTimeMs,
+        gpuEstimatedBytes: frame.debugMetrics.gpuEstimatedBytes,
+      });
+      if (timing.status === "ready") gpuResults.set(timing.frameId, timing.elapsedMs);
+      runtime.stop(); completeFrame(frame);
+    },
   });
   const renderer = runtime.renderer;
   const frame = () => new Promise((resolve) => { completeFrame = resolve; runtime.start(); });
@@ -181,12 +194,25 @@ async function runMode(colorManagement) {
     const gpuDevice = gl.getExtension("WEBGL_debug_renderer_info");
     const gpuRenderer = gpuDevice ? gl.getParameter(gpuDevice.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
     const gpuStatus = renderer.gpuTimingStats().status;
+    const frameTrace=snapshot.frameTrace;
+    assert(frameTrace && frameTrace.captures.length>0 && frameTrace.captures.length<=2,"bounded frame trace captured real runtime rows");
+    assert(frameTrace.captures.every(c=>c.frames.length<=5&&c.frames.every(f=>Number.isSafeInteger(f.rendererFrameId))),"trace IDs and window limit");
+    const verifiedGpuJoins = new Set();
+    for (const capture of frameTrace.captures) for (const row of capture.frames) {
+      equal({rustUpdateTimeMs:row.rustUpdateTimeMs,renderTimeMs:row.renderTimeMs,gpuEstimatedBytes:row.gpuEstimatedBytes},
+        issuedFrames.get(row.rendererFrameId),"trace CPU and resources belong to the current issuing frame");
+      equal(row.gpuFrameTimeMs,gpuResults.get(row.rendererFrameId),"trace GPU time belongs to the completed query's issuing frame");
+      if (row.gpuFrameTimeMs !== undefined) verifiedGpuJoins.add(row.rendererFrameId);
+    }
+    equal(frameTrace.measuredGpuFrameCount,verifiedGpuJoins.size,"unique independently verified GPU trace joins");
     if (gpuStatus !== "unsupported") {
       assert(snapshot.gpuFrameSampleCount > 0, "supported GPU timer must complete real queries");
+      assert(frameTrace.measuredGpuFrameCount>0 && frameTrace.captures.some(c=>c.frames.some(f=>Number.isFinite(f.gpuFrameTimeMs))),"trace joined real delayed GPU samples");
       assert(Number.isFinite(snapshot.maxGpuFrameTimeMs) && snapshot.maxGpuFrameTimeMs >= 0, "real GPU time sample");
     } else {
       equal(snapshot.gpuFrameSampleCount, 0, "unsupported GPU time is not zero milliseconds");
       equal(snapshot.maxGpuFrameTimeMs, undefined, "unsupported GPU time remains absent");
+      equal(frameTrace.measuredGpuFrameCount,0,"unsupported trace time remains unmeasured");
     }
     runtime.destroy();
     runtime.destroy();
@@ -198,6 +224,7 @@ async function runMode(colorManagement) {
       dataSceneState: "playing", baseline, maxGpuEstimatedBytes: snapshot.maxGpuEstimatedBytes, final,
       memoryBytes: snapshot.maxWasmLinearMemoryBytes,
       memoryBaselineBytes, memoryFinalBytes, memoryDeltaBytes: memoryFinalBytes - memoryBaselineBytes, gpuRenderer,
+      frameTrace: {captureCount:frameTrace.captures.length,measuredGpuFrames:frameTrace.measuredGpuFrameCount,unmeasuredGpuFrames:frameTrace.unmeasuredGpuFrameCount,verifiedGpuJoins:verifiedGpuJoins.size},
       gpuTiming: { status: gpuStatus, sampleCount: snapshot.gpuFrameSampleCount, maxMs: snapshot.maxGpuFrameTimeMs } };
   } finally {
     runtime.destroy();

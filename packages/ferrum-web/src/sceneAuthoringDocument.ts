@@ -1,9 +1,10 @@
+import { resolveDataSceneSpatialSpec, type DataSceneSpatialSpec } from "./dataSceneSpatial.js";
 import {
   resolveBehaviorRecipeDocument,
   type ResolvedBehaviorRecipe,
   type ResolvedBehaviorRecipeVariableComparison,
 } from "./behaviorRecipes.js";
-import { gameplayAuthoringDiagnosticError } from "./diagnostics.js";
+import { gameplayAuthoringDiagnosticError, sceneCompositionDiagnosticError } from "./diagnostics.js";
 import {
   bindSceneBehaviorRecipes,
   resolveGameplayBehaviorRuntimeIds,
@@ -42,6 +43,7 @@ export interface SceneAuthoringDocumentSpec {
   variables?: readonly DataSceneVariableDeclarationSpec[];
   gameplay?: DataSceneGameplaySpec;
   navigation?: DataSceneNavigationSpec;
+  spatial?: DataSceneSpatialSpec;
 }
 
 export interface ResolvedSceneAuthoringDocument {
@@ -53,6 +55,7 @@ export interface ResolvedSceneAuthoringDocument {
   variables?: readonly ResolvedDataSceneVariableDeclaration[];
   gameplay?: DataSceneGameplaySpec;
   navigation?: DataSceneNavigationSpec;
+  spatial?: DataSceneSpatialSpec;
   bindingPlan?: SceneBehaviorBindingPlan;
 }
 
@@ -121,8 +124,13 @@ export function resolveSceneAuthoringDocument(
         path,
       })
     : undefined;
+  const navigation = document.navigation === undefined ? undefined : resolveDataSceneNavigationSpec(document.navigation, `${path}.navigation`);
+  const spatial = document.spatial === undefined ? undefined : resolveDataSceneSpatialSpec(document.spatial, `${path}.spatial`);
+  const instances = validateComponents || spatial !== undefined || navigation?.obstacles !== undefined
+    ? bindingPlan?.instances ?? instantiateSceneFragment(sceneComposition, { ...bindingOptions, path: `${path}.composition` })
+    : [];
   if (validateComponents) {
-    instantiateSceneFragment(sceneComposition).forEach((instance, index) => {
+    instances.forEach((instance, index) => {
       resolveDataSceneInstanceComponents(instance, {
         allowTemplate: allowComponentTemplates,
         path: `${path}.sceneComposition.instances.${index}`,
@@ -130,6 +138,55 @@ export function resolveSceneAuthoringDocument(
     });
   }
 
+  if (navigation?.obstacles !== undefined) {
+    const instancesById = new Map(instances.map(instance => [instance.id, instance]));
+    for (const obstacle of navigation.obstacles) {
+      const instance = instancesById.get(obstacle.instanceId);
+      if (instance === undefined) throw sceneCompositionDiagnosticError(`${path}.navigation.obstacles`, "must reference an instance in the applied fragment");
+      const components = resolveDataSceneInstanceComponents(instance, { allowTemplate: allowComponentTemplates, path: `${path}.navigation.obstacles.${obstacle.instanceId}` });
+      if (components.mode !== "inline" || components.collider.type === "none") {
+        throw sceneCompositionDiagnosticError(`${path}.navigation.obstacles`, "requires an inline collider");
+      }
+    }
+  }
+
+  if (spatial) {
+    const byId=new Map(instances.map(instance=>[instance.id,instance]));
+    for (const id of Object.keys(spatial.billboards)) {
+      const instance=byId.get(id);if (!instance) throw sceneCompositionDiagnosticError(`${path}.spatial.billboards.${id}`,"must reference the applied fragment");
+      const c=resolveDataSceneInstanceComponents(instance,{allowTemplate:allowComponentTemplates,path:`${path}.spatial.billboards.${id}`});
+      if (c.mode!=="inline") throw sceneCompositionDiagnosticError(`${path}.spatial.billboards.${id}`,"requires inline components");
+      if (spatial.actor?.instanceId===id && (c.body?.type!=="kinematic" || !c.body.heightSpan || c.collider.type!=="aabb" || c.collider.isTrigger || !c.collider.enabled)) throw sceneCompositionDiagnosticError(`${path}.spatial.actor`,"requires a kinematic heightSpan body and enabled non-trigger AABB");
+    }
+    for (const [id,model] of Object.entries(spatial.models ?? {})) {
+      const instance=byId.get(id);
+      if(!instance) throw sceneCompositionDiagnosticError(`${path}.spatial.models.${id}`,"must reference the applied fragment");
+      const c=resolveDataSceneInstanceComponents(instance,{allowTemplate:false,path:`${path}.spatial.models.${id}`});
+      if(c.mode!=="inline" || c.body?.type==="dynamic")
+        throw sceneCompositionDiagnosticError(`${path}.spatial.models.${id}`,"requires inline static or kinematic model components");
+      // These are authored transforms, not a second runtime pose. Reject overflow before activation.
+      if(!Number.isFinite(Math.fround(instance.x)) || !Number.isFinite(Math.fround(instance.y)) || !Number.isFinite(Math.fround(model.scale ?? 1)))
+        throw sceneCompositionDiagnosticError(`${path}.spatial.models.${id}`,"invalid model transform");
+    }
+    const initialPoses=new Map<string,{x:number;y:number;elevation:number;yaw:number}>();
+    const initialPose=(id:string):{x:number;y:number;elevation:number;yaw:number}=>{
+      const existing=initialPoses.get(id);if(existing)return existing;
+      const instance=byId.get(id);if(!instance)throw sceneCompositionDiagnosticError(`${path}.spatial.attachments.${id}`,'unknown instance');
+      const c=resolveDataSceneInstanceComponents(instance,{allowTemplate:false,path:`${path}.spatial.attachments.${id}`});
+      const a=spatial.attachments?.[id];let pose={x:Math.fround(instance.x),y:Math.fround(instance.y),elevation:c.mode==='inline'?Math.fround(c.body?.heightSpan?.elevation??0):0,yaw:0};
+      if(a){const p=initialPose(a.parent),r=Math.fround((a.yawDegrees??0)*Math.PI/180),co=Math.cos(p.yaw),si=Math.sin(p.yaw);pose={x:Math.fround(p.x+co*Math.fround(a.x??0)-si*Math.fround(a.y??0)),y:Math.fround(p.y+si*Math.fround(a.x??0)+co*Math.fround(a.y??0)),elevation:Math.fround(p.elevation+Math.fround(a.elevation??0)),yaw:Math.fround(p.yaw+r)};}
+      const height=c.mode==='inline'?c.body?.heightSpan?.height??0:0;
+      if(!Object.values(pose).every(Number.isFinite)||Math.abs(pose.x)>1e6||Math.abs(pose.y)>1e6||Math.abs(pose.elevation)>1e6||!Number.isFinite(Math.fround(pose.elevation+height)))throw sceneCompositionDiagnosticError(`${path}.spatial.attachments.${id}`,'initial derived pose exceeds native limits');
+      initialPoses.set(id,pose);return pose;
+    };
+    for(const [id,a]of Object.entries(spatial.attachments??{})){
+      const child=byId.get(id),parent=byId.get(a.parent);
+      if(!child||!parent)throw sceneCompositionDiagnosticError(`${path}.spatial.attachments.${id}`,'must reference applied instances');
+      const c=resolveDataSceneInstanceComponents(child,{allowTemplate:false,path:`${path}.spatial.attachments.${id}`}),p=resolveDataSceneInstanceComponents(parent,{allowTemplate:false,path:`${path}.spatial.attachments.${id}.parent`});
+      if(c.mode!=='inline'||p.mode!=='inline'||c.body?.type!=='static'||!c.body.heightSpan||!p.body?.heightSpan)throw sceneCompositionDiagnosticError(`${path}.spatial.attachments.${id}`,'requires a static heightSpan child and heightSpan parent');
+      initialPose(id);
+    }
+  }
   return {
     format: SCENE_AUTHORING_DOCUMENT_FORMAT,
     version: SCENE_AUTHORING_DOCUMENT_VERSION,
@@ -138,7 +195,8 @@ export function resolveSceneAuthoringDocument(
     ...(ids === undefined ? {} : { ids }),
     ...(document.variables === undefined ? {} : { variables }),
     ...(document.gameplay === undefined ? {} : { gameplay: resolveDataSceneGameplaySpec(document.gameplay, `${path}.gameplay`) }),
-    ...(document.navigation === undefined ? {} : { navigation: resolveDataSceneNavigationSpec(document.navigation, `${path}.navigation`) }),
+    ...(navigation === undefined ? {} : { navigation }),
+    ...(spatial === undefined ? {} : { spatial }),
     ...(bindingPlan === undefined ? {} : { bindingPlan }),
   };
 }

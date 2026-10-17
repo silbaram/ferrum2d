@@ -13,7 +13,7 @@ pub(crate) fn collider_shape_at(
     collider_shape_at_segment(world, index, collider_index, 0)
 }
 
-pub(super) fn collider_segment_count_at(
+pub(crate) fn collider_segment_count_at(
     world: &World,
     index: usize,
     collider_index: usize,
@@ -27,7 +27,7 @@ pub(super) fn collider_segment_count_at(
     }
 }
 
-pub(super) fn collider_shape_at_segment(
+pub(crate) fn collider_shape_at_segment(
     world: &World,
     index: usize,
     collider_index: usize,
@@ -43,7 +43,14 @@ pub(super) fn collider_shape_from_compound(
     collider: CompoundColliderRef<'_>,
     segment_index: usize,
 ) -> Option<ColliderShapeRef> {
-    if !collider.enabled() {
+    if !collider.enabled()
+        || world
+            .rigid_bodies
+            .get(index)
+            .copied()
+            .flatten()
+            .is_some_and(|body| !body.enabled)
+    {
         return None;
     }
     match collider.shape {

@@ -69,13 +69,10 @@ Rust 시뮬레이션 상태나 render/input Wasm ABI를 변경하지 않는다. 
 추가 리뷰에서는 결함을 회귀 테스트로 먼저 재현하고 수정 후 통과를 확인했다.
 native capture 검사는 브라우저가 pending capture를 활성화한 뒤 해제 이벤트를 발생시키도록
 순서를 보정했다. 합성 이벤트만으로 native capture 통과를 주장하지 않는다.
-최초 검증은 `artifacts/issue73-b1-qa/`, 추가 리뷰 원본은
-`artifacts/issue73-b1-review-qa/`, packed browser report는
-`artifacts/input-context-consumer-*/report.json`에 남는다.
-
-최종 packed input 검사는 `artifacts/input-context-consumer-QaQJiB/report.json`의
-4개 viewport/DPR 조합 모두 통과했다. 실제 가상 버튼/joystick의 mouse chord 실패
-재현은 `artifacts/issue73-b1-review-qa/virtual-chord-before.log`에 보존했다.
+최종 packed input 검사는 4개 viewport/DPR 조합 모두 통과했다. 실제 가상 버튼/joystick의
+mouse chord 실패를 수정 전에 재현하고 수정 후 회귀 검증을 통과했다.
+완료된 당시 로컬 로그·보고서·검증 사본은 2026-10-17에 삭제했다. 위 결과는 당시 실행 기록이며,
+현재 결과가 필요하면 [smoke 검증 절차](smoke-check.md)에 따라 새 산출물을 생성한다.
 
 ## 제외한 검증과 남은 범위
 

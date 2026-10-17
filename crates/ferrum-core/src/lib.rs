@@ -227,3 +227,5 @@ pub fn version() -> String {
 pub fn wasm_memory() -> JsValue {
     wasm_bindgen::memory()
 }
+
+mod spatial_scene;

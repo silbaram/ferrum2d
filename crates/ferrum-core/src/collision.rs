@@ -67,10 +67,11 @@ use capsule_manifold::{
     capsule_capsule_contact_manifold_points, capsule_circle_contact_manifold_points,
 };
 use cast_primitives::*;
-pub(crate) use collider_shapes::collider_shape;
 use collider_shapes::{
-    collider_query_shape, collider_segment_count_at, collider_shape_at_segment,
-    collider_shape_center, collider_shape_is_valid, edge_as_capsule,
+    collider_query_shape, collider_shape_center, collider_shape_is_valid, edge_as_capsule,
+};
+pub(crate) use collider_shapes::{
+    collider_segment_count_at, collider_shape, collider_shape_at_segment,
 };
 use contact_manifold::contact_manifold_points;
 use contact_points::{
@@ -375,6 +376,14 @@ impl CollisionSystem {
         bc: ColliderShapeRef,
     ) -> bool {
         shapes_overlap(at, ac, bt, bc)
+    }
+    pub(crate) fn shapes_penetrate(
+        at: Transform2D,
+        ac: ColliderShapeRef,
+        bt: Transform2D,
+        bc: ColliderShapeRef,
+    ) -> bool {
+        shape_contact(at, ac, bt, bc).is_some()
     }
 }
 

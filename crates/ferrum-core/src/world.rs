@@ -139,4 +139,13 @@ impl World {
         PhysicsSystem::integrate(self, delta);
         self.update_sprite_animations(delta);
     }
+
+    pub(crate) fn update_with_rigid_body_step(
+        &mut self,
+        delta: f32,
+        rigid_body_step_enabled: bool,
+    ) {
+        PhysicsSystem::integrate_legacy_velocities(self, delta, rigid_body_step_enabled);
+        self.update_sprite_animations(delta);
+    }
 }

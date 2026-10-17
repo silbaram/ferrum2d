@@ -210,6 +210,10 @@ Apply 정책:
 - body당 1개 이상의 collider를 runtime apply한다. `collider`는 단일 collider shorthand이고, `colliders` 배열은 primary collider(index `0`)와 secondary collider(index `1+`)로 적용된다.
 - contact/query/debug result는 현재 body/entity 단위로 반환한다. Rust 내부는 collider pair를 순회하지만 public result에는 collider index를 노출하지 않는다.
 - collider별 layer/filter/trigger/enabled/material은 runtime apply와 collision/query/debug/contact solver에 반영된다. 낮은 빈도 tooling은 `getPhysicsBodyColliderCount(...)`와 `getPhysicsBodyCollider(...)`로 collider index, type, enabled/trigger, offset, material override, category/mask bit를 조회할 수 있다.
+- 현재 개발 소스는 body enabled도 collision/query/raycast/shape-cast 필터에 반영한다. 비활성 body의
+  모든 collider는 제외되며 body 없는 collider-only 객체와 활성 sleeping body는 포함한다.
+  body snapshot은 비활성 상태도 조회한다. 기존 beta에서 비활성 body의 collider를 query에 남기던
+  동작과 달라지므로 게임은 활성 collider-only 객체 또는 명시적 body snapshot으로 조회 목적을 구분한다.
 - `bodyA`/`bodyB`의 `"world"`는 helper가 collision-disabled static anchor body로 변환한다.
 - `chain`은 하나의 authoring collider이자 하나의 runtime collider로 적용된다. segment별 collision/query/debug 처리는 Rust 내부 구현 세부사항이며 public collider index를 늘리지 않는다.
 - apply는 authoring 시점의 낮은 빈도 호출을 대상으로 하며 frame hot path에서 body별 JS/Wasm stream을 만들지 않는다.

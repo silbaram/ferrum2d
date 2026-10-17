@@ -43,6 +43,36 @@ fn ground_probe_detects_solid_entity_below() {
 }
 
 #[test]
+fn disabled_body_does_not_block_sweep_or_ground_probe_but_collider_only_does() {
+    let mut world = World::default();
+    let mover = spawn_kinematic_body(&mut world, 0.0, 0.0, CollisionLayer::Player, true);
+    let ground = spawn_kinematic_body(&mut world, 0.0, 12.0, CollisionLayer::Enemy, false);
+    world.set_rigid_body(ground, RigidBody::static_body().with_enabled(false));
+    assert!(PhysicsSystem::ground_probe(&world, mover, 4.0, CollisionMask::ENEMY).is_none());
+    let movement = PhysicsSystem::move_and_slide(
+        &mut world,
+        mover,
+        Velocity { vx: 0.0, vy: 24.0 },
+        CollisionMask::ENEMY,
+        4,
+    );
+    assert_eq!(movement.hit_count, 0);
+    world.set_transform(mover, Transform2D { x: 0.0, y: 0.0 });
+    world.set_rigid_body(ground, RigidBody::static_body());
+    assert!(PhysicsSystem::ground_probe(&world, mover, 4.0, CollisionMask::ENEMY).is_some());
+    let collider_only = spawn_kinematic_body(&mut world, 20.0, 0.0, CollisionLayer::Enemy, false);
+    assert!(world.rigid_body(collider_only).is_none());
+    let movement = PhysicsSystem::move_and_slide(
+        &mut world,
+        mover,
+        Velocity { vx: 30.0, vy: 0.0 },
+        CollisionMask::ENEMY,
+        4,
+    );
+    assert!(movement.hit_count > 0);
+}
+
+#[test]
 fn ground_probe_detects_touching_solid_entity() {
     let mut world = World::default();
     let mover = spawn_kinematic_body(&mut world, 0.0, 0.0, CollisionLayer::Player, true);

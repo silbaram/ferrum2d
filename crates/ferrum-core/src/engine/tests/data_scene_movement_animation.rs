@@ -275,3 +275,34 @@ fn movement_animation_configuration_preserves_paused_lifecycle_and_rejects_other
     assert_eq!(engine.data_scene_game_state(), GameState::Paused.code());
     assert_eq!(state(&engine, actor), paused);
 }
+
+#[test]
+fn animation_progress_restores_native_pose_policy_and_facing_into_fresh_engine() {
+    let (mut engine, actor) = setup();
+    assert!(engine.configure_data_scene_movement_animation(&poses(), 2));
+    let epoch = engine.data_scene_epoch();
+    let handles = [actor.id, actor.generation];
+    let states = engine.capture_data_scene_progress(epoch, &handles);
+    let animation = engine.capture_data_scene_animation_progress(epoch, &handles);
+    assert_eq!((animation[6], animation[7]), (1.0, 2.0));
+    let (mut fresh, replacement) = setup();
+    assert!(fresh.restore_data_scene_progress_with_animations(
+        fresh.data_scene_epoch(),
+        &[replacement.id, replacement.generation],
+        &states,
+        &animation
+    ));
+    assert_eq!(state(&fresh, replacement), state(&engine, actor));
+    fresh.update(0.1);
+    assert_eq!(state(&fresh, replacement)[0], 2.0);
+    assert!(fresh.configure_data_scene_movement_animation(&[], 1));
+    let detached = fresh.capture_data_scene_animation_progress(
+        fresh.data_scene_epoch(),
+        &[replacement.id, replacement.generation],
+    );
+    assert!(engine.restore_data_scene_progress_with_animations(epoch, &handles, &states, &detached));
+    assert_eq!(
+        engine.capture_data_scene_animation_progress(epoch, &handles)[6],
+        0.0
+    );
+}

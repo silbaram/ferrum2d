@@ -401,3 +401,54 @@ ellipse/box authoring은 변경 없이 동작한다. alpha는 `0.1.0-beta.5`부�
 `gameplay`가 명시된 문서의 미지원 executor 및 actor/grid 오류는 activation 전에 거절한다.
 `applyBuiltInSceneAuthoringDocument`는 Data Scene 전용 gameplay/navigation 필드를 거절한다.
 `0.1.0-beta.7`부터 제공한다. beta.6 이하에는 이 필드만 추가해도 기능이 설치되지 않는다.
+
+## 공간 지형·카메라·빌보드 (개발 소스)
+
+`SceneAuthoringDocumentSpec.spatial`은 `DataSceneSpatialSpec`이다. `/authoring`은
+`resolveDataSceneSpatialSpec`, `resolveSpatialCameraSpec`, `createDataSceneSpatialView`와
+`SpatialCameraSpec`, `SpatialPoint`, `SpatialTerrainSurface`, `SpatialSurfaceConnection`, `SpatialBillboardSpec`,
+`SpatialMoveOptions`, `SpatialMoveStats`, `SpatialRenderBufferView`, `SpatialSurfaceHit`, `FerrumSpatialApi` 타입도 제공한다.
+선택 fragment의 billboard 참조와 native actor의 enabled kinematic/AABB/heightSpan 요구를 검증한다.
+`applyBuiltInSceneAuthoringDocument`는 spatial을 명시 거절한다.
+[공간 계약](../data-scene-spatial.md)의 WebGL2 지원 범위·저장 제한을 확인한다.
+선택 `spatial.connections`는 서로 다른 floor의 walkable surface를 shared edge로 양방향 연결한다.
+unknown ID/겹침/간격/모서리만 접촉/중복/모호한 연결은 activation 전에 경로 diagnostic으로 거절한다.
+생략/빈 배열은 기존 연결 없음이며 연결은 authoring JSON과 함께 저장된다.
+`moveDataSceneSpatialActorTo`는 runtime 목적지 요청이며 새 authoring 필드를 추가하지 않는다.
+x/y/floorId/speed와 선택 cellSize/arrivalRadius/cancelOnInput을 받고 명시적 연결로 다층 경로를 탐색한다.
+상태/취소/통계·예산·장애물 정지 계약은 [core 공간 API](core.md)의 대응 메서드를 따른다.
+route 자체는 저장하지 않고 공간 v6의 pose만 복원한 뒤 idle로 시작한다.
+`DataSceneSpatialPoseSnapshot`, `DataSceneSpatialProgressSnapshot`은 `/authoring`과 `/core`에서 제공한다.
+공간 진행 v6는 native camera와 live authored billboard XY/heightSpan을 stable ID로 저장하며
+일반 capture v5와 기존 v2~v5 해시/읽기를 유지한다.
+
+선택 `spatial.environment`는 `SpatialEnvironmentSpec`이며 `resolveSpatialEnvironmentSpec`으로 검증한다.
+관련 공개 타입은 `SpatialRgb`, `SpatialPointLightSpec`, `SpatialDirectionalLightSpec`, `SpatialLightingSpec`, `SpatialDepthOfFieldSpec`,
+`SpatialColorGradingSpec`, `SpatialFogSpec`, `SpatialEnvironmentBufferView`다.
+최대 4개 점광원과 1개 태양 방향광, hard/PCF 그림자, 고정 내부 해상도·표시 스냅, normal atlas와
+개체별 cast/receive, 실제 view depth DOF·actor 초점·HDR 색 보정·안개를 작성한다.
+새 품질 설정은 환경 v2 numeric112이며 기존 v1 numeric80과 저장 v7 계약을 유지한다.
+field/default/range와 WebGL2 capability·caster/draw/메모리 상한은 [공간 계약](../data-scene-spatial.md)을 따른다.
+runtime setter로 바꾼 효과도 native progress에 저장하며 environment 진행이 있는 capture만 v7이다.
+null은 authored 효과의 해제, 생략은 authored 기본값 유지다. 기존 flat v5·공간 pose/camera v6 해시는 유지한다.
+잘못된 environment는 activation 전 거절하고 native도 전체 scene/progress batch 검증 후 commit한다.
+
+`ApplyDataSceneAuthoringDocumentOptions.spatialModelPreparer`는 선택 `SpatialModelPreparer`다.
+반환 `SpatialModelPreparation`을 native 적용 전에 준비하고 성공 뒤 commit하며 finally dispose한다.
+[모델 GPU 준비 계약](../data-scene-spatial.md#모델-gpu-준비-후-활성화)에 따라 실패 시 기존 씬을 보존한다.
+옵션은 문서/저장 JSON에 직렬화하지 않는다.
+
+`addSpatialModelAssembly(document, assembly)`와 `SpatialModelAssemblySpec`, `SpatialModelColliderProxy`는
+정적 모델의 로컬 AABB·보행면·층 연결을 한 번의 위치/높이/90도 yaw/균일 scale로 생성한다.
+결과는 기존 authoring JSON이며 입력을 변경하지 않는다. 생성 ID·지원 변환·전역 floorId·최대 개수와
+runtime 이동 시 proxy가 따라가지 않는 제한은 [모델 묶음 배치 계약](../data-scene-spatial.md#정적-모델-로컬-proxy-묶음-배치)을 따른다.
+선택 `children?: readonly SpatialModelAssemblySpec[]`은 부모 기준 위치·높이·cardinal yaw·균일 scale을
+정적 합성한다. 자식 ID는 `parentId/children/localId`이며 root 포함 최대 64개·깊이 8을 검증한다.
+생략한 기존 호출 결과와 저장 버전은 유지하며 원본 계층은 runtime/저장 데이터로 전달하지 않는다.
+proxy 배열의 null·빈 칸과 f32에서 퇴화/overflow하는 월드 collider 경계·높이는 반환 전에 거절한다.
+`SpatialTerrainSurface.rampAxis`는 ramp에만 허용하는 선택 X/Y 축이며 생략 기본은 Y다.
+
+`addSpatialModelAssembly`는 `motion:"kinematic"`으로 native root와 부착 child model/collider를 생성한다.
+일반 각도 collider는 OBB이며 보행면이 있는 묶음의 최종 world yaw는 90도 배수다.
+움직이는 terrain/connection은 거절한다. model 옵션에 chunk/lods를 함께 작성할 수 있다.
+[공간 authoring의 지원 범위](../data-scene-spatial.md)를 따른다.

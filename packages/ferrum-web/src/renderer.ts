@@ -1,14 +1,16 @@
+import type { SpatialRendererStats } from "./webgl2SpatialPass.js";
 import type { RendererResourceStats } from "./rendererResources";
 import type { RendererGpuTimingStats } from "./gpuTiming.js";
 import type { RenderCommandBufferView } from "./renderCommandDecoder";
 import type { PostProcessStackInput } from "./cameraPostProcessing";
 
 export interface RendererStats {
+  spatial?: SpatialRendererStats;
   /** WebGL draw calls submitted by the renderer for the current frame. */
   drawCalls: number;
   /** Texture-contiguous sprite batches rendered for the current frame. */
   batchCount: number;
-  /** Sprite commands consumed by the renderer for the current frame. */
+  /** Flat sprite commands and spatial billboards consumed by the renderer for the current frame. */
   spriteCount: number;
   /** Raw render commands read from the Wasm command buffer for the current frame. */
   renderCommandCount: number;
@@ -60,7 +62,7 @@ export const RENDERER_STATS_FIELD_CONTRACT: readonly RendererStatsFieldContract[
     field: "spriteCount",
     label: "sprites",
     unit: "count",
-    description: "Sprite commands consumed by the renderer for the current frame.",
+    description: "Flat sprite commands and spatial billboards consumed by the renderer for the current frame.",
   },
   {
     field: "renderCommandCount",
@@ -131,6 +133,7 @@ export const RENDERER_STATS_FIELD_CONTRACT: readonly RendererStatsFieldContract[
 ];
 
 export interface Renderer {
+  readonly supportsSpatialScene?: boolean;
   render(): void;
   resize(): void;
   /** Optional view capability: world units per logical viewport, without reducing device pixels. */
@@ -168,6 +171,7 @@ export function emptyRendererStats(): RendererStats {
 }
 
 export function resetRendererStatsInto(stats: RendererStats): RendererStats {
+  delete stats.spatial;
   stats.drawCalls = 0;
   stats.batchCount = 0;
   stats.spriteCount = 0;

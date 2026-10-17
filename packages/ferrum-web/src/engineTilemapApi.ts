@@ -50,9 +50,18 @@ export function createTilemapSceneApi({
   requireAlive,
 }: TilemapSceneApiContext): FerrumTilemapSceneApi {
   return {
-    configureDataSceneNavigation(spec) {
+    configureDataSceneNavigation(spec, entityHandles) {
       requireAlive();
       const grid = resolveDataSceneNavigationSpec(spec);
+      if (grid.obstacles !== undefined && grid.obstacles.length > 0) {
+        const values = grid.obstacles.flatMap(obstacle => {
+          const handle = entityHandles !== undefined && Object.prototype.hasOwnProperty.call(entityHandles, obstacle.instanceId) ? entityHandles[obstacle.instanceId] : undefined;
+          if (handle === undefined) throw new Error(`navigation obstacle '${obstacle.instanceId}' requires an authored entity handle`);
+          return [uint32Number(handle.entityId, "obstacle.entityId"), uint32Number(handle.entityGeneration, "obstacle.entityGeneration"), obstacle.cells?.length ?? 0,
+            ...(obstacle.cells ?? []).flatMap(cell => [cell.column, cell.row])];
+        });
+        return rustEngine.configure_data_scene_navigation_with_obstacles(grid.columns, grid.rows, grid.cellWidth, grid.cellHeight, grid.originX ?? 0, grid.originY ?? 0, new Uint32Array(grid.costs), new Uint32Array(values));
+      }
       return rustEngine.configure_data_scene_navigation(grid.columns, grid.rows, grid.cellWidth, grid.cellHeight, grid.originX ?? 0, grid.originY ?? 0, new Uint32Array(grid.costs));
     },
     setDataSceneNavigationCost(column, row, cost) {

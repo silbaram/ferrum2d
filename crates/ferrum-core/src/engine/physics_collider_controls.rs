@@ -423,39 +423,30 @@ impl Engine {
         if let Some(collider) = self.world.collider(entity) {
             self.world
                 .set_aabb_collider(entity, collider.with_enabled(enabled));
-            return self.store_physics_entity_snapshot(entity);
-        }
-        if let Some(collider) = self.world.circle_collider(entity) {
+        } else if let Some(collider) = self.world.circle_collider(entity) {
             self.world
                 .set_circle_collider(entity, collider.with_enabled(enabled));
-            return self.store_physics_entity_snapshot(entity);
-        }
-        if let Some(collider) = self.world.oriented_box_collider(entity) {
+        } else if let Some(collider) = self.world.oriented_box_collider(entity) {
             self.world
                 .set_oriented_box_collider(entity, collider.with_enabled(enabled));
-            return self.store_physics_entity_snapshot(entity);
-        }
-        if let Some(collider) = self.world.capsule_collider(entity) {
+        } else if let Some(collider) = self.world.capsule_collider(entity) {
             self.world
                 .set_capsule_collider(entity, collider.with_enabled(enabled));
-            return self.store_physics_entity_snapshot(entity);
-        }
-        if let Some(collider) = self.world.edge_collider(entity) {
+        } else if let Some(collider) = self.world.edge_collider(entity) {
             self.world
                 .set_edge_collider(entity, collider.with_enabled(enabled));
-            return self.store_physics_entity_snapshot(entity);
-        }
-        if let Some(collider) = self.world.chain_collider(entity) {
+        } else if let Some(collider) = self.world.chain_collider(entity) {
             self.world
                 .set_chain_collider(entity, collider.with_enabled(enabled));
-            return self.store_physics_entity_snapshot(entity);
-        }
-        if let Some(collider) = self.world.convex_polygon_collider(entity) {
+        } else if let Some(collider) = self.world.convex_polygon_collider(entity) {
             self.world
                 .set_convex_polygon_collider(entity, collider.with_enabled(enabled));
-            return self.store_physics_entity_snapshot(entity);
+        } else {
+            return false;
         }
-        false
+        // Refresh (or clear) the body snapshot without rejecting collider-only entities.
+        self.store_physics_entity_snapshot(entity);
+        true
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -1,0 +1,313 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "Ferrum2D self-authored separate glTF regression"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "building",
+      "children": [
+        1,
+        2
+      ]
+    },
+    {
+      "name": "floors",
+      "children": [
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "name": "upper-walls",
+      "translation": [
+        0,
+        32,
+        -64
+      ],
+      "children": [
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "name": "lower-floor",
+      "mesh": 0,
+      "translation": [
+        0,
+        -2,
+        -48
+      ],
+      "scale": [
+        128,
+        4,
+        192
+      ]
+    },
+    {
+      "name": "ramp",
+      "mesh": 1
+    },
+    {
+      "name": "upper-floor",
+      "mesh": 0,
+      "translation": [
+        0,
+        28,
+        -96
+      ],
+      "scale": [
+        96,
+        8,
+        64
+      ]
+    },
+    {
+      "name": "wall-left",
+      "mesh": 0,
+      "translation": [
+        -46,
+        24,
+        -32
+      ],
+      "scale": [
+        4,
+        48,
+        64
+      ]
+    },
+    {
+      "name": "wall-right",
+      "mesh": 0,
+      "translation": [
+        46,
+        24,
+        -32
+      ],
+      "scale": [
+        4,
+        48,
+        64
+      ]
+    },
+    {
+      "name": "wall-back",
+      "mesh": 0,
+      "translation": [
+        0,
+        24,
+        -62
+      ],
+      "scale": [
+        96,
+        48,
+        4
+      ]
+    },
+    {
+      "name": "wall-front-left",
+      "mesh": 0,
+      "translation": [
+        -30,
+        24,
+        -2
+      ],
+      "scale": [
+        36,
+        48,
+        4
+      ]
+    },
+    {
+      "name": "wall-front-right",
+      "mesh": 0,
+      "translation": [
+        30,
+        24,
+        -2
+      ],
+      "scale": [
+        36,
+        48,
+        4
+      ]
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 3,
+            "NORMAL": 4
+          },
+          "indices": 5,
+          "material": 1
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.18,
+          0.3,
+          0.46,
+          1
+        ]
+      }
+    },
+    {
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.5,
+          0.32,
+          0.16,
+          1
+        ]
+      }
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3",
+      "min": [
+        -0.5,
+        -0.5,
+        -0.5
+      ],
+      "max": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3",
+      "min": [
+        -1,
+        -1,
+        -1
+      ],
+      "max": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5123,
+      "count": 36,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3",
+      "min": [
+        -16,
+        -4,
+        -64
+      ],
+      "max": [
+        16,
+        32,
+        -32
+      ]
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3",
+      "min": [
+        -1,
+        -1,
+        -1
+      ],
+      "max": [
+        1,
+        0.7071067811865475,
+        1
+      ]
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5123,
+      "count": 36,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 288
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 288,
+      "byteLength": 288
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 576,
+      "byteLength": 72
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 648,
+      "byteLength": 288
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 936,
+      "byteLength": 288
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 1224,
+      "byteLength": 72
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "scene.bin",
+      "byteLength": 1296
+    }
+  ],
+  "images": []
+}

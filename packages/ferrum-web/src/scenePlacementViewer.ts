@@ -1234,8 +1234,9 @@ function copyResolvedDataSceneObjectVisual(
 function copyDataSceneBody(body: DataSceneBodySpec | undefined): { body?: DataSceneBodySpec } {
   return body === undefined ? {} : {
     body: {
-      type: body.type,
+      ...body,
       ...(body.heightSpan === undefined ? {} : { heightSpan: { ...body.heightSpan } }),
+      ...(body.type !== "dynamic" || body.material === undefined ? {} : { material: { ...body.material } }),
     },
   };
 }

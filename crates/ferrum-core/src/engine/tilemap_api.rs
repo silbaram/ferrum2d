@@ -274,6 +274,7 @@ impl Engine {
         to_x: f32,
         to_y: f32,
     ) -> bool {
+        self.synchronize_data_scene_navigation();
         let navigation = if self.scene_mode == SceneMode::Data {
             &self.data_scene.navigation
         } else {
@@ -318,6 +319,7 @@ impl Engine {
             self.physics_query_result = PhysicsQueryResult::default();
             return false;
         };
+        self.synchronize_data_scene_navigation();
         let navigation = if self.scene_mode == SceneMode::Data {
             &self.data_scene.navigation
         } else {
@@ -370,6 +372,7 @@ impl Engine {
             x: from_x,
             y: from_y,
         };
+        self.synchronize_data_scene_navigation();
         let navigation = if self.scene_mode == SceneMode::Data {
             &self.data_scene.navigation
         } else {
@@ -502,6 +505,7 @@ impl Engine {
             self.frame_buffers.clear_tilemap_navigation_output();
             return false;
         };
+        self.synchronize_data_scene_navigation();
         let navigation = if self.scene_mode == SceneMode::Data {
             &self.data_scene.navigation
         } else {

@@ -66,7 +66,6 @@ import {
 import {
   captureGameStateSnapshot,
   GAME_STATE_SNAPSHOT_VERSION,
-  DATA_SCENE_STATE_VERSION,
   hashGameStateSnapshot,
   restoreGameStateSnapshot,
 } from "../../packages/ferrum-web/dist/gameStateSnapshot.js";
@@ -2689,8 +2688,9 @@ function validateDataSceneAuthoringSnapshotRestoreScenarioOutcome(fixture, label
   assert.equal(finalSnapshot?.scene?.score, this.expected.finalScore, `${label} final score must stay deterministic`);
   assert.equal(bootSnapshot?.version, GAME_STATE_SNAPSHOT_VERSION, `${label} boot snapshot version must match`);
   assert.equal(restoreSnapshot?.version, GAME_STATE_SNAPSHOT_VERSION, `${label} restored snapshot version must match`);
-  assert.equal(bootSnapshot?.dataScene?.version, DATA_SCENE_STATE_VERSION, `${label} boot Data Scene state version must match`);
-  assert.equal(restoreSnapshot?.dataScene?.version, DATA_SCENE_STATE_VERSION, `${label} restored Data Scene state version must match`);
+  // Flat scenes retain v5 on the wire; v6 is written only for spatial progress.
+  assert.equal(bootSnapshot?.dataScene?.version, 5, `${label} boot Data Scene state version must match`);
+  assert.equal(restoreSnapshot?.dataScene?.version, 5, `${label} restored Data Scene state version must match`);
   assert.equal(bootSnapshot?.scene?.gameState, this.expected.gameState, `${label} boot lifecycle state must match`);
   assert.equal(restoreSnapshot?.scene?.gameState, this.expected.gameState, `${label} restored lifecycle state must match`);
   assert.equal(bootSnapshot?.custom?.["ferrum2d.variables"]?.["campaign.level"], this.expected.globalLevel, `${label} boot global variable must be captured`);

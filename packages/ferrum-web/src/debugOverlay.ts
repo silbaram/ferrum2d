@@ -1,4 +1,21 @@
 export interface DebugOverlayMetrics {
+  /** Current renderer frame, distinct from the completed prior query's gpuFrameId. */
+  rendererFrameId?: number;
+  /** Unclamped interval between render callbacks; omitted on the first frame. */
+  frameIntervalMs?: number;
+  modelCount?: number;
+  visibleModelCount?: number;
+  modelDrawCalls?: number;
+  modelInstancedDrawCalls?: number;
+  modelTriangleCount?: number;
+  modelUploadBytes?: number;
+  modelInstanceUploadBytes?: number;
+  spatialShadowDrawCalls?: number;
+  spatialShadowPassCount?: number;
+  spatialShadowUploadBytes?: number;
+  spatialShadowCacheHit?: boolean;
+  spatialEffectDrawCalls?: number;
+
   wasmLinearMemoryBytes?: number;
   /** Completed GPU query time from a previous renderer frame. */
   gpuFrameTimeMs?: number;

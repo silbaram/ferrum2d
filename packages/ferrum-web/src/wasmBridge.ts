@@ -1,4 +1,5 @@
 import init, { Engine, version, wasm_memory } from "../pkg/ferrum_core.js";
+import { spatialModelRegistry } from "./spatialModel.js";
 import {
   createBuiltInShooterStateAccessor,
   createRenderCommandAccessor,
@@ -142,6 +143,87 @@ export class WasmBridge {
     view.groundShadowProjection = new Float32Array(
       this.memory.buffer, this.engineInstance.data_scene_ground_shadow_projection_ptr(), 3,
     );
+    if (typeof this.engineInstance.spatial_frame_active === "function" && this.engineInstance.spatial_frame_active()) {
+      const e = this.engineInstance;
+      const version = e.spatial_abi_version();
+      if ((version !== 1 && version !== 2) || e.spatial_vertex_stride() !== 11) {
+        throw new Error("Unsupported spatial buffer ABI");
+      }
+      const terrainVertexCount = e.spatial_terrain_len();
+      const billboardVertexCount = e.spatial_billboard_len();
+      const rangeCount = version === 2 ? e.spatial_terrain_draw_range_len() : 0;
+      if (version === 2 && (e.spatial_terrain_draw_range_stride() !== 2 || rangeCount > 256)) {
+        throw new Error("Unsupported spatial terrain range ABI");
+      }
+      const spatial = {
+        models: typeof e.spatial_model_len === "function" && e.spatial_model_len() > 0 ? (() => {
+          if(e.spatial_model_abi_version()!==1 || e.spatial_model_stride()!==20 || e.spatial_model_len()>1024) throw new Error("Unsupported model ABI");
+          const pointer=e.spatial_model_ptr(),length=e.spatial_model_len()*20;
+          return {version:1 as const,stride:20 as const,words:new Uint32Array(this.memory.buffer,pointer,length),values:new Float32Array(this.memory.buffer,pointer,length),
+            assets:new Map([...spatialModelRegistry(e).values()].map(r=>[r.id,r.handle]))};
+        })() : undefined,
+        vertexStride: 11 as const,
+        camera: new Float32Array(this.memory.buffer, e.spatial_camera_ptr(), 28),
+        terrain: new Float32Array(this.memory.buffer, e.spatial_terrain_ptr(), terrainVertexCount * 11),
+        terrainVertexCount,
+        terrainRevision: e.spatial_terrain_revision(),
+        billboards: new Float32Array(this.memory.buffer, e.spatial_billboard_ptr(), billboardVertexCount * 11),
+        billboardVertexCount,
+      };
+      const debugFlags = typeof e.spatial_debug_flags === "function" ? e.spatial_debug_flags() : 0;
+      const debugVertexCount = debugFlags ? e.spatial_debug_len() : 0;
+      if (debugFlags && (e.spatial_debug_abi_version() !== 1 || e.spatial_debug_vertex_stride() !== 11
+          || debugVertexCount % 2 !== 0 || debugVertexCount > 32768)) {
+        throw new Error("Unsupported spatial debug ABI");
+      }
+      const debug = debugFlags ? {
+        version: 1 as const,
+        vertexStride: 11 as const,
+        vertices: new Float32Array(this.memory.buffer, e.spatial_debug_ptr(), debugVertexCount * 11),
+        vertexCount: debugVertexCount,
+        depthTest: e.spatial_debug_depth_test(),
+        truncated: e.spatial_debug_truncated(),
+      } : undefined;
+      const materialVersion = typeof e.spatial_material_abi_version === "function" ? e.spatial_material_abi_version() : undefined;
+      if (materialVersion !== undefined && (materialVersion !== 1 || e.spatial_terrain_material_len() > 256 || e.spatial_billboard_material_len() > 10000)) throw new Error("Unsupported spatial material ABI");
+      const materials = materialVersion ? { version: 1 as const,
+        terrain: new Uint32Array(this.memory.buffer, e.spatial_terrain_material_ptr(), e.spatial_terrain_material_len() * 2),
+        billboards: new Uint32Array(this.memory.buffer, e.spatial_billboard_material_ptr(), e.spatial_billboard_material_len() * 2),
+      } : undefined;
+      if (typeof e.spatial_presentation_ptr === "function" && (typeof e.spatial_presentation_version !== "function" || e.spatial_presentation_version() !== 1)) throw new Error("Unsupported spatial presentation ABI");
+      const presentation = typeof e.spatial_presentation_ptr === "function" ? new Float32Array(this.memory.buffer, e.spatial_presentation_ptr(), 6) : undefined;
+      const environmentLength = typeof e.spatial_environment_len === "function" ? e.spatial_environment_len() : 0;
+      const casterCount = environmentLength ? e.spatial_shadow_caster_len() : 0;
+      const matrixCount = environmentLength ? e.spatial_shadow_matrix_len() : 0;
+      if (environmentLength && (!((e.spatial_environment_abi_version() === 1 && environmentLength === 80) || (e.spatial_environment_abi_version() === 2 && environmentLength === 112))
+          || casterCount % 6 !== 0 || casterCount > 1024 * 6 || ![0, 16, 96, 112].includes(matrixCount))) {
+        throw new Error("Unsupported spatial environment ABI");
+      }
+      const shadowRangeCount = environmentLength && typeof e.spatial_shadow_range_len === "function" ? e.spatial_shadow_range_len() : undefined;
+      if (shadowRangeCount !== undefined && (e.spatial_shadow_submission_version() !== 1 || shadowRangeCount > 8960)) throw new Error("Unsupported shadow submission ABI");
+      const environment = environmentLength ? {
+        version: e.spatial_environment_abi_version() as 1 | 2,
+        values: new Float32Array(this.memory.buffer, e.spatial_environment_ptr(), environmentLength),
+        shadowMatrices: new Float32Array(this.memory.buffer, e.spatial_shadow_matrix_ptr(), matrixCount),
+        shadowCasters: new Float32Array(this.memory.buffer, e.spatial_shadow_caster_ptr(), casterCount * 11),
+        shadowCasterVertexCount: casterCount,
+        shadowSubmission: shadowRangeCount === undefined ? undefined : {
+          version: 1 as const, revision: e.spatial_shadow_revision(),
+          ranges: new Uint32Array(this.memory.buffer, e.spatial_shadow_range_ptr(), shadowRangeCount * 4),
+        },
+      } : undefined;
+      view.spatial = version === 2
+        ? {
+          ...spatial,
+          presentation,
+          materials,
+          debug,
+          environment,
+          version: 2,
+          terrainDrawRanges: new Uint32Array(this.memory.buffer, e.spatial_terrain_draw_range_ptr(), rangeCount * 2),
+        }
+        : { ...spatial, presentation, materials, debug, environment, version: 1 };
+    }
     return view;
   }
 

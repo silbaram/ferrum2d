@@ -87,6 +87,25 @@ fn integrate_applies_velocity_to_alive_entities() {
 }
 
 #[test]
+fn legacy_world_update_keeps_raw_dynamic_projectiles_moving_without_solver_step() {
+    let mut world = World::default();
+    let projectile = world.spawn_entity();
+    world.set_transform(projectile, Transform2D { x: 720., y: 16. });
+    world.set_velocity(
+        projectile,
+        Velocity {
+            vx: -18000.,
+            vy: 0.,
+        },
+    );
+    world.set_rigid_body(projectile, RigidBody::dynamic(1.));
+    world.update(1. / 60.);
+    let at = world.transform(projectile).unwrap();
+    assert!((at.x - 420.).abs() < 0.0001);
+    assert_eq!(at.y, 16.);
+}
+
+#[test]
 fn clamp_entity_to_bounds_uses_collider_extents() {
     let mut world = World::default();
     let player = world.spawn_player(-20.0, 200.0, 0);

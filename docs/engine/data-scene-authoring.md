@@ -20,6 +20,7 @@ Data Scene authoring 문서는 다음 envelope를 사용한다.
 | `behaviorRecipes` | 예 | instance에 바인딩할 gameplay behavior profile을 정의한다. |
 | `ids` | 아니오 | action/item/timer 같은 이름을 runtime numeric id로 고정할 때 사용한다. |
 | `variables` | 아니오 | 선언된 정수·실수·불리언 값을 `global` 또는 `scene` 생존 스코프로 정의한다. |
+| `spatial` | 아니오 | 개발 소스의 opt-in 입체 지형·camera·billboard·native actor와 선택 shared-edge `connections` 설정. [공간 계약](data-scene-spatial.md)을 따른다. |
 
 최소 scene은 `sceneComposition.prefabs`, `sceneComposition.fragments`, `behaviorRecipes.entities`만으로 검증 가능해야 한다. starter scene adapter가 쓰는 `runtimeEntity`, `builtinShooterPlayer`, `builtinBreakoutPaddle` 같은 binding은 create-game 템플릿용 확장이지 최소 Data Scene 계약이 아니다.
 
@@ -217,7 +218,8 @@ committed golden fixture로도 검증한다.
 - `scene`: `snapshot.dataScene.custom["ferrum2d.variables"]`
 
 두 custom 슬롯은 기존 Data Scene snapshot hash 범위다. Built-in Shooter snapshot version `19`는 같은 Rust slab을 header에 exact bit로 포함하므로 gameplay replay hash에도 직접 반영된다.
-Scene/Level Flow v1은 Data Scene snapshot v2부터 지원한다. 현재 소스는 progress용 v3를 생성하며,
+Scene/Level Flow v1은 Data Scene snapshot v2부터 지원한다. 현재 소스는 일반 physics/obstacle/animation 진행에 v5,
+공간 진행에 v6를 사용하며,
 같은 문서와 같은 최종 변수 값은 변수 설정 순서와 무관하게 같은 snapshot hash를 만든다.
 기존 custom state와 함께 캡처할 때는 custom state가 object여야 하며
 `"ferrum2d.variables"`는 consumer가 직접 쓰지 않는 reserved key이며 public
@@ -271,7 +273,7 @@ pnpm validate:data-scene-authoring
 
 `visual`의 origin/tint/layer/sortOrder는 실제 Rust render command에 반영된다. `visual.layer`가 instance.layer보다 우선하며, `visual.depthSort: "hd2d"`는 같은 layer 안에서만 floor/elevation/발 위치 정렬을 활성화한다. Data Scene에서는 heightSpan 추가만으로 전역 정렬 모드가 바뀌지 않는다.
 
-optional `components.body: { type: "static" | "kinematic", heightSpan? }`는 sprite와 같은 entity에 물리 바디를 설치한다. 생략한 기존 collider-only 객체는 그대로다. [계약·공개 API recipe·검증](data-scene-native-runtime.md)을 참고한다. 이 연결은 `0.1.0-beta.2`부터 제공한다.
+optional `components.body: { type: "static" | "kinematic" | "dynamic", heightSpan? }`는 sprite와 같은 entity에 물리 바디를 설치한다. 생략한 기존 collider-only 객체는 그대로다. [계약·공개 API recipe·검증](data-scene-native-runtime.md)을 참고한다. static/kinematic 연결은 `0.1.0-beta.2`부터 제공하며 dynamic은 현재 개발 소스에 추가되어 있다. dynamic에는 명시적 mass와 gravityScale/damping/canSleep/마찰·반발계수를 작성할 수 있고 stepping 정책은 별도로 설정한다. 같은 authored handle을 collider obstacle과 progress 저장에 연결할 수 있으며 일반 v5 progress는 물리 pose를 포함하지 않으며 공간 v6 billboard pose는 [공간 저장](data-scene-spatial.md) 계약을 따른다.
 
 
 ## Data Scene 탐험 gameplay와 navigation (beta.7부터)
@@ -329,12 +331,50 @@ optional `components.body: { type: "static" | "kinematic", heightSpan? }`는 spr
 
 navigation은 렌더링·물리 collider와 별도인 **단일 XY 평면 격자**다. 최대 4096칸, 양수 float32 셀 크기,
 행 우선 `costs` 배열을 사용한다. 비용 0은 통행 불가, 1..65535는 통행 비용이다. 맵 이미지나 body에서
-자동으로 장애물을 생성하지 않으며 게임이 이동 가능한 영역과 캐릭터 여유 폭을 반영해 격자를 작성한다.
+기본 격자와 캐릭터 여유 폭은 게임이 작성한다. 선언한 collider 장애물은 아래 opt-in으로 자동 계산한다.
 `queryTilemapNavigationPath/Waypoint`를 그대로 사용하고 `setDataSceneNavigationCost(column,row,cost)`로
-문/장애물 비용을 바꾼다. 동일 값 또는 범위 밖 수정은 false다. 높이 span을 전달해도 동일 XY 격자의
+기본 지형 비용을 바꾼다. 동일 기본값 또는 범위 밖 수정은 false다. 높이 span을 전달해도 동일 XY 격자의
 장애물과 비용을 사용한다. 서로 다른 시작/도착 heightSpan을 연결하는 경사로·층간 portal은 지원하지 않는다.
 경로 조회는 waypoint 반환까지다. 아래 목적지 이동 API로 주인공의 경로 추종을 실행할 수 있다.
 NaN/Infinity가 들어간 좌표 조회는 경로·waypoint를 반환하지 않는다.
+
+현재 소스의 `navigation.obstacles`는 문 같은 장애물의 고정 칸 또는 live collider 경계를 격자와 선언적으로 연결한다.
+이 확장은 배포된 beta.7에 포함되지 않으며 새 엔진 패키지가 필요하다.
+
+```json
+{
+  "columns": 3, "rows": 1, "cellWidth": 24, "cellHeight": 24,
+  "costs": [1, 9, 1],
+  "obstacles": [{ "instanceId": "lighthouse-gate", "cells": [{ "column": 1, "row": 0 }] }]
+}
+```
+
+- `obstacles`는 optional이며 생략한 기존 격자는 종전처럼 물리와 독립적이다. `instanceId`는 적용하는
+  fragment의 inline collider instance를 참조한다. 한 instance당 선언 하나, 중복 없는 nonempty `cells`,
+  `cells` 대신 `collider: true`를 선택할 수 있다. 두 필드는 동시에 쓸 수 없다.
+  고정 cell reference와 자동 obstacle 수의 합은 최대 4096, 자동 obstacle은 최대 64개다. 다른 장애물이 같은 칸을 공유할 수 있다.
+  fragment 선택, `idPrefix`, root props 등 적용 옵션으로 결정된 instance를 검증한다. collider 없는
+  선택 instance와 빈 슬롯이 있는 `obstacles`/`cells` 배열은 씬 초기화 전에 거절해 기존 상태를 보존한다.
+- 기본 `costs`에는 문이 열렸을 때의 지형 비용을 넣는다. 닫힌 문 때문에 기존에 0으로 쓴 칸은 양수로
+  옮기고 obstacle로 선언한다. 원래 지형 비용 0인 칸은 문이 열려도 통행 불가다.
+- Rust가 현재 generation의 개체·body·단일 solid collider 활성 상태를 확인한다. collider-only 개체도
+  지원하며 trigger는 칸을 막지 않는다. 개체 제거, `setPhysicsBodyEnabled(handle, false)`,
+  `setPhysicsColliderEnabled(handle, false)`는 해당 장애물의 차단을 해제하고 다시 활성화하면 차단한다.
+  collider-only 개체의 collider 변경도 성공하면 `true`를 반환한다. body snapshot이 없다는 이유로
+  실패를 반환하지 않으며, stale handle이나 collider 없는 개체는 `false`로 거절한다.
+  겹친 장애물이 모두 해제되어야 기본 비용이 드러난다. 별도 비용 setter 호출은 필요 없다.
+- 경로/waypoint 조회와 이동 명령 전에 즉시 동기화하고, 이동 중에는 simulation step에서 변경을 감지해
+  경로를 다시 계산한다. 이미 blocked인 이동은 목적지를 다시 요청한다. 재사용된 entity ID의 다른
+  generation은 이전 장애물로 연결되지 않는다.
+- 런타임에서 직접 격자를 교체할 때는 `engine.configureDataSceneNavigation(spec, entityHandles)`로
+  apply 결과의 stable ID→handle map을 전달한다. 전체 문서 apply와 진행 복원은 이 연결을 자동 수행한다.
+  잘못된 handle/칸/중복/compound binding은 기존 격자와 경로를 보존하고 거절한다.
+- `cells`는 고정 칸이다. `{"instanceId":"lighthouse-gate","collider":true}`는 collider의 현재 XY
+  AABB 경계와 양의 면적으로 겹치는 모든 칸을 막는다. offset/위치/크기/회전 변경과 형상 교체를
+  Rust에서 따라가며 격자 밖은 잘라낸다. 원·회전 box·capsule·polygon은 보수적인 bounding box를
+  사용한다. 칸 경계에 닿기만 하는 인접 칸은 막지 않는다. collider 활성 상태 변화도 같은 overlay에
+  반영한다. 캐릭터 반경 팽창, 이미지에서 전체 지형 생성, 다층 navigation은 포함하지 않는다.
+  교체/clear/reset은 이전 binding도 제거한다.
 
 `useDataScene`, reset, transition은 navigation과 gameplay binding을 초기화한다. 문서 reapply는 새
 격자와 주인공을 다시 설치한다. invalid grid/actor/지원하지 않는 opted-in recipe는 기존 씬을 지우기 전에
@@ -375,7 +415,7 @@ engine.cancelDataSceneMove();
   기존 경로는 보존하며 이동 중 재탐색이 이런 경로를 만나면 blocked다. 월드 원점이나 셀 크기를 조정해야 한다.
   비용은 경로 선택에만 사용하며 속도 배율이 아니다.
 - 실제 이동은 기존 AABB sweep으로 primary AABB solid를 검사한다. collision filter·heightSpan을 따르고
-  trigger를 차단물로 취급하지 않는다. 원/다각형·compound의 추가 collider를 장애물로 추출하거나
+  trigger와 비활성 body를 차단물로 취급하지 않는다. 원/다각형·compound의 추가 collider를 장애물로 추출하거나
   회피하지 않는다. 격자에 캐릭터 폭과 장애물 여유를 반영해야 한다. 물리 solid에 막히면 blocked로 정지한다.
 - grid 교체/비용 수정/clear 또는 외부 위치 변경은 다음 simulation step에 경로를 다시 계산한다.
   경로가 없어지면 blocked다. 이미 blocked인 이동은 자동 재시도하지 않으므로 목적지를 다시 지정한다.
@@ -431,14 +471,16 @@ engine.configureDataSceneMovementAnimation(false);
   공격·대화 등의 수동 연출이 끝나면 위 설정을 다시 호출해 자동 연결을 켠다.
 - `false`는 Data Scene에서 이미 해제되어도 true다. gameplay 재설정은 기존 주인공을 idle로 바꾼 뒤
   연결을 해제한다. reset/전체 reapply/씬 전환도 연결을 초기화한다. 대상은 primary actor 한 명이다.
-- 이 설정과 runtime clip/시간/flip은 진행 snapshot에 저장하지 않는다. 문서의 `visual.animationSet`은
-  복원되므로 restore 후 위 설정을 다시 호출한다. runtime에서만 설치한 clip은 먼저 재설치한다.
+- 진행 snapshot v5는 authored `visual.animationSet`의 runtime clip/시간/pause/flip과 이 이동 pose 설정·방향을
+  함께 복원한다. 복원 직후 설정을 다시 호출하면 재생 시점이 바뀔 수 있으므로 저장된 연결을 유지한다.
+  playback이 없는 이전 v2/v3/v4 저장은 위 설정을 다시 호출한다. runtime에서만 설치한 clip은 저장 범위에 포함하지 않는다.
 
 ### 진행 저장·복원 (beta.7부터)
 
 기본 Data Scene snapshot은 문서 재적용 + variables/custom 복원이다. 탐험 진행 상태도 저장하려면
 `includeDataSceneProgress: true`를 명시한다. 수집 등으로 제거된 authored entity, `once` interaction의
-consumed 상태, 현재 navigation 전체(크기·원점·비용 또는 clear)를 함께 저장한다.
+consumed 상태, `bodyEnabled`/단일 `colliderEnabled`, 현재 navigation 전체(크기·원점·기본 지형 비용·
+장애물 binding 또는 clear)를 함께 저장한다. 문을 제거하지 않고 충돌만 비활성화한 상태도 새 엔진에 복원된다.
 
 ```ts
 import { captureGameStateSnapshot, restoreGameStateSnapshot } from "@ferrum2d/ferrum-web/core";
@@ -456,9 +498,20 @@ restoreGameStateSnapshot(engine, saved);
 
 저장 payload의 `dataScene.progress`는 stable instance ID를 사용한다. 새 handle/generation은 문서 재적용
 결과에서 다시 연결하며 제거 상태를 복원할 때 수집 이벤트나 변수 증가를 재실행하지 않는다.
+제거된 instance에는 physics flag나 animation playback을 담지 않는다. body가 없는 instance에 `bodyEnabled`를 저장하거나
+collider가 없는 instance에 `colliderEnabled`를 저장하면 복원 전에 거절한다. 장애물은 먼저 새 handle에
+연결한 뒤 제거/physics flag를 적용하므로 닫힌 문·열린 문·제거된 문 모두 격자 상태가 일치한다.
+`animationSet`을 가진 live instance에는 `animation: {clip, elapsedSeconds, paused, flipX, flipY,
+movement?}`를 저장한다. frame과 finished는 authored clip/fps와 경과 시간에서 다시 계산한다.
+`movement`는 runtime에 연결한 idle/walk pose와 현재 `initialDirection`을 저장한다. 생략된
+movement는 수동 playback의 해제 상태를 보존하며, 저장된 연결은 새 primaryActor에 자동 복원한다.
+정적 clip 정의는 authoring 문서에서 재설치하고 재생 상태만 bulk numeric buffer로 Rust에 전달한다.
+clip/시간/flag/pose가 잘못되면 씬 교체 전에 거절한다. legacy 단일-strip `animation`은 저장 대상이 아니다.
 문서 apply → 진행 상태 → 변수 → lifecycle → custom callback 순서로 복원한다. 입력 바인딩은 게임이
-새 엔진에 다시 설치한다. 진행 상태에는 위치·속도·카메라 설정·타이머 경과·FSM·추가 spawn·임의 JS 상태가
-포함되지 않는다. 필요한 게임 데이터는 기존 variables/custom 또는 별도 physics snapshot 정책으로 관리한다.
+새 엔진에 다시 설치한다. 일반 v5 진행에는 위치·카메라가 포함되지 않는다. 공간 문서의 v6 진행은
+[공간 저장 계약](data-scene-spatial.md)에 따라 live authored billboard의 XY/heightSpan과 runtime camera를 저장한다.
+속도·회전·타이머 경과·FSM·추가 spawn·임의 JS 상태는 포함하지 않는다.
+필요한 게임 데이터는 기존 variables/custom 또는 별도 physics snapshot 정책으로 관리한다.
 
 이번 진행 저장은 **기본 binding 옵션으로 전체 apply한 단일 문서**를 대상으로 한다. 같은 원본 문서를
 capture에 전달해야 한다. fragment/idPrefix/transform/ids/kinds override, 외부 componentTemplates,
@@ -468,10 +521,21 @@ reset/씬 전환 뒤 이전 apply 메타데이터로 모든 객체가 제거됐�
 진행 payload가 있으면 `restoreDataSceneAuthoringDocument: false`를 거절한다.
 `restoreDataSceneState: false`는 문서와 진행 복원 모두 건너뛴다.
 
-새 Data Scene state version은 `3`이며 바깥 GameStateSnapshot version은 `2`를 유지한다.
-기존 Data Scene v2 파일은 해시를 변경하지 않고 읽으며 progress 없이 종전 동작으로 복원한다.
-v2 엔진은 새 v3 파일을 거절하므로 진행 상태를 무시한 복원으로 아이템이 다시 나타나는 일을 방지한다.
+최신 지원 Data Scene state version은 `7`이며 바깥 GameStateSnapshot version은 `2`를 유지한다.
+공간 pose/camera capture는 v6, authored/runtime environment 진행이 있는 capture는 v7이며 일반 capture는 v5다.
+v7은 현재 조명·그림자·DOF·색 보정·안개의 `progress.spatial.environment`를 추가한다. null은 authored 효과 해제,
+생략은 authored 기본값 유지다. v6 이하에 이 environment progress를 넣으면 거절한다.
+v6는 `progress.spatial.camera`와
+`instances[].spatialPose`(x/y/heightSpan/선택 surfaceId)를 추가한다. v5 이하에 이 필드를 넣으면 거절한다.
+기존 Data Scene v2/v3/v4/v5/v6 파일은 해시를 변경하지 않고 읽는다. v2는 progress 없이, v3는 제거/consumed와
+독립 격자를 종전처럼 복원하며 생략된 physics flag는 authored 기본값을 유지한다. 과거 v3에 저장되지
+않은 열린 문 상태를 엔진이 추측하지 않으므로 게임의 기존 migration 정책은 유지해야 한다.
+v4는 physics flag와 고정 obstacle을 종전처럼 복원한다. 재생 상태가 없는 과거 파일은 초기 clip으로 복원한다.
+v2/v3/v4 엔진은 새 v5 파일을 거절한다. v3에 physics flag/obstacle을, v3/v4에
+animation playback/자동 collider obstacle을 끼워 넣어도 버전 계약 위반으로 거절한다.
 잘못된 progress ID/중복/consumed 조합/grid/버전은 씬 초기화 전에 거절하며 payload도 snapshot hash에 포함된다.
+잘못된 공간 pose/camera/surface 관계도 씬 초기화 전에 native preflight한다. 네이티브 progress commit은
+physics flag·animation·pose·camera 전체를 검증한 뒤 적용한다. 문서 적용 전체/custom callback의 rollback 계약은 아니다.
 
 실행 검증: `pnpm smoke:data-scene-gameplay`. 실제 packed package의 `/core`와 `/authoring`만 사용해
 입력·수집·변수·navigation·실패 시 씬 보존·generation reset을 검증한다.

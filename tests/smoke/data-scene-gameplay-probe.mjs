@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { captureGameStateSnapshot, createEngine, restoreGameStateSnapshot, hashGameStateSnapshot, parseGameStateSnapshot, stringifyGameStateSnapshot } from "@ferrum2d/ferrum-web/core";
-import { applyDataSceneAuthoringDocument } from "@ferrum2d/ferrum-web/authoring";
+import { applyDataSceneAuthoringDocument, createSceneInstanceHandleRegistry } from "@ferrum2d/ferrum-web/authoring";
 
 const original = { fetch: globalThis.fetch, raf: globalThis.requestAnimationFrame, cancel: globalThis.cancelAnimationFrame };
 const events = [];
@@ -257,11 +257,11 @@ try {
   assert(engine.setDataSceneNavigationCost(2, 2, 20));
   assert(engine.pauseDataScene());
   const savedProgress = parseGameStateSnapshot(stringifyGameStateSnapshot(captureGameStateSnapshot(engine, progressOptions)));
-  assert.equal(savedProgress.dataScene.version, 3);
+  assert.equal(savedProgress.dataScene.version, 5);
   assert.deepEqual(savedProgress.dataScene.progress.instances, [
-    { id: "player", removed: false, interactionConsumed: false },
+    { id: "player", removed: false, interactionConsumed: false, bodyEnabled: true, colliderEnabled: true },
     { id: "shell", removed: true, interactionConsumed: false },
-    { id: "site", removed: false, interactionConsumed: true },
+    { id: "site", removed: false, interactionConsumed: true, bodyEnabled: true, colliderEnabled: true },
   ]);
   assert.equal(savedProgress.dataScene.progress.navigation.costs[12], 20);
   assert.throws(() => captureGameStateSnapshot(engine, { ...progressOptions, dataSceneAuthoringDocument: document }), /same authoringDocument/);
@@ -528,6 +528,7 @@ try {
   assert(engine.configureDataSceneMovementAnimation(movementAnimation));
   assert(engine.moveDataSceneActorTo({ x: 108, y: 60, speed: 24 })); step(2);
   assert(engine.pauseDataScene());
+  const expectedAnimationState = animationState();
   const animationSnapshot = captureGameStateSnapshot(engine, {
     includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: animatedDocument,
   });
@@ -535,15 +536,286 @@ try {
   assert.equal(engine.dataSceneState(), "paused");
   const restoredAnimationActor = engine.queryAabbBodies({ x: 12, y: 60, halfWidth: 1, halfHeight: 1, queryMaskBits: 1 })[0];
   assert(restoredAnimationActor);
-  assert.equal(engine.dataSceneSpriteAnimationState(restoredAnimationActor).clip, 0);
+  assert.deepEqual(engine.dataSceneSpriteAnimationState(restoredAnimationActor), expectedAnimationState);
   assert(engine.resumeDataScene());
   assert(engine.moveDataSceneActorTo({ x: 36, y: 60, speed: 24 })); step(2);
-  assert.equal(engine.dataSceneSpriteAnimationState(restoredAnimationActor).clip, 0, "Snapshot must not restore a runtime animation binding");
-  assert(engine.configureDataSceneMovementAnimation(movementAnimation)); step();
+  assert.equal(engine.dataSceneSpriteAnimationState(restoredAnimationActor).clip, 7, "Snapshot restores native movement animation binding");
+  step();
   assert.equal(engine.dataSceneSpriteAnimationState(restoredAnimationActor).clip, 7);
   assert(engine.completeDataScene());
   assert.equal(engine.dataSceneSpriteAnimationState(restoredAnimationActor).clip, 2);
-  cases.push("restore reinstalls authored clips with fresh handles but requires animation binding setup again; complete selects idle immediately");
+  cases.push("restore preserves authored clip playback and native movement binding with fresh handles; complete selects idle immediately");
+  const doorDocument = structuredClone(document);
+  doorDocument.navigation = { columns: 3, rows: 1, cellWidth: 24, cellHeight: 24, costs: [1, 9, 1],
+    obstacles: [{ instanceId: "site", cells: [{ column: 1, row: 0 }] }] };
+  doorDocument.sceneComposition.fragments.island.instances = [
+    { id: "player", prefab: "player", x: 12, y: 12 }, { id: "site", prefab: "site", x: 36, y: 12 },
+  ];
+  doorDocument.sceneComposition.prefabs.site.props.components.collider.isTrigger = false;
+  const doorOptions = { includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: doorDocument };
+  const doorQuery = { fromX: 12, fromY: 12, toX: 60, toY: 12 };
+  const doorPath = () => engine.queryTilemapNavigationPath(doorQuery);
+  input.space = false;
+  const boundaryDoor = applyDataSceneAuthoringDocument(engine, doorDocument);
+  boundaryDoor.variables.set("shells", 7);
+  assert(engine.pauseDataScene());
+  const preservedDoor = () => ({
+    state: engine.dataSceneState(), count: engine.entityCount(),
+    player: engine.getPhysicsEntity(boundaryDoor.entityHandles.player),
+    door: engine.getPhysicsEntity(boundaryDoor.entityHandles.site),
+    snapshot: captureGameStateSnapshot(engine, doorOptions),
+    path: engine.queryTilemapNavigationPath({ ...doorQuery, toX: 12, toY: 12 })?.points,
+  });
+  const beforeBoundary = preservedDoor();
+  for (const cells of [new Array(1), [, { column: 1, row: 0 }], [{ column: 1, row: 0 }, ,]]) {
+    const sparse = structuredClone(doorDocument);
+    sparse.navigation.obstacles[0].cells = cells;
+    assert.throws(() => applyDataSceneAuthoringDocument(engine, sparse), /cells\.\d.*must be an object/);
+    assert.deepEqual(preservedDoor(), beforeBoundary);
+  }
+  const sparseObstacles = structuredClone(doorDocument);
+  sparseObstacles.navigation.obstacles = new Array(1);
+  assert.throws(() => applyDataSceneAuthoringDocument(engine, sparseObstacles), /obstacles\.0.*must be an object/);
+  assert.deepEqual(preservedDoor(), beforeBoundary);
+  const colliderVariant = structuredClone(doorDocument);
+  const visualDoor = structuredClone(colliderVariant.sceneComposition.prefabs.site.props.components);
+  delete visualDoor.body;
+  visualDoor.collider = { type: "none" };
+  colliderVariant.sceneComposition.fragments.visual = { instances: [
+    colliderVariant.sceneComposition.fragments.island.instances[0],
+    { id: "site", prefab: "site", x: 36, y: 12, props: { components: visualDoor } },
+  ] };
+  assert.throws(() => applyDataSceneAuthoringDocument(engine, colliderVariant, { fragment: "visual" }), /requires an inline collider/);
+  assert.deepEqual(preservedDoor(), beforeBoundary);
+  cases.push("sparse obstacle arrays and selected-fragment collider rejection preserve paused state, handles, variables, grid and progress context");
+
+  const alternateDoor = structuredClone(doorDocument);
+  alternateDoor.sceneComposition.initialFragment = "empty";
+  alternateDoor.sceneComposition.fragments.empty = { instances: [] };
+  const selectedDoor = applyDataSceneAuthoringDocument(engine, alternateDoor, { fragment: "island" });
+  assert.equal(engine.entityCount(), 2);
+  assert(engine.getPhysicsEntity(selectedDoor.entityHandles.site));
+  assert.equal(doorPath(), undefined);
+  assert(engine.setPhysicsColliderEnabled(selectedDoor.entityHandles.site, false));
+  assert(doorPath()?.points.length > 0);
+  cases.push("explicit alternate fragment validates and binds its door even when the initial fragment is empty");
+
+  for (const mode of ["body", "collider", "removed"]) {
+    const liveDoor = applyDataSceneAuthoringDocument(engine, doorDocument).entityHandles.site;
+    assert.equal(doorPath(), undefined, "Closed solid door must block the one-cell-wide corridor");
+    const closed = captureGameStateSnapshot(engine, doorOptions);
+    assert.equal(closed.dataScene.progress.navigation.costs[1], 9, "Save terrain cost, not the temporary blocked cost");
+    const open = () => mode === "body" ? engine.setPhysicsBodyEnabled(liveDoor, false)
+      : mode === "collider" ? engine.setPhysicsColliderEnabled(liveDoor, false) : engine.despawnPhysicsEntity(liveDoor);
+    assert(open());
+    assert(doorPath()?.points.length > 0, "Opening a bound door needs no setDataSceneNavigationCost call");
+    assert(engine.moveDataSceneActorTo({ x: 60, y: 12, speed: 60, arrivalRadius: 0 }));
+    engine.start(); step(80);
+    assert.equal(engine.dataSceneMoveStatus(), "arrived", "Native sweep must cross disabled/removed door");
+    assert(engine.pauseDataScene());
+    const opened = parseGameStateSnapshot(stringifyGameStateSnapshot(captureGameStateSnapshot(engine, doorOptions)));
+    const site = opened.dataScene.progress.instances.find(instance => instance.id === "site");
+    assert.equal(site.removed, mode === "removed");
+    if (mode !== "removed") {
+      assert.equal(site.bodyEnabled, mode !== "body");
+      assert.equal(site.colliderEnabled, mode !== "collider");
+    }
+    for (const corrupt of [
+      snap => snap.dataScene.progress.instances[0].bodyEnabled = "false",
+      snap => snap.dataScene.progress.navigation.obstacles[0].instanceId = "missing",
+      snap => snap.dataScene.progress.navigation.obstacles[0].cells[0].column = 3,
+      snap => snap.dataScene.version = 3,
+    ]) {
+      const invalid = structuredClone(opened); corrupt(invalid); invalid.snapshotHash = hashGameStateSnapshot(invalid);
+      assert.throws(() => restoreGameStateSnapshot(engine, invalid));
+      assert.equal(engine.dataSceneState(), "paused");
+      assert.deepEqual(captureGameStateSnapshot(engine, doorOptions).dataScene.progress, opened.dataScene.progress);
+    }
+    engine.destroy();
+    engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input);
+    const registry = createSceneInstanceHandleRegistry();
+    restoreGameStateSnapshot(engine, opened, { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: registry } });
+    assert.equal(engine.dataSceneState(), "paused");
+    assert(doorPath()?.points.length > 0);
+    assert.deepEqual(captureGameStateSnapshot(engine, doorOptions).dataScene.progress, opened.dataScene.progress);
+    const restoredDoor = registry.get("site");
+    if (mode !== "removed") {
+      assert.equal(engine.getPhysicsEntity(restoredDoor).bodyEnabled, mode !== "body");
+      assert.equal(engine.getPhysicsEntity(restoredDoor).colliderEnabled, mode !== "collider");
+      assert(mode === "body" ? engine.setPhysicsBodyEnabled(restoredDoor, true) : engine.setPhysicsColliderEnabled(restoredDoor, true));
+      assert.equal(doorPath(), undefined, "Reclosing restores the obstacle after fresh-engine restore");
+    } else assert.equal(engine.gameplayEntityExists(restoredDoor), false);
+    assert(engine.resumeDataScene());
+    restoreGameStateSnapshot(engine, closed);
+    assert.equal(doorPath(), undefined, "Closed progress restores both flags and obstacle bindings");
+    cases.push(`bound door ${mode}: automatic path/sweep, base costs, paused JSON fresh-engine restore and malformed-state preservation`);
+  }
+  const colliderOnlyDocument = structuredClone(doorDocument);
+  delete colliderOnlyDocument.sceneComposition.prefabs.site.props.components.body;
+  const colliderOnlyOptions = { ...doorOptions, dataSceneAuthoringDocument: colliderOnlyDocument };
+  const colliderOnlyDoor = applyDataSceneAuthoringDocument(engine, colliderOnlyDocument).entityHandles.site;
+  assert.equal(engine.getPhysicsEntity(colliderOnlyDoor), undefined);
+  assert.equal(doorPath(), undefined);
+  assert(engine.setPhysicsColliderEnabled(colliderOnlyDoor, false));
+  assert(doorPath()?.points.length > 0);
+  assert(engine.pauseDataScene());
+  const colliderOnlySnapshot = parseGameStateSnapshot(stringifyGameStateSnapshot(captureGameStateSnapshot(engine, colliderOnlyOptions)));
+  const colliderOnlyState = colliderOnlySnapshot.dataScene.progress.instances.find(instance => instance.id === "site");
+  assert.equal(colliderOnlyState.bodyEnabled, undefined);
+  assert.equal(colliderOnlyState.colliderEnabled, false);
+  engine.destroy();
+  engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input);
+  const colliderOnlyRegistry = createSceneInstanceHandleRegistry();
+  restoreGameStateSnapshot(engine, colliderOnlySnapshot, { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: colliderOnlyRegistry } });
+  assert.equal(engine.dataSceneState(), "paused");
+  assert(doorPath()?.points.length > 0);
+  assert.deepEqual(captureGameStateSnapshot(engine, colliderOnlyOptions).dataScene.progress, colliderOnlySnapshot.dataScene.progress);
+  const restoredColliderOnly = colliderOnlyRegistry.get("site");
+  assert.equal(engine.getPhysicsEntity(restoredColliderOnly), undefined);
+  assert(engine.setPhysicsColliderEnabled(restoredColliderOnly, true));
+  assert.equal(doorPath(), undefined);
+  assert.equal(engine.setPhysicsColliderEnabled({ ...restoredColliderOnly, entityGeneration: restoredColliderOnly.entityGeneration + 1 }, false), false);
+  assert.equal(doorPath(), undefined);
+  cases.push("collider-only door toggle returns true, saves without a body flag, restores to a fresh engine and rejects stale handles");
+  const legacyDoor = applyDataSceneAuthoringDocument(engine, doorDocument).entityHandles.site;
+  assert(engine.setPhysicsBodyEnabled(legacyDoor, false));
+  const legacyV3 = captureGameStateSnapshot(engine, doorOptions);
+  legacyV3.dataScene.version = 3;
+  for (const instance of legacyV3.dataScene.progress.instances) { delete instance.bodyEnabled; delete instance.colliderEnabled; }
+  delete legacyV3.dataScene.progress.navigation.obstacles;
+  // A real v3 authoring document has no obstacle field; keep its independent grid contract.
+  delete legacyV3.dataScene.authoringDocument.navigation.obstacles;
+  legacyV3.dataScene.progress.navigation.costs[1] = 0;
+  legacyV3.snapshotHash = hashGameStateSnapshot(legacyV3);
+  const legacyParsed = parseGameStateSnapshot(stringifyGameStateSnapshot(legacyV3));
+  assert.equal(legacyParsed.snapshotHash, legacyV3.snapshotHash);
+  const registry = createSceneInstanceHandleRegistry();
+  restoreGameStateSnapshot(engine, legacyParsed, { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: registry } });
+  assert.equal(engine.getPhysicsEntity(registry.get("site")).bodyEnabled, true);
+  assert.equal(doorPath(), undefined);
+  cases.push("legacy v3 hash and independent grid restore retain authored physics defaults");
+
+  const automaticDoorDocument = structuredClone(doorDocument);
+  automaticDoorDocument.navigation.obstacles = [{ instanceId: "site", collider: true }];
+  const automaticOptions = { ...doorOptions, dataSceneAuthoringDocument: automaticDoorDocument };
+  let autoLive = applyDataSceneAuthoringDocument(engine, automaticDoorDocument);
+  assert.equal(doorPath(), undefined);
+  assert(engine.setPhysicsBodyPosition(autoLive.entityHandles.site, 200, 12));
+  assert(doorPath()?.pointCount > 0);
+  assert(engine.setPhysicsBodyPosition(autoLive.entityHandles.site, 36, 12));
+  assert.equal(doorPath(), undefined);
+  assert(engine.setPhysicsBodyEnabled(autoLive.entityHandles.site, false));
+  assert(engine.pauseDataScene());
+  const autoSaved = parseGameStateSnapshot(stringifyGameStateSnapshot(captureGameStateSnapshot(engine, automaticOptions)));
+  assert.deepEqual(autoSaved.dataScene.progress.navigation.obstacles, [{ instanceId: "site", collider: true }]);
+  engine.destroy(); engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input);
+  const autoRegistry = createSceneInstanceHandleRegistry();
+  restoreGameStateSnapshot(engine, autoSaved, { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: autoRegistry } });
+  assert.equal(engine.dataSceneState(), "paused"); assert(doorPath()?.pointCount > 0);
+  assert(engine.setPhysicsBodyEnabled(autoRegistry.require("site"), true));
+  assert.equal(doorPath(), undefined);
+  cases.push("automatic collider coverage follows native position and restores its source plus disabled-body overlay in a fresh engine");
+
+  const playbackDocument = structuredClone(animatedDocument);
+  playbackDocument.sceneComposition.prefabs.player.props.components.visual.animationSet.clips[7].loop = false;
+  const playbackOptions = { includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: playbackDocument };
+  for (const finished of [false, true]) {
+    const applied = applyDataSceneAuthoringDocument(engine, playbackDocument);
+    const actor = applied.entityHandles.player;
+    assert(engine.updateDataSceneSpriteAnimations([{ entity: actor, clip: 7, flipX: true, flipY: true }]));
+    engine.start(); step(finished ? 40 : 2);
+    assert(engine.updateDataSceneSpriteAnimations([{ entity: actor, paused: true }]));
+    assert(engine.pauseDataScene());
+    const expected = engine.dataSceneSpriteAnimationState(actor);
+    assert.equal(expected.finished, finished);
+    const saved = parseGameStateSnapshot(stringifyGameStateSnapshot(captureGameStateSnapshot(engine, playbackOptions)));
+    for (const mutate of [
+      value => value.dataScene.progress.instances.find(item => item.id === "player").animation.clip = 9999,
+      value => value.dataScene.progress.instances.find(item => item.id === "player").animation.elapsedSeconds = -1,
+      value => value.dataScene.progress.instances.find(item => item.id === "player").animation.paused = 1,
+      value => value.dataScene.version = 4,
+    ]) {
+      const invalid = structuredClone(saved); mutate(invalid); invalid.snapshotHash = hashGameStateSnapshot(invalid);
+      assert.throws(() => restoreGameStateSnapshot(engine, invalid));
+      assert.deepEqual(engine.dataSceneSpriteAnimationState(actor), expected);
+      assert.equal(engine.dataSceneState(), "paused");
+    }
+    engine.destroy(); engine = await createEngine(frame => events.push(...structuredClone(frame.gameplayEvents)), () => input);
+    const registry = createSceneInstanceHandleRegistry();
+    restoreGameStateSnapshot(engine, saved, { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: registry } });
+    assert.deepEqual(engine.dataSceneSpriteAnimationState(registry.require("player")), expected);
+    assert(engine.resumeDataScene()); engine.start(); step(2);
+    assert.deepEqual(engine.dataSceneSpriteAnimationState(registry.require("player")), expected);
+    cases.push(`atlas ${finished ? "finished" : "fractional"} playback JSON restores to fresh engine with pause/flips and atomic corruption rejection`);
+  }
+
+  // Beacon lab: authored dynamics retain the obstacle/save identity without a raw-body proxy.
+  engine.destroy(); engine = await createEngine();
+  const dynamicDocument = {
+    format: "ferrum2d.consumer.scene-authoring", version: 1,
+    sceneComposition: { initialFragment: "lab", prefabs: { box: { props: { components: {
+      visual: { kind: "sprite", texture: 23, width: 40, height: 40, originY: 1 },
+      collider: { type: "aabb", halfWidth: 8, halfHeight: 8, isTrigger: false }, layer: "wall",
+      body: { type: "dynamic" },
+    } } } }, fragments: { lab: { instances: [{ id: "box", prefab: "box", x: 30, y: 10 }] } } },
+    behaviorRecipes: { entities: {} },
+    navigation: { columns: 3, rows: 1, cellWidth: 20, cellHeight: 20, costs: [1, 7, 1], obstacles: [{ instanceId: "box", collider: true }] },
+  };
+  const geometries = [
+    { type: "aabb", halfWidth: 8, halfHeight: 8 },
+    { type: "circle", radius: 8 },
+    { type: "capsule", startX: -4, startY: 0, endX: 4, endY: 0, radius: 3 },
+    { type: "orientedBox", halfWidth: 8, halfHeight: 8 },
+    { type: "convexPolygon", vertices: [{ x: -8, y: -8 }, { x: 8, y: -8 }, { x: 8, y: 8 }, { x: -8, y: 8 }] },
+  ];
+  for (const collider of geometries) {
+    const shapeDocument = structuredClone(dynamicDocument);
+    shapeDocument.sceneComposition.prefabs.box.props.components.collider = collider;
+    for (const scale of [1, 2]) {
+      shapeDocument.sceneComposition.fragments.lab.instances[0].scale = scale;
+      const box = applyDataSceneAuthoringDocument(engine, shapeDocument).entityHandles.box;
+      const body = engine.getPhysicsEntity(box);
+      assert.equal(body.bodyType, "dynamic"); assert.equal(body.mass, 1);
+      assert.equal(body.gravityScale, 1); assert.equal(body.linearDamping, 0);
+      assert(body.inertia > 0 && Number.isFinite(body.inertia));
+      const baseInertia = body.inertia / (scale * scale);
+      if (collider.type === "aabb" || collider.type === "orientedBox" || collider.type === "convexPolygon") assert(Math.abs(baseInertia - 128 / 3) < 0.001);
+      if (collider.type === "circle") assert(Math.abs(baseInertia - 32) < 0.001);
+    }
+  }
+  cases.push("authored dynamic AABB/circle/capsule/oriented box/polygon use native inertia and explicit mass independent of scale");
+  const box = applyDataSceneAuthoringDocument(engine, dynamicDocument).entityHandles.box;
+  const labPath = () => engine.queryTilemapNavigationPath({ fromX: 10, fromY: 10, toX: 50, toY: 10 });
+  const labRay = () => engine.raycastBodies({ originX: 0, originY: 10, directionX: 1, directionY: 0, maxDistance: 70, queryMaskBits: 8 });
+  assert.equal(labPath(), undefined); assert.equal(labRay().length, 1);
+  engine.configureAutoRigidBodyStep({ gravityX: 0, gravityY: 0 });
+  assert(engine.setPhysicsBodyVelocity(box, 60, 0));
+  const dynamicStartTime = time;
+  engine.start(); tick(time); step(60);
+  assert(Math.abs(engine.getPhysicsEntity(box).x - (30 + 60 * (time - dynamicStartTime) / 1000)) < 0.01);
+  assert(labPath());
+  engine.pauseDataScene(); const pausedX = engine.getPhysicsEntity(box).x;
+  step(60); assert.equal(engine.getPhysicsEntity(box).x, pausedX);
+  engine.stop(); engine.configureAutoRigidBodyStep(false);
+  cases.push("authored dynamic auto step moves once per frame, updates its collider obstacle and freezes on pause");
+  assert(engine.setPhysicsBodyPosition(box, 30, 10));
+  assert(engine.setPhysicsBodyEnabled(box, false)); assert.equal(labRay().length, 0);
+  assert.equal(engine.getPhysicsEntity(box).colliderEnabled, true); assert(labPath());
+  const savedDynamic = parseGameStateSnapshot(stringifyGameStateSnapshot(captureGameStateSnapshot(engine, {
+    includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: dynamicDocument,
+  })));
+  assert.deepEqual(savedDynamic.dataScene.progress.navigation.obstacles, [{ instanceId: "box", collider: true }]);
+  engine.destroy(); engine = await createEngine();
+  const dynamicRegistry = createSceneInstanceHandleRegistry();
+  restoreGameStateSnapshot(engine, savedDynamic, { dataSceneAuthoringApplyOptions: { instanceHandleRegistry: dynamicRegistry } });
+  const restoredBox = dynamicRegistry.require("box");
+  assert.equal(engine.getPhysicsEntity(restoredBox).bodyType, "dynamic");
+  assert.equal(engine.getPhysicsEntity(restoredBox).bodyEnabled, false);
+  assert.equal(labRay().length, 0); assert(labPath());
+  assert(engine.setPhysicsBodyEnabled(restoredBox, true)); assert.equal(labRay().length, 1);
+  assert.equal(labPath(), undefined);
+  cases.push("authored dynamic identity, disabled-body raycast exclusion and collider obstacle flags survive JSON/fresh-engine progress restore");
+
   const report = { format: "ferrum2d.data-scene-gameplay.consumer-smoke", version: 1, status: "passed", cases };
   await writeFile(new URL("./result.json", import.meta.url), JSON.stringify(report, null, 2) + "\n");
   console.log(JSON.stringify(report));

@@ -1,3 +1,4 @@
+import type { SpatialModelAsset, SpatialModelPreparation, SpatialModelPreparer } from "./spatialModel.js";
 import { forgetDataSceneProgressContext, rememberDataSceneProgressContext } from "./dataSceneProgress.js";
 import { resolveDataSceneGroundShadow, type ResolvedDataSceneGroundShadow } from "./dataSceneSun.js";
 import type { DataSceneSpriteAnimationSetSpec } from "./dataSceneSpriteAnimation.js";
@@ -32,6 +33,8 @@ import type {
 } from "./gameplayAuthoring.js";
 import type { ResolvedSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
 import type { ResolvedSceneCompositionInstance } from "./sceneComposition.js";
+import type { DataSceneSpatialSpec, SpatialCameraSpec } from "./dataSceneSpatial.js";
+import type { SpatialEnvironmentSpec } from "./spatialEnvironment.js";
 import type { DataSceneVariableStore } from "./dataSceneVariables.js";
 
 const DATA_SCENE_RUNTIME_ENGINE_ADAPTER = Symbol("ferrum2d.dataSceneRuntimeEngineAdapter");
@@ -66,6 +69,8 @@ export interface ApplyDataSceneAuthoringDocumentOptions
   validateBindings?: boolean;
   validateComponents?: boolean;
   allowComponentTemplates?: boolean;
+  /** Opt-in model GPU preparation before replacing the active scene; not serialized. */
+  spatialModelPreparer?: SpatialModelPreparer;
 }
 
 export interface ApplyDataSceneAuthoringDocumentResult extends SceneBehaviorApplyResult {
@@ -115,8 +120,16 @@ export interface DataSceneRuntimeSpawnRequest {
 
 export interface DataSceneRuntimeEngineAdapter {
   useDataScene(): void;
+  /** Optional cold capability; absence rejects render:false before scene activation. */
+  supportsSpatialSurfaceProxies?(): boolean;
+  /** Optional cold capability; absence rejects X ramps before activation. */
+  supportsSpatialRampAxis?(): boolean;
+  /** Opaque registered handles only; available after model/content preflight. */
+  spatialModelAssets?(spec: DataSceneSpatialSpec): readonly SpatialModelAsset[];
   textureId(name: string): number;
   spawnDataSceneEntity(request: DataSceneRuntimeSpawnRequest): GameplayEntityHandle | undefined;
+  /** Cold native camera/environment validation before destructive authoring activation. */
+  preflightSpatialEnvironment?(camera: SpatialCameraSpec, environment: SpatialEnvironmentSpec): boolean;
 }
 
 interface DataSceneRuntimeEngine {
@@ -183,6 +196,7 @@ export function applyDataSceneAuthoringDocument(
     colorManagement,
     componentTemplates,
     textureId,
+    spatialModelPreparer,
     validateBindings = true,
     validateComponents = true,
     allowComponentTemplates = componentTemplates !== undefined,
@@ -216,9 +230,47 @@ export function applyDataSceneAuthoringDocument(
         ...(resolvedVariables.length === 0 ? {} : { variables: runtimeVariableIds }),
       };
   const runtimeAdapter = dataSceneRuntimeEngineAdapter(engine, `${path}.runtimeTarget.engine`);
-  preflightDataSceneGameplay(engine, resolved, bindSceneBehaviorRecipes(resolved.sceneComposition, resolved.behaviorRecipes, { ...bindingOptions, path }), runtimeIds, path);
+  if (
+    resolved.spatial?.terrain.some(s => s.render === false) &&
+    !runtimeAdapter.supportsSpatialSurfaceProxies?.()
+  )
+    throw sceneCompositionDiagnosticError(
+      `${path}.spatial.terrain`,
+      "render:false surfaces require native spatial surface proxy v1 support",
+    );
+  if (resolved.spatial?.terrain.some(s => s.rampAxis === "x") && !runtimeAdapter.supportsSpatialRampAxis?.())
+    throw sceneCompositionDiagnosticError(`${path}.spatial.terrain`, "X ramps require native spatial ramp axis v1 support");
+  const bindingPlan = bindSceneBehaviorRecipes(resolved.sceneComposition, resolved.behaviorRecipes, { ...bindingOptions, path });
+  preflightDataSceneGameplay(engine, resolved, bindingPlan, runtimeIds, path);
+  if (resolved.spatial) preflightDataSceneSpatialEnvironment(engine, resolved.spatial, bindingPlan.instances, options, resolved.spatial.environment);
+  if(resolved.spatial?.models) {
+    const origins=Object.fromEntries(bindingPlan.instances.map(i=>{
+      const c=resolveDataSceneInstanceComponents(i,{allowTemplate:false,path:`${path}.spatial.models.${i.id}`});
+      return [i.id,{x:i.x,y:i.y,elevation:c.mode==="inline" ? c.body?.heightSpan?.elevation ?? 0 : 0}];
+    }));
+    const derived=new Map<string,{x:number;y:number;elevation:number;yaw:number}>();
+    const derive=(id:string):{x:number;y:number;elevation:number;yaw:number}=>{const existing=derived.get(id);if(existing)return existing;const a=resolved.spatial!.attachments?.[id],origin=origins[id];let pose={...origin,yaw:0};if(a){const p=derive(a.parent),s=Math.fround(Math.sin(p.yaw)),c=Math.fround(Math.cos(p.yaw));pose={x:Math.fround(p.x+Math.fround(c*Math.fround(a.x??0))-Math.fround(s*Math.fround(a.y??0))),y:Math.fround(p.y+Math.fround(s*Math.fround(a.x??0))+Math.fround(c*Math.fround(a.y??0))),elevation:Math.fround(p.elevation+Math.fround(a.elevation??0)),yaw:Math.fround(p.yaw+Math.fround((a.yawDegrees??0)*Math.PI/180))};}derived.set(id,pose);return pose;};
+    for(const id of Object.keys(resolved.spatial.models))origins[id]=derive(id);
+    if(!engine.preflightDataSceneSpatialModels(resolved.spatial,origins))
+      throw sceneCompositionDiagnosticError(`${path}.spatial.models`,"model resource/content/transform or submission budget preflight failed");
+  }
   preflightDataSceneVariableRuntime(engine, resolvedVariables, `${path}.variables`);
   const previousVariables = captureDataSceneVariableRuntimeSnapshot(engine);
+  let preparation: SpatialModelPreparation | undefined;
+  if (spatialModelPreparer !== undefined) {
+    if (!spatialModelPreparer || typeof spatialModelPreparer.prepareSpatialModels !== "function")
+      throw sceneCompositionDiagnosticError(`${path}.spatialModelPreparer`, "requires prepareSpatialModels");
+    if (resolved.spatial && Object.keys(resolved.spatial.models ?? {}).length) {
+      if (!runtimeAdapter.spatialModelAssets)
+        throw sceneCompositionDiagnosticError(`${path}.spatialModelPreparer`, "runtime cannot resolve registered model assets");
+      preparation = spatialModelPreparer.prepareSpatialModels(runtimeAdapter.spatialModelAssets(resolved.spatial));
+      if (!preparation || typeof preparation.commit !== "function" || typeof preparation.dispose !== "function" ||
+          !Number.isSafeInteger(preparation.uploadBytes) || preparation.uploadBytes < 0) {
+        if (preparation && typeof preparation.dispose === "function") preparation.dispose();
+        throw sceneCompositionDiagnosticError(`${path}.spatialModelPreparer`, "invalid model preparation lease");
+      }
+    }
+  }
   try {
     forgetDataSceneProgressContext(engine);
     if (activateDataScene !== false) {
@@ -253,9 +305,11 @@ export function applyDataSceneAuthoringDocument(
       ...(resolved.gameplay.primaryActor === undefined ? {} : { primaryActor: result.entityHandles[resolved.gameplay.primaryActor] }),
       ...(resolved.gameplay.interactionInputActionId === undefined ? {} : { interactionInputActionId: resolved.gameplay.interactionInputActionId }),
     })) throw sceneCompositionDiagnosticError(`${path}.gameplay`, "runtime rejected Data Scene gameplay configuration");
-    if (resolved.navigation !== undefined && !engine.configureDataSceneNavigation(resolved.navigation)) {
+    if (resolved.navigation !== undefined && !engine.configureDataSceneNavigation(resolved.navigation, result.entityHandles)) {
       throw sceneCompositionDiagnosticError(`${path}.navigation`, "runtime rejected Data Scene navigation configuration");
     }
+    if (resolved.spatial !== undefined && !engine.configureDataSceneSpatial(resolved.spatial,result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
+    preparation?.commit();
     rememberDataSceneProgressContext(engine, document, result.entityHandles, options);
     return {
       document: resolved,
@@ -269,6 +323,8 @@ export function applyDataSceneAuthoringDocument(
       `${path}.variables`,
     );
     throw error;
+  } finally {
+    preparation?.dispose();
   }
 }
 
@@ -401,6 +457,53 @@ function inlineDataSceneRuntimeSpawnRequest(
     colliderRotationRadians: colliderShape.rotationRadians,
     colliderVertices: colliderShape.vertices,
   };
+}
+
+/** Internal cold preflight shared by authoring activation and prospective saved progress. */
+export function preflightDataSceneSpatialEnvironment(
+  engine: FerrumEngine,
+  spec: DataSceneSpatialSpec,
+  instances: readonly ResolvedSceneCompositionInstance[],
+  options: CreateDataSceneRuntimeTargetOptions,
+  environment: SpatialEnvironmentSpec | null | undefined,
+  removed: ReadonlySet<string> = new Set(),
+  camera: SpatialCameraSpec = spec.camera,
+): void {
+  if (!environment) return;
+  const environmentPath = `${options.path ?? "dataScene"}.spatial.environment`;
+  const adapter = dataSceneRuntimeEngineAdapter(engine, `${environmentPath}.engine`);
+  if (adapter.preflightSpatialEnvironment) {
+    if (!adapter.preflightSpatialEnvironment(camera, environment))
+      throw sceneCompositionDiagnosticError(environmentPath, "native camera/environment preflight rejected configuration");
+  } else if (environment.pixelArt || environment.lighting?.directional) {
+    throw sceneCompositionDiagnosticError(environmentPath, "native camera/environment preflight is unavailable");
+  }
+  if (!environment.lighting?.shadows && !environment.lighting?.directional?.shadows) return;
+  const path = `${environmentPath}.lighting.shadows`;
+  if (Object.keys(spec.billboards).length > 1024) {
+    throw sceneCompositionDiagnosticError(path, "shadow caster budget exceeds 1024 authored billboards");
+  }
+  let previous = -1, batches = 0;
+  for (const surface of spec.terrain) {
+    if (surface.castShadow === false) { previous = -1; continue; }
+    const texture = surface.textureId ?? 16777215;
+    if (texture !== previous) batches++;
+    previous = texture;
+  }
+  const byId = new Map(instances.map(instance => [instance.id, instance]));
+  const textureId = options.textureId ?? ((name: string) => adapter.textureId(name));
+  const textures = new Set<number>();
+  for (const id of Object.keys(spec.billboards)) {
+    if (removed.has(id) || spec.billboards[id].castShadow === false) continue;
+    const instance = byId.get(id);
+    if (!instance) throw sceneCompositionDiagnosticError(path, `unknown billboard '${id}'`);
+    const components = resolveDataSceneInstanceComponents(instance, { allowTemplate: false, path });
+    if (components.mode !== "inline") throw sceneCompositionDiagnosticError(path, "requires inline billboard components");
+    textures.add(dataSceneTextureId(components.sprite, textureId));
+  }
+  if (batches + textures.size > 64) {
+    throw sceneCompositionDiagnosticError(path, "shadow texture batch budget exceeds 64 per shadow face");
+  }
 }
 
 function dataSceneTextureId(

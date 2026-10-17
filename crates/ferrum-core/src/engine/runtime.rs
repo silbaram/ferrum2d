@@ -73,6 +73,10 @@ impl Engine {
             self.build_render_commands();
         } else {
             self.frame_buffers.clear_render_commands();
+            self.spatial_scene.frame_active = false;
+            self.spatial_scene.billboards.clear();
+            self.spatial_scene.terrain_draw_ranges.clear();
+            self.spatial_scene.debug.clear_frame();
         }
         if frame_telemetry {
             self.write_frame_telemetry();
@@ -210,6 +214,7 @@ impl Engine {
 impl Engine {
     pub(super) fn clear_scene_output_buffers(&mut self) {
         self.frame_buffers.clear_scene_output();
+        self.spatial_scene.clear();
     }
 
     fn clear_physics_frame(&mut self) {
@@ -247,6 +252,9 @@ impl Engine {
             &mut self.rigid_body_step_scratch,
         );
         self.record_rigid_body_step_stats(stats);
+        self.spatial_scene
+            .attachments
+            .synchronize_or_restore(&mut self.world, &self.spatial_scene.models);
     }
 
     fn record_collision_lifecycle_events(&mut self) {

@@ -290,7 +290,7 @@ test("Data Scene diagnoses unsupported visual colors and body fields at the auth
   throws(() => resolveDataSceneComponentsSpec({ ...base, visual: { ...base.visual, tint: "red" } }, { path: "actor.components" }), /actor.components.visual.tint/);
   throws(() => resolveDataSceneComponentsSpec({ ...base, body: { type: "kinematic" } }), /body.*requires a collider/);
   const collider = { type: "aabb", halfWidth: 8, halfHeight: 8 };
-  throws(() => resolveDataSceneComponentsSpec({ ...base, collider, body: { type: "dynamic" } }), /body.type/);
+  throws(() => resolveDataSceneComponentsSpec({ ...base, collider, body: { type: "unsupported" } }), /body.type/);
   throws(() => resolveDataSceneComponentsSpec({ ...base, collider, body: { type: "kinematic", mass: 4 } }), /body.mass/);
   throws(() => resolveDataSceneComponentsSpec({ template: "actor", body: { type: "kinematic" } }), /body/);
   throws(() => resolveDataSceneComponentsSpec({ ...base, collider, body: {
@@ -299,6 +299,26 @@ test("Data Scene diagnoses unsupported visual colors and body fields at the auth
   throws(() => resolveDataSceneComponentsSpec({ ...base, collider, body: {
     type: "kinematic", heightSpan: { floorId: 0, elevation: 3e38, height: 3e38 },
   } }), /heightSpan.elevation/);
+});
+
+test("authored dynamic bodies resolve explicit solver options and diagnose invalid f32 values", () => {
+  const components = { visual: { kind: "sprite", texture: 1, width: 40, height: 40 },
+    collider: { type: "orientedBox", halfWidth: 18, halfHeight: 18 }, layer: "wall" };
+  const body = { type: "dynamic", mass: 2, gravityScale: 0, linearDamping: 3, angularDamping: 3,
+    canSleep: false, material: { friction: 0.6, restitution: 0 },
+    heightSpan: { floorId: 0, elevation: 0, height: 1 } };
+  const resolved = resolveDataSceneComponentsSpec({ ...components, body });
+  equal(resolved.mode, "inline");
+  if (resolved.mode === "inline") deepEqual(resolved.body, body);
+  for (const [field, value] of [["mass", 0], ["mass", 1e-100], ["mass", 1e-40], ["mass", 1e100],
+    ["gravityScale", Infinity], ["gravityScale", 1e100], ["linearDamping", -1],
+    ["angularDamping", "3"], ["canSleep", 1], ["density", 2]] as const) {
+    throws(() => resolveDataSceneComponentsSpec({ ...components, body: { ...body, [field]: value } }, { path: "lab.components" }),
+      new RegExp(`lab.components.body.${field}`));
+  }
+  for (const material of [{ friction: -1 }, { restitution: 1e100 }, { friction: NaN }, { density: 2 }]) {
+    throws(() => resolveDataSceneComponentsSpec({ ...components, body: { ...body, material } }), /body.material/);
+  }
 });
 
 test("Data Scene hex colors preserve alpha and honor the renderer working space", async () => {

@@ -61,7 +61,7 @@ impl FrameTelemetry {
             engine.active_scene_score() as f64,
             engine.world.alive_count() as f64,
             engine.active_scene_game_state_code() as f64,
-            engine.frame_buffers.render_commands.len() as f64,
+            engine.sprite_count() as f64,
             engine.camera.x as f64,
             engine.camera.y as f64,
             if engine.fixed_timestep_enabled {

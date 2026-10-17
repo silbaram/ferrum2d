@@ -95,3 +95,5 @@ export type {
   GameplayReplaySnapshotDiff,
   GameplaySpawnDiagnosticReport,
 } from "./public/workflowExports.js";
+
+export type { RuntimeFrameTraceOptions, RuntimeFrameTraceSample, RuntimeFrameTraceCapture, RuntimeFrameTraceSnapshot } from "./runtimeFrameTrace.js";

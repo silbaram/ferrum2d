@@ -306,7 +306,7 @@ fn data_scene_progress_captures_removed_generations_and_consumed_interactions() 
     let handles = [actor.id, actor.generation, site.id, site.generation];
     assert_eq!(
         engine.capture_data_scene_progress(epoch, &handles),
-        vec![1, 3]
+        vec![49, 51]
     );
     engine.world.despawn(actor);
     let replacement = sprite(&mut engine, 1, 100.0, 100.0, 0);
@@ -314,7 +314,7 @@ fn data_scene_progress_captures_removed_generations_and_consumed_interactions() 
     assert_ne!(replacement.generation, actor.generation);
     assert_eq!(
         engine.capture_data_scene_progress(epoch, &handles),
-        vec![0, 3]
+        vec![0, 51]
     );
     engine.use_data_scene();
     assert_ne!(engine.data_scene_epoch(), epoch);

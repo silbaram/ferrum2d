@@ -1,8 +1,9 @@
 use wasm_bindgen::prelude::*;
 
 use crate::components::{
-    CollisionLayer, HeightSpan, PhysicsFloorId, RigidBody, SpriteAnimation, SpriteFrame,
-    Transform2D, DEFAULT_SPRITE_RENDER_LAYER,
+    valid_positive_mass_property, CollisionLayer, CompoundColliderShapeRef, HeightSpan,
+    PhysicsFloorId, RigidBody, SpriteAnimation, SpriteFrame, Transform2D,
+    DEFAULT_SPRITE_RENDER_LAYER,
 };
 use crate::entity::Entity;
 use crate::world::{
@@ -11,10 +12,11 @@ use crate::world::{
 };
 
 use super::{
-    Engine, SceneMode, PHYSICS_COLLIDER_TYPE_AABB, PHYSICS_COLLIDER_TYPE_CAPSULE,
-    PHYSICS_COLLIDER_TYPE_CIRCLE, PHYSICS_COLLIDER_TYPE_CONVEX_POLYGON, PHYSICS_COLLIDER_TYPE_EDGE,
-    PHYSICS_COLLIDER_TYPE_NONE, PHYSICS_COLLIDER_TYPE_ORIENTED_BOX, PHYSICS_LAYER_BULLET,
-    PHYSICS_LAYER_ENEMY, PHYSICS_LAYER_PICKUP, PHYSICS_LAYER_PLAYER, PHYSICS_LAYER_WALL,
+    Engine, SceneMode, PHYSICS_BODY_TYPE_DYNAMIC, PHYSICS_COLLIDER_TYPE_AABB,
+    PHYSICS_COLLIDER_TYPE_CAPSULE, PHYSICS_COLLIDER_TYPE_CIRCLE,
+    PHYSICS_COLLIDER_TYPE_CONVEX_POLYGON, PHYSICS_COLLIDER_TYPE_EDGE, PHYSICS_COLLIDER_TYPE_NONE,
+    PHYSICS_COLLIDER_TYPE_ORIENTED_BOX, PHYSICS_LAYER_BULLET, PHYSICS_LAYER_ENEMY,
+    PHYSICS_LAYER_PICKUP, PHYSICS_LAYER_PLAYER, PHYSICS_LAYER_WALL,
 };
 
 #[wasm_bindgen]
@@ -182,6 +184,88 @@ impl Engine {
         if let Some(span) = span {
             self.world.set_height_span(entity, span);
         }
+        self.clear_physics_history();
+        true
+    }
+
+    /// Attaches a dynamic body using the authored collider's geometry for inertia.
+    /// Does not enable automatic stepping; the scene's physics policy remains explicit.
+    pub fn configure_data_scene_dynamic_body(
+        &mut self,
+        entity_id: u32,
+        generation: u32,
+        mass: f32,
+        can_sleep: bool,
+    ) -> bool {
+        if self.scene_mode != SceneMode::Data || !valid_positive_mass_property(mass) {
+            return false;
+        }
+        let Some(entity) = self.entity_from_handle(entity_id, generation) else {
+            return false;
+        };
+        let index = entity.id as usize;
+        if self.world.sprite_at_index(index).is_none()
+            || self.world.compound_collider_count_at(index) != 1
+        {
+            return false;
+        }
+        let Some(collider) = self.world.compound_collider_ref_at(index, 0) else {
+            return false;
+        };
+        let body = match collider.shape {
+            CompoundColliderShapeRef::Aabb(c) => Self::rigid_body_for_aabb(
+                PHYSICS_BODY_TYPE_DYNAMIC,
+                mass,
+                false,
+                c.half_width,
+                c.half_height,
+                true,
+                can_sleep,
+            ),
+            CompoundColliderShapeRef::Circle(c) => Self::rigid_body_for_circle(
+                PHYSICS_BODY_TYPE_DYNAMIC,
+                mass,
+                false,
+                c.radius,
+                true,
+                can_sleep,
+            ),
+            CompoundColliderShapeRef::Capsule(c) => Self::rigid_body_for_capsule(
+                PHYSICS_BODY_TYPE_DYNAMIC,
+                mass,
+                false,
+                c.start_x,
+                c.start_y,
+                c.end_x,
+                c.end_y,
+                c.radius,
+                true,
+                can_sleep,
+            ),
+            CompoundColliderShapeRef::OrientedBox(c) => Self::rigid_body_for_oriented_box(
+                PHYSICS_BODY_TYPE_DYNAMIC,
+                mass,
+                false,
+                c.half_width,
+                c.half_height,
+                true,
+                can_sleep,
+            ),
+            CompoundColliderShapeRef::ConvexPolygon(c) => Self::rigid_body_for_convex_polygon(
+                PHYSICS_BODY_TYPE_DYNAMIC,
+                mass,
+                false,
+                c.vertices,
+                c.vertex_count,
+                true,
+                can_sleep,
+            ),
+            CompoundColliderShapeRef::Edge(_) | CompoundColliderShapeRef::Chain(_) => None,
+        };
+        let Some(body) = body else {
+            return false;
+        };
+        self.world.set_rigid_body(entity, body);
         self.clear_physics_history();
         true
     }

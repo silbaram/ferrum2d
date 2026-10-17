@@ -1,3 +1,4 @@
+import type { FerrumSpatialApi } from "../dataSceneSpatial.js";
 import type { DataSceneMoveOptions, DataSceneMoveStatus } from "../dataSceneMovement.js";
 import type { DataSceneMovementAnimationSpec } from "../dataSceneMovementAnimation.js";
 import type { DataSceneGameplayOptions } from "../dataSceneGameplay.js";
@@ -241,7 +242,7 @@ export interface FerrumSceneApi {
   setShooterTileBridgePortal(tileId: number, portal: ShooterTileBridgePortalMetadata): boolean;
   clearShooterTileBridgePortal(tileId: number): boolean;
   configureDataSceneGameplay(options: DataSceneGameplayOptions): boolean;
-  configureDataSceneNavigation(spec: DataSceneNavigationSpec): boolean;
+  configureDataSceneNavigation(spec: DataSceneNavigationSpec, entityHandles?: Readonly<Record<string, GameplayEntityHandle>>): boolean;
   setDataSceneNavigationCost(column: number, row: number, cost: number): boolean;
   clearDataSceneNavigation(): boolean;
   /** Request a Rust-owned route for the primary actor; rejection preserves any active route. */
@@ -445,7 +446,8 @@ export interface FerrumInputActionApi {
 }
 
 export interface FerrumEngine
-  extends FerrumLifecycleApi,
+  extends FerrumSpatialApi,
+    FerrumLifecycleApi,
     FerrumBufferAccessorApi,
     FerrumSceneApi,
     FerrumAssetApi,

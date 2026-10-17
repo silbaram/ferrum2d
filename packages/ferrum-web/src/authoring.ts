@@ -493,3 +493,15 @@ export type { DataSceneGameplayOptions, DataSceneGameplaySpec } from "./dataScen
 export { resolveDataSceneGameplaySpec } from "./dataSceneGameplay.js";
 export type { DataSceneNavigationSpec } from "./dataSceneNavigation.js";
 export { resolveDataSceneNavigationSpec } from "./dataSceneNavigation.js";
+
+export { resolveDataSceneSpatialSpec, resolveSpatialCameraSpec, createDataSceneSpatialView } from "./dataSceneSpatial.js";
+export type { DataSceneSpatialSpec, SpatialModelInstanceSpec, SpatialCameraSpec, SpatialPoint, SpatialTerrainSurface, SpatialSurfaceConnection, SpatialMoveOptions, SpatialMoveStats, SpatialBillboardSpec, SpatialRenderBufferView, SpatialSurfaceHit, FerrumSpatialApi } from "./dataSceneSpatial.js";
+export type { DataSceneSpatialPoseSnapshot, DataSceneSpatialProgressSnapshot } from "./dataSceneSpatialProgress.js";
+
+export { resolveSpatialEnvironmentSpec } from "./spatialEnvironment.js";
+export type { SpatialRgb, SpatialDirectionalLightSpec, SpatialPointLightSpec, SpatialLightingSpec, SpatialDepthOfFieldSpec, SpatialColorGradingSpec, SpatialFogSpec, SpatialEnvironmentSpec, SpatialEnvironmentBufferView } from "./spatialEnvironment.js";
+
+export type { SpatialModelPreparation, SpatialModelPreparer } from "./spatialModel.js";
+
+export { addSpatialModelAssembly } from "./spatialModelAssembly.js";
+export type { SpatialModelAssemblySpec, SpatialModelColliderProxy } from "./spatialModelAssembly.js";

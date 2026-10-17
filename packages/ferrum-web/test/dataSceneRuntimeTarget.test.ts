@@ -9,7 +9,7 @@ import {
   DATA_SCENE_PRIMITIVE_TEXTURES,
   resolveSceneAuthoringDocument,
 } from "../src/authoring.js";
-import { createEngine, createDataSceneView } from "../src/core.js";
+import { createEngine, createDataSceneView, captureGameStateSnapshot, restoreGameStateSnapshot } from "../src/core.js";
 import {
   attachDataSceneRuntimeEngineAdapter,
   type DataSceneRuntimeSpawnRequest,
@@ -1019,6 +1019,60 @@ test("Data Scene body shares the sprite handle and stays generation safe through
       equal(engine.getPhysicsEntity(next)?.x, 300);
       equal(engine.despawnPhysicsEntity(next), true);
       equal(engine.getPhysicsEntity(next), undefined);
+    } finally { engine.destroy(); }
+  });
+});
+
+test("authored dynamic box owns its native obstacle identity and progress without a proxy", async () => {
+  await withNodeWasmFileFetch(async () => {
+    const engine = await createEngine();
+    const document = {
+      format: "ferrum2d.consumer.scene-authoring", version: 1,
+      sceneComposition: { initialFragment: "main", prefabs: { box: { props: { components: {
+        visual: { kind: "sprite", texture: 23, width: 40, height: 40, originY: 1, depthSort: "hd2d" },
+        collider: { type: "orientedBox", halfWidth: 8, halfHeight: 8, isTrigger: false }, layer: "wall",
+        body: { type: "dynamic", mass: 2, gravityScale: 0, linearDamping: 3, angularDamping: 3,
+          canSleep: false, material: { friction: 0.6, restitution: 0 },
+          heightSpan: { floorId: 0, elevation: 0, height: 1 } },
+      } } } }, fragments: { main: { instances: [{ id: "box", prefab: "box", x: 30, y: 10 }] } } },
+      behaviorRecipes: { entities: {} },
+      navigation: { columns: 3, rows: 1, cellWidth: 20, cellHeight: 20, costs: [1, 7, 1],
+        obstacles: [{ instanceId: "box", collider: true }] },
+    };
+    try {
+      const box = applyDataSceneAuthoringDocument(engine, document).entityHandles.box;
+      const state = engine.getPhysicsEntity(box)!;
+      equal(state.bodyType, "dynamic"); equal(state.mass, 2);
+      equal(state.gravityScale, 0); equal(state.linearDamping, 3); equal(state.angularDamping, 3);
+      ok(Math.abs(state.friction - 0.6) < 0.0001);
+      ok(Math.abs(state.inertia - 2 * (16 * 16 + 16 * 16) / 12) < 0.001);
+      equal(engine.queryTilemapNavigationPath({ fromX: 10, fromY: 10, toX: 50, toY: 10, heightSpan: { floorId: 0, elevation: 0, height: 1 } }), undefined);
+      const ray = () => engine.raycastBodies({ originX: 0, originY: 10, directionX: 1, directionY: 0, maxDistance: 70, queryMaskBits: 8 });
+      equal(ray().length, 1);
+      ok(engine.applyPhysicsBodyImpulse(box, 60, 0));
+      engine.stepRigidBodies(0.1, { gravityX: 0, gravityY: 0 });
+      ok(engine.getPhysicsEntity(box)!.x > 30);
+      ok(engine.setPhysicsBodyPosition(box, 130, 10));
+      ok(engine.queryTilemapNavigationPath({ fromX: 10, fromY: 10, toX: 50, toY: 10, heightSpan: { floorId: 0, elevation: 0, height: 1 } }));
+      const live = engine.capturePhysicsBodyStateBuffer([box]);
+      ok(engine.setPhysicsBodyPosition(box, 30, 10));
+      ok(engine.restorePhysicsBodyStateBuffer(live));
+      equal(engine.getPhysicsEntity(box)!.x, 130);
+      ok(engine.setPhysicsBodyPosition(box, 30, 10));
+      ok(engine.setPhysicsBodyEnabled(box, false)); equal(ray().length, 0);
+      equal(engine.getPhysicsEntity(box)!.colliderEnabled, true);
+      ok(engine.queryTilemapNavigationPath({ fromX: 10, fromY: 10, toX: 50, toY: 10, heightSpan: { floorId: 0, elevation: 0, height: 1 } }));
+      const snapshot = captureGameStateSnapshot(engine, { includeDataSceneState: true, includeDataSceneProgress: true, dataSceneAuthoringDocument: document });
+      deepEqual(snapshot.dataScene?.progress?.navigation?.obstacles, [{ instanceId: "box", collider: true }]);
+      ok(engine.setPhysicsBodyEnabled(box, true)); equal(ray().length, 1);
+      equal(restoreGameStateSnapshot(engine, snapshot).dataSceneStateApplied, true);
+      equal(engine.getPhysicsEntity(box), undefined);
+      equal(ray().length, 0);
+      const restored = engine.queryAabbBodies({ x: 30, y: 10, halfWidth: 10, halfHeight: 10, queryMaskBits: 8 });
+      equal(restored.length, 0);
+      const fresh = applyDataSceneAuthoringDocument(engine, document).entityHandles.box;
+      equal(engine.getPhysicsEntity(fresh)!.bodyEnabled, true); equal(ray().length, 1);
+      equal(engine.setPhysicsBodyPosition(box, 999, 999), false);
     } finally { engine.destroy(); }
   });
 });

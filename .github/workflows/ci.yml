@@ -131,6 +131,9 @@ jobs:
       - name: Data Scene packed runtime browser smoke
         run: pnpm smoke:data-scene
 
+      - name: Spatial Scene browser smoke
+        run: pnpm smoke:spatial-scene
+
       - name: Data Scene animation projection and sun browser smoke
         run: pnpm smoke:data-scene-presentation
 

@@ -14,6 +14,9 @@ impl Engine {
             return false;
         };
         self.world.despawn(entity);
+        self.spatial_scene
+            .attachments
+            .synchronize(&mut self.world, &self.spatial_scene.models);
         self.clear_physics_history();
         true
     }
@@ -34,7 +37,21 @@ impl Engine {
         if self.world.rigid_body(entity).is_none() {
             return false;
         }
+        if self.spatial_scene.attachments.contains(entity) {
+            return false;
+        }
+        let previous = self.world.transform(entity);
         self.world.set_transform(entity, Transform2D { x, y });
+        if !self
+            .spatial_scene
+            .attachments
+            .synchronize(&mut self.world, &self.spatial_scene.models)
+        {
+            if let Some(at) = previous {
+                self.world.set_transform(entity, at);
+            }
+            return false;
+        }
         self.store_physics_entity_snapshot(entity)
     }
 
@@ -52,6 +69,9 @@ impl Engine {
             return false;
         };
         if self.world.rigid_body(entity).is_none() {
+            return false;
+        }
+        if self.spatial_scene.attachments.contains(entity) {
             return false;
         }
         self.world.set_velocity(
@@ -79,12 +99,24 @@ impl Engine {
         if self.world.rigid_body(entity).is_none() {
             return false;
         }
+        if self.spatial_scene.attachments.contains(entity) {
+            return false;
+        }
+        let previous = self.world.rotation_at_index_or_default(entity.id as usize);
         self.world.set_rotation(
             entity,
             Rotation2D {
                 radians: rotation_radians,
             },
         );
+        if !self
+            .spatial_scene
+            .attachments
+            .synchronize(&mut self.world, &self.spatial_scene.models)
+        {
+            self.world.set_rotation(entity, previous);
+            return false;
+        }
         self.store_physics_entity_snapshot(entity)
     }
 
@@ -101,6 +133,9 @@ impl Engine {
             return false;
         };
         if self.world.rigid_body(entity).is_none() {
+            return false;
+        }
+        if self.spatial_scene.attachments.contains(entity) {
             return false;
         }
         self.world
@@ -125,7 +160,24 @@ impl Engine {
         if self.world.rigid_body(entity).is_none() {
             return false;
         }
-        self.world.set_height_span(entity, span)
+        if self.spatial_scene.attachments.contains(entity) {
+            return false;
+        }
+        let previous = self.world.height_span(entity);
+        self.world.set_height_span(entity, span);
+        if !self
+            .spatial_scene
+            .attachments
+            .synchronize(&mut self.world, &self.spatial_scene.models)
+        {
+            if let Some(span) = previous {
+                self.world.set_height_span(entity, span);
+            } else {
+                self.world.clear_height_span(entity);
+            }
+            return false;
+        }
+        true
     }
 
     pub fn clear_physics_body_height_span(
@@ -137,6 +189,11 @@ impl Engine {
             return false;
         };
         if self.world.rigid_body(entity).is_none() {
+            return false;
+        }
+        if self.spatial_scene.attachments.contains(entity)
+            || self.spatial_scene.attachments.has_parent(entity)
+        {
             return false;
         }
         self.world.clear_height_span(entity)
@@ -314,6 +371,9 @@ impl Engine {
         if self.world.rigid_body(entity).is_none() {
             return false;
         }
+        if self.spatial_scene.attachments.contains(entity) {
+            return false;
+        }
         self.world.apply_force(
             entity,
             Velocity {
@@ -338,6 +398,9 @@ impl Engine {
             return false;
         };
         if self.world.rigid_body(entity).is_none() {
+            return false;
+        }
+        if self.spatial_scene.attachments.contains(entity) {
             return false;
         }
         self.world.apply_impulse(
@@ -365,6 +428,9 @@ impl Engine {
         if self.world.rigid_body(entity).is_none() {
             return false;
         }
+        if self.spatial_scene.attachments.contains(entity) {
+            return false;
+        }
         self.world.apply_torque(entity, torque);
         self.store_physics_entity_snapshot(entity)
     }
@@ -382,6 +448,9 @@ impl Engine {
             return false;
         };
         if self.world.rigid_body(entity).is_none() {
+            return false;
+        }
+        if self.spatial_scene.attachments.contains(entity) {
             return false;
         }
         self.world.apply_angular_impulse(entity, angular_impulse);
