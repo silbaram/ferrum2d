@@ -105,14 +105,7 @@ impl SpatialDebugGeometry {
         if self.frame_flags & TERRAIN == 0 {
             return;
         }
-        let [x, y, w, d] = s.bounds;
-        let [a, b] = s.heights;
-        let top = [
-            [x, a, -y],
-            [x + w, a, -y],
-            [x + w, b, -y - d],
-            [x, b, -y - d],
-        ];
+        let top = s.top_corners();
         let base = top.map(|p| [p[0], s.base, p[2]]);
         self.outline(top, CYAN);
         self.outline(base, CYAN);

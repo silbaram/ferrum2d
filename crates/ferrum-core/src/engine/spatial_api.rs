@@ -4,6 +4,36 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 impl Engine {
+    /// Validate the current bodies plus proposed model bindings without changing the active scene/world.
+    pub fn preflight_spatial_attachments(
+        &self,
+        metadata: &[u32],
+        values: &[f32],
+        models: &[u32],
+        styles: &[f32],
+    ) -> bool {
+        let mut next = crate::spatial_scene::SpatialScene::default();
+        next.models.configure(&self.world, models, styles)
+            && crate::spatial_scene::SpatialAttachments::build_checked(
+                &self.world,
+                &next.models,
+                metadata,
+                values,
+            )
+            .is_some()
+    }
+    /// Cold bounded attachment graph. Native state owns every derived child pose.
+    pub fn configure_spatial_attachments(&mut self, metadata: &[u32], values: &[f32]) -> bool {
+        if self.scene_mode != SceneMode::Data {
+            return false;
+        }
+        self.spatial_scene.attachments.configure(
+            &mut self.world,
+            &self.spatial_scene.models,
+            metadata,
+            values,
+        )
+    }
     #[allow(clippy::too_many_arguments)]
     pub fn move_data_scene_spatial_actor_to(
         &mut self,
@@ -16,6 +46,7 @@ impl Engine {
         cancel_on_input: bool,
     ) -> bool {
         if self.scene_mode != SceneMode::Data || self.spatial_scene.camera.is_none() {
+            self.spatial_scene.navigation.reject_unavailable_request();
             return false;
         }
         let ok = self.spatial_scene.plan_navigation(
@@ -58,6 +89,61 @@ impl Engine {
         } else {
             vec![]
         }
+    }
+    /// Optional v1 cold diagnostics; preserves the six-word movement stats ABI.
+    pub fn data_scene_spatial_move_diagnostics(&self) -> Vec<u32> {
+        if self.scene_mode == SceneMode::Data {
+            self.spatial_scene.navigation.diagnostics()
+        } else {
+            vec![]
+        }
+    }
+    /// Cold input capability: terrain metadata bit 4 marks a non-rendered physics/picking surface.
+    pub fn spatial_surface_proxy_abi_version(&self) -> u32 {
+        1
+    }
+    /// Cold input capability: terrain metadata bit 5 selects an X-axis ramp.
+    pub fn spatial_ramp_axis_abi_version(&self) -> u32 {
+        1
+    }
+    pub fn spatial_model_abi_version(&self) -> u32 {
+        1
+    }
+    /// Cold capability for 1024 instances / 4096 primitives; render ABI stays v1.
+    pub fn spatial_model_batch_abi_version(&self) -> u32 {
+        1
+    }
+    /// Cold bulk model transform validation before authoring activation.
+    pub fn preflight_spatial_model_poses(&self, styles: &[f32], origins: &[f32]) -> bool {
+        crate::spatial_scene::preflight_model_poses(styles, origins)
+    }
+    pub fn spatial_model_stride(&self) -> u32 {
+        20
+    }
+    pub fn spatial_model_ptr(&self) -> *const f32 {
+        self.spatial_scene.models.draws.as_ptr().cast()
+    }
+    pub fn spatial_model_len(&self) -> usize {
+        self.spatial_scene.models.draws.len()
+    }
+    /// Cold chunk/LOD policy. Does not change the render ABI or simulation world.
+    pub fn configure_spatial_model_streaming(
+        &mut self,
+        chunks: &[f32],
+        metadata: &[u32],
+        distances: &[f32],
+    ) -> bool {
+        self.spatial_scene
+            .models
+            .configure_streaming(chunks, metadata, distances)
+    }
+    pub fn spatial_model_asset_in_use(&self, asset: u32) -> bool {
+        self.spatial_scene
+            .models
+            .bindings
+            .values()
+            .any(|m| m.asset == asset)
+            || self.spatial_scene.models.streaming_asset_in_use(asset)
     }
     pub fn spatial_viewport_width(&self) -> f32 {
         self.camera.viewport_width
@@ -153,6 +239,40 @@ impl Engine {
         terrain_materials: &[u32],
         billboard_materials: &[u32],
     ) -> bool {
+        self.configure_spatial_scene_models(
+            camera_values,
+            terrain_values,
+            terrain_metadata,
+            handles,
+            styles,
+            actor_handle,
+            actor_values,
+            connections,
+            environment,
+            terrain_materials,
+            billboard_materials,
+            &[],
+            &[],
+        )
+    }
+    /// Atomic spatial configuration with independent static model instance extension v1.
+    #[allow(clippy::too_many_arguments)]
+    pub fn configure_spatial_scene_models(
+        &mut self,
+        camera_values: &[f32],
+        terrain_values: &[f32],
+        terrain_metadata: &[u32],
+        handles: &[u32],
+        styles: &[f32],
+        actor_handle: &[u32],
+        actor_values: &[f32],
+        connections: &[u32],
+        environment: &[f32],
+        terrain_materials: &[u32],
+        billboard_materials: &[u32],
+        model_metadata: &[u32],
+        model_styles: &[f32],
+    ) -> bool {
         if self.scene_mode != SceneMode::Data
             || !handles.len().is_multiple_of(2)
             || styles.len() != handles.len() / 2 * 3
@@ -241,7 +361,15 @@ impl Engine {
             {
                 return false;
             }
-            for (m, flags) in next.terrain_materials.iter_mut().zip(terrain_materials) {
+            for ((m, surface), flags) in next
+                .terrain_materials
+                .iter_mut()
+                .zip(&next.surfaces)
+                .zip(terrain_materials)
+            {
+                if !surface.is_rendered && *flags != 0 {
+                    return false;
+                }
                 m.flags = *flags;
             }
         }
@@ -266,6 +394,17 @@ impl Engine {
             }
         }
         if !next.environment.camera_valid(&camera) || !next.shadow_budget_valid(&self.world) {
+            return false;
+        }
+        if !next
+            .models
+            .configure(&self.world, model_metadata, model_styles)
+            || next
+                .models
+                .bindings
+                .keys()
+                .any(|h| next.bindings.contains_key(h))
+        {
             return false;
         }
         self.data_scene.movement.cancel();

@@ -1,6 +1,6 @@
 //! Cold-path spatial progress: semantic camera + authored billboard poses, never GPU/handle identity in JSON.
 use super::Engine;
-use crate::components::{HeightSpan, PhysicsFloorId, Transform2D, Velocity};
+use crate::components::{AngularVelocity, HeightSpan, PhysicsFloorId, Transform2D, Velocity};
 use crate::entity::Entity;
 use crate::spatial_scene::{SpatialCamera, SpatialScene};
 use wasm_bindgen::prelude::*;
@@ -21,6 +21,110 @@ struct SpatialProgress {
 
 #[wasm_bindgen]
 impl Engine {
+    /// Motion extension v1: rotations are parallel to authored handles; child poses remain derived.
+    pub fn capture_data_scene_spatial_rotations(&self, epoch: u32, handles: &[u32]) -> Vec<f64> {
+        if epoch == 0 || epoch != self.data_scene_epoch() || !handles.len().is_multiple_of(2) {
+            return vec![];
+        }
+        handles
+            .chunks_exact(2)
+            .map(|h| {
+                let e = Entity {
+                    id: h[0],
+                    generation: h[1],
+                };
+                if self.world.is_current_entity(e)
+                    && self
+                        .spatial_scene
+                        .models
+                        .bindings
+                        .contains_key(&(h[0], h[1]))
+                    && !self.spatial_scene.attachments.contains(e)
+                {
+                    f64::from(
+                        self.world
+                            .rotation_at_index_or_default(e.id as usize)
+                            .radians,
+                    )
+                } else {
+                    0.
+                }
+            })
+            .collect()
+    }
+    /// Independent motion restore keeps the existing eight-value pose ABI and environment transaction.
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore_data_scene_progress_with_spatial_motion(
+        &mut self,
+        epoch: u32,
+        handles: &[u32],
+        states: &[u32],
+        animations: &[f64],
+        spatial: &[f64],
+        environment: &[f32],
+        rotations: &[f64],
+        apply_environment: bool,
+    ) -> bool {
+        if epoch == 0
+            || epoch != self.data_scene_epoch()
+            || handles.len() != states.len() * 2
+            || rotations.len() != states.len()
+            || !self.validate_data_scene_progress(handles, states)
+            || rotations
+                .iter()
+                .any(|r| !r.is_finite() || !(*r as f32).is_finite())
+        {
+            return false;
+        }
+        let mut previous = Vec::new();
+        for ((h, state), rotation) in handles.chunks_exact(2).zip(states).zip(rotations) {
+            let e = Entity {
+                id: h[0],
+                generation: h[1],
+            };
+            let root = *state != 0
+                && self
+                    .spatial_scene
+                    .models
+                    .bindings
+                    .contains_key(&(h[0], h[1]))
+                && !self.spatial_scene.attachments.contains(e);
+            if !root && *rotation != 0. {
+                return false;
+            }
+            if root {
+                previous.push((
+                    e,
+                    self.world.rotation_at_index_or_default(e.id as usize),
+                    *rotation as f32,
+                ));
+            }
+        }
+        for (e, _, r) in &previous {
+            self.world
+                .set_rotation(*e, crate::components::Rotation2D { radians: *r });
+        }
+        let ok = if apply_environment {
+            self.restore_data_scene_progress_with_spatial_environment(
+                epoch,
+                handles,
+                states,
+                animations,
+                spatial,
+                environment,
+            )
+        } else {
+            self.restore_data_scene_progress_with_spatial(
+                epoch, handles, states, animations, spatial,
+            )
+        };
+        if !ok {
+            for (e, r, _) in previous {
+                self.world.set_rotation(e, r);
+            }
+        }
+        ok
+    }
     /// Environment v1 is validated before the existing atomic flag/animation/pose restore.
     #[allow(clippy::too_many_arguments)]
     pub fn restore_data_scene_progress_with_spatial_environment(
@@ -77,7 +181,13 @@ impl Engine {
                 generation: h[1],
             };
             if self.spatial_scene.camera.is_none()
-                || !self.spatial_scene.bindings.contains_key(&(h[0], h[1]))
+                || self.spatial_scene.attachments.contains(entity)
+                || !(self.spatial_scene.bindings.contains_key(&(h[0], h[1]))
+                    || self
+                        .spatial_scene
+                        .models
+                        .bindings
+                        .contains_key(&(h[0], h[1])))
                 || !self.world.is_current_entity(entity)
             {
                 result.extend([0.0; POSE_VALUES]);
@@ -87,6 +197,25 @@ impl Engine {
                 return vec![];
             };
             let span = self.world.height_span(entity);
+            if self
+                .spatial_scene
+                .models
+                .bindings
+                .get(&(h[0], h[1]))
+                .is_some_and(|m| {
+                    m.pose_at_rotation(
+                        at,
+                        span.map_or(0., |s| s.elevation),
+                        self.world
+                            .rotation_at_index_or_default(entity.id as usize)
+                            .radians,
+                    )
+                    .is_none()
+                })
+            {
+                // Never emit a snapshot that the atomic model restore would reject.
+                return vec![];
+            }
             result.extend([
                 1.0,
                 f64::from(at.x),
@@ -159,11 +288,35 @@ impl Engine {
                 generation: h[1],
             };
             let bound = progress.camera.is_some()
-                && self.spatial_scene.bindings.contains_key(&(h[0], h[1]));
+                && !self.spatial_scene.attachments.contains(entity)
+                && (self.spatial_scene.bindings.contains_key(&(h[0], h[1]))
+                    || self
+                        .spatial_scene
+                        .models
+                        .bindings
+                        .contains_key(&(h[0], h[1])));
             if pose.is_some() != (bound && *state != 0) {
                 return false;
             }
             if let Some(pose) = pose {
+                if self
+                    .spatial_scene
+                    .models
+                    .bindings
+                    .get(&(h[0], h[1]))
+                    .is_some_and(|m| {
+                        m.pose_at_rotation(
+                            pose.at,
+                            pose.span.map_or(0., |s| s.elevation),
+                            self.world
+                                .rotation_at_index_or_default(entity.id as usize)
+                                .radians,
+                        )
+                        .is_none()
+                    })
+                {
+                    return false;
+                }
                 if (pose.span.is_some() && self.world.rigid_body(entity).is_none())
                     || (pose.span.is_none()
                         && self.spatial_scene.actor.is_some_and(|a| a.0 == entity))
@@ -171,6 +324,39 @@ impl Engine {
                     return false;
                 }
             }
+        }
+        let overrides = handles
+            .chunks_exact(2)
+            .zip(&progress.poses)
+            .filter_map(|(h, p)| {
+                p.as_ref().map(|p| {
+                    (
+                        (h[0], h[1]),
+                        crate::spatial_scene::AttachmentPose {
+                            at: p.at,
+                            span: p.span,
+                            yaw: self
+                                .world
+                                .rotation_at_index_or_default(h[0] as usize)
+                                .radians,
+                        },
+                    )
+                })
+            })
+            .collect();
+        let removed = handles
+            .chunks_exact(2)
+            .zip(states)
+            .filter(|(_, s)| **s == 0)
+            .map(|(h, _)| (h[0], h[1]))
+            .collect();
+        if !self.spatial_scene.attachments.preflight(
+            &self.world,
+            &self.spatial_scene.models,
+            &overrides,
+            &removed,
+        ) {
+            return false;
         }
         // Every operation below has been preflighted for this complete batch.
         for (h, pose) in handles.chunks_exact(2).zip(&progress.poses) {
@@ -191,6 +377,8 @@ impl Engine {
                 }
             }
             self.world.set_velocity(entity, Velocity::default());
+            self.world
+                .set_angular_velocity(entity, AngularVelocity::default());
         }
         if progress.camera.is_some() {
             self.spatial_scene.camera = progress.camera;
@@ -198,6 +386,9 @@ impl Engine {
             self.spatial_scene.clear();
         }
         self.restore_data_scene_progress(epoch, handles, states);
+        self.spatial_scene
+            .attachments
+            .synchronize(&mut self.world, &self.spatial_scene.models);
         if !animations.is_empty() {
             self.apply_data_scene_animation_progress(handles, animations);
         }

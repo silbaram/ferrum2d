@@ -377,6 +377,14 @@ impl CollisionSystem {
     ) -> bool {
         shapes_overlap(at, ac, bt, bc)
     }
+    pub(crate) fn shapes_penetrate(
+        at: Transform2D,
+        ac: ColliderShapeRef,
+        bt: Transform2D,
+        bc: ColliderShapeRef,
+    ) -> bool {
+        shape_contact(at, ac, bt, bc).is_some()
+    }
 }
 
 fn pair_from_indices(world: &World, a: usize, b: usize) -> CollisionPair {

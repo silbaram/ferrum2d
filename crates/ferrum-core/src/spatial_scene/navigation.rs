@@ -3,7 +3,7 @@ use super::SpatialScene;
 use crate::components::{HeightSpan, PhysicsFloorId, RigidBodyType, Transform2D, Velocity};
 use crate::entity::Entity;
 use crate::input::InputState;
-use crate::physics::{PhysicsCounters, PhysicsSystem};
+use crate::physics::{PhysicsCounters, PhysicsSystem, KINEMATIC_EPSILON};
 use crate::world::World;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BinaryHeap};
@@ -22,6 +22,21 @@ pub(crate) enum SpatialMoveStatus {
     Arrived,
     Blocked,
     Cancelled,
+}
+/// Cold diagnostic extension; existing six-word stats and movement status retain their layout.
+#[derive(Clone, Copy, Default)]
+#[repr(u32)]
+enum RequestStatus {
+    #[default]
+    NotRequested,
+    Accepted,
+    InvalidRequest,
+    UnsupportedActor,
+    NoPath,
+    NodeBudgetExceeded,
+    ProbeBudgetExceeded,
+    WorkBudgetExceeded,
+    FrameBudgetExceeded,
 }
 #[derive(Clone, Copy)]
 struct Waypoint {
@@ -86,6 +101,10 @@ pub(crate) struct SpatialNavigation {
     last_motion: Option<(f64, f64)>,
     search: Search,
     searches: u32,
+    request_status: RequestStatus,
+    requests: u32,
+    target_count: usize,
+    preparation_work: u64,
 }
 fn distance(a: Transform2D, b: Transform2D) -> f64 {
     (f64::from(a.x) - f64::from(b.x)).hypot(f64::from(a.y) - f64::from(b.y))
@@ -124,8 +143,14 @@ fn pose(
         surface: hit.layer_index,
     })
 }
-// Conservative charge for nested substeps, 8-iteration sweeps, overlap probes and proxy sorting.
-fn work(scene: &SpatialScene, world: &World, from: Transform2D, to: Transform2D) -> u64 {
+// The alive scan and target sort happen once per request/frame, never once per edge/substep.
+fn preparation_work(world: &World, targets: usize) -> u64 {
+    let targets = targets.max(1) as u64;
+    (world.alive_indices().len() as u64)
+        .saturating_add(targets.saturating_mul(u64::from(targets.ilog2()) + 1))
+}
+// Conservative nested sweeps/overlap/surface scans, including per-query candidate sorting.
+fn work(scene: &SpatialScene, targets: usize, from: Transform2D, to: Transform2D) -> u64 {
     let cell = scene
         .surfaces
         .iter()
@@ -136,13 +161,37 @@ fn work(scene: &SpatialScene, world: &World, from: Transform2D, to: Transform2D)
     if !steps.is_finite() || steps > 128. {
         return MAX_WORK + 1;
     }
-    let proxies = (world.alive_indices().len() + scene.surfaces.len()).max(1) as u64;
+    let proxies = (targets + 1 + scene.surfaces.len()).max(1) as u64;
     (steps as u64)
         .saturating_mul(proxies)
         .saturating_mul(u64::from(proxies.ilog2()) + 1)
         .saturating_mul(64)
 }
 impl SpatialNavigation {
+    fn begin_request(&mut self) {
+        self.request_status = RequestStatus::UnsupportedActor;
+        self.requests = self.requests.saturating_add(1);
+        self.target_count = 0;
+        self.preparation_work = 0;
+        self.search.nodes.clear();
+        self.search.cells.clear();
+        self.search.open.clear();
+        self.search.probes = 0;
+        self.search.work = 0;
+        self.search.expanded = 0;
+    }
+    pub fn reject_unavailable_request(&mut self) {
+        self.begin_request();
+    }
+    pub fn diagnostics(&self) -> Vec<u32> {
+        vec![
+            1,
+            self.request_status as u32,
+            self.requests,
+            self.target_count as u32,
+            self.preparation_work.min(u64::from(u32::MAX)) as u32,
+        ]
+    }
     pub fn cancel(&mut self) -> bool {
         if self.status != SpatialMoveStatus::Moving {
             return false;
@@ -191,10 +240,21 @@ impl SpatialNavigation {
         to: Waypoint,
         step: f32,
         drop: f32,
-    ) -> Option<bool> {
-        let charge = work(scene, world, from.at, to.at);
-        if self.search.probes >= MAX_PROBES || self.search.work.saturating_add(charge) > MAX_WORK {
-            return None;
+    ) -> Result<bool, RequestStatus> {
+        if self.search.probes >= MAX_PROBES {
+            return Err(RequestStatus::ProbeBudgetExceeded);
+        }
+        let scan = self.target_count as u64;
+        if self.search.work.saturating_add(scan) > MAX_WORK {
+            return Err(RequestStatus::WorkBudgetExceeded);
+        }
+        self.search.work += scan;
+        let nearby = scene
+            .movement_scratch
+            .begin_spatial_segment(world, actor, from.at, to.at);
+        let charge = work(scene, nearby, from.at, to.at);
+        if self.search.work.saturating_add(charge) > MAX_WORK {
+            return Err(RequestStatus::WorkBudgetExceeded);
         }
         self.search.probes += 1;
         self.search.work += charge;
@@ -208,7 +268,7 @@ impl SpatialNavigation {
             &mut scene.movement_scratch,
             None,
         ) {
-            return Some(false);
+            return Ok(false);
         }
         let ok = scene.move_body_internal(
             world,
@@ -220,22 +280,26 @@ impl SpatialNavigation {
             None,
             false,
         );
-        let end = world.transform(actor)?;
-        let span = world.height_span(actor)?;
-        Some(
-            ok && PhysicsSystem::spatial_body_pose_is_clear(
+        let end = world
+            .transform(actor)
+            .ok_or(RequestStatus::UnsupportedActor)?;
+        let span = world
+            .height_span(actor)
+            .ok_or(RequestStatus::UnsupportedActor)?;
+        Ok(ok
+            && PhysicsSystem::spatial_body_pose_is_clear(
                 world,
                 &scene.physics,
                 actor,
                 end,
                 &mut scene.movement_scratch,
                 None,
-            ) && distance(end, to.at) <= 0.0001
-                && span.floor == to.span.floor
-                && (span.elevation - to.span.elevation).abs() <= 0.001
-                && pose(scene, world, actor, end, span.floor.0)
-                    .is_some_and(|p| p.surface == to.surface),
-        )
+            )
+            && distance(end, to.at) <= 0.0001
+            && span.floor == to.span.floor
+            && (span.elevation - to.span.elevation).abs() <= 0.001
+            && pose(scene, world, actor, end, span.floor.0)
+                .is_some_and(|p| p.surface == to.surface))
     }
     #[allow(clippy::too_many_arguments)]
     fn search(
@@ -248,20 +312,28 @@ impl SpatialNavigation {
         cell: f32,
         step: f32,
         drop: f32,
-    ) -> Option<Vec<Waypoint>> {
-        let original = world.transform(actor)?;
-        let span = world.height_span(actor)?;
-        let start = pose(scene, world, actor, original, span.floor.0)?;
+    ) -> Result<Vec<Waypoint>, RequestStatus> {
+        let original = world
+            .transform(actor)
+            .ok_or(RequestStatus::UnsupportedActor)?;
+        let span = world
+            .height_span(actor)
+            .ok_or(RequestStatus::UnsupportedActor)?;
+        let start =
+            pose(scene, world, actor, original, span.floor.0).ok_or(RequestStatus::NoPath)?;
         if (start.span.elevation - span.elevation).abs() > 0.001 {
-            return None;
+            return Err(RequestStatus::NoPath);
         }
-        let goal = pose(scene, world, actor, goal, floor)?;
+        let goal = pose(scene, world, actor, goal, floor).ok_or(RequestStatus::NoPath)?;
         if start.surface == goal.surface
             && self.probe(scene, world, actor, start, goal, step, drop)?
         {
-            return Some(vec![goal]);
+            return Ok(vec![goal]);
         }
-        let offset = world.collider(actor)?.center(original);
+        let offset = world
+            .collider(actor)
+            .ok_or(RequestStatus::UnsupportedActor)?
+            .center(original);
         let offset = Transform2D {
             x: offset.x - original.x,
             y: offset.y - original.y,
@@ -296,7 +368,7 @@ impl SpatialNavigation {
                     || lo.abs() > f64::from(i32::MAX - 2)
                     || hi.abs() > f64::from(i32::MAX - 2)
                 {
-                    return None;
+                    return Err(RequestStatus::NodeBudgetExceeded);
                 }
                 range[axis] = lo as i32;
                 range[axis + 2] = hi as i32;
@@ -306,7 +378,7 @@ impl SpatialNavigation {
             if count > MAX_NODES as i64
                 || self.search.nodes.len().saturating_add(count as usize) > MAX_NODES
             {
-                return None;
+                return Err(RequestStatus::NodeBudgetExceeded);
             }
             for y in range[1]..=range[3] {
                 for x in range[0]..=range[2] {
@@ -359,7 +431,7 @@ impl SpatialNavigation {
                 continue;
             }
             if self.search.expanded >= MAX_NODES as u32 + 2 {
-                return None;
+                return Err(RequestStatus::NodeBudgetExceeded);
             }
             self.search.nodes[i].closed = true;
             self.search.expanded += 1;
@@ -370,11 +442,11 @@ impl SpatialNavigation {
                     points.push(self.search.nodes[at].pose);
                     at = self.search.nodes[at].parent;
                     if points.len() > MAX_NODES + 1 {
-                        return None;
+                        return Err(RequestStatus::NodeBudgetExceeded);
                     }
                 }
                 points.reverse();
-                return Some(points);
+                return Ok(points);
             }
             let from = self.search.nodes[i].pose;
             neighbors.clear();
@@ -385,7 +457,10 @@ impl SpatialNavigation {
                     }
                 }
             } else {
-                let center = world.collider(actor)?.center(from.at);
+                let center = world
+                    .collider(actor)
+                    .ok_or(RequestStatus::UnsupportedActor)?
+                    .center(from.at);
                 let x = ((f64::from(center.x) - origin[0]) / f64::from(cell)).floor() as i32;
                 let y = ((f64::from(center.y) - origin[1]) / f64::from(cell)).floor() as i32;
                 for y in y - 1..=y + 1 {
@@ -419,7 +494,7 @@ impl SpatialNavigation {
                 self.search.nodes[next].cost = cost;
                 self.search.nodes[next].parent = i;
                 if self.search.open.len() >= MAX_PROBES as usize {
-                    return None;
+                    return Err(RequestStatus::ProbeBudgetExceeded);
                 }
                 self.search.open.push(Open {
                     index: next,
@@ -427,7 +502,7 @@ impl SpatialNavigation {
                 });
             }
         }
-        None
+        Err(RequestStatus::NoPath)
     }
     #[allow(clippy::too_many_arguments)]
     pub fn plan(
@@ -441,41 +516,54 @@ impl SpatialNavigation {
         radius: f32,
         cancel_on_input: bool,
     ) -> bool {
+        self.begin_request();
         let Some((actor, _, step, drop)) = scene.actor else {
             return false;
         };
-        if !supported(world, actor)
-            || ![goal.x, goal.y, speed, cell, radius]
-                .iter()
-                .all(|v| v.is_finite())
+        if !supported(world, actor) {
+            return false;
+        }
+        if ![goal.x, goal.y, speed, cell, radius]
+            .iter()
+            .all(|v| v.is_finite())
             || speed <= 0.
             || cell <= 0.
             || radius < 0.
             || floor > 65535
         {
+            self.request_status = RequestStatus::InvalidRequest;
             return false;
         }
         let original = world.transform(actor).unwrap_or_default();
-        // A route accepted here must be able to execute at least one bounded follower step.
-        if work(scene, world, original, original) > FRAME_WORK {
+        self.target_count = scene.movement_scratch.begin_spatial_query(world, actor);
+        self.preparation_work = preparation_work(world, self.target_count);
+        // Admission includes preparation and at least one bounded follower step.
+        if self
+            .preparation_work
+            .saturating_add(work(scene, self.target_count, original, original))
+            > FRAME_WORK
+        {
+            scene.movement_scratch.end_spatial_query();
+            self.request_status = RequestStatus::FrameBudgetExceeded;
             return false;
         }
         let span = world.height_span(actor).unwrap();
         let velocity = world.velocity(actor).unwrap();
-        self.search.nodes.clear();
-        self.search.cells.clear();
-        self.search.open.clear();
-        self.search.probes = 0;
-        self.search.work = 0;
-        self.search.expanded = 0;
+        self.search.work = self.preparation_work;
         self.searches = self.searches.saturating_add(1);
         let result = self.search(scene, world, actor, goal, floor, cell, step, drop);
+        scene.movement_scratch.end_spatial_query();
         world.set_transform(actor, original);
         world.set_height_span(actor, span);
         world.set_velocity(actor, velocity);
-        let Some(points) = result else {
-            return false;
+        let points = match result {
+            Ok(points) => points,
+            Err(status) => {
+                self.request_status = status;
+                return false;
+            }
         };
+        self.request_status = RequestStatus::Accepted;
         self.points = points;
         self.next = 0;
         self.planned = self.points.len();
@@ -498,6 +586,7 @@ impl SpatialNavigation {
         input: InputState,
         delta: f32,
         counters: &mut PhysicsCounters,
+        target_count: usize,
     ) -> bool {
         self.last_motion = None;
         if self.status != SpatialMoveStatus::Moving {
@@ -525,7 +614,8 @@ impl SpatialNavigation {
         }
         let (_, _, step, drop) = scene.actor.unwrap();
         let mut budget = self.pending + f64::from(self.speed) * f64::from(delta);
-        let mut used = 0_u64;
+        let prepared_work = preparation_work(world, target_count);
+        let mut used = prepared_work;
         world.set_velocity(actor, Velocity::default());
         for _ in 0..64 {
             let Some(point) = self.points.get(self.next).copied() else {
@@ -555,7 +645,31 @@ impl SpatialNavigation {
             if budget <= 0. {
                 break;
             }
-            let distance = budget.min(len).min(f64::from(self.cell_size));
+            let Some(current) = pose(scene, world, actor, at, floor.0) else {
+                self.finish(SpatialMoveStatus::Blocked);
+                return true;
+            };
+            let mut distance = budget.min(len).min(f64::from(self.cell_size));
+            // A full grid edge may subdivide into two safe steps, while a shorter frame fragment
+            // uses only one and exceeds maxStepHeight. Bound fragments by both supports' slope.
+            for index in [current.surface, point.surface] {
+                let surface = scene.surfaces[index];
+                let (delta, extent) = if surface.ramp_x {
+                    (f64::from(point.at.x) - f64::from(at.x), surface.bounds[2])
+                } else {
+                    (f64::from(point.at.y) - f64::from(at.y), surface.bounds[3])
+                };
+                let rise = (f64::from(surface.heights[1]) - f64::from(surface.heights[0]))
+                    / f64::from(extent)
+                    * delta
+                    / len;
+                if rise != 0. {
+                    let allowance = if rise > 0. { step } else { drop };
+                    distance = distance.min(
+                        (f64::from(allowance) + f64::from(KINEMATIC_EPSILON) * 0.5) / rise.abs(),
+                    );
+                }
+            }
             let dx = (f64::from(point.at.x) - f64::from(at.x)) / len * distance;
             let dy = (f64::from(point.at.y) - f64::from(at.y)) / len * distance;
             let bounded = |from: f32, to: f32, d: f64| {
@@ -574,9 +688,21 @@ impl SpatialNavigation {
                 x: at.x + dx,
                 y: at.y + dy,
             };
-            let charge = work(scene, world, at, target);
+            let before_segment = used;
+            if used.saturating_add(target_count as u64) > FRAME_WORK {
+                if before_segment == prepared_work {
+                    self.finish(SpatialMoveStatus::Blocked);
+                    return true;
+                }
+                break;
+            }
+            used += target_count as u64;
+            let nearby = scene
+                .movement_scratch
+                .begin_spatial_segment(world, actor, at, target);
+            let charge = work(scene, nearby, at, target);
             if used.saturating_add(charge) > FRAME_WORK {
-                if used == 0 {
+                if before_segment == prepared_work {
                     self.finish(SpatialMoveStatus::Blocked);
                     return true;
                 }
@@ -673,7 +799,15 @@ impl SpatialScene {
         counters: &mut PhysicsCounters,
     ) -> bool {
         let mut navigation = std::mem::take(&mut self.navigation);
-        let owns = navigation.update(self, world, input, delta, counters);
+        let targets = if navigation.status == SpatialMoveStatus::Moving {
+            navigation
+                .actor
+                .map(|actor| self.movement_scratch.begin_spatial_query(world, actor))
+        } else {
+            None
+        };
+        let owns = navigation.update(self, world, input, delta, counters, targets.unwrap_or(0));
+        self.movement_scratch.end_spatial_query();
         self.navigation = navigation;
         owns
     }

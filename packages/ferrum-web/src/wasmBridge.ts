@@ -1,4 +1,5 @@
 import init, { Engine, version, wasm_memory } from "../pkg/ferrum_core.js";
+import { spatialModelRegistry } from "./spatialModel.js";
 import {
   createBuiltInShooterStateAccessor,
   createRenderCommandAccessor,
@@ -155,6 +156,12 @@ export class WasmBridge {
         throw new Error("Unsupported spatial terrain range ABI");
       }
       const spatial = {
+        models: typeof e.spatial_model_len === "function" && e.spatial_model_len() > 0 ? (() => {
+          if(e.spatial_model_abi_version()!==1 || e.spatial_model_stride()!==20 || e.spatial_model_len()>1024) throw new Error("Unsupported model ABI");
+          const pointer=e.spatial_model_ptr(),length=e.spatial_model_len()*20;
+          return {version:1 as const,stride:20 as const,words:new Uint32Array(this.memory.buffer,pointer,length),values:new Float32Array(this.memory.buffer,pointer,length),
+            assets:new Map([...spatialModelRegistry(e).values()].map(r=>[r.id,r.handle]))};
+        })() : undefined,
         vertexStride: 11 as const,
         camera: new Float32Array(this.memory.buffer, e.spatial_camera_ptr(), 28),
         terrain: new Float32Array(this.memory.buffer, e.spatial_terrain_ptr(), terrainVertexCount * 11),

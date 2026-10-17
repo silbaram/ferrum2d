@@ -2,6 +2,7 @@ import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 import type { GameplayEntityHandle } from "./gameplayAuthoring.js";
 import type { DataSceneMoveStatus } from "./dataSceneMovement.js";
 import type { Engine } from "../pkg/ferrum_core.js";
+import { spatialModelRegistry, spatialModelResource, type SpatialModelAsset } from "./spatialModel.js";
 import {
   compileSpatialEnvironment,
   resolveSpatialEnvironmentSpec,
@@ -26,6 +27,8 @@ export interface SpatialCameraSpec {
   far?: number;
 }
 export interface SpatialTerrainSurface {
+  /** false keeps native physics/picking/debug support without color/depth/shadow draws. Default true. */
+  render?: boolean;
   id: string;
   x: number;
   y: number;
@@ -33,6 +36,8 @@ export interface SpatialTerrainSurface {
   depth: number;
   elevation: number;
   endElevation?: number;
+  /** Ramp height varies along this ground axis. Default y; only valid for kind:ramp. */
+  rampAxis?: "x" | "y";
   baseElevation?: number;
   floorId?: number;
   kind?: "flat" | "stair" | "ramp" | "bridge";
@@ -74,10 +79,33 @@ export interface SpatialMoveStats {
   waypointCount: number;
   remainingWaypointCount: number;
   searchCount: number;
-  /** Conservative native collision/sort work estimate; not milliseconds. */
+  /** Conservative native work including request preparation; not milliseconds. */
   probeWorkUnits: number;
+  /** Optional native v1 diagnostics. Rejected requests preserve the active route counters above. */
+  lastRequest?: {
+    status:
+      | "notRequested"
+      | "accepted"
+      | "invalidRequest"
+      | "unsupportedActor"
+      | "noPath"
+      | "nodeBudgetExceeded"
+      | "probeBudgetExceeded"
+      | "workBudgetExceeded"
+      | "frameBudgetExceeded";
+    count: number;
+    /** Enabled target AABB/OBB proxies; excludes the moving actor and terrain. */
+    collisionProxyCount: number;
+    preparationWorkUnits: number;
+  };
 }
 export interface DataSceneSpatialSpec {
+  /** Static model resources must be loaded/registered before applying authoring. */
+  models?: Readonly<Record<string, SpatialModelInstanceSpec>>;
+  /** Visual GPU residency only; physics/supports remain loaded. Up to 64 world-space chunks. */
+  modelChunks?: Readonly<Record<string,{min:SpatialPoint;max:SpatialPoint;loadDistance:number;unloadDistance:number}>>;
+  /** Native parent-body coordinates. Attached children require static heightSpan bodies. */
+  attachments?: Readonly<Record<string,{parent:string;x?:number;y?:number;elevation?:number;yawDegrees?:number;inheritFloor?:boolean}>>;
   environment?: SpatialEnvironmentSpec;
   camera: SpatialCameraSpec;
   terrain: readonly SpatialTerrainSurface[];
@@ -89,6 +117,18 @@ export interface DataSceneSpatialSpec {
     maxStepHeight?: number;
     maxDropHeight?: number;
   };
+}
+export interface SpatialModelInstanceSpec {
+  chunk?: string;
+  /** Up to three additional preloaded CPU assets; native distance selection has 10% hysteresis. */
+  lods?: readonly {asset:string;contentId:string;minDistance:number}[];
+  asset: string;
+  contentId: string;
+  elevation?: number;
+  yawDegrees?: number;
+  scale?: number;
+  castShadow?: boolean;
+  receiveShadow?: boolean;
 }
 /** Runtime diagnostics only; not scene authoring data or saved progress. */
 export interface SpatialDebugOptions {
@@ -116,6 +156,8 @@ export interface SpatialDebugBufferView {
 }
 /** Borrowed Wasm views; reacquire per frame or explicitly copy for deferred rendering/picking. */
 interface SpatialRenderBufferBase {
+  /** Independent v1: four u32 metadata words + sixteen f32 matrix words per native instance. */
+  models?: { version: 1; stride: 20; words: Uint32Array; values: Float32Array; assets: ReadonlyMap<number, SpatialModelAsset> };
   vertexStride: 11;
   camera: Float32Array;
   terrain: Float32Array;
@@ -144,6 +186,10 @@ export interface SpatialSurfaceHit extends SpatialPoint {
   walkable: boolean;
 }
 export interface FerrumSpatialApi {
+  registerDataSceneSpatialModel(id: string, asset: SpatialModelAsset): boolean;
+  releaseDataSceneSpatialModel(id: string): boolean;
+  /** Cold asset/content/renderer-independent validation before replacing a scene. */
+  preflightDataSceneSpatialModels(spec: DataSceneSpatialSpec, origins?: Readonly<Record<string, SpatialPoint>>): boolean;
   /** Presentation settings only; movement is preserved. Null disables all spatial effects. */
   setDataSceneSpatialEnvironment(
     options: SpatialEnvironmentSpec | null,
@@ -277,38 +323,35 @@ export function resolveSpatialCameraSpec(
       : { fovDegrees: num(o.fovDegrees ?? 45, `${path}.fovDegrees`, 1, 170) }),
   };
 }
-export function resolveDataSceneSpatialSpec(
-  v: unknown,
-  path = "spatial",
-): DataSceneSpatialSpec {
-  const o = record(v, path);
-  keys(
-    o,
-    ["camera", "terrain", "billboards", "actor", "connections", "environment"],
-    path,
-  );
-  const camera = resolveSpatialCameraSpec(o.camera, `${path}.camera`);
-  if (!Array.isArray(o.terrain) || o.terrain.length > 256)
+/** Internal normalization shared with model-local authoring; public scenes use world f32 bounds. */
+export function resolveSpatialTerrainSurfaces(
+  input: unknown,
+  path: string,
+  space: "world" | "local" = "world",
+): SpatialTerrainSurface[] {
+  if (!Array.isArray(input) || input.length > 256)
     throw sceneCompositionDiagnosticError(
-      `${path}.terrain`,
+      `${path}`,
       "must be an array with at most 256 surfaces",
     );
   const ids = new Set<string>();
   const terrain = Array.from(
-    o.terrain,
+    input,
     (v: unknown, i: number): SpatialTerrainSurface => {
-      const at = `${path}.terrain.${i}`,
+      const at = `${path}.${i}`,
         s = record(v, at);
       keys(
         s,
         [
           "id",
+          "render",
           "x",
           "y",
           "width",
           "depth",
           "elevation",
           "endElevation",
+          "rampAxis",
           "baseElevation",
           "floorId",
           "kind",
@@ -335,12 +378,21 @@ export function resolveDataSceneSpatialSpec(
           `${at}.kind`,
           "must be flat, stair, ramp, or bridge",
         );
+      if (s.rampAxis !== undefined && (kind !== "ramp" || (s.rampAxis !== "x" && s.rampAxis !== "y")))
+        throw sceneCompositionDiagnosticError(`${at}.rampAxis`, "requires kind:ramp and x or y");
+      const render = s.render === undefined ? true : bool(s.render, `${at}.render`);
+      if (
+        !render &&
+        (s.textureId !== undefined || s.castShadow === true || s.receiveShadow === true)
+      )
+        throw sceneCompositionDiagnosticError(
+          at,
+          "render:false surfaces cannot use textures or enable shadow flags",
+        );
       const x = num(s.x, `${at}.x`),
         y = num(s.y, `${at}.y`),
         width = positive(s.width, `${at}.width`),
         depth = positive(s.depth, `${at}.depth`);
-      num(x + width, `${at}.width`);
-      num(y + depth, `${at}.depth`);
       const elevation = num(s.elevation, `${at}.elevation`),
         endElevation = num(s.endElevation ?? elevation, `${at}.endElevation`),
         baseElevation = num(
@@ -377,11 +429,14 @@ export function resolveDataSceneSpatialSpec(
         depth,
         elevation,
         endElevation,
+        ...(s.rampAxis === undefined ? {} : { rampAxis: s.rampAxis as "x" | "y" }),
         baseElevation,
         kind: kind as SpatialTerrainSurface["kind"],
         floorId: integer(s.floorId ?? 0, `${at}.floorId`, 65535),
         color: rgba,
         walkable: bool(s.walkable ?? true, `${at}.walkable`),
+        ...(s.render === undefined ? {} : { render }),
+        ...(!render ? { castShadow: false, receiveShadow: false } : {}),
         ...(s.castShadow === undefined ? {} : { castShadow: bool(s.castShadow, `${at}.castShadow`) }),
         ...(s.receiveShadow === undefined ? {} : { receiveShadow: bool(s.receiveShadow, `${at}.receiveShadow`) }),
         ...(s.textureId === undefined
@@ -390,22 +445,38 @@ export function resolveDataSceneSpatialSpec(
       };
     },
   );
+  // Match the native buffer: round components before arithmetic and round sums too.
+  // Comparing JS doubles here rejects valid seams and can miss actual native overlaps.
+  const terrainBounds = terrain.map((surface, i) => {
+    const round = space === "world" ? Math.fround : (n: number) => n;
+    const x = round(surface.x), y = round(surface.y);
+    const maxX = round(x + round(surface.width));
+    const maxY = round(y + round(surface.depth));
+    if (!Number.isFinite(maxX) || !Number.isFinite(maxY) || maxX <= x || maxY <= y)
+      throw sceneCompositionDiagnosticError(`${path}.${i}`, "requires positive finite f32 bounds after placement");
+    return [x, y, maxX, maxY];
+  });
   for (let i = 0; i < terrain.length; i++)
     for (let j = 0; j < i; j++) {
-      const a = terrain[i],
-        b = terrain[j];
-      if (
-        a.floorId === b.floorId &&
-        a.x < b.x + b.width &&
-        a.x + a.width > b.x &&
-        a.y < b.y + b.depth &&
-        a.y + a.depth > b.y
-      )
-        throw sceneCompositionDiagnosticError(
-          `${path}.terrain.${i}`,
-          "surfaces on the same floor must not overlap",
-        );
+      const a = terrainBounds[i], b = terrainBounds[j];
+      if (terrain[i].floorId === terrain[j].floorId &&
+          a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1])
+        throw sceneCompositionDiagnosticError(`${path}.${i}`, "surfaces on the same floor must not overlap");
     }
+  return terrain;
+}
+export function resolveDataSceneSpatialSpec(
+  v: unknown,
+  path = "spatial",
+): DataSceneSpatialSpec {
+  const o = record(v, path);
+  keys(
+    o,
+    ["camera", "terrain", "billboards", "actor", "connections", "environment", "models", "attachments", "modelChunks"],
+    path,
+  );
+  const camera = resolveSpatialCameraSpec(o.camera, `${path}.camera`);
+  const terrain = resolveSpatialTerrainSurfaces(o.terrain, `${path}.terrain`);
   const connections = resolveConnections(
     o.connections,
     terrain,
@@ -421,7 +492,7 @@ export function resolveDataSceneSpatialSpec(
   for (const [id, v] of Object.entries(source)) {
     const at = `${path}.billboards.${id}`,
       b = record(v, at);
-    keys(b, ["unitsPerPixel", "alphaCutoff", "elevation", "normalTextureId", "castShadow", "receiveShadow"], at);
+    keys(b, ["unitsPerPixel", "alphaCutoff", "elevation", "normalTextureId", "castShadow", "receiveShadow", "chunk", "lods"], at);
     billboards[id] = {
       ...(b.normalTextureId === undefined ? {} : { normalTextureId: integer(b.normalTextureId, `${at}.normalTextureId`, 16777214) }),
       ...(b.castShadow === undefined ? {} : { castShadow: bool(b.castShadow, `${at}.castShadow`) }),
@@ -453,14 +524,60 @@ export function resolveDataSceneSpatialSpec(
     o.environment === undefined
       ? undefined
       : resolveSpatialEnvironmentSpec(o.environment, `${path}.environment`);
+  const models: Record<string, SpatialModelInstanceSpec> = Object.create(null);
+  if (o.models !== undefined) {
+    const entries = Object.entries(record(o.models, `${path}.models`));
+    if (entries.length > 1024) throw sceneCompositionDiagnosticError(`${path}.models`, "maximum 1024 instances");
+    for (const [id, raw] of entries) {
+      const at = `${path}.models.${id}`, m = record(raw, at);
+      keys(m, ["asset", "contentId", "elevation", "yawDegrees", "scale", "castShadow", "receiveShadow", "chunk", "lods"], at);
+      if (!id || Object.prototype.hasOwnProperty.call(billboards,id) || typeof m.asset !== "string" || !m.asset || typeof m.contentId !== "string" || !/^[a-f0-9]{64}$/.test(m.contentId))
+        throw sceneCompositionDiagnosticError(at, "requires unique model instance, asset ID and SHA-256 contentId");
+      const lods:NonNullable<SpatialModelInstanceSpec['lods']>[number][]=[];
+      if(m.lods!==undefined){if(!Array.isArray(m.lods)||m.lods.length>3)throw sceneCompositionDiagnosticError(`${at}.lods`,'maximum 3 additional LOD assets');let previous=0;
+        for(const [index,value]of m.lods.entries()){const p=`${at}.lods.${index}`,l=record(value,p);keys(l,['asset','contentId','minDistance'],p);
+          if(typeof l.asset!=='string'||!l.asset||typeof l.contentId!=='string'||!/^[a-f0-9]{64}$/.test(l.contentId))throw sceneCompositionDiagnosticError(p,'requires asset ID and SHA-256 contentId');
+          const distance=num(l.minDistance,`${p}.minDistance`,0,1e6);if(Math.fround(distance)<=Math.fround(previous))throw sceneCompositionDiagnosticError(p,'distances must increase and remain positive in f32');previous=distance;lods.push({asset:l.asset,contentId:l.contentId,minDistance:distance});}}
+      if(m.chunk!==undefined&&(typeof m.chunk!=='string'||!m.chunk))throw sceneCompositionDiagnosticError(`${at}.chunk`,'requires a chunk ID');
+      models[id] = { asset:m.asset, contentId:m.contentId,
+        ...(m.chunk===undefined?{}:{chunk:m.chunk as string}),...(m.lods===undefined?{}:{lods}),
+        elevation:num(m.elevation ?? 0,`${at}.elevation`), yawDegrees:num(m.yawDegrees ?? 0,`${at}.yawDegrees`,-360,360), scale:num(m.scale ?? 1,`${at}.scale`,0.0001,10000),
+        ...(m.castShadow===undefined?{}:{castShadow:bool(m.castShadow,`${at}.castShadow`)}),
+        ...(m.receiveShadow===undefined?{}:{receiveShadow:bool(m.receiveShadow,`${at}.receiveShadow`)}) };
+    }
+  }
+  const modelChunks:NonNullable<DataSceneSpatialSpec['modelChunks']>=Object.create(null);
+  if(o.modelChunks!==undefined){const entries=Object.entries(record(o.modelChunks,`${path}.modelChunks`));if(entries.length>64)throw sceneCompositionDiagnosticError(`${path}.modelChunks`,'maximum 64 chunks');
+    for(const[id,value]of entries){const at=`${path}.modelChunks.${id}`,c=record(value,at);keys(c,['min','max','loadDistance','unloadDistance'],at);
+      const point=(input:unknown,p:string):SpatialPoint=>{const v=record(input,p);keys(v,['x','y','elevation'],p);return {x:num(v.x,`${p}.x`,-1e6,1e6),y:num(v.y,`${p}.y`,-1e6,1e6),elevation:num(v.elevation,`${p}.elevation`,-1e6,1e6)};};
+      const min=point(c.min,`${at}.min`),max=point(c.max,`${at}.max`),loadDistance=num(c.loadDistance,`${at}.loadDistance`,0,1e6),unloadDistance=num(c.unloadDistance,`${at}.unloadDistance`,0,1e6);
+      if(!id||min.x>max.x||min.y>max.y||min.elevation>max.elevation||Math.fround(unloadDistance)<=Math.fround(loadDistance))throw sceneCompositionDiagnosticError(at,'ordered bounds and unloadDistance > loadDistance required');
+      (modelChunks as Record<string,typeof modelChunks[string]>)[id]={min,max,loadDistance,unloadDistance};}}
+  for(const[id,m]of Object.entries(models))if(m.chunk!==undefined&&!Object.prototype.hasOwnProperty.call(modelChunks,m.chunk))throw sceneCompositionDiagnosticError(`${path}.models.${id}.chunk`,'unknown model chunk');
   if ((environment?.lighting?.shadows || environment?.lighting?.directional?.shadows) && Object.keys(billboards).length > 1024)
     throw sceneCompositionDiagnosticError(
       `${path}.billboards`,
       "shadow casting supports at most 1024 authored billboards",
     );
+  const attachments: Record<string,NonNullable<DataSceneSpatialSpec['attachments']>[string]>=Object.create(null);
+  if(o.attachments!==undefined){
+    const entries=Object.entries(record(o.attachments,`${path}.attachments`));
+    if(entries.length>1024)throw sceneCompositionDiagnosticError(`${path}.attachments`,'maximum 1024 attachments');
+    for(const [id,value] of entries){const at=`${path}.attachments.${id}`,a=record(value,at);keys(a,['parent','x','y','elevation','yawDegrees','inheritFloor'],at);
+      if(!id || typeof a.parent!=='string'||!a.parent||a.parent===id)throw sceneCompositionDiagnosticError(at,'requires a distinct nonempty parent');
+      attachments[id]={parent:a.parent,x:num(a.x??0,`${at}.x`),y:num(a.y??0,`${at}.y`),elevation:num(a.elevation??0,`${at}.elevation`),yawDegrees:num(a.yawDegrees??0,`${at}.yawDegrees`,-360,360),inheritFloor:bool(a.inheritFloor??true,`${at}.inheritFloor`)};
+    }
+    for(const id of Object.keys(attachments)){const seen=new Set<string>();let parent=id;
+      while(attachments[parent]){if(seen.has(parent)||seen.size>=8)throw sceneCompositionDiagnosticError(`${path}.attachments.${id}`,'cyclic attachment or depth exceeds 8');seen.add(parent);parent=attachments[parent].parent;}
+      if(!Object.prototype.hasOwnProperty.call(models,parent))throw sceneCompositionDiagnosticError(`${path}.attachments.${id}`,'root parent must reference an authored model');
+    }
+  }
   return {
     camera,
     terrain,
+    ...(o.models === undefined ? {} : {models}),
+    ...(o.modelChunks===undefined?{}:{modelChunks}),
+    ...(o.attachments===undefined?{}:{attachments}),
     ...(environment === undefined ? {} : { environment }),
     ...(connections.length ? { connections } : {}),
     billboards,
@@ -612,7 +729,7 @@ export function compileSpatialTerrain(
       i + 1,
       s.floorId!,
       s.textureId ?? 16777215,
-      kinds[s.kind!] * 2 + Number(s.walkable),
+      kinds[s.kind!] * 2 + Number(s.walkable) + (s.render === false ? 16 : 0) + (s.rampAxis === "x" ? 32 : 0),
     );
   });
   return {
@@ -626,7 +743,41 @@ export function createSpatialApi(
   viewport: () => { width: number; height: number },
 ): FerrumSpatialApi {
   let surfaceIds: readonly string[] = [];
-  return {
+  const api: FerrumSpatialApi = {
+    registerDataSceneSpatialModel(id, asset) {
+      requireAlive();
+      const resource=spatialModelResource(asset);
+      if (!id || !resource || typeof rust.configure_spatial_scene_models!=="function") return false;
+      const registry = spatialModelRegistry(rust), previous = registry.get(id);
+      if (previous) return previous.handle === asset;
+      if (registry.size >= 16 || [...registry.values()].reduce((n,r)=>n+r.handle.byteLength,asset.byteLength)>128*1024*1024) return false;
+      let nativeId = 1; while ([...registry.values()].some(a=>a.id===nativeId)) nativeId++;
+      registry.set(id,{id:nativeId,asset:resource,handle:asset}); return true;
+    },
+    releaseDataSceneSpatialModel(id) {
+      requireAlive();
+      const registry=spatialModelRegistry(rust), entry=registry.get(id);
+      return !!entry && !rust.spatial_model_asset_in_use(entry.id) && registry.delete(id);
+    },
+    preflightDataSceneSpatialModels(input, origins = {}) {
+      requireAlive();
+      const spec=resolveDataSceneSpatialSpec(input), registry=spatialModelRegistry(rust);
+      if(Object.keys(spec.attachments??{}).length&&typeof rust.configure_spatial_attachments!=='function')return false;
+      if((spec.modelChunks!==undefined||Object.values(spec.models??{}).some(m=>m.lods!==undefined))&&typeof rust.configure_spatial_model_streaming!=='function')return false;
+      let primitives=0,triangles=0;
+      const styles:number[]=[],points:number[]=[];
+      for(const [id,m] of Object.entries(spec.models ?? {})) {
+        const entry=registry.get(m.asset);
+        if(!entry || entry.asset.contentId!==m.contentId || typeof rust.configure_spatial_scene_models!=="function") return false;
+        const levels=[m,...(m.lods??[])].map(l=>registry.get(l.asset));
+        if(levels.some((l,i)=>!l||l.asset.contentId!==[m,...(m.lods??[])][i].contentId))return false;
+        primitives+=Math.max(...levels.map(l=>l!.asset.primitives.length));
+        triangles+=Math.max(...levels.map(l=>l!.asset.primitives.reduce((n,p)=>n+p.indices.length/3,0)));
+        styles.push(m.elevation!,m.yawDegrees!*Math.PI/180,m.scale!,...modelUnionBounds(levels.map(l=>l!.asset.bounds)));
+        const at=(Object.prototype.hasOwnProperty.call(origins,id) ? origins[id] : undefined) ?? {x:0,y:0,elevation:0};points.push(at.x,at.y,at.elevation);
+      }
+      return primitives<=4096 && triangles<=262144 && ((styles.length<=64*9 && primitives<=64) || (typeof rust.spatial_model_batch_abi_version==="function" && rust.spatial_model_batch_abi_version()===1)) && (!styles.length || (typeof rust.preflight_spatial_model_poses==="function" && rust.preflight_spatial_model_poses(Float32Array.from(styles),Float32Array.from(points))));
+    },
     setDataSceneSpatialEnvironment(options) {
       requireAlive();
       const values = compileSpatialEnvironment(options);
@@ -711,7 +862,7 @@ export function createSpatialApi(
         return undefined;
       const v = rust.data_scene_spatial_move_stats();
       if (v.length !== 6) return undefined;
-      return {
+      const stats: SpatialMoveStats = {
         searchNodeCount: v[0],
         edgeProbeCount: v[1],
         waypointCount: v[2],
@@ -719,10 +870,42 @@ export function createSpatialApi(
         searchCount: v[4],
         probeWorkUnits: v[5],
       };
+      if (typeof rust.data_scene_spatial_move_diagnostics === "function") {
+        const d = rust.data_scene_spatial_move_diagnostics();
+        const status = ([
+          "notRequested",
+          "accepted",
+          "invalidRequest",
+          "unsupportedActor",
+          "noPath",
+          "nodeBudgetExceeded",
+          "probeBudgetExceeded",
+          "workBudgetExceeded",
+          "frameBudgetExceeded",
+        ] as const)[d[1]];
+        if (d.length === 5 && d[0] === 1 && status !== undefined) {
+          stats.lastRequest = {
+            status,
+            count: d[2],
+            collisionProxyCount: d[3],
+            preparationWorkUnits: d[4],
+          };
+        }
+      }
+      return stats;
     },
     configureDataSceneSpatial(input, handles) {
       requireAlive();
       const spec = resolveDataSceneSpatialSpec(input);
+      if(Object.keys(spec.attachments??{}).length && typeof rust.configure_spatial_attachments!=='function')return false;
+      if (spec.terrain.some(s => s.rampAxis === "x") &&
+          (typeof rust.spatial_ramp_axis_abi_version !== "function" || rust.spatial_ramp_axis_abi_version() !== 1)) return false;
+      if (
+        spec.terrain.some(s => s.render === false) &&
+        (typeof rust.spatial_surface_proxy_abi_version !== "function" ||
+          rust.spatial_surface_proxy_abi_version() !== 1)
+      ) return false;
+      if (!api.preflightDataSceneSpatialModels(spec)) return false;
       const hs: number[] = [],
         vs: number[] = [];
       for (const [id, b] of Object.entries(spec.billboards)) {
@@ -769,7 +952,21 @@ export function createSpatialApi(
       const materialFlags = (o: { castShadow?: boolean; receiveShadow?: boolean }) => (o.castShadow === false ? 0 : 1) | (o.receiveShadow === false ? 0 : 2);
       const materialOptions = spec.terrain.some(t => t.castShadow !== undefined || t.receiveShadow !== undefined) || Object.values(spec.billboards).some(b => b.normalTextureId !== undefined || b.castShadow !== undefined || b.receiveShadow !== undefined);
       const connectionValues = Uint32Array.from(connections.flatMap(c => [spec.terrain.findIndex(s => s.id === c.from) + 1, spec.terrain.findIndex(s => s.id === c.to) + 1]));
-      const accepted = materialOptions
+      const modelMetadata:number[]=[],modelStyles:number[]=[];
+      for(const [id,m] of Object.entries(spec.models ?? {})) {
+        const handle=handles[id], entry=spatialModelRegistry(rust).get(m.asset)!;
+        if(!handle) throw sceneCompositionDiagnosticError(`spatial.models.${id}`,"must reference an applied instance");
+        modelMetadata.push(handle.entityId,handle.entityGeneration,entry.id,materialFlags(m),entry.asset.primitives.length,entry.asset.primitives.reduce((n,p)=>n+p.indices.length/3,0));
+        modelStyles.push(m.elevation!,m.yawDegrees!*Math.PI/180,m.scale!,...modelUnionBounds([m,...(m.lods??[])].map(l=>spatialModelRegistry(rust).get(l.asset)!.asset.bounds)));
+      }
+      const attachmentMetadata:number[]=[],attachmentValues:number[]=[];
+      for(const[id,a]of Object.entries(spec.attachments??{})){const child=handles[id],parent=handles[a.parent];if(!child||!parent)throw sceneCompositionDiagnosticError(`spatial.attachments.${id}`,'must reference applied handles');attachmentMetadata.push(child.entityId,child.entityGeneration,parent.entityId,parent.entityGeneration,a.inheritFloor?1:0);attachmentValues.push(a.x!,a.y!,a.elevation!,a.yawDegrees!*Math.PI/180);}
+      if(attachmentMetadata.length&&(typeof rust.preflight_spatial_attachments!=='function'||!rust.preflight_spatial_attachments(Uint32Array.from(attachmentMetadata),Float32Array.from(attachmentValues),Uint32Array.from(modelMetadata),Float32Array.from(modelStyles))))return false;
+      const accepted = modelMetadata.length
+        ? rust.configure_spatial_scene_models(...args, connectionValues, compileSpatialEnvironment(spec.environment ?? null),
+            Uint32Array.from(spec.terrain.map(materialFlags)),Uint32Array.from(Object.values(spec.billboards).flatMap(b=>[b.normalTextureId ?? 16777215,materialFlags(b)])),
+            Uint32Array.from(modelMetadata),Float32Array.from(modelStyles))
+        : materialOptions
         ? typeof rust.configure_spatial_scene_materials === "function" && rust.configure_spatial_scene_materials(...args, connectionValues,
             compileSpatialEnvironment(spec.environment ?? null), Uint32Array.from(spec.terrain.map(materialFlags)),
             Uint32Array.from(Object.values(spec.billboards).flatMap(b => [b.normalTextureId ?? 16777215, materialFlags(b)])))
@@ -798,6 +995,14 @@ export function createSpatialApi(
               )
             : rust.configure_spatial_scene(...args);
       if (!accepted) return false;
+      if(Object.keys(spec.attachments??{}).length){
+        if(!rust.configure_spatial_attachments(Uint32Array.from(attachmentMetadata),Float32Array.from(attachmentValues)))return false;
+      }
+      if(spec.modelChunks!==undefined||Object.values(spec.models??{}).some(m=>m.lods!==undefined)){
+        const chunks=Object.entries(spec.modelChunks??{}),metadata:number[]=[],distances:number[]=[];
+        for(const[id,m]of Object.entries(spec.models??{})){const h=handles[id];for(const l of [{...m,minDistance:0},...(m.lods??[])]){const e=spatialModelRegistry(rust).get(l.asset)!;metadata.push(h.entityId,h.entityGeneration,e.id,e.asset.primitives.length,e.asset.primitives.reduce((n,p)=>n+p.indices.length/3,0),m.chunk===undefined?0:chunks.findIndex(([id])=>id===m.chunk)+1);distances.push(l.minDistance);}}
+        if(!rust.configure_spatial_model_streaming(Float32Array.from(chunks.flatMap(([,c])=>[c.min.x,c.min.elevation,-c.max.y,c.max.x,c.max.elevation,-c.min.y,c.loadDistance,c.unloadDistance])),Uint32Array.from(metadata),Float32Array.from(distances)))return false;
+      }
       surfaceIds = spec.terrain.map((s) => s.id);
       return true;
     },
@@ -890,6 +1095,7 @@ export function createSpatialApi(
       };
     },
   };
+  return api;
 }
 
 /** Browser coordinate adapter; camera projection and terrain identity come from the displayed frame. */
@@ -932,3 +1138,6 @@ export function createDataSceneSpatialView(
     },
   };
 }
+
+/** Conservative common bounds keep all LOD silhouettes and shadow casters in native visibility tests. */
+function modelUnionBounds(bounds:readonly (readonly number[])[]):number[]{return Array.from({length:6},(_,i)=>(i<3?Math.min:Math.max)(...bounds.map(b=>b[i])));}

@@ -252,6 +252,9 @@ impl Engine {
             &mut self.rigid_body_step_scratch,
         );
         self.record_rigid_body_step_stats(stats);
+        self.spatial_scene
+            .attachments
+            .synchronize_or_restore(&mut self.world, &self.spatial_scene.models);
     }
 
     fn record_collision_lifecycle_events(&mut self) {

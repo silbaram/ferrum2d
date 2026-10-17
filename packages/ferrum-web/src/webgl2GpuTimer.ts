@@ -85,7 +85,7 @@ export class WebGL2GpuTimer {
   }
 
   stats(): RendererGpuTimingStats {
-    return { ...this.current };
+    return { ...this.current, ...(this.frameId>0&&!this.destroyed?{currentFrameId:this.frameId}:{}) };
   }
 
   destroy(): void {

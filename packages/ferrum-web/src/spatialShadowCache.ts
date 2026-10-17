@@ -3,6 +3,10 @@ import type { SpriteTextureSource } from "./spriteBatch.js";
 
 /** GPU-result cache only. Revisions and face ranges are produced by the native scene. */
 export class SpatialShadowCache {
+  // Shadow-only metadata + matrices. Camera visibility and receiving do not alter a depth map.
+  private readonly models = new Uint32Array(1024 * 18);
+  private modelWordCount = -1;
+  private readonly modelAssets = new Map<number, string>();
   private terrainRevision = -1;
   private casterRevision = -1;
   private memory?: ArrayBufferLike;
@@ -29,7 +33,7 @@ export class SpatialShadowCache {
     const light = env.values[2] >= 0 ? env.values.subarray(12 + env.values[2] * 12, 16 + env.values[2] * 12) : undefined;
     let sameTextures = this.textureRevisions.size === this.pendingTextures.size;
     for (const [id, revision] of this.pendingTextures) if (this.textureRevisions.get(id) !== revision) sameTextures = false;
-    return tracked && env.shadowSubmission !== undefined &&
+    return this.matchesModels(frame) && tracked && env.shadowSubmission !== undefined &&
       this.memory === frame.terrain.buffer && this.offset === frame.terrain.byteOffset &&
       this.terrainRevision === frame.terrainRevision &&
       this.casterRevision === env.shadowSubmission.revision &&
@@ -38,8 +42,33 @@ export class SpatialShadowCache {
       sameTextures;
   }
 
+  private matchesModels(frame: SpatialRenderBufferView): boolean {
+    let offset = 0;
+    const packet = frame.models;
+    if (packet) for (let i = 0; i < packet.words.length; i += 20) {
+      const mask = packet.words[i + 2] & 254;
+      if (!mask) continue;
+      if (offset + 18 > this.modelWordCount || this.models[offset++] !== packet.words[i]
+        || this.models[offset++] !== mask || this.modelAssets.get(packet.words[i]) !== packet.assets.get(packet.words[i])?.contentId) return false;
+      for (let j = 4; j < 20; j++) if (this.models[offset++] !== packet.words[i + j]) return false;
+    }
+    return offset === this.modelWordCount;
+  }
+
   commit(frame: SpatialRenderBufferView): void {
     const env = frame.environment!;
+    this.modelAssets.clear();
+    let offset = 0;
+    const packet = frame.models;
+    if (packet) for (let i = 0; i < packet.words.length; i += 20) {
+      const mask = packet.words[i + 2] & 254;
+      if (!mask) continue;
+      this.models[offset++] = packet.words[i];
+      this.models[offset++] = mask;
+      for (let j = 4; j < 20; j++) this.models[offset++] = packet.words[i + j];
+      this.modelAssets.set(packet.words[i], packet.assets.get(packet.words[i])!.contentId);
+    }
+    this.modelWordCount = offset;
     this.memory = frame.terrain.buffer;
     this.offset = frame.terrain.byteOffset;
     this.terrainRevision = frame.terrainRevision;

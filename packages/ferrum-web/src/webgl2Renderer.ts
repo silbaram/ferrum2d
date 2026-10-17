@@ -1,3 +1,4 @@
+import type { SpatialModelAsset, SpatialModelPreparation } from "./spatialModel.js";
 import { WebGL2SpatialPass } from "./webgl2SpatialPass.js";
 import { prepareWebGL2Renderer } from "./webgl2ShaderPrograms";
 import { WebGL2GpuTimer } from "./webgl2GpuTimer.js";
@@ -71,6 +72,8 @@ export class WebGL2Renderer implements Renderer {
   readonly supportsSpatialScene = true;
   private spatialPass?: WebGL2SpatialPass;
   private frameHasSpatial = false;
+  private modelPreparationRevision = 0;
+  private frameModelPreparationRevision = 0;
   readonly colorManagement: ColorManagementMode;
   private readonly gl: WebGL2RenderingContext;
   private readonly gpuTimer?: WebGL2GpuTimer;
@@ -157,6 +160,28 @@ export class WebGL2Renderer implements Renderer {
     const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: options.preserveDrawingBuffer ?? false });
     if (!gl) throw new Error("WebGL2 context를 생성할 수 없습니다.");
     return prepareWebGL2Renderer(gl, preparation, () => new WebGL2Renderer(canvas, options));
+  }
+
+  /** Cold model GPU preparation for protected Data Scene authoring activation. */
+  prepareSpatialModels(assets: readonly SpatialModelAsset[]): SpatialModelPreparation {
+    this.assertAlive();
+    const existing = this.spatialPass;
+    let pass: WebGL2SpatialPass | undefined;
+    try {
+      pass = existing ?? new WebGL2SpatialPass(this.gl, this.colorManagement === "linear-srgb");
+      const preparation = pass.prepareModels(assets);
+      this.spatialPass = pass;
+      return Object.freeze({
+        uploadBytes: preparation.uploadBytes,
+        commit: () => { preparation.commit(); this.modelPreparationRevision++; },
+        dispose: () => preparation.dispose(),
+      });
+    } catch (error) {
+      if (!existing) pass?.destroy();
+      // Constructor allocation failures may leave OOM even before the model cache exists.
+      for (let i = 0; i < 16 && this.gl.getError() !== this.gl.NO_ERROR; i++) { /* cold failure cleanup */ }
+      throw error;
+    }
   }
 
   async loadTexture(textureId: number, url: string, options?: TextureLoadOptions): Promise<WebGLTexture>;
@@ -432,7 +457,12 @@ export class WebGL2Renderer implements Renderer {
 
   render(): void {
     this.assertAlive();
-    if (!this.frameHasSpatial) this.spatialPass?.releaseEnvironment();
+    if (!this.frameHasSpatial) {
+      this.spatialPass?.releaseEnvironment();
+      // A cold commit between frames belongs to the upcoming packet, not the old flat frame.
+      if (this.frameModelPreparationRevision === this.modelPreparationRevision) this.spatialPass?.releaseModels();
+    }
+    this.frameModelPreparationRevision = this.modelPreparationRevision;
     this.frameHasSpatial = false;
     resetRendererStatsInto(this.currentStats);
     resetRendererStatsInto(this.offscreenStats);
@@ -536,7 +566,10 @@ export class WebGL2Renderer implements Renderer {
 
   renderPostProcess(postProcess?: PostProcessStackInput): RendererStats {
     this.assertAlive();
-    if (!this.frameHasSpatial) this.spatialPass?.releaseEnvironment();
+    if (!this.frameHasSpatial) {
+      this.spatialPass?.releaseEnvironment();
+      if (this.frameModelPreparationRevision === this.modelPreparationRevision) this.spatialPass?.releaseModels();
+    }
     if (postProcess !== undefined) {
       this.setPostProcess(postProcess);
     }

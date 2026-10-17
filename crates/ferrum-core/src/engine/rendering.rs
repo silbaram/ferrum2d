@@ -8,6 +8,9 @@ use super::{Engine, SceneMode};
 
 impl Engine {
     pub(super) fn build_render_commands(&mut self) {
+        self.spatial_scene
+            .attachments
+            .synchronize_or_restore(&mut self.world, &self.spatial_scene.models);
         self.frame_buffers.clear_render_work_buffers();
         if let Some(camera) = self.spatial_scene.camera {
             let mut values = camera.parameters;
@@ -103,6 +106,11 @@ impl Engine {
                     self.spatial_scene
                         .bindings
                         .contains_key(&(e.id, e.generation))
+                        || self
+                            .spatial_scene
+                            .models
+                            .bindings
+                            .contains_key(&(e.id, e.generation))
                 })
             {
                 continue;

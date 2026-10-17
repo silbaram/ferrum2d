@@ -55,7 +55,7 @@ pub(in crate::physics) use sleep::{
 use solver::build_rigid_contact_constraints;
 pub use system::PhysicsSystem;
 
-const KINEMATIC_EPSILON: f32 = 0.0001;
+pub(crate) const KINEMATIC_EPSILON: f32 = 0.0001;
 const GROUND_NORMAL_Y_MIN: f32 = 0.5;
 const MAX_KINEMATIC_ITERATIONS: u32 = 8;
 const MAX_RIGID_BODY_SUBSTEPS: u32 = 16;

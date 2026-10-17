@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { resolve, sep } from "node:path";
+import { gzipSync } from "node:zlib";
 import { chromium } from "playwright-core";
 import { runReleaseCommand } from "./github-release-command.mjs";
 const root = resolve(".");
-await mkdir(resolve(root, "artifacts"), { recursive: true });
+await mkdir(process.env.FERRUM_SPATIAL_ARTIFACT_PARENT ?? resolve(root, "artifacts"), { recursive: true });
 const output = await mkdtemp(
-  resolve(root, "artifacts/spatial-scene-consumer-"),
+  resolve(process.env.FERRUM_SPATIAL_ARTIFACT_PARENT ?? resolve(root,"artifacts"), "spatial-scene-consumer-"),
 );
 await runReleaseCommand("pnpm", ["pack", "--pack-destination", output], {
   cwd: resolve(root, "packages/ferrum-web"),
@@ -19,13 +20,54 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{
 const server = createServer((req, res) => {
   void (async () => {
     const url = new URL(req.url, "http://localhost");
+    res.setHeader("Access-Control-Allow-Origin","*");
     if (url.pathname === "/") {
       res.setHeader("Content-Type", "text/html");
       res.end(html);
       return;
     }
+    if (url.pathname === "/gltf/bad-accessor.gltf") {
+      const directory=resolve(root,"examples/data-scene-native/assets/gltf/rock");
+      const document=JSON.parse(await readFile(resolve(directory,"scene.gltf"),"utf8"));
+      const png=await readFile(resolve(directory,"texture-0.png"));
+      document.buffers[0].uri="/gltf/rock/scene.bin";
+      document.images[0].uri="/gltf-accessor-image.png";
+      document.accessors[0].bufferView=document.bufferViews.length;
+      document.accessors[0].byteOffset=Math.ceil(png.length/4)*4;
+      res.setHeader("Content-Type","model/gltf+json");res.end(JSON.stringify(document));return;
+    }
+    if (url.pathname === "/gltf-accessor-image.png") {
+      const directory=resolve(root,"examples/data-scene-native/assets/gltf/rock");
+      const png=await readFile(resolve(directory,"texture-0.png")),bin=await readFile(resolve(directory,"scene.bin"));
+      const offset=Math.ceil(png.length/4)*4,bytes=new Uint8Array(offset+72);
+      bytes.set(png);bytes.set(bin.subarray(0,72),offset);
+      res.setHeader("Content-Type","image/png");res.end(bytes);return;
+    }
+    if (["/gltf/broken.gltf","/gltf/slow.gltf","/gltf/changed.gltf","/gltf/gzip.gltf"].includes(url.pathname)) {
+      const document = JSON.parse(await readFile(resolve(root,"examples/data-scene-native/assets/gltf/building/scene.gltf"),"utf8"));
+      document.buffers[0].uri = url.pathname.includes("broken") ? "/gltf/not-found.bin" : url.pathname.includes("slow") ? "/gltf-slow.bin" : url.pathname.includes("gzip") ? "/gltf-gzip.bin" : "/gltf-changed.bin";
+      res.setHeader("Content-Type","model/gltf+json");res.end(JSON.stringify(document));return;
+    }
+    if (["/gltf-slow.bin","/gltf-changed.bin","/gltf-gzip.bin"].includes(url.pathname)) {
+      const bytes = await readFile(resolve(root,"examples/data-scene-native/assets/gltf/building/scene.bin"));
+      res.setHeader("Content-Type","application/octet-stream");res.setHeader("Content-Length",bytes.length);
+      if(url.pathname.includes("gzip")){
+        const encoded=gzipSync(bytes,{level:0});assert(encoded.length>bytes.length);
+        res.setHeader("Content-Encoding","gzip");res.setHeader("Content-Length",encoded.length);res.end(encoded);return;
+      }
+      if(url.pathname.includes("changed")){bytes[0]^=1;res.end(bytes);return;}
+      res.write(bytes.subarray(0,1));const timer=setTimeout(()=>res.end(bytes.subarray(1)),250);
+      res.on("close",()=>clearTimeout(timer));return;
+    }
     let file;
-    if (url.pathname === "/recipe.mjs")
+    if (url.pathname === "/spatial-gltf-probe.mjs")
+      file = resolve(root,"tests/smoke/spatial-gltf-browser-fixture.mjs");
+    else if (url.pathname.startsWith("/gltf/")) {
+      const directory=resolve(root,"examples/data-scene-native/assets/gltf");
+      file=resolve(directory,"."+decodeURIComponent(url.pathname.slice(5)));
+      if(!file.startsWith(directory+sep)){res.writeHead(403).end();return;}
+    }
+    else if (url.pathname === "/recipe.mjs")
       file = resolve(root, "examples/data-scene-native/spatial.mjs");
     else if (url.pathname === "/visibility-probe.mjs")
       file = resolve(
@@ -49,6 +91,30 @@ const server = createServer((req, res) => {
         root,
         "tests/smoke/spatial-navigation-browser-fixture.mjs",
       );
+    else if (url.pathname === "/spatial-model-probe.mjs")
+      file = resolve(root, "tests/smoke/spatial-model-browser-fixture.mjs");
+    else if (url.pathname === "/rock.glb")
+      file = resolve(root, "examples/data-scene-native/assets/rock.glb");
+    else if (url.pathname === "/spatial-model-tree-probe.mjs")
+      file = resolve(root, "tests/smoke/spatial-model-tree-browser-fixture.mjs");
+    else if (url.pathname === "/spatial-model-material-probe.mjs")
+      file = resolve(root, "tests/smoke/spatial-model-material-browser-fixture.mjs");
+    else if (url.pathname === "/spatial-model-motion-streaming-probe.mjs")
+      file = resolve(root, "tests/smoke/spatial-model-motion-streaming-browser-fixture.mjs");
+    else if (url.pathname === "/spatial-model-assembly-probe.mjs")
+      file = resolve(root, "tests/smoke/spatial-model-assembly-browser-fixture.mjs");
+    else if (url.pathname === "/spatial-model-building-probe.mjs")
+      file = resolve(root, "tests/smoke/spatial-model-building-browser-fixture.mjs");
+    else if (url.pathname === "/spatial-model-instancing-probe.mjs")
+      file = resolve(root, "tests/smoke/spatial-model-instancing-browser-fixture.mjs");
+    else if (url.pathname === "/spatial-model-preparation-probe.mjs")
+      file = resolve(root, "tests/smoke/spatial-model-preparation-browser-fixture.mjs");
+    else if (url.pathname === "/building.glb")
+      file = resolve(root, "examples/data-scene-native/assets/building.glb");
+    else if (url.pathname === "/tree-material.glb")
+      file = resolve(root, "examples/data-scene-native/assets/tree-material.glb");
+    else if (url.pathname === "/tree.glb")
+      file = resolve(root, "examples/data-scene-native/assets/tree.glb");
     else if (url.pathname === "/spatial-quality-probe.mjs")
       file = resolve(root, "tests/smoke/spatial-quality-browser-fixture.mjs");
     else if (url.pathname === "/spatial-environment-probe.mjs")
@@ -68,7 +134,7 @@ const server = createServer((req, res) => {
     }
     res.setHeader(
       "Content-Type",
-      file.endsWith(".wasm") ? "application/wasm" : "application/javascript",
+      file.endsWith(".wasm") ? "application/wasm" : file.endsWith(".gltf") ? "model/gltf+json" : file.endsWith(".bin") ? "application/octet-stream" : file.endsWith(".png") ? "image/png" : file.endsWith(".jpg") ? "image/jpeg" : "application/javascript",
     );
     res.end(await readFile(file));
   })().catch(() => res.writeHead(404).end());
@@ -132,7 +198,7 @@ try {
               "environment-lit",
               "environment-shadow",
               "environment-dof",
-              "quality-pixel", "quality-normal", "quality-sun-pcf", "quality-dof-standard", "quality-dof-high",
+              "model-gltf", "model-gltf-restored", "model-instancing-1000", "model-instancing-restored", "model-instancing-material", "model-rock", "model-rock-restored", "model-tree-front", "model-tree-back", "model-material-normal", "model-material-emissive", "model-building", "model-building-restored", "model-assembly", "model-assembly-restored", "model-hierarchy", "model-hierarchy-restored", "model-preparation-preserved", "model-preparation-activated", "quality-pixel", "quality-normal", "quality-sun-pcf", "quality-dof-standard", "quality-dof-high",
             ].includes(mode) ||
             !data.startsWith("data:image/png;base64,")
           )
@@ -151,6 +217,7 @@ try {
         const live = {},
           created = {};
         for (const kind of [
+          "Query",
           "Buffer",
           "Program",
           "Shader",
@@ -579,6 +646,24 @@ try {
         const spatialEnvironment = await probeSpatialEnvironment(s, canvas);
         const { probeSpatialQuality } = await import("/spatial-quality-probe.mjs");
         const spatialQuality = await probeSpatialQuality(s, canvas);
+        const { probeSpatialModel } = await import("/spatial-model-probe.mjs");
+        const spatialModel = await probeSpatialModel(s,canvas);
+        const { probeSpatialTree } = await import("/spatial-model-tree-probe.mjs");
+        const spatialTree = await probeSpatialTree(s,canvas);
+        const { probeSpatialModelMaterials } = await import("/spatial-model-material-probe.mjs");
+        const spatialModelMaterials = await probeSpatialModelMaterials(s,canvas);
+        const { probeSpatialBuilding } = await import("/spatial-model-building-probe.mjs");
+        const spatialBuilding = await probeSpatialBuilding(s,canvas);
+        const { probeSpatialModelAssembly } = await import("/spatial-model-assembly-probe.mjs");
+        const spatialModelAssembly = await probeSpatialModelAssembly(s,canvas);
+        const { probeSpatialModelPreparation } = await import("/spatial-model-preparation-probe.mjs");
+        const spatialModelPreparation = await probeSpatialModelPreparation(s,canvas);
+        const { probeSpatialModelInstancing } = await import("/spatial-model-instancing-probe.mjs");
+        const spatialModelInstancing = await probeSpatialModelInstancing(s,canvas);
+        const { probeSpatialGltf } = await import("/spatial-gltf-probe.mjs");
+        const spatialGltf = await probeSpatialGltf(s,canvas);
+        const {probeSpatialModelMotionStreaming}=await import("/spatial-model-motion-streaming-probe.mjs");
+        const spatialModelMotionStreaming=await probeSpatialModelMotionStreaming(s,canvas);
         const visibilityRestore = s.restore(saved);
         await wait();
         const visibilityActor = s.engine.getPhysicsEntity(s.handles.actor);
@@ -636,11 +721,108 @@ try {
           spatialNavigation,
           spatialEnvironment,
           spatialQuality,
+          spatialModel,
+          spatialTree,
+          spatialModelMaterials,
+          spatialModelMotionStreaming,
+          spatialBuilding,
+          spatialModelAssembly,
+          spatialModelPreparation,
+          spatialModelInstancing,
+          spatialGltf,
           budgets,
           errors: s.errors,
         };
       });
       assert(result.colored > 1000);
+      assert.equal(result.spatialModel.freshRestore,true);
+      assert.equal(result.spatialModelMotionStreaming.freshRestore,true);
+      assert.equal(result.spatialModelMotionStreaming.resourceRelease,true);
+      assert.equal(result.spatialModel.resourceRelease,true);
+      assert.equal(result.spatialModelMaterials.freshRestore,true);
+      assert.equal(result.spatialModelMaterials.resourceRelease,true);
+      assert.equal(result.spatialModelMaterials.stateRestored,true);
+      assert.equal(result.spatialModelMaterials.decodeEvidence.length,12);
+      assert.equal(result.spatialModelMaterials.shadowChecks.length,2);
+      assert.deepEqual(result.spatialModelInstancing.cases.map(c=>c.count),[100,500,1000]);
+      for(const c of result.spatialModelInstancing.cases){assert.equal(c.drawCalls,1);assert.equal(c.triangles,c.count*8);assert.equal(c.matrixUploadBytes,c.count*64);assert.equal(c.assetUploadBytes,0);}
+      assert.equal(result.spatialGltf.models,3);
+      assert.equal(result.spatialGltf.glbPixelDifference,0);
+      assert.equal(result.spatialGltf.restorePixelDifference,0);
+      for(const flag of ["missing","aborted","streamStarted","invalidAccessorRejected","encodedBinary","corsEncodedBinary","cacheProtected","sharedCancellation","destroyCancellation","cacheReleased","contentMismatch","oldScenePreserved","freshRestore","resourceRelease"])assert.equal(result.spatialGltf[flag],true);
+      assert.equal(result.spatialGltf.cacheRequests,10);
+      assert.equal(result.spatialGltf.cached.activeLeaseCount,6);
+      assert.equal(result.spatialGltf.cached.entryCount,3);
+      assert.equal(result.spatialGltf.first.modelUploadBytes,0);
+      assert.equal(result.spatialGltf.warm.modelDrawCalls,11);
+      assert.equal(result.spatialGltf.warm.modelTriangleCount,118);
+      assert.equal(result.spatialGltf.upperFloor,1);
+      assert.equal(result.spatialGltf.blockedX,42);
+      assert.equal(result.spatialGltf.pickedSurface,"house/terrain/upper");
+      assert.equal(result.spatialModelInstancing.freshRestore,true);
+      assert.equal(result.spatialModelInstancing.restorePixelDifference,0);
+      assert.equal(result.spatialModelInstancing.materialPixelDifference,0);
+      assert.equal(result.spatialModelInstancing.shadowPassCount,7);
+      assert.equal(result.spatialModelInstancing.transformedMaterialParity,true);
+      assert(result.spatialModelInstancing.shadowInstancedCalls>0);
+      assert(result.spatialModelInstancing.shadowMatrixUploadBytes>0);
+      assert.equal(result.spatialModelInstancing.resourceRelease,true);
+      assert.equal(result.spatialModelPreparation.faults.length,4);
+      assert.equal(result.spatialModelPreparation.coldFailures.length,3);
+      assert.equal(result.spatialModelPreparation.freshRestore,true);
+      assert.equal(result.spatialModelPreparation.resourceRelease,true);
+      assert.equal(result.spatialModelPreparation.firstFrame.modelUploadBytes,0);
+      assert.equal(result.spatialModelPreparation.firstFrame.modelDrawCalls,10);
+      assert.equal(result.spatialModelPreparation.firstFrame.modelTriangleCount,110);
+      assert.equal(result.spatialModelPreparation.freshUploadBytes,0);
+      assert.equal(result.spatialModelPreparation.restoreRejected,true);
+      assert.equal(result.spatialModelAssembly.prototypeIdApplied,"__proto__");
+      assert.equal(result.spatialModelAssembly.decimalPlacementApplied,true);
+      assert.equal(result.spatialModelAssembly.decimalRejections,2);
+      assert.equal(result.spatialModelAssembly.opaqueFrameAssets,true);
+      assert.equal(result.spatialModelAssembly.proxyRejections,10);
+      assert.equal(result.spatialModelAssembly.uncancelledParentTransform,true);
+      assert.equal(result.spatialModelAssembly.flatCommitPreserved,true);
+      assert.equal(result.spatialModelAssembly.unusedFlatCommitReleased,true);
+      assert.equal(result.spatialModelAssembly.resourceRelease,true);
+      assert.equal(result.spatialModelAssembly.cases.length,4);
+      assert.equal(result.spatialModelAssembly.hierarchies.length,4);
+      for (const placement of [...result.spatialModelAssembly.cases,...result.spatialModelAssembly.hierarchies]) {
+        assert.equal(placement.restoreDifferences,0);
+        assert.equal(placement.navigation.status,"arrived");
+        assert.equal(placement.navigation.pose.floorId,1);
+        assert.equal(placement.firstFrame.modelUploadBytes,0);
+        assert.equal(placement.firstFrame.modelDrawCalls,8);
+        assert.equal(placement.warm.modelUploadBytes,0);
+        assert.equal(placement.warm.terrainTriangleCount,0);
+        assert.equal(placement.warm.visibleModelCount,1);
+        assert.equal(placement.picks.length,2);
+      }
+      for (const placement of result.spatialModelAssembly.hierarchies) {
+        assert.equal(placement.warm.modelCount,3);
+        assert.equal(placement.modelId,"village/children/wing/children/house");
+        assert(placement.navigation.stats.probeWorkUnits <= 8_000_000);
+        assert.equal(placement.warm.modelTriangleCount,96);
+      }
+      assert.equal(result.spatialBuilding.freshRestore,true);
+      assert.equal(result.spatialBuilding.resourceRelease,true);
+      assert.equal(result.spatialBuilding.restoreDifferences,0);
+      assert.equal(result.spatialBuilding.savedVersion,7);
+      assert.equal(result.spatialBuilding.navigation.status,"arrived");
+      assert.equal(result.spatialBuilding.navigation.pose.floorId,1);
+      assert.equal(result.spatialBuilding.blocked.x,42);
+      assert.equal(result.spatialBuilding.under.floorId,0);
+      assert.equal(result.spatialBuilding.warm.visibleTerrainChunkCount,0);
+      assert.equal(result.spatialBuilding.warm.modelDrawCalls,8);
+      assert.equal(result.spatialBuilding.warm.modelTriangleCount,96);
+      assert.equal(result.spatialBuilding.warm.modelUploadBytes,0);
+      assert.equal(result.spatialBuilding.shadowChecks.length,2);
+      assert.equal(result.spatialBuilding.invalidRejected,3);
+      assert.equal(result.spatialTree.freshRestore,true);
+      assert.equal(result.spatialTree.resourceRelease,true);
+      assert.equal(result.spatialTree.shadowChecks.length,4);
+      assert.equal(result.spatialTree.aborted,true);
+      assert.equal(result.spatialTree.decodeEvidence.length,7);
       assert.deepEqual(errors, []);
       assert.deepEqual(result.errors, []);
       assert.equal(result.visibility.atlasCases.length, 16);

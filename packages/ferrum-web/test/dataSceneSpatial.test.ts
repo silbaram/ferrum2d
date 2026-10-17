@@ -2,6 +2,7 @@ import { deepEqual, equal, ok, throws } from "node:assert/strict";
 import { test } from "node:test";
 import {
   createEngine,
+  loadSpatialGlb,
   createDataSceneSpatialView,
   captureGameStateSnapshot,
   restoreGameStateSnapshot,
@@ -154,6 +155,41 @@ test("spatial destination API validates requests and forwards only cold numeric 
   equal(old.dataSceneSpatialMoveStatus(), undefined);
   equal(old.dataSceneSpatialMoveStats(), undefined);
 });
+test("spatial request diagnostics keep active route stats and tolerate older/unknown extensions", () => {
+  let diagnostic = Uint32Array.from([1, 7, 4, 12, 99]);
+  const native = {
+    data_scene_spatial_move_stats: () =>
+      Uint32Array.from([522, 569, 9, 3, 2, 7997440]),
+    data_scene_spatial_move_diagnostics: () => diagnostic,
+  };
+  const api = createSpatialApi(
+    native as unknown as Engine,
+    () => {},
+    () => ({ width: 1, height: 1 }),
+  );
+  const stats = api.dataSceneSpatialMoveStats()!;
+  equal(stats.waypointCount, 9);
+  equal(stats.remainingWaypointCount, 3);
+  deepEqual(stats.lastRequest, {
+    status: "workBudgetExceeded",
+    count: 4,
+    collisionProxyCount: 12,
+    preparationWorkUnits: 99,
+  });
+  for (const [index, status] of [
+    "notRequested", "accepted", "invalidRequest", "unsupportedActor", "noPath",
+    "nodeBudgetExceeded", "probeBudgetExceeded", "workBudgetExceeded", "frameBudgetExceeded",
+  ].entries()) {
+    diagnostic = Uint32Array.from([1, index, 4, 12, 99]);
+    equal(api.dataSceneSpatialMoveStats()!.lastRequest!.status, status);
+  }
+  for (const value of [[2, 7, 4, 12, 99], [1, 99, 4, 12, 99], [1, 7]]) {
+    diagnostic = Uint32Array.from(value);
+    equal(api.dataSceneSpatialMoveStats()!.lastRequest, undefined);
+    equal(api.dataSceneSpatialMoveStats()!.waypointCount, 9);
+  }
+});
+
 const camera = {
   projection: "orthographic" as const,
   position: { x: 48, y: -160, elevation: 160 },
@@ -996,4 +1032,190 @@ test("public Wasm spatial packet binds physical elevation, terrain picking, came
     globalThis.requestAnimationFrame = original.raf;
     globalThis.cancelAnimationFrame = original.cancel;
   }
+});
+
+
+test("invisible walk surfaces validate presentation flags and keep legacy omission stable", () => {
+  const original = document().spatial;
+  const legacy = resolveDataSceneSpatialSpec(original);
+  equal(Object.prototype.hasOwnProperty.call(legacy.terrain[0], "render"), false);
+  const input = { ...original, terrain: [{ ...original.terrain[0], render: false }] };
+  const resolved = resolveDataSceneSpatialSpec(input);
+  equal(resolved.terrain[0].render, false);
+  equal(resolved.terrain[0].castShadow, false);
+  equal(resolved.terrain[0].receiveShadow, false);
+  for (const patch of [{render:0}, {render:null}, {textureId:1}, {castShadow:true}, {receiveShadow:true}])
+    throws(() => resolveDataSceneSpatialSpec({...input, terrain:[{...input.terrain[0], ...patch}]}), /terrain/);
+});
+
+test("surface proxy capability rejects old native before configuration and compiles the cold flag", () => {
+  const input = {...document().spatial, actor:undefined, billboards:{}, terrain:[{id:"proxy",x:0,y:0,width:32,depth:32,elevation:0,render:false}]};
+  const calls: unknown[][] = [];
+  const native = { configure_spatial_scene_materials:(...args:unknown[])=>{calls.push(args);return true;} };
+  const api = createSpatialApi(native as unknown as Engine,()=>{},()=>({width:400,height:300}));
+  equal(api.configureDataSceneSpatial(input, {}), false);
+  equal(calls.length, 0);
+  Object.assign(native, {spatial_surface_proxy_abi_version:()=>2});
+  equal(api.configureDataSceneSpatial(input, {}), false);
+  equal(calls.length, 0);
+  Object.assign(native, {spatial_surface_proxy_abi_version:()=>1});
+  ok(api.configureDataSceneSpatial(input, {}));
+  deepEqual(Array.from(calls[0][2] as Uint32Array), [1,0,16777215,17]);
+  deepEqual(Array.from(calls[0][9] as Uint32Array), [0]);
+});
+
+test("invisible walk surfaces reject unsupported authoring before replacing the active scene", async () => {
+  const {attachDataSceneRuntimeEngineAdapter} = await import("../src/dataSceneRuntimeTarget.js");
+  let activated = false;
+  const engine = attachDataSceneRuntimeEngineAdapter({} as FerrumEngine, {
+    useDataScene:()=>{activated=true;}, textureId:()=>0, spawnDataSceneEntity:()=>({entityId:1,entityGeneration:0}),
+  });
+  const input = document();
+  Object.assign(input.spatial.terrain[0], {render:false});
+  throws(()=>applyDataSceneAuthoringDocument(engine,input), /surface proxy v1/);
+  equal(activated, false);
+});
+
+
+test("GPU preparation precedes authoring activation, preserves old progress on failure and supports restore", async () => {
+  const {readFile}=await import("node:fs/promises");
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=(async (input,options)=>String(input).startsWith("file:")
+    ? new Response(Uint8Array.from(await readFile(new URL(String(input)))).buffer,{headers:{"Content-Type":"application/wasm"}})
+    : originalFetch(input,options)) as typeof fetch;
+  const engine=await createEngine(()=>{});
+  try {
+    const file=await readFile(new URL("../../../../examples/data-scene-native/assets/building.glb",import.meta.url));
+    const asset=await loadSpatialGlb(Uint8Array.from(file).buffer,{materialProfile:"diffuse"});
+    ok(engine.registerDataSceneSpatialModel("building",asset));
+    const base=document(),old=applyDataSceneAuthoringDocument(engine,base).entityHandles.actor;
+    engine.pauseDataScene();
+    const baseline=captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:JSON.parse(JSON.stringify(base))});
+    const invalidF32=JSON.parse(JSON.stringify(base)),left=-100.1,width=12.3;
+    invalidF32.spatial.terrain=[{id:"a",x:left,y:0,width,depth:10,elevation:0},{id:"b",x:left+width,y:0,width,depth:10,elevation:0}];
+    throws(()=>applyDataSceneAuthoringDocument(engine,invalidF32), /overlap/);
+    ok(engine.gameplayEntityExists(old));
+    equal(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:JSON.parse(JSON.stringify(base))}).snapshotHash,baseline.snapshotHash);
+    const proposed={...base,sceneComposition:{...base.sceneComposition,
+      prefabs:{...base.sceneComposition.prefabs,model:{props:{components:{visual:{kind:"sprite",texture:0,width:1,height:1},collider:"none",layer:"wall"}}}},
+      fragments:{lab:{instances:[...base.sceneComposition.fragments.lab.instances,{id:"model",prefab:"model",x:0,y:0}]}}},
+      spatial:{...base.spatial,models:{model:{asset:"building",contentId:asset.contentId}}}};
+    let calls=0;
+    const fail={prepareSpatialModels:()=>{calls++;ok(engine.gameplayEntityExists(old));throw Error("injected GPU allocation failure");}};
+    for(const lod of [{asset:'missing-lod',contentId:asset.contentId,minDistance:100},{asset:'building',contentId:'f'.repeat(64),minDistance:100}]){
+      const invalidLod={...proposed,spatial:{...proposed.spatial,models:{model:{...proposed.spatial.models.model,lods:[lod]}}}};
+      throws(()=>applyDataSceneAuthoringDocument(engine,invalidLod),/preflight/);
+      ok(engine.gameplayEntityExists(old));
+      equal(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:JSON.parse(JSON.stringify(base))}).snapshotHash,baseline.snapshotHash);
+    }
+
+    throws(()=>applyDataSceneAuthoringDocument(engine,proposed,{spatialModelPreparer:fail}),/GPU allocation failure/);
+    equal(calls,1);ok(engine.gameplayEntityExists(old));equal(engine.dataSceneState(),"paused");
+    equal(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:JSON.parse(JSON.stringify(base))}).snapshotHash,baseline.snapshotHash);
+    throws(()=>applyDataSceneAuthoringDocument(engine,{...proposed,spatial:{...proposed.spatial,models:{model:{asset:"building",contentId:"f".repeat(64)}}}},{spatialModelPreparer:fail}),/preflight/);
+    equal(calls,1);
+    throws(()=>applyDataSceneAuthoringDocument(engine,proposed,{spatialModelPreparer:{prepareSpatialModels:()=>undefined} as never}),/preparation lease/);
+    ok(engine.gameplayEntityExists(old));
+    const events:string[]=[];
+    const ready={prepareSpatialModels:(handles:readonly unknown[])=>{
+      deepEqual(handles,[asset]);ok(engine.gameplayEntityExists(old));events.push("prepare");
+      return {uploadBytes:123,commit:()=>{equal(engine.gameplayEntityExists(old),false);events.push("commit");},dispose:()=>{events.push("dispose");}};
+    }};
+    const applied=applyDataSceneAuthoringDocument(engine,proposed,{spatialModelPreparer:ready});
+    deepEqual(events,["prepare","commit","dispose"]);engine.pauseDataScene();
+    const saved=captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:JSON.parse(JSON.stringify(proposed))});
+    equal(JSON.stringify(saved).includes("spatialModelPreparer"),false);
+    throws(()=>restoreGameStateSnapshot(engine,saved,{dataSceneAuthoringApplyOptions:{spatialModelPreparer:{prepareSpatialModels:()=>{throw Error("restore GPU failure");}}}}),/restore GPU failure/);
+    ok(engine.gameplayEntityExists(applied.entityHandles.actor));
+    equal(captureGameStateSnapshot(engine,{includeDataSceneState:true,includeDataSceneProgress:true,dataSceneAuthoringDocument:JSON.parse(JSON.stringify(proposed))}).snapshotHash,saved.snapshotHash);
+    let disposed=false,committed=false;
+    const configure=engine.configureDataSceneSpatial;engine.configureDataSceneSpatial=()=>false;
+    try { throws(()=>applyDataSceneAuthoringDocument(engine,proposed,{spatialModelPreparer:{prepareSpatialModels:()=>({uploadBytes:0,commit:()=>{committed=true;},dispose:()=>{disposed=true;}})}}),/runtime rejected spatial/); }
+    finally {engine.configureDataSceneSpatial=configure;}
+    equal(committed,false);equal(disposed,true);
+  } finally {engine.destroy();globalThis.fetch=originalFetch;}
+});
+
+test("X ramp authoring preserves legacy omission and rejects old native before mutation", async () => {
+  const base=document().spatial;
+  equal(resolveDataSceneSpatialSpec(base).terrain[0].rampAxis,undefined);
+  const input={...base,actor:undefined,billboards:{},terrain:[{id:"ramp",x:0,y:0,width:32,depth:16,elevation:0,endElevation:16,kind:"ramp" as const,rampAxis:"x" as const}]};
+  for(const patch of [{rampAxis:"z"},{rampAxis:null},{kind:"flat",endElevation:0}])
+    throws(()=>resolveDataSceneSpatialSpec({...input,terrain:[{...input.terrain[0],...patch}]}),/rampAxis/);
+  const calls:unknown[][]=[];
+  const native={configure_spatial_scene:(...args:unknown[])=>{calls.push(args);return true;}};
+  const api=createSpatialApi(native as unknown as Engine,()=>{},()=>({width:400,height:300}));
+  equal(api.configureDataSceneSpatial(input,{}),false); equal(calls.length,0);
+  Object.assign(native,{spatial_ramp_axis_abi_version:()=>2});
+  equal(api.configureDataSceneSpatial(input,{}),false); equal(calls.length,0);
+  Object.assign(native,{spatial_ramp_axis_abi_version:()=>1});
+  ok(api.configureDataSceneSpatial(input,{}));
+  deepEqual(Array.from(calls[0][2] as Uint32Array),[1,0,16777215,37]);
+  const {attachDataSceneRuntimeEngineAdapter}=await import("../src/dataSceneRuntimeTarget.js");
+  let activated=false;
+  const engine=attachDataSceneRuntimeEngineAdapter({} as FerrumEngine,{useDataScene:()=>{activated=true;},textureId:()=>0,spawnDataSceneEntity:()=>({entityId:1,entityGeneration:0})});
+  throws(()=>applyDataSceneAuthoringDocument(engine,{...document(),spatial:input}),/ramp axis v1/);
+  equal(activated,false);
+});
+
+test("spatial world overlap validation matches f32 arithmetic and rejects collapsed extents before activation", async () => {
+  const base=document().spatial, x=-100.1, width=12.3;
+  const input={...base,actor:undefined,billboards:{},terrain:[{id:"a",x,y:0,width,depth:10,elevation:0},{id:"b",x:x+width,y:0,width,depth:10,elevation:0}]};
+  throws(()=>resolveDataSceneSpatialSpec(input), /overlap/);
+  const {attachDataSceneRuntimeEngineAdapter}=await import("../src/dataSceneRuntimeTarget.js");
+  let activated=false;
+  const engine=attachDataSceneRuntimeEngineAdapter({} as FerrumEngine,{useDataScene:()=>{activated=true;},textureId:()=>0,spawnDataSceneEntity:()=>({entityId:1,entityGeneration:0})});
+  for (const patch of [{x:16777216,width:1},{y:16777216,depth:1},{x:3e38,width:3e38}]) {
+    const invalid=document(); Object.assign(invalid.spatial.terrain[0],patch);
+    throws(()=>applyDataSceneAuthoringDocument(engine,invalid), /positive finite f32 bounds/);
+    equal(activated,false);
+  }
+});
+
+test("model preflight ignores inherited origins for valid prototype-named instance IDs", async () => {
+  const {createSpatialModelAsset}=await import("../src/spatialModel.js");
+  const asset=createSpatialModelAsset({contentId:"a".repeat(64),bounds:[0,0,0,1,1,1],diagnostics:[],images:[],primitives:[{
+    vertices:new Float32Array(24),indices:Uint32Array.from([0,1,2]),color:[1,1,1,1],alphaCutoff:0,doubleSided:false,emissiveFactor:[0,0,0],sampler:[9728,9728,10497,10497],
+  }]});
+  const points:number[][]=[];
+  const native={configure_spatial_scene_models:()=>true,preflight_spatial_model_poses:(_styles:Float32Array,origins:Float32Array)=>{points.push(Array.from(origins));return origins.every(Number.isFinite);}};
+  const api=createSpatialApi(native as unknown as Engine,()=>{},()=>({width:400,height:300}));
+  ok(api.registerDataSceneSpatialModel("asset",asset));
+  for(const id of ["constructor","__proto__","toString"]){
+    const spec=resolveDataSceneSpatialSpec({...document().spatial,models:{[id]:{asset:"asset",contentId:asset.contentId}}});
+    ok(api.preflightDataSceneSpatialModels(spec));deepEqual(points[points.length-1],[0,0,0]);
+    ok(api.preflightDataSceneSpatialModels(spec,Object.create({[id]:{x:99,y:99,elevation:99}})));deepEqual(points[points.length-1],[0,0,0]);
+    ok(api.preflightDataSceneSpatialModels(spec,Object.fromEntries([[id,{x:1,y:2,elevation:3}]])));deepEqual(points[points.length-1],[1,2,3]);
+  }
+});
+
+test("extended model budgets require the native batch capability before scene activation", async()=>{
+  const {createSpatialModelAsset}=await import("../src/spatialModel.js");
+  const primitive={vertices:new Float32Array(24),indices:Uint32Array.from([0,1,2]),color:[1,1,1,1] as [number,number,number,number],alphaCutoff:0,doubleSided:false,emissiveFactor:[0,0,0] as [number,number,number],sampler:[9728,9728,10497,10497] as [number,number,number,number]};
+  const asset=createSpatialModelAsset({contentId:"a".repeat(64),bounds:[0,0,0,1,1,1],diagnostics:[],images:[],primitives:[primitive,primitive]});
+  const native={configure_spatial_scene_models:()=>true,preflight_spatial_model_poses:()=>true};
+  const api=createSpatialApi(native as unknown as Engine,()=>{},()=>({width:400,height:300}));
+  ok(api.registerDataSceneSpatialModel("asset",asset));
+  const spec=(count:number)=>resolveDataSceneSpatialSpec({...document().spatial,models:Object.fromEntries(Array.from({length:count},(_,i)=>[`m${i}`,{asset:"asset",contentId:asset.contentId}]))});
+  ok(api.preflightDataSceneSpatialModels(spec(32)));
+  equal(api.preflightDataSceneSpatialModels(spec(33)),false);
+  equal(api.preflightDataSceneSpatialModels(spec(1000)),false);
+  Object.assign(native,{spatial_model_batch_abi_version:()=>1});
+  ok(api.preflightDataSceneSpatialModels(spec(1000)));
+  throws(()=>spec(1025),/maximum 1024 instances/);
+});
+
+test("LOD and visual chunk authoring rejects invalid bounds, thresholds and old native capability before configure",()=>{
+  const base=resolveDataSceneSpatialSpec(document().spatial),contentId='a'.repeat(64),model={asset:'near',contentId};
+  const chunk={min:{x:-10,y:-10,elevation:0},max:{x:10,y:10,elevation:20},loadDistance:100,unloadDistance:150};
+  const spec={...base,models:{house:{...model,chunk:'town',lods:[{asset:'far',contentId,minDistance:200}]}},modelChunks:{town:chunk}};
+  const normalized=resolveDataSceneSpatialSpec(spec);equal(normalized.models!.house.lods![0].minDistance,200);
+  for(const patch of [{unloadDistance:100},{loadDistance:-1},{min:{x:20,y:0,elevation:0}},{max:{x:Infinity,y:10,elevation:20}}])
+    throws(()=>resolveDataSceneSpatialSpec({...spec,modelChunks:{town:{...chunk,...patch}}}),/modelChunks/);
+  for(const lods of [[{asset:'far',contentId,minDistance:0}],[{asset:'far',contentId,minDistance:200},{asset:'far',contentId,minDistance:199}],Array(4).fill({asset:'far',contentId,minDistance:200})])
+    throws(()=>resolveDataSceneSpatialSpec({...spec,models:{house:{...spec.models.house,lods}}}),/lods/);
+  throws(()=>resolveDataSceneSpatialSpec({...spec,modelChunks:{}}),/unknown model chunk/);
+  let configured=false;
+  const api=createSpatialApi({configure_spatial_scene_models:()=>{configured=true;return true;}} as unknown as Engine,()=>{},()=>({width:400,height:300}));
+  equal(api.configureDataSceneSpatial(spec,{}),false);equal(configured,false);
 });

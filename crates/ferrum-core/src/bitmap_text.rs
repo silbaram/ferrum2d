@@ -603,6 +603,10 @@ impl BitmapTextSystem {
             if let WorldTextAnchor::Entity(entity) = text.spec.anchor {
                 if spatial.is_some_and(|scene| {
                     scene.bindings.contains_key(&(entity.id, entity.generation))
+                        || scene
+                            .models
+                            .bindings
+                            .contains_key(&(entity.id, entity.generation))
                 }) {
                     continue;
                 }
@@ -671,7 +675,19 @@ impl BitmapTextSystem {
             let WorldTextAnchor::Entity(entity) = text.spec.anchor else {
                 continue;
             };
-            let Some(style) = scene.bindings.get(&(entity.id, entity.generation)).copied() else {
+            let key = (entity.id, entity.generation);
+            let Some(style) = scene.bindings.get(&key).copied().or_else(|| {
+                scene
+                    .models
+                    .bindings
+                    .get(&key)
+                    .map(|model| crate::spatial_scene::Billboard {
+                        material: Default::default(),
+                        units_per_pixel: 1.,
+                        cutoff: 0.5,
+                        elevation: model.elevation,
+                    })
+            }) else {
                 continue;
             };
             let Some(anchor) = world.transform(entity) else {

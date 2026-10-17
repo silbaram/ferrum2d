@@ -52,7 +52,7 @@ test("GPU timing is asynchronous, converts nanoseconds, reuses queries, and clea
   equal(gl.resultReads, 0);
   gl.queries[0].available = true;
   timer.beginFrame(); timer.endFrame();
-  deepEqual(timer.stats(), { status: "ready", frameId: 1, elapsedMs: 2.5, pendingQueryCount: 1 });
+  deepEqual(timer.stats(), { status: "ready", currentFrameId: 2, frameId: 1, elapsedMs: 2.5, pendingQueryCount: 1 });
   equal(gl.queries.length, 1);
   timer.beginFrame(); timer.endFrame();
   equal(timer.stats().elapsedMs, undefined);
@@ -77,7 +77,7 @@ test("unsupported extension and external timer do not issue queries", () => {
   const gl = new FakeGl(); gl.supported = false;
   const timer = gl.timer();
   timer.beginFrame(); timer.endFrame();
-  deepEqual(timer.stats(), { status: "unsupported", pendingQueryCount: 0 });
+  deepEqual(timer.stats(), { status: "unsupported", currentFrameId: 1, pendingQueryCount: 0 });
   equal(gl.queries.length, 0);
   const externalGl = new FakeGl(); externalGl.active = {};
   const externalTimer = externalGl.timer();
@@ -95,7 +95,7 @@ test("disjoint invalidates pending and newly completed results", () => {
   equal(timer.stats().status, "ready");
   gl.disjoint = true;
   timer.endFrame();
-  deepEqual(timer.stats(), { status: "disjoint", pendingQueryCount: 0 });
+  deepEqual(timer.stats(), { status: "disjoint", currentFrameId: 2, pendingQueryCount: 0 });
   equal(gl.deleted.size, 1);
   equal(timer.stats().elapsedMs, undefined);
   gl.disjoint = false;
@@ -109,7 +109,7 @@ test("context loss during a query discards handles and recovery creates fresh qu
   timer.beginFrame();
   gl.lost = true; gl.active = null;
   timer.endFrame();
-  deepEqual(timer.stats(), { status: "context-lost", pendingQueryCount: 0 });
+  deepEqual(timer.stats(), { status: "context-lost", currentFrameId: 1, pendingQueryCount: 0 });
   equal(gl.endCount, 0);
   timer.beginFrame();
   gl.lost = false;

@@ -116,6 +116,10 @@ fn intersects(matrix: &[f32], vertices: &[SpatialVertex]) -> bool {
             max[axis] = max[axis].max(v.position[axis]);
         }
     }
+    intersects_bounds(matrix, min, max)
+}
+
+pub(super) fn intersects_bounds(matrix: &[f32], min: Point, max: Point) -> bool {
     // Unnormalized homogeneous planes, evaluated in f64 with an f32 GPU rounding allowance.
     (0..6).all(|plane| {
         let row = plane / 2;

@@ -214,6 +214,10 @@ impl DataSceneRuntime {
         if self.game_state != GameState::Playing {
             return;
         }
+        context
+            .spatial_scene
+            .attachments
+            .synchronize_or_restore(context.world, &context.spatial_scene.models);
         if self
             .navigation_obstacles
             .synchronize(context.world, &mut self.navigation)
@@ -266,6 +270,10 @@ impl DataSceneRuntime {
         context
             .world
             .update_with_rigid_body_step(delta, context.auto_rigid_body_step_enabled);
+        context
+            .spatial_scene
+            .attachments
+            .synchronize_or_restore(context.world, &context.spatial_scene.models);
         context
             .tilemap
             .resolve_dynamic_collisions_with_counters(context.world, context.physics_counters);

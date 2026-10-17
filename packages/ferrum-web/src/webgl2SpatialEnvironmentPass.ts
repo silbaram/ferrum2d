@@ -191,6 +191,11 @@ export class WebGL2SpatialEnvironmentPass {
       );
       this.shadowUniforms = {
         camera: spatialUniform(gl, this.shadow, "u_camera"),
+        model: spatialUniform(gl, this.shadow, "u_model"),
+        mesh: spatialUniform(gl, this.shadow, "u_mesh"),
+        instanced: spatialUniform(gl, this.shadow, "u_instanced"),
+        modelColor: spatialUniform(gl, this.shadow, "u_modelColor"),
+        modelCutoff: spatialUniform(gl, this.shadow, "u_modelCutoff"),
         texture: spatialUniform(gl, this.shadow, "u_texture"),
         textured: spatialUniform(gl, this.shadow, "u_textured"),
         flip: spatialUniform(gl, this.shadow, "u_flip_y"),

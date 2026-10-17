@@ -1,3 +1,5 @@
+import { spatialModelResource, type SpatialModelAsset, type SpatialModelPreparation } from "./spatialModel.js";
+import { MODEL_INSTANCE_BUFFER_BYTES, WebGL2SpatialModels, type ModelMaterialUniforms } from "./webgl2SpatialModels.js";
 import type { SpatialRenderBufferView } from "./dataSceneSpatial.js";
 import type { SpriteTextureSource } from "./spriteBatch.js";
 import { WebGL2SpatialEnvironmentPass } from "./webgl2SpatialEnvironmentPass.js";
@@ -11,6 +13,14 @@ import { SpatialShadowCache } from "./spatialShadowCache.js";
 import { validSpatialEnvironmentValues } from "./spatialEnvironment.js";
 export interface SpatialRendererStats {
   triangleCount: number;
+  modelCount: number;
+  visibleModelCount: number;
+  modelDrawCalls: number;
+  modelInstancedDrawCalls: number;
+  /** Dynamic instance matrices, including shadow passes; immutable assets use modelUploadBytes. */
+  modelInstanceUploadBytes: number;
+  modelTriangleCount: number;
+  modelUploadBytes: number;
   /** Full static terrain and the chunks actually submitted this frame (v2 packets only). */
   terrainChunkCount: number;
   visibleTerrainChunkCount: number;
@@ -44,6 +54,7 @@ export class WebGL2SpatialPass {
   private readonly program: WebGLProgram;
   private readonly terrainBuffer: WebGLBuffer;
   private readonly spriteBuffer: WebGLBuffer;
+  private readonly modelInstanceBuffer: WebGLBuffer;
   private readonly vao: WebGLVertexArrayObject;
   private readonly sampler: WebGLSampler;
   private readonly uniforms: SpatialGeometryUniforms &
@@ -63,10 +74,12 @@ export class WebGL2SpatialPass {
   private shadowBytes = 0;
   private shadowCache = new SpatialShadowCache();
   private destroyed = false;
+  private readonly models: WebGL2SpatialModels;
   constructor(
     private readonly gl: WebGL2RenderingContext,
     private readonly linearInput = false,
   ) {
+    this.models = new WebGL2SpatialModels(gl);
     this.program = createSpatialProgram(
       gl,
       spatialVertexSource,
@@ -74,11 +87,13 @@ export class WebGL2SpatialPass {
     );
     const a = gl.createBuffer(),
       b = gl.createBuffer(),
+      instances = gl.createBuffer(),
       vao = gl.createVertexArray(),
       sampler = gl.createSampler();
-    if (!a || !b || !vao || !sampler) {
+    if (!a || !b || !instances || !vao || !sampler) {
       if (a) gl.deleteBuffer(a);
       if (b) gl.deleteBuffer(b);
+      if (instances) gl.deleteBuffer(instances);
       if (vao) gl.deleteVertexArray(vao);
       if (sampler) gl.deleteSampler(sampler);
       gl.deleteProgram(this.program);
@@ -86,6 +101,7 @@ export class WebGL2SpatialPass {
     }
     this.terrainBuffer = a;
     this.spriteBuffer = b;
+    this.modelInstanceBuffer = instances;
     this.vao = vao;
     this.sampler = sampler;
     const uniform = (name: string) => {
@@ -94,8 +110,18 @@ export class WebGL2SpatialPass {
       return u;
     };
     try {
+      // Fixed capacity is allocated before authoring activation, never in a frame loop.
+      const previous = gl.getParameter(gl.ARRAY_BUFFER_BINDING) as WebGLBuffer | null;
+      try {
+        gl.bindBuffer(gl.ARRAY_BUFFER, instances);
+        gl.bufferData(gl.ARRAY_BUFFER, MODEL_INSTANCE_BUFFER_BYTES, gl.DYNAMIC_DRAW);
+        if (gl.getError() !== gl.NO_ERROR || gl.isContextLost())
+          throw Error("Spatial instance buffer allocation failed");
+      } finally { gl.bindBuffer(gl.ARRAY_BUFFER, previous); }
       this.uniforms = {
         camera: uniform("u_camera"),
+        model: uniform("u_model"),mesh:uniform("u_mesh"),instanced:uniform("u_instanced"),
+        modelColor: uniform("u_modelColor"),modelCutoff:uniform("u_modelCutoff"),
         texture: uniform("u_texture"),
         textured: uniform("u_textured"),
         flip: uniform("u_flip_y"),
@@ -117,7 +143,7 @@ export class WebGL2SpatialPass {
         "shadowBias",
         "shadowMap",
         "normalMap",
-        "hasNormal",
+        "hasNormal", "modelNormalScale", "emissiveMap", "hasEmissive", "emissiveFactor", "modelUnlit",
         "receiveShadow",
         "shadowFilter", "sunDirection", "sunColor", "sunShadow", "sunParams", "sunMatrix", "sunMap",
       ])
@@ -130,6 +156,20 @@ export class WebGL2SpatialPass {
       this.destroy();
       throw e;
     }
+  }
+  prepareModels(assets: readonly SpatialModelAsset[]): SpatialModelPreparation {
+    if (this.destroyed) throw Error("Spatial pass destroyed");
+    if (!Array.isArray(assets) || assets.length > 16)
+      throw Error("Spatial model preparation asset budget exceeded");
+    const sources = assets.map(asset => {
+      const source = spatialModelResource(asset);
+      if (!source) throw Error("Spatial model preparation requires a loaded GLB asset");
+      return source;
+    });
+    if (assets.reduce((n, a) => n + a.byteLength, 0) > 128 * 1024 * 1024)
+      throw Error("Spatial model preparation byte budget exceeded");
+    if (this.gl.isContextLost()) throw Error("WebGL2 context lost during model preparation");
+    return this.models.stage(sources);
   }
   draw(
     frame: SpatialRenderBufferView,
@@ -146,6 +186,7 @@ export class WebGL2SpatialPass {
       frame.billboardVertexCount % 6
     )
       throw new Error("Invalid spatial render buffer");
+    this.models.validate(frame.models);
     const ranges = frame.terrainDrawRanges;
     let terrainVertices = frame.terrainVertexCount;
     if (frame.version === 2) {
@@ -304,6 +345,8 @@ export class WebGL2SpatialPass {
           throw new Error(`Spatial texture ${id} is missing`);
       }
     const previous = {
+      front: gl.getParameter(gl.FRONT_FACE) as number,
+      cullMode:gl.getParameter(gl.CULL_FACE_MODE) as number,
       depth: gl.isEnabled(gl.DEPTH_TEST),
       blend: gl.isEnabled(gl.BLEND),
       cull: gl.isEnabled(gl.CULL_FACE),
@@ -343,8 +386,12 @@ export class WebGL2SpatialPass {
     gl.activeTexture(gl.TEXTURE3);
     const texture3 = gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
     const sampler3 = gl.getParameter(gl.SAMPLER_BINDING) as WebGLSampler | null;
+    gl.activeTexture(gl.TEXTURE4);
+    const texture4 = gl.getParameter(gl.TEXTURE_BINDING_2D) as WebGLTexture | null;
+    const sampler4 = gl.getParameter(gl.SAMPLER_BINDING) as WebGLSampler | null;
     gl.activeTexture(gl.TEXTURE0);
     const stats: SpatialRendererStats = {
+      modelCount:(frame.models?.words.length ?? 0)/20,visibleModelCount:0,modelDrawCalls:0,modelInstancedDrawCalls:0,modelInstanceUploadBytes:0,modelTriangleCount:0,modelUploadBytes:0,
       triangleCount: (terrainVertices + frame.billboardVertexCount) / 3,
       terrainChunkCount:
         frame.version === 2 ? frame.terrainVertexCount / 36 : 0,
@@ -395,6 +442,8 @@ export class WebGL2SpatialPass {
       if (!activeEnvironment) gl.clear(gl.DEPTH_BUFFER_BIT);
       gl.useProgram(this.program);
       gl.bindVertexArray(this.vao);
+      this.models.prepare(frame.models,stats);
+      gl.uniform1i(this.uniforms.mesh,0);
       gl.bindSampler(0, this.sampler);
       gl.uniformMatrix4fv(
         this.uniforms.camera,
@@ -407,10 +456,12 @@ export class WebGL2SpatialPass {
       gl.bindSampler(2, this.sampler);
       gl.bindTexture(gl.TEXTURE_2D, null);
       gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(this.uniforms.emissiveMap, 4);
       gl.uniform1i(this.uniforms.normalMap, 2);
       gl.uniform1i(this.uniforms.hasNormal, 0);
       gl.uniform1i(this.uniforms.receiveShadow, 1);
       gl.uniform1i(this.uniforms.environment, 0);
+      gl.uniform1i(this.uniforms.linearInput,Number(this.linearInput));
       if (
         this.revision !== frame.terrainRevision ||
         this.memory !== frame.terrain.buffer
@@ -434,6 +485,8 @@ export class WebGL2SpatialPass {
         const cacheMatches = hasShadows && this.shadowCache.matches(frame, textures);
         const cacheHit = shadowReady && cacheMatches;
         stats.shadowCacheHit = cacheHit;
+        const modelPasses = 1 | (cacheHit ? 0 : (environment!.values[2] >= 0 ? 126 : 0) | (environment!.values[92] > 0 ? 128 : 0));
+        this.models.prepareDraws(frame.models, modelPasses, this.modelInstanceBuffer, stats);
         if (!cacheHit && hasShadows && casters.length) {
           if (!this.shadowBuffer) {
             const b = gl.createBuffer();
@@ -484,13 +537,16 @@ export class WebGL2SpatialPass {
               }
               if (casters.length) draw(1, 0, environment!.shadowCasterVertexCount);
             }
+            this.models.draw(frame.models,face===6?7:face+1,u,stats,this.modelInstanceBuffer);
           };
           stats.shadowPassCount = effects.drawShadows(frame, submit) + effects.drawSunShadow(frame, submit);
           if (stats.shadowPassCount) this.shadowCache.commit(frame);
         }
         stats.shadowDrawCalls = stats.drawCalls - before;
-        if (environment!.shadowSubmission && !cacheHit) stats.shadowCulledTriangleCount =
-          stats.shadowPassCount * (frame.terrainVertexCount + environment!.shadowCasterVertexCount) / 3 - stats.shadowTriangleCount;
+        if (environment!.shadowSubmission && !cacheHit) {
+          const modelTriangles=frame.models ? Array.from(frame.models.words).reduce((n,_,i)=>i%20===0 ? n+frame.models!.assets.get(frame.models!.words[i])!.triangleCount : n,0) : 0;
+          stats.shadowCulledTriangleCount = stats.shadowPassCount * ((frame.terrainVertexCount + environment!.shadowCasterVertexCount) / 3 + modelTriangles) - stats.shadowTriangleCount;
+        }
         stats.triangleCount += stats.shadowTriangleCount;
         effects.beginScene();
         // A resized HDR target can leave its own depth texture on unit 0.
@@ -509,12 +565,16 @@ export class WebGL2SpatialPass {
         stats.depthBufferBytes = this.depthBytes() + effects.depthBytes();
         stats.effectTextureBytes = effects.resourceStats().textureBytes;
       }
+      if (!activeEnvironment) this.models.prepareDraws(frame.models, 1, this.modelInstanceBuffer, stats);
       let lastTexture: number | undefined;
       const drawTerrain = (first: number, count: number) => {
         lastTexture = this.drawBuffer(this.terrainBuffer, frame.terrain, textures, stats, lastTexture, first, count, this.uniforms, materials?.terrain, 36);
       };
       if (ranges === undefined) drawTerrain(0, frame.terrainVertexCount);
       else for (let i = 0; i < ranges.length; i += 2) drawTerrain(ranges[i], ranges[i + 1]);
+      gl.uniform1i(this.uniforms.hasNormal,0);
+      this.models.draw(frame.models,0,this.uniforms,stats,this.modelInstanceBuffer,this.uniforms.receiveShadow,this.uniforms as typeof this.uniforms & ModelMaterialUniforms);
+      gl.bindSampler(0,this.sampler);
       if (frame.billboards.length) {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.spriteBuffer);
         if (frame.billboards.byteLength > this.spriteBytes) {
@@ -591,6 +651,7 @@ export class WebGL2SpatialPass {
         stats.textureBindCount += 2;
       }
     } finally {
+      this.models.finishDraws();
       gl.scissor(
         previous.scissorBox[0],
         previous.scissorBox[1],
@@ -615,6 +676,9 @@ export class WebGL2SpatialPass {
         previous.clearColor[2],
         previous.clearColor[3],
       );
+      gl.activeTexture(gl.TEXTURE4);
+      gl.bindSampler(4, sampler4);
+      gl.bindTexture(gl.TEXTURE_2D, texture4);
       gl.activeTexture(gl.TEXTURE3);
       gl.bindSampler(3, sampler3);
       gl.bindTexture(gl.TEXTURE_2D, texture3);
@@ -632,6 +696,7 @@ export class WebGL2SpatialPass {
       gl.bindVertexArray(previous.vao);
       gl.bindBuffer(gl.ARRAY_BUFFER, previous.buffer);
       gl.useProgram(previous.program);
+      gl.frontFace(previous.front);gl.cullFace(previous.cullMode);
       gl.depthFunc(previous.func);
       gl.depthMask(previous.depthMask);
       gl.clearDepth(previous.clear);
@@ -657,6 +722,7 @@ export class WebGL2SpatialPass {
     materialStride = 6,
   ): number | undefined {
     const gl = this.gl;
+    gl.uniform1i(uniforms.mesh,0);
     this.bindVertexBuffer(gpu);
     const vertices = first + vertexCount;
     while (first < vertices) {
@@ -692,6 +758,8 @@ export class WebGL2SpatialPass {
   }
   private bindVertexBuffer(gpu: WebGLBuffer): void {
     const gl = this.gl;
+    gl.disableVertexAttribArray(4);
+    gl.disableVertexAttribArray(5);
     gl.bindBuffer(gl.ARRAY_BUFFER, gpu);
     for (const [location, size, offset] of [
       [0, 3, 0],
@@ -760,7 +828,7 @@ export class WebGL2SpatialPass {
     return {
       bufferCount: this.destroyed
         ? 0
-        : 2 +
+        : 3 + this.models.resources().buffers +
           (this.debugBuffer ? 1 : 0) +
           (this.shadowBuffer ? 1 : 0) +
           this.targets.size,
@@ -769,7 +837,7 @@ export class WebGL2SpatialPass {
         : 1 + (this.environmentPass?.programCount() ?? 0),
       bufferBytes: this.destroyed
         ? 0
-        : this.terrainBytes +
+        : MODEL_INSTANCE_BUFFER_BYTES + this.models.resources().bytes + this.terrainBytes +
           this.spriteBytes +
           this.debugBytes +
           this.shadowBytes +
@@ -785,15 +853,19 @@ export class WebGL2SpatialPass {
     this.shadowBytes = 0;
   }
   environmentResourceStats() {
-    return (
+    const resources = (
       this.environmentPass?.resourceStats() ?? {
         textureCount: 0,
         renderTargetCount: 0,
         textureBytes: 0,
       }
     );
+    const models=this.models.resources();
+    return {...resources,textureCount:resources.textureCount+models.textures,textureBytes:resources.textureBytes+models.textureBytes};
   }
+  releaseModels(): void { this.models.clear(); }
   destroy(): void {
+    this.models.destroy();
     if (this.destroyed) return;
     this.destroyed = true;
     this.environmentPass?.destroy();
@@ -805,6 +877,7 @@ export class WebGL2SpatialPass {
     gl.deleteVertexArray(this.vao);
     gl.deleteBuffer(this.terrainBuffer);
     gl.deleteBuffer(this.spriteBuffer);
+    gl.deleteBuffer(this.modelInstanceBuffer);
     if (this.debugBuffer) gl.deleteBuffer(this.debugBuffer);
     if (this.shadowBuffer) gl.deleteBuffer(this.shadowBuffer);
     gl.deleteProgram(this.program);

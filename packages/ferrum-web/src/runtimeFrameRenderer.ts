@@ -42,6 +42,8 @@ export interface RuntimeFrameRendererOptions {
 
 export class RuntimeFrameRenderer {
   private readonly now: () => number;
+  private rendererFrameId = 0;
+  private previousRenderAtMs?: number;
   private audioEventRateWindowStartMs: number;
   private audioEventRateCount = 0;
   private audioEventsPerSecond = 0;
@@ -57,6 +59,7 @@ export class RuntimeFrameRenderer {
 
   renderFrame(renderFrame: RenderFrameState): void {
     const renderStartMs = this.options.needsRuntimeFrame ? this.now() : 0;
+    this.rendererFrameId++;
     let frame = this.applyDynamicFrameProviders(renderFrame);
 
     let rendererStats: RendererStats;
@@ -84,7 +87,7 @@ export class RuntimeFrameRenderer {
     if (frame === undefined) {
       frame = requireFrameState(renderFrame);
     }
-    this.publishRuntimeFrame(frame, rendererStats, this.now() - renderStartMs);
+    this.publishRuntimeFrame(frame, rendererStats, this.now() - renderStartMs, renderStartMs);
   }
 
   private applyDynamicFrameProviders(renderFrame: RenderFrameState): FrameState | undefined {
@@ -135,7 +138,7 @@ export class RuntimeFrameRenderer {
     return true;
   }
 
-  private publishRuntimeFrame(frame: FrameState, rendererStats: RendererStats, renderTimeMs: number): void {
+  private publishRuntimeFrame(frame: FrameState, rendererStats: RendererStats, renderTimeMs: number, renderAtMs: number): void {
     this.audioEventRateCount += frame.audioEventCount;
     const nowMs = this.now();
     const audioEventRateElapsedMs = nowMs - this.audioEventRateWindowStartMs;
@@ -146,6 +149,7 @@ export class RuntimeFrameRenderer {
     }
 
     const fps = frame.frameTimeMs > 0 ? 1000 / frame.frameTimeMs : 0;
+    const gpuTiming=this.options.renderer.gpuTimingStats?.();
     const debugMetrics = buildDebugMetrics(
       frame,
       rendererStats,
@@ -154,8 +158,11 @@ export class RuntimeFrameRenderer {
       this.audioEventsPerSecond,
       this.options.gameStateLabel ?? defaultGameStateLabel,
       this.options.renderer.resourceStats?.(),
-      this.options.renderer.gpuTimingStats?.(),
+      gpuTiming,
     );
+    debugMetrics.rendererFrameId=gpuTiming?.currentFrameId??this.rendererFrameId;
+    if(this.previousRenderAtMs!==undefined)debugMetrics.frameIntervalMs=Math.max(0,renderAtMs-this.previousRenderAtMs);
+    this.previousRenderAtMs=renderAtMs;
     this.options.debugOverlay?.update(debugMetrics);
     const runtimeFrame: FerrumRuntimeFrame = {
       frame,
@@ -207,6 +214,15 @@ function buildDebugMetrics(
 ): DebugOverlayMetrics {
   return {
     fps,
+    ...(rendererStats.spatial===undefined?{}:{
+      modelCount:rendererStats.spatial.modelCount, visibleModelCount:rendererStats.spatial.visibleModelCount,
+      modelDrawCalls:rendererStats.spatial.modelDrawCalls,modelInstancedDrawCalls:rendererStats.spatial.modelInstancedDrawCalls,
+      modelTriangleCount:rendererStats.spatial.modelTriangleCount,modelUploadBytes:rendererStats.spatial.modelUploadBytes,
+      modelInstanceUploadBytes:rendererStats.spatial.modelInstanceUploadBytes,
+      spatialShadowDrawCalls:rendererStats.spatial.shadowDrawCalls,spatialShadowPassCount:rendererStats.spatial.shadowPassCount,
+      spatialShadowUploadBytes:rendererStats.spatial.shadowUploadBytes,spatialShadowCacheHit:rendererStats.spatial.shadowCacheHit,
+      spatialEffectDrawCalls:rendererStats.spatial.effectDrawCalls,
+    }),
     wasmLinearMemoryBytes: frame.wasmLinearMemoryBytes,
     ...(gpuTiming?.status === "ready" ? {
       gpuFrameTimeMs: gpuTiming.elapsedMs,

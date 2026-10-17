@@ -1,11 +1,14 @@
 export const spatialVertexSource = `#version 300 es
 layout(location=0) in vec3 a_position;layout(location=1) in vec2 a_uv;
-layout(location=2) in vec4 a_color;layout(location=3) in float a_cutoff;
-uniform mat4 u_camera;out vec2 v_uv;out vec4 v_color;out float v_cutoff;out vec3 v_world;
-void main(){gl_Position=u_camera*vec4(a_position,1.0);v_uv=a_uv;v_color=a_color;v_cutoff=a_cutoff;v_world=a_position;}`;
+layout(location=2) in vec4 a_color;layout(location=3) in float a_cutoff;layout(location=4) in vec3 a_normal;layout(location=5) in vec4 a_tangent;
+layout(location=6) in mat4 a_instanceModel;
+uniform mat4 u_model;uniform bool u_mesh,u_instanced;uniform vec4 u_modelColor;uniform float u_modelCutoff;out vec3 v_normal;out vec4 v_tangent;
+uniform mat4 u_camera;out vec2 v_uv;out vec4 v_color;flat out float v_cutoff;out vec3 v_world;
+void main(){mat4 model=u_instanced?a_instanceModel:u_model;vec4 world=u_mesh?model*vec4(a_position,1.):vec4(a_position,1.);gl_Position=u_camera*world;v_uv=a_uv;v_color=u_mesh?u_modelColor:a_color;v_cutoff=u_mesh?u_modelCutoff:a_cutoff;v_world=world.xyz;v_normal=u_mesh?mat3(model)*a_normal:vec3(0.);v_tangent=vec4(u_mesh?mat3(model)*a_tangent.xyz:vec3(0.),a_tangent.w);}`;
 export const spatialFragmentSource = `#version 300 es
 precision highp float;precision highp samplerCube;
-in vec2 v_uv;in vec4 v_color;in float v_cutoff;in vec3 v_world;
+in vec2 v_uv;in vec4 v_color;flat in float v_cutoff;in vec3 v_world;in vec3 v_normal;in vec4 v_tangent;uniform bool u_mesh;
+uniform sampler2D u_emissiveMap;uniform bool u_hasEmissive,u_modelUnlit;uniform vec3 u_emissiveFactor;uniform float u_modelNormalScale;
 uniform highp sampler2D u_texture;uniform sampler2D u_normalMap;uniform bool u_hasNormal,u_receiveShadow;uniform samplerCube u_shadowMap;
 uniform bool u_textured,u_flip_y,u_environment,u_linearInput,u_lighting,u_fog;
 uniform vec3 u_ambient,u_eye,u_forward,u_fogColor;
@@ -14,14 +17,25 @@ uniform int u_lightCount,u_shadowIndex,u_shadowFilter;uniform float u_shadowBias
 uniform vec3 u_sunDirection,u_sunParams;uniform vec4 u_sunColor;uniform bool u_sunShadow;uniform mat4 u_sunMatrix;uniform sampler2D u_sunMap;
 out vec4 outColor;
 vec3 linearize(vec3 c){return mix(c/12.92,pow((c+0.055)/1.055,vec3(2.4)),step(vec3(0.04045),c));}
+vec3 encodeModel(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1./2.4))-.055,step(vec3(.0031308),c));}
 void main(){vec2 uv=vec2(v_uv.x,u_flip_y?1.0-v_uv.y:v_uv.y);
-vec4 c=(u_textured?texture(u_texture,uv):vec4(1.0))*v_color;
+vec4 texel=u_textured?texture(u_texture,uv):vec4(1.0);vec4 c=texel*v_color;
 if(c.a<v_cutoff)discard;
-if(!u_environment){outColor=vec4(c.rgb,1.0);return;}
-vec3 albedo=u_linearInput?c.rgb:linearize(c.rgb),color=albedo;
-if(u_lighting){
- vec3 n=cross(dFdx(v_world),dFdy(v_world));float nl=length(n);n=nl>0.000001?n/nl:vec3(0.,1.,0.);vec3 geometricNormal=n;
- if(u_hasNormal){
+vec3 albedo=u_mesh?texel.rgb*v_color.rgb:(u_linearInput?c.rgb:linearize(c.rgb)),color=albedo;
+vec3 emission=vec3(0.);
+if(u_mesh && !u_modelUnlit){vec3 e=u_hasEmissive?texture(u_emissiveMap,uv).rgb:vec3(1.);emission=e*u_emissiveFactor;}
+if(!u_environment){vec3 modelColor=albedo+emission;outColor=vec4(u_mesh?(u_linearInput?modelColor:encodeModel(modelColor)):c.rgb,1.0);return;}
+if(u_lighting && !(u_mesh && u_modelUnlit)){
+ vec3 n=cross(dFdx(v_world),dFdy(v_world));float nl=length(n);n=nl>0.000001?n/nl:vec3(0.,1.,0.);vec3 geometricNormal=n;if(u_mesh && length(v_normal)>0.000001)n=normalize(v_normal)*(gl_FrontFacing?1.:-1.);
+ if(u_hasNormal && u_mesh && length(v_normal)>0.000001){
+  vec3 normal=normalize(v_normal),t=v_tangent.xyz-normal*dot(normal,v_tangent.xyz);
+  vec3 sampleNormal=texture(u_normalMap,uv).rgb*2.-1.;sampleNormal.xy*=u_modelNormalScale;
+  if(length(t)>0.000001 && length(sampleNormal)>0.000001){
+   t=normalize(t);vec3 bt=cross(normal,t)*v_tangent.w;
+   n=normalize(mat3(t,bt,normal)*sampleNormal)*(gl_FrontFacing?1.:-1.);
+  }
+ }
+ else if(u_hasNormal && !u_mesh){
   vec2 a=dFdx(uv),b=dFdy(uv);float det=a.x*b.y-a.y*b.x;
   vec3 dx=dFdx(v_world),dy=dFdy(v_world);
   if(abs(det)>0.00000001){
@@ -73,10 +87,11 @@ if(u_lighting){
  }
  color=albedo*illumination;
 }
+color+=emission;
 if(u_fog){float z=max(dot(v_world-u_eye,u_forward),0.0);float amount=clamp((z-u_fogRange.x)/(u_fogRange.y-u_fogRange.x),0.0,1.0);color=mix(color,u_fogColor,amount);}
 outColor=vec4(color,1.0);}`;
 export const spatialShadowFragmentSource = `#version 300 es
-precision highp float;in vec2 v_uv;in vec4 v_color;in float v_cutoff;in vec3 v_world;
+precision highp float;in vec2 v_uv;in vec4 v_color;flat in float v_cutoff;in vec3 v_world;
 uniform sampler2D u_texture;uniform bool u_textured,u_flip_y,u_directionalShadow;uniform vec4 u_shadowLight;
 void main(){vec2 uv=vec2(v_uv.x,u_flip_y?1.0-v_uv.y:v_uv.y);
 float alpha=(u_textured?texture(u_texture,uv).a:1.0)*v_color.a;
@@ -177,6 +192,11 @@ export function spatialUniform(
 }
 export interface SpatialGeometryUniforms {
   camera: WebGLUniformLocation;
+  model: WebGLUniformLocation;
+  mesh: WebGLUniformLocation;
+  instanced: WebGLUniformLocation;
+  modelColor: WebGLUniformLocation;
+  modelCutoff: WebGLUniformLocation;
   texture: WebGLUniformLocation;
   textured: WebGLUniformLocation;
   flip: WebGLUniformLocation;

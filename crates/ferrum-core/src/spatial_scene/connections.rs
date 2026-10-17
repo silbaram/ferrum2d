@@ -46,7 +46,9 @@ fn contains(s: Surface, p: Transform2D) -> bool {
     p.x >= x && p.x < x + w && p.y >= y && p.y < y + d
 }
 fn elevation(s: Surface, p: Transform2D) -> f32 {
-    let t = ((p.y - s.bounds[1]) / s.bounds[3]).clamp(0.0, 1.0);
+    let axis = usize::from(!s.ramp_x);
+    let at = if s.ramp_x { p.x } else { p.y };
+    let t = ((at - s.bounds[axis]) / s.bounds[axis + 2]).clamp(0.0, 1.0);
     // Convex interpolation avoids overflowing b-a for otherwise finite authored heights.
     s.heights[0] * (1.0 - t) + s.heights[1] * t
 }

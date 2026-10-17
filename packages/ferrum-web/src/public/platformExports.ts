@@ -520,3 +520,5 @@ export type {
 } from "../dialogueQuest";
 
 export type { ShaderPreparationOptions, ShaderPreparationProgress } from "../shaderPreparation";
+
+export type { RuntimeFrameTraceOptions, RuntimeFrameTraceSample, RuntimeFrameTraceCapture, RuntimeFrameTraceSnapshot } from "../runtimeFrameTrace.js";

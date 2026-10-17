@@ -587,3 +587,21 @@ test("RuntimeFrameRenderer carries real resource statistics to overlay and profi
   });
   frameRenderer.renderFrame(renderFrameState({ frameState: frameState() }));
 });
+
+test('automatic profiler trace uses the issuing renderer ID and records spatial costs with unclamped intervals',async()=>{
+ const {RuntimeProfiler}=await import('../src/runtimeProfiler.js');
+ const order:string[]=[],renderer=fakeRuntimeRenderer(order),profiler=new RuntimeProfiler({frameTrace:{beforeFrames:1,afterFrames:1}});
+ let now=0,id=40,lastStats:RendererStats=emptyRendererStats();
+ renderer.renderPostProcess=()=>lastStats;
+ renderer.beginGpuTiming=()=>{id++;};
+ renderer.gpuTimingStats=()=>id===41?{status:'pending',currentFrameId:id,pendingQueryCount:1}:{status:'ready',currentFrameId:id,frameId:id-1,elapsedMs:id===43?39:5,pendingQueryCount:1};
+ renderer.renderCommands=()=>{now+=2;return lastStats={...emptyRendererStats(),spatial:{modelCount:216,visibleModelCount:200,modelDrawCalls:196,modelInstancedDrawCalls:4,modelTriangleCount:8000,modelUploadBytes:id===42?69360:0,modelInstanceUploadBytes:16000,shadowDrawCalls:400,shadowPassCount:7,shadowUploadBytes:1000,shadowCacheHit:false,effectDrawCalls:1}} as RendererStats;};
+ const r=new RuntimeFrameRenderer({renderer,profiler,shouldRenderPhysicsDebugLines:false,needsRuntimeFrame:true,now:()=>now});
+ r.renderFrame(renderFrameState({frameState:frameState()}));now=40;
+ r.renderFrame(renderFrameState({frameState:frameState()}));now=56;
+ r.renderFrame(renderFrameState({frameState:frameState()}));
+ const capture=profiler.snapshot().frameTrace!.captures[0];equal(capture.triggerFrameId,42);
+ deepEqual(capture.frames.map(f=>f.rendererFrameId),[41,42,43]);equal(capture.frames[1].frameIntervalMs,40);
+ equal(capture.frames[1].gpuFrameTimeMs,39);equal(capture.frames[1].modelUploadBytes,69360);equal(capture.frames[1].spatialShadowDrawCalls,400);
+ equal(capture.frames[1].spatialShadowCacheHit,false);equal(capture.frames[2].gpuFrameTimeMs,undefined);
+});

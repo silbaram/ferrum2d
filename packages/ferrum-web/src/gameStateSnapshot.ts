@@ -43,7 +43,12 @@ export const GAME_STATE_SNAPSHOT_FORMAT = "ferrum2d.game-state.snapshot";
 export const GAME_STATE_SNAPSHOT_VERSION = 2;
 export const DATA_SCENE_STATE_FORMAT = "ferrum2d.data-scene-state";
 /** Latest supported nested version; non-spatial captures retain v5 for legacy replay hashes. */
-export const DATA_SCENE_STATE_VERSION = 7;
+export const DATA_SCENE_STATE_VERSION = 8;
+function hasSpatialAttachments(value:unknown):boolean {
+  return isRecord(value)&&isRecord(value.spatial)&&(
+    (isRecord(value.spatial.attachments)&&Object.keys(value.spatial.attachments).length>0)||value.spatial.modelChunks!==undefined||
+    (isRecord(value.spatial.models)&&Object.values(value.spatial.models).some(m=>isRecord(m)&&m.lods!==undefined)));
+}
 
 export type GameStateSnapshotJsonValue =
   | null
@@ -64,7 +69,7 @@ export interface GameStateSceneSnapshot {
 
 export interface DataSceneStateSnapshot {
   readonly format: typeof DATA_SCENE_STATE_FORMAT;
-  readonly version: 2 | 3 | 4 | 5 | 6 | typeof DATA_SCENE_STATE_VERSION;
+  readonly version: 2 | 3 | 4 | 5 | 6 | 7 | typeof DATA_SCENE_STATE_VERSION;
   readonly progress?: DataSceneProgressSnapshot;
   readonly scene: GameStateSceneSnapshot;
   readonly authoringDocument?: GameStateSnapshotJsonValue;
@@ -575,10 +580,11 @@ export function validateDataSceneStateSnapshot(
     snapshot.version !== 4 &&
     snapshot.version !== 5 &&
     snapshot.version !== 6 &&
+    snapshot.version !== 7 &&
     snapshot.version !== DATA_SCENE_STATE_VERSION
   ) {
     throw new Error(
-      `${path}.version must be 2, 3, 4, 5, 6 or ${DATA_SCENE_STATE_VERSION}.`,
+      `${path}.version must be 2, 3, 4, 5, 6, 7 or ${DATA_SCENE_STATE_VERSION}.`,
     );
   }
   if (snapshot.progress !== undefined) {
@@ -587,6 +593,7 @@ export function validateDataSceneStateSnapshot(
         `${path}.progress requires data scene state version 3 or newer.`,
       );
     validateDataSceneProgress(snapshot.progress, snapshot.authoringDocument);
+    if(snapshot.version<8 && (hasSpatialAttachments(snapshot.authoringDocument)||snapshot.progress.instances.some(i=>i.spatialPose?.rotationRadians!==undefined)))throw new Error(`${path}.progress model motion requires data scene state version 8.`);
     if (
       snapshot.version < 7 &&
       snapshot.progress.spatial?.environment !== undefined
@@ -693,11 +700,12 @@ function captureDataSceneState(
   return {
     format: DATA_SCENE_STATE_FORMAT,
     version:
+      hasSpatialAttachments(authoringDocument)||progress?.instances.some(i=>i.spatialPose?.rotationRadians!==undefined)?8:
       progress?.spatial === undefined
         ? 5
         : progress.spatial.environment === undefined
           ? 6
-          : DATA_SCENE_STATE_VERSION,
+          : 7,
     ...(progress === undefined ? {} : { progress }),
     scene: { ...scene },
     ...(authoringDocument === undefined

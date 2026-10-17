@@ -14,6 +14,8 @@ import {
 export interface DataSceneSpatialPoseSnapshot {
   readonly x: number;
   readonly y: number;
+  /** Motion progress v8. Native model root yaw; attached child poses are derived. */
+  readonly rotationRadians?: number;
   readonly heightSpan: PhysicsBodyHeightSpan | null;
   /** Optional stable terrain identity when the entity origin is supported by that surface. */
   readonly surfaceId?: string;
@@ -75,7 +77,7 @@ export function resolveSpatialPose(
   if (
     !record(value) ||
     Object.keys(value).some(
-      (key) => !["x", "y", "heightSpan", "surfaceId"].includes(key),
+      (key) => !["x", "y", "heightSpan", "surfaceId", "rotationRadians"].includes(key),
     )
   ) {
     throw new Error(
@@ -84,6 +86,7 @@ export function resolveSpatialPose(
   }
   finite(value.x);
   finite(value.y);
+  if(value.rotationRadians!==undefined)finite(value.rotationRadians);
   if (value.heightSpan !== null) {
     const span = value.heightSpan;
     if (

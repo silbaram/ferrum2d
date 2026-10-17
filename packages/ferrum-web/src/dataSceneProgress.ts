@@ -47,7 +47,7 @@ export interface DataSceneProgressSnapshot {
     readonly bodyEnabled?: boolean;
     /** Single authored collider only; absent retains the authored default. */
     readonly colliderEnabled?: boolean;
-    /** Data Scene state v6+: live authored billboard world pose. */
+    /** Data Scene state v6+: live authored billboard/model world pose. */
     readonly spatialPose?: DataSceneSpatialPoseSnapshot;
     /** Authored animationSet playback; absent in legacy saves retains initial playback. */
     readonly animation?: {
@@ -75,6 +75,7 @@ export interface DataSceneProgressAdapter {
   spatialRevision(): number;
   viewport(): { width: number; height: number };
   spatial(epoch: number, handles: Uint32Array): Float64Array;
+  rotations?(epoch:number,handles:Uint32Array):Float64Array|undefined;
   environment?(): Float32Array | undefined;
   preflightSpatial(
     terrainValues: Float32Array,
@@ -88,6 +89,7 @@ export interface DataSceneProgressAdapter {
     animations?: Float64Array,
     spatial?: Float64Array,
     environment?: Float32Array,
+    rotations?: Float64Array,
   ): boolean;
 }
 const ANIMATION_PROGRESS_STRIDE = 32;
@@ -187,6 +189,8 @@ export function captureDataSceneProgress(
     );
   }
   const spatialValues = spatialSpec === undefined ? undefined : nativeSpatial;
+  const rotations=spatialSpec?.models===undefined?undefined:adapter.rotations?.(context.epoch,handleBuffer(ids,context.handles));
+  if(Object.keys(spatialSpec?.attachments??{}).length && rotations?.length!==ids.length)throw new Error('Spatial attachment progress requires compatible motion Wasm');
   const environmentValues = adapter.environment?.();
   if (spatialSpec?.environment !== undefined && environmentValues === undefined)
     throw new Error(
@@ -243,7 +247,7 @@ export function captureDataSceneProgress(
   const progress: DataSceneProgressSnapshot = {
     instances: ids.map((id, index) => {
       const state = states[index]!;
-      const spatialPose =
+      let spatialPose =
         spatialValues === undefined
           ? undefined
           : decodeSpatialPose(
@@ -255,6 +259,7 @@ export function captureDataSceneProgress(
               ),
               spatialSpec!,
             );
+      if(spatialPose && spatialSpec?.models?.[id] && (rotations?.[index]!==undefined) && (rotations[index]!==0 || Object.keys(spatialSpec.attachments??{}).length))spatialPose={...spatialPose,rotationRadians:rotations[index]};
       return {
         id,
         removed: state === 0,
@@ -317,6 +322,9 @@ export function preflightDataSceneProgressRestore(
       `Data Scene progress restore does not support apply options: ${unsupported.join(", ")}. Put binding configuration in the saved document.`,
     );
   if (progress !== undefined) {
+    const spec=resolveSceneAuthoringDocument(document).spatial;
+    if(spec?.models && !engine.preflightDataSceneSpatialModels(spec,Object.fromEntries(progress.instances.filter(i=>i.spatialPose).map(i=>[i.id,{x:i.spatialPose!.x,y:i.spatialPose!.y,elevation:i.spatialPose!.heightSpan?.elevation ?? 0}]))))
+      throw new Error("Spatial model resources/content must be prepared before restoring progress.");
     preflightEnvironmentProgress(engine, progress, document, options);
     preflightSpatialProgress(
       requireAdapter(engine),
@@ -403,6 +411,7 @@ export function restoreDataSceneProgress(
       animations,
       spatial,
       environment,
+      progress.instances.some(i=>i.spatialPose?.rotationRadians!==undefined)?Float64Array.from(progress.instances,i=>i.spatialPose?.rotationRadians??0):undefined,
     )
   ) {
     throw new Error("Data Scene progress restore rejected entity state.");
@@ -482,13 +491,14 @@ export function validateDataSceneProgress(
       spatial !== undefined &&
       spatial.camera !== null &&
       !instance.removed &&
-      Object.prototype.hasOwnProperty.call(
+      !Object.prototype.hasOwnProperty.call(resolved.spatial!.attachments??{},instance.id) &&
+      (Object.prototype.hasOwnProperty.call(
         resolved.spatial!.billboards,
         instance.id,
-      );
+      ) || Object.prototype.hasOwnProperty.call(resolved.spatial!.models ?? {},instance.id));
     if (needsPose !== (instance.spatialPose !== undefined))
       throw new Error(
-        "Data Scene spatial progress requires poses for all live authored billboards, and only those billboards.",
+        "Data Scene spatial progress requires poses for all live authored billboards/models, and only those instances.",
       );
     if (instance.spatialPose !== undefined) {
       const pose = resolveSpatialPose(instance.spatialPose);
@@ -727,6 +737,7 @@ function unsupportedOptions(
           "textureId",
           "colorManagement",
           "instanceHandleRegistry",
+          "spatialModelPreparer",
         ].includes(key) &&
         !(
           [

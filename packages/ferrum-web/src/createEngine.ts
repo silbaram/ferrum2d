@@ -1,3 +1,4 @@
+import { spatialModelRegistry } from "./spatialModel.js";
 import { createSpatialApi, spatialCameraValues } from "./dataSceneSpatial.js";
 import { compileSpatialEnvironment } from "./spatialEnvironment.js";
 import { createDataSceneMovementApi } from "./dataSceneMovement.js";
@@ -311,6 +312,7 @@ export async function createEngineWithFramePipeline(
     try {
       options.lifecycle?.onDestroy?.(snapshot);
     } finally {
+      spatialModelRegistry(rustEngine).clear();
       rustEngine.free();
     }
   };
@@ -875,6 +877,7 @@ export async function createEngineWithFramePipeline(
     spatialRevision: () => { requireAlive(); return rustEngine.spatial_terrain_revision(); },
     viewport: () => { requireAlive(); return {width:rustEngine.spatial_viewport_width(),height:rustEngine.spatial_viewport_height()}; },
     spatial: (epoch, handles) => { requireAlive(); return rustEngine.capture_data_scene_spatial_progress(epoch, handles); },
+    rotations:(epoch,handles)=>{requireAlive();return typeof rustEngine.capture_data_scene_spatial_rotations==='function'?rustEngine.capture_data_scene_spatial_rotations(epoch,handles):undefined;},
     environment: () => {
       requireAlive();
       return typeof rustEngine.capture_spatial_environment === "function"
@@ -882,8 +885,9 @@ export async function createEngineWithFramePipeline(
         : undefined;
     },
     preflightSpatial: (values, metadata, state) => { requireAlive(); return rustEngine.preflight_data_scene_spatial_progress(values, metadata, state); },
-    restore: (epoch, handles, states, animations, spatial, environment) => {
+    restore: (epoch, handles, states, animations, spatial, environment, rotations) => {
       requireAlive();
+      if(rotations!==undefined && spatial!==undefined)return typeof rustEngine.restore_data_scene_progress_with_spatial_motion==='function'&&rustEngine.restore_data_scene_progress_with_spatial_motion(epoch,handles,states,animations??new Float64Array(),spatial,environment??new Float32Array(),rotations,environment!==undefined);
       if (environment !== undefined && spatial !== undefined) {
         return typeof rustEngine.restore_data_scene_progress_with_spatial_environment === "function"
           && rustEngine.restore_data_scene_progress_with_spatial_environment(
@@ -923,6 +927,26 @@ export async function createEngineWithFramePipeline(
   });
   return attachDataSceneRuntimeEngineAdapter(engine, {
     useDataScene,
+    spatialModelAssets: spec => {
+      requireAlive();
+      const registry = spatialModelRegistry(rustEngine);
+      return [...new Set(Object.values(spec.models ?? {}).flatMap(m=>[m,...(m.lods??[])]).map(m => {
+        const entry = registry.get(m.asset);
+        if (!entry || entry.handle.contentId !== m.contentId)
+          throw Error("Spatial model resource changed after preflight");
+        return entry.handle;
+      }))];
+    },
+    supportsSpatialRampAxis: () => {
+      requireAlive();
+      return typeof rustEngine.spatial_ramp_axis_abi_version === "function" &&
+        rustEngine.spatial_ramp_axis_abi_version() === 1;
+    },
+    supportsSpatialSurfaceProxies: () => {
+      requireAlive();
+      return typeof rustEngine.spatial_surface_proxy_abi_version === "function" &&
+        rustEngine.spatial_surface_proxy_abi_version() === 1;
+    },
     preflightSpatialEnvironment: (camera, environment) => {
       requireAlive();
       const values = compileSpatialEnvironment(environment);

@@ -77,6 +77,17 @@ impl CollisionScratch {
 }
 
 impl CollisionSystem {
+    pub(crate) fn kinematic_target_bounds(world: &World, index: usize) -> Option<AabbBounds> {
+        let at = world.transform_at_index(index)?;
+        if let Some(c) = world.colliders[index] {
+            return c.enabled.then(|| AabbBounds::from_transform(at, c));
+        }
+        let shape = collider_shape(world, index)?;
+        match shape {
+            ColliderShapeRef::OrientedBox(c, _) if c.enabled => Some(collider_bounds(at, shape)),
+            _ => None,
+        }
+    }
     pub fn build_pairs(world: &World) -> Vec<CollisionPair> {
         let mut pairs = Vec::new();
         let mut scratch = CollisionScratch::default();
@@ -349,16 +360,42 @@ impl CollisionSystem {
         query: KinematicSweepCandidateQuery,
         candidates: &mut Vec<usize>,
     ) {
+        Self::prepare_kinematic_sweep_targets(scratch, world, query);
+        Self::query_kinematic_sweep_candidate_indices_into(scratch, query, candidates);
+    }
+
+    /// A synchronous spatial query may reuse these bounds while only its actor moves.
+    pub(crate) fn kinematic_sweep_target_count(scratch: &CollisionScratch) -> usize {
+        scratch.target_proxies.len()
+    }
+
+    /// A synchronous spatial query may reuse these bounds while only its actor moves.
+    pub(crate) fn prepare_kinematic_sweep_targets(
+        scratch: &mut CollisionScratch,
+        world: &World,
+        query: KinematicSweepCandidateQuery,
+    ) -> usize {
+        fill_kinematic_sweep_target_proxies(world, query, &mut scratch.target_proxies);
+        scratch.target_proxies.len()
+    }
+
+    pub(crate) fn query_kinematic_sweep_candidate_indices_into(
+        scratch: &CollisionScratch,
+        query: KinematicSweepCandidateQuery,
+        candidates: &mut Vec<usize>,
+    ) {
         let moving_end = Transform2D {
             x: query.moving_start.x + query.remaining.vx,
             y: query.moving_start.y + query.remaining.vy,
         };
         let moving_bounds =
             AabbBounds::swept(query.moving_start, moving_end, query.moving_collider);
-        fill_kinematic_sweep_target_proxies(world, query, &mut scratch.target_proxies);
         candidates.clear();
 
         for target_proxy in scratch.target_proxies.iter().copied() {
+            if query.ignored_index == Some(target_proxy.key.entity_index) {
+                continue;
+            }
             if target_proxy.bounds.max_x < moving_bounds.min_x {
                 continue;
             }
@@ -604,13 +641,7 @@ fn fill_kinematic_sweep_target_proxies(
         if index == query.moving_index || query.ignored_index == Some(index) {
             continue;
         }
-        let Some(collider) = world.colliders[index] else {
-            continue;
-        };
-        if !collider.enabled {
-            continue;
-        }
-        let Some(transform) = world.transform_at_index(index) else {
+        let Some(bounds) = CollisionSystem::kinematic_target_bounds(world, index) else {
             continue;
         };
         proxies.push(CollisionProxy {
@@ -619,7 +650,7 @@ fn fill_kinematic_sweep_target_proxies(
                 collider_index: 0,
                 segment_index: 0,
             },
-            bounds: AabbBounds::from_transform(transform, collider),
+            bounds,
         });
     }
     proxies.sort_by(proxy_order);

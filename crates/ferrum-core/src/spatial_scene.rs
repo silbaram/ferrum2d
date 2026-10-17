@@ -7,8 +7,13 @@ use crate::{
     world::World,
 };
 use std::collections::BTreeMap;
+mod attachments;
+pub(crate) use attachments::{AttachmentPose, SpatialAttachments};
 mod connections;
 mod environment;
+mod model_streaming;
+mod models;
+pub(crate) use models::preflight_model_poses;
 mod shadows;
 pub(crate) use environment::{SpatialEnvironment, MAX_SHADOW_CASTERS};
 mod navigation;
@@ -200,17 +205,22 @@ pub(crate) struct SpatialTerrainDrawRange {
     pub vertex_count: u32,
 }
 const _: () = assert!(std::mem::size_of::<SpatialTerrainDrawRange>() == 8);
-#[derive(Clone, Copy)]
+pub(crate) const SURFACE_PROXY_FLAG: u32 = 16;
+pub(crate) const SURFACE_RAMP_X_FLAG: u32 = 32;
+
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct Surface {
     pub id: u32,
     pub floor: u32,
     pub bounds: [f32; 4],
     pub base: f32,
     pub heights: [f32; 2],
+    pub ramp_x: bool,
     pub color: [f32; 4],
     pub texture: u32,
     pub kind: u32,
     pub walkable: bool,
+    pub is_rendered: bool,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -237,6 +247,8 @@ pub(crate) struct Billboard {
 
 #[derive(Default)]
 pub(crate) struct SpatialScene {
+    pub attachments: attachments::SpatialAttachments,
+    pub models: models::SpatialModels,
     pub environment: SpatialEnvironment,
     pub shadow_casters: Vec<[SpatialVertex; 6]>,
     previous_shadow_casters: Vec<[SpatialVertex; 6]>,
@@ -264,6 +276,8 @@ pub(crate) struct SpatialScene {
 }
 impl SpatialScene {
     pub fn clear(&mut self) {
+        self.attachments = Default::default();
+        self.models = Default::default();
         self.environment = SpatialEnvironment::default();
         self.shadow_casters.clear();
         self.previous_shadow_casters.clear();
@@ -295,24 +309,28 @@ impl SpatialScene {
         }
         let mut surfaces = Vec::new();
         let mut mesh = Vec::new();
-        let mut physics = Tilemap::default();
+        let mut physics = Tilemap::with_half_open_hd2d_surfaces();
         for (index, (v, n)) in floats
             .chunks_exact(11)
             .zip(integers.chunks_exact(4))
             .enumerate()
         {
+            let surface_flags = n[3] & !(SURFACE_PROXY_FLAG | SURFACE_RAMP_X_FLAG);
             if v.iter().any(|v| !v.is_finite())
                 || v[2] <= 0.0
                 || v[3] <= 0.0
+                || v[0] + v[2] <= v[0]
+                || v[1] + v[3] <= v[1]
                 || v[4] > v[5].min(v[6])
                 || v[7..11].iter().any(|c| !(0.0..=1.0).contains(c))
                 || n[0] == 0
                 || n[0] > 65535
                 || n[1] > 65535
                 || n[2] > 16_777_215
-                || n[3] > 9
-                || ![0, 1, 2, 4].contains(&(n[3] >> 1))
-                || ((n[3] >> 1) != 2 && v[5] != v[6])
+                || surface_flags > 9
+                || ![0, 1, 2, 4].contains(&(surface_flags >> 1))
+                || ((surface_flags >> 1) != 2 && (v[5] != v[6] || n[3] & SURFACE_RAMP_X_FLAG != 0))
+                || (n[3] & SURFACE_PROXY_FLAG != 0 && n[2] != 16_777_215)
                 || ![v[0] + v[2], v[1] + v[3]].iter().all(|v| v.is_finite())
             {
                 return false;
@@ -323,10 +341,12 @@ impl SpatialScene {
                 bounds: [v[0], v[1], v[2], v[3]],
                 base: v[4],
                 heights: [v[5], v[6]],
+                ramp_x: n[3] & SURFACE_RAMP_X_FLAG != 0,
                 color: v[7..11].try_into().unwrap_or([1.0; 4]),
                 texture: n[2],
-                kind: n[3] >> 1,
-                walkable: n[3] & 1 != 0,
+                kind: surface_flags >> 1,
+                walkable: surface_flags & 1 != 0,
+                is_rendered: n[3] & SURFACE_PROXY_FLAG == 0,
             };
             if surfaces.iter().any(|s: &Surface| {
                 s.id == surface.id
@@ -357,7 +377,7 @@ impl SpatialScene {
                 true,
                 surface.heights[0] - surface.base,
                 surface.kind == 2,
-                1,
+                u32::from(!surface.ramp_x),
                 surface.heights[0],
                 surface.heights[1],
             ) {
@@ -370,7 +390,13 @@ impl SpatialScene {
         self.terrain_draw_ranges = Vec::with_capacity(surfaces.len());
         self.navigation.cancel();
         self.connections.clear();
-        self.terrain_materials = vec![SpatialMaterial::default(); surfaces.len()];
+        self.terrain_materials = surfaces
+            .iter()
+            .map(|s| SpatialMaterial {
+                flags: if s.is_rendered { 3 } else { 0 },
+                ..SpatialMaterial::default()
+            })
+            .collect();
         self.surfaces = surfaces;
         self.terrain = mesh;
         self.physics = physics;
@@ -434,6 +460,12 @@ impl SpatialScene {
         );
         self.frame_camera[..16].copy_from_slice(&camera.matrix);
         self.frame_camera[16..].copy_from_slice(&camera.parameters);
+        self.models.build(
+            world,
+            &camera,
+            &self.environment.shadow_matrices,
+            self.environment.values.is_some_and(|v| v[2] >= 0.),
+        );
         self.debug.begin_frame();
         for (index, surface) in self.surfaces.iter().enumerate() {
             let [x, y, width, depth] = surface.bounds;
@@ -445,6 +477,9 @@ impl SpatialScene {
             }
             self.debug.surface(*surface);
             self.debug.surface_floor(*surface, &camera);
+            if !surface.is_rendered {
+                continue;
+            }
             let first_vertex = index as u32 * 36;
             if let Some(previous) = self.terrain_draw_ranges.last_mut() {
                 if previous.first_vertex + previous.vertex_count == first_vertex {
@@ -778,15 +813,26 @@ fn quad(
         });
     }
 }
+impl Surface {
+    fn top_corners(self) -> [Point; 4] {
+        let [x, y, w, d] = self.bounds;
+        let [a, b] = self.heights;
+        let h = if self.ramp_x {
+            [a, b, b, a]
+        } else {
+            [a, a, b, b]
+        };
+        [
+            [x, h[0], -y],
+            [x + w, h[1], -y],
+            [x + w, h[2], -y - d],
+            [x, h[3], -y - d],
+        ]
+    }
+}
 fn append_surface(out: &mut Vec<SpatialVertex>, s: Surface) {
     let [x, y, w, d] = s.bounds;
-    let [a, b] = s.heights;
-    let p = [
-        [x, a, -y],
-        [x + w, a, -y],
-        [x + w, b, -y - d],
-        [x, b, -y - d],
-    ];
+    let p = s.top_corners();
     quad(out, p, [0.0, 0.0, 1.0, 1.0], s.color, s.texture, 0.01);
     let sides = std::array::from_fn(|i| {
         [

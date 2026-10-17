@@ -213,6 +213,8 @@ pub struct TilemapLayer {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Tilemap {
+    // Spatial rectangular surfaces use [min, max) ownership; legacy tile queries stay inclusive.
+    half_open_hd2d_surfaces: bool,
     definitions: Vec<Option<TileDefinition>>,
     slope_definitions: Vec<Option<TileSlopeDefinition>>,
     one_way_platform_definitions: Vec<bool>,
