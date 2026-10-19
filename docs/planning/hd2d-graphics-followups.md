@@ -1,6 +1,8 @@
 # HD-2D 공간 기반과 그래픽 후속 설계
 
-기준일: 2026-10-17. 상태: **P0 WebGL2·층 연결·다층 이동, P1/P2·다섯 그래픽 보강·N0 길찾기 예산 보강 구현. M1 정적 GLB 바위의 렌더링·충돌·저장 통합 및 M2 MASK/양면·normal/emissive 재질 구현. 자동 회귀 검증을 통과했으며 M3 WebGL2 공유 모델 인스턴싱·분리형 glTF 입력·공유 CPU 모델 캐시 구현. M2/M3 형식·runtime 부모 관계·실제 Blender/GPU gate 잔여**.
+기준일: 2026-10-19. 상태: **공간 WebGL2·다층 이동·그래픽 효과·정적 GLB/glTF·공유 모델 캐시·인스턴싱·계층 배치 구현 완료. 실제 모델 후속 1~6과 전투 C1~C6도 구현·검증 완료했으며, 공간 WebGPU의 지형·빌보드·모델·조명·그림자·후처리와 WebGL2 fallback을 포함한다.**
+최신 완료 근거와 남은 실게임 성능·자원 진단·복구 범위는 [실제 모델 및 전투 후속 기록](hd2d-models-followups.md)을 따른다.
+아래 설계와 단계별 검증은 당시의 결정 이력이며, 현재 사용 계약은 확정 문서를 기준으로 한다.
 2026-10-04의 [#73 C1](https://github.com/silbaram/ferrum2d/issues/73) 효과 설계를 보존하되,
 사용자 요구와 game-test 재현을 근거로 **입체 지형·카메라·높이/깊이·빌보드**를 먼저 구현한다.
 아래 설계의 미구현 후보 필드와 확장 gate는 공개 API가 아니다. 현재 개발 소스의 P0 계약은
@@ -10,7 +12,7 @@
 [Physics Spec](../engine/physics-spec.md)을 따른다.
 
 로컬 `artifacts/`는 영구 문서 저장소가 아니다. 완료된 과거 작업의 보고서·로그·검증 사본은
-2026-10-17에 정리했으며, 아래 검증 결과는 당시의 실행 기록이다. 현재 미커밋 N0 검증은 `artifacts/hd2d-navigation-budget/`,
+2026-10-17에 정리했으며, 아래 검증 결과는 당시의 실행 기록이다. N0 검증은 `artifacts/hd2d-navigation-budget/`,
 M1/M2 모델 검증은 `artifacts/hd2d-static-model/`에 유지한다. 사용 계약과 재검증 절차는 확정 문서·smoke 스크립트가 기준이다.
 
 [옥토패스 개발진 인터뷰](https://www.unrealengine.com/spotlights/octopath-traveler-s-hd-2d-art-style-and-story-make-for-a-jrpg-dream-come-true?lang=ko)는

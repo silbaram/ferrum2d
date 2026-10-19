@@ -69,11 +69,12 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 | --- | --- |
 | WebGL2 renderer | 기본 2D sprite renderer다. |
 | HD-2D 공간 기반 (개발 소스) | opt-in WebGL2 입체 지형·camera·picking·높이/depth 빌보드, 층 연결·다층 경로와 공간 물리 디버그를 제공한다. 선택 environment는 고정 해상도·픽셀 스냅·normal atlas, 점광원/태양광·PCF·그림자 캐시/컬링, actor 초점·전경 DOF·HDR 색 보정·안개와 v7 복원을 지원한다. 정적 GLB의 OPAQUE/MASK·양면 diffuse·normal map·발광 모델·깊이/그림자·명시적 AABB·보이지 않는 보행면·건물 다층 이동·모델 GPU 준비 후 활성화·진행 복원을 연결한다. 연속 공유 모델의 WebGL2 GPU 인스턴싱과 최대 1,024개 모델 입력을 지원한다. 분리형 glTF의 외부 binary·PNG/JPEG도 기존 모델 경로로 가져온다. 공유 CPU 모델 캐시는 중복 로드·독립 취소·lease·LRU/동시 로드 예산을 관리한다. [지원 범위와 예산](docs/engine/data-scene-spatial.md)을 따른다. |
+| HD-2D 전투 검증 (개발 소스) | `gameplay.combat` opt-in으로 native AI·timer 반복 발사·플레이어 입력 발사·높이 필터·피해·파티클을 연결한다. 지원 Wasm은 전투 checkpoint를 v9로 저장·복원하며, named 탄환 prefab의 texture·UV·색상·크기·충돌·billboard와 codec v2를 제공한다. `combatNavigation`을 켜면 추적 AI가 계단·층간 연결을 따라 이동하며 검색·이동 작업 예산을 공유한다. 공유 경로와 프레임 분할 A*로 검색 비용을 나눈다. 선택적 `crowdAvoidance`와 적별 `chase.stopDistance`도 지원한다. `movementPatterns: "all"`은 SeekTarget의 회전과 Accelerate의 속도를 공간 높이·층 연결·저장 복원에 연결한다. native melee/dash는 입력·타이머·높이/벽 검사와 checkpoint를 지원하며 별도 `supportsDataSceneCombatActions()`로 검사한다. 별도 `supportsDataSceneSpawnPrefabs()`로 검사하는 actor catalog는 입력·타이머 생성과 생성 개체의 codec v3 저장·복원을 지원한다. `supportsDataSceneProjectileVisuals()`는 탄환별 atlas animation·화면 속도 방향 회전·codec v4 저장/복원을 검사한다. `pnpm smoke:hd2d-combat`로 GLB 배경 216개 + 적 0/32/128개와 입력 조준·비행 중 탄환 복원을 검증한다. [전투 계약](docs/engine/data-scene-authoring.md#선택적-hd-2d-전투-실행-개발-소스)을 따른다. |
 | RenderTexture | WebGL2에서 sprite command를 불투명 텍스처로 캡처하고 texture id로 재사용한다. [사용 계약](docs/engine/public-api/core.md#rendertexture-webgl2)을 따른다. |
 | 색 공간 관리 | 기본 legacy 출력을 유지하고 WebGL2의 `linear-srgb` 모드로 입력 색상·linear 계산·sRGB 출력을 구분한다. [전환 계약](docs/engine/public-api/core.md#색-공간-관리)을 따른다. |
 | GPU 자원 통계 | WebGL2의 texture/program/buffer/render target 수와 저장량 추정치를 표시하고 profiler 예산으로 검증한다. [집계 계약](docs/engine/public-api/core.md#gpu-자원-통계)을 따른다. |
 | GPU 시간·Wasm 용량 진단 | opt-in WebGL2 비동기 timer와 `engine.memoryStats()`를 제공하며 profiler 예산으로 연결한다. [범위와 한계](docs/engine/public-api/core.md#gpu-실행-시간과-wasm-메모리)를 따른다. |
-| WebGPU renderer | 지원 환경에서 선택 사용하고 실패하면 WebGL2로 fallback한다. WebGL2가 기준 renderer다. |
+| WebGPU renderer | context 결정 전 미지원 요청·준비 실패는 WebGL2로 fallback한다. 지형·빌보드·정적 모델과 공간 조명·그림자·normal·DOF·색 보정·안개·pixelArt를 제공한다. [지원 범위](docs/engine/data-scene-spatial.md#webgpu-공간-경로)를 따른다. |
 | Render command buffer | Rust가 sprite draw command를 만들고 TS가 GPU로 그린다. |
 | Bitmap world text | font atlas glyph를 기존 sprite command로 cache 전개해 camera, culling, render layer, HD-2D sort에 함께 참여시킨다. |
 | Viewport render culling | 화면 밖 tile, sprite, particle command 생성을 줄인다. |

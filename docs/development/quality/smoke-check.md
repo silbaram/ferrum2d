@@ -945,7 +945,8 @@ native cold output 예약 및 첫 frame의 pointer/capacity 불변을 검사한�
 모델 자원 준비 전에 거절하며 미사용 handle·동일 CPU 자원의 별칭은 불필요하게 거절하지 않는다.
 준비 smoke는 instance buffer storage 실패도 주입해 pipeline 회수와 재시도를 검사한다.
 1280×720 / 390×844 × DPR 1/2에 모두 적용하며 destroy 시 모든 GPU 객체 생존 수 0을 기존 gate와 함께 확인한다.
-실제 모바일/데스크톱 GPU frame time 예산과 WebGPU 공간 인스턴싱은 별도 검증 대상이다.
+실제 모바일/데스크톱 GPU frame time 예산은 별도 검증 대상이다.
+WebGPU 공간 인스턴싱은 아래 C6 geometry·GLB gate에서 별도로 검증한다.
 
 
 ### 분리형 glTF 입력 회귀
@@ -1007,3 +1008,175 @@ upload 1회와 면별 독립 offset, warm shadow cache에서 main 128B만 업로
 main/point/sun의 MASK·normal·emissive 픽셀 parity와 terrain/billboard attribute 경로를 유지한다.
 가림·재질/그림자·fresh restore 픽셀 비교와 GPU 객체 종료 검사는 유지한다. scene의 고정 matrix buffer가
 64→512KiB로 바뀌었으므로 bytes 비교는 동일 구현·동일 상태끼리 수행한다.
+
+
+## HD-2D native combat gate
+
+`pnpm smoke:hd2d-combat`는 CI validate job과 `smoke:check`에서 실행한다. CI는 성공/실패 시 report와 원시 case JSON을
+`hd2d-combat` artifact로 업로드한다. packed public `/core`·`/authoring`만
+사용해 배경 GLB rock 216개 + 적 0/32/128개를 1280×720/390×844, DPR 1/2에서 검증한다.
+개체 수 외에 native AI steps·반복 projectile spawn·실제 hits/kills/particles, 동적 spatial billboard,
+pause freeze·전투 checkpoint JSON roundtrip 상태 일치·reset 정리를 assert한다.
+`report.inputCases`에는 같은 네 viewport/DPR의 실제 InputManager 마우스/키보드 pressed 입력을 기록한다.
+직교/원근 × pixelArt 유무, body/visual 높이 조준, 다른 층 제외, logical zoom과 resize,
+누른 채 유지 시 중복 방지, 세 번 명중 후 사망, 벽 차단, pause 동안 입력 폐기를 assert한다.
+픽셀 여백이 있는 조건에서는 여백 클릭의 발사 거절도 확인한다. 입력 fixture도 Playing 상태·실제 draw와
+동적 billboard 증가, Rust/render max 250/1000ms·GPU buffer capacity 2MiB 상한을 확인한다.
+`report.checkpointCases`는 같은 viewport/DPR 4조건에서 비행 중 탄환을 저장하고 새 handle로 복원한 뒤 실제 피해를 확인한다.
+유효 hash를 가진 잘못된 health payload는 activation 전에 거절하며 기존 handle/전투 상태를 보존해야 한다.
+`report.prefabCases`는 같은 4조건에서 전용 12×8/0.75 world scale sprite의 실제 quad·반전 UV·RGBA·cutoff를 확인한다.
+비행 중 v2 checkpoint 후 이름 기반 asset slot을 2→3으로 바꿔 복원하고, 새 slot 렌더·fresh handle·실제 피해가 이어져야 한다.
+스냅샷은 runtime texture slot을 저장하지 않는다. `prefab-*.png`도 CI evidence에 업로드한다.
+모델 draw가 양수이고 자체 rock 8 triangles × 216개를 실제 제출하며 측정 구간 안의 원거리 명중·파티클 누적 값이 증가해야 한다.
+CPU Rust update max 250ms/render max 1000ms는 CI의 무제한 작업 회귀를 잡는 상한이며 목표 FPS가 아니다.
+기능 gate는 최소 2초 예열 + 2.5초 측정이다. 낮은 software FPS에서는 native simulation 2.5초까지 예열을 늘린다.
+GPU object 수는 예열 기준값을 유지하고 buffer capacity는 2MiB 이하로 제한한다. 원시 숫자 sample과 GPU 발행 renderer frame ID는
+`artifacts/hd2d-static-model/combat/run-*/report.json` 및 case JSON에 보존한다.
+GPU는 완료 query만 측정 frame ID와 연결하고 미측정 값을 0으로 채우지 않는다.
+
+`pnpm benchmark:hd2d-combat`는 1465×800/DPR 1에서 각 부하를 20초 예열 + 60초 측정 × 3회 실행한다.
+`FERRUM_BROWSER_EXECUTABLE`, `FERRUM_BROWSER_CHANNEL`, `FERRUM_COMBAT_HEADED=1`로 브라우저를 지정하고
+`FERRUM_COMBAT_WARMUP_MS`/`FERRUM_COMBAT_DURATION_MS`로 측정 시간을 조절할 수 있다.
+실제 기기 결과는 renderer 정보·해상도·DPR·Wasm SHA와 함께 보고한다. software renderer의 FPS는 실제 GPU
+성능 보증으로 사용하지 않는다. 게임 전용 에셋/AI/장기 생존·deterministic 전투 replay는 이 gate 밖이다.
+
+
+### HD-2D 다층 전투 AI 회귀
+
+`pnpm smoke:hd2d-combat`의 `navigationCases` 4조건(viewport 1280×720/390×844 × DPR 1/2)은
+packed public core/authoring과 실제 Wasm으로 8개 Chase source의 ramp→bridge 이동, 같은 XY 아래층 복귀,
+이동 중 checkpoint 저장/새 generation 복원/재탐색, pause, billboard 9개와 실제 draw·billboard 발 위치와 body elevation 일치를 검증한다.
+매 frame 검색≤1/work≤1,000,000, Rust update<250ms를 assert하며 CI의 기존 combat gate에서 실행한다.
+이 수치는 기능/작업 상한 검증이며 실게임 FPS 또는 GPU 성능 보증이 아니다.
+
+개별 실행은 최종 build 후 `FERRUM_COMBAT_ARTIFACT_PARENT=artifacts/hd2d-static-model/combat-navigation node tests/smoke/hd2d-combat-browser-smoke.mjs --navigation-only`다.
+Rust 회귀는 trigger/solid source, 양방향 wall mask, 층/연결 변경·길 없음 정지, target generation,
+64-agent 공정성·fixed substep 공통 예산·120Hz 렌더/60Hz 시뮬레이션에서 슬롯 편향 방지·외부 teleport 비용과 설정 원자성을 확인한다.
+기존 player spatial navigation과 탐험 저장/입력 gate도 함께 회귀 확인한다.
+
+
+### HD-2D 군중 회피 회귀
+
+기존 `smoke:hd2d-combat`/CI 전투 gate의 `crowdCases`4조건은 stopDistance8/16의8개 적이
+실제 다리/경사를 오르내리며 같은 floor·height에서 padding 포함 AABB 간격을 유지하는지 검사한다.
+각 종착에서 native stoppedAgents=8도 요구한다.
+checkpoint JSON 왕복·fresh generation·pause·실제 billboard 발 높이 일치와
+frameSearches≤1, frameWorkUnits≤1M, frameNeighborTests≤125K를 함께 assert한다.
+`node tests/smoke/hd2d-combat-browser-smoke.mjs --crowd-only`로 해당4조건을 실행할 수 있다.
+전체 gate는 기존 전투12+입력20+checkpoint4+prefab4+navigation4+crowd4+scheduler4+movement4=56조건이다.
+native 회귀는 중첩 spawn 탈출·다른 층/높이/mask·정면 교행·벽/경사·얇은 물체 sweep·
+최대64개 fixed substep 예산·서로 다른 정지 반경의 공유 gateway 도착을 검사한다.
+생성 순서 역전/가변 render delta의 fixed120Hz 왕복, 막힌 목표 중심의 도착 원, sparse peer corner의
+좁은 틈, 실제 shared edge를 벗어나는 raised-terrain 코너와 sub-ULP 중첩 이동 credit도 검사한다.
+큰 좌표의 실제 반경 안 도착·저속 credit 보존, 유효한 shared-edge upper 소유권과
+분할 trial/commit의 touching 간격(gap≥4)을 엄격히 검사한다.
+
+
+### HD-2D 대량 AI 탐색 회귀
+
+기존 CI `smoke:hd2d-combat`에 `schedulerCases`4 viewport/DPR 조건을 포함한다. 각 조건에서
+실제 우회 maze의 여러 slice 완료·pending checkpoint/fresh 복원·가상 pose 미누출과
+64개 적의 동일 목표 route 재사용60회 이상·실제 전원 도착·billboard/draw를 검사한다.
+정적 frameSearchWork≤262144, 전체 frameWork≤1M, peakSearchWork≤8M과 Rust update<250ms를 함께 assert한다.
+`node tests/smoke/hd2d-combat-browser-smoke.mjs --scheduler-only`로 해당 조건만 실행한다.
+기존 navigation gate의 searches+cacheHits가 층 변경 후 요청 수를 수용하는지도 검사한다.
+native 회귀는 긴 경로 완료, source/target/terrain 취소, 취소 owner의 기아 방지, 짧은 frame의 job 소유권,
+pause와 구형 설정 reset,64-agent 공정성 및 footprint 차이의 cache 거절을 포함한다.
+실제 browser 실패 배치에서 다리 입구의 정지한7개 peer를 우회할 때 support 경계 점·인접 ramp 점을
+사용해8개 모두 정지 반경에 도착하는지, padding 간격과 node/frame 예산을 유지하는지 검사한다.
+큰 collider offset의 half-open 경계 투영도 실제 center 재구성으로 검증한다.
+기존262K 초과/600K 이하 query 준비 요청의 admission 호환성도 native 회귀로 검사한다.
+
+
+### HD-2D SeekTarget·Accelerate 공간 이동 회귀
+
+기존 `smoke:hd2d-combat`/CI gate의 `movementCases`는 4 viewport/DPR 조건마다
+SeekTarget 4개·Accelerate 상행 4개·하행 4개를 별도 장면으로 실행한다.
+실제 경사/bridge gateway와 SeekTarget의 같은 XY 다른 floor 우회·정지 반경 도착,
+선택 peer padding·매 frame billboard 발 높이와 native elevation 일치를 검사한다.
+경사 위 이동 중 v9 JSON checkpoint를 저장해 fresh generation으로 위치/높이와 velocity를
+정확히 복원하고 cache 초기화·pause 동안 momentum 보존·resume 후 실제 도착을 요구한다.
+frameSearches≤1, 전체 frameWork≤1M, native Rust update<250ms도 함께 assert한다.
+`node tests/smoke/hd2d-combat-browser-smoke.mjs --movement-only`는 해당4조건만 실행한다.
+`--input-only`는 기존 입력/checkpoint/prefab/navigation/crowd/scheduler/movement에 action을 더한48조건이다.
+CI 시간 상한은 실기기 FPS 보증이 아니다.
+
+native 회귀는 turnRate0/.15/.25/1, 정확히0을 거치는 반전·벽 앞 회전 누적·한 step의
+도착 원 관통 clipping, Accelerate의 양방향 ramp/bridge·휴지 peer·64개 fixed substep 예산과
+예산 보류 시 velocity 보존·새 primary 기준 설정 원자성을 검사한다.
+
+### HD-2D melee·dash 액션 검증
+
+기존 `smoke:hd2d-combat`/CI gate의 `actionCases`는 4 viewport/DPR 조건마다 직교/원근 × melee/dash를 실행한다.
+실제 Wasm의 입력 melee 피해·다른 층/벽 차단, 키보드 dash의 ramp/bridge와 billboard 발 높이,
+타이머 피해/층 이동, JSON/fresh handle 복원과 cooldown·체력·높이 보존, 잘못된 cooldown 저장의 사전 거절,
+pause 동안 상태 고정과 입력 폐기를 검사한다. 단순 액션 카운터만으로 통과시키지 않는다.
+`node tests/smoke/hd2d-combat-browser-smoke.mjs --actions-only`는 이 4조건만 실행한다.
+
+native spawnPrefab 구현 단계의 회귀는
+`cargo test --manifest-path crates/ferrum-core/Cargo.toml spawn_prefabs`로 실행한다.
+실제 생성 개체의 이동·타이머 탄환·원본 제거·세대 재사용, floor/support/wall 거절, 독립 animation,
+그림자 예산·Chase 정지 거리/maxAgents, sparse prefab ID, native codec3 fresh restore/잘못된 상태의 원자적 거절을 검사한다.
+이 native 회귀와 별도로 아래 공개 semantic codec/packed browser spawn gate를 함께 실행한다.
+기본 gate에도 포함되며 CI는 `actions-*.png`와 전체 report를 업로드한다. Rust update250ms는 CI 상한이며 게임 성능 보장이 아니다.
+
+### HD-2D actor spawn 공개 회귀
+
+`smoke:hd2d-combat`/CI gate의 `spawnCases`는 4 viewport/DPR마다 직교/원근을 검사한다.
+원본 seed 제거 후 실제 키보드·timer 생성, native Chase 이동과 상층 floor/elevation,
+atlas billboard 발 높이·그림자 제출, 제거된 생성 발사자의 탄환 source serial을 검사한다.
+전체 v9 JSON/fresh handle 복원·잘못된 체력 상태의 사전 거절·pause 고정과 입력 폐기·재적용 정리를 요구한다.
+`node tests/smoke/hd2d-combat-browser-smoke.mjs --spawn-only`로 해당4조건만 실행한다.
+전체 gate는 기존60조건에 spawn4조건을 더한다. CI가 `spawn-*.png`와 전체 report를 업로드한다.
+복원 unit은 단일 프레임 legacy animation·최종 interaction upsert·raw pose/model yaw의 일치도 검사한다.
+Rust update250ms는 기능 회귀 CI 상한이며 실기기 GPU 시간이나 소비자 전투 성능 보장이 아니다.
+
+
+### HD-2D 탄환 animation·방향 회전
+
+`smoke:hd2d-combat`의 `visualCases`는 4 viewport/DPR에서 flat·직교/원근·각 pixelArt 모드 5개를 검사한다.
+실제 timer 발사·탄환별 독립 clock·동적 UV와 framebuffer atlas 색, 제출 quad의 투영 방향을 assert한다.
+비행 중 JSON v4를 새 handle/texture slot으로 복원한 후 framebuffer byte 차이0, pause freeze와 resume,
+잘못된 clock/playback presence/UV의 기존 scene 보존 및 재적용 cleanup을 검사한다.
+구형 Wasm 사전 거절은 public authoring/save 단위 회귀로 검증한다.
+`node tests/smoke/hd2d-combat-browser-smoke.mjs --visuals-only`는 해당4조건만 실행한다.
+CI 기본 gate가 함께 실행하며 `visuals-*.png`와 report.visualCases를 evidence로 업로드한다.
+Rust update250ms/render1000ms는 CI 작업량 상한이며 실기기 성능 보증은 아니다.
+
+
+### 공간 WebGPU geometry·GLB 모델·환경 효과와 fallback
+
+`pnpm smoke:spatial-webgpu`는 실제 canvas WebGPU와 WebGL2를 packed public API로 비교한다.
+가로1280×720/세로390×844·DPR1/2와 직교/원근에서 공유 depth, bridge 위/아래, alpha 구멍,
+picking·terrain upload0·fresh handle 복원 byte 차이0·제출 순서 역전을 assert한다.
+모델은 나무·바위·건물+동일 나무 2개로 4 instance/11 draw/132 triangles/instanced draw2를 검사하고,
+기본색·MASK·발광·mapped vertex stride·warm upload0·fresh restore/row reverse 픽셀을 확인한다.
+backend 간 채널3 허용·상이 pixel1% 미만과 cutout/raised actor의 필수 위치 픽셀을 함께 요구한다.
+GPU 오류·fallback으로 교체된 필수 WebGPU·adapter 미지원은 실패하며 skip하지 않는다.
+
+`pnpm smoke:spatial-webgpu-offscreen`은 같은 전체 조건을 실제 GPU의 별도 texture target으로 실행하며
+Linux CI validate와 smoke:check에 연결한다. test-only target adapter는 shader/queue/depth/texture/readback을
+대체하지 않으며 report.presentation은 offscreen이다. native canvas presentation 성공으로 해석하지 않는다.
+기본 명령의 report.presentation은 canvas이며 Windows 실제 GPU에서 별도 검증한다.
+`pnpm smoke:spatial-webgpu-fallback`은 선택 검사만 좁게 실행한다. bloom과 `linear-srgb` 요청을 context 전에 WebGL2로 연결하고 실제 bloom pass와 색 관리 모드가 유지되는지 검사한다.
+지원 point/sun 그림자 요구사항과 runtime 초기 문서는 WebGPU를 유지하는지도 별도 검사한다.
+잘못된 packet·typed-view 이동·resource budget과 GPU async upload 실패/rollback/pin/destroy는 웹 단위 회귀로 보강한다.
+환경 fixture는 ambient/4 point/sun·billboard/model normal·unlit·fog·grade·표준/고품질 DOF·actor focus·pixelArt·debug·복합 효과의
+16개 상태를 같은 가로/세로·DPR·투영 조합에서 비교한다. HUD magenta 불변, normal의 실제 빛 반응,
+DOF 13/25 sample 예산과 변화 픽셀, 160×90 HDR 저장량, warm terrain/model upload0, fresh restore 전체 byte 차이0을 assert한다.
+WebGPU warm draw 구간의 실제 createTexture/createBuffer/createBindGroup 호출을 별도로 관측해 모두0인지 검사한다. readback용 buffer 생성은 draw 구간 밖이다.
+비교에는 채널3/상이 pixel1% 미만, 전용 DOF 상태에는 0.1% 미만을 적용한다. DOF 기준은 sample Y 방향 역전을 검출한다.
+캡처는 PNG로 보존하고 raw framebuffer의 수명은 제한한다.
+`node tests/smoke/spatial-webgpu-browser-smoke.mjs --environment-only`로 환경 상태만 실행할 수 있다.
+HDR resize 동기 실패·비동기 GPU allocation 오류와 오래된 오류의 resize/disable/destroy 경쟁은 단위 회귀로 검사한다.
+report.json과 geometry/models/environment PNG를 CI evidence로 업로드한다. GPU 시간 예산은 측정하지 않는다.
+그림자 fixture는 point/sun 단독·동시·hard/PCF, model MASK의 실제 바닥 light hole, model cast와 terrain/model/billboard receive,
+벽과 다리의 높이 차폐·다리 아래 빛의 윗면 비조명, 카메라 밖 모델의 그림자, 그림자+debug와 DOF/normal/안개/색 보정 복합19상태를 비교한다.
+alpha patch/atlas 교체 뒤 cache miss, native caster revision에 따른 camera 변경 재계산, GPU normal-only 갱신의 cache 보존을 검사한다.
+각 상태 cold6/1/7 pass와 warm shadow draw/upload0·실제 buffer/texture/group 할당0, fresh JSON handle 복원 byte 차이0을 요구한다.
+GPU/GL 간 채널3·상이 pixel1% 미만을 적용하며 `report.shadowCases`와 shadow PNG에 증거를 남긴다.
+point/sun/동시 PCF는 각 backend에서 같은 hard 상태 대비 채널3을 초과하는 변화 pixel이100개보다 많아야 한다. 전체 화면 허용치 안에 묻히는 hard-only 회귀도 거절한다.
+`node tests/smoke/spatial-webgpu-browser-smoke.mjs --shadows-only`로 그림자19상태만 실행할 수 있다.
+단위 회귀는 native 면별 range·camera 밖 모델 mask·8-pass matrix offset과 receiver group, resize/disable/destroy·GPU async target/group 실패를 보강한다.
+abandoned encoder·main 인코딩 오류·resize 뒤 bind-group 오류 때 미제출 shadow map을 cache hit으로 오인하지 않는지도 검사한다.
+디버그 버퍼의 최초 할당·성장이 인코딩된 shadow caster buffer를 해제하지 않는지도 cold/warm·재계산 수명 회귀로 검사한다.

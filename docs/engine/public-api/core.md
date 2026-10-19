@@ -39,6 +39,11 @@ handle의 `variables`는 현재 문서에 선언된 Data Scene 변수만 읽고 
 동일 이름·동일 타입의 global 값을 유지하고 scene 값을 다음 문서의 default로 초기화한다. 검증 실패 시
 현재 document/result/variable store와 인자 없는 다음 reapply의 기준 문서는 마지막 성공 상태를 유지한다.
 
+`createRenderer(canvas, { preferred: "webgpu", spatial })`의 선택 공간 spec은 context 결정 전에
+지원 요구사항을 검사한다. `createFerrumRuntime({ dataScene })`는 초기 문서의 요구사항도 전달한다.
+미지원 요청·GPU 준비 오류는 WebGL2로 fallback하며, 이미 canvas가 연결된 뒤의 오류는 전파한다.
+공간 point/sun 그림자·normal·DOF를 포함한 지원 범위와 모델 preload는 [WebGPU 공간 경로](../data-scene-spatial.md#webgpu-공간-경로)를 따른다.
+
 ## 입력 액션과 context
 
 `InputManager`는 기존 `snapshot()` 외에 `keyBindings`, `actionProfile`,
@@ -871,6 +876,8 @@ v6 이하에 이 progress를 넣으면 거절한다. legacy v5·공간 v6 기본
 
 `SpatialModelPreparer`·`SpatialModelPreparation`은 모델 GPU 사전 준비의 opaque 자원/lease 계약이다.
 `WebGL2Renderer.prepareSpatialModels(assets)`는 uploadBytes·commit/dispose를 반환한다.
+`WebGPURenderer`는 먼저 `await preloadSpatialModels(assets)`로 GPU 오류까지 검증해야 한다.
+그 뒤 동기 `prepareSpatialModels(assets)`는 준비된 자원의 lease만 반환한다.
 authoring의 spatialModelPreparer 옵션으로 연결하며 실패 시 기존 씬을 유지한다.
 [지원 범위와 수명 계약](../data-scene-spatial.md#모델-gpu-준비-후-활성화)을 따른다.
 

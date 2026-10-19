@@ -319,7 +319,7 @@ optional `components.body: { type: "static" | "kinematic" | "dynamic", heightSpa
   actorId/actorGeneration=collector, sourceId/sourceGeneration=pickup, tokenId=item ID, payloadBits=count를 전달하고 entity를 한 번 제거한다. 모든 ID는 Data Scene에서
   게임이 정의하는 아이템이며 자동 점수 증가는 없다. 기존 Shooter는 점수 ID 1 전용 계약을 유지한다.
   `despawn: false`는 반복 지급 방지 상태를 제공하지 않으므로 거절한다.
-- `gameplay`를 명시한 문서는 interaction/pickup/timer와 변수 이벤트 처리 및 metadata 저장만 지원한다.
+- `gameplay.combat`을 생략하거나 false인 문서는 interaction/pickup/timer와 변수 이벤트 처리 및 metadata 저장만 지원한다.
   health/damage/faction/tags/lifetime/scoreReward는 기존 component 저장 계약을 따른다. chase/seekTarget/
   accelerate, projectile/dash/melee/spawn action 및 pickup 이외 collision reaction은 executor가 없으므로
   적용 전에 거절한다. 이 모드의 변수 이벤트 조건은 interaction/timer/pickupCollected로 한정한다.
@@ -521,7 +521,9 @@ reset/씬 전환 뒤 이전 apply 메타데이터로 모든 객체가 제거됐�
 진행 payload가 있으면 `restoreDataSceneAuthoringDocument: false`를 거절한다.
 `restoreDataSceneState: false`는 문서와 진행 복원 모두 건너뛴다.
 
-최신 지원 Data Scene state version은 `7`이며 바깥 GameStateSnapshot version은 `2`를 유지한다.
+최신 지원 Data Scene state version은 `9`이며 바깥 GameStateSnapshot version은 `2`를 유지한다.
+v8은 모델 회전·부모 연결/streaming/LOD 문서의 진행 계약이며, v9는 아래 전투 checkpoint를 추가한다.
+탐험 capture는 필요한 기존 v5/v6/v7/v8을 유지하고 과거 파일의 hash를 변경하지 않는다.
 공간 pose/camera capture는 v6, authored/runtime environment 진행이 있는 capture는 v7이며 일반 capture는 v5다.
 v7은 현재 조명·그림자·DOF·색 보정·안개의 `progress.spatial.environment`를 추가한다. null은 authored 효과 해제,
 생략은 authored 기본값 유지다. v6 이하에 이 environment progress를 넣으면 거절한다.
@@ -539,3 +541,449 @@ physics flag·animation·pose·camera 전체를 검증한 뒤 적용한다. 문�
 
 실행 검증: `pnpm smoke:data-scene-gameplay`. 실제 packed package의 `/core`와 `/authoring`만 사용해
 입력·수집·변수·navigation·실패 시 씬 보존·generation reset을 검증한다.
+
+
+## 선택적 HD-2D 전투 실행 (개발 소스)
+
+`gameplay: { primaryActor: "actor", combat: true }`로 Rust의 Data Scene 전투 실행을 켠다.
+`combat`은 optional boolean이며 기본값 false다. true는 같은 fragment의 `primaryActor`를 요구한다.
+배포된 탐험 전용 Wasm에는 이 실행기가 없다. 새 Wasm과 TS를 함께 사용해야 하며 미지원 runtime은
+activation/spawn 전에 거절된다. 기존 네 인자 native 설정 ABI는 유지하고, 전투는 별도의 v2 설정으로 전달한다.
+
+- `chase`/`seekTarget`/`accelerate`, health/damage/faction/lifetime과 기존 탐험 레시피를 실행한다.
+  health start=max, damage cooldown=0 등 기존 component 제약은 그대로다. AI는 직접 추적이며
+  기본 직접 추적의 공간 terrain step/drop 한도는 각각 1 world unit이다. 아래 `combatNavigation`을 켜면
+  Chase는 작성한 step/drop과 실제 층간 경로를 사용한다. 선택 `movementPatterns: "all"`은 SeekTarget과 Accelerate에도 공간 이동을 연결한다.
+- 적의 `projectileAction`은 `aim: "targetPlayer"`, `collisionTarget: "player"`를 사용한다.
+  `timerTrigger`의 action은 같은 entity에 등록된 targetPlayer projectile/dash, player melee 또는 spawnPrefab action을 가리켜야 한다.
+  전투에서 action이 연결된 timer는 `seconds` 간격으로 반복하며 substep/source당 최대 한 번 실행한다.
+  action 없는 이벤트 timer는 기존대로 한 번 발생한다.
+- 플레이어는 `primaryActor`에 `projectileAction`의 `aim: "input"`, `collisionTarget: "enemies"`를 작성한다.
+  두 값은 생략 시에도 input/enemies다. 동일 action ID를 `engine.setInputActionBinding`으로
+  `mouseLeft`/`space`/`enter`의 `pressed` 또는 `down`에 연결한다. substep당 최대 한 입력 공격을 실행한다.
+  `pressed`는 누르는 순간, `down`은 유지 중 cooldown 간격으로 발사한다. 입력 action을 timer에 연결하거나
+  primaryActor 외 개체에 작성하면 activation 전에 거절한다. 두 projectile 모드 모두 `tileImpact: "despawn"`만 지원한다.
+  melee/dash와 spawnPrefab은 아래 별도 기능 검사를 사용한다.
+  `engine.supportsDataSceneInputProjectiles()`는 별도 native v1 기능 검사를 수행하며 이전 combat Wasm에서는 false다.
+  입력 projectile 문서는 이 검사를 통과해야 적용된다. 기존 적 자동 사격 문서에는 이 새 기능을 요구하지 않는다.
+- 입력 좌표는 engine의 logical viewport 픽셀이다. 기본 renderer/InputManager 조합에서는 CSS 좌표를 그대로 사용하고
+  DPR을 곱하지 않는다. renderer viewport zoom이나 CSS transform을 적용했다면 `inputTransform`/input provider에서
+  `mouseX/Y * renderer.viewportSize().width/height / canvas.getBoundingClientRect().width/height`로 각각 변환한다.
+  Rust가 현재 viewport와 pixelArt letterbox/snap을 반영해 카메라 ray를 발사 높이 평면과 교차시킨다.
+  높이는 발사자 body의 `elevation + height / 2`와 billboard의 visual elevation 합이다. 전용 탄환의 상대 visual elevation도 이 조준 평면에 더한다. 탄환은 이 높이를 유지하는 수평 사격이다.
+  여백·화면 밖·유효하지 않은 교점에서는 발사와 cooldown 소비를 하지 않는다.
+- 피해, area damage, knockback, despawn, particle, sound, emit effect collision reaction을 실행한다.
+  `collisionParticle.presetId`는 `engine.setParticlePreset`으로 등록한다. 시뮬레이션은 Rust가 소유하며
+  동적 탄환·파티클은 공간 깊이와 발사/충돌 지점 높이를 공유한다. 탄환은 발사자의 atlas/frame을
+  작은 기본 quad로 사용한다. 선택적 전용 외형은 아래 `projectilePrefabs` 계약을 사용한다.
+- 한 장면의 authored entity는 모델 marker 포함 2048개, movement actor는 512개 이하로 검증한다.
+  동적 projectile은 최대 512개이며 기존 authored entity와 전체 capacity를 공유한다.
+- pause/complete는 AI·발사·수명·파티클을 멈춘다. reset/scene 교체는 동적 개체와 진단을 정리한다.
+- `engine.dataSceneCombatEnabled()`는 현재 활성 여부를 반환한다.
+  `engine.dataSceneCombatStats()`는 저빈도 진단용 복사본이며 구형 Wasm에서는 undefined다.
+  actors는 최근 step에서 처리한 주인공 외 movement 개체 수, projectiles는 생존 탄환 수다.
+  aiSteps/spawned/hits/kills/expired/capped/particlesSpawned는
+  재설정 이후 누적 uint32 포화 카운터다. capped는 실행 상한에 걸린 요청 수다.
+- 전투 저장은 아래 v9 checkpoint로 제공한다. 생성 actor는 아래 combat codec v3를 사용한다.
+
+### 생성 actor 프리팹 (개발 소스)
+
+`engine.supportsDataSceneSpawnPrefabs()`가 true인 Wasm에서 `gameplay.spawnPrefabs`를 사용한다.
+optional catalog는 최대256개이며 이름별 `{ prototypeInstanceId: "seed" }`를 작성한다.
+각 이름은 `ids.prefabs`의 고유 positive uint32 ID를 요구한다. sparse ID와 uint32 최댓값도 유지한다.
+`spawnPrefabAction.prefab`은 catalog 이름이며 별도 `prefabId`가 있으면 같은 ID여야 한다.
+일반 gameplay facade의 explicit ID 우선순위에는 이 Data Scene 계약을 적용하지 않는다.
+
+```json
+{
+  "gameplay": {
+    "combat": true,
+    "primaryActor": "player",
+    "spawnPrefabs": { "minion": { "prototypeInstanceId": "seed" } }
+  },
+  "ids": { "actions": { "summon": 77 }, "prefabs": { "minion": 100 } }
+}
+```
+
+같은 문서의 `player` 레시피에 `{ "kind": "spawnPrefabAction", "action": "summon", "prefab": "minion", "cooldownSeconds": 1, "offsetX": 32 }`를 추가한다.
+primaryActor는 같은 ID의 입력 binding으로 생성하고, 다른 개체도 같은 entity/action의 timer로 생성할 수 있다.
+원본은 applied fragment의 독립 inline static/kinematic actor다. attachment/model·dynamic body·joint·FSM·
+projectile override는 지원하지 않는다. 공간 body는 heightSpan을 함께 작성한다.
+원본 instance는 적용 후에도 일반 개체로 남는다. 숨겨진 정의 전용 instance를 자동 생성하거나 원본을 자동 제거하지 않는다.
+원하면 전체 문서 적용 후 첫 update 전에 `despawnPhysicsEntity`로 원본을 제거한다. native cold 정의는 이후에도 유지한다.
+
+sprite·개별 atlas/legacy 재생·체력·수명·충돌·faction/tag·이동·액션·타이머·변수 트리거를 이어받는다.
+primary marker는 새 개체에 복사하지 않는다. 원본 billboard/탄환 prefab과 Chase 정지 거리를 공유하며
+높이·보행면·벽/타일·maxAgents·그림자 예산을 생성 전에 검사한다. 실패하면 성공 이벤트·cooldown·serial을 추가하지 않는다.
+생성 actor 최대512개, 소유 기록1024개, 전체 World2048개다. melee/dash와 별도 action1M/frame·128시도 예산을 공유한다.
+
+전투 checkpoint v3는 `DataSceneCombatSpawnProgressSnapshot`으로 저장한다. 기존 outer snapshot v2 / nested Data Scene v9는 유지한다.
+`spawnedActors`에는 고정 이름 `prefab`, `serial`, `removed` 및 살아 있는 개체의 `state`를 기록한다.
+state에는 pose/velocity·체력·수명·타이머·cooldown·body/collider 활성·상호작용 소비·재생 시간/뒤집기·visualElevation·birth origin을 포함한다.
+`lastSpawnSerial`은 마지막 발급 번호이며 생성 기록이 비어도 보존한다. v3 탄환 `source`와 contact는
+`{ instanceId: "player" }` 또는 `{ spawnSerial: 1 }`을 사용한다. GPU slot이나 과거 World handle은 저장하지 않는다.
+제거된 생성 발사자는 살아 있는 탄환이 참조할 때만 기록을 남기며 contact는 살아 있는 두 개체만 허용한다.
+프리팹·상태·출처·관리 이동/그림자 한도는 씬 교체 전에 검증한다. 복원은 새로운 handle로 실행한다.
+기존 v1/v2의 `sourceInstanceId`와 문자열 contact 쌍, byte layout은 유지한다.
+직접 runtime 설정은 `DataSceneGameplayOptions.spawnPrefabs`에 `DataSceneSpawnPrefabBinding[]`을 전달한다.
+이 handle binding 자체를 JSON에 저장하는 API는 아니다.
+
+### Native melee·dash (개발 소스)
+
+`engine.supportsDataSceneCombatActions(): boolean`은 melee/dash 실행과 checkpoint를 제공하는
+native action v1 기능을 검사한다. 문서 적용과 저장·복원 전에 검사하며 구형 Wasm은 activation 전에 거절한다.
+새 authoring 필드 없이 기존 레시피를 사용한다.
+
+```json
+[
+  { "kind": "meleeAction", "action": "slash", "range": 24, "damage": 2, "cooldownSeconds": 0.5 },
+  { "kind": "dashAction", "action": "dash", "distance": 64, "cooldownSeconds": 0.8 }
+]
+```
+
+- `meleeAction.target` 기본값 `"enemies"`와 `dashAction.aim` 기본값 `"input"`은 primaryActor 전용이다.
+  `ids.actions`와 같은 ID로 `setInputActionBinding`의 pressed/down을 연결한다. 모든 입력 전투 액션은
+  작성 순서를 공유하며 substep당 최대 한 번 시도한다. 타이머는 `target: "player"` melee 또는
+  `aim: "targetPlayer"` dash를 실행한다. 같은 entity/action ID의 마지막 종류와 값이 유효하다.
+- melee는 물리 이동 뒤, 사망 제거 전에 범위 내 실제 collider의 원 겹침·상호 mask·floor/height·faction을 검사한다.
+  발사 개체는 enabled inline collider를 요구하고 공간 문서는 body.heightSpan도 작성해야 한다.
+  collider offset을 포함한 중심까지 WALL과 projectile 차단 지형의 시야를 검사한다.
+  지면 아래 표면을 장애물로 오인하지 않도록 겹치는 body 높이의 중간을 사용한다.
+  체력이 없는 장식은 건드리지 않으며 기존 피해·사망·gameplay event 경로를 공유한다.
+- dash는 부착되지 않은 enabled kinematic 단일 AABB와 회전0 instance를 요구한다. 공간 문서는
+  body.heightSpan도 필수다. WASD 방향을 우선하고, 방향 입력이 없으면 body midpoint + billboard elevation
+  평면의 현재 카메라 ray를 사용한다. 실제 native sweep으로 벽·층·경사·지면 단절을 검사한다.
+  공간 primary actor는 spatial.actor의 step/drop, 그 외에는 combatNavigation의 step/drop을 사용하며
+  둘 다 없으면 각각1이다. 긴 이동도 이 한도에 따라 중간에서 멈출 수 있다.
+- 평면 타일맵에서는 collider 중심 경로가 지나는 타일 경계를 계산하고 각 구간 내부와 경계를 검사한다.
+  높은 타일·지면 틈의 짧은 대각선 교차도 검사한다. 최대129개 경계 후보를 넘으면 이동 전에 거절한다.
+  공간 대시는 기존 terrain/gateway 이동을 재사용한다. 원래 velocity는 유지한다.
+- 별도의 outer update당 액션 예산1M work와 최대128회 melee/dash 시도를 사용한다.
+  collider와 타일 metadata 검사부터 비용을 예약하고, melee는 전체 후보 처리를 승인한 뒤 피해를 적용한다.
+  예산/용량 거절은 cooldown을 소비하지 않는다. 부분적으로 이동한 dash는 cooldown을 소비하고,
+  완전히 막힌 dash는 blocked placement를 보고한다. 기존 failure reason/진단 ABI를 유지하며
+  예산 거절도 기존 spawn queue full과 capped 카운터에 기록한다. navigation의1M 예산과는 별도다.
+- v9 checkpoint의 기존 actor cooldown·위치·높이·velocity·체력 필드를 재사용한다. pause 중 입력은 폐기하고,
+  restore 뒤 pending melee와 액션 예산은 초기화한다. 생성 actor의 추가 저장 계약은 아래 spawnPrefab 절을 따른다.
+
+```ts
+// 문서의 ids.actions.fire와 primaryActor projectileAction의 action: "fire"가 같은 ID를 사용한다.
+if (!engine.supportsDataSceneInputProjectiles()) throw new Error("입력 발사를 지원하는 엔진이 필요합니다");
+engine.setInputActionBinding(41, 0, { control: "mouseLeft", activation: "pressed" });
+engine.setInputActionBinding(41, 1, { control: "space", activation: "down" });
+```
+
+`pnpm smoke:hd2d-combat`는 공개 tarball의 실제 Wasm으로 배경 모델 216개 + 적 0/32/128개의
+AI 이동·반복 발사·명중·사망·파티클·pause·checkpoint 저장/복원·reset을 검증한다.
+동일 gate의 `inputCases`는 네 viewport/DPR에서 실제 브라우저 마우스·키보드 입력,
+직교/원근·픽셀 여백·논리 viewport 변환·resize 조준, 다른 층 제외·벽 차단·피해/사망·pause 입력 폐기를 검증한다.
+`pnpm benchmark:hd2d-combat`는 같은 fixture를 20초 예열 + 60초 측정 × 3회 실행한다.
+GPU 시간이 준비되지 않은 환경은 실제 기기 GPU 측정으로 인정하지 않는다.
+
+### 탄환 프리팹·외형 (개발 소스)
+
+`gameplay.projectilePrefabs`는 최대 256개 이름의 탄환 정의다. `combat: true`와
+`engine.supportsDataSceneProjectilePrefabs()`를 요구한다. 기존 문서는 이 기능을 요구하지 않으며
+기본 4×4/발사자 texture/atlas 표현을 유지한다. 해당 기능은 일반 `spawnPrefabAction` 실행과 별개다.
+
+```json
+{
+  "gameplay": {
+    "primaryActor": "actor",
+    "combat": true,
+    "projectilePrefabs": {
+      "spark": {
+        "sprite": { "texture": "spark-atlas", "width": 12, "height": 8,
+          "frame": { "u0": 0.5, "v0": 0, "u1": 0, "v1": 1 } },
+        "collider": { "halfWidth": 3, "halfHeight": 2 },
+        "billboard": { "unitsPerPixel": 0.75, "alphaCutoff": 0.2, "elevation": 5 },
+        "color": "#40c0ff"
+      }
+    }
+  },
+  "behaviorRecipes": {
+    "entities": {
+      "actor": { "recipes": [
+        { "kind": "projectileAction", "action": "fire", "projectilePrefab": "spark" }
+      ] }
+    }
+  }
+}
+```
+
+위 내용은 기존 문서의 해당 필드에 합친다. `ids.actions.fire`와 actor의 recipe binding은 기존 방식으로 작성한다.
+`projectile("spark-shot").prefab("spark")`도 weapon profile 컴파일 시 같은 참조를 만든다.
+
+- `sprite.texture`는 기존 texture asset 이름 또는 0..16777215의 숫자 slot이다. asset은 `textureId` apply 옵션이나
+  engine asset host에서 해석하며, 모든 참조를 scene activation 전에 확인한다. slot 상한은 공간 정점 f32에서 ID를 정확히 유지한다.
+- `sprite.width/height`와 AABB `collider.halfWidth/halfHeight`는 필수 양수다. sprite 크기는 pixel 단위,
+  collider 크기는 world unit이다. `unitsPerPixel`은 collider 크기를 바꾸지 않는다.
+- `frame` 생략 시 animation의 첫 frame이며, animation도 없으면 전체 UV다. 0..1 범위의 반전 endpoint로 flip을 표현하며, f32에서 면적이 0이 되면 거절한다.
+- `billboard`는 선택적이다. 기본값은 `unitsPerPixel: 1`, `alphaCutoff: 0.01`, `elevation: 0`이다.
+  elevation은 발사자의 billboard visual elevation에 더해지는 상대값이다. 물리 높이는 기존 source body midpoint를 유지한다.
+  입력 ray는 같은 visual elevation을 사용해 직교/원근·pixelArt/resize 조준을 유지한다.
+- `color`는 선택적 sRGB hex이며 기본 흰색이다. apply의 `colorManagement`와 renderer 설정을 일치시킨다.
+  sprite 크기·collider 반크기·unitsPerPixel은 최대 10000, 상대 elevation은 ±1000000이며 모두 유효한 f32여야 한다.
+- 최종 source/action binding은 최대 8192개다. 동일 source/action을 recipe에서 덮어쓰면 마지막 정의를 사용하고,
+  prefab 참조가 없는 마지막 정의는 기본 탄환으로 돌아간다. 다른 source가 같은 action ID를 사용해도 독립적이다.
+- `applyDataSceneAuthoringDocument`가 named ref를 수집하고 native batch로 전달한다. standalone gameplay command apply에
+  `projectilePrefab`을 전달하면 전체 문서 적용을 요구하며 거절한다. UI나 frame별 JS callback은 필요하지 않다.
+- 저수준 `configureDataSceneGameplay`는 숫자 texture로 준비한 `projectilePrefabs`와
+  `{ source: GameplayEntityHandle, actionId, prefab }[]`의 `projectileBindings`를 함께 받을 수 있다.
+  에셋 host가 있으면 이름도 해석한다. 성공한 재설정은 기존 탄환과 checkpoint metadata를 정리한다.
+- 이번 계약은 sprite/trigger AABB·중앙 pivot·camera-facing billboard다. 임의 collider·normal map·독립 shadow 설정은
+  포함하지 않으며, 지원하지 않는 prefab 필드는 사전에 거절한다. 피해·수명·속도·faction은 기존 action/source가 소유한다.
+
+`report.prefabCases`는 viewport/DPR 4조건에서 실제 정점의 UV·색상·크기·cutoff를 확인하고,
+비행 중 저장 후 asset slot을 바꿔 복원해 새 slot 렌더와 실제 피해를 확인한다.
+
+### 탄환 atlas animation·이동 방향 회전 (개발 소스)
+
+`supportsDataSceneProjectileVisuals()`가 true인 Wasm에서 선택적 `sprite.animation`과
+`rotateToVelocity`를 사용한다. 기존 정적 catalog는 이전 기능 검사와 codec v2/v3를 유지한다.
+
+```json
+{
+  "sprite": {
+    "texture": "bolt-atlas", "width": 24, "height": 8,
+    "animation": { "fps": 6, "loop": true, "frames": [
+      { "u0": 0, "v0": 0, "u1": 0.5, "v1": 1 },
+      { "u0": 1, "v0": 0, "u1": 0.5, "v1": 1 }
+    ] }
+  },
+  "rotateToVelocity": true,
+  "collider": { "halfWidth": 2, "halfHeight": 1 }
+}
+```
+
+위 객체는 `gameplay.projectilePrefabs`의 한 정의다. animation은 1..32 frame, fps 0.001..1000,
+선택적 boolean `loop`(기본 true)를 받는다. UV는 0..1이며 반전 endpoint를 허용한다.
+함께 지정한 `sprite.frame`은 animation의 첫 frame과 f32 값이 같아야 한다.
+각 탄환의 시계는 0에서 독립적으로 시작하며, one-shot은 마지막 frame에서 멈춘다.
+immutable clip은 native에서 공유하고 시간·pause·flip은 기존 Rust sprite playback이 소유한다.
+
+`rotateToVelocity`는 기본 false다. 켜면 sprite의 local +X를 **현재 화면에 투영한 속도 방향**에 맞춘다.
+평면 groundYScale, 직교/원근·pixelArt camera를 반영하며 카메라 변경 후에도 다시 계산한다.
+정지하거나 투영이 퇴화하면 회전0을 사용한다. 회전은 render command에만 적용하므로
+physics pose/속도·AABB·피해 판정은 바꾸지 않는다. 사용자 회전 offset은 제공하지 않는다.
+
+해당 필드가 하나라도 활성화된 catalog는 combat progress **v4**를 선택한다. 각 projectile은
+`animation: { elapsedSeconds, paused, flipX, flipY }`를 저장하며 정적·회전 전용·기본 탄환은 `null`이다.
+clock·UV·정의가 일치해야 하며, 무한/음수/clip 밖 시간이나 잘못된 playback presence는 기존 씬 교체 전에 거절한다.
+v4의 source/contact는 v3와 같은 `{ instanceId } | { spawnSerial }`을 사용한다.
+actor catalog가 없으면 `spawnedActors: []`, `lastSpawnSerial: 0`이다. catalog가 있으면 v3의 생성·제거 source 계약을 유지한다.
+회전 각도는 저장하지 않고 복원된 속도와 현재 camera에서 계산한다. texture slot과 native handle은 저장하지 않는다.
+
+이 기능은 별도 visual capability v1·최대 combat codec4·cold gameplay v8 설정을 함께 요구한다.
+구형 build는 apply/assets/save/restore 전에 거절한다. TS와 Wasm을 함께 업데이트한다.
+바깥 snapshot v2/nested Data Scene v9, 기존 numeric codec1/2/3와 15-float flat/spatial render ABI는 유지한다.
+`report.visualCases`는 실제 화면의 atlas 색·투영 회전·각 탄환 시계, fresh handle/texture remap 복원 픽셀 일치와 pause를 검사한다.
+
+### 전투 checkpoint 저장·복원 (개발 소스)
+
+`engine.supportsDataSceneCombatProgress()`는 native codec v1/v2/v3/v4를 검사한다. 이전 자동/입력 사격 Wasm에서는
+false이며 전투 capture/restore를 변경 전에 거절한다. TS와 Wasm을 함께 최신화한다.
+
+```ts
+import { captureGameStateSnapshot, stringifyGameStateSnapshot, parseGameStateSnapshot, restoreGameStateSnapshot } from "@ferrum2d/ferrum-web/core";
+
+const checkpoint = captureGameStateSnapshot(engine, {
+  includeDataSceneState: true,
+  includeDataSceneProgress: true,
+  dataSceneAuthoringDocument: document,
+});
+const json = stringifyGameStateSnapshot(checkpoint);
+restoreGameStateSnapshot(engine, parseGameStateSnapshot(json), {
+  dataSceneAuthoringApplyOptions: { spatialModelPreparer: renderer },
+});
+```
+
+전투 문서는 `includeDataSceneProgress`와 전체 기본 authoring apply 문서가 필요하다. nested Data Scene v9의
+`progress.combat`은 `version`, `actors`, `projectiles`, `contacts`를 갖는다. 기본 탄환은 version 1이며,
+정적 projectile prefab catalog는 version 2, actor catalog는 version 3, 탄환 animation/회전 catalog는 version 4다. 바깥 snapshot version 2/nested Data Scene v9는 유지한다. 탐험 문서에 combat payload를 넣거나
+v8 이하 전투 저장·진행 없는 전투 저장을 전달하면 거절한다. 별도의 `physicsWorld` snapshot과 결합하지 않는다.
+
+- `actors`: 살아 있는 authored instance의 고정 ID, pose/heightSpan/회전·선형/각속도, 체력·남은 수명,
+  timer ID/남은 시간/fired, action ID별 cooldown, collision reaction 슬롯별 cooldown을 저장한다.
+  제거 상태·상호작용 consumed·animationSet·공간 카메라/환경·선언 변수는 기존 progress/custom 경로를 함께 사용한다.
+  부모에 연결된 자식 pose는 저장하지 않고 authored 부모 관계에서 계산한다.
+- `projectiles`: 발사자의 고정 ID, 위치/속도/높이, 남은 수명·피해·collision target, atlas UV,
+  sprite/AABB 크기·billboard 선명도/시각 높이·faction을 저장한다. version 2의 전용 탄환은 `prefab` 이름도 저장하며
+  크기·UV·collider·선명도는 원문의 정의와 일치해야 한다. texture와 색상은 복원한 catalog에서 해석한다.
+  JSON에는 native handle이나 texture slot을 담지 않는다. 발사자가 이미 제거됐어도 원래 ID를 사용하고,
+  복원 시 새 authored sprite 또는 prefab catalog의 texture slot을 확보한 뒤 제거 상태와 탄환을 복원한다.
+- `contacts`: 이전 step에서 접촉한 살아 있는 authored ID 쌍을 보존한다. 복원 직후 enter-only 효과를 다시 발생시키지 않는다.
+- inline static/kinematic body를 지원한다. dynamic body·joint·FSM, authored 외 추가 개체,
+  저장 형식이 다루지 않는 정적 레시피/콜라이더/시각 정의 변경은 capture를 거절한다.
+  `configureDataSceneGameplay`로 실행 구성을 다시 설정하면 저장 metadata를 무효화하므로 문서 전체를 재적용한다.
+  체력/수명/timer/cooldown의 존재·범위·ID/슬롯을 원문 레시피와 대조하고 native가 전체 batch를 검사한 뒤 적용한다.
+- 입력 상태/latch, fixed-step accumulator, route, collision 진단, 파티클/RNG·tween·audio/effect/event buffer,
+  누적 전투 통계는 재설정한다. runtime fixed-step 설정은 유지하며 프레임 단위 deterministic replay 계약은 아니다.
+  `playing`/`paused`/`levelComplete`는 기존 lifecycle 저장을 따른다. legacy strip animation 재생 시각은 저장하지 않는다.
+
+새 engine에서는 모델/텍스처와 particle preset을 먼저 준비하고 입력 binding을 다시 설치한다.
+입력 관리자에서 누른 상태가 남았다면 `input.clear()` 후 재개한다.
+authoring 전체 적용 및 사용자 custom callback 전체의 rollback 계약은 기존과 같다.
+전투 actor/projectile 전체는 최대 2048개, 생존 projectile은 512개, contact는 4096쌍이며 capacity 초과를 거절한다.
+
+`smoke:hd2d-combat`는 기존 부하 12조건에서 JSON roundtrip 후 저장 상태 일치를 검증한다.
+같은 gate의 `checkpointCases`는 viewport/DPR 4조건에서 비행 중 탄환을 저장하고 새 generation으로 복원해
+실제 피해가 이어지는지, 잘못된 체력 payload가 기존 장면을 보존하며 거절되는지 확인한다.
+
+
+### 다층 전투 AI 길찾기 (개발 소스)
+
+`gameplay.combatNavigation`을 선언하면 combat의 `chase`가 기존 공간 지형과 `spatial.connections`를 따라 이동한다.
+`combat: true`, `primaryActor`, spatial terrain/카메라와 `engine.supportsDataSceneCombatNavigation()`을 요구한다.
+설정을 생략한 장면은 기존 직접 추적을 유지한다. `movementPatterns` 생략 또는 `"chase"`는 Chase만 관리한다.
+`"all"`은 아래 계약에 따라 `seekTarget`·`accelerate`도 관리하며 별도 native 기능 검사를 요구한다.
+
+```json
+{
+  "gameplay": {
+    "primaryActor": "actor",
+    "combat": true,
+    "combatNavigation": {
+      "cellSize": 8,
+      "maxStepHeight": 8,
+      "maxDropHeight": 40,
+      "repathIntervalSeconds": 0.5,
+      "arrivalRadius": 4,
+      "maxAgents": 32
+    }
+  }
+}
+```
+
+각 필드는 생략 시 위 기본값이다. cellSize는 0 초과~4096, step/drop은 0~65536,
+repath는 0.05~60초, radius는 0~4096, maxAgents는 정수 1~64이며 모두 f32로 표현 가능해야 한다.
+cellSize는 지도 크기와 경사에 맞춰 정한다. cellSize를 과도하게 줄이면 4096개 grid node(별도 출발/도착 node 2개) 또는 작업 예산에 걸릴 수 있다.
+경사에서 한 cell을 이동할 수 있도록 maxStepHeight/maxDropHeight도 함께 지정한다.
+
+- 추적 source는 primaryActor를 제외한 활성 inline kinematic body + heightSpan + 단일 enabled AABB다.
+  trigger AABB도 허용한다. attachment source는 거절하며 모든 authored Chase 수를 maxAgents가 수용해야 한다.
+- primaryActor/명시적 target은 inline heightSpan body가 필요하다. nearest layer/faction/tag는 heightSpan이 있는
+  실제 entity를 고르며 자기 자신을 제외한다. 최근접 거리는 평면 좌표와 elevation을 함께 사용한다.
+- 같은 XY의 다른 층도 실제 connection을 통해 이동한다. source/target generation·floor·지형 연결 변경,
+  외부 위치 수정·동적 벽으로 막힌 경우는 캐시를 취소하거나 다시 탐색한다. 벽은 WALL category와 양방향
+  collision mask·height를 함께 적용한다. 선택적 군중 회피는 아래 설정을 따른다.
+- outer update당 A* slice 또는 군중 보강 검색 1회, 전체 agent의 검색/준비/이동에 1,000,000 work를 허용한다.
+  정적 경로는 slice 목표262,144·요청 전체8,000,000 work로 프레임을 나눠 탐색한다.
+  큰 query 준비 또는 분할할 수 없는 단일 edge에는 기존600,000 slice 상한을 유지한다. 선택적 군중 보강은 기존600,000 상한이다.
+  fixed substep도 이 예산을 공유한다. round robin으로 처리하며 경로 실패·예산 보류 시 멈춘다.
+  계단을 직접 가로지르는 fallback은 없다. 큰 장면은 지형 분할/적 수/cellSize를 함께 조정한다.
+- target이 이동하면 repath 간격 이후 경로를 갱신한다. 이 간격은 최소 재시도 대기 시간이며, agent 수와 공유 예산에 따라 더 늦어질 수 있다. target generation/floor 변경은 즉시 기존 경로를 취소한다.
+  pause는 경로 진행/재탐색 시간을 멈추며, checkpoint는 기존 v9 형식의 authoring과 위치/높이를 복원한 뒤 새 경로를 만든다.
+  캐시·탐색 순서·진단은 저장하지 않으므로 동일 프레임 replay를 보장하지 않는다.
+
+`engine.dataSceneCombatNavigationStats()`는 enabled/agents/moving/waitingOrBlocked,
+searches/failed/deferred, frameSearches/frameWorkUnits와 최근 request status/nodes/probes의 복사본이다.
+status는 기존 spatial request의 0~8 code이며, deferred는 agent-step별 보류 누계다.
+work unit은 보수적인 CPU 탐색·충돌 비용 단위로 GPU 시간이나 ms가 아니다.
+이 진단은 구형 Wasm에서 undefined다. 기능을 사용하는 문서는 구형 Wasm에서 apply/restore 전에 거절한다.
+
+
+### SeekTarget·Accelerate 공간 이동 (개발 소스)
+
+`combatNavigation.movementPatterns: "all"`을 선언하면 primaryActor를 제외한 유효한 최종
+Chase/SeekTarget/Accelerate 전체가 같은 최대 agent 수와 outer frame 작업 예산을 공유한다.
+생략/`"chase"`는 종전 설정·소유권을 유지한다. 새 모드는
+`engine.supportsDataSceneCombatMovement()`가 true인 Wasm을 요구하며, 구형 build는 문서 적용과
+checkpoint capture/restore 전에 거절한다. source는 모두 inline kinematic 단일 enabled AABB와
+heightSpan을 가져야 하며 attachment/소유 탄환은 지원하지 않는다. 최대64개다.
+
+- SeekTarget은 기존 target query로 목표를 정하고 공유 A* route의 waypoint로 방향을 계산한다.
+  `turnRate`는 기존과 같이 매 simulation substep의 0~1 보간 계수이며 초당 회전 각도가 아니다.
+  0은 이전 velocity를 유지하고, 정지 상태에서는 출발하지 않는다. 1은 즉시 방향을 맞춘다.
+  계산된 0 속도나 벽에서 거절된 방향도 다음 substep에 이어져 반전·회전이 누적된다.
+  실제 이동은 native 벽/heightSpan/양방향 mask·보행면·층간 gateway 검사를 통과해야 한다.
+  작은 중간 waypoint는 검증된 다음 edge로 진행할 수 있으며 최종 목표의 같은 support에서만
+  arrivalRadius에 정지한다. 한 step이 도착 원을 관통해도 최초 진입에서 자른다.
+- SeekTarget은 공통 `arrivalRadius`를 사용한다. `chase.stopDistance` 바인딩은 Chase 전용이다.
+  `crowdAvoidance`를 켜면 세 이동 패턴 모두 같은 peer AABB·padding 검사를 받는다.
+- Accelerate는 이전 velocity에 `accelerationX/Y`를 매 simulation substep 더하고 `maxSpeed`로 제한한다.
+  기존과 같이 가속 값은 초당 단위가 아니다. 방향을 계획하거나 목표를 자동 탐색하지 않으며,
+  해당 velocity로 작성한 step/drop과 실제 층 연결을 따라 이동한다. 막힌 경우 통과하지 않고
+  이동 의도를 유지한다. 별도 A* 검색 token은 소비하지 않으나 준비/충돌/이동 work는 공유한다.
+- 예산 전에 보류된 source는 기존 velocity를 보존한다. 실제 이동은 native가 한 번만 적분한다.
+  pause는 pose와 velocity 모두 유지한다. 기존 v9 checkpoint는 authoring 모드·실제 위치/높이와
+  velocity를 저장하고 fresh handle로 복원하며 경로/job/cache는 다시 만든다. 동일 frame replay는 보장하지 않는다.
+
+새 native v6 설정은 기존 v5 buffer에 mode flag를 추가하며 모든 source/설정을 검증한 뒤 적용한다.
+기존 v4/v5·navigation13u32/crowd7u32/scheduler10u32 진단·공간/render ABI와 저장 버전은 유지한다.
+
+### 공유 경로·프레임 분할 탐색 (개발 소스)
+
+combatNavigation의 정적 A*는 한 개의 scene 소유 job으로 이어서 실행한다. 노드 생성·heap·현재 edge 진행을
+유지하고 매 slice가 끝날 때 transform/heightSpan/velocity와 query scratch를 복원한다. 4096 grid node,
+32768 probe 상한은 유지한다. 기본 slice에서 진전이 없는 단일 edge는 기존600K slice로 한 번 확대한다. 이 상한에도 들어가지 않으면
+무한 대기 대신 frame-budget 실패로 거절한다. work unit 상한은 wall-clock 시간 보증이 아니다.
+
+같은 target generation/goal pose·높이·source AABB/offset/mask/height·cell/radius/step/drop·terrain revision의
+정적 경로를 최대8개 공유한다. 같은 support에서 2cell 이내 경로 진입점을 native sweep으로 검증한 뒤
+복사하며, 이후 edge도 follower가 실제 벽/높이를 다시 검사한다. 동적 벽으로 막히면 공유 캐시를 비운다.
+군중 보강 경로는 공유하지 않는다. 경계 밖 peer corner에는 같은 floor의 경계 안 점과
+명시적 connection으로 연결된 인접 보행면의 원래 corner를 최대8개/peer로 추가한다. 전체4096 node와
+600K 보강 예산을 유지하며, 두 지점 사이도 native gateway/peer sweep을 통과해야 한다. 처리 순서는 실제 simulation outer frame에서만 순환하며,
+취소된 job의 owner는 같은 순회에서 즉시 재시작하지 않아 다른 source에게 차례를 준다.
+
+pending 중 같은 층 target의 XY 이동은 현재 요청의 목표로 합쳐 처리하고 완료 후 repath 간격에 따라 갱신한다.
+target generation/floor/height, source pose/footprint/speed, terrain revision 변경은 job을 취소한다.
+pause는 job도 정지한다. checkpoint는 authoring/실제 pose만 저장하며 pending job·공유 경로·진단은
+저장하지 않고 fresh handle로 다시 탐색한다. v4/v5 설정과 기존13u32 navigation 진단은 유지한다.
+
+`supportsDataSceneCombatNavigationScheduler()`와 `dataSceneCombatNavigationSchedulerStats()`를 추가했다.
+후자는 enabled/pendingSearches/cachedRoutes/cacheHits/searchSlices/yieldedSlices/cancelledSearches,
+frameSearchWorkUnits/peakSearchWorkUnits의 복사본이며 구형 Wasm에서는 undefined다. 별도 version1의
+10u32 ABI를 사용한다. pending slice는 실패로 세지 않고 기존 lastRequestStatus는0이다.
+기존 searches는 시작한 요청 수, frameSearches는 해당 outer의 검색 slice/보강 횟수다.
+
+### 군중 회피·적별 정지 거리 (개발 소스)
+
+`combatNavigation.crowdAvoidance: { padding: 0.25 }`를 추가하면 관리 중인 최대64개 source(기본 Chase, all 모드에서는 SeekTarget/Accelerate 포함)가
+같은 층·겹치는 높이와 양방향 충돌 mask를 확인해 서로의 AABB를 피한다. padding 기본값은0이며
+0~4096의 유한한 f32 값이다. 설정을 생략하면 기존 겹침 동작을 유지한다.
+기존 `chase.stopDistance`(0~4096)를 개체별 도착 반경으로 사용하며, 목표와 같은 층·보행면에서만
+정지한다. 거리 기준은 entity transform의 XY다. 시야/공격 가능 여부를 판정하는 기능은 아니다.
+
+```json
+{
+  "gameplay": {
+    "primaryActor": "actor", "combat": true,
+    "combatNavigation": { "crowdAvoidance": { "padding": 0.25 } }
+  },
+  "behaviorRecipes": {
+    "entities": {
+      "archer": { "recipes": [{ "kind": "chase", "speed": 64, "stopDistance": 24 }] }
+    }
+  }
+}
+```
+
+- crowd 문서는 모든 유효 Chase의 stopDistance를 사용한다. crowd가 없으면 양수 stopDistance만 개별
+  반경으로 지정하고 나머지는 기존 `arrivalRadius`를 사용한다. 모두0인 기존 문서의 도착 동작은 유지한다.
+  원문 recipe를 전체 Data Scene에 적용해야 한다. standalone movement setter는 여전히0만 받는다.
+- 매 follower substep에 최대8개 방향 후보를 native 벽·보행면·step/drop·층간 gateway sweep으로
+  시험한다. peer lookahead는 같은 평탄한 보행면에서만 적용해 층 전환 너머의 높이를 오인하지 않는다.
+  겹친 spawn은 점진적으로 빠져나오며, 정지한 적을 강제로 밀지는 않는다.
+  중간 경로점은 같은 보행면 또는 연결된 인접 보행면의 한 cell 이내에서 다음 점으로 진행할 수 있다.
+  다음 점까지 전체 native sweep이 통과해야 하므로 벽의 필수 코너는 보존한다. 최종 정지 거리는 유지한다.
+- 최초/목표 변경은 기존 지형 경로를 계산한다. crowd는 repath 간격마다 현재 peer를 피하는 경로로
+  보강한다. peer AABB 모서리와 도착 원의 보조 node를 기존4096 node/작업 상한 안에 추가해
+  큰 grid 사이의 좁은 틈도 표현한다. 보강 탐색이 실패해도 같은 목표의 유효한 기존 경로는 유지하며
+  실제 이동은 매번 crowd sweep을 통과한다. 목표·층·지형이 바뀐 기존 경로는 취소한다.
+- 목표 중심 자체가 막혀 있어도 같은 보행면의 도착 반경에 들어가는 지점을 탐색할 수 있다.
+  이동 선분이 도착 원에 진입할 때 prefix를 잘라 거리 오차를 줄인다. 층 진입 시 이미 반경 안이거나
+  저장/외부 배치가 반경 안이면 그 위치에서 멈춘다. 큰 f32 좌표에서 이상적인 경계점을 표현할 수 없으면
+  실제로 표현 가능한 반경 안 점을 사용하며, 반경 밖 위치를 도착으로 처리하지 않는다.
+  시야나 공격 line-of-sight 계약은 아니다.
+- 기존 outer update 전체1M work를 공유하며 neighbor 검사도 비용에 포함한다. 좁은 입구/서로 막는 적은
+  기다릴 수 있다. 전역 군중 최적화나 모든 배치의 도착 시간을 보장하는 solver는 아니다.
+- 새 `supportsDataSceneCombatCrowd()`가 true여야 새 설정·저장 복원이 가능하다.
+  `dataSceneCombatCrowdStats()`는 enabled, stoppedAgents, yieldedMoves, neighborTests,
+  frameNeighborTests, frameAvoidanceMoves를 반환한다. 두 누계는 reset/configure/restore 때 초기화된다.
+  기존 navigation 진단 ABI와 checkpoint v9는 유지하며, 원문 설정과 fresh handle을 복원한 뒤 재탐색한다.
+
+저수준 `DataSceneGameplayOptions.chaseBindings`는 generation-safe source/stopDistance를 받는
+cold 설정이다. 전체 문서는 이를 자동 생성한다. 중복 source·잘못된 거리·stale/primary/탄환 source는
+원자적 native batch 적용 전에 거절한다. render ABI와 프레임별 JS/Wasm 호출 수는 바뀌지 않는다.
