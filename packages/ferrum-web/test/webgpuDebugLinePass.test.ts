@@ -123,9 +123,10 @@ class FakeGpuCanvasContext {
 test("WebGpuDebugLinePass writes camera-relative line vertices without allocating upload views", () => {
   installWebGpuGlobals();
   const device = new FakeGpuDevice();
+  const context = new FakeGpuCanvasContext();
   const pass = new WebGpuDebugLinePass(
     device as unknown as GPUDevice,
-    new FakeGpuCanvasContext() as unknown as GPUCanvasContext,
+    () => (context as unknown as GPUCanvasContext).getCurrentTexture(),
     "rgba8unorm",
     {} as GPUPipelineLayout,
     {} as GPUBindGroup,
@@ -158,9 +159,10 @@ test("WebGpuDebugLinePass writes camera-relative line vertices without allocatin
 test("WebGpuDebugLinePass grows vertex buffers by destroying the previous buffer", () => {
   installWebGpuGlobals();
   const device = new FakeGpuDevice();
+  const context = new FakeGpuCanvasContext();
   const pass = new WebGpuDebugLinePass(
     device as unknown as GPUDevice,
-    new FakeGpuCanvasContext() as unknown as GPUCanvasContext,
+    () => (context as unknown as GPUCanvasContext).getCurrentTexture(),
     "rgba8unorm",
     {} as GPUPipelineLayout,
     {} as GPUBindGroup,
@@ -186,9 +188,10 @@ test("WebGpuDebugLinePass grows vertex buffers by destroying the previous buffer
 test("WebGpuDebugLinePass skips empty debug buffers and destroys owned buffers", () => {
   installWebGpuGlobals();
   const device = new FakeGpuDevice();
+  const context = new FakeGpuCanvasContext();
   const pass = new WebGpuDebugLinePass(
     device as unknown as GPUDevice,
-    new FakeGpuCanvasContext() as unknown as GPUCanvasContext,
+    () => (context as unknown as GPUCanvasContext).getCurrentTexture(),
     "rgba8unorm",
     {} as GPUPipelineLayout,
     {} as GPUBindGroup,

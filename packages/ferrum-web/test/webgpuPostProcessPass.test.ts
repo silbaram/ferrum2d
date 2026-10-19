@@ -121,9 +121,10 @@ test("resolveWebGpuPostProcessPasses accepts fade passes and rejects unsupported
 test("WebGpuPostProcessPass draws only visible fade passes", () => {
   installWebGpuGlobals();
   const device = new FakeGpuDevice();
+  const context = new FakeGpuCanvasContext();
   const pass = new WebGpuPostProcessPass(
     device as unknown as GPUDevice,
-    new FakeGpuCanvasContext() as unknown as GPUCanvasContext,
+    () => (context as unknown as GPUCanvasContext).getCurrentTexture(),
     "rgba8unorm",
   );
 

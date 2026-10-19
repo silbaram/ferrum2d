@@ -211,3 +211,12 @@ function installWebGpuGlobals(): void {
     RENDER_ATTACHMENT: 16,
   };
 }
+
+test("WebGPU shadow texture revisions change on replace and alpha patch but failed patches and eviction cannot reuse an old revision",()=>{
+ const {store}=createTextureStore(),terrain=new PixelMaskTerrain({width:2,height:2,data:[255,255,255,255]});
+ equal(store.textureRevision(7),undefined);store.createPixelMaskTerrainTexture(7,terrain);const first=store.textureRevision(7)!;
+ store.updatePixelMaskTerrainTexture(7,{rect:{x:0,y:0,width:1,height:1},alpha:new Uint8Array([0])});const patched=store.textureRevision(7)!;ok(patched>first);
+ throwsWithMessage(()=>store.updatePixelMaskTerrainTexture(7,{rect:{x:2,y:0,width:1,height:1},alpha:new Uint8Array([0])}),/bounds/);equal(store.textureRevision(7),patched);
+ store.createPixelMaskTerrainTexture(7,terrain);const replaced=store.textureRevision(7)!;ok(replaced>patched);store.evictTexture(7);equal(store.textureRevision(7),undefined);
+ store.createPixelMaskTerrainTexture(7,terrain);ok(store.textureRevision(7)!>replaced);store.destroy();equal(store.textureRevision(7),undefined);
+});

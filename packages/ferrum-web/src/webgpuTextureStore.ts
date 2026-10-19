@@ -1,6 +1,6 @@
 import { textureLoadAbortError } from "./ktx2Texture.js";
 import { resolveTextureColorSpace } from "./colorManagement.js";
-import type { TextureLoadOptions } from "./colorManagement.js";
+import type { TextureLoadOptions, TextureColorSpace } from "./colorManagement.js";
 import type {
   PixelMaskTerrain,
   PixelMaskTerrainAlphaPatch,
@@ -13,6 +13,8 @@ export interface WebGpuTextureResource {
   bindGroup: GPUBindGroup;
   width: number;
   height: number;
+  colorSpace: TextureColorSpace;
+  revision: number;
 }
 
 export interface WebGpuTextureWriteBytes {
@@ -29,6 +31,7 @@ export class WebGpuTextureStore {
   private readonly pendingLoads = new Set<AbortController>();
   private readonly pendingIds = new Map<number, AbortController>();
   private destroyed = false;
+  private revision = 0;
 
   constructor(
     private readonly device: GPUDevice,
@@ -62,7 +65,7 @@ export class WebGpuTextureStore {
       const bitmap = await this.loadImageBitmap(url, options, controller.signal);
       try {
         if (this.destroyed || controller.signal.aborted) throw textureLoadAbortError();
-        return this.createTextureFromSource(textureId, bitmap);
+        return this.createTextureFromSource(textureId, bitmap, resolveTextureColorSpace(options));
       } finally { bitmap.close(); }
     } catch (error) {
       if (this.destroyed || controller.signal.aborted) throw textureLoadAbortError();
@@ -117,6 +120,7 @@ export class WebGpuTextureStore {
       { bytesPerRow: upload.bytesPerRow, rowsPerImage: upload.rowsPerImage },
       { width: patch.rect.width, height: patch.rect.height, depthOrArrayLayers: 1 },
     );
+    resource.revision = ++this.revision;
   }
 
   createPlaceholderTextureForId(textureId: number): void {
@@ -139,6 +143,8 @@ export class WebGpuTextureStore {
     this.texturesById.delete(textureId);
     return true;
   }
+
+  textureRevision(textureId: number): number | undefined { return this.texturesById.get(textureId)?.revision; }
 
   resource(textureId: number): WebGpuTextureResource {
     this.assertAlive();
@@ -175,7 +181,7 @@ export class WebGpuTextureStore {
       : await createImageBitmap(blob, { colorSpaceConversion: "none", premultiplyAlpha: "none" });
   }
 
-  private createTextureFromSource(textureId: number | undefined, source: ImageBitmap): GPUTexture {
+  private createTextureFromSource(textureId: number | undefined, source: ImageBitmap, colorSpace: TextureColorSpace): GPUTexture {
     const texture = this.device.createTexture({
       size: { width: source.width, height: source.height, depthOrArrayLayers: 1 },
       format: "rgba8unorm",
@@ -190,7 +196,7 @@ export class WebGpuTextureStore {
       this.textures.add(texture);
       return texture;
     }
-    this.setTexture(textureId, this.createTextureResource(texture, source.width, source.height));
+    this.setTexture(textureId, this.createTextureResource(texture, source.width, source.height, colorSpace));
     return texture;
   }
 
@@ -217,7 +223,7 @@ export class WebGpuTextureStore {
     return texture;
   }
 
-  private createTextureResource(texture: GPUTexture, width: number, height: number): WebGpuTextureResource {
+  private createTextureResource(texture: GPUTexture, width: number, height: number, colorSpace: TextureColorSpace = "none"): WebGpuTextureResource {
     const view = texture.createView();
     const bindGroup = this.device.createBindGroup({
       layout: this.textureBindGroupLayout,
@@ -226,7 +232,7 @@ export class WebGpuTextureStore {
         { binding: 1, resource: view },
       ],
     });
-    return { texture, view, bindGroup, width, height };
+    return { texture, view, bindGroup, width, height, colorSpace, revision: 0 };
   }
 
   private setTexture(textureId: number, resource: WebGpuTextureResource): void {
@@ -238,6 +244,7 @@ export class WebGpuTextureStore {
       this.textures.delete(previous.texture);
     }
     this.textures.add(resource.texture);
+    resource.revision = ++this.revision;
     this.texturesById.set(textureId, resource);
   }
 

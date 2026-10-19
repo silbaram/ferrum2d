@@ -65,7 +65,11 @@ declare global {
   }
 
   interface GPUDevice {
+    readonly limits: { readonly maxTextureDimension2D: number; readonly maxBufferSize: number };
     readonly queue: GPUQueue;
+    pushErrorScope(filter: "validation" | "out-of-memory" | "internal"): void;
+    popErrorScope(): Promise<{ readonly message: string } | null>;
+    destroy(): void;
     createShaderModule(descriptor: GPUShaderModuleDescriptor): GPUShaderModule;
     createRenderPipeline(descriptor: GPURenderPipelineDescriptor): GPURenderPipeline;
     createBindGroupLayout(descriptor: GPUBindGroupLayoutDescriptor): GPUBindGroupLayout;
@@ -90,6 +94,7 @@ declare global {
   }
 
   interface GPUQueue {
+    onSubmittedWorkDone(): Promise<void>;
     writeBuffer(
       buffer: GPUBuffer,
       bufferOffset: number,
@@ -128,6 +133,13 @@ declare global {
     vertex: GPUVertexState;
     fragment?: GPUFragmentState;
     primitive?: GPUPrimitiveState;
+    depthStencil?: GPUDepthStencilState;
+  }
+
+  interface GPUDepthStencilState {
+    format: GPUTextureFormat;
+    depthWriteEnabled?: boolean;
+    depthCompare?: "never" | "less" | "equal" | "less-equal" | "greater" | "not-equal" | "greater-equal" | "always";
   }
 
   interface GPUPipelineLayout {}
@@ -168,6 +180,8 @@ declare global {
 
   interface GPUPrimitiveState {
     topology?: GPUPrimitiveTopology;
+    frontFace?: "ccw" | "cw";
+    cullMode?: "none" | "front" | "back";
   }
 
   interface GPUVertexBufferLayout {
@@ -202,12 +216,18 @@ declare global {
     size: GPUExtent3D;
     format: GPUTextureFormat;
     usage: number;
+    mipLevelCount?: number;
   }
 
   interface GPUTextureView {}
 
   interface GPUTextureViewDescriptor {
     label?: string;
+    dimension?: "2d" | "2d-array" | "cube";
+    baseArrayLayer?: number;
+    arrayLayerCount?: number;
+    baseMipLevel?: number;
+    mipLevelCount?: number;
   }
 
   interface GPUSampler {}
@@ -218,6 +238,8 @@ declare global {
     addressModeV?: "clamp-to-edge" | "repeat" | "mirror-repeat";
     magFilter?: "nearest" | "linear";
     minFilter?: "nearest" | "linear";
+    mipmapFilter?: "nearest" | "linear";
+    lodMaxClamp?: number;
   }
 
   interface GPUBindGroup {}
@@ -287,6 +309,10 @@ declare global {
     setPipeline(pipeline: GPURenderPipeline): void;
     setBindGroup(index: number, bindGroup: GPUBindGroup): void;
     setVertexBuffer(slot: number, buffer: GPUBuffer, offset?: number, size?: number): void;
+    setIndexBuffer(buffer: GPUBuffer, indexFormat: "uint16" | "uint32", offset?: number, size?: number): void;
+    drawIndexed(indexCount: number, instanceCount?: number, firstIndex?: number, baseVertex?: number, firstInstance?: number): void;
+    setViewport(x: number, y: number, width: number, height: number, minDepth: number, maxDepth: number): void;
+    setScissorRect(x: number, y: number, width: number, height: number): void;
     draw(vertexCount: number, instanceCount?: number, firstVertex?: number, firstInstance?: number): void;
     end(): void;
   }
@@ -294,6 +320,15 @@ declare global {
   interface GPURenderPassDescriptor {
     label?: string;
     colorAttachments: GPURenderPassColorAttachment[];
+    depthStencilAttachment?: GPURenderPassDepthStencilAttachment;
+  }
+
+  interface GPURenderPassDepthStencilAttachment {
+    view: GPUTextureView;
+    depthClearValue?: number;
+    depthLoadOp?: GPULoadOp;
+    depthStoreOp?: GPUStoreOp;
+    depthReadOnly?: boolean;
   }
 
   interface GPURenderPassColorAttachment {

@@ -16,7 +16,7 @@ export class WebGpuDebugLinePass {
 
   constructor(
     private readonly device: GPUDevice,
-    private readonly context: GPUCanvasContext,
+    private readonly currentTexture: () => GPUTexture,
     private readonly format: GPUTextureFormat,
     pipelineLayout: GPUPipelineLayout,
     private readonly resolutionBindGroup: GPUBindGroup,
@@ -57,7 +57,7 @@ export class WebGpuDebugLinePass {
     const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
-        view: this.context.getCurrentTexture().createView(),
+        view: this.currentTexture().createView(),
         loadOp: "load",
         storeOp: "store",
       }],

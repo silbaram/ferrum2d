@@ -378,6 +378,7 @@ export async function createFerrumRuntime(options: FerrumRuntimeOptions): Promis
       webgl2: options.webgl2,
       shaderPreparation: options.shaderPreparation,
       webgpu: webGpuOptionsWithStaticPostProcess(options),
+      spatial: options.dataScene ? normalizeRuntimeDataSceneOptions(options.dataScene).document.spatial : undefined,
     });
     const runtimeRenderer = renderer;
     input ??= new InputManager(options.canvas, options.inputOptions);
