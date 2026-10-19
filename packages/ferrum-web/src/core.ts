@@ -408,7 +408,8 @@ export { resolveDirectionalLight2D, resolveDataSceneGroundShadow } from "./dataS
 export type { DataSceneGroundShadowSpec, ResolvedDataSceneGroundShadow, DataSceneGroundShadowStats } from "./dataSceneSun.js";
 export type { DirectionalLight2D, ResolvedDirectionalLight2D } from "./lightingTypes.js";
 
-export type { DataSceneGameplayOptions, DataSceneGameplaySpec } from "./dataSceneGameplay.js";
+export type { DataSceneGameplayOptions, DataSceneGameplaySpec, DataSceneCombatStats } from "./dataSceneGameplay.js";
+export type { DataSceneCombatLegacyProgressSnapshot, DataSceneCombatProgressSnapshot, DataSceneCombatActorSnapshot, DataSceneCombatProjectileSnapshot } from "./dataSceneCombatProgress.js";
 export { resolveDataSceneGameplaySpec } from "./dataSceneGameplay.js";
 export type { DataSceneNavigationSpec } from "./dataSceneNavigation.js";
 export { resolveDataSceneNavigationSpec } from "./dataSceneNavigation.js";
@@ -433,3 +434,16 @@ export type { SpatialGltfOptions } from "./spatialGltf.js";
 export type { SpatialModelAsset, SpatialModelPrimitive, SpatialGlbOptions, SpatialModelPreparation, SpatialModelPreparer } from "./spatialModel.js";
 
 export type { RuntimeFrameTraceOptions, RuntimeFrameTraceSample, RuntimeFrameTraceCapture, RuntimeFrameTraceSnapshot } from "./runtimeFrameTrace.js";
+
+export type { DataSceneProjectilePrefabSpec, DataSceneProjectilePrefabBinding } from "./dataSceneProjectilePrefabs.js";
+
+export type { DataSceneCombatNavigationSpec, DataSceneCombatNavigationStats, DataSceneCombatNavigationSchedulerStats } from "./dataSceneCombatNavigation.js";
+
+export type { DataSceneCombatChaseBinding, DataSceneCombatCrowdStats } from "./dataSceneCombatCrowd.js";
+
+export type { DataSceneSpawnPrefabSpec, DataSceneSpawnPrefabBinding } from "./dataSceneSpawnPrefabs.js";
+
+export type { DataSceneCombatActorReference, DataSceneCombatSpawnedActorState, DataSceneCombatSpawnedActorSnapshot, DataSceneCombatSpawnProjectileSnapshot, DataSceneCombatSpawnProgressSnapshot } from "./dataSceneSpawnProgress.js";
+
+export type { DataSceneProjectileAnimationSpec } from "./dataSceneProjectilePrefabs.js";
+export type { DataSceneProjectileAnimationProgress, DataSceneCombatVisualProjectileSnapshot, DataSceneCombatVisualProgressSnapshot } from "./dataSceneProjectileVisualProgress.js";

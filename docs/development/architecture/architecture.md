@@ -378,7 +378,11 @@ framebuffer 저장 방향은 `SpriteBatch`의 texture별 shader uniform으로 �
 기존 Rust 컬링/화면 좌표 및 Wasm ABI를 바꾸지 않으며 독립 카메라를 구현하지 않는다.
 main/offscreen 비용을 frame 통계에 합산한다. 공개 API와 제약은 [Core Runtime](../../engine/public-api/core.md#rendertexture-webgl2)을 따른다.
 
-제품 기본 renderer는 WebGL2다. `createRenderer(...)`는 `preferred: "webgpu"`가 들어오면 WebGPU adapter/device/context를 먼저 생성하고, 실패하면 WebGL2로 fallback한다. WebGPU는 Rust render command ABI를 바꾸지 않는 선택 renderer이며 WebGL2를 대체하지 않는다. WebGPU post-process는 현재 fade pass만 지원하므로 bloom/CRT/vignette/glitch 같은 fullscreen pass의 기준 구현은 WebGL2다.
+제품 기본 renderer는 WebGL2다. `createRenderer(...)`는 WebGPU 옵션·공간 요구사항을 먼저 검사하고,
+adapter/device의 pipeline 생성·GPU 오류 확인까지 canvas context 연결 전에 끝낸다.
+이 단계의 실패는 같은 canvas의 WebGL2로 fallback한다. context 연결 뒤 configure/resize 오류는
+다른 API로 교체할 수 없으므로 전파하며 새 canvas가 필요하다. debug/postprocess pass도 context getter를
+draw 때만 호출한다. WebGPU는 Rust render command ABI를 유지하며 fullscreen post-process는 fade만 지원한다.
 
 WebGL2 sprite renderer는 Rust render command buffer를 그대로 instance data로 업로드하고, static quad vertex buffer와 static index buffer를 재사용해 `drawElementsInstanced`로 texture-contiguous batch를 그린다. `SpriteRenderCommand`는 rect/uv/color/texture/effect와 visible `rotation_radians`를 숫자 슬롯으로 전달하며, shader는 rect 중심 기준으로 회전한다. 이 구조는 per-sprite draw call 없이 tilemap/sprite render command를 WebGL2 instancing path로 소비한다.
 
@@ -465,7 +469,7 @@ Rust/TypeScript 공유 buffer는 `#[repr(C)]` Rust struct와 TypeScript decoder�
 `SpatialScene`은 `Engine`이 소유한다. 낮은 빈도 authoring의 사각 surface에서 top/side/bottom mesh와
 tilemap height metadata를 함께 컴파일한다. Rust가 직교/원근 camera snapshot, native step/ramp 이동,
 heightSpan 기반 cylindrical billboard·anchored glyph, terrain ray hit와 frustum 판정을 계산한다.
-TypeScript는 DOM client/NDC 변환, bulk Wasm view 읽기, WebGL2 vertex/depth/sampler 자원만 소유한다.
+TypeScript는 DOM client/NDC 변환, bulk Wasm view 읽기, WebGL2/WebGPU vertex/depth/sampler 자원만 소유한다.
 entity별 JS/Wasm frame 호출이나 새 rigid-body solver는 추가하지 않는다.
 
 기존 60-byte sprite command는 보존한다. 선택 `RenderCommandBufferView.spatial`은 version 2의
@@ -476,7 +480,25 @@ Rust는 authored surface마다 전체 top/side/bottom AABB를 만들고 f64 clip
 TS는 같은 frame의 range를 검증해 static buffer의 절대 offset으로 draw하며 culling math를 복제하지 않는다.
 GPU terrain은 revision/memory identity
 변경 시 upload하고 dynamic billboard는 bulk upload한다. shared depth에서 opaque/cutout을 검사한 뒤
-기존 flat command와 DOM HUD를 그린다. 공간 RenderTexture/WebGPU는 명시 거절한다.
+기존 flat command와 DOM HUD를 그린다. 공간 RenderTexture는 명시 거절한다.
+WebGPU의 `webgpuSpatialPass`는 같은 native geometry/range를 depth24plus에 그린다.
+`spatialRenderPacket`·`spatialModelPacket`은 양 backend의 사전 validation을 공유한다.
+`webgpuSpatialModels`는 native model matrix/visibility를 받아 indexed instancing하며 CPU game state를 소유하지 않는다.
+GLB sRGB/data texture·sampler/mip 자원은 async preload의 GPU scope/queue 완료 뒤에만 cache에 등록한다.
+동기 authoring lease는 검증된 cache만 사용한다. preload 중 기존 scene draw/prune가 재사용 자원을 해제하지
+않도록 source pin을 유지하고, 실패·dispose·destroy에서 소유 자원을 정리한다.
+`webgpuSpatialEnvironment`는 native 환경 v1/v2·shadow matrix를 960-byte uniform 두 record로 묶고 rgba16float/depth24plus target을 소유한다.
+조명·모델 tangent/derivative normal·안개는 geometry shader에서 계산하고 DOF·색 보정은 기존 flat HUD 앞에 합성한다.
+native actor focus·pixelArt viewport·debug buffer를 그대로 소비한다. resize/disable/destroy는 target 수명을 관리하며,
+비동기 GPU target 실패는 잘못된 warm cache를 폐기하고 다음 호출에 오류를 전달한다. cold 모델 활성화의 rollback과는 별도 계약이다.
+`webgpuSpatialShadows`는 depth32float point 6-layer array와 sun 2D target을 소유한다. native matrix로 face UV를 투영하고
+radial/projected depth·slope bias·hard/PCF를 공유하며 shadow pass에는 sampling group을 연결하지 않아 read/write alias를 피한다.
+camera8개 record와 model8개 pass의 matrix를 draw 전에 한 번씩 bulk upload하고 각 draw는 별도 offset을 사용한다.
+receive flag는 같은 환경의 두 bind group으로 선택하며 per-draw queue overwrite를 하지 않는다.
+shared `SpatialShadowCache`는 native caster/terrain revision·light/matrix·모델 shadow mask/content/pose와 색 atlas revision을 비교한다.
+WebGPU texture store는 replace/alpha patch마다 해당 texture revision을 갱신한다. 정상 warm frame은 GPU object를 다시 만들지 않는다.
+그림자 target은 실제 queue.submit 성공 뒤에만 cache에 등록한다. 인코딩 중단·resize 준비 실패는 미제출 map을 warm으로 취급하지 않는다.
+resize의 async target/bind-group validation 오류는 identity guard로 현재 자원에만 적용하고 다음 호출에 전파한다.
 효과가 꺼진 fullscreen postprocess target은 별도 depth renderbuffer를 소유한다.
 
 공간 설정은 Scene Authoring version 1의 optional `spatial`이고 기존 JSON document 재적용에 참여한다.
@@ -665,7 +687,7 @@ truncated는 vertex 외 work/hit 상한도 포함하며 native progress restore�
 | --- | --- |
 | Scene | `useDataScene()` generic data scene mode, Shooter/Breakout/Platformer starter scene, Minimal starter 예제 |
 | Input | keyboard/mouse/pointer/touch/gamepad snapshot |
-| Rendering | Rust render command buffer + WebGL2 기본 renderer, 선택 WebGPU sprite/debug line/fade pass |
+| Rendering | Rust render command buffer + WebGL2 기본 renderer, 선택 WebGPU sprite/debug line/fade 및 공간 geometry/model pass |
 | Assets | texture/sound/JSON manifest, Aseprite/Tiled/LDtk import helper, deterministic texture atlas JSON helper |
 | UI | DOM 기반 `UiOverlay`, 개발용 `DebugOverlay` |
 | Physics | 자세한 범위는 [2D 물리엔진 기능 맵](physics-engine.md) |
@@ -860,3 +882,177 @@ opt-in RuntimeProfiler frameTrace는 현재 renderer ID와 완료한 query의 �
 모델 primitive 색상/cutoff는 엔진 소유 main/shadow program의 uniform이다. context-global generic
 attribute를 수정하거나 매 frame 조회하지 않으며, enable/pointer는 공간 pass 소유 VAO 안에서만
 바꾸고 caller VAO/program 복원은 유지한다.
+
+
+### Data Scene combat opt-in
+
+개발 소스의 `gameplay.combat`은 기본 false이며 primaryActor와 함께 켠다. Rust Data Scene update 안에서
+기존 movement/action/timer/collision/lifetime 시스템을 실행하고 generation-safe 동적 projectile을 소유한다.
+TypeScript는 authoring 검증과 렌더 제출, 제한된 numeric sample만 담당한다. entity별 frame Wasm 호출은 추가하지 않는다.
+동적 탄환과 기존 native particle preset을 spatial billboard 출력에 연결하고 HeightSpan을 유지한다.
+기존 authored billboard 설정/저장 revision을 frame마다 변경하지 않으며 render command ABI는 유지한다.
+기존 네 인자 gameplay 설정은 보존하고 전투용 v2 설정과 versioned stats를 별도 제공한다.
+전투의 action timer만 반복 실행하며 event-only timer는 one-shot이다. pause/complete는 전체 전투 시뮬레이션을 멈춘다.
+primaryActor input projectile은 cooldown tick 뒤, world integration 전에 기존 input registry/readiness/plan을 사용한다.
+fixed-step latch를 씬 update 전에 전달하고 탐험 interaction과 같은 previous-input 보정을 사용한다.
+발사 substep에서 곧바로 적분하므로 새 탄환의 CCD 경로를 과거 시점으로 계산하지 않는다.
+spatial build와 입력 조준은 같은 presented-camera 계산을 공유한다. 현재 logical viewport/pixelArt 여백·snap을 반영하고
+발사자의 body midpoint + visual elevation 평면에 ray를 교차시킨다. TS는 CSS→logical 좌표 변환만 수행한다.
+입력은 별도 `data_scene_input_projectiles_version` v1로 검사하며 configure/stats/render ABI는 유지한다.
+CCD는 projectile target mode와 compound collision filter를 nearest 후보 선택부터 적용한다.
+전투 checkpoint는 native codec v1/v2/v3/v4와 nested Data Scene v9로 저장한다. 기존 탐험 progress/공간/animation ABI는 유지한다.
+TS는 고정 authored ID와 의미 있는 JSON 필드를 숫자 buffer로 변환하고 원문 레시피의 presence/ID/범위를 검증한다.
+Rust는 generation remap·live contact·체력/timer/cooldown·동적 projectile 상태를 소유하며 기존 공간 commit 뒤 적용한다.
+죽은 발사자의 원래 handle도 authored index로 치환하고, 제거 commit 전에 새 source texture slot을 확보한다.
+구형 Wasm/불완전한 전투 저장은 사전 거절한다. unsupported static mutation과 authored 외 동적 entity는 capture를 거절한다.
+입력·accumulator·VFX/RNG·event/진단/통계는 reset하며 deterministic replay를 약속하지 않는다.
+검증은 packed public API + 실제 Wasm의 HD-2D 전투 gate에서 수행한다.
+
+melee/dash는 별도 `data_scene_combat_actions_version` v1로 검사한다. Rust가 공통 input registry/readiness와
+timer dispatch를 재사용한다. melee는 post-physics/pre-despawn 단계에서 실제 overlapping collider의 mask·높이·
+중심 시야·faction을 검증하고 기존 damage/kill 경로를 사용한다. dash는 kinematic AABB만 지원하며
+공간 terrain/gateway trial·commit 또는 평면 타일 경계별 native sweep으로 이동한다.
+collider offset을 포함한 지면 중심을 기준으로 분할하고 기존 velocity를 유지한다.
+outer update당 별도1M work·128회 시도 상한을 metadata scan부터 적용하며 admission 전 피해/이동/cooldown을 commit하지 않는다.
+TS는 마지막 entity/action ID의 종류에 따라 authoring·입력/타이머·프리팹 참조·저장 cooldown 계약을 검증한다.
+기존 v9 actor payload로 위치·높이·체력·cooldown을 저장하며 restore는 pending melee/예산을 초기화한다.
+위 melee/dash capability와 별개로 spawnPrefab 실행과 동적 actor 저장은 아래 spawn v1/progress3 capability를 사용한다.
+
+별도 개발 중인 native spawn 경로는 cold actor prototype catalog를 구성하고 생성·이동·충돌·타이머·수명·정리를
+Rust가 소유한다. TS authoring과 semantic checkpoint 공개 계약은 후속 연결 중이다.
+prototype은 단일 actor의 지원 컴포넌트를 복제하며 WorldSnapshot 전체를 생성마다 복제하지 않는다.
+atlas clip 정의는 `Arc<[SpriteClip]>`로 공유하고 active clip/elapsed/pause/flip은 actor별로 유지한다.
+spawn registry는 전체 Entity generation과 논리 serial/prefab ID를 구분한다. 죽은 발사자 기록은 살아 있는
+소유 탄환이 참조하는 동안만 남기고 복원 시 World 슬롯과 겹칠 수 없는 내부 참조로 매핑한다.
+생성 전 action work·World/actor/기록/nav 수와 실제 지형·벽·그림자 예산을 검사한다.
+위치 검사를 통과하지 못한 임시 actor는 despawn 변수 트리거를 발행하지 않고 폐기한다.
+native codec3의 spawned state는 전체 사전 검증과 allocator 용량 검증 뒤 common progress와 함께 commit한다.
+기존 v1/v2 codec과 public render ABI는 유지한다. C4 완료 여부는 planning 문서의 공개 연결/브라우저 검증 상태를 따른다.
+
+
+### Data Scene projectile prefab catalog
+
+`gameplay.projectilePrefabs`와 projectile action의 named ref는 TS cold authoring metadata다. texture asset 해석·sRGB 색상 변환·
+f32 범위/상한·기능 검사를 activation 전에 수행한다. 전체 문서 apply는 ref를 action storage와 분리해 기존 setter ABI를 유지한다.
+새 native configure v3는 metadata 2u32/definition, values 15f32/definition, binding 4u32/source-action을 받고
+전체 catalog/handle/action/중복 검증 후 기존 gameplay configure와 함께 commit한다. 기존 v2 설정은 catalog를 비운다.
+Rust가 generation/source/action 키의 bounded BTreeMap을 조회하며 탄환의 prefab ID를 native 소유 목록에 보관한다.
+프레임별 Wasm 왕복·문자열·TS 시뮬레이션은 추가하지 않고 기존 sprite/billboard render ABI를 사용한다.
+입력 조준과 spawn은 같은 prefab visual elevation을 사용하고 collider는 독립적인 world 단위를 유지한다.
+최대 정의 256/source-action binding 8192이며 texture slot은 정점 f32에서 정확한 24bit 범위다.
+원래 codec v1은 유지한다. catalog가 있는 checkpoint v2는 projectile stride 26(기존 25 + prefab ID)을 사용하며
+JSON에서는 이 cold ID를 stable prefab 이름으로 변환한다. 복원은 원문 외형 계약을 검증하고, source가 제거되기 전에
+fresh catalog의 texture/tint를 확보해 적용한다. 바깥 snapshot와 공통 progress/공간/render ABI는 유지한다.
+
+
+### Data Scene combat navigation
+
+`gameplay.combatNavigation`은 기존 직접 추적에 대한 선택적 확장이다. TS는 spatial terrain/카메라,
+inline kinematic AABB/heightSpan, target과 agent 상한을 활성화 전에 검증한다. 설정 v4는 기존
+v3 catalog buffer와 6개 f32(cell/step/drop/repath/radius/maxAgents)를 검증 후 원자적으로 적용한다.
+기존 v2/v3 호출은 navigation 설정과 캐시를 비운다. 별도 capability v1과 13u32 diagnostics를 사용하며
+기존 gameplay/spatial stats/render ABI는 유지한다.
+
+Rust 전투 실행기가 최대 64개 generation-safe Chase route와 하나의 공유 A* search scratch를 소유한다.
+outer update마다 정적 A* slice 또는 군중 보강 1회, 모든 agent의 검색·query 준비·이동에 총1,000,000
+work 상한을 적용한다. 정적 탐색은 한 scene-owned job의 grid/heap/edge cursor를 보존하여 slice262,144·
+전체8M work로 분할한다. 큰 준비 비용/원자적 단일 edge는 기존600K slice까지 허용하며
+군중 보강의 기존600K 상한도 유지한다. 최대8개 footprint/target/revision별
+정적 route를 공유하며 같은 support의 짧은 진입 edge를 native sweep으로 검증한다. 이후 edge도 실제 follower
+물리를 통과해야 한다. 취소한 owner는 즉시 재시작하지 않으며 disposable job/cache는 save에서 제외한다.
+별도 scheduler capability와10u32 진단을 추가하고 기존 navigation13u32와 v4/v5 설정 ABI를 유지한다. fixed substep도 같은 예산을 소비한다. actor마다 broadphase query를 새로 준비하고
+즉시 종료하므로 다른 actor의 이동 후 stale proxy를 재사용하지 않는다. round robin 순서는 실제 시뮬레이션이 있는
+outer update마다 한 번 이동한다. 0-substep 렌더 프레임은 순서를 변경하지 않는다. 경로가 없거나 예산이 부족하면 정지하며 직선 추적으로 돌아가지 않는다.
+
+기존 native spatial navigation의 A*와 sweep follower를 explicit actor/step/drop 모드로 재사용한다.
+combat source만 trigger AABB를 허용하고, sweep/pose overlap/gateway 양쪽 floor 모두 WALL 및 양방향
+collision filter/HeightSpan을 적용한다. 일반 player route는 ALL mask와 기존 admission/status를 유지한다.
+검색 probe는 성공·실패에 관계없이 원래 transform/heightSpan/velocity를 복구한다. AI 이동의 velocity는
+적분 전에 0으로 바꾸고 이후 복원하여 중복 이동을 막는다. 극소 delta에서도 복원 velocity는 유한한 speed 범위다.
+
+target generation/floor, source 변경, 지형/connection revision은 route를 무효화한다. target 이동·막힘은
+간격에 맞춰 재탐색하고, 외부 source teleport는 follower pose 검사로 취소한다. 경로는 영속 시뮬레이션 상태가
+아닌 캐시다. checkpoint는 기존 v9 authoring/pose를 저장하며 복원 시 캐시·진단을 비우고 재탐색한다.
+TS 시뮬레이션, 프레임별 entity Wasm 호출, snapshot/render ABI 변경은 추가하지 않는다.
+
+
+### Data Scene combat crowd
+
+선택적 crowd와 Chase별 정지 거리는 configure v5의 navigation7f32(기존6+padding, -1은비활성),
+source2u32/stop1f32 batch로 전달한다. 모든 값·generation·중복·source 소유권을 검증한 뒤 v4와 함께
+commit한다. 기존 v4/13u32 navigation 진단은 유지하고 capability v1/7u32 crowd 진단을 별도 제공한다.
+TS는 유효 recipe별 cold binding과 사전 진단을 담당하며, Rust가 위치/높이·경로·steering·도착을 소유한다.
+
+최대64개 peer의 현재 World AABB/offset·mutual mask·floor/HeightSpan을 각 후보에서 읽는다.
+segment/rectangle SAT는 나눗셈 없이 얇은 물체 관통을 막고, 기존 높이가 겹친 spawn만 단조 탈출을 허용한다.
+후보 최대8개는 query 준비·벽 sweep·종점 보행면·neighbor 검사/실제 commit 비용을 예약하고
+실패 시 원래 pose/span/velocity로 복원한다. 가상 probe는 contact를 기록하지 않는다.
+실제 commit도 trial과 같은 요청 target으로 수행하고, commit 끝점의 peer sweep을 다시 확인해
+f32 분할 이동의 누적 반올림 차이를 막는다. 실제 peer 거절은 이전 pose/span으로 rollback한다.
+후보당24×peer 수를 예약해 trial/forecast/commit 세 번의 검사를 모두 포함한다.
+기존1M/frame 예산을 공유하고 fixed substep에서 누적한다. 단기 detour credit과 peer lookahead는
+스스로 직전 우회를 취소하는 진동을 줄인다. lookahead는 같은 flat support에서만 적용하는 steering 선호도이며
+실제 이동의 native 검사를 대체하지 않는다. skip 전에 다음 waypoint까지 native full edge를 검증하고
+실패하면 필수 코너 waypoint를 유지한다. shortcut도8후보와frame work에 포함한다.
+초기/목표 변경 경로는 기존 static A*를 사용한다. 같은 목표의 crowd 경로는 repath마다
+peer를 피하는 refinement를 시도하며 실패 시 유효한 기존 경로를 유지한다. peer검사는 native probe 전에
+비용을 예약해 가지치기한다. peer4개 corner/goal8개 ring sample과 cell 이웃 순회도 기존4096 node/검색·frame
+작업 상한에 포함한다. 도착 반경 안의 node에서 탐색을 마치고 실제 goal을 마지막 radius 중심으로 유지한다.
+actual movement의 원 진입 prefix를 잘라 stop-distance 오차를 줄이며, 도착은 실제 floor/support를 확인한다.
+동일 floor의 인접 surface도 선분이 실제 공유 edge 구간을 지나야 한다. 제3의 높은 지형 코너를
+큰 probe가 건너뛰어 작은 follower가 영구 막히는 경우를 방지한다. 기존 player 경로도 이 검사를 공유한다. 중간 waypoint는 같은 보행면/연결된 인접 면의 cell 범위에서
+진행해 혼잡한 grid 점 수렴을 줄이며 다음 이동도 기존 native sweep을 통과한다.
+정지 반경은 native/peer probe 전에 이동을 잘라 적용한다. 32회 bounded 이분 탐색으로 f32의
+실제 `from + (target - from)`까지 반영한 반경 안 점을 선택하며, 실제 거리·floor/support가 맞아야 도착이다.
+clip 계산도 후보당512 work를 예약한다. 원을 정확히 표현할 수 없는 큰 좌표에서는 표현 가능한 안쪽 점을 사용한다.
+같은 목표의 refinement는 저속/sub-ULP 이동 credit를 보존한다. 도착 pose를 캐시해 jitter를 막는다.
+이 캐시는 source/target pose·generation·속도·지형 revision 변경 시 폐기하며 저장하지 않는다.
+
+
+### Data Scene combat spatial movement patterns
+
+선택 `combatNavigation.movementPatterns: "all"`은 Rust manager의 소유 범위를
+Chase에서 SeekTarget/Accelerate로 확장한다. 기본/`"chase"`의 v4/v5 호출 경로는 유지하고
+별도 native movement v1 capability와 v6 mode flag를 사용한다. TS는 최종 authoring movement,
+모든 source의 AABB/kinematic/heightSpan과 최대64개 수용 여부만 preflight한다.
+게임 방향/회전/가속과 실제 pose는 Rust가 소유한다.
+
+SeekTarget은 이전 World velocity에서 waypoint 방향을 substep당 보간한다. 계산된 intent와 예산 미처리를
+구분해 0을 거치는 반전이나 wall rejection에서도 회전을 누적한다. native edge 검사와 같은 support의
+도착 원 최초 진입 clipping을 거친다. Accelerate는 기존 substep 가속/속도 제한 helper와 공간 velocity
+trial/commit을 재사용한다. 가상 이동은 pose/heightSpan/velocity를 복구하고 query를 종료하며 실제 commit은
+외부1M 예산 안에서 한 번만 수행한다. 선택 peer 회피는 세 pattern의 같은 live World footprint를 읽는다.
+공통 wrapper는 managed velocity를 일반 physics integration 전에 잠시 0으로 바꾸고 이후 복원해
+이중 이동을 막는다. 보류된 source의 momentum은 유지한다.
+
+새 설정은 기존 v9 progress의 원문 authoring과 World velocity를 사용한다. 저장 구조나 render ABI를
+추가하지 않으며 fresh apply 뒤 route/job/cache는 초기화한다. 구형 Wasm은 적용/저장/복원 preflight에서 거절한다.
+
+### Data Scene spawned actor authoring와 checkpoint
+
+공개 `gameplay.spawnPrefabs`는 기존 authored handle을 원본으로 cold 등록한다. native v7 설정은
+공간 billboard 설정 후 적용하므로 정의가 같은 style을 캡처한다. 원본의 자동 생성/제거는 하지 않는다.
+TS는 catalog 이름과 stable u32 ID·원본 standalone 계약 및 복원 전 상태/예산만 검증하고,
+Rust가 생성·이동·수명·애니메이션·소유권과 제거된 탄환 발사자 lineage를 관리한다.
+새 spawn v1 capability는 progress3와 v7 호출을 함께 검사하며 기존 melee/dash capability는 유지한다.
+기존 combat codec1/2를 유지하고 codec3에 spawned89/serial counter를 추가한다.
+JSON v3는 instance ID/spawn serial의 명시적 union으로 참조하고 actor prototype 이름을 저장한다.
+common spatial/전투 pose와 model yaw의 중복 표현은 raw 값이 일치해야 사전검증을 통과한다.
+생성 상태와 authored 상태를 함께 원자적으로 복원하며 기존 input/queue/route/cache reset 계약을 유지한다.
+
+
+### Data Scene projectile presentation
+
+선택적 projectile animation/rotateToVelocity는 native visual capability1와 cold gameplay v8로 설정한다.
+TS는 최대256 정의의 metadata4/fps1/최대32 UV frame을 검증해 한 batch로 넘긴다.
+기존 projectile catalog15-float 값과 renderer command ABI는 유지한다.
+Rust는 immutable clip을 Arc로 공유하고 각 shot에 기존 SpritePlayback의 독립 f64 clock/pause/flip을 설치한다.
+render 시 최대512 소유 projectile의 회전을 현재 presented camera의 투영 미분과 billboard basis 역변환으로 계산한다.
+카메라 pixel snap/aspect와 실제 elevation을 반영하며 physics rotation/속도/AABB는 변경하지 않는다.
+재사용 Vec를 cold reserve하고 generation-safe 정렬 cache로 flat/spatial command에만 적용한다.
+
+animation 또는 align 정의가 있으면 codec4의 header7/shot32를 사용한다.
+이전 shot26 뒤의 playback6는 present/clip0/elapsed/pause/flipX/flipY이며 별도 actor catalog bit로
+catalog 없는 장면과 생성 source serial이 있는 장면을 구분한다. codec1/2/3 byte layout은 유지한다.
+정의·clock·동적 UV·source를 전체 검증한 후 commit하며 각도는 저장하지 않고 다음 render에서 파생한다.
+TS snapshot union은 v4 semantic animation을 제공하고 구형 Wasm은 active scene 교체 전에 거절한다.

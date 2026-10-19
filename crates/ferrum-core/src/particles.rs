@@ -101,6 +101,8 @@ pub struct Particle {
     acceleration_x: f32,
     acceleration_y: f32,
     damping: f32,
+    // Native-only space metadata; neither render-command nor Wasm ABI changes.
+    spatial: Option<(f32, f32)>,
 }
 
 impl Particle {
@@ -207,11 +209,93 @@ impl ParticleSystem {
                 acceleration_x,
                 acceleration_y,
                 damping,
+                spatial: None,
             });
             spawned += 1;
         }
 
         spawned
+    }
+
+    pub(crate) fn spawn_spatial_burst(
+        &mut self,
+        preset: ParticlePreset,
+        x: f32,
+        y: f32,
+        elevation: f32,
+        units_per_pixel: f32,
+    ) -> usize {
+        if !elevation.is_finite() || !units_per_pixel.is_finite() || units_per_pixel <= 0.0 {
+            return 0;
+        }
+        let first = self.particles.len();
+        let count = self.spawn_burst(preset, x, y);
+        for particle in &mut self.particles[first..] {
+            particle.spatial = Some((elevation, units_per_pixel));
+        }
+        count
+    }
+
+    pub(crate) fn append_spatial(&self, scene: &mut crate::spatial_scene::SpatialScene) {
+        let Some(camera) = scene.camera else {
+            return;
+        };
+        for particle in &self.particles {
+            let Some((height, units)) = particle.spatial else {
+                continue;
+            };
+            let age = particle.normalized_age();
+            let size = lerp(particle.start_size, particle.end_size, age);
+            let color = lerp_color(particle.start_color, particle.end_color, age);
+            if size <= PARTICLE_EPSILON || color[3] <= 0.0 {
+                continue;
+            }
+            let (u0, v0, u1, v1) = particle.frame.uv();
+            let sprite = crate::components::Sprite {
+                texture_id: particle.texture_id,
+                width: size,
+                height: size,
+                u0,
+                v0,
+                u1,
+                v1,
+                r: color[0],
+                g: color[1],
+                b: color[2],
+                a: color[3],
+                rotation_radians: 0.0,
+                render_layer: 0,
+                origin_x: 0.5,
+                origin_y: 0.5,
+                sort_order: 0.0,
+                depth_sort: true,
+                project_ground: false,
+            };
+            let style = crate::spatial_scene::Billboard {
+                material: crate::spatial_scene::SpatialMaterial {
+                    normal_texture: 16_777_215,
+                    flags: 0,
+                },
+                units_per_pixel: units,
+                cutoff: 0.01,
+                elevation: 0.0,
+            };
+            let first = scene.billboards.len();
+            crate::spatial_scene::append_billboard(
+                &mut scene.billboards,
+                &camera,
+                Transform2D {
+                    x: particle.x,
+                    y: particle.y,
+                },
+                sprite,
+                height,
+                style,
+            );
+            if scene.billboards.len() > first {
+                scene.billboard_materials.push(style.material);
+            }
+        }
     }
 
     pub fn update(&mut self, delta_seconds: f32) {
@@ -242,6 +326,9 @@ impl ParticleSystem {
     ) {
         let visible_bounds = camera.visible_bounds();
         for particle in &self.particles {
+            if particle.spatial.is_some() {
+                continue;
+            }
             let t = particle.normalized_age();
             let size = lerp(particle.start_size, particle.end_size, t);
             let color = lerp_color(particle.start_color, particle.end_color, t);
@@ -286,6 +373,9 @@ impl ParticleSystem {
     ) {
         let visible_bounds = camera.visible_bounds();
         for (index, particle) in self.particles.iter().enumerate() {
+            if particle.spatial.is_some() {
+                continue;
+            }
             let t = particle.normalized_age();
             let size = lerp(particle.start_size, particle.end_size, t);
             let color = lerp_color(particle.start_color, particle.end_color, t);

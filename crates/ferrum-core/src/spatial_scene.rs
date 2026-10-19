@@ -17,7 +17,10 @@ pub(crate) use models::preflight_model_poses;
 mod shadows;
 pub(crate) use environment::{SpatialEnvironment, MAX_SHADOW_CASTERS};
 mod navigation;
-pub(crate) use navigation::SpatialNavigation;
+pub(crate) use navigation::{
+    CombatCrowd, CombatNavigationRequest, CombatRouteKey, CombatVelocityRequest, SharedCombatRoute,
+    SpatialMoveStatus, SpatialNavigation,
+};
 mod debug;
 use connections::{ConnectionMove, SurfaceConnection};
 pub(crate) use debug::SpatialDebugGeometry;
@@ -58,6 +61,54 @@ pub(crate) struct SpatialCamera {
     clip_magnitudes: [[f64; 4]; 3],
 }
 impl SpatialCamera {
+    /// Match the local billboard +X axis to projected ground velocity, including perspective foreshortening.
+    pub(crate) fn billboard_velocity_rotation(
+        &self,
+        at: Transform2D,
+        elevation: f32,
+        velocity: crate::components::Velocity,
+    ) -> f32 {
+        if velocity.vx == 0. && velocity.vy == 0. {
+            return 0.;
+        }
+        let base = [f64::from(at.x), f64::from(elevation), -f64::from(at.y)];
+        let clip: [f64; 4] = std::array::from_fn(|r| {
+            (0..3)
+                .map(|i| f64::from(self.matrix[i * 4 + r]) * base[i])
+                .sum::<f64>()
+                + f64::from(self.matrix[12 + r])
+        });
+        if clip[3].abs() < f64::MIN_POSITIVE {
+            return 0.;
+        }
+        let derivative = |v: [f64; 3]| -> [f64; 2] {
+            let d: [f64; 4] = std::array::from_fn(|r| {
+                (0..3)
+                    .map(|i| f64::from(self.matrix[i * 4 + r]) * v[i])
+                    .sum()
+            });
+            [
+                d[0] * clip[3] - clip[0] * d[3],
+                d[1] * clip[3] - clip[1] * d[3],
+            ]
+        };
+        let right = unit([self.right[0], 0., self.right[2]]).unwrap_or([1., 0., 0.]);
+        let r = derivative(right.map(f64::from));
+        let u = derivative([0., 1., 0.]);
+        let d = derivative([f64::from(velocity.vx), 0., -f64::from(velocity.vy)]);
+        let determinant = r[0] * u[1] - r[1] * u[0];
+        if determinant == 0. || !determinant.is_finite() {
+            return 0.;
+        }
+        let x = (d[0] * u[1] - d[1] * u[0]) / determinant;
+        let y = (r[0] * d[1] - r[1] * d[0]) / determinant;
+        if !x.is_finite() || !y.is_finite() || x == 0. && y == 0. {
+            0.
+        } else {
+            y.atan2(x) as f32
+        }
+    }
+
     pub fn new(v: &[f32]) -> Option<Self> {
         if v.len() != 12
             || v.iter().any(|v| !v.is_finite())
@@ -223,7 +274,7 @@ pub(crate) struct Surface {
     pub is_rendered: bool,
 }
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct SpatialMaterial {
     pub normal_texture: u32,
     pub flags: u32,
@@ -264,6 +315,10 @@ pub(crate) struct SpatialScene {
     pub billboards: Vec<SpatialVertex>,
     pub debug: SpatialDebugGeometry,
     pub bindings: BTreeMap<(u32, u32), Billboard>,
+    // Ephemeral native gameplay visuals never mutate authored revisions/save identity.
+    pub runtime_billboards: Vec<(Entity, Billboard)>,
+    /// Disposable render orientation; sorted full-generation keys, at most512 owned projectiles.
+    pub runtime_sprite_rotations: Vec<(Entity, f32)>,
     pub frame_camera: [f32; 28],
     pub presentation: [f32; 6],
     pub frame_active: bool,
@@ -273,8 +328,18 @@ pub(crate) struct SpatialScene {
     pub actor: Option<(Entity, f32, f32, f32)>,
     connections: Vec<SurfaceConnection>,
     pub navigation: SpatialNavigation,
+    pub navigation_revision: u32,
 }
 impl SpatialScene {
+    pub(crate) fn runtime_sprite_rotation(&self, entity: Entity) -> f32 {
+        self.runtime_sprite_rotations
+            .binary_search_by_key(&(entity.id, entity.generation), |(e, _)| {
+                (e.id, e.generation)
+            })
+            .ok()
+            .map_or(0., |i| self.runtime_sprite_rotations[i].1)
+    }
+
     pub fn clear(&mut self) {
         self.attachments = Default::default();
         self.models = Default::default();
@@ -293,10 +358,13 @@ impl SpatialScene {
         self.billboards.clear();
         self.debug.reset();
         self.bindings.clear();
+        self.runtime_billboards.clear();
+        self.runtime_sprite_rotations.clear();
         self.physics.clear();
         self.actor = None;
         self.connections.clear();
         self.navigation = SpatialNavigation::default();
+        self.navigation_revision = self.navigation_revision.wrapping_add(1);
         self.frame_active = false;
         self.revision = self.revision.wrapping_add(1);
     }
@@ -397,23 +465,23 @@ impl SpatialScene {
                 ..SpatialMaterial::default()
             })
             .collect();
+        self.navigation_revision = self.navigation_revision.wrapping_add(1);
         self.surfaces = surfaces;
         self.terrain = mesh;
         self.physics = physics;
         self.revision = self.revision.wrapping_add(1);
         true
     }
-    pub fn build(&mut self, world: &World) {
-        self.shadow_casters.clear();
-        self.billboards.clear();
-        self.billboard_materials.clear();
-        self.debug.clear_frame();
-        self.terrain_draw_ranges.clear();
-        self.frame_active = self.camera.is_some();
-        let Some(mut camera) = self.camera else {
-            return;
-        };
-        self.presentation = [0., 0., 1., 1., 0., 0.];
+    /// Computes the displayed camera without borrowing a previous rendered frame.
+    pub(crate) fn presented_camera(&self, viewport: [f32; 2]) -> Option<(SpatialCamera, [f32; 6])> {
+        let mut camera = self.camera?;
+        if viewport != [camera.parameters[10], camera.parameters[11]] {
+            let mut values = camera.parameters;
+            values[10] = viewport[0];
+            values[11] = viewport[1];
+            camera = SpatialCamera::new(&values)?;
+        }
+        let mut presentation = [0., 0., 1., 1., 0., 0.];
         if let Some(values) = self.environment.values.filter(|v| v[0] as u32 & 16 != 0) {
             let [width, height] = [values[80], values[81]];
             let mut p = camera.parameters;
@@ -421,7 +489,7 @@ impl SpatialScene {
             let pixel_scale = if fit >= 1. { fit.floor() } else { fit };
             let w = width * pixel_scale;
             let h = height * pixel_scale;
-            self.presentation = [
+            presentation = [
                 (1. - w / p[10]) * 0.5,
                 (1. - h / p[11]) * 0.5,
                 w / p[10],
@@ -446,6 +514,79 @@ impl SpatialScene {
                 camera = displayed;
             }
         }
+        Some((camera, presentation))
+    }
+
+    /// The pointer is in logical canvas pixels; shots remain on a horizontal visual-height plane.
+    pub(crate) fn aim_on_plane(
+        &self,
+        viewport: [f32; 2],
+        pointer: [f32; 2],
+        height: f32,
+    ) -> Option<Transform2D> {
+        if pointer
+            .iter()
+            .chain(viewport.iter())
+            .any(|value| !value.is_finite())
+            || !height.is_finite()
+            || viewport.iter().any(|value| *value <= 0.0)
+        {
+            return None;
+        }
+        let (camera, p) = self.presented_camera(viewport)?;
+        let u = pointer[0] / viewport[0];
+        let v = pointer[1] / viewport[1];
+        if u < p[0] || u > p[0] + p[2] || v < p[1] || v > p[1] + p[3] {
+            return None;
+        }
+        let (origin, direction) =
+            camera.ray((u - p[0]) / p[2] * 2.0 - 1.0, 1.0 - (v - p[1]) / p[3] * 2.0);
+        if direction[1].abs() < 0.000001 {
+            return None;
+        }
+        let time = (height - origin[1]) / direction[1];
+        if !time.is_finite() || time < 0.0 {
+            return None;
+        }
+        let hit = add(origin, scale(direction, time));
+        let eye = [
+            camera.parameters[1],
+            camera.parameters[2],
+            camera.parameters[3],
+        ];
+        let depth = dot(sub(hit, eye), camera.forward);
+        if hit.iter().any(|value| !value.is_finite())
+            || depth < camera.parameters[8]
+            || depth > camera.parameters[9]
+            || hit[0].abs() > 1_000_000.0
+            || hit[2].abs() > 1_000_000.0
+        {
+            return None;
+        }
+        Some(Transform2D {
+            x: hit[0],
+            y: -hit[2],
+        })
+    }
+
+    pub fn build(&mut self, world: &World) {
+        self.runtime_billboards
+            .sort_unstable_by_key(|(entity, _)| (entity.id, entity.generation));
+        self.shadow_casters.clear();
+        self.billboards.clear();
+        self.billboard_materials.clear();
+        self.debug.clear_frame();
+        self.terrain_draw_ranges.clear();
+        self.frame_active = self.camera.is_some();
+        let Some(base) = self.camera else {
+            return;
+        };
+        let Some((camera, presentation)) =
+            self.presented_camera([base.parameters[10], base.parameters[11]])
+        else {
+            return;
+        };
+        self.presentation = presentation;
         self.environment.build(
             &camera,
             world,
@@ -492,7 +633,16 @@ impl SpatialScene {
                 vertex_count: 36,
             });
         }
-        for (&(id, generation), &style) in &self.bindings {
+        for ((id, generation), style) in self
+            .bindings
+            .iter()
+            .map(|(key, style)| (*key, *style))
+            .chain(
+                self.runtime_billboards
+                    .iter()
+                    .map(|(e, style)| ((e.id, e.generation), *style)),
+            )
+        {
             let entity = Entity { id, generation };
             if !world.is_current_entity(entity) {
                 continue;
@@ -500,7 +650,8 @@ impl SpatialScene {
             let Some((t, mut s)) = world.renderable_sprite_at_index(id as usize) else {
                 continue;
             };
-            s.rotation_radians += world.rotation_at_index_or_default(id as usize).radians;
+            s.rotation_radians += world.rotation_at_index_or_default(id as usize).radians
+                + self.runtime_sprite_rotation(entity);
             let elevation =
                 world.height_span(entity).map_or(0.0, |s| s.elevation) + style.elevation;
             let first = self.billboards.len();
@@ -554,7 +705,26 @@ impl SpatialScene {
         world: &World,
         removed: &std::collections::BTreeSet<(u32, u32)>,
     ) -> bool {
-        if !self.environment.shadows() {
+        let runtime = self
+            .runtime_billboards
+            .iter()
+            .filter(|(e, style)| {
+                style.material.flags & 1 != 0
+                    && !removed.contains(&(e.id, e.generation))
+                    && world.is_current_entity(*e)
+            })
+            .filter_map(|(e, _)| world.sprite_at_index(e.id as usize).map(|s| s.texture_id));
+        self.shadow_budget_for_runtime(world, removed, self.environment.shadows(), runtime)
+    }
+    /// Cold restore preflight supplies the future runtime casters, including the saved environment.
+    pub fn shadow_budget_for_runtime(
+        &self,
+        world: &World,
+        removed: &std::collections::BTreeSet<(u32, u32)>,
+        shadows: bool,
+        runtime: impl Iterator<Item = u32>,
+    ) -> bool {
+        if !shadows {
             return true;
         }
         if self.bindings.len() > MAX_SHADOW_CASTERS {
@@ -562,28 +732,44 @@ impl SpatialScene {
         }
         let mut previous = None;
         let mut runs = 0;
-        for (index, s) in self.surfaces.iter().enumerate() {
+        for (index, surface) in self.surfaces.iter().enumerate() {
             if self.terrain_materials[index].flags & 1 == 0 {
                 previous = None;
                 continue;
             }
-            if previous != Some(s.texture) {
+            if previous != Some(surface.texture) {
                 runs += 1;
-                previous = Some(s.texture);
+                previous = Some(surface.texture);
             }
         }
-        let textures: std::collections::BTreeSet<_> = self
+        // Fixed scratch keeps both authoring and native spawn admission allocation-free.
+        let mut textures = [0; 64];
+        let mut texture_count = 0;
+        let mut caster_count = 0;
+        let authored = self
             .bindings
-            .keys()
-            .filter(|key| !removed.contains(key) && self.bindings[*key].material.flags & 1 != 0)
-            .filter_map(|&(id, generation)| {
+            .iter()
+            .filter(|(key, style)| style.material.flags & 1 != 0 && !removed.contains(key))
+            .filter_map(|(&(id, generation), _)| {
                 world
                     .sprite_at_index(id as usize)
                     .filter(|_| world.is_current_entity(Entity { id, generation }))
                     .map(|s| s.texture_id)
-            })
-            .collect();
-        runs + textures.len() <= 64
+            });
+        for texture in authored.chain(runtime) {
+            caster_count += 1;
+            if caster_count > MAX_SHADOW_CASTERS {
+                return false;
+            }
+            if !textures[..texture_count].contains(&texture) {
+                if runs + texture_count >= textures.len() {
+                    return false;
+                }
+                textures[texture_count] = texture;
+                texture_count += 1;
+            }
+        }
+        runs + texture_count <= 64
     }
     /// Stable terrain identity only when the entity origin is on a walkable surface.
     pub fn support_surface_id(
@@ -608,7 +794,20 @@ impl SpatialScene {
         max_drop: f32,
         counters: Option<&mut crate::physics::PhysicsCounters>,
     ) -> bool {
-        self.move_body_internal(world, entity, dx, dy, max_step, max_drop, counters, true)
+        self.move_body_internal(
+            world, entity, dx, dy, max_step, max_drop, counters, true, false,
+        )
+    }
+    /// Combat trigger actors share terrain height/sweeps while retaining overlap damage contacts.
+    pub(crate) fn move_combat_body(
+        &mut self,
+        world: &mut World,
+        entity: Entity,
+        dx: f32,
+        dy: f32,
+        counters: &mut crate::physics::PhysicsCounters,
+    ) -> bool {
+        self.move_body_internal(world, entity, dx, dy, 1.0, 1.0, Some(counters), true, true)
     }
     #[allow(clippy::too_many_arguments)]
     fn move_body_internal(
@@ -621,6 +820,7 @@ impl SpatialScene {
         max_drop: f32,
         mut counters: Option<&mut crate::physics::PhysicsCounters>,
         record_contacts: bool,
+        combat: bool,
     ) -> bool {
         if !world.is_current_entity(entity)
             || ![dx, dy, max_step, max_drop].iter().all(|v| v.is_finite())
@@ -633,7 +833,7 @@ impl SpatialScene {
             || world.compound_collider_count(entity) != 1
             || !world
                 .collider(entity)
-                .is_some_and(|c| c.enabled && !c.is_trigger)
+                .is_some_and(|c| c.enabled && (combat || !c.is_trigger))
         {
             return false;
         }
@@ -671,6 +871,11 @@ impl SpatialScene {
                 max_step,
                 max_drop,
                 counters.as_deref_mut(),
+                if combat {
+                    crate::components::CollisionMask::WALL
+                } else {
+                    crate::components::CollisionMask::ALL
+                },
             ) {
                 ConnectionMove::Moved => continue,
                 ConnectionMove::Blocked => break,
@@ -699,9 +904,16 @@ impl SpatialScene {
                     vx: dx / steps,
                     vy: dy / steps,
                 },
-                Hd2dKinematicControllerConfig::new(crate::components::CollisionMask::ALL, 8)
-                    .with_step_height(max_step)
-                    .with_drop_height(max_drop),
+                Hd2dKinematicControllerConfig::new(
+                    if combat {
+                        crate::components::CollisionMask::WALL
+                    } else {
+                        crate::components::CollisionMask::ALL
+                    },
+                    8,
+                )
+                .with_step_height(max_step)
+                .with_drop_height(max_drop),
                 counters.as_deref_mut(),
                 &mut self.movement_scratch,
                 true,

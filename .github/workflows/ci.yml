@@ -134,6 +134,37 @@ jobs:
       - name: Spatial Scene browser smoke
         run: pnpm smoke:spatial-scene
 
+      - name: Spatial WebGPU geometry/models offscreen and pre-context fallback
+        run: pnpm smoke:spatial-webgpu-offscreen
+
+      - name: Upload spatial WebGPU evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spatial-webgpu
+          path: |
+            artifacts/hd2d-static-model/spatial-webgpu/run-*/report.json
+            artifacts/hd2d-static-model/spatial-webgpu/run-*/*.png
+          if-no-files-found: ignore
+
+      - name: Verify native HD-2D combat, input, checkpoints, prefabs, multi-floor AI, crowd, scheduler, movement, melee/dash, actor spawn and projectile visuals
+        run: pnpm smoke:hd2d-combat
+
+      - name: Upload HD-2D combat evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hd2d-combat
+          path: |
+            artifacts/hd2d-static-model/combat/run-*/report.json
+            artifacts/hd2d-static-model/combat/run-*/*-enemies*.json
+            artifacts/hd2d-static-model/combat/run-*/prefab-*.png
+            artifacts/hd2d-static-model/combat/run-*/movement-*.png
+            artifacts/hd2d-static-model/combat/run-*/actions-*.png
+            artifacts/hd2d-static-model/combat/run-*/spawn-*.png
+            artifacts/hd2d-static-model/combat/run-*/visuals-*.png
+          if-no-files-found: ignore
+
       - name: Data Scene animation projection and sun browser smoke
         run: pnpm smoke:data-scene-presentation
 

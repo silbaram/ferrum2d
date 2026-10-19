@@ -1139,6 +1139,7 @@ export function validateDataSceneGameplayCommand(
   command: BehaviorRecipeCommand,
   ids: GameplayBehaviorRuntimeIds | undefined,
   path: string,
+  combat = false,
 ): string | undefined {
   let variableMutationKey: string | undefined;
   switch (command.type) {
@@ -1180,8 +1181,12 @@ export function validateDataSceneGameplayCommand(
       break;
     case "configureTimerTrigger":
       assertSupportedTimerTriggerCommand(command, path);
-      if (command.action !== undefined || command.actionId !== undefined) {
+      if (!combat && (command.action !== undefined || command.actionId !== undefined)) {
         throw gameplayAuthoringDiagnosticError(`${path}.action`, "timer actions have no generic Data Scene executor; use the timer event");
+      }
+      if (combat) {
+        const actionId = timerTriggerActionId(command, ids, path);
+        if (actionId !== undefined) positiveU32(actionId, `${path}.actionId`);
       }
       positiveU32(timerTriggerId(command, ids, path), `${path}.timerId`);
       dataSceneFloat32(command.seconds, `${path}.seconds`, true);
@@ -1204,7 +1209,8 @@ export function validateDataSceneGameplayCommand(
       break;
     }
     default:
-      throw gameplayAuthoringDiagnosticError(path, `${command.type} has no generic Data Scene executor; use a supported recipe or a scene-specific runtime`);
+      if (!combat) throw gameplayAuthoringDiagnosticError(path, `${command.type} has no generic Data Scene executor; use a supported recipe or a scene-specific runtime`);
+      validateDataSceneCombatCommand(command, ids, path);
   }
   if (command.guard !== undefined) {
     const [, , , literal] = runtimeVariableComparison(command.guard, ids, `${path}.guard`);
@@ -1213,6 +1219,100 @@ export function validateDataSceneGameplayCommand(
     }
   }
   return variableMutationKey;
+}
+
+function validateDataSceneCombatCommand(command: BehaviorRecipeCommand, ids: GameplayBehaviorRuntimeIds | undefined, path: string): void {
+  switch (command.type) {
+    case "configureSpawnPrefabAction":
+      assertSupportedSpawnPrefabActionCommand(command, path);
+      if (command.projectile !== undefined) throw gameplayAuthoringDiagnosticError(path, "Data Scene spawn actions require an actor prefab, without projectile overrides");
+      positiveU32(spawnPrefabActionId(command, ids, path), `${path}.actionId`);
+      positiveU32(spawnPrefabId(command, ids, path), `${path}.prefabId`);
+      dataSceneFloat32(command.cooldownSeconds, `${path}.cooldownSeconds`, false);
+      if (![command.offsetX, command.offsetY].every(value => Number.isFinite(Math.fround(value)))) throw gameplayAuthoringDiagnosticError(path, "spawn offsets must fit finite float32");
+      return;
+    case "configureDashAction":
+      assertSupportedDashActionCommand(command, path);
+      positiveU32(dashActionId(command, ids, path), `${path}.actionId`);
+      dataSceneFloat32(command.cooldownSeconds, `${path}.cooldownSeconds`, false);
+      dataSceneFloat32(command.distance, `${path}.distance`, true);
+      return;
+    case "configureMeleeAction":
+      assertSupportedMeleeActionCommand(command, path);
+      positiveU32(meleeActionId(command, ids, path), `${path}.actionId`);
+      dataSceneFloat32(command.cooldownSeconds, `${path}.cooldownSeconds`, false);
+      dataSceneFloat32(command.range, `${path}.range`, true);
+      dataSceneFloat32(command.damage, `${path}.damage`, true);
+      return;
+    case "configureChase":
+      assertSupportedChaseCommand(command, path);
+      validateCombatMovementTarget(command.target, ids, `${path}.target`);
+      dataSceneFloat32(command.speed, `${path}.speed`, true);
+      return;
+    case "configureSeekTarget":
+      assertSupportedSeekTargetCommand(command, path);
+      validateCombatMovementTarget(command.target, ids, `${path}.target`);
+      dataSceneFloat32(command.speed, `${path}.speed`, true);
+      dataSceneFloat32(command.turnRate, `${path}.turnRate`, false);
+      return;
+    case "configureAccelerate":
+      assertSupportedAccelerateCommand(command, path);
+      for (const value of [command.accelerationX, command.accelerationY]) {
+        if (!Number.isFinite(Math.fround(value))) throw gameplayAuthoringDiagnosticError(path, "acceleration must fit finite float32");
+      }
+      if (Math.fround(command.accelerationX) === 0 && Math.fround(command.accelerationY) === 0) throw gameplayAuthoringDiagnosticError(path, "acceleration must remain non-zero in float32");
+      dataSceneFloat32(command.maxSpeed, `${path}.maxSpeed`, true);
+      return;
+    case "configureProjectileAction":
+      assertSupportedProjectileActionCommand(command, path);
+      if ((command.tileImpact ?? "despawn") !== "despawn") {
+        throw gameplayAuthoringDiagnosticError(path, "Data Scene combat requires despawn tile impact");
+      }
+      positiveU32(projectileActionId(command, ids, path), `${path}.actionId`);
+      dataSceneFloat32(command.cooldownSeconds, `${path}.cooldownSeconds`, false);
+      dataSceneFloat32(command.speed, `${path}.speed`, true);
+      dataSceneFloat32(command.damage, `${path}.damage`, true);
+      dataSceneFloat32(command.lifetimeSeconds, `${path}.lifetimeSeconds`, true);
+      return;
+    case "configureCollisionAreaDamage":
+      assertSupportedCollisionAreaDamageCommand(command, path);
+      dataSceneFloat32(command.amount, `${path}.amount`, true);
+      dataSceneFloat32(command.radius, `${path}.radius`, true);
+      return;
+    case "configureCollisionKnockback":
+      assertSupportedCollisionKnockbackCommand(command, path);
+      dataSceneFloat32(command.impulse, `${path}.impulse`, true);
+      return;
+    case "configureCollisionEmitEffect":
+      assertSupportedCollisionEmitEffectCommand(command, path);
+      collisionEmitEffectId(command, ids, path);
+      dataSceneFloat32(command.intensity ?? 1, `${path}.intensity`, false);
+      dataSceneFloat32(command.radius ?? 0, `${path}.radius`, false);
+      dataSceneFloat32(command.cooldownSeconds ?? 0, `${path}.cooldownSeconds`, false);
+      return;
+    case "configureCollisionSound":
+      assertSupportedCollisionSoundCommand(command, path);
+      positiveU32(command.soundId, `${path}.soundId`);
+      dataSceneFloat32(command.volume, `${path}.volume`, false);
+      dataSceneFloat32(command.pitch, `${path}.pitch`, true);
+      dataSceneFloat32(command.cooldownSeconds ?? 0, `${path}.cooldownSeconds`, false);
+      return;
+    case "configureCollisionParticle":
+      assertSupportedCollisionParticleCommand(command, path);
+      dataSceneFloat32(command.cooldownSeconds ?? 0, `${path}.cooldownSeconds`, false);
+      return;
+    case "configureCollisionDespawn":
+      assertSupportedCollisionDespawnCommand(command, path);
+      return;
+    default:
+      throw gameplayAuthoringDiagnosticError(path, `${command.type} has no Data Scene combat executor`);
+  }
+}
+
+function validateCombatMovementTarget(target: string, ids: GameplayBehaviorRuntimeIds | undefined, path: string): void {
+  movementNearestLayerTarget(target, path);
+  movementNearestFactionTarget(target, path);
+  movementNearestTagTarget(target, ids, path);
 }
 
 function dataSceneFloat32(value: unknown, path: string, positive: boolean): void {
@@ -2481,6 +2581,7 @@ function applyConfigureProjectileActionCommand(
   path: string,
   ids: GameplayBehaviorRuntimeIds | undefined,
 ): boolean {
+  if (command.projectilePrefab !== undefined) throw gameplayAuthoringDiagnosticError(`${path}.projectilePrefab`, "requires applyDataSceneAuthoringDocument to configure the projectile catalog and bindings");
   assertSupportedProjectileActionCommand(command, path);
   const actionId = projectileActionId(command, ids, path);
   const aimCode = dashActionAimCode(command.aim, `${path}.aim`);
@@ -2950,7 +3051,7 @@ function assertSupportedChaseCommand(
   path: string,
 ): void {
   if (command.stopDistance !== 0) {
-    throw gameplayAuthoringDiagnosticError(`${path}.stopDistance`, "must be 0 because movement pattern storage does not support stop distance yet");
+    throw gameplayAuthoringDiagnosticError(`${path}.stopDistance`, "must be 0 for standalone movement storage; nonzero distances require full Data Scene authoring with combatNavigation");
   }
   if (command.maxDistance !== undefined) {
     throw gameplayAuthoringDiagnosticError(`${path}.maxDistance`, "maxDistance is not supported by movement pattern storage yet");

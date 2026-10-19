@@ -2,6 +2,12 @@ use super::{component_storage::WorldComponentStorage, World, DEAD_ALIVE_POSITION
 use crate::entity::Entity;
 
 impl World {
+    /// Preserves generation safety while allowing bounded runtime systems to reuse vacant slots.
+    pub(crate) fn can_spawn_below(&self, limit: usize) -> bool {
+        self.free_list
+            .last()
+            .map_or(self.alive.len() < limit, |id| (*id as usize) < limit)
+    }
     pub fn spawn_entity(&mut self) -> Entity {
         if let Some(id) = self.free_list.pop() {
             let i = id as usize;

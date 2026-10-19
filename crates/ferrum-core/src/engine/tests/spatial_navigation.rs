@@ -5,7 +5,7 @@ use crate::components::{HeightSpan, PhysicsFloorId};
 fn surface(x: f32, y: f32, w: f32, d: f32, a: f32, b: f32) -> [f32; 11] {
     [x, y, w, d, 0., a, b, 1., 1., 1., 1.]
 }
-fn setup(multifloor: bool) -> (Engine, Entity) {
+pub(super) fn setup(multifloor: bool) -> (Engine, Entity) {
     let mut e = Engine::new();
     e.use_data_scene();
     assert!(e.configure_spatial_camera(&[
@@ -42,7 +42,7 @@ fn setup(multifloor: bool) -> (Engine, Entity) {
     assert!(e.configure_spatial_actor(a.id, a.generation, 96., 8., 40.));
     (e, a)
 }
-fn pose(e: &Engine, a: Entity) -> (f32, f32, u32, f32) {
+pub(super) fn pose(e: &Engine, a: Entity) -> (f32, f32, u32, f32) {
     let p = e.world.transform(a).unwrap();
     let s = e.world.height_span(a).unwrap();
     (p.x, p.y, s.floor.0, s.elevation)

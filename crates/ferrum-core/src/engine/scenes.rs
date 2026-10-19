@@ -267,6 +267,19 @@ impl DataSceneRuntime {
         }
         context.world.tick_action_cooldowns(delta);
         context.world.tick_collision_reaction_cooldowns(delta);
+        self.gameplay.combat.pre_physics(
+            context.world,
+            context.spatial_scene,
+            delta,
+            context.gameplay_events,
+            context.physics_counters,
+            super::data_scene_combat::CombatInput {
+                actions: context.input_actions,
+                snapshot: context.input_snapshot,
+                camera: context.camera,
+                tilemap: context.tilemap,
+            },
+        );
         context
             .world
             .update_with_rigid_body_step(delta, context.auto_rigid_body_step_enabled);
@@ -338,6 +351,7 @@ pub(super) struct SceneUpdateContext<'a> {
     pub(super) world: &'a mut World,
     pub(super) camera: &'a mut Camera2D,
     pub(super) input_actions: &'a InputActionRegistry,
+    pub(super) input_snapshot: crate::gameplay::FrameInputSnapshot,
     pub(super) audio_events: &'a mut Vec<AudioEvent>,
     pub(super) tilemap: &'a Tilemap,
     pub(super) physics_counters: &'a mut PhysicsCounters,
@@ -811,7 +825,7 @@ impl Engine {
 
     pub(super) fn active_scene_ticks_gameplay_timers(&self) -> bool {
         if self.scene_mode == SceneMode::Data {
-            return false;
+            return self.data_scene.gameplay.combat.enabled;
         }
         self.scenes.active_runtime().ticks_gameplay_timers()
     }
@@ -849,13 +863,22 @@ impl Engine {
         }
     }
 
-    pub(super) fn update_scene(&mut self, delta: f32, input: InputState) {
+    pub(super) fn update_scene(
+        &mut self,
+        delta: f32,
+        input: InputState,
+        latched_presses: InputState,
+    ) {
         let mut context = SceneUpdateContext {
             spatial_scene: &mut self.spatial_scene,
             auto_rigid_body_step_enabled: self.auto_rigid_body_step_enabled,
             world: &mut self.world,
             camera: &mut self.camera,
             input_actions: &self.input_actions,
+            input_snapshot: self
+                .data_scene
+                .gameplay
+                .input_snapshot(input, latched_presses),
             audio_events: &mut self.frame_buffers.audio_events,
             tilemap: &self.tilemap,
             physics_counters: &mut self.physics_counters,

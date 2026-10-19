@@ -25,7 +25,7 @@ export class WebGpuPostProcessPass {
 
   constructor(
     private readonly device: GPUDevice,
-    private readonly context: GPUCanvasContext,
+    private readonly currentTexture: () => GPUTexture,
     private readonly format: GPUTextureFormat,
     postProcess: PostProcessStackInput = undefined,
   ) {
@@ -72,7 +72,7 @@ export class WebGpuPostProcessPass {
       const encoder = this.device.createCommandEncoder();
       const renderPass = encoder.beginRenderPass({
         colorAttachments: [{
-          view: this.context.getCurrentTexture().createView(),
+          view: this.currentTexture().createView(),
           loadOp: "load",
           storeOp: "store",
         }],

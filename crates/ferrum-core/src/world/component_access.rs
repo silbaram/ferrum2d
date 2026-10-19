@@ -9,6 +9,39 @@ use crate::components::{AngularVelocity, Rotation2D, Sprite, Transform2D, Veloci
 use crate::entity::Entity;
 
 impl World {
+    /// Cold preflight follows the exact allocator order, including exhausted generations.
+    pub(crate) fn can_spawn_checkpoint_entities(
+        &self,
+        retiring: &[Entity],
+        count: usize,
+        limit: usize,
+    ) -> bool {
+        let mut free = self.free_list.clone();
+        let mut seen = std::collections::BTreeSet::new();
+        for &entity in retiring {
+            if self.is_current_entity(entity)
+                && seen.insert(entity.id)
+                && entity.generation != u32::MAX
+            {
+                free.push(entity.id);
+            }
+        }
+        let mut capacity = self.alive.len();
+        for _ in 0..count {
+            if let Some(id) = free.pop() {
+                if id as usize >= limit {
+                    return false;
+                }
+            } else {
+                if capacity >= limit {
+                    return false;
+                }
+                capacity += 1;
+            }
+        }
+        true
+    }
+
     pub(crate) fn primary_actor_entity(&self) -> Option<Entity> {
         let entity = self.primary_actor?;
         self.valid_index(entity)?;

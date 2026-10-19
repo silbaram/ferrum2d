@@ -452,3 +452,55 @@ proxy 배열의 null·빈 칸과 f32에서 퇴화/overflow하는 월드 collider
 일반 각도 collider는 OBB이며 보행면이 있는 묶음의 최종 world yaw는 90도 배수다.
 움직이는 terrain/connection은 거절한다. model 옵션에 chunk/lods를 함께 작성할 수 있다.
 [공간 authoring의 지원 범위](../data-scene-spatial.md)를 따른다.
+
+
+### Data Scene 전투 opt-in (개발 소스)
+
+`DataSceneGameplaySpec.combat` / `DataSceneGameplayOptions.combat`은 기본 false인 optional boolean이다.
+true이면 primaryActor를 지정하고 새 combat Wasm을 사용한다. `configureDataSceneGameplay`가 원자적으로 설정한다.
+`dataSceneCombatEnabled()`와 저빈도 `dataSceneCombatStats(): DataSceneCombatStats | undefined`로 실행 여부와
+AI/발사/명중/사망/상한을 확인한다. 구형 Wasm의 stats는 undefined이며 authoring은 사전에 거절한다.
+`supportsDataSceneInputProjectiles(): boolean`은 별도 native v1 기능을 검사한다. 이전 combat Wasm에서는
+false이며 primaryActor의 input/enemies projectile 문서를 적용하기 전에 필요하다.
+같은 action ID의 `setInputActionBinding`으로 pressed/down 발사를 연결한다.
+`supportsDataSceneCombatActions(): boolean`은 native melee/dash v1 실행·checkpoint 기능 검사다.
+primaryActor의 enemies melee/input dash와 targetPlayer dash/player melee timer를 지원한다.
+타이머와 프리팹 참조·저장 검증은 같은 entity/action ID의 마지막 액션 종류를 따른다.
+dash는 부착되지 않은 회전0 enabled kinematic AABB, 공간 문서는 body.heightSpan을 요구한다.
+`supportsDataSceneSpawnPrefabs()`는 별도 actor catalog v1 + checkpoint codec v3/v4 + native v7 설정을 검사한다.
+`supportsDataSceneCombatProgress(): boolean`은 별도 checkpoint codec v1/v2/v3/v4 지원 여부다. 전투 저장은
+`includeDataSceneState`·`includeDataSceneProgress`·동일 전체 문서를 요구하며 nested v9 `progress.combat`으로 기록한다.
+기존 v1/v2의 `DataSceneCombatActorSnapshot`/`DataSceneCombatProjectileSnapshot`은
+고정 instance ID를 사용한다. 입력/통계/VFX와 fixed-step 잔여시간은 재설정하는 checkpoint이며 replay는 아니다.
+지원 action/collision subset, 반복 timer, 공간 높이, 저장 제한은 [전투 계약](../data-scene-authoring.md#선택적-hd-2d-전투-실행-개발-소스)을 따른다.
+
+`DataSceneSpawnPrefabSpec`/`DataSceneSpawnPrefabBinding`은 `/authoring` 및 `/core`의 공개 타입이다.
+`gameplay.spawnPrefabs`는 기존 독립 instance를 원본으로 지정하고 `ids.prefabs`에 고유 positive uint32 ID를 선언한다.
+입력/타이머 `spawnPrefabAction`은 원본 제거 후에도 생성하며 부착물·모델 트리 복제는 지원하지 않는다.
+`DataSceneCombatProgressSnapshot`은 version으로 구분하는 기존 v1/v2와 새 `DataSceneCombatSpawnProgressSnapshot` v3 및 `DataSceneCombatVisualProgressSnapshot` v4의 union이다.
+`DataSceneCombatLegacyProgressSnapshot`은 `/core`에서 기존 저장 타입을 명시할 때 사용한다.
+v3 공개 타입 `DataSceneCombatActorReference`, `DataSceneCombatSpawnedActorSnapshot`, `DataSceneCombatSpawnedActorState`,
+`DataSceneCombatSpawnProjectileSnapshot`은 stable instance ID 또는 spawn serial과 prefab 이름으로 저장한다.
+원본 생존/제거, 상한, 지원 컴포넌트와 필드는 [생성 actor 계약](../data-scene-authoring.md#생성-actor-프리팹-개발-소스)을 따른다.
+
+`DataSceneProjectilePrefabSpec`과 `DataSceneProjectilePrefabBinding`은 `/authoring` 및 `/core`에서 import한다.
+`DataSceneGameplaySpec.projectilePrefabs`와 `projectileAction.projectilePrefab`으로 이름 기반 정적 외형을 공유한다.
+`supportsDataSceneProjectilePrefabs()`는 native catalog v1 + progress v2/v3/v4를 검사한다. 새 catalog는 combat을 요구하며,
+미지원 Wasm·누락 asset·잘못된 UV/크기/참조는 activation 전에 거절한다. 기본 문서와 이전 v1 저장은 유지한다.
+`DataSceneGameplayOptions`의 `projectilePrefabs`/`projectileBindings`/`colorManagement`는 직접 runtime 설정에도 사용한다.
+숫자 slot 대신 이름을 저장하는 checkpoint v2, collider world unit과 지원 범위는
+[탄환 외형 계약](../data-scene-authoring.md#탄환-프리팹외형-개발-소스)을 따른다.
+
+
+`DataSceneCombatNavigationSpec.movementPatterns?: "chase" | "all"`은 생략/`"chase"`일 때
+기존 Chase 경로 소유권을 유지한다. `"all"`은 final Chase/SeekTarget/Accelerate를 함께 검증하고
+`supportsDataSceneCombatMovement()`가 있는 native v6 설정으로 적용한다. 선택 crowd 회피와
+전체 agent/frame 예산을 공유하며 SeekTarget의 turnRate와 Accelerate의 substep 가속 의미를 유지한다.
+[이동·저장 계약](../data-scene-authoring.md#seektargetaccelerate-공간-이동-개발-소스)을 따른다.
+
+`DataSceneProjectileAnimationSpec`은 `/authoring`·`/core`에서 import하며 선택적 `sprite.animation`에 사용한다.
+1..32 UV frame·fps 0.001..1000·기본 반복 재생과 별도 `rotateToVelocity`(기본 false)를 제공한다.
+`supportsDataSceneProjectileVisuals()`는 visual v1 + progress v4 + native v8 설정을 검사한다.
+`DataSceneProjectileAnimationProgress`·`DataSceneCombatVisualProjectileSnapshot`·`DataSceneCombatVisualProgressSnapshot`은
+같은 공개 경로의 v4 저장 타입이다. 정적 shot의 animation은 null이며 회전은 복원된 속도/카메라에서 파생한다.
+[탄환 animation·회전 계약](../data-scene-authoring.md#탄환-atlas-animation이동-방향-회전-개발-소스)을 따른다.

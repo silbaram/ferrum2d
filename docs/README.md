@@ -27,7 +27,7 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 | Quickstart | [개발자 퀵스타트](engine/developer-quickstart.md) | 새 프로젝트 생성과 agent-first 개발 루프 시작 |
 | Public API | [Public API](engine/public-api.md), [좌표계와 2D 기하 변환](engine/coordinate-system.md), [Migration Guide](engine/public-api/migration-guide.md) | import 가능 API, 좌표/기하 계약, 지원 수준과 이전 절차 확인 |
 | Authoring | [Data Scene Authoring](engine/data-scene-authoring.md) | generic scene composition과 behavior recipe 계약 확인 |
-| HD-2D 공간 기반 | [입체 지형·카메라·빌보드](engine/data-scene-spatial.md) | 개발 소스의 WebGL2 공간 작성·이동·깊이·클릭 계약 확인 |
+| HD-2D 공간 기반 | [입체 지형·카메라·빌보드](engine/data-scene-spatial.md) | 공간 작성·이동·깊이·클릭과 선택 WebGPU의 지원 범위 확인 |
 | Examples | [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md) | 공식 예제 Game Spec 필드와 검증 규칙 확인 |
 | Smoke/Budget | [Smoke Check](development/quality/smoke-check.md) | 자동, browser, runtime budget 검증 기준 확인 |
 | Release | [GitHub Release 패키지 배포](development/operations/github-release.md), [npm 베타 패키징](development/operations/npm-release.md) | 설치용 tarball, beta package, changelog, tag, publish gate 확인 |

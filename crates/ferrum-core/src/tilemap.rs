@@ -6,6 +6,7 @@ mod authoring;
 mod collision_cache;
 mod collision_candidates;
 mod collision_queries;
+mod combat_actions;
 mod hd2d_surface;
 mod layer;
 mod navigation;
@@ -13,6 +14,7 @@ mod queries;
 mod rendering;
 
 use collision_cache::{TileCollisionChunkCache, TileCollisionRect};
+pub(crate) use combat_actions::MAX_ACTION_DASH_BREAKPOINTS;
 pub(crate) use navigation::TilemapNavigationScratch;
 
 const MAX_NAVIGATION_CELLS: usize = 4096;
@@ -224,6 +226,23 @@ pub struct Tilemap {
     layers: Vec<Option<TilemapLayer>>,
     collision_rects: Vec<Option<Vec<TileCollisionRect>>>,
     collision_rect_chunks: Vec<Option<TileCollisionChunkCache>>,
+}
+
+impl Tilemap {
+    pub(crate) fn action_layer_work_bound(&self) -> u64 {
+        self.layers.len() as u64 + 1
+    }
+
+    /// Conservative work bound for bounded combat action queries, without scanning tile values.
+    pub(crate) fn action_collision_work_bound(&self) -> u64 {
+        self.layers
+            .iter()
+            .flatten()
+            .filter(|layer| layer.collision)
+            .fold(self.layers.len() as u64 + 1, |sum, layer| {
+                sum.saturating_add(layer.tiles.len() as u64)
+            })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

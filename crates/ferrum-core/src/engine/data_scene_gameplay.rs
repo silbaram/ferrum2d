@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::*;
 use crate::collision::{CollisionPair, CollisionScratch, CollisionSystem};
 use crate::components::gameplay::{CollisionReaction, CollisionTarget};
 use crate::entity::Entity;
+use crate::gameplay::FrameInputSnapshot;
 use crate::gameplay_event::GameplayEvent;
 use crate::input::{InputActionRegistry, InputState};
 use crate::world::World;
@@ -13,6 +14,7 @@ use super::Engine;
 /// Scene-owned gameplay execution; no Shooter state or browser callbacks.
 #[derive(Default)]
 pub(super) struct DataSceneGameplay {
+    pub(super) combat: super::data_scene_combat::DataSceneCombat,
     enabled: bool,
     interaction_input_action: u32,
     previous_input: InputState,
@@ -21,6 +23,22 @@ pub(super) struct DataSceneGameplay {
 }
 
 impl DataSceneGameplay {
+    pub(super) fn input_snapshot(
+        &self,
+        input: InputState,
+        latched_presses: InputState,
+    ) -> FrameInputSnapshot {
+        FrameInputSnapshot::new(
+            input,
+            InputState {
+                space: self.previous_input.space & !latched_presses.space,
+                enter: self.previous_input.enter & !latched_presses.enter,
+                mouse_left: self.previous_input.mouse_left & !latched_presses.mouse_left,
+                ..self.previous_input
+            },
+        )
+    }
+
     pub(super) fn observe_input(&mut self, input: InputState) {
         self.previous_input = input;
     }
@@ -35,14 +53,13 @@ impl DataSceneGameplay {
     ) {
         // A new sampled press remains an edge even when the preceding fixed step
         // also consumed a short pulse and therefore ended with a synthetic down state.
-        let previous = InputState {
-            space: self.previous_input.space & !latched_presses.space,
-            enter: self.previous_input.enter & !latched_presses.enter,
-            mouse_left: self.previous_input.mouse_left & !latched_presses.mouse_left,
-            ..self.previous_input
-        };
+        let snapshot = self.input_snapshot(input, latched_presses);
         let interact = self.interaction_input_action == 0
-            || actions.is_action_active(self.interaction_input_action, input, previous);
+            || actions.is_action_active(
+                self.interaction_input_action,
+                snapshot.current,
+                snapshot.previous,
+            );
         self.previous_input = input;
         if !self.enabled {
             return;
@@ -53,11 +70,23 @@ impl DataSceneGameplay {
         if !world.has_pickups() {
             return;
         }
-        CollisionSystem::build_pairs_into(
-            &mut self.collision_scratch,
-            world,
-            &mut self.collision_pairs,
-        );
+        if self.combat.enabled {
+            if !CollisionSystem::build_pairs_bounded_into(
+                &mut self.collision_scratch,
+                world,
+                &mut self.collision_pairs,
+                super::data_scene_combat::MAX_COMBAT_ENTITIES * 8,
+                4096,
+            ) {
+                self.combat.capped();
+            }
+        } else {
+            CollisionSystem::build_pairs_into(
+                &mut self.collision_scratch,
+                world,
+                &mut self.collision_pairs,
+            );
+        }
         for pair in &self.collision_pairs {
             Self::collect(world, pair.a, pair.b, events);
             Self::collect(world, pair.b, pair.a, events);
@@ -181,6 +210,24 @@ impl Engine {
         generation: u32,
         interaction_input_action: u32,
     ) -> bool {
+        self.configure_data_scene_gameplay_v2(
+            has_actor,
+            id,
+            generation,
+            interaction_input_action,
+            false,
+        )
+    }
+
+    /// Opt-in combat extension. The legacy four-argument method retains exploration semantics.
+    pub fn configure_data_scene_gameplay_v2(
+        &mut self,
+        has_actor: bool,
+        id: u32,
+        generation: u32,
+        interaction_input_action: u32,
+        combat_enabled: bool,
+    ) -> bool {
         if self.scene_mode != SceneMode::Data {
             return false;
         }
@@ -188,7 +235,10 @@ impl Engine {
             let Some(entity) = self.entity_from_handle(id, generation) else {
                 return false;
             };
-            if self.world.transform(entity).is_none() {
+            if self.world.transform(entity).is_none()
+                || self.data_scene.gameplay.combat.owns_projectile(entity)
+                || self.data_scene.gameplay.combat.owns_spawned_actor(entity)
+            {
                 return false;
             }
             Some(entity)
@@ -198,6 +248,21 @@ impl Engine {
             }
             None
         };
+        if combat_enabled
+            && (!has_actor
+                || self
+                    .world
+                    .alive_indices()
+                    .iter()
+                    .any(|&index| index >= super::data_scene_combat::MAX_COMBAT_ENTITIES))
+        {
+            return false;
+        }
+        self.data_scene.gameplay.combat.reconfigure(
+            combat_enabled,
+            &mut self.world,
+            &mut self.spatial_scene,
+        );
         self.data_scene.movement.cancel();
         self.data_scene.movement_animation.stop(&mut self.world);
         self.data_scene.movement_animation.clear();
@@ -220,8 +285,20 @@ impl Engine {
         &mut self,
         input: InputState,
         latched_presses: InputState,
+        delta: f32,
     ) {
         if self.scene_mode == SceneMode::Data {
+            self.data_scene.gameplay.combat.post_physics(
+                &mut self.world,
+                &mut self.spatial_scene,
+                &self.tilemap,
+                &mut self.particles,
+                &self.particle_presets,
+                &mut self.frame_buffers.audio_events,
+                &mut self.frame_buffers.gameplay_events,
+                &mut self.frame_buffers.effect_events,
+                delta,
+            );
             let spatial = self
                 .spatial_scene
                 .actor

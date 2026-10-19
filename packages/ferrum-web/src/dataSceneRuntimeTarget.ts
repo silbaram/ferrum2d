@@ -1,3 +1,5 @@
+import { combatChaseCommands, combatCrowdRequired } from "./dataSceneCombatCrowd.js";
+import { MAX_DATA_SCENE_PROJECTILE_BINDINGS, compileDataSceneProjectilePrefabs, resolveDataSceneProjectileTextures } from "./dataSceneProjectilePrefabs.js";
 import type { SpatialModelAsset, SpatialModelPreparation, SpatialModelPreparer } from "./spatialModel.js";
 import { forgetDataSceneProgressContext, rememberDataSceneProgressContext } from "./dataSceneProgress.js";
 import { resolveDataSceneGroundShadow, type ResolvedDataSceneGroundShadow } from "./dataSceneSun.js";
@@ -242,6 +244,13 @@ export function applyDataSceneAuthoringDocument(
     throw sceneCompositionDiagnosticError(`${path}.spatial.terrain`, "X ramps require native spatial ramp axis v1 support");
   const bindingPlan = bindSceneBehaviorRecipes(resolved.sceneComposition, resolved.behaviorRecipes, { ...bindingOptions, path });
   preflightDataSceneGameplay(engine, resolved, bindingPlan, runtimeIds, path);
+  const crowd = combatCrowdRequired(resolved.gameplay?.combatNavigation, bindingPlan.commands);
+  const chaseCommands = combatChaseCommands(bindingPlan);
+  const projectileActions = finalCombatActions(bindingPlan.commands, runtimeIds).filter(command => command.type === "configureProjectileAction");
+  if (projectileActions.filter(command => command.projectilePrefab !== undefined).length > MAX_DATA_SCENE_PROJECTILE_BINDINGS) throw sceneCompositionDiagnosticError(`${path}.gameplay.projectilePrefabs`, "supports at most 8192 source/action bindings");
+  const projectilePrefabs = resolved.gameplay?.projectilePrefabs === undefined ? undefined : resolveDataSceneProjectileTextures(resolved.gameplay.projectilePrefabs, textureId ?? (name => runtimeAdapter.textureId(name)));
+  if (projectilePrefabs !== undefined) compileDataSceneProjectilePrefabs(projectilePrefabs, [], colorManagement);
+
   if (resolved.spatial) preflightDataSceneSpatialEnvironment(engine, resolved.spatial, bindingPlan.instances, options, resolved.spatial.environment);
   if(resolved.spatial?.models) {
     const origins=Object.fromEntries(bindingPlan.instances.map(i=>{
@@ -289,8 +298,18 @@ export function applyDataSceneAuthoringDocument(
       textureId,
       componentTemplates,
     });
+    // Full authoring consumes prefab references in one configuration batch after action storage.
+    // Standalone gameplay command application rejects these references instead of silently ignoring them.
+    const recipeEngine: Pick<FerrumEngine, "applyGameplayBehaviorCommands"> = {
+      applyGameplayBehaviorCommands: (commands, handles, options) => engine.applyGameplayBehaviorCommands(commands.map(command => {
+        if (resolved.gameplay?.combatNavigation && command.type === "configureChase") return { ...command, stopDistance: 0 };
+        if (command.type !== "configureProjectileAction") return command;
+        const { projectilePrefab: _prefab, ...runtimeCommand } = command;
+        return runtimeCommand;
+      }), handles, options),
+    };
     const result = applySceneBehaviorRecipes(
-      engine,
+      projectilePrefabs === undefined && !resolved.gameplay?.combatNavigation && !bindingPlan.commands.some(command => command.type === "configureProjectileAction" && command.projectilePrefab !== undefined) ? engine : recipeEngine,
       target,
       resolved.sceneComposition,
       resolved.behaviorRecipes,
@@ -301,14 +320,22 @@ export function applyDataSceneAuthoringDocument(
         instanceHandleRegistry,
       },
     );
+    // Spawn definitions capture authored billboard styles; configure space before native v7.
+    const spawnCatalog = resolved.gameplay?.spawnPrefabs;
+    if (spawnCatalog !== undefined && resolved.spatial !== undefined && !engine.configureDataSceneSpatial(resolved.spatial, result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
     if (resolved.gameplay !== undefined && !engine.configureDataSceneGameplay({
+      ...(spawnCatalog === undefined ? {} : { spawnPrefabs: Object.entries(spawnCatalog).map(([name, prefab]) => ({ prefabId: runtimeIds!.prefabs![name], prototype: result.entityHandles[prefab.prototypeInstanceId] })) }),
+      ...(crowd ? { chaseBindings: chaseCommands.filter(command => command.entity !== resolved.gameplay?.primaryActor && (resolved.gameplay?.combatNavigation?.crowdAvoidance !== undefined || command.stopDistance > 0)).map(command => ({ source: result.entityHandles[command.entity], stopDistance: command.stopDistance })) } : {}),
+      ...(resolved.gameplay.combatNavigation === undefined ? {} : { combatNavigation: resolved.gameplay.combatNavigation }),
+      ...(projectilePrefabs === undefined ? {} : { projectilePrefabs, colorManagement, projectileBindings: projectileActions.filter(command => command.projectilePrefab !== undefined).map(command => ({ source: result.entityHandles[command.entity], actionId: command.actionId ?? runtimeIds!.actions![command.action], prefab: command.projectilePrefab! })) }),
+      ...(resolved.gameplay.combat === undefined ? {} : { combat: resolved.gameplay.combat }),
       ...(resolved.gameplay.primaryActor === undefined ? {} : { primaryActor: result.entityHandles[resolved.gameplay.primaryActor] }),
       ...(resolved.gameplay.interactionInputActionId === undefined ? {} : { interactionInputActionId: resolved.gameplay.interactionInputActionId }),
     })) throw sceneCompositionDiagnosticError(`${path}.gameplay`, "runtime rejected Data Scene gameplay configuration");
     if (resolved.navigation !== undefined && !engine.configureDataSceneNavigation(resolved.navigation, result.entityHandles)) {
       throw sceneCompositionDiagnosticError(`${path}.navigation`, "runtime rejected Data Scene navigation configuration");
     }
-    if (resolved.spatial !== undefined && !engine.configureDataSceneSpatial(resolved.spatial,result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
+    if (spawnCatalog === undefined && resolved.spatial !== undefined && !engine.configureDataSceneSpatial(resolved.spatial,result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
     preparation?.commit();
     rememberDataSceneProgressContext(engine, document, result.entityHandles, options);
     return {
@@ -468,6 +495,7 @@ export function preflightDataSceneSpatialEnvironment(
   environment: SpatialEnvironmentSpec | null | undefined,
   removed: ReadonlySet<string> = new Set(),
   camera: SpatialCameraSpec = spec.camera,
+  spawnedPrototypeIds: readonly string[] = [],
 ): void {
   if (!environment) return;
   const environmentPath = `${options.path ?? "dataScene"}.spatial.environment`;
@@ -493,8 +521,11 @@ export function preflightDataSceneSpatialEnvironment(
   const byId = new Map(instances.map(instance => [instance.id, instance]));
   const textureId = options.textureId ?? ((name: string) => adapter.textureId(name));
   const textures = new Set<number>();
-  for (const id of Object.keys(spec.billboards)) {
-    if (removed.has(id) || spec.billboards[id].castShadow === false) continue;
+  let casters = 0;
+  const casting = [...Object.keys(spec.billboards).filter(id => !removed.has(id)), ...spawnedPrototypeIds];
+  for (const id of casting) {
+    if (!spec.billboards[id] || spec.billboards[id].castShadow === false) continue;
+    if (++casters > 1024) throw sceneCompositionDiagnosticError(path, "shadow caster budget exceeds 1024 authored and spawned billboards");
     const instance = byId.get(id);
     if (!instance) throw sceneCompositionDiagnosticError(path, `unknown billboard '${id}'`);
     const components = resolveDataSceneInstanceComponents(instance, { allowTemplate: false, path });
@@ -664,3 +695,4 @@ function transformLocalPoint(
 function scaleNumber(value: number, scale: number): number {
   return value * scale;
 }
+import { finalCombatActions } from "./dataSceneCombatActions.js";

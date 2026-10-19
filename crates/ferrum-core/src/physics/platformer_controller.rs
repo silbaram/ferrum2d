@@ -35,8 +35,9 @@ impl PhysicsSystem {
         at: Transform2D,
         scratch: &mut KinematicSweepScratch,
         counters: Option<&mut PhysicsCounters>,
+        solid_mask: CollisionMask,
     ) -> bool {
-        !spatial_pose_overlaps_solid(world, tilemap, entity, at, scratch, counters)
+        !spatial_pose_overlaps_solid(world, tilemap, entity, at, scratch, counters, solid_mask)
     }
     /// Geometry-only sweep for a spatial gateway probe; surface/floor commit stays scene-owned.
     pub(crate) fn sweep_spatial_body_with_scratch(
@@ -46,6 +47,7 @@ impl PhysicsSystem {
         displacement: Velocity,
         scratch: &mut KinematicSweepScratch,
         mut counters: Option<&mut PhysicsCounters>,
+        solid_mask: CollisionMask,
     ) -> Option<KinematicMoveResult> {
         let start = world.transform(entity)?;
         if spatial_pose_overlaps_solid(
@@ -55,13 +57,13 @@ impl PhysicsSystem {
             start,
             scratch,
             counters.as_deref_mut(),
+            solid_mask,
         ) {
             return None;
         }
-        let settings =
-            KinematicMoveSettings::new(CollisionMask::ALL, OneWayPlatformConfig::default(), 8)
-                .with_height_span(world.height_span(entity))
-                .preserving_small_displacements();
+        let settings = KinematicMoveSettings::new(solid_mask, OneWayPlatformConfig::default(), 8)
+            .with_height_span(world.height_span(entity))
+            .preserving_small_displacements();
         let moved = move_and_slide_internal(
             world,
             Some(tilemap),
@@ -71,8 +73,10 @@ impl PhysicsSystem {
             scratch,
             counters.as_deref_mut(),
         );
-        (!spatial_pose_overlaps_solid(world, tilemap, entity, moved.end, scratch, counters))
-            .then_some(moved)
+        (!spatial_pose_overlaps_solid(
+            world, tilemap, entity, moved.end, scratch, counters, solid_mask,
+        ))
+        .then_some(moved)
     }
     /// Reuses sweep buffers for the scene-owned, single-segment AABB follower.
     pub(crate) fn move_navigation_actor_with_scratch(

@@ -9,6 +9,31 @@ declare module "../pkg/ferrum_core.js" {
 
   export class Engine {
     constructor();
+    configure_data_scene_gameplay_v2(hasActor:boolean,id:number,generation:number,interactionActionId:number,combatEnabled:boolean):boolean;
+    data_scene_combat_enabled():boolean;
+    data_scene_combat_stats():Uint32Array;
+    data_scene_input_projectiles_version():number;
+    data_scene_projectile_visuals_version():number;
+    configure_data_scene_gameplay_v8(hasActor:boolean,id:number,generation:number,interaction:number,combat:boolean,metadata:Uint32Array,values:Float32Array,bindings:Uint32Array,navigation:Float32Array,agents:Uint32Array,distances:Float32Array,flags:number,actorPrefabs:Uint32Array,visuals:Uint32Array,fps:Float32Array,frames:Float32Array):boolean;
+    data_scene_spawn_prefabs_version():number;
+    configure_data_scene_gameplay_v7(hasActor:boolean,id:number,generation:number,interaction:number,combat:boolean,metadata:Uint32Array,values:Float32Array,bindings:Uint32Array,navigation:Float32Array,agents:Uint32Array,distances:Float32Array,flags:number,actorPrefabs:Uint32Array):boolean;
+    data_scene_combat_actions_version():number;
+    data_scene_combat_progress_version():number;
+    data_scene_projectile_prefabs_version():number;
+    data_scene_combat_crowd_version(): number;
+    data_scene_combat_crowd_stats(): Uint32Array;
+    configure_data_scene_gameplay_v5(hasActor:boolean,id:number,generation:number,interactionActionId:number,combatEnabled:boolean,metadata:Uint32Array,values:Float32Array,bindings:Uint32Array,navigation:Float32Array,agents:Uint32Array,distances:Float32Array):boolean;
+    data_scene_combat_movement_version(): number;
+    configure_data_scene_gameplay_v6(hasActor:boolean,id:number,generation:number,interactionActionId:number,combatEnabled:boolean,metadata:Uint32Array,values:Float32Array,bindings:Uint32Array,navigation:Float32Array,agents:Uint32Array,distances:Float32Array,flags:number):boolean;
+    data_scene_combat_navigation_version(): number;
+    data_scene_combat_navigation_scheduler_version(): number;
+    data_scene_combat_navigation_scheduler_stats(): Uint32Array;
+    data_scene_combat_navigation_stats(): Uint32Array;
+    configure_data_scene_gameplay_v4(hasActor:boolean,id:number,generation:number,interactionActionId:number,combatEnabled:boolean,metadata:Uint32Array,values:Float32Array,bindings:Uint32Array,navigation:Float32Array):boolean;
+    configure_data_scene_gameplay_v3(hasActor:boolean,id:number,generation:number,interactionActionId:number,combatEnabled:boolean,metadata:Uint32Array,values:Float32Array,bindings:Uint32Array):boolean;
+    capture_data_scene_combat_progress(epoch:number,handles:Uint32Array):Float64Array;
+    preflight_data_scene_combat_progress(states:Uint32Array,values:Float64Array):boolean;
+    restore_data_scene_progress_with_combat(epoch:number,handles:Uint32Array,states:Uint32Array,animations:Float64Array,spatial:Float64Array,environment:Float32Array,rotations:Float64Array,applyEnvironment:boolean,combat:Float64Array):boolean;
     clear_spatial_scene(): void;
     configure_spatial_model_streaming(chunks: Float32Array, metadata: Uint32Array, distances: Float32Array): boolean;
     preflight_spatial_attachments(metadata:Uint32Array,values:Float32Array,models:Uint32Array,styles:Float32Array):boolean;

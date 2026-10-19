@@ -1,3 +1,4 @@
+import { WebGpuSpatialPass } from "./webgpuSpatialPass.js";
 import "./webgpuTypes.js";
 import {
   addLightingStatsInto,
@@ -27,11 +28,12 @@ import type { PhysicsDebugLineBufferView, RenderCommandBufferView } from "./wasm
 import type { PhysicsDebugLineCamera } from "./physicsDebugLineBatch.js";
 import { WebGpuDebugLinePass } from "./webgpuDebugLinePass.js";
 import { WebGpuLightingPass } from "./webgpuLightingPass.js";
-import { WebGpuPostProcessPass } from "./webgpuPostProcessPass.js";
+import { WebGpuPostProcessPass, resolveWebGpuPostProcessPasses } from "./webgpuPostProcessPass.js";
 import { WebGpuSpritePass } from "./webgpuSpritePass.js";
 import { WebGpuTextureStore } from "./webgpuTextureStore.js";
 import { resolveColorManagementMode, resolveTextureColorSpace } from "./colorManagement.js";
 import type { ColorManagementMode, TextureLoadOptions } from "./colorManagement.js";
+import type { SpatialModelAsset, SpatialModelPreparation } from "./spatialModel.js";
 
 export interface WebGPURendererOptions {
   /** linear-srgb is currently supported by WebGL2 only; createRenderer can fall back. */
@@ -48,6 +50,9 @@ const UNIFORM_BUFFER_BYTES = 32;
 const PLACEHOLDER_TEXTURE_ID = 0;
 
 export class WebGPURenderer implements Renderer {
+  readonly supportsSpatialScene = true;
+  private readonly spatialPass: WebGpuSpatialPass;
+  private context?: GPUCanvasContext;
   private readonly uniformBindGroupLayout: GPUBindGroupLayout;
   private readonly textureBindGroupLayout: GPUBindGroupLayout;
   private readonly uniformPipelineLayout: GPUPipelineLayout;
@@ -74,7 +79,6 @@ export class WebGPURenderer implements Renderer {
     private readonly canvas: HTMLCanvasElement,
     private readonly adapter: GPUAdapter,
     private readonly device: GPUDevice,
-    private readonly context: GPUCanvasContext,
     private readonly format: GPUTextureFormat,
     private readonly options: WebGPURendererOptions = {},
   ) {
@@ -87,7 +91,7 @@ export class WebGPURenderer implements Renderer {
     this.uniformBindGroupLayout = this.createUniformBindGroupLayout();
     this.textureBindGroupLayout = this.createTextureBindGroupLayout();
     this.textureStore = new WebGpuTextureStore(this.device, sampler, this.textureBindGroupLayout);
-    this.postProcessPass = new WebGpuPostProcessPass(this.device, this.context, this.format, options.postProcess);
+    this.postProcessPass = new WebGpuPostProcessPass(this.device, () => this.requireContext().getCurrentTexture(), this.format, options.postProcess);
     this.uniformPipelineLayout = this.device.createPipelineLayout({
       bindGroupLayouts: [this.uniformBindGroupLayout],
     });
@@ -109,7 +113,7 @@ export class WebGPURenderer implements Renderer {
     );
     this.debugLinePass = new WebGpuDebugLinePass(
       this.device,
-      this.context,
+      () => this.requireContext().getCurrentTexture(),
       this.format,
       this.uniformPipelineLayout,
       this.resolutionBindGroup,
@@ -122,8 +126,8 @@ export class WebGPURenderer implements Renderer {
     );
     resolveLightingSceneInto(this.lightingScene, options.lighting, this.lightingResolveCache);
     this.spriteMaterialPasses = spriteMaterialPasses(resolveSpriteMaterialPreset(options.spriteMaterial));
-    this.resize();
     this.textureStore.createPlaceholderTextureForId(PLACEHOLDER_TEXTURE_ID);
+    this.spatialPass = new WebGpuSpatialPass(device, format, this.textureBindGroupLayout, this.textureStore);
   }
 
   static isSupported(): boolean {
@@ -137,6 +141,7 @@ export class WebGPURenderer implements Renderer {
     if (resolveColorManagementMode(options.colorManagement) !== "legacy") {
       throw new Error("WebGPU linear-srgb color management is not supported; use the WebGL2 fallback.");
     }
+    resolveWebGpuPostProcessPasses(options.postProcess);
     if (canvas === undefined) {
       throw new Error("WebGPURenderer.create(...) requires an HTMLCanvasElement.");
     }
@@ -156,14 +161,25 @@ export class WebGPURenderer implements Renderer {
       throw new Error("WebGPU adapter is not available.");
     }
     const device = await adapter.requestDevice();
-    const context = canvas.getContext("webgpu");
-    if (context === null) {
-      throw new Error("WebGPU canvas context is not available.");
+    let renderer: WebGPURenderer | undefined, bound = false;
+    try {
+      // Validate/allocate all pipelines before the irreversible canvas context selection.
+      device.pushErrorScope("validation"); device.pushErrorScope("out-of-memory");
+      try {
+        renderer = new WebGPURenderer(canvas, adapter, device, gpu.getPreferredCanvasFormat(), options);
+      } finally {
+        const allocation = await device.popErrorScope(), validation = await device.popErrorScope();
+        if (allocation || validation) throw Error((allocation ?? validation)!.message);
+      }
+      const context = canvas.getContext("webgpu");
+      if (!context) throw Error("WebGPU canvas context is not available.");
+      bound = true; renderer.context = context; renderer.configureContext(); renderer.resize();
+      return renderer;
+    } catch (reason) {
+      renderer?.destroy(); device.destroy();
+      if (bound) throw new WebGpuCanvasCommitError(reason);
+      throw reason;
     }
-    const format = gpu.getPreferredCanvasFormat();
-    const renderer = new WebGPURenderer(canvas, adapter, device, context, format, options);
-    renderer.configureContext();
-    return renderer;
   }
 
   gpuAdapter(): GPUAdapter {
@@ -174,6 +190,18 @@ export class WebGPURenderer implements Renderer {
   gpuDevice(): GPUDevice {
     this.assertAlive();
     return this.device;
+  }
+
+  /** Cold GPU preparation for protected Data Scene authoring activation. */
+  prepareSpatialModels(assets: readonly SpatialModelAsset[]): SpatialModelPreparation {
+    this.assertAlive();
+    return this.spatialPass.prepareModels(assets);
+  }
+
+  /** Await GPU upload/validation before applying a scene with these models. Returns uploaded bytes. */
+  preloadSpatialModels(assets: readonly SpatialModelAsset[]): Promise<number> {
+    this.assertAlive();
+    return this.spatialPass.preloadModels(assets);
   }
 
   async loadTexture(textureId: number, url: string, options?: TextureLoadOptions): Promise<GPUTexture>;
@@ -287,7 +315,6 @@ export class WebGPURenderer implements Renderer {
   }
 
   renderCommands(commands: RenderCommandBufferView): RendererStats {
-    if (commands.spatial) throw new Error("Spatial scene currently requires WebGL2");
     this.assertAlive();
     if (commands.groundYScale !== undefined && commands.groundYScale !== this.groundYScale) this.setGroundYScale(commands.groundYScale);
     const projection = groundShadowProjection(commands);
@@ -296,7 +323,9 @@ export class WebGPURenderer implements Renderer {
       this.resolutionStaging[4] = x; this.resolutionStaging[5] = y; this.resolutionStaging[6] = length;
       this.writeResolution();
     }
+    if (commands.spatial && this.lightingScene.enabled) throw Error("Spatial rendering cannot use flat LightingScene2D");
     const encoder = this.device.createCommandEncoder();
+    const spatial = commands.spatial ? this.spatialPass.draw(commands.spatial, encoder, this.requireContext().getCurrentTexture().createView(), this.canvas.width, this.canvas.height) : undefined;
     const pass = this.beginRenderPass(encoder, "load");
 
     const spriteStats = this.spritePass.draw(pass, commands, this.spriteMaterialPasses);
@@ -304,6 +333,7 @@ export class WebGPURenderer implements Renderer {
 
     pass.end();
     this.device.queue.submit([encoder.finish()]);
+    if(commands.spatial)this.spatialPass.commitSubmission(commands.spatial);
     writeRendererStatsForCommandsInto(
       this.currentStats,
       commands,
@@ -318,6 +348,10 @@ export class WebGPURenderer implements Renderer {
       lightingStats.shadowDrawCalls,
       lightingStats.shadowCasterCount,
     );
+    if (spatial) {
+      this.currentStats.spatial = spatial; this.currentStats.drawCalls += spatial.drawCalls; this.currentStats.batchCount += spatial.drawCalls;
+      this.currentStats.spriteCount += spatial.billboardCount; this.currentStats.textureBindCount += spatial.textureBindCount; this.currentStats.textureSwitchCount += spatial.textureSwitchCount;
+    }
     return this.stats();
   }
 
@@ -354,6 +388,7 @@ export class WebGPURenderer implements Renderer {
       return;
     }
     this.destroyed = true;
+    this.spatialPass.destroy();
     this.postProcessPass.destroy();
     this.textureStore.destroy();
     this.debugLinePass.destroy();
@@ -362,12 +397,17 @@ export class WebGPURenderer implements Renderer {
     this.resolutionBuffer.destroy();
   }
 
+  private requireContext(): GPUCanvasContext {
+    if (!this.context) throw Error("WebGPU canvas has not been committed");
+    return this.context;
+  }
+
   private configureContext(): void {
-    this.context.configure({
+    this.requireContext().configure({
       device: this.device,
       format: this.format,
       alphaMode: "premultiplied",
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
     });
   }
 
@@ -378,7 +418,7 @@ export class WebGPURenderer implements Renderer {
     const clear = this.options.clearColor ?? [0.08, 0.1, 0.15, 1.0];
     return encoder.beginRenderPass({
       colorAttachments: [{
-        view: this.context.getCurrentTexture().createView(),
+        view: this.requireContext().getCurrentTexture().createView(),
         loadOp,
         storeOp: "store",
         clearValue: { r: clear[0], g: clear[1], b: clear[2], a: clear[3] },
@@ -428,5 +468,13 @@ export class WebGPURenderer implements Renderer {
     if (this.destroyed) {
       throw new Error("WebGPURenderer has been destroyed.");
     }
+  }
+}
+
+/** Canvas contexts cannot switch API after selection; automatic same-canvas fallback is impossible. */
+export class WebGpuCanvasCommitError extends Error {
+  constructor(readonly cause: unknown) {
+    super("WebGPU canvas initialization failed after binding; another renderer requires a fresh canvas.");
+    this.name = "WebGpuCanvasCommitError";
   }
 }

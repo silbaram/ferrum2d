@@ -34,6 +34,33 @@ pub(crate) struct CollisionContactTracker {
 }
 
 impl CollisionContactTracker {
+    /// A checkpoint only retains completed-step contacts, never in-progress scratch.
+    pub(crate) fn checkpoint_contacts(&self) -> impl Iterator<Item = (Entity, Entity)> + '_ {
+        self.previous_contacts.iter().map(|key| {
+            (
+                Entity {
+                    id: key.a_id,
+                    generation: key.a_generation,
+                },
+                Entity {
+                    id: key.b_id,
+                    generation: key.b_generation,
+                },
+            )
+        })
+    }
+
+    /// Caller preflights the complete bounded, unique contact set before commit.
+    pub(crate) fn restore_checkpoint_contacts(&mut self, contacts: &[(Entity, Entity)]) {
+        self.clear();
+        self.previous_contacts.extend(
+            contacts
+                .iter()
+                .map(|(a, b)| CollisionContactKey::new(*a, *b)),
+        );
+        self.previous_contacts.sort_unstable();
+    }
+
     pub(crate) fn with_capacity(max_contacts: usize) -> Self {
         Self {
             previous_contacts: Vec::with_capacity(max_contacts),

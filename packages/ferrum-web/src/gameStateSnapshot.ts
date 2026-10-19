@@ -1,5 +1,6 @@
 import {
   captureDataSceneProgress,
+  assertDataSceneCombatSaveSupported,
   preflightDataSceneProgressRestore,
   restoreDataSceneProgress,
   validateDataSceneProgress,
@@ -42,8 +43,11 @@ import {
 export const GAME_STATE_SNAPSHOT_FORMAT = "ferrum2d.game-state.snapshot";
 export const GAME_STATE_SNAPSHOT_VERSION = 2;
 export const DATA_SCENE_STATE_FORMAT = "ferrum2d.data-scene-state";
-/** Latest supported nested version; non-spatial captures retain v5 for legacy replay hashes. */
-export const DATA_SCENE_STATE_VERSION = 8;
+/** Latest nested version; non-spatial exploration captures retain v5 and their legacy hashes. */
+export const DATA_SCENE_STATE_VERSION = 9;
+function hasCombatDocument(value: unknown): boolean {
+  return isRecord(value) && isRecord(value.gameplay) && value.gameplay.combat === true;
+}
 function hasSpatialAttachments(value:unknown):boolean {
   return isRecord(value)&&isRecord(value.spatial)&&(
     (isRecord(value.spatial.attachments)&&Object.keys(value.spatial.attachments).length>0)||value.spatial.modelChunks!==undefined||
@@ -69,7 +73,7 @@ export interface GameStateSceneSnapshot {
 
 export interface DataSceneStateSnapshot {
   readonly format: typeof DATA_SCENE_STATE_FORMAT;
-  readonly version: 2 | 3 | 4 | 5 | 6 | 7 | typeof DATA_SCENE_STATE_VERSION;
+  readonly version: 2 | 3 | 4 | 5 | 6 | 7 | 8 | typeof DATA_SCENE_STATE_VERSION;
   readonly progress?: DataSceneProgressSnapshot;
   readonly scene: GameStateSceneSnapshot;
   readonly authoringDocument?: GameStateSnapshotJsonValue;
@@ -153,6 +157,15 @@ export function captureGameStateSnapshot(
     options.includeDataSceneState !== true
   ) {
     throw new Error("includeDataSceneProgress requires includeDataSceneState.");
+  }
+  if (options.includeDataSceneState === true) {
+    assertDataSceneCombatSaveSupported(engine, options.dataSceneAuthoringDocument);
+    if ((engine.dataSceneCombatEnabled?.() === true || hasCombatDocument(options.dataSceneAuthoringDocument)) && options.includeDataSceneProgress !== true) {
+      throw new Error("Data Scene combat capture requires includeDataSceneProgress and the complete authoringDocument.");
+    }
+    if (hasCombatDocument(options.dataSceneAuthoringDocument) && options.physicsWorld !== undefined) {
+      throw new Error("Data Scene combat checkpoints cannot combine a separate physicsWorld snapshot.");
+    }
   }
   const frame = nonNegativeInteger(
     options.frame ?? 0,
@@ -240,9 +253,13 @@ export function restoreGameStateSnapshot(
   options: RestoreGameStateSnapshotOptions = {},
 ): GameStateSnapshotRestoreResult {
   validateGameStateSnapshot(snapshot);
+  if (snapshot.dataScene?.progress?.combat !== undefined && snapshot.physics !== undefined) {
+    throw new Error("Data Scene combat checkpoints cannot combine a separate physics snapshot.");
+  }
   const sceneBefore = captureGameStateSceneSnapshot(engine);
   const snapshotPath = options.path ?? "gameState.snapshot";
   preflightDataSceneActivation(snapshot, options, snapshotPath);
+  if (options.restoreDataSceneState !== false && snapshot.dataScene !== undefined) assertDataSceneCombatSaveSupported(engine, snapshot.dataScene.authoringDocument);
   if (
     snapshot.dataScene?.progress !== undefined &&
     options.restoreDataSceneState !== false
@@ -581,11 +598,15 @@ export function validateDataSceneStateSnapshot(
     snapshot.version !== 5 &&
     snapshot.version !== 6 &&
     snapshot.version !== 7 &&
+    snapshot.version !== 8 &&
     snapshot.version !== DATA_SCENE_STATE_VERSION
   ) {
     throw new Error(
-      `${path}.version must be 2, 3, 4, 5, 6, 7 or ${DATA_SCENE_STATE_VERSION}.`,
+      `${path}.version must be 2, 3, 4, 5, 6, 7, 8 or ${DATA_SCENE_STATE_VERSION}.`,
     );
+  }
+  if (hasCombatDocument(snapshot.authoringDocument) && (snapshot.version !== 9 || !isRecord(snapshot.progress) || snapshot.progress.combat === undefined)) {
+    throw new Error(`${path} combat requires data scene state version 9 and complete combat progress.`);
   }
   if (snapshot.progress !== undefined) {
     if (snapshot.version === 2)
@@ -700,6 +721,7 @@ function captureDataSceneState(
   return {
     format: DATA_SCENE_STATE_FORMAT,
     version:
+      hasCombatDocument(authoringDocument) ? 9 :
       hasSpatialAttachments(authoringDocument)||progress?.instances.some(i=>i.spatialPose?.rotationRadians!==undefined)?8:
       progress?.spatial === undefined
         ? 5

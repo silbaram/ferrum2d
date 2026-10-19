@@ -131,6 +131,22 @@ scene의 generation-safe handle에 위치와 Behavior Recipe를 저빈도로 적
 diagnostic으로 거부한다. scene-owned player/paddle/ball의 수명을 깨뜨릴 수 있는 health/lifetime/
 pickup-despawn/collision-despawn command도 mutation 전 거부한다.
 
+개발 소스의 다층 전투 AI는 `DataSceneCombatNavigationSpec`(core/authoring)와
+`FerrumEngine.supportsDataSceneCombatNavigation()`, `dataSceneCombatNavigationStats()`(core)를 제공한다.
+공유 route·프레임 분할 검색은 `supportsDataSceneCombatNavigationScheduler()`와
+`dataSceneCombatNavigationSchedulerStats()`/`DataSceneCombatNavigationSchedulerStats`(core)로 진단한다.
+기존 navigation ABI와 설정은 유지하고 별도 scheduler v1을 추가한다.
+`combatNavigation.movementPatterns: "all"`은 별도 `supportsDataSceneCombatMovement()`(core) 검사 뒤
+SeekTarget/Accelerate의 공간 이동을 사용한다. 기존 v9 저장의 authoring·pose/높이·velocity를 재사용한다.
+`FerrumEngine.supportsDataSceneCombatActions()`(core)는 melee/dash의 native input·timer 실행과
+기존 v9 actor checkpoint 지원 여부를 검사한다. spawnPrefab은 아래 별도 기능 검사를 사용한다.
+`DataSceneCombatChaseBinding`(core/authoring), `DataSceneCombatCrowdStats`(core)와
+`FerrumEngine.supportsDataSceneSpawnPrefabs()`(core)는 독립 authored seed의 입력/타이머 생성과
+codec v3 저장 기능을 검사한다. `DataSceneSpawnPrefabSpec`/`DataSceneSpawnPrefabBinding`과 v3 semantic
+checkpoint 타입은 core/authoring에서 제공한다. [생성 actor 계약](data-scene-authoring.md#생성-actor-프리팹-개발-소스)을 따른다.
+`supportsDataSceneCombatCrowd()`/`dataSceneCombatCrowdStats()`도 제공한다. crowd/정지 거리 문서는
+별도 capability를 요구한다. 설정은 `gameplay.combatNavigation`이며 [Data Scene 전투 길찾기 계약](data-scene-authoring.md#다층-전투-ai-길찾기-개발-소스)을 따른다.
+
 ## API 변경 규칙
 
 Public export를 추가, 삭제, rename하면 다음을 함께 확인한다.
@@ -160,3 +176,7 @@ const spec = resolveShooterGameSpec(gameSpecJson);
 runtime.engine.setGameSpec(spec);
 runtime.start();
 ```
+
+`FerrumEngine.supportsDataSceneProjectileVisuals()`(core)는 탄환 atlas animation·화면 속도 방향 회전과
+combat codec4 저장/복원을 지원하는 Wasm을 검사한다. `DataSceneProjectileAnimationSpec`과 v4 progress 타입은
+core/authoring에서 제공하며 [탄환 표현 계약](data-scene-authoring.md#탄환-atlas-animation이동-방향-회전-개발-소스)을 따른다.

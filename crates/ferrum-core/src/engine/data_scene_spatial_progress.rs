@@ -65,11 +65,40 @@ impl Engine {
         rotations: &[f64],
         apply_environment: bool,
     ) -> bool {
+        if self.data_scene_combat_enabled() {
+            return false;
+        }
+        self.restore_data_scene_progress_with_spatial_motion_base(
+            epoch,
+            handles,
+            states,
+            animations,
+            spatial,
+            environment,
+            rotations,
+            apply_environment,
+        )
+    }
+}
+
+impl Engine {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn restore_data_scene_progress_with_spatial_motion_base(
+        &mut self,
+        epoch: u32,
+        handles: &[u32],
+        states: &[u32],
+        animations: &[f64],
+        spatial: &[f64],
+        environment: &[f32],
+        rotations: &[f64],
+        apply_environment: bool,
+    ) -> bool {
         if epoch == 0
             || epoch != self.data_scene_epoch()
             || handles.len() != states.len() * 2
             || rotations.len() != states.len()
-            || !self.validate_data_scene_progress(handles, states)
+            || !self.validate_data_scene_progress_base(handles, states)
             || rotations
                 .iter()
                 .any(|r| !r.is_finite() || !(*r as f32).is_finite())
@@ -93,11 +122,7 @@ impl Engine {
                 return false;
             }
             if root {
-                previous.push((
-                    e,
-                    self.world.rotation_at_index_or_default(e.id as usize),
-                    *rotation as f32,
-                ));
+                previous.push((e, self.world.rotation(e), *rotation as f32));
             }
         }
         for (e, _, r) in &previous {
@@ -105,7 +130,7 @@ impl Engine {
                 .set_rotation(*e, crate::components::Rotation2D { radians: *r });
         }
         let ok = if apply_environment {
-            self.restore_data_scene_progress_with_spatial_environment(
+            self.restore_data_scene_progress_with_spatial_environment_base(
                 epoch,
                 handles,
                 states,
@@ -114,17 +139,21 @@ impl Engine {
                 environment,
             )
         } else {
-            self.restore_data_scene_progress_with_spatial(
+            self.restore_data_scene_progress_with_spatial_base(
                 epoch, handles, states, animations, spatial,
             )
         };
         if !ok {
             for (e, r, _) in previous {
-                self.world.set_rotation(e, r);
+                self.world.rotations[e.id as usize] = r;
             }
         }
         ok
     }
+}
+
+#[wasm_bindgen]
+impl Engine {
     /// Environment v1 is validated before the existing atomic flag/animation/pose restore.
     #[allow(clippy::too_many_arguments)]
     pub fn restore_data_scene_progress_with_spatial_environment(
@@ -136,8 +165,33 @@ impl Engine {
         spatial: &[f64],
         environment: &[f32],
     ) -> bool {
+        if self.data_scene_combat_enabled() {
+            return false;
+        }
+        self.restore_data_scene_progress_with_spatial_environment_base(
+            epoch,
+            handles,
+            states,
+            animations,
+            spatial,
+            environment,
+        )
+    }
+}
+
+impl Engine {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn restore_data_scene_progress_with_spatial_environment_base(
+        &mut self,
+        epoch: u32,
+        handles: &[u32],
+        states: &[u32],
+        animations: &[f64],
+        spatial: &[f64],
+        environment: &[f32],
+    ) -> bool {
         if (spatial.first() == Some(&0.) && !environment.is_empty())
-            || !self.validate_data_scene_progress(handles, states)
+            || !self.validate_data_scene_progress_base(handles, states)
         {
             return false;
         }
@@ -154,7 +208,7 @@ impl Engine {
         if !self
             .spatial_scene
             .shadow_budget_valid_after_removals(&self.world, &removed)
-            || !self.restore_data_scene_progress_with_spatial(
+            || !self.restore_data_scene_progress_with_spatial_base(
                 epoch, handles, states, animations, spatial,
             )
         {
@@ -163,6 +217,10 @@ impl Engine {
         }
         true
     }
+}
+
+#[wasm_bindgen]
+impl Engine {
     /// Captures current native camera and poses in one owned numeric buffer, independent of the last render.
     pub fn capture_data_scene_spatial_progress(&self, epoch: u32, handles: &[u32]) -> Vec<f64> {
         if epoch == 0 || self.data_scene_epoch() != epoch || !handles.len().is_multiple_of(2) {
@@ -257,11 +315,30 @@ impl Engine {
         animations: &[f64],
         spatial: &[f64],
     ) -> bool {
+        if self.data_scene_combat_enabled() {
+            return false;
+        }
+        self.restore_data_scene_progress_with_spatial_base(
+            epoch, handles, states, animations, spatial,
+        )
+    }
+}
+
+impl Engine {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn restore_data_scene_progress_with_spatial_base(
+        &mut self,
+        epoch: u32,
+        handles: &[u32],
+        states: &[u32],
+        animations: &[f64],
+        spatial: &[f64],
+    ) -> bool {
         if epoch == 0
             || self.data_scene_epoch() != epoch
-            || !self.validate_data_scene_progress(handles, states)
+            || !self.validate_data_scene_progress_base(handles, states)
             || (!animations.is_empty()
-                && !self.validate_data_scene_animation_progress(handles, states, animations))
+                && !self.validate_data_scene_animation_progress_base(handles, states, animations))
         {
             return false;
         }
@@ -385,7 +462,7 @@ impl Engine {
         } else {
             self.spatial_scene.clear();
         }
-        self.restore_data_scene_progress(epoch, handles, states);
+        self.restore_data_scene_progress_base(epoch, handles, states);
         self.spatial_scene
             .attachments
             .synchronize(&mut self.world, &self.spatial_scene.models);

@@ -23,6 +23,9 @@ import {
 
 WebGPU와 material helper는 Rust render command ABI를 바꾸지 않는다. Rust core는 renderer API를
 직접 호출하지 않고, TypeScript renderer가 command buffer를 소비한다.
+`WebGPURenderer.supportsSpatialScene`은 true이며 지형·빌보드·정적 모델을 지원한다.
+모델은 `await preloadSpatialModels(assets)` 후 동기 `prepareSpatialModels` lease로 활성화한다.
+환경 효과를 포함한 현재 제한은 [WebGPU 공간 경로](../data-scene-spatial.md#webgpu-공간-경로)를 따른다.
 
 ## Particle And VFX
 

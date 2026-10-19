@@ -74,7 +74,7 @@ impl Engine {
             return false;
         };
         let playback = SpritePlayback {
-            clips,
+            clips: clips.into(),
             active,
             elapsed: 0.0,
             paused: false,

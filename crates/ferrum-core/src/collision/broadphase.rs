@@ -31,7 +31,7 @@ pub(crate) struct CollisionScratchUsage {
     pub(crate) pair_dedupe: usize,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct CollisionPairKey {
     a_id: u32,
     a_generation: u32,
@@ -170,6 +170,77 @@ impl CollisionSystem {
             pairs,
             PairFilter::All,
         );
+    }
+
+    /// Bounded variant for opt-in gameplay. A false result reports truncated work.
+    pub(crate) fn build_pairs_bounded_into(
+        scratch: &mut CollisionScratch,
+        world: &World,
+        pairs: &mut Vec<CollisionPair>,
+        max_proxies: usize,
+        max_pairs: usize,
+    ) -> bool {
+        scratch.current_proxies.clear();
+        scratch.pair_dedupe.clear();
+        pairs.clear();
+        let mut complete = true;
+        'entities: for &index in world.alive_indices() {
+            for collider in 0..world.compound_collider_count_at(index) {
+                for segment in 0..collider_segment_count_at(world, index, collider) {
+                    if let Some(proxy) = current_proxy(world, index, collider, segment) {
+                        if scratch.current_proxies.len() >= max_proxies {
+                            complete = false;
+                            break 'entities;
+                        }
+                        scratch.current_proxies.push(proxy);
+                    }
+                }
+            }
+        }
+        scratch.current_proxies.sort_unstable_by(proxy_order);
+        for i in 0..scratch.current_proxies.len() {
+            let a = scratch.current_proxies[i];
+            for b in scratch.current_proxies.iter().copied().skip(i + 1) {
+                if b.bounds.min_x > a.bounds.max_x {
+                    break;
+                }
+                if a.key.entity_index == b.key.entity_index || !a.bounds.overlaps(b.bounds) {
+                    continue;
+                }
+                let pair = ColliderPair { a: a.key, b: b.key };
+                if !precise_current_overlap(world, pair) {
+                    continue;
+                }
+                let Some(pair) = PairFilter::All.orient(world, pair) else {
+                    continue;
+                };
+                let pair = collider_pair_to_pair(world, pair);
+                let mut key = CollisionPairKey::from_pair(pair);
+                if (key.a_id, key.a_generation) > (key.b_id, key.b_generation) {
+                    key = CollisionPairKey::from_pair(CollisionPair {
+                        a: pair.b,
+                        b: pair.a,
+                    });
+                }
+                let insertion = match scratch.pair_dedupe.binary_search_by_key(&key, |p| p.key) {
+                    Ok(_) => continue,
+                    Err(i) => i,
+                };
+                if pairs.len() >= max_pairs {
+                    return false;
+                }
+                scratch.pair_dedupe.insert(
+                    insertion,
+                    CollisionPairDedupeEntry {
+                        key,
+                        pair,
+                        first_order: pairs.len(),
+                    },
+                );
+                pairs.push(pair);
+            }
+        }
+        complete
     }
 
     pub(super) fn build_collider_pairs(

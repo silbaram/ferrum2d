@@ -1,11 +1,12 @@
 # Data Scene 입체 지형·카메라·빌보드
 
-현재 개발 소스는 **WebGL2 전용, opt-in 공간 렌더링의 첫 구현**을 제공한다.
+현재 개발 소스는 **WebGL2 기본, opt-in 공간 렌더링**을 제공한다.
 높이가 있는 사각 지형과 2D 스프라이트를 같은 깊이 버퍼로 그린다. 직교/원근 카메라,
 실제 지형 클릭, native kinematic 계단·경사 이동, 물리 elevation에 연결한 빌보드를 포함한다.
 선택 `environment`로 고정 해상도·픽셀 스냅, normal atlas·점광원/태양광·PCF·그림자 캐시/컬링,
 실제 거리 DOF·actor 초점·색 보정·안개를 제공한다.
 기존 beta 설치본에 이 기능이 있다고 가정하지 말고 아래 API가 포함된 빌드를 사용한다.
+선택 WebGPU의 지형·빌보드·정적 모델·환경 효과 지원 범위는 [WebGPU 공간 경로](#webgpu-공간-경로)를 따른다.
 
 ## 공개 작성 경로
 
@@ -163,7 +164,7 @@ if (!engine.registerDataSceneSpatialModel("house", house)) throw Error("model re
 
 네트워크를 stream으로 제한해 읽지만 실시간 geometry streaming/LOD는 제공하지 않는다. cold 준비 중 원본 자원·
 정규화 bundle·기존 GLB 입력 사본이 일시적으로 함께 상주할 수 있다. 완료 후에는 기존 decoded CPU 자원만 유지한다.
-실제 Blender 출력물 acceptance·추가 포맷/PBR·runtime parent graph·WebGPU 공간 지원은 별도다.
+실제 Blender 출력물 acceptance·추가 포맷/PBR·runtime parent graph는 별도다.
 
 ### 공유 모델 캐시와 preload 수명
 
@@ -598,8 +599,65 @@ bound world text 외의 일반 sprite/particle/text는 기존 평면 좌표로 s
 이들을 공간 객체로 자동 해석하지 않는다. DOM HUD는 depth와 무관하다.
 기존 `createDataSceneView`의 follow/bounds/groundYScale/평면 picking 대신 위 공간 camera/view를 사용한다.
 
-`WebGL2Renderer.supportsSpatialScene`은 true다. WebGPU와 이 capability가 없는 custom renderer는
-공간 packet을 명시적으로 거절한다. `renderToTexture`의 공간 capture도 아직 지원하지 않는다.
+`WebGL2Renderer.supportsSpatialScene`과 `WebGPURenderer.supportsSpatialScene`은 true다.
+이 capability가 없는 custom renderer는 공간 packet을 명시적으로 거절한다.
+`renderToTexture`의 공간 capture도 아직 지원하지 않는다.
+
+## WebGPU 공간 경로
+
+WebGPU는 같은 native v1/v2 geometry와 모델 확장 v1을 소비한다.
+직교/원근 camera, terrain draw range, 발 피벗 billboard, alpha cutout, 정적 GLB/glTF 모델을
+같은 depth24plus attachment로 그린다. clip-depth 변환만 GPU에서 수행하며 물리·카메라·LOD·컬링은 Rust가 결정한다.
+모델은 indexed/instanced draw, 기본색·발광, MASK·양면, sRGB/data texture 분리와 glTF filter/wrap/mipmap을 지원한다.
+공간 ambient·최대 4 point light·directional light, 지형의 표면 normal, 모델 tangent normal·발광·unlit과 billboard normal atlas를 지원한다.
+normal atlas는 색 atlas와 같은 크기의 `colorSpace: "none"` 또는 `"linear"` 데이터 텍스처여야 한다.
+환경 효과가 켜지면 rgba16float 색·depth24plus 깊이를 공유하며 DOF 표준13/고품질25 sample·actor focus,
+노출·톤 매핑·색 보정·camera-depth fog를 합성한다. native pixelArt 내부 해상도/viewport와 공간 debug line도 소비한다.
+flat HUD는 공간 합성 뒤에 그리므로 이 효과의 영향을 받지 않는다.
+
+point light 6면과 directional sun의 그림자, hard/PCF3 필터, terrain/billboard/model cast·receive와 alpha cutout을 지원한다.
+native face range·caster revision·모델 visibility/matrix를 사용하므로 카메라 밖 모델도 그림자를 드리운다.
+같은 terrain/caster/광원/matrix/색 atlas revision이면 깊이 map을 재사용하며 shadow draw/upload는0이다.
+카메라 이동으로 billboard caster 모양이 바뀌면 native revision에 따라 다시 그린다. normal atlas만 갱신하면 WebGPU 깊이 cache는 유지한다.
+`linear-srgb` renderer 색 관리와 bloom은 기존 정책대로 WebGL2 fallback을 사용한다.
+같은 평면 `LightingScene2D`를 공간 packet에 중복 적용할 수 없다.
+
+```ts
+const renderer = await createRenderer(canvas, { preferred: "webgpu", spatial: document.spatial });
+if ("preloadSpatialModels" in renderer) {
+  await renderer.preloadSpatialModels([rock]);
+}
+applyDataSceneAuthoringDocument(engine, document, { spatialModelPreparer: renderer });
+```
+
+`createRenderer`의 선택 `spatial`은 context 결정 전에 지원 요구사항을 검사한다. malformed spec은 오류이며,
+지원 공간 요구사항은 WebGPU로 연결하며 adapter/GPU 준비 실패나 기존 미지원 renderer 옵션은 WebGL2 fallback으로 연결된다.
+`createFerrumRuntime({ dataScene })`도 초기 문서의 공간 요구사항을 자동 전달한다.
+생성 도중에는 옵션과 GPU pipeline 오류를 canvas 연결 전에 확인한다. 연결 후 configure/resize 실패는
+같은 canvas에서 다른 API로 바꿀 수 없으므로 오류를 전파한다. 이 경우 새 canvas로 재생성해야 한다.
+게임 진행 중 요구사항 변경에 따라 renderer를 자동 교체하지 않는다.
+
+WebGPU 모델은 **먼저 `await renderer.preloadSpatialModels(assets)`** 해야 한다. 반환값은 새로 업로드한 바이트 수다.
+업로드·밉맵 생성과 GPU validation/OOM 결과를 기다린 뒤에만 검증 완료 cache에 등록한다.
+동기 `prepareSpatialModels`는 준비된 자원만 commit/dispose lease로 제공하고 uploadBytes는 0이다.
+준비되지 않은 모델은 장면 활성화 전 또는 draw 전 거절한다. 실패한 preload는 기존 장면 자원을 유지한다.
+preload 중 기존 장면을 계속 그려도 재사용 자원은 완료까지 보호한다.
+현재 warm set은 최대 16 CPU 자원·128 MiB이며 staging을 포함한 GPU geometry/mip 추정량은 256 MiB로 제한한다.
+preload 목록의 모든 LOD 자원은 GPU에 유지한다. 목록을 교체하거나 `preloadSpatialModels([])`로 비워서
+현재 장면에서도 사용하지 않는 warm 자원을 해제한다. renderer destroy는 전체 자원을 해제한다.
+terrain/billboard GPU buffer는 각각 64 MiB, depth/HDR target은 device texture limit과 8,388,608 pixel 상한을 검사한다.
+HDR 저장량은 내부 해상도당 색8+깊이4 byte로 추정한다. warm frame은 같은 target을 재사용하고 disable/destroy 때 해제한다.
+동기 target 생성 실패는 이전 target을 유지한다. 비동기 GPU allocation/validation 실패는 해당 target을 폐기하고
+다음 렌더 호출에 오류를 전달한다. 그림자 target과 그 view를 참조하는 bind group도 같은 실패 계약을 따른다.
+이는 cold 모델 활성화의 rollback 계약과 구분하며 HDR/그림자 resize의 원자적 복구를 보장하지 않는다.
+그림자 저장량 추정은 point 해상도²×6면×4 byte와 sun 해상도²×4 byte이며 최대 해상도는 각각1024다.
+
+`pnpm smoke:spatial-webgpu`는 packed public API의 실제 WebGPU와 WebGL2 픽셀을 비교한다.
+미지원 adapter나 GPU 오류를 skip하지 않는다. Linux CI에는 `pnpm smoke:spatial-webgpu-offscreen`을 연결해
+실제 WebGPU의 별도 GPU target에서 같은 전체 픽셀 조건과 context 전 fallback을 검증한다.
+CI target adapter는 canvas presentation 성공으로 해석하지 않는다. 전체 픽셀 gate의 기기별 실행 근거와
+Linux Chromium swapchain readback 제약은 [C6 진행 기록](../planning/hd2d-models-followups.md)에 기록한다.
+WebGPU GPU 시간·자원 통계와 context-loss 복구는 아직 제공하지 않는다.
 fade 등 기존 fullscreen 후처리는 사용할 수 있으며 scene FBO에 depth attachment를 설치한다.
 기존 `LightingScene2D`는 높이/표면을 계산하지 않으므로 spatial과 함께 활성화하면 거절한다.
 공간 효과는 아래 `environment`를 사용한다. 공간 물리 진단의 범위는 아래 계약을 따른다.

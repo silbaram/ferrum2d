@@ -1,8 +1,8 @@
 use wasm_bindgen::prelude::*;
 
 use super::{
-    Engine, MAX_PARTICLE_PRESETS, PHYSICS_LAYER_BULLET, PHYSICS_LAYER_ENEMY, PHYSICS_LAYER_PICKUP,
-    PHYSICS_LAYER_PLAYER, PHYSICS_LAYER_WALL,
+    Engine, SceneMode, MAX_PARTICLE_PRESETS, PHYSICS_LAYER_BULLET, PHYSICS_LAYER_ENEMY,
+    PHYSICS_LAYER_PICKUP, PHYSICS_LAYER_PLAYER, PHYSICS_LAYER_WALL,
 };
 use crate::components::gameplay::{
     ActionAimSource, ActionBinding, ActionBindingSet, ActionPattern, BehaviorStateEnterAction,
@@ -589,7 +589,8 @@ impl Engine {
         };
         if action_id == 0
             || prefab_id == 0
-            || !self.scenes.shooter().supports_spawn_prefab_id(prefab_id)
+            || self.scene_mode != SceneMode::Data
+                && !self.scenes.shooter().supports_spawn_prefab_id(prefab_id)
             || !Self::valid_non_negative(cooldown_seconds)
             || !offset_x.is_finite()
             || !offset_y.is_finite()

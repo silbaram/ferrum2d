@@ -216,6 +216,7 @@ pub(super) fn spatial_pose_overlaps_solid(
     at: Transform2D,
     scratch: &mut KinematicSweepScratch,
     mut counters: Option<&mut PhysicsCounters>,
+    solid_mask: CollisionMask,
 ) -> bool {
     let Some(collider) = world.collider(entity) else {
         return true;
@@ -243,7 +244,7 @@ pub(super) fn spatial_pose_overlaps_solid(
                     c.solid_candidate_checks = c.solid_candidate_checks.saturating_add(1);
                 }
                 if !target.is_trigger()
-                    && solid_filter_allows(world, moving_index, index, CollisionMask::ALL)
+                    && solid_filter_allows(world, moving_index, index, solid_mask)
                     && height_span_allows_kinematic_target(world, index, height_span)
                     && CollisionSystem::shapes_penetrate(
                         at,
@@ -265,7 +266,7 @@ pub(super) fn spatial_pose_overlaps_solid(
         }
         if target.enabled
             && !target.is_trigger
-            && solid_filter_allows(world, moving_index, index, CollisionMask::ALL)
+            && solid_filter_allows(world, moving_index, index, solid_mask)
             && height_span_allows_kinematic_target(world, index, height_span)
             && world
                 .transform_at_index(index)

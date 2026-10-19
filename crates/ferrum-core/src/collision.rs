@@ -67,11 +67,9 @@ use capsule_manifold::{
     capsule_capsule_contact_manifold_points, capsule_circle_contact_manifold_points,
 };
 use cast_primitives::*;
-use collider_shapes::{
-    collider_query_shape, collider_shape_center, collider_shape_is_valid, edge_as_capsule,
-};
+use collider_shapes::{collider_query_shape, collider_shape_is_valid, edge_as_capsule};
 pub(crate) use collider_shapes::{
-    collider_segment_count_at, collider_shape, collider_shape_at_segment,
+    collider_segment_count_at, collider_shape, collider_shape_at_segment, collider_shape_center,
 };
 use contact_manifold::contact_manifold_points;
 use contact_points::{

@@ -17,6 +17,7 @@ export interface ProjectileDefinition {
   readonly aim?: ProjectileActionAim;
   readonly collisionTarget?: ProjectileCollisionTarget;
   readonly tileImpact?: ProjectileTileImpact;
+  projectilePrefab?: string;
 }
 
 interface MutableProjectileDefinition {
@@ -27,6 +28,7 @@ interface MutableProjectileDefinition {
   aim?: ProjectileActionAim;
   collisionTarget?: ProjectileCollisionTarget;
   tileImpact?: ProjectileTileImpact;
+  projectilePrefab?: string;
 }
 
 export interface WeaponDefinition {
@@ -55,6 +57,7 @@ export interface ProjectileDefinitionBuilder {
   aim(value: ProjectileActionAim): ProjectileDefinitionBuilder;
   collisionTarget(value: ProjectileCollisionTarget): ProjectileDefinitionBuilder;
   tileImpact(value: ProjectileTileImpact): ProjectileDefinitionBuilder;
+  prefab(name: string): ProjectileDefinitionBuilder;
   build(): ProjectileDefinition;
   toJSON(): ProjectileDefinition;
 }
@@ -109,6 +112,11 @@ export function projectile(id: string): ProjectileDefinitionBuilder {
     },
     tileImpact(value: ProjectileTileImpact) {
       state.tileImpact = value;
+      return builder;
+    },
+    prefab(name: string) {
+      if (!isNonEmptyString(name)) throw new Error(`${id}.prefab: must be a non-empty prefab name`);
+      state.projectilePrefab = name;
       return builder;
     },
     build() {
@@ -239,6 +247,7 @@ function compileWeaponAsRecipe(
     aim: weapon.projectile.aim,
     collisionTarget: weapon.projectile.collisionTarget,
     tileImpact: weapon.projectile.tileImpact,
+    ...(weapon.projectile.projectilePrefab === undefined ? {} : { projectilePrefab: weapon.projectile.projectilePrefab }),
   };
 }
 
@@ -285,6 +294,7 @@ function resolveWeaponActionIdFromMap(
 function toProjectileSpec(definition: ProjectileDefinition): ProjectileDefinition {
   return {
     id: definition.id,
+    ...(definition.projectilePrefab === undefined ? {} : { projectilePrefab: definition.projectilePrefab }),
     ...(definition.speed === undefined ? {} : { speed: definition.speed }),
     ...(definition.damage === undefined ? {} : { damage: definition.damage }),
     ...(definition.lifetimeSeconds === undefined ? {} : { lifetimeSeconds: definition.lifetimeSeconds }),

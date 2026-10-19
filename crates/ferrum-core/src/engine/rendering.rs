@@ -18,7 +18,13 @@ impl Engine {
             values[11] = self.camera.viewport_height;
             self.spatial_scene.camera = crate::spatial_scene::SpatialCamera::new(&values);
         }
+        self.data_scene.gameplay.combat.build_projectile_rotations(
+            &self.world,
+            &mut self.spatial_scene,
+            &self.camera,
+        );
         self.spatial_scene.build(&self.world);
+        self.particles.append_spatial(&mut self.spatial_scene);
         self.bitmap_text
             .append_spatial_text(&self.world, &mut self.spatial_scene);
         self.frame_buffers.ground_shadow_projection = self.ground_sun.projection;
@@ -108,6 +114,13 @@ impl Engine {
                         .contains_key(&(e.id, e.generation))
                         || self
                             .spatial_scene
+                            .runtime_billboards
+                            .binary_search_by_key(&(e.id, e.generation), |(entity, _)| {
+                                (entity.id, entity.generation)
+                            })
+                            .is_ok()
+                        || self
+                            .spatial_scene
                             .models
                             .bindings
                             .contains_key(&(e.id, e.generation))
@@ -119,7 +132,11 @@ impl Engine {
                 continue;
             };
             if self.scene_mode == SceneMode::Data {
-                s.rotation_radians += self.world.rotation_at_index_or_default(i).radians;
+                s.rotation_radians += self.world.rotation_at_index_or_default(i).radians
+                    + self
+                        .world
+                        .entity_at_index(i)
+                        .map_or(0., |e| self.spatial_scene.runtime_sprite_rotation(e));
             }
             self.append_ground_shadow(i, t, s);
             let center = sprite_center(t, s);
