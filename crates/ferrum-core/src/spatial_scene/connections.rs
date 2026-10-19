@@ -62,6 +62,42 @@ impl SpatialScene {
                 .iter()
                 .any(|c| c.from == from && c.to == to)
     }
+    /// Same-floor adjacency alone does not make a diagonal across a third surface safe.
+    pub(super) fn navigation_edge_crosses_supports(
+        &self,
+        from: usize,
+        to: usize,
+        a: Transform2D,
+        b: Transform2D,
+    ) -> bool {
+        if from == to {
+            return true;
+        }
+        let Some((axis, boundary, lower, upper)) =
+            shared_edge(self.surfaces[from], self.surfaces[to])
+        else {
+            return false;
+        };
+        let p = [f64::from(a.x), f64::from(a.y)];
+        let q = [f64::from(b.x), f64::from(b.y)];
+        let delta = q[axis] - p[axis];
+        if delta == 0. {
+            return false;
+        }
+        let t = (f64::from(boundary) - p[axis]) / delta;
+        let along = p[1 - axis] + (q[1 - axis] - p[1 - axis]) * t;
+        let owner = if self.surfaces[from].bounds[axis] == boundary {
+            self.surfaces[from]
+        } else {
+            self.surfaces[to]
+        };
+        let owned_upper = self.surfaces[from].floor == self.surfaces[to].floor
+            && along == f64::from(upper)
+            && along < f64::from(owner.bounds[1 - axis] + owner.bounds[3 - axis]);
+        (0. ..=1.).contains(&t)
+            && along >= f64::from(lower)
+            && (along < f64::from(upper) || owned_upper)
+    }
     pub fn configure_connections(&mut self, pairs: &[u32]) -> bool {
         if !pairs.len().is_multiple_of(2) || pairs.len() > 512 {
             return false;
@@ -103,6 +139,7 @@ impl SpatialScene {
             }
         }
         self.connections = next;
+        self.navigation_revision = self.navigation_revision.wrapping_add(1);
         true
     }
     #[allow(clippy::too_many_arguments)]
@@ -116,6 +153,7 @@ impl SpatialScene {
         max_step: f32,
         max_drop: f32,
         mut counters: Option<&mut PhysicsCounters>,
+        solid_mask: crate::components::CollisionMask,
     ) -> ConnectionMove {
         if self.connections.is_empty() {
             return ConnectionMove::Unconnected;
@@ -212,6 +250,7 @@ impl SpatialScene {
                 movement,
                 &mut self.movement_scratch,
                 counters.as_deref_mut(),
+                solid_mask,
             );
             if moved.is_none_or(|moved| {
                 (moved.end.x - (original.x + movement.vx)).abs() > 0.0001
@@ -224,5 +263,23 @@ impl SpatialScene {
             }
         }
         ConnectionMove::Moved
+    }
+}
+
+#[cfg(test)]
+mod navigation_edge_tests {
+    use super::*;
+    #[test]
+    fn shared_edge_upper_corner_owned_by_larger_neighbor_remains_walkable() {
+        let mut scene = SpatialScene::default();
+        let a = [0., 0., 8., 8., 0., 0., 0., 1., 1., 1., 1.];
+        let b = [8., 0., 8., 16., 0., 0., 0., 1., 1., 1., 1.];
+        assert!(scene.configure_surfaces(&[a, b].concat(), &[1, 0, 16777215, 1, 2, 0, 16777215, 1]));
+        let from = Transform2D { x: 4., y: 4. };
+        let to = Transform2D { x: 12., y: 12. };
+        assert!(scene.navigation_edge_crosses_supports(0, 1, from, to));
+        assert!(scene.navigation_edge_crosses_supports(1, 0, to, from));
+        assert!(scene.configure_surfaces(&[a, b].concat(), &[1, 0, 16777215, 1, 2, 1, 16777215, 1]));
+        assert!(!scene.navigation_edge_crosses_supports(0, 1, from, to));
     }
 }

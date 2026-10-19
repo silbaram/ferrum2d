@@ -258,6 +258,8 @@ export interface ProjectileActionBehaviorRecipeSpec extends BehaviorRecipeBaseSp
   aim?: BehaviorRecipeActionAim;
   collisionTarget?: BehaviorRecipeProjectileCollisionTarget;
   tileImpact?: BehaviorRecipeProjectileTileImpact;
+  /** Named static Data Scene projectile presentation; consumed by full document apply. */
+  projectilePrefab?: string;
 }
 
 export interface SpawnPrefabProjectilePayloadSpec {
@@ -561,6 +563,8 @@ export interface ResolvedProjectileActionBehaviorRecipe extends ResolvedBehavior
   aim: BehaviorRecipeActionAim;
   collisionTarget: BehaviorRecipeProjectileCollisionTarget;
   tileImpact: BehaviorRecipeProjectileTileImpact;
+  /** Named static Data Scene projectile presentation; consumed by full document apply. */
+  projectilePrefab?: string;
 }
 
 export interface ResolvedSpawnPrefabProjectilePayload {
@@ -864,6 +868,8 @@ export interface ConfigureProjectileActionBehaviorCommand extends BehaviorRecipe
   aim?: BehaviorRecipeActionAim;
   collisionTarget?: BehaviorRecipeProjectileCollisionTarget;
   tileImpact?: BehaviorRecipeProjectileTileImpact;
+  /** Named static Data Scene projectile presentation; consumed by full document apply. */
+  projectilePrefab?: string;
 }
 
 export interface ConfigureDashActionBehaviorCommand extends BehaviorRecipeCommandBase {
@@ -1283,6 +1289,7 @@ function resolveBehaviorRecipe(value: unknown, path: string, fallbackId: string)
       return {
         ...base,
         kind,
+        ...(value.projectilePrefab === undefined ? {} : { projectilePrefab: requiredString(value.projectilePrefab, `${path}.projectilePrefab`) }),
         action: requiredString(value.action, `${path}.action`),
         ...(value.actionId === undefined ? {} : { actionId: positiveInteger(value.actionId, `${path}.actionId`) }),
         cooldownSeconds: nonNegativeNumber(value.cooldownSeconds ?? 0, `${path}.cooldownSeconds`),
@@ -1548,6 +1555,7 @@ function commandForRecipe(entity: string, recipe: ResolvedBehaviorRecipe): Behav
       return {
         ...base,
         type: "configureProjectileAction",
+        ...(recipe.projectilePrefab === undefined ? {} : { projectilePrefab: recipe.projectilePrefab }),
         action: recipe.action,
         ...(recipe.actionId === undefined ? {} : { actionId: recipe.actionId }),
         cooldownSeconds: recipe.cooldownSeconds,

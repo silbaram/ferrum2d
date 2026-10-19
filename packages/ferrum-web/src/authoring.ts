@@ -505,3 +505,16 @@ export type { SpatialModelPreparation, SpatialModelPreparer } from "./spatialMod
 
 export { addSpatialModelAssembly } from "./spatialModelAssembly.js";
 export type { SpatialModelAssemblySpec, SpatialModelColliderProxy } from "./spatialModelAssembly.js";
+
+export type { DataSceneProjectilePrefabSpec, DataSceneProjectilePrefabBinding } from "./dataSceneProjectilePrefabs.js";
+
+export type { DataSceneCombatNavigationSpec } from "./dataSceneCombatNavigation.js";
+
+export type { DataSceneCombatChaseBinding } from "./dataSceneCombatCrowd.js";
+
+export type { DataSceneSpawnPrefabSpec, DataSceneSpawnPrefabBinding } from "./dataSceneSpawnPrefabs.js";
+
+export type { DataSceneCombatActorReference, DataSceneCombatSpawnedActorState, DataSceneCombatSpawnedActorSnapshot, DataSceneCombatSpawnProjectileSnapshot, DataSceneCombatSpawnProgressSnapshot } from "./dataSceneSpawnProgress.js";
+
+export type { DataSceneProjectileAnimationSpec } from "./dataSceneProjectilePrefabs.js";
+export type { DataSceneProjectileAnimationProgress, DataSceneCombatVisualProjectileSnapshot, DataSceneCombatVisualProgressSnapshot } from "./dataSceneProjectileVisualProgress.js";

@@ -1,7 +1,9 @@
+import type { DataSceneCombatCrowdStats } from "../dataSceneCombatCrowd.js";
+import type { DataSceneCombatNavigationStats, DataSceneCombatNavigationSchedulerStats } from "../dataSceneCombatNavigation.js";
 import type { FerrumSpatialApi } from "../dataSceneSpatial.js";
 import type { DataSceneMoveOptions, DataSceneMoveStatus } from "../dataSceneMovement.js";
 import type { DataSceneMovementAnimationSpec } from "../dataSceneMovementAnimation.js";
-import type { DataSceneGameplayOptions } from "../dataSceneGameplay.js";
+import type { DataSceneGameplayOptions, DataSceneCombatStats } from "../dataSceneGameplay.js";
 import type { DataSceneNavigationSpec } from "../dataSceneNavigation.js";
 import type { DirectionalLight2D } from "../lightingTypes.js";
 import type { DataSceneGroundShadowStats } from "../dataSceneSun.js";
@@ -241,6 +243,26 @@ export interface FerrumSceneApi {
   clearShooterTileHd2dMetadata(tileId: number): boolean;
   setShooterTileBridgePortal(tileId: number, portal: ShooterTileBridgePortalMetadata): boolean;
   clearShooterTileBridgePortal(tileId: number): boolean;
+  dataSceneCombatEnabled(): boolean;
+  /** Low-frequency cumulative diagnostics; undefined on older Wasm builds. */
+  dataSceneCombatStats(): DataSceneCombatStats | undefined;
+  /** Whether this Wasm build executes primary-actor input/enemies projectiles in Data Scene combat. */
+  supportsDataSceneInputProjectiles(): boolean;
+  /** Native melee/dash input and timer actions with checkpoint state. */
+  supportsDataSceneCombatActions(): boolean;
+  supportsDataSceneSpawnPrefabs(): boolean;
+  supportsDataSceneProjectileVisuals(): boolean;
+  /** Whether the native build supports complete Data Scene combat checkpoint capture/restore. */
+  supportsDataSceneCombatProgress(): boolean;
+  /** Named static projectile presentation with checkpoint v2 support. */
+  supportsDataSceneProjectilePrefabs(): boolean;
+  supportsDataSceneCombatNavigation(): boolean;
+  supportsDataSceneCombatMovement(): boolean;
+  supportsDataSceneCombatNavigationScheduler(): boolean;
+  dataSceneCombatNavigationSchedulerStats(): DataSceneCombatNavigationSchedulerStats | undefined;
+  supportsDataSceneCombatCrowd(): boolean;
+  dataSceneCombatCrowdStats(): DataSceneCombatCrowdStats | undefined;
+  dataSceneCombatNavigationStats(): DataSceneCombatNavigationStats | undefined;
   configureDataSceneGameplay(options: DataSceneGameplayOptions): boolean;
   configureDataSceneNavigation(spec: DataSceneNavigationSpec, entityHandles?: Readonly<Record<string, GameplayEntityHandle>>): boolean;
   setDataSceneNavigationCost(column: number, row: number, cost: number): boolean;

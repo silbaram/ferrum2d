@@ -1,7 +1,59 @@
 use super::*;
-use crate::components::HeightSpan;
+use crate::components::{CollisionFilter, HeightSpan};
 
 impl CollisionSystem {
+    /// Exact placement query for every enabled collider of a newly instantiated actor.
+    pub(crate) fn entity_overlaps_solid_mask(
+        world: &World,
+        entity: Entity,
+        mask: CollisionMask,
+    ) -> bool {
+        let Some(at) = world.transform(entity) else {
+            return true;
+        };
+        let source = entity.id as usize;
+        for &target in world.alive_indices() {
+            if target == source || !world.height_spans_allow_at(source, target) {
+                continue;
+            }
+            let Some(bt) = world.transform_at_index(target) else {
+                continue;
+            };
+            for a in 0..world.compound_collider_count_at(source) {
+                let Some(af) = world.compound_collision_filter_at(source, a) else {
+                    continue;
+                };
+                for b in 0..world.compound_collider_count_at(target) {
+                    if !mask_contains_collider(world, target, b, mask)
+                        || world
+                            .compound_collider_ref_at(target, b)
+                            .is_some_and(|c| c.is_trigger())
+                        || !world
+                            .compound_collision_filter_at(target, b)
+                            .is_some_and(|bf| af.can_collide_with(bf))
+                    {
+                        continue;
+                    }
+                    for a_segment in 0..collider_segment_count_at(world, source, a) {
+                        let Some(ac) = collider_shape_at_segment(world, source, a, a_segment)
+                        else {
+                            continue;
+                        };
+                        for b_segment in 0..collider_segment_count_at(world, target, b) {
+                            let Some(bc) = collider_shape_at_segment(world, target, b, b_segment)
+                            else {
+                                continue;
+                            };
+                            if Self::shapes_penetrate(at, ac, bt, bc) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
     pub fn point_query(
         world: &World,
         point: Transform2D,
@@ -226,6 +278,27 @@ impl CollisionSystem {
         hits: &mut Vec<CircleQueryHit>,
     ) {
         hits.clear();
+        Self::visit_circle_query_with_height_span_and_filter(
+            world,
+            center,
+            radius,
+            query_mask,
+            query_height_span,
+            None,
+            |hit, _| hits.push(hit),
+        );
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn visit_circle_query_with_height_span_and_filter(
+        world: &World,
+        center: Transform2D,
+        radius: f32,
+        query_mask: CollisionMask,
+        query_height_span: Option<HeightSpan>,
+        query_filter: Option<CollisionFilter>,
+        mut visit: impl FnMut(CircleQueryHit, Transform2D),
+    ) {
         if !is_valid_radius(radius) {
             return;
         }
@@ -240,6 +313,13 @@ impl CollisionSystem {
                 if !mask_contains_collider(world, index, collider_index, query_mask) {
                     continue;
                 }
+                if query_filter.is_some_and(|filter| {
+                    !world
+                        .compound_collision_filter_at(index, collider_index)
+                        .is_some_and(|target| filter.can_collide_with(target))
+                }) {
+                    continue;
+                }
                 for segment_index in 0..collider_segment_count_at(world, index, collider_index) {
                     let Some(shape) =
                         collider_shape_at_segment(world, index, collider_index, segment_index)
@@ -249,9 +329,12 @@ impl CollisionSystem {
                     if !collider_overlaps_circle(transform, shape, center, radius) {
                         continue;
                     }
-                    hits.push(CircleQueryHit {
-                        entity: entity_from_index(world, index),
-                    });
+                    visit(
+                        CircleQueryHit {
+                            entity: entity_from_index(world, index),
+                        },
+                        collider_shape_center(transform, shape),
+                    );
                     break 'colliders;
                 }
             }

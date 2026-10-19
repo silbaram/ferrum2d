@@ -199,3 +199,84 @@ test("variable trigger capacity counts distinct Rust upsert keys per entity", ()
     },
   });
 });
+
+test("combat is explicit, typed and requires a primary actor", () => {
+  deepEqual(resolveDataSceneGameplaySpec({ primaryActor: "player", combat: true }), { primaryActor: "player", combat: true });
+  deepEqual(resolveDataSceneGameplaySpec({ combat: false }), { combat: false });
+  for (const value of [{ combat: true }, { primaryActor: "player", combat: 1 }, { combat: null }]) throws(() => resolveDataSceneGameplaySpec(value));
+});
+
+test("combat preflight rejects unsupported Wasm and commands before mutation", () => {
+  const resolved = document({ primaryActor: "player", combat: true }, { kind: "chase", speed: 20, stopDistance: 0 });
+  throws(() => checkPreflight(resolved), /compatible combat Wasm/);
+  const engine = { ...preflightEngine, dataSceneCombatStats: () => ({}) } as unknown as FerrumEngine;
+  const check = (doc: ReturnType<typeof document>) => preflightDataSceneGameplay(engine, doc, bindSceneBehaviorRecipes(doc.sceneComposition, doc.behaviorRecipes), doc.ids, "scene");
+  check(resolved);
+  check(document({ primaryActor: "player", combat: true }, { kind: "projectileAction", action: "discover", aim: "targetPlayer", collisionTarget: "player" }));
+  throws(() => check(document({ primaryActor: "player", combat: true }, { kind: "projectileAction", action: "discover" })), /compatible input-projectile Wasm/);
+  throws(() => check(document({ primaryActor: "player", combat: true }, { kind: "projectileAction", action: "discover", aim: "targetPlayer", collisionTarget: "player", tileImpact: "bounce" })), /despawn tile impact/);
+  throws(() => check(document({ primaryActor: "player", combat: true }, { kind: "dashAction", action: "discover" })), /compatible combat-action Wasm/);
+  throws(() => check(document({ primaryActor: "player", combat: true }, { kind: "timerTrigger", timer: "alarm", timerId: 5, action: "discover" })), /same entity/);
+});
+
+test("input projectile preflight accepts only the primary actor and rejects timer dispatch", () => {
+  const engine = { ...preflightEngine, dataSceneCombatStats: () => ({}), supportsDataSceneInputProjectiles: () => true } as unknown as FerrumEngine;
+  const check = (doc: ReturnType<typeof document>) => preflightDataSceneGameplay(engine, doc, bindSceneBehaviorRecipes(doc.sceneComposition, doc.behaviorRecipes), doc.ids, "scene");
+  const input = { kind: "projectileAction", action: "discover" };
+  check(document({ primaryActor: "player", combat: true }, input));
+  check(document({ primaryActor: "player", combat: true }, { ...input, aim: "input", collisionTarget: "enemies" }));
+  throws(() => check(document({ primaryActor: "player" }, input)), /no generic Data Scene executor/);
+  throws(() => check(document({ primaryActor: "player", combat: true }, { ...input, aim: "input", collisionTarget: "player" })), /must be enemies/);
+
+  const resolved = document({ primaryActor: "player", combat: true }, input);
+  const island = resolved.sceneComposition.fragments.island!;
+  throws(() => check({ ...resolved, sceneComposition: { ...resolved.sceneComposition, fragments: {
+    ...resolved.sceneComposition.fragments, island: { ...island, instances: [...island.instances, { ...island.instances[0]!, id: "enemy" }] },
+  } } }), /input projectiles require the gameplay primaryActor/);
+
+  const timed = (recipes: readonly unknown[]) => document({ primaryActor: "player", combat: true }, undefined, {
+    behaviorRecipes: { entities: { site: { recipes } } },
+  });
+  const timer = { kind: "timerTrigger", timer: "alarm", timerId: 5, action: "discover" };
+  const targeted = { ...input, aim: "targetPlayer", collisionTarget: "player" };
+  check(timed([targeted, timer]));
+  throws(() => check(timed([input, timer])), /timer actions require targetPlayer/);
+  throws(() => check(timed([targeted, timer, input])), /timer actions require targetPlayer/);
+});
+
+test("input projectile compatibility failure leaves activation, spawns and configuration untouched", () => {
+  let mutations = 0;
+  const engine = attachDataSceneRuntimeEngineAdapter({
+    configureDataSceneGameplay() { mutations++; return true; },
+    configureDataSceneNavigation() { mutations++; return true; },
+    dataSceneCombatStats: () => ({}),
+    supportsDataSceneInputProjectiles: () => false,
+  } as unknown as FerrumEngine, {
+    useDataScene() { mutations++; },
+    textureId() { mutations++; return 1; },
+    spawnDataSceneEntity() { mutations++; return { entityId: 1, entityGeneration: 1 }; },
+  });
+  throws(() => applyDataSceneAuthoringDocument(engine,
+    document({ primaryActor: "player", combat: true }, { kind: "projectileAction", action: "discover" }),
+    { validateComponents: false },
+  ), /compatible input-projectile Wasm/);
+  equal(mutations, 0);
+});
+
+
+test("combat numeric and movement references reject before scene activation", () => {
+  const engine = { ...preflightEngine, dataSceneCombatStats: () => ({}) } as unknown as FerrumEngine;
+  const check = (recipe: unknown) => {
+    const resolved = document({ primaryActor: "player", combat: true }, recipe);
+    preflightDataSceneGameplay(engine, resolved, bindSceneBehaviorRecipes(resolved.sceneComposition, resolved.behaviorRecipes), resolved.ids, "scene");
+  };
+  for (const recipe of [
+    { kind: "accelerate", accelerationX: 1e-100, accelerationY: 0, maxSpeed: 1 },
+    { kind: "collisionParticle", presetId: 3, cooldownSeconds: 1e39 },
+    { kind: "collisionSound", soundId: 1, pitch: 1e-100 },
+    { kind: "collisionSound", soundId: 0x100000000 },
+    { kind: "collisionEmitEffect", effectId: 1, effectKind: "custom", intensity: 1e39 },
+    { kind: "chase", target: "nearestTag:missing", speed: 1, stopDistance: 0 },
+    { kind: "chase", target: "missing", speed: 1, stopDistance: 0 },
+  ]) throws(() => check(recipe));
+});

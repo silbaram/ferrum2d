@@ -1172,6 +1172,18 @@ impl BehaviorStateEnterActionSet {
 }
 
 impl CollisionReactionSet {
+    /// Cold checkpoint inspection preserves authored slot order and guards.
+    pub(crate) fn checkpoint_reactions(&self) -> impl Iterator<Item = CollisionReaction> + '_ {
+        self.reactions.iter().filter_map(|reaction| *reaction)
+    }
+
+    pub(crate) fn checkpoint_unguarded(&self) -> bool {
+        self.guards
+            .iter()
+            .take(self.len)
+            .all(|guard| *guard == GameplayVariableComparison::always())
+    }
+
     pub(crate) fn push(&mut self, reaction: CollisionReaction) -> bool {
         self.push_guarded(reaction, GameplayVariableComparison::always())
     }

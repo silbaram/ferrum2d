@@ -1,4 +1,9 @@
+import { projectileVisualsRequired } from "./dataSceneProjectilePrefabs.js";
+import { combatSpawnPrefabNames } from "./dataSceneSpawnProgress.js";
+import { combatCrowdRequired } from "./dataSceneCombatCrowd.js";
+import { combatActionsRequired, finalCombatActions } from "./dataSceneCombatActions.js";
 import type { FerrumEngine } from "./engineTypes.js";
+import { combatProjectilePrefabNames, combatProgressValues, decodeCombatProgress, validateDataSceneCombatProgress, type DataSceneCombatProgressSnapshot } from "./dataSceneCombatProgress.js";
 import {
   preflightDataSceneSpatialEnvironment,
   type ApplyDataSceneAuthoringDocumentOptions,
@@ -37,8 +42,10 @@ import {
   type DataSceneSpatialProgressSnapshot,
 } from "./dataSceneSpatialProgress.js";
 
-/** Authored progress; opt-in spatial poses are included, gameplay timers/dynamic spawns are not. */
+/** Complete authored progress; combat checkpoints require the separate native v1 codec. */
 export interface DataSceneProgressSnapshot {
+  /** Data Scene state v9 only; required for a combat authoring document. */
+  readonly combat?: DataSceneCombatProgressSnapshot;
   readonly instances: readonly {
     readonly id: string;
     readonly removed: boolean;
@@ -77,6 +84,8 @@ export interface DataSceneProgressAdapter {
   spatial(epoch: number, handles: Uint32Array): Float64Array;
   rotations?(epoch:number,handles:Uint32Array):Float64Array|undefined;
   environment?(): Float32Array | undefined;
+  combat?(epoch: number, handles: Uint32Array): Float64Array | undefined;
+  preflightCombat?(states: Uint32Array, values: Float64Array): boolean;
   preflightSpatial(
     terrainValues: Float32Array,
     metadata: Uint32Array,
@@ -90,6 +99,7 @@ export interface DataSceneProgressAdapter {
     spatial?: Float64Array,
     environment?: Float32Array,
     rotations?: Float64Array,
+    combat?: Float64Array,
   ): boolean;
 }
 const ANIMATION_PROGRESS_STRIDE = 32;
@@ -140,6 +150,7 @@ export function captureDataSceneProgress(
   engine: FerrumEngine,
   document: unknown,
 ): DataSceneProgressSnapshot {
+  assertDataSceneCombatSaveSupported(engine, document);
   const adapter = requireAdapter(engine);
   const context = contexts.get(engine);
   if (
@@ -173,6 +184,11 @@ export function captureDataSceneProgress(
   if (animationValues.length !== ids.length * ANIMATION_PROGRESS_STRIDE)
     throw new Error("Data Scene animation progress rejected stale handles.");
   const spatialSpec = resolveSceneAuthoringDocument(document).spatial;
+  const combatDocument = resolveSceneAuthoringDocument(document).gameplay?.combat === true;
+  const combatValues = combatDocument ? adapter.combat?.(context.epoch, handleBuffer(ids, context.handles)) : undefined;
+  if (combatDocument && (combatValues === undefined || adapter.preflightCombat?.(states, combatValues) !== true)) {
+    throw new Error("Data Scene combat progress capture rejected unsupported runtime state or incompatible Wasm.");
+  }
   const nativeSpatial = adapter.spatial(
     context.epoch,
     spatialSpec === undefined
@@ -245,6 +261,7 @@ export function captureDataSceneProgress(
     offset += 3 + count * 2;
   }
   const progress: DataSceneProgressSnapshot = {
+    ...(combatValues === undefined ? {} : { combat: decodeCombatProgress(combatValues, ids, combatProjectilePrefabNames(document), combatSpawnPrefabNames(document)) }),
     instances: ids.map((id, index) => {
       const state = states[index]!;
       let spatialPose =
@@ -315,6 +332,7 @@ export function preflightDataSceneProgressRestore(
   progress?: DataSceneProgressSnapshot,
   document?: unknown,
 ): void {
+  assertDataSceneCombatSaveSupported(engine, document);
   requireAdapter(engine);
   const unsupported = unsupportedOptions(options);
   if (unsupported.length > 0)
@@ -322,6 +340,15 @@ export function preflightDataSceneProgressRestore(
       `Data Scene progress restore does not support apply options: ${unsupported.join(", ")}. Put binding configuration in the saved document.`,
     );
   if (progress !== undefined) {
+    validateDataSceneProgress(progress, document);
+    if (progress.combat !== undefined) {
+      if (progress.combat.version === 4 && engine.supportsDataSceneProjectileVisuals?.() !== true) throw new Error("Data Scene combat progress v4 requires a projectile-visual Wasm build.");
+      if (progress.combat.version === 3 && engine.supportsDataSceneSpawnPrefabs?.() !== true) throw new Error("Data Scene combat progress v3 requires a spawn-prefab Wasm build.");
+      if (progress.combat.version === 2 && engine.supportsDataSceneProjectilePrefabs?.() !== true) throw new Error("Data Scene combat progress v2 requires a projectile-prefab Wasm build.");
+      const states = Uint32Array.from(progress.instances, instance => instance.removed ? 0 : 1);
+      const values = combatProgressValues(progress.combat, progress.instances.map(instance => instance.id), combatProjectilePrefabNames(document), combatSpawnPrefabNames(document));
+      if (requireAdapter(engine).preflightCombat?.(states, values) !== true) throw new Error("Data Scene combat progress restore rejected native checkpoint state.");
+    }
     const spec=resolveSceneAuthoringDocument(document).spatial;
     if(spec?.models && !engine.preflightDataSceneSpatialModels(spec,Object.fromEntries(progress.instances.filter(i=>i.spatialPose).map(i=>[i.id,{x:i.spatialPose!.x,y:i.spatialPose!.y,elevation:i.spatialPose!.heightSpan?.elevation ?? 0}]))))
       throw new Error("Spatial model resources/content must be prepared before restoring progress.");
@@ -339,6 +366,7 @@ export function restoreDataSceneProgress(
   progress: DataSceneProgressSnapshot,
   handles: Readonly<Record<string, GameplayEntityHandle>>,
 ): void {
+  assertDataSceneCombatSaveSupported(engine);
   const adapter = requireAdapter(engine);
   const ids = progress.instances.map((instance) => instance.id);
   const states = Uint32Array.from(progress.instances, (instance) =>
@@ -412,10 +440,14 @@ export function restoreDataSceneProgress(
       spatial,
       environment,
       progress.instances.some(i=>i.spatialPose?.rotationRadians!==undefined)?Float64Array.from(progress.instances,i=>i.spatialPose?.rotationRadians??0):undefined,
+      progress.combat === undefined ? undefined : combatProgressValues(progress.combat, ids, combatProjectilePrefabNames(JSON.parse(context!.document)), combatSpawnPrefabNames(JSON.parse(context!.document))),
     )
   ) {
     throw new Error("Data Scene progress restore rejected entity state.");
   }
+  // A validated native restore may clear an absent spatial scene and advance its revision.
+  // Capture must bind the committed configuration, while later runtime edits still invalidate it.
+  if (context) context.spatialRevision = adapter.spatialRevision();
 }
 
 export function validateDataSceneProgress(
@@ -425,7 +457,7 @@ export function validateDataSceneProgress(
   if (
     !isRecord(value) ||
     Object.keys(value).some(
-      (key) => !["instances", "navigation", "spatial"].includes(key),
+      (key) => !["instances", "navigation", "spatial", "combat"].includes(key),
     ) ||
     !Array.isArray(value.instances)
   ) {
@@ -436,6 +468,9 @@ export function validateDataSceneProgress(
   if (document === undefined)
     throw new Error("Data Scene progress requires an authoringDocument.");
   const resolved = resolveSceneAuthoringDocument(document);
+  if ((resolved.gameplay?.combat === true) !== (value.combat !== undefined)) {
+    throw new Error("Data Scene combat documents require complete combat progress; exploration documents cannot contain combat state.");
+  }
   const plan = bindSceneBehaviorRecipes(
     resolved.sceneComposition,
     resolved.behaviorRecipes,
@@ -609,6 +644,7 @@ export function validateDataSceneProgress(
         );
     }
   }
+  if (value.combat !== undefined) validateDataSceneCombatProgress(value.combat, document, value.instances as unknown as DataSceneProgressSnapshot["instances"]);
 }
 
 function preflightEnvironmentProgress(
@@ -645,6 +681,7 @@ function preflightEnvironmentProgress(
         .map((instance) => instance.id),
     ),
     progress.spatial.camera,
+    (progress.combat?.version === 3 || progress.combat?.version === 4) ? progress.combat.spawnedActors.filter(actor => !actor.removed).map(actor => resolved.gameplay!.spawnPrefabs![actor.prefab].prototypeInstanceId) : [],
   );
 }
 
@@ -762,4 +799,23 @@ function canonicalDocument(value: unknown): string {
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Old combat Wasm must continue to refuse incomplete exploration-only snapshots. */
+export function assertDataSceneCombatSaveSupported(engine: FerrumEngine, document?: unknown): void {
+  const navigation = (document as { gameplay?: { combatNavigation?: unknown } } | undefined)?.gameplay?.combatNavigation;
+  const combat = (document as { gameplay?: { combat?: unknown } } | undefined)?.gameplay?.combat === true;
+  if ((combat || navigation !== undefined) && document) {
+    const resolved = resolveSceneAuthoringDocument(document);
+    if (projectileVisualsRequired(resolved.gameplay?.projectilePrefabs) && engine.supportsDataSceneProjectileVisuals?.() !== true) throw new Error("Data Scene projectile animation/rotation capture/restore requires a compatible Wasm build.");
+    if (resolved.gameplay?.combatNavigation?.movementPatterns === "all" && engine.supportsDataSceneCombatMovement?.() !== true) throw new Error("Data Scene spatial combat movement capture/restore requires a compatible Wasm build.");
+    const plan = bindSceneBehaviorRecipes(resolved.sceneComposition, resolved.behaviorRecipes);
+    if ((resolved.gameplay?.spawnPrefabs !== undefined || finalCombatActions(plan.commands, resolved.ids).some(command => command.type === "configureSpawnPrefabAction")) && engine.supportsDataSceneSpawnPrefabs?.() !== true) throw new Error("Data Scene spawn-prefab capture/restore requires a compatible Wasm build.");
+    if (combatActionsRequired(finalCombatActions(plan.commands, resolved.ids)) && engine.supportsDataSceneCombatActions?.() !== true) throw new Error("Data Scene melee/dash capture/restore requires a compatible combat-action Wasm build.");
+    if (combatCrowdRequired(resolved.gameplay?.combatNavigation, plan.commands) && engine.supportsDataSceneCombatCrowd?.() !== true) throw new Error("Data Scene combat crowd capture/restore requires a compatible Wasm build.");
+  }
+  if (navigation !== undefined && engine.supportsDataSceneCombatNavigation?.() !== true) throw new Error("Data Scene combat navigation capture/restore requires a compatible Wasm build.");
+  if (engine.dataSceneCombatEnabled?.() === true || (document !== null && typeof document === "object" && (document as { gameplay?: { combat?: unknown } }).gameplay?.combat === true)) {
+    if (engine.supportsDataSceneCombatProgress?.() !== true) throw new Error("Data Scene combat capture/restore requires a compatible checkpoint Wasm build.");
+  }
 }

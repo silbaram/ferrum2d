@@ -1,5 +1,6 @@
 //! Explicit Data Scene atlas playback. Configuration is cold; frame advancement allocates nothing.
 use crate::components::{Sprite, SpriteFrame};
+use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SpriteClip {
@@ -11,7 +12,7 @@ pub(crate) struct SpriteClip {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SpritePlayback {
-    pub clips: Vec<SpriteClip>,
+    pub clips: Arc<[SpriteClip]>,
     pub active: usize,
     pub elapsed: f64,
     pub paused: bool,

@@ -26,6 +26,40 @@ use std::cmp::Ordering;
 use super::query::query_height_span_allows;
 
 impl CollisionSystem {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn shape_cast_with_height_span(
+        world: &World,
+        shape: CollisionQueryShape,
+        direction: Velocity,
+        max_distance: f32,
+        query_mask: CollisionMask,
+        height_span: Option<HeightSpan>,
+        ignored: Option<Entity>,
+        mover_filter: Option<crate::components::CollisionFilter>,
+    ) -> Option<ShapeCastHit> {
+        let mut nearest = None;
+        visit_shape_cast_hits_matching(
+            world,
+            shape,
+            direction,
+            max_distance,
+            query_mask,
+            height_span,
+            |index, collider| {
+                mover_filter.is_none_or(|filter| {
+                    world
+                        .compound_collision_filter_at(index, collider)
+                        .is_some_and(|target| filter.can_collide_with(target))
+                })
+            },
+            |hit| {
+                if Some(hit.entity) != ignored {
+                    update_nearest_shape_cast_hit(&mut nearest, hit)
+                }
+            },
+        );
+        nearest
+    }
     pub fn shape_cast(
         world: &World,
         shape: CollisionQueryShape,
@@ -108,6 +142,29 @@ fn visit_shape_cast_hits(
     max_distance: f32,
     query_mask: CollisionMask,
     query_height_span: Option<HeightSpan>,
+    visit: impl FnMut(ShapeCastHit),
+) {
+    visit_shape_cast_hits_matching(
+        world,
+        shape,
+        direction,
+        max_distance,
+        query_mask,
+        query_height_span,
+        |_, _| true,
+        visit,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn visit_shape_cast_hits_matching(
+    world: &World,
+    shape: CollisionQueryShape,
+    direction: Velocity,
+    max_distance: f32,
+    query_mask: CollisionMask,
+    query_height_span: Option<HeightSpan>,
+    mut include: impl FnMut(usize, usize) -> bool,
     mut visit: impl FnMut(ShapeCastHit),
 ) {
     if !query_shape_is_valid(shape) || !max_distance.is_finite() || max_distance < 0.0 {
@@ -129,7 +186,9 @@ fn visit_shape_cast_hits(
         };
         let entity = entity_from_index(world, index);
         for collider_index in 0..world.compound_collider_count_at(index) {
-            if !mask_contains_collider(world, index, collider_index, query_mask) {
+            if !include(index, collider_index)
+                || !mask_contains_collider(world, index, collider_index, query_mask)
+            {
                 continue;
             }
             for segment_index in 0..collider_segment_count_at(world, index, collider_index) {

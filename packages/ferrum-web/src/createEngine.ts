@@ -1,10 +1,13 @@
+import { supportsDataSceneCombatCrowd, dataSceneCombatCrowdStats } from "./dataSceneCombatCrowd.js";
+import { supportsDataSceneCombatMovement, supportsDataSceneCombatNavigationScheduler, dataSceneCombatNavigationSchedulerStats, supportsDataSceneCombatNavigation, dataSceneCombatNavigationStats } from "./dataSceneCombatNavigation.js";
 import { spatialModelRegistry } from "./spatialModel.js";
 import { createSpatialApi, spatialCameraValues } from "./dataSceneSpatial.js";
 import { compileSpatialEnvironment } from "./spatialEnvironment.js";
 import { createDataSceneMovementApi } from "./dataSceneMovement.js";
 import { createDataSceneMovementAnimationApi } from "./dataSceneMovementAnimation.js";
-import { attachDataSceneProgressAdapter } from "./dataSceneProgress.js";
-import { configureDataSceneGameplay } from "./dataSceneGameplay.js";
+import { attachDataSceneProgressAdapter, forgetDataSceneProgressContext } from "./dataSceneProgress.js";
+import type { NativeCombatProgressRuntime } from "./dataSceneCombatProgress.js";
+import { configureDataSceneGameplay, dataSceneCombatStats, dataSceneCombatEnabled, supportsDataSceneInputProjectiles, supportsDataSceneCombatActions, supportsDataSceneSpawnPrefabs, supportsDataSceneProjectileVisuals, supportsDataSceneCombatProgress, supportsDataSceneProjectilePrefabs } from "./dataSceneGameplay.js";
 import { configureDataSceneSun } from "./dataSceneSun.js";
 import { configureDataSceneSpriteAnimation, updateDataSceneSpriteAnimations, dataSceneSpriteAnimationState } from "./dataSceneSpriteAnimation.js";
 import { configureDataSceneCamera } from "./dataSceneCamera.js";
@@ -644,7 +647,28 @@ export async function createEngineWithFramePipeline(
     useDataScene,
     useBreakoutGame,
     usePlatformerGame,
-    configureDataSceneGameplay: (config) => { requireAlive(); return configureDataSceneGameplay(rustEngine, config); },
+    dataSceneCombatEnabled: () => { requireAlive(); return dataSceneCombatEnabled(rustEngine); },
+    dataSceneCombatStats: () => { requireAlive(); return dataSceneCombatStats(rustEngine); },
+    supportsDataSceneInputProjectiles: () => { requireAlive(); return supportsDataSceneInputProjectiles(rustEngine); },
+    supportsDataSceneCombatCrowd: () => { requireAlive(); return supportsDataSceneCombatCrowd(rustEngine); },
+    dataSceneCombatCrowdStats: () => { requireAlive(); return dataSceneCombatCrowdStats(rustEngine); },
+    supportsDataSceneCombatMovement: () => { requireAlive(); return supportsDataSceneCombatMovement(rustEngine); },
+    supportsDataSceneProjectileVisuals: () => { requireAlive(); return supportsDataSceneProjectileVisuals(rustEngine); },
+    supportsDataSceneSpawnPrefabs: () => { requireAlive(); return supportsDataSceneSpawnPrefabs(rustEngine); },
+    supportsDataSceneCombatActions: () => { requireAlive(); return supportsDataSceneCombatActions(rustEngine); },
+    supportsDataSceneCombatNavigationScheduler: () => { requireAlive(); return supportsDataSceneCombatNavigationScheduler(rustEngine); },
+    dataSceneCombatNavigationSchedulerStats: () => { requireAlive(); return dataSceneCombatNavigationSchedulerStats(rustEngine); },
+    supportsDataSceneCombatNavigation: () => { requireAlive(); return supportsDataSceneCombatNavigation(rustEngine); },
+    dataSceneCombatNavigationStats: () => { requireAlive(); return dataSceneCombatNavigationStats(rustEngine); },
+    supportsDataSceneProjectilePrefabs: () => { requireAlive(); return supportsDataSceneProjectilePrefabs(rustEngine); },
+    supportsDataSceneCombatProgress: () => { requireAlive(); return supportsDataSceneCombatProgress(rustEngine); },
+    configureDataSceneGameplay: (config) => {
+      requireAlive();
+      const applied = configureDataSceneGameplay(rustEngine, config, name => requireAssetHost().textureId(name));
+      // Reapplying the complete document records fresh metadata after configuration.
+      if (applied) forgetDataSceneProgressContext(engine);
+      return applied;
+    },
     setDataSceneSun: (sun) => { requireAlive(); return configureDataSceneSun(rustEngine, sun); },
     dataSceneGroundShadowStats: () => { requireAlive(); const s = rustEngine.data_scene_ground_shadow_stats(); return { casters: s[0], cacheHits: s[1], rebuilds: s[2], culled: s[3], skippedByBudget: s[4] }; },
     setDataSceneGroundYScale: (scale) => { requireAlive(); return rustEngine.configure_data_scene_projection(scale); },
@@ -868,6 +892,8 @@ export async function createEngineWithFramePipeline(
     ...gameplayAuthoringApi,
     ...inputActionApi,
   };
+  // Additive hooks are probed at runtime so older Wasm can still run exploration scenes.
+  const combatProgressRuntime = rustEngine as Engine & NativeCombatProgressRuntime;
   attachDataSceneProgressAdapter(engine, {
     epoch: () => { requireAlive(); return rustEngine.data_scene_epoch(); },
     capture: (epoch, handles) => { requireAlive(); return rustEngine.capture_data_scene_progress(epoch, handles); },
@@ -884,9 +910,14 @@ export async function createEngineWithFramePipeline(
         ? rustEngine.capture_spatial_environment()
         : undefined;
     },
+    combat: (epoch, handles) => { requireAlive(); return combatProgressRuntime.capture_data_scene_combat_progress?.(epoch, handles); },
+    preflightCombat: (states, values) => { requireAlive(); return combatProgressRuntime.preflight_data_scene_combat_progress?.(states, values) === true; },
     preflightSpatial: (values, metadata, state) => { requireAlive(); return rustEngine.preflight_data_scene_spatial_progress(values, metadata, state); },
-    restore: (epoch, handles, states, animations, spatial, environment, rotations) => {
+    restore: (epoch, handles, states, animations, spatial, environment, rotations, combat) => {
       requireAlive();
+      if (combat !== undefined) return combatProgressRuntime.restore_data_scene_progress_with_combat?.(
+        epoch, handles, states, animations ?? new Float64Array(), spatial ?? new Float64Array(13 + states.length * 8), environment ?? new Float32Array(), rotations ?? new Float64Array(states.length), environment !== undefined, combat,
+      ) === true;
       if(rotations!==undefined && spatial!==undefined)return typeof rustEngine.restore_data_scene_progress_with_spatial_motion==='function'&&rustEngine.restore_data_scene_progress_with_spatial_motion(epoch,handles,states,animations??new Float64Array(),spatial,environment??new Float32Array(),rotations,environment!==undefined);
       if (environment !== undefined && spatial !== undefined) {
         return typeof rustEngine.restore_data_scene_progress_with_spatial_environment === "function"

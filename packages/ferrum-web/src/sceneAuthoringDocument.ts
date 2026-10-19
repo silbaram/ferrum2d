@@ -1,3 +1,5 @@
+import { validateDataSceneSpawnPrefabs } from "./dataSceneSpawnPrefabs.js";
+import { validateCombatNavigationBindings } from "./dataSceneCombatNavigation.js";
 import { resolveDataSceneSpatialSpec, type DataSceneSpatialSpec } from "./dataSceneSpatial.js";
 import {
   resolveBehaviorRecipeDocument,
@@ -118,7 +120,8 @@ export function resolveSceneAuthoringDocument(
         ...(variables.length === 0 ? {} : { variables: variableIds }),
       };
   validateBehaviorVariableContracts(behaviorRecipes, variables, variableIds, `${path}.behaviorRecipes`);
-  const bindingPlan = validateBindings
+  const gameplay = document.gameplay === undefined ? undefined : resolveDataSceneGameplaySpec(document.gameplay, `${path}.gameplay`);
+  const bindingPlan = validateBindings || gameplay?.spawnPrefabs !== undefined
     ? bindSceneBehaviorRecipes(sceneComposition, behaviorRecipes, {
         ...bindingOptions,
         path,
@@ -187,6 +190,17 @@ export function resolveSceneAuthoringDocument(
       initialPose(id);
     }
   }
+  if (bindingPlan) validateDataSceneSpawnPrefabs({ gameplay, spatial, ids }, bindingPlan, ids, path);
+  if (gameplay?.combatNavigation !== undefined) {
+    if (!spatial || spatial.terrain.length === 0) throw gameplayAuthoringDiagnosticError(`${path}.gameplay.combatNavigation`, "requires spatial terrain and camera");
+    if (bindingPlan) validateCombatNavigationBindings(gameplay.combatNavigation, gameplay.primaryActor, spatial, bindingPlan, `${path}.gameplay.combatNavigation`);
+  }
+  for (const command of finalCombatActions(bindingPlan?.commands ?? [], ids)) {
+    if (command.type === "configureProjectileAction" && command.projectilePrefab !== undefined &&
+        (gameplay?.combat !== true || !Object.prototype.hasOwnProperty.call(gameplay.projectilePrefabs ?? {}, command.projectilePrefab))) {
+      throw gameplayAuthoringDiagnosticError(`${path}.behaviorRecipes.projectilePrefab`, "must reference gameplay.projectilePrefabs in a combat document");
+    }
+  }
   return {
     format: SCENE_AUTHORING_DOCUMENT_FORMAT,
     version: SCENE_AUTHORING_DOCUMENT_VERSION,
@@ -194,7 +208,7 @@ export function resolveSceneAuthoringDocument(
     behaviorRecipes,
     ...(ids === undefined ? {} : { ids }),
     ...(document.variables === undefined ? {} : { variables }),
-    ...(document.gameplay === undefined ? {} : { gameplay: resolveDataSceneGameplaySpec(document.gameplay, `${path}.gameplay`) }),
+    ...(gameplay === undefined ? {} : { gameplay }),
     ...(navigation === undefined ? {} : { navigation }),
     ...(spatial === undefined ? {} : { spatial }),
     ...(bindingPlan === undefined ? {} : { bindingPlan }),
@@ -339,3 +353,4 @@ function validateVariableLiteral(
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+import { finalCombatActions } from "./dataSceneCombatActions.js";

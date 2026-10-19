@@ -96,6 +96,7 @@ impl Engine {
             self.data_scene.gameplay.observe_input(self.input);
             return;
         }
+        self.data_scene.gameplay.combat.begin_frame();
         if self.fixed_timestep_enabled {
             let update = self.fixed_timestep.advance(delta as f32);
             self.last_fixed_update = update;
@@ -103,20 +104,20 @@ impl Engine {
             let step_seconds = self.fixed_timestep.config().step_seconds;
             for step_index in 0..update.steps {
                 let input = self.fixed_step_input(step_index == 0);
-                self.tweens.update(&mut self.world, step_seconds);
-                self.update_scene(step_seconds, input);
-                self.step_auto_rigid_bodies(step_seconds);
                 let latched_presses = if step_index == 0 {
                     self.fixed_timestep_input_latch
                         .apply_to(InputState::default())
                 } else {
                     InputState::default()
                 };
+                self.tweens.update(&mut self.world, step_seconds);
+                self.update_scene(step_seconds, input, latched_presses);
+                self.step_auto_rigid_bodies(step_seconds);
                 if step_index == 0 {
                     self.fixed_timestep_input_latch.clear();
                 }
                 self.record_collision_lifecycle_events();
-                self.update_data_scene_gameplay(input, latched_presses);
+                self.update_data_scene_gameplay(input, latched_presses, step_seconds);
             }
             if !self.active_scene_ticks_gameplay_timers() {
                 tick_gameplay_timer_triggers(
@@ -128,10 +129,10 @@ impl Engine {
         } else {
             self.last_fixed_update = FixedTimestepUpdate::default();
             self.tweens.update(&mut self.world, delta as f32);
-            self.update_scene(delta as f32, self.input);
+            self.update_scene(delta as f32, self.input, InputState::default());
             self.step_auto_rigid_bodies(delta as f32);
             self.record_collision_lifecycle_events();
-            self.update_data_scene_gameplay(self.input, InputState::default());
+            self.update_data_scene_gameplay(self.input, InputState::default(), delta as f32);
             if !self.active_scene_ticks_gameplay_timers() {
                 tick_gameplay_timer_triggers(
                     &mut self.world,

@@ -109,7 +109,7 @@ pub(super) fn collider_shape_is_valid(shape: ColliderShapeRef) -> bool {
     }
 }
 
-pub(super) fn collider_shape_center(
+pub(crate) fn collider_shape_center(
     transform: Transform2D,
     shape: ColliderShapeRef,
 ) -> Transform2D {

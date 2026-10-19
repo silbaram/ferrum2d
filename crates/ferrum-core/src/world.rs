@@ -26,6 +26,7 @@ struct JointIncidentCount {
     count: u32,
 }
 
+pub(crate) mod actor_prototype;
 mod colliders;
 mod component_access;
 mod component_storage;

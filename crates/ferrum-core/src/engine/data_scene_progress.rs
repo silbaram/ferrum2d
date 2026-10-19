@@ -67,10 +67,24 @@ impl Engine {
         handles: &[u32],
         states: &[u32],
     ) -> bool {
+        if self.data_scene_combat_enabled() {
+            return false;
+        }
+        self.restore_data_scene_progress_base(epoch, handles, states)
+    }
+}
+
+impl Engine {
+    pub(super) fn restore_data_scene_progress_base(
+        &mut self,
+        epoch: u32,
+        handles: &[u32],
+        states: &[u32],
+    ) -> bool {
         if epoch == 0 || self.data_scene_epoch() != epoch || handles.len() != states.len() * 2 {
             return false;
         }
-        if !self.validate_data_scene_progress(handles, states) {
+        if !self.validate_data_scene_progress_base(handles, states) {
             return false;
         }
         for (handle, state) in handles.chunks_exact(2).zip(states) {
@@ -95,7 +109,10 @@ impl Engine {
         self.synchronize_data_scene_navigation();
         true
     }
+}
 
+#[wasm_bindgen]
+impl Engine {
     /// 32 f64 values per authored handle: present, clip, seconds, paused, flipX,
     /// flipY, native movement binding present, facing (up/down/left/right = 0..3), then eight clip/flipX/flipY poses.
     pub fn capture_data_scene_animation_progress(&self, epoch: u32, handles: &[u32]) -> Vec<f64> {
@@ -167,7 +184,17 @@ impl Engine {
         states: &[u32],
         animations: &[f64],
     ) -> bool {
-        if !self.validate_data_scene_progress(handles, states)
+        !self.data_scene_combat_enabled()
+            && self.validate_data_scene_animation_progress_base(handles, states, animations)
+    }
+
+    pub(super) fn validate_data_scene_animation_progress_base(
+        &self,
+        handles: &[u32],
+        states: &[u32],
+        animations: &[f64],
+    ) -> bool {
+        if !self.validate_data_scene_progress_base(handles, states)
             || states.len().checked_mul(ANIMATION_PROGRESS_STRIDE) != Some(animations.len())
         {
             return false;
@@ -287,8 +314,12 @@ impl Engine {
 }
 
 impl Engine {
-    pub(super) fn validate_data_scene_progress(&self, handles: &[u32], states: &[u32]) -> bool {
-        if handles.len() != states.len() * 2 {
+    pub(super) fn validate_data_scene_progress_base(
+        &self,
+        handles: &[u32],
+        states: &[u32],
+    ) -> bool {
+        if states.len().checked_mul(2) != Some(handles.len()) {
             return false;
         }
         let mut seen = HashSet::with_capacity(states.len());
