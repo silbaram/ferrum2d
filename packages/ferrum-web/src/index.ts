@@ -34,6 +34,7 @@ export { resolveSpatialEnvironmentSpec } from "./spatialEnvironment.js";
 export type { SpatialRgb, SpatialDirectionalLightSpec, SpatialPointLightSpec, SpatialLightingSpec, SpatialDepthOfFieldSpec, SpatialColorGradingSpec, SpatialFogSpec, SpatialEnvironmentSpec, SpatialEnvironmentBufferView } from "./spatialEnvironment.js";
 
 export { loadSpatialGlb } from "./spatialModel.js";
+export { createSpatialModelThumbnailSvg } from "./spatialModelThumbnail.js";
 export { loadSpatialGltf } from "./spatialGltf.js";
 export { SpatialModelAssetCache } from "./spatialModelAssetCache.js";
 export type { SpatialModelAssetSource, SpatialModelAssetCacheOptions, SpatialModelAssetAcquireOptions, SpatialModelAssetLease, SpatialModelAssetCacheStats } from "./spatialModelAssetCache.js";

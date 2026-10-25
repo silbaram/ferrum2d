@@ -1,15 +1,88 @@
+import type { UiContent } from "./placementLocale";
+import {
+  installPlacementLanguage,
+  registerUiRoot,
+  setUiAttribute,
+  setUiText,
+  translateUi,
+  uiContent,
+  uiMessage,
+  uiText,
+} from "./placementLocale";
+import { bindUiControl } from "./placementLocaleControls";
+
+import { createPlacementGrid } from "./placementGrid";
+import { PlacementGridRenderer } from "./placementGridRenderer";
+import {
+  createDesktopTileProjectHost,
+  createPlacementTileAssets,
+  readPlacementTileProject,
+} from "./placementTileProject";
+import { tileProviderAsset } from "./placementTileAssets";
+import { createPlacementTileTool } from "./placementTileTool";
+import type { tileEvidence } from "./placementTileAssets";
+import { createPlacementViewportToolbar } from "./placementViewportToolbar";
+import { createPlacementDocumentTabs } from "./placementDocumentTabs";
+import { installPlacementWorkspaceLayout } from "./placementWorkspaceLayout";
+import { createPlacementPanelTabs } from "./placementPanelTabs";
+import { createPlacementBottomDock } from "./placementBottomDock";
+import { createPlacementSceneNavigator } from "./placementSceneNavigator";
+import { installPlacementDocumentSession } from "./placementDocumentSession";
+import {
+  installPlacementViewportNavigation,
+  type PlacementEditCamera,
+} from "./placementViewportNavigation";
+import {
+  hasLockedSelection,
+  installPlacementSelectionTools,
+  movePlacementSelectionTo,
+  togglePlacementSelection,
+} from "./placementSelection";
+import {
+  installPlacementTransformGizmo,
+  transformPlacementSelection,
+} from "./placementTransformGizmo";
+import { installPlacementSpatialWorkspace } from "./placementSpatialWorkspace";
+import { installPlacementDiagnostics } from "./placementDiagnostics";
+import { createPlacementPreviewSession } from "./placementPreviewSession";
+import { createPlacementNormalTool } from "./placementNormalTool";
+import {
+  createPlacementAsepriteTool,
+  type PlacementAsepriteImportEvidence,
+} from "./placementAsepriteTool";
+import {
+  createPlacementAsepriteAssets,
+  asepriteProviderAsset,
+} from "./placementAsepriteAssets";
+import {
+  createDesktopAsepriteProjectHost,
+  readPlacementAsepriteProject,
+} from "./placementAsepriteProject";
+import type { PlacementNormalAssetHost } from "./placementNormalAssets";
+import {
+  createDesktopNormalProjectHost,
+  createPlacementNormalProjectAssets,
+} from "./placementNormalProject";
+import {
+  createPlacementAssetBrowser,
+  type PlacementBrowserAsset,
+} from "./placementAssetBrowser";
+import {
+  createPlacementAssetChanges,
+  type PlacementAssetRevision,
+} from "./placementAssetChanges";
 import {
   createFerrumRuntime,
+  loadSpatialGlb,
+  type SpatialModelAsset,
   type FerrumRuntime,
   type FerrumRuntimeFrame,
 } from "@ferrum2d/ferrum-web/core";
-import {
-  diagnosticReport,
-} from "@ferrum2d/ferrum-web/quality";
+import { diagnosticReport } from "@ferrum2d/ferrum-web/quality";
 import {
   FERRUM_AUTHORING_VIEWER_TITLE,
   appendAuthoringViewerCheckboxControl,
-  appendAuthoringViewerKeyValueRow as appendRow,
+  appendAuthoringViewerKeyValueRow as appendRawRow,
   appendAuthoringViewerNumberControl,
   appendAuthoringViewerSelectControl,
   appendAuthoringViewerTextControl,
@@ -25,8 +98,10 @@ import {
   DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES,
   DATA_SCENE_PRIMITIVE_TEXTURES,
   applySceneBehaviorRecipes,
+  applyDataSceneAuthoringDocument,
   createDataSceneRuntimeTarget,
   createScenePlacementAgentHandoff,
+  createScenePlacementAssetProvider,
   createScenePlacementAssetProviderFromProjectAssets,
   createSceneInstanceHandleRegistry,
   createScenePlacementViewer,
@@ -35,6 +110,7 @@ import {
   resolveDataSceneInstanceComponents,
   resolveSceneAuthoringDocument,
   saveScenePlacementPatch,
+  mergeScenePlacementPatch,
   scenePlacementVisualGeometry,
   snapSceneWorldPoint,
   worldToSceneScreen,
@@ -49,6 +125,7 @@ import {
   type ScenePlacementBehaviorBindingTarget,
   type ScenePlacementBindingMigrationPreview,
   type ScenePlacementAgentHandoff,
+  type SceneSpriteNormalBindingEvidence,
   type ScenePlacementAgentHandoffAssetFile,
   type ScenePlacementAgentHandoffAssetFolder,
   type ScenePlacementAgentHandoffAssetFolderDiagnostic,
@@ -60,6 +137,7 @@ import {
   type ScenePlacementPoint,
   type ScenePlacementProjectTextureMetadata,
   type ScenePlacementSpriteFrameAsset,
+  type DataSceneVariableStore,
   type ScenePlacementTransform,
   type ScenePlacementViewer,
   type ScenePlacementViewerInstance,
@@ -74,6 +152,12 @@ import "./runtimeDemoShell.css";
 import "./styles.css";
 
 const SCENE_DOCUMENT_URL = "./placement.scene-authoring.json";
+const HD2D_SCENE_DOCUMENT_URL = "./placement.hd2d.scene-authoring.json";
+let documentSession:
+  | ReturnType<typeof installPlacementDocumentSession>
+  | undefined;
+let placementWorkspaceEvidence: ScenePlacementAgentHandoff["authoringEvidence"];
+let openWorkspaceDocument: ((path?: string) => Promise<void>) | undefined;
 const SCENE_DOCUMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
 const DESKTOP_INSPECT_ASSET_FOLDER_COMMAND = "inspect_placement_asset_folder";
 const DESKTOP_LOAD_PROJECT_FOLDER_COMMAND = "load_placement_project_folder";
@@ -81,10 +165,17 @@ const DESKTOP_LOAD_SCENE_DOCUMENT_COMMAND = "load_placement_scene_document";
 const DESKTOP_SAVE_AGENT_HANDOFF_COMMAND = "save_placement_agent_handoff";
 const DESKTOP_SAVE_SCENE_DOCUMENT_COMMAND = "save_placement_scene_document";
 const DESKTOP_PROJECT_QUERY_PARAMS = ["projectPath"] as const;
-const DESKTOP_SCENE_DOCUMENT_QUERY_PARAMS = ["sceneDocumentPath", "documentPath"] as const;
+const DESKTOP_SCENE_DOCUMENT_QUERY_PARAMS = [
+  "sceneDocumentPath",
+  "documentPath",
+] as const;
 const DESKTOP_HANDOFF_SYNC_DEBOUNCE_MS = 500;
 const DESKTOP_ASSET_METADATA_BATCH_SIZE = 4;
 const DEFAULT_SNAP_GRID_SIZE = 16;
+const PLACEMENT_ASSET_DRAG_TYPE = "application/x-ferrum-placement-asset";
+let placementAssetDrag:
+  | { token: string; source: HTMLElement; options: PlacementDraftOptions }
+  | undefined;
 const KEYBOARD_NUDGE_STEP = 1;
 const KEYBOARD_FAST_MULTIPLIER = 10;
 const PLACEMENT_RESIZE_MIN_SIZE = 4;
@@ -96,12 +187,22 @@ const MASS_AUTHORING_STEP_X = 19;
 const MASS_AUTHORING_STEP_Y = 11;
 const DEFAULT_PRIMITIVE_COLOR = "#7ddc9d";
 const DEFAULT_POINT_COLOR = "#f2c14e";
-const PLACEMENT_COLLISION_LAYERS = ["player", "enemy", "bullet", "wall", "pickup"] as const satisfies readonly DataSceneCollisionLayerName[];
+const PLACEMENT_COLLISION_LAYERS = [
+  "player",
+  "enemy",
+  "bullet",
+  "wall",
+  "pickup",
+] as const satisfies readonly DataSceneCollisionLayerName[];
 const PLACEMENT_TEXTURES = {
-  floor: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPwCgv6DwAD0gHyPaP/ZQAAAABJRU5ErkJggg==",
-  crate: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGM4MsHjPwAGVAKcjTneKQAAAABJRU5ErkJggg==",
-  turret: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGOI2FL3HwAFfAKKSdpdewAAAABJRU5ErkJggg==",
-  agent: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNIWHbnPwAGLgLidJoamwAAAABJRU5ErkJggg==",
+  floor:
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPwCgv6DwAD0gHyPaP/ZQAAAABJRU5ErkJggg==",
+  crate:
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGM4MsHjPwAGVAKcjTneKQAAAABJRU5ErkJggg==",
+  turret:
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGOI2FL3HwAFfAKKSdpdewAAAABJRU5ErkJggg==",
+  agent:
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNIWHbnPwAGLgLidJoamwAAAABJRU5ErkJggg==",
 } as const;
 const PLACEMENT_TEXTURE_METADATA = {
   crate: { label: "Crate", width: 40, height: 40 },
@@ -130,25 +231,33 @@ const PLACEMENT_ATLAS = {
 } as const;
 const VIEWER_TEXTURES = {
   ...PLACEMENT_TEXTURES,
-  [DATA_SCENE_PRIMITIVE_TEXTURES.rect]: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNIWHbnPwAGLgLidJoamwAAAABJRU5ErkJggg==",
-  [DATA_SCENE_PRIMITIVE_TEXTURES.circle]: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGOI2FL3HwAFfAKKSdpdewAAAABJRU5ErkJggg==",
-  [DATA_SCENE_PRIMITIVE_TEXTURES.point]: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGM4MsHjPwAGVAKcjTneKQAAAABJRU5ErkJggg==",
+  [DATA_SCENE_PRIMITIVE_TEXTURES.rect]:
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNIWHbnPwAGLgLidJoamwAAAABJRU5ErkJggg==",
+  [DATA_SCENE_PRIMITIVE_TEXTURES.circle]:
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGOI2FL3HwAFfAKKSdpdewAAAABJRU5ErkJggg==",
+  [DATA_SCENE_PRIMITIVE_TEXTURES.point]:
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGM4MsHjPwAGVAKcjTneKQAAAABJRU5ErkJggg==",
 } as const;
-const PLACEMENT_ASSET_PROVIDER = createScenePlacementAssetProviderFromProjectAssets({
-  textures: PLACEMENT_TEXTURES,
-  atlas: PLACEMENT_ATLAS,
-  textureMetadata: PLACEMENT_TEXTURE_METADATA,
-  frameLabel: ({ frameName }) => ({
-    full: "Full",
-    base: "Base",
-    barrel: "Barrel",
-  })[frameName],
-  path: "placementViewer.spriteAssets",
-});
+const PLACEMENT_ASSET_PROVIDER =
+  createScenePlacementAssetProviderFromProjectAssets({
+    textures: PLACEMENT_TEXTURES,
+    atlas: PLACEMENT_ATLAS,
+    textureMetadata: PLACEMENT_TEXTURE_METADATA,
+    frameLabel: ({ frameName }) =>
+      ({
+        full: "Full",
+        base: "Base",
+        barrel: "Barrel",
+      })[frameName],
+    path: "placementViewer.spriteAssets",
+  });
 
-type SceneCompositionFragmentInstanceSpec = Parameters<ScenePlacementViewer["addInstance"]>[1];
+type SceneCompositionFragmentInstanceSpec = Parameters<
+  ScenePlacementViewer["addInstance"]
+>[1];
 
 interface PlacementViewerWindow extends Window {
+  ferrumPlacementNormalAssetHost?: PlacementNormalAssetHost;
   __TAURI__?: PlacementViewerDesktopBridge;
   __ferrumPlacementViewer?: ScenePlacementViewer;
   ferrumPlacementViewerState?: ScenePlacementViewerState;
@@ -158,9 +267,17 @@ interface PlacementViewerWindow extends Window {
     entityCount: number;
     renderCommandCount: number;
     drawCalls: number;
+    spatial?: {
+      terrainVertices: number;
+      billboardVertices: number;
+      modelDraws: number;
+      debugVertices: number;
+    };
   };
   ferrumPlacementViewerAgentHandoff?: PlacementViewerAgentHandoff;
-  ferrumPlacementViewerSelect?: (instanceId?: string) => ScenePlacementViewerState;
+  ferrumPlacementViewerSelect?: (
+    instanceId?: string,
+  ) => ScenePlacementViewerState;
   ferrumPlacementViewerUpdateTransform?: (
     instanceId: string,
     transform: Partial<ScenePlacementTransform>,
@@ -173,7 +290,10 @@ interface PlacementViewerWindow extends Window {
     target: ScenePlacementBehaviorBindingTarget,
     behaviorRecipes: ScenePlacementBehaviorBindingPatch,
   ) => ScenePlacementViewerState;
-  ferrumPlacementViewerRenameInstance?: (instanceId: string, nextInstanceId: string) => ScenePlacementViewerState;
+  ferrumPlacementViewerRenameInstance?: (
+    instanceId: string,
+    nextInstanceId: string,
+  ) => ScenePlacementViewerState;
   ferrumPlacementViewerAddInstance?: (
     fragment: string,
     instance: SceneCompositionFragmentInstanceSpec,
@@ -182,15 +302,21 @@ interface PlacementViewerWindow extends Window {
     definitionId: string,
     definition: Parameters<ScenePlacementViewer["addObjectDefinition"]>[1],
   ) => ScenePlacementViewerState;
-  ferrumPlacementViewerRemoveInstance?: (instanceId: string) => ScenePlacementViewerState;
+  ferrumPlacementViewerRemoveInstance?: (
+    instanceId: string,
+  ) => ScenePlacementViewerState;
   ferrumPlacementViewerClearDraft?: () => ScenePlacementViewerState;
   ferrumPlacementViewerExportPatch?: () => ScenePlacementPatch | undefined;
   ferrumPlacementViewerMigrationPreview?: ScenePlacementBindingMigrationPreview;
-  ferrumPlacementViewerSaveDraft?: () => Promise<ScenePlacementPatchSaveResult | undefined>;
+  ferrumPlacementViewerSaveDraft?: () => Promise<
+    ScenePlacementPatchSaveResult | undefined
+  >;
   ferrumPlacementViewerOpenSceneDocument?: (sceneDocumentPath?: string) => void;
   ferrumPlacementViewerBrowseSceneDocument?: () => Promise<string | undefined>;
   ferrumPlacementViewerBrowseProjectFolder?: () => Promise<string | undefined>;
-  ferrumPlacementViewerOpenAssetFolder?: (assetFolderPath: string) => Promise<string | undefined>;
+  ferrumPlacementViewerOpenAssetFolder?: (
+    assetFolderPath: string,
+  ) => Promise<string | undefined>;
   ferrumPlacementViewerBrowseAssetFolder?: () => Promise<string | undefined>;
   ferrumPlacementViewerSaveHandoff?: () => Promise<string | undefined>;
   ferrumPlacementViewerRefreshHandoff?: () => void;
@@ -198,8 +324,12 @@ interface PlacementViewerWindow extends Window {
   ferrumPlacementViewerSavedDocument?: SceneAuthoringDocumentSpec;
   ferrumPlacementViewerLastSave?: ScenePlacementPatchSaveResult;
   ferrumPlacementViewerLastSaveError?: string;
-  ferrumPlacementViewerNudgeSelected?: (delta: Partial<ScenePlacementPoint>) => ScenePlacementViewerState | undefined;
-  ferrumPlacementViewerSetSnap?: (options: Partial<PlacementSnapOptions>) => PlacementInteractionSnapshot;
+  ferrumPlacementViewerNudgeSelected?: (
+    delta: Partial<ScenePlacementPoint>,
+  ) => ScenePlacementViewerState | undefined;
+  ferrumPlacementViewerSetSnap?: (
+    options: Partial<PlacementSnapOptions>,
+  ) => PlacementInteractionSnapshot;
   ferrumPlacementViewerInteraction?: PlacementInteractionSnapshot;
 }
 
@@ -229,6 +359,7 @@ interface PlacementViewerDesktopState {
   assetFolderImageCount?: number;
   assetFolderTextureAtlasInputPath?: string;
   assetFolderImages?: readonly ScenePlacementAgentHandoffAssetFile[];
+  assetFolderModels?: readonly ScenePlacementAgentHandoffAssetFile[];
   assetFolderDiagnostics?: readonly ScenePlacementAgentHandoffAssetFolderDiagnostic[];
   assetFolderRuntimeStatus?: "loading" | "ready" | "error";
   assetFolderRuntimeTextureCount?: number;
@@ -259,6 +390,7 @@ interface PlacementDesktopAssetFolderResponse {
   imageCount: number;
   textureAtlasInputPath?: string;
   images: readonly ScenePlacementAgentHandoffAssetFile[];
+  models?: readonly ScenePlacementAgentHandoffAssetFile[];
   diagnostics: readonly ScenePlacementAgentHandoffAssetFolderDiagnostic[];
 }
 
@@ -300,34 +432,55 @@ interface PlacementInteractionState extends PlacementSnapOptions {
 }
 
 interface PlacementPendingAddPreview extends PlacementInstanceBounds {
+  rotationRadians?: number;
   action: PlacementAddAction;
   label: string;
   assetId?: string;
   frameId?: string;
   thumbnailUrl?: string;
+  uv?: { u0: number; v0: number; u1: number; v1: number };
 }
 
-type PlacementViewerAgentHandoff = ScenePlacementAgentHandoff;
+type PlacementViewerAgentHandoff = ScenePlacementAgentHandoff & {
+  asepriteImports?: readonly PlacementAsepriteImportEvidence[];
+  tileImports?: readonly ReturnType<typeof tileEvidence>[];
+};
 
 interface PlacementInspector {
   element: HTMLElement;
-  setState(state: ScenePlacementViewerState, migrationPreview?: ScenePlacementBindingMigrationPreview): void;
+  assetMount: HTMLElement;
+  review(): void;
+  properties(): void;
+  setState(
+    state: ScenePlacementViewerState,
+    migrationPreview?: ScenePlacementBindingMigrationPreview,
+    context?: { mode?: string; target?: { kind: string; id: string } },
+  ): void;
 }
 
 interface PlacementAppChrome {
-  setState(state: ScenePlacementViewerState, migrationPreview?: ScenePlacementBindingMigrationPreview): void;
+  setState(
+    state: ScenePlacementViewerState,
+    migrationPreview?: ScenePlacementBindingMigrationPreview,
+  ): void;
   setSaveResult(result: ScenePlacementPatchSaveResult): void;
   setSaveError(error: unknown): void;
 }
 
 interface PlacementHandoffControls {
   element: HTMLElement;
-  setState(state: ScenePlacementViewerState, migrationPreview?: ScenePlacementBindingMigrationPreview): void;
+  setState(
+    state: ScenePlacementViewerState,
+    migrationPreview?: ScenePlacementBindingMigrationPreview,
+  ): void;
 }
 
 interface PlacementOverlay {
   element: HTMLElement;
-  setState(state: ScenePlacementViewerState, interaction: PlacementInteractionState): void;
+  setState(
+    state: ScenePlacementViewerState,
+    interaction: PlacementInteractionState,
+  ): void;
 }
 
 interface PlacementSaveControls {
@@ -335,6 +488,7 @@ interface PlacementSaveControls {
 }
 
 interface PlacementInspectorOptions {
+  signal?: AbortSignal;
   saveEnabled: boolean;
   assetProvider: PlacementAssetProviderGetter;
   sourceDocument: string;
@@ -371,12 +525,50 @@ async function bootstrap(): Promise<void> {
     title: FERRUM_AUTHORING_VIEWER_TITLE,
     frameProperty: "ferrumPlacementViewerFrame",
     gameStateLabel: placementGameStateLabel,
+    controls: false,
   });
+  const toolbar = shell.stage
+    .closest(".demo-shell")
+    ?.querySelector<HTMLElement>(".demo-toolbar");
+  if (toolbar) {
+    const disposeLanguage = installPlacementLanguage(toolbar);
+    window.addEventListener("pagehide", (event) => {
+      if (!event.persisted) disposeLanguage();
+    });
+  }
+  for (const label of shell.stage
+    .closest(".demo-shell")
+    ?.querySelectorAll(".demo-metric dt") ?? []) {
+    setUiText(label, label.textContent ?? "");
+  }
+  const metrics = shell.stage
+    .closest(".demo-shell")
+    ?.querySelector<HTMLElement>(".demo-metrics");
+  if (!metrics) throw new Error("Missing runtime metrics");
+  const bottomDock = createPlacementBottomDock(metrics);
   let runtime: FerrumRuntime | undefined;
+  let gridRenderer: PlacementGridRenderer | undefined;
+  let viewportNavigation:
+    | ReturnType<typeof installPlacementViewportNavigation>
+    | undefined;
+  let selectionTools:
+    | ReturnType<typeof installPlacementSelectionTools>
+    | undefined;
+  let transformGizmo:
+    | ReturnType<typeof installPlacementTransformGizmo>
+    | undefined;
+  let spatialWorkspace:
+    | ReturnType<typeof installPlacementSpatialWorkspace>
+    | undefined;
+  let workspaceDiagnostics:
+    | ReturnType<typeof installPlacementDiagnostics>
+    | undefined;
+  const spatialModels = new Map<string, SpatialModelAsset>();
   try {
     const sceneDocumentUrl = placementSceneDocumentUrl();
     const requestedDesktopProjectPath = placementDesktopProjectPath();
-    const requestedDesktopSceneDocumentPath = placementDesktopSceneDocumentPath();
+    const requestedDesktopSceneDocumentPath =
+      placementDesktopSceneDocumentPath();
     const loadedDocument = await loadSceneAuthoringDocument(
       sceneDocumentUrl,
       requestedDesktopSceneDocumentPath,
@@ -385,38 +577,121 @@ async function bootstrap(): Promise<void> {
     const document = placementMassAuthoringEnabled()
       ? createPlacementMassAuthoringDocument(loadedDocument)
       : loadedDocument;
-    const desktopSceneDocumentPath = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop?.sceneDocumentPath;
-    const sourceDocument = placementMassAuthoringEnabled()
+    const desktopSceneDocumentPath = (window as PlacementViewerWindow)
+      .ferrumPlacementViewerDesktop?.sceneDocumentPath;
+    const initialKey = desktopSceneDocumentPath ?? "sample";
+    const asepriteProjectPath = (window as PlacementViewerWindow)
+      .ferrumPlacementViewerDesktop?.projectPath;
+    const asepriteInvoke = placementDesktopInvoke();
+    const asepriteProjectHost =
+      asepriteProjectPath && asepriteInvoke
+        ? createDesktopAsepriteProjectHost(asepriteInvoke, asepriteProjectPath)
+        : undefined;
+    const nativeNormalHost =
+      asepriteProjectPath && asepriteInvoke
+        ? createDesktopNormalProjectHost(asepriteInvoke, asepriteProjectPath)
+        : undefined;
+    const tileProjectHost =
+      asepriteProjectPath && asepriteInvoke
+        ? createDesktopTileProjectHost(asepriteInvoke, asepriteProjectPath)
+        : undefined;
+    let tileAssets: ReturnType<typeof createPlacementTileAssets> | undefined;
+    let assetDocumentKey = initialKey;
+    let normalProjectAssets:
+      | ReturnType<typeof createPlacementNormalProjectAssets>
+      | undefined;
+    let sourceDocument = placementMassAuthoringEnabled()
       ? `${desktopSceneDocumentPath ?? requestedDesktopSceneDocumentPath ?? sceneDocumentUrl}?massAuthoring=true`
-      : desktopSceneDocumentPath ?? requestedDesktopSceneDocumentPath ?? sceneDocumentUrl;
-    const resolved = resolveSceneAuthoringDocument(document, {
-      path: "placementViewer.document",
-      validateBindings: true,
-      validateComponents: true,
-      missingBehavior: "ignore",
-    });
+      : (desktopSceneDocumentPath ??
+        requestedDesktopSceneDocumentPath ??
+        sceneDocumentUrl);
+    const resolved = resolvePlacementWorkspaceDocument(document);
     const boundsById = placementBoundsById(resolved);
-    const selectedInstanceId = firstActorInstance(resolved) ?? resolved.bindingPlan?.instances[0]?.id;
-    const saveEnabled = placementViewerSaveEnabled();
+    const selectedInstanceId =
+      firstActorInstance(resolved) ?? resolved.bindingPlan?.instances[0]?.id;
+    let saveEnabled = placementViewerSaveEnabled();
+    let normalTool: ReturnType<typeof createPlacementNormalTool> | undefined;
+    let asepriteTool:
+      | ReturnType<typeof createPlacementAsepriteTool>
+      | undefined;
+    let asepriteAssets:
+      | ReturnType<typeof createPlacementAsepriteAssets>
+      | undefined;
+    let tileTool: ReturnType<typeof createPlacementTileTool> | undefined;
+    let assetBatchEditing = false;
     let previewAssetProvider = createPlacementPreviewAssetProvider();
     let previewAssetSignature = placementPreviewAssetSignature();
-    const currentAssetProvider = (): ScenePlacementAssetProvider => previewAssetProvider;
-    const overlay = createPlacementOverlay(shell.stage, boundsById, currentAssetProvider);
-    const inspector = createPlacementInspector(resolved, {
+    let generatedProvider: ScenePlacementAssetProvider | undefined,
+      generatedSignature = "";
+    const currentAssetProvider = (): ScenePlacementAssetProvider => {
+      const imported = [
+        ...(asepriteTool?.providerAssets() ??
+          asepriteAssets
+            ?.entries()
+            .filter((a) => a.document === initialKey && a.uploaded)
+            .map(asepriteProviderAsset) ??
+          []),
+        ...(tileTool?.providerAssets() ??
+          tileAssets
+            ?.entries()
+            .filter((a) => a.document === initialKey && a.uploaded)
+            .map(tileProviderAsset) ??
+          []),
+      ];
+      const used = new Set(imported.map((a) => a.id));
+      const entries = [
+        ...(normalTool?.browserEntries() ?? []),
+        ...(normalProjectAssets?.browserEntries(assetDocumentKey) ?? []),
+      ].filter((entry) => {
+        if (used.has(entry.id)) return false;
+        used.add(entry.id);
+        return true;
+      });
+      if (!entries.length && !imported.length) return previewAssetProvider;
+      const signature = JSON.stringify([
+        previewAssetSignature,
+        entries,
+        imported,
+      ]);
+      if (!generatedProvider || signature !== generatedSignature) {
+        generatedSignature = signature;
+        generatedProvider = createScenePlacementAssetProvider([
+          ...previewAssetProvider.listSpriteAssets(),
+          ...entries.map((asset) => ({
+            id: asset.id,
+            label: asset.id,
+            width: asset.width,
+            height: asset.height,
+            thumbnailUrl: asset.url,
+          })),
+          ...imported,
+        ]);
+      }
+      return generatedProvider;
+    };
+    const overlay = createPlacementOverlay(
+      shell.stage,
+      boundsById,
+      currentAssetProvider,
+    );
+    const initialInspectorLifetime = new AbortController();
+    let inspector = createPlacementInspector(resolved, {
+      signal: initialInspectorLifetime.signal,
       saveEnabled,
       assetProvider: currentAssetProvider,
       sourceDocument,
     });
-    const appChrome = createPlacementAppChrome(shell, {
-      saveEnabled,
-      sourceDocument,
-    });
+    const chromeOptions = { saveEnabled, sourceDocument };
+    const appChrome = createPlacementAppChrome(shell, chromeOptions);
     const interaction = createPlacementInteractionState();
     let savedDocument = document;
     const saveAdapter: ScenePlacementSaveAdapter = {
       id: "placement-viewer-memory",
       async saveScenePlacementPatch(request) {
-        const result = await savePlacementSceneDocument(request.mergedDocument);
+        const result = await savePlacementSceneDocument(
+          request.mergedDocument,
+          request.sourceDocument,
+        );
         if (result.document !== undefined) {
           savedDocument = result.document;
           publishPlacementSavedDocument(savedDocument);
@@ -426,98 +701,445 @@ async function bootstrap(): Promise<void> {
     };
 
     shell.debugRoot.before(inspector.element);
+    gridRenderer = new PlacementGridRenderer(shell.canvas);
     runtime = await createFerrumRuntime({
+      renderer: gridRenderer,
       canvas: shell.canvas,
       debugParent: shell.debugRoot,
-      debug: new URLSearchParams(window.location.search).get("debug") === "true",
+      debug:
+        new URLSearchParams(window.location.search).get("debug") === "true",
       environment: "development",
-      inputTransform: shell.inputTransform,
+      inputTransform: (snapshot) => {
+        const input = shell.inputTransform(snapshot);
+        return viewportNavigation?.isNavigating() ||
+          spatialWorkspace?.mode() === "spatial"
+          ? {
+              ...input,
+              w: false,
+              a: false,
+              s: false,
+              d: false,
+              space: false,
+              mouseLeft: false,
+            }
+          : input;
+      },
       onFrame: (frame) => {
         shell.updateFrame(frame);
         publishFrameStats(frame);
-      },
-      webgl2: {
-        clearColor: [0.06, 0.08, 0.075, 1],
-        preserveDrawingBuffer: true,
+        spatialWorkspace?.frame(frame);
+        workspaceDiagnostics?.frame(frame);
       },
     });
     shell.attachRuntime(runtime);
+    window.addEventListener("pagehide", (event) => {
+      if (!event.persisted) gridRenderer?.destroy();
+    });
     const runtimeEngine = runtime.engine;
     const runtimeTextures = placementRuntimeTextureManifest();
-    let runtimeAssetAttemptSignature = placementRuntimeAssetSignature(runtimeTextures);
+    let runtimeAssetAttemptSignature =
+      placementRuntimeAssetSignature(runtimeTextures);
+    let runtimeAssetReadySignature = runtimeAssetAttemptSignature;
     let runtimeAssetReloadInFlight = false;
+    let runtimeAssetReloadAbort: AbortController | undefined;
+    const runtimeLoadedTextures = new Map(Object.entries(runtimeTextures));
     await runtime.engine.loadAssets({ textures: runtimeTextures });
+    asepriteAssets = createPlacementAsepriteAssets(
+      runtimeEngine,
+      (id) =>
+        previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
+        (normalProjectAssets?.has(id) ?? false) ||
+        (tileAssets?.entries().some((a) => a.id === id) ?? false) ||
+        (normalTool?.browserEntries().some((a) => a.id === id) ?? false),
+    );
+    tileAssets = createPlacementTileAssets(
+      runtimeEngine,
+      (id) =>
+        previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
+        (asepriteAssets?.entries().some((a) => a.id === id) ?? false) ||
+        (normalProjectAssets?.has(id) ?? false) ||
+        (normalTool?.browserEntries().some((a) => a.id === id) ?? false),
+    );
+    if (asepriteProjectHost) {
+      const signal = new AbortController().signal;
+      try {
+        const catalog = await asepriteProjectHost.load(signal);
+        const restored = await readPlacementAsepriteProject(
+          catalog,
+          initialKey,
+          asepriteProjectHost.project,
+          signal,
+        );
+        for (const asset of restored)
+          await asepriteAssets.upload(asepriteAssets.adopt(asset), signal);
+        const tiles = tileProjectHost
+          ? await readPlacementTileProject(
+              await tileProjectHost.load(signal),
+              initialKey,
+              tileProjectHost.project,
+              signal,
+            )
+          : [];
+        for (const asset of tiles)
+          await tileAssets.upload(tileAssets.adopt(asset), signal);
+        if (nativeNormalHost) {
+          normalProjectAssets = createPlacementNormalProjectAssets(
+            runtimeEngine,
+            initialKey,
+          );
+          await normalProjectAssets.load(
+            await nativeNormalHost.load(signal),
+            new Map(
+              [...restored, ...tiles].map((asset) => [
+                asset.id,
+                { sha256: asset.pngSha256, colorSpace: "srgb" as const },
+              ]),
+            ),
+            (id) =>
+              id in runtimeTextures ||
+              previewAssetProvider.resolveSpriteAsset(id) !== undefined,
+            signal,
+          );
+        }
+      } catch (error) {
+        normalProjectAssets?.destroy();
+        asepriteAssets.destroy();
+        tileAssets.destroy();
+        throw error;
+      }
+    }
     publishPlacementRuntimeAssets(runtimeTextures, runtime.engine);
     publishPlacementRuntimeAssetStatus("ready");
+    await loadPlacementSpatialModels(runtimeEngine, document, spatialModels);
 
     const instanceHandleRegistry = createSceneInstanceHandleRegistry({
-      entityExists: (handle) => runtime?.engine.gameplayEntityExists(handle) ?? false,
+      entityExists: (handle) =>
+        runtime?.engine.gameplayEntityExists(handle) ?? false,
     });
     const target = createDataSceneRuntimeTarget(runtime.engine);
-    applySceneBehaviorRecipes(
-      runtime.engine,
-      target,
-      resolved.sceneComposition,
-      resolved.behaviorRecipes,
-      {
-        instanceHandleRegistry,
-        requireExplicitInstanceIds: true,
-        missingBehavior: "ignore",
-        path: "placementViewer.apply",
-      },
-    );
+    let appliedRuntimeVariables: DataSceneVariableStore | undefined;
+    let runtimeApplyRevision = 0;
+    if (document.spatial || document.gameplay || document.variables?.length)
+      appliedRuntimeVariables = applyDataSceneAuthoringDocument(
+        runtimeEngine,
+        document.spatial ? placementSpatialRuntimeDocument(document) : document,
+        {
+          instanceHandleRegistry,
+          missingBehavior: "ignore",
+          spatialModelPreparer: runtime.renderer,
+        },
+      ).variables;
+    else
+      applySceneBehaviorRecipes(
+        runtime.engine,
+        target,
+        resolved.sceneComposition,
+        resolved.behaviorRecipes,
+        {
+          instanceHandleRegistry,
+          requireExplicitInstanceIds: true,
+          missingBehavior: "ignore",
+          path: "placementViewer.apply",
+        },
+      );
 
-    const viewer = createScenePlacementViewer({
-      sceneComposition: resolved.sceneComposition,
+    const workspacePreview = createPlacementPreviewSession({
+      document,
+      registry: instanceHandleRegistry,
+      apply: applyNativeWorkspacePreview,
+    });
+    let currentViewer = createScenePlacementViewer({
+      document,
       viewport: viewportForCanvas(shell.canvas, runtime.engine),
       selectedInstanceId,
       instanceHandleRegistry,
+      validateDraft: (state) => {
+        if (!assetBatchEditing) spatialWorkspace?.sync(state);
+      },
     });
+    // Stable input bindings delegate cold authoring calls to the active document.
+    const viewer: ScenePlacementViewer = {
+      historyState: () => currentViewer.historyState(),
+      beginEdit: (label) => currentViewer.beginEdit(label),
+      commitEdit: () => currentViewer.commitEdit(),
+      cancelEdit: () => currentViewer.cancelEdit(),
+      undo: () => currentViewer.undo(),
+      redo: () => currentViewer.redo(),
+      state: () => currentViewer.state(),
+      selectInstance: (id) => currentViewer.selectInstance(id),
+      selectInstances: (ids) => currentViewer.selectInstances(ids),
+      setInstancesLocked: (ids, locked) =>
+        currentViewer.setInstancesLocked(ids, locked),
+      selectInstanceAtScreen: (point) =>
+        currentViewer.selectInstanceAtScreen(point),
+      hoverInstance: (id) => currentViewer.hoverInstance(id),
+      hoverInstanceAtScreen: (point) =>
+        currentViewer.hoverInstanceAtScreen(point),
+      pointerAtScreen: (point) => currentViewer.pointerAtScreen(point),
+      pickInstanceAtScreen: (point) =>
+        currentViewer.pickInstanceAtScreen(point),
+      updateInstanceTransform: (id, transform) =>
+        currentViewer.updateInstanceTransform(id, transform),
+      updateInstanceTransforms: (updates) =>
+        currentViewer.updateInstanceTransforms(updates),
+      updateSpatial: (operations) => currentViewer.updateSpatial(operations),
+      updateInstanceComponents: (id, components) =>
+        currentViewer.updateInstanceComponents(id, components),
+      updateBehaviorBinding: (target, recipes) =>
+        currentViewer.updateBehaviorBinding(target, recipes),
+      renameInstance: (id, next) => currentViewer.renameInstance(id, next),
+      addInstance: (fragment, instance, spatial) =>
+        currentViewer.addInstance(fragment, instance, spatial),
+      addObjectDefinition: (id, definition) =>
+        currentViewer.addObjectDefinition(id, definition),
+      removeInstance: (id) => currentViewer.removeInstance(id),
+      removeInstances: (ids) => currentViewer.removeInstances(ids),
+      duplicateInstances: (ids, offset) =>
+        currentViewer.duplicateInstances(ids, offset),
+      clearDraftPatch: () => currentViewer.clearDraftPatch(),
+      updateViewport: (viewport) => currentViewer.updateViewport(viewport),
+      exportPatch: () => currentViewer.exportPatch(),
+    };
+    interface WorkspaceDocument {
+      key: string;
+      source: string;
+      document: SceneAuthoringDocumentSpec;
+      resolved: ResolvedSceneAuthoringDocument;
+      viewer: ScenePlacementViewer;
+      registry: ReturnType<typeof createSceneInstanceHandleRegistry>;
+      inspector: PlacementInspector;
+      lifetime: AbortController;
+      saveEnabled: boolean;
+      dirty: boolean;
+      desktop?: PlacementViewerDesktopState;
+      snap: { enabled: boolean; gridSize: number };
+      camera?: PlacementEditCamera;
+    }
+    const documents = new Map<string, WorkspaceDocument>();
+    let activeDocument: WorkspaceDocument = {
+      key: initialKey,
+      source: sourceDocument,
+      document,
+      resolved,
+      viewer: currentViewer,
+      registry: instanceHandleRegistry,
+      inspector,
+      lifetime: initialInspectorLifetime,
+      saveEnabled,
+      dirty: false,
+      desktop: structuredClone(
+        (window as PlacementViewerWindow).ferrumPlacementViewerDesktop,
+      ),
+      snap: { enabled: interaction.enabled, gridSize: interaction.gridSize },
+    };
+    documents.set(initialKey, activeDocument);
+    let tabs: ReturnType<typeof createPlacementDocumentTabs> | undefined;
+    let viewportToolbar:
+      | ReturnType<typeof createPlacementViewportToolbar>
+      | undefined;
+    let assetBrowser:
+      | ReturnType<typeof createPlacementAssetBrowser>
+      | undefined;
+    let assetChanges:
+      | ReturnType<
+          typeof createPlacementAssetChanges<PlacementDesktopAssetFolderResponse>
+        >
+      | undefined;
+    let switching = false;
+    let lastWorkspaceMode: "2d" | "spatial" | "game" | undefined;
+    const syncTabs = () =>
+      tabs?.setState(
+        [...documents.values()].map((entry) => ({
+          key: entry.key,
+          label: entry.source.split(/[\\/]/u).pop() ?? entry.source,
+          source: entry.source,
+          dirty: entry.dirty,
+        })),
+        activeDocument.key,
+      );
     const publishCurrentAgentHandoff = (
       state: ScenePlacementViewerState,
       migrationPreview: ScenePlacementBindingMigrationPreview | undefined,
     ): void => {
-      publishPlacementAgentHandoff(savedDocument, state, migrationPreview, currentAssetProvider(), sourceDocument);
+      const currentDocument = state.draftPatch
+        ? mergeScenePlacementPatch(savedDocument, state.draftPatch).document
+        : savedDocument;
+      publishPlacementAgentHandoff(
+        savedDocument,
+        state,
+        migrationPreview,
+        currentAssetProvider(),
+        sourceDocument,
+        [
+          ...(normalTool?.bindings() ?? []),
+          ...(asepriteTool?.normalBindings() ?? []),
+          ...(normalProjectAssets?.bindings(
+            activeDocument.key,
+            currentDocument,
+            state,
+          ) ?? []),
+        ],
+        asepriteTool?.evidence(currentDocument),
+        tileTool?.evidence(currentDocument),
+      );
     };
-    const setState = (state: ScenePlacementViewerState): ScenePlacementViewerState => {
-      const migrationPreview = placementMigrationPreview(savedDocument, state.draftPatch);
+    const setState = (
+      state: ScenePlacementViewerState,
+    ): ScenePlacementViewerState => {
+      state = spatialWorkspace?.sync(state) ?? state;
+      const mode = spatialWorkspace?.mode();
+      // Native apply can reject a mode change. Clear the shared 2D tool only
+      // after spatial sync accepts it, so a failed transition retains its tool.
+      if (mode !== lastWorkspaceMode) {
+        resetPlacementAdd(interaction);
+        lastWorkspaceMode = mode;
+      }
+      const migrationPreview = placementMigrationPreview(
+        savedDocument,
+        state.draftPatch,
+      );
       overlay.setState(state, interaction);
-      inspector.setState(state, migrationPreview);
+      inspector.setState(state, migrationPreview, {
+        mode,
+        target: spatialWorkspace?.target(),
+      });
       appChrome.setState(state, migrationPreview);
       publishPlacementState(state);
       publishPlacementMigrationPreview(migrationPreview);
       publishPlacementInteraction(interaction);
+      documentSession?.sync();
+      activeDocument.dirty = state.draftPatch !== undefined;
+      syncTabs();
+      viewportNavigation?.syncSelection(state);
+      selectionTools?.sync(state);
+      transformGizmo?.sync(state);
+      const assetMount = inspector.assetMount;
+      bottomDock.mountAssets(assetMount);
+      if (
+        assetBrowser &&
+        assetMount &&
+        assetBrowser.element.parentElement !== assetMount
+      )
+        assetMount.prepend(assetBrowser.element);
+      syncToolState();
+      const changesMount = inspector.assetMount;
+      if (
+        assetChanges &&
+        changesMount &&
+        assetChanges.element.parentElement !== changesMount
+      )
+        changesMount.append(assetChanges.element);
+      assetChanges?.sync();
+      if (
+        normalTool &&
+        assetMount &&
+        normalTool.element.parentElement !== assetMount
+      )
+        assetMount.append(normalTool.element);
+      normalTool?.sync();
+      if (
+        asepriteTool &&
+        assetMount &&
+        asepriteTool.element.parentElement !== assetMount
+      )
+        assetMount.append(asepriteTool.element);
+      asepriteTool?.sync();
+      if (
+        tileTool &&
+        assetMount &&
+        tileTool.element.parentElement !== assetMount
+      )
+        assetMount.append(tileTool.element);
+      tileTool?.sync();
+      placementWorkspaceEvidence = workspaceDiagnostics?.sync(
+        state,
+        savedDocument,
+        sourceDocument,
+        placementAssetDiagnosticsForState(state, currentAssetProvider()),
+      );
       publishCurrentAgentHandoff(state, migrationPreview);
       return state;
     };
-    (window as PlacementViewerWindow).ferrumPlacementViewerRefreshHandoff = () => {
-      const state = viewer.state();
-      publishCurrentAgentHandoff(state, placementMigrationPreview(savedDocument, state.draftPatch));
-    };
+    (window as PlacementViewerWindow).ferrumPlacementViewerRefreshHandoff =
+      () => {
+        const state = viewer.state();
+        publishCurrentAgentHandoff(
+          state,
+          placementMigrationPreview(savedDocument, state.draftPatch),
+        );
+      };
     const reloadPlacementRuntimeAssets = async (): Promise<void> => {
       if (runtimeAssetReloadInFlight) {
         return;
       }
       runtimeAssetReloadInFlight = true;
+      let attempted = false;
       try {
         // Serialize uploads: an older folder load must not overwrite a newer texture.
         while (true) {
           const nextRuntimeTextures = placementRuntimeTextureManifest();
-          const nextRuntimeAssetSignature = placementRuntimeAssetSignature(nextRuntimeTextures);
+          const nextRuntimeAssetSignature =
+            placementRuntimeAssetSignature(nextRuntimeTextures);
           if (nextRuntimeAssetSignature === runtimeAssetAttemptSignature) {
-            return;
+            if (nextRuntimeAssetSignature === runtimeAssetReadySignature) {
+              publishPlacementRuntimeAssets(nextRuntimeTextures, runtimeEngine);
+              publishPlacementRuntimeAssetStatus("ready");
+              return;
+            }
+            if (attempted) return;
           }
+          attempted = true;
           runtimeAssetAttemptSignature = nextRuntimeAssetSignature;
+          const legacy =
+            (
+              window as PlacementViewerWindow
+            ).ferrumPlacementViewerDesktop?.assetFolderImages?.some(
+              (image) => !image.contentRevision,
+            ) ?? false;
+          const changedTextures = Object.fromEntries(
+            Object.entries(nextRuntimeTextures).filter(
+              ([id, url]) => legacy || runtimeLoadedTextures.get(id) !== url,
+            ),
+          );
+          const controller = new AbortController();
+          runtimeAssetReloadAbort = controller;
           publishPlacementRuntimeAssetStatus("loading");
           try {
-            await runtimeEngine.loadAssets({ textures: nextRuntimeTextures });
-            if (nextRuntimeAssetSignature === placementRuntimeAssetSignature(placementRuntimeTextureManifest())) {
+            if (Object.keys(changedTextures).length)
+              await runtimeEngine.loadAssets({
+                textures: changedTextures,
+                textureOptions: Object.fromEntries(
+                  Object.keys(changedTextures).map((id) => [
+                    id,
+                    { signal: controller.signal },
+                  ]),
+                ),
+              });
+            if (
+              !controller.signal.aborted &&
+              nextRuntimeAssetSignature ===
+                placementRuntimeAssetSignature(
+                  placementRuntimeTextureManifest(),
+                )
+            ) {
+              for (const [id, url] of Object.entries(changedTextures))
+                runtimeLoadedTextures.set(id, url);
+              runtimeAssetReadySignature = nextRuntimeAssetSignature;
               publishPlacementRuntimeAssets(nextRuntimeTextures, runtimeEngine);
               publishPlacementRuntimeAssetStatus("ready");
             }
           } catch (error: unknown) {
-            if (nextRuntimeAssetSignature === placementRuntimeAssetSignature(placementRuntimeTextureManifest())) {
-              publishPlacementRuntimeAssetStatus("error", placementErrorMessage(error));
+            if (
+              !controller.signal.aborted &&
+              nextRuntimeAssetSignature ===
+                placementRuntimeAssetSignature(
+                  placementRuntimeTextureManifest(),
+                )
+            ) {
+              publishPlacementRuntimeAssetStatus(
+                "error",
+                placementErrorMessage(error),
+              );
             }
           }
           setState(viewer.state());
@@ -527,6 +1149,11 @@ async function bootstrap(): Promise<void> {
       }
     };
     window.addEventListener("ferrum-placement-desktop-statechange", () => {
+      if (
+        runtimeAssetAttemptSignature !==
+        placementRuntimeAssetSignature(placementRuntimeTextureManifest())
+      )
+        runtimeAssetReloadAbort?.abort();
       const nextAssetSignature = placementPreviewAssetSignature();
       if (nextAssetSignature !== previewAssetSignature) {
         previewAssetSignature = nextAssetSignature;
@@ -538,16 +1165,49 @@ async function bootstrap(): Promise<void> {
     installPlacementHooks(viewer, interaction, setState, {
       saveEnabled,
       saveDraft: async () => {
+        if (switching || documentSession?.isSaving()) return undefined;
+        if (
+          documentSession?.hasPointerGesture() ||
+          spatialWorkspace?.ownsGesture()
+        )
+          return undefined;
+        documentSession?.finishEdit();
         const patch = viewer.exportPatch();
         if (patch === undefined || !saveEnabled) {
           return undefined;
         }
-        const migrationPreview = placementMigrationPreview(savedDocument, patch);
+        if (
+          normalTool?.blocksSave(
+            mergeScenePlacementPatch(savedDocument, patch).document,
+          ) ||
+          asepriteTool?.blocksSave(
+            mergeScenePlacementPatch(savedDocument, patch).document,
+          ) ||
+          tileTool?.blocksSave(
+            mergeScenePlacementPatch(savedDocument, patch).document,
+          )
+        ) {
+          const error = new Error(
+            tileTool?.blocksSave(
+              mergeScenePlacementPatch(savedDocument, patch).document,
+            )
+              ? "Save tile sources with Import Tile Frames → Save Project first, or Export Assets for project installation."
+              : "Save or register generated assets and imported atlases before saving the scene. Export Assets preserves the bundle for your agent.",
+          );
+          publishPlacementSaveError(error);
+          appChrome.setSaveError(error);
+          return undefined;
+        }
+        const migrationPreview = placementMigrationPreview(
+          savedDocument,
+          patch,
+        );
         if ((migrationPreview?.references.length ?? 0) > 0) {
           publishPlacementMigrationPreview(migrationPreview);
           publishCurrentAgentHandoff(viewer.state(), migrationPreview);
           return undefined;
         }
+        documentSession?.setSaving(true);
         try {
           const result = await saveScenePlacementPatch(savedDocument, patch, {
             allowSave: saveEnabled,
@@ -558,10 +1218,31 @@ async function bootstrap(): Promise<void> {
           publishPlacementSaveResult(result);
           appChrome.setSaveResult(result);
           if (result.saved) {
-            window.setTimeout(() => window.location.reload(), 0);
+            const entry = activeDocument;
+            entry.document = savedDocument;
+            entry.resolved = resolvePlacementWorkspaceDocument(savedDocument);
+            entry.lifetime.abort();
+            entry.inspector.element.remove();
+            entry.lifetime = new AbortController();
+            const editState = viewer.state();
+            entry.viewer = createScenePlacementViewer({
+              document: savedDocument,
+              viewport: viewer.state().viewport,
+              selectedInstanceId: viewer.state().selectedInstanceId,
+              instanceHandleRegistry: entry.registry,
+              validateDraft: (state) => {
+                if (!assetBatchEditing) spatialWorkspace?.sync(state);
+              },
+            });
+            entry.viewer.selectInstances(editState.selectedInstanceIds);
+            entry.viewer.setInstancesLocked(editState.lockedInstanceIds, true);
+            entry.inspector = createDocumentInspector(entry);
+            activateDocument(entry.key, true);
           }
+          documentSession?.setSaving(false);
           return result;
         } catch (error) {
+          documentSession?.setSaving(false);
           publishPlacementSaveError(error);
           appChrome.setSaveError(error);
           return undefined;
@@ -569,23 +1250,1161 @@ async function bootstrap(): Promise<void> {
       },
     });
     installPlacementSelection(inspector.element, viewer, setState);
-    installPlacementTransformControls(inspector.element, viewer, interaction, setState, {
-      saveDraft: async () => {
-        await (window as PlacementViewerWindow).ferrumPlacementViewerSaveDraft?.();
+    installPlacementTransformControls(
+      inspector.element,
+      viewer,
+      interaction,
+      setState,
+      {
+        saveDraft: async () => {
+          await (
+            window as PlacementViewerWindow
+          ).ferrumPlacementViewerSaveDraft?.();
+        },
+      },
+    );
+    installPlacementEditControls(
+      inspector.element,
+      viewer,
+      interaction,
+      currentAssetProvider,
+      setState,
+    );
+    installPlacementComponentControls(inspector.element, viewer, setState);
+    const cancelPlacementTool = () => {
+      if (spatialWorkspace?.mode() === "spatial")
+        spatialWorkspace.assetPalette.cancel();
+      resetPlacementAdd(interaction);
+      publishPlacementInteraction(interaction);
+      setState(viewer.state());
+      shell.canvas.focus({ preventScroll: true });
+    };
+    viewportToolbar = createPlacementViewportToolbar(
+      shell.stage,
+      cancelPlacementTool,
+    );
+    window.addEventListener("keydown", (event) => {
+      if (
+        event.code !== "Escape" ||
+        event.defaultPrevented ||
+        spatialWorkspace?.mode() !== "2d" ||
+        (!interaction.pendingAdd && !placementAssetDrag) ||
+        documentSession?.isSaving() ||
+        viewer.historyState().transactionLabel ||
+        (event.target instanceof Element &&
+          event.target.closest(
+            "input, textarea, select, [contenteditable=true]",
+          ))
+      )
+        return;
+      event.preventDefault();
+      cancelPlacementTool();
+    });
+    window.addEventListener("ferrum-placement-toolchange", syncToolState);
+    viewportNavigation = installPlacementViewportNavigation({
+      runtime,
+      canvas: shell.canvas,
+      stage: shell.stage,
+      toolbar: viewportToolbar.navigation,
+      viewer,
+      onChange: setState,
+      isEditing: () =>
+        (spatialWorkspace?.mode() ?? "2d") !== "2d" ||
+        interaction.dragging ||
+        documentSession?.isSaving() === true ||
+        viewer.historyState().transactionLabel !== undefined,
+    });
+    selectionTools = installPlacementSelectionTools({
+      canvas: shell.canvas,
+      stage: shell.stage,
+      viewer,
+      onChange: setState,
+      isAdding: () =>
+        interaction.pendingAdd !== undefined ||
+        (spatialWorkspace?.mode() ?? "2d") !== "2d",
+      isEditing: () =>
+        viewer.historyState().transactionLabel !== undefined ||
+        documentSession?.isSaving() === true,
+      finishEdit: () => documentSession?.finishEdit(),
+    });
+    installPlacementPointer(
+      shell.canvas,
+      () => inspector.element,
+      viewer,
+      interaction,
+      currentAssetProvider,
+      setState,
+    );
+    installPlacementAssetDrop(
+      shell.canvas,
+      () => inspector.element,
+      viewer,
+      interaction,
+      currentAssetProvider,
+      setState,
+    );
+    installPlacementResizeHandle(
+      overlay.element,
+      shell.canvas,
+      viewer,
+      interaction,
+      setState,
+    );
+    installPlacementColliderOffsetHandle(
+      overlay.element,
+      shell.canvas,
+      viewer,
+      interaction,
+      setState,
+    );
+    installPlacementKeyboard(shell.canvas, viewer, interaction, setState);
+    transformGizmo = installPlacementTransformGizmo({
+      canvas: shell.canvas,
+      stage: shell.stage,
+      viewer,
+      onChange: setState,
+      isAdding: () =>
+        interaction.pendingAdd !== undefined ||
+        (spatialWorkspace?.mode() ?? "2d") !== "2d",
+      snapEnabled: () => interaction.enabled,
+      finishEdit: () => documentSession?.finishEdit(),
+    });
+    documentSession = installPlacementDocumentSession({
+      canvas: shell.canvas,
+      viewer,
+      onChange: setState,
+      hasUnsavedChanges: () =>
+        [...documents.values()].some(
+          (entry) => entry.viewer.exportPatch() !== undefined,
+        ),
+      canEdit: () => spatialWorkspace?.mode() !== "game",
+      canSave: () => activeDocument.saveEnabled,
+      hasExternalGesture: () => spatialWorkspace?.ownsGesture() ?? false,
+      isNavigationGesture: (event) =>
+        (spatialWorkspace?.mode() !== undefined &&
+          spatialWorkspace.mode() !== "2d") ||
+        (viewportNavigation?.isNavigationGesture(event) ?? false),
+    });
+    spatialWorkspace = installPlacementSpatialWorkspace({
+      runtime,
+      canvas: shell.canvas,
+      stage: shell.stage,
+      cameraToolbar: viewportToolbar.camera,
+      viewSettings: viewportToolbar.spatialSettings,
+      gridChanged: (state) =>
+        gridRenderer?.grid?.sync({
+          mode: spatialWorkspace?.mode() ?? "2d",
+          viewport: state.viewport,
+          size: interaction.gridSize,
+          ...(spatialWorkspace?.gridSurfaceState() ?? {
+            surfaces: [],
+            referencePlane: false,
+          }),
+        }),
+      toolChange: syncToolState,
+      viewer,
+      models: spatialModels,
+      assets: currentAssetProvider,
+      assetMount: () => inspector.assetMount,
+      document: () => savedDocument,
+      apply: (next) => applyWorkspacePreview(next, activeDocument.registry),
+      onChange: setState,
+      finishEdit: () => documentSession?.finishEdit(),
+      snap: () => ({
+        enabled: interaction.enabled,
+        gridSize: interaction.gridSize,
+      }),
+      setSnap: (value) => {
+        Object.assign(interaction, value);
+        publishPlacementInteraction(interaction);
+        setState(viewer.state());
+      },
+      components: (id) => {
+        const selected = viewer
+          .state()
+          .instances.find((instance) => instance.instanceId === id);
+        if (!selected) throw new Error("Unknown proxy instance");
+        return placementObjectDefinitionFromSelected(selected).props!
+          .components;
       },
     });
-    installPlacementEditControls(inspector.element, viewer, interaction, currentAssetProvider, setState);
-    installPlacementComponentControls(inspector.element, viewer, setState);
-    installPlacementPointer(shell.canvas, inspector.element, viewer, interaction, currentAssetProvider, setState);
-    installPlacementResizeHandle(overlay.element, shell.canvas, viewer, interaction, setState);
-    installPlacementColliderOffsetHandle(overlay.element, shell.canvas, viewer, interaction, setState);
-    installPlacementKeyboard(shell.canvas, viewer, interaction, setState);
-    installPlacementResize(shell.canvas, runtime.engine, viewer, setState);
+    gridRenderer.grid = createPlacementGrid(
+      viewportToolbar.gridSettings,
+      (gridSize) => {
+        interaction.gridSize = gridSize;
+        publishPlacementInteraction(interaction);
+        setState(viewer.state());
+      },
+    );
+    spatialWorkspace.activate(activeDocument.key, inspector.element);
+    const root = shell.stage.closest<HTMLElement>(".demo-shell");
+    if (!root) throw new Error("Missing workspace shell");
+    function currentPlacementTool() {
+      const mode = spatialWorkspace?.mode() ?? "2d";
+      if (mode === "spatial") return spatialWorkspace?.assetPalette.toolState();
+      if (mode !== "2d") return;
+      if (placementAssetDrag) {
+        const opts = placementAssetDrag.options;
+        return {
+          kind: "sprite",
+          id: opts.spriteAsset,
+          label: opts.spriteAsset,
+          frameId: opts.spriteFrame,
+          dragging: true,
+        };
+      }
+      const preview = interaction.pendingAddPreview;
+      if (interaction.pendingAdd)
+        return {
+          kind:
+            interaction.pendingAdd === "add-sprite" ? "sprite" : "primitive",
+          id: preview?.assetId,
+          frameId: preview?.frameId,
+          label: preview?.label ?? placementAddLabel(interaction.pendingAdd),
+          dragging: false,
+        };
+    }
+    function syncToolState() {
+      const tool = currentPlacementTool();
+      viewportToolbar?.sync(
+        spatialWorkspace?.mode() ?? "2d",
+        tool?.label,
+        tool?.dragging,
+      );
+      assetBrowser?.sync();
+    }
+    const chooseBrowserSprite = (asset: PlacementBrowserAsset, arm = true) => {
+      const control = inspector.element.querySelector<HTMLSelectElement>(
+        "[data-placement-add-sprite]",
+      );
+      const frame = inspector.element.querySelector<HTMLSelectElement>(
+        "[data-placement-add-sprite-frame]",
+      );
+      if (!control || !frame) return;
+      control.value = asset.id;
+      control.dispatchEvent(new Event("change"));
+      frame.value = asset.frameId ?? "";
+      frame.dispatchEvent(new Event("change"));
+      if (arm)
+        inspector.element
+          .querySelector<HTMLButtonElement>(
+            "[data-placement-action=add-sprite]",
+          )
+          ?.click();
+    };
+    const browserModels = (): PlacementBrowserAsset[] => {
+      const registered = spatialWorkspace?.assetPalette.browserEntries() ?? [],
+        files =
+          (window as PlacementViewerWindow).ferrumPlacementViewerDesktop
+            ?.assetFolderModels ?? [];
+      const refs = Object.values(viewer.state().spatial?.models ?? {}).flatMap(
+        (model) => [model, ...(model.lods ?? [])],
+      );
+      return [
+        ...files.map((file) => {
+          const ref = refs.find((ref) => ref.asset === file.id),
+            loaded = ref
+              ? registered.find((asset) => asset.contentId === ref.contentId)
+              : [...registered].reverse().find((asset) => asset.id === file.id);
+          return {
+            ...loaded,
+            key: "model-file:" + file.path,
+            id: file.id,
+            kind: "model" as const,
+            label: file.fileName + (loaded ? "" : " · Click to Load"),
+          };
+        }),
+        ...registered.filter(
+          (asset) => !files.some((file) => file.id === asset.id),
+        ),
+      ];
+    };
+    const loadBrowserModel = async (asset: PlacementBrowserAsset) => {
+      if (
+        switching ||
+        documentSession?.isSaving() ||
+        !spatialWorkspace ||
+        spatialWorkspace.mode() !== "spatial"
+      )
+        return;
+      const file = (
+          window as PlacementViewerWindow
+        ).ferrumPlacementViewerDesktop?.assetFolderModels?.find(
+          (file) => file.id === asset.id,
+        ),
+        url = file && placementAssetRuntimeUrl(file);
+      if (!url) return;
+      const key = activeDocument.key;
+      switching = true;
+      root.inert = true;
+      try {
+        const model = await loadSpatialGlb(url, { materialProfile: "diffuse" });
+        if (key !== activeDocument.key) return;
+        spatialWorkspace.registerModel(asset.id, model);
+        spatialWorkspace.assetPalette.choose({
+          ...asset,
+          contentId: model.contentId,
+        });
+        setState(viewer.state());
+      } catch (error) {
+        root.dispatchEvent(
+          new CustomEvent("ferrum-placement-document-error", {
+            detail: error,
+            bubbles: true,
+          }),
+        );
+      } finally {
+        switching = false;
+        root.inert = false;
+      }
+    };
+    assetBrowser = createPlacementAssetBrowser({
+      entries: () => [
+        ...currentAssetProvider()
+          .listSpriteAssets()
+          .flatMap((asset) => [
+            {
+              key: "sprite:" + asset.id,
+              kind: "sprite" as const,
+              id: asset.id,
+              label: asset.label ?? asset.id,
+              thumbnail: asset.thumbnailUrl,
+            },
+            ...currentAssetProvider()
+              .listSpriteFrames(asset.id)
+              .map((frame) => ({
+                key: "sprite:" + asset.id + "/" + frame.id,
+                kind: "sprite" as const,
+                id: asset.id,
+                frameId: frame.id,
+                label:
+                  (asset.label ?? asset.id) + " / " + (frame.label ?? frame.id),
+                thumbnail: frame.thumbnailUrl ?? asset.thumbnailUrl,
+                uv: frame.thumbnailUrl ? undefined : frame.frame,
+              })),
+          ]),
+        ...browserModels(),
+      ],
+      selected: (asset) => {
+        const tool = currentPlacementTool();
+        return (
+          !!tool &&
+          tool.kind === asset.kind &&
+          tool.id === asset.id &&
+          (tool.frameId ?? "") === (asset.frameId ?? "") &&
+          (!("contentId" in tool) ||
+            !tool.contentId ||
+            tool.contentId === asset.contentId)
+        );
+      },
+      choose: (asset) => {
+        if (asset.kind === "model" && !asset.contentId) {
+          void loadBrowserModel(asset);
+          return;
+        }
+        if (spatialWorkspace?.mode() === "spatial")
+          spatialWorkspace.assetPalette.choose(asset);
+        else chooseBrowserSprite(asset);
+      },
+      drag: (event, asset) => {
+        if (asset.kind === "model" && !asset.contentId) {
+          event.preventDefault();
+          void loadBrowserModel(asset);
+          return;
+        }
+        if (spatialWorkspace?.mode() === "spatial") {
+          spatialWorkspace.assetPalette.dragAsset(event, asset);
+          return;
+        }
+        if (
+          asset.kind !== "sprite" ||
+          spatialWorkspace?.mode() === "game" ||
+          !event.dataTransfer
+        ) {
+          event.preventDefault();
+          return;
+        }
+        chooseBrowserSprite(asset, false);
+        placementAssetDrag = {
+          token: crypto.randomUUID(),
+          source: inspector.element,
+          options: placementDraftOptionsFromControls(
+            inspector.element,
+            "add-sprite",
+          ),
+        };
+        syncToolState();
+        event.dataTransfer.effectAllowed = "copy";
+        event.dataTransfer.setData(
+          PLACEMENT_ASSET_DRAG_TYPE,
+          placementAssetDrag.token,
+        );
+      },
+      canUse: (asset) =>
+        spatialWorkspace?.mode() !== "game" &&
+        (asset.kind === "sprite" || spatialWorkspace?.mode() === "spatial"),
+      projectKey: () => activeDocument.desktop?.projectPath ?? sourceDocument,
+      normal: (asset) => {
+        if (asset.thumbnail)
+          void normalTool?.openAsset(asset.id, asset.thumbnail);
+      },
+    });
+    function currentNormalHost(): PlacementNormalAssetHost | undefined {
+      return (
+        (window as PlacementViewerWindow).ferrumPlacementNormalAssetHost ??
+        (activeDocument.key === initialKey &&
+        activeDocument.desktop?.projectPath === asepriteProjectPath
+          ? nativeNormalHost
+          : undefined)
+      );
+    }
+    normalTool = createPlacementNormalTool({
+      engine: runtimeEngine,
+      viewer,
+      context: () => ({
+        key: activeDocument.key,
+        source: sourceDocument,
+        document: viewer.exportPatch()
+          ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!)
+              .document
+          : savedDocument,
+        mode: spatialWorkspace?.mode() ?? "2d",
+        canEdit:
+          !switching &&
+          !documentSession?.isSaving() &&
+          !runtimeAssetReloadInFlight &&
+          spatialWorkspace?.mode() !== "game" &&
+          !spatialWorkspace?.ownsGesture() &&
+          viewer.historyState().transactionLabel === undefined,
+      }),
+      host: currentNormalHost,
+      taken: (id) =>
+        previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
+        (normalProjectAssets?.has(id) ?? false) ||
+        (tileTool?.has(id) ?? false),
+      changed: () => setState(viewer.state()),
+      apply: (patch) => applyAssetPatch(patch, "Apply Normal"),
+    });
+    function applyAssetPatch(patch: ScenePlacementPatch, label: string) {
+      if (viewer.historyState().transactionLabel !== undefined)
+        throw new Error("Finish the current edit before applying assets");
+      viewer.beginEdit(label);
+      try {
+        assetBatchEditing = true;
+        for (const operation of patch.operations) {
+          if (operation.kind !== "updateComponents")
+            throw new Error("Unsupported asset component operation");
+          viewer.updateInstanceComponents(
+            operation.instanceId,
+            operation.components,
+          );
+        }
+        if (patch.spatial) viewer.updateSpatial(patch.spatial.operations);
+        assetBatchEditing = false;
+        spatialWorkspace?.sync(viewer.state());
+        viewer.commitEdit();
+      } catch (error) {
+        assetBatchEditing = false;
+        viewer.cancelEdit();
+        throw error;
+      } finally {
+        assetBatchEditing = false;
+      }
+    }
+    const importedAssetContext = () => ({
+      key: activeDocument.key,
+      document: viewer.exportPatch()
+        ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!)
+            .document
+        : savedDocument,
+      mode: spatialWorkspace?.mode() ?? "2d",
+      canEdit:
+        !switching &&
+        !documentSession?.isSaving() &&
+        !runtimeAssetReloadInFlight &&
+        spatialWorkspace?.mode() !== "game" &&
+        !spatialWorkspace?.ownsGesture() &&
+        viewer.historyState().transactionLabel === undefined,
+    });
+    tileTool = createPlacementTileTool({
+      engine: runtimeEngine,
+      assets: tileAssets,
+      projectHost: () =>
+        activeDocument.key === initialKey &&
+        (window as PlacementViewerWindow).ferrumPlacementViewerDesktop
+          ?.projectPath === tileProjectHost?.project
+          ? tileProjectHost
+          : undefined,
+      saveScene: async () => {
+        if (!viewer.exportPatch()) return;
+        const result = await (
+          window as PlacementViewerWindow
+        ).ferrumPlacementViewerSaveDraft?.();
+        if (!result?.saved)
+          throw Error(
+            (window as PlacementViewerWindow)
+              .ferrumPlacementViewerLastSaveError ??
+              "Assets saved. Resolve scene diagnostics and save again.",
+          );
+      },
+      viewer,
+      context: importedAssetContext,
+      taken: (id) =>
+        previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
+        (asepriteAssets?.entries().some((a) => a.id === id) ?? false) ||
+        (normalTool?.browserEntries().some((a) => a.id === id) ?? false) ||
+        (normalProjectAssets?.has(id) ?? false),
+      changed: () => setState(viewer.state()),
+      apply: applyAssetPatch,
+    });
+    asepriteTool = createPlacementAsepriteTool({
+      engine: runtimeEngine,
+      viewer,
+      context: importedAssetContext,
+      taken: (id) =>
+        previewAssetProvider.resolveSpriteAsset(id) !== undefined ||
+        (normalTool?.browserEntries().some((a) => a.id === id) ?? false) ||
+        (tileTool?.has(id) ?? false),
+      changed: () => setState(viewer.state()),
+      apply: applyAssetPatch,
+      normalHost: currentNormalHost,
+      normalBundles: () =>
+        normalProjectAssets?.bundles(
+          activeDocument.key,
+          viewer.exportPatch()
+            ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!)
+                .document
+            : savedDocument,
+        ) ?? [],
+      normalEvidence: () =>
+        normalProjectAssets?.bindings(
+          activeDocument.key,
+          viewer.exportPatch()
+            ? mergeScenePlacementPatch(savedDocument, viewer.exportPatch()!)
+                .document
+            : savedDocument,
+          viewer.state(),
+        ) ?? [],
+      normalSettings: () => normalTool!.generationSettings(),
+      assets: asepriteAssets,
+      projectHost: () =>
+        activeDocument.key === initialKey &&
+        (window as PlacementViewerWindow).ferrumPlacementViewerDesktop
+          ?.projectPath === asepriteProjectHost?.project
+          ? asepriteProjectHost
+          : undefined,
+      saveScene: async () => {
+        if (!viewer.exportPatch()) return;
+        const result = await (
+          window as PlacementViewerWindow
+        ).ferrumPlacementViewerSaveDraft?.();
+        if (!result?.saved)
+          throw new Error(
+            (window as PlacementViewerWindow)
+              .ferrumPlacementViewerLastSaveError ??
+              "Assets saved, but scene save was not completed. Resolve the scene diagnostics and save again.",
+          );
+      },
+    });
+    const assetRevisions = (
+      images: readonly ScenePlacementAgentHandoffAssetFile[],
+      models: readonly ScenePlacementAgentHandoffAssetFile[],
+    ): PlacementAssetRevision[] => [
+      ...images.map((file) => ({
+        id: file.id,
+        kind: "sprite" as const,
+        revision: file.contentRevision ?? "",
+      })),
+      ...models.map((file) => ({
+        id: file.id,
+        kind: "model" as const,
+        revision: file.contentRevision ?? "",
+      })),
+    ];
+    assetChanges = createPlacementAssetChanges({
+      path: () =>
+        (window as PlacementViewerWindow).ferrumPlacementViewerDesktop
+          ?.assetFolderPath,
+      baseline: () => {
+        const desktop = (window as PlacementViewerWindow)
+          .ferrumPlacementViewerDesktop;
+        return assetRevisions(
+          desktop?.assetFolderImages ?? [],
+          desktop?.assetFolderModels ?? [],
+        );
+      },
+      probe: async (path) => {
+        const invoke = placementDesktopInvoke();
+        if (!invoke) throw new Error("Desktop asset host unavailable");
+        const response = await invoke<PlacementDesktopAssetFolderResponse>(
+          DESKTOP_INSPECT_ASSET_FOLDER_COMMAND,
+          { assetFolderPath: path },
+        );
+        if (!isPlacementDesktopAssetFolderResponse(response))
+          throw new Error("Invalid asset change response");
+        return response;
+      },
+      revisions: (value) => assetRevisions(value.images, value.models ?? []),
+      canApply: () =>
+        !switching &&
+        !documentSession?.isSaving() &&
+        !documentSession?.hasPointerGesture() &&
+        !spatialWorkspace?.ownsGesture() &&
+        spatialWorkspace?.mode() !== "game",
+      report: (error) =>
+        root.dispatchEvent(
+          new CustomEvent("ferrum-placement-document-error", {
+            detail: error,
+            bubbles: true,
+          }),
+        ),
+      apply: async (value) => {
+        documentSession?.finishEdit();
+        if (!spatialWorkspace?.cancel())
+          throw new Error("Finish the current spatial edit before reimport");
+        cancelPlacementTool();
+        switching = true;
+        root.inert = true;
+        const context = activeDocument.key;
+        const oldDesktop = (window as PlacementViewerWindow)
+          .ferrumPlacementViewerDesktop!;
+        const previousFolder: PlacementDesktopAssetFolderResponse = {
+          assetFolderPath: oldDesktop.assetFolderPath!,
+          exists: oldDesktop.assetFolderExists ?? true,
+          imageCount: oldDesktop.assetFolderImageCount ?? 0,
+          images: oldDesktop.assetFolderImages ?? [],
+          models: oldDesktop.assetFolderModels,
+          diagnostics: oldDesktop.assetFolderDiagnostics ?? [],
+          textureAtlasInputPath: oldDesktop.assetFolderTextureAtlasInputPath,
+        };
+        let editing = false,
+          published = false;
+        try {
+          const next =
+            await resolvePlacementDesktopAssetFolderImageDimensions(value);
+          const previousFiles =
+            (window as PlacementViewerWindow).ferrumPlacementViewerDesktop
+              ?.assetFolderModels ?? [];
+          const doc = viewer.state(),
+            operations: Parameters<
+              ScenePlacementViewer["updateSpatial"]
+            >[0][number][] = [];
+          for (const [id, model] of Object.entries(doc.spatial?.models ?? {})) {
+            for (const ref of [model, ...(model.lods ?? [])]) {
+              const file = next.models?.find((file) => file.id === ref.asset);
+              if (!file)
+                throw new Error("Referenced GLB is missing: " + ref.asset);
+              if (
+                file.contentRevision &&
+                previousFiles.find((previous) => previous.id === file.id)
+                  ?.contentRevision === file.contentRevision
+              )
+                continue;
+              const url = placementAssetRuntimeUrl(file);
+              if (!url)
+                throw new Error("Model has no runtime URL: " + ref.asset);
+              const asset = await loadSpatialGlb(url, {
+                materialProfile: "diffuse",
+              });
+              if (asset.contentId === ref.contentId) continue;
+              if (context !== activeDocument.key)
+                throw new Error("Document changed during reimport");
+              spatialWorkspace.registerModel(ref.asset, asset);
+              if (
+                !operations.some(
+                  (op) =>
+                    op.kind === "replaceModelAsset" &&
+                    op.id === id &&
+                    op.changes.asset === ref.asset,
+                )
+              )
+                operations.push({
+                  kind: "replaceModelAsset",
+                  id,
+                  changes: { asset: ref.asset, contentId: asset.contentId },
+                });
+            }
+          }
+          if (context !== activeDocument.key)
+            throw new Error("Document changed during reimport");
+          viewer.beginEdit("Reimport Assets");
+          editing = true;
+          if (operations.length) setState(viewer.updateSpatial(operations));
+          published = true;
+          publishPlacementDesktopAssetFolder(next);
+          await reloadPlacementRuntimeAssets();
+          const start = performance.now();
+          while (
+            runtimeAssetReadySignature !==
+            placementRuntimeAssetSignature(placementRuntimeTextureManifest())
+          ) {
+            const status = (window as PlacementViewerWindow)
+              .ferrumPlacementViewerDesktop;
+            if (status?.assetFolderRuntimeStatus === "error")
+              throw new Error(
+                status.lastAssetFolderRuntimeError ?? "Texture reimport failed",
+              );
+            if (performance.now() - start > 30000)
+              throw new Error("Asset upload timed out");
+            await new Promise((resolve) => window.setTimeout(resolve, 20));
+          }
+          setState(viewer.commitEdit());
+          editing = false;
+        } catch (error) {
+          if (editing) setState(viewer.cancelEdit());
+          if (published) {
+            runtimeAssetReadySignature = "";
+            runtimeAssetAttemptSignature = "";
+            runtimeLoadedTextures.clear();
+            publishPlacementDesktopAssetFolder(previousFolder);
+            await reloadPlacementRuntimeAssets();
+          }
+          throw error;
+        } finally {
+          switching = false;
+          root.inert = false;
+        }
+      },
+    });
+    setState(viewer.state());
+    const runtimeDock = bottomDock.element;
+    const reviewSummary = shell.canvas.ownerDocument.createElement("output");
+    reviewSummary.dataset.placementReviewSummary = "true";
+    workspaceDiagnostics = installPlacementDiagnostics({
+      root: runtimeDock,
+      visible: () =>
+        bottomDock.tabs.active() === "runtime" &&
+        (root.dataset.compact === "true"
+          ? root.dataset.compactPanel === "runtime"
+          : root.dataset.runtimeDockHidden !== "true"),
+      counts: (changes, problems) => {
+        bottomDock.counts(changes, problems);
+        setUiText(
+          reviewSummary,
+          uiMessage("{0} changes · {1} problems", changes, problems),
+        );
+      },
+      runtime,
+      select: (id) => setState(viewer.selectInstance(id)),
+      handle: (id) => activeDocument.registry.get(id, { validateLive: true }),
+      canReloadAssets: () =>
+        !!(window as PlacementViewerWindow).ferrumPlacementViewerDesktop
+          ?.assetFolderPath,
+      spatialTarget: () => spatialWorkspace?.target(),
+      variables: () => appliedRuntimeVariables,
+      context: () =>
+        activeDocument.key +
+        "|" +
+        spatialWorkspace?.mode() +
+        "|" +
+        runtimeApplyRevision,
+      mode: () => spatialWorkspace?.mode() ?? "2d",
+      reloadAssets: async () => {
+        const path = (window as PlacementViewerWindow)
+          .ferrumPlacementViewerDesktop?.assetFolderPath;
+        if (path) await inspectPlacementAssetFolder(path);
+      },
+    });
+    bottomDock.mountDiagnostics(
+      workspaceDiagnostics.panels,
+      workspaceDiagnostics.reload,
+    );
+    shell.stage.id = "placement-viewport";
+    shell.stage.setAttribute("role", "tabpanel");
+    tabs = createPlacementDocumentTabs({
+      activate: (key) => {
+        try {
+          activateDocument(key);
+        } catch (error) {
+          tabs?.report(error);
+        }
+      },
+      close: (key) => {
+        if (switching || documentSession?.isSaving() || documents.size === 1)
+          return;
+        const entry = documents.get(key);
+        if (!entry) return;
+        if (
+          entry.viewer.exportPatch() &&
+          !window.confirm(
+            translateUi(
+              uiMessage(
+                "Unsaved changes in {0}. Discard and close?",
+                entry.source,
+              ),
+            ),
+          )
+        )
+          return;
+        if (entry === activeDocument) {
+          const next = [...documents.values()].find(
+            (candidate) => candidate !== entry,
+          );
+          try {
+            if (next && !activateDocument(next.key)) return;
+          } catch (error) {
+            tabs?.report(error);
+            return;
+          }
+        }
+        documents.delete(key);
+        normalTool?.close(key);
+        asepriteTool?.close(key);
+        tileTool?.close(key);
+        normalProjectAssets?.close(key);
+        entry.lifetime.abort();
+        entry.inspector.element.remove();
+        entry.registry.clear();
+        syncTabs();
+      },
+      open: async (file) => {
+        if (switching || documentSession?.isSaving()) return;
+        if (file.size > 2 * 1024 * 1024)
+          throw new Error("Document exceeds 2 MiB");
+        switching = true;
+        root.inert = true;
+        try {
+          await openDocument(
+            `file:${crypto.randomUUID()}`,
+            file.name,
+            JSON.parse(await file.text()) as unknown,
+            false,
+          );
+        } finally {
+          switching = false;
+          root.inert = false;
+        }
+      },
+    });
+    const layout = installPlacementWorkspaceLayout(
+      root,
+      (window as PlacementViewerWindow).ferrumPlacementViewerDesktop
+        ?.projectPath ??
+        desktopSceneDocumentPath ??
+        "browser",
+    );
+    const review = shell.canvas.ownerDocument.createElement("button"),
+      exportButton = shell.canvas.ownerDocument.createElement("button");
+    review.type = exportButton.type = "button";
+    setUiText(review, "Review");
+    setUiText(exportButton, "Export");
+    review.dataset.placementReview = "true";
+    exportButton.dataset.placementExport = "true";
+    review.addEventListener("click", () => {
+      bottomDock.tabs.select("changes");
+      layout.reveal("runtime");
+    });
+    exportButton.addEventListener("click", () => {
+      layout.reveal("inspector");
+      inspector.review();
+    });
+    root
+      .querySelector(".placement-status-bar")
+      ?.append(reviewSummary, review, exportButton);
+    root.addEventListener("placement-scene-frame", () => {
+      root
+        .querySelector<HTMLButtonElement>(
+          spatialWorkspace?.mode() === "spatial"
+            ? "[data-placement-spatial-frame=true]"
+            : "[data-placement-view-action=frame-selection]",
+        )
+        ?.click();
+    });
+    root.addEventListener("placement-scene-surface", (event) => {
+      if (event instanceof CustomEvent)
+        spatialWorkspace?.selectSurface(String(event.detail));
+    });
+    root.addEventListener("placement-show-properties", () => {
+      inspector.properties();
+      layout.reveal("inspector");
+    });
+    tabs.element.append(layout.controls);
+    root.append(tabs.element);
+    window.addEventListener("ferrum-placement-document-error", (event) => {
+      if (event instanceof CustomEvent) tabs?.report(event.detail);
+    });
+    syncTabs();
+    openWorkspaceDocument = async (path) => {
+      const invoke = placementDesktopInvoke();
+      if (!invoke || switching || documentSession?.isSaving()) return;
+      switching = true;
+      root.inert = true;
+      try {
+        const response = await invoke<PlacementDesktopSceneDocumentResponse>(
+          DESKTOP_LOAD_SCENE_DOCUMENT_COMMAND,
+          path === undefined ? undefined : { sceneDocumentPath: path },
+        );
+        if (!isPlacementDesktopSceneDocumentResponse(response))
+          throw new Error("Invalid scene document response");
+        await openDocument(
+          response.path,
+          response.path,
+          response.document,
+          true,
+          {
+            enabled: true,
+            requestedSceneDocumentPath: path,
+            sceneDocumentPath: response.path,
+          },
+        );
+      } finally {
+        switching = false;
+        root.inert = false;
+      }
+    };
+
+    function createDocumentInspector(
+      entry: WorkspaceDocument,
+    ): PlacementInspector {
+      const next = createPlacementInspector(entry.resolved, {
+        saveEnabled: entry.saveEnabled,
+        assetProvider: currentAssetProvider,
+        sourceDocument: entry.source,
+        signal: entry.lifetime.signal,
+      });
+      next.element.hidden = true;
+      shell.debugRoot.before(next.element);
+      installPlacementSelection(next.element, viewer, setState);
+      installPlacementTransformControls(
+        next.element,
+        viewer,
+        interaction,
+        setState,
+        {
+          saveDraft: async () => {
+            await (
+              window as PlacementViewerWindow
+            ).ferrumPlacementViewerSaveDraft?.();
+          },
+        },
+      );
+      installPlacementEditControls(
+        next.element,
+        viewer,
+        interaction,
+        currentAssetProvider,
+        setState,
+      );
+      installPlacementComponentControls(next.element, viewer, setState);
+      return next;
+    }
+    function applyDocumentPreview(entry: WorkspaceDocument) {
+      const patch = entry.viewer.exportPatch();
+      const next =
+        patch && entry.document.spatial
+          ? mergeScenePlacementPatch(entry.document, patch).document
+          : entry.document;
+      applyWorkspacePreview(next, entry.registry);
+    }
+    function applyWorkspacePreview(
+      next: SceneAuthoringDocumentSpec,
+      registry: ReturnType<typeof createSceneInstanceHandleRegistry>,
+    ) {
+      workspacePreview.apply(next, registry);
+    }
+    function applyNativeWorkspacePreview(
+      next: SceneAuthoringDocumentSpec,
+      registry: ReturnType<typeof createSceneInstanceHandleRegistry>,
+    ) {
+      runtimeApplyRevision++;
+      appliedRuntimeVariables = undefined;
+      if (next.spatial || next.gameplay || next.variables?.length) {
+        appliedRuntimeVariables = applyDataSceneAuthoringDocument(
+          runtimeEngine,
+          next.spatial ? placementSpatialRuntimeDocument(next) : next,
+          {
+            instanceHandleRegistry: registry,
+            missingBehavior: "ignore",
+            spatialModelPreparer: runtime!.renderer,
+          },
+        ).variables;
+        return;
+      }
+      const nextResolved = resolvePlacementWorkspaceDocument(next);
+      const target = createDataSceneRuntimeTarget(runtimeEngine, {
+        activateDataScene: false,
+      });
+      // Empty documents must also reset the native scene.
+      runtimeEngine.useDataScene();
+      registry.clear();
+      applySceneBehaviorRecipes(
+        runtimeEngine,
+        target,
+        nextResolved.sceneComposition,
+        nextResolved.behaviorRecipes,
+        {
+          instanceHandleRegistry: registry,
+          requireExplicitInstanceIds: true,
+          missingBehavior: "ignore",
+          path: "placementViewer.workspace.apply",
+        },
+      );
+    }
+    function activateDocument(key: string, refresh = false) {
+      const next = documents.get(key);
+      if (
+        !next ||
+        (!refresh &&
+          (documentSession?.isSaving() || switching || next === activeDocument))
+      )
+        return false;
+      if (documentSession?.isFinishingPointerEdit()) return false;
+      if (spatialWorkspace?.cancel() === false)
+        throw new Error(
+          "Finish or cancel the current spatial edit before switching documents",
+        );
+      documentSession?.finishEdit();
+      if (viewer.historyState().transactionLabel !== undefined)
+        throw new Error(
+          "Finish or cancel the current edit before switching documents",
+        );
+      selectionTools?.cancel();
+      transformGizmo?.cancel();
+      if (spatialWorkspace?.suspend() === false)
+        throw new Error(
+          "Finish or cancel the current spatial edit before switching documents",
+        );
+      viewportNavigation?.cancelGesture();
+      activeDocument.camera = viewportNavigation?.snapshot();
+      activeDocument.snap = {
+        enabled: interaction.enabled,
+        gridSize: interaction.gridSize,
+      };
+      activeDocument.desktop = structuredClone(
+        (window as PlacementViewerWindow).ferrumPlacementViewerDesktop,
+      );
+      const previous = activeDocument;
+      try {
+        applyDocumentPreview(next);
+      } catch (error) {
+        applyDocumentPreview(previous);
+        viewportNavigation?.restore(previous.camera);
+        spatialWorkspace?.activate(previous.key, previous.inspector.element);
+        throw error;
+      }
+      cancelPlacementPendingHandoff();
+      previous.inspector.element.hidden = true;
+      activeDocument = next;
+      assetDocumentKey = next.key;
+      currentViewer = next.viewer;
+      inspector = next.inspector;
+      sourceDocument = next.source;
+      savedDocument = next.document;
+      saveEnabled = next.saveEnabled;
+      chromeOptions.sourceDocument = sourceDocument;
+      chromeOptions.saveEnabled = saveEnabled;
+      (window as PlacementViewerWindow).ferrumPlacementViewerDesktop =
+        structuredClone(next.desktop);
+      (window as PlacementViewerWindow).ferrumPlacementViewerSaveEnabled =
+        saveEnabled;
+      previewAssetProvider = createPlacementPreviewAssetProvider();
+      previewAssetSignature = placementPreviewAssetSignature();
+      boundsById.clear();
+      for (const [id, bounds] of placementBoundsById(next.resolved))
+        boundsById.set(id, bounds);
+      Object.assign(interaction, next.snap, {
+        dragging: false,
+        pendingAdd: undefined,
+        pendingAddPreview: undefined,
+      });
+      inspector.element.hidden = false;
+      layout.sync();
+      tabs?.report();
+      window.dispatchEvent(new Event("ferrum-placement-desktop-statechange"));
+      publishPlacementSavedDocument(savedDocument);
+      viewportNavigation?.restore(next.camera);
+      spatialWorkspace?.activate(next.key, inspector.element);
+      return true;
+    }
+    async function openDocument(
+      key: string,
+      source: string,
+      value: unknown,
+      canSave: boolean,
+      desktop?: PlacementViewerDesktopState,
+    ) {
+      if (documents.has(key)) {
+        switching = false;
+        if (!activateDocument(key) && key !== activeDocument.key)
+          throw new Error(
+            "Wait for the current pointer edit before opening a document",
+          );
+        return;
+      }
+      if (documents.size >= 8)
+        throw new Error("Close a document before opening another (8 maximum)");
+      normalTool?.assertDocumentAssets(
+        value as SceneAuthoringDocumentSpec,
+        key,
+      );
+      asepriteTool?.assertDocumentAssets(
+        value as SceneAuthoringDocumentSpec,
+        key,
+      );
+      tileTool?.assertDocumentAssets(value as SceneAuthoringDocumentSpec, key);
+      normalProjectAssets?.assertDocumentAssets(
+        value as SceneAuthoringDocumentSpec,
+        key,
+      );
+      const nextResolved = resolvePlacementWorkspaceDocument(value);
+      await loadPlacementSpatialModels(
+        runtimeEngine,
+        value as SceneAuthoringDocumentSpec,
+        spatialModels,
+        desktop ? (desktop.assetFolderModels ?? []) : undefined,
+      );
+      await spatialWorkspace?.ensureModels(value as SceneAuthoringDocumentSpec);
+      const nextRegistry = createSceneInstanceHandleRegistry({
+        entityExists: (handle) => runtimeEngine.gameplayEntityExists(handle),
+      });
+      const nextViewer = createScenePlacementViewer({
+        document: value as SceneAuthoringDocumentSpec,
+        viewport: viewer.state().viewport,
+        selectedInstanceId:
+          firstActorInstance(nextResolved) ??
+          nextResolved.bindingPlan?.instances[0]?.id,
+        instanceHandleRegistry: nextRegistry,
+        validateDraft: (state) => {
+          if (!assetBatchEditing) spatialWorkspace?.sync(state);
+        },
+      });
+      // Validation above guarantees this is the original scene-authoring envelope.
+      const next: WorkspaceDocument = {
+        key,
+        source,
+        document: value as SceneAuthoringDocumentSpec,
+        resolved: nextResolved,
+        viewer: nextViewer,
+        registry: nextRegistry,
+        inspector,
+        lifetime: new AbortController(),
+        saveEnabled: canSave,
+        dirty: false,
+        desktop,
+        snap: { enabled: false, gridSize: DEFAULT_SNAP_GRID_SIZE },
+      };
+      next.inspector = createDocumentInspector(next);
+      documents.set(key, next);
+      try {
+        switching = false;
+        if (!activateDocument(key))
+          throw new Error(
+            "Wait for the current pointer edit before opening a document",
+          );
+      } catch (error) {
+        documents.delete(key);
+        next.lifetime.abort();
+        next.inspector.element.remove();
+        syncTabs();
+        throw error;
+      }
+    }
     setState(viewer.state());
 
     runtime.start();
   } catch (error) {
     shell.destroy();
+    gridRenderer?.destroy();
     renderRuntimeDemoError(error, {
       title: FERRUM_AUTHORING_VIEWER_TITLE,
       diagnosticReport,
@@ -593,16 +2412,30 @@ async function bootstrap(): Promise<void> {
   }
 }
 
+function resolvePlacementWorkspaceDocument(
+  value: unknown,
+): ResolvedSceneAuthoringDocument {
+  return resolveSceneAuthoringDocument(value, {
+    path: "placementViewer.document",
+    validateBindings: true,
+    validateComponents: true,
+    missingBehavior: "ignore",
+  });
+}
+
 function placementSceneDocumentUrl(): string {
   const scene = new URLSearchParams(window.location.search).get("scene");
   if (scene === null || scene === "" || scene === "default") {
     return SCENE_DOCUMENT_URL;
   }
+  if (scene === "hd2d") return HD2D_SCENE_DOCUMENT_URL;
   throw new Error(`Unsupported placement scene fixture '${scene}'.`);
 }
 
 function placementMassAuthoringEnabled(): boolean {
-  return new URLSearchParams(window.location.search).get("massAuthoring") === "true";
+  return (
+    new URLSearchParams(window.location.search).get("massAuthoring") === "true"
+  );
 }
 
 function placementDesktopProjectPath(): string | undefined {
@@ -684,11 +2517,11 @@ function createPlacementOverlay(
   resizeHandle.type = "button";
   resizeHandle.className = "placement-resize-handle";
   resizeHandle.dataset.placementResizeHandle = "se";
-  resizeHandle.setAttribute("aria-label", "Resize selected object");
+  setUiAttribute(resizeHandle, "aria-label", "Resize selected object");
   colliderOffsetHandle.type = "button";
   colliderOffsetHandle.className = "placement-collider-offset-handle";
   colliderOffsetHandle.dataset.placementColliderOffsetHandle = "true";
-  colliderOffsetHandle.setAttribute("aria-label", "Move collider offset");
+  setUiAttribute(colliderOffsetHandle, "aria-label", "Move collider offset");
   colliderOverlay.append(colliderOffsetHandle);
   selection.append(label, resizeHandle);
   element.append(draftLayer, colliderOverlay, selection);
@@ -697,7 +2530,13 @@ function createPlacementOverlay(
   return {
     element,
     setState(state, interaction) {
-      renderPlacementDraftMarkers(draftLayer, state, boundsById, interaction, assetProvider());
+      renderPlacementDraftMarkers(
+        draftLayer,
+        state,
+        boundsById,
+        interaction,
+        assetProvider(),
+      );
       const selected = state.selected;
       if (selected === undefined) {
         selection.dataset.visible = "false";
@@ -713,16 +2552,25 @@ function createPlacementOverlay(
         return;
       }
       selection.dataset.visible = "true";
+      selection.dataset.locked = String(
+        state.lockedInstanceIds.includes(selected.instanceId),
+      );
       positionPlacementVisual(selection, selected, state, bounds);
       label.textContent = selected.instanceId;
       const resizeKind = placementResizeKindForInstance(selected);
-      selection.dataset.resizable = String(resizeKind !== undefined);
+      selection.dataset.resizable = String(
+        resizeKind !== undefined &&
+          state.selectedInstanceIds.length === 1 &&
+          !hasLockedSelection(state),
+      );
       if (resizeKind === undefined) {
         delete selection.dataset.resizeKind;
       } else {
         selection.dataset.resizeKind = resizeKind;
       }
       updatePlacementColliderOverlay(colliderOverlay, state, selected);
+      if (state.selectedInstanceIds.length !== 1 || hasLockedSelection(state))
+        colliderOverlay.dataset.offsetDraggable = "false";
     },
   };
 }
@@ -733,9 +2581,14 @@ function positionPlacementVisual(
   state: ScenePlacementViewerState,
   bounds: PlacementInstanceBounds,
 ): void {
-  const geometry = instance.visual === undefined
-    ? { ...instance.transform, width: bounds.width * instance.transform.scale, height: bounds.height * instance.transform.scale }
-    : scenePlacementVisualGeometry(instance.visual, instance.transform);
+  const geometry =
+    instance.visual === undefined
+      ? {
+          ...instance.transform,
+          width: bounds.width * instance.transform.scale,
+          height: bounds.height * instance.transform.scale,
+        }
+      : scenePlacementVisualGeometry(instance.visual, instance.transform);
   const topLeft = worldToSceneScreen(state.viewport, {
     x: geometry.x - geometry.width * 0.5,
     y: geometry.y - geometry.height * 0.5,
@@ -753,7 +2606,9 @@ function placementResizeKindForInstance(
   if (visual?.kind !== "primitive") {
     return undefined;
   }
-  return visual.shape === "rect" || visual.shape === "circle" ? visual.shape : undefined;
+  return visual.shape === "rect" || visual.shape === "circle"
+    ? visual.shape
+    : undefined;
 }
 
 function updatePlacementColliderOverlay(
@@ -830,8 +2685,12 @@ function placementColliderOverlayBounds(
       return {
         x,
         y,
-        width: Math.max(1, Math.max(...xs) - Math.min(...xs)) * selected.transform.scale,
-        height: Math.max(1, Math.max(...ys) - Math.min(...ys)) * selected.transform.scale,
+        width:
+          Math.max(1, Math.max(...xs) - Math.min(...xs)) *
+          selected.transform.scale,
+        height:
+          Math.max(1, Math.max(...ys) - Math.min(...ys)) *
+          selected.transform.scale,
       };
     }
   }
@@ -855,7 +2714,12 @@ function renderPlacementDraftMarkers(
     if (!draftIds.has(instance.instanceId)) {
       continue;
     }
-    const marker = createPlacementDraftMarker(instance, state, boundsById, assetProvider);
+    const marker = createPlacementDraftMarker(
+      instance,
+      state,
+      boundsById,
+      assetProvider,
+    );
     if (marker !== undefined) {
       markers.push(marker);
     }
@@ -866,7 +2730,9 @@ function renderPlacementDraftMarkers(
   layer.replaceChildren(...markers);
 }
 
-function placementDraftVisibleInstanceIds(state: ScenePlacementViewerState): Set<string> {
+function placementDraftVisibleInstanceIds(
+  state: ScenePlacementViewerState,
+): Set<string> {
   const result = new Set<string>();
   for (const operation of state.draftPatch?.operations ?? []) {
     switch (operation.kind) {
@@ -904,7 +2770,7 @@ function createPlacementDraftMarker(
   const label = document.createElement("div");
   marker.className = "placement-draft-marker";
   label.className = "placement-draft-label";
-  label.textContent = `${instance.instanceId} draft`;
+  setUiText(label, uiMessage("{0} draft", instance.instanceId));
   applyPlacementMarkerAssetPreview(marker, instance.visual, assetProvider);
   positionPlacementVisual(marker, instance, state, bounds);
   marker.append(label);
@@ -915,12 +2781,16 @@ function createPlacementPendingAddMarker(
   state: ScenePlacementViewerState,
   interaction: PlacementInteractionState,
 ): HTMLElement | undefined {
-  if (interaction.pendingAdd === undefined || state.pointerWorld === undefined) {
+  if (
+    interaction.pendingAdd === undefined ||
+    state.pointerWorld === undefined
+  ) {
     return undefined;
   }
-  const preview = interaction.pendingAddPreview?.action === interaction.pendingAdd
-    ? interaction.pendingAddPreview
-    : placementFallbackPendingAddPreview(interaction.pendingAdd);
+  const preview =
+    interaction.pendingAddPreview?.action === interaction.pendingAdd
+      ? interaction.pendingAddPreview
+      : placementFallbackPendingAddPreview(interaction.pendingAdd);
   const topLeft = worldToSceneScreen(state.viewport, {
     x: state.pointerWorld.x - preview.width * 0.5,
     y: state.pointerWorld.y - preview.height * 0.5,
@@ -931,8 +2801,8 @@ function createPlacementPendingAddMarker(
   marker.dataset.placementPendingAdd = interaction.pendingAdd;
   applyPlacementPendingMarkerPreview(marker, preview);
   label.className = "placement-draft-label";
-  label.textContent = `${preview.label} preview`;
-  marker.style.transform = `translate(${topLeft.x.toFixed(2)}px, ${topLeft.y.toFixed(2)}px)`;
+  setUiText(label, uiMessage("{0} preview", preview.label));
+  marker.style.transform = `translate(${topLeft.x.toFixed(2)}px, ${topLeft.y.toFixed(2)}px) rotate(${preview.rotationRadians ?? 0}rad)`;
   marker.style.width = `${(preview.width * state.viewport.zoom).toFixed(2)}px`;
   marker.style.height = `${(preview.height * state.viewport.zoom).toFixed(2)}px`;
   marker.append(label);
@@ -956,6 +2826,7 @@ function applyPlacementMarkerAssetPreview(
     width: visual.bounds.width,
     height: visual.bounds.height,
     thumbnailUrl: asset?.thumbnailUrl,
+    uv: visual.frame,
   });
 }
 
@@ -975,6 +2846,15 @@ function applyPlacementPendingMarkerPreview(
   if (preview.thumbnailUrl !== undefined) {
     marker.dataset.placementHasThumbnail = "true";
     marker.style.backgroundImage = `url("${preview.thumbnailUrl}")`;
+    if (preview.uv) {
+      const { u0, v0, u1, v1 } = preview.uv,
+        du = u1 - u0,
+        dv = v1 - v0;
+      if (du > 0 && dv > 0) {
+        marker.style.backgroundSize = `${100 / du}% ${100 / dv}%`;
+        marker.style.backgroundPosition = `${du === 1 ? 0 : (100 * u0) / (1 - du)}% ${dv === 1 ? 0 : (100 * v0) / (1 - dv)}%`;
+      }
+    }
   }
 }
 
@@ -992,16 +2872,24 @@ function createPlacementInspector(
   const colliderDetails = createPlacementDetailsList();
   const behaviorDetails = createPlacementDetailsList();
   const handoffDetails = createPlacementDetailsList();
-  const controls = createPlacementTransformControls({ saveEnabled: options.saveEnabled });
-  const editControls = createPlacementEditControls(resolved, options.assetProvider);
+  const controls = createPlacementTransformControls({
+    saveEnabled: options.saveEnabled,
+  });
+  const editControls = createPlacementEditControls(
+    resolved,
+    options.assetProvider,
+  );
   const behaviorControls = createPlacementBehaviorBindingControls(resolved);
   const componentControls = createPlacementComponentControls({
     visualDetails,
     colliderDetails,
   });
-  const documentControls = createPlacementDocumentControls(options.sourceDocument);
+  const documentControls = createPlacementDocumentControls(
+    options.sourceDocument,
+  );
   const migrationReport = createPlacementMigrationReport();
   const handoffControls = createPlacementHandoffControls({
+    signal: options.signal,
     saveEnabled: options.saveEnabled,
     assetProvider: options.assetProvider,
   });
@@ -1030,8 +2918,9 @@ function createPlacementInspector(
   };
 
   element.className = "placement-panel";
+  registerUiRoot(element);
   list.className = "placement-list";
-  title.textContent = "Inspector";
+  setUiText(title, "Inspector");
 
   for (const instance of resolved.bindingPlan?.instances ?? []) {
     const button = document.createElement("button");
@@ -1043,81 +2932,209 @@ function createPlacementInspector(
 
   const detailPanel = document.createElement("section");
   detailPanel.className = "placement-inspector";
+  setUiAttribute(detailPanel, "aria-label", "Inspector");
+  const inspectorTabs = createPlacementPanelTabs("Inspector sections", [
+    ["properties", "Properties"],
+    ["placement", "Placement"],
+  ] as const);
+  const selectionHeader = document.createElement("output");
+  selectionHeader.className = "placement-selection-header";
+  selectionHeader.dataset.placementSelectionHeader = "true";
   const syncDocumentRows = (): void => {
-    rows.source.textContent = placementDocumentSourceLabel(options.sourceDocument);
-    rows.project.textContent = placementProjectStatusLabel();
-    rows.handoff.textContent = placementHandoffStatusLabel();
-    rows.assetFolder.textContent = placementAssetFolderStatusLabel();
-    rows.saveMode.textContent = placementSaveStatusLabel(options.saveEnabled);
+    rows.source.textContent = placementDocumentSourceLabel(
+      options.sourceDocument,
+    );
+    setUiText(rows.project, placementProjectStatusLabel());
+    setUiText(rows.handoff, placementHandoffStatusLabel());
+    setUiText(rows.assetFolder, placementAssetFolderStatusLabel());
+    setUiText(rows.saveMode, placementSaveStatusLabel(options.saveEnabled));
     documentControls.setState();
   };
-  window.addEventListener("ferrum-placement-desktop-statechange", syncDocumentRows);
-  detailPanel.append(
-    title,
-    createPlacementInspectorSection("Document", createPlacementInspectorSectionBody(
-      documentDetails,
-      documentControls.element,
-    )),
-    createPlacementInspectorSection("Identity", identityDetails),
-    createPlacementInspectorSection("Transform", createPlacementInspectorSectionBody(
-      transformDetails,
-      controls.element,
-    )),
-    createPlacementInspectorSection("Object", editControls.element),
-    componentControls.element,
-    createPlacementInspectorSection("Behavior Binding", createPlacementInspectorSectionBody(
-      behaviorDetails,
-      behaviorControls.element,
-    )),
-    createPlacementInspectorSection("Handoff", createPlacementInspectorSectionBody(
-      handoffDetails,
-      migrationReport.element,
-      handoffControls.element,
-    )),
+  window.addEventListener(
+    "ferrum-placement-desktop-statechange",
+    syncDocumentRows,
+    { signal: options.signal },
   );
-  element.append(list, detailPanel);
+  inspectorTabs.panels
+    .get("properties")!
+    .append(
+      createPlacementInspectorSection("Identity", identityDetails),
+      createPlacementInspectorSection(
+        "Transform",
+        createPlacementInspectorSectionBody(transformDetails, controls.element),
+      ),
+      createPlacementInspectorSection("Object", editControls.element),
+      componentControls.element,
+      createPlacementInspectorSection(
+        "Behavior Binding",
+        createPlacementInspectorSectionBody(
+          behaviorDetails,
+          behaviorControls.element,
+        ),
+      ),
+      createPlacementInspectorSection(
+        "Document",
+        createPlacementInspectorSectionBody(
+          documentDetails,
+          documentControls.element,
+        ),
+        false,
+      ),
+      createPlacementInspectorSection(
+        "Handoff",
+        createPlacementInspectorSectionBody(
+          handoffDetails,
+          migrationReport.element,
+          handoffControls.element,
+        ),
+      ),
+    );
+  const spatialMount = document.createElement("div"),
+    paletteMount = document.createElement("div");
+  spatialMount.dataset.placementSpatialProperties = "true";
+  paletteMount.dataset.placementSpatialPlacement = "true";
+  inspectorTabs.panels.get("properties")!.prepend(spatialMount);
+  inspectorTabs.panels
+    .get("placement")!
+    .append(editControls.placementElement, paletteMount);
+  detailPanel.append(title, selectionHeader, inspectorTabs.element);
+  const sceneDock = document.createElement("section");
+  sceneDock.className = "placement-scene-dock";
+  const assetMount = document.createElement("div");
+  assetMount.dataset.placementAssetMount = "true";
+  const navigator = createPlacementSceneNavigator(list, resolved);
+  sceneDock.append(navigator.element, list, assetMount);
+  element.append(sceneDock, detailPanel);
 
   return {
     element,
-    setState(state, migrationPreview) {
+    assetMount,
+    properties() {
+      inspectorTabs.select("properties");
+    },
+    review() {
+      inspectorTabs.select("properties");
+      const handoff = detailPanel.querySelector<HTMLDetailsElement>(
+        "[data-section=handoff]",
+      );
+      if (handoff) {
+        handoff.open = true;
+        handoff.scrollIntoView({ block: "nearest" });
+        handoff
+          .querySelector<HTMLElement>("summary")
+          ?.focus({ preventScroll: true });
+      }
+    },
+    setState(state, migrationPreview, context) {
       syncPlacementInstanceList(list, state);
-      for (const button of list.querySelectorAll<HTMLButtonElement>("button[data-instance-id]")) {
-        button.dataset.selected = String(button.dataset.instanceId === state.selectedInstanceId);
+      navigator.sync(
+        state,
+        context?.mode === "spatial" ? context.target : undefined,
+      );
+      for (const button of list.querySelectorAll<HTMLButtonElement>(
+        "button[data-instance-id]",
+      )) {
+        button.dataset.selected = String(
+          state.selectedInstanceIds.includes(button.dataset.instanceId ?? ""),
+        );
+        button.dataset.primary = String(
+          button.dataset.instanceId === state.selectedInstanceId,
+        );
+        button.setAttribute("aria-pressed", button.dataset.selected);
       }
       const selected = state.selected;
+      const target = context?.target;
+      setUiText(
+        selectionHeader,
+        state.spatial && target && context?.mode === "spatial"
+          ? uiMessage(
+              "{0} · {1}",
+              target.id,
+              target.kind === "surface"
+                ? uiMessage("Terrain")
+                : target.kind === "model"
+                  ? uiMessage("Model")
+                  : uiMessage("Sprite"),
+            )
+          : selected
+            ? uiMessage(
+                "{0} · {1}{2}",
+                selected.instanceId,
+                state.spatial?.models?.[selected.instanceId]
+                  ? uiMessage("Model")
+                  : selected.visual?.kind === "sprite"
+                    ? uiMessage("Sprite")
+                    : uiMessage("Object"),
+                state.selectedInstanceIds.length > 1
+                  ? uiMessage(
+                      " · {0} selected",
+                      state.selectedInstanceIds.length,
+                    )
+                  : uiMessage(""),
+              )
+            : "No selection",
+      );
+      setUiAttribute(selectionHeader, "title", uiContent(selectionHeader));
       syncDocumentRows();
-      rows.selected.textContent = selected?.instanceId ?? "-";
+      setUiText(
+        rows.selected,
+        state.selectedInstanceIds.length > 1
+          ? uiMessage(
+              "{0} objects · {1}",
+              state.selectedInstanceIds.length,
+              selected?.instanceId,
+            )
+          : uiMessage("{0}", selected?.instanceId ?? "-"),
+      );
       rows.hovered.textContent = state.hoveredInstanceId ?? "-";
-      rows.identity.textContent = selected === undefined
-        ? "-"
-        : `${selected.instanceId} / ${selected.prefab}`;
-      rows.visual.textContent = placementVisualLabel(selected);
-      rows.collider.textContent = placementColliderLabel(selected);
-      rows.behavior.textContent = formatAuthoringViewerBehaviorProfiles(selected?.behaviorProfiles);
+      rows.identity.textContent =
+        selected === undefined
+          ? "-"
+          : `${selected.instanceId} / ${selected.prefab}`;
+      setUiText(rows.visual, placementVisualLabel(selected));
+      setUiText(rows.collider, placementColliderLabel(selected));
+      rows.behavior.textContent = formatAuthoringViewerBehaviorProfiles(
+        selected?.behaviorProfiles,
+      );
       rows.role.textContent = selected?.role ?? "-";
-      rows.entity.textContent = selected?.entity === undefined
-        ? "-"
-        : `${selected.entity.entityId}:${selected.entity.entityGeneration}`;
-      rows.prefab.textContent = selected === undefined
-        ? "-"
-        : selected.variant === undefined
-          ? selected.prefab
-          : `${selected.prefab}/${selected.variant}`;
-      rows.transform.textContent = selected === undefined
-        ? "-"
-        : `${formatNumber(selected.transform.x)}, ${formatNumber(selected.transform.y)}`;
-      rows.pointer.textContent = state.pointerWorld === undefined
-        ? "-"
-        : `${formatNumber(state.pointerWorld.x)}, ${formatNumber(state.pointerWorld.y)}`;
-      rows.draft.textContent = state.draftPatch === undefined
-        ? "-"
-        : `${state.draftPatch.operations.length}`;
-      rows.migration.textContent = migrationPreview === undefined
-        ? "-"
-        : `${migrationPreview.references.length}`;
-      rows.patch.textContent = state.draftPatch === undefined
-        ? "clean"
-        : `${state.draftPatch.operations.length} operation${state.draftPatch.operations.length === 1 ? "" : "s"}`;
+      rows.entity.textContent =
+        selected?.entity === undefined
+          ? "-"
+          : `${selected.entity.entityId}:${selected.entity.entityGeneration}`;
+      rows.prefab.textContent =
+        selected === undefined
+          ? "-"
+          : selected.variant === undefined
+            ? selected.prefab
+            : `${selected.prefab}/${selected.variant}`;
+      rows.transform.textContent =
+        selected === undefined
+          ? "-"
+          : `${formatNumber(selected.transform.x)}, ${formatNumber(selected.transform.y)}`;
+      rows.pointer.textContent =
+        state.pointerWorld === undefined
+          ? "-"
+          : `${formatNumber(state.pointerWorld.x)}, ${formatNumber(state.pointerWorld.y)}`;
+      rows.draft.textContent =
+        state.draftPatch === undefined
+          ? "-"
+          : `${placementPatchOperationCount(state.draftPatch)}`;
+      rows.migration.textContent =
+        migrationPreview === undefined
+          ? "-"
+          : `${migrationPreview.references.length}`;
+      setUiText(
+        rows.patch,
+        state.draftPatch === undefined
+          ? "clean"
+          : uiMessage(
+              "{0} operation{1}",
+              placementPatchOperationCount(state.draftPatch),
+              placementPatchOperationCount(state.draftPatch) === 1
+                ? uiMessage("")
+                : uiMessage("s"),
+            ),
+      );
       rows.blockers.textContent = `${migrationPreview?.references.length ?? 0}`;
       rows.assets.textContent = `${placementAssetDiagnosticsForState(state, options.assetProvider()).length}`;
       migrationReport.setPreview(migrationPreview);
@@ -1126,6 +3143,22 @@ function createPlacementInspector(
       behaviorControls.setState(state);
       componentControls.setState(state);
       handoffControls.setState(state, migrationPreview);
+      if (state.selectedInstanceIds.length !== 1 || hasLockedSelection(state)) {
+        for (const control of componentControls.element.querySelectorAll<
+          HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+        >("input, select, textarea"))
+          control.disabled = true;
+        for (const control of behaviorControls.element.querySelectorAll<
+          HTMLInputElement | HTMLSelectElement | HTMLButtonElement
+        >("input, select, button"))
+          control.disabled = true;
+        for (const control of element.querySelectorAll<
+          HTMLInputElement | HTMLButtonElement
+        >(
+          "[data-placement-action=apply-components], [data-placement-action=rename-selected], [data-placement-action=create-object-definition], [data-placement-rename-id], [data-placement-definition-id]",
+        ))
+          control.disabled = true;
+      }
     },
   };
 }
@@ -1141,7 +3174,7 @@ function createPlacementInspectorSection(
   body: HTMLElement,
   open = true,
 ): HTMLDetailsElement {
-  return createAuthoringViewerDisclosureSection({
+  const section = createAuthoringViewerDisclosureSection({
     title,
     body,
     open,
@@ -1149,9 +3182,15 @@ function createPlacementInspectorSection(
     summaryClassName: "placement-inspector-section-title",
     bodyClassName: "placement-inspector-section-body",
   });
+  section.dataset.section = title.toLowerCase().replace(/ /g, "-");
+  const caption = section.querySelector("summary span");
+  if (caption) setUiText(caption, title);
+  return section;
 }
 
-function createPlacementInspectorSectionBody(...children: readonly HTMLElement[]): HTMLElement {
+function createPlacementInspectorSectionBody(
+  ...children: readonly HTMLElement[]
+): HTMLElement {
   const body = document.createElement("div");
   body.className = "placement-inspector-section-content";
   body.append(...children);
@@ -1191,27 +3230,68 @@ function createPlacementAppChrome(
       statusValue: "placement-status-value",
     },
   });
+  for (const label of chrome.statusBar.querySelectorAll(
+    ".placement-status-label",
+  )) {
+    setUiText(label, label.textContent ?? "");
+  }
+  const localizeChrome = (draftCount?: number) => {
+    const badges = chrome.fileStrip.querySelectorAll(".placement-state-badge");
+    const saveBadge = badges[0];
+    if (saveBadge) {
+      setUiText(saveBadge, saveBadge.textContent ?? "");
+      setUiAttribute(
+        saveBadge,
+        "title",
+        options.saveEnabled
+          ? "Save document changes"
+          : "File saving unavailable. Copy Patch or Handoff to keep changes.",
+      );
+    }
+    const draftBadge = badges[1];
+    if (draftBadge && draftCount !== undefined) {
+      setUiText(
+        draftBadge,
+        draftCount
+          ? uiMessage(
+              draftCount === 1 ? "{0} Change" : "{0} Changes",
+              draftCount,
+            )
+          : "Clean",
+      );
+    }
+    const statusValues = chrome.statusBar.querySelectorAll(
+      ".placement-status-item .placement-status-value",
+    );
+    const saveTarget = statusValues[statusValues.length - 1];
+    if (saveTarget)
+      setUiText(saveTarget, placementSaveStatusLabel(options.saveEnabled));
+  };
+  let lastDraftCount = 0;
 
   const setSnapshot = (
     state: ScenePlacementViewerState | undefined,
     migrationPreview: ScenePlacementBindingMigrationPreview | undefined,
   ): void => {
     const selected = state?.selected;
-    const draftCount = state?.draftPatch?.operations.length ?? 0;
+    const draftCount = placementPatchOperationCount(state?.draftPatch);
+    lastDraftCount = draftCount;
     const referenceCount = migrationPreview?.references.length ?? 0;
     chrome.setSnapshot({
       source: placementDocumentSourceLabel(options.sourceDocument),
       selected: selected?.instanceId,
-      prefab: selected === undefined
-        ? undefined
-        : selected.variant === undefined
-          ? selected.prefab
-          : `${selected.prefab}/${selected.variant}`,
+      prefab:
+        selected === undefined
+          ? undefined
+          : selected.variant === undefined
+            ? selected.prefab
+            : `${selected.prefab}/${selected.variant}`,
       draftCount,
       referenceCount,
       saveEnabled: options.saveEnabled,
       saveTarget: placementSaveStatusLabel(options.saveEnabled),
     });
+    localizeChrome(draftCount);
   };
 
   setSnapshot(undefined, undefined);
@@ -1222,9 +3302,11 @@ function createPlacementAppChrome(
     },
     setSaveResult(result) {
       chrome.setSaveResult(result);
+      localizeChrome(lastDraftCount);
     },
     setSaveError(error) {
       chrome.setSaveError(error);
+      localizeChrome(lastDraftCount);
     },
   };
 }
@@ -1238,7 +3320,7 @@ function createPlacementMigrationReport(): {
   const list = document.createElement("ul");
   element.className = "placement-migration-report";
   element.dataset.placementMigrationReport = "true";
-  title.textContent = "Binding references";
+  setUiText(title, "Binding references");
   list.className = "placement-migration-list";
   element.append(title, list);
   return {
@@ -1249,22 +3331,25 @@ function createPlacementMigrationReport(): {
       element.dataset.blocking = String(references.length > 0);
       if (references.length === 0) {
         const item = document.createElement("li");
-        item.textContent = "No pending binding references";
+        setUiText(item, "No pending binding references");
         list.replaceChildren(item);
         return;
       }
-      list.replaceChildren(...references.map((reference) => {
-        const item = document.createElement("li");
-        item.dataset.referenceKind = reference.referenceKind;
-        item.dataset.operationKind = reference.operationKind;
-        item.textContent = placementMigrationReferenceLabel(reference);
-        return item;
-      }));
+      list.replaceChildren(
+        ...references.map((reference) => {
+          const item = document.createElement("li");
+          item.dataset.referenceKind = reference.referenceKind;
+          item.dataset.operationKind = reference.operationKind;
+          setUiText(item, placementMigrationReferenceLabel(reference));
+          return item;
+        }),
+      );
     },
   };
 }
 
 function createPlacementHandoffControls(options: {
+  signal?: AbortSignal;
   saveEnabled: boolean;
   assetProvider: PlacementAssetProviderGetter;
 }): PlacementHandoffControls {
@@ -1282,55 +3367,82 @@ function createPlacementHandoffControls(options: {
   status.className = "placement-handoff-status";
   status.dataset.status = "idle";
   copyPatch.type = "button";
-  copyPatch.textContent = "Copy Patch";
+  setUiText(copyPatch, "Copy Patch");
   copyPatch.dataset.placementAction = "copy-patch";
   copyHandoff.type = "button";
-  copyHandoff.textContent = "Copy Handoff";
+  setUiText(copyHandoff, "Copy Handoff");
   copyHandoff.dataset.placementAction = "copy-handoff";
   saveHandoff.type = "button";
-  saveHandoff.textContent = "Save Handoff";
+  setUiText(saveHandoff, "Save Handoff");
   saveHandoff.dataset.placementAction = "save-handoff";
   saveDraft.type = "button";
-  saveDraft.textContent = "Save Draft";
+  setUiText(saveDraft, "Save Draft");
   saveDraft.dataset.placementAction = "save-draft";
   actions.append(copyPatch, copyHandoff, saveHandoff, saveDraft);
   element.append(actions, status);
 
-  const setStatus = (message: string, kind: "idle" | "success" | "blocked" | "error"): void => {
-    status.textContent = message;
+  const setStatus = (
+    message: UiContent,
+    kind: "idle" | "success" | "blocked" | "error",
+  ): void => {
+    setUiText(status, message);
     status.dataset.status = kind;
   };
   const syncStatus = (): void => {
     if (lastState === undefined) {
       return;
     }
-    const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+    const desktop = (window as PlacementViewerWindow)
+      .ferrumPlacementViewerDesktop;
     const desktopInvoke = placementDesktopInvoke();
     const autoSyncEnabled = placementDesktopHandoffAutoSyncEnabled();
-    const draftCount = lastState.draftPatch?.operations.length ?? 0;
+    const draftCount = placementPatchOperationCount(lastState.draftPatch);
     const blockedCount = lastMigrationPreview?.references.length ?? 0;
-    const assetDiagnosticCount = placementAssetDiagnosticsForState(lastState, options.assetProvider()).length;
+    const assetDiagnosticCount = placementAssetDiagnosticsForState(
+      lastState,
+      options.assetProvider(),
+    ).length;
     copyPatch.disabled = draftCount === 0;
     copyHandoff.disabled = false;
-    saveHandoff.disabled = desktopInvoke === undefined;
-    saveDraft.disabled = draftCount === 0 || !options.saveEnabled || blockedCount > 0;
+    saveHandoff.disabled =
+      desktopInvoke === undefined || desktop?.enabled !== true;
+    saveDraft.disabled =
+      draftCount === 0 || !options.saveEnabled || blockedCount > 0;
     saveDraft.dataset.blockedByReferences = String(blockedCount > 0);
     element.dataset.draftCount = String(draftCount);
     element.dataset.blockedReferenceCount = String(blockedCount);
     element.dataset.assetDiagnosticCount = String(assetDiagnosticCount);
-    element.dataset.autoHandoffSync = desktopInvoke === undefined
-      ? "unavailable"
-      : autoSyncEnabled
-        ? desktop?.handoffSyncStatus ?? "idle"
-        : "disabled";
+    element.dataset.autoHandoffSync =
+      desktopInvoke === undefined
+        ? "unavailable"
+        : autoSyncEnabled
+          ? (desktop?.handoffSyncStatus ?? "idle")
+          : "disabled";
     if (desktop?.lastHandoffError !== undefined) {
-      setStatus(`Handoff sync failed: ${desktop.lastHandoffError}`, "error");
+      setStatus(
+        uiMessage("Handoff sync failed: {0}", desktop.lastHandoffError),
+        "error",
+      );
     } else if (autoSyncEnabled && desktop?.handoffSyncStatus === "pending") {
       setStatus("Auto saving handoff", "idle");
     } else if (blockedCount > 0) {
-      setStatus(`${blockedCount} blocked reference${blockedCount === 1 ? "" : "s"}`, "blocked");
+      setStatus(
+        uiMessage(
+          "{0} blocked reference{1}",
+          blockedCount,
+          blockedCount === 1 ? uiMessage("") : uiMessage("s"),
+        ),
+        "blocked",
+      );
     } else if (draftCount > 0) {
-      setStatus(`${draftCount} patch operation${draftCount === 1 ? "" : "s"} ready`, "idle");
+      setStatus(
+        uiMessage(
+          "{0} patch operation{1} ready",
+          draftCount,
+          draftCount === 1 ? uiMessage("") : uiMessage("s"),
+        ),
+        "idle",
+      );
     } else if (autoSyncEnabled && desktop?.handoffSyncStatus === "saved") {
       setStatus("Handoff synced", "success");
     } else if (desktop?.enabled === true && !autoSyncEnabled) {
@@ -1341,16 +3453,23 @@ function createPlacementHandoffControls(options: {
   };
   let lastMigrationPreview: ScenePlacementBindingMigrationPreview | undefined;
   const copyJson = async (kind: "patch" | "handoff"): Promise<void> => {
-    const value = kind === "patch"
-      ? lastState?.draftPatch
-      : (window as PlacementViewerWindow).ferrumPlacementViewerAgentHandoff;
+    const value =
+      kind === "patch"
+        ? lastState?.draftPatch
+        : (window as PlacementViewerWindow).ferrumPlacementViewerAgentHandoff;
     if (value === undefined) {
-      setStatus(kind === "patch" ? "No draft patch to copy" : "No handoff payload yet", "blocked");
+      setStatus(
+        kind === "patch" ? "No draft patch to copy" : "No handoff payload yet",
+        "blocked",
+      );
       return;
     }
     try {
       await copyPlacementText(JSON.stringify(value, null, 2));
-      setStatus(kind === "patch" ? "Patch copied" : "Handoff copied", "success");
+      setStatus(
+        kind === "patch" ? "Patch copied" : "Handoff copied",
+        "success",
+      );
     } catch (error) {
       setStatus(placementErrorMessage(error), "error");
     }
@@ -1363,18 +3482,26 @@ function createPlacementHandoffControls(options: {
     void copyJson("handoff");
   });
   saveHandoff.addEventListener("click", () => {
-    void savePlacementAgentHandoffToDesktop().then((path) => {
-      if (path === undefined) {
-        setStatus("No handoff payload yet", "blocked");
-        return;
-      }
-      setStatus(`Handoff saved ${path}`, "success");
-    }).catch((error: unknown) => {
-      publishPlacementDesktopState({ lastHandoffError: placementErrorMessage(error) });
-      setStatus(placementErrorMessage(error), "error");
-    });
+    const documentRevision = placementDocumentRevision;
+    void savePlacementAgentHandoffToDesktop()
+      .then((path) => {
+        if (path === undefined) {
+          setStatus("No handoff payload yet", "blocked");
+          return;
+        }
+        setStatus(uiMessage("Handoff saved {0}", path), "success");
+      })
+      .catch((error: unknown) => {
+        if (documentRevision !== placementDocumentRevision) return;
+        publishPlacementDesktopState({
+          lastHandoffError: placementErrorMessage(error),
+        });
+        setStatus(placementErrorMessage(error), "error");
+      });
   });
-  window.addEventListener("ferrum-placement-desktop-statechange", syncStatus);
+  window.addEventListener("ferrum-placement-desktop-statechange", syncStatus, {
+    signal: options.signal,
+  });
 
   return {
     element,
@@ -1389,27 +3516,69 @@ function createPlacementHandoffControls(options: {
 function placementMigrationReferenceLabel(
   reference: ScenePlacementBindingMigrationPreview["references"][number],
 ): string {
-  const next = reference.nextInstanceId === undefined ? "" : ` -> ${reference.nextInstanceId}`;
+  const next =
+    reference.nextInstanceId === undefined
+      ? ""
+      : ` -> ${reference.nextInstanceId}`;
   return `${reference.operationKind}: ${reference.instanceId}${next} (${reference.referenceKind}) ${reference.path}`;
 }
 
-function syncPlacementInstanceList(list: HTMLElement, state: ScenePlacementViewerState): void {
-  const currentIds = Array.from(list.querySelectorAll<HTMLButtonElement>("button[data-instance-id]"))
-    .map((button) => button.dataset.instanceId ?? "");
+function syncPlacementInstanceList(
+  list: HTMLElement,
+  state: ScenePlacementViewerState,
+): void {
+  const currentIds = Array.from(
+    list.querySelectorAll<HTMLButtonElement>("button[data-instance-id]"),
+  ).map((button) => button.dataset.instanceId ?? "");
   const nextIds = state.instances.map((instance) => instance.instanceId);
-  if (
-    currentIds.length === nextIds.length
-    && currentIds.every((id, index) => id === nextIds[index])
-  ) {
-    return;
+  const nextIdSet = new Set(nextIds);
+  const same =
+    currentIds.length === nextIds.length &&
+    currentIds.every((id) => nextIdSet.has(id));
+  if (!same || !list.querySelector("[data-placement-lock-instance]"))
+    list.replaceChildren(
+      ...nextIds.map((instanceId) => {
+        const row = document.createElement("div");
+        row.className = "placement-instance-row";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = instanceId;
+        button.dataset.instanceId = instanceId;
+        const lock = document.createElement("button");
+        lock.type = "button";
+        lock.dataset.placementLockInstance = instanceId;
+        row.append(button, lock);
+        return row;
+      }),
+    );
+  const locked = new Set(state.lockedInstanceIds);
+  for (const control of list.querySelectorAll<HTMLButtonElement>(
+    "[data-placement-lock-instance]",
+  )) {
+    const isLocked = locked.has(control.dataset.placementLockInstance ?? "");
+    setUiText(control, isLocked ? "Unlock" : "Lock");
+    setUiAttribute(
+      control,
+      "title",
+      uiMessage(
+        "{0} object",
+        isLocked ? uiMessage("Unlock") : uiMessage("Lock"),
+      ),
+    );
+    setUiAttribute(
+      control,
+      "aria-label",
+      uiMessage(
+        "{0} {1}",
+        isLocked ? uiMessage("Unlock") : uiMessage("Lock"),
+        control.dataset.placementLockInstance,
+      ),
+    );
+    control.setAttribute("aria-pressed", String(isLocked));
+    control
+      .closest<HTMLElement>(".placement-instance-row")
+      ?.setAttribute("data-locked", String(isLocked));
   }
-  list.replaceChildren(...nextIds.map((instanceId) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = instanceId;
-    button.dataset.instanceId = instanceId;
-    return button;
-  }));
 }
 
 function createPlacementDocumentControls(sourceDocument: string): {
@@ -1421,7 +3590,11 @@ function createPlacementDocumentControls(sourceDocument: string): {
   const assetRow = document.createElement("div");
   const documentRow = document.createElement("div");
   const projectPath = appendTextControl(projectRow, "project", "projectPath");
-  const assetFolderPath = appendTextControl(assetRow, "assets", "assetFolderPath");
+  const assetFolderPath = appendTextControl(
+    assetRow,
+    "assets",
+    "assetFolderPath",
+  );
   const path = appendTextControl(documentRow, "document", "sceneDocumentPath");
   const openProject = document.createElement("button");
   const chooseProject = document.createElement("button");
@@ -1432,35 +3605,45 @@ function createPlacementDocumentControls(sourceDocument: string): {
   const sample = document.createElement("button");
 
   form.className = "placement-controls placement-document-controls";
-  projectRow.className = "placement-control-grid placement-document-project-grid";
+  projectRow.className =
+    "placement-control-grid placement-document-project-grid";
   assetRow.className = "placement-control-grid placement-document-asset-grid";
-  documentRow.className = "placement-control-grid placement-document-scene-grid";
+  documentRow.className =
+    "placement-control-grid placement-document-scene-grid";
   projectPath.value = placementProjectInputValue();
-  projectPath.placeholder = "/absolute/path/to/project";
+  setUiAttribute(projectPath, "placeholder", "/absolute/path/to/project");
   assetFolderPath.value = placementAssetFolderInputValue();
-  assetFolderPath.placeholder = "/absolute/path/to/project/public/assets";
+  setUiAttribute(
+    assetFolderPath,
+    "placeholder",
+    "/absolute/path/to/project/public/assets",
+  );
   path.value = sourceDocument;
-  path.placeholder = "/absolute/path/to/placement.scene-authoring.json";
+  setUiAttribute(
+    path,
+    "placeholder",
+    "/absolute/path/to/placement.scene-authoring.json",
+  );
   openProject.type = "button";
-  openProject.textContent = "Open Project";
+  setUiText(openProject, "Open Project");
   openProject.dataset.placementAction = "open-project-path";
   chooseProject.type = "button";
-  chooseProject.textContent = "Choose";
+  setUiText(chooseProject, "Choose");
   chooseProject.dataset.placementAction = "browse-project-folder";
   useAssets.type = "button";
-  useAssets.textContent = "Use Assets";
+  setUiText(useAssets, "Use Assets");
   useAssets.dataset.placementAction = "open-asset-folder";
   chooseAssets.type = "button";
-  chooseAssets.textContent = "Choose";
+  setUiText(chooseAssets, "Choose");
   chooseAssets.dataset.placementAction = "browse-asset-folder";
   browse.type = "button";
-  browse.textContent = "Browse";
+  setUiText(browse, "Browse");
   browse.dataset.placementAction = "browse-scene-document";
   openPath.type = "button";
-  openPath.textContent = "Open Path";
+  setUiText(openPath, "Open Path");
   openPath.dataset.placementAction = "open-scene-document-path";
   sample.type = "button";
-  sample.textContent = "Sample";
+  setUiText(sample, "Sample");
   sample.dataset.placementAction = "open-sample-scene-document";
   projectRow.append(openProject, chooseProject);
   assetRow.append(useAssets, chooseAssets);
@@ -1484,9 +3667,11 @@ function createPlacementDocumentControls(sourceDocument: string): {
     projectPath.disabled = !desktopEnabled;
     assetFolderPath.disabled = !desktopEnabled;
     path.disabled = !desktopEnabled;
-    openProject.disabled = !desktopEnabled || projectPath.value.trim().length === 0;
+    openProject.disabled =
+      !desktopEnabled || projectPath.value.trim().length === 0;
     chooseProject.disabled = !dialogEnabled;
-    useAssets.disabled = !desktopEnabled || assetFolderPath.value.trim().length === 0;
+    useAssets.disabled =
+      !desktopEnabled || assetFolderPath.value.trim().length === 0;
     chooseAssets.disabled = !dialogEnabled;
     browse.disabled = !dialogEnabled;
     openPath.disabled = !desktopEnabled || path.value.trim().length === 0;
@@ -1533,9 +3718,14 @@ function createPlacementDocumentControls(sourceDocument: string): {
   };
 }
 
-function createPlacementTransformControls(options: Pick<PlacementInspectorOptions, "saveEnabled">): {
+function createPlacementTransformControls(
+  options: Pick<PlacementInspectorOptions, "saveEnabled">,
+): {
   element: HTMLFormElement;
-  setState(state: ScenePlacementViewerState, migrationPreview?: ScenePlacementBindingMigrationPreview): void;
+  setState(
+    state: ScenePlacementViewerState,
+    migrationPreview?: ScenePlacementBindingMigrationPreview,
+  ): void;
 } {
   const form = document.createElement("form");
   const row = document.createElement("div");
@@ -1556,10 +3746,10 @@ function createPlacementTransformControls(options: Pick<PlacementInspectorOption
   row.className = "placement-control-grid";
   snapRow.className = "placement-control-grid placement-control-grid-secondary";
   save.type = "button";
-  save.textContent = "Save";
+  setUiText(save, "Save");
   save.dataset.placementAction = "save-draft";
   clear.type = "button";
-  clear.textContent = "Revert";
+  setUiText(clear, "Revert");
   clear.dataset.placementAction = "clear-draft";
   grid.value = String(DEFAULT_SNAP_GRID_SIZE);
   grid.dataset.placementSnapGrid = "true";
@@ -1571,12 +3761,15 @@ function createPlacementTransformControls(options: Pick<PlacementInspectorOption
     element: form,
     setState(state, migrationPreview) {
       const selected = state.selected;
-      const disabled = selected === undefined;
+      const disabled = selected === undefined || hasLockedSelection(state);
       for (const input of Object.values(fields)) {
-        input.disabled = disabled;
+        input.disabled =
+          disabled ||
+          (state.selectedInstanceIds.length > 1 && input === fields.layer);
       }
       const clean = state.draftPatch === undefined;
-      const blockedByReferences = (migrationPreview?.references.length ?? 0) > 0;
+      const blockedByReferences =
+        (migrationPreview?.references.length ?? 0) > 0;
       save.disabled = clean || !options.saveEnabled || blockedByReferences;
       save.dataset.blockedByReferences = String(blockedByReferences);
       clear.disabled = clean;
@@ -1589,7 +3782,10 @@ function createPlacementTransformControls(options: Pick<PlacementInspectorOption
       setNumberInputValue(fields.x, selected.transform.x);
       setNumberInputValue(fields.y, selected.transform.y);
       setNumberInputValue(fields.scale, selected.transform.scale);
-      setNumberInputValue(fields.rotationRadians, selected.transform.rotationRadians);
+      setNumberInputValue(
+        fields.rotationRadians,
+        selected.transform.rotationRadians,
+      );
       setNumberInputValue(fields.layer, selected.transform.layer);
     },
   };
@@ -1600,44 +3796,106 @@ function createPlacementEditControls(
   assetProvider: PlacementAssetProviderGetter,
 ): {
   element: HTMLFormElement;
+  placementElement: HTMLFormElement;
   setState(state: ScenePlacementViewerState): void;
 } {
   const form = document.createElement("form");
+  const placementForm = document.createElement("form");
+  placementForm.className = "placement-controls placement-add-controls";
+  placementForm.addEventListener("submit", (event) => event.preventDefault());
   const row = document.createElement("div");
   const definitionRow = document.createElement("div");
   const addOptions = document.createElement("div");
   const palette = document.createElement("div");
   const rename = appendTextControl(row, "id", "rename");
-  const definitionId = appendTextControl(definitionRow, "definition id", "definitionId");
+  const definitionId = appendTextControl(
+    definitionRow,
+    "definition id",
+    "definitionId",
+  );
   const addId = appendTextControl(addOptions, "new id", "addId");
-  const sprite = appendSelectControl(addOptions, "sprite", "addSprite", placementSpriteAssetOptions(assetProvider()));
-  const spriteFrame = appendSelectControl(addOptions, "frame", "addSpriteFrame", []);
-  const prefab = appendSelectControl(addOptions, "prefab", "addPrefab", placementPrefabOptions(resolved));
+  const sprite = appendSelectControl(
+    addOptions,
+    "sprite",
+    "addSprite",
+    placementSpriteAssetOptions(assetProvider()),
+  );
+  const spriteFrame = appendSelectControl(
+    addOptions,
+    "frame",
+    "addSpriteFrame",
+    [],
+  );
+  const prefab = appendSelectControl(
+    addOptions,
+    "prefab",
+    "addPrefab",
+    placementPrefabOptions(resolved),
+  );
   const spritePreview = createPlacementSpriteAssetPreview();
   const renameButton = document.createElement("button");
   const definitionButton = document.createElement("button");
   const removeButton = document.createElement("button");
+  const duplicateButton = document.createElement("button");
+  duplicateButton.type = "button";
+  setUiText(duplicateButton, "Duplicate");
+  duplicateButton.dataset.placementAction = "duplicate-selected";
   form.className = "placement-controls placement-edit-controls";
   row.className = "placement-control-grid placement-control-grid-edit";
-  definitionRow.className = "placement-control-grid placement-control-grid-definition";
+  definitionRow.className =
+    "placement-control-grid placement-control-grid-definition";
   addOptions.className = "placement-control-grid placement-add-options";
   palette.className = "placement-add-palette";
   renameButton.type = "button";
-  renameButton.textContent = "Rename";
+  setUiText(renameButton, "Rename");
   renameButton.dataset.placementAction = "rename-selected";
   definitionButton.type = "button";
-  definitionButton.textContent = "Create Definition";
+  setUiText(definitionButton, "Create Definition");
   definitionButton.dataset.placementAction = "create-object-definition";
   removeButton.type = "button";
-  removeButton.textContent = "Remove";
+  setUiText(removeButton, "Remove");
   removeButton.dataset.placementAction = "remove-selected";
-  addId.placeholder = "auto";
+  setUiAttribute(addId, "placeholder", "auto");
+  const addRotation = document.createElement("input"),
+    addScale = document.createElement("input"),
+    addRepeat = document.createElement("input");
+  addRotation.type = addScale.type = "number";
+  addRotation.value = "0";
+  addScale.value = "1";
+  addScale.min = "0.01";
+  addScale.max = "100";
+  addScale.step = "0.1";
+  setUiAttribute(addRotation, "aria-label", "Placement rotation degrees");
+  setUiAttribute(addScale, "aria-label", "Placement scale");
+  addRotation.dataset.placementAddRotation = "true";
+  addScale.dataset.placementAddScale = "true";
+  addRepeat.type = "checkbox";
+  addRepeat.dataset.placementRepeat = "true";
+  const repeatLabel = document.createElement("label");
+  repeatLabel.append(addRepeat, uiText(" Keep Placing"));
+  for (const [title, input] of [
+    ["Rotation (°)", addRotation],
+    ["Scale (×)", addScale],
+  ] as const) {
+    const label = document.createElement("label");
+    label.className = "placement-field-label";
+    label.append(uiText(title), input);
+    addOptions.append(label);
+  }
+  repeatLabel.className = "placement-inline-checkbox";
+  addOptions.append(repeatLabel);
   sprite.value = defaultPlacementSpriteAsset(assetProvider());
   syncPlacementSpriteFrameOptions(spriteFrame, assetProvider(), sprite.value);
-  updatePlacementSpriteAssetPreview(spritePreview, assetProvider(), sprite.value, spriteFrame.value);
-  prefab.value = prefab.querySelector<HTMLOptionElement>("option[value='crate']") === null
-    ? prefab.value
-    : "crate";
+  updatePlacementSpriteAssetPreview(
+    spritePreview,
+    assetProvider(),
+    sprite.value,
+    spriteFrame.value,
+  );
+  prefab.value =
+    prefab.querySelector<HTMLOptionElement>("option[value='crate']") === null
+      ? prefab.value
+      : "crate";
   for (const [label, action] of [
     ["Rect", "add-rect"],
     ["Circle", "add-circle"],
@@ -1647,30 +3905,72 @@ function createPlacementEditControls(
   ] as const) {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = label;
+    setUiText(button, label);
     button.dataset.placementAction = action;
     palette.append(button);
   }
-  row.append(renameButton, removeButton);
+  row.append(renameButton, removeButton, duplicateButton);
   definitionRow.append(definitionButton);
   addOptions.append(spritePreview);
-  form.append(row, definitionRow, addOptions, palette);
+  form.append(row, definitionRow);
+  placementForm.append(addOptions, palette);
+  spritePreview.draggable = true;
+  setUiAttribute(spritePreview, "title", "Drag sprite into the viewport");
+  spritePreview.addEventListener("dragstart", (event) => {
+    if (
+      !event.dataTransfer ||
+      !assetProvider().resolveSpriteAsset(sprite.value)
+    ) {
+      event.preventDefault();
+      return;
+    }
+    placementAssetDrag = {
+      token: crypto.randomUUID(),
+      source: placementForm,
+      options: placementDraftOptionsFromControls(placementForm, "add-sprite"),
+    };
+    event.dataTransfer.effectAllowed = "copy";
+    event.dataTransfer.setData(
+      PLACEMENT_ASSET_DRAG_TYPE,
+      placementAssetDrag.token,
+    );
+  });
   form.addEventListener("submit", (event) => event.preventDefault());
   sprite.addEventListener("change", () => {
     syncPlacementSpriteFrameOptions(spriteFrame, assetProvider(), sprite.value);
-    updatePlacementSpriteAssetPreview(spritePreview, assetProvider(), sprite.value, spriteFrame.value);
+    updatePlacementSpriteAssetPreview(
+      spritePreview,
+      assetProvider(),
+      sprite.value,
+      spriteFrame.value,
+    );
   });
   spriteFrame.addEventListener("change", () => {
-    updatePlacementSpriteAssetPreview(spritePreview, assetProvider(), sprite.value, spriteFrame.value);
+    updatePlacementSpriteAssetPreview(
+      spritePreview,
+      assetProvider(),
+      sprite.value,
+      spriteFrame.value,
+    );
   });
 
   return {
     element: form,
+    placementElement: placementForm,
     setState(state) {
       const currentAssetProvider = assetProvider();
       syncPlacementSpriteAssetOptions(sprite, currentAssetProvider);
-      syncPlacementSpriteFrameOptions(spriteFrame, currentAssetProvider, sprite.value);
-      updatePlacementSpriteAssetPreview(spritePreview, currentAssetProvider, sprite.value, spriteFrame.value);
+      syncPlacementSpriteFrameOptions(
+        spriteFrame,
+        currentAssetProvider,
+        sprite.value,
+      );
+      updatePlacementSpriteAssetPreview(
+        spritePreview,
+        currentAssetProvider,
+        sprite.value,
+        spriteFrame.value,
+      );
       const selected = state.selected;
       const disabled = selected === undefined;
       syncPlacementPrefabOptions(prefab, state);
@@ -1678,7 +3978,8 @@ function createPlacementEditControls(
       definitionId.disabled = disabled;
       renameButton.disabled = disabled;
       definitionButton.disabled = disabled || selected?.visual === undefined;
-      removeButton.disabled = disabled;
+      removeButton.disabled = disabled || hasLockedSelection(state);
+      duplicateButton.disabled = disabled || hasLockedSelection(state);
       addId.disabled = false;
       sprite.disabled = false;
       spriteFrame.disabled = false;
@@ -1687,9 +3988,10 @@ function createPlacementEditControls(
         rename.value = selected?.instanceId ?? "";
       }
       if (document.activeElement !== definitionId) {
-        definitionId.value = selected === undefined
-          ? ""
-          : nextPlacementObjectDefinitionId(state, selected.instanceId);
+        definitionId.value =
+          selected === undefined
+            ? ""
+            : nextPlacementObjectDefinitionId(state, selected.instanceId);
       }
     },
   };
@@ -1704,17 +4006,22 @@ function createPlacementBehaviorBindingControls(
   const form = document.createElement("form");
   const row = document.createElement("div");
   const recipes = Object.keys(resolved.behaviorRecipes.entities);
-  const recipe = appendSelectControl(row, "recipe", "behaviorRecipe", recipes.length === 0 ? [""] : recipes);
+  const recipe = appendSelectControl(
+    row,
+    "recipe",
+    "behaviorRecipe",
+    recipes.length === 0 ? [""] : recipes,
+  );
   const attach = document.createElement("button");
   const detach = document.createElement("button");
 
   form.className = "placement-controls placement-behavior-controls";
   row.className = "placement-control-grid placement-behavior-grid";
   attach.type = "button";
-  attach.textContent = "Attach";
+  setUiText(attach, "Attach");
   attach.dataset.placementAction = "attach-behavior-binding";
   detach.type = "button";
-  detach.textContent = "Detach";
+  setUiText(detach, "Detach");
   detach.dataset.placementAction = "detach-behavior-binding";
   row.append(attach, detach);
   form.append(row);
@@ -1727,7 +4034,8 @@ function createPlacementBehaviorBindingControls(
       const disabled = selected === undefined || recipes.length === 0;
       recipe.disabled = disabled;
       attach.disabled = disabled;
-      detach.disabled = selected === undefined || selected.behaviorProfiles.length === 0;
+      detach.disabled =
+        selected === undefined || selected.behaviorProfiles.length === 0;
       if (selected === undefined) {
         recipe.value = recipes[0] ?? "";
         return;
@@ -1761,25 +4069,34 @@ function updatePlacementSpriteAssetPreview(
   frameId?: string,
 ): void {
   const asset = assetProvider.resolveSpriteAsset(assetId);
-  const frame = frameId === undefined || frameId.length === 0
-    ? undefined
-    : assetProvider.resolveSpriteFrame(assetId, frameId);
-  const image = preview.querySelector<HTMLElement>(".placement-asset-preview-image");
-  const label = preview.querySelector<HTMLElement>(".placement-asset-preview-label");
+  const frame =
+    frameId === undefined || frameId.length === 0
+      ? undefined
+      : assetProvider.resolveSpriteFrame(assetId, frameId);
+  const image = preview.querySelector<HTMLElement>(
+    ".placement-asset-preview-image",
+  );
+  const label = preview.querySelector<HTMLElement>(
+    ".placement-asset-preview-label",
+  );
   preview.dataset.assetId = asset?.id ?? "";
   preview.dataset.frameId = frame?.id ?? "";
   if (image !== null) {
     const thumbnailUrl = frame?.thumbnailUrl ?? asset?.thumbnailUrl;
-    image.style.backgroundImage = thumbnailUrl === undefined ? "" : `url("${thumbnailUrl}")`;
+    image.style.backgroundImage =
+      thumbnailUrl === undefined ? "" : `url("${thumbnailUrl}")`;
   }
   if (label !== null) {
     const width = frame?.width ?? asset?.width;
     const height = frame?.height ?? asset?.height;
-    const size = width === undefined || height === undefined
-      ? ""
-      : ` ${width}x${height}`;
-    const frameLabel = frame === undefined ? "" : ` / ${frame.label ?? frame.id}`;
-    label.textContent = asset === undefined ? "Missing asset" : `${asset.label ?? asset.id}${frameLabel}${size}`;
+    const size =
+      width === undefined || height === undefined ? "" : ` ${width}x${height}`;
+    const frameLabel =
+      frame === undefined ? "" : ` / ${frame.label ?? frame.id}`;
+    label.textContent =
+      asset === undefined
+        ? "Missing asset"
+        : `${asset.label ?? asset.id}${frameLabel}${size}`;
   }
 }
 
@@ -1794,15 +4111,15 @@ function syncPlacementSpriteFrameOptions(
   const previous = Array.from(select.options).map((option) => option.value);
   const next = ["", ...frameIds];
   if (
-    previous.length === next.length
-    && previous.every((id, index) => id === next[index])
+    previous.length === next.length &&
+    previous.every((id, index) => id === next[index])
   ) {
     return;
   }
   const options: HTMLOptionElement[] = [];
   const defaultOption = document.createElement("option");
   defaultOption.value = "";
-  defaultOption.textContent = "default";
+  setUiText(defaultOption, "default");
   options.push(defaultOption);
   for (const frame of frames) {
     const option = document.createElement("option");
@@ -1811,9 +4128,10 @@ function syncPlacementSpriteFrameOptions(
     options.push(option);
   }
   select.replaceChildren(...options);
-  select.value = current.length > 0 && frameIds.includes(current)
-    ? current
-    : frames[0]?.id ?? "";
+  select.value =
+    current.length > 0 && frameIds.includes(current)
+      ? current
+      : (frames[0]?.id ?? "");
 }
 
 function createPlacementComponentControls(summaries: {
@@ -1828,11 +4146,39 @@ function createPlacementComponentControls(summaries: {
   const colliderRow = document.createElement("div");
   const actionRow = document.createElement("div");
   const fields = {
-    visualKind: appendComponentSelectControl(visualRow, "visual", "visualKind", ["primitive", "sprite"]),
-    primitiveShape: appendComponentSelectControl(visualRow, "shape", "primitiveShape", ["rect", "circle", "point"]),
-    visualWidth: appendComponentNumberControl(visualRow, "width", "visualWidth", "1", "1"),
-    visualHeight: appendComponentNumberControl(visualRow, "height", "visualHeight", "1", "1"),
-    visualRadius: appendComponentNumberControl(visualRow, "radius", "visualRadius", "1", "1"),
+    visualKind: appendComponentSelectControl(
+      visualRow,
+      "visual",
+      "visualKind",
+      ["primitive", "sprite"],
+    ),
+    primitiveShape: appendComponentSelectControl(
+      visualRow,
+      "shape",
+      "primitiveShape",
+      ["rect", "circle", "point"],
+    ),
+    visualWidth: appendComponentNumberControl(
+      visualRow,
+      "width",
+      "visualWidth",
+      "1",
+      "1",
+    ),
+    visualHeight: appendComponentNumberControl(
+      visualRow,
+      "height",
+      "visualHeight",
+      "1",
+      "1",
+    ),
+    visualRadius: appendComponentNumberControl(
+      visualRow,
+      "radius",
+      "visualRadius",
+      "1",
+      "1",
+    ),
     visualColor: appendComponentColorControl(visualRow, "color", "visualColor"),
     colliderType: appendComponentSelectControl(
       colliderRow,
@@ -1840,20 +4186,90 @@ function createPlacementComponentControls(summaries: {
       "colliderType",
       ["none", "aabb", "circle", "capsule", "orientedBox", "convexPolygon"],
     ),
-    colliderWidth: appendComponentNumberControl(colliderRow, "collider w", "colliderWidth", "1", "1"),
-    colliderHeight: appendComponentNumberControl(colliderRow, "collider h", "colliderHeight", "1", "1"),
-    colliderRadius: appendComponentNumberControl(colliderRow, "collider r", "colliderRadius", "1", "1"),
-    colliderStartX: appendComponentNumberControl(colliderRow, "start x", "colliderStartX", "1"),
-    colliderStartY: appendComponentNumberControl(colliderRow, "start y", "colliderStartY", "1"),
-    colliderEndX: appendComponentNumberControl(colliderRow, "end x", "colliderEndX", "1"),
-    colliderEndY: appendComponentNumberControl(colliderRow, "end y", "colliderEndY", "1"),
-    colliderRotation: appendComponentNumberControl(colliderRow, "rotation", "colliderRotation", "0.01"),
-    colliderVertices: appendComponentTextareaControl(colliderRow, "vertices", "colliderVertices"),
-    colliderOffsetX: appendComponentNumberControl(colliderRow, "offset x", "colliderOffsetX", "1"),
-    colliderOffsetY: appendComponentNumberControl(colliderRow, "offset y", "colliderOffsetY", "1"),
-    colliderEnabled: appendComponentCheckboxControl(colliderRow, "enabled", "colliderEnabled"),
-    colliderTrigger: appendComponentCheckboxControl(colliderRow, "trigger", "colliderTrigger"),
-    layer: appendComponentSelectControl(colliderRow, "layer", "layer", PLACEMENT_COLLISION_LAYERS),
+    colliderWidth: appendComponentNumberControl(
+      colliderRow,
+      "collider w",
+      "colliderWidth",
+      "1",
+      "1",
+    ),
+    colliderHeight: appendComponentNumberControl(
+      colliderRow,
+      "collider h",
+      "colliderHeight",
+      "1",
+      "1",
+    ),
+    colliderRadius: appendComponentNumberControl(
+      colliderRow,
+      "collider r",
+      "colliderRadius",
+      "1",
+      "1",
+    ),
+    colliderStartX: appendComponentNumberControl(
+      colliderRow,
+      "start x",
+      "colliderStartX",
+      "1",
+    ),
+    colliderStartY: appendComponentNumberControl(
+      colliderRow,
+      "start y",
+      "colliderStartY",
+      "1",
+    ),
+    colliderEndX: appendComponentNumberControl(
+      colliderRow,
+      "end x",
+      "colliderEndX",
+      "1",
+    ),
+    colliderEndY: appendComponentNumberControl(
+      colliderRow,
+      "end y",
+      "colliderEndY",
+      "1",
+    ),
+    colliderRotation: appendComponentNumberControl(
+      colliderRow,
+      "rotation",
+      "colliderRotation",
+      "0.01",
+    ),
+    colliderVertices: appendComponentTextareaControl(
+      colliderRow,
+      "vertices",
+      "colliderVertices",
+    ),
+    colliderOffsetX: appendComponentNumberControl(
+      colliderRow,
+      "offset x",
+      "colliderOffsetX",
+      "1",
+    ),
+    colliderOffsetY: appendComponentNumberControl(
+      colliderRow,
+      "offset y",
+      "colliderOffsetY",
+      "1",
+    ),
+    colliderEnabled: appendComponentCheckboxControl(
+      colliderRow,
+      "enabled",
+      "colliderEnabled",
+    ),
+    colliderTrigger: appendComponentCheckboxControl(
+      colliderRow,
+      "trigger",
+      "colliderTrigger",
+    ),
+    layer: appendComponentSelectControl(
+      colliderRow,
+      "layer",
+      "layer",
+      PLACEMENT_COLLISION_LAYERS,
+    ),
   };
   const apply = document.createElement("button");
   let syncedInstanceId: string | undefined;
@@ -1863,23 +4279,30 @@ function createPlacementComponentControls(summaries: {
   colliderRow.className = "placement-control-grid placement-component-grid";
   actionRow.className = "placement-component-actions";
   apply.type = "button";
-  apply.textContent = "Apply Components";
+  setUiText(apply, "Apply Components");
   apply.dataset.placementAction = "apply-components";
   actionRow.append(apply);
   form.append(
-    createPlacementInspectorSection("Visual", createPlacementInspectorSectionBody(
-      summaries.visualDetails,
-      visualRow,
-    )),
-    createPlacementInspectorSection("Collider", createPlacementInspectorSectionBody(
-      summaries.colliderDetails,
-      colliderRow,
-    )),
+    createPlacementInspectorSection(
+      "Visual",
+      createPlacementInspectorSectionBody(summaries.visualDetails, visualRow),
+    ),
+    createPlacementInspectorSection(
+      "Collider",
+      createPlacementInspectorSectionBody(
+        summaries.colliderDetails,
+        colliderRow,
+      ),
+    ),
     actionRow,
   );
   form.addEventListener("submit", (event) => event.preventDefault());
-  form.addEventListener("input", () => syncPlacementComponentFieldState(fields));
-  form.addEventListener("change", () => syncPlacementComponentFieldState(fields));
+  form.addEventListener("input", () =>
+    syncPlacementComponentFieldState(fields),
+  );
+  form.addEventListener("change", () =>
+    syncPlacementComponentFieldState(fields),
+  );
 
   return {
     element: form,
@@ -1895,7 +4318,10 @@ function createPlacementComponentControls(summaries: {
         clearPlacementComponentFields(fields);
         return;
       }
-      if (syncedInstanceId !== selected.instanceId || !form.contains(document.activeElement)) {
+      if (
+        syncedInstanceId !== selected.instanceId ||
+        !form.contains(document.activeElement)
+      ) {
         syncedInstanceId = selected.instanceId;
         populatePlacementComponentFields(fields, selected);
       }
@@ -1938,17 +4364,31 @@ function populatePlacementComponentFields(
     fields.primitiveShape.value = "rect";
     setNumberInputValue(fields.visualWidth, visual.width);
     setNumberInputValue(fields.visualHeight, visual.height);
-    setNumberInputValue(fields.visualRadius, Math.max(1, Math.min(visual.width, visual.height) * 0.5));
-    fields.visualColor.value = normalizedPlacementColor(visual.tint ?? visual.color ?? DEFAULT_PRIMITIVE_COLOR);
+    setNumberInputValue(
+      fields.visualRadius,
+      Math.max(1, Math.min(visual.width, visual.height) * 0.5),
+    );
+    fields.visualColor.value = normalizedPlacementColor(
+      visual.tint ?? visual.color ?? DEFAULT_PRIMITIVE_COLOR,
+    );
   } else {
     const primitive = visual?.kind === "primitive" ? visual : undefined;
     const shape = primitive?.shape ?? "rect";
     fields.visualKind.value = "primitive";
     fields.primitiveShape.value = shape;
     setNumberInputValue(fields.visualWidth, primitive?.width ?? 48);
-    setNumberInputValue(fields.visualHeight, primitive?.height ?? (shape === "rect" ? 32 : primitive?.width ?? 48));
-    setNumberInputValue(fields.visualRadius, primitive?.radius ?? Math.max(1, (primitive?.width ?? 36) * 0.5));
-    fields.visualColor.value = normalizedPlacementColor(primitive?.color ?? (shape === "point" ? DEFAULT_POINT_COLOR : DEFAULT_PRIMITIVE_COLOR));
+    setNumberInputValue(
+      fields.visualHeight,
+      primitive?.height ?? (shape === "rect" ? 32 : (primitive?.width ?? 48)),
+    );
+    setNumberInputValue(
+      fields.visualRadius,
+      primitive?.radius ?? Math.max(1, (primitive?.width ?? 36) * 0.5),
+    );
+    fields.visualColor.value = normalizedPlacementColor(
+      primitive?.color ??
+        (shape === "point" ? DEFAULT_POINT_COLOR : DEFAULT_PRIMITIVE_COLOR),
+    );
   }
 
   const collider = selected.collider;
@@ -1957,7 +4397,10 @@ function populatePlacementComponentFields(
   if (collider?.type === "aabb") {
     setNumberInputValue(fields.colliderWidth, collider.halfWidth * 2);
     setNumberInputValue(fields.colliderHeight, collider.halfHeight * 2);
-    setNumberInputValue(fields.colliderRadius, Math.max(1, Math.min(collider.halfWidth, collider.halfHeight)));
+    setNumberInputValue(
+      fields.colliderRadius,
+      Math.max(1, Math.min(collider.halfWidth, collider.halfHeight)),
+    );
   } else if (collider?.type === "circle") {
     setNumberInputValue(fields.colliderWidth, collider.radius * 2);
     setNumberInputValue(fields.colliderHeight, collider.radius * 2);
@@ -1971,11 +4414,16 @@ function populatePlacementComponentFields(
   } else if (collider?.type === "orientedBox") {
     setNumberInputValue(fields.colliderWidth, collider.halfWidth * 2);
     setNumberInputValue(fields.colliderHeight, collider.halfHeight * 2);
-    setNumberInputValue(fields.colliderRadius, Math.max(1, Math.min(collider.halfWidth, collider.halfHeight)));
+    setNumberInputValue(
+      fields.colliderRadius,
+      Math.max(1, Math.min(collider.halfWidth, collider.halfHeight)),
+    );
     setNumberInputValue(fields.colliderRotation, collider.rotationRadians);
   } else if (collider?.type === "convexPolygon") {
     setNumberInputValue(fields.colliderRotation, collider.rotationRadians);
-    fields.colliderVertices.value = formatPlacementColliderVertices(collider.vertices);
+    fields.colliderVertices.value = formatPlacementColliderVertices(
+      collider.vertices,
+    );
   }
   if (collider !== undefined && collider.type !== "none") {
     setNumberInputValue(fields.colliderOffsetX, collider.offsetX);
@@ -2028,10 +4476,14 @@ function populatePlacementDefaultColliderFields(
 function formatPlacementColliderVertices(
   vertices: readonly { readonly x: number; readonly y: number }[],
 ): string {
-  return JSON.stringify(vertices.map((vertex) => ({ x: vertex.x, y: vertex.y })));
+  return JSON.stringify(
+    vertices.map((vertex) => ({ x: vertex.x, y: vertex.y })),
+  );
 }
 
-function clearPlacementComponentFields(fields: PlacementComponentControlFields): void {
+function clearPlacementComponentFields(
+  fields: PlacementComponentControlFields,
+): void {
   fields.visualKind.value = "primitive";
   fields.primitiveShape.value = "rect";
   fields.visualWidth.value = "";
@@ -2055,27 +4507,56 @@ function clearPlacementComponentFields(fields: PlacementComponentControlFields):
   fields.layer.value = "wall";
 }
 
-function syncPlacementComponentFieldState(fields: PlacementComponentControlFields): void {
+function syncPlacementComponentFieldState(
+  fields: PlacementComponentControlFields,
+): void {
   const visualKind = fields.visualKind.value as PlacementComponentVisualKind;
-  const primitiveShape = fields.primitiveShape.value as DataScenePrimitiveVisualShape;
-  const colliderType = fields.colliderType.value as PlacementComponentColliderType;
-  fields.primitiveShape.disabled = fields.visualKind.disabled || visualKind !== "primitive";
-  fields.visualWidth.disabled = fields.visualKind.disabled || (visualKind === "primitive" && primitiveShape === "circle");
-  fields.visualHeight.disabled = fields.visualKind.disabled || (visualKind === "primitive" && primitiveShape !== "rect");
-  fields.visualRadius.disabled = fields.visualKind.disabled || visualKind !== "primitive" || primitiveShape !== "circle";
-  fields.colliderWidth.disabled = fields.colliderType.disabled || (colliderType !== "aabb" && colliderType !== "orientedBox");
-  fields.colliderHeight.disabled = fields.colliderType.disabled || (colliderType !== "aabb" && colliderType !== "orientedBox");
-  fields.colliderRadius.disabled = fields.colliderType.disabled || (colliderType !== "circle" && colliderType !== "capsule");
-  fields.colliderStartX.disabled = fields.colliderType.disabled || colliderType !== "capsule";
-  fields.colliderStartY.disabled = fields.colliderType.disabled || colliderType !== "capsule";
-  fields.colliderEndX.disabled = fields.colliderType.disabled || colliderType !== "capsule";
-  fields.colliderEndY.disabled = fields.colliderType.disabled || colliderType !== "capsule";
-  fields.colliderRotation.disabled = fields.colliderType.disabled || (colliderType !== "orientedBox" && colliderType !== "convexPolygon");
-  fields.colliderVertices.disabled = fields.colliderType.disabled || colliderType !== "convexPolygon";
-  fields.colliderOffsetX.disabled = fields.colliderType.disabled || colliderType === "none";
-  fields.colliderOffsetY.disabled = fields.colliderType.disabled || colliderType === "none";
-  fields.colliderEnabled.disabled = fields.colliderType.disabled || colliderType === "none";
-  fields.colliderTrigger.disabled = fields.colliderType.disabled || colliderType === "none";
+  const primitiveShape = fields.primitiveShape
+    .value as DataScenePrimitiveVisualShape;
+  const colliderType = fields.colliderType
+    .value as PlacementComponentColliderType;
+  fields.primitiveShape.disabled =
+    fields.visualKind.disabled || visualKind !== "primitive";
+  fields.visualWidth.disabled =
+    fields.visualKind.disabled ||
+    (visualKind === "primitive" && primitiveShape === "circle");
+  fields.visualHeight.disabled =
+    fields.visualKind.disabled ||
+    (visualKind === "primitive" && primitiveShape !== "rect");
+  fields.visualRadius.disabled =
+    fields.visualKind.disabled ||
+    visualKind !== "primitive" ||
+    primitiveShape !== "circle";
+  fields.colliderWidth.disabled =
+    fields.colliderType.disabled ||
+    (colliderType !== "aabb" && colliderType !== "orientedBox");
+  fields.colliderHeight.disabled =
+    fields.colliderType.disabled ||
+    (colliderType !== "aabb" && colliderType !== "orientedBox");
+  fields.colliderRadius.disabled =
+    fields.colliderType.disabled ||
+    (colliderType !== "circle" && colliderType !== "capsule");
+  fields.colliderStartX.disabled =
+    fields.colliderType.disabled || colliderType !== "capsule";
+  fields.colliderStartY.disabled =
+    fields.colliderType.disabled || colliderType !== "capsule";
+  fields.colliderEndX.disabled =
+    fields.colliderType.disabled || colliderType !== "capsule";
+  fields.colliderEndY.disabled =
+    fields.colliderType.disabled || colliderType !== "capsule";
+  fields.colliderRotation.disabled =
+    fields.colliderType.disabled ||
+    (colliderType !== "orientedBox" && colliderType !== "convexPolygon");
+  fields.colliderVertices.disabled =
+    fields.colliderType.disabled || colliderType !== "convexPolygon";
+  fields.colliderOffsetX.disabled =
+    fields.colliderType.disabled || colliderType === "none";
+  fields.colliderOffsetY.disabled =
+    fields.colliderType.disabled || colliderType === "none";
+  fields.colliderEnabled.disabled =
+    fields.colliderType.disabled || colliderType === "none";
+  fields.colliderTrigger.disabled =
+    fields.colliderType.disabled || colliderType === "none";
 }
 
 function installPlacementSelection(
@@ -2088,11 +4569,39 @@ function installPlacementSelection(
     if (!(target instanceof HTMLButtonElement)) {
       return;
     }
+    if (target.dataset.placementLockInstance) {
+      documentSession?.finishEdit();
+      const id = target.dataset.placementLockInstance;
+      setState(
+        viewer.setInstancesLocked(
+          [id],
+          !viewer.state().lockedInstanceIds.includes(id),
+        ),
+      );
+      return;
+    }
     const instanceId = target.dataset.instanceId;
     if (instanceId === undefined) {
       return;
     }
-    setState(viewer.selectInstance(instanceId));
+    if (event.shiftKey && viewer.state().selectedInstanceId) {
+      const state = viewer.state(),
+        ids = state.instances.map((instance) => instance.instanceId);
+      const from = ids.indexOf(state.selectedInstanceId!),
+        to = ids.indexOf(instanceId);
+      setState(
+        viewer.selectInstances(
+          [
+            ...state.selectedInstanceIds,
+            ...ids.slice(Math.min(from, to), Math.max(from, to) + 1),
+          ]
+            .filter((id) => id !== instanceId)
+            .concat(instanceId),
+        ),
+      );
+    } else if (event.ctrlKey || event.metaKey)
+      setState(togglePlacementSelection(viewer, instanceId));
+    else setState(viewer.selectInstance(instanceId));
   });
 }
 
@@ -2104,32 +4613,38 @@ function installPlacementTransformControls(
   save: PlacementSaveControls,
 ): void {
   root.addEventListener("input", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLInputElement)) {
-      return;
-    }
-    if (target.dataset.placementSnapToggle === "true") {
-      interaction.enabled = target.checked;
-      publishPlacementInteraction(interaction);
-      if (interaction.enabled) {
-        snapSelectedInstance(viewer, interaction, setState);
+    try {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) {
+        return;
       }
-      return;
-    }
-    if (target.dataset.placementSnapGrid === "true") {
-      const value = numberInputValue(target);
-      if (value !== undefined && value > 0) {
-        interaction.gridSize = value;
+      if (target.dataset.placementSnapToggle === "true") {
+        interaction.enabled = target.checked;
         publishPlacementInteraction(interaction);
         if (interaction.enabled) {
           snapSelectedInstance(viewer, interaction, setState);
         }
+        return;
       }
-      return;
-    }
-    const field = target.dataset.placementTransformField;
-    if (field !== undefined) {
-      applyTransformInput(viewer, interaction, field, target, setState);
+      if (target.dataset.placementSnapGrid === "true") {
+        const value = numberInputValue(target);
+        if (value !== undefined && value > 0) {
+          interaction.gridSize = value;
+          publishPlacementInteraction(interaction);
+          if (interaction.enabled) {
+            snapSelectedInstance(viewer, interaction, setState);
+          } else {
+            setState(viewer.state());
+          }
+        }
+        return;
+      }
+      const field = target.dataset.placementTransformField;
+      if (field !== undefined) {
+        applyTransformInput(viewer, interaction, field, target, setState);
+      }
+    } catch (error) {
+      reportPlacementEditFailure(viewer, setState, error);
     }
   });
 
@@ -2139,7 +4654,11 @@ function installPlacementTransformControls(
       return;
     }
     if (target.dataset.placementAction === "clear-draft") {
-      setState(viewer.clearDraftPatch());
+      try {
+        setState(viewer.clearDraftPatch());
+      } catch (error) {
+        reportPlacementEditFailure(viewer, setState, error);
+      }
       return;
     }
     if (target.dataset.placementAction === "save-draft") {
@@ -2155,80 +4674,148 @@ function installPlacementEditControls(
   assetProvider: PlacementAssetProviderGetter,
   setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
 ): void {
+  const invalidatePlacementTool = (event: Event) => {
+    if (
+      !(event.target instanceof Element) ||
+      !event.target.matches(
+        "[data-placement-add-sprite], [data-placement-add-sprite-frame], [data-placement-add-prefab], [data-placement-add-rotation], [data-placement-add-scale]",
+      ) ||
+      (!interaction.pendingAdd && !placementAssetDrag)
+    )
+      return;
+    // The ghost and card refer to the captured asset/settings. Require an
+    // explicit re-arm rather than committing different live control values.
+    resetPlacementAdd(interaction);
+    setState(viewer.state());
+  };
+  root.addEventListener("input", invalidatePlacementTool);
+  root.addEventListener("change", invalidatePlacementTool);
   root.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLButtonElement)) {
-      return;
-    }
-    if (target.dataset.placementAction === "rename-selected") {
-      const selected = viewer.state().selected;
-      const input = root.querySelector<HTMLInputElement>("input[data-placement-rename-id='true']");
-      const nextInstanceId = input?.value.trim();
-      if (selected !== undefined && nextInstanceId !== undefined && nextInstanceId.length > 0) {
-        setState(viewer.renameInstance(selected.instanceId, nextInstanceId));
-      }
-      return;
-    }
-    if (target.dataset.placementAction === "create-object-definition") {
-      const selected = viewer.state().selected;
-      const input = root.querySelector<HTMLInputElement>("input[data-placement-definition-id='true']");
-      const definitionId = input?.value.trim();
-      if (selected === undefined || definitionId === undefined || definitionId.length === 0) {
+    try {
+      const target = event.target;
+      if (!(target instanceof HTMLButtonElement)) {
         return;
       }
-      try {
-        clearPlacementDefinitionError(root);
-        const state = viewer.addObjectDefinition(definitionId, placementObjectDefinitionFromSelected(selected));
-        setState(state);
-      } catch (error) {
-        reportPlacementDefinitionError(root, error);
+      if (target.dataset.placementAction === "rename-selected") {
+        const selected = viewer.state().selected;
+        const input = root.querySelector<HTMLInputElement>(
+          "input[data-placement-rename-id='true']",
+        );
+        const nextInstanceId = input?.value.trim();
+        if (
+          selected !== undefined &&
+          nextInstanceId !== undefined &&
+          nextInstanceId.length > 0
+        ) {
+          setState(viewer.renameInstance(selected.instanceId, nextInstanceId));
+        }
+        return;
       }
-      return;
-    }
-    if (target.dataset.placementAction === "remove-selected") {
-      const selected = viewer.state().selected;
-      if (selected !== undefined) {
-        setState(viewer.removeInstance(selected.instanceId));
+      if (target.dataset.placementAction === "create-object-definition") {
+        const selected = viewer.state().selected;
+        const input = root.querySelector<HTMLInputElement>(
+          "input[data-placement-definition-id='true']",
+        );
+        const definitionId = input?.value.trim();
+        if (
+          selected === undefined ||
+          definitionId === undefined ||
+          definitionId.length === 0
+        ) {
+          return;
+        }
+        try {
+          clearPlacementDefinitionError(root);
+          const state = viewer.addObjectDefinition(
+            definitionId,
+            placementObjectDefinitionFromSelected(selected),
+          );
+          setState(state);
+        } catch (error) {
+          reportPlacementDefinitionError(root, error);
+        }
+        return;
       }
-      return;
-    }
-    if (target.dataset.placementAction === "attach-behavior-binding") {
-      const selected = viewer.state().selected;
-      const recipe = root.querySelector<HTMLSelectElement>("select[data-placement-behavior-recipe='true']")
-        ?.value.trim();
-      if (selected !== undefined && recipe !== undefined && recipe.length > 0) {
-        setState(viewer.updateBehaviorBinding(
-          { kind: "instance", instanceId: selected.instanceId },
-          recipe,
-        ));
+      if (target.dataset.placementAction === "remove-selected") {
+        const state = viewer.state();
+        if (!hasLockedSelection(state)) {
+          setState(viewer.removeInstances(state.selectedInstanceIds));
+        }
+        return;
       }
-      return;
-    }
-    if (target.dataset.placementAction === "detach-behavior-binding") {
-      const selected = viewer.state().selected;
-      if (selected !== undefined) {
-        setState(viewer.updateBehaviorBinding(
-          { kind: "instance", instanceId: selected.instanceId },
-          null,
-        ));
+      if (target.dataset.placementAction === "duplicate-selected") {
+        documentSession?.finishEdit();
+        setState(viewer.duplicateInstances(viewer.state().selectedInstanceIds));
+        return;
       }
-      return;
-    }
-    const addAction = target.dataset.placementAction;
-    if (
-      addAction === "add-rect"
-      || addAction === "add-circle"
-      || addAction === "add-point"
-      || addAction === "add-sprite"
-      || addAction === "add-prefab"
-    ) {
-      const draftOptions = placementDraftOptionsFromControls(root, addAction);
-      interaction.pendingAdd = addAction;
-      interaction.pendingAddPreview = placementPendingAddPreview(addAction, assetProvider(), draftOptions);
-      publishPlacementInteraction(interaction);
-      setState(viewer.state());
+      if (target.dataset.placementAction === "attach-behavior-binding") {
+        const selected = viewer.state().selected;
+        const recipe = root
+          .querySelector<HTMLSelectElement>(
+            "select[data-placement-behavior-recipe='true']",
+          )
+          ?.value.trim();
+        if (
+          selected !== undefined &&
+          recipe !== undefined &&
+          recipe.length > 0
+        ) {
+          setState(
+            viewer.updateBehaviorBinding(
+              { kind: "instance", instanceId: selected.instanceId },
+              recipe,
+            ),
+          );
+        }
+        return;
+      }
+      if (target.dataset.placementAction === "detach-behavior-binding") {
+        const selected = viewer.state().selected;
+        if (selected !== undefined) {
+          setState(
+            viewer.updateBehaviorBinding(
+              { kind: "instance", instanceId: selected.instanceId },
+              null,
+            ),
+          );
+        }
+        return;
+      }
+      const addAction = target.dataset.placementAction;
+      if (
+        addAction === "add-rect" ||
+        addAction === "add-circle" ||
+        addAction === "add-point" ||
+        addAction === "add-sprite" ||
+        addAction === "add-prefab"
+      ) {
+        const draftOptions = placementDraftOptionsFromControls(root, addAction);
+        interaction.pendingAdd = addAction;
+        interaction.pendingAddPreview = placementPendingAddPreview(
+          addAction,
+          assetProvider(),
+          draftOptions,
+        );
+        publishPlacementInteraction(interaction);
+        setState(viewer.state());
+      }
+    } catch (error) {
+      reportPlacementEditFailure(viewer, setState, error);
     }
   });
+}
+
+function reportPlacementEditFailure(
+  viewer: ScenePlacementViewer,
+  setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
+  error: unknown,
+): void {
+  setState(viewer.state());
+  window.dispatchEvent(
+    new CustomEvent("ferrum-placement-document-error", {
+      detail: placementErrorMessage(error),
+    }),
+  );
 }
 
 function installPlacementComponentControls(
@@ -2238,7 +4825,10 @@ function installPlacementComponentControls(
 ): void {
   root.addEventListener("click", (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLButtonElement) || target.dataset.placementAction !== "apply-components") {
+    if (
+      !(target instanceof HTMLButtonElement) ||
+      target.dataset.placementAction !== "apply-components"
+    ) {
       return;
     }
     const selected = viewer.state().selected;
@@ -2247,7 +4837,9 @@ function installPlacementComponentControls(
     }
     try {
       const components = placementComponentsPatchFromControls(root, selected);
-      setState(viewer.updateInstanceComponents(selected.instanceId, components));
+      setState(
+        viewer.updateInstanceComponents(selected.instanceId, components),
+      );
     } catch (error) {
       reportPlacementComponentError(root, error);
     }
@@ -2273,15 +4865,33 @@ function placementVisualPatchFromControls(
   root: HTMLElement,
   selected: ScenePlacementViewerInstance,
 ): PlacementJsonObject {
-  const visualKind = selectedPlacementComponentValue(root, "visualKind") as PlacementComponentVisualKind | undefined;
-  const width = positivePlacementComponentNumber(root, "visualWidth", "visual width");
-  const height = positivePlacementComponentNumber(root, "visualHeight", "visual height");
-  const radius = positivePlacementComponentNumber(root, "visualRadius", "visual radius");
-  const color = selectedPlacementComponentValue(root, "visualColor") ?? DEFAULT_PRIMITIVE_COLOR;
+  const visualKind = selectedPlacementComponentValue(root, "visualKind") as
+    | PlacementComponentVisualKind
+    | undefined;
+  const width = positivePlacementComponentNumber(
+    root,
+    "visualWidth",
+    "visual width",
+  );
+  const height = positivePlacementComponentNumber(
+    root,
+    "visualHeight",
+    "visual height",
+  );
+  const radius = positivePlacementComponentNumber(
+    root,
+    "visualRadius",
+    "visual radius",
+  );
+  const color =
+    selectedPlacementComponentValue(root, "visualColor") ??
+    DEFAULT_PRIMITIVE_COLOR;
   if (visualKind === "sprite") {
     return spriteVisualPatch(selected.visual, width, height, color);
   }
-  const shape = selectedPlacementComponentValue(root, "primitiveShape") as DataScenePrimitiveVisualShape | undefined;
+  const shape = selectedPlacementComponentValue(root, "primitiveShape") as
+    | DataScenePrimitiveVisualShape
+    | undefined;
   const primitiveShape = shape ?? "rect";
   if (primitiveShape === "circle") {
     return {
@@ -2315,26 +4925,38 @@ function spriteVisualPatch(
   color: string,
 ): PlacementJsonObject {
   if (currentVisual?.kind === "sprite") {
-    const texture: PlacementJsonObject = currentVisual.texture.kind === "asset"
-      ? { asset: currentVisual.texture.name ?? String(currentVisual.texture.value) }
-      : { texture: currentVisual.texture.id ?? currentVisual.texture.value };
+    const texture: PlacementJsonObject =
+      currentVisual.texture.kind === "asset"
+        ? {
+            asset:
+              currentVisual.texture.name ?? String(currentVisual.texture.value),
+          }
+        : { texture: currentVisual.texture.id ?? currentVisual.texture.value };
     return {
       kind: "sprite",
       ...texture,
       width,
       height,
       frame: spriteFramePatch(currentVisual.frame),
-      ...(currentVisual.animation === undefined ? {} : {
-        animation: {
-          frameCount: currentVisual.animation.frameCount,
-          fps: currentVisual.animation.fps,
-        },
-      }),
+      ...(currentVisual.animation === undefined
+        ? {}
+        : {
+            animation: {
+              frameCount: currentVisual.animation.frameCount,
+              fps: currentVisual.animation.fps,
+            },
+          }),
       originX: currentVisual.originX,
       originY: currentVisual.originY,
-      ...(currentVisual.layer === undefined ? {} : { layer: currentVisual.layer }),
-      ...(currentVisual.sortOrder === undefined ? {} : { sortOrder: currentVisual.sortOrder }),
-      ...(currentVisual.depthSort === undefined ? {} : { depthSort: currentVisual.depthSort }),
+      ...(currentVisual.layer === undefined
+        ? {}
+        : { layer: currentVisual.layer }),
+      ...(currentVisual.sortOrder === undefined
+        ? {}
+        : { sortOrder: currentVisual.sortOrder }),
+      ...(currentVisual.depthSort === undefined
+        ? {}
+        : { depthSort: currentVisual.depthSort }),
       ...placementVisualColorPatch(currentVisual, color),
     };
   }
@@ -2366,7 +4988,9 @@ function placementVisualColorPatch(
   return { color };
 }
 
-function spriteFramePatch(frame: ResolvedDataSceneSpriteFrame): PlacementJsonObject {
+function spriteFramePatch(
+  frame: ResolvedDataSceneSpriteFrame,
+): PlacementJsonObject {
   return {
     u0: frame.u0,
     v0: frame.v0,
@@ -2379,7 +5003,9 @@ function placementColliderPatchFromControls(
   root: HTMLElement,
   currentCollider: ResolvedDataSceneColliderComponent | undefined,
 ): PlacementJsonValue {
-  const type = selectedPlacementComponentValue(root, "colliderType") as PlacementComponentColliderType | undefined;
+  const type = selectedPlacementComponentValue(root, "colliderType") as
+    | PlacementComponentColliderType
+    | undefined;
   if (type === "none" || type === undefined) {
     return "none";
   }
@@ -2388,7 +5014,11 @@ function placementColliderPatchFromControls(
     return {
       type,
       ...base,
-      radius: positivePlacementComponentNumber(root, "colliderRadius", "collider radius"),
+      radius: positivePlacementComponentNumber(
+        root,
+        "colliderRadius",
+        "collider radius",
+      ),
     };
   }
   switch (type) {
@@ -2396,33 +5026,87 @@ function placementColliderPatchFromControls(
       return {
         type,
         ...base,
-        halfWidth: positivePlacementComponentNumber(root, "colliderWidth", "collider width") * 0.5,
-        halfHeight: positivePlacementComponentNumber(root, "colliderHeight", "collider height") * 0.5,
+        halfWidth:
+          positivePlacementComponentNumber(
+            root,
+            "colliderWidth",
+            "collider width",
+          ) * 0.5,
+        halfHeight:
+          positivePlacementComponentNumber(
+            root,
+            "colliderHeight",
+            "collider height",
+          ) * 0.5,
       };
     case "capsule":
       return {
         type,
         ...base,
-        startX: finitePlacementComponentNumber(root, "colliderStartX", "capsule start x", 0),
-        startY: finitePlacementComponentNumber(root, "colliderStartY", "capsule start y", -8),
-        endX: finitePlacementComponentNumber(root, "colliderEndX", "capsule end x", 0),
-        endY: finitePlacementComponentNumber(root, "colliderEndY", "capsule end y", 8),
-        radius: positivePlacementComponentNumber(root, "colliderRadius", "capsule radius"),
+        startX: finitePlacementComponentNumber(
+          root,
+          "colliderStartX",
+          "capsule start x",
+          0,
+        ),
+        startY: finitePlacementComponentNumber(
+          root,
+          "colliderStartY",
+          "capsule start y",
+          -8,
+        ),
+        endX: finitePlacementComponentNumber(
+          root,
+          "colliderEndX",
+          "capsule end x",
+          0,
+        ),
+        endY: finitePlacementComponentNumber(
+          root,
+          "colliderEndY",
+          "capsule end y",
+          8,
+        ),
+        radius: positivePlacementComponentNumber(
+          root,
+          "colliderRadius",
+          "capsule radius",
+        ),
       };
     case "orientedBox":
       return {
         type,
         ...base,
-        halfWidth: positivePlacementComponentNumber(root, "colliderWidth", "oriented box width") * 0.5,
-        halfHeight: positivePlacementComponentNumber(root, "colliderHeight", "oriented box height") * 0.5,
-        rotationRadians: finitePlacementComponentNumber(root, "colliderRotation", "oriented box rotation", 0),
+        halfWidth:
+          positivePlacementComponentNumber(
+            root,
+            "colliderWidth",
+            "oriented box width",
+          ) * 0.5,
+        halfHeight:
+          positivePlacementComponentNumber(
+            root,
+            "colliderHeight",
+            "oriented box height",
+          ) * 0.5,
+        rotationRadians: finitePlacementComponentNumber(
+          root,
+          "colliderRotation",
+          "oriented box rotation",
+          0,
+        ),
       };
     case "convexPolygon":
       return {
         type,
         ...base,
         vertices: placementColliderVerticesPatchFromControls(root),
-        rotationRadians: finitePlacementComponentNumber(root, "colliderRotation", "convex polygon rotation", 0),
+        rotationRadians: finitePlacementComponentNumber(
+          root,
+          "colliderRotation",
+          "convex polygon rotation",
+          0,
+        ),
       };
   }
 }
@@ -2432,34 +5116,52 @@ function placementColliderBasePatch(
   currentCollider: ResolvedDataSceneColliderComponent | undefined,
 ): PlacementJsonObject {
   const enabled = checkedPlacementComponentValue(root, "colliderEnabled", true);
-  const isTrigger = checkedPlacementComponentValue(root, "colliderTrigger", false);
+  const isTrigger = checkedPlacementComponentValue(
+    root,
+    "colliderTrigger",
+    false,
+  );
   return {
     offsetX: finitePlacementComponentNumber(
       root,
       "colliderOffsetX",
       "collider offset x",
-      currentCollider !== undefined && currentCollider.type !== "none" ? currentCollider.offsetX : 0,
+      currentCollider !== undefined && currentCollider.type !== "none"
+        ? currentCollider.offsetX
+        : 0,
     ),
     offsetY: finitePlacementComponentNumber(
       root,
       "colliderOffsetY",
       "collider offset y",
-      currentCollider !== undefined && currentCollider.type !== "none" ? currentCollider.offsetY : 0,
+      currentCollider !== undefined && currentCollider.type !== "none"
+        ? currentCollider.offsetY
+        : 0,
     ),
     enabled,
     isTrigger,
   };
 }
 
-function selectedPlacementComponentLayer(root: HTMLElement): DataSceneCollisionLayerName {
+function selectedPlacementComponentLayer(
+  root: HTMLElement,
+): DataSceneCollisionLayerName {
   const layer = selectedPlacementComponentValue(root, "layer");
-  return PLACEMENT_COLLISION_LAYERS.includes(layer as DataSceneCollisionLayerName)
-    ? layer as DataSceneCollisionLayerName
+  return PLACEMENT_COLLISION_LAYERS.includes(
+    layer as DataSceneCollisionLayerName,
+  )
+    ? (layer as DataSceneCollisionLayerName)
     : "wall";
 }
 
-function positivePlacementComponentNumber(root: HTMLElement, field: string, label: string): number {
-  const input = root.querySelector<HTMLInputElement>(`input[data-placement-component-field='${field}']`);
+function positivePlacementComponentNumber(
+  root: HTMLElement,
+  field: string,
+  label: string,
+): number {
+  const input = root.querySelector<HTMLInputElement>(
+    `input[data-placement-component-field='${field}']`,
+  );
   const value = input === null ? undefined : numberInputValue(input);
   if (value !== undefined && value > 0) {
     input?.setCustomValidity("");
@@ -2477,7 +5179,9 @@ function finitePlacementComponentNumber(
   label: string,
   fallback: number,
 ): number {
-  const input = root.querySelector<HTMLInputElement>(`input[data-placement-component-field='${field}']`);
+  const input = root.querySelector<HTMLInputElement>(
+    `input[data-placement-component-field='${field}']`,
+  );
   const rawValue = input?.value.trim();
   if (rawValue === undefined || rawValue === "") {
     input?.setCustomValidity("");
@@ -2494,8 +5198,12 @@ function finitePlacementComponentNumber(
   throw new Error(message);
 }
 
-function placementColliderVerticesPatchFromControls(root: HTMLElement): readonly PlacementJsonObject[] {
-  const input = root.querySelector<HTMLTextAreaElement>("textarea[data-placement-component-field='colliderVertices']");
+function placementColliderVerticesPatchFromControls(
+  root: HTMLElement,
+): readonly PlacementJsonObject[] {
+  const input = root.querySelector<HTMLTextAreaElement>(
+    "textarea[data-placement-component-field='colliderVertices']",
+  );
   const rawValue = input?.value.trim();
   if (rawValue === undefined || rawValue === "") {
     const message = "convex polygon vertices must be a JSON array.";
@@ -2512,7 +5220,11 @@ function placementColliderVerticesPatchFromControls(root: HTMLElement): readonly
     input?.reportValidity();
     throw new Error(message);
   }
-  if (!Array.isArray(value) || value.length < 3 || value.length > DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES) {
+  if (
+    !Array.isArray(value) ||
+    value.length < 3 ||
+    value.length > DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES
+  ) {
     const message = `convex polygon vertices must contain 3-${DATA_SCENE_MAX_CONVEX_POLYGON_VERTICES} points.`;
     input?.setCustomValidity(message);
     input?.reportValidity();
@@ -2534,7 +5246,10 @@ function placementColliderVerticesPatchFromControls(root: HTMLElement): readonly
   return vertices;
 }
 
-function selectedPlacementComponentValue(root: HTMLElement, field: string): string | undefined {
+function selectedPlacementComponentValue(
+  root: HTMLElement,
+  field: string,
+): string | undefined {
   const control = root.querySelector<HTMLInputElement | HTMLSelectElement>(
     `[data-placement-component-field='${field}']`,
   );
@@ -2542,21 +5257,117 @@ function selectedPlacementComponentValue(root: HTMLElement, field: string): stri
   return value === undefined || value.length === 0 ? undefined : value;
 }
 
-function checkedPlacementComponentValue(root: HTMLElement, field: string, fallback: boolean): boolean {
-  const input = root.querySelector<HTMLInputElement>(`input[data-placement-component-field='${field}']`);
+function checkedPlacementComponentValue(
+  root: HTMLElement,
+  field: string,
+  fallback: boolean,
+): boolean {
+  const input = root.querySelector<HTMLInputElement>(
+    `input[data-placement-component-field='${field}']`,
+  );
   return input?.checked ?? fallback;
 }
 
-function reportPlacementComponentError(root: HTMLElement, error: unknown): void {
-  const button = root.querySelector<HTMLButtonElement>("button[data-placement-action='apply-components']");
-  button?.setCustomValidity(error instanceof Error ? error.message : String(error));
+function reportPlacementComponentError(
+  root: HTMLElement,
+  error: unknown,
+): void {
+  const button = root.querySelector<HTMLButtonElement>(
+    "button[data-placement-action='apply-components']",
+  );
+  button?.setCustomValidity(
+    error instanceof Error ? error.message : String(error),
+  );
   button?.reportValidity();
   window.setTimeout(() => button?.setCustomValidity(""), 0);
 }
 
+function installPlacementAssetDrop(
+  canvas: HTMLCanvasElement,
+  controlsRoot: () => HTMLElement,
+  viewer: ScenePlacementViewer,
+  interaction: PlacementInteractionState,
+  assetProvider: PlacementAssetProviderGetter,
+  setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
+): void {
+  let previewing = false;
+  const accepted = (event: DragEvent) =>
+    placementAssetDrag !== undefined &&
+    controlsRoot().contains(placementAssetDrag.source) &&
+    event.dataTransfer?.types.includes(PLACEMENT_ASSET_DRAG_TYPE);
+  const clear = () => {
+    // Native HTML drag Escape emits dragend without a DOM keydown and can
+    // finish before the canvas was entered. It must clear any old armed tool.
+    if (!placementAssetDrag && !previewing) return;
+    previewing = false;
+    resetPlacementAdd(interaction);
+    setState(viewer.state());
+  };
+  canvas.addEventListener("dragover", (event) => {
+    if (!accepted(event) || !placementAssetDrag || !event.dataTransfer) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    previewing = true;
+    interaction.pendingAdd = "add-sprite";
+    interaction.pendingAddPreview = placementPendingAddPreview(
+      "add-sprite",
+      assetProvider(),
+      placementAssetDrag.options,
+    );
+    const rect = canvas.getBoundingClientRect();
+    setState(
+      viewer.pointerAtScreen({
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      }),
+    );
+  });
+  canvas.addEventListener("drop", (event) => {
+    if (
+      !accepted(event) ||
+      !placementAssetDrag ||
+      event.dataTransfer?.getData(PLACEMENT_ASSET_DRAG_TYPE) !==
+        placementAssetDrag.token
+    )
+      return;
+    event.preventDefault();
+    documentSession?.finishEdit();
+    try {
+      const rect = canvas.getBoundingClientRect();
+      const state = viewer.pointerAtScreen({
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      });
+      if (!state.pointerWorld) return;
+      const draft = createDraftPlacementInstance(
+        state,
+        "add-sprite",
+        assetProvider(),
+        {
+          ...placementAssetDrag.options,
+          point: snappedPlacementPoint(state.pointerWorld, interaction),
+        },
+      );
+      setState(viewer.addInstance(state.fragment, draft));
+      clearPlacementAddError(controlsRoot());
+    } catch (error) {
+      reportPlacementAddError(controlsRoot(), error);
+    } finally {
+      clear();
+    }
+  });
+  canvas.addEventListener("dragleave", () => {
+    if (!previewing) return;
+    interaction.pendingAdd = undefined;
+    interaction.pendingAddPreview = undefined;
+    setState(viewer.state());
+  });
+  window.addEventListener("dragend", clear);
+}
+
 function installPlacementPointer(
   canvas: HTMLCanvasElement,
-  controlsRoot: HTMLElement,
+  controlsRoot: () => HTMLElement,
   viewer: ScenePlacementViewer,
   interaction: PlacementInteractionState,
   assetProvider: PlacementAssetProviderGetter,
@@ -2564,16 +5375,25 @@ function installPlacementPointer(
 ): void {
   let hoverQueued = false;
   let latestPoint: { x: number; y: number } | undefined;
-  let drag: {
-    pointerId: number;
-    instanceId: string;
-    offsetX: number;
-    offsetY: number;
-    latestPoint: ScenePlacementPoint;
-    queued: boolean;
-  } | undefined;
+  let drag:
+    | {
+        pointerId: number;
+        instanceId: string;
+        offsetX: number;
+        offsetY: number;
+        latestPoint: ScenePlacementPoint;
+        queued: boolean;
+        cancelled?: boolean;
+        origins: readonly { instanceId: string; x: number; y: number }[];
+        anchor: ScenePlacementPoint;
+      }
+    | undefined;
 
   canvas.addEventListener("pointerdown", (event) => {
+    if (
+      canvas.closest<HTMLElement>(".demo-stage")?.dataset.workspaceMode !== "2d"
+    )
+      return;
     if (event.button !== 0) {
       return;
     }
@@ -2582,24 +5402,41 @@ function installPlacementPointer(
     if (interaction.pendingAdd !== undefined) {
       const pointerState = viewer.pointerAtScreen(point);
       if (pointerState.pointerWorld !== undefined) {
-        const placementPoint = snappedPlacementPoint(pointerState.pointerWorld, interaction);
+        const placementPoint = snappedPlacementPoint(
+          pointerState.pointerWorld,
+          interaction,
+        );
         try {
           const draft = createDraftPlacementInstance(
             pointerState,
             interaction.pendingAdd,
             assetProvider(),
             {
-              ...placementDraftOptionsFromControls(controlsRoot, interaction.pendingAdd),
+              ...placementDraftOptionsFromControls(
+                controlsRoot(),
+                interaction.pendingAdd,
+              ),
               point: placementPoint,
             },
           );
-          interaction.pendingAdd = undefined;
-          interaction.pendingAddPreview = undefined;
-          clearPlacementAddError(controlsRoot);
+          if (
+            !controlsRoot().querySelector<HTMLInputElement>(
+              "[data-placement-repeat]",
+            )?.checked
+          ) {
+            interaction.pendingAdd = undefined;
+            interaction.pendingAddPreview = undefined;
+          } else {
+            const id = controlsRoot().querySelector<HTMLInputElement>(
+              "[data-placement-add-id]",
+            );
+            if (id) id.value = "";
+          }
+          clearPlacementAddError(controlsRoot());
           publishPlacementInteraction(interaction);
           setState(viewer.addInstance(pointerState.fragment, draft));
         } catch (error) {
-          reportPlacementAddError(controlsRoot, error);
+          reportPlacementAddError(controlsRoot(), error);
           setState(viewer.state());
         }
       }
@@ -2607,10 +5444,28 @@ function installPlacementPointer(
       return;
     }
     const picked = viewer.pickInstanceAtScreen(point);
-    const state = setState(viewer.selectInstanceAtScreen(point));
-    if (picked === undefined || state.selected === undefined || state.pointerWorld === undefined) {
+    if (picked && (event.shiftKey || event.ctrlKey || event.metaKey)) {
+      setState(togglePlacementSelection(viewer, picked.instanceId));
+      event.preventDefault();
       return;
     }
+    const before = viewer.state();
+    if (picked && before.selectedInstanceIds.includes(picked.instanceId))
+      viewer.selectInstances([
+        ...before.selectedInstanceIds.filter((id) => id !== picked.instanceId),
+        picked.instanceId,
+      ]);
+    else viewer.selectInstanceAtScreen(point);
+    const state = setState(viewer.pointerAtScreen(point));
+    if (
+      picked === undefined ||
+      state.selected === undefined ||
+      state.pointerWorld === undefined
+    ) {
+      return;
+    }
+    if (hasLockedSelection(state)) return;
+    const selectedIds = new Set(state.selectedInstanceIds);
     drag = {
       pointerId: event.pointerId,
       instanceId: state.selected.instanceId,
@@ -2618,6 +5473,14 @@ function installPlacementPointer(
       offsetY: state.selected.transform.y - state.pointerWorld.y,
       latestPoint: point,
       queued: false,
+      origins: state.instances
+        .filter((instance) => selectedIds.has(instance.instanceId))
+        .map((instance) => ({
+          instanceId: instance.instanceId,
+          x: instance.transform.x,
+          y: instance.transform.y,
+        })),
+      anchor: { x: state.selected.transform.x, y: state.selected.transform.y },
     };
     interaction.dragging = true;
     publishPlacementInteraction(interaction);
@@ -2659,6 +5522,8 @@ function installPlacementPointer(
       return;
     }
     const point = pointerScreenPoint(canvas, event);
+    drag.latestPoint = point;
+    queuePlacementDragUpdate(viewer, interaction, drag, setState);
     finishPlacementDrag(canvas, event.pointerId, interaction);
     drag = undefined;
     setState(viewer.hoverInstanceAtScreen(point));
@@ -2666,6 +5531,7 @@ function installPlacementPointer(
 
   canvas.addEventListener("pointercancel", (event) => {
     if (drag?.pointerId === event.pointerId) {
+      drag.cancelled = true;
       finishPlacementDrag(canvas, event.pointerId, interaction);
       drag = undefined;
     }
@@ -2686,6 +5552,7 @@ interface PlacementResizeDrag {
   instance: ScenePlacementViewerInstance;
   latestPoint: ScenePlacementPoint;
   queued: boolean;
+  cancelled?: boolean;
 }
 
 function installPlacementResizeHandle(
@@ -2700,14 +5567,17 @@ function installPlacementResizeHandle(
   root.addEventListener("pointerdown", (event) => {
     const target = event.target;
     if (
-      !(target instanceof HTMLElement)
-      || target.dataset.placementResizeHandle !== "se"
-      || event.button !== 0
+      !(target instanceof HTMLElement) ||
+      target.dataset.placementResizeHandle !== "se" ||
+      event.button !== 0
     ) {
       return;
     }
     const selected = viewer.state().selected;
-    if (selected === undefined || placementResizeKindForInstance(selected) === undefined) {
+    if (
+      selected === undefined ||
+      placementResizeKindForInstance(selected) === undefined
+    ) {
       return;
     }
     canvas.focus({ preventScroll: true });
@@ -2757,6 +5627,7 @@ function installPlacementResizeHandle(
     if (drag === undefined || drag.pointerId !== event.pointerId) {
       return;
     }
+    drag.cancelled = true;
     finishPlacementResizeDrag(root, drag, interaction);
     drag = undefined;
   });
@@ -2771,14 +5642,22 @@ function queuePlacementResizeUpdate(
     return;
   }
   drag.queued = true;
+  const documentRevision = placementDocumentRevision;
   requestAnimationFrame(() => {
     drag.queued = false;
+    if (drag.cancelled || documentRevision !== placementDocumentRevision)
+      return;
     const pointerState = viewer.pointerAtScreen(drag.latestPoint);
     if (pointerState.pointerWorld === undefined) {
       return;
     }
-    const components = placementComponentsPatchFromResize(drag.instance, pointerState.pointerWorld);
-    setState(viewer.updateInstanceComponents(drag.instance.instanceId, components));
+    const components = placementComponentsPatchFromResize(
+      drag.instance,
+      pointerState.pointerWorld,
+    );
+    setState(
+      viewer.updateInstanceComponents(drag.instance.instanceId, components),
+    );
   });
 }
 
@@ -2802,6 +5681,7 @@ interface PlacementColliderOffsetDrag {
   startPointerWorld: ScenePlacementPoint;
   latestPoint: ScenePlacementPoint;
   queued: boolean;
+  cancelled?: boolean;
 }
 
 function installPlacementColliderOffsetHandle(
@@ -2816,9 +5696,9 @@ function installPlacementColliderOffsetHandle(
   root.addEventListener("pointerdown", (event) => {
     const target = event.target;
     if (
-      !(target instanceof HTMLElement)
-      || target.dataset.placementColliderOffsetHandle !== "true"
-      || event.button !== 0
+      !(target instanceof HTMLElement) ||
+      target.dataset.placementColliderOffsetHandle !== "true" ||
+      event.button !== 0
     ) {
       return;
     }
@@ -2879,6 +5759,7 @@ function installPlacementColliderOffsetHandle(
     if (drag === undefined || drag.pointerId !== event.pointerId) {
       return;
     }
+    drag.cancelled = true;
     finishPlacementColliderOffsetDrag(root, drag, interaction);
     drag = undefined;
   });
@@ -2890,9 +5771,11 @@ function placementColliderOffsetDraggable(
   visual: ResolvedDataSceneObjectVisual;
   collider: Exclude<ResolvedDataSceneColliderComponent, { type: "none" }>;
 } {
-  return selected?.visual !== undefined
-    && selected.collider !== undefined
-    && selected.collider.type !== "none";
+  return (
+    selected?.visual !== undefined &&
+    selected.collider !== undefined &&
+    selected.collider.type !== "none"
+  );
 }
 
 function queuePlacementColliderOffsetUpdate(
@@ -2904,8 +5787,11 @@ function queuePlacementColliderOffsetUpdate(
     return;
   }
   drag.queued = true;
+  const documentRevision = placementDocumentRevision;
   requestAnimationFrame(() => {
     drag.queued = false;
+    if (drag.cancelled || documentRevision !== placementDocumentRevision)
+      return;
     const pointerState = viewer.pointerAtScreen(drag.latestPoint);
     if (pointerState.pointerWorld === undefined) {
       return;
@@ -2915,7 +5801,9 @@ function queuePlacementColliderOffsetUpdate(
       drag.startPointerWorld,
       pointerState.pointerWorld,
     );
-    setState(viewer.updateInstanceComponents(drag.instance.instanceId, components));
+    setState(
+      viewer.updateInstanceComponents(drag.instance.instanceId, components),
+    );
   });
 }
 
@@ -2938,17 +5826,22 @@ function placementComponentsPatchFromColliderOffset(
   pointerWorld: ScenePlacementPoint,
 ): Parameters<ScenePlacementViewer["updateInstanceComponents"]>[1] {
   if (!placementColliderOffsetDraggable(selected)) {
-    throw new Error("placement collider offset handle requires a selected visual and collider.");
+    throw new Error(
+      "placement collider offset handle requires a selected visual and collider.",
+    );
   }
-  const scale = Math.abs(selected.transform.scale) < 0.0001
-    ? 0.0001
-    : selected.transform.scale;
+  const scale =
+    Math.abs(selected.transform.scale) < 0.0001
+      ? 0.0001
+      : selected.transform.scale;
   const offset = {
     offsetX: roundPlacementResizeValue(
-      selected.collider.offsetX + ((pointerWorld.x - startPointerWorld.x) / scale),
+      selected.collider.offsetX +
+        (pointerWorld.x - startPointerWorld.x) / scale,
     ),
     offsetY: roundPlacementResizeValue(
-      selected.collider.offsetY + ((pointerWorld.y - startPointerWorld.y) / scale),
+      selected.collider.offsetY +
+        (pointerWorld.y - startPointerWorld.y) / scale,
     ),
   };
   return {
@@ -2964,8 +5857,13 @@ function placementComponentsPatchFromResize(
   pointerWorld: ScenePlacementPoint,
 ): Parameters<ScenePlacementViewer["updateInstanceComponents"]>[1] {
   const visual = selected.visual;
-  if (visual?.kind !== "primitive" || (visual.shape !== "rect" && visual.shape !== "circle")) {
-    throw new Error("placement resize handle only supports primitive rect and circle visuals.");
+  if (
+    visual?.kind !== "primitive" ||
+    (visual.shape !== "rect" && visual.shape !== "circle")
+  ) {
+    throw new Error(
+      "placement resize handle only supports primitive rect and circle visuals.",
+    );
   }
   const scale = Math.max(0.0001, Math.abs(selected.transform.scale));
   const dx = pointerWorld.x - selected.transform.x;
@@ -2988,7 +5886,10 @@ function placementComponentsPatchFromResize(
         radius,
         color: visual.color ?? DEFAULT_PRIMITIVE_COLOR,
       },
-      collider: placementColliderPatchForResize(selected.collider, { shape: "circle", radius }),
+      collider: placementColliderPatchForResize(selected.collider, {
+        shape: "circle",
+        radius,
+      }),
       layer: selected.componentLayer?.name ?? "wall",
       ...placementBodyPatch(selected),
     };
@@ -3007,7 +5908,11 @@ function placementComponentsPatchFromResize(
       height,
       color: visual.color ?? DEFAULT_PRIMITIVE_COLOR,
     },
-    collider: placementColliderPatchForResize(selected.collider, { shape: "rect", width, height }),
+    collider: placementColliderPatchForResize(selected.collider, {
+      shape: "rect",
+      width,
+      height,
+    }),
     layer: selected.componentLayer?.name ?? "wall",
     ...placementBodyPatch(selected),
   };
@@ -3085,7 +5990,10 @@ function placementColliderPatchFromResolved(
       return {
         type: "convexPolygon",
         ...base,
-        vertices: collider.vertices.map((vertex) => ({ x: vertex.x, y: vertex.y })),
+        vertices: collider.vertices.map((vertex) => ({
+          x: vertex.x,
+          y: vertex.y,
+        })),
         rotationRadians: collider.rotationRadians,
       };
   }
@@ -3104,14 +6012,20 @@ function placementColliderBasePatchFromResolved(
 }
 
 // Preserve runtime body authoring when editing visual/collider fields in the viewer.
-function placementBodyPatch(selected: ScenePlacementViewerInstance): PlacementJsonObject {
+function placementBodyPatch(
+  selected: ScenePlacementViewerInstance,
+): PlacementJsonObject {
   const body = selected.body;
-  return body === undefined ? {} : {
-    body: {
-      type: body.type,
-      ...(body.heightSpan === undefined ? {} : { heightSpan: { ...body.heightSpan } }),
-    },
-  };
+  return body === undefined
+    ? {}
+    : {
+        body: {
+          type: body.type,
+          ...(body.heightSpan === undefined
+            ? {}
+            : { heightSpan: { ...body.heightSpan } }),
+        },
+      };
 }
 
 function placementVisualPatchFromResolved(
@@ -3141,21 +6055,24 @@ function placementVisualPatchFromResolved(
       height: visual.height,
     };
   }
-  const texture: PlacementJsonObject = visual.texture.kind === "asset"
-    ? { asset: visual.texture.name ?? String(visual.texture.value) }
-    : { texture: visual.texture.id ?? visual.texture.value };
+  const texture: PlacementJsonObject =
+    visual.texture.kind === "asset"
+      ? { asset: visual.texture.name ?? String(visual.texture.value) }
+      : { texture: visual.texture.id ?? visual.texture.value };
   return {
     kind: "sprite",
     ...texture,
     width: visual.width,
     height: visual.height,
     frame: spriteFramePatch(visual.frame),
-    ...(visual.animation === undefined ? {} : {
-      animation: {
-        frameCount: visual.animation.frameCount,
-        fps: visual.animation.fps,
-      },
-    }),
+    ...(visual.animation === undefined
+      ? {}
+      : {
+          animation: {
+            frameCount: visual.animation.frameCount,
+            fps: visual.animation.fps,
+          },
+        }),
     originX: visual.originX,
     originY: visual.originY,
     ...(visual.layer === undefined ? {} : { layer: visual.layer }),
@@ -3178,6 +6095,15 @@ function installPlacementKeyboard(
 ): void {
   canvas.tabIndex = 0;
   canvas.addEventListener("keydown", (event) => {
+    if (
+      canvas.closest<HTMLElement>(".demo-stage")?.dataset.workspaceMode !== "2d"
+    )
+      return;
+    if (
+      canvas.closest<HTMLElement>(".demo-stage")?.dataset.navigationTool !==
+      "select"
+    )
+      return;
     if (event.metaKey || event.ctrlKey || event.altKey) {
       return;
     }
@@ -3186,12 +6112,19 @@ function installPlacementKeyboard(
       return;
     }
     event.preventDefault();
-    const base = interaction.enabled ? interaction.gridSize : KEYBOARD_NUDGE_STEP;
+    const base = interaction.enabled
+      ? interaction.gridSize
+      : KEYBOARD_NUDGE_STEP;
     const multiplier = event.shiftKey ? KEYBOARD_FAST_MULTIPLIER : 1;
-    nudgeSelectedInstance(viewer, interaction, {
-      x: delta.x * base * multiplier,
-      y: delta.y * base * multiplier,
-    }, setState);
+    nudgeSelectedInstance(
+      viewer,
+      interaction,
+      {
+        x: delta.x * base * multiplier,
+        y: delta.y * base * multiplier,
+      },
+      setState,
+    );
   });
 }
 
@@ -3207,24 +6140,39 @@ function applyTransformInput(
   if (selected === undefined || value === undefined) {
     return;
   }
+  if (hasLockedSelection(viewer.state())) return;
   if (field === "x" || field === "y") {
-    const point = snappedPlacementPoint({
-      x: field === "x" ? value : selected.transform.x,
-      y: field === "y" ? value : selected.transform.y,
-    }, interaction);
-    setState(viewer.updateInstanceTransform(selected.instanceId, point));
+    const point = snappedPlacementPoint(
+      {
+        x: field === "x" ? value : selected.transform.x,
+        y: field === "y" ? value : selected.transform.y,
+      },
+      interaction,
+    );
+    setState(movePlacementSelectionTo(viewer, point));
     return;
   }
   if (field === "scale") {
-    setState(viewer.updateInstanceTransform(selected.instanceId, { scale: value }));
+    if (value <= 0) return;
+    setState(
+      transformPlacementSelection(viewer, viewer.state(), {
+        scale: value / selected.transform.scale,
+      }),
+    );
     return;
   }
   if (field === "rotationRadians") {
-    setState(viewer.updateInstanceTransform(selected.instanceId, { rotationRadians: value }));
+    setState(
+      transformPlacementSelection(viewer, viewer.state(), {
+        rotation: value - selected.transform.rotationRadians,
+      }),
+    );
     return;
   }
-  if (field === "layer") {
-    setState(viewer.updateInstanceTransform(selected.instanceId, { layer: value }));
+  if (field === "layer" && viewer.state().selectedInstanceIds.length === 1) {
+    setState(
+      viewer.updateInstanceTransform(selected.instanceId, { layer: value }),
+    );
   }
 }
 
@@ -3238,7 +6186,7 @@ function snapSelectedInstance(
     return undefined;
   }
   const point = snappedPlacementPoint(selected.transform, interaction);
-  return setState(viewer.updateInstanceTransform(selected.instanceId, point));
+  return setState(movePlacementSelectionTo(viewer, point));
 }
 
 function nudgeSelectedInstance(
@@ -3251,11 +6199,14 @@ function nudgeSelectedInstance(
   if (selected === undefined) {
     return undefined;
   }
-  const point = snappedPlacementPoint({
-    x: selected.transform.x + (delta.x ?? 0),
-    y: selected.transform.y + (delta.y ?? 0),
-  }, interaction);
-  return setState(viewer.updateInstanceTransform(selected.instanceId, point));
+  const point = snappedPlacementPoint(
+    {
+      x: selected.transform.x + (delta.x ?? 0),
+      y: selected.transform.y + (delta.y ?? 0),
+    },
+    interaction,
+  );
+  return setState(movePlacementSelectionTo(viewer, point));
 }
 
 function createDraftPlacementInstance(
@@ -3263,6 +6214,36 @@ function createDraftPlacementInstance(
   action: PlacementAddAction,
   assetProvider: ScenePlacementAssetProvider,
   options: PlacementDraftOptions = {},
+): SceneCompositionFragmentInstanceSpec {
+  const angle = options.rotationRadians ?? 0,
+    scale = options.scale ?? 1;
+  if (
+    !Number.isFinite(angle) ||
+    !Number.isFinite(scale) ||
+    scale < 0.01 ||
+    scale > 100
+  )
+    throw new Error("Placement rotation must be finite and scale 0.01–100");
+  const placement = createDraftPlacementBase(
+    state,
+    action,
+    assetProvider,
+    options,
+  );
+  return {
+    ...placement,
+    ...(options.rotationRadians === undefined
+      ? {}
+      : { rotationRadians: angle }),
+    ...(options.scale === undefined ? {} : { scale }),
+  };
+}
+
+function createDraftPlacementBase(
+  state: ScenePlacementViewerState,
+  action: PlacementAddAction,
+  assetProvider: ScenePlacementAssetProvider,
+  options: PlacementDraftOptions,
 ): SceneCompositionFragmentInstanceSpec {
   switch (action) {
     case "add-rect":
@@ -3279,6 +6260,8 @@ function createDraftPlacementInstance(
 }
 
 interface PlacementDraftOptions {
+  rotationRadians?: number;
+  scale?: number;
   point?: ScenePlacementPoint;
   instanceId?: string;
   spriteAsset?: string;
@@ -3307,7 +6290,11 @@ function createDraftSpriteInstance(
 ): SceneCompositionFragmentInstanceSpec {
   const anchor = draftPlacementAnchor(state, options);
   const asset = options.spriteAsset ?? "crate";
-  const frame = selectedPlacementSpriteFrame(assetProvider, asset, options.spriteFrame);
+  const frame = selectedPlacementSpriteFrame(
+    assetProvider,
+    asset,
+    options.spriteFrame,
+  );
   const size = placementSpriteAssetSize(assetProvider, asset, frame);
   return {
     id: options.instanceId ?? nextPlacementInstanceId(state, asset),
@@ -3453,14 +6440,18 @@ function selectedPlacementSpriteFrame(
     : assetProvider.resolveSpriteFrame(asset, frameId);
 }
 
-function placementSpriteAssetOptions(assetProvider: ScenePlacementAssetProvider): readonly string[] {
+function placementSpriteAssetOptions(
+  assetProvider: ScenePlacementAssetProvider,
+): readonly string[] {
   const ids = assetProvider.listSpriteAssets().map((asset) => asset.id);
   return ids.length === 0 ? ["crate"] : ids;
 }
 
-function defaultPlacementSpriteAsset(assetProvider: ScenePlacementAssetProvider): string {
+function defaultPlacementSpriteAsset(
+  assetProvider: ScenePlacementAssetProvider,
+): string {
   const ids = placementSpriteAssetOptions(assetProvider);
-  return ids.includes("crate") ? "crate" : ids[0] ?? "crate";
+  return ids.includes("crate") ? "crate" : (ids[0] ?? "crate");
 }
 
 function syncPlacementSpriteAssetOptions(
@@ -3471,26 +6462,32 @@ function syncPlacementSpriteAssetOptions(
   const current = select.value;
   const previous = Array.from(select.options).map((option) => option.value);
   if (
-    previous.length === ids.length
-    && previous.every((id, index) => id === ids[index])
+    previous.length === ids.length &&
+    previous.every((id, index) => id === ids[index])
   ) {
     return;
   }
-  select.replaceChildren(...ids.map((id) => {
-    const option = document.createElement("option");
-    option.value = id;
-    option.textContent = id;
-    return option;
-  }));
+  select.replaceChildren(
+    ...ids.map((id) => {
+      const option = document.createElement("option");
+      option.value = id;
+      option.textContent = id;
+      return option;
+    }),
+  );
   select.value = ids.includes(current)
     ? current
     : ids.includes("crate")
       ? "crate"
-      : ids[0] ?? "crate";
+      : (ids[0] ?? "crate");
 }
 
-function placementPrefabOptions(resolved: ResolvedSceneAuthoringDocument): readonly string[] {
-  const ids = Object.keys(resolved.sceneComposition.prefabs).filter((id) => id !== "object");
+function placementPrefabOptions(
+  resolved: ResolvedSceneAuthoringDocument,
+): readonly string[] {
+  const ids = Object.keys(resolved.sceneComposition.prefabs).filter(
+    (id) => id !== "object",
+  );
   return ids.length === 0 ? ["object"] : ids;
 }
 
@@ -3502,26 +6499,32 @@ function syncPlacementPrefabOptions(
   const current = select.value;
   const previous = Array.from(select.options).map((option) => option.value);
   if (
-    previous.length === ids.length
-    && previous.every((id, index) => id === ids[index])
+    previous.length === ids.length &&
+    previous.every((id, index) => id === ids[index])
   ) {
     return;
   }
-  select.replaceChildren(...ids.map((id) => {
-    const option = document.createElement("option");
-    option.value = id;
-    option.textContent = id;
-    return option;
-  }));
+  select.replaceChildren(
+    ...ids.map((id) => {
+      const option = document.createElement("option");
+      option.value = id;
+      option.textContent = id;
+      return option;
+    }),
+  );
   select.value = ids.includes(current)
     ? current
     : ids.includes("crate")
       ? "crate"
-      : ids[0] ?? "object";
+      : (ids[0] ?? "object");
 }
 
-function placementPrefabOptionsFromState(state: ScenePlacementViewerState): readonly string[] {
-  const ids = state.objectDefinitions.map((definition) => definition.id).filter((id) => id !== "object");
+function placementPrefabOptionsFromState(
+  state: ScenePlacementViewerState,
+): readonly string[] {
+  const ids = state.objectDefinitions
+    .map((definition) => definition.id)
+    .filter((id) => id !== "object");
   return ids.length === 0 ? ["object"] : ids;
 }
 
@@ -3529,7 +6532,9 @@ function nextPlacementObjectDefinitionId(
   state: ScenePlacementViewerState,
   instanceId: string,
 ): string {
-  const existing = new Set(state.objectDefinitions.map((definition) => definition.id));
+  const existing = new Set(
+    state.objectDefinitions.map((definition) => definition.id),
+  );
   const base = `${instanceId.replace(/[^A-Za-z0-9_.-]+/g, "_")}_definition`;
   if (!existing.has(base)) {
     return base;
@@ -3547,15 +6552,18 @@ function placementObjectDefinitionFromSelected(
   selected: ScenePlacementViewerInstance,
 ): Parameters<ScenePlacementViewer["addObjectDefinition"]>[1] {
   if (selected.visual === undefined) {
-    throw new Error("object definition creation requires selected visual components.");
+    throw new Error(
+      "object definition creation requires selected visual components.",
+    );
   }
   return {
     props: {
       components: {
         visual: placementVisualPatchFromResolved(selected.visual),
-        collider: selected.collider === undefined
-          ? "none"
-          : placementColliderPatchFromResolved(selected.collider),
+        collider:
+          selected.collider === undefined
+            ? "none"
+            : placementColliderPatchFromResolved(selected.collider),
         layer: selected.componentLayer?.name ?? "wall",
         ...placementBodyPatch(selected),
       },
@@ -3563,7 +6571,9 @@ function placementObjectDefinitionFromSelected(
   };
 }
 
-function pendingPlacementBounds(action: PlacementAddAction): PlacementInstanceBounds {
+function pendingPlacementBounds(
+  action: PlacementAddAction,
+): PlacementInstanceBounds {
   switch (action) {
     case "add-rect":
       return { width: 48, height: 32 };
@@ -3577,7 +6587,9 @@ function pendingPlacementBounds(action: PlacementAddAction): PlacementInstanceBo
   }
 }
 
-function placementFallbackPendingAddPreview(action: PlacementAddAction): PlacementPendingAddPreview {
+function placementFallbackPendingAddPreview(
+  action: PlacementAddAction,
+): PlacementPendingAddPreview {
   return {
     action,
     label: placementAddLabel(action),
@@ -3590,11 +6602,31 @@ function placementPendingAddPreview(
   assetProvider: ScenePlacementAssetProvider,
   options: Omit<PlacementDraftOptions, "point">,
 ): PlacementPendingAddPreview {
+  const base = placementPendingAddPreviewBase(action, assetProvider, options),
+    scale = options.scale ?? 1;
+  return {
+    ...base,
+    width: base.width * scale,
+    height: base.height * scale,
+    rotationRadians: options.rotationRadians ?? 0,
+  };
+}
+
+function placementPendingAddPreviewBase(
+  action: PlacementAddAction,
+  assetProvider: ScenePlacementAssetProvider,
+  options: Omit<PlacementDraftOptions, "point">,
+): PlacementPendingAddPreview {
   if (action !== "add-sprite") {
     return placementFallbackPendingAddPreview(action);
   }
-  const assetId = options.spriteAsset ?? defaultPlacementSpriteAsset(assetProvider);
-  const frame = selectedPlacementSpriteFrame(assetProvider, assetId, options.spriteFrame);
+  const assetId =
+    options.spriteAsset ?? defaultPlacementSpriteAsset(assetProvider);
+  const frame = selectedPlacementSpriteFrame(
+    assetProvider,
+    assetId,
+    options.spriteFrame,
+  );
   const asset = assetProvider.resolveSpriteAsset(assetId);
   const size = placementSpriteAssetSize(assetProvider, assetId, frame);
   const frameLabel = frame === undefined ? "" : ` / ${frame.label ?? frame.id}`;
@@ -3607,6 +6639,7 @@ function placementPendingAddPreview(
     width: size.width,
     height: size.height,
     ...(thumbnailUrl === undefined ? {} : { thumbnailUrl }),
+    ...(!frame?.thumbnailUrl && frame?.frame ? { uv: frame.frame } : {}),
   };
 }
 
@@ -3630,7 +6663,16 @@ function placementDraftOptionsFromControls(
   action: PlacementAddAction,
 ): Omit<PlacementDraftOptions, "point"> {
   const options: Omit<PlacementDraftOptions, "point"> = {};
-  const id = root.querySelector<HTMLInputElement>("input[data-placement-add-id='true']")?.value.trim();
+  const rotation = root.querySelector<HTMLInputElement>(
+      "[data-placement-add-rotation]",
+    ),
+    scale = root.querySelector<HTMLInputElement>("[data-placement-add-scale]");
+  if (rotation)
+    options.rotationRadians = (rotation.valueAsNumber * Math.PI) / 180;
+  if (scale) options.scale = scale.valueAsNumber;
+  const id = root
+    .querySelector<HTMLInputElement>("input[data-placement-add-id='true']")
+    ?.value.trim();
   if (id !== undefined && id.length > 0) {
     options.instanceId = id;
   }
@@ -3639,7 +6681,10 @@ function placementDraftOptionsFromControls(
     if (spriteAsset !== undefined) {
       options.spriteAsset = spriteAsset;
     }
-    const spriteFrame = selectedPlacementOption(root, "placementAddSpriteFrame");
+    const spriteFrame = selectedPlacementOption(
+      root,
+      "placementAddSpriteFrame",
+    );
     if (spriteFrame !== undefined) {
       options.spriteFrame = spriteFrame;
     }
@@ -3657,45 +6702,72 @@ function selectedPlacementOption(
   root: HTMLElement,
   key: "placementAddSprite" | "placementAddSpriteFrame" | "placementAddPrefab",
 ): string | undefined {
-  const selector = key === "placementAddSprite"
-    ? "select[data-placement-add-sprite='true']"
-    : key === "placementAddSpriteFrame"
-      ? "select[data-placement-add-sprite-frame='true']"
-      : "select[data-placement-add-prefab='true']";
+  const selector =
+    key === "placementAddSprite"
+      ? "select[data-placement-add-sprite='true']"
+      : key === "placementAddSpriteFrame"
+        ? "select[data-placement-add-sprite-frame='true']"
+        : "select[data-placement-add-prefab='true']";
   const value = root.querySelector<HTMLSelectElement>(selector)?.value.trim();
   return value === undefined || value.length === 0 ? undefined : value;
 }
 
 function reportPlacementAddError(root: HTMLElement, error: unknown): void {
-  const input = root.querySelector<HTMLInputElement>("input[data-placement-add-id='true']");
+  const input = root.querySelector<HTMLInputElement>(
+    "input[data-placement-add-id='true']",
+  );
   if (input === null) {
     throw error;
   }
-  input.setCustomValidity(error instanceof Error ? error.message : String(error));
+  input.setCustomValidity(
+    error instanceof Error ? error.message : String(error),
+  );
   input.reportValidity();
 }
 
 function clearPlacementAddError(root: HTMLElement): void {
-  const input = root.querySelector<HTMLInputElement>("input[data-placement-add-id='true']");
+  const input = root.querySelector<HTMLInputElement>(
+    "input[data-placement-add-id='true']",
+  );
   input?.setCustomValidity("");
 }
 
-function reportPlacementDefinitionError(root: HTMLElement, error: unknown): void {
-  const input = root.querySelector<HTMLInputElement>("input[data-placement-definition-id='true']");
+function reportPlacementDefinitionError(
+  root: HTMLElement,
+  error: unknown,
+): void {
+  const input = root.querySelector<HTMLInputElement>(
+    "input[data-placement-definition-id='true']",
+  );
   if (input === null) {
     throw error;
   }
-  input.setCustomValidity(error instanceof Error ? error.message : String(error));
+  input.setCustomValidity(
+    error instanceof Error ? error.message : String(error),
+  );
   input.reportValidity();
 }
 
 function clearPlacementDefinitionError(root: HTMLElement): void {
-  const input = root.querySelector<HTMLInputElement>("input[data-placement-definition-id='true']");
+  const input = root.querySelector<HTMLInputElement>(
+    "input[data-placement-definition-id='true']",
+  );
   input?.setCustomValidity("");
 }
 
-function nextPlacementInstanceId(state: ScenePlacementViewerState, prefix: string): string {
-  const existing = new Set(state.instances.map((instance) => instance.instanceId));
+function nextPlacementInstanceId(
+  state: ScenePlacementViewerState,
+  prefix: string,
+): string {
+  const existing = new Set(
+    state.instances.map((instance) => instance.instanceId),
+  );
+  for (const operation of state.draftPatch?.operations ?? [])
+    if (
+      operation.kind === "removeInstance" ||
+      operation.kind === "renameInstance"
+    )
+      existing.add(operation.instanceId);
   for (let index = 1; index < 10_000; index += 1) {
     const candidate = `${prefix}_${index}`;
     if (!existing.has(candidate)) {
@@ -3714,6 +6786,9 @@ function queuePlacementDragUpdate(
     offsetY: number;
     latestPoint: ScenePlacementPoint;
     queued: boolean;
+    cancelled?: boolean;
+    origins: readonly { instanceId: string; x: number; y: number }[];
+    anchor: ScenePlacementPoint;
   },
   setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
 ): void {
@@ -3721,17 +6796,32 @@ function queuePlacementDragUpdate(
     return;
   }
   drag.queued = true;
+  const documentRevision = placementDocumentRevision;
   requestAnimationFrame(() => {
     drag.queued = false;
+    if (drag.cancelled || documentRevision !== placementDocumentRevision)
+      return;
     const pointerState = viewer.pointerAtScreen(drag.latestPoint);
     if (pointerState.pointerWorld === undefined) {
       return;
     }
-    const point = snappedPlacementPoint({
-      x: pointerState.pointerWorld.x + drag.offsetX,
-      y: pointerState.pointerWorld.y + drag.offsetY,
-    }, interaction);
-    setState(viewer.updateInstanceTransform(drag.instanceId, point));
+    const point = snappedPlacementPoint(
+      {
+        x: pointerState.pointerWorld.x + drag.offsetX,
+        y: pointerState.pointerWorld.y + drag.offsetY,
+      },
+      interaction,
+    );
+    const dx = point.x - drag.anchor.x,
+      dy = point.y - drag.anchor.y;
+    setState(
+      viewer.updateInstanceTransforms(
+        drag.origins.map((origin) => ({
+          instanceId: origin.instanceId,
+          transform: { x: origin.x + dx, y: origin.y + dy },
+        })),
+      ),
+    );
   });
 }
 
@@ -3775,19 +6865,6 @@ function snappedPlacementPoint(
   });
 }
 
-function installPlacementResize(
-  canvas: HTMLCanvasElement,
-  engine: FerrumRuntime["engine"],
-  viewer: ScenePlacementViewer,
-  setState: (state: ScenePlacementViewerState) => ScenePlacementViewerState,
-): void {
-  const observer = new ResizeObserver(() => {
-    setState(viewer.updateViewport(viewportForCanvas(canvas, engine)));
-  });
-  observer.observe(canvas);
-  window.addEventListener("beforeunload", () => observer.disconnect(), { once: true });
-}
-
 function installPlacementHooks(
   viewer: ScenePlacementViewer,
   interaction: PlacementInteractionState,
@@ -3818,9 +6895,14 @@ function installPlacementHooks(
     behaviorTarget: ScenePlacementBehaviorBindingTarget,
     behaviorRecipes: ScenePlacementBehaviorBindingPatch,
   ) => {
-    return setState(viewer.updateBehaviorBinding(behaviorTarget, behaviorRecipes));
+    return setState(
+      viewer.updateBehaviorBinding(behaviorTarget, behaviorRecipes),
+    );
   };
-  target.ferrumPlacementViewerRenameInstance = (instanceId: string, nextInstanceId: string) => {
+  target.ferrumPlacementViewerRenameInstance = (
+    instanceId: string,
+    nextInstanceId: string,
+  ) => {
     return setState(viewer.renameInstance(instanceId, nextInstanceId));
   };
   target.ferrumPlacementViewerAddInstance = (
@@ -3845,19 +6927,29 @@ function installPlacementHooks(
   target.ferrumPlacementViewerSaveEnabled = save.saveEnabled;
   target.ferrumPlacementViewerSaveDraft = save.saveDraft;
   target.ferrumPlacementViewerOpenSceneDocument = openPlacementSceneDocument;
-  target.ferrumPlacementViewerBrowseSceneDocument = browsePlacementSceneDocument;
-  target.ferrumPlacementViewerBrowseProjectFolder = browsePlacementProjectFolder;
+  target.ferrumPlacementViewerBrowseSceneDocument =
+    browsePlacementSceneDocument;
+  target.ferrumPlacementViewerBrowseProjectFolder =
+    browsePlacementProjectFolder;
   target.ferrumPlacementViewerOpenAssetFolder = inspectPlacementAssetFolder;
   target.ferrumPlacementViewerBrowseAssetFolder = browsePlacementAssetFolder;
   target.ferrumPlacementViewerSaveHandoff = savePlacementAgentHandoffToDesktop;
-  target.ferrumPlacementViewerNudgeSelected = (delta: Partial<ScenePlacementPoint>) => {
+  target.ferrumPlacementViewerNudgeSelected = (
+    delta: Partial<ScenePlacementPoint>,
+  ) => {
     return nudgeSelectedInstance(viewer, interaction, delta, setState);
   };
-  target.ferrumPlacementViewerSetSnap = (options: Partial<PlacementSnapOptions>) => {
+  target.ferrumPlacementViewerSetSnap = (
+    options: Partial<PlacementSnapOptions>,
+  ) => {
     if (options.enabled !== undefined) {
       interaction.enabled = options.enabled;
     }
-    if (options.gridSize !== undefined && Number.isFinite(options.gridSize) && options.gridSize > 0) {
+    if (
+      options.gridSize !== undefined &&
+      Number.isFinite(options.gridSize) &&
+      options.gridSize > 0
+    ) {
       interaction.gridSize = options.gridSize;
     }
     publishPlacementInteraction(interaction);
@@ -3875,6 +6967,25 @@ let placementDesktopHandoffSyncTimer: number | undefined;
 let placementDesktopPendingHandoffJson: string | undefined;
 let placementDesktopLastSyncedHandoffJson: string | undefined;
 let placementDesktopAssetFolderRevision = 0;
+let placementDocumentRevision = 0;
+let placementAssetInspectionRevision = 0;
+let placementAssetInspectionAbort: AbortController | undefined;
+let placementAssetInspectionQueue: Promise<unknown> = Promise.resolve();
+
+function cancelPlacementPendingHandoff(): void {
+  placementAssetInspectionRevision++;
+  placementAssetInspectionAbort?.abort();
+  placementDocumentRevision++;
+  if (placementAgentHandoffTimer !== undefined)
+    window.clearTimeout(placementAgentHandoffTimer);
+  if (placementDesktopHandoffSyncTimer !== undefined)
+    window.clearTimeout(placementDesktopHandoffSyncTimer);
+  placementAgentHandoffTimer = undefined;
+  placementDesktopHandoffSyncTimer = undefined;
+  placementDesktopPendingHandoffJson = undefined;
+  placementDesktopLastSyncedHandoffJson = undefined;
+  placementDesktopAssetFolderRevision++;
+}
 
 function publishPlacementAgentHandoff(
   document: SceneAuthoringDocumentSpec,
@@ -3882,19 +6993,46 @@ function publishPlacementAgentHandoff(
   migrationPreview: ScenePlacementBindingMigrationPreview | undefined,
   assetProvider: ScenePlacementAssetProvider,
   sourceDocument: string,
+  normalBindings: readonly SceneSpriteNormalBindingEvidence[] = [],
+  asepriteImports: readonly PlacementAsepriteImportEvidence[] = [],
+  tileImports: readonly ReturnType<typeof tileEvidence>[] = [],
 ): void {
-  const handoff = createScenePlacementAgentHandoff({
+  const handoffOptions = {
     document,
     state,
     sourceDocument,
     assetFolder: placementDesktopAssetFolderHandoff(),
     assetDiagnostics: placementAssetDiagnosticsForState(state, assetProvider),
+    authoringEvidence: placementWorkspaceEvidence,
     path: "placementViewer.agentHandoff",
+  };
+  const verifiedBindings = normalBindings.filter((binding) => {
+    try {
+      createScenePlacementAgentHandoff({
+        ...handoffOptions,
+        normalBindings: [binding],
+      });
+      return true;
+    } catch {
+      return false; /* Undo, rename or a later visual edit can make prior evidence stale. */
+    }
   });
-  const published = migrationPreview === undefined
-    ? handoff
-    : { ...handoff, migrationPreview };
-  (window as PlacementViewerWindow).ferrumPlacementViewerAgentHandoff = published;
+  const currentBindings = verifiedBindings.filter(
+    (binding, index, all) =>
+      all.findIndex((item) => item.instanceId === binding.instanceId) === index,
+  );
+  const handoff = createScenePlacementAgentHandoff({
+    ...handoffOptions,
+    ...(currentBindings.length ? { normalBindings: currentBindings } : {}),
+  });
+  const published = {
+    ...handoff,
+    ...(migrationPreview === undefined ? {} : { migrationPreview }),
+    ...(asepriteImports.length ? { asepriteImports } : {}),
+    ...(tileImports.length ? { tileImports } : {}),
+  };
+  (window as PlacementViewerWindow).ferrumPlacementViewerAgentHandoff =
+    published;
   schedulePlacementDesktopHandoffSync(published);
   if (!import.meta.env.DEV) {
     return;
@@ -3915,16 +7053,21 @@ function publishPlacementAgentHandoff(
 }
 
 function placementDesktopHandoffAutoSyncEnabled(): boolean {
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true || placementDesktopInvoke() === undefined) {
     return false;
   }
-  return desktop.projectPath !== undefined
-    || desktop.requestedProjectPath !== undefined
-    || desktop.requestedSceneDocumentPath !== undefined;
+  return (
+    desktop.projectPath !== undefined ||
+    desktop.requestedProjectPath !== undefined ||
+    desktop.requestedSceneDocumentPath !== undefined
+  );
 }
 
-function schedulePlacementDesktopHandoffSync(handoff: PlacementViewerAgentHandoff): void {
+function schedulePlacementDesktopHandoffSync(
+  handoff: PlacementViewerAgentHandoff,
+): void {
   if (!placementDesktopHandoffAutoSyncEnabled()) {
     return;
   }
@@ -3940,25 +7083,30 @@ function schedulePlacementDesktopHandoffSync(handoff: PlacementViewerAgentHandof
     handoffSyncStatus: "pending",
     lastHandoffError: undefined,
   });
+  const documentRevision = placementDocumentRevision;
   placementDesktopHandoffSyncTimer = window.setTimeout(() => {
     placementDesktopHandoffSyncTimer = undefined;
     const pendingHandoffJson = placementDesktopPendingHandoffJson;
-    void savePlacementAgentHandoffToDesktop().then((path) => {
-      if (path === undefined || pendingHandoffJson === undefined) {
-        publishPlacementDesktopState({ handoffSyncStatus: "idle" });
-        return;
-      }
-      placementDesktopLastSyncedHandoffJson = pendingHandoffJson;
-      publishPlacementDesktopState({
-        handoffSyncStatus: "saved",
-        lastHandoffError: undefined,
+    void savePlacementAgentHandoffToDesktop()
+      .then((path) => {
+        if (documentRevision !== placementDocumentRevision) return;
+        if (path === undefined || pendingHandoffJson === undefined) {
+          publishPlacementDesktopState({ handoffSyncStatus: "idle" });
+          return;
+        }
+        placementDesktopLastSyncedHandoffJson = pendingHandoffJson;
+        publishPlacementDesktopState({
+          handoffSyncStatus: "saved",
+          lastHandoffError: undefined,
+        });
+      })
+      .catch((error: unknown) => {
+        if (documentRevision !== placementDocumentRevision) return;
+        publishPlacementDesktopState({
+          handoffSyncStatus: "error",
+          lastHandoffError: placementErrorMessage(error),
+        });
       });
-    }).catch((error: unknown) => {
-      publishPlacementDesktopState({
-        handoffSyncStatus: "error",
-        lastHandoffError: placementErrorMessage(error),
-      });
-    });
   }, DESKTOP_HANDOFF_SYNC_DEBOUNCE_MS);
 }
 
@@ -3972,19 +7120,34 @@ function placementAssetDiagnosticsForState(
     if (visual?.kind !== "sprite" || visual.texture.kind !== "asset") {
       continue;
     }
-    diagnostics.push(...assetProvider.diagnoseSpriteAssetReference({
-      asset: visual.texture.name ?? String(visual.texture.value),
-      path: `placementViewer.instances.${instance.instanceId}.visual.asset`,
-    }));
+    diagnostics.push(
+      ...assetProvider.diagnoseSpriteAssetReference({
+        asset: visual.texture.name ?? String(visual.texture.value),
+        path: `placementViewer.instances.${instance.instanceId}.visual.asset`,
+      }),
+    );
   }
   return diagnostics;
 }
 
-function publishPlacementSavedDocument(document: SceneAuthoringDocumentSpec): void {
-  (window as PlacementViewerWindow).ferrumPlacementViewerSavedDocument = document;
+function placementPatchOperationCount(
+  patch: ScenePlacementPatch | undefined,
+): number {
+  return (
+    (patch?.operations.length ?? 0) + (patch?.spatial?.operations.length ?? 0)
+  );
 }
 
-function publishPlacementMigrationPreview(preview: ScenePlacementBindingMigrationPreview | undefined): void {
+function publishPlacementSavedDocument(
+  document: SceneAuthoringDocumentSpec,
+): void {
+  (window as PlacementViewerWindow).ferrumPlacementViewerSavedDocument =
+    document;
+}
+
+function publishPlacementMigrationPreview(
+  preview: ScenePlacementBindingMigrationPreview | undefined,
+): void {
   const target = window as PlacementViewerWindow;
   if (preview === undefined) {
     delete target.ferrumPlacementViewerMigrationPreview;
@@ -3993,7 +7156,9 @@ function publishPlacementMigrationPreview(preview: ScenePlacementBindingMigratio
   target.ferrumPlacementViewerMigrationPreview = preview;
 }
 
-function publishPlacementSaveResult(result: ScenePlacementPatchSaveResult): void {
+function publishPlacementSaveResult(
+  result: ScenePlacementPatchSaveResult,
+): void {
   const target = window as PlacementViewerWindow;
   target.ferrumPlacementViewerLastSave = result;
   delete target.ferrumPlacementViewerLastSaveError;
@@ -4009,9 +7174,10 @@ async function copyPlacementText(text: string): Promise<void> {
     await navigator.clipboard.writeText(text);
     return;
   }
-  const previousFocus = document.activeElement instanceof HTMLElement
-    ? document.activeElement
-    : undefined;
+  const previousFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : undefined;
   const textarea = document.createElement("textarea");
   textarea.value = text;
   textarea.readOnly = true;
@@ -4039,15 +7205,21 @@ function placementErrorMessage(error: unknown): string {
 }
 
 function placementDocumentSourceLabel(fallback: string): string {
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
   if (desktop?.enabled === true) {
-    return desktop.sceneDocumentPath ?? desktop.requestedSceneDocumentPath ?? fallback;
+    return (
+      desktop.sceneDocumentPath ??
+      desktop.requestedSceneDocumentPath ??
+      fallback
+    );
   }
   return fallback;
 }
 
 function placementProjectInputValue(): string {
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true) {
     return "";
   }
@@ -4055,15 +7227,23 @@ function placementProjectInputValue(): string {
 }
 
 function placementAssetFolderInputValue(): string {
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true) {
     return "";
   }
-  return desktop.assetFolderPath ?? placementDefaultAssetFolderPath(desktop.projectPath ?? desktop.requestedProjectPath) ?? "";
+  return (
+    desktop.assetFolderPath ??
+    placementDefaultAssetFolderPath(
+      desktop.projectPath ?? desktop.requestedProjectPath,
+    ) ??
+    ""
+  );
 }
 
 function placementProjectStatusLabel(): string {
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true) {
     return "browser";
   }
@@ -4071,14 +7251,19 @@ function placementProjectStatusLabel(): string {
 }
 
 function placementAssetFolderStatusLabel(): string {
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true) {
     return "browser";
   }
   if (desktop.lastAssetFolderError !== undefined) {
     return `error ${desktop.lastAssetFolderError}`;
   }
-  const path = desktop.assetFolderPath ?? placementDefaultAssetFolderPath(desktop.projectPath ?? desktop.requestedProjectPath);
+  const path =
+    desktop.assetFolderPath ??
+    placementDefaultAssetFolderPath(
+      desktop.projectPath ?? desktop.requestedProjectPath,
+    );
   if (path === undefined) {
     return "-";
   }
@@ -4092,7 +7277,9 @@ function placementAssetFolderStatusLabel(): string {
   return path;
 }
 
-function placementAssetFolderRuntimeStatusLabel(desktop: PlacementViewerDesktopState): string {
+function placementAssetFolderRuntimeStatusLabel(
+  desktop: PlacementViewerDesktopState,
+): string {
   switch (desktop.assetFolderRuntimeStatus) {
     case "loading":
       return " runtime loading";
@@ -4108,7 +7295,8 @@ function placementAssetFolderRuntimeStatusLabel(desktop: PlacementViewerDesktopS
 }
 
 function placementHandoffStatusLabel(): string {
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true) {
     return "copy only";
   }
@@ -4117,9 +7305,10 @@ function placementHandoffStatusLabel(): string {
 
 function placementSaveStatusLabel(saveEnabled: boolean): string {
   if (!saveEnabled) {
-    return "disabled";
+    return "export only";
   }
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
   if (desktop?.enabled === true) {
     return desktop.lastSavePath === undefined
       ? "desktop file"
@@ -4128,21 +7317,101 @@ function placementSaveStatusLabel(saveEnabled: boolean): string {
   return import.meta.env.DEV ? "dev endpoint" : "enabled";
 }
 
-function placementDefaultAssetFolderPath(projectPath: string | undefined): string | undefined {
+function placementDefaultAssetFolderPath(
+  projectPath: string | undefined,
+): string | undefined {
   if (projectPath === undefined || projectPath.length === 0) {
     return undefined;
   }
   return `${projectPath.replace(/\/+$/, "")}/public/assets`;
 }
 
+function placementAssetRuntimeUrl(
+  asset: ScenePlacementAgentHandoffAssetFile,
+): string | undefined {
+  if (!asset.runtimeUrl || !asset.contentRevision) return asset.runtimeUrl;
+  const url = new URL(asset.runtimeUrl, window.location.href);
+  if (url.protocol === "data:" || url.protocol === "blob:")
+    return asset.runtimeUrl;
+  url.searchParams.set("revision", asset.contentRevision);
+  return url.href;
+}
+
+/** Runtime keys are content-scoped. Authored asset IDs and contentIds remain untouched. */
+function placementSpatialRuntimeDocument(
+  source: SceneAuthoringDocumentSpec,
+): SceneAuthoringDocumentSpec {
+  if (!source.spatial?.models) return source;
+  const document = structuredClone(source);
+  for (const model of Object.values(document.spatial!.models!)) {
+    model.asset = "placement:" + model.contentId;
+    for (const lod of model.lods ?? [])
+      lod.asset = "placement:" + lod.contentId;
+  }
+  return document;
+}
+
+async function loadPlacementSpatialModels(
+  engine: FerrumRuntime["engine"],
+  document: SceneAuthoringDocumentSpec,
+  cache: Map<string, SpatialModelAsset>,
+  files = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop
+    ?.assetFolderModels,
+): Promise<void> {
+  const pending = new Map<string, SpatialModelAsset>();
+  for (const ref of Object.values(document.spatial?.models ?? {}).flatMap(
+    (model) => [model, ...(model.lods ?? [])],
+  )) {
+    let asset = cache.get(ref.contentId) ?? pending.get(ref.contentId);
+    if (!asset) {
+      const source = files?.find((file) => file.id === ref.asset),
+        url = source && placementAssetRuntimeUrl(source);
+      if (!url)
+        throw new Error(
+          "Import GLB asset '" + ref.asset + "' before opening this document",
+        );
+      asset = await loadSpatialGlb(url, { materialProfile: "diffuse" });
+      if (asset.contentId !== ref.contentId)
+        throw new Error(
+          "spatial.models." +
+            ref.asset +
+            ": model contentId differs from source",
+        );
+      pending.set(asset.contentId, asset);
+      if (
+        cache.size + pending.size > 16 ||
+        [...cache.values(), ...pending.values()].reduce(
+          (bytes, value) => bytes + value.byteLength,
+          0,
+        ) >
+          128 * 1024 * 1024
+      )
+        throw new Error("Spatial model cache exceeds 16 assets or 128 MiB");
+    }
+  }
+  for (const [id, asset] of pending) {
+    if (!engine.registerDataSceneSpatialModel("placement:" + id, asset))
+      throw new Error("Spatial model registration rejected");
+    cache.set(id, asset);
+  }
+}
+
 function placementPreviewAssetSignature(): string {
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true || desktop.assetFolderExists !== true) {
     return "browser";
   }
   return JSON.stringify([
-    placementDesktopAssetFolderRevision,
-    (desktop.assetFolderImages ?? []).map((image) => [image.id, image.runtimeUrl, image.width, image.height]),
+    (desktop.assetFolderImages ?? []).some((image) => !image.contentRevision)
+      ? placementDesktopAssetFolderRevision
+      : 0,
+    (desktop.assetFolderImages ?? []).map((image) => [
+      image.id,
+      placementAssetRuntimeUrl(image),
+      image.width,
+      image.height,
+    ]),
   ]);
 }
 
@@ -4161,20 +7430,24 @@ function createPlacementPreviewAssetProvider(): ScenePlacementAssetProvider {
       ...PLACEMENT_TEXTURE_METADATA,
       ...desktopTextures.metadata,
     },
-    frameLabel: ({ frameName }) => ({
-      full: "Full",
-      base: "Base",
-      barrel: "Barrel",
-    })[frameName],
+    frameLabel: ({ frameName }) =>
+      ({
+        full: "Full",
+        base: "Base",
+        barrel: "Barrel",
+      })[frameName],
     path: "placementViewer.previewAssets",
   });
 }
 
-function placementDesktopPreviewTextures(): {
-  textures: Record<string, string>;
-  metadata: Record<string, ScenePlacementProjectTextureMetadata>;
-} | undefined {
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+function placementDesktopPreviewTextures():
+  | {
+      textures: Record<string, string>;
+      metadata: Record<string, ScenePlacementProjectTextureMetadata>;
+    }
+  | undefined {
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true || desktop.assetFolderExists !== true) {
     return undefined;
   }
@@ -4184,10 +7457,10 @@ function placementDesktopPreviewTextures(): {
     if (image.runtimeUrl === undefined || image.runtimeUrl.length === 0) {
       continue;
     }
-    textures[image.id] = image.runtimeUrl;
+    textures[image.id] = placementAssetRuntimeUrl(image)!;
     metadata[image.id] = {
       label: image.fileName,
-      thumbnailUrl: image.runtimeUrl,
+      thumbnailUrl: placementAssetRuntimeUrl(image)!,
       ...(image.width === undefined ? {} : { width: image.width }),
       ...(image.height === undefined ? {} : { height: image.height }),
     };
@@ -4207,10 +7480,20 @@ function placementRuntimeTextureManifest(): Record<string, string> {
       };
 }
 
-function placementRuntimeAssetSignature(textures: Record<string, string>): string {
+function placementRuntimeAssetSignature(
+  textures: Record<string, string>,
+): string {
   return JSON.stringify([
-    placementDesktopAssetFolderRevision,
-    Object.keys(textures).sort().map((name) => [name, textures[name]]),
+    (
+      window as PlacementViewerWindow
+    ).ferrumPlacementViewerDesktop?.assetFolderImages?.some(
+      (image) => !image.contentRevision,
+    )
+      ? placementDesktopAssetFolderRevision
+      : 0,
+    Object.keys(textures)
+      .sort()
+      .map((name) => [name, textures[name]]),
   ]);
 }
 
@@ -4218,20 +7501,29 @@ function publishPlacementRuntimeAssetStatus(
   status: NonNullable<PlacementViewerDesktopState["assetFolderRuntimeStatus"]>,
   error?: string,
 ): void {
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true) {
     return;
   }
-  const localTextureCount = Object.keys(placementDesktopPreviewTextures()?.textures ?? {}).length;
+  const localTextureCount = Object.keys(
+    placementDesktopPreviewTextures()?.textures ?? {},
+  ).length;
   publishPlacementDesktopState({
     assetFolderRuntimeStatus: status,
     assetFolderRuntimeTextureCount: localTextureCount,
-    lastAssetFolderRuntimeError: status === "error" ? error ?? "Failed to load runtime textures" : undefined,
+    lastAssetFolderRuntimeError:
+      status === "error"
+        ? (error ?? "Failed to load runtime textures")
+        : undefined,
   });
 }
 
-function placementDesktopAssetFolderHandoff(): ScenePlacementAgentHandoffAssetFolder | undefined {
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+function placementDesktopAssetFolderHandoff():
+  | ScenePlacementAgentHandoffAssetFolder
+  | undefined {
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true || desktop.assetFolderPath === undefined) {
     return undefined;
   }
@@ -4246,11 +7538,13 @@ function placementDesktopAssetFolderHandoff(): ScenePlacementAgentHandoffAssetFo
   }
   return {
     path: desktop.assetFolderPath,
-    status: desktop.lastAssetFolderError !== undefined || desktop.lastAssetFolderRuntimeError !== undefined
-      ? "error"
-      : desktop.assetFolderExists === false
-        ? "missing"
-        : "ready",
+    status:
+      desktop.lastAssetFolderError !== undefined ||
+      desktop.lastAssetFolderRuntimeError !== undefined
+        ? "error"
+        : desktop.assetFolderExists === false
+          ? "missing"
+          : "ready",
     imageCount: desktop.assetFolderImageCount ?? 0,
     ...(desktop.assetFolderTextureAtlasInputPath === undefined
       ? {}
@@ -4319,7 +7613,39 @@ async function browsePlacementSceneDocument(): Promise<string | undefined> {
   return sceneDocumentPath;
 }
 
-async function inspectPlacementAssetFolder(assetFolderPath: string): Promise<string | undefined> {
+async function inspectPlacementAssetFolder(
+  assetFolderPath: string,
+): Promise<string | undefined> {
+  const revision = ++placementAssetInspectionRevision;
+  const documentRevision = placementDocumentRevision;
+  placementAssetInspectionAbort?.abort();
+  const controller = new AbortController();
+  placementAssetInspectionAbort = controller;
+  const current = () =>
+    revision === placementAssetInspectionRevision &&
+    documentRevision === placementDocumentRevision &&
+    !controller.signal.aborted;
+  const operation = placementAssetInspectionQueue.then(() =>
+    current()
+      ? performPlacementAssetFolderInspection(
+          assetFolderPath,
+          controller.signal,
+          current,
+        )
+      : undefined,
+  );
+  placementAssetInspectionQueue = operation.then(
+    () => undefined,
+    () => undefined,
+  );
+  return operation;
+}
+
+async function performPlacementAssetFolderInspection(
+  assetFolderPath: string,
+  signal: AbortSignal,
+  current: () => boolean,
+): Promise<string | undefined> {
   const desktopInvoke = placementDesktopInvoke();
   if (desktopInvoke === undefined) {
     return undefined;
@@ -4330,25 +7656,36 @@ async function inspectPlacementAssetFolder(assetFolderPath: string): Promise<str
       { assetFolderPath },
     );
     if (!isPlacementDesktopAssetFolderResponse(result)) {
-      throw new Error("Failed to inspect placement asset folder: invalid desktop asset folder response");
+      throw new Error(
+        "Failed to inspect placement asset folder: invalid desktop asset folder response",
+      );
     }
-    const resolved = await resolvePlacementDesktopAssetFolderImageDimensions(result);
+    if (!current()) return undefined;
+    const resolved = await resolvePlacementDesktopAssetFolderImageDimensions(
+      result,
+      signal,
+    );
+    if (!current()) return undefined;
     publishPlacementDesktopAssetFolder(resolved);
     refreshPlacementAgentHandoff();
     return resolved.assetFolderPath;
   } catch (error: unknown) {
+    if (!current()) return undefined;
     publishPlacementDesktopState({
       assetFolderPath,
       assetFolderExists: false,
       assetFolderImageCount: 0,
       assetFolderTextureAtlasInputPath: undefined,
       assetFolderImages: [],
-      assetFolderDiagnostics: [{
-        severity: "error",
-        code: "notDirectoryAssetFolder",
-        path: "assetFolder",
-        message: placementErrorMessage(error),
-      }],
+      assetFolderModels: [],
+      assetFolderDiagnostics: [
+        {
+          severity: "error",
+          code: "notDirectoryAssetFolder",
+          path: "assetFolder",
+          message: placementErrorMessage(error),
+        },
+      ],
       lastAssetFolderError: placementErrorMessage(error),
       assetFolderRuntimeStatus: undefined,
       assetFolderRuntimeTextureCount: undefined,
@@ -4375,6 +7712,16 @@ function openPlacementProjectFolder(projectPath: string): void {
 }
 
 function openPlacementSceneDocument(sceneDocumentPath?: string): void {
+  if (openWorkspaceDocument) {
+    void openWorkspaceDocument(sceneDocumentPath).catch((error) => {
+      window.dispatchEvent(
+        new CustomEvent("ferrum-placement-document-error", {
+          detail: placementErrorMessage(error),
+        }),
+      );
+    });
+    return;
+  }
   if (!confirmPlacementDocumentSwitch()) {
     return;
   }
@@ -4392,11 +7739,14 @@ function openPlacementSceneDocument(sceneDocumentPath?: string): void {
 }
 
 function confirmPlacementDocumentSwitch(): boolean {
+  if (documentSession) return documentSession.confirmNavigation();
   const state = (window as PlacementViewerWindow).ferrumPlacementViewerState;
   if (state?.draftPatch === undefined) {
     return true;
   }
-  return window.confirm("Unsaved changes will be lost. Open another scene?");
+  return window.confirm(
+    translateUi("Unsaved changes will be lost. Open another scene?"),
+  );
 }
 
 function placementDialogSelectedPath(value: unknown): string | undefined {
@@ -4409,16 +7759,22 @@ function placementDialogSelectedPath(value: unknown): string | undefined {
   return undefined;
 }
 
-async function savePlacementAgentHandoffToDesktop(): Promise<string | undefined> {
+async function savePlacementAgentHandoffToDesktop(): Promise<
+  string | undefined
+> {
+  const documentRevision = placementDocumentRevision;
   const desktopInvoke = placementDesktopInvoke();
   if (desktopInvoke === undefined) {
     return undefined;
   }
-  const handoff = (window as PlacementViewerWindow).ferrumPlacementViewerAgentHandoff;
+  const handoff = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerAgentHandoff;
   if (handoff === undefined) {
     return undefined;
   }
-  const desktop = (window as PlacementViewerWindow).ferrumPlacementViewerDesktop;
+  const desktop = (window as PlacementViewerWindow)
+    .ferrumPlacementViewerDesktop;
+  if (desktop?.enabled !== true) return undefined;
   const args: Record<string, unknown> = { handoff };
   if (desktop?.projectPath !== undefined) {
     args.projectPath = desktop.projectPath;
@@ -4431,24 +7787,29 @@ async function savePlacementAgentHandoffToDesktop(): Promise<string | undefined>
     args,
   );
   if (!isPlacementDesktopHandoffResponse(result)) {
-    throw new Error("Failed to save placement handoff: invalid desktop handoff response");
+    throw new Error(
+      "Failed to save placement handoff: invalid desktop handoff response",
+    );
   }
-  publishPlacementDesktopState({
-    lastHandoffPath: result.path,
-    handoffPath: result.path,
-    lastHandoffError: undefined,
-  });
+  if (documentRevision === placementDocumentRevision) {
+    publishPlacementDesktopState({
+      lastHandoffPath: result.path,
+      handoffPath: result.path,
+      lastHandoffError: undefined,
+    });
+  }
   return result.path;
 }
 
 async function savePlacementSceneDocument(
   document: SceneAuthoringDocumentSpec,
+  expectedDocument: SceneAuthoringDocumentSpec,
 ): Promise<{ saved: true; document: SceneAuthoringDocumentSpec }> {
   const desktopInvoke = placementDesktopInvoke();
   if (desktopInvoke !== undefined) {
     const sceneDocumentPath = (window as PlacementViewerWindow)
       .ferrumPlacementViewerDesktop?.sceneDocumentPath;
-    const args: Record<string, unknown> = { document };
+    const args: Record<string, unknown> = { document, expectedDocument };
     if (sceneDocumentPath !== undefined) {
       args.sceneDocumentPath = sceneDocumentPath;
     }
@@ -4457,49 +7818,74 @@ async function savePlacementSceneDocument(
       args,
     );
     if (!isPlacementDesktopSceneDocumentResponse(result)) {
-      throw new Error("Failed to save placement scene document: invalid desktop save response");
+      throw new Error(
+        "Failed to save placement scene document: invalid desktop save response",
+      );
     }
-    publishPlacementDesktopState({ lastSavePath: result.path, sceneDocumentPath: result.path });
+    publishPlacementDesktopState({
+      lastSavePath: result.path,
+      sceneDocumentPath: result.path,
+    });
     return { saved: true, document: result.document };
   }
 
+  if (placementSceneDocumentUrl() !== SCENE_DOCUMENT_URL) {
+    throw new Error(
+      "Sample preview is export-only. Export the scene or patch.",
+    );
+  }
   const response = await fetch(SCENE_DOCUMENT_SAVE_ENDPOINT, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(document),
+    body: JSON.stringify({ document, expectedDocument }),
   });
   if (!response.ok) {
-    throw new Error(`Failed to save placement scene document: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Failed to save placement scene document: ${response.status} ${await response.text()}`,
+    );
   }
-  const json = await response.json() as unknown;
+  const json = (await response.json()) as unknown;
   if (!isPlacementSaveResponse(json)) {
-    throw new Error("Failed to save placement scene document: invalid save response");
+    throw new Error(
+      "Failed to save placement scene document: invalid save response",
+    );
   }
   return json;
 }
 
-function isPlacementSaveResponse(value: unknown): value is { saved: true; document: SceneAuthoringDocumentSpec } {
-  return typeof value === "object"
-    && value !== null
-    && (value as { saved?: unknown }).saved === true
-    && typeof (value as { document?: { format?: unknown } }).document?.format === "string";
+function isPlacementSaveResponse(
+  value: unknown,
+): value is { saved: true; document: SceneAuthoringDocumentSpec } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { saved?: unknown }).saved === true &&
+    typeof (value as { document?: { format?: unknown } }).document?.format ===
+      "string"
+  );
 }
 
 function placementDesktopInvoke():
   | (<T>(command: string, args?: Record<string, unknown>) => Promise<T>)
   | undefined {
   const core = (window as PlacementViewerWindow).__TAURI__?.core;
-  return typeof core?.invoke === "function" ? core.invoke.bind(core) : undefined;
+  return typeof core?.invoke === "function"
+    ? core.invoke.bind(core)
+    : undefined;
 }
 
 function placementDesktopOpenDialog():
   | ((options: PlacementDesktopOpenDialogOptions) => Promise<unknown>)
   | undefined {
   const dialog = (window as PlacementViewerWindow).__TAURI__?.dialog;
-  return typeof dialog?.open === "function" ? dialog.open.bind(dialog) : undefined;
+  return typeof dialog?.open === "function"
+    ? dialog.open.bind(dialog)
+    : undefined;
 }
 
-function publishPlacementDesktopState(update: Partial<PlacementViewerDesktopState>): void {
+function publishPlacementDesktopState(
+  update: Partial<PlacementViewerDesktopState>,
+): void {
   const target = window as PlacementViewerWindow;
   target.ferrumPlacementViewerDesktop = {
     enabled: placementDesktopInvoke() !== undefined,
@@ -4509,7 +7895,9 @@ function publishPlacementDesktopState(update: Partial<PlacementViewerDesktopStat
   window.dispatchEvent(new CustomEvent("ferrum-placement-desktop-statechange"));
 }
 
-function publishPlacementDesktopAssetFolder(result: PlacementDesktopAssetFolderResponse): void {
+function publishPlacementDesktopAssetFolder(
+  result: PlacementDesktopAssetFolderResponse,
+): void {
   // Native asset URLs are stable by id even when a different folder supplies new bytes.
   // Every explicit inspection must refresh uploads, including retries at the same path.
   placementDesktopAssetFolderRevision += 1;
@@ -4519,6 +7907,7 @@ function publishPlacementDesktopAssetFolder(result: PlacementDesktopAssetFolderR
     assetFolderImageCount: result.imageCount,
     assetFolderTextureAtlasInputPath: result.textureAtlasInputPath,
     assetFolderImages: result.images,
+    assetFolderModels: result.models,
     assetFolderDiagnostics: result.diagnostics,
     lastAssetFolderError: undefined,
     assetFolderRuntimeStatus: undefined,
@@ -4529,32 +7918,42 @@ function publishPlacementDesktopAssetFolder(result: PlacementDesktopAssetFolderR
 
 async function resolvePlacementDesktopAssetFolderImageDimensions(
   result: PlacementDesktopAssetFolderResponse,
+  signal?: AbortSignal,
 ): Promise<PlacementDesktopAssetFolderResponse> {
   const images: ScenePlacementAgentHandoffAssetFile[] = [];
-  for (let index = 0; index < result.images.length; index += DESKTOP_ASSET_METADATA_BATCH_SIZE) {
-    images.push(...await Promise.all(
-      result.images
-        .slice(index, index + DESKTOP_ASSET_METADATA_BATCH_SIZE)
-        .map(resolvePlacementDesktopAssetImageDimensions),
-    ));
+  for (
+    let index = 0;
+    index < result.images.length;
+    index += DESKTOP_ASSET_METADATA_BATCH_SIZE
+  ) {
+    images.push(
+      ...(await Promise.all(
+        result.images
+          .slice(index, index + DESKTOP_ASSET_METADATA_BATCH_SIZE)
+          .map((image) =>
+            resolvePlacementDesktopAssetImageDimensions(image, signal),
+          ),
+      )),
+    );
   }
   return { ...result, images };
 }
 
 async function resolvePlacementDesktopAssetImageDimensions(
   image: ScenePlacementAgentHandoffAssetFile,
+  signal?: AbortSignal,
 ): Promise<ScenePlacementAgentHandoffAssetFile> {
   if (
-    (image.width !== undefined && image.height !== undefined)
-    || image.runtimeUrl === undefined
-    || typeof createImageBitmap !== "function"
+    (image.width !== undefined && image.height !== undefined) ||
+    image.runtimeUrl === undefined ||
+    typeof createImageBitmap !== "function"
   ) {
     return image;
   }
 
   let bitmap: ImageBitmap | undefined;
   try {
-    const response = await fetch(image.runtimeUrl);
+    const response = await fetch(placementAssetRuntimeUrl(image)!, { signal });
     if (!response.ok) {
       return image;
     }
@@ -4578,16 +7977,30 @@ function refreshPlacementAgentHandoff(): void {
   (window as PlacementViewerWindow).ferrumPlacementViewerRefreshHandoff?.();
 }
 
-function publishPlacementInteraction(interaction: PlacementInteractionState): void {
-  (window as PlacementViewerWindow).ferrumPlacementViewerInteraction = placementInteractionSnapshot(interaction);
+function publishPlacementInteraction(
+  interaction: PlacementInteractionState,
+): void {
+  (window as PlacementViewerWindow).ferrumPlacementViewerInteraction =
+    placementInteractionSnapshot(interaction);
+  window.dispatchEvent(new Event("ferrum-placement-toolchange"));
 }
 
-function placementInteractionSnapshot(interaction: PlacementInteractionState): PlacementInteractionSnapshot {
+function resetPlacementAdd(interaction: PlacementInteractionState): void {
+  interaction.pendingAdd = undefined;
+  interaction.pendingAddPreview = undefined;
+  placementAssetDrag = undefined;
+}
+
+function placementInteractionSnapshot(
+  interaction: PlacementInteractionState,
+): PlacementInteractionSnapshot {
   return {
     enabled: interaction.enabled,
     gridSize: interaction.gridSize,
     dragging: interaction.dragging,
-    ...(interaction.pendingAdd === undefined ? {} : { pendingAdd: interaction.pendingAdd }),
+    ...(interaction.pendingAdd === undefined
+      ? {}
+      : { pendingAdd: interaction.pendingAdd }),
     ...(interaction.pendingAddPreview === undefined
       ? {}
       : { pendingAddPreview: { ...interaction.pendingAddPreview } }),
@@ -4601,13 +8014,30 @@ function placementMigrationPreview(
   return patch === undefined
     ? undefined
     : previewScenePlacementBindingMigration(document, patch, {
-      path: "placementViewer.migration",
-    });
+        path: "placementViewer.migration",
+      });
 }
 
 function publishFrameStats(frame: FerrumRuntimeFrame): void {
   const target = window as PlacementViewerWindow;
+  const spatial = frame.frame.renderCommandBuffer.spatial;
+  let terrainVertices = spatial?.terrainVertexCount ?? 0;
+  if (spatial?.version === 2) {
+    terrainVertices = 0;
+    for (let i = 1; i < spatial.terrainDrawRanges.length; i += 2)
+      terrainVertices += spatial.terrainDrawRanges[i];
+  }
   target.ferrumPlacementViewerRuntimeFrame = {
+    ...(spatial
+      ? {
+          spatial: {
+            terrainVertices,
+            billboardVertices: spatial.billboardVertexCount,
+            modelDraws: (spatial.models?.words.length ?? 0) / 20,
+            debugVertices: spatial.debug?.vertexCount ?? 0,
+          },
+        }
+      : {}),
     entityCount: frame.frame.entityCount,
     renderCommandCount: frame.rendererStats.renderCommandCount,
     drawCalls: frame.rendererStats.drawCalls,
@@ -4637,9 +8067,12 @@ function createPlacementInteractionState(): PlacementInteractionState {
 }
 
 function placementViewerSaveEnabled(): boolean {
-  return placementDesktopInvoke() !== undefined
-    || import.meta.env.DEV
-    || import.meta.env.VITE_FERRUM_PLACEMENT_VIEWER_SAVE === "true";
+  return (
+    placementDesktopInvoke() !== undefined ||
+    (placementSceneDocumentUrl() === SCENE_DOCUMENT_URL &&
+      (import.meta.env.DEV ||
+        import.meta.env.VITE_FERRUM_PLACEMENT_VIEWER_SAVE === "true"))
+  );
 }
 
 function placementBoundsById(
@@ -4669,10 +8102,14 @@ function placementBoundsForInstance(
       height: instance.visual.bounds.height,
     };
   }
-  return boundsById.get(instance.sourceId) ?? boundsById.get(instance.instanceId);
+  return (
+    boundsById.get(instance.sourceId) ?? boundsById.get(instance.instanceId)
+  );
 }
 
-function placementVisualLabel(instance: ScenePlacementViewerInstance | undefined): string {
+function placementVisualLabel(
+  instance: ScenePlacementViewerInstance | undefined,
+): string {
   const visual = instance?.visual;
   if (visual === undefined) {
     return "-";
@@ -4680,13 +8117,16 @@ function placementVisualLabel(instance: ScenePlacementViewerInstance | undefined
   if (visual.kind === "primitive") {
     return `${visual.shape} ${formatNumber(visual.bounds.width)}x${formatNumber(visual.bounds.height)}`;
   }
-  const texture = visual.texture.kind === "asset"
-    ? visual.texture.name ?? String(visual.texture.value)
-    : `#${visual.texture.id ?? visual.texture.value}`;
+  const texture =
+    visual.texture.kind === "asset"
+      ? (visual.texture.name ?? String(visual.texture.value))
+      : `#${visual.texture.id ?? visual.texture.value}`;
   return `${texture} ${formatNumber(visual.bounds.width)}x${formatNumber(visual.bounds.height)}`;
 }
 
-function placementColliderLabel(instance: ScenePlacementViewerInstance | undefined): string {
+function placementColliderLabel(
+  instance: ScenePlacementViewerInstance | undefined,
+): string {
   const collider = instance?.collider;
   if (collider === undefined) {
     return "-";
@@ -4707,17 +8147,28 @@ function placementColliderLabel(instance: ScenePlacementViewerInstance | undefin
   }
 }
 
-function firstActorInstance(resolved: ResolvedSceneAuthoringDocument): string | undefined {
+function firstActorInstance(
+  resolved: ResolvedSceneAuthoringDocument,
+): string | undefined {
   for (const binding of resolved.bindingPlan?.bindings ?? []) {
     return binding.instance.id;
   }
   return undefined;
 }
 
-function viewportForCanvas(canvas: HTMLCanvasElement, engine?: FerrumRuntime["engine"]) {
+function viewportForCanvas(
+  canvas: HTMLCanvasElement,
+  engine?: FerrumRuntime["engine"],
+) {
   const rect = canvas.getBoundingClientRect();
-  const cssWidth = Math.max(1, rect.width || canvas.clientWidth || canvas.width);
-  const cssHeight = Math.max(1, rect.height || canvas.clientHeight || canvas.height);
+  const cssWidth = Math.max(
+    1,
+    rect.width || canvas.clientWidth || canvas.width,
+  );
+  const cssHeight = Math.max(
+    1,
+    rect.height || canvas.clientHeight || canvas.height,
+  );
   const viewport = {
     cssWidth,
     cssHeight,
@@ -4735,7 +8186,10 @@ function viewportForCanvas(canvas: HTMLCanvasElement, engine?: FerrumRuntime["en
   };
 }
 
-function pointerScreenPoint(canvas: HTMLCanvasElement, event: PointerEvent | MouseEvent): { x: number; y: number } {
+function pointerScreenPoint(
+  canvas: HTMLCanvasElement,
+  event: PointerEvent | MouseEvent,
+): { x: number; y: number } {
   const rect = canvas.getBoundingClientRect();
   return {
     x: event.clientX - rect.left,
@@ -4751,14 +8205,20 @@ async function loadSceneAuthoringDocument(
   const desktopInvoke = placementDesktopInvoke();
   if (desktopInvoke !== undefined) {
     if (projectPath !== undefined) {
-      const result = await desktopInvoke<PlacementDesktopProjectDocumentResponse>(
-        DESKTOP_LOAD_PROJECT_FOLDER_COMMAND,
-        { projectPath },
-      );
+      const result =
+        await desktopInvoke<PlacementDesktopProjectDocumentResponse>(
+          DESKTOP_LOAD_PROJECT_FOLDER_COMMAND,
+          { projectPath },
+        );
       if (!isPlacementDesktopProjectDocumentResponse(result)) {
-        throw new Error("Failed to load placement project folder: invalid desktop project response");
+        throw new Error(
+          "Failed to load placement project folder: invalid desktop project response",
+        );
       }
-      const assetFolder = await resolvePlacementDesktopAssetFolderImageDimensions(result.assetFolder);
+      const assetFolder =
+        await resolvePlacementDesktopAssetFolderImageDimensions(
+          result.assetFolder,
+        );
       publishPlacementDesktopState({
         requestedProjectPath: projectPath,
         projectPath: result.projectPath,
@@ -4769,6 +8229,7 @@ async function loadSceneAuthoringDocument(
         assetFolderImageCount: assetFolder.imageCount,
         assetFolderTextureAtlasInputPath: assetFolder.textureAtlasInputPath,
         assetFolderImages: assetFolder.images,
+        assetFolderModels: assetFolder.models,
         assetFolderDiagnostics: assetFolder.diagnostics,
         lastAssetFolderError: undefined,
         assetFolderRuntimeStatus: undefined,
@@ -4782,7 +8243,9 @@ async function loadSceneAuthoringDocument(
       sceneDocumentPath === undefined ? undefined : { sceneDocumentPath },
     );
     if (!isPlacementDesktopSceneDocumentResponse(result)) {
-      throw new Error("Failed to load placement scene document: invalid desktop load response");
+      throw new Error(
+        "Failed to load placement scene document: invalid desktop load response",
+      );
     }
     publishPlacementDesktopState({
       requestedSceneDocumentPath: sceneDocumentPath,
@@ -4793,6 +8256,7 @@ async function loadSceneAuthoringDocument(
       assetFolderImageCount: undefined,
       assetFolderTextureAtlasInputPath: undefined,
       assetFolderImages: undefined,
+      assetFolderModels: undefined,
       assetFolderDiagnostics: undefined,
       lastAssetFolderError: undefined,
       assetFolderRuntimeStatus: undefined,
@@ -4804,47 +8268,72 @@ async function loadSceneAuthoringDocument(
 
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Failed to load ${url}: ${response.status} ${response.statusText}`.trim());
+    throw new Error(
+      `Failed to load ${url}: ${response.status} ${response.statusText}`.trim(),
+    );
   }
-  return await response.json() as SceneAuthoringDocumentSpec;
+  return (await response.json()) as SceneAuthoringDocumentSpec;
 }
 
-function isPlacementDesktopProjectDocumentResponse(value: unknown): value is PlacementDesktopProjectDocumentResponse {
-  return typeof value === "object"
-    && value !== null
-    && typeof (value as { projectPath?: unknown }).projectPath === "string"
-    && typeof (value as { sceneDocumentPath?: unknown }).sceneDocumentPath === "string"
-    && typeof (value as { handoffPath?: unknown }).handoffPath === "string"
-    && isPlacementDesktopAssetFolderResponse((value as { assetFolder?: unknown }).assetFolder)
-    && typeof (value as { document?: { format?: unknown } }).document?.format === "string";
+function isPlacementDesktopProjectDocumentResponse(
+  value: unknown,
+): value is PlacementDesktopProjectDocumentResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { projectPath?: unknown }).projectPath === "string" &&
+    typeof (value as { sceneDocumentPath?: unknown }).sceneDocumentPath ===
+      "string" &&
+    typeof (value as { handoffPath?: unknown }).handoffPath === "string" &&
+    isPlacementDesktopAssetFolderResponse(
+      (value as { assetFolder?: unknown }).assetFolder,
+    ) &&
+    typeof (value as { document?: { format?: unknown } }).document?.format ===
+      "string"
+  );
 }
 
-function isPlacementDesktopAssetFolderResponse(value: unknown): value is PlacementDesktopAssetFolderResponse {
-  return typeof value === "object"
-    && value !== null
-    && typeof (value as { assetFolderPath?: unknown }).assetFolderPath === "string"
-    && typeof (value as { exists?: unknown }).exists === "boolean"
-    && typeof (value as { imageCount?: unknown }).imageCount === "number"
-    && (
-      (value as { textureAtlasInputPath?: unknown }).textureAtlasInputPath === undefined
-      || typeof (value as { textureAtlasInputPath?: unknown }).textureAtlasInputPath === "string"
-    )
-    && Array.isArray((value as { images?: unknown }).images)
-    && Array.isArray((value as { diagnostics?: unknown }).diagnostics);
+function isPlacementDesktopAssetFolderResponse(
+  value: unknown,
+): value is PlacementDesktopAssetFolderResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { assetFolderPath?: unknown }).assetFolderPath ===
+      "string" &&
+    typeof (value as { exists?: unknown }).exists === "boolean" &&
+    typeof (value as { imageCount?: unknown }).imageCount === "number" &&
+    ((value as { textureAtlasInputPath?: unknown }).textureAtlasInputPath ===
+      undefined ||
+      typeof (value as { textureAtlasInputPath?: unknown })
+        .textureAtlasInputPath === "string") &&
+    Array.isArray((value as { images?: unknown }).images) &&
+    Array.isArray((value as { diagnostics?: unknown }).diagnostics)
+  );
 }
 
-function isPlacementDesktopSceneDocumentResponse(value: unknown): value is PlacementDesktopSceneDocumentResponse {
-  return typeof value === "object"
-    && value !== null
-    && typeof (value as { path?: unknown }).path === "string"
-    && typeof (value as { document?: { format?: unknown } }).document?.format === "string";
+function isPlacementDesktopSceneDocumentResponse(
+  value: unknown,
+): value is PlacementDesktopSceneDocumentResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { path?: unknown }).path === "string" &&
+    typeof (value as { document?: { format?: unknown } }).document?.format ===
+      "string"
+  );
 }
 
-function isPlacementDesktopHandoffResponse(value: unknown): value is PlacementDesktopHandoffResponse {
-  return typeof value === "object"
-    && value !== null
-    && typeof (value as { path?: unknown }).path === "string"
-    && typeof (value as { handoff?: { format?: unknown } }).handoff?.format === "string";
+function isPlacementDesktopHandoffResponse(
+  value: unknown,
+): value is PlacementDesktopHandoffResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { path?: unknown }).path === "string" &&
+    typeof (value as { handoff?: { format?: unknown } }).handoff?.format ===
+      "string"
+  );
 }
 
 function appendNumberControl(
@@ -4854,23 +8343,36 @@ function appendNumberControl(
   step: string,
   min?: string,
 ): HTMLInputElement {
-  return appendAuthoringViewerNumberControl(parent, {
+  return bindUiControl(
+    appendAuthoringViewerNumberControl(parent, {
+      label,
+      className: "placement-control",
+      step,
+      min,
+      dataset:
+        field === "snapGrid"
+          ? { placementSnapGrid: "true" }
+          : { placementTransformField: field },
+    }),
     label,
-    className: "placement-control",
-    step,
-    min,
-    dataset: field === "snapGrid"
-      ? { placementSnapGrid: "true" }
-      : { placementTransformField: field },
-  });
+    false,
+  );
 }
 
-function appendTextControl(parent: HTMLElement, label: string, field: string): HTMLInputElement {
-  return appendAuthoringViewerTextControl(parent, {
+function appendTextControl(
+  parent: HTMLElement,
+  label: string,
+  field: string,
+): HTMLInputElement {
+  return bindUiControl(
+    appendAuthoringViewerTextControl(parent, {
+      label,
+      className: "placement-control",
+      dataset: textControlDataset(field),
+    }),
     label,
-    className: "placement-control",
-    dataset: textControlDataset(field),
-  });
+    false,
+  );
 }
 
 function appendSelectControl(
@@ -4879,12 +8381,16 @@ function appendSelectControl(
   field: string,
   options: readonly string[],
 ): HTMLSelectElement {
-  return appendAuthoringViewerSelectControl(parent, {
+  return bindUiControl(
+    appendAuthoringViewerSelectControl(parent, {
+      label,
+      className: "placement-control",
+      options,
+      dataset: selectControlDataset(field),
+    }),
     label,
-    className: "placement-control",
-    options,
-    dataset: selectControlDataset(field),
-  });
+    false,
+  );
 }
 
 function textControlDataset(field: string): Record<string, string> {
@@ -4923,13 +8429,17 @@ function appendComponentNumberControl(
   step: string,
   min?: string,
 ): HTMLInputElement {
-  return appendAuthoringViewerNumberControl(parent, {
+  return bindUiControl(
+    appendAuthoringViewerNumberControl(parent, {
+      label,
+      className: "placement-control",
+      step,
+      min,
+      dataset: { placementComponentField: field },
+    }),
     label,
-    className: "placement-control",
-    step,
-    min,
-    dataset: { placementComponentField: field },
-  });
+    false,
+  );
 }
 
 function appendComponentColorControl(
@@ -4941,7 +8451,7 @@ function appendComponentColorControl(
   const labelText = document.createElement("span");
   const input = document.createElement("input");
   wrapper.className = "placement-control";
-  labelText.textContent = label;
+  setUiText(labelText, label);
   input.type = "color";
   input.dataset.placementComponentField = field;
   wrapper.append(labelText, input);
@@ -4955,12 +8465,16 @@ function appendComponentSelectControl<T extends string>(
   field: string,
   options: readonly T[],
 ): HTMLSelectElement {
-  return appendAuthoringViewerSelectControl(parent, {
+  return bindUiControl(
+    appendAuthoringViewerSelectControl(parent, {
+      label,
+      className: "placement-control",
+      options,
+      dataset: { placementComponentField: field },
+    }),
     label,
-    className: "placement-control",
-    options,
-    dataset: { placementComponentField: field },
-  });
+    true,
+  );
 }
 
 function appendComponentTextareaControl(
@@ -4968,12 +8482,16 @@ function appendComponentTextareaControl(
   label: string,
   field: string,
 ): HTMLTextAreaElement {
-  return appendAuthoringViewerTextareaControl(parent, {
+  return bindUiControl(
+    appendAuthoringViewerTextareaControl(parent, {
+      label,
+      className: "placement-control placement-control-textarea",
+      rows: 3,
+      dataset: { placementComponentField: field },
+    }),
     label,
-    className: "placement-control placement-control-textarea",
-    rows: 3,
-    dataset: { placementComponentField: field },
-  });
+    false,
+  );
 }
 
 function appendComponentCheckboxControl(
@@ -4981,24 +8499,42 @@ function appendComponentCheckboxControl(
   label: string,
   field: string,
 ): HTMLInputElement {
-  return appendAuthoringViewerCheckboxControl(parent, {
+  return bindUiControl(
+    appendAuthoringViewerCheckboxControl(parent, {
+      label,
+      className: "placement-control placement-control-checkbox",
+      dataset: { placementComponentField: field },
+    }),
     label,
-    className: "placement-control placement-control-checkbox",
-    dataset: { placementComponentField: field },
-  });
+    false,
+  );
 }
 
-function appendCheckboxControl(parent: HTMLElement, label: string, field: string): HTMLInputElement {
-  return appendAuthoringViewerCheckboxControl(parent, {
+function appendCheckboxControl(
+  parent: HTMLElement,
+  label: string,
+  field: string,
+): HTMLInputElement {
+  return bindUiControl(
+    appendAuthoringViewerCheckboxControl(parent, {
+      label,
+      className: "placement-control placement-control-checkbox",
+      dataset: field === "snap" ? { placementSnapToggle: "true" } : {},
+    }),
     label,
-    className: "placement-control placement-control-checkbox",
-    dataset: field === "snap" ? { placementSnapToggle: "true" } : {},
-  });
+    false,
+  );
 }
 
 function normalizedPlacementColor(value: string): string {
   if (/^#[0-9a-fA-F]{3,4}$/.test(value)) {
-    return "#" + [...value.slice(1, 4)].map((channel) => channel + channel).join("").toLowerCase();
+    return (
+      "#" +
+      [...value.slice(1, 4)]
+        .map((channel) => channel + channel)
+        .join("")
+        .toLowerCase()
+    );
   }
   return /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/.test(value)
     ? value.slice(0, 7).toLowerCase()
@@ -5009,7 +8545,20 @@ function placementGameStateLabel(code: number): string {
   if (code === 0) return "Ready";
   if (code === 1) return "Preview";
   if (code === 2) return "Stopped";
+  if (code === 3) return "Paused";
+  if (code === 4) return "Complete";
   return `State ${code}`;
 }
 
 void bootstrap();
+
+function appendRow(
+  parent: HTMLElement,
+  label: string,
+  value = "-",
+): HTMLElement {
+  const result = appendRawRow(parent, label, value);
+  if (result.previousElementSibling)
+    setUiText(result.previousElementSibling, label);
+  return result;
+}

@@ -165,7 +165,7 @@ export function createRuntimeDemoShell(options: RuntimeDemoShellOptions): Runtim
   let startQueued = false;
   let restartQueued = false;
   let frameProperty = options.frameProperty;
-  let removeBeforeUnload: (() => void) | undefined;
+  let removePageHide: (() => void) | undefined;
 
   const shell = document.createElement("main");
   const toolbar = document.createElement("section");
@@ -225,15 +225,17 @@ export function createRuntimeDemoShell(options: RuntimeDemoShellOptions): Runtim
     stage,
     debugRoot,
     attachRuntime(nextRuntime) {
-      removeBeforeUnload?.();
-      removeBeforeUnload = undefined;
+      removePageHide?.();
+      removePageHide = undefined;
       if (runtime !== undefined && runtime !== nextRuntime) {
         destroyRuntime();
       }
       runtime = nextRuntime;
-      const onBeforeUnload = (): void => destroyRuntime();
-      window.addEventListener("beforeunload", onBeforeUnload);
-      removeBeforeUnload = () => window.removeEventListener("beforeunload", onBeforeUnload);
+      const onPageHide = (event: PageTransitionEvent): void => {
+        if (!event.persisted) destroyRuntime();
+      };
+      window.addEventListener("pagehide", onPageHide);
+      removePageHide = () => window.removeEventListener("pagehide", onPageHide);
       exposeSmokeHooks(nextRuntime);
     },
     queueStart() {
@@ -288,8 +290,8 @@ export function createRuntimeDemoShell(options: RuntimeDemoShellOptions): Runtim
       };
     },
     destroy() {
-      removeBeforeUnload?.();
-      removeBeforeUnload = undefined;
+      removePageHide?.();
+      removePageHide = undefined;
       destroyRuntime();
     },
   };

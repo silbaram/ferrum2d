@@ -36,6 +36,7 @@ import type {
 import type { ResolvedSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
 import type { ResolvedSceneCompositionInstance } from "./sceneComposition.js";
 import type { DataSceneSpatialSpec, SpatialCameraSpec } from "./dataSceneSpatial.js";
+import { resolveSpatialNormalTextures } from "./dataSceneSpatial.js";
 import type { SpatialEnvironmentSpec } from "./spatialEnvironment.js";
 import type { DataSceneVariableStore } from "./dataSceneVariables.js";
 
@@ -232,6 +233,8 @@ export function applyDataSceneAuthoringDocument(
         ...(resolvedVariables.length === 0 ? {} : { variables: runtimeVariableIds }),
       };
   const runtimeAdapter = dataSceneRuntimeEngineAdapter(engine, `${path}.runtimeTarget.engine`);
+  // Resolve every normal reference before activation/spawn can replace the previous scene.
+  const runtimeSpatial = resolved.spatial === undefined ? undefined : resolveSpatialNormalTextures(resolved.spatial, textureId ?? (name => runtimeAdapter.textureId(name)));
   if (
     resolved.spatial?.terrain.some(s => s.render === false) &&
     !runtimeAdapter.supportsSpatialSurfaceProxies?.()
@@ -322,7 +325,7 @@ export function applyDataSceneAuthoringDocument(
     );
     // Spawn definitions capture authored billboard styles; configure space before native v7.
     const spawnCatalog = resolved.gameplay?.spawnPrefabs;
-    if (spawnCatalog !== undefined && resolved.spatial !== undefined && !engine.configureDataSceneSpatial(resolved.spatial, result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
+    if (spawnCatalog !== undefined && runtimeSpatial !== undefined && !engine.configureDataSceneSpatial(runtimeSpatial, result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
     if (resolved.gameplay !== undefined && !engine.configureDataSceneGameplay({
       ...(spawnCatalog === undefined ? {} : { spawnPrefabs: Object.entries(spawnCatalog).map(([name, prefab]) => ({ prefabId: runtimeIds!.prefabs![name], prototype: result.entityHandles[prefab.prototypeInstanceId] })) }),
       ...(crowd ? { chaseBindings: chaseCommands.filter(command => command.entity !== resolved.gameplay?.primaryActor && (resolved.gameplay?.combatNavigation?.crowdAvoidance !== undefined || command.stopDistance > 0)).map(command => ({ source: result.entityHandles[command.entity], stopDistance: command.stopDistance })) } : {}),
@@ -335,7 +338,7 @@ export function applyDataSceneAuthoringDocument(
     if (resolved.navigation !== undefined && !engine.configureDataSceneNavigation(resolved.navigation, result.entityHandles)) {
       throw sceneCompositionDiagnosticError(`${path}.navigation`, "runtime rejected Data Scene navigation configuration");
     }
-    if (spawnCatalog === undefined && resolved.spatial !== undefined && !engine.configureDataSceneSpatial(resolved.spatial,result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
+    if (spawnCatalog === undefined && runtimeSpatial !== undefined && !engine.configureDataSceneSpatial(runtimeSpatial,result.entityHandles)) throw sceneCompositionDiagnosticError(`${path}.spatial`, "runtime rejected spatial scene configuration");
     preparation?.commit();
     rememberDataSceneProgressContext(engine, document, result.entityHandles, options);
     return {

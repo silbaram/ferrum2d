@@ -99,6 +99,7 @@ declare module "../pkg/ferrum_core.js" {
     spatial_terrain_draw_range_stride(): number;
     spatial_vertex_stride(): number;
     configure_spatial_debug(flags: number): boolean;
+    set_spatial_preview_filter(entity_keys:Uint32Array,surface_ids:Uint32Array): boolean;
     spatial_debug_flags(): number;
     spatial_debug_ptr(): number;
     spatial_debug_len(): number;
@@ -315,6 +316,7 @@ declare module "../pkg/ferrum_core.js" {
     add_gameplay_behavior_variable_transition(entity_id:number,entity_generation:number,from_state:number,to_state:number,left_slot:number,operator:number,right_slot:number,right_literal:number): boolean;
     clear_gameplay_behavior_state_machine(entity_id:number,entity_generation:number): boolean;
     gameplay_behavior_state(entity_id:number,entity_generation:number): number;
+    gameplay_entity_diagnostics(entity_id:number,entity_generation:number): Float64Array;
     add_gameplay_behavior_state_enter_action(entity_id:number,entity_generation:number,state:number,action_id:number,phase:number): boolean;
     clear_gameplay_behavior_state_enter_actions(entity_id:number,entity_generation:number): boolean;
     set_shooter_projectile_arc(enabled:boolean,launch_height:number,z_velocity:number,gravity:number,hit_height:number): void;

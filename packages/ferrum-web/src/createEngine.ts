@@ -827,6 +827,20 @@ export async function createEngineWithFramePipeline(
         options,
       );
     },
+    gameplayEntityDiagnostics: (entity: GameplayEntityHandle) => {
+      requireAlive();
+      const handle=gameplayAuthoringEntityHandle(entity,"gameplayEntityDiagnostics.entity");
+      if (typeof rustEngine.gameplay_entity_diagnostics !== "function") return undefined;
+      const values=rustEngine.gameplay_entity_diagnostics(handle.entityId,handle.entityGeneration);
+      if (!values.length) return undefined;
+      const count=values[9];
+      if(values[0]!==1 || !Number.isInteger(count) || count<0 || count>16 || values.length!==10+count*2 || values.some(value=>!Number.isFinite(value))) throw new Error("Invalid native gameplay diagnostic packet");
+      return {
+        ...(values[1] ? {stateId:values[2]} : {}),...(values[3] ? {health:values[4]} : {}),
+        ...(values[5] ? {timer:{id:values[6],remainingSeconds:values[7],fired:values[8]!==0}} : {}),
+        actions:Array.from({length:count},(_,index)=>({id:values[10+index*2],remainingSeconds:values[11+index*2]})),
+      };
+    },
     gameplayBehaviorState: (entity: GameplayEntityHandle) => {
       requireAlive();
       const handle = gameplayAuthoringEntityHandle(entity, "gameplayBehaviorState.entity");
@@ -878,7 +892,7 @@ export async function createEngineWithFramePipeline(
   };
 
   const engine: FerrumEngine = {
-    ...createSpatialApi(rustEngine, requireAlive, () => ({ width: rustEngine.spatial_viewport_width(), height: rustEngine.spatial_viewport_height() })),
+    ...createSpatialApi(rustEngine, requireAlive, () => ({ width: rustEngine.spatial_viewport_width(), height: rustEngine.spatial_viewport_height() }), name => requireAssetHost().textureId(name)),
     ...lifecycleApi,
     ...bufferAccessorApi,
     ...sceneApi,

@@ -403,6 +403,25 @@ test("ScenePlacementViewer exports included instance transforms in fragment-loca
   );
 });
 
+test("ScenePlacementViewer batch delete rejects included targets before removing flat objects", () => {
+  const composition = nestedScenePlacementComposition();
+  const main = composition.fragments?.main;
+  if (!main) throw new Error("Expected nested fixture main fragment");
+  main.instances = [{ id: "flat", prefab: "crate", x: 10, y: 20 }];
+  const viewer = createScenePlacementViewer({ sceneComposition: composition, viewport: { cssWidth: 320, cssHeight: 180 } });
+  throwsMatching(() => viewer.removeInstances(["flat", "left.crate"]), /included scene instances/);
+  equal(viewer.state().instances.length, 2);
+  equal(viewer.historyState().undoCount, 0);
+  equal(viewer.exportPatch(), undefined);
+  viewer.updateInstanceTransforms([
+    { instanceId: "flat", transform: { x: 20 } },
+    { instanceId: "left.crate", transform: { x: 120 } },
+  ]);
+  deepEqual(viewer.exportPatch()?.operations.map(operation => operation.kind), ["updateResolvedTransform", "updateTransform"]);
+  equal(viewer.historyState().undoCount, 1);
+  equal(viewer.undo().draftPatch, undefined);
+});
+
 test("ScenePlacementViewer drafts rename, add, and remove operations without mutating source instances", () => {
   const composition = scenePlacementComposition();
   const viewer = createScenePlacementViewer({
@@ -821,6 +840,99 @@ test("ScenePlacementViewer validates input surface", () => {
     }),
     /only write UI-owned props\.components/u,
   );
+});
+
+test("ScenePlacementViewer history restores transformed, renamed, bound and removed objects", () => {
+  const viewer = createScenePlacementViewer({ document: scenePlacementDocument(), viewport: { cssWidth: 320, cssHeight: 180 }, selectedInstanceId: "crate_a" });
+  viewer.beginEdit("Configure crate");
+  viewer.updateInstanceTransform("crate_a", { x: 64, rotationRadians: 0.5 });
+  viewer.updateInstanceComponents("crate_a", {
+    visual: { kind: "primitive", shape: "rect", width: 24, height: 12, color: "#abcdef" },
+    collider: { type: "circle", radius: 6 },
+    layer: "pickup",
+  });
+  viewer.updateBehaviorBinding({ kind: "instance", instanceId: "crate_a" }, "turretBrain");
+  viewer.renameInstance("crate_a", "crate_new");
+  viewer.commitEdit();
+  const configured = structuredClone(viewer.exportPatch());
+  equal(viewer.historyState().undoCount, 1);
+  viewer.removeInstance("crate_new");
+  equal(viewer.state().instances.length, 1);
+  viewer.undo();
+  deepEqual(viewer.exportPatch(), configured);
+  equal(viewer.state().selectedInstanceId, "crate_new");
+  deepEqual(viewer.state().selected?.behaviorProfiles, ["turretBrain"]);
+  equal(viewer.state().selected?.collider?.type, "circle");
+  viewer.undo();
+  equal(viewer.exportPatch(), undefined);
+  equal(viewer.state().selectedInstanceId, "crate_a");
+  viewer.redo();
+  deepEqual(viewer.exportPatch(), configured);
+  viewer.redo();
+  equal(viewer.state().instances.length, 1);
+});
+
+test("ScenePlacementViewer history restores added definitions and instances across revert", () => {
+  const viewer = createScenePlacementViewer({ document: scenePlacementDocument(), viewport: { cssWidth: 320, cssHeight: 180 } });
+  viewer.beginEdit("Add catalog object");
+  viewer.addObjectDefinition("copy", { props: { components: { visual: { kind: "primitive", shape: "rect", width: 16, height: 16, color: "#abcdef" }, collider: { type: "aabb", halfWidth: 8, halfHeight: 8 }, layer: "wall" } } });
+  viewer.addInstance("main", { id: "new", prefab: "copy", x: 50 });
+  viewer.commitEdit();
+  const added = structuredClone(viewer.exportPatch());
+  viewer.clearDraftPatch();
+  equal(viewer.exportPatch(), undefined);
+  viewer.undo();
+  deepEqual(viewer.exportPatch(), added);
+  viewer.undo();
+  equal(viewer.exportPatch(), undefined);
+  equal(viewer.state().objectDefinitions.some(item => item.id === "copy"), false);
+  viewer.redo();
+  deepEqual(viewer.exportPatch(), added);
+  viewer.updateInstanceTransform("new", { x: 72 });
+  viewer.undo();
+  deepEqual(viewer.exportPatch(), added);
+  viewer.redo();
+  equal(viewer.state().instances.find(item => item.instanceId === "new")?.transform.x, 72);
+});
+
+test("ScenePlacementViewer cancels gestures and failed transactions without losing prior history", () => {
+  const viewer = createScenePlacementViewer({ document: scenePlacementDocument(), viewport: { cssWidth: 320, cssHeight: 180 } });
+  viewer.updateInstanceTransform("crate_a", { x: 48 });
+  const before = structuredClone(viewer.exportPatch());
+  viewer.beginEdit("Drag");
+  for (let x = 50; x < 60; x++) viewer.updateInstanceTransform("crate_a", { x });
+  equal(viewer.historyState().undoCount, 1);
+  viewer.undo(); // Undo of an open transaction cancels that transaction only.
+  deepEqual(viewer.exportPatch(), before);
+  equal(viewer.historyState().undoCount, 1);
+  viewer.beginEdit("Invalid batch");
+  viewer.updateInstanceTransform("crate_a", { x: 70 });
+  throwsMatching(() => viewer.updateInstanceTransform("missing", { x: 10 }), /unknown scene instance/u);
+  deepEqual(viewer.exportPatch(), before);
+  equal(viewer.historyState().transactionLabel, undefined);
+  equal(viewer.historyState().undoCount, 1);
+  viewer.beginEdit("Cancelled drag");
+  viewer.updateInstanceTransform("crate_a", { x: 80 });
+  viewer.cancelEdit();
+  deepEqual(viewer.exportPatch(), before);
+});
+
+test("ScenePlacementViewer excludes navigation and no-op edits, and truncates redo on a new edit", () => {
+  const viewer = createScenePlacementViewer({ document: scenePlacementDocument(), viewport: { cssWidth: 320, cssHeight: 180 } });
+  viewer.selectInstance("crate_a");
+  viewer.hoverInstance("turret_left");
+  viewer.updateViewport({ cssWidth: 640, cssHeight: 360, zoom: 2 });
+  viewer.updateInstanceTransform("crate_a", { x: 10 });
+  equal(viewer.historyState().undoCount, 0);
+  viewer.updateInstanceTransform("crate_a", { x: 50 });
+  viewer.undo();
+  viewer.updateInstanceTransform("crate_a", { x: 10 });
+  equal(viewer.historyState().redoCount, 1);
+  viewer.updateInstanceTransform("crate_a", { y: 80 });
+  equal(viewer.historyState().redoCount, 0);
+  viewer.undo();
+  equal(viewer.exportPatch(), undefined);
+  equal(viewer.state().viewport.zoom, 2);
 });
 
 function scenePlacementDocument(): SceneAuthoringDocumentSpec {

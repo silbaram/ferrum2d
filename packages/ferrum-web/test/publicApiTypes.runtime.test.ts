@@ -298,6 +298,7 @@ test("public API runtime profiler, snapshots, renderer options, and frame types"
   equal(GAMEPLAY_EVENT_TILE_IMPACT_LAYER_MASK, 0xff << 24);
   equal(GAMEPLAY_EVENT_TILE_IMPACT_TILE_MASK, 0x00ff_ffff);
   const gameplayAuthoringApi: FerrumGameplayAuthoringApi = {
+    gameplayEntityDiagnostics: () => undefined,
     gameplayEntityExists: () => true,
     registerGameplayPrefabs: (registrations) => ({
       registrations,

@@ -1,9 +1,11 @@
 import { gameplayAuthoringDiagnosticError } from "./diagnostics.js";
+import { applySceneSpatialPatch } from "./sceneSpatialPatch.js";
 import { resolveDataSceneComponentsSpec } from "./dataSceneComponents.js";
 import { GAMEPLAY_BEHAVIOR_BINDING_PROP } from "./gameplayAuthoring.js";
 import {
   SCENE_AUTHORING_DOCUMENT_FORMAT,
   SCENE_AUTHORING_DOCUMENT_VERSION,
+  resolveSceneAuthoringDocument,
   type SceneAuthoringDocumentSpec,
 } from "./sceneAuthoringDocument.js";
 import type {
@@ -44,8 +46,12 @@ export interface ScenePlacementPatchMergeResult {
   changedInstanceIds: readonly string[];
 }
 
-export type ScenePlacementBindingMigrationOperationKind = "renameInstance" | "removeInstance";
-export type ScenePlacementBindingMigrationReferenceKind = "stringValue" | "objectKey";
+export type ScenePlacementBindingMigrationOperationKind =
+  | "renameInstance"
+  | "removeInstance";
+export type ScenePlacementBindingMigrationReferenceKind =
+  | "stringValue"
+  | "objectKey";
 
 export interface ScenePlacementBindingMigrationReference {
   operationIndex: number;
@@ -94,27 +100,38 @@ export interface ScenePlacementSaveAdapterResult {
   document?: SceneAuthoringDocumentSpec;
 }
 
-export interface SaveScenePlacementPatchOptions extends MergeScenePlacementPatchOptions {
+export interface SaveScenePlacementPatchOptions
+  extends MergeScenePlacementPatchOptions {
   allowSave?: boolean;
   adapter?: ScenePlacementSaveAdapter;
   allowedAdapterIds?: readonly string[];
 }
 
-export interface ScenePlacementPatchSaveResult extends ScenePlacementPatchMergeResult {
+export interface ScenePlacementPatchSaveResult
+  extends ScenePlacementPatchMergeResult {
   saved: boolean;
   adapterId: string;
 }
 
-type MutableSceneCompositionFragmentIncludeSpec = Omit<SceneCompositionFragmentIncludeSpec, "instanceTransforms"> & {
+type MutableSceneCompositionFragmentIncludeSpec = Omit<
+  SceneCompositionFragmentIncludeSpec,
+  "instanceTransforms"
+> & {
   instanceTransforms?: Record<string, SceneCompositionTransformSpec>;
 };
 
-type MutableSceneCompositionFragmentSpec = Omit<SceneCompositionFragmentSpec, "include" | "instances"> & {
+type MutableSceneCompositionFragmentSpec = Omit<
+  SceneCompositionFragmentSpec,
+  "include" | "instances"
+> & {
   include?: MutableSceneCompositionFragmentIncludeSpec[];
   instances?: SceneCompositionFragmentInstanceSpec[];
 };
 
-type MutableSceneCompositionSpec = Omit<SceneCompositionSpec, "fragments" | "prefabs"> & {
+type MutableSceneCompositionSpec = Omit<
+  SceneCompositionSpec,
+  "fragments" | "prefabs"
+> & {
   prefabs: Record<string, SceneCompositionPrefabSpec>;
   fragments?: Record<string, MutableSceneCompositionFragmentSpec>;
 };
@@ -134,8 +151,74 @@ export function mergeScenePlacementPatch(
   const path = options.path ?? "scenePlacementPatch";
   validateSceneAuthoringDocumentEnvelope(document, `${path}.document`);
   validateScenePlacementPatchEnvelope(patch, `${path}.patch`);
+  if (patch.spatial) {
+    for (const operation of patch.spatial.operations) {
+      if (
+        operation.kind === "renameReference" ||
+        operation.kind === "removeReference"
+      ) {
+        const matches = patch.operations.filter((outer) =>
+          operation.kind === "renameReference"
+            ? outer.kind === "renameInstance" &&
+              outer.instanceId === operation.id &&
+              outer.nextInstanceId === operation.changes.nextId
+            : outer.kind === "removeInstance" &&
+              outer.instanceId === operation.id,
+        );
+        if (matches.length !== 1)
+          throw new Error(
+            "Spatial migration requires exactly one matching composition operation",
+          );
+        assertSceneSpatialMigrationAllowed(document, operation.id);
+      } else if (operation.kind === "copyReference") {
+        if (
+          patch.operations.filter(
+            (outer) =>
+              outer.kind === "addInstance" &&
+              outer.instance.id === operation.id,
+          ).length !== 1
+        )
+          throw new Error(
+            "Spatial copy requires exactly one matching composition addition",
+          );
+        assertSceneSpatialMigrationAllowed(
+          document,
+          operation.changes.sourceId,
+        );
+      }
+    }
+  }
+  // Identity guards apply even when a caller omits the spatial envelope.
+  for (const outer of patch.operations) {
+    if (outer.kind !== "renameInstance" && outer.kind !== "removeInstance")
+      continue;
+    assertSceneSpatialMigrationAllowed(document, outer.instanceId, false);
+    for (const target of ["billboard", "model"] as const) {
+      const map =
+        target === "billboard"
+          ? document.spatial?.billboards
+          : document.spatial?.models;
+      if (!map || !Object.prototype.hasOwnProperty.call(map, outer.instanceId))
+        continue;
+      const paired = patch.spatial?.operations.filter(
+        (op) =>
+          op.id === outer.instanceId &&
+          (outer.kind === "renameInstance"
+            ? op.kind === "renameReference" &&
+              op.changes.nextId === outer.nextInstanceId
+            : op.kind === "removeReference") &&
+          "target" in op.changes &&
+          op.changes.target === target,
+      );
+      if (paired?.length !== 1)
+        throw new Error(
+          "Composition migration requires its matching spatial reference migration",
+        );
+    }
+  }
   const nextDocument = cloneValue(document);
-  const composition = nextDocument.sceneComposition as MutableSceneCompositionSpec;
+  const composition =
+    nextDocument.sceneComposition as MutableSceneCompositionSpec;
   const fragments = mutableFragments(composition);
   const changedInstanceIds: string[] = [];
 
@@ -143,9 +226,20 @@ export function mergeScenePlacementPatch(
     const operationPath = `${path}.patch.operations.${index}`;
     switch (operation.kind) {
       case "updateTransform": {
-        const ref = findUniqueInstanceRef(fragments, operation.instanceId, operationPath);
-        assertAllowedFragment(ref.fragmentId, options.allowedFragments, `${operationPath}.fragment`);
-        const transform = validatedTransformPatch(operation.transform, `${operationPath}.transform`);
+        const ref = findUniqueInstanceRef(
+          fragments,
+          operation.instanceId,
+          operationPath,
+        );
+        assertAllowedFragment(
+          ref.fragmentId,
+          options.allowedFragments,
+          `${operationPath}.fragment`,
+        );
+        const transform = validatedTransformPatch(
+          operation.transform,
+          `${operationPath}.transform`,
+        );
         ref.instances[ref.index] = {
           ...ref.instance,
           ...transform,
@@ -154,14 +248,20 @@ export function mergeScenePlacementPatch(
         break;
       }
       case "updateResolvedTransform": {
-        if (patch.version !== SCENE_PLACEMENT_PATCH_VERSION) {
+        if (patch.version === SCENE_PLACEMENT_PATCH_LEGACY_VERSION) {
           throw gameplayAuthoringDiagnosticError(
             `${operationPath}.kind`,
             `requires scene placement patch version ${SCENE_PLACEMENT_PATCH_VERSION}`,
           );
         }
-        const target = validatedResolvedTransformTarget(operation.target, `${operationPath}.target`);
-        const transform = validatedResolvedTransform(operation.transform, `${operationPath}.transform`);
+        const target = validatedResolvedTransformTarget(
+          operation.target,
+          `${operationPath}.target`,
+        );
+        const transform = validatedResolvedTransform(
+          operation.transform,
+          `${operationPath}.transform`,
+        );
         applyResolvedTransformPatch(
           composition,
           fragments,
@@ -175,9 +275,20 @@ export function mergeScenePlacementPatch(
         break;
       }
       case "updateComponents": {
-        const ref = findUniqueInstanceRef(fragments, operation.instanceId, operationPath);
-        assertAllowedFragment(ref.fragmentId, options.allowedFragments, `${operationPath}.fragment`);
-        const components = validatedComponentsPatch(operation.components, `${operationPath}.components`);
+        const ref = findUniqueInstanceRef(
+          fragments,
+          operation.instanceId,
+          operationPath,
+        );
+        assertAllowedFragment(
+          ref.fragmentId,
+          options.allowedFragments,
+          `${operationPath}.fragment`,
+        );
+        const components = validatedComponentsPatch(
+          operation.components,
+          `${operationPath}.components`,
+        );
         ref.instances[ref.index] = {
           ...ref.instance,
           props: {
@@ -189,15 +300,29 @@ export function mergeScenePlacementPatch(
         break;
       }
       case "updateBehaviorBinding": {
-        const target = validatedBehaviorBindingTarget(operation.target, `${operationPath}.target`);
+        const target = validatedBehaviorBindingTarget(
+          operation.target,
+          `${operationPath}.target`,
+        );
         const behaviorRecipes = validatedBehaviorBindingPatch(
           operation.behaviorRecipes,
           `${operationPath}.behaviorRecipes`,
         );
         if (target.kind === "instance") {
-          const ref = findUniqueInstanceRef(fragments, target.instanceId, `${operationPath}.target.instanceId`);
-          assertAllowedFragment(ref.fragmentId, options.allowedFragments, `${operationPath}.fragment`);
-          ref.instances[ref.index] = instanceWithBehaviorBinding(ref.instance, behaviorRecipes);
+          const ref = findUniqueInstanceRef(
+            fragments,
+            target.instanceId,
+            `${operationPath}.target.instanceId`,
+          );
+          assertAllowedFragment(
+            ref.fragmentId,
+            options.allowedFragments,
+            `${operationPath}.fragment`,
+          );
+          ref.instances[ref.index] = instanceWithBehaviorBinding(
+            ref.instance,
+            behaviorRecipes,
+          );
           pushUnique(changedInstanceIds, target.instanceId);
           break;
         }
@@ -208,15 +333,34 @@ export function mergeScenePlacementPatch(
             `references unknown object definition '${target.id}'`,
           );
         }
-        composition.prefabs[target.id] = objectDefinitionWithBehaviorBinding(definition, behaviorRecipes);
+        composition.prefabs[target.id] = objectDefinitionWithBehaviorBinding(
+          definition,
+          behaviorRecipes,
+        );
         break;
       }
       case "renameInstance": {
-        const ref = findUniqueInstanceRef(fragments, operation.instanceId, operationPath);
-        assertAllowedFragment(ref.fragmentId, options.allowedFragments, `${operationPath}.fragment`);
-        const nextInstanceId = requiredPlacementId(operation.nextInstanceId, `${operationPath}.nextInstanceId`);
+        const ref = findUniqueInstanceRef(
+          fragments,
+          operation.instanceId,
+          operationPath,
+        );
+        assertAllowedFragment(
+          ref.fragmentId,
+          options.allowedFragments,
+          `${operationPath}.fragment`,
+        );
+        const nextInstanceId = requiredPlacementId(
+          operation.nextInstanceId,
+          `${operationPath}.nextInstanceId`,
+        );
         if (nextInstanceId !== operation.instanceId) {
-          assertUniqueNextInstanceId(fragments, nextInstanceId, ref, `${operationPath}.nextInstanceId`);
+          assertUniqueNextInstanceId(
+            fragments,
+            nextInstanceId,
+            ref,
+            `${operationPath}.nextInstanceId`,
+          );
           ref.instances[ref.index] = {
             ...ref.instance,
             id: nextInstanceId,
@@ -229,20 +373,45 @@ export function mergeScenePlacementPatch(
       case "addObjectDefinition": {
         const id = requiredPlacementId(operation.id, `${operationPath}.id`);
         if (composition.prefabs[id] !== undefined) {
-          throw gameplayAuthoringDiagnosticError(`${operationPath}.id`, `object definition '${id}' already exists`);
+          throw gameplayAuthoringDiagnosticError(
+            `${operationPath}.id`,
+            `object definition '${id}' already exists`,
+          );
         }
-        composition.prefabs[id] = validateAddObjectDefinition(operation.definition, `${operationPath}.definition`);
+        composition.prefabs[id] = validateAddObjectDefinition(
+          operation.definition,
+          `${operationPath}.definition`,
+        );
         break;
       }
       case "addInstance": {
-        const fragmentId = requiredPlacementId(operation.fragment, `${operationPath}.fragment`);
-        assertAllowedFragment(fragmentId, options.allowedFragments, `${operationPath}.fragment`);
+        const fragmentId = requiredPlacementId(
+          operation.fragment,
+          `${operationPath}.fragment`,
+        );
+        assertAllowedFragment(
+          fragmentId,
+          options.allowedFragments,
+          `${operationPath}.fragment`,
+        );
         const fragment = fragments[fragmentId];
         if (fragment === undefined) {
-          throw gameplayAuthoringDiagnosticError(`${operationPath}.fragment`, `references unknown fragment '${fragmentId}'`);
+          throw gameplayAuthoringDiagnosticError(
+            `${operationPath}.fragment`,
+            `references unknown fragment '${fragmentId}'`,
+          );
         }
-        const instance = validateAddInstance(composition, operation.instance, `${operationPath}.instance`);
-        assertUniqueNextInstanceId(fragments, instance.id, undefined, `${operationPath}.instance.id`);
+        const instance = validateAddInstance(
+          composition,
+          operation.instance,
+          `${operationPath}.instance`,
+        );
+        assertUniqueNextInstanceId(
+          fragments,
+          instance.id,
+          undefined,
+          `${operationPath}.instance.id`,
+        );
         if (fragment.instances === undefined) {
           fragment.instances = [];
         }
@@ -251,8 +420,16 @@ export function mergeScenePlacementPatch(
         break;
       }
       case "removeInstance": {
-        const ref = findUniqueInstanceRef(fragments, operation.instanceId, operationPath);
-        assertAllowedFragment(ref.fragmentId, options.allowedFragments, `${operationPath}.fragment`);
+        const ref = findUniqueInstanceRef(
+          fragments,
+          operation.instanceId,
+          operationPath,
+        );
+        assertAllowedFragment(
+          ref.fragmentId,
+          options.allowedFragments,
+          `${operationPath}.fragment`,
+        );
         ref.instances.splice(ref.index, 1);
         pushUnique(changedInstanceIds, operation.instanceId);
         break;
@@ -260,9 +437,28 @@ export function mergeScenePlacementPatch(
     }
   });
 
+  if (patch.spatial !== undefined) {
+    if (options.allowedFragments)
+      throw new Error("Spatial edits require document-wide write scope");
+    nextDocument.spatial = applySceneSpatialPatch(
+      nextDocument.spatial,
+      patch.spatial,
+    );
+    for (const operation of patch.spatial.operations)
+      if (operation.kind !== "updateTerrainSurface")
+        pushUnique(changedInstanceIds, operation.id);
+  }
+  if (nextDocument.spatial)
+    resolveSceneAuthoringDocument(nextDocument, {
+      validateBindings: true,
+      validateComponents: true,
+      missingBehavior: "ignore",
+      path: `${path}.mergedDocument`,
+    });
   return {
     document: nextDocument,
-    operationCount: patch.operations.length,
+    operationCount:
+      patch.operations.length + (patch.spatial?.operations.length ?? 0),
     changedInstanceIds,
   };
 }
@@ -281,27 +477,40 @@ export function previewScenePlacementBindingMigration(
 
   patch.operations.forEach((operation, operationIndex) => {
     if (operation.kind === "renameInstance") {
-      const instanceId = requiredPlacementId(operation.instanceId, `${path}.patch.operations.${operationIndex}.instanceId`);
-      const nextInstanceId = requiredPlacementId(operation.nextInstanceId, `${path}.patch.operations.${operationIndex}.nextInstanceId`);
+      const instanceId = requiredPlacementId(
+        operation.instanceId,
+        `${path}.patch.operations.${operationIndex}.instanceId`,
+      );
+      const nextInstanceId = requiredPlacementId(
+        operation.nextInstanceId,
+        `${path}.patch.operations.${operationIndex}.nextInstanceId`,
+      );
       renamedInstanceIds.push({ operationIndex, instanceId, nextInstanceId });
-      references.push(...findAgentOwnedReferences(document.behaviorRecipes, {
-        operationIndex,
-        operationKind: "renameInstance",
-        instanceId,
-        nextInstanceId,
-        path: `${path}.document.behaviorRecipes`,
-      }));
+      references.push(
+        ...findAgentOwnedReferences(document.behaviorRecipes, {
+          operationIndex,
+          operationKind: "renameInstance",
+          instanceId,
+          nextInstanceId,
+          path: `${path}.document.behaviorRecipes`,
+        }),
+      );
       return;
     }
     if (operation.kind === "removeInstance") {
-      const instanceId = requiredPlacementId(operation.instanceId, `${path}.patch.operations.${operationIndex}.instanceId`);
+      const instanceId = requiredPlacementId(
+        operation.instanceId,
+        `${path}.patch.operations.${operationIndex}.instanceId`,
+      );
       removedInstanceIds.push(instanceId);
-      references.push(...findAgentOwnedReferences(document.behaviorRecipes, {
-        operationIndex,
-        operationKind: "removeInstance",
-        instanceId,
-        path: `${path}.document.behaviorRecipes`,
-      }));
+      references.push(
+        ...findAgentOwnedReferences(document.behaviorRecipes, {
+          operationIndex,
+          operationKind: "removeInstance",
+          instanceId,
+          path: `${path}.document.behaviorRecipes`,
+        }),
+      );
     }
   });
 
@@ -321,17 +530,26 @@ export async function saveScenePlacementPatch(
 ): Promise<ScenePlacementPatchSaveResult> {
   const path = options.path ?? "scenePlacementSave";
   if (options.allowSave !== true) {
-    throw gameplayAuthoringDiagnosticError(`${path}.allowSave`, "must be true to save a scene placement patch");
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.allowSave`,
+      "must be true to save a scene placement patch",
+    );
   }
   const adapter = options.adapter;
   if (adapter === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.adapter`, "must provide a host-owned save adapter");
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.adapter`,
+      "must provide a host-owned save adapter",
+    );
   }
   if (
-    options.allowedAdapterIds !== undefined
-    && !options.allowedAdapterIds.includes(adapter.id)
+    options.allowedAdapterIds !== undefined &&
+    !options.allowedAdapterIds.includes(adapter.id)
   ) {
-    throw gameplayAuthoringDiagnosticError(`${path}.adapter.id`, `adapter '${adapter.id}' is not allowed`);
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.adapter.id`,
+      `adapter '${adapter.id}' is not allowed`,
+    );
   }
 
   const merge = mergeScenePlacementPatch(document, patch, options);
@@ -351,28 +569,47 @@ export async function saveScenePlacementPatch(
   };
 }
 
-function validateSceneAuthoringDocumentEnvelope(document: SceneAuthoringDocumentSpec, path: string): void {
+function validateSceneAuthoringDocumentEnvelope(
+  document: SceneAuthoringDocumentSpec,
+  path: string,
+): void {
   if (document.format !== SCENE_AUTHORING_DOCUMENT_FORMAT) {
-    throw gameplayAuthoringDiagnosticError(path, `format must be ${SCENE_AUTHORING_DOCUMENT_FORMAT}`);
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `format must be ${SCENE_AUTHORING_DOCUMENT_FORMAT}`,
+    );
   }
   if (document.version !== SCENE_AUTHORING_DOCUMENT_VERSION) {
-    throw gameplayAuthoringDiagnosticError(path, `version must be ${SCENE_AUTHORING_DOCUMENT_VERSION}`);
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `version must be ${SCENE_AUTHORING_DOCUMENT_VERSION}`,
+    );
   }
 }
 
-function validateScenePlacementPatchEnvelope(patch: ScenePlacementPatch, path: string): void {
+function validateScenePlacementPatchEnvelope(
+  patch: ScenePlacementPatch,
+  path: string,
+): void {
   if (patch.format !== SCENE_PLACEMENT_PATCH_FORMAT) {
-    throw gameplayAuthoringDiagnosticError(path, `format must be ${SCENE_PLACEMENT_PATCH_FORMAT}`);
-  }
-  if (
-    patch.version !== SCENE_PLACEMENT_PATCH_LEGACY_VERSION
-    && patch.version !== SCENE_PLACEMENT_PATCH_VERSION
-  ) {
     throw gameplayAuthoringDiagnosticError(
       path,
-      `version must be ${SCENE_PLACEMENT_PATCH_LEGACY_VERSION} or ${SCENE_PLACEMENT_PATCH_VERSION}`,
+      `format must be ${SCENE_PLACEMENT_PATCH_FORMAT}`,
     );
   }
+  if (
+    patch.version !== SCENE_PLACEMENT_PATCH_LEGACY_VERSION &&
+    patch.version !== SCENE_PLACEMENT_PATCH_VERSION &&
+    patch.version !== 3
+  ) {
+    throw gameplayAuthoringDiagnosticError(path, "version must be 1, 2 or 3");
+  }
+  if (!Array.isArray(patch.operations))
+    throw new Error("placement patch operations must be an array");
+  if ((patch.version === 3) !== (patch.spatial !== undefined))
+    throw new Error(
+      "Spatial placement requires patch version 3 and a spatial envelope",
+    );
 }
 
 function mutableFragments(
@@ -405,10 +642,16 @@ function findUniqueInstanceRef(
     }
   }
   if (matches.length === 0) {
-    throw gameplayAuthoringDiagnosticError(path, `references unknown scene instance '${instanceId}'`);
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `references unknown scene instance '${instanceId}'`,
+    );
   }
   if (matches.length > 1) {
-    throw gameplayAuthoringDiagnosticError(path, `references ambiguous scene instance '${instanceId}'`);
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `references ambiguous scene instance '${instanceId}'`,
+    );
   }
   return matches[0] as MutableInstanceRef;
 }
@@ -421,18 +664,28 @@ function findInstanceRefInFragment(
 ): MutableInstanceRef {
   const fragment = fragments[fragmentId];
   if (fragment === undefined) {
-    throw gameplayAuthoringDiagnosticError(path, `references unknown fragment '${fragmentId}'`);
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `references unknown fragment '${fragmentId}'`,
+    );
   }
   const instances = fragment.instances ?? [];
   const matches = instances.flatMap((instance, index) =>
     instance.id === instanceId
       ? [{ fragmentId, instances, index, instance }]
-      : []);
+      : [],
+  );
   if (matches.length === 0) {
-    throw gameplayAuthoringDiagnosticError(path, `references unknown scene instance '${instanceId}'`);
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `references unknown scene instance '${instanceId}'`,
+    );
   }
   if (matches.length > 1) {
-    throw gameplayAuthoringDiagnosticError(path, `references ambiguous scene instance '${instanceId}'`);
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `references ambiguous scene instance '${instanceId}'`,
+    );
   }
   return matches[0] as MutableInstanceRef;
 }
@@ -446,7 +699,11 @@ function applyResolvedTransformPatch(
   allowedFragments: readonly string[] | undefined,
   path: string,
 ): void {
-  assertAllowedFragment(target.fragment, allowedFragments, `${path}.target.fragment`);
+  assertAllowedFragment(
+    target.fragment,
+    allowedFragments,
+    `${path}.target.fragment`,
+  );
   const matchedPlacement = instantiateSceneFragmentPlacements(composition, {
     fragment: target.fragment,
     path: `${path}.target`,
@@ -507,17 +764,25 @@ function sameResolvedTransformTarget(
   placement: SceneCompositionInstancePlacement,
   target: ScenePlacementResolvedTransformTarget,
 ): boolean {
-  if (placement.kind !== target.kind || placement.fragment !== target.fragment) {
+  if (
+    placement.kind !== target.kind ||
+    placement.fragment !== target.fragment
+  ) {
     return false;
   }
-  if (placement.kind === "fragmentInstance" && target.kind === "fragmentInstance") {
+  if (
+    placement.kind === "fragmentInstance" &&
+    target.kind === "fragmentInstance"
+  ) {
     return placement.instanceId === target.instanceId;
   }
-  return placement.kind === "fragmentIncludeInstance"
-    && target.kind === "fragmentIncludeInstance"
-    && placement.includeIndex === target.includeIndex
-    && placement.includedFragment === target.includedFragment
-    && placement.instanceId === target.instanceId;
+  return (
+    placement.kind === "fragmentIncludeInstance" &&
+    target.kind === "fragmentIncludeInstance" &&
+    placement.includeIndex === target.includeIndex &&
+    placement.includedFragment === target.includedFragment &&
+    placement.instanceId === target.instanceId
+  );
 }
 
 function assertAllowedFragment(
@@ -525,8 +790,14 @@ function assertAllowedFragment(
   allowedFragments: readonly string[] | undefined,
   path: string,
 ): void {
-  if (allowedFragments !== undefined && !allowedFragments.includes(fragmentId)) {
-    throw gameplayAuthoringDiagnosticError(path, `fragment '${fragmentId}' is not allowed`);
+  if (
+    allowedFragments !== undefined &&
+    !allowedFragments.includes(fragmentId)
+  ) {
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      `fragment '${fragmentId}' is not allowed`,
+    );
   }
 }
 
@@ -540,14 +811,17 @@ function assertUniqueNextInstanceId(
     const instances = fragment.instances ?? [];
     for (let index = 0; index < instances.length; index += 1) {
       if (
-        current !== undefined
-        && current.fragmentId === fragmentId
-        && current.index === index
+        current !== undefined &&
+        current.fragmentId === fragmentId &&
+        current.index === index
       ) {
         continue;
       }
       if (instances[index]?.id === instanceId) {
-        throw gameplayAuthoringDiagnosticError(path, `scene instance '${instanceId}' already exists`);
+        throw gameplayAuthoringDiagnosticError(
+          path,
+          `scene instance '${instanceId}' already exists`,
+        );
       }
     }
   }
@@ -564,7 +838,10 @@ function validateAddInstance(
   validatePlacementInstanceProps(copy.props, `${path}.props`);
   const prefab = composition.prefabs[prefabId];
   if (prefab === undefined) {
-    throw gameplayAuthoringDiagnosticError(`${path}.prefab`, `references unknown prefab '${prefabId}'`);
+    throw gameplayAuthoringDiagnosticError(
+      `${path}.prefab`,
+      `references unknown prefab '${prefabId}'`,
+    );
   }
   if (copy.variant !== undefined) {
     const variants = prefab.variants ?? {};
@@ -594,9 +871,15 @@ function validateAddObjectDefinition(
   for (const [variantId, variant] of Object.entries(variants)) {
     requiredPlacementId(variantId, `${path}.variants.${variantId}`);
     if (variant.extends !== undefined) {
-      requiredPlacementId(variant.extends, `${path}.variants.${variantId}.extends`);
+      requiredPlacementId(
+        variant.extends,
+        `${path}.variants.${variantId}.extends`,
+      );
     }
-    validatePlacementDefinitionProps(variant.props, `${path}.variants.${variantId}.props`);
+    validatePlacementDefinitionProps(
+      variant.props,
+      `${path}.variants.${variantId}.props`,
+    );
   }
   return copy;
 }
@@ -645,6 +928,32 @@ function pushUnique(values: string[], value: string): void {
   }
 }
 
+/** UI may migrate only visual map identity; agent-owned references stay explicit. */
+export function assertSceneSpatialMigrationAllowed(
+  document: SceneAuthoringDocumentSpec,
+  id: string,
+  includeRecipes = true,
+): void {
+  const owned = {
+    behaviorRecipes: includeRecipes ? document.behaviorRecipes : undefined,
+    gameplay: document.gameplay,
+    navigation: document.navigation,
+    actor: document.spatial?.actor,
+    attachments: document.spatial?.attachments,
+  };
+  if (
+    findAgentOwnedReferences(owned, {
+      operationIndex: 0,
+      operationKind: "removeInstance",
+      instanceId: id,
+      path: "document",
+    }).length
+  )
+    throw new Error(
+      `spatial.${id}: agent-owned reference requires explicit reference migration`,
+    );
+}
+
 interface ReferenceScanContext {
   operationIndex: number;
   operationKind: ScenePlacementBindingMigrationOperationKind;
@@ -669,13 +978,19 @@ function collectAgentOwnedReferences(
 ): void {
   if (typeof value === "string") {
     if (value === context.instanceId) {
-      references.push(bindingMigrationReference(context, "stringValue", context.path));
+      references.push(
+        bindingMigrationReference(context, "stringValue", context.path),
+      );
     }
     return;
   }
   if (Array.isArray(value)) {
     value.forEach((entry, index) => {
-      collectAgentOwnedReferences(entry, { ...context, path: `${context.path}.${index}` }, references);
+      collectAgentOwnedReferences(
+        entry,
+        { ...context, path: `${context.path}.${index}` },
+        references,
+      );
     });
     return;
   }
@@ -685,9 +1000,15 @@ function collectAgentOwnedReferences(
   for (const [key, entry] of Object.entries(value)) {
     const childPath = `${context.path}.${key}`;
     if (key === context.instanceId) {
-      references.push(bindingMigrationReference(context, "objectKey", childPath));
+      references.push(
+        bindingMigrationReference(context, "objectKey", childPath),
+      );
     }
-    collectAgentOwnedReferences(entry, { ...context, path: childPath }, references);
+    collectAgentOwnedReferences(
+      entry,
+      { ...context, path: childPath },
+      references,
+    );
   }
 }
 
@@ -700,12 +1021,15 @@ function bindingMigrationReference(
     operationIndex: context.operationIndex,
     operationKind: context.operationKind,
     instanceId: context.instanceId,
-    ...(context.nextInstanceId === undefined ? {} : { nextInstanceId: context.nextInstanceId }),
+    ...(context.nextInstanceId === undefined
+      ? {}
+      : { nextInstanceId: context.nextInstanceId }),
     owner: "agent",
     path,
     referenceKind,
     value: context.instanceId,
-    ...(context.operationKind === "renameInstance" && context.nextInstanceId !== undefined
+    ...(context.operationKind === "renameInstance" &&
+    context.nextInstanceId !== undefined
       ? { suggestedValue: context.nextInstanceId }
       : {}),
   };
@@ -723,7 +1047,10 @@ function validatedTransformPatch(
     patch.y = finiteTransformNumber(transform.y, `${path}.y`);
   }
   if (transform.rotationRadians !== undefined) {
-    patch.rotationRadians = finiteTransformNumber(transform.rotationRadians, `${path}.rotationRadians`);
+    patch.rotationRadians = finiteTransformNumber(
+      transform.rotationRadians,
+      `${path}.rotationRadians`,
+    );
   }
   if (transform.scale !== undefined) {
     patch.scale = positiveTransformNumber(transform.scale, `${path}.scale`);
@@ -740,13 +1067,16 @@ function validatedResolvedTransform(
 ): ScenePlacementTransform {
   const patch = validatedTransformPatch(transform, path);
   if (
-    patch.x === undefined
-    || patch.y === undefined
-    || patch.rotationRadians === undefined
-    || patch.scale === undefined
-    || patch.layer === undefined
+    patch.x === undefined ||
+    patch.y === undefined ||
+    patch.rotationRadians === undefined ||
+    patch.scale === undefined ||
+    patch.layer === undefined
   ) {
-    throw gameplayAuthoringDiagnosticError(path, "must provide x, y, rotationRadians, scale, and layer");
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      "must provide x, y, rotationRadians, scale, and layer",
+    );
   }
   return {
     x: patch.x,
@@ -770,13 +1100,19 @@ function validatedResolvedTransformTarget(
   }
   if (target?.kind === "fragmentIncludeInstance") {
     if (!Number.isInteger(target.includeIndex) || target.includeIndex < 0) {
-      throw gameplayAuthoringDiagnosticError(`${path}.includeIndex`, "must be a non-negative integer");
+      throw gameplayAuthoringDiagnosticError(
+        `${path}.includeIndex`,
+        "must be a non-negative integer",
+      );
     }
     return {
       kind: target.kind,
       fragment: requiredPlacementId(target.fragment, `${path}.fragment`),
       includeIndex: target.includeIndex,
-      includedFragment: requiredPlacementId(target.includedFragment, `${path}.includedFragment`),
+      includedFragment: requiredPlacementId(
+        target.includedFragment,
+        `${path}.includedFragment`,
+      ),
       instanceId: requiredPlacementId(target.instanceId, `${path}.instanceId`),
     };
   }
@@ -795,7 +1131,10 @@ function finiteTransformNumber(value: number, path: string): number {
 
 function positiveTransformNumber(value: number, path: string): number {
   if (!Number.isFinite(value) || value <= 0) {
-    throw gameplayAuthoringDiagnosticError(path, "must be a positive finite number");
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      "must be a positive finite number",
+    );
   }
   return value;
 }
@@ -811,7 +1150,10 @@ function validatedComponentsPatch(
       path,
     });
   } catch (error) {
-    throw gameplayAuthoringDiagnosticError(path, error instanceof Error ? error.message : String(error));
+    throw gameplayAuthoringDiagnosticError(
+      path,
+      error instanceof Error ? error.message : String(error),
+    );
   }
   return copy;
 }
@@ -832,7 +1174,10 @@ function validatedBehaviorBindingTarget(
       id: requiredPlacementId(target.id, `${path}.id`),
     };
   }
-  throw gameplayAuthoringDiagnosticError(`${path}.kind`, "must be instance or objectDefinition");
+  throw gameplayAuthoringDiagnosticError(
+    `${path}.kind`,
+    "must be instance or objectDefinition",
+  );
 }
 
 function validatedBehaviorBindingPatch(
@@ -844,19 +1189,28 @@ function validatedBehaviorBindingPatch(
   }
   if (typeof behaviorRecipes === "string") {
     if (behaviorRecipes.length === 0) {
-      throw gameplayAuthoringDiagnosticError(path, "must be a non-empty behavior profile string");
+      throw gameplayAuthoringDiagnosticError(
+        path,
+        "must be a non-empty behavior profile string",
+      );
     }
     return behaviorRecipes;
   }
   if (Array.isArray(behaviorRecipes)) {
     return behaviorRecipes.map((entry, index) => {
       if (typeof entry !== "string" || entry.length === 0) {
-        throw gameplayAuthoringDiagnosticError(`${path}.${index}`, "must be a non-empty behavior profile string");
+        throw gameplayAuthoringDiagnosticError(
+          `${path}.${index}`,
+          "must be a non-empty behavior profile string",
+        );
       }
       return entry;
     });
   }
-  throw gameplayAuthoringDiagnosticError(path, "must be null, a behavior profile string, or a string array");
+  throw gameplayAuthoringDiagnosticError(
+    path,
+    "must be null, a behavior profile string, or a string array",
+  );
 }
 
 function behaviorBindingPropsValue(
@@ -865,7 +1219,9 @@ function behaviorBindingPropsValue(
   if (behaviorRecipes === null) {
     return [];
   }
-  return typeof behaviorRecipes === "string" ? behaviorRecipes : [...behaviorRecipes];
+  return typeof behaviorRecipes === "string"
+    ? behaviorRecipes
+    : [...behaviorRecipes];
 }
 
 function instanceWithBehaviorBinding(
@@ -876,7 +1232,8 @@ function instanceWithBehaviorBinding(
     ...instance,
     props: {
       ...(instance.props ?? {}),
-      [GAMEPLAY_BEHAVIOR_BINDING_PROP]: behaviorBindingPropsValue(behaviorRecipes),
+      [GAMEPLAY_BEHAVIOR_BINDING_PROP]:
+        behaviorBindingPropsValue(behaviorRecipes),
     },
   };
 }
@@ -889,7 +1246,8 @@ function objectDefinitionWithBehaviorBinding(
   if (behaviorRecipes === null) {
     delete props[GAMEPLAY_BEHAVIOR_BINDING_PROP];
   } else {
-    props[GAMEPLAY_BEHAVIOR_BINDING_PROP] = behaviorBindingPropsValue(behaviorRecipes);
+    props[GAMEPLAY_BEHAVIOR_BINDING_PROP] =
+      behaviorBindingPropsValue(behaviorRecipes);
   }
   return {
     ...definition,
@@ -914,7 +1272,12 @@ function copySceneCompositionPrefabSpec(
 }
 
 function cloneUnknown(value: unknown): unknown {
-  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number" ||
+    typeof value === "string"
+  ) {
     return value;
   }
   if (Array.isArray(value)) {

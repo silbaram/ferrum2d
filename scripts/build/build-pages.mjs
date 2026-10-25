@@ -49,6 +49,16 @@ const examples = [
 ];
 const documentationHighlights = [
   {
+    href: "./docs/engine/ai-agent-install.html",
+    title: "AI Agent Setup",
+    description: "Install the engine and development tools with an AI agent.",
+  },
+  {
+    href: "./docs/engine/ai-feature-guide.html",
+    title: "AI Feature Guide",
+    description: "Connect game requirements to supported APIs and installed-version references.",
+  },
+  {
     href: "./docs/engine/showcase-hub.html",
     title: "Showcase Hub",
     description: "Feature map that connects demos, docs, agent workflows, and verification commands.",
@@ -69,6 +79,11 @@ const documentationHighlights = [
     description: "Generic scene composition and behavior recipe contract for agent-authored content.",
   },
   {
+    href: "./docs/engine/data-scene-spatial.html",
+    title: "HD-2D Spatial Scenes",
+    description: "Terrain, models, multi-floor movement, and WebGL2/WebGPU support in development builds.",
+  },
+  {
     href: "./docs/examples/topdown-shooter/game-spec.html",
     title: "Top-down Shooter Spec",
     description: "Official example Game Spec fields, defaults, and validation rules.",
@@ -83,6 +98,24 @@ const documentationHighlights = [
     title: "Release Readiness",
     description: "Beta package, changelog, tag, tarball, and publish gate procedure.",
   },
+];
+const gettingStartedDocs = new Set([
+  "README.md",
+  "engine/ai-agent-install.md",
+  "engine/ai-feature-guide.md",
+  "engine/showcase-hub.md",
+  "engine/developer-quickstart.md",
+  "engine/user-guide.md",
+]);
+const documentationGroups = [
+  { title: "시작하기", matches: (file) => gettingStartedDocs.has(file) },
+  { title: "공개 API", matches: (file) => file === "engine/public-api.md" || file.startsWith("engine/public-api/") },
+  { title: "게임 제작", matches: (file) => file.startsWith("engine/") },
+  { title: "공식 예제", matches: (file) => file.startsWith("examples/") },
+  { title: "엔진 개발·검증", matches: (file) => file.startsWith("development/architecture/") || file.startsWith("development/quality/") },
+  { title: "배포·운영", matches: (file) => file.startsWith("development/operations/") },
+  { title: "계획·개발 기록", matches: (file) => file.startsWith("planning/") },
+  { title: "기타 문서", matches: () => true },
 ];
 
 rmSync(outputDir, { recursive: true, force: true });
@@ -149,6 +182,8 @@ function collectFiles(directory) {
 function compareDocs(a, b) {
   const priority = [
     "README.md",
+    "engine/ai-agent-install.md",
+    "engine/ai-feature-guide.md",
     "engine/showcase-hub.md",
     "engine/developer-quickstart.md",
     "engine/user-guide.md",
@@ -161,6 +196,11 @@ function compareDocs(a, b) {
     "engine/public-api/migration-guide.md",
     "engine/runtime-extensibility.md",
     "engine/data-scene-authoring.md",
+    "engine/data-scene-native-runtime.md",
+    "engine/data-scene-presentation.md",
+    "engine/data-scene-spatial.md",
+    "engine/input-actions.md",
+    "engine/coordinate-system.md",
     "engine/physics-spec.md",
     "examples/topdown-shooter/game-spec.md",
     "development/architecture/architecture.md",
@@ -172,6 +212,9 @@ function compareDocs(a, b) {
     "development/operations/npm-release.md",
     "development/operations/release-notes-template.md",
     "planning/README.md",
+    "planning/2d-hd2d-workspace-implementation-plan.md",
+    "planning/2d-hd2d-authoring-workspace-review.md",
+    "planning/feature-candidates.md",
     "planning/demo-game-showcase-plan.md",
     "planning/deployment-roadmap.md",
   ];
@@ -259,10 +302,21 @@ function docPageHtml(page, pages) {
   const currentDir = path.posix.dirname(page.outputRelativePath);
   const rootHref = relativeHref(currentDir, "index.html");
   const siteRootHref = relativeHref(path.posix.join("docs", currentDir), "index.html");
-  const nav = pages.map((item) => {
-    const href = relativeHref(currentDir, item.outputRelativePath);
-    const current = item.outputRelativePath === page.outputRelativePath ? " aria-current=\"page\"" : "";
-    return `<a href="${escapeAttribute(href)}"${current}>${escapeHtml(item.title)}</a>`;
+  const groups = documentationGroups.map((group) => ({ ...group, pages: [] }));
+  for (const item of pages) {
+    groups.find((group) => group.matches(item.sourceRelativePath)).pages.push(item);
+  }
+  const nav = groups.filter((group) => group.pages.length > 0).map((group, index) => {
+    const active = group.pages.some((item) => item.outputRelativePath === page.outputRelativePath);
+    const links = group.pages.map((item) => {
+      const href = relativeHref(currentDir, item.outputRelativePath);
+      const current = item.outputRelativePath === page.outputRelativePath ? " aria-current=\"page\"" : "";
+      return `<a href="${escapeAttribute(href)}"${current}>${escapeHtml(item.title)}</a>`;
+    }).join("\n              ");
+    return `<details class="nav-group"${active || index === 0 ? " open" : ""}>
+            <summary>${escapeHtml(group.title)}</summary>
+            <div class="nav-links">${links}</div>
+          </details>`;
   }).join("\n          ");
   const content = markdownToHtml(page.source, page.sourceRelativePath, page.outputRelativePath);
 
@@ -405,7 +459,7 @@ function isTableStart(lines, index) {
 function tableToHtml(lines, sourceRelativePath, outputRelativePath) {
   const header = splitTableRow(lines[0]);
   const rows = lines.slice(2).map(splitTableRow);
-  return `<table>\n  <thead><tr>${header.map((cell) => `<th>${parseInline(cell, sourceRelativePath, outputRelativePath)}</th>`).join("")}</tr></thead>\n  <tbody>\n${rows.map((row) => `    <tr>${row.map((cell) => `<td>${parseInline(cell, sourceRelativePath, outputRelativePath)}</td>`).join("")}</tr>`).join("\n")}\n  </tbody>\n</table>`;
+  return `<div class="table-scroll" tabindex="0" aria-label="표 가로 스크롤"><table>\n  <thead><tr>${header.map((cell) => `<th>${parseInline(cell, sourceRelativePath, outputRelativePath)}</th>`).join("")}</tr></thead>\n  <tbody>\n${rows.map((row) => `    <tr>${row.map((cell) => `<td>${parseInline(cell, sourceRelativePath, outputRelativePath)}</td>`).join("")}</tr>`).join("\n")}\n  </tbody>\n</table></div>`;
 }
 
 function splitTableRow(line) {
@@ -491,12 +545,15 @@ h2 { margin: 0; color: #14212b; font-size: 1.35rem; letter-spacing: 0; }
 .docs-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 100vh; }
 .docs-nav { position: sticky; top: 0; height: 100vh; overflow: auto; padding: 22px 18px; border-right: 1px solid #d9e2ec; background: #eef3f8; }
 .brand { display: block; margin-bottom: 18px; color: #14212b; font-size: 1.08rem; font-weight: 900; text-decoration: none; }
-.docs-nav nav { display: grid; gap: 4px; }
+.docs-nav nav { display: grid; gap: 10px; }
+.nav-group summary { padding: 8px 10px; color: #14212b; font-size: 0.92rem; font-weight: 800; cursor: pointer; }
+.nav-group summary:focus-visible { outline: 2px solid #0f6f72; outline-offset: 2px; border-radius: 6px; }
+.nav-links { display: grid; gap: 4px; margin-top: 4px; }
 .docs-nav nav a { display: block; padding: 8px 10px; border-radius: 8px; color: #394b59; text-decoration: none; line-height: 1.35; }
 .docs-nav nav a:hover, .docs-nav nav a[aria-current="page"] { background: #ffffff; color: #0f6f72; }
 .docs-content { min-width: 0; padding: 22px min(64px, 6vw) 64px; }
 .docs-topbar { display: flex; gap: 14px; justify-content: flex-end; margin-bottom: 20px; font-size: 0.92rem; }
-article { max-width: 920px; }
+article { max-width: 920px; overflow-wrap: anywhere; }
 article h1 { font-size: clamp(2rem, 5vw, 3.6rem); line-height: 1; }
 article h2 { margin-top: 34px; padding-top: 18px; border-top: 1px solid #d9e2ec; }
 article h3, article h4, article h5, article h6 { margin-top: 26px; color: #14212b; letter-spacing: 0; }
@@ -505,7 +562,9 @@ article li + li { margin-top: 4px; }
 article code { border-radius: 5px; padding: 0.12em 0.34em; background: #e8eef4; color: #99430d; font-size: 0.92em; }
 pre { overflow: auto; padding: 16px; border-radius: 8px; background: #18232e; color: #e7eff7; }
 pre code { padding: 0; background: transparent; color: inherit; }
-table { width: 100%; border-collapse: collapse; margin: 18px 0; background: #ffffff; }
+.table-scroll { max-width: 100%; overflow-x: auto; margin: 18px 0; }
+.table-scroll:focus-visible { outline: 2px solid #0f6f72; outline-offset: 2px; }
+table { width: 100%; border-collapse: collapse; background: #ffffff; overflow-wrap: normal; }
 th, td { padding: 10px 12px; border: 1px solid #d9e2ec; text-align: left; vertical-align: top; }
 th { background: #edf3f7; color: #14212b; }
 blockquote { margin: 18px 0; padding: 10px 16px; border-left: 4px solid #c2541a; background: #fff7f0; color: #394b59; }

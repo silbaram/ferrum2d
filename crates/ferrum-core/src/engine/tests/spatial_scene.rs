@@ -34,6 +34,66 @@ fn camera(perspective: bool) -> [f32; 12] {
         480.,
     ]
 }
+
+#[test]
+fn authoring_preview_filter_changes_draws_and_picking_without_changing_body_or_terrain() {
+    let mut e = Engine::new();
+    e.use_data_scene();
+    let a = actor(&mut e);
+    assert!(terrain(&mut e));
+    assert!(e.configure_spatial_camera(&camera(false)));
+    assert!(e.configure_spatial_billboards(&[a.id, a.generation], &[1., 0.5, 0.]));
+    e.build_render_commands();
+    let at = e.world.transform(a).unwrap();
+    let span = e.world.height_span(a).unwrap();
+    let geometry = e.spatial_scene.terrain.clone();
+    assert!(!e.spatial_scene.terrain_draw_ranges.is_empty());
+    assert_eq!(e.spatial_scene.billboards.len(), 6);
+    assert!(e.set_spatial_preview_filter(&[a.id, a.generation], &[1, 2, 3]));
+    e.build_render_commands();
+    assert!(e.spatial_scene.terrain_draw_ranges.is_empty());
+    assert!(e.spatial_scene.billboards.is_empty());
+    assert_eq!(e.world.transform(a), Some(at));
+    assert_eq!(e.world.height_span(a), Some(span));
+    assert_eq!(e.spatial_scene.terrain, geometry);
+    assert!(!e.set_spatial_preview_filter(&[a.id, a.generation + 1], &[]));
+    assert!(!e.set_spatial_preview_filter(&[], &[999]));
+    assert_eq!(e.spatial_scene.preview_hidden_entities.len(), 1);
+    assert_eq!(e.spatial_scene.preview_hidden_surfaces.len(), 3);
+    assert!(e.set_spatial_preview_filter(&[], &[]));
+    e.build_render_commands();
+    assert!(!e.spatial_scene.terrain_draw_ranges.is_empty());
+    assert_eq!(e.spatial_scene.billboards.len(), 6);
+}
+
+#[test]
+fn selected_entity_diagnostics_distinguish_absent_fsm_and_stale_handles_without_mutation() {
+    let mut e = Engine::new();
+    e.use_data_scene();
+    let a = actor(&mut e);
+    let before = e.world.transform(a);
+    let absent = e.gameplay_entity_diagnostics(a.id, a.generation);
+    assert_eq!(absent[0], 1.);
+    assert_eq!(absent[1], 0.);
+    assert!(e.set_gameplay_behavior_state_machine(a.id, a.generation, 7));
+    assert!(e.world.set_health(a, 12.));
+    assert!(e
+        .world
+        .upsert_action_binding(a, ActionBinding::projectile(42, 1., 10., 2., 1.)));
+    assert!(e.world.commit_action_cooldown_if_ready(a, 42).is_some());
+    let active = e.gameplay_entity_diagnostics(a.id, a.generation);
+    assert_eq!(active[1], 1.);
+    assert_eq!(active[2], 7.);
+    assert_eq!(active[3], 1.);
+    assert_eq!(active[4], 12.);
+    assert_eq!(active[9], 1.);
+    assert_eq!(&active[10..], &[42., 1.]);
+    assert_eq!(e.world.transform(a), before);
+    assert!(e
+        .gameplay_entity_diagnostics(a.id, a.generation + 1)
+        .is_empty());
+    assert_eq!(e.gameplay_entity_diagnostics(a.id, a.generation), active);
+}
 #[test]
 fn spatial_billboard_uses_same_body_height_without_changing_legacy_sprite_abi() {
     let mut e = Engine::new();

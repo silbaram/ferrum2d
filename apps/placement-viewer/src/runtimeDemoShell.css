@@ -38,7 +38,9 @@
   --radius-2: 4px;
   --shadow-0: none;
   --inset-hilite: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  --ff-ui: "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ff-ui:
+    "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
   --ff-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   color: var(--fg-1);
   background: var(--bg-0);
@@ -91,15 +93,32 @@ button:disabled {
   min-height: 100vh;
   padding: 0;
   overflow: hidden;
-  grid-template-columns: 260px minmax(420px, 1fr) 344px;
-  grid-template-rows: 40px minmax(0, 1fr) 132px 24px;
+  --scene-dock-width: 240px;
+  --inspector-dock-width: 320px;
+  --scene-separator-width: 8px;
+  --inspector-separator-width: 8px;
+  --runtime-dock-height: 112px;
+  --runtime-row-height: var(--runtime-dock-height);
+  grid-template-columns:
+    var(--scene-dock-width) var(--scene-separator-width)
+    minmax(0, 1fr) var(--inspector-separator-width) var(--inspector-dock-width);
+  grid-template-rows:
+    auto auto auto minmax(0, 1fr) var(--runtime-row-height)
+    24px;
   grid-template-areas:
-    "top top top"
-    "left viewport right"
-    "left bottom right"
-    "status status status";
+    "top top top top top"
+    "workspace workspace workspace workspace workspace"
+    "left scene-grip tools inspector-grip right"
+    "left scene-grip viewport inspector-grip right"
+    "left scene-grip bottom inspector-grip right"
+    "status status status status status";
   background:
-    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.025) 1px, transparent 0) 0 0 / 12px 12px,
+    radial-gradient(
+        circle at 1px 1px,
+        rgba(255, 255, 255, 0.025) 1px,
+        transparent 0
+      )
+      0 0 / 12px 12px,
     var(--bg-0);
 }
 
@@ -138,6 +157,7 @@ button:disabled {
 .demo-stage {
   grid-area: viewport;
   position: relative;
+  overflow: hidden;
   min-width: 0;
   min-height: 0;
   width: 100%;
@@ -146,7 +166,8 @@ button:disabled {
   border-bottom: 1px solid var(--border);
   background:
     linear-gradient(var(--viewport-grid) 1px, transparent 1px) 0 0 / 16px 16px,
-    linear-gradient(90deg, var(--viewport-grid) 1px, transparent 1px) 0 0 / 16px 16px,
+    linear-gradient(90deg, var(--viewport-grid) 1px, transparent 1px) 0 0 / 16px
+      16px,
     var(--viewport-bg);
 }
 
@@ -158,19 +179,24 @@ button:disabled {
   background: transparent;
 }
 
-.demo-metrics {
+.placement-runtime-dock {
   grid-area: bottom;
-  display: grid;
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-1);
+}
+
+.demo-metrics {
+  display: grid;
+  min-width: 0;
   grid-template-columns: repeat(5, minmax(80px, 1fr));
   gap: 0;
   margin: 0;
   padding: 8px;
   border: 0;
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
   background: var(--bg-1);
   font-size: 12px;
 }
@@ -226,35 +252,53 @@ button:disabled {
   word-break: break-word;
 }
 
-@media (max-width: 860px) {
-  .demo-shell {
-    width: auto;
-    height: auto;
-    min-height: 100vh;
-    overflow: auto;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto minmax(320px, 56vh) auto auto auto;
-    grid-template-areas:
-      "top"
-      "left"
-      "viewport"
-      "bottom"
-      "right"
-      "status";
-  }
-
+@media (min-width: 861px) and (max-width: 1199px) {
   .demo-toolbar {
     height: auto;
     min-height: 40px;
-    align-items: stretch;
-    grid-template-columns: 1fr;
-    padding: 8px;
+    padding: 4px 8px;
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .demo-actions {
-    justify-content: flex-start;
+    grid-column: 1 / -1;
   }
+}
 
+@media (max-width: 860px) {
+  .demo-shell {
+    width: 100%;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows:
+      auto auto auto minmax(128px, 1fr) var(--compact-drawer-height, 0px)
+      24px;
+    grid-template-areas: "top" "workspace" "tools" "viewport" "drawer" "status";
+  }
+  .demo-toolbar {
+    height: auto;
+    min-height: 40px;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 4px 8px;
+    gap: 4px;
+  }
+  .demo-toolbar h1 {
+    display: none;
+  }
+  .demo-actions {
+    flex-wrap: wrap;
+  }
+  .demo-actions > * {
+    flex-shrink: 0;
+  }
+  .placement-mode-controls {
+    order: -2;
+  }
+  .placement-session-controls {
+    order: -1;
+  }
   .demo-metrics dd {
     text-align: left;
   }

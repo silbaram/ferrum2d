@@ -1,9 +1,16 @@
 #!/usr/bin/env node
+import { showPlacementInspector, showPlacementBottom } from "./placement-panel-navigation.mjs";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { chromium } from "playwright-core";
+import { savePlacementDocument } from "../../apps/placement-viewer/server/sceneDocumentStore.mjs";
+import { smokePlacementWorkspace, preparePlacementWorkspaceSave, assertPlacementWorkspaceSave, smokePlacementDesktopWorkspace, smokePlacementSavePointerBoundary } from "./placement-workspace-smoke.mjs";
+import { smokePlacementNavigation, smokePlacementNavigationMass } from "./placement-navigation-smoke.mjs";
+import { smokePlacementSelection, smokePlacementSelectionMass } from "./placement-selection-smoke.mjs";
+import { smokePlacementTransforms } from "./placement-transform-smoke.mjs";
+import { smokePlacementSpatialWorkspace } from "./placement-spatial-workspace-smoke.mjs";
 import {
   runtimeBudgetForSmokeMode,
   runtimeBudgetProfileIdForSmokeMode,
@@ -66,6 +73,7 @@ const PLATFORMER_EFFECTS_MODE = "platformer-effects";
 const PHYSICS_SANDBOX_MODE = "physics-sandbox";
 const PHYSICS_DEMO_SUITE_MODE = "physics-demo-suite";
 const PLACEMENT_VIEWER_MODE = "placement-viewer";
+const PLACEMENT_SPATIAL_WORKSPACE_MODE = "placement-spatial-workspace";
 const PLACEMENT_VIEWER_SAVE_MODE = "placement-viewer-save";
 const PLACEMENT_VIEWER_MASS_AUTHORING_MODE = "placement-viewer-mass-authoring";
 const PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE = "placement-viewer-desktop-assets";
@@ -100,7 +108,7 @@ const PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_FOLDER =
 const PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER =
   "/tmp/ferrum-placement-viewer-desktop-assets-smoke/shared-assets-alternate";
 const PLACEMENT_SAVE_ENDPOINT = "/__ferrum-placement-save";
-const MAX_PLACEMENT_SAVE_BYTES = 512 * 1024;
+const MAX_PLACEMENT_SAVE_BYTES = 2 * 1024 * 1024;
 const PHYSICS_DEMO_SUITE = [
   "rigid-materials",
   "collider-gallery",
@@ -315,6 +323,7 @@ const timeoutMs = positiveInteger(process.env.FERRUM_BROWSER_SMOKE_TIMEOUT_MS, D
 let server;
 let browser;
 const browserErrors = [];
+let expectedSaveConflictErrors = 0;
 
 try {
   await assertDirectory(distDir);
@@ -338,6 +347,12 @@ try {
   });
   page.on("console", (message) => {
     if (message.type() === "error") {
+      if (expectedSaveConflictErrors > 0
+        && message.location().url.endsWith(PLACEMENT_SAVE_ENDPOINT)
+        && message.text().includes("status of 409")) {
+        expectedSaveConflictErrors--;
+        return;
+      }
       browserErrors.push(message.text());
     }
   });
@@ -399,7 +414,7 @@ try {
   console.log(JSON.stringify({ url, ...report, ...budgetArtifactReport }, null, 2));
 } catch (error) {
   console.error(`${distDir}: browser render smoke failed`);
-  console.error(error instanceof Error ? error.message : String(error));
+  console.error(error instanceof Error ? error.stack ?? error.message : String(error));
   if (browserErrors.length > 0) {
     console.error(`browser console/page errors:\n${browserErrors.join("\n")}`);
   }
@@ -539,6 +554,7 @@ function parseArgs(args) {
     PHYSICS_SANDBOX_MODE,
     PHYSICS_DEMO_SUITE_MODE,
     PLACEMENT_VIEWER_MODE,
+    PLACEMENT_SPATIAL_WORKSPACE_MODE,
     PLACEMENT_VIEWER_SAVE_MODE,
     PLACEMENT_VIEWER_MASS_AUTHORING_MODE,
     PLACEMENT_VIEWER_DESKTOP_ASSETS_MODE,
@@ -742,30 +758,18 @@ async function handlePlacementSave(root, request, response) {
     throw new HttpError(405, "Method not allowed");
   }
   const body = await readRequestBody(request, MAX_PLACEMENT_SAVE_BYTES);
-  let document;
+  let result;
   try {
-    document = JSON.parse(body);
-  } catch {
-    throw new HttpError(400, "invalid placement scene document json");
+    const payload = JSON.parse(body);
+    result = await savePlacementDocument(join(root, "placement.scene-authoring.json"), payload.document, payload.expectedDocument);
+  } catch (error) {
+    throw new HttpError(error.code === "PLACEMENT_DOCUMENT_CONFLICT" ? 409 : 400, error.message);
   }
-  if (
-    document?.format !== "ferrum2d.consumer.scene-authoring"
-    || document.version !== 1
-    || typeof document.sceneComposition !== "object"
-    || document.sceneComposition === null
-  ) {
-    throw new HttpError(400, "invalid placement scene document");
-  }
-  await writeFile(
-    join(root, "placement.scene-authoring.json"),
-    `${JSON.stringify(document, null, 2)}\n`,
-    "utf8",
-  );
   response.writeHead(200, {
     "Cache-Control": "no-cache",
     "Content-Type": "application/json; charset=utf-8",
   });
-  response.end(JSON.stringify({ saved: true, document }));
+  response.end(JSON.stringify(result));
 }
 
 async function readRequestBody(request, maxBytes) {
@@ -914,6 +918,8 @@ async function smokeByMode(page, mode, timeoutMs) {
       return await smokePhysicsDemoSuite(page, timeoutMs);
     case PLACEMENT_VIEWER_MODE:
       return await smokePlacementViewer(page, timeoutMs);
+    case PLACEMENT_SPATIAL_WORKSPACE_MODE:
+      return await smokePlacementSpatialWorkspace(page, timeoutMs);
     case PLACEMENT_VIEWER_SAVE_MODE:
       return await smokePlacementViewerSave(page, timeoutMs);
     case PLACEMENT_VIEWER_MASS_AUTHORING_MODE:
@@ -988,6 +994,12 @@ async function smokePlacementViewer(page, timeoutMs) {
   if (saveGate.enabled !== false || saveGate.result !== undefined) {
     throw new Error(`placement viewer save gate should be disabled by default: ${JSON.stringify(saveGate)}`);
   }
+
+  await smokePlacementWorkspace(page, timeoutMs);
+  const navigation = await smokePlacementNavigation(page, timeoutMs);
+  const selection = await smokePlacementSelection(page, timeoutMs);
+  const transforms = await smokePlacementTransforms(page, timeoutMs);
+  await smokePlacementDocumentHistory(page, timeoutMs);
 
   const cratePoint = await page.evaluate(() => {
     const viewer = globalThis.__ferrumPlacementViewer;
@@ -1431,6 +1443,7 @@ async function smokePlacementViewer(page, timeoutMs) {
       y: rect.top + rect.height * 0.5,
     };
   });
+  await showPlacementInspector(page, "placement");
   await page.selectOption("select[data-placement-add-sprite='true']", "turret", { timeout: timeoutMs });
   await page.selectOption("select[data-placement-add-sprite-frame='true']", "barrel", { timeout: timeoutMs });
   await page.click("button[data-placement-action='add-sprite']", { timeout: timeoutMs });
@@ -1485,6 +1498,7 @@ async function smokePlacementViewer(page, timeoutMs) {
     },
     timeoutMs,
   );
+  await showPlacementInspector(page, "properties");
   await page.click("button[data-placement-action='remove-selected']", { timeout: timeoutMs });
   await waitForPageFunction(
     page,
@@ -1501,6 +1515,7 @@ async function smokePlacementViewer(page, timeoutMs) {
     },
     timeoutMs,
   );
+  await showPlacementInspector(page, "placement");
   await page.click("button[data-placement-action='add-rect']", { timeout: timeoutMs });
   await waitForPageFunction(
     page,
@@ -1584,6 +1599,7 @@ async function smokePlacementViewer(page, timeoutMs) {
       }),
     };
   });
+  await assertPlacementGestureCancel(page, ".placement-resize-handle", resizeDrag.from, timeoutMs);
   await page.mouse.move(resizeDrag.from.x, resizeDrag.from.y);
   await page.mouse.down();
   await page.mouse.move(resizeDrag.to.x, resizeDrag.to.y, { steps: 6 });
@@ -1664,6 +1680,7 @@ async function smokePlacementViewer(page, timeoutMs) {
       }),
     };
   });
+  await assertPlacementGestureCancel(page, ".placement-collider-offset-handle", colliderOffsetDrag.from, timeoutMs);
   await page.mouse.move(colliderOffsetDrag.from.x, colliderOffsetDrag.from.y);
   await page.mouse.down();
   await page.mouse.move(colliderOffsetDrag.to.x, colliderOffsetDrag.to.y, { steps: 6 });
@@ -1702,6 +1719,7 @@ async function smokePlacementViewer(page, timeoutMs) {
     },
     timeoutMs,
   );
+  await showPlacementInspector(page, "properties");
   await page.fill("input[data-placement-component-field='visualWidth']", "64", { timeout: timeoutMs });
   await page.fill("input[data-placement-component-field='visualHeight']", "24", { timeout: timeoutMs });
   await page.fill("input[data-placement-component-field='visualColor']", "#ffcc33", { timeout: timeoutMs });
@@ -1900,6 +1918,7 @@ async function smokePlacementViewer(page, timeoutMs) {
     },
     timeoutMs,
   );
+  await showPlacementInspector(page, "properties");
   await page.click("button[data-placement-action='remove-selected']", { timeout: timeoutMs });
   await waitForPageFunction(
     page,
@@ -1986,7 +2005,95 @@ async function smokePlacementViewer(page, timeoutMs) {
     }
     return { pivot: true, rotation: true, scale: true, rotatedResize: true };
   });
-  return { placementViewerSmoke: { target: cratePoint, movedTarget: movedCratePoint, ...report, editReport, nativeMetadataPreserved: true, visualGeometry } };
+  return { placementViewerSmoke: { target: cratePoint, movedTarget: movedCratePoint, ...report, editReport, nativeMetadataPreserved: true, visualGeometry, navigation, selection, transforms } };
+}
+
+async function assertPlacementGestureCancel(page, selector, point, timeoutMs) {
+  await waitForPageFunction(page, "prior gesture did not finish", () =>
+    globalThis.ferrumPlacementViewerHistory.transactionLabel === undefined, timeoutMs);
+  const before = await page.evaluate(() => ({
+    patch: JSON.stringify(globalThis.ferrumPlacementViewerExportPatch()),
+    undoCount: globalThis.ferrumPlacementViewerHistory.undoCount,
+  }));
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down();
+  await page.evaluate(({ selector, point }) => {
+    document.querySelector(selector).dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true, pointerId: 1, buttons: 1, clientX: point.x + 30, clientY: point.y + 30,
+    }));
+    document.querySelector("canvas").dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true, key: "Escape", code: "Escape",
+    }));
+  }, { selector, point });
+  await page.mouse.up();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const after = await page.evaluate(() => ({
+    patch: JSON.stringify(globalThis.ferrumPlacementViewerExportPatch()),
+    undoCount: globalThis.ferrumPlacementViewerHistory.undoCount,
+    transaction: globalThis.ferrumPlacementViewerHistory.transactionLabel,
+    dragging: globalThis.ferrumPlacementViewerInteraction.dragging,
+  }));
+  if (before.patch !== after.patch || before.undoCount !== after.undoCount || after.transaction || after.dragging) {
+    throw new Error(`cancelled ${selector} must preserve patch/history: ${JSON.stringify({ before, after })}`);
+  }
+}
+
+async function smokePlacementDocumentHistory(page, timeoutMs) {
+  const point = await page.evaluate(() => {
+    const state = globalThis.ferrumPlacementViewerState;
+    const instance = state.instances.find(item => item.instanceId === "crate_left");
+    const rect = document.querySelector("canvas").getBoundingClientRect();
+    return {
+      x: rect.left + (instance.transform.x - state.viewport.worldMinX) * state.viewport.zoom,
+      y: rect.top + (instance.transform.y - state.viewport.worldMinY) * state.viewport.zoom,
+      worldX: instance.transform.x,
+    };
+  });
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down();
+  await page.mouse.move(point.x + 48, point.y + 16, { steps: 6 });
+  await page.mouse.up();
+  await waitForPageFunction(page, "pointer gesture did not create one history entry", () => {
+    const history = globalThis.ferrumPlacementViewerHistory;
+    return history?.undoCount === 1 && history.transactionLabel === undefined;
+  }, timeoutMs);
+  const movedX = await page.evaluate(() => globalThis.ferrumPlacementViewerState.selected.transform.x);
+  if (movedX === point.worldX) throw new Error("history smoke requires an actual drag edit");
+  await page.keyboard.press("Control+z");
+  await waitForPageFunction(page, "Undo did not clear the drag patch", () =>
+    globalThis.ferrumPlacementViewerState.draftPatch === undefined
+    && globalThis.ferrumPlacementViewerHistory.redoCount === 1, timeoutMs);
+  await page.keyboard.press("Control+Shift+z");
+  await waitForPageFunction(page, "Redo did not restore the drag", x =>
+    globalThis.ferrumPlacementViewerState.selected?.transform.x === x, timeoutMs, movedX);
+
+  // Cancel while a final pointer update is still queued. It must not reappear next frame.
+  await page.mouse.move(point.x + 48, point.y + 16);
+  await page.mouse.down();
+  await page.evaluate(({ x, y }) => {
+    const canvas = document.querySelector("canvas");
+    canvas.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerId: 1, buttons: 1, clientX: x + 90, clientY: y + 40 }));
+    canvas.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, code: "Escape", key: "Escape" }));
+  }, point);
+  await page.mouse.up();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const cancelled = await page.evaluate(() => ({ x: globalThis.ferrumPlacementViewerState.selected?.transform.x, history: globalThis.ferrumPlacementViewerHistory }));
+  if (cancelled.x !== movedX || cancelled.history.undoCount !== 1 || cancelled.history.transactionLabel !== undefined) {
+    throw new Error(`Escape did not cancel the pending gesture: ${JSON.stringify(cancelled)}`);
+  }
+  await page.click("button[data-placement-action=undo]");
+  await page.click("button[data-placement-action=redo]");
+  await page.click("button[data-placement-action=undo]");
+  await page.fill("input[data-placement-transform-field=x]", "700");
+  await page.fill("input[data-placement-transform-field=x]", "710");
+  await page.focus("canvas");
+  const inputHistory = await page.evaluate(() => globalThis.ferrumPlacementViewerHistory);
+  if (inputHistory.undoCount !== 1 || inputHistory.redoCount !== 0 || inputHistory.transactionLabel !== undefined) {
+    throw new Error(`numeric input must commit one history entry: ${JSON.stringify(inputHistory)}`);
+  }
+  await page.keyboard.press("Control+z");
+  await waitForPageFunction(page, "numeric input undo did not restore baseline", () =>
+    globalThis.ferrumPlacementViewerState.draftPatch === undefined, timeoutMs);
 }
 
 async function smokePlacementViewerSave(page, timeoutMs) {
@@ -2005,6 +2112,8 @@ async function smokePlacementViewerSave(page, timeoutMs) {
     timeoutMs,
   );
 
+  const pointerSaveBoundary = await smokePlacementSavePointerBoundary(page, timeoutMs);
+  await preparePlacementWorkspaceSave(page, timeoutMs);
   const suffix = Date.now().toString(36);
   const instanceId = `rect_save_smoke_${suffix}`;
   const spriteInstanceId = `sprite_save_smoke_${suffix}`;
@@ -2193,7 +2302,9 @@ async function smokePlacementViewerSave(page, timeoutMs) {
     },
   );
 
-  return await page.evaluate(({ id, spriteId, prefabId, objectDefinitionId, objectDefinitionInstanceId }) => {
+  await assertPlacementWorkspaceSave(page, timeoutMs);
+  const conflict = await smokePlacementSaveConflict(page, timeoutMs);
+  const report = await page.evaluate(({ id, spriteId, prefabId, objectDefinitionId, objectDefinitionInstanceId }) => {
     const state = globalThis.ferrumPlacementViewerState;
     const instance = state?.instances?.find((candidate) => candidate.instanceId === id);
     const sprite = state?.instances?.find((candidate) => candidate.instanceId === spriteId);
@@ -2229,6 +2340,43 @@ async function smokePlacementViewerSave(page, timeoutMs) {
     objectDefinitionId: definitionId,
     objectDefinitionInstanceId: definitionInstanceId,
   });
+  return { ...report, placementSavePointerBoundary: pointerSaveBoundary, placementSaveConflict: conflict };
+}
+
+async function smokePlacementSaveConflict(page, timeoutMs) {
+  const source = await (await page.request.get(new URL("placement.scene-authoring.json", page.url()).href)).json();
+  const external = { ...source, metadata: { ...source.metadata, smokeWriter: "external-agent" } };
+  const externalSave = await page.request.post(new URL(PLACEMENT_SAVE_ENDPOINT, page.url()).href, {
+    data: { document: external, expectedDocument: source },
+  });
+  if (!externalSave.ok()) throw new Error(`external fixture save failed: ${await externalSave.text()}`);
+  await page.evaluate(() => globalThis.ferrumPlacementViewerUpdateTransform("crate_left", { x: 800 }));
+  const before = await page.evaluate(() => JSON.stringify(globalThis.ferrumPlacementViewerExportPatch()));
+  let releaseRequest;
+  const requestGate = new Promise(resolve => { releaseRequest = resolve; });
+  await page.route(`**${PLACEMENT_SAVE_ENDPOINT}`, async route => { await requestGate; await route.continue(); }, { times: 1 });
+  expectedSaveConflictErrors++;
+  const response = page.waitForResponse(response => response.url().endsWith(PLACEMENT_SAVE_ENDPOINT), { timeout: timeoutMs });
+  const saving = page.evaluate(() => globalThis.ferrumPlacementViewerSaveDraft());
+  await waitForPageFunction(page, "save did not block document UI", () => document.querySelector(".demo-shell")?.inert === true, timeoutMs);
+  const repeated = await page.evaluate(() => globalThis.ferrumPlacementViewerSaveDraft());
+  if (repeated !== undefined) throw new Error("duplicate save should be ignored while pending");
+  releaseRequest();
+  const result = await saving;
+  const status = (await response).status();
+  const state = await page.evaluate(() => ({
+    patch: JSON.stringify(globalThis.ferrumPlacementViewerExportPatch()),
+    error: globalThis.ferrumPlacementViewerLastSaveError,
+    inert: document.querySelector(".demo-shell").inert,
+    undoCount: globalThis.ferrumPlacementViewerHistory.undoCount,
+  }));
+  const persisted = await (await page.request.get(new URL("placement.scene-authoring.json", page.url()).href)).json();
+  if (status !== 409 || result !== undefined || !state.error?.includes("changed on disk")
+    || state.patch !== before || state.inert || state.undoCount !== 1
+    || JSON.stringify(persisted) !== JSON.stringify(external)) {
+    throw new Error(`save conflict must preserve disk and draft: ${JSON.stringify({ status, result, state, persisted })}`);
+  }
+  return { status, draftPreserved: true, externalDocumentPreserved: true, duplicateSaveBlocked: true };
 }
 
 async function smokePlacementViewerMassAuthoring(page, timeoutMs) {
@@ -2308,6 +2456,8 @@ async function smokePlacementViewerMassAuthoring(page, timeoutMs) {
       maxSelectionMs: PLACEMENT_VIEWER_MASS_AUTHORING_MAX_SELECTION_MS,
       maxPatchMs: PLACEMENT_VIEWER_MASS_AUTHORING_MAX_PATCH_MS,
       actionReport,
+      navigation: await smokePlacementNavigationMass(page, timeoutMs),
+      selection: await smokePlacementSelectionMass(page, timeoutMs),
     },
   };
 }
@@ -2419,14 +2569,27 @@ async function installPlacementViewerDesktopAssetSmokeBridge(page) {
               ...initialAssetFolder.images[0],
               path: `${path}/local_ship.png`,
               runtimeUrl: sharedAssetUrl,
+              ...(globalThis.__ferrumDesktopAssetContentRevision ? { contentRevision: globalThis.__ferrumDesktopAssetContentRevision } : {}),
             }],
           };
         }
         return path === reloadAssetFolderPath ? reloadAssetFolder : initialAssetFolder;
       };
+      const documentsByPath = new Map([[sceneDocumentPath, document]]);
+      globalThis.__placementDesktopCommands = [];
       globalThis.__TAURI__ = {
         core: {
           async invoke(command, args) {
+            globalThis.__placementDesktopCommands.push({ command, args: structuredClone(args) });
+            if (command === "load_placement_tile_assets") {
+              return { format: "ferrum2d.tile-import.project", version: 1, assets: [] };
+            }
+            if (command === "load_placement_aseprite_assets") {
+              return { format: "ferrum2d.aseprite.project", version: 1, assets: [] };
+            }
+            if (command === "load_placement_normal_assets") {
+              return { format: "ferrum2d.sprite-normal.project", version: 1, registered: true, entries: [], textures: {} };
+            }
             if (command === "load_placement_project_folder") {
               return {
                 projectPath: args?.projectPath ?? projectPath,
@@ -2437,12 +2600,19 @@ async function installPlacementViewerDesktopAssetSmokeBridge(page) {
               };
             }
             if (command === "load_placement_scene_document") {
+              const path = args?.sceneDocumentPath ?? sceneDocumentPath;
+              if (path.includes("invalid.scene")) throw new Error("Invalid scene fixture");
+              if (!documentsByPath.has(path)) documentsByPath.set(path, structuredClone(document));
               return {
-                path: args?.sceneDocumentPath ?? sceneDocumentPath,
-                document,
+                path,
+                document: structuredClone(documentsByPath.get(path)),
               };
             }
             if (command === "inspect_placement_asset_folder") {
+              if (args?.assetFolderPath === globalThis.__ferrumDesktopHeldInspectionPath) {
+                globalThis.__ferrumDesktopInspectionHeld = true;
+                await new Promise(resolve => { globalThis.__ferrumDesktopReleaseInspection = resolve; });
+              }
               return assetFolderForPath(args?.assetFolderPath ?? assetFolderPath);
             }
             if (command === "save_placement_agent_handoff") {
@@ -2452,8 +2622,13 @@ async function installPlacementViewerDesktopAssetSmokeBridge(page) {
               };
             }
             if (command === "save_placement_scene_document") {
+              const path = args?.sceneDocumentPath ?? sceneDocumentPath;
+              if (JSON.stringify(args?.expectedDocument) !== JSON.stringify(documentsByPath.get(path))) {
+                throw new Error("scene document changed on disk; reload before saving");
+              }
+              documentsByPath.set(path, structuredClone(args.document));
               return {
-                path: sceneDocumentPath,
+                path,
                 document: args?.document ?? document,
               };
             }
@@ -2562,6 +2737,7 @@ async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
     },
   );
 
+  await showPlacementInspector(page, "placement");
   await page.selectOption("select[data-placement-add-sprite='true']", PLACEMENT_VIEWER_DESKTOP_RELOAD_ASSET_ID, {
     timeout: timeoutMs,
   });
@@ -2731,6 +2907,7 @@ async function smokePlacementViewerDesktopAssets(page, timeoutMs) {
     placementViewerDesktopAssetSmoke: {
       ...report,
       sameNameReload: await smokePlacementViewerDesktopSameNameAssets(page, timeoutMs),
+      workspace: await smokePlacementDesktopWorkspace(page, timeoutMs),
     },
   };
 }
@@ -2741,7 +2918,9 @@ async function smokePlacementViewerDesktopSameNameAssets(page, timeoutMs) {
   let image = originalImage;
   let uploadGate;
   let fetchCount = 0;
-  await page.route(`**${PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_URL}`, async (route) => {
+  let totalFetchCount = 0;
+  await page.route(`**${PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_URL}*`, async (route) => {
+    if (route.request().resourceType() === "fetch") totalFetchCount++;
     const responseImage = image;
     if (uploadGate !== undefined && route.request().resourceType() === "fetch" && ++fetchCount === 2) {
       // First fetch reads metadata; hold the following runtime upload until another inspection completes.
@@ -2767,9 +2946,12 @@ async function smokePlacementViewerDesktopSameNameAssets(page, timeoutMs) {
         const desktop = globalThis.ferrumPlacementViewerDesktop;
         const assets = globalThis.ferrumPlacementViewerRuntimeAssets;
         const folder = globalThis.ferrumPlacementViewerAgentHandoff?.assetFolder;
+        const revision = desktop?.assetFolderImages?.[0]?.contentRevision;
+        const expectedUrl = new URL(runtimeUrl, location.href);
+        if (revision) expectedUrl.searchParams.set("revision", revision);
         return desktop?.assetFolderPath === path
           && desktop.assetFolderRuntimeStatus === "ready"
-          && assets?.textures?.[assetId] === runtimeUrl
+          && assets?.textures?.[assetId] === (revision ? expectedUrl.href : runtimeUrl)
           && folder?.images?.[0]?.width === width
           && folder.images[0].height === height;
       },
@@ -2814,6 +2996,34 @@ async function smokePlacementViewerDesktopSameNameAssets(page, timeoutMs) {
   if (latest !== original) {
     throw new Error("a delayed older upload replaced the latest folder's rendered texture");
   }
+  await page.evaluate(() => { globalThis.__ferrumDesktopAssetContentRevision = "0000000000000001"; });
+  await openFolder(PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER, 32, 32);
+  const beforeUnchanged = totalFetchCount;
+  await openFolder(PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER, 32, 32);
+  const unchangedFetches = totalFetchCount - beforeUnchanged;
+  if (unchangedFetches !== 1) throw new Error("Unchanged native revision must only refresh metadata, not upload textures: " + unchangedFetches);
+  image = replacementImage;
+  await page.evaluate(() => { globalThis.__ferrumDesktopAssetContentRevision = "0000000000000002"; });
+  const beforeChanged = totalFetchCount;
+  const changedRevision = await openFolder(PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER, 16, 16);
+  if (totalFetchCount - beforeChanged !== 2 || changedRevision === original) throw new Error("Changed native revision did not reload exactly the changed texture");
+  await page.evaluate(path => {
+    globalThis.__ferrumDesktopHeldInspectionPath = path;
+    globalThis.__ferrumDesktopOldInspection = globalThis.ferrumPlacementViewerOpenAssetFolder(path);
+  }, PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_FOLDER);
+  await waitForPageFunction(page, "old native inspection was not held", () => globalThis.__ferrumDesktopInspectionHeld === true, timeoutMs);
+  await page.evaluate(path => { globalThis.__ferrumDesktopNewInspection = globalThis.ferrumPlacementViewerOpenAssetFolder(path); }, PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER);
+  await page.evaluate(() => globalThis.__ferrumDesktopReleaseInspection());
+  const inspectionResults = await page.evaluate(async () => {
+    const results = await Promise.all([globalThis.__ferrumDesktopOldInspection, globalThis.__ferrumDesktopNewInspection]);
+    delete globalThis.__ferrumDesktopAssetContentRevision;
+    delete globalThis.__ferrumDesktopHeldInspectionPath;
+    return results;
+  });
+  if (inspectionResults[0] !== undefined || inspectionResults[1] !== PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER)
+    throw new Error("Stale native inspection published a result " + JSON.stringify(inspectionResults));
+  image = originalImage;
+  await openFolder(PLACEMENT_VIEWER_DESKTOP_SHARED_RELOAD_ASSET_FOLDER, 32, 32);
   return {
     assetId: PLACEMENT_VIEWER_DESKTOP_ASSET_ID,
     runtimeUrl: PLACEMENT_VIEWER_DESKTOP_SHARED_ASSET_URL,
@@ -2821,6 +3031,9 @@ async function smokePlacementViewerDesktopSameNameAssets(page, timeoutMs) {
     switchedPixelHash: switched,
     reinspectedPixelHash: reinspected,
     latestAfterDelayedUploadPixelHash: latest,
+    unchangedRevisionFetches: unchangedFetches,
+    changedRevisionReloaded: true,
+    staleInspectionDiscarded: true,
   };
 }
 

@@ -6,7 +6,7 @@ use crate::{
     tilemap::Tilemap,
     world::World,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 mod attachments;
 pub(crate) use attachments::{AttachmentPose, SpatialAttachments};
 mod connections;
@@ -298,6 +298,9 @@ pub(crate) struct Billboard {
 
 #[derive(Default)]
 pub(crate) struct SpatialScene {
+    /// Disposable authoring presentation; never participates in simulation or checkpoints.
+    pub preview_hidden_entities: BTreeSet<(u32, u32)>,
+    pub preview_hidden_surfaces: BTreeSet<u32>,
     pub attachments: attachments::SpatialAttachments,
     pub models: models::SpatialModels,
     pub environment: SpatialEnvironment,
@@ -341,6 +344,8 @@ impl SpatialScene {
     }
 
     pub fn clear(&mut self) {
+        self.preview_hidden_entities.clear();
+        self.preview_hidden_surfaces.clear();
         self.attachments = Default::default();
         self.models = Default::default();
         self.environment = SpatialEnvironment::default();
@@ -606,9 +611,13 @@ impl SpatialScene {
             &camera,
             &self.environment.shadow_matrices,
             self.environment.values.is_some_and(|v| v[2] >= 0.),
+            &self.preview_hidden_entities,
         );
         self.debug.begin_frame();
         for (index, surface) in self.surfaces.iter().enumerate() {
+            if self.preview_hidden_surfaces.contains(&surface.id) {
+                continue;
+            }
             let [x, y, width, depth] = surface.bounds;
             if !camera.intersects_bounds(
                 [x, surface.base, -y - depth],
@@ -644,6 +653,9 @@ impl SpatialScene {
             )
         {
             let entity = Entity { id, generation };
+            if self.preview_hidden_entities.contains(&(id, generation)) {
+                continue;
+            }
             if !world.is_current_entity(entity) {
                 continue;
             }
@@ -950,6 +962,9 @@ impl SpatialScene {
         let mut closest = f32::INFINITY;
         let mut result = vec![];
         for (surface, vertices) in self.surfaces.iter().zip(self.terrain.chunks_exact(36)) {
+            if self.preview_hidden_surfaces.contains(&surface.id) {
+                continue;
+            }
             for triangle in vertices.chunks_exact(3) {
                 if let Some(distance) = ray_triangle(
                     origin,
