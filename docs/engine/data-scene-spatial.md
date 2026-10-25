@@ -40,6 +40,11 @@ const result = applyDataSceneAuthoringDocument(engine, { ...document, spatial })
 사용하며 Rust 입력 업데이트, 지형 이동, bitmap label과 DOM HUD를 연결한다.
 걷기 atlas를 함께 사용하려면 기존 `gameplay.primaryActor`와 이동 애니메이션 설정을 같은 actor에 연결한다.
 
+공식 Placement Viewer의 작업 격자·작업 평면은 authoring 보조 표시다. 맵 밖에도 표시되지만
+`spatial.terrain`이나 보행 지지면을 자동 생성하지 않는다. 기본 지형 배치와 명시적 작업 평면 배치를 구분하며
+sprite의 물리 높이·층과 visual-only 모델의 시각 높이는 기존 저장 계약을 따른다.
+설정 방법은 [뷰어 사용법](../../apps/placement-viewer/README.md)을 참고한다.
+
 ## 정적 GLB 배경 모델
 
 `/core`의 `loadSpatialGlb(source, { materialProfile: "diffuse", signal? })`로 URL 또는 ArrayBuffer를
@@ -1267,6 +1272,8 @@ debug toggle은 simulation pose, camera, terrain revision, picking과 저장 pro
 `RendererStats.spatial`의 `debugLineCount`, `debugDrawCalls`, `debugUploadBytes`, `debugTruncated`가
 진단 비용을 별도로 기록한다. 선분은 triangle/billboard 통계에 포함하지 않으며 aggregate drawCalls/uploadBytes에는
 합산한다. nonempty debug는 texture와 무관하게 `LINES` 1 draw이고 depth write는 false다.
+WebGL2는 선의 RGBA alpha를 반영하여 혼합한다. alpha 0은 framebuffer를 바꾸지 않으며
+선 pass 전후의 blend enable·RGB/alpha factor·equation과 depth 상태를 복원한다.
 GPU buffer는 첫 nonempty frame에 생성하고 native `vertexCount×44` bytes를 매 frame 업로드한다.
 debug off에서는 line draw/upload가 0이다. 이 상한은 실제 GPU 시간/FPS 보장이 아니다.
 

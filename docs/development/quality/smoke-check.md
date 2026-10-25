@@ -51,6 +51,7 @@ opt-in gate다. 기본 CI에는 연결하지 않는다. 실제 2D/HD-2D의 한�
 
 `pnpm test:placement-grid`는 별도 Wasm 없이 2D 원점 정렬·pan/zoom·최소 배율 예산과 HD-2D X/Y ramp 높이,
 surface 경계·비가시 surface 제외·대규모 선분 상한·입력 불변을 검사한다.
+작업 평면의 가시 영역·명시적 높이·원점 정렬, perspective 수평선/평행/뒤쪽 ray, 원근 거리 fade·직교 alpha 보존과 중복 구간 alpha도 검사한다.
 `pnpm smoke:placement-grid`는 ferrum-web JS/엔진 Wasm과 Chromium을 준비한 뒤 공식 app production build에서 실행하는
 opt-in gate다. CI 기본 gate에는 추가하지 않는다. 2D/HD-2D × DPR 1/2의 Grid 실제 픽셀 차이·draw call 증분,
 Grid/Snap 독립성·간격 입력·camera 탐색·resize·floor 필터·Proxy Overlay와 문서/Undo 불변을 확인한다.
@@ -58,6 +59,32 @@ bridge/billboard 뒤의 격자 가려짐을 framebuffer로 비교하고 orthogra
 Game Preview 숨김/복원과 pagehide 뒤 GL buffer 잔여 0을 검사한다.
 공식 app WebGL2 전용 변경이며 engine WebGPU 동등성이나 실제 기기 성능을 검증했다고 간주하지 않는다.
 근거는 `artifacts/viewport-grid/verification.json`과 DPR별 screenshot이다.
+
+`pnpm smoke:placement-village`와 CI의 village browser gate는 `placement-working-grid-smoke.mjs`를 함께 실행한다.
+DPR 1/2에서 마을 바깥 격자의 실제 framebuffer 차이, 기본 지형 배치의 빈 공간 거절, 명시적 평면의 음수 snap,
+sprite click/model drop의 ghost·patch·높이·층 일치와 native sprite 높이·층을 검사한다. terrain/collider 자동 생성 여부,
+Undo/Redo, 표시 설정·camera·Game Preview 전환의 JSON/history 보존, 빈 terrain의 perspective camera와 512선·1 draw 예산도 확인한다.
+근거는 `artifacts/working-grid/dpr1.json`, `dpr2.json`과 한국어 ghost/빈 씬 screenshot이다.
+
+`pnpm test:placement-camera`는 상하 회전의 target·거리·yaw·직교 높이/원근 FOV 보존, 입력 불변,
+반복 회전·1~89° 상하 한계·유효하지 않은 입력 거절, 직교 렌더 카메라의 pitch/height/작업 높이별 전체 평면 깊이와
+화면 투영 보존을 검사하며 CI geometry/locale step에 포함한다. grid 수학 검사는 낮은 각도의 수직 선 간격도 검사한다.
+`pnpm smoke:placement-camera`는 준비된 JS/Wasm으로 app을 빌드하고 village gate의 `--camera-only` 경로를 실행한다.
+같은 `placement-spatial-camera-smoke.mjs`는 기본 village smoke/CI에서도 실행한다.
+직교/원근 × DPR 1/2에서 버튼·슬라이더 키보드/마우스, native 투영 변화, target/거리/화각 보존, 한계 버튼 비활성화,
+pan 뒤 각도 유지·컨트롤 재활성화, 배경 bounds를 UI 잠금으로 제외한 캐릭터 선택·지형 배치 ghost,
+Game Preview/Stop·Reset·문서 탭별 각도 복원과 한국어 접근성 이름을 검사한다.
+JSON/patch/history·작업 평면 불변, native entity 45개, 격자 512선·1 draw와 전체 160 draw/60,000 triangle 상한도 확인한다.
+근거는 `artifacts/spatial-camera-angles/dpr1.json`, `dpr2.json`과 낮은/높은 각도·한국어 control screenshot이다.
+
+`pnpm smoke:placement-grid-viewport`는 준비된 JS/Wasm으로 app을 빌드한 뒤 village gate의 `--grid-viewport-only` 경로를 실행한다.
+동일 `placement-grid-viewport-smoke.mjs`는 기본 village smoke/CI의 DPR 1/2에서도 실행한다.
+직교 카메라의 낮은 각도·축소·pan/orbit·resize·작업 높이 변경과 빈 씬에서 화면 모서리의 native projection/clip을 검사한다.
+격자를 켜고 끈 실제 framebuffer 상단/하단 band의 픽셀 차이를 비교해 가운데 띠로 줄어드는 회귀를 검출한다.
+45개/0개 entity, 512선·1 grid draw와 160 draw/60,000 model triangle 예산,
+JSON/patch/history 보존, 탐색 camera Stop/Reset 복원 및 게임 camera 행렬 불변도 확인한다.
+빈 씬의 화면 가장자리에서 작업 평면 ghost를 실제 pointer로 표시하고 다시 native projection으로 돌려 배치 ray도 검사한다.
+근거는 `artifacts/grid-viewport/dpr1.json`, `dpr2.json`과 축소/빈 씬 screenshot이다.
 
 `pnpm test:sprite-normals-tool`은 네트워크/외부 binary 없이 config·설치 provenance·binary hash,
 입력 snapshot·원본 변경 감지·symlink/출력 충돌·native 부분 실패·발행 경쟁의 정리를 검사한다.
@@ -269,6 +296,21 @@ headless 기본 test의 ignored 1건은 브라우저 전용 stdin transport다. 
 
 2D·HD-2D authoring 작업공간의 기본 browser 명령은 `pnpm smoke:placement-viewer`와
 `pnpm smoke:placement-spatial-workspace`다. CI validate job은 전체 build 뒤 두 mode를 직접 실행한다.
+`pnpm smoke:placement-village`는 Blender 중세 마을 예제를 production build에서 검사한다.
+CI validate job은 전체 build 뒤 `node tests/smoke/placement-village-smoke.mjs`를 실행하며 `smoke:check`에도 포함한다.
+13개 GLB/3개 sprite의 SHA-256, native entity 45개·모델 41개·billboard vertex 24개,
+실제 framebuffer의 유색 픽셀/색상 수, WASD/방향별 걷기 clip, 남아 있는 2D Pan의 게임 입력 방해 방지,
+건물 충돌·일시정지·정지 후 초안 복원, 다리 높이 2와 양안 이동·다리 밖 강 건너기 차단을 확인한다.
+실제 `renderer.stats()`의 draw call 1–160, model triangle 5,001–60,000과 warm model upload 0을 요구한다.
+마을을 열기 전 기본 2D 문서가 마을 에셋을 요청하지 않는지, JSON 파일 열기 시 지연 로드·주인공 선택이 되는지도 검사한다.
+production 검증은 `/placement-viewer/` 하위 경로에서 실행하여 상대 에셋 URL을 확인한다.
+같은 gate의 `placement-village-viewport-smoke.mjs`는 DPR 1/2·세 가지 화면 크기·dock 전환에서
+편집 presentation 전체 영역, 실제 grid draw viewport·alpha blending·depth test와 framebuffer의 마을 외곽 여백을 확인한다.
+카메라 이동으로 건물을 예전 letterbox 여백에 배치하고 실제 픽셀이 남는지 검사한다.
+Play의 384×256 복귀, Stop의 전체 해상도 복원과 JSON/history 보존도 확인한다.
+근거는 `artifacts/village-viewport-fix/viewport-dpr*.json`과 화면이다.
+자동 gate는 체크인한 Blender 결과물을 사용한다. Blender 재생성은 설치된 5.2.2 LTS로 별도 수행한다.
+근거는 `artifacts/rpg-village/checks.json`과 `village-editor.png`, `village-game.png`, `village-game-ko.png`다.
 두 gate의 `placement-viewport-sizing-smoke.mjs`는 실제 확장/복원, CSS 치수 표시, 세 dock의 keyboard resize,
 한국어/영어 전환, resize 후 grid/render와 문서·선택·native entity·history 보존을 확인한다.
 같은 gate의 `placement-toolbar-ux-smoke.mjs`는 한영 아이콘/접근성 이름과 단축키, 방향키 focus 이동의 비실행,
@@ -1480,3 +1522,6 @@ opt-in 3초 자동 감지 뒤 명시적 texture 업로드도 검사하며 작은
 단위 테스트는 spatial envelope 생략 보호, 동일 metadata의 명시적 copy origin, 예약 ID 재사용/자동 복제명,
 마지막 optional 모델 제거와 metadata 보존을 검증한다. native tests는 preview filter의 stale 입력 원자 거절·
 physics/terrain 보존과 진단 packet의 FSM 부재·health/cooldown·반복 읽기·stale handle을 검증한다.
+
+공간 debug renderer의 RGBA 선은 alpha 0/0.25/1의 실제 framebuffer 혼합과 비기본 blend factor/equation 복원을 검사한다.
+이 회귀는 기존 packed `smoke:spatial-scene`의 `spatial-debug-browser-fixture.mjs`에 포함한다.

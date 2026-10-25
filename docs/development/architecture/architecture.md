@@ -199,13 +199,26 @@ scene JSON·patch·history·localStorage에는 쓰지 않는다. 실제 simulati
 문서 전환·저장 후 native preview를 재적용하면 해당 탭의 편집 카메라를 다시 연결한다.
 pan은 RAF로 합치고 취소·전환 시 예약된 호출을 제거한다. 문서 session은 탐색 gesture를 편집 transaction에서 제외한다.
 pan/Space 탐색 입력은 gameplay input에서 중립화하며 객체 gesture 중에는 탐색으로 좌표계를 바꾸지 않는다.
-`placementGridGeometry.ts`는 편집 camera·가시 surface metadata에서 원점 정렬 기준선을 최대 512개 생성한다.
+`placementGridGeometry.ts`는 편집 camera frustum과 명시적 작업 높이의 교차 영역에서 원점 정렬 기준선을 최대 512개 생성한다.
+6개 homogeneous clip plane과 authoring 좌표 상한 ±1,000,000으로 범위를 제한하므로 수평선에서도 무한 메시를 만들지 않는다.
 `placementGrid.ts`는 Grid 표시·공유 snap 간격과 실제 표시 간격을 관리하며 authored 문서와 이력을 변경하지 않는다.
 공식 WebGL2 app은 기존 renderer 주입 경로에 private `PlacementGridRenderer`를 사용한다. 2D는 sprite 앞의
 기존 bulk debug line pass, HD-2D는 scene depth를 공유하는 11-float spatial debug pass에 제출한다.
+공간 선의 RGBA alpha는 WebGL2 fragment/blend 경로에서 혼합하고 blend factor/equation·depth 상태를 복원한다.
+HD-2D 편집용 runtime clone은 `environment.pixelArt`만 제외해 전체 canvas 해상도를 사용한다.
+Game Preview에서는 원본 픽셀 해상도/letterbox를 적용하며 authoring JSON·초안·이력은 바꾸지 않는다.
 native debug는 app 소유 재사용 buffer로 복사해 격자와 합성하며 borrowed Wasm frame은 수정하지 않는다.
 기존 Proxy Overlay는 유지하고 depth를 끈 별도 debug packet이 주입되면 격자만 생략한다.
-선분은 surface 경계·ramp 높이·floor 가시성을 따르고 지형이 없을 때만 표시용 reference plane을 만든다.
+작업 평면은 지형 유무와 독립한 X/Y·기본 elevation 0이며 높이·층은 문서별 UI session 상태다.
+선택 표시인 지형 높이 격자는 surface 경계·ramp 높이·floor 가시성을 따른다. 작업 평면과 같은 높이의 flat surface는
+중복 생성하지 않고 나머지 collinear 구간은 합쳐 alpha 누적을 막는다. 원근 화면에서는 clip W 거리로 먼 선의 alpha를 낮춘다.
+표시 LOD는 실제 snap 간격을 바꾸지 않는다. 공간 격자의 표시 간격은 투영된 두 축의 길이 대신
+평행선 사이의 수직 거리로 판정하여 낮은 각도의 밀집 교차 무늬를 줄인다.
+palette는 기본 native terrain pick과 명시적 작업 평면 교차 배치를 구분한다. camera pan과 같은 투영 수학을 재사용하고
+ghost/click/drop이 같은 support/snap 계산으로 표준 addInstance patch를 만든다. 가상 surface ID나 runtime terrain은 생성하지 않는다.
+sprite의 층·높이는 기존 body.heightSpan, visual-only 모델의 높이는 spatial.models.elevation에 기록한다.
+body가 collider를 요구하는 기존 계약을 유지하므로 모델에 가짜 collider나 물리 층을 추가하지 않는다.
+보행·중력·충돌 판정은 계속 native runtime 소유다.
 Game Preview에서는 제출하지 않는다. 실제 추가 draw call은 최대 1개이며 기존 spatial debug와 합쳐지면 추가 호출은 없다.
 공급된 renderer의 pagehide/실패 정리는 app이 소유하며 CPU 합성 buffer와 기존 GPU line 자원을 해제한다.
 Rust simulation·Wasm ABI·public API·WebGPU renderer는 변경하지 않는다.
@@ -225,6 +238,15 @@ Space 임시 이동/복귀와 pressed 상태를 갱신하며 게임 상태나 �
 Escape는 disclosure 안에서만 소비하고 바깥 pointer/focus는 focus를 빼앗지 않고 닫는다.
 summary의 Enter/Space 활성화는 app에서 처리하여 전역 runtime 입력과 충돌하지 않게 한다.
 휠과 버튼은 동일한 orthographic height/perspective distance 제한을 사용하며 객체 gesture 동안 확대를 차단한다.
+`placementSpatialCamera.ts`는 target 상대 벡터의 pitch를 계산하고 1~89° 범위로 회전한다.
+상하 버튼은 10°씩, View range input은 1°씩 조절한다. 탐색 상태의 target·eye 거리·yaw·orthographic height/perspective FOV와 clip 범위를 유지한다.
+직교 편집의 native camera는 별도 `spatialEditorRenderCamera`로 파생한다. 현재 height·pitch·작업 높이에서
+화면 상하 끝의 평면 깊이를 구하고 필요할 때 eye를 바라보는 축의 뒤로 옮긴 뒤 far를 늘린다.
+직교의 screen X/Y와 배율은 그대로이며 탐색 상태에는 이 offset을 누적하지 않는다. resize와 작업 평면 높이 변경에도 다시 계산한다.
+기존 near/far 안의 객체는 보존하고 native 행렬·depth·picking을 함께 갱신한다. 원근과 Game Preview는 이 보정을 적용하지 않는다.
+수평/수직 특이점을 피하고 native camera setter가 수락한 뒤에만 UI camera와 각도 readout을 갱신한다.
+슬라이더와 버튼은 문서별 기존 camera session을 공유한다. authored camera·작업 평면·patch/history를 변경하지 않고 Reset·Stop·탭 복귀에 연동한다.
+탐색 gesture 전환 때 활성 상태를 다시 동기화해 pan 종료·취소 뒤 각도 컨트롤이 비활성 상태로 남지 않게 한다.
 탐색 커서·손잡이 상태는 2D/HD-2D별로 분리하고 카메라 조작은 문서 patch·history에 넣지 않는다.
 게임 진행은 Rust가 소유하고, 편집 camera와 정지한 authored model bounds/billboard geometry만 TS에 둔다.
 Wasm borrowed frame은 다음 프레임까지 보관하지 않는다. 지연 클릭에는 camera/presentation 복사와 terrain revision만 유지한다.
@@ -242,7 +264,8 @@ visual map migration은 composition operation과 쌍으로 검증한다. envelop
 복제 원본은 metadata 추정 대신 draft snapshot에 explicit identity로 보관하고, 원본 ID는 저장 전까지 예약한다.
 `addInstance`의 선택 spatial addition은 composition과 billboard/model 참조를 같은 edit/host 검증 경계에서 만든다.
 `placementSpatialPalette.ts`는 asset/frame 선택·미리보기·click/drop과 cold instance 생성을 담당한다.
-support identity는 기존 native terrain picker에서 가져오며 snap 뒤 높이는 해당 authored surface의 경사를 반영한다.
+기본 support identity는 기존 native terrain picker에서 가져오며 snap 뒤 높이는 해당 authored surface의 경사를 반영한다.
+명시적 작업 평면 모드에서는 viewport ray/plane 교차점에 동일 snap을 적용한다. visual-only 모델의 ghost에는 물리 층 대신 Visual Only를 표시한다.
 미리보기는 DOM UI에만 있고 native entity나 문서 이력을 만들지 않는다. 모드·탭 전환과 Escape는 pending 배치와 drag token을 정리한다.
 Sprite는 지면 pivot과 static heightSpan·기본 AABB로 배치한다. Model은 collider/body 없이 원래 asset/contentId와 지면 높이를 포함한 시각 offset으로 배치한다.
 Model의 floor는 배치 support 안내에 사용하며 물리 floor를 생성하지 않는다. behavior binding 없는 definition을 바탕으로 UI 소유 components만 추가한다.

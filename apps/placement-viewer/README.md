@@ -14,6 +14,11 @@ Asset preview를 viewport로 드래그하면 선택한 sprite/frame과 기본 co
 HD-2D에서는 다층·경사 surface, authored model bounds·billboard를 선택하고 XY·body 높이/층·시각 offset,
 model yaw/scale을 편집한다. Height handle은 surface top/end/base 또는 body 높이를 함께 이동한다.
 중간 버튼/Alt drag와 Orbit/Zoom/Reset은 문서와 분리한 탭별 편집 camera를 조작한다.
+좌우 회전 옆의 **위에서 보기 / 낮게 보기**는 내려다보는 각도를 10°씩 조절한다.
+**보기 → 내려다보는 각도** 슬라이더는 1~89°를 1° 단위로 조절하며 현재 각도를 표시한다.
+작은 각도는 수평에 가까운 시점, 큰 각도는 위에서 내려다보는 시점이다. 씬 중심·탐색 카메라 거리·화각과
+작업 평면 높이를 유지하고 직교/원근 모두 지원한다. 카메라 초기화는 문서의 원래 각도로 돌아간다.
+각도는 탭별 편집 상태이며 JSON·patch·Undo에 기록하지 않는다. Game Preview는 원본 camera를 사용하고 정지하면 편집 각도를 복원한다.
 XY와 camera pan은 시작 높이 평면을 기준으로 움직여 경사면에서도 이벤트 수에 따라 이동량이 달라지지 않는다.
 원근 Height는 화면 handle 이동을 역투영한다. 객체를 이동하는 동안 camera 조작은 멈춘다.
 Attachment 소유 위치는 agent가 원본에서 수정하며 model pose로 collider를 추정 이동하지 않는다.
@@ -39,10 +44,22 @@ Standalone/browser 문서의 외부 모델은 먼저 Import Model로 불러온�
 Game Preview를 종료하면 작성 초안·history·편집 camera를 복원한다.
 Viewport 상단의 `Grid`는 2D/HD-2D 배치 기준선을 기본 표시한다. 옆 숫자는 월드 단위 기본 간격이며
 Snap과 공유하지만 표시 여부와 좌표 정렬은 독립적이다. 줌 아웃에서는 선분 512개 이하와 최소 표시 간격을 유지하도록
-기본 간격의 배수로 줄이고 실제 간격을 `units`로 표시한다. 5칸마다 큰 구획과 원점 축을 구분한다.
-HD-2D 격자는 보이는 floor의 ground/bridge/ramp 높이를 따르고 지형·모델·sprite 뒤에서는 가려진다.
-지형이 없는 문서는 `Reference Plane`을 표시하며 실제 지지면을 생성하지 않는다.
+기본 간격의 배수로 줄이고 실제 표시 간격을 `units`로 표시한다. 원근 화면의 먼 격자는 투명도를 낮춘다. 5칸마다 큰 구획과 원점 축을 구분한다.
+HD-2D 작업 격자는 지형 유무와 독립해 화면 밖까지 이어지는 X/Y 평면을 표시한다. 기본 높이·층은 0이며
+`보기 → 작업 평면 높이 / 작업 평면 층`에서 문서별 작업 기준을 지정한다. 카메라 target 높이나 층 보기 필터가
+작업 높이를 자동으로 바꾸지 않는다. 카메라 frustum 안의 범위만 계산하고 원점 정렬·512선 상한을 유지한다.
+직교 편집에서는 작업 평면이 화면 위아래까지 보이도록 렌더용 eye와 앞뒤 표시 범위를 보정한다.
+축소하거나 낮은 각도로 보더라도 격자가 가운데 띠로 줄어들지 않으며, 오브젝트의 화면 위치·배율과
+탭별 탐색 카메라는 유지한다. 낮은 각도의 격자 간격은 투영된 선 사이의 수직 거리를 기준으로 조절해 촘촘한 교차 무늬를 줄인다.
+작업 좌표 범위 ±1,000,000 안에서 표시하며 원근 화면의 지평선 위에는 작업 평면을 그리지 않는다.
+`지형 높이 격자`는 기본 꺼짐이며 켜면 보이는 floor의 ramp/bridge 높이도 표시한다. 같은 평면의 중복선은 합친다.
+모든 공간 격자는 지형·모델·sprite의 depth 가림을 따르므로 실제 바닥보다 낮은 작업 격자는 바닥 아래로 가려질 수 있다.
+속성 패널의 `배치 → 배치 기준`은 기본 `지형 표면`이다. 빈 공간에 추가하려면 `작업 평면`을 선택한 뒤
+에셋을 클릭 배치하거나 드래그한다. ghost에 작업 높이·층과 `실제 지지면 없음`을 표시하며 snap 좌표를 그대로 patch에 기록한다.
+작업 평면 자체는 terrain·collider·보행 바닥을 만들지 않는다. 배치한 sprite는 기존 static collider 정책을 따르고,
+충돌체 없는 모델은 시각 높이만 기록하며 물리 층을 추가하지 않는다. 실행 중 이동·착지는 실제 native 지형/물리 설정을 따른다.
 Grid 조작은 문서·patch·Undo를 만들지 않으며 Game Preview에서는 숨기고 편집 복귀 시 복원한다.
+HD-2D 선은 전체 편집 해상도에서 투명도를 혼합하며 지형·건물의 깊이 가림을 유지한다.
 공식 app의 WebGL2 preview에 제공하며 engine public renderer API와 WebGPU 경로는 변경하지 않는다.
 하단 Assets / Problems / Runtime / Agent Changes 탭은 한 번에 한 패널을 넓게 표시한다.
 Runtime 탭에서 선택 native entity 진단과 원본 경로를, Agent Changes에서 JSON 경로별 변경을 확인한다.
@@ -86,6 +103,51 @@ pnpm dev:placement-viewer
 개발 서버에서 `/`는 기존 2D 문서를, `/?scene=hd2d`는 지형·경사로·다층 발판과 sprite 3개가 있는 HD-2D 샘플을 연다.
 공간 데이터가 있는 문서는 HD-2D로 시작하며 상단 **2D / HD-2D**로 모드를 전환한다.
 HD-2D 샘플 원본은 `public/placement.hd2d.scene-authoring.json`이다. 브라우저 샘플 편집은 export를 사용하며 기본 2D 문서 저장 endpoint에 쓰지 않는다.
+
+### Blender 중세 마을 예제
+
+`http://localhost:5173/?scene=village`에서 90년대 16비트 RPG 분위기의 중세 마을을 연다.
+Blender로 직접 만든 목조 여관·상점·주택·종탑·우물·수레·나무·울타리·꽃밭·다리와 하천/돌길을 배치했다.
+13종 GLB를 41개 모델로 재사용하며 픽셀 인물 4명까지 총 45개 native entity를 구성한다.
+게임 미리보기는 384×256 고정 해상도와 nearest 텍스처, 태양광/그림자·색 보정을 사용한다.
+HD-2D 편집은 픽셀 해상도/정수 배율 letterbox를 해제하고 전체 canvas 해상도를 사용한다.
+패널을 접거나 화면 크기를 바꿔도 캔버스 안의 숨은 사각 영역에서 오브젝트가 잘리지 않는다.
+원본 JSON의 `pixelArt`는 유지하며 게임 미리보기로 전환하면 다시 적용한다.
+초기 마을 카메라는 기본 패널 배치에서도 외곽 지형·나무를 볼 수 있게 설정했다.
+게임의 각도·크기는 씬 JSON의 `spatial.camera`에서 정한다. `position`에서 `target`을 향하는 방향이 각도이며,
+직교 `height`는 화면에 담는 월드 세로 범위다(작을수록 확대). 마을 기본값은 약 37°·`height: 660`이다.
+원근 카메라는 `fovDegrees`와 target까지의 거리로 구도를 정한다. `pixelArt`의 384×256은 게임 렌더 해상도다.
+편집 각도·확대율·표시 거리 보정은 원본 게임 카메라에 저장하지 않는다.
+
+- **실행 → WASD**: 파란 옷 주인공 이동·방향별 걷기, 건물·나무 줄기 충돌, 다리에서 강 건너기.
+- **일시정지 / 재개 / 정지**: 정지하면 작성 위치·초안·편집 카메라로 돌아온다. 플레이 위치는 JSON에 저장하지 않는다.
+- **HD-2D**: 기존 배치/카메라 도구로 모델·인물의 위치를 수정한다. 편집 격자는 기본 표시하며 `보기 → 격자`에서 전환한다.
+- **내보내기**: 마을은 export 전용 예제다. 퀘스트·NPC 대화·전투·건물 내부 전환은 구현하지 않았다.
+
+원본은 [rpg-village.blend](assets/rpg-village/rpg-village.blend),
+[제작 스크립트](../../scripts/assets/build-rpg-village.py),
+[씬 JSON](public/placement.village.scene-authoring.json),
+[에셋 hash·출처 manifest](public/assets/rpg-village/manifest.json)이다.
+이미지/모델은 외부 게임에서 가져오지 않은 프로젝트 원본이며 저장소와 같은 MIT OR Apache-2.0 조건을 따른다.
+Blender 파일은 각 모델의 export scene과 전체 배치 `Village_Overview` scene을 포함한다.
+
+Blender 5.2.2 LTS에서 다음 명령으로 모델·PNG·manifest·씬 JSON·원본을 함께 재생성한다.
+출력 파일을 덮어쓰므로 수동 수정은 생성 스크립트에 반영한다. 새 production 의존성은 없다.
+
+```bash
+blender --background --factory-startup --python scripts/assets/build-rpg-village.py
+```
+
+WSL에서 Windows Blender를 사용하는 경우:
+
+```bash
+'/mnt/c/Program Files/Blender Foundation/Blender 5.2/blender.exe' --background --factory-startup --python '\\wsl.localhost\Ubuntu\home\psj\projects\ferrum2d\scripts\assets\build-rpg-village.py'
+```
+
+표준 Y-up GLB export, 정적 diffuse 재질과 명시적 AABB/보행면을 사용한다.
+시뮬레이션·충돌·sprite clip 선택은 기존 Rust runtime에서 처리한다.
+마을 asset catalog는 공식 app 내부에서만 로드하며 engine public API나 consumer template은 변경하지 않는다.
+`pnpm smoke:placement-village`는 production build의 실제 픽셀·hash·보행/충돌·복원·렌더 예산을 검사한다.
 
 직접 package만 실행하려면 다음 명령을 사용한다.
 
