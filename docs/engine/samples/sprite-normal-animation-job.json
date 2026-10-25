@@ -1,0 +1,8 @@
+{
+  "format": "ferrum2d.sprite-normals.config",
+  "version": 1,
+  "inputs": ["../../../examples/topdown-shooter/public/assets/player.png"],
+  "outputDir": "../../../artifacts/sprite-normal-jobs/player-sheet",
+  "settings": { "frameSize": { "width": 16, "height": 16 } },
+  "animation": { "loop": true, "padding": 1 }
+}

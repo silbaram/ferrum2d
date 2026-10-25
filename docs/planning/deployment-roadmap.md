@@ -62,6 +62,10 @@ GitHub Actions gate에는 편입하지 않았으며, CI/release gate 변경은 �
 bridge/Rust command 테스트로 자동화했다. 2~6의 실제 packaged GUI 상호작용은 release 전 수동 GUI
 evidence로 남긴다. macOS notarization, Windows code signing, store 제출은 이 acceptance에 포함하지 않는다.
 
+Aseprite Save Project의 파일/catalog·scene CAS·protocol은 `smoke:aseprite-project`의 실제 Rust headless transport로 검증한다.
+GTK/WebView가 없는 환경의 이 결과는 native GUI/IPC/package 검증을 대신하지 않는다. release GUI 확인에는 프로젝트 저장 후
+재개방·frame/reimport 복원도 포함한다. 기본 Cargo desktop feature와 해당 release gate는 유지한다.
+
 ### 3. 추가 정적 hosting 지원
 
 GitHub Pages 외 provider는 실제 사용자 요구가 확인될 때만 운영 문서를 추가한다. provider별로 검토할

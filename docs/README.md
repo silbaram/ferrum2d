@@ -23,6 +23,8 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 
 | 진입점 | 기준 문서 | 목적 |
 | --- | --- | --- |
+| AI Agent Setup | [AI 에이전트용 설치 지침](engine/ai-agent-install.md) | 엔진·개발 도구·consumer 지침 설치와 의존성 검증 |
+| AI Feature Guide | [AI 게임 개발 기능 안내](engine/ai-feature-guide.md) | 게임 요구사항을 설치 버전의 공개 API와 상세 reference에 연결 |
 | Showcase | [Showcase Hub](engine/showcase-hub.md) | demo, 기능군, agent workflow, 검증 명령을 한 화면에서 확인 |
 | Quickstart | [개발자 퀵스타트](engine/developer-quickstart.md) | 새 프로젝트 생성과 agent-first 개발 루프 시작 |
 | Public API | [Public API](engine/public-api.md), [좌표계와 2D 기하 변환](engine/coordinate-system.md), [Migration Guide](engine/public-api/migration-guide.md) | import 가능 API, 좌표/기하 계약, 지원 수준과 이전 절차 확인 |
@@ -31,6 +33,10 @@ GitHub Pages 홈은 새 사용자와 AI agent가 핵심 문서를 2단계 이내
 | Examples | [Top-down Shooter Game Spec](examples/topdown-shooter/game-spec.md) | 공식 예제 Game Spec 필드와 검증 규칙 확인 |
 | Smoke/Budget | [Smoke Check](development/quality/smoke-check.md) | 자동, browser, runtime budget 검증 기준 확인 |
 | Release | [GitHub Release 패키지 배포](development/operations/github-release.md), [npm 베타 패키징](development/operations/npm-release.md) | 설치용 tarball, beta package, changelog, tag, publish gate 확인 |
+
+문서 메뉴는 시작하기, 공개 API, 게임 제작, 공식 예제, 엔진 개발·검증, 배포·운영, 계획·개발 기록으로 묶는다.
+시작하기와 현재 문서가 속한 그룹을 기본으로 펼치며, 다른 그룹도 클릭하거나 키보드로 펼칠 수 있다.
+계획과 단계별 개발 기록은 사용 계약과 구분하고, 최신 기능의 사용 조건은 `engine/` 기준 문서에서 확인한다.
 
 ## development 하위 구조
 

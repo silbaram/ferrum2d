@@ -1,0 +1,12 @@
+{
+  "format": "ferrum2d.sprite-normals.config",
+  "version": 1,
+  "inputs": ["../../../examples/topdown-shooter/public/assets/player.png"],
+  "outputDir": "../../../artifacts/sprite-normal-jobs/player",
+  "settings": {
+    "normalStrength": 1.5,
+    "detailStrength": 6,
+    "detailScale": 0.6,
+    "shapeStrength": 1.15
+  }
+}

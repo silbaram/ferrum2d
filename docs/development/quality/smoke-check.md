@@ -23,6 +23,7 @@
 | Physics solver/query budget | `pnpm smoke:physics`, `pnpm smoke:physics-replay` | CI 기본 gate는 `smoke:physics`, release 후보는 replay까지 실행 | scenario seed/frame/suite hash와 Web replay helper state hash |
 | Starter Runtime WebGL2 기본 경로 | `pnpm smoke:starter-runtime`, `pnpm smoke:browser-budget` | `smoke:check`, release 후보 수동/로컬 gate | Browser render smoke report와 `RuntimeProfiler` budget report |
 | Scene Placement Viewer browser/desktop smoke | `pnpm smoke:placement-viewer`, `pnpm smoke:placement-viewer-save`, `pnpm smoke:placement-viewer-mass-authoring`, `pnpm smoke:placement-viewer-desktop-assets`, `pnpm smoke:placement-viewer-desktop-package` | browser 항목은 `smoke:check`, Linux deb/GUI launch는 로컬 수동 후보이며 CI 미편입 | 공식 placement viewer production build, Data Scene preview, picking/edit/patch/save, mass authoring, fake Tauri asset bridge, Linux deb artifact와 optional Xvfb process launch. native picker/save/protocol/nonblank canvas는 release 전 수동 GUI evidence도 요구 |
+| Placement document save contract | `pnpm smoke:placement-document-store`, `cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml` | CI validate | 웹 host의 기준 JSON 비교·동시 요청 직렬화·임시 파일 정리, native 저장의 stale baseline 거부·정상 교체·invalid 요청 보존. desktop Linux 개발 의존성 필요 |
 | Top-down Shooter browser budget | `pnpm smoke:topdown-mass-objects`, `pnpm smoke:topdown-tilemap-budget`, `pnpm smoke:topdown-budget` | mass/tilemap은 CI 기본 gate, full topdown budget은 tag/manual opt-in | Playing state, entity/render command 규모, draw/texture/collision budget |
 | Breakout/Platformer browser budget | `pnpm smoke:breakout-budget`, `pnpm smoke:platformer-budget` | tag/manual opt-in | 장르별 production build render/runtime budget artifact |
 | Physics Sandbox browser budget | `pnpm smoke:physics-sandbox-budget` | tag/manual opt-in | Physics demo browser render path와 debug line/runtime budget artifact |
@@ -37,6 +38,278 @@ WebGL2 기본 경로는 제품 renderer 기준이다. WebGPU optional smoke(`smo
 `pnpm validate:runtime-budget-product`는 package script, runtime budget profile mapping, CI 기본 gate, tag/manual opt-in gate, Pages readiness 문서와 artifact report 경로가 빠지지 않았는지 확인한다.
 
 ## 로컬 자동 sanity check
+
+`pnpm test:placement-locale`는 한국어 catalog의 매개변수 계약, 영어 복원·알 수 없는 키 fallback,
+ID/경로/JSON 매개변수 보존과 저장 언어/브라우저 언어 우선순위를 검사한다.
+`pnpm smoke:placement-locale`는 준비된 ferrum-web JS/엔진 Wasm과 Chromium으로 공식 app production build를 실행하는
+opt-in gate다. 기본 CI에는 연결하지 않는다. 실제 2D/HD-2D의 한국어↔영어 전환, 초안·patch·이력·선택·카메라·live handle 보존,
+비활성 문서 탭 복귀·동적 안내·에셋 도구·접근성 이름, compact 화면의 선택기 접근과 저장값 재사용을 검사한다.
+저장값 없음/손상/저장소 차단 환경과 한국어 브라우저 기본값, 포함된 한글 글꼴 로딩도 확인한다.
+문서 탭 교체 자체는 기존 native preview 재적용으로 handle을 갱신할 수 있으며 언어 전환 단독의 handle 보존과 구분한다.
+근거는 `artifacts/viewer-localization/verification.json`과 한국어 screenshot이다. OS 파일 선택창과 raw engine 진단,
+실제 Tauri GUI는 이 gate의 번역/실행 검증에 포함하지 않는다.
+
+`pnpm test:placement-grid`는 별도 Wasm 없이 2D 원점 정렬·pan/zoom·최소 배율 예산과 HD-2D X/Y ramp 높이,
+surface 경계·비가시 surface 제외·대규모 선분 상한·입력 불변을 검사한다.
+`pnpm smoke:placement-grid`는 ferrum-web JS/엔진 Wasm과 Chromium을 준비한 뒤 공식 app production build에서 실행하는
+opt-in gate다. CI 기본 gate에는 추가하지 않는다. 2D/HD-2D × DPR 1/2의 Grid 실제 픽셀 차이·draw call 증분,
+Grid/Snap 독립성·간격 입력·camera 탐색·resize·floor 필터·Proxy Overlay와 문서/Undo 불변을 확인한다.
+bridge/billboard 뒤의 격자 가려짐을 framebuffer로 비교하고 orthographic/perspective·지형 없는 reference plane,
+Game Preview 숨김/복원과 pagehide 뒤 GL buffer 잔여 0을 검사한다.
+공식 app WebGL2 전용 변경이며 engine WebGPU 동등성이나 실제 기기 성능을 검증했다고 간주하지 않는다.
+근거는 `artifacts/viewport-grid/verification.json`과 DPR별 screenshot이다.
+
+`pnpm test:sprite-normals-tool`은 네트워크/외부 binary 없이 config·설치 provenance·binary hash,
+입력 snapshot·원본 변경 감지·symlink/출력 충돌·native 부분 실패·발행 경쟁의 정리를 검사한다.
+동일 gate에서 유리수 delay/GCD·32 frame/FPS 한도·명시적 loop·메타데이터/알파/패킹 오류,
+pair layout/padding 픽셀·반복 UV·PNG inflate 상한과 파생 출력 충돌의 transaction 정리도 검사한다.
+CI validate job에서 직접 실행한다. 실제 generator 검증은 `pnpm normals:install` 뒤
+`pnpm smoke:sprite-normals`로 실행한다. 미리 빌드한 ferrum-web JS/Wasm과 Chromium이 필요하다.
+실제 고정 CLI의 PNG/batch·neutral normal·투명도·원본 hash·uniform sheet 경계와 sidecar를 검사하고,
+WebGL2에 생성된 non-color atlas를 로드해 평면 조명 대비 픽셀 차이·sRGB atlas 거절을 확인한다.
+근거는 `artifacts/sprite-normal-authoring/phase-1/verification.json` 및 run 하위 PNG/JSON이다.
+`pnpm smoke:sprite-normal-animation`은 같은 사전 조건에서 실제 GIF/APNG 부분 frame·Previous/Background disposal,
+반투명 Over 합성과 유리수 시간·PNG sheet를 검사한다. standalone frame 생성 결과와 비교해 normal의 경계 간섭을 검사하고,
+paired atlas의 모든 내부 RGBA·alpha·hash를 비교한다. APNG 합성에는 upstream의 1바이트 정수화 오차를 명시적으로 허용한다.
+브라우저에서 public resolver/authoring과 실제 Rust native 재생을 사용하여 원본 frame 방문·종료·loop wrap·UV 선택과
+프레임별 normal 조명·flip의 픽셀 차이를 확인한다. test 전용 RAF clock만 제어하며 native 상태는 mock하지 않는다.
+근거는 `artifacts/sprite-normal-authoring/phase-2/verification.json` 및 run 하위 PNG/JSON이다.
+실제 생성기 browser smoke는 opt-in이며 CI 기본 gate는 외부 binary 없는 계약 테스트다.
+`pnpm smoke:sprite-normal-binding`은 같은 실제 fixture 생성기를 재사용해 3단계 전용 artifact를 만든다.
+완료 report·descriptor 파일 hash에서 stable binding을 만들고 host가 측정한 decoded 크기·색 공간·PNG hash와 대조한다.
+combined patch/handoff의 generation 설정·원본/결과 hash, source 불변·문서/binding JSON 왕복을 검사한다.
+실제 두 registry에서 color/normal ID를 다른 순서로 배정해 native material ID와 프레임별 조명·동일 픽셀을 확인한다.
+누락·sRGB·크기·UV·변경 bytes를 거절하고 기존 native handle/렌더링이 유지되는지 검사한다.
+근거는 `artifacts/sprite-normal-authoring/phase-3/verification.json` 및 최종 run의 authoring JSON/PNG다.
+`pnpm test:web`에는 binding/provenance·metadata 진단·공간 v4의 교체/해제·Undo/Redo·handoff stale guard와
+이름 해석 실패 후 native 씬 보존 회귀가 포함된다. CI 기본 web test gate를 통해 실행한다.
+WebGPU 및 생성 UI의 renderer/재import 통합 조합은 아래 `smoke:sprite-normal-integration`으로 검사한다.
+
+`pnpm test:sprite-normals-tool`은 선택형 Wasm bundle의 provenance/adapter·파일 path/hash·누락 거절과
+실제 memory section의 bounded/unshared 상한도 외부 도구 없이 검사한다.
+`pnpm test:web`은 Worker client의 입력 복사·정상 반환 free·cache transfer 격리·LRU byte/entry 상한,
+abort/supersede/timeout·오래된 응답·listener 정리·destroy와 오류 후 재생성을 mock port/runtime으로 검사한다.
+이 테스트들은 기존 CI 기본 gate에 포함한다.
+실제 생성기는 `pnpm normals:install`과 `pnpm normals:wasm:build` 뒤 `pnpm smoke:sprite-normal-worker`로 검사한다.
+미리 빌드한 ferrum-web JS/엔진 Wasm, Chromium이 필요하며 브라우저 Worker 검증은 opt-in이다.
+실제 module Worker에서 7개 비기본 설정의 PNG·PNG sheet·GIF·APNG를 생성해 CLI normal/color/alpha와 비교한다.
+normal 채널 허용 오차는 1바이트이며 실제 차이를 보고하고 timing/loop·기존 binding/patch 호환성을 확인한다.
+첫 요청 lazy fetch·cache 복사·반복 free·작업량이 같은 반복 요청의 memory 용량과 4건/8 MiB cache 상한을 검사한다.
+1024px 생성 중 main heartbeat와 native HD-2D preview frame이 진행하는지, 생성 normal의 조명 픽셀 차이를 확인한다.
+abort/supersede/clearCache/destroy·실제 hanging Worker timeout, 잘못된 manifest/Wasm hash와 256 초과 frame 거절,
+오류 후 복구·원본 bytes/씬 보존·생성한 Worker 전부 종료를 assert한다.
+Wasm memory 용량 안정성은 전체 JS heap 누수 검사의 대체가 아니다.
+근거는 `artifacts/sprite-normal-authoring/phase-4/verification.json`, run 하위 PNG/JSON과 `checks.json`이다.
+ferrum-web tarball 검사는 Worker client/entry/runtime/protocol/output의 JS·타입을 필수로 확인하고
+선택형 sprite normal generator의 JS/Wasm binary가 package에 포함되면 거절한다.
+
+`pnpm smoke:sprite-normal-ui`는 optional Wasm bundle과 빌드한 ferrum-web/엔진 Wasm·Chromium을 준비한 뒤 실행한다.
+테스트 전용 save-enabled 공식 app을 빌드하고 별도 HTTP host에서 실제 Worker를 연결한다. 기본 CI는 기존 공식
+2D/HD-2D smoke에서 도구의 비활성 기본 화면을 검사하고 이 실제 생성기 UI smoke는 opt-in이다.
+실제 asset 선택·PNG/GIF/APNG 파일·preset·Settings/Preview·고정/이동 조명과 Flat/Normal 픽셀 차이를 확인한다.
+생성 중 scene 불변, Apply 한 건 Undo/Redo·유효 handoff와 Undo 후 근거 제거, export PNG hash/manifest,
+export를 저장으로 간주하지 않는 scene Save guard, source 오류/취소의 기존 draft 보존을 검사한다.
+전용 artifact host의 파일 충돌·변조 bytes 거절과 저장/catalog 확인 뒤 scene Save, 문서별 결과 분리·늦은 결과 차단,
+2D의 Apply 비활성·compact UI·문서 닫기 URL 해제와 pagehide 이후 Worker/Blob URL/실제 GL texture 잔여 0을 확인한다.
+업로드 중 선택이 바뀌면 Apply를 거절하며 BFCache pagehide/pageshow 이후 tool의 busy 상태가 풀리는지도 검사한다.
+기존 오프라인 도구 gate에는 optional UI host의 GET 전용·정확한 파일 allowlist·bundle 누락/변조의 비노출 503 회귀 3개를 포함한다.
+근거는 `artifacts/sprite-normal-authoring/phase-5/verification.json`, run의 screenshot/export·host 저장 JSON/PNG다.
+자원 개수 관찰은 JS heap 또는 실제 기기 성능 검증을 대체하지 않는다. 새 생성 UI는 공식 viewer에만 연결하며 generated
+create-game template에 추가하지 않으므로 consumer/template smoke 범위를 확대하지 않는다.
+
+`pnpm smoke:sprite-normal-integration`은 같은 사전 조건에 고정 CLI 설치도 필요하다. phase-6 전용 artifact에
+GIF/APNG 실제 생성 결과의 모든 고유 frame × flip X/Y 네 조합 × 회전 0/0.7rad × 2D/HD-2D × DPR 1/2를 검사한다.
+WebGPU adapter가 있으면 실제 GPU shader/texture/native packet과 기존 offscreen capture target을 사용한다.
+GPU 사용 가능 상태에서 초기화·검증 실패를 skip하지 않으며 `FERRUM_REQUIRE_WEBGPU=1`은 adapter 부재도 실패로 만든다.
+WebGPU readback은 RGBA 채널 허용 오차 8에서 전체 pixel 0.5% 미만 차이를, 강제 adapter 부재 fallback은
+WebGL2와 동일한 pixel을 요구한다. 각 HD-2D pose의 normal/flat 조명 차이와 2D 색상 불변도 검사한다.
+이 검사는 native canvas presentation 또는 실제 기기 성능을 대체하지 않는다.
+
+같은 명령의 공식 UI 검사는 DPR 2에서 부분 texture 업로드 실패 후 실제 씬 pixel·초안·자원 보존과 재시도,
+서로 다른 두 생성 pair 사이 Undo/Redo의 handoff 복원, compact 방향키/Home/End·키보드 취소를 확인한다.
+8개 세션 pair 한도 거절과 문서 닫기 뒤 생성 재개, 마지막 Worker/URL/GL texture 잔여 0도 확인한다.
+실제 PNG 해시 계산 직후 요청을 취소하고 같은 미적용 후보를 재생성·적용하는 경우에도 소유권과 종료 해제가 유지돼야 한다.
+export bundle과 동반 patch로 만든 씬은 별도 새 페이지에서 PNG hash/색 공간·provenance를 검증하고 다른 texture ID로
+실제 엔진에 재로딩해 normal 조명을 확인한다. filesystem 설치 transaction은 전용 host/agent 책임이다.
+근거는 `artifacts/sprite-normal-authoring/phase-6/renderer-verification.json`, `ui-verification.json`, `checks.json`과 run별 PNG/JSON이다.
+명령은 테스트용 save-enabled app을 남기므로 이후 `pnpm --filter @ferrum2d/placement-viewer build`로 기본 app을 복원한다.
+
+`pnpm smoke:aseprite-assets`는 빌드한 ferrum-web/엔진 Wasm과 Chromium을 준비한 뒤 실행한다.
+optional 노멀 생성기 설치는 필요 없다. save-enabled 공식 app을 별도 HTTP host에서 실행하며
+기본 CI 편입 없이 opt-in으로 다음을 확인한다.
+
+- 2D DPR 1·HD-2D DPR 2의 JSON+PNG 검사와 frame Preview, 등록 후 실제 frame 배치·Apply Frame
+- frame 이름을 유지한 크기/위치 변경 재import의 실제 native PNG 픽셀과 pose/size/pivot/collider/body 보존
+- 한 건 Undo/Redo와 revision handoff 복원, 제거·모호한 frame 및 animation/normal migration 진단
+- 잘못된 JSON/PNG 크기·파일명·회전·trim·범위·중복·byte 한도 거절과 기존 씬 보존
+- 실제 GPU 업로드 뒤 실패 rollback, 취소 직후 같은 revision 재시도, URL/GL texture 해제
+- 문서별 catalog 분리·8 revision 한도·닫기 후 재개, compact Source/Preview 방향키/Home/End
+- scene-only Save 차단, 원본 JSON/PNG byte hash와 sRGB manifest가 담긴 Export Assets,
+  bundle과 동반 patch를 별도 새 페이지에 로딩한 native 복원
+- BFCache pagehide/pageshow 후 재개와 최종 pagehide 이후 Blob URL/실제 GL texture 잔여 0
+
+근거는 `artifacts/aseprite-assets/verification.json`, `checks.json`과 run별 PNG/bundle/resume JSON이다.
+입력은 비회전·비트림 atlas로 제한하며 JSON 1 MiB/PNG 16 MiB·한 변 4,096·4 MP·256 frame,
+세션 8 revision/원본 64 MiB 한도를 사용한다. resource 개수 검사는 JS heap·실제 기기 성능 검증을 대체하지 않는다.
+이 명령은 generated create-game viewer와 프로젝트 filesystem 설치를 검사하지 않는다. 프로젝트 저장은 아래 별도 smoke로 검증한다.
+명령이 남긴 테스트용 save-enabled app은
+`pnpm --filter @ferrum2d/placement-viewer build` 또는 `pnpm build`로 기본 설정에 복원한다.
+공식 작업공간 smoke의 입력·크기·focus 대상은 `canvas.demo-canvas`로 지정해 Assets의 frame preview canvas와 구분한다.
+workspace 전환의 native readback은 최대 16 RAF 안에 CSS/DPR와 drawing buffer 크기가 일치하고
+세 프레임 연속 크기가 안정될 때만 읽는다. 실패 전후 PNG의 완전 동일성 조건은 유지한다.
+
+`pnpm test:aseprite-animation`은 duration GCD/native float32 오차·4개 방향·array/hash 순서,
+numeric clip ID/initial/loop 보존·태그 추가/누락/모호함·수동 수정·frame/FPS 제한·lock/normal/legacy 거절을 확인한다.
+`pnpm smoke:aseprite-animation`은 save-enabled 공식 app에서 실제 2D DPR 1·HD-2D DPR 2의
+Apply Animation/Reimport Animation·단일 Undo/Redo·component/pose 보존과 export/handoff tag ID를 확인한다.
+별도 새 엔진 세션에서 90ms/180ms 반복 UV의 native 진행/종료와 두 색상 frame의 실제 pixel을 확인한다.
+32-frame 한도·태그 삭제 거절, 실제 GPU upload 뒤 실패 rollback·취소 후 재시도와 종료 URL/GL texture 0도 요구한다.
+`pnpm smoke:aseprite-animation-project`는 기존 native project smoke의 animation 분기다.
+실제 Rust 저장/프로토콜 함수에 test-only stdio transport로 연결해 2D/HD-2D의 원본+animationSet 저장·새 프로세스/브라우저 복원,
+한 frame 태그의 재import/Undo/Redo·파일/씬 충돌·취소·변조 거절과 저장 manifest의 standalone game 로딩을 검사한다.
+native GUI IPC 자체는 검사하지 않는다. 다중 frame 재생은 앞 browser gate가 담당한다.
+근거는 `artifacts/aseprite-animation/verification.json`, `project/verification.json`, `qa.json`, `checks.json`과 run별 export/PNG다.
+두 명령은 기본 CI에 편입하지 않은 opt-in gate이며 원래 Aseprite/normal report를 덮어쓰지 않는다.
+명령 실행 뒤 기본 app build로 save-enabled 설정을 복원한다.
+
+`pnpm smoke:aseprite-paired`는 기존 Aseprite browser harness의 `--paired` 분기다.
+2D에서 paired action 차단, HD-2D DPR 2에서 실제 Worker로 태그 애니메이션·노멀 동시 생성/reimport를 확인한다.
+clip ID/initial/loop·component/spatial 설정 보존과 한 Undo/Redo, 생성기 부재·태그 누락·GPU upload 실패·최종 lock·취소 재시도도 검사한다.
+독립 PNG decoder로 합성 rect와 실제 Worker output bytes를 비교하고 export를 새 runtime에서 재생한다.
+90/180ms native 진행·종료를 검사하며 각 animated color/normal UV의 실제 pixel이 독립 적용한 정적 frame과 완전히 같아야 한다.
+각 frame의 visible color와 flat 대비 normal lighting 차이도 100 pixel을 넘어야 한다.
+`pnpm smoke:aseprite-paired-project`는 실제 Rust writer/protocol과 새 Rust/browser 실행에서 paired 저장·복원·재import·Undo/Redo·export를 검사한다.
+PNG 충돌·잘못된 catalog 응답·취소·변조 거절, 저장 manifest만 사용한 독립 runtime의 다중 frame UV/조명 검증을 포함한다.
+종료 URL/GL texture 잔여는 0이어야 한다. native GUI IPC는 검사하지 않는다.
+두 명령은 선택형 생성기가 필요한 opt-in gate이며 기본 CI에는 편입하지 않았다.
+근거는 `artifacts/aseprite-paired/verification.json`, `project/verification.json`, `qa.json`, `checks.json`이다.
+`test:aseprite-animation`은 paired combined patch·billboard/lock·32 unique UV 거절을,
+`test:native-normal-project`는 scene animationSet 복원과 report에 없는 UV의 근거 제외도 검사한다.
+
+`pnpm test:aseprite-normal-png`는 PNG filter 0~4와 투명/반투명 RGBA의 수치 보존, CRC·잘린 입력·크기·취소를 검사한다.
+
+`pnpm smoke:tile-external`은 외부 TSJ의 opt-in native gate이며 CI 기본 gate에는 추가하지 않는다.
+Tiled 2D DPR 1·HD-2D DPR 2에서 TSJ 누락 진단·명시적 파일 선택·원본 map/TSJ 보존·dependency protocol 변조 거절을 확인한다.
+기존 native gate의 충돌/Cancel/CAS/재시작/Undo/Redo/export/자원 회수 조건과, 원본 map이 같은 TSJ 재import를 검사한다.
+독립된 game fixture는 저장된 raw map+TSJ를 public importer의 `externalTilesets`로 읽어 실제 두 frame UV와 blue/green pixel을 검증한다.
+보고서는 `artifacts/tiled-external-assets/verification.json`이다. 실제 Tauri GUI IPC는 이 stdio harness의 검증 범위에 포함하지 않는다.
+`pnpm test:tile-assets`는 TSJ-only revision 분리·누락/추가/모호한 파일명·source/URL/hash 변조와 native 원본 복원도 검사한다.
+
+`pnpm smoke:tile-multi`는 다중 embedded tileset의 opt-in native gate다. Tiled/LDtk × 2D DPR 1·HD-2D DPR 2에서
+이름 선택·연속 JSON/PNG 선택·PNG 불일치 시 참조 보존·제외 범위 evidence, 정의 순서 변경 뒤 선택 유지,
+선택 key를 포함한 원본 저장·재시작·unchanged 재검사·reimport Undo/Redo·별도 게임의 원본 frame UV와 native 픽셀을 확인한다.
+기존 native gate의 충돌/Cancel/CAS/변조/자원 회수 조건도 그대로 사용한다. 보고서는 `artifacts/multi-tileset-assets/verification.json`이다.
+`pnpm test:tile-assets`는 projection/raw source 보존·중복/누락/tileset 예산·동일 PNG의 선택별 ID 분리·native 복원도 검사한다.
+headless Cargo test는 동일 PNG를 쓰는 두 선택의 독립 저장과 잘못된 선택의 파일 생성 전 거절, key 없는 기존 catalog를 검사한다.
+
+`pnpm smoke:tile-project`는 opt-in native 자산 gate다. Tiled/LDtk 각각 2D DPR 1·HD-2D DPR 2에서 실제 Rust writer/protocol과 Chromium을 사용한다.
+파일 충돌 보존·잘못된 응답·native 완료 후 Cancel의 scene 저장 차단, source-only catalog, Rust/browser 재시작 2회,
+프레임 복원·unchanged identity·reimport Undo/Redo·외부 scene CAS 충돌·원본 export·저장 manifest로 별도 game 픽셀 복원·파일 변조 거절과 URL/texture 해제를 검사한다.
+`pnpm test:tile-assets`에는 native catalog 원본 재검증·취소·canonical identity 복원 테스트가 포함된다.
+`cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features --offline`은 native tile 원본/권한/충돌/rollback/변조와 공유 Aseprite 저장 회귀를 검사한다.
+이 gate는 native GUI IPC 대신 stdio test transport를 사용하며 Tauri GUI 실행이나 CI 기본 gate 편입을 주장하지 않는다.
+
+`pnpm test:tile-assets`는 Tiled/LDtk 실제 PNG decode/hash·immutable ID·원본/변환 map export, stable frame UV migration,
+누락/모호함·lineage/lock/normal/animation 거절과 byte/grid/revision 예산을 확인한다.
+공유 PNG revision store의 부분 GPU upload 실패 및 문서 닫기 뒤 늦은 loader 완료의 texture 회수도 검사한다.
+`pnpm smoke:tile-assets`는 기존 Aseprite browser harness의 `--tiles` 분기이며 별도 `artifacts/tile-assets` report를 사용한다.
+2D DPR 1·HD-2D DPR 2에서 Tiled/LDtk 각각 Register의 씬 불변, 실제 Assets 배치, 서로 다른 frame 두 instance의 단일 Undo 재import,
+pose/component 보존·Undo/Redo·GPU upload 실패·최종 lock 재검사·취소 재시도·누락 frame 거절·미설치 참조 scene Save 차단을 검사한다.
+별도 새 runtime은 export 원본/hash·public importer 변환 결과·PNG 크기/color space를 재검증한 뒤 두 frame의 blue/green pixel이 각각 100을 넘어야 한다.
+종료 시 소유 Blob URL/GL texture 잔여는 0이어야 한다. 이 browser-only gate는 전체 map 적용이나 native 저장을 검사하지 않는다. native 저장은 `smoke:tile-project`에서 따로 확인한다.
+CI에는 편입하지 않은 opt-in gate다. 실행 뒤 기본 app build를 복원하며 기존 Aseprite/paired/native 저장 회귀도 수행한다.
+검증 근거는 `artifacts/tile-assets/verification.json`, `qa.json`, `checks.json`, run별 export와 PNG다.
+
+`pnpm test:native-normal-project`는 실제 PNG bytes로 worker/Aseprite provenance·metadata/PNG 변조·크기·중복·URL·취소와
+기본 native host adapter, source color 공유·복원 evidence/export·문서 소유권/닫기 해제를 검사한다.
+desktop headless Cargo test는 normal pair 저장/동일 bytes 재시도·ordered metadata/색 공간, 잘못된 입력의 파일 생성 전 거절,
+열지 않은 project 권한·8 pair 한도·실제 PNG 변조·부분 설치 rollback·디렉터리/catalog/PNG symlink 거절을 확인한다.
+`cargo clippy --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features --offline --all-targets -- -D warnings`도 실행한다.
+
+`pnpm smoke:native-normal-project`는 실제 optional Worker/Wasm 생성 → 기본 desktop normal host 저장 → 새 Rust/browser 실행을 검사한다.
+stdio transport만 대체하고 실제 프로젝트 파일 저장/protocol 함수를 사용한다. HD-2D DPR 2에서 Aseprite normal pair의
+파일 충돌 보존·잘못된 catalog 응답 거절·Cancel 후 scene 보존·재시도, 저장/복원 evidence·재import Undo/Redo·다시 export를 확인한다.
+기존 Normal tool의 정적 PNG와 animation grid도 같은 native host로 저장한 뒤 새 실행에서 binding/descriptor가 일치해야 한다.
+저장 manifest를 별도 native runtime에 로딩하고 PNG hash/normal 색 공간·flat 대비 조명 pixel 차이를 검사하며 마지막 URL/GL texture 잔여 0을 요구한다.
+native GUI IPC/picker 자체와 macOS/Windows는 이 headless gate에서 검증하지 않는다. 선택형 생성기 설치가 필요하며 기본 CI에는 편입하지 않은 opt-in gate다.
+근거는 `artifacts/native-normal-assets/verification.json`, `qa.json`, `checks.json`, run별 scene/export/PNG와 로그다.
+기존 Aseprite/animation/normal browser 회귀를 실행할 때 이전 최상위 verification report는 보존하고 이번 결과를 별도 경로에 둔다.
+`pnpm smoke:aseprite-normals`는 save-enabled app과 기존 optional 생성기 bundle을 준비해 실제 Worker/Wasm으로 Aseprite rect별 노멀을 생성한다.
+2D에서는 action 차단, HD-2D DPR 2에서는 두 frame/instance의 단일 Undo 재import·UV/크기/pose/collider 보존과 실제 native 색상을 확인한다.
+Node의 독립 PNG decoder로 합성 atlas와 실제 Worker frame 출력의 모든 RGBA bytes를 대조하고, 별도 새 runtime에서 export PNG/hash/색 공간·조명 차이를 확인한다.
+생성기 부재·겹친 rect·실제 GPU upload 뒤 실패·lock 변경·취소 직후 재시도·저장 host의 잘못된 bytes 거절도 검사한다.
+종료 시 owned URL/GL texture와 Worker 잔여 0을 요구한다. 근거는 `artifacts/aseprite-normals/verification.json`, `checks.json`과 run별 PNG/bundle/scene이다.
+이 명령은 기존 Aseprite smoke의 `--normals` 분기로 실행하며 이전 `artifacts/aseprite-assets` report를 덮어쓰지 않는다.
+CI 미편입 opt-in이며 native normal writer 검증을 주장하지 않는다. 끝나면 기본 app build로 save-disabled 설정을 복원한다.
+
+`pnpm smoke:aseprite-project`는 기본 app을 빌드한 뒤 Chromium과 headless Rust host test binary를 사용한다.
+Cargo/Rust dependency cache·빌드한 ferrum-web JS/Wasm이 필요하며 GTK/WebView는 요구하지 않는다.
+test-only stdio transport가 실제 Rust project load·asset save·scene CAS·asset protocol 함수를 호출한다.
+browser의 `__TAURI__` transport만 대체하고 파일 저장·hash·PNG·경로·씬 비교 동작은 대체하지 않는다.
+기본 CI에 추가하지 않은 opt-in 검사이며 실제 native GUI/IPC/package 검증을 대신하지 않는다.
+
+2D DPR 1·HD-2D DPR 2에서 Save Project의 파일 충돌, 변조된 host 응답, native 완료 뒤 취소·재시도,
+원본/manifest·scene 저장, 새 Rust 프로세스와 새 browser context의 frame·재import 복원을 확인한다.
+UV 변경 재import·Undo/Redo·실제 native 색상과 외부 scene 변경 보존, idempotent 재시도,
+저장한 manifest를 별도 게임 runtime에 로드한 native PNG, 손상된 저장 PNG 거절도 확인한다.
+종료 시 URL/GL texture 잔여 0을 요구한다. 근거는 `artifacts/aseprite-project/verification.json`, `checks.json`과 run별 실제 프로젝트/PNG다.
+
+native 저장/프로토콜 단위 검증은 아래 명령을 사용한다. default feature는 계속 desktop이며,
+full Cargo test/GUI 검증에는 기존 Linux GTK/WebKit 개발 라이브러리가 필요하다.
+
+```bash
+cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features
+cargo clippy --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --no-default-features --all-targets -- -D warnings
+```
+
+headless 기본 test의 ignored 1건은 브라우저 전용 stdin transport다. `smoke:aseprite-project`가 해당 test를 실제 실행하고
+그 프로세스가 수행한 저장/복원 결과를 browser/file assertion으로 검증한다. 경로·symlink·hash/UV 오류·quota·부분 설치와
+외부 catalog 변경, 외부 writer가 같은 inode의 bytes를 바꾼 경우까지 원본을 보존해야 한다.
+실패 정리는 inode와 bytes 소유권을 입증한 새 파일에만 적용하며, 입증할 수 없으면 미참조 파일을 남겨 재시도에 사용한다.
+
+2D·HD-2D authoring 작업공간의 기본 browser 명령은 `pnpm smoke:placement-viewer`와
+`pnpm smoke:placement-spatial-workspace`다. CI validate job은 전체 build 뒤 두 mode를 직접 실행한다.
+두 gate의 `placement-viewport-sizing-smoke.mjs`는 실제 확장/복원, CSS 치수 표시, 세 dock의 keyboard resize,
+한국어/영어 전환, resize 후 grid/render와 문서·선택·native entity·history 보존을 확인한다.
+같은 gate의 `placement-toolbar-ux-smoke.mjs`는 한영 아이콘/접근성 이름과 단축키, 방향키 focus 이동의 비실행,
+Space 임시 이동 pressed/안내 복귀, 보기 설정 Enter/Space 열기·Escape focus 복원·바깥 클릭 닫기,
+격자 표시·공유 간격/잘못된 값 거부, 390px 메뉴 경계와 카메라·선택·문서·history 보존을 검사한다.
+화면·측정 근거는 `artifacts/viewport-toolbar-ux/`다. grid/locale/공간 배치 회귀도 실제 보기 버튼으로 설정을 연다.
+HD-2D gate는 orthographic/perspective에서 Pan 버튼·H·Space 드래그의 실제 화면 투영 이동, Escape 취소,
+휠 확대·복원과 비활성 2D 카메라·선택·문서·history 불변도 확인한다. 크기/화면 근거는 `artifacts/viewport-navigation-sizing/`다.
+HD-2D 검증은 실제 공간 renderer의 다층/경사 terrain, model bounds·billboard 선택, XY/body 높이·층/시각 offset,
+height Undo, edit camera, Game Preview 종료 후 draft/history 복원, source/diff evidence·선택 native 진단,
+JSON 재개방과 canvas offset·DPR 2 SVG overlay를 확인한다. 하단 Problems/Runtime/Agent Changes 탭을
+실제로 선택하여 해당 패널과 native 값·원본 경로가 보이는지 검사한다.
+공간 값만 바꾼 v3 초안도 변경 수·dirty·Copy Patch에 포함하며 native 저장 버튼과 저장 후 clean 복귀를 확인한다.
+화면 근거는 `artifacts/placement-spatial-workspace/`다.
+같은 gate의 `placement-ui-polish-smoke.mjs`는 1440/1280/1024/768/390px에서 2D·HD-2D 화면을 검사한다.
+기본/최소 Inspector 폭의 Handoff 라벨, 회전·배율 라벨/checkbox 크기, 선택 우선 섹션·고정 camera 도구,
+Export Only와 dirty 분리·별 즐겨찾기, 단일 패널 서랍·키보드/focus 복원·desktop 설정 보존,
+에셋 pressed/readout의 취소·drag·모드/문서 lifecycle을 확인한다. 서랍 닫기 후 실제 native terrain 배치·숫자 편집·Undo도 검사한다.
+Selected Runtime의 health/timer/변수/event 요약과 기본 접힌 Raw JSON, 선택 변경 시 event 정리도 실제 Wasm으로 확인한다.
+7항목 화면/측정 근거는 `artifacts/authoring-ui-polish/`다.
+같은 gate의 `placement-ui-review-fixes-smoke.mjs`는 2D→HD-2D/Game→2D 왕복 뒤 선택 클릭의 객체 수·초안·이력 불변,
+실패한 native 모드 전환의 기존 배치 대기 보존, sprite/frame·회전·배율 변경 후 대기 취소와 재배치 visual 일치를 확인한다.
+실제 mouse drag/Escape의 dragstart·dragend와 대기 정리도 확인한다. 844×390·768×400·390×500의 2D/HD-2D에서
+Scene/Inspector/Panels 서랍의 실제 표시, 양수 canvas 높이·native camera 오류 부재·resize 뒤 terrain picking을 검사한다.
+화면/측정 근거는 `artifacts/authoring-ui-review-fixes/`다.
+같은 gate의 `placement-six-panels-smoke.mjs`는 Inspector Properties/Placement의 상호 숨김과 방향키/Home,
+Scene 검색·종류/layer 필터·fragment 그룹·Frame Selected의 문서/이력 불변, Terrain 선택별 유효 필드를 확인한다.
+현재 층/선택 높이와 Floors·proxy overlay 접근, Play/Pause/Resume의 실제 native 상태와 renderer 유지,
+Stop의 초안/이력 복원, 하단 단일 탭 표시, 고정 Review/Export와 Export Only 저장 제한도 검사한다.
+844×390·390×844 compact canvas 최소 높이/페이지 스크롤/중복 Inspector 제목 부재를 확인한다.
+화면/측정 근거는 `artifacts/authoring-workspace-six-panels/`다.
+Desktop bridge smoke는 native revision이 같은 에셋의 upload 생략, 변경 texture만 reload,
+취소된 지연 upload와 오래된 folder inspection의 결과 차단도 검사한다.
+실제 Tauri picker/protocol/save는 별도 native GUI 검증이며 Chromium bridge로 대체하지 않는다.
+Linux native GUI에서는 실제 GTK project/file picker로 두 문서를 열고 탭별 draft/history·asset 문맥,
+저장 대상 경로, 재개방, 외부 변경 충돌 시 원본/초안 보존과 미개방 경로 거절을 확인한다.
+HD-2D 문서는 GLB catalog/preload·SHA-256 contentId 일치, terrain/model/billboard 선택과 높이/층/pose 저장,
+Preview 종료 후 draft/history/camera 복원, 보이는 진단과 새 native entity handle을 확인한다.
+이미지 reimport는 같은 ID/URL의 변경 픽셀·metadata, 변경 전 revision 409와 다른 폴더 revision의 격리를 검사한다.
+증거에는 실제 frontend/binary/source hash, 화면, protocol MIME/status와 저장 전후 JSON을 남긴다.
+이 검증은 macOS/Windows installer·signing이나 실제 대상 GPU 성능 검증을 대신하지 않는다.
 
 로컬 게임 설치 도구는 빌드된 Wasm/JS가 있는 상태에서 `pnpm smoke:local-engine-install`로
 검증한다. 실제 npm tarball 오프라인 설치, public import, 설치 파일 일치와 게임 검증
@@ -512,6 +785,21 @@ Top-down, Placement Viewer의 전용 UI는 범용 shell option으로 흡수하�
 - `pnpm smoke:topdown-budget`, `pnpm smoke:breakout-budget`, `pnpm smoke:platformer-budget`, `pnpm smoke:physics-sandbox-budget`은 같은 browser budget harness를 각 예제 profile로 실행한다. 직접 `node tests/smoke/browser-render-smoke.mjs --budget --budget-profile=<profile>`을 사용할 수도 있다.
 - `pnpm smoke:placement-viewer`는 Scene Placement Viewer의 `window.__ferrumPlacementViewer` hook, 6개 placed instance/entity, render command와 draw call, canvas readback, `crate_left` hover/click selection, draft transform patch export, Handoff copy/save action state, moved draft marker persistence, sprite frame add patch, ObjectDefinition add patch, collider overlay, rect/circle resize handle patch, collider offset input/drag component patch, capsule/orientedBox/convexPolygon collider component patch, save opt-in disabled gate, inspector selected/hovered/draft row를 확인한다.
 - `pnpm smoke:placement-viewer-mass-authoring`은 Scene Placement Viewer의 mass authoring fixture mode에서 1,030개 이상 instance/entity, responsive viewport에 남는 518개 이상 visible render command, draw call 상한, 단일 object 선택/patch latency, 단일 draft marker, handoff selected/draft summary를 확인한다.
+- `pnpm smoke:placement-viewer`는 여러 pointer move를 한 이력으로 묶기, 단축키·버튼 Undo/Redo, 아직 RAF에 남은 move의 Escape 취소, 숫자 input의 한 건 확정을 추가 검증한다. Web 단위 테스트는 삭제·rename·component·binding·ObjectDefinition·revert 복원, 실패 transaction rollback, no-op/redo 분기와 100건/8 MiB 예산을 검사한다.
+- 같은 2D gate는 중간 move 이벤트 없이 pointerup으로 전달된 마지막 좌표가 그룹 이동과 한 건 Undo에 반영되는지 검사한다. Web 단위 테스트는 취소/실패 Revert의 transient lock 보존, host 거절 시 편집·Undo/Redo·열린 gesture의 초안/cursor 복원, 복구도 거절될 때 실패 candidate 재적용 방지와 callback 재진입 차단을 검사한다.
+- 저장 gate는 실제 pointer drag의 RAF를 보류해 활성 drag·pointerup 뒤 마지막 반영 대기 중 SaveDraft가 요청을 보내거나 transaction을 닫지 않는지 검사한다. RAF를 해제한 뒤 실제 저장 문서에 최종 좌표가 들어가고 초안/이력이 비워지는지도 확인한다.
+- 같은 경계에서 키보드로 다른 탭을 활성화해도 마지막 입력을 반영하기 전에는 현재 탭·초안·이력을 유지해야 한다.
+- `pnpm smoke:placement-spatial-workspace`는 실제 Wasm preview에서 attachment billboard의 누적 yaw, Sprite 회전과 model style yaw/scale의 소유권, 전체 LOD bounds, surface/instance ID namespace, attachment Height 차단과 모드/탭 전환 취소를 검사한다. native가 거절하는 X 입력은 2D·HD-2D 모두 정상 초안·이력·live handle을 유지해야 한다. 경사면 XY는 1회/6회 move의 최종 patch와 화면 이동이 일치해야 하며, Orbit 이후 직교/원근 pan과 zoom 배율, 반복 zoom 한계, 원근 Height의 화면 이동·한 건 Undo·camera 분리를 검사한다. 2D Pan이 선택된 상태에서도 HD-2D gesture가 2D camera를 바꾸면 실패한다.
+- 같은 spatial gate는 native configuration 거절을 한 번 주입해 Escape·모드·탭 전환 실패가 정상 pose/handle과 gesture transaction을 보존하는지 검사한다. 이어 pointerup이 확정 대신 취소를 재시도하는지, programmatic history hook이 별도 소유 gesture를 닫지 않는지도 확인한다. 기본 2D gate는 1280/960/720px toolbar의 실제 hit target을 검사하며 오류 안내 뒤에도 viewport 조작을 클릭할 수 있어야 한다. 소수점 CSS canvas 크기의 탐색 기대값은 논리 CSS 크기 비율을 반영한다.
+- 같은 spatial gate의 `placement-spatial-placement-smoke.mjs`는 실제 asset 선택·Place 클릭·HTML drag/drop으로 Sprite bridge 배치와 snap된 ramp Model 배치를 검사한다. 생성 전 preview의 문서/history 불변, 중복 ID·같은 asset ID의 다른 GLB content·native 거절의 전체 rollback/live handle, 한 건 Undo/Redo, mode 전환 정리, 원래 asset/contentId와 recipe 본문 보존·JSON reopen을 확인한다. 단위 테스트는 spatial v1/v2 분리와 기존 공백 terrain ID 호환성, 참조 add/update의 중복·고아 참조·허용 필드 검증, composition과 참조의 단일 host 검증 및 checked save/reopen을 검사한다. 기존 CI HD-2D authoring workspace gate에서 실행한다.
+- 같은 명령은 `placement-workspace-smoke.mjs`로 dock 접기·Focus·pointer/keyboard resize·Escape·reload 후 UI 설정 복원을 확인한다. JSON 두 문서의 탭 왕복·독립 선택/이력·동일 runtime/canvas·fresh handle, 비활성 dirty 탭의 이탈 보호와 runtime 지속, 닫기 취소/폐기·8탭 상한·잘못된/2 MiB 초과/spatial 문서 거부를 검사한다. 텍스처 누락으로 runtime 적용이 실패하면 기존 초안/선택/이력과 live handle을 복구하고 후보 탭을 제거하는지도 확인한다. 1280/960/720px 실제 화면과 가로 overflow도 확인한다.
+- 같은 placement 명령에 연결된 `placement-navigation-smoke.mjs`는 중간 버튼·Space/Pan drag·Escape 취소·wheel 고정점·zoom 상한/하한·빈 scene·Frame/Fit Scene을 검사한다. 실제 WebGL 픽셀과 DPR 2 picking, 비중앙 pivot/회전/scale의 Frame 중심, 확대 상태 pointer/숫자/keyboard의 동일 월드 이동, 폼 Home 보존, 탭별 카메라와 실패한 열기/dock resize 복원, draft/history 무변경을 assert한다. 객체 gesture 중 wheel/Space는 카메라를 바꾸지 않는다. 화면은 `artifacts/placement-navigation/`에 남긴다.
+- mass 명령은 기존 선택/patch 비용 상한에 더해 Fit Scene의 동기 작업 500ms 이하, 1,030개 이상 entity/render command·draw 1–16회와 기존 초안/이력 보존을 확인한다. 측정값은 실행 환경의 회귀 근거이며 일반 기기의 FPS 보장이 아니다.
+- placement 명령의 `placement-selection-smoke.mjs`는 Tree Ctrl/Shift 범위 선택과 canvas modifier 선택, 부분 교차 제외/완전 포함/가산 영역 선택, Escape·pointer capture 상실의 취소, 선택 전체 Frame·보조 outline, 그룹 pointer/숫자/keyboard 이동·snap의 상대 간격 보존, 잠금 상태의 picking/편집 제한, 잠금의 탭 분리와 그룹 삭제/Undo를 검사한다. 3개 객체 fixture와 DPR 2의 그룹 이동/outline을 확인하고 `artifacts/placement-selection/`에 화면을 남긴다.
+- 같은 mass 명령은 1,030개 객체의 전체 선택·그룹 이동·집합 잠금에 각각 동기 작업 500ms 상한을 적용한다. 선택/잠금 수와 전체 patch operation 수, Undo가 한 건만 늘고 이전 patch를 정확히 복원하는지 확인하며 기존 1,030 commands·draw 1–16회 조건도 유지한다. selection metadata만 바꾸고 실제 batch 편집을 생략하는 pass는 허용하지 않는다.
+- save smoke는 저장해도 다른 탭의 초안/이력이 남고 활성 탭만 기준 문서로 초기화되는지, 현재 탭과 다른 탭의 배율/카메라가 보존되는지 검사한다. desktop asset smoke의 fake bridge는 탭별 native save 대상 경로와 expectedDocument, 이전 asset 문맥 복원과 실패한 문서 열기를 추가 확인한다. 실제 Tauri GUI 검증은 별도다.
+- save/desktop 검사에는 활성 탭 저장 rebase의 편집 잠금과 다른 탭의 선택 집합/잠금 유지도 포함한다. web 단위 테스트는 mixed source/added 삭제, 포함 인스턴스와 flat 객체를 섞은 삭제의 전체 거부, invalid/duplicate/locked batch의 부분 변경 방지, source/추가 객체 rename Undo의 잠금 identity와 1,024건 단일 batch 이력을 확인한다.
+- `pnpm smoke:placement-viewer-save`는 새 객체를 저장하고 재개방한 뒤 외부 writer의 JSON 변경을 만든다. 저장 중 inert UI와 중복 요청 차단, HTTP 409, 기존 초안·이력·외부 문서 보존을 assert한다. 예상한 save endpoint의 단일 409 console 메시지만 허용하며 다른 console/page error는 계속 실패한다. 이 검사는 독립 외부 writer와의 완전한 transaction 또는 실제 Tauri GUI 검증을 대신하지 않는다.
 - `pnpm smoke:placement-viewer-desktop-assets`는 fake Tauri bridge로 desktop project open을 재현하고, asset folder image의 `runtimeUrl`이 initial `runtime.engine.loadAssets(...)` texture manifest에 포함되는지, local texture id가 0보다 큰지, local asset을 참조하는 Data Scene instance가 render command와 nonblank canvas로 이어지는지, asset folder switch 이후 runtime asset snapshot/handoff/Inspector status가 새 manifest로 reload되는지 확인한다. 실제 PNG의 width/height가 provider와 handoff evidence에 유지되는지, Add Sprite pending/draft marker, draft visual size, AABB collider half-size가 같은 local asset metadata를 사용하는지도 검증한다.
 - `pnpm smoke:preload`는 Minimal Game에서 `LoadingOverlay`를 켜고 data URL manifest를 두 번 preload해 첫 실행 fetch와 두 번째 IndexedDB JSON/texture body cache hit를 검증한다.
 - `pnpm smoke:mobile-input`은 Minimal Game에서 `VirtualControls` DOM preset을 켜고 joystick/button state가 `W/D/Space/mouseLeft` input으로 합성되고 release되는지 확인한다.
@@ -1180,3 +1468,15 @@ point/sun/동시 PCF는 각 backend에서 같은 hard 상태 대비 채널3을 �
 단위 회귀는 native 면별 range·camera 밖 모델 mask·8-pass matrix offset과 receiver group, resize/disable/destroy·GPU async target/group 실패를 보강한다.
 abandoned encoder·main 인코딩 오류·resize 뒤 bind-group 오류 때 미제출 shadow map을 cache hit으로 오인하지 않는지도 검사한다.
 디버그 버퍼의 최초 할당·성장이 인코딩된 shadow caster buffer를 해제하지 않는지도 cold/warm·재계산 수명 회귀로 검사한다.
+
+`placement-authoring-upgrades-smoke.mjs`는 같은 `smoke:placement-spatial-workspace` gate에 연결한다.
+실제 Wasm과 시뮬레이션한 desktop command bridge로 Asset Browser 검색/즐겨찾기·GLB geometry 썸네일,
+2D/HD-2D 반복 배치·rotation/scale, visual 참조 rename/copy/remove, 명시적 OBB proxy/높이 보존·단일 Undo,
+native proxy overlay, 층별 draw/picking 제외·ghost와 entity 수/문서/이력 불변, 겹친 terrain 후보 선택,
+Frame/Fit 카메라 분리, variable/gameplay 진단의 모드 전환과 실제 timer event·선택 변경 시 이전 event 분리를 검사한다. GLB의 host revision과 실제 SHA가 다른
+조건에서 감지만으로 초안이 바뀌지 않고, 잘못된 바이트 거절·재시도·단일 Undo/Redo·checked save가 동작해야 한다.
+opt-in 3초 자동 감지 뒤 명시적 texture 업로드도 검사하며 작은 fixture의 entity/draw/model 작업 상한을 확인한다.
+근거는 `artifacts/authoring-workspace-upgrades/`의 JSON/PNG다. 실제 Tauri GUI/file watcher 검증과 구분한다.
+단위 테스트는 spatial envelope 생략 보호, 동일 metadata의 명시적 copy origin, 예약 ID 재사용/자동 복제명,
+마지막 optional 모델 제거와 metadata 보존을 검증한다. native tests는 preview filter의 stale 입력 원자 거절·
+physics/terrain 보존과 진단 packet의 FSM 부재·health/cooldown·반복 읽기·stale handle을 검증한다.

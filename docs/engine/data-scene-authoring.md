@@ -24,6 +24,12 @@ Data Scene authoring 문서는 다음 envelope를 사용한다.
 
 최소 scene은 `sceneComposition.prefabs`, `sceneComposition.fragments`, `behaviorRecipes.entities`만으로 검증 가능해야 한다. starter scene adapter가 쓰는 `runtimeEntity`, `builtinShooterPlayer`, `builtinBreakoutPaddle` 같은 binding은 create-game 템플릿용 확장이지 최소 Data Scene 계약이 아니다.
 
+공간 sprite의 color는 기존 `props.components.visual.texture` 문자열, normal은 선택형
+`spatial.billboards[id].normalTexture` 문자열로 저장할 수 있다. numeric `normalTextureId`와 동시 지정할 수 없으며,
+적용 전에 현재 texture registry에서 해석한다. 별도 생성 binding JSON에는 provenance를 보관하고
+scene에는 에셋 이름·UV/animation만 넣는다. 생성 binding/combined patch/handoff는
+[노멀맵 binding 계약](data-scene-spatial.md#생성-에셋-binding과-패치handoff)을 따른다.
+
 ## Object Definition And Instance
 
 Ferrum2D authoring 문서에서 `sceneComposition.prefabs`는 재사용 가능한
@@ -123,6 +129,236 @@ Behavior Recipe의 `setVariable`/`incrementVariable`은 gameplay event에 반응
 `props.components`는 prefab/variant/instance merge와 placement `updateComponents` patch에서 하나의 component set으로 취급한다. 일반 `props` 값은 기존처럼 JSON object merge를 사용할 수 있지만, `components` 내부만 부분 deep merge하지 않고 전체 교체한다. 이 정책은 legacy `components.sprite`와 신규 `components.visual`이 동시에 남거나 collider/layer 일부만 stale 값으로 유지되는 authoring 충돌을 막기 위한 것이다. 공식 placement viewer의 Visual/Collider/Layer inspector도 이 계약에 맞춰 selected instance의 `props.components` 전체를 낮은 빈도 draft patch로 교체하고, runtime entity를 직접 수정하지 않는다.
 
 `SceneComposition`의 instance `x`/`y`/`scale`/`rotationRadians`/`layer`는 default Data Scene runtime target이 반영한다. instance `rotationRadians`는 visible sprite rotation으로 `SpriteRenderCommand`에 기록되고 collider runtime geometry에도 합성된다. 예를 들어 rotated AABB는 oriented-box collider로 컴파일되고, collider offset/capsule endpoint는 instance rotation을 반영해 회전된다. render layer는 `visual.layer ?? instance.layer`를 사용하고 Data Scene entity render band 안에서 `1000 + layer` sort key로 저장되어 같은 Data Scene entity끼리 render 순서를 정한다. `components.layer`는 collision layer이며 render/sort layer가 아니다.
+
+## Tiled/LDtk 타일 프레임 Assets
+
+공식 app의 **Import Tile Frames**는 기존 public `starter-scenes`의 `importTiledTilemap`/`importLDtkTilemap`을 사용한다.
+map/project JSON에서 tileset을 이름으로 고르고 해당 PNG 1개를 명시적으로 선택하며 metadata의 경로를 자동 fetch하지 않는다.
+등록된 used tile frames는 일반 sprite asset provider의 이름/UV/크기/thumbnail이 되어 기존 2D/HD-2D 배치에서 사용할 수 있다.
+tile painting이나 전체 map/level/collision/LDtk entity의 Data Scene 자동 적용 기능은 아니다.
+
+지원 입력은 finite orthogonal Tiled JSON의 embedded 또는 명시적으로 선택한 외부 TSJ tileset과 비압축 `data` 배열, LDtk embedded level의
+Tiles/AutoLayer 및 entity metadata다. 원본에 tileset 1..8개를 허용하고 한 import는 선택 tileset 1개/PNG 1개를 소유한다. LDtk Level Index는 0부터 시작한다.
+외부 TSX·LDtk external level, IntGrid, flipped/rotated tile은 진단 후 거절한다.
+map + TSJ 원본 JSON 합계 1 MiB, PNG 16 MiB·한 변 4096·4 megapixel, used frame 1..256, 최대 16 layer·전체 65,536 grid cell을 제한한다.
+LDtk level 목록은 최대 64개, 원본 Tiled group nesting 한도는 8이다. 다중 tileset 선택에서는 public importer가 변환하지 않는 group layer를 먼저 평탄화하도록 진단한다. PNG header/실제 decode 크기, 원본 SHA-256,
+tileset 이미지 파일명/크기와 frame의 정수 pixel rect를 확인한 뒤 등록한다.
+
+다중 tileset은 **Tileset** 목록에서 이름과 이미지 파일명을 확인해 선택한다. metadata의 이미지 경로를 자동 fetch하지 않는다.
+Tiled의 선택 key는 `tiled:<name>`, LDtk는 `ldtk:<uid>`이며 중복 key는 거절한다. 선택한 이미지의 파일명/크기만 PNG와 대응시킨다.
+원본 JSON bytes는 그대로 보존하고 public importer에만 선택 범위로 투영한 입력을 전달한다.
+Tiled는 다른 tileset의 cell을 0으로, LDtk는 다른 tileset layer의 tile 배열을 빈 배열로 바꾼다.
+LDtk entity metadata와 원본 layer 순서는 유지한다. **변환 map은 선택한 tileset의 부분 결과**이며 전체 원본 map을 뜻하지 않는다.
+선택한 이름·원본 tileset 수·제외한 tile instance 수를 화면과 `selection` evidence에 표시한다.
+지원하지 않는 TSX·flip/회전과 모호한 Tiled GID/LDtk UID는 제외 범위에서도 진단한다.
+여러 tileset을 각각 가져올 때는 논리 asset 이름을 구분해 재가져오기 그룹을 유지한다.
+
+외부 Tiled tileset은 **External TSJ Files**에서 map이 참조하는 `.tsj`를 모두 명시적으로 선택한다(최대 8개).
+`../tiles/terrain.tsj`처럼 상대 참조를 허용하며 파일의 basename을 대소문자까지 일치시켜 연결한다.
+서로 다른 참조가 같은 basename을 쓰거나 참조/파일이 중복·누락·추가된 경우 거절한다. 폴더 경로는 파일 접근 권한이 아니며 자동 filesystem/network 읽기를 하지 않는다.
+절대 경로·URL·TSX·중첩 외부 TSJ는 지원하지 않는다. map·TSJ 원본 bytes는 수정하지 않고 검사 시에만 embedded 형태로 해석한다.
+선택한 PNG는 TSJ 내부 image의 basename/크기와 검증하며, 다른 tileset의 PNG는 선택할 필요가 없다.
+
+내용/문서/포맷/선택 level·다중 tileset 선택 key와 외부 TSJ의 source별 SHA-256을 포함한 immutable revision 이름 `tile.<tiled|ldtk>.<logicalName>.<digest>`를 쓴다.
+**Register**는 catalog/GPU만 바꾸며 **Apply Frame**은 선택한 unlocked sprite에 texture/UV를 적용한다.
+**Reimport**는 같은 포맷·논리 이름의 이전 revision을 쓰는 활성 fragment만 처리한다.
+기존 UV를 이전 frame 이름에 유일하게 대응시킨 뒤 새 원본의 같은 이름을 찾는다. Tiled firstgid나 LDtk 내부 game tile 순서에 의존하지 않는다.
+Tiled tileset 이름 또는 LDtk tileset UID/level IID(없으면 identifier)가 달라지면 batch migration을 거부한다.
+누락/모호한 frame, animated/legacy sprite, normal binding, 잠긴 대상도 거부한다. 변경은 기존 placement v2 `updateComponents` patch의 한 Undo/Redo transaction이다.
+pose/size/pivot/collider/body/layer/behavior와 spatial 설정은 유지한다. 마지막 문서/선택/잠금 검사와 실패/취소 rollback도 적용한다.
+
+app 전용 export `ferrum2d.tile-import.assets` v1은 `overwrite:false`, 문서 key, `revisions`, `manifest`, `files`,
+현재 `sceneDocument`와 선택형 `patch`를 담는다. revision에는 포맷/lineage/선택 level·원본 이름/hash·frame rect와
+기존 importer의 `imported` 결과(atlas/tilemap·LDtk entities)가 있다. 다중 tileset revision의 `tilesetKey`와 `selection`(key/name/sourceTilesets/omittedTileInstances)은 부분 변환 범위를 명시한다. `files`는 generated asset 이름의 map JSON/PNG와 선택형 `<revision>.dep.<index>.tsj` 원본 bytes·SHA-256이다. 외부 revision의 `dependencies[]`에는 source/name/sha256을 담고 source의 UTF-16 순서로 정렬한다.
+manifest의 texture URL은 bundle 기준 상대 경로이며 color=`srgb`를 명시한다.
+현재 씬의 참조와 일치하는 source evidence는 app handoff의 `tileImports[]`로 전달한다. engine handoff/schema/public API는 바꾸지 않는다.
+
+원본 세션 예산은 staged/등록 revision 총 8건·64 MiB다. Undo/다른 fragment에 필요한 이전 revision은 유지한다.
+문서/모드 전환은 진행 작업을 취소하고 문서 닫기/종료는 그 문서의 소유 URL/texture를 해제한다.
+브라우저의 미설치 참조는 scene Save를 막는다. native Open Project의 기본 문서는 아래 Save Project 경로를 사용하고,
+그 밖의 host/문서는 agent가 export의 hash·manifest와 동반 scene/patch를 확인해 프로젝트에 설치한다.
+
+### 타일 자산의 native 저장·재열기
+
+명시적으로 **Open Project**한 기본 문서에서 **Import Tile Frames → Save Project**를 누르면
+`public/assets/.ferrum-tiles/`에 원본 `<revision>.json`·`<revision>.png`와 외부 TSJ의 `<revision>.dep.<index>.tsj`를 보존한다.
+`catalog.json`은 app 전용 `ferrum2d.tile-import.catalog` v1이며 원본 identity/hash/크기/선택 level과 선택형 `tilesetKey`/`dependencies`(source/name/sha256), 상대 manifest만 저장한다.
+변환 map/frames/lineage는 catalog에 저장하지 않고 재열기 때 public importer로 원본에서 다시 계산한다.
+`identityDocument`는 최초 import 문서 key를 유지하므로 재열기나 unchanged 재검사로 revision이 중복되지 않는다.
+기존 단일 tileset의 ID 계산과 key 없는 v1 catalog는 유지한다. 다중 선택에서는 hash 입력에 선택 key를 추가하고 외부 TSJ가 있으면 정렬한 source/hash 목록을 추가한다. map/PNG가 같아도 TSJ bytes 변경은 새 revision이다. 재열기 때 key로 tileset을 다시 찾아 선택과 scope를 복원한다.
+
+host의 `load_placement_tile_assets`/`save_placement_tile_assets`는 승인된 프로젝트에만 접근한다.
+map + TSJ JSON 합계 1 MiB/PNG 16 MiB·실제 decode·bounded map shape·SHA-256·revision ID를 확인하고,
+파일 exclusive create·기존 byte 일치·catalog 교체 전 비교·symlink 거절·자신이 만든 파일만 rollback을 적용한다.
+Aseprite와 공유하는 native sprite storage의 8 revision·원본 합계 64 MiB 제한을 tile catalog에도 적용한다.
+반환값은 `ferrum2d.tile-import.project` v1과 revision이 지정된 protocol URL이다.
+반환 자산의 선택형 `dependencies[]`는 source와 revision이 지정된 jsonUrl을 제공한다. frontend가 실제 map·TSJ·PNG를 다시 읽어 기존 importer의 전체 지원 계약을 재검증한 뒤 `persisted`를 표시하고 scene CAS 저장을 호출한다.
+원본 자산은 scene 적용 전에 preload되며 앱 handoff `tileImports`에 재계산한 frame/source 근거를 남긴다.
+
+Cancel·탭/모드 전환·잘못된 응답은 뒤따르는 씬 저장을 막는다. native 쓰기가 이미 끝났다면 원본 파일은 남을 수 있으며 retry는 idempotent다.
+씬이 외부에서 바뀌면 scene CAS는 그 변경을 보존하고 검증된 원본 자산은 유지한다.
+다른 종류의 미저장 Aseprite/normal 자산이 함께 있으면 해당 도구에서 먼저 저장해야 한다.
+이 경로는 전체 project transaction이나 OS 외부 writer를 잠그는 기능은 아니다. 일반 scene-only 열기와 추가 탭에는 project 자산 쓰기 권한을 추가하지 않는다.
+기존 standalone importer가 지원하는 더 넓은 입력 옵션은 이 app의 초기 UI 지원 범위와 구분한다.
+
+## Aseprite Assets 가져오기·재import
+
+공식 Placement Viewer는 기존 `importAsepriteAtlas`를 사용해 Aseprite JSON+PNG를 Assets catalog에 연결한다.
+`Inspect`는 PNG 서명·실제 decode 크기·SHA-256과 metadata/frame rect를 확인하며 씬을 바꾸지 않는다.
+`Register`는 문서 세션에 atlas/frame을 등록한다. `Apply Frame`과 `Reimport`는 기존 `updateComponents` patch를
+한 번의 Undo transaction으로 적용하며, 작성한 size/pivot/transform/collider/body/behavior는 유지한다.
+
+공식 UI의 첫 지원 범위는 비회전·비트림 정수 rect, 1~256 frame이다. frame ID는 확장자까지 유지한다.
+JSON hash/array 형식을 받으며 `meta.image` basename과 선택 PNG 파일명을 대조한다. 외부 파일/URL을 자동으로 읽지 않는다.
+frameTags/duration은 아래 명시적 animation import/migration으로 연결한다.
+일반 Apply Frame/Reimport는 animated/legacy sprite 교체를 거절한다. normal binding이 있는 대상의 일반 Apply Frame/Reimport는 차단하고,
+정적 대상은 Generate Normals/Reimport Normals, 애니메이션 대상은 Apply Paired/Reimport Paired로 color/UV와 노멀을 함께 교체한다.
+이는 app 정책이며 기존 standalone importer의 옵션/정규화 동작을 변경하지 않는다.
+
+재import는 활성 fragment가 참조하는 이전 revision의 UV를 frame 이름에 대응시킨 뒤 새 UV로 교체한다.
+누락되거나 동일 UV의 이름이 여러 개라 모호하면 해당 인스턴스를 진단하고 갱신을 막는다.
+`Apply Frame`으로 프레임을 명시할 수 있다. 다른 fragment·Undo/Redo의 이전 revision은 유지한다.
+revision별 내용 기반 texture 이름으로 새 이미지를 별도 업로드하므로 실패/취소가 이전 GPU 이미지를 덮어쓰지 않는다.
+잠금/문서/선택 변경은 적용 직전에 다시 확인한다. 문서 전환·Game Preview 진입은 진행 작업을 취소한다.
+
+JSON 1 MiB, PNG 16 MiB·한 변 4096/4 megapixel, session revision 합계 8건/64 MiB 상한이다.
+문서 닫기/종료에서 Blob URL·GPU texture를 해제한다. 2D 작성 overlay와 HD-2D preview를 재사용하며 실제 2D native 결과는 Game Preview에서 확인한다.
+
+app 전용 `asepriteImports[]` handoff 확장은 현재 씬이 참조하는 논리 asset 이름·revision ID·원본명·hash·frame을 제공한다.
+engine `ScenePlacementAgentHandoff` 반환 계약과 scene JSON schema에 이 필드를 추가하지 않는다.
+`Export Assets`의 `ferrum2d.aseprite.assets` v1 bundle은 문서 키·revisions·manifest·원본 JSON/PNG files를 담는다.
+파일별 base64/SHA-256을 검증하고 프로젝트 안에 `overwrite:false`로 설치한 뒤, manifest의 stable 이름과 `srgb`를 catalog에 등록한다.
+동반 Copy Patch/handoff를 씬에 반영하고 새 세션에서 catalog를 먼저 로드해 다시 연다. bundle 자체에는 씬 JSON이 없다.
+설치 전 imported reference의 scene-only Save와 문서 간 복사를 막으며, export를 실제 저장 완료로 간주하지 않는다.
+세부 UI 절차는 저장소의 `apps/placement-viewer/README.md`를 따른다. browser-only 파일 쓰기와 백그라운드 normal 자동 재생성은 제공하지 않는다.
+
+### Aseprite 애니메이션 import와 migration
+
+`Inspect` 후 Preview의 **Aseprite initial animation**과 **Aseprite loop new clips**를 선택하고
+**Apply Animation**을 누르면 선택한 unlocked 정적 sprite에 모든 태그를 `visual.animationSet`으로 연결한다.
+같은 논리 atlas의 기존 animationSet에 적용할 때는 기존 clip ID·initialClip·loop를 유지하며 새 clip에만 loop 설정을 적용한다.
+Apply Frame은 정적 교체이고 이 action은 명시적 애니메이션 변환이다. timeline/클립 본문 편집은 제공하지 않는다.
+
+- `meta.frameTags` 1..64개, 고유한 비어 있지 않은 이름(최대 256자), 유효한 from/to 인덱스를 요구한다.
+- `forward`, `reverse`, `pingpong`, `pingpong_reverse`를 지원한다. pingpong은 양 끝을 중복하지 않는 한 주기로 펼친다.
+- frame 인덱스는 원본 JSON의 array/hash 순서를 따른다. 태그에 포함된 frame의 duration은 양의 uint32 정수 ms다.
+- duration의 정수 GCD를 tick으로 삼아 UV를 반복한다. 예: 90ms/180ms는 90ms tick 3개가 된다.
+  기존 native clip의 32 frame·FPS 0.001..1000 제한을 넘으면 근사하지 않고 거절한다.
+- native FPS는 float32이므로 미세한 시간 오차가 있다. evidence의 sourceCycleMs/nativeFps/nativeCycleMs/nativeCycleErrorMs로 공개한다.
+- Aseprite의 유한 repeat 횟수는 native loop boolean으로 보존할 수 없으므로 거절한다. repeat 생략/0/문자열 `"0"`만 허용하며
+  loop 여부는 UI에서 명시한다. [원본 repeat 의미](https://www.aseprite.org/api/tag#tagrepeats)와 native loop는 다른 계약이다.
+
+**Reimport Animation**은 활성 fragment의 같은 논리 atlas에 연결된 이전 animated revision만 갱신한다.
+기존 원본의 UV 순서/FPS와 씬의 clip을 대응시켜 태그 이름을 유일하게 식별한 뒤 새 원본으로 바꾼다.
+태그 순서 변경·추가에도 기존 numeric ID·initialClip·loop는 유지하며 새 태그는 사용하지 않는 가장 작은 ID를 받는다.
+기존 태그 누락/이름 변경, 동일 UV/timing 태그의 모호함, 원본과 대응하지 않는 수동 수정 clip, legacy animation, 잠긴 대상은 거절한다.
+정적 대상은 기존 Reimport를 사용한다. pose/size/pivot/collider/body/behavior는 보존하고 전체 변경은 한 Undo/Redo transaction이다.
+
+애니메이션 원본은 기존 JSON/PNG bytes로 저장하고 씬에는 기존 animationSet만 저장한다. 새 runtime/schema/native catalog version은 없다.
+Save Project 후 재열기에서도 원본과 씬으로 연결을 다시 확인하므로 세션 메모리의 이름 매핑에 의존하지 않는다.
+app handoff의 `asepriteImports[].animations[]`와 Export Assets의 `animations[]`는 현재 활성 fragment의 검증된
+tag 이름/clip ID·source duration·native timing 근거다. 수동 수정/모호한 clip에는 import provenance를 주장하지 않는다.
+bundle과 동반 patch를 함께 설치하는 기존 규칙은 유지한다.
+
+normalTexture/유효한 normalTextureId가 연결된 대상의 일반 Apply Animation/Reimport Animation은 차단한다.
+노멀을 함께 재생성하려면 아래 Apply Paired/Reimport Paired를 사용한다.
+지원하지 않는 animation 메타데이터가 있어도 정적 Inspect/Register/Apply Frame은 기존 제한 안에서 사용할 수 있다.
+
+### Aseprite 노멀 재생성
+
+HD-2D의 Generate Normals는 선택한 unlocked billboard의 선택 frame을, Reimport Normals는 활성 fragment의 이전 atlas 참조들을 처리한다.
+기존 Normal tool의 수치 설정으로 각 Aseprite rect를 독립 생성하고 원래 위치에 RGBA8 바이트로 합성한다.
+투명 RGB·원본 color PNG·frame UV·작성한 visual 크기/pivot·pose/collider/body/billboard 설정을 유지한다.
+완전히 같은 rect는 공유하지만 서로 다른 rect가 겹치면 거절한다. Generate Normals/Reimport Normals는 정적 frame용이다.
+combined placement v3/spatial v4 patch를 한 Undo로 적용하고, 실패/취소와 마지막 lock/문서 검사 실패는 기존 씬을 유지한다.
+정상 생성도 project 파일 저장을 뜻하지 않는다. Aseprite 노멀은 별도 8 revision/64 MiB/8,388,608 pixel 예산을 사용한다.
+
+**Apply Paired**는 선택 HD-2D billboard에 모든 frameTag 애니메이션과 생성 노멀을 함께 적용한다.
+**Reimport Paired**는 활성 fragment에서 같은 논리 atlas 이름의 이전 animated revision을 모두 migration한다.
+위 animation migration과 같은 태그 대응·numeric ID·initialClip·loop 보존 규칙을 따르며 정적 대상은 포함하지 않는다.
+Preview의 시작 태그/loop는 새 애니메이션·새 clip에만 적용한다. 기존 애니메이션의 시작 clip과 loop는 보존한다.
+모든 대상의 billboard·잠금·태그 대응과 clip 전체의 최대 **32 unique UV**를 생성 전에 확인한다.
+각 clip의 GCD 반복 frame은 같은 layout 항목을 공유하며 32 unique UV를 넘으면 근사하지 않고 거부한다.
+실제 rect별 Worker 생성과 GPU upload 후에도 문서·선택·잠금을 다시 확인하고 combined patch를 한 번 적용한다.
+한 Undo/Redo로 color/animation/normal 참조를 함께 복원하며 취소·실패 시 provisional texture만 해제한다.
+
+paired `normalBindings[].binding`에는 현재 animationSet과 중복을 제거한 UV layout이 포함된다.
+`normalAssets[].binding`은 합성 atlas 전체의 생성 근거이며 instance의 시작 clip/layout은 동반 씬과 normalBindings에 있다.
+native 저장 format은 바꾸지 않는다. 재열기 시 실제 PNG/report를 검증한 뒤 현재 씬의 모든 animation UV가
+report의 생성 rect와 일치할 때만 instance binding evidence를 복원한다. 알 수 없는 UV/잘못된 초기 frame에는 근거를 주장하지 않는다.
+
+Aseprite export v1의 optional `normalAssets[]`는 기존 sprite-normal assets v1 bundle이며 원본 color PNG와 합성 normal PNG를 담는다.
+report는 app 전용 `ferrum2d.aseprite-normal.report` v1로 원본 hash·설정·rect별 실제 Worker report·합성 hash를 포함한다.
+`report.config.sha256`은 config 필드 추가 전 report JSON의 SHA-256이며 binding의 generation.configSha256과 같다.
+`normalBindings[]`에는 현재 씬과 일치하는 instance별 binding만 보관한다. 이전 이력의 texture/provenance는 세션에 유지하며 stale evidence는 export에서 제외한다.
+report 종류를 기존 단일 Worker report로 해석하지 않는다. agent는 합성 report와 각 frame report·파일 hash를 확인하고,
+normal manifest를 `none`, color manifest를 `srgb`로 등록한 뒤 동반 patch/handoff를 반영한다.
+
+Save Normals와 Save Project의 normal 저장은 normal asset host가 파일/catalog 등록을 완료하고 durable URL의 실제 bytes를 검증해야 한다.
+기본 Tauri project host는 아래 노멀 catalog 저장·복원을 제공한다. browser-only/custom host에서 저장 기능이 없으면 export/agent 설치가 필요하며 미설치 normal 참조의 scene Save는 차단한다.
+브라우저 PNG 수치 합성에는 CompressionStream/DecompressionStream이 필요하다. engine public API/scene schema·native ABI는 추가하지 않는다.
+
+### 생성 노멀의 native 프로젝트 저장·재열기
+
+명시적으로 **Open Project**로 연 기본 프로젝트 문서에는 기본 `PlacementNormalAssetHost.saveAssets`를 제공한다.
+기존 Normal tool의 **Save Assets**, Aseprite의 **Save Normals**가 같은 writer를 사용한다.
+Aseprite **Save Project**는 참조 중인 미저장 Aseprite 노멀을 먼저 저장·검증한 뒤 원본/catalog와 씬을 저장한다.
+Normal tool에서 만든 pair는 Save Assets를 실행한 뒤 씬을 저장한다. custom `ferrumPlacementNormalAssetHost`를 지정하면 그 host가 우선한다.
+
+- `load_placement_normal_assets`/`save_placement_normal_assets`는 이미 연 project root 안에서만 작동한다.
+  직접 연 임의 scene 파일이나 다른 문서 탭에는 기본 normal 파일 저장 권한을 확장하지 않는다.
+- `public/assets/.ferrum-normals/normal-<PNG SHA-256>.png`, `<metadata SHA-256>.json`을 독점 생성한다.
+  같은 bytes는 재사용하고 다른 bytes·symlink를 덮어쓰지 않는다. metadata는 기존 assets v1 bundle의 files를 빈 배열로 만든 원문 JSON이다.
+  원문 key 순서와 `metadataJson`/animation descriptor를 보존해 재열기 후 provenance 해시가 바뀌지 않는다.
+- 별도 `catalog.json`은 app 전용 `ferrum2d.sprite-normal.catalog` v1이다. `entries`는 metadata SHA-256 배열이고
+  `manifest.textures`는 catalog URL 기준 상대 PNG 경로다. color=`srgb`, normal=`none`을 명시한다.
+  이 manifest를 Aseprite manifest와 함께 `loadAssets`에 넘기면 일반 게임에서도 같은 texture 이름을 사용할 수 있다.
+- native는 PNG decode·SHA-256·dimensions·binding/manifest와 report 참조를 확인한다. app은 추가로 기존 binding resolver와
+  report/descriptor 재구성, Aseprite aggregate config 해시를 확인한다. 저장 완료는 native 등록과 durable URL의 실제 bytes를 다시 검사한 뒤에만 인정한다.
+- 파일 준비와 catalog publication을 host 안에서 직렬화하고, 교체 직전 외부 catalog 변경을 다시 검사한다.
+  실패 시 식별 가능한 이번 작업의 미확정 파일만 정리한다. 외부 writer 전체를 잠그는 filesystem transaction은 아니다.
+  Cancel/문서 전환은 늦은 UI 성공과 후속 씬 저장을 막지만 이미 확정한 파일 transaction은 완료될 수 있다.
+- 프로젝트 한도는 8 pair revision, 전체 pair의 color+normal PNG 합계 64 MiB, decoded color+normal 합계 8,388,608 pixel이다.
+  PNG 한 파일은 16 MiB/4 MP 이하, metadata 한 파일은 4 MiB다. catalog 자동 삭제/정리는 제공하지 않는다.
+  문서 닫기는 메모리/GPU 자원만 해제하고 디스크 catalog를 줄이지 않는다.
+
+새 실행은 catalog/metadata/PNG를 다시 검증하고 **씬 적용 전에** 로드한다. Aseprite 원본 catalog와 color ID를 공유하면
+hash·색 공간이 일치할 때 GPU texture를 공유하며 새 normal texture만 별도로 소유한다.
+Assets 색상 항목과 현재 씬에 맞는 normal binding evidence를 복원하고, Aseprite Export Assets에도 참조 중인 저장 pair를 포함한다.
+수동 변경된 clip/UV에는 stale generation evidence를 붙이지 않는다. 이 근거는 scene/fragment 변경 시 갱신하며 선택·hover만으로 재구성하지 않는다.
+원본 GIF/APNG 입력과 생성 도구의 파일 선택/설정 폼 전체를 복원하는 기능은 아니다. 생성한 PNG pair·report·animationSet/descriptor를 보존한다.
+optional 생성기가 없어도 저장한 PNG를 재생할 수 있다. 새 노멀 생성에는 계속 별도의 생성기 설치/manifest가 필요하다.
+
+### Aseprite 프로젝트 저장과 runtime 로딩
+
+Tauri에서 `Open Project`로 연 기본 프로젝트 문서의 `Save Project`는 원본 파일·catalog/manifest를 먼저 확정한 뒤
+기존 씬 저장의 기준 JSON 비교를 실행한다. 쓰기는 승인된 프로젝트의 `public/assets/.ferrum-aseprite/`에 한정한다.
+원본명/path를 저장 경로로 해석하지 않고 content revision ID로 PNG/JSON 파일명을 만든다.
+SHA-256·PNG decode·frame rect/UV·sRGB를 host/app 양쪽에서 확인한다. 파일 충돌·symlink·catalog 외부 변경은 거절한다.
+씬 저장 실패 시 외부 scene은 유지하고 이미 확정한 immutable 에셋은 다음 재시도에 사용한다.
+Cancel은 후속 씬 저장과 오래된 UI 적용을 차단하지만 이미 시작한 native transaction은 완료될 수 있다.
+
+`catalog.json`은 app 전용 `ferrum2d.aseprite.catalog` v1이다. `revisions[]`에 원본명/hash/frame과 ID 생성에 쓴
+`identityDocument`를 보존하며, `manifest.textures`의 PNG 경로는 **catalog URL 기준 상대 경로**다.
+`manifest.textureOptions`는 `srgb`를 명시한다. 원본 Aseprite JSON의 `meta.image`는 바꾸지 않는다.
+기존 export v1에 identityDocument가 없으면 native import는 bundle.document에서 이를 복원한다.
+프로젝트 재개방 시 원본을 검증·로드하고 frame browser/재import를 복원한다. handoff의 `persisted`는 실제 파일 확인 뒤 true가 된다.
+첫 catalog 예산은 8 revision/원본 64 MiB이며 자동 정리하지 않는다. 문서 간 참조 정책과 session 예산은 유지한다.
+
+게임은 저장 catalog의 manifest를 로드한 뒤 씬을 적용한다. 생성 프로젝트의 기존 runtime bootstrap을 자동 수정하지 않는다.
+
+```ts
+const catalogUrl = new URL("assets/.ferrum-aseprite/catalog.json", location.href);
+const catalog = await (await fetch(catalogUrl)).json();
+await engine.loadAssets({
+  textures: Object.fromEntries(Object.entries(catalog.manifest.textures)
+    .map(([id, path]) => [id, new URL(path as string, catalogUrl).href])),
+  textureOptions: catalog.manifest.textureOptions,
+});
+// 그 뒤 기존 applyDataSceneAuthoringDocument(engine, scene)를 실행한다.
+```
+
+이 catalog는 authoring 부가 데이터다. Data Scene JSON schema·Rust render ABI·engine public API를 확장하지 않는다.
 
 ## Runtime Spawn Hook
 

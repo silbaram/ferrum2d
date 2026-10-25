@@ -108,7 +108,7 @@ Ferrum2D는 현재 `0.1.0` 상용제품 기능 개발 단계다. public entrypoi
 | LoadingOverlay | asset load progress를 DOM UI로 표시한다. |
 | Texture atlas packer | sprite 크기/source metadata를 deterministic atlas JSON과 `game.json` frame metadata로 묶는 authoring helper다. 실제 PNG 합성은 외부 도구가 담당한다. |
 | Atlas metadata helper | sprite name/size/source 목록을 deterministic atlas JSON으로 변환한다. |
-| Aseprite importer | Aseprite JSON frame metadata를 Game Spec atlas frame으로 바꾼다. |
+| Aseprite importer | JSON frame metadata를 Game Spec atlas frame으로 변환. 공식 Assets에서 JSON+PNG 검사·frame 배치·재import·export 제공. |
 | Tiled importer | Tiled orthogonal map을 atlas/tilemap 설정으로 바꾼다. |
 | LDtk importer | LDtk project/level/tile/entity metadata를 Game Spec으로 바꾼다. |
 | Tile rules/animated tiles | neighbor rule과 animated tile frame을 baked layer data로 만든다. |
@@ -324,6 +324,9 @@ Data Scene 기반 오브젝트 배치 확인용 authoring viewer는 다음으로
 pnpm dev:placement-viewer
 ```
 
+뷰어의 `/`는 2D 문서, `/?scene=hd2d`는 지형·경사로·다층 발판이 있는 HD-2D 샘플을 연다.
+상단 2D / HD-2D로 전환하며 HD-2D 샘플의 편집 결과는 export로 보관한다.
+
 Top-down Shooter 예제는 Rust core를 수정했거나 처음 실행하는 경우 Wasm package를 먼저 만든다.
 
 ```bash
@@ -351,6 +354,34 @@ http://localhost:5173?debug=true
 - `Space`: GameOver에서 재시작
 
 ## 빌드와 검증
+
+스프라이트 normal atlas를 준비하는 선택형 개발 도구는 `pnpm normals:install`로 설치하고
+`pnpm normals:generate -- --config docs/engine/samples/sprite-normal-job.json`으로 실행한다.
+고정 upstream CLI를 로컬 cache에서 사용하며 기본 build/runtime에는 포함하지 않는다.
+선택형 `animation` 설정은 GIF/APNG·균일 PNG sheet를 같은 color/normal 배치와 기존 `visual.animationSet`으로 변환한다.
+원본 timing을 native 고정 FPS·32 frame 안에서 표현할 수 없으면 오류를 반환한다.
+생성 report는 authoring binding API로 stable color/normal 이름·검증 가능한 patch/handoff에 연결한다.
+공간 문서의 normalTexture 이름은 적용 전 현재 registry ID로 해석하므로 재로딩 후에도 이름을 유지한다.
+설정·출력 보호·보고서 계약은 [노멀맵 생성 CLI](docs/engine/data-scene-spatial.md#선택형-노멀맵-생성-cli)를 따른다.
+브라우저 생성은 `pnpm normals:wasm:build`로 준비한 선택형 bundle과 authoring Worker API를 사용한다.
+원본 복사·취소/timeout·cache/메모리 한도·binding 연결은
+[브라우저 노멀맵 Worker](docs/engine/data-scene-spatial.md#선택형-브라우저-노멀맵-worker)를 따른다.
+공식 Placement Viewer의 Assets에는 생성·설정/preset·조명 비교와 HD-2D Apply/Undo를 제공한다.
+파일 export와 host 저장 권한은 [Assets 도구 안내](apps/placement-viewer/README.md#assets-노멀맵-도구)를 따른다.
+
+공식 Assets의 **Import Aseprite**는 JSON+PNG를 검사해 frame을 등록·배치하고 활성 fragment를 이름 기준으로
+재import한다. 데스크톱 프로젝트는 Save Project로 원본·manifest·씬을 순서대로 저장하고 재개방한다.
+Undo/Redo와 agent용 원본 bundle export도 제공한다. 비회전·비트림 atlas 지원 범위와
+세션 에셋 저장 제한은 [Aseprite Assets 안내](apps/placement-viewer/README.md#aseprite-assets-가져오기재import)를 따른다.
+HD-2D의 Generate Normals/Reimport Normals는 frame별 생성 결과와 color/UV를 한 Undo로 교체한다.
+Apply Paired/Reimport Paired는 태그 애니메이션과 노멀을 함께 적용하며 기존 clip ID·시작 clip·loop를 보존한다.
+clip 전체의 최대 32 unique UV를 지원하고 저장·재열기에서도 animation/normal evidence를 복원한다.
+명시적으로 연 Tauri project의 기본 normal writer는 PNG pair·report/descriptor와 catalog/manifest를 저장하고 새 실행에서 복원한다.
+browser-only는 optional host 저장 또는 export/agent 설치를 사용한다. [저장·재열기 계약](docs/engine/data-scene-authoring.md#생성-노멀의-native-프로젝트-저장재열기)을 따른다.
+
+Assets의 **Import Tile Frames**는 Tiled/LDtk 문서의 tileset 이름 선택·Tiled 외부 TSJ 연결과 타일 프레임 검사·등록·배치·재import와 Undo를 제공한다.
+desktop Open Project의 **Save Project**는 원본·catalog·씬을 저장하고 재열기 때 프레임을 복원한다. 원본과 변환된 맵/LDtk metadata는 agent bundle로도 전달한다.
+[초기 지원 범위와 export 계약](docs/engine/data-scene-authoring.md#tiledldtk-타일-프레임-assets)을 따른다.
 
 전체 빌드:
 

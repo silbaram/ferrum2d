@@ -17,6 +17,9 @@
 
 이 패키지는 full visual editor가 아니다. Behavior recipe 본문, FSM/action graph, timeline, tile paint, polygon/path 전문 편집은 별도 승인 전 범위에 포함하지 않는다.
 
+app chrome의 파일 저장 불가 기본 라벨은 `Export Only`다. 편집 초안의 Clean/Changes와 저장 가능 여부를
+독립 표시한다. 기존 `labels.readOnly` override와 `data-status="readonly"` 계약은 유지한다.
+
 ## 현재 상태
 
 - workspace-private 패키지로 시작한다.
