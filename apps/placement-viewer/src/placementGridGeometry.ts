@@ -12,6 +12,63 @@ export type GridSurface = Pick<
   "x" | "y" | "width" | "depth" | "elevation" | "endElevation" | "rampAxis"
 >;
 export type GridColor = readonly [number, number, number, number];
+export interface PlaneProjection {
+  camera: Float32Array;
+  rect: { left: number; top: number; width: number; height: number };
+}
+
+/** Authoring ray/plane intersection; engine coordinates are X/Y + elevation. */
+export function pointOnElevationPlane(
+  client: { x: number; y: number },
+  elevation: number,
+  { camera: m, rect }: PlaneProjection,
+) {
+  if (rect.width <= 0 || rect.height <= 0 || !Number.isFinite(elevation)) return;
+  const u = ((client.x - rect.left) / rect.width) * 2 - 1,
+    v = 1 - ((client.y - rect.top) / rect.height) * 2,
+    a = m[0] - u * m[3], b = -m[8] + u * m[11],
+    c = m[1] - v * m[3], d = -m[9] + v * m[11],
+    cx = -((m[4] - u * m[7]) * elevation + m[12] - u * m[15]),
+    cy = -((m[5] - v * m[7]) * elevation + m[13] - v * m[15]),
+    determinant = a * d - b * c,
+    scale = Math.max(Math.abs(a), Math.abs(b)) * Math.max(Math.abs(c), Math.abs(d));
+  if (!Number.isFinite(determinant) || Math.abs(determinant) <= scale * 1e-12) return;
+  const x = (cx * d - b * cy) / determinant,
+    y = (a * cy - cx * c) / determinant,
+    w = m[3] * x + m[7] * elevation - m[11] * y + m[15];
+  if (![x, y, w].every(Number.isFinite) || w <= 0) return;
+  return { x, y, elevation };
+}
+
+/** Intersect the view frustum with a plane, bounded by the authoring coordinate limit.
+ * Clipping all six homogeneous planes also handles a horizon crossing the viewport.
+ */
+export function visibleWorkingPlane(m: Float32Array, elevation: number): GridSurface | undefined {
+  if (m.length < 16 || !Array.from(m.subarray(0, 16)).every(Number.isFinite) || !Number.isFinite(elevation)) return;
+  let polygon = [ [-1e6, -1e6], [1e6, -1e6], [1e6, 1e6], [-1e6, 1e6] ];
+  for (const row of [0, 1, 2]) for (const sign of [-1, 1]) {
+    const distance = ([x, y]: number[]) =>
+      (m[3] + sign * m[row]) * x - (m[11] + sign * m[8 + row]) * y +
+      (m[7] + sign * m[4 + row]) * elevation + m[15] + sign * m[12 + row];
+    const clipped: number[][] = [];
+    for (let i = 0; i < polygon.length; i++) {
+      const a = polygon[i], b = polygon[(i + 1) % polygon.length],
+        da = distance(a), db = distance(b);
+      if (da >= 0) clipped.push(a);
+      if ((da >= 0) !== (db >= 0)) {
+        const t = da / (da - db);
+        clipped.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+      }
+    }
+    polygon = clipped;
+  }
+  if (polygon.length < 3) return;
+  const x = Math.min(...polygon.map(p => p[0])), y = Math.min(...polygon.map(p => p[1])),
+    width = Math.max(...polygon.map(p => p[0])) - x,
+    depth = Math.max(...polygon.map(p => p[1])) - y;
+  if (width <= 0 || depth <= 0) return;
+  return { x, y, width, depth, elevation };
+}
 const valid = (n: number) => Number.isFinite(n);
 function count(min: number, max: number, step: number) {
   return Math.max(0, Math.floor(max / step) - Math.ceil(min / step) + 1);
@@ -48,7 +105,8 @@ function colorAt(
   minor: GridColor,
   major: GridColor,
 ): GridColor {
-  if (Math.abs(n) < step * 1e-7) return [major[0], major[1], major[2], 1];
+  if (Math.abs(n) < step * 1e-7)
+    return [major[0], major[1], major[2], Math.min(1, major[3] * 1.45)];
   return Math.abs(Math.round(n / step)) % 5 === 0 ? major : minor;
 }
 export function flatGrid(
@@ -128,7 +186,10 @@ export function spatialGrid(
   base: number,
   minor: GridColor,
   major: GridColor,
+  perspectiveFade = false,
 ) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0)
+    return { step: base, vertices: new Float32Array(), lineCount: 0 };
   const visible = surfaces.filter((s) => {
     const corners = [
       [s.x, s.y],
@@ -154,14 +215,17 @@ export function spatialGrid(
       z = gridElevation(s, x, y),
       p = project(m, x, y, z, width, height);
     if (!p) continue;
-    for (const q of [
-      project(m, x + base, y, gridElevation(s, x + base, y), width, height),
-      project(m, x, y + base, gridElevation(s, x, y + base), width, height),
-    ])
-      if (q) {
-        const d = Math.hypot(q.x - p.x, q.y - p.y);
-        if (d > 0.1) pixels = Math.min(pixels, d);
-      }
+    const q = project(m, x + base, y, gridElevation(s, x + base, y), width, height),
+      r = project(m, x, y + base, gridElevation(s, x, y + base), width, height);
+    if (q && r) {
+      const ux = q.x - p.x, uy = q.y - p.y,
+        vx = r.x - p.x, vy = r.y - p.y,
+        area = Math.abs(ux * vy - uy * vx),
+        length = Math.max(Math.hypot(ux, uy), Math.hypot(vx, vy));
+      // Perpendicular line separation, rather than edge length: at low pitch the
+      // two ground axes project almost parallel and otherwise produce moiré.
+      if (length > 0 && area > 0) pixels = Math.min(pixels, area / length);
+    }
   }
   const step = spacing(base, Number.isFinite(pixels) ? pixels : 12, (s) =>
     visible.reduce(
@@ -170,8 +234,10 @@ export function spatialGrid(
     ),
   );
   const values: number[] = [];
-  const vertex = (s: GridSurface, x: number, y: number, c: GridColor) =>
-    values.push(x, gridElevation(s, x, y) + 0.025, -y, 0, 0, ...c, 0, 0);
+  const groups = new Map<string, {
+    vertical: boolean; fixed: number; slope: number; intercept: number;
+    color: GridColor; ranges: [number, number][];
+  }>();
   const add = (
     s: GridSurface,
     x0: number,
@@ -180,9 +246,19 @@ export function spatialGrid(
     y1: number,
     c: GridColor,
   ) => {
-    if (values.length / 22 >= GRID_LINE_BUDGET) return;
-    vertex(s, x0, y0, c);
-    vertex(s, x1, y1, c);
+    const vertical = x0 === x1, fixed = vertical ? x0 : y0,
+      start = vertical ? y0 : x0, end = vertical ? y1 : x1;
+    if (end <= start) return;
+    const z0 = gridElevation(s, x0, y0),
+      slope = (gridElevation(s, x1, y1) - z0) / (end - start),
+      intercept = z0 - slope * start,
+      key = [vertical, fixed, slope.toPrecision(12), intercept.toPrecision(12)].join(":");
+    let group = groups.get(key);
+    if (!group) {
+      group = { vertical, fixed, slope, intercept, color: c, ranges: [] };
+      groups.set(key, group);
+    }
+    group.ranges.push([start, end]);
   };
   for (const s of visible) {
     lines(s.x, s.x + s.width, step, (x) =>
@@ -191,6 +267,34 @@ export function spatialGrid(
     lines(s.y, s.y + s.depth, step, (y) =>
       add(s, s.x, y, s.x + s.width, y, colorAt(y, step, minor, major)),
     );
+  }
+  const perspective = perspectiveFade &&
+    Math.abs(m[3]) + Math.abs(m[7]) + Math.abs(m[11]) > 1e-8;
+  let farW = 0;
+  if (perspective) for (const s of visible) {
+    for (const x of [s.x, s.x + s.width]) for (const y of [s.y, s.y + s.depth])
+      farW = Math.max(farW, m[3] * x + m[7] * gridElevation(s, x, y) - m[11] * y + m[15]);
+  }
+  // Union collinear intervals, including partially overlapping terrain patches.
+  // This keeps alpha constant along shared boundaries instead of drawing twice.
+  for (const g of groups.values()) {
+    g.ranges.sort((a, b) => a[0] - b[0]);
+    const merged: [number, number][] = [];
+    for (const range of g.ranges) {
+      const last = merged[merged.length - 1];
+      if (last && range[0] <= last[1] + 1e-7) last[1] = Math.max(last[1], range[1]);
+      else merged.push([...range]);
+    }
+    for (const range of merged) {
+      if (values.length / 22 >= GRID_LINE_BUDGET) break;
+      for (const n of range) {
+        const x = g.vertical ? g.fixed : n, y = g.vertical ? n : g.fixed,
+          z = g.slope * n + g.intercept + 0.025,
+          w = m[3] * x + m[7] * z - m[11] * y + m[15],
+          fade = farW > 0 ? Math.max(0, Math.min(1, 1 - (w / farW) ** 2)) : 1;
+        values.push(x, z, -y, 0, 0, g.color[0], g.color[1], g.color[2], g.color[3] * fade, 0, 0);
+      }
+    }
   }
   return {
     step,

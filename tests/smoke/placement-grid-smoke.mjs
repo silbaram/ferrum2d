@@ -236,13 +236,17 @@ try {
           const before = await page.evaluate(
             () => window.ferrumPlacementGrid.lineCount,
           );
+          await showPlacementViewOptions(page);
+          await page.getByRole("checkbox", { name: "Terrain height grid", exact: true }).check();
+          await page.waitForFunction(n => window.ferrumPlacementGrid.lineCount > n, before);
+          const withTerrain = await page.evaluate(() => window.ferrumPlacementGrid.lineCount);
           await page
             .getByRole("button", { name: "Floors", exact: true })
             .click();
           await page.locator('[data-placement-floor-visible="1"]').uncheck();
           await page.waitForFunction(
             (n) => window.ferrumPlacementGrid.lineCount < n,
-            before,
+            withTerrain,
           );
           await page.locator('[data-placement-floor-visible="1"]').check();
           await showPlacementViewOptions(page);

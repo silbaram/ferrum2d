@@ -21,7 +21,7 @@ const code = ts.transpileModule(
     },
   },
 ).outputText;
-const { flatGrid, spatialGrid, gridElevation, GRID_LINE_BUDGET } = await import(
+const { flatGrid, spatialGrid, gridElevation, visibleWorkingPlane, pointOnElevationPlane, GRID_LINE_BUDGET } = await import(
   "data:text/javascript;base64," + Buffer.from(code).toString("base64")
 );
 const minor = [0.1, 0.2, 0.3, 0.5],
@@ -145,4 +145,110 @@ test("large surface sets stay bounded and do not mutate frame projection", () =>
     false,
   );
   assert.deepEqual(m, before);
+});
+
+test("working grid covers the viewport outside terrain and stays at an explicit height", () => {
+  const m = matrix();
+  m[12] = 0.4; m[13] = -0.1;
+  const before = m.slice();
+  for (const elevation of [0, 19, -37]) {
+    const plane = visibleWorkingPlane(m, elevation);
+    assert(plane);
+    assert.equal(plane.elevation, elevation);
+    const g = spatialGrid([plane], m, 800, 600, 16, minor, major);
+    assert(g.lineCount > 0 && g.lineCount <= 512);
+    const rect = {left:15, top:20, width:800, height:600};
+    for (const x of [rect.left, rect.left+rect.width]) for (const y of [rect.top, rect.top+rect.height]) {
+      const hit = pointOnElevationPlane({x,y}, elevation, {camera:m,rect});
+      assert(hit);
+      assert(hit.x >= plane.x-0.001 && hit.x <= plane.x+plane.width+0.001);
+      assert(hit.y >= plane.y-0.001 && hit.y <= plane.y+plane.depth+0.001);
+    }
+    for (let i=0;i<g.vertices.length;i+=22) {
+      assert(Math.abs(g.vertices[i+1]-elevation-0.025)<0.00001);
+      assert.equal(Math.abs((g.vertices[i] === g.vertices[i+11] ? g.vertices[i] : -g.vertices[i+2]) % g.step),0);
+    }
+  }
+  assert.deepEqual(m,before);
+});
+function perspective(eyeHeight) {
+  // A look-at perspective matrix aimed horizontally along -Z: the horizon is visible.
+  const f=1/Math.tan(Math.PI/6), near=.1, far=50000;
+  const m=new Float32Array(16);
+  m[0]=f/1.6; m[5]=f; m[10]=(far+near)/(near-far); m[11]=-1;
+  m[13]=-f*eyeHeight; m[14]=2*far*near/(near-far);
+  return m;
+}
+test("perspective horizon clipping stays finite, origin-aligned and within the line budget", () => {
+  for (const height of [20, 0.001, -20]) {
+    const m=perspective(height), before=m.slice();
+    const plane=visibleWorkingPlane(m,0);
+    assert(plane);
+    const g=spatialGrid([plane],m,1200,750,16,minor,major);
+    assert(g.lineCount>0 && g.lineCount<=512);
+    assert(g.vertices.every(Number.isFinite));
+    for(let i=0;i<g.vertices.length;i+=11) {
+      assert(Math.abs(g.vertices[i])<=1e6 && Math.abs(g.vertices[i+2])<=1e6);
+    }
+    assert.deepEqual(m,before);
+  }
+  const m=perspective(20), rect={left:0,top:0,width:1200,height:750};
+  assert.equal(pointOnElevationPlane({x:600,y:375},0,{camera:m,rect}),undefined,"parallel horizon ray must not produce Infinity");
+  assert.equal(pointOnElevationPlane({x:600,y:100},0,{camera:m,rect}),undefined,"behind-eye intersection must be rejected");
+  const hit=pointOnElevationPlane({x:600,y:650},0,{camera:m,rect});
+  assert(hit && hit.y>0 && hit.elevation===0);
+});
+test("invalid and invisible working planes produce no geometry", () => {
+  const m=matrix(); m[15]=-1;
+  assert.equal(visibleWorkingPlane(m,0),undefined);
+  assert.equal(visibleWorkingPlane(new Float32Array(4),0),undefined);
+  assert.equal(visibleWorkingPlane(matrix(),NaN),undefined);
+  m[0]=NaN;
+  assert.equal(visibleWorkingPlane(m,0),undefined);
+});
+test("overlapping coplanar terrain lines are merged without changing their opacity", () => {
+  const s={x:-40,y:-40,width:80,depth:80,elevation:0};
+  const single=spatialGrid([s],matrix(),800,600,16,minor,major);
+  const duplicate=spatialGrid([s,s],matrix(),800,600,16,minor,major);
+  assert.deepEqual(duplicate.vertices,single.vertices);
+  const adjacent=spatialGrid([s,{...s,x:40}],matrix(),800,600,16,minor,major);
+  // Horizontal lines become one segment across both patches, including their shared edge.
+  for(let i=0;i<adjacent.vertices.length;i+=22) if(adjacent.vertices[i+2]===adjacent.vertices[i+13]) {
+    assert.equal(adjacent.vertices[i],-40);
+    assert.equal(adjacent.vertices[i+11],120);
+  }
+});
+
+test("perspective grid fades toward the far range and keeps orthographic opacity unchanged", () => {
+  const m=perspective(20), plane=visibleWorkingPlane(m,0);
+  const faded=spatialGrid([plane],m,1200,750,16,minor,major,true),
+    normal=spatialGrid([plane],m,1200,750,16,minor,major);
+  assert.equal(faded.lineCount,normal.lineCount);
+  let diminished=0;
+  for(let i=8;i<faded.vertices.length;i+=11) {
+    assert(faded.vertices[i]>=0 && faded.vertices[i]<=normal.vertices[i]);
+    if(faded.vertices[i]<normal.vertices[i]-.01) diminished++;
+  }
+  assert(diminished>0);
+  const ortho=matrix(), s=visibleWorkingPlane(ortho,0);
+  assert.deepEqual(spatialGrid([s],ortho,800,600,16,minor,major,true).vertices,
+    spatialGrid([s],ortho,800,600,16,minor,major).vertices);
+  assert.equal(spatialGrid([s],ortho,0,600,16,minor,major,true).lineCount,0);
+});
+
+test("low pitch uses the gap between projected parallel lines to avoid dense crossing patterns", () => {
+  function lowPitch(degrees) {
+    const m=new Float32Array(16),k=.001/Math.sqrt(2),a=degrees*Math.PI/180;
+    m[0]=k;m[8]=k;m[1]=k*Math.sin(a);m[9]=-k*Math.sin(a);
+    m[5]=.001*Math.cos(a);m[15]=1;return m;
+  }
+  const surface={x:-20000,y:-20000,width:40000,depth:40000,elevation:0},
+    low=spatialGrid([surface],lowPitch(1),1200,750,16,minor,major),
+    high=spatialGrid([surface],lowPitch(45),1200,750,16,minor,major);
+  assert(low.step>high.step*4);
+  assert(low.lineCount>0 && low.lineCount<=512);
+  // Each of the two projected line families must remain at least 12 CSS px apart.
+  const m=lowPitch(1),ux=m[0]*1200/2,uy=m[1]*750/2,vx=-m[8]*1200/2,vy=-m[9]*750/2,
+    gap=Math.abs(ux*vy-uy*vx)/Math.max(Math.hypot(ux,uy),Math.hypot(vx,vy));
+  assert(gap*low.step>=12);
 });

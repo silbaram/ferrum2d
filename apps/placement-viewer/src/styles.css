@@ -2347,6 +2347,30 @@ textarea {
   gap: 8px;
   min-height: 28px;
 }
+.placement-working-plane input {
+  width: 90px;
+  margin-left: auto;
+}
+.placement-view-panel .placement-camera-pitch {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  padding-bottom: 8px;
+}
+.placement-camera-pitch input {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.placement-camera-pitch output {
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+.placement-view-panel label[hidden] {
+  display: none;
+}
 .placement-view-panel .placement-grid-controls {
   display: grid;
   grid-template-columns: 1fr auto;

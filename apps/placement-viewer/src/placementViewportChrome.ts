@@ -6,6 +6,8 @@ const paths = {
   pan: '<path d="M5 8V4a1 1 0 0 1 2 0v3-4a1 1 0 0 1 2 0v4-3a1 1 0 0 1 2 0v4-2a1 1 0 0 1 2 0v5c0 3-2 4-5 4-2 0-3-1-4-3L2 9a1 1 0 0 1 2-1l1 1Z"/>',
   left: '<path d="M3 6a5 5 0 1 1 0 5M3 2v4h4"/>',
   right: '<path d="M13 6a5 5 0 1 0 0 5m0-9v4H9"/>',
+  up: '<ellipse cx="8" cy="11" rx="5" ry="2"/><path d="M8 9V2M5 5l3-3 3 3"/>',
+  down: '<ellipse cx="8" cy="5" rx="5" ry="2"/><path d="M8 7v7m-3-3 3 3 3-3"/>',
   minus: '<path d="M3 8h10"/>',
   plus: '<path d="M3 8h10M8 3v10"/>',
   reset: '<path d="M3 6a5 5 0 1 1 0 5M3 2v4h4M8 5v3l2 1"/>',

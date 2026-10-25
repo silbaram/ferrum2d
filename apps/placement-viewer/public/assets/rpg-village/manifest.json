@@ -1,0 +1,157 @@
+{
+  "format": "ferrum2d.example.village-assets",
+  "version": 1,
+  "author": "Ferrum2D procedural Blender authoring",
+  "license": "MIT OR Apache-2.0 (original project assets)",
+  "blender": "5.2.2 LTS",
+  "generator": "scripts/assets/build-rpg-village.py",
+  "seed": 1994,
+  "models": {
+    "village_cottage": {
+      "file": "cottage.glb",
+      "sha256": "59ab6aa828c8fbbd6c74f2db58fe11624ea0ab4bf2eac962c5e5d6165757f1a1",
+      "bytes": 56280,
+      "width": 80,
+      "depth": 64,
+      "height": 84,
+      "triangles": 588
+    },
+    "village_inn": {
+      "file": "inn.glb",
+      "sha256": "500b5ed0719514c887a190d2dc95cd0612b23ae7ec3e3e15d0ab644ca9fe2ef5",
+      "bytes": 79892,
+      "width": 100,
+      "depth": 78,
+      "height": 112,
+      "triangles": 960
+    },
+    "village_shop": {
+      "file": "shop.glb",
+      "sha256": "125745a43cdd3df08bb4d0c0c4bc3ceed7d827e1d113b780008279b39fba32a0",
+      "bytes": 125172,
+      "width": 92,
+      "depth": 88,
+      "height": 92,
+      "triangles": 2096
+    },
+    "village_tower": {
+      "file": "tower.glb",
+      "sha256": "dea8f12653e0e22e7832ee2b59f784c9d4d22393d0753bdd0fa3759a90c18748",
+      "bytes": 37260,
+      "width": 46,
+      "depth": 46,
+      "height": 130,
+      "triangles": 344
+    },
+    "village_well": {
+      "file": "well.glb",
+      "sha256": "d616b394174b7b63e9e665aed5e29d0e4041083216e7d35fe0430ac141ea6618",
+      "bytes": 36548,
+      "width": 48,
+      "depth": 48,
+      "height": 61,
+      "triangles": 400
+    },
+    "village_tree": {
+      "file": "tree.glb",
+      "sha256": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+      "bytes": 20312,
+      "width": 50,
+      "depth": 45,
+      "height": 80,
+      "triangles": 204
+    },
+    "village_pine": {
+      "file": "pine.glb",
+      "sha256": "1021f5cd975d0444015f5678549ed47196d25350284158ee0c6058423d253da8",
+      "bytes": 9240,
+      "width": 50,
+      "depth": 50,
+      "height": 75,
+      "triangles": 112
+    },
+    "village_lamp": {
+      "file": "lamp.glb",
+      "sha256": "54a468d3b3d539b8bbe39ff1ce31c3cbe877b48d781181cb5b2dc0d0a5595a01",
+      "bytes": 15608,
+      "width": 12,
+      "depth": 12,
+      "height": 59,
+      "triangles": 152
+    },
+    "village_fence": {
+      "file": "fence.glb",
+      "sha256": "200b505e11b6e00ae3281b4e888fe02528455e1f5fb39d7ddc98d6c0befd7e67",
+      "bytes": 23768,
+      "width": 48,
+      "depth": 6,
+      "height": 26,
+      "triangles": 264
+    },
+    "village_cart": {
+      "file": "cart.glb",
+      "sha256": "90838fa4174117e9179c6cca832ea66a4a76bf54f19e8c1d49a0f51ab7bff46b",
+      "bytes": 26044,
+      "width": 38,
+      "depth": 52,
+      "height": 32,
+      "triangles": 304
+    },
+    "village_bridge": {
+      "file": "bridge.glb",
+      "sha256": "dfb92ec8dabedf23a9c1a94cf161349a7e9117fe246e23eb1057d94bbb02e505",
+      "bytes": 20460,
+      "width": 60,
+      "depth": 42,
+      "height": 24,
+      "triangles": 240
+    },
+    "village_flowers": {
+      "file": "flowers.glb",
+      "sha256": "46a3d360f2891b244be135dddf926a59e5efac8a2bfaae53e5e3ed9a160351ac",
+      "bytes": 38060,
+      "width": 40,
+      "depth": 24,
+      "height": 12,
+      "triangles": 492
+    },
+    "village_landscape": {
+      "file": "landscape.glb",
+      "sha256": "e2f4e6f483b6942d9fe75d8490adee2e179dae78964c63bad534b40633607736",
+      "bytes": 83108,
+      "width": 640,
+      "depth": 440,
+      "height": 2,
+      "triangles": 1032
+    }
+  },
+  "textures": {
+    "village_hero": {
+      "file": "hero.png",
+      "sha256": "f2ddf0ca44f16bc244e1d86d830c3ce0b91fd72ea5248c89726a74e3223d7aa7",
+      "width": 32,
+      "height": 48,
+      "imageWidth": 128,
+      "imageHeight": 192,
+      "bytes": 2810
+    },
+    "village_merchant": {
+      "file": "merchant.png",
+      "sha256": "d927e144c0e8b60bd9111b90049198e8949fad7200ca11326dd0d877aa1d6e02",
+      "width": 32,
+      "height": 48,
+      "imageWidth": 32,
+      "imageHeight": 48,
+      "bytes": 641
+    },
+    "village_elder": {
+      "file": "elder.png",
+      "sha256": "56a2f8c13457963f9c803595900dab27f4bd2566d28e05662b241ba6571b054e",
+      "width": 32,
+      "height": 48,
+      "imageWidth": 32,
+      "imageHeight": 48,
+      "bytes": 639
+    }
+  }
+}

@@ -12,6 +12,15 @@ import {
 import { bindUiControl } from "./placementLocaleControls";
 
 import { createPlacementGrid } from "./placementGrid";
+import {
+  configureVillageActor,
+  ensureVillageAssets,
+  isVillageScene,
+  villageAtlasFrames,
+  villageModelUrl,
+  villageTextures,
+  villageTextureMetadata,
+} from "./placementVillage";
 import { PlacementGridRenderer } from "./placementGridRenderer";
 import {
   createDesktopTileProjectHost,
@@ -577,6 +586,7 @@ async function bootstrap(): Promise<void> {
     const document = placementMassAuthoringEnabled()
       ? createPlacementMassAuthoringDocument(loadedDocument)
       : loadedDocument;
+    await ensureVillageAssets(document);
     const desktopSceneDocumentPath = (window as PlacementViewerWindow)
       .ferrumPlacementViewerDesktop?.sceneDocumentPath;
     const initialKey = desktopSceneDocumentPath ?? "sample";
@@ -608,6 +618,7 @@ async function bootstrap(): Promise<void> {
     const resolved = resolvePlacementWorkspaceDocument(document);
     const boundsById = placementBoundsById(resolved);
     const selectedInstanceId =
+      document.gameplay?.primaryActor ??
       firstActorInstance(resolved) ?? resolved.bindingPlan?.instances[0]?.id;
     let saveEnabled = placementViewerSaveEnabled();
     let normalTool: ReturnType<typeof createPlacementNormalTool> | undefined;
@@ -711,8 +722,9 @@ async function bootstrap(): Promise<void> {
       environment: "development",
       inputTransform: (snapshot) => {
         const input = shell.inputTransform(snapshot);
-        return viewportNavigation?.isNavigating() ||
-          spatialWorkspace?.mode() === "spatial"
+        const mode = spatialWorkspace?.mode() ?? "2d";
+        return (mode === "2d" && viewportNavigation?.isNavigating()) ||
+          mode === "spatial"
           ? {
               ...input,
               w: false,
@@ -819,7 +831,7 @@ async function bootstrap(): Promise<void> {
     const target = createDataSceneRuntimeTarget(runtime.engine);
     let appliedRuntimeVariables: DataSceneVariableStore | undefined;
     let runtimeApplyRevision = 0;
-    if (document.spatial || document.gameplay || document.variables?.length)
+    if (document.spatial || document.gameplay || document.variables?.length) {
       appliedRuntimeVariables = applyDataSceneAuthoringDocument(
         runtimeEngine,
         document.spatial ? placementSpatialRuntimeDocument(document) : document,
@@ -829,7 +841,8 @@ async function bootstrap(): Promise<void> {
           spatialModelPreparer: runtime.renderer,
         },
       ).variables;
-    else
+      configureVillageActor(runtimeEngine, document);
+    } else
       applySceneBehaviorRecipes(
         runtime.engine,
         target,
@@ -2211,13 +2224,16 @@ async function bootstrap(): Promise<void> {
       if (next.spatial || next.gameplay || next.variables?.length) {
         appliedRuntimeVariables = applyDataSceneAuthoringDocument(
           runtimeEngine,
-          next.spatial ? placementSpatialRuntimeDocument(next) : next,
+          next.spatial
+            ? placementSpatialRuntimeDocument(next, spatialWorkspace?.mode() === "game")
+            : next,
           {
             instanceHandleRegistry: registry,
             missingBehavior: "ignore",
             spatialModelPreparer: runtime!.renderer,
           },
         ).variables;
+        configureVillageActor(runtimeEngine, next);
         return;
       }
       const nextResolved = resolvePlacementWorkspaceDocument(next);
@@ -2347,6 +2363,17 @@ async function bootstrap(): Promise<void> {
         key,
       );
       const nextResolved = resolvePlacementWorkspaceDocument(value);
+      await ensureVillageAssets(value as SceneAuthoringDocumentSpec);
+      if (isVillageScene(value as SceneAuthoringDocumentSpec)) {
+        await reloadPlacementRuntimeAssets();
+        if (
+          runtimeAssetReadySignature !==
+          placementRuntimeAssetSignature(placementRuntimeTextureManifest())
+        )
+          throw new Error("Village textures are not ready; retry opening the document");
+        previewAssetProvider = createPlacementPreviewAssetProvider();
+        previewAssetSignature = placementPreviewAssetSignature();
+      }
       await loadPlacementSpatialModels(
         runtimeEngine,
         value as SceneAuthoringDocumentSpec,
@@ -2361,6 +2388,7 @@ async function bootstrap(): Promise<void> {
         document: value as SceneAuthoringDocumentSpec,
         viewport: viewer.state().viewport,
         selectedInstanceId:
+          (value as SceneAuthoringDocumentSpec).gameplay?.primaryActor ??
           firstActorInstance(nextResolved) ??
           nextResolved.bindingPlan?.instances[0]?.id,
         instanceHandleRegistry: nextRegistry,
@@ -2429,6 +2457,7 @@ function placementSceneDocumentUrl(): string {
     return SCENE_DOCUMENT_URL;
   }
   if (scene === "hd2d") return HD2D_SCENE_DOCUMENT_URL;
+  if (scene === "village") return "./placement.village.scene-authoring.json";
   throw new Error(`Unsupported placement scene fixture '${scene}'.`);
 }
 
@@ -7337,13 +7366,18 @@ function placementAssetRuntimeUrl(
   return url.href;
 }
 
-/** Runtime keys are content-scoped. Authored asset IDs and contentIds remain untouched. */
+/** Runtime-only model keys and presentation. Authored assets and environment stay intact. */
 function placementSpatialRuntimeDocument(
   source: SceneAuthoringDocumentSpec,
+  gamePreview = false,
 ): SceneAuthoringDocumentSpec {
-  if (!source.spatial?.models) return source;
+  if (!source.spatial) return source;
   const document = structuredClone(source);
-  for (const model of Object.values(document.spatial!.models!)) {
+  // Pixel presentation belongs to the game preview. Authoring uses the entire canvas
+  // so dock changes and camera gestures never crop against an invisible inner frame.
+  if (!gamePreview && document.spatial!.environment)
+    delete document.spatial!.environment.pixelArt;
+  for (const model of Object.values(document.spatial!.models ?? {})) {
     model.asset = "placement:" + model.contentId;
     for (const lod of model.lods ?? [])
       lod.asset = "placement:" + lod.contentId;
@@ -7365,7 +7399,8 @@ async function loadPlacementSpatialModels(
     let asset = cache.get(ref.contentId) ?? pending.get(ref.contentId);
     if (!asset) {
       const source = files?.find((file) => file.id === ref.asset),
-        url = source && placementAssetRuntimeUrl(source);
+        url = (source && placementAssetRuntimeUrl(source)) ??
+          villageModelUrl(ref.asset);
       if (!url)
         throw new Error(
           "Import GLB asset '" + ref.asset + "' before opening this document",
@@ -7400,7 +7435,7 @@ function placementPreviewAssetSignature(): string {
   const desktop = (window as PlacementViewerWindow)
     .ferrumPlacementViewerDesktop;
   if (desktop?.enabled !== true || desktop.assetFolderExists !== true) {
-    return "browser";
+    return JSON.stringify(["browser", villageTextures()]);
   }
   return JSON.stringify([
     (desktop.assetFolderImages ?? []).some((image) => !image.contentRevision)
@@ -7417,18 +7452,22 @@ function placementPreviewAssetSignature(): string {
 
 function createPlacementPreviewAssetProvider(): ScenePlacementAssetProvider {
   const desktopTextures = placementDesktopPreviewTextures();
-  if (desktopTextures === undefined) {
+  if (
+    desktopTextures === undefined && Object.keys(villageTextures()).length === 0
+  ) {
     return PLACEMENT_ASSET_PROVIDER;
   }
   return createScenePlacementAssetProviderFromProjectAssets({
     textures: {
       ...PLACEMENT_TEXTURES,
-      ...desktopTextures.textures,
+      ...villageTextures(),
+      ...desktopTextures?.textures,
     },
-    atlas: PLACEMENT_ATLAS,
+    atlas: { frames: { ...PLACEMENT_ATLAS.frames, ...villageAtlasFrames() } },
     textureMetadata: {
       ...PLACEMENT_TEXTURE_METADATA,
-      ...desktopTextures.metadata,
+      ...villageTextureMetadata(),
+      ...desktopTextures?.metadata,
     },
     frameLabel: ({ frameName }) =>
       ({
@@ -7473,9 +7512,10 @@ function placementDesktopPreviewTextures():
 function placementRuntimeTextureManifest(): Record<string, string> {
   const desktopTextures = placementDesktopPreviewTextures();
   return desktopTextures === undefined
-    ? { ...VIEWER_TEXTURES }
+    ? { ...VIEWER_TEXTURES, ...villageTextures() }
     : {
         ...VIEWER_TEXTURES,
+        ...villageTextures(),
         ...desktopTextures.textures,
       };
 }

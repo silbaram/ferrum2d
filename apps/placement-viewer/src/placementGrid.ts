@@ -7,6 +7,7 @@ import {
 import {
   flatGrid,
   spatialGrid,
+  visibleWorkingPlane,
   type GridColor,
   type GridSurface,
   type GridViewport,
@@ -17,6 +18,8 @@ export interface PlacementGridContext {
   size: number;
   surfaces: readonly GridSurface[];
   referencePlane: boolean;
+  planeElevation?: number;
+  planeFloor?: number;
 }
 /** Workspace display state only. It never owns authored transforms or history. */
 export function createPlacementGrid(
@@ -28,6 +31,8 @@ export function createPlacementGrid(
     toggle = document.createElement("input"),
     size = document.createElement("input"),
     spacing = document.createElement("label"),
+    terrainLabel = document.createElement("label"),
+    terrain = document.createElement("input"),
     output = document.createElement("output");
   element.className = "placement-grid-controls";
   setUiAttribute(element, "aria-label", "Viewport grid");
@@ -43,7 +48,11 @@ export function createPlacementGrid(
   setUiAttribute(size, "aria-label", "Grid size");
   spacing.append(uiText("Spacing"), size);
   output.dataset.placementGridSpacing = "true";
-  element.append(label, spacing, output);
+  terrain.type = "checkbox";
+  terrain.dataset.placementTerrainGrid = "true";
+  setUiAttribute(terrain, "aria-label", "Terrain height grid");
+  terrainLabel.append(terrain, uiText("Terrain height grid"));
+  element.append(label, spacing, terrainLabel, output);
   mount.append(element);
   const styles = getComputedStyle(mount),
     parse = (token: string, alpha: number): GridColor => {
@@ -55,8 +64,8 @@ export function createPlacementGrid(
         alpha,
       ];
     };
-  const minor = parse("--viewport-grid-strong", 0.9),
-    major = parse("--fg-3", 0.7);
+  const minor = parse("--viewport-grid-strong", 0.28),
+    major = parse("--fg-3", 0.45);
   let context: PlacementGridContext | undefined,
     revision = 0,
     flatKey = "",
@@ -70,6 +79,8 @@ export function createPlacementGrid(
     drawCalls: 0,
     spacing: 16,
     referencePlane: false,
+    planeElevation: 0,
+    terrainOverlay: false,
     depthTest: false,
   };
   size.addEventListener("change", () => {
@@ -80,6 +91,7 @@ export function createPlacementGrid(
   toggle.addEventListener("change", () => {
     flatKey = spatialKey = "";
   });
+  terrain.addEventListener("change", () => { spatialKey = ""; });
   function publish(lineCount: number, step: number, depthTest: boolean) {
     metrics = {
       visible: !!context && context.mode !== "game" && toggle.checked,
@@ -88,6 +100,8 @@ export function createPlacementGrid(
       drawCalls: lineCount ? 1 : 0,
       spacing: step,
       referencePlane: context?.referencePlane ?? false,
+      planeElevation: context?.planeElevation ?? 0,
+      terrainOverlay: terrain.checked,
       depthTest,
     };
     Object.assign(window, { ferrumPlacementGrid: { ...metrics } });
@@ -97,7 +111,9 @@ export function createPlacementGrid(
         ? uiMessage(
             "{0} units{1}",
             step,
-            uiMessage(context?.referencePlane ? " · Reference Plane" : ""),
+            context?.referencePlane
+              ? uiMessage(" · Working plane: Floor {0} / H {1}", context.planeFloor ?? 0, context.planeElevation ?? 0)
+              : "",
           )
         : "",
     );
@@ -107,6 +123,7 @@ export function createPlacementGrid(
       context = next;
       revision++;
       element.hidden = next.mode === "game";
+      terrainLabel.hidden = next.mode !== "spatial";
       if (document.activeElement !== size) size.value = String(next.size);
     },
     flat() {
@@ -134,14 +151,21 @@ export function createPlacementGrid(
         revision + ":" + width + ":" + height + ":" + matrix.join(",");
       if (key !== spatialKey) {
         spatialKey = key;
+        const elevation = context.planeElevation ?? 0,
+          plane = visibleWorkingPlane(matrix, elevation),
+          surfaces = terrain.checked ? context.surfaces.filter(s =>
+            // The continuous working grid already covers coplanar flat terrain.
+            !plane || s.elevation !== elevation || (s.endElevation ?? s.elevation) !== elevation,
+          ) : [];
         spatial = spatialGrid(
-          context.surfaces,
+          [...(plane ? [plane] : []), ...surfaces],
           matrix,
           width,
           height,
           context.size,
           minor,
           major,
+          true,
         );
       }
       publish(spatial!.lineCount, spatial!.step, true);

@@ -31,8 +31,11 @@ type Asset =
       frame?: { u0: number; v0: number; u1: number; v1: number };
     }
   | { kind: "model"; id: string; contentId: string; model: SpatialModelAsset };
+type PlacementHit = SpatialPoint & { floorId: number } & (
+  { kind: "terrain"; surfaceId: string } | { kind: "plane" }
+);
 
-/** Asset choice and cold document creation only; support hits come from the native picker. */
+/** Cold authoring only: native terrain hits or an explicitly selected working plane. */
 export function createPlacementSpatialPalette(options: {
   canvas: HTMLCanvasElement;
   stage: HTMLElement;
@@ -42,6 +45,8 @@ export function createPlacementSpatialPalette(options: {
   modelNames: Map<string, string>;
   canPlace(): boolean;
   hit(point: { x: number; y: number }): SpatialSurfaceHit | undefined;
+  plane(): { elevation: number; floorId: number };
+  planeHit(point: { x: number; y: number }): SpatialPoint | undefined;
   project(
     point: SpatialPoint,
   ): { x: number; y: number; visible: boolean } | undefined;
@@ -57,6 +62,15 @@ export function createPlacementSpatialPalette(options: {
   setUiAttribute(element, "aria-label", "Add spatial object");
   const heading = document.createElement("h4");
   setUiText(heading, "Add Object");
+  const basis = document.createElement("select");
+  basis.dataset.placementSpatialBasis = "true";
+  setUiAttribute(basis, "aria-label", "Placement basis");
+  for (const [value, text] of [["terrain", "Terrain surface"], ["plane", "Working plane"]]) {
+    const option = document.createElement("option");
+    option.value = value;
+    setUiText(option, text);
+    basis.append(option);
+  }
   const kind = document.createElement("select");
   kind.dataset.placementSpatialAddKind = "true";
   setUiAttribute(kind, "aria-label", "Object type");
@@ -120,10 +134,11 @@ export function createPlacementSpatialPalette(options: {
   const hint = document.createElement("p");
   setUiText(
     hint,
-    "Choose an asset, then Place and click terrain, or drag the preview.",
+    "Choose a placement basis and asset, then click Place or drag the preview. Set working plane height and floor in View. The floor applies to sprites; visual-only models use height.",
   );
   element.append(
     heading,
+    basis,
     kind,
     assets,
     frames,
@@ -201,6 +216,7 @@ export function createPlacementSpatialPalette(options: {
     cancelButton.disabled = true;
     options.toolChange(pending !== undefined);
   }
+  basis.addEventListener("change", cancel);
   function updateThumbnail() {
     frames.hidden = kind.value !== "sprite";
     const provider = options.assets();
@@ -292,7 +308,16 @@ export function createPlacementSpatialPalette(options: {
     }
   });
   cancelButton.addEventListener("click", cancel);
-  function support(point: { x: number; y: number }) {
+  function support(point: { x: number; y: number }): PlacementHit | undefined {
+    if (basis.value === "plane") {
+      const hit = options.planeHit(point);
+      if (!hit) return;
+      const snap = options.snap(), plane = options.plane(),
+        x = snap.enabled ? Math.round(hit.x / snap.gridSize) * snap.gridSize : hit.x,
+        y = snap.enabled ? Math.round(hit.y / snap.gridSize) * snap.gridSize : hit.y;
+      if (Math.abs(x) > 1e6 || Math.abs(y) > 1e6) return;
+      return { kind: "plane", x, y, ...plane };
+    }
     const hit = options.hit(point);
     if (!hit) return;
     const surface = viewer
@@ -320,6 +345,7 @@ export function createPlacementSpatialPalette(options: {
         : (y - surface.y) / surface.depth;
     return {
       ...hit,
+      kind: "terrain",
       x,
       y,
       elevation:
@@ -392,19 +418,25 @@ export function createPlacementSpatialPalette(options: {
     ghost.hidden = !url;
     if (url) ghost.src = url;
     else ghost.removeAttribute("src");
-    setUiText(caption, uiMessage("{0} · Floor {1}", asset.id, hit.floorId));
+    const visualOnly = asset.kind === "model";
+    setUiText(caption, uiMessage("{0} · {1} · H {2} · {3}", asset.id,
+      visualOnly ? uiMessage("Visual Only") : uiMessage("Floor {0}", hit.floorId), hit.elevation,
+      hit.kind === "plane" ? uiMessage("Working plane · no terrain support") : uiMessage("Terrain surface")));
     marker.style.left = anchor.x - rect.left + "px";
     marker.style.top = anchor.y - rect.top + "px";
-    preview.dataset.surface = hit.surfaceId;
+    preview.dataset.surface = hit.kind === "terrain" ? hit.surfaceId : "";
+    preview.dataset.basis = hit.kind;
+    preview.dataset.x = String(hit.x);
+    preview.dataset.y = String(hit.y);
     preview.dataset.elevation = String(hit.elevation);
-    preview.dataset.floor = String(hit.floorId);
+    preview.dataset.floor = visualOnly ? "" : String(hit.floorId);
     preview.hidden = marker.hidden = false;
   }
   function commit(asset: Asset, point: { x: number; y: number }) {
     try {
       if (!options.canPlace()) return false;
       const hit = support(point);
-      if (!hit) throw new Error("Place the object on a terrain surface");
+      if (!hit) throw new Error(basis.value === "plane" ? "The working plane is outside the visible view" : "Place the object on a terrain surface");
       options.finishEdit();
       const state = viewer.state();
       const factor = Number(scale.value),
@@ -608,6 +640,7 @@ export function createPlacementSpatialPalette(options: {
         ? undefined
         : {
             surface: preview.dataset.surface,
+            kind: preview.dataset.basis,
             floor: preview.dataset.floor,
             elevation: preview.dataset.elevation,
           },

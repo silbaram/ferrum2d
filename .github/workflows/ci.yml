@@ -138,6 +138,13 @@ jobs:
       - name: HD-2D authoring workspace browser smoke
         run: node tests/smoke/browser-render-smoke.mjs --mode=placement-spatial-workspace apps/placement-viewer/dist
 
+      - name: Blender HD-2D village browser smoke
+        # Includes camera pitch, working-plane placement, grid and viewport coverage at DPR 1/2.
+        run: node tests/smoke/placement-village-smoke.mjs
+
+      - name: Placement camera, grid geometry and locale contracts
+        run: pnpm test:placement-camera && pnpm test:placement-grid && pnpm test:placement-locale
+
       - name: Packed input context browser smoke
         run: pnpm smoke:input-context
 

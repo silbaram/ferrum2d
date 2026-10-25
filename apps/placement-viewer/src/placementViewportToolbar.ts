@@ -107,7 +107,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     const nav = states[mode];
     const text = label
       ? uiMessage("{0}: {1} · {2} · Esc to cancel", uiMessage(dragging ? "Drag" : "Place"), label, uiMessage(dragging ? "Drop into viewport" : "Click to place"))
-      : mode === "game" ? "Game Preview · Choose 2D or HD-2D to edit"
+      : mode === "game" ? (stage.dataset.spatialActor ? "Game Preview · WASD to move · Stop to edit" : "Game Preview · Choose 2D or HD-2D to edit")
         : nav?.temporary ? "Temporary pan · Release Space to return"
           : nav?.dragging ? "Panning · Esc to cancel"
             : nav?.tool === "pan" ? "Pan view · Drag to move · V to select"
