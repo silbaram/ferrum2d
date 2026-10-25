@@ -868,6 +868,9 @@ HDR RGBA16F/depth24에는 `EXT_color_buffer_float`가 필요하다. 실제 surfa
 사용하며 flat HUD 이전에 composite한다. 기존 전체 화면 postprocess의 HUD 정책은 유지한다.
 `spatial.environment`는 기존 numeric80 v1과 품질 설정용 numeric112 v2를 지원한다.
 pixelArt 고정 해상도·직교 표시 스냅·normal atlas·cast/receive·방향광·PCF를 선택할 수 있다.
+`SpatialBillboardSpec.normalTexture`는 저장 가능한 project texture 이름이며 기존 `normalTextureId`와 상호 배타적이다.
+`configureDataSceneSpatial`은 AssetHost registry로 해석하고, authoring apply의 `textureId` override도 지원한다.
+이름 해석은 apply 전 cold path에서 수행한다. native numeric material ABI와 legacy numeric 문서는 유지한다.
 독립 presentation/material/shadow submission v1 배열도 borrowed이며 지연 사용 전 복사한다.
 `directionalLightCount/shadowCacheHit/shadowCulledTriangleCount`와 기존 light/shadow/effect 비용 metric이
 공간 통계에 추가된다. `progress.spatial.environment`가 있는 capture는 v7이며 null은 authored 효과 해제다.
@@ -898,3 +901,14 @@ GPU stats의 `currentFrameId`는 현재 begun renderer frame이며 `frameId`는 
 frame이다. 두 값을 구분해 `RuntimeProfilerOptions.frameTrace`가 느린 frame 전후의 CPU·GPU·공간 비용을
 연결한다. `RuntimeFrameTraceOptions`·`RuntimeFrameTraceSample`·`RuntimeFrameTraceCapture`·
 `RuntimeFrameTraceSnapshot`의 범위와 상한은 [quality 진단 계약](quality.md#느린-프레임-전후-기록)을 따른다.
+
+## 저빈도 authoring 진단
+
+`engine.gameplayEntityDiagnostics(handle)`는 현재 entity의 owned snapshot 또는 stale/존재하지 않는 handle에서
+`undefined`를 반환한다. `stateId`(선택), `health`(선택), `timer`(선택), `actions`(최대 16개)를
+지원한다. FSM 없음은 state 0과 구분한다. 숫자 packet version/길이/유한 값을 검사하고 상태는 변경하지 않는다.
+선택 객체 Inspector 같은 저빈도 조회에 사용하며 entity별 프레임 루프에서 호출하지 않는다.
+공식 viewer는 펼친 동안 최대 4 Hz로 읽는다. 변수·event UI 계약은 [Authoring API](authoring.md)를 따른다.
+
+`createSpatialModelThumbnailSvg(asset, size?)`와 `engine.setDataSceneSpatialPreviewFilter(...)`의
+preview 전용 계약은 [공간 scene](../data-scene-spatial.md)을 따른다.

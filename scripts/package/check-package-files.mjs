@@ -32,11 +32,22 @@ const publicEntrypoints = [
   ["./labs", "labs"],
   ["./quality", "quality"],
 ];
+const spriteNormalWorkerModules = [
+  "spriteNormalWorker",
+  "spriteNormalWorkerEntry",
+  "spriteNormalWorkerProtocol",
+  "spriteNormalWorkerRuntime",
+  "spriteNormalWorkerOutput",
+];
 const requiredPackedFiles = [
   "package/package.json",
   "package/LICENSE",
   "package/README.md",
   "package/dist/ktx2Worker.js",
+  ...spriteNormalWorkerModules.flatMap((name) => [
+    `package/dist/${name}.js`,
+    `package/dist/${name}.d.ts`,
+  ]),
   ...["basis_transcoder.js", "basis_transcoder.wasm", "LICENSE", "NOTICE", "LICENSE-Zstd", "provenance.json"]
     .map((file) => `package/dist/vendor/basis/${file}`),
   ...publicEntrypoints.flatMap(([, distName]) => [
@@ -96,6 +107,10 @@ for (const [, distName] of publicEntrypoints) {
   await requireFile(`dist/${distName}.d.ts`);
 }
 await requireFile("dist/ktx2Worker.js");
+for (const name of spriteNormalWorkerModules) {
+  await requireFile(`dist/${name}.js`);
+  await requireFile(`dist/${name}.d.ts`);
+}
 for (const file of ["basis_transcoder.js", "basis_transcoder.wasm", "LICENSE", "NOTICE", "LICENSE-Zstd", "provenance.json"]) {
   await requireFile(`dist/vendor/basis/${file}`);
 }
@@ -245,6 +260,10 @@ async function checkPackedTarball() {
         assert(!packedFile.startsWith(forbiddenPrefix), `packed tarball must not include ${packedFile}`);
       }
       assert(!forbiddenPackedFiles.includes(packedFile), `packed tarball must not include ${packedFile}`);
+      assert(
+        !/^spritefusion_sprite_normals(?:_bg)?\.(?:js|wasm)$/.test(path.posix.basename(packedFile)),
+        `optional sprite normal generator must remain host-provided: ${packedFile}`,
+      );
     }
   } finally {
     await rm(tempDir, { recursive: true, force: true });

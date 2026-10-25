@@ -1,3 +1,4 @@
+import { uint32Number } from "./particlePreset.js";
 import { sceneCompositionDiagnosticError } from "./diagnostics.js";
 import type { GameplayEntityHandle } from "./gameplayAuthoring.js";
 import type { DataSceneMoveStatus } from "./dataSceneMovement.js";
@@ -48,6 +49,8 @@ export interface SpatialTerrainSurface {
   receiveShadow?: boolean;
 }
 export interface SpatialBillboardSpec {
+  /** Stable project texture name. Resolved before native configuration; exclusive with normalTextureId. */
+  normalTexture?: string;
   normalTextureId?: number;
   castShadow?: boolean;
   receiveShadow?: boolean;
@@ -186,6 +189,8 @@ export interface SpatialSurfaceHit extends SpatialPoint {
   walkable: boolean;
 }
 export interface FerrumSpatialApi {
+  /** Authoring presentation only. Hidden terrain is excluded from visual picking, never physics. Null restores all. */
+  setDataSceneSpatialPreviewFilter(options: {hiddenEntities: readonly GameplayEntityHandle[];hiddenSurfaces:readonly string[]} | null): boolean;
   registerDataSceneSpatialModel(id: string, asset: SpatialModelAsset): boolean;
   releaseDataSceneSpatialModel(id: string): boolean;
   /** Cold asset/content/renderer-independent validation before replacing a scene. */
@@ -492,8 +497,11 @@ export function resolveDataSceneSpatialSpec(
   for (const [id, v] of Object.entries(source)) {
     const at = `${path}.billboards.${id}`,
       b = record(v, at);
-    keys(b, ["unitsPerPixel", "alphaCutoff", "elevation", "normalTextureId", "castShadow", "receiveShadow", "chunk", "lods"], at);
+    keys(b, ["unitsPerPixel", "alphaCutoff", "elevation", "normalTexture", "normalTextureId", "castShadow", "receiveShadow", "chunk", "lods"], at);
+    if (b.normalTexture !== undefined && (typeof b.normalTexture !== "string" || !b.normalTexture.trim() || b.normalTexture !== b.normalTexture.trim() || b.normalTexture.length > 256 || b.normalTextureId !== undefined))
+      throw sceneCompositionDiagnosticError(`${at}.normalTexture`, "must be a nonempty project texture name of at most 256 characters, exclusive with normalTextureId");
     billboards[id] = {
+      ...(b.normalTexture === undefined ? {} : { normalTexture: b.normalTexture as string }),
       ...(b.normalTextureId === undefined ? {} : { normalTextureId: integer(b.normalTextureId, `${at}.normalTextureId`, 16777214) }),
       ...(b.castShadow === undefined ? {} : { castShadow: bool(b.castShadow, `${at}.castShadow`) }),
       ...(b.receiveShadow === undefined ? {} : { receiveShadow: bool(b.receiveShadow, `${at}.receiveShadow`) }),
@@ -737,10 +745,26 @@ export function compileSpatialTerrain(
     metadata: Uint32Array.from(integers),
   };
 }
+/** Cold authoring preparation; numeric IDs never replace names in the saved document. */
+export function resolveSpatialNormalTextures(spec: DataSceneSpatialSpec, textureId: (name: string) => number): DataSceneSpatialSpec {
+  const billboards: Record<string, SpatialBillboardSpec> = Object.create(null);
+  for (const [id, billboard] of Object.entries(spec.billboards)) {
+    const { normalTexture, ...rest } = billboard;
+    if (normalTexture === undefined) { billboards[id] = { ...rest }; continue; }
+    const path = `spatial.billboards.${id}.normalTexture`;
+    let value: number;
+    try { value = textureId(normalTexture); }
+    catch { throw sceneCompositionDiagnosticError(path, `texture '${normalTexture}' is not registered`); }
+    billboards[id] = { ...rest, normalTextureId: integer(value, path, 16777214) };
+  }
+  return { ...spec, billboards };
+}
+
 export function createSpatialApi(
   rust: Engine,
   requireAlive: () => void,
   viewport: () => { width: number; height: number },
+  textureId: (name: string) => number = () => { throw new Error("Texture resolver unavailable"); },
 ): FerrumSpatialApi {
   let surfaceIds: readonly string[] = [];
   const api: FerrumSpatialApi = {
@@ -896,7 +920,7 @@ export function createSpatialApi(
     },
     configureDataSceneSpatial(input, handles) {
       requireAlive();
-      const spec = resolveDataSceneSpatialSpec(input);
+      const spec = resolveSpatialNormalTextures(resolveDataSceneSpatialSpec(input), textureId);
       if(Object.keys(spec.attachments??{}).length && typeof rust.configure_spatial_attachments!=='function')return false;
       if (spec.terrain.some(s => s.rampAxis === "x") &&
           (typeof rust.spatial_ramp_axis_abi_version !== "function" || rust.spatial_ramp_axis_abi_version() !== 1)) return false;
@@ -1054,6 +1078,15 @@ export function createSpatialApi(
         typeof rust.configure_spatial_debug === "function" &&
         rust.configure_spatial_debug(flags)
       );
+    },
+    setDataSceneSpatialPreviewFilter(options) {
+      requireAlive();
+      const entities=options?.hiddenEntities ?? [], surfaces=options?.hiddenSurfaces ?? [];
+      if(entities.length>16384 || surfaces.length>256) throw new Error("Spatial preview filter exceeds budget");
+      const keys=new Uint32Array(entities.length*2);
+      entities.forEach((handle,index)=>{keys[index*2]=uint32Number(handle.entityId,"preview.entityId");keys[index*2+1]=uint32Number(handle.entityGeneration,"preview.entityGeneration");});
+      const ids=new Uint32Array(surfaces.map(id=>{const index=surfaceIds.indexOf(id);if(index<0)throw new Error("Unknown preview surface");return index+1;}));
+      return typeof rust.set_spatial_preview_filter === "function" && rust.set_spatial_preview_filter(keys,ids);
     },
     clearDataSceneSpatial() {
       requireAlive();

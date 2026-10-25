@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
-import { deepEqual, equal, ok, rejects } from "node:assert/strict";
-import { loadSpatialGlb } from "../src/core.js";
+import { deepEqual, equal, ok, rejects, throws } from "node:assert/strict";
+import { loadSpatialGlb, createSpatialModelThumbnailSvg } from "../src/core.js";
 import { createSpatialApi } from "../src/dataSceneSpatial.js";
 import { SpatialModelImageReader } from "../src/spatialModelImage.js";
 import { spatialModelResource } from "../src/spatialModel.js";
@@ -243,4 +243,15 @@ test("GLB fragmented HTTP streams preserve content identity and release their re
         equal(asset.contentId,(await loadSpatialGlb(bytes.buffer,{materialProfile:"diffuse"})).contentId);
         ok(readerClosed);equal(stream.locked,false);
     } finally {globalThis.fetch=originalFetch;}
+});
+
+test("public model thumbnails are deterministic bounded SVG geometry without DOM or GPU ownership", async () => {
+    const asset = await loadSpatialGlb(await fixture(), {materialProfile:"diffuse"});
+    const before = [asset.contentId,...asset.bounds];
+    const svg = createSpatialModelThumbnailSvg(asset,80);
+    ok(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg" width="80"'));
+    ok(svg.includes("<polygon "));ok(!svg.includes("NaN") && !svg.includes("Infinity"));
+    ok((svg.match(/<polygon /g) ?? []).length <= 2048);
+    equal(createSpatialModelThumbnailSvg(asset,80),svg);deepEqual([asset.contentId,...asset.bounds],before);
+    for(const size of [0,15,257,NaN,80.5])throws(()=>createSpatialModelThumbnailSvg(asset,size),/size/);
 });

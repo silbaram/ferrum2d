@@ -20,6 +20,83 @@ Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame
 
 Physics debug line 생성은 opt-in quality/debug path다. Runtime `Engine`은 debug 전용 collision scratch를 보관해 broadphase proxy와 contact collider pair scratch를 frame마다 재사용하며, public debug line buffer ABI와 renderer 경로는 그대로 유지한다.
 
+공식 Assets의 Aseprite import/reimport는 `placementAsepriteAssets.ts`가 검증·원본/hash·immutable revision·component patch를,
+`placementAsepriteTool.ts`가 파일 선택·preview·명시적 등록/적용과 문서 수명을 소유한다. 기존 importer를 authoring subpath에
+재노출하며 새 runtime frame schema를 만들지 않는다. 이전 GPU revision을 유지해 Undo와 실패 복원에 사용하고, session-only
+참조의 scene Save는 거절한다. `placementAsepriteProject.ts`는 desktop project host와 원본 재검증·bootstrap 복원을 소유한다.
+native `placement_document/aseprite_assets.rs`는 승인된 프로젝트의 독점 파일 생성·catalog/manifest 비교 후 교체·protocol 등록을 맡는다.
+Save Project는 에셋/catalog를 먼저 확정한 뒤 기존 scene Save를 실행한다. 이미 확정한 에셋과 별도로 scene 충돌을 판정한다.
+`placementAsepriteNormals.ts`는 별도 normal texture 수명·frame별 Worker 생성·합성 report와 normal export/save host를 소유한다.
+color texture는 기존 Aseprite store가 계속 소유한다. `placementAsepriteNormalPng.ts`는 bounded RGBA8 PNG만 처리해
+Canvas premultiplication 없이 투명 RGB까지 그대로 합성한다. native writer와 engine ABI를 변경하지 않는다.
+명시적 Normals action만 combined component/spatial patch를 한 transaction으로 적용하고 기존 Normal tool의 수치 설정을 공유한다.
+기본 Tauri project host의 normal writer는 generated PNG pair와 provenance를 별도 catalog에 저장한다. browser-only는 optional host/export 설치 전에 scene 저장을 차단한다.
+Tauri command adapter는 기존 placement_document 모듈에 유지하며, headless Cargo feature는 같은 저장/프로토콜 로직을 GUI 없이 검증한다.
+default feature는 계속 desktop이다. app의 `asepriteImports` handoff 확장은
+engine handoff/scene schema와 구분한다. [사용 계약](../../engine/data-scene-authoring.md#aseprite-assets-가져오기재import)을 따른다.
+
+native `asset_files.rs`는 Aseprite/normal catalog의 bounded read·독점 파일 생성·소유 파일 rollback과 publish 직전 비교를 공유한다.
+`normal_assets.rs`는 content-addressed PNG/ordered metadata와 normal catalog/manifest를 검증·저장·protocol에 등록한다.
+`placementNormalProject.ts`는 기본 project host, durable bytes/provenance 재검증과 복원 texture 수명을 맡는다.
+씬을 적용하기 전에 정상 PNG를 올리고 Aseprite source color와 hash/색 공간이 같으면 중복 업로드하지 않는다.
+현재 scene/fragment에 맞는 binding evidence는 캐시하며 문서 변경 시 재구성한다. scene/runtime animation 상태는 기존 Rust가 소유한다.
+generated pair의 기존 format과 public engine API·Wasm ABI를 유지하며 native GUI IPC는 별도 실행 환경에서 검증한다.
+
+`placementSpriteRevisions.ts`는 Aseprite와 tile import가 공유하는 bounded immutable PNG revision store다.
+동일 이름의 upload를 직렬화하며 취소/부분 upload 실패/문서 닫기 후 늦게 완료된 texture도 소유권 안에서 회수한다.
+`placementTileDependencies.ts`는 명시적으로 고른 외부 TSJ를 상대 source의 유일한 basename과 연결한다. 자동 경로 읽기 없이 map/TSJ 합계 1 MiB를 제한하고 원본과 변환 입력을 분리한다.
+`placementTileSelection.ts`는 bounded 원본 metadata에서 선택 목록과 명시적 단일 PNG projection을 만든다. 원본 bytes와 선택 범위 evidence는 별도로 보존한다.
+`placementTileAssets.ts`는 기존 public starter-scenes importer로 선택 tileset을 검증하고 frame provider/placement patch/export를 만든다.
+`placementTileTool.ts`는 문서별 UI/취소/자원 수명을 소유한다. map/grid·LDtk entity는 report/export 데이터이며 TS simulation state로 설치하지 않는다.
+미설치 참조의 Save를 막고 app handoff에 `tileImports` 근거를 연결한다.
+`placementTileProject.ts`는 Open Project 기본 문서의 원본을 preload하고 source identity/hash를 재검증한다.
+native `tile_assets.rs`는 원본 식별 정보와 선택형 tileset key·TSJ dependency source/name/hash만 저장하며 변환 frame/map은 frontend public importer가 다시 계산한다.
+Aseprite와 `sprite_assets.rs`의 bounded immutable 저장·protocol 등록을 공유한다. Tile 계약만 최대 8개 TSJ 원본을 허용하고 source/hash를 revision ID에 포함한다. TSJ도 exclusive create/충돌 보존/rollback과 hash가 지정된 protocol URL을 사용하며 Aseprite는 dependency를 허용하지 않는다. 저장 검증 후 기존 scene CAS를 사용한다.
+전체 map 적용은 별도 후속이다.
+
+`placementAsepriteAnimation.ts`는 immutable 원본 JSON에서 frameTags/duration을 변환하는 app 전용 모듈이다.
+방향별 frame 순서·정수 GCD 반복 UV로 기존 `visual.animationSet`을 만들며 native frame/FPS 한도 초과를 거절한다.
+정규화된 기존 UV/FPS로 원본 태그를 유일하게 식별한 뒤 numeric clip ID·initialClip·loop를 보존한다.
+같은 revision의 성공/실패 진단을 WeakMap에 보관해 UI 상태 변경마다 원본을 다시 파싱하지 않는다.
+명시적 action은 일반 component patch 한 건으로 적용하며 source JSON/scene 저장 계약과 Rust/native ABI를 유지한다.
+export/handoff의 animation evidence는 현재 scene/원본에서 다시 계산하므로 Undo/재열기 후 stale 매핑을 쓰지 않는다.
+일반 animation action은 normal binding이 연결된 대상을 거절한다. 명시적 paired action은 같은 migration을 재사용해
+component와 billboard normal 참조를 combined patch 한 건으로 적용한다. legacy animation은 계속 거절한다.
+`asepriteNormalLayout`은 전체 clip의 반복 UV를 dedupe하고 기존 normal binding의 32 unique UV 한도를 생성 전에 검사한다.
+`placementAsepriteNormals.ts`는 instance animationSet을 포함한 evidence를 layout/정책별로 유지해 Undo에 대응한다.
+`placementNormalProject.ts`는 검증한 rect report와 현재 scene animationSet으로 같은 binding을 재구성한다.
+생성 atlas bundle은 기존 전체 atlas provenance를 유지하며 renderer/animation hot path와 public contract는 바꾸지 않는다.
+
+선택형 sprite normal 생성은 `scripts/tools/install-sprite-normals.mjs`와 `generate-sprite-normals.mjs`가 맡는
+asset 준비 작업이다. upstream commit/Cargo.lock과 설치 binary hash를 확인하며 core/npm runtime에는 의존성을 추가하지 않는다.
+source·MIT 고지·binary는 ignored `artifacts/tools/` cache에 둔다. 입력 스냅샷·임시 출력에서 처리하고
+완료 report를 마지막에 확정한다. report는 generator/config/input/output provenance를 제공한다.
+기존 spatial normal atlas 검증을 재사용하며 render ABI·게임 상태는 바꾸지 않는다.
+선택형 `animation` 변환은 `sprite-normal-animation.mjs`에서 full uniform frame을 같은 비회전 layout으로
+재패킹하고 기존 `visual.animationSet`을 생성한다. 유리수 delay GCD의 반복 UV로 고정 FPS·32 frame 한도를 지키며
+표현 불가능한 타이밍은 거절한다. source/native f32 FPS의 시간 차이를 descriptor에 기록한다.
+`spriteNormalBinding.ts`는 생성 report/descriptor와 host가 측정한 metadata에서 stable project 이름·provenance를 가진
+binding JSON과 combined component/spatial patch를 만든다. 파일/GPU 작업이나 게임 상태를 소유하지 않는다.
+spatial billboard의 선택형 normalTexture 이름은 apply 전 cold path에서 registry ID로 해석하며 저장 문서에는 이름을 유지한다.
+기존 normalTextureId와 native material 배열 ABI는 유지한다. 이름 누락은 destructive activation 전에 거절한다.
+spatial patch v4는 normal 참조 교체/해제를 지원하며 viewer 이력·sparse diff와 handoff evidence도 같은 계약을 사용한다.
+[생성 CLI 계약](../../engine/data-scene-spatial.md#선택형-노멀맵-생성-cli)을 따른다.
+
+브라우저의 선택형 생성 경로는 `spriteNormalWorker.ts` client와 독립 module Worker에서 처리한다.
+`build-sprite-normals-wasm.mjs`는 고정 upstream의 별도 generator Wasm과 설정 adapter·MIT·SHA-256 manifest를 만든다.
+generator binary는 기본 build/runtime package에 포함하지 않으며 host가 제공한 manifest hash와 각 bytes를 검증해 lazy load한다.
+입력 복사/transfer, owned 출력의 finally free, 최대 256 MiB linear memory와 bounded cache/time을 asset 작업에만 적용한다.
+동기 Rust 연산의 취소·timeout은 Worker 종료로 처리하고 client의 request id/Worker identity가 오래된 응답을 차단한다.
+브라우저 adapter는 기존 frame grid·유리수 timing과 binding을 재사용한다. 시뮬레이션·렌더링은 기존 엔진에 남으며
+게임 루프 Worker 이전·엔진 Wasm ABI 변경은 없다.
+공식 app의 `placementNormalTool.ts`는 문서별 source/settings/result와 비동기 작업 수명만 소유한다.
+`placementNormalAssets.ts`는 실제 bytes 측정·bounded immutable pair·명시적 upload/export·host 저장을,
+`placementNormalPreview.ts`는 독립 WebGL2 asset 비교 자원을 관리한다. 게임 상태는 기존 runtime에 남는다.
+Apply의 component/normal 참조 교체는 native 중간 적용을 보류하고 최종 combined draft를 한 번 검증한 뒤
+한 Undo transaction으로 commit한다. 실패하면 draft/native preview를 복원한다.
+정적 host는 JSON bundle export를 사용하며 파일 저장 adapter는 기존 권한 경계 밖으로 자동 확장하지 않는다.
+저장 완료는 host의 catalog 등록과 반환 URL의 실제 bytes 검증 뒤 인정하고, 미저장 참조의 scene-only Save는 거절한다.
+
 ## 게임 프로젝트 설치 경계
 
 consumer의 기능 탐색은 `@ferrum2d/agents`가 설치하는 `.agents/harness/ferrum-feature-guide.md`에서
@@ -83,6 +160,164 @@ events/debug   -> opt-in collision/physics buffer ptr + len
 ```
 
 Game Spec, asset metadata, physics authoring, gameplay authoring 같은 낮은 빈도의 설정은 TypeScript에서 검증한 뒤 숫자형 값이나 bulk buffer 형태로 Rust에 전달한다. Game Spec `content.localization`/`content.dialogue.graphs`/`content.cutscenes`는 runtime adapter가 읽을 수 있는 authoring data로 정규화하고, `createShooterContentRuntimeOptions(...)`가 단일/명시 content id만 `createFerrumRuntime(...)` option fragment로 변환한다. `SceneComposition`/`BehaviorRecipe` 묶음은 `ShooterGameSpec` top-level로 승격하지 않고 `ferrum2d.consumer.scene-authoring` 별도 artifact로 유지하며, `resolveSceneAuthoringDocument(...)`가 format/version, scene composition, behavior recipe, optional binding plan을 검증한다. `classifySceneInstance(...)`는 이 resolved instance에서 `worldObject`/`actor` authoring role만 파생하며, Rust runtime class나 Wasm ABI를 추가하지 않는다. 이 경로는 Rust simulation이나 Wasm ABI를 자동 변경하지 않는다. Behavior recipe의 entity-level tags도 TypeScript가 `ids.tags`로 `0..31` numeric bitmask로 컴파일해 Rust `GameplayTags` component로 설치하며, frame loop에서는 문자열 tag를 해석하지 않는다.
+
+### Authoring 문서 세션과 저장
+
+`ScenePlacementViewer`의 draft와 bounded Undo/Redo는 TypeScript의 저빈도 문서 편집 상태다.
+`scenePlacementHistory.ts`가 snapshot과 transaction을 관리하며 선택·hover·camera 탐색은 새 이력을 만들지 않는다.
+선택 host `validateDraft`는 최종 draft 검증과 history 복원 안에서 실행한다. 거절 시 이력 위치를 이동하지 않으며,
+실패한 edit의 복구 대상으로 거절된 candidate를 쓰지 않는다. 열린 gesture의 취소도 거절되면 직전 정상 초안과
+transaction을 유지한다. callback 중 draft/history 재진입은 차단한다.
+공식 app의 `placementDocumentSession.ts`는 pointer gesture와 숫자 input을 작업 단위로 묶고,
+Escape 취소·단축키·dirty 상태·미저장 문서 이탈 확인·저장 중 UI 입력 차단을 담당한다.
+저장 preflight는 활성 pointer·pointerup 뒤 최종 RAF 반영 대기·별도 spatial gesture 중에는 저장을 시작하지 않는다.
+숫자 입력을 확정한 다음 patch를 캡처하여 rebase가 마지막 입력을 버리지 않게 한다.
+탭 activation은 성공 여부를 반환한다. 마지막 pointer RAF가 남아 있으면 전환을 보류하며,
+활성 탭 닫기는 activation 성공 뒤에만 원래 문서를 제거한다. 새 문서 열기 실패는 후보를 정리한다.
+Undo/Redo는 Rust gameplay 진행이나 camera 탐색을 되감지 않고 기존 patch를 다시 노출한다.
+공식 app은 최대 8개 문서별 viewer/이력·Inspector·host/asset 문맥을 유지한다.
+`placementDocumentTabs.ts`는 실제 문서 탭 UI만 담당하고 활성 문서의 기존 viewer로 입력을 연결한다.
+canvas·FerrumRuntime·renderer는 하나를 유지하며 탭 전환 시 해당 기준 문서만 native preview에 재적용한다.
+게임 진행 상태를 TypeScript에 복사하거나 비활성 탭마다 runtime을 실행하지 않는다.
+`placementPreviewSession.ts`는 마지막 정상 authoring 문서와 registry만 보관한다. native apply는 새 registry에
+준비하고 성공 뒤 공개한다. native 설정이 scene 교체 후 거절되어도 정상 authoring 문서를 재적용하여
+generational handle을 갱신하며, 이 복구까지 실패하면 registry를 비우고 오류를 전달한다.
+`placementWorkspaceLayout.ts`는 dock 크기·접힘·집중 모드를 맡으며 localStorage에는 문서 데이터 없이 프로젝트별 UI 설정만 기록한다.
+뷰포트의 확장/복원 버튼은 같은 집중 상태를 공유한다. 8px 경계 손잡이는 기존 pointer/keyboard resize로 연결하고,
+크기 표시는 ResizeObserver가 실제 canvas의 CSS 치수를 읽는다. renderer/native camera의 기존 resize 경로를 사용한다.
+공식 app의 `placementLocale.ts`와 `placementLocaleMessages.ts`는 한국어·영어 UI 전용 상태와 메시지를 관리한다.
+명시적으로 등록한 Text/attribute binding만 WeakMap에 보관하고 언어 전환 시 갱신한다. DOM의 사용자 문자열을 추측해
+번역하거나 MutationObserver/프레임별 전체 DOM 순회를 추가하지 않는다. 분리된 문서 Inspector root도 WeakRef로 갱신하여
+탭 복귀 때 언어가 섞이지 않게 한다. 중첩 메시지만 번역하고 ID·경로 등 매개변수는 원문으로 삽입한다.
+언어 선택은 단일 UI localStorage key에만 저장하며 native 씬·history·runtime을 재생성하지 않는다.
+공용 control/chrome helper는 app adapter로 label만 연결하고 public authoring API·Rust/Wasm ABI는 유지한다.
+Noto Sans KR의 한글 subset은 같은 origin의 app asset으로 제공하며 OFL과 원본/변환 provenance를 배포한다.
+`placementViewportNavigation.ts`는 2D 편집 카메라·탐색 입력·Frame/Fit Scene을 맡는다.
+기존 공개 `/core`의 `createDataSceneView`로 renderer zoom·Rust Data Scene camera와 viewer viewport를 함께 갱신한다.
+CSS 확대나 overlay만의 이동 경로를 만들지 않는다. 카메라 중심·배율은 탭별 UI 메모리에만 유지하며
+scene JSON·patch·history·localStorage에는 쓰지 않는다. 실제 simulation/entity 상태는 계속 Rust가 소유한다.
+문서 전환·저장 후 native preview를 재적용하면 해당 탭의 편집 카메라를 다시 연결한다.
+pan은 RAF로 합치고 취소·전환 시 예약된 호출을 제거한다. 문서 session은 탐색 gesture를 편집 transaction에서 제외한다.
+pan/Space 탐색 입력은 gameplay input에서 중립화하며 객체 gesture 중에는 탐색으로 좌표계를 바꾸지 않는다.
+`placementGridGeometry.ts`는 편집 camera frustum과 명시적 작업 높이의 교차 영역에서 원점 정렬 기준선을 최대 512개 생성한다.
+6개 homogeneous clip plane과 authoring 좌표 상한 ±1,000,000으로 범위를 제한하므로 수평선에서도 무한 메시를 만들지 않는다.
+`placementGrid.ts`는 Grid 표시·공유 snap 간격과 실제 표시 간격을 관리하며 authored 문서와 이력을 변경하지 않는다.
+공식 WebGL2 app은 기존 renderer 주입 경로에 private `PlacementGridRenderer`를 사용한다. 2D는 sprite 앞의
+기존 bulk debug line pass, HD-2D는 scene depth를 공유하는 11-float spatial debug pass에 제출한다.
+공간 선의 RGBA alpha는 WebGL2 fragment/blend 경로에서 혼합하고 blend factor/equation·depth 상태를 복원한다.
+HD-2D 편집용 runtime clone은 `environment.pixelArt`만 제외해 전체 canvas 해상도를 사용한다.
+Game Preview에서는 원본 픽셀 해상도/letterbox를 적용하며 authoring JSON·초안·이력은 바꾸지 않는다.
+native debug는 app 소유 재사용 buffer로 복사해 격자와 합성하며 borrowed Wasm frame은 수정하지 않는다.
+기존 Proxy Overlay는 유지하고 depth를 끈 별도 debug packet이 주입되면 격자만 생략한다.
+작업 평면은 지형 유무와 독립한 X/Y·기본 elevation 0이며 높이·층은 문서별 UI session 상태다.
+선택 표시인 지형 높이 격자는 surface 경계·ramp 높이·floor 가시성을 따른다. 작업 평면과 같은 높이의 flat surface는
+중복 생성하지 않고 나머지 collinear 구간은 합쳐 alpha 누적을 막는다. 원근 화면에서는 clip W 거리로 먼 선의 alpha를 낮춘다.
+표시 LOD는 실제 snap 간격을 바꾸지 않는다. 공간 격자의 표시 간격은 투영된 두 축의 길이 대신
+평행선 사이의 수직 거리로 판정하여 낮은 각도의 밀집 교차 무늬를 줄인다.
+palette는 기본 native terrain pick과 명시적 작업 평면 교차 배치를 구분한다. camera pan과 같은 투영 수학을 재사용하고
+ghost/click/drop이 같은 support/snap 계산으로 표준 addInstance patch를 만든다. 가상 surface ID나 runtime terrain은 생성하지 않는다.
+sprite의 층·높이는 기존 body.heightSpan, visual-only 모델의 높이는 spatial.models.elevation에 기록한다.
+body가 collider를 요구하는 기존 계약을 유지하므로 모델에 가짜 collider나 물리 층을 추가하지 않는다.
+보행·중력·충돌 판정은 계속 native runtime 소유다.
+Game Preview에서는 제출하지 않는다. 실제 추가 draw call은 최대 1개이며 기존 spatial debug와 합쳐지면 추가 호출은 없다.
+공급된 renderer의 pagehide/실패 정리는 app이 소유하며 CPU 합성 buffer와 기존 GPU line 자원을 해제한다.
+Rust simulation·Wasm ABI·public API·WebGPU renderer는 변경하지 않는다.
+`ScenePlacementViewer`는 ordered selection과 transient edit lock을 소유하며 기존 단일 선택은 대표 객체로 유지한다.
+batch transform/remove는 전체 사전검증 후 draft를 갱신하고 picking cache/state를 한 번 재생성한다.
+잠금은 source ID·추가 초안의 내부 identity를 사용하며 patch/history에 포함하지 않는다. Undo/Redo는 문서 변경과
+당시 선택 집합을 복원하고 이미 폐기된 객체의 UI 잠금은 되살리지 않는다. 직접 instance 변경과 canvas picking을 보호하며
+외부 writer나 전체 Undo/Revert의 권한 계약은 아니다.
+app의 `placementSelection.ts`는 modifier/box 선택·보조 outline·선택 도구와 그룹 XY delta를 맡는다.
+`placementTransformGizmo.ts`는 같은 대표 pivot을 사용하는 그룹 회전·균일 scale의 숫자/pointer/keyboard 변경을 맡는다.
+`placementSpatialWorkspace.ts`는 실제 spatial runtime preview와 편집 camera·선택 투영·XY/높이 입력을 연결한다.
+HD-2D의 Select/Pan·H/V와 Space 임시 이동은 기존 camera gesture 경로를 사용한다. 배치 도구를 선택하면 Select로 복귀한다.
+`placementViewportChrome.ts`는 공식 app 전용 stroke icon·도구 그룹·버튼 focus 이동을 제공한다.
+`placementViewportToolbar.ts`는 공통 보기 disclosure와 배치/탐색 안내를 소유한다. native gesture의 UI 상태 이벤트로
+Space 임시 이동/복귀와 pressed 상태를 갱신하며 게임 상태나 카메라 좌표를 복제하지 않는다.
+격자 표시·공유 간격과 공간 overlay/snap은 보기 disclosure에 연결하고 층 선택은 툴바에 유지한다.
+Escape는 disclosure 안에서만 소비하고 바깥 pointer/focus는 focus를 빼앗지 않고 닫는다.
+summary의 Enter/Space 활성화는 app에서 처리하여 전역 runtime 입력과 충돌하지 않게 한다.
+휠과 버튼은 동일한 orthographic height/perspective distance 제한을 사용하며 객체 gesture 동안 확대를 차단한다.
+`placementSpatialCamera.ts`는 target 상대 벡터의 pitch를 계산하고 1~89° 범위로 회전한다.
+상하 버튼은 10°씩, View range input은 1°씩 조절한다. 탐색 상태의 target·eye 거리·yaw·orthographic height/perspective FOV와 clip 범위를 유지한다.
+직교 편집의 native camera는 별도 `spatialEditorRenderCamera`로 파생한다. 현재 height·pitch·작업 높이에서
+화면 상하 끝의 평면 깊이를 구하고 필요할 때 eye를 바라보는 축의 뒤로 옮긴 뒤 far를 늘린다.
+직교의 screen X/Y와 배율은 그대로이며 탐색 상태에는 이 offset을 누적하지 않는다. resize와 작업 평면 높이 변경에도 다시 계산한다.
+기존 near/far 안의 객체는 보존하고 native 행렬·depth·picking을 함께 갱신한다. 원근과 Game Preview는 이 보정을 적용하지 않는다.
+수평/수직 특이점을 피하고 native camera setter가 수락한 뒤에만 UI camera와 각도 readout을 갱신한다.
+슬라이더와 버튼은 문서별 기존 camera session을 공유한다. authored camera·작업 평면·patch/history를 변경하지 않고 Reset·Stop·탭 복귀에 연동한다.
+탐색 gesture 전환 때 활성 상태를 다시 동기화해 pan 종료·취소 뒤 각도 컨트롤이 비활성 상태로 남지 않게 한다.
+탐색 커서·손잡이 상태는 2D/HD-2D별로 분리하고 카메라 조작은 문서 patch·history에 넣지 않는다.
+게임 진행은 Rust가 소유하고, 편집 camera와 정지한 authored model bounds/billboard geometry만 TS에 둔다.
+Wasm borrowed frame은 다음 프레임까지 보관하지 않는다. 지연 클릭에는 camera/presentation 복사와 terrain revision만 유지한다.
+XY drag와 camera pan은 pointerdown 시 표시한 matrix·presentation을 복사하고 시작 높이 평면에서 역투영한다.
+경사면을 다시 hit하여 움직임에 되먹임하지 않으며, Height는 authored geometry 위쪽 anchor의 원근 투영을 역산한다.
+terrain의 native picker는 선택 identity에 사용한다. 2D 탐색 listener는 HD-2D·Game Preview 입력을 소비하지 않는다.
+모델 bounds는 전체 LOD asset union이며 root Sprite의 authored 회전과 attachment body yaw를 구분한다.
+attachment-owned 위치·높이는 UI에서 변경하지 않는다. camera 범위와 native 거절은 문서 이력과 분리해 처리한다.
+spatial gesture는 해당 모듈만 취소·확정한다. 일반 문서 session의 단축키·history hook·finish는 이를 중복 처리하지 않는다.
+native가 취소를 거절하면 정상 초안·열린 transaction·gesture 소유권을 유지하고 모드/탭 전환을 중단한다.
+취소 대기 중 pointerup은 확정 대신 취소를 재시도한다.
+Model resource는 contentId로 namespace한 runtime key를 사용하며 저장 JSON의 asset ID는 보존한다.
+Spatial v3 placement envelope는 spatial v1 갱신/v2 추가/v3 identity·GLB SHA 교체를 지원하고 flat v1/v2 계약을 유지한다.
+visual map migration은 composition operation과 쌍으로 검증한다. envelope 없는 outer migration도 보호하며 agent-owned ID는 UI가 바꾸지 않는다.
+복제 원본은 metadata 추정 대신 draft snapshot에 explicit identity로 보관하고, 원본 ID는 저장 전까지 예약한다.
+`addInstance`의 선택 spatial addition은 composition과 billboard/model 참조를 같은 edit/host 검증 경계에서 만든다.
+`placementSpatialPalette.ts`는 asset/frame 선택·미리보기·click/drop과 cold instance 생성을 담당한다.
+기본 support identity는 기존 native terrain picker에서 가져오며 snap 뒤 높이는 해당 authored surface의 경사를 반영한다.
+명시적 작업 평면 모드에서는 viewport ray/plane 교차점에 동일 snap을 적용한다. visual-only 모델의 ghost에는 물리 층 대신 Visual Only를 표시한다.
+미리보기는 DOM UI에만 있고 native entity나 문서 이력을 만들지 않는다. 모드·탭 전환과 Escape는 pending 배치와 drag token을 정리한다.
+Sprite는 지면 pivot과 static heightSpan·기본 AABB로 배치한다. Model은 collider/body 없이 원래 asset/contentId와 지면 높이를 포함한 시각 offset으로 배치한다.
+Model의 floor는 배치 support 안내에 사용하며 물리 floor를 생성하지 않는다. behavior binding 없는 definition을 바탕으로 UI 소유 components만 추가한다.
+model collider는 자동 추론하지 않는다. cache의 GLB resource와 씬 instance는 분리하며 import 자체는 instance를 생성하지 않는다.
+배치 확정 시 현재 문서의 model/LOD asset ID와 contentId를 다시 대조하여, 탭 간 cache의 다른 GLB가 같은 authored asset 경로로 저장되는 것을 거절한다.
+`placementDiagnostics.ts`는 source pointer·before/after evidence·Problems와 선택 entity의 opt-in 4Hz native 진단만 담당한다.
+진단은 metrics와 함께 접기·크기 조절·스크롤 가능한 하단 Panels의 탭으로 표시한다.
+`placementRuntimeSummary.ts`는 이 owned snapshot의 요약 행·변수·event 표시만 담당하며 raw JSON은 접는다.
+추가 Wasm 조회나 게임 상태 소유권을 만들지 않는다.
+`placementViewportToolbar.ts`는 canvas 밖 고정 행에 camera 도구와 배치 상태·취소 동작을 둔다.
+에셋 카드의 pressed 상태는 현재 placement tool에서 파생하며 drag 중 카드 DOM을 교체하지 않는다.
+Inspector는 고정 선택 이름·종류와 Properties/Placement 탭으로 속성과 새 객체 배치 도구를 나눈다.
+Scene의 검색·종류/layer 필터·기존 fragment 그룹은 UI 상태이며 authored hierarchy·선택·잠금을 변경하지 않는다.
+하단 Assets/Problems/Runtime/Agent Changes는 한 패널씩 표시하고, 문서별 asset mount는 활성 문서를 따라 이동한다.
+Document는 기본 접힘, GLB import는 하단 Assets에 둔다. 표시 중인 Runtime 탭에서만 bounded native 진단을 조회한다.
+Play/Pause/Resume/Stop은 Data Scene 진행을 제어하며 RAF/renderer를 유지한다. Stop은 직전 편집 모드와 초안·이력을 복원한다.
+HD-2D 공간 요약은 소유한 authoring state와 기존 picker 결과를 재사용한다. 고정 Review/Export는 기존 diff/Handoff·host save gate로 연결한다.
+860px 이하의 패널 서랍은 일시적 UI 상태다. 기존 v1 desktop 크기/접힘 localStorage와 문서/history를 변경하지 않는다.
+서랍 높이는 상단 고정 행을 뺀 남은 공간에서 viewport 행 128px을 먼저 확보한 뒤 제한한다.
+낮은 창의 도구 행은 가로 스크롤하며, 행 크기도 ResizeObserver로 관찰해 모드·문서 전환의 높이 변화를 반영한다.
+임시로 drawable viewport가 0인 host는 native camera 갱신을 건너뛰고 양수 크기의 resize에서 다시 적용한다.
+공유 2D 배치 대기는 native mode sync 성공 후에만 정리한다. 실패한 전환은 기존 tool 문맥을 유지한다.
+2D asset/frame·prefab·회전·배율 입력 변경은 캡처된 배치 ghost를 취소하여 live 입력과 표시의 불일치를 막는다.
+숫자 입력은 blur 전 pointerdown보다 먼저 대기를 취소하며, DOM keydown 없는 native HTML drag Escape도 dragend에서 정리한다.
+패널 ID와 aria-controls는 숨겨진 문서 wrapper의 하위 패널을 제외하여 현재 Scene/Inspector에 연결한다.
+파일 저장 불가의 `Export Only` 상태와 편집 초안 dirty는 별도로 표시한다.
+기본 runtime frame마다 전체 entity를 순회하는 디버그 경계를 추가하지 않는다.
+그룹 이동은 대표 객체만 snap하고 상대 간격을 유지한다. 다중 선택에서 개별 component/recipe/layer를
+대표 객체에만 적용하지 않도록 Inspector를 제한한다. 공식 app 저장 rebase는 현재 선택/잠금을 새 viewer에 다시 연결한다.
+이 상태는 탭 메모리에만 유지하며 기존 handoff의 대표 선택 필드는 보존하고 집합 결과는 기존 patch operation 배열로 전달한다.
+
+웹 개발 host와 Tauri host는 병합 문서와 `expectedDocument`를 받아 현재 파일의 의미상 JSON을 비교한다.
+같은 host의 저장을 직렬화하고 기존 파일 권한을 적용한 같은 디렉터리 임시 파일을 sync한 후 재비교·교체한다.
+충돌·실패 시 초안과 이력을 유지하고, 성공 시 현재 탭의 기준 문서와 이력만 초기화한다.
+문서 전환은 예약된 handoff와 pointer RAF의 revision을 무효화하고 이전 비동기 결과가 새 문서에 반영되지 않게 한다.
+페이지 이탈 경고는 비활성 초안도 검사하며 runtime 자원 정리는 취소 가능한 beforeunload 대신 실제 pagehide에서 수행한다.
+브라우저가 back-forward cache에 보존한 페이지는 자원을 파괴하지 않는다.
+경로 allowlist와 문서 충돌 검사는 서로 다른 책임이다. 독립 외부 writer의 비협조적 동시 쓰기까지
+완전한 transaction으로 보호하거나 자동 rebase하지 않는다. 저장 host는 Wasm ABI를 바꾸지 않는다.
+
+### Authoring 에셋·필터·읽기 전용 진단
+
+`placementAssetBrowser.ts`는 공유 검색/썸네일/최근 사용/즐겨찾기를, `placementAssetChanges.ts`는 opt-in 감지와 명시적 재가져오기를 맡는다.
+파일 revision은 host cache fingerprint이고 GLB contentId는 실제 SHA-256이다. 저빈도 loader와 단일 문서 transaction으로 교체하며
+모델 resource는 Undo를 위해 bounded cache에 보존한다. UI가 importer metadata나 시뮬레이션을 소유하지 않는다.
+`placementSpatialProxy.ts`는 명시적 collider/body와 visual offset 보존을 한 건 Undo로 연결한다.
+Rust의 preview filter는 draw/picking만 제외하고 terrain/physics를 유지한다. entity+generation과 surface ID 배열을 한 번 전송한다.
+다른 층 ghost는 bounded authored outline이며 별도 simulation이나 투명 재질 pass를 만들지 않는다.
+`gameplayEntityDiagnostics(handle)`는 Rust에서 FSM/health/timer/최대 16 action cooldown을 한 숫자 packet으로 읽어 owned object로 반환한다.
+존재하지 않는/stale handle은 undefined다. Selected Runtime이 열린 동안 최대 4 Hz로만 조회하며
+변수 32개·event ring 64개를 제한한다. 프레임 이벤트는 복사하고 borrowed Wasm view를 보관하지 않는다.
+선택/문서/모드/native apply epoch가 바뀌면 진단 context를 비운다. 렌더링 hot path의 entity별 왕복은 추가하지 않는다.
 
 ### Rust 내부 모듈 구조
 
@@ -918,8 +1153,8 @@ TS는 마지막 entity/action ID의 종류에 따라 authoring·입력/타이머
 기존 v9 actor payload로 위치·높이·체력·cooldown을 저장하며 restore는 pending melee/예산을 초기화한다.
 위 melee/dash capability와 별개로 spawnPrefab 실행과 동적 actor 저장은 아래 spawn v1/progress3 capability를 사용한다.
 
-별도 개발 중인 native spawn 경로는 cold actor prototype catalog를 구성하고 생성·이동·충돌·타이머·수명·정리를
-Rust가 소유한다. TS authoring과 semantic checkpoint 공개 계약은 후속 연결 중이다.
+native spawn 경로는 cold actor prototype catalog를 구성하고 생성·이동·충돌·타이머·수명·정리를
+Rust가 소유한다. TS authoring의 `gameplay.spawnPrefabs`와 semantic checkpoint 공개 계약을 연결했다.
 prototype은 단일 actor의 지원 컴포넌트를 복제하며 WorldSnapshot 전체를 생성마다 복제하지 않는다.
 atlas clip 정의는 `Arc<[SpriteClip]>`로 공유하고 active clip/elapsed/pause/flip은 actor별로 유지한다.
 spawn registry는 전체 Entity generation과 논리 serial/prefab ID를 구분한다. 죽은 발사자 기록은 살아 있는
@@ -927,7 +1162,7 @@ spawn registry는 전체 Entity generation과 논리 serial/prefab ID를 구분�
 생성 전 action work·World/actor/기록/nav 수와 실제 지형·벽·그림자 예산을 검사한다.
 위치 검사를 통과하지 못한 임시 actor는 despawn 변수 트리거를 발행하지 않고 폐기한다.
 native codec3의 spawned state는 전체 사전 검증과 allocator 용량 검증 뒤 common progress와 함께 commit한다.
-기존 v1/v2 codec과 public render ABI는 유지한다. C4 완료 여부는 planning 문서의 공개 연결/브라우저 검증 상태를 따른다.
+기존 v1/v2 codec과 public render ABI는 유지한다. 현재 공개 계약은 [Data Scene Authoring](../../engine/data-scene-authoring.md)을 따른다.
 
 
 ### Data Scene projectile prefab catalog

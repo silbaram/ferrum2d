@@ -128,6 +128,7 @@ export class WebGL2SpatialPass {
       };
       for (const name of [
         "environment",
+        "debug",
         "linearInput",
         "lighting",
         "fog",
@@ -242,6 +243,12 @@ export class WebGL2SpatialPass {
       scissorBox: gl.getParameter(gl.SCISSOR_BOX) as Int32Array,
       colorMask: gl.getParameter(gl.COLOR_WRITEMASK) as boolean[],
     };
+    // Geometry never changes blending factors; only translucent diagnostic lines do.
+    const previousBlend = debug?.vertexCount ? [
+      gl.getParameter(gl.BLEND_SRC_RGB), gl.getParameter(gl.BLEND_DST_RGB),
+      gl.getParameter(gl.BLEND_SRC_ALPHA), gl.getParameter(gl.BLEND_DST_ALPHA),
+      gl.getParameter(gl.BLEND_EQUATION_RGB), gl.getParameter(gl.BLEND_EQUATION_ALPHA),
+    ] as number[] : undefined;
     gl.activeTexture(gl.TEXTURE0);
     const texture = gl.getParameter(
       gl.TEXTURE_BINDING_2D,
@@ -316,6 +323,7 @@ export class WebGL2SpatialPass {
       gl.clearDepth(1);
       if (!activeEnvironment) gl.clear(gl.DEPTH_BUFFER_BIT);
       gl.useProgram(this.program);
+      gl.uniform1i(this.uniforms.debug, 0);
       gl.bindVertexArray(this.vao);
       this.models.prepare(frame.models,stats);
       gl.uniform1i(this.uniforms.mesh,0);
@@ -496,6 +504,10 @@ export class WebGL2SpatialPass {
         gl.uniform1i(this.uniforms.flip, 0);
         gl.uniform1i(this.uniforms.lighting, 0);
         gl.uniform1i(this.uniforms.fog, 0);
+        gl.uniform1i(this.uniforms.debug, 1);
+        gl.enable(gl.BLEND);
+        gl.blendEquationSeparate(gl.FUNC_ADD, gl.FUNC_ADD);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
         gl.drawArrays(gl.LINES, 0, debug.vertexCount);
         stats.debugLineCount = debug.vertexCount / 2;
         stats.debugDrawCalls = 1;
@@ -575,6 +587,10 @@ export class WebGL2SpatialPass {
       gl.depthFunc(previous.func);
       gl.depthMask(previous.depthMask);
       gl.clearDepth(previous.clear);
+      if (previousBlend) {
+        gl.blendFuncSeparate(previousBlend[0], previousBlend[1], previousBlend[2], previousBlend[3]);
+        gl.blendEquationSeparate(previousBlend[4], previousBlend[5]);
+      }
       for (const [cap, on] of [
         [gl.DEPTH_TEST, previous.depth],
         [gl.BLEND, previous.blend],

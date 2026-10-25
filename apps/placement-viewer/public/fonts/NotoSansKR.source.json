@@ -1,0 +1,20 @@
+{
+  "family": "Noto Sans KR",
+  "commit": "b38c5c93af322c45f633e17ac440ec1e6c94d489",
+  "source": "https://raw.githubusercontent.com/google/fonts/b38c5c93af322c45f633e17ac440ec1e6c94d489/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf",
+  "license": "NotoSansKR-OFL.txt",
+  "licenseSource": "https://raw.githubusercontent.com/google/fonts/b38c5c93af322c45f633e17ac440ec1e6c94d489/ofl/notosanskr/OFL.txt",
+  "tool": "fonttools 4.61.1",
+  "weight": 400,
+  "hinting": false,
+  "unicodeRanges": [
+    "U+0020-024F",
+    "U+1100-11FF",
+    "U+3130-318F",
+    "U+A960-A97F",
+    "U+AC00-D7FF"
+  ],
+  "sourceSha256": "194018e6b2b293a7964f037b25c0249ce1418bc9ab3c971060a03aa57861e252",
+  "woff2Sha256": "5d108647785718dbbb3b2901ca0af5e11d06f63ee25e3896122430abeb9cdbc9",
+  "bytes": 629776
+}

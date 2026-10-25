@@ -40,6 +40,11 @@ const result = applyDataSceneAuthoringDocument(engine, { ...document, spatial })
 사용하며 Rust 입력 업데이트, 지형 이동, bitmap label과 DOM HUD를 연결한다.
 걷기 atlas를 함께 사용하려면 기존 `gameplay.primaryActor`와 이동 애니메이션 설정을 같은 actor에 연결한다.
 
+공식 Placement Viewer의 작업 격자·작업 평면은 authoring 보조 표시다. 맵 밖에도 표시되지만
+`spatial.terrain`이나 보행 지지면을 자동 생성하지 않는다. 기본 지형 배치와 명시적 작업 평면 배치를 구분하며
+sprite의 물리 높이·층과 visual-only 모델의 시각 높이는 기존 저장 계약을 따른다.
+설정 방법은 [뷰어 사용법](../../apps/placement-viewer/README.md)을 참고한다.
+
 ## 정적 GLB 배경 모델
 
 `/core`의 `loadSpatialGlb(source, { materialProfile: "diffuse", signal? })`로 URL 또는 ArrayBuffer를
@@ -655,8 +660,8 @@ HDR 저장량은 내부 해상도당 색8+깊이4 byte로 추정한다. warm fra
 `pnpm smoke:spatial-webgpu`는 packed public API의 실제 WebGPU와 WebGL2 픽셀을 비교한다.
 미지원 adapter나 GPU 오류를 skip하지 않는다. Linux CI에는 `pnpm smoke:spatial-webgpu-offscreen`을 연결해
 실제 WebGPU의 별도 GPU target에서 같은 전체 픽셀 조건과 context 전 fallback을 검증한다.
-CI target adapter는 canvas presentation 성공으로 해석하지 않는다. 전체 픽셀 gate의 기기별 실행 근거와
-Linux Chromium swapchain readback 제약은 [C6 진행 기록](../planning/hd2d-models-followups.md)에 기록한다.
+CI target adapter는 canvas presentation 성공으로 해석하지 않는다. 브라우저별 검증 범위와
+Linux Chromium readback 제약은 [Smoke Check](../development/quality/smoke-check.md)를 따른다.
 WebGPU GPU 시간·자원 통계와 context-loss 복구는 아직 제공하지 않는다.
 fade 등 기존 fullscreen 후처리는 사용할 수 있으며 scene FBO에 depth attachment를 설치한다.
 기존 `LightingScene2D`는 높이/표면을 계산하지 않으므로 spatial과 함께 활성화하면 거절한다.
@@ -775,7 +780,12 @@ document.spatial.billboards.hero = {
 document.spatial.terrain[0].receiveShadow = false;
 ```
 
-`SpatialBillboardSpec.normalTextureId`는 선택 numeric texture ID다. color/normal은 같은 크기의 atlas이며
+`SpatialBillboardSpec.normalTexture`는 선택 project texture 이름이다. `normalTextureId`는 기존 numeric ID 방식이며
+두 필드는 동시에 지정할 수 없다. 이름은 앞뒤 공백이 없는 1..256자 문자열이고 null은 거절한다.
+저장 문서에는 이름을 유지하고 apply 전에 현재 registry의 numeric ID로 해석한다. 이름 누락·잘못된 ID는
+씬 activation 전에 거절한다. `applyDataSceneAuthoringDocument(..., { textureId })`의 resolver도 같은 경로에 사용한다.
+직접 `engine.configureDataSceneSpatial` 호출은 engine의 AssetHost registry를 사용한다.
+color/normal은 같은 크기의 atlas이며
 UV·frame·pivot·rotation·flip을 공유한다. 별도 normal frame metadata를 만들지 않는다.
 normal은 sprite-local X 오른쪽/Y 위쪽/Z 바깥쪽이며 RGB 0..1을 -1..1로 복원한다. shader는 UV·world
 미분으로 basis를 만들어 flip 방향을 반영한다. 누락하면 기존 평면 normal을 사용한다.
@@ -787,6 +797,325 @@ terrain/billboard의 `castShadow`/`receiveShadow`는 선택 boolean이며 기본
 caster 제출 또는 직접 그림자 수신만 끈다. 조명 자체와 물리 충돌은 유지한다. normal/material이 다른
 연속 geometry는 draw batch가 나뉠 수 있다. normal atlas는 공간 조명 경로에 적용하며 flat sprite
 material이나 기존 15-float render command에 추가 ID를 포장하지 않는다.
+
+#### 선택형 노멀맵 생성 CLI
+
+저장소 개발 환경에서 [Sprite Fusion](https://github.com/Hugo-Dz/spritefusion-sprite-normals)을 선택형 asset 도구로 사용할 수 있다.
+`scripts/tools/sprite-normals-tool.json`의 upstream commit과 Cargo.lock을 고정하여 설치하고,
+`artifacts/tools/sprite-normals/`에 source·MIT LICENSE·binary·설치 provenance를 보관한다.
+Rust/Cargo 1.85 이상과 Git이 필요하며 첫 설치는 네트워크를 사용한다. 엔진/npm runtime dependency나 기본 build에는 포함하지 않는다.
+
+```bash
+pnpm normals:install
+pnpm normals:generate -- --config docs/engine/samples/sprite-normal-job.json
+```
+
+[예제 config](samples/sprite-normal-job.json)는 기존 Shooter player PNG에서 생성하고
+`artifacts/sprite-normal-jobs/player/`에 결과를 둔다. 입력·outputDir은 **config 파일 기준** 상대 경로다.
+새 작업은 config를 복사해 inputs·outputDir을 바꾼다. 성공한 outputDir은 재사용하지 않는다.
+
+```json
+{
+  "format": "ferrum2d.sprite-normals.config",
+  "version": 1,
+  "inputs": ["hero.png", "crate.png"],
+  "outputDir": "generated/normals-v1",
+  "settings": { "normalStrength": 1.5, "detailStrength": 6, "detailScale": 0.6, "shapeStrength": 1.15 }
+}
+```
+
+settings는 선택 사항이다. 위 기본값과 `shapeRadius: 4`, `shapeSoftness: 1.15`, `alphaThreshold: 0.03`을 사용한다.
+normalStrength/detailStrength/shapeStrength/shapeSoftness는 0–8, detailScale은 0.6–8,
+shapeRadius는 0.5–512, alphaThreshold는 0–0.99 범위다. 미지원 필드·null·범위 밖 값은 거절한다.
+균일 PNG sheet에는 settings의 `frameSize: { "width": 32, "height": 32 }`를 사용한다.
+셀은 이미지 크기를 나누어야 하며 최대 256개다. 외부 irregular/trimmed/rotated atlas 역변환은 지원하지 않는다.
+
+최대 64개 PNG/GIF/APNG 입력을 처리한다. 입력당 64 MiB, upstream decoded/padded pixel 4,194,304,
+animated/frame sidecar 256 frame 상한을 적용한다. PNG·uniform sheet와 GIF/APNG의 합성·프레임 복원,
+시간 변환·native 재생/조명 연결을 검증했다. 입력 basename stem의 중복은 거절한다.
+
+입력 스냅샷에서 생성하고 원본 변경·native 실패·잘못된 출력을 확정 전에 거절한다.
+기존 결과·보고서·symlink를 덮어쓰지 않으며 `--force`는 제공하지 않는다.
+다른 writer와 충돌하면 자기 작업이 새로 만든 파일만 정리한다. 완료 보고서를 마지막에 배치하므로
+보고서가 없는 출력은 완료 결과로 소비하지 않는다.
+
+- `<stem>_n.png`: OpenGL normal PNG. `colorSpace: "none"`으로 로드한다.
+- animated/sheet의 `<stem>_n.color.png`, `<stem>_n.frames.json`: 같은 배치의 color atlas와 upstream frame/timing 정보.
+- `normal-generation.report.json`: `ferrum2d.sprite-normals.report` v1. generator commit/binary SHA-256,
+  config hash, settings, input/output SHA-256·bytes·PNG 크기와 sidecar 경로를 기록한다.
+- stdout은 성공 JSON이다. 실패 stderr는 `ferrum2d.sprite-normals.error` v1과 code를 제공한다.
+  도구 누락/불일치는 `FERRUM_NORMAL_TOOL_MISSING`/`FERRUM_NORMAL_TOOL_MISMATCH`,
+  출력 충돌은 `FERRUM_NORMAL_OUTPUT_EXISTS`, 원본 변경은 `FERRUM_NORMAL_SOURCE_CHANGED`다.
+
+cache의 commit·platform·binary hash가 다르면 실행하지 않는다. 손상된 해당 관리 cache를 확인·정리하고 다시 설치한다.
+생성 파일의 배치·로딩은 host가 담당한다. stable project 이름 연결은 아래 binding API를 사용한다.
+
+#### GIF/APNG와 균일 sheet의 Ferrum 애니메이션 변환
+
+기존 v1 config에 선택형 `animation`을 추가하면 raw 결과를 유지하면서 패킹된 color/normal과
+기존 `visual.animationSet`에 넣을 데이터를 함께 만든다. `animation`이 없으면 기존 출력 계약을 유지한다.
+
+```json
+{
+  "format": "ferrum2d.sprite-normals.config",
+  "version": 1,
+  "inputs": ["hero.gif", "effect.apng"],
+  "outputDir": "generated/animations-v1",
+  "animation": { "loop": true, "clipId": 0, "padding": 1, "maxSize": 2048, "powerOfTwo": true }
+}
+```
+
+- `loop`는 **필수 boolean**이다. upstream이 원본 반복 횟수를 내보내지 않으므로 true(무한 반복)/false(한 번 재생)를
+  호출자가 정한다. 유한 N회 반복 횟수는 자동 복원하지 않는다.
+- 나머지는 선택형이다. `clipId`는 0..65535(기본 0), `padding`은 0..8(기본 1), `maxSize`는 한 변의 상한
+  1..4096(기본 2048), `powerOfTwo`는 boolean(기본 true)이다. null·미지원 필드는 거절한다.
+- GIF/APNG 또는 `settings.frameSize`를 지정한 PNG만 변환한다. 단일 정적 PNG를 함께 지정하면 전체 작업을 거절한다.
+  [실행 가능한 PNG sheet 예제](samples/sprite-normal-animation-job.json)도 같은 변환 경로를 사용한다.
+  예제는 기존 32×32 player PNG를 16×16 셀 4개로 나누어 변환 경로를 확인한다.
+- 각 프레임은 합성 완료된 원본 canvas 크기를 유지한다. 컬러·노멀은 하나의 비회전 layout을 공유하고,
+  같은 edge pixel을 padding에 복제한다. UV는 padding 안쪽이며 원본 frame 크기·사용자 pivot을 바꾸지 않는다.
+  decode·padding 면적·최종 아틀라스 각각 4,194,304 pixel 상한을 적용한다. 남는 source 셀은 투명해야 한다.
+- APNG 반투명 Over 합성은 고정 upstream 디코더의 정수화로 예상 RGBA 대비 1바이트 차이가 날 수 있다.
+  디코딩된 프레임에서 normal 생성·재패킹까지는 해당 픽셀과 알파를 그대로 보존한다.
+
+추가 출력은 `<stem>_n.ferrum.color.png`, `<stem>_n.ferrum.normal.png`, `<stem>_n.ferrum.json`이다.
+descriptor는 `ferrum2d.sprite-normal.animation` v1이며 다음을 기록한다.
+
+- `textures`: descriptor 기준 상대 경로와 color=`srgb`, normal=`none` 로딩 계약.
+- `atlas`: 기존 `ferrum-texture-atlas-pack` v1 형식의 frame UV·크기·배치. texture 이름은 `color`다.
+- `animationSet`: 기존 `resolveDataSceneSpriteAnimationSet`/`visual.animationSet`에서 받는 clip 데이터.
+- `timing`: `sourceDelaysMs`(유리수 밀리초 쌍), `tickMs`, `repeats`, `sourceFrameIndices`,
+  `requestedFps`/`nativeFps`, `sourceCycleMs`/`nativeCycleMs`/`nativeCycleErrorMs`와 `sourceLoopCount: "not-exported"`.
+- `packing`: padding·비회전/비trim 정책. `source`: raw color/normal SHA-256과 canonical JSON metadata SHA-256.
+  실제 raw metadata 파일 hash는 완료 report의 `outputs`에 별도로 기록한다.
+
+원본 지연 시간의 유리수 최대공약수를 tick으로 삼아 UV frame을 반복한다. 예를 들어 50/90/120/60ms는
+10ms tick의 5/9/12/6 frame으로 변환된다. 기존 native clip의 **1..32 frame, 고정 FPS 0.001..1000** 한도 안에서만
+변환하며, 0 지연·32개 초과·범위 밖 FPS는 `FERRUM_NORMAL_TIMING_UNSUPPORTED`로 거절한다.
+타이밍을 임의로 반올림하거나 프레임을 버리지 않는다. native FPS는 f32로 저장하므로 descriptor에 cycle 오차를 남긴다.
+이 수치는 FPS 표현 오차이며 프레임 루프 delta 누적·화면 표시 시점의 오차까지 보장하지 않는다.
+메타데이터·레이아웃·알파·패킹 한도 불일치는 `FERRUM_NORMAL_ATLAS_INVALID`다.
+변환 실패·새 출력 이름 충돌도 전체 생성 transaction의 정리·원본 보호 규칙을 따른다.
+
+게임은 두 PNG에 직접 numeric texture ID를 할당해 로드하고 descriptor의 `animationSet`을 visual에 넣는다.
+다음은 이미 로드한 color=101, normal=102를 연결하는 필드 예다. normal은 반드시 `{ colorSpace: "none" }`으로 로드한다.
+
+```ts
+const visual = {
+  kind: "sprite", texture: 101, width: 32, height: 32,
+  animationSet: generated.animationSet,
+};
+// spatial.billboards.<instanceId>:
+const billboard = { normalTextureId: 102 };
+```
+
+descriptor 자체를 scene 문서로 적용하지 않는다. stable reference·patch/handoff는 다음 binding API로 연결한다.
+
+#### 생성 에셋 binding과 패치·handoff
+
+`@ferrum2d/ferrum-web/authoring`의 `createSpriteNormalAssetBinding`은 완료된 CLI/Worker report와 project asset 이름에서
+`ferrum2d.sprite-normal.binding` v1 JSON을 만든다. 정적 PNG는 report만, 애니메이션/PNG grid는 Ferrum descriptor와
+**descriptor 파일 bytes의 실제 SHA-256**도 전달한다. report의 `resultIndex`는 기본 0이다.
+animated raw sidecar만 있는 결과는 거절하므로 먼저 `animation.loop`를 지정해 변환한다.
+
+```ts
+import {
+  createSpriteNormalAssetBinding, diagnoseSpriteNormalAssetBinding,
+  createSceneSpriteNormalPatch, mergeScenePlacementPatch,
+  createScenePlacementAgentHandoff,
+} from "@ferrum2d/ferrum-web/authoring";
+
+const binding = createSpriteNormalAssetBinding({
+  report, descriptor, descriptorSha256, // host가 읽은 JSON과 descriptor bytes의 SHA-256
+  resultIndex: 0, colorAsset: "hero.color", normalAsset: "hero.normal",
+});
+const diagnostics = diagnoseSpriteNormalAssetBinding(binding, hostMeasuredTextures);
+// hostMeasuredTextures: 실제 decoded/uploaded bytes에서 측정한 id, width, height,
+// colorSpace, sha256, 선택형 frames. report 값을 그대로 복사해 검증을 대신하지 않는다.
+if (diagnostics.length) throw new Error(diagnostics[0].message);
+
+await engine.loadAssets({
+  textures: { "hero.color": colorUrl, "hero.normal": normalUrl },
+  textureOptions: { "hero.normal": { colorSpace: "none" } },
+});
+const { patch, evidence } = createSceneSpriteNormalPatch(sourceDocument, binding, {
+  instanceId: "hero", assets: hostMeasuredTextures,
+});
+const merged = mergeScenePlacementPatch(sourceDocument, patch).document;
+const handoff = createScenePlacementAgentHandoff({
+  document: sourceDocument, state: viewer.state(), patch,
+  normalBindings: [evidence], normalAssetDiagnostics: diagnostics,
+});
+```
+
+binding을 별도 project JSON/asset catalog에 보관하고 `resolveSpriteNormalAssetBinding`으로 재검증한다.
+binding의 `textures.color/normal`은 stable 이름·report path·SHA-256·색 공간을, `width/height/frames`와 선택형
+`animationSet`은 두 이미지가 공유할 layout을 기록한다. `generation`은 generator repository/revision/binary hash,
+config hash·settings·선택형 animation packing 설정, input path/hash·선택형 descriptor hash를 보존한다.
+path는 provenance locator이며 URL로 자동 해석하거나 읽지 않는다. report digest는 출처의 주장이고,
+실제 파일 hash·decode 크기·업로드 색 공간은 host가 측정해 검증해야 한다. 서명·신뢰 검증 기능은 아니다.
+
+진단 code는 `missingTexture`, `duplicateTexture`, `colorSpaceMismatch`, `dimensionsMismatch`,
+`contentHashMismatch`, `frameLayoutMismatch`다. normal은 none/linear, color는 srgb여야 한다.
+선택형 asset frames를 제공하면 순서까지 shared layout과 같아야 한다. binding 내부 UV는 pixel 경계·native 유효 범위를
+만족하고 animation clip의 UV는 shared frame 중 하나여야 한다. 원본 bytes가 바뀌면 이전 binding을 재사용하지 않고
+명시적으로 재생성·재검증한다. binding API는 파일/GPU를 수정하지 않으므로 실패한 후보는 기존 결과를 보존한다.
+
+patch는 기존 `updateComponents`와 spatial v4의 `setBillboardNormalTexture`를 함께 반환한다.
+초기 fragment에서 적용된 기존 sprite billboard와 직접 편집 가능한 component 대상이 필요하다.
+포함 fragment의 모호한 대상·primitive·template는 거절한다. 기존 collider/body·pose·pivot·visual 크기·behavior는 유지하며
+texture/frame/animation을 생성 결과로 교체한다. 기존 legacy animation과 asset 별칭은 정리한다.
+normal 참조 교체는 기존 numeric ID를 제거한다. 이 operation의 `normalTexture: null`은 두 참조를 모두 해제한다.
+`viewer.updateSpatial`에서도 v4 참조 변경의 Undo/Redo·draft export를 지원한다.
+source document·binding을 변경하지 않으며 파일 저장은 기존 host save adapter가 담당한다.
+
+handoff의 선택형 `normalBindings`에는 instanceId와 검증한 binding이 들어간다.
+handoff 생성 시 patch를 적용한 문서의 색/노멀 이름·clip·초기 frame과 일치하는지 확인하고 복사한다.
+오래된 근거는 거절하며 `normalAssetDiagnostics`로 실패 후보의 진단을 별도 전달할 수 있다.
+공식 Assets UI는 아래 생성·비교 화면 절을 따른다. 선택형 브라우저 생성 API는 다음 절을 따른다.
+
+#### 선택형 브라우저 노멀맵 Worker
+
+`createSpriteNormalWorkerClient`는 PNG·GIF·APNG를 별도 module Worker의 생성기 Wasm으로 처리한다.
+기본 엔진 build와 npm 배포에는 생성기 binary를 포함하지 않는다. Rust toolchain·`wasm32-unknown-unknown` target과
+`wasm-pack`을 준비한 개발 환경에서 선택형 bundle을 만든다.
+
+```bash
+pnpm normals:wasm:build
+```
+
+고정 upstream을 별도 staging에 checkout하고, Wasm에 빠진 CLI 설정 3개만
+`scripts/tools/sprite-normals-wasm.patch`로 연결한다. 기존 CLI 설치 cache는 수정하지 않는다.
+bundle은 `artifacts/tools/sprite-normals/<revision>/wasm-web/`에 생성하며 `manifest.json`,
+`spritefusion_sprite_normals.js`, `spritefusion_sprite_normals_bg.wasm`, `LICENSE`를 host의 asset 경로에 함께 제공한다.
+MIT 고지를 유지하고 stdout의 `manifestSha256`을 host 설정에 고정한다. 기존 cache의 hash가 다르거나 파일이 없으면
+자동 복구하지 않고 오류를 반환하므로 변경 원인을 확인한 뒤 해당 관리 cache를 제거하고 다시 빌드한다.
+
+```ts
+import {
+  createSpriteNormalWorkerClient, createSpriteNormalAssetBinding,
+  SpriteNormalWorkerError,
+} from "@ferrum2d/ferrum-web/authoring";
+
+const client = createSpriteNormalWorkerClient({
+  generator: {
+    manifestUrl: "/assets/normal-generator/manifest.json",
+    manifestSha256: generatorManifestSha256, // 빌드 stdout에서 고정한 실제 hash
+  },
+  cacheBytes: 8 * 1024 * 1024, // 0이면 결과 cache 비활성화
+});
+const controller = new AbortController();
+try {
+  const generated = await client.generate({
+    name: "hero-sheet.png", bytes: sourceBytes,
+    settings: { frameSize: { width: 32, height: 32 }, normalStrength: 1.5 },
+    animation: { loop: true, clipId: 0 },
+  }, { signal: controller.signal, timeoutMs: 30_000 });
+  const binding = createSpriteNormalAssetBinding({
+    report: generated.report, descriptor: generated.descriptor,
+    descriptorSha256: generated.descriptorSha256,
+    colorAsset: "hero.color", normalAsset: "hero.normal",
+  });
+  // generated.colorPng/normalPng는 caller 소유 ArrayBuffer다.
+  // host가 실제 bytes의 hash·decode 크기·색 공간을 측정한 뒤 binding 진단과 patch 흐름을 수행한다.
+} catch (error) {
+  if (error instanceof SpriteNormalWorkerError) console.error(error.code, error.message);
+  else throw error;
+} finally {
+  client.destroy(); // 실제 화면에서는 document/tool 수명이 끝날 때 해제한다.
+}
+```
+
+client 생성은 Worker나 generator를 로드하지 않는다. 첫 요청에서 manifest SHA-256과 고정 provenance를 확인하고
+JS·Wasm·LICENSE의 bytes/hash를 검증한 뒤 lazy init한다. host는 HTTP(S), WebCrypto와 module Worker를 제공해야 한다.
+검증한 JS bytes를 Blob module로 import하므로 CSP에서 해당 `script-src blob:`과 Worker/Wasm 실행을 허용해야 한다.
+환경이 지원하지 않으면 오류를 반환하며 main thread의 동기 생성으로 우회하지 않는다.
+기본 Worker URL을 bundler가 처리하지 못하는 host는 `workerFactory`로 동일 entry를 빌드한 module Worker를 제공한다.
+반환된 Worker는 client가 소유하고 종료한다. Worker 내부 entry를 package public subpath로 직접 import하지 않는다.
+
+입력은 `name` basename·`bytes: Uint8Array`와 선택형 settings/animation이다. 원본 bytes를 복사한 뒤 복사본만 transfer한다.
+7개 생성 설정과 `frameSize`의 범위·기본값은 위 CLI와 같다. 브라우저 v1은 upstream의 **원본 frame grid**를 유지한다.
+추가 packing·padding·회전·trim 설정을 받지 않으며 `animation`은 명시적 `loop`와 선택형 `clipId`만 받는다.
+descriptor의 padding은 0이고 color/normal은 같은 grid·UV를 쓴다. 유리수 delay와 32 native frame/FPS 한도는 CLI와 같다.
+정적 PNG color는 원본 bytes이며 애니메이션 color는 생성된 RGBA8 atlas다. normal은 OpenGL 방향·non-color다.
+
+결과에는 owned color/normal PNG, upstream `metadataJson`, CLI 호환 report, 선택형 descriptor/hash와 resource stats가 있다.
+descriptor를 저장할 때 `JSON.stringify(descriptor, null, 2) + "\n"`로 직렬화해야 반환된 hash와 일치한다.
+report의 `config.path`는 `worker:<name>` locator이며 파일이 아니다. generator provenance는 Wasm·manifest·adapter hash를 기록한다.
+반환 자체가 씬/파일/GPU에 적용되지는 않으며 host가 기존 binding 진단·명시적 patch/저장을 수행한다.
+
+| 자원 | 상한 |
+| --- | --- |
+| 입력 bytes·이름 | 16 MiB, 경로 없는 PNG/GIF/APNG basename 128자 |
+| 이미지 | 각 변 4096, 전체 4,194,304 pixel, source frame 256 |
+| native clip | 반복 UV를 포함해 32 frame, FPS 0.001..1000 |
+| 결과·metadata | color/normal 합계 40 MiB, metadata 256 KiB |
+| Wasm linear memory | linker에 최대 256 MiB를 인코딩하고 bundle 검사에서도 확인 |
+| cache·시간 | LRU 최대 4건/8 MiB, 기본 30초·요청별 최대 120초 |
+
+새 유효 요청은 이전 요청을 `superseded`로 끝낸다. 잘못된 설정이나 이미 abort된 요청은 진행 중 요청을 취소하지 않는다.
+`cancel()`/AbortSignal·timeout은 동기 Rust 작업을 실행하는 Worker 전체를 종료한다. 오래된 응답은 Worker identity와
+request id로 거절한다. 실패 후 다음 요청은 새 Worker에서 시작하며 기존 씬·원본·이미 적용된 결과는 수정하지 않는다.
+정상 반환은 getter의 owned bytes를 복사한 뒤 `finally`에서 Rust result를 free한다. 강제 종료 시에는 Worker realm을 해제한다.
+`clearCache()`는 진행 중 요청을 취소하고 compiled generator와 결과 cache를 버린다. `destroy()`는 반복 호출할 수 있고
+이후 요청을 거절한다. cache hit 결과도 별도 복사하므로 결과 bytes를 변경하거나 transfer해도 cache를 손상시키지 않는다.
+
+`SpriteNormalWorkerError.code`는 `invalidInput`, `unavailable`, `aborted`, `superseded`, `timeout`, `destroyed`,
+`generatorInvalid`, `generationFailed`, `resultInvalid`다. 설정·취소·환경 오류를 구분해 처리한다.
+stats의 `wasmMemoryBytes`는 할당된 linear memory 용량이며 JS heap/전체 process 메모리나 누수 부재의 증명은 아니다.
+cache bytes는 보관한 PNG/직렬화 payload 기준이다. 메모리 증가가 필요한 입력은 hard cap에서 실패할 수 있다.
+
+#### Assets 생성·비교 화면
+
+공식 Placement Viewer의 Assets에서 `Generate Normal` 또는 sprite의 `Normal` 버튼을 연다.
+Settings는 파일/원본 asset·7개 설정·preset·PNG grid와 animation/loop를, Preview는 color/normal·Flat/Normal과
+고정/이동 광원 비교를 제공한다. Expand/Restore는 도구 영역만 임시로 넓힌다.
+생성·비교는 원래 씬을 수정하지 않으며, Apply는 선택한 unlocked HD-2D sprite billboard에 한 번의 Undo로 적용한다.
+2D에서는 생성·비교·export를 제공하고 공간 billboard를 자동 추가하지 않는다.
+이 별도 Lambert 조명 preview는 asset 비교용이며 최종 씬의 환경/그림자/톤 매핑을 복제하지 않는다.
+
+실제 생성 bytes에서 hash/decode 크기를 측정해 binding을 진단하고 내용 기반 이름으로 기존 에셋 충돌을 거절한다.
+유효한 binding evidence만 handoff에 포함하며 Undo/다른 visual 수정으로 오래된 근거는 내보내지 않는다.
+같은 오브젝트에 여러 생성 pair를 적용해도 pair별 근거를 문서 수명 동안 보관한다. Undo/Redo로 이전 pair에
+돌아가면 해당 생성 근거를 복원하며, 현재 씬과 일치하는 근거만 handoff에 포함한다.
+입력/설정/후보는 문서별로 보관하고 문서 전환·모드 변경은 진행 중 작업을 취소한다.
+정상 적용한 pair는 Undo/Redo에 필요한 동안 유지하며 문서 닫기에서 해제한다.
+source는 세션 전체 64 MiB, 생성 pair는 8건/64 MiB/8,388,608 pixel 한도다.
+다른 문서의 session 참조를 복사한 JSON은 거절하고, project catalog에 설치한 뒤 다시 열도록 안내한다.
+
+`Export Assets`는 PNG bytes/base64·hash, report/metadata/descriptor, binding과 texture manifest를 담은
+`ferrum2d.sprite-normal.assets` v1 JSON이다. project 파일 저장과 구분하며 자동 덮어쓰기를 하지 않는다.
+`Save Assets`는 app 전용 host adapter가 있을 때만 제공한다. host는 `overwrite:false`, AbortSignal과 파일 충돌 정책을
+지켜 파일/이름/색 공간을 project catalog에 함께 등록한다. 반환된 durable URL의 bytes/hash·크기를 다시 검사한 뒤
+저장 완료로 인정한다. 미저장 생성 에셋을 참조하는 Scene Save는 막는다.
+host의 catalog 반영·재개방과 filesystem transaction은 host 책임이다. 기본 desktop/browser 쓰기 권한을 넓히지 않는다.
+준비/adapter/상세 UI 사용법은 저장소의 `apps/placement-viewer/README.md`를 따른다.
+
+Settings/Preview 탭은 방향키·Home/End로 전환하며 숨은 패널의 입력은 Tab 순서에서 제외된다.
+Cancel은 일반 버튼처럼 Enter/Space로 실행한다. 한도 초과는 기존 씬과 생성 pair를 유지한 채 거절하며,
+문서를 닫아 자원을 해제한 뒤 다시 생성할 수 있다.
+PNG 측정·해시 확인 중 취소도 반영한다. 재사용한 pair는 원래 소유 문서가 계속 보관하며,
+취소된 요청이 기존 pair를 해제하지 않는다. 취소 후에는 다시 생성해 설정 일치를 확인한 뒤 적용한다.
+
+#### Export bundle로 agent 작업 재개
+
+기본 host에서 프로젝트에 반영하려면 `Export Assets` bundle과 `Copy Patch` 또는 handoff를 함께 보관한다.
+bundle의 `document`는 세션 문서 키이며 씬 JSON 자체가 아니다. 에셋 bundle만 설치해도 씬이 자동으로 바뀌지는 않는다.
+bundle의 PNG는 출력 pair다. GIF/APNG 원본 bytes는 포함하지 않으므로 원래 입력 파일도 별도로 보관한다.
+
+1. `resolveSpriteNormalAssetBinding(bundle.binding)`으로 binding을 읽고 report의 config/input/output provenance를 확인한다.
+   각 `files[].base64`를 decode해 SHA-256·실제 PNG 크기를 측정한다. manifest의 이름/색 공간을 사용해
+   `diagnoseSpriteNormalAssetBinding(binding, measuredAssets)`가 빈 배열인지 확인한다.
+   descriptor가 있으면 `JSON.stringify(descriptor, null, 2) + "\n"` bytes의 SHA-256도 binding과 비교한다.
+2. 프로젝트 에셋 디렉터리 안에 PNG를 기존 파일 덮어쓰기 없이 설치한다. manifest의 stable asset 이름을 유지하고
+   URL만 프로젝트 경로로 바꾼다. color는 `srgb`, normal은 `none`으로 catalog에 함께 등록한다.
+3. 동반 patch/handoff를 원래 씬에 검토·반영한다. 런타임은 `loadAssets({ textures, textureOptions })`를 마친 뒤
+   씬을 적용한다. 새 세션에서는 numeric texture ID가 달라져도 문자열 참조로 같은 pair를 찾는다.
+4. 새 세션에서 문서를 다시 열어 missing/hash/dimension/UV 진단과 조명을 확인한 뒤 씬을 저장한다.
+   source/report/descriptor/binding은 다음 재생성·재import 검증을 위해 프로젝트 근거로 보관한다.
+
+변경된 PNG를 이전 binding의 hash로 간주하지 않는다. 재import 후보의 bytes를 다시 측정하고 불일치하면
+기존 pair를 유지한다. 새 생성 결과는 새 binding/patch로 명시적으로 교체한다.
 
 ### 태양 방향광과 PCF
 
@@ -876,6 +1205,16 @@ engine.setDataSceneSpatialDebug({
 engine.setDataSceneSpatialDebug(null);
 ```
 
+`engine.setDataSceneSpatialPreviewFilter({ hiddenEntities, hiddenSurfaces })`는 authoring preview 전용 cold API다.
+entity는 generational handle, surface는 authored ID를 사용한다. 한 번의 bulk 호출로 최대 16,384 entity와 256 surface를
+검증한 뒤 교체하며 stale/unknown 입력은 전체 거절한다. `null`은 표시를 복원한다.
+숨긴 대상은 terrain/billboard/model draw와 terrain picker에서 제외하지만 physics/support/navigation/저장 문서는 바꾸지 않는다.
+전체 spatial 설정과 scene 교체 시 필터를 초기화한다. render command ABI는 유지한다.
+
+`createSpatialModelThumbnailSvg(asset, size = 80)`는 `/core`의 cold utility다. loader가 발급한 실제 asset만 받으며
+16–256px, 최대 2,048 triangle의 정적 diffuse SVG를 만든다. GPU/DOM·scene 상태를 변경하지 않는다.
+재질/조명/그림자의 최종 렌더링을 재현하는 preview는 아니다.
+
 `SpatialDebugOptions`의 category는 각각 기본 false이며 `depthTest`만 기본 true다.
 옵션 객체의 알 수 없는 필드/잘못된 boolean은 diagnostic으로 거절한다. 공간 설정이 없거나
 이 확장을 제공하지 않는 과거 Wasm이면 setter는 false다. 새 physics category bit를 모르는 과거 Wasm도 false로 거절한다. 기본은 꺼짐이며 선분 버퍼를 확보하지 않는다.
@@ -933,6 +1272,8 @@ debug toggle은 simulation pose, camera, terrain revision, picking과 저장 pro
 `RendererStats.spatial`의 `debugLineCount`, `debugDrawCalls`, `debugUploadBytes`, `debugTruncated`가
 진단 비용을 별도로 기록한다. 선분은 triangle/billboard 통계에 포함하지 않으며 aggregate drawCalls/uploadBytes에는
 합산한다. nonempty debug는 texture와 무관하게 `LINES` 1 draw이고 depth write는 false다.
+WebGL2는 선의 RGBA alpha를 반영하여 혼합한다. alpha 0은 framebuffer를 바꾸지 않으며
+선 pass 전후의 blend enable·RGB/alpha factor·equation과 depth 상태를 복원한다.
 GPU buffer는 첫 nonempty frame에 생성하고 native `vertexCount×44` bytes를 매 frame 업로드한다.
 debug off에서는 line draw/upload가 0이다. 이 상한은 실제 GPU 시간/FPS 보장이 아니다.
 

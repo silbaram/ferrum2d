@@ -95,10 +95,14 @@ impl SpatialModels {
         camera: &SpatialCamera,
         shadow_matrices: &[f32],
         point_shadow: bool,
+        hidden: &std::collections::BTreeSet<(u32, u32)>,
     ) {
         self.draws.clear();
         self.streaming.update_chunks(camera);
         for (&(id, generation), binding) in &self.bindings {
+            if hidden.contains(&(id, generation)) {
+                continue;
+            }
             let entity = Entity { id, generation };
             if !world.is_current_entity(entity) {
                 continue;

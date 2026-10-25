@@ -30,6 +30,13 @@ Ferrum2D의 browser demo와 문서 사이트 배포는 GitHub Pages workflow로 
 
 문서 사이트의 기준 소스는 계속 `docs/**/*.md`다. `dist-pages/docs/`는 배포 artifact일 뿐 git에 포함하지 않는다.
 
+홈 문서 카드는 AI 설치·기능 안내, Showcase, Quickstart, Public API, Data Scene Authoring,
+HD-2D 공간 기반, 예제 Spec, Smoke/Budget, Release 진입점을 제공한다.
+문서 메뉴는 시작하기·공개 API·게임 제작·공식 예제·엔진 개발/검증·배포/운영·계획/개발 기록으로 묶는다.
+시작하기와 현재 문서의 그룹을 기본으로 펼친다. `<details>`를 사용하므로 별도 JavaScript 없이
+마우스와 키보드로 다른 그룹을 펼칠 수 있다. 새 문서는 경로에 따라 해당 그룹에 자동 포함된다.
+넓은 표는 키보드로도 접근 가능한 자체 가로 스크롤 영역에 표시해 모바일에서 문서 전체 폭이 늘어나지 않게 한다.
+
 ## 로컬 확인
 
 ```bash
@@ -38,7 +45,7 @@ pnpm build:pages
 pnpm validate:pages-artifact
 ```
 
-`pnpm validate:pages-artifact`는 Pages 홈, docs index, Showcase Hub, quickstart, public API, Data Scene Authoring, Top-down Shooter Game Spec, Smoke Check, npm release 문서와 demo route HTML이 생성되었는지 확인하고 generated HTML의 로컬 링크를 검사한다. `dist-pages/`는 generated artifact이므로 git에 포함하지 않는다.
+`pnpm validate:pages-artifact`는 Pages 홈, docs index, AI 설치·기능 안내, Showcase Hub, quickstart, public API, Data Scene Authoring·공간 기반, Top-down Shooter Game Spec, Smoke Check, npm release 문서와 demo route HTML이 생성되었는지 확인하고 generated HTML의 로컬 링크를 검사한다. `dist-pages/`는 generated artifact이므로 git에 포함하지 않는다.
 
 ## Pages demo readiness checklist
 

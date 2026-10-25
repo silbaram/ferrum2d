@@ -1,7 +1,7 @@
 # 게임 개발 편의성 실사용 재검토
 
-상태: 재검토 완료, built-in Scene Authoring runtime 연결 반영, 후속 후보 2건 유지
-기준일: 2026-08-25
+상태: built-in Scene Authoring·공식 작업공간·Aseprite 저장/paired·Tiled/LDtk tileset 선택 Assets·native 저장/재열기 반영, 추가 형식과 상세 실행 근거 후보 유지
+기준일: 2026-10-23
 
 이 문서는 Ferrum2D의 기능 수가 아니라 생성 프로젝트에서 콘텐츠를 바꾸고 검증하는 실제 작업량을
 기준으로 개선 필요성을 판단한 planning 기록이다. 현재 사용법과 검증 계약은
@@ -24,7 +24,14 @@ Tauri authoring host가 project-root allowlist 안에서 담당한다.
 - 브라우저 host가 workspace 파일을 쓰려면 경로 allowlist와 명시적 권한 모델이 필요하다.
 
 generic Data Scene과 built-in scene을 같은 spawn 계약으로 합치지 않고 scene-specific adapter로 분리했다.
-남은 편의성 후보는 asset 반복 작업과 read-only gameplay 진단이다.
+공식 authoring 작업공간은 문서별 이력·다중 선택·2D/HD-2D preview와 명시적 asset reimport,
+Problems/source diff·선택 native entity 진단을 제공한다. 선택 variable/FSM/cooldown과 bounded 최근 event도 제공한다.
+Aseprite JSON+PNG는 Assets에서 검사·등록·frame 배치·이름 기준 재import하고 Undo/agent export로 전달한다.
+명시적으로 연 desktop 프로젝트의 Save Project는 원본/catalog·manifest·씬 저장과 새 세션 복원까지 연결한다.
+명시적 Aseprite Normals action은 frame별 생성과 color/UV·normal 참조의 단일 Undo 교체를 제공한다. 기본 native normal writer와 새 실행의 PNG pair/provenance 복원도 제공한다.
+Apply Paired/Reimport Paired는 animation migration과 노멀 생성을 묶고 저장·재열기의 animation/normal evidence를 복원한다.
+Tiled embedded/외부 TSJ 및 LDtk embedded tileset 1..8개 중 선택한 tileset의 used frame은 공식 Assets에서 검사·배치·재import하고 변환 map/LDtk metadata를 agent export로 전달한다. Open Project 기본 문서는 원본/catalog를 저장·재열기한다. 전체 map 적용은 후속 후보로 유지한다.
+남은 후보는 외부 도구의 추가 형식·저장 연결과 상세 실행 근거다.
 
 ## 재검토 결과와 처리 순서
 
@@ -47,10 +54,10 @@ generic Data Scene과 built-in scene을 같은 spawn 계약으로 합치지 않�
 | --- | ---: | --- |
 | 프로젝트 생성·첫 실행 | 7/10 | 네 starter template과 Vite 실행 경로 제공 |
 | Top-down 밸런스 조정 | 8/10 | `public/game.json`에서 world, wave, weapon, prefab 조정 가능 |
-| 오브젝트 배치 | 5/10 | 선택, 이동, 추가, collider, 기존 behavior binding 지원 |
+| 오브젝트 배치 | 5/10 | 공식 app의 다중 선택·그룹 변환·잠금·이력·2D/HD-2D 배치. 점수는 재평가 전 기준 |
 | 배치 결과의 게임 반영 | 6/10 | built-in 위치/Behavior Recipe 자동 반영; visual/collider는 generic Data Scene 경로 |
 | 새로운 gameplay 제작 | 3/10 | 기존 recipe/FSM primitive 밖은 TypeScript glue 또는 core 확장 필요 |
-| asset 반복 작업 | 5/10 | metadata 검증은 제공하지만 일반 runtime reimport/hot reload는 없음 |
+| asset 반복 작업 | 5/10 | 공식 app의 Aseprite frame import/reimport·export·프로젝트 저장, desktop 폴더 감지·texture/GLB reimport. 점수는 재평가 전 기준 |
 | 오류 진단·회귀 검증 | 7/10 | `ferrum:check`, replay, smoke는 강하지만 interactive debugger는 없음 |
 | 정적 웹 배포 | 7/10 | build, preview, deploy-readiness 계약 제공 |
 
@@ -102,20 +109,26 @@ DOM shell, metric HUD, input queue, startup diagnostic은 template 내부
 
 ### 1. Asset 반복 작업 단축
 
-다음 기능은 자체 이미지 편집기보다 Aseprite, Tiled, LDtk import/reimport 연결을 우선한다.
+공식 app의 Aseprite JSON+PNG 검사·등록·frame 배치와 활성 fragment 재import는 제공한다.
+비회전·비트림 atlas부터 지원하며 원본/immutable revision·Undo·export/handoff를 유지한다.
+명시적 Apply Animation/Reimport Animation은 태그·duration과 기존 clip ID 보존을 지원한다.
+사용법과 제한은 [Aseprite Assets](../engine/data-scene-authoring.md#aseprite-assets-가져오기재import)를 따른다.
+다음 후보는 자체 이미지 편집기보다 기존 외부 도구·검증 계약과의 연결을 우선한다.
 
-- asset folder 변경 감지
-- atlas metadata 재생성
-- 개발 runtime texture reload
-- missing frame/texture diagnostic의 game preview 노출
+- Tiled TSX·LDtk 외부 level·IntGrid 입력과 전체 map/Game Spec 적용 연결
+- 프로젝트 catalog 8 revision/64 MiB 예산 확대와 미사용 revision의 명시적 정리, 추가 문서/host 저장 지원
+- generated game의 개발 runtime reload 연결
+- 외부 도구 import 결과와 기존 missing asset/frame 진단의 연결
+
+공식 desktop viewer의 opt-in 폴더 변경 감지와 texture/GLB 명시적 reimport·Problems는 이미 제공하므로 다시 신규 기능으로 구현하지 않는다.
+기본 프로젝트 문서의 Aseprite 저장도 제공한다. 실제 native GUI/package 검증은 배포 검증 기준을 따르며 browser-only는 export를 유지한다.
 
 ### 2. Read-only gameplay 진단
 
-full visual scripting 대신 다음 진단 surface를 후보로 유지한다.
+선택 entity의 variable/FSM state/timer/action cooldown, 펼친 동안 bounded 최근 gameplay event는 제공한다. 다음 상세 근거를 후보로 유지한다.
 
-- selected entity handle, variable, FSM state, cooldown
-- 최근 gameplay/collision/effect event timeline
-- behavior command와 source JSON path 연결
+- collision/effect까지 연결한 상세 event timeline
+- 현재 선택 source JSON pointer와 diff에 behavior command 실행 근거 연결
 - replay mismatch 첫 frame과 관련 instance id
 
 Rust simulation state는 계속 source of truth를 소유하고, TypeScript UI에는 bulk telemetry 또는 낮은 빈도

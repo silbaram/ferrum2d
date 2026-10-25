@@ -1824,6 +1824,36 @@ impl Engine {
             .unwrap_or(0)
     }
 
+    /// Selected-entity diagnostics only. Owned bounded values, one cold Wasm call; no simulation mutation.
+    pub fn gameplay_entity_diagnostics(&self, entity_id: u32, entity_generation: u32) -> Vec<f64> {
+        let Some(entity) = self.entity_from_handle(entity_id, entity_generation) else {
+            return vec![];
+        };
+        let machine = self.world.behavior_state_machine(entity);
+        let health = self.world.health(entity);
+        let timer = self.world.gameplay_timer_trigger(entity);
+        let mut values = vec![
+            1.,
+            f64::from(machine.is_some()),
+            machine.map_or(0., |state| state.current_state() as f64),
+            f64::from(health.is_some()),
+            health.map_or(0., f64::from),
+            f64::from(timer.is_some()),
+            timer.map_or(0., |t| t.timer_id as f64),
+            timer.map_or(0., |t| t.remaining_seconds as f64),
+            timer.map_or(0., |t| f64::from(t.fired)),
+            0.,
+        ];
+        if let Some(actions) = self.world.action_bindings(entity) {
+            for action in actions.iter().take(16) {
+                values[9] += 1.;
+                values.push(action.action_id as f64);
+                values.push(action.cooldown.remaining_seconds as f64);
+            }
+        }
+        values
+    }
+
     pub fn add_gameplay_behavior_state_enter_action(
         &mut self,
         entity_id: u32,

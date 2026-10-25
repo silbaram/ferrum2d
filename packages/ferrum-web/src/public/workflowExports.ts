@@ -1,3 +1,7 @@
+export {createSpriteNormalWorkerClient,SpriteNormalWorkerError,SPRITE_NORMAL_WORKER_LIMITS} from "../spriteNormalWorker.js";
+export type {SpriteNormalGeneratorSource,SpriteNormalGenerationSettings,SpriteNormalWorkerInput,SpriteNormalWorkerResult,SpriteNormalWorkerStats,SpriteNormalWorkerErrorCode,SpriteNormalWorkerPort,SpriteNormalWorkerClient,CreateSpriteNormalWorkerClientOptions,SpriteNormalWorkerGenerateOptions} from "../spriteNormalWorker.js";
+export { createSpriteNormalAssetBinding, resolveSpriteNormalAssetBinding, diagnoseSpriteNormalAssetBinding, createSceneSpriteNormalPatch } from "../spriteNormalBinding.js";
+export type { SpriteNormalAssetBinding, SpriteNormalTextureReference, SpriteNormalTextureAsset, SpriteNormalBindingDiagnostic, CreateSpriteNormalAssetBindingOptions, CreateSceneSpriteNormalPatchOptions, SceneSpriteNormalBindingEvidence } from "../spriteNormalBinding.js";
 export {
   AnimationTimelinePlayer,
   animationTimelineFrameAt,
@@ -154,6 +158,7 @@ export {
   GAMEPLAY_REPLAY_RUN_VERSION,
   hashGameplayReplayRun,
 } from "../gameplayReplay";
+export type { SceneSpatialPatch, SceneSpatialPatchOperation } from "../sceneSpatialPatch.js";
 export type {
   AnimationTimelineEmittedEvent,
   AnimationTimelineEventPayload,
@@ -212,6 +217,7 @@ export type {
   ScenePlacementViewport,
   ScenePlacementViewportOptions,
 } from "../scenePlacementViewport";
+export type { ScenePlacementHistoryState } from "../scenePlacementHistory";
 export type {
   CreateScenePlacementPatchStoreOptions,
   CreateScenePlacementViewerOptions,

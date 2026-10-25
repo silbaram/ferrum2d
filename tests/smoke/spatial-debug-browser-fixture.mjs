@@ -66,6 +66,9 @@ export async function probeSpatialDebug(scene, canvas) {
       depth: gl.isEnabled(gl.DEPTH_TEST),
       write: gl.getParameter(gl.DEPTH_WRITEMASK),
       func: gl.getParameter(gl.DEPTH_FUNC),
+      blend: gl.isEnabled(gl.BLEND),
+      blendState: [gl.BLEND_SRC_RGB, gl.BLEND_DST_RGB, gl.BLEND_SRC_ALPHA,
+        gl.BLEND_DST_ALPHA, gl.BLEND_EQUATION_RGB, gl.BLEND_EQUATION_ALPHA].map(p => gl.getParameter(p)),
     };
     try {
       renderer.render();
@@ -82,6 +85,10 @@ export async function probeSpatialDebug(scene, canvas) {
           gl.getParameter(gl.DEPTH_FUNC) === before.func,
         "debug leaked depth state",
       );
+      check(gl.isEnabled(gl.BLEND) === before.blend &&
+        JSON.stringify([gl.BLEND_SRC_RGB, gl.BLEND_DST_RGB, gl.BLEND_SRC_ALPHA,
+          gl.BLEND_DST_ALPHA, gl.BLEND_EQUATION_RGB, gl.BLEND_EQUATION_ALPHA].map(p => gl.getParameter(p))) === JSON.stringify(before.blendState),
+        "debug leaked blend state");
       check(observed.otherDraws === 0, "unexpected debug primitive", observed);
       return { stats, observed, pixels: image() };
     } finally {
@@ -238,6 +245,35 @@ export async function probeSpatialDebug(scene, canvas) {
       observed: result.observed,
       screenshot,
     });
+  }
+  // Alpha must affect framebuffer pixels, not just travel unused in the native buffer.
+  const alphaPacket = scene.frame.spatial;
+  const alphaDraw = alpha => {
+    // One vertical segment avoids intersections, where several alpha layers accumulate.
+    const vertices = alphaPacket.debug.vertices.slice(12 * 11, 14 * 11);
+    for (let i = 8; i < vertices.length; i += 11) vertices[i] = alpha;
+    return draw({...alphaPacket, debug: {...alphaPacket.debug, vertices, vertexCount: 2}}).pixels;
+  };
+  const transparent = alphaDraw(0), opaque = alphaDraw(1), translucent = alphaDraw(.25);
+  let alphaPixels = 0;
+  for (let i = 0; i < opaque.length; i += 4) {
+    check(transparent[i] === baseline.pixels[i] && transparent[i + 1] === baseline.pixels[i + 1] && transparent[i + 2] === baseline.pixels[i + 2], "zero alpha changed framebuffer");
+    if (Math.max(...[0,1,2].map(c => Math.abs(opaque[i+c] - transparent[i+c]))) < 30) continue;
+    alphaPixels++;
+    for (let c = 0; c < 3; c++)
+      check(Math.abs(translucent[i+c] - (opaque[i+c] * .25 + transparent[i+c] * .75)) <= 3, "diagnostic alpha is not blended", {i,c,actual:translucent[i+c],opaque:opaque[i+c],background:transparent[i+c]});
+  }
+  check(alphaPixels > 16, "alpha probe has insufficient visible lines", alphaPixels);
+  // Non-default factors/equations must also survive the diagnostic pass.
+  const blendBefore = [gl.BLEND_SRC_RGB, gl.BLEND_DST_RGB, gl.BLEND_SRC_ALPHA,
+    gl.BLEND_DST_ALPHA, gl.BLEND_EQUATION_RGB, gl.BLEND_EQUATION_ALPHA].map(p => gl.getParameter(p));
+  try {
+    gl.blendFuncSeparate(gl.DST_ALPHA, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ZERO);
+    gl.blendEquationSeparate(gl.FUNC_SUBTRACT, gl.FUNC_REVERSE_SUBTRACT);
+    draw(alphaPacket);
+  } finally {
+    gl.blendFuncSeparate(...blendBefore.slice(0,4));
+    gl.blendEquationSeparate(...blendBefore.slice(4));
   }
   // The visual foot offset is eight units; the magenta endpoints must use physical elevation instead.
   const native = scene.frame.spatial.debug.vertices;
@@ -617,6 +653,7 @@ export async function probeSpatialDebug(scene, canvas) {
     "physics diagnostics changed saved progress",
   );
   return {
+    alphaPixels,
     cases,
     cameraCases,
     terrain: { stats: terrain.stats, palette: colors(terrain.pixels) },

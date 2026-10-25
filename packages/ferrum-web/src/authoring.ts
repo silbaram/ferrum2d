@@ -1,3 +1,8 @@
+export type { SceneSpatialPatch, SceneSpatialPatchOperation } from "./sceneSpatialPatch.js";
+export {createSpriteNormalWorkerClient,SpriteNormalWorkerError,SPRITE_NORMAL_WORKER_LIMITS} from "./spriteNormalWorker.js";
+export type {SpriteNormalGeneratorSource,SpriteNormalGenerationSettings,SpriteNormalWorkerInput,SpriteNormalWorkerResult,SpriteNormalWorkerStats,SpriteNormalWorkerErrorCode,SpriteNormalWorkerPort,SpriteNormalWorkerClient,CreateSpriteNormalWorkerClientOptions,SpriteNormalWorkerGenerateOptions} from "./spriteNormalWorker.js";
+export { createSpriteNormalAssetBinding, resolveSpriteNormalAssetBinding, diagnoseSpriteNormalAssetBinding, createSceneSpriteNormalPatch } from "./spriteNormalBinding.js";
+export type { SpriteNormalAssetBinding, SpriteNormalTextureReference, SpriteNormalTextureAsset, SpriteNormalBindingDiagnostic, CreateSpriteNormalAssetBindingOptions, CreateSceneSpriteNormalPatchOptions, SceneSpriteNormalBindingEvidence } from "./spriteNormalBinding.js";
 export {
   AnimationTimelinePlayer,
   BEHAVIOR_STATE_MACHINE_RUNTIME_MAX_TRANSITIONS,
@@ -285,6 +290,7 @@ export type {
   ScenePlacementUpdateResolvedTransformOperation,
   ScenePlacementViewport,
   ScenePlacementViewportOptions,
+  ScenePlacementHistoryState,
   ScenePlacementViewer,
   ScenePlacementViewerComposition,
   ScenePlacementViewerDocument,
@@ -518,3 +524,5 @@ export type { DataSceneCombatActorReference, DataSceneCombatSpawnedActorState, D
 
 export type { DataSceneProjectileAnimationSpec } from "./dataSceneProjectilePrefabs.js";
 export type { DataSceneProjectileAnimationProgress, DataSceneCombatVisualProjectileSnapshot, DataSceneCombatVisualProgressSnapshot } from "./dataSceneProjectileVisualProgress.js";
+export { importAsepriteAtlas, importAsepriteAtlasFrames } from "./assetPipelineAseprite.js";
+export type { AsepriteAtlasFrameSizeSource, AsepriteAtlasImportOptions, AsepriteAtlasImportResult } from "./assetPipelineTypes.js";

@@ -39,6 +39,68 @@ import {
 } from "@ferrum2d/ferrum-web/authoring";
 ```
 
+## Aseprite Atlas Import
+
+기존 compatibility root의 `importAsepriteAtlas`, `importAsepriteAtlasFrames`를 authoring subpath에서도 제공한다.
+동일 함수의 재노출이며 기존 입력·정규화·오류 동작은 바꾸지 않는다.
+
+```ts
+import { importAsepriteAtlas, type AsepriteAtlasImportOptions } from "@ferrum2d/ferrum-web/authoring";
+const options: AsepriteAtlasImportOptions = { texture: "hero", stripFrameExtension: false };
+const imported = importAsepriteAtlas(json, options);
+```
+
+`AsepriteAtlasFrameSizeSource`, `AsepriteAtlasImportOptions`, `AsepriteAtlasImportResult`도 같은 경로에 재노출한다.
+함수는 atlas metadata를 변환하며 파일 읽기·GPU 업로드·씬 변경·프로젝트 저장은 수행하지 않는다.
+공식 app의 PNG 확인/trim 거절·revision·재import·export는 [Aseprite Assets 흐름](../data-scene-authoring.md#aseprite-assets-가져오기재import)의 별도 host 정책이다.
+
+## Sprite Normal Asset Binding
+
+생성된 paired atlas를 project 이름으로 저장하고 기존 scene patch·agent handoff로 전달한다.
+상세 예제와 진단 계약은 [노멀맵 binding](../data-scene-spatial.md#생성-에셋-binding과-패치handoff)을 따른다.
+
+| API | 계약 |
+| --- | --- |
+| `createSpriteNormalAssetBinding(options)` | 완료 CLI/Worker report·선택형 descriptor/실제 descriptorSha256과 colorAsset/normalAsset에서 binding v1을 만든다. |
+| `resolveSpriteNormalAssetBinding(value)` | 저장한 binding의 이름·hash·색 공간·UV·clip·provenance를 검증하고 복사한다. |
+| `diagnoseSpriteNormalAssetBinding(binding, assets)` | host가 측정한 실제 texture metadata의 누락·중복·색 공간·크기·hash·선택형 UV layout을 진단한다. |
+| `createSceneSpriteNormalPatch(document, binding, options)` | instanceId와 검증한 assets에서 deterministic combined patch와 evidence를 만든다. source·파일·GPU는 수정하지 않는다. |
+
+공개 타입은 `SpriteNormalAssetBinding`, `SpriteNormalTextureReference`, `SpriteNormalTextureAsset`,
+`SpriteNormalBindingDiagnostic`, `CreateSpriteNormalAssetBindingOptions`, `CreateSceneSpriteNormalPatchOptions`,
+`SceneSpriteNormalBindingEvidence`다. binding 자체에는 runtime numeric ID가 없다.
+`createScenePlacementAgentHandoff`의 선택형 `normalBindings`는 최종 문서와 참조·clip·초기 frame이 일치해야 하며,
+`normalAssetDiagnostics`는 적용하지 않은 후보의 진단을 보관한다. generation 설정과 input/output hash를 복사한다.
+
+## Sprite Normal Worker
+
+선택형 asset 생성 API다. generator binary는 별도 build/hosting하며 첫 요청에서만 검증·로드한다.
+[브라우저 Worker 계약](../data-scene-spatial.md#선택형-브라우저-노멀맵-worker)에 bundle 준비와 예제가 있다.
+
+| API | 계약 |
+| --- | --- |
+| `createSpriteNormalWorkerClient(options)` | pinned manifest에서 module Worker client를 만든다. caller 입력을 복사하며 게임 상태·파일·GPU는 수정하지 않는다. |
+| `SPRITE_NORMAL_WORKER_LIMITS` | 입력 16 MiB·4M pixel·256 source frame·256 MiB Wasm memory, 결과 40 MiB·metadata 256 KiB와 cache/timeout 상한이다. |
+| `SpriteNormalWorkerError` | `code: SpriteNormalWorkerErrorCode`로 설정·환경·취소·timeout·generator/result 오류를 구분한다. |
+
+`SpriteNormalGeneratorSource`는 HTTP(S) `manifestUrl`과 빌드 시 고정한 `manifestSha256`이다.
+`CreateSpriteNormalWorkerClientOptions`는 필수 `generator`, 선택형 `cacheBytes`(0..8 MiB)와 `workerFactory`를 받는다.
+`SpriteNormalWorkerPort`는 message/error/messageerror listener·postMessage·terminate 계약이며 반환 Worker는 client 소유다.
+`SpriteNormalGenerationSettings`는 CLI와 같은 7개 설정과 균일 `frameSize`다.
+`SpriteNormalWorkerInput`은 basename `name`, owned `bytes: Uint8Array`, 선택형 settings와 `animation: {loop, clipId?}`다.
+브라우저 v1은 원본 color/normal frame grid를 공유하며 별도 packing/padding/rotation 설정은 거절한다.
+`SpriteNormalWorkerGenerateOptions`는 `signal?: AbortSignal`, `timeoutMs?`(1..120000, 기본 30000)를 받는다.
+
+`SpriteNormalWorkerClient.generate`는 최신 유효 요청만 유지한다. `cancel()`/abort/timeout은 Worker를 종료하며
+`clearCache()`는 진행 중 요청과 compiled/result cache를 버린다. `destroy()`는 영구 종료하고 반복 호출할 수 있다.
+실패 후 다음 요청은 새 Worker를 만들며 오래된 응답을 적용하지 않는다. main-thread 동기 fallback은 없다.
+`SpriteNormalWorkerResult`는 owned `colorPng`/`normalPng` ArrayBuffer, `metadataJson`, CLI 호환 `report`,
+선택형 `descriptor`/`descriptorSha256`, `elapsedMs`와 `stats`다. 기존 binding API로 명시적으로 연결한다.
+`SpriteNormalWorkerStats`는 cacheHit/cacheEntries/cacheBytes, wasmMemoryBytes, generatorCalls/freedResults다.
+정상 결과는 free 후 반환하고 cache에 보관한 bytes는 transfer하지 않는다. linear memory 용량은 전체 JS heap 측정값이 아니다.
+`SpriteNormalWorkerErrorCode`는 invalidInput/unavailable/aborted/superseded/timeout/destroyed/
+generatorInvalid/generationFailed/resultInvalid를 지원한다. CSP·Wasm/Worker 요구 사항과 자원 상한은 상세 계약을 따른다.
+
 ## Scene And Behavior
 
 | API | 계약 |
@@ -161,6 +223,27 @@ resolved `visual.bounds`, sprite origin, transform scale/rotation을 반영한 �
 경로는 pointer/click 같은 낮은 빈도 authoring interaction용이며 frame loop에 entity별 Wasm query를
 추가하지 않는다.
 
+`state().selectedInstanceIds`는 중복 없는 ordered selection이며 마지막 ID가 기존
+`selectedInstanceId`/`selected`의 대표 객체다. `selectInstances(ids)`는 전체 ID를 검증한 뒤 집합을 교체하고,
+기존 `selectInstance(id?)`는 한 객체 또는 빈 집합을 선택한다. 반환 배열은 독립 복사본이다.
+선택 집합은 문서/patch에 쓰지 않고 이력을 만들지 않는다.
+
+`updateInstanceTransforms([{ instanceId, transform }, ...])`와 `removeInstances(ids)`는 모든 대상·중복·잠금과
+값/작성 제약을 먼저 검증하고 한 번에 적용한다. 기존 operation 배열과 composition 순서로 export하며 patch version은 유지한다.
+transaction 밖에서는 집합 전체를 한 건의 Undo로 기록한다. 중간 항목이 잘못돼도 앞 항목만 적용하지 않는다.
+포함 인스턴스의 transform은 기존 `updateResolvedTransform`을 사용하며 포함 인스턴스 삭제는 집합 전체를 거부한다.
+빈 batch와 patch가 바뀌지 않는 호출은 이력을 만들지 않는다. 기존 단일 transform/remove API는 같은 경로를 사용한다.
+
+`setInstancesLocked(ids, locked)`는 viewer 안의 일시적 편집 잠금을 변경하고 `state().lockedInstanceIds`로 노출한다.
+진행 중인 edit transaction은 먼저 commit/cancel해야 한다. 잠긴 객체는 canvas picking/hover에서 건너뛰지만,
+명시적 `selectInstance(s)`로 검사할 수 있다. 직접 instance transform/components/binding/rename/remove는 잠금을
+해제하기 전까지 거부하며, 잠긴 항목이 섞인 batch도 전부 거부한다. ObjectDefinition 변경·전체 Revert·Undo/Redo나
+외부 JSON writer를 통제하는 권한 경계는 아니다.
+잠금은 문서/patch/history에 저장하지 않는다. 원본 객체와 추가 초안의 내부 identity를 사용해 rename Undo/Redo를 따라가며,
+사라진 객체의 잠금은 정리한다. 과거 문서를 Undo로 복원할 수 있지만 그때 폐기된 UI 잠금까지 복원하지는 않는다.
+기존 factory 호출과 단일 선택 사용법은 유지한다. `ScenePlacementViewer` wrapper를 직접 구현하거나 state fixture를
+구성하는 consumer는 새 메서드 위임과 두 배열 필드를 추가해야 한다. module export 이름은 바뀌지 않는다.
+
 `scenePlacementVisualGeometry(visual, transform)`는 같은 visual 사각형의 world 중심 `x/y`,
 scale 적용 `width/height`, `rotationRadians`를 반환한다. 공식 viewer와 생성 프로젝트의
 selection/draft 표시는 이 helper를 사용한다. picking은 회전 사각형 내부를 검사하며
@@ -180,6 +263,30 @@ behavior binding draft는 `props.behaviorRecipes` 참조만 attach/detach하고 
 본문은 수정하지 않는다. target은 instance 또는 ObjectDefinition이며, `null`은 effective binding
 해제를 뜻한다. `clearDraftPatch()`는 draft를 모두 버린다.
 `createScenePlacementPatchStore(...)`는 이 patch를 JSON export용으로 보관하는 export-only store다.
+
+`ScenePlacementViewer`는 문서 인스턴스마다 독립적인 Undo/Redo 이력을 유지한다.
+`historyState(): ScenePlacementHistoryState`는 `undoCount`, `redoCount`, 직렬화 snapshot의 `bytes`,
+진행 중인 `transactionLabel?`을 반환한다. `beginEdit(label)` → 여러 draft 변경 → `commitEdit()`는
+한 건으로 기록하고, `cancelEdit()`는 시작 초안을 복원한다. 중첩 transaction과 빈 label은 거부한다.
+transaction 안의 draft 변경이 실패하면 전체 transaction을 취소한다. host가 취소까지 거절하면
+직전 정상 초안과 열린 transaction을 유지한다. 열린 transaction에서 `undo()`는
+현재 작업만 취소하며 이전 이력을 추가로 되돌리지 않는다. `redo()`는 열린 transaction 중에는 변경하지 않는다.
+`commitEdit()`, `cancelEdit()`, `undo()`, `redo()`는 복원된 `ScenePlacementViewerState`를 반환한다.
+
+선택 `CreateScenePlacementViewerOptions.validateDraft(state)`는 저빈도 host 검증 callback이다.
+최종 문서 계약 검사 뒤 편집을 기록하기 전과 Undo/Redo/취소 snapshot 복원 시 호출한다.
+예외를 던지면 변경을 거절하고, 이력 위치와 정상 초안을 복구한다. 복구도 실패하면 그 오류를 전달하며
+거절된 후보를 새 정상 초안으로 다시 적용하지 않는다. callback은 실패 시 외부 preview를 마지막 정상 상태로
+복구해야 한다. 반환 뒤 native handle이 갱신될 수 있어 편집 결과는 최신 registry를 반영한다.
+callback 안에서 draft 편집 또는 begin/commit/cancel/undo/redo를 다시 호출하면 거절한다.
+이 callback은 runtime frame hook이나 게임 상태 snapshot이 아니다.
+
+transaction 밖의 transform/components/binding/rename/add/remove/ObjectDefinition/revert는 각각 한 건이다.
+선택·hover·viewport 탐색과 patch가 바뀌지 않는 호출은 이력을 만들거나 redo를 지우지 않는다.
+새 변경은 redo 분기를 제거한다. 각 snapshot은 draft와 복원에 필요한 선택 ID를 복사하므로
+삭제 취소 시 안정 ID·component·binding이 함께 돌아온다. camera와 runtime 상태는 복원하지 않는다.
+최대 100건 또는 snapshot 합계 8 MiB까지 오래된 이력을 유지한다. 단일 변경이 8 MiB를 넘으면
+변경은 적용하되 이전 이력도 비워 불연속 복원을 막는다. asset binary·원본 문서·게임 상태의 보관 예산이 아니다.
 
 fragment include의 resolved instance transform은 patch version 2의 `updateResolvedTransform`을 사용한다.
 operation target에는 root fragment, include index, included fragment와 include 내부 상대 instance id가
@@ -301,6 +408,82 @@ Save를 비활성화한다. agent는 이 결과를 보고 필요한 behavior tar
 `allowedAdapterIds` allowlist가 모두 통과한 낮은 빈도 authoring 경로에서만 실행된다. 공식 placement
 viewer host는 dev server 또는 `VITE_FERRUM_PLACEMENT_VIEWER_SAVE=true` opt-in build에서만 host-owned save
 endpoint를 호출하며, 기본 production 실행은 patch export와 disabled save gate만 제공한다.
+공식 app chrome은 이 상태를 `Export Only`로 표시하며 Clean/Changes 초안 상태와 구분한다.
+공유 viewer의 기존 `labels.readOnly` override와 `data-status="readonly"`는 호환성을 위해 유지한다.
+
+공식 app의 웹 endpoint와 Tauri `save_placement_scene_document`는 병합된 `document`와 마지막으로 읽은
+`expectedDocument`를 필수로 받는다. host는 현재 디스크 JSON과 기준 JSON의 의미를 비교하고 다르면 거부한다.
+웹 충돌 응답은 HTTP 409이며 초안·이력·외부 파일을 유지한다. 공백과 object key 순서만 달라도 저장할 수 있다.
+Rust host는 브라우저가 `1.0`을 `1`로 보내는 숫자 정규화도 허용하며, 큰 정수 비교를 일괄 f64 변환하지 않는다.
+같은 host의 저장은 직렬화하고 같은 디렉터리의 임시 파일을 sync한 뒤 기준을 재확인하고 교체한다.
+기존 파일 권한을 유지한다. 독립 외부 writer와 비교/교체 사이의 경쟁까지 원자적으로 잠그는 계약은 아니다.
+`ScenePlacementSaveAdapter` 공용 인터페이스는 유지되며 다른 host는 자체 정합성 정책을 구현한다.
+
+### HD-2D spatial placement patch
+
+`createScenePlacementViewer({ document, viewport })`는 spatial 원본도 보관한다.
+`state().spatial`은 base와 draft를 합친 복사본이다. composition만 전달한 viewer에는 spatial 변경을 적용할 수 없다.
+`updateSpatial(operations)`는 대상 ID·필드를 검사하고 전체 batch의 최종 문서를 검증한 뒤
+기존 history에 한 번 기록한다. 실패 시 열린 gesture 전체를 복원한다.
+
+기존 flat patch는 계속 v2로 export하며 v1/v2를 merge한다. spatial 변경을 포함한 patch만 v3이고
+`spatial: { format: "ferrum2d.scene-spatial.patch", version: 1 | 2 | 3 | 4, operations: [...] }`를 추가한다.
+spatial v1은 기존 대상 갱신, v2는 billboard/model 참조 추가도 허용한다. 갱신만 있는 export는 v1을 유지한다.
+새 참조가 포함된 export만 v2를 사용하며 이전 spatial reader는 이를 거절한다.
+이전 reader는 v3를 거절하므로 spatial 변경을 무시하고 일부만 저장하지 않는다.
+공개 타입은 `SceneSpatialPatch`, `SceneSpatialPatchOperation`이다.
+
+| operation | 허용 changes |
+| --- | --- |
+| updateTerrainSurface | x, y, width, depth, elevation, endElevation, baseElevation, floorId |
+| updateBillboard | elevation, unitsPerPixel, castShadow, receiveShadow |
+| updateModel | elevation, yawDegrees, scale, castShadow, receiveShadow |
+| addBillboard (spatial v2) | elevation, unitsPerPixel, castShadow, receiveShadow. 빈 `{}` 허용 |
+| addModel (spatial v2) | 필수 asset/contentId와 선택 elevation, yawDegrees, scale, castShadow, receiveShadow |
+| setBillboardNormalTexture (spatial v4) | normalTexture: stable project 이름 또는 null(참조 해제). 기존 numeric ID도 제거 |
+
+Add는 같은 ID의 billboard/model 중 어느 참조라도 이미 있으면 거절하며 upsert로 처리하지 않는다.
+spatial v3는 아래 identity/reimport operation을 추가한다. 이전 reader는 v3를 거절한다.
+spatial v4는 normal 이름 교체/해제를 추가하고 v1~v3 operation도 받는다. 이전 reader는 v4를 거절한다.
+`viewer.updateSpatial`은 normal 변경의 Undo/Redo와 v4 sparse export를 지원한다.
+
+| operation (spatial v3) | changes / 경계 |
+| --- | --- |
+| renameReference | target: billboard/model, nextId. 같은 outer renameInstance와 정확히 대응 |
+| removeReference | target: billboard/model. 같은 outer removeInstance와 정확히 대응 |
+| copyReference | target: billboard/model, sourceId. 같은 outer addInstance와 정확히 대응 |
+| replaceModelAsset | asset, contentId. 기존 asset ID와 LOD 구조를 유지하고 일치하는 root/LOD SHA만 교체 |
+
+identity 변경은 normal/alpha/chunk/LOD 등 기존 visual metadata 전체를 보존한다.
+`duplicateInstances(ids, offset?)`는 기본 XY +16/+16으로 같은 fragment에 복제하고 한 번의 검증·Undo를 사용한다.
+복제 원본 identity를 명시적으로 추적하며 metadata가 비슷한 다른 객체를 추정하지 않는다.
+UI 소유 component/binding 외의 custom instance props override는 조용히 생략하지 않고 agent-owned 복제로 거절한다. prefab/variant 기본 props는 같은 reference로 유지한다.
+삭제·rename한 원본 ID는 저장 전까지 예약하며 새 instance에 재사용할 수 없다. 자동 복제 ID는 예약명을 건너뛴다.
+chunk/LOD 구조·attachment·camera/environment의 임의 변경은 placement patch 범위 밖이다.
+`addInstance(fragment, instance, spatial?)`의 선택 세 번째 인자는 `{ kind: "addBillboard", changes: {...} }` 또는
+`{ kind: "addModel", changes: {...} }`다. ID는 새 instance에서 가져온다. composition instance와 spatial 참조를
+하나의 edit에서 만들고 전체 문서/host 검증을 거친 뒤 한 번 기록한다. 실패하면 둘 다 복원한다.
+기존 두 인자 호출은 유지한다. `updateSpatial`로 참조만 추가할 때도 적용 fragment에 해당 instance가 있어야 한다.
+XY는 기존 composition transform, 물리 높이·층은 `props.components.body.heightSpan`,
+spatial elevation은 추가 시각 offset이 소유한다. 모델 pose는 collider/proxy를 자동 변형하지 않는다.
+Terrain 높이 전체 이동은 top/end/base를 명시적으로 함께 변경한다.
+visual-only billboard/model map의 rename/remove/copy는 composition과 함께 원자 처리한다.
+behaviorRecipes/gameplay/navigation/actor/attachment에 agent-owned ID 참조가 있으면 명시적 agent migration을 요구한다.
+imported patch가 spatial envelope를 생략해도 outer identity 변경 보호를 적용한다. 기존 flat recipe migration preview는 유지한다.
+Spatial patch에 `allowedFragments`를 지정하면 전역 spatial 데이터의 fragment 권한을 추정하지 않고 거절한다.
+Merge/save는 composition과 spatial을 복제 문서에 적용하고 전체 문서를 검증한다.
+수정하지 않은 원문 필드는 정규화 기본값으로 덮어쓰지 않는다.
+
+Handoff의 optional `authoringEvidence`는 선택 원본 JSON pointer 경로와 before/after 변경 evidence,
+`changeCount`·`truncated`를 제공한다. 공식 app은 화면에 최대 200건, handoff evidence에는 최대 512건을 담고
+전체 변경은 기존 `draftPatch`에 유지한다. 런타임 진행 상태는 저장/patch에 복제하지 않는다.
+공식 app의 Selected Runtime은 펼친 동안 선택 entity의 FSM state ID·health·timer/action cooldown을
+`gameplayEntityDiagnostics`로 최대 4 Hz 조회한다. global/scene 변수는 32개, action은 16개,
+최근 gameplay event는 64개로 제한한다. timer event도 포함하며 선택·문서·모드·native 적용 문맥이 바뀌면 비운다.
+기록은 owned copy이며 저장/patch에 넣지 않는다. recipe/FSM 본문은 편집하지 않는다.
+표시는 주요 값 요약을 우선하며 변수·event 목록과 Raw JSON은 접어서 제공한다. 요약을 위한 추가 native query는 없다.
+
+`assetFolder.images[].contentRevision`과 `models[].contentRevision`은 host session cache fingerprint이며 모델 SHA-256 contentId나 보안 digest가 아니다.
 
 세부 primitive와 검증 기준은 [Runtime Extensibility](../runtime-extensibility.md)와
 [Data Scene Authoring](../data-scene-authoring.md)을 따른다.

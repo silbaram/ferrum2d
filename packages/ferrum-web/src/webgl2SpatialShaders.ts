@@ -10,7 +10,7 @@ precision highp float;precision highp samplerCube;
 in vec2 v_uv;in vec4 v_color;flat in float v_cutoff;in vec3 v_world;in vec3 v_normal;in vec4 v_tangent;uniform bool u_mesh;
 uniform sampler2D u_emissiveMap;uniform bool u_hasEmissive,u_modelUnlit;uniform vec3 u_emissiveFactor;uniform float u_modelNormalScale;
 uniform highp sampler2D u_texture;uniform sampler2D u_normalMap;uniform bool u_hasNormal,u_receiveShadow;uniform samplerCube u_shadowMap;
-uniform bool u_textured,u_flip_y,u_environment,u_linearInput,u_lighting,u_fog;
+uniform bool u_textured,u_flip_y,u_environment,u_linearInput,u_lighting,u_fog,u_debug;
 uniform vec3 u_ambient,u_eye,u_forward,u_fogColor;
 uniform vec2 u_fogRange;uniform vec4 u_lightPosition[4],u_lightColor[4];
 uniform int u_lightCount,u_shadowIndex,u_shadowFilter;uniform float u_shadowBias;
@@ -21,6 +21,7 @@ vec3 encodeModel(vec3 c){return mix(c*12.92,1.055*pow(max(c,vec3(0.)),vec3(1./2.
 void main(){vec2 uv=vec2(v_uv.x,u_flip_y?1.0-v_uv.y:v_uv.y);
 vec4 texel=u_textured?texture(u_texture,uv):vec4(1.0);vec4 c=texel*v_color;
 if(c.a<v_cutoff)discard;
+if(u_debug){outColor=vec4(u_environment && !u_linearInput?linearize(c.rgb):c.rgb,c.a);return;}
 vec3 albedo=u_mesh?texel.rgb*v_color.rgb:(u_linearInput?c.rgb:linearize(c.rgb)),color=albedo;
 vec3 emission=vec3(0.);
 if(u_mesh && !u_modelUnlit){vec3 e=u_hasEmissive?texture(u_emissiveMap,uv).rgb:vec3(1.);emission=e*u_emissiveFactor;}

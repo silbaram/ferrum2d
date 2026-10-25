@@ -115,7 +115,7 @@ export async function packTexturePngs(config) {
   };
 }
 
-export function decodePng(buffer) {
+export function decodePng(buffer, { maxPixels = Number.MAX_SAFE_INTEGER } = {}) {
   if (!buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
     throw new Error("Invalid PNG signature.");
   }
@@ -131,10 +131,12 @@ export function decodePng(buffer) {
   const idat = [];
 
   while (offset < buffer.length) {
+    if (offset + 12 > buffer.length) throw new Error("Truncated PNG chunk.");
     const length = buffer.readUInt32BE(offset);
     const type = buffer.toString("ascii", offset + 4, offset + 8);
     const dataStart = offset + 8;
     const dataEnd = dataStart + length;
+    if (dataEnd + 4 > buffer.length) throw new Error("Truncated PNG chunk data.");
     const data = buffer.subarray(dataStart, dataEnd);
     if (type === "IHDR") {
       width = data.readUInt32BE(0);
@@ -158,7 +160,9 @@ export function decodePng(buffer) {
     throw new Error("Only 8-bit non-interlaced PNG files are supported.");
   }
   const channels = channelsForColorType(colorType);
-  const inflated = inflateSync(Buffer.concat(idat));
+  if (!width || !height || width * height > maxPixels) throw new Error("PNG pixel limit exceeded.");
+  const inflated = inflateSync(Buffer.concat(idat), { maxOutputLength: (width * channels + 1) * height });
+  if (inflated.length !== (width * channels + 1) * height) throw new Error("PNG scanline length mismatch.");
   const scanlineBytes = width * channels;
   const raw = unfilterPngScanlines(inflated, width, height, channels);
   if (raw.length !== scanlineBytes * height) {
@@ -322,7 +326,8 @@ async function listPngFiles(root) {
   return files.sort((a, b) => a.localeCompare(b));
 }
 
-function packMaxRects(sprites, options) {
+export function packMaxRects(sprites, options) {
+  const maxSize = options.powerOfTwo ? 2 ** Math.floor(Math.log2(options.maxSize)) : options.maxSize;
   const rects = sprites
     .map((sprite) => ({
       sprite,
@@ -337,7 +342,7 @@ function packMaxRects(sprites, options) {
     width = nextPowerOfTwo(width);
     height = nextPowerOfTwo(height);
   }
-  while (width <= options.maxSize && height <= options.maxSize) {
+  while (width <= maxSize && height <= maxSize) {
     const placements = tryPack(rects, width, height, options.padding);
     if (placements) {
       const usedWidth = placements.reduce((max, placement) => Math.max(max, placement.x + placement.width + options.padding), 1);
@@ -350,10 +355,11 @@ function packMaxRects(sprites, options) {
         placements: placements.map((placement) => ({ ...placement })),
       };
     }
-    if (width <= height) {
-      width = options.powerOfTwo ? width * 2 : width + 256;
+    if (width === maxSize && height === maxSize) break;
+    if (width < maxSize && (width <= height || height === maxSize)) {
+      width = Math.min(maxSize, options.powerOfTwo ? width * 2 : width + 256);
     } else {
-      height = options.powerOfTwo ? height * 2 : height + 256;
+      height = Math.min(maxSize, options.powerOfTwo ? height * 2 : height + 256);
     }
   }
   throw new Error(`Texture packing failed within maxSize=${options.maxSize}.`);

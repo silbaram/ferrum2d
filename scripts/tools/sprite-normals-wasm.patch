@@ -1,0 +1,22 @@
+diff --git a/src/wasm.rs b/src/wasm.rs
+--- a/src/wasm.rs
++++ b/src/wasm.rs
+@@ -11,5 +11,8 @@ struct Options {
+     smoothing: Option<f32>,
+     volume: Option<f32>,
++    shape_radius: Option<f32>,
++    shape_softness: Option<f32>,
++    alpha_threshold: Option<f32>,
+     frame_width: Option<u32>,
+     frame_height: Option<u32>,
+     directx: bool,
+@@ -48,6 +51,9 @@ fn process(bytes: &[u8], options: &str) -> Result<NormalMapResult, String> {
+         detail_strength: options.detail.unwrap_or(defaults.detail_strength),
+         detail_scale: options.smoothing.unwrap_or(defaults.detail_scale),
+         shape_strength: options.volume.unwrap_or(defaults.shape_strength),
++        shape_radius: options.shape_radius.unwrap_or(defaults.shape_radius),
++        shape_softness: options.shape_softness.unwrap_or(defaults.shape_softness),
++        alpha_threshold: options.alpha_threshold.unwrap_or(defaults.alpha_threshold),
+         normal_format: if options.directx {
+             NormalFormat::Directx
+         } else {

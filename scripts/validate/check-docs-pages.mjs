@@ -10,6 +10,8 @@ const shouldCheckDistPages = process.argv.includes("--dist-pages");
 const requiredDistPages = [
   "index.html",
   "docs/index.html",
+  "docs/engine/ai-agent-install.html",
+  "docs/engine/ai-feature-guide.html",
   "docs/engine/showcase-hub.html",
   "docs/engine/developer-quickstart.html",
   "docs/engine/user-guide.html",
@@ -21,6 +23,7 @@ const requiredDistPages = [
   "docs/engine/public-api/quality.html",
   "docs/engine/public-api/migration-guide.html",
   "docs/engine/data-scene-authoring.html",
+  "docs/engine/data-scene-spatial.html",
   "docs/examples/topdown-shooter/game-spec.html",
   "docs/development/quality/smoke-check.html",
   "docs/development/operations/npm-release.html",

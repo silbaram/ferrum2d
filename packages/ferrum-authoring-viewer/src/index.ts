@@ -244,7 +244,7 @@ const DEFAULT_APP_CHROME_LABELS: Required<FerrumAuthoringViewerAppChromeLabels> 
   changeSingular: "Change",
   changePlural: "Changes",
   noDocument: "No Document",
-  readOnly: "Read Only",
+  readOnly: "Export Only",
   saveFailed: "Save Failed",
   blocked: "Blocked",
   unsaved: "Unsaved",
@@ -556,6 +556,9 @@ export function createAuthoringViewerAppChrome(
     filePath.title = source;
     saveBadge.textContent = saveState.label;
     saveBadge.dataset.status = saveState.status;
+    saveBadge.title = snapshot?.saveEnabled
+      ? "Save document changes"
+      : "File saving unavailable. Copy Patch or Handoff to keep changes.";
     draftBadge.textContent = authoringViewerDraftLabel(draftCount, labels);
     draftBadge.dataset.status = draftCount === 0 ? "clean" : "dirty";
     selectedStatus.value.textContent = snapshot?.selected ?? "-";

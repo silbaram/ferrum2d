@@ -1,0 +1,1829 @@
+{
+  "format": "ferrum2d.consumer.scene-authoring",
+  "version": 1,
+  "behaviorRecipes": {
+    "entities": {}
+  },
+  "gameplay": {
+    "primaryActor": "village_hero"
+  },
+  "sceneComposition": {
+    "initialFragment": "village",
+    "prefabs": {
+      "object": {
+        "props": {}
+      }
+    },
+    "fragments": {
+      "village": {
+        "instances": [
+          {
+            "id": "village_landscape",
+            "prefab": "object",
+            "x": 0,
+            "y": 0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 640,
+                  "height": 440,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "sunflower_inn",
+            "prefab": "object",
+            "x": -150,
+            "y": 115,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 100,
+                  "height": 78,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 46.0,
+                  "halfHeight": 35.0,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 112
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "provision_shop",
+            "prefab": "object",
+            "x": 95,
+            "y": 110,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 92,
+                  "height": 88,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 42.0,
+                  "halfHeight": 40.0,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 92
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "west_cottage",
+            "prefab": "object",
+            "x": -225,
+            "y": -105,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 80,
+                  "height": 64,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 36.0,
+                  "halfHeight": 28.0,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 84
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "east_cottage",
+            "prefab": "object",
+            "x": 105,
+            "y": -120,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 80,
+                  "height": 64,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 36.0,
+                  "halfHeight": 28.0,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 84
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "clock_tower",
+            "prefab": "object",
+            "x": -35,
+            "y": 165,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 46,
+                  "height": 46,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 19.0,
+                  "halfHeight": 19.0,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 130
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "village_well",
+            "prefab": "object",
+            "x": -20,
+            "y": 25,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 48,
+                  "height": 48,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 20.0,
+                  "halfHeight": 20.0,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 61
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "river_bridge",
+            "prefab": "object",
+            "x": 190,
+            "y": -12,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 60,
+                  "height": 42,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "oak_0",
+            "prefab": "object",
+            "x": -286,
+            "y": 172,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 50,
+                  "height": 45,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "oak_1",
+            "prefab": "object",
+            "x": -267,
+            "y": 70,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 45.0,
+                  "height": 40.5,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "oak_2",
+            "prefab": "object",
+            "x": -300,
+            "y": -25,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 50,
+                  "height": 45,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "oak_3",
+            "prefab": "object",
+            "x": -290,
+            "y": -180,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 57.49999999999999,
+                  "height": 51.74999999999999,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "oak_4",
+            "prefab": "object",
+            "x": -130,
+            "y": -176,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 42.5,
+                  "height": 38.25,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "oak_5",
+            "prefab": "object",
+            "x": 54,
+            "y": 190,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 47.5,
+                  "height": 42.75,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "oak_6",
+            "prefab": "object",
+            "x": 141,
+            "y": 188,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 50,
+                  "height": 45,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "oak_7",
+            "prefab": "object",
+            "x": 277,
+            "y": 168,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 55.00000000000001,
+                  "height": 49.50000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "oak_8",
+            "prefab": "object",
+            "x": 277,
+            "y": 70,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 45.0,
+                  "height": 40.5,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "oak_9",
+            "prefab": "object",
+            "x": 287,
+            "y": -97,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 50,
+                  "height": 45,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "oak_10",
+            "prefab": "object",
+            "x": 267,
+            "y": -184,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 55.00000000000001,
+                  "height": 49.50000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "pine_0",
+            "prefab": "object",
+            "x": -205,
+            "y": 204,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 42.5,
+                  "height": 42.5,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "pine_1",
+            "prefab": "object",
+            "x": -117,
+            "y": 204,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 42.5,
+                  "height": 42.5,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "pine_2",
+            "prefab": "object",
+            "x": 235,
+            "y": 204,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 42.5,
+                  "height": 42.5,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "pine_3",
+            "prefab": "object",
+            "x": 315,
+            "y": 124,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 42.5,
+                  "height": 42.5,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "pine_4",
+            "prefab": "object",
+            "x": 305,
+            "y": -215,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 42.5,
+                  "height": 42.5,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "pine_5",
+            "prefab": "object",
+            "x": -315,
+            "y": -211,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 42.5,
+                  "height": 42.5,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 4,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 24
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "lantern_0",
+            "prefab": "object",
+            "x": -111,
+            "y": -35,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 9.600000000000001,
+                  "height": 9.600000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "lantern_1",
+            "prefab": "object",
+            "x": 37,
+            "y": -35,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 9.600000000000001,
+                  "height": 9.600000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "lantern_2",
+            "prefab": "object",
+            "x": -63,
+            "y": 82,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 9.600000000000001,
+                  "height": 9.600000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "lantern_3",
+            "prefab": "object",
+            "x": 145,
+            "y": 20,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 9.600000000000001,
+                  "height": 9.600000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "lantern_4",
+            "prefab": "object",
+            "x": 241,
+            "y": -40,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 9.600000000000001,
+                  "height": 9.600000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "garden_fence_0",
+            "prefab": "object",
+            "x": -285,
+            "y": 205,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 38.400000000000006,
+                  "height": 4.800000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "garden_fence_1",
+            "prefab": "object",
+            "x": -237,
+            "y": 205,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 38.400000000000006,
+                  "height": 4.800000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "garden_fence_2",
+            "prefab": "object",
+            "x": -189,
+            "y": 205,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 38.400000000000006,
+                  "height": 4.800000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "garden_fence_3",
+            "prefab": "object",
+            "x": 57,
+            "y": 205,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 38.400000000000006,
+                  "height": 4.800000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "garden_fence_4",
+            "prefab": "object",
+            "x": 105,
+            "y": 205,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 38.400000000000006,
+                  "height": 4.800000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "garden_fence_5",
+            "prefab": "object",
+            "x": 153,
+            "y": 205,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 38.400000000000006,
+                  "height": 4.800000000000001,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "flowers_0",
+            "prefab": "object",
+            "x": -215,
+            "y": 66,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 40,
+                  "height": 24,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "flowers_1",
+            "prefab": "object",
+            "x": 125,
+            "y": 58,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 40,
+                  "height": 24,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "flowers_2",
+            "prefab": "object",
+            "x": -235,
+            "y": -147,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 40,
+                  "height": 24,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "flowers_3",
+            "prefab": "object",
+            "x": 75,
+            "y": -159,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 40,
+                  "height": 24,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
+            "id": "merchant_cart",
+            "prefab": "object",
+            "x": 71,
+            "y": 31,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 32.3,
+                  "height": 44.199999999999996,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 12.149999999999999,
+                  "halfHeight": 18.099999999999998,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 27.2
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "village_hero",
+            "prefab": "object",
+            "x": -30,
+            "y": -102,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "village_hero",
+                  "width": 21,
+                  "height": 31.5,
+                  "originX": 0.5,
+                  "originY": 1,
+                  "animationSet": {
+                    "clips": [
+                      {
+                        "id": 0,
+                        "frames": [
+                          {
+                            "u0": 0.0,
+                            "v0": 0.25,
+                            "u1": 0.25,
+                            "v1": 0.5
+                          }
+                        ],
+                        "fps": 1,
+                        "loop": true
+                      },
+                      {
+                        "id": 4,
+                        "frames": [
+                          {
+                            "u0": 0.0,
+                            "v0": 0.25,
+                            "u1": 0.25,
+                            "v1": 0.5
+                          },
+                          {
+                            "u0": 0.25,
+                            "v0": 0.25,
+                            "u1": 0.5,
+                            "v1": 0.5
+                          },
+                          {
+                            "u0": 0.5,
+                            "v0": 0.25,
+                            "u1": 0.75,
+                            "v1": 0.5
+                          },
+                          {
+                            "u0": 0.75,
+                            "v0": 0.25,
+                            "u1": 1.0,
+                            "v1": 0.5
+                          }
+                        ],
+                        "fps": 8,
+                        "loop": true
+                      },
+                      {
+                        "id": 1,
+                        "frames": [
+                          {
+                            "u0": 0.0,
+                            "v0": 0.0,
+                            "u1": 0.25,
+                            "v1": 0.25
+                          }
+                        ],
+                        "fps": 1,
+                        "loop": true
+                      },
+                      {
+                        "id": 5,
+                        "frames": [
+                          {
+                            "u0": 0.0,
+                            "v0": 0.0,
+                            "u1": 0.25,
+                            "v1": 0.25
+                          },
+                          {
+                            "u0": 0.25,
+                            "v0": 0.0,
+                            "u1": 0.5,
+                            "v1": 0.25
+                          },
+                          {
+                            "u0": 0.5,
+                            "v0": 0.0,
+                            "u1": 0.75,
+                            "v1": 0.25
+                          },
+                          {
+                            "u0": 0.75,
+                            "v0": 0.0,
+                            "u1": 1.0,
+                            "v1": 0.25
+                          }
+                        ],
+                        "fps": 8,
+                        "loop": true
+                      },
+                      {
+                        "id": 2,
+                        "frames": [
+                          {
+                            "u0": 0.0,
+                            "v0": 0.5,
+                            "u1": 0.25,
+                            "v1": 0.75
+                          }
+                        ],
+                        "fps": 1,
+                        "loop": true
+                      },
+                      {
+                        "id": 6,
+                        "frames": [
+                          {
+                            "u0": 0.0,
+                            "v0": 0.5,
+                            "u1": 0.25,
+                            "v1": 0.75
+                          },
+                          {
+                            "u0": 0.25,
+                            "v0": 0.5,
+                            "u1": 0.5,
+                            "v1": 0.75
+                          },
+                          {
+                            "u0": 0.5,
+                            "v0": 0.5,
+                            "u1": 0.75,
+                            "v1": 0.75
+                          },
+                          {
+                            "u0": 0.75,
+                            "v0": 0.5,
+                            "u1": 1.0,
+                            "v1": 0.75
+                          }
+                        ],
+                        "fps": 8,
+                        "loop": true
+                      },
+                      {
+                        "id": 3,
+                        "frames": [
+                          {
+                            "u0": 0.0,
+                            "v0": 0.75,
+                            "u1": 0.25,
+                            "v1": 1.0
+                          }
+                        ],
+                        "fps": 1,
+                        "loop": true
+                      },
+                      {
+                        "id": 7,
+                        "frames": [
+                          {
+                            "u0": 0.0,
+                            "v0": 0.75,
+                            "u1": 0.25,
+                            "v1": 1.0
+                          },
+                          {
+                            "u0": 0.25,
+                            "v0": 0.75,
+                            "u1": 0.5,
+                            "v1": 1.0
+                          },
+                          {
+                            "u0": 0.5,
+                            "v0": 0.75,
+                            "u1": 0.75,
+                            "v1": 1.0
+                          },
+                          {
+                            "u0": 0.75,
+                            "v0": 0.75,
+                            "u1": 1.0,
+                            "v1": 1.0
+                          }
+                        ],
+                        "fps": 8,
+                        "loop": true
+                      }
+                    ],
+                    "initialClip": 1
+                  }
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 3,
+                  "isTrigger": false
+                },
+                "layer": "player",
+                "body": {
+                  "type": "kinematic",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 21
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "shopkeeper",
+            "prefab": "object",
+            "x": 94,
+            "y": 46,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "village_merchant",
+                  "width": 21,
+                  "height": 31.5,
+                  "originX": 0.5,
+                  "originY": 1
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 3,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 21
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "village_elder",
+            "prefab": "object",
+            "x": -61,
+            "y": 5,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "village_elder",
+                  "width": 21,
+                  "height": 31.5,
+                  "originX": 0.5,
+                  "originY": 1
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 3,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 21
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "traveler",
+            "prefab": "object",
+            "x": -124,
+            "y": 59,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "sprite",
+                  "asset": "village_merchant",
+                  "width": 21,
+                  "height": 31.5,
+                  "originX": 0.5,
+                  "originY": 1
+                },
+                "collider": {
+                  "type": "aabb",
+                  "halfWidth": 4,
+                  "halfHeight": 3,
+                  "isTrigger": false
+                },
+                "layer": "wall",
+                "body": {
+                  "type": "static",
+                  "heightSpan": {
+                    "floorId": 0,
+                    "elevation": 0,
+                    "height": 21
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "spatial": {
+    "camera": {
+      "projection": "orthographic",
+      "position": {
+        "x": 410,
+        "y": -610,
+        "elevation": 580
+      },
+      "target": {
+        "x": 0,
+        "y": 10,
+        "elevation": 15
+      },
+      "height": 660,
+      "near": 0.1,
+      "far": 2200
+    },
+    "terrain": [
+      {
+        "id": "west_bank",
+        "x": -320,
+        "y": -220,
+        "width": 490,
+        "depth": 440,
+        "elevation": 0,
+        "render": false
+      },
+      {
+        "id": "east_bank",
+        "x": 210,
+        "y": -220,
+        "width": 110,
+        "depth": 440,
+        "elevation": 0,
+        "render": false
+      },
+      {
+        "id": "bridge_deck",
+        "x": 170,
+        "y": -31,
+        "width": 40,
+        "depth": 38,
+        "elevation": 2,
+        "kind": "bridge",
+        "baseElevation": 0,
+        "render": false
+      }
+    ],
+    "models": {
+      "village_landscape": {
+        "asset": "village_landscape",
+        "contentId": "e2f4e6f483b6942d9fe75d8490adee2e179dae78964c63bad534b40633607736",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "sunflower_inn": {
+        "asset": "village_inn",
+        "contentId": "500b5ed0719514c887a190d2dc95cd0612b23ae7ec3e3e15d0ab644ca9fe2ef5",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "provision_shop": {
+        "asset": "village_shop",
+        "contentId": "125745a43cdd3df08bb4d0c0c4bc3ceed7d827e1d113b780008279b39fba32a0",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "west_cottage": {
+        "asset": "village_cottage",
+        "contentId": "59ab6aa828c8fbbd6c74f2db58fe11624ea0ab4bf2eac962c5e5d6165757f1a1",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "east_cottage": {
+        "asset": "village_cottage",
+        "contentId": "59ab6aa828c8fbbd6c74f2db58fe11624ea0ab4bf2eac962c5e5d6165757f1a1",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "clock_tower": {
+        "asset": "village_tower",
+        "contentId": "dea8f12653e0e22e7832ee2b59f784c9d4d22393d0753bdd0fa3759a90c18748",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "village_well": {
+        "asset": "village_well",
+        "contentId": "d616b394174b7b63e9e665aed5e29d0e4041083216e7d35fe0430ac141ea6618",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "river_bridge": {
+        "asset": "village_bridge",
+        "contentId": "dfb92ec8dabedf23a9c1a94cf161349a7e9117fe246e23eb1057d94bbb02e505",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "oak_0": {
+        "asset": "village_tree",
+        "contentId": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "oak_1": {
+        "asset": "village_tree",
+        "contentId": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+        "scale": 0.9,
+        "yawDegrees": 0
+      },
+      "oak_2": {
+        "asset": "village_tree",
+        "contentId": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "oak_3": {
+        "asset": "village_tree",
+        "contentId": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+        "scale": 1.15,
+        "yawDegrees": 0
+      },
+      "oak_4": {
+        "asset": "village_tree",
+        "contentId": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+        "scale": 0.85,
+        "yawDegrees": 0
+      },
+      "oak_5": {
+        "asset": "village_tree",
+        "contentId": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+        "scale": 0.95,
+        "yawDegrees": 0
+      },
+      "oak_6": {
+        "asset": "village_tree",
+        "contentId": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "oak_7": {
+        "asset": "village_tree",
+        "contentId": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+        "scale": 1.1,
+        "yawDegrees": 0
+      },
+      "oak_8": {
+        "asset": "village_tree",
+        "contentId": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+        "scale": 0.9,
+        "yawDegrees": 0
+      },
+      "oak_9": {
+        "asset": "village_tree",
+        "contentId": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "oak_10": {
+        "asset": "village_tree",
+        "contentId": "3d1d98b4125cb48847e8f8fc09468b486c9bba2ab76f8e50b7d3b8ec04504df3",
+        "scale": 1.1,
+        "yawDegrees": 0
+      },
+      "pine_0": {
+        "asset": "village_pine",
+        "contentId": "1021f5cd975d0444015f5678549ed47196d25350284158ee0c6058423d253da8",
+        "scale": 0.85,
+        "yawDegrees": 0
+      },
+      "pine_1": {
+        "asset": "village_pine",
+        "contentId": "1021f5cd975d0444015f5678549ed47196d25350284158ee0c6058423d253da8",
+        "scale": 0.85,
+        "yawDegrees": 0
+      },
+      "pine_2": {
+        "asset": "village_pine",
+        "contentId": "1021f5cd975d0444015f5678549ed47196d25350284158ee0c6058423d253da8",
+        "scale": 0.85,
+        "yawDegrees": 0
+      },
+      "pine_3": {
+        "asset": "village_pine",
+        "contentId": "1021f5cd975d0444015f5678549ed47196d25350284158ee0c6058423d253da8",
+        "scale": 0.85,
+        "yawDegrees": 0
+      },
+      "pine_4": {
+        "asset": "village_pine",
+        "contentId": "1021f5cd975d0444015f5678549ed47196d25350284158ee0c6058423d253da8",
+        "scale": 0.85,
+        "yawDegrees": 0
+      },
+      "pine_5": {
+        "asset": "village_pine",
+        "contentId": "1021f5cd975d0444015f5678549ed47196d25350284158ee0c6058423d253da8",
+        "scale": 0.85,
+        "yawDegrees": 0
+      },
+      "lantern_0": {
+        "asset": "village_lamp",
+        "contentId": "54a468d3b3d539b8bbe39ff1ce31c3cbe877b48d781181cb5b2dc0d0a5595a01",
+        "scale": 0.8,
+        "yawDegrees": 0
+      },
+      "lantern_1": {
+        "asset": "village_lamp",
+        "contentId": "54a468d3b3d539b8bbe39ff1ce31c3cbe877b48d781181cb5b2dc0d0a5595a01",
+        "scale": 0.8,
+        "yawDegrees": 0
+      },
+      "lantern_2": {
+        "asset": "village_lamp",
+        "contentId": "54a468d3b3d539b8bbe39ff1ce31c3cbe877b48d781181cb5b2dc0d0a5595a01",
+        "scale": 0.8,
+        "yawDegrees": 0
+      },
+      "lantern_3": {
+        "asset": "village_lamp",
+        "contentId": "54a468d3b3d539b8bbe39ff1ce31c3cbe877b48d781181cb5b2dc0d0a5595a01",
+        "scale": 0.8,
+        "yawDegrees": 0
+      },
+      "lantern_4": {
+        "asset": "village_lamp",
+        "contentId": "54a468d3b3d539b8bbe39ff1ce31c3cbe877b48d781181cb5b2dc0d0a5595a01",
+        "scale": 0.8,
+        "yawDegrees": 0
+      },
+      "garden_fence_0": {
+        "asset": "village_fence",
+        "contentId": "200b505e11b6e00ae3281b4e888fe02528455e1f5fb39d7ddc98d6c0befd7e67",
+        "scale": 0.8,
+        "yawDegrees": 0
+      },
+      "garden_fence_1": {
+        "asset": "village_fence",
+        "contentId": "200b505e11b6e00ae3281b4e888fe02528455e1f5fb39d7ddc98d6c0befd7e67",
+        "scale": 0.8,
+        "yawDegrees": 0
+      },
+      "garden_fence_2": {
+        "asset": "village_fence",
+        "contentId": "200b505e11b6e00ae3281b4e888fe02528455e1f5fb39d7ddc98d6c0befd7e67",
+        "scale": 0.8,
+        "yawDegrees": 0
+      },
+      "garden_fence_3": {
+        "asset": "village_fence",
+        "contentId": "200b505e11b6e00ae3281b4e888fe02528455e1f5fb39d7ddc98d6c0befd7e67",
+        "scale": 0.8,
+        "yawDegrees": 0
+      },
+      "garden_fence_4": {
+        "asset": "village_fence",
+        "contentId": "200b505e11b6e00ae3281b4e888fe02528455e1f5fb39d7ddc98d6c0befd7e67",
+        "scale": 0.8,
+        "yawDegrees": 0
+      },
+      "garden_fence_5": {
+        "asset": "village_fence",
+        "contentId": "200b505e11b6e00ae3281b4e888fe02528455e1f5fb39d7ddc98d6c0befd7e67",
+        "scale": 0.8,
+        "yawDegrees": 0
+      },
+      "flowers_0": {
+        "asset": "village_flowers",
+        "contentId": "46a3d360f2891b244be135dddf926a59e5efac8a2bfaae53e5e3ed9a160351ac",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "flowers_1": {
+        "asset": "village_flowers",
+        "contentId": "46a3d360f2891b244be135dddf926a59e5efac8a2bfaae53e5e3ed9a160351ac",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "flowers_2": {
+        "asset": "village_flowers",
+        "contentId": "46a3d360f2891b244be135dddf926a59e5efac8a2bfaae53e5e3ed9a160351ac",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "flowers_3": {
+        "asset": "village_flowers",
+        "contentId": "46a3d360f2891b244be135dddf926a59e5efac8a2bfaae53e5e3ed9a160351ac",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "merchant_cart": {
+        "asset": "village_cart",
+        "contentId": "90838fa4174117e9179c6cca832ea66a4a76bf54f19e8c1d49a0f51ab7bff46b",
+        "scale": 0.85,
+        "yawDegrees": 0
+      }
+    },
+    "billboards": {
+      "village_hero": {
+        "alphaCutoff": 0.5,
+        "castShadow": true
+      },
+      "shopkeeper": {
+        "alphaCutoff": 0.5,
+        "castShadow": true
+      },
+      "village_elder": {
+        "alphaCutoff": 0.5,
+        "castShadow": true
+      },
+      "traveler": {
+        "alphaCutoff": 0.5,
+        "castShadow": true
+      }
+    },
+    "actor": {
+      "instanceId": "village_hero",
+      "speed": 72,
+      "maxStepHeight": 4,
+      "maxDropHeight": 4
+    },
+    "environment": {
+      "pixelArt": {
+        "width": 384,
+        "height": 256,
+        "snapCamera": true
+      },
+      "lighting": {
+        "ambient": [
+          0.62,
+          0.64,
+          0.64
+        ],
+        "lights": [],
+        "directional": {
+          "direction": {
+            "x": -1,
+            "y": -1,
+            "elevation": 2.4
+          },
+          "color": [
+            1,
+            0.91,
+            0.77
+          ],
+          "intensity": 0.72,
+          "shadows": {
+            "resolution": 512,
+            "extent": 430,
+            "distance": 1400,
+            "bias": 0.07
+          }
+        },
+        "shadowFilter": "pcf3"
+      },
+      "colorGrading": {
+        "exposure": 0.1,
+        "contrast": 1.04,
+        "saturation": 0.94,
+        "tint": [
+          1,
+          0.98,
+          0.93
+        ],
+        "toneMapping": "none"
+      }
+    }
+  }
+}

@@ -31,6 +31,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            pkg-config \
             libwebkit2gtk-4.1-dev \
             libxdo-dev \
             libssl-dev \
@@ -48,6 +49,9 @@ jobs:
 
       - name: Lint placement viewer desktop Rust
         run: cargo clippy --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Test placement viewer desktop save contracts
+        run: cargo test --manifest-path apps/placement-viewer-desktop/src-tauri/Cargo.toml
 
       - name: Add wasm32 target
         run: rustup target add wasm32-unknown-unknown
@@ -81,6 +85,12 @@ jobs:
 
       - name: Public API surface guard
         run: pnpm validate:public-api-surface
+
+      - name: Placement document save contracts
+        run: pnpm smoke:placement-document-store
+
+      - name: Sprite normal tooling and animation contracts
+        run: pnpm test:sprite-normals-tool
 
       - name: Rust tests
         run: cargo test --manifest-path crates/ferrum-core/Cargo.toml
@@ -121,6 +131,19 @@ jobs:
 
       - name: Build TypeScript packages
         run: pnpm build
+
+      - name: Placement workspace browser smoke
+        run: node tests/smoke/browser-render-smoke.mjs --mode=placement-viewer apps/placement-viewer/dist
+
+      - name: HD-2D authoring workspace browser smoke
+        run: node tests/smoke/browser-render-smoke.mjs --mode=placement-spatial-workspace apps/placement-viewer/dist
+
+      - name: Blender HD-2D village browser smoke
+        # Includes camera pitch, working-plane placement, grid and viewport coverage at DPR 1/2.
+        run: node tests/smoke/placement-village-smoke.mjs
+
+      - name: Placement camera, grid geometry and locale contracts
+        run: pnpm test:placement-camera && pnpm test:placement-grid && pnpm test:placement-locale
 
       - name: Packed input context browser smoke
         run: pnpm smoke:input-context

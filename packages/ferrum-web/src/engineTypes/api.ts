@@ -434,6 +434,8 @@ export interface FerrumGameplayAuthoringApi {
     options?: BehaviorStateMachineRuntimeInstallOptions,
   ): BehaviorStateMachineRuntimeInstallResult;
   gameplayBehaviorState(entity: GameplayEntityHandle): number;
+  /** Read-only, bounded selected entity query. Missing/stale handles return undefined. */
+  gameplayEntityDiagnostics(entity: GameplayEntityHandle): {stateId?:number;health?:number;timer?:{id:number;remainingSeconds:number;fired:boolean};actions:readonly {id:number;remainingSeconds:number}[]} | undefined;
   createBehaviorStateMachineCurrentStateCommandPlan(
     document: BehaviorStateMachineDocumentSpec | ResolvedBehaviorStateMachineDocument,
     recipes: BehaviorRecipeDocumentSpec | ResolvedBehaviorRecipeDocument,

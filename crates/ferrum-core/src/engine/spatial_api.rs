@@ -633,6 +633,36 @@ impl Engine {
         }
         accepted
     }
+    /// Cold bounded authoring visibility. Physics/support geometry and save state stay intact.
+    pub fn set_spatial_preview_filter(&mut self, entity_keys: &[u32], surface_ids: &[u32]) -> bool {
+        if self.scene_mode != SceneMode::Data
+            || self.spatial_scene.camera.is_none()
+            || !entity_keys.len().is_multiple_of(2)
+            || entity_keys.len() > 32768
+            || surface_ids.len() > 256
+            || entity_keys
+                .chunks_exact(2)
+                .any(|key| self.entity_from_handle(key[0], key[1]).is_none())
+            || surface_ids.iter().any(|id| {
+                !self
+                    .spatial_scene
+                    .surfaces
+                    .iter()
+                    .any(|surface| surface.id == *id)
+            })
+        {
+            return false;
+        }
+        let entities = entity_keys
+            .chunks_exact(2)
+            .map(|key| (key[0], key[1]))
+            .collect();
+        let surfaces = surface_ids.iter().copied().collect();
+        self.spatial_scene.preview_hidden_entities = entities;
+        self.spatial_scene.preview_hidden_surfaces = surfaces;
+        true
+    }
+
     pub fn pick_spatial_surface(
         &self,
         x: f32,
