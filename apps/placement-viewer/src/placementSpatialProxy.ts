@@ -78,7 +78,7 @@ export function createPlacementSpatialProxy(options: {
   showLabel.append(show, uiText(" Show Proxy Overlay"));
   show.addEventListener("change", () => options.debug(show.checked));
   element.append(summary, showLabel, shape, form, apply, remove, hint);
-  let selected = "";
+  let fieldSignature: string | undefined;
   function commit(clear: boolean) {
     try {
       options.finish();
@@ -99,13 +99,15 @@ export function createPlacementSpatialProxy(options: {
         [...fields].map(([name, input]) => [name, input.valueAsNumber]),
       );
       if (
-        Object.values(values).some((value) => !Number.isFinite(value)) ||
-        values.width <= 0 ||
-        values.depth <= 0 ||
-        values.height <= 0 ||
-        !Number.isInteger(values.floorId) ||
-        values.floorId < 0 ||
-        values.floorId > 0xffffffff
+        !clear && (
+          Object.values(values).some((value) => !Number.isFinite(value)) ||
+          values.width <= 0 ||
+          values.depth <= 0 ||
+          values.height <= 0 ||
+          !Number.isInteger(values.floorId) ||
+          values.floorId < 0 ||
+          values.floorId > 0xffffffff
+        )
       )
         throw new Error(
           "Proxy dimensions must be positive; floor must be uint32",
@@ -184,30 +186,31 @@ export function createPlacementSpatialProxy(options: {
       for (const input of fields.values()) input.disabled = disabled;
       shape.disabled = apply.disabled = disabled;
       remove.disabled = disabled || !instance?.body;
-      if (!instance || selected === instance.instanceId) return;
-      selected = instance.instanceId;
-      const collider = instance.collider;
-      if (collider?.type === "aabb" || collider?.type === "orientedBox") {
-        shape.value = collider.type;
-        fields.get("width")!.value = String(collider.halfWidth * 2);
-        fields.get("depth")!.value = String(collider.halfHeight * 2);
-        fields.get("offsetX")!.value = String(collider.offsetX);
-        fields.get("offsetY")!.value = String(collider.offsetY);
-        fields.get("yaw")!.value = String(
-          collider.type === "orientedBox"
-            ? (collider.rotationRadians * 180) / Math.PI
-            : 0,
-        );
+      if (!instance || !model) {
+        fieldSignature = undefined;
+        return;
       }
-      fields.get("elevation")!.value = String(
-        instance.body?.heightSpan?.elevation ?? model?.elevation ?? 0,
-      );
-      fields.get("floorId")!.value = String(
-        instance.body?.heightSpan?.floorId ?? 0,
-      );
-      fields.get("height")!.value = String(
-        instance.body?.heightSpan?.height ?? 16,
-      );
+      const collider = instance.collider;
+      const box = collider?.type === "aabb" || collider?.type === "orientedBox" ? collider : undefined;
+      const shapeValue = box?.type ?? "aabb";
+      const values = {
+        width: box ? box.halfWidth * 2 : 16,
+        depth: box ? box.halfHeight * 2 : 16,
+        offsetX: box?.offsetX ?? 0,
+        offsetY: box?.offsetY ?? 0,
+        yaw: box?.type === "orientedBox" ? (box.rotationRadians * 180) / Math.PI : 0,
+        elevation: instance.body?.heightSpan?.elevation ?? model.elevation ?? 0,
+        floorId: instance.body?.heightSpan?.floorId ?? 0,
+        height: instance.body?.heightSpan?.height ?? 16,
+      };
+      // Refresh on authoritative component/history changes, while retaining
+      // unapplied inputs through unrelated selection/lock-state notifications.
+      const signature = JSON.stringify([instance.instanceId, collider?.type, !!instance.body, values]);
+      if (signature === fieldSignature) return;
+      fieldSignature = signature;
+      shape.value = shapeValue;
+      for (const [name, value] of Object.entries(values))
+        fields.get(name)!.value = String(value);
     },
   };
 }

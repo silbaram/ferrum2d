@@ -232,6 +232,12 @@ app의 `placementSelection.ts`는 modifier/box 선택·보조 outline·선택 �
 `placementSpatialWorkspace.ts`는 실제 spatial runtime preview와 편집 camera·선택 투영·XY/높이 입력을 연결한다.
 HD-2D의 Select/Pan·H/V와 Space 임시 이동은 기존 camera gesture 경로를 사용한다. 배치 도구를 선택하면 Select로 복귀한다.
 `placementViewportChrome.ts`는 공식 app 전용 stroke icon·도구 그룹·버튼 focus 이동을 제공한다.
+`placementControlMenu.ts`는 카메라·화면 구성·조작 안내의 명칭이 있는 disclosure를 제공한다.
+열림 상태와 focus, 창 내부 배치만 소유하며 native 입력/실행 상태는 기존 경로를 사용한다.
+메뉴의 바깥 클릭·focus·Escape·resize를 처리하고 pagehide에서 document/window listener를 해제한다.
+기준 버튼의 ancestor scroll로 위치가 변하면 메뉴를 닫고, 메뉴 본문 스크롤이나 열기 전 큐에 들어간 scroll은 무시한다.
+공간 입력의 window capture handler는 열린 메뉴 내부 Escape를 넘겨 메뉴 닫기가 배치·선택 후보 취소보다 먼저 처리되게 한다.
+desktop 패널 토글은 화면 구성 메뉴에, compact 패널 토글은 기존 탭 행에 같은 DOM control을 배치한다.
 `placementViewportToolbar.ts`는 공통 보기 disclosure와 배치/탐색 안내를 소유한다. native gesture의 UI 상태 이벤트로
 Space 임시 이동/복귀와 pressed 상태를 갱신하며 게임 상태나 카메라 좌표를 복제하지 않는다.
 격자 표시·공유 간격과 공간 overlay/snap은 보기 disclosure에 연결하고 층 선택은 툴바에 유지한다.
@@ -239,7 +245,7 @@ Escape는 disclosure 안에서만 소비하고 바깥 pointer/focus는 focus를 
 summary의 Enter/Space 활성화는 app에서 처리하여 전역 runtime 입력과 충돌하지 않게 한다.
 휠과 버튼은 동일한 orthographic height/perspective distance 제한을 사용하며 객체 gesture 동안 확대를 차단한다.
 `placementSpatialCamera.ts`는 target 상대 벡터의 pitch를 계산하고 1~89° 범위로 회전한다.
-상하 버튼은 10°씩, View range input은 1°씩 조절한다. 탐색 상태의 target·eye 거리·yaw·orthographic height/perspective FOV와 clip 범위를 유지한다.
+상하 버튼은 10°씩, Camera 메뉴의 range input은 1°씩 조절한다. 탐색 상태의 target·eye 거리·yaw·orthographic height/perspective FOV와 clip 범위를 유지한다.
 직교 편집의 native camera는 별도 `spatialEditorRenderCamera`로 파생한다. 현재 height·pitch·작업 높이에서
 화면 상하 끝의 평면 깊이를 구하고 필요할 때 eye를 바라보는 축의 뒤로 옮긴 뒤 far를 늘린다.
 직교의 screen X/Y와 배율은 그대로이며 탐색 상태에는 이 offset을 누적하지 않는다. resize와 작업 평면 높이 변경에도 다시 계산한다.
@@ -264,6 +270,9 @@ visual map migration은 composition operation과 쌍으로 검증한다. envelop
 복제 원본은 metadata 추정 대신 draft snapshot에 explicit identity로 보관하고, 원본 ID는 저장 전까지 예약한다.
 `addInstance`의 선택 spatial addition은 composition과 billboard/model 참조를 같은 edit/host 검증 경계에서 만든다.
 `placementSpatialPalette.ts`는 asset/frame 선택·미리보기·click/drop과 cold instance 생성을 담당한다.
+provider 갱신 시 선택한 sprite의 URL·크기·프레임 snapshot을 비교해 미리보기와 옵션을 갱신하고 이전 pending/drag를 취소한다.
+관련 없는 에셋만 바뀐 경우 도구를 유지하며, 선택한 frame ID가 새 목록에도 있으면 보존한다. 변경 없는 provider에서는 같은 snapshot을 재직렬화하지 않는다.
+속성 섹션의 모드별 가시성은 번역된 제목 대신 canonical `data-section`으로 결정한다.
 기본 support identity는 기존 native terrain picker에서 가져오며 snap 뒤 높이는 해당 authored surface의 경사를 반영한다.
 명시적 작업 평면 모드에서는 viewport ray/plane 교차점에 동일 snap을 적용한다. visual-only 모델의 ghost에는 물리 층 대신 Visual Only를 표시한다.
 미리보기는 DOM UI에만 있고 native entity나 문서 이력을 만들지 않는다. 모드·탭 전환과 Escape는 pending 배치와 drag token을 정리한다.

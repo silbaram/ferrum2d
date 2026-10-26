@@ -1,6 +1,6 @@
+import { clickPlacementControl, showPlacementInspector, showPlacementViewOptions, showPlacementCameraOptions } from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { showPlacementInspector, showPlacementViewOptions } from "./placement-panel-navigation.mjs";
 
 /** Native projection plus actual top/bottom framebuffer pixels catch a shrinking grid band. */
 export async function smokeGridViewport(parent, dpr = 1) {
@@ -15,13 +15,13 @@ export async function smokeGridViewport(parent, dpr = 1) {
     patch:window.ferrumPlacementViewerExportPatch(),history:window.ferrumPlacementViewerHistory}));
   const camera=()=>page.evaluate(()=>window.ferrumPlacementSpatialCamera);
   async function angle(value) {
-    await showPlacementViewOptions(page);
+    await showPlacementCameraOptions(page);
     const input=page.locator("[data-placement-camera-pitch]");
     await input.focus();await input.press("Home");
     for(let i=1;i<value;i++)await input.press("ArrowRight");
     await page.keyboard.press("Escape");await paint();
   }
-  async function check(label,pixels=false,entities=45) {
+  async function check(label,pixels=false,entities=46) {
     await paint();
     const actual=await page.evaluate(()=>{
       const c=window.ferrumPlacementSpatialCamera, r=document.querySelector("canvas.demo-canvas").getBoundingClientRect(),
@@ -82,11 +82,11 @@ export async function smokeGridViewport(parent, dpr = 1) {
   }
   try {
     await page.goto(parent.url(),{waitUntil:"networkidle"});
-    await wait(()=>window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws===41);
+    await wait(()=>window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws===42);
     await page.locator("[data-placement-language]").selectOption("en");
     for(const dock of ["scene","inspector","runtime"]) {
       const toggle=page.locator(`[data-placement-dock-toggle=${dock}]`);
-      if(await toggle.getAttribute("aria-pressed")==="true")await toggle.click();
+      if(await toggle.getAttribute("aria-pressed")==="true")await clickPlacementControl(page, toggle);
     }
     await page.evaluate(()=>{
       const r=window.ferrumRuntime.renderer,original=r.renderCommands;
@@ -100,13 +100,13 @@ export async function smokeGridViewport(parent, dpr = 1) {
     const baseline=await snapshot(),base=await page.evaluate(()=>window.ferrumPlacementSpatialExportDocument()),gameBefore=await gameCamera();
     await angle(1);await check("low-angle",true);
     await angle(7);
-    for(let i=0;i<4;i++)await page.locator("[data-placement-spatial-camera=out]").click();
+    for(let i=0;i<4;i++)await clickPlacementControl(page, "[data-placement-spatial-camera=out]");
     await check("zoom-out",true);
     await page.screenshot({path:`${artifact}/zoom-out-dpr${dpr}.png`,fullPage:true});
     const r=await page.locator("canvas.demo-canvas").boundingBox();
     await page.mouse.move(r.x+r.width/2,r.y+r.height/2);await page.mouse.down({button:"middle"});
     await page.mouse.move(r.x+r.width/2+24,r.y+r.height/2+12,{steps:3});await page.mouse.up({button:"middle"});
-    await page.locator("[data-placement-spatial-camera=left]").click();await check("pan-orbit");
+    await clickPlacementControl(page, "[data-placement-spatial-camera=left]");await check("pan-orbit");
     await page.setViewportSize({width:1064,height:940});await check("resize",true);
     await showPlacementViewOptions(page);
     await page.locator('[data-placement-working-plane="elevation"]').fill("24");
@@ -117,7 +117,7 @@ export async function smokeGridViewport(parent, dpr = 1) {
     assert.deepEqual(await gameCamera(),gameBefore,"Editor fitting changed the authored game camera");
     assert.deepEqual(await camera(),saved,"Stop lost the navigation camera");
     assert.equal(await snapshot(),baseline,"Camera fitting changed JSON/patch/history");
-    await page.locator("[data-placement-spatial-camera=reset]").click();
+    await clickPlacementControl(page, "[data-placement-spatial-camera=reset]");
     assert.deepEqual(await camera(),base.spatial.camera);
     // Truly empty documents have no terrain, props or actor to hide a missing grid.
     const empty=structuredClone(base);empty.spatial.terrain=[];empty.spatial.models={};empty.spatial.billboards={};
@@ -128,7 +128,7 @@ export async function smokeGridViewport(parent, dpr = 1) {
     await page.locator("[data-placement-document-file]").setInputFiles({name:"empty-grid-viewport.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(empty))});
     await wait(()=>window.ferrumPlacementViewerRuntimeFrame.entityCount===0 && window.ferrumPlacementSpatialCamera?.height===1800);
     const emptyBefore=await snapshot();await check("empty-plane",true,0);
-    for(let i=0;i<4;i++)await page.locator("[data-placement-spatial-camera=out]").click();
+    for(let i=0;i<4;i++)await clickPlacementControl(page, "[data-placement-spatial-camera=out]");
     await check("empty-zoom-out",true,0);
     assert.equal(await snapshot(),emptyBefore);
     await page.screenshot({path:`${artifact}/empty-dpr${dpr}.png`,fullPage:true});
@@ -152,7 +152,7 @@ export async function smokeGridViewport(parent, dpr = 1) {
     assert.deepEqual(errors,[]);
     await writeFile(`${artifact}/dpr${dpr}.json`,JSON.stringify({ok:true,dpr,results,ghost,
       checks:["native edge projection","top/bottom grid framebuffer pixels","zoom/pitch/pan/orbit/resize/raised plane",
-        "empty scene and viewport-edge placement ghost","45/0 native entities and bounded draws/triangles","game camera unchanged","Stop/Reset and JSON/history preservation"]},null,2)+"\n");
+        "empty scene and viewport-edge placement ghost","46/0 native entities and bounded draws/triangles","game camera unchanged","Stop/Reset and JSON/history preservation"]},null,2)+"\n");
   } catch(error) {
     await page.screenshot({path:`${artifact}/failure-dpr${dpr}.png`,fullPage:true});throw error;
   } finally {await page.close();}

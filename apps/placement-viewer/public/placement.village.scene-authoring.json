@@ -252,6 +252,27 @@
             }
           },
           {
+            "id": "raised_garden",
+            "prefab": "object",
+            "x": -130.0,
+            "y": -186.0,
+            "props": {
+              "components": {
+                "visual": {
+                  "kind": "primitive",
+                  "shape": "rect",
+                  "width": 164,
+                  "height": 64,
+                  "color": "#9b8b6b"
+                },
+                "collider": {
+                  "type": "none"
+                },
+                "layer": "wall"
+              }
+            }
+          },
+          {
             "id": "oak_0",
             "prefab": "object",
             "x": -286,
@@ -404,7 +425,7 @@
                   "type": "static",
                   "heightSpan": {
                     "floorId": 0,
-                    "elevation": 0,
+                    "elevation": 24,
                     "height": 24
                   }
                 }
@@ -1480,9 +1501,54 @@
       {
         "id": "west_bank",
         "x": -320,
-        "y": -220,
+        "y": -154,
         "width": 490,
-        "depth": 440,
+        "depth": 374,
+        "elevation": 0,
+        "render": false
+      },
+      {
+        "id": "south_west_bank",
+        "x": -320,
+        "y": -220,
+        "width": 140,
+        "depth": 66,
+        "elevation": 0,
+        "render": false
+      },
+      {
+        "id": "south_east_bank",
+        "x": -16,
+        "y": -220,
+        "width": 186,
+        "depth": 66,
+        "elevation": 0,
+        "render": false
+      },
+      {
+        "id": "south_edge_bank",
+        "x": -180,
+        "y": -220,
+        "width": 164,
+        "depth": 2,
+        "elevation": 0,
+        "render": false
+      },
+      {
+        "id": "garden_north_edge",
+        "x": -80,
+        "y": -162,
+        "width": 64,
+        "depth": 8,
+        "elevation": 0,
+        "render": false
+      },
+      {
+        "id": "garden_south_edge",
+        "x": -80,
+        "y": -218,
+        "width": 64,
+        "depth": 8,
         "elevation": 0,
         "render": false
       },
@@ -1503,6 +1569,29 @@
         "depth": 38,
         "elevation": 2,
         "kind": "bridge",
+        "baseElevation": 0,
+        "render": false
+      },
+      {
+        "id": "south_garden",
+        "x": -180,
+        "y": -218,
+        "width": 100,
+        "depth": 64,
+        "elevation": 24,
+        "baseElevation": 0,
+        "render": false
+      },
+      {
+        "id": "garden_ramp",
+        "x": -80,
+        "y": -210,
+        "width": 64,
+        "depth": 48,
+        "elevation": 24,
+        "endElevation": 0,
+        "rampAxis": "x",
+        "kind": "ramp",
         "baseElevation": 0,
         "render": false
       }
@@ -1553,6 +1642,12 @@
       "river_bridge": {
         "asset": "village_bridge",
         "contentId": "dfb92ec8dabedf23a9c1a94cf161349a7e9117fe246e23eb1057d94bbb02e505",
+        "scale": 1,
+        "yawDegrees": 0
+      },
+      "raised_garden": {
+        "asset": "village_garden",
+        "contentId": "18fd69c00ac3b9c828ea039cc75bd67fb08edbea8c5ae52a58b43d5225336f4e",
         "scale": 1,
         "yawDegrees": 0
       },

@@ -123,6 +123,15 @@
       "depth": 440,
       "height": 2,
       "triangles": 1032
+    },
+    "village_garden": {
+      "file": "garden.glb",
+      "sha256": "18fd69c00ac3b9c828ea039cc75bd67fb08edbea8c5ae52a58b43d5225336f4e",
+      "bytes": 9368,
+      "width": 164,
+      "depth": 64,
+      "height": 24,
+      "triangles": 32
     }
   },
   "textures": {

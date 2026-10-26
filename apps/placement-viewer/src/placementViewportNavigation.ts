@@ -1,5 +1,6 @@
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
 import { decorateViewportAction, viewportGroup, type ViewportIcon } from "./placementViewportChrome";
+import { createPlacementControlMenu } from "./placementControlMenu";
 import { scenePlacementVisualGeometry } from "@ferrum2d/ferrum-web/authoring";
 import type {
   ScenePlacementPoint,
@@ -50,7 +51,9 @@ export function installPlacementViewportNavigation(options: {
   const toolsGroup = viewportGroup("Selection tools"),
     cameraGroup = viewportGroup("View navigation"),
     frameGroup = viewportGroup("Frame view");
-  controls.append(toolsGroup, cameraGroup, frameGroup);
+  const cameraMenu = createPlacementControlMenu("camera-2d", "Camera", "camera");
+  cameraMenu.panel.append(cameraGroup);
+  controls.append(toolsGroup, cameraMenu.element, frameGroup);
   const icons: Record<string, ViewportIcon> = {
     select: "select", pan: "pan", "zoom-out": "minus", "zoom-in": "plus",
     "frame-selection": "frame", "fit-scene": "fit", "reset-view": "reset",
@@ -78,7 +81,7 @@ export function installPlacementViewportNavigation(options: {
     setUiText(element, label);
     if (icons[action]) decorateViewportAction(element, icons[action], label,
       action === "select" ? "V" : action === "pan" ? "H" : undefined,
-      action !== "select" && action !== "pan");
+      false);
     setUiAttribute(element, "title", title);
     element.dataset.placementViewAction = action;
     element.addEventListener("click", () => {
@@ -92,9 +95,9 @@ export function installPlacementViewportNavigation(options: {
     setTool("select"),
   );
   const pan = button("pan", "Pan", "Pan viewport (H)", () => setTool("pan"));
-  button("zoom-out", "Out", "Zoom out", () => zoomAt(snapshot().zoom / 1.25));
+  button("zoom-out", "Zoom Out", "Zoom out", () => zoomAt(snapshot().zoom / 1.25));
   const percent = button("actual-size", "100%", "Actual size", () => zoomAt(1));
-  button("zoom-in", "In", "Zoom in", () => zoomAt(snapshot().zoom * 1.25));
+  button("zoom-in", "Zoom In", "Zoom in", () => zoomAt(snapshot().zoom * 1.25));
   const frame = button("frame-selection", "Frame", "Frame selection (F)", () =>
     fit(true),
   );

@@ -466,6 +466,10 @@ chunk/LOD 구조·attachment·camera/environment의 임의 변경은 placement p
 기존 두 인자 호출은 유지한다. `updateSpatial`로 참조만 추가할 때도 적용 fragment에 해당 instance가 있어야 한다.
 XY는 기존 composition transform, 물리 높이·층은 `props.components.body.heightSpan`,
 spatial elevation은 추가 시각 offset이 소유한다. 모델 pose는 collider/proxy를 자동 변형하지 않는다.
+공식 app의 Collision Proxy 입력은 같은 객체의 Undo/Redo·component 변경에도 실제 설정으로 갱신한다.
+설정이 바뀌지 않은 잠금 등 UI 갱신에서는 미적용 입력을 보존한다. Apply는 유효한 치수·층을 요구하며,
+Remove Proxy는 미적용 입력 오류와 독립적으로 기존 collider/body를 제거하고 시각 높이를 유지한다.
+잠금·attachment 편집 제한은 삭제에도 적용된다.
 Terrain 높이 전체 이동은 top/end/base를 명시적으로 함께 변경한다.
 visual-only billboard/model map의 rename/remove/copy는 composition과 함께 원자 처리한다.
 behaviorRecipes/gameplay/navigation/actor/attachment에 agent-owned ID 참조가 있으면 명시적 agent migration을 요구한다.

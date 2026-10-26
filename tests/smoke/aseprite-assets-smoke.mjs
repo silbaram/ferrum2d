@@ -549,6 +549,13 @@ try {
       await wait(
         () => window.ferrumPlacementViewerState.instances.length === 2,
       );
+      // The pointerup transaction commits on the next RAF, after object creation.
+      await wait(
+        (expected) =>
+          window.ferrumPlacementViewerHistory.transactionLabel === undefined &&
+          window.ferrumPlacementViewerHistory.undoCount === expected,
+        beforePlacement.history.undoCount + 1,
+      );
       const placed = await snapshot(),
         placedDocument = mergeScenePlacementPatch(
           active,

@@ -405,6 +405,50 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
       undefined,
     );
     await page.evaluate(() => globalThis.ferrumPlacementViewerRedo());
+    const proxyField = (field) => page.locator(`[data-placement-proxy-field="${field}"]`);
+    const proxyDocument = () => page.evaluate(() => JSON.stringify(globalThis.ferrumPlacementSpatialExportDocument()));
+    const assertProxyWidth = async (width) => {
+      assert.equal(Number(await proxyField("width").inputValue()), width);
+      assert.equal(await page.evaluate(() => globalThis.ferrumPlacementViewerState.selected.collider.halfWidth * 2), width);
+    };
+    await assertProxyWidth(24);
+    // Same-instance edits and history must refresh the actual field values.
+    await proxyField("width").fill("48");
+    await page.locator("[data-placement-proxy-apply]").click();
+    await assertProxyWidth(48);
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await assertProxyWidth(24);
+    await page.getByRole("button", { name: "Redo", exact: true }).click();
+    await assertProxyWidth(48);
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await assertProxyWidth(24);
+    // Lock-state refresh must not discard an unapplied input draft.
+    await proxyField("width").fill("37");
+    const lock = page.locator('[data-placement-lock-instance="new_model"]');
+    await lock.click();
+    assert(await proxyField("width").isDisabled());
+    assert(await page.locator("[data-placement-proxy-apply]").isDisabled());
+    assert(await page.locator("[data-placement-proxy-remove]").isDisabled());
+    assert.equal(await proxyField("width").inputValue(), "37");
+    await lock.click();
+    assert.equal(await proxyField("width").inputValue(), "37");
+    await proxyField("width").fill("24");
+    const proxyBeforeRemoval = await proxyDocument();
+    for (const [field, value] of [["width", "0"], ["floorId", "-1"], ["offsetX", ""]]) {
+      await proxyField(field).fill(value);
+      await page.locator("[data-placement-proxy-apply]").click();
+      assert.equal(await proxyDocument(), proxyBeforeRemoval, "Invalid Apply changed the proxy");
+      const beforeRemove = (await snapshot()).history.undoCount;
+      await page.locator("[data-placement-proxy-remove]").click();
+      assert.equal(await page.evaluate(() => globalThis.ferrumPlacementViewerState.selected.body), undefined);
+      assert.equal((await snapshot()).history.undoCount, beforeRemove + 1);
+      assert.equal(await page.evaluate(() => globalThis.ferrumPlacementViewerState.spatial.models.new_model.elevation), visualElevation);
+      await page.getByRole("button", { name: "Undo", exact: true }).click();
+      assert.equal(await proxyDocument(), proxyBeforeRemoval);
+      await assertProxyWidth(24);
+      assert.equal(Number(await proxyField("floorId").inputValue()), 3);
+      assert.equal(Number(await proxyField("offsetX").inputValue()), 0);
+    }
     // Floor filtering is presentation-only, including native rendering/picking.
     await detail("Floor Visibility");
     const beforeFilter = await snapshot();

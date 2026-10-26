@@ -15,6 +15,9 @@ const paths = {
   fit: '<path d="M6 2H2v4m8-4h4v4M2 10v4h4m8-4v4h-4M5 8h6M8 5v6"/>',
   floors: '<path d="m8 2 6 3-6 3-6-3Zm-6 6 6 3 6-3m-12 3 6 3 6-3"/>',
   view: '<path d="M2 4h12M2 8h12M2 12h12M5 2v4m6 0v4m-5 0v4"/>',
+  camera: '<path d="M2 5h3l1-2h4l1 2h3v8H2Z"/><circle cx="8" cy="9" r="2"/>',
+  layout: '<rect x="2" y="2" width="12" height="12" rx="1"/><path d="M5 2v12m6-12v12M5 11h6"/>',
+  help: '<circle cx="8" cy="8" r="6"/><path d="M6 6a2 2 0 1 1 3 2c-1 .5-1 1-1 1M8 11v.1"/>',
 } as const;
 export type ViewportIcon = keyof typeof paths;
 
@@ -56,9 +59,9 @@ export function viewportGroup(label: string) {
 export function installViewportToolbarKeys(toolbar: HTMLElement) {
   toolbar.addEventListener("keydown", (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLElement) || !target.matches("button, summary") || target.closest(".placement-view-panel") || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (!(target instanceof HTMLElement) || !target.matches("button, summary") || target.closest(".placement-view-panel, .placement-control-panel") || event.altKey || event.ctrlKey || event.metaKey) return;
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.code)) return;
-    const buttons = [...toolbar.querySelectorAll<HTMLElement>("button:not(:disabled), summary")].filter((b) => b.getClientRects().length && !b.closest(".placement-view-panel"));
+    const buttons = [...toolbar.querySelectorAll<HTMLElement>("button:not(:disabled), summary")].filter((b) => b.getClientRects().length && !b.closest(".placement-view-panel, .placement-control-panel"));
     const index = buttons.indexOf(target);
     if (index < 0) return;
     event.preventDefault();

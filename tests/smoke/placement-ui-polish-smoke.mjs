@@ -1,7 +1,4 @@
-import {
-  showPlacementInspector,
-  showPlacementBottom,
-} from "./placement-panel-navigation.mjs";
+import { clickPlacementControl, showPlacementInspector, showPlacementBottom } from "./placement-panel-navigation.mjs";
 import { strict as assert } from "node:assert";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
@@ -191,7 +188,7 @@ export async function smokePlacementUiPolish(parent, source, timeoutMs) {
         JSON.stringify({ width, buttons }),
       );
     }
-    await page.locator('[data-placement-action="reset-layout"]').click();
+    await clickPlacementControl(page, '[data-placement-action="reset-layout"]');
     for (const field of ["rotation", "scale"]) {
       const input = page.locator(`[data-placement-add-${field}]`);
       assert.match(
@@ -327,7 +324,7 @@ export async function smokePlacementUiPolish(parent, source, timeoutMs) {
         await measure(`${mode}-${viewport.width}x${viewport.height}`);
         if (viewport.width <= 860) {
           for (const name of ["scene", "inspector", "runtime"]) {
-            await dock(name).click();
+            await clickPlacementControl(page, dock(name));
             assert.equal(
               await page
                 .locator(".demo-shell")
@@ -409,7 +406,7 @@ export async function smokePlacementUiPolish(parent, source, timeoutMs) {
     assert.deepEqual(await snapshot(), spatialBaseline);
 
     // Drawer close changes canvas dimensions: verify real terrain projection and native placement.
-    await dock("scene").click();
+    await clickPlacementControl(page, dock("scene"));
     await arm();
     await page.locator("[data-placement-drawer-close]").click();
     await paint();
@@ -452,7 +449,7 @@ export async function smokePlacementUiPolish(parent, source, timeoutMs) {
     await page.locator('[data-placement-action="undo"]').click();
     assert.equal((await snapshot()).document, dirty.document);
     for (const name of ["scene", "runtime"]) {
-      await dock(name).click();
+      await clickPlacementControl(page, dock(name));
       await page.locator("[data-placement-drawer-close]").click();
     }
     assert.equal((await snapshot()).document, dirty.document);

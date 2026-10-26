@@ -12,10 +12,19 @@ scale 방향키는 10%(Shift 1%)다. 드래그 snap은 15도/0.1배이며 한 ge
 Asset preview를 viewport로 드래그하면 선택한 sprite/frame과 기본 collider를 기존 Add Sprite 경로로 배치한다.
 
 HD-2D에서는 다층·경사 surface, authored model bounds·billboard를 선택하고 XY·body 높이/층·시각 offset,
-model yaw/scale을 편집한다. Height handle은 surface top/end/base 또는 body 높이를 함께 이동한다.
+model yaw/scale과 sprite 회전/크기를 편집한다. `선택 / Select`에서 오브젝트를 드래그하면 XY가 바뀌며,
+`속성 / Properties → 공간 배치 / Spatial Placement`에서 회전(도)·크기·좌표를 숫자로 수정한다.
+생략된 model yaw/scale/시각 높이도 기본값 0°/1/0에서 편집할 수 있다. Sprite 회전은 billboard 면 안의
+이미지 회전이며, 캐릭터의 바라보는 방향 애니메이션은 게임 로직이 정한다. `spatial.actor` 플레이어는
+이동 컨트롤러가 회전하지 않은 AABB를 요구하므로 회전 입력을 비활성화하고 이유를 표시한다.
+플레이어의 위치·크기는 수정할 수 있다. Sprite 변형은 기존 instance transform 경로로 충돌체에도 반영된다.
+Height handle은 surface top/end/base 또는 body 높이를 함께 이동한다.
+2D·HD-2D의 `선택 / Select`에서 빈 공간을 클릭하면 기존 선택과 선택 외곽선·높이 손잡이·속성 값을 비운다.
+HD-2D의 지형도 선택 해제 대상이며, 화면 이동·에셋 배치 도구의 클릭은 해당 도구 동작을 유지한다.
+선택 해제는 배치 문서·편집 카메라·Undo/Redo 이력을 변경하지 않는다.
 중간 버튼/Alt drag와 Orbit/Zoom/Reset은 문서와 분리한 탭별 편집 camera를 조작한다.
-좌우 회전 옆의 **위에서 보기 / 낮게 보기**는 내려다보는 각도를 10°씩 조절한다.
-**보기 → 내려다보는 각도** 슬라이더는 1~89°를 1° 단위로 조절하며 현재 각도를 표시한다.
+**카메라 → 위에서 보기 / 낮게 보기**는 내려다보는 각도를 10°씩 조절한다.
+같은 메뉴의 **내려다보는 각도** 슬라이더는 1~89°를 1° 단위로 조절하며 현재 각도를 표시한다.
 작은 각도는 수평에 가까운 시점, 큰 각도는 위에서 내려다보는 시점이다. 씬 중심·탐색 카메라 거리·화각과
 작업 평면 높이를 유지하고 직교/원근 모두 지원한다. 카메라 초기화는 문서의 원래 각도로 돌아간다.
 각도는 탭별 편집 상태이며 JSON·patch·Undo에 기록하지 않는다. Game Preview는 원본 camera를 사용하고 정지하면 편집 각도를 복원한다.
@@ -23,6 +32,7 @@ XY와 camera pan은 시작 높이 평면을 기준으로 움직여 경사면에�
 원근 Height는 화면 handle 이동을 역투영한다. 객체를 이동하는 동안 camera 조작은 멈춘다.
 Attachment 소유 위치는 agent가 원본에서 수정하며 model pose로 collider를 추정 이동하지 않는다.
 Attachment 소유 Height handle도 숨긴다. Model 선택은 전체 LOD의 보수적 bounds 기준이다.
+클릭 위치에서 실제로 교차하는 bounds 면의 깊이를 비교하므로 넓은 바닥 배경이 앞의 집·캐릭터 선택을 가로채지 않는다.
 움직이는 게임 geometry의 정밀 identity picker로 사용하지 않는다.
 
 HD-2D의 `Spatial Placement → Add Object`에서 Sprite 또는 등록된 Model을 선택한다.
@@ -31,6 +41,8 @@ Sprite frame과 선택적 Object ID를 지정할 수 있고, 빈 ID는 자동 �
 bridge/경사면의 실제 높이·floor와 기존 snap 설정을 반영하며 지형 밖 배치는 거절한다.
 Escape·Cancel·모드/탭 전환은 아직 배치하지 않은 미리보기만 정리한다. 한 배치는 한 번의 Undo/Redo로 복원한다.
 Sprite는 발 pivot·기본 collider·static body를 만들고 Model은 배경 visual로 추가하여 collider를 추론하지 않는다.
+선택한 이미지의 URL·크기·프레임이 바뀌면 미리보기를 갱신하고 진행 중인 배치 대기·드래그를 취소한다.
+다시 배치를 누르면 갱신된 크기와 프레임을 사용한다. 다른 이미지의 갱신이나 기존 오브젝트의 작성 크기는 그대로 유지한다.
 Model은 지형 높이를 visual offset으로 저장하며 물리 body/floor는 만들지 않는다.
 behavior binding이 없는 ObjectDefinition을 기반으로 생성한다. 그런 definition이 없으면 catalog에서 먼저 추가한다.
 native 거절·중복 ID는 초안과 이력을 보존한다. 결과는 Copy Patch/Handoff 및 저장 가능한 host의 Save로 전달한다.
@@ -52,7 +64,8 @@ HD-2D 작업 격자는 지형 유무와 독립해 화면 밖까지 이어지는 
 축소하거나 낮은 각도로 보더라도 격자가 가운데 띠로 줄어들지 않으며, 오브젝트의 화면 위치·배율과
 탭별 탐색 카메라는 유지한다. 낮은 각도의 격자 간격은 투영된 선 사이의 수직 거리를 기준으로 조절해 촘촘한 교차 무늬를 줄인다.
 작업 좌표 범위 ±1,000,000 안에서 표시하며 원근 화면의 지평선 위에는 작업 평면을 그리지 않는다.
-`지형 높이 격자`는 기본 꺼짐이며 켜면 보이는 floor의 ramp/bridge 높이도 표시한다. 같은 평면의 중복선은 합친다.
+`지형 높이 격자`는 기본 꺼짐이며 켜면 작업 평면과 높이가 다른 바닥·경사로·다리에 청록색 격자와 외곽선을 표시한다.
+어두운 작업 격자와 색을 구분하고, 격자 간격에 맞지 않는 지형 경계도 표시한다. 같은 평면·색의 중복선은 합친다.
 모든 공간 격자는 지형·모델·sprite의 depth 가림을 따르므로 실제 바닥보다 낮은 작업 격자는 바닥 아래로 가려질 수 있다.
 속성 패널의 `배치 → 배치 기준`은 기본 `지형 표면`이다. 빈 공간에 추가하려면 `작업 평면`을 선택한 뒤
 에셋을 클릭 배치하거나 드래그한다. ghost에 작업 높이·층과 `실제 지지면 없음`을 표시하며 snap 좌표를 그대로 patch에 기록한다.
@@ -89,6 +102,7 @@ Stop은 직전 2D/HD-2D 편집 모드와 작성 초안·이력을 복원한다.
 상단 `Language / 언어` 선택에서 **한국어 / English**를 전환한다. 새로고침 없이 패널·버튼·안내·접근성 이름을
 바꾸며 작성 초안·선택·Undo/Redo·카메라·열린 문서는 유지한다. 선택한 언어는 UI 전용 localStorage에 저장한다.
 저장값이 없거나 잘못되면 브라우저의 기본 언어가 한국어일 때 한국어, 나머지는 영어로 시작한다.
+한국어·영어 모두 2D에서는 변형·오브젝트·외형·충돌체·행동 연결 항목을 표시하고 HD-2D/게임 미리보기에서는 숨긴다.
 저장소를 사용할 수 없어도 현재 페이지에서 전환할 수 있다. 오브젝트·에셋·레시피 ID, 파일명/경로,
 JSON·patch·handoff·입력값과 원본 엔진 진단은 번역하지 않는다. OS 파일 선택창 등 브라우저 기본 UI는 실행 환경 언어를 따른다.
 
@@ -108,7 +122,11 @@ HD-2D 샘플 원본은 `public/placement.hd2d.scene-authoring.json`이다. 브�
 
 `http://localhost:5173/?scene=village`에서 90년대 16비트 RPG 분위기의 중세 마을을 연다.
 Blender로 직접 만든 목조 여관·상점·주택·종탑·우물·수레·나무·울타리·꽃밭·다리와 하천/돌길을 배치했다.
-13종 GLB를 41개 모델로 재사용하며 픽셀 인물 4명까지 총 45개 native entity를 구성한다.
+남서쪽 나무 아래에는 높이 24의 정원 단과 높이 0→24 경사길이 있다. `보기 → 지형 높이 격자`를
+켜면 이 구역의 높은 바닥·경사면에 기준선이 추가된다. 기본 작업 격자는 높이 0에 유지된다.
+실행 시 남쪽 돌길에서 왼쪽으로 경사길을 따라 정원 단을 오르내릴 수 있다.
+Blender 외형과 native 보행면은 같은 치수를 사용하며 평지는 겹치지 않게 나눈다.
+14종 GLB를 42개 모델로 재사용하며 픽셀 인물 4명까지 총 46개 native entity를 구성한다.
 게임 미리보기는 384×256 고정 해상도와 nearest 텍스처, 태양광/그림자·색 보정을 사용한다.
 HD-2D 편집은 픽셀 해상도/정수 배율 letterbox를 해제하고 전체 canvas 해상도를 사용한다.
 패널을 접거나 화면 크기를 바꿔도 캔버스 안의 숨은 사각 영역에서 오브젝트가 잘리지 않는다.
@@ -371,12 +389,12 @@ HD-2D drag 취소가 거절되면 모드·탭 전환을 멈추며, Escape나 마
 
 ## 작업공간 조작
 
-- `Scene`, `Inspector`, `Panels`로 panel을 접거나 복원한다. `Focus`는 기존 설정을 보존하고 viewport에 집중한다.
+- `화면 구성 / Layout`에서 `Scene`, `Inspector`, `Panels`를 접거나 복원한다. 같은 메뉴의 `Focus`는 기존 설정을 보존하고 viewport에 집중한다.
 - 뷰포트 도구 행의 `화면 확장 / Expand View`는 좌우·하단 패널을 함께 접고 `화면 복원 / Restore View`로 원래 구성을 돌린다.
   옆에는 실제 canvas 크기를 CSS 픽셀로 표시한다. 좌우·하단 경계의 손잡이를 드래그해 보는 공간을 조절하며 방향키로 미세 조절할 수 있다.
   좁은 화면에서는 기존 패널 서랍과 닫기 버튼을 사용한다.
 - panel 경계를 drag하거나 focus 후 방향키로 8px, Shift+방향키로 32px 조절한다. Home/End는 최소/최대,
-  Escape는 진행 중인 크기 조절을 취소한다. `Reset Layout`은 기본 배치로 복원한다.
+  Escape는 진행 중인 크기 조절을 취소한다. `화면 구성 → Reset Layout`은 기본 배치로 복원한다.
 - 860px 이하에서는 Viewport/Scene/Inspector/Panels 탭으로 한 번에 하나의 서랍을 연다. canvas는 계속 표시한다.
   Close 또는 Escape로 닫으면 연 버튼으로 focus가 돌아간다. 패널 탭은 방향키/Home/End로 전환한다.
   입력칸과 진행 중 gesture의 Escape 처리를 우선한다. desktop은 viewport 360px을 우선 확보하고 panel 폭을 조정한다.
@@ -398,9 +416,23 @@ HD-2D drag 취소가 거절되면 모드·탭 전환을 멈추며, Escape나 마
 ## 2D 화면 탐색
 
 공식 뷰포트 툴바는 **선택/화면 이동 → 카메라 탐색 → 화면 맞춤 → HD-2D 층 선택**으로 묶는다.
-자주 쓰는 선택·화면 이동은 아이콘/이름과 V/H 키를 함께 표시하고, 회전·확대·맞춤 버튼은 아이콘과
-한국어·영어 툴팁/접근성 이름으로 구별한다. 방향키/Home/End는 버튼 간 focus를 이동하며 실행하지 않는다.
+선택·화면 이동·맞춤·층 도구에는 아이콘과 기능명을 표시한다. 회전·확대·초기화는 `카메라 / Camera` 메뉴에서
+이름을 보고 선택한다. 2D의 현재 배율/100% 복귀와 HD-2D의 상하 각도도 카메라 메뉴에 있다.
+방향키/Home/End는 주 도구 행의 focus를 이동하며 실행하지 않는다. 메뉴 내부 입력칸의 기본 키는 유지한다.
 도구 아래에는 현재 조작과 Space 임시 이동·복귀 안내를 표시한다. 에셋 배치 대기 중에는 배치 안내가 우선한다.
+
+`사용 안내 / Controls`는 배치·속성 편집·화면 이동·맞춤 단축키·실행·변경 보관 방법을 설명한다.
+편집 카메라와 씬에 설정된 게임 카메라의 차이도 확인할 수 있다. 실행 전에는 `Play`, 실행 중에는 `Pause/Resume`와 `Stop`을 표시한다.
+카메라·화면 구성·사용 안내는 Enter/Space로 열고 Escape로 닫아 원래 버튼에 focus를 돌린다.
+바깥 클릭·focus 이동으로 닫히며 창 크기가 바뀌면 닫아 잘못된 위치의 메뉴가 남지 않게 한다.
+배치 대기 중 메뉴 안에서 Escape를 누르면 메뉴만 닫고 배치 대기는 유지한다. 이어서 Escape를 누르면 배치를 취소한다.
+카메라 버튼이 있는 도구 행을 가로로 스크롤하면 열린 메뉴를 닫는다. 메뉴 안의 안내문 스크롤은 메뉴를 닫지 않는다.
+좁은 화면에서는 패널 탭을 유지하고 메뉴는 창 안에 맞춰 표시한다.
+
+이 구성은 [Godot의 작업 화면·문맥 도구 분리](https://docs.godotengine.org/en/stable/getting_started/introduction/first_look_at_the_editor.html),
+[Unity의 Tools / Grid and Snap / View Options / Orientation 구분](https://docs.unity3d.com/Manual/default-overlays-reference.html),
+[Unreal의 카메라·변형·보기 메뉴 그룹](https://dev.epicgames.com/documentation/en-us/unreal-engine/viewport-toolbar)을 참고했다.
+기존 배치 보조 기능을 그룹화하며 새로운 게임 편집 계약이나 외부 의존성을 추가하지 않는다.
 
 `보기 / View`에서 격자 표시와 공통 간격, HD-2D 충돌·높이 표시/좌표 정렬을 조절한다. 격자와 snap은
 별도로 켜되 간격은 하나를 공유한다. 보기 설정은 Enter/Space로 열고 Escape/닫기로 focus를 돌려주며,

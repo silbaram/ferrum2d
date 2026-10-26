@@ -173,6 +173,8 @@ export function createPlacementSpatialPalette(options: {
   let pending: Asset | undefined;
   let dragging: { token: string; asset: Asset } | undefined;
   let inventorySignature = "";
+  let previewSignature = "";
+  let lastProvider: ScenePlacementAssetProvider | undefined;
   const modelThumbnails = new Map<string, string>();
   function selectedAsset(): Asset {
     if (kind.value === "model") {
@@ -228,6 +230,7 @@ export function createPlacementSpatialPalette(options: {
       JSON.stringify(provider.listSpriteFrames(assets.value));
     if (frames.dataset.signature !== signature) {
       frames.dataset.signature = signature;
+      const previousFrame = frames.value;
       frames.replaceChildren();
       const full = document.createElement("option");
       full.value = "";
@@ -239,7 +242,12 @@ export function createPlacementSpatialPalette(options: {
         option.textContent = frame.label ?? frame.id;
         frames.append(option);
       }
+      if ([...frames.options].some((option) => option.value === previousFrame))
+        frames.value = previousFrame;
     }
+    previewSignature = JSON.stringify(kind.value === "sprite"
+      ? [kind.value, assets.value, frames.value, provider.resolveSpriteAsset(assets.value)]
+      : [kind.value, assets.value, options.modelNames.get(assets.value), options.models.has(assets.value)]);
     try {
       const asset = selectedAsset();
       name.textContent = asset.id;
@@ -273,7 +281,10 @@ export function createPlacementSpatialPalette(options: {
             .filter(([contentId]) => options.models.has(contentId))
             .map(([contentId, assetId]) => [contentId, assetId]);
     const signature = kind.value + JSON.stringify(entries);
-    if (signature !== inventorySignature) {
+    const inventoryChanged = signature !== inventorySignature;
+    const providerChanged = provider !== lastProvider;
+    lastProvider = provider;
+    if (inventoryChanged) {
       inventorySignature = signature;
       const previous = assets.value;
       assets.replaceChildren(
@@ -286,7 +297,13 @@ export function createPlacementSpatialPalette(options: {
       );
       if (entries.some(([value]) => value === previous))
         assets.value = previous;
+    }
+    if (inventoryChanged || providerChanged) {
+      const previous = previewSignature;
       updateThumbnail();
+      // Publish the refreshed signature before notifying the host: toolChange
+      // may synchronously re-enter sync. Unrelated asset changes keep the tool.
+      if (previous !== previewSignature && (pending || dragging)) cancel();
     }
   }
   for (const control of [kind, assets, frames, id])

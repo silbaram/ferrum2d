@@ -1,6 +1,6 @@
+import { clickPlacementControl, showPlacementInspector, showPlacementCameraOptions } from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { showPlacementInspector, showPlacementViewOptions } from "./placement-panel-navigation.mjs";
 
 const pitch = c => Math.atan2(c.position.elevation-c.target.elevation,
   Math.hypot(c.position.x-c.target.x,c.position.y-c.target.y))*180/Math.PI;
@@ -25,7 +25,7 @@ export async function smokeSpatialCameraAngles(parent, dpr=1) {
     .map(p=>window.ferrumPlacementSpatialProject(p)));
   const slider=page.locator("[data-placement-camera-pitch]");
   async function angle(value) {
-    await showPlacementViewOptions(page);
+    await showPlacementCameraOptions(page);
     const rect=await slider.boundingBox();
     await page.mouse.click(rect.x+8+(rect.width-16)*(value-1)/88,rect.y+rect.height/2);
     await paint();
@@ -35,7 +35,7 @@ export async function smokeSpatialCameraAngles(parent, dpr=1) {
   }
   try {
     await page.goto(parent.url(),{waitUntil:"networkidle"});
-    await wait(()=>window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws===41);
+    await wait(()=>window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws===42);
     await page.locator("[data-placement-language]").selectOption("en");
     const base=await source();
     const originalTab=await page.locator("[data-placement-document-key][aria-selected=true]").textContent();
@@ -55,16 +55,16 @@ export async function smokeSpatialCameraAngles(parent, dpr=1) {
       await paint();
       const original=await camera(), baseline=await snapshot(), before=await landmarks();
       const plane=await page.evaluate(()=>window.ferrumPlacementGrid.planeElevation);
-      await page.locator("[data-placement-spatial-camera=up]").click();
+      await clickPlacementControl(page, "[data-placement-spatial-camera=up]");
       await paint();
       const above=await camera(), after=await landmarks();
       near(pitch(above),pitch(original)+10);
       near(distance(above),distance(original)); assert.deepEqual(above.target,original.target);
       assert(after.some((p,i)=>p && before[i] && Math.hypot(p.x-before[i].x,p.y-before[i].y)>2),"Native projection did not change with the UI camera");
       for(const key of ["height","fovDegrees","near","far"]) assert.equal(above[key],original[key]);
-      await page.locator("[data-placement-spatial-camera=down]").click();
+      await clickPlacementControl(page, "[data-placement-spatial-camera=down]");
       near(pitch(await camera()),pitch(original));
-      await showPlacementViewOptions(page);
+      await showPlacementCameraOptions(page);
       await slider.focus(); await slider.press("Home"); await paint();
       near(pitch(await camera()),1);
       assert(await page.locator("[data-placement-spatial-camera=down]").isDisabled());
@@ -81,9 +81,9 @@ export async function smokeSpatialCameraAngles(parent, dpr=1) {
       assert(!(await page.locator("[data-placement-spatial-camera=up]").isDisabled()));
       const middle=await angle(45);
       near(distance(middle),distance(original)); assert.deepEqual(middle.target,original.target);
-      await page.locator("[data-placement-spatial-camera=left]").click();
+      await clickPlacementControl(page, "[data-placement-spatial-camera=left]");
       near(pitch(await camera()),pitch(middle));
-      await page.locator("[data-placement-spatial-camera=right]").click();
+      await clickPlacementControl(page, "[data-placement-spatial-camera=right]");
       near(pitch(await camera()),pitch(middle));
       const panBefore=await camera(), rect=await page.locator("canvas.demo-canvas").boundingBox();
       await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);
@@ -121,13 +121,13 @@ export async function smokeSpatialCameraAngles(parent, dpr=1) {
       await wait(()=>window.ferrumPlacementWorkspaceMode==="spatial" && window.ferrumPlacementGrid.lineCount>0);
       assert.deepEqual(await camera(),savedCamera,"Stop lost the edited viewing angle");
       assert.equal(await snapshot(),baseline,"Viewing angle/picking/ghost/preview mutated JSON or history");
-      await page.locator("[data-placement-spatial-camera=reset]").click();
+      await clickPlacementControl(page, "[data-placement-spatial-camera=reset]");
       assert.deepEqual(await camera(),original,"Reset did not restore the authored camera");
       const stats=await page.evaluate(()=>window.ferrumRuntime.renderer.stats());
       const grid=await page.evaluate(()=>window.ferrumPlacementGrid);
       assert.equal(grid.planeElevation,plane); assert(grid.lineCount>0 && grid.lineCount<=512 && grid.drawCalls===1 && grid.depthTest);
       assert(stats.drawCalls>0 && stats.drawCalls<=160 && stats.spatial.modelTriangleCount>0 && stats.spatial.modelTriangleCount<=60000);
-      assert.equal(await page.evaluate(()=>window.ferrumPlacementViewerRuntimeFrame.entityCount),45);
+      assert.equal(await page.evaluate(()=>window.ferrumPlacementViewerRuntimeFrame.entityCount),46);
       results.push({projection,original,above,middle,low,lowStats,grid,stats});
       if(projection==="orthographic") orthoResume=await angle(60);
       else perspectiveResume=await camera();
@@ -141,13 +141,13 @@ export async function smokeSpatialCameraAngles(parent, dpr=1) {
     assert.deepEqual(await camera(),perspectiveResume,"Document switch reused another tab's viewing angle");
     await page.locator("[data-placement-language]").selectOption("ko");
     assert.equal(await page.locator("[data-placement-spatial-camera=up]").getAttribute("aria-label"),"위에서 보기");
-    await showPlacementViewOptions(page);
+    await showPlacementCameraOptions(page);
     assert.equal(await slider.getAttribute("aria-label"),"내려다보는 각도");
     const current=await camera();
     assert.equal(await page.locator("[data-placement-camera-pitch-value]").textContent(),`${Number(pitch(current).toFixed(1))}°`);
     await page.screenshot({path:`${artifact}/controls-ko-dpr${dpr}.png`,fullPage:true});
     assert.deepEqual(errors,[]);
-    await writeFile(`${artifact}/dpr${dpr}.json`,JSON.stringify({ok:true,dpr,results,checks:["up/down native projection","target/distance/lens preservation","range keyboard/mouse and limits","pan preserves pitch and restores control availability","native picking/terrain ghost","no JSON/patch/history mutation","Play/Stop, Reset and per-document camera restoration","grid depth/budget","45 entities and bounded draws/triangles","Korean controls"]},null,2)+"\n");
+    await writeFile(`${artifact}/dpr${dpr}.json`,JSON.stringify({ok:true,dpr,results,checks:["up/down native projection","target/distance/lens preservation","range keyboard/mouse and limits","pan preserves pitch and restores control availability","native picking/terrain ghost","no JSON/patch/history mutation","Play/Stop, Reset and per-document camera restoration","grid depth/budget","46 entities and bounded draws/triangles","Korean controls"]},null,2)+"\n");
   } catch(error) {
     await page.screenshot({path:`${artifact}/failure-dpr${dpr}.png`,fullPage:true});
     console.error(await page.evaluate(()=>({camera:window.ferrumPlacementSpatialCamera,message:document.querySelector(".placement-spatial-message")?.textContent,error:document.querySelector(".placement-workspace-message")?.textContent})));

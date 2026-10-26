@@ -1,4 +1,4 @@
-import { showPlacementInspector } from "./placement-panel-navigation.mjs";
+import { clickPlacementControl, showPlacementInspector } from "./placement-panel-navigation.mjs";
 import { strict as assert } from "node:assert";
 import { mkdir, writeFile } from "node:fs/promises";
 
@@ -265,7 +265,7 @@ export async function smokePlacementUiReviewFixes(parent, source, timeoutMs) {
       ]) {
         await page.setViewportSize(viewport);
         for (const dock of ["scene", "inspector", "runtime"]) {
-          await page.locator(`[data-placement-dock-toggle="${dock}"]`).click();
+          await clickPlacementControl(page, `[data-placement-dock-toggle="${dock}"]`);
           await paint();
           const bounds = await page.evaluate(
             (dock) => ({

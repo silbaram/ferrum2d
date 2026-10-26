@@ -1,5 +1,6 @@
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
 import { decorateViewportAction, installViewportToolbarKeys } from "./placementViewportChrome";
+import { createPlacementControlMenu } from "./placementControlMenu";
 
 type NavigationState = { tool: "select" | "pan"; temporary: boolean; dragging: boolean };
 /** Fixed tools and a light-dismiss display disclosure outside the picking surface. */
@@ -99,7 +100,26 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     closeOptions(true);
   });
   readout.append(status, button, size, expand);
+  const help = createPlacementControlMenu("help", "Controls", "help");
+  const instructions = document.createElement("dl");
+  instructions.className = "placement-controls-guide";
+  for (const [label, description] of [
+    ["Place objects", "Drag an asset from Assets into the viewport."],
+    ["Edit selection", "Select an object, then edit its properties in Inspector."],
+    ["Navigate", "V: select · H or Space + drag: pan · Wheel: zoom"],
+    ["Frame view", "F: selected object · Home: entire scene"],
+    ["Camera", "Camera changes the editor view. Game Preview uses the scene camera."],
+    ["Play", "Play runs the scene. Stop returns to editing."],
+    ["Keep changes", "Export copies a patch or handoff. File saving requires a save-enabled host."],
+  ]) {
+    const term = document.createElement("dt"), descriptionElement = document.createElement("dd");
+    setUiText(term, label);
+    setUiText(descriptionElement, description);
+    instructions.append(term, descriptionElement);
+  }
+  help.panel.append(instructions);
   primary.append(navigation, camera, options);
+  readout.insertBefore(help.element, size);
   element.append(primary, readout);
   installViewportToolbarKeys(primary);
   stage.closest(".demo-shell")?.append(element);
