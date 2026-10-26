@@ -316,6 +316,19 @@ Play의 384×256 복귀, Stop의 전체 해상도 복원과 JSON/history 보존�
 같은 gate의 `placement-toolbar-ux-smoke.mjs`는 한영 아이콘/접근성 이름과 단축키, 방향키 focus 이동의 비실행,
 Space 임시 이동 pressed/안내 복귀, 보기 설정 Enter/Space 열기·Escape focus 복원·바깥 클릭 닫기,
 격자 표시·공유 간격/잘못된 값 거부, 390px 메뉴 경계와 카메라·선택·문서·history 보존을 검사한다.
+카메라 기능의 접힌 기본 상태·보이는 기능명, 한영 카메라/사용 안내 이름, Enter/Space·Escape focus 복원,
+다른 메뉴를 열면 기존 메뉴 닫기, 화면 구성의 초기화 접근, 카메라/화면 구성/안내의 390×500 경계도 검사한다.
+메뉴를 닫은 주 도구 행은 표시 버튼 6개 이하로 제한한다. `placement-panel-navigation.mjs`는 실제 summary를 열고
+카메라·패널 동작 후 Escape로 닫는다. 숨긴 control을 DOM 변경으로 노출하지 않는다.
+같은 gate에 연결된 `placement-menu-regressions-smoke.mjs`는 2D·HD-2D 에셋 배치 대기 중
+Camera/Layout/Controls/View의 첫 Escape가 메뉴만 닫고 다음 Escape가 배치를 취소하는지 검사한다.
+390×500에서 실제 가로 wheel로 카메라 도구 행을 이동해 팝업이 닫히는지, 안내문 내부 wheel은 메뉴를 유지하는지도 확인한다.
+문서·이력·선택·편집 카메라 보존과 focus 복원을 함께 확인하며 근거는 `artifacts/viewer-menu-regressions/`에 남긴다.
+HD-2D gate의 `placement-six-panels-smoke.mjs`는 한영 × 2D/HD-2D/Game 왕복 시 편집 섹션 5개의 가시성과
+문서·history 보존도 확인한다. 같은 gate의 `placement-spatial-asset-refresh-smoke.mjs`는 공개 Tauri invoke를 모의하고
+실제 revision별 PNG·Wasm/WebGL2로 선택 이미지 갱신 시 thumbnail·배치 대기·drag 취소, 관계없는 이미지 갱신 시 대기 유지,
+재배치의 128×192 크기와 Undo 복원·native entity/draw 근거를 검사한다. 실제 Tauri GUI/파일 감시 검증은 포함하지 않는다.
+근거는 `artifacts/spatial-asset-refresh/verification.json`이다.
 화면·측정 근거는 `artifacts/viewport-toolbar-ux/`다. grid/locale/공간 배치 회귀도 실제 보기 버튼으로 설정을 연다.
 HD-2D gate는 orthographic/perspective에서 Pan 버튼·H·Space 드래그의 실제 화면 투영 이동, Escape 취소,
 휠 확대·복원과 비활성 2D 카메라·선택·문서·history 불변도 확인한다. 크기/화면 근거는 `artifacts/viewport-navigation-sizing/`다.
