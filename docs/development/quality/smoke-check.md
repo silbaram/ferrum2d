@@ -338,6 +338,14 @@ HD-2D gate의 `placement-six-panels-smoke.mjs`는 한영 × 2D/HD-2D/Game 왕복
 같은 gate의 `placement-spatial-transforms-smoke.mjs`는 직교 DPR 1·원근 DPR 2의 실제 마을에서
 배경과 겹친 집의 선택·XY 드래그·한 건 Undo/Redo, 생략된 모델 변형 기본값, 모델 회전·크기와 충돌 정보 보존,
 한영 sprite 회전·크기의 native billboard 정점 반영, 잘못된 크기 rollback·잠금·Play/Stop 복원을 확인한다.
+같은 실제 화면에서 높이·회전 아이콘의 SVG/접근성 이름/화면 내 위치, 모델·sprite의 회전 드래그,
+Shift 15° 정렬·방향키 조절, 높이 아이콘의 키보드·드래그, 한 건 Undo/Redo와 Escape·포인터 캡처 해제 rollback을 검사한다.
+모델 회전 시 collision/instance props와 편집 camera가 유지되고, sprite 회전 아이콘은 native billboard 정점을 바꿔야 한다.
+지형·플레이어의 회전 비활성 이유, Pan/잠금/Game Preview/빈 공간 선택 해제 시 아이콘 숨김도 확인한다.
+선택 객체가 왼쪽 가장자리에 걸치면 아이콘이 canvas 안에 남고, 화면 왼쪽·오른쪽으로 완전히 벗어나면 숨기며
+다시 화면 안으로 이동하면 복원되는지 확인한다. 이 탐색 동안 선택·문서·Undo/Redo 이력은 유지돼야 한다.
+에셋 배치 대기 중 높이·회전 드래그를 시작하면 배치 대기·ghost를 종료하고, 첫 Escape로 변형 전체를 취소해
+문서·이력·선택·카메라를 복원하는지도 확인한다.
 모델·billboard·지형 선택 후 빈 공간 클릭으로 선택·외곽선·높이 손잡이·속성 값이 비워지고,
 대상 목록에 `선택 없음`을 표시하며 이름 변경·복제·삭제 버튼을 숨기는지 확인한다.
 문서·이력·카메라가 유지되는지, Pan 도구 클릭은 선택을 보존하는지도 검사한다.
