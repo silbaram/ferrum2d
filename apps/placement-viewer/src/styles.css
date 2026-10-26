@@ -1707,6 +1707,9 @@ textarea {
   gap: 4px;
   margin-bottom: 8px;
 }
+.placement-spatial-object-actions[hidden] {
+  display: none;
+}
 .placement-spatial-object-actions input {
   min-width: 0;
   width: 100%;

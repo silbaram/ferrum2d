@@ -190,7 +190,19 @@ export const koreanMessages: Readonly<Record<string, string>> = {
   Floor: "층",
   "Visual Elevation": "시각 높이",
   "Model Yaw": "모델 회전",
+  "Model Yaw (°)": "모델 회전 (°)",
+  "Sprite Rotation (°)": "스프라이트 회전 (°)",
   "Model Scale": "모델 크기",
+  "Sprite Scale": "스프라이트 크기",
+  "Unlock the object to edit its placement.": "잠금을 해제하면 객체 배치를 수정할 수 있습니다.",
+  "Player rotation requires an unrotated AABB collider. Change facing through animation.":
+    "플레이어 이동에는 회전하지 않은 AABB 충돌체가 필요합니다. 바라보는 방향은 애니메이션으로 변경합니다.",
+  "Drag to move. Edit rotation and scale in the fields above.":
+    "객체를 드래그해 이동합니다. 위 입력칸에서 회전과 크기를 수정합니다.",
+  "Drag to move. Use Height to raise or lower the surface.":
+    "지형을 드래그해 이동합니다. 높이 손잡이로 올리거나 내립니다.",
+  "Position and physical height are owned by the attachment source.":
+    "연결된 객체의 위치와 물리 높이는 원본 attachment에서 수정합니다.",
   "Import Model": "모델 가져오기",
   "Import a GLB to place a model": "모델을 배치하려면 GLB를 가져오세요",
   "Full Image": "전체 이미지",

@@ -349,6 +349,23 @@ export async function smokePlacementSelection(page, timeoutMs) {
       path: "artifacts/placement-selection/dpr-2.png",
       fullPage: true,
     });
+    const beforeClear = await highDpr.evaluate(() => JSON.stringify({
+      patch: globalThis.ferrumPlacementViewerExportPatch(),
+      history: globalThis.ferrumPlacementViewerHistory,
+      viewport: globalThis.ferrumPlacementViewerState.viewport,
+    }));
+    const blank = await highDpr.locator("canvas.demo-canvas").boundingBox();
+    await highDpr.mouse.click(blank.x + 24, blank.y + blank.height - 24);
+    await highDpr.waitForFunction(() => globalThis.ferrumPlacementViewerState.selectedInstanceIds.length === 0, undefined, { timeout: timeoutMs });
+    if (await highDpr.locator(".placement-secondary-selection").count() !== 0)
+      throw new Error("Empty click must clear all 2D group outlines");
+    const afterClear = await highDpr.evaluate(() => JSON.stringify({
+      patch: globalThis.ferrumPlacementViewerExportPatch(),
+      history: globalThis.ferrumPlacementViewerHistory,
+      viewport: globalThis.ferrumPlacementViewerState.viewport,
+    }));
+    if (afterClear !== beforeClear)
+      throw new Error("Empty click changed the 2D patch, history or camera");
     if (errors.length)
       throw new Error(`DPR selection page errors: ${errors.join(", ")}`);
   } finally {
@@ -360,6 +377,7 @@ export async function smokePlacementSelection(page, timeoutMs) {
     undoAndCancel: true,
     locksAndTabs: true,
     marquee: "fully-contained",
+    emptyClickClearsSelection: true,
     dpr: 2,
   };
 }

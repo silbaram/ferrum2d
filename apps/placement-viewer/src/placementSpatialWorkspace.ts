@@ -36,6 +36,25 @@ import {
 type Mode = "2d" | "spatial" | "game";
 type Target = { kind: "surface" | "model" | "billboard"; id: string };
 type Point = { x: number; y: number; depth: number };
+// Corner order follows worldGeometry's X/Y/Z loops, rather than a screen rectangle.
+const MODEL_FACES = [
+  [0, 1, 3, 2],
+  [4, 6, 7, 5],
+  [0, 4, 5, 1],
+  [2, 3, 7, 6],
+  [0, 2, 6, 4],
+  [1, 5, 7, 3],
+];
+function triangleDepth(a: Point, b: Point, c: Point, x: number, y: number) {
+  const denominator = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+  if (Math.abs(denominator) < 1e-8) return;
+  const u = ((b.y - c.y) * (x - c.x) + (c.x - b.x) * (y - c.y)) / denominator,
+    v = ((c.y - a.y) * (x - c.x) + (a.x - c.x) * (y - c.y)) / denominator,
+    w = 1 - u - v;
+  if (Math.min(u, v, w) < -1e-7) return;
+  // NDC depth is linear in screen space, including perspective projections.
+  return u * a.depth + v * b.depth + w * c.depth;
+}
 interface CameraState {
   returnMode?: "2d" | "spatial";
   paused?: boolean;
@@ -188,6 +207,7 @@ export function installPlacementSpatialWorkspace(options: {
   targetSelect.dataset.placementSpatialTarget = "true";
   setUiAttribute(targetSelect, "aria-label", "Spatial target");
   const fields = new Map<string, HTMLInputElement>();
+  const fieldLabels = new Map<string, HTMLSpanElement>();
   const form = document.createElement("form");
   form.className = "placement-spatial-fields";
   form.addEventListener("submit", (e) => e.preventDefault());
@@ -200,15 +220,17 @@ export function installPlacementSpatialWorkspace(options: {
     ["yaw", "Model Yaw"],
     ["scale", "Model Scale"],
   ]) {
-    const row = document.createElement("label");
-    setUiText(row, label);
+    const row = document.createElement("label"),
+      caption = document.createElement("span");
+    setUiText(caption, label);
     const input = document.createElement("input");
     input.type = "number";
     input.step = name === "floorId" ? "1" : "any";
     input.dataset.placementSpatialField = name;
-    row.append(input);
+    row.append(caption, input);
     form.append(row);
     fields.set(name, input);
+    fieldLabels.set(name, caption);
     input.addEventListener("change", () => {
       const value = input.valueAsNumber;
       if (!Number.isFinite(value)) return;
@@ -239,10 +261,12 @@ export function installPlacementSpatialWorkspace(options: {
     info,
     "Model bounds and billboard geometry select authored objects. Model pose does not move collision proxies.",
   );
+  const editHint = document.createElement("p");
+  editHint.className = "placement-spatial-edit-hint";
   const message = document.createElement("output");
   message.className = "placement-spatial-message";
   message.setAttribute("aria-live", "polite");
-  panel.append(title, targetSelect, form, info, message);
+  panel.append(title, targetSelect, form, editHint, info, message);
   targetSelect.addEventListener("change", () => {
     const [kind, ...id] = targetSelect.value.split(":");
     if (kind === "surface" || kind === "model" || kind === "billboard")
@@ -1053,12 +1077,12 @@ export function installPlacementSpatialWorkspace(options: {
             },
     };
   }
-  function choose(target: Target) {
+  function choose(target?: Target) {
     active.target = target;
     options.onChange(
-      target.kind === "surface"
-        ? viewer.selectInstances([])
-        : viewer.selectInstance(target.id),
+      target && target.kind !== "surface"
+        ? viewer.selectInstance(target.id)
+        : viewer.selectInstances([]),
     );
   }
   function selectedInstance(origin = state) {
@@ -1102,6 +1126,8 @@ export function installPlacementSpatialWorkspace(options: {
       const instance = selectedInstance(origin);
       if (!instance) return;
       if (origin.lockedInstanceIds.includes(target.id)) return;
+      if (target.kind === "billboard" && name === "yaw" && spatial.actor?.instanceId === target.id)
+        throw new Error("Player rotation requires an unrotated AABB collider. Change facing through animation.");
       if (name === "x" || name === "y")
         options.onChange(
           viewer.updateInstanceTransform(target.id, { [name]: value }),
@@ -1155,6 +1181,17 @@ export function installPlacementSpatialWorkspace(options: {
               changes: { elevation: value },
             },
           ]),
+        );
+      else if (
+        target.kind === "billboard" && (name === "yaw" || name === "scale")
+      )
+        options.onChange(
+          viewer.updateInstanceTransform(
+            target.id,
+            name === "yaw"
+              ? { rotationRadians: value * Math.PI / 180 }
+              : { scale: value },
+          ),
         );
     }
   }
@@ -1304,7 +1341,12 @@ export function installPlacementSpatialWorkspace(options: {
       : [];
     const targetSignature = entries.map((t) => t.kind + ":" + t.id).join("|");
     if (targetSelect.dataset.signature !== targetSignature) {
+      const noSelection = document.createElement("option");
+      noSelection.value = "";
+      noSelection.disabled = true;
+      setUiText(noSelection, "No selection");
       targetSelect.replaceChildren(
+        noSelection,
         ...entries.map((t) => {
           const option = document.createElement("option");
           option.value = t.kind + ":" + t.id;
@@ -1330,19 +1372,39 @@ export function installPlacementSpatialWorkspace(options: {
       y: surface?.y ?? instance?.transform.y,
       elevation: surface?.elevation ?? instance?.body?.heightSpan?.elevation,
       floorId: surface?.floorId ?? instance?.body?.heightSpan?.floorId,
-      offset: model?.elevation ?? billboard?.elevation,
-      yaw: model?.yawDegrees,
-      scale: model?.scale,
+      offset: model || billboard
+        ? (model?.elevation ?? billboard?.elevation ?? 0)
+        : undefined,
+      yaw: model ? (model.yawDegrees ?? 0)
+        : billboard && instance ? instance.transform.rotationRadians * 180 / Math.PI
+          : undefined,
+      scale: model ? (model.scale ?? 1)
+        : billboard && instance ? instance.transform.scale : undefined,
     };
+    setUiText(fieldLabels.get("yaw")!, model ? "Model Yaw (°)" : "Sprite Rotation (°)");
+    setUiText(fieldLabels.get("scale")!, model ? "Model Scale" : "Sprite Scale");
     const locked =
       selected?.kind !== "surface" &&
       selected &&
       state.lockedInstanceIds.includes(selected.id);
+    const actorRotation = !!billboard && spatial?.actor?.instanceId === selected?.id;
+    setUiText(editHint, !selected
+      ? "Select an object, then edit its properties in Inspector."
+      : locked
+      ? "Unlock the object to edit its placement."
+      : actorRotation
+        ? "Player rotation requires an unrotated AABB collider. Change facing through animation."
+        : selected?.kind === "surface"
+          ? "Drag to move. Use Height to raise or lower the surface."
+          : selected && spatial?.attachments?.[selected.id]
+            ? "Position and physical height are owned by the attachment source."
+            : "Drag to move. Edit rotation and scale in the fields above.");
     for (const [name, input] of fields) {
       input.parentElement!.hidden = values[name] === undefined;
       input.disabled =
         values[name] === undefined ||
         !!locked ||
+        (name === "yaw" && actorRotation) ||
         !!(
           selected &&
           selected.kind !== "surface" &&
@@ -1529,12 +1591,16 @@ export function installPlacementSpatialWorkspace(options: {
     }
     return points;
   }
-  function geometry(target: Target): Point[] {
+  function projectedGeometry(target: Target): Point[] {
     if (!frame) return [];
     const projected = worldGeometry(target).map((p) => view.project(p, frame!));
     if (projected.length === 0) return [];
     if (projected.some((p) => !p || p.depth < -1 || p.depth > 1)) return [];
-    const valid = projected.filter((p): p is NonNullable<typeof p> => !!p);
+    return projected.filter((p): p is NonNullable<typeof p> => !!p);
+  }
+  function geometry(target: Target): Point[] {
+    const valid = projectedGeometry(target);
+    if (!valid.length) return [];
     if (target.kind === "model") {
       const left = Math.min(...valid.map((p) => p.x)),
         right = Math.max(...valid.map((p) => p.x)),
@@ -1550,18 +1616,17 @@ export function installPlacementSpatialWorkspace(options: {
     }
     return valid;
   }
-  function inside(points: Point[], x: number, y: number) {
-    let hit = false;
-    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-      const a = points[i],
-        b = points[j];
-      if (
-        a.y > y !== b.y > y &&
-        x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x
-      )
-        hit = !hit;
+  function pickDepth(target: Target, x: number, y: number) {
+    const points = projectedGeometry(target);
+    if (!points.length) return;
+    let nearest: number | undefined;
+    for (const [a, b, c, d] of target.kind === "model" ? MODEL_FACES : [[0, 1, 2, 3]]) {
+      for (const triangle of [[a, b, c], [a, c, d]]) {
+        const depth = triangleDepth(points[triangle[0]], points[triangle[1]], points[triangle[2]], x, y);
+        if (depth !== undefined && (nearest === undefined || depth < nearest)) nearest = depth;
+      }
     }
-    return hit;
+    return nearest;
   }
   function pickCandidates(
     x: number,
@@ -1587,12 +1652,8 @@ export function installPlacementSpatialWorkspace(options: {
             target.id !== surface?.surfaceId,
         )
       : []) {
-      const points = geometry(target);
-      if (inside(points, x, y))
-        hits.push({
-          target,
-          depth: Math.min(...points.map((point) => point.depth)),
-        });
+      const depth = pickDepth(target, x, y);
+      if (depth !== undefined) hits.push({ target, depth });
     }
     const locked = new Set(state.lockedInstanceIds);
     for (const kind of ["model", "billboard"] as const)
@@ -1603,9 +1664,8 @@ export function installPlacementSpatialWorkspace(options: {
       )) {
         if (locked.has(id) || !visible({ kind, id })) continue;
         const target = { kind, id },
-          points = geometry(target);
-        if (inside(points, x, y))
-          hits.push({ target, depth: Math.min(...points.map((p) => p.depth)) });
+          depth = pickDepth(target, x, y);
+        if (depth !== undefined) hits.push({ target, depth });
       }
     return hits.sort((a, b) => a.depth - b.depth).map((hit) => hit.target);
   }
@@ -1667,7 +1727,11 @@ export function installPlacementSpatialWorkspace(options: {
       }
       if (!camera) {
         const target = pick(event.clientX, event.clientY);
-        if (!target) return;
+        if (!target) {
+          options.finishEdit();
+          choose();
+          return;
+        }
         choose(target);
       }
       options.finishEdit();
@@ -2182,7 +2246,10 @@ export function installPlacementSpatialWorkspace(options: {
           (state.spatial?.attachments?.[target.id] ||
             state.lockedInstanceIds.includes(target.id))
         );
-      if (!points.length) return;
+      if (!points.length) {
+        Object.assign(window, { ferrumPlacementSpatialSelection: undefined });
+        return;
+      }
       const rect = canvas.getBoundingClientRect();
       polygon.setAttribute(
         "points",
