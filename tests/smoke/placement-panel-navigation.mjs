@@ -1,9 +1,12 @@
 /** Navigate the actual panel controls; tests must not expose hidden content through DOM edits. */
 export async function showPlacementViewOptions(page) {
   const toggle = page.locator("[data-placement-view-options]");
-  if ((await toggle.getAttribute("aria-expanded")) !== "true")
+  if (!(await toggle.evaluate((element) => element.closest("details")?.open)))
     await toggle.click();
-  await page.waitForFunction(() => document.querySelector("[data-placement-view-options]").getAttribute("aria-expanded") === "true");
+  await page.waitForFunction(() => {
+    const toggle = document.querySelector("[data-placement-view-options]");
+    return toggle.closest("details")?.open && toggle.getAttribute("aria-expanded") === "true";
+  });
 }
 
 export async function showPlacementDock(page, dock) {

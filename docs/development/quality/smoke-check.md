@@ -1519,6 +1519,13 @@ Frame/Fit 카메라 분리, variable/gameplay 진단의 모드 전환과 실제 
 조건에서 감지만으로 초안이 바뀌지 않고, 잘못된 바이트 거절·재시도·단일 Undo/Redo·checked save가 동작해야 한다.
 opt-in 3초 자동 감지 뒤 명시적 texture 업로드도 검사하며 작은 fixture의 entity/draw/model 작업 상한을 확인한다.
 근거는 `artifacts/authoring-workspace-upgrades/`의 JSON/PNG다. 실제 Tauri GUI/file watcher 검증과 구분한다.
+같은 gate는 동일 모델의 proxy 수정·Undo/Redo 후 입력값 일치, 잠금 갱신 중 미적용 입력 보존,
+잘못된 치수/층/비정상 입력의 Apply 거절과 독립적인 Remove·높이 보존·Undo 복원을 검사한다.
+`placement-panel-navigation-smoke.mjs`는 기본 workspace gate에서 native details가 먼저 열리고
+ARIA가 늦게 반영되는 실제 브라우저 fixture를 검사한다. 탐색 helper는 native open을 기준으로 클릭하고
+open과 ARIA의 완료를 함께 기다려 두 번 클릭해 닫는 경합을 검출한다.
+Aseprite Assets gate는 객체 배치뿐 아니라 pointerup transaction 종료·정확한 Undo 증가까지 기다린 뒤
+기존 frame/patch/이력 assertion을 수행한다. 실패 조건이나 이력 증가 기준을 완화하지 않는다.
 단위 테스트는 spatial envelope 생략 보호, 동일 metadata의 명시적 copy origin, 예약 ID 재사용/자동 복제명,
 마지막 optional 모델 제거와 metadata 보존을 검증한다. native tests는 preview filter의 stale 입력 원자 거절·
 physics/terrain 보존과 진단 packet의 FSM 부재·health/cooldown·반복 읽기·stale handle을 검증한다.

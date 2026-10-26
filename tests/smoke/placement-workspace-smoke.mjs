@@ -1,8 +1,10 @@
 import { mkdir } from "node:fs/promises";
 import { smokePlacementViewportSizing } from "./placement-viewport-sizing-smoke.mjs";
+import { smokePlacementPanelNavigation } from "./placement-panel-navigation-smoke.mjs";
 
 /** Real UI checks for dock preferences and isolated document drafts on one runtime. */
 export async function smokePlacementWorkspace(page, timeoutMs) {
+  await smokePlacementPanelNavigation(page);
   const wait = (predicate, arg) =>
     page.waitForFunction(predicate, arg, { timeout: timeoutMs });
   await wait(() => globalThis.ferrumPlacementWorkspaceDocuments?.length === 1);
