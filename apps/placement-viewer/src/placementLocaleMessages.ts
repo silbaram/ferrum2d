@@ -30,6 +30,8 @@ export const koreanMessages: Readonly<Record<string, string>> = {
   "Working plane floor": "작업 평면 층",
   " · Working plane: Floor {0} / H {1}": " · 작업 평면: {0}층 / 높이 {1}",
   "Terrain height grid": "지형 높이 격자",
+  "Cyan lines follow terrain height": "청록색 선으로 지형 높이 표시",
+  "Cyan grid and outlines follow terrain height.": "청록색 격자와 외곽선이 지형 높이를 따라 표시됩니다.",
   "Working plane · no terrain support": "작업 평면 · 실제 지지면 없음",
   "The working plane is outside the visible view": "작업 평면이 현재 화면의 가시 범위 밖에 있습니다",
   "Place the object on a terrain surface": "지형 표면에 오브젝트를 배치하세요",

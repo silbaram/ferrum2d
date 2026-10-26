@@ -10,7 +10,9 @@ export interface GridViewport {
 export type GridSurface = Pick<
   SpatialTerrainSurface,
   "x" | "y" | "width" | "depth" | "elevation" | "endElevation" | "rampAxis"
->;
+> & {
+  gridStyle?: { minor: GridColor; major: GridColor; outline: boolean };
+};
 export type GridColor = readonly [number, number, number, number];
 export interface PlaneProjection {
   camera: Float32Array;
@@ -229,7 +231,7 @@ export function spatialGrid(
   }
   const step = spacing(base, Number.isFinite(pixels) ? pixels : 12, (s) =>
     visible.reduce(
-      (n, v) => n + count(v.x, v.x + v.width, s) + count(v.y, v.y + v.depth, s),
+      (n, v) => n + count(v.x, v.x + v.width, s) + count(v.y, v.y + v.depth, s) + (v.gridStyle?.outline ? 4 : 0),
       0,
     ),
   );
@@ -252,7 +254,7 @@ export function spatialGrid(
     const z0 = gridElevation(s, x0, y0),
       slope = (gridElevation(s, x1, y1) - z0) / (end - start),
       intercept = z0 - slope * start,
-      key = [vertical, fixed, slope.toPrecision(12), intercept.toPrecision(12)].join(":");
+      key = [vertical, fixed, slope.toPrecision(12), intercept.toPrecision(12), ...c].join(":");
     let group = groups.get(key);
     if (!group) {
       group = { vertical, fixed, slope, intercept, color: c, ranges: [] };
@@ -261,12 +263,24 @@ export function spatialGrid(
     group.ranges.push([start, end]);
   };
   for (const s of visible) {
-    lines(s.x, s.x + s.width, step, (x) =>
-      add(s, x, s.y, x, s.y + s.depth, colorAt(x, step, minor, major)),
-    );
-    lines(s.y, s.y + s.depth, step, (y) =>
-      add(s, s.x, y, s.x + s.width, y, colorAt(y, step, minor, major)),
-    );
+    const style = s.gridStyle, outline = !!style?.outline,
+      minorColor = style?.minor ?? minor, majorColor = style?.major ?? major;
+    // Outlines follow the surface boundary even when it is off the grid origin.
+    // Emit them first so the diagnostic remains visible within the shared budget.
+    if (outline) {
+      add(s, s.x, s.y, s.x, s.y + s.depth, majorColor);
+      add(s, s.x + s.width, s.y, s.x + s.width, s.y + s.depth, majorColor);
+      add(s, s.x, s.y, s.x + s.width, s.y, majorColor);
+      add(s, s.x, s.y + s.depth, s.x + s.width, s.y + s.depth, majorColor);
+    }
+    lines(s.x, s.x + s.width, step, (x) => {
+      if (!outline || (x > s.x + 1e-7 && x < s.x + s.width - 1e-7))
+        add(s, x, s.y, x, s.y + s.depth, colorAt(x, step, minorColor, majorColor));
+    });
+    lines(s.y, s.y + s.depth, step, (y) => {
+      if (!outline || (y > s.y + 1e-7 && y < s.y + s.depth - 1e-7))
+        add(s, s.x, y, s.x + s.width, y, colorAt(y, step, minorColor, majorColor));
+    });
   }
   const perspective = perspectiveFade &&
     Math.abs(m[3]) + Math.abs(m[7]) + Math.abs(m[11]) > 1e-8;

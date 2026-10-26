@@ -8,6 +8,7 @@ import { smokeVillageViewport } from "./placement-village-viewport-smoke.mjs";
 import { smokeWorkingGrid } from "./placement-working-grid-smoke.mjs";
 import { smokeSpatialCameraAngles } from "./placement-spatial-camera-smoke.mjs";
 import { smokeGridViewport } from "./placement-grid-viewport-smoke.mjs";
+import { smokeVillageHeightGrid } from "./placement-village-height-grid-smoke.mjs";
 const artifact = resolve("artifacts/rpg-village");
 await mkdir(artifact, { recursive: true });
 const base = resolve("apps/placement-viewer/dist"), arg = process.argv.indexOf("--url");
@@ -51,11 +52,16 @@ try {
     const b = await readFile(`apps/placement-viewer/public/assets/rpg-village/${a.file}`);
     assert.equal(createHash("sha256").update(b).digest("hex"), a.sha256, id);
   }
-  assert.equal(Object.keys(manifest.models).length, 13);
+  assert.equal(Object.keys(manifest.models).length, 14);
   await page.goto(origin + "/?scene=village");
-  await wait(() => window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 41);
+  await wait(() => window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 42);
   await page.locator("[data-placement-language]").selectOption("en");
-  if (process.argv.includes("--grid-viewport-only")) {
+  if (process.argv.includes("--height-grid-only")) {
+    await smokeVillageHeightGrid(page);
+    await smokeVillageHeightGrid(page, 2);
+    assert.deepEqual(errors, []);
+    console.log("Village terrain height grid smoke passed at DPR 1/2");
+  } else if (process.argv.includes("--grid-viewport-only")) {
     await smokeGridViewport(page);
     await smokeGridViewport(page, 2);
     assert.deepEqual(errors, []);
@@ -66,13 +72,15 @@ try {
     assert.deepEqual(errors, []);
     console.log("Camera pitch smoke passed at DPR 1/2");
   } else {
+  await smokeVillageHeightGrid(page);
+  await smokeVillageHeightGrid(page, 2);
   await smokeVillageViewport(page);
   await smokeWorkingGrid(page);
   await smokeSpatialCameraAngles(page);
   await smokeGridViewport(page);
   const initial = await draft();
   const frame = await page.evaluate(() => window.ferrumPlacementViewerRuntimeFrame);
-  assert.equal(frame.entityCount, 45);
+  assert.equal(frame.entityCount, 46);
   assert.equal(frame.spatial.billboardVertices, 24);
   assert(await page.evaluate(() => window.ferrumPlacementGrid.visible && window.ferrumPlacementGrid.lineCount > 0));
   await page.locator("canvas.demo-canvas").screenshot({ path: `${artifact}/village-editor.png` });
@@ -156,7 +164,7 @@ try {
   assert(stats.drawCalls > 0 && stats.drawCalls <= 160);
   assert(stats.spatial.modelTriangleCount > 5000 && stats.spatial.modelTriangleCount <= 60000);
   assert.equal(stats.spatial.modelUploadBytes, 0, "Warmed models re-uploaded");
-  assert.equal(stats.spatial.modelCount, 41);
+  assert.equal(stats.spatial.modelCount, 42);
   // A fresh 2D workspace must load the same bundled assets when opening exported JSON.
   const cold = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const villageRequests = [];
@@ -172,7 +180,7 @@ try {
     buffer: await readFile("apps/placement-viewer/public/placement.village.scene-authoring.json"),
   });
   await cold.waitForFunction(() =>
-    window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 41 &&
+    window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 42 &&
     window.ferrumPlacementViewerState?.selectedInstanceId === "village_hero",
     undefined, { timeout: 30000 },
   );
@@ -181,7 +189,7 @@ try {
   const retina = await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:2});
   retina.on("pageerror", error => errors.push(error.message));
   await retina.goto(origin + "/?scene=village");
-  await retina.waitForFunction(()=>window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws===41);
+  await retina.waitForFunction(()=>window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws===42);
   await retina.locator("[data-placement-language]").selectOption("en");
   await smokeVillageViewport(retina, 2);
   await smokeWorkingGrid(retina, 2);
@@ -189,7 +197,7 @@ try {
   await smokeGridViewport(retina, 2);
   await retina.close();
   assert.deepEqual(errors, []);
-  await writeFile(`${artifact}/checks.json`, JSON.stringify({ ok: true, source: arg < 0 ? "production" : "live", frame, moving, blocked, paused, onBridge, crossed, bank, pixels, stats, checks: ["13 hashed Blender models + 3 sprites", "45 native entities / 41 models / 4 billboards", "2D pan does not swallow WASD", "directional native walking clips", "cottage collision", "pause / stop / authoring preservation", "bridge support and river block", "nonblank textured pixel framebuffer", "bounded draws/triangles and zero warm model uploads", "EN/KO hint"] }, null, 2) + "\n");
+  await writeFile(`${artifact}/checks.json`, JSON.stringify({ ok: true, source: arg < 0 ? "production" : "live", frame, moving, blocked, paused, onBridge, crossed, bank, pixels, stats, checks: ["14 hashed Blender models + 3 sprites", "46 native entities / 42 models / 4 billboards", "2D pan does not swallow WASD", "directional native walking clips", "cottage collision", "pause / stop / authoring preservation", "bridge support and river block", "nonblank textured pixel framebuffer", "bounded draws/triangles and zero warm model uploads", "EN/KO hint"] }, null, 2) + "\n");
   console.log("Village smoke passed", { drawCalls: stats.drawCalls, triangles: stats.spatial.modelTriangleCount, pixels });
   }
 }

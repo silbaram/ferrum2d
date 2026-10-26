@@ -35,7 +35,7 @@ export async function smokeSpatialCameraAngles(parent, dpr=1) {
   }
   try {
     await page.goto(parent.url(),{waitUntil:"networkidle"});
-    await wait(()=>window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws===41);
+    await wait(()=>window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws===42);
     await page.locator("[data-placement-language]").selectOption("en");
     const base=await source();
     const originalTab=await page.locator("[data-placement-document-key][aria-selected=true]").textContent();
@@ -127,7 +127,7 @@ export async function smokeSpatialCameraAngles(parent, dpr=1) {
       const grid=await page.evaluate(()=>window.ferrumPlacementGrid);
       assert.equal(grid.planeElevation,plane); assert(grid.lineCount>0 && grid.lineCount<=512 && grid.drawCalls===1 && grid.depthTest);
       assert(stats.drawCalls>0 && stats.drawCalls<=160 && stats.spatial.modelTriangleCount>0 && stats.spatial.modelTriangleCount<=60000);
-      assert.equal(await page.evaluate(()=>window.ferrumPlacementViewerRuntimeFrame.entityCount),45);
+      assert.equal(await page.evaluate(()=>window.ferrumPlacementViewerRuntimeFrame.entityCount),46);
       results.push({projection,original,above,middle,low,lowStats,grid,stats});
       if(projection==="orthographic") orthoResume=await angle(60);
       else perspectiveResume=await camera();
@@ -147,7 +147,7 @@ export async function smokeSpatialCameraAngles(parent, dpr=1) {
     assert.equal(await page.locator("[data-placement-camera-pitch-value]").textContent(),`${Number(pitch(current).toFixed(1))}°`);
     await page.screenshot({path:`${artifact}/controls-ko-dpr${dpr}.png`,fullPage:true});
     assert.deepEqual(errors,[]);
-    await writeFile(`${artifact}/dpr${dpr}.json`,JSON.stringify({ok:true,dpr,results,checks:["up/down native projection","target/distance/lens preservation","range keyboard/mouse and limits","pan preserves pitch and restores control availability","native picking/terrain ghost","no JSON/patch/history mutation","Play/Stop, Reset and per-document camera restoration","grid depth/budget","45 entities and bounded draws/triangles","Korean controls"]},null,2)+"\n");
+    await writeFile(`${artifact}/dpr${dpr}.json`,JSON.stringify({ok:true,dpr,results,checks:["up/down native projection","target/distance/lens preservation","range keyboard/mouse and limits","pan preserves pitch and restores control availability","native picking/terrain ghost","no JSON/patch/history mutation","Play/Stop, Reset and per-document camera restoration","grid depth/budget","46 entities and bounded draws/triangles","Korean controls"]},null,2)+"\n");
   } catch(error) {
     await page.screenshot({path:`${artifact}/failure-dpr${dpr}.png`,fullPage:true});
     console.error(await page.evaluate(()=>({camera:window.ferrumPlacementSpatialCamera,message:document.querySelector(".placement-spatial-message")?.textContent,error:document.querySelector(".placement-workspace-message")?.textContent})));

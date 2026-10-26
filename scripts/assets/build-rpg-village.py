@@ -23,6 +23,10 @@ MATERIALS = {}
 MODELS = {}
 SCENES = {}
 CURRENT = None
+# Shared visual/support dimensions keep the example's height grid on the actual ground.
+GARDEN = {'x': -180, 'y': -218, 'width': 100, 'depth': 64, 'elevation': 24}
+GARDEN_RAMP = {'x': -80, 'y': -210, 'width': 64, 'depth': 48,
+               'elevation': 24, 'endElevation': 0, 'rampAxis': 'x'}
 
 PALETTE = {
     'ink': '#322e32', 'wood': '#835434', 'timber': '#543a31', 'wood_light': '#b78550',
@@ -345,6 +349,20 @@ def landscape():
             box('Water_glint',(178+dx,y+dx/4,-.58),(6,1,.08),'water_light')
 
 
+def garden():
+    # Keep the raised ground separate from the flat landscape's selection bounds.
+    g = GARDEN
+    ox,oy = g['x']+g['width']/2,g['y']+g['depth']/2
+    box('Garden_retaining_wall', (0,0,g['elevation']/2),
+        (g['width'],g['depth'],g['elevation']), 'stone', 'stone')
+    box('Garden_turf', (0,0,g['elevation']-.25),
+        (g['width'],g['depth'],.5), 'grass', 'grass')
+    r = GARDEN_RAMP
+    x0,y0 = r['x']-ox,r['y']-oy;x1,y1 = x0+r['width'],y0+r['depth'];h = r['elevation']
+    mesh('Garden_ramp', [(x0,y0,0),(x1,y0,0),(x0,y0,h),(x0,y1,0),(x1,y1,0),(x0,y1,h)],
+         [(0,1,2),(3,5,4),(0,3,4,1),(0,2,5,3),(2,1,4,5)], 'stone', 'stone')
+
+
 def new_scene(name):
     global CURRENT
     CURRENT = bpy.data.scenes.new('Village_' + name)
@@ -464,6 +482,7 @@ def make_document():
     model('clock_tower','tower',-35,165)
     model('village_well','well',-20,25,solid=True)
     model('river_bridge','bridge',190,-12,solid=False)
+    model('raised_garden','garden',GARDEN['x']+GARDEN['width']/2,GARDEN['y']+GARDEN['depth']/2,solid=False)
     for i,(x,y,s) in enumerate([(-286,172,1),(-267,70,.9),(-300,-25,1),(-290,-180,1.15),(-130,-176,.85),
         (54,190,.95),(141,188,1),(277,168,1.1),(277,70,.9),(287,-97,1),(267,-184,1.1)]):
         model('oak_'+str(i),'tree',x,y,s,solid=False)
@@ -478,6 +497,8 @@ def make_document():
         if item['id'].startswith(('oak_','pine_')):
             item['props']['components']['collider']={'type':'aabb','halfWidth':4,'halfHeight':4,'isTrigger':False}
             item['props']['components']['body']={'type':'static','heightSpan':{'floorId':0,'elevation':0,'height':24}}
+            if item['id'] == 'oak_4':
+                item['props']['components']['body']['heightSpan']['elevation'] = GARDEN['elevation']
     def person(id,texture,x,y,player=False):
         visual={'kind':'sprite','asset':'village_'+texture,'width':21,'height':31.5,'originX':.5,'originY':1}
         if player:
@@ -503,9 +524,17 @@ def make_document():
         'fragments':{'village':{'instances':instances}}},
       'spatial':{'camera':{'projection':'orthographic','position':{'x':410,'y':-610,'elevation':580},
         'target':{'x':0,'y':10,'elevation':15},'height':660,'near':.1,'far':2200},
-        'terrain':[{'id':'west_bank','x':-320,'y':-220,'width':490,'depth':440,'elevation':0,'render':False},
+        # Same-floor supports must not overlap: carve the garden and ramp out of the west bank.
+        'terrain':[{'id':'west_bank','x':-320,'y':-154,'width':490,'depth':374,'elevation':0,'render':False},
+          {'id':'south_west_bank','x':-320,'y':-220,'width':140,'depth':66,'elevation':0,'render':False},
+          {'id':'south_east_bank','x':-16,'y':-220,'width':186,'depth':66,'elevation':0,'render':False},
+          {'id':'south_edge_bank','x':-180,'y':-220,'width':164,'depth':2,'elevation':0,'render':False},
+          {'id':'garden_north_edge','x':-80,'y':-162,'width':64,'depth':8,'elevation':0,'render':False},
+          {'id':'garden_south_edge','x':-80,'y':-218,'width':64,'depth':8,'elevation':0,'render':False},
           {'id':'east_bank','x':210,'y':-220,'width':110,'depth':440,'elevation':0,'render':False},
-          {'id':'bridge_deck','x':170,'y':-31,'width':40,'depth':38,'elevation':2,'kind':'bridge','baseElevation':0,'render':False}],
+          {'id':'bridge_deck','x':170,'y':-31,'width':40,'depth':38,'elevation':2,'kind':'bridge','baseElevation':0,'render':False},
+          {'id':'south_garden',**GARDEN,'baseElevation':0,'render':False},
+          {'id':'garden_ramp',**GARDEN_RAMP,'kind':'ramp','baseElevation':0,'render':False}],
         'models':models,'billboards':billboards,
         'actor':{'instanceId':'village_hero','speed':72,'maxStepHeight':4,'maxDropHeight':4},
         'environment':{'pixelArt':{'width':384,'height':256,'snapCamera':True},
@@ -528,7 +557,8 @@ def save_source(document):
             if original.type!='MESH': continue
             copy=original.copy();copy.data=original.data
             CURRENT.collection.objects.link(copy)
-            copy.location=Vector((item['x'],item['y'],0))
+            elevation=item['props']['components'].get('body',{}).get('heightSpan',{}).get('elevation',0)
+            copy.location=Vector((item['x'],item['y'],elevation+model.get('elevation',0)))
             copy.scale=(model['scale'],)*3
             copy.rotation_euler.z=math.radians(model['yawDegrees'])
     bpy.ops.object.camera_add(location=(410,-610,595))
@@ -552,7 +582,8 @@ def main():
       ('shop',lambda:house('shop'),92,88,92),('tower',tower,46,46,130),('well',well,48,48,61),
       ('tree',tree,50,45,80),('pine',lambda:tree(True),50,50,75),('lamp',lamp,12,12,59),
       ('fence',fence,48,6,26),('cart',cart,38,52,32),('bridge',bridge,60,42,24),
-      ('flowers',flowers,40,24,12),('landscape',landscape,640,440,2)]
+      ('flowers',flowers,40,24,12),('landscape',landscape,640,440,2),
+      ('garden',garden,164,64,GARDEN['elevation'])]
     for args in assets: export_asset(*args)
     textures=save_sprites()
     document=make_document()

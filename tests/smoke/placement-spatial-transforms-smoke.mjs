@@ -30,7 +30,7 @@ export async function smokePlacementSpatialTransforms(parent, timeoutMs) {
     try {
       const url = new URL(parent.url()); url.search = "?scene=village";
       await page.goto(url.href, { waitUntil: "networkidle" });
-      await page.waitForFunction(() => window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 41, undefined, { timeout: timeoutMs });
+      await page.waitForFunction(() => window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws === 42, undefined, { timeout: timeoutMs });
       await page.locator("[data-placement-language]").selectOption("en");
       const document = await source();
       document.spatial.camera.projection = projection;

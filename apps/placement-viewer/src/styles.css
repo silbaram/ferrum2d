@@ -2396,6 +2396,15 @@ textarea {
   grid-column: 1 / -1;
   padding-bottom: 8px;
 }
+.placement-terrain-grid-legend {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--cyan);
+  font-size: 11px;
+}
+.placement-terrain-grid-legend[hidden] {
+  display: none;
+}
 .placement-view-panel input[type="checkbox"] {
   width: 14px;
   height: 14px;

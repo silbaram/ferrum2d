@@ -219,6 +219,33 @@ test("overlapping coplanar terrain lines are merged without changing their opaci
   }
 });
 
+test("terrain outlines cover off-grid boundaries and follow ramp elevation", () => {
+  const cyan=[.2,.8,.9,.95],
+    s={x:5,y:7,width:70,depth:60,elevation:10,endElevation:34,rampAxis:"x",
+      gridStyle:{minor:cyan,major:cyan,outline:true}},
+    grid=spatialGrid([s],matrix(),800,600,16,minor,major), borders=[];
+  for(let i=0;i<grid.vertices.length;i+=22) {
+    const x=grid.vertices[i],y=-grid.vertices[i+2], x1=grid.vertices[i+11],y1=-grid.vertices[i+13];
+    assert(Math.abs(grid.vertices[i+1]-gridElevation(s,x,y)-.025)<1e-4);
+    assert(Math.abs(grid.vertices[i+12]-gridElevation(s,x1,y1)-.025)<1e-4);
+    assert(Math.abs(grid.vertices[i+6]-.8)<1e-6);
+    if((x===x1 && (x===5 || x===75)) || (y===y1 && (y===7 || y===67))) borders.push([x,y,x1,y1]);
+  }
+  assert.deepEqual(borders.sort(),[[5,7,5,67],[75,7,75,67],[5,7,75,7],[5,67,75,67]].sort());
+});
+
+test("outlined terrain merges shared edges without duplicate alpha", () => {
+  const cyan=[.2,.8,.9,.95],
+    s={x:0,y:0,width:32,depth:32,elevation:24,gridStyle:{minor:cyan,major:cyan,outline:true}},
+    grid=spatialGrid([s,{...s,x:32}],matrix(),800,600,16,minor,major), shared=[];
+  for(let i=0;i<grid.vertices.length;i+=22)
+    if(grid.vertices[i]===32 && grid.vertices[i+11]===32) shared.push([...grid.vertices.slice(i,i+22)]);
+  assert.equal(shared.length,1);
+  assert(Math.abs(shared[0][8]-.95)<1e-6);
+  const duplicate=spatialGrid([s,s],matrix(),800,600,16,minor,major);
+  assert.deepEqual(duplicate.vertices,spatialGrid([s],matrix(),800,600,16,minor,major).vertices);
+});
+
 test("perspective grid fades toward the far range and keeps orthographic opacity unchanged", () => {
   const m=perspective(20), plane=visibleWorkingPlane(m,0);
   const faded=spatialGrid([plane],m,1200,750,16,minor,major,true),

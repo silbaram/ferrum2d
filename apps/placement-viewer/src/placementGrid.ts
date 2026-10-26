@@ -33,6 +33,7 @@ export function createPlacementGrid(
     spacing = document.createElement("label"),
     terrainLabel = document.createElement("label"),
     terrain = document.createElement("input"),
+    terrainLegend = document.createElement("p"),
     output = document.createElement("output");
   element.className = "placement-grid-controls";
   setUiAttribute(element, "aria-label", "Viewport grid");
@@ -51,8 +52,12 @@ export function createPlacementGrid(
   terrain.type = "checkbox";
   terrain.dataset.placementTerrainGrid = "true";
   setUiAttribute(terrain, "aria-label", "Terrain height grid");
+  setUiAttribute(terrain, "title", "Cyan lines follow terrain height");
   terrainLabel.append(terrain, uiText("Terrain height grid"));
-  element.append(label, spacing, terrainLabel, output);
+  terrainLegend.className = "placement-terrain-grid-legend";
+  terrainLegend.hidden = true;
+  setUiText(terrainLegend, "Cyan grid and outlines follow terrain height.");
+  element.append(label, spacing, terrainLabel, terrainLegend, output);
   mount.append(element);
   const styles = getComputedStyle(mount),
     parse = (token: string, alpha: number): GridColor => {
@@ -66,6 +71,11 @@ export function createPlacementGrid(
     };
   const minor = parse("--viewport-grid-strong", 0.28),
     major = parse("--fg-3", 0.45);
+  const terrainStyle = {
+    minor: parse("--cyan", 0.65),
+    major: parse("--cyan", 0.95),
+    outline: true,
+  };
   let context: PlacementGridContext | undefined,
     revision = 0,
     flatKey = "",
@@ -90,8 +100,12 @@ export function createPlacementGrid(
   });
   toggle.addEventListener("change", () => {
     flatKey = spatialKey = "";
+    syncLegend();
   });
-  terrain.addEventListener("change", () => { spatialKey = ""; });
+  terrain.addEventListener("change", () => { spatialKey = ""; syncLegend(); });
+  function syncLegend() {
+    terrainLegend.hidden = context?.mode !== "spatial" || !toggle.checked || !terrain.checked;
+  }
   function publish(lineCount: number, step: number, depthTest: boolean) {
     metrics = {
       visible: !!context && context.mode !== "game" && toggle.checked,
@@ -124,6 +138,7 @@ export function createPlacementGrid(
       revision++;
       element.hidden = next.mode === "game";
       terrainLabel.hidden = next.mode !== "spatial";
+      syncLegend();
       if (document.activeElement !== size) size.value = String(next.size);
     },
     flat() {
@@ -158,7 +173,7 @@ export function createPlacementGrid(
             !plane || s.elevation !== elevation || (s.endElevation ?? s.elevation) !== elevation,
           ) : [];
         spatial = spatialGrid(
-          [...(plane ? [plane] : []), ...surfaces],
+          [...surfaces.map(surface => ({ ...surface, gridStyle: terrainStyle })), ...(plane ? [plane] : [])],
           matrix,
           width,
           height,

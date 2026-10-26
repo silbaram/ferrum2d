@@ -21,7 +21,7 @@ export async function smokeGridViewport(parent, dpr = 1) {
     for(let i=1;i<value;i++)await input.press("ArrowRight");
     await page.keyboard.press("Escape");await paint();
   }
-  async function check(label,pixels=false,entities=45) {
+  async function check(label,pixels=false,entities=46) {
     await paint();
     const actual=await page.evaluate(()=>{
       const c=window.ferrumPlacementSpatialCamera, r=document.querySelector("canvas.demo-canvas").getBoundingClientRect(),
@@ -82,7 +82,7 @@ export async function smokeGridViewport(parent, dpr = 1) {
   }
   try {
     await page.goto(parent.url(),{waitUntil:"networkidle"});
-    await wait(()=>window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws===41);
+    await wait(()=>window.ferrumPlacementViewerRuntimeFrame?.spatial?.modelDraws===42);
     await page.locator("[data-placement-language]").selectOption("en");
     for(const dock of ["scene","inspector","runtime"]) {
       const toggle=page.locator(`[data-placement-dock-toggle=${dock}]`);
@@ -152,7 +152,7 @@ export async function smokeGridViewport(parent, dpr = 1) {
     assert.deepEqual(errors,[]);
     await writeFile(`${artifact}/dpr${dpr}.json`,JSON.stringify({ok:true,dpr,results,ghost,
       checks:["native edge projection","top/bottom grid framebuffer pixels","zoom/pitch/pan/orbit/resize/raised plane",
-        "empty scene and viewport-edge placement ghost","45/0 native entities and bounded draws/triangles","game camera unchanged","Stop/Reset and JSON/history preservation"]},null,2)+"\n");
+        "empty scene and viewport-edge placement ghost","46/0 native entities and bounded draws/triangles","game camera unchanged","Stop/Reset and JSON/history preservation"]},null,2)+"\n");
   } catch(error) {
     await page.screenshot({path:`${artifact}/failure-dpr${dpr}.png`,fullPage:true});throw error;
   } finally {await page.close();}

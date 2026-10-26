@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
 import { chromium } from "playwright-core";
-import { showPlacementInspector, showPlacementViewOptions } from "./placement-panel-navigation.mjs";
+import { clickPlacementControl, showPlacementInspector, showPlacementViewOptions } from "./placement-panel-navigation.mjs";
 const artifact = resolve("artifacts/viewport-grid");
 await mkdir(artifact, { recursive: true });
 const arg = process.argv.indexOf("--url"),
@@ -262,12 +262,8 @@ try {
           await page
             .getByRole("checkbox", { name: "Show Proxy Overlay", exact: true })
             .uncheck();
-          await page
-            .getByRole("button", { name: "Orbit Left", exact: true })
-            .click();
-          await page
-            .getByRole("button", { name: "Zoom In", exact: true })
-            .click();
+          await clickPlacementControl(page, "[data-placement-spatial-camera=left]");
+          await clickPlacementControl(page, "[data-placement-spatial-camera=in]");
           await page.waitForFunction(
             () => window.ferrumPlacementGrid.lineCount > 0,
           );
@@ -310,13 +306,9 @@ try {
                 window.ferrumPlacementEditCamera.y !== before.y),
             beforePan,
           );
-          await page.getByRole("button", { name: "Out", exact: true }).click();
-          await page
-            .getByRole("button", { name: "Fit Scene", exact: true })
-            .click();
-          await page
-            .getByRole("button", { name: "Reset", exact: true })
-            .click();
+          await clickPlacementControl(page, "[data-placement-view-action=zoom-out]");
+          await clickPlacementControl(page, "[data-placement-view-action=fit-scene]");
+          await clickPlacementControl(page, "[data-placement-view-action=reset-view]");
         }
         await page.setViewportSize({ width: 1000, height: 760 });
         await page.waitForFunction(
