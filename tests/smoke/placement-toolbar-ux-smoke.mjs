@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { showPlacementViewOptions } from "./placement-panel-navigation.mjs";
+import { showPlacementViewOptions, showPlacementMenu } from "./placement-panel-navigation.mjs";
+import { smokePlacementMenuRegressions } from "./placement-menu-regressions-smoke.mjs";
 
 /** Real toolbar controls: modes, temporary pan, display disclosure and focus. */
 export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
@@ -24,8 +25,31 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
   const grid = page.locator("[data-placement-grid-toggle]");
   const spacing = page.locator(".placement-grid-controls input[type=number]");
   try {
+    await smokePlacementMenuRegressions(page, mode);
     for (const locale of ["ko", "en"]) {
       await language.selectOption(locale);
+      const cameraMenu = page.locator(`[data-placement-menu="camera-${mode === "spatial" ? "spatial" : "2d"}"]`);
+      const cameraToggle = cameraMenu.locator(":scope > summary");
+      const helpToggle = page.locator('[data-placement-menu="help"] > summary');
+      assert.equal(await cameraToggle.getAttribute("aria-label"), locale === "ko" ? "카메라" : "Camera");
+      assert.equal(await helpToggle.getAttribute("aria-label"), locale === "ko" ? "사용 안내" : "Controls");
+      assert(await cameraMenu.locator("button").first().isHidden(), "Secondary camera actions must start collapsed");
+      await cameraToggle.focus();
+      await page.keyboard.press("Enter");
+      assert.equal(await cameraToggle.getAttribute("aria-expanded"), "true");
+      assert(await cameraMenu.locator("button").first().isVisible());
+      assert.equal(await cameraMenu.locator("button .placement-visually-hidden").count(), 0, "Camera commands need visible names");
+      await page.keyboard.press("Escape");
+      assert(await cameraToggle.evaluate((b) => b === document.activeElement));
+      await page.keyboard.press("ArrowDown");
+      assert(await cameraMenu.locator("button").first().evaluate((b) => b === document.activeElement));
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Space");
+      await showPlacementMenu(page, "help");
+      assert.equal(await cameraToggle.getAttribute("aria-expanded"), "false", "Opening another menu must dismiss Camera");
+      assert.match(await page.locator(".placement-controls-guide").innerText(), /Space/);
+      await page.keyboard.press("Escape");
+      assert(await helpToggle.evaluate((b) => b === document.activeElement));
       const name = locale === "ko" ? "화면 이동" : "Pan";
       assert.equal(await pan.getAttribute("aria-label"), name);
       assert.equal(await pan.locator("svg").count(), 1);
@@ -79,6 +103,11 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
 
     const desktop = await page.locator(".placement-viewport-primary").boundingBox();
     assert(desktop.height <= 48, "Primary tools should occupy a compact row");
+    const visibleButtons = await page.locator(".placement-viewport-primary button:visible").count();
+    assert(visibleButtons <= 6, `Secondary controls leaked into the primary row: ${visibleButtons}`);
+    await showPlacementMenu(page, "layout");
+    assert(await page.locator('[data-placement-action="reset-layout"]').isVisible());
+    await page.keyboard.press("Escape");
     await language.selectOption("ko");
     await page.screenshot({ path: `${artifact}/${mode}-ko.png`, fullPage: true });
     await showPlacementViewOptions(page);
@@ -90,11 +119,20 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
     assert(panel.x >= 0 && panel.x + panel.width <= 391 && panel.y + panel.height <= 501);
     await page.screenshot({ path: `${artifact}/${mode}-compact-ko.png`, fullPage: true });
     await page.getByRole("button", { name: "보기 설정 닫기", exact: true }).click();
+    for (const id of [mode === "spatial" ? "camera-spatial" : "camera-2d", "layout", "help"]) {
+      await showPlacementMenu(page, id);
+      const bounds = await page.locator(`[data-placement-menu="${id}"] .placement-control-panel`).boundingBox();
+      assert(bounds.x >= 0 && bounds.x + bounds.width <= 391 && bounds.y >= 0 && bounds.y + bounds.height <= 501, `${id} must fit the narrow viewport`);
+      await page.keyboard.press("Escape");
+    }
+    await showPlacementMenu(page, "help");
+    await page.setViewportSize({ width: 400, height: 500 });
+    await wait(() => !document.querySelector('[data-placement-menu="help"]').open);
     await page.setViewportSize(viewport);
     await wait(() => globalThis.ferrumPlacementGrid.lineCount > 0);
     assert.equal(await state(), before, "Toolbar UX changed camera, selection, document or history");
     await writeFile(`${artifact}/${mode}.json`, JSON.stringify({
-      ok: true, desktop, compact, checks: ["localized icons and shortcuts", "arrow focus without activation", "temporary Space state", "display toggles and shared spacing", "invalid spacing rejected", "Escape/outside dismissal", "390px disclosure bounds", "camera/document/history/selection preserved"],
+      ok: true, desktop, compact, visibleButtons, checks: ["localized icons and shortcuts", "labeled collapsed camera commands", "menu Enter/Space/Escape and focus restoration", "one menu at a time", "layout reset and controls guide reachable", "at most six primary buttons", "arrow focus without activation", "temporary Space state", "display toggles and shared spacing", "invalid spacing rejected", "Escape/outside dismissal", "390px view/camera/layout/help bounds", "camera/document/history/selection preserved"],
     }, null, 2) + "\n");
   } catch (error) {
     await page.screenshot({ path: `${artifact}/${mode}-failure.png`, fullPage: true });

@@ -1,3 +1,4 @@
+import { clickPlacementControl, showPlacementDock } from "./placement-panel-navigation.mjs";
 import { mkdir } from "node:fs/promises";
 import { smokePlacementViewportSizing } from "./placement-viewport-sizing-smoke.mjs";
 import { smokePlacementPanelNavigation } from "./placement-panel-navigation-smoke.mjs";
@@ -14,21 +15,21 @@ export async function smokePlacementWorkspace(page, timeoutMs) {
       .locator("canvas.demo-canvas")
       .evaluate((canvas) => canvas.getBoundingClientRect().width);
   const originalWidth = await width();
-  await page.click("[data-placement-dock-toggle=inspector]");
+  await clickPlacementControl(page, "[data-placement-dock-toggle=inspector]");
   await wait(
     (before) =>
       document.querySelector("canvas").getBoundingClientRect().width >
       before + 200,
     originalWidth,
   );
-  await page.click("[data-placement-dock-toggle=inspector]");
-  await page.click("[data-placement-action=focus-viewport]");
+  await showPlacementDock(page, "inspector");
+  await clickPlacementControl(page, "[data-placement-action=focus-viewport]");
   await wait(
     () =>
       document.querySelector("canvas").getBoundingClientRect().width >
       innerWidth - 8,
   );
-  await page.click("[data-placement-action=focus-viewport]");
+  await clickPlacementControl(page, "[data-placement-action=focus-viewport]");
   const grip = await page
     .locator("[data-placement-dock-resize=scene]")
     .boundingBox();
@@ -71,7 +72,7 @@ export async function smokePlacementWorkspace(page, timeoutMs) {
       globalThis.ferrumPlacementWorkspaceLayout.inspector === 328 &&
       globalThis.ferrumPlacementWorkspaceLayout.runtime === 176,
   );
-  await page.click("[data-placement-action=reset-layout]");
+  await clickPlacementControl(page, "[data-placement-action=reset-layout]");
   await wait(
     () => globalThis.ferrumPlacementViewerState?.instances.length === 6,
   );
@@ -635,7 +636,7 @@ export async function preparePlacementWorkspaceSave(page, timeoutMs) {
     .locator("button[data-instance-id=crate_right]:visible")
     .click({ modifiers: ["Control"] });
   await page.click("button[data-placement-lock-instance=floor_south]:visible");
-  await page.click("[data-placement-view-action=zoom-in]");
+  await clickPlacementControl(page, "[data-placement-view-action=zoom-in]");
   await page.evaluate(() => {
     globalThis.__workspaceBackgroundCamera =
       globalThis.ferrumPlacementEditCamera;
@@ -645,7 +646,7 @@ export async function preparePlacementWorkspaceSave(page, timeoutMs) {
     .getByRole("tab")
     .first()
     .click();
-  await page.click("[data-placement-view-action=zoom-out]");
+  await clickPlacementControl(page, "[data-placement-view-action=zoom-out]");
   await page.click("button[data-placement-lock-instance=floor_north]:visible");
   await page.evaluate(() => {
     globalThis.__workspaceSaveCamera = globalThis.ferrumPlacementEditCamera;

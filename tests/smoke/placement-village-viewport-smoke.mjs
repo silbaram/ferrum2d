@@ -1,3 +1,4 @@
+import { clickPlacementControl } from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 
@@ -52,7 +53,7 @@ export async function smokeVillageViewport(page, dpr = 1) {
       for (const dock of docks) {
         const toggle = page.locator(`[data-placement-dock-toggle=${dock}]`);
         if ((await toggle.getAttribute("aria-pressed") === "true") !== layout.panels)
-          await toggle.click();
+          await clickPlacementControl(page, toggle);
       }
       await wait(() => {
         const c = document.querySelector("canvas.demo-canvas"), p = window.__villageViewportProbe;
@@ -103,7 +104,7 @@ export async function smokeVillageViewport(page, dpr = 1) {
     }, point);
     assert(edge.visible && Math.abs(edge.x-64)<3 && edge.colored>5, "Building is cropped inside the canvas margin");
     await page.screenshot({path:`${artifact}/edge-pan-dpr${dpr}.png`,fullPage:true});
-    await page.locator("[data-placement-spatial-camera=reset]").click();
+    await clickPlacementControl(page, "[data-placement-spatial-camera=reset]");
     await page.locator("[data-placement-spatial-navigation=select]").click();
     await page.getByRole("button",{name:"Play",exact:true}).click();
     await wait(() => window.__villageViewportProbe?.pixelArt === true);
@@ -118,7 +119,7 @@ export async function smokeVillageViewport(page, dpr = 1) {
     await page.setViewportSize(sizeBefore);
     for (let i=0;i<docks.length;i++) {
       const toggle=page.locator(`[data-placement-dock-toggle=${docks[i]}]`);
-      if (await toggle.getAttribute("aria-pressed") !== visibleBefore[i]) await toggle.click();
+      if (await toggle.getAttribute("aria-pressed") !== visibleBefore[i]) await clickPlacementControl(page, toggle);
     }
   }
 }

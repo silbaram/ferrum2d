@@ -1163,6 +1163,20 @@ textarea {
   border-color: var(--accent-press);
   background: var(--accent-soft);
 }
+.placement-panel-toggles {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.placement-panel-toggles > button {
+  height: 28px;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.placement-panel-toggles > button:is([aria-pressed="true"], [aria-selected="true"]) {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 .placement-workspace-message {
   flex: 0 0 100%;
   min-width: 0;
@@ -2351,11 +2365,6 @@ textarea {
   width: 90px;
   margin-left: auto;
 }
-.placement-view-panel .placement-camera-pitch {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  padding-bottom: 8px;
-}
 .placement-camera-pitch input {
   grid-column: 1 / -1;
   grid-row: 2;
@@ -2391,4 +2400,107 @@ textarea {
 }
 .placement-view-panel .placement-spatial-snap output {
   margin-left: auto;
+}
+
+/* Labeled disclosures keep secondary actions discoverable without a button wall. */
+.placement-control-menu {
+  flex: 0 0 auto;
+}
+.placement-tool-readout .placement-viewport-action {
+  height: 24px;
+}
+.placement-control-menu > summary {
+  list-style: none;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-1);
+  background: var(--bg-2);
+}
+.placement-control-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.placement-control-menu > summary:hover {
+  background: var(--bg-3);
+}
+.placement-control-menu > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.placement-control-menu[open] > summary {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.placement-control-menu[open] .placement-disclosure-caret {
+  transform: rotate(180deg);
+}
+.placement-control-panel {
+  position: fixed;
+  z-index: 100;
+  width: min(296px, calc(100vw - 16px));
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-2);
+  color: var(--fg-1);
+  font-size: 12px;
+  white-space: normal;
+}
+.placement-control-panel > strong {
+  display: block;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.placement-control-panel p {
+  margin: 0 0 12px;
+  color: var(--fg-3);
+  line-height: 1.5;
+}
+.placement-control-panel :is(.placement-viewport-group, .placement-panel-toggles) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  border: 0;
+  padding: 0;
+}
+.placement-control-panel .placement-viewport-action {
+  justify-content: flex-start;
+}
+.placement-control-panel > button {
+  width: 100%;
+  min-height: 28px;
+  margin-top: 8px;
+  text-align: left;
+  font-size: 12px;
+}
+.placement-control-panel .placement-camera-pitch {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.placement-controls-guide {
+  margin: 0;
+  line-height: 1.5;
+}
+.placement-controls-guide dt {
+  color: var(--fg-1);
+  margin-top: 12px;
+}
+.placement-controls-guide dt:first-child {
+  margin-top: 0;
+}
+.placement-controls-guide dd {
+  margin: 4px 0 0;
+  color: var(--fg-3);
+}
+.placement-mode-controls [hidden] {
+  display: none;
+}
+.placement-layout-controls .placement-panel-toggles [hidden] {
+  display: none;
 }

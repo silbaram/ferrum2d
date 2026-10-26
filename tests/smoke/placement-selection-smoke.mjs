@@ -1,3 +1,4 @@
+import { clickPlacementControl } from "./placement-panel-navigation.mjs";
 import { mkdir } from "node:fs/promises";
 
 export async function smokePlacementSelection(page, timeoutMs) {
@@ -215,7 +216,7 @@ export async function smokePlacementSelection(page, timeoutMs) {
   );
   if (!noEdits) throw new Error("Selection or lock toggles created history");
 
-  await page.click("[data-placement-view-action=reset-view]");
+  await clickPlacementControl(page, "[data-placement-view-action=reset-view]");
   await boxSelect(page, { x: 670, y: 450 }, { x: 700, y: 480 });
   await wait(
     () =>

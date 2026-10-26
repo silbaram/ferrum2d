@@ -1,6 +1,6 @@
+import { clickPlacementControl, showPlacementInspector, showPlacementViewOptions } from "./placement-panel-navigation.mjs";
 import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
-import { showPlacementInspector, showPlacementViewOptions } from "./placement-panel-navigation.mjs";
 
 /** Real viewport pixels and authoring patches; called by the village CI gate at DPR 1/2. */
 export async function smokeWorkingGrid(parent, dpr = 1) {
@@ -172,7 +172,7 @@ export async function smokeWorkingGrid(parent, dpr = 1) {
       window.ferrumPlacementViewerState.instances.length===0 &&
       window.ferrumPlacementViewerRuntimeFrame.entityCount===0 && window.ferrumPlacementGrid.lineCount>0);
     const emptyBefore=await snapshot();
-    for(const action of ["left","in","out","right"]) await page.locator(`[data-placement-spatial-camera="${action}"]`).click();
+    for(const action of ["left","in","out","right"]) await clickPlacementControl(page, `[data-placement-spatial-camera="${action}"]`);
     const grid=await page.evaluate(()=>window.ferrumPlacementGrid);
     assert(grid.lineCount>0 && grid.lineCount<=512 && grid.depthTest && grid.drawCalls===1);
     assert.deepEqual(await snapshot(),emptyBefore,"Camera changes modified the empty scene");

@@ -53,6 +53,23 @@ export async function smokePlacementSixPanels(parent, source, timeoutMs) {
     const inspector = page.locator(
       ".placement-panel:not([hidden]) .placement-inspector",
     );
+    const language = page.locator("[data-placement-language]");
+    for (const locale of ["ko", "en", "ko"]) {
+      await language.selectOption(locale);
+      for (const mode of ["2d", "spatial", "game", "spatial"]) {
+        await page.locator(`[data-placement-mode="${mode}"]`).click();
+        const sections = inspector.locator(
+          '[data-section="transform"], [data-section="object"], [data-section="visual"], [data-section="collider"], [data-section="behavior-binding"]',
+        );
+        assert.equal(await sections.count(), 5);
+        assert.deepEqual(await sections.evaluateAll((elements) => elements.map((element) => element.hidden)),
+          Array(5).fill(mode !== "2d"), `${locale}/${mode}: Inspector visibility must use stable section IDs`);
+        if (mode === "2d")
+          assert(await inspector.locator('[data-placement-transform-field="x"]').isVisible());
+      }
+    }
+    await language.selectOption("en");
+    assert.deepEqual(await snapshot(), clean, "Locale/mode transitions changed the document or history");
     assert.match(
       await inspector
         .locator("[data-placement-selection-header]")
@@ -203,8 +220,12 @@ export async function smokePlacementSixPanels(parent, source, timeoutMs) {
         };
       }
     });
+    assert(await page.locator('[data-placement-playback="pause"]').isHidden());
+    assert(await page.locator('[data-placement-playback="stop"]').isHidden());
     await page.locator('[data-placement-playback="play"]').click();
     await wait(() => globalThis.ferrumPlacementWorkspaceMode === "game");
+    assert(await page.locator('[data-placement-playback="play"]').isHidden());
+    assert(await page.locator('[data-placement-playback="stop"]').isVisible());
     await page.locator('[data-placement-playback="pause"]').click();
     assert.equal(
       await page.locator('[data-placement-playback="pause"]').textContent(),
@@ -238,6 +259,9 @@ export async function smokePlacementSixPanels(parent, source, timeoutMs) {
     );
     await page.locator('[data-placement-playback="stop"]').click();
     await wait(() => globalThis.ferrumPlacementWorkspaceMode === "spatial");
+    assert(await page.locator('[data-placement-playback="play"]').isVisible());
+    assert(await page.locator('[data-placement-playback="pause"]').isHidden());
+    assert(await page.locator('[data-placement-playback="stop"]').isHidden());
     assert.deepEqual(
       await snapshot(),
       edited,
@@ -327,6 +351,7 @@ export async function smokePlacementSixPanels(parent, source, timeoutMs) {
     assert.deepEqual(errors, []);
     const result = {
       inspectorTabs: true,
+      localizedModeSections: true,
       bottomTabs: true,
       sceneNavigation: true,
       previewControls: calls,

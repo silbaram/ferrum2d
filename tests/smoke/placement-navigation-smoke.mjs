@@ -1,3 +1,4 @@
+import { clickPlacementControl } from "./placement-panel-navigation.mjs";
 import { mkdir } from "node:fs/promises";
 
 /** Navigation must move actual rendered content and preserve the authored draft. */
@@ -26,7 +27,7 @@ export async function smokePlacementNavigation(page, timeoutMs) {
         globalThis.ferrumPlacementViewerHistory,
       ]),
     );
-  await page.click("[data-placement-view-action=reset-view]");
+  await clickPlacementControl(page, "[data-placement-view-action=reset-view]");
   const original = await camera();
   const originalHistory = await history();
   const canvas = await page.locator("canvas.demo-canvas").boundingBox();
@@ -147,7 +148,7 @@ export async function smokePlacementNavigation(page, timeoutMs) {
   if ((await history()) !== originalHistory)
     throw new Error("Pan/zoom/cancel changed document draft or history");
   const tabCamera = await camera();
-  await page.click("[data-placement-dock-toggle=inspector]");
+  await clickPlacementControl(page, "[data-placement-dock-toggle=inspector]");
   await wait(
     (zoom) =>
       globalThis.ferrumPlacementViewerState.viewport.zoom === zoom &&
@@ -156,7 +157,7 @@ export async function smokePlacementNavigation(page, timeoutMs) {
     tabCamera.zoom,
   );
   await assertRenderedObject(page, "crate_left", timeoutMs);
-  await page.click("[data-placement-dock-toggle=inspector]");
+  await clickPlacementControl(page, "[data-placement-dock-toggle=inspector]");
 
   const source = await (
     await page.request.get(
@@ -364,7 +365,7 @@ export async function smokePlacementNavigation(page, timeoutMs) {
       `Navigation zoom limits mismatch: ${JSON.stringify(limits)}`,
     );
   await page.locator("[data-placement-close-document]").nth(1).click();
-  await page.click("[data-placement-view-action=reset-view]");
+  await clickPlacementControl(page, "[data-placement-view-action=reset-view]");
   await page.evaluate(() => globalThis.ferrumPlacementViewerSelect());
   if (
     !(await page

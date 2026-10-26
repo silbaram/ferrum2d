@@ -5,6 +5,7 @@ import {
   uiText,
 } from "./placementLocale";
 import { decorateViewportAction, viewportGroup } from "./placementViewportChrome";
+import { createPlacementControlMenu } from "./placementControlMenu";
 import {
   createDataSceneSpatialView,
   loadSpatialGlb,
@@ -139,6 +140,7 @@ export function installPlacementSpatialWorkspace(options: {
     const button = document.createElement("button");
     button.type = "button";
     setUiText(button, label);
+    setUiAttribute(button, "title", mode === "2d" ? "Edit flat scene placement" : mode === "spatial" ? "Edit depth and height placement" : "Preview the authored game camera");
     button.dataset.placementMode = mode;
     button.addEventListener("click", () => changeMode(mode));
     buttons.set(mode, button);
@@ -155,6 +157,7 @@ export function installPlacementSpatialWorkspace(options: {
     button.type = "button";
     setUiText(button, label);
     button.dataset.placementPlayback = label.toLowerCase();
+    setUiAttribute(button, "title", label === "Play" ? "Run the current scene" : label === "Pause" ? "Pause or resume the running scene" : "Stop and return to editing");
     controls.append(button);
   }
   play.addEventListener("click", () => changeMode("game"));
@@ -268,7 +271,11 @@ export function installPlacementSpatialWorkspace(options: {
     cameraGroup = viewportGroup("View navigation"),
     frameGroup = viewportGroup("Frame view"),
     floorGroup = viewportGroup("Floor view");
-  cameraControls.append(toolsGroup, cameraGroup, frameGroup, floorGroup);
+  const cameraMenu = createPlacementControlMenu("camera-spatial", "Camera", "camera");
+  const cameraHint = document.createElement("p");
+  setUiText(cameraHint, "Editor view only. Game Preview uses the scene camera.");
+  cameraMenu.panel.append(cameraHint, cameraGroup);
+  cameraControls.append(toolsGroup, cameraMenu.element, frameGroup, floorGroup);
   const navigationButtons = new Map<string, HTMLButtonElement>();
   for (const [tool, label, title] of [
     ["select", "Select", "Select objects (V)"],
@@ -321,7 +328,7 @@ export function installPlacementSpatialWorkspace(options: {
   setUiAttribute(pitchInput, "title", "Angle above the ground (1–89°)");
   pitchOutput.dataset.placementCameraPitchValue = "true";
   pitchControls.append(pitchLabel, pitchOutput, pitchInput);
-  options.viewSettings.prepend(pitchControls);
+  cameraMenu.panel.append(pitchControls);
   pitchInput.addEventListener("input", () => {
     if (drag || suspended || active.mode !== "spatial" || !active.camera) {
       syncPitchControls();
@@ -356,7 +363,7 @@ export function installPlacementSpatialWorkspace(options: {
     button.type = "button";
     decorateViewportAction(button,
       action === "in" ? "plus" : action === "out" ? "minus" : action,
-      label, undefined, true);
+      label);
     button.dataset.placementSpatialCamera = action;
     button.addEventListener("click", () => {
       if (!active.camera || drag) return;
@@ -620,7 +627,7 @@ export function installPlacementSpatialWorkspace(options: {
   panel.append(floorPanel);
   const floorsButton = document.createElement("button");
   floorsButton.type = "button";
-  decorateViewportAction(floorsButton, "floors", "Floors", undefined, true);
+  decorateViewportAction(floorsButton, "floors", "Floors");
   floorsButton.dataset.placementFloorControls = "true";
   floorsButton.addEventListener("click", () => {
     floorPanel.open = true;
@@ -874,7 +881,8 @@ export function installPlacementSpatialWorkspace(options: {
   ] as const) {
     const button = document.createElement("button");
     button.type = "button";
-    decorateViewportAction(button, selected ? "frame" : "fit", label, selected ? "F" : "Home", true);
+    decorateViewportAction(button, selected ? "frame" : "fit", label);
+    setUiAttribute(button, "title", selected ? "Center the selected object (F)" : "Show the entire scene (Home)");
     button.dataset.placementSpatialFrame = String(selected);
     button.addEventListener("click", () => frameTargets(selected));
     frameGroup.append(button);
@@ -1191,6 +1199,9 @@ export function installPlacementSpatialWorkspace(options: {
     spatialInfo.hidden = panel.hidden;
     play.disabled = active.mode === "game";
     pause.disabled = stop.disabled = active.mode !== "game";
+    play.hidden = active.mode === "game";
+    pause.hidden = stop.hidden = active.mode !== "game";
+    if (active.mode !== "spatial") cameraMenu.close();
     setUiText(pause, active.paused ? "Resume" : "Pause");
     controls.dataset.playbackState =
       active.mode === "game"
@@ -1209,16 +1220,16 @@ export function installPlacementSpatialWorkspace(options: {
     for (const section of inspector?.querySelectorAll<HTMLDetailsElement>(
       ".placement-inspector-section",
     ) ?? []) {
-      const title = section.querySelector("summary")?.textContent?.trim();
+      const sectionId = section.dataset.section;
       if (
-        title &&
+        sectionId &&
         [
-          "Transform",
-          "Object",
-          "Visual",
-          "Collider",
-          "Behavior Binding",
-        ].includes(title)
+          "transform",
+          "object",
+          "visual",
+          "collider",
+          "behavior-binding",
+        ].includes(sectionId)
       )
         section.hidden = active.mode !== "2d";
     }
@@ -1913,6 +1924,12 @@ export function installPlacementSpatialWorkspace(options: {
   window.addEventListener(
     "keydown",
     (event) => {
+      // A disclosure owns Escape before placement/candidate cancellation.
+      if (
+        event.code === "Escape" &&
+        event.target instanceof Element &&
+        event.target.closest(".placement-control-menu[open], .placement-view-options[open]")
+      ) return;
       if (event.code === "Escape" && !candidates.hidden) {
         event.preventDefault();
         event.stopPropagation();

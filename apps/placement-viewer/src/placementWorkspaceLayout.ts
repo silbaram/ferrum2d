@@ -1,4 +1,5 @@
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
+import { createPlacementControlMenu } from "./placementControlMenu";
 type Dock = "scene" | "inspector" | "runtime";
 type Layout = {
   scene: number;
@@ -70,6 +71,10 @@ export function installPlacementWorkspaceLayout(
   const controls = document.createElement("div");
   controls.className = "placement-layout-controls";
   setUiAttribute(controls, "aria-label", "Workspace panels");
+  const layoutMenu = createPlacementControlMenu("layout", "Layout", "layout");
+  const panelToggles = document.createElement("div");
+  panelToggles.className = "placement-panel-toggles";
+  layoutMenu.panel.append(panelToggles);
   const buttons = new Map<Dock, HTMLButtonElement>();
   const handles = new Map<Dock, HTMLDivElement>();
   controls.append(viewportTab);
@@ -96,7 +101,7 @@ export function installPlacementWorkspaceLayout(
         : [...layout.hidden, dock];
       sync(true);
     });
-    controls.append(button);
+    panelToggles.append(button);
     buttons.set(dock, button);
     const handle = document.createElement("div");
     handle.className = `placement-dock-separator placement-dock-separator-${dock}`;
@@ -214,7 +219,10 @@ export function installPlacementWorkspaceLayout(
     compactPanel = undefined;
     sync(true);
   });
-  controls.append(focus, reset);
+  layoutMenu.panel.append(focus, reset);
+  controls.append(panelToggles, layoutMenu.element);
+  focus.addEventListener("click", () => layoutMenu.close(true));
+  reset.addEventListener("click", () => layoutMenu.close(true));
   controls.addEventListener("keydown", (event) => {
     if (
       !compact() ||
@@ -260,6 +268,12 @@ export function installPlacementWorkspaceLayout(
     const width = root.clientWidth;
     const isCompact = compact();
     root.dataset.compact = String(isCompact);
+    const toggleHome = isCompact ? controls : layoutMenu.panel;
+    if (panelToggles.parentElement !== toggleHome) {
+      layoutMenu.close();
+      if (isCompact) controls.insertBefore(panelToggles, layoutMenu.element);
+      else toggleHome.insertBefore(panelToggles, focus);
+    }
     root.dataset.compactPanel = compactPanel ?? "none";
     viewportTab.hidden = !isCompact;
     drawerHeader.hidden = !isCompact || !compactPanel;
@@ -295,7 +309,11 @@ export function installPlacementWorkspaceLayout(
       "--compact-drawer-height",
       `${Math.floor(drawerHeight)}px`,
     );
-    controls.setAttribute("role", isCompact ? "tablist" : "group");
+    controls.setAttribute("role", "group");
+    panelToggles.setAttribute("role", isCompact ? "tablist" : "group");
+    setUiAttribute(panelToggles, "aria-label", "Workspace panels");
+    const tabHome = isCompact ? panelToggles : controls;
+    if (viewportTab.parentElement !== tabHome) tabHome.prepend(viewportTab);
     if (isCompact) viewportTab.setAttribute("role", "tab");
     else viewportTab.removeAttribute("role");
     viewportTab.setAttribute("aria-selected", String(!compactPanel));
