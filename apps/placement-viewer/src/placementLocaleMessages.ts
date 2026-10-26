@@ -177,6 +177,10 @@ export const koreanMessages: Readonly<Record<string, string>> = {
   "Game Preview · WASD to move · Stop to edit":
     "게임 미리보기 · WASD로 이동 · 정지 후 편집",
   Height: "높이",
+  "Rotate Object": "오브젝트 회전",
+  "Drag height; arrows adjust; Escape cancels": "높이 드래그 · 방향키 조절 · Escape 취소",
+  "Drag rotation; Shift snaps 15°; Escape cancels": "좌우 드래그 회전 · Shift 15° 정렬 · Escape 취소",
+  "Terrain surfaces cannot rotate": "지형 표면은 회전할 수 없습니다",
   Floors: "층",
   "All Floors": "모든 층",
   "Floor Visibility": "층 표시",
@@ -201,6 +205,8 @@ export const koreanMessages: Readonly<Record<string, string>> = {
     "플레이어 이동에는 회전하지 않은 AABB 충돌체가 필요합니다. 바라보는 방향은 애니메이션으로 변경합니다.",
   "Drag to move. Edit rotation and scale in the fields above.":
     "객체를 드래그해 이동합니다. 위 입력칸에서 회전과 크기를 수정합니다.",
+  "Drag to move. Use the height and rotation icons, or edit numeric fields.":
+    "객체를 드래그해 이동합니다. 높이·회전 아이콘 또는 숫자 입력칸으로 조절합니다.",
   "Drag to move. Use Height to raise or lower the surface.":
     "지형을 드래그해 이동합니다. 높이 손잡이로 올리거나 내립니다.",
   "Position and physical height are owned by the attachment source.":
