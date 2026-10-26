@@ -74,14 +74,14 @@ Undo/Redo, 표시 설정·camera·Game Preview 전환의 JSON/history 보존, �
 직교/원근 × DPR 1/2에서 버튼·슬라이더 키보드/마우스, native 투영 변화, target/거리/화각 보존, 한계 버튼 비활성화,
 pan 뒤 각도 유지·컨트롤 재활성화, 배경 bounds를 UI 잠금으로 제외한 캐릭터 선택·지형 배치 ghost,
 Game Preview/Stop·Reset·문서 탭별 각도 복원과 한국어 접근성 이름을 검사한다.
-JSON/patch/history·작업 평면 불변, native entity 45개, 격자 512선·1 draw와 전체 160 draw/60,000 triangle 상한도 확인한다.
+JSON/patch/history·작업 평면 불변, native entity 46개, 격자 512선·1 draw와 전체 160 draw/60,000 triangle 상한도 확인한다.
 근거는 `artifacts/spatial-camera-angles/dpr1.json`, `dpr2.json`과 낮은/높은 각도·한국어 control screenshot이다.
 
 `pnpm smoke:placement-grid-viewport`는 준비된 JS/Wasm으로 app을 빌드한 뒤 village gate의 `--grid-viewport-only` 경로를 실행한다.
 동일 `placement-grid-viewport-smoke.mjs`는 기본 village smoke/CI의 DPR 1/2에서도 실행한다.
 직교 카메라의 낮은 각도·축소·pan/orbit·resize·작업 높이 변경과 빈 씬에서 화면 모서리의 native projection/clip을 검사한다.
 격자를 켜고 끈 실제 framebuffer 상단/하단 band의 픽셀 차이를 비교해 가운데 띠로 줄어드는 회귀를 검출한다.
-45개/0개 entity, 512선·1 grid draw와 160 draw/60,000 model triangle 예산,
+46개/0개 entity, 512선·1 grid draw와 160 draw/60,000 model triangle 예산,
 JSON/patch/history 보존, 탐색 camera Stop/Reset 복원 및 게임 camera 행렬 불변도 확인한다.
 빈 씬의 화면 가장자리에서 작업 평면 ghost를 실제 pointer로 표시하고 다시 native projection으로 돌려 배치 ray도 검사한다.
 근거는 `artifacts/grid-viewport/dpr1.json`, `dpr2.json`과 축소/빈 씬 screenshot이다.
@@ -298,12 +298,18 @@ headless 기본 test의 ignored 1건은 브라우저 전용 stdin transport다. 
 `pnpm smoke:placement-spatial-workspace`다. CI validate job은 전체 build 뒤 두 mode를 직접 실행한다.
 `pnpm smoke:placement-village`는 Blender 중세 마을 예제를 production build에서 검사한다.
 CI validate job은 전체 build 뒤 `node tests/smoke/placement-village-smoke.mjs`를 실행하며 `smoke:check`에도 포함한다.
-13개 GLB/3개 sprite의 SHA-256, native entity 45개·모델 41개·billboard vertex 24개,
+14개 GLB/3개 sprite의 SHA-256, native entity 46개·모델 42개·billboard vertex 24개,
 실제 framebuffer의 유색 픽셀/색상 수, WASD/방향별 걷기 clip, 남아 있는 2D Pan의 게임 입력 방해 방지,
 건물 충돌·일시정지·정지 후 초안 복원, 다리 높이 2와 양안 이동·다리 밖 강 건너기 차단을 확인한다.
 실제 `renderer.stats()`의 draw call 1–160, model triangle 5,001–60,000과 warm model upload 0을 요구한다.
 마을을 열기 전 기본 2D 문서가 마을 에셋을 요청하지 않는지, JSON 파일 열기 시 지연 로드·주인공 선택이 되는지도 검사한다.
 production 검증은 `/placement-viewer/` 하위 경로에서 실행하여 상대 에셋 URL을 확인한다.
+같은 gate의 `placement-village-height-grid-smoke.mjs`는 DPR 1/2에서 지형 높이 격자를 켰을 때
+높이 24 정원 단·경사길 영역에 청록색 격자·외곽선이 보이는지 실제 framebuffer로 검사한다.
+격자 증가·512선/1 draw·깊이 가림, 문서·patch·history·카메라 보존, native 주인공의
+평지→경사면→높이 24→평지 보행과 Play/Stop 복원도 확인한다.
+`node tests/smoke/placement-village-smoke.mjs --height-grid-only`로 이 범위만 실행할 수 있으며
+근거는 `artifacts/village-height-grid/dpr*.json`과 `off-dpr*.png`·`on-dpr*.png`다.
 같은 gate의 `placement-village-viewport-smoke.mjs`는 DPR 1/2·세 가지 화면 크기·dock 전환에서
 편집 presentation 전체 영역, 실제 grid draw viewport·alpha blending·depth test와 framebuffer의 마을 외곽 여백을 확인한다.
 카메라 이동으로 건물을 예전 letterbox 여백에 배치하고 실제 픽셀이 남는지 검사한다.
@@ -329,6 +335,13 @@ HD-2D gate의 `placement-six-panels-smoke.mjs`는 한영 × 2D/HD-2D/Game 왕복
 실제 revision별 PNG·Wasm/WebGL2로 선택 이미지 갱신 시 thumbnail·배치 대기·drag 취소, 관계없는 이미지 갱신 시 대기 유지,
 재배치의 128×192 크기와 Undo 복원·native entity/draw 근거를 검사한다. 실제 Tauri GUI/파일 감시 검증은 포함하지 않는다.
 근거는 `artifacts/spatial-asset-refresh/verification.json`이다.
+같은 gate의 `placement-spatial-transforms-smoke.mjs`는 직교 DPR 1·원근 DPR 2의 실제 마을에서
+배경과 겹친 집의 선택·XY 드래그·한 건 Undo/Redo, 생략된 모델 변형 기본값, 모델 회전·크기와 충돌 정보 보존,
+한영 sprite 회전·크기의 native billboard 정점 반영, 잘못된 크기 rollback·잠금·Play/Stop 복원을 확인한다.
+모델·billboard·지형 선택 후 빈 공간 클릭으로 선택·외곽선·높이 손잡이·속성 값이 비워지고,
+대상 목록에 `선택 없음`을 표시하며 이름 변경·복제·삭제 버튼을 숨기는지 확인한다.
+문서·이력·카메라가 유지되는지, Pan 도구 클릭은 선택을 보존하는지도 검사한다.
+근거는 `artifacts/spatial-transform-fix/verification.json`과 화면이다.
 화면·측정 근거는 `artifacts/viewport-toolbar-ux/`다. grid/locale/공간 배치 회귀도 실제 보기 버튼으로 설정을 연다.
 HD-2D gate는 orthographic/perspective에서 Pan 버튼·H·Space 드래그의 실제 화면 투영 이동, Escape 취소,
 휠 확대·복원과 비활성 2D 카메라·선택·문서·history 불변도 확인한다. 크기/화면 근거는 `artifacts/viewport-navigation-sizing/`다.
