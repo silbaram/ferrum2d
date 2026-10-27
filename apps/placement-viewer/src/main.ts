@@ -489,6 +489,7 @@ interface PlacementHandoffControls {
 
 interface PlacementOverlay {
   element: HTMLElement;
+  selectionBounds(): DOMRect | undefined;
   setState(
     state: ScenePlacementViewerState,
     interaction: PlacementInteractionState,
@@ -574,6 +575,7 @@ async function bootstrap(): Promise<void> {
     | undefined;
   let lightingControls: ReturnType<typeof createPlacementLighting> | undefined;
   let gardenPreview: ReturnType<typeof createGardenPreview> | undefined;
+  let showColliderBounds = false;
   let workspaceDiagnostics:
     | ReturnType<typeof installPlacementDiagnostics>
     | undefined;
@@ -690,6 +692,7 @@ async function bootstrap(): Promise<void> {
       shell.stage,
       boundsById,
       currentAssetProvider,
+      () => showColliderBounds,
     );
     const initialInspectorLifetime = new AbortController();
     let inspector = createPlacementInspector(resolved, {
@@ -1316,6 +1319,7 @@ async function bootstrap(): Promise<void> {
     viewportToolbar = createPlacementViewportToolbar(
       shell.stage,
       cancelPlacementTool,
+      enabled => { showColliderBounds = enabled; setState(viewer.state()); },
     );
     window.addEventListener("keydown", (event) => {
       if (
@@ -1403,6 +1407,7 @@ async function bootstrap(): Promise<void> {
         (spatialWorkspace?.mode() ?? "2d") !== "2d",
       snapEnabled: () => interaction.enabled,
       finishEdit: () => documentSession?.finishEdit(),
+      selectionBounds: () => overlay.selectionBounds(),
     });
     documentSession = installPlacementDocumentSession({
       canvas: shell.canvas,
@@ -2598,34 +2603,40 @@ function createPlacementOverlay(
   stage: HTMLElement,
   boundsById: ReadonlyMap<string, PlacementInstanceBounds>,
   assetProvider: PlacementAssetProviderGetter,
+  showColliderBounds: () => boolean,
 ): PlacementOverlay {
   const element = document.createElement("div");
   const draftLayer = document.createElement("div");
   const selection = document.createElement("div");
   const colliderOverlay = document.createElement("div");
-  const label = document.createElement("div");
+  const colliderLabel = document.createElement("div");
   const resizeHandle = document.createElement("button");
   const colliderOffsetHandle = document.createElement("button");
   element.className = "placement-overlay";
   draftLayer.className = "placement-draft-layer";
   selection.className = "placement-selection";
   colliderOverlay.className = "placement-collider-overlay";
-  label.className = "placement-label";
+  colliderLabel.className = "placement-collider-caption";
+  setUiText(colliderLabel, "Collision Bounds");
   resizeHandle.type = "button";
   resizeHandle.className = "placement-resize-handle";
   resizeHandle.dataset.placementResizeHandle = "se";
   setUiAttribute(resizeHandle, "aria-label", "Resize selected object");
+  setUiAttribute(resizeHandle, "title", "Drag corner to resize visual and collider");
   colliderOffsetHandle.type = "button";
   colliderOffsetHandle.className = "placement-collider-offset-handle";
   colliderOffsetHandle.dataset.placementColliderOffsetHandle = "true";
   setUiAttribute(colliderOffsetHandle, "aria-label", "Move collider offset");
-  colliderOverlay.append(colliderOffsetHandle);
-  selection.append(label, resizeHandle);
+  setUiAttribute(colliderOffsetHandle, "title", "Drag to move collision bounds");
+  colliderOffsetHandle.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v12M2 8h12M5 5l3-3 3 3M5 11l3 3 3-3M5 5 2 8l3 3M11 5l3 3-3 3"/></svg>';
+  colliderOverlay.append(colliderLabel, colliderOffsetHandle);
+  selection.append(resizeHandle);
   element.append(draftLayer, colliderOverlay, selection);
   stage.append(element);
 
   return {
     element,
+    selectionBounds: () => selection.dataset.visible === "true" ? selection.getBoundingClientRect() : undefined,
     setState(state, interaction) {
       renderPlacementDraftMarkers(
         draftLayer,
@@ -2653,7 +2664,6 @@ function createPlacementOverlay(
         state.lockedInstanceIds.includes(selected.instanceId),
       );
       positionPlacementVisual(selection, selected, state, bounds);
-      label.textContent = selected.instanceId;
       const resizeKind = placementResizeKindForInstance(selected);
       selection.dataset.resizable = String(
         resizeKind !== undefined &&
@@ -2665,7 +2675,8 @@ function createPlacementOverlay(
       } else {
         selection.dataset.resizeKind = resizeKind;
       }
-      updatePlacementColliderOverlay(colliderOverlay, state, selected);
+      if (showColliderBounds()) updatePlacementColliderOverlay(colliderOverlay, state, selected);
+      else { colliderOverlay.dataset.visible = "false"; colliderOverlay.dataset.offsetDraggable = "false"; }
       if (state.selectedInstanceIds.length !== 1 || hasLockedSelection(state))
         colliderOverlay.dataset.offsetDraggable = "false";
     },
@@ -5791,10 +5802,10 @@ function installPlacementColliderOffsetHandle(
   let drag: PlacementColliderOffsetDrag | undefined;
 
   root.addEventListener("pointerdown", (event) => {
-    const target = event.target;
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLButtonElement>("[data-placement-collider-offset-handle]") : null;
     if (
-      !(target instanceof HTMLElement) ||
-      target.dataset.placementColliderOffsetHandle !== "true" ||
+      !(target instanceof HTMLButtonElement) ||
       event.button !== 0
     ) {
       return;

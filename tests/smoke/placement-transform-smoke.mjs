@@ -86,7 +86,7 @@ export async function smokePlacementTransforms(page, timeoutMs) {
   await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2);
   await page.mouse.down();
   await page.keyboard.down("Shift");
-  await page.mouse.move(pivot.x + 60, pivot.y, { steps: 8 });
+  await page.mouse.move(r.x + r.width / 2 + 90, r.y + r.height / 2, { steps: 8 });
   await page.mouse.up();
   await page.keyboard.up("Shift");
   await wait(
@@ -107,8 +107,8 @@ export async function smokePlacementTransforms(page, timeoutMs) {
   await page.mouse.down();
   await page.keyboard.down("Shift");
   await page.mouse.move(
-    pivot.x + 2 * (x - pivot.x),
-    pivot.y + 2 * (y - pivot.y),
+    x + 120,
+    y,
     { steps: 8 },
   );
   await page.mouse.up();

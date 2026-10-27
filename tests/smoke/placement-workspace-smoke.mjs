@@ -4,11 +4,13 @@ import { smokePlacementViewportSizing } from "./placement-viewport-sizing-smoke.
 import { smokePlacementPanelNavigation } from "./placement-panel-navigation-smoke.mjs";
 import { smokePlacementLighting } from "./placement-lighting-smoke.mjs";
 import { smokePlacementGarden } from "./placement-garden-smoke.mjs";
+import { smokePlacementSelectionControls } from "./placement-selection-controls-smoke.mjs";
 
 /** Real UI checks for dock preferences and isolated document drafts on one runtime. */
 export async function smokePlacementWorkspace(page, timeoutMs) {
   await smokePlacementLighting(page, timeoutMs, "2d");
   await smokePlacementGarden(page, timeoutMs);
+  await smokePlacementSelectionControls(page, timeoutMs);
   await smokePlacementPanelNavigation(page);
   const wait = (predicate, arg) =>
     page.waitForFunction(predicate, arg, { timeout: timeoutMs });

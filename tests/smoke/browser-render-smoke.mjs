@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { showPlacementInspector, showPlacementBottom } from "./placement-panel-navigation.mjs";
+import { showPlacementInspector, showPlacementBottom, clickPlacementControl } from "./placement-panel-navigation.mjs";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -1000,6 +1000,7 @@ async function smokePlacementViewer(page, timeoutMs) {
   const selection = await smokePlacementSelection(page, timeoutMs);
   const transforms = await smokePlacementTransforms(page, timeoutMs);
   await smokePlacementDocumentHistory(page, timeoutMs);
+  await clickPlacementControl(page, "[data-placement-collider-bounds]");
 
   const cratePoint = await page.evaluate(() => {
     const viewer = globalThis.__ferrumPlacementViewer;

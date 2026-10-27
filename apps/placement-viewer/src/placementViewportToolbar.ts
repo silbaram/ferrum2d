@@ -4,7 +4,7 @@ import { createPlacementControlMenu } from "./placementControlMenu";
 
 type NavigationState = { tool: "select" | "pan"; temporary: boolean; dragging: boolean };
 /** Fixed tools and a light-dismiss display disclosure outside the picking surface. */
-export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () => void) {
+export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () => void, onColliderBoundsChange: (enabled: boolean) => void) {
   const element = document.createElement("section"),
     primary = document.createElement("div"),
     navigation = document.createElement("div"),
@@ -25,6 +25,15 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     spatialNavigation = document.createElement("div"),
     layoutSettings = document.createElement("div");
   const lightingSettings = document.createElement("div");
+  const flatOverlays = document.createElement("label"), colliderBounds = document.createElement("input"), colliderText = document.createElement("span");
+  flatOverlays.className = "placement-view-collider-bounds";
+  colliderBounds.type = "checkbox";
+  colliderBounds.dataset.placementColliderBounds = "true";
+  setUiAttribute(colliderBounds, "aria-label", "Collision Bounds");
+  setUiAttribute(flatOverlays, "title", "Show collision bounds and offset handle");
+  setUiText(colliderText, "Collision Bounds");
+  flatOverlays.append(colliderBounds, colliderText);
+  colliderBounds.addEventListener("change", () => onColliderBoundsChange(colliderBounds.checked));
   let mode = "2d", label: string | undefined, dragging = false;
   const states: Record<string, NavigationState> = {};
   element.className = "placement-viewport-toolbar";
@@ -75,7 +84,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
   spatialSettings.className = "placement-view-spatial-settings";
   flatNavigation.className = spatialNavigation.className = "placement-view-navigation";
   layoutSettings.className = "placement-view-layout";
-  panel.append(header, flatNavigation, spatialNavigation, lightingSettings, gridSettings, spatialSettings, layoutSettings);
+  panel.append(header, flatNavigation, spatialNavigation, lightingSettings, gridSettings, flatOverlays, spatialSettings, layoutSettings);
   options.append(summary, panel);
   // The runtime handles Enter/Space globally; own disclosure activation here
   // so keyboard users retain native-like behavior without gameplay input.
@@ -166,6 +175,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
       flatNavigation.hidden = mode !== "2d";
       spatialNavigation.hidden = mode !== "spatial";
       gridSettings.hidden = mode === "game";
+      flatOverlays.hidden = mode !== "2d";
       renderReadout();
     },
   };
