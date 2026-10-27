@@ -25,6 +25,14 @@ Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame
 게임 카메라 확인은 실제 pixelArt/viewport를 사용하는 일시정지 미리보기이며 runtime 진행 상태는 Rust가 소유한다.
 Rust/Wasm camera ABI·렌더 명령 형식은 변경하지 않는다.
 
+공간 환경 작성은 spatial patch v6의 씬 수준 `setEnvironment`로 기존 이력/병합/저장을 사용한다.
+`lighting.enabled: false`는 작성 설정을 보존하며 TS 환경 컴파일러가 기존 native buffer의 조명 플래그를 끈다.
+native buffer에는 비활성 광원 값이 전달되지 않으므로 runtime 환경 readback은 비활성 설정 원본의 저장소가 아니다.
+작성 JSON을 광원 설정의 기준으로 유지하며 Rust 환경 ABI와 렌더러 pass 계약은 변경하지 않는다.
+flat 2D는 선택 `SceneAuthoringDocumentSpec.lighting`과 placement patch v4의 전체 lighting envelope를 사용한다.
+작성 resolver는 world 광원과 OFF 상태의 설정을 검증·보존한다. 뷰어 host가 기존 `DataSceneView.lighting`
+투영과 native `setDataSceneSun`을 연결하며, 시뮬레이션 상태와 renderer 소유권은 변경하지 않는다.
+
 Physics debug line 생성은 opt-in quality/debug path다. Runtime `Engine`은 debug 전용 collision scratch를 보관해 broadphase proxy와 contact collider pair scratch를 frame마다 재사용하며, public debug line buffer ABI와 renderer 경로는 그대로 유지한다.
 
 공식 Assets의 Aseprite import/reimport는 `placementAsepriteAssets.ts`가 검증·원본/hash·immutable revision·component patch를,

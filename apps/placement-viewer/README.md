@@ -4,6 +4,27 @@ Data Scene 기반 Scene Placement/Object Authoring viewer를 실행하는 공식
 
 이 app은 full visual editor가 아니다. Behavior Recipe 본문, FSM/action graph, animation timeline, tile painting은 이 viewer에서 편집하지 않는다.
 
+## 예제 실행
+
+**파일 → 예제 → 2D 등불 정원**은 타일·레이어·픽셀 캐릭터·물 애니메이션·충돌·길 찾기·수집·조명과 그림자를 보여준다.
+`http://localhost:5173/?scene=garden` 또는 `?scene=2d`로 바로 열 수도 있다.
+실행을 누른 뒤 바닥을 클릭하면 캐릭터가 이동하고 정원 토큰 3개를 수집한다. 벽·건물·운하는 통과할 수 없으며
+운하는 다리로 건넌다. 이동·충돌·걷기/정지 애니메이션·수집은 Rust 런타임이 처리한다.
+일시정지 버튼은 재개로 전환되며 정지는 원래 위치와 토큰을 복원한다. 편집 중에는 게임 진행을 멈춘다.
+
+바닥 타일 432개는 실수로 옮기지 않도록 처음에 잠그며, 잠금 해제 후 기존 배치 도구로 편집할 수 있다.
+집·나무·소품과 캐릭터도 기존 선택·변형·Undo 경로를 사용한다. **보기 → 조명**에서 등불과 환경광을 바꿀 수 있다.
+예제는 별도 문서 탭으로 열고 기존 탭의 초안을 보존한다. 내장 예제는 Export Only이며 원본 JSON을 자동으로 덮어쓰지 않는다.
+같은 메뉴의 **HD-2D 마을**과 **기본 2D**로 다른 예제도 연다. 기본 2D의 작은 검증용 씬은 유지한다.
+
+원본 에셋과 JSON은 Python 표준 라이브러리만 사용하는 `scripts/assets/build-lantern-garden.py`로 재생성한다.
+재생성은 예제 JSON 수정을 덮어쓰므로 에셋/구성의 원본을 바꿀 때 generator를 함께 수정한다.
+
+```bash
+python3 scripts/assets/build-lantern-garden.py --check  # 파일을 쓰지 않고 재현성 확인
+python3 scripts/assets/build-lantern-garden.py          # atlas/manifest/예제 JSON 재생성
+```
+
 ## 확인 기술
 
 현재 작업공간은 2D·HD-2D·Game Preview 모드를 공유한다. 2D에서는 대표 객체의 pivot을 기준으로
@@ -465,6 +486,22 @@ HD-2D drag 취소가 거절되면 모드·탭 전환을 멈추며, Escape나 마
 
 탭 초안은 페이지 세션에만 존재한다. 페이지 이탈 경고는 비활성 탭까지 포함한다.
 이탈을 취소한 화면의 runtime은 유지하고 실제 `pagehide`에서 자원을 정리한다.
+
+## 씬 조명
+
+**보기 → 조명**에서 씬 조명을 켜고 끄고 환경광, 태양의 밝기·색·방향, 점광원의 위치·반경·밝기·색과 그림자를 조절한다.
+HD-2D는 점광원 최대 4개와 한 점광원의 그림자를 지원한다. 태양 그림자는 별도다. 2D는 점광원 최대 32개이며
+차폐 그림자는 문서의 `lighting.tileOccluders`를 사용한다. 태양의 지면 그림자는 visual에 작성된 `shadow`를 사용한다.
+그림자 checkbox만으로 없는 caster/차폐 데이터를 생성하지 않는다.
+
+OFF는 광원 설정을 지우지 않는다. HD-2D의 pixelArt·안개·색 보정 등 다른 환경 설정도 보존한다.
+숫자는 Enter/blur로 반영하며 방향키로 증감한다. Shift는 정밀, Ctrl/Cmd는 빠른 증감이다. 입력 중 Escape는 수정 전 값으로 되돌린다.
+게임 실행 중에는 편집을 잠근다. 정지하면 편집할 수 있고, 공간 조명은 HD-2D에서 작성한다.
+설정은 문서 초안과 Undo/Redo, JSON patch, Save Draft/내보내기에 포함된다. 저장 명령은 초점을 둔 숫자 입력도 검증해 반영하며
+잘못된 값은 저장을 막고 수정할 수 있게 남긴다. browser-only의 Export Only 저장 정책은 같다.
+
+2D는 `lighting`, HD-2D는 `spatial.environment.lighting`이 원본이다. 관련 버전/수치 범위는
+[authoring API](../../docs/engine/public-api/authoring.md#2d-scene-lighting-placement-patch)를 따른다.
 
 ## 2D 화면 탐색
 

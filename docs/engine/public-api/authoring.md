@@ -419,6 +419,22 @@ Rust host는 브라우저가 `1.0`을 `1`로 보내는 숫자 정규화도 허�
 기존 파일 권한을 유지한다. 독립 외부 writer와 비교/교체 사이의 경쟁까지 원자적으로 잠그는 계약은 아니다.
 `ScenePlacementSaveAdapter` 공용 인터페이스는 유지되며 다른 host는 자체 정합성 정책을 구현한다.
 
+### 2D scene lighting placement patch
+
+Scene Authoring 문서의 선택 `lighting`은 world 좌표의 `LightingScene2D`다. 기존 문서는 조명 없이 유지된다.
+공간 문서와 함께 사용하면 거절하며 HD-2D는 `spatial.environment.lighting`을 사용한다.
+점광원은 최대 32개, 차폐 사각형은 최대 1024개, 위치는 ±1,000,000, 크기는 0.001..1,000,000,
+점광원 밝기는 0..64, falloff는 0.001..64로 제한한다. RGB(A)와 태양/그림자는 기존 renderer 계약을 따른다.
+꺼진 조명과 그림자 설정도 검증하고 보존한다. 문서를 적용하는 host는 `DataSceneView.lighting`으로
+world 광원을 화면 좌표로 바꾸고 `setSun`으로 native 지면 그림자를 연결한다. 문서 resolver가 renderer를 직접 변경하지 않는다.
+
+`viewer.updateLighting(lighting | null)`은 전체 flat 조명을 교체/제거한다. `state().lighting`은 복사본이다.
+조명 변경을 포함하는 placement patch만 v4를 사용하고 `{ lighting: LightingScene2D | null }`을 추가한다.
+v4는 lighting 필수·spatial 불허다. 기존 객체 operation과 함께 병합할 수 있으며 이전 reader는 v4를 거절한다.
+조명-only patch는 operationCount 1, changedInstanceIds 빈 배열이며 객체 잠금과 독립적이다.
+fragment 제한 저장은 거절한다. Undo/Redo/clearDraftPatch, patch store, JSON 왕복과 저장 병합은 같은 설정을 보존한다.
+조명 변경이 없는 flat patch는 기존 v2를 유지한다.
+
 ### HD-2D spatial placement patch
 
 `createScenePlacementViewer({ document, viewport })`는 spatial 원본도 보관한다.
@@ -426,8 +442,8 @@ Rust host는 브라우저가 `1.0`을 `1`로 보내는 숫자 정규화도 허�
 `updateSpatial(operations)`는 대상 ID·필드를 검사하고 전체 batch의 최종 문서를 검증한 뒤
 기존 history에 한 번 기록한다. 실패 시 열린 gesture 전체를 복원한다.
 
-기존 flat patch는 계속 v2로 export하며 v1/v2를 merge한다. spatial 변경을 포함한 patch만 v3이고
-`spatial: { format: "ferrum2d.scene-spatial.patch", version: 1 | 2 | 3 | 4 | 5, operations: [...] }`를 추가한다.
+조명 변경이 없는 flat patch는 계속 v2로 export하며 v1/v2를 merge한다. spatial 변경을 포함한 patch만 v3이고
+`spatial: { format: "ferrum2d.scene-spatial.patch", version: 1 | 2 | 3 | 4 | 5 | 6, operations: [...] }`를 추가한다.
 spatial v1은 기존 대상 갱신, v2는 billboard/model 참조 추가도 허용한다. 갱신만 있는 export는 v1을 유지한다.
 새 참조가 포함된 export만 v2를 사용하며 이전 spatial reader는 이를 거절한다.
 이전 reader는 v3를 거절하므로 spatial 변경을 무시하고 일부만 저장하지 않는다.
@@ -442,11 +458,19 @@ spatial v1은 기존 대상 갱신, v2는 billboard/model 참조 추가도 허�
 | addModel (spatial v2) | 필수 asset/contentId와 선택 elevation, yawDegrees, scale, castShadow, receiveShadow |
 | setBillboardNormalTexture (spatial v4) | normalTexture: stable project 이름 또는 null(참조 해제). 기존 numeric ID도 제거 |
 | setCamera (spatial v5) | camera: 전체 SpatialCameraSpec. 씬 수준 작업으로 id 필드를 받지 않음 |
+| setEnvironment (spatial v6) | environment: 전체 SpatialEnvironmentSpec 또는 null(환경 제거). 씬 수준 작업으로 id 필드를 받지 않음 |
 
 Add는 같은 ID의 billboard/model 중 어느 참조라도 이미 있으면 거절하며 upsert로 처리하지 않는다.
 spatial v3는 아래 identity/reimport operation을 추가한다. 이전 reader는 v3를 거절한다.
 spatial v4는 normal 이름 교체/해제를 추가하고 v1~v3 operation도 받는다. 이전 reader는 v4를 거절한다.
 `viewer.updateSpatial`은 normal 변경의 Undo/Redo와 v4 sparse export를 지원한다.
+
+spatial v6는 전체 환경을 교체/제거하는 `setEnvironment`를 추가한다. 바깥 placement envelope는 v3를 유지하며
+환경 변경이 없는 export의 최소 버전은 유지한다. 이전 reader는 v6를 거절해 환경 변경을 조용히 누락하지 않는다.
+환경-only patch의 `changedInstanceIds`는 비어 있고 오브젝트 잠금과 독립적이다. fragment 제한 저장은 거절한다.
+기존 `pixelArt`·fog·색 보정 등을 보존하려면 현재 환경을 복사한 뒤 조명 필드만 수정한다.
+`lighting.enabled: false`는 광원 설정을 보존하고 렌더의 조명/그림자 pass만 끈다. 생략/true는 활성화이며
+잘못된 광원 값은 OFF 상태에서도 거절한다. Undo/Redo와 저장/병합은 전체 환경 변경을 원자적으로 처리한다.
 
 spatial v5는 씬의 게임 카메라를 교체하는 `setCamera`를 추가한다. 기존 v1~v4 입력과 카메라 변경이 없는
 export의 최소 버전은 유지한다. 카메라 변경을 포함한 export만 v5를 사용하며 이전 reader는 v5를 거절한다.

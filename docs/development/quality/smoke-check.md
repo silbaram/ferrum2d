@@ -296,6 +296,21 @@ headless 기본 test의 ignored 1건은 브라우저 전용 stdin transport다. 
 
 2D·HD-2D authoring 작업공간의 기본 browser 명령은 `pnpm smoke:placement-viewer`와
 `pnpm smoke:placement-spatial-workspace`다. CI validate job은 전체 build 뒤 두 mode를 직접 실행한다.
+두 gate의 `placement-lighting-smoke.mjs`는 실제 Wasm/WebGL2 조명 ON/OFF와 framebuffer 차이·복원을 확인한다.
+2D 점광원과 HD-2D 환경 buffer의 조명/태양/그림자 flag, bounded draw cost, 설정 보존·카메라 불변,
+잘못된 수치와 native 거부의 rollback, Undo/Redo·Play/Stop·탭 격리, 한영·390×500 패널 경계를 검사한다.
+2D gate에서 함께 실행하는 저장 검증은 공개 Tauri bridge를 모의하고 실제 native 렌더러를 사용한다.
+포커스 중인 입력의 저장/재열기와 잘못된 입력의 저장 차단을 검사하며 실제 OS 파일 선택기/파일 쓰기 검증은 아니다.
+근거는 `artifacts/viewer-lighting/`에 남긴다.
+
+2D gate의 `placement-garden-smoke.mjs`는 **파일 → 예제 → 2D 등불 정원**과 `?scene=garden` 경로를 검사한다.
+atlas SHA-256/43개 crop, navigation의 운하/다리, 타일 432개를 포함한 native entity 465개,
+4개 점광원·그림자와 draw call 1–64·texture switch 4 이하를 요구한다.
+실제 클릭 이동·걷기/정지 clip·일시정지/재개·토큰 3개 수집·다리 건너기·막힌 목적지와
+native solid 충돌·정지 후 원본 복원·문서 Undo·다른 탭의 초안 보존·한영/작은 창을 확인한다.
+근거는 `artifacts/2d-showcase/report.json`과 화면이다. 에셋/JSON 재현성은
+`python3 scripts/assets/build-lantern-garden.py --check`로 별도 확인한다.
+
 `pnpm smoke:placement-village`는 Blender 중세 마을 예제를 production build에서 검사한다.
 CI validate job은 전체 build 뒤 `node tests/smoke/placement-village-smoke.mjs`를 실행하며 `smoke:check`에도 포함한다.
 14개 GLB/3개 sprite의 SHA-256, native entity 46개·모델 42개·billboard vertex 24개,
