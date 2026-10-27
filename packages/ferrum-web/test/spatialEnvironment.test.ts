@@ -21,6 +21,23 @@ const spec: SpatialEnvironmentSpec = {
   colorGrading: { toneMapping: "aces" },
   fog: { start: 100, end: 300, color: [0.2, 0.3, 0.4] },
 };
+test("disabled authored lighting retains settings but compiles no lights or shadows and preserves other effects", () => {
+  const disabled = resolveSpatialEnvironmentSpec({ ...spec, lighting: { ...spec.lighting!, enabled: false } });
+  equal(disabled.lighting!.enabled, false);
+  equal(disabled.lighting!.lights.length, 1);
+  equal(disabled.lighting!.shadows!.lightIndex, 0);
+  const values = compileSpatialEnvironment(disabled);
+  ok(validSpatialEnvironmentValues(values));
+  equal(values[0] & 1, 0);
+  equal(values[1], 0);
+  equal(values[2], -1);
+  equal(values[0] & 14, 14);
+  const restored = { ...disabled, lighting: { ...disabled.lighting!, enabled: true } };
+  deepEqual(compileSpatialEnvironment(restored), compileSpatialEnvironment(spec));
+  deepEqual(resolveSpatialEnvironmentSpec(restored), resolveSpatialEnvironmentSpec(spec));
+  throws(() => resolveSpatialEnvironmentSpec({ lighting: { enabled: "false", lights: [] } }), /enabled/);
+  throws(() => resolveSpatialEnvironmentSpec({ lighting: { enabled: false, lights: [{ radius: -1 }] } }), /position|radius/);
+});
 test("spatial environment compiles deterministic finite numeric v1 settings with bounded defaults", () => {
   const normalized = resolveSpatialEnvironmentSpec(spec),
     v = compileSpatialEnvironment(spec);

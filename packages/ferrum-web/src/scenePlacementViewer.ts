@@ -57,6 +57,8 @@ import {
   type InstantiateSceneFragmentOptions,
 } from "./sceneComposition.js";
 import type { ResolvedSceneAuthoringDocument } from "./sceneAuthoringDocument.js";
+import { resolveSceneLighting } from "./sceneLighting.js";
+import type { LightingScene2D } from "./lightingTypes.js";
 import type {
   ResolvedSceneCompositionInstance,
   ResolvedSceneCompositionSpec,
@@ -134,6 +136,7 @@ export interface ScenePlacementObjectDefinitionSummary {
 }
 
 export interface ScenePlacementViewerState {
+  lighting?: LightingScene2D;
   fragment: string;
   viewport: ScenePlacementViewport;
   objectDefinitions: readonly ScenePlacementObjectDefinitionSummary[];
@@ -238,9 +241,12 @@ export interface ScenePlacementPatch {
   version:
     | typeof SCENE_PLACEMENT_PATCH_LEGACY_VERSION
     | typeof SCENE_PLACEMENT_PATCH_VERSION
-    | 3;
+    | 3
+    | 4;
   /** Version 3 only. Older readers reject this version before saving. */
   spatial?: SceneSpatialPatch;
+  /** Version 4 only. null removes authored flat lighting; spatial cannot coexist. */
+  lighting?: LightingScene2D | null;
   operations: readonly ScenePlacementPatchOperation[];
 }
 
@@ -299,6 +305,7 @@ export interface ScenePlacementViewer {
   updateSpatial(
     operations: readonly SceneSpatialPatchOperation[],
   ): ScenePlacementViewerState;
+  updateLighting(lighting: LightingScene2D | null): ScenePlacementViewerState;
   updateInstanceComponents(
     instanceId: string,
     components: SceneCompositionJsonValue,
@@ -407,6 +414,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       selected: [...this.selectedInstanceIds],
       hovered: this.hoveredInstanceId,
       spatial: this.spatial,
+      lighting: this.lighting,
     });
   }
 
@@ -434,6 +442,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     this.selectedInstanceIds = copy.selected;
     this.hoveredInstanceId = copy.hovered;
     this.spatial = copy.spatial;
+    this.lighting = copy.lighting;
     this.pickBounds = this.createPickBounds(this.path);
     this.pruneSelectionAndLocks();
     this.runDraftValidation(this.state());
@@ -442,6 +451,8 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
   private readonly sourceDocument?: SceneAuthoringDocumentSpec;
   private readonly sourceSpatial?: DataSceneSpatialSpec;
   private spatial?: DataSceneSpatialSpec;
+  private readonly sourceLighting?: LightingScene2D;
+  private lighting?: LightingScene2D;
   private editingDraft = false;
   private validatingDraft = false;
 
@@ -491,6 +502,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
           (operation) =>
             operation.kind !== "updateTerrainSurface" &&
             operation.kind !== "setCamera" &&
+            operation.kind !== "setEnvironment" &&
             locked.has(operation.id),
         )
       )
@@ -507,7 +519,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         }
       this.spatial = applySceneSpatialPatch(this.spatial, {
         format: "ferrum2d.scene-spatial.patch",
-        version: operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
+        version: operations.some((op) => op.kind === "setEnvironment") ? 6 : operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
           (op) => op.kind === "setBillboardNormalTexture",
         )
           ? 4
@@ -529,6 +541,14 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
               : 1,
         operations,
       });
+      return this.state();
+    });
+  }
+
+  updateLighting(lighting: LightingScene2D | null): ScenePlacementViewerState {
+    return this.edit("Scene Lighting", () => {
+      if (this.spatial) throw new Error("Spatial scenes use spatial.environment.lighting");
+      this.lighting = lighting === null ? undefined : resolveSceneLighting(lighting);
       return this.state();
     });
   }
@@ -614,6 +634,11 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       this.spatial = structuredClone(this.sourceSpatial);
     }
     this.path = path;
+    if (options.document?.lighting !== undefined) {
+      if (this.spatial) throw new Error("Spatial scenes cannot contain flat lighting");
+      this.sourceLighting = resolveSceneLighting(options.document.lighting);
+      this.lighting = structuredClone(this.sourceLighting);
+    }
     const composition = viewerComposition(options, path);
     this.composition = composition;
     this.fragment = options.fragment ?? composition.initialFragment;
@@ -669,6 +694,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
     return {
       fragment: this.fragment,
       ...(this.spatial ? { spatial: structuredClone(this.spatial) } : {}),
+      ...(this.lighting ? { lighting: structuredClone(this.lighting) } : {}),
       viewport: { ...this.viewport },
       objectDefinitions: this.objectDefinitions(),
       instances,
@@ -1313,6 +1339,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
 
   private clearDraftPatchDraft(): ScenePlacementViewerState {
     this.spatial = structuredClone(this.sourceSpatial);
+    this.lighting = structuredClone(this.sourceLighting);
     this.draftTransforms.clear();
     this.draftComponents.clear();
     this.draftInstanceBehaviorBindings.clear();
@@ -1473,13 +1500,15 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
       this.draftRenames,
       this.spatialCopySources,
     );
-    if (operations.length === 0 && !spatial) {
+    const lightingChanged = JSON.stringify(this.sourceLighting) !== JSON.stringify(this.lighting);
+    if (operations.length === 0 && !spatial && !lightingChanged) {
       return undefined;
     }
     return {
       format: SCENE_PLACEMENT_PATCH_FORMAT,
-      version: spatial ? 3 : SCENE_PLACEMENT_PATCH_VERSION,
+      version: lightingChanged ? 4 : spatial ? 3 : SCENE_PLACEMENT_PATCH_VERSION,
       ...(spatial ? { spatial } : {}),
+      ...(lightingChanged ? { lighting: structuredClone(this.lighting ?? null) } : {}),
       operations,
     };
   }
@@ -2049,7 +2078,7 @@ class ScenePlacementPatchStoreController implements ScenePlacementPatchStore {
       dirty: patch !== undefined,
       operationCount:
         (patch?.operations.length ?? 0) +
-        (patch?.spatial?.operations.length ?? 0),
+        (patch?.spatial?.operations.length ?? 0) + (patch?.lighting !== undefined ? 1 : 0),
       ...(patch === undefined ? {} : { patch }),
     };
   }
@@ -2392,6 +2421,7 @@ function copyScenePlacementPatch(
     version: patch.version,
     operations: patch.operations.map(copyScenePlacementPatchOperation),
     ...(patch.spatial ? { spatial: structuredClone(patch.spatial) } : {}),
+    ...(patch.lighting !== undefined ? { lighting: structuredClone(patch.lighting) } : {}),
   };
 }
 

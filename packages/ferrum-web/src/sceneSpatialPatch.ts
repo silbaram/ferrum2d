@@ -7,8 +7,14 @@ import {
   type SpatialBillboardSpec,
   type SpatialModelInstanceSpec,
 } from "./dataSceneSpatial.js";
+import { resolveSpatialEnvironmentSpec, type SpatialEnvironmentSpec } from "./spatialEnvironment.js";
 
 export type SceneSpatialPatchOperation =
+  | {
+      /** Scene-level environment replacement; null removes all environment settings. */
+      kind: "setEnvironment";
+      changes: { environment: SpatialEnvironmentSpec | null };
+    }
   | {
       /** Scene-level camera replacement; no instance identity is involved. */
       kind: "setCamera";
@@ -102,13 +108,14 @@ export type SceneSpatialPatchOperation =
 
 export interface SceneSpatialPatch {
   format: "ferrum2d.scene-spatial.patch";
-  version: 1 | 2 | 3 | 4 | 5;
+  version: 1 | 2 | 3 | 4 | 5 | 6;
   operations: readonly SceneSpatialPatchOperation[];
 }
 
 const hasOwn = (value: object, key: string) =>
   Object.prototype.hasOwnProperty.call(value, key);
 const fields = {
+  setEnvironment: ["environment"],
   setCamera: ["camera"],
   setBillboardNormalTexture: ["normalTexture"],
   replaceModelAsset: ["asset", "contentId"],
@@ -164,11 +171,12 @@ export function applySceneSpatialPatch(
       patch.version !== 2 &&
       patch.version !== 3 &&
       patch.version !== 4 &&
-      patch.version !== 5) ||
+      patch.version !== 5 &&
+      patch.version !== 6) ||
     !Array.isArray(patch.operations)
   )
     throw new Error(
-      "spatial patch requires format ferrum2d.scene-spatial.patch version 1, 2, 3, 4 or 5 operations",
+      "spatial patch requires format ferrum2d.scene-spatial.patch version 1, 2, 3, 4, 5 or 6 operations",
     );
   if (
     Object.keys(patch).some(
@@ -182,7 +190,7 @@ export function applySceneSpatialPatch(
     if (
       !operation ||
       !hasOwn(fields, operation.kind) ||
-      (operation.kind !== "setCamera" &&
+      (operation.kind !== "setCamera" && operation.kind !== "setEnvironment" &&
         (typeof operation.id !== "string" || !operation.id.length)) ||
       !operation.changes ||
       typeof operation.changes !== "object" ||
@@ -190,10 +198,18 @@ export function applySceneSpatialPatch(
       (!Object.keys(operation.changes).length &&
         operation.kind !== "addBillboard") ||
       Object.keys(operation).some(
-        (key) => !(operation.kind === "setCamera" ? ["kind", "changes"] : ["kind", "id", "changes"]).includes(key),
+        (key) => !(["setCamera", "setEnvironment"].includes(operation.kind) ? ["kind", "changes"] : ["kind", "id", "changes"]).includes(key),
       )
     )
       throw new Error("Invalid spatial patch operation");
+    if (operation.kind === "setEnvironment") {
+      if (patch.version < 6 || Object.keys(operation.changes).length !== 1 ||
+          !hasOwn(operation.changes, "environment"))
+        throw new Error("Environment replacement requires spatial patch version 6 and environment");
+      if (operation.changes.environment === null) delete next.environment;
+      else next.environment = resolveSpatialEnvironmentSpec(operation.changes.environment, "spatialPatch.environment");
+      continue;
+    }
     if (operation.kind === "setCamera") {
       if (patch.version < 5 || Object.keys(operation.changes).length !== 1 ||
           !hasOwn(operation.changes, "camera"))
@@ -386,6 +402,7 @@ export function diffSceneSpatialPatch(
     JSON.stringify(
       value && typeof value === "object" && "billboards" in value
         ? { ...value, camera: resolveSpatialCameraSpec(Reflect.get(value, "camera")),
+            environment: Reflect.get(value, "environment") === undefined ? undefined : resolveSpatialEnvironmentSpec(Reflect.get(value, "environment")),
             ...(!Object.keys(Reflect.get(value, "models") ?? {}).length ? { models: undefined } : {}) }
         : value,
       function (_key, item: unknown) {
@@ -397,6 +414,10 @@ export function diffSceneSpatialPatch(
       },
     );
   const operations: SceneSpatialPatchOperation[] = [];
+  const environment = next.environment === undefined ? null : resolveSpatialEnvironmentSpec(next.environment);
+  const sourceEnvironment = source.environment === undefined ? null : resolveSpatialEnvironmentSpec(source.environment);
+  if (stable(sourceEnvironment) !== stable(environment))
+    operations.push({ kind: "setEnvironment", changes: { environment } });
   const camera = resolveSpatialCameraSpec(next.camera);
   if (stable(resolveSpatialCameraSpec(source.camera)) !== stable(camera))
     operations.push({ kind: "setCamera", changes: { camera } });
@@ -564,7 +585,7 @@ export function diffSceneSpatialPatch(
       throw new Error("Spatial draft contains unsupported metadata changes");
     return undefined;
   }
-  const version = operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
+  const version = operations.some((op) => op.kind === "setEnvironment") ? 6 : operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
     (op) => op.kind === "setBillboardNormalTexture",
   )
     ? 4
