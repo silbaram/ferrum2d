@@ -11,6 +11,14 @@ Tauri 기반 placement viewer desktop wrapper다. 이 app은 `apps/placement-vie
 
 이 app은 full visual editor가 아니다. Behavior Recipe 본문, FSM/action graph, animation timeline, tile painting은 여전히 agent/spec 소유다.
 
+## 설치 파일 준비
+
+저장소 루트에서 `pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component viewer --no-sign`으로 현재 OS용 release 설치 파일을 준비한다. `--component engine`은 SDK 묶음, `--component all`은 SDK와 현재 OS 뷰어를 함께 준비하며 `--plan`은 빌드 없이 계획만 출력한다. beta 버전은 예시이며 원격 공개는 수행하지 않는다.
+
+Windows `.exe`/Linux `.deb`/macOS `.dmg`는 각 OS에서 빌드한다. Node/pnpm/Rust/Wasm 및 Tauri native 개발 도구가 필요하다. source 버전을 바꾸지 않고 임시 config와 `app-icon.svg`에서 생성한 아이콘을 사용한다. 뷰어에는 미리보기 엔진이 포함되어 설치한 사용자는 SDK/Node/Rust를 별도로 설치하지 않아도 된다. 프로젝트 열기에는 `public/scene-authoring.json`과 `public/assets`가 있는 게임 폴더를 선택한다. 임의 게임 코드/HUD의 실행은 게임 프로젝트에서 수행한다.
+
+준비 성공과 실제 설치/GUI/서명 확인은 별개다. OS별 조건, checksum·통합 manifest와 수동 CI의 `include_viewer` 사용법은 [엔진·뷰어 분리 배포 절차](../../docs/development/operations/github-release.md#엔진과-전체-뷰어-앱-분리-준비)를 따른다.
+
 ## 실행
 
 프로젝트 문서의 Assets → Import Aseprite → **Save Project**는 원본 PNG/JSON과

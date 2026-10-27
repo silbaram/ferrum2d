@@ -224,6 +224,8 @@ Ferrum2D는 GitHub Releases의 설치용 `.tgz` 패키지를 기본 배포 경�
 | `@ferrum2d/create-game` | 새 Ferrum2D 게임 프로젝트 생성 CLI |
 | `@ferrum2d/agents` | AI로 Ferrum2D 게임을 개발할 때 사용하는 consumer agent/skill/command 설치 CLI. Agent Template Showcase 기준은 [packages/agents/README.md](packages/agents/README.md#agent-template-showcase)다. |
 
+전체 Placement Viewer 앱은 위 `authoring-viewer` helper 패키지와 별도로 Windows `.exe`, Linux `.deb`, macOS `.dmg` 설치 파일로 준비한다. 앱에는 미리보기 엔진이 포함된다. 배포자는 `pnpm release:distribution:prepare -- --version 0.1.0-beta.0 --component engine`으로 SDK 묶음, `--component viewer`로 현재 OS의 설치 파일, `--component all`로 둘을 함께 만든다. `--plan`은 빌드 없이 준비 내용을 보여준다. OS별 필수 도구와 수동 CI의 `include_viewer` 옵션은 [엔진·뷰어 분리 배포](docs/development/operations/github-release.md#엔진과-전체-뷰어-앱-분리-준비)를 따른다. 준비 스크립트는 원격 공개를 수행하지 않는다.
+
 공개된 GitHub Release의 `ferrum2d-create-game-<버전>.tgz` 링크를 복사한 뒤 실행한다. **릴리스 패키지가 아직 공개되지 않았다면 이 원격 설치는 사용할 수 없다.** 배포 준비와 로컬 검증은 [GitHub Release 배포 절차](docs/development/operations/github-release.md)를 따른다. 게임 개발자는 Node.js 22만 준비하면 되며 Rust 빌드는 필요 없다.
 
 ```bash
