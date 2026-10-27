@@ -97,6 +97,7 @@ export function installPlacementSpatialWorkspace(options: {
   canvas: HTMLCanvasElement;
   stage: HTMLElement;
   cameraToolbar: HTMLElement;
+  flushSceneSettings?(): boolean;
   navigationSettings: HTMLElement;
   viewSettings: HTMLElement;
   gridChanged?(state: ScenePlacementViewerState): void;
@@ -1050,6 +1051,7 @@ export function installPlacementSpatialWorkspace(options: {
     if (mode === active.mode) return;
     if (mode === "spatial" && !state.spatial) return;
     if (!gameCamera.cancelGesture() || !gameCamera.flushInput()) return;
+    if (options.flushSceneSettings?.() === false) return;
     if (!cancel()) return;
     previewCamera = undefined;
     options.finishEdit();

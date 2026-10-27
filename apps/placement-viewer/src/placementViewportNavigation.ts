@@ -11,7 +11,9 @@ import type {
 import {
   createDataSceneView,
   type FerrumRuntime,
+  type FrameState,
 } from "@ferrum2d/ferrum-web/core";
+import type { LightingScene2D } from "@ferrum2d/ferrum-web/labs";
 
 export interface PlacementEditCamera {
   x: number;
@@ -395,6 +397,9 @@ export function installPlacementViewportNavigation(options: {
   syncTool();
   refresh();
   return {
+    fitScene: () => fit(false),
+    pointerToWorld: (client: ScenePlacementPoint) => view.pointerToWorld(client),
+    lighting: (scene: LightingScene2D | undefined, frame: FrameState) => scene ? view.lighting(scene, view.snapshot(frame)) : false as const,
     snapshot,
     restore,
     cancelGesture,

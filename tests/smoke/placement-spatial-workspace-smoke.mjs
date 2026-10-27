@@ -10,8 +10,10 @@ import { smokePlacementViewportSizing } from "./placement-viewport-sizing-smoke.
 import { smokePlacementSpatialAssetRefresh } from "./placement-spatial-asset-refresh-smoke.mjs";
 import { smokePlacementSpatialTransforms } from "./placement-spatial-transforms-smoke.mjs";
 import { smokePlacementGameCamera } from "./placement-game-camera-smoke.mjs";
+import { smokePlacementLighting } from "./placement-lighting-smoke.mjs";
 
 export async function smokePlacementSpatialWorkspace(page, timeoutMs) {
+  const lighting = await smokePlacementLighting(page, timeoutMs, "spatial");
   const wait = async (fn, arg) => {
     try {
       return await page.waitForFunction(fn, arg, { timeout: timeoutMs });
@@ -1354,6 +1356,7 @@ export async function smokePlacementSpatialWorkspace(page, timeoutMs) {
     timeoutMs,
   );
   return {
+    lighting,
     gameCamera: await smokePlacementGameCamera(page, timeoutMs),
     transforms: await smokePlacementSpatialTransforms(page, timeoutMs),
     assetRefresh: await smokePlacementSpatialAssetRefresh(page, source, timeoutMs),

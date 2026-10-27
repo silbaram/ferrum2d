@@ -2,9 +2,13 @@ import { clickPlacementControl, showPlacementDock } from "./placement-panel-navi
 import { mkdir } from "node:fs/promises";
 import { smokePlacementViewportSizing } from "./placement-viewport-sizing-smoke.mjs";
 import { smokePlacementPanelNavigation } from "./placement-panel-navigation-smoke.mjs";
+import { smokePlacementLighting } from "./placement-lighting-smoke.mjs";
+import { smokePlacementGarden } from "./placement-garden-smoke.mjs";
 
 /** Real UI checks for dock preferences and isolated document drafts on one runtime. */
 export async function smokePlacementWorkspace(page, timeoutMs) {
+  await smokePlacementLighting(page, timeoutMs, "2d");
+  await smokePlacementGarden(page, timeoutMs);
   await smokePlacementPanelNavigation(page);
   const wait = (predicate, arg) =>
     page.waitForFunction(predicate, arg, { timeout: timeoutMs });

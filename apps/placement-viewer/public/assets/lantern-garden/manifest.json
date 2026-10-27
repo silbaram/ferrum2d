@@ -1,0 +1,271 @@
+{
+  "format": "ferrum2d.example.lantern-garden-assets",
+  "version": 1,
+  "texture": {
+    "id": "garden_atlas",
+    "file": "atlas.png",
+    "width": 512,
+    "height": 512,
+    "sha256": "27b7be71c8a26e98e9fd11c14aeb43688e31876d2d1c29931bcbb91eaa9288d4"
+  },
+  "frames": {
+    "grass_0": {
+      "x": 0,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "stone_0": {
+      "x": 32,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "water_0": {
+      "x": 64,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "grass_1": {
+      "x": 96,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "stone_1": {
+      "x": 128,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "water_1": {
+      "x": 160,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "grass_2": {
+      "x": 192,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "stone_2": {
+      "x": 224,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "water_2": {
+      "x": 256,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "grass_3": {
+      "x": 288,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "stone_3": {
+      "x": 320,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "water_3": {
+      "x": 352,
+      "y": 0,
+      "width": 32,
+      "height": 32
+    },
+    "cottage": {
+      "x": 384,
+      "y": 0,
+      "width": 128,
+      "height": 128
+    },
+    "workshop": {
+      "x": 0,
+      "y": 128,
+      "width": 128,
+      "height": 128
+    },
+    "oak": {
+      "x": 128,
+      "y": 128,
+      "width": 64,
+      "height": 96
+    },
+    "well_0": {
+      "x": 192,
+      "y": 128,
+      "width": 64,
+      "height": 72
+    },
+    "well_1": {
+      "x": 256,
+      "y": 128,
+      "width": 64,
+      "height": 72
+    },
+    "well_2": {
+      "x": 320,
+      "y": 128,
+      "width": 64,
+      "height": 72
+    },
+    "well_3": {
+      "x": 384,
+      "y": 128,
+      "width": 64,
+      "height": 72
+    },
+    "bridge": {
+      "x": 448,
+      "y": 128,
+      "width": 64,
+      "height": 64
+    },
+    "crate": {
+      "x": 0,
+      "y": 256,
+      "width": 32,
+      "height": 32
+    },
+    "lantern": {
+      "x": 32,
+      "y": 256,
+      "width": 16,
+      "height": 48
+    },
+    "flowers": {
+      "x": 48,
+      "y": 256,
+      "width": 32,
+      "height": 32
+    },
+    "token_0": {
+      "x": 80,
+      "y": 256,
+      "width": 16,
+      "height": 20
+    },
+    "token_1": {
+      "x": 96,
+      "y": 256,
+      "width": 16,
+      "height": 20
+    },
+    "token_2": {
+      "x": 112,
+      "y": 256,
+      "width": 16,
+      "height": 20
+    },
+    "token_3": {
+      "x": 128,
+      "y": 256,
+      "width": 16,
+      "height": 20
+    },
+    "hero_0_0": {
+      "x": 144,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_0_1": {
+      "x": 160,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_0_2": {
+      "x": 176,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_0_3": {
+      "x": 192,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_1_0": {
+      "x": 208,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_1_1": {
+      "x": 224,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_1_2": {
+      "x": 240,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_1_3": {
+      "x": 256,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_2_0": {
+      "x": 272,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_2_1": {
+      "x": 288,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_2_2": {
+      "x": 304,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_2_3": {
+      "x": 320,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_3_0": {
+      "x": 336,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_3_1": {
+      "x": 352,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_3_2": {
+      "x": 368,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    },
+    "hero_3_3": {
+      "x": 384,
+      "y": 256,
+      "width": 16,
+      "height": 24
+    }
+  }
+}

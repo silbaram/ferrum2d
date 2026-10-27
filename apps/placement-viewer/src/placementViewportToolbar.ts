@@ -24,6 +24,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     flatNavigation = document.createElement("div"),
     spatialNavigation = document.createElement("div"),
     layoutSettings = document.createElement("div");
+  const lightingSettings = document.createElement("div");
   let mode = "2d", label: string | undefined, dragging = false;
   const states: Record<string, NavigationState> = {};
   element.className = "placement-viewport-toolbar";
@@ -74,7 +75,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
   spatialSettings.className = "placement-view-spatial-settings";
   flatNavigation.className = spatialNavigation.className = "placement-view-navigation";
   layoutSettings.className = "placement-view-layout";
-  panel.append(header, flatNavigation, spatialNavigation, gridSettings, spatialSettings, layoutSettings);
+  panel.append(header, flatNavigation, spatialNavigation, lightingSettings, gridSettings, spatialSettings, layoutSettings);
   options.append(summary, panel);
   // The runtime handles Enter/Space globally; own disclosure activation here
   // so keyboard users retain native-like behavior without gameplay input.
@@ -137,7 +138,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     const nav = states[mode];
     const text = label
       ? uiMessage("{0}: {1} · {2} · Esc to cancel", uiMessage(dragging ? "Drag" : "Place"), label, uiMessage(dragging ? "Drop into viewport" : "Click to place"))
-      : mode === "game" ? (stage.dataset.gameCameraEditing === "true" ? "Camera preview paused · Adjust the panel to frame the game" : stage.dataset.spatialActor ? "Game Preview · WASD to move · Stop to edit" : "Game Preview · Choose 2D or HD-2D to edit")
+      : mode === "game" ? (stage.dataset.gameCameraEditing === "true" ? "Camera preview paused · Adjust the panel to frame the game" : stage.dataset.flatActor ? "Game Preview · Click ground to move · Stop to edit" : stage.dataset.spatialActor ? "Game Preview · WASD to move · Stop to edit" : "Game Preview · Choose 2D or HD-2D to edit")
         : nav?.temporary ? "Temporary pan · Release Space to return"
           : nav?.dragging ? "Panning · Esc to cancel"
             : nav?.tool === "pan" ? "Pan view · Drag to move · V to select"
@@ -155,7 +156,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     if (mode === detail.mode) renderReadout();
   });
   return {
-    element, navigation, camera, gridSettings, spatialSettings, flatNavigation, spatialNavigation, layoutSettings,
+    element, navigation, camera, gridSettings, spatialSettings, flatNavigation, spatialNavigation, layoutSettings, lightingSettings,
     sync(nextMode: string, nextLabel?: string, nextDragging = false) {
       if (mode !== nextMode) closeOptions();
       mode = nextMode; label = nextLabel; dragging = nextDragging;

@@ -20,6 +20,7 @@ const paths = {
   layout: '<rect x="2" y="2" width="12" height="12" rx="1"/><path d="M5 2v12m6-12v12M5 11h6"/>',
   help: '<circle cx="8" cy="8" r="6"/><path d="M6 6a2 2 0 1 1 3 2c-1 .5-1 1-1 1M8 11v.1"/>',
   file: '<path d="M4 2h5l3 3v9H4Z"/><path d="M9 2v4h3M6 9h4M6 11h4"/>',
+  sun: '<circle cx="8" cy="8" r="3"/><path d="M8 1v1m0 12v1M1 8h1m12 0h1M3 3l1 1m8 8 1 1M3 13l1-1m8-8 1-1"/>',
   play: '<path d="m5 3 8 5-8 5Z"/>',
   pause: '<path d="M5 3v10M11 3v10"/>',
   stop: '<rect x="4" y="4" width="8" height="8"/>',

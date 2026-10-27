@@ -1,9 +1,10 @@
 import { createPlacementControlMenu } from "./placementControlMenu";
-import { setUiAttribute } from "./placementLocale";
+import { setUiAttribute, setUiText } from "./placementLocale";
 import type { createPlacementViewportToolbar } from "./placementViewportToolbar";
 
 /** Arrange existing controls; their owners retain document, camera and playback state. */
-export function installPlacementWorkspaceChrome(root: HTMLElement, viewport: ReturnType<typeof createPlacementViewportToolbar>) {
+export function installPlacementWorkspaceChrome(root: HTMLElement, viewport: ReturnType<typeof createPlacementViewportToolbar>,
+  openExample?: (name: "garden" | "village" | "default") => void) {
   const header = root.querySelector<HTMLElement>(".demo-toolbar"),
     title = header?.querySelector<HTMLElement>("h1"),
     actions = header?.querySelector<HTMLElement>(".demo-actions"),
@@ -18,6 +19,19 @@ export function installPlacementWorkspaceChrome(root: HTMLElement, viewport: Ret
   const file = createPlacementControlMenu("file", "File", "file");
   if (fileStrip) file.panel.append(fileStrip);
   if (open) file.panel.append(open);
+  if (openExample) {
+    const examples = createPlacementControlMenu("examples", "Examples", "file");
+    for (const [name, label] of [["garden", "2D Lantern Garden"], ["village", "HD-2D Village"], ["default", "Basic 2D"]] as const) {
+      const button = document.createElement("button"); button.type = "button";
+      button.dataset.placementExample = name;
+      setUiAttribute(button, "aria-label", label);
+      const text = document.createElement("span");
+      button.append(text); setUiText(text, label);
+      button.addEventListener("click", () => { examples.close(); file.close(true); openExample(name); });
+      examples.panel.append(button);
+    }
+    file.panel.append(examples.element);
+  }
   brand.append(title, file.element);
   header.replaceChildren(brand, modes, actions);
   root.dataset.compactChrome = "true";

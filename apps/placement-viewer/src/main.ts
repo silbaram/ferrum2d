@@ -22,6 +22,7 @@ import {
   villageTextureMetadata,
 } from "./placementVillage";
 import { PlacementGridRenderer } from "./placementGridRenderer";
+import { ensureGardenAssets, isGardenScene, gardenTextures, gardenAtlasFrames, gardenTextureMetadata, configureGardenActor, createGardenPreview } from "./placementGarden";
 import {
   createDesktopTileProjectHost,
   createPlacementTileAssets,
@@ -34,6 +35,7 @@ import { createPlacementViewportToolbar } from "./placementViewportToolbar";
 import { createPlacementDocumentTabs } from "./placementDocumentTabs";
 import { installPlacementWorkspaceLayout } from "./placementWorkspaceLayout";
 import { installPlacementWorkspaceChrome } from "./placementWorkspaceChrome";
+import { createPlacementLighting } from "./placementLighting";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
 import { createPlacementBottomDock } from "./placementBottomDock";
 import { createPlacementSceneNavigator } from "./placementSceneNavigator";
@@ -570,6 +572,8 @@ async function bootstrap(): Promise<void> {
   let spatialWorkspace:
     | ReturnType<typeof installPlacementSpatialWorkspace>
     | undefined;
+  let lightingControls: ReturnType<typeof createPlacementLighting> | undefined;
+  let gardenPreview: ReturnType<typeof createGardenPreview> | undefined;
   let workspaceDiagnostics:
     | ReturnType<typeof installPlacementDiagnostics>
     | undefined;
@@ -588,6 +592,7 @@ async function bootstrap(): Promise<void> {
       ? createPlacementMassAuthoringDocument(loadedDocument)
       : loadedDocument;
     await ensureVillageAssets(document);
+    await ensureGardenAssets(document);
     const desktopSceneDocumentPath = (window as PlacementViewerWindow)
       .ferrumPlacementViewerDesktop?.sceneDocumentPath;
     const initialKey = desktopSceneDocumentPath ?? "sample";
@@ -721,6 +726,7 @@ async function bootstrap(): Promise<void> {
       debug:
         new URLSearchParams(window.location.search).get("debug") === "true",
       environment: "development",
+      lighting: frame => frame.renderCommandBuffer.spatial ? false : viewportNavigation?.lighting(lightingControls?.flatLighting(), frame),
       inputTransform: (snapshot) => {
         const input = shell.inputTransform(snapshot);
         const mode = spatialWorkspace?.mode() ?? "2d";
@@ -843,6 +849,7 @@ async function bootstrap(): Promise<void> {
         },
       ).variables;
       configureVillageActor(runtimeEngine, document);
+      configureGardenActor(runtimeEngine, document);
     } else
       applySceneBehaviorRecipes(
         runtime.engine,
@@ -868,9 +875,13 @@ async function bootstrap(): Promise<void> {
       selectedInstanceId,
       instanceHandleRegistry,
       validateDraft: (state) => {
-        if (!assetBatchEditing) spatialWorkspace?.sync(state);
+        if (!assetBatchEditing) {
+          spatialWorkspace?.sync(state);
+          lightingControls?.sync(state);
+        }
       },
     });
+    if (isGardenScene(document)) currentViewer.setInstancesLocked(currentViewer.state().instances.filter(instance => instance.instanceId.startsWith("ground.")).map(instance => instance.instanceId), true);
     // Stable input bindings delegate cold authoring calls to the active document.
     const viewer: ScenePlacementViewer = {
       historyState: () => currentViewer.historyState(),
@@ -897,6 +908,7 @@ async function bootstrap(): Promise<void> {
       updateInstanceTransforms: (updates) =>
         currentViewer.updateInstanceTransforms(updates),
       updateSpatial: (operations) => currentViewer.updateSpatial(operations),
+      updateLighting: (lighting) => currentViewer.updateLighting(lighting),
       updateInstanceComponents: (id, components) =>
         currentViewer.updateInstanceComponents(id, components),
       updateBehaviorBinding: (target, recipes) =>
@@ -1001,6 +1013,8 @@ async function bootstrap(): Promise<void> {
       state: ScenePlacementViewerState,
     ): ScenePlacementViewerState => {
       state = spatialWorkspace?.sync(state) ?? state;
+      lightingControls?.sync(state);
+      gardenPreview?.sync();
       const mode = spatialWorkspace?.mode();
       // Native apply can reject a mode change. Clear the shared 2D tool only
       // after spatial sync accepts it, so a failed transition retains its tool.
@@ -1187,6 +1201,7 @@ async function bootstrap(): Promise<void> {
           return undefined;
         documentSession?.finishEdit();
         if (spatialWorkspace?.flushCameraInput() === false) return undefined;
+        if (lightingControls?.flushInput() === false) return undefined;
         const patch = viewer.exportPatch();
         if (patch === undefined) {
           return undefined;
@@ -1246,7 +1261,10 @@ async function bootstrap(): Promise<void> {
               selectedInstanceId: viewer.state().selectedInstanceId,
               instanceHandleRegistry: entry.registry,
               validateDraft: (state) => {
-                if (!assetBatchEditing) spatialWorkspace?.sync(state);
+                if (!assetBatchEditing) {
+                  spatialWorkspace?.sync(state);
+                  lightingControls?.sync(state);
+                }
               },
             });
             entry.viewer.selectInstances(editState.selectedInstanceIds);
@@ -1254,13 +1272,14 @@ async function bootstrap(): Promise<void> {
             entry.inspector = createDocumentInspector(entry);
             activateDocument(entry.key, true);
           }
-          documentSession?.setSaving(false);
           return result;
         } catch (error) {
-          documentSession?.setSaving(false);
           publishPlacementSaveError(error);
           appChrome.setSaveError(error);
           return undefined;
+        } finally {
+          documentSession?.setSaving(false);
+          lightingControls?.sync(viewer.state());
         }
       },
     });
@@ -1436,6 +1455,7 @@ async function bootstrap(): Promise<void> {
         publishPlacementInteraction(interaction);
         setState(viewer.state());
       },
+      flushSceneSettings: () => lightingControls?.flushInput() ?? true,
       components: (id) => {
         const selected = viewer
           .state()
@@ -1445,6 +1465,24 @@ async function bootstrap(): Promise<void> {
           .components;
       },
     });
+    lightingControls = createPlacementLighting({
+      viewer, engine: runtimeEngine,
+      key: () => activeDocument.key,
+      mode: () => spatialWorkspace?.mode() ?? "2d",
+      runtimeRevision: () => runtimeApplyRevision,
+      busy: () => switching || documentSession?.isSaving() === true || interaction.dragging || viewer.historyState().transactionLabel !== undefined,
+      finishEdit: () => documentSession?.finishEdit(),
+      onChange: setState,
+    });
+    viewportToolbar.lightingSettings.append(lightingControls.element);
+    gardenPreview = createGardenPreview({
+      canvas: shell.canvas, stage: shell.stage, engine: runtimeEngine,
+      document: () => savedDocument,
+      mode: () => spatialWorkspace?.mode() ?? "2d",
+      revision: () => runtimeApplyRevision,
+      pointerToWorld: point => viewportNavigation!.pointerToWorld(point),
+    });
+    gardenPreview.sync();
     gridRenderer.grid = createPlacementGrid(
       viewportToolbar.gridSettings,
       (gridSize) => {
@@ -1717,6 +1755,7 @@ async function bootstrap(): Promise<void> {
           );
         }
         if (patch.spatial) viewer.updateSpatial(patch.spatial.operations);
+        if (patch.lighting !== undefined) viewer.updateLighting(patch.lighting);
         assetBatchEditing = false;
         spatialWorkspace?.sync(viewer.state());
         viewer.commitEdit();
@@ -2137,7 +2176,22 @@ async function bootstrap(): Promise<void> {
     });
     tabs.element.append(layout.controls);
     root.append(tabs.element);
-    installPlacementWorkspaceChrome(root, viewportToolbar);
+    installPlacementWorkspaceChrome(root, viewportToolbar, name => {
+      void (async () => {
+        if (switching || documentSession?.isSaving()) return;
+        switching = true;
+        root.inert = true;
+        try {
+          const paths = { garden: "./placement.garden.scene-authoring.json", village: "./placement.village.scene-authoring.json", default: SCENE_DOCUMENT_URL };
+          const url = new URL(paths[name], window.document.baseURI);
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`Example: HTTP ${response.status}`);
+          await openDocument("example:" + url.href, url.pathname, await response.json(), false);
+        } catch (error) { tabs?.report(error); }
+        finally { switching = false; root.inert = false; }
+      })();
+    });
+    if (isGardenScene(savedDocument)) requestAnimationFrame(() => viewportNavigation?.fitScene());
     window.addEventListener("ferrum-placement-document-error", (event) => {
       if (event instanceof CustomEvent) tabs?.report(event.detail);
     });
@@ -2239,6 +2293,7 @@ async function bootstrap(): Promise<void> {
           },
         ).variables;
         configureVillageActor(runtimeEngine, next);
+        configureGardenActor(runtimeEngine, next);
         return;
       }
       const nextResolved = resolvePlacementWorkspaceDocument(next);
@@ -2279,6 +2334,7 @@ async function bootstrap(): Promise<void> {
         throw new Error(
           "Finish or cancel the current edit before switching documents",
         );
+      if (lightingControls?.flushInput() === false) return false;
       selectionTools?.cancel();
       transformGizmo?.cancel();
       if (spatialWorkspace?.suspend() === false)
@@ -2335,6 +2391,7 @@ async function bootstrap(): Promise<void> {
       publishPlacementSavedDocument(savedDocument);
       viewportNavigation?.restore(next.camera);
       spatialWorkspace?.activate(next.key, inspector.element);
+      if (isGardenScene(next.document) && !next.camera) viewportNavigation?.fitScene();
       return true;
     }
     async function openDocument(
@@ -2369,13 +2426,14 @@ async function bootstrap(): Promise<void> {
       );
       const nextResolved = resolvePlacementWorkspaceDocument(value);
       await ensureVillageAssets(value as SceneAuthoringDocumentSpec);
-      if (isVillageScene(value as SceneAuthoringDocumentSpec)) {
+      await ensureGardenAssets(value as SceneAuthoringDocumentSpec);
+      if (isVillageScene(value as SceneAuthoringDocumentSpec) || isGardenScene(value as SceneAuthoringDocumentSpec)) {
         await reloadPlacementRuntimeAssets();
         if (
           runtimeAssetReadySignature !==
           placementRuntimeAssetSignature(placementRuntimeTextureManifest())
         )
-          throw new Error("Village textures are not ready; retry opening the document");
+          throw new Error("Example textures are not ready; retry opening the document");
         previewAssetProvider = createPlacementPreviewAssetProvider();
         previewAssetSignature = placementPreviewAssetSignature();
       }
@@ -2398,7 +2456,10 @@ async function bootstrap(): Promise<void> {
           nextResolved.bindingPlan?.instances[0]?.id,
         instanceHandleRegistry: nextRegistry,
         validateDraft: (state) => {
-          if (!assetBatchEditing) spatialWorkspace?.sync(state);
+          if (!assetBatchEditing) {
+            spatialWorkspace?.sync(state);
+            lightingControls?.sync(state);
+          }
         },
       });
       // Validation above guarantees this is the original scene-authoring envelope.
@@ -2416,6 +2477,7 @@ async function bootstrap(): Promise<void> {
         desktop,
         snap: { enabled: false, gridSize: DEFAULT_SNAP_GRID_SIZE },
       };
+      if (isGardenScene(value as SceneAuthoringDocumentSpec)) nextViewer.setInstancesLocked(nextViewer.state().instances.filter(instance => instance.instanceId.startsWith("ground.")).map(instance => instance.instanceId), true);
       next.inspector = createDocumentInspector(next);
       documents.set(key, next);
       try {
@@ -2463,6 +2525,7 @@ function placementSceneDocumentUrl(): string {
   }
   if (scene === "hd2d") return HD2D_SCENE_DOCUMENT_URL;
   if (scene === "village") return "./placement.village.scene-authoring.json";
+  if (scene === "garden" || scene === "2d") return "./placement.garden.scene-authoring.json";
   throw new Error(`Unsupported placement scene fixture '${scene}'.`);
 }
 
@@ -7168,7 +7231,7 @@ function placementPatchOperationCount(
   patch: ScenePlacementPatch | undefined,
 ): number {
   return (
-    (patch?.operations.length ?? 0) + (patch?.spatial?.operations.length ?? 0)
+    (patch?.operations.length ?? 0) + (patch?.spatial?.operations.length ?? 0) + (patch?.lighting !== undefined ? 1 : 0)
   );
 }
 
@@ -7458,7 +7521,7 @@ function placementPreviewAssetSignature(): string {
 function createPlacementPreviewAssetProvider(): ScenePlacementAssetProvider {
   const desktopTextures = placementDesktopPreviewTextures();
   if (
-    desktopTextures === undefined && Object.keys(villageTextures()).length === 0
+    desktopTextures === undefined && Object.keys(villageTextures()).length === 0 && Object.keys(gardenTextures()).length === 0
   ) {
     return PLACEMENT_ASSET_PROVIDER;
   }
@@ -7466,12 +7529,14 @@ function createPlacementPreviewAssetProvider(): ScenePlacementAssetProvider {
     textures: {
       ...PLACEMENT_TEXTURES,
       ...villageTextures(),
+      ...gardenTextures(),
       ...desktopTextures?.textures,
     },
-    atlas: { frames: { ...PLACEMENT_ATLAS.frames, ...villageAtlasFrames() } },
+    atlas: { frames: { ...PLACEMENT_ATLAS.frames, ...villageAtlasFrames(), ...gardenAtlasFrames() } },
     textureMetadata: {
       ...PLACEMENT_TEXTURE_METADATA,
       ...villageTextureMetadata(),
+      ...gardenTextureMetadata(),
       ...desktopTextures?.metadata,
     },
     frameLabel: ({ frameName }) =>
@@ -7517,10 +7582,11 @@ function placementDesktopPreviewTextures():
 function placementRuntimeTextureManifest(): Record<string, string> {
   const desktopTextures = placementDesktopPreviewTextures();
   return desktopTextures === undefined
-    ? { ...VIEWER_TEXTURES, ...villageTextures() }
+    ? { ...VIEWER_TEXTURES, ...villageTextures(), ...gardenTextures() }
     : {
         ...VIEWER_TEXTURES,
         ...villageTextures(),
+        ...gardenTextures(),
         ...desktopTextures.textures,
       };
 }
