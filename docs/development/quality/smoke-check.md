@@ -321,14 +321,17 @@ Play의 384×256 복귀, Stop의 전체 해상도 복원과 JSON/history 보존�
 한국어/영어 전환, resize 후 grid/render와 문서·선택·native entity·history 보존을 확인한다.
 같은 gate의 `placement-toolbar-ux-smoke.mjs`는 한영 아이콘/접근성 이름과 단축키, 방향키 focus 이동의 비실행,
 Space 임시 이동 pressed/안내 복귀, 보기 설정 Enter/Space 열기·Escape focus 복원·바깥 클릭 닫기,
-격자 표시·공유 간격/잘못된 값 거부, 390px 메뉴 경계와 카메라·선택·문서·history 보존을 검사한다.
-카메라 기능의 접힌 기본 상태·보이는 기능명, 한영 카메라/사용 안내 이름, Enter/Space·Escape focus 복원,
+격자 표시·공유 간격/잘못된 값 거부, 320~1125px 메뉴/주 도구 경계·최소 canvas 높이와 카메라·선택·문서·history 보존을 검사한다.
+데스크톱의 36px 두 줄, 파일 메뉴의 메타데이터/Open 접근, 편집 시점 기능의 접힌 기본 상태·보이는 기능명,
+부모 보기 패널을 열어도 닫힌 하위 메뉴 화살표의 방향 유지,
+한영 편집 시점/사용 안내 이름과 Enter/Space·Escape focus 복원,
 다른 메뉴를 열면 기존 메뉴 닫기, 화면 구성의 초기화 접근, 카메라/화면 구성/안내의 390×500 경계도 검사한다.
 메뉴를 닫은 주 도구 행은 표시 버튼 6개 이하로 제한한다. `placement-panel-navigation.mjs`는 실제 summary를 열고
 카메라·패널 동작 후 Escape로 닫는다. 숨긴 control을 DOM 변경으로 노출하지 않는다.
 같은 gate에 연결된 `placement-menu-regressions-smoke.mjs`는 2D·HD-2D 에셋 배치 대기 중
-Camera/Layout/Controls/View의 첫 Escape가 메뉴만 닫고 다음 Escape가 배치를 취소하는지 검사한다.
-390×500에서 실제 가로 wheel로 카메라 도구 행을 이동해 팝업이 닫히는지, 안내문 내부 wheel은 메뉴를 유지하는지도 확인한다.
+중첩 메뉴의 Escape가 안쪽부터 메뉴를 닫고 마지막 Escape가 배치를 취소하는지 검사한다.
+390×320에서 실제 세로 wheel로 상위 보기 패널을 이동해 기준 버튼이 움직인 팝업을 닫는지,
+안내문 내부 wheel은 해당 메뉴를 유지하는지도 확인한다.
 문서·이력·선택·편집 카메라 보존과 focus 복원을 함께 확인하며 근거는 `artifacts/viewer-menu-regressions/`에 남긴다.
 HD-2D gate의 `placement-six-panels-smoke.mjs`는 한영 × 2D/HD-2D/Game 왕복 시 편집 섹션 5개의 가시성과
 문서·history 보존도 확인한다. 같은 gate의 `placement-spatial-asset-refresh-smoke.mjs`는 공개 Tauri invoke를 모의하고
@@ -357,6 +360,22 @@ Shift 15° 정렬·방향키 조절, 높이 아이콘의 키보드·드래그, �
 투영 전환, export/reopen, 한영 UI를 검사하며
 native entity 3개·billboard vertex 18개와 draw 1~32회 조건도 함께 확인한다.
 근거는 `artifacts/game-camera-authoring/browser-verification.json`과 화면이다.
+같은 gate의 `placement-game-camera-live-smoke.mjs`는 직교/원근 × DPR 1/2에서 상시 노출된 게임 카메라 버튼과
+고정 패널, 포커스를 유지한 숫자·슬라이더 입력 중 native 투영 변화, 입력 확정 전 JSON/이력 유지와 한 건 확정,
+Escape·잘못된 값·native 거절 복구를 확인한다. 패널과 실제 pixelArt 게임 프레임이 겹치지 않는지,
+재개 시 잠금과 재진입 일시정지, resize·Stop의 편집 시점 복원, Undo/Redo·재열기·한영 UI도 검사한다.
+native entity 3개·billboard vertex 18개·draw 1~32회와 근거는 `artifacts/game-camera-live-preview/verification.json`이다.
+live smoke가 호출하는 `placement-game-camera-gestures-smoke.mjs`는 실제 마우스 회전·Space/중간 버튼 이동,
+연속 휠의 한 건 확정과 숫자 라벨의 Shift 미세·Ctrl 빠른 조절을 같은 네 조합에서 검사한다.
+실제 native 행렬과 pixelArt 프레임에 투영한 점이 이동한 CSS 픽셀 거리도 확인한다.
+입력 중 JSON/이력 유지, Escape·포인터 캡처 상실·포커스 상실·모드 전환 취소,
+native 미리보기 거절과 연속 복원 실패의 제스처 소유권 유지·Escape 재시도를 검사한다.
+드래그 도중 modifier 변경의 연속성, 접기 메뉴와 실행 버튼의 Space 활성화, 미리보기 진입 시 뷰포트 포커스도 검사한다.
+`placement-game-camera-save-smoke.mjs`는 제스처 중 실제 저장 요청이 발생하지 않는지도 검사한다.
+마을 gate의 `placement-working-grid-smoke.mjs`는 DPR 1/2에서 맵 밖의 배치 불가 안내와
+실제 마우스가 만든 `isTrusted` dragover의 금지/복사 `dropEffect`, 거절된 drop의 문서/이력 유지,
+Escape·drop 후 안내 해제를 검사한다.
+대형 모델의 미리보기가 화면에 잘리더라도 실제 지지 위치가 유효하면 복사 커서를 유지하는지도 확인한다.
 같은 카메라 smoke에서 호출하는 `placement-game-camera-regressions-smoke.mjs`는 DPR 2에서 resize 없이 JSON 문서를
 연 뒤 카메라 입력/적용/미리보기 버튼이 다시 활성화되는지, 탭별 문서·이력·탐색 시점이 보존되는지 확인한다.
 직교→원근 전환이 near/far 경계를 넘는 두 사례와 기존 클립이 유효한 사례에서 실제 native 중심 가시성,
@@ -369,6 +388,7 @@ native entity 3개·billboard vertex 18개와 draw 1~32회 조건도 함께 확�
 잘못된 값·빈 값·불완전 숫자(`badInput`)의 저장 차단과 입력/포커스 보존을 검사한다.
 native 거절·연속 복원 실패의 초안/이력·transaction 소유권, backend 저장 거절 후 재시도, signed pitch 저장 후
 지연된 blur의 중복 편집 방지, 재열기와 실제 일시정지 미리보기도 확인한다. export-only 저장 명령은 입력을 확정하지 않는다.
+고정된 일시정지 카메라 패널에서도 입력 포커스를 유지한 저장과 지연된 blur의 중복 편집 방지를 검사한다.
 저장 bridge는 테스트 메모리/sessionStorage만 사용하고 실제 native 파일 저장을 실행하지 않는다.
 native entity 3개·billboard vertex 18개·draw 1~32회 조건과 근거는 `artifacts/game-camera-pending-save-fix/save-regressions.json`이다.
 화면·측정 근거는 `artifacts/viewport-toolbar-ux/`다. grid/locale/공간 배치 회귀도 실제 보기 버튼으로 설정을 연다.
