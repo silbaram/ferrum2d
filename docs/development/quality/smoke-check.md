@@ -311,6 +311,15 @@ native solid 충돌·정지 후 원본 복원·문서 Undo·다른 탭의 초안
 근거는 `artifacts/2d-showcase/report.json`과 화면이다. 에셋/JSON 재현성은
 `python3 scripts/assets/build-lantern-garden.py --check`로 별도 확인한다.
 
+같은 gate의 `placement-selection-controls-smoke.mjs`는 실제 작은 가로등의 이름·회전/크기 버튼·값,
+visual 테두리와 도구의 비겹침, 기본 충돌 표시 OFF와 명시적 보기 토글·문서/이력 불변을 확인한다.
+DPR 1/2, 한영, 회전/크기 방향키·Undo, 화면 이동/Space·잠금, canvas 가장자리와 화면 밖 숨김,
+실제 좌우 회전 드래그 한 건 Undo, 화면 밖 드래그의 도구 유지·Escape 복원과 번역하지 않는 객체 ID,
+390×500·Play/Stop·빈 공간 선택 해제, native entity 465개·점광원 4개·draw 1–64도 함께 검사한다.
+근거는 `artifacts/2d-selection-controls/`다. `placement-transform-smoke.mjs`는 새 문맥 도구의 실제 좌우 드래그가
+기존 숫자/방향키와 같은 그룹 pivot·rotation/scale patch를 만들고 Escape로 취소되는지도 검사한다.
+충돌 offset 회귀는 보기에서 충돌 영역을 켠 뒤 실제 핸들을 조작한다.
+
 `pnpm smoke:placement-village`는 Blender 중세 마을 예제를 production build에서 검사한다.
 CI validate job은 전체 build 뒤 `node tests/smoke/placement-village-smoke.mjs`를 실행하며 `smoke:check`에도 포함한다.
 14개 GLB/3개 sprite의 SHA-256, native entity 46개·모델 42개·billboard vertex 24개,

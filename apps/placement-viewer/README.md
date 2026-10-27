@@ -30,6 +30,14 @@ python3 scripts/assets/build-lantern-garden.py          # atlas/manifest/예제 
 현재 작업공간은 2D·HD-2D·Game Preview 모드를 공유한다. 2D에서는 대표 객체의 pivot을 기준으로
 그룹 회전·균일 scale을 gizmo/숫자/handle의 방향키로 적용한다. 회전 방향키는 15도(Shift 1도),
 scale 방향키는 10%(Shift 1%)다. 드래그 snap은 15도/0.1배이며 한 gesture가 한 Undo가 된다.
+선택 객체의 실제 visual 테두리 옆에 이름·**회전/크기** 버튼과 현재 각도/백분율을 한곳에 표시한다.
+버튼을 좌우로 드래그하면 회전(1px당 1°) 또는 균일 크기(오른쪽 120px당 2배)가 바뀐다.
+선택 테두리 밖에 도구를 놓고 canvas 안에 유지한다. 이름은 객체와 함께 회전하지 않으며,
+화면 밖 객체·화면 이동·에셋 배치·게임 실행 중에는 도구를 숨긴다. 잠긴 선택은 이름/잠금 안내만 표시한다.
+진행 중인 변형으로 객체가 화면 밖에 나가도 잡은 도구는 유지하며, Escape는 변형 전체를 취소한다.
+기본 선택에는 시각 요소의 얇은 테두리만 표시한다. **보기 → 충돌 영역**을 켜면 별도 점선과
+`충돌 영역` 이름표·위치 이동 핸들이 나타난다. 이 표시는 문서·이력과 별개인 현재 보기 설정이다.
+충돌 위치 핸들을 드래그하면 기존 collider offset을 수정하고, primitive의 모서리 핸들은 visual/collider 크기를 함께 수정한다.
 Asset preview를 viewport로 드래그하면 선택한 sprite/frame과 기본 collider를 기존 Add Sprite 경로로 배치한다.
 
 HD-2D에서는 다층·경사 surface, authored model bounds·billboard를 선택하고 XY·body 높이/층·시각 offset,
