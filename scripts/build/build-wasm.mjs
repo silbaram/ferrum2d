@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { dirname } from "node:path";
+import { delimiter, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const wasmPackArgs = [
@@ -18,7 +18,7 @@ const rustupRustc = spawnSync("rustup", ["which", "rustc"], {
 
 if (rustupRustc.status === 0) {
   const rustupBin = dirname(rustupRustc.stdout.trim());
-  env.PATH = `${rustupBin}:${env.PATH ?? ""}`;
+  env.PATH = `${rustupBin}${delimiter}${env.PATH ?? ""}`;
 }
 
 const result = spawnSync("wasm-pack", wasmPackArgs, {

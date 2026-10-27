@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { gunzip } from "node:zlib";
 import { promisify } from "node:util";
+import { resolvePackageCommand } from "./release-command.mjs";
 
 const gunzipAsync = promisify(gunzip);
 
@@ -54,8 +55,9 @@ export function assertFilesAllowlist(packageJson, expectedFiles, packageLabel) {
 }
 
 export async function run(command, args, cwd) {
+  const invocation = resolvePackageCommand(command, args);
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(invocation.executable, invocation.args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8");

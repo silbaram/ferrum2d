@@ -7,6 +7,11 @@ on:
         description: 'Exact beta version (for example 0.1.0-beta.0)'
         required: true
         type: string
+      include_viewer:
+        description: 'Build Windows/Linux/macOS viewer installers and combine with the SDK'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -43,6 +48,12 @@ jobs:
       - name: Validate consumer report
         run: pnpm validate:consumer-smoke-report -- --report artifacts/consumer-smoke-github-release/consumer-smoke-report.json --artifact-dir artifacts/consumer-smoke-github-release --expect-status passed
       - uses: actions/upload-artifact@v4
+        if: ${{ inputs.include_viewer }}
+        with:
+          name: engine-release-bundle
+          path: artifacts/github-release-candidate/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: github-release-candidate
@@ -50,6 +61,85 @@ jobs:
             artifacts/github-release-candidate
             artifacts/consumer-smoke-github-release
           if-no-files-found: ignore
+
+  viewer:
+    if: ${{ inputs.include_viewer }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest
+            platform: macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux native libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.0
+          run_install: false
+      - run: cargo install wasm-pack --locked
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:github-release
+      - name: Build unsigned native viewer candidate
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: pnpm release:distribution:prepare -- --component viewer --version "$RELEASE_VERSION" --repository "$RELEASE_REPOSITORY" --no-sign --output artifacts/viewer-release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: viewer-release-${{ matrix.platform }}
+          path: artifacts/viewer-release/
+          if-no-files-found: error
+
+  assemble:
+    if: ${{ inputs.include_viewer }}
+    needs: [prepare, viewer]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: engine-release-bundle
+          path: artifacts/inputs/engine
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: viewer-release-*
+          path: artifacts/inputs/viewers
+      - name: Assemble and verify SDK plus native installers
+        run: >-
+          node scripts/package/prepare-distribution.mjs assemble
+          --engine artifacts/inputs/engine
+          --viewer artifacts/inputs/viewers/viewer-release-linux
+          --viewer artifacts/inputs/viewers/viewer-release-windows
+          --viewer artifacts/inputs/viewers/viewer-release-macos
+          --output artifacts/distribution-candidate
+      - run: node scripts/package/prepare-distribution.mjs verify --bundle artifacts/distribution-candidate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distribution-candidate
+          path: artifacts/distribution-candidate/
+          if-no-files-found: error
 
 # This workflow only prepares reviewable artifacts. It does not create a tag,
 # publish a GitHub Release, or publish to npm.
