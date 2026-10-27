@@ -15,13 +15,22 @@ export function spatialCameraPitch(camera: SpatialCameraSpec): number {
 
 /** Orbit an editor camera without changing its target, distance, yaw or lens. */
 export function tiltSpatialCamera(camera: SpatialCameraSpec, degrees: number): SpatialCameraSpec {
+  if (!Number.isFinite(degrees))
+    throw new Error("Viewing angle requires a finite camera and angle");
+  return orbitSpatialCameraPitch(camera, Math.max(MIN_VIEW_PITCH, Math.min(MAX_VIEW_PITCH, degrees)));
+}
+
+/** Authored cameras also support horizontal views and views from below the target. */
+export function orbitSpatialCameraPitch(camera: SpatialCameraSpec, degrees: number): SpatialCameraSpec {
   const { position: eye, target } = camera,
     dx = eye.x - target.x,
     dy = eye.y - target.y,
     distance = Math.hypot(dx, dy, eye.elevation - target.elevation);
   if (!Number.isFinite(degrees) || !Number.isFinite(distance) || distance <= 0)
     throw new Error("Viewing angle requires a finite camera and angle");
-  const pitch = Math.max(MIN_VIEW_PITCH, Math.min(MAX_VIEW_PITCH, degrees)) * Math.PI / 180,
+  if (degrees <= -90 || degrees >= 90)
+    throw new Error("Enter a valid camera value");
+  const pitch = degrees * Math.PI / 180,
     yaw = Math.atan2(dy, dx),
     horizontal = distance * Math.cos(pitch);
   return {

@@ -371,7 +371,17 @@ export function installPlacementViewportNavigation(options: {
     cancelGesture();
     syncTool();
   });
-  const observer = new ResizeObserver(refresh);
+  const observer = new ResizeObserver(() => {
+    try {
+      refresh();
+    } catch (error) {
+      // A native preview can still be unavailable while an edit awaits retry.
+      // Resize is asynchronous: report the failure without losing its owner.
+      window.dispatchEvent(
+        new CustomEvent("ferrum-placement-document-error", { detail: error }),
+      );
+    }
+  });
   observer.observe(canvas);
   window.addEventListener("pagehide", (event) => {
     if (!event.persisted) {

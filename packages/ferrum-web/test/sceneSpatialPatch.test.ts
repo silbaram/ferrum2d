@@ -10,6 +10,7 @@ import {
   type ScenePlacementPatch,
 } from "../src/authoring.js";
 import { applySceneSpatialPatch } from "../src/sceneSpatialPatch.js";
+import { resolveSpatialCameraSpec } from "../src/dataSceneSpatial.js";
 
 function document(): SceneAuthoringDocumentSpec {
   return {
@@ -78,6 +79,83 @@ function subject() {
     selectedInstanceId: "sprite",
   });
 }
+
+test("spatial v5 camera edits round-trip without instance IDs, preserve locks and undo to a clean baseline", async () => {
+  const source = document();
+  source.sceneComposition.fragments!.main.instances = [
+    ...source.sceneComposition.fragments!.main.instances!, { id: "camera", prefab: "object" },
+  ];
+  const viewer = createScenePlacementViewer({ document: source, viewport: { cssWidth: 640, cssHeight: 480 } });
+  const camera = resolveSpatialCameraSpec({ ...source.spatial!.camera, height: 360 });
+  viewer.setInstancesLocked(["sprite", "model", "proxy", "camera"], true);
+  viewer.beginEdit("Game Camera");
+  viewer.updateSpatial([{ kind: "setCamera", changes: { camera } }]);
+  viewer.commitEdit();
+  const patch = viewer.exportPatch()!;
+  equal(patch.version, 3);
+  equal(patch.spatial?.version, 5);
+  deepEqual(patch.operations, []);
+  deepEqual(patch.spatial?.operations, [{ kind: "setCamera", changes: { camera } }]);
+  const merged = mergeScenePlacementPatch(source, JSON.parse(JSON.stringify(patch)));
+  deepEqual(merged.document.spatial!.camera, camera);
+  deepEqual(merged.changedInstanceIds, []);
+  deepEqual(merged.document.sceneComposition, source.sceneComposition);
+  equal(merged.operationCount, 1);
+  throws(() => mergeScenePlacementPatch(source, patch, { allowedFragments: ["main"] }), /document-wide/);
+  const saved = await saveScenePlacementPatch(source, patch, { allowSave: true,
+    adapter: { id: "camera-test", saveScenePlacementPatch: request => ({ saved: true, document: JSON.parse(JSON.stringify(request.mergedDocument)) }) } });
+  equal(saved.saved, true);
+  deepEqual(saved.document.spatial!.camera, camera);
+  equal(viewer.historyState().undoCount, 1);
+  viewer.undo();
+  equal(viewer.exportPatch(), undefined);
+  deepEqual(viewer.state().spatial!.camera, resolveSpatialCameraSpec(source.spatial!.camera));
+  viewer.redo();
+  deepEqual(viewer.state().spatial!.camera, camera);
+  const reopened = createScenePlacementViewer({ document: merged.document, viewport: { cssWidth: 640, cssHeight: 480 } });
+  deepEqual(reopened.state().spatial!.camera, camera);
+  equal(reopened.exportPatch(), undefined);
+  viewer.updateSpatial([{ kind: "setCamera", changes: { camera: source.spatial!.camera } }]);
+  equal(viewer.exportPatch(), undefined, "Default normalization must not leave the document dirty");
+});
+
+test("camera replacement validates v5 envelope, lens and pose and rejects the entire invalid batch", () => {
+  const source = document().spatial!, original = structuredClone(source);
+  const operation = { kind: "setCamera" as const, changes: { camera: source.camera } };
+  for (const version of [1, 2, 3, 4] as const)
+    throws(() => applySceneSpatialPatch(source, { format: "ferrum2d.scene-spatial.patch", version, operations: [operation] }), /version 5/);
+  for (const camera of [
+    { ...source.camera, height: 0 },
+    { ...source.camera, position: source.camera.target },
+    { ...source.camera, far: 0.01, near: 1 },
+    { ...source.camera, projection: "perspective" as const, fovDegrees: 180 },
+    { ...source.camera, position: { ...source.camera.position, x: NaN } },
+  ]) throws(() => applySceneSpatialPatch(source, { format: "ferrum2d.scene-spatial.patch", version: 5,
+    operations: [{ kind: "updateModel", id: "model", changes: { scale: 2 } }, { kind: "setCamera", changes: { camera } }] }));
+  throws(() => applySceneSpatialPatch(source, { format: "ferrum2d.scene-spatial.patch", version: 5,
+    operations: [JSON.parse(JSON.stringify({ ...operation, id: "model" }))] }), /Invalid spatial/);
+  deepEqual(source, original);
+});
+
+test("camera edits keep v1 object exports minimal and restore a host-rejected candidate", () => {
+  const source = document();
+  const viewer = createScenePlacementViewer({ document: source, viewport: { cssWidth: 640, cssHeight: 480 },
+    validateDraft: state => { if (state.spatial!.camera.height === 999) throw new Error("Native camera rejected"); } });
+  viewer.beginEdit("Game Camera");
+  throws(() => viewer.updateSpatial([{ kind: "setCamera", changes: { camera: { ...source.spatial!.camera, height: 999 } } }]), /Native camera rejected/);
+  equal(viewer.exportPatch(), undefined);
+  equal(viewer.historyState().undoCount, 0);
+  equal(viewer.historyState().transactionLabel, undefined);
+  viewer.updateSpatial([{ kind: "updateModel", id: "model", changes: { scale: 1.5 } }]);
+  equal(viewer.exportPatch()!.spatial!.version, 1);
+  viewer.beginEdit("Camera And Model");
+  viewer.updateSpatial([{ kind: "setCamera", changes: { camera: { ...source.spatial!.camera, height: 320 } } },
+    { kind: "updateModel", id: "model", changes: { yawDegrees: 45 } }]);
+  viewer.commitEdit();
+  equal(viewer.exportPatch()!.spatial!.version, 5);
+  viewer.undo();
+  equal(viewer.exportPatch()!.spatial!.version, 1);
+});
 
 test("spatial v3 rename and remove migrate visual identity atomically and preserve metadata", () => {
   const source = document();

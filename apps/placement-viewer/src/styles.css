@@ -1282,8 +1282,8 @@ textarea {
 .demo-stage[data-workspace-mode="spatial"][data-spatial-navigation-tool="panning"] canvas {
   cursor: grabbing;
 }
-.demo-stage[data-workspace-mode="spatial"][data-spatial-navigation-tool="pan"] .placement-spatial-height,
-.demo-stage[data-workspace-mode="spatial"][data-spatial-navigation-tool="panning"] .placement-spatial-height {
+.demo-stage[data-workspace-mode="spatial"][data-spatial-navigation-tool="pan"] .placement-spatial-transform-tools,
+.demo-stage[data-workspace-mode="spatial"][data-spatial-navigation-tool="panning"] .placement-spatial-transform-tools {
   visibility: hidden;
 }
 .placement-spatial-camera > button[aria-pressed="true"] {
@@ -1421,20 +1421,96 @@ textarea {
   stroke: var(--accent);
   stroke-width: 1.5px;
 }
-.placement-spatial-height {
+.placement-spatial-transform-tools {
   position: absolute;
   z-index: 7;
-  font-size: 11px;
-  padding: 4px;
-  min-width: 44px;
-  height: 24px;
-  color: var(--accent);
-  touch-action: none;
+  display: flex;
+  gap: 4px;
 }
+.placement-spatial-transform-tools > button {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 4px;
+  color: var(--accent);
+  background: var(--bg-1);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-1);
+  touch-action: none;
+  cursor: ns-resize;
+}
+.placement-spatial-transform-tools > .placement-spatial-rotate {
+  cursor: ew-resize;
+}
+.placement-spatial-transform-tools > button:disabled {
+  color: var(--fg-3);
+  border-color: var(--border);
+  cursor: default;
+}
+.placement-spatial-transform-tools[hidden],
 .placement-spatial-height[hidden],
 .placement-spatial-camera[hidden],
 .placement-spatial-panel[hidden] {
   display: none;
+}
+.placement-game-camera {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.placement-game-camera h4 {
+  margin: 0 0 4px;
+  color: var(--fg-1);
+}
+.placement-game-camera p {
+  margin: 4px 0 8px;
+  color: var(--fg-3);
+  font-size: 11px;
+}
+.placement-game-camera-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 8px 0;
+}
+.placement-game-camera-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.placement-game-camera-fields label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--fg-2);
+}
+.placement-game-camera-fields :is(input, select) {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.placement-game-camera [hidden],
+.placement-game-camera-frame[hidden] {
+  display: none;
+}
+.placement-game-camera > details {
+  margin-top: 8px;
+}
+.placement-game-camera-frame {
+  position: absolute;
+  box-sizing: border-box;
+  z-index: 4;
+  border: 1px dashed var(--accent);
+  pointer-events: none;
+}
+.placement-game-camera-frame > span {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px;
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--bg-1);
 }
 .placement-spatial-camera {
   display: flex;

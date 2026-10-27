@@ -427,7 +427,7 @@ Rust host는 브라우저가 `1.0`을 `1`로 보내는 숫자 정규화도 허�
 기존 history에 한 번 기록한다. 실패 시 열린 gesture 전체를 복원한다.
 
 기존 flat patch는 계속 v2로 export하며 v1/v2를 merge한다. spatial 변경을 포함한 patch만 v3이고
-`spatial: { format: "ferrum2d.scene-spatial.patch", version: 1 | 2 | 3 | 4, operations: [...] }`를 추가한다.
+`spatial: { format: "ferrum2d.scene-spatial.patch", version: 1 | 2 | 3 | 4 | 5, operations: [...] }`를 추가한다.
 spatial v1은 기존 대상 갱신, v2는 billboard/model 참조 추가도 허용한다. 갱신만 있는 export는 v1을 유지한다.
 새 참조가 포함된 export만 v2를 사용하며 이전 spatial reader는 이를 거절한다.
 이전 reader는 v3를 거절하므로 spatial 변경을 무시하고 일부만 저장하지 않는다.
@@ -441,11 +441,35 @@ spatial v1은 기존 대상 갱신, v2는 billboard/model 참조 추가도 허�
 | addBillboard (spatial v2) | elevation, unitsPerPixel, castShadow, receiveShadow. 빈 `{}` 허용 |
 | addModel (spatial v2) | 필수 asset/contentId와 선택 elevation, yawDegrees, scale, castShadow, receiveShadow |
 | setBillboardNormalTexture (spatial v4) | normalTexture: stable project 이름 또는 null(참조 해제). 기존 numeric ID도 제거 |
+| setCamera (spatial v5) | camera: 전체 SpatialCameraSpec. 씬 수준 작업으로 id 필드를 받지 않음 |
 
 Add는 같은 ID의 billboard/model 중 어느 참조라도 이미 있으면 거절하며 upsert로 처리하지 않는다.
 spatial v3는 아래 identity/reimport operation을 추가한다. 이전 reader는 v3를 거절한다.
 spatial v4는 normal 이름 교체/해제를 추가하고 v1~v3 operation도 받는다. 이전 reader는 v4를 거절한다.
 `viewer.updateSpatial`은 normal 변경의 Undo/Redo와 v4 sparse export를 지원한다.
+
+spatial v5는 씬의 게임 카메라를 교체하는 `setCamera`를 추가한다. 기존 v1~v4 입력과 카메라 변경이 없는
+export의 최소 버전은 유지한다. 카메라 변경을 포함한 export만 v5를 사용하며 이전 reader는 v5를 거절한다.
+바깥 placement envelope는 계속 v3다. `changes`는 `{ camera: SpatialCameraSpec }`만 받고,
+직교/원근 lens·position/target·near/far는 기존 `resolveSpatialCameraSpec` 계약으로 검증·정규화한다.
+기본값만 명시하는 변경은 dirty 상태를 만들지 않는다. 카메라-only patch의 `changedInstanceIds`는 빈 배열이며,
+오브젝트 잠금과 독립적이다. fragment 제한 저장은 다른 spatial 편집과 같이 거절한다.
+
+```ts
+viewer.updateSpatial([{
+  kind: "setCamera",
+  changes: { camera: {
+    projection: "orthographic",
+    position: { x: 160, y: -240, elevation: 220 },
+    target: { x: 0, y: 25, elevation: 0 },
+    height: 200, near: 0.1, far: 2000,
+  } },
+}]);
+```
+
+공개 TypeScript union에 씬 수준 operation이 추가됐으므로 소비자는 모든 operation에서 `.id`를 읽는 대신
+`operation.kind` 또는 `"id" in operation`으로 분기해야 한다. 기존 ID 대상 operation의 입력 규칙은 바뀌지 않는다.
+카메라 변경도 기존 Undo/Redo·merge·저장·다시 열기 경로를 사용하며, native 준비 실패 시 초안과 이력을 복원한다.
 
 | operation (spatial v3) | changes / 경계 |
 | --- | --- |

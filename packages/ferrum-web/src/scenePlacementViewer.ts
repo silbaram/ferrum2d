@@ -490,6 +490,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         operations.some(
           (operation) =>
             operation.kind !== "updateTerrainSurface" &&
+            operation.kind !== "setCamera" &&
             locked.has(operation.id),
         )
       )
@@ -506,7 +507,7 @@ class ScenePlacementViewerController implements ScenePlacementViewer {
         }
       this.spatial = applySceneSpatialPatch(this.spatial, {
         format: "ferrum2d.scene-spatial.patch",
-        version: operations.some(
+        version: operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
           (op) => op.kind === "setBillboardNormalTexture",
         )
           ? 4

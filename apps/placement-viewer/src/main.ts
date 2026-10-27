@@ -1178,15 +1178,16 @@ async function bootstrap(): Promise<void> {
     installPlacementHooks(viewer, interaction, setState, {
       saveEnabled,
       saveDraft: async () => {
-        if (switching || documentSession?.isSaving()) return undefined;
+        if (!saveEnabled || switching || documentSession?.isSaving()) return undefined;
         if (
           documentSession?.hasPointerGesture() ||
           spatialWorkspace?.ownsGesture()
         )
           return undefined;
         documentSession?.finishEdit();
+        if (spatialWorkspace?.flushCameraInput() === false) return undefined;
         const patch = viewer.exportPatch();
-        if (patch === undefined || !saveEnabled) {
+        if (patch === undefined) {
           return undefined;
         }
         if (

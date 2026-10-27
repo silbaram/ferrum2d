@@ -6,6 +6,7 @@ import {
 } from "./placementLocale";
 import { decorateViewportAction, viewportGroup } from "./placementViewportChrome";
 import { createPlacementControlMenu } from "./placementControlMenu";
+import { createPlacementGameCamera } from "./placementGameCamera";
 import {
   createDataSceneSpatialView,
   loadSpatialGlb,
@@ -58,6 +59,7 @@ function triangleDepth(a: Point, b: Point, c: Point, x: number, y: number) {
 interface CameraState {
   returnMode?: "2d" | "spatial";
   paused?: boolean;
+  gameFrame?: boolean;
   hiddenFloors?: number[];
   focusFloor?: number;
   workingPlane?: { elevation: number; floorId: number };
@@ -130,6 +132,7 @@ export function installPlacementSpatialWorkspace(options: {
   let inspector: HTMLElement | undefined;
   let navigationTool: "select" | "pan" = "select";
   let spaceHeld = false;
+  let cameraTransaction = false;
   let drag:
     | {
         id: number;
@@ -142,7 +145,7 @@ export function installPlacementSpatialWorkspace(options: {
         projection?: PlaneProjection;
         heightAnchor?: { point: SpatialPoint; screenY: number };
         cancelRequested?: boolean;
-        kind: "move" | "height" | "camera";
+        kind: "move" | "height" | "rotate" | "camera";
         selected?: Target;
       }
     | undefined;
@@ -280,13 +283,23 @@ export function installPlacementSpatialWorkspace(options: {
   const polygon = document.createElementNS(selection.namespaceURI, "polygon");
   selection.append(polygon);
   stage.append(selection);
-  const heightHandle = document.createElement("button");
+  const transformTools = document.createElement("div");
+  transformTools.className = "placement-spatial-transform-tools";
+  transformTools.setAttribute("role", "toolbar");
+  setUiAttribute(transformTools, "aria-label", "Transform selection");
+  transformTools.hidden = true;
+  const heightHandle = document.createElement("button"),
+    rotateHandle = document.createElement("button");
   heightHandle.type = "button";
-  setUiText(heightHandle, "Height");
   heightHandle.dataset.placementSpatialHeight = "true";
   heightHandle.className = "placement-spatial-height";
-  setUiAttribute(heightHandle, "title", "Drag elevation, Escape cancels");
-  stage.append(heightHandle);
+  decorateViewportAction(heightHandle, "height", "Height", undefined, true);
+  rotateHandle.type = "button";
+  rotateHandle.dataset.placementSpatialRotate = "true";
+  rotateHandle.className = "placement-spatial-rotate";
+  decorateViewportAction(rotateHandle, "right", "Rotate Object", undefined, true);
+  transformTools.append(heightHandle, rotateHandle);
+  stage.append(transformTools);
   const cameraControls = document.createElement("div");
   cameraControls.className = "placement-spatial-camera";
   cameraControls.setAttribute("role", "toolbar");
@@ -328,9 +341,10 @@ export function installPlacementSpatialWorkspace(options: {
       detail: { mode: "spatial", tool: navigationTool, temporary: spaceHeld, dragging: drag?.kind === "camera" },
     }));
     syncPitchControls();
+    gameCamera.sync();
   }
   function setNavigationTool(tool: typeof navigationTool) {
-    if (drag || palette.ownsDrag() || active.mode !== "spatial") return;
+    if (drag || cameraTransaction || palette.ownsDrag() || active.mode !== "spatial") return;
     if (tool === "pan") palette.cancel();
     navigationTool = tool;
     syncNavigationTool();
@@ -354,7 +368,7 @@ export function installPlacementSpatialWorkspace(options: {
   pitchControls.append(pitchLabel, pitchOutput, pitchInput);
   cameraMenu.panel.append(pitchControls);
   pitchInput.addEventListener("input", () => {
-    if (drag || suspended || active.mode !== "spatial" || !active.camera) {
+    if (drag || cameraTransaction || suspended || active.mode !== "spatial" || !active.camera) {
       syncPitchControls();
       return;
     }
@@ -369,7 +383,7 @@ export function installPlacementSpatialWorkspace(options: {
   function syncPitchControls() {
     const pitch = active.camera ? spatialCameraPitch(active.camera) : 0;
     pitchInput.value = String(pitch);
-    pitchInput.disabled = !active.camera || active.mode !== "spatial" || suspended || !!drag;
+    pitchInput.disabled = !active.camera || active.mode !== "spatial" || suspended || !!drag || cameraTransaction;
     setUiText(pitchOutput, uiMessage("{0}°", Number(pitch.toFixed(1))));
     for (const [action, button] of pitchButtons)
       button.disabled = pitchInput.disabled || (action === "up" ? pitch >= MAX_VIEW_PITCH - 1e-6 : pitch <= MIN_VIEW_PITCH + 1e-6);
@@ -390,7 +404,7 @@ export function installPlacementSpatialWorkspace(options: {
       label);
     button.dataset.placementSpatialCamera = action;
     button.addEventListener("click", () => {
-      if (!active.camera || drag) return;
+      if (!active.camera || drag || cameraTransaction) return;
       try {
         let camera = structuredClone(active.camera);
         if (action === "reset") camera = structuredClone(state.spatial!.camera);
@@ -415,6 +429,27 @@ export function installPlacementSpatialWorkspace(options: {
     cameraGroup.append(button);
   }
   options.cameraToolbar.append(cameraControls);
+  const gameCamera = createPlacementGameCamera({
+    canvas, stage,
+    camera: () => state.spatial?.camera,
+    editorCamera: () => active.camera,
+    canEdit: () => active.mode === "spatial" && !suspended && !drag && !cameraTransaction && !canvas.closest<HTMLElement>(".demo-shell")?.inert,
+    commit: commitGameCamera,
+    report,
+    preview: () => {
+      changeMode("game");
+      if (active.mode !== "game") return;
+      try {
+        if (!runtime.engine.pauseDataScene()) throw new Error("Preview playback change rejected");
+        active.paused = true; active.gameFrame = true;
+        options.onChange(viewer.state());
+      } catch (error) {
+        changeMode(active.returnMode ?? "spatial");
+        report(error);
+      }
+    },
+  });
+  cameraMenu.panel.append(gameCamera.element);
   const assets = document.createElement("div");
   assets.className = "placement-model-import";
   const importTitle = document.createElement("h4");
@@ -510,6 +545,7 @@ export function installPlacementSpatialWorkspace(options: {
       active.mode === "spatial" &&
       !suspended &&
       !drag &&
+      !cameraTransaction &&
       !canvas.closest<HTMLElement>(".demo-shell")?.inert,
     hit: (point) => (frame ? view.pick(point, frame) : undefined),
     plane: () => active.workingPlane ?? { elevation: 0, floorId: 0 },
@@ -958,6 +994,24 @@ export function installPlacementSpatialWorkspace(options: {
       patch = viewer.exportPatch();
     return patch ? mergeScenePlacementPatch(base, patch).document : base;
   }
+  function commitGameCamera(camera: SpatialCameraSpec) {
+    if (active.mode !== "spatial" || suspended || !cancel()) return false;
+    options.finishEdit();
+    try {
+      viewer.beginEdit("Game Camera");
+      cameraTransaction = true;
+      options.onChange(viewer.updateSpatial([{ kind: "setCamera", changes: { camera } }]));
+      const committed = viewer.commitEdit();
+      cameraTransaction = false;
+      options.onChange(committed);
+      report();
+      return true;
+    } catch (error) {
+      if (cameraTransaction && !cancel()) return false;
+      report(error);
+      return false;
+    }
+  }
   function changeMode(mode: Mode) {
     if (mode === active.mode) return;
     if (mode === "spatial" && !state.spatial) return;
@@ -965,9 +1019,11 @@ export function installPlacementSpatialWorkspace(options: {
     options.finishEdit();
     const previous = active.mode;
     const previousPaused = active.paused,
-      previousReturnMode = active.returnMode;
+      previousReturnMode = active.returnMode,
+      previousGameFrame = active.gameFrame;
     if (mode === "game" && previous !== "game") active.returnMode = previous;
     active.paused = false;
+    active.gameFrame = false;
     active.mode = mode;
     signature = "";
     try {
@@ -976,6 +1032,7 @@ export function installPlacementSpatialWorkspace(options: {
       active.mode = previous;
       active.paused = previousPaused;
       active.returnMode = previousReturnMode;
+      active.gameFrame = previousGameFrame;
       signature = "";
       options.onChange(viewer.state());
       report(error);
@@ -993,6 +1050,7 @@ export function installPlacementSpatialWorkspace(options: {
       throw new Error("Spatial edit camera rejected");
     // Commit the UI camera only after native validation accepts it.
     active.camera = camera;
+    gameCamera.sync();
     syncPitchControls();
     Object.assign(window, {
       ferrumPlacementSpatialCamera: structuredClone(active.camera),
@@ -1030,6 +1088,7 @@ export function installPlacementSpatialWorkspace(options: {
       if (
         !active.camera ||
         drag ||
+        cameraTransaction ||
         suspended ||
         palette.ownsDrag() ||
         canvas.closest<HTMLElement>(".demo-shell")?.inert ||
@@ -1252,6 +1311,7 @@ export function installPlacementSpatialWorkspace(options: {
     if (addForm) addForm.hidden = active.mode !== "2d";
     cameraControls.hidden = panel.hidden;
     syncPitchControls();
+    gameCamera.sync(resetInputs);
     const importDisabled = active.mode === "game" || suspended;
     modelKey.disabled = modelFile.disabled = importDisabled;
     for (const section of inspector?.querySelectorAll<HTMLDetailsElement>(
@@ -1398,7 +1458,7 @@ export function installPlacementSpatialWorkspace(options: {
           ? "Drag to move. Use Height to raise or lower the surface."
           : selected && spatial?.attachments?.[selected.id]
             ? "Position and physical height are owned by the attachment source."
-            : "Drag to move. Edit rotation and scale in the fields above.");
+            : "Drag to move. Use the height and rotation icons, or edit numeric fields.");
     for (const [name, input] of fields) {
       input.parentElement!.hidden = values[name] === undefined;
       input.disabled =
@@ -1676,7 +1736,19 @@ export function installPlacementSpatialWorkspace(options: {
     candidates.hidden = true;
     palette.cancel();
     const previous = drag;
-    if (!previous) return true;
+    if (!previous) {
+      if (!cameraTransaction) return true;
+      try {
+        options.onChange(viewer.cancelEdit());
+      } catch (error) {
+        report(error);
+        return false;
+      }
+      cameraTransaction = false;
+      syncNavigationTool();
+      gameCamera.sync(true);
+      return true;
+    }
     if (previous.kind === "camera") {
       try {
         setCamera(previous.camera);
@@ -1714,7 +1786,7 @@ export function installPlacementSpatialWorkspace(options: {
         (event.button !== 0 && event.button !== 1)
       )
         return;
-      if (drag && !cancel()) return;
+      if ((drag || cameraTransaction) && !cancel()) return;
       candidates.hidden = true;
       canvas.focus({ preventScroll: true });
       event.preventDefault();
@@ -1785,47 +1857,107 @@ export function installPlacementSpatialWorkspace(options: {
     },
     true,
   );
-  heightHandle.addEventListener("pointerdown", (event) => {
-    if (
-      event.button !== 0 ||
-      active.mode !== "spatial" ||
-      !frame ||
-      !active.target ||
-      (active.target.kind !== "surface" &&
-        (state.lockedInstanceIds.includes(active.target.id) ||
-          state.spatial?.attachments?.[active.target.id]))
-    )
-      return;
-    if (drag && !cancel()) return;
-    event.preventDefault();
-    event.stopPropagation();
-    options.finishEdit();
-    const projection = projectionSnapshot(),
-      heightAnchor = worldGeometry(active.target)
-        .map((point) => ({
-          point,
-          screenY: view.project(point, frame!)?.y,
-        }))
-        .filter(
-          (anchor): anchor is { point: SpatialPoint; screenY: number } =>
-            anchor.screenY !== undefined,
-        )
-        .sort((a, b) => a.screenY - b.screenY)[0];
-    if (!projection || !heightAnchor) return;
-    viewer.beginEdit("Spatial Height");
-    drag = {
-      id: event.pointerId,
-      target: heightHandle,
-      startX: event.clientX,
-      startY: event.clientY,
-      origin: viewer.state(),
-      kind: "height",
-      selected: active.target,
-      projection,
-      heightAnchor,
-    };
-    heightHandle.setPointerCapture(event.pointerId);
-  });
+  function transformRestriction(kind: "height" | "rotate") {
+    const target = active.target;
+    if (!target) return "Select an object, then edit its properties in Inspector.";
+    if (target.kind !== "surface" && state.lockedInstanceIds.includes(target.id))
+      return "Unlock the object to edit its placement.";
+    if (kind === "height" && target.kind !== "surface" && state.spatial?.attachments?.[target.id])
+      return "Position and physical height are owned by the attachment source.";
+    if (kind === "rotate" && target.kind === "surface")
+      return "Terrain surfaces cannot rotate";
+    if (kind === "rotate" && target.kind === "billboard" && state.spatial?.actor?.instanceId === target.id)
+      return "Player rotation requires an unrotated AABB collider. Change facing through animation.";
+  }
+  function rotationDegrees(origin: ScenePlacementViewerState) {
+    const target = active.target;
+    return target?.kind === "model"
+      ? (origin.spatial?.models?.[target.id]?.yawDegrees ?? 0)
+      : (selectedInstance(origin)?.transform.rotationRadians ?? 0) * 180 / Math.PI;
+  }
+  function editHeight(delta: number, origin: ScenePlacementViewerState, quantize = (value: number) => value) {
+    const target = active.target;
+    if (!target) return;
+    if (target.kind === "surface") {
+      const surface = origin.spatial?.terrain.find((s) => s.id === target.id);
+      if (surface) editField("elevation", quantize(surface.elevation + delta), origin);
+    } else {
+      const instance = selectedInstance(origin);
+      if (instance?.body?.heightSpan)
+        editField("elevation", quantize(instance.body.heightSpan.elevation + delta), origin);
+      else {
+        const visual = target.kind === "model"
+          ? origin.spatial?.models?.[target.id]
+          : origin.spatial?.billboards[target.id];
+        editField("offset", quantize((visual?.elevation ?? 0) + delta), origin);
+      }
+    }
+  }
+  for (const [handle, kind] of [[heightHandle, "height"], [rotateHandle, "rotate"]] as const) {
+    handle.addEventListener("pointerdown", (event) => {
+      if (
+        event.button !== 0 ||
+        active.mode !== "spatial" ||
+        !frame ||
+        !active.target ||
+        navigationTool === "pan" || spaceHeld || event.altKey ||
+        transformRestriction(kind)
+      ) return;
+      // A transform replaces pending placement so its first Escape cancels the edit.
+      if (!cancel()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      options.finishEdit();
+      const projection = projectionSnapshot(),
+        heightAnchor = kind === "height" ? worldGeometry(active.target)
+          .map((point) => ({
+            point,
+            screenY: view.project(point, frame!)?.y,
+          }))
+          .filter(
+            (anchor): anchor is { point: SpatialPoint; screenY: number } =>
+              anchor.screenY !== undefined,
+          )
+          .sort((a, b) => a.screenY - b.screenY)[0] : undefined;
+      if (kind === "height" && (!projection || !heightAnchor)) return;
+      viewer.beginEdit(kind === "height" ? "Spatial Height" : "Spatial Rotation");
+      drag = {
+        id: event.pointerId,
+        target: handle,
+        startX: event.clientX,
+        startY: event.clientY,
+        origin: viewer.state(),
+        kind,
+        selected: active.target,
+        projection,
+        heightAnchor,
+      };
+      handle.setPointerCapture(event.pointerId);
+    });
+    handle.addEventListener("keydown", (event) => {
+      if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.code) || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (active.mode !== "spatial" || navigationTool === "pan" || spaceHeld || transformRestriction(kind)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!cancel()) return;
+      options.finishEdit();
+      const origin = viewer.state(),
+        direction = event.code === "ArrowRight" || event.code === "ArrowUp" ? 1 : -1;
+      viewer.beginEdit(kind === "height" ? "Spatial Height" : "Spatial Rotation");
+      try {
+        if (kind === "rotate") editField("yaw", rotationDegrees(origin) + direction * (event.shiftKey ? 15 : 1), origin);
+        else {
+          const snap = options.snap();
+          editHeight(direction * (snap.enabled ? snap.gridSize : 1) * (event.shiftKey ? 10 : 1), origin);
+        }
+        options.onChange(viewer.commitEdit());
+        report();
+      } catch (error) {
+        options.onChange(viewer.cancelEdit());
+        report(error);
+      }
+    });
+  }
   window.addEventListener(
     "pointermove",
     (event) => {
@@ -1878,26 +2010,11 @@ export function installPlacementSpatialWorkspace(options: {
           );
           if (elevation === undefined) return;
           const delta = elevation - drag.heightAnchor.point.elevation;
-          if (target.kind === "surface")
-            editField("elevation", quantize(p.elevation + delta), origin);
-          else {
-            const instance = origin.instances.find(
-              (i) => i.instanceId === target.id,
-            );
-            if (instance?.body?.heightSpan)
-              editField(
-                "elevation",
-                quantize(instance.body.heightSpan.elevation + delta),
-                origin,
-              );
-            else {
-              const offset =
-                target.kind === "model"
-                  ? origin.spatial?.models?.[target.id].elevation
-                  : origin.spatial?.billboards[target.id].elevation;
-              editField("offset", quantize((offset ?? 0) + delta), origin);
-            }
-          }
+          editHeight(delta, origin, quantize);
+        } else if (drag.kind === "rotate") {
+          // Screen-space horizontal travel is independent of camera projection and DPR.
+          const angle = rotationDegrees(origin) + event.clientX - drag.startX;
+          editField("yaw", event.shiftKey ? Math.round(angle / 15) * 15 : angle, origin);
         } else if (drag.hit && drag.projection) {
           if (
             target.kind !== "surface" &&
@@ -1969,7 +2086,7 @@ export function installPlacementSpatialWorkspace(options: {
     },
     true,
   );
-  for (const element of [canvas, heightHandle])
+  for (const element of [canvas, heightHandle, rotateHandle])
     element.addEventListener("lostpointercapture", (event) => {
       if (event instanceof PointerEvent && drag?.id === event.pointerId)
         cancel();
@@ -2010,7 +2127,7 @@ export function installPlacementSpatialWorkspace(options: {
         return;
       }
       if (
-        drag &&
+        (drag || cameraTransaction) &&
         (event.code === "Escape" ||
           ((event.ctrlKey || event.metaKey) &&
             !event.altKey &&
@@ -2024,6 +2141,7 @@ export function installPlacementSpatialWorkspace(options: {
         active.mode === "spatial" &&
         document.activeElement === canvas &&
         !drag &&
+        !cameraTransaction &&
         !canvas.closest<HTMLElement>(".demo-shell")?.inert
       ) {
         if (
@@ -2121,7 +2239,8 @@ export function installPlacementSpatialWorkspace(options: {
       };
     },
     mode: () => active.mode,
-    ownsGesture: () => drag !== undefined || palette.ownsDrag(),
+    ownsGesture: () => drag !== undefined || cameraTransaction || palette.ownsDrag(),
+    flushCameraInput: () => gameCamera.flushInput(),
     target: () => (active.target ? { ...active.target } : undefined),
     selectSurface(id: string) {
       if (!state.spatial?.terrain.some((surface) => surface.id === id)) return;
@@ -2189,9 +2308,10 @@ export function installPlacementSpatialWorkspace(options: {
     frame(update: FerrumRuntimeFrame) {
       if (active.mode === "spatial") updateSpatialInfo();
       const spatial = update.frame.renderCommandBuffer.spatial;
+      gameCamera.frame(spatial?.presentation, !!spatial && active.mode === "game" && !!active.paused && !!active.gameFrame);
       if (active.mode !== "spatial" || !spatial) {
         selection.style.display = "none";
-        heightHandle.hidden = true;
+        transformTools.hidden = true;
         return;
       }
       // Retain only the two projection inputs and revision used by native picking, never borrowed geometry.
@@ -2236,29 +2356,43 @@ export function installPlacementSpatialWorkspace(options: {
         }
       }
       const target = active.target,
-        points = target && visible(target) ? geometry(target) : [];
+        points = target && visible(target) ? geometry(target) : [],
+        rect = points.length ? canvas.getBoundingClientRect() : undefined,
+        left = Math.min(...points.map((p) => p.x)),
+        right = Math.max(...points.map((p) => p.x)),
+        top = Math.min(...points.map((p) => p.y)),
+        bottom = Math.max(...points.map((p) => p.y)),
+        intersectsViewport = rect && right > rect.left && left < rect.right &&
+          bottom > rect.top && top < rect.bottom;
       selection.style.display = points.length ? "" : "none";
-      heightHandle.hidden =
-        !points.length ||
+      transformTools.hidden =
+        !intersectsViewport ||
         !!(
           target &&
           target.kind !== "surface" &&
-          (state.spatial?.attachments?.[target.id] ||
-            state.lockedInstanceIds.includes(target.id))
+          state.lockedInstanceIds.includes(target.id)
         );
-      if (!points.length) {
+      heightHandle.hidden = !!(target && target.kind !== "surface" && state.spatial?.attachments?.[target.id]);
+      for (const [handle, kind, hint] of [
+        [heightHandle, "height", "Drag height; arrows adjust; Escape cancels"],
+        [rotateHandle, "rotate", "Drag rotation; Shift snaps 15°; Escape cancels"],
+      ] as const) {
+        const reason = transformRestriction(kind);
+        handle.disabled = !!reason;
+        setUiAttribute(handle, "title", reason ?? hint);
+      }
+      if (!rect) {
         Object.assign(window, { ferrumPlacementSpatialSelection: undefined });
         return;
       }
-      const rect = canvas.getBoundingClientRect();
       polygon.setAttribute(
         "points",
         points.map((p) => p.x - rect.left + "," + (p.y - rect.top)).join(" "),
       );
-      heightHandle.style.left =
-        Math.max(...points.map((p) => p.x)) - rect.left + 8 + "px";
-      heightHandle.style.top =
-        Math.min(...points.map((p) => p.y)) - rect.top + "px";
+      transformTools.style.left = Math.max(8, Math.min(rect.width - 68,
+        right - rect.left + 8)) + "px";
+      transformTools.style.top = Math.max(32, Math.min(rect.height - 36,
+        top - rect.top)) + "px";
       Object.assign(window, {
         ferrumPlacementSpatialSelection: {
           target,
