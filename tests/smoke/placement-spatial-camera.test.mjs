@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 const require = createRequire(new URL("../../apps/placement-viewer/package.json", import.meta.url));
 const ts = require("typescript");
-const { spatialCameraPitch, tiltSpatialCamera, spatialEditorRenderCamera, MIN_VIEW_PITCH, MAX_VIEW_PITCH } = await import(
+const { spatialCameraPitch, tiltSpatialCamera, orbitSpatialCameraPitch, spatialEditorRenderCamera, MIN_VIEW_PITCH, MAX_VIEW_PITCH } = await import(
   "data:text/javascript;base64," + Buffer.from(ts.transpileModule(
     await readFile("apps/placement-viewer/src/placementSpatialCamera.ts", "utf8"),
     { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } },
@@ -41,6 +41,19 @@ test("nonfinite angles or zero-length cameras are rejected", () => {
   for(const value of [NaN,Infinity,-Infinity]) assert.throws(()=>tiltSpatialCamera(c,value),/finite/);
   assert.throws(()=>tiltSpatialCamera({...c,position:{...c.target}},45),/finite/);
   assert.throws(()=>tiltSpatialCamera({...c,position:{...c.position,x:NaN}},45),/finite/);
+});
+test("authored signed pitch preserves framing while editor navigation retains its bounds", () => {
+  const c={projection:"perspective",position:{x:20,y:-200,elevation:200},target:{x:20,y:0,elevation:0},fovDegrees:55,near:.1,far:2000};
+  const original=structuredClone(c);
+  for(const degrees of [-89.9,-45,-0.5,0,0.5,45,89.9]) {
+    const next=orbitSpatialCameraPitch(c,degrees);
+    near(spatialCameraPitch(next),degrees);near(distance(next),distance(c));near(yaw(next),yaw(c));
+    assert.deepEqual(next.target,c.target);
+    for(const key of ["projection","fovDegrees","near","far"]) assert.equal(next[key],c[key]);
+  }
+  for(const degrees of [-90,90,-100,100,NaN,Infinity]) assert.throws(()=>orbitSpatialCameraPitch(c,degrees));
+  near(spatialCameraPitch(tiltSpatialCamera(c,-45)),MIN_VIEW_PITCH);
+  assert.deepEqual(c,original);
 });
 test("translated targets and an authored vertical camera produce a finite, reversible view", () => {
   const c={projection:"orthographic",position:{x:27,y:-54,elevation:300},target:{x:27,y:-54,elevation:100}};

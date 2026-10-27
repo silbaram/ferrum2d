@@ -1,12 +1,19 @@
 import {
   resolveDataSceneSpatialSpec,
+  resolveSpatialCameraSpec,
   type DataSceneSpatialSpec,
+  type SpatialCameraSpec,
   type SpatialTerrainSurface,
   type SpatialBillboardSpec,
   type SpatialModelInstanceSpec,
 } from "./dataSceneSpatial.js";
 
 export type SceneSpatialPatchOperation =
+  | {
+      /** Scene-level camera replacement; no instance identity is involved. */
+      kind: "setCamera";
+      changes: { camera: SpatialCameraSpec };
+    }
   | {
       kind: "setBillboardNormalTexture";
       id: string;
@@ -95,13 +102,14 @@ export type SceneSpatialPatchOperation =
 
 export interface SceneSpatialPatch {
   format: "ferrum2d.scene-spatial.patch";
-  version: 1 | 2 | 3 | 4;
+  version: 1 | 2 | 3 | 4 | 5;
   operations: readonly SceneSpatialPatchOperation[];
 }
 
 const hasOwn = (value: object, key: string) =>
   Object.prototype.hasOwnProperty.call(value, key);
 const fields = {
+  setCamera: ["camera"],
   setBillboardNormalTexture: ["normalTexture"],
   replaceModelAsset: ["asset", "contentId"],
   renameReference: ["target", "nextId"],
@@ -155,11 +163,12 @@ export function applySceneSpatialPatch(
     (patch.version !== 1 &&
       patch.version !== 2 &&
       patch.version !== 3 &&
-      patch.version !== 4) ||
+      patch.version !== 4 &&
+      patch.version !== 5) ||
     !Array.isArray(patch.operations)
   )
     throw new Error(
-      "spatial patch requires format ferrum2d.scene-spatial.patch version 1, 2, 3 or 4 operations",
+      "spatial patch requires format ferrum2d.scene-spatial.patch version 1, 2, 3, 4 or 5 operations",
     );
   if (
     Object.keys(patch).some(
@@ -173,18 +182,25 @@ export function applySceneSpatialPatch(
     if (
       !operation ||
       !hasOwn(fields, operation.kind) ||
-      typeof operation.id !== "string" ||
-      !operation.id.length ||
+      (operation.kind !== "setCamera" &&
+        (typeof operation.id !== "string" || !operation.id.length)) ||
       !operation.changes ||
       typeof operation.changes !== "object" ||
       Array.isArray(operation.changes) ||
       (!Object.keys(operation.changes).length &&
         operation.kind !== "addBillboard") ||
       Object.keys(operation).some(
-        (key) => !["kind", "id", "changes"].includes(key),
+        (key) => !(operation.kind === "setCamera" ? ["kind", "changes"] : ["kind", "id", "changes"]).includes(key),
       )
     )
       throw new Error("Invalid spatial patch operation");
+    if (operation.kind === "setCamera") {
+      if (patch.version < 5 || Object.keys(operation.changes).length !== 1 ||
+          !hasOwn(operation.changes, "camera"))
+        throw new Error("Camera replacement requires spatial patch version 5 and camera");
+      next.camera = resolveSpatialCameraSpec(operation.changes.camera, "spatialPatch.camera");
+      continue;
+    }
     const addition =
       operation.kind === "addBillboard" || operation.kind === "addModel";
     if (addition && !operation.id.trim())
@@ -368,11 +384,9 @@ export function diffSceneSpatialPatch(
   if (!source || !next) return undefined;
   const stable = (value: unknown): string =>
     JSON.stringify(
-      value &&
-        typeof value === "object" &&
-        "billboards" in value &&
-        !Object.keys(Reflect.get(value, "models") ?? {}).length
-        ? { ...value, models: undefined }
+      value && typeof value === "object" && "billboards" in value
+        ? { ...value, camera: resolveSpatialCameraSpec(Reflect.get(value, "camera")),
+            ...(!Object.keys(Reflect.get(value, "models") ?? {}).length ? { models: undefined } : {}) }
         : value,
       function (_key, item: unknown) {
         if (item && typeof item === "object" && !Array.isArray(item))
@@ -383,6 +397,9 @@ export function diffSceneSpatialPatch(
       },
     );
   const operations: SceneSpatialPatchOperation[] = [];
+  const camera = resolveSpatialCameraSpec(next.camera);
+  if (stable(resolveSpatialCameraSpec(source.camera)) !== stable(camera))
+    operations.push({ kind: "setCamera", changes: { camera } });
   for (const target of ["billboard", "model"] as const) {
     const before =
       target === "billboard" ? source.billboards : (source.models ?? {});
@@ -547,7 +564,7 @@ export function diffSceneSpatialPatch(
       throw new Error("Spatial draft contains unsupported metadata changes");
     return undefined;
   }
-  const version = operations.some(
+  const version = operations.some((op) => op.kind === "setCamera") ? 5 : operations.some(
     (op) => op.kind === "setBillboardNormalTexture",
   )
     ? 4

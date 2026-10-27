@@ -6,6 +6,7 @@ import {
 } from "./placementLocale";
 import { decorateViewportAction, viewportGroup } from "./placementViewportChrome";
 import { createPlacementControlMenu } from "./placementControlMenu";
+import { createPlacementGameCamera } from "./placementGameCamera";
 import {
   createDataSceneSpatialView,
   loadSpatialGlb,
@@ -58,6 +59,7 @@ function triangleDepth(a: Point, b: Point, c: Point, x: number, y: number) {
 interface CameraState {
   returnMode?: "2d" | "spatial";
   paused?: boolean;
+  gameFrame?: boolean;
   hiddenFloors?: number[];
   focusFloor?: number;
   workingPlane?: { elevation: number; floorId: number };
@@ -130,6 +132,7 @@ export function installPlacementSpatialWorkspace(options: {
   let inspector: HTMLElement | undefined;
   let navigationTool: "select" | "pan" = "select";
   let spaceHeld = false;
+  let cameraTransaction = false;
   let drag:
     | {
         id: number;
@@ -338,9 +341,10 @@ export function installPlacementSpatialWorkspace(options: {
       detail: { mode: "spatial", tool: navigationTool, temporary: spaceHeld, dragging: drag?.kind === "camera" },
     }));
     syncPitchControls();
+    gameCamera.sync();
   }
   function setNavigationTool(tool: typeof navigationTool) {
-    if (drag || palette.ownsDrag() || active.mode !== "spatial") return;
+    if (drag || cameraTransaction || palette.ownsDrag() || active.mode !== "spatial") return;
     if (tool === "pan") palette.cancel();
     navigationTool = tool;
     syncNavigationTool();
@@ -364,7 +368,7 @@ export function installPlacementSpatialWorkspace(options: {
   pitchControls.append(pitchLabel, pitchOutput, pitchInput);
   cameraMenu.panel.append(pitchControls);
   pitchInput.addEventListener("input", () => {
-    if (drag || suspended || active.mode !== "spatial" || !active.camera) {
+    if (drag || cameraTransaction || suspended || active.mode !== "spatial" || !active.camera) {
       syncPitchControls();
       return;
     }
@@ -379,7 +383,7 @@ export function installPlacementSpatialWorkspace(options: {
   function syncPitchControls() {
     const pitch = active.camera ? spatialCameraPitch(active.camera) : 0;
     pitchInput.value = String(pitch);
-    pitchInput.disabled = !active.camera || active.mode !== "spatial" || suspended || !!drag;
+    pitchInput.disabled = !active.camera || active.mode !== "spatial" || suspended || !!drag || cameraTransaction;
     setUiText(pitchOutput, uiMessage("{0}°", Number(pitch.toFixed(1))));
     for (const [action, button] of pitchButtons)
       button.disabled = pitchInput.disabled || (action === "up" ? pitch >= MAX_VIEW_PITCH - 1e-6 : pitch <= MIN_VIEW_PITCH + 1e-6);
@@ -400,7 +404,7 @@ export function installPlacementSpatialWorkspace(options: {
       label);
     button.dataset.placementSpatialCamera = action;
     button.addEventListener("click", () => {
-      if (!active.camera || drag) return;
+      if (!active.camera || drag || cameraTransaction) return;
       try {
         let camera = structuredClone(active.camera);
         if (action === "reset") camera = structuredClone(state.spatial!.camera);
@@ -425,6 +429,27 @@ export function installPlacementSpatialWorkspace(options: {
     cameraGroup.append(button);
   }
   options.cameraToolbar.append(cameraControls);
+  const gameCamera = createPlacementGameCamera({
+    canvas, stage,
+    camera: () => state.spatial?.camera,
+    editorCamera: () => active.camera,
+    canEdit: () => active.mode === "spatial" && !suspended && !drag && !cameraTransaction && !canvas.closest<HTMLElement>(".demo-shell")?.inert,
+    commit: commitGameCamera,
+    report,
+    preview: () => {
+      changeMode("game");
+      if (active.mode !== "game") return;
+      try {
+        if (!runtime.engine.pauseDataScene()) throw new Error("Preview playback change rejected");
+        active.paused = true; active.gameFrame = true;
+        options.onChange(viewer.state());
+      } catch (error) {
+        changeMode(active.returnMode ?? "spatial");
+        report(error);
+      }
+    },
+  });
+  cameraMenu.panel.append(gameCamera.element);
   const assets = document.createElement("div");
   assets.className = "placement-model-import";
   const importTitle = document.createElement("h4");
@@ -520,6 +545,7 @@ export function installPlacementSpatialWorkspace(options: {
       active.mode === "spatial" &&
       !suspended &&
       !drag &&
+      !cameraTransaction &&
       !canvas.closest<HTMLElement>(".demo-shell")?.inert,
     hit: (point) => (frame ? view.pick(point, frame) : undefined),
     plane: () => active.workingPlane ?? { elevation: 0, floorId: 0 },
@@ -968,6 +994,24 @@ export function installPlacementSpatialWorkspace(options: {
       patch = viewer.exportPatch();
     return patch ? mergeScenePlacementPatch(base, patch).document : base;
   }
+  function commitGameCamera(camera: SpatialCameraSpec) {
+    if (active.mode !== "spatial" || suspended || !cancel()) return false;
+    options.finishEdit();
+    try {
+      viewer.beginEdit("Game Camera");
+      cameraTransaction = true;
+      options.onChange(viewer.updateSpatial([{ kind: "setCamera", changes: { camera } }]));
+      const committed = viewer.commitEdit();
+      cameraTransaction = false;
+      options.onChange(committed);
+      report();
+      return true;
+    } catch (error) {
+      if (cameraTransaction && !cancel()) return false;
+      report(error);
+      return false;
+    }
+  }
   function changeMode(mode: Mode) {
     if (mode === active.mode) return;
     if (mode === "spatial" && !state.spatial) return;
@@ -975,9 +1019,11 @@ export function installPlacementSpatialWorkspace(options: {
     options.finishEdit();
     const previous = active.mode;
     const previousPaused = active.paused,
-      previousReturnMode = active.returnMode;
+      previousReturnMode = active.returnMode,
+      previousGameFrame = active.gameFrame;
     if (mode === "game" && previous !== "game") active.returnMode = previous;
     active.paused = false;
+    active.gameFrame = false;
     active.mode = mode;
     signature = "";
     try {
@@ -986,6 +1032,7 @@ export function installPlacementSpatialWorkspace(options: {
       active.mode = previous;
       active.paused = previousPaused;
       active.returnMode = previousReturnMode;
+      active.gameFrame = previousGameFrame;
       signature = "";
       options.onChange(viewer.state());
       report(error);
@@ -1003,6 +1050,7 @@ export function installPlacementSpatialWorkspace(options: {
       throw new Error("Spatial edit camera rejected");
     // Commit the UI camera only after native validation accepts it.
     active.camera = camera;
+    gameCamera.sync();
     syncPitchControls();
     Object.assign(window, {
       ferrumPlacementSpatialCamera: structuredClone(active.camera),
@@ -1040,6 +1088,7 @@ export function installPlacementSpatialWorkspace(options: {
       if (
         !active.camera ||
         drag ||
+        cameraTransaction ||
         suspended ||
         palette.ownsDrag() ||
         canvas.closest<HTMLElement>(".demo-shell")?.inert ||
@@ -1262,6 +1311,7 @@ export function installPlacementSpatialWorkspace(options: {
     if (addForm) addForm.hidden = active.mode !== "2d";
     cameraControls.hidden = panel.hidden;
     syncPitchControls();
+    gameCamera.sync(resetInputs);
     const importDisabled = active.mode === "game" || suspended;
     modelKey.disabled = modelFile.disabled = importDisabled;
     for (const section of inspector?.querySelectorAll<HTMLDetailsElement>(
@@ -1686,7 +1736,19 @@ export function installPlacementSpatialWorkspace(options: {
     candidates.hidden = true;
     palette.cancel();
     const previous = drag;
-    if (!previous) return true;
+    if (!previous) {
+      if (!cameraTransaction) return true;
+      try {
+        options.onChange(viewer.cancelEdit());
+      } catch (error) {
+        report(error);
+        return false;
+      }
+      cameraTransaction = false;
+      syncNavigationTool();
+      gameCamera.sync(true);
+      return true;
+    }
     if (previous.kind === "camera") {
       try {
         setCamera(previous.camera);
@@ -1724,7 +1786,7 @@ export function installPlacementSpatialWorkspace(options: {
         (event.button !== 0 && event.button !== 1)
       )
         return;
-      if (drag && !cancel()) return;
+      if ((drag || cameraTransaction) && !cancel()) return;
       candidates.hidden = true;
       canvas.focus({ preventScroll: true });
       event.preventDefault();
@@ -2065,7 +2127,7 @@ export function installPlacementSpatialWorkspace(options: {
         return;
       }
       if (
-        drag &&
+        (drag || cameraTransaction) &&
         (event.code === "Escape" ||
           ((event.ctrlKey || event.metaKey) &&
             !event.altKey &&
@@ -2079,6 +2141,7 @@ export function installPlacementSpatialWorkspace(options: {
         active.mode === "spatial" &&
         document.activeElement === canvas &&
         !drag &&
+        !cameraTransaction &&
         !canvas.closest<HTMLElement>(".demo-shell")?.inert
       ) {
         if (
@@ -2176,7 +2239,8 @@ export function installPlacementSpatialWorkspace(options: {
       };
     },
     mode: () => active.mode,
-    ownsGesture: () => drag !== undefined || palette.ownsDrag(),
+    ownsGesture: () => drag !== undefined || cameraTransaction || palette.ownsDrag(),
+    flushCameraInput: () => gameCamera.flushInput(),
     target: () => (active.target ? { ...active.target } : undefined),
     selectSurface(id: string) {
       if (!state.spatial?.terrain.some((surface) => surface.id === id)) return;
@@ -2244,6 +2308,7 @@ export function installPlacementSpatialWorkspace(options: {
     frame(update: FerrumRuntimeFrame) {
       if (active.mode === "spatial") updateSpatialInfo();
       const spatial = update.frame.renderCommandBuffer.spatial;
+      gameCamera.frame(spatial?.presentation, !!spatial && active.mode === "game" && !!active.paused && !!active.gameFrame);
       if (active.mode !== "spatial" || !spatial) {
         selection.style.display = "none";
         transformTools.hidden = true;

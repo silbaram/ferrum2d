@@ -202,7 +202,7 @@ export function mergeScenePlacementPatch(
         continue;
       const paired = patch.spatial?.operations.filter(
         (op) =>
-          op.id === outer.instanceId &&
+          "id" in op && op.id === outer.instanceId &&
           (outer.kind === "renameInstance"
             ? op.kind === "renameReference" &&
               op.changes.nextId === outer.nextInstanceId
@@ -445,7 +445,7 @@ export function mergeScenePlacementPatch(
       patch.spatial,
     );
     for (const operation of patch.spatial.operations)
-      if (operation.kind !== "updateTerrainSurface")
+      if (operation.kind !== "updateTerrainSurface" && operation.kind !== "setCamera")
         pushUnique(changedInstanceIds, operation.id);
   }
   if (nextDocument.spatial)

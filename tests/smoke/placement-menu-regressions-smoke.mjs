@@ -71,7 +71,7 @@ export async function smokePlacementMenuRegressions(page, mode) {
     await page.mouse.wheel(delta, 0);
     await page.waitForFunction(({ mode, start }) => document.querySelector(mode === "spatial" ? ".placement-camera-mount" : ".placement-navigation-mount").scrollLeft !== start, { mode, start });
     await page.waitForFunction((id) => !document.querySelector(`[data-placement-menu="${id}"]`).open, camera);
-    assert.equal(await menu(camera).locator("summary").getAttribute("aria-expanded"), "false");
+    assert.equal(await menu(camera).locator(":scope > summary").getAttribute("aria-expanded"), "false");
 
     // The explanatory menu scrolls independently and must stay open while read.
     await showPlacementMenu(page, "help");

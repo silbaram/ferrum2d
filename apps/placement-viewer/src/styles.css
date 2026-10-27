@@ -1453,6 +1453,65 @@ textarea {
 .placement-spatial-panel[hidden] {
   display: none;
 }
+.placement-game-camera {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.placement-game-camera h4 {
+  margin: 0 0 4px;
+  color: var(--fg-1);
+}
+.placement-game-camera p {
+  margin: 4px 0 8px;
+  color: var(--fg-3);
+  font-size: 11px;
+}
+.placement-game-camera-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 8px 0;
+}
+.placement-game-camera-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.placement-game-camera-fields label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--fg-2);
+}
+.placement-game-camera-fields :is(input, select) {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.placement-game-camera [hidden],
+.placement-game-camera-frame[hidden] {
+  display: none;
+}
+.placement-game-camera > details {
+  margin-top: 8px;
+}
+.placement-game-camera-frame {
+  position: absolute;
+  box-sizing: border-box;
+  z-index: 4;
+  border: 1px dashed var(--accent);
+  pointer-events: none;
+}
+.placement-game-camera-frame > span {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px;
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--bg-1);
+}
 .placement-spatial-camera {
   display: flex;
   flex-wrap: wrap;
