@@ -246,6 +246,7 @@ export async function smokePlacementWorkspace(page, timeoutMs) {
       window.scrollTo(0, 0);
       return [...document.querySelectorAll(".demo-toolbar button")]
         .filter((button) => {
+          if (!button.checkVisibility()) return false;
           const rect = button.getBoundingClientRect();
           if (!rect.width || !rect.height) return false;
           const hit = document.elementFromPoint(

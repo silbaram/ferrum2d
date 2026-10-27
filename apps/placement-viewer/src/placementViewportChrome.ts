@@ -19,6 +19,11 @@ const paths = {
   camera: '<path d="M2 5h3l1-2h4l1 2h3v8H2Z"/><circle cx="8" cy="9" r="2"/>',
   layout: '<rect x="2" y="2" width="12" height="12" rx="1"/><path d="M5 2v12m6-12v12M5 11h6"/>',
   help: '<circle cx="8" cy="8" r="6"/><path d="M6 6a2 2 0 1 1 3 2c-1 .5-1 1-1 1M8 11v.1"/>',
+  file: '<path d="M4 2h5l3 3v9H4Z"/><path d="M9 2v4h3M6 9h4M6 11h4"/>',
+  play: '<path d="m5 3 8 5-8 5Z"/>',
+  pause: '<path d="M5 3v10M11 3v10"/>',
+  stop: '<rect x="4" y="4" width="8" height="8"/>',
+  close: '<path d="m4 4 8 8M12 4l-8 8"/>',
 } as const;
 export type ViewportIcon = keyof typeof paths;
 

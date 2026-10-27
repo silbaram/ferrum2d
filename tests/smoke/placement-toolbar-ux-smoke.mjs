@@ -31,9 +31,11 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
       const cameraMenu = page.locator(`[data-placement-menu="camera-${mode === "spatial" ? "spatial" : "2d"}"]`);
       const cameraToggle = cameraMenu.locator(":scope > summary");
       const helpToggle = page.locator('[data-placement-menu="help"] > summary');
-      assert.equal(await cameraToggle.getAttribute("aria-label"), locale === "ko" ? "카메라" : "Camera");
+      assert.equal(await cameraToggle.getAttribute("aria-label"), locale === "ko" ? "편집 시점" : "Editor View");
       assert.equal(await helpToggle.getAttribute("aria-label"), locale === "ko" ? "사용 안내" : "Controls");
       assert(await cameraMenu.locator("button").first().isHidden(), "Secondary camera actions must start collapsed");
+      await showPlacementViewOptions(page);
+      assert.equal(await cameraToggle.locator(".placement-disclosure-caret").evaluate(element => getComputedStyle(element).transform), "none", "Opening View must not rotate a closed submenu caret");
       await cameraToggle.focus();
       await page.keyboard.press("Enter");
       assert.equal(await cameraToggle.getAttribute("aria-expanded"), "true");
@@ -103,6 +105,13 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
 
     const desktop = await page.locator(".placement-viewport-primary").boundingBox();
     assert(desktop.height <= 48, "Primary tools should occupy a compact row");
+    const header = await page.locator(".demo-toolbar").boundingBox(), strip = await page.locator(".placement-workspace-strip").boundingBox();
+    assert(header.height <= 36 && strip.height <= 36, "Desktop chrome must fit two compact rows");
+    assert(await page.locator('.placement-file-strip').isHidden(), "Duplicate file metadata belongs in File");
+    await showPlacementMenu(page, "file");
+    assert(await page.locator('[data-placement-action="open-json-document"]').isVisible());
+    assert(await page.locator('.placement-file-strip').isVisible());
+    await page.keyboard.press("Escape");
     const visibleButtons = await page.locator(".placement-viewport-primary button:visible").count();
     assert(visibleButtons <= 6, `Secondary controls leaked into the primary row: ${visibleButtons}`);
     await showPlacementMenu(page, "layout");
@@ -113,6 +122,7 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
     await showPlacementViewOptions(page);
     await page.screenshot({ path: `${artifact}/${mode}-view-ko.png`, fullPage: true });
     await page.setViewportSize({ width: 390, height: 500 });
+    await showPlacementViewOptions(page);
     const compact = await summary.boundingBox();
     assert(compact.x >= 0 && compact.x + compact.width <= 391, "View must remain reachable on narrow screens");
     const panel = await page.locator(".placement-view-panel").boundingBox();
@@ -128,11 +138,28 @@ export async function smokePlacementToolbarUx(page, timeoutMs, mode) {
     await showPlacementMenu(page, "help");
     await page.setViewportSize({ width: 400, height: 500 });
     await wait(() => !document.querySelector('[data-placement-menu="help"]').open);
+    const responsive = [];
+    for (const [width, height] of [[320, 360], [420, 360], [680, 480], [860, 600], [861, 600], [1125, 800]]) {
+      await page.setViewportSize({ width, height });
+      await wait(() => document.querySelector('[data-placement-viewport-size]').textContent ===
+        `${document.querySelector('canvas').clientWidth} × ${document.querySelector('canvas').clientHeight}`);
+      const box = await page.locator('canvas.demo-canvas').boundingBox();
+      assert(box.height >= 128 && box.width > 0, `${width}px must retain a drawable viewport`);
+      for (const control of [select, pan, summary, page.locator('.placement-workspace-modes')]) {
+        const bounds = await control.boundingBox();
+        assert(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, `${width}px primary control overflow`);
+      }
+      await showPlacementViewOptions(page);
+      const bounds = await page.locator('.placement-view-panel').boundingBox();
+      assert(bounds.x >= 0 && bounds.x + bounds.width <= width + 1 && bounds.y + bounds.height <= height + 1, `${width}px View popup overflow`);
+      await page.keyboard.press('Escape');
+      responsive.push({width,height,canvas:box});
+    }
     await page.setViewportSize(viewport);
     await wait(() => globalThis.ferrumPlacementGrid.lineCount > 0);
     assert.equal(await state(), before, "Toolbar UX changed camera, selection, document or history");
     await writeFile(`${artifact}/${mode}.json`, JSON.stringify({
-      ok: true, desktop, compact, visibleButtons, checks: ["localized icons and shortcuts", "labeled collapsed camera commands", "menu Enter/Space/Escape and focus restoration", "one menu at a time", "layout reset and controls guide reachable", "at most six primary buttons", "arrow focus without activation", "temporary Space state", "display toggles and shared spacing", "invalid spacing rejected", "Escape/outside dismissal", "390px view/camera/layout/help bounds", "camera/document/history/selection preserved"],
+      ok: true, desktop, header, strip, compact, responsive, visibleButtons, checks: ["two 36px desktop rows", "File metadata and Open reachable", "localized icons and shortcuts", "labeled collapsed editor-view commands", "menu Enter/Space/Escape and focus restoration", "one menu at a time", "layout reset and controls guide reachable", "at most six primary buttons", "arrow focus without activation", "temporary Space state", "display toggles and shared spacing", "invalid spacing rejected", "Escape/outside dismissal", "320-1125px bounds and minimum canvas", "camera/document/history/selection preserved"],
     }, null, 2) + "\n");
   } catch (error) {
     await page.screenshot({ path: `${artifact}/${mode}-failure.png`, fullPage: true });

@@ -300,7 +300,7 @@ export async function smokePlacementNavigation(page, timeoutMs) {
       );
   }
   await page.click("[data-placement-action=undo]");
-  await page.click("[data-placement-view-action=fit-scene]");
+  await clickPlacementControl(page, "[data-placement-view-action=fit-scene]");
   const fits = await page.evaluate(() => {
     const viewport = globalThis.ferrumPlacementViewerState.viewport;
     return (
@@ -339,7 +339,7 @@ export async function smokePlacementNavigation(page, timeoutMs) {
       !document.querySelector(".demo-shell").inert,
   );
   const emptyCamera = await camera();
-  await page.click("[data-placement-view-action=fit-scene]");
+  await clickPlacementControl(page, "[data-placement-view-action=fit-scene]");
   if (JSON.stringify(await camera()) !== JSON.stringify(emptyCamera))
     throw new Error("Empty scene fit should preserve the view");
   const limits = await page.evaluate(() => {
@@ -394,7 +394,7 @@ export async function smokePlacementNavigation(page, timeoutMs) {
       undefined,
       { timeout: timeoutMs },
     );
-    await highDpr.click("[data-placement-view-action=fit-scene]");
+    await clickPlacementControl(highDpr, "[data-placement-view-action=fit-scene]");
     const target = await objectPoint(highDpr, "crate_left");
     await highDpr.mouse.move(target.x, target.y);
     await highDpr.mouse.wheel(0, -160);

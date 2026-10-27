@@ -166,10 +166,16 @@ export function createPlacementSpatialPalette(options: {
   ghost.alt = "";
   const caption = document.createElement("span");
   preview.append(ghost, caption);
+  const rejection = document.createElement("div");
+  rejection.className = "placement-spatial-drop-rejection";
+  rejection.dataset.placementDropRejection = "true";
+  rejection.setAttribute("role", "status");
+  rejection.setAttribute("aria-live", "polite");
+  rejection.hidden = true;
   const marker = document.createElement("div");
   marker.className = "placement-spatial-add-anchor";
   marker.hidden = true;
-  stage.append(preview, marker);
+  stage.append(preview, marker, rejection);
   let pending: Asset | undefined;
   let dragging: { token: string; asset: Asset } | undefined;
   let inventorySignature = "";
@@ -208,7 +214,7 @@ export function createPlacementSpatialPalette(options: {
     };
   }
   function clearPreview() {
-    preview.hidden = marker.hidden = true;
+    preview.hidden = marker.hidden = rejection.hidden = true;
   }
   function cancel() {
     pending = undefined;
@@ -389,17 +395,27 @@ export function createPlacementSpatialPalette(options: {
     // A vertical screen-facing guide follows the same physical foot anchor.
     return [hit, { ...hit, elevation: hit.elevation + asset.height * factor }];
   }
-  function showPreview(asset: Asset, point: { x: number; y: number }) {
+  function rejectPlacement(point: { x: number; y: number }, reason: string) {
+    clearPreview();
+    const rect = stage.getBoundingClientRect(), area = canvas.getBoundingClientRect();
+    rejection.style.maxWidth = Math.max(0, Math.min(220, area.width - 16)) + "px";
+    rejection.style.left = Math.max(area.left, Math.min(point.x + 12, area.right - 228)) - rect.left + "px";
+    rejection.style.top = Math.max(area.top, Math.min(point.y + 12, area.bottom - 60)) - rect.top + "px";
+    setUiText(rejection, reason);
+    rejection.hidden = false;
+    return false;
+  }
+  function showPreview(asset: Asset, point: { x: number; y: number }): boolean {
     const hit = support(point);
     if (!hit) {
-      clearPreview();
-      return;
+      return rejectPlacement(point, basis.value === "plane" ? "Working plane is not visible at this angle." : "No terrain here. Choose Working Plane to place outside the map.");
     }
     const anchor = options.project(hit),
       points = bounds(asset, hit).map(options.project);
     if (!anchor?.visible || points.some((point) => !point?.visible)) {
+      // Framing only limits the guide. A valid placement may extend offscreen.
       clearPreview();
-      return;
+      return true;
     }
     const valid = points.filter(
         (point): point is NonNullable<typeof point> => !!point,
@@ -448,6 +464,8 @@ export function createPlacementSpatialPalette(options: {
     preview.dataset.elevation = String(hit.elevation);
     preview.dataset.floor = visualOnly ? "" : String(hit.floorId);
     preview.hidden = marker.hidden = false;
+    rejection.hidden = true;
+    return true;
   }
   function commit(asset: Asset, point: { x: number; y: number }) {
     try {
@@ -627,8 +645,7 @@ export function createPlacementSpatialPalette(options: {
     )
       return;
     event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    showPreview(dragging.asset, { x: event.clientX, y: event.clientY });
+    event.dataTransfer.dropEffect = showPreview(dragging.asset, { x: event.clientX, y: event.clientY }) ? "copy" : "none";
   });
   canvas.addEventListener("drop", (event) => {
     if (!dragging || event.dataTransfer?.getData(DRAG_TYPE) !== dragging.token)

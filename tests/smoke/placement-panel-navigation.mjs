@@ -1,6 +1,8 @@
 /** Navigate the actual panel controls; tests must not expose hidden content through DOM edits. */
 export async function showPlacementMenu(page, id) {
   const menu = page.locator(`[data-placement-menu="${id}"]`);
+  if (await menu.evaluate(element => !!element.closest(".placement-view-options"))) await showPlacementViewOptions(page);
+  else if (await page.locator(".placement-view-options").evaluate(element => element.open)) await page.locator("[data-placement-view-options]").click();
   const summary = menu.locator(":scope > summary");
   if (!(await menu.evaluate((element) => element.open))) await summary.click();
   await page.waitForFunction((id) => {
@@ -16,11 +18,15 @@ export async function showPlacementCameraOptions(page) {
 
 export async function clickPlacementControl(page, selector) {
   const control = typeof selector === "string" ? page.locator(selector) : selector;
+  if (await control.evaluate(element => !!element.closest(".placement-view-options"))) await showPlacementViewOptions(page);
+  else if (await page.locator(".placement-view-options").evaluate(element => element.open)) await page.locator("[data-placement-view-options]").click();
   const menu = await control.evaluate((element) => element.closest("[data-placement-menu]")?.dataset.placementMenu);
   if (menu) await showPlacementMenu(page, menu);
   await control.click();
   if (menu && await page.locator(`[data-placement-menu="${menu}"]`).evaluate((element) => element.open))
     await page.keyboard.press("Escape");
+  if (await control.evaluate(element => !!element.closest(".placement-view-options")) &&
+      await page.locator(".placement-view-options").evaluate(element => element.open)) await page.keyboard.press("Escape");
 }
 
 export async function showPlacementViewOptions(page) {
@@ -34,6 +40,8 @@ export async function showPlacementViewOptions(page) {
 }
 
 export async function showPlacementDock(page, dock) {
+  if (await page.locator(".placement-view-options").evaluate(element => element.open))
+    await page.locator("[data-placement-view-options]").click();
   const root = page.locator(".demo-shell");
   const compact = (await root.getAttribute("data-compact")) === "true";
   const toggle = page.locator(`[data-placement-dock-toggle="${dock}"]`);

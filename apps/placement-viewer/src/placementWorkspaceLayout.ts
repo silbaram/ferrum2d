@@ -1,5 +1,6 @@
 import { setUiAttribute, setUiText, uiMessage } from "./placementLocale";
 import { createPlacementControlMenu } from "./placementControlMenu";
+import { decorateViewportAction } from "./placementViewportChrome";
 type Dock = "scene" | "inspector" | "runtime";
 type Layout = {
   scene: number;
@@ -287,6 +288,7 @@ export function installPlacementWorkspaceLayout(
     ]) {
       const row = root.querySelector(selector);
       if (!row) continue;
+      if (selector === ".placement-viewport-toolbar" && row.closest(".placement-workspace-strip")) continue;
       fixedHeight += row.getBoundingClientRect().height;
       if (!observedRows.has(row)) {
         observedRows.add(row);
@@ -394,7 +396,11 @@ export function installPlacementWorkspaceLayout(
     if (expand) {
       expand.hidden = isCompact;
       expand.setAttribute("aria-pressed", String(focused));
-      setUiText(expand, focused ? "Restore View" : "Expand View");
+      const label = focused ? "Restore View" : "Expand View";
+      if (expand.dataset.caption !== label) {
+        decorateViewportAction(expand, focused ? "layout" : "fit", label, undefined, true);
+        expand.dataset.caption = label;
+      }
       setUiAttribute(
         expand,
         "title",

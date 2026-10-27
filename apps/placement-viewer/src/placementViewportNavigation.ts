@@ -28,6 +28,7 @@ export function installPlacementViewportNavigation(options: {
   canvas: HTMLCanvasElement;
   stage: HTMLElement;
   toolbar?: HTMLElement;
+  navigationSettings?: HTMLElement;
   viewer: ScenePlacementViewer;
   onChange(state: ScenePlacementViewerState): unknown;
   isEditing(): boolean;
@@ -51,9 +52,10 @@ export function installPlacementViewportNavigation(options: {
   const toolsGroup = viewportGroup("Selection tools"),
     cameraGroup = viewportGroup("View navigation"),
     frameGroup = viewportGroup("Frame view");
-  const cameraMenu = createPlacementControlMenu("camera-2d", "Camera", "camera");
+  const cameraMenu = createPlacementControlMenu("camera-2d", "Editor View", "camera");
   cameraMenu.panel.append(cameraGroup);
-  controls.append(toolsGroup, cameraMenu.element, frameGroup);
+  controls.append(toolsGroup);
+  (options.navigationSettings ?? controls).append(frameGroup, cameraMenu.element);
   const icons: Record<string, ViewportIcon> = {
     select: "select", pan: "pan", "zoom-out": "minus", "zoom-in": "plus",
     "frame-selection": "frame", "fit-scene": "fit", "reset-view": "reset",
@@ -81,7 +83,7 @@ export function installPlacementViewportNavigation(options: {
     setUiText(element, label);
     if (icons[action]) decorateViewportAction(element, icons[action], label,
       action === "select" ? "V" : action === "pan" ? "H" : undefined,
-      false);
+      action === "select" || action === "pan");
     setUiAttribute(element, "title", title);
     element.dataset.placementViewAction = action;
     element.addEventListener("click", () => {
@@ -318,6 +320,7 @@ export function installPlacementViewportNavigation(options: {
     "keydown",
     (event) => {
       if (
+        (stage.dataset.workspaceMode !== undefined && stage.dataset.workspaceMode !== "2d") ||
         event.ctrlKey ||
         event.metaKey ||
         event.altKey ||

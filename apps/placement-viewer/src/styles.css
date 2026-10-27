@@ -1457,6 +1457,63 @@ textarea {
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
+.placement-game-camera-dock {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: min(296px, 45%);
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 12px;
+  border-left: 1px solid var(--border);
+  background: var(--bg-1);
+  z-index: 5;
+}
+.placement-game-camera-dock[hidden],
+.placement-spatial-camera > [hidden] {
+  display: none;
+}
+.demo-stage[data-game-camera-editing="true"] > canvas {
+  width: calc(100% - min(296px, 45%));
+  cursor: grab;
+  touch-action: none;
+}
+.demo-stage[data-game-camera-editing="true"] > canvas[data-game-camera-gesture="orbit"],
+.demo-stage[data-game-camera-editing="true"] > canvas[data-game-camera-gesture="pan"] {
+  cursor: grabbing;
+}
+.placement-number-scrub {
+  cursor: ew-resize;
+  user-select: none;
+  touch-action: none;
+}
+.placement-spatial-drop-rejection {
+  position: absolute;
+  z-index: 8;
+  padding: 8px;
+  border: 1px solid var(--red);
+  background: var(--bg-1);
+  color: var(--red);
+  font-size: 11px;
+  pointer-events: none;
+}
+.placement-spatial-drop-rejection[hidden] {
+  display: none;
+}
+.placement-game-camera-dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--accent);
+}
+.placement-game-camera-dock-header button {
+  font-size: 11px;
+}
+.placement-game-camera-dock .placement-game-camera {
+  padding-top: 8px;
+}
 .placement-game-camera h4 {
   margin: 0 0 4px;
   color: var(--fg-1);
@@ -1465,6 +1522,13 @@ textarea {
   margin: 4px 0 8px;
   color: var(--fg-3);
   font-size: 11px;
+}
+.placement-game-camera .placement-game-camera-error {
+  color: var(--red);
+}
+.placement-game-camera input[type="range"] {
+  accent-color: var(--accent);
+  margin: 0;
 }
 .placement-game-camera-actions {
   display: flex;
@@ -1479,6 +1543,7 @@ textarea {
 }
 .placement-game-camera-fields label {
   display: grid;
+  align-content: start;
   gap: 4px;
   min-width: 0;
   font-size: 11px;
@@ -2403,7 +2468,7 @@ textarea {
   width: 12px;
   height: 12px;
 }
-.placement-view-options[open] .placement-disclosure-caret {
+.placement-view-options[open] > summary .placement-disclosure-caret {
   transform: rotate(180deg);
 }
 .placement-view-panel {
@@ -2517,7 +2582,7 @@ textarea {
   color: var(--accent);
   background: var(--accent-soft);
 }
-.placement-control-menu[open] .placement-disclosure-caret {
+.placement-control-menu[open] > summary .placement-disclosure-caret {
   transform: rotate(180deg);
 }
 .placement-control-panel {
@@ -2588,6 +2653,199 @@ textarea {
 }
 .placement-mode-controls [hidden] {
   display: none;
+}
+
+/* Two steady rows: application controls, then documents and primary tools. */
+.demo-shell[data-compact-chrome="true"] {
+  grid-template-rows: auto auto 0 minmax(0, 1fr) var(--runtime-row-height) 24px;
+}
+.demo-shell[data-compact-chrome="true"] .demo-toolbar {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  height: 36px;
+  min-height: 36px;
+}
+.placement-app-menu {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.placement-app-menu h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.placement-app-menu .placement-file-strip {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.placement-workspace-modes {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.placement-workspace-modes button {
+  min-width: 48px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 0;
+  font-size: 11px;
+}
+.placement-workspace-modes button + button {
+  border-left: 0;
+}
+.placement-workspace-modes [aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-press);
+}
+.demo-shell[data-compact-chrome="true"] .demo-actions {
+  grid-column: auto;
+  justify-self: end;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12px;
+  overflow: visible;
+}
+.demo-shell[data-compact-chrome="true"] .placement-session-controls {
+  gap: 4px;
+}
+.demo-shell[data-compact-chrome="true"] .demo-actions .placement-viewport-action {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 4px;
+}
+.demo-shell[data-compact-chrome="true"] .placement-language {
+  font-size: 0;
+}
+.demo-shell[data-compact-chrome="true"] .placement-language select {
+  min-width: 72px;
+  max-width: 84px;
+  height: 24px;
+  font-size: 11px;
+}
+.demo-shell[data-compact-chrome="true"] .placement-workspace-strip {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 8px;
+  overflow: visible;
+}
+.demo-shell[data-compact-chrome="true"] .placement-document-tabs {
+  flex: 1;
+  flex-basis: 0;
+  min-width: 80px;
+}
+.demo-shell[data-compact-chrome="true"] .placement-viewport-toolbar {
+  flex: 0 0 auto;
+  height: 35px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+.demo-shell[data-compact-chrome="true"] .placement-viewport-primary {
+  height: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+}
+.demo-shell[data-compact-chrome="true"] :is(.placement-navigation-mount, .placement-camera-mount) {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.demo-shell[data-compact-chrome="true"] .placement-viewport-toolbar :is(.placement-viewport-controls, .placement-spatial-camera) {
+  min-width: 0;
+  width: auto;
+  padding: 0;
+}
+.placement-view-panel .placement-view-navigation {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.placement-view-panel .placement-viewport-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+.placement-view-panel .placement-control-menu > summary {
+  width: 100%;
+}
+.placement-view-panel .placement-layout-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 0;
+}
+.placement-view-panel [hidden],
+.placement-viewport-primary > [hidden],
+.placement-tool-readout[hidden] {
+  display: none !important;
+}
+.placement-status-bar .placement-tool-readout {
+  flex: 1;
+  min-width: 0;
+  max-width: 360px;
+  min-height: 0;
+  gap: 4px;
+  padding: 0 8px;
+}
+.placement-workspace-message:not(:empty) {
+  order: 9;
+  flex-basis: 100%;
+}
+@media (max-width: 860px) {
+  .demo-shell[data-compact-chrome="true"][data-compact="true"] {
+    grid-template-rows: auto auto 0 minmax(128px, 1fr) var(--compact-drawer-height, 0px) 24px;
+  }
+  .demo-shell[data-compact-chrome="true"] .placement-workspace-strip > .placement-layout-controls {
+    flex: 0 0 100%;
+    padding: 0 0 4px;
+  }
+}
+@media (max-width: 680px) {
+  .demo-shell[data-compact-chrome="true"] .demo-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    height: auto;
+    padding: 4px 8px;
+    gap: 4px 8px;
+  }
+  .placement-workspace-modes {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: center;
+  }
+  .demo-shell[data-compact-chrome="true"] .demo-actions {
+    gap: 4px;
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .placement-app-menu h1 {
+    max-width: 96px;
+  }
+}
+@media (max-width: 480px) {
+  .demo-shell[data-compact-chrome="true"] [data-placement-game-camera-edit] .placement-action-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .demo-shell[data-compact-chrome="true"] [data-placement-game-camera-edit] {
+    min-width: 28px;
+    width: 28px;
+    padding: 4px;
+  }
+  .demo-shell[data-compact-chrome="true"] .placement-workspace-strip {
+    gap: 4px;
+  }
 }
 .placement-layout-controls .placement-panel-toggles [hidden] {
   display: none;

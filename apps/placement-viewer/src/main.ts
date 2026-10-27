@@ -33,6 +33,7 @@ import type { tileEvidence } from "./placementTileAssets";
 import { createPlacementViewportToolbar } from "./placementViewportToolbar";
 import { createPlacementDocumentTabs } from "./placementDocumentTabs";
 import { installPlacementWorkspaceLayout } from "./placementWorkspaceLayout";
+import { installPlacementWorkspaceChrome } from "./placementWorkspaceChrome";
 import { createPlacementPanelTabs } from "./placementPanelTabs";
 import { createPlacementBottomDock } from "./placementBottomDock";
 import { createPlacementSceneNavigator } from "./placementSceneNavigator";
@@ -1320,6 +1321,7 @@ async function bootstrap(): Promise<void> {
       canvas: shell.canvas,
       stage: shell.stage,
       toolbar: viewportToolbar.navigation,
+      navigationSettings: viewportToolbar.flatNavigation,
       viewer,
       onChange: setState,
       isEditing: () =>
@@ -1404,6 +1406,7 @@ async function bootstrap(): Promise<void> {
       canvas: shell.canvas,
       stage: shell.stage,
       cameraToolbar: viewportToolbar.camera,
+      navigationSettings: viewportToolbar.spatialNavigation,
       viewSettings: viewportToolbar.spatialSettings,
       gridChanged: (state) =>
         gridRenderer?.grid?.sync({
@@ -2134,6 +2137,7 @@ async function bootstrap(): Promise<void> {
     });
     tabs.element.append(layout.controls);
     root.append(tabs.element);
+    installPlacementWorkspaceChrome(root, viewportToolbar);
     window.addEventListener("ferrum-placement-document-error", (event) => {
       if (event instanceof CustomEvent) tabs?.report(event.detail);
     });

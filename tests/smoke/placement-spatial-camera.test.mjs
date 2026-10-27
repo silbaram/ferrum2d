@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 const require = createRequire(new URL("../../apps/placement-viewer/package.json", import.meta.url));
 const ts = require("typescript");
-const { spatialCameraPitch, tiltSpatialCamera, orbitSpatialCameraPitch, spatialEditorRenderCamera, MIN_VIEW_PITCH, MAX_VIEW_PITCH } = await import(
+const { spatialCameraPitch, tiltSpatialCamera, orbitSpatialCameraPitch, spatialEditorRenderCamera, panSpatialCamera, orbitSpatialCamera, zoomSpatialCamera, MIN_VIEW_PITCH, MAX_VIEW_PITCH } = await import(
   "data:text/javascript;base64," + Buffer.from(ts.transpileModule(
     await readFile("apps/placement-viewer/src/placementSpatialCamera.ts", "utf8"),
     { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } },
@@ -13,6 +13,21 @@ const { spatialCameraPitch, tiltSpatialCamera, orbitSpatialCameraPitch, spatialE
 const distance = c => Math.hypot(c.position.x-c.target.x,c.position.y-c.target.y,c.position.elevation-c.target.elevation);
 const yaw = c => Math.atan2(c.position.y-c.target.y,c.position.x-c.target.x);
 const near = (a,b) => assert(Math.abs(a-b)<1e-8,`${a} != ${b}`);
+test("direct orbit/pan/zoom preserve camera framing invariants without mutating authored values", () => {
+  for (const projection of ["orthographic", "perspective"]) for (const angle of [-45,0,45,89]) {
+    const c=orbitSpatialCameraPitch({projection, position:{x:120,y:-200,elevation:180}, target:{x:10,y:15,elevation:20}, height:300,fovDegrees:55,near:.1,far:2000},angle);
+    const copy=structuredClone(c), panned=panSpatialCamera(c,24,-16,600), orbited=orbitSpatialCamera(c,60,-30), zoomed=zoomSpatialCamera(c,.8);
+    near(distance(panned),distance(c)); near(yaw(panned),yaw(c)); near(spatialCameraPitch(panned),angle);
+    for (const axis of ["x","y","elevation"]) near(panned.position[axis]-c.position[axis],panned.target[axis]-c.target[axis]);
+    assert.deepEqual(orbited.target,c.target); near(distance(orbited),distance(c));
+    assert(spatialCameraPitch(orbited)<90 && spatialCameraPitch(orbited)>-90);
+    assert.deepEqual(zoomed.target,c.target);
+    if(projection==="orthographic") { near(zoomed.height,c.height*.8); assert.deepEqual(zoomed.position,c.position); }
+    else near(distance(zoomed),distance(c)*.8);
+    assert.deepEqual(c,copy);
+    assert.throws(()=>panSpatialCamera(c,1,1,0)); assert.throws(()=>zoomSpatialCamera(c,0)); assert.throws(()=>orbitSpatialCamera(c,NaN,0));
+  }
+});
 for (const projection of ["orthographic", "perspective"])
   test(`${projection} pitch preserves target, distance, yaw and lens without mutating input`, () => {
     const c={projection,position:{x:-150,y:230,elevation:340},target:{x:17,y:-38,elevation:27},height:660,fovDegrees:55,near:.1,far:2200};

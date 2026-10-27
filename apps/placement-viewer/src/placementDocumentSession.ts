@@ -8,6 +8,7 @@ import type {
   ScenePlacementViewer,
   ScenePlacementViewerState,
 } from "@ferrum2d/ferrum-web/authoring";
+import { decorateViewportAction } from "./placementViewportChrome";
 
 /** Per-document input/history boundary; the viewer retains the inspectable JSON draft. */
 export function installPlacementDocumentSession(options: {
@@ -28,14 +29,15 @@ export function installPlacementDocumentSession(options: {
   const undo = document.createElement("button");
   const redo = document.createElement("button");
   const status = document.createElement("span");
-  setUiText(undo, "Undo");
-  setUiText(redo, "Redo");
+  decorateViewportAction(undo, "left", "Undo", undefined, true);
+  decorateViewportAction(redo, "right", "Redo", undefined, true);
   undo.type = redo.type = "button";
   undo.dataset.placementAction = "undo";
   redo.dataset.placementAction = "redo";
   setUiAttribute(undo, "title", "Undo (Ctrl/Cmd+Z)");
   setUiAttribute(redo, "title", "Redo (Ctrl/Cmd+Shift+Z)");
   status.setAttribute("aria-live", "polite");
+  status.className = "placement-visually-hidden";
   controls.append(undo, redo, status);
   (
     root.querySelector(".demo-actions") ??

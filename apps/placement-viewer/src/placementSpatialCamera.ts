@@ -44,6 +44,42 @@ export function orbitSpatialCameraPitch(camera: SpatialCameraSpec, degrees: numb
   };
 }
 
+/** Direct manipulation in the camera's screen plane, in CSS pixels. */
+export function panSpatialCamera(camera: SpatialCameraSpec, dx: number, dy: number, viewHeight: number): SpatialCameraSpec {
+  const eye = camera.position, target = camera.target,
+    x = target.x - eye.x, y = target.y - eye.y, z = target.elevation - eye.elevation,
+    distance = Math.hypot(x, y, z), horizontal = Math.hypot(x, y);
+  if (![dx, dy, viewHeight, distance, horizontal].every(Number.isFinite) || viewHeight <= 0 || distance <= 0 || horizontal <= 0)
+    throw new Error("Enter a valid camera value");
+  const rx = y / horizontal, ry = -x / horizontal,
+    units = (camera.projection === "orthographic" ? camera.height! : 2 * distance * Math.tan(camera.fovDegrees! * Math.PI / 360)) / viewHeight,
+    delta = { x: (-dx * rx + dy * ry * z / distance) * units,
+      y: (-dx * ry - dy * rx * z / distance) * units,
+      elevation: dy * (rx * y - ry * x) / distance * units };
+  const translate = (point: SpatialCameraSpec["position"]) => ({ x: point.x + delta.x, y: point.y + delta.y, elevation: point.elevation + delta.elevation });
+  return { ...camera, position: translate(eye), target: translate(target) };
+}
+
+export function orbitSpatialCamera(camera: SpatialCameraSpec, dx: number, dy: number): SpatialCameraSpec {
+  if (![dx, dy].every(Number.isFinite)) throw new Error("Enter a valid camera value");
+  const next = orbitSpatialCameraPitch(camera, Math.max(-89.9, Math.min(89.9, spatialCameraPitch(camera) - dy * 0.3))),
+    x = next.position.x - next.target.x, y = next.position.y - next.target.y,
+    angle = dx * 0.3 * Math.PI / 180;
+  next.position.x = next.target.x + x * Math.cos(angle) - y * Math.sin(angle);
+  next.position.y = next.target.y + x * Math.sin(angle) + y * Math.cos(angle);
+  return next;
+}
+
+export function zoomSpatialCamera(camera: SpatialCameraSpec, factor: number): SpatialCameraSpec {
+  if (!Number.isFinite(factor) || factor <= 0) throw new Error("Enter a valid camera value");
+  if (camera.projection === "orthographic") return { ...camera, target: { ...camera.target }, position: { ...camera.position }, height: camera.height! * factor };
+  return { ...camera, target: { ...camera.target }, position: {
+    x: camera.target.x + (camera.position.x - camera.target.x) * factor,
+    y: camera.target.y + (camera.position.y - camera.target.y) * factor,
+    elevation: camera.target.elevation + (camera.position.elevation - camera.target.elevation) * factor,
+  } };
+}
+
 /** Keep the orthographic working plane inside the editor's depth range.
  * Moving the eye along its viewing axis leaves screen X/Y, scale and yaw intact.
  * The navigation camera stays separate so repeated zoom/pan never accumulates this offset.

@@ -4,6 +4,7 @@ import {
   showPlacementInspector,
   showPlacementBottom,
   showPlacementViewOptions,
+  clickPlacementControl,
 } from "./placement-panel-navigation.mjs";
 
 /** Six layout improvements, through real tabs and native preview controls. */
@@ -165,12 +166,13 @@ export async function smokePlacementSixPanels(parent, source, timeoutMs) {
       "Scene navigation changed authored data or history",
     );
 
+    await showPlacementViewOptions(page);
     await page.locator("[data-placement-focus-floor]").selectOption("1");
     assert.match(
       await page.locator("[data-placement-spatial-info]").textContent(),
       /View: Floor 1.*Selected: bridge.*Floor 1/,
     );
-    await page.locator("[data-placement-floor-controls]").click();
+    await clickPlacementControl(page, "[data-placement-floor-controls]");
     assert(
       (await inspector
         .locator("details", {
@@ -181,6 +183,7 @@ export async function smokePlacementSixPanels(parent, source, timeoutMs) {
     await showPlacementViewOptions(page);
     await page.locator("[data-placement-proxy-overlay]").check();
     await page.locator("[data-placement-proxy-overlay]").uncheck();
+    await showPlacementViewOptions(page);
     await page.locator("[data-placement-focus-floor]").selectOption("all");
     await showPlacementInspector(page, "placement");
     await page

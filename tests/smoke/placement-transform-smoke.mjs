@@ -1,6 +1,7 @@
 import {
   showPlacementInspector,
   showPlacementBottom,
+  clickPlacementControl,
 } from "./placement-panel-navigation.mjs";
 import { mkdir } from "node:fs/promises";
 
@@ -38,7 +39,7 @@ export async function smokePlacementTransforms(page, timeoutMs) {
   await page
     .locator("button[data-instance-id=pivot_b]:visible")
     .click({ modifiers: ["Control"] });
-  await page.click("[data-placement-view-action=frame-selection]");
+  await clickPlacementControl(page, "[data-placement-view-action=frame-selection]");
   const patch = () =>
     page.evaluate(() => globalThis.ferrumPlacementViewerExportPatch());
   const undo = async () => {

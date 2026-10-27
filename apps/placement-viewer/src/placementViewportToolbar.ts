@@ -20,7 +20,10 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     heading = document.createElement("strong"),
     close = document.createElement("button"),
     gridSettings = document.createElement("div"),
-    spatialSettings = document.createElement("div");
+    spatialSettings = document.createElement("div"),
+    flatNavigation = document.createElement("div"),
+    spatialNavigation = document.createElement("div"),
+    layoutSettings = document.createElement("div");
   let mode = "2d", label: string | undefined, dragging = false;
   const states: Record<string, NavigationState> = {};
   element.className = "placement-viewport-toolbar";
@@ -34,14 +37,14 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
   status.dataset.placementToolStatus = "true";
   status.setAttribute("aria-live", "polite");
   button.type = close.type = expand.type = "button";
-  setUiText(button, "Cancel");
+  decorateViewportAction(button, "close", "Cancel", undefined, true);
   button.dataset.placementToolCancel = "true";
   button.addEventListener("click", cancel);
   size.dataset.placementViewportSize = "true";
   setUiAttribute(size, "aria-label", "Viewport size");
   setUiAttribute(size, "title", "Viewport size in CSS pixels");
   expand.dataset.placementViewportExpand = "true";
-  setUiText(expand, "Expand View");
+  decorateViewportAction(expand, "fit", "Expand View", undefined, true);
 
   options.className = "placement-view-options";
   summary.dataset.placementViewOptions = "true";
@@ -69,7 +72,9 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
   header.append(heading, close);
   gridSettings.className = "placement-view-grid-settings";
   spatialSettings.className = "placement-view-spatial-settings";
-  panel.append(header, gridSettings, spatialSettings);
+  flatNavigation.className = spatialNavigation.className = "placement-view-navigation";
+  layoutSettings.className = "placement-view-layout";
+  panel.append(header, flatNavigation, spatialNavigation, gridSettings, spatialSettings, layoutSettings);
   options.append(summary, panel);
   // The runtime handles Enter/Space globally; own disclosure activation here
   // so keyboard users retain native-like behavior without gameplay input.
@@ -84,6 +89,10 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     if (!options.open) return;
     options.open = false;
     summary.setAttribute("aria-expanded", "false");
+    for (const menu of panel.querySelectorAll<HTMLDetailsElement>("details[data-placement-menu]")) {
+      menu.open = false;
+      menu.querySelector(":scope > summary")?.setAttribute("aria-expanded", "false");
+    }
     if (restoreFocus) summary.focus({ preventScroll: true });
   }
   // Outside pointer/focus dismiss without stealing focus from the next action.
@@ -93,13 +102,14 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
   document.addEventListener("focusin", (event) => {
     if (event.target instanceof Node && !options.contains(event.target)) closeOptions();
   });
+  window.addEventListener("resize", () => closeOptions());
   options.addEventListener("keydown", (event) => {
     if (event.code !== "Escape" || !options.open) return;
     event.preventDefault();
     event.stopPropagation();
     closeOptions(true);
   });
-  readout.append(status, button, size, expand);
+  readout.append(status);
   const help = createPlacementControlMenu("help", "Controls", "help");
   const instructions = document.createElement("dl");
   instructions.className = "placement-controls-guide";
@@ -108,7 +118,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     ["Edit selection", "Select an object, then edit its properties in Inspector."],
     ["Navigate", "V: select · H or Space + drag: pan · Wheel: zoom"],
     ["Frame view", "F: selected object · Home: entire scene"],
-    ["Camera", "Camera changes the editor view. Game Preview uses the scene camera."],
+    ["Editor View", "View > Editor View changes navigation. Game Camera edits the saved view."],
     ["Play", "Play runs the scene. Stop returns to editing."],
     ["Keep changes", "Export copies a patch or handoff. File saving requires a save-enabled host."],
   ]) {
@@ -118,8 +128,8 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     instructions.append(term, descriptionElement);
   }
   help.panel.append(instructions);
-  primary.append(navigation, camera, options);
-  readout.insertBefore(help.element, size);
+  panel.append(help.element, size);
+  primary.append(navigation, camera, button, options, expand);
   element.append(primary, readout);
   installViewportToolbarKeys(primary);
   stage.closest(".demo-shell")?.append(element);
@@ -127,7 +137,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     const nav = states[mode];
     const text = label
       ? uiMessage("{0}: {1} · {2} · Esc to cancel", uiMessage(dragging ? "Drag" : "Place"), label, uiMessage(dragging ? "Drop into viewport" : "Click to place"))
-      : mode === "game" ? (stage.dataset.spatialActor ? "Game Preview · WASD to move · Stop to edit" : "Game Preview · Choose 2D or HD-2D to edit")
+      : mode === "game" ? (stage.dataset.gameCameraEditing === "true" ? "Camera preview paused · Adjust the panel to frame the game" : stage.dataset.spatialActor ? "Game Preview · WASD to move · Stop to edit" : "Game Preview · Choose 2D or HD-2D to edit")
         : nav?.temporary ? "Temporary pan · Release Space to return"
           : nav?.dragging ? "Panning · Esc to cancel"
             : nav?.tool === "pan" ? "Pan view · Drag to move · V to select"
@@ -137,6 +147,7 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     readout.dataset.active = String(!!label);
     readout.dataset.navigation = nav?.temporary ? "temporary-pan" : nav?.tool ?? "select";
     button.hidden = !label;
+    readout.hidden = !label && mode !== "game" && !nav?.temporary && !nav?.dragging && nav?.tool !== "pan";
   }
   stage.addEventListener("placement-navigation-change", (event) => {
     const detail = (event as CustomEvent<NavigationState & { mode: string }>).detail;
@@ -144,13 +155,16 @@ export function createPlacementViewportToolbar(stage: HTMLElement, cancel: () =>
     if (mode === detail.mode) renderReadout();
   });
   return {
-    element, navigation, camera, gridSettings, spatialSettings,
+    element, navigation, camera, gridSettings, spatialSettings, flatNavigation, spatialNavigation, layoutSettings,
     sync(nextMode: string, nextLabel?: string, nextDragging = false) {
       if (mode !== nextMode) closeOptions();
       mode = nextMode; label = nextLabel; dragging = nextDragging;
       navigation.hidden = mode !== "2d";
-      camera.hidden = spatialSettings.hidden = mode !== "spatial";
-      options.hidden = mode === "game";
+      camera.hidden = mode === "2d";
+      spatialSettings.hidden = mode !== "spatial";
+      flatNavigation.hidden = mode !== "2d";
+      spatialNavigation.hidden = mode !== "spatial";
+      gridSettings.hidden = mode === "game";
       renderReadout();
     },
   };

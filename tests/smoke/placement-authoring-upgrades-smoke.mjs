@@ -2,6 +2,7 @@ import {
   showPlacementInspector,
   showPlacementBottom,
   showPlacementViewOptions,
+  clickPlacementControl,
 } from "./placement-panel-navigation.mjs";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -455,7 +456,9 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
     const entities = await page.evaluate(
       () => globalThis.ferrumPlacementViewerRuntimeFrame.entityCount,
     );
+    await showPlacementViewOptions(page);
     await page.selectOption("[data-placement-focus-floor]", "1");
+    await page.keyboard.press("Escape");
     await page.locator("[data-placement-ghost-floors]").check();
     await wait(
       () =>
@@ -476,7 +479,9 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
       await page.evaluate(() => globalThis.ferrumPlacementSpatialTarget?.id),
       "sprite",
     );
+    await showPlacementViewOptions(page);
     await page.selectOption("[data-placement-focus-floor]", "all");
+    await page.keyboard.press("Escape");
     await page.locator("[data-placement-ghost-floors]").uncheck();
     const overlap = await project({ x: 40, y: 80, elevation: 40 });
     await page.mouse.click(overlap.x, overlap.y, { button: "right" });
@@ -494,8 +499,8 @@ export async function smokeAuthoringUpgrades(parent, source, timeoutMs) {
       "bridge",
     );
     const beforeCamera = await snapshot();
-    await page.locator('[data-placement-spatial-frame="true"]').click();
-    await page.locator('[data-placement-spatial-frame="false"]').click();
+    await clickPlacementControl(page, '[data-placement-spatial-frame="true"]');
+    await clickPlacementControl(page, '[data-placement-spatial-frame="false"]');
     assert.deepEqual(await snapshot(), beforeCamera);
     await target("model:new_model");
     await detail("Selected Runtime");
