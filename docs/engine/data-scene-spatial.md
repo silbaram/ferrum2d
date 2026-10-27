@@ -45,6 +45,11 @@ const result = applyDataSceneAuthoringDocument(engine, { ...document, spatial })
 sprite의 물리 높이·층과 visual-only 모델의 시각 높이는 기존 저장 계약을 따른다.
 설정 방법은 [뷰어 사용법](../../apps/placement-viewer/README.md)을 참고한다.
 
+공식 뷰어의 `카메라 → 게임 카메라`는 씬의 `spatial.camera`를 작성한다. 편집용 탐색 시점은 별도로 유지하고,
+명시적인 현재 시점 적용·숫자 입력만 [spatial patch v5](public-api/authoring.md#hd-2d-spatial-placement-patch)의
+`setCamera`로 저장한다. 게임 구도 확인은 실제 viewport/pixelArt를 사용하는 일시정지 미리보기이며,
+camera-only patch도 기존 Undo/Redo·export·host 저장·다시 열기 계약을 따른다.
+
 ## 정적 GLB 배경 모델
 
 `/core`의 `loadSpatialGlb(source, { materialProfile: "diffuse", signal? })`로 URL 또는 ArrayBuffer를

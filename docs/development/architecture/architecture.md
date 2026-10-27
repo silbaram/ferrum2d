@@ -18,6 +18,13 @@ Ferrum2D는 Rust core가 게임 상태와 시뮬레이션을 소유하고, TypeS
 
 Runtime budget은 quality infrastructure 표면이며 `RuntimeProfiler`가 frame/debug metric을 bounded sample로 모은 뒤 browser smoke가 profile별 상한을 평가한다. Physics 성능 gate는 fixed step, solid/tile candidate, CCD check, physics debug line, collision pair처럼 Rust/Wasm frame에서 실제 기록된 구조적 metric만 사용한다.
 
+공식 Placement Viewer의 편집용 탐색 카메라는 문서/이력과 분리한 탭별 UI 상태다. 저장되는 게임 카메라는
+`spatial.camera`이며 spatial patch v5의 씬 수준 `setCamera`로 기존 diff/merge/Undo/저장 경로를 따른다.
+`placementGameCamera.ts`는 설정 UI·씬 구도 작성용 수학·native presentation의 화면 범위 표시를 담당하고,
+`placementSpatialWorkspace.ts`가 변경 transaction·native 적용/취소와 모드 전환을 소유한다.
+게임 카메라 확인은 실제 pixelArt/viewport를 사용하는 일시정지 미리보기이며 runtime 진행 상태는 Rust가 소유한다.
+Rust/Wasm camera ABI·렌더 명령 형식은 변경하지 않는다.
+
 Physics debug line 생성은 opt-in quality/debug path다. Runtime `Engine`은 debug 전용 collision scratch를 보관해 broadphase proxy와 contact collider pair scratch를 frame마다 재사용하며, public debug line buffer ABI와 renderer 경로는 그대로 유지한다.
 
 공식 Assets의 Aseprite import/reimport는 `placementAsepriteAssets.ts`가 검증·원본/hash·immutable revision·component patch를,

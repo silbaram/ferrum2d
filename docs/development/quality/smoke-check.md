@@ -350,6 +350,27 @@ Shift 15° 정렬·방향키 조절, 높이 아이콘의 키보드·드래그, �
 대상 목록에 `선택 없음`을 표시하며 이름 변경·복제·삭제 버튼을 숨기는지 확인한다.
 문서·이력·카메라가 유지되는지, Pan 도구 클릭은 선택을 보존하는지도 검사한다.
 근거는 `artifacts/spatial-transform-fix/verification.json`과 화면이다.
+같은 spatial gate의 `placement-game-camera-smoke.mjs`는 직교/원근 × DPR 1/2에서 실제 Rust/Wasm의 게임 카메라 작성을 검사한다.
+탐색 시점과 JSON의 분리, 현재 시점 적용의 v5 patch·한 건 Undo/Redo, 각도·방향·중심·확대/화각 변경 후 native 투영 변화,
+일시정지 미리보기와 pixelArt 320×180의 실제 viewport/점선 프레임 일치, Stop의 편집 카메라 복원을 확인한다.
+잘못된 lens와 native 거절의 초안·이력 복구, 연속 적용/복원 실패 중 mode/tab/Undo 차단·resize 오류 보고와 Escape 재시도,
+투영 전환, export/reopen, 한영 UI를 검사하며
+native entity 3개·billboard vertex 18개와 draw 1~32회 조건도 함께 확인한다.
+근거는 `artifacts/game-camera-authoring/browser-verification.json`과 화면이다.
+같은 카메라 smoke에서 호출하는 `placement-game-camera-regressions-smoke.mjs`는 DPR 2에서 resize 없이 JSON 문서를
+연 뒤 카메라 입력/적용/미리보기 버튼이 다시 활성화되는지, 탭별 문서·이력·탐색 시점이 보존되는지 확인한다.
+직교→원근 전환이 near/far 경계를 넘는 두 사례와 기존 클립이 유효한 사례에서 실제 native 중심 가시성,
+수직 화면 범위·기존 유효 클립 유지, 한 건 Undo/Redo와 재열기를 검사한다. 고급 높이로 만든 음수 각도·수평/분수 각도,
+±90° 거절, 확대 결과 0.0008과 작은 값 4e-7의 입력/표시·재열기, 0 거절도 포함한다.
+재개는 실제 `dataSceneState() === "playing"`과 프레임 숨김으로 확인하며 native entity 3개·billboard vertex 18개·draw 1~32회도 검사한다.
+근거는 `artifacts/game-camera-review-fixes/regressions.json`과 화면이다.
+`placement-game-camera-save-smoke.mjs`도 같은 gate에서 호출한다. 직교/원근 DPR 2의 실제 frontend와 native renderer에서
+포커스를 유지한 dirty/clean 입력이 저장 요청에 포함되는지, 저장 중 중복 요청 차단, unchanged 입력의 no-op,
+잘못된 값·빈 값·불완전 숫자(`badInput`)의 저장 차단과 입력/포커스 보존을 검사한다.
+native 거절·연속 복원 실패의 초안/이력·transaction 소유권, backend 저장 거절 후 재시도, signed pitch 저장 후
+지연된 blur의 중복 편집 방지, 재열기와 실제 일시정지 미리보기도 확인한다. export-only 저장 명령은 입력을 확정하지 않는다.
+저장 bridge는 테스트 메모리/sessionStorage만 사용하고 실제 native 파일 저장을 실행하지 않는다.
+native entity 3개·billboard vertex 18개·draw 1~32회 조건과 근거는 `artifacts/game-camera-pending-save-fix/save-regressions.json`이다.
 화면·측정 근거는 `artifacts/viewport-toolbar-ux/`다. grid/locale/공간 배치 회귀도 실제 보기 버튼으로 설정을 연다.
 HD-2D gate는 orthographic/perspective에서 Pan 버튼·H·Space 드래그의 실제 화면 투영 이동, Escape 취소,
 휠 확대·복원과 비활성 2D 카메라·선택·문서·history 불변도 확인한다. 크기/화면 근거는 `artifacts/viewport-navigation-sizing/`다.
